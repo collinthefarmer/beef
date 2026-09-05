@@ -333,6 +333,14 @@ namespace WornEnchantmentPBR::Studio
 			return std::nullopt;
 		}
 
+		Refusal Edit(Recipe& a_recipe, const ClearLayers& a_edit)
+		{
+			auto found = FindMaterialOutput(a_recipe, a_edit.output);
+			if (found.problem) return found.problem;
+			found.output->stack.clear();
+			return std::nullopt;
+		}
+
 		// ------------------------------------------------ output edits
 
 		Refusal Edit(Recipe& a_recipe, const AddOutput& a_edit)
@@ -491,6 +499,7 @@ namespace WornEnchantmentPBR::Studio
 			[](const AddLayer& e) { return e.at ? std::format("{}: add layer", LayerWhere(e.output, *e.at)) : std::format("{}: add layer on top", OutputWhere(e.output)); },
 			[](const RemoveLayer& e) { return std::format("{}: remove", LayerWhere(e.output, e.layer)); },
 			[](const MoveLayer& e) { return std::format("{}: move to {}", LayerWhere(e.output, e.from), e.to); },
+			[](const ClearLayers& e) { return std::format("{}: clear layers", OutputWhere(e.output)); },
 			[](const AddOutput& e) { return std::format("outputs: add {} {}", SurfaceName(e.surface), SlotName(e.slot)); },
 			[](const RemoveOutput& e) { return std::format("{}: remove", OutputWhere(e.output)); },
 			[](const SetScalar& e) { return std::format("{}: {} {}", OutputWhere(e.output), ScalarFieldName(e.field), ParamText(e.value)); },

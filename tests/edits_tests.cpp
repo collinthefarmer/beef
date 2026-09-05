@@ -157,6 +157,15 @@ namespace
 		Check(NameAt(1) == "ring", "moving onto itself changes nothing");
 		Refused(r, MoveLayer{ 0, 4, 0 }, "output 0 layer 4", "4 layers", "move from past the end");
 		Refused(r, MoveLayer{ 0, 0, 4 }, "output 0 layer 0", "4 layers", "move to past the end");
+
+		Refused(r, ClearLayers{ 4 }, "output 4", "is a light", "clear layers of the light");
+		Refused(r, ClearLayers{ 7 }, "output 7", "5 outputs", "clear layers past the end");
+		Accepted(r, ClearLayers{ 0 }, "clear layers");
+		Check(MaterialAt(r, 0) && MaterialAt(r, 0)->stack.empty(), "the cleared stack is empty");
+		Check(MaterialAt(r, 0) && MaterialAt(r, 0)->scalars.strength.has_value(), "clearing the layers keeps the output's scalars");
+		Check(MaterialAt(r, 1) && MaterialAt(r, 1)->stack.size() == 2, "other stacks are untouched");
+		Accepted(r, ClearLayers{ 0 }, "clear an empty stack");
+		Check(MaterialAt(r, 0) && MaterialAt(r, 0)->stack.empty(), "clearing an empty stack leaves it empty");
 	}
 
 	void OutputEdits()
@@ -293,6 +302,7 @@ namespace
 		Check(Describe(AddLayer{ 3, DefaultLayer(), 1 }) == "output 3 layer 1: add layer", "describe add layer at");
 		Check(Describe(RemoveLayer{ 3, 1 }) == "output 3 layer 1: remove", "describe remove layer");
 		Check(Describe(MoveLayer{ 3, 1, 0 }) == "output 3 layer 1: move to 0", "describe move layer");
+		Check(Describe(ClearLayers{ 3 }) == "output 3: clear layers", "describe clear layers");
 		Check(Describe(AddOutput{ Surface::kShell, Slot::kFuzz }) == "outputs: add shell fuzz", "describe add output");
 		Check(Describe(RemoveOutput{ 4 }) == "output 4: remove", "describe remove output");
 		Check(Describe(SetScalar{ 2, ScalarField::kScale, At("heightScale") }) == "output 2: scale @heightScale", "describe scalar");

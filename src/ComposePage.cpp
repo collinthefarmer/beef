@@ -178,23 +178,17 @@ namespace WornEnchantmentPBR::Studio
 
 		// A recipe's rows are the same for every shape of the piece, but the
 		// compositor renders them per shape (its own maps, bakes and size), so
-		// this picks whose rendering is shown; edits reach every shape. Entries
-		// are labelled for reading (GeometryLabel) and identified by the raw
-		// name after "##", so two shapes with one label stay distinct. The
-		// caller sets the width and the label.
-		void GeometryChoice(const char* a_label, const PieceRow& a_piece, const RecipeRow& a_recipe, const GeometryRow& a_geometry, Selection& a_selection)
+		// the selection names whose rendering is shown; edits reach every
+		// shape. Viewing moves to the next shape of the recipe, wrapping.
+		void ViewNextGeometry(const RecipeRow& a_recipe, const GeometryRow& a_geometry, Selection& a_selection)
 		{
-			if (ImGui::BeginCombo(a_label, GeometryLabel(a_geometry.name, a_piece.armorName).c_str())) {
-				for (const auto& g : a_recipe.geometries) {
-					const auto label = GeometryLabel(g.name, a_piece.armorName) + "##" + g.name;
-					if (ImGui::Selectable(label.c_str(), &g == &a_geometry)) {
-						a_selection.geometry = g.name;
-					}
-					Widgets::Tooltip(g.name);
-				}
-				ImGui::EndCombo();
+			const auto& shapes = a_recipe.geometries;
+			if (shapes.empty()) {
+				return;
 			}
-			Widgets::Tooltip("The piece has several shapes. The recipe applies to all of them; this chooses whose composites, thumbnails and slot states are shown. Raw name: " + a_geometry.name);
+			const auto        it = std::ranges::find(shapes, a_geometry.name, &GeometryRow::name);
+			const std::size_t at = it == shapes.end() ? 0 : static_cast<std::size_t>(it - shapes.begin());
+			a_selection.geometry = shapes[(at + 1) % shapes.size()].name;
 		}
 
 		// The region lens: whole piece, or one of the recipe's masks. The
@@ -467,10 +461,11 @@ namespace WornEnchantmentPBR::Studio
 		}
 
 		// The first context row is the recipe: S (the recipe applied alone),
-		// the selection and the recipe within it.
-		void DrawRecipeContext(const Snapshot& a_snapshot, const PieceRow& a_piece, const RecipeRow& a_recipe)
+		// the selection and the recipe within it; and, at the far right past
+		// a spacer, Clear layers for the picked output.
+		void DrawRecipeContext(const Snapshot& a_snapshot, const PieceRow& a_piece, const RecipeRow& a_recipe, const Cell* a_picked, MenuState& a_state)
 		{
-			auto table = Widgets::Table::Begin("recipe-context", { { "S", Width::Fit() }, { "selection", Width::Fit() }, { "recipe", Width::Fit() } }, kContextStyle);
+			auto table = Widgets::Table::Begin("recipe-context", { { "S", Width::Fit() }, { "selection", Width::Fit() }, { "recipe", Width::Fit() }, { "", Width::Fill() }, { "", Width::Fit() } }, kContextStyle);
 			if (!table.Open()) {
 				return;
 			}
@@ -483,22 +478,36 @@ namespace WornEnchantmentPBR::Studio
 			table.Cell();
 			Widgets::NextItemWidth(Width::Fit(a_recipe.id));
 			RecipeCombo(&a_piece, "##recipe");
+			table.Cell();
+			table.Cell();
+			{
+				// Only a picked output with layers can be cleared.
+				const std::optional<std::size_t> output = a_picked ? a_picked->output : std::nullopt;
+				const bool                       clearable = output && a_picked->layers > 0;
+				if (!clearable) {
+					ImGui::BeginDisabled();
+				}
+				if (ImGui::Button("Clear layers") && clearable) {
+					Post(a_recipe.id, ClearLayers{ *output });
+					a_state.selection.layer.reset();
+				}
+				if (!clearable) {
+					ImGui::EndDisabled();
+				}
+				Widgets::Tooltip("remove every layer of the picked output");
+			}
 			table.End();
 		}
 
 		// The second context row is what is being edited: S (the picked
-		// output alone), target, slot, region, and the shape viewed on.
-		// Columns fit their content and each combo is as wide as its preview,
-		// so a long name is never clipped while a short neighbour has room to
-		// spare.
-		void DrawEditContext(const Board& a_board, const PieceRow& a_piece, const RecipeRow& a_recipe, const GeometryRow& a_geometry, const Cell* a_picked, MenuState& a_state, View& a_view)
+		// output alone), target, slot and region. Columns fit their content
+		// and each combo is as wide as its preview, so a long name is never
+		// clipped while a short neighbour has room to spare.
+		void DrawEditContext(const Board& a_board, const RecipeRow& a_recipe, const Cell* a_picked, MenuState& a_state, View& a_view)
 		{
-			const bool    shapes = a_recipe.geometries.size() > 1;
 			const bool    light = a_state.target == PickedTarget::kLight;
 			const Surface surface = a_state.target == PickedTarget::kShell ? Surface::kShell : Surface::kMaterial;
-			auto          table = shapes ?
-			                          Widgets::Table::Begin("context", { { "S", Width::Fit() }, { "target", Width::Fit() }, { "slot", Width::Fit() }, { "region", Width::Fit() }, { "viewed on", Width::Fit() } }, kContextStyle) :
-			                          Widgets::Table::Begin("context", { { "S", Width::Fit() }, { "target", Width::Fit() }, { "slot", Width::Fit() }, { "region", Width::Fit() } }, kContextStyle);
+			auto          table = Widgets::Table::Begin("context", { { "S", Width::Fit() }, { "target", Width::Fit() }, { "slot", Width::Fit() }, { "region", Width::Fit() } }, kContextStyle);
 			if (!table.Open()) {
 				return;
 			}
@@ -529,25 +538,21 @@ namespace WornEnchantmentPBR::Studio
 			table.Cell();
 			Widgets::NextItemWidth(Width::Fit(a_board.region.empty() ? std::string{ "whole piece" } : ReferenceText(a_board.region)));
 			RegionChoice("##region", a_board, a_state.selection);
-			if (shapes) {
-				table.Cell();
-				Widgets::NextItemWidth(Width::Fit(GeometryLabel(a_geometry.name, a_piece.armorName)));
-				GeometryChoice("##viewedon", a_piece, a_recipe, a_geometry, a_state.selection);
-			}
 			table.End();
 		}
 
-		const Cell* DrawContext(const Snapshot& a_snapshot, const Board& a_board, const PieceRow& a_piece, const RecipeRow& a_recipe, const GeometryRow& a_geometry, MenuState& a_state, View& a_view)
+		const Cell* DrawContext(const Snapshot& a_snapshot, const Board& a_board, const PieceRow& a_piece, const RecipeRow& a_recipe, MenuState& a_state, View& a_view)
 		{
-			DrawRecipeContext(a_snapshot, a_piece, a_recipe);
+			const Cell* picked = PickedCell(a_board, a_state);
+			DrawRecipeContext(a_snapshot, a_piece, a_recipe, picked, a_state);
 			Widgets::Rule();
-			DrawEditContext(a_board, a_piece, a_recipe, a_geometry, PickedCell(a_board, a_state), a_state, a_view);
+			DrawEditContext(a_board, a_recipe, picked, a_state, a_view);
 
 			if (a_state.target == PickedTarget::kLight) {
 				DrawLightCell(a_board.light, a_recipe, a_view);
 				return nullptr;
 			}
-			const Cell* picked = PickedCell(a_board, a_state);
+			picked = PickedCell(a_board, a_state);
 			if (!picked) {
 				return nullptr;
 			}
@@ -700,8 +705,8 @@ namespace WornEnchantmentPBR::Studio
 			Widgets::HelpMarker("Drag the :: grip onto another row to reorder; click the grip or the name to open the layer's fields beside the stack. S solos, M mutes. Enter commits a text field; a drag commits on release.");
 		}
 
-		// The selected layer's fields, headed by the layer, its source and its
-		// solo and mute state.
+		// The selected layer's fields beside its picture; the layer list to
+		// the left says which layer it is.
 		void DrawInspector(const StackView& a_stack, const std::optional<Inspector>& a_inspector, const RecipeRow& a_recipe, const Layout& a_layout)
 		{
 			if (!a_layout.inspector || !a_inspector) {
@@ -709,10 +714,7 @@ namespace WornEnchantmentPBR::Studio
 				return;
 			}
 			const auto row = std::ranges::find(a_stack.rows, a_inspector->layer, &StackRow::index);
-			const bool soloed = row != a_stack.rows.end() && row->soloed;
-			const bool muted = row != a_stack.rows.end() && row->muted;
 			ImGui::PushID(static_cast<int>(a_inspector->layer));
-			Widgets::Dim(std::format("Inspect: #{} - {}{}{}", a_inspector->layer, a_inspector->row.source, soloed ? " (soloed)" : "", muted ? " (muted)" : ""));
 			if (!a_inspector->row.problem.empty()) {
 				Widgets::Warn(a_inspector->row.problem);
 			}
@@ -724,13 +726,26 @@ namespace WornEnchantmentPBR::Studio
 			ImGui::PopID();
 		}
 
-		void DrawStack(const std::optional<StackView>& a_stack, const std::optional<Inspector>& a_inspector, const RecipeRow& a_recipe, MenuState& a_state, View& a_view, Layout& a_layout)
+		// The composite as rendered on the shape viewed; on a piece with
+		// several shapes, clicking it views the next one.
+		void DrawComposite(const StackView& a_stack, const PieceRow& a_piece, const RecipeRow& a_recipe, const GeometryRow& a_geometry, MenuState& a_state, const Layout& a_layout)
+		{
+			if (a_recipe.geometries.size() < 2) {
+				Widgets::Thumbnail(a_stack.composite, 4, a_stack.animated, a_layout.compositeSize);
+				return;
+			}
+			if (Widgets::ThumbnailButton("composite", a_stack.composite, 4, a_stack.animated, a_layout.compositeSize)) {
+				ViewNextGeometry(a_recipe, a_geometry, a_state.selection);
+			}
+			Widgets::Tooltip(std::format("viewed on {} (one of {} shapes; the recipe applies to all)\nclick: view the next shape\nraw name: {}", GeometryLabel(a_geometry.name, a_piece.armorName), a_recipe.geometries.size(), a_geometry.name));
+		}
+
+		void DrawStack(const std::optional<StackView>& a_stack, const std::optional<Inspector>& a_inspector, const PieceRow& a_piece, const RecipeRow& a_recipe, const GeometryRow& a_geometry, MenuState& a_state, View& a_view, Layout& a_layout)
 		{
 			if (!a_stack) {
 				Widgets::Dim("choose a target and a slot");
 				return;
 			}
-			Widgets::Rule();
 			const auto& stack = *a_stack;
 			const auto& id = a_recipe.id;
 			ImGui::PushID(static_cast<int>(stack.output));
@@ -742,7 +757,7 @@ namespace WornEnchantmentPBR::Studio
 			if (!stack.problem.empty()) {
 				Widgets::Problem(stack.problem);
 			}
-			Widgets::Thumbnail(stack.composite, 4, stack.animated, a_layout.compositeSize);
+			DrawComposite(stack, a_piece, a_recipe, a_geometry, a_state, a_layout);
 			ImGui::SameLine();
 			ImGui::BeginGroup();
 			Widgets::Dim(std::format("composite {} px, {}", stack.size, stack.animated ? "animated" : "static"));
@@ -1018,11 +1033,11 @@ namespace WornEnchantmentPBR::Studio
 		ImGui::PushID(a_recipe->id.c_str());
 		if (layout.stack) {
 			const auto  board = BuildBoard(*a_recipe, *a_geometry, a_state.selection, view);
-			const auto* picked = DrawContext(a_snapshot, board, *a_piece, *a_recipe, *a_geometry, a_state, view);
+			const auto* picked = DrawContext(a_snapshot, board, *a_piece, *a_recipe, a_state, view);
 			if (picked && picked->output) {
 				const auto stack = BuildStackView(*a_piece, *a_recipe, *a_geometry, a_state.selection, view);
 				const auto inspector = layout.inspector ? BuildInspector(*a_recipe, *a_geometry, a_state.selection) : std::nullopt;
-				DrawStack(stack, inspector, *a_recipe, a_state, view, layout);
+				DrawStack(stack, inspector, *a_piece, *a_recipe, *a_geometry, a_state, view, layout);
 			}
 		}
 		if (layout.signals) {
@@ -1061,9 +1076,10 @@ namespace WornEnchantmentPBR::Studio
 			Widgets::Dim("no geometry bound for the selected recipe");
 			return;
 		}
+		// The board is viewed on the shape the studio views; the composite
+		// there cycles it.
 		if (recipe->geometries.size() > 1) {
-			Widgets::NextItemWidth(Width::Fit(GeometryLabel(geometry->name, piece->armorName)));
-			GeometryChoice("viewed on", *piece, *recipe, *geometry, state.selection);
+			Widgets::Dim("viewed on " + GeometryLabel(geometry->name, piece->armorName));
 		}
 		auto&      view = Manager::GetSingleton()->Debug();
 		const auto board = BuildBoard(*recipe, *geometry, state.selection, view);

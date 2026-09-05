@@ -79,6 +79,11 @@ namespace WornEnchantmentPBR::Studio
 		std::size_t from = 0;
 		std::size_t to = 0;
 	};
+	// Every layer of the output removed; the stack is left empty.
+	struct ClearLayers
+	{
+		std::size_t output = 0;
+	};
 
 	// ---------------------------------------------------------------- outputs
 
@@ -136,7 +141,7 @@ namespace WornEnchantmentPBR::Studio
 
 	using RecipeEdit = std::variant<
 		SetLayerSource, SetLayerCurve, SetLayerBlend, SetLayerOpacity, SetLayerColor, SetLayerMask, SetLayerChannels,
-		AddLayer, RemoveLayer, MoveLayer,
+		AddLayer, RemoveLayer, MoveLayer, ClearLayers,
 		AddOutput, RemoveOutput, SetScalar, SetColorScalar,
 		SetConstant, SetExpression, SetSignalCurve, SetCurve, SetMask>;
 

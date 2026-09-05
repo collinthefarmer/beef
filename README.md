@@ -348,13 +348,15 @@ are in `ARCHITECTURE.md` under "The recipe studio".
   view models, in one narrow column of collapsible sections so the game
   stays in view. Compose starts with two labelled rows. The recipe row:
   **S**, the recipe applied alone (isolate); the **selection** (actor
-  and piece); the **recipe** within it. The edit row: **S**, solo for the
+  and piece); the **recipe** within it; and at the far right **Clear
+  layers**, which empties the picked output's stack. The edit row: **S**, solo for the
   picked output; the **target** (material, shell or the light, the
   format's word for where an output goes); the **slot** on it with its
-  state; the **region** lens (one of the recipe's masks; the stack
-  filters to layers it masks and Add layer binds it first); and, when
-  the piece has several shapes, **viewed on** (whose rendering is shown;
-  edits reach every shape). A
+  state; and the **region** lens (one of the recipe's masks; the stack
+  filters to layers it masks and Add layer binds it first). When the
+  piece has several shapes, the stack's composite is viewed on one of
+  them (its tooltip names the shape) and clicking it views the next;
+  edits reach every shape. A
   footer pinned to the bottom of the page holds the clock: Freeze, and
   the scrubber across the remaining width. The scrubber follows the
   clock while it runs, shown within the current minute (the clock itself
@@ -374,8 +376,7 @@ are in `ARCHITECTURE.md` under "The recipe studio".
   the grip or the name (or picking a slot, which selects its top layer,
   or adding a layer, which selects the new one) opens that layer's
   fields beside the layer table, behind a draggable vertical rule,
-  headed "Inspect: #N - source" with "(soloed)" and "(muted)" when they
-  apply, next to its thumbnail, as a second table: name, details, value, one row each for
+  next to its thumbnail, as a second table: name, details, value, one row each for
   source, curve, opacity, colour, mask and channels. A value that may be
   a literal or a signal is one control: its type badge on the left is a
   button that switches the input between a text field and a combo over
