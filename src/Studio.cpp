@@ -205,6 +205,117 @@ namespace WornEnchantmentPBR::Studio
 				a_signals.push_back(*signal);
 			}
 		}
+
+		// ------------------------------------------------------------ forms
+		// How a field's text reads as a value. Each binding yields the edit,
+		// or nothing when the text does not parse; an empty text is a value
+		// only where the field allows none.
+
+		[[nodiscard]] std::optional<CurveRef> CurveRefOf(const std::string& a_text)
+		{
+			return a_text.empty() ? std::nullopt : std::optional{ CurveRef{ a_text } };
+		}
+
+		[[nodiscard]] std::optional<Ref> MaskRefOf(const std::string& a_text)
+		{
+			const auto name = ReferenceName(a_text);
+			return name.empty() ? std::nullopt : std::optional{ Ref{ name } };
+		}
+
+		[[nodiscard]] FieldBinding BindLayerSource(std::size_t a_output, std::size_t a_layer)
+		{
+			return [=](const std::string& a_text) -> std::optional<RecipeEdit> {
+				const auto source = ParseLayerSource(a_text);
+				if (!source) {
+					return std::nullopt;
+				}
+				return SetLayerSource{ a_output, a_layer, *source };
+			};
+		}
+
+		[[nodiscard]] FieldBinding BindLayerCurve(std::size_t a_output, std::size_t a_layer)
+		{
+			return [=](const std::string& a_text) -> std::optional<RecipeEdit> {
+				return SetLayerCurve{ a_output, a_layer, CurveRefOf(a_text) };
+			};
+		}
+
+		[[nodiscard]] FieldBinding BindLayerOpacity(std::size_t a_output, std::size_t a_layer)
+		{
+			return [=](const std::string& a_text) -> std::optional<RecipeEdit> {
+				const auto opacity = ParseParam(a_text);
+				if (!opacity) {
+					return std::nullopt;
+				}
+				return SetLayerOpacity{ a_output, a_layer, *opacity };
+			};
+		}
+
+		[[nodiscard]] FieldBinding BindLayerColor(std::size_t a_output, std::size_t a_layer)
+		{
+			return [=](const std::string& a_text) -> std::optional<RecipeEdit> {
+				if (a_text.empty()) {
+					return SetLayerColor{ a_output, a_layer, std::nullopt };
+				}
+				const auto color = ParseVec3Param(a_text);
+				if (!color) {
+					return std::nullopt;
+				}
+				return SetLayerColor{ a_output, a_layer, *color };
+			};
+		}
+
+		[[nodiscard]] FieldBinding BindLayerMask(std::size_t a_output, std::size_t a_layer)
+		{
+			return [=](const std::string& a_text) -> std::optional<RecipeEdit> {
+				return SetLayerMask{ a_output, a_layer, MaskRefOf(a_text) };
+			};
+		}
+
+		[[nodiscard]] FieldBinding BindLayerChannels(std::size_t a_output, std::size_t a_layer)
+		{
+			return [=](const std::string& a_text) -> std::optional<RecipeEdit> {
+				const auto channels = ChannelSet::Parse(a_text);
+				if (!channels) {
+					return std::nullopt;
+				}
+				return SetLayerChannels{ a_output, a_layer, *channels };
+			};
+		}
+
+		// A colour scalar reads as a colour parameter, every other scalar as a
+		// number or @signal. A name that is no slot field binds to nothing.
+		[[nodiscard]] FieldBinding BindScalar(std::size_t a_output, std::optional<ScalarField> a_field)
+		{
+			return [=](const std::string& a_text) -> std::optional<RecipeEdit> {
+				if (!a_field) {
+					return std::nullopt;
+				}
+				if (*a_field == ScalarField::kColor) {
+					const auto color = ParseVec3Param(a_text);
+					if (!color) {
+						return std::nullopt;
+					}
+					return SetColorScalar{ a_output, *color };
+				}
+				const auto value = ParseParam(a_text);
+				if (!value) {
+					return std::nullopt;
+				}
+				return SetScalar{ a_output, *a_field, *value };
+			};
+		}
+
+		// A parameter text has a detail when it names a signal the inspector found.
+		[[nodiscard]] bool NamesSignal(const Inspector& a_inspector, const std::string& a_text)
+		{
+			return a_text.starts_with('@') && std::ranges::find(a_inspector.signals, ReferenceName(a_text), &SignalRow::name) != a_inspector.signals.end();
+		}
+
+		[[nodiscard]] std::optional<FieldDetail> DetailWhen(bool a_present, FieldDetail a_detail) noexcept
+		{
+			return a_present ? std::optional{ a_detail } : std::nullopt;
+		}
 	}
 
 	// ------------------------------------------------------------------ modes
@@ -450,6 +561,57 @@ namespace WornEnchantmentPBR::Studio
 			}
 		}
 		return list;
+	}
+
+	// ------------------------------------------------------------------ forms
+
+	std::string_view FieldDetailName(FieldDetail a_detail) noexcept
+	{
+		switch (a_detail) {
+		case FieldDetail::kSource:
+			return "source";
+		case FieldDetail::kCurve:
+			return "curve";
+		case FieldDetail::kOpacity:
+			return "opacity";
+		case FieldDetail::kColor:
+			return "colour";
+		case FieldDetail::kMask:
+			return "mask";
+		}
+		return "?";
+	}
+
+	std::vector<FieldSpec> InspectorForm(const Inspector& a_inspector)
+	{
+		const auto&       in = a_inspector;
+		const std::size_t output = in.output;
+		const std::size_t layer = in.layer;
+
+		// A layer's source may be a source or a mask row, so its combo lists both.
+		std::vector<std::string> sourceNames = in.sources;
+		sourceNames.insert(sourceNames.end(), in.masks.begin(), in.masks.end());
+
+		std::vector<FieldSpec> form;
+		form.push_back(FieldSpec{ "source", FieldKind::kColor, in.row.source, std::move(sourceNames), false, DetailWhen(in.source.has_value(), FieldDetail::kSource), std::nullopt, BindLayerSource(output, layer) });
+		form.push_back(FieldSpec{ "curve", FieldKind::kCurve, in.row.curve, in.curves, true, DetailWhen(in.curve.has_value(), FieldDetail::kCurve), std::nullopt, BindLayerCurve(output, layer) });
+		form.push_back(FieldSpec{ "opacity", FieldKind::kScalar, in.row.opacityText, in.scalarSignals, false, DetailWhen(NamesSignal(in, in.row.opacityText), FieldDetail::kOpacity), std::nullopt, BindLayerOpacity(output, layer) });
+		form.push_back(FieldSpec{ "colour", FieldKind::kColor, in.row.color, in.colorSignals, true, DetailWhen(NamesSignal(in, in.row.color), FieldDetail::kColor), std::nullopt, BindLayerColor(output, layer) });
+		form.push_back(FieldSpec{ "mask", FieldKind::kReference, in.row.mask, in.masks, true, DetailWhen(in.mask.has_value(), FieldDetail::kMask), std::nullopt, BindLayerMask(output, layer) });
+		form.push_back(FieldSpec{ "channels", FieldKind::kChannels, in.row.channels, {}, false, std::nullopt, std::nullopt, BindLayerChannels(output, layer) });
+		return form;
+	}
+
+	std::vector<FieldSpec> ScalarForm(const StackView& a_stack)
+	{
+		std::vector<FieldSpec> form;
+		form.reserve(a_stack.scalars.size());
+		for (const auto& scalar : a_stack.scalars) {
+			const auto field = ParseScalarField(scalar.name);
+			const bool colour = field == std::optional{ ScalarField::kColor };
+			form.push_back(FieldSpec{ scalar.name, colour ? FieldKind::kColor : FieldKind::kScalar, scalar.text, colour ? a_stack.colorSignals : a_stack.scalarSignals, false, std::nullopt, scalar.value, BindScalar(a_stack.output, field) });
+		}
+		return form;
 	}
 
 	// ------------------------------------------------------------------ names

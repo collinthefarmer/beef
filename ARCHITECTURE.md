@@ -40,7 +40,7 @@ Engine-free (compile natively, tested through `tests/run-native.sh`):
 | `SettingsCore.*` | the `Settings` record and its table | nothing |
 | `Snapshot.h` | the menu's read model (`Studio::Snapshot`): rows per piece, recipe, geometry, output, layer, source, mask and slot, typed; textures as opaque handles the lab keeps alive | Core, Recipe |
 | `View.h` | `Studio::View`, how the piece is looked at: freeze, scrub, isolate recipe, output and layer, mute set, and the shown/muted predicates the tick and the stack share | nothing |
-| `Studio.*` | `Studio::Mode` and `Layout` per mode (one narrow column of collapsible sections); `Selection` and its resolution against a snapshot; the view models `Board`, `StackView`, `Inspector`, `SignalList` as plain records built by pure functions | Snapshot, View, Recipe |
+| `Studio.*` | `Studio::Mode` and `Layout` per mode (one narrow column of collapsible sections, the stack's split ratio); `Selection` and its resolution against a snapshot; the view models `Board`, `StackView`, `Inspector`, `SignalList` as plain records built by pure functions; forms as data: `FieldKind`, `FieldDetail`, `FieldSpec` (name, kind, text, combo names, detail, and a `bind` that turns committed text into a `RecipeEdit` or refuses), built by `InspectorForm` and `ScalarForm` | Snapshot, View, Recipe, Edits |
 | `Edits.*` | `Studio::RecipeEdit`, every change the menu makes, and `Apply(Recipe&, RecipeEdit)`, which refuses with a diagnostic and leaves the recipe untouched when the edit does not fit; `Describe`, `DefaultLayer`, `DefaultOutput` | Recipe |
 
 Engine side (compile with CommonLibSSE; thin over the above):
@@ -57,9 +57,9 @@ Engine side (compile with CommonLibSSE; thin over the above):
 | `Binding.*` | the only writer of engine state: `SlotTarget` (interface), `SlotWriter` (slots of one PBR material with save and restore), `MaterialBinding` (a geometry's own material, made private), `ShellBinding` (a clone with a PBR copy or vanilla material, pose), `LightBinding` (point lights with the CS ISL overlay), `PlaceLights` | Recipe, PBRMaterial, Identity |
 | `Manager.*` | the object the sinks and the hook call: queues, apply and retire per actor, the tick (which reads the `View` for isolate, solo and mute and hands the compositor a `LayerFilter`), events to triggers, recipe editing on the game thread, `TakeSnapshot` for the menu | everything above |
 | `Events.*`, `Hooks.*` | engine event sinks (equip, load, node update, hits, animation graph) and the per-frame hook, each a few lines that call the manager | Manager |
-| `MenuState.h` | `Studio::MenuState`, the page state: mode, selection, text buffers, active field; one instance, render thread only | Studio |
-| `MenuWidgets.*` | `Studio::Widgets`, every ImGui mechanic in one place: fields at the layout's scale, thumbnails (the one place a texture handle is dereferenced, through `TextureLab::Preview`), blend and reference combos, `ParamField` (a @signal combo and a literal text field as one control), the type badges, the mode bar, drag handle and drop target, text helpers; widgets return values and never edit | Snapshot, Studio, RuntimeTextures |
-| `ComposePage.*` | the studio page: snapshot once, selection resolved, a target-and-slot picker over the stack and the inspector, and the signal table, drawn from `Studio` records under the mode's layout; `DrawBoardPage` draws the board for the Recipes page; widget results become a `RecipeEdit` posted through `Manager::EditRecipe` or a `View` change | Studio, Edits, MenuWidgets, MenuState, Manager |
+| `MenuState.h` | `Studio::MenuState`, the page state: mode and its `Layout`, selection, text buffers, active and focused field, keyed by `FieldKey` (the ImGuiID of a widget's literal key in the ID scope the page pushes per recipe, output, layer and row); one instance, render thread only | Studio |
+| `MenuWidgets.*` | `Studio::Widgets`, every ImGui mechanic in one place: `Width` (fill, fit a text, pixels) and `NextItemWidth`; `Table` (id, `{label, Width}` columns, a `TableStyle`; `Cell` advances, `End` closes); `Section`, `Split` (two resizable columns over a ratio), `Rule`; `Toggle` (a checkbox with a tooltip; solo, mute, isolate and freeze are all it) and `SoloMute`; fields at the layout's scale under literal keys, thumbnails (the one place a texture handle is dereferenced, through `TextureLab::Preview`), blend and reference combos, `ValueField` (a @signal combo and a literal text field as one control), the badges per `FieldKind`, the mode bar, drag handle and drop target, text helpers; widgets return values and never edit | Snapshot, Studio, RuntimeTextures |
+| `ComposePage.*` | the studio page: snapshot once, selection resolved, a target-and-slot picker over the stack and the inspector, and the signal table, drawn from `Studio` records under the mode's layout; `DrawForm` draws any `FieldSpec` list as the field table and posts each field's bound edit; `DrawBoardPage` draws the board for the Recipes page; widget results become a `RecipeEdit` posted through `Manager::EditRecipe` or a `View` change | Studio, Edits, MenuWidgets, MenuState, Manager |
 | `Menu.*` | registration, the shared header, and the Recipes, Setup and Log pages | ComposePage, Manager, RecipeStore, Settings |
 | `Settings.*` | INI load and save around `SettingsCore` | SettingsCore, Identity |
 | `PBRMaterial.h` | the layout mirror of CS's `BSLightingShaderMaterialPBR` and its flag bits | nothing |
@@ -220,7 +220,10 @@ Adding to the studio: a new view model is a record and a pure builder in
 record in the `RecipeEdit` variant with its `Edit` overload in
 `Edits.cpp` and a test that applies it to the canonical recipe; a new
 ImGui mechanic is one function in `MenuWidgets`; the page in
-`ComposePage.cpp` composes them. A new snapshot field is added in
+`ComposePage.cpp` composes them. A new group of typed inputs is a form:
+a builder in `Studio.h` returning `FieldSpec`s (each with its kind, text,
+combo names and a `bind` from text to `RecipeEdit`), tested natively,
+which the page draws with `DrawForm`. A new snapshot field is added in
 `Snapshot.h` and filled in `TakeSnapshot`. A page outside the studio is a
 `__stdcall Render*` function registered in `RegisterMenu` that draws
 from the snapshot through `Widgets`.

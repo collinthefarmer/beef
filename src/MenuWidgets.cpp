@@ -7,6 +7,7 @@
 #include <cstring>
 #include <format>
 #include <limits>
+#include <type_traits>
 
 #pragma clang diagnostic push
 #pragma clang diagnostic ignored "-Wmismatched-tags"
@@ -15,9 +16,13 @@
 
 // The SDK header keeps the ImGui wrappers and types in ImGuiMCP.
 namespace ImGui = ImGuiMCP;
+using ImGuiMCP::ImGuiID;
 using ImGuiMCP::ImTextureID;
 using ImGuiMCP::ImVec2;
 using ImGuiMCP::ImVec4;
+
+// A field key is the ImGuiID of its literal in the scope it is drawn in.
+static_assert(std::is_same_v<WornEnchantmentPBR::Studio::FieldKey, ImGuiID>);
 
 namespace WornEnchantmentPBR::Studio::Widgets
 {
@@ -28,34 +33,44 @@ namespace WornEnchantmentPBR::Studio::Widgets
 		constexpr ImVec4 kBad{ 1.0f, 0.4f, 0.4f, 1.0f };
 		constexpr ImVec4 kDim{ 0.6f, 0.6f, 0.6f, 1.0f };
 
-		// ImGui reads a width of -FLT_MIN as "everything left"; a fill request
-		// is not scaled.
-		[[nodiscard]] float ScaledWidth(float a_width, float a_scale) noexcept
+		// ImGui's exact "everything left". -1 would leave a pixel, and a
+		// stretch table measuring such content shrinks a pixel per frame.
+		constexpr float kFillWidth = -(std::numeric_limits<float>::min)();
+
+		[[nodiscard]] const char* Literal(const char* a_key) noexcept
 		{
-			return a_width < 0.0f ? kFillWidth : a_width * a_scale;
+			return a_key ? a_key : "";
 		}
 
-		// The width a combo needs to show a_text whole; scale applies to the text.
-		[[nodiscard]] float ComboWidth(float a_width, std::string_view a_text, float a_scale)
+		// The key of a field drawn under a_key in the current ID scope.
+		[[nodiscard]] FieldKey KeyOf(const char* a_key)
 		{
-			return a_width == kFitWidth ? FitWidth(a_text) * a_scale : ScaledWidth(a_width, a_scale);
+			return ImGui::GetID(Literal(a_key));
 		}
 
-		[[nodiscard]] std::string Label(const std::string& a_key)
+		[[nodiscard]] float Resolve(const Width& a_width, float a_scale)
 		{
-			return "##" + a_key;
+			switch (a_width.mode) {
+			case Width::Mode::kFill:
+				return kFillWidth;
+			case Width::Mode::kFit:
+				return FitWidth(a_width.text) * a_scale;
+			case Width::Mode::kPx:
+				return a_width.pixels * a_scale;
+			}
+			return kFillWidth;
 		}
 
 		// A field owns the active-field mark while the user is in it and
 		// gives it back when the item deactivates, so the next frame shows
 		// the model again.
-		void TrackActive(const std::string& a_key)
+		void TrackActive(FieldKey a_key)
 		{
 			auto& state = State();
 			if (ImGui::IsItemActive()) {
 				state.activeField = a_key;
 			} else if (state.activeField == a_key) {
-				state.activeField.clear();
+				state.activeField = kNoField;
 			}
 		}
 
@@ -77,60 +92,196 @@ namespace WornEnchantmentPBR::Studio::Widgets
 			const auto preview = lab->Preview(a_texture, a_channel, a_dynamic);
 			return preview && preview->srv ? reinterpret_cast<ImTextureID>(preview->srv) : nullptr;
 		}
+
+		// The names as "@name" entries of an open combo; returns the chosen text.
+		[[nodiscard]] std::optional<std::string> ReferenceEntries(const std::string& a_current, std::span<const std::string> a_names, bool a_allowEmpty)
+		{
+			std::optional<std::string> chosen;
+			if (a_allowEmpty && ImGui::Selectable("(none)", a_current.empty())) {
+				chosen = std::string{};
+			}
+			for (const auto& name : a_names) {
+				const auto text = ReferenceText(name);
+				if (ImGui::Selectable(text.c_str(), text == a_current)) {
+					chosen = text;
+				}
+			}
+			return chosen;
+		}
+	}
+
+	// ------------------------------------------------------------------ types
+
+	Width Width::Fill() noexcept
+	{
+		return Width{};
+	}
+
+	Width Width::Fit()
+	{
+		return Width{ Mode::kFit, 0.0f, {} };
+	}
+
+	Width Width::Fit(std::string_view a_text)
+	{
+		return Width{ Mode::kFit, 0.0f, std::string{ a_text } };
+	}
+
+	Width Width::Px(float a_pixels) noexcept
+	{
+		return Width{ Mode::kPx, a_pixels, {} };
+	}
+
+	Table Table::Begin(const char* a_id, std::initializer_list<Column> a_columns, const TableStyle& a_style)
+	{
+		Table table;
+		if (a_columns.size() == 0) {
+			return table;
+		}
+		int flags = a_style.borders == TableStyle::Borders::kAll ? ImGuiMCP::ImGuiTableFlags_Borders : ImGuiMCP::ImGuiTableFlags_BordersInnerH;
+		flags |= a_style.stretch ? ImGuiMCP::ImGuiTableFlags_SizingStretchProp : ImGuiMCP::ImGuiTableFlags_SizingFixedFit;
+		if (a_style.rowBackground) {
+			flags |= ImGuiMCP::ImGuiTableFlags_RowBg;
+		}
+		if (!ImGui::BeginTable(Literal(a_id), static_cast<int>(a_columns.size()), flags)) {
+			return table;
+		}
+		for (const auto& column : a_columns) {
+			const auto& width = column.width;
+			switch (width.mode) {
+			case Width::Mode::kFill:
+				ImGui::TableSetupColumn(column.label, ImGuiMCP::ImGuiTableColumnFlags_WidthStretch);
+				break;
+			case Width::Mode::kFit:
+				// A fixed column with no width sizes to its widest content.
+				ImGui::TableSetupColumn(column.label, ImGuiMCP::ImGuiTableColumnFlags_WidthFixed, width.text.empty() ? 0.0f : FitWidth(width.text));
+				break;
+			case Width::Mode::kPx:
+				ImGui::TableSetupColumn(column.label, ImGuiMCP::ImGuiTableColumnFlags_WidthFixed, width.pixels);
+				break;
+			}
+		}
+		if (a_style.headers) {
+			ImGui::TableHeadersRow();
+		}
+		table.open_ = true;
+		table.columns_ = a_columns.size();
+		return table;
+	}
+
+	void Table::Cell()
+	{
+		if (!open_ || columns_ == 0) {
+			return;
+		}
+		if (cells_ % columns_ == 0) {
+			ImGui::TableNextRow();
+		}
+		ImGui::TableNextColumn();
+		++cells_;
+	}
+
+	void Table::End()
+	{
+		if (open_) {
+			ImGui::EndTable();
+		}
+		open_ = false;
+	}
+
+	// ----------------------------------------------------------------- widths
+
+	void NextItemWidth(const Width& a_width, float a_scale)
+	{
+		ImGui::SetNextItemWidth(Resolve(a_width, a_scale));
+	}
+
+	float FitWidth(std::string_view a_text)
+	{
+		const auto text = ImGui::CalcTextSize(a_text.data(), a_text.data() + a_text.size());
+		// Frame padding either side, the arrow square, and a little slack.
+		return text.x + ImGui::GetFrameHeight() * 2.0f + 8.0f;
+	}
+
+	float BlendWidth(std::span<const Blend> a_allowed)
+	{
+		float width = 0.0f;
+		for (const Blend blend : a_allowed) {
+			width = (std::max)(width, FitWidth(BlendName(blend)));
+		}
+		return width;
+	}
+
+	float WidestOf(std::span<const std::string> a_names)
+	{
+		float width = 0.0f;
+		for (const auto& name : a_names) {
+			width = (std::max)(width, FitWidth(name));
+		}
+		return width;
 	}
 
 	// ----------------------------------------------------------------- fields
 
-	std::optional<std::string> TextField(const std::string& a_key, const std::string& a_model, float a_width, float a_scale)
+	std::optional<std::string> TextField(const char* a_key, const std::string& a_model, const Width& a_width, float a_scale)
 	{
-		auto& state = State();
-		auto& buffer = state.textBuffers[a_key];
-		if (state.activeField != a_key) {
+		auto&          state = State();
+		const FieldKey key = KeyOf(a_key);
+		auto&          buffer = state.textBuffers[key];
+		if (state.activeField != key) {
 			const auto n = (std::min)(a_model.size(), buffer.size() - 1);
 			std::memcpy(buffer.data(), a_model.data(), n);
 			buffer[n] = '\0';
 		}
-		ImGui::SetNextItemWidth(ScaledWidth(a_width, a_scale));
-		const bool committed = ImGui::InputText(Label(a_key).c_str(), buffer.data(), buffer.size(), ImGuiMCP::ImGuiInputTextFlags_EnterReturnsTrue);
-		TrackActive(a_key);
+		ImGui::PushID(Literal(a_key));
+		NextItemWidth(a_width, a_scale);
+		const bool committed = ImGui::InputText("##text", buffer.data(), buffer.size(), ImGuiMCP::ImGuiInputTextFlags_EnterReturnsTrue);
+		TrackActive(key);
+		ImGui::PopID();
 		if (committed) {
-			state.activeField.clear();
+			state.activeField = kNoField;
 			return std::string{ buffer.data() };
 		}
 		return std::nullopt;
 	}
 
-	std::optional<float> DragField(const std::string& a_key, float a_value, float a_width, float a_scale, float a_speed)
+	std::optional<float> DragField(const char* a_key, float a_value, const Width& a_width, float a_scale, float a_speed)
 	{
-		auto& state = State();
-		auto& held = state.numberBuffers[a_key];
-		if (state.activeField != a_key) {
+		auto&          state = State();
+		const FieldKey key = KeyOf(a_key);
+		auto&          held = state.numberBuffers[key];
+		if (state.activeField != key) {
 			held[0] = a_value;
 		}
-		ImGui::SetNextItemWidth(ScaledWidth(a_width, a_scale));
-		ImGui::DragFloat(Label(a_key).c_str(), &held[0], a_speed, 0.0f, 0.0f, "%.3f");
+		ImGui::PushID(Literal(a_key));
+		NextItemWidth(a_width, a_scale);
+		ImGui::DragFloat("##drag", &held[0], a_speed, 0.0f, 0.0f, "%.3f");
 		const bool released = ImGui::IsItemDeactivatedAfterEdit();
-		TrackActive(a_key);
+		TrackActive(key);
+		ImGui::PopID();
 		if (released) {
-			state.activeField.clear();
+			state.activeField = kNoField;
 			return held[0];
 		}
 		return std::nullopt;
 	}
 
-	std::optional<Vec3> ColorField(const std::string& a_key, const Vec3& a_value, float a_width, float a_scale)
+	std::optional<Vec3> ColorField(const char* a_key, const Vec3& a_value, const Width& a_width, float a_scale)
 	{
-		auto& state = State();
-		auto& held = state.numberBuffers[a_key];
-		if (state.activeField != a_key) {
+		auto&          state = State();
+		const FieldKey key = KeyOf(a_key);
+		auto&          held = state.numberBuffers[key];
+		if (state.activeField != key) {
 			held = { a_value.x, a_value.y, a_value.z };
 		}
-		ImGui::SetNextItemWidth(ScaledWidth(a_width, a_scale));
-		ImGui::ColorEdit3(Label(a_key).c_str(), held.data());
+		ImGui::PushID(Literal(a_key));
+		NextItemWidth(a_width, a_scale);
+		ImGui::ColorEdit3("##color", held.data());
 		const bool released = ImGui::IsItemDeactivatedAfterEdit();
-		TrackActive(a_key);
+		TrackActive(key);
+		ImGui::PopID();
 		if (released) {
-			state.activeField.clear();
+			state.activeField = kNoField;
 			return Vec3{ held[0], held[1], held[2] };
 		}
 		return std::nullopt;
@@ -148,30 +299,29 @@ namespace WornEnchantmentPBR::Studio::Widgets
 		}
 	}
 
-	bool ThumbnailButton(const std::string& a_key, TextureHandle a_texture, std::uint32_t a_channel, bool a_dynamic, float a_size)
+	bool ThumbnailButton(const char* a_key, TextureHandle a_texture, std::uint32_t a_channel, bool a_dynamic, float a_size)
 	{
 		const ImVec2 size{ a_size, a_size };
+		ImGui::PushID(Literal(a_key));
+		bool clicked = false;
 		if (const auto view = PreviewOf(a_texture, a_channel, a_dynamic)) {
-			return ImGui::ImageButton(a_key.c_str(), view, size);
+			clicked = ImGui::ImageButton("image", view, size);
+		} else {
+			clicked = ImGui::Button("##blank", size);
 		}
-		return ImGui::Button(Label(a_key).c_str(), size);
+		ImGui::PopID();
+		return clicked;
 	}
 
 	// ----------------------------------------------------------------- combos
 
-	float FitWidth(std::string_view a_text)
-	{
-		const auto text = ImGui::CalcTextSize(a_text.data(), a_text.data() + a_text.size());
-		// Frame padding either side, the arrow square, and a little slack.
-		return text.x + ImGui::GetFrameHeight() * 2.0f + 8.0f;
-	}
-
-	std::optional<Blend> BlendCombo(const std::string& a_key, std::string_view a_current, std::span<const Blend> a_allowed, float a_width, float a_scale)
+	std::optional<Blend> BlendCombo(const char* a_key, std::string_view a_current, std::span<const Blend> a_allowed, const Width& a_width, float a_scale)
 	{
 		std::optional<Blend> chosen;
 		const std::string    current{ a_current };
-		ImGui::SetNextItemWidth(ComboWidth(a_width, current, a_scale));
-		if (ImGui::BeginCombo(Label(a_key).c_str(), current.c_str())) {
+		ImGui::PushID(Literal(a_key));
+		NextItemWidth(a_width, a_scale);
+		if (ImGui::BeginCombo("##blend", current.c_str())) {
 			for (const Blend blend : a_allowed) {
 				const std::string name{ BlendName(blend) };
 				if (ImGui::Selectable(name.c_str(), name == current)) {
@@ -180,47 +330,174 @@ namespace WornEnchantmentPBR::Studio::Widgets
 			}
 			ImGui::EndCombo();
 		}
+		ImGui::PopID();
 		return chosen;
 	}
 
-	float BlendWidth(std::span<const Blend> a_allowed)
-	{
-		float width = 0.0f;
-		for (const Blend blend : a_allowed) {
-			width = (std::max)(width, FitWidth(BlendName(blend)));
-		}
-		return width;
-	}
-
-	std::optional<std::string> ReferenceCombo(const std::string& a_key, const std::string& a_current, std::span<const std::string> a_names, bool a_allowEmpty, float a_width, float a_scale)
+	std::optional<std::string> ReferenceCombo(const char* a_key, const std::string& a_current, std::span<const std::string> a_names, bool a_allowEmpty, const Width& a_width, float a_scale)
 	{
 		std::optional<std::string> chosen;
-		ImGui::SetNextItemWidth(ComboWidth(a_width, a_current.empty() ? std::string_view{ "(none)" } : std::string_view{ a_current }, a_scale));
-		if (ImGui::BeginCombo(Label(a_key).c_str(), a_current.empty() ? "(none)" : a_current.c_str())) {
-			if (a_allowEmpty && ImGui::Selectable("(none)", a_current.empty())) {
-				chosen = std::string{};
-			}
-			for (const auto& name : a_names) {
-				const auto text = ReferenceText(name);
-				if (ImGui::Selectable(text.c_str(), text == a_current)) {
-					chosen = text;
-				}
-			}
+		ImGui::PushID(Literal(a_key));
+		NextItemWidth(a_width, a_scale);
+		if (ImGui::BeginCombo("##reference", a_current.empty() ? "(none)" : a_current.c_str())) {
+			chosen = ReferenceEntries(a_current, a_names, a_allowEmpty);
 			ImGui::EndCombo();
 		}
+		ImGui::PopID();
 		return chosen;
 	}
 
-	float WidestOf(std::span<const std::string> a_names)
+	// ----------------------------------------------------------------- badges
+
+	namespace
 	{
-		float width = 0.0f;
-		for (const auto& name : a_names) {
-			width = (std::max)(width, FitWidth(name));
+		struct BadgeStyle
+		{
+			const char* glyph;
+			bool        takesSignal;  // an "@" mark follows: a @signal stands in for the value
+			ImVec4      colour;
+			const char* rule;
+		};
+
+		constexpr ImVec4 kValueBlue{ 0.55f, 0.80f, 1.00f, 1.0f };
+		constexpr ImVec4 kColourOrange{ 1.00f, 0.70f, 0.45f, 1.0f };
+		constexpr ImVec4 kVectorTeal{ 0.55f, 0.95f, 0.80f, 1.0f };
+		constexpr ImVec4 kReferenceGreen{ 0.60f, 0.95f, 0.60f, 1.0f };
+		constexpr ImVec4 kCodeYellow{ 1.00f, 0.90f, 0.45f, 1.0f };
+		constexpr ImVec4 kCurveCyan{ 0.55f, 0.95f, 0.95f, 1.0f };
+		constexpr ImVec4 kMaskViolet{ 0.85f, 0.65f, 1.00f, 1.0f };
+		constexpr ImVec4 kChannelGrey{ 0.85f, 0.85f, 0.85f, 1.0f };
+		constexpr ImVec4 kBadgeFrame{ 0.20f, 0.20f, 0.24f, 1.0f };
+
+		// Values (blue, orange, teal) take a @signal in their place and say
+		// so with the mark; the rest are what they are.
+		BadgeStyle StyleOf(FieldKind a_kind) noexcept
+		{
+			switch (a_kind) {
+			case FieldKind::kScalar:
+				return { "#", true, kValueBlue, "scalar: a number, or @signal of scalar type" };
+			case FieldKind::kColor:
+				return { "c", true, kColourOrange, "colour: r, g, b in 0..1, or one number for all three, or @signal of colour type" };
+			case FieldKind::kVector:
+				return { "v", true, kVectorTeal, "vector: x, y, z (a position, direction or scale), or one number for all three, or @signal of vector type" };
+			case FieldKind::kReference:
+				return { "@", false, kReferenceGreen, "reference: @name of a row of the recipe" };
+			case FieldKind::kExpression:
+				return { "=", false, kCodeYellow, "expression: numbers, [r, g, b], @signals, + - * /, comparisons, and/or/not, if(c, a, b), abs min max clamp saturate floor ceil frac sqrt pow sin cos step smoothstep lerp, time, pi" };
+			case FieldKind::kCurve:
+				return { "x", false, kCurveCyan, "curve: an expression in x (mean is the source's mean), or @curve" };
+			case FieldKind::kMask:
+				return { "m", false, kMaskViolet, "mask: an expression per texel where @source and @mask names are images and @signals are this tick's values" };
+			case FieldKind::kChannels:
+				return { "ch", false, kChannelGrey, "channels: any of r g b a, in any order" };
+			}
+			return { "?", false, kDim, "" };
 		}
-		return width;
+
+		// Filled (the kind's colour behind a dark glyph) when a signal can
+		// drive the field; outlined (a dark square with the glyph in the kind's
+		// colour) when the value is literal. One character either way.
+		void BadgeFrame(const char* a_label, const ImVec4& a_colour, bool a_filled, float a_width, float a_height)
+		{
+			const ImVec4 back = a_filled ? a_colour : kBadgeFrame;
+			const ImVec4 text = a_filled ? kBadgeFrame : a_colour;
+			ImGui::PushStyleColor(ImGuiMCP::ImGuiCol_Button, back);
+			ImGui::PushStyleColor(ImGuiMCP::ImGuiCol_ButtonHovered, back);
+			ImGui::PushStyleColor(ImGuiMCP::ImGuiCol_ButtonActive, back);
+			ImGui::PushStyleColor(ImGuiMCP::ImGuiCol_Text, text);
+			ImGui::Button(a_label, ImVec2{ a_width, a_height });
+			ImGui::PopStyleColor(4);
+		}
 	}
 
-	// ------------------------------------------------------------------ modes
+	void Badge(FieldKind a_kind)
+	{
+		const auto  style = StyleOf(a_kind);
+		const float side = ImGui::GetFrameHeight();
+		// One square the height of the field, flush against it: filled when a
+		// signal can stand in for the value, outlined otherwise.
+		BadgeFrame(style.glyph, style.colour, style.takesSignal, side, side);
+		Tooltip(style.rule);
+		ImGui::SameLine(0.0f, 0.0f);
+	}
+
+	std::optional<std::string> ValueField(const char* a_key, FieldKind a_kind, const std::string& a_current, std::span<const std::string> a_names, bool a_allowEmpty, float a_scale)
+	{
+		auto&          state = State();
+		const auto     style = StyleOf(a_kind);
+		const float    side = ImGui::GetFrameHeight();
+		const bool     reference = a_current.starts_with('@');
+		const FieldKey key = KeyOf(a_key);
+		auto           mode = state.comboMode.find(key);
+		if (mode == state.comboMode.end()) {
+			mode = state.comboMode.emplace(key, reference).first;
+		}
+		ImGui::PushID(Literal(a_key));
+		// The badge: a button when a signal may stand in, inert otherwise.
+		if (style.takesSignal) {
+			ImGui::PushStyleColor(ImGuiMCP::ImGuiCol_Button, style.colour);
+			ImGui::PushStyleColor(ImGuiMCP::ImGuiCol_ButtonHovered, ImVec4{ style.colour.x * 0.85f, style.colour.y * 0.85f, style.colour.z * 0.85f, 1.0f });
+			ImGui::PushStyleColor(ImGuiMCP::ImGuiCol_ButtonActive, ImVec4{ style.colour.x * 0.7f, style.colour.y * 0.7f, style.colour.z * 0.7f, 1.0f });
+			ImGui::PushStyleColor(ImGuiMCP::ImGuiCol_Text, kBadgeFrame);
+			if (ImGui::Button(style.glyph, ImVec2{ side, side })) {
+				mode->second = !mode->second;
+				state.focusField = key;
+			}
+			ImGui::PopStyleColor(4);
+			Tooltip(std::string{ style.rule } + (mode->second ? "\nclick: type a value instead" : "\nclick: choose a signal instead"));
+		} else {
+			BadgeFrame(style.glyph, style.colour, false, side, side);
+			Tooltip(style.rule);
+		}
+		ImGui::SameLine(0.0f, 0.0f);
+
+		std::optional<std::string> chosen;
+		if (state.focusField == key) {
+			state.focusField = kNoField;
+			ImGui::SetKeyboardFocusHere();
+		}
+		if (mode->second && style.takesSignal) {
+			const std::string preview = reference ? a_current : std::string{ "choose a signal" };
+			NextItemWidth(Width::Fill());
+			if (ImGui::BeginCombo("##combo", preview.c_str())) {
+				chosen = ReferenceEntries(a_current, a_names, a_allowEmpty);
+				ImGui::EndCombo();
+			}
+		} else {
+			chosen = TextField("text", a_current, Width::Fill(), a_scale);
+		}
+		ImGui::PopID();
+		return chosen;
+	}
+
+	bool DetailButton()
+	{
+		const float side = ImGui::GetFrameHeight();
+		const bool  clicked = ImGui::Button("...", ImVec2{ side, side });
+		Tooltip("open this field's details");
+		ImGui::SameLine(0.0f, 0.0f);
+		return clicked;
+	}
+
+	std::string ValueText(const Value& a_value)
+	{
+		return Match(
+			a_value,
+			[](float f) { return std::format("{:.3f}", f); },
+			[](const Vec2& v) { return std::format("({:.3f}, {:.3f})", v.x, v.y); },
+			[](const Vec3& v) { return std::format("({:.3f}, {:.3f}, {:.3f})", v.x, v.y, v.z); });
+	}
+
+	void ValueSwatch(const Value& a_value)
+	{
+		if (const auto* c = Get<Vec3>(a_value)) {
+			ImGui::ColorButton("##swatch", ImVec4{ c->x, c->y, c->z, 1.0f }, 0, ImVec2{ 16.0f, 16.0f });
+			ImGui::SameLine();
+		}
+		ImGui::TextUnformatted(ValueText(a_value).c_str());
+	}
+
+	// ----------------------------------------------------------------- layout
 
 	bool ModeBar(Mode& a_mode)
 	{
@@ -238,29 +515,75 @@ namespace WornEnchantmentPBR::Studio::Widgets
 		return a_mode != before;
 	}
 
+	bool Section(const char* a_title, bool a_openByDefault)
+	{
+		return ImGui::CollapsingHeader(Literal(a_title), a_openByDefault ? ImGuiMCP::ImGuiTreeNodeFlags_DefaultOpen : 0);
+	}
+
+	void Split(const char* a_id, float& a_ratio, const std::function<void()>& a_left, const std::function<void()>& a_right)
+	{
+		const float ratio = std::clamp(a_ratio, 0.05f, 0.95f);
+		if (!ImGui::BeginTable(Literal(a_id), 2, ImGuiMCP::ImGuiTableFlags_Resizable | ImGuiMCP::ImGuiTableFlags_BordersInnerV | ImGuiMCP::ImGuiTableFlags_SizingStretchProp)) {
+			return;
+		}
+		// The weights set the split when the table first appears; after that
+		// ImGui keeps the widths the user drags, and the cells' widths read
+		// them back into the ratio.
+		ImGui::TableSetupColumn("left", ImGuiMCP::ImGuiTableColumnFlags_WidthStretch, ratio);
+		ImGui::TableSetupColumn("right", ImGuiMCP::ImGuiTableColumnFlags_WidthStretch, 1.0f - ratio);
+		ImGui::TableNextRow();
+		ImGui::TableNextColumn();
+		const float left = ImGui::GetContentRegionAvail().x;
+		if (a_left) {
+			a_left();
+		}
+		ImGui::TableNextColumn();
+		const float right = ImGui::GetContentRegionAvail().x;
+		if (a_right) {
+			a_right();
+		}
+		ImGui::EndTable();
+		if (left + right > 0.0f) {
+			a_ratio = left / (left + right);
+		}
+	}
+
+	void Rule()
+	{
+		const float gap = ImGui::GetTextLineHeight();
+		ImGui::Dummy(ImVec2{ 0.0f, gap });
+		ImGui::Separator();
+		ImGui::Dummy(ImVec2{ 0.0f, gap });
+	}
+
+	bool Toggle(const char* a_label, bool& a_value, std::string_view a_tooltip)
+	{
+		const bool changed = ImGui::Checkbox(Literal(a_label), &a_value);
+		Tooltip(a_tooltip);
+		return changed;
+	}
+
+	bool SoloMute(bool& a_solo, bool* a_mute)
+	{
+		bool changed = Toggle("S##solo", a_solo, "solo: show this alone");
+		if (a_mute) {
+			ImGui::SameLine();
+			changed = Toggle("M##mute", *a_mute, "mute: hide this") || changed;
+		}
+		return changed;
+	}
+
 	// ------------------------------------------------------------- reordering
 
 	bool DragHandle(const char* a_type, std::size_t a_index)
 	{
-		const bool clicked = ImGui::SmallButton(std::format("::##drag{}", a_index).c_str());
+		const bool clicked = ImGui::SmallButton("::");
 		if (ImGui::BeginDragDropSource()) {
 			ImGui::SetDragDropPayload(a_type, &a_index, sizeof(a_index));
 			ImGui::Text("layer %zu", a_index);
 			ImGui::EndDragDropSource();
 		}
 		return clicked;
-	}
-
-	bool SoloMute(bool& a_solo, bool* a_mute)
-	{
-		bool changed = ImGui::Checkbox("S##solo", &a_solo);
-		Tooltip("solo: show this alone");
-		if (a_mute) {
-			ImGui::SameLine();
-			changed = ImGui::Checkbox("M##mute", a_mute) || changed;
-			Tooltip("mute: hide this");
-		}
-		return changed;
 	}
 
 	std::optional<RowMove> DropTarget(const char* a_type, std::size_t a_index)
@@ -316,174 +639,11 @@ namespace WornEnchantmentPBR::Studio::Widgets
 		}
 	}
 
-	void Rule()
-	{
-		const float gap = ImGui::GetTextLineHeight();
-		ImGui::Dummy(ImVec2{ 0.0f, gap });
-		ImGui::Separator();
-		ImGui::Dummy(ImVec2{ 0.0f, gap });
-	}
-
 	void Tooltip(std::string_view a_text)
 	{
 		if (a_text.empty() || !ImGui::IsItemHovered(ImGuiMCP::ImGuiHoveredFlags_AllowWhenDisabled)) {
 			return;
 		}
 		ImGui::SetTooltip("%.*s", static_cast<int>(a_text.size()), a_text.data());
-	}
-
-	namespace
-	{
-		struct BadgeStyle
-		{
-			const char* glyph;
-			bool        takesSignal;  // an "@" mark follows: a @signal stands in for the value
-			ImVec4      colour;
-			const char* rule;
-		};
-
-		constexpr ImVec4 kValueBlue{ 0.55f, 0.80f, 1.00f, 1.0f };
-		constexpr ImVec4 kColourOrange{ 1.00f, 0.70f, 0.45f, 1.0f };
-		constexpr ImVec4 kVectorTeal{ 0.55f, 0.95f, 0.80f, 1.0f };
-		constexpr ImVec4 kReferenceGreen{ 0.60f, 0.95f, 0.60f, 1.0f };
-		constexpr ImVec4 kCodeYellow{ 1.00f, 0.90f, 0.45f, 1.0f };
-		constexpr ImVec4 kCurveCyan{ 0.55f, 0.95f, 0.95f, 1.0f };
-		constexpr ImVec4 kMaskViolet{ 0.85f, 0.65f, 1.00f, 1.0f };
-		constexpr ImVec4 kChannelGrey{ 0.85f, 0.85f, 0.85f, 1.0f };
-		constexpr ImVec4 kBadgeFrame{ 0.20f, 0.20f, 0.24f, 1.0f };
-
-		// Values (blue, orange, teal) take a @signal in their place and say
-		// so with the mark; the rest are what they are.
-		BadgeStyle StyleOf(FieldType a_type) noexcept
-		{
-			switch (a_type) {
-			case FieldType::kScalar:
-				return { "#", true, kValueBlue, "scalar: a number, or @signal of scalar type" };
-			case FieldType::kColor:
-				return { "c", true, kColourOrange, "colour: r, g, b in 0..1, or one number for all three, or @signal of colour type" };
-			case FieldType::kVector:
-				return { "v", true, kVectorTeal, "vector: x, y, z (a position, direction or scale), or one number for all three, or @signal of vector type" };
-			case FieldType::kReference:
-				return { "@", false, kReferenceGreen, "reference: @name of a row of the recipe" };
-			case FieldType::kExpression:
-				return { "=", false, kCodeYellow, "expression: numbers, [r, g, b], @signals, + - * /, comparisons, and/or/not, if(c, a, b), abs min max clamp saturate floor ceil frac sqrt pow sin cos step smoothstep lerp, time, pi" };
-			case FieldType::kCurve:
-				return { "x", false, kCurveCyan, "curve: an expression in x (mean is the source's mean), or @curve" };
-			case FieldType::kMask:
-				return { "m", false, kMaskViolet, "mask: an expression per texel where @source and @mask names are images and @signals are this tick's values" };
-			case FieldType::kChannels:
-				return { "ch", false, kChannelGrey, "channels: any of r g b a, in any order" };
-			}
-			return { "?", false, kDim, "" };
-		}
-
-		// Filled (the kind's colour behind a dark glyph) when a signal can
-		// drive the field; outlined (a dark square with the glyph in the kind's
-		// colour) when the value is literal. One character either way.
-		void BadgeFrame(const char* a_label, const ImVec4& a_colour, bool a_filled, float a_width, float a_height)
-		{
-			const ImVec4 back = a_filled ? a_colour : kBadgeFrame;
-			const ImVec4 text = a_filled ? kBadgeFrame : a_colour;
-			ImGui::PushStyleColor(ImGuiMCP::ImGuiCol_Button, back);
-			ImGui::PushStyleColor(ImGuiMCP::ImGuiCol_ButtonHovered, back);
-			ImGui::PushStyleColor(ImGuiMCP::ImGuiCol_ButtonActive, back);
-			ImGui::PushStyleColor(ImGuiMCP::ImGuiCol_Text, text);
-			ImGui::Button(a_label, ImVec2{ a_width, a_height });
-			ImGui::PopStyleColor(4);
-		}
-	}
-
-	void Badge(FieldType a_type)
-	{
-		const auto  style = StyleOf(a_type);
-		const float side = ImGui::GetFrameHeight();
-		// One square the height of the field, flush against it: filled when a
-		// signal can stand in for the value, outlined otherwise.
-		BadgeFrame(style.glyph, style.colour, style.takesSignal, side, side);
-		Tooltip(style.rule);
-		ImGui::SameLine(0.0f, 0.0f);
-	}
-
-	std::optional<std::string> ValueField(const std::string& a_key, FieldType a_type, const std::string& a_current, std::span<const std::string> a_names, bool a_allowEmpty, float a_scale)
-	{
-		auto&       state = State();
-		const auto  style = StyleOf(a_type);
-		const float side = ImGui::GetFrameHeight();
-		const bool  reference = a_current.starts_with('@');
-		auto        mode = state.comboMode.find(a_key);
-		if (mode == state.comboMode.end()) {
-			mode = state.comboMode.emplace(a_key, reference).first;
-		}
-		// The badge: a button when a signal may stand in, inert otherwise.
-		ImGui::PushID(a_key.c_str());
-		if (style.takesSignal) {
-			ImGui::PushStyleColor(ImGuiMCP::ImGuiCol_Button, style.colour);
-			ImGui::PushStyleColor(ImGuiMCP::ImGuiCol_ButtonHovered, ImVec4{ style.colour.x * 0.85f, style.colour.y * 0.85f, style.colour.z * 0.85f, 1.0f });
-			ImGui::PushStyleColor(ImGuiMCP::ImGuiCol_ButtonActive, ImVec4{ style.colour.x * 0.7f, style.colour.y * 0.7f, style.colour.z * 0.7f, 1.0f });
-			ImGui::PushStyleColor(ImGuiMCP::ImGuiCol_Text, kBadgeFrame);
-			if (ImGui::Button(style.glyph, ImVec2{ side, side })) {
-				mode->second = !mode->second;
-				state.focusField = a_key;
-			}
-			ImGui::PopStyleColor(4);
-			Tooltip(std::string{ style.rule } + (mode->second ? "\nclick: type a value instead" : "\nclick: choose a signal instead"));
-		} else {
-			BadgeFrame(style.glyph, style.colour, false, side, side);
-			Tooltip(style.rule);
-		}
-		ImGui::SameLine(0.0f, 0.0f);
-		ImGui::PopID();
-
-		std::optional<std::string> chosen;
-		const bool                 focus = state.focusField == a_key;
-		if (focus) {
-			state.focusField.clear();
-			ImGui::SetKeyboardFocusHere();
-		}
-		if (mode->second && style.takesSignal) {
-			const std::string preview = reference ? a_current : std::string{ "choose a signal" };
-			ImGui::SetNextItemWidth(kFillWidth);
-			if (ImGui::BeginCombo(Label(a_key + ":combo").c_str(), preview.c_str())) {
-				if (a_allowEmpty && ImGui::Selectable("(none)", a_current.empty())) {
-					chosen = std::string{};
-				}
-				for (const auto& name : a_names) {
-					const auto text = ReferenceText(name);
-					if (ImGui::Selectable(text.c_str(), text == a_current)) {
-						chosen = text;
-					}
-				}
-				ImGui::EndCombo();
-			}
-			return chosen;
-		}
-		return TextField(a_key + ":text", a_current, kFillWidth, a_scale);
-	}
-
-	bool DetailButton(const std::string& a_key)
-	{
-		const float side = ImGui::GetFrameHeight();
-		const bool  clicked = ImGui::Button(("..." + Label(a_key)).c_str(), ImVec2{ side, side });
-		Tooltip("open this field's details");
-		ImGui::SameLine(0.0f, 0.0f);
-		return clicked;
-	}
-
-	std::string ValueText(const Value& a_value)
-	{
-		return Match(
-			a_value,
-			[](float f) { return std::format("{:.3f}", f); },
-			[](const Vec2& v) { return std::format("({:.3f}, {:.3f})", v.x, v.y); },
-			[](const Vec3& v) { return std::format("({:.3f}, {:.3f}, {:.3f})", v.x, v.y, v.z); });
-	}
-
-	void ValueSwatch(const std::string& a_key, const Value& a_value)
-	{
-		if (const auto* c = Get<Vec3>(a_value)) {
-			ImGui::ColorButton(Label(a_key).c_str(), ImVec4{ c->x, c->y, c->z, 1.0f }, 0, ImVec2{ 16.0f, 16.0f });
-			ImGui::SameLine();
-		}
-		ImGui::TextUnformatted(ValueText(a_value).c_str());
 	}
 }

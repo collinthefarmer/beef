@@ -30,13 +30,15 @@ namespace WornEnchantmentPBR
 	namespace
 	{
 		namespace Widgets = Studio::Widgets;
+		using Widgets::TableStyle;
+		using Widgets::Width;
 
 		bool     g_needsReapply = false;
 		bool     g_autoReapply = true;
 		Settings g_savedSettings{};
 		bool     g_savedKnown = false;
 
-		constexpr int kTableFlags = ImGuiMCP::ImGuiTableFlags_RowBg | ImGuiMCP::ImGuiTableFlags_Borders | ImGuiMCP::ImGuiTableFlags_SizingStretchProp;
+		constexpr TableStyle kGridStyle{ .borders = TableStyle::Borders::kAll, .stretch = true, .headers = true, .rowBackground = true };
 
 		// ----------------------------------------------------------- settings
 
@@ -173,26 +175,20 @@ namespace WornEnchantmentPBR
 			}
 
 			ImGui::SeparatorText("Loaded");
-			if (ImGui::BeginTable("recipes", 5, kTableFlags)) {
-				ImGui::TableSetupColumn("recipe");
-				ImGui::TableSetupColumn("keys");
-				ImGui::TableSetupColumn("rows");
-				ImGui::TableSetupColumn("state");
-				ImGui::TableSetupColumn("file");
-				ImGui::TableHeadersRow();
+			auto table = Widgets::Table::Begin("recipes", { { "recipe", Width::Fill() }, { "keys", Width::Fill() }, { "rows", Width::Fill() }, { "state", Width::Fill() }, { "file", Width::Fill() } }, kGridStyle);
+			if (table.Open()) {
 				for (const auto& recipe : LoadedRecipes()) {
-					ImGui::TableNextRow();
-					ImGui::TableNextColumn();
+					table.Cell();
 					ImGui::TextUnformatted(recipe.id.c_str());
-					ImGui::TableNextColumn();
+					table.Cell();
 					std::string keys;
 					for (const auto& k : recipe.keys) {
 						keys += (keys.empty() ? "" : ", ") + k.ToString();
 					}
 					ImGui::TextWrapped("%s", keys.c_str());
-					ImGui::TableNextColumn();
+					table.Cell();
 					ImGui::Text("%zu signals, %zu curves, %zu sources, %zu masks, %zu outputs", recipe.signals.size(), recipe.curves.size(), recipe.sources.size(), recipe.masks.size(), recipe.outputs.size());
-					ImGui::TableNextColumn();
+					table.Cell();
 					const auto  origin = OriginOf(recipe);
 					std::size_t errors = 0, warnings = 0;
 					if (origin) {
@@ -211,10 +207,10 @@ namespace WornEnchantmentPBR
 						ImGui::SameLine();
 						Widgets::Dim("imported, not yet edited");
 					}
-					ImGui::TableNextColumn();
+					table.Cell();
 					ImGui::TextWrapped("%s", origin ? origin->path.string().c_str() : "");
 				}
-				ImGui::EndTable();
+				table.End();
 			}
 
 			const auto* piece = Studio::SelectedPiece(snapshot, selection);
@@ -381,28 +377,28 @@ namespace WornEnchantmentPBR
 
 	void IsolateCheckbox(const Studio::RecipeRow* a_recipe, const char* a_label)
 	{
-		auto* manager = Manager::GetSingleton();
-		auto& view = manager->Debug();
-		bool  isolating = view.Isolating();
-		if (ImGui::Checkbox(a_label, &isolating)) {
-			manager->Isolate((isolating && a_recipe) ? a_recipe->id : std::string{}, -1, -1);
-		}
-		if (view.Isolating()) {
-			auto text = "isolating " + view.isolateRecipe;
+		auto*       manager = Manager::GetSingleton();
+		auto&       view = manager->Debug();
+		bool        isolating = view.Isolating();
+		std::string text;
+		if (isolating) {
+			text = "isolating " + view.isolateRecipe;
 			if (view.isolateOutput >= 0) {
 				text += std::format(" output {}", view.isolateOutput);
 			}
 			if (view.isolateLayer >= 0) {
 				text += std::format(" layer {}", view.isolateLayer);
 			}
-			Widgets::Tooltip(text);
+		}
+		if (Widgets::Toggle(a_label, isolating, text)) {
+			manager->Isolate((isolating && a_recipe) ? a_recipe->id : std::string{}, -1, -1);
 		}
 	}
 
 	void FreezeCheckbox(const Studio::RecipeRow* a_recipe, const char* a_label)
 	{
 		auto& view = Manager::GetSingleton()->Debug();
-		if (ImGui::Checkbox(a_label, &view.freeze) && view.freeze && a_recipe) {
+		if (Widgets::Toggle(a_label, view.freeze, "") && view.freeze && a_recipe) {
 			view.scrubSeconds = a_recipe->time;  // freezing holds the moment, not the slider's old value
 		}
 	}
@@ -435,16 +431,16 @@ namespace WornEnchantmentPBR
 		const auto& selection = Studio::State().selection;
 		const auto* piece = Studio::SelectedPiece(a_snapshot, selection);
 		const auto* recipe = Studio::SelectedRecipe(piece, selection);
-		ImGui::SetNextItemWidth(360.0f);
+		Widgets::NextItemWidth(Widgets::Width::Px(360.0f));
 		SelectionCombo(a_snapshot, "Selection");
 		if (piece && !piece->recipes.empty()) {
 			ImGui::SameLine();
-			ImGui::SetNextItemWidth(260.0f);
+			Widgets::NextItemWidth(Widgets::Width::Px(260.0f));
 			RecipeCombo(piece, "Recipe");
 		}
 		FreezeCheckbox(recipe, "Freeze");
 		ImGui::SameLine();
-		ImGui::SetNextItemWidth(220.0f);
+		Widgets::NextItemWidth(Widgets::Width::Px(220.0f));
 		ScrubSlider(recipe, "t (s)");
 		ImGui::SameLine();
 		IsolateCheckbox(recipe, "Isolate this recipe");

@@ -7,12 +7,14 @@
 // the widgets and turns what comes back into edits (Edits.h) or view
 // changes (View.h).
 
+#include "Edits.h"
 #include "Recipe.h"
 #include "Snapshot.h"
 #include "View.h"
 
 #include <array>
 #include <cstddef>
+#include <functional>
 #include <optional>
 #include <string>
 #include <string_view>
@@ -53,6 +55,7 @@ namespace WornEnchantmentPBR::Studio
 		float cellSize = 40.0f;            // a board cell's thumbnail
 		float rowThumbnail = 32.0f;        // a stack row's thumbnail
 		float inspectorThumbnail = 96.0f;
+		float stackSplit = 0.5f;           // the share of the stack's width the layer list takes; the inspector takes the rest
 		bool  developerSignals = true;  // efsh, trigger, av and other rows a designer does not tune
 	};
 	[[nodiscard]] Layout LayoutFor(Mode a_mode) noexcept;
@@ -217,6 +220,59 @@ namespace WornEnchantmentPBR::Studio
 		std::vector<SignalRow> developer;
 	};
 	[[nodiscard]] SignalList BuildSignalList(const RecipeRow& a_recipe, const Layout& a_layout);
+
+	// ------------------------------------------------------------------ forms
+
+	// What a field requires: the kind of value decides the badge it wears,
+	// the rule its tooltip states, and whether a @signal may stand in for the
+	// value (scalar, colour and vector).
+	enum class FieldKind
+	{
+		kScalar,      // a number, or @signal of scalar type
+		kColor,       // r, g, b (one number for all three), or @signal of colour type
+		kVector,      // x, y, z as a position, direction or scale, or @signal of vector type
+		kReference,   // @name of a row
+		kExpression,  // the recipe language
+		kCurve,       // an expression in x, or @curve
+		kMask,        // an expression per texel over sources and masks
+		kChannels,    // a subset of rgba
+	};
+
+	// The detail modal a field opens: the row its text names, shown with its
+	// picture or its own editor.
+	enum class FieldDetail
+	{
+		kSource,
+		kCurve,
+		kOpacity,
+		kColor,
+		kMask,
+	};
+	[[nodiscard]] std::string_view FieldDetailName(FieldDetail a_detail) noexcept;
+
+	// Committed text becomes an edit, or nothing when it does not parse.
+	using FieldBinding = std::function<std::optional<RecipeEdit>(const std::string&)>;
+
+	// One field of a form: what the page draws as a row of the field table.
+	// `detail` is set only when the modal would show something, so a detail
+	// button appears only where there is content.
+	struct FieldSpec
+	{
+		std::string                name;
+		FieldKind                  kind = FieldKind::kScalar;
+		std::string                text;   // the value as written
+		std::vector<std::string>   names;  // what the signal or reference combo offers
+		bool                       allowEmpty = false;
+		std::optional<FieldDetail> detail;
+		std::optional<Value>       value;  // the live value, shown as a swatch before the input
+		FieldBinding               bind;
+	};
+
+	// The selected layer's fields: source, curve, opacity, colour, mask,
+	// channels, in that order.
+	[[nodiscard]] std::vector<FieldSpec> InspectorForm(const Inspector& a_inspector);
+	// The stack's slot scalars, one field each, in the slot's order.
+	[[nodiscard]] std::vector<FieldSpec> ScalarForm(const StackView& a_stack);
 
 	// ------------------------------------------------------------------ names
 

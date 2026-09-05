@@ -493,6 +493,151 @@ namespace
 		Check(maskSource && !maskSource->mask && maskSource->signals.empty() && !maskSource->curve, "unknown references and an inline curve resolve to nothing");
 	}
 
+	// The edit a field's binding makes of a text, as the alternative T, or
+	// null when the text is refused or makes another kind of edit.
+	template <class T>
+	const T* Bound(const FieldSpec& a_field, const char* a_text, std::optional<RecipeEdit>& a_edit)
+	{
+		a_edit = a_field.bind ? a_field.bind(a_text) : std::nullopt;
+		return a_edit ? Get<T>(*a_edit) : nullptr;
+	}
+
+	void InspectorForms(const RecipeRow& a_recipe, const GeometryRow& a_geometry)
+	{
+		auto selection = SelectCanonical();
+		selection.output = 0;
+		selection.layer = 0;
+		const auto inspector = BuildInspector(a_recipe, a_geometry, selection);
+		Check(inspector.has_value(), "the fill layer inspects for its form");
+		if (!inspector) {
+			return;
+		}
+		const auto form = InspectorForm(*inspector);
+		Check(form.size() == 6, "the inspector form has six fields");
+		if (form.size() != 6) {
+			return;
+		}
+		const auto& source = form[0];
+		const auto& curve = form[1];
+		const auto& opacity = form[2];
+		const auto& colour = form[3];
+		const auto& mask = form[4];
+		const auto& channels = form[5];
+		Check(source.name == "source" && curve.name == "curve" && opacity.name == "opacity" && colour.name == "colour" && mask.name == "mask" && channels.name == "channels", "fields are source, curve, opacity, colour, mask, channels");
+		Check(source.kind == FieldKind::kColor && curve.kind == FieldKind::kCurve && opacity.kind == FieldKind::kScalar && colour.kind == FieldKind::kColor && mask.kind == FieldKind::kReference && channels.kind == FieldKind::kChannels, "field kinds");
+		Check(source.text == "@fill" && curve.text.empty() && opacity.text == inspector->row.opacityText && colour.text == "@glowHue" && mask.text == "@metal" && channels.text == inspector->row.channels, "field texts are the layer's");
+		Check(source.names.size() == 9 && source.names[0] == "fill" && source.names[8] == "metal", "the source combo lists sources then masks");
+		Check(curve.names == inspector->curves && opacity.names == inspector->scalarSignals && colour.names == inspector->colorSignals && mask.names == inspector->masks && channels.names.empty(), "combo names per field");
+		Check(!source.allowEmpty && curve.allowEmpty && !opacity.allowEmpty && colour.allowEmpty && mask.allowEmpty && !channels.allowEmpty, "curve, colour and mask may be empty");
+		Check(source.detail == FieldDetail::kSource && !curve.detail && !opacity.detail && colour.detail == FieldDetail::kColor && mask.detail == FieldDetail::kMask && !channels.detail, "details only where the modal has content: the source row, the colour's signal, the mask row");
+		Check(std::ranges::none_of(form, [](const FieldSpec& a_field) { return a_field.value.has_value(); }), "layer fields show no swatch");
+		Check(std::ranges::all_of(form, [](const FieldSpec& a_field) { return static_cast<bool>(a_field.bind); }), "every field binds");
+
+		std::optional<RecipeEdit> edit;
+		const auto*               sourceRef = Bound<SetLayerSource>(source, "@ring", edit);
+		Check(sourceRef && sourceRef->output == 0 && sourceRef->layer == 0 && Get<Ref>(sourceRef->source) && Get<Ref>(sourceRef->source)->name == "ring", "a @name source binds to a reference");
+		const auto* sourceColour = Bound<SetLayerSource>(source, "1, 0, 0", edit);
+		Check(sourceColour && Get<Vec3>(sourceColour->source) && *Get<Vec3>(sourceColour->source) == Vec3{ 1.0f, 0.0f, 0.0f }, "a colour source binds to a constant");
+		Check(!Bound<SetLayerSource>(source, "nonsense", edit) && !edit, "a source that does not parse is refused");
+		Check(!Bound<SetLayerSource>(source, "", edit) && !edit, "an empty source is refused");
+
+		const auto* named = Bound<SetLayerCurve>(curve, "@crisp", edit);
+		Check(named && named->output == 0 && named->layer == 0 && named->curve == CurveRef{ "@crisp" }, "a @curve binds by name");
+		const auto* inlineCurve = Bound<SetLayerCurve>(curve, "x * 2", edit);
+		Check(inlineCurve && inlineCurve->curve == CurveRef{ "x * 2" }, "an inline curve binds as text");
+		const auto* noCurve = Bound<SetLayerCurve>(curve, "", edit);
+		Check(noCurve && !noCurve->curve, "an empty curve clears it");
+
+		const auto* number = Bound<SetLayerOpacity>(opacity, "0.5", edit);
+		Check(number && number->output == 0 && number->layer == 0 && Get<float>(number->opacity) && *Get<float>(number->opacity) == 0.5f, "a number binds as opacity");
+		const auto* signal = Bound<SetLayerOpacity>(opacity, "@glowLevel", edit);
+		Check(signal && Get<Ref>(signal->opacity) && Get<Ref>(signal->opacity)->name == "glowLevel", "a @signal binds as opacity");
+		Check(!Bound<SetLayerOpacity>(opacity, "abc", edit) && !edit, "an opacity that does not parse is refused");
+
+		const auto* noColour = Bound<SetLayerColor>(colour, "", edit);
+		Check(noColour && noColour->output == 0 && noColour->layer == 0 && !noColour->color, "an empty colour clears it");
+		const auto* parts = Bound<SetLayerColor>(colour, "1, 0.5, 0", edit);
+		Check(parts && parts->color && Get<std::array<Param, 3>>(*parts->color), "r, g, b binds as a colour");
+		const auto* colourSignal = Bound<SetLayerColor>(colour, "@glowHue", edit);
+		Check(colourSignal && colourSignal->color && Get<Ref>(*colourSignal->color) && Get<Ref>(*colourSignal->color)->name == "glowHue", "a @signal binds as the colour");
+		Check(!Bound<SetLayerColor>(colour, "bad", edit) && !edit, "a colour that does not parse is refused");
+
+		const auto* maskRef = Bound<SetLayerMask>(mask, "@metal", edit);
+		Check(maskRef && maskRef->output == 0 && maskRef->layer == 0 && maskRef->mask && maskRef->mask->name == "metal", "a @mask binds by name");
+		const auto* noMask = Bound<SetLayerMask>(mask, "", edit);
+		Check(noMask && !noMask->mask, "an empty mask clears it");
+
+		const auto* set = Bound<SetLayerChannels>(channels, "rg", edit);
+		Check(set && set->output == 0 && set->layer == 0 && set->channels == ChannelSet{ true, true, false, false }, "a channel set binds");
+		Check(!Bound<SetLayerChannels>(channels, "xyz", edit) && !edit, "channels that do not parse are refused");
+
+		// The relief layer: a declared curve has a detail, a literal opacity none;
+		// the bindings carry its own indices.
+		selection.output = 2;
+		const auto relief = BuildInspector(a_recipe, a_geometry, selection);
+		Check(relief.has_value(), "the relief layer inspects for its form");
+		if (!relief) {
+			return;
+		}
+		const auto reliefForm = InspectorForm(*relief);
+		Check(reliefForm.size() == 6 && reliefForm[1].detail == FieldDetail::kCurve && reliefForm[1].text == "@crisp" && !reliefForm[2].detail && !reliefForm[3].detail && !reliefForm[4].detail, "the relief form has a curve detail and no others");
+		const auto* reliefOpacity = reliefForm.size() == 6 ? Bound<SetLayerOpacity>(reliefForm[2], "0.25", edit) : nullptr;
+		Check(reliefOpacity && reliefOpacity->output == 2 && reliefOpacity->layer == 0, "a binding names its own output and layer");
+	}
+
+	void ScalarForms(const PieceRow& a_piece, const RecipeRow& a_recipe, const GeometryRow& a_geometry)
+	{
+		const View view;
+		auto       selection = SelectCanonical();
+		selection.output = 0;
+		const auto emissive = BuildStackView(a_piece, a_recipe, a_geometry, selection, view);
+		Check(emissive.has_value(), "the emissive stack builds for its form");
+		if (!emissive) {
+			return;
+		}
+		const auto form = ScalarForm(*emissive);
+		Check(form.size() == 1, "the emissive form has one scalar");
+		if (form.size() != 1) {
+			return;
+		}
+		const auto& strength = form[0];
+		Check(strength.name == "strength" && strength.kind == FieldKind::kScalar && strength.text == "@glowLevel" && strength.names == emissive->scalarSignals && !strength.allowEmpty && !strength.detail, "strength is a scalar field over the scalar signals");
+		Check(strength.value.has_value(), "a scalar field shows its live value");
+		std::optional<RecipeEdit> edit;
+		const auto*               number = Bound<SetScalar>(strength, "2", edit);
+		Check(number && number->output == 0 && number->field == ScalarField::kStrength && Get<float>(number->value) && *Get<float>(number->value) == 2.0f, "a number binds as the scalar");
+		const auto* signal = Bound<SetScalar>(strength, "@glowLevel", edit);
+		Check(signal && Get<Ref>(signal->value) && Get<Ref>(signal->value)->name == "glowLevel", "a @signal binds as the scalar");
+		Check(!Bound<SetScalar>(strength, "zzz", edit) && !edit, "a scalar that does not parse is refused");
+
+		selection.output = 1;
+		const auto fuzz = BuildStackView(a_piece, a_recipe, a_geometry, selection, view);
+		Check(fuzz.has_value(), "the fuzz stack builds for its form");
+		if (!fuzz) {
+			return;
+		}
+		const auto fuzzForm = ScalarForm(*fuzz);
+		const auto colour = std::ranges::find(fuzzForm, "color", &FieldSpec::name);
+		const auto weight = std::ranges::find(fuzzForm, "weight", &FieldSpec::name);
+		Check(fuzzForm.size() == 2 && colour != fuzzForm.end() && weight != fuzzForm.end(), "the fuzz form has colour and weight");
+		if (colour == fuzzForm.end() || weight == fuzzForm.end()) {
+			return;
+		}
+		Check(colour->kind == FieldKind::kColor && colour->names == fuzz->colorSignals && colour->text == "@edgeColor", "the colour scalar is a colour field over the colour signals");
+		Check(weight->kind == FieldKind::kScalar && weight->names == fuzz->scalarSignals && weight->text == "@sheenWeight", "weight is a scalar field");
+		const auto* parts = Bound<SetColorScalar>(*colour, "1, 0, 0", edit);
+		Check(parts && parts->output == 1 && Get<std::array<Param, 3>>(parts->color), "r, g, b binds as the colour scalar");
+		const auto* colourSignal = Bound<SetColorScalar>(*colour, "@edgeColor", edit);
+		Check(colourSignal && Get<Ref>(colourSignal->color) && Get<Ref>(colourSignal->color)->name == "edgeColor", "a @signal binds as the colour scalar");
+		Check(!Bound<SetColorScalar>(*colour, "bad", edit) && !edit, "a colour scalar that does not parse is refused");
+		const auto* weightValue = Bound<SetScalar>(*weight, "0.3", edit);
+		Check(weightValue && weightValue->output == 1 && weightValue->field == ScalarField::kWeight, "weight binds to its field");
+
+		selection.output = 3;
+		const auto rmaos = BuildStackView(a_piece, a_recipe, a_geometry, selection, view);
+		Check(rmaos && ScalarForm(*rmaos).empty(), "a stack without scalars has an empty form");
+	}
+
 	void SignalLists(const RecipeRow& a_recipe)
 	{
 		const auto edit = BuildSignalList(a_recipe, LayoutFor(Mode::kSignals));
@@ -544,6 +689,8 @@ int main()
 	Stacks(piece, row, geometry);
 	NormalBlends(piece, row, geometry);
 	Inspectors(row, geometry);
+	InspectorForms(row, geometry);
+	ScalarForms(piece, row, geometry);
 	SignalLists(row);
 	return test::Finish("studio");
 }
