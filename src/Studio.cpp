@@ -325,8 +325,6 @@ namespace WornEnchantmentPBR::Studio
 		switch (a_mode) {
 		case Mode::kCompose:
 			return "Compose";
-		case Mode::kSignals:
-			return "Signals";
 		case Mode::kPaint:
 			return "Paint";
 		case Mode::kDesign:
@@ -342,17 +340,13 @@ namespace WornEnchantmentPBR::Studio
 		switch (a_mode) {
 		case Mode::kCompose:
 			break;
-		case Mode::kSignals:
-			layout.stack = false;
-			layout.inspector = false;
-			layout.signals = true;
-			break;
 		case Mode::kPaint:
 			layout.regionEditor = true;
 			break;
 		case Mode::kDesign:
 			layout.stack = false;
 			layout.inspector = false;
+			layout.signals = false;
 			layout.designPanel = true;
 			layout.widgetScale = 1.6f;
 			layout.compositeSize = 128.0f;

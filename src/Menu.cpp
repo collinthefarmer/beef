@@ -11,6 +11,8 @@
 
 #include <algorithm>
 #include <format>
+#include <string_view>
+#include <vector>
 
 #pragma clang diagnostic push
 #pragma clang diagnostic ignored "-Wmismatched-tags"
@@ -22,9 +24,10 @@ namespace ImGui = ImGuiMCP;
 using ImGuiMCP::ImVec2;
 using ImGuiMCP::ImGuiSliderFlags_Logarithmic;
 
-// Registration, the header every page shares, and the pages beside the
-// studio: Recipes, Setup and Log. Pages read the manager's snapshot, taken
-// once per frame, never the live state.
+// Registration, the status line every page starts with, and the pages
+// beside the studio: Recipes, and Setup with the log under its settings.
+// Pages read the manager's snapshot, taken once per frame, never the live
+// state; the selection they show is the studio's.
 namespace WornEnchantmentPBR
 {
 	namespace
@@ -53,21 +56,44 @@ namespace WornEnchantmentPBR
 			}
 		}
 
-		// One widget per settings-table row.
-		void Widget(Settings& s, const SettingDesc& d)
+		// The settings pages the Setup page shows; the rest of the table is
+		// the proof of concept's rows, which nothing reads.
+		constexpr const char* kSetupPages[]{ "Scope", "Runtime", "Diagnostics" };
+		constexpr const char* kVerboseKey = "VerboseLogging";
+
+		[[nodiscard]] bool Shown(const SettingDesc& d) noexcept
+		{
+			return std::ranges::any_of(kSetupPages, [&](const char* a_page) { return std::string_view{ d.page } == a_page; });
+		}
+
+		[[nodiscard]] bool IsSwitch(const SettingDesc& d) noexcept
+		{
+			return d.widget == SettingDesc::Widget::kCheckbox;
+		}
+
+		[[nodiscard]] const SettingDesc* FindSetting(std::string_view a_key) noexcept
+		{
+			const auto table = SettingTable();
+			const auto it = std::ranges::find_if(table, [&](const SettingDesc& d) { return std::string_view{ d.key } == a_key; });
+			return it == table.end() ? nullptr : &*it;
+		}
+
+		// One widget per settings-table row, under the label the caller
+		// chooses ("##value" when the name is drawn elsewhere).
+		void Widget(Settings& s, const SettingDesc& d, const char* a_label)
 		{
 			using W = SettingDesc::Widget;
 			bool changed = false;
 			std::visit([&](auto a_member) {
 				using T = std::remove_cvref_t<decltype(s.*a_member)>;
 				if constexpr (std::is_same_v<T, bool>) {
-					changed = ImGui::Checkbox(d.label, &(s.*a_member));
+					changed = ImGui::Checkbox(a_label, &(s.*a_member));
 				} else if constexpr (std::is_same_v<T, float>) {
-					changed = ImGui::SliderFloat(d.label, &(s.*a_member), d.min, d.max, d.max - d.min > 10 ? "%.2f" : "%.3f", d.widget == W::kLogSlider ? ImGuiSliderFlags_Logarithmic : 0);
+					changed = ImGui::SliderFloat(a_label, &(s.*a_member), d.min, d.max, d.max - d.min > 10 ? "%.2f" : "%.3f", d.widget == W::kLogSlider ? ImGuiSliderFlags_Logarithmic : 0);
 				} else {
 					if (d.widget == W::kEnum && d.items) {
 						int v = static_cast<int>(s.*a_member);
-						if (ImGui::Combo(d.label, &v, d.items)) {
+						if (ImGui::Combo(a_label, &v, d.items)) {
 							s.*a_member = static_cast<std::uint32_t>(v);
 							changed = true;
 						}
@@ -86,13 +112,13 @@ namespace WornEnchantmentPBR
 							++idx;
 						}
 						int rel = idx - lo;
-						if (ImGui::Combo(d.label, &rel, sizes + lo, hi - lo + 1)) {
+						if (ImGui::Combo(a_label, &rel, sizes + lo, hi - lo + 1)) {
 							s.*a_member = 64u << (lo + rel);
 							changed = true;
 						}
 					} else {
 						int v = static_cast<int>(s.*a_member);
-						if (ImGui::SliderInt(d.label, &v, static_cast<int>(d.min), static_cast<int>(d.max))) {
+						if (ImGui::SliderInt(a_label, &v, static_cast<int>(d.min), static_cast<int>(d.max))) {
 							s.*a_member = static_cast<std::uint32_t>(v);
 							changed = true;
 						}
@@ -100,57 +126,135 @@ namespace WornEnchantmentPBR
 				}
 			},
 				d.member);
-			Widgets::HelpMarker(d.help);
 			if (d.reapply) {
 				MarkReapply(changed);
 			}
 		}
 
-		void Group(Settings& s, const char* a_page)
-		{
-			for (const auto& d : SettingTable()) {
-				if (std::string_view{ d.page } == a_page) {
-					Widget(s, d);
-				}
-			}
-		}
-
-		void SaveBar(Settings& s)
+		// The switches (every checkbox setting but Verbose logging, which sits
+		// with the log) and the save bar as one row: Save INI, Reload INI,
+		// Re-apply, the auto toggle, and the markers.
+		void DrawSwitchRow(Settings& s)
 		{
 			auto* manager = Manager::GetSingleton();
-			ImGui::Separator();
 			if (!g_savedKnown) {
 				g_savedSettings = s;
 				g_savedKnown = true;
 			}
+			std::vector<const SettingDesc*> switches;
+			for (const auto& d : SettingTable()) {
+				if (Shown(d) && IsSwitch(d) && std::string_view{ d.key } != kVerboseKey) {
+					switches.push_back(&d);
+				}
+			}
+			std::vector<Widgets::Column> columns(switches.size() + 4, Widgets::Column{ "", Width::Fit() });
+			columns.push_back(Widgets::Column{ "", Width::Fill() });  // the markers, taking what is left
+			constexpr TableStyle style{ .borders = TableStyle::Borders::kAll, .stretch = false, .headers = false, .rowBackground = false };
+			auto                 table = Widgets::Table::Begin("switches", columns, style);
+			if (!table.Open()) {
+				return;
+			}
+			for (const auto* d : switches) {
+				table.Cell();
+				Widget(s, *d, d->label);
+				Widgets::HelpMarker(d->help);
+			}
+			table.Cell();
 			if (ImGui::Button("Save INI")) {
 				if (SaveSettingsToDisk(s)) {
 					g_savedSettings = s;
 				}
 			}
-			ImGui::SameLine();
+			table.Cell();
 			if (ImGui::Button("Reload INI")) {
 				SetSettings(LoadSettingsFromDisk());
 				g_savedSettings = GetSettings();
 				g_needsReapply = false;
 				manager->ReapplyAll();
 			}
-			ImGui::SameLine();
+			table.Cell();
 			if (ImGui::Button("Re-apply")) {
 				g_needsReapply = false;
 				manager->ReapplyAll();
 			}
-			ImGui::SameLine();
-			ImGui::Checkbox("auto", &g_autoReapply);
+			table.Cell();
+			Widgets::Toggle("auto", g_autoReapply, "");
 			Widgets::HelpMarker("Re-apply automatically when a setting that is read at apply time changes.");
+			table.Cell();
 			if (SettingsDiffer(s, g_savedSettings)) {
-				ImGui::SameLine();
 				Widgets::Warn("unsaved changes");
+				ImGui::SameLine();
 			}
 			if (g_needsReapply) {
-				ImGui::SameLine();
 				Widgets::Warn("re-apply needed");
 			}
+			table.End();
+		}
+
+		// The remaining settings (sliders and combos) as name and value, in
+		// the table's order.
+		void DrawValueTable(Settings& s)
+		{
+			auto table = Widgets::Table::Begin("values", { { "setting", Width::Fit() }, { "value", Width::Fill() } }, kGridStyle);
+			if (!table.Open()) {
+				return;
+			}
+			for (const auto& d : SettingTable()) {
+				if (!Shown(d) || IsSwitch(d)) {
+					continue;
+				}
+				ImGui::PushID(d.key);
+				table.Cell();
+				ImGui::AlignTextToFramePadding();
+				ImGui::TextUnformatted(d.label);
+				Widgets::HelpMarker(d.help);
+				table.Cell();
+				Widgets::NextItemWidth(Width::Fill());
+				Widget(s, d, "##value");
+				ImGui::PopID();
+			}
+			table.End();
+		}
+
+		// The log: its filter, auto-scroll and Verbose logging on one row
+		// under the section header, then the last 300 lines in a region that
+		// takes the remaining height.
+		void DrawLog(Settings& s)
+		{
+			if (!Widgets::Section("Log", true)) {
+				return;
+			}
+			static char filter[64]{};
+			static bool autoScroll = true;
+			Widgets::NextItemWidth(Width::Px(240.0f));
+			ImGui::InputText("filter", filter, sizeof(filter));
+			ImGui::SameLine();
+			Widgets::Toggle("auto-scroll", autoScroll, "");
+			if (const auto* verbose = FindSetting(kVerboseKey)) {
+				ImGui::SameLine();
+				Widget(s, *verbose, verbose->label);
+				Widgets::HelpMarker(verbose->help);
+			}
+			if (!g_logRing) {
+				ImGui::Text("no log buffer");
+				return;
+			}
+			ImGui::BeginChild("log", ImVec2{ 0, 0 }, 1, 0);
+			for (const auto& line : g_logRing->last_formatted(300)) {
+				if (filter[0] && line.find(filter) == std::string::npos) {
+					continue;
+				}
+				const bool warn = line.find("[warning]") != std::string::npos || line.find("[error]") != std::string::npos;
+				if (warn) {
+					Widgets::Warn(line);
+				} else {
+					ImGui::TextUnformatted(line.c_str());
+				}
+			}
+			if (autoScroll) {
+				ImGui::SetScrollHereY(1.0f);
+			}
+			ImGui::EndChild();
 		}
 
 		// -------------------------------------------------------------- pages
@@ -261,45 +365,19 @@ namespace WornEnchantmentPBR
 			}
 		}
 
+		// Settings in the top half of the page (scrolling when they overflow),
+		// the log in the bottom half.
 		void __stdcall RenderSetup()
 		{
 			auto& s = GetMutableSettings();
 			RenderHeader(Manager::GetSingleton()->TakeSnapshot());
-			for (const auto* page : { "Scope", "Runtime", "Diagnostics" }) {
-				if (ImGui::CollapsingHeader(page, ImGuiMCP::ImGuiTreeNodeFlags_DefaultOpen)) {
-					Group(s, page);
-				}
-			}
-			SaveBar(s);
-		}
-
-		void __stdcall RenderLog()
-		{
-			if (!g_logRing) {
-				ImGui::Text("no log buffer");
-				return;
-			}
-			static char filter[64]{};
-			ImGui::InputText("filter", filter, sizeof(filter));
-			ImGui::SameLine();
-			static bool autoScroll = true;
-			ImGui::Checkbox("auto-scroll", &autoScroll);
-			ImGui::BeginChild("log", ImVec2{ 0, 0 }, 1, 0);
-			for (const auto& line : g_logRing->last_formatted(300)) {
-				if (filter[0] && line.find(filter) == std::string::npos) {
-					continue;
-				}
-				const bool warn = line.find("[warning]") != std::string::npos || line.find("[error]") != std::string::npos;
-				if (warn) {
-					Widgets::Warn(line);
-				} else {
-					ImGui::TextUnformatted(line.c_str());
-				}
-			}
-			if (autoScroll) {
-				ImGui::SetScrollHereY(1.0f);
+			const float half = ImGui::GetContentRegionAvail().y * 0.5f;
+			if (ImGui::BeginChild("settings", ImVec2{ 0.0f, half }, 0, 0)) {
+				DrawSwitchRow(s);
+				DrawValueTable(s);
 			}
 			ImGui::EndChild();
+			DrawLog(s);
 		}
 	}
 
@@ -428,22 +506,6 @@ namespace WornEnchantmentPBR
 	void RenderHeader(const Studio::Snapshot& a_snapshot)
 	{
 		RenderStatus(a_snapshot);
-		const auto& selection = Studio::State().selection;
-		const auto* piece = Studio::SelectedPiece(a_snapshot, selection);
-		const auto* recipe = Studio::SelectedRecipe(piece, selection);
-		Widgets::NextItemWidth(Widgets::Width::Px(360.0f));
-		SelectionCombo(a_snapshot, "Selection");
-		if (piece && !piece->recipes.empty()) {
-			ImGui::SameLine();
-			Widgets::NextItemWidth(Widgets::Width::Px(260.0f));
-			RecipeCombo(piece, "Recipe");
-		}
-		FreezeCheckbox(recipe, "Freeze");
-		ImGui::SameLine();
-		Widgets::NextItemWidth(Widgets::Width::Px(220.0f));
-		ScrubSlider(recipe, "t (s)");
-		ImGui::SameLine();
-		IsolateCheckbox(recipe, "Isolate this recipe");
 		ImGui::Separator();
 	}
 
@@ -457,7 +519,6 @@ namespace WornEnchantmentPBR
 		SKSEMenuFramework::AddSectionItem("Studio", Studio::RenderStudio);
 		SKSEMenuFramework::AddSectionItem("Recipes", RenderRecipes);
 		SKSEMenuFramework::AddSectionItem("Setup", RenderSetup);
-		SKSEMenuFramework::AddSectionItem("Log", RenderLog);
 		logger::info("SKSE Menu Framework pages registered");
 	}
 }

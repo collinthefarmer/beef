@@ -134,8 +134,13 @@ namespace WornEnchantmentPBR::Studio::Widgets
 
 	Table Table::Begin(const char* a_id, std::initializer_list<Column> a_columns, const TableStyle& a_style)
 	{
+		return Begin(a_id, std::span<const Column>{ a_columns.begin(), a_columns.size() }, a_style);
+	}
+
+	Table Table::Begin(const char* a_id, std::span<const Column> a_columns, const TableStyle& a_style)
+	{
 		Table table;
-		if (a_columns.size() == 0) {
+		if (a_columns.empty()) {
 			return table;
 		}
 		int flags = a_style.borders == TableStyle::Borders::kAll ? ImGuiMCP::ImGuiTableFlags_Borders : ImGuiMCP::ImGuiTableFlags_BordersInnerH;

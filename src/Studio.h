@@ -26,17 +26,15 @@ namespace WornEnchantmentPBR::Studio
 
 	// A mode is a layout, a widget scale and a tool set over the same view
 	// models: Compose is the board, the stack and the selected layer's
-	// inspector; Signals is the signal table, and later the triggers and the
-	// debug clock; Paint adds the region editor to Compose; Design is tuning
-	// while looking.
+	// inspector, with the signal table folded under them; Paint adds the
+	// region editor to Compose; Design is tuning while looking.
 	enum class Mode
 	{
 		kCompose,
-		kSignals,
 		kPaint,
 		kDesign,
 	};
-	inline constexpr std::array<Mode, 4> kModes{ Mode::kCompose, Mode::kSignals, Mode::kPaint, Mode::kDesign };
+	inline constexpr std::array<Mode, 3> kModes{ Mode::kCompose, Mode::kPaint, Mode::kDesign };
 	[[nodiscard]] std::string_view ModeName(Mode a_mode) noexcept;
 
 	// The panes sit under each other in one narrow column as collapsible
@@ -47,7 +45,7 @@ namespace WornEnchantmentPBR::Studio
 		Mode  mode = Mode::kCompose;
 		bool  stack = true;
 		bool  inspector = true;
-		bool  signals = false;  // the signal table
+		bool  signals = true;  // the signal table, a folded section under the stack
 		bool  regionEditor = false;
 		bool  designPanel = false;
 		float widgetScale = 1.0f;          // multiplies field widths and grip sizes

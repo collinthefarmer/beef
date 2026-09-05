@@ -206,17 +206,16 @@ namespace
 	void Layouts()
 	{
 		const auto compose = LayoutFor(Mode::kCompose);
-		Check(compose.mode == Mode::kCompose && compose.stack && compose.inspector && !compose.signals && !compose.regionEditor && !compose.designPanel, "compose shows stack and inspector");
+		Check(compose.mode == Mode::kCompose && compose.stack && compose.inspector && compose.signals && !compose.regionEditor && !compose.designPanel, "compose shows stack, inspector and the signal table");
 		Check(compose.widgetScale == 1.0f && compose.compositeSize == 160.0f && compose.cellSize == 40.0f && compose.rowThumbnail == 32.0f && compose.inspectorThumbnail == 96.0f, "compose at scale 1 with pictures sized for one column");
-		Check(compose.developerSignals, "compose shows developer signals");
-		const auto signals = LayoutFor(Mode::kSignals);
-		Check(!signals.stack && !signals.inspector && signals.signals && signals.developerSignals && !signals.regionEditor && !signals.designPanel, "signals shows the signal table alone, developer rows included");
+		Check(compose.developerSignals && compose.stackSplit == 0.5f, "compose shows developer signals and splits the stack evenly");
 		const auto paint = LayoutFor(Mode::kPaint);
-		Check(paint.stack && paint.inspector && paint.regionEditor && !paint.designPanel, "paint adds the region editor and keeps the inspector");
+		Check(paint.stack && paint.inspector && paint.signals && paint.regionEditor && !paint.designPanel, "paint adds the region editor and keeps the inspector and the signals");
 		const auto design = LayoutFor(Mode::kDesign);
 		Check(!design.stack && !design.inspector && !design.signals && !design.regionEditor && design.designPanel, "design shows the design panel only");
 		Check(design.widgetScale == 1.6f && design.compositeSize == 128.0f && !design.developerSignals, "design at scale 1.6, 128 px composite, developer signals off");
-		Check(ModeName(Mode::kCompose) == "Compose" && ModeName(Mode::kSignals) == "Signals" && ModeName(Mode::kPaint) == "Paint" && ModeName(Mode::kDesign) == "Design", "mode names");
+		Check(kModes.size() == 3 && kModes[0] == Mode::kCompose && kModes[1] == Mode::kPaint && kModes[2] == Mode::kDesign, "modes are Compose, Paint, Design");
+		Check(ModeName(Mode::kCompose) == "Compose" && ModeName(Mode::kPaint) == "Paint" && ModeName(Mode::kDesign) == "Design", "mode names");
 	}
 
 	void Selections(const Snapshot& a_snapshot)
@@ -640,14 +639,14 @@ namespace
 
 	void SignalLists(const RecipeRow& a_recipe)
 	{
-		const auto edit = BuildSignalList(a_recipe, LayoutFor(Mode::kSignals));
+		const auto edit = BuildSignalList(a_recipe, LayoutFor(Mode::kCompose));
 		Check(edit.tunable.size() == 14 && edit.developer.size() == 6, "constants and expressions are tunable; the rest developer");
 		Check(std::ranges::all_of(edit.tunable, [](const SignalRow& a_row) { return a_row.kind == "constant" || a_row.kind == "expr"; }), "tunable rows are constants or expressions");
 		Check(edit.developer[0].name == "fillLevel" && edit.developer[0].kind == "efsh" && edit.developer[5].name == "step" && edit.developer[5].kind == "trigger", "developer rows keep file order");
 		Check(edit.tunable[0].name == "glowHue" && edit.tunable[0].constant && Get<Vec3>(*edit.tunable[0].constant), "a colour constant keeps its value");
 		const auto design = BuildSignalList(a_recipe, LayoutFor(Mode::kDesign));
 		Check(design.tunable.size() == 14 && design.developer.empty(), "design mode hides developer rows");
-		Check(BuildSignalList(RecipeRow{}, LayoutFor(Mode::kSignals)).tunable.empty(), "a recipe without signals lists nothing");
+		Check(BuildSignalList(RecipeRow{}, LayoutFor(Mode::kCompose)).tunable.empty(), "a recipe without signals lists nothing");
 	}
 
 	void References()

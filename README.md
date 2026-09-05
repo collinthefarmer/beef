@@ -334,17 +334,18 @@ import with a white glow.
 ## In-game menu
 
 With SKSE Menu Framework installed, the mod control panel gets a
-**Worn Enchantment PBR** section: the recipe studio and three support
-pages. Every page starts with the same header: the status line (emissive
-path, layout check, lab, counts, tick interval, recipe files), the
-selection (actor and piece, then recipe within it), Freeze with a time
-scrub (freezing holds the current moment; the slider moves it), and
-Isolate this recipe; the Studio places the same controls in its own
-tables. An edit keeps the recipe's clock where it was. The design behind the studio is the
+**Worn Enchantment PBR** section: the recipe studio and two support
+pages. The support pages start with the status line (emissive path,
+layout check, lab, counts, tick interval, recipe files); the Studio
+starts with its mode bar and holds the selection (actor and piece, then
+recipe within it), Freeze with a time scrub (freezing holds the current
+moment; the slider moves it), and Isolate this recipe in its own tables,
+and the other pages show the selection the Studio made. An edit keeps
+the recipe's clock where it was. The design behind the studio is the
 Design section of `plans/worn-enchantment-pbr-menu-brief.md`; the modules
 are in `ARCHITECTURE.md` under "The recipe studio".
 
-- **Studio**: a mode bar (Compose, Signals, Paint, Design) over one set of
+- **Studio**: a mode bar (Compose, Paint, Design) over one set of
   view models, in one narrow column of collapsible sections so the game
   stays in view. Compose starts with two labelled rows. The recipe row:
   **S**, the recipe applied alone (isolate); the **selection** (actor
@@ -397,7 +398,10 @@ are in `ARCHITECTURE.md` under "The recipe studio".
   A filled badge is the button that toggles its field between text and
   the signal combo. The full rule, including what is coerced, is the badge's
   tooltip; one number typed into a colour field, a layer's source
-  included, stands for all three components. The **Signals** tab is the signal table split into tunable rows
+  included, stands for all three components. Under the stack a folded
+  **Signals** section holds the signal table (tunable rows with their
+  editors, developer rows read-only, each with its live value and curve)
+  and the curves table beneath it.
 - **Recipes**: every loaded file with keys, row counts, state and path;
   the selection's resolved recipes in merge order; the **board**, the
   grid of every slot on the material and the shell for the selected
@@ -407,13 +411,14 @@ are in `ARCHITECTURE.md` under "The recipe studio".
   output; excluded and refused cells say why); Save and Revert for
   the selected recipe with an "edited, not saved" marker; Reload,
   Re-apply all, Retire all; the selected recipe's row problems.
-- **Setup**: the settings table by group, with the save bar (**Save
-  INI**, **Reload INI**, **Re-apply**, the **auto** re-apply toggle,
-  "unsaved changes" and "re-apply needed" markers). Settings widgets are
-  generated from the settings table, so a new row appears in the menu
-  without menu code.
-- **Log**: the last 300 log lines with a filter; warnings and errors in
-  amber.
+- **Setup**: one row of every switch setting with the save bar beside
+  them (**Save INI**, **Reload INI**, **Re-apply**, the **auto** re-apply
+  toggle, "unsaved changes" and "re-apply needed" markers); under it the
+  other settings as a name and value table; and in the bottom half of
+  the page the **Log**: a filter, auto-scroll and Verbose logging on one
+  row, then the last 300 log lines with warnings and errors in amber.
+  Settings widgets are generated from the settings table, so a new row
+  appears in the menu without menu code.
 
 The framework SDK header is vendored under `src/extern/` (GPL-3.0, see
 `SOURCE.txt` there) and resolves everything through `GetProcAddress`, so the
@@ -622,8 +627,8 @@ Menu studio stage 1 checkpoint (board, stack, inspector, region lens,
 modes; the runtime is untouched except layer solo and mute):
 
 23. **The studio.** With the magicka cuirass worn, open the menu: the
-    section lists Studio, Recipes, Setup, Log, and the log has `SKSE Menu
-    Framework pages registered`. On Recipes the board shows four written
+    section lists Studio, Recipes, Setup, and the log (under Setup) has
+    `SKSE Menu Framework pages registered`. On Recipes the board shows four written
     cells (emissive and fuzz on the shell, height and rmaos on the
     material), the light row, and "+" on every other cell the surfaces
     offer; fuzz's row greys glint on the shell with the reason. Click
@@ -642,8 +647,8 @@ modes; the runtime is untouched except layer solo and mute):
     the file order shown, with no `edit refused` line in the log. Select
     the `fill` row: the inspector shows the fill's
     thumbnail and definition, `@metal` with its expression, and
-    `glowHue` editable beside its swatch; on the Signals tab drag
-    `glowStrength` and the glow follows. Recipes page: the recipe reads
+    `glowHue` editable beside its swatch; open the Signals section under
+    the stack and drag `glowStrength`: the glow follows. Recipes page: the recipe reads
     "edited, not saved"; Revert restores it.
 24. **Conjuration breath** (`examples/conjuration-breath.json`, keyed by
     the `EnchFortifyConjurationConstantSelf` magic effect, priority 60):

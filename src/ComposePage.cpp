@@ -835,11 +835,12 @@ namespace WornEnchantmentPBR::Studio
 			ImGui::PopID();
 		}
 
+		// The signal table and the curves under it, folded under the stack.
 		void DrawSignals(const RecipeRow& a_recipe, const Layout& a_layout)
 		{
 			const auto  list = BuildSignalList(a_recipe, a_layout);
 			const auto& id = a_recipe.id;
-			if (!Widgets::Section("Signals", true)) {
+			if (!Widgets::Section("Signals", false)) {
 				return;
 			}
 			ImGui::Text("t = %.2f s", a_recipe.time);
@@ -994,7 +995,6 @@ namespace WornEnchantmentPBR::Studio
 		auto*      manager = Manager::GetSingleton();
 		const auto snapshot = manager->TakeSnapshot();
 		auto&      state = State();
-		RenderStatus(snapshot);
 		if (Widgets::ModeBar(state.mode)) {
 			state.layout = LayoutFor(state.mode);
 		}

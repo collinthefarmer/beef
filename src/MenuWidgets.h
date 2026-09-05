@@ -80,6 +80,7 @@ namespace WornEnchantmentPBR::Studio::Widgets
 	class Table
 	{
 	public:
+		[[nodiscard]] static Table Begin(const char* a_id, std::span<const Column> a_columns, const TableStyle& a_style = {});
 		[[nodiscard]] static Table Begin(const char* a_id, std::initializer_list<Column> a_columns, const TableStyle& a_style = {});
 		[[nodiscard]] bool         Open() const noexcept { return open_; }
 		void                       Cell();
