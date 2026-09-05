@@ -1,0 +1,166 @@
+#pragma once
+
+// The menu's read model: a copy of everything the runtime knows per actor,
+// piece, recipe, geometry and output, taken once per page draw by
+// Manager::TakeSnapshot. Engine-free so the studio's view models compile
+// natively and are tested without the game. The texture pointers are opaque
+// here: the lab keeps them alive, and only the menu's widgets dereference
+// them, through TextureLab::Preview.
+
+#include "Core.h"
+#include "Recipe.h"
+
+#include <cstdint>
+#include <optional>
+#include <string>
+#include <vector>
+
+namespace RE
+{
+	class NiSourceTexture;
+}
+
+namespace WornEnchantmentPBR::Studio
+{
+	using TextureHandle = RE::NiSourceTexture*;
+	using FormID = std::uint32_t;
+
+	// A signal of the applied recipe: its live value this tick and, for the
+	// kinds a designer tunes, the editable text.
+	struct SignalRow
+	{
+		std::string          name;
+		std::string          kind;  // KindName: "constant", "expr", "efsh", "trigger", ...
+		ValueType            type = ValueType::kScalar;
+		Value                value;
+		bool                 inert = false;
+		std::optional<Value> constant;  // a constant signal's value, editable
+		std::string          text;      // an expr signal's expression, editable
+		std::string          curve;     // the row's curve, editable
+		std::string          problem;   // why the row is inert, when it is
+	};
+
+	struct TextRow
+	{
+		std::string name;
+		std::string text;
+	};
+
+	// A layer as the file has it, with the compositor's verdict where it has one.
+	struct LayerRow
+	{
+		std::string   source;  // LayerSourceText: "@name" or "r, g, b"
+		std::string   mask;    // "@name" or empty
+		std::string   blend;   // BlendName
+		float         opacity = 1.0f;
+		std::string   opacityText;  // ParamText
+		std::string   color;        // Vec3ParamText or empty
+		std::string   curve;
+		std::string   channels;  // ChannelSet::ToString
+		std::string   problem;   // why the layer is skipped, when it is
+		TextureHandle texture = nullptr;  // the source image, when it is one
+	};
+
+	struct ScalarRow
+	{
+		std::string name;  // ScalarFieldName
+		Value       value;
+		std::string text;  // the parameter as written
+	};
+
+	struct OutputRow
+	{
+		std::size_t            index = 0;  // into Recipe::outputs
+		std::string            target;     // "material", "shell", "light"
+		Surface                surface = Surface::kMaterial;
+		Slot                   slot = Slot::kEmissive;  // material outputs
+		std::string            slotName;                // SlotName, empty for a light
+		bool                   light = false;
+		bool                   replace = false;
+		bool                   animated = false;
+		std::uint32_t          size = 0;
+		std::string            problem;
+		std::vector<ScalarRow> scalars;  // the slot's scalars, resolved now
+		std::vector<LayerRow>  layers;
+		TextureHandle          texture = nullptr;  // the composite
+	};
+
+	// A source or mask of the recipe as the compositor reads it on this geometry.
+	struct ImageRow
+	{
+		std::string   name;
+		std::string   kind;  // DescribeSource, or the mask's expression
+		TextureHandle texture = nullptr;
+		std::uint32_t channel = 4;  // preview channel: 0..3, 4 rgb, 5 luminance
+		bool          animated = false;
+		std::string   problem;
+	};
+
+	// One slot of a surface as the binding wrote it. `problem` is the
+	// binding's refusal when the material cannot take the slot (a hair model,
+	// a coat flag, no texture field), which is how material rules reach the
+	// board.
+	struct SlotRow
+	{
+		Slot        slot = Slot::kEmissive;
+		std::string original;
+		std::string written;
+		std::string problem;
+	};
+
+	struct GeometryRow
+	{
+		std::string            name;
+		bool                   privateMaterial = false;
+		std::string            shell;  // description, empty when none
+		std::vector<SlotRow>   materialSlots;
+		std::vector<SlotRow>   shellSlots;
+		std::vector<ImageRow>  sources;
+		std::vector<ImageRow>  masks;
+		std::vector<OutputRow> outputs;
+	};
+
+	struct RecipeRow
+	{
+		std::string                id;
+		std::string                key;
+		int                        priority = 0;
+		float                      time = 0.0f;
+		bool                       dirty = false;
+		ShellMaterial              shellMaterial = ShellMaterial::kPbrCopy;
+		std::vector<SignalRow>     signals;
+		std::vector<TextRow>       curves;
+		std::vector<std::string>   masks;  // every mask name, even where no geometry is bound
+		std::vector<GeometryRow>   geometries;
+		std::string                light;  // description, empty when none
+		std::optional<std::size_t> lightOutput;
+		std::vector<Diagnostic>    problems;  // the store's row problems for this recipe
+	};
+
+	struct PieceRow
+	{
+		FormID                 actorID = 0;
+		std::string            actorName;
+		FormID                 armorID = 0;
+		std::string            armorName;
+		bool                   firstPerson = false;
+		std::vector<RecipeRow> recipes;  // merge order, lowest priority first
+	};
+
+	struct Snapshot
+	{
+		// The rows by their names, so Manager::Snapshot::PieceRow still reads.
+		using SignalRow = Studio::SignalRow;
+		using TextRow = Studio::TextRow;
+		using LayerRow = Studio::LayerRow;
+		using ScalarRow = Studio::ScalarRow;
+		using OutputRow = Studio::OutputRow;
+		using ImageRow = Studio::ImageRow;
+		using SlotRow = Studio::SlotRow;
+		using GeometryRow = Studio::GeometryRow;
+		using RecipeRow = Studio::RecipeRow;
+		using PieceRow = Studio::PieceRow;
+
+		std::vector<PieceRow> pieces;
+	};
+}

@@ -1,0 +1,6 @@
+Verbatim copy of src/TruePBR/BSLightingShaderMaterialPBR.h from
+https://github.com/doodlum/skyrim-community-shaders
+commit dd2677fc4020db1da91b39cebef3dbfbe8913983 (2026-08-25).
+The data-member block is byte-identical to the v1.8.3 release tag
+(2f2919a71bed6132b125e41781304c8f6f73d002), which is the installed version.
+Not compiled; src/PBRMaterial.h mirrors the layout and static_asserts it.

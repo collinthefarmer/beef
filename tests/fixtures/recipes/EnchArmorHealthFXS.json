@@ -1,0 +1,240 @@
+{
+  "format": 1,
+  "name": "EnchArmorHealthFXS",
+  "description": "Imported from effect shader EnchArmorHealthFXS with the shipped defaults.",
+  "imported": "WornEnchantmentPBR 0.1.0",
+  "keys": [
+    {
+      "effectShader": "EnchArmorHealthFXS"
+    }
+  ],
+  "signals": {
+    "fillLevel": {
+      "efsh": {
+        "field": "fillAlpha",
+        "record": "EnchArmorHealthFXS"
+      },
+      "curve": "@rest"
+    },
+    "edgeLevel": {
+      "efsh": {
+        "field": "edgeAlpha",
+        "record": "EnchArmorHealthFXS"
+      },
+      "curve": "@edgeRest"
+    },
+    "edgeColor": {
+      "efsh": {
+        "field": "edgeColor",
+        "record": "EnchArmorHealthFXS"
+      }
+    },
+    "scroll": {
+      "efsh": {
+        "field": "scroll",
+        "record": "EnchArmorHealthFXS"
+      }
+    },
+    "glowHue": {
+      "constant": [
+        1.0,
+        0.028571429,
+        0.028571429
+      ]
+    },
+    "glowStrength": {
+      "constant": 1.0
+    },
+    "glowLevel": {
+      "expr": "@glowStrength * @fillLevel"
+    },
+    "sheenScale": {
+      "constant": 0.5
+    },
+    "sheenWeight": {
+      "expr": "clamp(@edgeLevel * @sheenScale, 0, 1)"
+    },
+    "sheenScroll": {
+      "expr": "@scroll + 0.5"
+    },
+    "shimmerScale": {
+      "constant": 0.1
+    },
+    "heightScale": {
+      "expr": "@shimmerScale * clamp(@fillLevel, 0, 2)"
+    },
+    "shimmerScroll": {
+      "expr": "@scroll + 0.25"
+    },
+    "glossBoost": {
+      "constant": 0.25
+    },
+    "glossAmount": {
+      "expr": "@glossBoost * saturate(@fillLevel)"
+    },
+    "lightLevel": {
+      "expr": "clamp(@fillLevel, 0, 2)"
+    },
+    "shellOpacity": {
+      "expr": "saturate(0.5 * clamp(@fillLevel, 0, 2))"
+    },
+    "inflate": {
+      "expr": "(1 + 1 * clamp(@fillLevel, 0, 2)) * 0.01"
+    }
+  },
+  "curves": {
+    "rest": "x / 0.05",
+    "edgeRest": "x / 0.8",
+    "crisp": "(x - mean) * 3 + 0.5",
+    "punchy": "(x - mean) * 2 + 0.5"
+  },
+  "sources": {
+    "fill": {
+      "image": {
+        "path": "Effects\\VaporTile01.dds",
+        "scroll": "@scroll",
+        "tile": [
+          2.0,
+          2.0
+        ]
+      }
+    },
+    "sheenField": {
+      "image": {
+        "path": "Effects\\VaporTile01.dds",
+        "channel": "luma",
+        "scroll": "@sheenScroll",
+        "tile": [
+          2.0,
+          2.0
+        ],
+        "mirror": [
+          false,
+          true
+        ]
+      }
+    },
+    "shimmerField": {
+      "image": {
+        "path": "Effects\\VaporTile01.dds",
+        "channel": "luma",
+        "scroll": "@shimmerScroll",
+        "tile": [
+          2.0,
+          2.0
+        ],
+        "transpose": true,
+        "mip": 2.0
+      }
+    },
+    "glossField": {
+      "image": {
+        "path": "Effects\\VaporTile01.dds",
+        "channel": "luma",
+        "scroll": "@scroll",
+        "tile": [
+          2.0,
+          2.0
+        ],
+        "mip": 1.0
+      }
+    },
+    "relief": {
+      "material": "relief"
+    },
+    "metallic": {
+      "material": "metallic"
+    }
+  },
+  "masks": {
+    "metal": "@metallic"
+  },
+  "outputs": [
+    {
+      "target": "shell",
+      "slot": "emissive",
+      "strength": "@glowLevel",
+      "stack": [
+        {
+          "source": "@fill",
+          "opacity": 1.0,
+          "color": "@glowHue",
+          "mask": "@metal"
+        }
+      ]
+    },
+    {
+      "target": "shell",
+      "slot": "fuzz",
+      "color": "@edgeColor",
+      "weight": "@sheenWeight",
+      "stack": [
+        {
+          "source": [
+            1.0,
+            1.0,
+            1.0
+          ],
+          "opacity": 1.0
+        },
+        {
+          "source": "@sheenField",
+          "opacity": 1.0,
+          "channels": "a"
+        }
+      ]
+    },
+    {
+      "target": "material",
+      "slot": "height",
+      "scale": "@heightScale",
+      "stack": [
+        {
+          "source": "@relief",
+          "curve": "@crisp",
+          "opacity": 1.0
+        },
+        {
+          "source": "@shimmerField",
+          "blend": "add",
+          "opacity": 0.35
+        }
+      ]
+    },
+    {
+      "target": "material",
+      "slot": "rmaos",
+      "stack": [
+        {
+          "source": "@glossField",
+          "curve": "@punchy",
+          "blend": "subtract",
+          "opacity": "@glossAmount",
+          "channels": "r"
+        }
+      ]
+    },
+    {
+      "target": "light",
+      "bones": {
+        "skinned": {
+          "max": 2
+        }
+      },
+      "color": "@glowHue",
+      "intensity": "@lightLevel",
+      "size": 1.4,
+      "cutoff": 0.05
+    }
+  ],
+  "shell": {
+    "alpha": "@shellOpacity",
+    "pose": {
+      "inflate": [
+        0.0,
+        "@inflate",
+        "@inflate"
+      ]
+    }
+  }
+}

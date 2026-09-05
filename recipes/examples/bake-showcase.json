@@ -1,0 +1,54 @@
+{
+  "format": 1,
+  "name": "Bake showcase",
+  "author": "WornEnchantmentPBR",
+  "description": "Every geometry bake, the distance source, two ripples, a blue clearcoat, a smoothed body and glints on the cuirass, on the material's own emissive slot: position as colour on the body partition, brighter on upward faces, lifted where the spine bone carries the mesh. Keyed by the ArmorCuirass keyword so it stacks on whatever enchantment recipe the cuirass resolves to; priority 50 puts it after an effect shader recipe and its emissive output replaces that recipe's. Use Isolate in the menu to hide the rest. Remove this file once the bakes are checked.",
+  "keys": [ { "keyword": "ArmorCuirass" } ],
+  "priority": 50,
+
+  "signals": {
+    "strength": { "constant": 1.5 },
+    "worn":     { "trigger": { "event": "equip", "lifetime": 2.5, "max": 1 } },
+    "struck":   { "trigger": { "event": "hit.received", "lifetime": 1.5, "max": 3 } }
+  },
+
+  "sources": {
+    "position": { "bake": "position" },
+    "local":    { "bake": "localPosition" },
+    "up":       { "bake": "worldUp" },
+    "body":     { "bake": { "partition": 32 } },
+    "spine":    { "bake": { "boneWeight": ["NPC Spine2 [Spn2]"] } },
+    "fromSpine": { "distance": "NPC Spine2 [Spn2]" },
+    "equipRing": { "ripple": { "trigger": "@worn", "speed": 60, "width": 6, "decay": 0.8 } },
+    "hitRing":   { "ripple": { "trigger": "@struck", "speed": 120, "width": 8, "decay": 1.5 } }
+  },
+
+  "masks": {
+    "bodyMask":  "@body",
+    "spineMask": "@spine",
+    "nearSpine": "1 - smoothstep(0.1, 0.25, @fromSpine)",
+    "rings":     "max(@equipRing, @hitRing)"
+  },
+
+  "outputs": [
+    { "target": "material", "slot": "emissive", "strength": "@strength", "replace": true,
+      "stack": [
+        { "source": "@position", "opacity": 1.0, "mask": "@bodyMask" },
+        { "source": "@local", "blend": "lerp", "opacity": 0.35 },
+        { "source": "@up", "blend": "multiply", "opacity": 0.5 },
+        { "source": [1, 1, 1], "blend": "add", "opacity": 0.3, "mask": "@spineMask" },
+        { "source": [0.2, 0.2, 0.2], "blend": "add", "opacity": 1.0, "mask": "@nearSpine" },
+        { "source": [1, 1, 1], "blend": "add", "opacity": 1.0, "mask": "@rings" }
+      ] },
+    { "target": "material", "slot": "coat", "roughness": 0.15, "level": 0.6,
+      "stack": [
+        { "source": [0.3, 0.6, 1.0], "opacity": 1.0, "mask": "@bodyMask" }
+      ] },
+    { "target": "material", "slot": "rmaos",
+      "stack": [
+        { "source": [0.6, 0, 0], "blend": "subtract", "opacity": 1.0, "channels": "r", "mask": "@bodyMask" }
+      ] },
+    { "target": "material", "slot": "glint", "screenSpaceScale": 2.0, "logMicrofacetDensity": 16, "microfacetRoughness": 0.02, "densityRandomization": 3,
+      "stack": [] }
+  ]
+}

@@ -1,0 +1,52 @@
+{
+  "formKey": "0x92DEC~Skyrim.esm",
+  "editorId": "EnchArmorHealthFXS",
+  "fillTexture": "Effects\\VaporTile01.dds",
+  "fillColorKey1": [
+    45,
+    45,
+    45
+  ],
+  "fillAlphaFadeInTime": 0.0,
+  "fillFullAlphaTime": 0.0,
+  "fillAlphaFadeOutTime": 1.0,
+  "fillPersistentAlphaRatio": 0.05,
+  "fillAlphaPulseAmplitude": 0.0,
+  "fillAlphaPulseFrequency": 1.0,
+  "fillTextureAnimationSpeedU": 0.0,
+  "fillTextureAnimationSpeedV": 0.05,
+  "edgeFallOff": 1.75,
+  "edgeColor": [
+    105,
+    3,
+    3
+  ],
+  "edgeAlphaFadeInTime": 0.0,
+  "edgeFullAlphaTime": 0.0,
+  "edgeAlphaFadeOutTime": 1.0,
+  "edgePersistentAlphaRatio": 0.8,
+  "edgeAlphaPulseAmplitude": 0.1,
+  "edgeAlphaPulseFrequency": 0.25,
+  "fillFullAlphaRatio": 0.05,
+  "edgeFullAlphaRatio": 0.8,
+  "fillColorKey2": [
+    41,
+    41,
+    41
+  ],
+  "fillColorKey3": [
+    39,
+    39,
+    39
+  ],
+  "fillColorKey1Scale": 1.0,
+  "fillColorKey2Scale": 1.0,
+  "fillColorKey3Scale": 1.0,
+  "fillColorKey1Time": 0.0,
+  "fillColorKey2Time": 0.0,
+  "fillColorKey3Time": 0.0,
+  "colorScale": 1.5,
+  "flags": 196620,
+  "fillTextureScaleU": 2.0,
+  "fillTextureScaleV": 2.0
+}

@@ -1,0 +1,103 @@
+{
+  "format": 1,
+  "name": "Conjuration breath",
+  "author": "WornEnchantmentPBR",
+  "version": "1.0",
+  "description": "Fortify Conjuration: a dim violet glow held to the metal of the piece that breathes in and out over seven seconds. On the exhale the metal blooms from the chest outward and the light swells; on the inhale the surface sinks into itself (parallax) and the glow retreats into the grooves. Detail from the material's own metallic, roughness and relief maps, the mesh's upward faces, the distance from the spine, and a slow-drifting swirl field. Every slot it touches is replaced, so the imported shader recipe for the enchantment steps aside.",
+  "keys": [ { "magicEffect": "EnchFortifyConjurationConstantSelf" } ],
+  "clock": { "speed": 1.0 },
+
+  "signals": {
+    "breath":      { "pulse": { "base": 0.0, "amplitude": 1.0, "period": 7.0, "phase": 0.0, "waveform": "sine" }, "curve": "@ease" },
+    "inhale":      { "expr": "1 - @breath" },
+
+    "glowHue":     { "constant": [0.42, 0.12, 0.92] },
+    "deepHue":     { "constant": [0.22, 0.03, 0.55] },
+    "lilacHue":    { "constant": [0.72, 0.52, 1.0] },
+    "lightHue":    { "constant": [0.48, 0.18, 1.0] },
+
+    "glowFloor":   { "constant": 0.28 },
+    "glowRange":   { "constant": 0.55 },
+    "glowLevel":   { "expr": "@glowFloor + @glowRange * @breath" },
+
+    "bloomLevel":  { "expr": "0.55 * @breath" },
+    "grooveLevel": { "expr": "0.5 * @inhale" },
+    "edgeLevel":   { "expr": "0.18 + 0.12 * @breath" },
+    "sinkDepth":   { "constant": 0.85 },
+    "sinkLevel":   { "expr": "@sinkDepth * @inhale" },
+    "grooveSink":  { "expr": "0.6 * @inhale" },
+    "polishLevel": { "expr": "0.45 * @breath" },
+    "sheenWeight": { "expr": "0.12 + 0.25 * @breath" },
+
+    "lightFloor":  { "constant": 0.35 },
+    "lightRange":  { "constant": 0.9 },
+    "lightLevel":  { "expr": "@lightFloor + @lightRange * @breath" },
+    "shellAlpha":  { "expr": "0.7 + 0.3 * @breath" },
+    "swell":       { "expr": "0.004 + 0.004 * @breath" }
+  },
+
+  "curves": {
+    "ease":   "x * x * (3 - 2 * x)",
+    "heart":  "1 - smoothstep(0.04, 0.42, x)",
+    "punchy": "(x - mean) * 2 + 0.5"
+  },
+
+  "sources": {
+    "metallic":  { "material": "metallic" },
+    "roughness": { "material": "roughness" },
+    "relief":    { "material": "relief" },
+    "up":        { "bake": "worldUp" },
+    "fromChest": { "distance": "NPC Spine2 [Spn2]" },
+    "swirl":     { "image": { "path": "Effects\\DarkSwirls.dds", "channel": "luma", "scroll": [0.011, -0.006], "tile": [4, 4] } },
+    "swirlFine": { "image": { "path": "Effects\\DarkSwirls.dds", "channel": "luma", "scroll": [-0.02, 0.013], "tile": [9, 9], "transpose": true, "mip": 1 } }
+  },
+
+  "masks": {
+    "metal":    "smoothstep(0.35, 0.65, @metallic)",
+    "polished": "@metal * smoothstep(0.45, 0.75, 1 - @roughness)",
+    "groove":   "@metal * (1 - smoothstep(0.3, 0.6, @relief))",
+    "ridge":    "@metal * smoothstep(0.55, 0.85, @relief)",
+    "lit":      "@metal * smoothstep(0.2, 0.9, @up)",
+    "chest":    "@metal * (1 - smoothstep(0.05, 0.45, @fromChest))",
+    "drift":    "@metal * smoothstep(0.3, 0.8, @swirl)"
+  },
+
+  "outputs": [
+    { "target": "shell", "slot": "emissive", "strength": "@glowLevel", "replace": true,
+      "stack": [
+        { "source": [1, 1, 1],    "blend": "replace",  "opacity": 1.0,            "color": "@deepHue",  "mask": "@metal" },
+        { "source": "@swirl",     "blend": "lerp",     "opacity": 0.55,           "color": "@glowHue",  "mask": "@metal" },
+        { "source": "@swirlFine", "blend": "add",      "opacity": 0.18,           "color": "@glowHue",  "mask": "@drift" },
+        { "source": "@fromChest", "curve": "@heart", "blend": "add", "opacity": "@bloomLevel", "color": "@glowHue", "mask": "@metal" },
+        { "source": [1, 1, 1],    "blend": "add",      "opacity": "@grooveLevel", "color": "@glowHue",  "mask": "@groove" },
+        { "source": "@up",        "blend": "add",      "opacity": "@edgeLevel",   "color": "@lilacHue", "mask": "@lit" },
+        { "source": [1, 1, 1],    "blend": "subtract", "opacity": 0.35,           "mask": "@ridge" }
+      ] },
+
+    { "target": "shell", "slot": "fuzz", "color": "@deepHue", "weight": "@sheenWeight", "replace": true,
+      "stack": [
+        { "source": [1, 1, 1],  "blend": "replace", "opacity": 1.0 },
+        { "source": "@swirl",   "blend": "replace", "opacity": 1.0, "channels": "a", "mask": "@metal" }
+      ] },
+
+    { "target": "material", "slot": "height", "scale": 0.7, "replace": true,
+      "stack": [
+        { "source": [0.34, 0.34, 0.34], "blend": "lerp",     "opacity": "@sinkLevel",  "mask": "@chest" },
+        { "source": [0.12, 0.12, 0.12], "blend": "subtract", "opacity": "@grooveSink", "mask": "@groove" },
+        { "source": "@swirlFine", "curve": "@punchy", "blend": "add", "opacity": 0.06, "mask": "@metal" }
+      ] },
+
+    { "target": "material", "slot": "rmaos", "replace": true,
+      "stack": [
+        { "source": [0.3, 0, 0], "blend": "subtract", "opacity": "@polishLevel", "channels": "r", "mask": "@polished" }
+      ] },
+
+    { "target": "light", "bones": { "skinned": { "max": 2 } }, "offset": [0, 0, 0], "replace": true,
+      "color": "@lightHue", "intensity": "@lightLevel", "size": 1.8, "cutoff": 0.05, "shadow": false }
+  ],
+
+  "shell": {
+    "material": "pbrCopy", "blend": "additive", "depthBias": true, "alpha": "@shellAlpha",
+    "pose": { "inflate": [0, "@swell", "@swell"] }
+  }
+}

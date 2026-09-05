@@ -1,0 +1,159 @@
+{
+  "format": 1,
+  "name": "WaterBreathingFXS",
+  "description": "Imported from effect shader WaterBreathingFXS with the shipped defaults.",
+  "imported": "WornEnchantmentPBR 0.1.0",
+  "keys": [
+    {
+      "effectShader": "WaterBreathingFXS"
+    }
+  ],
+  "signals": {
+    "fillLevel": {
+      "efsh": {
+        "field": "fillAlpha",
+        "record": "WaterBreathingFXS"
+      },
+      "curve": "@rest"
+    },
+    "edgeLevel": {
+      "efsh": {
+        "field": "edgeAlpha",
+        "record": "WaterBreathingFXS"
+      },
+      "curve": "@edgeRest"
+    },
+    "edgeColor": {
+      "efsh": {
+        "field": "edgeColor",
+        "record": "WaterBreathingFXS"
+      }
+    },
+    "scroll": {
+      "efsh": {
+        "field": "scroll",
+        "record": "WaterBreathingFXS"
+      }
+    },
+    "glowHue": {
+      "constant": [
+        0.5365854,
+        0.86585367,
+        1.0
+      ]
+    },
+    "glowStrength": {
+      "constant": 1.0
+    },
+    "glowLevel": {
+      "expr": "@glowStrength * @fillLevel"
+    },
+    "sheenScale": {
+      "constant": 0.5
+    },
+    "sheenWeight": {
+      "expr": "clamp(@edgeLevel * @sheenScale, 0, 1)"
+    },
+    "shimmerScale": {
+      "constant": 0.1
+    },
+    "heightScale": {
+      "expr": "@shimmerScale * clamp(@fillLevel, 0, 2)"
+    },
+    "lightLevel": {
+      "expr": "clamp(@fillLevel, 0, 2)"
+    },
+    "shellOpacity": {
+      "expr": "saturate(0.5 * clamp(@fillLevel, 0, 2))"
+    },
+    "inflate": {
+      "expr": "(1 + 1 * clamp(@fillLevel, 0, 2)) * 0.01"
+    }
+  },
+  "curves": {
+    "rest": "x / 0.1",
+    "edgeRest": "x / 1",
+    "crisp": "(x - mean) * 3 + 0.5",
+    "punchy": "(x - mean) * 2 + 0.5"
+  },
+  "sources": {
+    "relief": {
+      "material": "relief"
+    },
+    "metallic": {
+      "material": "metallic"
+    }
+  },
+  "masks": {
+    "metal": "@metallic"
+  },
+  "outputs": [
+    {
+      "target": "shell",
+      "slot": "emissive",
+      "strength": "@glowLevel",
+      "stack": [
+        {
+          "source": [
+            1.0,
+            1.0,
+            1.0
+          ],
+          "opacity": 1.0,
+          "color": "@glowHue",
+          "mask": "@metal"
+        }
+      ]
+    },
+    {
+      "target": "shell",
+      "slot": "fuzz",
+      "color": "@edgeColor",
+      "weight": "@sheenWeight",
+      "stack": [
+        {
+          "source": [
+            1.0,
+            1.0,
+            1.0
+          ],
+          "opacity": 1.0
+        }
+      ]
+    },
+    {
+      "target": "material",
+      "slot": "height",
+      "scale": "@heightScale",
+      "stack": [
+        {
+          "source": "@relief",
+          "curve": "@crisp",
+          "opacity": 1.0
+        }
+      ]
+    },
+    {
+      "target": "light",
+      "bones": {
+        "skinned": {
+          "max": 2
+        }
+      },
+      "color": "@glowHue",
+      "intensity": "@lightLevel",
+      "size": 1.4,
+      "cutoff": 0.05
+    }
+  ],
+  "shell": {
+    "alpha": "@shellOpacity",
+    "pose": {
+      "inflate": [
+        0.0,
+        "@inflate",
+        "@inflate"
+      ]
+    }
+  }
+}

@@ -1,0 +1,52 @@
+{
+  "formKey": "0x92DED~Skyrim.esm",
+  "editorId": "EnchArmorMagickaFXS",
+  "fillTexture": "Effects\\DarkSwirls.dds",
+  "fillColorKey1": [
+    102,
+    102,
+    102
+  ],
+  "fillAlphaFadeInTime": 0.0,
+  "fillFullAlphaTime": 0.0,
+  "fillAlphaFadeOutTime": 1.0,
+  "fillPersistentAlphaRatio": 0.05,
+  "fillAlphaPulseAmplitude": 0.0,
+  "fillAlphaPulseFrequency": 1.0,
+  "fillTextureAnimationSpeedU": 0.0,
+  "fillTextureAnimationSpeedV": 0.1,
+  "edgeFallOff": 1.2,
+  "edgeColor": [
+    20,
+    50,
+    129
+  ],
+  "edgeAlphaFadeInTime": 0.0,
+  "edgeFullAlphaTime": 0.0,
+  "edgeAlphaFadeOutTime": 1.0,
+  "edgePersistentAlphaRatio": 0.9,
+  "edgeAlphaPulseAmplitude": 0.1,
+  "edgeAlphaPulseFrequency": 0.4,
+  "fillFullAlphaRatio": 0.05,
+  "edgeFullAlphaRatio": 0.9,
+  "fillColorKey2": [
+    95,
+    95,
+    95
+  ],
+  "fillColorKey3": [
+    79,
+    79,
+    79
+  ],
+  "fillColorKey1Scale": 1.0,
+  "fillColorKey2Scale": 1.0,
+  "fillColorKey3Scale": 1.0,
+  "fillColorKey1Time": 0.0,
+  "fillColorKey2Time": 0.0,
+  "fillColorKey3Time": 0.0,
+  "colorScale": 1.5,
+  "flags": 196620,
+  "fillTextureScaleU": 3.0,
+  "fillTextureScaleV": 3.0
+}

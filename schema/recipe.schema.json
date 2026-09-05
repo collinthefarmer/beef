@@ -1,0 +1,280 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/collin/WornEnchantmentPBR/schema/recipe.schema.json",
+  "title": "WornEnchantmentPBR recipe, format 1",
+  "description": "One recipe: what an enchantment, material or armor looks like, as signals, sources, masks and per-output layer stacks. Strings starting with @ reference another row; enum values are bare strings; anything discriminated is a one-key object.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["format", "keys"],
+  "properties": {
+    "format": { "const": 1 },
+    "name": { "type": "string" },
+    "author": { "type": "string" },
+    "description": { "type": "string" },
+    "version": { "type": "string" },
+    "imported": { "type": "string", "description": "\"<plugin> <version>\": written by the importer; present means generated and not yet edited. Delete it on taking ownership; a menu save drops it." },
+    "meta": { "type": "object", "description": "Free-form, kept verbatim through load and save." },
+    "keys": { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/key" } },
+    "priority": { "type": "integer", "description": "Merge order among matching recipes, lower first. Default by the matched key's kind: default 0, material 10, keyword 20, armor 30, effectShader 40, enchantment 50, magicEffect 60." },
+    "clock": {
+      "type": "object", "additionalProperties": false,
+      "properties": { "speed": { "type": "number", "default": 1.0 } }
+    },
+    "signals": { "type": "object", "propertyNames": { "$ref": "#/$defs/name" }, "additionalProperties": { "$ref": "#/$defs/signal" } },
+    "curves": { "type": "object", "propertyNames": { "$ref": "#/$defs/name" }, "additionalProperties": { "$ref": "#/$defs/expression", "description": "An expression in the free variable x (and mean, the source's mean, where a source is being shaped)." } },
+    "sources": { "type": "object", "propertyNames": { "$ref": "#/$defs/name" }, "additionalProperties": { "$ref": "#/$defs/source" } },
+    "masks": { "type": "object", "propertyNames": { "$ref": "#/$defs/name" }, "additionalProperties": { "$ref": "#/$defs/expression", "description": "Evaluated per texel; source and mask names stand for images, signal names for the tick's scalars." } },
+    "outputs": { "type": "array", "items": { "$ref": "#/$defs/output" } },
+    "shell": { "$ref": "#/$defs/shell" },
+    "variants": { "type": "array", "items": { "$ref": "#/$defs/variant" } }
+  },
+
+  "$defs": {
+    "name": { "type": "string", "pattern": "^[A-Za-z_][A-Za-z0-9_]*$" },
+    "ref": { "type": "string", "pattern": "^@[A-Za-z_][A-Za-z0-9_]*$", "description": "A reference to another row: @name." },
+    "expression": { "type": "string", "minLength": 1, "description": "Numbers, [r, g, b] literals, @name, + - * /, parentheses, comparisons yielding 0 or 1, and/or/not, if(c, a, b), abs min max clamp saturate floor ceil frac sqrt pow sin cos step smoothstep lerp, time, pi. Component-wise on vectors; division by zero is 0; no ^." },
+    "curveRef": { "$ref": "#/$defs/expression", "description": "@name of a declared curve, or an inline expression in x." },
+    "form": { "type": "string", "minLength": 1, "pattern": "^(0[xX][0-9A-Fa-f]{1,8}~.+\\.(esm|esp|esl|ESM|ESP|ESL)|[A-Za-z_][A-Za-z0-9_]*)$", "description": "An editor ID, or 0x<local id>~<plugin file>." },
+    "glob": { "type": "string", "minLength": 1, "description": "* is the only wildcard; case-insensitive; / and \\ are equal." },
+    "eventId": { "type": "string", "pattern": "^[A-Za-z_][A-Za-z0-9_.*]*$" },
+    "node": { "type": "string", "minLength": 1, "description": "A skeleton node name, e.g. \"NPC L Foot [Lft ]\"." },
+
+    "param": { "oneOf": [ { "type": "number" }, { "$ref": "#/$defs/ref" } ], "description": "A number or @signal." },
+    "vec2": { "oneOf": [ { "type": "array", "minItems": 2, "maxItems": 2, "items": { "$ref": "#/$defs/param" } }, { "$ref": "#/$defs/ref" } ] },
+    "vec3": { "oneOf": [ { "type": "array", "minItems": 3, "maxItems": 3, "items": { "$ref": "#/$defs/param" } }, { "$ref": "#/$defs/ref" } ] },
+    "color": { "$ref": "#/$defs/vec3", "description": "[r, g, b]; components above 1 mean 0..255 on read, written back as 0..1." },
+    "numbers3": { "type": "array", "minItems": 3, "maxItems": 3, "items": { "type": "number" } },
+    "value": { "oneOf": [ { "type": "number" }, { "type": "array", "minItems": 2, "maxItems": 3, "items": { "type": "number" } } ] },
+
+    "key": {
+      "oneOf": [
+        { "const": "default" },
+        { "$ref": "#/$defs/oneKey", "properties": { "magicEffect": { "$ref": "#/$defs/form" } }, "required": ["magicEffect"] },
+        { "$ref": "#/$defs/oneKey", "properties": { "enchantment": { "$ref": "#/$defs/form" } }, "required": ["enchantment"] },
+        { "$ref": "#/$defs/oneKey", "properties": { "effectShader": { "$ref": "#/$defs/form" } }, "required": ["effectShader"] },
+        { "$ref": "#/$defs/oneKey", "properties": { "keyword": { "$ref": "#/$defs/form" } }, "required": ["keyword"] },
+        { "$ref": "#/$defs/oneKey", "properties": { "material": { "$ref": "#/$defs/glob" } }, "required": ["material"] },
+        { "$ref": "#/$defs/oneKey", "properties": { "armor": { "$ref": "#/$defs/form" } }, "required": ["armor"] }
+      ]
+    },
+    "oneKey": { "type": "object", "minProperties": 1, "maxProperties": 1 },
+
+    "selectorTerm": {
+      "oneOf": [
+        { "$ref": "#/$defs/oneKey", "properties": { "addon": { "$ref": "#/$defs/form" } }, "required": ["addon"] },
+        { "$ref": "#/$defs/oneKey", "properties": { "geometry": { "$ref": "#/$defs/glob" } }, "required": ["geometry"] },
+        { "$ref": "#/$defs/oneKey", "properties": { "texture": { "$ref": "#/$defs/glob" } }, "required": ["texture"] }
+      ]
+    },
+    "selector": { "type": "array", "items": { "$ref": "#/$defs/selectorTerm" }, "description": "Any term may match; empty means every geometry." },
+
+    "signal": {
+      "type": "object",
+      "description": "Exactly one kind key plus optional curve.",
+      "properties": { "curve": { "$ref": "#/$defs/curveRef" } },
+      "oneOf": [
+        { "$ref": "#/$defs/signalKind", "required": ["constant"], "properties": { "constant": { "$ref": "#/$defs/value" } } },
+        { "$ref": "#/$defs/signalKind", "required": ["pulse"], "properties": { "pulse": {
+            "type": "object", "additionalProperties": false,
+            "properties": {
+              "base": { "$ref": "#/$defs/param" }, "amplitude": { "$ref": "#/$defs/param" },
+              "period": { "$ref": "#/$defs/param" }, "phase": { "$ref": "#/$defs/param" },
+              "waveform": { "enum": ["sine", "triangle", "square", "saw"] } } } } },
+        { "$ref": "#/$defs/signalKind", "required": ["ramp"], "properties": { "ramp": {
+            "type": "object", "additionalProperties": false,
+            "properties": { "from": { "$ref": "#/$defs/param" }, "to": { "$ref": "#/$defs/param" }, "seconds": { "$ref": "#/$defs/param" } } } } },
+        { "$ref": "#/$defs/signalKind", "required": ["efsh"], "properties": { "efsh": {
+            "type": "object", "additionalProperties": false, "required": ["field", "record"],
+            "properties": { "field": { "enum": ["fillAlpha", "fillColor", "edgeAlpha", "edgeColor", "scroll"] }, "record": { "$ref": "#/$defs/form" } } } } },
+        { "$ref": "#/$defs/signalKind", "required": ["av"], "properties": { "av": { "oneOf": [
+            { "$ref": "#/$defs/name" },
+            { "type": "object", "additionalProperties": false, "required": ["of"],
+              "properties": { "of": { "$ref": "#/$defs/name" }, "measure": { "enum": ["current", "base", "permanent", "temporaryModifier", "damage", "max"] } } } ] } } },
+        { "$ref": "#/$defs/signalKind", "required": ["actorState"], "properties": { "actorState": { "enum": ["inCombat", "sneaking", "weaponDrawn", "hostileDistance"] } } },
+        { "$ref": "#/$defs/signalKind", "required": ["enchantment"], "properties": { "enchantment": { "enum": ["magnitude", "cost"] } } },
+        { "$ref": "#/$defs/signalKind", "required": ["trigger"], "properties": { "trigger": { "$ref": "#/$defs/trigger" } } },
+        { "$ref": "#/$defs/signalKind", "required": ["payload"], "properties": { "payload": {
+            "type": "object", "additionalProperties": false, "required": ["trigger", "field"],
+            "properties": { "trigger": { "$ref": "#/$defs/ref" }, "field": { "enum": ["value", "position", "normal"] } } } } },
+        { "$ref": "#/$defs/signalKind", "required": ["counter"], "properties": { "counter": {
+            "type": "object", "additionalProperties": false, "required": ["trigger"],
+            "properties": { "trigger": { "$ref": "#/$defs/ref" }, "reset": { "$ref": "#/$defs/ref" }, "cap": { "$ref": "#/$defs/param" } } } } },
+        { "$ref": "#/$defs/signalKind", "required": ["accumulate"], "properties": { "accumulate": {
+            "type": "object", "additionalProperties": false, "required": ["trigger"],
+            "properties": { "trigger": { "$ref": "#/$defs/ref" }, "decay": { "$ref": "#/$defs/param" } } } } },
+        { "$ref": "#/$defs/signalKind", "required": ["noise"], "properties": { "noise": {
+            "type": "object", "additionalProperties": false,
+            "properties": { "frequency": { "$ref": "#/$defs/param" }, "amplitude": { "$ref": "#/$defs/param" }, "seed": { "type": "integer", "minimum": 0 } } } } },
+        { "$ref": "#/$defs/signalKind", "required": ["gradient"], "properties": { "gradient": {
+            "type": "object", "additionalProperties": false, "required": ["t", "stops"],
+            "properties": {
+              "t": { "$ref": "#/$defs/param" },
+              "stops": { "type": "array", "minItems": 1, "items": {
+                "type": "object", "additionalProperties": false, "required": ["at", "color"],
+                "properties": { "at": { "type": "number" }, "color": { "$ref": "#/$defs/color" } } } } } } } },
+        { "$ref": "#/$defs/signalKind", "required": ["delta"], "properties": { "delta": { "$ref": "#/$defs/ref" } } },
+        { "$ref": "#/$defs/signalKind", "required": ["smooth"], "properties": { "smooth": {
+            "type": "object", "additionalProperties": false, "required": ["of"],
+            "properties": { "of": { "$ref": "#/$defs/ref" }, "seconds": { "$ref": "#/$defs/param" } } } } },
+        { "$ref": "#/$defs/signalKind", "required": ["expr"], "properties": { "expr": { "$ref": "#/$defs/expression" } } }
+      ]
+    },
+    "signalKind": {
+      "type": "object",
+      "propertyNames": { "enum": ["curve", "constant", "pulse", "ramp", "efsh", "av", "actorState", "enchantment", "trigger", "payload", "counter", "accumulate", "noise", "gradient", "delta", "smooth", "expr"] },
+      "minProperties": 1, "maxProperties": 2
+    },
+
+    "trigger": {
+      "type": "object",
+      "description": "A firing source: exactly one of event, plugin, when; lifetime and max are common.",
+      "properties": {
+        "lifetime": { "$ref": "#/$defs/param", "description": "Seconds a firing lives." },
+        "max": { "type": "integer", "minimum": 1, "description": "Live firings kept; older ones are dropped." }
+      },
+      "oneOf": [
+        { "type": "object", "required": ["event"], "additionalProperties": false,
+          "properties": {
+            "event": { "$ref": "#/$defs/eventId", "description": "Id glob on the bus: built-in anim.<graph event> and equip, or a provider's ids such as hit.received." },
+            "filter": { "type": "object", "additionalProperties": false,
+              "properties": { "node": { "$ref": "#/$defs/glob" }, "arg": { "$ref": "#/$defs/glob" },
+                "value": { "type": "array", "minItems": 2, "maxItems": 2, "items": { "type": ["number", "null"] } } } },
+            "at": { "$ref": "#/$defs/node", "description": "Node to use when the firing carries none." },
+            "lifetime": {}, "max": {} } },
+        { "type": "object", "required": ["plugin"], "additionalProperties": false,
+          "properties": { "plugin": { "$ref": "#/$defs/eventId", "description": "An id another SKSE plugin fires through the messaging channel." }, "lifetime": {}, "max": {} } },
+        { "type": "object", "required": ["when"], "additionalProperties": false,
+          "properties": {
+            "when": { "$ref": "#/$defs/ref", "description": "Fires on the tick this scalar goes from at most 0 to above 0." },
+            "value": { "$ref": "#/$defs/ref", "description": "Signal sampled into the firing's value." },
+            "lifetime": {}, "max": {} } }
+      ]
+    },
+
+    "source": {
+      "type": "object", "minProperties": 1, "maxProperties": 1,
+      "oneOf": [
+        { "required": ["image"], "properties": { "image": {
+            "type": "object", "additionalProperties": false, "required": ["path"],
+            "properties": {
+              "path": { "type": "string", "minLength": 1, "description": "Relative to Data/Textures." },
+              "channel": { "enum": ["rgb", "r", "g", "b", "a", "luma"] },
+              "space": { "enum": ["tiled", "mesh"] },
+              "scroll": { "$ref": "#/$defs/vec2" }, "tile": { "$ref": "#/$defs/vec2" },
+              "mirror": { "type": "array", "minItems": 2, "maxItems": 2, "items": { "type": "boolean" } },
+              "transpose": { "type": "boolean" }, "mip": { "type": "number", "minimum": 0 } } } } },
+        { "required": ["material"], "properties": { "material": { "enum": ["diffuseRgb", "diffuseLuma", "normalSlope", "roughness", "metallic", "occlusion", "reflectance", "displacement", "relief"] } } },
+        { "required": ["bake"], "properties": { "bake": { "oneOf": [
+            { "enum": ["position", "localPosition", "worldUp"] },
+            { "$ref": "#/$defs/oneKey", "required": ["partition"], "properties": { "partition": { "oneOf": [
+                { "enum": ["body", "hands", "forearms", "feet", "calves", "head", "hair", "amulet", "ring", "shield", "tail"] }, { "type": "integer", "minimum": 30, "maximum": 61 } ] } } },
+            { "$ref": "#/$defs/oneKey", "required": ["boneWeight"], "properties": { "boneWeight": { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/node" } } } } ] } } },
+        { "required": ["uv"], "properties": { "uv": { "enum": ["u", "v"] } } },
+        { "required": ["distance"], "properties": { "distance": { "oneOf": [
+            { "$ref": "#/$defs/node" },
+            { "type": "object", "additionalProperties": false, "required": ["from"], "properties": { "from": { "oneOf": [ { "$ref": "#/$defs/node" }, { "$ref": "#/$defs/numbers3" } ] } } } ] } } },
+        { "required": ["ripple"], "properties": { "ripple": {
+            "type": "object", "additionalProperties": false, "required": ["trigger"],
+            "properties": {
+              "trigger": { "$ref": "#/$defs/ref" }, "speed": { "$ref": "#/$defs/param" },
+              "width": { "$ref": "#/$defs/param" }, "decay": { "$ref": "#/$defs/param" },
+              "shape": { "enum": ["ring", "disc"] } } } } }
+      ]
+    },
+
+    "layer": {
+      "type": "object", "additionalProperties": false, "required": ["source", "opacity"],
+      "properties": {
+        "source": { "oneOf": [ { "$ref": "#/$defs/ref" }, { "$ref": "#/$defs/numbers3" } ], "description": "@source, @mask, or a constant colour." },
+        "curve": { "$ref": "#/$defs/curveRef" },
+        "blend": { "enum": ["replace", "multiply", "add", "subtract", "screen", "lerp", "normal"], "default": "replace" },
+        "opacity": { "$ref": "#/$defs/param" },
+        "color": { "$ref": "#/$defs/color" },
+        "mask": { "$ref": "#/$defs/ref" },
+        "channels": { "type": "string", "pattern": "^(?=.*[rgba])[rgba]{1,4}$" }
+      }
+    },
+
+    "output": {
+      "oneOf": [
+        { "type": "object", "required": ["target", "slot"],
+          "properties": {
+            "target": { "enum": ["material", "shell"] },
+            "slot": { "enum": ["diffuse", "emissive", "rmaos", "normal", "height", "fuzz", "glint", "coat", "subsurface"] },
+            "strength": { "$ref": "#/$defs/param", "description": "emissive: the property's emissive multiplier." },
+            "scale": { "$ref": "#/$defs/param", "description": "height: displacement scale." },
+            "color": { "$ref": "#/$defs/color", "description": "fuzz or subsurface colour." },
+            "weight": { "$ref": "#/$defs/param", "description": "fuzz weight." },
+            "screenSpaceScale": { "$ref": "#/$defs/param" }, "logMicrofacetDensity": { "$ref": "#/$defs/param" },
+            "microfacetRoughness": { "$ref": "#/$defs/param" }, "densityRandomization": { "$ref": "#/$defs/param" },
+            "roughness": { "$ref": "#/$defs/param", "description": "coat roughness." }, "level": { "$ref": "#/$defs/param", "description": "coat level." },
+            "thickness": { "$ref": "#/$defs/param", "description": "subsurface thickness." },
+            "selector": { "$ref": "#/$defs/selector" },
+            "replace": { "type": "boolean", "description": "Drop lower-priority recipes' stacks and scalars on this slot." },
+            "stack": { "type": "array", "items": { "$ref": "#/$defs/layer" } }
+          },
+          "additionalProperties": false,
+          "allOf": [
+            { "if": { "properties": { "slot": { "const": "emissive" } } }, "then": { "required": ["strength"] } },
+            { "if": { "properties": { "slot": { "const": "height" } } }, "then": { "required": ["scale"] } },
+            { "if": { "properties": { "slot": { "const": "fuzz" } } }, "then": { "required": ["color", "weight"] } },
+            { "if": { "properties": { "slot": { "const": "coat" } } }, "then": { "required": ["roughness", "level"] } },
+            { "if": { "properties": { "slot": { "const": "subsurface" } } }, "then": { "required": ["color", "thickness"] } }
+          ] },
+        { "type": "object", "required": ["target", "bones", "color", "intensity"], "additionalProperties": false,
+          "properties": {
+            "target": { "const": "light" },
+            "bones": { "oneOf": [
+              { "$ref": "#/$defs/oneKey", "required": ["skinned"], "properties": { "skinned": {
+                  "type": "object", "additionalProperties": false,
+                  "properties": { "max": { "type": "integer", "minimum": 1 }, "minShare": { "type": "number", "minimum": 0, "maximum": 1 } } } } },
+              { "$ref": "#/$defs/oneKey", "required": ["named"], "properties": { "named": { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/node" } } } } ] },
+            "offset": { "$ref": "#/$defs/vec3", "description": "Bone space." },
+            "color": { "$ref": "#/$defs/color" },
+            "intensity": { "$ref": "#/$defs/param" },
+            "size": { "$ref": "#/$defs/param", "description": "ISL source size, 0.01..50." },
+            "cutoff": { "$ref": "#/$defs/param", "description": "ISL cutoff override, 0.01..1; 1 = default." },
+            "shadow": { "type": "boolean", "default": false, "description": "Shadow-casting; fixed at creation, subject to the engine's shadow-light cap." },
+            "bulb": { "$ref": "#/$defs/form", "description": "Optional LIGH form to create through the engine, inheriting its flags." },
+            "selector": { "$ref": "#/$defs/selector" },
+            "replace": { "type": "boolean" }
+          } }
+      ]
+    },
+
+    "shell": {
+      "type": "object", "additionalProperties": false,
+      "properties": {
+        "material": { "enum": ["pbrCopy", "vanilla"], "default": "pbrCopy" },
+        "blend": { "enum": ["additive", "alpha"], "default": "additive" },
+        "depthBias": { "type": "boolean", "default": true },
+        "alphaTest": { "type": "number", "minimum": 0, "maximum": 1, "default": 0 },
+        "alpha": { "$ref": "#/$defs/param" },
+        "rimPower": { "$ref": "#/$defs/param", "description": "Vanilla material only." },
+        "emissive": { "$ref": "#/$defs/param", "description": "Vanilla material only." },
+        "pose": {
+          "type": "object", "additionalProperties": false,
+          "properties": {
+            "inflate": { "$ref": "#/$defs/vec3", "description": "Fractions per bone-space axis; X runs along the bone." },
+            "offset": { "$ref": "#/$defs/vec3", "description": "World space." },
+            "scale": { "$ref": "#/$defs/param" },
+            "scalePoint": { "$ref": "#/$defs/numbers3" },
+            "spin": { "$ref": "#/$defs/param", "description": "Turns." },
+            "spinAxis": { "$ref": "#/$defs/numbers3" }
+          }
+        }
+      }
+    },
+
+    "variant": {
+      "type": "object", "additionalProperties": false, "required": ["name", "key"],
+      "properties": {
+        "name": { "type": "string", "minLength": 1 },
+        "key": { "oneOf": [
+          { "$ref": "#/$defs/oneKey", "required": ["armor"], "properties": { "armor": { "$ref": "#/$defs/form" } } },
+          { "$ref": "#/$defs/oneKey", "required": ["selector"], "properties": { "selector": { "$ref": "#/$defs/selector" } } } ] },
+        "overrides": { "type": "object", "propertyNames": { "$ref": "#/$defs/name" }, "additionalProperties": { "$ref": "#/$defs/value" } }
+      }
+    }
+  }
+}

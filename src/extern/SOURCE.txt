@@ -1,0 +1,10 @@
+Verbatim copy of resources/SKSEMenuFramework.h from
+https://github.com/QTR-Modding/SKSE-Menu-Framework-3 commit c97cdce (2026-09-03).
+That repository is licensed GPL-3.0; the installed framework is 3.13.0.
+The header resolves every function through GetProcAddress at runtime, so the
+plugin has no link-time dependency and idles without the framework.
+
+nlohmann/json.hpp is the single-header release v3.12.0 from
+https://github.com/nlohmann/json/releases/download/v3.12.0/json.hpp (MIT).
+Vendored rather than fetched so the native test build (tests/run-native.sh)
+needs no CMake configure step.
