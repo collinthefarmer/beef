@@ -617,7 +617,9 @@ namespace
 		static_assert(std::size(channels) == kSlotCount);
 		for (const auto& [slot, expected] : channels) {
 			Check(ChannelsOf(slot).ToString() == expected, std::format("channels of '{}' are '{}'", SlotName(slot), expected));
+			Check(!SlotChannelNote(slot).empty(), std::format("'{}' has a channel note", SlotName(slot)));
 		}
+		Check(SlotChannelNote(Slot::kHeight).starts_with("r only") && SlotChannelNote(Slot::kGlint).starts_with("no texture"), "the height and glint notes state their exceptions");
 
 		// ScalarOf: every field but kColor reaches its own member
 		SlotScalars sc;

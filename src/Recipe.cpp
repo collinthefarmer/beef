@@ -31,13 +31,6 @@ namespace WornEnchantmentPBR
 			});
 		}
 
-		bool IsName(std::string_view a_text) noexcept
-		{
-			if (a_text.empty() || !(std::isalpha(static_cast<unsigned char>(a_text[0])) || a_text[0] == '_')) {
-				return false;
-			}
-			return std::ranges::all_of(a_text, [](char c) { return std::isalnum(static_cast<unsigned char>(c)) || c == '_'; });
-		}
 
 		struct SlotEntry
 		{
@@ -340,6 +333,31 @@ namespace WornEnchantmentPBR
 		default:
 			return ChannelSet{};
 		}
+	}
+
+	std::string_view SlotChannelNote(Slot a_slot) noexcept
+	{
+		switch (a_slot) {
+		case Slot::kDiffuse:
+			return "r, g, b: albedo; a: on a shell, per-texel visibility (with the shell's alpha blend and alpha test)";
+		case Slot::kEmissive:
+			return "r, g, b: emitted colour, scaled by strength; no alpha";
+		case Slot::kRmaos:
+			return "r: roughness; g: metallic; b: ambient occlusion; a: reflectance (f0)";
+		case Slot::kNormal:
+			return "r, g, b: tangent-space normal; the normal blend reorients rather than replaces; no alpha";
+		case Slot::kHeight:
+			return "r only: height, offset by (r - 0.5) * scale; green, blue and alpha are never read";
+		case Slot::kFuzz:
+			return "r, g, b: fuzz colour; a: fuzz weight (the scalars set the base, the map modulates)";
+		case Slot::kGlint:
+			return "no texture: glint is its four scalars alone; channels do not apply";
+		case Slot::kCoat:
+			return "r, g, b: coat colour; a: coat strength; shares one map with subsurface, so a material takes one of the two";
+		case Slot::kSubsurface:
+			return "r, g, b: subsurface colour; a: thickness; shares one map with coat, so a material takes one of the two";
+		}
+		return "";
 	}
 
 	std::optional<Param>* ScalarOf(SlotScalars& a_scalars, ScalarField a_field) noexcept
@@ -936,6 +954,46 @@ namespace WornEnchantmentPBR
 			s.curve.reset();
 		}
 		return out;
+	}
+
+	std::string_view ShellMaterialName(ShellMaterial a_material) noexcept
+	{
+		return a_material == ShellMaterial::kVanilla ? "vanilla" : "pbrCopy";
+	}
+
+	std::optional<ShellMaterial> ParseShellMaterial(std::string_view a_name) noexcept
+	{
+		if (a_name == "pbrCopy") {
+			return ShellMaterial::kPbrCopy;
+		}
+		if (a_name == "vanilla") {
+			return ShellMaterial::kVanilla;
+		}
+		return std::nullopt;
+	}
+
+	std::string_view ShellBlendName(ShellBlend a_blend) noexcept
+	{
+		return a_blend == ShellBlend::kAlpha ? "alpha" : "additive";
+	}
+
+	std::optional<ShellBlend> ParseShellBlend(std::string_view a_name) noexcept
+	{
+		if (a_name == "additive") {
+			return ShellBlend::kAdditive;
+		}
+		if (a_name == "alpha") {
+			return ShellBlend::kAlpha;
+		}
+		return std::nullopt;
+	}
+
+	bool IsName(std::string_view a_text) noexcept
+	{
+		if (a_text.empty() || !(std::isalpha(static_cast<unsigned char>(a_text[0])) || a_text[0] == '_')) {
+			return false;
+		}
+		return std::ranges::all_of(a_text, [](char c) { return std::isalnum(static_cast<unsigned char>(c)) || c == '_'; });
 	}
 
 	// --------------------------------------------------------- classification

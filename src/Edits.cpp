@@ -1,6 +1,9 @@
 #include "Edits.h"
 
+#include "Expression.h"
+
 #include <algorithm>
+#include <cctype>
 #include <format>
 
 // Every edit follows one shape: find the row the edit names (or refuse with
@@ -459,6 +462,478 @@ namespace WornEnchantmentPBR::Studio
 			return std::nullopt;
 		}
 
+		// ------------------------------------------------------- rows
+
+		std::string CurveWhere(const std::string& a_curve)
+		{
+			return std::format("curve {}", a_curve);
+		}
+
+		Refusal Edit(Recipe& a_recipe, const AddSignal& a_edit)
+		{
+			if (!IsName(a_edit.name)) {
+				return Refuse(SignalWhere(a_edit.name), "names are letters, digits and underscores, not starting with a digit");
+			}
+			if (a_recipe.FindSignal(a_edit.name)) {
+				return Refuse(SignalWhere(a_edit.name), "a signal has that name");
+			}
+			a_recipe.signals.push_back(Signal{ a_edit.name, ConstantSignal{ 0.0f }, std::nullopt });
+			return std::nullopt;
+		}
+
+		Refusal Edit(Recipe& a_recipe, const AddCurve& a_edit)
+		{
+			if (!IsName(a_edit.name)) {
+				return Refuse(CurveWhere(a_edit.name), "names are letters, digits and underscores, not starting with a digit");
+			}
+			if (a_recipe.FindCurve(a_edit.name)) {
+				return Refuse(CurveWhere(a_edit.name), "a curve has that name");
+			}
+			a_recipe.curves.push_back(Curve{ a_edit.name, "x" });
+			return std::nullopt;
+		}
+
+		// ---------------------------------------------- reference walk
+		// Every place a recipe names a signal by reference, in place. Layer
+		// sources and masks name images, not signals, and are not visited.
+
+		template <class F>
+		void VisitRef(Ref& a_ref, F& a_visit)
+		{
+			a_visit(a_ref);
+		}
+
+		template <class F>
+		void VisitRef(std::optional<Ref>& a_ref, F& a_visit)
+		{
+			if (a_ref) {
+				a_visit(*a_ref);
+			}
+		}
+
+		template <class F>
+		void VisitParam(Param& a_param, F& a_visit)
+		{
+			if (auto* ref = Get<Ref>(a_param)) {
+				a_visit(*ref);
+			}
+		}
+
+		template <class F>
+		void VisitParam(std::optional<Param>& a_param, F& a_visit)
+		{
+			if (a_param) {
+				VisitParam(*a_param, a_visit);
+			}
+		}
+
+		template <std::size_t N, class F>
+		void VisitVector(std::variant<std::array<Param, N>, Ref>& a_param, F& a_visit)
+		{
+			if (auto* ref = Get<Ref>(a_param)) {
+				a_visit(*ref);
+			} else if (auto* parts = Get<std::array<Param, N>>(a_param)) {
+				for (auto& part : *parts) {
+					VisitParam(part, a_visit);
+				}
+			}
+		}
+
+		template <std::size_t N, class F>
+		void VisitVector(std::optional<std::variant<std::array<Param, N>, Ref>>& a_param, F& a_visit)
+		{
+			if (a_param) {
+				VisitVector(*a_param, a_visit);
+			}
+		}
+
+		template <class F>
+		void ForEachSignalRef(Recipe& a_recipe, F a_visit)
+		{
+			for (auto& signal : a_recipe.signals) {
+				Match(
+					signal.kind,
+					[&](PulseSignal& s) { VisitParam(s.base, a_visit); VisitParam(s.amplitude, a_visit); VisitParam(s.period, a_visit); VisitParam(s.phase, a_visit); },
+					[&](RampSignal& s) { VisitParam(s.from, a_visit); VisitParam(s.to, a_visit); VisitParam(s.seconds, a_visit); },
+					[&](TriggerSignal& s) {
+						VisitParam(s.lifetime, a_visit);
+						if (auto* when = Get<WhenSource>(s.source)) {
+							VisitRef(when->when, a_visit);
+							VisitRef(when->value, a_visit);
+						}
+					},
+					[&](PayloadSignal& s) { VisitRef(s.trigger, a_visit); },
+					[&](CounterSignal& s) { VisitRef(s.trigger, a_visit); VisitRef(s.reset, a_visit); VisitParam(s.cap, a_visit); },
+					[&](AccumulateSignal& s) { VisitRef(s.trigger, a_visit); VisitParam(s.decay, a_visit); },
+					[&](NoiseSignal& s) { VisitParam(s.frequency, a_visit); VisitParam(s.amplitude, a_visit); },
+					[&](GradientSignal& s) {
+						VisitParam(s.t, a_visit);
+						for (auto& stop : s.stops) {
+							VisitVector(stop.color, a_visit);
+						}
+					},
+					[&](DeltaSignal& s) { VisitRef(s.of, a_visit); },
+					[&](SmoothSignal& s) { VisitRef(s.of, a_visit); VisitParam(s.seconds, a_visit); },
+					[](auto&) {});
+			}
+			for (auto& source : a_recipe.sources) {
+				Match(
+					source.kind,
+					[&](ImageSource& s) { VisitVector(s.scroll, a_visit); VisitVector(s.tile, a_visit); },
+					[&](RippleSource& s) { VisitRef(s.trigger, a_visit); VisitParam(s.speed, a_visit); VisitParam(s.width, a_visit); VisitParam(s.decay, a_visit); },
+					[](auto&) {});
+			}
+			for (auto& output : a_recipe.outputs) {
+				Match(
+					output,
+					[&](MaterialOutput& o) {
+						auto& sc = o.scalars;
+						VisitParam(sc.strength, a_visit);
+						VisitParam(sc.scale, a_visit);
+						VisitVector(sc.color, a_visit);
+						VisitParam(sc.weight, a_visit);
+						VisitParam(sc.screenSpaceScale, a_visit);
+						VisitParam(sc.logMicrofacetDensity, a_visit);
+						VisitParam(sc.microfacetRoughness, a_visit);
+						VisitParam(sc.densityRandomization, a_visit);
+						VisitParam(sc.roughness, a_visit);
+						VisitParam(sc.level, a_visit);
+						VisitParam(sc.thickness, a_visit);
+						for (auto& layer : o.stack) {
+							VisitParam(layer.opacity, a_visit);
+							VisitVector(layer.color, a_visit);
+						}
+					},
+					[&](LightOutput& o) {
+						VisitVector(o.offset, a_visit);
+						VisitVector(o.color, a_visit);
+						VisitParam(o.intensity, a_visit);
+						VisitParam(o.size, a_visit);
+						VisitParam(o.cutoff, a_visit);
+					});
+			}
+			auto& shell = a_recipe.shell;
+			VisitParam(shell.alpha, a_visit);
+			VisitParam(shell.rimPower, a_visit);
+			VisitParam(shell.emissive, a_visit);
+			VisitVector(shell.pose.inflate, a_visit);
+			VisitVector(shell.pose.offset, a_visit);
+			VisitParam(shell.pose.scale, a_visit);
+			VisitParam(shell.pose.spin, a_visit);
+		}
+
+		// Every expression text, in place: expr signals, curves, masks, and
+		// the inline curves of signals and layers. Masks come with a flag so
+		// a signal rename can leave them alone when an image shares the name.
+		template <class F>
+		void ForEachText(Recipe& a_recipe, F a_visit)
+		{
+			for (auto& signal : a_recipe.signals) {
+				if (auto* expr = Get<ExprSignal>(signal.kind)) {
+					a_visit(expr->text, false);
+				}
+				if (signal.curve && !signal.curve->Named()) {
+					a_visit(signal.curve->text, false);
+				}
+			}
+			for (auto& curve : a_recipe.curves) {
+				a_visit(curve.text, false);
+			}
+			for (auto& mask : a_recipe.masks) {
+				a_visit(mask.text, true);
+			}
+			for (auto& output : a_recipe.outputs) {
+				if (auto* material = Get<MaterialOutput>(output)) {
+					for (auto& layer : material->stack) {
+						if (layer.curve && !layer.curve->Named()) {
+							a_visit(layer.curve->text, false);
+						}
+					}
+				}
+			}
+		}
+
+		// Every declared-curve reference ("@name" whole), in place.
+		template <class F>
+		void ForEachCurveRef(Recipe& a_recipe, F a_visit)
+		{
+			for (auto& signal : a_recipe.signals) {
+				if (signal.curve && signal.curve->Named()) {
+					a_visit(*signal.curve);
+				}
+			}
+			for (auto& output : a_recipe.outputs) {
+				if (auto* material = Get<MaterialOutput>(output)) {
+					for (auto& layer : material->stack) {
+						if (layer.curve && layer.curve->Named()) {
+							a_visit(*layer.curve);
+						}
+					}
+				}
+			}
+		}
+
+		Refusal Edit(Recipe& a_recipe, const RenameSignal& a_edit)
+		{
+			auto* signal = FindSignalRow(a_recipe, a_edit.from);
+			if (!signal) {
+				return Refuse(SignalWhere(a_edit.from), "no such signal");
+			}
+			if (!IsName(a_edit.to)) {
+				return Refuse(SignalWhere(a_edit.from), "names are letters, digits and underscores, not starting with a digit");
+			}
+			if (a_edit.to == a_edit.from) {
+				return std::nullopt;
+			}
+			if (a_recipe.FindSignal(a_edit.to)) {
+				return Refuse(SignalWhere(a_edit.from), std::format("a signal is already named '{}'", a_edit.to));
+			}
+			const bool imageShares = a_recipe.FindSource(a_edit.from) || a_recipe.FindMask(a_edit.from);
+			signal->name = a_edit.to;
+			ForEachSignalRef(a_recipe, [&](Ref& a_ref) {
+				if (a_ref.name == a_edit.from) {
+					a_ref.name = a_edit.to;
+				}
+			});
+			ForEachText(a_recipe, [&](std::string& a_text, bool a_mask) {
+				if (!(a_mask && imageShares)) {
+					a_text = RenameInExpression(a_text, a_edit.from, a_edit.to, false);
+				}
+			});
+			for (auto& variant : a_recipe.variants) {
+				const auto it = variant.overrides.find(a_edit.from);
+				if (it != variant.overrides.end()) {
+					Value value = it->second;
+					variant.overrides.erase(it);
+					variant.overrides.emplace(a_edit.to, value);
+				}
+			}
+			return std::nullopt;
+		}
+
+		Refusal Edit(Recipe& a_recipe, const RemoveSignal& a_edit)
+		{
+			const auto it = std::ranges::find(a_recipe.signals, a_edit.name, &Signal::name);
+			if (it == a_recipe.signals.end()) {
+				return Refuse(SignalWhere(a_edit.name), "no such signal");
+			}
+			const auto counts = CountReferences(a_recipe);
+			if (const auto found = counts.signals.find(a_edit.name); found != counts.signals.end() && found->second > 0) {
+				return Refuse(SignalWhere(a_edit.name), std::format("referenced in {} place(s)", found->second));
+			}
+			a_recipe.signals.erase(it);
+			return std::nullopt;
+		}
+
+		Refusal Edit(Recipe& a_recipe, const RemoveCurve& a_edit)
+		{
+			const auto it = std::ranges::find(a_recipe.curves, a_edit.name, &Curve::name);
+			if (it == a_recipe.curves.end()) {
+				return Refuse(CurveWhere(a_edit.name), "no such curve");
+			}
+			const auto counts = CountReferences(a_recipe);
+			if (const auto found = counts.curves.find(a_edit.name); found != counts.curves.end() && found->second > 0) {
+				return Refuse(CurveWhere(a_edit.name), std::format("referenced in {} place(s)", found->second));
+			}
+			a_recipe.curves.erase(it);
+			return std::nullopt;
+		}
+
+		Refusal Edit(Recipe& a_recipe, const RenameCurve& a_edit)
+		{
+			auto* curve = FindCurveRow(a_recipe, a_edit.from);
+			if (!curve) {
+				return Refuse(CurveWhere(a_edit.from), "no such curve");
+			}
+			if (!IsName(a_edit.to)) {
+				return Refuse(CurveWhere(a_edit.from), "names are letters, digits and underscores, not starting with a digit");
+			}
+			if (a_edit.to == a_edit.from) {
+				return std::nullopt;
+			}
+			if (a_recipe.FindCurve(a_edit.to)) {
+				return Refuse(CurveWhere(a_edit.from), std::format("a curve is already named '{}'", a_edit.to));
+			}
+			curve->name = a_edit.to;
+			ForEachCurveRef(a_recipe, [&](CurveRef& a_ref) {
+				if (a_ref.Named() == a_edit.from) {
+					a_ref.text = "@" + a_edit.to;
+				}
+			});
+			ForEachText(a_recipe, [&](std::string& a_text, bool) {
+				a_text = RenameInExpression(a_text, a_edit.from, a_edit.to, true);
+			});
+			return std::nullopt;
+		}
+
+		// ------------------------------------------------------- light
+
+		struct FoundLight
+		{
+			LightOutput* light = nullptr;
+			Refusal      problem;
+		};
+
+		FoundLight FindLight(Recipe& a_recipe, std::size_t a_index)
+		{
+			if (a_index >= a_recipe.outputs.size()) {
+				return { nullptr, Refuse(OutputWhere(a_index), std::format("there are {} outputs", a_recipe.outputs.size())) };
+			}
+			auto* light = Get<LightOutput>(a_recipe.outputs[a_index]);
+			if (!light) {
+				return { nullptr, Refuse(OutputWhere(a_index), "is not a light") };
+			}
+			return { light, std::nullopt };
+		}
+
+		Refusal Edit(Recipe& a_recipe, const AddLight&)
+		{
+			for (std::size_t i = 0; i < a_recipe.outputs.size(); ++i) {
+				if (Get<LightOutput>(a_recipe.outputs[i])) {
+					return Refuse("outputs", std::format("output {} is already the light", i));
+				}
+			}
+			a_recipe.outputs.push_back(LightOutput{});
+			return std::nullopt;
+		}
+
+		Refusal Edit(Recipe& a_recipe, const SetLightParam& a_edit)
+		{
+			auto found = FindLight(a_recipe, a_edit.output);
+			if (found.problem) return found.problem;
+			if (auto problem = CheckParam(a_recipe, OutputWhere(a_edit.output), LightParamName(a_edit.field), a_edit.value)) return problem;
+			switch (a_edit.field) {
+			case LightParam::kIntensity:
+				found.light->intensity = a_edit.value;
+				break;
+			case LightParam::kSize:
+				found.light->size = a_edit.value;
+				break;
+			case LightParam::kCutoff:
+				found.light->cutoff = a_edit.value;
+				break;
+			}
+			return std::nullopt;
+		}
+
+		Refusal Edit(Recipe& a_recipe, const SetLightVector& a_edit)
+		{
+			auto found = FindLight(a_recipe, a_edit.output);
+			if (found.problem) return found.problem;
+			if (auto problem = CheckVec3(a_recipe, OutputWhere(a_edit.output), LightVectorName(a_edit.field), a_edit.value)) return problem;
+			if (a_edit.field == LightVector::kColor) {
+				found.light->color = a_edit.value;
+			} else {
+				found.light->offset = a_edit.value;
+			}
+			return std::nullopt;
+		}
+
+		Refusal Edit(Recipe& a_recipe, const SetLightShadow& a_edit)
+		{
+			auto found = FindLight(a_recipe, a_edit.output);
+			if (found.problem) return found.problem;
+			found.light->shadow = a_edit.shadow;
+			return std::nullopt;
+		}
+
+		Refusal Edit(Recipe& a_recipe, const SetLightBones& a_edit)
+		{
+			auto found = FindLight(a_recipe, a_edit.output);
+			if (found.problem) return found.problem;
+			if (const auto* named = Get<NamedBones>(a_edit.bones); named && named->bones.empty()) {
+				return Refuse(OutputWhere(a_edit.output), "named bones need at least one name");
+			}
+			if (const auto* skinned = Get<SkinnedBones>(a_edit.bones); skinned && skinned->max == 0) {
+				return Refuse(OutputWhere(a_edit.output), "skinned bones need max of at least 1");
+			}
+			found.light->bones = a_edit.bones;
+			return std::nullopt;
+		}
+
+		// ------------------------------------------------------- shell
+
+		Refusal Edit(Recipe& a_recipe, const SetShellParam& a_edit)
+		{
+			if (auto problem = CheckParam(a_recipe, "shell", ShellParamName(a_edit.field), a_edit.value)) return problem;
+			auto& shell = a_recipe.shell;
+			switch (a_edit.field) {
+			case ShellParam::kAlpha:
+				shell.alpha = a_edit.value;
+				break;
+			case ShellParam::kRimPower:
+				shell.rimPower = a_edit.value;
+				break;
+			case ShellParam::kEmissive:
+				shell.emissive = a_edit.value;
+				break;
+			case ShellParam::kScale:
+				shell.pose.scale = a_edit.value;
+				break;
+			case ShellParam::kSpin:
+				shell.pose.spin = a_edit.value;
+				break;
+			}
+			return std::nullopt;
+		}
+
+		Refusal Edit(Recipe& a_recipe, const SetShellVector& a_edit)
+		{
+			if (auto problem = CheckVec3(a_recipe, "shell", ShellVectorName(a_edit.field), a_edit.value)) return problem;
+			if (a_edit.field == ShellVector::kInflate) {
+				a_recipe.shell.pose.inflate = a_edit.value;
+			} else {
+				a_recipe.shell.pose.offset = a_edit.value;
+			}
+			return std::nullopt;
+		}
+
+		Refusal Edit(Recipe& a_recipe, const SetShellPoint& a_edit)
+		{
+			if (a_edit.field == ShellPoint::kScalePoint) {
+				a_recipe.shell.pose.scalePoint = a_edit.value;
+			} else {
+				if (a_edit.value == Vec3{}) {
+					return Refuse("shell", "the spin axis cannot be zero");
+				}
+				a_recipe.shell.pose.spinAxis = a_edit.value;
+			}
+			return std::nullopt;
+		}
+
+		Refusal Edit(Recipe& a_recipe, const SetShellMaterial& a_edit)
+		{
+			for (std::size_t i = 0; i < a_recipe.outputs.size(); ++i) {
+				const auto* material = Get<MaterialOutput>(a_recipe.outputs[i]);
+				if (material && material->surface == Surface::kShell && !SurfaceHasSlot(Surface::kShell, a_edit.material, material->slot)) {
+					return Refuse("shell", std::format("output {} writes '{}' on the shell, which a {} shell lacks", i, SlotName(material->slot), ShellMaterialName(a_edit.material)));
+				}
+			}
+			a_recipe.shell.material = a_edit.material;
+			return std::nullopt;
+		}
+
+		Refusal Edit(Recipe& a_recipe, const SetShellBlend& a_edit)
+		{
+			a_recipe.shell.blend = a_edit.blend;
+			return std::nullopt;
+		}
+
+		Refusal Edit(Recipe& a_recipe, const SetShellDepthBias& a_edit)
+		{
+			a_recipe.shell.depthBias = a_edit.on;
+			return std::nullopt;
+		}
+
+		Refusal Edit(Recipe& a_recipe, const SetShellAlphaTest& a_edit)
+		{
+			if (!(a_edit.value >= 0.0f && a_edit.value <= 1.0f)) {
+				return Refuse("shell", "alphaTest is 0..1");
+			}
+			a_recipe.shell.alphaTest = a_edit.value;
+			return std::nullopt;
+		}
+
 		// ---------------------------------------------------- defaults
 
 		// What a required scalar starts at when the menu adds an output.
@@ -508,7 +983,132 @@ namespace WornEnchantmentPBR::Studio
 			[](const SetExpression& e) { return std::format("{}: expr {}", SignalWhere(e.signal), e.text); },
 			[](const SetSignalCurve& e) { return std::format("{}: curve {}", SignalWhere(e.signal), CurveText(e.curve)); },
 			[](const SetCurve& e) { return std::format("curve {}: {}", e.curve, e.text); },
-			[](const SetMask& e) { return std::format("mask {}: {}", e.mask, e.text); });
+			[](const SetMask& e) { return std::format("mask {}: {}", e.mask, e.text); },
+			[](const AddSignal& e) { return std::format("signals: add {}", e.name); },
+			[](const AddCurve& e) { return std::format("curves: add {}", e.name); },
+			[](const RenameSignal& e) { return std::format("{}: rename to {}", SignalWhere(e.from), e.to); },
+			[](const RenameCurve& e) { return std::format("{}: rename to {}", CurveWhere(e.from), e.to); },
+			[](const RemoveSignal& e) { return std::format("{}: remove", SignalWhere(e.name)); },
+			[](const RemoveCurve& e) { return std::format("{}: remove", CurveWhere(e.name)); },
+			[](const AddLight&) { return std::string{ "outputs: add light" }; },
+			[](const SetLightParam& e) { return std::format("{}: {} {}", OutputWhere(e.output), LightParamName(e.field), ParamText(e.value)); },
+			[](const SetLightVector& e) { return std::format("{}: {} {}", OutputWhere(e.output), LightVectorName(e.field), Vec3ParamText(e.value)); },
+			[](const SetLightShadow& e) { return std::format("{}: shadow {}", OutputWhere(e.output), e.shadow ? "on" : "off"); },
+			[](const SetLightBones& e) { return std::format("{}: bones {}", OutputWhere(e.output), Is<NamedBones>(e.bones) ? "named" : "skinned"); },
+			[](const SetShellParam& e) { return std::format("shell: {} {}", ShellParamName(e.field), ParamText(e.value)); },
+			[](const SetShellVector& e) { return std::format("shell: {} {}", ShellVectorName(e.field), Vec3ParamText(e.value)); },
+			[](const SetShellPoint& e) { return std::format("shell: {} {}, {}, {}", ShellPointName(e.field), e.value.x, e.value.y, e.value.z); },
+			[](const SetShellMaterial& e) { return std::format("shell: material {}", ShellMaterialName(e.material)); },
+			[](const SetShellBlend& e) { return std::format("shell: blend {}", ShellBlendName(e.blend)); },
+			[](const SetShellDepthBias& e) { return std::format("shell: depthBias {}", e.on ? "on" : "off"); },
+			[](const SetShellAlphaTest& e) { return std::format("shell: alphaTest {}", e.value); });
+	}
+
+	std::string_view LightParamName(LightParam a_field) noexcept
+	{
+		switch (a_field) {
+		case LightParam::kIntensity:
+			return "intensity";
+		case LightParam::kSize:
+			return "size";
+		case LightParam::kCutoff:
+			return "cutoff";
+		}
+		return "?";
+	}
+
+	std::string_view LightVectorName(LightVector a_field) noexcept
+	{
+		return a_field == LightVector::kColor ? "color" : "offset";
+	}
+
+	std::string_view ShellParamName(ShellParam a_field) noexcept
+	{
+		switch (a_field) {
+		case ShellParam::kAlpha:
+			return "alpha";
+		case ShellParam::kRimPower:
+			return "rimPower";
+		case ShellParam::kEmissive:
+			return "emissive";
+		case ShellParam::kScale:
+			return "scale";
+		case ShellParam::kSpin:
+			return "spin";
+		}
+		return "?";
+	}
+
+	std::string_view ShellVectorName(ShellVector a_field) noexcept
+	{
+		return a_field == ShellVector::kInflate ? "inflate" : "offset";
+	}
+
+	std::string_view ShellPointName(ShellPoint a_field) noexcept
+	{
+		return a_field == ShellPoint::kScalePoint ? "scalePoint" : "spinAxis";
+	}
+
+	ReferenceCounts CountReferences(const Recipe& a_recipe)
+	{
+		// The walkers write in place, so they run over a copy; a recipe is a
+		// small record.
+		Recipe          copy = a_recipe;
+		ReferenceCounts counts;
+		ForEachSignalRef(copy, [&](Ref& a_ref) { ++counts.signals[a_ref.name]; });
+		ForEachCurveRef(copy, [&](CurveRef& a_ref) {
+			if (const auto name = a_ref.Named()) {
+				++counts.curves[*name];
+			}
+		});
+		ForEachText(copy, [&](std::string& a_text, bool) {
+			const auto program = Program::Parse(a_text);
+			if (!program) {
+				return;
+			}
+			for (const auto& name : program->References()) {
+				++counts.signals[name];
+			}
+			for (const auto& name : program->Curves()) {
+				++counts.curves[name];
+			}
+		});
+		for (const auto& variant : a_recipe.variants) {
+			for (const auto& [name, value] : variant.overrides) {
+				++counts.signals[name];
+			}
+		}
+		return counts;
+	}
+
+	std::string RenameInExpression(std::string_view a_text, std::string_view a_from, std::string_view a_to, bool a_curve)
+	{
+		const auto nameChar = [](char c) { return std::isalnum(static_cast<unsigned char>(c)) || c == '_'; };
+		std::string out;
+		out.reserve(a_text.size());
+		std::size_t at = 0;
+		while (at < a_text.size()) {
+			const bool here = a_text[at] == '@' && a_text.substr(at + 1).starts_with(a_from);
+			if (here) {
+				const std::size_t end = at + 1 + a_from.size();
+				const bool        whole = end >= a_text.size() || !nameChar(a_text[end]);
+				// After the name, spaces then '(' make it a curve call.
+				std::size_t next = end;
+				while (next < a_text.size() && a_text[next] == ' ') {
+					++next;
+				}
+				const bool call = next < a_text.size() && a_text[next] == '(';
+				if (whole && call == a_curve) {
+					out += '@';
+					out += a_to;
+					at = end;
+					continue;
+				}
+			}
+			out += a_text[at];
+			++at;
+		}
+		return out;
 	}
 
 	Layer DefaultLayer()

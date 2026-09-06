@@ -13,6 +13,7 @@
 // on the next.
 
 #include "Core.h"
+#include "Forms.h"
 #include "Recipe.h"
 #include "Snapshot.h"
 #include "Studio.h"
@@ -110,12 +111,15 @@ namespace WornEnchantmentPBR::Studio::Widgets
 	[[nodiscard]] float BlendWidth(std::span<const Blend> a_allowed);
 	// The width that shows the widest of the names, so a column of combos lines up.
 	[[nodiscard]] float WidestOf(std::span<const std::string> a_names);
+	// The style's gap between items on a line.
+	[[nodiscard]] float ItemSpacingX();
 
 	// ----------------------------------------------------------------- fields
 
 	[[nodiscard]] std::optional<std::string> TextField(const char* a_key, const std::string& a_model, const Width& a_width, float a_scale);
-	[[nodiscard]] std::optional<float>       DragField(const char* a_key, float a_value, const Width& a_width, float a_scale, float a_speed = 0.01f);
-	[[nodiscard]] std::optional<Vec3>        ColorField(const char* a_key, const Vec3& a_value, const Width& a_width, float a_scale);
+	// Live text that nothing overwrites (a table's name filter, a new row's
+	// id), returned as it stands this frame; the hint shows while it is empty.
+	[[nodiscard]] std::string_view LiveTextField(const char* a_key, const char* a_hint, const Width& a_width, float a_scale);
 
 	// Channel: 0..3 one channel as grey, 4 rgb, 5 luminance. A dynamic
 	// texture is re-rendered every frame; a null handle draws a blank.
@@ -137,8 +141,10 @@ namespace WornEnchantmentPBR::Studio::Widgets
 	// on the left is a button that switches the input between a text field
 	// and a combo over the signals of the right type, and gives it the
 	// keyboard; the input fills the rest. The mode starts as the text says
-	// (a "@name" opens as a combo). Returns the new text whichever way it
-	// was entered.
+	// (a "@name" opens as a combo). With no names to offer the value is
+	// literal and the badge is outlined and inert. A colour field's text
+	// carries a swatch that opens a picker; a pick commits on release as
+	// "r, g, b". Returns the new text whichever way it was entered.
 	[[nodiscard]] std::optional<std::string> ValueField(const char* a_key, FieldKind a_kind, const std::string& a_current, std::span<const std::string> a_names, bool a_allowEmpty, float a_scale);
 	// A button the height of a field, drawn beside a badge, that opens the
 	// field's detail modal; returns true when clicked. One per ID scope.
@@ -159,12 +165,32 @@ namespace WornEnchantmentPBR::Studio::Widgets
 	// the left column takes: it sets the split when the table first appears
 	// and follows the rule as the user drags it.
 	void Split(const char* a_id, float& a_ratio, const std::function<void()>& a_left, const std::function<void()>& a_right);
-	// A horizontal rule with a line's gap above and below it.
-	void Rule();
+	// One line of a rule: a text at its left edge (the section under the
+	// rule is named by the line below it), and an item at its right edge
+	// drawn by `right`, `rightWidth` wide. Either may be absent; an absent
+	// text leaves a gap. A line is a frame high either way.
+	struct RuleLine
+	{
+		std::string_view      text;
+		float                 rightWidth = 0.0f;
+		std::function<void()> right;
+
+		[[nodiscard]] static RuleLine Text(std::string_view a_text) { return RuleLine{ a_text, 0.0f, {} }; }
+	};
+
+	// A horizontal rule with a line above and below it. RuleHeight is what
+	// it takes whatever the lines hold, for a pane sized around it.
+	void                Rule(const RuleLine& a_above = {}, const RuleLine& a_below = {});
+	[[nodiscard]] float RuleHeight();
 
 	// A checkbox with a tooltip; true when it changed this frame. Solo,
 	// mute, isolate and freeze are all this.
 	bool Toggle(const char* a_label, bool& a_value, std::string_view a_tooltip);
+	// A button drawn pressed while a_active, greyed while not a_enabled;
+	// true when clicked. Two of them make a section switch.
+	[[nodiscard]] bool SwitchButton(const char* a_label, bool a_active, bool a_enabled);
+	// A combo over plain names (a choice field); returns the chosen name.
+	[[nodiscard]] std::optional<std::string> ChoiceCombo(const char* a_key, const std::string& a_current, std::span<const std::string> a_names, const Width& a_width, float a_scale);
 	// Solo and mute as two small toggles, "S" and "M", the same wherever a
 	// thing can be soloed or muted; a null mute draws solo alone. Returns
 	// true when either changed.

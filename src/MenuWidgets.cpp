@@ -217,6 +217,12 @@ namespace WornEnchantmentPBR::Studio::Widgets
 		return width;
 	}
 
+	float ItemSpacingX()
+	{
+		const auto* style = ImGui::GetStyle();
+		return style ? style->ItemSpacing.x : 8.0f;
+	}
+
 	float WidestOf(std::span<const std::string> a_names)
 	{
 		float width = 0.0f;
@@ -250,46 +256,44 @@ namespace WornEnchantmentPBR::Studio::Widgets
 		return std::nullopt;
 	}
 
-	std::optional<float> DragField(const char* a_key, float a_value, const Width& a_width, float a_scale, float a_speed)
+	std::string_view LiveTextField(const char* a_key, const char* a_hint, const Width& a_width, float a_scale)
 	{
-		auto&          state = State();
-		const FieldKey key = KeyOf(a_key);
-		auto&          held = state.numberBuffers[key];
-		if (state.activeField != key) {
-			held[0] = a_value;
-		}
+		auto& buffer = State().textBuffers[KeyOf(a_key)];
 		ImGui::PushID(Literal(a_key));
 		NextItemWidth(a_width, a_scale);
-		ImGui::DragFloat("##drag", &held[0], a_speed, 0.0f, 0.0f, "%.3f");
-		const bool released = ImGui::IsItemDeactivatedAfterEdit();
-		TrackActive(key);
+		ImGui::InputTextWithHint("##live", a_hint, buffer.data(), buffer.size());
 		ImGui::PopID();
-		if (released) {
-			state.activeField = kNoField;
-			return held[0];
-		}
-		return std::nullopt;
+		return std::string_view{ buffer.data() };
 	}
 
-	std::optional<Vec3> ColorField(const char* a_key, const Vec3& a_value, const Width& a_width, float a_scale)
+	namespace
 	{
-		auto&          state = State();
-		const FieldKey key = KeyOf(a_key);
-		auto&          held = state.numberBuffers[key];
-		if (state.activeField != key) {
-			held = { a_value.x, a_value.y, a_value.z };
+		// A swatch the height of a field showing the colour its text names
+		// (grey when it names none), opening a picker in a popup. The held
+		// colour follows the text while the popup is closed and the picker
+		// while it is open; a pick returns its text on release.
+		[[nodiscard]] std::optional<std::string> ColorSwatchPicker(FieldKey a_key, const std::string& a_current)
+		{
+			auto& held = State().numberBuffers[a_key];
+			if (!ImGui::IsPopupOpen("picker")) {
+				const Vec3 colour = LiteralColor(a_current).value_or(Vec3{ 0.5f, 0.5f, 0.5f });
+				held = { colour.x, colour.y, colour.z };
+			}
+			const float side = ImGui::GetFrameHeight();
+			if (ImGui::ColorButton("##swatch", ImVec4{ held[0], held[1], held[2], 1.0f }, ImGuiMCP::ImGuiColorEditFlags_NoTooltip, ImVec2{ side, side })) {
+				ImGui::OpenPopup("picker");
+			}
+			Tooltip("pick a colour; the field takes it as r, g, b");
+			std::optional<std::string> picked;
+			if (ImGui::BeginPopup("picker")) {
+				ImGui::ColorPicker3("##picker", held.data(), ImGuiMCP::ImGuiColorEditFlags_NoSidePreview);
+				if (ImGui::IsItemDeactivatedAfterEdit()) {
+					picked = LiteralColorText(Vec3{ held[0], held[1], held[2] });
+				}
+				ImGui::EndPopup();
+			}
+			return picked;
 		}
-		ImGui::PushID(Literal(a_key));
-		NextItemWidth(a_width, a_scale);
-		ImGui::ColorEdit3("##color", held.data());
-		const bool released = ImGui::IsItemDeactivatedAfterEdit();
-		TrackActive(key);
-		ImGui::PopID();
-		if (released) {
-			state.activeField = kNoField;
-			return Vec3{ held[0], held[1], held[2] };
-		}
-		return std::nullopt;
 	}
 
 	// ------------------------------------------------------------- thumbnails
@@ -331,6 +335,42 @@ namespace WornEnchantmentPBR::Studio::Widgets
 				const std::string name{ BlendName(blend) };
 				if (ImGui::Selectable(name.c_str(), name == current)) {
 					chosen = blend;
+				}
+			}
+			ImGui::EndCombo();
+		}
+		ImGui::PopID();
+		return chosen;
+	}
+
+	bool SwitchButton(const char* a_label, bool a_active, bool a_enabled)
+	{
+		if (!a_enabled) {
+			ImGui::BeginDisabled();
+		}
+		if (a_active) {
+			const auto* pressed = ImGui::GetStyleColorVec4(ImGuiMCP::ImGuiCol_ButtonActive);
+			ImGui::PushStyleColor(ImGuiMCP::ImGuiCol_Button, pressed ? *pressed : ImVec4{ 0.3f, 0.5f, 0.8f, 1.0f });
+		}
+		const bool clicked = ImGui::Button(Literal(a_label));
+		if (a_active) {
+			ImGui::PopStyleColor();
+		}
+		if (!a_enabled) {
+			ImGui::EndDisabled();
+		}
+		return clicked && a_enabled;
+	}
+
+	std::optional<std::string> ChoiceCombo(const char* a_key, const std::string& a_current, std::span<const std::string> a_names, const Width& a_width, float a_scale)
+	{
+		std::optional<std::string> chosen;
+		ImGui::PushID(Literal(a_key));
+		NextItemWidth(a_width, a_scale);
+		if (ImGui::BeginCombo("##choice", a_current.c_str())) {
+			for (const auto& name : a_names) {
+				if (ImGui::Selectable(name.c_str(), name == a_current)) {
+					chosen = name;
 				}
 			}
 			ImGui::EndCombo();
@@ -395,6 +435,12 @@ namespace WornEnchantmentPBR::Studio::Widgets
 				return { "m", false, kMaskViolet, "mask: an expression per texel where @source and @mask names are images and @signals are this tick's values" };
 			case FieldKind::kChannels:
 				return { "ch", false, kChannelGrey, "channels: any of r g b a, in any order" };
+			case FieldKind::kToggle:
+				return { "?", false, kChannelGrey, "on or off" };
+			case FieldKind::kChoice:
+				return { "o", false, kChannelGrey, "one of the listed values" };
+			case FieldKind::kText:
+				return { "\"", false, kChannelGrey, "text" };
 			}
 			return { "?", false, kDim, "" };
 		}
@@ -431,6 +477,7 @@ namespace WornEnchantmentPBR::Studio::Widgets
 		auto&          state = State();
 		const auto     style = StyleOf(a_kind);
 		const float    side = ImGui::GetFrameHeight();
+		const bool     takesSignal = style.takesSignal && !a_names.empty();
 		const bool     reference = a_current.starts_with('@');
 		const FieldKey key = KeyOf(a_key);
 		auto           mode = state.comboMode.find(key);
@@ -439,7 +486,7 @@ namespace WornEnchantmentPBR::Studio::Widgets
 		}
 		ImGui::PushID(Literal(a_key));
 		// The badge: a button when a signal may stand in, inert otherwise.
-		if (style.takesSignal) {
+		if (takesSignal) {
 			ImGui::PushStyleColor(ImGuiMCP::ImGuiCol_Button, style.colour);
 			ImGui::PushStyleColor(ImGuiMCP::ImGuiCol_ButtonHovered, ImVec4{ style.colour.x * 0.85f, style.colour.y * 0.85f, style.colour.z * 0.85f, 1.0f });
 			ImGui::PushStyleColor(ImGuiMCP::ImGuiCol_ButtonActive, ImVec4{ style.colour.x * 0.7f, style.colour.y * 0.7f, style.colour.z * 0.7f, 1.0f });
@@ -461,7 +508,7 @@ namespace WornEnchantmentPBR::Studio::Widgets
 			state.focusField = kNoField;
 			ImGui::SetKeyboardFocusHere();
 		}
-		if (mode->second && style.takesSignal) {
+		if (mode->second && takesSignal) {
 			const std::string preview = reference ? a_current : std::string{ "choose a signal" };
 			NextItemWidth(Width::Fill());
 			if (ImGui::BeginCombo("##combo", preview.c_str())) {
@@ -469,7 +516,13 @@ namespace WornEnchantmentPBR::Studio::Widgets
 				ImGui::EndCombo();
 			}
 		} else {
-			chosen = TextField("text", a_current, Width::Fill(), a_scale);
+			if (a_kind == FieldKind::kColor) {
+				chosen = ColorSwatchPicker(key, a_current);
+				ImGui::SameLine(0.0f, 0.0f);
+			}
+			if (const auto typed = TextField("text", a_current, Width::Fill(), a_scale)) {
+				chosen = typed;
+			}
 		}
 		ImGui::PopID();
 		return chosen;
@@ -553,12 +606,43 @@ namespace WornEnchantmentPBR::Studio::Widgets
 		}
 	}
 
-	void Rule()
+	namespace
 	{
-		const float gap = ImGui::GetTextLineHeight();
-		ImGui::Dummy(ImVec2{ 0.0f, gap });
+		// The text at the left, or a frame's height of nothing; then the
+		// item, moved to the right edge of the line.
+		void DrawRuleLine(const RuleLine& a_line)
+		{
+			if (a_line.text.empty()) {
+				ImGui::Dummy(ImVec2{ 0.0f, ImGui::GetFrameHeight() });
+			} else {
+				ImGui::AlignTextToFramePadding();
+				ImGui::TextUnformatted(a_line.text.data(), a_line.text.data() + a_line.text.size());
+			}
+			if (!a_line.right || a_line.rightWidth <= 0.0f) {
+				return;
+			}
+			ImGui::SameLine();
+			const float here = ImGui::GetCursorPosX();
+			const float edge = here + ImGui::GetContentRegionAvail().x - a_line.rightWidth;
+			ImGui::SetCursorPosX((std::max)(here, edge));
+			a_line.right();
+		}
+	}
+
+	void Rule(const RuleLine& a_above, const RuleLine& a_below)
+	{
+		DrawRuleLine(a_above);
 		ImGui::Separator();
-		ImGui::Dummy(ImVec2{ 0.0f, gap });
+		DrawRuleLine(a_below);
+	}
+
+	float RuleHeight()
+	{
+		// Two frame-high lines and the separator's line, each followed by the
+		// item spacing.
+		const auto* style = ImGui::GetStyle();
+		const float spacing = style ? style->ItemSpacing.y : 4.0f;
+		return ImGui::GetFrameHeight() * 2.0f + 1.0f + spacing * 3.0f;
 	}
 
 	bool Toggle(const char* a_label, bool& a_value, std::string_view a_tooltip)

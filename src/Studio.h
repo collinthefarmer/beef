@@ -7,7 +7,6 @@
 // the widgets and turns what comes back into edits (Edits.h) or view
 // changes (View.h).
 
-#include "Edits.h"
 #include "Recipe.h"
 #include "Snapshot.h"
 #include "View.h"
@@ -16,6 +15,7 @@
 #include <cstddef>
 #include <functional>
 #include <optional>
+#include <span>
 #include <string>
 #include <string_view>
 #include <vector>
@@ -45,7 +45,7 @@ namespace WornEnchantmentPBR::Studio
 		Mode  mode = Mode::kCompose;
 		bool  stack = true;
 		bool  inspector = true;
-		bool  signals = true;  // the signal table, a folded section under the stack
+		bool  signals = true;  // the signal table, under a rule below the stack
 		bool  regionEditor = false;
 		bool  designPanel = false;
 		float widgetScale = 1.0f;          // multiplies field widths and grip sizes
@@ -54,14 +54,34 @@ namespace WornEnchantmentPBR::Studio
 		float rowThumbnail = 32.0f;        // a stack row's thumbnail
 		float inspectorThumbnail = 96.0f;
 		float stackSplit = 0.5f;           // the share of the stack's width the layer list takes; the inspector takes the rest
+		// Under the context rows the page is two panes, each scrolling on its
+		// own: the stack (composite, scalars, layers and inspector, or the
+		// target's settings) and the resources (signals, curves, later masks,
+		// as tabs). The share is of the height under the rows; the stack
+		// takes the rest.
+		float resourcesShare = 0.35f;
 		bool  developerSignals = true;  // efsh, trigger, av and other rows a designer does not tune
 	};
 	[[nodiscard]] Layout LayoutFor(Mode a_mode) noexcept;
 
 	// -------------------------------------------------------------- selection
 
-	// What the page has chosen. Resolving it against a snapshot yields the
-	// chosen row or a sensible default, never null on a non-empty snapshot.
+	// Where an output goes: a surface, or the recipe's light.
+	enum class Target
+	{
+		kMaterial,
+		kShell,
+		kLight,
+	};
+	[[nodiscard]] std::string_view TargetName(Target a_target) noexcept;
+	[[nodiscard]] Surface          SurfaceOf(Target a_target) noexcept;  // the light reads as the material
+
+	// What the page has chosen, held as keys wherever the thing has one:
+	// the piece, the recipe id, the geometry name, the target and slot, the
+	// region name. No index but the layer's, which is clamped each frame.
+	// Resolving a selection against a snapshot yields the chosen row or a
+	// sensible default, never null on a non-empty snapshot; the output the
+	// target and slot name is looked up each frame and may be none.
 	struct Selection
 	{
 		FormID                     actorID = 0;
@@ -69,14 +89,17 @@ namespace WornEnchantmentPBR::Studio
 		bool                       firstPerson = false;
 		std::string                recipeID;
 		std::string                geometry;
-		std::optional<std::size_t> output;  // the selected cell, by output index
-		std::optional<std::size_t> layer;   // within that output
+		Target                     target = Target::kMaterial;
+		std::optional<Slot>        slot;
+		std::optional<std::size_t> layer;   // within the picked output
 		std::string                region;  // a mask name; empty = whole piece
 	};
 
 	[[nodiscard]] const PieceRow*    SelectedPiece(const Snapshot& a_snapshot, const Selection& a_selection) noexcept;
 	[[nodiscard]] const RecipeRow*   SelectedRecipe(const PieceRow* a_piece, const Selection& a_selection) noexcept;
 	[[nodiscard]] const GeometryRow* SelectedGeometry(const RecipeRow* a_recipe, const Selection& a_selection) noexcept;
+	// The first material output on the picked surface and slot; none for the
+	// light target, an unpicked slot, or a slot nothing writes.
 	[[nodiscard]] const OutputRow*   SelectedOutput(const GeometryRow* a_geometry, const Selection& a_selection) noexcept;
 
 	// ------------------------------------------------------------------ board
@@ -164,7 +187,6 @@ namespace WornEnchantmentPBR::Studio
 		std::size_t             output = 0;
 		Surface                 surface = Surface::kMaterial;
 		Slot                    slot = Slot::kEmissive;
-		std::string             title;  // "emissive on shell"
 		std::vector<StackRow>   rows;
 		std::vector<ForeignRow> below;
 		std::vector<ForeignRow> above;
@@ -207,6 +229,20 @@ namespace WornEnchantmentPBR::Studio
 
 	[[nodiscard]] std::optional<Inspector> BuildInspector(const RecipeRow& a_recipe, const GeometryRow& a_geometry, const Selection& a_selection);
 
+	// The recipe's light and shell as their panels show them, from the
+	// recipe itself; the manager fills the snapshot with these, and the tests
+	// build rows the same way.
+	[[nodiscard]] LightRow LightRowOf(const Recipe& a_recipe);
+	[[nodiscard]] ShellRow ShellRowOf(const Recipe& a_recipe);
+
+	// The recipe's signal names by type, for the value fields' combos.
+	struct SignalNames
+	{
+		std::vector<std::string> scalar;
+		std::vector<std::string> color;  // vec3: colours and vectors alike
+	};
+	[[nodiscard]] SignalNames SignalNamesOf(const RecipeRow& a_recipe);
+
 	// ---------------------------------------------------------------- signals
 
 	// The recipe's signals split for the Edit and Design modes: what a
@@ -219,60 +255,17 @@ namespace WornEnchantmentPBR::Studio
 	};
 	[[nodiscard]] SignalList BuildSignalList(const RecipeRow& a_recipe, const Layout& a_layout);
 
-	// ------------------------------------------------------------------ forms
+	// ---------------------------------------------------------------- filters
 
-	// What a field requires: the kind of value decides the badge it wears,
-	// the rule its tooltip states, and whether a @signal may stand in for the
-	// value (scalar, colour and vector).
-	enum class FieldKind
-	{
-		kScalar,      // a number, or @signal of scalar type
-		kColor,       // r, g, b (one number for all three), or @signal of colour type
-		kVector,      // x, y, z as a position, direction or scale, or @signal of vector type
-		kReference,   // @name of a row
-		kExpression,  // the recipe language
-		kCurve,       // an expression in x, or @curve
-		kMask,        // an expression per texel over sources and masks
-		kChannels,    // a subset of rgba
-	};
-
-	// The detail modal a field opens: the row its text names, shown with its
-	// picture or its own editor.
-	enum class FieldDetail
-	{
-		kSource,
-		kCurve,
-		kOpacity,
-		kColor,
-		kMask,
-	};
-	[[nodiscard]] std::string_view FieldDetailName(FieldDetail a_detail) noexcept;
-
-	// Committed text becomes an edit, or nothing when it does not parse.
-	using FieldBinding = std::function<std::optional<RecipeEdit>(const std::string&)>;
-
-	// One field of a form: what the page draws as a row of the field table.
-	// `detail` is set only when the modal would show something, so a detail
-	// button appears only where there is content.
-	struct FieldSpec
-	{
-		std::string                name;
-		FieldKind                  kind = FieldKind::kScalar;
-		std::string                text;   // the value as written
-		std::vector<std::string>   names;  // what the signal or reference combo offers
-		bool                       allowEmpty = false;
-		std::optional<FieldDetail> detail;
-		std::optional<Value>       value;  // the live value, shown as a swatch before the input
-		FieldBinding               bind;
-	};
-
-	// The selected layer's fields: source, curve, opacity, colour, mask,
-	// channels, in that order.
-	[[nodiscard]] std::vector<FieldSpec> InspectorForm(const Inspector& a_inspector);
-	// The stack's slot scalars, one field each, in the slot's order.
-	[[nodiscard]] std::vector<FieldSpec> ScalarForm(const StackView& a_stack);
+	// Whether a row passes a table's name filter: an empty filter passes
+	// every row; otherwise the name must contain the filter, case ignored.
+	[[nodiscard]] bool NameMatches(std::string_view a_name, std::string_view a_filter) noexcept;
 
 	// ------------------------------------------------------------------ names
+
+	// A name not among the taken ones: the stem, else the stem with the
+	// first free number from 2 ("signal", "signal2", ...).
+	[[nodiscard]] std::string UniqueName(std::string_view a_stem, std::span<const std::string> a_taken);
 
 	// Names in "@name" form, for the reference combos.
 	[[nodiscard]] std::string ReferenceText(std::string_view a_name);

@@ -11,6 +11,7 @@
 #include "PCH.h"
 #include "Recipe.h"
 #include "Signals.h"
+#include "History.h"
 #include "Snapshot.h"
 #include "View.h"
 
@@ -104,10 +105,18 @@ namespace WornEnchantmentPBR
 		// every actor wearing the recipe retired first and re-applied after,
 		// so no binding holds a pointer into a recipe while it changes.
 		void EditRecipe(std::string a_id, std::function<void(Recipe&)> a_edit);
+		// Back one edit, or forward one, through the same retire-and-reapply
+		// path; the history is per recipe and Revert clears it.
+		void UndoRecipe(std::string a_id);
+		void RedoRecipe(std::string a_id);
 		void SaveRecipe(std::string a_id);
 		void RevertRecipe(std::string a_id);
 		// Retires everything, re-reads every recipe file, re-applies.
 		void ReloadRecipes();
+		// An empty recipe keyed to the armor, from any thread; everything is
+		// retired around it since the store's list moves, then re-applied,
+		// so the recipe resolves onto the armor's wearers at once.
+		void NewRecipe(std::string a_id, RE::FormID a_armor);
 
 		// Once per frame from the PlayerCharacter::Update hook (game thread).
 		void OnFrame();
@@ -175,6 +184,7 @@ namespace WornEnchantmentPBR
 		std::atomic<std::uint64_t>                    generation_{ 0 };
 
 		std::unordered_map<RE::FormID, ActorState> applied_;
+		std::unordered_map<std::string, Studio::EditHistory> histories_;  // by recipe id; game thread
 		std::unordered_set<RE::FormID>             loggedNonPBRArmor_;
 		// A recipe's clock survives a retire that is followed by a re-apply
 		// within a moment (an edit, isolate, re-apply all), so a change never

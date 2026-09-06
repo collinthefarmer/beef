@@ -24,6 +24,7 @@ namespace WornEnchantmentPBR::Studio
 	{
 		bool               freeze = false;
 		float              scrubSeconds = 0.0f;
+		float              speed = 1.0f;  // multiplies every recipe's clock while the studio runs it
 		std::string        isolateRecipe;       // recipe id, empty = all
 		int                isolateOutput = -1;  // output index in that recipe, -1 = all
 		int                isolateLayer = -1;   // layer index in that output, -1 = all

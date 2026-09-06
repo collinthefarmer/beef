@@ -305,6 +305,8 @@ namespace
 		Check(Describe(ClearLayers{ 3 }) == "output 3: clear layers", "describe clear layers");
 		Check(Describe(AddOutput{ Surface::kShell, Slot::kFuzz }) == "outputs: add shell fuzz", "describe add output");
 		Check(Describe(RemoveOutput{ 4 }) == "output 4: remove", "describe remove output");
+		Check(Describe(AddSignal{ "a" }) == "signals: add a" && Describe(AddCurve{ "c" }) == "curves: add c", "describe add rows");
+		Check(Describe(RenameSignal{ "a", "b" }) == "signal a: rename to b" && Describe(RenameCurve{ "c", "d" }) == "curve c: rename to d", "describe renames");
 		Check(Describe(SetScalar{ 2, ScalarField::kScale, At("heightScale") }) == "output 2: scale @heightScale", "describe scalar");
 		Check(Describe(SetColorScalar{ 1, Vec3Param{ std::array<Param, 3>{ 1.0f, 0.5f, 0.0f } } }) == "output 1: color 1, 0.5, 0", "describe colour scalar");
 		Check(Describe(SetConstant{ "glowStrength", 1.5f }) == "signal glowStrength: constant 1.5", "describe constant");
@@ -316,9 +318,149 @@ namespace
 	}
 }
 
+namespace
+{
+	void RowEdits()
+	{
+		Recipe r = Canonical();
+		Accepted(r, AddSignal{ "fresh" }, "add a signal");
+		const auto* fresh = r.FindSignal("fresh");
+		Check(fresh && Get<ConstantSignal>(fresh->kind) && Get<float>(Get<ConstantSignal>(fresh->kind)->value) && !fresh->curve, "the added signal is a constant 0 without a curve");
+		Refused(r, AddSignal{ "fresh" }, "signal fresh", "a signal has that name", "add a signal twice");
+		Refused(r, AddSignal{ "2fresh" }, "signal 2fresh", "letters, digits and underscores", "add a signal with a bad name");
+		Refused(r, AddSignal{ "" }, "signal ", "letters, digits and underscores", "add a signal without a name");
+		Accepted(r, AddCurve{ "ease" }, "add a curve");
+		const auto* ease = r.FindCurve("ease");
+		Check(ease && ease->text == "x", "the added curve is x");
+		Refused(r, AddCurve{ "ease" }, "curve ease", "a curve has that name", "add a curve twice");
+		Refused(r, AddCurve{ "bad name" }, "curve bad name", "letters, digits and underscores", "add a curve with a bad name");
+
+		// Renaming a signal repoints every reference: a parameter (the
+		// layers' colour, the light's colour), a variant override, and the
+		// expressions that read it.
+		Recipe hue = Canonical();
+		Refused(hue, RenameSignal{ "nothing", "x" }, "signal nothing", "no such signal", "rename a missing signal");
+		Refused(hue, RenameSignal{ "glowHue", "glowStrength" }, "signal glowHue", "already named", "rename onto a taken name");
+		Refused(hue, RenameSignal{ "glowHue", "1hue" }, "signal glowHue", "letters, digits and underscores", "rename to a bad name");
+		Accepted(hue, RenameSignal{ "glowHue", "glowHue" }, "rename to the same name");
+		Check(hue == Canonical(), "renaming to the same name changes nothing");
+		Accepted(hue, RenameSignal{ "glowHue", "hue" }, "rename glowHue");
+		Check(!hue.FindSignal("glowHue") && hue.FindSignal("hue"), "the row carries the new name");
+		const auto* fill = LayerAt(hue, 0, 0);
+		Check(fill && fill->color && Get<Ref>(*fill->color) && Get<Ref>(*fill->color)->name == "hue", "the fill layer's colour follows the rename");
+		const auto* light = std::get_if<LightOutput>(&hue.outputs[4]);
+		Check(light && Get<Ref>(light->color) && Get<Ref>(light->color)->name == "hue", "the light's colour follows the rename");
+		Check(hue.variants.size() == 1 && hue.variants[0].overrides.contains("hue") && !hue.variants[0].overrides.contains("glowHue"), "the variant override follows the rename");
+
+		Recipe level = Canonical();
+		Accepted(level, RenameSignal{ "fillLevel", "fill_level" }, "rename fillLevel");
+		const auto* glowLevel = level.FindSignal("glowLevel");
+		const auto* lightLevel = level.FindSignal("lightLevel");
+		Check(glowLevel && Get<ExprSignal>(glowLevel->kind) && Get<ExprSignal>(glowLevel->kind)->text == "@glowStrength * @fill_level", "an expression follows the rename");
+		Check(lightLevel && Get<ExprSignal>(lightLevel->kind) && Get<ExprSignal>(lightLevel->kind)->text == "clamp(@fill_level, 0, 2)", "a reference before a comma follows the rename");
+		Accepted(level, RenameSignal{ "struck", "hit" }, "rename a trigger");
+		const auto* ring = level.FindSource("ring");
+		Check(ring && Get<RippleSource>(ring->kind) && Get<RippleSource>(ring->kind)->trigger.name == "hit", "a ripple's trigger follows the rename");
+		const auto* ringLayer = LayerAt(level, 0, 1);
+		Check(ringLayer && Get<Ref>(ringLayer->opacity) && Get<Ref>(ringLayer->opacity)->name == "hit", "a layer's opacity follows the rename");
+		Accepted(level, RenameSignal{ "scroll", "drift" }, "rename scroll");
+		const auto* fillSource = level.FindSource("fill");
+		const auto* image = fillSource ? Get<ImageSource>(fillSource->kind) : nullptr;
+		Check(image && image->scroll && Get<Ref>(*image->scroll) && Get<Ref>(*image->scroll)->name == "drift", "an image's scroll follows the rename");
+		const auto* sheenScroll = level.FindSignal("sheenScroll");
+		Check(sheenScroll && Get<ExprSignal>(sheenScroll->kind)->text == "@drift + 0.5", "the expressions reading scroll follow");
+		Accepted(level, RenameSignal{ "inflate", "swell" }, "rename inflate");
+		const auto* parts = Get<std::array<Param, 3>>(level.shell.pose.inflate);
+		Check(parts && Get<Ref>((*parts)[1]) && Get<Ref>((*parts)[1])->name == "swell", "the shell's inflate follows the rename");
+		Accepted(level, RenameSignal{ "shellOpacity", "veil" }, "rename shellOpacity");
+		Check(Get<Ref>(level.shell.alpha) && Get<Ref>(level.shell.alpha)->name == "veil", "the shell's alpha follows the rename");
+
+		// A signal sharing a name with an image is not renamed inside masks,
+		// where the image wins.
+		Recipe shared = Canonical();
+		shared.signals.push_back(Signal{ "metallic", ConstantSignal{ 1.0f }, std::nullopt });
+		Accepted(shared, RenameSignal{ "metallic", "shine" }, "rename a signal an image shares a name with");
+		Check(shared.masks[0].text == "@metallic", "the mask still reads the image");
+
+		// Renaming a curve repoints "@name" references and "@name(" calls.
+		Recipe curve = Canonical();
+		curve.masks[0].text = "@flash(@metallic) + @flash (0.5)";
+		Refused(curve, RenameCurve{ "nothing", "x" }, "curve nothing", "no such curve", "rename a missing curve");
+		Refused(curve, RenameCurve{ "flash", "rest" }, "curve flash", "already named", "rename a curve onto a taken name");
+		Accepted(curve, RenameCurve{ "flash", "blink" }, "rename flash");
+		const auto* struck = curve.FindSignal("struck");
+		const auto* step = curve.FindSignal("step");
+		Check(struck && struck->curve && struck->curve->text == "@blink" && step && step->curve && step->curve->text == "@blink", "the triggers' curves follow the rename");
+		Check(curve.masks[0].text == "@blink(@metallic) + @blink (0.5)", "curve calls inside a mask follow the rename");
+		Accepted(curve, RenameCurve{ "crisp", "sharp" }, "rename crisp");
+		const auto* relief = LayerAt(curve, 2, 0);
+		Check(relief && relief->curve && relief->curve->text == "@sharp", "a layer's curve follows the rename");
+
+		// Removing rows: only unreferenced ones go.
+		Recipe remove = Canonical();
+		const auto counts = CountReferences(remove);
+		Check(counts.signals.at("glowHue") == 5 && counts.signals.at("scroll") == 4 && counts.signals.at("struck") == 2 && counts.signals.at("glossBoost") == 1 && counts.curves.at("flash") == 2 && counts.curves.at("crisp") == 1 && counts.curves.at("edgeRest") == 1 && !counts.signals.contains("nothing"), "reference counts over parameters, expressions, curves and variants");
+		Refused(remove, RemoveSignal{ "glowHue" }, "signal glowHue", "referenced in 5 place(s)", "remove a referenced signal");
+		Refused(remove, RemoveSignal{ "nothing" }, "signal nothing", "no such signal", "remove a missing signal");
+		Accepted(remove, AddSignal{ "spare" }, "add a spare signal");
+		Accepted(remove, RemoveSignal{ "spare" }, "remove an unreferenced signal");
+		Check(!remove.FindSignal("spare"), "the signal is gone");
+		Refused(remove, RemoveCurve{ "flash" }, "curve flash", "referenced in 2 place(s)", "remove a referenced curve");
+		Accepted(remove, AddCurve{ "spareCurve" }, "add a spare curve");
+		Accepted(remove, RemoveCurve{ "spareCurve" }, "remove an unreferenced curve");
+		Check(!remove.FindCurve("spareCurve"), "the curve is gone");
+
+		Check(RenameInExpression("@a + @ab + @a(1) + @a", "a", "z", false) == "@z + @ab + @a(1) + @z", "a signal rename leaves longer names and curve calls");
+		Check(RenameInExpression("@a + @a(1) + @a (2)", "a", "z", true) == "@a + @z(1) + @z (2)", "a curve rename takes only calls");
+		Check(RenameInExpression("", "a", "z", false).empty() && RenameInExpression("@", "a", "z", false) == "@", "empty and bare texts pass through");
+	}
+}
+
+namespace
+{
+	void PanelEdits()
+	{
+		Recipe r = Canonical();
+		Refused(r, AddLight{}, "outputs", "output 4 is already the light", "add a second light");
+		Refused(r, SetLightParam{ 0, LightParam::kIntensity, 1.0f }, "output 0", "is not a light", "a light edit on a material output");
+		Refused(r, SetLightParam{ 9, LightParam::kIntensity, 1.0f }, "output 9", "5 outputs", "a light edit past the end");
+		Refused(r, SetLightParam{ 4, LightParam::kIntensity, Ref{ "nothing" } }, "output 4", "unknown signal", "a light parameter reading a missing signal");
+		Accepted(r, SetLightParam{ 4, LightParam::kSize, 2.0f }, "set the light's size");
+		Accepted(r, SetLightParam{ 4, LightParam::kCutoff, Ref{ "glowLevel" } }, "set the light's cutoff to a signal");
+		Accepted(r, SetLightVector{ 4, LightVector::kColor, Ref{ "edgeColor" } }, "set the light's colour to a signal");
+		Accepted(r, SetLightVector{ 4, LightVector::kOffset, std::array<Param, 3>{ 0.0f, 0.0f, 5.0f } }, "set the light's offset");
+		Accepted(r, SetLightShadow{ 4, true }, "set the light's shadow");
+		Accepted(r, SetLightBones{ 4, NamedBones{ { "NPC Head [Head]" } } }, "set named bones");
+		Refused(r, SetLightBones{ 4, NamedBones{} }, "output 4", "at least one name", "named bones without names");
+		Refused(r, SetLightBones{ 4, SkinnedBones{ 0, 0.0f } }, "output 4", "at least 1", "skinned bones with max 0");
+		const auto* light = std::get_if<LightOutput>(&r.outputs[4]);
+		Check(light && Get<float>(light->size) && *Get<float>(light->size) == 2.0f && Get<Ref>(light->cutoff) && Get<Ref>(light->color) && light->shadow && Get<NamedBones>(light->bones), "the light carries every edit");
+		Accepted(r, RemoveOutput{ 4 }, "remove the light");
+		Accepted(r, AddLight{}, "add a light back");
+		Check(r.outputs.size() == 5 && std::get_if<LightOutput>(&r.outputs[4]) && *std::get_if<LightOutput>(&r.outputs[4]) == LightOutput{}, "the added light has the format's defaults");
+
+		Recipe s = Canonical();
+		Refused(s, SetShellMaterial{ ShellMaterial::kVanilla }, "shell", "writes 'fuzz' on the shell", "a vanilla shell under a fuzz output");
+		Accepted(s, RemoveOutput{ 1 }, "remove the fuzz output");
+		Accepted(s, SetShellMaterial{ ShellMaterial::kVanilla }, "a vanilla shell under emissive alone");
+		Accepted(s, SetShellBlend{ ShellBlend::kAlpha }, "set the blend");
+		Accepted(s, SetShellDepthBias{ false }, "set the depth bias");
+		Accepted(s, SetShellAlphaTest{ 0.5f }, "set the alpha test");
+		Refused(s, SetShellAlphaTest{ 1.5f }, "shell", "0..1", "an alpha test out of range");
+		Accepted(s, SetShellParam{ ShellParam::kRimPower, 4.0f }, "set the rim power");
+		Refused(s, SetShellParam{ ShellParam::kEmissive, Ref{ "nothing" } }, "shell", "unknown signal", "a shell parameter reading a missing signal");
+		Accepted(s, SetShellVector{ ShellVector::kOffset, Ref{ "glowHue" } }, "set the pose offset to a signal");
+		Accepted(s, SetShellPoint{ ShellPoint::kScalePoint, Vec3{ 1.0f, 2.0f, 3.0f } }, "set the scale point");
+		Refused(s, SetShellPoint{ ShellPoint::kSpinAxis, Vec3{} }, "shell", "cannot be zero", "a zero spin axis");
+		Check(s.shell.material == ShellMaterial::kVanilla && s.shell.blend == ShellBlend::kAlpha && !s.shell.depthBias && s.shell.alphaTest == 0.5f && Get<float>(s.shell.rimPower) && Get<Ref>(s.shell.pose.offset) && s.shell.pose.scalePoint == Vec3{ 1.0f, 2.0f, 3.0f }, "the shell carries every edit");
+	}
+}
+
 int main()
 {
 	Check(!Canonical().outputs.empty(), "schema/example-magicka.json parses");
+	RowEdits();
+	PanelEdits();
 	LayerEdits();
 	StackEdits();
 	OutputEdits();

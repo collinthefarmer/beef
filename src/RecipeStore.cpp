@@ -6,6 +6,7 @@
 #include "PCH.h"
 #include "Recipe.h"
 
+#include <cctype>
 #include <fstream>
 #include <sstream>
 
@@ -456,6 +457,30 @@ namespace WornEnchantmentPBR
 		Republish(*loaded);
 		logger::info("recipe {} saved to {}", loaded->recipe.id, path.string());
 		return path;
+	}
+
+	bool NewRecipe(std::string_view a_id, RecipeKey a_key)
+	{
+		const bool stem = !a_id.empty() && std::ranges::all_of(a_id, [](char c) { return std::isalnum(static_cast<unsigned char>(c)) || c == '-' || c == '_' || c == '.'; }) && a_id[0] != '.';
+		if (!stem) {
+			logger::warn("new recipe '{}': an id is a file stem (letters, digits, '-', '_', '.')", a_id);
+			return false;
+		}
+		if (Loaded(a_id)) {
+			logger::warn("new recipe {}: a recipe has that id", a_id);
+			return false;
+		}
+		Recipe recipe;
+		recipe.id = std::string{ a_id };
+		recipe.metadata.name = recipe.id;
+		recipe.keys.push_back(std::move(a_key));
+		LoadedRecipe loaded{ std::move(recipe), Identity::UserRecipeFolder() / (std::string{ a_id } + ".json"), {}, nullptr, true };
+		loaded.diagnostics = Validate(loaded.recipe);
+		ResolveForms(loaded.recipe, loaded.diagnostics);
+		g_loaded.push_back(std::move(loaded));
+		g_recipes.push_back(g_loaded.back().recipe);
+		logger::info("new recipe {} keyed by {}; saves to {}", a_id, g_loaded.back().recipe.keys[0].ToString(), g_loaded.back().path.string());
+		return true;
 	}
 
 	bool RevertRecipe(std::string_view a_id)

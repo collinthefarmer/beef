@@ -341,7 +341,16 @@ starts with its mode bar and holds the selection (actor and piece, then
 recipe within it), Freeze with a time scrub (freezing holds the current
 moment; the slider moves it), and Isolate this recipe in its own tables,
 and the other pages show the selection the Studio made. An edit keeps
-the recipe's clock where it was. The design behind the studio is the
+the recipe's clock where it was. The page holds its selection as keys
+(the piece, the recipe id, the geometry name, the target and slot, the
+region name; only the layer is an index, clamped each frame), and no
+widget writes it: widgets return intents, the page collects them while
+drawing and applies them after the frame through one reducer and the
+manager, so nothing drawn in a frame outlives the state it came from.
+Every edit is one step of a per-recipe history: **Undo** and **Redo** on
+the recipe row (Ctrl+Z and Ctrl+Y while no field has the keyboard)
+restore whole recipes through the same retire-and-reapply path as an
+edit; Revert clears the history and Save keeps it. The design behind the studio is the
 Design section of `plans/worn-enchantment-pbr-menu-brief.md`; the modules
 are in `ARCHITECTURE.md` under "The recipe studio".
 
@@ -349,17 +358,34 @@ are in `ARCHITECTURE.md` under "The recipe studio".
   view models, in one narrow column of collapsible sections so the game
   stays in view. Compose starts with two labelled rows. The recipe row:
   **S**, the recipe applied alone (isolate); the **selection** (actor
-  and piece); the **recipe** within it; and at the far right **Clear
-  layers**, which empties the picked output's stack. The edit row: **S**, solo for the
+  and piece); and the **recipe** within it. The edit row: **S**, solo for the
   picked output; the **target** (material, shell or the light, the
   format's word for where an output goes); the **slot** on it with its
-  state; and the **region** lens (one of the recipe's masks; the stack
-  filters to layers it masks and Add layer binds it first). When the
+  state; the **region** lens (one of the recipe's masks; the stack
+  filters to layers it masks and Add layer binds it first); and at the
+  far right **Clear**, which
+  removes the picked output (a slot's, or the light) so the slot reads
+  empty again; between the target and the slot a **settings** / **stack**
+  switch says what the stack pane shows, one at a time:
+  the target's settings or the picked slot's stack. The material has no
+  settings and the light no stack, so the pane shows what the target
+  has and the other button is greyed. The light's settings are the
+  **light panel**: colour, intensity, size, cutoff,
+  offset, shadow, the bones as a kind (skinned with max and minShare, or
+  named with a comma-separated list), each a field like the row fields;
+  a recipe without a light offers Add light. The shell's are the
+  **shell settings**: material kind (a
+  kind change is refused while a shell output writes a slot the new
+  kind lacks), blend, depth bias, alpha test, alpha, rim power,
+  emissive, and the pose (inflate, offset, scale and its point, spin and
+  its axis). When the
   piece has several shapes, the stack's composite is viewed on one of
   them (its tooltip names the shape) and clicking it views the next;
   edits reach every shape. A
-  footer pinned to the bottom of the page holds the clock: Freeze, and
-  the scrubber across the remaining width. The scrubber follows the
+  footer pinned to the bottom of the page holds the clock: Freeze, a
+  **step** button (one tick of the recipe clock, held), a **speed**
+  slider that multiplies every recipe's clock, and the scrubber across
+  the remaining width. The scrubber follows the
   clock while it runs, shown within the current minute (the clock itself
   runs on, since recipes read `time`); grabbing it freezes at that
   moment, and dragging either way moves the recipe within that minute; unfreezing resumes from the
@@ -370,15 +396,17 @@ are in `ARCHITECTURE.md` under "The recipe studio".
   **stack**: the composite beside the slot scalars, then the layers
   in application order, the base first and the last applied at the
   bottom, as a table with a column per
-  element: index, drag grip, solo, mute (the same two wherever something
-  can be soloed or muted; outputs and the light have S alone), the
-  source's type badge, the blend combo, the source, and remove; other recipes' layers on
-  the same slot appear greyed above and below in merge order. Clicking
+  element: index, remove, drag grip, solo, mute (the same two wherever
+  something can be soloed or muted; outputs and the light have S alone),
+  the source's type badge, the blend combo, and the source; other recipes' layers on
+  the same slot appear greyed above and below in merge order; an empty
+  stack shows Add layer alone. Clicking
   the grip or the name (or picking a slot, which selects its top layer,
   or adding a layer, which selects the new one) opens that layer's
-  fields beside the layer table, behind a draggable vertical rule,
-  next to its thumbnail, as a second table: name, details, value, one row each for
-  source, curve, opacity, colour, mask and channels. A value that may be
+  fields beside the layer table, behind a draggable vertical rule, as a
+  second table: name, details, value, one row each for source, curve,
+  opacity, colour, mask and channels, with the layer's thumbnail under
+  them when it has one. A value that may be
   a literal or a signal is one control: its type badge on the left is a
   button that switches the input between a text field and a combo over
   the signals of that type, and gives it the keyboard; a value that
@@ -398,10 +426,34 @@ are in `ARCHITECTURE.md` under "The recipe studio".
   A filled badge is the button that toggles its field between text and
   the signal combo. The full rule, including what is coerced, is the badge's
   tooltip; one number typed into a colour field, a layer's source
-  included, stands for all three components. Under the stack a folded
-  **Signals** section holds the signal table (tunable rows with their
-  editors, developer rows read-only, each with its live value and curve)
-  and the curves table beneath it.
+  included, stands for all three components. A colour field's text
+  starts with a swatch showing the colour it names; clicking it opens a
+  colour picker, and a pick lands in the field as `r, g, b` on release.
+  The two context rows stay
+  in view; under them two panes scroll on their own, separated by
+  rules, the stack taking the larger share: the **stack**, and
+  **Resources**, a tab per table (Signals, Curves; masks to come). The
+  **signal table**: remove (greyed while anything references the row,
+  with the count in its tooltip), signal (its kind in the tooltip), edit
+  (a constant's number or colour as a literal field, an expression as
+  text, the same inputs as the inspector; the kind follows what is
+  typed: a number makes a scalar constant, three numbers a colour
+  constant, anything else that parses an expression; a row of another
+  kind reads "edits in the file"), curve (a combo over the declared
+  curves, or none), "=", and the
+  live value with its swatch, or "inert" with the reason (a trigger
+  row with an event id carries **Fire**, which posts one firing of that
+  event for the piece's wearer); and the
+  **curves** table (remove, name and expression). The Resources rule
+  carries **Add** for the open tab (a constant 0 named `signal`,
+  `signal2`, ...; a curve `x` named `curve`, ...) and that tab's name
+  filter at its right edge. Names in both tables
+  are fields: committing another name renames the row and repoints every
+  reference to it, in parameters, variant overrides and expressions. The
+  recipe row's **New** opens a popup that makes an empty recipe keyed to
+  the worn armor under the id typed, listed as `user/<id>.json` until
+  saved; a recipe stays on its piece with an empty board while it has no
+  outputs.
 - **Recipes**: every loaded file with keys, row counts, state and path;
   the selection's resolved recipes in merge order; the **board**, the
   grid of every slot on the material and the shell for the selected
@@ -411,12 +463,12 @@ are in `ARCHITECTURE.md` under "The recipe studio".
   output; excluded and refused cells say why); Save and Revert for
   the selected recipe with an "edited, not saved" marker; Reload,
   Re-apply all, Retire all; the selected recipe's row problems.
-- **Setup**: one row of every switch setting with the save bar beside
-  them (**Save INI**, **Reload INI**, **Re-apply**, the **auto** re-apply
-  toggle, "unsaved changes" and "re-apply needed" markers); under it the
-  other settings as a name and value table; and in the bottom half of
-  the page the **Log**: a filter, auto-scroll and Verbose logging on one
-  row, then the last 300 log lines with warnings and errors in amber.
+- **Setup**: the save bar (**Save INI**, **Reload INI**, **Re-apply**,
+  the **auto** re-apply toggle, "unsaved changes" and "re-apply needed"
+  markers); under it every setting as a name and value table, switches
+  as checkboxes in their value cell; and under a rule, in the bottom half
+  of the page, the **Log**: a filter, auto-scroll and Verbose logging on
+  one row, then the last 300 log lines with warnings and errors in amber.
   Settings widgets are generated from the settings table, so a new row
   appears in the menu without menu code.
 
@@ -647,7 +699,7 @@ modes; the runtime is untouched except layer solo and mute):
     the file order shown, with no `edit refused` line in the log. Select
     the `fill` row: the inspector shows the fill's
     thumbnail and definition, `@metal` with its expression, and
-    `glowHue` editable beside its swatch; open the Signals section under
+    `glowHue` editable beside its swatch; in the signal table under
     the stack and drag `glowStrength`: the glow follows. Recipes page: the recipe reads
     "edited, not saved"; Revert restores it.
 24. **Conjuration breath** (`examples/conjuration-breath.json`, keyed by
@@ -662,6 +714,22 @@ modes; the runtime is untouched except layer solo and mute):
     the material's height) and the glow retreats into the grooves. The
     leather and cloth stay dark. Solo the height cell to see the sink
     alone.
+26. **State model, undo, panels, the clock** (menu stage 2). With the
+    magicka cuirass worn: pick emissive on the shell, select the `ring`
+    row, set its opacity to 0.5, press Undo: the opacity reads `@struck`
+    again and the armor's rings return; Redo puts 0.5 back; Ctrl+Z with no
+    field focused undoes again. Remove a layer, then Undo: it is back at
+    its index and selected. Choose the light target: the panel lists the
+    light's fields; set size to 3 and the glow's reach grows; set bones
+    to named and type `NPC Head [Head]`: the light moves to the head. Pick
+    the shell target: the settings sit above the stack; set inflate to
+    `0, 0.05, 0.05` and the shell swells; set material to vanilla: the
+    edit is refused in the log while fuzz is on the shell, and accepted
+    once the fuzz output is cleared. On the Timeline drag speed to 0.25:
+    the breath slows; press step: the clock holds and advances one tick
+    per press. In the signal table press Fire on `struck`: a ring runs
+    out from the chest. Every step is one log line and one re-apply;
+    nothing in the studio goes stale after an edit.
 25. **Masked height on a flat-displacement armor.** On a piece whose
     `relief` thumbnail shows occlusion (its displacement map is black,
     NOTES 46), add a height output with one masked layer and a constant

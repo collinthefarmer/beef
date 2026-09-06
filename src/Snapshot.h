@@ -38,12 +38,15 @@ namespace WornEnchantmentPBR::Studio
 		std::string          text;      // an expr signal's expression, editable
 		std::string          curve;     // the row's curve, editable
 		std::string          problem;   // why the row is inert, when it is
+		std::string          event;     // a trigger's event id, for the fire button; empty otherwise
+		std::size_t          references = 0;  // places that name it; 0 = removable
 	};
 
 	struct TextRow
 	{
 		std::string name;
 		std::string text;
+		std::size_t references = 0;  // places that name it; 0 = removable
 	};
 
 	// A layer as the file has it, with the compositor's verdict where it has one.
@@ -120,6 +123,42 @@ namespace WornEnchantmentPBR::Studio
 		std::vector<OutputRow> outputs;
 	};
 
+	// The recipe's light as the file has it, for its panel: every parameter
+	// as text, the bones as a kind with its settings.
+	struct LightRow
+	{
+		bool        present = false;
+		std::size_t output = 0;  // into Recipe::outputs
+		std::string color;       // Vec3ParamText
+		std::string intensity;   // ParamText
+		std::string size;
+		std::string cutoff;
+		std::string offset;      // Vec3ParamText
+		bool        shadow = false;
+		std::string bones;       // "skinned" or "named"
+		std::string bonesMax;    // skinned: how many
+		std::string bonesMinShare;
+		std::string bonesNames;  // named: comma-separated
+	};
+
+	// The recipe's shell settings as the file has it, for its panel.
+	struct ShellRow
+	{
+		ShellMaterial material = ShellMaterial::kPbrCopy;
+		ShellBlend    blend = ShellBlend::kAdditive;
+		bool          depthBias = true;
+		float         alphaTest = 0.0f;
+		std::string   alpha;     // ParamText
+		std::string   rimPower;
+		std::string   emissive;
+		std::string   inflate;   // Vec3ParamText
+		std::string   offset;
+		std::string   scale;
+		std::string   spin;
+		Vec3          scalePoint;
+		Vec3          spinAxis{ 0.0f, 0.0f, 1.0f };
+	};
+
 	struct RecipeRow
 	{
 		std::string                id;
@@ -135,6 +174,10 @@ namespace WornEnchantmentPBR::Studio
 		std::string                light;  // description, empty when none
 		std::optional<std::size_t> lightOutput;
 		std::vector<Diagnostic>    problems;  // the store's row problems for this recipe
+		std::size_t                undoDepth = 0;  // edits that Undo would take back
+		std::size_t                redoDepth = 0;
+		LightRow                   lightRow;
+		ShellRow                   shellRow;
 	};
 
 	struct PieceRow

@@ -4,6 +4,9 @@
 // would fill it, with no textures and no runtime verdicts.
 
 #include "Signals.h"
+#include "Forms.h"
+#include "History.h"
+#include "MenuState.h"
 #include "Studio.h"
 #include "test_support.h"
 
@@ -37,6 +40,7 @@ namespace
 	std::vector<SignalRow> SignalRows(const Recipe& a_recipe)
 	{
 		const auto             graph = SignalGraph::Compile(a_recipe.signals, a_recipe.curves);
+		const auto             counts = CountReferences(a_recipe);
 		std::vector<SignalRow> rows;
 		for (const auto& signal : a_recipe.signals) {
 			SignalRow row;
@@ -51,6 +55,9 @@ namespace
 				row.text = expr->text;
 			}
 			row.curve = signal.curve ? signal.curve->text : "";
+			if (const auto count = counts.signals.find(signal.name); count != counts.signals.end()) {
+				row.references = count->second;
+			}
 			rows.push_back(std::move(row));
 		}
 		return rows;
@@ -141,6 +148,8 @@ namespace
 			row.masks.push_back(mask.name);
 		}
 		row.geometries.push_back(GeometryOf(a_recipe, kGeometry));
+		row.lightRow = LightRowOf(a_recipe);
+		row.shellRow = ShellRowOf(a_recipe);
 		for (std::size_t i = 0; i < a_recipe.outputs.size(); ++i) {
 			if (Is<LightOutput>(a_recipe.outputs[i])) {
 				row.lightOutput = i;
@@ -193,6 +202,13 @@ namespace
 		return snapshot;
 	}
 
+	void Pick(Selection& a_selection, Target a_target, std::optional<Slot> a_slot = std::nullopt, std::optional<std::size_t> a_layer = std::nullopt)
+	{
+		a_selection.target = a_target;
+		a_selection.slot = a_slot;
+		a_selection.layer = a_layer;
+	}
+
 	Selection SelectCanonical()
 	{
 		Selection selection;
@@ -230,15 +246,21 @@ namespace
 		Check(SelectedOutput(geometry, none) == nullptr, "an unset output yields none");
 
 		auto chosen = SelectCanonical();
-		chosen.output = 1;
+		Pick(chosen, Target::kShell, Slot::kFuzz);
 		piece = SelectedPiece(a_snapshot, chosen);
 		recipe = SelectedRecipe(piece, chosen);
 		Check(recipe && recipe->id == kRecipeID, "a recipe is chosen by id");
 		geometry = SelectedGeometry(recipe, chosen);
 		const auto* output = SelectedOutput(geometry, chosen);
-		Check(output && output->index == 1 && output->slot == Slot::kFuzz, "an output is chosen by index");
-		chosen.output = 99;
-		Check(SelectedOutput(geometry, chosen) == nullptr, "an output index past the end yields none");
+		Check(output && output->index == 1 && output->slot == Slot::kFuzz, "an output is found by its target and slot");
+		Pick(chosen, Target::kMaterial, Slot::kFuzz);
+		Check(SelectedOutput(geometry, chosen) == nullptr, "the same slot on the other surface yields none");
+		Pick(chosen, Target::kShell, Slot::kGlint);
+		Check(SelectedOutput(geometry, chosen) == nullptr, "a slot nothing writes yields none");
+		Pick(chosen, Target::kLight, Slot::kEmissive);
+		Check(SelectedOutput(geometry, chosen) == nullptr, "the light target names no stack");
+		Pick(chosen, Target::kShell);
+		Check(SelectedOutput(geometry, chosen) == nullptr, "no slot picked yields none");
 		chosen.recipeID = "missing";
 		chosen.geometry = "missing";
 		recipe = SelectedRecipe(piece, chosen);
@@ -363,19 +385,18 @@ namespace
 		const View view;
 		auto       selection = SelectCanonical();
 		Check(!BuildStackView(a_piece, a_recipe, a_geometry, selection, view), "no selected output, no stack");
-		selection.output = 4;
+		Pick(selection, Target::kLight);
 		Check(!BuildStackView(a_piece, a_recipe, a_geometry, selection, view), "a light has no stack");
-		selection.output = 7;
-		Check(!BuildStackView(a_piece, a_recipe, a_geometry, selection, view), "an output past the end has no stack");
+		Pick(selection, Target::kMaterial, Slot::kGlint);
+		Check(!BuildStackView(a_piece, a_recipe, a_geometry, selection, view), "an unwritten slot has no stack");
 
-		selection.output = 0;
-		selection.layer = 1;
+		Pick(selection, Target::kShell, Slot::kEmissive, 1);
 		const auto stack = BuildStackView(a_piece, a_recipe, a_geometry, selection, view);
 		Check(stack.has_value(), "the emissive stack builds");
 		if (!stack) {
 			return;
 		}
-		Check(stack->output == 0 && stack->surface == Surface::kShell && stack->slot == Slot::kEmissive && stack->title == "emissive on shell", "the stack names its cell");
+		Check(stack->output == 0 && stack->surface == Surface::kShell && stack->slot == Slot::kEmissive, "the stack names its cell");
 		Check(stack->rows.size() == 3 && stack->rows[0].index == 0 && stack->rows[2].index == 2 && stack->rows[0].layer.source == "@fill" && stack->rows[2].layer.source == "@stepRing", "rows are in file order, base first");
 		Check(stack->rows[1].selected && !stack->rows[0].selected && !stack->rows[2].selected, "the selected layer is marked");
 		Check(std::ranges::all_of(stack->rows, [](const StackRow& a_row) { return a_row.inRegion && !a_row.muted && !a_row.soloed; }), "with no region every row is in, none muted or soloed");
@@ -398,10 +419,9 @@ namespace
 		const auto soloed = BuildStackView(a_piece, a_recipe, a_geometry, selection, filtered);
 		Check(soloed && soloed->rows[2].muted && !soloed->rows[1].muted && soloed->rows[1].soloed && !soloed->rows[0].soloed && soloed->isolated, "mute and solo follow the view");
 
-		selection.output = 3;
-		selection.layer.reset();
+		Pick(selection, Target::kMaterial, Slot::kRmaos);
 		const auto rmaos = BuildStackView(a_piece, a_recipe, a_geometry, selection, view);
-		Check(rmaos && rmaos->title == "rmaos on material" && rmaos->rows.size() == 1 && rmaos->below.empty() && rmaos->above.empty() && rmaos->scalars.empty(), "rmaos on the material has no neighbours and no scalars");
+		Check(rmaos && rmaos->rows.size() == 1 && rmaos->below.empty() && rmaos->above.empty() && rmaos->scalars.empty(), "rmaos on the material has no neighbours and no scalars");
 		Check(rmaos && rmaos->masks == a_recipe.masks, "the stack carries the recipe's mask names for its rows");
 		Check(rmaos && std::ranges::none_of(rmaos->rows, [](const StackRow& a_row) { return a_row.selected; }), "no layer selected, none marked");
 
@@ -409,7 +429,7 @@ namespace
 		auto stray = a_recipe;
 		stray.id = "stray";
 		stray.priority = 50;
-		selection.output = 0;
+		Pick(selection, Target::kShell, Slot::kEmissive);
 		const auto strayStack = BuildStackView(a_piece, stray, a_geometry, selection, view);
 		// lower (1 layer) and the canonical recipe (3 layers) merge before priority 50; higher after.
 		Check(strayStack && strayStack->below.size() == 4 && strayStack->above.size() == 1, "a recipe outside the merge order splits neighbours by priority");
@@ -424,7 +444,7 @@ namespace
 		normal.index = 5;
 		geometry.outputs.push_back(normal);
 		auto selection = SelectCanonical();
-		selection.output = 5;
+		Pick(selection, Target::kMaterial, Slot::kNormal);
 		const View view;
 		const auto stack = BuildStackView(a_piece, a_recipe, geometry, selection, view);
 		Check(stack && stack->blends.size() == 7 && stack->blends.back() == Blend::kNormal, "the normal stack takes every blend including normal");
@@ -434,16 +454,14 @@ namespace
 	{
 		auto selection = SelectCanonical();
 		Check(!BuildInspector(a_recipe, a_geometry, selection), "no output, no inspector");
-		selection.output = 0;
+		Pick(selection, Target::kShell, Slot::kEmissive);
 		Check(!BuildInspector(a_recipe, a_geometry, selection), "no layer, no inspector");
 		selection.layer = 3;
 		Check(!BuildInspector(a_recipe, a_geometry, selection), "a layer past the end, no inspector");
-		selection.output = 4;
-		selection.layer = 0;
+		Pick(selection, Target::kLight, std::nullopt, 0);
 		Check(!BuildInspector(a_recipe, a_geometry, selection), "a light has no inspector");
 
-		selection.output = 0;
-		selection.layer = 0;
+		Pick(selection, Target::kShell, Slot::kEmissive, 0);
 		const auto fill = BuildInspector(a_recipe, a_geometry, selection);
 		Check(fill.has_value(), "the fill layer inspects");
 		if (!fill) {
@@ -466,14 +484,12 @@ namespace
 		Check(ring && ring->signals.size() == 2 && ring->signals[0].name == "struck" && ring->signals[1].name == "glowHue", "opacity's signal comes before the colour's");
 		Check(ring && ring->source && ring->source->name == "ring" && !ring->mask, "a ripple source, no mask");
 
-		selection.output = 2;
-		selection.layer = 0;
+		Pick(selection, Target::kMaterial, Slot::kHeight, 0);
 		const auto relief = BuildInspector(a_recipe, a_geometry, selection);
 		Check(relief && relief->curve && relief->curve->name == "crisp" && relief->curve->text == "(x - mean) * 3 + 0.5", "a declared curve is found by its reference");
 		Check(relief && relief->signals.empty() && relief->slot == Slot::kHeight, "a literal opacity and no colour name no signal");
 
-		selection.output = 1;
-		selection.layer = 0;
+		Pick(selection, Target::kShell, Slot::kFuzz, 0);
 		const auto white = BuildInspector(a_recipe, a_geometry, selection);
 		Check(white && !white->source && white->row.source == "1, 1, 1", "a constant colour source has no source row");
 
@@ -486,7 +502,7 @@ namespace
 		layer.opacityText = "@missing";
 		layer.color = "@glowHue, 1, 1";
 		layer.mask = "@nowhere";
-		selection.output = 0;
+		Pick(selection, Target::kShell, Slot::kEmissive, 0);
 		const auto maskSource = BuildInspector(a_recipe, geometry, selection);
 		Check(maskSource && maskSource->source && maskSource->source->name == "metal", "a source naming a mask finds the mask row");
 		Check(maskSource && !maskSource->mask && maskSource->signals.empty() && !maskSource->curve, "unknown references and an inline curve resolve to nothing");
@@ -504,8 +520,7 @@ namespace
 	void InspectorForms(const RecipeRow& a_recipe, const GeometryRow& a_geometry)
 	{
 		auto selection = SelectCanonical();
-		selection.output = 0;
-		selection.layer = 0;
+		Pick(selection, Target::kShell, Slot::kEmissive, 0);
 		const auto inspector = BuildInspector(a_recipe, a_geometry, selection);
 		Check(inspector.has_value(), "the fill layer inspects for its form");
 		if (!inspector) {
@@ -572,7 +587,7 @@ namespace
 
 		// The relief layer: a declared curve has a detail, a literal opacity none;
 		// the bindings carry its own indices.
-		selection.output = 2;
+		Pick(selection, Target::kMaterial, Slot::kHeight, 0);
 		const auto relief = BuildInspector(a_recipe, a_geometry, selection);
 		Check(relief.has_value(), "the relief layer inspects for its form");
 		if (!relief) {
@@ -588,7 +603,7 @@ namespace
 	{
 		const View view;
 		auto       selection = SelectCanonical();
-		selection.output = 0;
+		Pick(selection, Target::kShell, Slot::kEmissive);
 		const auto emissive = BuildStackView(a_piece, a_recipe, a_geometry, selection, view);
 		Check(emissive.has_value(), "the emissive stack builds for its form");
 		if (!emissive) {
@@ -609,7 +624,7 @@ namespace
 		Check(signal && Get<Ref>(signal->value) && Get<Ref>(signal->value)->name == "glowLevel", "a @signal binds as the scalar");
 		Check(!Bound<SetScalar>(strength, "zzz", edit) && !edit, "a scalar that does not parse is refused");
 
-		selection.output = 1;
+		Pick(selection, Target::kShell, Slot::kFuzz);
 		const auto fuzz = BuildStackView(a_piece, a_recipe, a_geometry, selection, view);
 		Check(fuzz.has_value(), "the fuzz stack builds for its form");
 		if (!fuzz) {
@@ -632,9 +647,67 @@ namespace
 		const auto* weightValue = Bound<SetScalar>(*weight, "0.3", edit);
 		Check(weightValue && weightValue->output == 1 && weightValue->field == ScalarField::kWeight, "weight binds to its field");
 
-		selection.output = 3;
+		Pick(selection, Target::kMaterial, Slot::kRmaos);
 		const auto rmaos = BuildStackView(a_piece, a_recipe, a_geometry, selection, view);
 		Check(rmaos && ScalarForm(*rmaos).empty(), "a stack without scalars has an empty form");
+	}
+
+	void PanelForms(const RecipeRow& a_recipe)
+	{
+		const auto names = SignalNamesOf(a_recipe);
+		Check(names.scalar.size() == 15 && names.color.size() == 2, "signal names split by type");
+		std::optional<RecipeEdit> edit;
+
+		const auto& light = a_recipe.lightRow;
+		Check(light.present && light.output == 4 && light.color == "@glowHue" && light.intensity == "@lightLevel" && light.size == "1.4" && light.cutoff == "0.05" && light.offset == "0, 0, 0" && !light.shadow && light.bones == "skinned" && light.bonesMax == "2" && light.bonesMinShare == "0", "the light row reads the canonical light");
+		const auto lightForm = LightForm(light, names);
+		Check(lightForm.size() == 9 && lightForm[0].name == "color" && lightForm[4].name == "offset" && lightForm[5].name == "shadow" && lightForm[6].name == "bones" && lightForm[7].name == "max" && lightForm[8].name == "minShare", "the light form: colour, intensity, size, cutoff, offset, shadow, bones, max, minShare");
+		Check(lightForm[0].kind == FieldKind::kColor && lightForm[0].names == names.color && lightForm[1].kind == FieldKind::kScalar && lightForm[1].names == names.scalar && lightForm[4].kind == FieldKind::kVector && lightForm[5].kind == FieldKind::kToggle && lightForm[6].kind == FieldKind::kChoice && lightForm[7].names.empty(), "light field kinds and combos");
+		const auto* colour = Bound<SetLightVector>(lightForm[0], "1, 0.5, 0", edit);
+		Check(colour && colour->output == 4 && colour->field == LightVector::kColor && Get<std::array<Param, 3>>(colour->value), "the light's colour binds");
+		const auto* intensity = Bound<SetLightParam>(lightForm[1], "@glowLevel", edit);
+		Check(intensity && intensity->field == LightParam::kIntensity && Get<Ref>(intensity->value), "the light's intensity binds a signal");
+		const auto* shadow = Bound<SetLightShadow>(lightForm[5], "on", edit);
+		Check(shadow && shadow->shadow, "shadow binds a toggle");
+		const auto* named = Bound<SetLightBones>(lightForm[6], "named", edit);
+		Check(named && Get<NamedBones>(named->bones) && Get<NamedBones>(named->bones)->bones.size() == 1, "choosing named bones starts with one bone");
+		const auto* max = Bound<SetLightBones>(lightForm[7], "3", edit);
+		Check(max && Get<SkinnedBones>(max->bones) && Get<SkinnedBones>(max->bones)->max == 3 && Get<SkinnedBones>(max->bones)->minShare == 0.0f, "max keeps the share");
+		Check(!Bound<SetLightBones>(lightForm[7], "0", edit) && !Bound<SetLightBones>(lightForm[7], "x", edit), "a bad count is refused");
+		Check(!Bound<SetLightParam>(lightForm[1], "nonsense", edit) && !edit, "a light value that does not parse is refused");
+
+		LightRow namedRow = light;
+		namedRow.bones = "named";
+		namedRow.bonesNames = "NPC Head [Head], NPC Spine2 [Spn2]";
+		const auto namedForm = LightForm(namedRow, names);
+		Check(namedForm.size() == 8 && namedForm[7].name == "names" && namedForm[7].kind == FieldKind::kText, "named bones show a names field");
+		const auto* renamed = Bound<SetLightBones>(namedForm[7], "NPC Head [Head] , NPC L Hand [LHnd]", edit);
+		Check(renamed && Get<NamedBones>(renamed->bones) && Get<NamedBones>(renamed->bones)->bones == std::vector<std::string>{ "NPC Head [Head]", "NPC L Hand [LHnd]" }, "names split on commas, trimmed");
+		Check(!Bound<SetLightBones>(namedForm[7], " , ", edit), "no names is refused");
+		Check(LightForm(LightRow{}, names).empty(), "no light, no form");
+
+		const auto& shell = a_recipe.shellRow;
+		Check(shell.material == ShellMaterial::kPbrCopy && shell.blend == ShellBlend::kAdditive && shell.depthBias && shell.alphaTest == 0.0f && shell.alpha == "@shellOpacity" && shell.inflate == "0, @inflate, @inflate" && shell.scale == "1" && shell.spinAxis == Vec3{ 0.0f, 0.0f, 1.0f }, "the shell row reads the canonical shell");
+		const auto shellForm = ShellForm(shell, names);
+		Check(shellForm.size() == 13 && shellForm[0].name == "material" && shellForm[1].name == "blend" && shellForm[2].name == "depthBias" && shellForm[3].name == "alphaTest" && shellForm[4].name == "alpha" && shellForm[7].name == "inflate" && shellForm[10].name == "scalePoint" && shellForm[12].name == "spinAxis", "the shell form's fields");
+		Check(shellForm[0].kind == FieldKind::kChoice && shellForm[0].text == "pbrCopy" && shellForm[0].names.size() == 2 && shellForm[2].kind == FieldKind::kToggle && shellForm[2].text == "on" && shellForm[3].names.empty() && shellForm[4].names == names.scalar && shellForm[7].kind == FieldKind::kVector && shellForm[10].names.empty(), "shell field kinds and combos");
+		const auto* material = Bound<SetShellMaterial>(shellForm[0], "vanilla", edit);
+		Check(material && material->material == ShellMaterial::kVanilla, "the material kind binds");
+		Check(!Bound<SetShellMaterial>(shellForm[0], "glass", edit), "an unknown kind is refused");
+		const auto* blend = Bound<SetShellBlend>(shellForm[1], "alpha", edit);
+		Check(blend && blend->blend == ShellBlend::kAlpha, "the blend binds");
+		const auto* bias = Bound<SetShellDepthBias>(shellForm[2], "off", edit);
+		Check(bias && !bias->on, "depth bias binds a toggle");
+		const auto* alphaTest = Bound<SetShellAlphaTest>(shellForm[3], "0.5", edit);
+		Check(alphaTest && alphaTest->value == 0.5f, "alpha test binds a number");
+		Check(!Bound<SetShellAlphaTest>(shellForm[3], "@shellOpacity", edit), "alpha test takes no signal");
+		const auto* alpha = Bound<SetShellParam>(shellForm[4], "0.5", edit);
+		Check(alpha && alpha->field == ShellParam::kAlpha && Get<float>(alpha->value), "alpha binds");
+		const auto* inflate = Bound<SetShellVector>(shellForm[7], "@inflate", edit);
+		Check(inflate && inflate->field == ShellVector::kInflate && Get<Ref>(inflate->value), "inflate binds a signal");
+		const auto* point = Bound<SetShellPoint>(shellForm[10], "0, 0, 10", edit);
+		Check(point && point->field == ShellPoint::kScalePoint && point->value == Vec3{ 0.0f, 0.0f, 10.0f }, "the scale point binds three numbers");
+		Check(!Bound<SetShellPoint>(shellForm[10], "@inflate", edit), "a point takes no signal");
 	}
 
 	void SignalLists(const RecipeRow& a_recipe)
@@ -647,6 +720,173 @@ namespace
 		const auto design = BuildSignalList(a_recipe, LayoutFor(Mode::kDesign));
 		Check(design.tunable.size() == 14 && design.developer.empty(), "design mode hides developer rows");
 		Check(BuildSignalList(RecipeRow{}, LayoutFor(Mode::kCompose)).tunable.empty(), "a recipe without signals lists nothing");
+	}
+
+	void SignalForms(const RecipeRow& a_recipe)
+	{
+		const auto find = [&](std::string_view a_name) -> const SignalRow* {
+			const auto it = std::ranges::find(a_recipe.signals, a_name, &SignalRow::name);
+			return it == a_recipe.signals.end() ? nullptr : &*it;
+		};
+		const auto* strength = find("glowStrength");
+		const auto* hue = find("glowHue");
+		const auto* scroll = find("shimmerScroll");
+		const auto* level = find("fillLevel");
+		Check(strength && hue && scroll && level, "the canonical signals for the forms are present");
+		if (!strength || !hue || !scroll || !level) {
+			return;
+		}
+		std::optional<RecipeEdit> edit;
+
+		const auto number = SignalForm(*strength);
+		Check(number && number->kind == FieldKind::kScalar && number->text == "1" && number->names.empty() && !number->allowEmpty && !number->detail, "a scalar constant is a literal scalar field");
+		const auto* setNumber = number ? Bound<SetConstant>(*number, "0.5", edit) : nullptr;
+		Check(setNumber && setNumber->signal == "glowStrength" && Get<float>(setNumber->value) && *Get<float>(setNumber->value) == 0.5f, "a number sets the constant");
+		const auto* toExpression = number ? Bound<SetExpression>(*number, "@fillLevel * 2", edit) : nullptr;
+		Check(toExpression && toExpression->signal == "glowStrength" && toExpression->text == "@fillLevel * 2", "an expression typed into a constant makes it an expression");
+		const auto* toColour = number ? Bound<SetConstant>(*number, "1, 0, 0", edit) : nullptr;
+		Check(toColour && Get<Vec3>(toColour->value), "three numbers typed into a constant make it a colour");
+		Check(number && !Bound<SetConstant>(*number, "nonsense +", edit) && !edit, "text that parses as nothing is refused");
+		Check(number && !Bound<SetConstant>(*number, "", edit) && !edit, "an empty text is refused");
+
+		const auto colour = SignalForm(*hue);
+		Check(colour && colour->kind == FieldKind::kColor && colour->names.empty(), "a colour constant is a literal colour field");
+		const auto* setColour = colour ? Bound<SetConstant>(*colour, "0.6, 0.2, 1", edit) : nullptr;
+		const auto* value = setColour ? Get<Vec3>(setColour->value) : nullptr;
+		Check(value && value->x == 0.6f && value->y == 0.2f && value->z == 1.0f, "three numbers set the colour");
+		const auto* colourExpression = colour ? Bound<SetExpression>(*colour, "@edgeColor", edit) : nullptr;
+		Check(colourExpression && colourExpression->text == "@edgeColor", "a reference typed into a colour constant makes it an expression");
+
+		const auto expression = SignalForm(*scroll);
+		Check(expression && expression->kind == FieldKind::kExpression && expression->text == "@scroll + 0.25", "an expr signal is an expression field");
+		const auto* setExpression = expression ? Bound<SetExpression>(*expression, "@scroll * 2", edit) : nullptr;
+		Check(setExpression && setExpression->signal == "shimmerScroll" && setExpression->text == "@scroll * 2", "the text sets the expression");
+		const auto* toConstant = expression ? Bound<SetConstant>(*expression, "0.25", edit) : nullptr;
+		Check(toConstant && Get<float>(toConstant->value) && *Get<float>(toConstant->value) == 0.25f, "a number typed into an expression makes it a constant");
+		const auto* hueRow = find("glowHue");
+		const auto* sheenScale = find("sheenScale");
+		Check(hueRow && hueRow->references == 5 && sheenScale && sheenScale->references == 1, "reference counts: glowHue in three layers, the light and a variant; sheenScale in one expression");
+
+		Check(!SignalForm(*level), "an efsh row has no form");
+	}
+
+	void Colours()
+	{
+		const auto three = LiteralColor("0.6, 0.2, 1");
+		Check(three && three->x == 0.6f && three->y == 0.2f && three->z == 1.0f, "three numbers are a colour");
+		const auto one = LiteralColor("0.25");
+		Check(one && one->x == 0.25f && one->y == 0.25f && one->z == 0.25f, "one number stands for all three");
+		Check(!LiteralColor("@glowHue") && !LiteralColor("1, @a, 0") && !LiteralColor("nonsense") && !LiteralColor(""), "references and non-numbers are not literal colours");
+		Check(LiteralColorText(Vec3{ 0.6f, 0.2f, 1.0f }) == "0.6, 0.2, 1", "a colour's text is three numbers");
+		const auto back = LiteralColor(LiteralColorText(Vec3{ 0.155f, 0.388f, 1.0f }));
+		Check(back && back->x == 0.155f && back->y == 0.388f && back->z == 1.0f, "a colour's text reads back");
+	}
+
+	void UniqueNames()
+	{
+		const std::vector<std::string> taken{ "signal", "signal2", "curve" };
+		Check(UniqueName("glow", taken) == "glow", "a free stem is the name");
+		Check(UniqueName("signal", taken) == "signal3", "a taken stem takes the first free number from 2");
+		Check(UniqueName("curve", taken) == "curve2", "the first number is 2");
+		Check(UniqueName("x", {}) == "x", "nothing taken");
+	}
+
+	void Filters()
+	{
+		Check(NameMatches("glowHue", "") && NameMatches("", ""), "an empty filter passes every name");
+		Check(NameMatches("glowHue", "hue") && NameMatches("glowHue", "GLOW") && NameMatches("glowHue", "glowHue"), "a filter matches anywhere, case ignored");
+		Check(!NameMatches("glowHue", "ring") && !NameMatches("", "a") && !NameMatches("hue", "glowHue"), "a name without the filter fails");
+	}
+
+	void Reductions()
+	{
+		MenuState state;
+		Reduce(state, SetMode{ Mode::kDesign });
+		Check(state.mode == Mode::kDesign && state.layout.designPanel, "set mode takes the mode's layout");
+		state.layout.stackSplit = 0.3f;
+		Reduce(state, SetMode{ Mode::kDesign });
+		Check(state.layout.stackSplit == 0.3f, "the same mode again keeps the layout as dragged");
+		Reduce(state, SetMode{ Mode::kCompose });
+
+		Reduce(state, PickPiece{ kPlayer, kCuirass, false });
+		Check(state.selection.actorID == kPlayer && state.selection.armorID == kCuirass && state.selection.recipeID.empty(), "a piece pick starts the selection over");
+		Reduce(state, PickRecipe{ kRecipeID });
+		Reduce(state, PickCell{ Surface::kShell, Slot::kEmissive, 2 });
+		Check(state.selection.recipeID == kRecipeID && state.selection.target == Target::kShell && state.selection.slot == Slot::kEmissive && state.selection.layer == 2, "a cell pick sets target, slot and top layer");
+		Reduce(state, PickLayer{ 1 });
+		Check(state.selection.layer == 1, "a layer pick");
+		Reduce(state, PickRegion{ "metal" });
+		Check(state.selection.region == "metal", "a region pick");
+		Reduce(state, ViewGeometry{ "other" });
+		Check(state.selection.geometry == "other", "viewing a geometry");
+		Reduce(state, ShowSettings{ true });
+		Check(state.settings, "the settings switch");
+		Reduce(state, ShowSettings{ false });
+		Check(!state.settings, "the stack switch");
+		Reduce(state, ShowResource{ ResourceTab::kCurves });
+		Check(state.resource == ResourceTab::kCurves && ResourceTabName(state.resource) == "Curves", "the resources tab");
+		Reduce(state, PickTarget{ Target::kShell });
+		Check(state.selection.slot == Slot::kEmissive && state.selection.layer == 1, "picking the same target keeps the slot and layer");
+		Reduce(state, PickTarget{ Target::kLight });
+		Check(state.selection.target == Target::kLight && !state.selection.slot && !state.selection.layer, "picking another target clears the slot and layer");
+		Reduce(state, PickSlot{ Slot::kHeight });
+		Check(state.selection.slot == Slot::kHeight && !state.selection.layer, "a slot pick clears the layer");
+		Reduce(state, PickRecipe{ "other" });
+		Check(state.selection.recipeID == "other" && state.selection.slot == Slot::kHeight, "a recipe pick keeps the cell");
+
+		// Edits move the layer selection with the rows.
+		Reduce(state, PickCell{ Surface::kShell, Slot::kEmissive, 1 });
+		Reduce(state, EditRecipe{ kRecipeID, AddLayer{ 0, DefaultLayer(), 3 } });
+		Check(state.selection.layer == 3, "an added layer is selected");
+		Reduce(state, EditRecipe{ kRecipeID, RemoveLayer{ 0, 1 } });
+		Check(state.selection.layer == 2, "removing a row above moves the selection up");
+		Reduce(state, EditRecipe{ kRecipeID, RemoveLayer{ 0, 2 } });
+		Check(!state.selection.layer, "removing the selected row clears the selection");
+		Reduce(state, PickLayer{ 2 });
+		Reduce(state, EditRecipe{ kRecipeID, MoveLayer{ 0, 2, 0 } });
+		Check(state.selection.layer == 0, "the selection follows a moved row");
+		Reduce(state, EditRecipe{ kRecipeID, MoveLayer{ 0, 2, 0 } });
+		Check(state.selection.layer == 1, "a row moved above the selection pushes it down");
+		Reduce(state, EditRecipe{ kRecipeID, MoveLayer{ 0, 0, 2 } });
+		Check(state.selection.layer == 0, "a row moved from above to below pulls it up");
+		Reduce(state, EditRecipe{ kRecipeID, ClearLayers{ 0 } });
+		Check(!state.selection.layer, "clearing the layers clears the selection");
+		Reduce(state, EditRecipe{ kRecipeID, AddOutput{ Surface::kMaterial, Slot::kCoat } });
+		Check(state.selection.target == Target::kMaterial && state.selection.slot == Slot::kCoat, "an added output is picked");
+		Reduce(state, EditRecipe{ kRecipeID, SetConstant{ "glowStrength", 1.0f } });
+		Check(state.selection.slot == Slot::kCoat, "a value edit changes no selection");
+		Reduce(state, CreateRecipe{ "fresh", kCuirass });
+		Check(state.selection.recipeID == "fresh", "a created recipe is picked");
+		Reduce(state, SoloRecipe{ "fresh", true });
+		Reduce(state, SetFreeze{ true, 1.0f });
+		Reduce(state, Undo{ "fresh" });
+		Check(state.selection.recipeID == "fresh" && state.selection.slot == Slot::kCoat, "view and manager intents change no selection");
+	}
+
+	void Histories()
+	{
+		EditHistory history;
+		Recipe      recipe = Canonical().value_or(Recipe{});
+		Check(history.UndoDepth() == 0 && history.RedoDepth() == 0 && !history.Undo(recipe) && !history.Redo(recipe), "an empty history undoes and redoes nothing");
+		Recipe before = recipe;
+		recipe.metadata.name = "edited";
+		history.Push(before);
+		Check(history.UndoDepth() == 1 && history.RedoDepth() == 0, "an edit pushes one step");
+		const auto undone = history.Undo(recipe);
+		Check(undone && undone->metadata.name == before.metadata.name && history.UndoDepth() == 0 && history.RedoDepth() == 1, "undo restores the recipe before the edit and keeps the edited one for redo");
+		const auto redone = history.Redo(*undone);
+		Check(redone && redone->metadata.name == "edited" && history.UndoDepth() == 1 && history.RedoDepth() == 0, "redo restores the edit");
+		history.Push(*redone);
+		Check(history.UndoDepth() == 2 && history.RedoDepth() == 0, "a new edit after redo stacks on it");
+		[[maybe_unused]] const auto back = history.Undo(recipe);
+		history.Push(recipe);
+		Check(history.RedoDepth() == 0, "an edit after undo forgets the redo");
+		for (std::size_t i = 0; i < EditHistory::kCap + 10; ++i) {
+			history.Push(recipe);
+		}
+		Check(history.UndoDepth() == EditHistory::kCap, "the history is capped");
+		history.Clear();
+		Check(history.UndoDepth() == 0 && history.RedoDepth() == 0, "clear empties both");
 	}
 
 	void References()
@@ -671,6 +911,11 @@ namespace
 int main()
 {
 	Layouts();
+	Colours();
+	Reductions();
+	Histories();
+	UniqueNames();
+	Filters();
 	References();
 	GeometryLabels();
 	const auto recipe = Canonical();
@@ -691,5 +936,7 @@ int main()
 	InspectorForms(row, geometry);
 	ScalarForms(piece, row, geometry);
 	SignalLists(row);
+	SignalForms(row);
+	PanelForms(row);
 	return test::Finish("studio");
 }

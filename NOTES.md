@@ -570,3 +570,10 @@ rewrite (`src/RecipeStore.cpp`, 2026-09-04), not yet run in game.
     it. If wrong: the same crash recurs with the menu open in a crowd
     and no preview ever rendered off the game thread.
 
+
+54. **Two ImGui items with one label in one ID scope share an ID, and a
+    click on the second is credited to the first.** Two "Add" buttons on
+    the studio's pane rules, drawn in the recipe's scope, both answered to
+    the signals rule's button, so Add on the Curves rule added a signal.
+    Each rule's items now sit in their own `PushID` scope. If wrong: a
+    click on a second same-labelled item in one scope acts on itself.

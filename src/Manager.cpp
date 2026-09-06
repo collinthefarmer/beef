@@ -1,6 +1,8 @@
 #include "Manager.h"
 
+#include "Edits.h"
 #include "EngineForms.h"
+#include "Studio.h"
 #include "Events.h"
 #include "RecipeStore.h"
 #include "Settings.h"
@@ -689,9 +691,9 @@ namespace WornEnchantmentPBR
 				output.problem.empty() ? (output.stack && output.stack->Animated() ? " (animated)" : " (static)") : std::format(" [{}]", output.problem));
 			bound.outputs.push_back(std::move(output));
 		}
-		if (!bound.material && !bound.shell) {
-			return true;  // nothing bound on this geometry
-		}
+		// A geometry nothing binds on is recorded too, so a recipe stays on
+		// the piece while its outputs are cleared or not yet added and the
+		// studio shows it an empty board.
 		if (settings.verboseLogging) {
 			logger::info("apply recipe {} armor actor {:08X} geometry '{}' material={} {} outputs: {}", recipe.id, a_actor->GetFormID(), bound.name,
 				bound.material ? (bound.material->Private() ? "private" : "shared") : "untouched", bound.shell ? bound.shell->Describe() : "no shell", outputsLog);
@@ -731,13 +733,50 @@ namespace WornEnchantmentPBR
 					logger::warn("edit: recipe {} is not loaded", id);
 					return;
 				}
+				// A refused edit leaves the recipe as it was and pushes no step.
+				Recipe before = *recipe;
 				edit(*recipe);
+				if (!(*recipe == before)) {
+					histories_[id].Push(std::move(before));
+				}
 				for (const auto& d : Revalidate(id)) {
 					if (d.severity == Severity::kError) {
 						logger::error("recipe {} {}: {}", id, d.where, d.message);
 					} else {
 						logger::warn("recipe {} {}: {}", id, d.where, d.message);
 					}
+				}
+			});
+		});
+	}
+
+	void Manager::UndoRecipe(std::string a_id)
+	{
+		PostTask([this, id = std::move(a_id)] {
+			WithRecipeRetired(id, [&] {
+				auto* recipe = MutableRecipe(id);
+				if (!recipe) {
+					return;
+				}
+				if (auto restored = histories_[id].Undo(*recipe)) {
+					*recipe = std::move(*restored);
+					Revalidate(id);
+				}
+			});
+		});
+	}
+
+	void Manager::RedoRecipe(std::string a_id)
+	{
+		PostTask([this, id = std::move(a_id)] {
+			WithRecipeRetired(id, [&] {
+				auto* recipe = MutableRecipe(id);
+				if (!recipe) {
+					return;
+				}
+				if (auto restored = histories_[id].Redo(*recipe)) {
+					*recipe = std::move(*restored);
+					Revalidate(id);
 				}
 			});
 		});
@@ -758,6 +797,7 @@ namespace WornEnchantmentPBR
 		PostTask([this, id = std::move(a_id)] {
 			WithRecipeRetired(id, [&] {
 				if (WornEnchantmentPBR::RevertRecipe(id)) {
+					histories_.erase(id);
 					logger::info("recipe {}: reverted to its file", id);
 				}
 			});
@@ -774,7 +814,33 @@ namespace WornEnchantmentPBR
 			for (const auto id : ids) {
 				Retire(id);
 			}
+			histories_.clear();
 			LoadRecipes();
+			QueueLoadedActorRefreshes();
+		});
+	}
+
+	void Manager::NewRecipe(std::string a_id, RE::FormID a_armor)
+	{
+		PostTask([this, id = std::move(a_id), armorID = a_armor] {
+			const auto* armor = RE::TESForm::LookupByID<RE::TESObjectARMO>(armorID);
+			if (!armor) {
+				logger::warn("new recipe {}: armor {:08X} is not loaded", id, armorID);
+				return;
+			}
+			RecipeKey key;
+			key.kind = KeyKind::kArmor;
+			key.form.key = FormKeyFor(*armor);
+			const auto editorID = EditorIdOf(*armor);
+			key.form.text = editorID.empty() ? key.form.key->ToString() : editorID;
+			std::vector<RE::FormID> ids;
+			for (const auto& [actorID, state] : applied_) {
+				ids.push_back(actorID);
+			}
+			for (const auto actorID : ids) {
+				Retire(actorID);
+			}
+			[[maybe_unused]] const bool made = WornEnchantmentPBR::NewRecipe(id, std::move(key));
 			QueueLoadedActorRefreshes();
 		});
 	}
@@ -845,7 +911,7 @@ namespace WornEnchantmentPBR
 		for (auto it = applied_.begin(); it != applied_.end();) {
 			for (auto& piece : it->second.pieces) {
 				for (auto& applied : piece.recipes) {
-					const float speed = settings.animationSpeed * applied.recipe->clock.speed;
+					const float speed = settings.animationSpeed * view_.speed * applied.recipe->clock.speed;
 					if (resuming && speed > 0.0f) {
 						applied.startMS = a_nowMS - static_cast<std::uint32_t>(view_.scrubSeconds / speed * 1000.0f);
 					}
@@ -964,12 +1030,19 @@ namespace WornEnchantmentPBR
 					r.dirty = IsDirty(r.id);
 					r.shellMaterial = applied.recipe->shell.material;
 					r.lightOutput = applied.lightOutput;
+					r.lightRow = Studio::LightRowOf(*applied.recipe);
+					r.shellRow = Studio::ShellRowOf(*applied.recipe);
+					if (const auto history = histories_.find(r.id); history != histories_.end()) {
+						r.undoDepth = history->second.UndoDepth();
+						r.redoDepth = history->second.RedoDepth();
+					}
 					for (const auto& mask : applied.recipe->masks) {
 						r.masks.push_back(mask.name);
 					}
 					if (const auto origin = OriginOf(*applied.recipe)) {
 						r.problems.assign(origin->diagnostics.begin(), origin->diagnostics.end());
 					}
+					const auto references = Studio::CountReferences(*applied.recipe);
 					for (std::size_t i = 0; i < applied.graph->Size(); ++i) {
 						const auto& signal = applied.graph->At(i);
 						Snapshot::SignalRow row;
@@ -986,12 +1059,25 @@ namespace WornEnchantmentPBR
 							if (const auto* expr = Get<ExprSignal>(declared->kind)) {
 								row.text = expr->text;
 							}
+							if (const auto* trigger = Get<TriggerSignal>(declared->kind)) {
+								// The bus id a fire button posts: an event glob as written, or
+								// a plugin id; a `when` source fires from its signal alone.
+								if (const auto* event = Get<EventSource>(trigger->source)) {
+									row.event = event->event;
+								} else if (const auto* plugin = Get<PluginSource>(trigger->source)) {
+									row.event = plugin->id;
+								}
+							}
 							row.curve = declared->curve ? declared->curve->text : "";
+						}
+						if (const auto count = references.signals.find(row.name); count != references.signals.end()) {
+							row.references = count->second;
 						}
 						r.signals.push_back(std::move(row));
 					}
 					for (const auto& curve : applied.recipe->curves) {
-						r.curves.push_back({ curve.name, curve.text });
+						const auto count = references.curves.find(curve.name);
+						r.curves.push_back({ curve.name, curve.text, count != references.curves.end() ? count->second : 0 });
 					}
 					for (const auto& g : applied.geometries) {
 						Snapshot::GeometryRow gr;

@@ -64,4 +64,10 @@ namespace WornEnchantmentPBR
 	[[nodiscard]] std::expected<std::filesystem::path, std::string> SaveRecipe(std::string_view a_id);
 	// Reads the file back, discarding the edits.
 	[[nodiscard]] bool RevertRecipe(std::string_view a_id);
+	// An empty recipe under the id (a file stem: letters, digits, '-', '_'
+	// and '.'), keyed as given, listed as user/<id>.json and dirty until
+	// saved. The loaded list grows, which moves every recipe in it, so the
+	// caller retires everything that points into it first. False when the
+	// id is taken or is not a file stem.
+	[[nodiscard]] bool NewRecipe(std::string_view a_id, RecipeKey a_key);
 }

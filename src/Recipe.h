@@ -514,6 +514,9 @@ namespace WornEnchantmentPBR
 	// diffuse colour, a position bake; a scalar otherwise.
 	[[nodiscard]] ValueType SourceType(const Source& a_source) noexcept;
 
+	// A row name: letters, digits and underscores, not starting with a digit.
+	[[nodiscard]] bool IsName(std::string_view a_text) noexcept;
+
 	// ---------------------------------------------------------- text forms
 	// How the menu shows and reads a parameter: "@name" for a reference, a
 	// number for a constant, "r, g, b" for a constant colour; one number in a
@@ -667,6 +670,12 @@ namespace WornEnchantmentPBR
 		[[nodiscard]] bool operator==(const ShellSettings&) const = default;
 	};
 
+	// The shell settings' words, as the file spells them.
+	[[nodiscard]] std::string_view             ShellMaterialName(ShellMaterial a_material) noexcept;
+	[[nodiscard]] std::optional<ShellMaterial> ParseShellMaterial(std::string_view a_name) noexcept;
+	[[nodiscard]] std::string_view             ShellBlendName(ShellBlend a_blend) noexcept;
+	[[nodiscard]] std::optional<ShellBlend>    ParseShellBlend(std::string_view a_name) noexcept;
+
 	// ------------------------------------------------------------- slot rules
 	// What a surface can take, as the runtime writes it. Validate and the
 	// menu's board read the same functions, so a cell the board offers is one
@@ -717,6 +726,11 @@ namespace WornEnchantmentPBR
 	// (parameters only), the rest use alpha too (visibility on a shell's
 	// diffuse; fuzz weight, coat strength, subsurface thickness).
 	[[nodiscard]] ChannelSet ChannelsOf(Slot a_slot) noexcept;
+	// What each channel of a slot's texture means to Community Shaders, and
+	// the exceptions worth showing beside the channels field: height reads
+	// red alone, glint has no texture, the diffuse's alpha is the shell's
+	// visibility, and the feature maps pack a colour with a weight.
+	[[nodiscard]] std::string_view SlotChannelNote(Slot a_slot) noexcept;
 
 	// The scalar of a slot's record by field, so the menu edits one by name.
 	// Null for kColor, which is a vector: use SlotScalars::color.

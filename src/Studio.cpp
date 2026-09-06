@@ -1,5 +1,8 @@
 #include "Studio.h"
 
+#include "Expression.h"
+#include "Forms.h"
+
 #include <algorithm>
 #include <format>
 
@@ -358,6 +361,24 @@ namespace WornEnchantmentPBR::Studio
 
 	// -------------------------------------------------------------- selection
 
+	std::string_view TargetName(Target a_target) noexcept
+	{
+		switch (a_target) {
+		case Target::kMaterial:
+			return "material";
+		case Target::kShell:
+			return "shell";
+		case Target::kLight:
+			return "light";
+		}
+		return "?";
+	}
+
+	Surface SurfaceOf(Target a_target) noexcept
+	{
+		return a_target == Target::kShell ? Surface::kShell : Surface::kMaterial;
+	}
+
 	const PieceRow* SelectedPiece(const Snapshot& a_snapshot, const Selection& a_selection) noexcept
 	{
 		for (const auto& piece : a_snapshot.pieces) {
@@ -392,11 +413,12 @@ namespace WornEnchantmentPBR::Studio
 
 	const OutputRow* SelectedOutput(const GeometryRow* a_geometry, const Selection& a_selection) noexcept
 	{
-		if (!a_geometry || !a_selection.output) {
+		if (!a_geometry || a_selection.target == Target::kLight || !a_selection.slot) {
 			return nullptr;
 		}
+		const Surface surface = SurfaceOf(a_selection.target);
 		for (const auto& output : a_geometry->outputs) {
-			if (output.index == *a_selection.output) {
+			if (WritesCell(output, surface, *a_selection.slot)) {
 				return &output;
 			}
 		}
@@ -452,7 +474,6 @@ namespace WornEnchantmentPBR::Studio
 		stack.output = output->index;
 		stack.surface = output->surface;
 		stack.slot = output->slot;
-		stack.title = std::format("{} on {}", output->slotName, output->target);
 		stack.rows.reserve(output->layers.size());
 		for (std::size_t i = 0; i < output->layers.size(); ++i) {
 			StackRow row;
@@ -541,6 +562,75 @@ namespace WornEnchantmentPBR::Studio
 		return inspector;
 	}
 
+	// ------------------------------------------------------------- panels
+
+	LightRow LightRowOf(const Recipe& a_recipe)
+	{
+		LightRow row;
+		for (std::size_t i = 0; i < a_recipe.outputs.size(); ++i) {
+			const auto* light = Get<LightOutput>(a_recipe.outputs[i]);
+			if (!light) {
+				continue;
+			}
+			row.present = true;
+			row.output = i;
+			row.color = Vec3ParamText(light->color);
+			row.intensity = ParamText(light->intensity);
+			row.size = ParamText(light->size);
+			row.cutoff = ParamText(light->cutoff);
+			row.offset = Vec3ParamText(light->offset);
+			row.shadow = light->shadow;
+			Match(
+				light->bones,
+				[&](const SkinnedBones& b) {
+					row.bones = "skinned";
+					row.bonesMax = std::to_string(b.max);
+					row.bonesMinShare = ParamText(b.minShare);
+				},
+				[&](const NamedBones& b) {
+					row.bones = "named";
+					for (const auto& bone : b.bones) {
+						row.bonesNames += (row.bonesNames.empty() ? "" : ", ") + bone;
+					}
+				});
+			break;
+		}
+		return row;
+	}
+
+	ShellRow ShellRowOf(const Recipe& a_recipe)
+	{
+		const auto& shell = a_recipe.shell;
+		ShellRow    row;
+		row.material = shell.material;
+		row.blend = shell.blend;
+		row.depthBias = shell.depthBias;
+		row.alphaTest = shell.alphaTest;
+		row.alpha = ParamText(shell.alpha);
+		row.rimPower = ParamText(shell.rimPower);
+		row.emissive = ParamText(shell.emissive);
+		row.inflate = Vec3ParamText(shell.pose.inflate);
+		row.offset = Vec3ParamText(shell.pose.offset);
+		row.scale = ParamText(shell.pose.scale);
+		row.spin = ParamText(shell.pose.spin);
+		row.scalePoint = shell.pose.scalePoint;
+		row.spinAxis = shell.pose.spinAxis;
+		return row;
+	}
+
+	SignalNames SignalNamesOf(const RecipeRow& a_recipe)
+	{
+		SignalNames names;
+		for (const auto& signal : a_recipe.signals) {
+			if (signal.type == ValueType::kScalar) {
+				names.scalar.push_back(signal.name);
+			} else if (signal.type == ValueType::kVec3) {
+				names.color.push_back(signal.name);
+			}
+		}
+		return names;
+	}
+
 	// ---------------------------------------------------------------- signals
 
 	SignalList BuildSignalList(const RecipeRow& a_recipe, const Layout& a_layout)
@@ -608,7 +698,271 @@ namespace WornEnchantmentPBR::Studio
 		return form;
 	}
 
+	std::optional<RecipeEdit> SignalValueEdit(const std::string& a_signal, const std::string& a_text)
+	{
+		if (const auto param = ParseParam(a_text)) {
+			if (const auto* number = Get<float>(*param)) {
+				return SetConstant{ a_signal, *number };
+			}
+		}
+		if (const auto colour = LiteralColor(a_text)) {
+			return SetConstant{ a_signal, *colour };
+		}
+		if (!a_text.empty() && Program::Parse(a_text)) {
+			return SetExpression{ a_signal, a_text };
+		}
+		return std::nullopt;
+	}
+
+	std::optional<FieldSpec> SignalForm(const SignalRow& a_signal)
+	{
+		const std::string& name = a_signal.name;
+		const FieldBinding bind = [name](const std::string& a_text) { return SignalValueEdit(name, a_text); };
+		if (a_signal.kind == "expr") {
+			return FieldSpec{ name, FieldKind::kExpression, a_signal.text, {}, false, std::nullopt, std::nullopt, bind };
+		}
+		if (!a_signal.constant) {
+			return std::nullopt;
+		}
+		if (const auto* number = Get<float>(*a_signal.constant)) {
+			return FieldSpec{ name, FieldKind::kScalar, ParamText(*number), {}, false, std::nullopt, std::nullopt, bind };
+		}
+		if (const auto* colour = Get<Vec3>(*a_signal.constant)) {
+			return FieldSpec{ name, FieldKind::kColor, LiteralColorText(*colour), {}, false, std::nullopt, std::nullopt, bind };
+		}
+		return std::nullopt;  // a vec2 constant edits in the file
+	}
+
+	namespace
+	{
+		[[nodiscard]] std::vector<std::string> SplitNames(std::string_view a_text)
+		{
+			std::vector<std::string> names;
+			std::size_t              at = 0;
+			while (at <= a_text.size()) {
+				const auto comma = a_text.find(',', at);
+				auto       part = a_text.substr(at, comma == std::string_view::npos ? std::string_view::npos : comma - at);
+				while (!part.empty() && part.front() == ' ') {
+					part.remove_prefix(1);
+				}
+				while (!part.empty() && part.back() == ' ') {
+					part.remove_suffix(1);
+				}
+				if (!part.empty()) {
+					names.emplace_back(part);
+				}
+				if (comma == std::string_view::npos) {
+					break;
+				}
+				at = comma + 1;
+			}
+			return names;
+		}
+
+		[[nodiscard]] std::optional<std::uint32_t> ParseCount(std::string_view a_text)
+		{
+			const auto param = ParseParam(a_text);
+			const auto* number = param ? Get<float>(*param) : nullptr;
+			if (!number || *number < 1.0f || *number > 64.0f) {
+				return std::nullopt;
+			}
+			return static_cast<std::uint32_t>(*number);
+		}
+
+		[[nodiscard]] FieldBinding BindLightParam(std::size_t a_output, LightParam a_field)
+		{
+			return [=](const std::string& a_text) -> std::optional<RecipeEdit> {
+				const auto value = ParseParam(a_text);
+				return value ? std::optional<RecipeEdit>{ SetLightParam{ a_output, a_field, *value } } : std::nullopt;
+			};
+		}
+
+		[[nodiscard]] FieldBinding BindLightVector(std::size_t a_output, LightVector a_field)
+		{
+			return [=](const std::string& a_text) -> std::optional<RecipeEdit> {
+				const auto value = ParseVec3Param(a_text);
+				return value ? std::optional<RecipeEdit>{ SetLightVector{ a_output, a_field, *value } } : std::nullopt;
+			};
+		}
+
+		[[nodiscard]] FieldBinding BindShellParam(ShellParam a_field)
+		{
+			return [=](const std::string& a_text) -> std::optional<RecipeEdit> {
+				const auto value = ParseParam(a_text);
+				return value ? std::optional<RecipeEdit>{ SetShellParam{ a_field, *value } } : std::nullopt;
+			};
+		}
+
+		[[nodiscard]] FieldBinding BindShellVector(ShellVector a_field)
+		{
+			return [=](const std::string& a_text) -> std::optional<RecipeEdit> {
+				const auto value = ParseVec3Param(a_text);
+				return value ? std::optional<RecipeEdit>{ SetShellVector{ a_field, *value } } : std::nullopt;
+			};
+		}
+
+		[[nodiscard]] FieldBinding BindShellPoint(ShellPoint a_field)
+		{
+			return [=](const std::string& a_text) -> std::optional<RecipeEdit> {
+				const auto value = LiteralColor(a_text);
+				return value ? std::optional<RecipeEdit>{ SetShellPoint{ a_field, *value } } : std::nullopt;
+			};
+		}
+
+		[[nodiscard]] FieldSpec Field(std::string a_name, FieldKind a_kind, std::string a_text, std::vector<std::string> a_names, FieldBinding a_bind)
+		{
+			return FieldSpec{ std::move(a_name), a_kind, std::move(a_text), std::move(a_names), false, std::nullopt, std::nullopt, std::move(a_bind) };
+		}
+	}
+
+	std::vector<FieldSpec> LightForm(const LightRow& a_light, const SignalNames& a_names)
+	{
+		std::vector<FieldSpec> form;
+		if (!a_light.present) {
+			return form;
+		}
+		const std::size_t output = a_light.output;
+		form.push_back(Field("color", FieldKind::kColor, a_light.color, a_names.color, BindLightVector(output, LightVector::kColor)));
+		form.push_back(Field("intensity", FieldKind::kScalar, a_light.intensity, a_names.scalar, BindLightParam(output, LightParam::kIntensity)));
+		form.push_back(Field("size", FieldKind::kScalar, a_light.size, a_names.scalar, BindLightParam(output, LightParam::kSize)));
+		form.push_back(Field("cutoff", FieldKind::kScalar, a_light.cutoff, a_names.scalar, BindLightParam(output, LightParam::kCutoff)));
+		form.push_back(Field("offset", FieldKind::kVector, a_light.offset, a_names.color, BindLightVector(output, LightVector::kOffset)));
+		form.push_back(Field("shadow", FieldKind::kToggle, a_light.shadow ? "on" : "off", {}, [=](const std::string& a_text) -> std::optional<RecipeEdit> {
+			return SetLightShadow{ output, a_text == "on" };
+		}));
+		// Bones: the kind, then its settings. A kind change starts from the
+		// format's defaults; a setting change keeps the rest as shown.
+		const bool skinned = a_light.bones != "named";
+		form.push_back(Field("bones", FieldKind::kChoice, skinned ? "skinned" : "named", { "skinned", "named" }, [=](const std::string& a_text) -> std::optional<RecipeEdit> {
+			if (a_text == "skinned") {
+				return SetLightBones{ output, SkinnedBones{} };
+			}
+			if (a_text == "named") {
+				return SetLightBones{ output, NamedBones{ { "NPC Spine2 [Spn2]" } } };
+			}
+			return std::nullopt;
+		}));
+		if (skinned) {
+			const std::string minShare = a_light.bonesMinShare;
+			const std::string max = a_light.bonesMax;
+			form.push_back(Field("max", FieldKind::kScalar, max, {}, [=](const std::string& a_text) -> std::optional<RecipeEdit> {
+				const auto count = ParseCount(a_text);
+				const auto share = ParseParam(minShare);
+				const auto* shareValue = share ? Get<float>(*share) : nullptr;
+				if (!count || !shareValue) {
+					return std::nullopt;
+				}
+				return SetLightBones{ output, SkinnedBones{ *count, *shareValue } };
+			}));
+			form.push_back(Field("minShare", FieldKind::kScalar, minShare, {}, [=](const std::string& a_text) -> std::optional<RecipeEdit> {
+				const auto count = ParseCount(max);
+				const auto share = ParseParam(a_text);
+				const auto* shareValue = share ? Get<float>(*share) : nullptr;
+				if (!count || !shareValue || *shareValue < 0.0f || *shareValue > 1.0f) {
+					return std::nullopt;
+				}
+				return SetLightBones{ output, SkinnedBones{ *count, *shareValue } };
+			}));
+		} else {
+			form.push_back(Field("names", FieldKind::kText, a_light.bonesNames, {}, [=](const std::string& a_text) -> std::optional<RecipeEdit> {
+				auto names = SplitNames(a_text);
+				if (names.empty()) {
+					return std::nullopt;
+				}
+				return SetLightBones{ output, NamedBones{ std::move(names) } };
+			}));
+		}
+		return form;
+	}
+
+	std::vector<FieldSpec> ShellForm(const ShellRow& a_shell, const SignalNames& a_names)
+	{
+		std::vector<FieldSpec> form;
+		form.push_back(Field("material", FieldKind::kChoice, std::string{ ShellMaterialName(a_shell.material) }, { "pbrCopy", "vanilla" }, [](const std::string& a_text) -> std::optional<RecipeEdit> {
+			const auto material = ParseShellMaterial(a_text);
+			return material ? std::optional<RecipeEdit>{ SetShellMaterial{ *material } } : std::nullopt;
+		}));
+		form.push_back(Field("blend", FieldKind::kChoice, std::string{ ShellBlendName(a_shell.blend) }, { "additive", "alpha" }, [](const std::string& a_text) -> std::optional<RecipeEdit> {
+			const auto blend = ParseShellBlend(a_text);
+			return blend ? std::optional<RecipeEdit>{ SetShellBlend{ *blend } } : std::nullopt;
+		}));
+		form.push_back(Field("depthBias", FieldKind::kToggle, a_shell.depthBias ? "on" : "off", {}, [](const std::string& a_text) -> std::optional<RecipeEdit> {
+			return SetShellDepthBias{ a_text == "on" };
+		}));
+		form.push_back(Field("alphaTest", FieldKind::kScalar, ParamText(a_shell.alphaTest), {}, [](const std::string& a_text) -> std::optional<RecipeEdit> {
+			const auto value = ParseParam(a_text);
+			const auto* number = value ? Get<float>(*value) : nullptr;
+			return number ? std::optional<RecipeEdit>{ SetShellAlphaTest{ *number } } : std::nullopt;
+		}));
+		form.push_back(Field("alpha", FieldKind::kScalar, a_shell.alpha, a_names.scalar, BindShellParam(ShellParam::kAlpha)));
+		form.push_back(Field("rimPower", FieldKind::kScalar, a_shell.rimPower, a_names.scalar, BindShellParam(ShellParam::kRimPower)));
+		form.push_back(Field("emissive", FieldKind::kScalar, a_shell.emissive, a_names.scalar, BindShellParam(ShellParam::kEmissive)));
+		form.push_back(Field("inflate", FieldKind::kVector, a_shell.inflate, a_names.color, BindShellVector(ShellVector::kInflate)));
+		form.push_back(Field("offset", FieldKind::kVector, a_shell.offset, a_names.color, BindShellVector(ShellVector::kOffset)));
+		form.push_back(Field("scale", FieldKind::kScalar, a_shell.scale, a_names.scalar, BindShellParam(ShellParam::kScale)));
+		form.push_back(Field("scalePoint", FieldKind::kVector, LiteralColorText(a_shell.scalePoint), {}, BindShellPoint(ShellPoint::kScalePoint)));
+		form.push_back(Field("spin", FieldKind::kScalar, a_shell.spin, a_names.scalar, BindShellParam(ShellParam::kSpin)));
+		form.push_back(Field("spinAxis", FieldKind::kVector, LiteralColorText(a_shell.spinAxis), {}, BindShellPoint(ShellPoint::kSpinAxis)));
+		return form;
+	}
+
+	// ---------------------------------------------------------------- colours
+
+	std::optional<Vec3> LiteralColor(std::string_view a_text)
+	{
+		const auto  param = ParseVec3Param(a_text);
+		const auto* parts = param ? Get<std::array<Param, 3>>(*param) : nullptr;
+		if (!parts) {
+			return std::nullopt;
+		}
+		const auto* x = Get<float>((*parts)[0]);
+		const auto* y = Get<float>((*parts)[1]);
+		const auto* z = Get<float>((*parts)[2]);
+		if (!x || !y || !z) {
+			return std::nullopt;
+		}
+		return Vec3{ *x, *y, *z };
+	}
+
+	std::string LiteralColorText(const Vec3& a_color)
+	{
+		return Vec3ParamText(std::array<Param, 3>{ a_color.x, a_color.y, a_color.z });
+	}
+
+	// ---------------------------------------------------------------- filters
+
+	bool NameMatches(std::string_view a_name, std::string_view a_filter) noexcept
+	{
+		if (a_filter.empty()) {
+			return true;
+		}
+		if (a_filter.size() > a_name.size()) {
+			return false;
+		}
+		const auto lower = [](char a_ch) { return (a_ch >= 'A' && a_ch <= 'Z') ? static_cast<char>(a_ch - 'A' + 'a') : a_ch; };
+		for (std::size_t at = 0; at + a_filter.size() <= a_name.size(); ++at) {
+			bool same = true;
+			for (std::size_t i = 0; i < a_filter.size() && same; ++i) {
+				same = lower(a_name[at + i]) == lower(a_filter[i]);
+			}
+			if (same) {
+				return true;
+			}
+		}
+		return false;
+	}
+
 	// ------------------------------------------------------------------ names
+
+	std::string UniqueName(std::string_view a_stem, std::span<const std::string> a_taken)
+	{
+		const auto taken = [&](const std::string& a_name) { return std::ranges::find(a_taken, a_name) != a_taken.end(); };
+		std::string name{ a_stem };
+		for (std::size_t n = 2; taken(name); ++n) {
+			name = std::string{ a_stem } + std::to_string(n);
+		}
+		return name;
+	}
 
 	std::string ReferenceText(std::string_view a_name)
 	{

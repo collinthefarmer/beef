@@ -24,10 +24,10 @@ namespace ImGui = ImGuiMCP;
 using ImGuiMCP::ImVec2;
 using ImGuiMCP::ImGuiSliderFlags_Logarithmic;
 
-// Registration, the status line every page starts with, and the pages
-// beside the studio: Recipes, and Setup with the log under its settings.
-// Pages read the manager's snapshot, taken once per frame, never the live
-// state; the selection they show is the studio's.
+// Registration, the status line every page but the studio starts with, and
+// the pages beside the studio: Recipes, and Setup with the log under its
+// settings. Pages read the manager's snapshot, taken once per frame, never
+// the live state; the selection they show is the studio's.
 namespace WornEnchantmentPBR
 {
 	namespace
@@ -64,11 +64,6 @@ namespace WornEnchantmentPBR
 		[[nodiscard]] bool Shown(const SettingDesc& d) noexcept
 		{
 			return std::ranges::any_of(kSetupPages, [&](const char* a_page) { return std::string_view{ d.page } == a_page; });
-		}
-
-		[[nodiscard]] bool IsSwitch(const SettingDesc& d) noexcept
-		{
-			return d.widget == SettingDesc::Widget::kCheckbox;
 		}
 
 		[[nodiscard]] const SettingDesc* FindSetting(std::string_view a_key) noexcept
@@ -131,33 +126,19 @@ namespace WornEnchantmentPBR
 			}
 		}
 
-		// The switches (every checkbox setting but Verbose logging, which sits
-		// with the log) and the save bar as one row: Save INI, Reload INI,
-		// Re-apply, the auto toggle, and the markers.
-		void DrawSwitchRow(Settings& s)
+		// The save bar as one row: Save INI, Reload INI, Re-apply, the auto
+		// toggle, and the markers.
+		void DrawSaveBar(Settings& s)
 		{
 			auto* manager = Manager::GetSingleton();
 			if (!g_savedKnown) {
 				g_savedSettings = s;
 				g_savedKnown = true;
 			}
-			std::vector<const SettingDesc*> switches;
-			for (const auto& d : SettingTable()) {
-				if (Shown(d) && IsSwitch(d) && std::string_view{ d.key } != kVerboseKey) {
-					switches.push_back(&d);
-				}
-			}
-			std::vector<Widgets::Column> columns(switches.size() + 4, Widgets::Column{ "", Width::Fit() });
-			columns.push_back(Widgets::Column{ "", Width::Fill() });  // the markers, taking what is left
 			constexpr TableStyle style{ .borders = TableStyle::Borders::kAll, .stretch = false, .headers = false, .rowBackground = false };
-			auto                 table = Widgets::Table::Begin("switches", columns, style);
+			auto                 table = Widgets::Table::Begin("save-bar", { { "", Width::Fit() }, { "", Width::Fit() }, { "", Width::Fit() }, { "", Width::Fit() }, { "", Width::Fill() } }, style);
 			if (!table.Open()) {
 				return;
-			}
-			for (const auto* d : switches) {
-				table.Cell();
-				Widget(s, *d, d->label);
-				Widgets::HelpMarker(d->help);
 			}
 			table.Cell();
 			if (ImGui::Button("Save INI")) {
@@ -191,8 +172,9 @@ namespace WornEnchantmentPBR
 			table.End();
 		}
 
-		// The remaining settings (sliders and combos) as name and value, in
-		// the table's order.
+		// Every shown setting but Verbose logging (which sits with the log) as
+		// name and value, in the table's order; a switch is a checkbox in its
+		// value cell.
 		void DrawValueTable(Settings& s)
 		{
 			auto table = Widgets::Table::Begin("values", { { "setting", Width::Fit() }, { "value", Width::Fill() } }, kGridStyle);
@@ -200,7 +182,7 @@ namespace WornEnchantmentPBR
 				return;
 			}
 			for (const auto& d : SettingTable()) {
-				if (!Shown(d) || IsSwitch(d)) {
+				if (!Shown(d) || std::string_view{ d.key } == kVerboseKey) {
 					continue;
 				}
 				ImGui::PushID(d.key);
@@ -216,14 +198,10 @@ namespace WornEnchantmentPBR
 			table.End();
 		}
 
-		// The log: its filter, auto-scroll and Verbose logging on one row
-		// under the section header, then the last 300 lines in a region that
-		// takes the remaining height.
+		// The log: its filter, auto-scroll and Verbose logging on one row,
+		// then the last 300 lines in a region that takes the remaining height.
 		void DrawLog(Settings& s)
 		{
-			if (!Widgets::Section("Log", true)) {
-				return;
-			}
 			static char filter[64]{};
 			static bool autoScroll = true;
 			Widgets::NextItemWidth(Width::Px(240.0f));
@@ -366,17 +344,18 @@ namespace WornEnchantmentPBR
 		}
 
 		// Settings in the top half of the page (scrolling when they overflow),
-		// the log in the bottom half.
+		// a rule with a line's gap on each side, the log in the bottom half.
 		void __stdcall RenderSetup()
 		{
 			auto& s = GetMutableSettings();
 			RenderHeader(Manager::GetSingleton()->TakeSnapshot());
 			const float half = ImGui::GetContentRegionAvail().y * 0.5f;
 			if (ImGui::BeginChild("settings", ImVec2{ 0.0f, half }, 0, 0)) {
-				DrawSwitchRow(s);
+				DrawSaveBar(s);
 				DrawValueTable(s);
 			}
 			ImGui::EndChild();
+			Widgets::Rule();
 			DrawLog(s);
 		}
 	}
@@ -407,100 +386,6 @@ namespace WornEnchantmentPBR
 		ImGui::SameLine();
 		ImGui::Text("| %u actor(s), %u piece(s), %u recipe(s), %u geometr%s, %u shell(s), %u light(s), tick %u ms | %zu recipe file(s), %zu with errors",
 			st.actors, st.pieces, st.recipes, st.geometries, st.geometries == 1 ? "y" : "ies", st.shells, st.lights, st.tickMS, store.loaded, store.withErrors);
-	}
-
-	void SelectionCombo(const Studio::Snapshot& a_snapshot, const char* a_label)
-	{
-		auto&       selection = Studio::State().selection;
-		const auto* piece = Studio::SelectedPiece(a_snapshot, selection);
-		if (piece) {
-			selection.actorID = piece->actorID;
-			selection.armorID = piece->armorID;
-			selection.firstPerson = piece->firstPerson;
-		}
-		const auto preview = piece ? std::format("{} / {} ({})", piece->actorName, piece->armorName, piece->firstPerson ? "1st" : "3rd") : std::string{ "nothing applied" };
-		if (ImGui::BeginCombo(a_label, preview.c_str())) {
-			std::size_t i = 0;
-			for (const auto& p : a_snapshot.pieces) {
-				const auto label = std::format("{} / {} ({})##sel{}", p.actorName, p.armorName, p.firstPerson ? "1st" : "3rd", i++);
-				if (ImGui::Selectable(label.c_str(), &p == piece)) {
-					// A new piece: the recipe, geometry, cell and region start over.
-					selection = Studio::Selection{};
-					selection.actorID = p.actorID;
-					selection.armorID = p.armorID;
-					selection.firstPerson = p.firstPerson;
-				}
-			}
-			ImGui::EndCombo();
-		}
-	}
-
-	void RecipeCombo(const Studio::PieceRow* a_piece, const char* a_label)
-	{
-		auto&       selection = Studio::State().selection;
-		const auto* recipe = Studio::SelectedRecipe(a_piece, selection);
-		if (ImGui::BeginCombo(a_label, recipe ? recipe->id.c_str() : "-")) {
-			if (a_piece) {
-				for (const auto& r : a_piece->recipes) {
-					if (ImGui::Selectable(std::format("{} ({}, priority {})", r.id, r.key, r.priority).c_str(), &r == recipe)) {
-						selection.recipeID = r.id;
-						selection.output.reset();
-						selection.layer.reset();
-					}
-				}
-			}
-			ImGui::EndCombo();
-		}
-	}
-
-	void IsolateCheckbox(const Studio::RecipeRow* a_recipe, const char* a_label)
-	{
-		auto*       manager = Manager::GetSingleton();
-		auto&       view = manager->Debug();
-		bool        isolating = view.Isolating();
-		std::string text;
-		if (isolating) {
-			text = "isolating " + view.isolateRecipe;
-			if (view.isolateOutput >= 0) {
-				text += std::format(" output {}", view.isolateOutput);
-			}
-			if (view.isolateLayer >= 0) {
-				text += std::format(" layer {}", view.isolateLayer);
-			}
-		}
-		if (Widgets::Toggle(a_label, isolating, text)) {
-			manager->Isolate((isolating && a_recipe) ? a_recipe->id : std::string{}, -1, -1);
-		}
-	}
-
-	void FreezeCheckbox(const Studio::RecipeRow* a_recipe, const char* a_label)
-	{
-		auto& view = Manager::GetSingleton()->Debug();
-		if (Widgets::Toggle(a_label, view.freeze, "") && view.freeze && a_recipe) {
-			view.scrubSeconds = a_recipe->time;  // freezing holds the moment, not the slider's old value
-		}
-	}
-
-	void ScrubSlider(const Studio::RecipeRow* a_recipe, const char* a_label)
-	{
-		auto& view = Manager::GetSingleton()->Debug();
-		// Running: the slider follows the clock. Frozen: it is the scrub. Taking
-		// hold of it freezes at the moment grabbed, so a drag never fights the
-		// clock.
-		// The clock runs on unbounded; the slider shows it within the current
-		// minute and moves it within that minute, so recipes that read `time`
-		// never see a wrap.
-		const float actual = view.freeze ? view.scrubSeconds : (a_recipe ? a_recipe->time : 0.0f);
-		const float minute = std::floor(actual / 60.0f) * 60.0f;
-		float       shown = actual - minute;
-		const bool  changed = ImGui::SliderFloat(a_label, &shown, 0.0f, 60.0f, "%.2f");
-		if (changed || ImGui::IsItemActive()) {
-			view.freeze = true;
-			view.scrubSeconds = minute + shown;
-		}
-		if (minute > 0.0f) {
-			Widgets::Tooltip(std::format("minute {} of the clock; t = {:.2f} s", static_cast<int>(minute / 60.0f) + 1, actual));
-		}
 	}
 
 	void RenderHeader(const Studio::Snapshot& a_snapshot)

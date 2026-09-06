@@ -10,6 +10,7 @@
 #include "Recipe.h"
 
 #include <cstddef>
+#include <map>
 #include <optional>
 #include <string>
 #include <variant>
@@ -138,12 +139,152 @@ namespace WornEnchantmentPBR::Studio
 		std::string mask;
 		std::string text;
 	};
+	// A constant 0 under the name; refused when the name is taken or is not
+	// a row name.
+	struct AddSignal
+	{
+		std::string name;
+	};
+	// The curve "x" under the name.
+	struct AddCurve
+	{
+		std::string name;
+	};
+	// The row renamed and every reference to it repointed: `@from` in a
+	// parameter, a trigger reference, a variant's override, and inside every
+	// expression (signals, masks, curves, inline curves), where a signal is
+	// `@name` and a curve is `@name(`. A mask expression is left alone when
+	// a source or mask also carries the old name, since there the image wins.
+	struct RenameSignal
+	{
+		std::string from;
+		std::string to;
+	};
+	struct RenameCurve
+	{
+		std::string from;
+		std::string to;
+	};
+	// A row removed; refused while anything references it (CountReferences).
+	struct RemoveSignal
+	{
+		std::string name;
+	};
+	struct RemoveCurve
+	{
+		std::string name;
+	};
+
+	// ------------------------------------------------------------- light
+
+	// A light output with the format's defaults; refused when the recipe
+	// already has one.
+	struct AddLight
+	{
+	};
+	enum class LightParam
+	{
+		kIntensity,
+		kSize,
+		kCutoff,
+	};
+	enum class LightVector
+	{
+		kColor,
+		kOffset,
+	};
+	[[nodiscard]] std::string_view LightParamName(LightParam a_field) noexcept;
+	[[nodiscard]] std::string_view LightVectorName(LightVector a_field) noexcept;
+	// Each names the light output by index and is refused when that output
+	// is not a light.
+	struct SetLightParam
+	{
+		std::size_t output = 0;
+		LightParam  field = LightParam::kIntensity;
+		Param       value = 1.0f;
+	};
+	struct SetLightVector
+	{
+		std::size_t output = 0;
+		LightVector field = LightVector::kColor;
+		Vec3Param   value = std::array<Param, 3>{ 1.0f, 1.0f, 1.0f };
+	};
+	struct SetLightShadow
+	{
+		std::size_t output = 0;
+		bool        shadow = false;
+	};
+	struct SetLightBones
+	{
+		std::size_t output = 0;
+		Bones       bones = SkinnedBones{};
+	};
+
+	// ------------------------------------------------------------- shell
+
+	enum class ShellParam
+	{
+		kAlpha,
+		kRimPower,
+		kEmissive,
+		kScale,  // pose
+		kSpin,
+	};
+	enum class ShellVector
+	{
+		kInflate,
+		kOffset,
+	};
+	enum class ShellPoint
+	{
+		kScalePoint,
+		kSpinAxis,
+	};
+	[[nodiscard]] std::string_view ShellParamName(ShellParam a_field) noexcept;
+	[[nodiscard]] std::string_view ShellVectorName(ShellVector a_field) noexcept;
+	[[nodiscard]] std::string_view ShellPointName(ShellPoint a_field) noexcept;
+	struct SetShellParam
+	{
+		ShellParam field = ShellParam::kAlpha;
+		Param      value = 1.0f;
+	};
+	struct SetShellVector
+	{
+		ShellVector field = ShellVector::kInflate;
+		Vec3Param   value = std::array<Param, 3>{ 0.0f, 0.0f, 0.0f };
+	};
+	struct SetShellPoint
+	{
+		ShellPoint field = ShellPoint::kScalePoint;
+		Vec3       value;
+	};
+	// Changing the material kind changes the slots the shell offers; a
+	// shell output on a slot the new kind lacks is refused.
+	struct SetShellMaterial
+	{
+		ShellMaterial material = ShellMaterial::kPbrCopy;
+	};
+	struct SetShellBlend
+	{
+		ShellBlend blend = ShellBlend::kAdditive;
+	};
+	struct SetShellDepthBias
+	{
+		bool on = true;
+	};
+	struct SetShellAlphaTest
+	{
+		float value = 0.0f;  // 0..1; 0 is off
+	};
 
 	using RecipeEdit = std::variant<
 		SetLayerSource, SetLayerCurve, SetLayerBlend, SetLayerOpacity, SetLayerColor, SetLayerMask, SetLayerChannels,
 		AddLayer, RemoveLayer, MoveLayer, ClearLayers,
 		AddOutput, RemoveOutput, SetScalar, SetColorScalar,
-		SetConstant, SetExpression, SetSignalCurve, SetCurve, SetMask>;
+		SetConstant, SetExpression, SetSignalCurve, SetCurve, SetMask,
+		AddSignal, AddCurve, RenameSignal, RenameCurve, RemoveSignal, RemoveCurve,
+		AddLight, SetLightParam, SetLightVector, SetLightShadow, SetLightBones,
+		SetShellParam, SetShellVector, SetShellPoint, SetShellMaterial, SetShellBlend, SetShellDepthBias, SetShellAlphaTest>;
 
 	// Applies one edit. The recipe is unchanged when the edit does not fit
 	// it (an index past the end, a name the recipe lacks, a slot the surface
@@ -153,6 +294,22 @@ namespace WornEnchantmentPBR::Studio
 
 	// One line for the log: "output 2 layer 0: blend add".
 	[[nodiscard]] std::string Describe(const RecipeEdit& a_edit);
+
+	// How many places name each signal and each curve: a signal in a
+	// parameter, a trigger reference, a variant override, or `@name` inside
+	// an expression; a curve as a signal's or layer's `@name`, or `@name(`
+	// inside an expression. A name absent from the map is unreferenced.
+	struct ReferenceCounts
+	{
+		std::map<std::string, std::size_t> signals;
+		std::map<std::string, std::size_t> curves;
+	};
+	[[nodiscard]] ReferenceCounts CountReferences(const Recipe& a_recipe);
+
+	// The text with every `@from` reference renamed to `@to`: a signal
+	// reference is the name followed by anything but a name character or
+	// '('; a curve reference is the name followed by '('.
+	[[nodiscard]] std::string RenameInExpression(std::string_view a_text, std::string_view a_from, std::string_view a_to, bool a_curve);
 
 	// A white replace layer at full opacity: what Add layer makes.
 	[[nodiscard]] Layer DefaultLayer();
