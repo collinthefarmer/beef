@@ -4,7 +4,10 @@
 #include "Forms.h"
 
 #include <algorithm>
+#include <array>
+#include <charconv>
 #include <format>
+#include <limits>
 
 namespace WornEnchantmentPBR::Studio
 {
@@ -727,8 +730,57 @@ namespace WornEnchantmentPBR::Studio
 				row.width = ParamText(s.width);
 				row.decay = ParamText(s.decay);
 				row.shape = std::string{ RippleShapeName(s.shape) };
+			},
+			[&](const MaterialClustersSource& s) {
+				row.clusters = std::to_string(s.clusters);
+				row.weights = std::format("{}, {}, {}, {}, {}", ParamText(s.roughness), ParamText(s.metallic), ParamText(s.occlusion), ParamText(s.reflectance), ParamText(s.luma));
+				row.seed = std::to_string(s.seed);
+				row.iterations = std::to_string(s.iterations);
 			});
 		return row;
+	}
+
+	namespace
+	{
+		// A whole number in 0..a_max, the whole text; nothing otherwise.
+		std::optional<std::uint32_t> WholeNumber(std::string_view a_text, std::uint32_t a_max)
+		{
+			while (!a_text.empty() && a_text.front() == ' ') {
+				a_text.remove_prefix(1);
+			}
+			while (!a_text.empty() && a_text.back() == ' ') {
+				a_text.remove_suffix(1);
+			}
+			std::uint32_t value = 0;
+			const auto    result = std::from_chars(a_text.data(), a_text.data() + a_text.size(), value);
+			if (result.ec != std::errc{} || result.ptr != a_text.data() + a_text.size() || value > a_max) {
+				return std::nullopt;
+			}
+			return value;
+		}
+
+		// "a, b, c, d, e": five plain numbers; nothing for any other shape.
+		std::optional<std::array<float, 5>> FiveNumbers(std::string_view a_text)
+		{
+			std::array<float, 5> out{};
+			std::size_t          count = 0;
+			std::size_t          at = 0;
+			while (at <= a_text.size()) {
+				const auto comma = a_text.find(',', at);
+				const auto part = a_text.substr(at, comma == std::string::npos ? std::string::npos : comma - at);
+				const auto param = ParseParam(part);
+				const auto* number = param ? Get<float>(*param) : nullptr;
+				if (!number || count >= out.size()) {
+					return std::nullopt;
+				}
+				out[count++] = *number;
+				if (comma == std::string::npos) {
+					break;
+				}
+				at = comma + 1;
+			}
+			return count == out.size() ? std::optional{ out } : std::nullopt;
+		}
 	}
 
 	std::optional<SourceKind> SourceKindOf(const SourceRow& a_row)
@@ -832,6 +884,25 @@ namespace WornEnchantmentPBR::Studio
 			s.width = *width;
 			s.decay = *decay;
 			s.shape = *shape;
+			return SourceKind{ s };
+		}
+		if (a_row.kind == "materialClusters") {
+			MaterialClustersSource s;
+			const auto             clusters = WholeNumber(a_row.clusters, kMaxMaterialClusters);
+			const auto             weights = FiveNumbers(a_row.weights);
+			const auto             seed = WholeNumber(a_row.seed, std::numeric_limits<std::uint32_t>::max());
+			const auto             iterations = WholeNumber(a_row.iterations, kMaxClusterIterations);
+			if (!clusters || *clusters < 1 || !weights || !seed || !iterations || *iterations < 1) {
+				return std::nullopt;
+			}
+			s.clusters = static_cast<std::uint8_t>(*clusters);
+			s.roughness = (*weights)[0];
+			s.metallic = (*weights)[1];
+			s.occlusion = (*weights)[2];
+			s.reflectance = (*weights)[3];
+			s.luma = (*weights)[4];
+			s.seed = *seed;
+			s.iterations = *iterations;
 			return SourceKind{ s };
 		}
 		return std::nullopt;
@@ -1267,7 +1338,7 @@ namespace WornEnchantmentPBR::Studio
 	{
 		std::vector<FieldSpec> form;
 		const std::string&     name = a_source.name;
-		form.push_back(Field("kind", FieldKind::kChoice, a_source.kind, { "image", "material", "bake", "uv", "distance", "ripple" }, [name](const std::string& a_text) -> std::optional<RecipeEdit> {
+		form.push_back(Field("kind", FieldKind::kChoice, a_source.kind, { "image", "material", "bake", "uv", "distance", "ripple", "materialClusters" }, [name](const std::string& a_text) -> std::optional<RecipeEdit> {
 			const auto kind = DefaultSourceKind(a_text);
 			return kind ? std::optional<RecipeEdit>{ SetSource{ name, *kind } } : std::nullopt;
 		}));
@@ -1288,7 +1359,7 @@ namespace WornEnchantmentPBR::Studio
 		} else if (a_source.kind == "material") {
 			form.push_back(Field("channel", FieldKind::kChoice, a_source.material, { "diffuseRgb", "diffuseLuma", "normalSlope", "roughness", "metallic", "occlusion", "reflectance", "displacement", "relief" }, BindSourceText(a_source, &SourceRow::material)));
 		} else if (a_source.kind == "bake") {
-			form.push_back(Field("bake", FieldKind::kChoice, a_source.bake, { "position", "localPosition", "worldUp", "partition", "boneWeight" }, BindSourceText(a_source, &SourceRow::bake)));
+			form.push_back(Field("bake", FieldKind::kChoice, a_source.bake, { "position", "localPosition", "worldUp", "partition", "boneWeight", "componentId", "chartId" }, BindSourceText(a_source, &SourceRow::bake)));
 			if (a_source.bake == "partition") {
 				form.push_back(Field("partition", FieldKind::kChoice, a_source.partition, BipedSlotNames(), BindSourceText(a_source, &SourceRow::partition)));
 			} else if (a_source.bake == "boneWeight") {
@@ -1304,6 +1375,11 @@ namespace WornEnchantmentPBR::Studio
 			form.push_back(Field("width", FieldKind::kScalar, a_source.width, a_names.scalar, BindSourceText(a_source, &SourceRow::width)));
 			form.push_back(Field("decay", FieldKind::kScalar, a_source.decay, a_names.scalar, BindSourceText(a_source, &SourceRow::decay)));
 			form.push_back(Field("shape", FieldKind::kChoice, a_source.shape, { "ring", "disc" }, BindSourceText(a_source, &SourceRow::shape)));
+		} else if (a_source.kind == "materialClusters") {
+			form.push_back(Field("clusters", FieldKind::kScalar, a_source.clusters, {}, BindSourceText(a_source, &SourceRow::clusters)));
+			form.push_back(Field("weights", FieldKind::kText, a_source.weights, {}, BindSourceText(a_source, &SourceRow::weights)));
+			form.push_back(Field("seed", FieldKind::kScalar, a_source.seed, {}, BindSourceText(a_source, &SourceRow::seed)));
+			form.push_back(Field("iterations", FieldKind::kScalar, a_source.iterations, {}, BindSourceText(a_source, &SourceRow::iterations)));
 		}
 		return form;
 	}

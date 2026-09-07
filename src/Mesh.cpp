@@ -130,7 +130,23 @@ namespace WornEnchantmentPBR
 					}
 					sum = std::clamp(sum, 0.0f, 1.0f);
 					return std::array{ sum, sum, sum };
-				});
+				},
+				// The id maps come from the analysis (BuildRegionBake); BuildBake
+				// refuses them before any vertex is valued.
+				[&](const ComponentIdBake&) { return std::array{ 1.0f, 1.0f, 1.0f }; },
+				[&](const ChartIdBake&) { return std::array{ 1.0f, 1.0f, 1.0f }; });
+		}
+
+		// The id-map bakes need the mesh analysis, which the compositor passes
+		// to BuildRegionBake; from the mesh alone they are a problem, never a
+		// silently black map.
+		std::string NeedsAnalysis(const BakeKind& a_kind)
+		{
+			return Match(
+				a_kind,
+				[](const ComponentIdBake&) { return std::string{ "componentId needs the mesh analysis" }; },
+				[](const ChartIdBake&) { return std::string{ "chartId needs the mesh analysis" }; },
+				[](const auto&) { return std::string{}; });
 		}
 	}
 
@@ -140,6 +156,10 @@ namespace WornEnchantmentPBR
 		out.vector = std::holds_alternative<PositionBake>(a_kind) || std::holds_alternative<LocalPositionBake>(a_kind);
 		if (std::holds_alternative<LocalPositionBake>(a_kind) && a_mesh.radius <= 0.0f) {
 			out.problem = "the mesh has no bound to map positions into";
+			return out;
+		}
+		if (auto problem = NeedsAnalysis(a_kind); !problem.empty()) {
+			out.problem = std::move(problem);
 			return out;
 		}
 		for (const auto& partition : a_mesh.partitions) {
@@ -266,7 +286,9 @@ namespace WornEnchantmentPBR
 						names += (names.empty() ? "" : ", ") + bone;
 					}
 					return std::format("boneWeight [{}]", names);
-				});
+				},
+				[](const ComponentIdBake&) { return std::string{ "componentId" }; },
+				[](const ChartIdBake&) { return std::string{ "chartId" }; });
 		}
 	}
 

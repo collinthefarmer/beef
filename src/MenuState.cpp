@@ -74,35 +74,6 @@ namespace WornEnchantmentPBR::Studio
 		}
 	}
 
-	std::string_view TermKindName(TermKind a_kind) noexcept
-	{
-		switch (a_kind) {
-		case TermKind::kWhere:
-			return "where";
-		case TermKind::kWhat:
-			return "what";
-		case TermKind::kShape:
-			return "shape";
-		case TermKind::kMasks:
-			return "masks";
-		case TermKind::kSources:
-			return "sources";
-		case TermKind::kExpression:
-			return "expression";
-		}
-		return "?";
-	}
-
-	std::optional<TermKind> ParseTermKind(std::string_view a_name) noexcept
-	{
-		for (const auto kind : kTermKinds) {
-			if (TermKindName(kind) == a_name) {
-				return kind;
-			}
-		}
-		return std::nullopt;
-	}
-
 	std::string_view ResourceTabName(ResourceTab a_tab) noexcept
 	{
 		switch (a_tab) {
@@ -172,6 +143,15 @@ namespace WornEnchantmentPBR::Studio
 				if (i.index < region.terms.size()) {
 					region.terms[i.index].text = i.text;
 					region.terms[i.index].label = std::string{ kExpressionLabel };
+					region.terms[i.index].recipe = RawTerm{};
+					region.dirty = true;
+				}
+			},
+			[&](const SetTermRecipe& i) {
+				if (i.index < region.terms.size()) {
+					region.terms[i.index].recipe = i.recipe;
+					region.terms[i.index].text = i.text;
+					region.terms[i.index].label = i.label;
 					region.dirty = true;
 				}
 			},
@@ -259,8 +239,12 @@ namespace WornEnchantmentPBR::Studio
 				region.dirty = !region.terms.empty();
 			},
 			[&](const ClearRegion&) { region = RegionStack{}; },
-			[&](const SetTermKind& i) { region.addKind = i.kind; },
 			[&](const BeginPaint& i) { a_state.paint = PaintSession{ i.recipe, i.surface }; },
+			[&](const ReadMesh&) {
+				if (a_state.paint) {
+					a_state.paint->readPosted = true;
+				}
+			},
 			[&](const SetPaintSurface& i) {
 				if (a_state.paint) {
 					a_state.paint->surface = i.surface;

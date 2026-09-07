@@ -293,16 +293,17 @@ namespace WornEnchantmentPBR
 
 	namespace
 	{
-		// The read's log line with its hash, and under verbose logging (a
-		// geometry given) the CPU-copy-versus-GPU comparison.
-		void LogRead(const char* a_name, const MeshData& a_mesh, RE::BSGeometry* a_compare)
+		// The read's log line with its hash and analysis, and under verbose
+		// logging (a geometry given) the CPU-copy-versus-GPU comparison.
+		void LogRead(const char* a_name, const MeshData& a_mesh, const MeshAnalysis& a_analysis, RE::BSGeometry* a_compare)
 		{
 			std::size_t vertices = 0, triangles = 0;
 			for (const auto& p : a_mesh.partitions) {
 				vertices += p.vertices.size();
 				triangles += p.triangles.size();
 			}
-			logger::info("mesh '{}': {}, {} partitions, {} vertices, {} triangles, hash {:016x}", a_name, a_mesh.origin, a_mesh.partitions.size(), vertices, triangles, a_mesh.hash);
+			logger::info("mesh '{}': {}, {} partitions, {} vertices, {} triangles, {} components, {} charts, hash {:016x}", a_name, a_mesh.origin, a_mesh.partitions.size(), vertices, triangles,
+				a_analysis.components, a_analysis.charts, a_mesh.hash);
 			if (a_compare) {
 				if (const auto compared = CompareWithGpu(a_compare)) {
 					logger::info("mesh '{}': cpu copy vs gpu readback: {} of {} bytes differ", a_name, compared->differing, compared->total);
@@ -343,7 +344,8 @@ namespace WornEnchantmentPBR
 		if (read) {
 			entry->mesh = *read;
 			entry->facts = Studio::FactsOf(*entry->mesh);
-			LogRead(name, *entry->mesh, a_verbose ? a_geometry : nullptr);
+			entry->analysis = AnalyseMesh(*entry->mesh);
+			LogRead(name, *entry->mesh, entry->analysis, a_verbose ? a_geometry : nullptr);
 		} else {
 			entry->problem = read.error();
 		}

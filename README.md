@@ -301,10 +301,11 @@ which ship with the plugin (vanilla hits, Precision), arriving in phase 3.
 |---|---|
 | `image` | `path` under `Data/Textures`, `channel` rgb/r/g/b/a/luma, `space` tiled/mesh, `scroll`, `tile`, `mirror: [u, v]`, `transpose`, `mip` |
 | `material` | diffuseRgb/diffuseLuma/normalSlope/roughness/metallic/occlusion/reflectance/displacement/relief |
-| `bake` | `"position"` (one frame for every piece), `"localPosition"` (this geometry's bound), `"worldUp"`, `{"partition": "body"}` (or a slot number), `{"boneWeight": [bones]}` |
+| `bake` | `"position"` (one frame for every piece), `"localPosition"` (this geometry's bound), `"worldUp"`, `{"partition": "body"}` (or a slot number), `{"boneWeight": [bones]}`, `"componentId"` and `"chartId"` (the mesh analysis' id map: connected pieces or UV charts, each texel the region id / 255) |
 | `uv` | u/v |
 | `distance` | a node name, or `{"from": [x, y, z]}`: static bind-pose distance |
 | `ripple` | `trigger`, `speed`, `width`, `decay`, `shape` ring/disc: a front per live firing |
+| `materialClusters` | `clusters` 1..8 (default 4), `weights` `{roughness, metallic, occlusion, reflectance, luma}` (defaults 1, 1, 0.5, 0.5, 1), `seed` (default 1), `iterations` 1..256 (default 32): the material's cluster map, each texel the id / 255 of its nearest cluster |
 
 Outputs: `{"target": "material" | "shell", "slot": ..., <slot scalars>,
 "selector"?, "replace"?, "stack": [layers]}` with slots diffuse, emissive
@@ -488,37 +489,43 @@ are in `ARCHITECTURE.md` under "The recipe studio".
   output whose single white layer is masked by the **scratch** mask,
   keyed to the worn armor, never written, gone when Paint closes),
   applied alone while the session runs, so the armor shows the region
-  the way any recipe's emissive shows. The head line holds the recipe
-  combo, which keeps naming the recipe being painted for. Under it an
-  action row, the shape of Compose's edit row: a **kind** combo (where,
-  what, shape, masks, sources, expression) and a **member** combo whose
-  entries add a term of that kind; a **read mesh** button, lit until the
-  shape's mesh is read (the shape kind and the where presets need it; a
-  preset the shape cannot make is greyed with the reason); and **preview
-  on**, material or shell, which is where the paint recipe's emissive
-  goes. The where presets come from `regions.json` beside the DLL (a
-  body region, a partition times the weights of a few bones), the what
-  presets are material thresholds over the shape's own maps (leather,
-  polished and rough metal, cloth, engravings, raised, dark, bright), the
-  shape kind lists the mesh's own partitions and bones with their
-  coverage, and a preset adds the sources it needs, reusing an existing
-  source with the same definition. The pane is split as the Compose
-  stack is: the term table on the left (index, remove, the grip to
-  reorder, **S** shows one term alone, **M** leaves one out, the **op**:
-  the first term sets the region, each later one is **and**, the
+  the way any recipe's emissive shows. Opening Paint also reads the
+  viewed shape's mesh, which is analysed as it is read (its connected
+  parts and UV charts, each with the bone that carries it and its share
+  of the mesh), and samples and clusters the material's maps, once per
+  session for each. The head line holds the recipe combo, which
+  keeps naming the recipe being painted for, with **preview on**,
+  material or shell, at its right edge: where the paint recipe's
+  emissive goes. The pane holds the term table across its width, then
+  **Keep** and **Discard**, then, under a rule that carries a filter,
+  what the piece can be shown to have as tables in collapsible sections:
+  parts, materials, bones, partitions, channels, presets, masks and
+  sources, each row with its measurements, greyed with the reason when
+  the piece cannot make it; choosing a row adds it as a term. The where
+  presets are gone; the shipped `regions.json` keeps only the what
+  presets (material thresholds: leather, polished and rough metal,
+  cloth, engravings, raised, dark, bright). A term's settings are its
+  data and its expression is
+  derived: a part is the mesh's `componentId` (or `chartId`) bake tested
+  for the id, a material is the `materialClusters` source tested for the
+  id, a channel is a threshold with softness, posterize and invert, and
+  a chosen term adds the sources it needs, reusing an existing source
+  with the same definition. A term's row shows its index, remove, the
+  grip to reorder, **S** shows one term alone, **M** leaves one out, the
+  **op** (the first term sets the region, each later one is **and**, the
   product, **or**, the maximum, or **not**, the product with the
-  complement; and the term's origin and text), the selected term's op
-  and text on the right with each source or mask it reads as a row whose
-  detail button opens its picture. The stack is page state; its built
+  complement), its label, its measurements, and a details button whose
+  modal holds its settings as fields, its expression text (editing the
+  text makes the term raw), and each source or mask it reads as a row
+  whose own detail button opens its picture. The stack is page state; its built
   expression is written into the paint recipe's scratch after every
   change. Under the split, **Keep** writes every term (mutes lifted)
   under a proposed or typed name into the recipe being painted for, with
-  the sources the expression reads copied across (a source of the same
-  definition is reused, a taken name made unique), as one undoable step,
+  the sources the expression reads copied across, as one undoable step,
   and ends the session; **Discard** ends it without keeping. On the
-  Masks tab, **edit** loads a kept mask into the stack: a mask in the
-  shape Keep writes comes back as its terms, any other as one raw term.
-  Leaving Paint mode discards.
+  Masks tab, **edit** loads a kept mask into the stack with its terms
+  and their settings recovered from the text; any other text comes back
+  as one raw term. Leaving Paint mode discards.
 - **Recipes**: every loaded file with keys, row counts, state and path;
   the selection's resolved recipes in merge order; the **board**, the
   grid of every slot on the material and the shell for the selected

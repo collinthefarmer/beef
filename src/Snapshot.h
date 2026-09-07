@@ -7,6 +7,7 @@
 // here: the lab keeps them alive, and only the menu's widgets dereference
 // them, through TextureLab::Preview.
 
+#include "Analysis.h"
 #include "Core.h"
 #include "Recipe.h"
 #include "View.h"
@@ -134,6 +135,8 @@ namespace WornEnchantmentPBR::Studio
 		bool                   meshRead = false;  // the rows below are filled once the mesh has been read
 		std::vector<PartitionRow> partitions;
 		std::vector<BoneRow>      bones;
+		std::vector<MeshRegion>      regions;   // the mesh analysis, copied from the cache entry
+		std::vector<MaterialCluster> clusters;  // the material analysis at its default settings
 		std::string            shell;  // description, empty when none
 		std::vector<SlotRow>   materialSlots;
 		std::vector<SlotRow>   shellSlots;
@@ -170,6 +173,10 @@ namespace WornEnchantmentPBR::Studio
 		std::string width;
 		std::string decay;
 		std::string shape;
+		std::string clusters;    // materialClusters: a whole number
+		std::string weights;     // materialClusters: "roughness, metallic, occlusion, reflectance, luma"
+		std::string seed;
+		std::string iterations;
 		std::size_t references = 0;
 	};
 

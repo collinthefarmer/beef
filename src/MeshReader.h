@@ -8,6 +8,7 @@
 // below keeps one read per geometry, with the facts the snapshot shows and
 // the bakes rasterised from it, for as long as the geometry is bound.
 
+#include "Analysis.h"
 #include "Mesh.h"
 #include "PCH.h"
 #include "Regions.h"
@@ -68,9 +69,10 @@ namespace WornEnchantmentPBR
 	// ------------------------------------------------------------- the cache
 
 	// One geometry's read: the mesh (null with the problem when it could not
-	// be read), its facts, and the bakes rasterised from it keyed by
-	// definition and size (BakeKeyOf and friends). The entry holds the
-	// geometry, so the pointer it is keyed by cannot be reused while it lives.
+	// be read), its facts and analysis (components and charts, computed with
+	// the read), and the bakes rasterised from it keyed by definition and
+	// size (BakeKeyOf and friends). The entry holds the geometry, so the
+	// pointer it is keyed by cannot be reused while it lives.
 	struct MeshEntry
 	{
 		RE::NiPointer<RE::BSGeometry>                                        geometry;
@@ -78,6 +80,7 @@ namespace WornEnchantmentPBR
 		std::shared_ptr<const MeshData>                                      mesh;
 		std::string                                                          problem;  // why mesh is null
 		Studio::MeshFacts                                                    facts;
+		MeshAnalysis                                                         analysis;
 		std::unordered_map<std::string, std::shared_ptr<TextureLab::Target>> bakes;
 		std::uint32_t                                                        lastUsedMS = 0;
 	};

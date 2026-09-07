@@ -427,7 +427,18 @@ namespace WornEnchantmentPBR
 		std::vector<std::string> bones;
 		[[nodiscard]] bool       operator==(const BoneWeightBake&) const = default;
 	};
-	using BakeKind = std::variant<PositionBake, LocalPositionBake, WorldUpBake, PartitionBake, BoneWeightBake>;
+	// The mesh analysis' id map for a source of regions: each texel the
+	// region id / 255, rasterised once per geometry. Building one needs the
+	// analysis, not the mesh alone.
+	struct ComponentIdBake
+	{
+		[[nodiscard]] bool operator==(const ComponentIdBake&) const = default;
+	};
+	struct ChartIdBake
+	{
+		[[nodiscard]] bool operator==(const ChartIdBake&) const = default;
+	};
+	using BakeKind = std::variant<PositionBake, LocalPositionBake, WorldUpBake, PartitionBake, BoneWeightBake, ComponentIdBake, ChartIdBake>;
 	// Rasterised once per geometry from the mesh's own buffers.
 	struct BakeSource
 	{
@@ -465,7 +476,28 @@ namespace WornEnchantmentPBR
 		RippleShape shape = RippleShape::kRing;
 		[[nodiscard]] bool operator==(const RippleSource&) const = default;
 	};
-	using SourceKind = std::variant<ImageSource, MaterialSource, BakeSource, UvSource, DistanceSource, RippleSource>;
+	// The material's cluster map: each texel the id / 255 of the nearest
+	// cluster under these settings, rendered once per geometry. The fields
+	// are the k-means settings the analysis runs with (Analysis.h's
+	// ClusterSettings, which this header cannot include: Analysis includes
+	// Mesh, which includes Recipe); the compositor carries them across.
+	inline constexpr std::uint8_t  kMaxMaterialClusters = 8;
+	inline constexpr std::uint32_t kMaxClusterIterations = 256;
+	inline constexpr float         kMaxChannelWeight = 10.0f;
+	struct MaterialClustersSource
+	{
+		std::uint8_t clusters = 4;  // 1..kMaxMaterialClusters
+		// How much each channel counts in the distance between texels, 0..kMaxChannelWeight.
+		float              roughness = 1.0f;
+		float              metallic = 1.0f;
+		float              occlusion = 0.5f;
+		float              reflectance = 0.5f;
+		float              luma = 1.0f;
+		std::uint32_t      seed = 1;         // the same seed and sample give the same clusters
+		std::uint32_t      iterations = 32;  // the k-means cap, 1..kMaxClusterIterations
+		[[nodiscard]] bool operator==(const MaterialClustersSource&) const = default;
+	};
+	using SourceKind = std::variant<ImageSource, MaterialSource, BakeSource, UvSource, DistanceSource, RippleSource, MaterialClustersSource>;
 
 	struct Source
 	{
@@ -584,8 +616,9 @@ namespace WornEnchantmentPBR
 	[[nodiscard]] std::string_view                 RippleShapeName(RippleShape a_shape) noexcept;
 	[[nodiscard]] std::optional<RippleShape>       ParseRippleShape(std::string_view a_name) noexcept;
 	// A source kind's word ("image", "material", "bake", "uv", "distance",
-	// "ripple") and a bake's ("position", "localPosition", "worldUp",
-	// "partition", "boneWeight"); the defaults of a kind by its word.
+	// "ripple", "materialClusters") and a bake's ("position", "localPosition",
+	// "worldUp", "partition", "boneWeight", "componentId", "chartId"); the
+	// defaults of a kind by its word.
 	[[nodiscard]] std::string_view                 SourceKindName(const SourceKind& a_kind) noexcept;
 	[[nodiscard]] std::optional<SourceKind>        DefaultSourceKind(std::string_view a_name);
 	[[nodiscard]] std::string_view                 BakeKindName(const BakeKind& a_bake) noexcept;

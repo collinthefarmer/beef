@@ -7,14 +7,17 @@
 // the scratch mask. Engine-free; the mesh facts come from the snapshot.
 
 #include "Edits.h"
+#include "Forms.h"
 #include "MaskStack.h"
 #include "Mesh.h"
 #include "Recipe.h"
 #include "Snapshot.h"
 
+#include <array>
 #include <cstddef>
 #include <cstdint>
 #include <expected>
+#include <functional>
 #include <map>
 #include <optional>
 #include <set>
@@ -128,6 +131,50 @@ namespace WornEnchantmentPBR::Studio
 	// camel case ("chestLeather"), the mask being edited when there is one,
 	// "region" when nothing names it.
 	[[nodiscard]] std::string ProposedRegionName(std::span<const Term> a_terms, std::string_view a_editing);
+
+	// ------------------------------------------------------------ term templates
+	// BuildTerm turns a recipe into the sources it needs (twins reused, as
+	// MaterialiseTerm) and its expression; ReadTerm recovers the template a
+	// text fits over the recipe's rows, RawTerm when none does; TermLabelOf
+	// is the row's words for a recipe (a region's measurements, a preset's
+	// name, a reference).
+	[[nodiscard]] PresetTerm  BuildTerm(const TermRecipe& a_recipe, const Presets& a_presets, const Existing& a_existing);
+	[[nodiscard]] TermRecipe  ReadTerm(std::string_view a_text, const Presets& a_presets, const RecipeRow& a_recipe);
+	[[nodiscard]] std::string TermLabelOf(const TermRecipe& a_recipe, const Presets& a_presets, const GeometryRow& a_geometry);
+
+	// A term's settings as a form: one field per setting of the recipe,
+	// drawn like any field; a committed text becomes the recipe with that
+	// setting changed (or nothing when it does not parse), and the page
+	// rebuilds the term from it. A RawTerm has no fields.
+	struct TermField
+	{
+		FieldSpec                                                        field;
+		std::function<std::optional<TermRecipe>(const std::string& a_text)> apply;
+	};
+	[[nodiscard]] std::vector<TermField> TermForm(const TermRecipe& a_recipe, const Presets& a_presets, const GeometryRow& a_geometry);
+
+	// ------------------------------------------------------------------ offers
+	// What the piece can be shown to have, as rows for the Add popup: the
+	// mesh's parts and the material's clusters with their measurements, the
+	// bones, partitions and channels, the what presets whose range holds
+	// texels, and the recipe's masks and sources. An offer the piece cannot
+	// make says why; coverage, when measured, is the offer's share of the
+	// piece's texels.
+	struct TermOffer
+	{
+		std::string                group;  // "parts", "materials", "bones", "partitions", "channels", "presets", "masks", "sources"
+		std::string                name;
+		std::string                detail;  // the measurements
+		std::optional<std::string> unavailable;
+		std::optional<float>       coverage;
+		TermRecipe                 recipe;
+	};
+	inline constexpr std::array<std::string_view, 8> kOfferGroups{ "parts", "materials", "bones", "partitions", "channels", "presets", "masks", "sources" };
+	[[nodiscard]] std::vector<TermOffer> OffersOf(const Presets& a_presets, const RecipeRow& a_recipe, const GeometryRow& a_geometry, std::string_view a_editing);
+	// A term's measurements for its row: the detail of the offer it came
+	// from when one matches, else what the recipe itself says (a threshold's
+	// range, a reference's name, a raw term's text).
+	[[nodiscard]] std::string TermDetailOf(const Term& a_term, std::span<const TermOffer> a_offers);
 
 	// ------------------------------------------------------------ paint recipe
 	// Painting previews through the ordinary apply path: a transient recipe,

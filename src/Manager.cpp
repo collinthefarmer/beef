@@ -331,6 +331,7 @@ namespace WornEnchantmentPBR
 		loggedNonPBRArmor_.clear();
 		carriedTimes_.clear();
 		Compositor::GetSingleton()->ClearMeshes();
+		Compositor::GetSingleton()->ClearMaterials();
 		TextureLab::GetSingleton()->Clear();
 		logger::info("cleared {} actor states", count);
 	}
@@ -886,6 +887,7 @@ namespace WornEnchantmentPBR
 			view_.isolateRecipe = std::string{ Studio::kPaintRecipe };
 			view_.isolateOutput = -1;
 			view_.isolateLayer = -1;
+			view_.isolatedBySolo = false;
 			QueueLoadedActorRefreshes();
 		});
 	}
@@ -934,6 +936,7 @@ namespace WornEnchantmentPBR
 		PostTask([this] {
 			RetireEveryActor();
 			if (view_.isolateRecipe == Studio::kPaintRecipe) {
+				view_.isolatedBySolo = false;
 				view_.isolateRecipe.clear();
 				view_.isolateOutput = -1;
 				view_.isolateLayer = -1;
@@ -986,8 +989,14 @@ namespace WornEnchantmentPBR
 				for (auto& applied : piece.recipes) {
 					for (auto& bound : applied.geometries) {
 						if (bound.name == name) {
-							if (const auto mesh = Compositor::GetSingleton()->MeshOf(bound.geometry.get()); !mesh) {
+							// The shape's read: its mesh (analysed as it is read) and its
+							// material's sample and clusters, both once per session.
+							auto* compositor = Compositor::GetSingleton();
+							if (const auto mesh = compositor->MeshOf(bound.geometry.get()); !mesh) {
 								logger::warn("mesh '{}': {}", name, mesh.error());
+							}
+							if (const auto& material = compositor->AnalyseMaterial(bound.inputs.material); !material.sample) {
+								logger::warn("material of '{}': {}", name, material.problem);
 							}
 						}
 					}
@@ -1346,6 +1355,10 @@ namespace WornEnchantmentPBR
 							gr.meshRead = true;
 							gr.partitions = entry->facts.partitions;
 							gr.bones = entry->facts.bones;
+							gr.regions = entry->analysis.regions;
+						}
+						if (const auto* material = compositor->CachedMaterial(g.inputs.material); material && material->analysis) {
+							gr.clusters = material->analysis->clusters;
 						}
 						gr.materialSlots = g.material ? SlotRows(*g.material) : std::vector<Snapshot::SlotRow>{};
 						gr.shellSlots = g.shell ? SlotRows(*g.shell) : std::vector<Snapshot::SlotRow>{};

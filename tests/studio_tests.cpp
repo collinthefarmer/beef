@@ -1223,8 +1223,12 @@ namespace
 		Check(state.region.terms[0].op == TermOp::kSet, "the first term's op cannot change");
 		Reduce(state, SetTermOp{ 1, TermOp::kNot });
 		Check(state.region.terms[1].op == TermOp::kNot, "a later term's op changes");
+		Reduce(state, SetTermRecipe{ 1, ReferenceTerm{ "b" }, "@b", "@b" });
+		Check(state.region.terms[1].recipe == TermRecipe{ ReferenceTerm{ "b" } } && state.region.terms[1].text == "@b" && state.region.terms[1].label == "@b" && state.region.dirty, "a settings change carries the rebuilt text and label");
+		Reduce(state, SetTermRecipe{ 9, ReferenceTerm{ "z" }, "@z", "@z" });
+		Check(state.region.terms.size() == 3 && state.region.terms[1].text == "@b", "a settings change past the stack is dropped");
 		Reduce(state, SetTermText{ 1, "@b * 2" });
-		Check(state.region.terms[1].text == "@b * 2" && state.region.terms[1].label == "expression", "typed text makes the term an expression");
+		Check(state.region.terms[1].text == "@b * 2" && state.region.terms[1].label == "expression" && state.region.terms[1].recipe == TermRecipe{ RawTerm{} }, "typed text makes the term a raw expression");
 		Reduce(state, SoloTerm{ 1, true });
 		Reduce(state, MuteTerm{ 2, true });
 		Check(state.region.solo == 1 && state.region.muted.contains(2), "solo and mute are stack state");
@@ -1249,14 +1253,15 @@ namespace
 		}
 		Check(state.region.terms.size() == kMaxTerms, "the stack stops at the cap");
 		Reduce(state, ClearRegion{});
-		Reduce(state, SetTermKind{ TermKind::kShape });
-		Check(state.region.addKind == TermKind::kShape && TermKindName(TermKind::kShape) == "shape" && ParseTermKind("masks") == TermKind::kMasks && !ParseTermKind("x"), "the add kind");
 		RecipeKey armor;
 		armor.kind = KeyKind::kArmor;
 		Reduce(state, BeginPaint{ kRecipeID, armor, Surface::kShell });
 		Check(state.paint && state.paint->recipe == kRecipeID && state.paint->surface == Surface::kShell, "a paint session names the active recipe and its surface");
 		Reduce(state, SetPaintSurface{ Surface::kMaterial });
 		Check(state.paint && state.paint->surface == Surface::kMaterial, "the preview surface changes");
+		Check(state.paint && !state.paint->readPosted, "a fresh session has not asked for the shape's read");
+		Reduce(state, ReadMesh{ kPlayer, "Cuirass" });
+		Check(state.paint && state.paint->readPosted, "posting the read marks the session, so it is asked once");
 		Reduce(state, AddTerm{ Term{ TermOp::kSet, "@a", "a" } });
 		Reduce(state, KeepPaint{ kRecipeID, "chest" });
 		Check(!state.paint && state.region.terms.empty(), "keep ends the session and empties the stack");
@@ -1348,9 +1353,280 @@ namespace
 	}
 }
 
+namespace
+{
+	// The cluster map's row and form, and the id-map bakes' rows.
+	void MaterialClusterRows()
+	{
+		MaterialClustersSource tuned;
+		tuned.clusters = 3;
+		tuned.luma = 2.0f;
+		tuned.seed = 7;
+		tuned.iterations = 64;
+		const Source source{ "materials", tuned };
+		const auto   row = SourceRowOf(source, 0);
+		Check(row.kind == "materialClusters" && row.clusters == "3" && row.weights == "1, 1, 0.5, 0.5, 2" && row.seed == "7" && row.iterations == "64", "a materialClusters row carries its settings as text");
+		const auto back = SourceKindOf(row);
+		Check(back && *back == SourceKind{ tuned }, "the row reads back as its source");
+		SourceRow bad = row;
+		bad.clusters = "9";
+		Check(!SourceKindOf(bad), "clusters past the cap read back as nothing");
+		bad = row;
+		bad.weights = "1, 2, 3";
+		Check(!SourceKindOf(bad), "three weights read back as nothing");
+		bad = row;
+		bad.iterations = "0";
+		Check(!SourceKindOf(bad), "zero iterations read back as nothing");
+		bad = row;
+		bad.seed = "-1";
+		Check(!SourceKindOf(bad), "a negative seed reads back as nothing");
+
+		SignalNames               names;
+		std::optional<RecipeEdit> edit;
+		const auto                form = SourceForm(row, names);
+		Check(form.size() == 5 && form[1].name == "clusters" && form[1].kind == FieldKind::kScalar && form[2].name == "weights" && form[2].kind == FieldKind::kText && form[3].name == "seed" && form[4].name == "iterations", "the materialClusters form's fields");
+		const auto* setClusters = Bound<SetSource>(form[1], "5", edit);
+		const auto* changed = setClusters ? Get<MaterialClustersSource>(setClusters->kind) : nullptr;
+		Check(changed && changed->clusters == 5 && changed->luma == 2.0f && changed->seed == 7, "a cluster count change keeps the rest");
+		const auto* setWeights = Bound<SetSource>(form[2], "0, 0, 0, 0, 1", edit);
+		const auto* weighted = setWeights ? Get<MaterialClustersSource>(setWeights->kind) : nullptr;
+		Check(weighted && weighted->roughness == 0.0f && weighted->luma == 1.0f && weighted->clusters == 3, "the weights field sets all five");
+		Check(!Bound<SetSource>(form[1], "many", edit), "a word is not a cluster count");
+		const auto* setKind = Bound<SetSource>(form[0], "materialClusters", edit);
+		Check(setKind && Get<MaterialClustersSource>(setKind->kind) && *Get<MaterialClustersSource>(setKind->kind) == MaterialClustersSource{}, "the kind field starts the cluster map at its defaults");
+
+		SourceRow bake;
+		bake.name = "b";
+		bake.kind = "bake";
+		bake.bake = "componentId";
+		const auto kind = SourceKindOf(bake);
+		Check(kind && Get<BakeSource>(*kind) && Get<ComponentIdBake>(Get<BakeSource>(*kind)->bake), "a componentId row reads back as the bake");
+		const auto bakeForm = SourceForm(bake, names);
+		Check(bakeForm.size() == 2 && bakeForm[1].names.size() == 7 && bakeForm[1].names[6] == "chartId", "an id-map bake has no further field and the choice offers both");
+		Check(SourceRowOf(Source{ "c", BakeSource{ ChartIdBake{} } }, 0).bake == "chartId", "a chartId row names its bake");
+	}
+}
+
+namespace
+{
+	// The recipe row with a term's new sources added, as the snapshot would
+	// show it after the edits apply.
+	RecipeRow WithSources(const RecipeRow& a_recipe, const std::vector<RecipeEdit>& a_edits)
+	{
+		RecipeRow row = a_recipe;
+		for (const auto& edit : a_edits) {
+			if (const auto* add = Get<AddSource>(edit)) {
+				row.sourceRows.push_back(SourceRowOf(Source{ add->name, add->kind }, 0));
+			}
+		}
+		return row;
+	}
+
+	// A geometry read and analysed: two parts, one chart, two material clusters.
+	GeometryRow Analysed(const GeometryRow& a_geometry)
+	{
+		GeometryRow geometry = a_geometry;
+		geometry.meshRead = true;
+		geometry.partitions = PartitionsOf(SkinnedMesh());
+		geometry.bones = BonesOf(SkinnedMesh());
+		MeshRegion body;
+		body.source = RegionSource::kComponent;
+		body.id = 0;
+		body.share = 0.6f;
+		body.dominantBone = "NPC Spine2 [Spn2]";
+		body.dominantShare = 0.9f;
+		MeshRegion hand = body;
+		hand.id = 1;
+		hand.share = 0.4f;
+		hand.dominantBone = "NPC L Hand [LHnd]";
+		hand.dominantShare = 1.0f;
+		MeshRegion chart;
+		chart.source = RegionSource::kChart;
+		chart.id = 0;
+		chart.share = 1.0f;
+		geometry.regions = { body, hand, chart };
+		MaterialCluster leather;
+		leather.id = 0;
+		leather.share = 0.7f;
+		leather.description = "rough dark non-metal";
+		MaterialCluster steel;
+		steel.id = 1;
+		steel.share = 0.3f;
+		steel.description = "polished bright metal";
+		geometry.clusters = { leather, steel };
+		return geometry;
+	}
+
+	// The template's text applied as a term, and a copy of the recipe applied
+	// to a field's text; nothing when the field refuses it.
+	std::optional<TermRecipe> Applied(const std::vector<TermField>& a_form, const char* a_field, const char* a_text)
+	{
+		const auto it = std::ranges::find(a_form, a_field, [](const TermField& f) { return f.field.name; });
+		return it == a_form.end() || !it->apply ? std::nullopt : it->apply(a_text);
+	}
+
+	void TermTemplates(const RecipeRow& a_recipe, const GeometryRow& a_geometry)
+	{
+		const auto file = test::ReadFile(std::filesystem::path{ WEPBR_FIXTURES_DIR } / ".." / ".." / "presets" / "regions.json");
+		const auto presets = ParsePresets(file);
+		if (!presets) {
+			test::Skip("the term template checks need presets/regions.json");
+			return;
+		}
+		const auto existing = ExistingOf(a_recipe);
+		const auto geometry = Analysed(a_geometry);
+
+		// Every template round-trips: built over the canonical row, read back
+		// over the row with the built sources added.
+		ThresholdTerm roughness;
+		roughness.channel = MaterialChannel::kRoughness;
+		roughness.low = 0.35f;
+		roughness.high = 0.6f;
+		ThresholdTerm posterized = roughness;
+		posterized.posterize = 4;
+		posterized.invert = true;
+		ThresholdTerm lowOnly = roughness;
+		lowOnly.high = 1.0f;
+		ThresholdTerm highOnly = roughness;
+		highOnly.low = 0.0f;
+		ThresholdTerm everything = roughness;
+		everything.low = 0.0f;
+		everything.high = 1.0f;
+		ThresholdTerm metallic;
+		metallic.channel = MaterialChannel::kMetallic;
+		metallic.low = 0.5f;
+		metallic.softness = 0.1f;
+		ClusterSettings tuned;
+		tuned.clusters = 3;
+		tuned.weights.luma = 2.0f;
+		tuned.seed = 7;
+		const std::vector<TermRecipe> all{
+			ReferenceTerm{ "metal" }, ReferenceTerm{ "fill" }, roughness, posterized, lowOnly, highOnly, everything, metallic, WhatPresetTerm{ "leather" }, WhatPresetTerm{ "dark" },
+			PartitionTerm{ 33 }, BoneTerm{ { "NPC Spine2 [Spn2]", "NPC L UpperArm [LUar]" } }, ComponentTerm{ RegionSource::kComponent, 1 }, ComponentTerm{ RegionSource::kChart, 0 },
+			ClusterTerm{ ClusterSettings{}, 1 }, ClusterTerm{ tuned, 2 }
+		};
+		for (const auto& recipe : all) {
+			const auto built = BuildTerm(recipe, *presets, existing);
+			const auto row = WithSources(a_recipe, built.edits);
+			const auto back = ReadTerm(built.expression, *presets, row);
+			Check(back == recipe, std::format("{} round-trips through BuildTerm and ReadTerm: {}", TermRecipeName(recipe), built.expression));
+			Check(Program::Parse(built.expression).has_value(), std::format("{} builds an expression that parses: {}", TermRecipeName(recipe), built.expression));
+		}
+
+		// The spellings.
+		const auto builtRoughness = BuildTerm(roughness, *presets, existing);
+		Check(builtRoughness.expression == "smoothstep(0.35 - 0.05, 0.35 + 0.05, @roughness) * (1 - smoothstep(0.6 - 0.05, 0.6 + 0.05, @roughness))", "a threshold spells both edges over the channel: " + builtRoughness.expression);
+		Check(builtRoughness.edits.size() == 1 && Get<AddSource>(builtRoughness.edits[0]) && Get<AddSource>(builtRoughness.edits[0])->name == "roughness", "a threshold adds its channel as a material source named after it");
+		Check(BuildTerm(metallic, *presets, existing).edits.empty() && BuildTerm(metallic, *presets, existing).expression == "smoothstep(0.5 - 0.1, 0.5 + 0.1, @metallic)", "a threshold reuses the recipe's metallic source; low alone spells one edge");
+		Check(BuildTerm(posterized, *presets, existing).expression == "1 - (smoothstep(0.35 - 0.05, 0.35 + 0.05, floor(@roughness * 4) / 4) * (1 - smoothstep(0.6 - 0.05, 0.6 + 0.05, floor(@roughness * 4) / 4)))", "posterize quantises the operand and invert wraps: " + BuildTerm(posterized, *presets, existing).expression);
+		Check(BuildTerm(highOnly, *presets, existing).expression == "1 - smoothstep(0.6 - 0.05, 0.6 + 0.05, @roughness)", "high alone spells the complement of one edge");
+		Check(BuildTerm(everything, *presets, existing).expression == "step(0, @roughness)", "0..1 keeps the channel readable");
+		Check(BuildTerm(ReferenceTerm{ "metal" }, *presets, existing).expression == "@metal" && BuildTerm(ReferenceTerm{ "metal" }, *presets, existing).edits.empty(), "a reference is its name");
+		const auto leather = BuildTerm(WhatPresetTerm{ "leather" }, *presets, existing);
+		Check(leather.expression == "(1 - @metallic) * smoothstep(0.35, 0.6, @roughness)" && leather.edits.size() == 1, "a what preset materialises as the preset does");
+		Check(BuildTerm(WhatPresetTerm{ "unknown" }, *presets, existing).expression == "0" && BuildTerm(WhatPresetTerm{ "unknown" }, *presets, existing).edits.empty(), "an unknown preset is 0 with no sources");
+		const auto partition = BuildTerm(PartitionTerm{ 33 }, *presets, existing);
+		Check(partition.expression == "@partition" && partition.edits.size() == 1 && Get<AddSource>(partition.edits[0])->name == "partition", "a partition adds its bake");
+		const auto bones = BuildTerm(BoneTerm{ { "NPC Spine2 [Spn2]" } }, *presets, existing);
+		Check(bones.expression == "@bones" && bones.edits.size() == 1 && Get<AddSource>(bones.edits[0])->name == "bones", "bones add their bake");
+		const auto component = BuildTerm(ComponentTerm{ RegionSource::kComponent, 1 }, *presets, existing);
+		Check(component.expression == "abs(@components * 255 - 1) < 0.5" && component.edits.size() == 1 && Get<AddSource>(component.edits[0])->name == "components" && Get<ComponentIdBake>(Get<BakeSource>(Get<AddSource>(component.edits[0])->kind)->bake), "a component tests the componentId bake");
+		const auto chart = BuildTerm(ComponentTerm{ RegionSource::kChart, 0 }, *presets, existing);
+		Check(chart.expression == "abs(@charts * 255 - 0) < 0.5" && chart.edits.size() == 1 && Get<AddSource>(chart.edits[0])->name == "charts", "a chart tests the chartId bake");
+		const auto cluster = BuildTerm(ClusterTerm{ tuned, 2 }, *presets, existing);
+		const auto* clusterSource = cluster.edits.size() == 1 ? Get<AddSource>(cluster.edits[0]) : nullptr;
+		const auto* clusterKind = clusterSource ? Get<MaterialClustersSource>(clusterSource->kind) : nullptr;
+		Check(cluster.expression == "abs(@clusters * 255 - 2) < 0.5" && clusterKind && clusterSource->name == "clusters" && clusterKind->clusters == 3 && clusterKind->luma == 2.0f && clusterKind->seed == 7, "a cluster tests a materialClusters source carrying its settings");
+		Check(BuildTerm(RawTerm{}, *presets, existing).expression.empty() && BuildTerm(RawTerm{}, *presets, existing).edits.empty(), "a raw term builds nothing");
+		Existing componentsTaken = existing;
+		componentsTaken.taken.push_back("components");
+		Check(BuildTerm(ComponentTerm{}, *presets, componentsTaken).expression == "abs(@components2 * 255 - 0) < 0.5", "a taken source name is made unique");
+
+		// Reading: hand-written text and near misses are raw; a lone name of
+		// a mask or an unknown row is a reference.
+		Check(Is<RawTerm>(ReadTerm("@metallic * 2", *presets, a_recipe)), "hand-written text reads as raw");
+		Check(Is<RawTerm>(ReadTerm("smoothstep(0.35 - 0.05, 0.35 + 0.06, @metallic)", *presets, a_recipe)), "an edge whose softness differs between its bounds is raw");
+		Check(Is<RawTerm>(ReadTerm("smoothstep(0.35 - 0.05, 0.35 + 0.05, @fill)", *presets, a_recipe)), "a threshold over an image source is raw");
+		Check(Is<RawTerm>(ReadTerm("abs(@metallic * 255 - 1) < 0.5", *presets, a_recipe)), "the region form over a material source is raw");
+		Check(Is<RawTerm>(ReadTerm("", *presets, a_recipe)) && Is<RawTerm>(ReadTerm("1 - (", *presets, a_recipe)) && Is<RawTerm>(ReadTerm("smoothstep(", *presets, a_recipe)), "empty and truncated texts are raw");
+		Check(ReadTerm("@metal", *presets, a_recipe) == TermRecipe{ ReferenceTerm{ "metal" } } && ReadTerm("@nothingKnown", *presets, a_recipe) == TermRecipe{ ReferenceTerm{ "nothingKnown" } }, "a lone name reads as a reference");
+		Check(ReadTerm("(1 - @metallic) * smoothstep(0.35, 0.6, @roughness)", *presets, WithSources(a_recipe, leather.edits)) == TermRecipe{ WhatPresetTerm{ "leather" } }, "a what preset's expression over the recipe's names reads as the preset");
+		Check(Is<RawTerm>(ReadTerm("(1 - @metallic) * smoothstep(0.35, 0.6, @roughness)", *presets, a_recipe)), "the same text without the roughness source is raw");
+
+		// Labels.
+		Check(TermLabelOf(roughness, *presets, geometry) == "roughness 0.35..0.6", "a threshold labels as its channel and range");
+		Check(TermLabelOf(ReferenceTerm{ "metal" }, *presets, geometry) == "@metal" && TermLabelOf(WhatPresetTerm{ "leather" }, *presets, geometry) == "leather" && TermLabelOf(RawTerm{}, *presets, geometry) == "expression", "reference, preset and raw labels");
+		Check(TermLabelOf(PartitionTerm{ 33 }, *presets, geometry) == "hands" && TermLabelOf(BoneTerm{ { "NPC Spine2 [Spn2]", "NPC L Hand [LHnd]" } }, *presets, geometry) == "chest, left hand", "partitions and bones label by their plain names");
+		Check(TermLabelOf(ComponentTerm{ RegionSource::kComponent, 0 }, *presets, geometry) == "part 0: chest, 60%" && TermLabelOf(ComponentTerm{ RegionSource::kChart, 0 }, *presets, geometry) == "chart 0: 100%", "a part labels with its dominant bone and share; an unskinned chart with its share");
+		Check(TermLabelOf(ComponentTerm{ RegionSource::kComponent, 7 }, *presets, geometry) == "part 7" && TermLabelOf(ComponentTerm{ RegionSource::kComponent, 0 }, *presets, a_geometry) == "part 0", "a part the geometry lacks labels by number alone");
+		Check(TermLabelOf(ClusterTerm{ ClusterSettings{}, 1 }, *presets, geometry) == "material 1: polished bright metal, 30%" && TermLabelOf(ClusterTerm{ ClusterSettings{}, 5 }, *presets, geometry) == "material 5", "a cluster labels with its description and share");
+
+		// A kept mask comes back with its recipes and labels.
+		const auto keptText = std::format("({}) * ({})", builtRoughness.expression, "@metal");
+		const auto terms = TermsOfMask(keptText, *presets, ExistingOf(WithSources(a_recipe, builtRoughness.edits)));
+		Check(terms && terms->size() == 2 && (*terms)[0].recipe == TermRecipe{ roughness } && (*terms)[0].label == "roughness 0.35..0.6" && (*terms)[1].recipe == TermRecipe{ ReferenceTerm{ "metal" } } && (*terms)[1].label == "@metal", "a kept mask's terms carry their recipes and labels");
+		Check(terms && ProposedRegionName(*terms, "") == "region" && ProposedRegionName(std::vector<Term>{ (*terms)[1] }, "") == "metal", "a reference label proposes its name");
+
+		// Forms: one field per setting; a bad text applies to nothing.
+		const auto thresholdForm = TermForm(roughness, *presets, geometry);
+		Check(thresholdForm.size() == 6 && thresholdForm[0].field.name == "channel" && thresholdForm[0].field.kind == FieldKind::kChoice && thresholdForm[0].field.names.size() == 8 && thresholdForm[1].field.name == "low" && thresholdForm[1].field.text == "0.35" && thresholdForm[4].field.name == "posterize" && thresholdForm[5].field.name == "invert" && thresholdForm[5].field.kind == FieldKind::kToggle && thresholdForm[5].field.text == "off", "the threshold form's fields");
+		const auto lowered = Applied(thresholdForm, "low", "0.2");
+		Check(lowered && Get<ThresholdTerm>(*lowered) && Get<ThresholdTerm>(*lowered)->low == 0.2f && Get<ThresholdTerm>(*lowered)->high == 0.6f, "a low change keeps the rest");
+		Check(!Applied(thresholdForm, "low", "much") && !Applied(thresholdForm, "low", "") && !Applied(thresholdForm, "posterize", "-1") && !Applied(thresholdForm, "posterize", "1.5") && !Applied(thresholdForm, "invert", "maybe") && !Applied(thresholdForm, "channel", "diffuseRgb"), "bad numbers, a fraction for posterize, a word for a toggle and a colour channel apply to nothing");
+		const auto channelled = Applied(thresholdForm, "channel", "metallic");
+		Check(channelled && Get<ThresholdTerm>(*channelled) && Get<ThresholdTerm>(*channelled)->channel == MaterialChannel::kMetallic, "the channel choice applies");
+		const auto inverted = Applied(thresholdForm, "invert", "on");
+		Check(inverted && Get<ThresholdTerm>(*inverted) && Get<ThresholdTerm>(*inverted)->invert, "the toggle applies");
+		const auto clusterForm = TermForm(ClusterTerm{ tuned, 2 }, *presets, geometry);
+		Check(clusterForm.size() == 7 && clusterForm[0].field.name == "clusters" && clusterForm[0].field.text == "3" && clusterForm[1].field.name == "roughness" && clusterForm[5].field.name == "luma" && clusterForm[5].field.text == "2" && clusterForm[6].field.name == "seed" && clusterForm[6].field.text == "7", "the cluster form's fields");
+		const auto recounted = Applied(clusterForm, "clusters", "5");
+		Check(recounted && Get<ClusterTerm>(*recounted) && Get<ClusterTerm>(*recounted)->settings.clusters == 5 && Get<ClusterTerm>(*recounted)->id == 2, "a cluster count change keeps the id");
+		Check(!Applied(clusterForm, "clusters", "9") && !Applied(clusterForm, "clusters", "0") && !Applied(clusterForm, "luma", "-1") && !Applied(clusterForm, "seed", "x"), "counts past the cap, a negative weight and a word for a seed apply to nothing");
+		const auto componentForm = TermForm(ComponentTerm{ RegionSource::kComponent, 0 }, *presets, geometry);
+		Check(componentForm.size() == 1 && componentForm[0].field.kind == FieldKind::kChoice && componentForm[0].field.names.size() == 2 && componentForm[0].field.names[1] == "part 1: left hand, 40%" && componentForm[0].field.text == "part 0: chest, 60%", "the component form offers the parts of its source by label");
+		const auto picked = Applied(componentForm, "id", "part 1: left hand, 40%");
+		Check(picked && Get<ComponentTerm>(*picked) && Get<ComponentTerm>(*picked)->id == 1 && Get<ComponentTerm>(*picked)->source == RegionSource::kComponent, "a label picks its part");
+		Check(!Applied(componentForm, "id", "part 9: nothing") && !Applied(componentForm, "id", "300"), "an unknown label and an id past the cap apply to nothing");
+		const auto boneForm = TermForm(BoneTerm{ { "NPC Spine2 [Spn2]", "NPC L Hand [LHnd]" } }, *presets, geometry);
+		Check(boneForm.size() == 1 && boneForm[0].field.kind == FieldKind::kText && boneForm[0].field.text == "NPC Spine2 [Spn2], NPC L Hand [LHnd]", "the bone form's list");
+		const auto relisted = Applied(boneForm, "bones", " NPC Pelvis [Pelv] ,, NPC Neck [Neck]");
+		Check(relisted && Get<BoneTerm>(*relisted) && Get<BoneTerm>(*relisted)->bones == std::vector<std::string>{ "NPC Pelvis [Pelv]", "NPC Neck [Neck]" }, "the list is split and trimmed");
+		Check(!Applied(boneForm, "bones", " , "), "an empty list applies to nothing");
+		const auto partitionForm = TermForm(PartitionTerm{ 33 }, *presets, geometry);
+		Check(partitionForm.size() == 1 && partitionForm[0].field.names == std::vector<std::string>{ "body", "hands" } && partitionForm[0].field.text == "hands", "the partition form offers the geometry's partitions");
+		const auto reslotted = Applied(partitionForm, "slot", "body");
+		Check(reslotted && Get<PartitionTerm>(*reslotted) && Get<PartitionTerm>(*reslotted)->slot == 32 && Applied(partitionForm, "slot", "36") && !Applied(partitionForm, "slot", "wings"), "a plain name or a slot applies; an unknown name applies to nothing");
+		Check(TermForm(RawTerm{}, *presets, geometry).empty() && TermForm(ReferenceTerm{ "x" }, *presets, geometry).empty() && TermForm(WhatPresetTerm{ "leather" }, *presets, geometry).empty(), "raw, reference and preset terms have no fields");
+
+		// Offers: groups in order, the unread mesh saying why.
+		const auto offers = OffersOf(*presets, a_recipe, geometry, "");
+		std::size_t group = 0;
+		bool        ordered = true;
+		for (const auto& offer : offers) {
+			const auto it = std::ranges::find(kOfferGroups, offer.group);
+			const auto index = it == kOfferGroups.end() ? kOfferGroups.size() : static_cast<std::size_t>(it - kOfferGroups.begin());
+			ordered = ordered && index >= group && index < kOfferGroups.size();
+			group = std::max(group, index);
+		}
+		Check(ordered && !offers.empty(), "offers come in group order");
+		const auto count = [&](std::string_view a_group) { return std::ranges::count(offers, a_group, &TermOffer::group); };
+		Check(count("parts") == 3 && count("materials") == 2 && count("bones") == 3 && count("partitions") == 2 && count("channels") == 8 && count("presets") == 8 && count("masks") == 1 && count("sources") == 8, "one offer per part, cluster, bone, partition, channel, what preset, mask and source");
+		Check(offers[0].name == "part 0" && offers[0].detail == "60% of the mesh, chest 90%" && !offers[0].unavailable && !offers[0].coverage && Get<ComponentTerm>(offers[0].recipe) && Get<ComponentTerm>(offers[0].recipe)->id == 0, "a part's offer carries its measurements, no coverage yet");
+		Check(offers[3].name == "material 0" && offers[3].detail == "rough dark non-metal, 70%" && Get<ClusterTerm>(offers[3].recipe) && Get<ClusterTerm>(offers[3].recipe)->id == 0 && Get<ClusterTerm>(offers[3].recipe)->settings == ClusterSettings{}, "a cluster's offer at the default settings");
+		const auto* channelOffer = Get<ThresholdTerm>(offers[static_cast<std::size_t>(count("parts") + count("materials") + count("bones") + count("partitions"))].recipe);
+		Check(channelOffer && channelOffer->low == 0.5f && channelOffer->high == 1.0f && channelOffer->channel == MaterialChannel::kDiffuseLuma, "a channel's offer is its upper half");
+		Check(std::ranges::any_of(offers, [](const TermOffer& o) { return o.group == "masks" && o.name == "metal" && o.detail == "@metallic"; }) && std::ranges::none_of(offers, [](const TermOffer& o) { return o.name == kScratchMask; }), "masks are offered with their expressions");
+		Check(std::ranges::none_of(OffersOf(*presets, a_recipe, geometry, "metal"), [](const TermOffer& o) { return o.group == "masks"; }), "the mask being edited is not offered");
+		const auto unread = OffersOf(*presets, a_recipe, a_geometry, "");
+		Check(unread.size() >= 2 && unread[0].group == "parts" && unread[0].unavailable == "the mesh has not been read yet" && unread[1].group == "materials" && unread[1].unavailable.has_value(), "an unread mesh offers a reason in place of its parts and materials");
+		Check(std::ranges::none_of(unread, [](const TermOffer& o) { return o.group == "bones" || o.group == "partitions"; }) && std::ranges::count(unread, "channels", &TermOffer::group) == 8, "an unread mesh has no bones or partitions to offer; the channels stay");
+	}
+}
+
 int main()
 {
 	Layouts();
+	MaterialClusterRows();
 	Colours();
 	Reductions();
 	Histories();
@@ -1383,5 +1659,6 @@ int main()
 	SourceForms(row);
 	Creators(row, geometry);
 	Regions(row, geometry);
+	TermTemplates(row, geometry);
 	return test::Finish("studio");
 }

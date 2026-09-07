@@ -149,6 +149,13 @@ namespace
 		r.sources.push_back({ "fromHand", DistanceSource{ std::string{ "NPC R Hand [RHnd]" } } });
 		r.sources.push_back({ "fromPoint", DistanceSource{ Vec3{ 0.0f, 0.0f, 100.0f } } });
 		r.sources.push_back({ "ring", RippleSource{ At("hit"), 120.0f, At("one"), 0.8f, RippleShape::kDisc } });
+		r.sources.push_back({ "pieces", BakeSource{ ComponentIdBake{} } });
+		r.sources.push_back({ "charts", BakeSource{ ChartIdBake{} } });
+		MaterialClustersSource tuned;
+		tuned.clusters = 3;
+		tuned.luma = 2.0f;
+		tuned.seed = 7;
+		r.sources.push_back({ "materials", tuned });
 
 		r.masks.push_back({ "metal", "@metallic" });
 		r.masks.push_back({ "polished", "@metallic * smoothstep(0.55, 0.65, 1 - @roughness)" });
@@ -400,6 +407,77 @@ namespace
 		Check(minimalText == "{\n  \"format\": 1,\n  \"keys\": [\n    \"default\"\n  ]\n}\n", "an empty recipe writes only format and keys:\n" + minimalText);
 		const auto minimalLoaded = ParseRecipe(minimalText, "");
 		Check(minimalLoaded.recipe && *minimalLoaded.recipe == minimal && NoErrors(minimalLoaded.diagnostics), "an empty recipe round trips");
+	}
+
+	// The kinds the mesh and material analyses feed: the two id-map bakes
+	// and the cluster map with its settings.
+	void AnalysisKinds()
+	{
+		const auto text = R"json({"format": 1, "keys": ["default"], "sources": {
+			"pieces": {"bake": "componentId"},
+			"charts": {"bake": "chartId"},
+			"plain": {"materialClusters": {}},
+			"tuned": {"materialClusters": {"clusters": 3, "weights": {"luma": 2, "occlusion": 0}, "seed": 7, "iterations": 64}}
+		}})json";
+		auto r = ParseRecipe(text, "x");
+		Check(r.recipe && NoErrors(r.diagnostics), "the analysis kinds parse: " + Errors(r.diagnostics));
+		if (!r.recipe) {
+			return;
+		}
+		const auto* pieces = r.recipe->FindSource("pieces");
+		const auto* charts = r.recipe->FindSource("charts");
+		Check(pieces && Get<BakeSource>(pieces->kind) && Is<ComponentIdBake>(Get<BakeSource>(pieces->kind)->bake), "componentId reads as its bake");
+		Check(charts && Get<BakeSource>(charts->kind) && Is<ChartIdBake>(Get<BakeSource>(charts->kind)->bake), "chartId reads as its bake");
+		const auto* plain = r.recipe->FindSource("plain");
+		const auto* plainKind = plain ? Get<MaterialClustersSource>(plain->kind) : nullptr;
+		Check(plainKind && *plainKind == MaterialClustersSource{}, "an empty materialClusters is the defaults");
+		const auto* tuned = r.recipe->FindSource("tuned");
+		const auto* tunedKind = tuned ? Get<MaterialClustersSource>(tuned->kind) : nullptr;
+		Check(tunedKind && tunedKind->clusters == 3 && Near(tunedKind->luma, 2.0f) && Near(tunedKind->occlusion, 0.0f) && Near(tunedKind->roughness, 1.0f) && tunedKind->seed == 7 && tunedKind->iterations == 64, "materialClusters reads its settings, the rest at their defaults");
+		Check(NoErrors(Validate(*r.recipe)), "the analysis kinds validate: " + Errors(Validate(*r.recipe)));
+		const auto written = SerializeRecipe(*r.recipe);
+		Check(written.find("\"bake\": \"componentId\"") != std::string::npos && written.find("\"bake\": \"chartId\"") != std::string::npos, "the id-map bakes write as their names");
+		Check(written.find("\"materialClusters\": {}") != std::string::npos, "a default materialClusters writes an empty object");
+		Check(written.find("\"roughness\"") == std::string::npos && written.find("\"luma\": 2") != std::string::npos && written.find("\"occlusion\": 0") != std::string::npos, "only the non-default weights are written");
+		const auto again = ParseRecipe(written, "x");
+		Check(again.recipe && *again.recipe == *r.recipe && SerializeRecipe(*again.recipe) == written, "the analysis kinds round trip byte-identical");
+		if (tunedKind) {
+			Check(SourceType(*tuned) == ValueType::kScalar, "a cluster map is a scalar");
+			const auto described = DescribeSource(tuned->kind);
+			Check(described.starts_with("materialClusters, 3 clusters") && described.find("luma 2") != std::string::npos && described.find("occlusion 0") != std::string::npos && described.find("roughness") == std::string::npos, "the description names the count and the non-default weights: " + described);
+		}
+		Check(DescribeSource(MaterialClustersSource{}) == "materialClusters, 4 clusters", "the default description is the count alone");
+		Check(SourceKindName(MaterialClustersSource{}) == "materialClusters" && BakeKindName(ComponentIdBake{}) == "componentId" && BakeKindName(ChartIdBake{}) == "chartId", "the kinds' words");
+		const auto defaultKind = DefaultSourceKind("materialClusters");
+		const auto defaultBake = DefaultBakeKind("chartId");
+		Check(defaultKind && Is<MaterialClustersSource>(*defaultKind) && defaultBake && Is<ChartIdBake>(*defaultBake), "the defaults by word");
+
+		r = ParseRecipe(R"json({"format": 1, "keys": ["default"], "sources": {"m": {"materialClusters": {"clusters": 9}}}})json", "x");
+		Check(HasError(r.diagnostics, "source m", "'clusters' is 1..8") && r.recipe && !r.recipe->FindSource("m"), "clusters past the cap are refused and the row dropped");
+		r = ParseRecipe(R"json({"format": 1, "keys": ["default"], "sources": {"m": {"materialClusters": {"iterations": 0}}}})json", "x");
+		Check(HasError(r.diagnostics, "source m", "'iterations' is 1..256"), "zero iterations refused");
+		r = ParseRecipe(R"json({"format": 1, "keys": ["default"], "sources": {"m": {"materialClusters": {"weights": {"luma": 11}}}}})json", "x");
+		Check(HasError(r.diagnostics, "source m", "'weights.luma' is 0..10"), "a weight past the cap refused");
+		r = ParseRecipe(R"json({"format": 1, "keys": ["default"], "sources": {"m": {"materialClusters": {"weights": [1, 1]}}}})json", "x");
+		Check(HasError(r.diagnostics, "source m", "'weights' is an object"), "weights as an array refused");
+		r = ParseRecipe(R"json({"format": 1, "keys": ["default"], "sources": {"m": {"materialClusters": {"seed": -1}}}})json", "x");
+		Check(HasError(r.diagnostics, "source m", "'seed' is a whole number"), "a negative seed refused");
+		r = ParseRecipe(R"json({"format": 1, "keys": ["default"], "sources": {"m": {"materialClusters": {"weights": {"lumen": 1}}}}})json", "x");
+		Check(HasError(r.diagnostics, "source m", "unknown key 'lumen'"), "an unknown weight reported");
+		r = ParseRecipe(R"json({"format": 1, "keys": ["default"], "sources": {"m": {"materialClusters": 4}}})json", "x");
+		Check(HasError(r.diagnostics, "source m", "'materialClusters' takes an object"), "a bare number refused");
+		r = ParseRecipe(R"json({"format": 1, "keys": ["default"], "sources": {"m": {"bake": "componentIds"}}})json", "x");
+		Check(HasError(r.diagnostics, "source m", "'bake' is"), "a misspelt bake name refused");
+
+		Recipe                 built;
+		built.keys = { RecipeKey{ KeyKind::kDefault, {}, {} } };
+		MaterialClustersSource bad;
+		bad.clusters = 0;
+		bad.iterations = 300;
+		bad.luma = -1.0f;
+		built.sources.push_back({ "m", bad });
+		const auto diags = Validate(built);
+		Check(HasError(diags, "source m", "'clusters' is 1..8") && HasError(diags, "source m", "'iterations' is 1..256") && HasError(diags, "source m", "'weights.luma' is 0..10"), "validation bounds the settings of a built record: " + Errors(diags));
 	}
 
 	void Reading()
@@ -858,6 +936,7 @@ int main()
 	Globs();
 	CanonicalFile();
 	RoundTrip();
+	AnalysisKinds();
 	Reading();
 	Validation();
 	SlotRules();

@@ -20,6 +20,7 @@
 #include <functional>
 #include <span>
 #include <string>
+#include <variant>
 #include <vector>
 
 #pragma clang diagnostic push
@@ -91,17 +92,32 @@ namespace WornEnchantmentPBR::Studio
 				// Isolation has three levels, recipe, output and layer, and turning
 				// a level off leaves the levels above it as they were. Isolating a
 				// different recipe re-applies the wearers so it is bound alone.
-				[&](const SoloRecipe& i) { manager->Isolate(i.on ? i.recipe : std::string{}, -1, -1); },
+				// Isolation has three levels, recipe, output and layer. Soloing an
+				// output or a layer isolates its recipe too, since nothing shows
+				// alone otherwise; when that solo turns off, an isolate it began
+				// ends with it, and one the recipe row set stays.
+				[&](const SoloRecipe& i) {
+					manager->UpdateView([](View& a_live) { a_live.isolatedBySolo = false; });
+					manager->Isolate(i.on ? i.recipe : std::string{}, -1, -1);
+				},
 				[&](const SoloOutput& i) {
 					if (i.on) {
+						manager->UpdateView([began = !view.Isolating()](View& a_live) { a_live.isolatedBySolo = a_live.isolatedBySolo || began; });
 						manager->Isolate(i.recipe, static_cast<int>(i.output), -1);
+					} else if (view.isolatedBySolo) {
+						manager->UpdateView([](View& a_live) { a_live.isolatedBySolo = false; });
+						manager->Isolate(std::string{}, -1, -1);
 					} else {
 						manager->Isolate(view.isolateRecipe, -1, -1);
 					}
 				},
 				[&](const SoloLayer& i) {
 					if (i.on) {
+						manager->UpdateView([began = !view.Isolating()](View& a_live) { a_live.isolatedBySolo = a_live.isolatedBySolo || began; });
 						manager->Isolate(i.recipe, static_cast<int>(i.output), static_cast<int>(i.layer));
+					} else if (view.isolatedBySolo && view.isolateOutput < 0) {
+						manager->UpdateView([](View& a_live) { a_live.isolatedBySolo = false; });
+						manager->Isolate(std::string{}, -1, -1);
 					} else {
 						manager->Isolate(view.isolateRecipe, view.isolateOutput, -1);
 					}
@@ -1651,150 +1667,67 @@ namespace WornEnchantmentPBR::Studio
 
 		constexpr const char* kTermPayload = "WEPBR_TERM";
 
-		// A preset becomes the source edits it needs on the paint recipe and
-		// one term.
-		void AddPresetTerm(const RegionPreset& a_preset, const RecipeRow& a_recipe, const Existing& a_existing, Intents& a_out)
+		constexpr TableStyle kChooserStyle{ .borders = TableStyle::Borders::kNone, .stretch = true, .headers = false, .rowBackground = false };
+		// The groups whose sections open by default: what the analysis found.
+		constexpr std::array<std::string_view, 2> kOpenOfferGroups{ "parts", "materials" };
+
+		// A term recipe becomes the source edits it needs on the paint recipe
+		// and one term of the stack, labelled by its recipe.
+		void AddRecipeTerm(const TermRecipe& a_term, const RecipeRow& a_recipe, const GeometryRow& a_geometry, Intents& a_out)
 		{
-			auto [edits, expression] = MaterialiseTerm(a_preset, a_existing);
+			const auto& presets = LoadedPresets();
+			auto [edits, expression] = BuildTerm(a_term, presets, ExistingOf(a_recipe));
 			for (auto& edit : edits) {
 				Post(a_out, a_recipe.id, std::move(edit));
 			}
-			a_out.push_back(AddTerm{ Term{ TermOp::kAnd, std::move(expression), a_preset.name } });
+			a_out.push_back(AddTerm{ Term{ TermOp::kAnd, std::move(expression), TermLabelOf(a_term, presets, a_geometry), a_term } });
 		}
 
-		// The member combo of the action row: the options of the chosen
-		// kind; choosing one adds the term. A preset the shape cannot make
-		// is greyed with the reason.
-		void MemberCombo(TermKind a_kind, const RecipeRow& a_recipe, const GeometryRow& a_geometry, const RegionStack& a_region, Intents& a_out)
+		// The offers the filter passes, of one group, as chooser rows;
+		// choosing one adds its term. Nothing when the group has none.
+		void DrawOfferGroup(std::string_view a_group, std::span<const TermOffer> a_offers, std::string_view a_filter, const RecipeRow& a_recipe, const GeometryRow& a_geometry, Intents& a_out)
 		{
-			const auto& presets = LoadedPresets();
-			Widgets::NextItemWidth(Width::Fit("polishedMetal"));
-			if (!ImGui::BeginCombo("##member", "add...")) {
+			std::vector<const TermOffer*> shown;
+			for (const auto& offer : a_offers) {
+				if (offer.group == a_group && (NameMatches(offer.name, a_filter) || NameMatches(offer.detail, a_filter))) {
+					shown.push_back(&offer);
+				}
+			}
+			if (shown.empty()) {
 				return;
 			}
-			const auto existing = ExistingOf(a_recipe);  // only while the combo is open
-			const auto presetEntries = [&](std::span<const RegionPreset> a_presets) {
-				for (const auto& preset : a_presets) {
-					ImGui::PushID(preset.name.c_str());
-					const auto reason = Unresolvable(preset, a_geometry);
-					if (reason) {
-						ImGui::BeginDisabled();
+			const std::string title = std::format("{} ({})", a_group, shown.size());
+			const bool        openByDefault = std::ranges::find(kOpenOfferGroups, a_group) != kOpenOfferGroups.end();
+			ImGui::PushID(title.c_str());
+			if (Widgets::Section(title.c_str(), openByDefault)) {
+				auto table = Widgets::Table::Begin("offers", { { "name", Width::Fit() }, { "detail", Width::Fill() }, { "%", Width::Fit("100%") } }, kChooserStyle);
+				if (table.Open()) {
+					for (std::size_t i = 0; i < shown.size(); ++i) {
+						const TermOffer& offer = *shown[i];
+						ImGui::PushID(static_cast<int>(i));
+						if (Widgets::ChooserRow(table, offer.name, offer.detail, offer.coverage, offer.unavailable)) {
+							AddRecipeTerm(offer.recipe, a_recipe, a_geometry, a_out);
+						}
+						ImGui::PopID();
 					}
-					if (ImGui::Selectable(preset.name.c_str()) && !reason) {
-						AddPresetTerm(preset, a_recipe, existing, a_out);
-					}
-					if (reason) {
-						ImGui::EndDisabled();
-						Widgets::Tooltip(*reason);
-					}
-					ImGui::PopID();
-				}
-			};
-			switch (a_kind) {
-			case TermKind::kWhere:
-				presetEntries(presets.where);
-				break;
-			case TermKind::kWhat:
-				presetEntries(presets.what);
-				break;
-			case TermKind::kShape:
-				if (!a_geometry.meshRead) {
-					Widgets::Dim("read the mesh first");
-				}
-				for (const auto& partition : a_geometry.partitions) {
-					RegionPreset preset;
-					preset.name = PlainPartitionName(presets, partition.slot);
-					preset.partition = partition.slot;
-					ImGui::PushID(static_cast<int>(partition.slot));
-					if (ImGui::Selectable(preset.name.c_str())) {
-						AddPresetTerm(preset, a_recipe, existing, a_out);
-					}
-					ImGui::PopID();
-				}
-				for (const auto& bone : a_geometry.bones) {
-					RegionPreset preset;
-					preset.name = PlainBoneName(presets, bone.name);
-					preset.bones = { bone.name };
-					ImGui::PushID(bone.name.c_str());
-					if (ImGui::Selectable(std::format("{} ({:.0f}%)", preset.name, bone.coverage * 100.0f).c_str())) {
-						AddPresetTerm(preset, a_recipe, existing, a_out);
-					}
-					ImGui::PopID();
-				}
-				break;
-			case TermKind::kMasks:
-				for (const auto& mask : a_recipe.masks) {
-					if (mask == kScratchMask || mask == a_region.editing) {
-						continue;
-					}
-					if (ImGui::Selectable(ReferenceText(mask).c_str())) {
-						a_out.push_back(AddTerm{ Term{ TermOp::kAnd, ReferenceText(mask), mask } });
-					}
-				}
-				break;
-			case TermKind::kSources:
-				for (const auto& source : a_recipe.sourceRows) {
-					if (ImGui::Selectable(ReferenceText(source.name).c_str())) {
-						a_out.push_back(AddTerm{ Term{ TermOp::kAnd, ReferenceText(source.name), source.name } });
-					}
-				}
-				break;
-			case TermKind::kExpression:
-				if (ImGui::Selectable("empty expression")) {
-					a_out.push_back(AddTerm{ Term{ TermOp::kAnd, "", std::string{ kExpressionLabel } } });
-				}
-				break;
-			}
-			ImGui::EndCombo();
-		}
-
-		// The action row, the shape of Compose's edit row: the kind and
-		// member combos that add a term, the read-mesh button (lit until the
-		// shape's mesh is read), and the surface the paint recipe previews on.
-		void DrawPaintActions(const PieceRow& a_piece, const RecipeRow& a_recipe, const GeometryRow& a_geometry, const MenuState& a_state, Intents& a_out)
-		{
-			auto table = Widgets::Table::Begin("paint-actions", { { "kind", Width::Fit() }, { "member", Width::Fit() }, { "mesh", Width::Fit() }, { "preview on", Width::Fit() }, { "", Width::Fill() } }, kContextStyle);
-			if (!table.Open()) {
-				return;
-			}
-			std::vector<std::string> kinds;
-			for (const auto kind : kTermKinds) {
-				kinds.emplace_back(TermKindName(kind));
-			}
-			table.Cell();
-			if (const auto chosen = Widgets::ChoiceCombo("kind", std::string{ TermKindName(a_state.region.addKind) }, kinds, Width::Fit("expression"), 1.0f)) {
-				if (const auto kind = ParseTermKind(*chosen)) {
-					a_out.push_back(SetTermKind{ *kind });
+					table.End();
 				}
 			}
-			table.Cell();
-			MemberCombo(a_state.region.addKind, a_recipe, a_geometry, a_state.region, a_out);
-			table.Cell();
-			Widgets::Disabled(a_geometry.meshRead, [&]() {
-				if (Widgets::LitButton("read mesh", !a_geometry.meshRead)) {
-					a_out.push_back(ReadMesh{ a_piece.actorID, a_geometry.name });
-				}
-			});
-			table.Cell();
-			const std::vector<std::string> surfaces{ "material", "shell" };
-			const Surface                  current = a_state.paint ? a_state.paint->surface : Surface::kMaterial;
-			if (const auto chosen = Widgets::ChoiceCombo("surface", current == Surface::kShell ? "shell" : "material", surfaces, Width::Fit("material"), 1.0f)) {
-				a_out.push_back(SetPaintSurface{ *chosen == "shell" ? Surface::kShell : Surface::kMaterial });
-			}
-			table.Cell();
-			table.End();
+			ImGui::PopID();
 		}
 
 		[[nodiscard]] Widgets::Table BeginTermTable()
 		{
 			const Width button = Width::Px(Widgets::RowButtonWidth());
-			return Widgets::Table::Begin("terms", { { "#", Width::Fit() }, { "", button }, { "", button }, { "S", button }, { "M", button }, { "op", Width::Fit("and") }, { "term", Width::Fill() } }, kLayerStyle);
+			return Widgets::Table::Begin("terms", { { "#", Width::Fit() }, { "", button }, { "", button }, { "S", button }, { "M", button }, { "op", Width::Fit("and") }, { "term", Width::Fit() }, { "detail", Width::Fill() }, { "", button } }, kLayerStyle);
 		}
 
 		// The ops a term past the first may take, as the op combo lists them.
 		const std::vector<std::string> kTermOps{ std::string{ TermOpName(TermOp::kAnd) }, std::string{ TermOpName(TermOp::kOr) }, std::string{ TermOpName(TermOp::kNot) } };
 
-		void DrawTermRow(Widgets::Table& a_table, const RegionStack& a_region, std::size_t a_index, Intents& a_out)
+		void DrawTermDetails(std::size_t a_index, const Term& a_term, const RecipeRow& a_recipe, const GeometryRow& a_geometry, const Layout& a_layout, const Names& a_names, Intents& a_out);
+
+		void DrawTermRow(Widgets::Table& a_table, const RegionStack& a_region, std::size_t a_index, std::span<const TermOffer> a_offers, const RecipeRow& a_recipe, const GeometryRow& a_geometry, const Layout& a_layout, const Names& a_names, Intents& a_out)
 		{
 			const auto& term = a_region.terms[a_index];
 			ImGui::PushID(static_cast<int>(a_index));
@@ -1832,28 +1765,73 @@ namespace WornEnchantmentPBR::Studio
 				}
 			}
 			a_table.Cell();
-			const auto text = term.text.empty() ? std::string{ "(empty)" } : term.label == kExpressionLabel ? term.text : std::format("{}  {}", term.label, term.text);
-			if (ImGui::Selectable(text.c_str(), a_region.selected == a_index)) {
+			const bool raw = std::holds_alternative<RawTerm>(term.recipe);
+			const auto label = raw && term.text.empty() ? std::string{ "(empty)" } : term.label;
+			if (ImGui::Selectable(label.c_str(), a_region.selected == a_index)) {
 				a_out.push_back(PickTerm{ a_index });
 			}
+			a_table.Cell();
+			ImGui::AlignTextToFramePadding();
+			Widgets::Dim(TermDetailOf(term, a_offers));
+			a_table.Cell();
+			// Everything the row does not show (its settings, its expression,
+			// what it reads) sits behind the details button.
+			const auto title = std::format("term {}: {}###term-details", a_index, term.label);
+			if (Widgets::DetailButton()) {
+				ImGui::OpenPopup(title.c_str());
+			}
+			Widgets::DetailModal(title.c_str(), [&]() { DrawTermDetails(a_index, term, a_recipe, a_geometry, a_layout, a_names, a_out); });
 			ImGui::PopID();
 		}
 
-		// The selected term's fields beside the table: its op, its text,
-		// and the sources and masks it reads, each with a detail button that
-		// opens the picture in a modal.
-		void DrawTermInspector(const RecipeRow& a_recipe, const GeometryRow& a_geometry, const RegionStack& a_region, const Layout& a_layout, const Names& a_names, Intents& a_out)
+		// The selected term's settings as a field table, one row per field
+		// of its form: a committed text the field accepts is the term's new
+		// recipe, rebuilt into its sources and text before it posts; a text
+		// the field refuses is a log line. A raw term has no settings.
+		void DrawTermSettings(std::size_t a_index, const Term& a_term, const RecipeRow& a_recipe, const GeometryRow& a_geometry, float a_scale, const Names& a_names, Intents& a_out)
 		{
-			if (!a_region.selected || *a_region.selected >= a_region.terms.size()) {
-				Widgets::Dim("click a term to edit it");
+			const auto& presets = LoadedPresets();
+			const auto  form = TermForm(a_term.recipe, presets, a_geometry);
+			if (form.empty()) {
 				return;
 			}
-			const std::size_t index = *a_region.selected;
-			const auto&       term = a_region.terms[index];
+			auto table = Widgets::Table::Begin("term-settings", { { "setting", Width::Fit() }, { "value", Width::Fill() } }, kFormStyle);
+			if (!table.Open()) {
+				return;
+			}
+			for (const auto& setting : form) {
+				ImGui::PushID(setting.field.name.c_str());
+				table.Cell();
+				ImGui::AlignTextToFramePadding();
+				ImGui::TextUnformatted(setting.field.name.c_str());
+				table.Cell();
+				if (const auto text = FieldInput(setting.field, a_scale, a_names)) {
+					const std::optional<TermRecipe> changed = setting.apply ? setting.apply(*text) : std::nullopt;
+					if (changed) {
+						auto [edits, expression] = BuildTerm(*changed, presets, ExistingOf(a_recipe));
+						for (auto& edit : edits) {
+							Post(a_out, a_recipe.id, std::move(edit));
+						}
+						a_out.push_back(SetTermRecipe{ a_index, *changed, std::move(expression), TermLabelOf(*changed, presets, a_geometry) });
+					} else {
+						Refuse(setting.field.name, *text);
+					}
+				}
+				ImGui::PopID();
+			}
+			table.End();
+		}
+
+		// A term's details, in its modal: its settings, its op, its text
+		// (typing there makes it raw), and the sources and masks it reads,
+		// each with a detail button that opens the picture in a modal of its own.
+		void DrawTermDetails(std::size_t a_index, const Term& a_term, const RecipeRow& a_recipe, const GeometryRow& a_geometry, const Layout& a_layout, const Names& a_names, Intents& a_out)
+		{
+			const std::size_t index = a_index;
+			const auto&       term = a_term;
 			const float       scale = a_layout.widgetScale;
-			ImGui::PushID("term-inspector");
-			ImGui::PushID(static_cast<int>(index));
-			Widgets::Dim(std::format("term {}: {}", index, term.label));
+			ImGui::PushID("term-details");
+			DrawTermSettings(index, term, a_recipe, a_geometry, scale, a_names, a_out);
 			auto fields = Widgets::Table::Begin("term-fields", { { "field", Width::Fit() }, { "value", Width::Fill() } }, kFormStyle);
 			if (fields.Open()) {
 				fields.Cell();
@@ -1920,10 +1898,9 @@ namespace WornEnchantmentPBR::Studio
 				}
 			}
 			ImGui::PopID();
-			ImGui::PopID();
 		}
 
-		// Keep and Discard, at the right edge under the split. Keep proposes a
+		// Keep and Discard, at the right edge under the term table. Keep proposes a
 		// name and hands the region to the manager, which copies it into the
 		// active recipe and ends the session; Discard ends it.
 		void DrawKeepDiscard(const MenuState& a_state, Intents& a_out)
@@ -1961,29 +1938,35 @@ namespace WornEnchantmentPBR::Studio
 			});
 		}
 
-		// The pane: the term table beside the selected term's fields, split
-		// as the Compose stack is, then Keep and Discard.
+		// The pane: the term table across the width, Keep and Discard, then
+		// what the piece offers as tables in collapsible sections under a rule
+		// that carries the filter.
 		void DrawRegionStack(const RecipeRow& a_recipe, const GeometryRow& a_geometry, MenuState& a_state, const Names& a_names, Intents& a_out)
 		{
 			const auto& region = a_state.region;
-			Widgets::Split(
-				"region-split", a_state.layout.stackSplit,
-				[&]() {
-					auto table = BeginTermTable();
-					if (table.Open()) {
-						for (std::size_t i = 0; i < region.terms.size(); ++i) {
-							DrawTermRow(table, region, i, a_out);
-						}
-						table.End();
-					}
-					if (region.terms.empty()) {
-						Widgets::Dim("no selection yet: add a term from the row above");
-					}
-					Widgets::HelpMarker("A region is terms combined in order: the first sets it, each next one is and (product), or (max) or not (times the complement). Drag the :: grip to reorder; S shows one term alone, M leaves one out; Keep writes every term.");
-				},
-				[&]() { DrawTermInspector(a_recipe, a_geometry, region, a_state.layout, a_names, a_out); });
-			ImGui::Spacing();
+			const auto  offers = OffersOf(LoadedPresets(), a_recipe, a_geometry, region.editing);
+			auto        table = BeginTermTable();
+			if (table.Open()) {
+				for (std::size_t i = 0; i < region.terms.size(); ++i) {
+					DrawTermRow(table, region, i, offers, a_recipe, a_geometry, a_state.layout, a_names, a_out);
+				}
+				table.End();
+			}
+			if (region.terms.empty()) {
+				Widgets::Dim("no selection yet: choose a term below");
+			}
+			Widgets::HelpMarker("A region is terms combined in order: the first sets it, each next one is and (product), or (max) or not (times the complement). Drag the :: grip to reorder; S shows one term alone, M leaves one out; ... opens a term's settings; Keep writes every term.");
 			DrawKeepDiscard(a_state, a_out);
+
+			std::string_view filter;
+			const float      filterWidth = kFilterWidth * a_state.layout.widgetScale;
+			Widgets::Rule({}, Widgets::RuleLine{ "Add a term", filterWidth, [&]() { filter = Widgets::LiveTextField("offer-filter", "filter by name or measurement", Width::Px(kFilterWidth), a_state.layout.widgetScale); } });
+			if (offers.empty()) {
+				Widgets::Dim(a_geometry.meshRead ? "nothing to offer on this shape" : "reading the mesh");
+			}
+			for (const auto group : kOfferGroups) {
+				DrawOfferGroup(group, offers, filter, a_recipe, a_geometry, a_out);
+			}
 		}
 
 		// Paint's head: the active recipe's name, held while the session runs
@@ -1993,6 +1976,20 @@ namespace WornEnchantmentPBR::Studio
 		{
 			if (a_state.paint) {
 				Widgets::HeldLabel(a_state.paint->recipe.c_str());
+				// Where the paint recipe previews, at the right edge of the line.
+				ImGui::SameLine();
+				const float labelWidth = Widgets::TextWidth("preview on");
+				const float comboWidth = Widgets::FitWidth("material");
+				Widgets::RightAligned(labelWidth + Widgets::ItemSpacingX() + comboWidth, [&]() {
+					ImGui::AlignTextToFramePadding();
+					Widgets::Dim("preview on");
+					ImGui::SameLine();
+					const std::vector<std::string> surfaces{ "material", "shell" };
+					const Surface                  current = a_state.paint->surface;
+					if (const auto chosen = Widgets::ChoiceCombo("surface", current == Surface::kShell ? "shell" : "material", surfaces, Width::Px(comboWidth), 1.0f)) {
+						a_out.push_back(SetPaintSurface{ *chosen == "shell" ? Surface::kShell : Surface::kMaterial });
+					}
+				});
 			} else {
 				Widgets::NextItemWidth(Width::Fit(a_recipe.id));
 				RecipeCombo(a_piece, a_recipe, "##recipe", a_out);
@@ -2045,8 +2042,18 @@ namespace WornEnchantmentPBR::Studio
 				Widgets::Dim(a_state.paint ? "starting the paint recipe" : "nothing applied; equip enchanted PBR armor or press Re-apply all on the Recipes page");
 				return;
 			}
+			// A recipe bound to no geometry still gets the recipe row, so the
+			// combo that leads away from it is always there.
 			if (!a_geometry) {
-				Widgets::Dim("no geometry bound for the selected recipe");
+				ImGui::PushID(a_recipe->id.c_str());
+				if (a_state.layout.contextRows) {
+					DrawRecipeContext(a_snapshot, *a_piece, *a_recipe, a_out);
+				} else {
+					DrawPaintHead(*a_piece, *a_recipe, a_state, a_out);
+				}
+				Widgets::Rule();
+				Widgets::Dim(std::format("recipe {} is bound to no geometry of this piece: its keys or selectors match none of its shapes", a_recipe->id));
+				ImGui::PopID();
 				return;
 			}
 			if (a_state.mode == Mode::kDesign) {
@@ -2067,8 +2074,8 @@ namespace WornEnchantmentPBR::Studio
 			const Cell* picked = layout.contextRows ? DrawContext(a_snapshot, board, *a_piece, *a_recipe, selection, a_out) : nullptr;
 			// Paint: the head, then the session begins for the selected recipe
 			// (the manager applies the paint recipe alone a frame or more
-			// later); the action row draws once the paint recipe is the one
-			// applied.
+			// later) and the viewed shape's mesh is read for its offers; the
+			// action row draws once the paint recipe is the one applied.
 			const bool painting = layout.regionEditor;
 			const bool painterReady = painting && a_state.paint && a_recipe->id == kPaintRecipe;
 			if (!layout.contextRows) {
@@ -2079,9 +2086,12 @@ namespace WornEnchantmentPBR::Studio
 					} else {
 						Widgets::Warn("the piece offers no key to paint on");
 					}
-				} else if (painterReady) {
-					DrawPaintActions(*a_piece, *a_recipe, *a_geometry, a_state, a_out);
-				} else {
+				} else if (painterReady && !a_state.paint->readPosted) {
+					// The shape's read (its mesh and its material's clusters) is asked
+					// for once the paint recipe is the one applied; asked earlier it
+					// would find nothing bound, since the session retires everything.
+					a_out.push_back(ReadMesh{ a_piece->actorID, a_geometry->name });
+				} else if (!painterReady) {
 					Widgets::Dim("starting the paint recipe");
 				}
 			}

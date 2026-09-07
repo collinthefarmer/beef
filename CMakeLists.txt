@@ -93,6 +93,7 @@ set(PLUGIN_SOURCES
   src/Environment.cpp
   src/Compositor.cpp
   src/Mesh.cpp
+  src/Analysis.cpp
   src/MeshReader.cpp
   src/Binding.cpp
   src/Manager.cpp
@@ -145,8 +146,9 @@ add_host_test(${PROJECT_NAME}RecipeTests tests/recipe_tests.cpp ${RECIPE_MODEL_S
 add_host_test(${PROJECT_NAME}SignalTests tests/signal_tests.cpp ${RECIPE_MODEL_SOURCES})
 add_host_test(${PROJECT_NAME}ImporterTests tests/importer_tests.cpp ${RECIPE_MODEL_SOURCES})
 add_host_test(${PROJECT_NAME}BakeTests tests/bake_tests.cpp src/Mesh.cpp ${RECIPE_MODEL_SOURCES})
+add_host_test(${PROJECT_NAME}AnalysisTests tests/analysis_tests.cpp src/Analysis.cpp src/Mesh.cpp ${RECIPE_MODEL_SOURCES})
 add_host_test(${PROJECT_NAME}MaskStackTests tests/maskstack_tests.cpp src/MaskStack.cpp src/Expression.cpp)
-add_host_test(${PROJECT_NAME}StudioTests tests/studio_tests.cpp src/Studio.cpp src/MenuState.cpp src/History.cpp src/Edits.cpp src/EditCheck.cpp src/Regions.cpp src/MaskStack.cpp src/Mesh.cpp ${RECIPE_MODEL_SOURCES})
+add_host_test(${PROJECT_NAME}StudioTests tests/studio_tests.cpp src/Studio.cpp src/MenuState.cpp src/History.cpp src/Edits.cpp src/EditCheck.cpp src/Regions.cpp src/MaskStack.cpp src/Analysis.cpp src/Mesh.cpp ${RECIPE_MODEL_SOURCES})
 add_host_test(${PROJECT_NAME}EditsTests tests/edits_tests.cpp src/Edits.cpp ${RECIPE_MODEL_SOURCES})
 
 # Stage a ready-to-install mod folder: dist/<mod>/SKSE/Plugins/{dll,pdb,ini}.

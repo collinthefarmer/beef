@@ -244,6 +244,11 @@ namespace WornEnchantmentPBR::Studio::Widgets
 		return text.x + (style ? style->FramePadding.x : 4.0f) * 2.0f;
 	}
 
+	float TextWidth(std::string_view a_text)
+	{
+		return ImGui::CalcTextSize(a_text.data(), a_text.data() + a_text.size()).x;
+	}
+
 	float CheckboxWidth(std::string_view a_text)
 	{
 		const auto* style = ImGui::GetStyle();
@@ -698,6 +703,29 @@ namespace WornEnchantmentPBR::Studio::Widgets
 			ImGui::CloseCurrentPopup();
 		}
 		ImGui::EndPopup();
+	}
+
+
+	bool ChooserRow(Table& a_table, std::string_view a_name, std::string_view a_detail, std::optional<float> a_share, const std::optional<std::string>& a_unavailable)
+	{
+		const bool disabled = a_unavailable.has_value();
+		if (disabled) {
+			ImGui::BeginDisabled();
+		}
+		a_table.Cell();
+		const std::string name{ a_name };
+		const bool        clicked = ImGui::Selectable(name.c_str(), false, ImGuiMCP::ImGuiSelectableFlags_SpanAllColumns);
+		if (disabled) {
+			ImGui::EndDisabled();
+			Tooltip(*a_unavailable);
+		}
+		a_table.Cell();
+		Dim(a_detail);
+		a_table.Cell();
+		if (a_share) {
+			ImGui::Text("%.0f%%", *a_share * 100.0f);
+		}
+		return clicked && !disabled;
 	}
 
 	void RightAligned(float a_width, const std::function<void()>& a_draw)

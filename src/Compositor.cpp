@@ -1,5 +1,7 @@
 #include "Compositor.h"
 
+#include "Analysis.h"
+
 #include "Expression.h"
 #include "MeshReader.h"
 #include "RecipeStore.h"
@@ -154,6 +156,53 @@ namespace WornEnchantmentPBR
 				a_problem = "the normal slope pass failed";
 				return nullptr;
 			}
+			return target;
+		}
+
+		// The material's cluster map under a_settings as a texture of its own,
+		// stored on the geometry's derived maps: the apply's analysis when the
+		// settings are its own, else the stored sample clustered again on the
+		// CPU (no readback), then the lab's classify pass into a target sized
+		// like the RMAOS map. The map already there is returned when its
+		// settings match; other settings replace it, so a source that reads
+		// it must hold the returned target for as long as it samples it.
+		// Null with derived.clustersProblem set when the material was not
+		// sampled or the pass fails. Game thread, from PrepareSource;
+		// InspectSource reads derived.clusters alone.
+		std::shared_ptr<TextureLab::Target> RenderClusterMap(const GeometryInputs& a_inputs, const ClusterSettings& a_settings)
+		{
+			const MaterialInputs& material = a_inputs.material;
+			DerivedMaps&          derived = *a_inputs.derived;
+			if (derived.clusters && derived.clusterSettings == a_settings) {
+				return derived.clusters;
+			}
+			derived.clustersTried = true;
+			derived.clusters = nullptr;
+			derived.clusterSettings = a_settings;
+			derived.clustersProblem.clear();
+			const auto& record = Compositor::GetSingleton()->AnalyseMaterial(material);
+			if (!record.sample || !record.analysis) {
+				derived.clustersProblem = record.problem.empty() ? "the material could not be sampled" : record.problem;
+				return nullptr;
+			}
+			const bool             defaults = record.analysis->settings == a_settings;
+			const MaterialAnalysis analysis = defaults ? *record.analysis : ClusterMaterial(*record.sample, a_settings);
+			if (analysis.clusters.empty()) {
+				derived.clustersProblem = "the material sample clustered into nothing";
+				return nullptr;
+			}
+			const auto extent = TextureLab::ExtentOf(material.rmaos.get());
+			auto*      lab = TextureLab::GetSingleton();
+			auto       target = lab->Acquire(TextureSize::Clamp(extent ? (std::max)(extent->width, extent->height) : 0));
+			if (!target) {
+				derived.clustersProblem = "no render target for the cluster map";
+				return nullptr;
+			}
+			if (!lab->RenderClusters(*target, material.rmaos.get(), material.diffuse.get(), analysis)) {
+				derived.clustersProblem = lab->ClassifyAvailable() ? "the classify pass failed" : "the classify pass is unavailable";
+				return nullptr;
+			}
+			derived.clusters = target;
 			return target;
 		}
 
@@ -344,6 +393,16 @@ namespace WornEnchantmentPBR
 					return;
 				}
 				prepared.texture = RE::NiPointer<RE::NiSourceTexture>{ (*target)->Texture() };
+				prepared.sampling.channel = 0;
+				prepared.sampling.meshSpace = true;
+			},
+			[&](const MaterialClustersSource& clusters) {
+				const auto target = RenderClusterMap(a_inputs, SettingsOf(clusters));
+				if (!target) {
+					prepared.problem = a_inputs.derived->clustersProblem;
+					return;
+				}
+				prepared.texture = RE::NiPointer<RE::NiSourceTexture>{ target->Texture() };
 				prepared.sampling.channel = 0;
 				prepared.sampling.meshSpace = true;
 			});
@@ -650,6 +709,17 @@ namespace WornEnchantmentPBR
 				prepared.texture = RE::NiPointer<RE::NiSourceTexture>{ rendered->Texture() };
 				prepared.animated = true;
 				prepared.ripple = rendered;
+			},
+			[&](const MaterialClustersSource& clusters) {
+				// The map as the last prepare left it: rendered under these
+				// settings, failed, or never asked for.
+				prepared.sampling.meshSpace = true;
+				const DerivedMaps& derived = *a_inputs.derived;
+				if (derived.clusters && derived.clusterSettings == SettingsOf(clusters)) {
+					prepared.texture = RE::NiPointer<RE::NiSourceTexture>{ derived.clusters->Texture() };
+					return;
+				}
+				prepared.problem = derived.clustersTried && !derived.clustersProblem.empty() ? derived.clustersProblem : std::string{ kNotRendered };
 			});
 		return prepared;
 	}
@@ -818,6 +888,49 @@ namespace WornEnchantmentPBR
 		meshes_.Sweep(a_nowMS, kMeshMaxAgeMS, a_bound, GetSettings().verboseLogging);
 	}
 
+	const Compositor::MaterialRecord& Compositor::AnalyseMaterial(const MaterialInputs& a_material)
+	{
+		const auto key = std::make_pair(a_material.rmaos.get(), a_material.diffuse.get());
+		auto&      record = materials_[key];
+		if (record.sample || !record.problem.empty()) {
+			return record;
+		}
+		record.rmaos = a_material.rmaos;
+		record.diffuse = a_material.diffuse;
+		if (!RealTexture(a_material.rmaos) || !RealTexture(a_material.diffuse)) {
+			record.problem = std::format("RMAOS {}; diffuse {}", DescribeTexture(a_material.rmaos), DescribeTexture(a_material.diffuse));
+			return record;
+		}
+		// The readback waits on the GPU; the line before it names the step
+		// should the wait never end.
+		const bool verbose = GetSettings().verboseLogging;
+		if (verbose) {
+			logger::info("material '{}': sampling", a_material.rmaos->name.c_str() ? a_material.rmaos->name.c_str() : "?");
+		}
+		auto sample = TextureLab::GetSingleton()->SampleMaterial(a_material.rmaos.get(), a_material.diffuse.get());
+		if (!sample) {
+			record.problem = "the maps could not be read back";
+			return record;
+		}
+		record.sample = std::make_shared<const MaterialSample>(std::move(*sample));
+		record.analysis = std::make_shared<const MaterialAnalysis>(ClusterMaterial(*record.sample, ClusterSettings{}));
+		if (verbose) {
+			logger::info("material '{}': sampled {}x{}, {} clusters", a_material.rmaos->name.c_str() ? a_material.rmaos->name.c_str() : "?", record.sample->width, record.sample->height, record.analysis->clusters.size());
+		}
+		return record;
+	}
+
+	const Compositor::MaterialRecord* Compositor::CachedMaterial(const MaterialInputs& a_material) const noexcept
+	{
+		const auto it = materials_.find(std::make_pair(a_material.rmaos.get(), a_material.diffuse.get()));
+		return it == materials_.end() ? nullptr : &it->second;
+	}
+
+	void Compositor::ClearMaterials() noexcept
+	{
+		materials_.clear();
+	}
+
 	void Compositor::ClearMeshes() noexcept
 	{
 		meshes_.Clear();
@@ -856,7 +969,17 @@ namespace WornEnchantmentPBR
 		if (!entry) {
 			return std::unexpected(entry.error());
 		}
-		return BakeInto(**entry, BakeKeyOf(a_bake.bake, a_size), a_size, [&] { return BuildBake(*(*entry)->mesh, a_bake.bake); });
+		// The id maps come from the analysis stored with the read; every
+		// other kind from the mesh alone.
+		return BakeInto(**entry, BakeKeyOf(a_bake.bake, a_size), a_size, [&] {
+			if (Is<ComponentIdBake>(a_bake.bake)) {
+				return BuildRegionBake(*(*entry)->mesh, (*entry)->analysis, RegionSource::kComponent);
+			}
+			if (Is<ChartIdBake>(a_bake.bake)) {
+				return BuildRegionBake(*(*entry)->mesh, (*entry)->analysis, RegionSource::kChart);
+			}
+			return BuildBake(*(*entry)->mesh, a_bake.bake);
+		});
 	}
 
 	std::expected<std::shared_ptr<TextureLab::Target>, std::string> Compositor::PrepareDistance(const DistanceSource& a_distance, const GeometryInputs& a_inputs, TextureSize a_size)

@@ -28,6 +28,7 @@ namespace WornEnchantmentPBR::Studio
 		std::string        isolateRecipe;       // recipe id, empty = all
 		int                isolateOutput = -1;  // output index in that recipe, -1 = all
 		int                isolateLayer = -1;   // layer index in that output, -1 = all
+		bool               isolatedBySolo = false;  // the recipe isolate came from an output or layer solo, so that solo turning off clears it
 		std::set<LayerKey> muted;
 
 		[[nodiscard]] bool Isolating() const noexcept { return !isolateRecipe.empty(); }

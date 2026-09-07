@@ -124,6 +124,9 @@ namespace WornEnchantmentPBR
 	// slot. boneWeight: the summed weight of the named bones per vertex.
 	// localPosition: the position mapped into this geometry's own model
 	// bound, 0..1 per axis, so every piece spans the full range on its own.
+	// componentId and chartId are the analysis' id maps and cannot be built
+	// from the mesh alone: BuildBake returns their problem, BuildRegionBake
+	// (Analysis.h) builds them.
 	inline constexpr float kPositionFrame = 128.0f;
 	[[nodiscard]] BakeBuffers BuildBake(const MeshData& a_mesh, const BakeKind& a_kind);
 

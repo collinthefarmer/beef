@@ -1,5 +1,6 @@
 #pragma once
 
+#include "Analysis.h"
 #include "Expression.h"
 #include "Mesh.h"
 #include "PCH.h"
@@ -10,6 +11,7 @@
 #include <memory>
 #include <mutex>
 #include <span>
+#include <unordered_set>
 #include <utility>
 #include <vector>
 
@@ -31,6 +33,7 @@ namespace WornEnchantmentPBR
 			kChannel = 4,    // inspector: one channel (or rgb) of the armor input, raw UV
 			kMaskedGlow = 5, // glow multiplied per texel by a mask from one armor channel
 			kLayer = 6,      // compositor: one layer blended over the previous result
+			kCopy = 7,       // the source's four channels at the given mip, raw placement (the sample readback)
 		};
 
 		enum class ArmorInput : std::uint32_t
@@ -243,6 +246,22 @@ namespace WornEnchantmentPBR
 		// Renders the ripple fronts into the target; no firings clears it.
 		bool RenderRipple(Target& a_target, const RipplePass& a_pass);
 		[[nodiscard]] bool RippleAvailable() const noexcept { return ripplePs_ != nullptr; }
+
+		// A low mip of the RMAOS and diffuse maps read back to the CPU: each
+		// map rendered at the mip that fits kSampleSide into a kSampleSide
+		// target, so the sample is a mip average, never kMaxSampleTexels
+		// texels or more. Game thread (a staging map). Nothing when either
+		// map is null or not resident or the readback fails; each such
+		// texture is warned about once.
+		inline static constexpr std::uint32_t kSampleSide = 64;
+		[[nodiscard]] std::optional<MaterialSample> SampleMaterial(RE::NiSourceTexture* a_rmaos, RE::NiSourceTexture* a_diffuse);
+
+		// The classify pass: per texel, the RMAOS and diffuse maps at the
+		// mesh UV go to the nearest of the analysis' centroids under its
+		// weights, written as id / 255 grey; agrees with NearestCluster. Refused
+		// when the analysis holds more than kMaxClusters clusters.
+		bool RenderClusters(Target& a_target, RE::NiSourceTexture* a_rmaos, RE::NiSourceTexture* a_diffuse, const MaterialAnalysis& a_analysis);
+		[[nodiscard]] bool ClassifyAvailable() const noexcept { return classifyPs_ != nullptr; }
 		[[nodiscard]] bool BakingAvailable() const noexcept { return bakeVs_ != nullptr && bakeLayout_ != nullptr; }
 
 		// The first a_bytes of a GPU buffer, through a staging copy; empty on failure.
@@ -308,6 +327,8 @@ namespace WornEnchantmentPBR
 		REX::W32::ID3D11InputLayout*                    bakeLayout_ = nullptr;
 		REX::W32::ID3D11PixelShader*                    ripplePs_ = nullptr;
 		REX::W32::ID3D11Buffer*                         rippleConstants_ = nullptr;
+		REX::W32::ID3D11PixelShader*                    classifyPs_ = nullptr;
+		REX::W32::ID3D11Buffer*                         classifyConstants_ = nullptr;
 		REX::W32::ID3D11Buffer*                         constants_ = nullptr;
 		REX::W32::ID3D11Buffer*                         programConstants_ = nullptr;
 		REX::W32::ID3D11SamplerState*                   sampler_ = nullptr;
@@ -319,8 +340,12 @@ namespace WornEnchantmentPBR
 		std::map<std::uint32_t, std::shared_ptr<Target>> scratch_;
 		std::unordered_map<RE::NiSourceTexture*, float> luminance_;
 		std::map<std::pair<RE::NiSourceTexture*, std::uint32_t>, float> channelMeans_;
+		std::unordered_set<RE::NiSourceTexture*>        sampleWarned_;  // textures SampleMaterial has already warned about
 
 		std::optional<float> ReadBackMean(Target& a_target);
+		// Every texel of the target's top mip as packed RGBA8, through a
+		// staging copy; empty on failure or a format other than the lab's own.
+		std::vector<std::uint8_t> ReadBackPixels(Target& a_target);
 		using PreviewKey = std::pair<RE::NiSourceTexture*, std::uint32_t>;
 		struct PreviewEntry
 		{

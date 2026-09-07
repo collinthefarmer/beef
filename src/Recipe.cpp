@@ -8,6 +8,7 @@
 #include <charconv>
 #include <format>
 #include <unordered_set>
+#include <utility>
 
 namespace WornEnchantmentPBR
 {
@@ -681,6 +682,19 @@ namespace WornEnchantmentPBR
 							Scalar(where, s.speed, "speed");
 							Scalar(where, s.width, "width");
 							Scalar(where, s.decay, "decay");
+						},
+						[&](const MaterialClustersSource& s) {
+							if (s.clusters < 1 || s.clusters > kMaxMaterialClusters) {
+								Error(where, std::format("'clusters' is 1..{}", kMaxMaterialClusters));
+							}
+							if (s.iterations < 1 || s.iterations > kMaxClusterIterations) {
+								Error(where, std::format("'iterations' is 1..{}", kMaxClusterIterations));
+							}
+							for (const auto& [weight, field] : { std::pair{ s.roughness, "roughness" }, std::pair{ s.metallic, "metallic" }, std::pair{ s.occlusion, "occlusion" }, std::pair{ s.reflectance, "reflectance" }, std::pair{ s.luma, "luma" } }) {
+								if (!(weight >= 0.0f && weight <= kMaxChannelWeight)) {
+									Error(where, std::format("'weights.{}' is 0..{}", field, kMaxChannelWeight));
+								}
+							}
 						},
 						[](const auto&) {});
 				}

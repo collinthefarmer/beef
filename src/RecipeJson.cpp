@@ -11,6 +11,7 @@
 #include <cstdlib>
 #include <format>
 #include <unordered_set>
+#include <utility>
 
 namespace WornEnchantmentPBR
 {
@@ -166,7 +167,8 @@ namespace WornEnchantmentPBR
 			[](const BakeSource&) { return std::string_view{ "bake" }; },
 			[](const UvSource&) { return std::string_view{ "uv" }; },
 			[](const DistanceSource&) { return std::string_view{ "distance" }; },
-			[](const RippleSource&) { return std::string_view{ "ripple" }; });
+			[](const RippleSource&) { return std::string_view{ "ripple" }; },
+			[](const MaterialClustersSource&) { return std::string_view{ "materialClusters" }; });
 	}
 
 	std::optional<SourceKind> DefaultSourceKind(std::string_view a_name)
@@ -189,6 +191,9 @@ namespace WornEnchantmentPBR
 		if (a_name == "ripple") {
 			return SourceKind{ RippleSource{} };
 		}
+		if (a_name == "materialClusters") {
+			return SourceKind{ MaterialClustersSource{} };
+		}
 		return std::nullopt;
 	}
 
@@ -200,7 +205,9 @@ namespace WornEnchantmentPBR
 			[](const LocalPositionBake&) { return std::string_view{ "localPosition" }; },
 			[](const WorldUpBake&) { return std::string_view{ "worldUp" }; },
 			[](const PartitionBake&) { return std::string_view{ "partition" }; },
-			[](const BoneWeightBake&) { return std::string_view{ "boneWeight" }; });
+			[](const BoneWeightBake&) { return std::string_view{ "boneWeight" }; },
+			[](const ComponentIdBake&) { return std::string_view{ "componentId" }; },
+			[](const ChartIdBake&) { return std::string_view{ "chartId" }; });
 	}
 
 	std::optional<BakeKind> DefaultBakeKind(std::string_view a_name)
@@ -220,7 +227,27 @@ namespace WornEnchantmentPBR
 		if (a_name == "boneWeight") {
 			return BakeKind{ BoneWeightBake{} };
 		}
+		if (a_name == "componentId") {
+			return BakeKind{ ComponentIdBake{} };
+		}
+		if (a_name == "chartId") {
+			return BakeKind{ ChartIdBake{} };
+		}
 		return std::nullopt;
+	}
+
+	namespace
+	{
+		// The five channel weights by their field name; 0 for a name that is none of them.
+		float WeightOf(const MaterialClustersSource& a_source, std::string_view a_field) noexcept
+		{
+			if (a_field == "roughness") return a_source.roughness;
+			if (a_field == "metallic") return a_source.metallic;
+			if (a_field == "occlusion") return a_source.occlusion;
+			if (a_field == "reflectance") return a_source.reflectance;
+			if (a_field == "luma") return a_source.luma;
+			return 0.0f;
+		}
 	}
 
 	std::string DescribeSource(const SourceKind& a_kind)
@@ -239,7 +266,9 @@ namespace WornEnchantmentPBR
 					[](const LocalPositionBake&) { return std::string{ "bake localPosition (this geometry's bound as 0..1)" }; },
 					[](const WorldUpBake&) { return std::string{ "bake worldUp (bind-pose normal)" }; },
 					[](const PartitionBake& p) { return std::format("bake partition {}", p.slot); },
-					[](const BoneWeightBake& b) { return std::format("bake boneWeight of {} bone(s)", b.bones.size()); });
+					[](const BoneWeightBake& b) { return std::format("bake boneWeight of {} bone(s)", b.bones.size()); },
+					[](const ComponentIdBake&) { return std::string{ "bake componentId (the mesh's connected pieces, id / 255)" }; },
+					[](const ChartIdBake&) { return std::string{ "bake chartId (the mesh's UV charts, id / 255)" }; });
 			},
 			[](const UvSource& s) { return std::format("uv {} (the coordinate as a ramp over the islands)", s.axis == UvAxis::kU ? "u" : "v"); },
 			[](const DistanceSource& s) {
@@ -248,7 +277,23 @@ namespace WornEnchantmentPBR
 					[](const std::string& node) { return std::format("distance from node {} (bind pose, 0..256 units as 0..1)", node); },
 					[](const Vec3& p) { return std::format("distance from ({:.0f}, {:.0f}, {:.0f}) (bind pose, 0..256 units as 0..1)", p.x, p.y, p.z); });
 			},
-			[](const RippleSource& s) { return std::format("ripple {} from @{}, speed {}, width {}, decay {}", s.shape == RippleShape::kDisc ? "disc" : "ring", s.trigger.name, ParamText(s.speed), ParamText(s.width), ParamText(s.decay)); });
+			[](const RippleSource& s) { return std::format("ripple {} from @{}, speed {}, width {}, decay {}", s.shape == RippleShape::kDisc ? "disc" : "ring", s.trigger.name, ParamText(s.speed), ParamText(s.width), ParamText(s.decay)); },
+			[](const MaterialClustersSource& s) {
+				const MaterialClustersSource defaults;
+				std::string                  text = std::format("materialClusters, {} clusters", s.clusters);
+				for (const auto& [weight, field] : { std::pair{ s.roughness, "roughness" }, std::pair{ s.metallic, "metallic" }, std::pair{ s.occlusion, "occlusion" }, std::pair{ s.reflectance, "reflectance" }, std::pair{ s.luma, "luma" } }) {
+					if (weight != WeightOf(defaults, field)) {
+						text += std::format(", {} {}", field, weight);
+					}
+				}
+				if (s.seed != defaults.seed) {
+					text += std::format(", seed {}", s.seed);
+				}
+				if (s.iterations != defaults.iterations) {
+					text += std::format(", {} iterations", s.iterations);
+				}
+				return text;
+			});
 	}
 
 	namespace
@@ -1122,8 +1167,12 @@ namespace WornEnchantmentPBR
 						k.bake = LocalPositionBake{};
 					} else if (text == "worldUp") {
 						k.bake = WorldUpBake{};
+					} else if (text == "componentId") {
+						k.bake = ComponentIdBake{};
+					} else if (text == "chartId") {
+						k.bake = ChartIdBake{};
 					} else {
-						a_ctx.Error("'bake' is \"position\", \"localPosition\", \"worldUp\", {\"partition\": slot} or {\"boneWeight\": [bones]}");
+						a_ctx.Error("'bake' is \"position\", \"localPosition\", \"worldUp\", \"componentId\", \"chartId\", {\"partition\": slot} or {\"boneWeight\": [bones]}");
 						return std::nullopt;
 					}
 				} else {
@@ -1210,6 +1259,62 @@ namespace WornEnchantmentPBR
 				if (auto sh = r.Enum("shape", kRippleShapes)) k.shape = *sh;
 				r.Finish();
 				s.kind = k;
+			} else if (kind == "materialClusters") {
+				if (!v.is_object()) {
+					a_ctx.Error("'materialClusters' takes an object with 'clusters', 'weights', 'seed' and 'iterations'");
+					return std::nullopt;
+				}
+				MaterialClustersSource k;
+				Reader                 r(v, a_ctx);
+				bool                   inRange = true;
+				if (auto n = r.Integer("clusters")) {
+					if (*n < 1 || *n > kMaxMaterialClusters) {
+						a_ctx.Error(std::format("'clusters' is 1..{}", kMaxMaterialClusters));
+						inRange = false;
+					} else {
+						k.clusters = static_cast<std::uint8_t>(*n);
+					}
+				}
+				if (const auto* w = r.Child("weights")) {
+					if (!w->is_object()) {
+						a_ctx.Error("'weights' is an object of roughness, metallic, occlusion, reflectance and luma");
+						inRange = false;
+					} else {
+						Reader wr(*w, a_ctx);
+						for (const auto& [field, weight] : { std::pair{ "roughness", &k.roughness }, std::pair{ "metallic", &k.metallic }, std::pair{ "occlusion", &k.occlusion }, std::pair{ "reflectance", &k.reflectance }, std::pair{ "luma", &k.luma } }) {
+							if (auto x = wr.Number(field)) {
+								if (!(*x >= 0.0f && *x <= kMaxChannelWeight)) {
+									a_ctx.Error(std::format("'weights.{}' is 0..{}", field, kMaxChannelWeight));
+									inRange = false;
+								} else {
+									*weight = *x;
+								}
+							}
+						}
+						wr.Finish();
+					}
+				}
+				if (auto n = r.Integer("seed")) {
+					if (*n < 0) {
+						a_ctx.Error("'seed' is a whole number");
+						inRange = false;
+					} else {
+						k.seed = static_cast<std::uint32_t>(*n);
+					}
+				}
+				if (auto n = r.Integer("iterations")) {
+					if (*n < 1 || *n > static_cast<int>(kMaxClusterIterations)) {
+						a_ctx.Error(std::format("'iterations' is 1..{}", kMaxClusterIterations));
+						inRange = false;
+					} else {
+						k.iterations = static_cast<std::uint32_t>(*n);
+					}
+				}
+				r.Finish();
+				if (!inRange) {
+					return std::nullopt;
+				}
+				s.kind = k;
 			} else {
 				a_ctx.Error(std::format("unknown source kind '{}'", kind));
 				return std::nullopt;
@@ -1244,7 +1349,9 @@ namespace WornEnchantmentPBR
 							const auto name = BipedSlotName(p.slot);
 							row["bake"] = json::object({ { "partition", name ? json(std::string{ *name }) : json(p.slot) } });
 						},
-						[&](const BoneWeightBake& b) { row["bake"] = json::object({ { "boneWeight", b.bones } }); });
+						[&](const BoneWeightBake& b) { row["bake"] = json::object({ { "boneWeight", b.bones } }); },
+						[&](const ComponentIdBake&) { row["bake"] = "componentId"; },
+						[&](const ChartIdBake&) { row["bake"] = "chartId"; });
 				},
 				[&](const UvSource& k) { row["uv"] = NameOf(kUvAxes, k.axis); },
 				[&](const DistanceSource& k) {
@@ -1257,6 +1364,21 @@ namespace WornEnchantmentPBR
 					json o = json::object({ { "trigger", "@" + k.trigger.name }, { "speed", ParamToJson(k.speed) }, { "width", ParamToJson(k.width) }, { "decay", ParamToJson(k.decay) } });
 					if (k.shape != RippleShape::kRing) o["shape"] = NameOf(kRippleShapes, k.shape);
 					row["ripple"] = std::move(o);
+				},
+				[&](const MaterialClustersSource& k) {
+					const MaterialClustersSource defaults;
+					json                         o = json::object();
+					if (k.clusters != defaults.clusters) o["clusters"] = static_cast<unsigned>(k.clusters);
+					json w = json::object();
+					if (k.roughness != defaults.roughness) w["roughness"] = Num(k.roughness);
+					if (k.metallic != defaults.metallic) w["metallic"] = Num(k.metallic);
+					if (k.occlusion != defaults.occlusion) w["occlusion"] = Num(k.occlusion);
+					if (k.reflectance != defaults.reflectance) w["reflectance"] = Num(k.reflectance);
+					if (k.luma != defaults.luma) w["luma"] = Num(k.luma);
+					if (!w.empty()) o["weights"] = std::move(w);
+					if (k.seed != defaults.seed) o["seed"] = k.seed;
+					if (k.iterations != defaults.iterations) o["iterations"] = k.iterations;
+					row["materialClusters"] = std::move(o);
 				});
 			return row;
 		}

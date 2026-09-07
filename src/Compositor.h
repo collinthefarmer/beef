@@ -9,6 +9,7 @@
 // pass; a mask that cannot be prepared evaluates as white with a
 // diagnostic on the row.
 
+#include "Analysis.h"
 #include "Mesh.h"
 #include "MeshReader.h"
 #include "PBRMaterial.h"
@@ -19,6 +20,7 @@
 
 #include <expected>
 #include <functional>
+#include <map>
 #include <memory>
 #include <span>
 #include <string>
@@ -30,15 +32,16 @@ namespace WornEnchantmentPBR
 {
 	// The material channels a stack can read, taken from the geometry's own
 	// material at apply time (before any slot is swapped). From measures the
-	// displacement map through the lab, so it runs on the game thread; every
-	// later reader of the record, the snapshot included, has no render to do.
+	// displacement map and samples the RMAOS and diffuse maps through the
+	// lab, so it runs on the game thread; every later reader of the record,
+	// the snapshot included, has no render or readback to do.
 	struct MaterialInputs
 	{
-		RE::NiPointer<RE::NiSourceTexture> diffuse;
-		RE::NiPointer<RE::NiSourceTexture> normal;
-		RE::NiPointer<RE::NiSourceTexture> rmaos;
-		RE::NiPointer<RE::NiSourceTexture> displacement;
-		bool                               flatDisplacement = true;  // no real displacement map, or one whose mean sits at either end (NOTES 46)
+		RE::NiPointer<RE::NiSourceTexture>      diffuse;
+		RE::NiPointer<RE::NiSourceTexture>      normal;
+		RE::NiPointer<RE::NiSourceTexture>      rmaos;
+		RE::NiPointer<RE::NiSourceTexture>      displacement;
+		bool                                    flatDisplacement = true;  // no real displacement map, or one whose mean sits at either end (NOTES 46)
 
 		[[nodiscard]] static MaterialInputs From(const PBRMaterialLayout& a_material);
 	};
@@ -83,12 +86,19 @@ namespace WornEnchantmentPBR
 	// outlive the apply.
 	// Maps computed from the material's own: the normal map's slope, rendered
 	// once per apply on the first source that reads it (the game thread);
-	// until then an inspection reports it unrendered.
+	// until then an inspection reports it unrendered. The cluster map is the
+	// material analysis classified per texel (RenderClusterMap), rendered
+	// on the first source that reads it and again when a source asks for
+	// other settings.
 	struct DerivedMaps
 	{
 		std::shared_ptr<TextureLab::Target> normalSlope;
 		std::string                         problem;  // why normalSlope stayed null after a try
 		bool                                tried = false;
+		std::shared_ptr<TextureLab::Target> clusters;         // id / 255 grey, one cluster id per texel
+		ClusterSettings                     clusterSettings;  // what clusters was rendered with
+		std::string                         clustersProblem;  // why clusters stayed null after a try
+		bool                                clustersTried = false;
 	};
 
 	struct GeometryInputs
@@ -260,6 +270,24 @@ namespace WornEnchantmentPBR
 		void                           SweepMeshes(std::uint32_t a_nowMS, std::span<RE::BSGeometry* const> a_bound);
 		void                           ClearMeshes() noexcept;
 
+		// The material's sample and its clusters at the default settings,
+		// read back once per pair of maps and kept for the session. The
+		// readback stalls the game thread on the GPU, so it never runs at
+		// apply: Paint's read of a shape asks for it (RequestMesh), and a
+		// recipe whose source is `materialClusters` asks at prepare. Cached
+		// only reads. Game thread.
+		struct MaterialRecord
+		{
+			RE::NiPointer<RE::NiSourceTexture>      rmaos;
+			RE::NiPointer<RE::NiSourceTexture>      diffuse;
+			std::shared_ptr<const MaterialSample>   sample;
+			std::shared_ptr<const MaterialAnalysis> analysis;  // ClusterMaterial over the sample at ClusterSettings{}
+			std::string                             problem;   // why sample is null after a try
+		};
+		[[nodiscard]] const MaterialRecord& AnalyseMaterial(const MaterialInputs& a_material);
+		[[nodiscard]] const MaterialRecord* CachedMaterial(const MaterialInputs& a_material) const noexcept;
+		void                                ClearMaterials() noexcept;
+
 	private:
 		// A target filled with the neutral height 0.5, rendered once and shared:
 		// CS offsets parallax by (height - 0.5) * scale, so a height stack over
@@ -285,6 +313,7 @@ namespace WornEnchantmentPBR
 
 		std::unordered_map<std::string, RE::NiPointer<RE::NiSourceTexture>> images_;
 		MeshCache                                                           meshes_;
+		std::map<std::pair<RE::NiSourceTexture*, RE::NiSourceTexture*>, MaterialRecord> materials_;  // by the RMAOS and diffuse maps
 		std::uint64_t                                                       tick_ = 1;
 		std::uint32_t                                                       nowMS_ = 0;
 		std::uint32_t                                                       lastSweepMS_ = 0;

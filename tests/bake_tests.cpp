@@ -238,10 +238,27 @@ namespace
 	}
 }
 
+namespace
+{
+	// The id-map bakes: keyed like any bake, built only with the analysis.
+	void RegionBakes()
+	{
+		using namespace test;
+		const auto mesh = Quad();
+		const auto pieces = BuildBake(mesh, ComponentIdBake{});
+		Check(pieces.problem == "componentId needs the mesh analysis" && pieces.vertices.empty() && pieces.indices.empty() && !pieces.vector, "a componentId bake from the mesh alone is a problem");
+		const auto charts = BuildBake(mesh, ChartIdBake{});
+		Check(charts.problem == "chartId needs the mesh analysis" && charts.vertices.empty() && charts.indices.empty(), "a chartId bake from the mesh alone is a problem");
+		Check(DefinitionOf(BakeKind{ ComponentIdBake{} }) == "bake componentId" && DefinitionOf(BakeKind{ ChartIdBake{} }) == "bake chartId", "the id maps define by their names");
+		Check(BakeKeyOf(ComponentIdBake{}, TextureSize::Clamp(256)) == "bake componentId@256" && BakeKeyOf(ChartIdBake{}, TextureSize::Clamp(256)) != BakeKeyOf(ComponentIdBake{}, TextureSize::Clamp(256)), "an id map keys by name and size");
+	}
+}
+
 int main()
 {
 	Decoding();
 	Bakes();
+	RegionBakes();
 	Hashing();
 	Triangles();
 	Sizes();

@@ -601,3 +601,40 @@ rewrite (`src/RecipeStore.cpp`, 2026-09-04), not yet run in game.
     If wrong: the hash changes between two reads of one geometry with no
     `buffers changed` line, or the compare line reports differing bytes
     on a mesh whose position bake looks right. Confirmed 2026-09-07 in game: each geometry was read once per session and served from the cache through every Paint round after (one `mesh` line per geometry, `cached` after), and the CPU copy matched the GPU readback byte for byte (`0 of 32360 bytes differ`, `0 of 20080 bytes differ` on two pieces), so the moving region of 2026-09-06 was the unrendered preview, not the read. If wrong: a second `mesh` line for the same geometry with a different hash, or a compare line with a nonzero count.
+
+56. **The material analysis is one readback per pair of maps, on request
+    (Paint's read of a shape, or a `materialClusters` source at prepare),
+    never at apply: both maps are copied
+    at the mip that fits 64 px into one 64 px target and read back through
+    a staging texture, and other cluster settings re-run on that stored
+    sample; the classify pass writes the analysis' cluster id per texel and
+    must agree with `NearestCluster`.** Basis: the flat-displacement measure
+    already proved the staging path on the game thread (NOTES 53); a
+    4096-texel sample is the cap `Analysis.h` sets, and a mip average reads
+    whole texels where a sparse pick would alias. The shader repeats the
+    CPU's weighted squared distance in analysis order with strict less-than,
+    so a texel lands in the same cluster on both. Unconfirmed in game as of
+    2026-09-07; a freeze the same day inside an apply while the sample
+    still ran there is why it moved (ARCHITECTURE, Known debts). If wrong: a cluster's share in the snapshot differs visibly
+    from the area its id covers in the rendered map, or the map shows ids
+    the analysis does not list.
+
+57. **Every use of the engine's immediate D3D11 context from the game
+    thread must hold the engine's renderer lock
+    (`BSGraphics::Renderer::Lock`/`Unlock`, the critical section at
+    `RendererData+0x2780` that the render thread holds around its own
+    use); running our passes and readbacks on the game thread is not
+    enough on its own.** Basis: a CTD on 2026-09-07
+    (`crash-2026-09-07-17-46-03.log`, execute-address access violation,
+    the whole stack inside `nvwgf2umx.dll` on a driver thread, nothing of
+    ours) after a burst of Paint re-applies with the studio open, the
+    same signature as NOTES 53 with every pass already on the game
+    thread, which is NOTES 53's "if wrong". The lab now takes the lock in
+    `Render`, `RenderProgram`, `RenderClusters`, `BakeMesh`,
+    `RenderRipple`, `ReadBuffer`, `ReadBackPixels` and `ReadBackMean`; a
+    readback holds it across its `Map`, so the render thread waits while
+    the GPU finishes our copy (a hitch, not a hang). Confirmed 2026-09-07:
+    the same steps (Paint open, a mask edited through several re-applies,
+    a menu opened) ran without a crash on the locked build. If wrong: the same
+    crash again with the lock held, or a hang with the render thread
+    waiting on the lock while our `Map` waits on the GPU.

@@ -45,20 +45,6 @@ namespace WornEnchantmentPBR::Studio
 	inline constexpr std::array<ResourceTab, 4> kResourceTabs{ ResourceTab::kSignals, ResourceTab::kCurves, ResourceTab::kSources, ResourceTab::kMasks };
 	[[nodiscard]] std::string_view              ResourceTabName(ResourceTab a_tab) noexcept;
 
-	// What the action row's kind combo offers a term from.
-	enum class TermKind
-	{
-		kWhere,
-		kWhat,
-		kShape,
-		kMasks,
-		kSources,
-		kExpression,
-	};
-	inline constexpr std::array<TermKind, 6> kTermKinds{ TermKind::kWhere, TermKind::kWhat, TermKind::kShape, TermKind::kMasks, TermKind::kSources, TermKind::kExpression };
-	[[nodiscard]] std::string_view           TermKindName(TermKind a_kind) noexcept;
-	[[nodiscard]] std::optional<TermKind>    ParseTermKind(std::string_view a_name) noexcept;
-
 	// Paint mode's working selection: the terms whose built expression the
 	// scratch mask holds. Solo and mute are state here, never in the file;
 	// Keep writes every term. `editing` names the kept mask the stack was
@@ -73,7 +59,6 @@ namespace WornEnchantmentPBR::Studio
 		std::set<std::size_t>      muted;
 		std::string                editing;
 		bool                       dirty = false;
-		TermKind                   addKind = TermKind::kWhere;
 	};
 
 	// A paint session: the active recipe the region is for (the recipe combo
@@ -83,6 +68,7 @@ namespace WornEnchantmentPBR::Studio
 	{
 		std::string recipe;
 		Surface     surface = Surface::kMaterial;
+		bool        readPosted = false;  // the shape's read (mesh and material) was asked for once the paint recipe was applied
 	};
 
 	using TextBuffer = std::array<char, 1024>;
@@ -195,6 +181,15 @@ namespace WornEnchantmentPBR::Studio
 		std::size_t index = 0;
 		std::string text;
 	};
+	// A term's settings changed: the page rebuilt the text and label from
+	// the recipe (and posted the source edits it needs) before posting this.
+	struct SetTermRecipe
+	{
+		std::size_t index = 0;
+		TermRecipe  recipe;
+		std::string text;
+		std::string label;
+	};
 	struct RemoveTerm
 	{
 		std::size_t index = 0;
@@ -225,10 +220,6 @@ namespace WornEnchantmentPBR::Studio
 	};
 	struct ClearRegion
 	{
-	};
-	struct SetTermKind
-	{
-		TermKind kind = TermKind::kWhere;
 	};
 	// The paint session: begun for the active recipe on the piece's key,
 	// its preview surface changed, kept under a name (the manager copies
@@ -331,7 +322,7 @@ namespace WornEnchantmentPBR::Studio
 
 	using Intent = std::variant<
 		SetMode, PickPiece, PickRecipe, PickTarget, PickSlot, PickCell, PickLayer, PickRegion, ViewGeometry, ShowSettings, ShowResource, ReadMesh,
-		AddTerm, SetTermOp, SetTermText, RemoveTerm, MoveTerm, PickTerm, SoloTerm, MuteTerm, LoadRegion, ClearRegion, SetTermKind,
+		AddTerm, SetTermOp, SetTermText, SetTermRecipe, RemoveTerm, MoveTerm, PickTerm, SoloTerm, MuteTerm, LoadRegion, ClearRegion,
 		BeginPaint, SetPaintSurface, KeepPaint, EndPaint,
 		EditRecipe, SoloRecipe, SoloOutput, SoloLayer, MuteLayer,
 		SetFreeze, SetScrub, SetSpeed, StepClock, Undo, Redo, CreateRecipe, FireTrigger>;

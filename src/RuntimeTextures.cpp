@@ -4,6 +4,10 @@
 
 #include <REX/W32/D3DCOMPILER.h>
 
+#include <cmath>
+#include <cstring>
+#include <string_view>
+
 namespace WornEnchantmentPBR
 {
 	using namespace REX::W32;
@@ -147,6 +151,7 @@ float4 PSMain(VSOut i) : SV_Target
 	float l = dot(c.rgb, float3(0.299, 0.587, 0.114));
 	int mode = (int)flags.w;
 	if (mode == 6) return LayerPass(i.uv, uv);
+	if (mode == 7) return c;  // every channel of the source at the given mip
 	if (mode == 1) return float4(1, 1, 1, l);
 	if (mode == 2) {
 		// Height = the armor's own relief plus the scrolling noise, so parallax
@@ -375,6 +380,42 @@ float4 PSRipple(VSOut i) : SV_Target
 	}
 	return float4(v, v, v, 1);
 }
+
+// ---------------------------------------------------------------- classify
+// The RMAOS (armor) and diffuse (src) maps at the raw mesh UV go to the
+// nearest centroid by the distance NearestCluster (Analysis.cpp) uses:
+// the sum over the five axes of weight x (texel - centroid)^2, the
+// first of equals winning, in the analysis' cluster order. That CPU
+// function is the reference: this must agree with it on a texel. The
+// cluster's id is written as id / 255 grey.
+cbuffer ClassifyParams : register(b3)
+{
+	float4 centroidRmaos[8];  // per cluster in analysis order: roughness, metallic, occlusion, reflectance
+	float4 centroidLuma[8];   // x luma, y id
+	float4 classifyWeights;   // roughness, metallic, occlusion, reflectance
+	float4 classifyMisc;      // x luma weight, y cluster count
+};
+
+float4 PSClassify(VSOut i) : SV_Target
+{
+	float4 m = saturate(armor.SampleLevel(samp, i.uv, 0));
+	float3 d = src.SampleLevel(samp, i.uv, 0).rgb;
+	float  luma = saturate(dot(d, float3(0.2126, 0.7152, 0.0722)));
+	int    n = clamp((int)classifyMisc.y, 0, 8);
+	float  id = 0;
+	float  best = 0;
+	[loop] for (int k = 0; k < n; ++k) {
+		float4 dm = m - centroidRmaos[k];
+		float  dl = luma - centroidLuma[k].x;
+		float  dist = dot(classifyWeights, dm * dm) + classifyMisc.x * dl * dl;
+		if (k == 0 || dist < best) {
+			best = dist;
+			id = centroidLuma[k].y;
+		}
+	}
+	float v = id / 255.0;
+	return float4(v, v, v, 1);
+}
 )";
 
 		struct alignas(16) ProgramConstants
@@ -398,6 +439,16 @@ float4 PSRipple(VSOut i) : SV_Target
 			float shape[4];
 			float misc[4];
 		};
+
+		// The shader's arrays are written to kMaxClusters entries.
+		struct alignas(16) ClassifyConstants
+		{
+			float centroidRmaos[kMaxClusters][4];
+			float centroidLuma[kMaxClusters][4];
+			float weights[4];
+			float misc[4];
+		};
+		static_assert(kMaxClusters == 8 && sizeof(ClassifyConstants) % 16 == 0);
 
 		struct alignas(16) Constants
 		{
@@ -438,7 +489,7 @@ float4 PSRipple(VSOut i) : SV_Target
 		ID3D11PixelShader*        ps = nullptr;
 		ID3D11ShaderResourceView* srvs[12]{};
 		ID3D11SamplerState*       sampler = nullptr;
-		ID3D11Buffer*             cbs[3]{};
+		ID3D11Buffer*             cbs[4]{};
 		ID3D11InputLayout*        layout = nullptr;
 		REX::W32::ID3D11Buffer*   vertexBuffer = nullptr;
 		std::uint32_t             vertexStride = 0;
@@ -463,7 +514,7 @@ float4 PSRipple(VSOut i) : SV_Target
 			a_ctx->PSGetShader(&ps, nullptr, nullptr);
 			a_ctx->PSGetShaderResources(0, 12, srvs);
 			a_ctx->PSGetSamplers(0, 1, &sampler);
-			a_ctx->PSGetConstantBuffers(0, 3, cbs);
+			a_ctx->PSGetConstantBuffers(0, 4, cbs);
 			a_ctx->IAGetInputLayout(&layout);
 			a_ctx->IAGetVertexBuffers(0, 1, &vertexBuffer, &vertexStride, &vertexOffset);
 			a_ctx->IAGetIndexBuffer(&indexBuffer, &indexFormat, &indexOffset);
@@ -483,7 +534,7 @@ float4 PSRipple(VSOut i) : SV_Target
 			a_ctx->PSSetShader(ps, nullptr, 0);
 			a_ctx->PSSetShaderResources(0, 12, srvs);
 			a_ctx->PSSetSamplers(0, 1, &sampler);
-			a_ctx->PSSetConstantBuffers(0, 3, cbs);
+			a_ctx->PSSetConstantBuffers(0, 4, cbs);
 			a_ctx->IASetInputLayout(layout);
 			a_ctx->IASetVertexBuffers(0, 1, &vertexBuffer, &vertexStride, &vertexOffset);
 			a_ctx->IASetIndexBuffer(indexBuffer, indexFormat, indexOffset);
@@ -503,6 +554,7 @@ float4 PSRipple(VSOut i) : SV_Target
 			Release(cbs[0]);
 			Release(cbs[1]);
 			Release(cbs[2]);
+			Release(cbs[3]);
 			Release(vertexBuffer);
 			Release(indexBuffer);
 			Release(layout);
@@ -521,6 +573,39 @@ float4 PSRipple(VSOut i) : SV_Target
 		Release(srv);
 		Release(texture);
 		delete ourData;
+	}
+
+	namespace
+	{
+		// The engine's renderer lock: the critical section its render thread
+		// holds around its own use of the immediate context. Every pass and
+		// readback here runs on the game thread while that thread renders,
+		// so each takes the lock for its duration; without it the context is
+		// driven from two threads and the driver crashes on a worker thread
+		// with nothing of ours on the stack (NOTES 53, 57). The lock is
+		// re-entrant, so a pass called from another pass is fine.
+		class RendererLock
+		{
+		public:
+			RendererLock() :
+				renderer_(RE::BSGraphics::Renderer::GetSingleton())
+			{
+				if (renderer_) {
+					renderer_->Lock();
+				}
+			}
+			~RendererLock()
+			{
+				if (renderer_) {
+					renderer_->Unlock();
+				}
+			}
+			RendererLock(const RendererLock&) = delete;
+			RendererLock& operator=(const RendererLock&) = delete;
+
+		private:
+			RE::BSGraphics::Renderer* renderer_ = nullptr;
+		};
 	}
 
 	TextureLab* TextureLab::GetSingleton()
@@ -563,6 +648,11 @@ float4 PSRipple(VSOut i) : SV_Target
 		cbDesc.byteWidth = sizeof(RippleConstants);
 		if (Failed(device_->CreateBuffer(&cbDesc, nullptr, &rippleConstants_))) {
 			logger::error("TextureLab: ripple constant buffer creation failed");
+			return false;
+		}
+		cbDesc.byteWidth = sizeof(ClassifyConstants);
+		if (Failed(device_->CreateBuffer(&cbDesc, nullptr, &classifyConstants_))) {
+			logger::error("TextureLab: classify constant buffer creation failed");
 			return false;
 		}
 
@@ -643,6 +733,14 @@ float4 PSRipple(VSOut i) : SV_Target
 			logger::error("TextureLab: the ripple pass is unavailable; ripple sources are black");
 		}
 		Release(rippleBlob);
+		auto* classifyBlob = compile("PSClassify", "ps_5_0");
+		if (ok && classifyBlob && Failed(device_->CreatePixelShader(classifyBlob->GetBufferPointer(), classifyBlob->GetBufferSize(), nullptr, &classifyPs_))) {
+			classifyPs_ = nullptr;
+		}
+		if (ok && !classifyPs_) {
+			logger::error("TextureLab: the classify pass is unavailable; material cluster maps are black");
+		}
+		Release(classifyBlob);
 		// The bake pass is separate for the same reason.
 		auto* bakeVsBlob = compile("BakeVS", "vs_5_0");
 		auto* bakePsBlob = compile("BakePS", "ps_5_0");
@@ -765,6 +863,7 @@ float4 PSRipple(VSOut i) : SV_Target
 		pool_.clear();
 		luminance_.clear();
 		channelMeans_.clear();
+		sampleWarned_.clear();
 	}
 
 	std::shared_ptr<TextureLab::Target> TextureLab::Preview(RE::NiSourceTexture* a_source, std::uint32_t a_channel, bool a_dynamic)
@@ -850,6 +949,7 @@ float4 PSRipple(VSOut i) : SV_Target
 
 	bool TextureLab::Render(Target& a_target, RE::NiSourceTexture* a_source, const LayerParams& a_params)
 	{
+		const RendererLock rendererLock;
 		if (!available_ || !a_target.rtv) {
 			return false;
 		}
@@ -957,6 +1057,7 @@ float4 PSRipple(VSOut i) : SV_Target
 	// Reads the 1x1 mip of a target back through a staging copy.
 	std::optional<float> TextureLab::ReadBackMean(Target& a_target)
 	{
+		const RendererLock rendererLock;
 		std::optional<float> result;
 		D3D11_TEXTURE2D_DESC desc{};
 		a_target.texture->GetDesc(&desc);
@@ -988,6 +1089,193 @@ float4 PSRipple(VSOut i) : SV_Target
 		return result;
 	}
 
+	std::vector<std::uint8_t> TextureLab::ReadBackPixels(Target& a_target)
+	{
+		const RendererLock rendererLock;
+		std::vector<std::uint8_t> out;
+		if (!a_target.texture) {
+			return out;
+		}
+		D3D11_TEXTURE2D_DESC desc{};
+		a_target.texture->GetDesc(&desc);
+		// The bytes are read as RGBA8, so any other format is refused before the map.
+		if (desc.format != DXGI_FORMAT_R8G8B8A8_UNORM || desc.width == 0 || desc.height == 0 || desc.width != a_target.size || desc.height != a_target.size) {
+			logger::warn("TextureLab: pixel readback refused: target {}x{} format {}", desc.width, desc.height, static_cast<std::uint32_t>(desc.format));
+			return out;
+		}
+		D3D11_TEXTURE2D_DESC stagingDesc{};
+		stagingDesc.width = desc.width;
+		stagingDesc.height = desc.height;
+		stagingDesc.mipLevels = 1;
+		stagingDesc.arraySize = 1;
+		stagingDesc.format = desc.format;
+		stagingDesc.sampleDesc.count = 1;
+		stagingDesc.usage = D3D11_USAGE_STAGING;
+		stagingDesc.cpuAccessFlags = D3D11_CPU_ACCESS_READ;
+		ID3D11Texture2D* staging = nullptr;
+		if (Failed(device_->CreateTexture2D(&stagingDesc, nullptr, &staging))) {
+			logger::warn("TextureLab: staging texture creation failed; pixel readback unavailable");
+			return out;
+		}
+		context_->CopySubresourceRegion(staging, 0, 0, 0, 0, a_target.texture, 0, nullptr);
+		D3D11_MAPPED_SUBRESOURCE mapped{};
+		if (!Failed(context_->Map(staging, 0, D3D11_MAP_READ, 0, &mapped)) && mapped.data) {
+			const std::size_t rowBytes = static_cast<std::size_t>(desc.width) * 4;
+			if (mapped.rowPitch >= rowBytes) {
+				out.resize(rowBytes * desc.height);
+				const auto* rows = static_cast<const std::uint8_t*>(mapped.data);
+				for (std::uint32_t y = 0; y < desc.height; ++y) {
+					std::memcpy(out.data() + y * rowBytes, rows + static_cast<std::size_t>(y) * mapped.rowPitch, rowBytes);
+				}
+			}
+			context_->Unmap(staging, 0);
+		} else {
+			logger::warn("TextureLab: staging map failed; pixel readback unavailable");
+		}
+		Release(staging);
+		return out;
+	}
+
+	namespace
+	{
+		// The mip of a map whose side is still at least a_side: sampling it at
+		// a_side points reads whole texels of a mip average, not a sparse pick.
+		float MipThatFits(const TextureLab::Extent& a_extent, std::uint32_t a_side) noexcept
+		{
+			std::uint32_t side = (std::max)(a_extent.width, a_extent.height);
+			std::uint32_t mip = 0;
+			while (mip < 16 && (side >> (mip + 1)) >= a_side) {
+				++mip;
+			}
+			return static_cast<float>(mip);
+		}
+	}
+
+	std::optional<MaterialSample> TextureLab::SampleMaterial(RE::NiSourceTexture* a_rmaos, RE::NiSourceTexture* a_diffuse)
+	{
+		static_assert(kSampleSide * kSampleSide <= kMaxSampleTexels);
+		const auto fail = [&](RE::NiSourceTexture* a_texture, std::string_view a_why) -> std::optional<MaterialSample> {
+			if (sampleWarned_.insert(a_texture).second) {
+				logger::warn("TextureLab: material sample: {}", a_why);
+			}
+			return std::nullopt;
+		};
+		if (!Init()) {
+			return fail(nullptr, "the lab is unavailable");
+		}
+		const auto rmaosExtent = ExtentOf(a_rmaos);
+		if (!rmaosExtent) {
+			return fail(a_rmaos, "the RMAOS map is null or not a resident 2D texture");
+		}
+		const auto diffuseExtent = ExtentOf(a_diffuse);
+		if (!diffuseExtent) {
+			return fail(a_diffuse, "the diffuse map is null or not a resident 2D texture");
+		}
+		auto target = Acquire(TextureSize::Clamp(kSampleSide));
+		if (!target || target->size != kSampleSide) {
+			return fail(a_rmaos, "no sample target");
+		}
+		// Each map copied at its fitting mip into the target, then read back.
+		const auto copyBack = [&](RE::NiSourceTexture* a_map, const Extent& a_extent) -> std::vector<std::uint8_t> {
+			LayerParams params;
+			params.mode = Mode::kCopy;
+			params.scroll.sourceMip = MipThatFits(a_extent, kSampleSide);
+			if (!Render(*target, a_map, params)) {
+				return {};
+			}
+			return ReadBackPixels(*target);
+		};
+		const std::size_t texelCount = static_cast<std::size_t>(kSampleSide) * kSampleSide;
+		const auto        rmaos = copyBack(a_rmaos, *rmaosExtent);
+		if (rmaos.size() != texelCount * 4) {
+			return fail(a_rmaos, "the RMAOS map could not be read back");
+		}
+		const auto diffuse = copyBack(a_diffuse, *diffuseExtent);
+		if (diffuse.size() != texelCount * 4) {
+			return fail(a_diffuse, "the diffuse map could not be read back");
+		}
+		MaterialSample sample;
+		sample.width = kSampleSide;
+		sample.height = kSampleSide;
+		sample.texels.reserve(texelCount);
+		constexpr float scale = 1.0f / 255.0f;
+		for (std::size_t i = 0; i < texelCount; ++i) {
+			const std::uint8_t* m = rmaos.data() + i * 4;
+			const std::uint8_t* d = diffuse.data() + i * 4;
+			Texel texel;
+			texel.roughness = m[0] * scale;
+			texel.metallic = m[1] * scale;
+			texel.occlusion = m[2] * scale;
+			texel.reflectance = m[3] * scale;
+			texel.luma = (0.2126f * d[0] + 0.7152f * d[1] + 0.0722f * d[2]) * scale;
+			sample.texels.push_back(texel);
+		}
+		return sample;
+	}
+
+	bool TextureLab::RenderClusters(Target& a_target, RE::NiSourceTexture* a_rmaos, RE::NiSourceTexture* a_diffuse, const MaterialAnalysis& a_analysis)
+	{
+		const RendererLock rendererLock;
+		const auto* rmaosData = DataOf(a_rmaos);
+		const auto* diffuseData = DataOf(a_diffuse);
+		if (!available_ || !a_target.rtv || !classifyPs_ || !rmaosData || !rmaosData->resourceView || !diffuseData || !diffuseData->resourceView ||
+			a_analysis.clusters.size() > kMaxClusters) {
+			return false;
+		}
+		// A weight that is not finite or not positive counts as zero, as ScalesOf does on the CPU.
+		const auto scale = [](float a_weight) { return std::isfinite(a_weight) && a_weight > 0.0f ? a_weight : 0.0f; };
+		ClassifyConstants constants{};
+		for (std::size_t k = 0; k < a_analysis.clusters.size(); ++k) {
+			const auto& cluster = a_analysis.clusters[k];
+			constants.centroidRmaos[k][0] = cluster.centroid.roughness;
+			constants.centroidRmaos[k][1] = cluster.centroid.metallic;
+			constants.centroidRmaos[k][2] = cluster.centroid.occlusion;
+			constants.centroidRmaos[k][3] = cluster.centroid.reflectance;
+			constants.centroidLuma[k][0] = cluster.centroid.luma;
+			constants.centroidLuma[k][1] = static_cast<float>(cluster.id);
+		}
+		const auto& w = a_analysis.settings.weights;
+		constants.weights[0] = scale(w.roughness);
+		constants.weights[1] = scale(w.metallic);
+		constants.weights[2] = scale(w.occlusion);
+		constants.weights[3] = scale(w.reflectance);
+		constants.misc[0] = scale(w.luma);
+		constants.misc[1] = static_cast<float>(a_analysis.clusters.size());
+
+		SavedState saved;
+		saved.Capture(context_);
+		context_->UpdateSubresource(classifyConstants_, 0, nullptr, &constants, 0, 0);
+		ID3D11RenderTargetView* rtv = a_target.rtv;
+		context_->OMSetRenderTargets(1, &rtv, nullptr);
+		D3D11_VIEWPORT viewport{};
+		viewport.width = static_cast<float>(a_target.size);
+		viewport.height = static_cast<float>(a_target.size);
+		viewport.maxDepth = 1.0f;
+		context_->RSSetViewports(1, &viewport);
+		context_->IASetInputLayout(nullptr);
+		context_->IASetPrimitiveTopology(D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
+		context_->VSSetShader(vs_, nullptr, 0);
+		context_->PSSetShader(classifyPs_, nullptr, 0);
+		ID3D11ShaderResourceView* srvs[12]{ reinterpret_cast<ID3D11ShaderResourceView*>(diffuseData->resourceView),
+			reinterpret_cast<ID3D11ShaderResourceView*>(rmaosData->resourceView) };
+		context_->PSSetShaderResources(0, 12, srvs);
+		context_->PSSetSamplers(0, 1, &sampler_);
+		ID3D11Buffer* cbs[4]{ constants_, programConstants_, rippleConstants_, classifyConstants_ };
+		context_->PSSetConstantBuffers(0, 4, cbs);
+		const float blendFactor[4]{};
+		context_->OMSetBlendState(blend_, blendFactor, 0xFFFFFFFF);
+		context_->OMSetDepthStencilState(depth_, 0);
+		context_->RSSetState(raster_);
+		context_->Draw(3, 0);
+		ID3D11RenderTargetView*   none = nullptr;
+		ID3D11ShaderResourceView* noSrvs[12]{};
+		context_->OMSetRenderTargets(1, &none, nullptr);
+		context_->PSSetShaderResources(0, 12, noSrvs);
+		context_->GenerateMips(a_target.srv);
+		saved.Restore(context_);
+		return true;
+	}
+
 	TextureLab::Lookup::~Lookup()
 	{
 		Release(srv);
@@ -996,6 +1284,7 @@ float4 PSRipple(VSOut i) : SV_Target
 
 	bool TextureLab::RenderProgram(Target& a_target, const ProgramPass& a_pass)
 	{
+		const RendererLock rendererLock;
 		// The counts are checked against the arrays, not trusted: a pass that
 		// claims more than it holds is refused here rather than read past.
 		if (!available_ || !a_target.rtv || !programPs_ || a_pass.code.size() > 256 || a_pass.refCount > a_pass.refs.size() ||
@@ -1076,6 +1365,7 @@ float4 PSRipple(VSOut i) : SV_Target
 
 	std::vector<std::uint8_t> TextureLab::ReadBuffer(REX::W32::ID3D11Buffer* a_buffer, std::uint32_t a_bytes)
 	{
+		const RendererLock rendererLock;
 		std::vector<std::uint8_t> out;
 		if (!a_buffer || a_bytes == 0 || !Init()) {
 			return out;
@@ -1102,6 +1392,7 @@ float4 PSRipple(VSOut i) : SV_Target
 
 	bool TextureLab::BakeMesh(Target& a_target, const BakeBuffers& a_bake)
 	{
+		const RendererLock rendererLock;
 		if (!available_ || !a_target.rtv || !BakingAvailable() || a_bake.vertices.empty() || a_bake.indices.empty()) {
 			return false;
 		}
@@ -1161,6 +1452,7 @@ float4 PSRipple(VSOut i) : SV_Target
 
 	bool TextureLab::RenderRipple(Target& a_target, const RipplePass& a_pass)
 	{
+		const RendererLock rendererLock;
 		const auto* positions = DataOf(a_pass.positions);
 		if (!available_ || !a_target.rtv || !ripplePs_ || !positions || !positions->resourceView) {
 			return false;

@@ -115,6 +115,7 @@ namespace WornEnchantmentPBR::Studio::Widgets
 	// The width a button with this label takes, and a checkbox with it, as
 	// ImGui draws them, so a group placed at the right edge ends on it.
 	[[nodiscard]] float ButtonWidth(std::string_view a_text);
+	[[nodiscard]] float TextWidth(std::string_view a_text);
 	[[nodiscard]] float CheckboxWidth(std::string_view a_text);
 	// The style's gap between items on a line.
 	[[nodiscard]] float ItemSpacingX();
@@ -195,6 +196,11 @@ namespace WornEnchantmentPBR::Studio::Widgets
 	void                Rule(const RuleLine& a_above = {}, const RuleLine& a_below = {});
 	[[nodiscard]] float RuleHeight();
 
+	// One row of a chooser table of three columns (name, detail, share): the
+	// name as a selectable spanning the row, the detail dimmed beside it, the
+	// share as a percentage when known. Greyed with the reason as its tooltip
+	// when one is given; true when clicked while available.
+	[[nodiscard]] bool ChooserRow(Table& a_table, std::string_view a_name, std::string_view a_detail, std::optional<float> a_share, const std::optional<std::string>& a_unavailable);
 	// A checkbox with a tooltip; true when it changed this frame. Solo,
 	// mute, isolate and freeze are all this.
 	bool Toggle(const char* a_label, bool& a_value, std::string_view a_tooltip);
