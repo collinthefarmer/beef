@@ -21,11 +21,15 @@ namespace WornEnchantmentPBR
 			std::vector<Diagnostic>            diagnostics;
 			std::shared_ptr<const SignalGraph> graph;
 			bool                               dirty = false;
+			bool                               transient = false;  // never written; the studio's paint recipe
+			Studio::ReferenceCounts            references;         // recounted whenever the recipe changes
 		};
 
 		std::vector<LoadedRecipe> g_loaded;
 		std::vector<Recipe>       g_recipes;  // the same recipes, contiguous for Resolve
 		RecipeStoreStatus         g_status;
+		Studio::Presets           g_presets;
+
 
 		// ------------------------------------------------------------ files
 
@@ -44,6 +48,24 @@ namespace WornEnchantmentPBR
 			std::ofstream out(a_path, std::ios::binary | std::ios::trunc);
 			out << a_text;
 			return static_cast<bool>(out);
+		}
+
+		void LoadPresets()
+		{
+			g_presets = {};
+			const auto path = Identity::PresetsPath();
+			const auto text = ReadText(path);
+			if (text.empty()) {
+				logger::warn("presets: {} is missing or empty; no region presets", path.string());
+				return;
+			}
+			auto parsed = Studio::ParsePresets(text);
+			if (!parsed) {
+				logger::warn("presets: {}: {}", path.string(), parsed.error());
+				return;
+			}
+			g_presets = std::move(*parsed);
+			logger::info("presets: {} where, {} what, {} bone names", g_presets.where.size(), g_presets.what.size(), g_presets.boneNames.size());
 		}
 
 		// Every .json under a folder, in path order.
@@ -351,8 +373,10 @@ namespace WornEnchantmentPBR
 		}
 		ImportMissing(Identity::ImportedRecipeFolder());
 		LogKeyOwnership();
+		LoadPresets();
 		g_recipes.clear();
-		for (const auto& l : g_loaded) {
+		for (auto& l : g_loaded) {
+			l.references = Studio::CountReferences(l.recipe);
 			g_recipes.push_back(l.recipe);
 		}
 		logger::info("recipes: {} loaded, {} with errors, {} unresolved editor IDs, {} imported this session, folder {}", g_status.loaded, g_status.withErrors, g_status.unresolved, g_status.imported, std::filesystem::absolute(root, ec).string());
@@ -367,6 +391,11 @@ namespace WornEnchantmentPBR
 	std::span<const Recipe> LoadedRecipes() noexcept
 	{
 		return g_recipes;
+	}
+
+	const Studio::Presets& LoadedPresets() noexcept
+	{
+		return g_presets;
 	}
 
 	std::optional<RecipeOrigin> OriginOf(const Recipe& a_recipe) noexcept
@@ -402,9 +431,11 @@ namespace WornEnchantmentPBR
 			return it == g_loaded.end() ? nullptr : &*it;
 		}
 
-		// g_recipes mirrors g_loaded by index; the manager points into it.
-		void Republish(const LoadedRecipe& a_loaded)
+		// g_recipes mirrors g_loaded by index; the manager points into it. A
+		// republished recipe is recounted, so the counts never lag the rows.
+		void Republish(LoadedRecipe& a_loaded)
 		{
+			a_loaded.references = Studio::CountReferences(a_loaded.recipe);
 			const auto index = static_cast<std::size_t>(&a_loaded - g_loaded.data());
 			if (index < g_recipes.size()) {
 				g_recipes[index] = a_loaded.recipe;
@@ -432,6 +463,12 @@ namespace WornEnchantmentPBR
 		return loaded->diagnostics;
 	}
 
+	const Studio::ReferenceCounts* ReferencesOf(std::string_view a_id) noexcept
+	{
+		const auto* loaded = Loaded(a_id);
+		return loaded ? &loaded->references : nullptr;
+	}
+
 	bool IsDirty(std::string_view a_id) noexcept
 	{
 		const auto* loaded = Loaded(a_id);
@@ -444,12 +481,28 @@ namespace WornEnchantmentPBR
 		if (!loaded) {
 			return std::unexpected("not loaded");
 		}
+		if (loaded->transient) {
+			return std::unexpected("the paint recipe is never written");
+		}
 		auto path = loaded->path;
 		if (IsUnder(path, Identity::ImportedRecipeFolder())) {
 			path = Identity::UserRecipeFolder() / (loaded->recipe.id + ".json");
 			loaded->recipe.metadata.imported.clear();
 		}
-		if (!WriteText(path, SerializeRecipe(loaded->recipe))) {
+		// The scratch mask is the studio's working selection, never a row of
+		// the file: it is dropped, and a layer still masked by it is unmasked.
+		Recipe written = loaded->recipe;
+		std::erase_if(written.masks, [](const Mask& m) { return m.name == Studio::kScratchMask; });
+		for (auto& output : written.outputs) {
+			if (auto* material = Get<MaterialOutput>(output)) {
+				for (auto& layer : material->stack) {
+					if (layer.mask && layer.mask->name == Studio::kScratchMask) {
+						layer.mask.reset();
+					}
+				}
+			}
+		}
+		if (!WriteText(path, SerializeRecipe(written))) {
 			return std::unexpected(std::format("could not write {}", path.string()));
 		}
 		loaded->path = path;
@@ -478,9 +531,50 @@ namespace WornEnchantmentPBR
 		loaded.diagnostics = Validate(loaded.recipe);
 		ResolveForms(loaded.recipe, loaded.diagnostics);
 		g_loaded.push_back(std::move(loaded));
+		g_loaded.back().references = Studio::CountReferences(g_loaded.back().recipe);
 		g_recipes.push_back(g_loaded.back().recipe);
 		logger::info("new recipe {} keyed by {}; saves to {}", a_id, g_loaded.back().recipe.keys[0].ToString(), g_loaded.back().path.string());
 		return true;
+	}
+
+	bool AddTransientRecipe(Recipe a_recipe)
+	{
+		if (a_recipe.id.empty() || Loaded(a_recipe.id)) {
+			logger::warn("transient recipe '{}': a recipe has that id", a_recipe.id);
+			return false;
+		}
+		LoadedRecipe loaded{ std::move(a_recipe), {}, {}, nullptr, true, true };
+		loaded.diagnostics = Validate(loaded.recipe);
+		ResolveForms(loaded.recipe, loaded.diagnostics);
+		for (const auto& d : loaded.diagnostics) {
+			if (d.severity == Severity::kError) {
+				logger::warn("transient recipe {} {}: {}", loaded.recipe.id, d.where, d.message);
+			}
+		}
+		g_loaded.push_back(std::move(loaded));
+		g_loaded.back().references = Studio::CountReferences(g_loaded.back().recipe);
+		g_recipes.push_back(g_loaded.back().recipe);
+		return true;
+	}
+
+	bool DropTransientRecipe(std::string_view a_id)
+	{
+		const auto it = std::ranges::find(g_loaded, a_id, [](const LoadedRecipe& l) { return std::string_view{ l.recipe.id }; });
+		if (it == g_loaded.end() || !it->transient) {
+			return false;
+		}
+		const auto index = static_cast<std::size_t>(it - g_loaded.begin());
+		g_loaded.erase(it);
+		if (index < g_recipes.size()) {
+			g_recipes.erase(g_recipes.begin() + static_cast<std::ptrdiff_t>(index));
+		}
+		return true;
+	}
+
+	bool IsTransient(std::string_view a_id) noexcept
+	{
+		const auto* loaded = Loaded(a_id);
+		return loaded && loaded->transient;
 	}
 
 	bool RevertRecipe(std::string_view a_id)

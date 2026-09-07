@@ -174,6 +174,45 @@ namespace WornEnchantmentPBR::Studio
 	{
 		std::string name;
 	};
+	// Masks as rows: a new one reads "1" (the whole piece); a rename
+	// repoints the layers' masks and sources and `@name` inside masks; a
+	// removal is refused while referenced.
+	struct AddMask
+	{
+		std::string name;
+	};
+	struct RenameMask
+	{
+		std::string from;
+		std::string to;
+	};
+	struct RemoveMask
+	{
+		std::string name;
+	};
+	// Sources as rows: a new one of a kind at its defaults; the kind set
+	// whole (a form rebuilds it from its texts); a rename repoints the
+	// layers' sources and `@name` inside masks; a removal is refused while
+	// referenced.
+	struct AddSource
+	{
+		std::string name;
+		SourceKind  kind = MaterialSource{};
+	};
+	struct SetSource
+	{
+		std::string name;
+		SourceKind  kind = MaterialSource{};
+	};
+	struct RenameSource
+	{
+		std::string from;
+		std::string to;
+	};
+	struct RemoveSource
+	{
+		std::string name;
+	};
 
 	// ------------------------------------------------------------- light
 
@@ -218,6 +257,12 @@ namespace WornEnchantmentPBR::Studio
 	{
 		std::size_t output = 0;
 		Bones       bones = SkinnedBones{};
+	};
+	// The light's settings back to the format's defaults; its selector and
+	// replace stay, since they place the output, not the light.
+	struct ResetLight
+	{
+		std::size_t output = 0;
 	};
 
 	// ------------------------------------------------------------- shell
@@ -276,15 +321,21 @@ namespace WornEnchantmentPBR::Studio
 	{
 		float value = 0.0f;  // 0..1; 0 is off
 	};
+	// Every shell setting back to the format's defaults (a PBR copy offers
+	// every slot, so no shell output is stranded).
+	struct ResetShell
+	{
+	};
 
 	using RecipeEdit = std::variant<
 		SetLayerSource, SetLayerCurve, SetLayerBlend, SetLayerOpacity, SetLayerColor, SetLayerMask, SetLayerChannels,
 		AddLayer, RemoveLayer, MoveLayer, ClearLayers,
 		AddOutput, RemoveOutput, SetScalar, SetColorScalar,
 		SetConstant, SetExpression, SetSignalCurve, SetCurve, SetMask,
-		AddSignal, AddCurve, RenameSignal, RenameCurve, RemoveSignal, RemoveCurve,
-		AddLight, SetLightParam, SetLightVector, SetLightShadow, SetLightBones,
-		SetShellParam, SetShellVector, SetShellPoint, SetShellMaterial, SetShellBlend, SetShellDepthBias, SetShellAlphaTest>;
+		AddSignal, AddCurve, RenameSignal, RenameCurve, RemoveSignal, RemoveCurve, AddMask, RenameMask, RemoveMask,
+		AddSource, SetSource, RenameSource, RemoveSource,
+		AddLight, SetLightParam, SetLightVector, SetLightShadow, SetLightBones, ResetLight,
+		SetShellParam, SetShellVector, SetShellPoint, SetShellMaterial, SetShellBlend, SetShellDepthBias, SetShellAlphaTest, ResetShell>;
 
 	// Applies one edit. The recipe is unchanged when the edit does not fit
 	// it (an index past the end, a name the recipe lacks, a slot the surface
@@ -303,6 +354,7 @@ namespace WornEnchantmentPBR::Studio
 	{
 		std::map<std::string, std::size_t> signals;
 		std::map<std::string, std::size_t> curves;
+		std::map<std::string, std::size_t> images;  // sources and masks: layer sources and masks, `@name` inside masks
 	};
 	[[nodiscard]] ReferenceCounts CountReferences(const Recipe& a_recipe);
 

@@ -4,14 +4,19 @@
 // would fill it, with no textures and no runtime verdicts.
 
 #include "Signals.h"
+#include "EditCheck.h"
+#include "Expression.h"
 #include "Forms.h"
 #include "History.h"
 #include "MenuState.h"
+#include "MaskStack.h"
+#include "Regions.h"
 #include "Studio.h"
 #include "test_support.h"
 
 #include <algorithm>
 #include <filesystem>
+#include <format>
 #include <string>
 
 using namespace WornEnchantmentPBR;
@@ -122,10 +127,10 @@ namespace
 		geometry.name = a_name;
 		geometry.shell = a_recipe.shell.material == ShellMaterial::kVanilla ? "vanilla shell" : "pbr copy shell";
 		for (const auto& source : a_recipe.sources) {
-			geometry.sources.push_back({ source.name, DescribeSource(source.kind), nullptr, 4, false, "" });
+			geometry.sources.push_back({ source.name, DescribeSource(source.kind), SourceType(source), nullptr, 4, false, "" });
 		}
 		for (const auto& mask : a_recipe.masks) {
-			geometry.masks.push_back({ mask.name, mask.text, nullptr, 5, false, "" });
+			geometry.masks.push_back({ mask.name, mask.text, ValueType::kScalar, nullptr, 5, false, "" });
 		}
 		for (std::size_t i = 0; i < a_recipe.outputs.size(); ++i) {
 			geometry.outputs.push_back(ToRow(i, a_recipe.outputs[i]));
@@ -150,6 +155,15 @@ namespace
 		row.geometries.push_back(GeometryOf(a_recipe, kGeometry));
 		row.lightRow = LightRowOf(a_recipe);
 		row.shellRow = ShellRowOf(a_recipe);
+		const auto counts = CountReferences(a_recipe);
+		for (const auto& mask : a_recipe.masks) {
+			const auto count = counts.images.find(mask.name);
+			row.maskRows.push_back({ mask.name, mask.text, count != counts.images.end() ? count->second : 0 });
+		}
+		for (const auto& source : a_recipe.sources) {
+			const auto count = counts.images.find(source.name);
+			row.sourceRows.push_back(SourceRowOf(source, count != counts.images.end() ? count->second : 0));
+		}
 		for (std::size_t i = 0; i < a_recipe.outputs.size(); ++i) {
 			if (Is<LightOutput>(a_recipe.outputs[i])) {
 				row.lightOutput = i;
@@ -226,7 +240,7 @@ namespace
 		Check(compose.widgetScale == 1.0f && compose.compositeSize == 160.0f && compose.cellSize == 40.0f && compose.rowThumbnail == 32.0f && compose.inspectorThumbnail == 96.0f, "compose at scale 1 with pictures sized for one column");
 		Check(compose.developerSignals && compose.stackSplit == 0.5f, "compose shows developer signals and splits the stack evenly");
 		const auto paint = LayoutFor(Mode::kPaint);
-		Check(paint.stack && paint.inspector && paint.signals && paint.regionEditor && !paint.designPanel, "paint adds the region editor and keeps the inspector and the signals");
+		Check(paint.stack && paint.inspector && !paint.signals && !paint.contextRows && paint.regionEditor && !paint.designPanel, "paint adds the region editor, drops the context rows and the resources pane (they would edit the paint recipe)");
 		const auto design = LayoutFor(Mode::kDesign);
 		Check(!design.stack && !design.inspector && !design.signals && !design.regionEditor && design.designPanel, "design shows the design panel only");
 		Check(design.widgetScale == 1.6f && design.compositeSize == 128.0f && !design.developerSignals, "design at scale 1.6, 128 px composite, developer signals off");
@@ -244,6 +258,36 @@ namespace
 		const auto* geometry = SelectedGeometry(recipe, none);
 		Check(geometry && geometry->name == kGeometry, "an unset geometry yields the first");
 		Check(SelectedOutput(geometry, none) == nullptr, "an unset output yields none");
+
+		// The snapshot request names the selected piece; none when nothing is selected.
+		Check(!RequestOf(none), "no piece selected: nothing to watch");
+		const auto request = RequestOf(SelectCanonical());
+		Check(request && request->actorID == kPlayer && request->armorID == kCuirass && !request->firstPerson, "the selected piece is what the tick builds full rows for");
+
+		// The layer selection is clamped to the picked stack after every dispatch.
+		{
+			Selection stale = SelectCanonical();
+			Pick(stale, Target::kShell, Slot::kEmissive, 99);
+			ClampSelection(stale, a_snapshot);
+			Check(!stale.layer, "a layer past the stack's end is dropped");
+			Selection fine = SelectCanonical();
+			Pick(fine, Target::kShell, Slot::kEmissive, 0);
+			ClampSelection(fine, a_snapshot);
+			Check(fine.layer == 0, "a layer within the stack stays");
+			Selection light = SelectCanonical();
+			Pick(light, Target::kLight, std::nullopt, 5);
+			ClampSelection(light, a_snapshot);
+			Check(light.layer == 5, "the light target has no stack to clamp against");
+			Selection empty = SelectCanonical();
+			Pick(empty, Target::kMaterial, Slot::kDiffuse, 0);
+			ClampSelection(empty, a_snapshot);
+			Check(!empty.layer, "a slot with no output drops the layer");
+			Selection light_rows = SelectCanonical();
+			Pick(light_rows, Target::kShell, Slot::kEmissive, 99);
+			Snapshot bare;
+			ClampSelection(light_rows, bare);
+			Check(light_rows.layer == 99, "an empty snapshot (light rows) leaves the selection alone");
+		}
 
 		auto chosen = SelectCanonical();
 		Pick(chosen, Target::kShell, Slot::kFuzz);
@@ -615,7 +659,7 @@ namespace
 			return;
 		}
 		const auto& strength = form[0];
-		Check(strength.name == "strength" && strength.kind == FieldKind::kScalar && strength.text == "@glowLevel" && strength.names == emissive->scalarSignals && !strength.allowEmpty && !strength.detail, "strength is a scalar field over the scalar signals");
+		Check(strength.name == "strength" && strength.kind == FieldKind::kScalar && strength.text == "@glowLevel" && strength.names == emissive->scalarSignals && !strength.allowEmpty && strength.detail == FieldDetail::kSignal, "strength is a scalar field over the scalar signals, opening its signal");
 		Check(strength.value.has_value(), "a scalar field shows its live value");
 		std::optional<RecipeEdit> edit;
 		const auto*               number = Bound<SetScalar>(strength, "2", edit);
@@ -708,6 +752,338 @@ namespace
 		const auto* point = Bound<SetShellPoint>(shellForm[10], "0, 0, 10", edit);
 		Check(point && point->field == ShellPoint::kScalePoint && point->value == Vec3{ 0.0f, 0.0f, 10.0f }, "the scale point binds three numbers");
 		Check(!Bound<SetShellPoint>(shellForm[10], "@inflate", edit), "a point takes no signal");
+	}
+
+	void Checks(const RecipeRow& a_recipe, const GeometryRow& a_geometry)
+	{
+		const auto names = NamesOf(a_recipe, a_geometry);
+		Check(names.signals.size() == 20 && names.curves.size() == 5 && names.sources.size() == 8 && names.masks.size() == 1, "the names carry every row");
+		Check(std::ranges::find(names.sources, std::pair{ std::string{ "fill" }, ValueType::kVec3 }) != names.sources.end() && std::ranges::find(names.sources, std::pair{ std::string{ "metallic" }, ValueType::kScalar }) != names.sources.end(), "sources carry their texel type");
+		Check(a_recipe.maskRows.size() == 1 && a_recipe.maskRows[0].name == "metal" && a_recipe.maskRows[0].text == "@metallic" && a_recipe.maskRows[0].references == 1, "the mask row carries its text and one reference (the fill layer)");
+
+		const auto ok = [](const std::optional<std::string>& a_problem) { return !a_problem.has_value(); };
+		FieldSpec scalar{ "opacity", FieldKind::kScalar, "", {}, false, std::nullopt, std::nullopt, {} };
+		for (const auto& [name, type] : names.signals) {
+			if (type == ValueType::kScalar) {
+				scalar.names.push_back(name);
+			}
+		}
+		Check(ok(CheckField(scalar, "0.5", names)) && ok(CheckField(scalar, "@glowLevel", names)), "a number and a listed signal pass a scalar field");
+		Check(!ok(CheckField(scalar, "@glowHue", names)) && !ok(CheckField(scalar, "@nothing", names)) && !ok(CheckField(scalar, "abc", names)) && !ok(CheckField(scalar, "", names)), "an unlisted signal, an unknown name, text and emptiness fail a scalar field");
+		FieldSpec colour{ "colour", FieldKind::kColor, "", { "glowHue", "edgeColor" }, true, std::nullopt, std::nullopt, {} };
+		Check(ok(CheckField(colour, "1, 0, 0", names)) && ok(CheckField(colour, "0.5", names)) && ok(CheckField(colour, "@glowHue", names)) && ok(CheckField(colour, "", names)), "numbers, a listed colour signal and emptiness pass a colour field");
+		Check(ok(CheckField(colour, "1, @glowLevel, 0", names)) && !ok(CheckField(colour, "1, @glowHue, 0", names)) && !ok(CheckField(colour, "1, @nothing, 0", names)), "a component reference must be a scalar signal");
+		FieldSpec mask{ "mask", FieldKind::kReference, "", { "metal" }, true, std::nullopt, std::nullopt, {} };
+		Check(ok(CheckField(mask, "@metal", names)) && !ok(CheckField(mask, "@fill", names)) && !ok(CheckField(mask, "metal", names)), "a reference field takes only its listed rows as @name");
+		FieldSpec expression{ "value", FieldKind::kExpression, "", {}, false, std::nullopt, std::nullopt, {} };
+		Check(ok(CheckField(expression, "@glowStrength * 2", names)) && !ok(CheckField(expression, "@fill * 2", names)) && !ok(CheckField(expression, "@nothing", names)) && !ok(CheckField(expression, "1 +", names)) && !ok(CheckField(expression, "x", names)), "an expression reads signals, parses, and has no x");
+		Check(ok(CheckField(expression, "@glowHue + @glowLevel", names)) && !ok(CheckField(expression, "@scroll + @glowHue", names)), "a scalar broadcasts against a colour; a vec2 against a vec3 fails");
+		FieldSpec maskText{ "mask", FieldKind::kMask, "", {}, false, std::nullopt, std::nullopt, {} };
+		Check(ok(CheckField(maskText, "@metallic * @glowLevel + @metal", names)) && !ok(CheckField(maskText, "@nothing", names)), "a mask reads sources, masks and signals");
+		FieldSpec curve{ "curve", FieldKind::kCurve, "", { "crisp", "flash" }, true, std::nullopt, std::nullopt, {} };
+		Check(ok(CheckField(curve, "@crisp", names)) && ok(CheckField(curve, "x * 2", names)) && ok(CheckField(curve, "", names)) && !ok(CheckField(curve, "@rest", names)) && !ok(CheckField(curve, "@nothing", names)), "a curve field takes a listed curve or an expression in x");
+		FieldSpec channels{ "channels", FieldKind::kChannels, "", {}, false, std::nullopt, std::nullopt, {} };
+		Check(ok(CheckField(channels, "rg", names)) && !ok(CheckField(channels, "xyz", names)), "channels parse");
+		FieldSpec choice{ "material", FieldKind::kChoice, "", { "pbrCopy", "vanilla" }, false, std::nullopt, std::nullopt, {} };
+		Check(ok(CheckField(choice, "vanilla", names)) && !ok(CheckField(choice, "glass", names)), "a choice is one of its names");
+		Check(ok(CheckSignalValue("1", names)) && ok(CheckSignalValue("1, 0, 0", names)) && ok(CheckSignalValue("@glowLevel * 2", names)) && !ok(CheckSignalValue("@fill", names)) && !ok(CheckSignalValue("", names)), "a signal value is a number, a colour or an expression over signals");
+		Check(ok(CheckCurveText("x * @glowStrength", names)) && !ok(CheckCurveText("@fill", names)) && !ok(CheckCurveText("", names)), "a curve text is an expression in x over signals");
+		Check(ok(CheckMaskText("@metallic > 0.5", names)) && !ok(CheckMaskText("x", names)) && !ok(CheckMaskText("", names)), "a mask text is per texel and has no x");
+	}
+
+	void SourceForms(const RecipeRow& a_recipe)
+	{
+		const auto names = SignalNamesOf(a_recipe);
+		Check(names.vec2.size() == 3 && names.vec2[0] == "scroll" && names.vec2[2] == "shimmerScroll" && names.triggers.size() == 2 && names.triggers[0] == "struck", "signal names carry vec2 signals (scroll and the expressions over it) and triggers");
+		Check(a_recipe.sourceRows.size() == 8, "a source row per source");
+		if (a_recipe.sourceRows.size() != 8) {
+			return;
+		}
+		const auto& fill = a_recipe.sourceRows[0];
+		Check(fill.name == "fill" && fill.kind == "image" && fill.path == "Effects\\DarkSwirls.dds" && fill.channel == "rgb" && fill.space == "tiled" && fill.scroll == "@scroll" && fill.tile == "3, 3" && fill.mirrorU == "off" && fill.transpose == "off" && fill.mip == "0" && fill.references == 1, "the fill row reads the image");
+		const auto& sheen = a_recipe.sourceRows[1];
+		Check(sheen.channel == "luma" && sheen.mirrorV == "on", "luma and a mirror read back");
+		const auto& relief = a_recipe.sourceRows[4];
+		Check(relief.kind == "material" && relief.material == "relief", "a material row");
+		const auto& ring = a_recipe.sourceRows[6];
+		Check(ring.kind == "ripple" && ring.trigger == "@struck" && ring.speed == "90" && ring.width == "8" && ring.decay == "1.2" && ring.shape == "ring", "a ripple row");
+
+		// Every row reads back as the source it came from.
+		const auto canonical = Canonical();
+		if (canonical) {
+			for (std::size_t i = 0; i < a_recipe.sourceRows.size(); ++i) {
+				const auto kind = SourceKindOf(a_recipe.sourceRows[i]);
+				Check(kind && *kind == canonical->sources[i].kind, std::format("source row '{}' reads back as its source", a_recipe.sourceRows[i].name));
+			}
+		}
+		SourceRow bad = fill;
+		bad.channel = "purple";
+		Check(!SourceKindOf(bad), "an unknown channel reads back as nothing");
+		bad = fill;
+		bad.scroll = "1, 2, 3";
+		Check(!SourceKindOf(bad), "a three-part scroll reads back as nothing");
+
+		std::optional<RecipeEdit> edit;
+		const auto                imageForm = SourceForm(fill, names);
+		Check(imageForm.size() == 10 && imageForm[0].name == "kind" && imageForm[1].name == "path" && imageForm[4].name == "scroll" && imageForm[4].kind == FieldKind::kVec2 && imageForm[4].names == names.vec2 && imageForm[4].allowEmpty && imageForm[6].kind == FieldKind::kToggle, "the image form's fields");
+		const auto* setKind = Bound<SetSource>(imageForm[0], "ripple", edit);
+		Check(setKind && setKind->name == "fill" && Get<RippleSource>(setKind->kind), "the kind field starts another kind at its defaults");
+		const auto* setPath = Bound<SetSource>(imageForm[1], "Effects\\Other.dds", edit);
+		const auto* image = setPath ? Get<ImageSource>(setPath->kind) : nullptr;
+		Check(image && image->path == "Effects\\Other.dds" && image->channel == ImageChannel::kRgb && image->tile && Get<std::array<Param, 2>>(*image->tile), "a path change keeps the rest of the image");
+		const auto* setScroll = Bound<SetSource>(imageForm[4], "", edit);
+		Check(setScroll && Get<ImageSource>(setScroll->kind) && !Get<ImageSource>(setScroll->kind)->scroll, "an empty scroll clears it");
+		Check(!Bound<SetSource>(imageForm[2], "purple", edit) && !edit, "a bad channel is refused");
+		const auto* setMirror = Bound<SetSource>(imageForm[6], "on", edit);
+		Check(setMirror && Get<ImageSource>(setMirror->kind)->mirror[0], "a toggle sets the mirror");
+
+		const auto rippleForm = SourceForm(ring, names);
+		Check(rippleForm.size() == 6 && rippleForm[1].name == "trigger" && rippleForm[1].kind == FieldKind::kReference && rippleForm[1].names == names.triggers && rippleForm[5].name == "shape", "the ripple form's fields");
+		const auto* setSpeed = Bound<SetSource>(rippleForm[2], "@glowLevel", edit);
+		Check(setSpeed && Get<RippleSource>(setSpeed->kind) && Get<Ref>(Get<RippleSource>(setSpeed->kind)->speed), "a ripple's speed binds a signal");
+
+		SourceRow bake;
+		bake.name = "b";
+		bake.kind = "bake";
+		bake.bake = "partition";
+		bake.partition = "hands";
+		const auto bakeForm = SourceForm(bake, names);
+		Check(bakeForm.size() == 3 && bakeForm[2].name == "partition" && bakeForm[2].kind == FieldKind::kChoice && bakeForm[2].names.size() == 11 && bakeForm[2].names[2] == "body", "a partition bake offers the named biped slots");
+		const auto* setSlot = Bound<SetSource>(bakeForm[2], "body", edit);
+		Check(setSlot && Get<BakeSource>(setSlot->kind) && Get<PartitionBake>(Get<BakeSource>(setSlot->kind)->bake) && Get<PartitionBake>(Get<BakeSource>(setSlot->kind)->bake)->slot == 32, "a slot name sets the partition");
+		bake.bake = "boneWeight";
+		bake.bones = "NPC L Hand [LHnd], NPC R Hand [RHnd]";
+		const auto boneForm = SourceForm(bake, names);
+		Check(boneForm.size() == 3 && boneForm[2].name == "bones" && boneForm[2].kind == FieldKind::kText, "a boneWeight bake takes names");
+		const auto* setBones = Bound<SetSource>(boneForm[2], "NPC Head [Head]", edit);
+		Check(setBones && Get<BoneWeightBake>(Get<BakeSource>(setBones->kind)->bake)->bones == std::vector<std::string>{ "NPC Head [Head]" }, "bones split on commas");
+	}
+
+	void Creators(const RecipeRow& a_recipe, const GeometryRow& a_geometry)
+	{
+		auto selection = SelectCanonical();
+		Pick(selection, Target::kShell, Slot::kEmissive, 0);
+		const auto inspector = BuildInspector(a_recipe, a_geometry, selection);
+		if (!inspector) {
+			Check(false, "the fill layer inspects for its creators");
+			return;
+		}
+		const auto form = InspectorForm(*inspector);
+		Check(form[0].creators.size() == 7 && form[0].creators[0] == "new image" && form[0].creators[6] == "new mask" && form[1].creators == std::vector<std::string>{ "new curve" } && form[2].creators.size() == 3 && form[4].creators == std::vector<std::string>{ "new mask" } && form[5].creators.empty(), "creators per field");
+		const auto image = form[0].create("new image");
+		Check(image.size() == 2 && Get<AddSource>(image[0]) && Get<AddSource>(image[0])->name == "image" && Get<ImageSource>(Get<AddSource>(image[0])->kind) && Get<SetLayerSource>(image[1]) && Get<Ref>(Get<SetLayerSource>(image[1])->source) && Get<Ref>(Get<SetLayerSource>(image[1])->source)->name == "image", "new image adds an image and binds the layer to it");
+		const auto ripple = form[0].create("new ripple");
+		Check(ripple.size() == 2 && Get<AddSource>(ripple[0]) && Get<AddSource>(ripple[0])->name == "ripple", "new ripple names the row after its kind");
+		const auto mask = form[4].create("new mask");
+		Check(mask.size() == 2 && Get<AddMask>(mask[0]) && Get<AddMask>(mask[0])->name == "mask" && Get<SetLayerMask>(mask[1]) && Get<SetLayerMask>(mask[1])->mask && Get<SetLayerMask>(mask[1])->mask->name == "mask", "new mask adds a mask and binds the layer to it");
+		const auto curve = form[1].create("new curve");
+		Check(curve.size() == 2 && Get<AddCurve>(curve[0]) && Get<AddCurve>(curve[0])->name == "curve" && Get<SetLayerCurve>(curve[1]) && Get<SetLayerCurve>(curve[1])->curve && Get<SetLayerCurve>(curve[1])->curve->text == "@curve", "new curve adds a curve and binds the layer to it");
+		const auto promoted = form[2].create("promote to signal");
+		Check(promoted.size() == 3 && Get<AddSignal>(promoted[0]) && Get<AddSignal>(promoted[0])->name == "opacity" && Get<SetConstant>(promoted[1]) && Get<float>(Get<SetConstant>(promoted[1])->value) && *Get<float>(Get<SetConstant>(promoted[1])->value) == 1.0f && Get<SetLayerOpacity>(promoted[2]) && Get<Ref>(Get<SetLayerOpacity>(promoted[2])->opacity), "promote makes a constant of the literal and binds it");
+		const auto colourPromote = form[3].create("promote to signal");
+		Check(colourPromote.empty(), "a colour that is already a signal has nothing to promote");
+		const auto expression = form[3].create("new expression");
+		Check(expression.size() == 3 && Get<AddSignal>(expression[0]) && Get<AddSignal>(expression[0])->name == "signal" && Get<SetExpression>(expression[1]) && Get<SetExpression>(expression[1])->text == "[1, 1, 1]" && Get<SetLayerColor>(expression[2]), "a new colour expression starts white and binds");
+		const auto constant = form[2].create("new constant");
+		Check(constant.size() == 2 && Get<AddSignal>(constant[0]) && Get<SetLayerOpacity>(constant[1]), "a new scalar constant is the format's 0 and binds");
+	}
+
+	MeshData SkinnedMesh()
+	{
+		MeshData      mesh;
+		MeshPartition body;
+		body.slot = 32;
+		body.boneNames = { "NPC Spine2 [Spn2]", "NPC L UpperArm [LUar]" };
+		for (int i = 0; i < 4; ++i) {
+			MeshVertex v;
+			v.bones = { 0, 1, 0, 0 };
+			v.weights = { i < 2 ? 1.0f : 0.5f, i < 2 ? 0.0f : 0.5f, 0.0f, 0.0f };
+			body.vertices.push_back(v);
+		}
+		body.triangles = { { 0, 1, 2 }, { 0, 2, 3 } };
+		mesh.partitions.push_back(body);
+		MeshPartition hands;
+		hands.slot = 33;
+		hands.boneNames = { "NPC L Hand [LHnd]" };
+		MeshVertex hv;
+		hv.bones = { 0, 0, 0, 0 };
+		hv.weights = { 1.0f, 0.0f, 0.0f, 0.0f };
+		hands.vertices = { hv, hv, hv, hv };
+		hands.triangles = { { 0, 1, 2 } };
+		mesh.partitions.push_back(hands);
+		MeshPartition unskinned;
+		unskinned.slot = MeshPartition::kNoSlot;
+		mesh.partitions.push_back(unskinned);
+		return mesh;
+	}
+
+	void Regions(const RecipeRow& a_recipe, const GeometryRow& a_geometry)
+	{
+		const auto mesh = SkinnedMesh();
+		const auto partitions = PartitionsOf(mesh);
+		Check(partitions.size() == 2 && partitions[0].slot == 32 && partitions[0].name == "body" && partitions[0].triangles == 2 && partitions[1].slot == 33 && partitions[1].name == "hands", "partitions by slot with their names and triangle counts; the unskinned part is skipped");
+		const auto bones = BonesOf(mesh);
+		Check(bones.size() == 3 && bones[0].name == "NPC L Hand [LHnd]" && bones[0].coverage == 0.5f && bones[1].name == "NPC Spine2 [Spn2]" && bones[1].coverage == 0.375f && bones[2].coverage == 0.125f, "bones by coverage, the share of all vertices each moves");
+
+		const auto file = test::ReadFile(std::filesystem::path{ WEPBR_FIXTURES_DIR } / ".." / ".." / "presets" / "regions.json");
+		const auto presets = ParsePresets(file);
+		Check(presets.has_value(), presets ? "the shipped preset file parses" : "the shipped preset file parses: " + presets.error());
+		if (!presets) {
+			test::Skip("the region preset checks need presets/regions.json");
+			return;
+		}
+		Check(presets->where.size() == 13 && presets->what.size() == 8, "the file ships thirteen where presets and eight what presets");
+		Check(presets->where[0].name == "leftPauldron" && presets->where[0].partition == 32 && presets->where[0].bones.size() == 2, "the first where preset is the left pauldron on the body");
+		Check(presets->what[0].name == "leather" && presets->what[0].sources.size() == 2 && Get<MaterialSource>(presets->what[0].sources[0].second), "the first what preset is leather over two material channels");
+		Check(PlainBoneName(*presets, "NPC L Hand [LHnd]") == "left hand" && PlainBoneName(*presets, "Unknown") == "Unknown" && PlainPartitionName(*presets, 33) == "hands" && PlainPartitionName(*presets, 61) == "61", "plain names, with the engine's name as the fallback");
+		Check(!ParsePresets("nonsense") && !ParsePresets("{ \"where\": [ { \"name\": \"x\" } ] }") && !ParsePresets("{ \"what\": [ { \"name\": \"x\" } ] }"), "garbage, a where preset without a partition or bones, and a what preset without an expression are refused");
+		const auto unparseable = ParsePresets(R"({ "what": [ { "name": "bad", "expression": "@a *" } ] })");
+		Check(!unparseable && unparseable.error().starts_with("what preset bad: expression:"), "a what preset whose expression does not parse is refused, naming the preset");
+		const auto overlong = ParsePresets(std::format(R"({{ "what": [ {{ "name": "long", "expression": "{}" }} ] }})", std::string(kMaxExpressionLength + 1, '1')));
+		Check(!overlong && overlong.error() == std::format("what preset long: expression longer than {} characters", kMaxExpressionLength), "a what preset expression past the length cap is refused");
+		std::string boneList;
+		for (std::size_t i = 0; i <= kMaxPresetBones; ++i) {
+			boneList += std::format("{}\"bone{}\"", i == 0 ? "" : ", ", i);
+		}
+		const auto manyBones = ParsePresets(std::format(R"({{ "where": [ {{ "name": "many", "bones": [ {} ] }} ] }})", boneList));
+		Check(!manyBones && manyBones.error() == std::format("where preset many: more than {} bones", kMaxPresetBones), "a where preset with more bones than the cap is refused, naming the cap");
+		std::string sourceList;
+		for (std::size_t i = 0; i <= kMaxPresetSources; ++i) {
+			sourceList += std::format("{}\"s{}\": {{ \"uv\": \"u\" }}", i == 0 ? "" : ", ", i);
+		}
+		const auto manySources = ParsePresets(std::format(R"({{ "what": [ {{ "name": "wide", "expression": "1", "sources": {{ {} }} }} ] }})", sourceList));
+		Check(!manySources && manySources.error() == std::format("what preset wide: more than {} sources", kMaxPresetSources), "a what preset with more sources than the cap is refused, naming the cap");
+		std::string presetList;
+		for (std::size_t i = 0; i <= kMaxPresets; ++i) {
+			presetList += std::format("{}{{ \"name\": \"p{}\", \"partition\": 32 }}", i == 0 ? "" : ", ", i);
+		}
+		const auto manyPresets = ParsePresets(std::format(R"({{ "where": [ {} ] }})", presetList));
+		Check(!manyPresets && manyPresets.error() == std::format("more than {} where presets", kMaxPresets), "a list past the preset cap is refused, naming the cap");
+
+		GeometryRow geometry = a_geometry;
+		Check(Unresolvable(presets->where[0], geometry) == "the mesh has not been read yet", "a where preset waits for the mesh");
+		geometry.meshRead = true;
+		geometry.partitions = partitions;
+		geometry.bones = bones;
+		Check(Unresolvable(presets->where[2], geometry) == std::nullopt, "chest resolves on a body skinned to the spine");
+		Check(Unresolvable(presets->where[0], geometry) && Unresolvable(presets->where[0], geometry)->find("NPC L Clavicle") != std::string::npos, "a preset naming a bone the shape lacks says which");
+		Check(Unresolvable(presets->where[6], geometry) && Unresolvable(presets->where[6], geometry)->find("head") != std::string::npos, "a preset on a partition the shape lacks says which");
+		Check(Unresolvable(presets->what[0], geometry) == std::nullopt && Unresolvable(presets->what[0], a_geometry) == std::nullopt, "a what preset resolves anywhere");
+
+		// Materialising: sources reused by definition, the scratch mask made and set.
+		std::vector<std::pair<std::string, SourceKind>> existing;
+		std::vector<std::string>                        taken;
+		for (const auto& source : a_recipe.sourceRows) {
+			if (const auto kind = SourceKindOf(source)) {
+				existing.emplace_back(source.name, *kind);
+			}
+			taken.push_back(source.name);
+		}
+		for (const auto& mask : a_recipe.masks) {
+			taken.push_back(mask);
+		}
+		const Existing have{ existing, taken };
+		const auto     chest = MaterialiseTerm(presets->where[2], have);
+		Check(chest.edits.size() == 2 && Get<AddSource>(chest.edits[0]) && Get<AddSource>(chest.edits[0])->name == "partition" && Get<BakeSource>(Get<AddSource>(chest.edits[0])->kind) && Get<AddSource>(chest.edits[1]) && Get<AddSource>(chest.edits[1])->name == "bones", "a where preset adds its two bakes");
+		Check(chest.expression == "@partition * @bones", "a where preset reads as the product of its bakes");
+		// metallic exists as a material source in the canonical recipe; roughness does not.
+		const auto leather = MaterialiseTerm(presets->what[0], have);
+		Check(leather.edits.size() == 1 && Get<AddSource>(leather.edits[0]) && Get<AddSource>(leather.edits[0])->name == "roughness", "a what preset reuses the metallic source and adds roughness");
+		Check(leather.expression == "(1 - @metallic) * smoothstep(0.35, 0.6, @roughness)", "a what preset reads its expression over the recipe's names");
+		Existing withRoughness = have;
+		withRoughness.sources.emplace_back("roughness", MaterialSource{ MaterialChannel::kRoughness });
+		withRoughness.taken.push_back("roughness");
+		Check(MaterialiseTerm(presets->what[0], withRoughness).edits.empty(), "a preset whose sources all exist adds nothing");
+		Existing partitionTaken = have;
+		partitionTaken.taken.push_back("partition");
+		const auto second = MaterialiseTerm(presets->where[2], partitionTaken);
+		Check(second.edits.size() == 2 && Get<AddSource>(second.edits[0]) && Get<AddSource>(second.edits[0])->name == "partition2" && second.expression == "@partition2 * @bones", "a taken name is made unique and the expression reads it");
+
+		// The scratch mask follows the stack: added when absent, set when the text differs, "0" when nothing shows.
+		const std::vector stackTerms{ Term{ TermOp::kSet, "@a", "a" }, Term{ TermOp::kAnd, "@b", "b" } };
+		const auto        fresh = ScratchEdits(stackTerms, std::nullopt, {}, ScratchState{});
+		Check(fresh.size() == 2 && Get<AddMask>(fresh[0]) && Get<SetMask>(fresh[1]) && Get<SetMask>(fresh[1])->text == "(@a) * (@b)", "an absent scratch is added and set");
+		Check(ScratchEdits(stackTerms, std::nullopt, {}, ScratchState{ true, "(@a) * (@b)" }).empty(), "a scratch that already holds the text needs no edit");
+		const auto muted = ScratchEdits(stackTerms, std::nullopt, { 0, 1 }, ScratchState{ true, "(@a) * (@b)" });
+		Check(muted.size() == 1 && Get<SetMask>(muted[0]) && Get<SetMask>(muted[0])->text == "0", "everything muted writes 0");
+
+		// The paint recipe: a clone with one masked emissive output; Keep
+		// copies the region and the sources it reads back into the active
+		// recipe, reusing what is there.
+		const auto active = Canonical();
+		Check(active.has_value(), "the canonical recipe parses for the paint tests");
+		if (!active) {
+			test::Skip("the paint and keep checks need the canonical recipe");
+			return;
+		}
+		RecipeKey key;
+		key.kind = KeyKind::kArmor;
+		key.form = FormRef::From("0x12E49~Skyrim.esm");
+		Recipe paint = PaintRecipe(*active, key, Surface::kShell);
+		Check(paint.id == kPaintRecipe && paint.keys.size() == 1 && paint.keys[0].kind == KeyKind::kArmor && paint.priority == kPaintPriority && paint.variants.empty(), "the paint recipe is keyed alone at the paint priority");
+		Check(paint.signals == active->signals && paint.sources == active->sources && paint.shell == active->shell, "signals, sources and the shell settings are cloned");
+		Check(paint.masks.size() == active->masks.size() + 1 && paint.FindMask(kScratchMask) && paint.FindMask(kScratchMask)->text == "0", "the scratch mask is added, empty");
+		const auto* output = paint.outputs.size() == 1 ? Get<MaterialOutput>(paint.outputs[0]) : nullptr;
+		Check(output && output->surface == Surface::kShell && output->slot == Slot::kEmissive && output->stack.size() == 1 && output->stack[0].mask && output->stack[0].mask->name == kScratchMask, "one emissive output on the chosen surface, its layer masked by the scratch");
+		Check(Validate(paint).empty() || std::ranges::none_of(Validate(paint), [](const Diagnostic& d) { return d.severity == Severity::kError; }), "the paint recipe validates");
+
+		// A leftPauldron round: the where preset's bakes are new to the active recipe, the metallic twin is not.
+		auto term = MaterialiseTerm(presets->where[0], have);
+		for (const auto& edit : term.edits) {
+			Check(!Apply(paint, edit), "a paint source edit applies");
+		}
+		auto leatherTerm = MaterialiseTerm(presets->what[0], have);
+		Check(!Apply(paint, SetMask{ std::string{ kScratchMask }, std::format("({}) * ({})", term.expression, leatherTerm.expression) }), "the scratch takes the built expression");
+		for (const auto& edit : leatherTerm.edits) {
+			Check(!Apply(paint, edit), "a paint what-source edit applies");
+		}
+		const auto keep = KeepEdits(paint, *active, "chestLeather");
+		std::size_t adds = 0;
+		for (const auto& e : keep) {
+			adds += Get<AddSource>(e) ? 1 : 0;
+		}
+		Check(adds == 3 && Get<AddMask>(keep[keep.size() - 2]) && Get<SetMask>(keep.back()) && Get<SetMask>(keep.back())->mask == "chestLeather", "keep adds partition, bones and roughness, then the mask");
+		Recipe kept = *active;
+		for (const auto& e : keep) {
+			Check(!Apply(kept, e), "a keep edit applies to the active recipe");
+		}
+		Check(kept.FindMask("chestLeather") && kept.FindMask("chestLeather")->text == paint.FindMask(kScratchMask)->text && kept.FindSource("partition") && kept.FindSource("roughness") && !kept.FindMask(kScratchMask), "the kept mask reads as painted and the scratch never reaches the active recipe");
+		const auto again = KeepEdits(paint, kept, "chestLeather");
+		Check(again.size() == 1 && Get<SetMask>(again[0]), "keeping again over the same recipe only sets the mask");
+		Recipe renamed = *active;
+		Check(!Apply(renamed, AddSource{ "partition", BakeSource{ PartitionBake{ 30 } } }), "a same-named source of another definition");
+		const auto clash = KeepEdits(paint, renamed, "region");
+		const auto* clashMask = Get<SetMask>(clash.back());
+		Check(clashMask && clashMask->text.find("@partition2") != std::string::npos && std::ranges::any_of(clash, [](const RecipeEdit& e) { return Get<AddSource>(e) && Get<AddSource>(e)->name == "partition2"; }), "a taken name is made unique and the text repointed");
+		Check(KeepEdits(*active, *active, "x").empty(), "no scratch, nothing to keep");
+		Recipe broken = paint;
+		for (auto& mask : broken.masks) {
+			if (mask.name == kScratchMask) {
+				mask.text = "@partition *";
+			}
+		}
+		Check(KeepEdits(broken, *active, "x").empty(), "unparseable scratch text keeps nothing");
+		Recipe overMask = paint;
+		for (auto& mask : overMask.masks) {
+			if (mask.name == kScratchMask) {
+				mask.text = "@metal";
+			}
+		}
+		const auto viaMask = KeepEdits(overMask, *active, "onlyMetal");
+		Check(active->FindMask("metal") && viaMask.size() == 2 && Get<AddMask>(viaMask[0]) && Get<SetMask>(viaMask[1]) && Get<SetMask>(viaMask[1])->text == "@metal", "a scratch reading a mask of the active recipe adds no source, only the mask");
+
+		Existing paintExisting;
+		for (const auto& source : paint.sources) {
+			paintExisting.sources.emplace_back(source.name, source.kind);
+			paintExisting.taken.push_back(source.name);
+		}
+		const auto terms = TermsOfMask(paint.FindMask(kScratchMask)->text, *presets, paintExisting);
+		Check(terms && terms->size() == 2 && (*terms)[0].label == "leftPauldron" && (*terms)[1].label == "leather", "a kept expression comes back as its labelled terms");
+		Check(ProposedRegionName(*terms, "") == "leftPauldronLeather" && ProposedRegionName(*terms, "metal") == "metal" && ProposedRegionName({}, "") == "region", "the proposed name");
+		const std::vector<Term> unlabelled{ Term{ TermOp::kSet, "@a + 1", "expression" }, Term{ TermOp::kAnd, "0.5", "expression" } };
+		Check(ProposedRegionName(unlabelled, "") == "region", "terms that are all expressions propose 'region'");
+		Check(TermLabel("@", *presets, paintExisting) == "expression", "a bare '@' labels as an expression");
+		Check(TermLabel("@nothingKnown", *presets, paintExisting) == "nothingKnown", "a lone reference labels by its name even when nothing defines it");
 	}
 
 	void SignalLists(const RecipeRow& a_recipe)
@@ -834,6 +1210,61 @@ namespace
 		Reduce(state, PickRecipe{ "other" });
 		Check(state.selection.recipeID == "other" && state.selection.slot == Slot::kHeight, "a recipe pick keeps the cell");
 
+		// The region stack: terms land selected, the first leads, indices follow moves and removals.
+		Reduce(state, SetMode{ Mode::kPaint });
+		Check(state.resource == ResourceTab::kMasks && !state.layout.contextRows, "paint opens the masks tab and drops the context rows");
+		Reduce(state, AddTerm{ Term{ TermOp::kAnd, "@a", "a" } });
+		Check(state.region.terms.size() == 1 && state.region.terms[0].op == TermOp::kSet && state.region.selected == 0 && state.region.dirty, "the first term is set, selected and dirty");
+		state.region.dirty = false;
+		Reduce(state, AddTerm{ Term{ TermOp::kSet, "@b", "b" } });
+		Reduce(state, AddTerm{ Term{ TermOp::kOr, "@c", "c" } });
+		Check(state.region.terms.size() == 3 && state.region.terms[1].op == TermOp::kAnd && state.region.terms[2].op == TermOp::kOr && state.region.selected == 2, "later terms take and unless they say otherwise");
+		Reduce(state, SetTermOp{ 0, TermOp::kNot });
+		Check(state.region.terms[0].op == TermOp::kSet, "the first term's op cannot change");
+		Reduce(state, SetTermOp{ 1, TermOp::kNot });
+		Check(state.region.terms[1].op == TermOp::kNot, "a later term's op changes");
+		Reduce(state, SetTermText{ 1, "@b * 2" });
+		Check(state.region.terms[1].text == "@b * 2" && state.region.terms[1].label == "expression", "typed text makes the term an expression");
+		Reduce(state, SoloTerm{ 1, true });
+		Reduce(state, MuteTerm{ 2, true });
+		Check(state.region.solo == 1 && state.region.muted.contains(2), "solo and mute are stack state");
+		Reduce(state, MoveTerm{ 2, 0 });
+		Check(state.region.terms[0].text == "@c" && state.region.terms[0].op == TermOp::kSet && state.region.terms[1].op == TermOp::kAnd && state.region.solo == 2 && state.region.muted.contains(0) && state.region.selected == 0, "a move re-leads the stack and carries solo, mute and selection along");
+		Reduce(state, RemoveTerm{ 0 });
+		Check(state.region.terms.size() == 2 && state.region.terms[0].text == "@a" && state.region.terms[0].op == TermOp::kSet && state.region.solo == 1 && state.region.muted.empty() && !state.region.selected, "a removal closes up and drops what pointed at the row");
+		Reduce(state, SoloTerm{ 1, false });
+		Check(!state.region.solo, "solo off");
+		Reduce(state, LoadRegion{ { Term{ TermOp::kAnd, "@m", "m" }, Term{ TermOp::kOr, "@n", "n" } }, "metal" });
+		Check(state.region.terms.size() == 2 && state.region.terms[0].op == TermOp::kSet && state.region.editing == "metal" && state.region.selected == 0 && state.region.dirty, "a loaded region replaces the stack and names its mask");
+		Reduce(state, PickTerm{ 1 });
+		Check(state.region.selected == 1, "a term pick");
+		Reduce(state, PickRecipe{ "other-recipe" });
+		Check(state.region.terms.empty() && state.region.editing.empty(), "another recipe starts the stack over");
+		Reduce(state, PickRecipe{ kRecipeID });
+		Reduce(state, AddTerm{ Term{ TermOp::kSet, "@a", "a" } });
+		Reduce(state, ClearRegion{});
+		Check(state.region.terms.empty() && !state.region.dirty, "clear empties the stack");
+		for (std::size_t i = 0; i < kMaxTerms + 2; ++i) {
+			Reduce(state, AddTerm{ Term{ TermOp::kAnd, "@a", "a" } });
+		}
+		Check(state.region.terms.size() == kMaxTerms, "the stack stops at the cap");
+		Reduce(state, ClearRegion{});
+		Reduce(state, SetTermKind{ TermKind::kShape });
+		Check(state.region.addKind == TermKind::kShape && TermKindName(TermKind::kShape) == "shape" && ParseTermKind("masks") == TermKind::kMasks && !ParseTermKind("x"), "the add kind");
+		RecipeKey armor;
+		armor.kind = KeyKind::kArmor;
+		Reduce(state, BeginPaint{ kRecipeID, armor, Surface::kShell });
+		Check(state.paint && state.paint->recipe == kRecipeID && state.paint->surface == Surface::kShell, "a paint session names the active recipe and its surface");
+		Reduce(state, SetPaintSurface{ Surface::kMaterial });
+		Check(state.paint && state.paint->surface == Surface::kMaterial, "the preview surface changes");
+		Reduce(state, AddTerm{ Term{ TermOp::kSet, "@a", "a" } });
+		Reduce(state, KeepPaint{ kRecipeID, "chest" });
+		Check(!state.paint && state.region.terms.empty(), "keep ends the session and empties the stack");
+		Reduce(state, BeginPaint{ kRecipeID, armor, Surface::kMaterial });
+		Reduce(state, EndPaint{});
+		Check(!state.paint, "end drops the session");
+		Reduce(state, SetMode{ Mode::kCompose });
+
 		// Edits move the layer selection with the rows.
 		Reduce(state, PickCell{ Surface::kShell, Slot::kEmissive, 1 });
 		Reduce(state, EditRecipe{ kRecipeID, AddLayer{ 0, DefaultLayer(), 3 } });
@@ -855,12 +1286,21 @@ namespace
 		Check(state.selection.target == Target::kMaterial && state.selection.slot == Slot::kCoat, "an added output is picked");
 		Reduce(state, EditRecipe{ kRecipeID, SetConstant{ "glowStrength", 1.0f } });
 		Check(state.selection.slot == Slot::kCoat, "a value edit changes no selection");
-		Reduce(state, CreateRecipe{ "fresh", kCuirass });
+		Reduce(state, CreateRecipe{ "fresh", RecipeKey{} });
 		Check(state.selection.recipeID == "fresh", "a created recipe is picked");
 		Reduce(state, SoloRecipe{ "fresh", true });
 		Reduce(state, SetFreeze{ true, 1.0f });
 		Reduce(state, Undo{ "fresh" });
 		Check(state.selection.recipeID == "fresh" && state.selection.slot == Slot::kCoat, "view and manager intents change no selection");
+
+		// Paint edge cases: a surface without a session, a piece pick during one.
+		Reduce(state, SetPaintSurface{ Surface::kShell });
+		Check(!state.paint, "a surface pick with no session opens none");
+		Reduce(state, BeginPaint{ kRecipeID, armor, Surface::kShell });
+		Reduce(state, AddTerm{ Term{ TermOp::kSet, "@a", "a" } });
+		Reduce(state, PickPiece{ kPlayer, kCuirass, false });
+		Check(state.paint && state.paint->recipe == kRecipeID && state.region.terms.empty(), "a piece pick during a session keeps the session and starts the stack over");
+		Reduce(state, EndPaint{});
 	}
 
 	void Histories()
@@ -920,6 +1360,7 @@ int main()
 	GeometryLabels();
 	const auto recipe = Canonical();
 	if (!recipe) {
+		test::Skip("the snapshot checks need schema/example-magicka.json");
 		return test::Finish("studio");
 	}
 	const auto snapshot = SnapshotOf(*recipe);
@@ -938,5 +1379,9 @@ int main()
 	SignalLists(row);
 	SignalForms(row);
 	PanelForms(row);
+	Checks(row, geometry);
+	SourceForms(row);
+	Creators(row, geometry);
+	Regions(row, geometry);
 	return test::Finish("studio");
 }

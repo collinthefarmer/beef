@@ -3,6 +3,9 @@
 #include "Expression.h"
 #include "Mesh.h"
 #include "PCH.h"
+#include "TextureSize.h"
+#include <algorithm>
+#include <array>
 #include <atomic>
 #include <memory>
 #include <mutex>
@@ -134,14 +137,22 @@ namespace WornEnchantmentPBR
 			std::uint32_t texture = 0;  // into textures, when isTexture
 			Vec3          value{};      // broadcast, otherwise
 		};
+		// Fixed storage, filled per tick without allocating: the compositor
+		// refuses a mask at preparation when it reads more names, images or
+		// curves than these arrays hold, so the counts never exceed the sizes.
+		// A count above the size is a bug in the caller and RenderProgram
+		// refuses the pass rather than read past the array.
 		struct ProgramPass
 		{
-			std::span<const Program::Node> code;  // at most kMaxExpressionOps
-			std::vector<ProgramRef>        refs;  // one per Program::References(), at most kProgramRefs
-			std::vector<ProgramTexture>    textures;  // at most kProgramTextures
-			std::vector<const Lookup*>     curves;    // one per Program::Curves(), at most kProgramCurves
-			float                          time = 0.0f;
-			bool                           vectorResult = false;  // false: the scalar result fills rgb
+			std::span<const Program::Node>              code;  // at most kMaxExpressionOps
+			std::array<ProgramRef, kProgramRefs>        refs{};  // one per Program::References()
+			std::uint32_t                               refCount = 0;
+			std::array<ProgramTexture, kProgramTextures> textures{};
+			std::uint32_t                               textureCount = 0;
+			std::array<const Lookup*, kProgramCurves>   curves{};  // one per Program::Curves()
+			std::uint32_t                               curveCount = 0;
+			float                                       time = 0.0f;
+			bool                                        vectorResult = false;  // false: the scalar result fills rgb
 		};
 
 		// The ripple pass: fronts expanding over the surface from each live
@@ -152,15 +163,18 @@ namespace WornEnchantmentPBR
 			Vec3  origin;  // bind-pose units, the same frame as the position bake
 			float age = 0.0f;  // seconds since the firing
 		};
+		// Fixed storage as ProgramPass: the compositor keeps the first
+		// kRippleFirings live firings, so firingCount never exceeds the array.
 		struct RipplePass
 		{
-			RE::NiSourceTexture*      positions = nullptr;  // the position bake
-			float                     frame = 128.0f;      // the bake's half-range in units
-			std::vector<RippleFiring> firings;             // at most kRippleFirings
-			float                     speed = 100.0f;      // units per second
-			float                     width = 10.0f;       // units
-			float                     decay = 1.0f;        // per second of age
-			bool                      disc = false;        // false: ring
+			RE::NiSourceTexture*                      positions = nullptr;  // the position bake
+			float                                     frame = 128.0f;      // the bake's half-range in units
+			std::array<RippleFiring, kRippleFirings>  firings{};
+			std::uint32_t                             firingCount = 0;
+			float                                     speed = 100.0f;      // units per second
+			float                                     width = 10.0f;       // units
+			float                                     decay = 1.0f;        // per second of age
+			bool                                      disc = false;        // false: ring
 		};
 
 		// The compositor's generic pass: result = blend(previous, source x colour)
@@ -214,8 +228,9 @@ namespace WornEnchantmentPBR
 		bool Init();
 		[[nodiscard]] bool Available() const noexcept { return available_; }
 
-		// A fresh or pooled target of a_size x a_size, or null on failure.
-		std::shared_ptr<Target> Acquire(std::uint32_t a_size);
+		// A fresh or pooled target of a_size x a_size, or null on failure. A
+		// pooled target keeps its last content: every pass writes every texel.
+		std::shared_ptr<Target> Acquire(TextureSize a_size);
 
 		// Rewrites the target's mip chain from a_source with the given params.
 		bool Render(Target& a_target, RE::NiSourceTexture* a_source, const LayerParams& a_params);
@@ -268,7 +283,7 @@ namespace WornEnchantmentPBR
 
 		// One scratch target per size, shared by every stack for its
 		// intermediate layers; a stack owns only the target its result lands in.
-		[[nodiscard]] Target* Scratch(std::uint32_t a_size);
+		[[nodiscard]] Target* Scratch(TextureSize a_size);
 
 		// Drops pooled targets; live shared_ptrs stay valid.
 		void Clear();
@@ -277,7 +292,7 @@ namespace WornEnchantmentPBR
 		struct SavedState;
 
 		bool CompileShaders();
-		bool CreateTarget(Target& a_target, std::uint32_t a_size);
+		bool CreateTarget(Target& a_target, TextureSize a_size);
 		RE::NiPointer<RE::NiSourceTexture> LoadShell();
 		void Recycle(Target* a_target);
 

@@ -3,6 +3,7 @@
 #include "Expression.h"
 #include "MeshReader.h"
 #include "RecipeStore.h"
+#include "Settings.h"
 
 #include <cctype>
 #include <array>
@@ -117,14 +118,17 @@ namespace WornEnchantmentPBR
 
 		// Many PBR sets ship a displacement map that is a real texture and
 		// entirely black (NOTES 46): flat when its mean sits at either end.
-		bool FlatDisplacement(const MaterialInputs& a_material)
+		// A readback, so once per material in MaterialInputs::From.
+		bool MeasureFlatDisplacement(const RE::NiPointer<RE::NiSourceTexture>& a_displacement)
 		{
-			if (!RealTexture(a_material.displacement)) {
+			if (!RealTexture(a_displacement)) {
 				return true;
 			}
-			const float mean = TextureLab::GetSingleton()->MeanChannel(a_material.displacement.get(), 0);
+			const float mean = TextureLab::GetSingleton()->MeanChannel(a_displacement.get(), 0);
 			return !(mean > 0.02f && mean < 0.98f);
 		}
+
+		std::optional<MaterialChannel> SingleChannelOf(const Recipe& a_recipe, const Mask& a_mask);
 
 		MaterialChannelPick PickMaterialChannel(MaterialChannel a_channel, const MaterialInputs& a_material)
 		{
@@ -145,7 +149,7 @@ namespace WornEnchantmentPBR
 				return { a_material.displacement, 0, {} };
 			case MaterialChannel::kRelief:
 				// A flat height map carries no relief; the occlusion channel does.
-				if (RealTexture(a_material.displacement) && !FlatDisplacement(a_material)) {
+				if (!a_material.flatDisplacement) {
 					return { a_material.displacement, 0, {} };
 				}
 				return { a_material.rmaos, 2, {} };
@@ -163,6 +167,7 @@ namespace WornEnchantmentPBR
 		in.normal = a_material.normalTexture;
 		in.rmaos = a_material.rmaosTexture;
 		in.displacement = a_material.displacementTexture;
+		in.flatDisplacement = MeasureFlatDisplacement(in.displacement);
 		return in;
 	}
 
@@ -200,12 +205,12 @@ namespace WornEnchantmentPBR
 		return result;
 	}
 
-	std::optional<PreparedSource> Compositor::PrepareSource(const Recipe& a_recipe, const Ref& a_ref, const GeometryInputs& a_inputs, std::uint32_t a_size, std::vector<Diagnostic>& a_out, const std::string& a_where)
+	std::optional<PreparedSource> Compositor::PrepareSource(const Recipe& a_recipe, const Ref& a_ref, const GeometryInputs& a_inputs, TextureSize a_size, std::vector<Diagnostic>& a_out, const std::string& a_where, std::uint32_t a_depth)
 	{
 		const auto& a_material = a_inputs.material;
 		if (a_recipe.FindMask(a_ref.name)) {
 			// A mask read as a source: its rendered target, by mesh UV.
-			auto rendered = PrepareRenderedMask(a_recipe, a_ref.name, a_inputs, a_size, 0);
+			auto rendered = PrepareRenderedMask(a_recipe, a_ref.name, a_inputs, a_size, a_depth);
 			PreparedSource prepared;
 			if (!rendered || !rendered->Problem().empty()) {
 				prepared.problem = rendered ? rendered->Problem() : "mask could not be prepared";
@@ -258,7 +263,7 @@ namespace WornEnchantmentPBR
 				}
 			},
 			[&](const BakeSource& bake) {
-				auto target = PrepareBake(*source, bake, a_inputs, a_size);
+				auto target = PrepareBake(bake, a_inputs, a_size);
 				if (!target) {
 					prepared.problem = target.error();
 					return;
@@ -268,7 +273,7 @@ namespace WornEnchantmentPBR
 				prepared.sampling.meshSpace = true;
 			},
 			[&](const DistanceSource& distance) {
-				auto target = PrepareDistance(*source, distance, a_inputs, a_size);
+				auto target = PrepareDistance(distance, a_inputs, a_size);
 				if (!target) {
 					prepared.problem = target.error();
 					return;
@@ -290,12 +295,12 @@ namespace WornEnchantmentPBR
 				prepared.ripple = std::move(*rendered);
 			},
 			[&](const UvSource& uv) {
-				const auto mesh = MeshOf(a_inputs);
-				if (!mesh) {
-					prepared.problem = mesh.error();
+				const auto entry = MeshOf(a_inputs.geometry.get());
+				if (!entry) {
+					prepared.problem = entry.error();
 					return;
 				}
-				auto target = BakeInto(a_inputs, std::format("{}@{}", source->name, a_size), a_size, [&] { return BuildUvBake(**mesh, uv.axis); });
+				auto target = BakeInto(**entry, UvKeyOf(uv.axis, a_size), a_size, [&] { return BuildUvBake(*(*entry)->mesh, uv.axis); });
 				if (!target) {
 					prepared.problem = target.error();
 					return;
@@ -312,7 +317,7 @@ namespace WornEnchantmentPBR
 
 	// A mask that is exactly one material channel reads the map directly;
 	// any other expression renders through the interpreter pass.
-	std::optional<PreparedMask> Compositor::PrepareMask(const Recipe& a_recipe, const Ref& a_ref, const GeometryInputs& a_inputs, std::uint32_t a_size, std::vector<Diagnostic>& a_out, const std::string& a_where)
+	std::optional<PreparedMask> Compositor::PrepareMask(const Recipe& a_recipe, const Ref& a_ref, const GeometryInputs& a_inputs, TextureSize a_size, std::vector<Diagnostic>& a_out, const std::string& a_where)
 	{
 		const auto* mask = a_recipe.FindMask(a_ref.name);
 		if (!mask) {
@@ -321,11 +326,8 @@ namespace WornEnchantmentPBR
 		}
 		PreparedMask prepared;
 		prepared.animated = IsAnimated(a_recipe, *mask);
-		const auto program = Program::Parse(mask->text);
-		const auto* source = program && program->OpCount() == 1 && program->References().size() == 1 ? a_recipe.FindSource(program->References()[0]) : nullptr;
-		const auto* channel = source ? Get<MaterialSource>(source->kind) : nullptr;
-		if (channel) {
-			auto pick = PickMaterialChannel(channel->channel, a_inputs.material);
+		if (const auto channel = SingleChannelOf(a_recipe, *mask)) {
+			auto pick = PickMaterialChannel(*channel, a_inputs.material);
 			if (!pick.problem.empty() || !RealTexture(pick.texture)) {
 				prepared.problem = pick.problem.empty() ? DescribeTexture(pick.texture) + "; evaluates as white" : pick.problem;
 				a_out.push_back({ Severity::kWarning, a_where, std::format("mask '@{}': {}", a_ref.name, prepared.problem) });
@@ -389,7 +391,7 @@ namespace WornEnchantmentPBR
 			return neutralHeight_;
 		}
 		auto* lab = TextureLab::GetSingleton();
-		auto  target = lab->Acquire(64);
+		auto  target = lab->Acquire(TextureSize::Clamp(64));
 		if (!target) {
 			return nullptr;
 		}
@@ -405,7 +407,20 @@ namespace WornEnchantmentPBR
 		return neutralHeight_;
 	}
 
-	std::unique_ptr<RenderedStack> Compositor::Prepare(const Recipe& a_recipe, const MaterialOutput& a_output, const GeometryInputs& a_inputs, std::uint32_t a_size, std::uint32_t a_maxSize)
+	namespace
+	{
+		// The size a stack that edits an existing map renders at: the map's
+		// own resolution, never below a_size and never above a_maxSize (or
+		// a_size when a_maxSize is the smaller).
+		TextureSize SizeOverBase(TextureSize a_size, TextureSize a_maxSize, std::uint32_t a_largestSide)
+		{
+			const std::uint32_t floor = a_size.Pixels();
+			const std::uint32_t ceiling = std::max(a_maxSize.Pixels(), floor);
+			return TextureSize::Clamp(std::clamp(a_largestSide, floor, ceiling));
+		}
+	}
+
+	std::unique_ptr<RenderedStack> Compositor::Prepare(const Recipe& a_recipe, const MaterialOutput& a_output, const GeometryInputs& a_inputs, TextureSize a_size, TextureSize a_maxSize)
 	{
 		const auto& a_material = a_inputs.material;
 		auto* lab = TextureLab::GetSingleton();
@@ -413,8 +428,8 @@ namespace WornEnchantmentPBR
 			return nullptr;
 		}
 		auto stack = std::make_unique<RenderedStack>();
-		stack->size_ = std::clamp<std::uint32_t>(a_size, 64, 4096);
-		if (a_output.slot == Slot::kHeight && FlatDisplacement(a_material)) {
+		stack->size_ = a_size;
+		if (a_output.slot == Slot::kHeight && a_material.flatDisplacement) {
 			// A flat displacement map would put every texel outside a mask at
 			// (0 - 0.5) * scale; the neutral base leaves them where they are.
 			stack->neutral_ = NeutralHeight();
@@ -427,9 +442,10 @@ namespace WornEnchantmentPBR
 			stack->base_ = base;
 			const auto extent = TextureLab::ExtentOf(base.get());
 			const auto largest = extent ? std::max(extent->width, extent->height) : 0u;
-			stack->size_ = std::clamp<std::uint32_t>(largest, stack->size_, std::clamp<std::uint32_t>(a_maxSize, stack->size_, 4096));
+			stack->size_ = SizeOverBase(a_size, a_maxSize, largest);
 		}
 		stack->animated_ = IsAnimated(a_recipe, Output{ a_output });
+		const TextureSize size = stack->size_;
 		std::size_t index = 0;
 		for (const auto& layer : a_output.stack) {
 			const auto    where = std::format("layer {}", index);
@@ -437,7 +453,7 @@ namespace WornEnchantmentPBR
 			prepared.layer = &layer;
 			prepared.index = index++;
 			if (const auto* ref = Get<Ref>(layer.source)) {
-				prepared.source = PrepareSource(a_recipe, *ref, a_inputs, stack->size_, stack->diagnostics_, where);
+				prepared.source = PrepareSource(a_recipe, *ref, a_inputs, size, stack->diagnostics_, where);
 				if (!prepared.source || !prepared.source->problem.empty()) {
 					continue;
 				}
@@ -446,13 +462,13 @@ namespace WornEnchantmentPBR
 				prepared.curve = BakeCurve(a_recipe, *layer.curve, prepared.source, stack->diagnostics_, where);
 			}
 			if (layer.mask) {
-				prepared.mask = PrepareMask(a_recipe, *layer.mask, a_inputs, stack->size_, stack->diagnostics_, where);
+				prepared.mask = PrepareMask(a_recipe, *layer.mask, a_inputs, size, stack->diagnostics_, where);
 			}
 			stack->layers_.push_back(std::move(prepared));
 		}
 		if (!stack->layers_.empty()) {
-			stack->target_ = lab->Acquire(stack->size_);
-			if (!stack->target_ || !lab->Scratch(stack->size_)) {
+			stack->target_ = lab->Acquire(size);
+			if (!stack->target_ || !lab->Scratch(size)) {
 				stack->diagnostics_.push_back({ Severity::kError, "stack", "no render targets available" });
 				stack->layers_.clear();
 				stack->target_.reset();
@@ -463,29 +479,53 @@ namespace WornEnchantmentPBR
 
 	namespace
 	{
-		std::shared_ptr<TextureLab::Target> CachedBake(const GeometryInputs& a_inputs, std::string_view a_name);
-
-		// A rendered mask of that name at any size, when the geometry has one.
-		std::shared_ptr<RenderedMask> CachedMask(const GeometryInputs& a_inputs, std::string_view a_name)
+		// The largest-size entry of a cache keyed "<definition>@<size>"
+		// (Mesh.h; masks and ripples use their name as the definition); null
+		// when the definition has none. The largest is the one a stack read.
+		template <class T>
+		std::shared_ptr<T> LargestOf(const std::unordered_map<std::string, std::shared_ptr<T>>& a_cache, std::string_view a_definition)
 		{
-			if (!a_inputs.masks) {
-				return nullptr;
-			}
-			const auto prefix = std::string{ a_name } + "@";
-			for (const auto& [key, mask] : *a_inputs.masks) {
-				if (key.starts_with(prefix)) {
-					return mask;
+			std::shared_ptr<T> best;
+			std::uint32_t      bestSize = 0;
+			for (const auto& [key, value] : a_cache) {
+				if (KeyDefinition(key) != a_definition) {
+					continue;
+				}
+				const auto size = KeySize(key).value_or(0);
+				if (!best || size > bestSize) {
+					best = value;
+					bestSize = size;
 				}
 			}
-			return nullptr;
+			return best;
+		}
+
+		// A rendered mask of that name, when the geometry has one.
+		std::shared_ptr<RenderedMask> CachedMask(const GeometryInputs& a_inputs, std::string_view a_name)
+		{
+			return a_inputs.masks ? LargestOf(*a_inputs.masks, a_name) : nullptr;
+		}
+
+		// A bake of that definition from the mesh entry, when it has one.
+		std::shared_ptr<TextureLab::Target> CachedBake(const MeshEntry* a_entry, std::string_view a_definition)
+		{
+			return a_entry ? LargestOf(a_entry->bakes, a_definition) : nullptr;
+		}
+
+		// The mask that is exactly one material channel, which a layer reads
+		// from the map itself and nothing renders.
+		std::optional<MaterialChannel> SingleChannelOf(const Recipe& a_recipe, const Mask& a_mask)
+		{
+			const auto  program = Program::Parse(a_mask.text);
+			const auto* source = program && program->OpCount() == 1 && program->References().size() == 1 ? a_recipe.FindSource(program->References()[0]) : nullptr;
+			const auto* channel = source ? Get<MaterialSource>(source->kind) : nullptr;
+			return channel ? std::optional{ channel->channel } : std::nullopt;
 		}
 	}
 
-	std::optional<PreparedSource> Compositor::InspectSource(const Recipe& a_recipe, std::string_view a_name, const GeometryInputs& a_inputs)
+	std::optional<PreparedSource> Compositor::InspectSource(const Recipe& a_recipe, std::string_view a_name, const GeometryInputs& a_inputs) const
 	{
-		std::vector<Diagnostic> ignored;
 		if (a_recipe.FindMask(a_name)) {
-			// Inspection never prepares a mask; it shows what an output rendered.
 			PreparedSource prepared;
 			if (auto rendered = CachedMask(a_inputs, a_name)) {
 				prepared.texture = RE::NiPointer<RE::NiSourceTexture>{ rendered->Texture() };
@@ -495,45 +535,87 @@ namespace WornEnchantmentPBR
 				prepared.problem = rendered->Problem();
 				prepared.rendered = std::move(rendered);
 			} else {
-				prepared.problem = "not read by any output on this geometry";
+				prepared.problem = kNotRendered;
 			}
 			return prepared;
 		}
-		if (const auto* source = a_recipe.FindSource(a_name); source && (Is<BakeSource>(source->kind) || Is<DistanceSource>(source->kind) || Is<RippleSource>(source->kind) || Is<UvSource>(source->kind))) {
-			// Inspection never bakes or renders; it shows what an output made.
-			PreparedSource prepared;
+		const auto* source = a_recipe.FindSource(a_name);
+		if (!source) {
+			return std::nullopt;
+		}
+		const auto     entry = CachedMesh(a_inputs.geometry.get());
+		PreparedSource prepared;
+		prepared.animated = IsAnimated(a_recipe, *source);
+		// A bake that could not be made because the mesh could not be read
+		// says so; anything else absent was never read by a stack.
+		const auto notRendered = [&] {
+			prepared.problem = entry && !entry->mesh && !entry->problem.empty() ? "the mesh could not be read: " + entry->problem : std::string{ kNotRendered };
+		};
+		const auto baked = [&](const std::string& a_definition, std::uint32_t a_channel) {
 			prepared.sampling.meshSpace = true;
-			const auto notRead = [&] {
-				prepared.problem = a_inputs.mesh && !a_inputs.mesh->problem.empty() ? "the mesh could not be read: " + a_inputs.mesh->problem : "not read by any output on this geometry";
-			};
-			if (const auto* ripple = Get<RippleSource>(source->kind)) {
-				(void)ripple;
-				const auto prefix = std::string{ a_name } + "@";
-				for (const auto& [key, rendered] : *a_inputs.ripples) {
-					if (key.starts_with(prefix)) {
-						prepared.texture = RE::NiPointer<RE::NiSourceTexture>{ rendered->Texture() };
-						prepared.animated = true;
-						prepared.ripple = rendered;
-					}
-				}
-				if (!prepared.texture) {
-					notRead();
-				}
-				return prepared;
-			}
-			if (auto target = CachedBake(a_inputs, a_name)) {
+			if (const auto target = CachedBake(entry.get(), a_definition)) {
 				prepared.texture = RE::NiPointer<RE::NiSourceTexture>{ target->Texture() };
-				const auto* bake = Get<BakeSource>(source->kind);
-				prepared.sampling.channel = bake && (Is<PositionBake>(bake->bake) || Is<LocalPositionBake>(bake->bake)) ? 4u : 0u;
+				prepared.sampling.channel = a_channel;
 			} else {
-				notRead();
+				notRendered();
 			}
-			return prepared;
-		}
-		return PrepareSource(a_recipe, Ref{ std::string{ a_name } }, a_inputs, 0, ignored, "inspect");
+		};
+		Match(
+			source->kind,
+			[&](const ImageSource& image) {
+				const auto loaded = images_.find(Lower(image.path));
+				if (loaded == images_.end()) {
+					prepared.problem = kNotRendered;
+					return;
+				}
+				prepared.texture = loaded->second;
+				if (!prepared.texture) {
+					prepared.problem = std::format("image '{}' did not load", image.path);
+				}
+				prepared.sampling.channel = ChannelIndex(image.channel);
+				prepared.sampling.meshSpace = image.space == ImageSpace::kMesh;
+				prepared.sampling.transform.mirrorU = image.mirror[0];
+				prepared.sampling.transform.mirrorV = image.mirror[1];
+				prepared.sampling.transform.transpose = image.transpose;
+				prepared.sampling.transform.sourceMip = image.mip;
+				prepared.scroll = image.scroll;
+				prepared.tile = image.tile;
+			},
+			[&](const MaterialSource& material) {
+				// The material's own maps, resolved from the record taken at apply.
+				auto pick = PickMaterialChannel(material.channel, a_inputs.material);
+				prepared.texture = pick.texture;
+				prepared.sampling.channel = pick.channel;
+				prepared.sampling.meshSpace = true;
+				prepared.problem = pick.problem;
+				if (prepared.problem.empty() && !RealTexture(prepared.texture)) {
+					prepared.problem = DescribeTexture(prepared.texture);
+				}
+			},
+			[&](const BakeSource& bake) {
+				baked(DefinitionOf(bake.bake), Is<PositionBake>(bake.bake) || Is<LocalPositionBake>(bake.bake) ? 4u : 0u);
+			},
+			[&](const DistanceSource& distance) {
+				baked(DefinitionOf(distance), 0u);
+			},
+			[&](const UvSource& uv) {
+				baked(DefinitionOf(uv.axis), 0u);
+			},
+			[&](const RippleSource&) {
+				prepared.sampling.meshSpace = true;
+				const auto rendered = a_inputs.ripples ? LargestOf(*a_inputs.ripples, a_name) : nullptr;
+				if (!rendered) {
+					notRendered();
+					return;
+				}
+				prepared.texture = RE::NiPointer<RE::NiSourceTexture>{ rendered->Texture() };
+				prepared.animated = true;
+				prepared.ripple = rendered;
+			});
+		return prepared;
 	}
 
-	std::optional<PreparedMask> Compositor::InspectMask(const Recipe& a_recipe, std::string_view a_name, const GeometryInputs& a_inputs)
+	std::optional<PreparedMask> Compositor::InspectMask(const Recipe& a_recipe, std::string_view a_name, const GeometryInputs& a_inputs) const
 	{
 		const auto* mask = a_recipe.FindMask(a_name);
 		if (!mask) {
@@ -548,9 +630,18 @@ namespace WornEnchantmentPBR
 			prepared.rendered = std::move(rendered);
 			return prepared;
 		}
-		// A one-channel mask reads the map directly and has nothing rendered.
-		std::vector<Diagnostic> ignored;
-		return PrepareMask(a_recipe, Ref{ std::string{ a_name } }, a_inputs, 0, ignored, "inspect");
+		if (const auto channel = SingleChannelOf(a_recipe, *mask)) {
+			auto pick = PickMaterialChannel(*channel, a_inputs.material);
+			if (!pick.problem.empty() || !RealTexture(pick.texture)) {
+				prepared.problem = pick.problem.empty() ? DescribeTexture(pick.texture) + "; evaluates as white" : pick.problem;
+				return prepared;
+			}
+			prepared.texture = pick.texture;
+			prepared.channel = pick.channel;
+			return prepared;
+		}
+		prepared.problem = kNotRendered;
+		return prepared;
 	}
 
 	// ---------------------------------------------------------- rendered masks
@@ -560,14 +651,14 @@ namespace WornEnchantmentPBR
 		return target_ ? target_->Texture() : nullptr;
 	}
 
-	std::shared_ptr<RenderedMask> Compositor::PrepareRenderedMask(const Recipe& a_recipe, std::string_view a_name, const GeometryInputs& a_inputs, std::uint32_t a_size, std::uint32_t a_depth)
+	std::shared_ptr<RenderedMask> Compositor::PrepareRenderedMask(const Recipe& a_recipe, std::string_view a_name, const GeometryInputs& a_inputs, TextureSize a_size, std::uint32_t a_depth)
 	{
 		constexpr std::uint32_t kMaxMaskDepth = 8;
 		const auto* mask = a_recipe.FindMask(a_name);
 		if (!mask || !a_inputs.masks) {
 			return nullptr;
 		}
-		const auto key = std::format("{}@{}", a_name, a_size);
+		const auto key = std::format("{}@{}", a_name, a_size.Pixels());
 		if (const auto it = a_inputs.masks->find(key); it != a_inputs.masks->end()) {
 			return it->second;
 		}
@@ -597,7 +688,7 @@ namespace WornEnchantmentPBR
 				if (r.textures_.size() >= TextureLab::kProgramTextures) {
 					return fail(std::format("reads more than {} images", TextureLab::kProgramTextures));
 				}
-				auto source = PrepareSource(a_recipe, Ref{ name }, a_inputs, a_size, ignored, "mask");
+				auto source = PrepareSource(a_recipe, Ref{ name }, a_inputs, a_size, ignored, "mask", a_depth + 1);
 				if (!source || !source->problem.empty()) {
 					return fail(std::format("'@{}': {}", name, source ? source->problem : "not found"));
 				}
@@ -662,7 +753,7 @@ namespace WornEnchantmentPBR
 		if (!TextureLab::GetSingleton()->InterpreterAvailable()) {
 			return fail("the interpreter shader did not compile (see the log at start)");
 		}
-		r.target_ = TextureLab::GetSingleton()->Acquire(std::clamp<std::uint32_t>(a_size, 64, 4096));
+		r.target_ = TextureLab::GetSingleton()->Acquire(a_size);
 		if (!r.target_) {
 			return fail("no render target available");
 		}
@@ -672,39 +763,30 @@ namespace WornEnchantmentPBR
 
 	// ------------------------------------------------------------------ bakes
 
-	std::expected<std::shared_ptr<const MeshData>, std::string> Compositor::MeshOf(const GeometryInputs& a_inputs)
+	std::expected<std::shared_ptr<MeshEntry>, std::string> Compositor::MeshOf(RE::BSGeometry* a_geometry)
 	{
-		if (!a_inputs.mesh) {
-			return std::unexpected("no geometry to read");
-		}
-		auto& slot = *a_inputs.mesh;
-		if (!slot.tried) {
-			slot.tried = true;
-			auto mesh = ReadMesh(a_inputs.geometry.get());
-			if (mesh) {
-				slot.data = *mesh;
-				std::size_t vertices = 0, triangles = 0;
-				for (const auto& p : slot.data->partitions) {
-					vertices += p.vertices.size();
-					triangles += p.triangles.size();
-				}
-				logger::info("mesh '{}': {} partition(s), {} vertices, {} triangles, {}", a_inputs.geometry ? a_inputs.geometry->name.c_str() : "?", slot.data->partitions.size(), vertices, triangles, slot.data->origin);
-			} else {
-				slot.problem = mesh.error();
-			}
-		}
-		if (!slot.data) {
-			return std::unexpected(std::format("the mesh could not be read: {}", slot.problem));
-		}
-		return slot.data;
+		return meshes_.Get(a_geometry, nowMS_, GetSettings().verboseLogging);
 	}
 
-	std::expected<std::shared_ptr<TextureLab::Target>, std::string> Compositor::BakeInto(const GeometryInputs& a_inputs, const std::string& a_key, std::uint32_t a_size, const std::function<BakeBuffers()>& a_buffers)
+	std::shared_ptr<const MeshEntry> Compositor::CachedMesh(RE::BSGeometry* a_geometry) const noexcept
 	{
-		if (!a_inputs.bakes) {
-			return std::unexpected("no geometry to bake from");
-		}
-		if (const auto it = a_inputs.bakes->find(a_key); it != a_inputs.bakes->end()) {
+		return meshes_.Cached(a_geometry);
+	}
+
+	void Compositor::SweepMeshes(std::uint32_t a_nowMS, std::span<RE::BSGeometry* const> a_bound)
+	{
+		lastSweepMS_ = a_nowMS;
+		meshes_.Sweep(a_nowMS, kMeshMaxAgeMS, a_bound, GetSettings().verboseLogging);
+	}
+
+	void Compositor::ClearMeshes() noexcept
+	{
+		meshes_.Clear();
+	}
+
+	std::expected<std::shared_ptr<TextureLab::Target>, std::string> Compositor::BakeInto(MeshEntry& a_entry, const std::string& a_key, TextureSize a_size, const std::function<BakeBuffers()>& a_buffers)
+	{
+		if (const auto it = a_entry.bakes.find(a_key); it != a_entry.bakes.end()) {
 			return it->second;
 		}
 		auto* lab = TextureLab::GetSingleton();
@@ -715,32 +797,38 @@ namespace WornEnchantmentPBR
 		if (!buffers.problem.empty()) {
 			return std::unexpected(buffers.problem);
 		}
-		auto target = lab->Acquire(std::clamp<std::uint32_t>(a_size, 64, 4096));
+		auto target = lab->Acquire(a_size);
 		if (!target) {
 			return std::unexpected("no render target available");
 		}
 		if (!lab->BakeMesh(*target, buffers)) {
 			return std::unexpected("the bake pass failed");
 		}
-		(*a_inputs.bakes)[a_key] = target;
+		if (GetSettings().verboseLogging) {
+			logger::info("bake '{}' on '{}' at {} px", KeyDefinition(a_key), a_entry.geometry && a_entry.geometry->name.c_str() ? a_entry.geometry->name.c_str() : "?", a_size.Pixels());
+		}
+		a_entry.bakes[a_key] = target;
 		return target;
 	}
 
-	std::expected<std::shared_ptr<TextureLab::Target>, std::string> Compositor::PrepareBake(const Source& a_source, const BakeSource& a_bake, const GeometryInputs& a_inputs, std::uint32_t a_size)
+	std::expected<std::shared_ptr<TextureLab::Target>, std::string> Compositor::PrepareBake(const BakeSource& a_bake, const GeometryInputs& a_inputs, TextureSize a_size)
 	{
-		const auto mesh = MeshOf(a_inputs);
-		if (!mesh) {
-			return std::unexpected(mesh.error());
+		const auto entry = MeshOf(a_inputs.geometry.get());
+		if (!entry) {
+			return std::unexpected(entry.error());
 		}
-		return BakeInto(a_inputs, std::format("{}@{}", a_source.name, a_size), a_size, [&] { return BuildBake(**mesh, a_bake.bake); });
+		return BakeInto(**entry, BakeKeyOf(a_bake.bake, a_size), a_size, [&] { return BuildBake(*(*entry)->mesh, a_bake.bake); });
 	}
 
-	std::expected<std::shared_ptr<TextureLab::Target>, std::string> Compositor::PrepareDistance(const Source& a_source, const DistanceSource& a_distance, const GeometryInputs& a_inputs, std::uint32_t a_size)
+	std::expected<std::shared_ptr<TextureLab::Target>, std::string> Compositor::PrepareDistance(const DistanceSource& a_distance, const GeometryInputs& a_inputs, TextureSize a_size)
 	{
-		const auto mesh = MeshOf(a_inputs);
-		if (!mesh) {
-			return std::unexpected(mesh.error());
+		const auto entry = MeshOf(a_inputs.geometry.get());
+		if (!entry) {
+			return std::unexpected(entry.error());
 		}
+		// The key names the node, not its position: a node resolves to one
+		// bind-pose point per geometry, and the snapshot can then find the
+		// bake without looking the node up.
 		std::optional<Vec3> from = Match(
 			a_distance.from,
 			[&](const Vec3& point) { return std::optional{ point }; },
@@ -748,7 +836,7 @@ namespace WornEnchantmentPBR
 		if (!from) {
 			return std::unexpected(std::format("node '{}' was not found on the wearer", Get<std::string>(a_distance.from) ? *Get<std::string>(a_distance.from) : ""));
 		}
-		return BakeInto(a_inputs, std::format("{}@{}", a_source.name, a_size), a_size, [&] { return BuildDistanceBake(**mesh, *from); });
+		return BakeInto(**entry, DistanceKeyOf(a_distance, a_size), a_size, [&] { return BuildDistanceBake(*(*entry)->mesh, *from); });
 	}
 
 	// ---------------------------------------------------------------- ripples
@@ -758,12 +846,12 @@ namespace WornEnchantmentPBR
 		return target_ ? target_->Texture() : nullptr;
 	}
 
-	std::expected<std::shared_ptr<RenderedRipple>, std::string> Compositor::PrepareRipple(const Source& a_source, const RippleSource& a_ripple, const GeometryInputs& a_inputs, std::uint32_t a_size)
+	std::expected<std::shared_ptr<RenderedRipple>, std::string> Compositor::PrepareRipple(const Source& a_source, const RippleSource& a_ripple, const GeometryInputs& a_inputs, TextureSize a_size)
 	{
 		if (!a_inputs.ripples) {
 			return std::unexpected("no geometry to ripple over");
 		}
-		const auto key = std::format("{}@{}", a_source.name, a_size);
+		const auto key = std::format("{}@{}", a_source.name, a_size.Pixels());
 		if (const auto it = a_inputs.ripples->find(key); it != a_inputs.ripples->end()) {
 			return it->second;
 		}
@@ -771,24 +859,24 @@ namespace WornEnchantmentPBR
 		if (!lab->Init() || !lab->RippleAvailable()) {
 			return std::unexpected("the ripple pass is unavailable (see the log at start)");
 		}
-		const auto mesh = MeshOf(a_inputs);
-		if (!mesh) {
-			return std::unexpected(mesh.error());
+		const auto entry = MeshOf(a_inputs.geometry.get());
+		if (!entry) {
+			return std::unexpected(entry.error());
 		}
-		// The position bake every ripple on this geometry shares; its key cannot
-		// collide with a source name because names never contain '@'.
-		auto positions = BakeInto(a_inputs, std::format("@position@{}", a_size), a_size, [&] { return BuildBake(**mesh, PositionBake{}); });
+		// The position bake every ripple on this geometry shares with any
+		// position source, under the same definition key.
+		auto positions = BakeInto(**entry, BakeKeyOf(PositionBake{}, a_size), a_size, [&] { return BuildBake(*(*entry)->mesh, PositionBake{}); });
 		if (!positions) {
 			return std::unexpected(positions.error());
 		}
 		auto ripple = std::make_shared<RenderedRipple>();
-		ripple->target_ = lab->Acquire(std::clamp<std::uint32_t>(a_size, 64, 4096));
+		ripple->target_ = lab->Acquire(a_size);
 		if (!ripple->target_) {
 			return std::unexpected("no render target available");
 		}
 		ripple->positions_ = *positions;
 		ripple->source_ = a_ripple;
-		ripple->fallbackOrigin_ = (*mesh)->center;
+		ripple->fallbackOrigin_ = (*entry)->mesh->center;
 		ripple->geometry_ = a_inputs.geometry;
 		ripple->root_ = a_inputs.root;
 		// A pooled target keeps its last content; a pass with no firings paints it black.
@@ -813,7 +901,7 @@ namespace WornEnchantmentPBR
 		pass.decay = a_signals.Resolve(a_ripple.source_.decay);
 		pass.disc = a_ripple.source_.shape == RippleShape::kDisc;
 		for (const auto& firing : a_signals.Firings(a_ripple.source_.trigger.name)) {
-			if (pass.firings.size() >= TextureLab::kRippleFirings) {
+			if (pass.firingCount >= pass.firings.size()) {
 				break;
 			}
 			// Where the front starts: the firing's position, else its node, else the piece's centre.
@@ -823,32 +911,17 @@ namespace WornEnchantmentPBR
 			} else if (!firing.payload.node.empty()) {
 				origin = NodeBindPosition(a_ripple.geometry_.get(), a_ripple.root_.get(), firing.payload.node);
 			}
-			pass.firings.push_back({ origin.value_or(a_ripple.fallbackOrigin_), std::max(0.0f, a_time - firing.startTime) });
+			pass.firings[pass.firingCount++] = { origin.value_or(a_ripple.fallbackOrigin_), std::max(0.0f, a_time - firing.startTime) };
 		}
-		if (pass.firings.empty() && !a_ripple.hadFirings_) {
+		if (pass.firingCount == 0 && !a_ripple.hadFirings_) {
 			return;  // still black; nothing to draw or clear
 		}
-		a_ripple.hadFirings_ = !pass.firings.empty();
+		a_ripple.hadFirings_ = pass.firingCount > 0;
 		TextureLab::GetSingleton()->RenderRipple(*a_ripple.target_, pass);
 	}
 
 	namespace
 	{
-		// A bake of that name at any size, when the geometry has one.
-		std::shared_ptr<TextureLab::Target> CachedBake(const GeometryInputs& a_inputs, std::string_view a_name)
-		{
-			if (!a_inputs.bakes) {
-				return nullptr;
-			}
-			const auto prefix = std::string{ a_name } + "@";
-			for (const auto& [key, target] : *a_inputs.bakes) {
-				if (key.starts_with(prefix)) {
-					return target;
-				}
-			}
-			return nullptr;
-		}
-
 		// The sampling of a source with this tick's scroll and tile.
 		TextureLab::LayerInput SamplingNow(const PreparedSource& a_source, const SignalState& a_signals)
 		{
@@ -885,22 +958,34 @@ namespace WornEnchantmentPBR
 				RenderRipple(*texture.ripple, a_signals, a_time);
 			}
 		}
+		// PrepareRenderedMask refused this mask if it read more than the pass
+		// holds, so the counts fit; the checks keep a write inside the arrays
+		// regardless.
 		TextureLab::ProgramPass pass;
 		pass.code = a_mask.program_->Code();
 		for (const auto& binding : a_mask.refs_) {
+			if (pass.refCount >= pass.refs.size()) {
+				return;
+			}
 			TextureLab::ProgramRef ref;
 			ref.isTexture = binding.isTexture;
 			ref.texture = binding.texture;
 			if (!binding.isTexture) {
 				ref.value = AsVec3(a_signals.ValueOf(binding.signal));
 			}
-			pass.refs.push_back(ref);
+			pass.refs[pass.refCount++] = ref;
 		}
 		for (const auto& source : a_mask.textures_) {
-			pass.textures.push_back({ source.texture.get(), SamplingNow(source, a_signals), source.normalize });
+			if (pass.textureCount >= pass.textures.size()) {
+				return;
+			}
+			pass.textures[pass.textureCount++] = { source.texture.get(), SamplingNow(source, a_signals), source.normalize };
 		}
 		for (const auto& curve : a_mask.curves_) {
-			pass.curves.push_back(curve.get());
+			if (pass.curveCount >= pass.curves.size()) {
+				return;
+			}
+			pass.curves[pass.curveCount++] = curve.get();
 		}
 		pass.time = a_time;
 		pass.vectorResult = a_mask.vector_;

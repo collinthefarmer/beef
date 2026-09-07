@@ -36,15 +36,19 @@ Engine-free (compile natively, tested through `tests/run-native.sh`):
 | `Signals.*` | `SignalGraph::Compile` (nodes, order, types, inert), `SignalState` (per applied recipe: `Tick`, `Fire`, `ValueOf`, `Resolve`, `Firings`), `SignalEnvironment` (what a tick reads from the actor), `EventRecord`/`TriggerPayload` | Core, Expression, Recipe |
 | `Importer.*` | `EffectShaderRecord` (an EFSH as data), `ImportEffectShader` (record to recipe), `RecipeIdFor` | Recipe, Timing |
 | `Timing.*` | the vanilla EFSH animation maths the importer encodes | nothing |
-| `Mesh.*` | `MeshData` (bind-pose vertices per partition), `DecodeVertex` (the engine's packed vertex bytes), `BuildBake`/`BuildDistanceBake`/`BuildUvBake` (mesh to UV-space triangles carrying a value) | Core, Recipe |
+| `Mesh.*` | `MeshData` (bind-pose vertices per partition, every triangle inside its partition, the hash of the bytes read), `DecodeVertex` (the engine's packed vertex bytes), `TrianglesWithin` (the decode-time check), `HashBytes` (FNV-1a, chained), `BuildBake`/`BuildDistanceBake`/`BuildUvBake` (mesh to UV-space triangles carrying a value), the bake cache keys by definition and `TextureSize` (`BakeKeyOf`, `DistanceKeyOf`, `UvKeyOf`; `DefinitionOf` is the size-less half the snapshot looks up by; `KeyDefinition`, `KeySize`) | Core, Recipe, TextureSize |
 | `SettingsCore.*` | the `Settings` record and its table | nothing |
 | `Snapshot.h` | the menu's read model (`Studio::Snapshot`): rows per piece, recipe (with its undo and redo depths, its light and shell rows), geometry, output, layer, source, mask and slot, typed; textures as opaque handles the lab keeps alive | Core, Recipe |
 | `View.h` | `Studio::View`, how the piece is looked at: freeze, scrub, speed, isolate recipe, output and layer, mute set, and the shown/muted predicates the tick and the stack share | nothing |
-| `Studio.*` | `Studio::Mode` and `Layout` per mode (one narrow column; the stack's split ratio and the panes' height shares); `Target`, `Selection` (keys: piece, recipe id, geometry name, target and slot, region; the layer index) and its resolution against a snapshot; the view models `Board`, `StackView`, `Inspector`, `SignalList` as plain records built by pure functions; `LightRowOf`/`ShellRowOf` (the panels' rows from a recipe), `SignalNamesOf`; names (`UniqueName`, `NameMatches`, `ReferenceText`, `GeometryLabel`) | Snapshot, View, Recipe |
-| `Forms.h` (implemented in `Studio.cpp`) | forms as data: `FieldKind` (scalar, colour, vector, reference, expression, curve, mask, channels, toggle, choice, text), `FieldDetail`, `FieldSpec` (name, kind, text, combo names, detail, and a `bind` that turns committed text into a `RecipeEdit` or refuses), built by `InspectorForm`, `ScalarForm`, `SignalForm`, `LightForm`, `ShellForm`; `LiteralColor`/`LiteralColorText` | Studio, Edits |
-| `MenuState.*` | `Studio::MenuState`, the page state: mode and its `Layout`, `Selection`, text buffers, active and focused field, keyed by `FieldKey` (the ImGuiID of a widget's literal key in the ID scope the page pushes per recipe, output, layer and row); `Intent` (every page action: picks, edits, solo and mute, freeze, scrub, speed, step, undo, redo, a new recipe, a fired trigger) and `Reduce`, the state change of an intent as a pure function (an edit moves the layer selection with its row) | Studio, Edits |
+| `Studio.*` | `Studio::Mode` and `Layout` per mode (one narrow column; the stack's split ratio and the panes' height shares); `Target`, `Selection` (keys: piece, recipe id, geometry name, target and slot, region; the layer index) and its resolution against a snapshot; the view models `Board`, `StackView`, `Inspector`, `SignalList` as plain records built by pure functions; `LightRowOf`/`ShellRowOf` (the panels' rows from a recipe), `SourceRowOf`/`SourceKindOf` (a source as texts and back), `SignalNamesOf`; names (`UniqueName`, `NameMatches`, `ReferenceText`, `GeometryLabel`) | Snapshot, View, Recipe |
+| `Forms.h` (implemented in `Studio.cpp`) | forms as data: `FieldKind` (scalar, colour, vector, reference, expression, curve, mask, channels, toggle, choice, text), `FieldDetail`, `FieldSpec` (name, kind, text, combo names, detail, and a `bind` that turns committed text into a `RecipeEdit` or refuses), built by `InspectorForm`, `ScalarForm`, `SignalForm`, `SourceForm`, `LightForm`, `ShellForm`, with `creators` (what a field can make in place) and `create` (the edits that make and bind it); `LiteralColor`/`LiteralColorText` | Studio, Edits |
+| `MenuState.*` | `Studio::MenuState`, the page state: mode and its `Layout`, `Selection`, the `RegionStack` (Paint's terms with selection, solo, mute, the mask being edited, the kind the action row adds from, and a dirty flag the page clears by rewriting the paint recipe's scratch), the `PaintSession` (the recipe painted for and the preview surface), text buffers, active and focused field, keyed by `FieldKey` (the ImGuiID of a widget's literal key in the ID scope the page pushes per recipe, output, layer and row); `Intent` (every page action: the mode, picks, edits, solo and mute, freeze, scrub, speed, step, undo, redo, a new recipe, a fired trigger, a mesh read, the region stack's add, set, remove, move, pick, solo, mute, load, clear and kind, the paint session's begin, surface, keep and end) and `Reduce`, the state change of an intent as a pure function (an edit moves the layer selection with its row; a term move or removal carries the stack's indices along) | Studio, Edits, MaskStack |
 | `History.*` | `Studio::EditHistory`: undo and redo as whole recipes, past and future, capped at 100 | Recipe |
-| `Edits.*` | `Studio::RecipeEdit`, every change the menu makes (layers, outputs, scalars, signals, curves, masks, add and rename of signals and curves with every reference repointed, the light's and the shell's fields), and `Apply(Recipe&, RecipeEdit)`, which refuses with a diagnostic and leaves the recipe untouched when the edit does not fit; `Describe`, `RenameInExpression`, `DefaultLayer`, `DefaultOutput` | Recipe |
+| `Edits.*` | `Studio::RecipeEdit`, every change the menu makes (layers, outputs, scalars, signals, curves, sources, masks: add, set, rename with every reference repointed, remove refused while referenced; the light's and the shell's fields), and `Apply(Recipe&, RecipeEdit)`, which refuses with a diagnostic and leaves the recipe untouched when the edit does not fit; `Describe`, `CountReferences`, `RenameInExpression`, `DefaultLayer`, `DefaultOutput` | Recipe, Expression |
+| `EditCheck.*` | validation before apply: `Names` (the recipe's rows by kind and type, from the snapshot) and `CheckField`, why a field's text would be refused, with the file's own parsers; `CheckSignalValue`, `CheckCurveText`, `CheckMaskText` for the tables' texts | Forms, Expression, Recipe, Snapshot |
+| `Regions.*` | the scratch mask's name; `PartitionsOf` and `BonesOf` (a mesh's facts for the snapshot); the preset file (`ParsePresets`: capped lists, every what expression parsed at load; plain names), `Unresolvable` on a geometry's facts, `ExistingOf` (a recipe's sources by definition and every taken name, the one reuse rule), `ScratchOf` and `ScratchEdits` (the scratch row as it stands and the edits that write the stack's built expression into it), `MaterialiseTerm` (the sources a preset needs, twins reused, and the expression that reads them), `TermLabel` and `TermsOfMask` (a term's origin recovered by matching), `ProposedRegionName`; the paint recipe: `PaintRecipe` (a clone of the active recipe with one masked emissive output, `PaintOutput`, keyed alone at `kPaintPriority`) and `KeepEdits` (the region and the sources it reads copied into the active recipe, twins reused, taken names made unique); `MeshFacts`/`FactsOf` (a mesh's partitions and bones as snapshot rows, computed once per read) | Edits, MaskStack, Mesh, Snapshot |
+| `TextureSize.h` | the one size of a render target, bake, mask or stack: `Clamp` is the only way to make one (64 to 4096), so nothing sizes at zero; engine-free, so the key functions take it | nothing |
+| `MaskStack.*` | a region as terms with ops (`set`, `and`, `or`, `not`): `BuildRegion` (the one expression, with solo and mute applied; one term bare, more in a fixed wrapped shape; never past the expression length, a term that would push it past stops the build) and `ParseRegion` (that shape back to terms; anything else one raw term; bounded by length and a term cap) | Expression |
 
 Engine side (compile with CommonLibSSE; thin over the above):
 
@@ -52,16 +56,16 @@ Engine side (compile with CommonLibSSE; thin over the above):
 |---|---|---|
 | `Identity.h` | the plugin name (from CMake), every path and node name derived from it | nothing |
 | `EngineForms.*` | `FormKeyFor`, `EditorIdOf` (po3 Tweaks export, else engine), `LookupForm`, `RecordFrom(TESEffectShader)`, `ShaderFor` (the EFSH an enchantment shows) | Recipe, Importer |
-| `RecipeStore.*` | the loaded recipes: `LoadRecipes` (files, editor-ID resolution, import of missing EFSH recipes), `LoadedRecipes`, `OriginOf`, `GraphFor` (cached compiled graph), editing: `MutableRecipe`, `Revalidate`, `IsDirty`, `SaveRecipe`, `RevertRecipe`, `NewRecipe` (an empty recipe under user/, dirty) | Recipe, Signals, Importer, EngineForms, Identity |
+| `RecipeStore.*` | the loaded recipes: `LoadRecipes` (files, editor-ID resolution, import of missing EFSH recipes, the region presets beside the DLL), `LoadedRecipes`, `LoadedPresets`, `OriginOf`, `GraphFor` (cached compiled graph), `ReferencesOf` (reference counts recounted on every republish, so the snapshot copies rather than re-parses), editing: `MutableRecipe`, `Revalidate`, `IsDirty`, `SaveRecipe` (the scratch mask dropped), `RevertRecipe`, `NewRecipe` (an empty recipe under user/, dirty), `AddTransientRecipe`/`DropTransientRecipe`/`IsTransient` (the paint recipe: in the list so it resolves, never written, not listed) | Recipe, Signals, Importer, EngineForms, Identity |
 | `Environment.*` | `ActorEnvironment`: a `SignalEnvironment` over an actor handle and its enchantment (actor values by measure, states, enchantment fields, EFSH parameters) | Signals, EngineForms |
-| `MeshReader.*` | `ReadMesh(BSGeometry*)` (partitions, bones, slots; CPU copy or GPU readback), `NodeBindPosition`, `ToRootSpace` | Mesh, RuntimeTextures |
-| `RuntimeTextures.*` | `TextureLab`: the D3D passes and their resources: render targets presented through shell textures (`Target`, `Acquire`, `Scratch`), the layer pass (`Render` with `Mode::kLayer`), the interpreter (`RenderProgram`), bakes (`BakeMesh`), ripples (`RenderRipple`), curve lookups (`CreateLookup`), readback (`ReadBuffer`, `ExtentOf`, `MeanLuminance`, `MeanChannel`), previews for the menu | Expression, Mesh, PBRMaterial |
-| `Compositor.*` | recipes to textures: `Prepare` (an output's stack on a geometry: sources, masks, curves, bakes, distance, ripples, base map, size), `Render` (per tick, with a `LayerFilter` of hidden layers; a static stack renders again when the filter changes), `RenderedStack`/`RenderedMask`/`RenderedRipple`, `GeometryInputs` (a geometry's material maps plus its caches), `InspectSource`/`InspectMask` for the menu | Recipe, Signals, RuntimeTextures, Mesh, MeshReader, RecipeStore (graph for mask typing) |
+| `MeshReader.*` | `ReadMesh(BSGeometry*)` (partitions, bones, slots; CPU copy or GPU readback; hashed), `MeshIdentity`/`IdentityOf` (the skin partition, buffer pointers and vertex count a read came from), `CompareWithGpu` (the stale-copy diagnostic), `MeshEntry` (one geometry's mesh, its `MeshFacts`, its bakes keyed by definition and size, last use) and `MeshCache` (`Get` reads once and re-reads on a changed identity, `Cached` never reads, `Sweep` by age sparing bound geometries, `Clear`), `NodeBindPosition`, `ToRootSpace` | Mesh, Regions, RuntimeTextures |
+| `RuntimeTextures.*` | `TextureSize` (64 to 4096; `Clamp` is the only constructor, so no pass is asked for a 0 px target); `TextureLab`: the D3D passes and their resources: render targets presented through shell textures (`Target`, `Acquire`, `Scratch`, both by `TextureSize`), the layer pass (`Render` with `Mode::kLayer`), the interpreter (`RenderProgram`), bakes (`BakeMesh`), ripples (`RenderRipple`), curve lookups (`CreateLookup`), readback (`ReadBuffer`, `ExtentOf`, `MeanLuminance`, `MeanChannel`), previews for the menu | Expression, Mesh, PBRMaterial |
+| `Compositor.*` | recipes to textures: `Prepare` (an output's stack on a geometry, sized by a `TextureSize` pair: sources, masks, curves, bakes, distance, ripples, base map, size), `Render` (per tick, with a `LayerFilter` of hidden layers; a static stack renders again when the filter changes), `RenderedStack`/`RenderedMask`/`RenderedRipple`, `MaterialInputs` (the material's maps, the displacement measured once at apply), `GeometryInputs` (a geometry's material maps plus the masks and ripples of one apply), the one `MeshCache` (`MeshOf` reads through it on the game thread, `CachedMesh` for the snapshot, `SweepMeshes` every 5 s from the tick keeping bound geometries, `ClearMeshes`), bakes stored on the mesh entry under their definition key, `InspectSource`/`InspectMask` (const cache reads for the snapshot: no load, read, bake or render; a row nothing rendered reports `kNotRendered`) | Recipe, Signals, RuntimeTextures, Mesh, MeshReader, Settings, RecipeStore (graph for mask typing) |
 | `Binding.*` | the only writer of engine state: `SlotTarget` (interface), `SlotWriter` (slots of one PBR material with save and restore), `MaterialBinding` (a geometry's own material, made private), `ShellBinding` (a clone with a PBR copy or vanilla material, pose), `LightBinding` (point lights with the CS ISL overlay), `PlaceLights` | Recipe, PBRMaterial, Identity |
-| `Manager.*` | the object the sinks and the hook call: queues, apply and retire per actor (every PBR geometry a recipe applies to is recorded, bound or not, so an empty recipe stays on its piece), the tick (which reads the `View` for isolate, solo, mute and speed and hands the compositor a `LayerFilter`), events to triggers, recipe editing on the game thread with one `EditHistory` per recipe (`EditRecipe` pushes, `UndoRecipe`/`RedoRecipe` restore, Revert clears), `NewRecipe` (retires everything around the store's list growing), `TakeSnapshot` for the menu | everything above |
+| `Manager.*` | the object the sinks and the hook call: queues, apply and retire per actor (every PBR geometry a recipe applies to is recorded, bound or not, so an empty recipe stays on its piece), the tick (which reads the `View` for isolate, solo, mute and speed and hands the compositor a `LayerFilter`), events to triggers, recipe editing on the game thread with one `EditHistory` per recipe (`EditRecipe` pushes, `UndoRecipe`/`RedoRecipe` restore, Revert clears), `NewRecipe` (retires everything around the store's list growing), `RequestMesh` (a geometry's partitions and bones for the snapshot), `FireAt` (a firing placed at a node), the paint session (`BeginPaint` adds the paint recipe and isolates it, `SetPaintSurface`, `KeepPaint` applies the keep edits to the active recipe as one history step, `EndPaint` drops it), the menu's read side (`Watch`, `LatestSnapshot`, the snapshot built at the tick's end and published whole; `UpdateView` for the view's posted changes) | everything above |
 | `Events.*`, `Hooks.*` | engine event sinks (equip, load, node update, hits, animation graph) and the per-frame hook, each a few lines that call the manager | Manager |
-| `MenuWidgets.*` | `Studio::Widgets`, every ImGui mechanic in one place: `Width` (fill, fit a text, pixels) and `NextItemWidth`; `Table` (id, `{label, Width}` columns, a `TableStyle`; `Cell` advances, `End` closes); `Section`, `Split` (two resizable columns over a ratio), `Rule`; `Toggle` (a checkbox with a tooltip; solo, mute, isolate and freeze are all it) and `SoloMute`; fields at the layout's scale under literal keys, thumbnails (the one place a texture handle is dereferenced, through `TextureLab::Preview`), blend and reference combos, `ValueField` (a @signal combo and a literal text field as one control), the badges per `FieldKind`, the mode bar, drag handle and drop target, text helpers; widgets return values and never edit | Snapshot, Studio, RuntimeTextures |
-| `ComposePage.*` | the studio page: snapshot once, selection resolved, the context rows (piece, recipe, New, Undo, Redo; target, slot, region, Clear) over three scrolling panes (the stack with the inspector, or the light panel or the shell settings by target; the signals; the curves) and the Timeline footer, drawn from `Studio` records under the mode's layout; widgets return `Intent`s into a per-frame list and `Dispatch` runs each through `Reduce` and `Perform` (the manager's edit, undo, redo, new recipe, fire and isolate, and the `View`'s solo, mute, freeze, scrub, speed and step) after the frame; `DrawForm` draws any `FieldSpec` list as the field table; `DrawBoardPage` draws the board for the Recipes page | Studio, Forms, Edits, MenuWidgets, MenuState, Manager |
+| `MenuWidgets.*` | `Studio::Widgets`, every ImGui mechanic in one place: `Width` (fill, fit a text, pixels) and `NextItemWidth`; `Table` (id, `{label, Width}` columns, a `TableStyle`; `Cell` advances, `End` closes); `Section`, `Split` (two resizable columns over a ratio), `Rule` (a rule with a text line above and below, the line's right group anchored on the edge by its exact `ButtonWidth`/`CheckboxWidth`); `Toggle` (a checkbox with a tooltip; isolate and freeze are it), `LitButton` (lit until a step is taken), `Disabled` (a greyed scope), `RightAligned` (a group ending on the line's right edge), `HeldLabel` (a value shown uneditable), `DetailModal` (the one detail modal: opened by name, a definition's width, a close button); the row buttons of a stack, each a square of `RowButtonWidth` (the badge's size, so a column of that width is filled): `RemoveButton` (greyed while referenced), `SoloButton`, `MuteButton` and `SoloMute` (the pair), `DragHandle`; fields at the layout's scale under literal keys, thumbnails (the one place a texture handle is dereferenced, through `TextureLab::Preview`), blend and reference combos, `ValueField` (a @signal combo and a literal text field as one control), the badges per `FieldKind`, the mode bar, drag handle and drop target, text helpers; widgets return values and never edit | Snapshot, Studio, RuntimeTextures |
+| `ComposePage.*` | the studio page: snapshot once, selection resolved, the context rows (piece, recipe, New, Undo, Redo; target, slot, region, Clear; in Paint a head line naming the recipe painted for instead) over three scrolling panes (the stack with the inspector, or the light panel or the shell settings by target, switched and reset from the pane's rule, or in Paint the action row (kind and member combos that add a term, the lit read-mesh button, the preview surface) over the region stack split beside the selected term's fields, with Keep and Discard under the split; the signals; the curves) and the Timeline footer, drawn from `Studio` records under the mode's layout; widgets return `Intent`s into a per-frame list and `Dispatch` runs each through `Reduce` and `Perform` (the manager's edit, undo, redo, new recipe, fire and isolate, and the `View`'s solo, mute, freeze, scrub, speed and step) after the frame; `DrawForm` draws any `FieldSpec` list as the field table, or as several side by side; `DrawBoardPage` draws the board for the Recipes page | Studio, Forms, Edits, MenuWidgets, MenuState, Manager |
 | `Menu.*` | registration, the status line every page but the studio starts with, and the Recipes and Setup pages (Setup: the save bar, every setting as a name and value table with switches as checkboxes, the log under them) | ComposePage, Manager, RecipeStore, Settings |
 | `Settings.*` | INI load and save around `SettingsCore` | SettingsCore, Identity |
 | `PBRMaterial.h` | the layout mirror of CS's `BSLightingShaderMaterialPBR` and its flag bits | nothing |
@@ -121,7 +125,7 @@ all) resumes them, so a change never restarts the animation; erasing
 the actor's state destroys the bindings in declaration order; each restores what it saved if it still
 owns the slot (`StillOwned`), and says so if not.
 
-Menu (render thread): `TakeSnapshot` copies everything the pages show;
+Menu (render thread): `LatestSnapshot` hands the pages the snapshot the tick built;
 the studio page builds its view models from the snapshot and the page
 state with `Studio`'s pure functions, draws them through `Widgets`, and
 turns what comes back into a `RecipeEdit`, which `EditRecipe` posts to the
@@ -134,26 +138,40 @@ directly; the next tick reads them.
 
 - Game thread: everything the manager does, all bindings, the compositor,
   the lab's rendering (the engine's own D3D context, state saved and
-  restored around each pass), the store's mutation.
-- Render thread (the menu framework): the page functions. They may call
-  `TakeSnapshot`, `GetStatus`, `Debug()`, the store's read API, and the
-  lab's `Preview`, which records a request under a lock and returns the
-  last finished thumbnail without touching the D3D context (NOTES 53);
-  the game thread renders requested previews once per tick
-  (`RenderPreviews`). They mutate only through the manager's posted
-  tasks and the `View`.
-  `TakeSnapshot` reads the applied state without a lock; the runtime
-  never frees an `AppliedRecipe` outside a posted task, and the snapshot
-  copies strings and values, so a torn read shows a stale row at worst.
+  restored around each pass), the store's mutation, the `View`, and the
+  building of the menu's snapshot.
+- Render thread (the menu framework): the page functions. The rule is
+  one sentence: a page reads the latest snapshot and posts intents,
+  nothing else. `Manager::LatestSnapshot` hands back an immutable
+  `Snapshot` (rows, a copy of the `View`, a version) built on the game
+  thread at the end of the tick while a page is watching; `Watch` is
+  called every frame a page draws with the selected piece, so the tick
+  builds full rows for that piece and light rows for the rest, and a
+  second without a call stops the building. Every change goes through a
+  posted task: recipe edits, `Isolate`, `RetireAll`, `ReapplyAll`, the
+  paint session, and the view's freeze, scrub, speed and mutes through
+  `UpdateView`. The lab's `Preview` records a request under a lock and
+  returns the last finished thumbnail without touching the D3D context
+  (NOTES 53); the game thread renders requested previews once per tick.
+  The store's read API (`LoadedRecipes`, `LoadedPresets`) is still read
+  from the pages for the Recipes page's table and the preset lists; the
+  list is only moved inside posted tasks with every actor retired first.
 - Any thread: the event sinks, which only queue.
 - Ownership: the store owns recipes; `AppliedRecipe` holds a `const
-  Recipe*` into the store's published vector, which is why edits retire
-  the wearers first and the vector is never resized between loads. The
-  lab owns render targets; `Target`s are pooled through `shared_ptr` with
-  a recycling deleter, so whoever holds the pointer holds the texture.
-  Bindings hold `NiPointer`s to the geometry, property and clone.
-  `GeometryInputs` caches (masks, bakes, ripples, mesh) are `shared_ptr`
-  maps per bound geometry, dropped with it.
+  Recipe*` into the store's published vector, which is why every move
+  of that vector (a load, a new recipe, the paint recipe added or
+  dropped) retires every actor synchronously first (`RetireEveryActor`).
+  The lab owns render targets; `Target`s are pooled through `shared_ptr`
+  with a recycling deleter, so whoever holds the pointer holds the
+  texture. Bindings hold `NiPointer`s to the geometry, property and
+  clone. `GeometryInputs` caches (masks, ripples) are `shared_ptr` maps
+  per bound geometry, dropped with it. The compositor's `MeshCache`
+  holds a geometry's mesh, facts and bakes across applies, keyed by the
+  geometry it keeps alive, until the geometry has been unbound for 30 s
+  or the game is cleared; `Get`, `Sweep` and `Cached` all run on the game
+  thread (`Cached` from the snapshot build). `InspectSource` and
+  `InspectMask` are const and read only the caches; they too run inside
+  the snapshot build.
 
 ## Invariants
 
@@ -195,7 +213,7 @@ Adding a slot: `Slot` and `kSlotCount` in `Recipe.h`, `kSlots` in
 `RecipeJson.cpp`, the schema enum; the texture field in
 `TextureFieldOf` and any flag and scalar handling in `SlotWriter`
 (`Problem`, `Write*`, `Restore`, `Slots`); the scalar routing in the
-manager's `WriteSlot`; the scalar rows in `TakeSnapshot` and the menu's
+manager's `WriteSlot`; the scalar rows in the snapshot build and the menu's
 scalar edit switch; `BaseMapFor` in the compositor if the slot edits an
 existing map.
 
@@ -226,7 +244,7 @@ ImGui mechanic is one function in `MenuWidgets`; the page in
 a builder in `Studio.h` returning `FieldSpec`s (each with its kind, text,
 combo names and a `bind` from text to `RecipeEdit`), tested natively,
 which the page draws with `DrawForm`. A new snapshot field is added in
-`Snapshot.h` and filled in `TakeSnapshot`. A page outside the studio is a
+`Snapshot.h` and filled in `BuildSnapshot` on the tick. A page outside the studio is a
 `__stdcall Render*` function registered in `RegisterMenu` that draws
 from the snapshot through `Widgets`.
 
@@ -254,23 +272,21 @@ compositor. Every studio module lives in `WornEnchantmentPBR::Studio`,
 one level deep; the shared core and the slot rules stay in the top
 namespace, which the studio depends on and never the reverse.
 
-Still to come, per the brief's stages 3 to 7:
+Still to come, per the brief's stages 4 to 7:
 
 | Module | Owns | Depends on |
 |---|---|---|
 | `Studio` additions | the expression tokeniser (absorbs `Literals`) | Snapshot, Edits |
-| `EditCheck.*` | text checked against the recipe's names and types before apply | Expression, Recipe, Snapshot |
-| `Regions.*` | the preset file, the bone and partition name table, resolvability on a geometry, the edits that materialise a preset | Edits, Snapshot |
 | `Pick.*` | ray against a triangle list, barycentric UV | Mesh |
 | `Dds.*` | single-channel DDS bytes | nothing |
 | `Stage.*` | the scene around the piece: player heading, game hour, weather, third-person camera distance and pitch, as posted tasks | Manager |
-| additions | `View`: show mask, live source override, project everywhere, muted material slots, preview as. `Snapshot`: each geometry's partitions and skinned bones with coverage, the scratch row, the stage's values, the pick result. `Manager`: `NewRecipe` from a base recipe and a chosen key (today it makes an empty recipe keyed to the worn armor), `RequestPick(ray)`, `Refresh` honouring preview as. `RecipeStore`: drop the scratch row on save. `Compositor`/`Binding`: the branches that read the new view fields. `RuntimeTextures`: texel and histogram readback, neutral maps, the paint target, strokes. | as today |
+| additions | `View`: live source override, project everywhere, muted material slots, preview as. `Snapshot`: the stage's values, the pick result. `Manager`: `NewRecipe` from a base recipe, `RequestPick(ray)`, `Refresh` honouring preview as. `Compositor`/`Binding`: the branches that read the new view fields. `RuntimeTextures`: texel and histogram readback, neutral maps, the paint target, strokes. | as today |
 
 Modes are a layout table in `Studio` (`LayoutFor`): Compose (board,
 stack, inspector, and the signal table under a rule below them; later triggers
-and the debug clock), Paint (region editor and pick tools), Design (tunables on large controls, preview as, project
-everywhere, muted slots, the stage). Paint and Design draw a placeholder
-until their stages. Designer hints (ranges, labels, groups, the base
+and the debug clock), Paint (the region stack; later the pick tools), Design (tunables on large controls, preview as, project
+everywhere, muted slots, the stage). Design draws a placeholder
+until its stage. Designer hints (ranges, labels, groups, the base
 recipe) will live in `meta.studio`, which the format keeps verbatim and
 the runtime ignores.
 
@@ -332,8 +348,19 @@ the runtime ignores.
   how targets reach the engine; a spike to replace them is deferred.
 - The Precision provider (hit positions) is not written; the vanilla hit
   sink carries no position, so hit ripples start at the piece's centre.
-- `TakeSnapshot` reads live state from the render thread without a lock
-  (see Threads).
+- The store's read API (`LoadedRecipes`, `LoadedPresets`) is still read from the pages while a posted task may move the list or reassign the presets on reload; the next step is to carry the recipe table and the preset lists inside the snapshot too.
+- Paint: `PaintKeyOf` keys the paint recipe to the armor, else the
+  piece's first key, and a piece with no key cannot be painted on (a
+  warning in the page); the reference walker stays private to
+  `Edits.cpp` (`CountReferences` is the one export), so `Validate` and
+  the animation classifier enumerate reference sites themselves.
+- `TextureSize` stops at the lab and the private prepare helpers:
+  `Compositor::Prepare`, `RenderedStack::size_` and `CreateTarget` still
+  take raw sizes and re-clamp with literals, and the key functions in
+  `Mesh.h` take `std::uint32_t` because the type lives in the engine
+  header.
+- `RenderMask` builds three vectors per animated mask per geometry per
+  tick though `ProgramPass` bounds them at compile time.
 - The installer used to overwrite the INI on every install, resetting
   `PlayerOnly`; it keeps an existing INI now. Settings edited in the menu
   are saved to that file.

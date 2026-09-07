@@ -29,6 +29,7 @@ namespace WornEnchantmentPBR::Studio::Widgets
 	namespace
 	{
 		constexpr ImVec4 kWarn{ 1.0f, 0.8f, 0.3f, 1.0f };
+		constexpr ImVec4 kProblemFrame{ 0.45f, 0.12f, 0.12f, 1.0f };  // a field whose text would be refused
 		constexpr ImVec4 kOk{ 0.5f, 0.9f, 0.5f, 1.0f };
 		constexpr ImVec4 kBad{ 1.0f, 0.4f, 0.4f, 1.0f };
 		constexpr ImVec4 kDim{ 0.6f, 0.6f, 0.6f, 1.0f };
@@ -93,8 +94,9 @@ namespace WornEnchantmentPBR::Studio::Widgets
 			return preview && preview->srv ? reinterpret_cast<ImTextureID>(preview->srv) : nullptr;
 		}
 
-		// The names as "@name" entries of an open combo; returns the chosen text.
-		[[nodiscard]] std::optional<std::string> ReferenceEntries(const std::string& a_current, std::span<const std::string> a_names, bool a_allowEmpty)
+		// The names as "@name" entries of an open combo, then the creators
+		// past a separator, as written; returns the chosen text.
+		[[nodiscard]] std::optional<std::string> ReferenceEntries(const std::string& a_current, std::span<const std::string> a_names, bool a_allowEmpty, std::span<const std::string> a_creators)
 		{
 			std::optional<std::string> chosen;
 			if (a_allowEmpty && ImGui::Selectable("(none)", a_current.empty())) {
@@ -104,6 +106,14 @@ namespace WornEnchantmentPBR::Studio::Widgets
 				const auto text = ReferenceText(name);
 				if (ImGui::Selectable(text.c_str(), text == a_current)) {
 					chosen = text;
+				}
+			}
+			if (!a_creators.empty()) {
+				ImGui::Separator();
+				for (const auto& creator : a_creators) {
+					if (ImGui::Selectable(creator.c_str(), false)) {
+						chosen = creator;
+					}
 				}
 			}
 			return chosen;
@@ -143,7 +153,17 @@ namespace WornEnchantmentPBR::Studio::Widgets
 		if (a_columns.empty()) {
 			return table;
 		}
-		int flags = a_style.borders == TableStyle::Borders::kAll ? ImGuiMCP::ImGuiTableFlags_Borders : ImGuiMCP::ImGuiTableFlags_BordersInnerH;
+		int flags = 0;
+		switch (a_style.borders) {
+		case TableStyle::Borders::kAll:
+			flags = ImGuiMCP::ImGuiTableFlags_Borders;
+			break;
+		case TableStyle::Borders::kInnerHorizontal:
+			flags = ImGuiMCP::ImGuiTableFlags_BordersInnerH;
+			break;
+		case TableStyle::Borders::kNone:
+			break;
+		}
 		flags |= a_style.stretch ? ImGuiMCP::ImGuiTableFlags_SizingStretchProp : ImGuiMCP::ImGuiTableFlags_SizingFixedFit;
 		if (a_style.rowBackground) {
 			flags |= ImGuiMCP::ImGuiTableFlags_RowBg;
@@ -217,6 +237,20 @@ namespace WornEnchantmentPBR::Studio::Widgets
 		return width;
 	}
 
+	float ButtonWidth(std::string_view a_text)
+	{
+		const auto* style = ImGui::GetStyle();
+		const auto  text = ImGui::CalcTextSize(a_text.data(), a_text.data() + a_text.size());
+		return text.x + (style ? style->FramePadding.x : 4.0f) * 2.0f;
+	}
+
+	float CheckboxWidth(std::string_view a_text)
+	{
+		const auto* style = ImGui::GetStyle();
+		const auto  text = ImGui::CalcTextSize(a_text.data(), a_text.data() + a_text.size());
+		return ImGui::GetFrameHeight() + (style ? style->ItemInnerSpacing.x : 4.0f) + text.x;
+	}
+
 	float ItemSpacingX()
 	{
 		const auto* style = ImGui::GetStyle();
@@ -234,7 +268,7 @@ namespace WornEnchantmentPBR::Studio::Widgets
 
 	// ----------------------------------------------------------------- fields
 
-	std::optional<std::string> TextField(const char* a_key, const std::string& a_model, const Width& a_width, float a_scale)
+	std::optional<std::string> TextField(const char* a_key, const std::string& a_model, const Width& a_width, float a_scale, const TextCheck& a_check)
 	{
 		auto&          state = State();
 		const FieldKey key = KeyOf(a_key);
@@ -244,14 +278,28 @@ namespace WornEnchantmentPBR::Studio::Widgets
 			std::memcpy(buffer.data(), a_model.data(), n);
 			buffer[n] = '\0';
 		}
+		// While the field is being typed into, its text is checked each frame
+		// and the frame reads red with the message under it until it passes.
+		const std::optional<std::string> problem = (a_check && state.activeField == key) ? a_check(std::string{ buffer.data() }) : std::nullopt;
 		ImGui::PushID(Literal(a_key));
+		if (problem) {
+			ImGui::PushStyleColor(ImGuiMCP::ImGuiCol_FrameBg, kProblemFrame);
+		}
 		NextItemWidth(a_width, a_scale);
 		const bool committed = ImGui::InputText("##text", buffer.data(), buffer.size(), ImGuiMCP::ImGuiInputTextFlags_EnterReturnsTrue);
+		if (problem) {
+			ImGui::PopStyleColor();
+			Problem(*problem);
+		}
 		TrackActive(key);
 		ImGui::PopID();
 		if (committed) {
 			state.activeField = kNoField;
-			return std::string{ buffer.data() };
+			std::string text{ buffer.data() };
+			if (a_check && a_check(text)) {
+				return std::nullopt;  // refused before apply; the field shows the model again
+			}
+			return text;
 		}
 		return std::nullopt;
 	}
@@ -343,24 +391,6 @@ namespace WornEnchantmentPBR::Studio::Widgets
 		return chosen;
 	}
 
-	bool SwitchButton(const char* a_label, bool a_active, bool a_enabled)
-	{
-		if (!a_enabled) {
-			ImGui::BeginDisabled();
-		}
-		if (a_active) {
-			const auto* pressed = ImGui::GetStyleColorVec4(ImGuiMCP::ImGuiCol_ButtonActive);
-			ImGui::PushStyleColor(ImGuiMCP::ImGuiCol_Button, pressed ? *pressed : ImVec4{ 0.3f, 0.5f, 0.8f, 1.0f });
-		}
-		const bool clicked = ImGui::Button(Literal(a_label));
-		if (a_active) {
-			ImGui::PopStyleColor();
-		}
-		if (!a_enabled) {
-			ImGui::EndDisabled();
-		}
-		return clicked && a_enabled;
-	}
 
 	std::optional<std::string> ChoiceCombo(const char* a_key, const std::string& a_current, std::span<const std::string> a_names, const Width& a_width, float a_scale)
 	{
@@ -379,13 +409,13 @@ namespace WornEnchantmentPBR::Studio::Widgets
 		return chosen;
 	}
 
-	std::optional<std::string> ReferenceCombo(const char* a_key, const std::string& a_current, std::span<const std::string> a_names, bool a_allowEmpty, const Width& a_width, float a_scale)
+	std::optional<std::string> ReferenceCombo(const char* a_key, const std::string& a_current, std::span<const std::string> a_names, bool a_allowEmpty, const Width& a_width, float a_scale, std::span<const std::string> a_creators)
 	{
 		std::optional<std::string> chosen;
 		ImGui::PushID(Literal(a_key));
 		NextItemWidth(a_width, a_scale);
 		if (ImGui::BeginCombo("##reference", a_current.empty() ? "(none)" : a_current.c_str())) {
-			chosen = ReferenceEntries(a_current, a_names, a_allowEmpty);
+			chosen = ReferenceEntries(a_current, a_names, a_allowEmpty, a_creators);
 			ImGui::EndCombo();
 		}
 		ImGui::PopID();
@@ -441,6 +471,8 @@ namespace WornEnchantmentPBR::Studio::Widgets
 				return { "o", false, kChannelGrey, "one of the listed values" };
 			case FieldKind::kText:
 				return { "\"", false, kChannelGrey, "text" };
+			case FieldKind::kVec2:
+				return { "v", true, kVectorTeal, "vec2: x, y, or one number for both, or @signal of vec2 type" };
 			}
 			return { "?", false, kDim, "" };
 		}
@@ -472,12 +504,12 @@ namespace WornEnchantmentPBR::Studio::Widgets
 		ImGui::SameLine(0.0f, 0.0f);
 	}
 
-	std::optional<std::string> ValueField(const char* a_key, FieldKind a_kind, const std::string& a_current, std::span<const std::string> a_names, bool a_allowEmpty, float a_scale)
+	std::optional<std::string> ValueField(const char* a_key, FieldKind a_kind, const std::string& a_current, std::span<const std::string> a_names, bool a_allowEmpty, float a_scale, const TextCheck& a_check, std::span<const std::string> a_creators)
 	{
 		auto&          state = State();
 		const auto     style = StyleOf(a_kind);
 		const float    side = ImGui::GetFrameHeight();
-		const bool     takesSignal = style.takesSignal && !a_names.empty();
+		const bool     takesSignal = style.takesSignal && (!a_names.empty() || !a_creators.empty());
 		const bool     reference = a_current.starts_with('@');
 		const FieldKey key = KeyOf(a_key);
 		auto           mode = state.comboMode.find(key);
@@ -512,7 +544,7 @@ namespace WornEnchantmentPBR::Studio::Widgets
 			const std::string preview = reference ? a_current : std::string{ "choose a signal" };
 			NextItemWidth(Width::Fill());
 			if (ImGui::BeginCombo("##combo", preview.c_str())) {
-				chosen = ReferenceEntries(a_current, a_names, a_allowEmpty);
+				chosen = ReferenceEntries(a_current, a_names, a_allowEmpty, a_creators);
 				ImGui::EndCombo();
 			}
 		} else {
@@ -520,7 +552,7 @@ namespace WornEnchantmentPBR::Studio::Widgets
 				chosen = ColorSwatchPicker(key, a_current);
 				ImGui::SameLine(0.0f, 0.0f);
 			}
-			if (const auto typed = TextField("text", a_current, Width::Fill(), a_scale)) {
+			if (const auto typed = TextField("text", a_current, Width::Fill(), a_scale, a_check)) {
 				chosen = typed;
 			}
 		}
@@ -652,24 +684,131 @@ namespace WornEnchantmentPBR::Studio::Widgets
 		return changed;
 	}
 
-	bool SoloMute(bool& a_solo, bool* a_mute)
+	void DetailModal(const char* a_title, const std::function<void()>& a_body)
 	{
-		bool changed = Toggle("S##solo", a_solo, "solo: show this alone");
-		if (a_mute) {
-			ImGui::SameLine();
-			changed = Toggle("M##mute", *a_mute, "mute: hide this") || changed;
+		// An auto-resizing window starts narrow and wrapped text then wraps
+		// every few characters; a floor on the width keeps a definition on
+		// one or two lines.
+		ImGui::SetNextWindowSizeConstraints(ImVec2{ 480.0f, 0.0f }, ImVec2{ 960.0f, 800.0f });
+		if (!ImGui::BeginPopupModal(Literal(a_title), nullptr, ImGuiMCP::ImGuiWindowFlags_AlwaysAutoResize)) {
+			return;
+		}
+		a_body();
+		if (ImGui::Button("close")) {
+			ImGui::CloseCurrentPopup();
+		}
+		ImGui::EndPopup();
+	}
+
+	void RightAligned(float a_width, const std::function<void()>& a_draw)
+	{
+		const float here = ImGui::GetCursorPosX();
+		const float edge = here + ImGui::GetContentRegionAvail().x - a_width;
+		ImGui::SetCursorPosX((std::max)(here, edge));
+		a_draw();
+	}
+
+	void Disabled(bool a_disabled, const std::function<void()>& a_draw)
+	{
+		if (a_disabled) {
+			ImGui::BeginDisabled();
+		}
+		a_draw();
+		if (a_disabled) {
+			ImGui::EndDisabled();
+		}
+	}
+
+	void HeldLabel(const char* a_text)
+	{
+		ImGui::BeginDisabled();
+		ImGui::Button(Literal(a_text));
+		ImGui::EndDisabled();
+	}
+
+	bool LitButton(const char* a_label, bool a_lit)
+	{
+		if (a_lit) {
+			const auto* pressed = ImGui::GetStyleColorVec4(ImGuiMCP::ImGuiCol_ButtonActive);
+			ImGui::PushStyleColor(ImGuiMCP::ImGuiCol_Button, pressed ? *pressed : ImVec4{ 0.3f, 0.5f, 0.8f, 1.0f });
+		}
+		const bool clicked = ImGui::Button(Literal(a_label));
+		if (a_lit) {
+			ImGui::PopStyleColor();
+		}
+		return clicked;
+	}
+
+	float RowButtonWidth()
+	{
+		return ImGui::GetFrameHeight();
+	}
+
+	namespace
+	{
+		// A square button drawn filled while its value is on; a click flips it.
+		bool SquareToggle(const char* a_label, bool& a_value, std::string_view a_tooltip)
+		{
+			const float side = RowButtonWidth();
+			if (a_value) {
+				const auto* pressed = ImGui::GetStyleColorVec4(ImGuiMCP::ImGuiCol_ButtonActive);
+				ImGui::PushStyleColor(ImGuiMCP::ImGuiCol_Button, pressed ? *pressed : ImVec4{ 0.3f, 0.5f, 0.8f, 1.0f });
+			}
+			const bool clicked = ImGui::Button(Literal(a_label), ImVec2{ side, side });
+			if (a_value) {
+				ImGui::PopStyleColor();
+			}
+			Tooltip(a_tooltip);
+			if (clicked) {
+				a_value = !a_value;
+			}
+			return clicked;
+		}
+	}
+
+	bool RemoveButton(std::size_t a_references)
+	{
+		const float side = RowButtonWidth();
+		if (a_references > 0) {
+			ImGui::BeginDisabled();
+		}
+		const bool clicked = ImGui::Button("X", ImVec2{ side, side }) && a_references == 0;
+		if (a_references > 0) {
+			ImGui::EndDisabled();
+		}
+		Tooltip(a_references > 0 ? std::format("referenced in {} place(s)", a_references) : "remove this row");
+		return clicked;
+	}
+
+	bool SoloButton(bool& a_solo)
+	{
+		return SquareToggle("S", a_solo, "solo: show this alone");
+	}
+
+	bool MuteButton(bool& a_mute)
+	{
+		return SquareToggle("M", a_mute, "mute: hide this");
+	}
+
+	SoloMuteChange SoloMute(bool& a_solo, bool& a_mute)
+	{
+		SoloMuteChange changed = SoloButton(a_solo) ? SoloMuteChange::kSolo : SoloMuteChange::kNone;
+		ImGui::SameLine();
+		if (MuteButton(a_mute)) {
+			changed = SoloMuteChange::kMute;
 		}
 		return changed;
 	}
 
 	// ------------------------------------------------------------- reordering
 
-	bool DragHandle(const char* a_type, std::size_t a_index)
+	bool DragHandle(const char* a_type, std::size_t a_index, const char* a_noun)
 	{
-		const bool clicked = ImGui::SmallButton("::");
+		const float side = RowButtonWidth();
+		const bool  clicked = ImGui::Button("::", ImVec2{ side, side });
 		if (ImGui::BeginDragDropSource()) {
 			ImGui::SetDragDropPayload(a_type, &a_index, sizeof(a_index));
-			ImGui::Text("layer %zu", a_index);
+			ImGui::Text("%s %zu", Literal(a_noun), a_index);
 			ImGui::EndDragDropSource();
 		}
 		return clicked;

@@ -117,6 +117,112 @@ namespace WornEnchantmentPBR
 		return "?";
 	}
 
+	std::optional<MaterialChannel> ParseMaterialChannel(std::string_view a_name) noexcept
+	{
+		return FromName(kMaterialChannels, a_name);
+	}
+
+	std::optional<ImageChannel> ParseImageChannel(std::string_view a_name) noexcept
+	{
+		return FromName(kImageChannels, a_name);
+	}
+
+	std::string_view ImageSpaceName(ImageSpace a_space) noexcept
+	{
+		return NameOf(kImageSpaces, a_space);
+	}
+
+	std::optional<ImageSpace> ParseImageSpace(std::string_view a_name) noexcept
+	{
+		return FromName(kImageSpaces, a_name);
+	}
+
+	std::string_view UvAxisName(UvAxis a_axis) noexcept
+	{
+		return NameOf(kUvAxes, a_axis);
+	}
+
+	std::optional<UvAxis> ParseUvAxis(std::string_view a_name) noexcept
+	{
+		return FromName(kUvAxes, a_name);
+	}
+
+	std::string_view RippleShapeName(RippleShape a_shape) noexcept
+	{
+		return NameOf(kRippleShapes, a_shape);
+	}
+
+	std::optional<RippleShape> ParseRippleShape(std::string_view a_name) noexcept
+	{
+		return FromName(kRippleShapes, a_name);
+	}
+
+	std::string_view SourceKindName(const SourceKind& a_kind) noexcept
+	{
+		return Match(
+			a_kind,
+			[](const ImageSource&) { return std::string_view{ "image" }; },
+			[](const MaterialSource&) { return std::string_view{ "material" }; },
+			[](const BakeSource&) { return std::string_view{ "bake" }; },
+			[](const UvSource&) { return std::string_view{ "uv" }; },
+			[](const DistanceSource&) { return std::string_view{ "distance" }; },
+			[](const RippleSource&) { return std::string_view{ "ripple" }; });
+	}
+
+	std::optional<SourceKind> DefaultSourceKind(std::string_view a_name)
+	{
+		if (a_name == "image") {
+			return SourceKind{ ImageSource{} };
+		}
+		if (a_name == "material") {
+			return SourceKind{ MaterialSource{} };
+		}
+		if (a_name == "bake") {
+			return SourceKind{ BakeSource{} };
+		}
+		if (a_name == "uv") {
+			return SourceKind{ UvSource{} };
+		}
+		if (a_name == "distance") {
+			return SourceKind{ DistanceSource{} };
+		}
+		if (a_name == "ripple") {
+			return SourceKind{ RippleSource{} };
+		}
+		return std::nullopt;
+	}
+
+	std::string_view BakeKindName(const BakeKind& a_bake) noexcept
+	{
+		return Match(
+			a_bake,
+			[](const PositionBake&) { return std::string_view{ "position" }; },
+			[](const LocalPositionBake&) { return std::string_view{ "localPosition" }; },
+			[](const WorldUpBake&) { return std::string_view{ "worldUp" }; },
+			[](const PartitionBake&) { return std::string_view{ "partition" }; },
+			[](const BoneWeightBake&) { return std::string_view{ "boneWeight" }; });
+	}
+
+	std::optional<BakeKind> DefaultBakeKind(std::string_view a_name)
+	{
+		if (a_name == "position") {
+			return BakeKind{ PositionBake{} };
+		}
+		if (a_name == "localPosition") {
+			return BakeKind{ LocalPositionBake{} };
+		}
+		if (a_name == "worldUp") {
+			return BakeKind{ WorldUpBake{} };
+		}
+		if (a_name == "partition") {
+			return BakeKind{ PartitionBake{} };
+		}
+		if (a_name == "boneWeight") {
+			return BakeKind{ BoneWeightBake{} };
+		}
+		return std::nullopt;
+	}
+
 	std::string DescribeSource(const SourceKind& a_kind)
 	{
 		return Match(

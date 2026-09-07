@@ -688,11 +688,12 @@ float4 PSRipple(VSOut i) : SV_Target
 		return RE::NiPointer<RE::NiSourceTexture>{ source };
 	}
 
-	bool TextureLab::CreateTarget(Target& a_target, std::uint32_t a_size)
+	bool TextureLab::CreateTarget(Target& a_target, TextureSize a_size)
 	{
+		const std::uint32_t  pixels = a_size.Pixels();
 		D3D11_TEXTURE2D_DESC desc{};
-		desc.width = a_size;
-		desc.height = a_size;
+		desc.width = pixels;
+		desc.height = pixels;
 		desc.mipLevels = 0;
 		desc.arraySize = 1;
 		desc.format = DXGI_FORMAT_R8G8B8A8_UNORM;
@@ -701,7 +702,7 @@ float4 PSRipple(VSOut i) : SV_Target
 		desc.bindFlags = D3D11_BIND_RENDER_TARGET | D3D11_BIND_SHADER_RESOURCE;
 		desc.miscFlags = D3D11_RESOURCE_MISC_GENERATE_MIPS;
 		if (Failed(device_->CreateTexture2D(&desc, nullptr, &a_target.texture))) {
-			logger::error("TextureLab: CreateTexture2D({}) failed", a_size);
+			logger::error("TextureLab: CreateTexture2D({}) failed", pixels);
 			return false;
 		}
 		if (Failed(device_->CreateShaderResourceView(a_target.texture, nullptr, &a_target.srv)) ||
@@ -714,23 +715,23 @@ float4 PSRipple(VSOut i) : SV_Target
 			return false;
 		}
 		a_target.originalData = DataOf(a_target.shell.get());
-		a_target.ourData = new RE::NiTexture::RendererData(static_cast<std::uint16_t>(a_size), static_cast<std::uint16_t>(a_size));
+		a_target.ourData = new RE::NiTexture::RendererData(static_cast<std::uint16_t>(pixels), static_cast<std::uint16_t>(pixels));
 		// RendererData is declared against the global forward declarations.
 		a_target.ourData->texture = reinterpret_cast<::ID3D11Texture2D*>(a_target.texture);
 		a_target.ourData->resourceView = reinterpret_cast<::ID3D11ShaderResourceView*>(a_target.srv);
 		a_target.shell->rendererTexture = reinterpret_cast<RE::BSGraphics::Texture*>(a_target.ourData);
-		a_target.size = a_size;
+		a_target.size = pixels;
 		return true;
 	}
 
-	std::shared_ptr<TextureLab::Target> TextureLab::Acquire(std::uint32_t a_size)
+	std::shared_ptr<TextureLab::Target> TextureLab::Acquire(TextureSize a_size)
 	{
 		if (!Init()) {
 			return nullptr;
 		}
 		const auto deleter = [this](Target* a_target) { Recycle(a_target); };
 		for (auto it = pool_.begin(); it != pool_.end(); ++it) {
-			if ((*it)->size == a_size) {
+			if ((*it)->size == a_size.Pixels()) {
 				auto* raw = it->release();
 				pool_.erase(it);
 				return std::shared_ptr<Target>{ raw, deleter };
@@ -743,9 +744,9 @@ float4 PSRipple(VSOut i) : SV_Target
 		return std::shared_ptr<Target>{ target.release(), deleter };
 	}
 
-	TextureLab::Target* TextureLab::Scratch(std::uint32_t a_size)
+	TextureLab::Target* TextureLab::Scratch(TextureSize a_size)
 	{
-		auto& target = scratch_[a_size];
+		auto& target = scratch_[a_size.Pixels()];
 		if (!target) {
 			target = Acquire(a_size);
 		}
@@ -816,7 +817,7 @@ float4 PSRipple(VSOut i) : SV_Target
 					continue;
 				}
 				if (!entry.target) {
-					entry.target = Acquire(128);
+					entry.target = Acquire(TextureSize::Clamp(128));
 					if (!entry.target) {
 						continue;
 					}
@@ -995,8 +996,10 @@ float4 PSRipple(VSOut i) : SV_Target
 
 	bool TextureLab::RenderProgram(Target& a_target, const ProgramPass& a_pass)
 	{
-		if (!available_ || !a_target.rtv || !programPs_ || a_pass.code.size() > 256 || a_pass.refs.size() > kProgramRefs ||
-			a_pass.textures.size() > kProgramTextures || a_pass.curves.size() > kProgramCurves) {
+		// The counts are checked against the arrays, not trusted: a pass that
+		// claims more than it holds is refused here rather than read past.
+		if (!available_ || !a_target.rtv || !programPs_ || a_pass.code.size() > 256 || a_pass.refCount > a_pass.refs.size() ||
+			a_pass.textureCount > a_pass.textures.size() || a_pass.curveCount > a_pass.curves.size()) {
 			return false;
 		}
 		auto constants = std::make_unique<ProgramConstants>();
@@ -1006,7 +1009,7 @@ float4 PSRipple(VSOut i) : SV_Target
 			constants->code[k][1] = a_pass.code[k].number;
 			constants->code[k][2] = static_cast<float>(a_pass.code[k].index);
 		}
-		for (std::size_t r = 0; r < a_pass.refs.size(); ++r) {
+		for (std::size_t r = 0; r < a_pass.refCount; ++r) {
 			const auto& ref = a_pass.refs[r];
 			constants->refs[r][0] = ref.isTexture ? 1.0f : 0.0f;
 			constants->refs[r][1] = static_cast<float>(ref.texture);
@@ -1015,7 +1018,7 @@ float4 PSRipple(VSOut i) : SV_Target
 			constants->refValues[r][2] = ref.value.z;
 		}
 		ID3D11ShaderResourceView* srvs[12]{};
-		for (std::size_t t = 0; t < a_pass.textures.size(); ++t) {
+		for (std::size_t t = 0; t < a_pass.textureCount; ++t) {
 			const auto& tex = a_pass.textures[t];
 			const auto* data = DataOf(tex.texture);
 			srvs[t] = data ? reinterpret_cast<ID3D11ShaderResourceView*>(data->resourceView) : nullptr;
@@ -1032,7 +1035,7 @@ float4 PSRipple(VSOut i) : SV_Target
 			constants->texFlags[t][1] = sc.mirrorV ? 1.0f : 0.0f;
 			constants->texFlags[t][2] = sc.transpose ? 1.0f : 0.0f;
 		}
-		for (std::size_t c = 0; c < a_pass.curves.size(); ++c) {
+		for (std::size_t c = 0; c < a_pass.curveCount; ++c) {
 			srvs[8 + c] = a_pass.curves[c] ? a_pass.curves[c]->srv : nullptr;
 		}
 		constants->misc[0] = a_pass.time;
@@ -1163,7 +1166,7 @@ float4 PSRipple(VSOut i) : SV_Target
 			return false;
 		}
 		RippleConstants constants{};
-		const auto      count = std::min<std::size_t>(a_pass.firings.size(), kRippleFirings);
+		const auto      count = std::min<std::size_t>(a_pass.firingCount, a_pass.firings.size());
 		for (std::size_t k = 0; k < count; ++k) {
 			constants.firings[k][0] = a_pass.firings[k].origin.x;
 			constants.firings[k][1] = a_pass.firings[k].origin.y;
@@ -1264,7 +1267,7 @@ float4 PSRipple(VSOut i) : SV_Target
 			return it->second;
 		}
 		float result = 0.5f;
-		auto  target = Acquire(64);
+		auto  target = Acquire(TextureSize::Clamp(64));
 		if (target && Render(*target, a_source, LayerParams{})) {
 			result = ReadBackMean(*target).value_or(0.5f);
 		} else {
@@ -1281,7 +1284,7 @@ float4 PSRipple(VSOut i) : SV_Target
 			return it->second;
 		}
 		float result = 0.5f;
-		auto  target = Acquire(64);
+		auto  target = Acquire(TextureSize::Clamp(64));
 		if (target) {
 			LayerParams p;
 			p.mode = Mode::kChannel;

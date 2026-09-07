@@ -344,7 +344,9 @@ namespace WornEnchantmentPBR::Studio
 		case Mode::kCompose:
 			break;
 		case Mode::kPaint:
+			layout.contextRows = false;
 			layout.regionEditor = true;
+			layout.signals = false;  // the resources would edit the paint recipe, which is dropped
 			break;
 		case Mode::kDesign:
 			layout.stack = false;
@@ -400,6 +402,35 @@ namespace WornEnchantmentPBR::Studio
 			}
 		}
 		return &a_piece->recipes.back();
+	}
+
+	std::optional<SnapshotRequest> RequestOf(const Selection& a_selection) noexcept
+	{
+		if (a_selection.actorID == 0) {
+			return std::nullopt;
+		}
+		return SnapshotRequest{ a_selection.actorID, a_selection.armorID, a_selection.firstPerson };
+	}
+
+	void ClampSelection(Selection& a_selection, const Snapshot& a_snapshot) noexcept
+	{
+		if (!a_selection.layer || a_selection.target == Target::kLight || !a_selection.slot) {
+			return;
+		}
+		const auto* geometry = SelectedGeometry(SelectedRecipe(SelectedPiece(a_snapshot, a_selection), a_selection), a_selection);
+		if (!geometry) {
+			return;
+		}
+		const Surface surface = SurfaceOf(a_selection.target);
+		for (const auto& output : geometry->outputs) {
+			if (!output.light && output.surface == surface && output.slot == *a_selection.slot) {
+				if (*a_selection.layer >= output.layers.size()) {
+					a_selection.layer.reset();
+				}
+				return;
+			}
+		}
+		a_selection.layer.reset();
 	}
 
 	const GeometryRow* SelectedGeometry(const RecipeRow* a_recipe, const Selection& a_selection) noexcept
@@ -626,9 +657,184 @@ namespace WornEnchantmentPBR::Studio
 				names.scalar.push_back(signal.name);
 			} else if (signal.type == ValueType::kVec3) {
 				names.color.push_back(signal.name);
+			} else if (signal.type == ValueType::kVec2) {
+				names.vec2.push_back(signal.name);
+			}
+			if (signal.kind == "trigger") {
+				names.triggers.push_back(signal.name);
 			}
 		}
 		return names;
+	}
+
+	// ------------------------------------------------------------- sources
+
+	namespace
+	{
+		[[nodiscard]] std::string OnOff(bool a_on)
+		{
+			return a_on ? "on" : "off";
+		}
+
+		[[nodiscard]] std::string PointText(const Vec3& a_point)
+		{
+			return LiteralColorText(a_point);
+		}
+	}
+
+	SourceRow SourceRowOf(const Source& a_source, std::size_t a_references)
+	{
+		SourceRow row;
+		row.name = a_source.name;
+		row.kind = std::string{ SourceKindName(a_source.kind) };
+		row.references = a_references;
+		Match(
+			a_source.kind,
+			[&](const ImageSource& s) {
+				row.path = s.path;
+				row.channel = std::string{ ImageChannelName(s.channel) };
+				row.space = std::string{ ImageSpaceName(s.space) };
+				row.scroll = s.scroll ? Vec2ParamText(*s.scroll) : "";
+				row.tile = s.tile ? Vec2ParamText(*s.tile) : "";
+				row.mirrorU = OnOff(s.mirror[0]);
+				row.mirrorV = OnOff(s.mirror[1]);
+				row.transpose = OnOff(s.transpose);
+				row.mip = ParamText(s.mip);
+			},
+			[&](const MaterialSource& s) { row.material = std::string{ MaterialChannelName(s.channel) }; },
+			[&](const BakeSource& s) {
+				row.bake = std::string{ BakeKindName(s.bake) };
+				if (const auto* partition = Get<PartitionBake>(s.bake)) {
+					const auto name = BipedSlotName(partition->slot);
+					row.partition = name ? std::string{ *name } : std::to_string(partition->slot);
+				}
+				if (const auto* bones = Get<BoneWeightBake>(s.bake)) {
+					for (const auto& bone : bones->bones) {
+						row.bones += (row.bones.empty() ? "" : ", ") + bone;
+					}
+				}
+			},
+			[&](const UvSource& s) { row.axis = std::string{ UvAxisName(s.axis) }; },
+			[&](const DistanceSource& s) {
+				row.from = Match(
+					s.from,
+					[](const std::string& node) { return node; },
+					[](const Vec3& point) { return PointText(point); });
+			},
+			[&](const RippleSource& s) {
+				row.trigger = "@" + s.trigger.name;
+				row.speed = ParamText(s.speed);
+				row.width = ParamText(s.width);
+				row.decay = ParamText(s.decay);
+				row.shape = std::string{ RippleShapeName(s.shape) };
+			});
+		return row;
+	}
+
+	std::optional<SourceKind> SourceKindOf(const SourceRow& a_row)
+	{
+		if (a_row.kind == "image") {
+			ImageSource s;
+			s.path = a_row.path;
+			const auto channel = ParseImageChannel(a_row.channel);
+			const auto space = ParseImageSpace(a_row.space);
+			const auto mip = ParseParam(a_row.mip);
+			const auto* mipValue = mip ? Get<float>(*mip) : nullptr;
+			if (!channel || !space || !mipValue) {
+				return std::nullopt;
+			}
+			s.channel = *channel;
+			s.space = *space;
+			s.mip = *mipValue;
+			if (!a_row.scroll.empty()) {
+				const auto scroll = ParseVec2Param(a_row.scroll);
+				if (!scroll) {
+					return std::nullopt;
+				}
+				s.scroll = *scroll;
+			}
+			if (!a_row.tile.empty()) {
+				const auto tile = ParseVec2Param(a_row.tile);
+				if (!tile) {
+					return std::nullopt;
+				}
+				s.tile = *tile;
+			}
+			s.mirror = { a_row.mirrorU == "on", a_row.mirrorV == "on" };
+			s.transpose = a_row.transpose == "on";
+			return SourceKind{ s };
+		}
+		if (a_row.kind == "material") {
+			const auto channel = ParseMaterialChannel(a_row.material);
+			return channel ? std::optional<SourceKind>{ MaterialSource{ *channel } } : std::nullopt;
+		}
+		if (a_row.kind == "bake") {
+			auto bake = DefaultBakeKind(a_row.bake);
+			if (!bake) {
+				return std::nullopt;
+			}
+			if (auto* partition = Get<PartitionBake>(*bake)) {
+				const auto slot = BipedSlotFromName(a_row.partition);
+				if (!slot) {
+					return std::nullopt;
+				}
+				partition->slot = *slot;
+			}
+			if (auto* bones = Get<BoneWeightBake>(*bake)) {
+				std::size_t at = 0;
+				while (at <= a_row.bones.size()) {
+					const auto comma = a_row.bones.find(',', at);
+					auto       part = std::string_view{ a_row.bones }.substr(at, comma == std::string::npos ? std::string::npos : comma - at);
+					while (!part.empty() && part.front() == ' ') {
+						part.remove_prefix(1);
+					}
+					while (!part.empty() && part.back() == ' ') {
+						part.remove_suffix(1);
+					}
+					if (!part.empty()) {
+						bones->bones.emplace_back(part);
+					}
+					if (comma == std::string::npos) {
+						break;
+					}
+					at = comma + 1;
+				}
+			}
+			return SourceKind{ BakeSource{ *bake } };
+		}
+		if (a_row.kind == "uv") {
+			const auto axis = ParseUvAxis(a_row.axis);
+			return axis ? std::optional<SourceKind>{ UvSource{ *axis } } : std::nullopt;
+		}
+		if (a_row.kind == "distance") {
+			DistanceSource s;
+			if (const auto point = LiteralColor(a_row.from)) {
+				s.from = *point;
+			} else {
+				s.from = a_row.from;
+			}
+			return SourceKind{ s };
+		}
+		if (a_row.kind == "ripple") {
+			RippleSource s;
+			if (!a_row.trigger.starts_with('@') || a_row.trigger.size() < 2) {
+				return std::nullopt;
+			}
+			s.trigger = Ref{ a_row.trigger.substr(1) };
+			const auto speed = ParseParam(a_row.speed);
+			const auto width = ParseParam(a_row.width);
+			const auto decay = ParseParam(a_row.decay);
+			const auto shape = ParseRippleShape(a_row.shape);
+			if (!speed || !width || !decay || !shape) {
+				return std::nullopt;
+			}
+			s.speed = *speed;
+			s.width = *width;
+			s.decay = *decay;
+			s.shape = *shape;
+			return SourceKind{ s };
+		}
+		return std::nullopt;
 	}
 
 	// ---------------------------------------------------------------- signals
@@ -662,8 +868,107 @@ namespace WornEnchantmentPBR::Studio
 			return "colour";
 		case FieldDetail::kMask:
 			return "mask";
+		case FieldDetail::kSignal:
+			return "signal";
 		}
 		return "?";
+	}
+
+	namespace
+	{
+		// The image kinds a source field can make in place, and a mask.
+		constexpr const char* kImageCreators[]{ "new image", "new material", "new bake", "new uv", "new distance", "new ripple", "new mask" };
+		// What a value field can make: a constant of the literal it holds
+		// (promote), a fresh constant, an expression.
+		constexpr const char* kValueCreators[]{ "promote to signal", "new constant", "new expression" };
+
+		[[nodiscard]] std::vector<std::string> Creators(std::span<const char* const> a_names)
+		{
+			return std::vector<std::string>(a_names.begin(), a_names.end());
+		}
+
+		// The row a creator makes, named after its kind and unique among the
+		// taken names, and the edit that binds the field to it. `a_bind` turns
+		// the "@name" text into the field's own edit.
+		[[nodiscard]] std::vector<RecipeEdit> CreateImage(const std::string& a_creator, std::span<const std::string> a_taken, const FieldBinding& a_bind)
+		{
+			std::vector<RecipeEdit> edits;
+			const auto              make = [&](const std::string& a_name, RecipeEdit a_add) {
+				edits.push_back(std::move(a_add));
+				if (const auto bound = a_bind(ReferenceText(a_name))) {
+					edits.push_back(*bound);
+				}
+			};
+			if (a_creator == "new mask") {
+				const auto name = UniqueName("mask", a_taken);
+				make(name, AddMask{ name });
+				return edits;
+			}
+			const std::string_view word = a_creator.starts_with("new ") ? std::string_view{ a_creator }.substr(4) : std::string_view{ a_creator };
+			if (const auto kind = DefaultSourceKind(word)) {
+				const auto name = UniqueName(word, a_taken);
+				make(name, AddSource{ name, *kind });
+			}
+			return edits;
+		}
+
+		// A value field's creators. Promote needs the literal the field holds
+		// now; a fresh constant starts at 0 (a scalar) or white (a colour).
+		[[nodiscard]] std::vector<RecipeEdit> CreateValue(const std::string& a_creator, std::string_view a_field, const std::string& a_current, bool a_colour, std::span<const std::string> a_taken, const FieldBinding& a_bind)
+		{
+			std::vector<RecipeEdit> edits;
+			const auto              bindTo = [&](const std::string& a_name) {
+				if (const auto bound = a_bind(ReferenceText(a_name))) {
+					edits.push_back(*bound);
+				}
+			};
+			if (a_creator == "promote to signal") {
+				const auto name = UniqueName(a_field, a_taken);
+				Value      value = 0.0f;
+				if (a_colour) {
+					const auto colour = LiteralColor(a_current);
+					if (!colour) {
+						return edits;
+					}
+					value = *colour;
+				} else {
+					const auto param = ParseParam(a_current);
+					const auto* number = param ? Get<float>(*param) : nullptr;
+					if (!number) {
+						return edits;
+					}
+					value = *number;
+				}
+				edits.push_back(AddSignal{ name });
+				edits.push_back(SetConstant{ name, value });
+				bindTo(name);
+				return edits;
+			}
+			if (a_creator == "new constant") {
+				const auto name = UniqueName("signal", a_taken);
+				edits.push_back(AddSignal{ name });
+				if (a_colour) {
+					edits.push_back(SetConstant{ name, Vec3{ 1.0f, 1.0f, 1.0f } });
+				}
+				bindTo(name);
+				return edits;
+			}
+			if (a_creator == "new expression") {
+				const auto name = UniqueName("signal", a_taken);
+				edits.push_back(AddSignal{ name });
+				edits.push_back(SetExpression{ name, a_colour ? "[1, 1, 1]" : "1" });
+				bindTo(name);
+				return edits;
+			}
+			return edits;
+		}
+
+		[[nodiscard]] std::vector<std::string> Joined(std::span<const std::string> a_first, std::span<const std::string> a_second)
+		{
+			std::vector<std::string> names(a_first.begin(), a_first.end());
+			names.insert(names.end(), a_second.begin(), a_second.end());
+			return names;
+		}
 	}
 
 	std::vector<FieldSpec> InspectorForm(const Inspector& a_inspector)
@@ -672,16 +977,35 @@ namespace WornEnchantmentPBR::Studio
 		const std::size_t output = in.output;
 		const std::size_t layer = in.layer;
 
-		// A layer's source may be a source or a mask row, so its combo lists both.
-		std::vector<std::string> sourceNames = in.sources;
-		sourceNames.insert(sourceNames.end(), in.masks.begin(), in.masks.end());
+		// A layer's source may be a source or a mask row, so its combo lists
+		// both; a new signal's name must be unique among every signal.
+		const auto sourceNames = Joined(in.sources, in.masks);
+		const auto signalNames = Joined(in.scalarSignals, in.colorSignals);
 
 		std::vector<FieldSpec> form;
-		form.push_back(FieldSpec{ "source", FieldKind::kColor, in.row.source, std::move(sourceNames), false, DetailWhen(in.source.has_value(), FieldDetail::kSource), std::nullopt, BindLayerSource(output, layer) });
+		form.push_back(FieldSpec{ "source", FieldKind::kColor, in.row.source, sourceNames, false, DetailWhen(in.source.has_value(), FieldDetail::kSource), std::nullopt, BindLayerSource(output, layer) });
+		form.back().creators = Creators(kImageCreators);
+		form.back().create = [sourceNames, bind = form.back().bind](const std::string& a_creator) { return CreateImage(a_creator, sourceNames, bind); };
 		form.push_back(FieldSpec{ "curve", FieldKind::kCurve, in.row.curve, in.curves, true, DetailWhen(in.curve.has_value(), FieldDetail::kCurve), std::nullopt, BindLayerCurve(output, layer) });
+		form.back().creators = { "new curve" };
+		form.back().create = [curves = in.curves, bind = form.back().bind](const std::string&) {
+			std::vector<RecipeEdit> edits;
+			const auto              name = UniqueName("curve", curves);
+			edits.push_back(AddCurve{ name });
+			if (const auto bound = bind(ReferenceText(name))) {
+				edits.push_back(*bound);
+			}
+			return edits;
+		};
 		form.push_back(FieldSpec{ "opacity", FieldKind::kScalar, in.row.opacityText, in.scalarSignals, false, DetailWhen(NamesSignal(in, in.row.opacityText), FieldDetail::kOpacity), std::nullopt, BindLayerOpacity(output, layer) });
+		form.back().creators = Creators(kValueCreators);
+		form.back().create = [current = in.row.opacityText, signalNames, bind = form.back().bind](const std::string& a_creator) { return CreateValue(a_creator, "opacity", current, false, signalNames, bind); };
 		form.push_back(FieldSpec{ "colour", FieldKind::kColor, in.row.color, in.colorSignals, true, DetailWhen(NamesSignal(in, in.row.color), FieldDetail::kColor), std::nullopt, BindLayerColor(output, layer) });
+		form.back().creators = Creators(kValueCreators);
+		form.back().create = [current = in.row.color, signalNames, bind = form.back().bind](const std::string& a_creator) { return CreateValue(a_creator, "colour", current, true, signalNames, bind); };
 		form.push_back(FieldSpec{ "mask", FieldKind::kReference, in.row.mask, in.masks, true, DetailWhen(in.mask.has_value(), FieldDetail::kMask), std::nullopt, BindLayerMask(output, layer) });
+		form.back().creators = { "new mask" };
+		form.back().create = [sourceNames, bind = form.back().bind](const std::string& a_creator) { return CreateImage(a_creator, sourceNames, bind); };
 		form.push_back(FieldSpec{ "channels", FieldKind::kChannels, in.row.channels, {}, false, std::nullopt, std::nullopt, BindLayerChannels(output, layer) });
 		return form;
 	}
@@ -690,10 +1014,15 @@ namespace WornEnchantmentPBR::Studio
 	{
 		std::vector<FieldSpec> form;
 		form.reserve(a_stack.scalars.size());
+		const auto signalNames = Joined(a_stack.scalarSignals, a_stack.colorSignals);
 		for (const auto& scalar : a_stack.scalars) {
 			const auto field = ParseScalarField(scalar.name);
 			const bool colour = field == std::optional{ ScalarField::kColor };
-			form.push_back(FieldSpec{ scalar.name, colour ? FieldKind::kColor : FieldKind::kScalar, scalar.text, colour ? a_stack.colorSignals : a_stack.scalarSignals, false, std::nullopt, scalar.value, BindScalar(a_stack.output, field) });
+			const auto& names = colour ? a_stack.colorSignals : a_stack.scalarSignals;
+			const bool  signal = IsWholeReference(scalar.text) && std::ranges::find(names, ReferenceName(scalar.text)) != names.end();
+			form.push_back(FieldSpec{ scalar.name, colour ? FieldKind::kColor : FieldKind::kScalar, scalar.text, names, false, signal ? std::optional{ FieldDetail::kSignal } : std::nullopt, scalar.value, BindScalar(a_stack.output, field) });
+			form.back().creators = Creators(kValueCreators);
+			form.back().create = [name = scalar.name, current = scalar.text, colour, signalNames, bind = form.back().bind](const std::string& a_creator) { return CreateValue(a_creator, name, current, colour, signalNames, bind); };
 		}
 		return form;
 	}
@@ -809,9 +1138,11 @@ namespace WornEnchantmentPBR::Studio
 			};
 		}
 
+		// A value field whose text is a whole @signal opens that signal.
 		[[nodiscard]] FieldSpec Field(std::string a_name, FieldKind a_kind, std::string a_text, std::vector<std::string> a_names, FieldBinding a_bind)
 		{
-			return FieldSpec{ std::move(a_name), a_kind, std::move(a_text), std::move(a_names), false, std::nullopt, std::nullopt, std::move(a_bind) };
+			const bool signal = (a_kind == FieldKind::kScalar || a_kind == FieldKind::kColor || a_kind == FieldKind::kVector || a_kind == FieldKind::kVec2) && IsWholeReference(a_text) && std::ranges::find(a_names, ReferenceName(a_text)) != a_names.end();
+			return FieldSpec{ std::move(a_name), a_kind, std::move(a_text), std::move(a_names), false, signal ? std::optional{ FieldDetail::kSignal } : std::nullopt, std::nullopt, std::move(a_bind) };
 		}
 	}
 
@@ -903,6 +1234,77 @@ namespace WornEnchantmentPBR::Studio
 		form.push_back(Field("scalePoint", FieldKind::kVector, LiteralColorText(a_shell.scalePoint), {}, BindShellPoint(ShellPoint::kScalePoint)));
 		form.push_back(Field("spin", FieldKind::kScalar, a_shell.spin, a_names.scalar, BindShellParam(ShellParam::kSpin)));
 		form.push_back(Field("spinAxis", FieldKind::kVector, LiteralColorText(a_shell.spinAxis), {}, BindShellPoint(ShellPoint::kSpinAxis)));
+		return form;
+	}
+
+	namespace
+	{
+		// A field of the source form: the row with one text replaced, read
+		// back as the kind, set whole.
+		[[nodiscard]] FieldBinding BindSourceText(const SourceRow& a_row, std::string SourceRow::*a_member)
+		{
+			return [a_row, a_member](const std::string& a_text) -> std::optional<RecipeEdit> {
+				SourceRow edited = a_row;
+				edited.*a_member = a_text;
+				const auto kind = SourceKindOf(edited);
+				return kind ? std::optional<RecipeEdit>{ SetSource{ a_row.name, *kind } } : std::nullopt;
+			};
+		}
+
+		[[nodiscard]] std::vector<std::string> BipedSlotNames()
+		{
+			std::vector<std::string> names;
+			for (std::uint32_t slot = 30; slot <= 61; ++slot) {
+				if (const auto name = BipedSlotName(slot)) {
+					names.emplace_back(*name);
+				}
+			}
+			return names;
+		}
+	}
+
+	std::vector<FieldSpec> SourceForm(const SourceRow& a_source, const SignalNames& a_names)
+	{
+		std::vector<FieldSpec> form;
+		const std::string&     name = a_source.name;
+		form.push_back(Field("kind", FieldKind::kChoice, a_source.kind, { "image", "material", "bake", "uv", "distance", "ripple" }, [name](const std::string& a_text) -> std::optional<RecipeEdit> {
+			const auto kind = DefaultSourceKind(a_text);
+			return kind ? std::optional<RecipeEdit>{ SetSource{ name, *kind } } : std::nullopt;
+		}));
+		if (a_source.kind == "image") {
+			form.push_back(Field("path", FieldKind::kText, a_source.path, {}, BindSourceText(a_source, &SourceRow::path)));
+			form.push_back(Field("channel", FieldKind::kChoice, a_source.channel, { "rgb", "r", "g", "b", "a", "luma" }, BindSourceText(a_source, &SourceRow::channel)));
+			form.push_back(Field("space", FieldKind::kChoice, a_source.space, { "tiled", "mesh" }, BindSourceText(a_source, &SourceRow::space)));
+			FieldSpec scroll = Field("scroll", FieldKind::kVec2, a_source.scroll, a_names.vec2, BindSourceText(a_source, &SourceRow::scroll));
+			scroll.allowEmpty = true;
+			form.push_back(std::move(scroll));
+			FieldSpec tile = Field("tile", FieldKind::kVec2, a_source.tile, a_names.vec2, BindSourceText(a_source, &SourceRow::tile));
+			tile.allowEmpty = true;
+			form.push_back(std::move(tile));
+			form.push_back(Field("mirrorU", FieldKind::kToggle, a_source.mirrorU, {}, BindSourceText(a_source, &SourceRow::mirrorU)));
+			form.push_back(Field("mirrorV", FieldKind::kToggle, a_source.mirrorV, {}, BindSourceText(a_source, &SourceRow::mirrorV)));
+			form.push_back(Field("transpose", FieldKind::kToggle, a_source.transpose, {}, BindSourceText(a_source, &SourceRow::transpose)));
+			form.push_back(Field("mip", FieldKind::kScalar, a_source.mip, {}, BindSourceText(a_source, &SourceRow::mip)));
+		} else if (a_source.kind == "material") {
+			form.push_back(Field("channel", FieldKind::kChoice, a_source.material, { "diffuseRgb", "diffuseLuma", "normalSlope", "roughness", "metallic", "occlusion", "reflectance", "displacement", "relief" }, BindSourceText(a_source, &SourceRow::material)));
+		} else if (a_source.kind == "bake") {
+			form.push_back(Field("bake", FieldKind::kChoice, a_source.bake, { "position", "localPosition", "worldUp", "partition", "boneWeight" }, BindSourceText(a_source, &SourceRow::bake)));
+			if (a_source.bake == "partition") {
+				form.push_back(Field("partition", FieldKind::kChoice, a_source.partition, BipedSlotNames(), BindSourceText(a_source, &SourceRow::partition)));
+			} else if (a_source.bake == "boneWeight") {
+				form.push_back(Field("bones", FieldKind::kText, a_source.bones, {}, BindSourceText(a_source, &SourceRow::bones)));
+			}
+		} else if (a_source.kind == "uv") {
+			form.push_back(Field("axis", FieldKind::kChoice, a_source.axis, { "u", "v" }, BindSourceText(a_source, &SourceRow::axis)));
+		} else if (a_source.kind == "distance") {
+			form.push_back(Field("from", FieldKind::kText, a_source.from, {}, BindSourceText(a_source, &SourceRow::from)));
+		} else if (a_source.kind == "ripple") {
+			form.push_back(Field("trigger", FieldKind::kReference, a_source.trigger, a_names.triggers, BindSourceText(a_source, &SourceRow::trigger)));
+			form.push_back(Field("speed", FieldKind::kScalar, a_source.speed, a_names.scalar, BindSourceText(a_source, &SourceRow::speed)));
+			form.push_back(Field("width", FieldKind::kScalar, a_source.width, a_names.scalar, BindSourceText(a_source, &SourceRow::width)));
+			form.push_back(Field("decay", FieldKind::kScalar, a_source.decay, a_names.scalar, BindSourceText(a_source, &SourceRow::decay)));
+			form.push_back(Field("shape", FieldKind::kChoice, a_source.shape, { "ring", "disc" }, BindSourceText(a_source, &SourceRow::shape)));
+		}
 		return form;
 	}
 

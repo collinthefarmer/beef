@@ -1,0 +1,43 @@
+{
+  "format": 1,
+  "names": {
+    "partitions": { "30": "head", "31": "hair", "32": "body", "33": "hands", "34": "forearms", "37": "feet", "38": "calves", "39": "shield" },
+    "bones": {
+      "NPC Head [Head]": "head", "NPC Neck [Neck]": "neck",
+      "NPC Spine [Spn0]": "waist", "NPC Spine1 [Spn1]": "lower spine", "NPC Spine2 [Spn2]": "chest",
+      "NPC Pelvis [Pelv]": "pelvis",
+      "NPC L Clavicle [LClv]": "left shoulder", "NPC R Clavicle [RClv]": "right shoulder",
+      "NPC L UpperArm [LUar]": "left upper arm", "NPC R UpperArm [RUar]": "right upper arm",
+      "NPC L Forearm [LLar]": "left forearm", "NPC R Forearm [RLar]": "right forearm",
+      "NPC L Hand [LHnd]": "left hand", "NPC R Hand [RHnd]": "right hand",
+      "NPC L Thigh [LThg]": "left thigh", "NPC R Thigh [RThg]": "right thigh",
+      "NPC L Calf [LClf]": "left calf", "NPC R Calf [RClf]": "right calf",
+      "NPC L Foot [Lft ]": "left foot", "NPC R Foot [Rft ]": "right foot"
+    }
+  },
+  "where": [
+    { "name": "leftPauldron", "partition": "body", "bones": ["NPC L Clavicle [LClv]", "NPC L UpperArm [LUar]"] },
+    { "name": "rightPauldron", "partition": "body", "bones": ["NPC R Clavicle [RClv]", "NPC R UpperArm [RUar]"] },
+    { "name": "chest", "partition": "body", "bones": ["NPC Spine2 [Spn2]"] },
+    { "name": "spine", "partition": "body", "bones": ["NPC Spine1 [Spn1]", "NPC Spine [Spn0]"] },
+    { "name": "waist", "partition": "body", "bones": ["NPC Pelvis [Pelv]", "NPC Spine [Spn0]"] },
+    { "name": "neck", "partition": "body", "bones": ["NPC Neck [Neck]"] },
+    { "name": "head", "partition": "head", "bones": ["NPC Head [Head]"] },
+    { "name": "leftGauntlet", "partition": "hands", "bones": ["NPC L Hand [LHnd]", "NPC L Forearm [LLar]"] },
+    { "name": "rightGauntlet", "partition": "hands", "bones": ["NPC R Hand [RHnd]", "NPC R Forearm [RLar]"] },
+    { "name": "leftThigh", "partition": "body", "bones": ["NPC L Thigh [LThg]"] },
+    { "name": "rightThigh", "partition": "body", "bones": ["NPC R Thigh [RThg]"] },
+    { "name": "leftCalf", "partition": "feet", "bones": ["NPC L Calf [LClf]", "NPC L Foot [Lft ]"] },
+    { "name": "rightCalf", "partition": "feet", "bones": ["NPC R Calf [RClf]", "NPC R Foot [Rft ]"] }
+  ],
+  "what": [
+    { "name": "leather", "expression": "(1 - @metallic) * smoothstep(0.35, 0.6, @roughness)", "sources": { "metallic": { "material": "metallic" }, "roughness": { "material": "roughness" } } },
+    { "name": "polishedMetal", "expression": "@metallic * (1 - smoothstep(0.25, 0.45, @roughness))", "sources": { "metallic": { "material": "metallic" }, "roughness": { "material": "roughness" } } },
+    { "name": "roughMetal", "expression": "@metallic * smoothstep(0.35, 0.6, @roughness)", "sources": { "metallic": { "material": "metallic" }, "roughness": { "material": "roughness" } } },
+    { "name": "cloth", "expression": "(1 - @metallic) * smoothstep(0.6, 0.85, @roughness)", "sources": { "metallic": { "material": "metallic" }, "roughness": { "material": "roughness" } } },
+    { "name": "engravings", "expression": "smoothstep(0.2, 0.5, @slope) * (1 - smoothstep(0.4, 0.6, @relief))", "sources": { "slope": { "material": "normalSlope" }, "relief": { "material": "relief" } } },
+    { "name": "raised", "expression": "smoothstep(0.55, 0.8, @relief)", "sources": { "relief": { "material": "relief" } } },
+    { "name": "dark", "expression": "1 - smoothstep(0.2, 0.4, @luma)", "sources": { "luma": { "material": "diffuseLuma" } } },
+    { "name": "bright", "expression": "smoothstep(0.5, 0.75, @luma)", "sources": { "luma": { "material": "diffuseLuma" } } }
+  ]
+}

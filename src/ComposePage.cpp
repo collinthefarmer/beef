@@ -1,14 +1,20 @@
 #include "ComposePage.h"
 
+#include "EditCheck.h"
+#include "Expression.h"
 #include "Edits.h"
 #include "Forms.h"
 #include "Manager.h"
+#include "MaskStack.h"
 #include "MenuState.h"
 #include "MenuWidgets.h"
+#include "RecipeStore.h"
+#include "Regions.h"
 #include "Settings.h"
 #include "Studio.h"
 
 #include <algorithm>
+#include <cctype>
 #include <cmath>
 #include <format>
 #include <functional>
@@ -48,6 +54,10 @@ namespace WornEnchantmentPBR::Studio
 		constexpr TableStyle kGridStyle{ .borders = TableStyle::Borders::kAll, .stretch = true, .headers = true, .rowBackground = true };
 		constexpr TableStyle kContextStyle{ .borders = TableStyle::Borders::kAll, .stretch = false, .headers = true, .rowBackground = false };
 		constexpr TableStyle kFormStyle{ .borders = TableStyle::Borders::kInnerHorizontal, .stretch = true, .headers = false, .rowBackground = false };
+		// The light's and the shell's settings are dealt into this many field
+		// tables side by side, so the pane shows them without scrolling.
+		constexpr std::size_t kSettingsColumns = 2;
+		constexpr TableStyle  kColumnsStyle{ .borders = TableStyle::Borders::kNone, .stretch = true, .headers = false, .rowBackground = false };
 		constexpr TableStyle kLayerStyle{ .borders = TableStyle::Borders::kInnerHorizontal, .stretch = true, .headers = true, .rowBackground = true };
 		constexpr TableStyle kFooterStyle{ .borders = TableStyle::Borders::kAll, .stretch = true, .headers = true, .rowBackground = false };
 
@@ -65,10 +75,10 @@ namespace WornEnchantmentPBR::Studio
 		// copy, re-validates and re-applies (a refused edit is a log line);
 		// solo, mute, freeze, scrub and speed set the view the tick reads;
 		// undo, redo, a new recipe and a fired trigger are the manager's.
-		void Perform(const Intent& a_intent)
+		void Perform(const Intent& a_intent, const View& a_view)
 		{
-			auto* manager = Manager::GetSingleton();
-			auto& view = manager->Debug();
+			auto*       manager = Manager::GetSingleton();
+			const auto& view = a_view;
 			Match(
 				a_intent,
 				[&](const EditRecipe& i) {
@@ -97,42 +107,59 @@ namespace WornEnchantmentPBR::Studio
 					}
 				},
 				[&](const MuteLayer& i) {
-					const LayerKey key{ i.recipe, i.output, i.layer };
-					if (i.on) {
-						view.muted.insert(key);
-					} else {
-						view.muted.erase(key);
-					}
+					manager->UpdateView([key = LayerKey{ i.recipe, i.output, i.layer }, on = i.on](View& a_live) {
+						if (on) {
+							a_live.muted.insert(key);
+						} else {
+							a_live.muted.erase(key);
+						}
+					});
 				},
 				[&](const SetFreeze& i) {
-					view.freeze = i.on;
-					if (i.on) {
-						view.scrubSeconds = i.at;  // freezing holds the moment, not the slider's old value
-					}
+					manager->UpdateView([on = i.on, at = i.at](View& a_live) {
+						a_live.freeze = on;
+						if (on) {
+							a_live.scrubSeconds = at;  // freezing holds the moment, not the slider's old value
+						}
+					});
 				},
 				[&](const SetScrub& i) {
-					view.freeze = true;
-					view.scrubSeconds = i.seconds;
+					manager->UpdateView([seconds = i.seconds](View& a_live) {
+						a_live.freeze = true;
+						a_live.scrubSeconds = seconds;
+					});
 				},
-				[&](const SetSpeed& i) { view.speed = std::clamp(i.speed, 0.0f, 8.0f); },
+				[&](const SetSpeed& i) {
+					manager->UpdateView([speed = std::clamp(i.speed, 0.0f, 8.0f)](View& a_live) { a_live.speed = speed; });
+				},
 				// One tick of the recipe clock, held frozen at the new moment.
 				[&](const StepClock&) {
-					view.freeze = true;
-					view.scrubSeconds += static_cast<float>(GetSettings().TickIntervalMS()) * 0.001f * view.speed;
+					manager->UpdateView([](View& a_live) {
+						a_live.freeze = true;
+						a_live.scrubSeconds += static_cast<float>(GetSettings().TickIntervalMS()) * 0.001f * a_live.speed;
+					});
 				},
 				[&](const Undo& i) { manager->UndoRecipe(i.recipe); },
 				[&](const Redo& i) { manager->RedoRecipe(i.recipe); },
-				[&](const CreateRecipe& i) { manager->NewRecipe(i.id, i.armorID); },
-				[&](const FireTrigger& i) { manager->QueueEvent(i.actorID, EventRecord{ i.event, {} }); },
+				[&](const CreateRecipe& i) { manager->NewRecipe(i.id, i.key); },
+				[&](const BeginPaint& i) { manager->BeginPaint(i.recipe, i.key, i.surface); },
+				[&](const SetPaintSurface& i) { manager->SetPaintSurface(i.surface); },
+				[&](const KeepPaint& i) { manager->KeepPaint(i.recipe, i.name); },
+				[&](const EndPaint&) { manager->EndPaint(); },
+				[&](const ReadMesh& i) { manager->RequestMesh(i.actorID, i.geometry); },
+				[&](const FireTrigger& i) { manager->FireAt(i.actorID, i.event, i.node, i.offset, i.random, i.value); },
 				[](const auto&) {});
 		}
 
-		void Dispatch(Intents& a_intents, MenuState& a_state)
+		// Each intent reaches the manager, then the state; the layer
+		// selection is clamped against the snapshot the frame was drawn from.
+		void Dispatch(Intents& a_intents, MenuState& a_state, const Snapshot& a_snapshot)
 		{
 			for (const auto& intent : a_intents) {
-				Perform(intent);
+				Perform(intent, a_snapshot.view);
 				Reduce(a_state, intent);
 			}
+			ClampSelection(a_state.selection, a_snapshot);
 			a_intents.clear();
 		}
 
@@ -142,6 +169,9 @@ namespace WornEnchantmentPBR::Studio
 			a_out.push_back(EditRecipe{ a_recipe, std::move(a_edit) });
 		}
 
+		// Defined with the region editor; the Masks tab's edit button uses it.
+		void EditMaskAsRegion(const RecipeRow& a_recipe, const TextRow& a_mask, Intents& a_out);
+
 		// ---------------------------------------------------------- forms
 
 		// The input for a field, by its kind: a reference is a combo over the
@@ -149,12 +179,13 @@ namespace WornEnchantmentPBR::Studio
 		// expression, mask, channel set or text is a badge and a text field;
 		// a value (scalar, colour, vector, curve) is a value field whose badge
 		// switches between text and a signal combo.
-		[[nodiscard]] std::optional<std::string> FieldInput(const FieldSpec& a_field, float a_scale)
+		[[nodiscard]] std::optional<std::string> FieldInput(const FieldSpec& a_field, float a_scale, const Names& a_names)
 		{
+			const Widgets::TextCheck check = [&](const std::string& a_text) { return CheckField(a_field, a_text, a_names); };
 			switch (a_field.kind) {
 			case FieldKind::kReference:
 				Widgets::Badge(a_field.kind);
-				return Widgets::ReferenceCombo("value", a_field.text, a_field.names, a_field.allowEmpty, Width::Fill(), a_scale);
+				return Widgets::ReferenceCombo("value", a_field.text, a_field.names, a_field.allowEmpty, Width::Fill(), a_scale, a_field.creators);
 			case FieldKind::kChoice:
 				Widgets::Badge(a_field.kind);
 				return Widgets::ChoiceCombo("value", a_field.text, a_field.names, Width::Fill(), a_scale);
@@ -171,52 +202,100 @@ namespace WornEnchantmentPBR::Studio
 			case FieldKind::kChannels:
 			case FieldKind::kText:
 				Widgets::Badge(a_field.kind);
-				return Widgets::TextField("value", a_field.text, Width::Fill(), a_scale);
+				return Widgets::TextField("value", a_field.text, Width::Fill(), a_scale, check);
 			case FieldKind::kScalar:
 			case FieldKind::kColor:
 			case FieldKind::kVector:
+			case FieldKind::kVec2:
 			case FieldKind::kCurve:
-				return Widgets::ValueField("value", a_field.kind, a_field.text, a_field.names, a_field.allowEmpty, a_scale);
+				return Widgets::ValueField("value", a_field.kind, a_field.text, a_field.names, a_field.allowEmpty, a_scale, check, a_field.creators);
 			}
 			return std::nullopt;
 		}
 
-		// A form as the field table: the field's name, its detail button where
-		// it has details, and the input filling the rest, each row in its own
-		// ID scope. A committed text becomes the field's edit, or a log line
-		// when it does not parse. Returns the detail whose button was clicked.
-		[[nodiscard]] std::optional<FieldDetail> DrawForm(const char* a_id, std::span<const FieldSpec> a_form, const std::string& a_recipe, float a_scale, Intents& a_out)
+		// A combo's creator entry makes its row and binds the field, as the
+		// edits the field's creator returns; any other text is the field's.
+		void PostField(const FieldSpec& a_field, const std::string& a_text, const std::string& a_recipe, Intents& a_out)
 		{
-			std::optional<FieldDetail> open;
+			if (std::ranges::find(a_field.creators, a_text) != a_field.creators.end()) {
+				if (a_field.create) {
+					for (auto& edit : a_field.create(a_text)) {
+						Post(a_out, a_recipe, std::move(edit));
+					}
+				}
+				return;
+			}
+			const std::optional<RecipeEdit> edit = a_field.bind ? a_field.bind(a_text) : std::nullopt;
+			if (edit) {
+				Post(a_out, a_recipe, *edit);
+			} else {
+				Refuse(a_field.name, a_text);
+			}
+		}
+
+		// The field table of a form's fields: the field's name, its detail
+		// button where it has details, and the input filling the rest, each
+		// row in its own ID scope. A committed text becomes the field's edit,
+		// or a log line when it does not parse. Returns the index into
+		// a_fields of the field whose detail button was clicked.
+		[[nodiscard]] std::optional<std::size_t> DrawFieldTable(const char* a_id, std::span<const FieldSpec> a_fields, const std::string& a_recipe, float a_scale, const Names& a_names, Intents& a_out)
+		{
+			std::optional<std::size_t> open;
 			auto                       table = Widgets::Table::Begin(a_id, { { "field", Width::Fit() }, { "", Width::Px(ImGui::GetFrameHeight()) }, { "value", Width::Fill() } }, kFormStyle);
 			if (!table.Open()) {
 				return open;
 			}
-			for (const auto& field : a_form) {
+			for (std::size_t i = 0; i < a_fields.size(); ++i) {
+				const auto& field = a_fields[i];
 				ImGui::PushID(field.name.c_str());
 				table.Cell();
 				ImGui::AlignTextToFramePadding();
 				ImGui::TextUnformatted(field.name.c_str());
 				table.Cell();
 				if (field.detail && Widgets::DetailButton()) {
-					open = field.detail;
+					open = i;
 				}
 				table.Cell();
 				if (field.value) {
 					Widgets::ValueSwatch(*field.value);
 					ImGui::SameLine();
 				}
-				if (const auto text = FieldInput(field, a_scale)) {
-					const std::optional<RecipeEdit> edit = field.bind ? field.bind(*text) : std::nullopt;
-					if (edit) {
-						Post(a_out, a_recipe, *edit);
-					} else {
-						Refuse(field.name, *text);
-					}
+				if (const auto text = FieldInput(field, a_scale, a_names)) {
+					PostField(field, *text, a_recipe, a_out);
 				}
 				ImGui::PopID();
 			}
 			table.End();
+			return open;
+		}
+
+		// A form as the field table, or as a_columns field tables side by
+		// side, the fields dealt out in order so a form the pane cannot show
+		// whole fits without scrolling. Returns the index of the field whose
+		// detail button was clicked.
+		[[nodiscard]] std::optional<std::size_t> DrawForm(const char* a_id, std::span<const FieldSpec> a_form, const std::string& a_recipe, float a_scale, const Names& a_names, Intents& a_out, std::size_t a_columns = 1)
+		{
+			if (a_columns <= 1) {
+				return DrawFieldTable(a_id, a_form, a_recipe, a_scale, a_names, a_out);
+			}
+			std::optional<std::size_t> open;
+			const std::size_t          perColumn = (a_form.size() + a_columns - 1) / a_columns;
+			std::vector<Widgets::Column> columns(a_columns, Widgets::Column{ "", Width::Fill() });
+			auto                       outer = Widgets::Table::Begin(a_id, columns, kColumnsStyle);
+			if (!outer.Open()) {
+				return open;
+			}
+			for (std::size_t c = 0; c < a_columns; ++c) {
+				outer.Cell();
+				const std::size_t first = (std::min)(c * perColumn, a_form.size());
+				const std::size_t count = (std::min)(perColumn, a_form.size() - first);
+				ImGui::PushID(static_cast<int>(c));
+				if (const auto clicked = DrawFieldTable("column", a_form.subspan(first, count), a_recipe, a_scale, a_names, a_out)) {
+					open = first + *clicked;
+				}
+				ImGui::PopID();
+			}
+			outer.End();
 			return open;
 		}
 
@@ -283,9 +362,9 @@ namespace WornEnchantmentPBR::Studio
 			}
 		}
 
-		void IsolateCheckbox(const RecipeRow& a_recipe, const char* a_label, Intents& a_out)
+		void IsolateCheckbox(const RecipeRow& a_recipe, const View& a_view, const char* a_label, Intents& a_out)
 		{
-			const auto& view = Manager::GetSingleton()->GetView();
+			const auto& view = a_view;
 			bool        isolating = view.Isolating();
 			std::string text;
 			if (isolating) {
@@ -379,7 +458,7 @@ namespace WornEnchantmentPBR::Studio
 			}
 			if (a_cell.output) {
 				bool solo = a_cell.isolated;
-				if (Widgets::SoloMute(solo, nullptr)) {
+				if (Widgets::SoloButton(solo)) {
 					a_out.push_back(SoloOutput{ a_recipe.id, *a_cell.output, solo });
 				}
 			}
@@ -430,7 +509,7 @@ namespace WornEnchantmentPBR::Studio
 			if (a_light.output) {
 				ImGui::SameLine();
 				bool solo = a_light.isolated;
-				if (Widgets::SoloMute(solo, nullptr)) {
+				if (Widgets::SoloButton(solo)) {
 					a_out.push_back(SoloOutput{ a_recipe.id, *a_light.output, solo });
 				}
 			}
@@ -562,14 +641,33 @@ namespace WornEnchantmentPBR::Studio
 			if (!ImGui::BeginPopup("new-recipe")) {
 				return;
 			}
-			Widgets::Dim(std::format("an empty recipe keyed to {}", a_piece.armorName));
 			const auto id = Widgets::LiveTextField("id", "recipe id (its file name)", Width::Px(240.0f), 1.0f);
-			const bool ready = !id.empty();
+			// The key, from what the piece carries; the combo's pick lives with the popup.
+			static std::size_t chosen = 0;
+			if (chosen >= a_piece.keys.size()) {
+				chosen = 0;
+			}
+			const auto label = [](const KeyChoice& a_key) { return std::format("{}: {}", KeyKindName(a_key.kind), a_key.text); };
+			Widgets::NextItemWidth(Width::Px(240.0f));
+			if (ImGui::BeginCombo("##key", a_piece.keys.empty() ? "no key" : label(a_piece.keys[chosen]).c_str())) {
+				for (std::size_t i = 0; i < a_piece.keys.size(); ++i) {
+					if (ImGui::Selectable(label(a_piece.keys[i]).c_str(), i == chosen)) {
+						chosen = i;
+					}
+				}
+				ImGui::EndCombo();
+			}
+			const bool ready = !id.empty() && !a_piece.keys.empty();
 			if (!ready) {
 				ImGui::BeginDisabled();
 			}
 			if (ImGui::Button("Create") && ready) {
-				a_out.push_back(CreateRecipe{ std::string{ id }, a_piece.armorID });
+				const auto& key = a_piece.keys[chosen];
+				RecipeKey   recipeKey;
+				recipeKey.kind = key.kind;
+				recipeKey.form.text = key.text;
+				recipeKey.form.key = key.key;
+				a_out.push_back(CreateRecipe{ std::string{ id }, std::move(recipeKey) });
 				ImGui::CloseCurrentPopup();
 			}
 			if (!ready) {
@@ -610,7 +708,7 @@ namespace WornEnchantmentPBR::Studio
 				return;
 			}
 			table.Cell();
-			IsolateCheckbox(a_recipe, "##isolate", a_out);
+			IsolateCheckbox(a_recipe, a_snapshot.view, "##isolate", a_out);
 			Widgets::Tooltip("solo the recipe: apply it alone");
 			table.Cell();
 			Widgets::NextItemWidth(Width::Fit(std::format("{} / {} (3rd)", a_piece.actorName, a_piece.armorName)));
@@ -667,10 +765,10 @@ namespace WornEnchantmentPBR::Studio
 
 		// Columns fit their content and each combo is as wide as its preview,
 		// so a long name is never clipped while a short neighbour has room.
-		void DrawEditContext(const Board& a_board, const RecipeRow& a_recipe, const Cell* a_picked, const Selection& a_selection, const PaneChoice& a_pane, Intents& a_out)
+		void DrawEditContext(const Board& a_board, const RecipeRow& a_recipe, const Cell* a_picked, const Selection& a_selection, Intents& a_out)
 		{
 			const bool light = a_selection.target == Target::kLight;
-			auto       table = Widgets::Table::Begin("context", { { "S", Width::Fit() }, { "target", Width::Fit() }, { "show", Width::Fit() }, { "slot", Width::Fit() }, { "region", Width::Fit() }, { "", Width::Fill() }, { "", Width::Fit() } }, kContextStyle);
+			auto       table = Widgets::Table::Begin("context", { { "S", Width::Px(Widgets::RowButtonWidth()) }, { "target", Width::Fit() }, { "slot", Width::Fit() }, { "region", Width::Fit() }, { "", Width::Fill() }, { "", Width::Fit() } }, kContextStyle);
 			if (!table.Open()) {
 				return;
 			}
@@ -681,7 +779,7 @@ namespace WornEnchantmentPBR::Studio
 				if (!output) {
 					ImGui::BeginDisabled();
 				}
-				if (Widgets::Toggle("##solo", solo, "solo the picked output: show it alone") && output) {
+				if (Widgets::SoloButton(solo) && output) {
 					a_out.push_back(SoloOutput{ a_recipe.id, *output, solo });
 				}
 				if (!output) {
@@ -691,14 +789,6 @@ namespace WornEnchantmentPBR::Studio
 			table.Cell();
 			Widgets::NextItemWidth(Width::Fit("material"));
 			TargetChoice(a_selection, a_out);
-			table.Cell();
-			if (Widgets::SwitchButton("settings", a_pane.settings, a_pane.hasSettings)) {
-				a_out.push_back(ShowSettings{ true });
-			}
-			ImGui::SameLine();
-			if (Widgets::SwitchButton("stack", !a_pane.settings, a_pane.hasStack)) {
-				a_out.push_back(ShowSettings{ false });
-			}
 			table.Cell();
 			if (light) {
 				Widgets::Dim("the recipe's light");
@@ -715,15 +805,57 @@ namespace WornEnchantmentPBR::Studio
 			table.End();
 		}
 
+		// The pane's rule: its title, and at the right edge one button naming
+		// what the pane would show instead (settings while the stack is
+		// shown, the stack while the settings are), greyed when the target
+		// lacks it; before it, while the settings are shown, Clear puts the
+		// target's settings back to the format's defaults.
+		[[nodiscard]] Widgets::RuleLine PaneRule(std::string_view a_title, const PaneChoice& a_pane, const Board& a_board, const RecipeRow& a_recipe, Target a_target, Intents& a_out)
+		{
+			const float switchWidth = (std::max)(Widgets::ButtonWidth("settings"), Widgets::ButtonWidth("stack"));
+			const float clearWidth = Widgets::ButtonWidth("Clear");
+			const float rightWidth = switchWidth + (a_pane.settings ? clearWidth + Widgets::ItemSpacingX() : 0.0f);
+			return Widgets::RuleLine{ a_title, rightWidth, [=, &a_board, &a_recipe, &a_out]() {
+									 if (a_pane.settings) {
+										 const bool light = a_target == Target::kLight;
+										 const bool present = !light || (a_board.light.present && a_board.light.output.has_value());
+										 if (!present) {
+											 ImGui::BeginDisabled();
+										 }
+										 if (ImGui::Button("Clear", ImVec2{ clearWidth, 0.0f }) && present) {
+											 if (light) {
+												 Post(a_out, a_recipe.id, ResetLight{ a_board.light.output.value_or(0) });
+											 } else {
+												 Post(a_out, a_recipe.id, ResetShell{});
+											 }
+										 }
+										 if (!present) {
+											 ImGui::EndDisabled();
+										 }
+										 ImGui::SameLine();
+									 }
+									 const bool enabled = a_pane.settings ? a_pane.hasStack : a_pane.hasSettings;
+									 if (!enabled) {
+										 ImGui::BeginDisabled();
+									 }
+									 if (ImGui::Button(a_pane.settings ? "stack" : "settings", ImVec2{ switchWidth, 0.0f }) && enabled) {
+										 a_out.push_back(ShowSettings{ !a_pane.settings });
+									 }
+									 if (!enabled) {
+										 ImGui::EndDisabled();
+									 }
+								 } };
+		}
+
 		// Both rows, then what the pick needs under them: Add output for an
 		// empty slot, the light's cell for the light, the reason for a refused
 		// one. Returns the picked cell.
-		const Cell* DrawContext(const Snapshot& a_snapshot, const Board& a_board, const PieceRow& a_piece, const RecipeRow& a_recipe, const Selection& a_selection, const PaneChoice& a_pane, Intents& a_out)
+		const Cell* DrawContext(const Snapshot& a_snapshot, const Board& a_board, const PieceRow& a_piece, const RecipeRow& a_recipe, const Selection& a_selection, Intents& a_out)
 		{
 			const Cell* picked = PickedCell(a_board, a_selection);
 			DrawRecipeContext(a_snapshot, a_piece, a_recipe, a_out);
 			Widgets::Rule();
-			DrawEditContext(a_board, a_recipe, picked, a_selection, a_pane, a_out);
+			DrawEditContext(a_board, a_recipe, picked, a_selection, a_out);
 
 			if (a_selection.target == Target::kLight) {
 				if (a_board.light.present) {
@@ -754,20 +886,23 @@ namespace WornEnchantmentPBR::Studio
 		// the grip, solo, mute, the source's type, the blend and the source;
 		// the selected row's fields are drawn beside the table.
 
-		void DrawInspectorFields(const Inspector& a_inspector, const RecipeRow& a_recipe, const Layout& a_layout, Intents& a_out);
+		void DrawInspectorFields(const Inspector& a_inspector, const RecipeRow& a_recipe, const Layout& a_layout, const Names& a_names, Intents& a_out);
+		void DrawFormWithSignals(const char* a_id, std::span<const FieldSpec> a_form, const RecipeRow& a_recipe, FormID a_actorID, float a_scale, const Names& a_names, Intents& a_out, std::size_t a_columns = 1);
 
-		void DrawScalars(const StackView& a_stack, const std::string& a_id, float a_scale, Intents& a_out)
+		FormID g_modalActor = 0;  // the piece's actor, for a trigger fired from a modal; the body sets it
+
+		void DrawScalars(const StackView& a_stack, const RecipeRow& a_recipe, float a_scale, const Names& a_names, Intents& a_out)
 		{
 			if (a_stack.scalars.empty()) {
 				return;
 			}
-			// Scalars open no detail; the returned detail is not used.
-			[[maybe_unused]] const auto detail = DrawForm("scalars", ScalarForm(a_stack), a_id, a_scale, a_out);
+			DrawFormWithSignals("scalars", ScalarForm(a_stack), a_recipe, g_modalActor, a_scale, a_names, a_out);
 		}
 
 		[[nodiscard]] Widgets::Table BeginLayerTable()
 		{
-			return Widgets::Table::Begin("layers", { { "#", Width::Fit() }, { "", Width::Fit() }, { "", Width::Fit() }, { "S", Width::Fit() }, { "M", Width::Fit() }, { "type", Width::Px(ImGui::GetFrameHeight()) }, { "blend", Width::Fit() }, { "source", Width::Fill() } }, kLayerStyle);
+			const Width button = Width::Px(Widgets::RowButtonWidth());
+			return Widgets::Table::Begin("layers", { { "#", Width::Fit() }, { "", button }, { "", button }, { "S", button }, { "M", button }, { "type", button }, { "blend", Width::Fit() }, { "source", Width::Fill() } }, kLayerStyle);
 		}
 
 		void DrawForeignRow(Widgets::Table& a_table, const ForeignRow& a_row)
@@ -802,12 +937,11 @@ namespace WornEnchantmentPBR::Studio
 			ImGui::AlignTextToFramePadding();
 			ImGui::Text("%zu", index);
 			a_table.Cell();
-			if (ImGui::SmallButton("X")) {
+			if (Widgets::RemoveButton(0)) {
 				Post(a_out, id, RemoveLayer{ output, index });
 			}
-			Widgets::Tooltip("remove this layer");
 			a_table.Cell();
-			if (Widgets::DragHandle(kLayerPayload, index)) {
+			if (Widgets::DragHandle(kLayerPayload, index, "layer")) {
 				a_out.push_back(PickLayer{ index });
 			}
 			if (const auto move = Widgets::DropTarget(kLayerPayload, index)) {
@@ -815,12 +949,12 @@ namespace WornEnchantmentPBR::Studio
 			}
 			a_table.Cell();
 			bool solo = a_row.soloed;
-			if (Widgets::Toggle("##solo", solo, "solo: show this layer alone")) {
+			if (Widgets::SoloButton(solo)) {
 				a_out.push_back(SoloLayer{ id, output, index, solo });
 			}
 			a_table.Cell();
 			bool mute = a_row.muted;
-			if (Widgets::Toggle("##mute", mute, "mute: hide this layer")) {
+			if (Widgets::MuteButton(mute)) {
 				a_out.push_back(MuteLayer{ id, output, index, mute });
 			}
 			a_table.Cell();
@@ -882,7 +1016,7 @@ namespace WornEnchantmentPBR::Studio
 
 		// The selected layer's fields, flush against the split's rule; the
 		// layer's picture, when it has one, goes under them.
-		void DrawInspector(const StackView& a_stack, const std::optional<Inspector>& a_inspector, const RecipeRow& a_recipe, const Layout& a_layout, Intents& a_out)
+		void DrawInspector(const StackView& a_stack, const std::optional<Inspector>& a_inspector, const RecipeRow& a_recipe, const Layout& a_layout, const Names& a_names, Intents& a_out)
 		{
 			if (!a_layout.inspector || !a_inspector) {
 				Widgets::Dim("click a layer to inspect it");
@@ -893,7 +1027,7 @@ namespace WornEnchantmentPBR::Studio
 			if (!a_inspector->row.problem.empty()) {
 				Widgets::Warn(a_inspector->row.problem);
 			}
-			DrawInspectorFields(*a_inspector, a_recipe, a_layout, a_out);
+			DrawInspectorFields(*a_inspector, a_recipe, a_layout, a_names, a_out);
 			if (row != a_stack.rows.end() && row->layer.texture) {
 				Widgets::Thumbnail(row->layer.texture, 4, false, a_layout.inspectorThumbnail * a_layout.widgetScale);
 			}
@@ -916,14 +1050,13 @@ namespace WornEnchantmentPBR::Studio
 			Widgets::Tooltip(std::format("viewed on {} (one of {} shapes; the recipe applies to all)\nclick: view the next shape\nraw name: {}", GeometryLabel(a_geometry.name, a_piece.armorName), a_recipe.geometries.size(), a_geometry.name));
 		}
 
-		void DrawStack(const std::optional<StackView>& a_stack, const std::optional<Inspector>& a_inspector, const PieceRow& a_piece, const RecipeRow& a_recipe, const GeometryRow& a_geometry, const Selection& a_selection, Layout& a_layout, Intents& a_out)
+		void DrawStack(const std::optional<StackView>& a_stack, const std::optional<Inspector>& a_inspector, const PieceRow& a_piece, const RecipeRow& a_recipe, const GeometryRow& a_geometry, const Selection& a_selection, Layout& a_layout, const Names& a_names, Intents& a_out)
 		{
 			if (!a_stack) {
 				Widgets::Dim("choose a target and a slot");
 				return;
 			}
 			const auto& stack = *a_stack;
-			const auto& id = a_recipe.id;
 			// The edit row above names the slot and carries its solo toggle.
 			ImGui::PushID(static_cast<int>(stack.output));
 			if (!stack.problem.empty()) {
@@ -933,7 +1066,7 @@ namespace WornEnchantmentPBR::Studio
 			ImGui::SameLine();
 			ImGui::BeginGroup();
 			Widgets::Dim(std::format("composite {} px, {}", stack.size, stack.animated ? "animated" : "static"));
-			DrawScalars(stack, id, a_layout.widgetScale, a_out);
+			DrawScalars(stack, a_recipe, a_layout.widgetScale, a_names, a_out);
 			ImGui::EndGroup();
 
 			// An empty stack offers Add layer alone. Otherwise the layers on the
@@ -947,7 +1080,7 @@ namespace WornEnchantmentPBR::Studio
 			Widgets::Split(
 				"stack-split", a_layout.stackSplit,
 				[&]() { DrawLayers(stack, a_recipe, a_selection, a_out); },
-				[&]() { DrawInspector(stack, a_inspector, a_recipe, a_layout, a_out); });
+				[&]() { DrawInspector(stack, a_inspector, a_recipe, a_layout, a_names, a_out); });
 			ImGui::PopID();
 		}
 
@@ -958,20 +1091,61 @@ namespace WornEnchantmentPBR::Studio
 		// event id gets Fire, which posts one firing through the manager's
 		// queue. A row with no form otherwise reads as its kind. Drawn in
 		// the signal's ID scope.
-		void DrawSignalEditor(const std::string& a_id, const SignalRow& a_signal, FormID a_actorID, float a_scale, Intents& a_out)
+		// Fire, with its payload in a popup: the node (one of the shape's bones,
+		// or none), an offset from it, a random scatter, and the value.
+		void FirePopup(const SignalRow& a_signal, FormID a_actorID, std::span<const BoneRow> a_bones, Intents& a_out)
+		{
+			if (ImGui::SmallButton("Fire")) {
+				ImGui::OpenPopup("fire");
+			}
+			if (!ImGui::BeginPopup("fire")) {
+				return;
+			}
+			static std::string node;
+			static float       offset[3]{};
+			static float       random = 0.0f;
+			static float       value = 1.0f;
+			Widgets::NextItemWidth(Width::Px(220.0f));
+			if (ImGui::BeginCombo("node", node.empty() ? "(none)" : node.c_str())) {
+				if (ImGui::Selectable("(none)", node.empty())) {
+					node.clear();
+				}
+				for (const auto& bone : a_bones) {
+					if (ImGui::Selectable(bone.name.c_str(), bone.name == node)) {
+						node = bone.name;
+					}
+				}
+				ImGui::EndCombo();
+			}
+			Widgets::NextItemWidth(Width::Px(220.0f));
+			ImGui::DragFloat3("offset", offset, 1.0f);
+			Widgets::NextItemWidth(Width::Px(220.0f));
+			ImGui::DragFloat("random", &random, 1.0f, 0.0f, 200.0f);
+			Widgets::NextItemWidth(Width::Px(220.0f));
+			ImGui::DragFloat("value", &value, 0.01f);
+			if (ImGui::Button("Fire now")) {
+				a_out.push_back(FireTrigger{ a_actorID, a_signal.event, node, Vec3{ offset[0], offset[1], offset[2] }, random, value });
+			}
+			ImGui::EndPopup();
+		}
+
+		std::span<const BoneRow> g_modalBones;  // the viewed shape's bones, for a firing's node; the body sets it
+
+		void DrawSignalEditor(const std::string& a_id, const SignalRow& a_signal, FormID a_actorID, float a_scale, const Names& a_names, Intents& a_out)
 		{
 			const auto field = SignalForm(a_signal);
 			if (!field) {
 				if (!a_signal.event.empty()) {
-					if (ImGui::SmallButton("Fire")) {
-						a_out.push_back(FireTrigger{ a_actorID, a_signal.event });
-					}
+					FirePopup(a_signal, a_actorID, g_modalBones, a_out);
 					ImGui::SameLine();
 				}
 				Widgets::Dim(a_signal.kind + ": edits in the file");
 				return;
 			}
-			if (const auto text = FieldInput(*field, a_scale)) {
+			// The value's kind follows the text, so the check is the union of the
+			// kinds rather than the field's current one.
+			const Widgets::TextCheck check = [&](const std::string& a_text) { return CheckSignalValue(a_text, a_names); };
+			if (const auto text = Widgets::ValueField("value", field->kind, field->text, {}, false, a_scale, check)) {
 				const std::optional<RecipeEdit> edit = field->bind ? field->bind(*text) : std::nullopt;
 				if (edit) {
 					Post(a_out, a_id, *edit);
@@ -995,32 +1169,20 @@ namespace WornEnchantmentPBR::Studio
 		// tooltip), the editor, the curve, "=", and the live value, or inert
 		// with the reason.
 		// A row's remove button, greyed while anything references the row.
-		void RemoveRowButton(std::size_t a_references, const std::function<void()>& a_remove)
-		{
-			if (a_references > 0) {
-				ImGui::BeginDisabled();
-			}
-			if (ImGui::SmallButton("X") && a_references == 0) {
-				a_remove();
-			}
-			if (a_references > 0) {
-				ImGui::EndDisabled();
-			}
-			Widgets::Tooltip(a_references > 0 ? std::format("referenced in {} place(s)", a_references) : "remove this row");
-		}
-
-		void DrawSignalRow(Widgets::Table& a_table, const std::string& a_id, const SignalRow& a_signal, bool a_tunable, std::span<const std::string> a_curves, float a_curveWidth, FormID a_actorID, float a_scale, Intents& a_out)
+		void DrawSignalRow(Widgets::Table& a_table, const std::string& a_id, const SignalRow& a_signal, bool a_tunable, std::span<const std::string> a_curves, float a_curveWidth, FormID a_actorID, float a_scale, const Names& a_names, Intents& a_out)
 		{
 			ImGui::PushID(a_signal.name.c_str());
 			a_table.Cell();
-			RemoveRowButton(a_signal.references, [&]() { Post(a_out, a_id, RemoveSignal{ a_signal.name }); });
+			if (Widgets::RemoveButton(a_signal.references)) {
+				Post(a_out, a_id, RemoveSignal{ a_signal.name });
+			}
 			a_table.Cell();
 			if (const auto renamed = Widgets::TextField("name", a_signal.name, Width::Fill(), a_scale)) {
 				Post(a_out, a_id, RenameSignal{ a_signal.name, *renamed });
 			}
 			Widgets::Tooltip(a_signal.kind);
 			a_table.Cell();
-			DrawSignalEditor(a_id, a_signal, a_actorID, a_scale, a_out);
+			DrawSignalEditor(a_id, a_signal, a_actorID, a_scale, a_names, a_out);
 			a_table.Cell();
 			if (a_tunable) {
 				DrawSignalCurve(a_id, a_signal, a_curves, a_curveWidth, a_scale, a_out);
@@ -1043,7 +1205,7 @@ namespace WornEnchantmentPBR::Studio
 
 		// The signal table, in its own pane; the rows are those the name
 		// filter on its rule passes.
-		void DrawSignals(const PieceRow& a_piece, const RecipeRow& a_recipe, const Layout& a_layout, std::string_view a_filter, Intents& a_out)
+		void DrawSignals(const PieceRow& a_piece, const RecipeRow& a_recipe, const Layout& a_layout, std::string_view a_filter, const Names& a_names, Intents& a_out)
 		{
 			const auto  list = BuildSignalList(a_recipe, a_layout);
 			const auto& id = a_recipe.id;
@@ -1070,12 +1232,12 @@ namespace WornEnchantmentPBR::Studio
 			}
 			for (const auto& signal : list.tunable) {
 				if (NameMatches(signal.name, a_filter)) {
-					DrawSignalRow(signals, id, signal, true, curveNames, curveWidth, a_piece.actorID, scale, a_out);
+					DrawSignalRow(signals, id, signal, true, curveNames, curveWidth, a_piece.actorID, scale, a_names, a_out);
 				}
 			}
 			for (const auto& signal : list.developer) {
 				if (NameMatches(signal.name, a_filter)) {
-					DrawSignalRow(signals, id, signal, false, curveNames, curveWidth, a_piece.actorID, scale, a_out);
+					DrawSignalRow(signals, id, signal, false, curveNames, curveWidth, a_piece.actorID, scale, a_names, a_out);
 				}
 			}
 			signals.End();
@@ -1083,8 +1245,9 @@ namespace WornEnchantmentPBR::Studio
 
 		// The declared curves, in their own pane, those the name filter on
 		// its rule passes: each an expression in x, its name a field.
-		void DrawCurves(const RecipeRow& a_recipe, const Layout& a_layout, std::string_view a_filter, Intents& a_out)
+		void DrawCurves(const RecipeRow& a_recipe, const Layout& a_layout, std::string_view a_filter, const Names& a_names, Intents& a_out)
 		{
+			const Widgets::TextCheck check = [&](const std::string& a_text) { return CheckCurveText(a_text, a_names); };
 			const auto& id = a_recipe.id;
 			const float scale = a_layout.widgetScale;
 			std::vector<std::string> names;
@@ -1102,14 +1265,16 @@ namespace WornEnchantmentPBR::Studio
 				}
 				ImGui::PushID(curve.name.c_str());
 				curves.Cell();
-				RemoveRowButton(curve.references, [&]() { Post(a_out, id, RemoveCurve{ curve.name }); });
+				if (Widgets::RemoveButton(curve.references)) {
+					Post(a_out, id, RemoveCurve{ curve.name });
+				}
 				curves.Cell();
 				if (const auto renamed = Widgets::TextField("name", curve.name, Width::Fill(), scale)) {
 					Post(a_out, id, RenameCurve{ curve.name, *renamed });
 				}
 				curves.Cell();
 				Widgets::Badge(FieldKind::kCurve);
-				if (const auto edited = Widgets::TextField("text", curve.text, Width::Fill(), scale)) {
+				if (const auto edited = Widgets::TextField("text", curve.text, Width::Fill(), scale, check)) {
 					Post(a_out, id, SetCurve{ curve.name, *edited });
 				}
 				ImGui::PopID();
@@ -1117,27 +1282,136 @@ namespace WornEnchantmentPBR::Studio
 			curves.End();
 		}
 
+		// The sources, in their own tab: remove, the name (a field), a detail
+		// button opening the source's form in a modal, and the definition as
+		// the file describes it.
+		void DrawSources(const RecipeRow& a_recipe, const Layout& a_layout, std::string_view a_filter, const Names& a_names, Intents& a_out)
+		{
+			const auto& id = a_recipe.id;
+			const float scale = a_layout.widgetScale;
+			const auto  signalNames = SignalNamesOf(a_recipe);
+			std::vector<std::string> names;
+			for (const auto& source : a_recipe.sourceRows) {
+				names.push_back(source.name);
+			}
+			const float nameWidth = Widgets::WidestOf(names) * scale;
+			auto        sources = Widgets::Table::Begin("sources", { { "", Width::Fit() }, { "source", Width::Px(nameWidth) }, { "", Width::Px(ImGui::GetFrameHeight()) }, { "definition", Width::Fill() } }, kGridStyle);
+			if (!sources.Open()) {
+				return;
+			}
+			for (const auto& source : a_recipe.sourceRows) {
+				if (!NameMatches(source.name, a_filter)) {
+					continue;
+				}
+				ImGui::PushID(source.name.c_str());
+				sources.Cell();
+				if (Widgets::RemoveButton(source.references)) {
+					Post(a_out, id, RemoveSource{ source.name });
+				}
+				sources.Cell();
+				if (const auto renamed = Widgets::TextField("name", source.name, Width::Fill(), scale)) {
+					Post(a_out, id, RenameSource{ source.name, *renamed });
+				}
+				sources.Cell();
+				const auto title = std::format("source {}###source-detail", source.name);
+				if (Widgets::DetailButton()) {
+					ImGui::OpenPopup(title.c_str());
+				}
+				Widgets::DetailModal(title.c_str(), [&]() {
+					[[maybe_unused]] const auto detail = DrawForm("form", SourceForm(source, signalNames), id, scale, a_names, a_out);
+				});
+				sources.Cell();
+				ImGui::AlignTextToFramePadding();
+				Widgets::Dim(DescribeSource(SourceKindOf(source).value_or(SourceKind{ MaterialSource{} })));
+				ImGui::PopID();
+			}
+			sources.End();
+		}
+
+		// The masks, in their own tab: remove, the name (a field), the
+		// expression per texel over sources, masks and signals.
+		void DrawMasks(const RecipeRow& a_recipe, const Layout& a_layout, std::string_view a_filter, const Names& a_names, Intents& a_out)
+		{
+			const auto& id = a_recipe.id;
+			const float scale = a_layout.widgetScale;
+			const Widgets::TextCheck check = [&](const std::string& a_text) { return CheckMaskText(a_text, a_names); };
+			std::vector<std::string> names;
+			for (const auto& mask : a_recipe.maskRows) {
+				names.push_back(mask.name);
+			}
+			const float nameWidth = Widgets::WidestOf(names) * scale;
+			auto        masks = Widgets::Table::Begin("masks", { { "", Width::Fit() }, { "mask", Width::Px(nameWidth) }, { "expression", Width::Fill() } }, kGridStyle);
+			if (!masks.Open()) {
+				return;
+			}
+			for (const auto& mask : a_recipe.maskRows) {
+				if (!NameMatches(mask.name, a_filter)) {
+					continue;
+				}
+				ImGui::PushID(mask.name.c_str());
+				masks.Cell();
+				if (Widgets::RemoveButton(mask.references)) {
+					Post(a_out, id, RemoveMask{ mask.name });
+				}
+				if (mask.name != kScratchMask) {
+					ImGui::SameLine();
+					if (ImGui::SmallButton("edit")) {
+						EditMaskAsRegion(a_recipe, mask, a_out);
+					}
+				}
+				masks.Cell();
+				if (const auto renamed = Widgets::TextField("name", mask.name, Width::Fill(), scale)) {
+					Post(a_out, id, RenameMask{ mask.name, *renamed });
+				}
+				masks.Cell();
+				Widgets::Badge(FieldKind::kMask);
+				if (const auto edited = Widgets::TextField("text", mask.text, Width::Fill(), scale, check)) {
+					Post(a_out, id, SetMask{ mask.name, *edited });
+				}
+				ImGui::PopID();
+			}
+			masks.End();
+		}
+
 		// Add and the name filter for the open tab, at the right edge of the
 		// resources rule, in the tab's own ID scope so each tab keeps its
 		// filter and the two Add buttons never share an ID.
 		[[nodiscard]] Widgets::RuleLine ResourcesRule(ResourceTab a_tab, const RecipeRow& a_recipe, float a_scale, std::string_view& a_filter, Intents& a_out)
 		{
-			const float addWidth = Widgets::FitWidth("Add");
+			const float addWidth = Widgets::ButtonWidth("Add");
 			const float rightWidth = addWidth + Widgets::ItemSpacingX() + kFilterWidth * a_scale;
 			return Widgets::RuleLine{ "Resources", rightWidth, [=, &a_recipe, &a_filter, &a_out]() {
 									 ImGui::PushID(static_cast<int>(a_tab));
 									 if (ImGui::Button("Add", ImVec2{ addWidth, 0.0f })) {
 										 std::vector<std::string> names;
-										 if (a_tab == ResourceTab::kSignals) {
+										 switch (a_tab) {
+										 case ResourceTab::kSignals:
 											 for (const auto& signal : a_recipe.signals) {
 												 names.push_back(signal.name);
 											 }
 											 Post(a_out, a_recipe.id, AddSignal{ UniqueName("signal", names) });
-										 } else {
+											 break;
+										 case ResourceTab::kCurves:
 											 for (const auto& curve : a_recipe.curves) {
 												 names.push_back(curve.name);
 											 }
 											 Post(a_out, a_recipe.id, AddCurve{ UniqueName("curve", names) });
+											 break;
+										 case ResourceTab::kSources:
+											 for (const auto& source : a_recipe.sourceRows) {
+												 names.push_back(source.name);
+											 }
+											 for (const auto& mask : a_recipe.masks) {
+												 names.push_back(mask);
+											 }
+											 Post(a_out, a_recipe.id, AddSource{ UniqueName("source", names), MaterialSource{} });
+											 break;
+										 case ResourceTab::kMasks:
+											 for (const auto& mask : a_recipe.masks) {
+												 names.push_back(mask);
+											 }
+											 Post(a_out, a_recipe.id, AddMask{ UniqueName("mask", names) });
+											 break;
 										 }
 									 }
 									 ImGui::SameLine();
@@ -1150,7 +1424,7 @@ namespace WornEnchantmentPBR::Studio
 		// table scrolling inside its tab. The tab bar owns the click; the
 		// state follows it, so the rule above serves the open tab from the
 		// next frame on.
-		void DrawResources(const PieceRow& a_piece, const RecipeRow& a_recipe, const Layout& a_layout, ResourceTab a_open, std::string_view a_filter, Intents& a_out)
+		void DrawResources(const PieceRow& a_piece, const RecipeRow& a_recipe, const Layout& a_layout, ResourceTab a_open, std::string_view a_filter, const Names& a_names, Intents& a_out)
 		{
 			if (!ImGui::BeginTabBar("resources")) {
 				return;
@@ -1166,10 +1440,16 @@ namespace WornEnchantmentPBR::Studio
 				if (ImGui::BeginChild(name.c_str(), ImVec2{ 0.0f, 0.0f }, 0, 0)) {
 					switch (tab) {
 					case ResourceTab::kSignals:
-						DrawSignals(a_piece, a_recipe, a_layout, a_filter, a_out);
+						DrawSignals(a_piece, a_recipe, a_layout, a_filter, a_names, a_out);
 						break;
 					case ResourceTab::kCurves:
-						DrawCurves(a_recipe, a_layout, a_filter, a_out);
+						DrawCurves(a_recipe, a_layout, a_filter, a_names, a_out);
+						break;
+					case ResourceTab::kSources:
+						DrawSources(a_recipe, a_layout, a_filter, a_names, a_out);
+						break;
+					case ResourceTab::kMasks:
+						DrawMasks(a_recipe, a_layout, a_filter, a_names, a_out);
 						break;
 					}
 				}
@@ -1182,7 +1462,7 @@ namespace WornEnchantmentPBR::Studio
 		// ------------------------------------------------------ inspector
 
 		// A source or mask row the layer reads, with its picture and definition.
-		void DrawImageRow(const std::string& a_id, const ImageRow& a_image, bool a_editable, const Layout& a_layout, Intents& a_out)
+		void DrawImageRow(const std::string& a_id, const ImageRow& a_image, bool a_editable, const Layout& a_layout, const Names& a_names, Intents& a_out)
 		{
 			const float scale = a_layout.widgetScale;
 			Widgets::Thumbnail(a_image.texture, a_image.channel, a_image.animated, a_layout.inspectorThumbnail * scale);
@@ -1190,7 +1470,8 @@ namespace WornEnchantmentPBR::Studio
 			ImGui::SameLine();
 			if (a_editable) {
 				Widgets::Badge(FieldKind::kMask);
-				if (const auto edited = Widgets::TextField("text", a_image.kind, Width::Fill(), scale)) {
+				const Widgets::TextCheck check = [&](const std::string& a_text) { return CheckMaskText(a_text, a_names); };
+				if (const auto edited = Widgets::TextField("text", a_image.kind, Width::Fill(), scale, check)) {
 					Post(a_out, a_id, SetMask{ a_image.name, *edited });
 				}
 			} else {
@@ -1201,12 +1482,18 @@ namespace WornEnchantmentPBR::Studio
 			}
 		}
 
-		// The signal a parameter text names, drawn as its editor inside a modal.
-		void DrawSignalDetail(const std::string& a_id, const Inspector& a_inspector, const std::string& a_text, FormID a_actorID, float a_scale, Intents& a_out)
+		// The signal a parameter text names, drawn as its editor inside a
+		// modal, with the signals its expression reads as buttons that open
+		// their own modal, so a chain is followed to any depth (capped).
+		constexpr int kMaxSignalModalDepth = 6;
+
+		void DrawSignalModal(const RecipeRow& a_recipe, const std::string& a_name, FormID a_actorID, float a_scale, const Names& a_names, int a_depth, Intents& a_out);
+
+		void DrawSignalDetail(const RecipeRow& a_recipe, const std::string& a_text, FormID a_actorID, float a_scale, const Names& a_names, int a_depth, Intents& a_out)
 		{
 			const auto name = ReferenceName(a_text);
-			const auto it = std::ranges::find(a_inspector.signals, name, &SignalRow::name);
-			if (a_text.empty() || !a_text.starts_with('@') || it == a_inspector.signals.end()) {
+			const auto it = std::ranges::find(a_recipe.signals, name, &SignalRow::name);
+			if (a_text.empty() || !a_text.starts_with('@') || it == a_recipe.signals.end()) {
 				Widgets::Dim("a literal; choose a @signal to tune it here");
 				return;
 			}
@@ -1214,14 +1501,63 @@ namespace WornEnchantmentPBR::Studio
 			ImGui::Text("%s (%s)", ReferenceText(it->name).c_str(), it->kind.c_str());
 			ImGui::SameLine();
 			Widgets::ValueSwatch(it->value);
-			DrawSignalEditor(a_id, *it, a_actorID, a_scale, a_out);
+			DrawSignalEditor(a_recipe.id, *it, a_actorID, a_scale, a_names, a_out);
 			if (it->inert) {
 				Widgets::Problem(it->problem.empty() ? "inert" : "inert: " + it->problem);
+			}
+			// The signals this one reads, each a link into its own modal.
+			if (!it->text.empty() && a_depth < kMaxSignalModalDepth) {
+				if (const auto program = Program::Parse(it->text)) {
+					bool any = false;
+					for (const auto& read : program->References()) {
+						if (std::ranges::find(a_recipe.signals, read, &SignalRow::name) == a_recipe.signals.end()) {
+							continue;
+						}
+						if (!any) {
+							Widgets::Dim("reads");
+							any = true;
+						}
+						ImGui::SameLine();
+						DrawSignalModal(a_recipe, read, a_actorID, a_scale, a_names, a_depth + 1, a_out);
+					}
+				}
 			}
 			ImGui::PopID();
 		}
 
-		void DrawDetailModal(FieldDetail a_detail, const Inspector& a_in, const RecipeRow& a_recipe, FormID a_actorID, const Layout& a_layout, Intents& a_out)
+		// A button named for the signal that opens its modal, nested in the
+		// current one.
+		void DrawSignalModal(const RecipeRow& a_recipe, const std::string& a_name, FormID a_actorID, float a_scale, const Names& a_names, int a_depth, Intents& a_out)
+		{
+			ImGui::PushID(a_name.c_str());
+			const auto title = std::format("{}###signal-modal-{}", ReferenceText(a_name), a_depth);
+			if (ImGui::SmallButton(ReferenceText(a_name).c_str())) {
+				ImGui::OpenPopup(title.c_str());
+			}
+			Widgets::DetailModal(title.c_str(), [&]() { DrawSignalDetail(a_recipe, ReferenceText(a_name), a_actorID, a_scale, a_names, a_depth, a_out); });
+			ImGui::PopID();
+		}
+
+		// A form whose value fields may open their signal: the detail button
+		// of a field naming a @signal opens that signal's modal.
+		void DrawFormWithSignals(const char* a_id, std::span<const FieldSpec> a_form, const RecipeRow& a_recipe, FormID a_actorID, float a_scale, const Names& a_names, Intents& a_out, std::size_t a_columns)
+		{
+			const auto open = DrawForm(a_id, a_form, a_recipe.id, a_scale, a_names, a_out, a_columns);
+			for (std::size_t i = 0; i < a_form.size(); ++i) {
+				if (a_form[i].detail != FieldDetail::kSignal) {
+					continue;
+				}
+				ImGui::PushID(static_cast<int>(i));
+				const auto title = std::format("{}###signal-modal-0", a_form[i].text);
+				if (open == i) {
+					ImGui::OpenPopup(title.c_str());
+				}
+				Widgets::DetailModal(title.c_str(), [&]() { DrawSignalDetail(a_recipe, a_form[i].text, a_actorID, a_scale, a_names, 0, a_out); });
+				ImGui::PopID();
+			}
+		}
+
+		void DrawDetailModal(FieldDetail a_detail, const Inspector& a_in, const RecipeRow& a_recipe, FormID a_actorID, const Layout& a_layout, const Names& a_names, Intents& a_out)
 		{
 			const auto& id = a_recipe.id;
 			const float scale = a_layout.widgetScale;
@@ -1229,7 +1565,7 @@ namespace WornEnchantmentPBR::Studio
 			case FieldDetail::kSource:
 				if (a_in.source) {
 					const bool isMask = std::ranges::find(a_in.masks, a_in.source->name) != a_in.masks.end();
-					DrawImageRow(id, *a_in.source, isMask, a_layout, a_out);
+					DrawImageRow(id, *a_in.source, isMask, a_layout, a_names, a_out);
 				} else {
 					Widgets::Dim("a constant colour, or a name no source or mask has");
 				}
@@ -1239,7 +1575,8 @@ namespace WornEnchantmentPBR::Studio
 					ImGui::TextUnformatted((ReferenceText(a_in.curve->name) + " =").c_str());
 					ImGui::SameLine();
 					Widgets::Badge(FieldKind::kCurve);
-					if (const auto edited = Widgets::TextField("text", a_in.curve->text, Width::Fill(), scale)) {
+					const Widgets::TextCheck check = [&](const std::string& a_text) { return CheckCurveText(a_text, a_names); };
+					if (const auto edited = Widgets::TextField("text", a_in.curve->text, Width::Fill(), scale, check)) {
 						Post(a_out, id, SetCurve{ a_in.curve->name, *edited });
 					}
 				} else {
@@ -1247,46 +1584,448 @@ namespace WornEnchantmentPBR::Studio
 				}
 				break;
 			case FieldDetail::kOpacity:
-				DrawSignalDetail(id, a_in, a_in.row.opacityText, a_actorID, scale, a_out);
+				DrawSignalDetail(a_recipe, a_in.row.opacityText, a_actorID, scale, a_names, 0, a_out);
 				break;
 			case FieldDetail::kColor:
-				DrawSignalDetail(id, a_in, a_in.row.color, a_actorID, scale, a_out);
+				DrawSignalDetail(a_recipe, a_in.row.color, a_actorID, scale, a_names, 0, a_out);
+				break;
+			case FieldDetail::kSignal:
 				break;
 			case FieldDetail::kMask:
 				if (a_in.mask) {
-					DrawImageRow(id, *a_in.mask, true, a_layout, a_out);
+					DrawImageRow(id, *a_in.mask, true, a_layout, a_names, a_out);
 				} else {
 					Widgets::Dim("no mask");
 				}
 				break;
 			}
-			if (ImGui::Button("close")) {
-				ImGui::CloseCurrentPopup();
-			}
 		}
 
 		// The detail modals live outside the table so their ids match the
-		// buttons' scope; one per field, opened by its button. The actor is
-		// the piece's, for a trigger fired from a modal; the body sets it.
-		FormID g_modalActor = 0;
-
-		void DrawInspectorFields(const Inspector& a_inspector, const RecipeRow& a_recipe, const Layout& a_layout, Intents& a_out)
+		// buttons' scope; one per field, opened by its button.
+		void DrawInspectorFields(const Inspector& a_inspector, const RecipeRow& a_recipe, const Layout& a_layout, const Names& a_names, Intents& a_out)
 		{
-			const std::optional<FieldDetail> open = DrawForm("fields", InspectorForm(a_inspector), a_recipe.id, a_layout.widgetScale, a_out);
+			const auto                       form = InspectorForm(a_inspector);
+			const std::optional<std::size_t> opened = DrawForm("fields", form, a_recipe.id, a_layout.widgetScale, a_names, a_out);
+			const std::optional<FieldDetail> open = opened && *opened < form.size() ? form[*opened].detail : std::nullopt;
 			for (const auto detail : { FieldDetail::kSource, FieldDetail::kCurve, FieldDetail::kOpacity, FieldDetail::kColor, FieldDetail::kMask }) {
 				const auto title = std::format("{} of layer {}###detail{}", FieldDetailName(detail), a_inspector.layer, static_cast<int>(detail));
 				if (open == detail) {
 					ImGui::OpenPopup(title.c_str());
 				}
-				// An auto-resizing window starts narrow and wrapped text then wraps
-				// every few characters; a floor on the width keeps a definition on
-				// one or two lines.
-				ImGui::SetNextWindowSizeConstraints(ImVec2{ 480.0f, 0.0f }, ImVec2{ 960.0f, 800.0f });
-				if (ImGui::BeginPopupModal(title.c_str(), nullptr, ImGuiMCP::ImGuiWindowFlags_AlwaysAutoResize)) {
-					DrawDetailModal(detail, a_inspector, a_recipe, g_modalActor, a_layout, a_out);
-					ImGui::EndPopup();
+				Widgets::DetailModal(title.c_str(), [&]() { DrawDetailModal(detail, a_inspector, a_recipe, g_modalActor, a_layout, a_names, a_out); });
+			}
+		}
+
+		// --------------------------------------------------------- region
+		// Paint mode: the region stack, terms with boolean ops, whose built
+		// expression the paint recipe's scratch mask holds. The paint recipe
+		// (a clone of the active one with a single masked emissive output)
+		// is applied alone while Paint is open, so the armor shows the
+		// region through the ordinary render path. Keep copies the region
+		// into the active recipe; Discard drops the paint recipe.
+
+		// The key a paint recipe takes from the piece: its armor, else the
+		// first key it offers.
+		[[nodiscard]] std::optional<RecipeKey> PaintKeyOf(const PieceRow& a_piece)
+		{
+			const KeyChoice* chosen = nullptr;
+			for (const auto& key : a_piece.keys) {
+				if (key.kind == KeyKind::kArmor) {
+					chosen = &key;
+					break;
 				}
 			}
+			if (!chosen && !a_piece.keys.empty()) {
+				chosen = &a_piece.keys.front();
+			}
+			if (!chosen) {
+				return std::nullopt;
+			}
+			RecipeKey key;
+			key.kind = chosen->kind;
+			key.form.text = chosen->text;
+			key.form.key = chosen->key;
+			return key;
+		}
+
+		constexpr const char* kTermPayload = "WEPBR_TERM";
+
+		// A preset becomes the source edits it needs on the paint recipe and
+		// one term.
+		void AddPresetTerm(const RegionPreset& a_preset, const RecipeRow& a_recipe, const Existing& a_existing, Intents& a_out)
+		{
+			auto [edits, expression] = MaterialiseTerm(a_preset, a_existing);
+			for (auto& edit : edits) {
+				Post(a_out, a_recipe.id, std::move(edit));
+			}
+			a_out.push_back(AddTerm{ Term{ TermOp::kAnd, std::move(expression), a_preset.name } });
+		}
+
+		// The member combo of the action row: the options of the chosen
+		// kind; choosing one adds the term. A preset the shape cannot make
+		// is greyed with the reason.
+		void MemberCombo(TermKind a_kind, const RecipeRow& a_recipe, const GeometryRow& a_geometry, const RegionStack& a_region, Intents& a_out)
+		{
+			const auto& presets = LoadedPresets();
+			Widgets::NextItemWidth(Width::Fit("polishedMetal"));
+			if (!ImGui::BeginCombo("##member", "add...")) {
+				return;
+			}
+			const auto existing = ExistingOf(a_recipe);  // only while the combo is open
+			const auto presetEntries = [&](std::span<const RegionPreset> a_presets) {
+				for (const auto& preset : a_presets) {
+					ImGui::PushID(preset.name.c_str());
+					const auto reason = Unresolvable(preset, a_geometry);
+					if (reason) {
+						ImGui::BeginDisabled();
+					}
+					if (ImGui::Selectable(preset.name.c_str()) && !reason) {
+						AddPresetTerm(preset, a_recipe, existing, a_out);
+					}
+					if (reason) {
+						ImGui::EndDisabled();
+						Widgets::Tooltip(*reason);
+					}
+					ImGui::PopID();
+				}
+			};
+			switch (a_kind) {
+			case TermKind::kWhere:
+				presetEntries(presets.where);
+				break;
+			case TermKind::kWhat:
+				presetEntries(presets.what);
+				break;
+			case TermKind::kShape:
+				if (!a_geometry.meshRead) {
+					Widgets::Dim("read the mesh first");
+				}
+				for (const auto& partition : a_geometry.partitions) {
+					RegionPreset preset;
+					preset.name = PlainPartitionName(presets, partition.slot);
+					preset.partition = partition.slot;
+					ImGui::PushID(static_cast<int>(partition.slot));
+					if (ImGui::Selectable(preset.name.c_str())) {
+						AddPresetTerm(preset, a_recipe, existing, a_out);
+					}
+					ImGui::PopID();
+				}
+				for (const auto& bone : a_geometry.bones) {
+					RegionPreset preset;
+					preset.name = PlainBoneName(presets, bone.name);
+					preset.bones = { bone.name };
+					ImGui::PushID(bone.name.c_str());
+					if (ImGui::Selectable(std::format("{} ({:.0f}%)", preset.name, bone.coverage * 100.0f).c_str())) {
+						AddPresetTerm(preset, a_recipe, existing, a_out);
+					}
+					ImGui::PopID();
+				}
+				break;
+			case TermKind::kMasks:
+				for (const auto& mask : a_recipe.masks) {
+					if (mask == kScratchMask || mask == a_region.editing) {
+						continue;
+					}
+					if (ImGui::Selectable(ReferenceText(mask).c_str())) {
+						a_out.push_back(AddTerm{ Term{ TermOp::kAnd, ReferenceText(mask), mask } });
+					}
+				}
+				break;
+			case TermKind::kSources:
+				for (const auto& source : a_recipe.sourceRows) {
+					if (ImGui::Selectable(ReferenceText(source.name).c_str())) {
+						a_out.push_back(AddTerm{ Term{ TermOp::kAnd, ReferenceText(source.name), source.name } });
+					}
+				}
+				break;
+			case TermKind::kExpression:
+				if (ImGui::Selectable("empty expression")) {
+					a_out.push_back(AddTerm{ Term{ TermOp::kAnd, "", std::string{ kExpressionLabel } } });
+				}
+				break;
+			}
+			ImGui::EndCombo();
+		}
+
+		// The action row, the shape of Compose's edit row: the kind and
+		// member combos that add a term, the read-mesh button (lit until the
+		// shape's mesh is read), and the surface the paint recipe previews on.
+		void DrawPaintActions(const PieceRow& a_piece, const RecipeRow& a_recipe, const GeometryRow& a_geometry, const MenuState& a_state, Intents& a_out)
+		{
+			auto table = Widgets::Table::Begin("paint-actions", { { "kind", Width::Fit() }, { "member", Width::Fit() }, { "mesh", Width::Fit() }, { "preview on", Width::Fit() }, { "", Width::Fill() } }, kContextStyle);
+			if (!table.Open()) {
+				return;
+			}
+			std::vector<std::string> kinds;
+			for (const auto kind : kTermKinds) {
+				kinds.emplace_back(TermKindName(kind));
+			}
+			table.Cell();
+			if (const auto chosen = Widgets::ChoiceCombo("kind", std::string{ TermKindName(a_state.region.addKind) }, kinds, Width::Fit("expression"), 1.0f)) {
+				if (const auto kind = ParseTermKind(*chosen)) {
+					a_out.push_back(SetTermKind{ *kind });
+				}
+			}
+			table.Cell();
+			MemberCombo(a_state.region.addKind, a_recipe, a_geometry, a_state.region, a_out);
+			table.Cell();
+			Widgets::Disabled(a_geometry.meshRead, [&]() {
+				if (Widgets::LitButton("read mesh", !a_geometry.meshRead)) {
+					a_out.push_back(ReadMesh{ a_piece.actorID, a_geometry.name });
+				}
+			});
+			table.Cell();
+			const std::vector<std::string> surfaces{ "material", "shell" };
+			const Surface                  current = a_state.paint ? a_state.paint->surface : Surface::kMaterial;
+			if (const auto chosen = Widgets::ChoiceCombo("surface", current == Surface::kShell ? "shell" : "material", surfaces, Width::Fit("material"), 1.0f)) {
+				a_out.push_back(SetPaintSurface{ *chosen == "shell" ? Surface::kShell : Surface::kMaterial });
+			}
+			table.Cell();
+			table.End();
+		}
+
+		[[nodiscard]] Widgets::Table BeginTermTable()
+		{
+			const Width button = Width::Px(Widgets::RowButtonWidth());
+			return Widgets::Table::Begin("terms", { { "#", Width::Fit() }, { "", button }, { "", button }, { "S", button }, { "M", button }, { "op", Width::Fit("and") }, { "term", Width::Fill() } }, kLayerStyle);
+		}
+
+		// The ops a term past the first may take, as the op combo lists them.
+		const std::vector<std::string> kTermOps{ std::string{ TermOpName(TermOp::kAnd) }, std::string{ TermOpName(TermOp::kOr) }, std::string{ TermOpName(TermOp::kNot) } };
+
+		void DrawTermRow(Widgets::Table& a_table, const RegionStack& a_region, std::size_t a_index, Intents& a_out)
+		{
+			const auto& term = a_region.terms[a_index];
+			ImGui::PushID(static_cast<int>(a_index));
+			a_table.Cell();
+			ImGui::AlignTextToFramePadding();
+			ImGui::Text("%zu", a_index);
+			a_table.Cell();
+			if (Widgets::RemoveButton(0)) {
+				a_out.push_back(RemoveTerm{ a_index });
+			}
+			a_table.Cell();
+			if (Widgets::DragHandle(kTermPayload, a_index, "term")) {
+				a_out.push_back(PickTerm{ a_index });
+			}
+			if (const auto move = Widgets::DropTarget(kTermPayload, a_index)) {
+				a_out.push_back(MoveTerm{ move->from, move->to });
+			}
+			a_table.Cell();
+			bool solo = a_region.solo == a_index;
+			if (Widgets::SoloButton(solo)) {
+				a_out.push_back(SoloTerm{ a_index, solo });
+			}
+			a_table.Cell();
+			bool mute = a_region.muted.contains(a_index);
+			if (Widgets::MuteButton(mute)) {
+				a_out.push_back(MuteTerm{ a_index, mute });
+			}
+			a_table.Cell();
+			if (a_index == 0) {
+				ImGui::AlignTextToFramePadding();
+				Widgets::Dim("set");
+			} else if (const auto chosen = Widgets::ChoiceCombo("op", std::string{ TermOpName(term.op) }, kTermOps, Width::Fit("and"), 1.0f)) {
+				if (const auto op = ParseTermOp(*chosen)) {
+					a_out.push_back(SetTermOp{ a_index, *op });
+				}
+			}
+			a_table.Cell();
+			const auto text = term.text.empty() ? std::string{ "(empty)" } : term.label == kExpressionLabel ? term.text : std::format("{}  {}", term.label, term.text);
+			if (ImGui::Selectable(text.c_str(), a_region.selected == a_index)) {
+				a_out.push_back(PickTerm{ a_index });
+			}
+			ImGui::PopID();
+		}
+
+		// The selected term's fields beside the table: its op, its text,
+		// and the sources and masks it reads, each with a detail button that
+		// opens the picture in a modal.
+		void DrawTermInspector(const RecipeRow& a_recipe, const GeometryRow& a_geometry, const RegionStack& a_region, const Layout& a_layout, const Names& a_names, Intents& a_out)
+		{
+			if (!a_region.selected || *a_region.selected >= a_region.terms.size()) {
+				Widgets::Dim("click a term to edit it");
+				return;
+			}
+			const std::size_t index = *a_region.selected;
+			const auto&       term = a_region.terms[index];
+			const float       scale = a_layout.widgetScale;
+			ImGui::PushID("term-inspector");
+			ImGui::PushID(static_cast<int>(index));
+			Widgets::Dim(std::format("term {}: {}", index, term.label));
+			auto fields = Widgets::Table::Begin("term-fields", { { "field", Width::Fit() }, { "value", Width::Fill() } }, kFormStyle);
+			if (fields.Open()) {
+				fields.Cell();
+				ImGui::AlignTextToFramePadding();
+				ImGui::TextUnformatted("op");
+				fields.Cell();
+				if (index == 0) {
+					ImGui::AlignTextToFramePadding();
+					Widgets::Dim("set (the first term leads)");
+				} else if (const auto chosen = Widgets::ChoiceCombo("op", std::string{ TermOpName(term.op) }, kTermOps, Width::Fit("and"), scale)) {
+					if (const auto op = ParseTermOp(*chosen)) {
+						a_out.push_back(SetTermOp{ index, *op });
+					}
+				}
+				fields.Cell();
+				ImGui::AlignTextToFramePadding();
+				ImGui::TextUnformatted("expression");
+				fields.Cell();
+				Widgets::Badge(FieldKind::kMask);
+				const Widgets::TextCheck check = [&](const std::string& a_text) { return CheckMaskText(a_text, a_names); };
+				if (const auto edited = Widgets::TextField("text", term.text, Width::Fill(), scale, check)) {
+					a_out.push_back(SetTermText{ index, *edited });
+				}
+				fields.End();
+			}
+
+			// What the term reads, one row each; the picture behind the button.
+			const auto program = term.text.empty() ? std::nullopt : std::optional{ Program::Parse(term.text) };
+			if (program && *program && !(*program)->References().empty()) {
+				auto reads = Widgets::Table::Begin("term-reads", { { "reads", Width::Fit() }, { "", Width::Px(ImGui::GetFrameHeight()) }, { "definition", Width::Fill() } }, kFormStyle);
+				if (reads.Open()) {
+					for (const auto& name : (*program)->References()) {
+						const ImageRow* image = nullptr;
+						for (const auto* list : { &a_geometry.sources, &a_geometry.masks }) {
+							const auto it = std::ranges::find(*list, name, &ImageRow::name);
+							if (it != list->end()) {
+								image = &*it;
+							}
+						}
+						ImGui::PushID(name.c_str());
+						reads.Cell();
+						ImGui::AlignTextToFramePadding();
+						ImGui::TextUnformatted(ReferenceText(name).c_str());
+						reads.Cell();
+						const auto title = std::format("{}###term-read", ReferenceText(name));
+						if (image && Widgets::DetailButton()) {
+							ImGui::OpenPopup(title.c_str());
+						}
+						reads.Cell();
+						ImGui::AlignTextToFramePadding();
+						if (image) {
+							ImGui::TextUnformatted(image->kind.c_str());
+						} else {
+							Widgets::Warn("not a source or mask of the recipe");
+						}
+						Widgets::DetailModal(title.c_str(), [&]() {
+							if (image) {
+								DrawImageRow(a_recipe.id, *image, false, a_layout, a_names, a_out);
+							}
+						});
+						ImGui::PopID();
+					}
+					reads.End();
+				}
+			}
+			ImGui::PopID();
+			ImGui::PopID();
+		}
+
+		// Keep and Discard, at the right edge under the split. Keep proposes a
+		// name and hands the region to the manager, which copies it into the
+		// active recipe and ends the session; Discard ends it.
+		void DrawKeepDiscard(const MenuState& a_state, Intents& a_out)
+		{
+			const auto& region = a_state.region;
+			const float keepWidth = Widgets::ButtonWidth("Keep");
+			const float discardWidth = Widgets::ButtonWidth("Discard");
+			const bool  painting = a_state.paint.has_value();
+			const bool  something = painting && !BuildRegion(region.terms).empty();
+			Widgets::RightAligned(keepWidth + discardWidth + Widgets::ItemSpacingX(), [&]() {
+				Widgets::Disabled(!something, [&]() {
+					if (ImGui::Button("Keep", ImVec2{ keepWidth, 0.0f })) {
+						ImGui::OpenPopup("keep-region");
+					}
+				});
+				if (ImGui::BeginPopup("keep-region")) {
+					const auto        proposed = ProposedRegionName(region.terms, region.editing);
+					const auto        typed = Widgets::LiveTextField("name", proposed.c_str(), Width::Px(200.0f), 1.0f);
+					const std::string name = typed.empty() ? proposed : std::string{ typed };
+					const bool        ready = painting && IsName(name) && name != kScratchMask;
+					Widgets::Disabled(!ready, [&]() {
+						if (ImGui::Button(std::format("Keep as {}", name).c_str()) && ready) {
+							a_out.push_back(KeepPaint{ a_state.paint->recipe, name });
+							ImGui::CloseCurrentPopup();
+						}
+					});
+					ImGui::EndPopup();
+				}
+				ImGui::SameLine();
+				Widgets::Disabled(!painting, [&]() {
+					if (ImGui::Button("Discard", ImVec2{ discardWidth, 0.0f })) {
+						a_out.push_back(EndPaint{});
+					}
+				});
+			});
+		}
+
+		// The pane: the term table beside the selected term's fields, split
+		// as the Compose stack is, then Keep and Discard.
+		void DrawRegionStack(const RecipeRow& a_recipe, const GeometryRow& a_geometry, MenuState& a_state, const Names& a_names, Intents& a_out)
+		{
+			const auto& region = a_state.region;
+			Widgets::Split(
+				"region-split", a_state.layout.stackSplit,
+				[&]() {
+					auto table = BeginTermTable();
+					if (table.Open()) {
+						for (std::size_t i = 0; i < region.terms.size(); ++i) {
+							DrawTermRow(table, region, i, a_out);
+						}
+						table.End();
+					}
+					if (region.terms.empty()) {
+						Widgets::Dim("no selection yet: add a term from the row above");
+					}
+					Widgets::HelpMarker("A region is terms combined in order: the first sets it, each next one is and (product), or (max) or not (times the complement). Drag the :: grip to reorder; S shows one term alone, M leaves one out; Keep writes every term.");
+				},
+				[&]() { DrawTermInspector(a_recipe, a_geometry, region, a_state.layout, a_names, a_out); });
+			ImGui::Spacing();
+			DrawKeepDiscard(a_state, a_out);
+		}
+
+		// Paint's head: the active recipe's name, held while the session runs
+		// (the piece's applied recipes are the paint recipe alone then), over
+		// a rule; the context rows are Compose's.
+		void DrawPaintHead(const PieceRow& a_piece, const RecipeRow& a_recipe, const MenuState& a_state, Intents& a_out)
+		{
+			if (a_state.paint) {
+				Widgets::HeldLabel(a_state.paint->recipe.c_str());
+			} else {
+				Widgets::NextItemWidth(Width::Fit(a_recipe.id));
+				RecipeCombo(a_piece, a_recipe, "##recipe", a_out);
+			}
+			ImGui::Separator();
+		}
+
+		// After the frame: a dirty stack rebuilds the paint recipe's scratch
+		// mask. It waits until the paint recipe is the one applied, since the
+		// session begins on the game thread a frame or more after Paint opens.
+		void RebuildScratch(MenuState& a_state, const RecipeRow* a_recipe, const Snapshot& a_snapshot)
+		{
+			auto& region = a_state.region;
+			if (!region.dirty || !a_state.paint || !a_recipe || a_recipe->id != kPaintRecipe) {
+				return;
+			}
+			region.dirty = false;
+			Intents intents;
+			for (auto& edit : ScratchEdits(region.terms, region.solo, region.muted, ScratchOf(*a_recipe))) {
+				Post(intents, a_recipe->id, std::move(edit));
+			}
+			Dispatch(intents, a_state, a_snapshot);
+		}
+
+		// A kept mask loaded into the stack for editing, in Paint mode.
+		void EditMaskAsRegion(const RecipeRow& a_recipe, const TextRow& a_mask, Intents& a_out)
+		{
+			auto terms = TermsOfMask(a_mask.text, LoadedPresets(), ExistingOf(a_recipe));
+			if (!terms) {
+				return;
+			}
+			a_out.push_back(LoadRegion{ std::move(*terms), a_mask.name });
+			a_out.push_back(SetMode{ Mode::kPaint });
 		}
 
 		// ---------------------------------------------------------- body
@@ -1298,54 +2037,90 @@ namespace WornEnchantmentPBR::Studio
 		// take a share of what is left under the rows; the stack takes the rest.
 		void DrawBody(const Snapshot& a_snapshot, const PieceRow* a_piece, const RecipeRow* a_recipe, const GeometryRow* a_geometry, MenuState& a_state, Intents& a_out)
 		{
+			// Leaving Paint ends the session without keeping.
+			if (a_state.paint && a_state.mode != Mode::kPaint) {
+				a_out.push_back(EndPaint{});
+			}
 			if (!a_piece || !a_recipe) {
-				Widgets::Dim("nothing applied; equip enchanted PBR armor or press Re-apply all on the Recipes page");
+				Widgets::Dim(a_state.paint ? "starting the paint recipe" : "nothing applied; equip enchanted PBR armor or press Re-apply all on the Recipes page");
 				return;
 			}
 			if (!a_geometry) {
 				Widgets::Dim("no geometry bound for the selected recipe");
 				return;
 			}
-			if (a_state.mode == Mode::kPaint || a_state.mode == Mode::kDesign) {
+			if (a_state.mode == Mode::kDesign) {
 				ImGui::Text("%s mode is not built yet", std::string{ ModeName(a_state.mode) }.c_str());
 				return;
 			}
-			const auto& view = Manager::GetSingleton()->GetView();
+			const auto& view = a_snapshot.view;
 			const auto& selection = a_state.selection;
 			Layout&     layout = a_state.layout;
 			const float scale = layout.widgetScale;
 			g_modalActor = a_piece->actorID;
+			g_modalBones = a_geometry->bones;
 			ImGui::PushID(a_recipe->id.c_str());
 
 			const auto  board = BuildBoard(*a_recipe, *a_geometry, selection, view);
+			const auto  names = NamesOf(*a_recipe, *a_geometry);
 			const auto  pane = ChoosePane(selection.target, a_state.settings);
-			const Cell* picked = layout.stack ? DrawContext(a_snapshot, board, *a_piece, *a_recipe, selection, pane, a_out) : nullptr;
-			const bool  resources = layout.signals;
-			// The pane's rule names what the switch shows: the target's settings
-			// or the stack.
-			const char* paneTitle = pane.settings ? (selection.target == Target::kLight ? "Light settings" : "Shell settings") : "Stack";
-			Widgets::Rule({}, Widgets::RuleLine::Text(paneTitle));
+			const Cell* picked = layout.contextRows ? DrawContext(a_snapshot, board, *a_piece, *a_recipe, selection, a_out) : nullptr;
+			// Paint: the head, then the session begins for the selected recipe
+			// (the manager applies the paint recipe alone a frame or more
+			// later); the action row draws once the paint recipe is the one
+			// applied.
+			const bool painting = layout.regionEditor;
+			const bool painterReady = painting && a_state.paint && a_recipe->id == kPaintRecipe;
+			if (!layout.contextRows) {
+				DrawPaintHead(*a_piece, *a_recipe, a_state, a_out);
+				if (!a_state.paint) {
+					if (const auto key = PaintKeyOf(*a_piece)) {
+						a_out.push_back(BeginPaint{ a_recipe->id, *key, Surface::kMaterial });
+					} else {
+						Widgets::Warn("the piece offers no key to paint on");
+					}
+				} else if (painterReady) {
+					DrawPaintActions(*a_piece, *a_recipe, *a_geometry, a_state, a_out);
+				} else {
+					Widgets::Dim("starting the paint recipe");
+				}
+			}
+			const bool resources = layout.signals;
+			// The pane's rule names what its switch shows: the target's settings
+			// or the stack; in Paint mode the pane is the region stack.
+			if (painting) {
+				const std::string title = a_state.region.editing.empty() ? std::string{ "Region" } : std::format("Region: {}", a_state.region.editing);
+				Widgets::Rule({}, Widgets::RuleLine::Text(title));
+			} else {
+				const std::string_view title = pane.settings ? (selection.target == Target::kLight ? "Light settings" : "Shell settings") : "Stack";
+				Widgets::Rule({}, PaneRule(title, pane, board, *a_recipe, selection.target, a_out));
+			}
 			const float under = ImGui::GetContentRegionAvail().y;
 			const float resourcesHeight = resources ? under * layout.resourcesShare : 0.0f;
 			const float stackHeight = resources ? -(resourcesHeight + Widgets::RuleHeight()) : 0.0f;
 
 			if (ImGui::BeginChild("stack-pane", ImVec2{ 0.0f, stackHeight }, 0, 0)) {
-				// The pane shows the target's settings (the light's panel, the
-				// shell's settings) or the picked slot's stack, as switched.
-				if (pane.settings) {
+				// The pane shows the region editor in Paint mode; otherwise the
+				// target's settings (the light's panel, the shell's settings) or
+				// the picked slot's stack, as switched.
+				if (painting) {
+					if (painterReady) {
+						DrawRegionStack(*a_recipe, *a_geometry, a_state, names, a_out);
+					}
+				} else if (pane.settings) {
 					if (selection.target == Target::kLight) {
 						if (a_recipe->lightRow.present) {
-							[[maybe_unused]] const auto detail = DrawForm("light", LightForm(a_recipe->lightRow, SignalNamesOf(*a_recipe)), a_recipe->id, scale, a_out);
+							DrawFormWithSignals("light", LightForm(a_recipe->lightRow, SignalNamesOf(*a_recipe)), *a_recipe, a_piece->actorID, scale, names, a_out, kSettingsColumns);
 						} else {
 							Widgets::Dim("the recipe has no light");
 						}
 					} else {
-						[[maybe_unused]] const auto detail = DrawForm("shell", ShellForm(a_recipe->shellRow, SignalNamesOf(*a_recipe)), a_recipe->id, scale, a_out);
+						DrawFormWithSignals("shell", ShellForm(a_recipe->shellRow, SignalNamesOf(*a_recipe)), *a_recipe, a_piece->actorID, scale, names, a_out, kSettingsColumns);
 					}
 				} else if (picked && picked->output) {
 					const auto stack = BuildStackView(*a_piece, *a_recipe, *a_geometry, selection, view);
 					const auto inspector = layout.inspector ? BuildInspector(*a_recipe, *a_geometry, selection) : std::nullopt;
-					DrawStack(stack, inspector, *a_piece, *a_recipe, *a_geometry, selection, layout, a_out);
+					DrawStack(stack, inspector, *a_piece, *a_recipe, *a_geometry, selection, layout, names, a_out);
 				}
 			}
 			ImGui::EndChild();
@@ -1353,7 +2128,7 @@ namespace WornEnchantmentPBR::Studio
 			if (resources) {
 				std::string_view filter;
 				Widgets::Rule({}, ResourcesRule(a_state.resource, *a_recipe, scale, filter, a_out));
-				DrawResources(*a_piece, *a_recipe, layout, a_state.resource, filter, a_out);
+				DrawResources(*a_piece, *a_recipe, layout, a_state.resource, filter, names, a_out);
 			}
 			ImGui::PopID();
 		}
@@ -1366,9 +2141,9 @@ namespace WornEnchantmentPBR::Studio
 		// shows it within the current minute and moves it within that minute,
 		// so recipes that read `time` never see a wrap.
 
-		void DrawFooter(const RecipeRow* a_recipe, Intents& a_out)
+		void DrawFooter(const RecipeRow* a_recipe, const View& a_view, Intents& a_out)
 		{
-			const auto& view = Manager::GetSingleton()->GetView();
+			const auto& view = a_view;
 			const float now = a_recipe ? a_recipe->time : 0.0f;
 			Widgets::Rule({}, Widgets::RuleLine::Text("Timeline"));
 			auto table = Widgets::Table::Begin("footer", { { "freeze", Width::Fit() }, { "step", Width::Fit() }, { "speed", Width::Fit() }, { "t (s)", Width::Fill() } }, kFooterStyle);
@@ -1413,8 +2188,9 @@ namespace WornEnchantmentPBR::Studio
 		// Ctrl+Z and Ctrl+Y, while no field has the keyboard.
 		void HistoryKeys(const RecipeRow* a_recipe, const MenuState& a_state, Intents& a_out)
 		{
+			// Not while painting: the paint recipe has no history worth walking.
 			const auto* io = ImGui::GetIO();
-			if (!a_recipe || !io || !io->KeyCtrl || a_state.activeField != kNoField) {
+			if (!a_recipe || !io || !io->KeyCtrl || a_state.activeField != kNoField || a_state.paint) {
 				return;
 			}
 			if (ImGui::IsKeyPressed(ImGuiMCP::ImGuiKey_Z, false)) {
@@ -1430,10 +2206,12 @@ namespace WornEnchantmentPBR::Studio
 
 	void __stdcall RenderStudio()
 	{
-		auto*      manager = Manager::GetSingleton();
-		const auto snapshot = manager->TakeSnapshot();
-		auto&      state = State();
-		Intents    intents;
+		auto* manager = Manager::GetSingleton();
+		auto& state = State();
+		manager->Watch(RequestOf(state.selection));
+		const auto  held = manager->LatestSnapshot();
+		const auto& snapshot = *held;
+		Intents     intents;
 
 		Mode mode = state.mode;
 		if (Widgets::ModeBar(mode)) {
@@ -1450,9 +2228,10 @@ namespace WornEnchantmentPBR::Studio
 			DrawBody(snapshot, piece, recipe, geometry, state, intents);
 		}
 		ImGui::EndChild();
-		DrawFooter(recipe, intents);
+		DrawFooter(recipe, snapshot.view, intents);
 		HistoryKeys(recipe, state, intents);
-		Dispatch(intents, state);
+		Dispatch(intents, state, snapshot);
+		RebuildScratch(state, recipe, snapshot);
 	}
 
 	void DrawBoardPage(const Snapshot& a_snapshot)
@@ -1473,12 +2252,11 @@ namespace WornEnchantmentPBR::Studio
 		if (recipe->geometries.size() > 1) {
 			Widgets::Dim("viewed on " + GeometryLabel(geometry->name, piece->armorName));
 		}
-		const auto& view = Manager::GetSingleton()->GetView();
-		const auto  board = BuildBoard(*recipe, *geometry, state.selection, view);
-		Intents     intents;
+		const auto board = BuildBoard(*recipe, *geometry, state.selection, a_snapshot.view);
+		Intents    intents;
 		ImGui::PushID(recipe->id.c_str());
 		DrawBoard(board, *recipe, *geometry, state.selection, state.layout, intents);
 		ImGui::PopID();
-		Dispatch(intents, state);
+		Dispatch(intents, state, a_snapshot);
 	}
 }

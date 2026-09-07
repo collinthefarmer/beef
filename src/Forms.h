@@ -36,6 +36,7 @@ namespace WornEnchantmentPBR::Studio
 		kToggle,      // on or off; the text is "on" or "off"
 		kChoice,      // one of the names, as written
 		kText,        // plain text (a list of bone names)
+		kVec2,        // x, y (one number for both), or @signal of vec2 type
 	};
 
 	// The detail modal a field opens: the row its text names, shown with its
@@ -47,11 +48,15 @@ namespace WornEnchantmentPBR::Studio
 		kOpacity,
 		kColor,
 		kMask,
+		kSignal,  // the signal the field's text names, in a modal that follows references
 	};
 	[[nodiscard]] std::string_view FieldDetailName(FieldDetail a_detail) noexcept;
 
 	// Committed text becomes an edit, or nothing when it does not parse.
 	using FieldBinding = std::function<std::optional<RecipeEdit>(const std::string&)>;
+	// A creator entry of the field's combo ("new image", "promote") becomes
+	// the edits that make the row and bind the field to it, in order.
+	using FieldCreator = std::function<std::vector<RecipeEdit>(const std::string&)>;
 
 	// One field of a form: what the page draws as a row of the field table.
 	// `detail` is set only when the modal would show something, so a detail
@@ -66,6 +71,8 @@ namespace WornEnchantmentPBR::Studio
 		std::optional<FieldDetail> detail;
 		std::optional<Value>       value;  // the live value, shown as a swatch before the input
 		FieldBinding               bind;
+		std::vector<std::string>   creators;  // entries after the names: what the field can make in place
+		FieldCreator               create;
 	};
 
 	// The selected layer's fields: source, curve, opacity, colour, mask,
@@ -80,6 +87,10 @@ namespace WornEnchantmentPBR::Studio
 	// a row edited in the file (efsh, trigger, vec2 ...).
 	[[nodiscard]] std::optional<FieldSpec>  SignalForm(const SignalRow& a_signal);
 	[[nodiscard]] std::optional<RecipeEdit> SignalValueEdit(const std::string& a_signal, const std::string& a_text);
+	// A source's form: the kind first (a change starts the kind at its
+	// defaults), then the kind's own settings, each rebuilding the whole
+	// kind from the row's texts.
+	[[nodiscard]] std::vector<FieldSpec> SourceForm(const SourceRow& a_source, const SignalNames& a_names);
 	// The light's panel: colour, intensity, size, cutoff, offset, shadow,
 	// bones as a kind, then the kind's own settings. Empty when the recipe
 	// has no light.

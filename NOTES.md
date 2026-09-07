@@ -577,3 +577,27 @@ rewrite (`src/RecipeStore.cpp`, 2026-09-04), not yet run in game.
     the signals rule's button, so Add on the Curves rule added a signal.
     Each rule's items now sit in their own `PushID` scope. If wrong: a
     click on a second same-labelled item in one scope acts on itself.
+
+55. **A geometry's mesh is read once and kept beside its bakes for as
+    long as it is bound; the read is logged with a hash of the bytes.**
+    The mesh used to live in the per-apply record, so every edit (a
+    retire and re-apply) read it again per recipe on the geometry, and
+    the snapshot's `meshRead` flipped false until the next read; the
+    snapshot also fell through to a read, a bake and a D3D pass on the
+    render thread for any mask or source no stack had rendered, the
+    NOTES 53 rule broken. The compositor now owns one `MeshCache` keyed
+    by the geometry: `Get` reads on the first call and compares a
+    `MeshIdentity` (the skin partition, the buffer pointers, the vertex
+    count) on every later one, re-reading when it changed; the entry
+    carries the facts the snapshot shows and the bakes keyed by
+    definition and size, so a rename cannot serve an old bake; the tick
+    sweeps entries unbound for 30 s. Every read logs `mesh '<geometry>':
+    cpu copy, <p> partitions, <v> vertices, <t> triangles, hash <16 hex>`
+    (FNV-1a over the vertex and index bytes), and under verbose logging
+    the same read compares the CPU copy against a GPU readback: `mesh
+    '<geometry>': cpu copy vs gpu readback: <n> of <m> bytes differ`.
+    Basis for the diagnostic: the stale-copy hypothesis of the mesh
+    pipeline review (2026-09-06) could not be settled from the headers.
+    If wrong: the hash changes between two reads of one geometry with no
+    `buffers changed` line, or the compare line reports differing bytes
+    on a mesh whose position bake looks right. Unconfirmed in game as of 2026-09-07: the hash line and the compare line are the run's evidence; until a run shows the same hash across rounds and `0 of <m> bytes differ`, treat the cache as built, not proven.

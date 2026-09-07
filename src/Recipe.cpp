@@ -1226,6 +1226,42 @@ namespace WornEnchantmentPBR
 			[](const std::array<Param, 3>& parts) { return ParamText(parts[0]) + ", " + ParamText(parts[1]) + ", " + ParamText(parts[2]); });
 	}
 
+	std::string Vec2ParamText(const Vec2Param& a_param)
+	{
+		return Match(
+			a_param,
+			[](const Ref& r) { return "@" + r.name; },
+			[](const std::array<Param, 2>& parts) { return ParamText(parts[0]) + ", " + ParamText(parts[1]); });
+	}
+
+	std::optional<Vec2Param> ParseVec2Param(std::string_view a_text)
+	{
+		const auto text = TrimCopy(a_text);
+		if (text.starts_with('@') && text.size() > 1 && text.find(',') == std::string::npos) {
+			return Vec2Param{ Ref{ text.substr(1) } };
+		}
+		const auto parts = SplitCommas(text);
+		if (parts.size() == 1) {
+			const auto single = ParseParam(parts[0]);
+			if (single && Get<float>(*single)) {
+				return Vec2Param{ std::array<Param, 2>{ *single, *single } };
+			}
+			return std::nullopt;
+		}
+		if (parts.size() != 2) {
+			return std::nullopt;
+		}
+		std::array<Param, 2> out;
+		for (std::size_t i = 0; i < 2; ++i) {
+			const auto part = ParseParam(parts[i]);
+			if (!part) {
+				return std::nullopt;
+			}
+			out[i] = *part;
+		}
+		return Vec2Param{ out };
+	}
+
 	std::optional<Vec3Param> ParseVec3Param(std::string_view a_text)
 	{
 		const auto text = TrimCopy(a_text);

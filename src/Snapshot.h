@@ -2,13 +2,14 @@
 
 // The menu's read model: a copy of everything the runtime knows per actor,
 // piece, recipe, geometry and output, taken once per page draw by
-// Manager::TakeSnapshot. Engine-free so the studio's view models compile
+// Manager::LatestSnapshot. Engine-free so the studio's view models compile
 // natively and are tested without the game. The texture pointers are opaque
 // here: the lab keeps them alive, and only the menu's widgets dereference
 // them, through TextureLab::Preview.
 
 #include "Core.h"
 #include "Recipe.h"
+#include "View.h"
 
 #include <cstdint>
 #include <optional>
@@ -93,6 +94,7 @@ namespace WornEnchantmentPBR::Studio
 	{
 		std::string   name;
 		std::string   kind;  // DescribeSource, or the mask's expression
+		ValueType     type = ValueType::kScalar;  // what the texel reads as (SourceType; a mask is scalar)
 		TextureHandle texture = nullptr;
 		std::uint32_t channel = 4;  // preview channel: 0..3, 4 rgb, 5 luminance
 		bool          animated = false;
@@ -111,16 +113,64 @@ namespace WornEnchantmentPBR::Studio
 		std::string problem;
 	};
 
+	// What the geometry's mesh offers, once read: partitions by biped slot,
+	// and the bones it is skinned to with the share of vertices each moves.
+	struct PartitionRow
+	{
+		std::uint32_t slot = 0;
+		std::string   name;
+		std::size_t   triangles = 0;
+	};
+	struct BoneRow
+	{
+		std::string name;
+		float       coverage = 0.0f;  // 0..1
+	};
+
 	struct GeometryRow
 	{
 		std::string            name;
 		bool                   privateMaterial = false;
+		bool                   meshRead = false;  // the rows below are filled once the mesh has been read
+		std::vector<PartitionRow> partitions;
+		std::vector<BoneRow>      bones;
 		std::string            shell;  // description, empty when none
 		std::vector<SlotRow>   materialSlots;
 		std::vector<SlotRow>   shellSlots;
 		std::vector<ImageRow>  sources;
 		std::vector<ImageRow>  masks;
 		std::vector<OutputRow> outputs;
+	};
+
+	// A source as the file has it, every setting as text, for the Sources
+	// tab and its form. Only the kind's own settings are filled; toggles read
+	// "on" or "off". Studio::SourceRowOf builds one from a Source and
+	// Studio::SourceKindOf reads one back.
+	struct SourceRow
+	{
+		std::string name;
+		std::string kind;  // SourceKindName
+		std::string path;  // image
+		std::string channel;
+		std::string space;
+		std::string scroll;  // Vec2ParamText, empty for none
+		std::string tile;
+		std::string mirrorU;
+		std::string mirrorV;
+		std::string transpose;
+		std::string mip;
+		std::string material;   // material: the channel
+		std::string bake;       // bake: BakeKindName
+		std::string partition;  // bake partition: the biped slot's name
+		std::string bones;      // bake boneWeight: comma-separated
+		std::string axis;       // uv
+		std::string from;       // distance: a node name, or "x, y, z"
+		std::string trigger;    // ripple: "@name"
+		std::string speed;
+		std::string width;
+		std::string decay;
+		std::string shape;
+		std::size_t references = 0;
 	};
 
 	// The recipe's light as the file has it, for its panel: every parameter
@@ -170,6 +220,8 @@ namespace WornEnchantmentPBR::Studio
 		std::vector<SignalRow>     signals;
 		std::vector<TextRow>       curves;
 		std::vector<std::string>   masks;  // every mask name, even where no geometry is bound
+		std::vector<TextRow>       maskRows;  // the masks with their expressions and reference counts
+		std::vector<SourceRow>     sourceRows;
 		std::vector<GeometryRow>   geometries;
 		std::string                light;  // description, empty when none
 		std::optional<std::size_t> lightOutput;
@@ -180,6 +232,15 @@ namespace WornEnchantmentPBR::Studio
 		ShellRow                   shellRow;
 	};
 
+	// A key a new recipe could take from the worn piece: the magic effect,
+	// enchantment and effect shader it carries, the armor, its keywords.
+	struct KeyChoice
+	{
+		KeyKind     kind = KeyKind::kArmor;
+		std::string text;  // the editor ID when known, else the form key
+		FormKey     key;
+	};
+
 	struct PieceRow
 	{
 		FormID                 actorID = 0;
@@ -187,9 +248,22 @@ namespace WornEnchantmentPBR::Studio
 		FormID                 armorID = 0;
 		std::string            armorName;
 		bool                   firstPerson = false;
+		std::vector<KeyChoice> keys;     // what a new recipe can be keyed to, most specific first
 		std::vector<RecipeRow> recipes;  // merge order, lowest priority first
 	};
 
+	// What the menu is looking at: the tick builds full rows for that piece
+	// alone and light rows (ids, keys, depths) for every other piece.
+	struct SnapshotRequest
+	{
+		FormID actorID = 0;
+		FormID armorID = 0;
+		bool   firstPerson = false;
+	};
+
+	// Built on the game thread once per tick while the menu watches, and
+	// published whole: the menu reads one immutable snapshot per frame and
+	// never the live state. Equal versions are the same rows.
 	struct Snapshot
 	{
 		// The rows by their names, so Manager::Snapshot::PieceRow still reads.
@@ -204,6 +278,9 @@ namespace WornEnchantmentPBR::Studio
 		using RecipeRow = Studio::RecipeRow;
 		using PieceRow = Studio::PieceRow;
 
+		std::uint64_t         version = 0;
+		std::uint32_t         tickMS = 0;
+		View                  view;  // how the piece was looked at when the rows were built
 		std::vector<PieceRow> pieces;
 	};
 }

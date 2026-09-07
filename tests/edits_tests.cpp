@@ -3,6 +3,7 @@
 // why, and the result serialises as the file would be written by hand.
 
 #include "Edits.h"
+#include "Expression.h"
 #include "test_support.h"
 
 #include <filesystem>
@@ -265,6 +266,7 @@ namespace
 		Check(metal && metal->text == "@metallic * 0.5", "mask text written");
 		Refused(r, SetMask{ "metal", "" }, "mask metal", "empty", "empty mask text");
 		Refused(r, SetMask{ "unknown", "1" }, "mask unknown", "no such mask", "text on a missing mask");
+		Refused(r, SetMask{ "metal", std::string(kMaxExpressionLength + 1, '1') }, "mask metal", "longer than 4096 characters", "mask text past the expression length");
 	}
 
 	void Serialised()
@@ -405,6 +407,38 @@ namespace
 		Accepted(remove, AddSignal{ "spare" }, "add a spare signal");
 		Accepted(remove, RemoveSignal{ "spare" }, "remove an unreferenced signal");
 		Check(!remove.FindSignal("spare"), "the signal is gone");
+		Check(counts.images.at("metal") == 1 && counts.images.at("fill") == 1 && counts.images.at("metallic") == 1 && counts.images.at("ring") == 1, "image counts: layer sources and masks, and names inside masks");
+		Refused(remove, RemoveMask{ "metal" }, "mask metal", "referenced in 1 place(s)", "remove a referenced mask");
+		Refused(remove, RemoveMask{ "nothing" }, "mask nothing", "no such mask", "remove a missing mask");
+		Refused(remove, AddMask{ "fill" }, "mask fill", "a mask or source has that name", "a mask named like a source");
+		Accepted(remove, AddMask{ "straps" }, "add a mask");
+		Check(remove.FindMask("straps") && remove.FindMask("straps")->text == "1", "the added mask reads 1");
+		Accepted(remove, RemoveMask{ "straps" }, "remove an unreferenced mask");
+		Check(!remove.FindMask("straps"), "the mask is gone");
+		Recipe renamed = Canonical();
+		renamed.masks.push_back(Mask{ "metalToo", "@metal * 0.5" });
+		Refused(renamed, RenameMask{ "metal", "fill" }, "mask metal", "already named", "rename a mask onto a source's name");
+		Accepted(renamed, RenameMask{ "metal", "steel" }, "rename a mask");
+		const auto* fillLayer = LayerAt(renamed, 0, 0);
+		Check(fillLayer && fillLayer->mask && fillLayer->mask->name == "steel", "the layer's mask follows the rename");
+		Check(renamed.masks[1].text == "@steel * 0.5" && renamed.FindMask("steel"), "another mask's expression follows the rename");
+		Refused(remove, RemoveSource{ "fill" }, "source fill", "referenced in 1 place(s)", "remove a referenced source");
+		Refused(remove, AddSource{ "metal", ImageSource{} }, "source metal", "a source or mask has that name", "a source named like a mask");
+		Accepted(remove, AddSource{ "noise", ImageSource{} }, "add an image without a path yet");
+		Refused(remove, SetSource{ "noise", ImageSource{} }, "source noise", "'path' is empty", "set an image without a path");
+		Refused(remove, SetSource{ "noise", RippleSource{ Ref{ "nothing" } } }, "source noise", "unknown signal", "a ripple reading a missing trigger");
+		Refused(remove, SetSource{ "noise", BakeSource{ BoneWeightBake{} } }, "source noise", "at least one bone", "a boneWeight bake without bones");
+		ImageSource noiseImage;
+		noiseImage.path = "Effects\\Noise.dds";
+		Accepted(remove, SetSource{ "noise", noiseImage }, "set the image's path");
+		Check(remove.FindSource("noise") && Get<ImageSource>(remove.FindSource("noise")->kind) && Get<ImageSource>(remove.FindSource("noise")->kind)->path == "Effects\\Noise.dds", "the source carries the kind");
+		Refused(remove, RenameSource{ "noise", "metal" }, "source noise", "already named", "rename a source onto a mask's name");
+		Accepted(remove, RenameSource{ "fill", "swirls" }, "rename the fill source");
+		Check(LayerAt(remove, 0, 0) && Get<Ref>(LayerAt(remove, 0, 0)->source) && Get<Ref>(LayerAt(remove, 0, 0)->source)->name == "swirls", "the layer's source follows the rename");
+		Accepted(remove, RenameSource{ "metallic", "shine" }, "rename the metallic source");
+		Check(remove.masks[0].text == "@shine", "the mask's expression follows the rename");
+		Accepted(remove, RemoveSource{ "noise" }, "remove an unreferenced source");
+		Check(!remove.FindSource("noise"), "the source is gone");
 		Refused(remove, RemoveCurve{ "flash" }, "curve flash", "referenced in 2 place(s)", "remove a referenced curve");
 		Accepted(remove, AddCurve{ "spareCurve" }, "add a spare curve");
 		Accepted(remove, RemoveCurve{ "spareCurve" }, "remove an unreferenced curve");
@@ -435,6 +469,9 @@ namespace
 		Refused(r, SetLightBones{ 4, SkinnedBones{ 0, 0.0f } }, "output 4", "at least 1", "skinned bones with max 0");
 		const auto* light = std::get_if<LightOutput>(&r.outputs[4]);
 		Check(light && Get<float>(light->size) && *Get<float>(light->size) == 2.0f && Get<Ref>(light->cutoff) && Get<Ref>(light->color) && light->shadow && Get<NamedBones>(light->bones), "the light carries every edit");
+		Refused(r, ResetLight{ 0 }, "output 0", "is not a light", "reset a material output as a light");
+		Accepted(r, ResetLight{ 4 }, "reset the light");
+		Check(light && *light == LightOutput{}, "the reset light has the format's defaults");
 		Accepted(r, RemoveOutput{ 4 }, "remove the light");
 		Accepted(r, AddLight{}, "add a light back");
 		Check(r.outputs.size() == 5 && std::get_if<LightOutput>(&r.outputs[4]) && *std::get_if<LightOutput>(&r.outputs[4]) == LightOutput{}, "the added light has the format's defaults");
@@ -453,6 +490,9 @@ namespace
 		Accepted(s, SetShellPoint{ ShellPoint::kScalePoint, Vec3{ 1.0f, 2.0f, 3.0f } }, "set the scale point");
 		Refused(s, SetShellPoint{ ShellPoint::kSpinAxis, Vec3{} }, "shell", "cannot be zero", "a zero spin axis");
 		Check(s.shell.material == ShellMaterial::kVanilla && s.shell.blend == ShellBlend::kAlpha && !s.shell.depthBias && s.shell.alphaTest == 0.5f && Get<float>(s.shell.rimPower) && Get<Ref>(s.shell.pose.offset) && s.shell.pose.scalePoint == Vec3{ 1.0f, 2.0f, 3.0f }, "the shell carries every edit");
+		Accepted(s, ResetShell{}, "reset the shell");
+		Check(s.shell == ShellSettings{}, "the reset shell has the format's defaults");
+		Check(Describe(ResetShell{}) == "shell: reset" && Describe(ResetLight{ 4 }) == "output 4: reset light", "describe the resets");
 	}
 }
 

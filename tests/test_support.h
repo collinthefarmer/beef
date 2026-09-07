@@ -35,6 +35,15 @@ namespace test
 		}
 	}
 
+	// A section that cannot run for want of a fixture counts as a failure,
+	// so a missing file never reads as a pass.
+	inline void Skip(const std::string& what)
+	{
+		++checks;
+		++failures;
+		std::printf("SKIP (counted as failure): %s\n", what.c_str());
+	}
+
 	inline std::filesystem::path Fixtures()
 	{
 		return std::filesystem::path{ WEPBR_FIXTURES_DIR };

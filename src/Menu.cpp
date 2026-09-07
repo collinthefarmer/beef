@@ -239,8 +239,10 @@ namespace WornEnchantmentPBR
 
 		void __stdcall RenderRecipes()
 		{
-			auto*      manager = Manager::GetSingleton();
-			const auto snapshot = manager->TakeSnapshot();
+			auto* manager = Manager::GetSingleton();
+			manager->Watch(Studio::RequestOf(Studio::State().selection));
+			const auto  held = manager->LatestSnapshot();
+			const auto& snapshot = *held;
 			RenderHeader(snapshot);
 			const auto& selection = Studio::State().selection;
 
@@ -260,6 +262,9 @@ namespace WornEnchantmentPBR
 			auto table = Widgets::Table::Begin("recipes", { { "recipe", Width::Fill() }, { "keys", Width::Fill() }, { "rows", Width::Fill() }, { "state", Width::Fill() }, { "file", Width::Fill() } }, kGridStyle);
 			if (table.Open()) {
 				for (const auto& recipe : LoadedRecipes()) {
+					if (IsTransient(recipe.id)) {
+						continue;
+					}
 					table.Cell();
 					ImGui::TextUnformatted(recipe.id.c_str());
 					table.Cell();
@@ -348,7 +353,9 @@ namespace WornEnchantmentPBR
 		void __stdcall RenderSetup()
 		{
 			auto& s = GetMutableSettings();
-			RenderHeader(Manager::GetSingleton()->TakeSnapshot());
+			Manager::GetSingleton()->Watch(Studio::RequestOf(Studio::State().selection));
+			const auto held = Manager::GetSingleton()->LatestSnapshot();
+			RenderHeader(*held);
 			const float half = ImGui::GetContentRegionAvail().y * 0.5f;
 			if (ImGui::BeginChild("settings", ImVec2{ 0.0f, half }, 0, 0)) {
 				DrawSaveBar(s);

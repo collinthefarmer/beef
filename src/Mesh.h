@@ -7,6 +7,7 @@
 
 #include "Core.h"
 #include "Recipe.h"
+#include "TextureSize.h"
 
 #include <array>
 #include <cstddef>
@@ -14,6 +15,7 @@
 #include <optional>
 #include <span>
 #include <string>
+#include <string_view>
 #include <vector>
 
 namespace WornEnchantmentPBR
@@ -38,13 +40,42 @@ namespace WornEnchantmentPBR
 		std::vector<std::array<std::uint32_t, 3>> triangles;  // into vertices
 	};
 
+	// Invariant: every triangle of every partition indexes inside that
+	// partition's vertices (the reader drops the rest with TrianglesWithin).
 	struct MeshData
 	{
 		Vec3                       center;  // the model bound
 		float                      radius = 0.0f;
 		std::vector<MeshPartition> partitions;
-		std::string                origin;  // "cpu copy" or "gpu readback", for the log
+		std::string                origin;    // "cpu copy" or "gpu readback", for the log
+		std::uint64_t              hash = 0;  // HashBytes over the vertex and index bytes as read, partition by partition
 	};
+
+	// FNV-1a over the bytes, chained through a_seed so several buffers hash
+	// as one; the mesh log line carries it, and the same hash across reads
+	// means the engine's copy did not move.
+	inline constexpr std::uint64_t kHashBasis = 0xcbf29ce484222325ull;
+	[[nodiscard]] std::uint64_t HashBytes(std::span<const std::uint8_t> a_bytes, std::uint64_t a_seed = kHashBasis) noexcept;
+
+	// The triangles that index inside a_vertexCount vertices, in order.
+	[[nodiscard]] std::vector<std::array<std::uint32_t, 3>> TrianglesWithin(std::span<const std::array<std::uint32_t, 3>> a_triangles, std::size_t a_vertexCount);
+
+	// ------------------------------------------------------------ bake keys
+	// A bake rasterised for a geometry is cached under its definition and
+	// size as "<definition>@<size>", never under the source's name, so a
+	// rename or a redefinition cannot serve the old picture and two names
+	// with one definition share a target. Definitions never contain '@'.
+	// DefinitionOf is the key without its size, for lookups that want the
+	// bake at whatever size a stack rendered it.
+	[[nodiscard]] std::string DefinitionOf(const BakeKind& a_kind);
+	[[nodiscard]] std::string DefinitionOf(const DistanceSource& a_distance);
+	[[nodiscard]] std::string DefinitionOf(UvAxis a_axis);
+	[[nodiscard]] std::string BakeKeyOf(const BakeKind& a_kind, TextureSize a_size);
+	[[nodiscard]] std::string DistanceKeyOf(const DistanceSource& a_distance, TextureSize a_size);
+	[[nodiscard]] std::string UvKeyOf(UvAxis a_axis, TextureSize a_size);
+	// The two halves of a key; the size is empty when the key has none.
+	[[nodiscard]] std::string_view              KeyDefinition(std::string_view a_key) noexcept;
+	[[nodiscard]] std::optional<std::uint32_t> KeySize(std::string_view a_key) noexcept;
 
 	// ------------------------------------------------- packed vertex bytes
 	// The engine keeps one vertex as: position 4 floats (xyz and a tangent

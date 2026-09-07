@@ -98,6 +98,12 @@ namespace WornEnchantmentPBR::Studio
 			return it == a_recipe.masks.end() ? nullptr : &*it;
 		}
 
+		Source* FindSourceRow(Recipe& a_recipe, std::string_view a_name)
+		{
+			const auto it = std::ranges::find(a_recipe.sources, a_name, &Source::name);
+			return it == a_recipe.sources.end() ? nullptr : &*it;
+		}
+
 		// ---------------------------------------------------- value checks
 		// A reference in a value must name a row the recipe has. Types and
 		// expression text are Validate's to judge once the edit is in.
@@ -458,6 +464,9 @@ namespace WornEnchantmentPBR::Studio
 			if (a_edit.text.empty()) {
 				return Refuse(std::format("mask {}", a_edit.mask), "the expression is empty");
 			}
+			if (a_edit.text.size() > kMaxExpressionLength) {
+				return Refuse(std::format("mask {}", a_edit.mask), std::format("longer than {} characters", kMaxExpressionLength));
+			}
 			mask->text = a_edit.text;
 			return std::nullopt;
 		}
@@ -739,6 +748,202 @@ namespace WornEnchantmentPBR::Studio
 			return std::nullopt;
 		}
 
+		std::string MaskWhere(const std::string& a_mask)
+		{
+			return std::format("mask {}", a_mask);
+		}
+
+		Refusal Edit(Recipe& a_recipe, const AddMask& a_edit)
+		{
+			if (!IsName(a_edit.name)) {
+				return Refuse(MaskWhere(a_edit.name), "names are letters, digits and underscores, not starting with a digit");
+			}
+			if (a_recipe.FindMask(a_edit.name) || a_recipe.FindSource(a_edit.name)) {
+				return Refuse(MaskWhere(a_edit.name), "a mask or source has that name");
+			}
+			a_recipe.masks.push_back(Mask{ a_edit.name, "1" });
+			return std::nullopt;
+		}
+
+		Refusal Edit(Recipe& a_recipe, const RenameMask& a_edit)
+		{
+			auto* mask = FindMaskRow(a_recipe, a_edit.from);
+			if (!mask) {
+				return Refuse(MaskWhere(a_edit.from), "no such mask");
+			}
+			if (!IsName(a_edit.to)) {
+				return Refuse(MaskWhere(a_edit.from), "names are letters, digits and underscores, not starting with a digit");
+			}
+			if (a_edit.to == a_edit.from) {
+				return std::nullopt;
+			}
+			if (a_recipe.FindMask(a_edit.to) || a_recipe.FindSource(a_edit.to)) {
+				return Refuse(MaskWhere(a_edit.from), std::format("a mask or source is already named '{}'", a_edit.to));
+			}
+			mask->name = a_edit.to;
+			for (auto& output : a_recipe.outputs) {
+				auto* material = Get<MaterialOutput>(output);
+				if (!material) {
+					continue;
+				}
+				for (auto& layer : material->stack) {
+					if (layer.mask && layer.mask->name == a_edit.from) {
+						layer.mask->name = a_edit.to;
+					}
+					if (auto* ref = Get<Ref>(layer.source); ref && ref->name == a_edit.from) {
+						ref->name = a_edit.to;
+					}
+				}
+			}
+			for (auto& other : a_recipe.masks) {
+				other.text = RenameInExpression(other.text, a_edit.from, a_edit.to, false);
+			}
+			return std::nullopt;
+		}
+
+		Refusal Edit(Recipe& a_recipe, const RemoveMask& a_edit)
+		{
+			const auto it = std::ranges::find(a_recipe.masks, a_edit.name, &Mask::name);
+			if (it == a_recipe.masks.end()) {
+				return Refuse(MaskWhere(a_edit.name), "no such mask");
+			}
+			const auto counts = CountReferences(a_recipe);
+			if (const auto found = counts.images.find(a_edit.name); found != counts.images.end() && found->second > 0) {
+				return Refuse(MaskWhere(a_edit.name), std::format("referenced in {} place(s)", found->second));
+			}
+			a_recipe.masks.erase(it);
+			return std::nullopt;
+		}
+
+		// ---------------------------------------------------- sources
+
+		std::string SourceWhere(const std::string& a_source)
+		{
+			return std::format("source {}", a_source);
+		}
+
+		// What the file's own validation would refuse outright: the settings a
+		// kind cannot do without, and the signals a ripple reads.
+		Refusal CheckSourceKind(const Recipe& a_recipe, const std::string& a_where, const SourceKind& a_kind)
+		{
+			return Match(
+				a_kind,
+				[&](const ImageSource& s) -> Refusal {
+					if (s.path.empty()) {
+						return Refuse(a_where, "'path' is empty");
+					}
+					if (s.scroll) {
+						if (const auto* ref = Get<Ref>(*s.scroll); ref && !a_recipe.FindSignal(ref->name)) {
+							return Refuse(a_where, std::format("'scroll' reads unknown signal '@{}'", ref->name));
+						}
+					}
+					if (s.tile) {
+						if (const auto* ref = Get<Ref>(*s.tile); ref && !a_recipe.FindSignal(ref->name)) {
+							return Refuse(a_where, std::format("'tile' reads unknown signal '@{}'", ref->name));
+						}
+					}
+					return std::nullopt;
+				},
+				[&](const BakeSource& s) -> Refusal {
+					if (const auto* bones = Get<BoneWeightBake>(s.bake); bones && bones->bones.empty()) {
+						return Refuse(a_where, "boneWeight needs at least one bone");
+					}
+					return std::nullopt;
+				},
+				[&](const DistanceSource& s) -> Refusal {
+					if (const auto* node = Get<std::string>(s.from); node && node->empty()) {
+						return Refuse(a_where, "'distance' needs a node name or a point");
+					}
+					return std::nullopt;
+				},
+				[&](const RippleSource& s) -> Refusal {
+					if (!a_recipe.FindSignal(s.trigger.name)) {
+						return Refuse(a_where, std::format("'trigger' reads unknown signal '@{}'", s.trigger.name));
+					}
+					for (const auto& [param, field] : { std::pair{ &s.speed, "speed" }, std::pair{ &s.width, "width" }, std::pair{ &s.decay, "decay" } }) {
+						if (auto problem = CheckParam(a_recipe, a_where, field, *param)) {
+							return problem;
+						}
+					}
+					return std::nullopt;
+				},
+				[](const auto&) -> Refusal { return std::nullopt; });
+		}
+
+		Refusal Edit(Recipe& a_recipe, const AddSource& a_edit)
+		{
+			if (!IsName(a_edit.name)) {
+				return Refuse(SourceWhere(a_edit.name), "names are letters, digits and underscores, not starting with a digit");
+			}
+			if (a_recipe.FindSource(a_edit.name) || a_recipe.FindMask(a_edit.name)) {
+				return Refuse(SourceWhere(a_edit.name), "a source or mask has that name");
+			}
+			// A new source may be incomplete (an image without a path yet); the
+			// row reports it until its settings are filled.
+			a_recipe.sources.push_back(Source{ a_edit.name, a_edit.kind });
+			return std::nullopt;
+		}
+
+		Refusal Edit(Recipe& a_recipe, const SetSource& a_edit)
+		{
+			auto* source = FindSourceRow(a_recipe, a_edit.name);
+			if (!source) {
+				return Refuse(SourceWhere(a_edit.name), "no such source");
+			}
+			if (auto problem = CheckSourceKind(a_recipe, SourceWhere(a_edit.name), a_edit.kind)) {
+				return problem;
+			}
+			source->kind = a_edit.kind;
+			return std::nullopt;
+		}
+
+		Refusal Edit(Recipe& a_recipe, const RenameSource& a_edit)
+		{
+			auto* source = FindSourceRow(a_recipe, a_edit.from);
+			if (!source) {
+				return Refuse(SourceWhere(a_edit.from), "no such source");
+			}
+			if (!IsName(a_edit.to)) {
+				return Refuse(SourceWhere(a_edit.from), "names are letters, digits and underscores, not starting with a digit");
+			}
+			if (a_edit.to == a_edit.from) {
+				return std::nullopt;
+			}
+			if (a_recipe.FindSource(a_edit.to) || a_recipe.FindMask(a_edit.to)) {
+				return Refuse(SourceWhere(a_edit.from), std::format("a source or mask is already named '{}'", a_edit.to));
+			}
+			source->name = a_edit.to;
+			for (auto& output : a_recipe.outputs) {
+				auto* material = Get<MaterialOutput>(output);
+				if (!material) {
+					continue;
+				}
+				for (auto& layer : material->stack) {
+					if (auto* ref = Get<Ref>(layer.source); ref && ref->name == a_edit.from) {
+						ref->name = a_edit.to;
+					}
+				}
+			}
+			for (auto& mask : a_recipe.masks) {
+				mask.text = RenameInExpression(mask.text, a_edit.from, a_edit.to, false);
+			}
+			return std::nullopt;
+		}
+
+		Refusal Edit(Recipe& a_recipe, const RemoveSource& a_edit)
+		{
+			const auto it = std::ranges::find(a_recipe.sources, a_edit.name, &Source::name);
+			if (it == a_recipe.sources.end()) {
+				return Refuse(SourceWhere(a_edit.name), "no such source");
+			}
+			const auto counts = CountReferences(a_recipe);
+			if (const auto found = counts.images.find(a_edit.name); found != counts.images.end() && found->second > 0) {
+				return Refuse(SourceWhere(a_edit.name), std::format("referenced in {} place(s)", found->second));
+			}
+			a_recipe.sources.erase(it);
+			return std::nullopt;
+		}
+
 		Refusal Edit(Recipe& a_recipe, const RenameCurve& a_edit)
 		{
 			auto* curve = FindCurveRow(a_recipe, a_edit.from);
@@ -853,6 +1058,18 @@ namespace WornEnchantmentPBR::Studio
 
 		// ------------------------------------------------------- shell
 
+		Refusal Edit(Recipe& a_recipe, const ResetLight& a_edit)
+		{
+			auto found = FindLight(a_recipe, a_edit.output);
+			if (found.problem) return found.problem;
+			LightOutput reset;
+			reset.bulb = found.light->bulb;
+			reset.selector = found.light->selector;
+			reset.replace = found.light->replace;
+			*found.light = reset;
+			return std::nullopt;
+		}
+
 		Refusal Edit(Recipe& a_recipe, const SetShellParam& a_edit)
 		{
 			if (auto problem = CheckParam(a_recipe, "shell", ShellParamName(a_edit.field), a_edit.value)) return problem;
@@ -934,6 +1151,12 @@ namespace WornEnchantmentPBR::Studio
 			return std::nullopt;
 		}
 
+		Refusal Edit(Recipe& a_recipe, const ResetShell&)
+		{
+			a_recipe.shell = ShellSettings{};
+			return std::nullopt;
+		}
+
 		// ---------------------------------------------------- defaults
 
 		// What a required scalar starts at when the menu adds an output.
@@ -989,19 +1212,28 @@ namespace WornEnchantmentPBR::Studio
 			[](const RenameSignal& e) { return std::format("{}: rename to {}", SignalWhere(e.from), e.to); },
 			[](const RenameCurve& e) { return std::format("{}: rename to {}", CurveWhere(e.from), e.to); },
 			[](const RemoveSignal& e) { return std::format("{}: remove", SignalWhere(e.name)); },
+			[](const AddMask& e) { return std::format("masks: add {}", e.name); },
+			[](const AddSource& e) { return std::format("sources: add {} ({})", e.name, SourceKindName(e.kind)); },
+			[](const SetSource& e) { return std::format("{}: {}", SourceWhere(e.name), DescribeSource(e.kind)); },
+			[](const RenameSource& e) { return std::format("{}: rename to {}", SourceWhere(e.from), e.to); },
+			[](const RemoveSource& e) { return std::format("{}: remove", SourceWhere(e.name)); },
+			[](const RenameMask& e) { return std::format("{}: rename to {}", MaskWhere(e.from), e.to); },
+			[](const RemoveMask& e) { return std::format("{}: remove", MaskWhere(e.name)); },
 			[](const RemoveCurve& e) { return std::format("{}: remove", CurveWhere(e.name)); },
 			[](const AddLight&) { return std::string{ "outputs: add light" }; },
 			[](const SetLightParam& e) { return std::format("{}: {} {}", OutputWhere(e.output), LightParamName(e.field), ParamText(e.value)); },
 			[](const SetLightVector& e) { return std::format("{}: {} {}", OutputWhere(e.output), LightVectorName(e.field), Vec3ParamText(e.value)); },
 			[](const SetLightShadow& e) { return std::format("{}: shadow {}", OutputWhere(e.output), e.shadow ? "on" : "off"); },
 			[](const SetLightBones& e) { return std::format("{}: bones {}", OutputWhere(e.output), Is<NamedBones>(e.bones) ? "named" : "skinned"); },
+			[](const ResetLight& e) { return std::format("{}: reset light", OutputWhere(e.output)); },
 			[](const SetShellParam& e) { return std::format("shell: {} {}", ShellParamName(e.field), ParamText(e.value)); },
 			[](const SetShellVector& e) { return std::format("shell: {} {}", ShellVectorName(e.field), Vec3ParamText(e.value)); },
 			[](const SetShellPoint& e) { return std::format("shell: {} {}, {}, {}", ShellPointName(e.field), e.value.x, e.value.y, e.value.z); },
 			[](const SetShellMaterial& e) { return std::format("shell: material {}", ShellMaterialName(e.material)); },
 			[](const SetShellBlend& e) { return std::format("shell: blend {}", ShellBlendName(e.blend)); },
 			[](const SetShellDepthBias& e) { return std::format("shell: depthBias {}", e.on ? "on" : "off"); },
-			[](const SetShellAlphaTest& e) { return std::format("shell: alphaTest {}", e.value); });
+			[](const SetShellAlphaTest& e) { return std::format("shell: alphaTest {}", e.value); },
+			[](const ResetShell&) { return std::string{ "shell: reset" }; });
 	}
 
 	std::string_view LightParamName(LightParam a_field) noexcept
@@ -1061,18 +1293,37 @@ namespace WornEnchantmentPBR::Studio
 				++counts.curves[*name];
 			}
 		});
-		ForEachText(copy, [&](std::string& a_text, bool) {
+		ForEachText(copy, [&](std::string& a_text, bool a_mask) {
 			const auto program = Program::Parse(a_text);
 			if (!program) {
 				return;
 			}
 			for (const auto& name : program->References()) {
+				// Inside a mask a name reads an image first, a signal after; both
+				// counts rise so a row of either kind knows it is read.
 				++counts.signals[name];
+				if (a_mask) {
+					++counts.images[name];
+				}
 			}
 			for (const auto& name : program->Curves()) {
 				++counts.curves[name];
 			}
 		});
+		for (const auto& output : a_recipe.outputs) {
+			const auto* material = Get<MaterialOutput>(output);
+			if (!material) {
+				continue;
+			}
+			for (const auto& layer : material->stack) {
+				if (const auto* ref = Get<Ref>(layer.source)) {
+					++counts.images[ref->name];
+				}
+				if (layer.mask) {
+					++counts.images[layer.mask->name];
+				}
+			}
+		}
 		for (const auto& variant : a_recipe.variants) {
 			for (const auto& [name, value] : variant.overrides) {
 				++counts.signals[name];

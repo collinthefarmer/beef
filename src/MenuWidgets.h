@@ -67,6 +67,7 @@ namespace WornEnchantmentPBR::Studio::Widgets
 		{
 			kAll,
 			kInnerHorizontal,
+			kNone,
 		};
 		Borders borders = Borders::kAll;
 		bool    stretch = false;  // Fill columns share the width in proportion to their content
@@ -111,12 +112,21 @@ namespace WornEnchantmentPBR::Studio::Widgets
 	[[nodiscard]] float BlendWidth(std::span<const Blend> a_allowed);
 	// The width that shows the widest of the names, so a column of combos lines up.
 	[[nodiscard]] float WidestOf(std::span<const std::string> a_names);
+	// The width a button with this label takes, and a checkbox with it, as
+	// ImGui draws them, so a group placed at the right edge ends on it.
+	[[nodiscard]] float ButtonWidth(std::string_view a_text);
+	[[nodiscard]] float CheckboxWidth(std::string_view a_text);
 	// The style's gap between items on a line.
 	[[nodiscard]] float ItemSpacingX();
 
 	// ----------------------------------------------------------------- fields
 
-	[[nodiscard]] std::optional<std::string> TextField(const char* a_key, const std::string& a_model, const Width& a_width, float a_scale);
+	// Why a text would be refused, or nothing; a field with one draws red
+	// with the message under it while its text fails, and does not commit
+	// failing text.
+	using TextCheck = std::function<std::optional<std::string>(const std::string&)>;
+
+	[[nodiscard]] std::optional<std::string> TextField(const char* a_key, const std::string& a_model, const Width& a_width, float a_scale, const TextCheck& a_check = {});
 	// Live text that nothing overwrites (a table's name filter, a new row's
 	// id), returned as it stands this frame; the hint shows while it is empty.
 	[[nodiscard]] std::string_view LiveTextField(const char* a_key, const char* a_hint, const Width& a_width, float a_scale);
@@ -129,7 +139,9 @@ namespace WornEnchantmentPBR::Studio::Widgets
 	[[nodiscard]] std::optional<Blend> BlendCombo(const char* a_key, std::string_view a_current, std::span<const Blend> a_allowed, const Width& a_width, float a_scale);
 	// Lists the names as "@name" and returns the chosen text; the empty
 	// entry, when allowed, returns "".
-	[[nodiscard]] std::optional<std::string> ReferenceCombo(const char* a_key, const std::string& a_current, std::span<const std::string> a_names, bool a_allowEmpty, const Width& a_width, float a_scale);
+	// The creators, when given, follow the names past a separator and come
+	// back as written ("new image").
+	[[nodiscard]] std::optional<std::string> ReferenceCombo(const char* a_key, const std::string& a_current, std::span<const std::string> a_names, bool a_allowEmpty, const Width& a_width, float a_scale, std::span<const std::string> a_creators = {});
 
 	// What a field requires, as a badge at its left edge: one glyph for the
 	// kind of value, filled with the kind's colour when a signal reference
@@ -145,7 +157,7 @@ namespace WornEnchantmentPBR::Studio::Widgets
 	// literal and the badge is outlined and inert. A colour field's text
 	// carries a swatch that opens a picker; a pick commits on release as
 	// "r, g, b". Returns the new text whichever way it was entered.
-	[[nodiscard]] std::optional<std::string> ValueField(const char* a_key, FieldKind a_kind, const std::string& a_current, std::span<const std::string> a_names, bool a_allowEmpty, float a_scale);
+	[[nodiscard]] std::optional<std::string> ValueField(const char* a_key, FieldKind a_kind, const std::string& a_current, std::span<const std::string> a_names, bool a_allowEmpty, float a_scale, const TextCheck& a_check = {}, std::span<const std::string> a_creators = {});
 	// A button the height of a field, drawn beside a badge, that opens the
 	// field's detail modal; returns true when clicked. One per ID scope.
 	[[nodiscard]] bool DetailButton();
@@ -186,20 +198,50 @@ namespace WornEnchantmentPBR::Studio::Widgets
 	// A checkbox with a tooltip; true when it changed this frame. Solo,
 	// mute, isolate and freeze are all this.
 	bool Toggle(const char* a_label, bool& a_value, std::string_view a_tooltip);
-	// A button drawn pressed while a_active, greyed while not a_enabled;
-	// true when clicked. Two of them make a section switch.
-	[[nodiscard]] bool SwitchButton(const char* a_label, bool a_active, bool a_enabled);
 	// A combo over plain names (a choice field); returns the chosen name.
 	[[nodiscard]] std::optional<std::string> ChoiceCombo(const char* a_key, const std::string& a_current, std::span<const std::string> a_names, const Width& a_width, float a_scale);
-	// Solo and mute as two small toggles, "S" and "M", the same wherever a
-	// thing can be soloed or muted; a null mute draws solo alone. Returns
-	// true when either changed.
-	bool SoloMute(bool& a_solo, bool* a_mute);
+	// A detail's modal: opened by name (ImGui::OpenPopup with the same
+	// title), wide enough that a definition wraps once, the body, a close
+	// button; drawn only while open.
+	void DetailModal(const char* a_title, const std::function<void()>& a_body);
+	// The items a_draw draws, placed so that a_width of them end on the
+	// right edge of the line (they follow SameLine).
+	void RightAligned(float a_width, const std::function<void()>& a_draw);
+	// The items a_draw draws, greyed and inert while a_disabled; a greyed
+	// button never reports a click.
+	void Disabled(bool a_disabled, const std::function<void()>& a_draw);
+	// A value shown as a field that cannot be edited (the recipe held
+	// while painting).
+	void HeldLabel(const char* a_text);
+	// A button drawn in the pressed colour while a_lit, to call for a step
+	// that has not been taken yet (read the mesh); true when clicked.
+	[[nodiscard]] bool LitButton(const char* a_label, bool a_lit);
 
-	// Reordering: DragHandle draws the grip that starts a drag of row
-	// a_index; DropTarget makes the last drawn item accept one. a_type names
-	// the payload kind so unrelated lists never accept each other's rows.
-	[[nodiscard]] bool                   DragHandle(const char* a_type, std::size_t a_index);  // true when clicked without dragging
+	// The row buttons of a stack: each a square the height of a field, the
+	// badge's size, so a table column of RowButtonWidth is filled by one.
+	[[nodiscard]] float RowButtonWidth();
+	// "X": greyed while the row is referenced, with the count in its
+	// tooltip; true when clicked and unreferenced.
+	[[nodiscard]] bool RemoveButton(std::size_t a_references);
+	// Solo and mute as "S" and "M", drawn filled while on, the same
+	// wherever a thing can be soloed or muted: each alone for a table cell
+	// of its own (true when it changed), or the pair side by side, which
+	// returns which one changed this frame.
+	bool SoloButton(bool& a_solo);
+	bool MuteButton(bool& a_mute);
+	enum class SoloMuteChange
+	{
+		kNone,
+		kSolo,
+		kMute,
+	};
+	SoloMuteChange SoloMute(bool& a_solo, bool& a_mute);
+
+	// Reordering: DragHandle draws the grip (the same square) that starts a
+	// drag of row a_index; DropTarget makes the last drawn item accept one.
+	// a_type names the payload kind so unrelated lists never accept each
+	// other's rows.
+	[[nodiscard]] bool                   DragHandle(const char* a_type, std::size_t a_index, const char* a_noun);  // true when clicked without dragging; the noun names the row in the drag preview
 	[[nodiscard]] std::optional<RowMove> DropTarget(const char* a_type, std::size_t a_index);
 
 	// ------------------------------------------------------------------- text

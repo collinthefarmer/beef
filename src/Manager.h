@@ -97,7 +97,8 @@ namespace WornEnchantmentPBR
 		// Isolate one recipe (empty: none), and within it one output and one
 		// layer (-1: all). Resolution applies an isolated recipe alone, so
 		// changing which recipe is isolated re-applies every actor; the
-		// output and layer are tick-time filters and cost nothing.
+		// output and layer are tick-time filters and cost nothing. Posted,
+		// like RetireAll and ReapplyAll: any thread may call them.
 		void Isolate(std::string a_recipe, int a_output, int a_layer);
 		void RetireAll();
 
@@ -116,7 +117,24 @@ namespace WornEnchantmentPBR
 		// An empty recipe keyed to the armor, from any thread; everything is
 		// retired around it since the store's list moves, then re-applied,
 		// so the recipe resolves onto the armor's wearers at once.
-		void NewRecipe(std::string a_id, RE::FormID a_armor);
+		void NewRecipe(std::string a_id, RecipeKey a_key);
+		// Painting: a transient paint recipe (Studio::PaintRecipe) cloned
+		// from the active recipe, keyed as given, isolated so the region
+		// shows alone; the surface its emissive previews on can change;
+		// Keep copies the scratch into the active recipe under a name as one
+		// history step and ends the session; End drops it. Everything is
+		// retired around the store's list moving, then re-applied.
+		void BeginPaint(std::string a_active, RecipeKey a_key, Surface a_surface);
+		void SetPaintSurface(Surface a_surface);
+		void KeepPaint(std::string a_active, std::string a_name);
+		void EndPaint();
+		// A firing placed on the actor: at the named node (its world position
+		// plus the offset, scattered within a_random units), carrying the
+		// value; with no node the firing has no place.
+		void FireAt(RE::FormID a_actorID, std::string a_event, std::string a_node, Vec3 a_offset, float a_random, float a_value);
+		// Reads the mesh of a bound geometry on the game thread, so the
+		// snapshot can list its partitions and bones.
+		void RequestMesh(RE::FormID a_actorID, std::string a_geometry);
 
 		// Once per frame from the PlayerCharacter::Update hook (game thread).
 		void OnFrame();
@@ -129,11 +147,10 @@ namespace WornEnchantmentPBR
 		void               SetEmissivePathEnabled(bool a_enabled);
 		[[nodiscard]] bool EmissivePathEnabled() const noexcept { return emissivePathEnabled_; }
 
-		// How the piece is looked at: freeze, scrub, isolate, mute. Set by the
-		// menu on the render thread, read by the tick; plain values, so a torn
-		// read shows a stale frame at worst.
-		[[nodiscard]] Studio::View& Debug() noexcept { return view_; }
-		[[nodiscard]] const Studio::View& GetView() const noexcept { return view_; }
+		// How the piece is looked at (freeze, scrub, speed, isolate, mute) is
+		// changed on the game thread through a posted change; the menu reads
+		// the copy inside the latest snapshot, never the live record.
+		void UpdateView(std::function<void(Studio::View&)> a_change);
 
 		struct Status
 		{
@@ -150,10 +167,15 @@ namespace WornEnchantmentPBR
 		};
 		[[nodiscard]] Status GetStatus() const;
 
-		// Everything the menu shows, copied (Snapshot.h); no engine pointers
-		// except the texture views the thumbnails draw.
+		// The menu's read side. The tick builds a snapshot (Snapshot.h) once
+		// per tick while the menu watches, full rows for the watched piece
+		// and light rows for the rest, and publishes it whole; no engine
+		// pointers in it except the texture views the thumbnails draw. Watch
+		// is called every frame a page draws; a second without it stops the
+		// building. Any thread.
 		using Snapshot = Studio::Snapshot;
-		[[nodiscard]] Snapshot TakeSnapshot() const;
+		void                                          Watch(const std::optional<Studio::SnapshotRequest>& a_request);
+		[[nodiscard]] std::shared_ptr<const Snapshot> LatestSnapshot() const;
 
 	private:
 		struct ActorState
@@ -167,6 +189,7 @@ namespace WornEnchantmentPBR
 		void Retire(RE::FormID a_actorID);
 		// Game thread: retires the wearers of a recipe, runs the action, re-applies them.
 		void WithRecipeRetired(std::string_view a_id, const std::function<void()>& a_action);
+		void RetireEveryActor();
 		void FireDueFinalizes();
 		void Tick(std::uint32_t a_nowMS);
 		void TickRecipe(AppliedRecipe& a_applied, float a_time, float a_delta);
@@ -202,6 +225,17 @@ namespace WornEnchantmentPBR
 		bool                                       emissivePathEnabled_ = true;
 		bool                                       layoutVerified_ = false;
 		bool                                       frozenLastTick_ = false;  // to notice the tick that leaves freeze
-		Studio::View                               view_{};
+		Studio::View                               view_{};  // game thread
+
+		// The published snapshot and what the menu watches; the lock covers
+		// the pointer swap and the request, never a build.
+		[[nodiscard]] Snapshot BuildSnapshot(const std::optional<Studio::SnapshotRequest>& a_request) const;
+		void                   PublishSnapshot(std::uint32_t a_nowMS);
+		mutable std::mutex                     snapshotLock_;
+		std::shared_ptr<const Snapshot>        latest_ = std::make_shared<Snapshot>();
+		std::optional<Studio::SnapshotRequest> watch_;
+		std::uint32_t                          watchedMS_ = 0;
+		std::uint64_t                          snapshotVersion_ = 0;
+		static constexpr std::uint32_t         kWatchWindowMS = 1000;
 	};
 }

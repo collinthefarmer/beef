@@ -5,6 +5,7 @@
 #include <cmath>
 #include <cstring>
 #include <format>
+#include <charconv>
 #include <functional>
 
 namespace WornEnchantmentPBR
@@ -219,5 +220,108 @@ namespace WornEnchantmentPBR
 	{
 		return ScalarBake(a_mesh, [&](const MeshVertex& v) { return a_axis == UvAxis::kU ? v.uv.x : v.uv.y; });
 	}
-}
 
+	std::uint64_t HashBytes(std::span<const std::uint8_t> a_bytes, std::uint64_t a_seed) noexcept
+	{
+		constexpr std::uint64_t kPrime = 0x100000001b3ull;
+		std::uint64_t           hash = a_seed;
+		for (const auto byte : a_bytes) {
+			hash ^= byte;
+			hash *= kPrime;
+		}
+		return hash;
+	}
+
+	std::vector<std::array<std::uint32_t, 3>> TrianglesWithin(std::span<const std::array<std::uint32_t, 3>> a_triangles, std::size_t a_vertexCount)
+	{
+		std::vector<std::array<std::uint32_t, 3>> kept;
+		kept.reserve(a_triangles.size());
+		for (const auto& triangle : a_triangles) {
+			if (triangle[0] < a_vertexCount && triangle[1] < a_vertexCount && triangle[2] < a_vertexCount) {
+				kept.push_back(triangle);
+			}
+		}
+		return kept;
+	}
+
+	// ------------------------------------------------------------ bake keys
+
+	namespace
+	{
+		std::string Definition(const BakeKind& a_kind)
+		{
+			return Match(
+				a_kind,
+				[](const PositionBake&) { return std::string{ "position" }; },
+				[](const LocalPositionBake&) { return std::string{ "localPosition" }; },
+				[](const WorldUpBake&) { return std::string{ "worldUp" }; },
+				[](const PartitionBake& p) { return std::format("partition {}", p.slot); },
+				[](const BoneWeightBake& b) {
+					// Every bone by name, sorted: the bake tests membership, so
+					// two orders of one set are one picture and share a key.
+					std::vector<std::string> sorted = b.bones;
+					std::ranges::sort(sorted);
+					std::string names;
+					for (const auto& bone : sorted) {
+						names += (names.empty() ? "" : ", ") + bone;
+					}
+					return std::format("boneWeight [{}]", names);
+				});
+		}
+	}
+
+	std::string DefinitionOf(const BakeKind& a_kind)
+	{
+		return std::format("bake {}", Definition(a_kind));
+	}
+
+	std::string DefinitionOf(const DistanceSource& a_distance)
+	{
+		const auto from = Match(
+			a_distance.from,
+			[](const std::string& node) { return std::format("node {}", node); },
+			[](const Vec3& p) { return std::format("({:.2f}, {:.2f}, {:.2f})", p.x, p.y, p.z); });
+		return std::format("distance from {}", from);
+	}
+
+	std::string DefinitionOf(UvAxis a_axis)
+	{
+		return std::format("uv {}", a_axis == UvAxis::kU ? "u" : "v");
+	}
+
+	std::string BakeKeyOf(const BakeKind& a_kind, TextureSize a_size)
+	{
+		return std::format("{}@{}", DefinitionOf(a_kind), a_size.Pixels());
+	}
+
+	std::string DistanceKeyOf(const DistanceSource& a_distance, TextureSize a_size)
+	{
+		return std::format("{}@{}", DefinitionOf(a_distance), a_size.Pixels());
+	}
+
+	std::string UvKeyOf(UvAxis a_axis, TextureSize a_size)
+	{
+		return std::format("{}@{}", DefinitionOf(a_axis), a_size.Pixels());
+	}
+
+	std::string_view KeyDefinition(std::string_view a_key) noexcept
+	{
+		const auto at = a_key.rfind('@');
+		return at == std::string_view::npos ? a_key : a_key.substr(0, at);
+	}
+
+	std::optional<std::uint32_t> KeySize(std::string_view a_key) noexcept
+	{
+		const auto at = a_key.rfind('@');
+		if (at == std::string_view::npos || at + 1 == a_key.size()) {
+			return std::nullopt;
+		}
+		const auto    digits = a_key.substr(at + 1);
+		std::uint32_t size = 0;
+		const auto    result = std::from_chars(digits.data(), digits.data() + digits.size(), size);
+		if (result.ec != std::errc{} || result.ptr != digits.data() + digits.size()) {
+			return std::nullopt;
+		}
+		return size;
+	}
+}

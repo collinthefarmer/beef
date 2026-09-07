@@ -43,6 +43,7 @@ namespace WornEnchantmentPBR::Studio
 	struct Layout
 	{
 		Mode  mode = Mode::kCompose;
+		bool  contextRows = true;  // the recipe and edit rows; Paint has a head line naming the recipe instead
 		bool  stack = true;
 		bool  inspector = true;
 		bool  signals = true;  // the signal table, under a rule below the stack
@@ -98,6 +99,14 @@ namespace WornEnchantmentPBR::Studio
 	[[nodiscard]] const PieceRow*    SelectedPiece(const Snapshot& a_snapshot, const Selection& a_selection) noexcept;
 	[[nodiscard]] const RecipeRow*   SelectedRecipe(const PieceRow* a_piece, const Selection& a_selection) noexcept;
 	[[nodiscard]] const GeometryRow* SelectedGeometry(const RecipeRow* a_recipe, const Selection& a_selection) noexcept;
+	// What the tick should build full rows for: the selected piece, or
+	// nothing when no piece is selected yet.
+	[[nodiscard]] std::optional<SnapshotRequest> RequestOf(const Selection& a_selection) noexcept;
+	// The layer selection dropped when it names a row past the picked
+	// stack's end (an edit the manager refused, a stack that shrank), so no
+	// reader can be handed a stale index. A light row (no geometries yet)
+	// leaves it alone.
+	void ClampSelection(Selection& a_selection, const Snapshot& a_snapshot) noexcept;
 	// The first material output on the picked surface and slot; none for the
 	// light target, an unpicked slot, or a slot nothing writes.
 	[[nodiscard]] const OutputRow*   SelectedOutput(const GeometryRow* a_geometry, const Selection& a_selection) noexcept;
@@ -240,8 +249,15 @@ namespace WornEnchantmentPBR::Studio
 	{
 		std::vector<std::string> scalar;
 		std::vector<std::string> color;  // vec3: colours and vectors alike
+		std::vector<std::string> vec2;
+		std::vector<std::string> triggers;
 	};
 	[[nodiscard]] SignalNames SignalNamesOf(const RecipeRow& a_recipe);
+
+	// A source as texts and back: the row the tab shows, and the kind its
+	// form rebuilds; nothing when a text does not parse.
+	[[nodiscard]] SourceRow                 SourceRowOf(const Source& a_source, std::size_t a_references);
+	[[nodiscard]] std::optional<SourceKind> SourceKindOf(const SourceRow& a_row);
 
 	// ---------------------------------------------------------------- signals
 

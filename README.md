@@ -365,11 +365,16 @@ are in `ARCHITECTURE.md` under "The recipe studio".
   filters to layers it masks and Add layer binds it first); and at the
   far right **Clear**, which
   removes the picked output (a slot's, or the light) so the slot reads
-  empty again; between the target and the slot a **settings** / **stack**
-  switch says what the stack pane shows, one at a time:
-  the target's settings or the picked slot's stack. The material has no
-  settings and the light no stack, so the pane shows what the target
-  has and the other button is greyed. The light's settings are the
+  empty again. The rule under the rows names what the stack pane shows,
+  one at a time: the picked slot's stack, or the target's settings. At
+  the rule's right edge one button switches to the other, and reads
+  **settings** while the stack is shown and **stack** while the
+  settings are; the material has no settings and the light no stack, so
+  the button is greyed on those. While the settings are shown a
+  **Clear** beside it puts them back to the format's defaults (the
+  light's placement, its selector and replace, stays). The settings are
+  dealt into two field tables side by side so the pane shows them
+  without scrolling. The light's settings are the
   **light panel**: colour, intensity, size, cutoff,
   offset, shadow, the bones as a kind (skinned with max and minShare, or
   named with a comma-separated list), each a field like the row fields;
@@ -432,7 +437,7 @@ are in `ARCHITECTURE.md` under "The recipe studio".
   The two context rows stay
   in view; under them two panes scroll on their own, separated by
   rules, the stack taking the larger share: the **stack**, and
-  **Resources**, a tab per table (Signals, Curves; masks to come). The
+  **Resources**, a tab per table (Signals, Curves, Sources, Masks). The
   **signal table**: remove (greyed while anything references the row,
   with the count in its tooltip), signal (its kind in the tooltip), edit
   (a constant's number or colour as a literal field, an expression as
@@ -444,16 +449,76 @@ are in `ARCHITECTURE.md` under "The recipe studio".
   live value with its swatch, or "inert" with the reason (a trigger
   row with an event id carries **Fire**, which posts one firing of that
   event for the piece's wearer); and the
-  **curves** table (remove, name and expression). The Resources rule
-  carries **Add** for the open tab (a constant 0 named `signal`,
-  `signal2`, ...; a curve `x` named `curve`, ...) and that tab's name
-  filter at its right edge. Names in both tables
-  are fields: committing another name renames the row and repoints every
-  reference to it, in parameters, variant overrides and expressions. The
-  recipe row's **New** opens a popup that makes an empty recipe keyed to
-  the worn armor under the id typed, listed as `user/<id>.json` until
-  saved; a recipe stays on its piece with an empty board while it has no
-  outputs.
+  **curves** table (remove, name and expression); the **sources** table
+  (remove, name, a `...` button opening the source's form in a modal:
+  the kind first, then the kind's own settings, an image's path,
+  channel, space, scroll, tile, mirrors, transpose and mip, a bake's
+  kind with its partition or bones, and so on; and the definition as the
+  file describes it); and the **masks** table (remove, name, expression).
+  The Resources rule carries **Add** for the open tab (a constant 0 named
+  `signal`, `signal2`, ...; a curve `x` named `curve`, ...; a material
+  source named `source`, ...; a mask `1` named `mask`, ...) and that
+  tab's name filter at its right edge. Names in every table are fields:
+  committing another name renames the row and repoints every reference
+  to it, in parameters, variant overrides and expressions; remove is
+  greyed while anything references the row. **Validation before
+  apply**: every typed field is checked as it is typed, with the file's
+  own parsers and against the recipe's names and types, and reads red
+  with the message under it until it would be accepted; a failing text
+  is not committed. **Creation in place**: a reference combo ends with
+  what the field can make, "new image", "new bake", "new mask", "new
+  curve", "new constant", "new expression", and "promote to signal",
+  which turns the literal the field holds into a constant named after
+  the field; picking one creates the row, named after its kind and made
+  unique, and binds the field to it. A `...` button beside any value
+  field that names a `@signal` opens that signal in a modal: its editor,
+  its curve, and the signals its expression reads as buttons that open
+  their own modals, to any depth. The
+  recipe row's **New** opens a popup that makes an empty recipe under
+  the id typed, keyed to one of what the piece carries (its magic
+  effect, enchantment or effect shader, the armor, or a keyword), listed
+  as `user/<id>.json` until saved; a recipe stays on its piece with an
+  empty board while it has no outputs. **Fire** on a trigger row opens a
+  popup for the firing's payload: a node from the shape's bones, an
+  offset from it in world units, a random scatter radius, and the value.
+- **Paint mode** builds a region as a stack of terms, the way Compose
+  builds an output as a stack of layers, and previews it through the
+  ordinary apply path: opening Paint clones the selected recipe into a
+  transient **paint recipe** (its outputs replaced by one emissive
+  output whose single white layer is masked by the **scratch** mask,
+  keyed to the worn armor, never written, gone when Paint closes),
+  applied alone while the session runs, so the armor shows the region
+  the way any recipe's emissive shows. The head line holds the recipe
+  combo, which keeps naming the recipe being painted for. Under it an
+  action row, the shape of Compose's edit row: a **kind** combo (where,
+  what, shape, masks, sources, expression) and a **member** combo whose
+  entries add a term of that kind; a **read mesh** button, lit until the
+  shape's mesh is read (the shape kind and the where presets need it; a
+  preset the shape cannot make is greyed with the reason); and **preview
+  on**, material or shell, which is where the paint recipe's emissive
+  goes. The where presets come from `regions.json` beside the DLL (a
+  body region, a partition times the weights of a few bones), the what
+  presets are material thresholds over the shape's own maps (leather,
+  polished and rough metal, cloth, engravings, raised, dark, bright), the
+  shape kind lists the mesh's own partitions and bones with their
+  coverage, and a preset adds the sources it needs, reusing an existing
+  source with the same definition. The pane is split as the Compose
+  stack is: the term table on the left (index, remove, the grip to
+  reorder, **S** shows one term alone, **M** leaves one out, the **op**:
+  the first term sets the region, each later one is **and**, the
+  product, **or**, the maximum, or **not**, the product with the
+  complement; and the term's origin and text), the selected term's op
+  and text on the right with each source or mask it reads as a row whose
+  detail button opens its picture. The stack is page state; its built
+  expression is written into the paint recipe's scratch after every
+  change. Under the split, **Keep** writes every term (mutes lifted)
+  under a proposed or typed name into the recipe being painted for, with
+  the sources the expression reads copied across (a source of the same
+  definition is reused, a taken name made unique), as one undoable step,
+  and ends the session; **Discard** ends it without keeping. On the
+  Masks tab, **edit** loads a kept mask into the stack: a mask in the
+  shape Keep writes comes back as its terms, any other as one raw term.
+  Leaving Paint mode discards.
 - **Recipes**: every loaded file with keys, row counts, state and path;
   the selection's resolved recipes in merge order; the **board**, the
   grid of every slot on the material and the shell for the selected
@@ -714,6 +779,41 @@ modes; the runtime is untouched except layer solo and mute):
     the material's height) and the glow retreats into the grooves. The
     leather and cloth stay dark. Solo the height cell to see the sink
     alone.
+27. **Creation in place, validation, regions** (menu stage 3). With the
+    magicka cuirass worn, press New, type `scratchpad`, choose the
+    enchantment key, Create: the recipe combo shows `scratchpad` with an
+    empty board. Pick emissive on the shell, Add output, Add layer:
+    open the layer's source combo and choose "new material": a source
+    named `material` appears in the Sources tab and the layer reads
+    `@material`; open its `...` and set the channel to `metallic`. In
+    the opacity field type `@nothing`: the field reads red with "'@nothing'
+    is not a signal" and Enter does not apply it; choose "promote to
+    signal" instead and a constant `opacity` appears in the Signals tab.
+    Switch to Paint: the context rows are gone, the head line names the
+    recipe, the log reads `paint: previewing <recipe> on the material
+    through the paint recipe, keyed by armor:...`, and the armor goes
+    dark (the paint recipe is applied alone; its scratch is `0`). Press
+    the lit "read mesh" button; choose kind `where`, member `chest`: the
+    term table shows `0 set chest @partition * @bones` and the chest
+    glows white; kind `what`, member `leather`: a second row `1 and
+    leather ...` and the glow shrinks to the leather on the chest. Tick S
+    on the leather row: the whole piece's leather glows; untick. Set the
+    leather row's op to `not`: the chest glows where it is not leather;
+    set it back. Preview on `shell`: the same region glows on the shell
+    over the piece. Press Keep: the popup proposes `chestLeather`; Keep
+    as it: the log reads `keep: region chestLeather written into
+    <recipe> (N edit(s))`, the recipe re-applies with its own outputs,
+    and the Masks tab lists `chestLeather` as `(@partition * @bones) *
+    ((1 - @metallic) * smoothstep(0.35, 0.6, @roughness))` beside the
+    new `partition`, `bones` and `roughness` sources. Undo once: the
+    mask and the sources are gone; Redo. Press edit on that row: Paint
+    opens with the two terms back and the rule reads `Region:
+    chestLeather`; Discard leaves the mask as it was. Back in Compose,
+    the layer's mask combo offers it. On the magicka recipe,
+    press the `...` beside the strength scalar: a modal opens on
+    `@glowLevel` with its expression and a `@fillLevel` button that opens
+    that signal's modal over it. On `struck`, press Fire, choose `NPC
+    Head [Head]` and Fire now: the ring runs out from the head.
 26. **State model, undo, panels, the clock** (menu stage 2). With the
     magicka cuirass worn: pick emissive on the shell, select the `ring`
     row, set its opacity to 0.5, press Undo: the opacity reads `@struck`

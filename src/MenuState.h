@@ -12,12 +12,14 @@
 // therefore consistent with the state the frame began with.
 
 #include "Edits.h"
+#include "MaskStack.h"
 #include "Studio.h"
 
 #include <array>
 #include <cstddef>
 #include <cstdint>
 #include <optional>
+#include <set>
 #include <string>
 #include <string_view>
 #include <unordered_map>
@@ -37,9 +39,51 @@ namespace WornEnchantmentPBR::Studio
 	{
 		kSignals,
 		kCurves,
+		kSources,
+		kMasks,
 	};
-	inline constexpr std::array<ResourceTab, 2> kResourceTabs{ ResourceTab::kSignals, ResourceTab::kCurves };
+	inline constexpr std::array<ResourceTab, 4> kResourceTabs{ ResourceTab::kSignals, ResourceTab::kCurves, ResourceTab::kSources, ResourceTab::kMasks };
 	[[nodiscard]] std::string_view              ResourceTabName(ResourceTab a_tab) noexcept;
+
+	// What the action row's kind combo offers a term from.
+	enum class TermKind
+	{
+		kWhere,
+		kWhat,
+		kShape,
+		kMasks,
+		kSources,
+		kExpression,
+	};
+	inline constexpr std::array<TermKind, 6> kTermKinds{ TermKind::kWhere, TermKind::kWhat, TermKind::kShape, TermKind::kMasks, TermKind::kSources, TermKind::kExpression };
+	[[nodiscard]] std::string_view           TermKindName(TermKind a_kind) noexcept;
+	[[nodiscard]] std::optional<TermKind>    ParseTermKind(std::string_view a_name) noexcept;
+
+	// Paint mode's working selection: the terms whose built expression the
+	// scratch mask holds. Solo and mute are state here, never in the file;
+	// Keep writes every term. `editing` names the kept mask the stack was
+	// loaded from, so Keep can write it back under its own name. `dirty`
+	// says the scratch text no longer matches the terms; the page rebuilds
+	// it after the frame and clears the flag.
+	struct RegionStack
+	{
+		std::vector<Term>          terms;
+		std::optional<std::size_t> selected;
+		std::optional<std::size_t> solo;
+		std::set<std::size_t>      muted;
+		std::string                editing;
+		bool                       dirty = false;
+		TermKind                   addKind = TermKind::kWhere;
+	};
+
+	// A paint session: the active recipe the region is for (the recipe combo
+	// keeps reporting it) and the surface the paint recipe previews on. The
+	// manager holds the paint recipe itself.
+	struct PaintSession
+	{
+		std::string recipe;
+		Surface     surface = Surface::kMaterial;
+	};
 
 	using TextBuffer = std::array<char, 1024>;
 	using NumberBuffer = std::array<float, 3>;  // a drag's value, or a colour's r, g, b
@@ -53,6 +97,8 @@ namespace WornEnchantmentPBR::Studio
 		// light's) or the picked slot's stack, one at a time; the page falls
 		// back to whichever the target has.
 		bool settings = false;
+		RegionStack                 region;
+		std::optional<PaintSession> paint;
 		// The resources pane's open tab; the tab bar owns the click, the
 		// state follows it so the pane's rule knows which table Add and the
 		// filter serve.
@@ -131,6 +177,86 @@ namespace WornEnchantmentPBR::Studio
 	{
 		ResourceTab tab = ResourceTab::kSignals;
 	};
+	// The region stack. A term is added at the end (the first is `set`, the
+	// rest `and` unless the term says otherwise), selected as it lands;
+	// LoadRegion replaces the whole stack with a kept mask's terms; Clear
+	// empties it after Keep or Discard.
+	struct AddTerm
+	{
+		Term term;
+	};
+	struct SetTermOp
+	{
+		std::size_t index = 0;
+		TermOp      op = TermOp::kAnd;
+	};
+	struct SetTermText
+	{
+		std::size_t index = 0;
+		std::string text;
+	};
+	struct RemoveTerm
+	{
+		std::size_t index = 0;
+	};
+	struct MoveTerm
+	{
+		std::size_t from = 0;
+		std::size_t to = 0;
+	};
+	struct PickTerm
+	{
+		std::size_t index = 0;
+	};
+	struct SoloTerm
+	{
+		std::size_t index = 0;
+		bool        on = false;
+	};
+	struct MuteTerm
+	{
+		std::size_t index = 0;
+		bool        on = false;
+	};
+	struct LoadRegion
+	{
+		std::vector<Term> terms;
+		std::string       editing;  // the kept mask they came from, or empty
+	};
+	struct ClearRegion
+	{
+	};
+	struct SetTermKind
+	{
+		TermKind kind = TermKind::kWhere;
+	};
+	// The paint session: begun for the active recipe on the piece's key,
+	// its preview surface changed, kept under a name (the manager copies
+	// the region into the active recipe), or ended without keeping.
+	struct BeginPaint
+	{
+		std::string recipe;
+		RecipeKey   key;
+		Surface     surface = Surface::kMaterial;
+	};
+	struct SetPaintSurface
+	{
+		Surface surface = Surface::kMaterial;
+	};
+	struct KeepPaint
+	{
+		std::string recipe;  // the active recipe
+		std::string name;
+	};
+	struct EndPaint
+	{
+	};
+	// The geometry's mesh read on the game thread, for its partitions and bones.
+	struct ReadMesh
+	{
+		FormID      actorID = 0;
+		std::string geometry;
+	};
 	struct EditRecipe
 	{
 		std::string recipe;
@@ -188,21 +314,31 @@ namespace WornEnchantmentPBR::Studio
 	struct CreateRecipe
 	{
 		std::string id;
-		FormID      armorID = 0;
+		RecipeKey   key;
 	};
+	// One firing of an event for the piece's wearer. A node names the
+	// firing's place; an offset (world units) and a random scatter within
+	// `random` units move it; the value rides in the payload.
 	struct FireTrigger
 	{
 		FormID      actorID = 0;
 		std::string event;
+		std::string node;
+		Vec3        offset;
+		float       random = 0.0f;
+		float       value = 1.0f;
 	};
 
 	using Intent = std::variant<
-		SetMode, PickPiece, PickRecipe, PickTarget, PickSlot, PickCell, PickLayer, PickRegion, ViewGeometry, ShowSettings, ShowResource,
+		SetMode, PickPiece, PickRecipe, PickTarget, PickSlot, PickCell, PickLayer, PickRegion, ViewGeometry, ShowSettings, ShowResource, ReadMesh,
+		AddTerm, SetTermOp, SetTermText, RemoveTerm, MoveTerm, PickTerm, SoloTerm, MuteTerm, LoadRegion, ClearRegion, SetTermKind,
+		BeginPaint, SetPaintSurface, KeepPaint, EndPaint,
 		EditRecipe, SoloRecipe, SoloOutput, SoloLayer, MuteLayer,
 		SetFreeze, SetScrub, SetSpeed, StepClock, Undo, Redo, CreateRecipe, FireTrigger>;
 
 	// The state change an intent makes; nothing else. An edit moves the
 	// layer selection with the row it adds, removes or moves, and a new
-	// output or recipe becomes the selected one.
+	// output or recipe becomes the selected one. A region intent marks the
+	// stack dirty; a piece or recipe pick starts the stack over.
 	void Reduce(MenuState& a_state, const Intent& a_intent);
 }

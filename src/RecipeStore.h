@@ -5,7 +5,9 @@
 // kDataLoaded and on a menu reload; the manager reads the loaded list and
 // the compiled signal graphs from here.
 
+#include "Edits.h"
 #include "Recipe.h"
+#include "Regions.h"
 #include "Signals.h"
 
 #include <cstddef>
@@ -38,6 +40,9 @@ namespace WornEnchantmentPBR
 	// The loaded recipes in load order (the order Resolve expects). Stable
 	// until the next LoadRecipes.
 	[[nodiscard]] std::span<const Recipe> LoadedRecipes() noexcept;
+	// The shipped region presets, read with the recipes; empty when the file
+	// is missing or malformed (logged).
+	[[nodiscard]] const Studio::Presets& LoadedPresets() noexcept;
 
 	// Where a recipe came from and what its rows reported.
 	struct RecipeOrigin
@@ -49,6 +54,10 @@ namespace WornEnchantmentPBR
 
 	// The compiled signal graph of a loaded recipe, compiled on first use.
 	[[nodiscard]] std::shared_ptr<const SignalGraph> GraphFor(const Recipe& a_recipe);
+	// How many places name each signal, curve and image of a loaded recipe,
+	// counted when the recipe is loaded or changed, so the snapshot copies
+	// counts rather than re-parsing every expression. Null when not loaded.
+	[[nodiscard]] const Studio::ReferenceCounts* ReferencesOf(std::string_view a_id) noexcept;
 
 	// Editing, game thread only, through the manager so that nothing wearing
 	// the recipe holds pointers into it while it changes. The store's copy
@@ -70,4 +79,11 @@ namespace WornEnchantmentPBR
 	// caller retires everything that points into it first. False when the
 	// id is taken or is not a file stem.
 	[[nodiscard]] bool NewRecipe(std::string_view a_id, RecipeKey a_key);
+	// A transient recipe: in the loaded list like any other (so it resolves
+	// and applies), never written, not listed as a file, gone on reload.
+	// The list moves on add and on drop, so the caller retires everything
+	// that points into it first. False when the id is taken.
+	[[nodiscard]] bool AddTransientRecipe(Recipe a_recipe);
+	[[nodiscard]] bool DropTransientRecipe(std::string_view a_id);
+	[[nodiscard]] bool IsTransient(std::string_view a_id) noexcept;
 }

@@ -2,6 +2,8 @@
 #include "test_support.h"
 
 #include <cstring>
+#include <span>
+#include <string>
 
 using namespace WornEnchantmentPBR;
 
@@ -156,9 +158,93 @@ namespace
 	}
 }
 
+namespace
+{
+	void Hashing()
+	{
+		using namespace test;
+		const std::string foobar = "foobar";
+		const auto        bytes = [](const std::string& a_text) { return std::span<const std::uint8_t>{ reinterpret_cast<const std::uint8_t*>(a_text.data()), a_text.size() }; };
+		Check(HashBytes({}) == 0xcbf29ce484222325ull, "the empty hash is the FNV basis");
+		Check(HashBytes(bytes("a")) == 0xaf63dc4c8601ec8cull, "one byte hashes as FNV-1a");
+		Check(HashBytes(bytes(foobar)) == 0x85944171f73967e8ull, "a known string hashes as FNV-1a");
+		Check(HashBytes(bytes("bar"), HashBytes(bytes("foo"))) == HashBytes(bytes(foobar)), "chaining through the seed hashes the buffers as one");
+		Check(HashBytes(bytes("foo")) != HashBytes(bytes("fop")), "one changed byte changes the hash");
+	}
+
+	void Triangles()
+	{
+		using namespace test;
+		const std::vector<std::array<std::uint32_t, 3>> triangles{ { 0, 1, 2 }, { 0, 2, 9 }, { 3, 1, 2 }, { 0, 0, 3 } };
+		const auto                                      kept = TrianglesWithin(triangles, 3);
+		Check(kept.size() == 1 && kept[0] == std::array<std::uint32_t, 3>{ 0, 1, 2 }, "a triangle that indexes past the vertices is dropped");
+		Check(TrianglesWithin(triangles, 4).size() == 3, "a triangle whose largest index is the last vertex is kept");
+		Check(TrianglesWithin(triangles, 0).empty(), "no vertices keeps nothing");
+		// A partition whose index buffer points past its vertices, as the
+		// reader hands it on: only the kept triangles are counted.
+		MeshData mesh = Quad();
+		auto&    partition = mesh.partitions[0];
+		partition.triangles = { { 0, 1, 2 }, { 0, 2, 3 }, { 1, 2, 7 }, { 4, 5, 6 } };
+		partition.triangles = TrianglesWithin(partition.triangles, partition.vertices.size());
+		Check(partition.triangles.size() == 2, "the partition keeps its two triangles inside the vertices");
+		const auto bake = BuildBake(mesh, PartitionBake{ 32 });
+		Check(bake.indices.size() == 6, "the bake draws the kept triangles alone");
+		// PartitionsOf (Regions.cpp) sums partition.triangles.size(), so the
+		// snapshot's row counts the same two.
+	}
+
+	void Sizes()
+	{
+		using namespace test;
+		Check(TextureSize::Clamp(0).Pixels() == 64, "0 px clamps up to the minimum");
+		Check(TextureSize::Clamp(64).Pixels() == 64, "the minimum is kept");
+		Check(TextureSize::Clamp(4096).Pixels() == 4096, "the maximum is kept");
+		Check(TextureSize::Clamp(5000).Pixels() == 4096, "5000 px clamps down to the maximum");
+		Check(TextureSize::Clamp(512) == TextureSize::Clamp(512), "two clamps of one size compare equal");
+		Check(TextureSize::Clamp(0) == TextureSize::Clamp(64), "a clamped size equals the bound it landed on");
+		Check(!(TextureSize::Clamp(512) == TextureSize::Clamp(1024)), "two sizes differ");
+	}
+
+	void Keys()
+	{
+		using namespace test;
+		const TextureSize s64 = TextureSize::Clamp(64);
+		const TextureSize s128 = TextureSize::Clamp(128);
+		const TextureSize s256 = TextureSize::Clamp(256);
+		const TextureSize s512 = TextureSize::Clamp(512);
+		const TextureSize s1024 = TextureSize::Clamp(1024);
+		const TextureSize s4096 = TextureSize::Clamp(4096);
+		Check(BakeKeyOf(PositionBake{}, s512) == "bake position@512", "a position bake keys by kind and size");
+		Check(BakeKeyOf(PositionBake{}, s512) != BakeKeyOf(PositionBake{}, s1024), "sizes differ");
+		Check(BakeKeyOf(PositionBake{}, s512) != BakeKeyOf(LocalPositionBake{}, s512), "kinds differ");
+		Check(BakeKeyOf(PartitionBake{ 32 }, s512) != BakeKeyOf(PartitionBake{ 33 }, s512), "partitions differ by slot");
+		const BakeKind left = BoneWeightBake{ { "NPC L Clavicle [LClv]" } };
+		const BakeKind right = BoneWeightBake{ { "NPC R Clavicle [RClv]" } };
+		Check(BakeKeyOf(left, s512) != BakeKeyOf(right, s512), "bone lists of one length differ by name");
+		Check(BakeKeyOf(left, s512) == BakeKeyOf(BakeKind{ BoneWeightBake{ { "NPC L Clavicle [LClv]" } } }, s512), "the same definition under two names is one key");
+		Check(BakeKeyOf(BakeKind{ BoneWeightBake{ { "a", "b" } } }, s512) == BakeKeyOf(BakeKind{ BoneWeightBake{ { "b", "a" } } }, s512), "one set of bones in two orders is one key");
+		Check(BakeKeyOf(BakeKind{ BoneWeightBake{ { "a", "b" } } }, s512) != BakeKeyOf(BakeKind{ BoneWeightBake{ { "a" } } }, s512), "a subset of the bones is another key");
+		const DistanceSource head{ std::string{ "NPC Head [Head]" } };
+		Check(DistanceKeyOf(head, s256) == "distance from node NPC Head [Head]@256", "a distance from a node keys by the node");
+		Check(DistanceKeyOf(DistanceSource{ Vec3{ 1.0f, 2.0f, 3.0f } }, s256) != DistanceKeyOf(DistanceSource{ Vec3{ 1.0f, 2.0f, 3.5f } }, s256), "distances from two points differ");
+		Check(UvKeyOf(UvAxis::kU, s128) == "uv u@128" && UvKeyOf(UvAxis::kV, s128) == "uv v@128", "uv keys by axis");
+		Check(KeyDefinition("bake position@512") == "bake position" && KeySize("bake position@512") == 512u, "a key splits into its definition and size");
+		Check(KeyDefinition(BakeKeyOf(left, s64)) == KeyDefinition(BakeKeyOf(left, s4096)), "the definition is the same at every size");
+		Check(!KeySize("bake position").has_value() && !KeySize("bake position@").has_value() && !KeySize("bake position@12x").has_value(), "a key without a whole number has no size");
+		Check(DefinitionOf(left) == KeyDefinition(BakeKeyOf(left, s512)), "a bake's definition is the definition half of its key");
+		Check(DefinitionOf(head) == KeyDefinition(DistanceKeyOf(head, s256)), "a distance's definition is the definition half of its key");
+		Check(DefinitionOf(UvAxis::kV) == KeyDefinition(UvKeyOf(UvAxis::kV, s128)), "a uv axis's definition is the definition half of its key");
+		Check(DefinitionOf(left).find('@') == std::string::npos, "a definition never contains '@'");
+	}
+}
+
 int main()
 {
 	Decoding();
 	Bakes();
+	Hashing();
+	Triangles();
+	Sizes();
+	Keys();
 	return test::Finish("bake");
 }

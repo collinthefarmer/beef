@@ -525,6 +525,8 @@ namespace WornEnchantmentPBR
 	[[nodiscard]] std::optional<Param>        ParseParam(std::string_view a_text);
 	[[nodiscard]] std::string                 Vec3ParamText(const Vec3Param& a_param);
 	[[nodiscard]] std::optional<Vec3Param>    ParseVec3Param(std::string_view a_text);
+	[[nodiscard]] std::string                 Vec2ParamText(const Vec2Param& a_param);
+	[[nodiscard]] std::optional<Vec2Param>    ParseVec2Param(std::string_view a_text);
 
 	// The scalars a slot writes beside its texture; which ones apply is per slot.
 	struct SlotScalars
@@ -571,8 +573,23 @@ namespace WornEnchantmentPBR
 	[[nodiscard]] std::optional<Blend> ParseBlend(std::string_view a_name) noexcept;
 	[[nodiscard]] std::string                LayerSourceText(const LayerSource& a_source);
 	[[nodiscard]] std::optional<LayerSource> ParseLayerSource(std::string_view a_text);
-	[[nodiscard]] std::string_view MaterialChannelName(MaterialChannel a_channel) noexcept;
-	[[nodiscard]] std::string_view ImageChannelName(ImageChannel a_channel) noexcept;
+	[[nodiscard]] std::string_view                 MaterialChannelName(MaterialChannel a_channel) noexcept;
+	[[nodiscard]] std::optional<MaterialChannel>   ParseMaterialChannel(std::string_view a_name) noexcept;
+	[[nodiscard]] std::string_view                 ImageChannelName(ImageChannel a_channel) noexcept;
+	[[nodiscard]] std::optional<ImageChannel>      ParseImageChannel(std::string_view a_name) noexcept;
+	[[nodiscard]] std::string_view                 ImageSpaceName(ImageSpace a_space) noexcept;
+	[[nodiscard]] std::optional<ImageSpace>        ParseImageSpace(std::string_view a_name) noexcept;
+	[[nodiscard]] std::string_view                 UvAxisName(UvAxis a_axis) noexcept;
+	[[nodiscard]] std::optional<UvAxis>            ParseUvAxis(std::string_view a_name) noexcept;
+	[[nodiscard]] std::string_view                 RippleShapeName(RippleShape a_shape) noexcept;
+	[[nodiscard]] std::optional<RippleShape>       ParseRippleShape(std::string_view a_name) noexcept;
+	// A source kind's word ("image", "material", "bake", "uv", "distance",
+	// "ripple") and a bake's ("position", "localPosition", "worldUp",
+	// "partition", "boneWeight"); the defaults of a kind by its word.
+	[[nodiscard]] std::string_view                 SourceKindName(const SourceKind& a_kind) noexcept;
+	[[nodiscard]] std::optional<SourceKind>        DefaultSourceKind(std::string_view a_name);
+	[[nodiscard]] std::string_view                 BakeKindName(const BakeKind& a_bake) noexcept;
+	[[nodiscard]] std::optional<BakeKind>          DefaultBakeKind(std::string_view a_name);
 	// One line naming a source's kind and its settings, for the menu.
 	[[nodiscard]] std::string      DescribeSource(const SourceKind& a_kind);
 

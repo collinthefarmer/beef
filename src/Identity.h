@@ -51,6 +51,13 @@ namespace WornEnchantmentPBR::Identity
 		return RecipeRoot() / "user";
 	}
 
+	// The shipped region presets, beside the DLL rather than under the
+	// recipe root, which loads every .json below it as a recipe.
+	inline std::filesystem::path PresetsPath()
+	{
+		return std::filesystem::path{ "Data" } / "SKSE" / "Plugins" / std::string{ kName } / "regions.json";
+	}
+
 	inline std::string SlotTexturePath(std::uint32_t a_index)
 	{
 		return std::format("textures\\{}\\slots\\slot_{:02}.dds", kTextureFolder, a_index);
