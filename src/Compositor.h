@@ -3,10 +3,11 @@
 // Sources to textures. For one geometry and one material output, the
 // compositor loads the sources the stack reads, renders the layers in order
 // through the lab's layer pass, and hands back the texture the binding
-// puts in the slot. Phase 2 renders image fields, constant colours,
-// material channels and masks that are one material channel; arbitrary
-// mask expressions wait for the interpreter pass (phase 3) and evaluate as
-// white with a diagnostic on the row.
+// puts in the slot: image fields, constant colours, material channels
+// (the normal map's slope rendered as a map of its own), masks that are
+// one material channel, and mask expressions through the interpreter
+// pass; a mask that cannot be prepared evaluates as white with a
+// diagnostic on the row.
 
 #include "Mesh.h"
 #include "MeshReader.h"
@@ -80,6 +81,16 @@ namespace WornEnchantmentPBR
 	// maps, and the masks and ripples rendered for it. The mesh and its bakes
 	// live in the compositor's MeshCache, keyed by the geometry, so they
 	// outlive the apply.
+	// Maps computed from the material's own: the normal map's slope, rendered
+	// once per apply on the first source that reads it (the game thread);
+	// until then an inspection reports it unrendered.
+	struct DerivedMaps
+	{
+		std::shared_ptr<TextureLab::Target> normalSlope;
+		std::string                         problem;  // why normalSlope stayed null after a try
+		bool                                tried = false;
+	};
+
 	struct GeometryInputs
 	{
 		MaterialInputs                    material;
@@ -87,6 +98,7 @@ namespace WornEnchantmentPBR
 		RE::NiPointer<RE::NiAVObject>     root;      // the actor's 3D root: the frame of the bind pose, and where nodes are looked up
 		std::shared_ptr<MaskCache>        masks = std::make_shared<MaskCache>();
 		std::shared_ptr<RippleCache>      ripples = std::make_shared<RippleCache>();
+		std::shared_ptr<DerivedMaps>      derived = std::make_shared<DerivedMaps>();
 	};
 
 	// Fronts expanding from a trigger's live firings over the position bake,

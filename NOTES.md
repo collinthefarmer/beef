@@ -600,4 +600,4 @@ rewrite (`src/RecipeStore.cpp`, 2026-09-04), not yet run in game.
     pipeline review (2026-09-06) could not be settled from the headers.
     If wrong: the hash changes between two reads of one geometry with no
     `buffers changed` line, or the compare line reports differing bytes
-    on a mesh whose position bake looks right. Unconfirmed in game as of 2026-09-07: the hash line and the compare line are the run's evidence; until a run shows the same hash across rounds and `0 of <m> bytes differ`, treat the cache as built, not proven.
+    on a mesh whose position bake looks right. Confirmed 2026-09-07 in game: each geometry was read once per session and served from the cache through every Paint round after (one `mesh` line per geometry, `cached` after), and the CPU copy matched the GPU readback byte for byte (`0 of 32360 bytes differ`, `0 of 20080 bytes differ` on two pieces), so the moving region of 2026-09-06 was the unrendered preview, not the read. If wrong: a second `mesh` line for the same geometry with a different hash, or a compare line with a nonzero count.

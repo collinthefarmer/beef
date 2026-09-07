@@ -130,8 +130,38 @@ namespace WornEnchantmentPBR
 
 		std::optional<MaterialChannel> SingleChannelOf(const Recipe& a_recipe, const Mask& a_mask);
 
-		MaterialChannelPick PickMaterialChannel(MaterialChannel a_channel, const MaterialInputs& a_material)
+		// The normal map's slope as a texture of its own, through the lab's
+		// channel pass (channel 5 = slope of the armor input); null with the
+		// reason when the map is not real or the pass fails.
+		std::shared_ptr<TextureLab::Target> RenderNormalSlope(const MaterialInputs& a_material, std::string& a_problem)
 		{
+			if (!RealTexture(a_material.normal)) {
+				a_problem = "normal map: " + DescribeTexture(a_material.normal);
+				return nullptr;
+			}
+			const auto extent = TextureLab::ExtentOf(a_material.normal.get());
+			auto*      lab = TextureLab::GetSingleton();
+			auto       target = lab->Acquire(TextureSize::Clamp(extent ? (std::max)(extent->width, extent->height) : 0));
+			if (!target) {
+				a_problem = "no render target for the normal slope";
+				return nullptr;
+			}
+			TextureLab::LayerParams params;
+			params.mode = TextureLab::Mode::kChannel;
+			params.armor = { a_material.normal.get(), TextureLab::ArmorInput::kNormalSlope };
+			params.channel.channel = 5;
+			if (!lab->Render(*target, nullptr, params)) {
+				a_problem = "the normal slope pass failed";
+				return nullptr;
+			}
+			return target;
+		}
+
+		// With a_mayRender the slope is rendered on first use (the prepare
+		// paths, game thread); an inspection only reads what was rendered.
+		MaterialChannelPick PickMaterialChannel(MaterialChannel a_channel, const GeometryInputs& a_inputs, bool a_mayRender)
+		{
+			const MaterialInputs& a_material = a_inputs.material;
 			switch (a_channel) {
 			case MaterialChannel::kDiffuseRgb:
 				return { a_material.diffuse, 4, {} };
@@ -153,8 +183,17 @@ namespace WornEnchantmentPBR
 					return { a_material.displacement, 0, {} };
 				}
 				return { a_material.rmaos, 2, {} };
-			case MaterialChannel::kNormalSlope:
-				return { nullptr, 0, "normalSlope needs the interpreter pass (phase 3)" };
+			case MaterialChannel::kNormalSlope: {
+				auto& derived = *a_inputs.derived;
+				if (!derived.normalSlope && a_mayRender && !derived.tried) {
+					derived.tried = true;
+					derived.normalSlope = RenderNormalSlope(a_material, derived.problem);
+				}
+				if (derived.normalSlope) {
+					return { RE::NiPointer<RE::NiSourceTexture>{ derived.normalSlope->Texture() }, 0, {} };
+				}
+				return { nullptr, 0, derived.tried ? derived.problem : std::string{ Compositor::kNotRendered } };
+			}
 			}
 			return { nullptr, 0, "unknown channel" };
 		}
@@ -207,7 +246,6 @@ namespace WornEnchantmentPBR
 
 	std::optional<PreparedSource> Compositor::PrepareSource(const Recipe& a_recipe, const Ref& a_ref, const GeometryInputs& a_inputs, TextureSize a_size, std::vector<Diagnostic>& a_out, const std::string& a_where, std::uint32_t a_depth)
 	{
-		const auto& a_material = a_inputs.material;
 		if (a_recipe.FindMask(a_ref.name)) {
 			// A mask read as a source: its rendered target, by mesh UV.
 			auto rendered = PrepareRenderedMask(a_recipe, a_ref.name, a_inputs, a_size, a_depth);
@@ -253,7 +291,7 @@ namespace WornEnchantmentPBR
 				}
 			},
 			[&](const MaterialSource& material) {
-				auto pick = PickMaterialChannel(material.channel, a_material);
+				auto pick = PickMaterialChannel(material.channel, a_inputs, true);
 				prepared.texture = pick.texture;
 				prepared.sampling.channel = pick.channel;
 				prepared.sampling.meshSpace = true;
@@ -327,7 +365,7 @@ namespace WornEnchantmentPBR
 		PreparedMask prepared;
 		prepared.animated = IsAnimated(a_recipe, *mask);
 		if (const auto channel = SingleChannelOf(a_recipe, *mask)) {
-			auto pick = PickMaterialChannel(*channel, a_inputs.material);
+			auto pick = PickMaterialChannel(*channel, a_inputs, true);
 			if (!pick.problem.empty() || !RealTexture(pick.texture)) {
 				prepared.problem = pick.problem.empty() ? DescribeTexture(pick.texture) + "; evaluates as white" : pick.problem;
 				a_out.push_back({ Severity::kWarning, a_where, std::format("mask '@{}': {}", a_ref.name, prepared.problem) });
@@ -582,8 +620,9 @@ namespace WornEnchantmentPBR
 				prepared.tile = image.tile;
 			},
 			[&](const MaterialSource& material) {
-				// The material's own maps, resolved from the record taken at apply.
-				auto pick = PickMaterialChannel(material.channel, a_inputs.material);
+				// The material's own maps, resolved from the record taken at apply;
+				// a derived map only when a prepare already rendered it.
+				auto pick = PickMaterialChannel(material.channel, a_inputs, false);
 				prepared.texture = pick.texture;
 				prepared.sampling.channel = pick.channel;
 				prepared.sampling.meshSpace = true;
@@ -631,7 +670,7 @@ namespace WornEnchantmentPBR
 			return prepared;
 		}
 		if (const auto channel = SingleChannelOf(a_recipe, *mask)) {
-			auto pick = PickMaterialChannel(*channel, a_inputs.material);
+			auto pick = PickMaterialChannel(*channel, a_inputs, false);
 			if (!pick.problem.empty() || !RealTexture(pick.texture)) {
 				prepared.problem = pick.problem.empty() ? DescribeTexture(pick.texture) + "; evaluates as white" : pick.problem;
 				return prepared;
