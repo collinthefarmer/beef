@@ -258,6 +258,8 @@ namespace
 		const auto* geometry = SelectedGeometry(recipe, none);
 		Check(geometry && geometry->name == kGeometry, "an unset geometry yields the first");
 		Check(SelectedOutput(geometry, none) == nullptr, "an unset output yields none");
+		Check(TargetName(Target::kMaterial) == "material" && TargetName(Target::kShell) == "shell" && TargetName(Target::kLight) == "light", "a target's word is its surface's, or light");
+		Check(TargetOf(Surface::kShell) == Target::kShell && TargetOf(Surface::kMaterial) == Target::kMaterial && SurfaceOf(Target::kLight) == Surface::kMaterial, "surface and target convert both ways; the light reads as the material");
 
 		// The snapshot request names the selected piece; none when nothing is selected.
 		Check(!RequestOf(none), "no piece selected: nothing to watch");

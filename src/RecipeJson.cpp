@@ -4,6 +4,7 @@
 // row they belong to.
 
 #include "Recipe.h"
+#include "Vocabulary.h"
 
 #include <nlohmann/json.hpp>
 
@@ -16,147 +17,6 @@
 namespace WornEnchantmentPBR
 {
 	using json = nlohmann::ordered_json;
-
-	namespace
-	{
-		// ------------------------------------------------------- name tables
-
-		template <class E>
-		struct Named
-		{
-			E                value;
-			std::string_view name;
-		};
-
-		template <class E, std::size_t N>
-		std::string_view NameOf(const Named<E> (&a_table)[N], E a_value)
-		{
-			for (const auto& e : a_table) {
-				if (e.value == a_value) {
-					return e.name;
-				}
-			}
-			return "?";
-		}
-
-		template <class E, std::size_t N>
-		std::optional<E> FromName(const Named<E> (&a_table)[N], std::string_view a_name)
-		{
-			for (const auto& e : a_table) {
-				if (e.name == a_name) {
-					return e.value;
-				}
-			}
-			return std::nullopt;
-		}
-
-		template <class E, std::size_t N>
-		std::string Choices(const Named<E> (&a_table)[N])
-		{
-			std::string out;
-			for (const auto& e : a_table) {
-				out += (out.empty() ? "" : ", ") + std::string{ e.name };
-			}
-			return out;
-		}
-
-		constexpr Named<KeyKind> kKeyKinds[]{ { KeyKind::kMagicEffect, "magicEffect" }, { KeyKind::kEnchantment, "enchantment" }, { KeyKind::kEffectShader, "effectShader" }, { KeyKind::kKeyword, "keyword" }, { KeyKind::kMaterial, "material" }, { KeyKind::kArmor, "armor" } };
-		constexpr Named<SelectorKind> kSelectorKinds[]{ { SelectorKind::kAddon, "addon" }, { SelectorKind::kGeometry, "geometry" }, { SelectorKind::kTexture, "texture" } };
-		constexpr Named<Waveform> kWaveforms[]{ { Waveform::kSine, "sine" }, { Waveform::kTriangle, "triangle" }, { Waveform::kSquare, "square" }, { Waveform::kSaw, "saw" } };
-		constexpr Named<EfshField> kEfshFields[]{ { EfshField::kFillAlpha, "fillAlpha" }, { EfshField::kFillColor, "fillColor" }, { EfshField::kEdgeAlpha, "edgeAlpha" }, { EfshField::kEdgeColor, "edgeColor" }, { EfshField::kScroll, "scroll" } };
-		constexpr Named<Measure> kMeasures[]{ { Measure::kCurrent, "current" }, { Measure::kBase, "base" }, { Measure::kPermanent, "permanent" }, { Measure::kTemporaryModifier, "temporaryModifier" }, { Measure::kDamage, "damage" }, { Measure::kMax, "max" } };
-		constexpr Named<ActorStateKind> kActorStates[]{ { ActorStateKind::kInCombat, "inCombat" }, { ActorStateKind::kSneaking, "sneaking" }, { ActorStateKind::kWeaponDrawn, "weaponDrawn" }, { ActorStateKind::kHostileDistance, "hostileDistance" } };
-		constexpr Named<EnchantmentField> kEnchantmentFields[]{ { EnchantmentField::kMagnitude, "magnitude" }, { EnchantmentField::kCost, "cost" } };
-		constexpr Named<PayloadField> kPayloadFields[]{ { PayloadField::kValue, "value" }, { PayloadField::kPosition, "position" }, { PayloadField::kNormal, "normal" } };
-		constexpr Named<ImageChannel> kImageChannels[]{ { ImageChannel::kRgb, "rgb" }, { ImageChannel::kR, "r" }, { ImageChannel::kG, "g" }, { ImageChannel::kB, "b" }, { ImageChannel::kA, "a" }, { ImageChannel::kLuma, "luma" } };
-		constexpr Named<ImageSpace> kImageSpaces[]{ { ImageSpace::kTiled, "tiled" }, { ImageSpace::kMesh, "mesh" } };
-		constexpr Named<MaterialChannel> kMaterialChannels[]{ { MaterialChannel::kDiffuseRgb, "diffuseRgb" }, { MaterialChannel::kDiffuseLuma, "diffuseLuma" }, { MaterialChannel::kNormalSlope, "normalSlope" }, { MaterialChannel::kRoughness, "roughness" }, { MaterialChannel::kMetallic, "metallic" }, { MaterialChannel::kOcclusion, "occlusion" }, { MaterialChannel::kReflectance, "reflectance" }, { MaterialChannel::kDisplacement, "displacement" }, { MaterialChannel::kRelief, "relief" } };
-		constexpr Named<UvAxis> kUvAxes[]{ { UvAxis::kU, "u" }, { UvAxis::kV, "v" } };
-		constexpr Named<RippleShape> kRippleShapes[]{ { RippleShape::kRing, "ring" }, { RippleShape::kDisc, "disc" } };
-		constexpr Named<Surface> kSurfaces[]{ { Surface::kMaterial, "material" }, { Surface::kShell, "shell" } };
-		constexpr Named<Slot> kSlots[]{ { Slot::kDiffuse, "diffuse" }, { Slot::kEmissive, "emissive" }, { Slot::kRmaos, "rmaos" }, { Slot::kNormal, "normal" }, { Slot::kHeight, "height" }, { Slot::kFuzz, "fuzz" }, { Slot::kGlint, "glint" }, { Slot::kCoat, "coat" }, { Slot::kSubsurface, "subsurface" } };
-		constexpr Named<Blend> kBlends[]{ { Blend::kReplace, "replace" }, { Blend::kMultiply, "multiply" }, { Blend::kAdd, "add" }, { Blend::kSubtract, "subtract" }, { Blend::kScreen, "screen" }, { Blend::kLerp, "lerp" }, { Blend::kNormal, "normal" } };
-	}
-
-	std::string_view BlendName(Blend a_blend) noexcept
-	{
-		for (const auto& n : kBlends) {
-			if (n.value == a_blend) {
-				return n.name;
-			}
-		}
-		return "replace";
-	}
-
-	std::optional<Blend> ParseBlend(std::string_view a_name) noexcept
-	{
-		for (const auto& n : kBlends) {
-			if (n.name == a_name) {
-				return n.value;
-			}
-		}
-		return std::nullopt;
-	}
-
-	std::string_view MaterialChannelName(MaterialChannel a_channel) noexcept
-	{
-		for (const auto& n : kMaterialChannels) {
-			if (n.value == a_channel) {
-				return n.name;
-			}
-		}
-		return "?";
-	}
-
-	std::string_view ImageChannelName(ImageChannel a_channel) noexcept
-	{
-		for (const auto& n : kImageChannels) {
-			if (n.value == a_channel) {
-				return n.name;
-			}
-		}
-		return "?";
-	}
-
-	std::optional<MaterialChannel> ParseMaterialChannel(std::string_view a_name) noexcept
-	{
-		return FromName(kMaterialChannels, a_name);
-	}
-
-	std::optional<ImageChannel> ParseImageChannel(std::string_view a_name) noexcept
-	{
-		return FromName(kImageChannels, a_name);
-	}
-
-	std::string_view ImageSpaceName(ImageSpace a_space) noexcept
-	{
-		return NameOf(kImageSpaces, a_space);
-	}
-
-	std::optional<ImageSpace> ParseImageSpace(std::string_view a_name) noexcept
-	{
-		return FromName(kImageSpaces, a_name);
-	}
-
-	std::string_view UvAxisName(UvAxis a_axis) noexcept
-	{
-		return NameOf(kUvAxes, a_axis);
-	}
-
-	std::optional<UvAxis> ParseUvAxis(std::string_view a_name) noexcept
-	{
-		return FromName(kUvAxes, a_name);
-	}
-
-	std::string_view RippleShapeName(RippleShape a_shape) noexcept
-	{
-		return NameOf(kRippleShapes, a_shape);
-	}
-
-	std::optional<RippleShape> ParseRippleShape(std::string_view a_name) noexcept
-	{
-		return FromName(kRippleShapes, a_name);
-	}
 
 	std::string_view SourceKindName(const SourceKind& a_kind) noexcept
 	{
@@ -407,8 +267,8 @@ namespace WornEnchantmentPBR
 				return String(a_key).value_or(std::string{});
 			}
 
-			template <class E, std::size_t N>
-			std::optional<E> Enum(std::string_view a_key, const Named<E> (&a_table)[N])
+			template <class Row, std::size_t N>
+			std::optional<decltype(Row::value)> Enum(std::string_view a_key, const Row (&a_table)[N])
 			{
 				const auto text = String(a_key);
 				if (!text) {
@@ -636,7 +496,7 @@ namespace WornEnchantmentPBR
 				return std::nullopt;
 			}
 			const auto kind = FromName(kKeyKinds, entry->key);
-			if (!kind) {
+			if (!kind || *kind == KeyKind::kDefault) {
 				a_ctx.Error(std::format("unknown key kind '{}'; one of {}", entry->key, Choices(kKeyKinds)));
 				return std::nullopt;
 			}

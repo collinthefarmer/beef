@@ -13,13 +13,13 @@ namespace WornEnchantmentPBR
 {
 	std::string_view RegionSourceName(RegionSource a_source) noexcept
 	{
-		switch (a_source) {
-		case RegionSource::kComponent:
-			return "component";
-		case RegionSource::kChart:
-			return "chart";
-		}
-		return "?";
+		return NameOf(kRegionSources, a_source);
+	}
+
+	std::string_view PlainRegionSourceName(RegionSource a_source) noexcept
+	{
+		const auto* row = RowOf(kRegionSources, a_source);
+		return row ? row->plainName : "?";
 	}
 
 	namespace

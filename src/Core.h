@@ -1,14 +1,18 @@
 #pragma once
 
-// Value types shared by every recipe module, and the two helpers that keep
-// std::variant mechanics out of domain code: Match (visit with lambdas) and
-// Get (a checked pointer to one alternative).
+// Value types shared by every recipe module, and the helpers that keep
+// mechanics out of domain code: Match (visit a variant with lambdas), Get
+// (a checked pointer to one alternative), and the word tables (NameOf,
+// FromName, RowOf, Choices, WordsOf over a table of rows).
 
 #include <cmath>
+#include <cstddef>
 #include <cstdint>
 #include <optional>
 #include <string>
+#include <string_view>
 #include <variant>
+#include <vector>
 
 namespace WornEnchantmentPBR
 {
@@ -134,5 +138,73 @@ namespace WornEnchantmentPBR
 	[[nodiscard]] bool Is(const Variant& a_variant) noexcept
 	{
 		return std::holds_alternative<T>(a_variant);
+	}
+
+	// A word table: one row per value of an enum, the word the file spells
+	// beside it. Any row type with `value` and `name` members is a row, so
+	// a vocabulary that carries rules beyond its word adds columns to its
+	// row and keeps these readers.
+	template <class E>
+	struct Named
+	{
+		E                value;
+		std::string_view name;
+	};
+
+	// The word of a value; "?" for a value the table lacks.
+	template <class Row, std::size_t N, class E>
+	[[nodiscard]] constexpr std::string_view NameOf(const Row (&a_table)[N], E a_value) noexcept
+	{
+		for (const auto& row : a_table) {
+			if (row.value == a_value) {
+				return row.name;
+			}
+		}
+		return "?";
+	}
+
+	// The value of a word; none for a word the table lacks.
+	template <class Row, std::size_t N>
+	[[nodiscard]] constexpr std::optional<decltype(Row::value)> FromName(const Row (&a_table)[N], std::string_view a_name) noexcept
+	{
+		for (const auto& row : a_table) {
+			if (row.name == a_name) {
+				return row.value;
+			}
+		}
+		return std::nullopt;
+	}
+
+	// The row of a value; null for a value the table lacks.
+	template <class Row, std::size_t N, class E>
+	[[nodiscard]] constexpr const Row* RowOf(const Row (&a_table)[N], E a_value) noexcept
+	{
+		for (const auto& row : a_table) {
+			if (row.value == a_value) {
+				return &row;
+			}
+		}
+		return nullptr;
+	}
+
+	// Every word: "a, b, c" for a diagnostic, or a list for a choice field.
+	template <class Row, std::size_t N>
+	[[nodiscard]] std::string Choices(const Row (&a_table)[N])
+	{
+		std::string out;
+		for (const auto& row : a_table) {
+			out += (out.empty() ? "" : ", ") + std::string{ row.name };
+		}
+		return out;
+	}
+
+	template <class Row, std::size_t N>
+	[[nodiscard]] std::vector<std::string> WordsOf(const Row (&a_table)[N])
+	{
+		std::vector<std::string> out;
+		for (const auto& row : a_table) {
+			out.emplace_back(row.name);
+		}
+		return out;
 	}
 }

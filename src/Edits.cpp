@@ -213,11 +213,6 @@ namespace WornEnchantmentPBR::Studio
 
 		// ----------------------------------------------------------- text
 
-		std::string_view SurfaceName(Surface a_surface)
-		{
-			return a_surface == Surface::kShell ? "shell" : "material";
-		}
-
 		std::string ValueText(const Value& a_value)
 		{
 			return Match(

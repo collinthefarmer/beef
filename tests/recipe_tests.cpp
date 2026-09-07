@@ -4,6 +4,7 @@
 // classification.
 
 #include "Recipe.h"
+#include "Vocabulary.h"
 #include "test_support.h"
 
 #include <algorithm>
@@ -621,6 +622,22 @@ namespace
 		Check(HasError(badName.diagnostics, "signal '9lives'", "names are letters"), "bad row name");
 	}
 
+	// The format's words: one table each, read by the name and parse functions.
+	void Words()
+	{
+		Check(SurfaceName(Surface::kMaterial) == "material" && SurfaceName(Surface::kShell) == "shell", "surface words");
+		Check(ParseSurface("shell") == Surface::kShell && !ParseSurface("light") && !ParseSurface(""), "a surface parses from its word alone");
+		Check(Choices(kKeyKinds) == "default, material, keyword, armor, effectShader, enchantment, magicEffect", "key kinds in enum order, default first");
+		Check(WordsOf(kShellMaterials) == std::vector<std::string>{ "pbrCopy", "vanilla" } && WordsOf(kShellBlends) == std::vector<std::string>{ "additive", "alpha" }, "shell choice lists come from the tables");
+		Check(KeyKindName(KeyKind::kMagicEffect) == "magicEffect" && KeyKindName(static_cast<KeyKind>(99)) == "?", "a key kind names, an unknown value names '?'");
+		Check(SlotName(static_cast<Slot>(99)) == "?" && ScalarFieldName(static_cast<ScalarField>(99)) == "?", "unknown slots and fields name '?', never index past a table");
+		for (const auto& row : kSlots) {
+			Check(ParseScalarField(row.name) == std::nullopt || row.value == Slot::kRmaos, std::format("no slot word is a scalar field word but '{}'", row.name));
+		}
+		const auto r = ParseRecipe(R"json({"format": 1, "keys": [{"default": "X"}]})json", "x");
+		Check(HasError(r.diagnostics, "recipe", "unknown key kind 'default'"), "a default key written as an object is refused");
+	}
+
 	// The format's slot rules, which Validate and the menu's board share.
 	void SlotRules()
 	{
@@ -939,6 +956,7 @@ int main()
 	AnalysisKinds();
 	Reading();
 	Validation();
+	Words();
 	SlotRules();
 	Resolution();
 	Variants();

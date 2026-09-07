@@ -12,6 +12,7 @@
 #include "Regions.h"
 #include "Settings.h"
 #include "Studio.h"
+#include "Vocabulary.h"
 
 #include <algorithm>
 #include <cctype>
@@ -398,11 +399,6 @@ namespace WornEnchantmentPBR::Studio
 		}
 
 		// ---------------------------------------------------------- board
-
-		[[nodiscard]] std::string_view SurfaceName(Surface a_surface) noexcept
-		{
-			return a_surface == Surface::kMaterial ? "material" : "shell";
-		}
 
 		[[nodiscard]] std::span<const SlotRow> SlotRowsOf(const GeometryRow& a_geometry, Surface a_surface) noexcept
 		{
@@ -1984,10 +1980,10 @@ namespace WornEnchantmentPBR::Studio
 					ImGui::AlignTextToFramePadding();
 					Widgets::Dim("preview on");
 					ImGui::SameLine();
-					const std::vector<std::string> surfaces{ "material", "shell" };
-					const Surface                  current = a_state.paint->surface;
-					if (const auto chosen = Widgets::ChoiceCombo("surface", current == Surface::kShell ? "shell" : "material", surfaces, Width::Px(comboWidth), 1.0f)) {
-						a_out.push_back(SetPaintSurface{ *chosen == "shell" ? Surface::kShell : Surface::kMaterial });
+					if (const auto chosen = Widgets::ChoiceCombo("surface", std::string{ SurfaceName(a_state.paint->surface) }, WordsOf(kSurfaces), Width::Px(comboWidth), 1.0f)) {
+						if (const auto surface = ParseSurface(*chosen)) {
+							a_out.push_back(SetPaintSurface{ *surface });
+						}
 					}
 				});
 			} else {

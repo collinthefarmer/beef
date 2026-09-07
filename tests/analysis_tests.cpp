@@ -311,6 +311,8 @@ namespace
 		Check(DescribeTexel(Texel{ 0.65f, 0.0f, 0.5f, 0.5f, 0.65f }) == "rough bright non-metal", "the upper edges of the middle bands");
 		Check(DescribeTexel(Texel{ 0.0f / 0.0f, 2.0f, 0.5f, 0.5f, -1.0f }) == "polished dark metal", "a texel out of range describes as clamped");
 		Check(RegionSourceName(RegionSource::kComponent) == "component" && RegionSourceName(RegionSource::kChart) == "chart", "region sources have names");
+		Check(PlainRegionSourceName(RegionSource::kComponent) == "part" && PlainRegionSourceName(RegionSource::kChart) == "chart", "region sources have plain names for labels");
+		Check(RegionSourceName(static_cast<RegionSource>(9)) == "?" && PlainRegionSourceName(static_cast<RegionSource>(9)) == "?", "an unknown source names '?'");
 	}
 }
 

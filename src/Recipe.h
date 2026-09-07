@@ -87,6 +87,8 @@ namespace WornEnchantmentPBR
 		return a_kind == KeyKind::kEffectShader || a_kind == KeyKind::kEnchantment || a_kind == KeyKind::kMagicEffect;
 	}
 
+	// Every word here is spelled once, in Vocabulary.h; a name function reads
+	// that table and a parse function finds the value of a word, or nothing.
 	[[nodiscard]] std::string_view KeyKindName(KeyKind a_kind) noexcept;
 
 	struct RecipeKey
@@ -527,6 +529,8 @@ namespace WornEnchantmentPBR
 		kMaterial,  // the geometry's own material, private copy installed first
 		kShell,     // the recipe's shell clone of the geometry
 	};
+	[[nodiscard]] std::string_view        SurfaceName(Surface a_surface) noexcept;
+	[[nodiscard]] std::optional<Surface>  ParseSurface(std::string_view a_name) noexcept;
 	enum class Slot
 	{
 		kDiffuse,

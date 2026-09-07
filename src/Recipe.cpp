@@ -2,6 +2,7 @@
 
 #include "Expression.h"
 #include "Signals.h"
+#include "Vocabulary.h"
 
 #include <algorithm>
 #include <cctype>
@@ -42,9 +43,6 @@ namespace WornEnchantmentPBR
 			{ 30, "head" }, { 31, "hair" }, { 32, "body" }, { 33, "hands" }, { 34, "forearms" }, { 35, "amulet" },
 			{ 36, "ring" }, { 37, "feet" }, { 38, "calves" }, { 39, "shield" }, { 40, "tail" }
 		};
-
-		constexpr std::string_view kSlotNames[]{ "diffuse", "emissive", "rmaos", "normal", "height", "fuzz", "glint", "coat", "subsurface" };
-		constexpr std::string_view kKeyKindNames[]{ "default", "material", "keyword", "armor", "effectShader", "enchantment", "magicEffect" };
 
 		// The name a parameter reads, if any.
 		std::optional<std::string_view> RefOf(const Param& a_param) noexcept
@@ -120,8 +118,7 @@ namespace WornEnchantmentPBR
 
 	std::string_view KeyKindName(KeyKind a_kind) noexcept
 	{
-		const auto i = static_cast<std::size_t>(a_kind);
-		return i < std::size(kKeyKindNames) ? kKeyKindNames[i] : "?";
+		return NameOf(kKeyKinds, a_kind);
 	}
 
 	std::string RecipeKey::ToString() const
@@ -209,17 +206,83 @@ namespace WornEnchantmentPBR
 
 	std::string_view SlotName(Slot a_slot) noexcept
 	{
-		const auto i = static_cast<std::size_t>(a_slot);
-		return i < std::size(kSlotNames) ? kSlotNames[i] : "?";
+		return NameOf(kSlots, a_slot);
+	}
+
+	std::string_view SurfaceName(Surface a_surface) noexcept
+	{
+		return NameOf(kSurfaces, a_surface);
+	}
+
+	std::optional<Surface> ParseSurface(std::string_view a_name) noexcept
+	{
+		return FromName(kSurfaces, a_name);
+	}
+
+	std::string_view BlendName(Blend a_blend) noexcept
+	{
+		return NameOf(kBlends, a_blend);
+	}
+
+	std::optional<Blend> ParseBlend(std::string_view a_name) noexcept
+	{
+		return FromName(kBlends, a_name);
+	}
+
+	std::string_view MaterialChannelName(MaterialChannel a_channel) noexcept
+	{
+		return NameOf(kMaterialChannels, a_channel);
+	}
+
+	std::optional<MaterialChannel> ParseMaterialChannel(std::string_view a_name) noexcept
+	{
+		return FromName(kMaterialChannels, a_name);
+	}
+
+	std::string_view ImageChannelName(ImageChannel a_channel) noexcept
+	{
+		return NameOf(kImageChannels, a_channel);
+	}
+
+	std::optional<ImageChannel> ParseImageChannel(std::string_view a_name) noexcept
+	{
+		return FromName(kImageChannels, a_name);
+	}
+
+	std::string_view ImageSpaceName(ImageSpace a_space) noexcept
+	{
+		return NameOf(kImageSpaces, a_space);
+	}
+
+	std::optional<ImageSpace> ParseImageSpace(std::string_view a_name) noexcept
+	{
+		return FromName(kImageSpaces, a_name);
+	}
+
+	std::string_view UvAxisName(UvAxis a_axis) noexcept
+	{
+		return NameOf(kUvAxes, a_axis);
+	}
+
+	std::optional<UvAxis> ParseUvAxis(std::string_view a_name) noexcept
+	{
+		return FromName(kUvAxes, a_name);
+	}
+
+	std::string_view RippleShapeName(RippleShape a_shape) noexcept
+	{
+		return NameOf(kRippleShapes, a_shape);
+	}
+
+	std::optional<RippleShape> ParseRippleShape(std::string_view a_name) noexcept
+	{
+		return FromName(kRippleShapes, a_name);
 	}
 
 	// ------------------------------------------------------------- slot rules
 
 	namespace
 	{
-		constexpr std::string_view kScalarFieldNames[]{ "strength", "scale", "color", "weight", "screenSpaceScale", "logMicrofacetDensity", "microfacetRoughness", "densityRandomization", "roughness", "level", "thickness" };
-		static_assert(std::size(kScalarFieldNames) == kScalarFieldCount);
-
 		constexpr Slot kEverySlot[]{ Slot::kDiffuse, Slot::kEmissive, Slot::kRmaos, Slot::kNormal, Slot::kHeight, Slot::kFuzz, Slot::kGlint, Slot::kCoat, Slot::kSubsurface };
 		static_assert(std::size(kEverySlot) == kSlotCount);
 		constexpr Slot kVanillaShellSlots[]{ Slot::kEmissive };
@@ -239,18 +302,12 @@ namespace WornEnchantmentPBR
 
 	std::string_view ScalarFieldName(ScalarField a_field) noexcept
 	{
-		const auto i = static_cast<std::size_t>(a_field);
-		return i < kScalarFieldCount ? kScalarFieldNames[i] : "?";
+		return NameOf(kScalarFields, a_field);
 	}
 
 	std::optional<ScalarField> ParseScalarField(std::string_view a_name) noexcept
 	{
-		for (std::size_t i = 0; i < kScalarFieldCount; ++i) {
-			if (kScalarFieldNames[i] == a_name) {
-				return static_cast<ScalarField>(i);
-			}
-		}
-		return std::nullopt;
+		return FromName(kScalarFields, a_name);
 	}
 
 	std::span<const Slot> SlotsOf(Surface a_surface, ShellMaterial a_shell) noexcept
@@ -972,34 +1029,22 @@ namespace WornEnchantmentPBR
 
 	std::string_view ShellMaterialName(ShellMaterial a_material) noexcept
 	{
-		return a_material == ShellMaterial::kVanilla ? "vanilla" : "pbrCopy";
+		return NameOf(kShellMaterials, a_material);
 	}
 
 	std::optional<ShellMaterial> ParseShellMaterial(std::string_view a_name) noexcept
 	{
-		if (a_name == "pbrCopy") {
-			return ShellMaterial::kPbrCopy;
-		}
-		if (a_name == "vanilla") {
-			return ShellMaterial::kVanilla;
-		}
-		return std::nullopt;
+		return FromName(kShellMaterials, a_name);
 	}
 
 	std::string_view ShellBlendName(ShellBlend a_blend) noexcept
 	{
-		return a_blend == ShellBlend::kAlpha ? "alpha" : "additive";
+		return NameOf(kShellBlends, a_blend);
 	}
 
 	std::optional<ShellBlend> ParseShellBlend(std::string_view a_name) noexcept
 	{
-		if (a_name == "additive") {
-			return ShellBlend::kAdditive;
-		}
-		if (a_name == "alpha") {
-			return ShellBlend::kAlpha;
-		}
-		return std::nullopt;
+		return FromName(kShellBlends, a_name);
 	}
 
 	bool IsName(std::string_view a_text) noexcept

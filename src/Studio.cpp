@@ -2,6 +2,7 @@
 
 #include "Expression.h"
 #include "Forms.h"
+#include "Vocabulary.h"
 
 #include <algorithm>
 #include <array>
@@ -368,20 +369,17 @@ namespace WornEnchantmentPBR::Studio
 
 	std::string_view TargetName(Target a_target) noexcept
 	{
-		switch (a_target) {
-		case Target::kMaterial:
-			return "material";
-		case Target::kShell:
-			return "shell";
-		case Target::kLight:
-			return "light";
-		}
-		return "?";
+		return a_target == Target::kLight ? "light" : SurfaceName(SurfaceOf(a_target));
 	}
 
 	Surface SurfaceOf(Target a_target) noexcept
 	{
 		return a_target == Target::kShell ? Surface::kShell : Surface::kMaterial;
+	}
+
+	Target TargetOf(Surface a_surface) noexcept
+	{
+		return a_surface == Surface::kShell ? Target::kShell : Target::kMaterial;
 	}
 
 	const PieceRow* SelectedPiece(const Snapshot& a_snapshot, const Selection& a_selection) noexcept
@@ -1280,11 +1278,11 @@ namespace WornEnchantmentPBR::Studio
 	std::vector<FieldSpec> ShellForm(const ShellRow& a_shell, const SignalNames& a_names)
 	{
 		std::vector<FieldSpec> form;
-		form.push_back(Field("material", FieldKind::kChoice, std::string{ ShellMaterialName(a_shell.material) }, { "pbrCopy", "vanilla" }, [](const std::string& a_text) -> std::optional<RecipeEdit> {
+		form.push_back(Field("material", FieldKind::kChoice, std::string{ ShellMaterialName(a_shell.material) }, WordsOf(kShellMaterials), [](const std::string& a_text) -> std::optional<RecipeEdit> {
 			const auto material = ParseShellMaterial(a_text);
 			return material ? std::optional<RecipeEdit>{ SetShellMaterial{ *material } } : std::nullopt;
 		}));
-		form.push_back(Field("blend", FieldKind::kChoice, std::string{ ShellBlendName(a_shell.blend) }, { "additive", "alpha" }, [](const std::string& a_text) -> std::optional<RecipeEdit> {
+		form.push_back(Field("blend", FieldKind::kChoice, std::string{ ShellBlendName(a_shell.blend) }, WordsOf(kShellBlends), [](const std::string& a_text) -> std::optional<RecipeEdit> {
 			const auto blend = ParseShellBlend(a_text);
 			return blend ? std::optional<RecipeEdit>{ SetShellBlend{ *blend } } : std::nullopt;
 		}));

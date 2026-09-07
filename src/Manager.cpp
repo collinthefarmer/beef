@@ -705,7 +705,7 @@ namespace WornEnchantmentPBR
 					}
 				}
 			}
-			outputsLog += std::format("{}{}->{}{}", outputsLog.empty() ? "" : ", ", SlotName(material->slot), material->surface == Surface::kShell ? "shell" : "material",
+			outputsLog += std::format("{}{}->{}{}", outputsLog.empty() ? "" : ", ", SlotName(material->slot), SurfaceName(material->surface),
 				output.problem.empty() ? (output.stack && output.stack->Animated() ? " (animated)" : " (static)") : std::format(" [{}]", output.problem));
 			bound.outputs.push_back(std::move(output));
 		}
@@ -883,7 +883,7 @@ namespace WornEnchantmentPBR
 				return;
 			}
 			histories_.erase(std::string{ Studio::kPaintRecipe });
-			logger::info("paint: previewing {} on the {} through the paint recipe, keyed by {}", active, a_surface == Surface::kShell ? "shell" : "material", key.ToString());
+			logger::info("paint: previewing {} on the {} through the paint recipe, keyed by {}", active, SurfaceName(a_surface), key.ToString());
 			view_.isolateRecipe = std::string{ Studio::kPaintRecipe };
 			view_.isolateOutput = -1;
 			view_.isolateLayer = -1;
@@ -1391,7 +1391,7 @@ namespace WornEnchantmentPBR
 							const auto* material = o.index < applied.recipe->outputs.size() ? Get<MaterialOutput>(applied.recipe->outputs[o.index]) : nullptr;
 							Snapshot::OutputRow orow;
 							orow.index = o.index;
-							orow.target = material ? (material->surface == Surface::kShell ? "shell" : "material") : "light";
+							orow.target = material ? SurfaceName(material->surface) : "light";
 							orow.light = !material;
 							if (material) {
 								orow.surface = material->surface;

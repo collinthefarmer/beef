@@ -74,8 +74,9 @@ namespace WornEnchantmentPBR::Studio
 		kShell,
 		kLight,
 	};
-	[[nodiscard]] std::string_view TargetName(Target a_target) noexcept;
+	[[nodiscard]] std::string_view TargetName(Target a_target) noexcept;  // a surface's own word, or "light"
 	[[nodiscard]] Surface          SurfaceOf(Target a_target) noexcept;  // the light reads as the material
+	[[nodiscard]] Target           TargetOf(Surface a_surface) noexcept;
 
 	// What the page has chosen, held as keys wherever the thing has one:
 	// the piece, the recipe id, the geometry name, the target and slot, the

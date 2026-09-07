@@ -43,7 +43,7 @@ namespace WornEnchantmentPBR::Studio
 				[&](const ClearLayers&) { a_selection.layer.reset(); },
 				[&](const RemoveOutput&) { a_selection.layer.reset(); },
 				[&](const AddOutput& e) {
-					a_selection.target = e.surface == Surface::kShell ? Target::kShell : Target::kMaterial;
+					a_selection.target = TargetOf(e.surface);
 					a_selection.slot = e.slot;
 					a_selection.layer.reset();
 				},
@@ -270,7 +270,7 @@ namespace WornEnchantmentPBR::Studio
 				selection.layer.reset();
 			},
 			[&](const PickCell& i) {
-				selection.target = i.surface == Surface::kShell ? Target::kShell : Target::kMaterial;
+				selection.target = TargetOf(i.surface);
 				selection.slot = i.slot;
 				selection.layer = i.topLayer;
 			},

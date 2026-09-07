@@ -465,12 +465,6 @@ namespace WornEnchantmentPBR::Studio
 			return static_cast<int>(std::lround(std::clamp(a_share, 0.0f, 1.0f) * 100.0f));
 		}
 
-		// The word a region's source goes by in labels and offers.
-		[[nodiscard]] std::string_view RegionWord(RegionSource a_source) noexcept
-		{
-			return a_source == RegionSource::kChart ? "chart" : "part";
-		}
-
 		// The id map bake of a region source.
 		[[nodiscard]] SourceKind RegionBakeOf(RegionSource a_source)
 		{
@@ -914,12 +908,12 @@ namespace WornEnchantmentPBR::Studio
 			[&](const ComponentTerm& t) {
 				const auto* region = RegionOf(a_geometry, t.source, t.id);
 				if (!region) {
-					return std::format("{} {}", RegionWord(t.source), t.id);
+					return std::format("{} {}", PlainRegionSourceName(t.source), t.id);
 				}
 				if (region->dominantBone.empty()) {
-					return std::format("{} {}: {}%", RegionWord(t.source), t.id, Percent(region->share));
+					return std::format("{} {}: {}%", PlainRegionSourceName(t.source), t.id, Percent(region->share));
 				}
-				return std::format("{} {}: {}, {}%", RegionWord(t.source), t.id, PlainBoneName(a_presets, region->dominantBone), Percent(region->share));
+				return std::format("{} {}: {}, {}%", PlainRegionSourceName(t.source), t.id, PlainBoneName(a_presets, region->dominantBone), Percent(region->share));
 			},
 			[&](const ClusterTerm& t) {
 				const auto* cluster = ClusterOf(a_geometry, t.id);
@@ -1188,7 +1182,7 @@ namespace WornEnchantmentPBR::Studio
 			if (!region.dominantBone.empty()) {
 				detail += std::format(", {} {}%", PlainBoneName(a_presets, region.dominantBone), Percent(region.dominantShare));
 			}
-			offers.push_back(Offer(kOfferGroups[0], std::format("{} {}", RegionWord(region.source), region.id), std::move(detail), term));
+			offers.push_back(Offer(kOfferGroups[0], std::format("{} {}", PlainRegionSourceName(region.source), region.id), std::move(detail), term));
 		}
 		// materials
 		if (a_geometry.clusters.empty()) {
@@ -1252,7 +1246,7 @@ namespace WornEnchantmentPBR::Studio
 				return detail;
 			},
 			[&](const ClusterTerm& t) { return std::format("cluster {} of {}", t.id, t.settings.clusters); },
-			[&](const ComponentTerm& t) { return std::format("{} {}", RegionSourceName(t.source), t.id); },
+			[&](const ComponentTerm& t) { return std::format("{} {}", PlainRegionSourceName(t.source), t.id); },
 			[&](const ReferenceTerm& t) { return ReferenceText(t.name); },
 			[&](const WhatPresetTerm& t) { return t.preset; },
 			[&](const PartitionTerm& t) { return std::format("partition {}", t.slot); },
