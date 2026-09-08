@@ -654,7 +654,7 @@ namespace WornEnchantmentPBR::Studio
 			if (chosen >= a_piece.keys.size()) {
 				chosen = 0;
 			}
-			const auto label = [](const KeyChoice& a_key) { return std::format("{}: {}", KeyKindName(a_key.kind), a_key.text); };
+			const auto label = [](const KeyChoice& a_key) { return std::format("{}: {}", KeyKindName(a_key.key.kind), a_key.text); };
 			Widgets::NextItemWidth(Width::Px(240.0f));
 			if (ImGui::BeginCombo("##key", a_piece.keys.empty() ? "no key" : label(a_piece.keys[chosen]).c_str())) {
 				for (std::size_t i = 0; i < a_piece.keys.size(); ++i) {

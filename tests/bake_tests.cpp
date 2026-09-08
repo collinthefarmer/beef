@@ -189,7 +189,7 @@ namespace
 		Check(partition.triangles.size() == 2, "the partition keeps its two triangles inside the vertices");
 		const auto bake = BuildBake(mesh, PartitionBake{ 32 });
 		Check(bake.indices.size() == 6, "the bake draws the kept triangles alone");
-		// PartitionsOf (Regions.cpp) sums partition.triangles.size(), so the
+		// PartitionsOf (Studio.cpp) sums partition.triangles.size(), so the
 		// snapshot's row counts the same two.
 	}
 
