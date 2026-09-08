@@ -1505,7 +1505,7 @@ namespace WornEnchantmentPBR::Studio
 				return;
 			}
 			ImGui::PushID(it->name.c_str());
-			ImGui::Text("%s (%s)", ReferenceText(it->name).c_str(), it->kind.c_str());
+			ImGui::Text("%s (%s)", ReferenceText(it->name).c_str(), std::string{ SignalKindName(it->kind) }.c_str());
 			ImGui::SameLine();
 			Widgets::ValueSwatch(it->value);
 			DrawSignalEditor(a_recipe.id, *it, a_actorID, a_scale, a_names, a_out);
