@@ -1354,7 +1354,7 @@ namespace WornEnchantmentPBR
 						for (const auto& source : applied.recipe->sources) {
 							Snapshot::PictureRow row;
 							row.name = source.name;
-							row.kind = DescribeSource(source.kind);
+							row.description = DescribeSource(source.kind);
 							row.type = SourceType(source);
 							if (const auto prepared = compositor->InspectSource(*applied.recipe, source.name, g.inputs)) {
 								row.texture = prepared->texture.get();
@@ -1367,7 +1367,7 @@ namespace WornEnchantmentPBR
 						for (const auto& mask : applied.recipe->masks) {
 							Snapshot::PictureRow row;
 							row.name = mask.name;
-							row.kind = mask.text;
+							row.description = mask.text;
 							if (const auto prepared = compositor->InspectMask(*applied.recipe, mask.name, g.inputs)) {
 								row.texture = prepared->texture.get();
 								row.channel = prepared->channel;

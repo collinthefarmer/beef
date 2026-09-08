@@ -502,8 +502,8 @@ namespace
 			return;
 		}
 		Check(fill->output == 0 && fill->layer == 0 && fill->slot == Slot::kEmissive && fill->row.source == "@fill" && fill->row.mask == "@metal", "the inspector names its layer");
-		Check(fill->source && fill->source->name == "fill" && fill->source->kind.find("DarkSwirls") != std::string::npos, "the source row is found by name");
-		Check(fill->mask && fill->mask->name == "metal" && fill->mask->kind == "@metallic", "the mask row is found by name");
+		Check(fill->source && fill->source->name == "fill" && fill->source->description.find("DarkSwirls") != std::string::npos, "the source row is found by name");
+		Check(fill->mask && fill->mask->name == "metal" && fill->mask->description == "@metallic", "the mask row is found by name");
 		Check(fill->signals.size() == 1 && fill->signals[0].name == "glowHue" && fill->signals[0].type == ValueType::kVec3, "a literal opacity names no signal; the colour names glowHue");
 		Check(!fill->curve, "the fill layer has no curve");
 		Check(fill->blends.size() == 6, "the emissive layer's blends exclude normal");

@@ -94,7 +94,7 @@ namespace WornEnchantmentPBR::Studio
 	struct PictureRow
 	{
 		std::string   name;
-		std::string   kind;  // DescribeSource, or the mask's expression
+		std::string   description;  // DescribeSource, or the mask's expression
 		ValueType     type = ValueType::kScalar;  // what the texel reads as (SourceType; a mask is scalar)
 		TextureHandle texture = nullptr;
 		ShaderChannel channel = ShaderChannel::kRgb;  // what the preview shows

@@ -504,10 +504,10 @@ rewrite (`src/RecipeStore.cpp`, 2026-09-04), not yet run in game.
     for the Northern Iron boots, a ring and the Rugged Iron cuirass on
     2026-09-05 (` (FE034935)[0]/ (2500097A) [100%]`, ` (0008E840)[0]/
     (00100E29) [100%]`), against `Armor003`, `Armor004`, `Armor004_1` on
-    the iron cuirass. The menu turns the pattern into "<armor> shape
+    the iron cuirass. The menu turns the pattern into "<armor> geometry
     <index> (addon <id>)" (`Studio::GeometryLabel`) and keeps the raw
     string as the key. If wrong: a shape shows the raw string in the
-    Geometry combo, or two shapes of one piece share a label.
+    Geometry combo, or two geometries of one piece share a label.
 
 50. **CS parallax offsets a texel by `(height - 0.5) * HeightScale`, where
     `HeightScale` is the material's displacement scale (the `scale` the
@@ -603,7 +603,7 @@ rewrite (`src/RecipeStore.cpp`, 2026-09-04), not yet run in game.
     on a mesh whose position bake looks right. Confirmed 2026-09-07 in game: each geometry was read once per session and served from the cache through every Paint round after (one `mesh` line per geometry, `cached` after), and the CPU copy matched the GPU readback byte for byte (`0 of 32360 bytes differ`, `0 of 20080 bytes differ` on two pieces), so the moving region of 2026-09-06 was the unrendered preview, not the read. If wrong: a second `mesh` line for the same geometry with a different hash, or a compare line with a nonzero count.
 
 56. **The material analysis is one readback per pair of maps, on request
-    (Paint's read of a shape, or a `materialClusters` source at prepare),
+    (Paint's read of a geometry, or a `materialClusters` source at prepare),
     never at apply: both maps are copied
     at the mip that fits 64 px into one 64 px target and read back through
     a staging texture, and other cluster settings re-run on that stored

@@ -386,8 +386,8 @@ are in `ARCHITECTURE.md` under "The recipe studio".
   emissive, and the pose (inflate, offset, scale and its point, spin and
   its axis). When the
   piece has several geometries, the stack's composite is viewed on one of
-  them (its tooltip names the shape) and clicking it views the next;
-  edits reach every shape. A
+  them (its tooltip names the geometry) and clicking it views the next;
+  edits reach every geometry. A
   footer pinned to the bottom of the page holds the clock: Freeze, a
   **step** button (one tick of the recipe clock, held), a **speed**
   slider that multiplies every recipe's clock, and the scrubber across
@@ -490,7 +490,7 @@ are in `ARCHITECTURE.md` under "The recipe studio".
   keyed to the worn armor, never written, gone when Paint closes),
   applied alone while the session runs, so the armor shows the region
   the way any recipe's emissive shows. Opening Paint also reads the
-  viewed shape's mesh, which is analysed as it is read (its connected
+  viewed geometry's mesh, which is analysed as it is read (its connected
   parts and UV charts, each with the bone that carries it and its share
   of the mesh), and samples and clusters the material's maps, once per
   session for each. The head line holds the recipe combo, which

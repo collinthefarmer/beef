@@ -1478,11 +1478,11 @@ namespace WornEnchantmentPBR::Studio
 			if (a_editable) {
 				Widgets::Badge(FieldKind::kMask);
 				const Widgets::TextCheck check = [&](const std::string& a_text) { return CheckMaskText(a_text, a_names); };
-				if (const auto edited = Widgets::TextField("text", a_image.kind, Width::Fill(), scale, check)) {
+				if (const auto edited = Widgets::TextField("text", a_image.description, Width::Fill(), scale, check)) {
 					Post(a_out, a_id, SetMask{ a_image.name, *edited });
 				}
 			} else {
-				ImGui::TextWrapped("%s", a_image.kind.c_str());
+				ImGui::TextWrapped("%s", a_image.description.c_str());
 			}
 			if (!a_image.problem.empty()) {
 				Widgets::Warn(a_image.problem);
@@ -1873,7 +1873,7 @@ namespace WornEnchantmentPBR::Studio
 						reads.Cell();
 						ImGui::AlignTextToFramePadding();
 						if (image) {
-							ImGui::TextUnformatted(image->kind.c_str());
+							ImGui::TextUnformatted(image->description.c_str());
 						} else {
 							Widgets::Warn("not a source or mask of the recipe");
 						}
