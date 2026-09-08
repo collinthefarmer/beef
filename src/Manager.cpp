@@ -1258,24 +1258,14 @@ namespace WornEnchantmentPBR
 				row.armorName = piece.armorName;
 				row.firstPerson = piece.firstPerson;
 				// What a new recipe can be keyed to, most specific first.
-				const auto choice = [&](KeyKind a_kind, const std::optional<FormKey>& a_key) {
-					if (!a_key) {
-						return;
-					}
+				for (const auto& source : KeyChoicesOf(piece.piece)) {
 					Studio::KeyChoice key;
-					key.kind = a_kind;
-					key.key = *a_key;
-					const auto* form = LookupForm(*a_key);
+					key.kind = source.kind;
+					key.key = source.form;
+					const auto* form = LookupForm(source.form);
 					const auto  editorID = form ? EditorIdOf(*form) : std::string{};
-					key.text = editorID.empty() ? a_key->ToString() : editorID;
+					key.text = editorID.empty() ? source.form.ToString() : editorID;
 					row.keys.push_back(std::move(key));
-				};
-				choice(KeyKind::kMagicEffect, piece.piece.magicEffect);
-				choice(KeyKind::kEnchantment, piece.piece.enchantment);
-				choice(KeyKind::kEffectShader, piece.piece.effectShader);
-				choice(KeyKind::kArmor, piece.piece.armor);
-				for (const auto& keyword : piece.piece.keywords) {
-					choice(KeyKind::kKeyword, keyword);
 				}
 				for (const auto& applied : piece.recipes) {
 					Snapshot::RecipeRow r;

@@ -15,8 +15,21 @@
 namespace WornEnchantmentPBR
 {
 	// A "default" key is written as the bare word, every other kind as
-	// {"<kind>": <form or glob>}; the parser refuses "default" as an object.
-	inline constexpr Named<KeyKind> kKeyKinds[]{ { KeyKind::kDefault, "default" }, { KeyKind::kMaterial, "material" }, { KeyKind::kKeyword, "keyword" }, { KeyKind::kArmor, "armor" }, { KeyKind::kEffectShader, "effectShader" }, { KeyKind::kEnchantment, "enchantment" }, { KeyKind::kMagicEffect, "magicEffect" } };
+	// {"<kind>": <form or glob>}; the parser refuses "default" as an object
+	// (KeyOperand::kNone, matched by no other kind). Priority is in enum
+	// order, ten per step, so a magic-effect key outranks an enchantment
+	// key, which outranks an effect-shader key, and so on down to material
+	// and default; KeyChoicesOf walks the table highest first.
+	inline constexpr KeyKindRow kKeyKinds[]{
+		{ KeyKind::kDefault, "default", 0, KeyOperand::kNone, false, nullptr, nullptr },
+		{ KeyKind::kMaterial, "material", 10, KeyOperand::kGlob, false, nullptr, nullptr },
+		{ KeyKind::kKeyword, "keyword", 20, KeyOperand::kForm, false, nullptr, &WornPiece::keywords },
+		{ KeyKind::kArmor, "armor", 30, KeyOperand::kForm, false, &WornPiece::armor, nullptr },
+		{ KeyKind::kEffectShader, "effectShader", 40, KeyOperand::kForm, true, &WornPiece::effectShader, nullptr },
+		{ KeyKind::kEnchantment, "enchantment", 50, KeyOperand::kForm, true, &WornPiece::enchantment, nullptr },
+		{ KeyKind::kMagicEffect, "magicEffect", 60, KeyOperand::kForm, true, &WornPiece::magicEffect, nullptr },
+	};
+	static_assert(std::size(kKeyKinds) == kKeyKindCount);
 	inline constexpr Named<SelectorKind> kSelectorKinds[]{ { SelectorKind::kAddon, "addon" }, { SelectorKind::kGeometry, "geometry" }, { SelectorKind::kTexture, "texture" } };
 
 	inline constexpr Named<Waveform> kWaveforms[]{ { Waveform::kSine, "sine" }, { Waveform::kTriangle, "triangle" }, { Waveform::kSquare, "square" }, { Waveform::kSaw, "saw" } };
