@@ -1286,6 +1286,7 @@ namespace WornEnchantmentPBR
 							}
 						}
 						if (const auto* declared = applied.recipe->FindSignal(signal.name)) {
+							row.definition = declared->kind;
 							if (const auto* constant = Get<ConstantSignal>(declared->kind)) {
 								row.constant = constant->value;
 							}

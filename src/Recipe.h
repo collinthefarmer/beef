@@ -359,6 +359,7 @@ namespace WornEnchantmentPBR
 	[[nodiscard]] std::string_view            SignalKindName(SignalKindId a_kind) noexcept;
 	[[nodiscard]] std::optional<SignalKindId> ParseSignalKind(std::string_view a_name) noexcept;
 	[[nodiscard]] bool                        SignalKindTunable(SignalKindId a_kind) noexcept;
+	[[nodiscard]] std::optional<SignalKind>   DefaultSignalKind(std::string_view a_name);
 
 	struct Curve
 	{

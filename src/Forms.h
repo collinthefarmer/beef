@@ -143,7 +143,7 @@ namespace WornEnchantmentPBR::Studio
 
 	[[nodiscard]] std::vector<FormField> InspectorForm(const Inspector& a_inspector);
 	[[nodiscard]] std::vector<FormField> ScalarForm(const LayerStack& a_stack);
-	[[nodiscard]] std::optional<FormField>  SignalForm(const SignalRow& a_signal);
+	[[nodiscard]] std::vector<FormField>    SignalForm(const SignalRow& a_signal, const SignalNames& a_names);
 	[[nodiscard]] std::optional<RecipeEdit> SignalValueEdit(const std::string& a_signal, const std::string& a_text);
 	[[nodiscard]] std::vector<FormField> SourceForm(const SourceRow& a_source, const SignalNames& a_names);
 	[[nodiscard]] std::vector<FormField> LightForm(const LightRow& a_light, const SignalNames& a_names);

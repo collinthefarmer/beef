@@ -1091,18 +1091,26 @@ namespace WornEnchantmentPBR::Studio
 			ImGui::EndPopup();
 		}
 
-		void DrawSignalEditor(const std::string& a_id, const SignalRow& a_signal, FormID a_actorID, std::span<const BoneRow> a_bones, float a_scale, const Names& a_names, Intents& a_out)
+		void DrawSignalEditor(const std::string& a_id, const SignalRow& a_signal, const SignalNames& a_signalNames, FormID a_actorID, std::span<const BoneRow> a_bones, float a_scale, const Names& a_names, Intents& a_out)
 		{
-			const auto field = SignalForm(a_signal);
-			if (!field) {
-				if (!a_signal.event.empty()) {
-					FirePopup(a_signal, a_actorID, a_bones, a_out);
-					ImGui::SameLine();
-				}
-				Widgets::Dim(std::format("{}: edits in the file", SignalKindName(a_signal.kind)));
+			const auto form = SignalForm(a_signal, a_signalNames);
+			const auto value = a_signal.kind == SignalKindId::kConstant || a_signal.kind == SignalKindId::kExpr ? std::ranges::find(form, "value", &FormField::name) : form.end();
+			const auto title = std::format("signal {}###signal-settings", a_signal.name);
+			if (Widgets::DetailButton()) {
+				ImGui::OpenPopup(title.c_str());
+			}
+			Widgets::DetailModal(title.c_str(), [&]() { [[maybe_unused]] const auto detail = DrawForm("form", form, a_id, a_scale, a_names, a_out); });
+			ImGui::SameLine();
+			if (value != form.end()) {
+				DrawRowField("value", *value, a_id, a_scale, a_names, a_out);
 				return;
 			}
-			DrawRowField("value", *field, a_id, a_scale, a_names, a_out);
+			if (!a_signal.event.empty()) {
+				FirePopup(a_signal, a_actorID, a_bones, a_out);
+				ImGui::SameLine();
+			}
+			ImGui::AlignTextToFramePadding();
+			Widgets::Dim(SignalKindName(a_signal.kind));
 		}
 
 		void DrawSignalCurve(const std::string& a_id, const SignalRow& a_signal, std::span<const std::string> a_curves, float a_width, float a_scale, Intents& a_out)
@@ -1113,7 +1121,7 @@ namespace WornEnchantmentPBR::Studio
 			Widgets::Tooltip("a declared curve applied to the signal's value; none passes it through");
 		}
 
-		void DrawSignalRow(Widgets::Table& a_table, const std::string& a_id, const SignalRow& a_signal, bool a_tunable, std::span<const std::string> a_curves, float a_curveWidth, FormID a_actorID, std::span<const BoneRow> a_bones, float a_scale, const Names& a_names, Intents& a_out)
+		void DrawSignalRow(Widgets::Table& a_table, const std::string& a_id, const SignalRow& a_signal, const SignalNames& a_signalNames, bool a_tunable, std::span<const std::string> a_curves, float a_curveWidth, FormID a_actorID, std::span<const BoneRow> a_bones, float a_scale, const Names& a_names, Intents& a_out)
 		{
 			ImGui::PushID(a_signal.name.c_str());
 			a_table.Cell();
@@ -1124,7 +1132,7 @@ namespace WornEnchantmentPBR::Studio
 			DrawRowField("name", RowNameField(RowKind::kSignal, a_signal.name, TakenNames(RowKind::kSignal, a_names)), a_id, a_scale, a_names, a_out);
 			Widgets::Tooltip(SignalKindName(a_signal.kind));
 			a_table.Cell();
-			DrawSignalEditor(a_id, a_signal, a_actorID, a_bones, a_scale, a_names, a_out);
+			DrawSignalEditor(a_id, a_signal, a_signalNames, a_actorID, a_bones, a_scale, a_names, a_out);
 			a_table.Cell();
 			if (a_tunable) {
 				DrawSignalCurve(a_id, a_signal, a_curves, a_curveWidth, a_scale, a_out);
@@ -1151,6 +1159,7 @@ namespace WornEnchantmentPBR::Studio
 			const auto& id = a_recipe.id;
 			const float scale = a_layout.widgetScale;
 
+			const auto               signalNames = SignalNamesOf(a_recipe);
 			std::vector<std::string> curveNames;
 			std::vector<std::string> curveTexts{ "none" };
 			for (const auto& curve : a_recipe.curves) {
@@ -1170,12 +1179,12 @@ namespace WornEnchantmentPBR::Studio
 			}
 			for (const auto& signal : list.tunable) {
 				if (NameMatches(signal.name, a_filter)) {
-					DrawSignalRow(signals, id, signal, true, curveNames, curveWidth, a_piece.actorID, a_geometry.bones, scale, a_names, a_out);
+					DrawSignalRow(signals, id, signal, signalNames, true, curveNames, curveWidth, a_piece.actorID, a_geometry.bones, scale, a_names, a_out);
 				}
 			}
 			for (const auto& signal : list.developer) {
 				if (NameMatches(signal.name, a_filter)) {
-					DrawSignalRow(signals, id, signal, false, curveNames, curveWidth, a_piece.actorID, a_geometry.bones, scale, a_names, a_out);
+					DrawSignalRow(signals, id, signal, signalNames, false, curveNames, curveWidth, a_piece.actorID, a_geometry.bones, scale, a_names, a_out);
 				}
 			}
 			signals.End();
@@ -1407,7 +1416,7 @@ namespace WornEnchantmentPBR::Studio
 			ImGui::Text("%s (%s)", ReferenceText(it->name).c_str(), std::string{ SignalKindName(it->kind) }.c_str());
 			ImGui::SameLine();
 			Widgets::ValueSwatch(it->value);
-			DrawSignalEditor(a_recipe.id, *it, a_actorID, a_bones, a_scale, a_names, a_out);
+			DrawSignalEditor(a_recipe.id, *it, SignalNamesOf(a_recipe), a_actorID, a_bones, a_scale, a_names, a_out);
 			if (it->inert) {
 				Widgets::Problem(it->problem.empty() ? "inert" : "inert: " + it->problem);
 			}

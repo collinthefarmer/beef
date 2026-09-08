@@ -1040,23 +1040,248 @@ namespace WornEnchantmentPBR::Studio
 		return std::nullopt;
 	}
 
-	std::optional<FormField> SignalForm(const SignalRow& a_signal)
+	namespace
 	{
-		const std::string& name = a_signal.name;
-		const FieldBinding bind = [name](const std::string& a_text) { return SignalValueEdit(name, a_text); };
-		if (a_signal.kind == SignalKindId::kExpr) {
-			return FormField{ name, FieldKind::kSignalValue, a_signal.text, {}, false, std::nullopt, std::nullopt, bind };
+		[[nodiscard]] FormField Field(std::string a_name, FieldKind a_kind, std::string a_text, std::vector<std::string> a_names, FieldBinding a_bind);
+	}
+
+	namespace
+	{
+		template <class S, class M, class Parse>
+		[[nodiscard]] FieldBinding BindSignalMember(const std::string& a_name, const SignalKind& a_record, M S::* a_member, Parse a_parse)
+		{
+			return [=](const std::string& a_text) -> std::optional<RecipeEdit> {
+				SignalKind kind = a_record;
+				auto*      record = Get<S>(kind);
+				if (!record) {
+					return std::nullopt;
+				}
+				const auto value = a_parse(a_text);
+				if (!value) {
+					return std::nullopt;
+				}
+				record->*a_member = *value;
+				return SetSignal{ a_name, kind };
+			};
 		}
-		if (!a_signal.constant) {
-			return std::nullopt;
+
+		[[nodiscard]] std::optional<Ref> RefOf(const std::string& a_text)
+		{
+			return IsWholeReference(a_text) ? std::optional{ Ref{ ReferenceName(a_text) } } : std::nullopt;
 		}
-		if (const auto* number = Get<float>(*a_signal.constant)) {
-			return FormField{ name, FieldKind::kSignalValue, ParamText(*number), {}, false, std::nullopt, std::nullopt, bind };
+
+		[[nodiscard]] std::optional<std::optional<Ref>> OptionalRefOf(const std::string& a_text)
+		{
+			if (a_text.empty()) {
+				return std::optional<Ref>{};
+			}
+			const auto ref = RefOf(a_text);
+			return ref ? std::optional{ std::optional{ *ref } } : std::nullopt;
 		}
-		if (const auto* colour = Get<Vec3>(*a_signal.constant)) {
-			return FormField{ name, FieldKind::kSignalValue, LiteralColorText(*colour), {}, false, std::nullopt, std::nullopt, bind };
+
+		[[nodiscard]] std::optional<std::optional<Param>> OptionalParamOf(const std::string& a_text)
+		{
+			if (a_text.empty()) {
+				return std::optional<Param>{};
+			}
+			const auto param = ParseParam(a_text);
+			return param ? std::optional{ std::optional{ *param } } : std::nullopt;
 		}
-		return std::nullopt;
+
+		[[nodiscard]] std::optional<std::uint32_t> CountOf(const std::string& a_text)
+		{
+			const auto param = ParseParam(a_text);
+			const auto* number = param ? Get<float>(*param) : nullptr;
+			return number && *number >= 0.0f ? std::optional{ static_cast<std::uint32_t>(*number) } : std::nullopt;
+		}
+
+		[[nodiscard]] std::optional<std::string> TextOf(const std::string& a_text)
+		{
+			return a_text.empty() ? std::nullopt : std::optional{ a_text };
+		}
+
+		template <class E, std::size_t N>
+		[[nodiscard]] auto WordOf(const Named<E> (&a_table)[N])
+		{
+			return [&a_table](const std::string& a_text) { return FromName(a_table, a_text); };
+		}
+
+		[[nodiscard]] std::optional<FormRef> FormOf(const std::string& a_text)
+		{
+			return a_text.empty() ? std::nullopt : std::optional{ FormRef::From(a_text) };
+		}
+
+		[[nodiscard]] std::string RefText(const Ref& a_ref) { return ReferenceText(a_ref.name); }
+		[[nodiscard]] std::string RefText(const std::optional<Ref>& a_ref) { return a_ref ? ReferenceText(a_ref->name) : std::string{}; }
+		[[nodiscard]] std::string ParamTextOf(const std::optional<Param>& a_param) { return a_param ? ParamText(*a_param) : std::string{}; }
+	}
+
+	std::vector<FormField> SignalForm(const SignalRow& a_signal, const SignalNames& a_names)
+	{
+		std::vector<FormField> form;
+		const std::string&     name = a_signal.name;
+		const SignalKind&      record = a_signal.definition;
+		form.push_back(Field("kind", FieldKind::kChoice, std::string{ SignalKindName(a_signal.kind) }, WordsOf(kSignalKinds), [name](const std::string& a_text) -> std::optional<RecipeEdit> {
+			const auto kind = DefaultSignalKind(a_text);
+			return kind ? std::optional<RecipeEdit>{ SetSignal{ name, *kind } } : std::nullopt;
+		}));
+		const auto all = Joined(a_names.scalar, a_names.color);
+		Match(
+			record,
+			[&](const ConstantSignal& s) {
+				const std::string text = Match(
+					s.value,
+					[](float a_number) { return ParamText(a_number); },
+					[](const Vec2& a_pair) { return std::format("{}, {}", ParamText(a_pair.x), ParamText(a_pair.y)); },
+					[](const Vec3& a_colour) { return LiteralColorText(a_colour); });
+				form.push_back(FormField{ "value", FieldKind::kSignalValue, text, {}, false, std::nullopt, std::nullopt, [name](const std::string& a_text) { return SignalValueEdit(name, a_text); } });
+			},
+			[&](const ExprSignal& s) {
+				form.push_back(FormField{ "value", FieldKind::kSignalValue, s.text, {}, false, std::nullopt, std::nullopt, [name](const std::string& a_text) { return SignalValueEdit(name, a_text); } });
+			},
+			[&](const PulseSignal& s) {
+				form.push_back(Field("base", FieldKind::kScalar, ParamText(s.base), a_names.scalar, BindSignalMember(name, record, &PulseSignal::base, ParseParam)));
+				form.push_back(Field("amplitude", FieldKind::kScalar, ParamText(s.amplitude), a_names.scalar, BindSignalMember(name, record, &PulseSignal::amplitude, ParseParam)));
+				form.push_back(Field("period", FieldKind::kScalar, ParamText(s.period), a_names.scalar, BindSignalMember(name, record, &PulseSignal::period, ParseParam)));
+				form.push_back(Field("phase", FieldKind::kScalar, ParamText(s.phase), a_names.scalar, BindSignalMember(name, record, &PulseSignal::phase, ParseParam)));
+				form.push_back(Field("waveform", FieldKind::kChoice, std::string{ NameOf(kWaveforms, s.waveform) }, WordsOf(kWaveforms), BindSignalMember(name, record, &PulseSignal::waveform, WordOf(kWaveforms))));
+			},
+			[&](const RampSignal& s) {
+				form.push_back(Field("from", FieldKind::kScalar, ParamText(s.from), a_names.scalar, BindSignalMember(name, record, &RampSignal::from, ParseParam)));
+				form.push_back(Field("to", FieldKind::kScalar, ParamText(s.to), a_names.scalar, BindSignalMember(name, record, &RampSignal::to, ParseParam)));
+				form.push_back(Field("seconds", FieldKind::kScalar, ParamText(s.seconds), a_names.scalar, BindSignalMember(name, record, &RampSignal::seconds, ParseParam)));
+			},
+			[&](const EfshSignal& s) {
+				form.push_back(Field("field", FieldKind::kChoice, std::string{ NameOf(kEfshFields, s.field) }, WordsOf(kEfshFields), BindSignalMember(name, record, &EfshSignal::field, WordOf(kEfshFields))));
+				form.push_back(Field("record", FieldKind::kText, s.record.text, {}, BindSignalMember(name, record, &EfshSignal::record, FormOf)));
+			},
+			[&](const ActorValueSignal& s) {
+				form.push_back(Field("actorValue", FieldKind::kText, s.actorValue, {}, BindSignalMember(name, record, &ActorValueSignal::actorValue, TextOf)));
+				form.push_back(Field("measure", FieldKind::kChoice, std::string{ NameOf(kMeasures, s.measure) }, WordsOf(kMeasures), BindSignalMember(name, record, &ActorValueSignal::measure, WordOf(kMeasures))));
+			},
+			[&](const ActorStateSignal& s) {
+				form.push_back(Field("state", FieldKind::kChoice, std::string{ NameOf(kActorStates, s.kind) }, WordsOf(kActorStates), BindSignalMember(name, record, &ActorStateSignal::kind, WordOf(kActorStates))));
+			},
+			[&](const EnchantmentSignal& s) {
+				form.push_back(Field("field", FieldKind::kChoice, std::string{ NameOf(kEnchantmentFields, s.field) }, WordsOf(kEnchantmentFields), BindSignalMember(name, record, &EnchantmentSignal::field, WordOf(kEnchantmentFields))));
+			},
+			[&](const TriggerSignal& s) {
+				const std::size_t origin = s.origin.index();
+				form.push_back(Field("origin", FieldKind::kChoice, std::string{ origin < std::size(kTriggerOriginWords) ? kTriggerOriginWords[origin] : "?" }, WordsOf(kTriggerOriginWords), [name, record](const std::string& a_text) -> std::optional<RecipeEdit> {
+					for (std::size_t i = 0; i < std::size(kTriggerOriginWords); ++i) {
+						if (kTriggerOriginWords[i] == a_text) {
+							SignalKind kind = record;
+							if (auto* trigger = Get<TriggerSignal>(kind); trigger) {
+								if (auto made = AlternativeAt<TriggerOrigin>(i)) {
+									trigger->origin = *made;
+									return SetSignal{ name, kind };
+								}
+							}
+						}
+					}
+					return std::nullopt;
+				}));
+				Match(
+					s.origin,
+					[&](const EventOrigin& o) {
+						form.push_back(Field("event", FieldKind::kText, o.event, {}, [name, record](const std::string& a_text) -> std::optional<RecipeEdit> {
+							SignalKind kind = record;
+							auto*      trigger = Get<TriggerSignal>(kind);
+							auto*      event = trigger ? Get<EventOrigin>(trigger->origin) : nullptr;
+							if (!event || a_text.empty()) {
+								return std::nullopt;
+							}
+							event->event = a_text;
+							return SetSignal{ name, kind };
+						}));
+						FormField at = Field("at", FieldKind::kText, o.at, {}, [name, record](const std::string& a_text) -> std::optional<RecipeEdit> {
+							SignalKind kind = record;
+							auto*      trigger = Get<TriggerSignal>(kind);
+							auto*      event = trigger ? Get<EventOrigin>(trigger->origin) : nullptr;
+							if (!event) {
+								return std::nullopt;
+							}
+							event->at = a_text;
+							return SetSignal{ name, kind };
+						});
+						at.allowEmpty = true;
+						form.push_back(std::move(at));
+					},
+					[&](const PluginOrigin& o) {
+						form.push_back(Field("id", FieldKind::kText, o.id, {}, [name, record](const std::string& a_text) -> std::optional<RecipeEdit> {
+							SignalKind kind = record;
+							auto*      trigger = Get<TriggerSignal>(kind);
+							auto*      plugin = trigger ? Get<PluginOrigin>(trigger->origin) : nullptr;
+							if (!plugin || a_text.empty()) {
+								return std::nullopt;
+							}
+							plugin->id = a_text;
+							return SetSignal{ name, kind };
+						}));
+					},
+					[&](const WhenOrigin& o) {
+						form.push_back(Field("when", FieldKind::kReference, RefText(o.when), all, [name, record](const std::string& a_text) -> std::optional<RecipeEdit> {
+							SignalKind kind = record;
+							auto*      trigger = Get<TriggerSignal>(kind);
+							auto*      when = trigger ? Get<WhenOrigin>(trigger->origin) : nullptr;
+							const auto ref = RefOf(a_text);
+							if (!when || !ref) {
+								return std::nullopt;
+							}
+							when->when = *ref;
+							return SetSignal{ name, kind };
+						}));
+						FormField value = Field("value", FieldKind::kReference, RefText(o.value), all, [name, record](const std::string& a_text) -> std::optional<RecipeEdit> {
+							SignalKind kind = record;
+							auto*      trigger = Get<TriggerSignal>(kind);
+							auto*      when = trigger ? Get<WhenOrigin>(trigger->origin) : nullptr;
+							const auto ref = OptionalRefOf(a_text);
+							if (!when || !ref) {
+								return std::nullopt;
+							}
+							when->value = *ref;
+							return SetSignal{ name, kind };
+						});
+						value.allowEmpty = true;
+						form.push_back(std::move(value));
+					});
+				form.push_back(Field("lifetime", FieldKind::kScalar, ParamText(s.lifetime), a_names.scalar, BindSignalMember(name, record, &TriggerSignal::lifetime, ParseParam)));
+				form.push_back(Field("max", FieldKind::kScalar, std::to_string(s.max), {}, BindSignalMember(name, record, &TriggerSignal::max, CountOf)));
+				form.back().range = { 1.0f, 64.0f };
+			},
+			[&](const PayloadSignal& s) {
+				form.push_back(Field("trigger", FieldKind::kReference, RefText(s.trigger), a_names.triggers, BindSignalMember(name, record, &PayloadSignal::trigger, RefOf)));
+				form.push_back(Field("field", FieldKind::kChoice, std::string{ NameOf(kPayloadFields, s.field) }, WordsOf(kPayloadFields), BindSignalMember(name, record, &PayloadSignal::field, WordOf(kPayloadFields))));
+			},
+			[&](const CounterSignal& s) {
+				form.push_back(Field("trigger", FieldKind::kReference, RefText(s.trigger), a_names.triggers, BindSignalMember(name, record, &CounterSignal::trigger, RefOf)));
+				FormField reset = Field("reset", FieldKind::kReference, RefText(s.reset), a_names.triggers, BindSignalMember(name, record, &CounterSignal::reset, OptionalRefOf));
+				reset.allowEmpty = true;
+				form.push_back(std::move(reset));
+				FormField cap = Field("cap", FieldKind::kScalar, ParamTextOf(s.cap), a_names.scalar, BindSignalMember(name, record, &CounterSignal::cap, OptionalParamOf));
+				cap.allowEmpty = true;
+				form.push_back(std::move(cap));
+			},
+			[&](const AccumulateSignal& s) {
+				form.push_back(Field("trigger", FieldKind::kReference, RefText(s.trigger), a_names.triggers, BindSignalMember(name, record, &AccumulateSignal::trigger, RefOf)));
+				form.push_back(Field("decay", FieldKind::kScalar, ParamText(s.decay), a_names.scalar, BindSignalMember(name, record, &AccumulateSignal::decay, ParseParam)));
+			},
+			[&](const NoiseSignal& s) {
+				form.push_back(Field("frequency", FieldKind::kScalar, ParamText(s.frequency), a_names.scalar, BindSignalMember(name, record, &NoiseSignal::frequency, ParseParam)));
+				form.push_back(Field("amplitude", FieldKind::kScalar, ParamText(s.amplitude), a_names.scalar, BindSignalMember(name, record, &NoiseSignal::amplitude, ParseParam)));
+				form.push_back(Field("seed", FieldKind::kScalar, std::to_string(s.seed), {}, BindSignalMember(name, record, &NoiseSignal::seed, CountOf)));
+			},
+			[&](const GradientSignal& s) {
+				form.push_back(Field("t", FieldKind::kScalar, ParamText(s.t), a_names.scalar, BindSignalMember(name, record, &GradientSignal::t, ParseParam)));
+			},
+			[&](const DeltaSignal& s) {
+				form.push_back(Field("of", FieldKind::kReference, RefText(s.of), all, BindSignalMember(name, record, &DeltaSignal::of, RefOf)));
+			},
+			[&](const SmoothSignal& s) {
+				form.push_back(Field("of", FieldKind::kReference, RefText(s.of), all, BindSignalMember(name, record, &SmoothSignal::of, RefOf)));
+				form.push_back(Field("seconds", FieldKind::kScalar, ParamText(s.seconds), a_names.scalar, BindSignalMember(name, record, &SmoothSignal::seconds, ParseParam)));
+			});
+		return form;
 	}
 
 	FormField RowNameField(RowKind a_kind, const std::string& a_name, std::vector<std::string> a_taken)

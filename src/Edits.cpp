@@ -622,33 +622,39 @@ namespace WornEnchantmentPBR::Studio
 		}
 
 		template <class V>
+		void VisitSignalParams(SignalKind& a_kind, V& a_visit)
+		{
+			Match(
+				a_kind,
+				[&](PulseSignal& s) { VisitParam(s.base, std::nullopt, a_visit); VisitParam(s.amplitude, std::nullopt, a_visit); VisitParam(s.period, std::nullopt, a_visit); VisitParam(s.phase, std::nullopt, a_visit); },
+				[&](RampSignal& s) { VisitParam(s.from, std::nullopt, a_visit); VisitParam(s.to, std::nullopt, a_visit); VisitParam(s.seconds, std::nullopt, a_visit); },
+				[&](TriggerSignal& s) {
+					VisitParam(s.lifetime, std::nullopt, a_visit);
+					if (auto* when = Get<WhenOrigin>(s.origin)) {
+						VisitRef(when->when, a_visit);
+						VisitRef(when->value, a_visit);
+					}
+				},
+				[&](PayloadSignal& s) { VisitRef(s.trigger, a_visit); },
+				[&](CounterSignal& s) { VisitRef(s.trigger, a_visit); VisitRef(s.reset, a_visit); VisitParam(s.cap, std::nullopt, a_visit); },
+				[&](AccumulateSignal& s) { VisitRef(s.trigger, a_visit); VisitParam(s.decay, std::nullopt, a_visit); },
+				[&](NoiseSignal& s) { VisitParam(s.frequency, std::nullopt, a_visit); VisitParam(s.amplitude, std::nullopt, a_visit); },
+				[&](GradientSignal& s) {
+					VisitParam(s.t, std::nullopt, a_visit);
+					for (auto& stop : s.stops) {
+						VisitVector(stop.color, std::nullopt, a_visit);
+					}
+				},
+				[&](DeltaSignal& s) { VisitRef(s.of, a_visit); },
+				[&](SmoothSignal& s) { VisitRef(s.of, a_visit); VisitParam(s.seconds, std::nullopt, a_visit); },
+				[](auto&) {});
+		}
+
+		template <class V>
 		void ForEachParam(Recipe& a_recipe, V& a_visit)
 		{
 			for (auto& signal : a_recipe.signals) {
-				Match(
-					signal.kind,
-					[&](PulseSignal& s) { VisitParam(s.base, std::nullopt, a_visit); VisitParam(s.amplitude, std::nullopt, a_visit); VisitParam(s.period, std::nullopt, a_visit); VisitParam(s.phase, std::nullopt, a_visit); },
-					[&](RampSignal& s) { VisitParam(s.from, std::nullopt, a_visit); VisitParam(s.to, std::nullopt, a_visit); VisitParam(s.seconds, std::nullopt, a_visit); },
-					[&](TriggerSignal& s) {
-						VisitParam(s.lifetime, std::nullopt, a_visit);
-						if (auto* when = Get<WhenOrigin>(s.origin)) {
-							VisitRef(when->when, a_visit);
-							VisitRef(when->value, a_visit);
-						}
-					},
-					[&](PayloadSignal& s) { VisitRef(s.trigger, a_visit); },
-					[&](CounterSignal& s) { VisitRef(s.trigger, a_visit); VisitRef(s.reset, a_visit); VisitParam(s.cap, std::nullopt, a_visit); },
-					[&](AccumulateSignal& s) { VisitRef(s.trigger, a_visit); VisitParam(s.decay, std::nullopt, a_visit); },
-					[&](NoiseSignal& s) { VisitParam(s.frequency, std::nullopt, a_visit); VisitParam(s.amplitude, std::nullopt, a_visit); },
-					[&](GradientSignal& s) {
-						VisitParam(s.t, std::nullopt, a_visit);
-						for (auto& stop : s.stops) {
-							VisitVector(stop.color, std::nullopt, a_visit);
-						}
-					},
-					[&](DeltaSignal& s) { VisitRef(s.of, a_visit); },
-					[&](SmoothSignal& s) { VisitRef(s.of, a_visit); VisitParam(s.seconds, std::nullopt, a_visit); },
-					[](auto&) {});
+				VisitSignalParams(signal.kind, a_visit);
 			}
 			for (auto& source : a_recipe.sources) {
 				Match(
@@ -1326,6 +1332,41 @@ namespace WornEnchantmentPBR::Studio
 			return parts && std::ranges::any_of(*parts, [](const Param& p) { return Is<Ref>(p); });
 		}
 
+		Refusal CheckSignalKind(const Recipe& a_recipe, const std::string& a_where, const SignalKind& a_kind)
+		{
+			SignalKind               copy = a_kind;
+			std::vector<std::string> reads;
+			auto                     collect = [&](Ref& a_ref) { reads.push_back(a_ref.name); };
+			RefVisitor<decltype(collect)> visitor{ collect };
+			VisitSignalParams(copy, visitor);
+			for (const auto& name : reads) {
+				if (!a_recipe.FindSignal(name)) {
+					return Refuse(a_where, std::format("reads unknown signal '@{}'", name));
+				}
+			}
+			if (const auto* expr = Get<ExprSignal>(a_kind)) {
+				return CheckText(a_where, expr->text);
+			}
+			if (const auto* efsh = Get<EfshSignal>(a_kind); efsh && efsh->record.text.empty()) {
+				return Refuse(a_where, "an efsh signal names its effect shader");
+			}
+			if (const auto* av = Get<ActorValueSignal>(a_kind); av && av->actorValue.empty()) {
+				return Refuse(a_where, "an av signal names an actor value");
+			}
+			return std::nullopt;
+		}
+
+		Refusal Edit(Recipe& a_recipe, const SetSignal& a_edit)
+		{
+			auto* signal = FindSignalRow(a_recipe, a_edit.signal);
+			if (!signal) {
+				return Refuse(SignalWhere(a_edit.signal), "no such signal");
+			}
+			if (auto problem = CheckSignalKind(a_recipe, SignalWhere(a_edit.signal), a_edit.kind)) return problem;
+			signal->kind = a_edit.kind;
+			return std::nullopt;
+		}
+
 		Refusal Edit(Recipe& a_recipe, const ClearResources&)
 		{
 			a_recipe.signals.clear();
@@ -1402,6 +1443,7 @@ namespace WornEnchantmentPBR::Studio
 			[](const SetScalar& e) { return std::format("{}: {} {}", OutputWhere(e.output), ScalarFieldName(e.field), ParamText(e.value)); },
 			[](const SetColorScalar& e) { return std::format("{}: color {}", OutputWhere(e.output), Vec3ParamText(e.color)); },
 			[](const SetConstant& e) { return std::format("{}: constant {}", SignalWhere(e.signal), ValueText(e.value)); },
+			[](const SetSignal& e) { return std::format("{}: {}", SignalWhere(e.signal), SignalKindName(SignalKindOf(e.kind))); },
 			[](const SetExpression& e) { return std::format("{}: expr {}", SignalWhere(e.signal), e.text); },
 			[](const SetSignalCurve& e) { return std::format("{}: curve {}", SignalWhere(e.signal), CurveText(e.curve)); },
 			[](const SetCurve& e) { return std::format("curve {}: {}", e.curve, e.text); },

@@ -110,6 +110,12 @@ namespace WornEnchantmentPBR
 		return std::nullopt;
 	}
 
+	std::optional<SignalKind> DefaultSignalKind(std::string_view a_name)
+	{
+		const auto id = ParseSignalKind(a_name);
+		return id ? AlternativeAt<SignalKind>(static_cast<std::size_t>(*id)) : std::nullopt;
+	}
+
 	SignalKindId SignalKindOf(const SignalKind& a_kind) noexcept
 	{
 		static_assert(std::variant_size_v<SignalKind> == kSignalKindCount);

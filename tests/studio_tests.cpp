@@ -32,6 +32,7 @@ namespace
 		std::vector<SignalRow> rows;
 		for (const auto& signal : a_recipe.signals) {
 			SignalRow row;
+			row.definition = signal.kind;
 			row.name = signal.name;
 			row.kind = SignalKindOf(signal.kind);
 			row.type = graph.TypeOf(signal.name).value_or(ValueType::kScalar);
@@ -1091,6 +1092,12 @@ namespace
 			const auto it = std::ranges::find(a_recipe.signals, a_name, &SignalRow::name);
 			return it == a_recipe.signals.end() ? nullptr : &*it;
 		};
+		const auto  names = SignalNamesOf(a_recipe);
+		const auto  valueField = [&](const SignalRow& a_row) -> std::optional<FormField> {
+			const auto form = SignalForm(a_row, names);
+			const auto it = std::ranges::find(form, "value", &FormField::name);
+			return it == form.end() ? std::nullopt : std::optional{ *it };
+		};
 		const auto* strength = find("glowStrength");
 		const auto* hue = find("glowHue");
 		const auto* scroll = find("shimmerScroll");
@@ -1101,7 +1108,7 @@ namespace
 		}
 		std::optional<RecipeEdit> edit;
 
-		const auto number = SignalForm(*strength);
+		const auto number = valueField(*strength);
 		Check(number && number->kind == FieldKind::kSignalValue && number->text == "1" && number->names.empty() && !number->allowEmpty && !number->detail, "a scalar constant is a signal-value field holding its number");
 		const auto* setNumber = number ? Bound<SetConstant>(*number, "0.5", edit) : nullptr;
 		Check(setNumber && setNumber->signal == "glowStrength" && Get<float>(setNumber->value) && *Get<float>(setNumber->value) == 0.5f, "a number sets the constant");
@@ -1112,7 +1119,7 @@ namespace
 		Check(number && !Bound<SetConstant>(*number, "nonsense +", edit) && !edit, "text that parses as nothing is refused");
 		Check(number && !Bound<SetConstant>(*number, "", edit) && !edit, "an empty text is refused");
 
-		const auto colour = SignalForm(*hue);
+		const auto colour = valueField(*hue);
 		Check(colour && colour->kind == FieldKind::kSignalValue && colour->names.empty(), "a colour constant is a signal-value field holding its colour");
 		const auto* setColour = colour ? Bound<SetConstant>(*colour, "0.6, 0.2, 1", edit) : nullptr;
 		const auto* value = setColour ? Get<Vec3>(setColour->value) : nullptr;
@@ -1120,7 +1127,7 @@ namespace
 		const auto* colourExpression = colour ? Bound<SetExpression>(*colour, "@edgeColor", edit) : nullptr;
 		Check(colourExpression && colourExpression->text == "@edgeColor", "a reference typed into a colour constant makes it an expression");
 
-		const auto expression = SignalForm(*scroll);
+		const auto expression = valueField(*scroll);
 		Check(expression && expression->kind == FieldKind::kSignalValue && expression->text == "@scroll + 0.25", "an expr signal is a signal-value field holding its text");
 		const auto* setExpression = expression ? Bound<SetExpression>(*expression, "@scroll * 2", edit) : nullptr;
 		Check(setExpression && setExpression->signal == "shimmerScroll" && setExpression->text == "@scroll * 2", "the text sets the expression");
@@ -1130,7 +1137,35 @@ namespace
 		const auto* sheenScale = find("sheenScale");
 		Check(hueRow && hueRow->references == 5 && sheenScale && sheenScale->references == 1, "reference counts: glowHue in three layers, the light and a variant; sheenScale in one expression");
 
-		Check(!SignalForm(*level), "an efsh row has no form");
+		const auto efshForm = SignalForm(*level, names);
+		Check(efshForm.size() == 3 && efshForm[0].name == "kind" && efshForm[1].name == "field" && efshForm[2].name == "record" && !valueField(*level), "an efsh row has a kind, a field and a record, and no inline value");
+		const auto* toPulse = Bound<SetSignal>(efshForm[0], "pulse", edit);
+		Check(toPulse && toPulse->signal == "fillLevel" && Get<PulseSignal>(toPulse->kind), "the kind field switches a signal to another kind at its defaults");
+		Check(!Bound<SetSignal>(efshForm[0], "sawtooth", edit) && !edit, "an unknown kind word binds to nothing");
+
+		SignalRow pulse;
+		pulse.name = "beat";
+		pulse.kind = SignalKindId::kPulse;
+		pulse.definition = PulseSignal{ 0.25f, 0.5f, 2.0f, 0.0f, Waveform::kTriangle };
+		const auto pulseForm = SignalForm(pulse, names);
+		Check(pulseForm.size() == 6 && pulseForm[1].name == "base" && pulseForm[1].text == "0.25" && pulseForm[1].names == names.scalar && pulseForm[5].name == "waveform" && pulseForm[5].text == "triangle", "a pulse form lists its settings as fields over the scalar signals");
+		const auto* setBase = Bound<SetSignal>(pulseForm[1], "@glowStrength", edit);
+		const auto* basePulse = setBase ? Get<PulseSignal>(setBase->kind) : nullptr;
+		Check(basePulse && Get<Ref>(basePulse->base) && Get<Ref>(basePulse->base)->name == "glowStrength" && basePulse->amplitude == Param{ 0.5f } && basePulse->waveform == Waveform::kTriangle, "a setting change keeps the rest of the record");
+		const auto* setWave = Bound<SetSignal>(pulseForm[5], "square", edit);
+		Check(setWave && Get<PulseSignal>(setWave->kind) && Get<PulseSignal>(setWave->kind)->waveform == Waveform::kSquare, "a choice field sets the enum");
+		Check(!Bound<SetSignal>(pulseForm[1], "much", edit) && !edit, "a setting that does not parse binds to nothing");
+
+		SignalRow counter;
+		counter.name = "hits";
+		counter.kind = SignalKindId::kCounter;
+		counter.definition = CounterSignal{ Ref{ "hit" }, std::nullopt, std::nullopt };
+		const auto counterForm = SignalForm(counter, names);
+		Check(counterForm.size() == 4 && counterForm[1].name == "trigger" && counterForm[1].names == names.triggers && counterForm[2].allowEmpty && counterForm[3].allowEmpty, "a counter's trigger comes from the trigger signals; reset and cap may be empty");
+		const auto* setCap = Bound<SetSignal>(counterForm[3], "8", edit);
+		Check(setCap && Get<CounterSignal>(setCap->kind) && Get<CounterSignal>(setCap->kind)->cap == std::optional<Param>{ 8.0f }, "an optional setting is set from text");
+		const auto* clearCap = Bound<SetSignal>(counterForm[3], "", edit);
+		Check(clearCap && Get<CounterSignal>(clearCap->kind) && !Get<CounterSignal>(clearCap->kind)->cap, "an optional setting is cleared by empty text");
 	}
 
 	void RowFields(const RecipeRow& a_recipe)

@@ -33,6 +33,7 @@ namespace WornEnchantmentPBR::Studio
 		std::string          problem;
 		std::string          event;
 		std::size_t          references = 0;
+		SignalKind           definition = ConstantSignal{};
 	};
 
 	struct TextRow

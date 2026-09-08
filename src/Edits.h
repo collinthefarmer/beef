@@ -125,6 +125,11 @@ namespace WornEnchantmentPBR::Studio
 		std::string signal;
 		std::string text;
 	};
+	struct SetSignal
+	{
+		std::string signal;
+		SignalKind  kind = ConstantSignal{};
+	};
 	struct SetSignalCurve
 	{
 		std::string             signal;
@@ -302,7 +307,7 @@ namespace WornEnchantmentPBR::Studio
 		SetLayerSource, SetLayerCurve, SetLayerBlend, SetLayerOpacity, SetLayerColor, SetLayerMask, SetLayerChannels,
 		AddLayer, RemoveLayer, MoveLayer, ClearLayers,
 		AddOutput, RemoveOutput, SetScalar, SetColorScalar, AddKey, RemoveKey, ClearOutputs, ClearResources, ClearRecipe,
-		SetConstant, SetExpression, SetSignalCurve, SetCurve, SetMask,
+		SetConstant, SetExpression, SetSignal, SetSignalCurve, SetCurve, SetMask,
 		AddSignal, AddCurve, RenameSignal, RenameCurve, RemoveSignal, RemoveCurve, AddMask, RenameMask, RemoveMask,
 		AddSource, SetSource, RenameSource, RemoveSource,
 		AddLight, SetLightParam, SetLightVector, SetLightShadow, SetLightBones, ResetLight,

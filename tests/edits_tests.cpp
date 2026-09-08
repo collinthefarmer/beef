@@ -238,6 +238,14 @@ namespace
 
 	void SignalEdits()
 	{
+		Recipe sig = Canonical();
+		Accepted(sig, SetSignal{ "glowStrength", PulseSignal{ 0.0f, 1.0f, 2.0f, 0.0f, Waveform::kSine } }, "a constant becomes a pulse");
+		Check(sig.FindSignal("glowStrength") && Get<PulseSignal>(sig.FindSignal("glowStrength")->kind), "the pulse is in place");
+		Refused(sig, SetSignal{ "glowStrength", SmoothSignal{ Ref{ "nobody" }, 1.0f } }, "signal glowStrength", "nobody", "a smooth of a signal the recipe lacks");
+		Refused(sig, SetSignal{ "nobody", PulseSignal{} }, "signal nobody", "no such signal", "setting a signal the recipe lacks");
+		Refused(sig, SetSignal{ "glowStrength", ExprSignal{ "((" } }, "signal glowStrength", "", "an expr signal that does not parse");
+		Refused(sig, SetSignal{ "glowStrength", EfshSignal{} }, "signal glowStrength", "effect shader", "an efsh signal without its record");
+		Check(Describe(SetSignal{ "glowStrength", PulseSignal{} }) == "signal glowStrength: pulse", "describe set signal");
 		Recipe r = Canonical();
 		Accepted(r, SetConstant{ "glowLevel", 0.75f }, "pin an expression to a constant");
 		const auto* glowLevel = r.FindSignal("glowLevel");
