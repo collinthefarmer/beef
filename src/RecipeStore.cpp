@@ -28,7 +28,7 @@ namespace WornEnchantmentPBR
 		std::vector<LoadedRecipe> g_loaded;
 		std::vector<Recipe>       g_recipes;  // the same recipes, contiguous for Resolve
 		RecipeStoreStatus         g_status;
-		Studio::Presets           g_presets;
+		Studio::RegionsFile           g_presets;
 
 
 		// ------------------------------------------------------------ files
@@ -393,7 +393,7 @@ namespace WornEnchantmentPBR
 		return g_recipes;
 	}
 
-	const Studio::Presets& LoadedPresets() noexcept
+	const Studio::RegionsFile& LoadedPresets() noexcept
 	{
 		return g_presets;
 	}

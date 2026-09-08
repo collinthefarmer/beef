@@ -89,14 +89,14 @@ namespace WornEnchantmentPBR
 	// --------------------------------------------------------- the material
 
 	// One texel of the maps that describe a material, each 0..1.
-	struct Texel
+	struct MaterialTexel
 	{
 		float              roughness = 0.0f;
 		float              metallic = 0.0f;
 		float              occlusion = 0.0f;
 		float              reflectance = 0.0f;
 		float              luma = 0.0f;  // diffuse luminance
-		[[nodiscard]] bool operator==(const Texel&) const = default;
+		[[nodiscard]] bool operator==(const MaterialTexel&) const = default;
 	};
 
 	// A low mip of the RMAOS and diffuse maps, read once per material at
@@ -106,7 +106,7 @@ namespace WornEnchantmentPBR
 	{
 		std::uint32_t      width = 0;
 		std::uint32_t      height = 0;
-		std::vector<Texel> texels;  // row-major, width * height
+		std::vector<MaterialTexel> texels;  // row-major, width * height
 		[[nodiscard]] bool operator==(const MaterialSample&) const = default;
 	};
 
@@ -134,7 +134,7 @@ namespace WornEnchantmentPBR
 	struct MaterialCluster
 	{
 		std::uint8_t       id = 0;
-		Texel              centroid;
+		MaterialTexel              centroid;
 		float              share = 0.0f;  // of the sample's texels
 		std::string        description;   // DescribeTexel of the centroid
 		[[nodiscard]] bool operator==(const MaterialCluster&) const = default;
@@ -155,7 +155,7 @@ namespace WornEnchantmentPBR
 
 	[[nodiscard]] MaterialAnalysis ClusterMaterial(const MaterialSample& a_sample, const ClusterSettings& a_settings);
 	// The cluster a texel falls in under the analysis' weights; 0 when there are none.
-	[[nodiscard]] std::uint8_t NearestCluster(const Texel& a_texel, const MaterialAnalysis& a_analysis) noexcept;
+	[[nodiscard]] std::uint8_t NearestCluster(const MaterialTexel& a_texel, const MaterialAnalysis& a_analysis) noexcept;
 	// Words for a texel from fixed bands: "rough dark non-metal", "polished bright metal".
-	[[nodiscard]] std::string DescribeTexel(const Texel& a_texel);
+	[[nodiscard]] std::string DescribeTexel(const MaterialTexel& a_texel);
 }

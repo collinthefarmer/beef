@@ -60,7 +60,7 @@ namespace WornEnchantmentPBR::Studio
 		std::vector<std::pair<std::string, SourceKind>> sources;  // what: name as the expression reads it, and its definition
 	};
 
-	struct Presets
+	struct RegionsFile
 	{
 		std::map<std::uint32_t, std::string> partitionNames;  // slot -> plain name
 		std::map<std::string, std::string>   boneNames;       // engine name -> plain name
@@ -77,11 +77,11 @@ namespace WornEnchantmentPBR::Studio
 	// The file's text parsed; an error names what is wrong. A What preset's
 	// expression is parsed here, so a preset that loads always sets a mask
 	// that compiles.
-	[[nodiscard]] std::expected<Presets, std::string> ParsePresets(std::string_view a_json);
+	[[nodiscard]] std::expected<RegionsFile, std::string> ParsePresets(std::string_view a_json);
 	// The plain name of a bone or partition, or the engine's own when the
 	// table lacks it.
-	[[nodiscard]] std::string PlainBoneName(const Presets& a_presets, std::string_view a_bone);
-	[[nodiscard]] std::string PlainPartitionName(const Presets& a_presets, std::uint32_t a_slot);
+	[[nodiscard]] std::string PlainBoneName(const RegionsFile& a_presets, std::string_view a_bone);
+	[[nodiscard]] std::string PlainPartitionName(const RegionsFile& a_presets, std::uint32_t a_slot);
 
 	// Why a preset cannot be made on this geometry (a partition or bone it
 	// lacks), or nothing when it can. A What preset resolves anywhere.
@@ -114,19 +114,19 @@ namespace WornEnchantmentPBR::Studio
 	// (an existing source of the same definition is reused; a new one is
 	// named after the preset's own name for it, unique among the taken
 	// names) and the expression that reads them.
-	struct PresetTerm
+	struct BuiltTerm
 	{
 		std::vector<RecipeEdit> edits;
 		std::string             expression;
 	};
-	[[nodiscard]] PresetTerm MaterialiseTerm(const RegionPreset& a_preset, const Existing& a_existing);
+	[[nodiscard]] BuiltTerm MaterialiseTerm(const RegionPreset& a_preset, const Existing& a_existing);
 
 	// Where a term's text came from, for its row: the preset whose expression
 	// it is over the recipe's sources, a lone reference's name, else
 	// "expression".
-	[[nodiscard]] std::string TermLabel(std::string_view a_text, const Presets& a_presets, const Existing& a_existing);
+	[[nodiscard]] std::string TermLabel(std::string_view a_text, const RegionsFile& a_presets, const Existing& a_existing);
 	// A kept mask's expression as terms with their labels, for editing.
-	[[nodiscard]] std::optional<std::vector<Term>> TermsOfMask(std::string_view a_text, const Presets& a_presets, const Existing& a_existing);
+	[[nodiscard]] std::optional<std::vector<Term>> TermsOfMask(std::string_view a_text, const RegionsFile& a_presets, const Existing& a_existing);
 	// A name for Keep from the ingredients: the labels run together in
 	// camel case ("chestLeather"), the mask being edited when there is one,
 	// "region" when nothing names it.
@@ -138,9 +138,9 @@ namespace WornEnchantmentPBR::Studio
 	// text fits over the recipe's rows, RawTerm when none does; TermLabelOf
 	// is the row's words for a recipe (a region's measurements, a preset's
 	// name, a reference).
-	[[nodiscard]] PresetTerm  BuildTerm(const TermKind& a_kind, const Presets& a_presets, const Existing& a_existing);
-	[[nodiscard]] TermKind  ReadTerm(std::string_view a_text, const Presets& a_presets, const RecipeRow& a_kind);
-	[[nodiscard]] std::string TermLabelOf(const TermKind& a_kind, const Presets& a_presets, const GeometryRow& a_geometry);
+	[[nodiscard]] BuiltTerm  BuildTerm(const TermKind& a_kind, const RegionsFile& a_presets, const Existing& a_existing);
+	[[nodiscard]] TermKind  ReadTerm(std::string_view a_text, const RegionsFile& a_presets, const RecipeRow& a_kind);
+	[[nodiscard]] std::string TermLabelOf(const TermKind& a_kind, const RegionsFile& a_presets, const GeometryRow& a_geometry);
 
 	// A term's settings as a form: one field per setting of the recipe,
 	// drawn like any field; a committed text becomes the recipe with that
@@ -151,7 +151,7 @@ namespace WornEnchantmentPBR::Studio
 		FormField                                                        field;
 		std::function<std::optional<TermKind>(const std::string& a_text)> apply;
 	};
-	[[nodiscard]] std::vector<TermField> TermForm(const TermKind& a_kind, const Presets& a_presets, const GeometryRow& a_geometry);
+	[[nodiscard]] std::vector<TermField> TermForm(const TermKind& a_kind, const RegionsFile& a_presets, const GeometryRow& a_geometry);
 
 	// ------------------------------------------------------------------ offers
 	// What the piece can be shown to have, as rows for the Add popup: the
@@ -203,7 +203,7 @@ namespace WornEnchantmentPBR::Studio
 		std::optional<float>       coverage;
 		TermKind                 kind;
 	};
-	[[nodiscard]] std::vector<TermOffer> OffersOf(const Presets& a_presets, const RecipeRow& a_recipe, const GeometryRow& a_geometry, std::string_view a_editing);
+	[[nodiscard]] std::vector<TermOffer> OffersOf(const RegionsFile& a_presets, const RecipeRow& a_recipe, const GeometryRow& a_geometry, std::string_view a_editing);
 	// A term's measurements for its row: the detail of the offer it came
 	// from when one matches, else what the recipe itself says (a threshold's
 	// range, a reference's name, a raw term's text).

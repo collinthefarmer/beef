@@ -556,7 +556,7 @@ namespace WornEnchantmentPBR
 				recipe_(a_recipe), graph_(a_graph) {}
 
 			// Per texel: sources, masks (typed by their own expression) and signals.
-			std::optional<ValueType> Texel(std::string_view a_name, std::unordered_set<std::string>& a_visiting) const
+			std::optional<ValueType> MaterialTexel(std::string_view a_name, std::unordered_set<std::string>& a_visiting) const
 			{
 				if (const auto* source = recipe_.FindSource(a_name)) {
 					return SourceType(*source);
@@ -582,7 +582,7 @@ namespace WornEnchantmentPBR
 					a_visiting.erase(a_mask.name);
 					return std::nullopt;
 				}
-				const auto type = program->Check([&](std::string_view name) { return Texel(name, a_visiting); });
+				const auto type = program->Check([&](std::string_view name) { return MaterialTexel(name, a_visiting); });
 				a_visiting.erase(a_mask.name);
 				return type ? std::optional{ *type } : std::nullopt;
 			}
@@ -798,7 +798,7 @@ namespace WornEnchantmentPBR
 						continue;
 					}
 					std::unordered_set<std::string> visiting{ m.name };
-					const auto                      type = program->Check([&](std::string_view name) { return types_.Texel(name, visiting); });
+					const auto                      type = program->Check([&](std::string_view name) { return types_.MaterialTexel(name, visiting); });
 					if (!type) {
 						Error(where, type.error());
 					}

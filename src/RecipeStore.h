@@ -42,7 +42,7 @@ namespace WornEnchantmentPBR
 	[[nodiscard]] std::span<const Recipe> LoadedRecipes() noexcept;
 	// The shipped region presets, read with the recipes; empty when the file
 	// is missing or malformed (logged).
-	[[nodiscard]] const Studio::Presets& LoadedPresets() noexcept;
+	[[nodiscard]] const Studio::RegionsFile& LoadedPresets() noexcept;
 
 	// Where a recipe came from and what its rows reported.
 	struct RecipeOrigin

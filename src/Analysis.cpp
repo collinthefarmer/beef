@@ -377,7 +377,7 @@ namespace WornEnchantmentPBR
 		// stays non-metal, hence belowInclusive.
 		struct TexelBand
 		{
-			float Texel::*                     axis;
+			float MaterialTexel::*                     axis;
 			std::span<const float>             cuts;
 			std::span<const std::string_view>  words;
 			bool                               belowInclusive = false;  // false: a value at a cut takes the word above it
@@ -395,9 +395,9 @@ namespace WornEnchantmentPBR
 
 		// Order is the word order in the description: "{finish} {tone} {metal}".
 		constexpr TexelBand kTexelBands[]{
-			{ &Texel::roughness, kRoughnessCuts, kRoughnessWords, false },
-			{ &Texel::luma, kLumaCuts, kLumaWords, false },
-			{ &Texel::metallic, kMetallicCuts, kMetallicWords, true },
+			{ &MaterialTexel::roughness, kRoughnessCuts, kRoughnessWords, false },
+			{ &MaterialTexel::luma, kLumaCuts, kLumaWords, false },
+			{ &MaterialTexel::metallic, kMetallicCuts, kMetallicWords, true },
 		};
 
 		// The word for one axis: the first band a value falls under, or the
@@ -413,18 +413,18 @@ namespace WornEnchantmentPBR
 			return a_band.words.back();
 		}
 
-		// The five channels as axes of one space, in Texel's order.
+		// The five channels as axes of one space, in MaterialTexel's order.
 		constexpr std::size_t kAxes = 5;
 		using Axes = std::array<float, kAxes>;
 
-		[[nodiscard]] Axes AxesOf(const Texel& a_texel) noexcept
+		[[nodiscard]] Axes AxesOf(const MaterialTexel& a_texel) noexcept
 		{
 			return Axes{ a_texel.roughness, a_texel.metallic, a_texel.occlusion, a_texel.reflectance, a_texel.luma };
 		}
 
-		[[nodiscard]] Texel TexelOf(const Axes& a_axes) noexcept
+		[[nodiscard]] MaterialTexel TexelOf(const Axes& a_axes) noexcept
 		{
-			return Texel{ a_axes[0], a_axes[1], a_axes[2], a_axes[3], a_axes[4] };
+			return MaterialTexel{ a_axes[0], a_axes[1], a_axes[2], a_axes[3], a_axes[4] };
 		}
 
 		[[nodiscard]] float Finite01(float a_value) noexcept
@@ -432,9 +432,9 @@ namespace WornEnchantmentPBR
 			return std::isfinite(a_value) ? Clamp01(a_value) : 0.0f;
 		}
 
-		[[nodiscard]] Texel Sanitised(const Texel& a_texel) noexcept
+		[[nodiscard]] MaterialTexel Sanitised(const MaterialTexel& a_texel) noexcept
 		{
-			return Texel{ Finite01(a_texel.roughness), Finite01(a_texel.metallic), Finite01(a_texel.occlusion), Finite01(a_texel.reflectance), Finite01(a_texel.luma) };
+			return MaterialTexel{ Finite01(a_texel.roughness), Finite01(a_texel.metallic), Finite01(a_texel.occlusion), Finite01(a_texel.reflectance), Finite01(a_texel.luma) };
 		}
 
 		// A weight below zero or not a number counts as zero.
@@ -594,7 +594,7 @@ namespace WornEnchantmentPBR
 		}
 		std::vector<Axes> texels;
 		texels.reserve(std::min(a_sample.texels.size(), kMaxSampleTexels));
-		for (const Texel& texel : a_sample.texels) {
+		for (const MaterialTexel& texel : a_sample.texels) {
 			if (texels.size() >= kMaxSampleTexels) {
 				break;
 			}
@@ -644,7 +644,7 @@ namespace WornEnchantmentPBR
 		return out;
 	}
 
-	std::uint8_t NearestCluster(const Texel& a_texel, const MaterialAnalysis& a_analysis) noexcept
+	std::uint8_t NearestCluster(const MaterialTexel& a_texel, const MaterialAnalysis& a_analysis) noexcept
 	{
 		const Axes   texel = AxesOf(Sanitised(a_texel));
 		const Axes   scales = ScalesOf(a_analysis.settings.weights);
@@ -662,9 +662,9 @@ namespace WornEnchantmentPBR
 		return nearest;
 	}
 
-	std::string DescribeTexel(const Texel& a_texel)
+	std::string DescribeTexel(const MaterialTexel& a_texel)
 	{
-		const Texel texel = Sanitised(a_texel);
+		const MaterialTexel texel = Sanitised(a_texel);
 		std::string out;
 		for (const auto& band : kTexelBands) {
 			if (!out.empty()) {

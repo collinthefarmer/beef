@@ -90,13 +90,13 @@ namespace WornEnchantmentPBR::Studio
 		}
 	}
 
-	std::expected<Presets, std::string> ParsePresets(std::string_view a_json)
+	std::expected<RegionsFile, std::string> ParsePresets(std::string_view a_json)
 	{
 		const auto parsed = json::parse(a_json, nullptr, false);
 		if (parsed.is_discarded() || !parsed.is_object()) {
 			return std::unexpected("the preset file is not a JSON object");
 		}
-		Presets presets;
+		RegionsFile presets;
 		if (const auto names = parsed.find("names"); names != parsed.end() && names->is_object()) {
 			if (const auto partitions = names->find("partitions"); partitions != names->end() && partitions->is_object()) {
 				for (const auto& [slot, name] : partitions->items()) {
@@ -188,13 +188,13 @@ namespace WornEnchantmentPBR::Studio
 		return presets;
 	}
 
-	std::string PlainBoneName(const Presets& a_presets, std::string_view a_bone)
+	std::string PlainBoneName(const RegionsFile& a_presets, std::string_view a_bone)
 	{
 		const auto it = a_presets.boneNames.find(std::string{ a_bone });
 		return it == a_presets.boneNames.end() ? std::string{ a_bone } : it->second;
 	}
 
-	std::string PlainPartitionName(const Presets& a_presets, std::uint32_t a_slot)
+	std::string PlainPartitionName(const RegionsFile& a_presets, std::uint32_t a_slot)
 	{
 		const auto it = a_presets.partitionNames.find(a_slot);
 		if (it != a_presets.partitionNames.end()) {
@@ -300,7 +300,7 @@ namespace WornEnchantmentPBR::Studio
 		};
 	}
 
-	PresetTerm MaterialiseTerm(const RegionPreset& a_preset, const Existing& a_existing)
+	BuiltTerm MaterialiseTerm(const RegionPreset& a_preset, const Existing& a_existing)
 	{
 		SourceNamer namer(a_existing);
 		std::string expression;
@@ -324,10 +324,10 @@ namespace WornEnchantmentPBR::Studio
 				}
 			}
 		}
-		return PresetTerm{ std::move(namer).Edits(), std::move(expression) };
+		return BuiltTerm{ std::move(namer).Edits(), std::move(expression) };
 	}
 
-	std::string TermLabel(std::string_view a_text, const Presets& a_presets, const Existing& a_existing)
+	std::string TermLabel(std::string_view a_text, const RegionsFile& a_presets, const Existing& a_existing)
 	{
 		if (a_text.size() > 1 && a_text.front() == '@' && IsName(a_text.substr(1))) {
 			return std::string{ a_text.substr(1) };
@@ -346,10 +346,10 @@ namespace WornEnchantmentPBR::Studio
 	namespace
 	{
 		// Defined with the templates below; TermsOfMask reads each term through it.
-		TermKind ReadTermOver(std::string_view a_text, const Presets& a_presets, const Existing& a_existing);
+		TermKind ReadTermOver(std::string_view a_text, const RegionsFile& a_presets, const Existing& a_existing);
 	}
 
-	std::optional<std::vector<Term>> TermsOfMask(std::string_view a_text, const Presets& a_presets, const Existing& a_existing)
+	std::optional<std::vector<Term>> TermsOfMask(std::string_view a_text, const RegionsFile& a_presets, const Existing& a_existing)
 	{
 		auto terms = ParseRegion(a_text);
 		if (!terms) {
@@ -788,14 +788,14 @@ namespace WornEnchantmentPBR::Studio
 			return nullptr;
 		}
 
-		[[nodiscard]] const RegionPreset* WhatPresetNamed(const Presets& a_presets, std::string_view a_name)
+		[[nodiscard]] const RegionPreset* WhatPresetNamed(const RegionsFile& a_presets, std::string_view a_name)
 		{
 			const auto it = std::ranges::find(a_presets.what, a_name, &RegionPreset::name);
 			return it == a_presets.what.end() ? nullptr : &*it;
 		}
 
 		// The template a text fits over what the recipe has; RawTerm when none.
-		TermKind ReadTermOver(std::string_view a_text, const Presets& a_presets, const Existing& a_existing)
+		TermKind ReadTermOver(std::string_view a_text, const RegionsFile& a_presets, const Existing& a_existing)
 		{
 			if (a_text.empty() || a_text.size() > kMaxExpressionLength) {
 				return RawTerm{};
@@ -850,7 +850,7 @@ namespace WornEnchantmentPBR::Studio
 		}
 	}
 
-	PresetTerm BuildTerm(const TermKind& a_kind, const Presets& a_presets, const Existing& a_existing)
+	BuiltTerm BuildTerm(const TermKind& a_kind, const RegionsFile& a_presets, const Existing& a_existing)
 	{
 		SourceNamer namer(a_existing);
 		std::string text = Match(
@@ -884,15 +884,15 @@ namespace WornEnchantmentPBR::Studio
 				const auto name = namer.NameFor("clusters", SourceOf(t.settings));
 				return RegionText(name, t.id);
 			});
-		return PresetTerm{ std::move(namer).Edits(), std::move(text) };
+		return BuiltTerm{ std::move(namer).Edits(), std::move(text) };
 	}
 
-	TermKind ReadTerm(std::string_view a_text, const Presets& a_presets, const RecipeRow& a_kind)
+	TermKind ReadTerm(std::string_view a_text, const RegionsFile& a_presets, const RecipeRow& a_kind)
 	{
 		return ReadTermOver(a_text, a_presets, ExistingOf(a_kind));
 	}
 
-	std::string TermLabelOf(const TermKind& a_kind, const Presets& a_presets, const GeometryRow& a_geometry)
+	std::string TermLabelOf(const TermKind& a_kind, const RegionsFile& a_presets, const GeometryRow& a_geometry)
 	{
 		return Match(
 			a_kind,
@@ -1069,7 +1069,7 @@ namespace WornEnchantmentPBR::Studio
 			return form;
 		}
 
-		std::vector<TermField> ComponentForm(const IslandTerm& a_term, const Presets& a_presets, const GeometryRow& a_geometry)
+		std::vector<TermField> ComponentForm(const IslandTerm& a_term, const RegionsFile& a_presets, const GeometryRow& a_geometry)
 		{
 			// The choice offers each region of the source by its label; a
 			// committed label picks that region, a bare number that id.
@@ -1105,7 +1105,7 @@ namespace WornEnchantmentPBR::Studio
 			return form;
 		}
 
-		std::vector<TermField> PartitionForm(const PartitionTerm& a_term, const Presets& a_presets, const GeometryRow& a_geometry)
+		std::vector<TermField> PartitionForm(const PartitionTerm& a_term, const RegionsFile& a_presets, const GeometryRow& a_geometry)
 		{
 			// The choice offers the geometry's partitions by plain name; a
 			// committed text is one of those, else a biped slot's name or a number 30..61.
@@ -1132,7 +1132,7 @@ namespace WornEnchantmentPBR::Studio
 		}
 	}
 
-	std::vector<TermField> TermForm(const TermKind& a_kind, const Presets& a_presets, const GeometryRow& a_geometry)
+	std::vector<TermField> TermForm(const TermKind& a_kind, const RegionsFile& a_presets, const GeometryRow& a_geometry)
 	{
 		return Match(
 			a_kind,
@@ -1172,7 +1172,7 @@ namespace WornEnchantmentPBR::Studio
 		constexpr std::string_view kNoClusters = "the material has no clusters yet";
 	}
 
-	std::vector<TermOffer> OffersOf(const Presets& a_presets, const RecipeRow& a_recipe, const GeometryRow& a_geometry, std::string_view a_editing)
+	std::vector<TermOffer> OffersOf(const RegionsFile& a_presets, const RecipeRow& a_recipe, const GeometryRow& a_geometry, std::string_view a_editing)
 	{
 		std::vector<TermOffer> offers;
 		// parts

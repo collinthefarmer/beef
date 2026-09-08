@@ -184,14 +184,14 @@ namespace
 		Check(!BuildIslandBake(stray, analysis, IslandSource::kComponent).problem.empty(), "an analysis of a smaller mesh is a problem");
 	}
 
-	Texel Leather()
+	MaterialTexel Leather()
 	{
-		return Texel{ 0.9f, 0.0f, 0.8f, 0.5f, 0.1f };
+		return MaterialTexel{ 0.9f, 0.0f, 0.8f, 0.5f, 0.1f };
 	}
 
-	Texel Steel()
+	MaterialTexel Steel()
 	{
-		return Texel{ 0.1f, 1.0f, 0.9f, 0.5f, 0.9f };
+		return MaterialTexel{ 0.1f, 1.0f, 0.9f, 0.5f, 0.9f };
 	}
 
 	MaterialSample TwoPopulations()
@@ -200,7 +200,7 @@ namespace
 		sample.width = 8;
 		sample.height = 8;
 		for (std::size_t i = 0; i < 64; ++i) {
-			Texel texel = i % 4 == 0 ? Steel() : Leather();
+			MaterialTexel texel = i % 4 == 0 ? Steel() : Leather();
 			// A little spread inside each population, never enough to cross.
 			texel.roughness += static_cast<float>(i % 3) * 0.01f;
 			texel.luma += static_cast<float>(i % 5) * 0.01f;
@@ -216,7 +216,7 @@ namespace
 		sample.height = 1;
 		for (std::size_t i = 0; i < a_count; ++i) {
 			const float t = static_cast<float>(i) / static_cast<float>(a_count);
-			sample.texels.push_back(Texel{ t, 1.0f - t, t, 0.5f, t });
+			sample.texels.push_back(MaterialTexel{ t, 1.0f - t, t, 0.5f, t });
 		}
 		return sample;
 	}
@@ -236,7 +236,7 @@ namespace
 			Check(analysis.clusters[0].centroid.metallic < 0.1f && analysis.clusters[1].centroid.metallic > 0.9f, "centroids sit inside their populations");
 			Check(NearestCluster(Leather(), analysis) == 0 && NearestCluster(Steel(), analysis) == 1, "NearestCluster agrees with the assignment");
 			bool agree = true;
-			for (const Texel& texel : TwoPopulations().texels) {
+			for (const MaterialTexel& texel : TwoPopulations().texels) {
 				agree = agree && NearestCluster(texel, analysis) == (texel.metallic > 0.5f ? 1 : 0);
 			}
 			Check(agree, "every sampled texel is nearest the cluster it was assigned");
@@ -252,7 +252,7 @@ namespace
 		MaterialSample metalOnly;
 		metalOnly.width = 4;
 		metalOnly.height = 1;
-		metalOnly.texels = { Texel{ 0.5f, 0.0f, 0.5f, 0.5f, 0.5f }, Texel{ 0.5f, 1.0f, 0.5f, 0.5f, 0.5f }, Texel{ 0.5f, 0.0f, 0.5f, 0.5f, 0.5f }, Texel{ 0.5f, 1.0f, 0.5f, 0.5f, 0.5f } };
+		metalOnly.texels = { MaterialTexel{ 0.5f, 0.0f, 0.5f, 0.5f, 0.5f }, MaterialTexel{ 0.5f, 1.0f, 0.5f, 0.5f, 0.5f }, MaterialTexel{ 0.5f, 0.0f, 0.5f, 0.5f, 0.5f }, MaterialTexel{ 0.5f, 1.0f, 0.5f, 0.5f, 0.5f } };
 		Check(ClusterMaterial(metalOnly, noMetal).clusters.size() == 2, "a weighted channel separates texels");
 		noMetal.weights = ChannelWeights{ 1.0f, 0.0f, 1.0f, 1.0f, 1.0f };
 		Check(ClusterMaterial(metalOnly, noMetal).clusters.size() == 1, "a channel of weight 0 does not separate texels");
@@ -286,7 +286,7 @@ namespace
 		const MaterialAnalysis single = ClusterMaterial(one, settings);
 		Check(single.clusters.size() == 1 && single.clusters[0].description == "polished bright metal", "one texel is one cluster");
 		MaterialSample garbage = TwoPopulations();
-		garbage.texels[0] = Texel{ -5.0f, 40.0f, 0.5f, 0.5f, 0.5f };
+		garbage.texels[0] = MaterialTexel{ -5.0f, 40.0f, 0.5f, 0.5f, 0.5f };
 		garbage.texels[1].luma = 1.0f / 0.0f;
 		garbage.texels[2].roughness = 0.0f / 0.0f;
 		const MaterialAnalysis sanitised = ClusterMaterial(garbage, settings);
@@ -304,12 +304,12 @@ namespace
 	void Bands()
 	{
 		using namespace test;
-		Check(DescribeTexel(Texel{ 0.9f, 0.0f, 0.5f, 0.5f, 0.1f }) == "rough dark non-metal", "rough dark non-metal");
-		Check(DescribeTexel(Texel{ 0.1f, 1.0f, 0.5f, 0.5f, 0.9f }) == "polished bright metal", "polished bright metal");
-		Check(DescribeTexel(Texel{ 0.5f, 0.5f, 0.5f, 0.5f, 0.5f }) == "matte mid non-metal", "the middle of every band, with metallic at the edge non-metal");
-		Check(DescribeTexel(Texel{ 0.35f, 0.51f, 0.5f, 0.5f, 0.35f }) == "matte mid metal", "the lower edges of the middle bands");
-		Check(DescribeTexel(Texel{ 0.65f, 0.0f, 0.5f, 0.5f, 0.65f }) == "rough bright non-metal", "the upper edges of the middle bands");
-		Check(DescribeTexel(Texel{ 0.0f / 0.0f, 2.0f, 0.5f, 0.5f, -1.0f }) == "polished dark metal", "a texel out of range describes as clamped");
+		Check(DescribeTexel(MaterialTexel{ 0.9f, 0.0f, 0.5f, 0.5f, 0.1f }) == "rough dark non-metal", "rough dark non-metal");
+		Check(DescribeTexel(MaterialTexel{ 0.1f, 1.0f, 0.5f, 0.5f, 0.9f }) == "polished bright metal", "polished bright metal");
+		Check(DescribeTexel(MaterialTexel{ 0.5f, 0.5f, 0.5f, 0.5f, 0.5f }) == "matte mid non-metal", "the middle of every band, with metallic at the edge non-metal");
+		Check(DescribeTexel(MaterialTexel{ 0.35f, 0.51f, 0.5f, 0.5f, 0.35f }) == "matte mid metal", "the lower edges of the middle bands");
+		Check(DescribeTexel(MaterialTexel{ 0.65f, 0.0f, 0.5f, 0.5f, 0.65f }) == "rough bright non-metal", "the upper edges of the middle bands");
+		Check(DescribeTexel(MaterialTexel{ 0.0f / 0.0f, 2.0f, 0.5f, 0.5f, -1.0f }) == "polished dark metal", "a texel out of range describes as clamped");
 		Check(IslandSourceName(IslandSource::kComponent) == "component" && IslandSourceName(IslandSource::kChart) == "chart", "region sources have names");
 		Check(PlainIslandSourceName(IslandSource::kComponent) == "part" && PlainIslandSourceName(IslandSource::kChart) == "chart", "region sources have plain names for labels");
 		Check(IslandSourceName(static_cast<IslandSource>(9)) == "?" && PlainIslandSourceName(static_cast<IslandSource>(9)) == "?", "an unknown source names '?'");

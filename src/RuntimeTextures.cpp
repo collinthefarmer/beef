@@ -1208,7 +1208,7 @@ float4 PSClassify(VSOut i) : SV_Target
 		for (std::size_t i = 0; i < texelCount; ++i) {
 			const std::uint8_t* m = rmaos.data() + i * 4;
 			const std::uint8_t* d = diffuse.data() + i * 4;
-			Texel texel;
+			MaterialTexel texel;
 			texel.roughness = m[0] * scale;
 			texel.metallic = m[1] * scale;
 			texel.occlusion = m[2] * scale;
