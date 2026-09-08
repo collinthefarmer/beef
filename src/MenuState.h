@@ -183,10 +183,10 @@ namespace WornEnchantmentPBR::Studio
 	};
 	// A term's settings changed: the page rebuilt the text and label from
 	// the recipe (and posted the source edits it needs) before posting this.
-	struct SetTermRecipe
+	struct SetTermKind
 	{
 		std::size_t index = 0;
-		TermRecipe  recipe;
+		TermKind  kind;
 		std::string text;
 		std::string label;
 	};
@@ -322,7 +322,7 @@ namespace WornEnchantmentPBR::Studio
 
 	using Intent = std::variant<
 		SetMode, PickPiece, PickRecipe, PickTarget, PickSlot, PickCell, PickLayer, PickRegion, ViewGeometry, ShowSettings, ShowResource, ReadMesh,
-		AddTerm, SetTermOp, SetTermText, SetTermRecipe, RemoveTerm, MoveTerm, PickTerm, SoloTerm, MuteTerm, LoadRegion, ClearRegion,
+		AddTerm, SetTermOp, SetTermText, SetTermKind, RemoveTerm, MoveTerm, PickTerm, SoloTerm, MuteTerm, LoadRegion, ClearRegion,
 		BeginPaint, SetPaintSurface, KeepPaint, EndPaint,
 		EditRecipe, SoloRecipe, SoloOutput, SoloLayer, MuteLayer,
 		SetFreeze, SetScrub, SetSpeed, StepClock, Undo, Redo, CreateRecipe, FireTrigger>;

@@ -93,7 +93,7 @@ namespace WornEnchantmentPBR::Studio
 		bool        present = false;
 		std::string text;
 	};
-	[[nodiscard]] ScratchState ScratchOf(const RecipeRow& a_recipe);
+	[[nodiscard]] ScratchState ScratchOf(const RecipeRow& a_kind);
 
 	// What a recipe already has, for a term to reuse and a new row to avoid:
 	// its sources by name and definition (a source of the same definition
@@ -103,7 +103,7 @@ namespace WornEnchantmentPBR::Studio
 		std::vector<std::pair<std::string, SourceKind>> sources;
 		std::vector<std::string>                        taken;
 	};
-	[[nodiscard]] Existing ExistingOf(const RecipeRow& a_recipe);
+	[[nodiscard]] Existing ExistingOf(const RecipeRow& a_kind);
 
 	// The edits that write the stack's built expression into the scratch
 	// mask: the row added when absent, the text set when it differs; "0"
@@ -138,9 +138,9 @@ namespace WornEnchantmentPBR::Studio
 	// text fits over the recipe's rows, RawTerm when none does; TermLabelOf
 	// is the row's words for a recipe (a region's measurements, a preset's
 	// name, a reference).
-	[[nodiscard]] PresetTerm  BuildTerm(const TermRecipe& a_recipe, const Presets& a_presets, const Existing& a_existing);
-	[[nodiscard]] TermRecipe  ReadTerm(std::string_view a_text, const Presets& a_presets, const RecipeRow& a_recipe);
-	[[nodiscard]] std::string TermLabelOf(const TermRecipe& a_recipe, const Presets& a_presets, const GeometryRow& a_geometry);
+	[[nodiscard]] PresetTerm  BuildTerm(const TermKind& a_kind, const Presets& a_presets, const Existing& a_existing);
+	[[nodiscard]] TermKind  ReadTerm(std::string_view a_text, const Presets& a_presets, const RecipeRow& a_kind);
+	[[nodiscard]] std::string TermLabelOf(const TermKind& a_kind, const Presets& a_presets, const GeometryRow& a_geometry);
 
 	// A term's settings as a form: one field per setting of the recipe,
 	// drawn like any field; a committed text becomes the recipe with that
@@ -149,9 +149,9 @@ namespace WornEnchantmentPBR::Studio
 	struct TermField
 	{
 		FieldSpec                                                        field;
-		std::function<std::optional<TermRecipe>(const std::string& a_text)> apply;
+		std::function<std::optional<TermKind>(const std::string& a_text)> apply;
 	};
-	[[nodiscard]] std::vector<TermField> TermForm(const TermRecipe& a_recipe, const Presets& a_presets, const GeometryRow& a_geometry);
+	[[nodiscard]] std::vector<TermField> TermForm(const TermKind& a_kind, const Presets& a_presets, const GeometryRow& a_geometry);
 
 	// ------------------------------------------------------------------ offers
 	// What the piece can be shown to have, as rows for the Add popup: the
@@ -201,7 +201,7 @@ namespace WornEnchantmentPBR::Studio
 		std::string                detail;  // the measurements
 		std::optional<std::string> unavailable;
 		std::optional<float>       coverage;
-		TermRecipe                 recipe;
+		TermKind                 kind;
 	};
 	[[nodiscard]] std::vector<TermOffer> OffersOf(const Presets& a_presets, const RecipeRow& a_recipe, const GeometryRow& a_geometry, std::string_view a_editing);
 	// A term's measurements for its row: the detail of the offer it came

@@ -73,8 +73,8 @@ namespace WornEnchantmentPBR::Studio
 		[[nodiscard]] bool operator==(const ClusterTerm&) const = default;
 	};
 
-	using TermRecipe = std::variant<RawTerm, ReferenceTerm, ThresholdTerm, WhatPresetTerm, PartitionTerm, BoneTerm, ComponentTerm, ClusterTerm>;
+	using TermKind = std::variant<RawTerm, ReferenceTerm, ThresholdTerm, WhatPresetTerm, PartitionTerm, BoneTerm, ComponentTerm, ClusterTerm>;
 
 	// "raw", "reference", "threshold", "preset", "partition", "bones", "component", "cluster".
-	[[nodiscard]] std::string_view TermRecipeName(const TermRecipe& a_recipe) noexcept;
+	[[nodiscard]] std::string_view TermKindName(const TermKind& a_recipe) noexcept;
 }

@@ -143,13 +143,13 @@ namespace WornEnchantmentPBR::Studio
 				if (i.index < region.terms.size()) {
 					region.terms[i.index].text = i.text;
 					region.terms[i.index].label = std::string{ kExpressionLabel };
-					region.terms[i.index].recipe = RawTerm{};
+					region.terms[i.index].kind = RawTerm{};
 					region.dirty = true;
 				}
 			},
-			[&](const SetTermRecipe& i) {
+			[&](const SetTermKind& i) {
 				if (i.index < region.terms.size()) {
-					region.terms[i.index].recipe = i.recipe;
+					region.terms[i.index].kind = i.kind;
 					region.terms[i.index].text = i.text;
 					region.terms[i.index].label = i.label;
 					region.dirty = true;

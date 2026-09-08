@@ -1249,12 +1249,12 @@ namespace
 		Check(state.region.terms[0].op == TermOp::kSet, "the first term's op cannot change");
 		Reduce(state, SetTermOp{ 1, TermOp::kNot });
 		Check(state.region.terms[1].op == TermOp::kNot, "a later term's op changes");
-		Reduce(state, SetTermRecipe{ 1, ReferenceTerm{ "b" }, "@b", "@b" });
-		Check(state.region.terms[1].recipe == TermRecipe{ ReferenceTerm{ "b" } } && state.region.terms[1].text == "@b" && state.region.terms[1].label == "@b" && state.region.dirty, "a settings change carries the rebuilt text and label");
-		Reduce(state, SetTermRecipe{ 9, ReferenceTerm{ "z" }, "@z", "@z" });
+		Reduce(state, SetTermKind{ 1, ReferenceTerm{ "b" }, "@b", "@b" });
+		Check(state.region.terms[1].kind == TermKind{ ReferenceTerm{ "b" } } && state.region.terms[1].text == "@b" && state.region.terms[1].label == "@b" && state.region.dirty, "a settings change carries the rebuilt text and label");
+		Reduce(state, SetTermKind{ 9, ReferenceTerm{ "z" }, "@z", "@z" });
 		Check(state.region.terms.size() == 3 && state.region.terms[1].text == "@b", "a settings change past the stack is dropped");
 		Reduce(state, SetTermText{ 1, "@b * 2" });
-		Check(state.region.terms[1].text == "@b * 2" && state.region.terms[1].label == "expression" && state.region.terms[1].recipe == TermRecipe{ RawTerm{} }, "typed text makes the term a raw expression");
+		Check(state.region.terms[1].text == "@b * 2" && state.region.terms[1].label == "expression" && state.region.terms[1].kind == TermKind{ RawTerm{} }, "typed text makes the term a raw expression");
 		Reduce(state, SoloTerm{ 1, true });
 		Reduce(state, MuteTerm{ 2, true });
 		Check(state.region.solo == 1 && state.region.muted.contains(2), "solo and mute are stack state");
@@ -1485,7 +1485,7 @@ namespace
 
 	// The template's text applied as a term, and a copy of the recipe applied
 	// to a field's text; nothing when the field refuses it.
-	std::optional<TermRecipe> Applied(const std::vector<TermField>& a_form, const char* a_field, const char* a_text)
+	std::optional<TermKind> Applied(const std::vector<TermField>& a_form, const char* a_field, const char* a_text)
 	{
 		const auto it = std::ranges::find(a_form, a_field, [](const TermField& f) { return f.field.name; });
 		return it == a_form.end() || !it->apply ? std::nullopt : it->apply(a_text);
@@ -1526,7 +1526,7 @@ namespace
 		tuned.clusters = 3;
 		tuned.weights.luma = 2.0f;
 		tuned.seed = 7;
-		const std::vector<TermRecipe> all{
+		const std::vector<TermKind> all{
 			ReferenceTerm{ "metal" }, ReferenceTerm{ "fill" }, roughness, posterized, lowOnly, highOnly, everything, metallic, WhatPresetTerm{ "leather" }, WhatPresetTerm{ "dark" },
 			PartitionTerm{ 33 }, BoneTerm{ { "NPC Spine2 [Spn2]", "NPC L UpperArm [LUar]" } }, ComponentTerm{ RegionSource::kComponent, 1 }, ComponentTerm{ RegionSource::kChart, 0 },
 			ClusterTerm{ ClusterSettings{}, 1 }, ClusterTerm{ tuned, 2 }
@@ -1535,8 +1535,8 @@ namespace
 			const auto built = BuildTerm(recipe, *presets, existing);
 			const auto row = WithSources(a_recipe, built.edits);
 			const auto back = ReadTerm(built.expression, *presets, row);
-			Check(back == recipe, std::format("{} round-trips through BuildTerm and ReadTerm: {}", TermRecipeName(recipe), built.expression));
-			Check(Program::Parse(built.expression).has_value(), std::format("{} builds an expression that parses: {}", TermRecipeName(recipe), built.expression));
+			Check(back == recipe, std::format("{} round-trips through BuildTerm and ReadTerm: {}", TermKindName(recipe), built.expression));
+			Check(Program::Parse(built.expression).has_value(), std::format("{} builds an expression that parses: {}", TermKindName(recipe), built.expression));
 		}
 
 		// The spellings.
@@ -1575,8 +1575,8 @@ namespace
 		Check(Is<RawTerm>(ReadTerm("smoothstep(0.35 - 0.05, 0.35 + 0.05, @fill)", *presets, a_recipe)), "a threshold over an image source is raw");
 		Check(Is<RawTerm>(ReadTerm("abs(@metallic * 255 - 1) < 0.5", *presets, a_recipe)), "the region form over a material source is raw");
 		Check(Is<RawTerm>(ReadTerm("", *presets, a_recipe)) && Is<RawTerm>(ReadTerm("1 - (", *presets, a_recipe)) && Is<RawTerm>(ReadTerm("smoothstep(", *presets, a_recipe)), "empty and truncated texts are raw");
-		Check(ReadTerm("@metal", *presets, a_recipe) == TermRecipe{ ReferenceTerm{ "metal" } } && ReadTerm("@nothingKnown", *presets, a_recipe) == TermRecipe{ ReferenceTerm{ "nothingKnown" } }, "a lone name reads as a reference");
-		Check(ReadTerm("(1 - @metallic) * smoothstep(0.35, 0.6, @roughness)", *presets, WithSources(a_recipe, leather.edits)) == TermRecipe{ WhatPresetTerm{ "leather" } }, "a what preset's expression over the recipe's names reads as the preset");
+		Check(ReadTerm("@metal", *presets, a_recipe) == TermKind{ ReferenceTerm{ "metal" } } && ReadTerm("@nothingKnown", *presets, a_recipe) == TermKind{ ReferenceTerm{ "nothingKnown" } }, "a lone name reads as a reference");
+		Check(ReadTerm("(1 - @metallic) * smoothstep(0.35, 0.6, @roughness)", *presets, WithSources(a_recipe, leather.edits)) == TermKind{ WhatPresetTerm{ "leather" } }, "a what preset's expression over the recipe's names reads as the preset");
 		Check(Is<RawTerm>(ReadTerm("(1 - @metallic) * smoothstep(0.35, 0.6, @roughness)", *presets, a_recipe)), "the same text without the roughness source is raw");
 
 		// Labels.
@@ -1590,7 +1590,7 @@ namespace
 		// A kept mask comes back with its recipes and labels.
 		const auto keptText = std::format("({}) * ({})", builtRoughness.expression, "@metal");
 		const auto terms = TermsOfMask(keptText, *presets, ExistingOf(WithSources(a_recipe, builtRoughness.edits)));
-		Check(terms && terms->size() == 2 && (*terms)[0].recipe == TermRecipe{ roughness } && (*terms)[0].label == "roughness 0.35..0.6" && (*terms)[1].recipe == TermRecipe{ ReferenceTerm{ "metal" } } && (*terms)[1].label == "@metal", "a kept mask's terms carry their recipes and labels");
+		Check(terms && terms->size() == 2 && (*terms)[0].kind == TermKind{ roughness } && (*terms)[0].label == "roughness 0.35..0.6" && (*terms)[1].kind == TermKind{ ReferenceTerm{ "metal" } } && (*terms)[1].label == "@metal", "a kept mask's terms carry their recipes and labels");
 		Check(terms && ProposedRegionName(*terms, "") == "region" && ProposedRegionName(std::vector<Term>{ (*terms)[1] }, "") == "metal", "a reference label proposes its name");
 
 		// Forms: one field per setting; a bad text applies to nothing.
@@ -1637,9 +1637,9 @@ namespace
 		Check(ordered && !offers.empty(), "offers come in group order");
 		const auto count = [&](OfferGroup a_group) { return std::ranges::count(offers, a_group, &TermOffer::group); };
 		Check(count(OfferGroup::kParts) == 3 && count(OfferGroup::kMaterials) == 2 && count(OfferGroup::kBones) == 3 && count(OfferGroup::kPartitions) == 2 && count(OfferGroup::kChannels) == 8 && count(OfferGroup::kPresets) == 8 && count(OfferGroup::kMasks) == 1 && count(OfferGroup::kSources) == 8, "one offer per part, cluster, bone, partition, channel, what preset, mask and source");
-		Check(offers[0].name == "part 0" && offers[0].detail == "60% of the mesh, chest 90%" && !offers[0].unavailable && !offers[0].coverage && Get<ComponentTerm>(offers[0].recipe) && Get<ComponentTerm>(offers[0].recipe)->id == 0, "a part's offer carries its measurements, no coverage yet");
-		Check(offers[3].name == "material 0" && offers[3].detail == "rough dark non-metal, 70%" && Get<ClusterTerm>(offers[3].recipe) && Get<ClusterTerm>(offers[3].recipe)->id == 0 && Get<ClusterTerm>(offers[3].recipe)->settings == ClusterSettings{}, "a cluster's offer at the default settings");
-		const auto* channelOffer = Get<ThresholdTerm>(offers[static_cast<std::size_t>(count(OfferGroup::kParts) + count(OfferGroup::kMaterials) + count(OfferGroup::kBones) + count(OfferGroup::kPartitions))].recipe);
+		Check(offers[0].name == "part 0" && offers[0].detail == "60% of the mesh, chest 90%" && !offers[0].unavailable && !offers[0].coverage && Get<ComponentTerm>(offers[0].kind) && Get<ComponentTerm>(offers[0].kind)->id == 0, "a part's offer carries its measurements, no coverage yet");
+		Check(offers[3].name == "material 0" && offers[3].detail == "rough dark non-metal, 70%" && Get<ClusterTerm>(offers[3].kind) && Get<ClusterTerm>(offers[3].kind)->id == 0 && Get<ClusterTerm>(offers[3].kind)->settings == ClusterSettings{}, "a cluster's offer at the default settings");
+		const auto* channelOffer = Get<ThresholdTerm>(offers[static_cast<std::size_t>(count(OfferGroup::kParts) + count(OfferGroup::kMaterials) + count(OfferGroup::kBones) + count(OfferGroup::kPartitions))].kind);
 		Check(channelOffer && channelOffer->low == 0.5f && channelOffer->high == 1.0f && channelOffer->channel == MaterialChannel::kDiffuseLuma, "a channel's offer is its upper half");
 		Check(std::ranges::any_of(offers, [](const TermOffer& o) { return o.group == OfferGroup::kMasks && o.name == "metal" && o.detail == "@metallic"; }) && std::ranges::none_of(offers, [](const TermOffer& o) { return o.name == kScratchMask; }), "masks are offered with their expressions");
 		Check(std::ranges::none_of(OffersOf(*presets, a_recipe, geometry, "metal"), [](const TermOffer& o) { return o.group == OfferGroup::kMasks; }), "the mask being edited is not offered");

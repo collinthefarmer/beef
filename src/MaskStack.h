@@ -9,7 +9,7 @@
 // fixed shape and Parse reads only that shape back, so a hand-written
 // expression loads as a single raw term. Engine-free.
 
-#include "TermRecipe.h"
+#include "TermKind.h"
 
 #include <cstddef>
 #include <optional>
@@ -36,7 +36,7 @@ namespace WornEnchantmentPBR::Studio
 		TermOp             op = TermOp::kSet;
 		std::string        text;    // the ingredient's expression, derived from the recipe unless raw
 		std::string        label;   // what the row shows: a preset's name, a @reference, a region's words, or "expression"
-		TermRecipe         recipe;  // the settings the text was built from; RawTerm for typed text
+		TermKind         kind;    // the settings the text was built from; RawTerm for typed text
 		[[nodiscard]] bool operator==(const Term&) const = default;
 	};
 

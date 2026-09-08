@@ -223,27 +223,27 @@ namespace WornEnchantmentPBR::Studio
 		return std::nullopt;
 	}
 
-	ScratchState ScratchOf(const RecipeRow& a_recipe)
+	ScratchState ScratchOf(const RecipeRow& a_kind)
 	{
 		ScratchState scratch;
-		const auto   it = std::ranges::find(a_recipe.maskRows, kScratchMask, &TextRow::name);
-		if (it != a_recipe.maskRows.end()) {
+		const auto   it = std::ranges::find(a_kind.maskRows, kScratchMask, &TextRow::name);
+		if (it != a_kind.maskRows.end()) {
 			scratch.present = true;
 			scratch.text = it->text;
 		}
 		return scratch;
 	}
 
-	Existing ExistingOf(const RecipeRow& a_recipe)
+	Existing ExistingOf(const RecipeRow& a_kind)
 	{
 		Existing existing;
-		for (const auto& source : a_recipe.sourceRows) {
+		for (const auto& source : a_kind.sourceRows) {
 			if (const auto kind = SourceKindOf(source)) {
 				existing.sources.emplace_back(source.name, *kind);
 			}
 			existing.taken.push_back(source.name);
 		}
-		for (const auto& mask : a_recipe.masks) {
+		for (const auto& mask : a_kind.masks) {
 			existing.taken.push_back(mask);
 		}
 		return existing;
@@ -346,7 +346,7 @@ namespace WornEnchantmentPBR::Studio
 	namespace
 	{
 		// Defined with the templates below; TermsOfMask reads each term through it.
-		TermRecipe ReadTermOver(std::string_view a_text, const Presets& a_presets, const Existing& a_existing);
+		TermKind ReadTermOver(std::string_view a_text, const Presets& a_presets, const Existing& a_existing);
 	}
 
 	std::optional<std::vector<Term>> TermsOfMask(std::string_view a_text, const Presets& a_presets, const Existing& a_existing)
@@ -359,8 +359,8 @@ namespace WornEnchantmentPBR::Studio
 		// a raw term keeps the preset match TermLabel makes.
 		const GeometryRow unread;
 		for (auto& term : *terms) {
-			term.recipe = ReadTermOver(term.text, a_presets, a_existing);
-			term.label = Is<RawTerm>(term.recipe) ? TermLabel(term.text, a_presets, a_existing) : TermLabelOf(term.recipe, a_presets, unread);
+			term.kind = ReadTermOver(term.text, a_presets, a_existing);
+			term.label = Is<RawTerm>(term.kind) ? TermLabel(term.text, a_presets, a_existing) : TermLabelOf(term.kind, a_presets, unread);
 		}
 		return terms;
 	}
@@ -389,10 +389,10 @@ namespace WornEnchantmentPBR::Studio
 
 	// ------------------------------------------------------------ term templates
 
-	std::string_view TermRecipeName(const TermRecipe& a_recipe) noexcept
+	std::string_view TermKindName(const TermKind& a_kind) noexcept
 	{
 		return Match(
-			a_recipe,
+			a_kind,
 			[](const RawTerm&) { return "raw"; }, [](const ReferenceTerm&) { return "reference"; }, [](const ThresholdTerm&) { return "threshold"; },
 			[](const WhatPresetTerm&) { return "preset"; }, [](const PartitionTerm&) { return "partition"; }, [](const BoneTerm&) { return "bones"; },
 			[](const ComponentTerm&) { return "component"; }, [](const ClusterTerm&) { return "cluster"; });
@@ -795,7 +795,7 @@ namespace WornEnchantmentPBR::Studio
 		}
 
 		// The template a text fits over what the recipe has; RawTerm when none.
-		TermRecipe ReadTermOver(std::string_view a_text, const Presets& a_presets, const Existing& a_existing)
+		TermKind ReadTermOver(std::string_view a_text, const Presets& a_presets, const Existing& a_existing)
 		{
 			if (a_text.empty() || a_text.size() > kMaxExpressionLength) {
 				return RawTerm{};
@@ -850,11 +850,11 @@ namespace WornEnchantmentPBR::Studio
 		}
 	}
 
-	PresetTerm BuildTerm(const TermRecipe& a_recipe, const Presets& a_presets, const Existing& a_existing)
+	PresetTerm BuildTerm(const TermKind& a_kind, const Presets& a_presets, const Existing& a_existing)
 	{
 		SourceNamer namer(a_existing);
 		std::string text = Match(
-			a_recipe,
+			a_kind,
 			[](const RawTerm&) { return std::string{}; },
 			[](const ReferenceTerm& t) { return ReferenceText(t.name); },
 			[&](const ThresholdTerm& t) {
@@ -887,15 +887,15 @@ namespace WornEnchantmentPBR::Studio
 		return PresetTerm{ std::move(namer).Edits(), std::move(text) };
 	}
 
-	TermRecipe ReadTerm(std::string_view a_text, const Presets& a_presets, const RecipeRow& a_recipe)
+	TermKind ReadTerm(std::string_view a_text, const Presets& a_presets, const RecipeRow& a_kind)
 	{
-		return ReadTermOver(a_text, a_presets, ExistingOf(a_recipe));
+		return ReadTermOver(a_text, a_presets, ExistingOf(a_kind));
 	}
 
-	std::string TermLabelOf(const TermRecipe& a_recipe, const Presets& a_presets, const GeometryRow& a_geometry)
+	std::string TermLabelOf(const TermKind& a_kind, const Presets& a_presets, const GeometryRow& a_geometry)
 	{
 		return Match(
-			a_recipe,
+			a_kind,
 			[](const RawTerm&) { return std::string{ kExpressionLabel }; },
 			[](const ReferenceTerm& t) { return ReferenceText(t.name); },
 			[](const ThresholdTerm& t) { return std::format("{} {}..{}", MaterialChannelName(t.channel), NumberText(t.low), NumberText(t.high)); },
@@ -944,11 +944,11 @@ namespace WornEnchantmentPBR::Studio
 		// A field whose committed text sets one setting of a copy of the
 		// recipe through a_set, which refuses text that does not parse.
 		template <class Recipe>
-		[[nodiscard]] TermField Setting(const Recipe& a_recipe, FieldSpec a_field, std::function<bool(Recipe&, const std::string&)> a_set)
+		[[nodiscard]] TermField Setting(const Recipe& a_kind, FieldSpec a_field, std::function<bool(Recipe&, const std::string&)> a_set)
 		{
-			return TermField{ std::move(a_field), [a_recipe, a_set](const std::string& a_text) -> std::optional<TermRecipe> {
-				Recipe edited = a_recipe;
-				return a_set(edited, a_text) ? std::optional<TermRecipe>{ edited } : std::nullopt;
+			return TermField{ std::move(a_field), [a_kind, a_set](const std::string& a_text) -> std::optional<TermKind> {
+				Recipe edited = a_kind;
+				return a_set(edited, a_text) ? std::optional<TermKind>{ edited } : std::nullopt;
 			} };
 		}
 
@@ -1132,10 +1132,10 @@ namespace WornEnchantmentPBR::Studio
 		}
 	}
 
-	std::vector<TermField> TermForm(const TermRecipe& a_recipe, const Presets& a_presets, const GeometryRow& a_geometry)
+	std::vector<TermField> TermForm(const TermKind& a_kind, const Presets& a_presets, const GeometryRow& a_geometry)
 	{
 		return Match(
-			a_recipe,
+			a_kind,
 			[](const RawTerm&) { return std::vector<TermField>{}; },
 			[](const ReferenceTerm&) { return std::vector<TermField>{}; },
 			[](const WhatPresetTerm&) { return std::vector<TermField>{}; },
@@ -1150,20 +1150,20 @@ namespace WornEnchantmentPBR::Studio
 
 	namespace
 	{
-		[[nodiscard]] TermOffer Offer(OfferGroup a_group, std::string a_name, std::string a_detail, TermRecipe a_recipe)
+		[[nodiscard]] TermOffer Offer(OfferGroup a_group, std::string a_name, std::string a_detail, TermKind a_kind)
 		{
 			TermOffer offer;
 			offer.group = a_group;
 			offer.name = std::move(a_name);
 			offer.detail = std::move(a_detail);
-			offer.recipe = std::move(a_recipe);
+			offer.kind = std::move(a_kind);
 			return offer;
 		}
 
 		// A group the piece cannot offer yet: one row carrying the reason.
-		[[nodiscard]] TermOffer Unavailable(OfferGroup a_group, std::string a_reason, TermRecipe a_recipe)
+		[[nodiscard]] TermOffer Unavailable(OfferGroup a_group, std::string a_reason, TermKind a_kind)
 		{
-			TermOffer offer = Offer(a_group, std::string{ NameOf(kOfferGroups, a_group) }, {}, std::move(a_recipe));
+			TermOffer offer = Offer(a_group, std::string{ NameOf(kOfferGroups, a_group) }, {}, std::move(a_kind));
 			offer.unavailable = std::move(a_reason);
 			return offer;
 		}
@@ -1232,12 +1232,12 @@ namespace WornEnchantmentPBR::Studio
 	std::string TermDetailOf(const Term& a_term, std::span<const TermOffer> a_offers)
 	{
 		for (const auto& offer : a_offers) {
-			if (offer.recipe == a_term.recipe) {
+			if (offer.kind == a_term.kind) {
 				return offer.detail;
 			}
 		}
 		return Match(
-			a_term.recipe,
+			a_term.kind,
 			[&](const ThresholdTerm& t) {
 				std::string detail = std::format("{} {}..{}", MaterialChannelName(t.channel), ParamText(t.low), ParamText(t.high));
 				if (t.posterize > 1) {

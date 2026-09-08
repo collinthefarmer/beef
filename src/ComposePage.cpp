@@ -1662,7 +1662,7 @@ namespace WornEnchantmentPBR::Studio
 
 		// A term recipe becomes the source edits it needs on the paint recipe
 		// and one term of the stack, labelled by its recipe.
-		void AddRecipeTerm(const TermRecipe& a_term, const RecipeRow& a_recipe, const GeometryRow& a_geometry, Intents& a_out)
+		void AddTermOfKind(const TermKind& a_term, const RecipeRow& a_recipe, const GeometryRow& a_geometry, Intents& a_out)
 		{
 			const auto& presets = LoadedPresets();
 			auto [edits, expression] = BuildTerm(a_term, presets, ExistingOf(a_recipe));
@@ -1696,7 +1696,7 @@ namespace WornEnchantmentPBR::Studio
 						const TermOffer& offer = *shown[i];
 						ImGui::PushID(static_cast<int>(i));
 						if (Widgets::ChooserRow(table, offer.name, offer.detail, offer.coverage, offer.unavailable)) {
-							AddRecipeTerm(offer.recipe, a_recipe, a_geometry, a_out);
+							AddTermOfKind(offer.kind, a_recipe, a_geometry, a_out);
 						}
 						ImGui::PopID();
 					}
@@ -1755,7 +1755,7 @@ namespace WornEnchantmentPBR::Studio
 				}
 			}
 			a_table.Cell();
-			const bool raw = std::holds_alternative<RawTerm>(term.recipe);
+			const bool raw = std::holds_alternative<RawTerm>(term.kind);
 			const auto label = raw && term.text.empty() ? std::string{ "(empty)" } : term.label;
 			if (ImGui::Selectable(label.c_str(), a_region.selected == a_index)) {
 				a_out.push_back(PickTerm{ a_index });
@@ -1781,7 +1781,7 @@ namespace WornEnchantmentPBR::Studio
 		void DrawTermSettings(std::size_t a_index, const Term& a_term, const RecipeRow& a_recipe, const GeometryRow& a_geometry, float a_scale, const Names& a_names, Intents& a_out)
 		{
 			const auto& presets = LoadedPresets();
-			const auto  form = TermForm(a_term.recipe, presets, a_geometry);
+			const auto  form = TermForm(a_term.kind, presets, a_geometry);
 			if (form.empty()) {
 				return;
 			}
@@ -1796,13 +1796,13 @@ namespace WornEnchantmentPBR::Studio
 				ImGui::TextUnformatted(setting.field.name.c_str());
 				table.Cell();
 				if (const auto text = FieldInput(setting.field, a_scale, a_names)) {
-					const std::optional<TermRecipe> changed = setting.apply ? setting.apply(*text) : std::nullopt;
+					const std::optional<TermKind> changed = setting.apply ? setting.apply(*text) : std::nullopt;
 					if (changed) {
 						auto [edits, expression] = BuildTerm(*changed, presets, ExistingOf(a_recipe));
 						for (auto& edit : edits) {
 							Post(a_out, a_recipe.id, std::move(edit));
 						}
-						a_out.push_back(SetTermRecipe{ a_index, *changed, std::move(expression), TermLabelOf(*changed, presets, a_geometry) });
+						a_out.push_back(SetTermKind{ a_index, *changed, std::move(expression), TermLabelOf(*changed, presets, a_geometry) });
 					} else {
 						Refuse(setting.field.name, *text);
 					}
