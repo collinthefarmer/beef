@@ -158,6 +158,7 @@ namespace WornEnchantmentPBR::Studio
 				[&](const Undo& i) { manager->UndoRecipe(i.recipe); },
 				[&](const Redo& i) { manager->RedoRecipe(i.recipe); },
 				[&](const CreateRecipe& i) { manager->NewRecipe(i.id, i.key, i.geometry); },
+				[&](const RenameRecipe& i) { manager->RenameRecipe(i.from, i.to); },
 				[&](const BeginPaint& i) { manager->BeginPaint(i.recipe, i.key, i.surface); },
 				[&](const SetPaintSurface& i) { manager->SetPaintSurface(i.surface); },
 				[&](const KeepPaint& i) { manager->KeepPaint(i.recipe, i.name); },
@@ -420,7 +421,7 @@ namespace WornEnchantmentPBR::Studio
 			return PickCell{ a_cell.surface, a_cell.slot, a_cell.layers > 0 ? std::optional{ a_cell.layers - 1 } : std::nullopt };
 		}
 
-		void DrawWrittenCell(const Cell& a_cell, const RecipeRow& a_recipe, const GeometryRow& a_geometry, const Board& a_board, const Selection& a_selection, const Layout& a_layout, Intents& a_out)
+		void DrawWrittenCell(const Cell& a_cell, const RecipeRow& a_recipe, const GeometryRow& a_geometry, const Selection& a_selection, const Layout& a_layout, Intents& a_out)
 		{
 			const bool selected = a_selection.target != Target::kLight && SurfaceOf(a_selection.target) == a_cell.surface && a_selection.slot == a_cell.slot;
 			if (Widgets::ThumbnailButton("cell", a_cell.composite, ShaderChannel::kRgb, a_cell.animated, a_layout.cellSize * a_layout.widgetScale)) {
@@ -460,11 +461,11 @@ namespace WornEnchantmentPBR::Studio
 			case CellState::kAbsent:
 				return;  // the surface has no such slot: nothing to draw
 			case CellState::kWritten:
-				DrawWrittenCell(*a_cell, a_recipe, a_geometry, a_board, a_selection, a_layout, a_out);
+				DrawWrittenCell(*a_cell, a_recipe, a_geometry, a_selection, a_layout, a_out);
 				return;
 			case CellState::kEmpty:
 				if (ImGui::Button("+", ImVec2{ side, side })) {
-					Post(a_out, a_recipe.id, AddOutput{ a_cell->surface, a_cell->slot });
+					Post(a_out, a_recipe.id, AddOutput{ a_cell->surface, a_cell->slot, {} });
 				}
 				Widgets::Tooltip(std::format("add an output on {} of the {}", SlotName(a_cell->slot), SurfaceName(a_cell->surface)));
 				return;
@@ -525,36 +526,36 @@ namespace WornEnchantmentPBR::Studio
 				DrawCell(CellAt(a_board, Surface::kShell, slot), a_recipe, a_geometry, a_board, a_selection, a_layout, a_out);
 				ImGui::PopID();
 			}
-						table.Cell();
+			table.Cell();
 			ImGui::TextUnformatted("light");
 			table.Cell();
 			DrawLightCell(a_board.light, a_recipe, a_out);
 			table.Cell();
-			}
 			table.End();
 		}
 
 		// -------------------------------------------------------- context
-		// Two labelled rows of choices. The recipe row: the recipe applied
-		// alone, the piece, the recipe within it, New, Undo and Redo. The
-		// edit row: the picked output alone, the target (material, shell or
+		// Two tables under their rules. Recipe: the recipe applied alone, the
+		// piece, the recipe within it; its rule carries New, Rename, Clear,
+		// keys, Undo and Redo. Output: the picked output alone, the target (material, shell or
 		// the light: the format's word for where an output goes), the slot on
-		// it, the region lens, and Clear.
+		// it; its rule carries Clear.
 
 		[[nodiscard]] std::string SlotLabel(const Cell& a_cell)
 		{
 			const std::string name{ SlotName(a_cell.slot) };
 			switch (a_cell.state) {
 			case CellState::kWritten:
-			return std::format("{} ({} layer{})", name, a_cell.layers, a_cell.layers == 1 ? "" : "s");
+				return std::format("{} ({} layer{})", name, a_cell.layers, a_cell.layers == 1 ? "" : "s");
 			case CellState::kRefused:
-			return name + " (refused)";
+				return name + " (refused)";
 			case CellState::kExcluded:
-			return name + " (excluded)";
+				return name + " (excluded)";
 			case CellState::kEmpty:
-			return name + " (empty)";
+				return name + " (empty)";
 			case CellState::kAbsent:
-			return name;
+				return name;
+			}
 			return name;
 		}
 
@@ -729,10 +730,12 @@ namespace WornEnchantmentPBR::Studio
 		[[nodiscard]] Widgets::RuleLine RecipeRule(const PieceRow& a_piece, const RecipeRow& a_recipe, const GeometryRow& a_geometry, Intents& a_out)
 		{
 			const float newWidth = Widgets::ButtonWidth("New");
+			const float renameWidth = Widgets::ButtonWidth("Rename");
+			const float clearWidth = Widgets::ButtonWidth("Clear");
 			const float keysWidth = Widgets::ButtonWidth("keys");
 			const float undoWidth = Widgets::ButtonWidth("Undo");
 			const float redoWidth = Widgets::ButtonWidth("Redo");
-			const float rightWidth = newWidth + keysWidth + undoWidth + redoWidth + 3.0f * Widgets::ItemSpacingX();
+			const float rightWidth = newWidth + renameWidth + clearWidth + keysWidth + undoWidth + redoWidth + 5.0f * Widgets::ItemSpacingX();
 			return Widgets::RuleLine{ "Recipe", rightWidth, [=, &a_piece, &a_recipe, &a_geometry, &a_out]() {
 									 const auto key = DefaultKeyOf(a_piece);
 									 Widgets::Disabled(!key, [&]() {
@@ -746,6 +749,42 @@ namespace WornEnchantmentPBR::Studio
 									 });
 									 Widgets::Tooltip("a new recipe keyed to this armor, named recipe-N, with one empty emissive output on the material for the viewed geometry alone; rename it and edit its keys from keys");
 									 ImGui::SameLine();
+									 if (ImGui::Button("Rename", ImVec2{ renameWidth, 0.0f })) {
+										 ImGui::OpenPopup("rename-recipe");
+									 }
+									 if (ImGui::BeginPopup("rename-recipe")) {
+										 const auto typed = Widgets::LiveTextField("rename", a_recipe.id.c_str(), Width::Px(240.0f), 1.0f);
+										 const bool ready = !typed.empty() && typed != a_recipe.id;
+										 ImGui::SameLine();
+										 Widgets::Disabled(!ready, [&]() {
+											 if (ImGui::Button("Rename##do") && ready) {
+												 a_out.push_back(RenameRecipe{ a_recipe.id, std::string{ typed } });
+												 ImGui::CloseCurrentPopup();
+											 }
+										 });
+										 ImGui::EndPopup();
+									 }
+									 Widgets::Tooltip("rename the recipe; its file follows when it is the user's");
+									 ImGui::SameLine();
+									 if (ImGui::Button("Clear", ImVec2{ clearWidth, 0.0f })) {
+										 ImGui::OpenPopup("clear-recipe");
+									 }
+									 if (ImGui::BeginPopup("clear-recipe")) {
+										 if (ImGui::Button("outputs")) {
+											 Post(a_out, a_recipe.id, ClearOutputs{});
+											 ImGui::CloseCurrentPopup();
+										 }
+										 Widgets::Tooltip("remove every output and reset the shell settings; keys, signals, curves, sources and masks stay");
+										 ImGui::SameLine();
+										 if (ImGui::Button("resources")) {
+											 Post(a_out, a_recipe.id, ClearResources{});
+											 ImGui::CloseCurrentPopup();
+										 }
+										 Widgets::Tooltip("remove every signal, curve, source, mask and variant, and what read them: layers on a source, the masks and curves of the layers that stay, and parameters that named a signal return to their defaults");
+										 ImGui::EndPopup();
+									 }
+									 Widgets::Tooltip("clear the recipe's outputs, or its resources and what read them");
+									 ImGui::SameLine();
 									 if (ImGui::Button("keys", ImVec2{ keysWidth, 0.0f })) {
 										 ImGui::OpenPopup("recipe-keys");
 									 }
@@ -755,6 +794,8 @@ namespace WornEnchantmentPBR::Studio
 									 UndoRedoButtons(a_recipe, a_out);
 								 } };
 		}
+
+		void ClearButton(const RecipeRow& a_recipe, std::optional<std::size_t> a_output, Intents& a_out);
 
 		// The Output rule's right group: Clear, which removes the picked output.
 		[[nodiscard]] Widgets::RuleLine OutputRule(const Board& a_board, const RecipeRow& a_recipe, const Cell* a_picked, const Selection& a_selection, Intents& a_out)
@@ -905,7 +946,7 @@ namespace WornEnchantmentPBR::Studio
 			}
 			if (picked->state == CellState::kEmpty) {
 				if (ImGui::Button("Add output")) {
-					Post(a_out, a_recipe.id, AddOutput{ picked->surface, picked->slot });
+					Post(a_out, a_recipe.id, AddOutput{ picked->surface, picked->slot, {} });
 				}
 				Widgets::Tooltip(std::format("add an empty stack on {} of the {}", SlotName(picked->slot), SurfaceName(picked->surface)));
 				return picked;

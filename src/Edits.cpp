@@ -1218,6 +1218,104 @@ namespace WornEnchantmentPBR::Studio
 			return std::nullopt;
 		}
 
+		// ------------------------------------------ recipe-wide clears
+
+		Refusal Edit(Recipe& a_recipe, const ClearOutputs&)
+		{
+			a_recipe.outputs.clear();
+			a_recipe.shell = ShellSettings{};
+			return std::nullopt;
+		}
+
+		// A parameter that named a signal returns to the value given; an
+		// optional one to its fallback.
+		void Literal(Param& a_param, float a_value)
+		{
+			if (Is<Ref>(a_param)) {
+				a_param = a_value;
+			}
+		}
+		bool NamesSignal(const Vec3Param& a_param)
+		{
+			if (Is<Ref>(a_param)) {
+				return true;
+			}
+			const auto* parts = Get<std::array<Param, 3>>(a_param);
+			return parts && std::ranges::any_of(*parts, [](const Param& p) { return Is<Ref>(p); });
+		}
+		void Literal(Vec3Param& a_param, const std::array<float, 3>& a_value)
+		{
+			if (NamesSignal(a_param)) {
+				a_param = std::array<Param, 3>{ a_value[0], a_value[1], a_value[2] };
+			}
+		}
+		void Literal(std::optional<Vec3Param>& a_param)
+		{
+			if (a_param && NamesSignal(*a_param)) {
+				a_param.reset();
+			}
+		}
+
+		Refusal Edit(Recipe& a_recipe, const ClearResources&)
+		{
+			a_recipe.signals.clear();
+			a_recipe.curves.clear();
+			a_recipe.sources.clear();
+			a_recipe.masks.clear();
+			a_recipe.variants.clear();
+			for (auto& output : a_recipe.outputs) {
+				Match(
+					output,
+					[](SurfaceOutput& o) {
+						std::erase_if(o.stack, [](const Layer& l) { return Is<Ref>(l.source); });
+						for (auto& layer : o.stack) {
+							layer.mask.reset();
+							layer.curve.reset();
+							Literal(layer.opacity, 1.0f);
+							Literal(layer.color);
+						}
+						// A scalar the slot requires returns to its fallback, an
+						// optional one to absent, which the binding reads as the same.
+						for (std::size_t i = 0; i < kScalarFieldCount; ++i) {
+							const auto field = static_cast<ScalarField>(i);
+							auto*      scalar = ScalarOf(o.scalars, field);
+							if (!scalar || !*scalar || !Is<Ref>(**scalar)) {
+								continue;
+							}
+							if (ScalarRequired(o.slot, field)) {
+								*scalar = Param{ ScalarFallback(field) };
+							} else {
+								scalar->reset();
+							}
+						}
+						if (o.scalars.color && NamesSignal(*o.scalars.color)) {
+							const float fallback = ScalarFallback(ScalarField::kColor);
+							if (ScalarRequired(o.slot, ScalarField::kColor)) {
+								o.scalars.color = std::array<Param, 3>{ fallback, fallback, fallback };
+							} else {
+								o.scalars.color.reset();
+							}
+						}
+					},
+					[](LightOutput& o) {
+						Literal(o.offset, { 0.0f, 0.0f, 0.0f });
+						Literal(o.color, { 1.0f, 1.0f, 1.0f });
+						Literal(o.intensity, 1.0f);
+						Literal(o.size, 1.4142f);
+						Literal(o.cutoff, 1.0f);
+					});
+			}
+			auto& shell = a_recipe.shell;
+			Literal(shell.alpha, 1.0f);
+			Literal(shell.rimPower, 0.0f);
+			Literal(shell.emissive, 0.0f);
+			Literal(shell.pose.inflate, { 0.0f, 0.0f, 0.0f });
+			Literal(shell.pose.offset, { 0.0f, 0.0f, 0.0f });
+			Literal(shell.pose.scale, 1.0f);
+			Literal(shell.pose.spin, 0.0f);
+			return std::nullopt;
+		}
+
 	}
 
 	std::optional<Diagnostic> Apply(Recipe& a_recipe, const RecipeEdit& a_edit)
@@ -1277,7 +1375,9 @@ namespace WornEnchantmentPBR::Studio
 			[](const SetShellBlend& e) { return std::format("shell: blend {}", ShellBlendName(e.blend)); },
 			[](const SetShellDepthBias& e) { return std::format("shell: depthBias {}", e.on ? "on" : "off"); },
 			[](const SetShellAlphaTest& e) { return std::format("shell: alphaTest {}", e.value); },
-			[](const ResetShell&) { return std::string{ "shell: reset" }; });
+			[](const ResetShell&) { return std::string{ "shell: reset" }; },
+			[](const ClearOutputs&) { return std::string{ "outputs: clear" }; },
+			[](const ClearResources&) { return std::string{ "resources: clear" }; });
 	}
 
 	std::string_view LightParamName(LightParam a_field) noexcept

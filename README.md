@@ -360,8 +360,10 @@ are in `ARCHITECTURE.md` under "The recipe studio".
   stays in view. Compose is three rules, each naming the table under it
   and carrying that table's actions at its right edge. **Recipe**: **S**,
   the recipe applied alone (isolate); the **selection** (actor and
-  piece); and the **recipe** within it; at the right **New**, **Undo**
-  and **Redo**. **Output**: **S**, solo for the picked output; the
+  piece); and the **recipe** within it; at the right **New**, **Rename**
+  (the file follows when it is the user's), **Clear** (a popup: the
+  outputs, or the resources and what read them), **keys**, **Undo** and
+  **Redo**. **Output**: **S**, solo for the picked output; the
   **target** (material, shell or the light, the format's word for where
   an output goes); the **slot** on it with its state; at the right
   **Clear**, which removes the picked output (a slot's, or the light) so

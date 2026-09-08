@@ -859,6 +859,26 @@ namespace WornEnchantmentPBR
 		});
 	}
 
+	void Manager::RenameRecipe(std::string a_from, std::string a_to)
+	{
+		PostTask([this, from = std::move(a_from), to = std::move(a_to)] {
+			RetireEveryActor();
+			if (WornEnchantmentPBR::RenameRecipe(from, to)) {
+				if (auto node = histories_.extract(from)) {
+					node.key() = to;
+					histories_.insert(std::move(node));
+				}
+				if (view_.isolateRecipe == from) {
+					view_.isolateRecipe = to;
+				}
+				if (paintReturn_.recipe == from) {
+					paintReturn_.recipe = to;
+				}
+			}
+			QueueLoadedActorRefreshes();
+		});
+	}
+
 	// ------------------------------------------------------------- painting
 
 	void Manager::BeginPaint(std::string a_active, RecipeKey a_key, Surface a_surface)

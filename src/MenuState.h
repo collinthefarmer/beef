@@ -304,6 +304,12 @@ namespace WornEnchantmentPBR::Studio
 		RecipeKey   key;
 		std::string geometry;  // the first output selects this geometry alone; empty: every geometry
 	};
+	// The recipe under a new id; the selection and a paint session follow it.
+	struct RenameRecipe
+	{
+		std::string from;
+		std::string to;
+	};
 	// One firing of an event for the piece's wearer. A node names the
 	// firing's place; an offset (world units) and a random scatter within
 	// `random` units move it; the value rides in the payload.
@@ -322,7 +328,7 @@ namespace WornEnchantmentPBR::Studio
 		AddTerm, SetTermOp, SetTermText, SetTermKind, RemoveTerm, MoveTerm, PickTerm, SoloTerm, MuteTerm, LoadRegion, ClearRegion,
 		BeginPaint, SetPaintSurface, KeepPaint, EndPaint,
 		EditRecipe, SoloRecipe, SoloOutput, SoloLayer, MuteLayer,
-		SetFreeze, SetScrub, SetSpeed, StepClock, Undo, Redo, CreateRecipe, FireTrigger>;
+		SetFreeze, SetScrub, SetSpeed, StepClock, Undo, Redo, CreateRecipe, RenameRecipe, FireTrigger>;
 
 	// The state change an intent makes; nothing else. An edit moves the
 	// layer selection with the row it adds, removes or moves, and a new

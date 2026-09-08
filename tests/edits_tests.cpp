@@ -6,6 +6,7 @@
 #include "Expression.h"
 #include "test_support.h"
 
+#include <algorithm>
 #include <filesystem>
 #include <string>
 
@@ -537,6 +538,33 @@ namespace
 		Check(fourth && fourth->selector.All(), "with differing selectors a new output selects every geometry");
 	}
 
+	// The recipe-wide clears: outputs alone, or the resources and what read them.
+	void ClearEdits()
+	{
+		Recipe outputs = Canonical();
+		Accepted(outputs, ClearOutputs{}, "clear the outputs");
+		Check(outputs.outputs.empty() && outputs.shell == ShellSettings{} && outputs.keys == Canonical().keys && outputs.signals.size() == Canonical().signals.size(), "clearing outputs leaves keys and resources");
+
+		Recipe resources = Canonical();
+		Accepted(resources, ClearResources{}, "clear the resources");
+		Check(resources.signals.empty() && resources.curves.empty() && resources.sources.empty() && resources.masks.empty() && resources.variants.empty(), "every resource is gone");
+		const auto* emissive = Get<SurfaceOutput>(resources.outputs[0]);
+		const auto* fuzz = Get<SurfaceOutput>(resources.outputs[1]);
+		Check(emissive && emissive->stack.empty() && fuzz && fuzz->stack.size() == 1 && Is<Vec3>(fuzz->stack[0].source) && !fuzz->stack[0].mask && !fuzz->stack[0].curve, "layers on a source go; a constant layer stays without mask or curve");
+		Check(emissive && emissive->scalars.strength == Param{ 1.0f } && fuzz && fuzz->scalars.weight == Param{ 1.0f } && fuzz->scalars.color == Vec3Param{ std::array<Param, 3>{ 1.0f, 1.0f, 1.0f } }, "required scalars that named a signal return to their fallbacks");
+		const auto* light = Get<LightOutput>(resources.outputs[4]);
+		Check(light && Is<std::array<Param, 3>>(light->color) && Is<float>(light->intensity), "the light's colour and intensity are literal again");
+		Check(Is<float>(resources.shell.alpha) && Is<std::array<Param, 3>>(resources.shell.pose.inflate), "the shell's alpha and inflation are literal again");
+		const auto problems = Validate(resources);
+		std::string errors;
+		for (const auto& d : problems) {
+			if (d.severity == Severity::kError) {
+				errors += d.where + ": " + d.message + "; ";
+			}
+		}
+		Check(errors.empty(), "a cleared recipe validates without errors: " + errors);
+	}
+
 int main()
 {
 	Check(!Canonical().outputs.empty(), "schema/example-magicka.json parses");
@@ -546,6 +574,7 @@ int main()
 	StackEdits();
 	OutputEdits();
 	KeyEdits();
+	ClearEdits();
 	ScalarEdits();
 	SignalEdits();
 	Serialised();

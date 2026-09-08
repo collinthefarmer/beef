@@ -82,6 +82,11 @@ namespace WornEnchantmentPBR
 	// it, keyed as given; with a geometry named, its first output is an empty
 	// emissive stack on the material selecting that geometry alone.
 	[[nodiscard]] bool NewRecipe(std::string_view a_id, RecipeKey a_key, std::string_view a_geometry);
+	// A loaded recipe under a new id; its file moves with it when the file
+	// is the user's, and a shipped or imported file stays (it loads again
+	// under its old id at the next start; the log says so). Refused for a
+	// taken id or the paint recipe.
+	[[nodiscard]] bool RenameRecipe(std::string_view a_from, std::string_view a_to);
 	// A transient recipe: in the loaded list like any other (so it resolves
 	// and applies), never written, not listed as a file, gone on reload.
 	// The list moves on add and on drop, so the caller retires everything

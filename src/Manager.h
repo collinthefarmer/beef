@@ -118,6 +118,7 @@ namespace WornEnchantmentPBR
 		// retired around it since the store's list moves, then re-applied,
 		// so the recipe resolves onto the armor's wearers at once.
 		void NewRecipe(std::string a_id, RecipeKey a_key, std::string a_geometry);
+		void RenameRecipe(std::string a_from, std::string a_to);  // the history, the isolate and Paint's return follow the id
 		// Painting: a transient paint recipe (Studio::PaintRecipe) cloned
 		// from the active recipe, keyed as given, isolated so the region
 		// shows alone; the surface its emissive previews on can change;

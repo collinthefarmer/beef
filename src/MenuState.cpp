@@ -279,6 +279,14 @@ namespace WornEnchantmentPBR::Studio
 			[&](const ShowSettings& i) { a_state.settings = i.on; },
 			[&](const ShowResource& i) { a_state.resource = i.tab; },
 			[&](const EditRecipe& i) { ReduceEdit(selection, i.edit); },
+			[&](const RenameRecipe& i) {
+				if (selection.recipeID == i.from) {
+					selection.recipeID = i.to;
+				}
+				if (a_state.paint && a_state.paint->recipe == i.from) {
+					a_state.paint->recipe = i.to;
+				}
+			},
 			[&](const CreateRecipe& i) {
 				selection.recipeID = i.id;
 				selection.layer.reset();

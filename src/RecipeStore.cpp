@@ -513,10 +513,51 @@ namespace WornEnchantmentPBR
 		return path;
 	}
 
+	namespace
+	{
+		// An id is a file stem: letters, digits, '-', '_', '.', not starting with '.'.
+		bool IsStem(std::string_view a_id)
+		{
+			return !a_id.empty() && std::ranges::all_of(a_id, [](char c) { return std::isalnum(static_cast<unsigned char>(c)) || c == '-' || c == '_' || c == '.'; }) && a_id[0] != '.';
+		}
+	}
+
+	bool RenameRecipe(std::string_view a_from, std::string_view a_to)
+	{
+		if (!IsStem(a_to)) {
+			logger::warn("rename '{}': an id is a file stem (letters, digits, '-', '_', '.')", a_to);
+			return false;
+		}
+		if (Loaded(a_to)) {
+			logger::warn("rename {} -> {}: a recipe has that id", a_from, a_to);
+			return false;
+		}
+		auto* loaded = Loaded(a_from);
+		if (!loaded || loaded->transient) {
+			logger::warn("rename {}: {}", a_from, loaded ? "the paint recipe keeps its name" : "not loaded");
+			return false;
+		}
+		const auto      to = Identity::UserRecipeFolder() / (std::string{ a_to } + ".json");
+		std::error_code ec;
+		if (IsUnder(loaded->path, Identity::UserRecipeFolder()) && std::filesystem::exists(loaded->path, ec)) {
+			std::filesystem::rename(loaded->path, to, ec);
+			if (ec) {
+				logger::warn("rename {} -> {}: {} could not be moved ({}); the old file stays", a_from, a_to, loaded->path.string(), ec.message());
+			}
+		} else if (std::filesystem::exists(loaded->path, ec)) {
+			logger::info("rename {} -> {}: {} is not the user's file and stays; it loads again under its old id at the next start", a_from, a_to, loaded->path.string());
+		}
+		loaded->recipe.id = std::string{ a_to };
+		loaded->path = to;
+		loaded->dirty = true;
+		Republish(*loaded);
+		logger::info("recipe {} renamed {}; saves to {}", a_from, a_to, to.string());
+		return true;
+	}
+
 	bool NewRecipe(std::string_view a_id, RecipeKey a_key, std::string_view a_geometry)
 	{
-		const bool stem = !a_id.empty() && std::ranges::all_of(a_id, [](char c) { return std::isalnum(static_cast<unsigned char>(c)) || c == '-' || c == '_' || c == '.'; }) && a_id[0] != '.';
-		if (!stem) {
+		if (!IsStem(a_id)) {
 			logger::warn("new recipe '{}': an id is a file stem (letters, digits, '-', '_', '.')", a_id);
 			return false;
 		}

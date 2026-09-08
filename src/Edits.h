@@ -107,6 +107,18 @@ namespace WornEnchantmentPBR::Studio
 	{
 		RecipeKey key;
 	};
+	// Recipe-wide clears. Outputs: every output goes and the shell settings
+	// return to the format's defaults; keys and resources stay. Resources:
+	// every signal, curve, source, mask and variant goes, and what read them
+	// follows: a layer whose source was a reference, the mask and curve of
+	// a layer that stays, and every parameter that named a signal, which
+	// returns to its default.
+	struct ClearOutputs
+	{
+	};
+	struct ClearResources
+	{
+	};
 	struct RemoveOutput
 	{
 		std::size_t output = 0;
@@ -341,7 +353,7 @@ namespace WornEnchantmentPBR::Studio
 	using RecipeEdit = std::variant<
 		SetLayerSource, SetLayerCurve, SetLayerBlend, SetLayerOpacity, SetLayerColor, SetLayerMask, SetLayerChannels,
 		AddLayer, RemoveLayer, MoveLayer, ClearLayers,
-		AddOutput, RemoveOutput, SetScalar, SetColorScalar, AddKey, RemoveKey,
+		AddOutput, RemoveOutput, SetScalar, SetColorScalar, AddKey, RemoveKey, ClearOutputs, ClearResources,
 		SetConstant, SetExpression, SetSignalCurve, SetCurve, SetMask,
 		AddSignal, AddCurve, RenameSignal, RenameCurve, RemoveSignal, RemoveCurve, AddMask, RenameMask, RemoveMask,
 		AddSource, SetSource, RenameSource, RemoveSource,
