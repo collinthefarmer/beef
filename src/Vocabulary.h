@@ -50,6 +50,10 @@ namespace WornEnchantmentPBR
 	static_assert(std::size(kMaterialChannels) == kMaterialChannelCount);
 	inline constexpr Named<UvAxis> kUvAxes[]{ { UvAxis::kU, "u" }, { UvAxis::kV, "v" } };
 	inline constexpr Named<RippleShape> kRippleShapes[]{ { RippleShape::kRing, "ring" }, { RippleShape::kDisc, "disc" } };
+	inline constexpr std::string_view kSourceKindWords[]{ "image", "material", "bake", "uv", "distance", "ripple", "materialClusters" };
+	static_assert(std::size(kSourceKindWords) == std::variant_size_v<SourceKind>);
+	inline constexpr std::string_view kBakeKindWords[]{ "position", "localPosition", "worldUp", "partition", "boneWeight", "componentId", "chartId" };
+	static_assert(std::size(kBakeKindWords) == std::variant_size_v<BakeKind>);
 
 	inline constexpr SignalKindSpec kSignalKinds[]{
 		{ SignalKindId::kConstant, "constant", true },

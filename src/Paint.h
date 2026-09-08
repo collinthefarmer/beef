@@ -65,7 +65,8 @@ namespace WornEnchantmentPBR::Studio
 		std::vector<std::pair<std::string, SourceKind>> sources;
 		std::vector<std::string>                        taken;
 	};
-	[[nodiscard]] Existing ExistingOf(const RecipeRow& a_kind);
+	[[nodiscard]] Existing ExistingOf(const RecipeRow& a_recipe);
+	[[nodiscard]] Existing ExistingOf(const Recipe& a_recipe);
 
 	[[nodiscard]] std::vector<RecipeEdit> ScratchEdits(std::span<const Term> a_terms, std::optional<std::size_t> a_solo, const std::set<std::size_t>& a_muted, const std::optional<std::string>& a_scratch);
 

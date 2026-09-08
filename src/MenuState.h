@@ -48,6 +48,13 @@ namespace WornEnchantmentPBR::Studio
 
 	using TextBuffer = std::array<char, 1024>;
 	using NumberBuffer = std::array<float, 3>;
+	struct FiringDraft
+	{
+		std::string node;
+		Vec3        offset;
+		float       random = 0.0f;
+		float       value = 1.0f;
+	};
 
 	struct MenuState
 	{
@@ -63,6 +70,8 @@ namespace WornEnchantmentPBR::Studio
 		FieldKey                                   activeField = kNoField;
 		std::unordered_map<FieldKey, bool> comboMode;
 		FieldKey                           focusField = kNoField;
+		Mode                               modeDrawn = Mode::kCompose;
+		FiringDraft                        firing;
 	};
 
 	[[nodiscard]] inline MenuState& State()
@@ -106,6 +115,13 @@ namespace WornEnchantmentPBR::Studio
 	struct ViewGeometry
 	{
 		std::string name;
+	};
+	struct SetStackSplit
+	{
+		float ratio = 0.5f;
+	};
+	struct ScratchRebuilt
+	{
 	};
 	struct ShowSettings
 	{
@@ -266,8 +282,8 @@ namespace WornEnchantmentPBR::Studio
 	};
 
 	using Intent = std::variant<
-		SetMode, PickPiece, PickRecipe, PickTarget, PickSlot, PickCell, PickLayer, ViewGeometry, ShowSettings, ShowResource, ReadMesh,
-		AddTerm, SetTermOp, SetTermText, SetTermKind, RemoveTerm, MoveTerm, PickTerm, SoloTerm, MuteTerm, LoadRegion, ClearRegion,
+		SetMode, PickPiece, PickRecipe, PickTarget, PickSlot, PickCell, PickLayer, ViewGeometry, SetStackSplit, ShowSettings, ShowResource, ReadMesh,
+		AddTerm, SetTermOp, SetTermText, SetTermKind, RemoveTerm, MoveTerm, PickTerm, SoloTerm, MuteTerm, LoadRegion, ClearRegion, ScratchRebuilt,
 		BeginPaint, SetPaintSurface, KeepPaint, EndPaint,
 		EditRecipe, SoloRecipe, SoloOutput, SoloLayer, MuteLayer,
 		SetFreeze, SetScrub, SetSpeed, StepClock, Undo, Redo, CreateRecipe, RenameRecipe, FireTrigger>;

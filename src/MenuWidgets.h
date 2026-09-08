@@ -104,9 +104,9 @@ namespace WornEnchantmentPBR::Studio::Widgets
 	[[nodiscard]] std::string ValueText(const Value& a_value);
 	void ValueSwatch(const Value& a_value);
 
-	bool ModeBar(Mode& a_mode);
+	bool ModeBar(Mode& a_mode, Mode& a_drawn);
 	[[nodiscard]] bool Section(const char* a_title, bool a_openByDefault);
-	void Split(const char* a_id, float& a_ratio, const std::function<void()>& a_left, const std::function<void()>& a_right);
+	[[nodiscard]] std::optional<float> Split(const char* a_id, float a_ratio, const std::function<void()>& a_left, const std::function<void()>& a_right);
 	struct RuleLine
 	{
 		std::string_view      text;

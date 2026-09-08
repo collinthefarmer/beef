@@ -158,6 +158,40 @@ namespace WornEnchantmentPBR::Studio
 		{
 			return Listed(a_field.names, a_text) ? std::nullopt : std::optional<std::string>{ "one of the listed values" };
 		}
+
+		[[nodiscard]] std::optional<std::string> CheckName(const FormField& a_field, std::string_view a_text)
+		{
+			if (!IsName(a_text)) {
+				return "letters, digits and underscores, not starting with a digit";
+			}
+			if (a_text != a_field.text && Listed(a_field.names, a_text)) {
+				return std::format("another row is named '{}'", a_text);
+			}
+			return std::nullopt;
+		}
+	}
+
+	std::vector<std::string> TakenNames(RowKind a_kind, const Names& a_names)
+	{
+		std::vector<std::string> taken;
+		switch (a_kind) {
+		case RowKind::kSignal:
+			for (const auto& [name, type] : a_names.signals) {
+				taken.push_back(name);
+			}
+			break;
+		case RowKind::kCurve:
+			taken = a_names.curves;
+			break;
+		case RowKind::kSource:
+		case RowKind::kMask:
+			for (const auto& [name, type] : a_names.sources) {
+				taken.push_back(name);
+			}
+			taken.insert(taken.end(), a_names.masks.begin(), a_names.masks.end());
+			break;
+		}
+		return taken;
 	}
 
 	Names NamesOf(const RecipeRow& a_recipe, const GeometryRow& a_geometry)
@@ -238,6 +272,10 @@ namespace WornEnchantmentPBR::Studio
 			return CheckChannels(a_text);
 		case FieldCheckKind::kChoice:
 			return CheckChoice(a_field, a_text);
+		case FieldCheckKind::kName:
+			return CheckName(a_field, a_text);
+		case FieldCheckKind::kSignalValue:
+			return CheckSignalValue(a_text, a_names);
 		case FieldCheckKind::kNone:
 			return std::nullopt;
 		}

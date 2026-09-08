@@ -731,6 +731,8 @@ namespace
 			{ FieldKind::kChoice, { FieldInputKind::kChoice, FieldCheckKind::kChoice } },
 			{ FieldKind::kText, { FieldInputKind::kText, FieldCheckKind::kNone } },
 			{ FieldKind::kVec2, { FieldInputKind::kValue, FieldCheckKind::kVec2 } },
+			{ FieldKind::kName, { FieldInputKind::kPlain, FieldCheckKind::kName } },
+			{ FieldKind::kSignalValue, { FieldInputKind::kValue, FieldCheckKind::kSignalValue } },
 		};
 		static_assert(std::size(rows) == kFieldKindCount);
 		for (const auto& [kind, expected] : rows) {
@@ -1058,11 +1060,7 @@ namespace
 		const auto viaMask = KeepEdits(overMask, *active, "onlyMetal");
 		Check(active->FindMask("metal") && viaMask.size() == 2 && Get<AddMask>(viaMask[0]) && Get<SetMask>(viaMask[1]) && Get<SetMask>(viaMask[1])->text == "@metal", "a scratch reading a mask of the active recipe adds no source, only the mask");
 
-		Existing paintExisting;
-		for (const auto& source : paint.sources) {
-			paintExisting.sources.emplace_back(source.name, source.kind);
-			paintExisting.taken.push_back(source.name);
-		}
+		const Existing paintExisting = ExistingOf(paint);
 		const std::vector<Term> terms{ Term{ TermOp::kSet, "@leftPauldron", "leftPauldron" }, Term{ TermOp::kAnd, "@leather", "leather" } };
 		Check(ProposedRegionName(terms, "") == "leftPauldronLeather" && ProposedRegionName(terms, "metal") == "metal" && ProposedRegionName({}, "") == "region", "the proposed name");
 		const std::vector<Term> unlabelled{ Term{ TermOp::kSet, "@a + 1", "expression" }, Term{ TermOp::kAnd, "0.5", "expression" } };
@@ -1100,7 +1098,7 @@ namespace
 		std::optional<RecipeEdit> edit;
 
 		const auto number = SignalForm(*strength);
-		Check(number && number->kind == FieldKind::kScalar && number->text == "1" && number->names.empty() && !number->allowEmpty && !number->detail, "a scalar constant is a literal scalar field");
+		Check(number && number->kind == FieldKind::kSignalValue && number->text == "1" && number->names.empty() && !number->allowEmpty && !number->detail, "a scalar constant is a signal-value field holding its number");
 		const auto* setNumber = number ? Bound<SetConstant>(*number, "0.5", edit) : nullptr;
 		Check(setNumber && setNumber->signal == "glowStrength" && Get<float>(setNumber->value) && *Get<float>(setNumber->value) == 0.5f, "a number sets the constant");
 		const auto* toExpression = number ? Bound<SetExpression>(*number, "@fillLevel * 2", edit) : nullptr;
@@ -1111,7 +1109,7 @@ namespace
 		Check(number && !Bound<SetConstant>(*number, "", edit) && !edit, "an empty text is refused");
 
 		const auto colour = SignalForm(*hue);
-		Check(colour && colour->kind == FieldKind::kColor && colour->names.empty(), "a colour constant is a literal colour field");
+		Check(colour && colour->kind == FieldKind::kSignalValue && colour->names.empty(), "a colour constant is a signal-value field holding its colour");
 		const auto* setColour = colour ? Bound<SetConstant>(*colour, "0.6, 0.2, 1", edit) : nullptr;
 		const auto* value = setColour ? Get<Vec3>(setColour->value) : nullptr;
 		Check(value && value->x == 0.6f && value->y == 0.2f && value->z == 1.0f, "three numbers set the colour");
@@ -1119,7 +1117,7 @@ namespace
 		Check(colourExpression && colourExpression->text == "@edgeColor", "a reference typed into a colour constant makes it an expression");
 
 		const auto expression = SignalForm(*scroll);
-		Check(expression && expression->kind == FieldKind::kExpression && expression->text == "@scroll + 0.25", "an expr signal is an expression field");
+		Check(expression && expression->kind == FieldKind::kSignalValue && expression->text == "@scroll + 0.25", "an expr signal is a signal-value field holding its text");
 		const auto* setExpression = expression ? Bound<SetExpression>(*expression, "@scroll * 2", edit) : nullptr;
 		Check(setExpression && setExpression->signal == "shimmerScroll" && setExpression->text == "@scroll * 2", "the text sets the expression");
 		const auto* toConstant = expression ? Bound<SetConstant>(*expression, "0.25", edit) : nullptr;
@@ -1129,6 +1127,33 @@ namespace
 		Check(hueRow && hueRow->references == 5 && sheenScale && sheenScale->references == 1, "reference counts: glowHue in three layers, the light and a variant; sheenScale in one expression");
 
 		Check(!SignalForm(*level), "an efsh row has no form");
+	}
+
+	void RowFields(const RecipeRow& a_recipe)
+	{
+		const auto names = NamesOf(a_recipe, a_recipe.geometries.front());
+		std::optional<RecipeEdit> edit;
+		const auto signalName = RowNameField(RowKind::kSignal, "glowHue", TakenNames(RowKind::kSignal, names));
+		Check(signalName.kind == FieldKind::kName && signalName.text == "glowHue" && std::ranges::contains(signalName.names, std::string{ "glowStrength" }), "a signal's name field carries the signal names as taken");
+		const auto* rename = Bound<RenameSignal>(signalName, "hue", edit);
+		Check(rename && rename->from == "glowHue" && rename->to == "hue", "a committed name renames the row");
+		Check(!Bound<RenameSignal>(signalName, "9lives", edit) && !edit, "a name that is not a name binds to nothing");
+		Check(!CheckField(signalName, "glowHue", names) && !CheckField(signalName, "fresh", names), "a row's own name and a free name pass the name check");
+		Check(CheckField(signalName, "glowStrength", names) && CheckField(signalName, "9lives", names) && CheckField(signalName, "", names), "a taken name, a bad name and an empty name fail the name check");
+		const auto sourceTaken = TakenNames(RowKind::kSource, names);
+		Check(std::ranges::contains(sourceTaken, std::string{ "metal" }) && std::ranges::contains(sourceTaken, std::string{ "fill" }), "sources and masks share one family of taken names");
+		const auto* renameMask = Bound<RenameMask>(RowNameField(RowKind::kMask, "metal", sourceTaken), "metallicMask", edit);
+		Check(renameMask && renameMask->from == "metal" && renameMask->to == "metallicMask", "a mask's name field renames the mask");
+		const auto curveText = CurveTextField("crisp", "x * x");
+		const auto* setCurve = Bound<SetCurve>(curveText, "x * 2", edit);
+		Check(curveText.kind == FieldKind::kCurve && curveText.names.empty() && setCurve && setCurve->curve == "crisp" && setCurve->text == "x * 2", "a curve row's text field sets the curve");
+		Check(!CheckField(curveText, "x * 2", names) && CheckField(curveText, "@nothing", names) && CheckField(curveText, "", names), "a curve row's text is checked as an expression in x with no declared curve to reference");
+		const auto maskText = MaskTextField("metal", "@metallic");
+		const auto* setMask = Bound<SetMask>(maskText, "@metallic * 2", edit);
+		Check(maskText.kind == FieldKind::kMask && setMask && setMask->mask == "metal" && setMask->text == "@metallic * 2", "a mask row's text field sets the mask");
+		Check(!Bound<SetMask>(maskText, "", edit) && !edit, "an empty mask text binds to nothing");
+		const auto value = FormField{ "v", FieldKind::kSignalValue, "1", {}, false, std::nullopt, std::nullopt, {} };
+		Check(!CheckField(value, "0.5", names) && !CheckField(value, "1, 0, 0", names) && !CheckField(value, "@glowHue * 2", names) && CheckField(value, "@nothing", names), "a signal-value field takes a number, a colour or an expression over signals");
 	}
 
 	void Colours()
@@ -1248,6 +1273,13 @@ namespace
 		Reduce(state, PickRecipe{ "paint" });
 		Reduce(state, KeepPaint{ kRecipeID, "chest" });
 		Check(!state.paint && state.region.terms.empty() && state.selection.recipeID == kRecipeID, "keep ends the session, empties the stack and selects the recipe painted for again");
+		Reduce(state, PickRecipe{ "before" });
+		Reduce(state, RenameRecipe{ "before", "after" });
+		Check(state.selection.recipeID == "after", "a rename follows the selected recipe");
+		Reduce(state, BeginPaint{ "after", armor, Surface::kMaterial });
+		Reduce(state, RenameRecipe{ "after", "later" });
+		Check(state.paint && state.paint->recipe == "later", "a rename follows the recipe painted for");
+		Reduce(state, EndPaint{});
 		Reduce(state, BeginPaint{ kRecipeID, armor, Surface::kMaterial });
 		Reduce(state, EndPaint{});
 		Check(!state.paint, "end drops the session");
@@ -1607,6 +1639,7 @@ int main()
 	ScalarForms(piece, row, geometry);
 	SignalLists(row);
 	SignalForms(row);
+	RowFields(row);
 	PanelForms(row);
 	FieldKindTable();
 	Checks(row, geometry);

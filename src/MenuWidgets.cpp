@@ -435,6 +435,7 @@ namespace WornEnchantmentPBR::Studio::Widgets
 			bool        takesSignal;
 			ImVec4      colour;
 			const char* rule;
+			Swatch      swatch;
 		};
 
 		constexpr ImVec4 kValueBlue{ 0.55f, 0.80f, 1.00f, 1.0f };
@@ -460,6 +461,7 @@ namespace WornEnchantmentPBR::Studio::Widgets
 			case FieldKind::kReference:
 				return kReferenceGreen;
 			case FieldKind::kExpression:
+			case FieldKind::kSignalValue:
 				return kCodeYellow;
 			case FieldKind::kCurve:
 				return kCurveCyan;
@@ -469,6 +471,7 @@ namespace WornEnchantmentPBR::Studio::Widgets
 			case FieldKind::kToggle:
 			case FieldKind::kChoice:
 			case FieldKind::kText:
+			case FieldKind::kName:
 				return kChannelGrey;
 			}
 			return kDim;
@@ -478,9 +481,9 @@ namespace WornEnchantmentPBR::Studio::Widgets
 		{
 			const auto* row = RowOf(kFieldKinds, a_kind);
 			if (!row) {
-				return { "?", false, kDim, "" };
+				return { "?", false, kDim, "", Swatch::kNone };
 			}
-			return { row->glyph, row->takesSignal, ColourOf(a_kind), row->rule };
+			return { row->glyph, row->takesSignal, ColourOf(a_kind), row->rule, row->swatch };
 		}
 
 		void BadgeFrame(const char* a_label, const ImVec4& a_colour, bool a_filled, float a_width, float a_height)
@@ -548,7 +551,7 @@ namespace WornEnchantmentPBR::Studio::Widgets
 				ImGui::EndCombo();
 			}
 		} else {
-			if (a_kind == FieldKind::kColor) {
+			if (style.swatch == Swatch::kAlways || (style.swatch == Swatch::kWhenColour && LiteralColor(a_current))) {
 				chosen = ColorSwatchPicker(key, a_current);
 				ImGui::SameLine(0.0f, 0.0f);
 			}
@@ -587,11 +590,10 @@ namespace WornEnchantmentPBR::Studio::Widgets
 		ImGui::TextUnformatted(ValueText(a_value).c_str());
 	}
 
-	bool ModeBar(Mode& a_mode)
+	bool ModeBar(Mode& a_mode, Mode& a_drawn)
 	{
-		static Mode drawn = a_mode;
-		const Mode  before = a_mode;
-		const bool  setByState = a_mode != drawn;
+		const Mode before = a_mode;
+		const bool setByState = a_mode != a_drawn;
 		if (ImGui::BeginTabBar("modes")) {
 			for (const Mode mode : kModes) {
 				const std::string name{ ModeName(mode) };
@@ -605,7 +607,7 @@ namespace WornEnchantmentPBR::Studio::Widgets
 			}
 			ImGui::EndTabBar();
 		}
-		drawn = a_mode;
+		a_drawn = a_mode;
 		return a_mode != before;
 	}
 
@@ -614,11 +616,11 @@ namespace WornEnchantmentPBR::Studio::Widgets
 		return ImGui::CollapsingHeader(Literal(a_title), a_openByDefault ? ImGuiMCP::ImGuiTreeNodeFlags_DefaultOpen : 0);
 	}
 
-	void Split(const char* a_id, float& a_ratio, const std::function<void()>& a_left, const std::function<void()>& a_right)
+	std::optional<float> Split(const char* a_id, float a_ratio, const std::function<void()>& a_left, const std::function<void()>& a_right)
 	{
 		const float ratio = std::clamp(a_ratio, 0.05f, 0.95f);
 		if (!ImGui::BeginTable(Literal(a_id), 2, ImGuiMCP::ImGuiTableFlags_Resizable | ImGuiMCP::ImGuiTableFlags_BordersInnerV | ImGuiMCP::ImGuiTableFlags_SizingStretchProp)) {
-			return;
+			return std::nullopt;
 		}
 		ImGui::TableSetupColumn("left", ImGuiMCP::ImGuiTableColumnFlags_WidthStretch, ratio);
 		ImGui::TableSetupColumn("right", ImGuiMCP::ImGuiTableColumnFlags_WidthStretch, 1.0f - ratio);
@@ -634,9 +636,11 @@ namespace WornEnchantmentPBR::Studio::Widgets
 			a_right();
 		}
 		ImGui::EndTable();
-		if (left + right > 0.0f) {
-			a_ratio = left / (left + right);
+		if (left + right <= 0.0f) {
+			return std::nullopt;
 		}
+		const float now = left / (left + right);
+		return std::abs(now - ratio) > 0.0005f ? std::optional{ now } : std::nullopt;
 	}
 
 	namespace

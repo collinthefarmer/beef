@@ -19,78 +19,32 @@ namespace WornEnchantmentPBR
 
 	std::string_view SourceKindName(const SourceKind& a_kind) noexcept
 	{
-		return Match(
-			a_kind,
-			[](const ImageSource&) { return std::string_view{ "image" }; },
-			[](const MaterialSource&) { return std::string_view{ "material" }; },
-			[](const BakeSource&) { return std::string_view{ "bake" }; },
-			[](const UvSource&) { return std::string_view{ "uv" }; },
-			[](const DistanceSource&) { return std::string_view{ "distance" }; },
-			[](const RippleSource&) { return std::string_view{ "ripple" }; },
-			[](const MaterialClustersSource&) { return std::string_view{ "materialClusters" }; });
+		const std::size_t index = a_kind.index();
+		return index < std::size(kSourceKindWords) ? kSourceKindWords[index] : std::string_view{ "?" };
 	}
 
 	std::optional<SourceKind> DefaultSourceKind(std::string_view a_name)
 	{
-		if (a_name == "image") {
-			return SourceKind{ ImageSource{} };
-		}
-		if (a_name == "material") {
-			return SourceKind{ MaterialSource{} };
-		}
-		if (a_name == "bake") {
-			return SourceKind{ BakeSource{} };
-		}
-		if (a_name == "uv") {
-			return SourceKind{ UvSource{} };
-		}
-		if (a_name == "distance") {
-			return SourceKind{ DistanceSource{} };
-		}
-		if (a_name == "ripple") {
-			return SourceKind{ RippleSource{} };
-		}
-		if (a_name == "materialClusters") {
-			return SourceKind{ MaterialClustersSource{} };
+		for (std::size_t i = 0; i < std::size(kSourceKindWords); ++i) {
+			if (kSourceKindWords[i] == a_name) {
+				return AlternativeAt<SourceKind>(i);
+			}
 		}
 		return std::nullopt;
 	}
 
 	std::string_view BakeKindName(const BakeKind& a_bake) noexcept
 	{
-		return Match(
-			a_bake,
-			[](const PositionBake&) { return std::string_view{ "position" }; },
-			[](const LocalPositionBake&) { return std::string_view{ "localPosition" }; },
-			[](const WorldUpBake&) { return std::string_view{ "worldUp" }; },
-			[](const PartitionBake&) { return std::string_view{ "partition" }; },
-			[](const BoneWeightBake&) { return std::string_view{ "boneWeight" }; },
-			[](const ComponentIdBake&) { return std::string_view{ "componentId" }; },
-			[](const ChartIdBake&) { return std::string_view{ "chartId" }; });
+		const std::size_t index = a_bake.index();
+		return index < std::size(kBakeKindWords) ? kBakeKindWords[index] : std::string_view{ "?" };
 	}
 
 	std::optional<BakeKind> DefaultBakeKind(std::string_view a_name)
 	{
-		if (a_name == "position") {
-			return BakeKind{ PositionBake{} };
-		}
-		if (a_name == "localPosition") {
-			return BakeKind{ LocalPositionBake{} };
-		}
-		if (a_name == "worldUp") {
-			return BakeKind{ WorldUpBake{} };
-		}
-		if (a_name == "partition") {
-			return BakeKind{ PartitionBake{} };
-		}
-		if (a_name == "boneWeight") {
-			return BakeKind{ BoneWeightBake{} };
-		}
-		if (a_name == "componentId") {
-			return BakeKind{ ComponentIdBake{} };
-		}
-		if (a_name == "chartId") {
-			return BakeKind{ ChartIdBake{} };
+		for (std::size_t i = 0; i < std::size(kBakeKindWords); ++i) {
+			if (kBakeKindWords[i] == a_name) {
+				return AlternativeAt<BakeKind>(i);
+			}
 		}
 		return std::nullopt;
 	}
@@ -156,9 +110,6 @@ namespace WornEnchantmentPBR
 
 	namespace
 	{
-		constexpr Named<ShellMaterial> kShellMaterials[]{ { ShellMaterial::kPbrCopy, "pbrCopy" }, { ShellMaterial::kVanilla, "vanilla" } };
-		constexpr Named<ShellBlend> kShellBlends[]{ { ShellBlend::kAdditive, "additive" }, { ShellBlend::kAlpha, "alpha" } };
-
 		json Num(float a_value)
 		{
 			char       buffer[32];

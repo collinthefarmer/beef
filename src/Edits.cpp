@@ -26,6 +26,8 @@ namespace WornEnchantmentPBR::Studio
 		{
 			return std::format("signal {}", a_signal);
 		}
+		std::string CurveWhere(const std::string& a_curve);
+		std::string MaskWhere(const std::string& a_mask);
 
 		Diagnostic Refuse(std::string a_where, std::string a_message)
 		{
@@ -475,10 +477,10 @@ namespace WornEnchantmentPBR::Studio
 		{
 			auto* curve = FindCurveRow(a_recipe, a_edit.curve);
 			if (!curve) {
-				return Refuse(std::format("curve {}", a_edit.curve), "no such curve");
+				return Refuse(CurveWhere(a_edit.curve), "no such curve");
 			}
 			if (a_edit.text.empty()) {
-				return Refuse(std::format("curve {}", a_edit.curve), "the expression is empty");
+				return Refuse(CurveWhere(a_edit.curve), "the expression is empty");
 			}
 			curve->text = a_edit.text;
 			return std::nullopt;
@@ -488,10 +490,10 @@ namespace WornEnchantmentPBR::Studio
 		{
 			auto* mask = FindMaskRow(a_recipe, a_edit.mask);
 			if (!mask) {
-				return Refuse(std::format("mask {}", a_edit.mask), "no such mask");
+				return Refuse(MaskWhere(a_edit.mask), "no such mask");
 			}
 			if (a_edit.text.empty()) {
-				return Refuse(std::format("mask {}", a_edit.mask), "the expression is empty");
+				return Refuse(MaskWhere(a_edit.mask), "the expression is empty");
 			}
 			if (a_edit.text.size() > kMaxExpressionLength) {
 				return Refuse(std::format("mask {}", a_edit.mask), std::format("longer than {} characters", kMaxExpressionLength));
@@ -997,7 +999,7 @@ namespace WornEnchantmentPBR::Studio
 			}
 			auto* light = Get<LightOutput>(a_recipe.outputs[a_index]);
 			if (!light) {
-				return { nullptr, Refuse(OutputWhere(a_index), "is not a light") };
+				return { nullptr, Refuse(OutputWhere(a_index), "not a light output") };
 			}
 			return { light, std::nullopt };
 		}

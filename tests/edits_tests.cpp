@@ -1,4 +1,5 @@
 #include "Edits.h"
+#include "History.h"
 #include "Expression.h"
 #include "test_support.h"
 
@@ -37,8 +38,19 @@ namespace
 
 	void Accepted(Recipe& a_recipe, const RecipeEdit& a_edit, const std::string& a_what)
 	{
-		const auto problem = Apply(a_recipe, a_edit);
+		const Recipe before = a_recipe;
+		const auto   problem = Apply(a_recipe, a_edit);
 		Check(!problem, a_what + " is accepted" + (problem ? ": " + problem->where + ": " + problem->message : ""));
+		if (problem) {
+			return;
+		}
+		const auto back = ParseRecipe(SerializeRecipe(a_recipe), a_recipe.id);
+		Check(back.recipe && *back.recipe == a_recipe, a_what + ": the edited recipe serialises to a file that reads back identical");
+		EditHistory history;
+		Recipe      current = a_recipe;
+		history.Push(before);
+		const auto undone = history.Undo(current);
+		Check(undone && *undone == before, a_what + ": undo restores the recipe before the edit exactly");
 	}
 
 	void Refused(const Recipe& a_recipe, const RecipeEdit& a_edit, const std::string& a_where, const std::string& a_fragment, const std::string& a_what)
@@ -441,7 +453,7 @@ namespace
 	{
 		Recipe r = Canonical();
 		Refused(r, AddLight{}, "outputs", "output 4 is already the light", "add a second light");
-		Refused(r, SetLightParam{ 0, LightParam::kIntensity, 1.0f }, "output 0", "is not a light", "a light edit on a material output");
+		Refused(r, SetLightParam{ 0, LightParam::kIntensity, 1.0f }, "output 0", "not a light", "a light edit on a material output");
 		Refused(r, SetLightParam{ 9, LightParam::kIntensity, 1.0f }, "output 9", "5 outputs", "a light edit past the end");
 		Refused(r, SetLightParam{ 4, LightParam::kIntensity, Ref{ "nothing" } }, "output 4", "unknown signal", "a light parameter reading a missing signal");
 		Accepted(r, SetLightParam{ 4, LightParam::kSize, 2.0f }, "set the light's size");
@@ -449,12 +461,17 @@ namespace
 		Accepted(r, SetLightVector{ 4, LightVector::kColor, Ref{ "edgeColor" } }, "set the light's colour to a signal");
 		Accepted(r, SetLightVector{ 4, LightVector::kOffset, std::array<Param, 3>{ 0.0f, 0.0f, 5.0f } }, "set the light's offset");
 		Accepted(r, SetLightShadow{ 4, true }, "set the light's shadow");
+		Refused(r, SetLightVector{ 9, LightVector::kColor, std::array<Param, 3>{ 1.0f, 1.0f, 1.0f } }, "output 9", "there are", "a light vector on an output past the end");
+		Refused(r, SetLightVector{ 0, LightVector::kColor, std::array<Param, 3>{ 1.0f, 1.0f, 1.0f } }, "output 0", "not a light", "a light vector on a material output");
+		Refused(r, SetLightVector{ 4, LightVector::kColor, Ref{ "nobody" } }, "output 4", "nobody", "a light vector naming a signal the recipe lacks");
+		Refused(r, SetLightShadow{ 9, true }, "output 9", "there are", "a shadow on an output past the end");
+		Refused(r, SetLightShadow{ 0, true }, "output 0", "not a light", "a shadow on a material output");
 		Accepted(r, SetLightBones{ 4, NamedBones{ { "NPC Head [Head]" } } }, "set named bones");
 		Refused(r, SetLightBones{ 4, NamedBones{} }, "output 4", "at least one name", "named bones without names");
 		Refused(r, SetLightBones{ 4, SkinnedBones{ 0, 0.0f } }, "output 4", "at least 1", "skinned bones with max 0");
 		const auto* light = std::get_if<LightOutput>(&r.outputs[4]);
 		Check(light && Get<float>(light->size) && *Get<float>(light->size) == 2.0f && Get<Ref>(light->cutoff) && Get<Ref>(light->color) && light->shadow && Get<NamedBones>(light->bones), "the light carries every edit");
-		Refused(r, ResetLight{ 0 }, "output 0", "is not a light", "reset a material output as a light");
+		Refused(r, ResetLight{ 0 }, "output 0", "not a light", "reset a material output as a light");
 		Accepted(r, ResetLight{ 4 }, "reset the light");
 		Check(light && *light == LightOutput{}, "the reset light has the format's defaults");
 		Accepted(r, RemoveOutput{ 4 }, "remove the light");
@@ -472,6 +489,7 @@ namespace
 		Accepted(s, SetShellParam{ ShellParam::kRimPower, 4.0f }, "set the rim power");
 		Refused(s, SetShellParam{ ShellParam::kEmissive, Ref{ "nothing" } }, "shell", "unknown signal", "a shell parameter reading a missing signal");
 		Accepted(s, SetShellVector{ ShellVector::kOffset, Ref{ "glowHue" } }, "set the pose offset to a signal");
+		Refused(s, SetShellVector{ ShellVector::kOffset, Ref{ "nobody" } }, "shell", "nobody", "a shell vector naming a signal the recipe lacks");
 		Accepted(s, SetShellPoint{ ShellPoint::kScalePoint, Vec3{ 1.0f, 2.0f, 3.0f } }, "set the scale point");
 		Refused(s, SetShellPoint{ ShellPoint::kSpinAxis, Vec3{} }, "shell", "cannot be zero", "a zero spin axis");
 		Check(s.shell.material == ShellMaterial::kVanilla && s.shell.blend == ShellBlend::kAlpha && !s.shell.depthBias && s.shell.alphaTest == 0.5f && Get<float>(s.shell.rimPower) && Get<Ref>(s.shell.pose.offset) && s.shell.pose.scalePoint == Vec3{ 1.0f, 2.0f, 3.0f }, "the shell carries every edit");
@@ -479,7 +497,6 @@ namespace
 		Check(s.shell == ShellSettings{}, "the reset shell has the format's defaults");
 		Check(Describe(ResetShell{}) == "shell: reset" && Describe(ResetLight{ 4 }) == "output 4: reset light", "describe the resets");
 	}
-}
 
 	void KeyEdits()
 	{
@@ -565,6 +582,7 @@ void BatchEdits()
 	Check(Describe(EditBatch{ { AddSignal{ "a" }, RemoveSignal{ "a" } } }) == "signals: add a; signal a: remove", "a batch describes as its edits joined");
 	Check(ChangesKeys(EditBatch{ { AddKey{ RecipeKey{ KeyKind::kDefault, {}, {} } } } }) && !ChangesKeys(EditBatch{ { AddSignal{ "a" } } }), "a batch knows whether it changes keys");
 	Check(!Apply(r, EditBatch{}) && r.FindSignal("batched"), "an empty batch is accepted and changes nothing");
+}
 }
 
 int main()

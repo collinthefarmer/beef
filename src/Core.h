@@ -189,6 +189,26 @@ namespace WornEnchantmentPBR
 		return out;
 	}
 
+	template <std::size_t N>
+	[[nodiscard]] std::vector<std::string> WordsOf(const std::string_view (&a_words)[N])
+	{
+		return std::vector<std::string>(std::begin(a_words), std::end(a_words));
+	}
+
+	template <class Variant, std::size_t... I>
+	[[nodiscard]] std::optional<Variant> AlternativeAt(std::size_t a_index, std::index_sequence<I...>)
+	{
+		std::optional<Variant> made;
+		((a_index == I ? (made.emplace(std::in_place_index<I>), true) : false) || ...);
+		return made;
+	}
+
+	template <class Variant>
+	[[nodiscard]] std::optional<Variant> AlternativeAt(std::size_t a_index)
+	{
+		return AlternativeAt<Variant>(a_index, std::make_index_sequence<std::variant_size_v<Variant>>{});
+	}
+
 	template <class Row, std::size_t N>
 	[[nodiscard]] std::vector<std::string> WordsOf(const Row (&a_table)[N])
 	{

@@ -94,8 +94,10 @@ namespace WornEnchantmentPBR::Studio
 			a_intent,
 			[&](const SetMode& i) {
 				if (a_state.mode != i.mode) {
+					const float split = a_state.layout.stackSplit;
 					a_state.mode = i.mode;
 					a_state.layout = LayoutFor(i.mode);
+					a_state.layout.stackSplit = split;
 					if (i.mode == Mode::kPaint) {
 						a_state.resource = ResourceTab::kMasks;
 					}
@@ -276,6 +278,8 @@ namespace WornEnchantmentPBR::Studio
 			},
 			[&](const PickLayer& i) { selection.layer = i.index; },
 			[&](const ViewGeometry& i) { selection.geometry = i.name; },
+			[&](const SetStackSplit& i) { a_state.layout.stackSplit = std::clamp(i.ratio, 0.05f, 0.95f); },
+			[&](const ScratchRebuilt&) { region.dirty = false; },
 			[&](const ShowSettings& i) { a_state.settings = i.on; },
 			[&](const ShowResource& i) { a_state.resource = i.tab; },
 			[&](const EditRecipe& i) {

@@ -56,17 +56,30 @@ namespace WornEnchantmentPBR::Studio
 		return it != a_recipe.maskRows.end() ? std::optional{ it->text } : std::nullopt;
 	}
 
-	Existing ExistingOf(const RecipeRow& a_kind)
+	Existing ExistingOf(const RecipeRow& a_recipe)
 	{
 		Existing existing;
-		for (const auto& source : a_kind.sourceRows) {
+		for (const auto& source : a_recipe.sourceRows) {
 			if (const auto kind = SourceKindOf(source)) {
 				existing.sources.emplace_back(source.name, *kind);
 			}
 			existing.taken.push_back(source.name);
 		}
-		for (const auto& mask : a_kind.masks) {
+		for (const auto& mask : a_recipe.masks) {
 			existing.taken.push_back(mask);
+		}
+		return existing;
+	}
+
+	Existing ExistingOf(const Recipe& a_recipe)
+	{
+		Existing existing;
+		for (const auto& source : a_recipe.sources) {
+			existing.sources.emplace_back(source.name, source.kind);
+			existing.taken.push_back(source.name);
+		}
+		for (const auto& mask : a_recipe.masks) {
+			existing.taken.push_back(mask.name);
 		}
 		return existing;
 	}
@@ -98,6 +111,11 @@ namespace WornEnchantmentPBR::Studio
 
 			[[nodiscard]] std::string NameFor(const std::string& a_wanted, const SourceKind& a_kind)
 			{
+				for (const auto& [name, kind] : existing_.sources) {
+					if (name == a_wanted && kind == a_kind) {
+						return name;
+					}
+				}
 				for (const auto& [name, kind] : existing_.sources) {
 					if (kind == a_kind) {
 						return name;
@@ -795,46 +813,23 @@ namespace WornEnchantmentPBR::Studio
 		if (!program) {
 			return edits;
 		}
-		std::vector<std::string> taken;
-		for (const auto& source : a_active.sources) {
-			taken.push_back(source.name);
-		}
-		for (const auto& mask : a_active.masks) {
-			taken.push_back(mask.name);
-		}
+		const Existing existing = ExistingOf(a_active);
+		SourceNamer    namer(existing);
 		for (const auto& read : program->References()) {
 			const auto* source = a_paint.FindSource(read);
 			if (!source) {
 				continue;
 			}
-			const auto* same = a_active.FindSource(read);
-			if (same && same->kind == source->kind) {
-				continue;
-			}
-			std::string to;
-			for (const auto& candidate : a_active.sources) {
-				if (candidate.kind == source->kind) {
-					to = candidate.name;
-					break;
-				}
-			}
-			if (to.empty()) {
-				to = UniqueName(read, taken);
-				taken.push_back(to);
-				edits.push_back(AddSource{ to, source->kind });
-			}
+			const std::string to = namer.NameFor(read, source->kind);
 			if (to != read) {
 				text = RenameInExpression(text, read, to, false);
 			}
 		}
+		edits = std::move(namer).Edits();
 		if (!a_active.FindMask(a_name)) {
 			edits.push_back(AddMask{ std::string{ a_name } });
 		}
 		edits.push_back(SetMask{ std::string{ a_name }, std::move(text) });
 		return edits;
 	}
-}
-
-namespace WornEnchantmentPBR::Studio
-{
 }

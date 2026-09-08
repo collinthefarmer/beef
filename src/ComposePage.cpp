@@ -181,6 +181,8 @@ namespace WornEnchantmentPBR::Studio
 			case FieldInputKind::kText:
 				Widgets::Badge(a_field.kind);
 				return Widgets::TextField("value", a_field.text, Width::Fill(), a_scale, check);
+			case FieldInputKind::kPlain:
+				return Widgets::TextField("value", a_field.text, Width::Fill(), a_scale, check);
 			case FieldInputKind::kValue:
 				return Widgets::ValueField("value", a_field.kind, a_field.text, a_field.names, a_field.allowEmpty, a_scale, check, a_field.creators);
 			}
@@ -201,6 +203,15 @@ namespace WornEnchantmentPBR::Studio
 			} else {
 				Refuse(a_field.name, a_text);
 			}
+		}
+
+		void DrawRowField(const char* a_key, const FormField& a_field, const std::string& a_recipe, float a_scale, const Names& a_names, Intents& a_out)
+		{
+			ImGui::PushID(a_key);
+			if (const auto text = FieldInput(a_field, a_scale, a_names)) {
+				PostField(a_field, *text, a_recipe, a_out);
+			}
+			ImGui::PopID();
 		}
 
 		[[nodiscard]] std::optional<std::size_t> DrawFieldTable(const char* a_id, std::span<const FormField> a_fields, const std::string& a_recipe, float a_scale, const Names& a_names, Intents& a_out)
@@ -846,17 +857,15 @@ namespace WornEnchantmentPBR::Studio
 			return picked;
 		}
 
-		void DrawInspectorFields(const Inspector& a_inspector, const RecipeRow& a_recipe, const Layout& a_layout, const Names& a_names, Intents& a_out);
-		void DrawFormWithSignals(const char* a_id, std::span<const FormField> a_form, const RecipeRow& a_recipe, FormID a_actorID, float a_scale, const Names& a_names, Intents& a_out, std::size_t a_columns = 1);
+		void DrawInspectorFields(const Inspector& a_inspector, const RecipeRow& a_recipe, FormID a_actorID, std::span<const BoneRow> a_bones, const Layout& a_layout, const Names& a_names, Intents& a_out);
+		void DrawFormWithSignals(const char* a_id, std::span<const FormField> a_form, const RecipeRow& a_recipe, FormID a_actorID, std::span<const BoneRow> a_bones, float a_scale, const Names& a_names, Intents& a_out, std::size_t a_columns = 1);
 
-		FormID g_modalActor = 0;
-
-		void DrawScalars(const LayerStack& a_stack, const RecipeRow& a_recipe, float a_scale, const Names& a_names, Intents& a_out)
+		void DrawScalars(const LayerStack& a_stack, const RecipeRow& a_recipe, FormID a_actorID, std::span<const BoneRow> a_bones, float a_scale, const Names& a_names, Intents& a_out)
 		{
 			if (a_stack.scalars.empty()) {
 				return;
 			}
-			DrawFormWithSignals("scalars", ScalarForm(a_stack), a_recipe, g_modalActor, a_scale, a_names, a_out);
+			DrawFormWithSignals("scalars", ScalarForm(a_stack), a_recipe, a_actorID, a_bones, a_scale, a_names, a_out);
 		}
 
 		[[nodiscard]] Widgets::Table BeginLayerTable()
@@ -954,7 +963,7 @@ namespace WornEnchantmentPBR::Studio
 			Widgets::HelpMarker("Drag the :: grip onto another row to reorder; click the grip or the name to open the layer's fields beside the stack. S solos, M mutes. Enter commits a text field; a drag commits on release.");
 		}
 
-		void DrawInspector(const LayerStack& a_stack, const std::optional<Inspector>& a_inspector, const RecipeRow& a_recipe, const Layout& a_layout, const Names& a_names, Intents& a_out)
+		void DrawInspector(const LayerStack& a_stack, const std::optional<Inspector>& a_inspector, const RecipeRow& a_recipe, FormID a_actorID, std::span<const BoneRow> a_bones, const Layout& a_layout, const Names& a_names, Intents& a_out)
 		{
 			if (!a_layout.inspector || !a_inspector) {
 				Widgets::Dim("click a layer to inspect it");
@@ -965,7 +974,7 @@ namespace WornEnchantmentPBR::Studio
 			if (!a_inspector->row.problem.empty()) {
 				Widgets::Warn(a_inspector->row.problem);
 			}
-			DrawInspectorFields(*a_inspector, a_recipe, a_layout, a_names, a_out);
+			DrawInspectorFields(*a_inspector, a_recipe, a_actorID, a_bones, a_layout, a_names, a_out);
 			if (row != a_stack.rows.end() && row->layer.texture) {
 				Widgets::Thumbnail(row->layer.texture, ShaderChannel::kRgb, false, a_layout.inspectorThumbnail * a_layout.widgetScale);
 			}
@@ -986,7 +995,7 @@ namespace WornEnchantmentPBR::Studio
 			Widgets::Tooltip(std::format("viewed on {} (one of {} geometries; the recipe applies to all)\nclick: view the next geometry\nraw name: {}", GeometryLabel(a_geometry.name, a_piece.armorName), a_recipe.geometries.size(), a_geometry.name));
 		}
 
-		void DrawStack(const std::optional<LayerStack>& a_stack, const std::optional<Inspector>& a_inspector, const PieceRow& a_piece, const RecipeRow& a_recipe, const GeometryRow& a_geometry, Layout& a_layout, const Names& a_names, Intents& a_out)
+		void DrawStack(const std::optional<LayerStack>& a_stack, const std::optional<Inspector>& a_inspector, const PieceRow& a_piece, const RecipeRow& a_recipe, const GeometryRow& a_geometry, const Layout& a_layout, const Names& a_names, Intents& a_out)
 		{
 			if (!a_stack) {
 				Widgets::Dim("choose a target and a slot");
@@ -1001,7 +1010,7 @@ namespace WornEnchantmentPBR::Studio
 			ImGui::SameLine();
 			ImGui::BeginGroup();
 			Widgets::Dim(std::format("composite {} px, {}", stack.size, stack.animated ? "animated" : "static"));
-			DrawScalars(stack, a_recipe, a_layout.widgetScale, a_names, a_out);
+			DrawScalars(stack, a_recipe, a_piece.actorID, a_geometry.bones, a_layout.widgetScale, a_names, a_out);
 			ImGui::EndGroup();
 
 			if (stack.rows.empty()) {
@@ -1009,10 +1018,13 @@ namespace WornEnchantmentPBR::Studio
 				ImGui::PopID();
 				return;
 			}
-			Widgets::Split(
+			const auto dragged = Widgets::Split(
 				"stack-split", a_layout.stackSplit,
 				[&]() { DrawLayers(stack, a_recipe, a_out); },
-				[&]() { DrawInspector(stack, a_inspector, a_recipe, a_layout, a_names, a_out); });
+				[&]() { DrawInspector(stack, a_inspector, a_recipe, a_piece.actorID, a_geometry.bones, a_layout, a_names, a_out); });
+			if (dragged) {
+				a_out.push_back(SetStackSplit{ *dragged });
+			}
 			ImGui::PopID();
 		}
 
@@ -1024,56 +1036,46 @@ namespace WornEnchantmentPBR::Studio
 			if (!ImGui::BeginPopup("fire")) {
 				return;
 			}
-			static std::string node;
-			static float       offset[3]{};
-			static float       random = 0.0f;
-			static float       value = 1.0f;
+			auto& draft = State().firing;
 			Widgets::NextItemWidth(Width::Px(220.0f));
-			if (ImGui::BeginCombo("node", node.empty() ? "(none)" : node.c_str())) {
-				if (ImGui::Selectable("(none)", node.empty())) {
-					node.clear();
+			if (ImGui::BeginCombo("node", draft.node.empty() ? "(none)" : draft.node.c_str())) {
+				if (ImGui::Selectable("(none)", draft.node.empty())) {
+					draft.node.clear();
 				}
 				for (const auto& bone : a_bones) {
-					if (ImGui::Selectable(bone.name.c_str(), bone.name == node)) {
-						node = bone.name;
+					if (ImGui::Selectable(bone.name.c_str(), bone.name == draft.node)) {
+						draft.node = bone.name;
 					}
 				}
 				ImGui::EndCombo();
 			}
+			float offset[3]{ draft.offset.x, draft.offset.y, draft.offset.z };
 			Widgets::NextItemWidth(Width::Px(220.0f));
-			ImGui::DragFloat3("offset", offset, 1.0f);
+			if (ImGui::DragFloat3("offset", offset, 1.0f)) {
+				draft.offset = Vec3{ offset[0], offset[1], offset[2] };
+			}
 			Widgets::NextItemWidth(Width::Px(220.0f));
-			ImGui::DragFloat("random", &random, 1.0f, 0.0f, 200.0f);
+			ImGui::DragFloat("random", &draft.random, 1.0f, 0.0f, 200.0f);
 			Widgets::NextItemWidth(Width::Px(220.0f));
-			ImGui::DragFloat("value", &value, 0.01f);
+			ImGui::DragFloat("value", &draft.value, 0.01f);
 			if (ImGui::Button("Fire now")) {
-				a_out.push_back(FireTrigger{ a_actorID, a_signal.event, node, Vec3{ offset[0], offset[1], offset[2] }, random, value });
+				a_out.push_back(FireTrigger{ a_actorID, a_signal.event, draft.node, draft.offset, draft.random, draft.value });
 			}
 			ImGui::EndPopup();
 		}
 
-		std::span<const BoneRow> g_modalBones;
-
-		void DrawSignalEditor(const std::string& a_id, const SignalRow& a_signal, FormID a_actorID, float a_scale, const Names& a_names, Intents& a_out)
+		void DrawSignalEditor(const std::string& a_id, const SignalRow& a_signal, FormID a_actorID, std::span<const BoneRow> a_bones, float a_scale, const Names& a_names, Intents& a_out)
 		{
 			const auto field = SignalForm(a_signal);
 			if (!field) {
 				if (!a_signal.event.empty()) {
-					FirePopup(a_signal, a_actorID, g_modalBones, a_out);
+					FirePopup(a_signal, a_actorID, a_bones, a_out);
 					ImGui::SameLine();
 				}
 				Widgets::Dim(std::format("{}: edits in the file", SignalKindName(a_signal.kind)));
 				return;
 			}
-			const Widgets::TextCheck check = [&](const std::string& a_text) { return CheckSignalValue(a_text, a_names); };
-			if (const auto text = Widgets::ValueField("value", field->kind, field->text, {}, false, a_scale, check)) {
-				const std::optional<RecipeEdit> edit = field->bind ? field->bind(*text) : std::nullopt;
-				if (edit) {
-					Post(a_out, a_id, *edit);
-				} else {
-					Refuse(field->name, *text);
-				}
-			}
+			DrawRowField("value", *field, a_id, a_scale, a_names, a_out);
 		}
 
 		void DrawSignalCurve(const std::string& a_id, const SignalRow& a_signal, std::span<const std::string> a_curves, float a_width, float a_scale, Intents& a_out)
@@ -1084,7 +1086,7 @@ namespace WornEnchantmentPBR::Studio
 			Widgets::Tooltip("a declared curve applied to the signal's value; none passes it through");
 		}
 
-		void DrawSignalRow(Widgets::Table& a_table, const std::string& a_id, const SignalRow& a_signal, bool a_tunable, std::span<const std::string> a_curves, float a_curveWidth, FormID a_actorID, float a_scale, const Names& a_names, Intents& a_out)
+		void DrawSignalRow(Widgets::Table& a_table, const std::string& a_id, const SignalRow& a_signal, bool a_tunable, std::span<const std::string> a_curves, float a_curveWidth, FormID a_actorID, std::span<const BoneRow> a_bones, float a_scale, const Names& a_names, Intents& a_out)
 		{
 			ImGui::PushID(a_signal.name.c_str());
 			a_table.Cell();
@@ -1092,12 +1094,10 @@ namespace WornEnchantmentPBR::Studio
 				Post(a_out, a_id, RemoveSignal{ a_signal.name });
 			}
 			a_table.Cell();
-			if (const auto renamed = Widgets::TextField("name", a_signal.name, Width::Fill(), a_scale)) {
-				Post(a_out, a_id, RenameSignal{ a_signal.name, *renamed });
-			}
+			DrawRowField("name", RowNameField(RowKind::kSignal, a_signal.name, TakenNames(RowKind::kSignal, a_names)), a_id, a_scale, a_names, a_out);
 			Widgets::Tooltip(SignalKindName(a_signal.kind));
 			a_table.Cell();
-			DrawSignalEditor(a_id, a_signal, a_actorID, a_scale, a_names, a_out);
+			DrawSignalEditor(a_id, a_signal, a_actorID, a_bones, a_scale, a_names, a_out);
 			a_table.Cell();
 			if (a_tunable) {
 				DrawSignalCurve(a_id, a_signal, a_curves, a_curveWidth, a_scale, a_out);
@@ -1118,7 +1118,7 @@ namespace WornEnchantmentPBR::Studio
 			ImGui::PopID();
 		}
 
-		void DrawSignals(const PieceRow& a_piece, const RecipeRow& a_recipe, const Layout& a_layout, std::string_view a_filter, const Names& a_names, Intents& a_out)
+		void DrawSignals(const PieceRow& a_piece, const RecipeRow& a_recipe, const GeometryRow& a_geometry, const Layout& a_layout, std::string_view a_filter, const Names& a_names, Intents& a_out)
 		{
 			const auto  list = BuildSignalList(a_recipe, a_layout);
 			const auto& id = a_recipe.id;
@@ -1143,12 +1143,12 @@ namespace WornEnchantmentPBR::Studio
 			}
 			for (const auto& signal : list.tunable) {
 				if (NameMatches(signal.name, a_filter)) {
-					DrawSignalRow(signals, id, signal, true, curveNames, curveWidth, a_piece.actorID, scale, a_names, a_out);
+					DrawSignalRow(signals, id, signal, true, curveNames, curveWidth, a_piece.actorID, a_geometry.bones, scale, a_names, a_out);
 				}
 			}
 			for (const auto& signal : list.developer) {
 				if (NameMatches(signal.name, a_filter)) {
-					DrawSignalRow(signals, id, signal, false, curveNames, curveWidth, a_piece.actorID, scale, a_names, a_out);
+					DrawSignalRow(signals, id, signal, false, curveNames, curveWidth, a_piece.actorID, a_geometry.bones, scale, a_names, a_out);
 				}
 			}
 			signals.End();
@@ -1156,7 +1156,6 @@ namespace WornEnchantmentPBR::Studio
 
 		void DrawCurves(const RecipeRow& a_recipe, const Layout& a_layout, std::string_view a_filter, const Names& a_names, Intents& a_out)
 		{
-			const Widgets::TextCheck check = [&](const std::string& a_text) { return CheckCurveText(a_text, a_names); };
 			const auto& id = a_recipe.id;
 			const float scale = a_layout.widgetScale;
 			std::vector<std::string> names;
@@ -1178,14 +1177,9 @@ namespace WornEnchantmentPBR::Studio
 					Post(a_out, id, RemoveCurve{ curve.name });
 				}
 				curves.Cell();
-				if (const auto renamed = Widgets::TextField("name", curve.name, Width::Fill(), scale)) {
-					Post(a_out, id, RenameCurve{ curve.name, *renamed });
-				}
+				DrawRowField("name", RowNameField(RowKind::kCurve, curve.name, TakenNames(RowKind::kCurve, a_names)), id, scale, a_names, a_out);
 				curves.Cell();
-				Widgets::Badge(FieldKind::kCurve);
-				if (const auto edited = Widgets::TextField("text", curve.text, Width::Fill(), scale, check)) {
-					Post(a_out, id, SetCurve{ curve.name, *edited });
-				}
+				DrawRowField("text", CurveTextField(curve.name, curve.text), id, scale, a_names, a_out);
 				ImGui::PopID();
 			}
 			curves.End();
@@ -1215,9 +1209,7 @@ namespace WornEnchantmentPBR::Studio
 					Post(a_out, id, RemoveSource{ source.name });
 				}
 				sources.Cell();
-				if (const auto renamed = Widgets::TextField("name", source.name, Width::Fill(), scale)) {
-					Post(a_out, id, RenameSource{ source.name, *renamed });
-				}
+				DrawRowField("name", RowNameField(RowKind::kSource, source.name, TakenNames(RowKind::kSource, a_names)), id, scale, a_names, a_out);
 				sources.Cell();
 				const auto title = std::format("source {}###source-detail", source.name);
 				if (Widgets::DetailButton()) {
@@ -1238,7 +1230,6 @@ namespace WornEnchantmentPBR::Studio
 		{
 			const auto& id = a_recipe.id;
 			const float scale = a_layout.widgetScale;
-			const Widgets::TextCheck check = [&](const std::string& a_text) { return CheckMaskText(a_text, a_names); };
 			std::vector<std::string> names;
 			for (const auto& mask : a_recipe.maskRows) {
 				names.push_back(mask.name);
@@ -1264,14 +1255,9 @@ namespace WornEnchantmentPBR::Studio
 					}
 				}
 				masks.Cell();
-				if (const auto renamed = Widgets::TextField("name", mask.name, Width::Fill(), scale)) {
-					Post(a_out, id, RenameMask{ mask.name, *renamed });
-				}
+				DrawRowField("name", RowNameField(RowKind::kMask, mask.name, TakenNames(RowKind::kMask, a_names)), id, scale, a_names, a_out);
 				masks.Cell();
-				Widgets::Badge(FieldKind::kMask);
-				if (const auto edited = Widgets::TextField("text", mask.text, Width::Fill(), scale, check)) {
-					Post(a_out, id, SetMask{ mask.name, *edited });
-				}
+				DrawRowField("text", MaskTextField(mask.name, mask.text), id, scale, a_names, a_out);
 				ImGui::PopID();
 			}
 			masks.End();
@@ -1327,7 +1313,7 @@ namespace WornEnchantmentPBR::Studio
 								 } };
 		}
 
-		void DrawResources(const PieceRow& a_piece, const RecipeRow& a_recipe, const Layout& a_layout, ResourceTab a_open, std::string_view a_filter, const Names& a_names, Intents& a_out)
+		void DrawResources(const PieceRow& a_piece, const RecipeRow& a_recipe, const GeometryRow& a_geometry, const Layout& a_layout, ResourceTab a_open, std::string_view a_filter, const Names& a_names, Intents& a_out)
 		{
 			if (!ImGui::BeginTabBar("resources")) {
 				return;
@@ -1343,7 +1329,7 @@ namespace WornEnchantmentPBR::Studio
 				if (ImGui::BeginChild(name.c_str(), ImVec2{ 0.0f, 0.0f }, 0, 0)) {
 					switch (tab) {
 					case ResourceTab::kSignals:
-						DrawSignals(a_piece, a_recipe, a_layout, a_filter, a_names, a_out);
+						DrawSignals(a_piece, a_recipe, a_geometry, a_layout, a_filter, a_names, a_out);
 						break;
 					case ResourceTab::kCurves:
 						DrawCurves(a_recipe, a_layout, a_filter, a_names, a_out);
@@ -1369,11 +1355,7 @@ namespace WornEnchantmentPBR::Studio
 			ImGui::TextUnformatted((ReferenceText(a_image.name) + " =").c_str());
 			ImGui::SameLine();
 			if (a_editable) {
-				Widgets::Badge(FieldKind::kMask);
-				const Widgets::TextCheck check = [&](const std::string& a_text) { return CheckMaskText(a_text, a_names); };
-				if (const auto edited = Widgets::TextField("text", a_image.description, Width::Fill(), scale, check)) {
-					Post(a_out, a_id, SetMask{ a_image.name, *edited });
-				}
+				DrawRowField("text", MaskTextField(a_image.name, a_image.description), a_id, scale, a_names, a_out);
 			} else {
 				ImGui::TextWrapped("%s", a_image.description.c_str());
 			}
@@ -1384,9 +1366,9 @@ namespace WornEnchantmentPBR::Studio
 
 		constexpr int kMaxSignalModalDepth = 6;
 
-		void DrawSignalModal(const RecipeRow& a_recipe, const std::string& a_name, FormID a_actorID, float a_scale, const Names& a_names, int a_depth, Intents& a_out);
+		void DrawSignalModal(const RecipeRow& a_recipe, const std::string& a_name, FormID a_actorID, std::span<const BoneRow> a_bones, float a_scale, const Names& a_names, int a_depth, Intents& a_out);
 
-		void DrawSignalDetail(const RecipeRow& a_recipe, const std::string& a_text, FormID a_actorID, float a_scale, const Names& a_names, int a_depth, Intents& a_out)
+		void DrawSignalDetail(const RecipeRow& a_recipe, const std::string& a_text, FormID a_actorID, std::span<const BoneRow> a_bones, float a_scale, const Names& a_names, int a_depth, Intents& a_out)
 		{
 			const auto name = ReferenceName(a_text);
 			const auto it = std::ranges::find(a_recipe.signals, name, &SignalRow::name);
@@ -1398,7 +1380,7 @@ namespace WornEnchantmentPBR::Studio
 			ImGui::Text("%s (%s)", ReferenceText(it->name).c_str(), std::string{ SignalKindName(it->kind) }.c_str());
 			ImGui::SameLine();
 			Widgets::ValueSwatch(it->value);
-			DrawSignalEditor(a_recipe.id, *it, a_actorID, a_scale, a_names, a_out);
+			DrawSignalEditor(a_recipe.id, *it, a_actorID, a_bones, a_scale, a_names, a_out);
 			if (it->inert) {
 				Widgets::Problem(it->problem.empty() ? "inert" : "inert: " + it->problem);
 			}
@@ -1414,25 +1396,25 @@ namespace WornEnchantmentPBR::Studio
 							any = true;
 						}
 						ImGui::SameLine();
-						DrawSignalModal(a_recipe, read, a_actorID, a_scale, a_names, a_depth + 1, a_out);
+						DrawSignalModal(a_recipe, read, a_actorID, a_bones, a_scale, a_names, a_depth + 1, a_out);
 					}
 				}
 			}
 			ImGui::PopID();
 		}
 
-		void DrawSignalModal(const RecipeRow& a_recipe, const std::string& a_name, FormID a_actorID, float a_scale, const Names& a_names, int a_depth, Intents& a_out)
+		void DrawSignalModal(const RecipeRow& a_recipe, const std::string& a_name, FormID a_actorID, std::span<const BoneRow> a_bones, float a_scale, const Names& a_names, int a_depth, Intents& a_out)
 		{
 			ImGui::PushID(a_name.c_str());
 			const auto title = std::format("{}###signal-modal-{}", ReferenceText(a_name), a_depth);
 			if (ImGui::SmallButton(ReferenceText(a_name).c_str())) {
 				ImGui::OpenPopup(title.c_str());
 			}
-			Widgets::DetailModal(title.c_str(), [&]() { DrawSignalDetail(a_recipe, ReferenceText(a_name), a_actorID, a_scale, a_names, a_depth, a_out); });
+			Widgets::DetailModal(title.c_str(), [&]() { DrawSignalDetail(a_recipe, ReferenceText(a_name), a_actorID, a_bones, a_scale, a_names, a_depth, a_out); });
 			ImGui::PopID();
 		}
 
-		void DrawFormWithSignals(const char* a_id, std::span<const FormField> a_form, const RecipeRow& a_recipe, FormID a_actorID, float a_scale, const Names& a_names, Intents& a_out, std::size_t a_columns)
+		void DrawFormWithSignals(const char* a_id, std::span<const FormField> a_form, const RecipeRow& a_recipe, FormID a_actorID, std::span<const BoneRow> a_bones, float a_scale, const Names& a_names, Intents& a_out, std::size_t a_columns)
 		{
 			const auto open = DrawForm(a_id, a_form, a_recipe.id, a_scale, a_names, a_out, a_columns);
 			for (std::size_t i = 0; i < a_form.size(); ++i) {
@@ -1444,12 +1426,12 @@ namespace WornEnchantmentPBR::Studio
 				if (open == i) {
 					ImGui::OpenPopup(title.c_str());
 				}
-				Widgets::DetailModal(title.c_str(), [&]() { DrawSignalDetail(a_recipe, a_form[i].text, a_actorID, a_scale, a_names, 0, a_out); });
+				Widgets::DetailModal(title.c_str(), [&]() { DrawSignalDetail(a_recipe, a_form[i].text, a_actorID, a_bones, a_scale, a_names, 0, a_out); });
 				ImGui::PopID();
 			}
 		}
 
-		void DrawDetailModal(FieldDetail a_detail, const Inspector& a_in, const RecipeRow& a_recipe, FormID a_actorID, const Layout& a_layout, const Names& a_names, Intents& a_out)
+		void DrawDetailModal(FieldDetail a_detail, const Inspector& a_in, const RecipeRow& a_recipe, FormID a_actorID, std::span<const BoneRow> a_bones, const Layout& a_layout, const Names& a_names, Intents& a_out)
 		{
 			const auto& id = a_recipe.id;
 			const float scale = a_layout.widgetScale;
@@ -1467,19 +1449,16 @@ namespace WornEnchantmentPBR::Studio
 					ImGui::TextUnformatted((ReferenceText(a_in.curve->name) + " =").c_str());
 					ImGui::SameLine();
 					Widgets::Badge(FieldKind::kCurve);
-					const Widgets::TextCheck check = [&](const std::string& a_text) { return CheckCurveText(a_text, a_names); };
-					if (const auto edited = Widgets::TextField("text", a_in.curve->text, Width::Fill(), scale, check)) {
-						Post(a_out, id, SetCurve{ a_in.curve->name, *edited });
-					}
+					DrawRowField("text", CurveTextField(a_in.curve->name, a_in.curve->text), id, scale, a_names, a_out);
 				} else {
 					Widgets::Dim("no declared curve; the layer's curve is inline or empty");
 				}
 				break;
 			case FieldDetail::kOpacity:
-				DrawSignalDetail(a_recipe, a_in.row.opacityText, a_actorID, scale, a_names, 0, a_out);
+				DrawSignalDetail(a_recipe, a_in.row.opacityText, a_actorID, a_bones, scale, a_names, 0, a_out);
 				break;
 			case FieldDetail::kColor:
-				DrawSignalDetail(a_recipe, a_in.row.color, a_actorID, scale, a_names, 0, a_out);
+				DrawSignalDetail(a_recipe, a_in.row.color, a_actorID, a_bones, scale, a_names, 0, a_out);
 				break;
 			case FieldDetail::kSignal:
 				break;
@@ -1493,7 +1472,7 @@ namespace WornEnchantmentPBR::Studio
 			}
 		}
 
-		void DrawInspectorFields(const Inspector& a_inspector, const RecipeRow& a_recipe, const Layout& a_layout, const Names& a_names, Intents& a_out)
+		void DrawInspectorFields(const Inspector& a_inspector, const RecipeRow& a_recipe, FormID a_actorID, std::span<const BoneRow> a_bones, const Layout& a_layout, const Names& a_names, Intents& a_out)
 		{
 			const auto                       form = InspectorForm(a_inspector);
 			const std::optional<std::size_t> opened = DrawForm("fields", form, a_recipe.id, a_layout.widgetScale, a_names, a_out);
@@ -1503,7 +1482,7 @@ namespace WornEnchantmentPBR::Studio
 				if (open == detail) {
 					ImGui::OpenPopup(title.c_str());
 				}
-				Widgets::DetailModal(title.c_str(), [&]() { DrawDetailModal(detail, a_inspector, a_recipe, g_modalActor, a_layout, a_names, a_out); });
+				Widgets::DetailModal(title.c_str(), [&]() { DrawDetailModal(detail, a_inspector, a_recipe, a_actorID, a_bones, a_layout, a_names, a_out); });
 			}
 		}
 
@@ -1873,8 +1852,8 @@ namespace WornEnchantmentPBR::Studio
 			if (!region.dirty || !a_state.paint || !a_recipe || a_recipe->id != kPaintRecipe) {
 				return;
 			}
-			region.dirty = false;
 			Intents intents;
+			intents.push_back(ScratchRebuilt{});
 			for (auto& edit : ScratchEdits(region.terms, region.solo, region.muted, ScratchOf(*a_recipe))) {
 				Post(intents, a_recipe->id, std::move(edit));
 			}
@@ -1917,8 +1896,6 @@ namespace WornEnchantmentPBR::Studio
 			const auto& selection = a_state.selection;
 			Layout&     layout = a_state.layout;
 			const float scale = layout.widgetScale;
-			g_modalActor = a_piece->actorID;
-			g_modalBones = a_geometry->bones;
 			ImGui::PushID(a_recipe->id.c_str());
 
 			const auto  board = BuildBoard(*a_recipe, *a_geometry, selection, view);
@@ -1974,12 +1951,12 @@ namespace WornEnchantmentPBR::Studio
 				} else if (pane.settings) {
 					if (selection.target == Target::kLight) {
 						if (a_recipe->lightRow.present) {
-							DrawFormWithSignals("light", LightForm(a_recipe->lightRow, SignalNamesOf(*a_recipe)), *a_recipe, a_piece->actorID, scale, names, a_out, kSettingsColumns);
+							DrawFormWithSignals("light", LightForm(a_recipe->lightRow, SignalNamesOf(*a_recipe)), *a_recipe, a_piece->actorID, a_geometry->bones, scale, names, a_out, kSettingsColumns);
 						} else {
 							Widgets::Dim("the recipe has no light");
 						}
 					} else {
-						DrawFormWithSignals("shell", ShellForm(a_recipe->shellRow, SignalNamesOf(*a_recipe)), *a_recipe, a_piece->actorID, scale, names, a_out, kSettingsColumns);
+						DrawFormWithSignals("shell", ShellForm(a_recipe->shellRow, SignalNamesOf(*a_recipe)), *a_recipe, a_piece->actorID, a_geometry->bones, scale, names, a_out, kSettingsColumns);
 					}
 				} else if (picked && picked->output) {
 					const auto stack = BuildStackView(*a_piece, *a_recipe, *a_geometry, selection, view);
@@ -1992,7 +1969,7 @@ namespace WornEnchantmentPBR::Studio
 			if (resources) {
 				std::string_view filter;
 				Widgets::Rule({}, ResourcesRule(a_state.resource, *a_recipe, scale, filter, a_out));
-				DrawResources(*a_piece, *a_recipe, layout, a_state.resource, filter, names, a_out);
+				DrawResources(*a_piece, *a_recipe, *a_geometry, layout, a_state.resource, filter, names, a_out);
 			}
 			ImGui::PopID();
 		}
@@ -2067,7 +2044,7 @@ namespace WornEnchantmentPBR::Studio
 		Intents     intents;
 
 		Mode mode = state.mode;
-		if (Widgets::ModeBar(mode)) {
+		if (Widgets::ModeBar(mode, state.modeDrawn)) {
 			intents.push_back(SetMode{ mode });
 		}
 

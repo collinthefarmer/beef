@@ -1045,18 +1045,64 @@ namespace WornEnchantmentPBR::Studio
 		const std::string& name = a_signal.name;
 		const FieldBinding bind = [name](const std::string& a_text) { return SignalValueEdit(name, a_text); };
 		if (a_signal.kind == SignalKindId::kExpr) {
-			return FormField{ name, FieldKind::kExpression, a_signal.text, {}, false, std::nullopt, std::nullopt, bind };
+			return FormField{ name, FieldKind::kSignalValue, a_signal.text, {}, false, std::nullopt, std::nullopt, bind };
 		}
 		if (!a_signal.constant) {
 			return std::nullopt;
 		}
 		if (const auto* number = Get<float>(*a_signal.constant)) {
-			return FormField{ name, FieldKind::kScalar, ParamText(*number), {}, false, std::nullopt, std::nullopt, bind };
+			return FormField{ name, FieldKind::kSignalValue, ParamText(*number), {}, false, std::nullopt, std::nullopt, bind };
 		}
 		if (const auto* colour = Get<Vec3>(*a_signal.constant)) {
-			return FormField{ name, FieldKind::kColor, LiteralColorText(*colour), {}, false, std::nullopt, std::nullopt, bind };
+			return FormField{ name, FieldKind::kSignalValue, LiteralColorText(*colour), {}, false, std::nullopt, std::nullopt, bind };
 		}
 		return std::nullopt;
+	}
+
+	FormField RowNameField(RowKind a_kind, const std::string& a_name, std::vector<std::string> a_taken)
+	{
+		const std::string  from = a_name;
+		const FieldBinding bind = [a_kind, from](const std::string& a_text) -> std::optional<RecipeEdit> {
+			if (!IsName(a_text)) {
+				return std::nullopt;
+			}
+			switch (a_kind) {
+			case RowKind::kSignal:
+				return RenameSignal{ from, a_text };
+			case RowKind::kCurve:
+				return RenameCurve{ from, a_text };
+			case RowKind::kSource:
+				return RenameSource{ from, a_text };
+			case RowKind::kMask:
+				return RenameMask{ from, a_text };
+			}
+			return std::nullopt;
+		};
+		return FormField{ a_name, FieldKind::kName, a_name, std::move(a_taken), false, std::nullopt, std::nullopt, bind };
+	}
+
+	FormField CurveTextField(const std::string& a_curve, const std::string& a_text)
+	{
+		const std::string  name = a_curve;
+		const FieldBinding bind = [name](const std::string& a_text) -> std::optional<RecipeEdit> {
+			if (a_text.empty()) {
+				return std::nullopt;
+			}
+			return SetCurve{ name, a_text };
+		};
+		return FormField{ a_curve, FieldKind::kCurve, a_text, {}, false, std::nullopt, std::nullopt, bind };
+	}
+
+	FormField MaskTextField(const std::string& a_mask, const std::string& a_text)
+	{
+		const std::string  name = a_mask;
+		const FieldBinding bind = [name](const std::string& a_text) -> std::optional<RecipeEdit> {
+			if (a_text.empty()) {
+				return std::nullopt;
+			}
+			return SetMask{ name, a_text };
+		};
+		return FormField{ a_mask, FieldKind::kMask, a_text, {}, false, std::nullopt, std::nullopt, bind };
 	}
 
 	namespace
@@ -1259,14 +1305,14 @@ namespace WornEnchantmentPBR::Studio
 	{
 		std::vector<FormField> form;
 		const std::string&     name = a_source.name;
-		form.push_back(Field("kind", FieldKind::kChoice, a_source.kind, { "image", "material", "bake", "uv", "distance", "ripple", "materialClusters" }, [name](const std::string& a_text) -> std::optional<RecipeEdit> {
+		form.push_back(Field("kind", FieldKind::kChoice, a_source.kind, WordsOf(kSourceKindWords), [name](const std::string& a_text) -> std::optional<RecipeEdit> {
 			const auto kind = DefaultSourceKind(a_text);
 			return kind ? std::optional<RecipeEdit>{ SetSource{ name, *kind } } : std::nullopt;
 		}));
 		if (a_source.kind == "image") {
 			form.push_back(Field("path", FieldKind::kText, a_source.path, {}, BindSourceText(a_source, &SourceRow::path)));
 			form.push_back(Field("channel", FieldKind::kChoice, a_source.channel, WordsOf(kImageChannels), BindSourceText(a_source, &SourceRow::channel)));
-			form.push_back(Field("space", FieldKind::kChoice, a_source.space, { "tiled", "mesh" }, BindSourceText(a_source, &SourceRow::space)));
+			form.push_back(Field("space", FieldKind::kChoice, a_source.space, WordsOf(kImageSpaces), BindSourceText(a_source, &SourceRow::space)));
 			FormField scroll = Field("scroll", FieldKind::kVec2, a_source.scroll, a_names.vec2, BindSourceText(a_source, &SourceRow::scroll));
 			scroll.allowEmpty = true;
 			form.push_back(std::move(scroll));
@@ -1280,14 +1326,14 @@ namespace WornEnchantmentPBR::Studio
 		} else if (a_source.kind == "material") {
 			form.push_back(Field("channel", FieldKind::kChoice, a_source.material, WordsOf(kMaterialChannels), BindSourceText(a_source, &SourceRow::material)));
 		} else if (a_source.kind == "bake") {
-			form.push_back(Field("bake", FieldKind::kChoice, a_source.bake, { "position", "localPosition", "worldUp", "partition", "boneWeight", "componentId", "chartId" }, BindSourceText(a_source, &SourceRow::bake)));
+			form.push_back(Field("bake", FieldKind::kChoice, a_source.bake, WordsOf(kBakeKindWords), BindSourceText(a_source, &SourceRow::bake)));
 			if (a_source.bake == "partition") {
 				form.push_back(Field("partition", FieldKind::kChoice, a_source.partition, BipedSlotNames(), BindSourceText(a_source, &SourceRow::partition)));
 			} else if (a_source.bake == "boneWeight") {
 				form.push_back(Field("bones", FieldKind::kText, a_source.bones, {}, BindSourceText(a_source, &SourceRow::bones)));
 			}
 		} else if (a_source.kind == "uv") {
-			form.push_back(Field("axis", FieldKind::kChoice, a_source.axis, { "u", "v" }, BindSourceText(a_source, &SourceRow::axis)));
+			form.push_back(Field("axis", FieldKind::kChoice, a_source.axis, WordsOf(kUvAxes), BindSourceText(a_source, &SourceRow::axis)));
 		} else if (a_source.kind == "distance") {
 			form.push_back(Field("from", FieldKind::kText, a_source.from, {}, BindSourceText(a_source, &SourceRow::from)));
 		} else if (a_source.kind == "ripple") {
@@ -1295,7 +1341,7 @@ namespace WornEnchantmentPBR::Studio
 			form.push_back(Field("speed", FieldKind::kScalar, a_source.speed, a_names.scalar, BindSourceText(a_source, &SourceRow::speed)));
 			form.push_back(Field("width", FieldKind::kScalar, a_source.width, a_names.scalar, BindSourceText(a_source, &SourceRow::width)));
 			form.push_back(Field("decay", FieldKind::kScalar, a_source.decay, a_names.scalar, BindSourceText(a_source, &SourceRow::decay)));
-			form.push_back(Field("shape", FieldKind::kChoice, a_source.shape, { "ring", "disc" }, BindSourceText(a_source, &SourceRow::shape)));
+			form.push_back(Field("shape", FieldKind::kChoice, a_source.shape, WordsOf(kRippleShapes), BindSourceText(a_source, &SourceRow::shape)));
 		} else if (a_source.kind == "materialClusters") {
 			form.push_back(Field("clusters", FieldKind::kScalar, a_source.clusters, {}, BindSourceText(a_source, &SourceRow::clusters)));
 			form.push_back(Field("weights", FieldKind::kText, a_source.weights, {}, BindSourceText(a_source, &SourceRow::weights)));
