@@ -277,7 +277,14 @@ def main():
         print("waiting for clangd's index ...", flush=True)
         client.wait_for_index()
 
+        # A file edited since the last run is re-indexed after the progress
+        # token ends, so a symbol it declares can be missing for a while.
         matches = find_symbol(client, args.old, args.kind)
+        for _ in range(12):
+            if matches:
+                break
+            time.sleep(5)
+            matches = find_symbol(client, args.old, args.kind)
         if not matches:
             sys.exit(f"no symbol named {args.old} in the index")
         if len(matches) > 1:
