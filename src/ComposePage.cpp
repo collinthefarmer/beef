@@ -1054,7 +1054,7 @@ namespace WornEnchantmentPBR::Studio
 					a_out.push_back(*next);
 				}
 			}
-			Widgets::Tooltip(std::format("viewed on {} (one of {} shapes; the recipe applies to all)\nclick: view the next shape\nraw name: {}", GeometryLabel(a_geometry.name, a_piece.armorName), a_recipe.geometries.size(), a_geometry.name));
+			Widgets::Tooltip(std::format("viewed on {} (one of {} geometries; the recipe applies to all)\nclick: view the next geometry\nraw name: {}", GeometryLabel(a_geometry.name, a_piece.armorName), a_recipe.geometries.size(), a_geometry.name));
 		}
 
 		void DrawStack(const std::optional<LayerStack>& a_stack, const std::optional<Inspector>& a_inspector, const PieceRow& a_piece, const RecipeRow& a_recipe, const GeometryRow& a_geometry, const Selection& a_selection, Layout& a_layout, const Names& a_names, Intents& a_out)
@@ -1952,7 +1952,7 @@ namespace WornEnchantmentPBR::Studio
 			const float      filterWidth = kFilterWidth * a_state.layout.widgetScale;
 			Widgets::Rule({}, Widgets::RuleLine{ "Add a term", filterWidth, [&]() { filter = Widgets::LiveTextField("offer-filter", "filter by name or measurement", Width::Px(kFilterWidth), a_state.layout.widgetScale); } });
 			if (offers.empty()) {
-				Widgets::Dim(a_geometry.meshRead ? "nothing to offer on this shape" : "reading the mesh");
+				Widgets::Dim(a_geometry.meshRead ? "nothing to offer on this geometry" : "reading the mesh");
 			}
 			for (const auto& group : kOfferGroups) {
 				DrawOfferGroup(group.value, offers, filter, a_recipe, a_geometry, a_out);
@@ -2042,7 +2042,7 @@ namespace WornEnchantmentPBR::Studio
 					DrawPaintHead(*a_piece, *a_recipe, a_state, a_out);
 				}
 				Widgets::Rule();
-				Widgets::Dim(std::format("recipe {} is bound to no geometry of this piece: its keys or selectors match none of its shapes", a_recipe->id));
+				Widgets::Dim(std::format("recipe {} is bound to no geometry of this piece: its keys or selectors match none of its geometries", a_recipe->id));
 				ImGui::PopID();
 				return;
 			}

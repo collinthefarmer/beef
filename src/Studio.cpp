@@ -1464,7 +1464,7 @@ namespace WornEnchantmentPBR::Studio
 			return std::string{ a_name };
 		}
 		const auto armor = a_armorName.empty() ? std::string{ "armor " } + std::string{ a_name.substr(index->second + 3, 8) } : std::string{ a_armorName };
-		return std::format("{} shape {} (addon {})", armor, index->first, addon);
+		return std::format("{} geometry {} (addon {})", armor, index->first, addon);
 	}
 
 	std::string ReferenceName(std::string_view a_text)

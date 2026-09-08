@@ -1285,7 +1285,7 @@ namespace
 		Check(state.paint && state.paint->recipe == kRecipeID && state.paint->surface == Surface::kShell, "a paint session names the active recipe and its surface");
 		Reduce(state, SetPaintSurface{ Surface::kMaterial });
 		Check(state.paint && state.paint->surface == Surface::kMaterial, "the preview surface changes");
-		Check(state.paint && !state.paint->readPosted, "a fresh session has not asked for the shape's read");
+		Check(state.paint && !state.paint->readPosted, "a fresh session has not asked for the geometry's read");
 		Reduce(state, ReadMesh{ kPlayer, "Cuirass" });
 		Check(state.paint && state.paint->readPosted, "posting the read marks the session, so it is asked once");
 		Reduce(state, AddTerm{ Term{ TermOp::kSet, "@a", "a" } });
@@ -1369,9 +1369,9 @@ namespace
 
 	void GeometryLabels()
 	{
-		Check(GeometryLabel("Armor003", "Iron Cuirass") == "Armor003", "an authored shape keeps its name");
-		Check(GeometryLabel(" (FE034935)[0]/ (2500097A) [100%]", "Northern Iron Boots") == "Northern Iron Boots shape 0 (addon FE034935)", "an engine-built shape reads as armor, index and addon");
-		Check(GeometryLabel(" (0008E840)[12]/ (00100E29) [50%]", "") == "armor 00100E29 shape 12 (addon 0008E840)", "no armor name falls back to the armor id");
+		Check(GeometryLabel("Armor003", "Iron Cuirass") == "Armor003", "an authored geometry keeps its name");
+		Check(GeometryLabel(" (FE034935)[0]/ (2500097A) [100%]", "Northern Iron Boots") == "Northern Iron Boots geometry 0 (addon FE034935)", "an engine-built geometry reads as armor, index and addon");
+		Check(GeometryLabel(" (0008E840)[12]/ (00100E29) [50%]", "") == "armor 00100E29 geometry 12 (addon 0008E840)", "no armor name falls back to the armor id");
 		Check(GeometryLabel(" (FE03493)[0]/ (2500097A) [100%]", "Boots") == " (FE03493)[0]/ (2500097A) [100%]", "a short id is not the pattern");
 		Check(GeometryLabel(" (FE034935)[x]/ (2500097A) [100%]", "Boots") == " (FE034935)[x]/ (2500097A) [100%]", "a non-numeric index is not the pattern");
 		Check(GeometryLabel(" (FE034935)[0]", "Boots") == " (FE034935)[0]", "a truncated name is not the pattern");

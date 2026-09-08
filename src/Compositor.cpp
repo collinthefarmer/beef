@@ -121,7 +121,7 @@ namespace WornEnchantmentPBR
 			}
 			TextureLab::LayerParams params;
 			params.mode = TextureLab::Mode::kChannel;
-			params.armor = { a_material.normal.get(), TextureLab::ArmorInput::kNormalSlope };
+			params.map = { a_material.normal.get(), TextureLab::MapReading::kNormalSlope };
 			params.channel.slope = true;
 			if (!lab->Render(*target, nullptr, params)) {
 				a_problem = "the normal slope pass failed";

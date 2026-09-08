@@ -273,7 +273,7 @@ namespace WornEnchantmentPBR
 		// The material's sample and its clusters at the default settings,
 		// read back once per pair of maps and kept for the session. The
 		// readback stalls the game thread on the GPU, so it never runs at
-		// apply: Paint's read of a shape asks for it (RequestMesh), and a
+		// apply: Paint's read of a geometry asks for it (RequestMesh), and a
 		// recipe whose source is `materialClusters` asks at prepare. Cached
 		// only reads. Game thread.
 		struct MaterialRecord

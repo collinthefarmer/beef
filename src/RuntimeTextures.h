@@ -37,7 +37,7 @@ namespace WornEnchantmentPBR
 			kCopy = 7,       // the source's four channels at the given mip, raw placement (the sample readback)
 		};
 
-		enum class ArmorInput : std::uint32_t
+		enum class MapReading : std::uint32_t
 		{
 			kNone = 0,
 			kDisplacementR = 1,  // the material's own height map
@@ -61,10 +61,10 @@ namespace WornEnchantmentPBR
 		};
 
 		// Second input, sampled with the raw mesh UV (no tiling or scroll).
-		struct ArmorSource
+		struct InputMap
 		{
 			RE::NiSourceTexture* texture = nullptr;
-			ArmorInput           input = ArmorInput::kNone;
+			MapReading           reading = MapReading::kNone;
 		};
 
 		// height = 0.5 + (relief - reliefMean) * armorWeight * reliefContrast
@@ -204,7 +204,7 @@ namespace WornEnchantmentPBR
 		{
 			Mode            mode = Mode::kGlow;
 			Scroll          scroll;
-			ArmorSource     armor;
+			InputMap     map;
 			HeightParams    height;
 			RoughnessParams roughness;
 			ChannelParams   channel;

@@ -1,7 +1,7 @@
 #pragma once
 
 // Reads a geometry's mesh out of the engine into MeshData: the skin
-// partitions' vertex and index buffers (or the shape's own when it is not
+// partitions' vertex and index buffers (or the geometry's own when it is not
 // skinned), from the CPU copy the engine keeps when it has one, else read
 // back from the GPU through the lab. Every pointer and count is checked;
 // a mesh that cannot be read is a problem string, never a fault. The cache

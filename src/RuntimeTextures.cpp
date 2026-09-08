@@ -935,7 +935,7 @@ float4 PSClassify(VSOut i) : SV_Target
 		for (const auto& [key, target] : work) {
 			LayerParams p;
 			p.mode = Mode::kChannel;
-			p.armor = { key.first, ArmorInput::kRmaos };
+			p.map = { key.first, MapReading::kRmaos };
 			p.channel.channel = key.second;
 			Render(*target, nullptr, p);
 		}
@@ -961,7 +961,7 @@ float4 PSClassify(VSOut i) : SV_Target
 		const bool layerPass = a_params.mode == Mode::kLayer;
 		auto*      sourceData = DataOf(layerPass ? a_params.layer.source : a_source);
 		if (!layerPass && (!sourceData || !sourceData->resourceView)) {
-			sourceData = DataOf(a_params.armor.texture);  // channel previews only need the armor input
+			sourceData = DataOf(a_params.map.texture);  // channel previews only need the input map
 			if (!sourceData || !sourceData->resourceView) {
 				return false;
 			}
@@ -979,9 +979,9 @@ float4 PSClassify(VSOut i) : SV_Target
 		constants.flags[2] = sc.transpose ? 1.0f : 0.0f;
 		constants.flags[3] = static_cast<float>(a_params.mode);
 		constants.extra[0] = sc.sourceMip;
-		auto*      armorData = DataOf(layerPass ? a_params.layer.mask : a_params.armor.texture);
-		const bool haveArmor = armorData && armorData->resourceView && (layerPass || a_params.armor.input != ArmorInput::kNone);
-		constants.extra[1] = haveArmor && !layerPass ? static_cast<float>(a_params.armor.input) : 0.0f;
+		auto*      mapData = DataOf(layerPass ? a_params.layer.mask : a_params.map.texture);
+		const bool haveMap = mapData && mapData->resourceView && (layerPass || a_params.map.reading != MapReading::kNone);
+		constants.extra[1] = haveMap && !layerPass ? static_cast<float>(a_params.map.reading) : 0.0f;
 		auto*      prevData = layerPass ? DataOf(a_params.layer.previous) : nullptr;
 		const bool havePrev = prevData && prevData->resourceView;
 		if (layerPass) {
@@ -994,7 +994,7 @@ float4 PSClassify(VSOut i) : SV_Target
 			constants.layerColor[1] = lp.color[1];
 			constants.layerColor[2] = lp.color[2];
 			constants.layerColor[3] = lp.normalize;
-			constants.layerMask[0] = haveArmor ? static_cast<float>(std::to_underlying(lp.maskChannel)) : -1.0f;
+			constants.layerMask[0] = haveMap ? static_cast<float>(std::to_underlying(lp.maskChannel)) : -1.0f;
 			constants.layerMask[1] = static_cast<float>(lp.channels);
 			constants.layerMask[2] = havePrev ? 1.0f : 0.0f;
 			constants.layerMask[3] = haveSource ? 1.0f : 0.0f;
@@ -1037,7 +1037,7 @@ float4 PSClassify(VSOut i) : SV_Target
 		context_->VSSetShader(vs_, nullptr, 0);
 		context_->PSSetShader(ps_, nullptr, 0);
 		ID3D11ShaderResourceView* srvs[4]{ haveSource ? reinterpret_cast<ID3D11ShaderResourceView*>(sourceData->resourceView) : nullptr,
-			haveArmor ? reinterpret_cast<ID3D11ShaderResourceView*>(armorData->resourceView) : nullptr,
+			haveMap ? reinterpret_cast<ID3D11ShaderResourceView*>(mapData->resourceView) : nullptr,
 			havePrev ? reinterpret_cast<ID3D11ShaderResourceView*>(prevData->resourceView) : nullptr,
 			layerPass && a_params.layer.curve ? a_params.layer.curve->srv : nullptr };
 		context_->PSSetShaderResources(0, 4, srvs);
@@ -1586,7 +1586,7 @@ float4 PSClassify(VSOut i) : SV_Target
 		if (target) {
 			LayerParams p;
 			p.mode = Mode::kChannel;
-			p.armor = { a_source, ArmorInput::kRmaos };
+			p.map = { a_source, MapReading::kRmaos };
 			p.channel.channel = a_channel;
 			if (Render(*target, nullptr, p)) {
 				result = ReadBackMean(*target).value_or(0.5f);  // grey output, so luminance is the channel mean

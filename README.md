@@ -385,7 +385,7 @@ are in `ARCHITECTURE.md` under "The recipe studio".
   kind lacks), blend, depth bias, alpha test, alpha, rim power,
   emissive, and the pose (inflate, offset, scale and its point, spin and
   its axis). When the
-  piece has several shapes, the stack's composite is viewed on one of
+  piece has several geometries, the stack's composite is viewed on one of
   them (its tooltip names the shape) and clicking it views the next;
   edits reach every shape. A
   footer pinned to the bottom of the page holds the clock: Freeze, a

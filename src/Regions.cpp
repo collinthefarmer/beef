@@ -213,11 +213,11 @@ namespace WornEnchantmentPBR::Studio
 			return "the mesh has not been read yet";
 		}
 		if (a_preset.partition && std::ranges::find(a_geometry.partitions, *a_preset.partition, &PartitionRow::slot) == a_geometry.partitions.end()) {
-			return std::format("the shape has no '{}' partition", BipedSlotName(*a_preset.partition).value_or("?"));
+			return std::format("the geometry has no '{}' partition", BipedSlotName(*a_preset.partition).value_or("?"));
 		}
 		for (const auto& bone : a_preset.bones) {
 			if (std::ranges::find(a_geometry.bones, bone, &BoneRow::name) == a_geometry.bones.end()) {
-				return std::format("the shape is not skinned to {}", bone);
+				return std::format("the geometry is not skinned to {}", bone);
 			}
 		}
 		return std::nullopt;
