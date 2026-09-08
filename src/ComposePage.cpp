@@ -451,7 +451,7 @@ namespace WornEnchantmentPBR::Studio
 			ImGui::EndGroup();
 		}
 
-		void DrawCell(const Cell* a_cell, const RecipeRow& a_recipe, const GeometryRow& a_geometry, const Board& a_board, const Selection& a_selection, const Layout& a_layout, Intents& a_out)
+		void DrawCell(const Cell* a_cell, const RecipeRow& a_recipe, const GeometryRow& a_geometry, const Selection& a_selection, const Layout& a_layout, Intents& a_out)
 		{
 			if (!a_cell) {
 				return;
@@ -519,11 +519,11 @@ namespace WornEnchantmentPBR::Studio
 				ImGui::TextUnformatted(std::string{ SlotName(slot) }.c_str());
 				table.Cell();
 				ImGui::PushID(static_cast<int>(i * 2));
-				DrawCell(CellAt(a_board, Surface::kMaterial, slot), a_recipe, a_geometry, a_board, a_selection, a_layout, a_out);
+				DrawCell(CellAt(a_board, Surface::kMaterial, slot), a_recipe, a_geometry, a_selection, a_layout, a_out);
 				ImGui::PopID();
 				table.Cell();
 				ImGui::PushID(static_cast<int>(i * 2 + 1));
-				DrawCell(CellAt(a_board, Surface::kShell, slot), a_recipe, a_geometry, a_board, a_selection, a_layout, a_out);
+				DrawCell(CellAt(a_board, Surface::kShell, slot), a_recipe, a_geometry, a_selection, a_layout, a_out);
 				ImGui::PopID();
 			}
 			table.Cell();
@@ -1049,7 +1049,7 @@ namespace WornEnchantmentPBR::Studio
 
 		// A new layer is applied last and lands at the bottom, at the index
 		// the stack has now. Reduce selects it.
-		void DrawAddLayer(const LayerStack& a_stack, const RecipeRow& a_recipe, const Selection& a_selection, Intents& a_out)
+		void DrawAddLayer(const LayerStack& a_stack, const RecipeRow& a_recipe, Intents& a_out)
 		{
 			if (ImGui::SmallButton("Add layer")) {
 				Post(a_out, a_recipe.id, AddLayer{ a_stack.output, DefaultLayer(), a_stack.rows.size() });
@@ -1060,7 +1060,7 @@ namespace WornEnchantmentPBR::Studio
 		// merging before this one, then this stack's base first and its last
 		// applied layer at the bottom, then the recipes merging after; and
 		// Add layer.
-		void DrawLayers(const LayerStack& a_stack, const RecipeRow& a_recipe, const Selection& a_selection, Intents& a_out)
+		void DrawLayers(const LayerStack& a_stack, const RecipeRow& a_recipe, Intents& a_out)
 		{
 			auto table = BeginLayerTable();
 			if (table.Open()) {
@@ -1075,7 +1075,7 @@ namespace WornEnchantmentPBR::Studio
 				}
 				table.End();
 			}
-			DrawAddLayer(a_stack, a_recipe, a_selection, a_out);
+			DrawAddLayer(a_stack, a_recipe, a_out);
 			Widgets::HelpMarker("Drag the :: grip onto another row to reorder; click the grip or the name to open the layer's fields beside the stack. S solos, M mutes. Enter commits a text field; a drag commits on release.");
 		}
 
@@ -1115,7 +1115,7 @@ namespace WornEnchantmentPBR::Studio
 			Widgets::Tooltip(std::format("viewed on {} (one of {} geometries; the recipe applies to all)\nclick: view the next geometry\nraw name: {}", GeometryLabel(a_geometry.name, a_piece.armorName), a_recipe.geometries.size(), a_geometry.name));
 		}
 
-		void DrawStack(const std::optional<LayerStack>& a_stack, const std::optional<Inspector>& a_inspector, const PieceRow& a_piece, const RecipeRow& a_recipe, const GeometryRow& a_geometry, const Selection& a_selection, Layout& a_layout, const Names& a_names, Intents& a_out)
+		void DrawStack(const std::optional<LayerStack>& a_stack, const std::optional<Inspector>& a_inspector, const PieceRow& a_piece, const RecipeRow& a_recipe, const GeometryRow& a_geometry, Layout& a_layout, const Names& a_names, Intents& a_out)
 		{
 			if (!a_stack) {
 				Widgets::Dim("choose a target and a slot");
@@ -1138,13 +1138,13 @@ namespace WornEnchantmentPBR::Studio
 			// left, the selected layer's fields on the right, split by a
 			// draggable vertical rule.
 			if (stack.rows.empty()) {
-				DrawAddLayer(stack, a_recipe, a_selection, a_out);
+				DrawAddLayer(stack, a_recipe, a_out);
 				ImGui::PopID();
 				return;
 			}
 			Widgets::Split(
 				"stack-split", a_layout.stackSplit,
-				[&]() { DrawLayers(stack, a_recipe, a_selection, a_out); },
+				[&]() { DrawLayers(stack, a_recipe, a_out); },
 				[&]() { DrawInspector(stack, a_inspector, a_recipe, a_layout, a_names, a_out); });
 			ImGui::PopID();
 		}
@@ -2251,7 +2251,7 @@ namespace WornEnchantmentPBR::Studio
 				} else if (picked && picked->output) {
 					const auto stack = BuildStackView(*a_piece, *a_recipe, *a_geometry, selection, view);
 					const auto inspector = layout.inspector ? BuildInspector(*a_recipe, *a_geometry, selection) : std::nullopt;
-					DrawStack(stack, inspector, *a_piece, *a_recipe, *a_geometry, selection, layout, names, a_out);
+					DrawStack(stack, inspector, *a_piece, *a_recipe, *a_geometry, layout, names, a_out);
 				}
 			}
 			ImGui::EndChild();
