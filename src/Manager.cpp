@@ -1352,7 +1352,7 @@ namespace WornEnchantmentPBR
 						gr.materialSlots = g.material ? SlotRows(*g.material) : std::vector<Snapshot::SlotRow>{};
 						gr.shellSlots = g.shell ? SlotRows(*g.shell) : std::vector<Snapshot::SlotRow>{};
 						for (const auto& source : applied.recipe->sources) {
-							Snapshot::ImageRow row;
+							Snapshot::PictureRow row;
 							row.name = source.name;
 							row.kind = DescribeSource(source.kind);
 							row.type = SourceType(source);
@@ -1365,7 +1365,7 @@ namespace WornEnchantmentPBR
 							gr.sources.push_back(std::move(row));
 						}
 						for (const auto& mask : applied.recipe->masks) {
-							Snapshot::ImageRow row;
+							Snapshot::PictureRow row;
 							row.name = mask.name;
 							row.kind = mask.text;
 							if (const auto prepared = compositor->InspectMask(*applied.recipe, mask.name, g.inputs)) {

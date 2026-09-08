@@ -60,9 +60,9 @@ namespace WornEnchantmentPBR::Studio
 			return blends;
 		}
 
-		[[nodiscard]] const ImageRow* FindImage(const std::vector<ImageRow>& a_rows, std::string_view a_name) noexcept
+		[[nodiscard]] const PictureRow* FindImage(const std::vector<PictureRow>& a_rows, std::string_view a_name) noexcept
 		{
-			const auto it = std::ranges::find(a_rows, a_name, &ImageRow::name);
+			const auto it = std::ranges::find(a_rows, a_name, &PictureRow::name);
 			return it == a_rows.end() ? nullptr : &*it;
 		}
 

@@ -91,7 +91,7 @@ namespace WornEnchantmentPBR::Studio
 	};
 
 	// A source or mask of the recipe as the compositor reads it on this geometry.
-	struct ImageRow
+	struct PictureRow
 	{
 		std::string   name;
 		std::string   kind;  // DescribeSource, or the mask's expression
@@ -140,8 +140,8 @@ namespace WornEnchantmentPBR::Studio
 		std::string            shell;  // description, empty when none
 		std::vector<SlotRow>   materialSlots;
 		std::vector<SlotRow>   shellSlots;
-		std::vector<ImageRow>  sources;
-		std::vector<ImageRow>  masks;
+		std::vector<PictureRow>  sources;
+		std::vector<PictureRow>  masks;
 		std::vector<OutputRow> outputs;
 	};
 
@@ -279,7 +279,7 @@ namespace WornEnchantmentPBR::Studio
 		using LayerRow = Studio::LayerRow;
 		using ScalarRow = Studio::ScalarRow;
 		using OutputRow = Studio::OutputRow;
-		using ImageRow = Studio::ImageRow;
+		using PictureRow = Studio::PictureRow;
 		using SlotRow = Studio::SlotRow;
 		using GeometryRow = Studio::GeometryRow;
 		using RecipeRow = Studio::RecipeRow;

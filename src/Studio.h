@@ -235,8 +235,8 @@ namespace WornEnchantmentPBR::Studio
 		std::size_t              layer = 0;
 		Slot                     slot = Slot::kEmissive;
 		LayerRow                 row;
-		std::optional<ImageRow>  source;
-		std::optional<ImageRow>  mask;
+		std::optional<PictureRow>  source;
+		std::optional<PictureRow>  mask;
 		std::vector<SignalRow>   signals;  // referenced by opacity or colour, in that order
 		std::optional<TextRow>   curve;    // a declared curve the layer names
 		std::vector<Blend>       blends;

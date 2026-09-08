@@ -1469,7 +1469,7 @@ namespace WornEnchantmentPBR::Studio
 		// ------------------------------------------------------ inspector
 
 		// A source or mask row the layer reads, with its picture and definition.
-		void DrawImageRow(const std::string& a_id, const ImageRow& a_image, bool a_editable, const Layout& a_layout, const Names& a_names, Intents& a_out)
+		void DrawImageRow(const std::string& a_id, const PictureRow& a_image, bool a_editable, const Layout& a_layout, const Names& a_names, Intents& a_out)
 		{
 			const float scale = a_layout.widgetScale;
 			Widgets::Thumbnail(a_image.texture, a_image.channel, a_image.animated, a_layout.inspectorThumbnail * scale);
@@ -1854,9 +1854,9 @@ namespace WornEnchantmentPBR::Studio
 				auto reads = Widgets::Table::Begin("term-reads", { { "reads", Width::Fit() }, { "", Width::Px(ImGui::GetFrameHeight()) }, { "definition", Width::Fill() } }, kFormStyle);
 				if (reads.Open()) {
 					for (const auto& name : (*program)->References()) {
-						const ImageRow* image = nullptr;
+						const PictureRow* image = nullptr;
 						for (const auto* list : { &a_geometry.sources, &a_geometry.masks }) {
-							const auto it = std::ranges::find(*list, name, &ImageRow::name);
+							const auto it = std::ranges::find(*list, name, &PictureRow::name);
 							if (it != list->end()) {
 								image = &*it;
 							}
