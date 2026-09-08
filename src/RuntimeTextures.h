@@ -18,7 +18,7 @@
 
 namespace WornEnchantmentPBR
 {
-	// GPU-generated layer textures. Each RenderTarget is an NiSourceTexture shell
+	// GPU-generated layer textures. Each RenderTarget is an NiSourceTexture presenter
 	// (loaded through the engine from a placeholder DDS) whose renderer data
 	// points at a render target we own, so Community Shaders binds it like any
 	// other material texture while a per-tick pass rewrites its content.
@@ -216,9 +216,9 @@ namespace WornEnchantmentPBR
 		{
 		public:
 			~RenderTarget();
-			[[nodiscard]] RE::NiSourceTexture* Texture() const noexcept { return shell.get(); }
+			[[nodiscard]] RE::NiSourceTexture* Texture() const noexcept { return presenter.get(); }
 
-			RE::NiPointer<RE::NiSourceTexture>  shell;
+			RE::NiPointer<RE::NiSourceTexture>  presenter;
 			RE::NiTexture::RendererData*        originalData = nullptr;
 			RE::NiTexture::RendererData*        ourData = nullptr;
 			REX::W32::ID3D11Texture2D*          texture = nullptr;
@@ -315,7 +315,7 @@ namespace WornEnchantmentPBR
 
 		bool CompileShaders();
 		bool CreateTarget(RenderTarget& a_target, TextureSize a_size);
-		RE::NiPointer<RE::NiSourceTexture> LoadShell();
+		RE::NiPointer<RE::NiSourceTexture> LoadPresenter();
 		void Recycle(RenderTarget* a_target);
 
 		bool                                            available_ = false;

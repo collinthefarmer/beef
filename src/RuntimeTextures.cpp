@@ -571,8 +571,8 @@ float4 PSClassify(VSOut i) : SV_Target
 
 	TextureLab::RenderTarget::~RenderTarget()
 	{
-		if (shell && originalData) {
-			shell->rendererTexture = reinterpret_cast<RE::BSGraphics::Texture*>(originalData);
+		if (presenter && originalData) {
+			presenter->rendererTexture = reinterpret_cast<RE::BSGraphics::Texture*>(originalData);
 		}
 		Release(rtv);
 		Release(srv);
@@ -773,7 +773,7 @@ float4 PSClassify(VSOut i) : SV_Target
 		return ok;
 	}
 
-	RE::NiPointer<RE::NiSourceTexture> TextureLab::LoadShell()
+	RE::NiPointer<RE::NiSourceTexture> TextureLab::LoadPresenter()
 	{
 		if (nextPresenter_ >= kPresenterCount) {
 			logger::error("TextureLab: out of presenter textures ({})", kPresenterCount);
@@ -784,7 +784,7 @@ float4 PSClassify(VSOut i) : SV_Target
 		RE::BSShaderManager::GetTexture(path.c_str(), true, texture, false);
 		auto* source = texture ? netimmerse_cast<RE::NiSourceTexture*>(texture.get()) : nullptr;
 		if (!source || !source->rendererTexture) {
-			logger::error("TextureLab: shell {} failed to load (is the slots folder installed?)", path);
+			logger::error("TextureLab: presenter {} failed to load (is the slots folder installed?)", path);
 			return nullptr;
 		}
 		++nextPresenter_;
@@ -813,16 +813,16 @@ float4 PSClassify(VSOut i) : SV_Target
 			logger::error("TextureLab: view creation failed");
 			return false;
 		}
-		a_target.shell = LoadShell();
-		if (!a_target.shell) {
+		a_target.presenter = LoadPresenter();
+		if (!a_target.presenter) {
 			return false;
 		}
-		a_target.originalData = DataOf(a_target.shell.get());
+		a_target.originalData = DataOf(a_target.presenter.get());
 		a_target.ourData = new RE::NiTexture::RendererData(static_cast<std::uint16_t>(pixels), static_cast<std::uint16_t>(pixels));
 		// RendererData is declared against the global forward declarations.
 		a_target.ourData->texture = reinterpret_cast<::ID3D11Texture2D*>(a_target.texture);
 		a_target.ourData->resourceView = reinterpret_cast<::ID3D11ShaderResourceView*>(a_target.srv);
-		a_target.shell->rendererTexture = reinterpret_cast<RE::BSGraphics::Texture*>(a_target.ourData);
+		a_target.presenter->rendererTexture = reinterpret_cast<RE::BSGraphics::Texture*>(a_target.ourData);
 		a_target.size = pixels;
 		return true;
 	}
