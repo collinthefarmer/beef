@@ -80,17 +80,6 @@ namespace WornEnchantmentPBR
 			return rows;
 		}
 
-		const char* KindName(const Signal& a_signal)
-		{
-			return Match(
-				a_signal.kind,
-				[](const ConstantSignal&) { return "constant"; }, [](const PulseSignal&) { return "pulse"; }, [](const RampSignal&) { return "ramp"; },
-				[](const EfshSignal&) { return "efsh"; }, [](const ActorValueSignal&) { return "av"; }, [](const ActorStateSignal&) { return "actorState"; },
-				[](const EnchantmentSignal&) { return "enchantment"; }, [](const TriggerSignal&) { return "trigger"; }, [](const PayloadSignal&) { return "payload"; },
-				[](const CounterSignal&) { return "counter"; }, [](const AccumulateSignal&) { return "accumulate"; }, [](const NoiseSignal&) { return "noise"; },
-				[](const GradientSignal&) { return "gradient"; }, [](const DeltaSignal&) { return "delta"; }, [](const SmoothSignal&) { return "smooth"; },
-				[](const ExprSignal&) { return "expr"; });
-		}
 	}
 
 	Manager* Manager::GetSingleton()
@@ -1308,7 +1297,7 @@ namespace WornEnchantmentPBR
 						const auto& signal = applied.graph->At(i);
 						Snapshot::SignalRow row;
 						row.name = signal.name;
-						row.kind = KindName(signal);
+						row.kind = SignalKindOf(signal.kind);
 						row.type = applied.graph->TypeOf(i);
 						row.value = applied.signals->ValueOf(i);
 						row.inert = applied.graph->Inert(i);

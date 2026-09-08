@@ -30,18 +30,6 @@ namespace
 	constexpr const char* kGeometry = "Cuirass";
 	constexpr const char* kRecipeID = "example-magicka";
 
-	std::string KindName(const Signal& a_signal)
-	{
-		return Match(
-			a_signal.kind,
-			[](const ConstantSignal&) { return "constant"; }, [](const PulseSignal&) { return "pulse"; }, [](const RampSignal&) { return "ramp"; },
-			[](const EfshSignal&) { return "efsh"; }, [](const ActorValueSignal&) { return "av"; }, [](const ActorStateSignal&) { return "actorState"; },
-			[](const EnchantmentSignal&) { return "enchantment"; }, [](const TriggerSignal&) { return "trigger"; }, [](const PayloadSignal&) { return "payload"; },
-			[](const CounterSignal&) { return "counter"; }, [](const AccumulateSignal&) { return "accumulate"; }, [](const NoiseSignal&) { return "noise"; },
-			[](const GradientSignal&) { return "gradient"; }, [](const DeltaSignal&) { return "delta"; }, [](const SmoothSignal&) { return "smooth"; },
-			[](const ExprSignal&) { return "expr"; });
-	}
-
 	std::vector<SignalRow> SignalRows(const Recipe& a_recipe)
 	{
 		const auto             graph = SignalGraph::Compile(a_recipe.signals, a_recipe.curves);
@@ -50,7 +38,7 @@ namespace
 		for (const auto& signal : a_recipe.signals) {
 			SignalRow row;
 			row.name = signal.name;
-			row.kind = KindName(signal);
+			row.kind = SignalKindOf(signal.kind);
 			row.type = graph.TypeOf(signal.name).value_or(ValueType::kScalar);
 			if (const auto* constant = Get<ConstantSignal>(signal.kind)) {
 				row.constant = constant->value;
@@ -1128,8 +1116,8 @@ namespace
 	{
 		const auto edit = BuildSignalList(a_recipe, LayoutFor(Mode::kCompose));
 		Check(edit.tunable.size() == 14 && edit.developer.size() == 6, "constants and expressions are tunable; the rest developer");
-		Check(std::ranges::all_of(edit.tunable, [](const SignalRow& a_row) { return a_row.kind == "constant" || a_row.kind == "expr"; }), "tunable rows are constants or expressions");
-		Check(edit.developer[0].name == "fillLevel" && edit.developer[0].kind == "efsh" && edit.developer[5].name == "step" && edit.developer[5].kind == "trigger", "developer rows keep file order");
+		Check(std::ranges::all_of(edit.tunable, [](const SignalRow& a_row) { return a_row.kind == SignalKindId::kConstant || a_row.kind == SignalKindId::kExpr; }), "tunable rows are constants or expressions");
+		Check(edit.developer[0].name == "fillLevel" && edit.developer[0].kind == SignalKindId::kEfsh && edit.developer[5].name == "step" && edit.developer[5].kind == SignalKindId::kTrigger, "developer rows keep file order");
 		Check(edit.tunable[0].name == "glowHue" && edit.tunable[0].constant && Get<Vec3>(*edit.tunable[0].constant), "a colour constant keeps its value");
 		const auto design = BuildSignalList(a_recipe, LayoutFor(Mode::kDesign));
 		Check(design.tunable.size() == 14 && design.developer.empty(), "design mode hides developer rows");

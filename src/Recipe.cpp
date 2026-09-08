@@ -114,6 +114,46 @@ namespace WornEnchantmentPBR
 		return std::nullopt;
 	}
 
+	// ---------------------------------------------------------------- signals
+
+	SignalKindId SignalKindOf(const SignalKind& a_kind) noexcept
+	{
+		return Match(
+			a_kind,
+			[](const ConstantSignal&) { return SignalKindId::kConstant; },
+			[](const PulseSignal&) { return SignalKindId::kPulse; },
+			[](const RampSignal&) { return SignalKindId::kRamp; },
+			[](const EfshSignal&) { return SignalKindId::kEfsh; },
+			[](const ActorValueSignal&) { return SignalKindId::kActorValue; },
+			[](const ActorStateSignal&) { return SignalKindId::kActorState; },
+			[](const EnchantmentSignal&) { return SignalKindId::kEnchantment; },
+			[](const TriggerSignal&) { return SignalKindId::kTrigger; },
+			[](const PayloadSignal&) { return SignalKindId::kPayload; },
+			[](const CounterSignal&) { return SignalKindId::kCounter; },
+			[](const AccumulateSignal&) { return SignalKindId::kAccumulate; },
+			[](const NoiseSignal&) { return SignalKindId::kNoise; },
+			[](const GradientSignal&) { return SignalKindId::kGradient; },
+			[](const DeltaSignal&) { return SignalKindId::kDelta; },
+			[](const SmoothSignal&) { return SignalKindId::kSmooth; },
+			[](const ExprSignal&) { return SignalKindId::kExpr; });
+	}
+
+	std::string_view SignalKindName(SignalKindId a_kind) noexcept
+	{
+		return NameOf(kSignalKinds, a_kind);
+	}
+
+	std::optional<SignalKindId> ParseSignalKind(std::string_view a_name) noexcept
+	{
+		return FromName(kSignalKinds, a_name);
+	}
+
+	bool SignalKindTunable(SignalKindId a_kind) noexcept
+	{
+		const auto* row = RowOf(kSignalKinds, a_kind);
+		return row && row->tunable;
+	}
+
 	// ------------------------------------------------------------------- keys
 
 	std::string_view KeyKindName(KeyKind a_kind) noexcept

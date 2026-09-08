@@ -32,7 +32,7 @@ namespace WornEnchantmentPBR::Studio
 	struct SignalRow
 	{
 		std::string          name;
-		std::string          kind;  // KindName: "constant", "expr", "efsh", "trigger", ...
+		SignalKindId         kind = SignalKindId::kConstant;
 		ValueType            type = ValueType::kScalar;
 		Value                value;
 		bool                 inert = false;

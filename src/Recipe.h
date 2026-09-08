@@ -375,6 +375,45 @@ namespace WornEnchantmentPBR
 		[[nodiscard]] bool      operator==(const Signal&) const = default;
 	};
 
+	// One id per alternative of SignalKind, in the variant's order; the row
+	// model (Studio::SignalRow::kind) and the board's kind checks carry this
+	// rather than a string.
+	enum class SignalKindId
+	{
+		kConstant,
+		kPulse,
+		kRamp,
+		kEfsh,
+		kActorValue,
+		kActorState,
+		kEnchantment,
+		kTrigger,
+		kPayload,
+		kCounter,
+		kAccumulate,
+		kNoise,
+		kGradient,
+		kDelta,
+		kSmooth,
+		kExpr,
+	};
+	inline constexpr std::size_t kSignalKindCount = 16;
+
+	// A signal kind's word ("constant", "pulse", ...) and whether the
+	// board's tunable list shows the row as designer-editable text
+	// (BuildSignalList: today a constant or an expression).
+	struct SignalKindRow
+	{
+		SignalKindId     value;
+		std::string_view name;
+		bool             tunable;
+	};
+
+	[[nodiscard]] SignalKindId                SignalKindOf(const SignalKind& a_kind) noexcept;
+	[[nodiscard]] std::string_view            SignalKindName(SignalKindId a_kind) noexcept;
+	[[nodiscard]] std::optional<SignalKindId> ParseSignalKind(std::string_view a_name) noexcept;
+	[[nodiscard]] bool                        SignalKindTunable(SignalKindId a_kind) noexcept;
+
 	// ----------------------------------------------------------------- curves
 
 	// A named expression in x (and mean), applied to signals, layer sources
