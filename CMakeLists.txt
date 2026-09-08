@@ -66,7 +66,7 @@ set(PLUGIN_SOURCES
   src/History.cpp
   src/EditCheck.cpp
   src/Paint.cpp
-  src/TermStack.cpp
+  src/Region.cpp
   src/MenuWidgets.cpp
   src/ComposePage.cpp
   src/RuntimeTextures.cpp
@@ -125,7 +125,7 @@ set(HOST_OBJECT_SOURCES
   src/Importer.cpp
   src/Mesh.cpp
   src/Analysis.cpp
-  src/TermStack.cpp
+  src/Region.cpp
   src/Studio.cpp
   src/MenuState.cpp
   src/History.cpp
@@ -154,7 +154,7 @@ add_host_test(${PROJECT_NAME}SignalTests tests/signal_tests.cpp)
 add_host_test(${PROJECT_NAME}ImporterTests tests/importer_tests.cpp)
 add_host_test(${PROJECT_NAME}BakeTests tests/bake_tests.cpp)
 add_host_test(${PROJECT_NAME}AnalysisTests tests/analysis_tests.cpp)
-add_host_test(${PROJECT_NAME}TermStackTests tests/termstack_tests.cpp)
+add_host_test(${PROJECT_NAME}RegionTests tests/region_tests.cpp)
 add_host_test(${PROJECT_NAME}StudioTests tests/studio_tests.cpp)
 add_host_test(${PROJECT_NAME}EditsTests tests/edits_tests.cpp)
 
@@ -167,7 +167,7 @@ add_custom_target(host-tests DEPENDS
   ${PROJECT_NAME}ImporterTests
   ${PROJECT_NAME}BakeTests
   ${PROJECT_NAME}AnalysisTests
-  ${PROJECT_NAME}TermStackTests
+  ${PROJECT_NAME}RegionTests
   ${PROJECT_NAME}StudioTests
   ${PROJECT_NAME}EditsTests)
 

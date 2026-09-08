@@ -4,7 +4,7 @@
 #include "Forms.h"
 #include "History.h"
 #include "MenuState.h"
-#include "TermStack.h"
+#include "Region.h"
 #include "Paint.h"
 #include "Studio.h"
 #include "test_support.h"
@@ -89,18 +89,16 @@ namespace
 		OutputRow row;
 		row.index = a_index;
 		if (const auto* material = Get<SurfaceOutput>(a_output)) {
-			row.target = material->surface == Surface::kShell ? "shell" : "material";
+			row.target = TargetOf(material->surface);
 			row.surface = material->surface;
 			row.slot = material->slot;
-			row.slotName = std::string{ SlotName(material->slot) };
 			row.replace = material->replace;
 			row.scalars = ScalarRows(*material);
 			for (const auto& layer : material->stack) {
 				row.layers.push_back(ToRow(layer));
 			}
 		} else {
-			row.target = "light";
-			row.light = true;
+			row.target = Target::kLight;
 		}
 		return row;
 	}
@@ -420,8 +418,8 @@ namespace
 		Check(stack->rows.size() == 3 && stack->rows[0].index == 0 && stack->rows[2].index == 2 && stack->rows[0].layer.source == "@fill" && stack->rows[2].layer.source == "@stepRing", "rows are in file order, base first");
 		Check(stack->rows[1].selected && !stack->rows[0].selected && !stack->rows[2].selected, "the selected layer is marked");
 		Check(std::ranges::all_of(stack->rows, [](const LayerStackRow& a_row) { return !a_row.muted && !a_row.soloed; }), "no row is muted or soloed");
-		Check(stack->below.size() == 1 && stack->below[0].recipe == "lower" && stack->below[0].priority == 20 && stack->below[0].layer.source == "1, 0, 0", "the lower neighbour's layer sits below");
-		Check(stack->above.size() == 1 && stack->above[0].recipe == "higher" && stack->above[0].priority == 60, "the higher neighbour's layer sits above");
+		Check(stack->below.size() == 1 && stack->below[0].recipeID == "lower" && stack->below[0].priority == 20 && stack->below[0].layer.source == "1, 0, 0", "the lower neighbour's layer sits below");
+		Check(stack->above.size() == 1 && stack->above[0].recipeID == "higher" && stack->above[0].priority == 60, "the higher neighbour's layer sits above");
 		Check(stack->blends.size() == 6 && std::ranges::find(stack->blends, Blend::kNormal) == stack->blends.end(), "emissive takes every blend but normal");
 		Check(stack->scalars.size() == 1 && stack->scalars[0].name == "strength", "the stack carries the slot's scalars");
 		Check(!stack->isolated && stack->problem.empty() && stack->composite == nullptr, "not isolated, no problem, no texture");
@@ -453,7 +451,6 @@ namespace
 		auto geometry = a_geometry;
 		auto normal = a_geometry.outputs[3];
 		normal.slot = Slot::kNormal;
-		normal.slotName = "normal";
 		normal.index = 5;
 		geometry.outputs.push_back(normal);
 		auto selection = SelectCanonical();
@@ -1328,7 +1325,7 @@ namespace
 		RecipeKey armor;
 		armor.kind = KeyKind::kArmor;
 		Reduce(state, BeginPaint{ kRecipeID, armor, Surface::kShell });
-		Check(state.paint && state.paint->recipe == kRecipeID && state.paint->surface == Surface::kShell, "a paint session names the active recipe and its surface");
+		Check(state.paint && state.paint->recipeID == kRecipeID && state.paint->surface == Surface::kShell, "a paint session names the active recipe and its surface");
 		Reduce(state, SetPaintSurface{ Surface::kMaterial });
 		Check(state.paint && state.paint->surface == Surface::kMaterial, "the preview surface changes");
 		Check(state.paint && state.paint->readGeometries.empty(), "a fresh session has not asked for any geometry's read");
@@ -1343,7 +1340,7 @@ namespace
 		Check(state.selection.recipeID == "after", "a rename follows the selected recipe");
 		Reduce(state, BeginPaint{ "after", armor, Surface::kMaterial });
 		Reduce(state, RenameRecipe{ "after", "later" });
-		Check(state.paint && state.paint->recipe == "later", "a rename follows the recipe painted for");
+		Check(state.paint && state.paint->recipeID == "later", "a rename follows the recipe painted for");
 		Reduce(state, EndPaint{});
 		Reduce(state, SetMode{ Mode::kPaint });
 		Reduce(state, BeginPaint{ "later", armor, Surface::kMaterial });
@@ -1395,7 +1392,7 @@ namespace
 		Reduce(state, BeginPaint{ kRecipeID, armor, Surface::kShell });
 		Reduce(state, AddTerm{ Term{ TermOp::kSet, "@a", "a" } });
 		Reduce(state, PickPiece{ kPlayer, kCuirass, false });
-		Check(state.paint && state.paint->recipe == kRecipeID && state.region.terms.empty(), "a piece pick during a session keeps the session and starts the stack over");
+		Check(state.paint && state.paint->recipeID == kRecipeID && state.region.terms.empty(), "a piece pick during a session keeps the session and starts the stack over");
 		Reduce(state, EndPaint{});
 	}
 

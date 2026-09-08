@@ -293,7 +293,7 @@ namespace WornEnchantmentPBR
 				for (const auto& g : r.geometries) {
 					std::string outputs;
 					for (const auto& o : g.outputs) {
-						outputs += std::format("{}{}->{}{}", outputs.empty() ? "" : ", ", o.slotName, o.target, o.problem.empty() ? (o.animated ? " (animated)" : " (static)") : std::format(" [{}]", o.problem));
+						outputs += std::format("{}{}->{}{}", outputs.empty() ? "" : ", ", o.target == Target::kLight ? std::string_view{} : SlotName(o.slot), TargetName(o.target), o.problem.empty() ? (o.animated ? " (animated)" : " (static)") : std::format(" [{}]", o.problem));
 					}
 					ImGui::Indent();
 					ImGui::TextWrapped("%s  [%s]%s%s  %s", Studio::GeometryLabel(g.name, piece->armorName).c_str(), g.privateMaterial ? "private material" : "material untouched", g.shell.empty() ? "" : "  ", g.shell.c_str(), outputs.c_str());

@@ -92,7 +92,7 @@ namespace WornEnchantmentPBR::Studio
 		auto& region = a_state.region;
 		const auto endSession = [&]() {
 			if (a_state.paint) {
-				selection.recipeID = a_state.paint->recipe;
+				selection.recipeID = a_state.paint->recipeID;
 			}
 			a_state.paint.reset();
 			region = RegionStack{};
@@ -122,10 +122,10 @@ namespace WornEnchantmentPBR::Studio
 				region = RegionStack{};
 			},
 			[&](const PickRecipe& i) {
-				if (selection.recipeID != i.id) {
+				if (selection.recipeID != i.recipeID) {
 					region = RegionStack{};
 				}
-				selection.recipeID = i.id;
+				selection.recipeID = i.recipeID;
 				selection.layer.reset();
 			},
 			[&](const AddTerm& i) {
@@ -269,7 +269,7 @@ namespace WornEnchantmentPBR::Studio
 				}
 			},
 			[&](const BeginPaint& i) {
-				a_state.paint = PaintSession{ i.recipe, i.surface, {} };
+				a_state.paint = PaintSession{ i.recipeID, i.surface, {} };
 				a_state.regionHistory.Clear();
 			},
 			[&](const ReadMesh& i) {
@@ -315,12 +315,12 @@ namespace WornEnchantmentPBR::Studio
 				if (selection.recipeID == i.from) {
 					selection.recipeID = i.to;
 				}
-				if (a_state.paint && a_state.paint->recipe == i.from) {
-					a_state.paint->recipe = i.to;
+				if (a_state.paint && a_state.paint->recipeID == i.from) {
+					a_state.paint->recipeID = i.to;
 				}
 			},
 			[&](const CreateRecipe& i) {
-				selection.recipeID = i.id;
+				selection.recipeID = i.recipeID;
 				selection.layer.reset();
 				region = RegionStack{};
 			},

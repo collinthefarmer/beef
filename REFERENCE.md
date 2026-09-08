@@ -370,7 +370,7 @@ Decompile provenance (`decompiled/WornEnchantmentFX/plugin.c` unless noted):
   emissive and normal are rgb, glint has no texture, the diffuse's alpha is
   a shell's visibility, and the feature maps pack a colour with a weight.
 
-## Paint's term templates (`Paint.cpp`, `TermStack.cpp`, `TermKind.h`)
+## Paint's term templates (`Paint.cpp`, `Region.cpp`, `TermKind.h`)
 
 - A region stack builds to one expression: `and` is the product, `or` is
   `max`, `not` is the product with the complement, and the first term is

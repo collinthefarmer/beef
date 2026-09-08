@@ -261,6 +261,21 @@ namespace WornEnchantmentPBR
 		return NameOf(kSlots, a_slot);
 	}
 
+	std::string_view TargetName(Target a_target) noexcept
+	{
+		return a_target == Target::kLight ? "light" : SurfaceName(SurfaceOf(a_target));
+	}
+
+	Surface SurfaceOf(Target a_target) noexcept
+	{
+		return a_target == Target::kShell ? Surface::kShell : Surface::kMaterial;
+	}
+
+	Target TargetOf(Surface a_surface) noexcept
+	{
+		return a_surface == Surface::kShell ? Target::kShell : Target::kMaterial;
+	}
+
 	std::string_view SurfaceName(Surface a_surface) noexcept
 	{
 		return NameOf(kSurfaces, a_surface);

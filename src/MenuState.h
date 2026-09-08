@@ -2,7 +2,7 @@
 
 #include "Edits.h"
 #include "History.h"
-#include "TermStack.h"
+#include "Region.h"
 #include "Studio.h"
 
 #include <array>
@@ -42,7 +42,7 @@ namespace WornEnchantmentPBR::Studio
 
 	struct PaintSession
 	{
-		std::string recipe;
+		std::string recipeID;
 		Surface               surface = Surface::kMaterial;
 		std::set<std::string> readGeometries;
 	};
@@ -94,7 +94,7 @@ namespace WornEnchantmentPBR::Studio
 	};
 	struct PickRecipe
 	{
-		std::string id;
+		std::string recipeID;
 	};
 	struct PickTarget
 	{
@@ -193,7 +193,7 @@ namespace WornEnchantmentPBR::Studio
 	};
 	struct BeginPaint
 	{
-		std::string recipe;
+		std::string recipeID;
 		RecipeKey   key;
 		Surface     surface = Surface::kMaterial;
 	};
@@ -203,7 +203,7 @@ namespace WornEnchantmentPBR::Studio
 	};
 	struct KeepPaint
 	{
-		std::string recipe;
+		std::string recipeID;
 		std::string name;
 	};
 	struct EndPaint
@@ -216,30 +216,30 @@ namespace WornEnchantmentPBR::Studio
 	};
 	struct EditRecipe
 	{
-		std::string             recipe;
+		std::string             recipeID;
 		std::vector<RecipeEdit> edits;
 	};
 	struct SoloRecipe
 	{
-		std::string recipe;
+		std::string recipeID;
 		bool        on = false;
 	};
 	struct SoloOutput
 	{
-		std::string recipe;
+		std::string recipeID;
 		std::size_t output = 0;
 		bool        on = false;
 	};
 	struct SoloLayer
 	{
-		std::string recipe;
+		std::string recipeID;
 		std::size_t output = 0;
 		std::size_t layer = 0;
 		bool        on = false;
 	};
 	struct MuteLayer
 	{
-		std::string recipe;
+		std::string recipeID;
 		std::size_t output = 0;
 		std::size_t layer = 0;
 		bool        on = false;
@@ -262,15 +262,15 @@ namespace WornEnchantmentPBR::Studio
 	};
 	struct Undo
 	{
-		std::string recipe;
+		std::string recipeID;
 	};
 	struct Redo
 	{
-		std::string recipe;
+		std::string recipeID;
 	};
 	struct CreateRecipe
 	{
-		std::string id;
+		std::string recipeID;
 		RecipeKey   key;
 		std::string geometry;
 	};

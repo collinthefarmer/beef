@@ -22,7 +22,7 @@ namespace WornEnchantmentPBR::Studio
 
 		[[nodiscard]] bool IsMaterialOutput(const OutputRow& a_output) noexcept
 		{
-			return !a_output.light;
+			return a_output.target != Target::kLight;
 		}
 
 		[[nodiscard]] bool WritesCell(const OutputRow& a_output, Surface a_surface, Slot a_slot) noexcept
@@ -121,7 +121,7 @@ namespace WornEnchantmentPBR::Studio
 			for (const auto& output : a_geometry.outputs) {
 				if (IsMaterialOutput(output) && output.surface == a_cell.surface && SlotsExclude(a_cell.slot, output.slot)) {
 					a_cell.state = CellState::kExcluded;
-					a_cell.reason = std::format("excluded by {} (output {})", output.slotName, output.index);
+					a_cell.reason = std::format("excluded by {} (output {})", SlotName(output.slot), output.index);
 					return;
 				}
 			}
@@ -133,7 +133,7 @@ namespace WornEnchantmentPBR::Studio
 			LightCell light;
 			light.output = a_recipe.lightOutput;
 			if (!light.output) {
-				const auto it = std::ranges::find_if(a_geometry.outputs, [](const OutputRow& a_output) { return a_output.light; });
+				const auto it = std::ranges::find_if(a_geometry.outputs, [](const OutputRow& a_output) { return a_output.target == Target::kLight; });
 				if (it != a_geometry.outputs.end()) {
 					light.output = it->index;
 				}
@@ -314,21 +314,6 @@ namespace WornEnchantmentPBR::Studio
 		return Layout{};
 	}
 
-	std::string_view TargetName(Target a_target) noexcept
-	{
-		return a_target == Target::kLight ? "light" : SurfaceName(SurfaceOf(a_target));
-	}
-
-	Surface SurfaceOf(Target a_target) noexcept
-	{
-		return a_target == Target::kShell ? Surface::kShell : Surface::kMaterial;
-	}
-
-	Target TargetOf(Surface a_surface) noexcept
-	{
-		return a_surface == Surface::kShell ? Target::kShell : Target::kMaterial;
-	}
-
 	const PieceRow* SelectedPiece(const Snapshot& a_snapshot, const Selection& a_selection) noexcept
 	{
 		for (const auto& piece : a_snapshot.pieces) {
@@ -384,7 +369,7 @@ namespace WornEnchantmentPBR::Studio
 		}
 		const Surface surface = SurfaceOf(a_selection.target);
 		for (const auto& output : geometry->outputs) {
-			if (!output.light && output.surface == surface && output.slot == *a_selection.slot) {
+			if (output.target != Target::kLight && output.surface == surface && output.slot == *a_selection.slot) {
 				if (*a_selection.layer >= output.layers.size()) {
 					a_selection.layer.reset();
 				}

@@ -9,7 +9,7 @@ namespace WornEnchantmentPBR::Studio
 {
 	struct LayerKey
 	{
-		std::string recipe;
+		std::string recipeID;
 		std::size_t output = 0;
 		std::size_t layer = 0;
 		[[nodiscard]] auto operator<=>(const LayerKey&) const = default;
@@ -60,7 +60,7 @@ namespace WornEnchantmentPBR::Studio
 				return true;
 			}
 			for (const auto& key : muted) {
-				if (key.recipe == a_recipe && key.output == a_output) {
+				if (key.recipeID == a_recipe && key.output == a_output) {
 					return true;
 				}
 			}

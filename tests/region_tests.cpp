@@ -1,4 +1,4 @@
-#include "TermStack.h"
+#include "Region.h"
 #include "Expression.h"
 #include "test_support.h"
 
@@ -50,5 +50,5 @@ namespace
 int main()
 {
 	Builds();
-	return test::Finish("mask stack");
+	return test::Finish("region");
 }

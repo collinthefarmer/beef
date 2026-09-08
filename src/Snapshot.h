@@ -67,11 +67,9 @@ namespace WornEnchantmentPBR::Studio
 	struct OutputRow
 	{
 		std::size_t            index = 0;
-		std::string            target;
+		Target                 target = Target::kMaterial;
 		Surface                surface = Surface::kMaterial;
 		Slot                   slot = Slot::kEmissive;
-		std::string            slotName;
-		bool                   light = false;
 		bool                   replace = false;
 		bool                   animated = false;
 		std::uint32_t          size = 0;

@@ -53,16 +53,6 @@ namespace WornEnchantmentPBR::Studio
 	};
 	[[nodiscard]] Layout LayoutFor(Mode a_mode) noexcept;
 
-	enum class Target
-	{
-		kMaterial,
-		kShell,
-		kLight,
-	};
-	[[nodiscard]] std::string_view TargetName(Target a_target) noexcept;
-	[[nodiscard]] Surface          SurfaceOf(Target a_target) noexcept;
-	[[nodiscard]] Target           TargetOf(Surface a_surface) noexcept;
-
 	struct Selection
 	{
 		FormID                     actorID = 0;
@@ -136,7 +126,7 @@ namespace WornEnchantmentPBR::Studio
 
 	struct ForeignRow
 	{
-		std::string recipe;
+		std::string recipeID;
 		int         priority = 0;
 		LayerRow    layer;
 	};

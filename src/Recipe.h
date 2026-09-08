@@ -519,6 +519,16 @@ namespace WornEnchantmentPBR
 	};
 	[[nodiscard]] std::string_view        SurfaceName(Surface a_surface) noexcept;
 	[[nodiscard]] std::optional<Surface>  ParseSurface(std::string_view a_name) noexcept;
+
+	enum class Target
+	{
+		kMaterial,
+		kShell,
+		kLight,
+	};
+	[[nodiscard]] std::string_view TargetName(Target a_target) noexcept;
+	[[nodiscard]] Surface          SurfaceOf(Target a_target) noexcept;
+	[[nodiscard]] Target           TargetOf(Surface a_surface) noexcept;
 	enum class Slot
 	{
 		kDiffuse,

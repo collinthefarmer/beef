@@ -5,7 +5,7 @@
 #include "Edits.h"
 #include "Forms.h"
 #include "Manager.h"
-#include "TermStack.h"
+#include "Region.h"
 #include "MenuState.h"
 #include "MenuWidgets.h"
 #include "RecipeStore.h"
@@ -67,15 +67,15 @@ namespace WornEnchantmentPBR::Studio
 						manager->EndPaint();
 					}
 				},
-				[&](const EditRecipe& i) { manager->EditRecipe(i.recipe, EditBatch{ i.edits }); },
+				[&](const EditRecipe& i) { manager->EditRecipe(i.recipeID, EditBatch{ i.edits }); },
 				[&](const SoloRecipe& i) {
 					manager->UpdateView([](View& a_live) { a_live.isolatedBySolo = false; });
-					manager->Isolate(i.on ? i.recipe : std::string{}, -1, -1);
+					manager->Isolate(i.on ? i.recipeID : std::string{}, -1, -1);
 				},
 				[&](const SoloOutput& i) {
 					if (i.on) {
 						manager->UpdateView([began = !view.Isolating()](View& a_live) { a_live.isolatedBySolo = a_live.isolatedBySolo || began; });
-						manager->Isolate(i.recipe, static_cast<int>(i.output), -1);
+						manager->Isolate(i.recipeID, static_cast<int>(i.output), -1);
 					} else if (view.isolatedBySolo) {
 						manager->UpdateView([](View& a_live) { a_live.isolatedBySolo = false; });
 						manager->Isolate(std::string{}, -1, -1);
@@ -86,7 +86,7 @@ namespace WornEnchantmentPBR::Studio
 				[&](const SoloLayer& i) {
 					if (i.on) {
 						manager->UpdateView([began = !view.Isolating()](View& a_live) { a_live.isolatedBySolo = a_live.isolatedBySolo || began; });
-						manager->Isolate(i.recipe, static_cast<int>(i.output), static_cast<int>(i.layer));
+						manager->Isolate(i.recipeID, static_cast<int>(i.output), static_cast<int>(i.layer));
 					} else if (view.isolatedBySolo && view.isolateOutput < 0) {
 						manager->UpdateView([](View& a_live) { a_live.isolatedBySolo = false; });
 						manager->Isolate(std::string{}, -1, -1);
@@ -95,7 +95,7 @@ namespace WornEnchantmentPBR::Studio
 					}
 				},
 				[&](const MuteLayer& i) {
-					manager->UpdateView([key = LayerKey{ i.recipe, i.output, i.layer }, on = i.on](View& a_live) {
+					manager->UpdateView([key = LayerKey{ i.recipeID, i.output, i.layer }, on = i.on](View& a_live) {
 						if (on) {
 							a_live.muted.insert(key);
 						} else {
@@ -126,13 +126,13 @@ namespace WornEnchantmentPBR::Studio
 						a_live.scrubSeconds += static_cast<float>(GetSettings().TickIntervalMS()) * 0.001f * a_live.speed;
 					});
 				},
-				[&](const Undo& i) { manager->UndoRecipe(i.recipe); },
-				[&](const Redo& i) { manager->RedoRecipe(i.recipe); },
-				[&](const CreateRecipe& i) { manager->NewRecipe(i.id, i.key, i.geometry); },
+				[&](const Undo& i) { manager->UndoRecipe(i.recipeID); },
+				[&](const Redo& i) { manager->RedoRecipe(i.recipeID); },
+				[&](const CreateRecipe& i) { manager->NewRecipe(i.recipeID, i.key, i.geometry); },
 				[&](const RenameRecipe& i) { manager->RenameRecipe(i.from, i.to); },
-				[&](const BeginPaint& i) { manager->BeginPaint(i.recipe, i.key, i.surface); },
+				[&](const BeginPaint& i) { manager->BeginPaint(i.recipeID, i.key, i.surface); },
 				[&](const SetPaintSurface& i) { manager->SetPaintSurface(i.surface); },
-				[&](const KeepPaint& i) { manager->KeepPaint(i.recipe, i.name); },
+				[&](const KeepPaint& i) { manager->KeepPaint(i.recipeID, i.name); },
 				[&](const EndPaint&) { manager->EndPaint(); },
 				[&](const ReadMesh& i) { manager->RequestMesh(i.actorID, i.geometry); },
 				[&](const FireTrigger& i) { manager->FireAt(i.actorID, i.event, i.node, i.offset, i.random, i.value); },
@@ -913,7 +913,7 @@ namespace WornEnchantmentPBR::Studio
 			a_table.Cell();
 			Widgets::Dim(a_row.layer.blend);
 			a_table.Cell();
-			Widgets::Dim(std::format("{}  ({}, priority {}: {} {})", a_row.layer.source, a_row.recipe, a_row.priority, a_row.layer.opacityText, a_row.layer.mask));
+			Widgets::Dim(std::format("{}  ({}, priority {}: {} {})", a_row.layer.source, a_row.recipeID, a_row.priority, a_row.layer.opacityText, a_row.layer.mask));
 		}
 
 		void DrawStackRow(Widgets::Table& a_table, const LayerStack& a_stack, const LayerStackRow& a_row, const RecipeRow& a_recipe, Intents& a_out)
@@ -1810,7 +1810,7 @@ namespace WornEnchantmentPBR::Studio
 										 Widgets::Disabled(!ready, [&]() {
 											 if (ImGui::Button(std::format("Keep as {}", name).c_str()) && ready) {
 												 Post(a_out, std::string{ kPaintRecipe }, SetMask{ std::string{ kScratchMask }, BuildRegion(a_state.region.terms) });
-												 a_out.push_back(KeepPaint{ a_state.paint->recipe, name });
+												 a_out.push_back(KeepPaint{ a_state.paint->recipeID, name });
 												 ImGui::CloseCurrentPopup();
 											 }
 										 });
@@ -1881,7 +1881,7 @@ namespace WornEnchantmentPBR::Studio
 		void DrawPaintHead(const PieceRow& a_piece, const RecipeRow& a_recipe, const MenuState& a_state, Intents& a_out)
 		{
 			if (a_state.paint) {
-				Widgets::HeldLabel(a_state.paint->recipe.c_str());
+				Widgets::HeldLabel(a_state.paint->recipeID.c_str());
 				ImGui::SameLine();
 				const float labelWidth = Widgets::TextWidth("preview on");
 				const float comboWidth = Widgets::FitWidth("material");

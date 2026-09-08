@@ -179,7 +179,7 @@ namespace WornEnchantmentPBR
 		Studio::View                               view_{};
 		struct IsolateState
 		{
-			std::string recipe;
+			std::string recipeID;
 			int         output = -1;
 			int         layer = -1;
 			bool        bySolo = false;

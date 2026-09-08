@@ -867,8 +867,8 @@ namespace WornEnchantmentPBR
 				if (view_.isolateRecipe == from) {
 					view_.isolateRecipe = to;
 				}
-				if (paintReturn_.recipe == from) {
-					paintReturn_.recipe = to;
+				if (paintReturn_.recipeID == from) {
+					paintReturn_.recipeID = to;
 				}
 			});
 		});
@@ -890,7 +890,7 @@ namespace WornEnchantmentPBR
 				}
 				if (!AddTransientRecipe(std::move(paint))) {
 					if (view_.isolateRecipe == Studio::kPaintRecipe) {
-						view_.isolateRecipe = paintReturn_.recipe;
+						view_.isolateRecipe = paintReturn_.recipeID;
 						view_.isolateOutput = paintReturn_.output;
 						view_.isolateLayer = paintReturn_.layer;
 						view_.isolatedBySolo = paintReturn_.bySolo;
@@ -938,7 +938,7 @@ namespace WornEnchantmentPBR
 		PostTask([this] {
 			WithListMoved([&] {
 				if (view_.isolateRecipe == Studio::kPaintRecipe) {
-					view_.isolateRecipe = paintReturn_.recipe;
+					view_.isolateRecipe = paintReturn_.recipeID;
 					view_.isolateOutput = paintReturn_.output;
 					view_.isolateLayer = paintReturn_.layer;
 					view_.isolatedBySolo = paintReturn_.bySolo;
@@ -1357,12 +1357,10 @@ namespace WornEnchantmentPBR
 							const auto* material = o.index < applied.recipe->outputs.size() ? Get<SurfaceOutput>(applied.recipe->outputs[o.index]) : nullptr;
 							Snapshot::OutputRow orow;
 							orow.index = o.index;
-							orow.target = material ? SurfaceName(material->surface) : "light";
-							orow.light = !material;
+							orow.target = material ? TargetOf(material->surface) : Target::kLight;
 							if (material) {
 								orow.surface = material->surface;
 								orow.slot = material->slot;
-								orow.slotName = std::string{ SlotName(material->slot) };
 								orow.replace = material->replace;
 							}
 							orow.animated = o.stack && o.stack->Animated();
