@@ -510,8 +510,10 @@ are in `ARCHITECTURE.md` under "The recipe studio".
   recipe combo, which keeps naming the recipe being painted for, with
   **preview on**, material or shell, at its right edge: where the paint
   recipe's emissive goes. The region's picture shows one geometry;
-  clicking it views the next (the region applies to every geometry). The Region rule carries **Clear**, **Keep** and **Discard** at its
-  right edge, the way the stack's rule carries its switch. The pane
+  clicking it views the next (the region applies to every geometry). The Region rule carries **Undo** and **Redo** (the stack as it was
+  before the last change; Ctrl+Z and Ctrl+Y while painting), **Clear**,
+  **Keep** and **Discard** at its right edge, the way the stack's rule
+  carries its switch. The pane
   leads with the region's picture (the scratch mask as rendered, its
   problem above it when it has one), then the term table across its
   width, then, under the Terms rule, which carries a filter, one table

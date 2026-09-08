@@ -96,7 +96,9 @@ namespace WornEnchantmentPBR::Studio
 			}
 			a_state.paint.reset();
 			region = RegionStack{};
+			a_state.regionHistory.Clear();
 		};
+		const auto remember = [&]() { a_state.regionHistory.Push(region); };
 		Match(
 			a_intent,
 			[&](const SetMode& i) {
@@ -130,6 +132,7 @@ namespace WornEnchantmentPBR::Studio
 				if (region.terms.size() >= kMaxTerms) {
 					return;
 				}
+				remember();
 				Term term = i.term;
 				if (region.terms.empty()) {
 					term.op = TermOp::kSet;
@@ -141,12 +144,14 @@ namespace WornEnchantmentPBR::Studio
 				region.dirty = true;
 			},
 			[&](const SetTermOp& i) {
+				remember();
 				if (i.index < region.terms.size() && i.index > 0) {
 					region.terms[i.index].op = i.op == TermOp::kSet ? TermOp::kAnd : i.op;
 					region.dirty = true;
 				}
 			},
 			[&](const SetTermText& i) {
+				remember();
 				if (i.index < region.terms.size()) {
 					region.terms[i.index].text = i.text;
 					region.terms[i.index].label = std::string{ kExpressionLabel };
@@ -155,6 +160,7 @@ namespace WornEnchantmentPBR::Studio
 				}
 			},
 			[&](const SetTermKind& i) {
+				remember();
 				if (i.index < region.terms.size()) {
 					region.terms[i.index].kind = i.kind;
 					region.terms[i.index].text = i.text;
@@ -163,6 +169,7 @@ namespace WornEnchantmentPBR::Studio
 				}
 			},
 			[&](const RemoveTerm& i) {
+				remember();
 				if (i.index >= region.terms.size()) {
 					return;
 				}
@@ -179,6 +186,7 @@ namespace WornEnchantmentPBR::Studio
 				region.dirty = true;
 			},
 			[&](const MoveTerm& i) {
+				remember();
 				const std::size_t count = region.terms.size();
 				if (i.from >= count || i.to >= count || i.from == i.to) {
 					return;
@@ -234,6 +242,7 @@ namespace WornEnchantmentPBR::Studio
 				region.dirty = true;
 			},
 			[&](const LoadRegion& i) {
+				remember();
 				region = RegionStack{};
 				region.terms.assign(i.terms.begin(), i.terms.begin() + static_cast<std::ptrdiff_t>((std::min)(i.terms.size(), kMaxTerms)));
 				if (!region.terms.empty()) {
@@ -243,8 +252,26 @@ namespace WornEnchantmentPBR::Studio
 				region.editing = i.editing;
 				region.dirty = !region.terms.empty();
 			},
-			[&](const ClearRegion&) { region = RegionStack{}; },
-			[&](const BeginPaint& i) { a_state.paint = PaintSession{ i.recipe, i.surface, {} }; },
+			[&](const ClearRegion&) {
+				remember();
+				region = RegionStack{};
+			},
+			[&](const UndoRegion&) {
+				if (auto past = a_state.regionHistory.Undo(region)) {
+					region = std::move(*past);
+					region.dirty = true;
+				}
+			},
+			[&](const RedoRegion&) {
+				if (auto next = a_state.regionHistory.Redo(region)) {
+					region = std::move(*next);
+					region.dirty = true;
+				}
+			},
+			[&](const BeginPaint& i) {
+				a_state.paint = PaintSession{ i.recipe, i.surface, {} };
+				a_state.regionHistory.Clear();
+			},
 			[&](const ReadMesh& i) {
 				if (a_state.paint) {
 					a_state.paint->readGeometries.insert(i.geometry);

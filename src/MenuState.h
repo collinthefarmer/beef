@@ -1,6 +1,7 @@
 #pragma once
 
 #include "Edits.h"
+#include "History.h"
 #include "TermStack.h"
 #include "Studio.h"
 
@@ -72,6 +73,7 @@ namespace WornEnchantmentPBR::Studio
 		FieldKey                           focusField = kNoField;
 		Mode                               modeDrawn = Mode::kCompose;
 		FiringDraft                        firing;
+		History<RegionStack>               regionHistory;
 	};
 
 	[[nodiscard]] inline MenuState& State()
@@ -183,6 +185,12 @@ namespace WornEnchantmentPBR::Studio
 	struct ClearRegion
 	{
 	};
+	struct UndoRegion
+	{
+	};
+	struct RedoRegion
+	{
+	};
 	struct BeginPaint
 	{
 		std::string recipe;
@@ -283,7 +291,7 @@ namespace WornEnchantmentPBR::Studio
 
 	using Intent = std::variant<
 		SetMode, PickPiece, PickRecipe, PickTarget, PickSlot, PickCell, PickLayer, ViewGeometry, SetStackSplit, ShowSettings, ShowResource, ReadMesh,
-		AddTerm, SetTermOp, SetTermText, SetTermKind, RemoveTerm, MoveTerm, PickTerm, SoloTerm, MuteTerm, LoadRegion, ClearRegion, ScratchRebuilt,
+		AddTerm, SetTermOp, SetTermText, SetTermKind, RemoveTerm, MoveTerm, PickTerm, SoloTerm, MuteTerm, LoadRegion, ClearRegion, UndoRegion, RedoRegion, ScratchRebuilt,
 		BeginPaint, SetPaintSurface, KeepPaint, EndPaint,
 		EditRecipe, SoloRecipe, SoloOutput, SoloLayer, MuteLayer,
 		SetFreeze, SetScrub, SetSpeed, StepClock, Undo, Redo, CreateRecipe, RenameRecipe, FireTrigger>;

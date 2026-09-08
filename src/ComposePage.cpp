@@ -157,6 +157,8 @@ namespace WornEnchantmentPBR::Studio
 				[](const MuteTerm&) {},
 				[](const LoadRegion&) {},
 				[](const ClearRegion&) {},
+				[](const UndoRegion&) {},
+				[](const RedoRegion&) {},
 				[](const ScratchRebuilt&) {});
 		}
 
@@ -1758,14 +1760,30 @@ namespace WornEnchantmentPBR::Studio
 
 		[[nodiscard]] Widgets::RuleLine RegionRule(std::string_view a_title, const MenuState& a_state, Intents& a_out)
 		{
+			const float undoWidth = Widgets::ButtonWidth("Undo");
+			const float redoWidth = Widgets::ButtonWidth("Redo");
 			const float clearWidth = Widgets::ButtonWidth("Clear");
 			const float keepWidth = Widgets::ButtonWidth("Keep");
 			const float discardWidth = Widgets::ButtonWidth("Discard");
-			const float rightWidth = clearWidth + keepWidth + discardWidth + 2.0f * Widgets::ItemSpacingX();
+			const float rightWidth = undoWidth + redoWidth + clearWidth + keepWidth + discardWidth + 4.0f * Widgets::ItemSpacingX();
 			return Widgets::RuleLine{ a_title, rightWidth, [=, &a_state, &a_out]() {
 									 const auto& region = a_state.region;
 									 const bool  painting = a_state.paint.has_value();
 									 const bool  something = painting && !BuildRegion(region.terms).empty();
+									 Widgets::Disabled(a_state.regionHistory.UndoDepth() == 0, [&]() {
+										 if (ImGui::Button("Undo", ImVec2{ undoWidth, 0.0f })) {
+											 a_out.push_back(UndoRegion{});
+										 }
+									 });
+									 Widgets::Tooltip("the stack as it was before the last change (Ctrl+Z)");
+									 ImGui::SameLine();
+									 Widgets::Disabled(a_state.regionHistory.RedoDepth() == 0, [&]() {
+										 if (ImGui::Button("Redo", ImVec2{ redoWidth, 0.0f })) {
+											 a_out.push_back(RedoRegion{});
+										 }
+									 });
+									 Widgets::Tooltip("the change undone (Ctrl+Y)");
+									 ImGui::SameLine();
 									 Widgets::Disabled(region.terms.empty(), [&]() {
 										 if (ImGui::Button("Clear", ImVec2{ clearWidth, 0.0f })) {
 											 a_out.push_back(ClearRegion{});
@@ -2048,13 +2066,24 @@ namespace WornEnchantmentPBR::Studio
 		void HistoryKeys(const RecipeRow* a_recipe, const MenuState& a_state, Intents& a_out)
 		{
 			const auto* io = ImGui::GetIO();
-			if (!a_recipe || !io || !io->KeyCtrl || a_state.activeField != kNoField || a_state.paint) {
+			if (!a_recipe || !io || !io->KeyCtrl || a_state.activeField != kNoField) {
 				return;
 			}
-			if (ImGui::IsKeyPressed(ImGuiMCP::ImGuiKey_Z, false)) {
+			const bool undo = ImGui::IsKeyPressed(ImGuiMCP::ImGuiKey_Z, false);
+			const bool redo = ImGui::IsKeyPressed(ImGuiMCP::ImGuiKey_Y, false);
+			if (a_state.paint) {
+				if (undo) {
+					a_out.push_back(UndoRegion{});
+				}
+				if (redo) {
+					a_out.push_back(RedoRegion{});
+				}
+				return;
+			}
+			if (undo) {
 				a_out.push_back(Undo{ a_recipe->id });
 			}
-			if (ImGui::IsKeyPressed(ImGuiMCP::ImGuiKey_Y, false)) {
+			if (redo) {
 				a_out.push_back(Redo{ a_recipe->id });
 			}
 		}

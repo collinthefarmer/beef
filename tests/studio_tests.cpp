@@ -1266,6 +1266,27 @@ namespace
 		}
 		Check(state.region.terms.size() == kMaxTerms, "the stack stops at the cap");
 		Reduce(state, ClearRegion{});
+		state.regionHistory.Clear();
+		Reduce(state, AddTerm{ Term{ TermOp::kSet, "@a", "a" } });
+		Reduce(state, AddTerm{ Term{ TermOp::kAnd, "@b", "b" } });
+		Check(state.regionHistory.UndoDepth() == 2 && state.regionHistory.RedoDepth() == 0, "every structural term change pushes the stack before it");
+		Reduce(state, UndoRegion{});
+		Check(state.region.terms.size() == 1 && state.region.dirty && state.regionHistory.UndoDepth() == 1 && state.regionHistory.RedoDepth() == 1, "undo restores the stack before the last change and marks it for a rebuild");
+		Reduce(state, RedoRegion{});
+		Check(state.region.terms.size() == 2 && state.region.terms[1].text == "@b" && state.regionHistory.RedoDepth() == 0, "redo restores the change");
+		Reduce(state, ClearRegion{});
+		Reduce(state, UndoRegion{});
+		Check(state.region.terms.size() == 2, "a cleared stack comes back through undo");
+		Reduce(state, UndoRegion{});
+		Reduce(state, AddTerm{ Term{ TermOp::kAnd, "@c", "c" } });
+		Check(state.regionHistory.RedoDepth() == 0, "a change after undo forgets the redo");
+		Reduce(state, PickTerm{ 0 });
+		Reduce(state, SoloTerm{ 0, true });
+		Check(state.regionHistory.UndoDepth() == 2, "picking, soloing and muting do not push");
+		Reduce(state, RedoRegion{});
+		Check(state.region.terms.size() == 2, "redo on an empty future changes nothing");
+		Reduce(state, ClearRegion{});
+		state.regionHistory.Clear();
 		RecipeKey armor;
 		armor.kind = KeyKind::kArmor;
 		Reduce(state, BeginPaint{ kRecipeID, armor, Surface::kShell });
