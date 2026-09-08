@@ -227,6 +227,7 @@ namespace WornEnchantmentPBR
 			const auto& selection = Studio::State().selection;
 
 			if (ImGui::Button("Reload recipes")) {
+				Studio::Reduce(Studio::State(), Studio::EndPaint{});
 				manager->ReloadRecipes();
 			}
 			ImGui::SameLine();

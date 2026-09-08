@@ -195,6 +195,16 @@ namespace WornEnchantmentPBR
 		return std::vector<std::string>(std::begin(a_words), std::end(a_words));
 	}
 
+	template <std::size_t N>
+	[[nodiscard]] std::string Choices(const std::string_view (&a_words)[N])
+	{
+		std::string out;
+		for (const auto word : a_words) {
+			out += out.empty() ? std::string{ word } : ", " + std::string{ word };
+		}
+		return out;
+	}
+
 	template <class Variant, std::size_t... I>
 	[[nodiscard]] std::optional<Variant> AlternativeAt(std::size_t a_index, std::index_sequence<I...>)
 	{

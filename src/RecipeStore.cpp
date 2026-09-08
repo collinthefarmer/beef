@@ -552,10 +552,11 @@ namespace WornEnchantmentPBR
 			logger::warn("new recipe '{}': an id is a file stem (letters, digits, '-', '_', '.') and not the paint recipe's", a_id);
 			return false;
 		}
-		std::string id{ a_id };
-		for (int n = 2; Loaded(id); ++n) {
-			id = std::format("{}-{}", a_id, n);
+		if (Loaded(a_id)) {
+			logger::warn("new recipe '{}': a recipe has that id", a_id);
+			return false;
 		}
+		const std::string id{ a_id };
 		Recipe recipe;
 		recipe.id = id;
 		recipe.metadata.name = recipe.id;

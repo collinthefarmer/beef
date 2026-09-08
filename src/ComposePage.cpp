@@ -1883,10 +1883,10 @@ namespace WornEnchantmentPBR::Studio
 				return;
 			}
 			Intents intents;
-			intents.push_back(ScratchRebuilt{});
 			for (auto& edit : ScratchEdits(region.terms, region.solo, region.muted, ScratchOf(*a_recipe))) {
 				Post(intents, a_recipe->id, std::move(edit));
 			}
+			intents.push_back(ScratchRebuilt{});
 			Dispatch(intents, a_state, a_snapshot);
 		}
 

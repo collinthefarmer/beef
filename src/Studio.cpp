@@ -1183,8 +1183,14 @@ namespace WornEnchantmentPBR::Studio
 
 		[[nodiscard]] FormField Field(std::string a_name, FieldKind a_kind, std::string a_text, std::vector<std::string> a_names, FieldBinding a_bind)
 		{
-			const bool signal = (a_kind == FieldKind::kScalar || a_kind == FieldKind::kColor || a_kind == FieldKind::kVector || a_kind == FieldKind::kVec2) && IsWholeReference(a_text) && std::ranges::find(a_names, ReferenceName(a_text)) != a_names.end();
-			return FormField{ std::move(a_name), a_kind, std::move(a_text), std::move(a_names), false, signal ? std::optional{ FieldDetail::kSignal } : std::nullopt, std::nullopt, std::move(a_bind) };
+			const bool value = a_kind == FieldKind::kScalar || a_kind == FieldKind::kColor || a_kind == FieldKind::kVector || a_kind == FieldKind::kVec2;
+			const bool signal = value && IsWholeReference(a_text) && std::ranges::find(a_names, ReferenceName(a_text)) != a_names.end();
+			FormField  field{ a_name, a_kind, a_text, a_names, false, signal ? std::optional{ FieldDetail::kSignal } : std::nullopt, std::nullopt, std::move(a_bind) };
+			if (!a_names.empty() && (a_kind == FieldKind::kScalar || a_kind == FieldKind::kColor)) {
+				field.creators = Creators(kValueCreators);
+				field.create = [name = a_name, current = a_text, colour = a_kind == FieldKind::kColor, taken = a_names, bind = field.bind](const std::string& a_creator) { return CreateValue(a_creator, name, current, colour, taken, bind); };
+			}
+			return field;
 		}
 	}
 

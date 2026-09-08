@@ -12,7 +12,7 @@ MODEL=(src/Recipe.cpp src/RecipeJson.cpp src/Expression.cpp src/Signals.cpp src/
 status=0
 compile() {
 	local src="$1" obj="$OUT/$(echo "$1" | tr / _).o"
-	if [ ! -f "$obj" ] || [ "$src" -nt "$obj" ] || [ -n "$(find src -name '*.h' -newer "$obj" 2>/dev/null | head -1)" ]; then
+	if [ ! -f "$obj" ] || [ "$src" -nt "$obj" ] || [ -n "$(find src tests -name '*.h' -newer "$obj" 2>/dev/null | head -1)" ]; then
 		"$CXX" "${FLAGS[@]}" -c "$src" -o "$obj" || return 1
 	fi
 	echo "$obj"

@@ -778,9 +778,15 @@ namespace WornEnchantmentPBR
 	{
 		PostTask([this, id = std::move(a_id)] {
 			WithRecipeRetired(id, [&] {
-				const auto saved = WornEnchantmentPBR::SaveRecipe(id);
+				const auto*  recipe = MutableRecipe(id);
+				const Recipe before = recipe ? *recipe : Recipe{};
+				const auto   saved = WornEnchantmentPBR::SaveRecipe(id);
 				if (!saved) {
 					logger::error("recipe {}: save failed ({})", id, saved.error());
+					return;
+				}
+				if (recipe && !(*recipe == before)) {
+					histories_[id].Push(before);
 				}
 			});
 		});
@@ -883,6 +889,13 @@ namespace WornEnchantmentPBR
 					[[maybe_unused]] const bool dropped = DropTransientRecipe(Studio::kPaintRecipe);
 				}
 				if (!AddTransientRecipe(std::move(paint))) {
+					if (view_.isolateRecipe == Studio::kPaintRecipe) {
+						view_.isolateRecipe = paintReturn_.recipe;
+						view_.isolateOutput = paintReturn_.output;
+						view_.isolateLayer = paintReturn_.layer;
+						view_.isolatedBySolo = paintReturn_.bySolo;
+						paintReturn_ = {};
+					}
 					return;
 				}
 				histories_.erase(std::string{ Studio::kPaintRecipe });
@@ -929,8 +942,8 @@ namespace WornEnchantmentPBR
 					view_.isolateOutput = paintReturn_.output;
 					view_.isolateLayer = paintReturn_.layer;
 					view_.isolatedBySolo = paintReturn_.bySolo;
+					paintReturn_ = {};
 				}
-				paintReturn_ = {};
 				[[maybe_unused]] const bool dropped = DropTransientRecipe(Studio::kPaintRecipe);
 				histories_.erase(std::string{ Studio::kPaintRecipe });
 			});

@@ -912,7 +912,12 @@ namespace WornEnchantmentPBR
 			s.name = a_name;
 			const auto& kind = entry->key;
 			const json& v = *entry->value;
-			if (kind == "image") {
+			const auto  blank = DefaultSourceKind(kind);
+			if (!blank) {
+				a_ctx.Error(std::format("unknown source kind '{}'", kind));
+				return std::nullopt;
+			}
+			if (Is<ImageSource>(*blank)) {
 				if (!v.is_object()) {
 					a_ctx.Error("'image' takes an object with 'path'");
 					return std::nullopt;
@@ -935,31 +940,22 @@ namespace WornEnchantmentPBR
 				if (auto mip = r.Number("mip")) k.mip = std::max(0.0f, *mip);
 				r.Finish();
 				s.kind = k;
-			} else if (kind == "material") {
+			} else if (Is<MaterialSource>(*blank)) {
 				const auto channel = v.is_string() ? FromName(kMaterialChannels, v.get<std::string>()) : std::nullopt;
 				if (!channel) {
 					a_ctx.Error(std::format("'material' is one of {}", Choices(kMaterialChannels)));
 					return std::nullopt;
 				}
 				s.kind = MaterialSource{ *channel };
-			} else if (kind == "bake") {
+			} else if (Is<BakeSource>(*blank)) {
 				BakeSource k;
 				if (v.is_string()) {
-					const auto text = v.get<std::string>();
-					if (text == "position") {
-						k.bake = PositionBake{};
-					} else if (text == "localPosition") {
-						k.bake = LocalPositionBake{};
-					} else if (text == "worldUp") {
-						k.bake = WorldUpBake{};
-					} else if (text == "componentId") {
-						k.bake = ComponentIdBake{};
-					} else if (text == "chartId") {
-						k.bake = ChartIdBake{};
-					} else {
-						a_ctx.Error("'bake' is \"position\", \"localPosition\", \"worldUp\", \"componentId\", \"chartId\", {\"partition\": slot} or {\"boneWeight\": [bones]}");
+					const auto bare = DefaultBakeKind(v.get<std::string>());
+					if (!bare || Is<PartitionBake>(*bare) || Is<BoneWeightBake>(*bare)) {
+						a_ctx.Error(std::format("'bake' is one of {}, or {{\"partition\": slot}} or {{\"boneWeight\": [bones]}}", Choices(kBakeKindWords)));
 						return std::nullopt;
 					}
+					k.bake = *bare;
 				} else {
 					const auto inner = OneKey(v, a_ctx, "'bake'");
 					if (!inner) {
@@ -1001,14 +997,14 @@ namespace WornEnchantmentPBR
 					}
 				}
 				s.kind = k;
-			} else if (kind == "uv") {
+			} else if (Is<UvSource>(*blank)) {
 				const auto axis = v.is_string() ? FromName(kUvAxes, v.get<std::string>()) : std::nullopt;
 				if (!axis) {
 					a_ctx.Error("'uv' is \"u\" or \"v\"");
 					return std::nullopt;
 				}
 				s.kind = UvSource{ *axis };
-			} else if (kind == "distance") {
+			} else if (Is<DistanceSource>(*blank)) {
 				DistanceSource k;
 				if (v.is_string()) {
 					k.from = v.get<std::string>();
@@ -1029,7 +1025,7 @@ namespace WornEnchantmentPBR
 					return std::nullopt;
 				}
 				s.kind = k;
-			} else if (kind == "ripple") {
+			} else if (Is<RippleSource>(*blank)) {
 				if (!v.is_object()) {
 					a_ctx.Error("'ripple' takes an object with 'trigger'");
 					return std::nullopt;
@@ -1044,7 +1040,7 @@ namespace WornEnchantmentPBR
 				if (auto sh = r.Enum("shape", kRippleShapes)) k.shape = *sh;
 				r.Finish();
 				s.kind = k;
-			} else if (kind == "materialClusters") {
+			} else {
 				if (!v.is_object()) {
 					a_ctx.Error("'materialClusters' takes an object with 'clusters', 'weights', 'seed' and 'iterations'");
 					return std::nullopt;
@@ -1100,9 +1096,6 @@ namespace WornEnchantmentPBR
 					return std::nullopt;
 				}
 				s.kind = k;
-			} else {
-				a_ctx.Error(std::format("unknown source kind '{}'", kind));
-				return std::nullopt;
 			}
 			return s;
 		}
@@ -1121,34 +1114,30 @@ namespace WornEnchantmentPBR
 					if (k.mirror[0] || k.mirror[1]) o["mirror"] = json::array({ k.mirror[0], k.mirror[1] });
 					if (k.transpose) o["transpose"] = true;
 					if (k.mip != 0.0f) o["mip"] = Num(k.mip);
-					row["image"] = std::move(o);
+					row[std::string{ SourceKindName(a_source.kind) }] = std::move(o);
 				},
-				[&](const MaterialSource& k) { row["material"] = NameOf(kMaterialChannels, k.channel); },
+				[&](const MaterialSource& k) { row[std::string{ SourceKindName(a_source.kind) }] = NameOf(kMaterialChannels, k.channel); },
 				[&](const BakeSource& k) {
 					Match(
 						k.bake,
-						[&](const PositionBake&) { row["bake"] = "position"; },
-						[&](const LocalPositionBake&) { row["bake"] = "localPosition"; },
-						[&](const WorldUpBake&) { row["bake"] = "worldUp"; },
 						[&](const PartitionBake& p) {
 							const auto name = BipedSlotName(p.slot);
 							row["bake"] = json::object({ { "partition", name ? json(std::string{ *name }) : json(p.slot) } });
 						},
 						[&](const BoneWeightBake& b) { row["bake"] = json::object({ { "boneWeight", b.bones } }); },
-						[&](const ComponentIdBake&) { row["bake"] = "componentId"; },
-						[&](const ChartIdBake&) { row["bake"] = "chartId"; });
+						[&](const auto&) { row["bake"] = std::string{ BakeKindName(k.bake) }; });
 				},
-				[&](const UvSource& k) { row["uv"] = NameOf(kUvAxes, k.axis); },
+				[&](const UvSource& k) { row[std::string{ SourceKindName(a_source.kind) }] = NameOf(kUvAxes, k.axis); },
 				[&](const DistanceSource& k) {
 					Match(
 						k.from,
-						[&](const std::string& node) { row["distance"] = node; },
-						[&](const Vec3& p) { row["distance"] = json::object({ { "from", PointToJson(p) } }); });
+						[&](const std::string& node) { row[std::string{ SourceKindName(a_source.kind) }] = node; },
+						[&](const Vec3& p) { row[std::string{ SourceKindName(a_source.kind) }] = json::object({ { "from", PointToJson(p) } }); });
 				},
 				[&](const RippleSource& k) {
 					json o = json::object({ { "trigger", "@" + k.trigger.name }, { "speed", ParamToJson(k.speed) }, { "width", ParamToJson(k.width) }, { "decay", ParamToJson(k.decay) } });
 					if (k.shape != RippleShape::kRing) o["shape"] = NameOf(kRippleShapes, k.shape);
-					row["ripple"] = std::move(o);
+					row[std::string{ SourceKindName(a_source.kind) }] = std::move(o);
 				},
 				[&](const MaterialClustersSource& k) {
 					const MaterialClustersSource defaults;
@@ -1163,7 +1152,7 @@ namespace WornEnchantmentPBR
 					if (!w.empty()) o["weights"] = std::move(w);
 					if (k.seed != defaults.seed) o["seed"] = k.seed;
 					if (k.iterations != defaults.iterations) o["iterations"] = k.iterations;
-					row["materialClusters"] = std::move(o);
+					row[std::string{ SourceKindName(a_source.kind) }] = std::move(o);
 				});
 			return row;
 		}

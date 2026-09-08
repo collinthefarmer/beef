@@ -1,4 +1,5 @@
 #include "Edits.h"
+#include "Vocabulary.h"
 
 #include "Expression.h"
 
@@ -28,6 +29,33 @@ namespace WornEnchantmentPBR::Studio
 		}
 		std::string CurveWhere(const std::string& a_curve);
 		std::string MaskWhere(const std::string& a_mask);
+		bool        NamesSignal(const Vec3Param& a_param);
+		Refusal     CheckSourceKind(const Recipe& a_recipe, const std::string& a_where, const SourceKind& a_kind);
+		Diagnostic  Refuse(std::string a_where, std::string a_message);
+
+		std::string SelectorText(const Selector& a_selector)
+		{
+			std::string text;
+			for (const auto& clause : a_selector.anyOf) {
+				const auto value = clause.kind == SelectorKind::kAddon ? clause.form.text : clause.glob;
+				text += (text.empty() ? "" : ", ") + std::format("{} {}", NameOf(kSelectorKinds, clause.kind), value);
+			}
+			return text;
+		}
+
+		Refusal CheckText(const std::string& a_where, const std::string& a_text)
+		{
+			if (a_text.empty()) {
+				return Refuse(a_where, "the expression is empty");
+			}
+			if (a_text.size() > kMaxExpressionLength) {
+				return Refuse(a_where, std::format("longer than {} characters", kMaxExpressionLength));
+			}
+			if (const auto program = Program::Parse(a_text); !program) {
+				return Refuse(a_where, program.error());
+			}
+			return std::nullopt;
+		}
 
 		Diagnostic Refuse(std::string a_where, std::string a_message)
 		{
@@ -133,8 +161,8 @@ namespace WornEnchantmentPBR::Studio
 			if (name && !a_recipe.FindCurve(*name)) {
 				return Refuse(a_where, std::format("'curve' names unknown curve '@{}'", *name));
 			}
-			if (!name && a_curve->text.empty()) {
-				return Refuse(a_where, "'curve' is empty");
+			if (!name) {
+				return CheckText(a_where, a_curve->text);
 			}
 			return std::nullopt;
 		}
@@ -455,9 +483,7 @@ namespace WornEnchantmentPBR::Studio
 			if (!signal) {
 				return Refuse(SignalWhere(a_edit.signal), "no such signal");
 			}
-			if (a_edit.text.empty()) {
-				return Refuse(SignalWhere(a_edit.signal), "the expression is empty");
-			}
+			if (auto problem = CheckText(SignalWhere(a_edit.signal), a_edit.text)) return problem;
 			signal->kind = ExprSignal{ a_edit.text };
 			return std::nullopt;
 		}
@@ -479,9 +505,7 @@ namespace WornEnchantmentPBR::Studio
 			if (!curve) {
 				return Refuse(CurveWhere(a_edit.curve), "no such curve");
 			}
-			if (a_edit.text.empty()) {
-				return Refuse(CurveWhere(a_edit.curve), "the expression is empty");
-			}
+			if (auto problem = CheckText(CurveWhere(a_edit.curve), a_edit.text)) return problem;
 			curve->text = a_edit.text;
 			return std::nullopt;
 		}
@@ -492,12 +516,7 @@ namespace WornEnchantmentPBR::Studio
 			if (!mask) {
 				return Refuse(MaskWhere(a_edit.mask), "no such mask");
 			}
-			if (a_edit.text.empty()) {
-				return Refuse(MaskWhere(a_edit.mask), "the expression is empty");
-			}
-			if (a_edit.text.size() > kMaxExpressionLength) {
-				return Refuse(std::format("mask {}", a_edit.mask), std::format("longer than {} characters", kMaxExpressionLength));
-			}
+			if (auto problem = CheckText(MaskWhere(a_edit.mask), a_edit.text)) return problem;
 			mask->text = a_edit.text;
 			return std::nullopt;
 		}
@@ -531,129 +550,259 @@ namespace WornEnchantmentPBR::Studio
 			return std::nullopt;
 		}
 
-		template <class F>
-		void VisitRef(Ref& a_ref, F& a_visit)
+		template <class V>
+		void VisitRef(Ref& a_ref, V& a_visit)
 		{
-			a_visit(a_ref);
+			a_visit.Reference(a_ref);
 		}
 
-		template <class F>
-		void VisitRef(std::optional<Ref>& a_ref, F& a_visit)
+		template <class V>
+		void VisitRef(std::optional<Ref>& a_ref, V& a_visit)
 		{
 			if (a_ref) {
-				a_visit(*a_ref);
+				a_visit.Reference(*a_ref);
 			}
 		}
 
-		template <class F>
-		void VisitParam(Param& a_param, F& a_visit)
+		template <class V>
+		void VisitParam(Param& a_param, std::optional<float> a_default, V& a_visit)
 		{
-			if (auto* ref = Get<Ref>(a_param)) {
-				a_visit(*ref);
-			}
+			a_visit.Scalar(a_param, a_default);
 		}
 
-		template <class F>
-		void VisitParam(std::optional<Param>& a_param, F& a_visit)
+		template <class V>
+		void VisitParam(std::optional<Param>& a_param, std::optional<float> a_default, V& a_visit)
 		{
 			if (a_param) {
-				VisitParam(*a_param, a_visit);
+				a_visit.OptionalScalar(a_param, a_default);
 			}
 		}
 
-		template <std::size_t N, class F>
-		void VisitVector(std::variant<std::array<Param, N>, Ref>& a_param, F& a_visit)
+		template <std::size_t N, class V>
+		void VisitVector(std::variant<std::array<Param, N>, Ref>& a_param, std::type_identity_t<std::optional<std::array<float, N>>> a_default, V& a_visit)
 		{
-			if (auto* ref = Get<Ref>(a_param)) {
-				a_visit(*ref);
-			} else if (auto* parts = Get<std::array<Param, N>>(a_param)) {
-				for (auto& part : *parts) {
-					VisitParam(part, a_visit);
+			a_visit.Vector(a_param, a_default);
+		}
+
+		template <std::size_t N, class V>
+		void VisitVector(std::optional<std::variant<std::array<Param, N>, Ref>>& a_param, std::type_identity_t<std::optional<std::array<float, N>>> a_default, V& a_visit)
+		{
+			if (a_param) {
+				a_visit.OptionalVector(a_param, a_default);
+			}
+		}
+
+		[[nodiscard]] std::optional<float> LiteralOf(const Param& a_param)
+		{
+			const auto* number = Get<float>(a_param);
+			return number ? std::optional{ *number } : std::nullopt;
+		}
+
+		template <std::size_t N>
+		[[nodiscard]] std::optional<std::array<float, N>> LiteralOf(const std::variant<std::array<Param, N>, Ref>& a_param)
+		{
+			const auto* parts = Get<std::array<Param, N>>(a_param);
+			if (!parts) {
+				return std::nullopt;
+			}
+			std::array<float, N> out{};
+			for (std::size_t i = 0; i < N; ++i) {
+				const auto number = LiteralOf((*parts)[i]);
+				if (!number) {
+					return std::nullopt;
 				}
+				out[i] = *number;
 			}
+			return out;
 		}
 
-		template <std::size_t N, class F>
-		void VisitVector(std::optional<std::variant<std::array<Param, N>, Ref>>& a_param, F& a_visit)
+		[[nodiscard]] std::optional<float> ScalarDefault(Slot a_slot, ScalarField a_field)
 		{
-			if (a_param) {
-				VisitVector(*a_param, a_visit);
-			}
+			return ScalarRequired(a_slot, a_field) ? std::optional{ ScalarFallback(a_field) } : std::nullopt;
 		}
 
-		template <class F>
-		void ForEachSignalRef(Recipe& a_recipe, F a_visit)
+		template <class V>
+		void ForEachParam(Recipe& a_recipe, V& a_visit)
 		{
 			for (auto& signal : a_recipe.signals) {
 				Match(
 					signal.kind,
-					[&](PulseSignal& s) { VisitParam(s.base, a_visit); VisitParam(s.amplitude, a_visit); VisitParam(s.period, a_visit); VisitParam(s.phase, a_visit); },
-					[&](RampSignal& s) { VisitParam(s.from, a_visit); VisitParam(s.to, a_visit); VisitParam(s.seconds, a_visit); },
+					[&](PulseSignal& s) { VisitParam(s.base, std::nullopt, a_visit); VisitParam(s.amplitude, std::nullopt, a_visit); VisitParam(s.period, std::nullopt, a_visit); VisitParam(s.phase, std::nullopt, a_visit); },
+					[&](RampSignal& s) { VisitParam(s.from, std::nullopt, a_visit); VisitParam(s.to, std::nullopt, a_visit); VisitParam(s.seconds, std::nullopt, a_visit); },
 					[&](TriggerSignal& s) {
-						VisitParam(s.lifetime, a_visit);
+						VisitParam(s.lifetime, std::nullopt, a_visit);
 						if (auto* when = Get<WhenOrigin>(s.origin)) {
 							VisitRef(when->when, a_visit);
 							VisitRef(when->value, a_visit);
 						}
 					},
 					[&](PayloadSignal& s) { VisitRef(s.trigger, a_visit); },
-					[&](CounterSignal& s) { VisitRef(s.trigger, a_visit); VisitRef(s.reset, a_visit); VisitParam(s.cap, a_visit); },
-					[&](AccumulateSignal& s) { VisitRef(s.trigger, a_visit); VisitParam(s.decay, a_visit); },
-					[&](NoiseSignal& s) { VisitParam(s.frequency, a_visit); VisitParam(s.amplitude, a_visit); },
+					[&](CounterSignal& s) { VisitRef(s.trigger, a_visit); VisitRef(s.reset, a_visit); VisitParam(s.cap, std::nullopt, a_visit); },
+					[&](AccumulateSignal& s) { VisitRef(s.trigger, a_visit); VisitParam(s.decay, std::nullopt, a_visit); },
+					[&](NoiseSignal& s) { VisitParam(s.frequency, std::nullopt, a_visit); VisitParam(s.amplitude, std::nullopt, a_visit); },
 					[&](GradientSignal& s) {
-						VisitParam(s.t, a_visit);
+						VisitParam(s.t, std::nullopt, a_visit);
 						for (auto& stop : s.stops) {
-							VisitVector(stop.color, a_visit);
+							VisitVector(stop.color, std::nullopt, a_visit);
 						}
 					},
 					[&](DeltaSignal& s) { VisitRef(s.of, a_visit); },
-					[&](SmoothSignal& s) { VisitRef(s.of, a_visit); VisitParam(s.seconds, a_visit); },
+					[&](SmoothSignal& s) { VisitRef(s.of, a_visit); VisitParam(s.seconds, std::nullopt, a_visit); },
 					[](auto&) {});
 			}
 			for (auto& source : a_recipe.sources) {
 				Match(
 					source.kind,
-					[&](ImageSource& s) { VisitVector(s.scroll, a_visit); VisitVector(s.tile, a_visit); },
-					[&](RippleSource& s) { VisitRef(s.trigger, a_visit); VisitParam(s.speed, a_visit); VisitParam(s.width, a_visit); VisitParam(s.decay, a_visit); },
+					[&](ImageSource& s) { VisitVector(s.scroll, std::nullopt, a_visit); VisitVector(s.tile, std::nullopt, a_visit); },
+					[&](RippleSource& s) { VisitRef(s.trigger, a_visit); VisitParam(s.speed, std::nullopt, a_visit); VisitParam(s.width, std::nullopt, a_visit); VisitParam(s.decay, std::nullopt, a_visit); },
 					[](auto&) {});
 			}
+			const Layer       layerDefaults = DefaultLayer();
+			const LightOutput lightDefaults{};
 			for (auto& output : a_recipe.outputs) {
 				Match(
 					output,
 					[&](SurfaceOutput& o) {
-						auto& sc = o.scalars;
-						VisitParam(sc.strength, a_visit);
-						VisitParam(sc.scale, a_visit);
-						VisitVector(sc.color, a_visit);
-						VisitParam(sc.weight, a_visit);
-						VisitParam(sc.screenSpaceScale, a_visit);
-						VisitParam(sc.logMicrofacetDensity, a_visit);
-						VisitParam(sc.microfacetRoughness, a_visit);
-						VisitParam(sc.densityRandomization, a_visit);
-						VisitParam(sc.roughness, a_visit);
-						VisitParam(sc.level, a_visit);
-						VisitParam(sc.thickness, a_visit);
+						for (const auto& row : kScalarFields) {
+							if (auto* scalar = ScalarOf(o.scalars, row.value)) {
+								VisitParam(*scalar, ScalarDefault(o.slot, row.value), a_visit);
+							}
+						}
+						const auto colour = ScalarDefault(o.slot, ScalarField::kColor);
+						VisitVector(o.scalars.color, colour ? std::optional{ std::array<float, 3>{ *colour, *colour, *colour } } : std::nullopt, a_visit);
 						for (auto& layer : o.stack) {
-							VisitParam(layer.opacity, a_visit);
-							VisitVector(layer.color, a_visit);
+							VisitParam(layer.opacity, LiteralOf(layerDefaults.opacity), a_visit);
+							VisitVector(layer.color, std::nullopt, a_visit);
 						}
 					},
 					[&](LightOutput& o) {
-						VisitVector(o.offset, a_visit);
-						VisitVector(o.color, a_visit);
-						VisitParam(o.intensity, a_visit);
-						VisitParam(o.size, a_visit);
-						VisitParam(o.cutoff, a_visit);
+						VisitVector(o.offset, LiteralOf(lightDefaults.offset), a_visit);
+						VisitVector(o.color, LiteralOf(lightDefaults.color), a_visit);
+						VisitParam(o.intensity, LiteralOf(lightDefaults.intensity), a_visit);
+						VisitParam(o.size, LiteralOf(lightDefaults.size), a_visit);
+						VisitParam(o.cutoff, LiteralOf(lightDefaults.cutoff), a_visit);
 					});
 			}
-			auto& shell = a_recipe.shell;
-			VisitParam(shell.alpha, a_visit);
-			VisitParam(shell.rimPower, a_visit);
-			VisitParam(shell.emissive, a_visit);
-			VisitVector(shell.pose.inflate, a_visit);
-			VisitVector(shell.pose.offset, a_visit);
-			VisitParam(shell.pose.scale, a_visit);
-			VisitParam(shell.pose.spin, a_visit);
+			const ShellSettings shellDefaults{};
+			auto&               shell = a_recipe.shell;
+			VisitParam(shell.alpha, LiteralOf(shellDefaults.alpha), a_visit);
+			VisitParam(shell.rimPower, LiteralOf(shellDefaults.rimPower), a_visit);
+			VisitParam(shell.emissive, LiteralOf(shellDefaults.emissive), a_visit);
+			VisitVector(shell.pose.inflate, LiteralOf(shellDefaults.pose.inflate), a_visit);
+			VisitVector(shell.pose.offset, LiteralOf(shellDefaults.pose.offset), a_visit);
+			VisitParam(shell.pose.scale, LiteralOf(shellDefaults.pose.scale), a_visit);
+			VisitParam(shell.pose.spin, LiteralOf(shellDefaults.pose.spin), a_visit);
+		}
+
+		template <class F>
+		struct RefVisitor
+		{
+			F& visit;
+			void Reference(Ref& a_ref) { visit(a_ref); }
+			void Scalar(Param& a_param, std::optional<float>)
+			{
+				if (auto* ref = Get<Ref>(a_param)) {
+					visit(*ref);
+				}
+			}
+			void OptionalScalar(std::optional<Param>& a_param, std::optional<float> a_default) { Scalar(*a_param, a_default); }
+			template <std::size_t N>
+			void Vector(std::variant<std::array<Param, N>, Ref>& a_param, std::optional<std::array<float, N>>)
+			{
+				if (auto* ref = Get<Ref>(a_param)) {
+					visit(*ref);
+				} else if (auto* parts = Get<std::array<Param, N>>(a_param)) {
+					for (auto& part : *parts) {
+						Scalar(part, std::nullopt);
+					}
+				}
+			}
+			template <std::size_t N>
+			void OptionalVector(std::optional<std::variant<std::array<Param, N>, Ref>>& a_param, std::optional<std::array<float, N>> a_default) { Vector(*a_param, a_default); }
+		};
+
+		template <class F>
+		void ForEachSignalRef(Recipe& a_recipe, F a_visit)
+		{
+			RefVisitor<F> visitor{ a_visit };
+			ForEachParam(a_recipe, visitor);
+		}
+
+		struct LiteralVisitor
+		{
+			void Reference(Ref&) {}
+			void Scalar(Param& a_param, std::optional<float> a_default)
+			{
+				if (Is<Ref>(a_param)) {
+					a_param = a_default.value_or(0.0f);
+				}
+			}
+			void OptionalScalar(std::optional<Param>& a_param, std::optional<float> a_default)
+			{
+				if (!Is<Ref>(*a_param)) {
+					return;
+				}
+				if (a_default) {
+					*a_param = *a_default;
+				} else {
+					a_param.reset();
+				}
+			}
+			template <std::size_t N>
+			void Vector(std::variant<std::array<Param, N>, Ref>& a_param, std::optional<std::array<float, N>> a_default)
+			{
+				std::array<Param, N> literal{};
+				const auto           fallback = a_default.value_or(std::array<float, N>{});
+				for (std::size_t i = 0; i < N; ++i) {
+					literal[i] = fallback[i];
+				}
+				if (Is<Ref>(a_param)) {
+					a_param = literal;
+					return;
+				}
+				auto& parts = *Get<std::array<Param, N>>(a_param);
+				for (std::size_t i = 0; i < N; ++i) {
+					if (Is<Ref>(parts[i])) {
+						parts[i] = fallback[i];
+					}
+				}
+			}
+			template <std::size_t N>
+			void OptionalVector(std::optional<std::variant<std::array<Param, N>, Ref>>& a_param, std::optional<std::array<float, N>> a_default)
+			{
+				const auto* parts = Get<std::array<Param, N>>(*a_param);
+				const bool  names = Is<Ref>(*a_param) || (parts && std::ranges::any_of(*parts, [](const Param& p) { return Is<Ref>(p); }));
+				if (!names) {
+					return;
+				}
+				if (a_default) {
+					Vector(*a_param, a_default);
+				} else {
+					a_param.reset();
+				}
+			}
+		};
+
+		template <class F>
+		void ForEachOverrideName(Recipe& a_recipe, F a_visit)
+		{
+			for (auto& variant : a_recipe.variants) {
+				for (const auto& [name, value] : variant.overrides) {
+					a_visit(name);
+				}
+			}
+		}
+
+		void RenameOverrides(Recipe& a_recipe, const std::string& a_from, const std::string& a_to)
+		{
+			for (auto& variant : a_recipe.variants) {
+				const auto it = variant.overrides.find(a_from);
+				if (it != variant.overrides.end()) {
+					auto value = it->second;
+					variant.overrides.erase(it);
+					variant.overrides.emplace(a_to, value);
+				}
+			}
 		}
 
 		template <class F>
@@ -759,14 +908,7 @@ namespace WornEnchantmentPBR::Studio
 					a_text = RenameInExpression(a_text, a_edit.from, a_edit.to, false);
 				}
 			});
-			for (auto& variant : a_recipe.variants) {
-				const auto it = variant.overrides.find(a_edit.from);
-				if (it != variant.overrides.end()) {
-					Value value = it->second;
-					variant.overrides.erase(it);
-					variant.overrides.emplace(a_edit.to, value);
-				}
-			}
+			RenameOverrides(a_recipe, a_edit.from, a_edit.to);
 			return std::nullopt;
 		}
 
@@ -908,6 +1050,7 @@ namespace WornEnchantmentPBR::Studio
 			if (a_recipe.FindSource(a_edit.name) || a_recipe.FindMask(a_edit.name)) {
 				return Refuse(SourceWhere(a_edit.name), "a source or mask has that name");
 			}
+			if (auto problem = CheckSourceKind(a_recipe, SourceWhere(a_edit.name), a_edit.kind)) return problem;
 			a_recipe.sources.push_back(Source{ a_edit.name, a_edit.kind });
 			return std::nullopt;
 		}
@@ -1174,12 +1317,6 @@ namespace WornEnchantmentPBR::Studio
 			return Edit(a_recipe, ResetShell{});
 		}
 
-		void Literal(Param& a_param, float a_value)
-		{
-			if (Is<Ref>(a_param)) {
-				a_param = a_value;
-			}
-		}
 		bool NamesSignal(const Vec3Param& a_param)
 		{
 			if (Is<Ref>(a_param)) {
@@ -1187,18 +1324,6 @@ namespace WornEnchantmentPBR::Studio
 			}
 			const auto* parts = Get<std::array<Param, 3>>(a_param);
 			return parts && std::ranges::any_of(*parts, [](const Param& p) { return Is<Ref>(p); });
-		}
-		void Literal(Vec3Param& a_param, const std::array<float, 3>& a_value)
-		{
-			if (NamesSignal(a_param)) {
-				a_param = std::array<Param, 3>{ a_value[0], a_value[1], a_value[2] };
-			}
-		}
-		void Literal(std::optional<Vec3Param>& a_param)
-		{
-			if (a_param && NamesSignal(*a_param)) {
-				a_param.reset();
-			}
 		}
 
 		Refusal Edit(Recipe& a_recipe, const ClearResources&)
@@ -1209,53 +1334,16 @@ namespace WornEnchantmentPBR::Studio
 			a_recipe.masks.clear();
 			a_recipe.variants.clear();
 			for (auto& output : a_recipe.outputs) {
-				Match(
-					output,
-					[](SurfaceOutput& o) {
-						std::erase_if(o.stack, [](const Layer& l) { return Is<Ref>(l.source); });
-						for (auto& layer : o.stack) {
-							layer.mask.reset();
-							layer.curve.reset();
-							Literal(layer.opacity, 1.0f);
-							Literal(layer.color);
-						}
-						for (std::size_t i = 0; i < kScalarFieldCount; ++i) {
-							const auto field = static_cast<ScalarField>(i);
-							auto*      scalar = ScalarOf(o.scalars, field);
-							if (!scalar || !*scalar || !Is<Ref>(**scalar)) {
-								continue;
-							}
-							if (ScalarRequired(o.slot, field)) {
-								*scalar = Param{ ScalarFallback(field) };
-							} else {
-								scalar->reset();
-							}
-						}
-						if (o.scalars.color && NamesSignal(*o.scalars.color)) {
-							const float fallback = ScalarFallback(ScalarField::kColor);
-							if (ScalarRequired(o.slot, ScalarField::kColor)) {
-								o.scalars.color = std::array<Param, 3>{ fallback, fallback, fallback };
-							} else {
-								o.scalars.color.reset();
-							}
-						}
-					},
-					[](LightOutput& o) {
-						Literal(o.offset, { 0.0f, 0.0f, 0.0f });
-						Literal(o.color, { 1.0f, 1.0f, 1.0f });
-						Literal(o.intensity, 1.0f);
-						Literal(o.size, 1.4142f);
-						Literal(o.cutoff, 1.0f);
-					});
+				if (auto* material = Get<SurfaceOutput>(output)) {
+					std::erase_if(material->stack, [](const Layer& l) { return Is<Ref>(l.source); });
+					for (auto& layer : material->stack) {
+						layer.mask.reset();
+						layer.curve.reset();
+					}
+				}
 			}
-			auto& shell = a_recipe.shell;
-			Literal(shell.alpha, 1.0f);
-			Literal(shell.rimPower, 0.0f);
-			Literal(shell.emissive, 0.0f);
-			Literal(shell.pose.inflate, { 0.0f, 0.0f, 0.0f });
-			Literal(shell.pose.offset, { 0.0f, 0.0f, 0.0f });
-			Literal(shell.pose.scale, 1.0f);
-			Literal(shell.pose.spin, 0.0f);
+			LiteralVisitor literal;
+			ForEachParam(a_recipe, literal);
 			return std::nullopt;
 		}
 
@@ -1307,7 +1395,7 @@ namespace WornEnchantmentPBR::Studio
 			[](const RemoveLayer& e) { return std::format("{}: remove", LayerWhere(e.output, e.layer)); },
 			[](const MoveLayer& e) { return std::format("{}: move to {}", LayerWhere(e.output, e.from), e.to); },
 			[](const ClearLayers& e) { return std::format("{}: clear layers", OutputWhere(e.output)); },
-			[](const AddOutput& e) { return std::format("outputs: add {} {}", SurfaceName(e.surface), SlotName(e.slot)); },
+			[](const AddOutput& e) { return e.selector.All() ? std::format("outputs: add {} {}", SurfaceName(e.surface), SlotName(e.slot)) : std::format("outputs: add {} {} on {}", SurfaceName(e.surface), SlotName(e.slot), SelectorText(e.selector)); },
 			[](const AddKey& e) { return std::format("keys: add {}", e.key.ToString()); },
 			[](const RemoveKey& e) { return std::format("keys: remove {}", e.key.ToString()); },
 			[](const RemoveOutput& e) { return std::format("{}: remove", OutputWhere(e.output)); },
@@ -1345,7 +1433,7 @@ namespace WornEnchantmentPBR::Studio
 			[](const SetShellDepthBias& e) { return std::format("shell: depthBias {}", e.on ? "on" : "off"); },
 			[](const SetShellAlphaTest& e) { return std::format("shell: alphaTest {}", e.value); },
 			[](const ResetShell&) { return std::string{ "shell: reset" }; },
-			[](const ClearOutputs&) { return std::string{ "outputs: clear" }; },
+			[](const ClearOutputs&) { return std::string{ "outputs: clear, shell reset" }; },
 			[](const ClearResources&) { return std::string{ "resources: clear" }; },
 			[](const ClearRecipe&) { return std::string{ "recipe: clear" }; });
 	}
@@ -1421,11 +1509,7 @@ namespace WornEnchantmentPBR::Studio
 			}
 		});
 		ForEachImageRef(copy, [&](Ref& a_ref) { ++counts.images[a_ref.name]; });
-		for (const auto& variant : a_recipe.variants) {
-			for (const auto& [name, value] : variant.overrides) {
-				++counts.signals[name];
-			}
-		}
+		ForEachOverrideName(copy, [&](const std::string& a_name) { ++counts.signals[a_name]; });
 		return counts;
 	}
 

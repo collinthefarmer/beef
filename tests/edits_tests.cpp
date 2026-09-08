@@ -12,11 +12,15 @@ using test::Check;
 
 namespace
 {
-	Recipe Canonical()
+	const Recipe& Canonical()
 	{
-		const auto path = std::filesystem::path{ WEPBR_FIXTURES_DIR }.parent_path().parent_path() / "schema" / "example-magicka.json";
-		const auto loaded = ParseRecipe(test::ReadFile(path), "example-magicka");
-		return loaded.recipe.value_or(Recipe{});
+		static const Recipe recipe = [] {
+			const auto path = std::filesystem::path{ WEPBR_FIXTURES_DIR }.parent_path().parent_path() / "schema" / "example-magicka.json";
+			const auto loaded = ParseRecipe(test::ReadFile(path), "example-magicka");
+			Check(loaded.recipe.has_value(), "schema/example-magicka.json parses");
+			return loaded.recipe.value_or(Recipe{});
+		}();
+		return recipe;
 	}
 
 	Ref At(const char* a_name)
@@ -422,8 +426,12 @@ namespace
 		Check(renamed.masks[1].text == "@steel * 0.5" && renamed.FindMask("steel"), "another mask's expression follows the rename");
 		Refused(remove, RemoveSource{ "fill" }, "source fill", "referenced in 1 place(s)", "remove a referenced source");
 		Refused(remove, AddSource{ "metal", ImageSource{} }, "source metal", "a source or mask has that name", "a source named like a mask");
-		Accepted(remove, AddSource{ "noise", ImageSource{} }, "add an image without a path yet");
+		Refused(remove, AddSource{ "noise", ImageSource{} }, "source noise", "'path' is empty", "add an image without a path");
+		Accepted(remove, AddSource{ "noise", ImageSource{ "Effects\\Noise.dds" } }, "add an image with a path");
 		Refused(remove, SetSource{ "noise", ImageSource{} }, "source noise", "'path' is empty", "set an image without a path");
+		Refused(remove, AddSource{ "scrolled", ImageSource{ "Effects\\Noise.dds", ImageChannel::kRgb, ImageSpace::kTiled, Vec2Param{ Ref{ "nobody" } } } }, "source scrolled", "unknown signal", "an image scrolled by a signal the recipe lacks");
+		Refused(remove, AddSource{ "far", DistanceSource{} }, "source far", "node name or a point", "a distance source from nowhere");
+		Refused(remove, SetSource{ "nobody", MaterialSource{} }, "source nobody", "no such source", "setting a source the recipe lacks");
 		Refused(remove, SetSource{ "noise", RippleSource{ Ref{ "nothing" } } }, "source noise", "unknown signal", "a ripple reading a missing trigger");
 		Refused(remove, SetSource{ "noise", BakeSource{ BoneWeightBake{} } }, "source noise", "at least one bone", "a boneWeight bake without bones");
 		ImageSource noiseImage;
@@ -498,6 +506,18 @@ namespace
 		Refused(s, RenameSource{ "fill", "9lives" }, "source fill", "letters", "a source renamed to a bad name");
 		Refused(s, RemoveSource{ "nobody" }, "source nobody", "no such", "removing a source the recipe lacks");
 		Refused(s, RemoveCurve{ "nobody" }, "curve nobody", "no such", "removing a curve the recipe lacks");
+		Refused(s, SetExpression{ "glowStrength", "((@" }, "signal glowStrength", "", "an expression that does not parse");
+		Refused(s, SetCurve{ "crisp", "x * (" }, "curve crisp", "", "a curve that does not parse");
+		Refused(s, SetMask{ "metal", "@metallic +" }, "mask metal", "", "a mask that does not parse");
+		Refused(s, SetCurve{ "crisp", std::string(kMaxExpressionLength + 1, 'x') }, "curve crisp", "longer than", "a curve past the expression length");
+		Refused(s, SetLayerCurve{ 0, 0, CurveRef{ "x * (" } }, "output 0 layer 0", "", "an inline layer curve that does not parse");
+		Recipe referenced = Canonical();
+		Accepted(referenced, AddSignal{ "fresh" }, "a signal to reference");
+		Accepted(referenced, SetLayerOpacity{ 0, 0, Ref{ "fresh" } }, "a layer opacity reading it");
+		Refused(referenced, RemoveSignal{ "fresh" }, "signal fresh", "referenced", "removing a signal while a layer reads it");
+		Accepted(referenced, SetLayerOpacity{ 0, 0, 0.5f }, "the layer stops reading it");
+		Accepted(referenced, RemoveSignal{ "fresh" }, "removing the signal once nothing reads it");
+		Check(Describe(SetLightParam{ 4, LightParam::kIntensity, 2.0f }) == "output 4: intensity 2" && Describe(AddKey{ RecipeKey{ KeyKind::kDefault, {}, {} } }).starts_with("keys: add") && Describe(ClearOutputs{}) == "outputs: clear, shell reset" && Describe(SetShellParam{ ShellParam::kAlpha, 0.5f }).starts_with("shell"), "describe covers the light, key, clear and shell families");
 		Accepted(s, SetShellPoint{ ShellPoint::kScalePoint, Vec3{ 1.0f, 2.0f, 3.0f } }, "set the scale point");
 		Refused(s, SetShellPoint{ ShellPoint::kSpinAxis, Vec3{} }, "shell", "cannot be zero", "a zero spin axis");
 		Check(s.shell.material == ShellMaterial::kVanilla && s.shell.blend == ShellBlend::kAlpha && !s.shell.depthBias && s.shell.alphaTest == 0.5f && Get<float>(s.shell.rimPower) && Get<Ref>(s.shell.pose.offset) && s.shell.pose.scalePoint == Vec3{ 1.0f, 2.0f, 3.0f }, "the shell carries every edit");
