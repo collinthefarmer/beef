@@ -317,23 +317,16 @@ namespace WornEnchantmentPBR
 					return std::nullopt;
 				}
 				std::array<Param, N> parts;
-				bool                 allNumbers = true;
-				float                largest = 0.0f;
 				for (std::size_t i = 0; i < N; ++i) {
 					const auto p = ParamFrom(a_j[i], a_what);
 					if (!p) {
 						return std::nullopt;
 					}
 					parts[i] = *p;
-					if (const auto* f = Get<float>(*p)) {
-						largest = std::max(largest, *f);
-					} else {
-						allNumbers = false;
-					}
 				}
-				if (a_color && allNumbers && largest > 1.0f) {
-					for (auto& p : parts) {
-						p = std::get<float>(p) / 255.0f;
+				if constexpr (N == 3) {
+					if (a_color) {
+						NormaliseColor(parts);
 					}
 				}
 				return V{ parts };
@@ -348,11 +341,7 @@ namespace WornEnchantmentPBR
 					if (a_j.size() == 2) {
 						return Value{ Vec2{ a_j[0].get<float>(), a_j[1].get<float>() } };
 					}
-					Vec3 v{ a_j[0].get<float>(), a_j[1].get<float>(), a_j[2].get<float>() };
-					if (v.x > 1.0f || v.y > 1.0f || v.z > 1.0f) {
-						v = Vec3{ v.x / 255.0f, v.y / 255.0f, v.z / 255.0f };
-					}
-					return Value{ v };
+					return Value{ Vec3{ a_j[0].get<float>(), a_j[1].get<float>(), a_j[2].get<float>() } };
 				}
 				a_ctx.Error(std::format("'{}' must be a number, [x, y] or [r, g, b]", a_what));
 				return std::nullopt;
@@ -1169,7 +1158,10 @@ namespace WornEnchantmentPBR
 				if (src->is_string()) {
 					if (auto ref = r.RefFrom(*src, "source")) l.source = *ref;
 				} else if (auto value = Reader::ValueFrom(*src, "source", a_ctx); value && Get<Vec3>(*value)) {
-					l.source = *Get<Vec3>(*value);
+					const Vec3           raw = *Get<Vec3>(*value);
+					std::array<Param, 3> parts{ raw.x, raw.y, raw.z };
+					NormaliseColor(parts);
+					l.source = Vec3{ *Get<float>(parts[0]), *Get<float>(parts[1]), *Get<float>(parts[2]) };
 				} else {
 					a_ctx.Error("'source' is \"@name\" or [r, g, b]");
 				}

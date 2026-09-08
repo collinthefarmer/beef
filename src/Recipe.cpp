@@ -641,7 +641,7 @@ namespace WornEnchantmentPBR
 			}
 
 			template <std::size_t N>
-			void Vector(const std::string& a_where, const std::variant<std::array<Param, N>, Ref>& a_param, const char* a_field)
+			void Vector(const std::string& a_where, const std::variant<std::array<Param, N>, Ref>& a_param, const char* a_field, bool a_color = false)
 			{
 				const ValueType want = N == 2 ? ValueType::kVec2 : ValueType::kVec3;
 				Match(
@@ -657,6 +657,9 @@ namespace WornEnchantmentPBR
 					[&](const std::array<Param, N>& parts) {
 						for (const auto& p : parts) {
 							Scalar(a_where, p, a_field);
+							if (const auto* number = Get<float>(p); a_color && number && (*number < 0.0f || *number > 1.0f)) {
+								Error(a_where, std::format("'{}' components are 0..1", a_field));
+							}
 						}
 					});
 			}
@@ -785,7 +788,7 @@ namespace WornEnchantmentPBR
 				Curve(a_where, a_layer.curve);
 				Scalar(a_where, a_layer.opacity, "opacity");
 				if (a_layer.color) {
-					Vector(a_where, *a_layer.color, "color");
+					Vector(a_where, *a_layer.color, "color", true);
 				}
 				if (a_layer.mask && !recipe_.FindMask(a_layer.mask->name)) {
 					Error(a_where, std::format("'mask' names unknown mask '@{}'", a_layer.mask->name));
@@ -801,7 +804,7 @@ namespace WornEnchantmentPBR
 					const auto name = ScalarFieldName(field);
 					if (field == ScalarField::kColor) {
 						if (a_output.scalars.color) {
-							Vector(a_where, *a_output.scalars.color, "color");
+							Vector(a_where, *a_output.scalars.color, "color", true);
 						} else if (ScalarRequired(a_output.slot, field)) {
 							Error(a_where, std::format("slot '{}' needs '{}'", SlotName(a_output.slot), name));
 						}
@@ -846,7 +849,7 @@ namespace WornEnchantmentPBR
 						},
 						[&](const LightOutput& l) {
 							Vector(where, l.offset, "offset");
-							Vector(where, l.color, "color");
+							Vector(where, l.color, "color", true);
 							Scalar(where, l.intensity, "intensity");
 							Scalar(where, l.size, "size");
 							Scalar(where, l.cutoff, "cutoff");
@@ -1348,6 +1351,34 @@ namespace WornEnchantmentPBR
 		return Vec3Param{ out };
 	}
 
+	void NormaliseColor(std::array<Param, 3>& a_parts) noexcept
+	{
+		float largest = 0.0f;
+		for (const auto& part : a_parts) {
+			const auto* number = Get<float>(part);
+			if (!number) {
+				return;
+			}
+			largest = (std::max)(largest, *number);
+		}
+		if (largest > 1.0f) {
+			for (auto& part : a_parts) {
+				part = *Get<float>(part) / 255.0f;
+			}
+		}
+	}
+
+	std::optional<Vec3Param> ParseColorParam(std::string_view a_text)
+	{
+		auto param = ParseVec3Param(a_text);
+		if (param) {
+			if (auto* parts = Get<std::array<Param, 3>>(*param)) {
+				NormaliseColor(*parts);
+			}
+		}
+		return param;
+	}
+
 	std::string LayerSourceText(const LayerSource& a_source)
 	{
 		return Match(
@@ -1370,13 +1401,13 @@ namespace WornEnchantmentPBR
 		if (parts.size() != 3) {
 			return std::nullopt;
 		}
-		Vec3 v;
 		const auto x = ParseNumber(parts[0]), y = ParseNumber(parts[1]), z = ParseNumber(parts[2]);
 		if (!x || !y || !z) {
 			return std::nullopt;
 		}
-		v = Vec3{ *x, *y, *z };
-		return LayerSource{ v };
+		std::array<Param, 3> colour{ *x, *y, *z };
+		NormaliseColor(colour);
+		return LayerSource{ Vec3{ *Get<float>(colour[0]), *Get<float>(colour[1]), *Get<float>(colour[2]) } };
 	}
 
 	ValueType SourceType(const Source& a_source) noexcept

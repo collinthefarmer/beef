@@ -578,6 +578,9 @@ namespace
 
 		const auto* noColour = Bound<SetLayerColor>(colour, "", edit);
 		Check(noColour && noColour->output == 0 && noColour->layer == 0 && !noColour->color, "an empty colour clears it");
+		const auto* bytes = Bound<SetLayerColor>(colour, "255, 0, 0", edit);
+		const auto* byteParts = bytes && bytes->color ? Get<std::array<Param, 3>>(*bytes->color) : nullptr;
+		Check(byteParts && std::get<float>((*byteParts)[0]) == 1.0f && std::get<float>((*byteParts)[1]) == 0.0f, "a layer colour typed above 1 binds as 0..255");
 		const auto* parts = Bound<SetLayerColor>(colour, "1, 0.5, 0", edit);
 		Check(parts && parts->color && Get<std::array<Param, 3>>(*parts->color), "r, g, b binds as a colour");
 		const auto* colourSignal = Bound<SetLayerColor>(colour, "@glowHue", edit);

@@ -508,7 +508,7 @@ namespace
 		r = ParseRecipe(R"json({"format": 1, "keys": ["default"], "signals": {"c": {"constant": [255, 128, 0]}}, "outputs": [{"target": "shell", "slot": "fuzz", "color": [255, 0, 0], "weight": 1, "stack": []}]})json", "x");
 		const auto* c = r.recipe ? r.recipe->FindSignal("c") : nullptr;
 		const auto* cv = c ? Get<ConstantSignal>(c->kind) : nullptr;
-		Check(cv && Get<Vec3>(cv->value) && Near(Get<Vec3>(cv->value)->y, 128.0f / 255.0f), "0..255 colours read as 0..1");
+		Check(cv && Get<Vec3>(cv->value) && Near(Get<Vec3>(cv->value)->y, 128.0f), "a constant is not a colour: its components are read as written");
 		const auto* fuzz = r.recipe && !r.recipe->outputs.empty() ? Get<SurfaceOutput>(r.recipe->outputs[0]) : nullptr;
 		const auto* fc = fuzz && fuzz->scalars.color ? Get<std::array<Param, 3>>(*fuzz->scalars.color) : nullptr;
 		Check(fc && Near(std::get<float>((*fc)[0]), 1.0f) && Near(std::get<float>((*fc)[1]), 0.0f), "0..255 colour parameters read as 0..1");
@@ -1020,6 +1020,17 @@ namespace
 		const auto broadcast = ParseVec3Param("0.5");
 		Check(broadcast && Get<std::array<Param, 3>>(*broadcast) && (*Get<std::array<Param, 3>>(*broadcast))[0] == Param{ 0.5f } && (*Get<std::array<Param, 3>>(*broadcast))[2] == Param{ 0.5f }, "one number broadcasts to every component");
 		Check(!ParseVec3Param("x"), "a word is not a colour");
+		const auto bytes = ParseColorParam("255, 128, 0");
+		const auto* byteParts = bytes ? Get<std::array<Param, 3>>(*bytes) : nullptr;
+		Check(byteParts && Near(std::get<float>((*byteParts)[0]), 1.0f) && Near(std::get<float>((*byteParts)[1]), 128.0f / 255.0f), "a colour typed above 1 reads as 0..255, as the file does");
+		const auto mixed = ParseColorParam("255, 0, @blue");
+		const auto* mixedParts = mixed ? Get<std::array<Param, 3>>(*mixed) : nullptr;
+		Check(mixedParts && Near(std::get<float>((*mixedParts)[0]), 255.0f), "a colour with a signal component is left as typed");
+		Recipe hot = Everything();
+		if (auto* material = hot.outputs.empty() ? nullptr : Get<SurfaceOutput>(hot.outputs[0]); material && !material->stack.empty()) {
+			material->stack[0].color = std::array<Param, 3>{ 2.0f, 0.0f, 0.0f };
+		}
+		Check(HasError(Validate(hot), "output 0 layer 0", "components are 0..1"), "a stored colour component above 1 is a validation error");
 		const auto source = ParseLayerSource("0.2, 0.4, 0.6");
 		const auto grey = ParseLayerSource("0");
 		Check(grey && Get<Vec3>(*grey) && *Get<Vec3>(*grey) == Vec3{ 0.0f, 0.0f, 0.0f }, "one number in a layer source is a grey colour");

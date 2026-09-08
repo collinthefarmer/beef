@@ -534,6 +534,8 @@ namespace WornEnchantmentPBR
 	[[nodiscard]] std::optional<Param>        ParseParam(std::string_view a_text);
 	[[nodiscard]] std::string                 Vec3ParamText(const Vec3Param& a_param);
 	[[nodiscard]] std::optional<Vec3Param>    ParseVec3Param(std::string_view a_text);
+	[[nodiscard]] std::optional<Vec3Param>    ParseColorParam(std::string_view a_text);
+	void                                      NormaliseColor(std::array<Param, 3>& a_parts) noexcept;
 	[[nodiscard]] std::string                 Vec2ParamText(const Vec2Param& a_param);
 	[[nodiscard]] std::optional<Vec2Param>    ParseVec2Param(std::string_view a_text);
 

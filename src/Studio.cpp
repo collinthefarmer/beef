@@ -233,7 +233,7 @@ namespace WornEnchantmentPBR::Studio
 				if (a_text.empty()) {
 					return SetLayerColor{ a_output, a_layer, std::nullopt };
 				}
-				const auto color = ParseVec3Param(a_text);
+				const auto color = ParseColorParam(a_text);
 				if (!color) {
 					return std::nullopt;
 				}
@@ -266,7 +266,7 @@ namespace WornEnchantmentPBR::Studio
 					return std::nullopt;
 				}
 				if (*a_field == ScalarField::kColor) {
-					const auto color = ParseVec3Param(a_text);
+					const auto color = ParseColorParam(a_text);
 					if (!color) {
 						return std::nullopt;
 					}
@@ -1152,7 +1152,7 @@ namespace WornEnchantmentPBR::Studio
 		[[nodiscard]] FieldBinding BindLightVector(std::size_t a_output, LightVector a_field)
 		{
 			return [=](const std::string& a_text) -> std::optional<RecipeEdit> {
-				const auto value = ParseVec3Param(a_text);
+				const auto value = a_field == LightVector::kColor ? ParseColorParam(a_text) : ParseVec3Param(a_text);
 				return value ? std::optional<RecipeEdit>{ SetLightVector{ a_output, a_field, *value } } : std::nullopt;
 			};
 		}

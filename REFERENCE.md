@@ -348,9 +348,12 @@ Decompile provenance (`decompiled/WornEnchantmentFX/plugin.c` unless noted):
   word, every other kind as `{"<kind>": <form or glob>}`. A key belongs to
   the last file loaded with it, which is said once in the log because a
   recipe sharing a key with a later file never resolves by it.
-- Colours: Light Placer's rule applies on read, a component above 1 means a
-  0..255 colour. A single number in a colour or vector field stands for all
-  three components. Numbers serialise as the shortest decimal that reads
+- Colours are 0..1 in the model. Light Placer's rule applies at both doors,
+  the file and the studio's text form: a colour whose components are all
+  numbers with one above 1 is read as 0..255. A constant signal is not a
+  colour and is read as written. Validation refuses a stored colour
+  component outside 0..1. A single number in a colour or vector field
+  stands for all three components. Numbers serialise as the shortest decimal that reads
   back as the same float.
 - Duplicate keys inside one JSON object are an error, found while parsing;
   every key no reader asked for is reported. `//` and `/* */` comments are
