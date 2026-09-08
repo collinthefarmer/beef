@@ -199,14 +199,16 @@ namespace WornEnchantmentPBR::Studio
 		[[nodiscard]] std::optional<std::string> FieldInput(const FieldSpec& a_field, float a_scale, const Names& a_names)
 		{
 			const Widgets::TextCheck check = [&](const std::string& a_text) { return CheckField(a_field, a_text, a_names); };
-			switch (a_field.kind) {
-			case FieldKind::kReference:
+			const auto*               row = RowOf(kFieldKinds, a_field.kind);
+			const FieldInputKind      input = row ? row->input : FieldInputKind::kText;
+			switch (input) {
+			case FieldInputKind::kCombo:
 				Widgets::Badge(a_field.kind);
 				return Widgets::ReferenceCombo("value", a_field.text, a_field.names, a_field.allowEmpty, Width::Fill(), a_scale, a_field.creators);
-			case FieldKind::kChoice:
+			case FieldInputKind::kChoice:
 				Widgets::Badge(a_field.kind);
 				return Widgets::ChoiceCombo("value", a_field.text, a_field.names, Width::Fill(), a_scale);
-			case FieldKind::kToggle: {
+			case FieldInputKind::kToggle: {
 				Widgets::Badge(a_field.kind);
 				bool on = a_field.text == "on";
 				if (Widgets::Toggle("##value", on, "")) {
@@ -214,17 +216,10 @@ namespace WornEnchantmentPBR::Studio
 				}
 				return std::nullopt;
 			}
-			case FieldKind::kExpression:
-			case FieldKind::kMask:
-			case FieldKind::kChannels:
-			case FieldKind::kText:
+			case FieldInputKind::kText:
 				Widgets::Badge(a_field.kind);
 				return Widgets::TextField("value", a_field.text, Width::Fill(), a_scale, check);
-			case FieldKind::kScalar:
-			case FieldKind::kColor:
-			case FieldKind::kVector:
-			case FieldKind::kVec2:
-			case FieldKind::kCurve:
+			case FieldInputKind::kValue:
 				return Widgets::ValueField("value", a_field.kind, a_field.text, a_field.names, a_field.allowEmpty, a_scale, check, a_field.creators);
 			}
 			return std::nullopt;

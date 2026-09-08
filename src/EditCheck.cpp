@@ -120,6 +120,23 @@ namespace WornEnchantmentPBR::Studio
 			return std::nullopt;
 		}
 
+		[[nodiscard]] std::optional<std::string> CheckVec2(const FieldSpec& a_field, std::string_view a_text, const Names& a_names)
+		{
+			const auto param = ParseVec2Param(a_text);
+			if (!param) {
+				return "two numbers, one number, or @signal";
+			}
+			if (const auto* ref = Get<Ref>(*param)) {
+				return CheckWholeReference(a_field, ref->name);
+			}
+			for (const auto& part : *Get<std::array<Param, 2>>(*param)) {
+				if (auto problem = CheckComponent(a_names, part)) {
+					return problem;
+				}
+			}
+			return std::nullopt;
+		}
+
 		[[nodiscard]] std::optional<std::string> CheckCurve(const FieldSpec& a_field, std::string_view a_text, const Names& a_names)
 		{
 			const CurveRef ref{ std::string{ a_text } };
@@ -127,6 +144,21 @@ namespace WornEnchantmentPBR::Studio
 				return Listed(a_field.names, *name) ? std::nullopt : std::optional{ std::format("'@{}' is not a declared curve", *name) };
 			}
 			return CheckExpression(a_text, a_names, false, true);
+		}
+
+		[[nodiscard]] std::optional<std::string> CheckReference(const FieldSpec& a_field, std::string_view a_text)
+		{
+			return a_text.starts_with('@') && a_text.size() > 1 ? CheckWholeReference(a_field, a_text.substr(1)) : std::optional<std::string>{ "@name of a row" };
+		}
+
+		[[nodiscard]] std::optional<std::string> CheckChannels(std::string_view a_text)
+		{
+			return ChannelSet::Parse(a_text) ? std::nullopt : std::optional<std::string>{ "any of r g b a" };
+		}
+
+		[[nodiscard]] std::optional<std::string> CheckChoice(const FieldSpec& a_field, std::string_view a_text)
+		{
+			return Listed(a_field.names, a_text) ? std::nullopt : std::optional<std::string>{ "one of the listed values" };
 		}
 	}
 
@@ -185,41 +217,30 @@ namespace WornEnchantmentPBR::Studio
 		if (a_text.empty()) {
 			return a_field.allowEmpty ? std::nullopt : std::optional<std::string>{ "cannot be empty" };
 		}
-		switch (a_field.kind) {
-		case FieldKind::kScalar:
-			return CheckScalar(a_field, a_text);
-		case FieldKind::kColor:
-		case FieldKind::kVector:
-			return CheckVec3(a_field, a_text, a_names);
-		case FieldKind::kVec2: {
-			const auto param = ParseVec2Param(a_text);
-			if (!param) {
-				return "two numbers, one number, or @signal";
-			}
-			if (const auto* ref = Get<Ref>(*param)) {
-				return CheckWholeReference(a_field, ref->name);
-			}
-			for (const auto& part : *Get<std::array<Param, 2>>(*param)) {
-				if (auto problem = CheckComponent(a_names, part)) {
-					return problem;
-				}
-			}
-			return std::nullopt;
+		const auto* row = RowOf(kFieldKinds, a_field.kind);
+		if (!row) {
+			return std::nullopt;  // an unknown kind takes whatever is typed
 		}
-		case FieldKind::kReference:
-			return a_text.starts_with('@') && a_text.size() > 1 ? CheckWholeReference(a_field, a_text.substr(1)) : std::optional<std::string>{ "@name of a row" };
-		case FieldKind::kExpression:
+		switch (row->check) {
+		case FieldCheckKind::kScalar:
+			return CheckScalar(a_field, a_text);
+		case FieldCheckKind::kColorOrVector:
+			return CheckVec3(a_field, a_text, a_names);
+		case FieldCheckKind::kVec2:
+			return CheckVec2(a_field, a_text, a_names);
+		case FieldCheckKind::kReference:
+			return CheckReference(a_field, a_text);
+		case FieldCheckKind::kExpression:
 			return CheckExpression(a_text, a_names, false, false);
-		case FieldKind::kMask:
+		case FieldCheckKind::kMask:
 			return CheckExpression(a_text, a_names, true, false);
-		case FieldKind::kCurve:
+		case FieldCheckKind::kCurve:
 			return CheckCurve(a_field, a_text, a_names);
-		case FieldKind::kChannels:
-			return ChannelSet::Parse(a_text) ? std::nullopt : std::optional<std::string>{ "any of r g b a" };
-		case FieldKind::kChoice:
-			return Listed(a_field.names, a_text) ? std::nullopt : std::optional<std::string>{ "one of the listed values" };
-		case FieldKind::kToggle:
-		case FieldKind::kText:
+		case FieldCheckKind::kChannels:
+			return CheckChannels(a_text);
+		case FieldCheckKind::kChoice:
+			return CheckChoice(a_field, a_text);
+		case FieldCheckKind::kNone:
 			return std::nullopt;
 		}
 		return std::nullopt;

@@ -449,37 +449,45 @@ namespace WornEnchantmentPBR::Studio::Widgets
 		constexpr ImVec4 kChannelGrey{ 0.85f, 0.85f, 0.85f, 1.0f };
 		constexpr ImVec4 kBadgeFrame{ 0.20f, 0.20f, 0.24f, 1.0f };
 
-		// Values (blue, orange, teal) take a @signal in their place and say
-		// so with the mark; the rest are what they are.
-		BadgeStyle StyleOf(FieldKind a_kind) noexcept
+		// The badge colour, keyed by kind: ImVec4 is ImGui-typed, so it stays
+		// here rather than in the engine-free FieldKindRow table. Values
+		// (blue, orange, teal) take a @signal in their place.
+		constexpr ImVec4 ColourOf(FieldKind a_kind) noexcept
 		{
 			switch (a_kind) {
 			case FieldKind::kScalar:
-				return { "#", true, kValueBlue, "scalar: a number, or @signal of scalar type" };
+				return kValueBlue;
 			case FieldKind::kColor:
-				return { "c", true, kColourOrange, "colour: r, g, b in 0..1, or one number for all three, or @signal of colour type" };
+				return kColourOrange;
 			case FieldKind::kVector:
-				return { "v", true, kVectorTeal, "vector: x, y, z (a position, direction or scale), or one number for all three, or @signal of vector type" };
-			case FieldKind::kReference:
-				return { "@", false, kReferenceGreen, "reference: @name of a row of the recipe" };
-			case FieldKind::kExpression:
-				return { "=", false, kCodeYellow, "expression: numbers, [r, g, b], @signals, + - * /, comparisons, and/or/not, if(c, a, b), abs min max clamp saturate floor ceil frac sqrt pow sin cos step smoothstep lerp, time, pi" };
-			case FieldKind::kCurve:
-				return { "x", false, kCurveCyan, "curve: an expression in x (mean is the source's mean), or @curve" };
-			case FieldKind::kMask:
-				return { "m", false, kMaskViolet, "mask: an expression per texel where @source and @mask names are images and @signals are this tick's values" };
-			case FieldKind::kChannels:
-				return { "ch", false, kChannelGrey, "channels: any of r g b a, in any order" };
-			case FieldKind::kToggle:
-				return { "?", false, kChannelGrey, "on or off" };
-			case FieldKind::kChoice:
-				return { "o", false, kChannelGrey, "one of the listed values" };
-			case FieldKind::kText:
-				return { "\"", false, kChannelGrey, "text" };
 			case FieldKind::kVec2:
-				return { "v", true, kVectorTeal, "vec2: x, y, or one number for both, or @signal of vec2 type" };
+				return kVectorTeal;
+			case FieldKind::kReference:
+				return kReferenceGreen;
+			case FieldKind::kExpression:
+				return kCodeYellow;
+			case FieldKind::kCurve:
+				return kCurveCyan;
+			case FieldKind::kMask:
+				return kMaskViolet;
+			case FieldKind::kChannels:
+			case FieldKind::kToggle:
+			case FieldKind::kChoice:
+			case FieldKind::kText:
+				return kChannelGrey;
 			}
-			return { "?", false, kDim, "" };
+			return kDim;
+		}
+
+		// The glyph, whether a @signal may stand in, and the tooltip's rule
+		// come from the kind's row in Forms.h; the colour is looked up here.
+		BadgeStyle StyleOf(FieldKind a_kind) noexcept
+		{
+			const auto* row = RowOf(kFieldKinds, a_kind);
+			if (!row) {
+				return { "?", false, kDim, "" };
+			}
+			return { row->glyph, row->takesSignal, ColourOf(a_kind), row->rule };
 		}
 
 		// Filled (the kind's colour behind a dark glyph) when a signal can
