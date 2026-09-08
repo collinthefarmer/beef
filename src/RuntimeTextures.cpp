@@ -24,7 +24,7 @@ namespace WornEnchantmentPBR
 
 	namespace
 	{
-		constexpr std::uint32_t kShellCount = 512;  // slot_000..slot_511.dds
+		constexpr std::uint32_t kPresenterCount = 512;  // slot_000..slot_511.dds
 
 		// Full-screen triangle; the pixel shader tiles, mirrors, transposes and
 		// scrolls the source exactly as tools/make_flipbook.py bakes a frame.
@@ -775,11 +775,11 @@ float4 PSClassify(VSOut i) : SV_Target
 
 	RE::NiPointer<RE::NiSourceTexture> TextureLab::LoadShell()
 	{
-		if (nextShell_ >= kShellCount) {
-			logger::error("TextureLab: out of shell textures ({})", kShellCount);
+		if (nextPresenter_ >= kPresenterCount) {
+			logger::error("TextureLab: out of presenter textures ({})", kPresenterCount);
 			return nullptr;
 		}
-		const auto                   path = Identity::SlotTexturePath(nextShell_);
+		const auto                   path = Identity::PresenterTexturePath(nextPresenter_);
 		RE::NiPointer<RE::NiTexture> texture;
 		RE::BSShaderManager::GetTexture(path.c_str(), true, texture, false);
 		auto* source = texture ? netimmerse_cast<RE::NiSourceTexture*>(texture.get()) : nullptr;
@@ -787,7 +787,7 @@ float4 PSClassify(VSOut i) : SV_Target
 			logger::error("TextureLab: shell {} failed to load (is the slots folder installed?)", path);
 			return nullptr;
 		}
-		++nextShell_;
+		++nextPresenter_;
 		return RE::NiPointer<RE::NiSourceTexture>{ source };
 	}
 

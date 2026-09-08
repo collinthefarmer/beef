@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Copies the staged mod folder (DLL, PDB, slot textures) into the MO2 mods
+# Copies the staged mod folder (DLL, PDB, presenter textures) into the MO2 mods
 # directory as its own mod in one bulk transfer (rsync, or tar when rsync is
 # missing). The INI is copied only when the mod has none: once installed it
 # holds the user's saved settings and is never touched. Recipes are not

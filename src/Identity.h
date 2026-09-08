@@ -21,7 +21,7 @@ namespace WornEnchantmentPBR::Identity
 	// Prefix on scene nodes the plugin creates (shells, lights), so the apply
 	// traversal can tell its own geometry from the armor's.
 	inline constexpr std::string_view kNodePrefix = "WEPBR";
-	// Folder under Data/Textures: placeholder slot files and frame folders.
+	// Folder under Data/Textures: the presenter textures (placeholder files a render target is shown through) and frame folders.
 	inline constexpr std::string_view kTextureFolder = WEPBR_PLUGIN_NAME;
 
 	inline std::string LogFileName()
@@ -58,7 +58,7 @@ namespace WornEnchantmentPBR::Identity
 		return std::filesystem::path{ "Data" } / "SKSE" / "Plugins" / std::string{ kName } / "regions.json";
 	}
 
-	inline std::string SlotTexturePath(std::uint32_t a_index)
+	inline std::string PresenterTexturePath(std::uint32_t a_index)
 	{
 		return std::format("textures\\{}\\slots\\slot_{:02}.dds", kTextureFolder, a_index);
 	}

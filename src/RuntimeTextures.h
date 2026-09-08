@@ -338,7 +338,7 @@ namespace WornEnchantmentPBR
 		REX::W32::ID3D11BlendState*                     blend_ = nullptr;
 		REX::W32::ID3D11DepthStencilState*              depth_ = nullptr;
 		REX::W32::ID3D11RasterizerState*                raster_ = nullptr;
-		std::uint32_t                                   nextShell_ = 0;
+		std::uint32_t                                   nextPresenter_ = 0;
 		std::vector<std::unique_ptr<RenderTarget>>            pool_;
 		std::map<std::uint32_t, std::shared_ptr<RenderTarget>> scratch_;
 		std::unordered_map<RE::NiSourceTexture*, float> luminance_;

@@ -338,12 +338,12 @@ the runtime ignores.
   crowd measurement is due.
 - Slot textures are one target each. Every stack, mask, bake, ripple and
   preview holds a whole render target presented through one of the 512
-  placeholder slot textures (`Textures/<plugin>/slots/`), at the stack's
+  presenter textures (the placeholders under `Textures/<plugin>/slots/`), at the stack's
   size, so a crowd multiplies both VRAM and slot use quickly. To do: pack
   several small results into one atlas texture (masks and bakes at 256
   or less share a 1024 sheet with a UV offset and scale the layer pass
   applies), reuse one target for every static stack at a size, and
-  release previews the menu no longer asks for. The placeholder slot
+  release previews the menu no longer asks for. The placeholder
   spike in the compositor brief's future spikes is the other half.
 - Texture sizes are absolute (`RuntimeTextureSize` 128 to 1024,
   `GlossMapSize` up to 2048) while modded armor ships 2K and 4K maps.
@@ -373,7 +373,7 @@ the runtime ignores.
 - The interpreter reads `x` as 0 and `mean` as 0.5 (masks have neither).
 - Settings still carry the proof of concept's rows (sheen, gloss, glow
   mask, flipbook); nothing reads them. Phase 5 of the compositor brief.
-- The 512 placeholder slot textures under `Textures/<plugin>/slots/` are
+- The 512 presenter textures (placeholders) under `Textures/<plugin>/slots/` are
   how targets reach the engine; a spike to replace them is deferred.
 - The Precision provider (hit positions) is not written; the vanilla hit
   sink carries no position, so hit ripples start at the piece's centre.
