@@ -362,9 +362,7 @@ are in `ARCHITECTURE.md` under "The recipe studio".
   and piece); and the **recipe** within it. The edit row: **S**, solo for the
   picked output; the **target** (material, shell or the light, the
   format's word for where an output goes); the **slot** on it with its
-  state; the **region** lens (one of the recipe's masks; the stack
-  filters to layers it masks and Add layer binds it first); and at the
-  far right **Clear**, which
+  state; and at the far right **Clear**, which
   removes the picked output (a slot's, or the light) so the slot reads
   empty again. The rule under the rows names what the stack pane shows,
   one at a time: the picked slot's stack, or the target's settings. At
@@ -759,7 +757,7 @@ animation events reach triggers):
     rise to 1 on each step and fall over a second. The built-in `equip`
     fires once when the piece is put on. Passed 2026-09-05.
 
-Menu studio stage 1 checkpoint (board, stack, inspector, region lens,
+Menu studio stage 1 checkpoint (board, stack, inspector,
 modes; the runtime is untouched except layer solo and mute):
 
 23. **The studio.** With the magicka cuirass worn, open the menu: the
@@ -777,8 +775,7 @@ modes; the runtime is untouched except layer solo and mute):
     changes, since an isolated recipe is applied alone (a lower-priority
     recipe whose outputs another recipe replaced comes back whole while
     isolated). Mute the `fill` row: the glow field disappears and only the
-    hit rings remain; unmute. Choose region `@metal`: the stack shows one
-    of three layers in the region and the other two dimmed. Drag the
+    hit rings remain; unmute. Drag the
     `ring` row's grip onto `fill`: the order changes on the armor and in
     the file order shown, with no `edit refused` line in the log. Select
     the `fill` row: the inspector shows the fill's

@@ -105,7 +105,6 @@ namespace WornEnchantmentPBR::Studio
 		Target                     target = Target::kMaterial;
 		std::optional<Slot>        slot;
 		std::optional<std::size_t> layer;   // within the picked output
-		std::string                region;  // a mask name; empty = whole piece
 	};
 
 	[[nodiscard]] const PieceRow*    SelectedPiece(const Snapshot& a_snapshot, const Selection& a_selection) noexcept;
@@ -147,7 +146,6 @@ namespace WornEnchantmentPBR::Studio
 		std::string                reason;
 		std::optional<std::size_t> output;  // when written or refused
 		std::size_t                layers = 0;
-		std::size_t                layersInRegion = 0;  // of them, masked by the selected region
 		bool                       animated = false;
 		bool                       replace = false;
 		TextureHandle              composite = nullptr;
@@ -171,9 +169,7 @@ namespace WornEnchantmentPBR::Studio
 	{
 		std::vector<Cell>        cells;
 		LightCell                light;
-		std::vector<std::string> regions;  // every mask name of the recipe
-		std::string              region;   // the selected one, empty = whole piece
-		std::string              shell;    // the shell's description, empty when none
+		std::string              shell;  // the shell's description, empty when none
 	};
 
 	[[nodiscard]] const Cell* CellAt(const Board& a_board, Surface a_surface, Slot a_slot) noexcept;
@@ -185,7 +181,6 @@ namespace WornEnchantmentPBR::Studio
 	{
 		std::size_t index = 0;  // into the output's stack (file order)
 		LayerRow    layer;
-		bool        inRegion = true;  // masked by the selected region, or no region selected
 		bool        muted = false;
 		bool        soloed = false;
 		bool        selected = false;

@@ -33,13 +33,6 @@ namespace WornEnchantmentPBR::Studio
 			return IsMaterialOutput(a_output) && a_output.surface == a_surface && a_output.slot == a_slot;
 		}
 
-		// A layer belongs to the selected region when its mask is that region;
-		// with no region selected, every layer is in.
-		[[nodiscard]] bool LayerInRegion(const LayerRow& a_layer, const std::string& a_region)
-		{
-			return a_region.empty() || a_layer.mask == ReferenceText(a_region);
-		}
-
 		[[nodiscard]] bool OutputIsolated(const View& a_view, const std::string& a_recipe, std::size_t a_output) noexcept
 		{
 			return a_view.isolateRecipe == a_recipe && a_view.isolateOutput >= 0 && static_cast<std::size_t>(a_view.isolateOutput) == a_output;
@@ -101,11 +94,6 @@ namespace WornEnchantmentPBR::Studio
 			return badges;
 		}
 
-		[[nodiscard]] std::size_t CountInRegion(const std::vector<LayerRow>& a_layers, const std::string& a_region)
-		{
-			return static_cast<std::size_t>(std::ranges::count_if(a_layers, [&](const LayerRow& a_layer) { return LayerInRegion(a_layer, a_region); }));
-		}
-
 		// Cell state for a slot the surface offers: the first output on it wins
 		// (written, or refused when the binding would not take it); otherwise
 		// the slot is excluded by a feature another output on the surface
@@ -130,7 +118,6 @@ namespace WornEnchantmentPBR::Studio
 				}
 				a_cell.output = first->index;
 				a_cell.layers = first->layers.size();
-				a_cell.layersInRegion = CountInRegion(first->layers, a_selection.region);
 				a_cell.animated = first->animated;
 				a_cell.replace = first->replace;
 				a_cell.composite = first->texture;
@@ -472,8 +459,6 @@ namespace WornEnchantmentPBR::Studio
 			}
 		}
 		board.light = BuildLightCell(a_recipe, a_geometry, a_view);
-		board.regions = a_recipe.masks;
-		board.region = a_selection.region;
 		board.shell = a_geometry.shell;
 		return board;
 	}
@@ -495,7 +480,6 @@ namespace WornEnchantmentPBR::Studio
 			LayerStackRow row;
 			row.index = i;
 			row.layer = output->layers[i];
-			row.inRegion = LayerInRegion(row.layer, a_selection.region);
 			row.muted = a_view.LayerMuted(a_recipe.id, output->index, i);
 			row.soloed = LayerSoloed(a_view, a_recipe.id, output->index, i);
 			row.selected = a_selection.layer && *a_selection.layer == i;

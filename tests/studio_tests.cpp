@@ -320,7 +320,6 @@ namespace
 		const auto* emissive = CellAt(board, Surface::kShell, Slot::kEmissive);
 		Check(emissive && emissive->state == CellState::kWritten && emissive->output == 0 && emissive->layers == 3, "shell emissive is written by output 0 with three layers");
 		Check(emissive && emissive->badges == std::vector<std::string>{ "metal" }, "its badge is the metal mask");
-		Check(emissive && emissive->layersInRegion == 3, "with no region every layer is in");
 		Check(emissive && emissive->scalars.size() == 1 && emissive->scalars[0].name == "strength" && emissive->scalars[0].text == "@glowLevel", "the emissive cell carries its strength scalar");
 		Check(emissive && !emissive->isolated && !emissive->replace, "not isolated, not replacing");
 		const auto* fuzz = CellAt(board, Surface::kShell, Slot::kFuzz);
@@ -340,16 +339,8 @@ namespace
 		Check(CellAt(board, Surface::kShell, Slot::kDiffuse) && CellAt(board, Surface::kShell, Slot::kDiffuse)->state == CellState::kEmpty, "a PBR-copy shell offers diffuse");
 
 		Check(board.light.present && board.light.output == 4 && board.light.description == "point light on 2 bones" && !board.light.isolated, "the light cell comes from the recipe's light output");
-		Check(board.regions == std::vector<std::string>{ "metal" } && board.region.empty(), "regions are the recipe's masks; whole piece selected");
 		Check(board.shell == a_geometry.shell, "the board carries the shell description");
 
-		selection.region = "metal";
-		const auto lens = BuildBoard(a_recipe, a_geometry, selection, view);
-		const auto* lensed = CellAt(board, Surface::kShell, Slot::kEmissive);
-		const auto* lensedEmissive = CellAt(lens, Surface::kShell, Slot::kEmissive);
-		Check(lensed && lensedEmissive && lensedEmissive->layersInRegion == 1 && lensedEmissive->layers == 3 && lens.region == "metal", "with the metal region one of three emissive layers is in");
-		const auto* lensedFuzz = CellAt(lens, Surface::kShell, Slot::kFuzz);
-		Check(lensedFuzz && lensedFuzz->layersInRegion == 0, "no fuzz layer is in the metal region");
 	}
 
 	void BoardStates(const RecipeRow& a_recipe, const GeometryRow& a_geometry)
@@ -433,23 +424,19 @@ namespace
 		Check(stack->output == 0 && stack->surface == Surface::kShell && stack->slot == Slot::kEmissive, "the stack names its cell");
 		Check(stack->rows.size() == 3 && stack->rows[0].index == 0 && stack->rows[2].index == 2 && stack->rows[0].layer.source == "@fill" && stack->rows[2].layer.source == "@stepRing", "rows are in file order, base first");
 		Check(stack->rows[1].selected && !stack->rows[0].selected && !stack->rows[2].selected, "the selected layer is marked");
-		Check(std::ranges::all_of(stack->rows, [](const LayerStackRow& a_row) { return a_row.inRegion && !a_row.muted && !a_row.soloed; }), "with no region every row is in, none muted or soloed");
+		Check(std::ranges::all_of(stack->rows, [](const LayerStackRow& a_row) { return !a_row.muted && !a_row.soloed; }), "no row is muted or soloed");
 		Check(stack->below.size() == 1 && stack->below[0].recipe == "lower" && stack->below[0].priority == 20 && stack->below[0].layer.source == "1, 0, 0", "the lower neighbour's layer sits below");
 		Check(stack->above.size() == 1 && stack->above[0].recipe == "higher" && stack->above[0].priority == 60, "the higher neighbour's layer sits above");
 		Check(stack->blends.size() == 6 && std::ranges::find(stack->blends, Blend::kNormal) == stack->blends.end(), "emissive takes every blend but normal");
 		Check(stack->scalars.size() == 1 && stack->scalars[0].name == "strength", "the stack carries the slot's scalars");
 		Check(!stack->isolated && stack->problem.empty() && stack->composite == nullptr, "not isolated, no problem, no texture");
 
-		selection.region = "metal";
-		const auto lensed = BuildStackView(a_piece, a_recipe, a_geometry, selection, view);
-		Check(lensed && lensed->rows.size() == 3 && lensed->rows[0].inRegion && !lensed->rows[1].inRegion && !lensed->rows[2].inRegion, "the metal region keeps the fill layer in and the rings out");
 
 		View filtered;
 		filtered.muted.insert(LayerKey{ a_recipe.id, 0, 2 });
 		filtered.isolateRecipe = a_recipe.id;
 		filtered.isolateOutput = 0;
 		filtered.isolateLayer = 1;
-		selection.region.clear();
 		const auto soloed = BuildStackView(a_piece, a_recipe, a_geometry, selection, filtered);
 		Check(soloed && soloed->rows[2].muted && !soloed->rows[1].muted && soloed->rows[1].soloed && !soloed->rows[0].soloed && soloed->isolated, "mute and solo follow the view");
 
@@ -1217,8 +1204,6 @@ namespace
 		Check(state.selection.recipeID == kRecipeID && state.selection.target == Target::kShell && state.selection.slot == Slot::kEmissive && state.selection.layer == 2, "a cell pick sets target, slot and top layer");
 		Reduce(state, PickLayer{ 1 });
 		Check(state.selection.layer == 1, "a layer pick");
-		Reduce(state, PickRegion{ "metal" });
-		Check(state.selection.region == "metal", "a region pick");
 		Reduce(state, ViewGeometry{ "other" });
 		Check(state.selection.geometry == "other", "viewing a geometry");
 		Reduce(state, ShowSettings{ true });

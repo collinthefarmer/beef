@@ -147,10 +147,6 @@ namespace WornEnchantmentPBR::Studio
 	{
 		std::size_t index = 0;
 	};
-	struct PickRegion
-	{
-		std::string name;  // empty = whole piece
-	};
 	struct ViewGeometry
 	{
 		std::string name;
@@ -321,7 +317,7 @@ namespace WornEnchantmentPBR::Studio
 	};
 
 	using Intent = std::variant<
-		SetMode, PickPiece, PickRecipe, PickTarget, PickSlot, PickCell, PickLayer, PickRegion, ViewGeometry, ShowSettings, ShowResource, ReadMesh,
+		SetMode, PickPiece, PickRecipe, PickTarget, PickSlot, PickCell, PickLayer, ViewGeometry, ShowSettings, ShowResource, ReadMesh,
 		AddTerm, SetTermOp, SetTermText, SetTermKind, RemoveTerm, MoveTerm, PickTerm, SoloTerm, MuteTerm, LoadRegion, ClearRegion,
 		BeginPaint, SetPaintSurface, KeepPaint, EndPaint,
 		EditRecipe, SoloRecipe, SoloOutput, SoloLayer, MuteLayer,
@@ -329,7 +325,7 @@ namespace WornEnchantmentPBR::Studio
 
 	// The state change an intent makes; nothing else. An edit moves the
 	// layer selection with the row it adds, removes or moves, and a new
-	// output or recipe becomes the selected one. A region intent marks the
+	// output or recipe becomes the selected one. A term intent marks the
 	// stack dirty; a piece or recipe pick starts the stack over.
 	void Reduce(MenuState& a_state, const Intent& a_intent);
 }

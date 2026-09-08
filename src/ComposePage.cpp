@@ -46,7 +46,6 @@ namespace WornEnchantmentPBR::Studio
 		using Widgets::Width;
 		using Intents = std::vector<Intent>;
 
-		constexpr float       kRowDimAlpha = 0.45f;  // rows outside the selected region
 		constexpr float       kFilterWidth = 160.0f;  // a table's name filter
 		constexpr const char* kLayerPayload = "WEPBR_LAYER";
 
@@ -328,25 +327,6 @@ namespace WornEnchantmentPBR::Studio
 			return ViewGeometry{ shapes[(at + 1) % shapes.size()].name };
 		}
 
-		// The region lens: whole piece, or one of the recipe's masks. The
-		// caller sets the width and the label.
-		void RegionChoice(const char* a_label, const Board& a_board, Intents& a_out)
-		{
-			const auto preview = a_board.region.empty() ? std::string{ "whole piece" } : ReferenceText(a_board.region);
-			if (ImGui::BeginCombo(a_label, preview.c_str())) {
-				if (ImGui::Selectable("whole piece", a_board.region.empty())) {
-					a_out.push_back(PickRegion{});
-				}
-				for (const auto& name : a_board.regions) {
-					if (ImGui::Selectable(ReferenceText(name).c_str(), name == a_board.region)) {
-						a_out.push_back(PickRegion{ name });
-					}
-				}
-				ImGui::EndCombo();
-			}
-			Widgets::Tooltip("Filters the stack to the layers masked by this mask; Add layer binds it first.");
-		}
-
 		void SelectionCombo(const Snapshot& a_snapshot, const PieceRow* a_piece, const char* a_label, Intents& a_out)
 		{
 			const auto preview = a_piece ? std::format("{} / {} ({})", a_piece->actorName, a_piece->armorName, a_piece->firstPerson ? "1st" : "3rd") : std::string{ "nothing applied" };
@@ -449,9 +429,7 @@ namespace WornEnchantmentPBR::Studio
 			Widgets::Tooltip(CellTooltip(a_cell, a_geometry));
 			ImGui::SameLine();
 			ImGui::BeginGroup();
-			const auto count = a_board.region.empty() ?
-			                       std::format("{} layer{}", a_cell.layers, a_cell.layers == 1 ? "" : "s") :
-			                       std::format("{} of {} layers", a_cell.layersInRegion, a_cell.layers);
+			const auto count = std::format("{} layer{}", a_cell.layers, a_cell.layers == 1 ? "" : "s");
 			if (selected) {
 				Widgets::Ok(count);
 			} else {
@@ -527,8 +505,6 @@ namespace WornEnchantmentPBR::Studio
 			if (!Widgets::Section("Board", true)) {
 				return;
 			}
-			Widgets::NextItemWidth(Width::Px(200.0f));
-			RegionChoice("region", a_board, a_out);
 			if (!a_board.shell.empty()) {
 				Widgets::Dim(a_board.shell);
 			}
@@ -549,13 +525,11 @@ namespace WornEnchantmentPBR::Studio
 				DrawCell(CellAt(a_board, Surface::kShell, slot), a_recipe, a_geometry, a_board, a_selection, a_layout, a_out);
 				ImGui::PopID();
 			}
-			// Lights take no mask, so the light row hides under a region lens.
-			if (a_board.region.empty()) {
-				table.Cell();
-				ImGui::TextUnformatted("light");
-				table.Cell();
-				DrawLightCell(a_board.light, a_recipe, a_out);
-				table.Cell();
+						table.Cell();
+			ImGui::TextUnformatted("light");
+			table.Cell();
+			DrawLightCell(a_board.light, a_recipe, a_out);
+			table.Cell();
 			}
 			table.End();
 		}
@@ -572,16 +546,15 @@ namespace WornEnchantmentPBR::Studio
 			const std::string name{ SlotName(a_cell.slot) };
 			switch (a_cell.state) {
 			case CellState::kWritten:
-				return std::format("{} ({} layer{})", name, a_cell.layers, a_cell.layers == 1 ? "" : "s");
+			return std::format("{} ({} layer{})", name, a_cell.layers, a_cell.layers == 1 ? "" : "s");
 			case CellState::kRefused:
-				return name + " (refused)";
+			return name + " (refused)";
 			case CellState::kExcluded:
-				return name + " (excluded)";
+			return name + " (excluded)";
 			case CellState::kEmpty:
-				return name + " (empty)";
+			return name + " (empty)";
 			case CellState::kAbsent:
-				return name;
-			}
+			return name;
 			return name;
 		}
 
@@ -775,7 +748,7 @@ namespace WornEnchantmentPBR::Studio
 		void DrawEditContext(const Board& a_board, const RecipeRow& a_recipe, const Cell* a_picked, const Selection& a_selection, Intents& a_out)
 		{
 			const bool light = a_selection.target == Target::kLight;
-			auto       table = Widgets::Table::Begin("context", { { "S", Width::Px(Widgets::RowButtonWidth()) }, { "target", Width::Fit() }, { "slot", Width::Fit() }, { "region", Width::Fit() }, { "", Width::Fill() }, { "", Width::Fit() } }, kContextStyle);
+			auto       table = Widgets::Table::Begin("context", { { "S", Width::Px(Widgets::RowButtonWidth()) }, { "target", Width::Fit() }, { "slot", Width::Fit() }, { "", Width::Fill() }, { "", Width::Fit() } }, kContextStyle);
 			if (!table.Open()) {
 				return;
 			}
@@ -803,9 +776,6 @@ namespace WornEnchantmentPBR::Studio
 				Widgets::NextItemWidth(Width::Fit(a_picked ? SlotLabel(*a_picked) : std::string{ "choose a slot" }));
 				SlotChoice(a_board, SurfaceOf(a_selection.target), a_picked, a_out);
 			}
-			table.Cell();
-			Widgets::NextItemWidth(Width::Fit(a_board.region.empty() ? std::string{ "whole piece" } : ReferenceText(a_board.region)));
-			RegionChoice("##region", a_board, a_out);
 			table.Cell();
 			table.Cell();
 			ClearButton(a_recipe, light ? a_board.light.output : (a_picked ? a_picked->output : std::nullopt), a_out);
@@ -937,9 +907,6 @@ namespace WornEnchantmentPBR::Studio
 			const bool        constant = !a_row.layer.source.starts_with('@');
 
 			ImGui::PushID(static_cast<int>(index));
-			if (!a_row.inRegion) {
-				ImGui::PushStyleVar(ImGuiMCP::ImGuiStyleVar_Alpha, kRowDimAlpha);
-			}
 			a_table.Cell();
 			ImGui::AlignTextToFramePadding();
 			ImGui::Text("%zu", index);
@@ -978,23 +945,15 @@ namespace WornEnchantmentPBR::Studio
 			if (!a_row.layer.problem.empty()) {
 				Widgets::Tooltip(a_row.layer.problem);
 			}
-			if (!a_row.inRegion) {
-				ImGui::PopStyleVar();
-			}
 			ImGui::PopID();
 		}
 
 		// A new layer is applied last and lands at the bottom, at the index
-		// the stack has now; under a region lens it is masked by the region
-		// before anything else is chosen. Reduce selects it.
+		// the stack has now. Reduce selects it.
 		void DrawAddLayer(const LayerStack& a_stack, const RecipeRow& a_recipe, const Selection& a_selection, Intents& a_out)
 		{
 			if (ImGui::SmallButton("Add layer")) {
-				Layer layer = DefaultLayer();
-				if (!a_selection.region.empty()) {
-					layer.mask = Ref{ a_selection.region };
-				}
-				Post(a_out, a_recipe.id, AddLayer{ a_stack.output, layer, a_stack.rows.size() });
+				Post(a_out, a_recipe.id, AddLayer{ a_stack.output, DefaultLayer(), a_stack.rows.size() });
 			}
 		}
 
@@ -1990,9 +1949,11 @@ namespace WornEnchantmentPBR::Studio
 			}
 			Widgets::HelpMarker("A region is terms combined in order: the first sets it, each next one is and (product), or (max) or not (times the complement). Drag the :: grip to reorder; S shows one term alone, M leaves one out; ... opens a term's settings; Keep writes every term.");
 
+			// The filter is as wide as its hint, so the hint reads whole.
 			std::string_view filter;
-			const float      filterWidth = kFilterWidth * a_state.layout.widgetScale;
-			Widgets::Rule({}, Widgets::RuleLine{ "Add a term", filterWidth, [&]() { filter = Widgets::LiveTextField("offer-filter", "filter by name or measurement", Width::Px(kFilterWidth), a_state.layout.widgetScale); } });
+			const char*      hint = "filter by name or measurement";
+			const float      filterWidth = Widgets::FitWidth(hint) * a_state.layout.widgetScale;
+			Widgets::Rule({}, Widgets::RuleLine{ "Add a term", filterWidth, [&]() { filter = Widgets::LiveTextField("offer-filter", hint, Width::Px(Widgets::FitWidth(hint)), a_state.layout.widgetScale); } });
 			if (offers.empty()) {
 				Widgets::Dim(a_geometry.meshRead ? "nothing to offer on this geometry" : "reading the mesh");
 			}

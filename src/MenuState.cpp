@@ -275,7 +275,6 @@ namespace WornEnchantmentPBR::Studio
 				selection.layer = i.topLayer;
 			},
 			[&](const PickLayer& i) { selection.layer = i.index; },
-			[&](const PickRegion& i) { selection.region = i.name; },
 			[&](const ViewGeometry& i) { selection.geometry = i.name; },
 			[&](const ShowSettings& i) { a_state.settings = i.on; },
 			[&](const ShowResource& i) { a_state.resource = i.tab; },
