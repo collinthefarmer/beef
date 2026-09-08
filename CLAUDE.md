@@ -51,3 +51,9 @@ refactor that moves a responsibility. `schema/recipe.schema.json` is the recipe 
 - Build with `./build.sh Release`, install with `./install.sh`, and stop at
   each in-game checkpoint for the user to run the game; give the log lines
   to look for.
+- Rename a symbol with `nix shell nixpkgs#llvmPackages.clang-tools -c
+  tools/rename.py Old New --apply` (clangd through `tools/rename.py`;
+  omit `--apply` to list the edits). It renames references, not comments
+  or docs, and prints what it left for a hand pass. It reads
+  `build/clangd/compile_commands.json`; `tools/compile-db.sh` rewrites
+  that after a source file is added.

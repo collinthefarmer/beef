@@ -1,0 +1,5 @@
+# clangd reads the cross-compile database in build/clangd (tools/rename.py
+# writes it from build/Release's). The build's precompiled header is
+# clang-cl's own format, so clangd parses the PCH header as text instead.
+CompileFlags:
+  Remove: [/Yu*, /Fp*, /Fd*]

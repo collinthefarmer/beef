@@ -2,3 +2,4 @@ build/
 dist/
 build-last.log
 native-last.log
+.cache/
