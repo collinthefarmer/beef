@@ -175,7 +175,7 @@ namespace
 			o.surface = Surface::kShell;
 			o.slot = Slot::kEmissive;
 			o.scalars.strength = At("level");
-			o.selector.anyOf = { SelectorTerm{ SelectorKind::kTexture, {}, "*iron*" }, SelectorTerm{ SelectorKind::kGeometry, {}, "Armor*" }, SelectorTerm{ SelectorKind::kAddon, Form("0x12E48~Skyrim.esm"), {} } };
+			o.selector.anyOf = { SelectorClause{ SelectorKind::kTexture, {}, "*iron*" }, SelectorClause{ SelectorKind::kGeometry, {}, "Armor*" }, SelectorClause{ SelectorKind::kAddon, Form("0x12E48~Skyrim.esm"), {} } };
 			o.replace = true;
 			auto l = layer(At("fill"), Blend::kReplace, 1.0f);
 			l.color = Vec3Param{ At("mix") };
@@ -298,7 +298,7 @@ namespace
 		r.variants.push_back(iron);
 		Variant body;
 		body.name = "body only";
-		body.key = Selector{ { SelectorTerm{ SelectorKind::kGeometry, {}, "*Body*" } } };
+		body.key = Selector{ { SelectorClause{ SelectorKind::kGeometry, {}, "*Body*" } } };
 		body.overrides = { { "pulse", Value{ 0.0f } } };
 		r.variants.push_back(body);
 		return r;
@@ -332,10 +332,10 @@ namespace
 
 		GeometryIdentity g{ Key("0x12E48~Skyrim.esm"), "ArmorBody", "textures\\armor\\iron\\cuirass_d.dds" };
 		Check(Matches(Selector{}, g), "empty selector matches all");
-		Check(Matches(Selector{ { SelectorTerm{ SelectorKind::kAddon, Form("0x12E48~Skyrim.esm"), {} } } }, g), "addon selector");
-		Check(!Matches(Selector{ { SelectorTerm{ SelectorKind::kAddon, Form("SomeAddon"), {} } } }, g), "an unresolved addon never matches");
-		Check(Matches(Selector{ { SelectorTerm{ SelectorKind::kGeometry, {}, "armor*" } } }, g), "geometry selector");
-		Check(Matches(Selector{ { SelectorTerm{ SelectorKind::kTexture, {}, "*steel*" }, SelectorTerm{ SelectorKind::kGeometry, {}, "ArmorBody" } } }, g), "any-of");
+		Check(Matches(Selector{ { SelectorClause{ SelectorKind::kAddon, Form("0x12E48~Skyrim.esm"), {} } } }, g), "addon selector");
+		Check(!Matches(Selector{ { SelectorClause{ SelectorKind::kAddon, Form("SomeAddon"), {} } } }, g), "an unresolved addon never matches");
+		Check(Matches(Selector{ { SelectorClause{ SelectorKind::kGeometry, {}, "armor*" } } }, g), "geometry selector");
+		Check(Matches(Selector{ { SelectorClause{ SelectorKind::kTexture, {}, "*steel*" }, SelectorClause{ SelectorKind::kGeometry, {}, "ArmorBody" } } }, g), "any-of");
 
 		Check(ChannelSet::Parse("rgba") == ChannelSet{} && ChannelSet::Parse("ga") == ChannelSet{ false, true, false, true } && !ChannelSet::Parse("") && !ChannelSet::Parse("x") && !ChannelSet::Parse("rgbaa"), "channel sets");
 		Check(BipedSlotFromName("body") == 32u && BipedSlotFromName("Feet") == 37u && !BipedSlotFromName("torso"), "biped slot names");

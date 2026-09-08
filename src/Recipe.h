@@ -136,18 +136,18 @@ namespace WornEnchantmentPBR
 		kTexture,   // the material's diffuse path, glob
 	};
 
-	struct SelectorTerm
+	struct SelectorClause
 	{
 		SelectorKind kind = SelectorKind::kGeometry;
 		FormRef      form;
 		std::string  glob;
-		[[nodiscard]] bool operator==(const SelectorTerm&) const = default;
+		[[nodiscard]] bool operator==(const SelectorClause&) const = default;
 	};
 
 	// Empty means every geometry; otherwise any term may match.
 	struct Selector
 	{
-		std::vector<SelectorTerm> anyOf;
+		std::vector<SelectorClause> anyOf;
 		[[nodiscard]] bool All() const noexcept { return anyOf.empty(); }
 		[[nodiscard]] bool operator==(const Selector&) const = default;
 	};

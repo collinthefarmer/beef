@@ -551,7 +551,7 @@ namespace WornEnchantmentPBR
 					a_ctx.Error(std::format("unknown selector kind '{}'; one of {}", entry->key, Choices(kSelectorKinds)));
 					continue;
 				}
-				SelectorTerm term;
+				SelectorClause term;
 				term.kind = *kind;
 				if (*kind == SelectorKind::kAddon) {
 					const auto form = FormFrom(*entry->value, a_ctx, entry->key);

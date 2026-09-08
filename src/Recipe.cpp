@@ -226,7 +226,7 @@ namespace WornEnchantmentPBR
 		if (a_selector.All()) {
 			return true;
 		}
-		return std::ranges::any_of(a_selector.anyOf, [&](const SelectorTerm& t) {
+		return std::ranges::any_of(a_selector.anyOf, [&](const SelectorClause& t) {
 			switch (t.kind) {
 			case SelectorKind::kAddon:
 				return a_geometry.addon && t.form.key && *a_geometry.addon == *t.form.key;
