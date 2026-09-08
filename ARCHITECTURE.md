@@ -4,9 +4,12 @@ How the modules fit, what flows between them, who owns what, and how to
 add a kind of thing. The headers state each module's types and functions
 (types first, then the functions over them); this file states what no
 single header can: the shape of the whole. Read it before a refactor, and
-update it with one. Facts about the engine and Community Shaders live in
-`NOTES.md`; the recipe format in `schema/recipe.schema.json` and the
-compositor brief; the code rules in `CLAUDE.md`.
+update it with one. The sources carry no comments: what a module relies
+on but cannot state (engine layouts, Community Shaders rules, decompile
+lines, shader packings) is in `REFERENCE.md`; the assumptions behind those
+facts, with their basis, in `NOTES.md`; the recipe format in
+`schema/recipe.schema.json` and the compositor brief; the code rules in
+`CLAUDE.md`.
 
 ## The one-paragraph model
 

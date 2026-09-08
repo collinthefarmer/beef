@@ -1,10 +1,5 @@
 #pragma once
 
-// Outputs to the engine: the only module that writes engine state. A
-// binding records what it installed and puts the original back when it is
-// destroyed, unless another system took the slot over, in which case it
-// leaves it alone and says so.
-
 #include "PBRMaterial.h"
 #include "PCH.h"
 #include "Recipe.h"
@@ -17,7 +12,6 @@
 
 namespace WornEnchantmentPBR
 {
-	// One slot of a material as it stands: the map it had and the map written.
 	struct SlotState
 	{
 		Slot        slot = Slot::kEmissive;
@@ -25,33 +19,21 @@ namespace WornEnchantmentPBR
 		std::string written;
 	};
 
-	// What a recipe writes on a surface, per slot: its composite texture and
-	// the scalars beside it. A material binding and a shell binding are both
-	// targets, so the manager writes the same way to either.
 	class SlotTarget
 	{
 	public:
 		virtual ~SlotTarget() = default;
-		// Empty when this slot can be written here; else why not.
 		[[nodiscard]] virtual std::string Problem(Slot a_slot) const = 0;
-		// The texture in the slot; null puts the original back.
 		virtual void WriteTexture(Slot a_slot, RE::NiSourceTexture* a_texture) = 0;
 		virtual void WriteEmissive(const Vec3& a_color, float a_multiplier) = 0;
 		virtual void WriteFuzz(const Vec3& a_color, float a_weight) = 0;
 		virtual void WriteHeightScale(float a_scale) = 0;
-		// Glint has no map: parameters only, enabled while written.
 		virtual void WriteGlint(float a_screenSpaceScale, float a_logMicrofacetDensity, float a_microfacetRoughness, float a_densityRandomization, bool a_enabled) = 0;
-		// Coat: the map carries colour and strength; roughness and level are scalars.
 		virtual void WriteCoat(float a_roughness, float a_level) = 0;
-		// Subsurface: the map carries colour and thickness; these scale it.
 		virtual void WriteSubsurface(const Vec3& a_color, float a_thickness) = 0;
 		[[nodiscard]] virtual std::vector<SlotState> Slots() const = 0;
 	};
 
-	// The slot writes on one PBR material. The first write to a slot saves the
-	// original; Restore puts every original back. Ownership is lost when
-	// another system replaces a texture this writer wrote, and then nothing
-	// is restored.
 	class SlotWriter
 	{
 	public:
@@ -72,8 +54,6 @@ namespace WornEnchantmentPBR
 		[[nodiscard]] std::vector<SlotState> Slots() const;
 
 	private:
-		// A feature's flag bits go on with its first write and off when its
-		// output is hidden (a null texture), unless the material had them.
 		void SetFeature(std::uint32_t a_bits, bool a_on);
 		void EnableFuzz();
 		void EnableCoat();
@@ -114,7 +94,7 @@ namespace WornEnchantmentPBR
 		RE::BSLightingShaderProperty*                       property_ = nullptr;
 		std::array<std::optional<SavedTexture>, kSlotCount> textures_;
 		std::optional<SavedEmissive>                        emissive_;
-		std::optional<std::uint32_t>                        flags_;  // pbrFlags before the first feature write; restored last
+		std::optional<std::uint32_t>                        flags_;
 		std::optional<SavedFuzz>                            fuzz_;
 		std::optional<SavedGlint>                           glint_;
 		std::optional<SavedCoat>                            coat_;
@@ -122,7 +102,6 @@ namespace WornEnchantmentPBR
 		std::optional<float>                                heightScale_;
 	};
 
-	// A geometry's own material, made private, with the slots the recipe binds.
 	class MaterialBinding final : public SlotTarget
 	{
 	public:
@@ -145,7 +124,6 @@ namespace WornEnchantmentPBR
 		void                                 WriteSubsurface(const Vec3& a_color, float a_thickness) override { slots_.WriteSubsurface(a_color, a_thickness); }
 		[[nodiscard]] std::vector<SlotState> Slots() const override { return slots_.Slots(); }
 
-		// False when another system replaced what this binding wrote.
 		[[nodiscard]] bool StillOwned() const noexcept { return slots_.StillOwned(); }
 
 	private:
@@ -154,12 +132,10 @@ namespace WornEnchantmentPBR
 		RE::NiPointer<RE::BSGeometry>               geometry_;
 		RE::NiPointer<RE::BSLightingShaderProperty> property_;
 		PBRMaterialLayout*                          material_ = nullptr;
-		RE::BSTSmartPointer<RE::BSShaderMaterial>   original_;  // set when a private copy was installed
+		RE::BSTSmartPointer<RE::BSShaderMaterial>   original_;
 		SlotWriter                                  slots_;
 	};
 
-	// A clone of the geometry with its own material (a PBR copy or a vanilla
-	// lighting material), blended over the original, inflated per tick.
 	class ShellBinding final : public SlotTarget
 	{
 	public:
@@ -170,11 +146,9 @@ namespace WornEnchantmentPBR
 
 		[[nodiscard]] RE::BSGeometry*               Geometry() const noexcept { return clone_.get(); }
 		[[nodiscard]] RE::BSLightingShaderProperty* Property() const noexcept { return property_.get(); }
-		// The PBR copy's layout when the shell material is a PBR copy; null for vanilla.
 		[[nodiscard]] PBRMaterialLayout*            PbrMaterial() const noexcept { return pbr_; }
 		[[nodiscard]] const std::string&            Describe() const noexcept { return description_; }
 
-		// A vanilla shell material has the emissive slot only.
 		[[nodiscard]] std::string            Problem(Slot a_slot) const override;
 		void                                 WriteTexture(Slot a_slot, RE::NiSourceTexture* a_texture) override;
 		void                                 WriteEmissive(const Vec3& a_color, float a_multiplier) override;
@@ -185,8 +159,6 @@ namespace WornEnchantmentPBR
 		void                                 WriteSubsurface(const Vec3& a_color, float a_thickness) override;
 		[[nodiscard]] std::vector<SlotState> Slots() const override;
 
-		// Per tick: inflation per bone-space axis, material alpha, and for a
-		// vanilla material its rim power and emissive multiplier.
 		void Pose(const Vec3& a_inflate, float a_alpha, float a_rimPower, float a_emissive);
 		void SetVisible(bool a_visible);
 		[[nodiscard]] bool StillOwned() const noexcept;
@@ -203,13 +175,11 @@ namespace WornEnchantmentPBR
 		std::vector<RE::NiSkinData::BoneData>       restSkinToBone_;
 		PBRMaterialLayout*                          pbr_ = nullptr;
 		RE::BSLightingShaderMaterialBase*           vanilla_ = nullptr;
-		SlotWriter                                  slots_;  // over pbr_ when the shell is a PBR copy
+		SlotWriter                                  slots_;
 		Vec3                                        lastInflate_{ -1.0f, -1.0f, -1.0f };
 		std::string                                 description_;
 	};
 
-	// Where a light goes: a skeleton node, an offset in its space, a share of
-	// the intensity.
 	struct LightPlacement
 	{
 		RE::NiPointer<RE::NiNode> bone;
@@ -218,11 +188,8 @@ namespace WornEnchantmentPBR
 		float                     share = 1.0f;
 	};
 
-	// Bones by skinned vertex share across the recipe's geometries, or by name.
 	[[nodiscard]] std::vector<LightPlacement> PlaceLights(const Bones& a_bones, std::span<RE::BSGeometry* const> a_geometries, RE::NiAVObject* a_root, const Vec3& a_offset);
 
-	// Point lights registered with the shadow scene node, inverse-square
-	// under CS's ISL through the NiLight runtime overlay.
 	class LightBinding
 	{
 	public:
@@ -249,7 +216,5 @@ namespace WornEnchantmentPBR
 		bool               shadow_ = false;
 	};
 
-	// Geometry names ending in this are shells the plugin attached; the apply
-	// traversal skips them.
 	[[nodiscard]] std::string ShellSuffix();
 }

@@ -1,7 +1,4 @@
 #!/usr/bin/env bash
-# Write build/clangd/compile_commands.json: the Release configure's database
-# reduced to this repo's own src/ and tests/ entries, so clangd's index
-# covers our code and not CommonLibSSE's. Rerun after adding a source file.
 set -euo pipefail
 cd "$(dirname "$0")/.."
 : "${XWIN_DIR:=$HOME/.xwin/splat}"

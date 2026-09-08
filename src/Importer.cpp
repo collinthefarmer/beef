@@ -30,8 +30,6 @@ namespace WornEnchantmentPBR
 			return a_j.contains(a_field) && a_j.at(a_field).is_string() ? a_j.at(a_field).get<std::string>() : std::string{};
 		}
 
-		// ---- row builders, so the import reads as a list of what it declares
-
 		Signal Constant(std::string a_name, float a_value)
 		{
 			return Signal{ std::move(a_name), ConstantSignal{ a_value }, std::nullopt };
@@ -154,8 +152,6 @@ namespace WornEnchantmentPBR
 		r.metadata.imported = a_defaults.importer;
 		r.keys.push_back(RecipeKey{ KeyKind::kEffectShader, record, {} });
 
-		// The record's own animation, and its steady-state level (1 at rest,
-		// pulsing and fading with the record) for everything the alpha drives.
 		r.curves.push_back({ "rest", std::format("x / {}", Num(Timing::BaselineAlpha(p.fill))) });
 		r.curves.push_back({ "edgeRest", std::format("x / {}", Num(Timing::BaselineAlpha(p.edge))) });
 		r.curves.push_back({ "crisp", std::format("(x - mean) * {} + 0.5", Num(a_defaults.shimmerReliefContrast)) });
@@ -166,42 +162,31 @@ namespace WornEnchantmentPBR
 		r.signals.push_back(Efsh("edgeColor", EfshField::kEdgeColor, record));
 		r.signals.push_back(Efsh("scroll", EfshField::kScroll, record));
 
-		// Glow: hue by the colour policy from the first key (vanilla armor
-		// records never animate their keys), brightness from the level; the
-		// field's mean luminance is divided out by the source.
 		const auto hue = Timing::NormalizeHue(Timing::ResolveEmissiveColor(p.colorKeys[0], p.edgeColor, a_defaults.colorPolicy));
 		r.signals.push_back(Constant("glowHue", Vec3{ hue.r, hue.g, hue.b }));
 		r.signals.push_back(Constant("glowStrength", a_defaults.emissiveStrength));
 		r.signals.push_back(Expr("glowLevel", "@glowStrength * @fillLevel"));
 
-		// Sheen: the edge effect as fuzz, its map the field offset by half a tile.
 		r.signals.push_back(Constant("sheenScale", a_defaults.sheenScale));
 		r.signals.push_back(Expr("sheenWeight", "clamp(@edgeLevel * @sheenScale, 0, 1)"));
 		if (hasFill) r.signals.push_back(Expr("sheenScroll", std::format("@scroll + {}", Num(a_defaults.sheenPhase))));
 
-		// Shimmer: parallax from the material's relief plus scrolling noise.
 		r.signals.push_back(Constant("shimmerScale", a_defaults.shimmerScale));
 		r.signals.push_back(Expr("heightScale", "@shimmerScale * clamp(@fillLevel, 0, 2)"));
 		if (hasFill) r.signals.push_back(Expr("shimmerScroll", std::format("@scroll + {}", Num(a_defaults.shimmerPhase))));
 
-		// Gloss: roughness lowered where the scrolling noise is bright.
 		if (hasFill) {
 			r.signals.push_back(Constant("glossBoost", a_defaults.glossBoost));
 			r.signals.push_back(Expr("glossAmount", "@glossBoost * saturate(@fillLevel)"));
 		}
 
-		// Light and shell.
 		r.signals.push_back(Expr("lightLevel", "clamp(@fillLevel, 0, 2)"));
 		r.signals.push_back(Expr("shellOpacity", std::format("saturate({} * clamp(@fillLevel, 0, 2))", Num(a_defaults.shellAlpha))));
 		r.signals.push_back(Expr("inflate", std::format("({} + {} * clamp(@fillLevel, 0, 2)) * 0.01", Num(a_defaults.shellInflatePercent), Num(a_defaults.shellInflatePulsePercent))));
 
-		// Sources: the fill texture as fields, and the material's own channels.
-		// A record with no fill texture (a particle-only shader) has no fields;
-		// its glow is a flat colour and the field-driven layers are left out.
 		if (hasFill) {
 			r.sources.push_back(Field("fill", a_record, ImageChannel::kRgb, "scroll", false, false, 0.0f));
 			r.sources.push_back(Field("sheenField", a_record, ImageChannel::kLuma, "sheenScroll", a_defaults.sheenMirrorV, false, 0.0f));
-			// Softened: parallax on sharp detail crawls.
 			r.sources.push_back(Field("shimmerField", a_record, ImageChannel::kLuma, "shimmerScroll", false, a_defaults.shimmerTranspose, 2.0f));
 			r.sources.push_back(Field("glossField", a_record, ImageChannel::kLuma, "scroll", false, false, 1.0f));
 		}
@@ -210,7 +195,6 @@ namespace WornEnchantmentPBR
 
 		r.masks.push_back(Mask{ "metal", "@metallic" });
 
-		// Light-adding outputs on the shell, modulating ones on the material.
 		{
 			SurfaceOutput o;
 			o.surface = Surface::kShell;
@@ -223,8 +207,6 @@ namespace WornEnchantmentPBR
 			r.outputs.push_back(std::move(o));
 		}
 		{
-			// Fuzz map: colour x rgb, weight x alpha per texel; white with the
-			// field's luminance in alpha.
 			SurfaceOutput o;
 			o.surface = Surface::kShell;
 			o.slot = Slot::kFuzz;

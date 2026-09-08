@@ -1,7 +1,3 @@
-# Cross-compile an x64 MSVC-ABI binary from Linux with clang-cl, lld-link and
-# the Windows CRT/SDK laid out by `xwin splat`. Set XWIN_DIR to the splat root
-# (the directory holding `crt/` and `sdk/`); it defaults to ~/.xwin/splat.
-
 set(CMAKE_SYSTEM_NAME Windows)
 set(CMAKE_SYSTEM_PROCESSOR AMD64)
 
@@ -21,7 +17,6 @@ set(CMAKE_AR llvm-lib)
 set(CMAKE_RC_COMPILER llvm-rc)
 set(CMAKE_MT llvm-mt)
 
-# xwin splats only the release CRT (no msvcrtd.lib), so every config links /MD.
 set(CMAKE_MSVC_RUNTIME_LIBRARY MultiThreadedDLL)
 set(CMAKE_TRY_COMPILE_CONFIGURATION Release)
 

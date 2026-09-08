@@ -15,7 +15,7 @@ from pathlib import Path
 
 try:
     import lz4.frame
-except ImportError:  # pragma: no cover
+except ImportError:
     sys.exit("pip install lz4")
 
 ARCHIVE_COMPRESSED = 0x4
@@ -23,11 +23,9 @@ EMBED_FILE_NAMES = 0x100
 FILE_COMPRESSION_TOGGLE = 1 << 30
 SIZE_MASK = 0x3FFFFFFF
 
-
 def bzstring(data: bytes, pos: int) -> tuple[str, int]:
     n = data[pos]
     return data[pos + 1 : pos + n].rstrip(b"\0").decode("cp1252", errors="replace"), pos + 1 + n
-
 
 def read_index(data: bytes) -> tuple[dict[str, tuple[int, int, bool]], bool]:
     magic, version, folder_offset, flags, folder_count, file_count, _fn_len, _f_len, _file_flags = struct.unpack_from("<4sIIIIIIII", data, 0)
@@ -41,7 +39,7 @@ def read_index(data: bytes) -> tuple[dict[str, tuple[int, int, bool]], bool]:
         _hash, count, _pad, offset, _pad2 = struct.unpack_from("<QIIII", data, pos)
         folders.append((count, offset))
         pos += 24
-    total_name_len = struct.unpack_from("<I", data, 28)[0]  # total file name length
+    total_name_len = struct.unpack_from("<I", data, 28)[0]
     records = []
     for count, offset in folders:
         pos = offset - total_name_len
@@ -58,7 +56,6 @@ def read_index(data: bytes) -> tuple[dict[str, tuple[int, int, bool]], bool]:
         index[key] = (offset, size & SIZE_MASK, compressed)
     return index, embed_names
 
-
 def extract(data: bytes, entry: tuple[int, int, bool], embed_names: bool) -> bytes:
     offset, size, compressed = entry
     pos = offset
@@ -70,7 +67,6 @@ def extract(data: bytes, entry: tuple[int, int, bool], embed_names: bool) -> byt
         _unpacked = struct.unpack_from("<I", data, pos)[0]
         return lz4.frame.decompress(data[pos + 4 : pos + size])
     return data[pos : pos + size]
-
 
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
@@ -101,7 +97,6 @@ def main() -> int:
         print("not found: " + ", ".join(missing), file=sys.stderr)
         return 1
     return 0
-
 
 if __name__ == "__main__":
     sys.exit(main())

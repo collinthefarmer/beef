@@ -4,7 +4,9 @@ Read `../../plans/worn-enchantment-pbr-roadmap-2026-09-08.md` (the map: the
 model as it stands, the extension contracts, the order of work, the naming
 rules), `../../plans/worn-enchantment-pbr-compositor-brief.md` (the spec; its
 data model section is recipe format 1), `ARCHITECTURE.md` (module map,
-data flow, threads, ownership, invariants, extension points), `README.md`
+data flow, threads, ownership, invariants, extension points),
+`REFERENCE.md` (what the code relies on but cannot say: engine layouts,
+CS rules, decompile lines, shader packings, by module), `README.md`
 and `NOTES.md` before changing structure; update `ARCHITECTURE.md` with any
 refactor that moves a responsibility. `schema/recipe.schema.json` is the recipe format;
 `schema/example-magicka.json` is the canonical file.
@@ -28,8 +30,12 @@ refactor that moves a responsibility. `schema/recipe.schema.json` is the recipe 
    header states its data types first, then the functions over them.
    Plain records and free functions; a class only where state and
    behaviour must change together. Complete type signatures; no `auto` in
-   a signature; no `Any`-like escape hatches. Comments state invariants
-   and reasons, not narration.
+   a signature; no `Any`-like escape hatches. No comments, anywhere: not
+   a header banner, a section rule, a member note or a trailing aside.
+   The code says it through a name, a type or a small named helper. A
+   fact the code cannot state (an engine layout, a CS rule, a decompile
+   line, a packing, the reason for a constant) goes in `REFERENCE.md`
+   under the module's heading.
 3. **Performance: lean, clever where it matters, nowhere else.** Per-tick
    and per-texel paths (signal evaluation, mask interpretation, the
    binding's writes) are designed for cost and measured. Load-time paths

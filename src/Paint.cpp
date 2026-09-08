@@ -215,10 +215,6 @@ namespace WornEnchantmentPBR::Studio
 
 	namespace
 	{
-		// The name an expression reads a definition by: an existing twin's
-		// name, else a new row named as wanted, made unique among the taken
-		// names. Both the presets and the templates name their sources by
-		// this rule, so a term never adds a row the recipe already has.
 		class SourceNamer
 		{
 		public:
@@ -293,7 +289,6 @@ namespace WornEnchantmentPBR::Studio
 
 	namespace
 	{
-		// Defined with the templates below; TermsOfMask reads each term through it.
 		TermKind ReadTermOver(std::string_view a_text, const RegionsFile& a_presets, const Existing& a_existing);
 	}
 
@@ -303,8 +298,6 @@ namespace WornEnchantmentPBR::Studio
 		if (!terms) {
 			return std::nullopt;
 		}
-		// No geometry here, so a region's label carries its number alone;
-		// a raw term keeps the preset match TermLabel makes.
 		const GeometryRow unread;
 		for (auto& term : *terms) {
 			term.kind = ReadTermOver(term.text, a_presets, a_existing);
@@ -335,8 +328,6 @@ namespace WornEnchantmentPBR::Studio
 		return IsName(name) ? name : "region";
 	}
 
-	// ------------------------------------------------------------ term templates
-
 	std::string_view TermKindName(const TermKind& a_kind) noexcept
 	{
 		return Match(
@@ -348,7 +339,6 @@ namespace WornEnchantmentPBR::Studio
 
 	namespace
 	{
-		// The channels a threshold can test, in table order: the scalar ones.
 		[[nodiscard]] std::vector<MaterialChannel> ThresholdChannels()
 		{
 			std::vector<MaterialChannel> channels;
@@ -369,14 +359,11 @@ namespace WornEnchantmentPBR::Studio
 			return names;
 		}
 
-		// Numbers as the templates spell them: four decimals at most, the
-		// form ParamText writes, so a number read back is the number written.
 		[[nodiscard]] std::string NumberText(float a_value)
 		{
 			return ParamText(Param{ a_value });
 		}
 
-		// The whole text as one number, spaces around it allowed; nothing otherwise.
 		[[nodiscard]] std::optional<float> ReadNumber(std::string_view a_text)
 		{
 			while (!a_text.empty() && a_text.front() == ' ') {
@@ -393,7 +380,6 @@ namespace WornEnchantmentPBR::Studio
 			return value;
 		}
 
-		// The whole text as a whole number in 0..a_max.
 		[[nodiscard]] std::optional<std::uint32_t> ReadWhole(std::string_view a_text, std::uint32_t a_max)
 		{
 			while (!a_text.empty() && a_text.front() == ' ') {
@@ -410,8 +396,6 @@ namespace WornEnchantmentPBR::Studio
 			return value;
 		}
 
-		// A setting as the text will carry it: a typed number rounded to the
-		// spelling, so the recipe and its text agree.
 		[[nodiscard]] float Spelled(float a_value)
 		{
 			return ReadNumber(NumberText(a_value)).value_or(a_value);
@@ -442,10 +426,6 @@ namespace WornEnchantmentPBR::Studio
 			return nullptr;
 		}
 
-		// ------------------------------------------------------------ spelling
-
-		// The channel operand of a threshold: the source, quantised to P
-		// levels when posterize > 1.
 		[[nodiscard]] std::string OperandText(const std::string& a_name, std::uint8_t a_posterize)
 		{
 			const auto reference = ReferenceText(a_name);
@@ -455,8 +435,6 @@ namespace WornEnchantmentPBR::Studio
 			return reference;
 		}
 
-		// smoothstep(c - s, c + s, X): the settings are written as themselves,
-		// never summed, so ReadTerm gets them back exactly.
 		[[nodiscard]] std::string EdgeText(float a_centre, float a_softness, const std::string& a_operand)
 		{
 			const auto centre = NumberText(a_centre);
@@ -464,9 +442,6 @@ namespace WornEnchantmentPBR::Studio
 			return std::format("smoothstep({} - {}, {} + {}, {})", centre, softness, centre, softness, a_operand);
 		}
 
-		// The threshold's text: the low edge times the complement of the high
-		// edge, each omitted where it would be trivial (low 0, high 1); with
-		// both trivial, step(0, X) keeps the channel readable; invert wraps.
 		[[nodiscard]] std::string ThresholdText(const ThresholdTerm& a_term, const std::string& a_name)
 		{
 			const auto  operand = OperandText(a_name, a_term.posterize);
@@ -490,11 +465,6 @@ namespace WornEnchantmentPBR::Studio
 			return std::format("abs({} * 255 - {}) < 0.5", ReferenceText(a_name), a_id);
 		}
 
-		// ------------------------------------------------------------- reading
-
-		// A left-to-right reader over the exact spellings the templates
-		// write: each step consumes its text or fails where it stands, so a
-		// read is one pass over the text and never recurses.
 		class Cursor
 		{
 		public:
@@ -511,7 +481,6 @@ namespace WornEnchantmentPBR::Studio
 				return true;
 			}
 
-			// A run of name characters, which must be a name.
 			[[nodiscard]] std::optional<std::string> TakeName()
 			{
 				std::size_t end = at_;
@@ -526,7 +495,6 @@ namespace WornEnchantmentPBR::Studio
 				return std::string{ name };
 			}
 
-			// A run of number characters (a leading '-' allowed), read whole.
 			[[nodiscard]] std::optional<float> TakeNumber()
 			{
 				std::size_t end = at_;
@@ -563,7 +531,6 @@ namespace WornEnchantmentPBR::Studio
 			std::size_t      at_ = 0;
 		};
 
-		// The operand of a threshold as read: which source and how quantised.
 		struct Operand
 		{
 			std::string        name;
@@ -602,8 +569,6 @@ namespace WornEnchantmentPBR::Studio
 			return operand;
 		}
 
-		// One edge as EdgeText writes it; the operand must be the one already
-		// read when there is one.
 		struct Edge
 		{
 			float   centre = 0.0f;
@@ -643,8 +608,6 @@ namespace WornEnchantmentPBR::Studio
 			return edge;
 		}
 
-		// A threshold's text read back, with the source it tests; the channel
-		// is the caller's to look up.
 		struct ThresholdRead
 		{
 			ThresholdTerm term;
@@ -702,7 +665,6 @@ namespace WornEnchantmentPBR::Studio
 			return read;
 		}
 
-		// "abs(@name * 255 - ID) < 0.5" read back: the source and the id.
 		struct RegionRead
 		{
 			std::string   name;
@@ -742,13 +704,11 @@ namespace WornEnchantmentPBR::Studio
 			return it == a_presets.what.end() ? nullptr : &*it;
 		}
 
-		// The template a text fits over what the recipe has; RawTerm when none.
 		TermKind ReadTermOver(std::string_view a_text, const RegionsFile& a_presets, const Existing& a_existing)
 		{
 			if (a_text.empty() || a_text.size() > kMaxExpressionLength) {
 				return RawTerm{};
 			}
-			// A lone reference: a partition or bone bake by its definition, else the name.
 			if (a_text.front() == '@' && IsName(a_text.substr(1))) {
 				const auto  name = std::string{ a_text.substr(1) };
 				const auto* kind = KindNamed(a_existing, name);
@@ -875,8 +835,6 @@ namespace WornEnchantmentPBR::Studio
 			});
 	}
 
-	// ------------------------------------------------------------------- forms
-
 	namespace
 	{
 		[[nodiscard]] FormField Spec(std::string a_name, FieldKind a_kind, std::string a_text, std::vector<std::string> a_names = {})
@@ -889,8 +847,6 @@ namespace WornEnchantmentPBR::Studio
 			return field;
 		}
 
-		// A field whose committed text sets one setting of a copy of the
-		// recipe through a_set, which refuses text that does not parse.
 		template <class Recipe>
 		[[nodiscard]] TermField Setting(const Recipe& a_kind, FormField a_field, std::function<bool(Recipe&, const std::string&)> a_set)
 		{
@@ -900,7 +856,6 @@ namespace WornEnchantmentPBR::Studio
 			} };
 		}
 
-		// A number in a range as a setting.
 		[[nodiscard]] std::optional<float> NumberIn(const std::string& a_text, float a_min, float a_max)
 		{
 			const auto number = ReadNumber(a_text);
@@ -924,8 +879,6 @@ namespace WornEnchantmentPBR::Studio
 			return text;
 		}
 
-		// Comma-separated names, trimmed, empties dropped; nothing when none
-		// remain or the list is past the bone cap.
 		[[nodiscard]] std::optional<std::vector<std::string>> ParseBoneList(std::string_view a_text)
 		{
 			std::vector<std::string> bones;
@@ -1019,8 +972,6 @@ namespace WornEnchantmentPBR::Studio
 
 		std::vector<TermField> ComponentForm(const IslandTerm& a_term, const RegionsFile& a_presets, const GeometryRow& a_geometry)
 		{
-			// The choice offers each region of the source by its label; a
-			// committed label picks that region, a bare number that id.
 			std::vector<std::string>   labels;
 			std::vector<std::uint16_t> ids;
 			for (const auto& island : a_geometry.islands) {
@@ -1055,8 +1006,6 @@ namespace WornEnchantmentPBR::Studio
 
 		std::vector<TermField> PartitionForm(const PartitionTerm& a_term, const RegionsFile& a_presets, const GeometryRow& a_geometry)
 		{
-			// The choice offers the geometry's partitions by plain name; a
-			// committed text is one of those, else a biped slot's name or a number 30..61.
 			std::vector<std::string>   names;
 			std::vector<std::uint32_t> slots;
 			for (const auto& partition : a_geometry.partitions) {
@@ -1094,8 +1043,6 @@ namespace WornEnchantmentPBR::Studio
 			[&](const PartitionTerm& t) { return PartitionForm(t, a_presets, a_geometry); });
 	}
 
-	// ------------------------------------------------------------------ offers
-
 	namespace
 	{
 		[[nodiscard]] TermOffer Offer(OfferGroup a_group, std::string a_name, std::string a_detail, TermKind a_kind)
@@ -1108,7 +1055,6 @@ namespace WornEnchantmentPBR::Studio
 			return offer;
 		}
 
-		// A group the piece cannot offer yet: one row carrying the reason.
 		[[nodiscard]] TermOffer Unavailable(OfferGroup a_group, std::string a_reason, TermKind a_kind)
 		{
 			TermOffer offer = Offer(a_group, std::string{ NameOf(kOfferGroups, a_group) }, {}, std::move(a_kind));
@@ -1123,13 +1069,9 @@ namespace WornEnchantmentPBR::Studio
 	std::vector<TermOffer> OffersOf(const RegionsFile& a_presets, const RecipeRow& a_recipe, const GeometryRow& a_geometry, std::string_view a_editing)
 	{
 		std::vector<TermOffer> offers;
-		// parts
 		if (!a_geometry.meshRead) {
 			offers.push_back(Unavailable(OfferGroup::kParts, std::string{ kMeshUnread }, IslandTerm{}));
 		}
-		// A chart with the same vertices as a part is that part's twin: the
-		// part's row names it and the chart's row is left out. The charts
-		// that remain are the UV layout's own divisions.
 		for (const auto& island : a_geometry.islands) {
 			const bool chart = island.source == IslandSource::kChart;
 			if (chart && island.twin) {
@@ -1145,22 +1087,18 @@ namespace WornEnchantmentPBR::Studio
 			}
 			offers.push_back(Offer(chart ? OfferGroup::kCharts : OfferGroup::kParts, std::format("{} {}", PlainIslandSourceName(island.source), island.id), std::move(detail), term));
 		}
-		// materials
 		if (a_geometry.clusters.empty()) {
 			offers.push_back(Unavailable(OfferGroup::kMaterials, std::string{ kNoClusters }, ClusterTerm{}));
 		}
 		for (const auto& cluster : a_geometry.clusters) {
 			offers.push_back(Offer(OfferGroup::kMaterials, std::format("material {}", cluster.id), std::format("{}, {}%", cluster.description, Percent(cluster.share)), ClusterTerm{ ClusterSettings{}, cluster.id }));
 		}
-		// bones
 		for (const auto& bone : a_geometry.bones) {
 			offers.push_back(Offer(OfferGroup::kBones, PlainBoneName(a_presets, bone.name), std::format("{}% of the mesh", Percent(bone.coverage)), BoneTerm{ { bone.name } }));
 		}
-		// partitions
 		for (const auto& partition : a_geometry.partitions) {
 			offers.push_back(Offer(OfferGroup::kPartitions, PlainPartitionName(a_presets, partition.slot), std::format("{} triangles", partition.triangles), PartitionTerm{ partition.slot }));
 		}
-		// channels
 		for (const auto channel : ThresholdChannels()) {
 			ThresholdTerm term;
 			term.channel = channel;
@@ -1168,18 +1106,15 @@ namespace WornEnchantmentPBR::Studio
 			term.high = 1.0f;
 			offers.push_back(Offer(OfferGroup::kChannels, std::string{ MaterialChannelName(channel) }, "0.5..1", term));
 		}
-		// presets
 		for (const auto& preset : a_presets.what) {
 			offers.push_back(Offer(OfferGroup::kPresets, preset.name, preset.expression, WhatPresetTerm{ preset.name }));
 		}
-		// masks
 		for (const auto& mask : a_recipe.maskRows) {
 			if (mask.name == kScratchMask || mask.name == a_editing) {
 				continue;
 			}
 			offers.push_back(Offer(OfferGroup::kMasks, mask.name, mask.text, ReferenceTerm{ mask.name }));
 		}
-		// sources
 		for (const auto& source : a_recipe.sourceRows) {
 			const auto kind = SourceKindOf(source);
 			offers.push_back(Offer(OfferGroup::kSources, source.name, kind ? DescribeSource(*kind) : source.kind, ReferenceTerm{ source.name }));
@@ -1214,8 +1149,6 @@ namespace WornEnchantmentPBR::Studio
 			[&](const BoneTerm& t) { return std::to_string(t.bones.size()) + " bone(s)"; },
 			[&](const RawTerm&) { return a_term.text; });
 	}
-
-	// ------------------------------------------------------------ paint recipe
 
 	SurfaceOutput PaintOutput(Surface a_surface)
 	{
@@ -1263,14 +1196,12 @@ namespace WornEnchantmentPBR::Studio
 		for (const auto& read : program->References()) {
 			const auto* source = a_paint.FindSource(read);
 			if (!source) {
-				continue;  // a mask of the active recipe, or a signal: already there
+				continue;
 			}
 			const auto* same = a_active.FindSource(read);
 			if (same && same->kind == source->kind) {
 				continue;
 			}
-			// The same definition under another name, else a new row under
-			// the paint's name made unique.
 			std::string to;
 			for (const auto& candidate : a_active.sources) {
 				if (candidate.kind == source->kind) {

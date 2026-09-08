@@ -31,8 +31,6 @@ namespace WornEnchantmentPBR::Studio
 		return std::nullopt;
 	}
 
-	// ------------------------------------------------------------- build
-
 	std::string BuildRegion(std::span<const Term> a_terms, std::optional<std::size_t> a_solo, const std::set<std::size_t>& a_muted)
 	{
 		std::string built;
@@ -64,8 +62,6 @@ namespace WornEnchantmentPBR::Studio
 			}
 			built = std::move(next);
 		}
-		// One term alone is written bare, so a kept single-ingredient region
-		// reads as its ingredient.
 		if (!built.empty() && built.front() == '(' && built.back() == ')') {
 			std::size_t depth = 0;
 			bool        whole = true;
@@ -84,11 +80,8 @@ namespace WornEnchantmentPBR::Studio
 		return built;
 	}
 
-	// ------------------------------------------------------------- parse
-
 	namespace
 	{
-		// The index of the '(' that the ')' at a_close matches, or nothing.
 		std::optional<std::size_t> OpenOf(std::string_view a_text, std::size_t a_close)
 		{
 			std::size_t depth = 0;
@@ -105,7 +98,6 @@ namespace WornEnchantmentPBR::Studio
 			return std::nullopt;
 		}
 
-		// The index of the ')' that the '(' at a_open matches, or nothing.
 		std::optional<std::size_t> CloseOf(std::string_view a_text, std::size_t a_open)
 		{
 			std::size_t depth = 0;
@@ -122,7 +114,6 @@ namespace WornEnchantmentPBR::Studio
 			return std::nullopt;
 		}
 
-		// "(T)" with the parentheses matching each other: T, else nothing.
 		std::optional<std::string_view> Wrapped(std::string_view a_text)
 		{
 			if (a_text.size() < 2 || a_text.front() != '(' || a_text.back() != ')') {
@@ -139,14 +130,11 @@ namespace WornEnchantmentPBR::Studio
 		constexpr std::string_view kNotOpen = "1 - (";
 		constexpr std::string_view kOrOpen = "max(";
 
-		// The chain as Build writes it, last operation first; nothing when
-		// the text is not in that shape.
 		bool ParseChain(std::string_view a_text, std::vector<Term>& a_out, std::size_t a_depth)
 		{
 			if (a_depth > kMaxTerms || a_text.empty()) {
 				return false;
 			}
-			// or: max(chain, (T))
 			if (a_text.starts_with(kOrOpen) && a_text.back() == ')' && CloseOf(a_text, kOrOpen.size() - 1) == a_text.size() - 1) {
 				const auto  inner = a_text.substr(kOrOpen.size(), a_text.size() - kOrOpen.size() - 1);
 				std::size_t depth = 0;
@@ -164,7 +152,6 @@ namespace WornEnchantmentPBR::Studio
 				}
 				return false;
 			}
-			// set, and, not: the last group "(X)" and what precedes it
 			if (a_text.back() != ')') {
 				return false;
 			}

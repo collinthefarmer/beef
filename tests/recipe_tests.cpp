@@ -1,8 +1,3 @@
-// Recipe format 1: forms, globs, the JSON round trip of the canonical file
-// and of a recipe holding one of everything, every row-level error with its
-// `where`, validation rules, resolution, variants, and static/animated
-// classification.
-
 #include "Recipe.h"
 #include "Vocabulary.h"
 #include "test_support.h"
@@ -71,7 +66,6 @@ namespace
 		return std::ranges::none_of(a_diags, [](const Diagnostic& d) { return d.severity == Severity::kError; });
 	}
 
-	// One of everything, so a JSON round trip exercises every branch.
 	Recipe Everything()
 	{
 		Recipe r;
@@ -410,8 +404,6 @@ namespace
 		Check(minimalLoaded.recipe && *minimalLoaded.recipe == minimal && NoErrors(minimalLoaded.diagnostics), "an empty recipe round trips");
 	}
 
-	// The kinds the mesh and material analyses feed: the two id-map bakes
-	// and the cluster map with its settings.
 	void AnalysisKinds()
 	{
 		const auto text = R"json({"format": 1, "keys": ["default"], "sources": {
@@ -622,7 +614,6 @@ namespace
 		Check(HasError(badName.diagnostics, "signal '9lives'", "names are letters"), "bad row name");
 	}
 
-	// The format's words: one table each, read by the name and parse functions.
 	void Words()
 	{
 		Check(SurfaceName(Surface::kMaterial) == "material" && SurfaceName(Surface::kShell) == "shell", "surface words");
@@ -637,9 +628,6 @@ namespace
 		const auto r = ParseRecipe(R"json({"format": 1, "keys": [{"default": "X"}]})json", "x");
 		Check(HasError(r.diagnostics, "recipe", "unknown key kind 'default'"), "a default key written as an object is refused");
 
-		// SignalKindId: kSignalKinds is in the SignalKind variant's own order,
-		// so SignalKindOf on one instance of each alternative must land on the
-		// row at the same index; the word and the tunable fact round trip.
 		const SignalKind signalSamples[]{
 			ConstantSignal{}, PulseSignal{}, RampSignal{}, EfshSignal{}, ActorValueSignal{}, ActorStateSignal{},
 			EnchantmentSignal{}, TriggerSignal{}, PayloadSignal{}, CounterSignal{}, AccumulateSignal{}, NoiseSignal{},
@@ -660,7 +648,6 @@ namespace
 		Check(SignalKindName(static_cast<SignalKindId>(99)) == "?" && !ParseSignalKind("bogus") && !SignalKindTunable(static_cast<SignalKindId>(99)), "an unknown signal kind names '?', does not parse, and is not tunable");
 	}
 
-	// The format's slot rules, which Validate and the menu's board share.
 	void SlotRules()
 	{
 		constexpr Slot every[]{ Slot::kDiffuse, Slot::kEmissive, Slot::kRmaos, Slot::kNormal, Slot::kHeight, Slot::kFuzz, Slot::kGlint, Slot::kCoat, Slot::kSubsurface };
@@ -669,7 +656,6 @@ namespace
 		static_assert(std::size(fields) == kScalarFieldCount);
 		constexpr Blend blends[]{ Blend::kReplace, Blend::kMultiply, Blend::kAdd, Blend::kSubtract, Blend::kScreen, Blend::kLerp, Blend::kNormal };
 
-		// SlotsOf and SurfaceHasSlot
 		for (const auto shell : { ShellMaterial::kPbrCopy, ShellMaterial::kVanilla }) {
 			Check(std::ranges::equal(SlotsOf(Surface::kMaterial, shell), every), "a material offers every slot in enum order whatever the shell is");
 		}
@@ -681,12 +667,11 @@ namespace
 			Check(SurfaceHasSlot(Surface::kShell, ShellMaterial::kVanilla, slot) == (slot == Slot::kEmissive), std::format("'{}' on a vanilla shell", SlotName(slot)));
 		}
 
-		// ScalarsOf and ScalarRequired
 		struct SlotScalarRule
 		{
 			Slot                     slot;
 			std::vector<ScalarField> carried;
-			bool                     required;  // every carried field, or none (glint)
+			bool                     required;
 		};
 		const SlotScalarRule rules[]{
 			{ Slot::kDiffuse, {}, false },
@@ -708,7 +693,6 @@ namespace
 			}
 		}
 
-		// SlotsExclude: the four pairs, symmetric, never a slot with itself
 		const std::pair<Slot, Slot> exclusive[]{ { Slot::kFuzz, Slot::kCoat }, { Slot::kFuzz, Slot::kSubsurface }, { Slot::kCoat, Slot::kSubsurface }, { Slot::kFuzz, Slot::kGlint } };
 		for (const auto first : every) {
 			for (const auto second : every) {
@@ -719,7 +703,6 @@ namespace
 			}
 		}
 
-		// BlendAllowed: only `normal` is restricted, to the normal stack
 		for (const auto slot : every) {
 			for (const auto blend : blends) {
 				Check(BlendAllowed(slot, blend) == (blend != Blend::kNormal || slot == Slot::kNormal), std::format("blend '{}' on '{}'", BlendName(blend), SlotName(slot)));
@@ -727,13 +710,11 @@ namespace
 		}
 		Check(!BlendAllowed(Slot::kNormal, static_cast<Blend>(99)), "an unknown blend is allowed nowhere");
 
-		// BlendShaderMode: every blend has its own mode in enum order, so the shader's Blend function has a case per row
 		for (std::size_t i = 0; i < std::size(blends); ++i) {
 			Check(BlendShaderMode(blends[i]) == i, std::format("shader mode of '{}'", BlendName(blends[i])));
 		}
 		Check(BlendShaderMode(static_cast<Blend>(99)) == 0, "an unknown blend renders as replace");
 
-		// ShaderChannelOf: an image channel reads the shader channel of the same name
 		const std::pair<ImageChannel, ShaderChannel> imageChannels[]{
 			{ ImageChannel::kRgb, ShaderChannel::kRgb }, { ImageChannel::kR, ShaderChannel::kR }, { ImageChannel::kG, ShaderChannel::kG },
 			{ ImageChannel::kB, ShaderChannel::kB }, { ImageChannel::kA, ShaderChannel::kA }, { ImageChannel::kLuma, ShaderChannel::kLuma }
@@ -745,7 +726,6 @@ namespace
 		}
 		Check(ShaderChannelOf(static_cast<ImageChannel>(99)) == ShaderChannel::kRgb, "an unknown image channel reads rgb");
 
-		// The material channel rows: map and shader channel (kNone: derived, read as red), type, and what a threshold can test
 		struct MaterialChannelFacts
 		{
 			MaterialChannel channel;
@@ -774,7 +754,6 @@ namespace
 		}
 		Check(MaterialMapOf(static_cast<MaterialChannel>(99)) == MaterialMap::kNone && !Thresholdable(static_cast<MaterialChannel>(99)), "an unknown material channel has no map and no threshold");
 
-		// ChannelsOf, as CS reads each map (BSLightingShaderMaterialPBR.h)
 		const std::pair<Slot, const char*> channels[]{
 			{ Slot::kDiffuse, "rgba" }, { Slot::kEmissive, "rgb" }, { Slot::kRmaos, "rgba" }, { Slot::kNormal, "rgb" }, { Slot::kHeight, "r" },
 			{ Slot::kFuzz, "rgba" }, { Slot::kGlint, "" }, { Slot::kCoat, "rgba" }, { Slot::kSubsurface, "rgba" }
@@ -786,7 +765,6 @@ namespace
 		}
 		Check(SlotChannelNote(Slot::kHeight).starts_with("r only") && SlotChannelNote(Slot::kGlint).starts_with("no texture"), "the height and glint notes state their exceptions");
 
-		// BaseMapOf: the four slots that edit a map the material already has
 		const std::pair<Slot, MaterialMap> baseMaps[]{
 			{ Slot::kDiffuse, MaterialMap::kDiffuse }, { Slot::kEmissive, MaterialMap::kNone }, { Slot::kRmaos, MaterialMap::kRmaos }, { Slot::kNormal, MaterialMap::kNormal }, { Slot::kHeight, MaterialMap::kDisplacement },
 			{ Slot::kFuzz, MaterialMap::kNone }, { Slot::kGlint, MaterialMap::kNone }, { Slot::kCoat, MaterialMap::kNone }, { Slot::kSubsurface, MaterialMap::kNone }
@@ -797,7 +775,6 @@ namespace
 		}
 		Check(BaseMapOf(static_cast<Slot>(99)) == MaterialMap::kNone && ScalarsOf(static_cast<Slot>(99)).empty() && SlotChannelNote(static_cast<Slot>(99)).empty() && !SlotsExclude(static_cast<Slot>(99), Slot::kFuzz), "an unknown slot answers every question as an empty row");
 
-		// ScalarFallback: one value per field, what the menu fills in and the binding writes when the file leaves it out
 		const std::pair<ScalarField, float> fallbacks[]{
 			{ ScalarField::kStrength, 1.0f }, { ScalarField::kScale, 1.0f }, { ScalarField::kColor, 1.0f }, { ScalarField::kWeight, 1.0f },
 			{ ScalarField::kScreenSpaceScale, 1.5f }, { ScalarField::kLogMicrofacetDensity, 40.0f }, { ScalarField::kMicrofacetRoughness, 0.015f }, { ScalarField::kDensityRandomization, 2.0f },
@@ -809,7 +786,6 @@ namespace
 		}
 		Check(ScalarFallback(static_cast<ScalarField>(99)) == 0.0f && ScalarOf(static_cast<const SlotScalars&>(SlotScalars{}), static_cast<ScalarField>(99)) == nullptr, "an unknown field falls back to zero and reaches no member");
 
-		// ScalarOf: every field but kColor reaches its own member
 		SlotScalars sc;
 		for (std::size_t i = 0; i < kScalarFieldCount; ++i) {
 			const auto field = fields[i];
@@ -833,7 +809,6 @@ namespace
 		Check(holds(sc.roughness, 8.0f) && holds(sc.level, 9.0f) && holds(sc.thickness, 10.0f), "roughness, level and thickness written through ScalarOf");
 		Check(!sc.color, "color untouched by ScalarOf");
 
-		// ScalarFieldName and ParseScalarField round trip
 		std::set<std::string_view> names;
 		for (const auto field : fields) {
 			const auto name = ScalarFieldName(field);
@@ -846,9 +821,6 @@ namespace
 		Check(ScalarFieldName(static_cast<ScalarField>(99)) == "?", "an out-of-range field has a placeholder name");
 	}
 
-	// The KeyKind table: one row's word, priority, operand and
-	// enchantment-derived fact, and the choices KeyChoicesOf reads off a
-	// worn piece from the same rows.
 	void KeyKinds()
 	{
 		struct Rule
@@ -1024,7 +996,6 @@ namespace
 		Check(IsAnimated(r, Output{ light }), "a light with a pulsing intensity is animated");
 	}
 
-	// The menu's text forms read back what they print, and reject garbage.
 	void TextForms()
 	{
 		using namespace test;
@@ -1063,7 +1034,6 @@ namespace
 		}
 	}
 
-	// Every recipe the build ships must load without a row error.
 	void ShippedRecipes()
 	{
 		using namespace test;

@@ -15,9 +15,7 @@ namespace WornEnchantmentPBR
 	{
 		using W = SettingDesc::Widget;
 
-		// clang-format off
 		constexpr std::array kTable{
-			// General
 			SettingDesc{ "General", "PlayerOnly",          "Scope",       "Player only",                 "Apply to the player only, not loaded NPCs.",                                              &Settings::playerOnly,          0, 1, W::kCheckbox,  true  },
 			SettingDesc{ "General", "EnableShaders",       "Scope",       "Enabled",                     "Master switch.",                                                                          &Settings::enableShaders,       0, 1, W::kCheckbox,  true  },
 			SettingDesc{ "General", "ThirdPerson",         "Scope",       "Third person",                "Drive the normal actor model.",                                                           &Settings::thirdPerson,         0, 1, W::kCheckbox,  true  },
@@ -32,20 +30,16 @@ namespace WornEnchantmentPBR
 			SettingDesc{ "General", "NormalizeBrightness", "Glow",        "Normalise brightness",        "Every record glows at the same base level: hue from the record, pulse and fade kept, texture mean divided out. Off uses the raw EFSH values times Emissive scale.", &Settings::normalizeBrightness, 0, 1, W::kCheckbox, false },
 			SettingDesc{ "General", "EmissiveStrength",    "Glow",        "Emissive strength",           "Normalised mode: emissive multiplier for a texture of mean luminance 0.5.",              &Settings::emissiveStrength,    0, 20, W::kLogSlider, false },
 			SettingDesc{ "General", "EmissiveScale",       "Glow",        "Emissive scale",              "Raw mode: multiplier from EFSH fill alpha (vanilla 0.05..0.10) to emissive strength.",   &Settings::emissiveScale,       0, 100, W::kLogSlider, false },
-			// Colors
 			SettingDesc{ "Colors",  "TintWithEdge",        "Glow",        "Tint with edge colour",       "Vanilla armor enchant shaders keep their colour in the edge effect; the fill keys are grey.", &Settings::tintWithEdge,     0, 1, W::kCheckbox,  false },
 			SettingDesc{ "Colors",  "BlackFillAsWhite",    "Glow",        "Black fill as white",         "Stamina and frost shaders have black fill keys; lift them so they show.",                 &Settings::blackFillAsWhite,    0, 1, W::kCheckbox,  false },
-			// Layers: glow mask
 			SettingDesc{ "Layers",  "GlowMask",            "Glow",        "Mask by armor channel",       "Multiply the glow per texel by one channel of the armor's RMAOS, rendered per geometry. Needs GPU textures.", &Settings::glowMask, 0, 1, W::kCheckbox, true },
 			SettingDesc{ "Layers",  "GlowMaskChannel",     "Glow",        "Mask channel",                "Which RMAOS channel is the mask.",                                                       &Settings::glowMaskChannel,     0, 3, W::kEnum,      false, "roughness (R)\0metallic (G)\0occlusion (B)\0reflectance (A)\0" },
 			SettingDesc{ "Layers",  "GlowMaskThreshold",   "Glow",        "Mask threshold",              "0 uses the channel as is; above 0 the mask is on where the channel exceeds this.",       &Settings::glowMaskThreshold,   0, 1, W::kSlider,    false },
 			SettingDesc{ "Layers",  "GlowMaskSoftness",    "Glow",        "Mask softness",               "Width of the threshold's soft edge.",                                                    &Settings::glowMaskSoftness,    0.01f, 0.5f, W::kSlider, false },
 			SettingDesc{ "Layers",  "GlowMaskInvert",      "Glow",        "Mask inverted",               "Glow where the channel is low instead of high.",                                         &Settings::glowMaskInvert,      0, 1, W::kCheckbox,  false },
 			SettingDesc{ "Layers",  "GlowMaskStrength",    "Glow",        "Mask strength",               "0 ignores the mask, 1 applies it fully.",                                                &Settings::glowMaskStrength,    0, 1, W::kSlider,    false },
-			// Runtime
 			SettingDesc{ "Runtime", "RuntimeTextures",     "Runtime",     "Generate layer textures on the GPU", "Exact per-pixel scroll and the sheen map, shimmer and gloss map layers. Off, or on failure, uses the frame folders.", &Settings::runtimeTextures, 0, 1, W::kCheckbox, true },
 			SettingDesc{ "Runtime", "RuntimeTextureSize",  "Runtime",     "Texture size",                "Glow and sheen map target size.",                                                         &Settings::runtimeTextureSize,  128, 1024, W::kSizeCombo, true },
-			// Layers: sheen
 			SettingDesc{ "Layers",  "Sheen",               "Sheen",       "Sheen",                       "The EFSH edge effect drives CS's fuzz layer: coloured microflake specular plus an ambient tint.", &Settings::sheen,         0, 1, W::kCheckbox,  true  },
 			SettingDesc{ "Layers",  "SheenScale",          "Sheen",       "Sheen scale",                 "Edge alpha (normalised to 1) times this becomes the fuzz weight (0..1).",                &Settings::sheenScale,          0, 4, W::kSlider,    false },
 			SettingDesc{ "Layers",  "SheenMap",            "Sheen",       "Sheen map",                   "Scrolling fuzz map: fuzz colour x map.rgb, weight x map.a per texel. Needs GPU textures.", &Settings::sheenMap,          0, 1, W::kCheckbox,  true  },
@@ -56,7 +50,6 @@ namespace WornEnchantmentPBR
 			SettingDesc{ "Layers",  "GlintLogMicrofacetDensity", "Sheen", "Glint log microfacet density", "Lower is denser sparkle.",                                                               &Settings::glintLogMicrofacetDensity, 1, 40, W::kSlider,   true },
 			SettingDesc{ "Layers",  "GlintMicrofacetRoughness",  "Sheen", "Glint microfacet roughness",  "",                                                                                        &Settings::glintMicrofacetRoughness,  0.001f, 1, W::kLogSlider, true },
 			SettingDesc{ "Layers",  "GlintDensityRandomization", "Sheen", "Glint density randomization", "",                                                                                        &Settings::glintDensityRandomization, 0, 10, W::kSlider,   true },
-			// Layers: gloss
 			SettingDesc{ "Layers",  "GlossBoost",          "Gloss",       "Gloss boost",                 "How far roughness drops (0 = off, 1 = mirror at the noise peaks); follows the fill pulse.", &Settings::glossBoost,        0, 1, W::kSlider,    false },
 			SettingDesc{ "Layers",  "GlossMap",            "Gloss",       "Gloss map",                   "Re-render the armor's RMAOS with roughness lowered where the scrolling noise is bright. Off = uniform roughness scale.", &Settings::glossMap, 0, 1, W::kCheckbox, true },
 			SettingDesc{ "Layers",  "GlossContrast",       "Gloss",       "Gloss contrast",              "Sharpens the noise into patches: 1 = as is, higher = crisper edges.",                     &Settings::glossContrast,       0.1f, 8, W::kSlider,  false },
@@ -64,7 +57,6 @@ namespace WornEnchantmentPBR
 			SettingDesc{ "Layers",  "GlossMapTranspose",   "Gloss",       "Gloss map transposed",        "",                                                                                        &Settings::glossMapTranspose,   0, 1, W::kCheckbox,  false },
 			SettingDesc{ "Layers",  "GlossMapPhase",       "Gloss",       "Gloss map phase",             "",                                                                                        &Settings::glossMapPhase,       0, 1, W::kSlider,    false },
 			SettingDesc{ "Layers",  "GlossMapSize",        "Gloss",       "Gloss map max size",          "The re-rendered RMAOS keeps the armor's resolution up to this.",                          &Settings::glossMapSize,        256, 2048, W::kSizeCombo, true },
-			// Layers: shimmer
 			SettingDesc{ "Layers",  "Shimmer",             "Shimmer",     "Shimmer",                     "Scrolling displacement map; enables CS parallax on the material. Needs CS parallax on and GPU textures.", &Settings::shimmer,  0, 1, W::kCheckbox,  true  },
 			SettingDesc{ "Layers",  "ShimmerScale",        "Shimmer",     "Shimmer scale",               "Displacement scale; it displaces the whole surface, keep it small.",                      &Settings::shimmerScale,        0, 1, W::kLogSlider, false },
 			SettingDesc{ "Layers",  "ShimmerDepthSource",  "Shimmer",     "Shimmer depth source",        "Where the armor relief comes from. Auto = its displacement map, else RMAOS occlusion. Normal slope reads grooves and edges; diffuse reads dark as deep.", &Settings::shimmerDepthSource, 0, 4, W::kEnum, true, "auto\0displacement map\0RMAOS occlusion\0normal slope\0diffuse luminance\0" },
@@ -73,14 +65,12 @@ namespace WornEnchantmentPBR
 			SettingDesc{ "Layers",  "ShimmerNoiseWeight",  "Shimmer",     "Shimmer noise",               "Weight of the scrolling noise in the height field.",                                     &Settings::shimmerNoiseWeight,  0, 2, W::kSlider,    false },
 			SettingDesc{ "Layers",  "ShimmerTranspose",    "Shimmer",     "Shimmer transposed",          "Swap U and V so the shimmer runs across the glow.",                                       &Settings::shimmerTranspose,    0, 1, W::kCheckbox,  false },
 			SettingDesc{ "Layers",  "ShimmerPhase",        "Shimmer",     "Shimmer phase",               "",                                                                                        &Settings::shimmerPhase,        0, 1, W::kSlider,    false },
-			// Outputs: light
 			SettingDesc{ "Outputs", "Light",               "Light",       "Point light",                 "A point light on the wearer, coloured by the effect hue and driven by its pulse. Third person only.", &Settings::light,   0, 1, W::kCheckbox,  true  },
 			SettingDesc{ "Outputs", "LightIntensity",      "Light",       "Light intensity",             "Light fade (brightness) at the pulse's steady state.",                                   &Settings::lightIntensity,      0, 10, W::kSlider,   false },
 			SettingDesc{ "Outputs", "LightRadius",         "Light",       "Light radius",                "Light radius in game units.",                                                             &Settings::lightRadius,         50, 2000, W::kIntSlider, false },
 			SettingDesc{ "Outputs", "LightBone",           "Light",       "Light bone",                  "Skeleton node the light hangs from.",                                                     &Settings::lightBone,           0, 5, W::kEnum,      true, "worn bones (skin weights)\0spine (chest)\0spine (base)\0pelvis\0head\0root\0" },
 			SettingDesc{ "Outputs", "LightMaxPerEffect",   "Light",       "Lights per item",             "With worn bones: at most this many lights, on the bones carrying the most skinned vertices (30% of the top bone or more).", &Settings::lightMaxPerEffect, 1, 4, W::kIntSlider, true },
 			SettingDesc{ "Outputs", "LightUseBound",       "Light",       "Light at skinned centre",     "Place each light at the centre of the vertices its bone carries instead of at the bone origin.", &Settings::lightUseBound, 0, 1, W::kCheckbox, true },
-			// Outputs: shell
 			SettingDesc{ "Outputs", "Shell",               "Shell",       "Shell",                       "Clone of each driven geometry with a vanilla rim-lit material, blended over the armor. View-dependent rim without CS changes.", &Settings::shell, 0, 1, W::kCheckbox, true },
 			SettingDesc{ "Outputs", "ShellMode",           "Shell",       "Shell mode",                  "Rim: a vanilla rim-lit shell over the layer-driven armor. Layers on shell: the shell gets a private PBR copy that the layers write, and the armor material is never touched.", &Settings::shellMode, 0, 1, W::kEnum, true, "rim shell over driven armor\0layers on the shell\0" },
 			SettingDesc{ "Outputs", "ShellDepthBias",      "Shell",       "Shell depth bias",            "Decal flag on the shell so it wins the depth test against the armor. Off relies on inflation for separation.", &Settings::shellDepthBias, 0, 1, W::kCheckbox, true },
@@ -95,7 +85,6 @@ namespace WornEnchantmentPBR
 			SettingDesc{ "Outputs", "ShellScaleAcrossY",   "Shell",       "Inflation across bone (Y)",   "Weight of the inflation on the bone's Y axis.",                                           &Settings::shellScaleAcrossY,   0, 1, W::kSlider,    false },
 			SettingDesc{ "Outputs", "ShellScaleAcrossZ",   "Shell",       "Inflation across bone (Z)",   "Weight of the inflation on the bone's Z axis.",                                           &Settings::shellScaleAcrossZ,   0, 1, W::kSlider,    false },
 		};
-		// clang-format on
 
 		std::string_view Trim(std::string_view a_text)
 		{
@@ -162,7 +151,7 @@ namespace WornEnchantmentPBR
 			if (count != 3) {
 				return std::nullopt;
 			}
-			if (parts[0] > 1.0f || parts[1] > 1.0f || parts[2] > 1.0f) {  // 0..255 accepted too
+			if (parts[0] > 1.0f || parts[1] > 1.0f || parts[2] > 1.0f) {
 				for (auto& p : parts) {
 					p /= 255.0f;
 				}
@@ -170,7 +159,6 @@ namespace WornEnchantmentPBR
 			return Timing::Rgb{ std::clamp(parts[0], 0.0f, 1.0f), std::clamp(parts[1], 0.0f, 1.0f), std::clamp(parts[2], 0.0f, 1.0f) };
 		}
 
-		// Applies a raw INI value to the setting the row describes.
 		void Assign(Settings& a_settings, const SettingDesc& a_desc, std::string_view a_value)
 		{
 			std::visit([&](auto a_member) {

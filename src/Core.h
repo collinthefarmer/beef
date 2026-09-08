@@ -1,10 +1,5 @@
 #pragma once
 
-// Value types shared by every recipe module, and the helpers that keep
-// mechanics out of domain code: Match (visit a variant with lambdas), Get
-// (a checked pointer to one alternative), and the word tables (NameOf,
-// FromName, RowOf, Choices, WordsOf over a table of rows).
-
 #include <cmath>
 #include <cstddef>
 #include <cstdint>
@@ -23,7 +18,6 @@ namespace WornEnchantmentPBR
 		[[nodiscard]] bool operator==(const Vec2&) const = default;
 	};
 
-	// A colour is a Vec3 by another name: r, g, b in x, y, z.
 	struct Vec3
 	{
 		float x = 0.0f;
@@ -41,9 +35,6 @@ namespace WornEnchantmentPBR
 		kVec3,
 	};
 
-	// The channel of a texture sample as the compositor's shader picks it
-	// and as the menu previews it: one component as grey, the rgb, or the
-	// rgb's luminance. The values are the shader's own indices.
 	enum class ShaderChannel : std::uint32_t
 	{
 		kR = 0,
@@ -72,7 +63,6 @@ namespace WornEnchantmentPBR
 		return "?";
 	}
 
-	// One number for any value: itself, or a colour's luminance, or x.
 	[[nodiscard]] inline float AsScalar(const Value& a_value) noexcept
 	{
 		if (const auto* f = std::get_if<float>(&a_value)) {
@@ -113,15 +103,12 @@ namespace WornEnchantmentPBR
 		return a_x < 0.0f ? 0.0f : (a_x > 1.0f ? 1.0f : a_x);
 	}
 
-	// A reference to another row of the recipe, written "@name" in files.
 	struct Ref
 	{
 		std::string        name;
 		[[nodiscard]] bool operator==(const Ref&) const = default;
 	};
 
-	// Match(value, [](const A&) {...}, [](const B&) {...}) visits a variant
-	// with one lambda per alternative (or a generic one for the rest).
 	template <class... Fs>
 	struct Overloaded : Fs...
 	{
@@ -134,7 +121,6 @@ namespace WornEnchantmentPBR
 		return std::visit(Overloaded<std::decay_t<Fs>...>{ std::forward<Fs>(a_cases)... }, std::forward<Variant>(a_variant));
 	}
 
-	// Get<T>(variant) is the alternative T, or null: never throws.
 	template <class T, class Variant>
 	[[nodiscard]] const T* Get(const Variant& a_variant) noexcept
 	{
@@ -153,10 +139,6 @@ namespace WornEnchantmentPBR
 		return std::holds_alternative<T>(a_variant);
 	}
 
-	// A word table: one row per value of an enum, the word the file spells
-	// beside it. Any row type with `value` and `name` members is a row, so
-	// a vocabulary that carries rules beyond its word adds columns to its
-	// row and keeps these readers.
 	template <class E>
 	struct Named
 	{
@@ -164,7 +146,6 @@ namespace WornEnchantmentPBR
 		std::string_view name;
 	};
 
-	// The word of a value; "?" for a value the table lacks.
 	template <class Row, std::size_t N, class E>
 	[[nodiscard]] constexpr std::string_view NameOf(const Row (&a_table)[N], E a_value) noexcept
 	{
@@ -176,7 +157,6 @@ namespace WornEnchantmentPBR
 		return "?";
 	}
 
-	// The value of a word; none for a word the table lacks.
 	template <class Row, std::size_t N>
 	[[nodiscard]] constexpr std::optional<decltype(Row::value)> FromName(const Row (&a_table)[N], std::string_view a_name) noexcept
 	{
@@ -188,7 +168,6 @@ namespace WornEnchantmentPBR
 		return std::nullopt;
 	}
 
-	// The row of a value; null for a value the table lacks.
 	template <class Row, std::size_t N, class E>
 	[[nodiscard]] constexpr const Row* RowOf(const Row (&a_table)[N], E a_value) noexcept
 	{
@@ -200,7 +179,6 @@ namespace WornEnchantmentPBR
 		return nullptr;
 	}
 
-	// Every word: "a, b, c" for a diagnostic, or a list for a choice field.
 	template <class Row, std::size_t N>
 	[[nodiscard]] std::string Choices(const Row (&a_table)[N])
 	{

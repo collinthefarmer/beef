@@ -1,7 +1,3 @@
-// The recipe language: precedence, vectors, comparisons and logic, curves,
-// references, type checking, every error, and garbage input that must
-// never crash.
-
 #include "Expression.h"
 #include "test_support.h"
 
@@ -176,7 +172,6 @@ namespace
 
 	void Garbage()
 	{
-		// Deep nesting stops at the limit rather than the stack.
 		std::string deep(kMaxExpressionDepth + 5, '(');
 		deep += "1";
 		deep += std::string(kMaxExpressionDepth + 5, ')');
@@ -184,7 +179,6 @@ namespace
 		std::string minus(kMaxExpressionDepth + 5, '-');
 		minus += "1";
 		Check(Fails(minus.c_str(), "nested deeper"), "unary chain limit");
-		// Too many operations.
 		std::string wide = "1";
 		for (std::size_t i = 0; i < kMaxExpressionOps; ++i) {
 			wide += " + 1";
@@ -193,7 +187,6 @@ namespace
 		std::string longText(kMaxExpressionLength + 1, '1');
 		Check(Fails(longText.c_str(), "longer than"), "length limit");
 
-		// Random bytes and random token soup: never crash, always a result or an error.
 		std::mt19937 rng(7);
 		const char   alphabet[] = "0123456789.+-*/()[],<>=!@abcdefx_ ";
 		int          parsed = 0;

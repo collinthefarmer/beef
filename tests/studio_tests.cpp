@@ -1,8 +1,3 @@
-// The studio's view models: layouts per mode, selection defaults, the board
-// from the canonical recipe, the stack view, the inspector, the signal split.
-// The snapshot is built from schema/example-magicka.json as the manager
-// would fill it, with no textures and no runtime verdicts.
-
 #include "Signals.h"
 #include "EditCheck.h"
 #include "Expression.h"
@@ -161,8 +156,6 @@ namespace
 		return row;
 	}
 
-	// A neighbour recipe writing one layer on the shell's emissive slot, so
-	// the stack shows foreign rows.
 	RecipeRow Neighbour(const char* a_id, int a_priority)
 	{
 		Recipe recipe;
@@ -188,7 +181,6 @@ namespace
 		return loaded.recipe;
 	}
 
-	// The player's cuirass: a lower neighbour, the canonical recipe, a higher neighbour.
 	Snapshot SnapshotOf(const Recipe& a_recipe)
 	{
 		PieceRow piece;
@@ -249,12 +241,10 @@ namespace
 		Check(TargetName(Target::kMaterial) == "material" && TargetName(Target::kShell) == "shell" && TargetName(Target::kLight) == "light", "a target's word is its surface's, or light");
 		Check(TargetOf(Surface::kShell) == Target::kShell && TargetOf(Surface::kMaterial) == Target::kMaterial && SurfaceOf(Target::kLight) == Surface::kMaterial, "surface and target convert both ways; the light reads as the material");
 
-		// The snapshot request names the selected piece; none when nothing is selected.
 		Check(!RequestOf(none), "no piece selected: nothing to watch");
 		const auto request = RequestOf(SelectCanonical());
 		Check(request && request->actorID == kPlayer && request->armorID == kCuirass && !request->firstPerson, "the selected piece is what the tick builds full rows for");
 
-		// The layer selection is clamped to the picked stack after every dispatch.
 		{
 			Selection stale = SelectCanonical();
 			Pick(stale, Target::kShell, Slot::kEmissive, 99);
@@ -347,8 +337,6 @@ namespace
 	{
 		const auto selection = SelectCanonical();
 
-		// A vanilla shell offers emissive only; adding an output is what makes
-		// a shell, so a geometry without one is still offered the column.
 		auto vanilla = a_recipe;
 		vanilla.shellMaterial = ShellMaterial::kVanilla;
 		auto bare = a_geometry;
@@ -364,14 +352,12 @@ namespace
 		Check(CellAt(board, Surface::kMaterial, Slot::kDiffuse) && CellAt(board, Surface::kMaterial, Slot::kDiffuse)->state == CellState::kEmpty, "the material still offers every slot");
 		Check(board.shell.empty(), "no shell description when the geometry has none");
 
-		// The binding's refusal makes the cell refused with its reason.
 		auto refused = a_geometry;
 		refused.outputs[1].problem = "material already has coat";
 		const auto refusedBoard = BuildBoard(a_recipe, refused, selection, view);
 		const auto* fuzz = CellAt(refusedBoard, Surface::kShell, Slot::kFuzz);
 		Check(fuzz && fuzz->state == CellState::kRefused && fuzz->reason == "material already has coat" && fuzz->output == 1 && fuzz->layers == 2, "a refused output shows its problem and still its stack");
 
-		// A second output on the same cell: the first wins and the duplicate is noted.
 		auto duplicate = a_geometry;
 		auto twin = a_geometry.outputs[0];
 		twin.index = 5;
@@ -381,7 +367,6 @@ namespace
 		const auto* emissive = CellAt(duplicateBoard, Surface::kShell, Slot::kEmissive);
 		Check(emissive && emissive->state == CellState::kWritten && emissive->output == 0 && emissive->layers == 3 && emissive->reason.find("output 5") != std::string::npos, "a duplicate output is noted; the first one is shown");
 
-		// Isolate follows the view.
 		View isolate;
 		isolate.isolateRecipe = a_recipe.id;
 		isolate.isolateOutput = 2;
@@ -397,7 +382,6 @@ namespace
 		Check(CellAt(board, Surface::kShell, static_cast<Slot>(99)) == nullptr, "an unknown slot has no cell");
 		Check(CellAt(Board{}, Surface::kMaterial, Slot::kEmissive) == nullptr, "an empty board has no cell");
 
-		// An output without layers or scalars, on a geometry with no outputs at all.
 		GeometryRow empty;
 		empty.name = kGeometry;
 		const auto emptyBoard = BuildBoard(a_recipe, empty, selection, view);
@@ -431,7 +415,6 @@ namespace
 		Check(stack->scalars.size() == 1 && stack->scalars[0].name == "strength", "the stack carries the slot's scalars");
 		Check(!stack->isolated && stack->problem.empty() && stack->composite == nullptr, "not isolated, no problem, no texture");
 
-
 		View filtered;
 		filtered.muted.insert(LayerKey{ a_recipe.id, 0, 2 });
 		filtered.isolateRecipe = a_recipe.id;
@@ -446,13 +429,11 @@ namespace
 		Check(rmaos && rmaos->masks == a_recipe.masks, "the stack carries the recipe's mask names for its rows");
 		Check(rmaos && std::ranges::none_of(rmaos->rows, [](const LayerStackRow& a_row) { return a_row.selected; }), "no layer selected, none marked");
 
-		// A recipe the piece does not list: neighbours split by priority.
 		auto stray = a_recipe;
 		stray.id = "stray";
 		stray.priority = 50;
 		Pick(selection, Target::kShell, Slot::kEmissive);
 		const auto strayStack = BuildStackView(a_piece, stray, a_geometry, selection, view);
-		// lower (1 layer) and the canonical recipe (3 layers) merge before priority 50; higher after.
 		Check(strayStack && strayStack->below.size() == 4 && strayStack->above.size() == 1, "a recipe outside the merge order splits neighbours by priority");
 	}
 
@@ -514,8 +495,6 @@ namespace
 		const auto white = BuildInspector(a_recipe, a_geometry, selection);
 		Check(white && !white->source && white->row.source == "1, 1, 1", "a constant colour source has no source row");
 
-		// A layer whose source is a mask, whose curve is inline and whose
-		// references do not resolve: nothing is found, nothing crashes.
 		auto geometry = a_geometry;
 		auto& layer = geometry.outputs[0].layers[0];
 		layer.source = "@metal";
@@ -529,8 +508,6 @@ namespace
 		Check(maskSource && !maskSource->mask && maskSource->signals.empty() && !maskSource->curve, "unknown references and an inline curve resolve to nothing");
 	}
 
-	// The edit a field's binding makes of a text, as the alternative T, or
-	// null when the text is refused or makes another kind of edit.
 	template <class T>
 	const T* Bound(const FormField& a_field, const char* a_text, std::optional<RecipeEdit>& a_edit)
 	{
@@ -606,8 +583,6 @@ namespace
 		Check(set && set->output == 0 && set->layer == 0 && set->channels == ChannelSet{ true, true, false, false }, "a channel set binds");
 		Check(!Bound<SetLayerChannels>(channels, "xyz", edit) && !edit, "channels that do not parse are refused");
 
-		// The relief layer: a declared curve has a detail, a literal opacity none;
-		// the bindings carry its own indices.
 		Pick(selection, Target::kMaterial, Slot::kHeight, 0);
 		const auto relief = BuildInspector(a_recipe, a_geometry, selection);
 		Check(relief.has_value(), "the relief layer inspects for its form");
@@ -731,10 +706,6 @@ namespace
 		Check(!Bound<SetShellPoint>(shellForm[10], "@inflate", edit), "a point takes no signal");
 	}
 
-	// kFieldKinds: the widget FieldInput draws and the shape CheckField runs,
-	// one row per kind. FieldInput and MenuWidgets::StyleOf read the same
-	// rows; this pins the engine-free half (widths and colours are drawn,
-	// not tested here).
 	void FieldKindTable()
 	{
 		const std::pair<FieldKind, std::pair<FieldInputKind, FieldCheckKind>> rows[]{
@@ -821,7 +792,6 @@ namespace
 		const auto& ring = a_recipe.sourceRows[6];
 		Check(ring.kind == "ripple" && ring.trigger == "@struck" && ring.speed == "90" && ring.width == "8" && ring.decay == "1.2" && ring.shape == "ring", "a ripple row");
 
-		// Every row reads back as the source it came from.
 		const auto canonical = Canonical();
 		if (canonical) {
 			for (std::size_t i = 0; i < a_recipe.sourceRows.size(); ++i) {
@@ -983,7 +953,6 @@ namespace
 		Check(Unresolvable(presets->where[6], geometry) && Unresolvable(presets->where[6], geometry)->find("head") != std::string::npos, "a preset on a partition the shape lacks says which");
 		Check(Unresolvable(presets->what[0], geometry) == std::nullopt && Unresolvable(presets->what[0], a_geometry) == std::nullopt, "a what preset resolves anywhere");
 
-		// Materialising: sources reused by definition, the scratch mask made and set.
 		std::vector<std::pair<std::string, SourceKind>> existing;
 		std::vector<std::string>                        taken;
 		for (const auto& source : a_recipe.sourceRows) {
@@ -999,7 +968,6 @@ namespace
 		const auto     chest = MaterialiseTerm(presets->where[2], have);
 		Check(chest.edits.size() == 2 && Get<AddSource>(chest.edits[0]) && Get<AddSource>(chest.edits[0])->name == "partition" && Get<BakeSource>(Get<AddSource>(chest.edits[0])->kind) && Get<AddSource>(chest.edits[1]) && Get<AddSource>(chest.edits[1])->name == "bones", "a where preset adds its two bakes");
 		Check(chest.expression == "@partition * @bones", "a where preset reads as the product of its bakes");
-		// metallic exists as a material source in the canonical recipe; roughness does not.
 		const auto leather = MaterialiseTerm(presets->what[0], have);
 		Check(leather.edits.size() == 1 && Get<AddSource>(leather.edits[0]) && Get<AddSource>(leather.edits[0])->name == "roughness", "a what preset reuses the metallic source and adds roughness");
 		Check(leather.expression == "(1 - @metallic) * smoothstep(0.35, 0.6, @roughness)", "a what preset reads its expression over the recipe's names");
@@ -1012,7 +980,6 @@ namespace
 		const auto second = MaterialiseTerm(presets->where[2], partitionTaken);
 		Check(second.edits.size() == 2 && Get<AddSource>(second.edits[0]) && Get<AddSource>(second.edits[0])->name == "partition2" && second.expression == "@partition2 * @bones", "a taken name is made unique and the expression reads it");
 
-		// The scratch mask follows the stack: added when absent, set when the text differs, "0" when nothing shows.
 		const std::vector stackTerms{ Term{ TermOp::kSet, "@a", "a" }, Term{ TermOp::kAnd, "@b", "b" } };
 		const auto        fresh = ScratchEdits(stackTerms, std::nullopt, {}, std::nullopt);
 		Check(fresh.size() == 2 && Get<AddMask>(fresh[0]) && Get<SetMask>(fresh[1]) && Get<SetMask>(fresh[1])->text == "(@a) * (@b)", "an absent scratch is added and set");
@@ -1020,9 +987,6 @@ namespace
 		const auto muted = ScratchEdits(stackTerms, std::nullopt, { 0, 1 }, std::optional<std::string>{ "(@a) * (@b)" });
 		Check(muted.size() == 1 && Get<SetMask>(muted[0]) && Get<SetMask>(muted[0])->text == "0", "everything muted writes 0");
 
-		// The paint recipe: a clone with one masked emissive output; Keep
-		// copies the region and the sources it reads back into the active
-		// recipe, reusing what is there.
 		const auto active = Canonical();
 		Check(active.has_value(), "the canonical recipe parses for the paint tests");
 		if (!active) {
@@ -1040,7 +1004,6 @@ namespace
 		Check(output && output->surface == Surface::kShell && output->slot == Slot::kEmissive && output->stack.size() == 1 && output->stack[0].mask && output->stack[0].mask->name == kScratchMask, "one emissive output on the chosen surface, its layer masked by the scratch");
 		Check(Validate(paint).empty() || std::ranges::none_of(Validate(paint), [](const Diagnostic& d) { return d.severity == Severity::kError; }), "the paint recipe validates");
 
-		// A leftPauldron round: the where preset's bakes are new to the active recipe, the metallic twin is not.
 		auto term = MaterialiseTerm(presets->where[0], have);
 		for (const auto& edit : term.edits) {
 			Check(!Apply(paint, edit), "a paint source edit applies");
@@ -1221,7 +1184,6 @@ namespace
 		Reduce(state, PickRecipe{ "other" });
 		Check(state.selection.recipeID == "other" && state.selection.slot == Slot::kHeight, "a recipe pick keeps the cell");
 
-		// The region stack: terms land selected, the first leads, indices follow moves and removals.
 		Reduce(state, SetMode{ Mode::kPaint });
 		Check(state.resource == ResourceTab::kMasks && !state.layout.contextRows, "paint opens the masks tab and drops the context rows");
 		Reduce(state, AddTerm{ Term{ TermOp::kAnd, "@a", "a" } });
@@ -1281,7 +1243,6 @@ namespace
 		Check(!state.paint, "end drops the session");
 		Reduce(state, SetMode{ Mode::kCompose });
 
-		// Edits move the layer selection with the rows.
 		Reduce(state, PickCell{ Surface::kShell, Slot::kEmissive, 1 });
 		Reduce(state, EditRecipe{ kRecipeID, AddLayer{ 0, DefaultLayer(), 3 } });
 		Check(state.selection.layer == 3, "an added layer is selected");
@@ -1309,7 +1270,6 @@ namespace
 		Reduce(state, Undo{ "fresh" });
 		Check(state.selection.recipeID == "fresh" && state.selection.slot == Slot::kCoat, "view and manager intents change no selection");
 
-		// Paint edge cases: a surface without a session, a piece pick during one.
 		Reduce(state, SetPaintSurface{ Surface::kShell });
 		Check(!state.paint, "a surface pick with no session opens none");
 		Reduce(state, BeginPaint{ kRecipeID, armor, Surface::kShell });
@@ -1366,7 +1326,6 @@ namespace
 
 namespace
 {
-	// The cluster map's row and form, and the id-map bakes' rows.
 	void MaterialClusterRows()
 	{
 		MaterialClustersSource tuned;
@@ -1420,8 +1379,6 @@ namespace
 
 namespace
 {
-	// The recipe row with a term's new sources added, as the snapshot would
-	// show it after the edits apply.
 	RecipeRow WithSources(const RecipeRow& a_recipe, const std::vector<RecipeEdit>& a_edits)
 	{
 		RecipeRow row = a_recipe;
@@ -1433,7 +1390,6 @@ namespace
 		return row;
 	}
 
-	// A geometry read and analysed: two parts, one chart, two material clusters.
 	GeometryRow Analysed(const GeometryRow& a_geometry)
 	{
 		GeometryRow geometry = a_geometry;
@@ -1455,7 +1411,7 @@ namespace
 		chart.source = IslandSource::kChart;
 		chart.id = 0;
 		chart.share = 1.0f;
-		MeshIsland whole = chart;  // a chart with exactly the body's vertices: folded into the body's row
+		MeshIsland whole = chart;
 		whole.id = 1;
 		whole.twin = 0;
 		body.twin = 1;
@@ -1472,8 +1428,6 @@ namespace
 		return geometry;
 	}
 
-	// The template's text applied as a term, and a copy of the recipe applied
-	// to a field's text; nothing when the field refuses it.
 	std::optional<TermKind> Applied(const std::vector<TermField>& a_form, const char* a_field, const char* a_text)
 	{
 		const auto it = std::ranges::find(a_form, a_field, [](const TermField& f) { return f.field.name; });
@@ -1491,8 +1445,6 @@ namespace
 		const auto existing = ExistingOf(a_recipe);
 		const auto geometry = Analysed(a_geometry);
 
-		// Every template round-trips: built over the canonical row, read back
-		// over the row with the built sources added.
 		ThresholdTerm roughness;
 		roughness.channel = MaterialChannel::kRoughness;
 		roughness.low = 0.35f;
@@ -1528,7 +1480,6 @@ namespace
 			Check(Program::Parse(built.expression).has_value(), std::format("{} builds an expression that parses: {}", TermKindName(recipe), built.expression));
 		}
 
-		// The spellings.
 		const auto builtRoughness = BuildTerm(roughness, *presets, existing);
 		Check(builtRoughness.expression == "smoothstep(0.35 - 0.05, 0.35 + 0.05, @roughness) * (1 - smoothstep(0.6 - 0.05, 0.6 + 0.05, @roughness))", "a threshold spells both edges over the channel: " + builtRoughness.expression);
 		Check(builtRoughness.edits.size() == 1 && Get<AddSource>(builtRoughness.edits[0]) && Get<AddSource>(builtRoughness.edits[0])->name == "roughness", "a threshold adds its channel as a material source named after it");
@@ -1557,8 +1508,6 @@ namespace
 		componentsTaken.taken.push_back("components");
 		Check(BuildTerm(IslandTerm{}, *presets, componentsTaken).expression == "abs(@components2 * 255 - 0) < 0.5", "a taken source name is made unique");
 
-		// Reading: hand-written text and near misses are raw; a lone name of
-		// a mask or an unknown row is a reference.
 		Check(Is<RawTerm>(ReadTerm("@metallic * 2", *presets, a_recipe)), "hand-written text reads as raw");
 		Check(Is<RawTerm>(ReadTerm("smoothstep(0.35 - 0.05, 0.35 + 0.06, @metallic)", *presets, a_recipe)), "an edge whose softness differs between its bounds is raw");
 		Check(Is<RawTerm>(ReadTerm("smoothstep(0.35 - 0.05, 0.35 + 0.05, @fill)", *presets, a_recipe)), "a threshold over an image source is raw");
@@ -1568,7 +1517,6 @@ namespace
 		Check(ReadTerm("(1 - @metallic) * smoothstep(0.35, 0.6, @roughness)", *presets, WithSources(a_recipe, leather.edits)) == TermKind{ WhatPresetTerm{ "leather" } }, "a what preset's expression over the recipe's names reads as the preset");
 		Check(Is<RawTerm>(ReadTerm("(1 - @metallic) * smoothstep(0.35, 0.6, @roughness)", *presets, a_recipe)), "the same text without the roughness source is raw");
 
-		// Labels.
 		Check(TermLabelOf(roughness, *presets, geometry) == "roughness 0.35..0.6", "a threshold labels as its channel and range");
 		Check(TermLabelOf(ReferenceTerm{ "metal" }, *presets, geometry) == "@metal" && TermLabelOf(WhatPresetTerm{ "leather" }, *presets, geometry) == "leather" && TermLabelOf(RawTerm{}, *presets, geometry) == "expression", "reference, preset and raw labels");
 		Check(TermLabelOf(PartitionTerm{ 33 }, *presets, geometry) == "hands" && TermLabelOf(BoneTerm{ { "NPC Spine2 [Spn2]", "NPC L Hand [LHnd]" } }, *presets, geometry) == "chest, left hand", "partitions and bones label by their plain names");
@@ -1576,13 +1524,11 @@ namespace
 		Check(TermLabelOf(IslandTerm{ IslandSource::kComponent, 7 }, *presets, geometry) == "part 7" && TermLabelOf(IslandTerm{ IslandSource::kComponent, 0 }, *presets, a_geometry) == "part 0", "a part the geometry lacks labels by number alone");
 		Check(TermLabelOf(ClusterTerm{ ClusterSettings{}, 1 }, *presets, geometry) == "material 1: polished bright metal, 30%" && TermLabelOf(ClusterTerm{ ClusterSettings{}, 5 }, *presets, geometry) == "material 5", "a cluster labels with its description and share");
 
-		// A kept mask comes back with its recipes and labels.
 		const auto keptText = std::format("({}) * ({})", builtRoughness.expression, "@metal");
 		const auto terms = TermsOfMask(keptText, *presets, ExistingOf(WithSources(a_recipe, builtRoughness.edits)));
 		Check(terms && terms->size() == 2 && (*terms)[0].kind == TermKind{ roughness } && (*terms)[0].label == "roughness 0.35..0.6" && (*terms)[1].kind == TermKind{ ReferenceTerm{ "metal" } } && (*terms)[1].label == "@metal", "a kept mask's terms carry their recipes and labels");
 		Check(terms && ProposedRegionName(*terms, "") == "region" && ProposedRegionName(std::vector<Term>{ (*terms)[1] }, "") == "metal", "a reference label proposes its name");
 
-		// Forms: one field per setting; a bad text applies to nothing.
 		const auto thresholdForm = TermForm(roughness, *presets, geometry);
 		Check(thresholdForm.size() == 6 && thresholdForm[0].field.name == "channel" && thresholdForm[0].field.kind == FieldKind::kChoice && thresholdForm[0].field.names.size() == 8 && thresholdForm[1].field.name == "low" && thresholdForm[1].field.text == "0.35" && thresholdForm[4].field.name == "posterize" && thresholdForm[5].field.name == "invert" && thresholdForm[5].field.kind == FieldKind::kToggle && thresholdForm[5].field.text == "off", "the threshold form's fields");
 		const auto lowered = Applied(thresholdForm, "low", "0.2");
@@ -1613,7 +1559,6 @@ namespace
 		Check(reslotted && Get<PartitionTerm>(*reslotted) && Get<PartitionTerm>(*reslotted)->slot == 32 && Applied(partitionForm, "slot", "36") && !Applied(partitionForm, "slot", "wings"), "a plain name or a slot applies; an unknown name applies to nothing");
 		Check(TermForm(RawTerm{}, *presets, geometry).empty() && TermForm(ReferenceTerm{ "x" }, *presets, geometry).empty() && TermForm(WhatPresetTerm{ "leather" }, *presets, geometry).empty(), "raw, reference and preset terms have no fields");
 
-		// Offers: groups in order, the unread mesh saying why.
 		const auto offers = OffersOf(*presets, a_recipe, geometry, "");
 		std::size_t group = 0;
 		bool        ordered = true;

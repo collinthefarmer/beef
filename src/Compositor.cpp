@@ -23,15 +23,12 @@ namespace WornEnchantmentPBR
 			return out;
 		}
 
-		// The engine's placeholder textures are 1x1; a real map is larger. The size
-		// comes from the D3D resource: the renderer record says 0x0 for streamed maps.
 		bool RealTexture(const RE::NiPointer<RE::NiSourceTexture>& a_texture)
 		{
 			const auto extent = TextureLab::ExtentOf(a_texture.get());
 			return extent && extent->width > 4 && extent->height > 4;
 		}
 
-		// Why RealTexture rejected a map, for the diagnostic on the row.
 		std::string DescribeTexture(const RE::NiPointer<RE::NiSourceTexture>& a_texture)
 		{
 			if (!a_texture) {
@@ -57,7 +54,6 @@ namespace WornEnchantmentPBR
 			return (a_set.r ? 1u : 0u) | (a_set.g ? 2u : 0u) | (a_set.b ? 4u : 0u) | (a_set.a ? 8u : 0u);
 		}
 
-		// Which material texture and channel a material source reads.
 		struct MaterialChannelPick
 		{
 			RE::NiPointer<RE::NiSourceTexture> texture;
@@ -65,7 +61,6 @@ namespace WornEnchantmentPBR
 			std::string                        problem;
 		};
 
-		// One of the material's maps; null for kNone.
 		RE::NiPointer<RE::NiSourceTexture> MapOf(MaterialMap a_map, const MaterialInputs& a_material)
 		{
 			switch (a_map) {
@@ -83,15 +78,11 @@ namespace WornEnchantmentPBR
 			return nullptr;
 		}
 
-		// The map a slot edits in place (BaseMapOf), as the material holds it.
 		RE::NiPointer<RE::NiSourceTexture> BaseMapFor(Slot a_slot, const MaterialInputs& a_material)
 		{
 			return MapOf(BaseMapOf(a_slot), a_material);
 		}
 
-		// Many PBR sets ship a displacement map that is a real texture and
-		// entirely black (NOTES 46): flat when its mean sits at either end.
-		// A readback, so once per material in MaterialInputs::From.
 		bool MeasureFlatDisplacement(const RE::NiPointer<RE::NiSourceTexture>& a_displacement)
 		{
 			if (!RealTexture(a_displacement)) {
@@ -103,9 +94,6 @@ namespace WornEnchantmentPBR
 
 		std::optional<MaterialChannel> SingleChannelOf(const Recipe& a_recipe, const Mask& a_mask);
 
-		// The normal map's slope as a texture of its own, through the lab's
-		// channel pass with slope set; null with the reason when the map is
-		// not real or the pass fails.
 		std::shared_ptr<TextureLab::RenderTarget> RenderNormalSlope(const MaterialInputs& a_material, std::string& a_problem)
 		{
 			if (!RealTexture(a_material.normal)) {
@@ -130,16 +118,6 @@ namespace WornEnchantmentPBR
 			return target;
 		}
 
-		// The material's cluster map under a_settings as a texture of its own,
-		// stored on the geometry's derived maps: the apply's analysis when the
-		// settings are its own, else the stored sample clustered again on the
-		// CPU (no readback), then the lab's classify pass into a target sized
-		// like the RMAOS map. The map already there is returned when its
-		// settings match; other settings replace it, so a source that reads
-		// it must hold the returned target for as long as it samples it.
-		// Null with derived.clustersProblem set when the material was not
-		// sampled or the pass fails. Game thread, from PrepareSource;
-		// InspectSource reads derived.clusters alone.
 		std::shared_ptr<TextureLab::RenderTarget> RenderClusterMap(const GeometryInputs& a_inputs, const ClusterSettings& a_settings)
 		{
 			const MaterialInputs& material = a_inputs.material;
@@ -177,10 +155,6 @@ namespace WornEnchantmentPBR
 			return target;
 		}
 
-		// With a_mayRender the slope is rendered on first use (the prepare
-		// paths, game thread); an inspection only reads what was rendered.
-		// A channel with a map reads that map's channel from the table; the
-		// two derived channels are decided here.
 		MaterialChannelPick PickMaterialChannel(MaterialChannel a_channel, const GeometryInputs& a_inputs, bool a_mayRender)
 		{
 			const MaterialInputs& a_material = a_inputs.material;
@@ -190,7 +164,6 @@ namespace WornEnchantmentPBR
 			}
 			switch (a_channel) {
 			case MaterialChannel::kRelief:
-				// A flat height map carries no relief; the occlusion channel does.
 				if (!a_material.flatDisplacement) {
 					return { a_material.displacement, ShaderChannelOf(MaterialChannel::kDisplacement), {} };
 				}
@@ -243,7 +216,6 @@ namespace WornEnchantmentPBR
 		if (const auto it = images_.find(key); it != images_.end()) {
 			return it->second;
 		}
-		// The engine takes the record's raw path and the textures\ prefixed form (NOTES 7).
 		RE::NiPointer<RE::NiTexture> texture;
 		RE::BSShaderManager::GetTexture(std::string{ a_path }.c_str(), true, texture, false);
 		auto* source = texture ? netimmerse_cast<RE::NiSourceTexture*>(texture.get()) : nullptr;
@@ -260,7 +232,6 @@ namespace WornEnchantmentPBR
 	std::optional<PreparedSource> Compositor::PrepareSource(const Recipe& a_recipe, const Ref& a_ref, const GeometryInputs& a_inputs, TextureSize a_size, std::vector<Diagnostic>& a_out, const std::string& a_where, std::uint32_t a_depth)
 	{
 		if (a_recipe.FindMask(a_ref.name)) {
-			// A mask read as a source: its rendered target, by mesh UV.
 			auto rendered = PrepareRenderedMask(a_recipe, a_ref.name, a_inputs, a_size, a_depth);
 			PreparedSource prepared;
 			if (!rendered || !rendered->Problem().empty()) {
@@ -297,7 +268,6 @@ namespace WornEnchantmentPBR
 				prepared.sampling.transform.sourceMip = image.mip;
 				prepared.scroll = image.scroll;
 				prepared.tile = image.tile;
-				// A colour field is normalised by its mean luminance; mask data is not.
 				if (prepared.texture && image.channel == ImageChannel::kRgb) {
 					const float mean = TextureLab::GetSingleton()->MeanLuminance(prepared.texture.get());
 					prepared.normalize = 0.5f / std::max(mean, 0.05f);
@@ -376,8 +346,6 @@ namespace WornEnchantmentPBR
 		return prepared;
 	}
 
-	// A mask that is exactly one material channel reads the map directly;
-	// any other expression renders through the interpreter pass.
 	std::optional<PreparedMask> Compositor::PrepareMask(const Recipe& a_recipe, const Ref& a_ref, const GeometryInputs& a_inputs, TextureSize a_size, std::vector<Diagnostic>& a_out, const std::string& a_where)
 	{
 		const auto* mask = a_recipe.FindMask(a_ref.name);
@@ -411,8 +379,6 @@ namespace WornEnchantmentPBR
 		return prepared;
 	}
 
-	// A layer's curve as a lookup over the source value. The curve's `mean` is
-	// the source's own mean, so "x - mean" centres on the map's average.
 	std::shared_ptr<TextureLab::Lookup> Compositor::BakeCurve(const Recipe& a_recipe, const CurveRef& a_curve, const std::optional<PreparedSource>& a_source, std::vector<Diagnostic>& a_out, const std::string& a_where)
 	{
 		std::string text = a_curve.text;
@@ -470,9 +436,6 @@ namespace WornEnchantmentPBR
 
 	namespace
 	{
-		// The size a stack that edits an existing map renders at: the map's
-		// own resolution, never below a_size and never above a_maxSize (or
-		// a_size when a_maxSize is the smaller).
 		TextureSize SizeOverBase(TextureSize a_size, TextureSize a_maxSize, std::uint32_t a_largestSide)
 		{
 			const std::uint32_t floor = a_size.Pixels();
@@ -491,8 +454,6 @@ namespace WornEnchantmentPBR
 		auto stack = std::make_unique<RenderedStack>();
 		stack->size_ = a_size;
 		if (a_output.slot == Slot::kHeight && a_material.flatDisplacement) {
-			// A flat displacement map would put every texel outside a mask at
-			// (0 - 0.5) * scale; the neutral base leaves them where they are.
 			stack->neutral_ = NeutralHeight();
 			if (stack->neutral_ && stack->neutral_->Texture()) {
 				stack->base_ = RE::NiPointer{ stack->neutral_->Texture() };
@@ -540,9 +501,6 @@ namespace WornEnchantmentPBR
 
 	namespace
 	{
-		// The largest-size entry of a cache keyed "<definition>@<size>"
-		// (Mesh.h; masks and ripples use their name as the definition); null
-		// when the definition has none. The largest is the one a stack read.
 		template <class T>
 		std::shared_ptr<T> LargestOf(const std::unordered_map<std::string, std::shared_ptr<T>>& a_cache, std::string_view a_definition)
 		{
@@ -561,20 +519,16 @@ namespace WornEnchantmentPBR
 			return best;
 		}
 
-		// A rendered mask of that name, when the geometry has one.
 		std::shared_ptr<RenderedMask> CachedMask(const GeometryInputs& a_inputs, std::string_view a_name)
 		{
 			return a_inputs.masks ? LargestOf(*a_inputs.masks, a_name) : nullptr;
 		}
 
-		// A bake of that definition from the mesh entry, when it has one.
 		std::shared_ptr<TextureLab::RenderTarget> CachedBake(const MeshEntry* a_entry, std::string_view a_definition)
 		{
 			return a_entry ? LargestOf(a_entry->bakes, a_definition) : nullptr;
 		}
 
-		// The mask that is exactly one material channel, which a layer reads
-		// from the map itself and nothing renders.
 		std::optional<MaterialChannel> SingleChannelOf(const Recipe& a_recipe, const Mask& a_mask)
 		{
 			const auto  program = Program::Parse(a_mask.text);
@@ -607,8 +561,6 @@ namespace WornEnchantmentPBR
 		const auto     entry = CachedMesh(a_inputs.geometry.get());
 		PreparedSource prepared;
 		prepared.animated = IsAnimated(a_recipe, *source);
-		// A bake that could not be made because the mesh could not be read
-		// says so; anything else absent was never read by a stack.
 		const auto notRendered = [&] {
 			prepared.problem = entry && !entry->mesh && !entry->problem.empty() ? "the mesh could not be read: " + entry->problem : std::string{ kNotRendered };
 		};
@@ -643,8 +595,6 @@ namespace WornEnchantmentPBR
 				prepared.tile = image.tile;
 			},
 			[&](const MaterialSource& material) {
-				// The material's own maps, resolved from the record taken at apply;
-				// a derived map only when a prepare already rendered it.
 				auto pick = PickMaterialChannel(material.channel, a_inputs, false);
 				prepared.texture = pick.texture;
 				prepared.sampling.channel = pick.channel;
@@ -675,8 +625,6 @@ namespace WornEnchantmentPBR
 				prepared.ripple = rendered;
 			},
 			[&](const MaterialClustersSource& clusters) {
-				// The map as the last prepare left it: rendered under these
-				// settings, failed, or never asked for.
 				prepared.sampling.meshSpace = true;
 				const DerivedMaps& derived = *a_inputs.derived;
 				if (derived.clusters && derived.clusterSettings == SettingsOf(clusters)) {
@@ -717,8 +665,6 @@ namespace WornEnchantmentPBR
 		return prepared;
 	}
 
-	// ---------------------------------------------------------- rendered masks
-
 	RE::NiSourceTexture* RenderedMask::Texture() const noexcept
 	{
 		return target_ ? target_->Texture() : nullptr;
@@ -736,7 +682,7 @@ namespace WornEnchantmentPBR
 			return it->second;
 		}
 		auto rendered = std::make_shared<RenderedMask>();
-		(*a_inputs.masks)[key] = rendered;  // in the cache before recursion, so a cycle finds an unfinished mask
+		(*a_inputs.masks)[key] = rendered;
 		auto& r = *rendered;
 		const auto fail = [&](std::string a_problem) {
 			r.problem_ = std::move(a_problem);
@@ -753,7 +699,6 @@ namespace WornEnchantmentPBR
 		}
 		const auto graph = GraphFor(a_recipe);
 
-		// Every name the program reads: an image slot or a per-tick value.
 		std::vector<Diagnostic> ignored;
 		for (const auto& name : program->References()) {
 			RenderedMask::RefBinding binding;
@@ -834,8 +779,6 @@ namespace WornEnchantmentPBR
 		return rendered;
 	}
 
-	// ------------------------------------------------------------------ bakes
-
 	std::expected<std::shared_ptr<MeshEntry>, std::string> Compositor::MeshOf(RE::BSGeometry* a_geometry)
 	{
 		return meshes_.Get(a_geometry, nowMS_, GetSettings().verboseLogging);
@@ -865,8 +808,6 @@ namespace WornEnchantmentPBR
 			record.problem = std::format("RMAOS {}; diffuse {}", DescribeTexture(a_material.rmaos), DescribeTexture(a_material.diffuse));
 			return record;
 		}
-		// The readback waits on the GPU; the line before it names the step
-		// should the wait never end.
 		const bool verbose = GetSettings().verboseLogging;
 		if (verbose) {
 			logger::info("material '{}': sampling", a_material.rmaos->name.c_str() ? a_material.rmaos->name.c_str() : "?");
@@ -933,8 +874,6 @@ namespace WornEnchantmentPBR
 		if (!entry) {
 			return std::unexpected(entry.error());
 		}
-		// The id maps come from the analysis stored with the read; every
-		// other kind from the mesh alone.
 		return BakeInto(**entry, BakeKeyOf(a_bake.bake, a_size), a_size, [&] {
 			if (Is<ComponentIdBake>(a_bake.bake)) {
 				return BuildIslandBake(*(*entry)->mesh, (*entry)->analysis, IslandSource::kComponent);
@@ -952,9 +891,6 @@ namespace WornEnchantmentPBR
 		if (!entry) {
 			return std::unexpected(entry.error());
 		}
-		// The key names the node, not its position: a node resolves to one
-		// bind-pose point per geometry, and the snapshot can then find the
-		// bake without looking the node up.
 		std::optional<Vec3> from = Match(
 			a_distance.from,
 			[&](const Vec3& point) { return std::optional{ point }; },
@@ -964,8 +900,6 @@ namespace WornEnchantmentPBR
 		}
 		return BakeInto(**entry, DistanceKeyOf(a_distance, a_size), a_size, [&] { return BuildDistanceBake(*(*entry)->mesh, *from); });
 	}
-
-	// ---------------------------------------------------------------- ripples
 
 	RE::NiSourceTexture* RenderedRipple::Texture() const noexcept
 	{
@@ -989,8 +923,6 @@ namespace WornEnchantmentPBR
 		if (!entry) {
 			return std::unexpected(entry.error());
 		}
-		// The position bake every ripple on this geometry shares with any
-		// position source, under the same definition key.
 		auto positions = BakeInto(**entry, BakeKeyOf(PositionBake{}, a_size), a_size, [&] { return BuildBake(*(*entry)->mesh, PositionBake{}); });
 		if (!positions) {
 			return std::unexpected(positions.error());
@@ -1005,7 +937,6 @@ namespace WornEnchantmentPBR
 		ripple->fallbackOrigin_ = (*entry)->mesh->center;
 		ripple->geometry_ = a_inputs.geometry;
 		ripple->root_ = a_inputs.root;
-		// A pooled target keeps its last content; a pass with no firings paints it black.
 		TextureLab::RipplePass clear;
 		clear.positions = ripple->positions_->Texture();
 		lab->RenderRipple(*ripple->target_, clear);
@@ -1030,7 +961,6 @@ namespace WornEnchantmentPBR
 			if (pass.firingCount >= pass.firings.size()) {
 				break;
 			}
-			// Where the front starts: the firing's position, else its node, else the piece's centre.
 			std::optional<Vec3> origin;
 			if (firing.payload.position) {
 				origin = ToRootSpace(a_ripple.root_.get(), *firing.payload.position);
@@ -1040,7 +970,7 @@ namespace WornEnchantmentPBR
 			pass.firings[pass.firingCount++] = { origin.value_or(a_ripple.fallbackOrigin_), std::max(0.0f, a_time - firing.startTime) };
 		}
 		if (pass.firingCount == 0 && !a_ripple.hadFirings_) {
-			return;  // still black; nothing to draw or clear
+			return;
 		}
 		a_ripple.hadFirings_ = pass.firingCount > 0;
 		TextureLab::GetSingleton()->RenderRipple(*a_ripple.target_, pass);
@@ -1048,7 +978,6 @@ namespace WornEnchantmentPBR
 
 	namespace
 	{
-		// The sampling of a source with this tick's scroll and tile.
 		TextureLab::LayerInput SamplingNow(const PreparedSource& a_source, const SignalState& a_signals)
 		{
 			auto input = a_source.sampling;
@@ -1076,7 +1005,7 @@ namespace WornEnchantmentPBR
 		}
 		for (const auto& dependency : a_mask.dependencies_) {
 			if (dependency) {
-				RenderMask(*dependency, a_signals, a_time);  // depth bounded at preparation
+				RenderMask(*dependency, a_signals, a_time);
 			}
 		}
 		for (const auto& texture : a_mask.textures_) {
@@ -1084,9 +1013,6 @@ namespace WornEnchantmentPBR
 				RenderRipple(*texture.ripple, a_signals, a_time);
 			}
 		}
-		// PrepareRenderedMask refused this mask if it read more than the pass
-		// holds, so the counts fit; the checks keep a write inside the arrays
-		// regardless.
 		TextureLab::ProgramPass pass;
 		pass.code = a_mask.program_->Code();
 		for (const auto& binding : a_mask.refs_) {
@@ -1158,8 +1084,6 @@ namespace WornEnchantmentPBR
 		if (!own || !scratch) {
 			return;
 		}
-		// Writes alternate between the stack's target and the scratch; the
-		// last layer must land in the stack's own target.
 		TextureLab::RenderTarget* previous = nullptr;
 		TextureLab::RenderTarget* write = shown % 2 == 1 ? own : scratch;
 		TextureLab::RenderTarget* other = write == own ? scratch : own;

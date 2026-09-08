@@ -23,7 +23,6 @@ namespace
 		}
 		*path /= WornEnchantmentPBR::Identity::LogFileName();
 		auto sink = std::make_shared<spdlog::sinks::basic_file_sink_mt>(path->string(), true);
-		// The menu's Log page reads the last lines from this ring buffer.
 		WornEnchantmentPBR::g_logRing = std::make_shared<spdlog::sinks::ringbuffer_sink_mt>(300);
 		auto log = std::make_shared<spdlog::logger>("global", spdlog::sinks_init_list{ sink, WornEnchantmentPBR::g_logRing });
 		log->set_level(spdlog::level::info);
@@ -37,7 +36,6 @@ namespace
 		return REX::W32::GetModuleHandleW(L"CommunityShaders.dll") != nullptr;
 	}
 
-	// all.c:32840-32866
 	void OnMessage(SKSE::MessagingInterface::Message* a_msg)
 	{
 		using namespace WornEnchantmentPBR;

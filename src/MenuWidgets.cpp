@@ -14,14 +14,12 @@
 #include "extern/SKSEMenuFramework.h"
 #pragma clang diagnostic pop
 
-// The SDK header keeps the ImGui wrappers and types in ImGuiMCP.
 namespace ImGui = ImGuiMCP;
 using ImGuiMCP::ImGuiID;
 using ImGuiMCP::ImTextureID;
 using ImGuiMCP::ImVec2;
 using ImGuiMCP::ImVec4;
 
-// A field key is the ImGuiID of its literal in the scope it is drawn in.
 static_assert(std::is_same_v<WornEnchantmentPBR::Studio::FieldKey, ImGuiID>);
 
 namespace WornEnchantmentPBR::Studio::Widgets
@@ -29,13 +27,11 @@ namespace WornEnchantmentPBR::Studio::Widgets
 	namespace
 	{
 		constexpr ImVec4 kWarn{ 1.0f, 0.8f, 0.3f, 1.0f };
-		constexpr ImVec4 kProblemFrame{ 0.45f, 0.12f, 0.12f, 1.0f };  // a field whose text would be refused
+		constexpr ImVec4 kProblemFrame{ 0.45f, 0.12f, 0.12f, 1.0f };
 		constexpr ImVec4 kOk{ 0.5f, 0.9f, 0.5f, 1.0f };
 		constexpr ImVec4 kBad{ 1.0f, 0.4f, 0.4f, 1.0f };
 		constexpr ImVec4 kDim{ 0.6f, 0.6f, 0.6f, 1.0f };
 
-		// ImGui's exact "everything left". -1 would leave a pixel, and a
-		// stretch table measuring such content shrinks a pixel per frame.
 		constexpr float kFillWidth = -(std::numeric_limits<float>::min)();
 
 		[[nodiscard]] const char* Literal(const char* a_key) noexcept
@@ -43,7 +39,6 @@ namespace WornEnchantmentPBR::Studio::Widgets
 			return a_key ? a_key : "";
 		}
 
-		// The key of a field drawn under a_key in the current ID scope.
 		[[nodiscard]] FieldKey KeyOf(const char* a_key)
 		{
 			return ImGui::GetID(Literal(a_key));
@@ -62,9 +57,6 @@ namespace WornEnchantmentPBR::Studio::Widgets
 			return kFillWidth;
 		}
 
-		// A field owns the active-field mark while the user is in it and
-		// gives it back when the item deactivates, so the next frame shows
-		// the model again.
 		void TrackActive(FieldKey a_key)
 		{
 			auto& state = State();
@@ -80,7 +72,6 @@ namespace WornEnchantmentPBR::Studio::Widgets
 			ImGui::TextColored(a_color, "%.*s", static_cast<int>(a_text.size()), a_text.data());
 		}
 
-		// The preview's shader view, when the lab can make one; null otherwise.
 		[[nodiscard]] ImTextureID PreviewOf(TextureHandle a_texture, ShaderChannel a_channel, bool a_dynamic)
 		{
 			if (!a_texture) {
@@ -94,8 +85,6 @@ namespace WornEnchantmentPBR::Studio::Widgets
 			return preview && preview->srv ? reinterpret_cast<ImTextureID>(preview->srv) : nullptr;
 		}
 
-		// The names as "@name" entries of an open combo, then the creators
-		// past a separator, as written; returns the chosen text.
 		[[nodiscard]] std::optional<std::string> ReferenceEntries(const std::string& a_current, std::span<const std::string> a_names, bool a_allowEmpty, std::span<const std::string> a_creators)
 		{
 			std::optional<std::string> chosen;
@@ -119,8 +108,6 @@ namespace WornEnchantmentPBR::Studio::Widgets
 			return chosen;
 		}
 	}
-
-	// ------------------------------------------------------------------ types
 
 	Width Width::Fill() noexcept
 	{
@@ -178,7 +165,6 @@ namespace WornEnchantmentPBR::Studio::Widgets
 				ImGui::TableSetupColumn(column.label, ImGuiMCP::ImGuiTableColumnFlags_WidthStretch);
 				break;
 			case Width::Mode::kFit:
-				// A fixed column with no width sizes to its widest content.
 				ImGui::TableSetupColumn(column.label, ImGuiMCP::ImGuiTableColumnFlags_WidthFixed, width.text.empty() ? 0.0f : FitWidth(width.text));
 				break;
 			case Width::Mode::kPx:
@@ -214,8 +200,6 @@ namespace WornEnchantmentPBR::Studio::Widgets
 		open_ = false;
 	}
 
-	// ----------------------------------------------------------------- widths
-
 	void NextItemWidth(const Width& a_width, float a_scale)
 	{
 		ImGui::SetNextItemWidth(Resolve(a_width, a_scale));
@@ -224,7 +208,6 @@ namespace WornEnchantmentPBR::Studio::Widgets
 	float FitWidth(std::string_view a_text)
 	{
 		const auto text = ImGui::CalcTextSize(a_text.data(), a_text.data() + a_text.size());
-		// Frame padding either side, the arrow square, and a little slack.
 		return text.x + ImGui::GetFrameHeight() * 2.0f + 8.0f;
 	}
 
@@ -271,14 +254,8 @@ namespace WornEnchantmentPBR::Studio::Widgets
 		return width;
 	}
 
-	// ----------------------------------------------------------------- fields
-
 	namespace
 	{
-		// The reason a field's text would be refused, as a label floating under
-		// the field (above it when the window ends too soon), on the foreground
-		// draw list: it takes no layout space, so nothing under the field moves
-		// while the text is being fixed, and a row needs no room for it.
 		void ProblemLabel(std::string_view a_text)
 		{
 			const ImVec2 itemMin = ImGui::GetItemRectMin();
@@ -312,10 +289,6 @@ namespace WornEnchantmentPBR::Studio::Widgets
 			std::memcpy(buffer.data(), a_model.data(), n);
 			buffer[n] = '\0';
 		}
-		// While the field is being typed into, its text is checked each frame:
-		// the frame reads red with the reason floating under it until it
-		// passes. Enter on a failing text keeps the text and the focus, so it
-		// can be fixed rather than typed again.
 		const std::optional<std::string> problem = (a_check && state.activeField == key) ? a_check(std::string{ buffer.data() }) : std::nullopt;
 		ImGui::PushID(Literal(a_key));
 		if (problem) {
@@ -326,9 +299,6 @@ namespace WornEnchantmentPBR::Studio::Widgets
 		if (problem) {
 			ImGui::PopStyleColor();
 		}
-		// Tracked from the input itself: an item drawn after it would report
-		// its own, never active, state and the field would read inactive
-		// every other frame.
 		TrackActive(key);
 		if (problem) {
 			ProblemLabel(*problem);
@@ -337,7 +307,7 @@ namespace WornEnchantmentPBR::Studio::Widgets
 		if (committed) {
 			std::string text{ buffer.data() };
 			if (a_check && a_check(text)) {
-				state.activeField = key;  // refused: the text stays, and the focus with it
+				state.activeField = key;
 				ImGui::SetKeyboardFocusHere(-1);
 			} else {
 				state.activeField = kNoField;
@@ -360,10 +330,6 @@ namespace WornEnchantmentPBR::Studio::Widgets
 
 	namespace
 	{
-		// A swatch the height of a field showing the colour its text names
-		// (grey when it names none), opening a picker in a popup. The held
-		// colour follows the text while the popup is closed and the picker
-		// while it is open; a pick returns its text on release.
 		[[nodiscard]] std::optional<std::string> ColorSwatchPicker(FieldKey a_key, const std::string& a_current)
 		{
 			auto& held = State().numberBuffers[a_key];
@@ -387,8 +353,6 @@ namespace WornEnchantmentPBR::Studio::Widgets
 			return picked;
 		}
 	}
-
-	// ------------------------------------------------------------- thumbnails
 
 	void Thumbnail(TextureHandle a_texture, ShaderChannel a_channel, bool a_dynamic, float a_size)
 	{
@@ -414,8 +378,6 @@ namespace WornEnchantmentPBR::Studio::Widgets
 		return clicked;
 	}
 
-	// ----------------------------------------------------------------- combos
-
 	std::optional<Blend> BlendCombo(const char* a_key, std::string_view a_current, std::span<const Blend> a_allowed, const Width& a_width, float a_scale)
 	{
 		std::optional<Blend> chosen;
@@ -434,7 +396,6 @@ namespace WornEnchantmentPBR::Studio::Widgets
 		ImGui::PopID();
 		return chosen;
 	}
-
 
 	std::optional<std::string> ChoiceCombo(const char* a_key, const std::string& a_current, std::span<const std::string> a_names, const Width& a_width, float a_scale)
 	{
@@ -466,14 +427,12 @@ namespace WornEnchantmentPBR::Studio::Widgets
 		return chosen;
 	}
 
-	// ----------------------------------------------------------------- badges
-
 	namespace
 	{
 		struct BadgeStyle
 		{
 			const char* glyph;
-			bool        takesSignal;  // an "@" mark follows: a @signal stands in for the value
+			bool        takesSignal;
 			ImVec4      colour;
 			const char* rule;
 		};
@@ -488,9 +447,6 @@ namespace WornEnchantmentPBR::Studio::Widgets
 		constexpr ImVec4 kChannelGrey{ 0.85f, 0.85f, 0.85f, 1.0f };
 		constexpr ImVec4 kBadgeFrame{ 0.20f, 0.20f, 0.24f, 1.0f };
 
-		// The badge colour, keyed by kind: ImVec4 is ImGui-typed, so it stays
-		// here rather than in the engine-free FieldKindSpec table. Values
-		// (blue, orange, teal) take a @signal in their place.
 		constexpr ImVec4 ColourOf(FieldKind a_kind) noexcept
 		{
 			switch (a_kind) {
@@ -518,8 +474,6 @@ namespace WornEnchantmentPBR::Studio::Widgets
 			return kDim;
 		}
 
-		// The glyph, whether a @signal may stand in, and the tooltip's rule
-		// come from the kind's row in Forms.h; the colour is looked up here.
 		BadgeStyle StyleOf(FieldKind a_kind) noexcept
 		{
 			const auto* row = RowOf(kFieldKinds, a_kind);
@@ -529,9 +483,6 @@ namespace WornEnchantmentPBR::Studio::Widgets
 			return { row->glyph, row->takesSignal, ColourOf(a_kind), row->rule };
 		}
 
-		// Filled (the kind's colour behind a dark glyph) when a signal can
-		// drive the field; outlined (a dark square with the glyph in the kind's
-		// colour) when the value is literal. One character either way.
 		void BadgeFrame(const char* a_label, const ImVec4& a_colour, bool a_filled, float a_width, float a_height)
 		{
 			const ImVec4 back = a_filled ? a_colour : kBadgeFrame;
@@ -549,8 +500,6 @@ namespace WornEnchantmentPBR::Studio::Widgets
 	{
 		const auto  style = StyleOf(a_kind);
 		const float side = ImGui::GetFrameHeight();
-		// One square the height of the field, flush against it: filled when a
-		// signal can stand in for the value, outlined otherwise.
 		BadgeFrame(style.glyph, style.colour, style.takesSignal, side, side);
 		Tooltip(style.rule);
 		ImGui::SameLine(0.0f, 0.0f);
@@ -569,7 +518,6 @@ namespace WornEnchantmentPBR::Studio::Widgets
 			mode = state.comboMode.emplace(key, reference).first;
 		}
 		ImGui::PushID(Literal(a_key));
-		// The badge: a button when a signal may stand in, inert otherwise.
 		if (takesSignal) {
 			ImGui::PushStyleColor(ImGuiMCP::ImGuiCol_Button, style.colour);
 			ImGui::PushStyleColor(ImGuiMCP::ImGuiCol_ButtonHovered, ImVec4{ style.colour.x * 0.85f, style.colour.y * 0.85f, style.colour.z * 0.85f, 1.0f });
@@ -639,8 +587,6 @@ namespace WornEnchantmentPBR::Studio::Widgets
 		ImGui::TextUnformatted(ValueText(a_value).c_str());
 	}
 
-	// ----------------------------------------------------------------- layout
-
 	bool ModeBar(Mode& a_mode)
 	{
 		const Mode before = a_mode;
@@ -668,9 +614,6 @@ namespace WornEnchantmentPBR::Studio::Widgets
 		if (!ImGui::BeginTable(Literal(a_id), 2, ImGuiMCP::ImGuiTableFlags_Resizable | ImGuiMCP::ImGuiTableFlags_BordersInnerV | ImGuiMCP::ImGuiTableFlags_SizingStretchProp)) {
 			return;
 		}
-		// The weights set the split when the table first appears; after that
-		// ImGui keeps the widths the user drags, and the cells' widths read
-		// them back into the ratio.
 		ImGui::TableSetupColumn("left", ImGuiMCP::ImGuiTableColumnFlags_WidthStretch, ratio);
 		ImGui::TableSetupColumn("right", ImGuiMCP::ImGuiTableColumnFlags_WidthStretch, 1.0f - ratio);
 		ImGui::TableNextRow();
@@ -692,8 +635,6 @@ namespace WornEnchantmentPBR::Studio::Widgets
 
 	namespace
 	{
-		// The text at the left, or a frame's height of nothing; then the
-		// item, moved to the right edge of the line.
 		void DrawRuleLine(const RuleLine& a_line)
 		{
 			if (a_line.text.empty()) {
@@ -722,8 +663,6 @@ namespace WornEnchantmentPBR::Studio::Widgets
 
 	float RuleHeight()
 	{
-		// Two frame-high lines and the separator's line, each followed by the
-		// item spacing.
 		const auto* style = ImGui::GetStyle();
 		const float spacing = style ? style->ItemSpacing.y : 4.0f;
 		return ImGui::GetFrameHeight() * 2.0f + 1.0f + spacing * 3.0f;
@@ -738,9 +677,6 @@ namespace WornEnchantmentPBR::Studio::Widgets
 
 	void DetailModal(const char* a_title, const std::function<void()>& a_body)
 	{
-		// An auto-resizing window starts narrow and wrapped text then wraps
-		// every few characters; a floor on the width keeps a definition on
-		// one or two lines.
 		ImGui::SetNextWindowSizeConstraints(ImVec2{ 480.0f, 0.0f }, ImVec2{ 960.0f, 800.0f });
 		if (!ImGui::BeginPopupModal(Literal(a_title), nullptr, ImGuiMCP::ImGuiWindowFlags_AlwaysAutoResize)) {
 			return;
@@ -751,7 +687,6 @@ namespace WornEnchantmentPBR::Studio::Widgets
 		}
 		ImGui::EndPopup();
 	}
-
 
 	ChooserPick ChooserRow(Table& a_table, std::string_view a_name, std::string_view a_detail, std::optional<float> a_share, const std::optional<std::string>& a_unavailable, const char* a_action)
 	{
@@ -825,7 +760,6 @@ namespace WornEnchantmentPBR::Studio::Widgets
 
 	namespace
 	{
-		// A square button drawn filled while its value is on; a click flips it.
 		bool SquareToggle(const char* a_label, bool& a_value, std::string_view a_tooltip)
 		{
 			const float side = RowButtonWidth();
@@ -879,8 +813,6 @@ namespace WornEnchantmentPBR::Studio::Widgets
 		return changed;
 	}
 
-	// ------------------------------------------------------------- reordering
-
 	bool DragHandle(const char* a_type, std::size_t a_index, const char* a_noun)
 	{
 		const float side = RowButtonWidth();
@@ -898,7 +830,6 @@ namespace WornEnchantmentPBR::Studio::Widgets
 		std::optional<RowMove> move;
 		if (ImGui::BeginDragDropTarget()) {
 			if (const auto* payload = ImGui::AcceptDragDropPayload(a_type)) {
-				// The payload is bytes ImGui copied; only a whole index is a row.
 				if (payload->Data && payload->DataSize == static_cast<int>(sizeof(std::size_t))) {
 					std::size_t from = 0;
 					std::memcpy(&from, payload->Data, sizeof(from));
@@ -911,8 +842,6 @@ namespace WornEnchantmentPBR::Studio::Widgets
 		}
 		return move;
 	}
-
-	// ------------------------------------------------------------------- text
 
 	void Problem(std::string_view a_text)
 	{

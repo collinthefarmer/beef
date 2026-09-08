@@ -32,12 +32,6 @@
 namespace ImGui = ImGuiMCP;
 using ImGuiMCP::ImVec2;
 
-// The compose page draws view models built from the snapshot and the page
-// state, and collects what the widgets ask for as intents. Nothing here
-// writes the selection while drawing: after the frame, Dispatch runs every
-// intent through Reduce (the state change) and Perform (its effect on the
-// manager and the view), so every record drawn in a frame came from the
-// state the frame began with.
 namespace WornEnchantmentPBR::Studio
 {
 	namespace
@@ -46,36 +40,22 @@ namespace WornEnchantmentPBR::Studio
 		using Widgets::Width;
 		using Intents = std::vector<Intent>;
 
-		constexpr float       kFilterWidth = 160.0f;  // a table's name filter
+		constexpr float       kFilterWidth = 160.0f;
 		constexpr const char* kLayerPayload = "WEPBR_LAYER";
 
-		// The tables' looks. A grid is rows of data (the board, the signals,
-		// the curves); a context table fits its pickers; a form is fields
-		// with an input each; the layer list is the stack's rows.
 		constexpr TableStyle kGridStyle{ .borders = TableStyle::Borders::kAll, .stretch = true, .headers = true, .rowBackground = true };
 		constexpr TableStyle kContextStyle{ .borders = TableStyle::Borders::kAll, .stretch = false, .headers = true, .rowBackground = false };
 		constexpr TableStyle kFormStyle{ .borders = TableStyle::Borders::kInnerHorizontal, .stretch = true, .headers = false, .rowBackground = false };
-		// The light's and the shell's settings are dealt into this many field
-		// tables side by side, so the pane shows them without scrolling.
 		constexpr std::size_t kSettingsColumns = 2;
 		constexpr TableStyle  kColumnsStyle{ .borders = TableStyle::Borders::kNone, .stretch = true, .headers = false, .rowBackground = false };
 		constexpr TableStyle kLayerStyle{ .borders = TableStyle::Borders::kInnerHorizontal, .stretch = true, .headers = true, .rowBackground = true };
 		constexpr TableStyle kFooterStyle{ .borders = TableStyle::Borders::kAll, .stretch = true, .headers = true, .rowBackground = false };
 
-		// ------------------------------------------------------- dispatch
-
-		// Text that does not parse never becomes an edit; it is reported and
-		// the field shows the model again.
 		void Refuse(std::string_view a_field, const std::string& a_text)
 		{
 			logger::warn("{} not applied: '{}' does not parse", a_field, a_text);
 		}
 
-		// The effect of an intent beyond the page state: an edit goes through
-		// the manager, which retires the wearers, applies it to the store's
-		// copy, re-validates and re-applies (a refused edit is a log line);
-		// solo, mute, freeze, scrub and speed set the view the tick reads;
-		// undo, redo, a new recipe and a fired trigger are the manager's.
 		void Perform(const Intent& a_intent, const View& a_view)
 		{
 			auto*       manager = Manager::GetSingleton();
@@ -89,13 +69,6 @@ namespace WornEnchantmentPBR::Studio
 						}
 					});
 				},
-				// Isolation has three levels, recipe, output and layer, and turning
-				// a level off leaves the levels above it as they were. Isolating a
-				// different recipe re-applies the wearers so it is bound alone.
-				// Isolation has three levels, recipe, output and layer. Soloing an
-				// output or a layer isolates its recipe too, since nothing shows
-				// alone otherwise; when that solo turns off, an isolate it began
-				// ends with it, and one the recipe row set stays.
 				[&](const SoloRecipe& i) {
 					manager->UpdateView([](View& a_live) { a_live.isolatedBySolo = false; });
 					manager->Isolate(i.on ? i.recipe : std::string{}, -1, -1);
@@ -135,7 +108,7 @@ namespace WornEnchantmentPBR::Studio
 					manager->UpdateView([on = i.on, at = i.at](View& a_live) {
 						a_live.freeze = on;
 						if (on) {
-							a_live.scrubSeconds = at;  // freezing holds the moment, not the slider's old value
+							a_live.scrubSeconds = at;
 						}
 					});
 				},
@@ -148,7 +121,6 @@ namespace WornEnchantmentPBR::Studio
 				[&](const SetSpeed& i) {
 					manager->UpdateView([speed = std::clamp(i.speed, 0.0f, 8.0f)](View& a_live) { a_live.speed = speed; });
 				},
-				// One tick of the recipe clock, held frozen at the new moment.
 				[&](const StepClock&) {
 					manager->UpdateView([](View& a_live) {
 						a_live.freeze = true;
@@ -168,8 +140,6 @@ namespace WornEnchantmentPBR::Studio
 				[](const auto&) {});
 		}
 
-		// Each intent reaches the manager, then the state; the layer
-		// selection is clamped against the snapshot the frame was drawn from.
 		void Dispatch(Intents& a_intents, MenuState& a_state, const Snapshot& a_snapshot)
 		{
 			for (const auto& intent : a_intents) {
@@ -180,22 +150,13 @@ namespace WornEnchantmentPBR::Studio
 			a_intents.clear();
 		}
 
-		// A recipe edit as an intent, for the widgets that make them.
 		void Post(Intents& a_out, const std::string& a_recipe, RecipeEdit a_edit)
 		{
 			a_out.push_back(EditRecipe{ a_recipe, std::move(a_edit) });
 		}
 
-		// Defined with the region editor; the Masks tab's edit button uses it.
 		void EditMaskAsRegion(const RecipeRow& a_recipe, const TextRow& a_mask, Intents& a_out);
 
-		// ---------------------------------------------------------- forms
-
-		// The input for a field, by its kind: a reference is a combo over the
-		// names; a choice a combo over plain names; a toggle a checkbox; an
-		// expression, mask, channel set or text is a badge and a text field;
-		// a value (scalar, colour, vector, curve) is a value field whose badge
-		// switches between text and a signal combo.
 		[[nodiscard]] std::optional<std::string> FieldInput(const FormField& a_field, float a_scale, const Names& a_names)
 		{
 			const Widgets::TextCheck check = [&](const std::string& a_text) { return CheckField(a_field, a_text, a_names); };
@@ -225,8 +186,6 @@ namespace WornEnchantmentPBR::Studio
 			return std::nullopt;
 		}
 
-		// A combo's creator entry makes its row and binds the field, as the
-		// edits the field's creator returns; any other text is the field's.
 		void PostField(const FormField& a_field, const std::string& a_text, const std::string& a_recipe, Intents& a_out)
 		{
 			if (std::ranges::find(a_field.creators, a_text) != a_field.creators.end()) {
@@ -245,11 +204,6 @@ namespace WornEnchantmentPBR::Studio
 			}
 		}
 
-		// The field table of a form's fields: the field's name, its detail
-		// button where it has details, and the input filling the rest, each
-		// row in its own ID scope. A committed text becomes the field's edit,
-		// or a log line when it does not parse. Returns the index into
-		// a_fields of the field whose detail button was clicked.
 		[[nodiscard]] std::optional<std::size_t> DrawFieldTable(const char* a_id, std::span<const FormField> a_fields, const std::string& a_recipe, float a_scale, const Names& a_names, Intents& a_out)
 		{
 			std::optional<std::size_t> open;
@@ -281,10 +235,6 @@ namespace WornEnchantmentPBR::Studio
 			return open;
 		}
 
-		// A form as the field table, or as a_columns field tables side by
-		// side, the fields dealt out in order so a form the pane cannot show
-		// whole fits without scrolling. Returns the index of the field whose
-		// detail button was clicked.
 		[[nodiscard]] std::optional<std::size_t> DrawForm(const char* a_id, std::span<const FormField> a_form, const std::string& a_recipe, float a_scale, const Names& a_names, Intents& a_out, std::size_t a_columns = 1)
 		{
 			if (a_columns <= 1) {
@@ -311,12 +261,6 @@ namespace WornEnchantmentPBR::Studio
 			return open;
 		}
 
-		// ------------------------------------------------------ selection
-
-		// A recipe's rows are the same for every shape of the piece, but the
-		// compositor renders them per shape (its own maps, bakes and size), so
-		// the selection names whose rendering is shown; edits reach every
-		// shape. Viewing moves to the next shape of the recipe, wrapping.
 		[[nodiscard]] std::optional<ViewGeometry> NextGeometry(const RecipeRow& a_recipe, const GeometryRow& a_geometry)
 		{
 			const auto& shapes = a_recipe.geometries;
@@ -374,14 +318,11 @@ namespace WornEnchantmentPBR::Studio
 			}
 		}
 
-		// ---------------------------------------------------------- board
-
 		[[nodiscard]] std::span<const SlotRow> SlotRowsOf(const GeometryRow& a_geometry, Surface a_surface) noexcept
 		{
 			return a_surface == Surface::kMaterial ? a_geometry.materialSlots : a_geometry.shellSlots;
 		}
 
-		// What the binding wrote on the cell's slot, and the slot's scalars.
 		[[nodiscard]] std::string CellTooltip(const Cell& a_cell, const GeometryRow& a_geometry)
 		{
 			auto text = std::format("{} on {}", SlotName(a_cell.slot), SurfaceName(a_cell.surface));
@@ -413,9 +354,6 @@ namespace WornEnchantmentPBR::Studio
 			return text;
 		}
 
-		// Picking a written cell picks its top layer (the last applied), so
-		// the inspector opens on something at once; a single-layer stack needs
-		// no second click.
 		[[nodiscard]] PickCell PickOf(const Cell& a_cell)
 		{
 			return PickCell{ a_cell.surface, a_cell.slot, a_cell.layers > 0 ? std::optional{ a_cell.layers - 1 } : std::nullopt };
@@ -459,7 +397,7 @@ namespace WornEnchantmentPBR::Studio
 			const float side = a_layout.cellSize * a_layout.widgetScale;
 			switch (a_cell->state) {
 			case CellState::kAbsent:
-				return;  // the surface has no such slot: nothing to draw
+				return;
 			case CellState::kWritten:
 				DrawWrittenCell(*a_cell, a_recipe, a_geometry, a_selection, a_layout, a_out);
 				return;
@@ -534,13 +472,6 @@ namespace WornEnchantmentPBR::Studio
 			table.End();
 		}
 
-		// -------------------------------------------------------- context
-		// Two tables under their rules. Recipe: the recipe applied alone, the
-		// piece, the recipe within it; its rule carries New, Rename, Clear,
-		// keys, Undo and Redo. Output: the picked output alone, the target (material, shell or
-		// the light: the format's word for where an output goes), the slot on
-		// it; its rule carries Clear.
-
 		[[nodiscard]] std::string SlotLabel(const Cell& a_cell)
 		{
 			const std::string name{ SlotName(a_cell.slot) };
@@ -606,7 +537,6 @@ namespace WornEnchantmentPBR::Studio
 			ImGui::EndCombo();
 		}
 
-		// The picked cell, or null when the light or nothing is picked.
 		[[nodiscard]] const Cell* PickedCell(const Board& a_board, const Selection& a_selection) noexcept
 		{
 			if (a_selection.target == Target::kLight || !a_selection.slot) {
@@ -615,13 +545,8 @@ namespace WornEnchantmentPBR::Studio
 			return CellAt(a_board, SurfaceOf(a_selection.target), *a_selection.slot);
 		}
 
-		// An empty recipe keyed to the worn armor, under an id typed here; it
-		// is selected as soon as the snapshot carries it.
 		std::optional<RecipeKey> DefaultKeyOf(const PieceRow& a_piece);
 
-		// The keys the recipe resolves by, in a popup: each with remove (the
-		// last one greyed), then what the piece carries that the recipe lacks
-		// as a combo, then a keyword by editor id for pieces beyond this one.
 		void KeysPopup(const PieceRow& a_piece, const RecipeRow& a_recipe, Intents& a_out)
 		{
 			if (!ImGui::BeginPopup("recipe-keys")) {
@@ -723,10 +648,6 @@ namespace WornEnchantmentPBR::Studio
 			table.End();
 		}
 
-		// The Recipe rule's right group, as every rule carries its actions at
-		// its right edge: New (a recipe named recipe, recipe-2, ..., keyed to
-		// the armor, with one empty emissive output on the material for the
-		// viewed geometry alone), keys, then Undo and Redo.
 		[[nodiscard]] Widgets::RuleLine RecipeRule(const PieceRow& a_piece, const RecipeRow& a_recipe, const GeometryRow& a_geometry, Intents& a_out)
 		{
 			const float newWidth = Widgets::ButtonWidth("New");
@@ -797,7 +718,6 @@ namespace WornEnchantmentPBR::Studio
 
 		void ClearButton(const RecipeRow& a_recipe, std::optional<std::size_t> a_output, Intents& a_out);
 
-		// The Output rule's right group: Clear, which removes the picked output.
 		[[nodiscard]] Widgets::RuleLine OutputRule(const Board& a_board, const RecipeRow& a_recipe, const Cell* a_picked, const Selection& a_selection, Intents& a_out)
 		{
 			const float clearWidth = Widgets::ButtonWidth("Clear");
@@ -807,9 +727,6 @@ namespace WornEnchantmentPBR::Studio
 								 } };
 		}
 
-		// Clear removes the picked output, layers and all, so the slot reads
-		// empty again (or the recipe has no light); the target and slot stay
-		// picked.
 		void ClearButton(const RecipeRow& a_recipe, std::optional<std::size_t> a_output, Intents& a_out)
 		{
 			const std::optional<std::size_t> output = a_output;
@@ -825,14 +742,11 @@ namespace WornEnchantmentPBR::Studio
 			Widgets::Tooltip("remove the picked slot's output and every layer in it");
 		}
 
-		// What the stack pane can show for a target: the shell and the light
-		// have settings; the material and the shell have a stack. The switch
-		// is the page's, and the pane falls back to what the target has.
 		struct PaneChoice
 		{
 			bool hasSettings = false;
 			bool hasStack = false;
-			bool settings = false;  // what is shown
+			bool settings = false;
 		};
 
 		[[nodiscard]] PaneChoice ChoosePane(Target a_target, bool a_settingsWanted) noexcept
@@ -844,8 +758,6 @@ namespace WornEnchantmentPBR::Studio
 			return choice;
 		}
 
-		// Columns fit their content and each combo is as wide as its preview,
-		// so a long name is never clipped while a short neighbour has room.
 		void DrawEditContext(const Board& a_board, const RecipeRow& a_recipe, const Cell* a_picked, const Selection& a_selection, Intents& a_out)
 		{
 			const bool light = a_selection.target == Target::kLight;
@@ -880,11 +792,6 @@ namespace WornEnchantmentPBR::Studio
 			table.End();
 		}
 
-		// The pane's rule: its title, and at the right edge one button naming
-		// what the pane would show instead (settings while the stack is
-		// shown, the stack while the settings are), greyed when the target
-		// lacks it; before it, while the settings are shown, Clear puts the
-		// target's settings back to the format's defaults.
 		[[nodiscard]] Widgets::RuleLine PaneRule(std::string_view a_title, const PaneChoice& a_pane, const Board& a_board, const RecipeRow& a_recipe, Target a_target, Intents& a_out)
 		{
 			const float switchWidth = (std::max)(Widgets::ButtonWidth("settings"), Widgets::ButtonWidth("stack"));
@@ -922,9 +829,6 @@ namespace WornEnchantmentPBR::Studio
 								 } };
 		}
 
-		// Both rows, then what the pick needs under them: Add output for an
-		// empty slot, the light's cell for the light, the reason for a refused
-		// one. Returns the picked cell.
 		const Cell* DrawContext(const Snapshot& a_snapshot, const Board& a_board, const PieceRow& a_piece, const RecipeRow& a_recipe, const GeometryRow& a_geometry, const Selection& a_selection, Intents& a_out)
 		{
 			const Cell* picked = PickedCell(a_board, a_selection);
@@ -957,15 +861,10 @@ namespace WornEnchantmentPBR::Studio
 			return picked;
 		}
 
-		// ---------------------------------------------------------- stack
-		// The stack is a list of rows, base first. A row is the index, remove,
-		// the grip, solo, mute, the source's type, the blend and the source;
-		// the selected row's fields are drawn beside the table.
-
 		void DrawInspectorFields(const Inspector& a_inspector, const RecipeRow& a_recipe, const Layout& a_layout, const Names& a_names, Intents& a_out);
 		void DrawFormWithSignals(const char* a_id, std::span<const FormField> a_form, const RecipeRow& a_recipe, FormID a_actorID, float a_scale, const Names& a_names, Intents& a_out, std::size_t a_columns = 1);
 
-		FormID g_modalActor = 0;  // the piece's actor, for a trigger fired from a modal; the body sets it
+		FormID g_modalActor = 0;
 
 		void DrawScalars(const LayerStack& a_stack, const RecipeRow& a_recipe, float a_scale, const Names& a_names, Intents& a_out)
 		{
@@ -996,8 +895,6 @@ namespace WornEnchantmentPBR::Studio
 			Widgets::Dim(std::format("{}  ({}, priority {}: {} {})", a_row.layer.source, a_row.recipe, a_row.priority, a_row.layer.opacityText, a_row.layer.mask));
 		}
 
-		// One layer as a table row, in its own ID scope. Clicking the grip or
-		// the name selects it.
 		void DrawStackRow(Widgets::Table& a_table, const LayerStack& a_stack, const LayerStackRow& a_row, const RecipeRow& a_recipe, Intents& a_out)
 		{
 			const auto&       id = a_recipe.id;
@@ -1033,7 +930,6 @@ namespace WornEnchantmentPBR::Studio
 			a_table.Cell();
 			Widgets::Badge(constant ? FieldKind::kColor : FieldKind::kReference);
 			a_table.Cell();
-			// Every blend combo the same width: the widest name the slot accepts.
 			if (const auto blend = Widgets::BlendCombo("blend", a_row.layer.blend, a_stack.blends, Width::Px(Widgets::BlendWidth(a_stack.blends)), 1.0f)) {
 				Post(a_out, id, SetLayerBlend{ output, index, *blend });
 			}
@@ -1047,8 +943,6 @@ namespace WornEnchantmentPBR::Studio
 			ImGui::PopID();
 		}
 
-		// A new layer is applied last and lands at the bottom, at the index
-		// the stack has now. Reduce selects it.
 		void DrawAddLayer(const LayerStack& a_stack, const RecipeRow& a_recipe, Intents& a_out)
 		{
 			if (ImGui::SmallButton("Add layer")) {
@@ -1056,10 +950,6 @@ namespace WornEnchantmentPBR::Studio
 			}
 		}
 
-		// The layer list: in application order, top to bottom, the recipes
-		// merging before this one, then this stack's base first and its last
-		// applied layer at the bottom, then the recipes merging after; and
-		// Add layer.
 		void DrawLayers(const LayerStack& a_stack, const RecipeRow& a_recipe, Intents& a_out)
 		{
 			auto table = BeginLayerTable();
@@ -1079,8 +969,6 @@ namespace WornEnchantmentPBR::Studio
 			Widgets::HelpMarker("Drag the :: grip onto another row to reorder; click the grip or the name to open the layer's fields beside the stack. S solos, M mutes. Enter commits a text field; a drag commits on release.");
 		}
 
-		// The selected layer's fields, flush against the split's rule; the
-		// layer's picture, when it has one, goes under them.
 		void DrawInspector(const LayerStack& a_stack, const std::optional<Inspector>& a_inspector, const RecipeRow& a_recipe, const Layout& a_layout, const Names& a_names, Intents& a_out)
 		{
 			if (!a_layout.inspector || !a_inspector) {
@@ -1099,8 +987,6 @@ namespace WornEnchantmentPBR::Studio
 			ImGui::PopID();
 		}
 
-		// The composite as rendered on the shape viewed; on a piece with
-		// several shapes, clicking it views the next one.
 		void DrawComposite(const LayerStack& a_stack, const PieceRow& a_piece, const RecipeRow& a_recipe, const GeometryRow& a_geometry, const Layout& a_layout, Intents& a_out)
 		{
 			if (a_recipe.geometries.size() < 2) {
@@ -1122,7 +1008,6 @@ namespace WornEnchantmentPBR::Studio
 				return;
 			}
 			const auto& stack = *a_stack;
-			// The edit row above names the slot and carries its solo toggle.
 			ImGui::PushID(static_cast<int>(stack.output));
 			if (!stack.problem.empty()) {
 				Widgets::Problem(stack.problem);
@@ -1134,9 +1019,6 @@ namespace WornEnchantmentPBR::Studio
 			DrawScalars(stack, a_recipe, a_layout.widgetScale, a_names, a_out);
 			ImGui::EndGroup();
 
-			// An empty stack offers Add layer alone. Otherwise the layers on the
-			// left, the selected layer's fields on the right, split by a
-			// draggable vertical rule.
 			if (stack.rows.empty()) {
 				DrawAddLayer(stack, a_recipe, a_out);
 				ImGui::PopID();
@@ -1149,15 +1031,6 @@ namespace WornEnchantmentPBR::Studio
 			ImGui::PopID();
 		}
 
-		// -------------------------------------------------------- signals
-
-		// The value control for a signal a designer tunes: the same input the
-		// inspector's fields use, from the signal's form. A trigger with an
-		// event id gets Fire, which posts one firing through the manager's
-		// queue. A row with no form otherwise reads as its kind. Drawn in
-		// the signal's ID scope.
-		// Fire, with its payload in a popup: the node (one of the shape's bones,
-		// or none), an offset from it, a random scatter, and the value.
 		void FirePopup(const SignalRow& a_signal, FormID a_actorID, std::span<const BoneRow> a_bones, Intents& a_out)
 		{
 			if (ImGui::SmallButton("Fire")) {
@@ -1194,7 +1067,7 @@ namespace WornEnchantmentPBR::Studio
 			ImGui::EndPopup();
 		}
 
-		std::span<const BoneRow> g_modalBones;  // the viewed shape's bones, for a firing's node; the body sets it
+		std::span<const BoneRow> g_modalBones;
 
 		void DrawSignalEditor(const std::string& a_id, const SignalRow& a_signal, FormID a_actorID, float a_scale, const Names& a_names, Intents& a_out)
 		{
@@ -1207,8 +1080,6 @@ namespace WornEnchantmentPBR::Studio
 				Widgets::Dim(std::format("{}: edits in the file", SignalKindName(a_signal.kind)));
 				return;
 			}
-			// The value's kind follows the text, so the check is the union of the
-			// kinds rather than the field's current one.
 			const Widgets::TextCheck check = [&](const std::string& a_text) { return CheckSignalValue(a_text, a_names); };
 			if (const auto text = Widgets::ValueField("value", field->kind, field->text, {}, false, a_scale, check)) {
 				const std::optional<RecipeEdit> edit = field->bind ? field->bind(*text) : std::nullopt;
@@ -1220,7 +1091,6 @@ namespace WornEnchantmentPBR::Studio
 			}
 		}
 
-		// The curve column: a combo over the recipe's declared curves, or none.
 		void DrawSignalCurve(const std::string& a_id, const SignalRow& a_signal, std::span<const std::string> a_curves, float a_width, float a_scale, Intents& a_out)
 		{
 			if (const auto chosen = Widgets::ReferenceCombo("curve", a_signal.curve, a_curves, true, Width::Px(a_width), a_scale)) {
@@ -1229,11 +1099,6 @@ namespace WornEnchantmentPBR::Studio
 			Widgets::Tooltip("a declared curve applied to the signal's value; none passes it through");
 		}
 
-		// One signal as a row: the name (a field: committing another name
-		// renames the row and repoints every reference to it; its kind in the
-		// tooltip), the editor, the curve, "=", and the live value, or inert
-		// with the reason.
-		// A row's remove button, greyed while anything references the row.
 		void DrawSignalRow(Widgets::Table& a_table, const std::string& a_id, const SignalRow& a_signal, bool a_tunable, std::span<const std::string> a_curves, float a_curveWidth, FormID a_actorID, float a_scale, const Names& a_names, Intents& a_out)
 		{
 			ImGui::PushID(a_signal.name.c_str());
@@ -1268,16 +1133,12 @@ namespace WornEnchantmentPBR::Studio
 			ImGui::PopID();
 		}
 
-		// The signal table, in its own pane; the rows are those the name
-		// filter on its rule passes.
 		void DrawSignals(const PieceRow& a_piece, const RecipeRow& a_recipe, const Layout& a_layout, std::string_view a_filter, const Names& a_names, Intents& a_out)
 		{
 			const auto  list = BuildSignalList(a_recipe, a_layout);
 			const auto& id = a_recipe.id;
 			const float scale = a_layout.widgetScale;
 
-			// Every curve combo the same width: the widest curve name, or "none";
-			// every name field the same width: the widest signal name.
 			std::vector<std::string> curveNames;
 			std::vector<std::string> curveTexts{ "none" };
 			for (const auto& curve : a_recipe.curves) {
@@ -1308,8 +1169,6 @@ namespace WornEnchantmentPBR::Studio
 			signals.End();
 		}
 
-		// The declared curves, in their own pane, those the name filter on
-		// its rule passes: each an expression in x, its name a field.
 		void DrawCurves(const RecipeRow& a_recipe, const Layout& a_layout, std::string_view a_filter, const Names& a_names, Intents& a_out)
 		{
 			const Widgets::TextCheck check = [&](const std::string& a_text) { return CheckCurveText(a_text, a_names); };
@@ -1347,9 +1206,6 @@ namespace WornEnchantmentPBR::Studio
 			curves.End();
 		}
 
-		// The sources, in their own tab: remove, the name (a field), a detail
-		// button opening the source's form in a modal, and the definition as
-		// the file describes it.
 		void DrawSources(const RecipeRow& a_recipe, const Layout& a_layout, std::string_view a_filter, const Names& a_names, Intents& a_out)
 		{
 			const auto& id = a_recipe.id;
@@ -1393,8 +1249,6 @@ namespace WornEnchantmentPBR::Studio
 			sources.End();
 		}
 
-		// The masks, in their own tab: remove, the name (a field), the
-		// expression per texel over sources, masks and signals.
 		void DrawMasks(const RecipeRow& a_recipe, const Layout& a_layout, std::string_view a_filter, const Names& a_names, Intents& a_out)
 		{
 			const auto& id = a_recipe.id;
@@ -1438,9 +1292,6 @@ namespace WornEnchantmentPBR::Studio
 			masks.End();
 		}
 
-		// Add and the name filter for the open tab, at the right edge of the
-		// resources rule, in the tab's own ID scope so each tab keeps its
-		// filter and the two Add buttons never share an ID.
 		[[nodiscard]] Widgets::RuleLine ResourcesRule(ResourceTab a_tab, const RecipeRow& a_recipe, float a_scale, std::string_view& a_filter, Intents& a_out)
 		{
 			const float addWidth = Widgets::ButtonWidth("Add");
@@ -1485,10 +1336,6 @@ namespace WornEnchantmentPBR::Studio
 								 } };
 		}
 
-		// The resources pane: a tab per table, the tab bar fixed and each
-		// table scrolling inside its tab. The tab bar owns the click; the
-		// state follows it, so the rule above serves the open tab from the
-		// next frame on.
 		void DrawResources(const PieceRow& a_piece, const RecipeRow& a_recipe, const Layout& a_layout, ResourceTab a_open, std::string_view a_filter, const Names& a_names, Intents& a_out)
 		{
 			if (!ImGui::BeginTabBar("resources")) {
@@ -1524,9 +1371,6 @@ namespace WornEnchantmentPBR::Studio
 			ImGui::EndTabBar();
 		}
 
-		// ------------------------------------------------------ inspector
-
-		// A source or mask row the layer reads, with its picture and definition.
 		void DrawImageRow(const std::string& a_id, const PictureRow& a_image, bool a_editable, const Layout& a_layout, const Names& a_names, Intents& a_out)
 		{
 			const float scale = a_layout.widgetScale;
@@ -1547,9 +1391,6 @@ namespace WornEnchantmentPBR::Studio
 			}
 		}
 
-		// The signal a parameter text names, drawn as its editor inside a
-		// modal, with the signals its expression reads as buttons that open
-		// their own modal, so a chain is followed to any depth (capped).
 		constexpr int kMaxSignalModalDepth = 6;
 
 		void DrawSignalModal(const RecipeRow& a_recipe, const std::string& a_name, FormID a_actorID, float a_scale, const Names& a_names, int a_depth, Intents& a_out);
@@ -1570,7 +1411,6 @@ namespace WornEnchantmentPBR::Studio
 			if (it->inert) {
 				Widgets::Problem(it->problem.empty() ? "inert" : "inert: " + it->problem);
 			}
-			// The signals this one reads, each a link into its own modal.
 			if (!it->text.empty() && a_depth < kMaxSignalModalDepth) {
 				if (const auto program = Program::Parse(it->text)) {
 					bool any = false;
@@ -1590,8 +1430,6 @@ namespace WornEnchantmentPBR::Studio
 			ImGui::PopID();
 		}
 
-		// A button named for the signal that opens its modal, nested in the
-		// current one.
 		void DrawSignalModal(const RecipeRow& a_recipe, const std::string& a_name, FormID a_actorID, float a_scale, const Names& a_names, int a_depth, Intents& a_out)
 		{
 			ImGui::PushID(a_name.c_str());
@@ -1603,8 +1441,6 @@ namespace WornEnchantmentPBR::Studio
 			ImGui::PopID();
 		}
 
-		// A form whose value fields may open their signal: the detail button
-		// of a field naming a @signal opens that signal's modal.
 		void DrawFormWithSignals(const char* a_id, std::span<const FormField> a_form, const RecipeRow& a_recipe, FormID a_actorID, float a_scale, const Names& a_names, Intents& a_out, std::size_t a_columns)
 		{
 			const auto open = DrawForm(a_id, a_form, a_recipe.id, a_scale, a_names, a_out, a_columns);
@@ -1666,8 +1502,6 @@ namespace WornEnchantmentPBR::Studio
 			}
 		}
 
-		// The detail modals live outside the table so their ids match the
-		// buttons' scope; one per field, opened by its button.
 		void DrawInspectorFields(const Inspector& a_inspector, const RecipeRow& a_recipe, const Layout& a_layout, const Names& a_names, Intents& a_out)
 		{
 			const auto                       form = InspectorForm(a_inspector);
@@ -1682,16 +1516,6 @@ namespace WornEnchantmentPBR::Studio
 			}
 		}
 
-		// --------------------------------------------------------- region
-		// Paint mode: the region stack, terms with boolean ops, whose built
-		// expression the paint recipe's scratch mask holds. The paint recipe
-		// (a clone of the active one with a single masked emissive output)
-		// is applied alone while Paint is open, so the armor shows the
-		// region through the ordinary render path. Keep copies the region
-		// into the active recipe; Discard drops the paint recipe.
-
-		// The key a recipe takes from the piece by default, for a new recipe
-		// and the paint recipe: its armor, else the first key it offers.
 		std::optional<RecipeKey> DefaultKeyOf(const PieceRow& a_piece)
 		{
 			const KeyChoice* chosen = nullptr;
@@ -1718,8 +1542,6 @@ namespace WornEnchantmentPBR::Studio
 
 		constexpr TableStyle kChooserStyle{ .borders = TableStyle::Borders::kNone, .stretch = true, .headers = false, .rowBackground = false };
 
-		// A term recipe becomes the source edits it needs on the paint recipe
-		// and one term of the stack, labelled by its recipe.
 		void AddTermOfKind(const TermKind& a_term, const RecipeRow& a_recipe, const GeometryRow& a_geometry, Intents& a_out)
 		{
 			const auto& presets = LoadedPresets();
@@ -1730,8 +1552,6 @@ namespace WornEnchantmentPBR::Studio
 			a_out.push_back(AddTerm{ Term{ TermOp::kAnd, std::move(expression), TermLabelOf(a_term, presets, a_geometry), a_term } });
 		}
 
-		// The offers the filter passes, of one group, as chooser rows;
-		// choosing one adds its term. Nothing when the group has none.
 		void DrawOfferGroup(OfferGroup a_group, std::span<const TermOffer> a_offers, std::string_view a_filter, const RecipeRow& a_recipe, const GeometryRow& a_geometry, Intents& a_out)
 		{
 			std::vector<const TermOffer*> shown;
@@ -1753,7 +1573,6 @@ namespace WornEnchantmentPBR::Studio
 					for (std::size_t i = 0; i < shown.size(); ++i) {
 						const TermOffer& offer = *shown[i];
 						ImGui::PushID(static_cast<int>(i));
-						// A kept mask can also be loaded into the stack for editing.
 						const bool mask = a_group == OfferGroup::kMasks;
 						switch (Widgets::ChooserRow(table, offer.name, offer.detail, offer.coverage, offer.unavailable, mask ? "edit" : nullptr)) {
 						case Widgets::ChooserPick::kChosen:
@@ -1781,7 +1600,6 @@ namespace WornEnchantmentPBR::Studio
 			return Widgets::Table::Begin("terms", { { "#", Width::Fit() }, { "", button }, { "", button }, { "S", button }, { "M", button }, { "op", Width::Fit("and") }, { "term", Width::Fit() }, { "detail", Width::Fill() }, { "", button } }, kLayerStyle);
 		}
 
-		// The ops a term past the first may take, as the op combo lists them.
 		const std::vector<std::string> kTermOps{ std::string{ TermOpName(TermOp::kAnd) }, std::string{ TermOpName(TermOp::kOr) }, std::string{ TermOpName(TermOp::kNot) } };
 
 		void DrawTermDetails(std::size_t a_index, const Term& a_term, const RecipeRow& a_recipe, const GeometryRow& a_geometry, const Layout& a_layout, const Names& a_names, Intents& a_out);
@@ -1833,8 +1651,6 @@ namespace WornEnchantmentPBR::Studio
 			ImGui::AlignTextToFramePadding();
 			Widgets::Dim(TermDetailOf(term, a_offers));
 			a_table.Cell();
-			// Everything the row does not show (its settings, its expression,
-			// what it reads) sits behind the details button.
 			const auto title = std::format("term {}: {}###term-details", a_index, term.label);
 			if (Widgets::DetailButton()) {
 				ImGui::OpenPopup(title.c_str());
@@ -1843,10 +1659,6 @@ namespace WornEnchantmentPBR::Studio
 			ImGui::PopID();
 		}
 
-		// The selected term's settings as a field table, one row per field
-		// of its form: a committed text the field accepts is the term's new
-		// recipe, rebuilt into its sources and text before it posts; a text
-		// the field refuses is a log line. A raw term has no settings.
 		void DrawTermSettings(std::size_t a_index, const Term& a_term, const RecipeRow& a_recipe, const GeometryRow& a_geometry, float a_scale, const Names& a_names, Intents& a_out)
 		{
 			const auto& presets = LoadedPresets();
@@ -1881,9 +1693,6 @@ namespace WornEnchantmentPBR::Studio
 			table.End();
 		}
 
-		// A term's details, in its modal: its settings, its op, its text
-		// (typing there makes it raw), and the sources and masks it reads,
-		// each with a detail button that opens the picture in a modal of its own.
 		void DrawTermDetails(std::size_t a_index, const Term& a_term, const RecipeRow& a_recipe, const GeometryRow& a_geometry, const Layout& a_layout, const Names& a_names, Intents& a_out)
 		{
 			const std::size_t index = a_index;
@@ -1917,7 +1726,6 @@ namespace WornEnchantmentPBR::Studio
 				fields.End();
 			}
 
-			// What the term reads, one row each; the picture behind the button.
 			const auto program = term.text.empty() ? std::nullopt : std::optional{ Program::Parse(term.text) };
 			if (program && *program && !(*program)->References().empty()) {
 				auto reads = Widgets::Table::Begin("term-reads", { { "reads", Width::Fit() }, { "", Width::Px(ImGui::GetFrameHeight()) }, { "definition", Width::Fill() } }, kFormStyle);
@@ -1959,10 +1767,6 @@ namespace WornEnchantmentPBR::Studio
 			ImGui::PopID();
 		}
 
-		// The Region rule's right group, as the stack's pane rule carries its
-		// actions: Clear empties the stack; Keep proposes a name and hands the
-		// region to the manager, which copies it into the active recipe and
-		// ends the session; Discard ends it without keeping.
 		[[nodiscard]] Widgets::RuleLine RegionRule(std::string_view a_title, const MenuState& a_state, Intents& a_out)
 		{
 			const float clearWidth = Widgets::ButtonWidth("Clear");
@@ -2006,10 +1810,6 @@ namespace WornEnchantmentPBR::Studio
 								 } };
 		}
 
-		// The region as rendered, leading the pane the way the composite leads
-		// the stack: the scratch mask's picture beside a summary line, with
-		// its problem (an expression that does not parse, a source not yet
-		// rendered) above them. Nothing until the scratch has a row.
 		void DrawRegionPicture(const GeometryRow& a_geometry, const RegionStack& a_region, const Layout& a_layout)
 		{
 			const auto scratch = std::ranges::find(a_geometry.masks, kScratchMask, &PictureRow::name);
@@ -2027,10 +1827,6 @@ namespace WornEnchantmentPBR::Studio
 			ImGui::EndGroup();
 		}
 
-		// The pane: the region's picture, the term table across the width,
-		// then what the piece offers as tables in collapsible sections under
-		// a rule that carries the filter. Clear, Keep and Discard are on the
-		// Region rule above.
 		void DrawRegionStack(const RecipeRow& a_recipe, const GeometryRow& a_geometry, MenuState& a_state, const Names& a_names, Intents& a_out)
 		{
 			const auto& region = a_state.region;
@@ -2048,7 +1844,6 @@ namespace WornEnchantmentPBR::Studio
 			}
 			Widgets::HelpMarker("A region is terms combined in order: the first sets it, each next one is and (product), or (max) or not (times the complement). Drag the :: grip to reorder; S shows one term alone, M leaves one out; ... opens a term's settings; Keep writes every term.");
 
-			// The filter is as wide as its hint, so the hint reads whole.
 			std::string_view filter;
 			const char*      hint = "filter by name or measurement";
 			const float      filterWidth = Widgets::FitWidth(hint) * a_state.layout.widgetScale;
@@ -2061,15 +1856,10 @@ namespace WornEnchantmentPBR::Studio
 			}
 		}
 
-		// Paint's head: the active recipe's name, held while the session runs
-		// (the piece's applied recipes are the paint recipe alone then), over
-		// a rule; the context rows are Compose's.
 		void DrawPaintHead(const PieceRow& a_piece, const RecipeRow& a_recipe, const GeometryRow* a_geometry, const MenuState& a_state, Intents& a_out)
 		{
 			if (a_state.paint) {
 				Widgets::HeldLabel(a_state.paint->recipe.c_str());
-				// The geometry the offers describe and the picture shows, with a
-				// combo to view another; the region applies to every geometry.
 				if (a_geometry && !a_recipe.geometries.empty()) {
 					ImGui::SameLine();
 					ImGui::AlignTextToFramePadding();
@@ -2087,7 +1877,6 @@ namespace WornEnchantmentPBR::Studio
 					}
 					Widgets::Tooltip("the geometry the offers and the picture describe; the region applies to every geometry of the recipe");
 				}
-				// Where the paint recipe previews, at the right edge of the line.
 				ImGui::SameLine();
 				const float labelWidth = Widgets::TextWidth("preview on");
 				const float comboWidth = Widgets::FitWidth("material");
@@ -2107,9 +1896,6 @@ namespace WornEnchantmentPBR::Studio
 			}
 		}
 
-		// After the frame: a dirty stack rebuilds the paint recipe's scratch
-		// mask. It waits until the paint recipe is the one applied, since the
-		// session begins on the game thread a frame or more after Paint opens.
 		void RebuildScratch(MenuState& a_state, const RecipeRow* a_recipe, const Snapshot& a_snapshot)
 		{
 			auto& region = a_state.region;
@@ -2124,7 +1910,6 @@ namespace WornEnchantmentPBR::Studio
 			Dispatch(intents, a_state, a_snapshot);
 		}
 
-		// A kept mask loaded into the stack for editing, in Paint mode.
 		void EditMaskAsRegion(const RecipeRow& a_recipe, const TextRow& a_mask, Intents& a_out)
 		{
 			auto terms = TermsOfMask(a_mask.text, LoadedPresets(), ExistingOf(a_recipe));
@@ -2135,16 +1920,8 @@ namespace WornEnchantmentPBR::Studio
 			a_out.push_back(SetMode{ Mode::kPaint });
 		}
 
-		// ---------------------------------------------------------- body
-
-		// Everything under the mode bar is drawn in the recipe's ID scope, so a
-		// field's key names the same field only while the same recipe is shown.
-		// The context rows stay in view; under them two panes scroll on their
-		// own, separated by rules: the stack and the resources. The resources
-		// take a share of what is left under the rows; the stack takes the rest.
 		void DrawBody(const Snapshot& a_snapshot, const PieceRow* a_piece, const RecipeRow* a_recipe, const GeometryRow* a_geometry, MenuState& a_state, Intents& a_out)
 		{
-			// Leaving Paint ends the session without keeping.
 			if (a_state.paint && a_state.mode != Mode::kPaint) {
 				a_out.push_back(EndPaint{});
 			}
@@ -2152,8 +1929,6 @@ namespace WornEnchantmentPBR::Studio
 				Widgets::Dim(a_state.paint ? "starting the paint recipe" : "nothing applied; equip enchanted PBR armor or press Re-apply all on the Recipes page");
 				return;
 			}
-			// A recipe bound to no geometry still gets the recipe row, so the
-			// combo that leads away from it is always there.
 			if (!a_geometry) {
 				ImGui::PushID(a_recipe->id.c_str());
 				if (a_state.layout.contextRows) {
@@ -2182,17 +1957,12 @@ namespace WornEnchantmentPBR::Studio
 			const auto  names = NamesOf(*a_recipe, *a_geometry);
 			const auto  pane = ChoosePane(selection.target, a_state.settings);
 			const Cell* picked = layout.contextRows ? DrawContext(a_snapshot, board, *a_piece, *a_recipe, *a_geometry, selection, a_out) : nullptr;
-			// Paint: the head, then the session begins for the selected recipe
-			// (the manager applies the paint recipe alone a frame or more
-			// later) and the viewed shape's mesh is read for its offers; the
-			// action row draws once the paint recipe is the one applied.
 			const bool painting = layout.regionEditor;
 			const bool painterReady = painting && a_state.paint && a_recipe->id == kPaintRecipe;
 			if (!layout.contextRows) {
 				DrawPaintHead(*a_piece, *a_recipe, a_geometry, a_state, a_out);
 				Widgets::Rule();
 				if (!a_state.paint) {
-					// A soloed recipe is the one painted for: Keep lands there.
 					const RecipeRow* active = a_recipe;
 					if (view.Isolating() && view.isolateRecipe != kPaintRecipe) {
 						const auto it = std::ranges::find(a_piece->recipes, view.isolateRecipe, &RecipeRow::id);
@@ -2207,18 +1977,12 @@ namespace WornEnchantmentPBR::Studio
 						Widgets::Warn("the piece offers no key to paint on");
 					}
 				} else if (painterReady && a_state.paint->readGeometry != a_geometry->name) {
-					// The geometry's read (its mesh and its material's clusters) is
-					// asked for once the paint recipe is the one applied, and again
-					// when the viewed geometry changes; asked earlier it would find
-					// nothing bound, since the session retires everything.
 					a_out.push_back(ReadMesh{ a_piece->actorID, a_geometry->name });
 				} else if (!painterReady) {
 					Widgets::Dim("starting the paint recipe");
 				}
 			}
 			const bool resources = layout.signals;
-			// The pane's rule names what its switch shows: the target's settings
-			// or the stack; in Paint mode the pane is the region stack.
 			if (painting) {
 				const std::string title = a_state.region.editing.empty() ? std::string{ "Region" } : std::format("Region: {}", a_state.region.editing);
 				Widgets::Rule({}, RegionRule(title, a_state, a_out));
@@ -2231,9 +1995,6 @@ namespace WornEnchantmentPBR::Studio
 			const float stackHeight = resources ? -(resourcesHeight + Widgets::RuleHeight()) : 0.0f;
 
 			if (ImGui::BeginChild("stack-pane", ImVec2{ 0.0f, stackHeight }, 0, 0)) {
-				// The pane shows the region editor in Paint mode; otherwise the
-				// target's settings (the light's panel, the shell's settings) or
-				// the picked slot's stack, as switched.
 				if (painting) {
 					if (painterReady) {
 						DrawRegionStack(*a_recipe, *a_geometry, a_state, names, a_out);
@@ -2263,14 +2024,6 @@ namespace WornEnchantmentPBR::Studio
 			}
 			ImGui::PopID();
 		}
-
-		// -------------------------------------------------------- footer
-		// The clock: Freeze, one step, the speed, and the scrubber across the
-		// remaining width. Running, the scrubber follows the clock; frozen, it
-		// is the scrub. Taking hold of it freezes at the moment grabbed, so a
-		// drag never fights the clock. The clock runs on unbounded; the slider
-		// shows it within the current minute and moves it within that minute,
-		// so recipes that read `time` never see a wrap.
 
 		void DrawFooter(const RecipeRow* a_recipe, const View& a_view, Intents& a_out)
 		{
@@ -2316,10 +2069,8 @@ namespace WornEnchantmentPBR::Studio
 			table.End();
 		}
 
-		// Ctrl+Z and Ctrl+Y, while no field has the keyboard.
 		void HistoryKeys(const RecipeRow* a_recipe, const MenuState& a_state, Intents& a_out)
 		{
-			// Not while painting: the paint recipe has no history worth walking.
 			const auto* io = ImGui::GetIO();
 			if (!a_recipe || !io || !io->KeyCtrl || a_state.activeField != kNoField || a_state.paint) {
 				return;
@@ -2332,8 +2083,6 @@ namespace WornEnchantmentPBR::Studio
 			}
 		}
 	}
-
-	// ---------------------------------------------------------------- page
 
 	void __stdcall RenderStudio()
 	{
@@ -2353,8 +2102,7 @@ namespace WornEnchantmentPBR::Studio
 		const auto* recipe = SelectedRecipe(piece, state.selection);
 		const auto* geometry = SelectedGeometry(recipe, state.selection);
 
-		// The body scrolls above a footer pinned to the bottom of the page.
-		const float footer = Widgets::RuleHeight() + ImGui::GetFrameHeightWithSpacing() * 2.0f + 8.0f;  // the rule, the header row, the row, the table's padding
+		const float footer = Widgets::RuleHeight() + ImGui::GetFrameHeightWithSpacing() * 2.0f + 8.0f;
 		if (ImGui::BeginChild("studio-body", ImVec2{ 0.0f, -footer }, 0, 0)) {
 			DrawBody(snapshot, piece, recipe, geometry, state, intents);
 		}
@@ -2378,8 +2126,6 @@ namespace WornEnchantmentPBR::Studio
 			Widgets::Dim("no geometry bound for the selected recipe");
 			return;
 		}
-		// The board is viewed on the shape the studio views; the composite
-		// there cycles it.
 		if (recipe->geometries.size() > 1) {
 			Widgets::Dim("viewed on " + GeometryLabel(geometry->name, piece->armorName));
 		}

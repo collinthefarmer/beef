@@ -19,15 +19,10 @@
 #include "extern/SKSEMenuFramework.h"
 #pragma clang diagnostic pop
 
-// The SDK header keeps the ImGui wrappers and types in ImGuiMCP.
 namespace ImGui = ImGuiMCP;
 using ImGuiMCP::ImVec2;
 using ImGuiMCP::ImGuiSliderFlags_Logarithmic;
 
-// Registration, the status line every page but the studio starts with, and
-// the pages beside the studio: Recipes, and Setup with the log under its
-// settings. Pages read the manager's snapshot, taken once per frame, never
-// the live state; the selection they show is the studio's.
 namespace WornEnchantmentPBR
 {
 	namespace
@@ -43,8 +38,6 @@ namespace WornEnchantmentPBR
 
 		constexpr TableStyle kGridStyle{ .borders = TableStyle::Borders::kAll, .stretch = true, .headers = true, .rowBackground = true };
 
-		// ----------------------------------------------------------- settings
-
 		void MarkReapply(bool a_changed)
 		{
 			if (a_changed) {
@@ -56,8 +49,6 @@ namespace WornEnchantmentPBR
 			}
 		}
 
-		// The settings pages the Setup page shows; the rest of the table is
-		// the proof of concept's rows, which nothing reads.
 		constexpr const char* kSetupPages[]{ "Scope", "Runtime", "Diagnostics" };
 		constexpr const char* kVerboseKey = "VerboseLogging";
 
@@ -73,8 +64,6 @@ namespace WornEnchantmentPBR
 			return it == table.end() ? nullptr : &*it;
 		}
 
-		// One widget per settings-table row, under the label the caller
-		// chooses ("##value" when the name is drawn elsewhere).
 		void Widget(Settings& s, const SettingDesc& d, const char* a_label)
 		{
 			using W = SettingDesc::Widget;
@@ -126,8 +115,6 @@ namespace WornEnchantmentPBR
 			}
 		}
 
-		// The save bar as one row: Save INI, Reload INI, Re-apply, the auto
-		// toggle, and the markers.
 		void DrawSaveBar(Settings& s)
 		{
 			auto* manager = Manager::GetSingleton();
@@ -172,9 +159,6 @@ namespace WornEnchantmentPBR
 			table.End();
 		}
 
-		// Every shown setting but Verbose logging (which sits with the log) as
-		// name and value, in the table's order; a switch is a checkbox in its
-		// value cell.
 		void DrawValueTable(Settings& s)
 		{
 			auto table = Widgets::Table::Begin("values", { { "setting", Width::Fit() }, { "value", Width::Fill() } }, kGridStyle);
@@ -198,8 +182,6 @@ namespace WornEnchantmentPBR
 			table.End();
 		}
 
-		// The log: its filter, auto-scroll and Verbose logging on one row,
-		// then the last 300 lines in a region that takes the remaining height.
 		void DrawLog(Settings& s)
 		{
 			static char filter[64]{};
@@ -234,8 +216,6 @@ namespace WornEnchantmentPBR
 			}
 			ImGui::EndChild();
 		}
-
-		// -------------------------------------------------------------- pages
 
 		void __stdcall RenderRecipes()
 		{
@@ -348,8 +328,6 @@ namespace WornEnchantmentPBR
 			}
 		}
 
-		// Settings in the top half of the page (scrolling when they overflow),
-		// a rule with a line's gap on each side, the log in the bottom half.
 		void __stdcall RenderSetup()
 		{
 			auto& s = GetMutableSettings();
@@ -366,8 +344,6 @@ namespace WornEnchantmentPBR
 			DrawLog(s);
 		}
 	}
-
-	// ----------------------------------------------------------------- header
 
 	void RenderStatus(const Studio::Snapshot&)
 	{

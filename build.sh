@@ -1,6 +1,4 @@
 #!/usr/bin/env bash
-# Configure and build with clang-cl + lld-link from nixpkgs, targeting x64 Windows.
-# Usage: ./build.sh [Release|Debug] [extra cmake --build args]
 set -euo pipefail
 cd "$(dirname "$0")"
 : "${XWIN_DIR:=$HOME/.xwin/splat}"

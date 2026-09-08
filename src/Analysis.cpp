@@ -32,25 +32,12 @@ namespace WornEnchantmentPBR
 
 	namespace
 	{
-		// ------------------------------------------------------------ bounds
 
-		// Past this many vertices the analysis is empty rather than slow;
-		// a worn piece has tens of thousands.
 		constexpr std::size_t kMaxAnalysedVertices = std::size_t{ 1 } << 24;
-		// Two positions closer than this are one vertex of the piece, so a
-		// UV seam's duplicated vertices do not split a component.
 		constexpr float kComponentWeldUnits = 1.0f / 1024.0f;
-		// A weld cell index never leaves this range, so the float-to-integer
-		// cast below is defined for any finite coordinate.
-		constexpr float kMaxWeldCell = 1099511627776.0f;  // 2^40
-		// The k-means pass cap, whatever the settings ask.
+		constexpr float kMaxWeldCell = 1099511627776.0f;
 		constexpr std::uint32_t kMaxIterations = 256;
 
-		// ---------------------------------------------------- disjoint sets
-
-		// Union-find over the vertices: Find follows parents iteratively
-		// with path halving, so no call recurses and each is bounded by
-		// the tree height. An index past the set count is its own root.
 		class DisjointSets
 		{
 		public:
@@ -91,10 +78,6 @@ namespace WornEnchantmentPBR
 			std::vector<std::uint32_t> _size;
 		};
 
-		// --------------------------------------------------- the flat mesh
-
-		// The partitions concatenated: one global index per vertex, and
-		// every triangle rewritten to global indices inside that table.
 		struct FlatVertex
 		{
 			const MeshVertex*    vertex = nullptr;
@@ -133,9 +116,6 @@ namespace WornEnchantmentPBR
 			return flat;
 		}
 
-		// ------------------------------------------------------- welding
-
-		// A cell of the weld grid; two coordinates in one cell are one point.
 		using WeldCell = std::tuple<std::int64_t, std::int64_t, std::int64_t>;
 
 		[[nodiscard]] std::optional<std::int64_t> CellOf(float a_value, float a_cellSize) noexcept
@@ -170,9 +150,6 @@ namespace WornEnchantmentPBR
 
 		using CellOfVertex = std::optional<WeldCell> (*)(const MeshVertex&) noexcept;
 
-		// Joins the corners of every triangle, and each corner to the first
-		// corner seen in its weld cell. Only triangle corners weld, so a
-		// vertex no triangle reaches stays alone whatever it coincides with.
 		[[nodiscard]] DisjointSets Connect(const FlatMesh& a_flat, CellOfVertex a_cellOf)
 		{
 			DisjointSets                       sets(a_flat.vertices.size());
@@ -197,12 +174,10 @@ namespace WornEnchantmentPBR
 			return sets;
 		}
 
-		// ------------------------------------------------------ labelling
-
 		struct Labelling
 		{
 			std::vector<std::uint16_t> ofVertex;
-			std::vector<MeshIsland>    islands;  // descending share
+			std::vector<MeshIsland>    islands;
 		};
 
 		struct RootCount
@@ -211,8 +186,6 @@ namespace WornEnchantmentPBR
 			std::size_t   triangles = 0;
 		};
 
-		// Ranks the sets by triangle count, ids the largest kMaxIslands,
-		// and measures each: share, dominant bone, centroid.
 		[[nodiscard]] Labelling Label(const FlatMesh& a_flat, DisjointSets& a_sets, IslandSource a_source)
 		{
 			const std::size_t        vertexCount = a_flat.vertices.size();
@@ -229,7 +202,6 @@ namespace WornEnchantmentPBR
 					ranked.push_back(RootCount{ root, trianglesOfRoot[root] });
 				}
 			}
-			// Ties rank by first vertex so the same mesh always labels the same way.
 			std::stable_sort(ranked.begin(), ranked.end(), [](const RootCount& a, const RootCount& b) {
 				return a.triangles != b.triangles ? a.triangles > b.triangles : a.root < b.root;
 			});
@@ -306,9 +278,6 @@ namespace WornEnchantmentPBR
 
 	namespace
 	{
-		// A component and a chart are twins when every vertex of the one is a
-		// vertex of the other: each component maps to one chart over all its
-		// vertices, and the two hold the same number of them.
 		void PairTwins(MeshAnalysis& a_analysis)
 		{
 			constexpr std::uint16_t kConflict = 0xFFFF;
@@ -380,7 +349,7 @@ namespace WornEnchantmentPBR
 			return out;
 		}
 		const std::vector<std::uint16_t>& table = TableOf(a_analysis, a_source);
-		std::size_t                       next = 0;  // the global index of the partition's first vertex
+		std::size_t                       next = 0;
 		for (const MeshPartition& partition : a_mesh.partitions) {
 			if (next + partition.vertices.size() > table.size()) {
 				out.vertices.clear();
@@ -412,21 +381,14 @@ namespace WornEnchantmentPBR
 		return out;
 	}
 
-	// --------------------------------------------------------- the material
-
 	namespace
 	{
-		// One axis DescribeTexel reads: ascending cuts, one more word than
-		// cuts, and which side of a cut a value equal to it takes. Roughness
-		// and luma read low to high with a value at the cut going to the
-		// word above; metallic reads "greater than", so a value at the cut
-		// stays non-metal, hence belowInclusive.
 		struct TexelBand
 		{
 			float MaterialTexel::*                     axis;
 			std::span<const float>             cuts;
 			std::span<const std::string_view>  words;
-			bool                               belowInclusive = false;  // false: a value at a cut takes the word above it
+			bool                               belowInclusive = false;
 		};
 
 		constexpr float            kRoughnessCuts[]{ 0.35f, 0.65f };
@@ -439,15 +401,12 @@ namespace WornEnchantmentPBR
 		constexpr std::string_view kMetallicWords[]{ "non-metal", "metal" };
 		static_assert(std::size(kMetallicWords) == std::size(kMetallicCuts) + 1);
 
-		// Order is the word order in the description: "{finish} {tone} {metal}".
 		constexpr TexelBand kTexelBands[]{
 			{ &MaterialTexel::roughness, kRoughnessCuts, kRoughnessWords, false },
 			{ &MaterialTexel::luma, kLumaCuts, kLumaWords, false },
 			{ &MaterialTexel::metallic, kMetallicCuts, kMetallicWords, true },
 		};
 
-		// The word for one axis: the first band a value falls under, or the
-		// last band past every cut.
 		[[nodiscard]] std::string_view BandWord(const TexelBand& a_band, float a_value) noexcept
 		{
 			for (std::size_t i = 0; i < a_band.cuts.size(); ++i) {
@@ -459,7 +418,6 @@ namespace WornEnchantmentPBR
 			return a_band.words.back();
 		}
 
-		// The five channels as axes of one space, in MaterialTexel's order.
 		constexpr std::size_t kAxes = 5;
 		using Axes = std::array<float, kAxes>;
 
@@ -483,7 +441,6 @@ namespace WornEnchantmentPBR
 			return MaterialTexel{ Finite01(a_texel.roughness), Finite01(a_texel.metallic), Finite01(a_texel.occlusion), Finite01(a_texel.reflectance), Finite01(a_texel.luma) };
 		}
 
-		// A weight below zero or not a number counts as zero.
 		[[nodiscard]] Axes ScalesOf(const ChannelWeights& a_weights) noexcept
 		{
 			const Axes raw{ a_weights.roughness, a_weights.metallic, a_weights.occlusion, a_weights.reflectance, a_weights.luma };
@@ -494,7 +451,6 @@ namespace WornEnchantmentPBR
 			return scales;
 		}
 
-		// Weighted squared distance; a channel of weight 0 does not count.
 		[[nodiscard]] float Distance(const Axes& a_left, const Axes& a_right, const Axes& a_scales) noexcept
 		{
 			float sum = 0.0f;
@@ -505,8 +461,6 @@ namespace WornEnchantmentPBR
 			return sum;
 		}
 
-		// A linear congruential generator: the same seed gives the same
-		// picks on every platform, which std::random_device would not.
 		class Lcg
 		{
 		public:
@@ -514,7 +468,6 @@ namespace WornEnchantmentPBR
 				_state(a_seed)
 			{}
 
-			// In [0, 1).
 			[[nodiscard]] float Unit() noexcept
 			{
 				_state = _state * 1664525u + 1013904223u;
@@ -525,11 +478,6 @@ namespace WornEnchantmentPBR
 			std::uint32_t _state;
 		};
 
-		// k-means++ seeding: the first centroid is a random texel, each next
-		// one a texel picked with probability proportional to its squared
-		// distance from the nearest centroid so far. Seeding stops early
-		// when every texel already sits on a centroid: a duplicate centroid
-		// would only make an empty cluster.
 		[[nodiscard]] std::vector<Axes> SeedCentroids(const std::vector<Axes>& a_texels, std::size_t a_count, const Axes& a_scales, Lcg& a_random)
 		{
 			std::vector<Axes> centroids;
@@ -587,7 +535,6 @@ namespace WornEnchantmentPBR
 			return nearest;
 		}
 
-		// One assignment pass; true when some texel changed cluster.
 		bool Assign(const std::vector<Axes>& a_texels, const std::vector<Axes>& a_centroids, const Axes& a_scales, std::vector<std::size_t>& a_owner) noexcept
 		{
 			bool changed = false;
@@ -599,7 +546,6 @@ namespace WornEnchantmentPBR
 			return changed;
 		}
 
-		// Moves each centroid to the mean of its texels; an empty cluster keeps its centroid.
 		void Recentre(const std::vector<Axes>& a_texels, const std::vector<std::size_t>& a_owner, std::vector<Axes>& a_centroids)
 		{
 			std::vector<Axes>        sums(a_centroids.size(), Axes{});

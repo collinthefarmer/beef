@@ -34,16 +34,12 @@ from urllib.parse import unquote, urlparse
 ROOT = Path(__file__).resolve().parent.parent
 COMPILE_DB_DIR = ROOT / "build" / "clangd"
 
-
 class Clangd:
     """A minimal JSON-RPC client over clangd's stdio."""
 
     def __init__(self):
         self.proc = subprocess.Popen(
             [
-                # nixpkgs' wrapped clangd adds the host's glibc and libstdc++
-                # include paths, which shadow the Windows SDK's; the unwrapped
-                # binary reads the database's flags alone.
                 shutil.which("clangd-unwrapped") or "clangd",
                 f"--compile-commands-dir={COMPILE_DB_DIR}",
                 "--background-index",
@@ -99,7 +95,6 @@ class Clangd:
             self.indexing_tokens.add(token)
             self.indexing_seen = True
         elif kind == "end" and (token in self.indexing_tokens or token == "backgroundIndexProgress"):
-            # A warm cache ends without a begin.
             self.indexing_tokens.discard(token)
             self.indexing_seen = True
 
@@ -148,21 +143,17 @@ class Clangd:
             pass
         self.proc.terminate()
 
-
 def uri_of(path: Path) -> str:
     return path.resolve().as_uri()
 
-
 def path_of(uri: str) -> Path:
     return Path(unquote(urlparse(uri).path))
-
 
 def open_document(client: Clangd, path: Path):
     client.notify(
         "textDocument/didOpen",
         {"textDocument": {"uri": uri_of(path), "languageId": "cpp", "version": 1, "text": path.read_text()}},
     )
-
 
 def find_symbol(client: Clangd, name: str, kind: str | None):
     query = name.split("::")[-1]
@@ -183,13 +174,11 @@ def find_symbol(client: Clangd, name: str, kind: str | None):
         matches.append(symbol)
     return matches
 
-
 SYMBOL_KINDS = {
     2: "Module", 3: "Namespace", 5: "Class", 6: "Method", 7: "Property", 8: "Field", 9: "Constructor",
     10: "Enum", 11: "Interface", 12: "Function", 13: "Variable", 14: "Constant", 22: "EnumMember",
     23: "Struct", 26: "TypeParameter",
 }
-
 
 def describe(symbol):
     location = symbol["location"]
@@ -198,7 +187,6 @@ def describe(symbol):
     container = symbol.get("containerName", "")
     kind = SYMBOL_KINDS.get(symbol.get("kind"), str(symbol.get("kind")))
     return f"{kind} {container}::{symbol['name']} at {path}:{line}"
-
 
 def apply_edit(workspace_edit, apply: bool):
     """Apply a WorkspaceEdit: text edits per document, then file renames.
@@ -221,7 +209,6 @@ def apply_edit(workspace_edit, apply: bool):
         if not apply:
             continue
         lines = path.read_text().split("\n")
-        # Apply from the end so earlier offsets stay valid.
         for edit in sorted(edits, key=lambda e: (e["range"]["start"]["line"], e["range"]["start"]["character"]), reverse=True):
             start, end = edit["range"]["start"], edit["range"]["end"]
             before = lines[start["line"]][: start["character"]]
@@ -234,7 +221,6 @@ def apply_edit(workspace_edit, apply: bool):
             old.rename(new)
     return counts
 
-
 def report_leftovers(old: str):
     """Comments, strings and documents still spelling the old name, for a hand pass."""
     targets = [str(p) for p in [ROOT / "src", ROOT / "tests"]] + [str(ROOT / f) for f in ("README.md", "ARCHITECTURE.md", "NOTES.md", "CLAUDE.md")]
@@ -244,7 +230,6 @@ def report_leftovers(old: str):
         print(f"still spelled in {len(lines)} place(s) clangd does not rename (comments, strings, docs):")
         for line in lines:
             print("  " + line[:160])
-
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
@@ -271,14 +256,10 @@ def main():
             },
         )
         client.notify("initialized", {})
-        # clangd loads a compile database, and starts indexing it, when a
-        # file it covers is first opened.
         open_document(client, ROOT / "src" / "Recipe.cpp")
         print("waiting for clangd's index ...", flush=True)
         client.wait_for_index()
 
-        # A file edited since the last run is re-indexed after the progress
-        # token ends, so a symbol it declares can be missing for a while.
         matches = find_symbol(client, args.old, args.kind)
         for _ in range(12):
             if matches:
@@ -317,7 +298,6 @@ def main():
             report_leftovers(args.old.split("::")[-1])
     finally:
         client.close()
-
 
 if __name__ == "__main__":
     main()

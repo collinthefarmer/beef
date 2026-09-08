@@ -9,15 +9,11 @@ namespace WornEnchantmentPBR
 {
 	namespace
 	{
-		// Address Library IDs (SE, AE) from powerof3's CommonLibSSE fork; the
-		// pinned CommonLibSSE-NG does not wrap these (NOTES 29).
 		constexpr REL::RelocationID kNiPointLightCtor{ 69583, 70967 };
 		constexpr REL::RelocationID kNiPointLightSetAttenuation{ 17224, 17626 };
 		constexpr REL::RelocationID kShadowSceneNodeAddLight{ 99692, 106326 };
 		constexpr REL::RelocationID kShadowSceneNodeRemoveLight{ 99698, 106332 };
 
-		// ShadowSceneNode::LIGHT_CREATE_PARAMS with powerof3's field names; the
-		// pinned header has the same 0x30-byte layout under placeholder names.
 		struct LightCreateParams
 		{
 			bool          dynamic = true;
@@ -36,10 +32,8 @@ namespace WornEnchantmentPBR
 		};
 		static_assert(sizeof(LightCreateParams) == 0x30);
 
-		// CS Light Limit Fix flag bits kept in the NiLight's ambient.red (NOTES 42).
 		constexpr std::uint32_t kLlfInitialised = 1u << 8;
 		constexpr std::uint32_t kLlfInverseSquare = 1u << 10;
-		// ISL's radius formula constants (CS InverseSquareLighting.cpp).
 		constexpr float kIslScaledUnitsSq = 0.8f * 70.0f * 70.0f;
 		constexpr float kIslDefaultCutoff = 0.05f;
 		constexpr float kIslShadowCutoff = 0.022f;
@@ -68,8 +62,6 @@ namespace WornEnchantmentPBR
 			return RE::BSShaderManager::State::GetSingleton().shadowSceneNode[0];
 		}
 
-		// ISL: radius = sqrt(3920 (8 fade - cutoff size^2) / (2 cutoff)), with the
-		// cutoff at its default unless overridden; fade is intensity / 4.
 		float IslRadius(float a_fade, float a_size, float a_cutoff, bool a_shadow)
 		{
 			const float cutoff = a_cutoff >= 1.0f ? (a_shadow ? kIslShadowCutoff : kIslDefaultCutoff) : std::clamp(a_cutoff, 0.01f, 1.0f);
@@ -78,8 +70,6 @@ namespace WornEnchantmentPBR
 			return std::isfinite(radius) && radius > 1.0f ? radius : 1.0f;
 		}
 
-		// The engine exposes no constructor for NiAlphaProperty; the object is
-		// laid out by hand: vtable, zero refcount, empty NiObjectNET, flags (NOTES 32).
 		RE::NiPointer<RE::NiAlphaProperty> CreateAlphaProperty(bool a_additive, float a_alphaTest)
 		{
 			auto* property = RE::malloc<RE::NiAlphaProperty>();
@@ -96,7 +86,6 @@ namespace WornEnchantmentPBR
 			return RE::NiPointer<RE::NiAlphaProperty>{ property };
 		}
 
-		// A private NiSkinData whose bone array the shell may edit (NOTES 35).
 		RE::NiPointer<RE::NiSkinData> CopySkinData(const RE::NiSkinData& a_source)
 		{
 			auto* copy = RE::malloc<RE::NiSkinData>();
@@ -105,7 +94,7 @@ namespace WornEnchantmentPBR
 			}
 			std::memcpy(static_cast<void*>(copy), static_cast<const void*>(&a_source), sizeof(RE::NiSkinData));
 			*reinterpret_cast<std::uintptr_t*>(copy) = RE::VTABLE_NiSkinData[0].address();
-			reinterpret_cast<volatile std::uint32_t*>(copy)[2] = 0;  // NiRefObject refcount
+			reinterpret_cast<volatile std::uint32_t*>(copy)[2] = 0;
 			std::memset(static_cast<void*>(&copy->skinPartition), 0, sizeof(copy->skinPartition));
 			copy->skinPartition = a_source.skinPartition;
 			copy->boneData = nullptr;
@@ -135,14 +124,8 @@ namespace WornEnchantmentPBR
 		return Identity::ShellNodeSuffix();
 	}
 
-	// ---------------------------------------------------------- MaterialBinding
-
-	// ---------------------------------------------------------------- slots
-
 	namespace
 	{
-		// The material field a slot writes; null for the slots phase 3 binds
-		// (glint, coat and subsurface are parameter sets, not maps).
 		RE::NiPointer<RE::NiSourceTexture>* TextureFieldOf(PBRMaterialLayout& a_material, Slot a_slot)
 		{
 			switch (a_slot) {
@@ -157,12 +140,12 @@ namespace WornEnchantmentPBR
 			case Slot::kHeight:
 				return &a_material.displacementTexture;
 			case Slot::kFuzz:
-				return &a_material.featuresTexture1;  // fuzz colour in rgb, weight in a
+				return &a_material.featuresTexture1;
 			case Slot::kCoat:
 			case Slot::kSubsurface:
-				return &a_material.featuresTexture0;  // coat colour + strength, or subsurface colour + thickness
+				return &a_material.featuresTexture0;
 			default:
-				return nullptr;  // glint has no map
+				return nullptr;
 			}
 		}
 
@@ -174,8 +157,6 @@ namespace WornEnchantmentPBR
 			return a_texture->name.c_str() ? a_texture->name.c_str() : "(unnamed)";
 		}
 
-		// CS evaluates fuzz only on materials without a coat or hair model
-		// (TruePBR.cpp SetupMaterial).
 		bool FuzzPossible(const PBRMaterialLayout& a_material)
 		{
 			return (a_material.pbrFlags & (kPbrTwoLayer | kPbrHairMarschner)) == 0;
@@ -197,9 +178,6 @@ namespace WornEnchantmentPBR
 		if (a_slot == Slot::kEmissive && !property_->emissiveColor) {
 			return "the property has no emissive colour storage";
 		}
-		// CS evaluates coat, then hair, then subsurface and either fuzz or
-		// glint; coat and subsurface share one map, fuzz and glint exclude each
-		// other, and a hair material takes none of them.
 		const bool hair = (material_->pbrFlags & kPbrHairMarschner) != 0;
 		if ((a_slot == Slot::kFuzz || a_slot == Slot::kGlint || a_slot == Slot::kCoat || a_slot == Slot::kSubsurface) && hair) {
 			return "the material has a hair model, which CS evaluates instead";
@@ -273,7 +251,6 @@ namespace WornEnchantmentPBR
 		if (a_on) {
 			material_->pbrFlags |= a_bits;
 		} else {
-			// Off means back to what the material had for these bits.
 			material_->pbrFlags = (material_->pbrFlags & ~a_bits) | (*flags_ & a_bits);
 		}
 	}
@@ -337,7 +314,6 @@ namespace WornEnchantmentPBR
 		if (!material_ || subsurface_) {
 			return;
 		}
-		// CS keeps the subsurface colour in specularColor and its opacity in subSurfaceLightRolloff.
 		subsurface_ = SavedSubsurface{ material_->specularColor, material_->subSurfaceLightRolloff };
 		SetFeature(kPbrSubsurface, true);
 	}
@@ -357,7 +333,6 @@ namespace WornEnchantmentPBR
 		if (!material_) {
 			return;
 		}
-		// CS keeps the PBR displacement scale in rimLightPower (NOTES 22).
 		if (!heightScale_) {
 			heightScale_ = material_->rimLightPower;
 		}
@@ -441,8 +416,6 @@ namespace WornEnchantmentPBR
 		return out;
 	}
 
-	// ------------------------------------------------------------- material
-
 	std::unique_ptr<MaterialBinding> MaterialBinding::Install(RE::BSGeometry* a_geometry, RE::BSLightingShaderProperty* a_property, bool a_uniqueCopy)
 	{
 		if (!a_geometry || !a_property || !a_property->material) {
@@ -452,8 +425,6 @@ namespace WornEnchantmentPBR
 		binding->geometry_ = RE::NiPointer{ a_geometry };
 		binding->property_ = RE::NiPointer{ a_property };
 		if (a_uniqueCopy) {
-			// Materials are pooled by content (NOTES 5): a shared one would glow on
-			// every wearer, so the property gets its own copy.
 			auto* original = a_property->material;
 			binding->original_ = RE::BSTSmartPointer<RE::BSShaderMaterial>{ original };
 			a_property->SetMaterial(original, true);
@@ -489,8 +460,6 @@ namespace WornEnchantmentPBR
 			property->SetMaterial(original_.get(), true);
 		}
 	}
-
-	// ------------------------------------------------------------- ShellBinding
 
 	std::unique_ptr<ShellBinding> ShellBinding::Create(RE::BSGeometry* a_original, RE::BSLightingShaderProperty* a_property, const ShellSettings& a_settings)
 	{
@@ -542,11 +511,9 @@ namespace WornEnchantmentPBR
 			}
 			shell->pbr_ = static_cast<PBRMaterialLayout*>(property->material);
 			shell->slots_ = SlotWriter{ shell->pbr_, property };
-			property->flags.set(Flag::kVertexLighting);  // stays PBR for CS (NOTES 4)
+			property->flags.set(Flag::kVertexLighting);
 			property->flags.reset(Flag::kRimLighting);
 		} else {
-			// Vanilla lighting material: white diffuse, the original's normal map,
-			// rim lighting from the material's rim power (NOTES 33).
 			auto*       vanilla = RE::BSLightingShaderMaterialBase::CreateMaterial(RE::BSShaderMaterial::Feature::kDefault);
 			const auto* base = static_cast<const RE::BSLightingShaderMaterialBase*>(a_property->material);
 			if (!vanilla) {
@@ -602,7 +569,6 @@ namespace WornEnchantmentPBR
 		}
 		rt.properties[RE::BSGeometry::States::kProperty] = shell->alpha_;
 
-		// Inflation edits the shell's own skin data; the original's stays untouched.
 		std::string inflation = "none (not skinned)";
 		if (auto* skin = rt.skinInstance.get(); skin && skin->skinData && skin->skinData->boneData && skin->skinData->bones > 0) {
 			const auto* originalSkin = originalRt.skinInstance.get();
@@ -761,7 +727,6 @@ namespace WornEnchantmentPBR
 			property->emissiveMult = a_emissive;
 		}
 		if (skinData_ && !restSkinToBone_.empty() && !(a_inflate == lastInflate_)) {
-			// Skyrim bones point along X; Y and Z run across the bone (NOTES 35).
 			lastInflate_ = a_inflate;
 			const float axis[3]{ 1.0f + a_inflate.x, 1.0f + a_inflate.y, 1.0f + a_inflate.z };
 			for (std::uint32_t i = 0; i < restSkinToBone_.size() && i < skinData_->bones; ++i) {
@@ -787,8 +752,6 @@ namespace WornEnchantmentPBR
 		}
 	}
 
-	// ---------------------------------------------------------------- lights
-
 	std::vector<LightPlacement> PlaceLights(const Bones& a_bones, std::span<RE::BSGeometry* const> a_geometries, RE::NiAVObject* a_root, const Vec3& a_offset)
 	{
 		std::vector<LightPlacement> out;
@@ -810,8 +773,6 @@ namespace WornEnchantmentPBR
 				}
 			},
 			[&](const SkinnedBones& skinned) {
-				// The bones that carry the most skinned vertices across the recipe's
-				// geometries, each light at its bone's skinned centre (NOTES 34).
 				struct Candidate
 				{
 					RE::NiNode*   bone = nullptr;
@@ -887,8 +848,6 @@ namespace WornEnchantmentPBR
 			light->name = RE::BSFixedString{ Identity::LightNodeName() };
 			light->local.translate = placement.offset;
 			auto& ld = light->GetLightRuntimeData();
-			// ISL's overlay: flags in ambient.red, cutoff in ambient.green, source
-			// size in radius.z (CS InverseSquareLighting/Common.h).
 			ld.ambient = RE::NiColor{ std::bit_cast<float>(kLlfInitialised | kLlfInverseSquare), 1.0f, 0.0f };
 			ld.diffuse = RE::NiColor{ 0.0f, 0.0f, 0.0f };
 			ld.radius = RE::NiPoint3{ 1.0f, 1.0f, 1.4142f };
@@ -945,7 +904,6 @@ namespace WornEnchantmentPBR
 			ld.fade = fade;
 			ld.ambient.green = a_cutoff;
 			ld.radius.z = size;
-			// The reach ISL will derive, written for the non-ISL path too.
 			const float radius = IslRadius(fade, size, a_cutoff, shadow_);
 			if (std::fabs(ld.radius.x - radius) > 1.0f) {
 				ld.radius.x = radius;

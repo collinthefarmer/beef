@@ -31,8 +31,6 @@ namespace WornEnchantmentPBR
 			return layout;
 		}
 
-		// The skin partition record when the geometry is skinned into at
-		// least one partition, else null.
 		const RE::NiSkinPartition* SkinPartitionOf(RE::BSGeometry* a_geometry)
 		{
 			const auto* skin = a_geometry->GetGeometryRuntimeData().skinInstance.get();
@@ -40,8 +38,6 @@ namespace WornEnchantmentPBR
 			return partition && partition->numPartitions > 0 && partition->partitions.data() ? partition : nullptr;
 		}
 
-		// One renderer buffer set with its counts: one per skin partition, or
-		// the shape's own when it is not skinned.
 		struct BufferSet
 		{
 			const RE::BSGraphics::TriShape* shape = nullptr;
@@ -73,8 +69,6 @@ namespace WornEnchantmentPBR
 			return sets;
 		}
 
-		// The bytes of one renderer buffer set: the CPU copy when the engine
-		// kept it, else a GPU read back.
 		struct Buffers
 		{
 			std::vector<std::uint8_t>  vertices;
@@ -92,9 +86,6 @@ namespace WornEnchantmentPBR
 			if (a_set.vertices == 0 || indexCount == 0 || a_set.layout.stride == 0) {
 				return std::unexpected("empty buffers");
 			}
-			// The counts are the engine's own uint16 fields, so a copy is at
-			// most 65535 vertices and triangles; the CPU copy's length is the
-			// engine's invariant and cannot be checked from here.
 			const std::size_t vertexBytes = static_cast<std::size_t>(a_set.vertices) * a_set.layout.stride;
 			const std::size_t indexBytes = static_cast<std::size_t>(indexCount) * sizeof(std::uint16_t);
 			Buffers           out;
@@ -120,8 +111,6 @@ namespace WornEnchantmentPBR
 			return { reinterpret_cast<const std::uint8_t*>(a_indices.data()), a_indices.size() * sizeof(std::uint16_t) };
 		}
 
-		// Vertices decoded and every triangle that indexes past them dropped,
-		// so MeshData carries the invariant the bakes rely on.
 		std::expected<MeshPartition, std::string> DecodePartition(const Buffers& a_buffers, const VertexLayout& a_layout, std::uint32_t a_vertexCount)
 		{
 			MeshPartition partition;
@@ -170,8 +159,6 @@ namespace WornEnchantmentPBR
 
 		const auto* skin = a_geometry->GetGeometryRuntimeData().skinInstance.get();
 		const auto* skinPartition = SkinPartitionOf(a_geometry);
-		// Skinned: bones through the partition's palette, the biped slot from
-		// the dismember record when the geometry has one.
 		const auto* dismember = skinPartition ? netimmerse_cast<const RE::BSDismemberSkinInstance*>(skin) : nullptr;
 		const auto* slots = dismember ? dismember->GetRuntimeData().partitions : nullptr;
 		const auto  slotCount = dismember ? dismember->GetRuntimeData().numPartitions : 0;
@@ -274,7 +261,6 @@ namespace WornEnchantmentPBR
 				for (std::uint32_t i = 0; i < skin->skinData->bones; ++i) {
 					const auto* bone = skin->bones[i];
 					if (bone && bone->name.c_str() && a_node == bone->name.c_str()) {
-						// skinToBone maps skin space into the bone; its inverse puts the bone's origin in skin space.
 						const auto origin = skin->skinData->boneData[i].skinToBone.Invert() * RE::NiPoint3{ 0.0f, 0.0f, 0.0f };
 						return Vec3{ origin.x, origin.y, origin.z };
 					}
@@ -289,12 +275,8 @@ namespace WornEnchantmentPBR
 		return std::nullopt;
 	}
 
-	// ------------------------------------------------------------- the cache
-
 	namespace
 	{
-		// The read's log line with its hash and analysis, and under verbose
-		// logging (a geometry given) the CPU-copy-versus-GPU comparison.
 		void LogRead(const char* a_name, const MeshData& a_mesh, const MeshAnalysis& a_analysis, RE::BSGeometry* a_compare)
 		{
 			std::size_t vertices = 0, triangles = 0;

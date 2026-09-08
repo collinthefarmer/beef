@@ -18,9 +18,8 @@ namespace WornEnchantmentPBR
 		std::uint32_t       bits = 0;
 		if (exponent == 0) {
 			if (mantissa == 0) {
-				bits = sign;  // zero
+				bits = sign;
 			} else {
-				// Subnormal: normalise the mantissa.
 				std::uint32_t m = mantissa;
 				int           e = -1;
 				do {
@@ -30,7 +29,7 @@ namespace WornEnchantmentPBR
 				bits = sign | ((127 - 15 - e) << 23) | ((m & 0x3FFu) << 13);
 			}
 		} else if (exponent == 31) {
-			bits = sign | 0x7F800000u | (mantissa << 13);  // inf or nan
+			bits = sign | 0x7F800000u | (mantissa << 13);
 		} else {
 			bits = sign | ((exponent + 112) << 23) | (mantissa << 13);
 		}
@@ -68,7 +67,6 @@ namespace WornEnchantmentPBR
 		if (base + a_layout.stride > a_bytes.size()) {
 			return std::nullopt;
 		}
-		// Every read below stays inside this vertex's stride.
 		const auto fits = [&](std::uint32_t a_offset, std::size_t a_size) { return a_offset + a_size <= a_layout.stride; };
 		MeshVertex v;
 		if (!fits(*a_layout.position, 12)) {
@@ -91,8 +89,6 @@ namespace WornEnchantmentPBR
 		}
 		return v;
 	}
-
-	// --------------------------------------------------------------- bakes
 
 	namespace
 	{
@@ -131,15 +127,10 @@ namespace WornEnchantmentPBR
 					sum = std::clamp(sum, 0.0f, 1.0f);
 					return std::array{ sum, sum, sum };
 				},
-				// The id maps come from the analysis (BuildIslandBake); BuildBake
-				// refuses them before any vertex is valued.
 				[&](const ComponentIdBake&) { return std::array{ 1.0f, 1.0f, 1.0f }; },
 				[&](const ChartIdBake&) { return std::array{ 1.0f, 1.0f, 1.0f }; });
 		}
 
-		// The id-map bakes need the mesh analysis, which the compositor passes
-		// to BuildIslandBake; from the mesh alone they are a problem, never a
-		// silently black map.
 		std::string NeedsAnalysis(const BakeKind& a_kind)
 		{
 			return Match(
@@ -199,7 +190,6 @@ namespace WornEnchantmentPBR
 
 	namespace
 	{
-		// Every triangle of every partition with a scalar per vertex.
 		BakeBuffers ScalarBake(const MeshData& a_mesh, const std::function<float(const MeshVertex&)>& a_value)
 		{
 			BakeBuffers out;
@@ -264,8 +254,6 @@ namespace WornEnchantmentPBR
 		return kept;
 	}
 
-	// ------------------------------------------------------------ bake keys
-
 	namespace
 	{
 		std::string Definition(const BakeKind& a_kind)
@@ -277,8 +265,6 @@ namespace WornEnchantmentPBR
 				[](const WorldUpBake&) { return std::string{ "worldUp" }; },
 				[](const PartitionBake& p) { return std::format("partition {}", p.slot); },
 				[](const BoneWeightBake& b) {
-					// Every bone by name, sorted: the bake tests membership, so
-					// two orders of one set are one picture and share a key.
 					std::vector<std::string> sorted = b.bones;
 					std::ranges::sort(sorted);
 					std::string names;

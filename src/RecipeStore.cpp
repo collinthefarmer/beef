@@ -22,17 +22,14 @@ namespace WornEnchantmentPBR
 			std::vector<Diagnostic>            diagnostics;
 			std::shared_ptr<const SignalGraph> graph;
 			bool                               dirty = false;
-			bool                               transient = false;  // never written; the studio's paint recipe
-			Studio::ReferenceCounts            references;         // recounted whenever the recipe changes
+			bool                               transient = false;
+			Studio::ReferenceCounts            references;
 		};
 
 		std::vector<LoadedRecipe> g_loaded;
-		std::vector<Recipe>       g_recipes;  // the same recipes, contiguous for Resolve
+		std::vector<Recipe>       g_recipes;
 		RecipeStoreStatus         g_status;
 		Studio::RegionsFile           g_presets;
-
-
-		// ------------------------------------------------------------ files
 
 		std::string ReadText(const std::filesystem::path& a_path)
 		{
@@ -69,7 +66,6 @@ namespace WornEnchantmentPBR
 			logger::info("presets: {} where, {} what, {} bone names", g_presets.where.size(), g_presets.what.size(), g_presets.boneNames.size());
 		}
 
-		// Every .json under a folder, in path order.
 		std::vector<std::filesystem::path> JsonFilesUnder(const std::filesystem::path& a_root)
 		{
 			std::error_code                    ec;
@@ -89,13 +85,6 @@ namespace WornEnchantmentPBR
 			return !rel.empty() && rel.native()[0] != '.';
 		}
 
-		// ------------------------------------------------------------ forms
-
-		// Editor IDs: the engine keeps them for a few form types (keywords,
-		// magic effects, ...); po3's Tweaks answers for every type through its
-		// export (EngineForms). At load the store asks for every effect shader,
-		// enchantment, magic effect, keyword, armor, addon and light and builds
-		// the reverse map the recipes' editor IDs resolve through.
 		std::string Lower(std::string_view a_text)
 		{
 			std::string out{ a_text };
@@ -105,7 +94,7 @@ namespace WornEnchantmentPBR
 			return out;
 		}
 
-		std::unordered_map<std::string, FormKey> g_editorIds;  // lowercase editor ID -> form, for the types recipes name
+		std::unordered_map<std::string, FormKey> g_editorIds;
 
 		template <class Form>
 		void IndexEditorIds(RE::TESDataHandler& a_handler)
@@ -164,7 +153,6 @@ namespace WornEnchantmentPBR
 			}
 		}
 
-		// Every form a recipe names, resolved in place.
 		void ResolveForms(Recipe& a_recipe, std::vector<Diagnostic>& a_out)
 		{
 			for (auto& key : a_recipe.keys) {
@@ -198,8 +186,6 @@ namespace WornEnchantmentPBR
 					[&](Selector& s) { ResolveSelector(s, a_recipe.id, where, a_out); });
 			}
 		}
-
-		// ---------------------------------------------------------- loading
 
 		void LogDiagnostics(const std::string& a_id, const std::vector<Diagnostic>& a_diagnostics)
 		{
@@ -237,8 +223,6 @@ namespace WornEnchantmentPBR
 			const auto& r = *result.recipe;
 			logger::info("recipe {} loaded from {} (keys: {}; {} signals, {} curves, {} sources, {} masks, {} outputs{})", id, a_path.string(), keys,
 				r.signals.size(), r.curves.size(), r.sources.size(), r.masks.size(), r.outputs.size(), r.metadata.imported.empty() ? "" : "; imported, not yet edited");
-			// A later file with the same id replaces the earlier: user/ loads
-			// last, so a saved copy overrides the importer's.
 			const auto existing = std::ranges::find(g_loaded, id, [](const LoadedRecipe& l) { return l.recipe.id; });
 			if (existing != g_loaded.end()) {
 				logger::info("recipe {}: {} replaces {}", id, a_path.string(), existing->path.string());
@@ -248,7 +232,6 @@ namespace WornEnchantmentPBR
 			g_loaded.push_back({ std::move(*result.recipe), a_path, std::move(result.diagnostics), nullptr, false });
 		}
 
-		// Every effect shader a constant-effect (worn) enchantment resolves to.
 		std::vector<RE::TESEffectShader*> ArmorEnchantmentShaders()
 		{
 			std::vector<RE::TESEffectShader*>        out;
@@ -304,7 +287,6 @@ namespace WornEnchantmentPBR
 						readBack == text, parsed.recipe && *parsed.recipe == recipe, parsed.HasErrors());
 					LogDiagnostics(recipe.id, parsed.diagnostics);
 				}
-				// The key resolves to the record we imported from, editor ID or not.
 				for (auto& key : recipe.keys) {
 					key.form.key = record.key;
 				}
@@ -322,9 +304,6 @@ namespace WornEnchantmentPBR
 
 	namespace
 	{
-		// A key belongs to the last file loaded with it (Resolve); a recipe
-		// that shares a key with a later file never resolves by it, which is
-		// easy to miss, so it is said once at load.
 		void LogKeyOwnership()
 		{
 			std::unordered_map<std::string, std::string> owner;
@@ -422,8 +401,6 @@ namespace WornEnchantmentPBR
 		return nullptr;
 	}
 
-	// -------------------------------------------------------------- editing
-
 	namespace
 	{
 		LoadedRecipe* Loaded(std::string_view a_id) noexcept
@@ -432,8 +409,6 @@ namespace WornEnchantmentPBR
 			return it == g_loaded.end() ? nullptr : &*it;
 		}
 
-		// g_recipes mirrors g_loaded by index; the manager points into it. A
-		// republished recipe is recounted, so the counts never lag the rows.
 		void Republish(LoadedRecipe& a_loaded)
 		{
 			a_loaded.references = Studio::CountReferences(a_loaded.recipe);
@@ -490,8 +465,6 @@ namespace WornEnchantmentPBR
 			path = Identity::UserRecipeFolder() / (loaded->recipe.id + ".json");
 			loaded->recipe.metadata.imported.clear();
 		}
-		// The scratch mask is the studio's working selection, never a row of
-		// the file: it is dropped, and a layer still masked by it is unmasked.
 		Recipe written = loaded->recipe;
 		std::erase_if(written.masks, [](const Mask& m) { return m.name == Studio::kScratchMask; });
 		for (auto& output : written.outputs) {
@@ -515,7 +488,6 @@ namespace WornEnchantmentPBR
 
 	namespace
 	{
-		// An id is a file stem: letters, digits, '-', '_', '.', not starting with '.'.
 		bool IsStem(std::string_view a_id)
 		{
 			return !a_id.empty() && std::ranges::all_of(a_id, [](char c) { return std::isalnum(static_cast<unsigned char>(c)) || c == '-' || c == '_' || c == '.'; }) && a_id[0] != '.';
@@ -644,4 +616,3 @@ namespace WornEnchantmentPBR
 		return true;
 	}
 }
-

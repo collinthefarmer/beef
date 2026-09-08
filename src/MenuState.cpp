@@ -7,7 +7,6 @@ namespace WornEnchantmentPBR::Studio
 {
 	namespace
 	{
-		// The layer selection after an edit of the selected recipe's rows.
 		void ReduceEdit(Selection& a_selection, const RecipeEdit& a_edit)
 		{
 			Match(
@@ -53,8 +52,6 @@ namespace WornEnchantmentPBR::Studio
 
 	namespace
 	{
-		// The indices the stack's solo, mute and selection hold, remapped
-		// after a row moves or goes; a mapping to nothing drops the index.
 		void RemapRegion(RegionStack& a_region, const std::function<std::optional<std::size_t>(std::size_t)>& a_map)
 		{
 			const auto remap = [&](std::optional<std::size_t>& a_index) {
@@ -105,7 +102,6 @@ namespace WornEnchantmentPBR::Studio
 				}
 			},
 			[&](const PickPiece& i) {
-				// A new piece: the recipe, geometry, cell and region start over.
 				selection = Selection{};
 				selection.actorID = i.actorID;
 				selection.armorID = i.armorID;
@@ -179,8 +175,6 @@ namespace WornEnchantmentPBR::Studio
 				Term moved = region.terms[i.from];
 				region.terms.erase(region.terms.begin() + static_cast<std::ptrdiff_t>(i.from));
 				region.terms.insert(region.terms.begin() + static_cast<std::ptrdiff_t>(i.to), std::move(moved));
-				// The first term leads whatever op it carried; a displaced
-				// leader takes `and`.
 				for (std::size_t k = 1; k < region.terms.size(); ++k) {
 					if (region.terms[k].op == TermOp::kSet) {
 						region.terms[k].op = TermOp::kAnd;

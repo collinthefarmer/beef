@@ -1,9 +1,5 @@
 #pragma once
 
-// The signal environment over a live actor: what the wearer's state looks
-// like to a recipe's signals. Holds handles and form ids, never engine
-// pointers across ticks, and answers zero for anything it cannot reach.
-
 #include "PCH.h"
 #include "Signals.h"
 
@@ -27,7 +23,6 @@ namespace WornEnchantmentPBR
 
 		RE::ActorHandle actor_;
 		RE::FormID      enchantment_ = 0;
-		// Actor value names resolve through the engine's table once per name.
 		mutable std::unordered_map<std::string, RE::ActorValue>            actorValues_;
 		mutable std::unordered_map<std::string, std::optional<Timing::EffectParams>> shaders_;
 	};

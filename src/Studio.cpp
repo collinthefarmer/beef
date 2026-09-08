@@ -15,9 +15,6 @@ namespace WornEnchantmentPBR::Studio
 {
 	namespace
 	{
-		// A parameter text names one signal when it is "@name" and nothing else:
-		// a colour written "1, 0.5, @blue" references per component, which the
-		// inspector does not follow.
 		[[nodiscard]] bool IsWholeReference(std::string_view a_text) noexcept
 		{
 			return a_text.size() > 1 && a_text.starts_with('@') && a_text.find(',') == std::string_view::npos;
@@ -78,7 +75,6 @@ namespace WornEnchantmentPBR::Studio
 			return it == a_recipe.geometries.end() ? nullptr : &*it;
 		}
 
-		// The masks the layers read, each once, in the order first used.
 		[[nodiscard]] std::vector<std::string> BadgesOf(const std::vector<LayerRow>& a_layers)
 		{
 			std::vector<std::string> badges;
@@ -94,10 +90,6 @@ namespace WornEnchantmentPBR::Studio
 			return badges;
 		}
 
-		// Cell state for a slot the surface offers: the first output on it wins
-		// (written, or refused when the binding would not take it); otherwise
-		// the slot is excluded by a feature another output on the surface
-		// already takes, or empty.
 		void FillCell(Cell& a_cell, const RecipeRow& a_recipe, const GeometryRow& a_geometry, const Selection& a_selection, const View& a_view)
 		{
 			const OutputRow* first = nullptr;
@@ -152,8 +144,6 @@ namespace WornEnchantmentPBR::Studio
 			return light;
 		}
 
-		// Where the recipe sits in the piece's merge order; by priority when
-		// the piece does not list it (a stale selection).
 		[[nodiscard]] bool MergesBefore(const PieceRow& a_piece, const RecipeRow& a_other, const RecipeRow& a_recipe) noexcept
 		{
 			const auto mine = std::ranges::find(a_piece.recipes, a_recipe.id, &RecipeRow::id);
@@ -164,8 +154,6 @@ namespace WornEnchantmentPBR::Studio
 			return theirs < mine;
 		}
 
-		// Other recipes' layers on the same slot of a geometry of the same
-		// name, split by merge order around this recipe.
 		void FillForeignRows(LayerStack& a_stack, const PieceRow& a_piece, const RecipeRow& a_recipe, const GeometryRow& a_geometry)
 		{
 			for (const auto& other : a_piece.recipes) {
@@ -198,11 +186,6 @@ namespace WornEnchantmentPBR::Studio
 				a_signals.push_back(*signal);
 			}
 		}
-
-		// ------------------------------------------------------------ forms
-		// How a field's text reads as a value. Each binding yields the edit,
-		// or nothing when the text does not parse; an empty text is a value
-		// only where the field allows none.
 
 		[[nodiscard]] std::optional<CurveRef> CurveRefOf(const std::string& a_text)
 		{
@@ -276,8 +259,6 @@ namespace WornEnchantmentPBR::Studio
 			};
 		}
 
-		// A colour scalar reads as a colour parameter, every other scalar as a
-		// number or @signal. A name that is no slot field binds to nothing.
 		[[nodiscard]] FieldBinding BindScalar(std::size_t a_output, std::optional<ScalarField> a_field)
 		{
 			return [=](const std::string& a_text) -> std::optional<RecipeEdit> {
@@ -299,7 +280,6 @@ namespace WornEnchantmentPBR::Studio
 			};
 		}
 
-		// A parameter text has a detail when it names a signal the inspector found.
 		[[nodiscard]] bool NamesSignal(const Inspector& a_inspector, const std::string& a_text)
 		{
 			return a_text.starts_with('@') && std::ranges::find(a_inspector.signals, ReferenceName(a_text), &SignalRow::name) != a_inspector.signals.end();
@@ -310,8 +290,6 @@ namespace WornEnchantmentPBR::Studio
 			return a_present ? std::optional{ a_detail } : std::nullopt;
 		}
 	}
-
-	// ------------------------------------------------------------------ modes
 
 	std::string_view ModeName(Mode a_mode) noexcept
 	{
@@ -335,8 +313,6 @@ namespace WornEnchantmentPBR::Studio
 		}
 		return Layout{};
 	}
-
-	// -------------------------------------------------------------- selection
 
 	std::string_view TargetName(Target a_target) noexcept
 	{
@@ -428,8 +404,6 @@ namespace WornEnchantmentPBR::Studio
 		return nullptr;
 	}
 
-	// ------------------------------------------------------------------ board
-
 	const Cell* CellAt(const Board& a_board, Surface a_surface, Slot a_slot) noexcept
 	{
 		for (const auto& cell : a_board.cells) {
@@ -450,8 +424,6 @@ namespace WornEnchantmentPBR::Studio
 				Cell cell;
 				cell.surface = surface;
 				cell.slot = slot;
-				// A shell column with no shell yet is still offered: adding an
-				// output there is what makes the shell.
 				if (SurfaceHasSlot(surface, a_recipe.shellMaterial, slot)) {
 					FillCell(cell, a_recipe, a_geometry, a_selection, a_view);
 				}
@@ -462,8 +434,6 @@ namespace WornEnchantmentPBR::Studio
 		board.shell = a_geometry.shell;
 		return board;
 	}
-
-	// ------------------------------------------------------------------ stack
 
 	std::optional<LayerStack> BuildStackView(const PieceRow& a_piece, const RecipeRow& a_recipe, const GeometryRow& a_geometry, const Selection& a_selection, const View& a_view)
 	{
@@ -504,8 +474,6 @@ namespace WornEnchantmentPBR::Studio
 		return stack;
 	}
 
-	// -------------------------------------------------------------- inspector
-
 	std::optional<Inspector> BuildInspector(const RecipeRow& a_recipe, const GeometryRow& a_geometry, const Selection& a_selection)
 	{
 		const auto* output = SelectedOutput(&a_geometry, a_selection);
@@ -519,7 +487,6 @@ namespace WornEnchantmentPBR::Studio
 		inspector.row = output->layers[inspector.layer];
 		const auto& row = inspector.row;
 
-		// A layer's source may name a source or a mask; its mask only a mask.
 		if (IsWholeReference(row.source)) {
 			const auto name = ReferenceName(row.source);
 			const auto* image = FindImage(a_geometry.sources, name);
@@ -561,8 +528,6 @@ namespace WornEnchantmentPBR::Studio
 		}
 		return inspector;
 	}
-
-	// ------------------------------------------------------------- panels
 
 	LightRow LightRowOf(const Recipe& a_recipe)
 	{
@@ -636,8 +601,6 @@ namespace WornEnchantmentPBR::Studio
 		return names;
 	}
 
-	// ------------------------------------------------------------- sources
-
 	namespace
 	{
 		[[nodiscard]] std::string OnOff(bool a_on)
@@ -708,7 +671,6 @@ namespace WornEnchantmentPBR::Studio
 
 	namespace
 	{
-		// A whole number in 0..a_max, the whole text; nothing otherwise.
 		std::optional<std::uint32_t> WholeNumber(std::string_view a_text, std::uint32_t a_max)
 		{
 			while (!a_text.empty() && a_text.front() == ' ') {
@@ -725,7 +687,6 @@ namespace WornEnchantmentPBR::Studio
 			return value;
 		}
 
-		// "a, b, c, d, e": five plain numbers; nothing for any other shape.
 		std::optional<std::array<float, 5>> FiveNumbers(std::string_view a_text)
 		{
 			std::array<float, 5> out{};
@@ -874,8 +835,6 @@ namespace WornEnchantmentPBR::Studio
 		return std::nullopt;
 	}
 
-	// ---------------------------------------------------------------- signals
-
 	SignalList BuildSignalList(const RecipeRow& a_recipe, const Layout& a_layout)
 	{
 		SignalList list;
@@ -889,8 +848,6 @@ namespace WornEnchantmentPBR::Studio
 		}
 		return list;
 	}
-
-	// ------------------------------------------------------------------ forms
 
 	std::string_view FieldDetailName(FieldDetail a_detail) noexcept
 	{
@@ -913,10 +870,7 @@ namespace WornEnchantmentPBR::Studio
 
 	namespace
 	{
-		// The image kinds a source field can make in place, and a mask.
 		constexpr const char* kImageCreators[]{ "new image", "new material", "new bake", "new uv", "new distance", "new ripple", "new mask" };
-		// What a value field can make: a constant of the literal it holds
-		// (promote), a fresh constant, an expression.
 		constexpr const char* kValueCreators[]{ "promote to signal", "new constant", "new expression" };
 
 		[[nodiscard]] std::vector<std::string> Creators(std::span<const char* const> a_names)
@@ -924,9 +878,6 @@ namespace WornEnchantmentPBR::Studio
 			return std::vector<std::string>(a_names.begin(), a_names.end());
 		}
 
-		// The row a creator makes, named after its kind and unique among the
-		// taken names, and the edit that binds the field to it. `a_bind` turns
-		// the "@name" text into the field's own edit.
 		[[nodiscard]] std::vector<RecipeEdit> CreateImage(const std::string& a_creator, std::span<const std::string> a_taken, const FieldBinding& a_bind)
 		{
 			std::vector<RecipeEdit> edits;
@@ -949,8 +900,6 @@ namespace WornEnchantmentPBR::Studio
 			return edits;
 		}
 
-		// A value field's creators. Promote needs the literal the field holds
-		// now; a fresh constant starts at 0 (a scalar) or white (a colour).
 		[[nodiscard]] std::vector<RecipeEdit> CreateValue(const std::string& a_creator, std::string_view a_field, const std::string& a_current, bool a_colour, std::span<const std::string> a_taken, const FieldBinding& a_bind)
 		{
 			std::vector<RecipeEdit> edits;
@@ -1014,8 +963,6 @@ namespace WornEnchantmentPBR::Studio
 		const std::size_t output = in.output;
 		const std::size_t layer = in.layer;
 
-		// A layer's source may be a source or a mask row, so its combo lists
-		// both; a new signal's name must be unique among every signal.
 		const auto sourceNames = Joined(in.sources, in.masks);
 		const auto signalNames = Joined(in.scalarSignals, in.colorSignals);
 
@@ -1096,7 +1043,7 @@ namespace WornEnchantmentPBR::Studio
 		if (const auto* colour = Get<Vec3>(*a_signal.constant)) {
 			return FormField{ name, FieldKind::kColor, LiteralColorText(*colour), {}, false, std::nullopt, std::nullopt, bind };
 		}
-		return std::nullopt;  // a vec2 constant edits in the file
+		return std::nullopt;
 	}
 
 	namespace
@@ -1175,7 +1122,6 @@ namespace WornEnchantmentPBR::Studio
 			};
 		}
 
-		// A value field whose text is a whole @signal opens that signal.
 		[[nodiscard]] FormField Field(std::string a_name, FieldKind a_kind, std::string a_text, std::vector<std::string> a_names, FieldBinding a_bind)
 		{
 			const bool signal = (a_kind == FieldKind::kScalar || a_kind == FieldKind::kColor || a_kind == FieldKind::kVector || a_kind == FieldKind::kVec2) && IsWholeReference(a_text) && std::ranges::find(a_names, ReferenceName(a_text)) != a_names.end();
@@ -1198,8 +1144,6 @@ namespace WornEnchantmentPBR::Studio
 		form.push_back(Field("shadow", FieldKind::kToggle, a_light.shadow ? "on" : "off", {}, [=](const std::string& a_text) -> std::optional<RecipeEdit> {
 			return SetLightShadow{ output, a_text == "on" };
 		}));
-		// Bones: the kind, then its settings. A kind change starts from the
-		// format's defaults; a setting change keeps the rest as shown.
 		const bool skinned = a_light.bones != "named";
 		form.push_back(Field("bones", FieldKind::kChoice, skinned ? "skinned" : "named", { "skinned", "named" }, [=](const std::string& a_text) -> std::optional<RecipeEdit> {
 			if (a_text == "skinned") {
@@ -1276,8 +1220,6 @@ namespace WornEnchantmentPBR::Studio
 
 	namespace
 	{
-		// A field of the source form: the row with one text replaced, read
-		// back as the kind, set whole.
 		[[nodiscard]] FieldBinding BindSourceText(const SourceRow& a_row, std::string SourceRow::*a_member)
 		{
 			return [a_row, a_member](const std::string& a_text) -> std::optional<RecipeEdit> {
@@ -1350,8 +1292,6 @@ namespace WornEnchantmentPBR::Studio
 		return form;
 	}
 
-	// ---------------------------------------------------------------- colours
-
 	std::optional<Vec3> LiteralColor(std::string_view a_text)
 	{
 		const auto  param = ParseVec3Param(a_text);
@@ -1372,8 +1312,6 @@ namespace WornEnchantmentPBR::Studio
 	{
 		return Vec3ParamText(std::array<Param, 3>{ a_color.x, a_color.y, a_color.z });
 	}
-
-	// ---------------------------------------------------------------- filters
 
 	bool NameMatches(std::string_view a_name, std::string_view a_filter) noexcept
 	{
@@ -1396,8 +1334,6 @@ namespace WornEnchantmentPBR::Studio
 		return false;
 	}
 
-	// ------------------------------------------------------------------ names
-
 	std::string UniqueName(std::string_view a_stem, std::span<const std::string> a_taken)
 	{
 		const auto taken = [&](const std::string& a_name) { return std::ranges::find(a_taken, a_name) != a_taken.end(); };
@@ -1415,8 +1351,6 @@ namespace WornEnchantmentPBR::Studio
 
 	std::string GeometryLabel(std::string_view a_name, std::string_view a_armorName)
 	{
-		// " (FE034935)[0]/ (2500097A) [100%]": eight hex digits in each pair of
-		// parentheses, an index in brackets, a weight in brackets.
 		const auto hex = [](std::string_view a_text, std::size_t a_at) {
 			if (a_at + 8 > a_text.size()) {
 				return false;
@@ -1457,8 +1391,6 @@ namespace WornEnchantmentPBR::Studio
 		return std::string{ a_text.starts_with('@') ? a_text.substr(1) : a_text };
 	}
 
-	// ------------------------------------------------------------- mesh facts
-
 	std::vector<PartitionRow> PartitionsOf(const MeshData& a_mesh)
 	{
 		std::vector<PartitionRow> rows;
@@ -1483,8 +1415,6 @@ namespace WornEnchantmentPBR::Studio
 
 	std::vector<BoneRow> BonesOf(const MeshData& a_mesh)
 	{
-		// Coverage: the summed weight a bone carries over every vertex, as a
-		// share of all vertices; a bone moving half the mesh fully reads 0.5.
 		std::map<std::string, float> weight;
 		std::size_t                  vertices = 0;
 		for (const auto& partition : a_mesh.partitions) {

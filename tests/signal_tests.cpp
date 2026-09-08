@@ -1,8 +1,3 @@
-// The signal graph: dependency order, cycles, curves (declared and inline),
-// phase-continuous pulses, the three trigger sources with filters and
-// payloads, counters, accumulators, delta and smooth, gradients, vector
-// expressions, and the environment readings.
-
 #include "Signals.h"
 #include "test_support.h"
 
@@ -14,7 +9,6 @@ using test::Near;
 
 namespace
 {
-	// Controllable wearer state.
 	class FakeEnvironment final : public SignalEnvironment
 	{
 	public:

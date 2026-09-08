@@ -38,7 +38,6 @@ namespace WornEnchantmentPBR::Studio
 			return SignalType(a_names, a_name);
 		}
 
-		// A whole "@name": the field's own combo decides what it may name.
 		[[nodiscard]] std::optional<std::string> CheckWholeReference(const FormField& a_field, std::string_view a_name)
 		{
 			if (Listed(a_field.names, a_name)) {
@@ -92,7 +91,6 @@ namespace WornEnchantmentPBR::Studio
 			return std::nullopt;
 		}
 
-		// An expression: parse, then every reference resolvable and typed.
 		[[nodiscard]] std::optional<std::string> CheckExpression(std::string_view a_text, const Names& a_names, bool a_texel, bool a_curve)
 		{
 			const auto program = Program::Parse(a_text);
@@ -219,7 +217,7 @@ namespace WornEnchantmentPBR::Studio
 		}
 		const auto* row = RowOf(kFieldKinds, a_field.kind);
 		if (!row) {
-			return std::nullopt;  // an unknown kind takes whatever is typed
+			return std::nullopt;
 		}
 		switch (row->check) {
 		case FieldCheckKind::kScalar:

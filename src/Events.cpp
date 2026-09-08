@@ -19,7 +19,6 @@ namespace WornEnchantmentPBR
 				return &sink;
 			}
 
-			// plugin.c 1404-1489
 			RE::BSEventNotifyControl ProcessEvent(const RE::TESEquipEvent* a_event, RE::BSTEventSource<RE::TESEquipEvent>*) override
 			{
 				if (a_event && a_event->actor) {
@@ -34,7 +33,6 @@ namespace WornEnchantmentPBR
 				return RE::BSEventNotifyControl::kContinue;
 			}
 
-			// plugin.c 1495-1508
 			RE::BSEventNotifyControl ProcessEvent(const RE::TESObjectLoadedEvent* a_event, RE::BSTEventSource<RE::TESObjectLoadedEvent>*) override
 			{
 				if (a_event) {
@@ -50,10 +48,6 @@ namespace WornEnchantmentPBR
 				return RE::BSEventNotifyControl::kContinue;
 			}
 
-			// The vanilla hit provider: `hit.received` on the struck actor and
-			// `hit.dealt` on the attacker. The engine's hit event carries no
-			// position, so the payload has none; a ripple then starts at the
-			// piece's centre.
 			RE::BSEventNotifyControl ProcessEvent(const RE::TESHitEvent* a_event, RE::BSTEventSource<RE::TESHitEvent>*) override
 			{
 				if (a_event) {
@@ -74,7 +68,6 @@ namespace WornEnchantmentPBR
 				return RE::BSEventNotifyControl::kContinue;
 			}
 
-			// plugin.c 1383-1396
 			RE::BSEventNotifyControl ProcessEvent(const SKSE::NiNodeUpdateEvent* a_event, RE::BSTEventSource<SKSE::NiNodeUpdateEvent>*) override
 			{
 				if (a_event && a_event->reference) {
@@ -89,7 +82,6 @@ namespace WornEnchantmentPBR
 
 	namespace
 	{
-		// Delivered on the animation thread; the manager posts it to the game thread.
 		class AnimationSink final : public RE::BSTEventSink<RE::BSAnimationGraphEvent>
 		{
 		public:

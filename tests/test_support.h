@@ -1,9 +1,5 @@
 #pragma once
 
-// Shared by the host-independent test executables: a check counter, float
-// comparison, and fixture file access. No framework: each executable prints
-// its failing checks and returns non-zero.
-
 #include <cmath>
 #include <cstdio>
 #include <filesystem>
@@ -35,8 +31,6 @@ namespace test
 		}
 	}
 
-	// A section that cannot run for want of a fixture counts as a failure,
-	// so a missing file never reads as a pass.
 	inline void Skip(const std::string& what)
 	{
 		++checks;

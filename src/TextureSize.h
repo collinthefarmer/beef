@@ -1,17 +1,10 @@
 #pragma once
 
-// The one size type for render targets and the bakes and masks cached by
-// size. Engine-free, so the key functions in Mesh.h and the lab in
-// RuntimeTextures.h name the same type.
-
 #include <algorithm>
 #include <cstdint>
 
 namespace WornEnchantmentPBR
 {
-	// The side of a square render target in pixels, 64 to 4096. Clamp is
-	// the only way to make one, so no pass can be asked for a 0 px target
-	// and no caller re-clamps a size it was handed.
 	class TextureSize
 	{
 	public:

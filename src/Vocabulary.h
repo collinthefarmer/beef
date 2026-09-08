@@ -1,12 +1,5 @@
 #pragma once
 
-// The words the recipe format spells: one table per vocabulary with the
-// word beside its value, in enum order. The parser reads a field as one of
-// a table's words, the writer spells the word back, the name functions in
-// Recipe.h look words up here, and a studio choice field lists a table's
-// words. A vocabulary lives here and nowhere else; one that carries a rule
-// beyond its word (a slot's channels, a key kind's operand) grows a column.
-
 #include "Core.h"
 #include "Recipe.h"
 
@@ -14,12 +7,6 @@
 
 namespace WornEnchantmentPBR
 {
-	// A "default" key is written as the bare word, every other kind as
-	// {"<kind>": <form or glob>}; the parser refuses "default" as an object
-	// (KeyOperand::kNone, matched by no other kind). Priority is in enum
-	// order, ten per step, so a magic-effect key outranks an enchantment
-	// key, which outranks an effect-shader key, and so on down to material
-	// and default; KeyChoicesOf walks the table highest first.
 	inline constexpr KeyKindSpec kKeyKinds[]{
 		{ KeyKind::kDefault, "default", 0, KeyOperand::kNone, false, nullptr, nullptr },
 		{ KeyKind::kMaterial, "material", 10, KeyOperand::kGlob, false, nullptr, nullptr },
@@ -49,7 +36,6 @@ namespace WornEnchantmentPBR
 	};
 	static_assert(std::size(kImageChannels) == kImageChannelCount);
 	inline constexpr Named<ImageSpace> kImageSpaces[]{ { ImageSpace::kTiled, "tiled" }, { ImageSpace::kMesh, "mesh" } };
-	// RMAOS packs roughness, metallic, occlusion and reflectance in r, g, b, a.
 	inline constexpr MaterialChannelSpec kMaterialChannels[]{
 		{ MaterialChannel::kDiffuseRgb, "diffuseRgb", MaterialMap::kDiffuse, ShaderChannel::kRgb, ValueType::kVec3 },
 		{ MaterialChannel::kDiffuseLuma, "diffuseLuma", MaterialMap::kDiffuse, ShaderChannel::kLuma, ValueType::kScalar },
@@ -65,8 +51,6 @@ namespace WornEnchantmentPBR
 	inline constexpr Named<UvAxis> kUvAxes[]{ { UvAxis::kU, "u" }, { UvAxis::kV, "v" } };
 	inline constexpr Named<RippleShape> kRippleShapes[]{ { RippleShape::kRing, "ring" }, { RippleShape::kDisc, "disc" } };
 
-	// One row per alternative of SignalKind, in the variant's declaration
-	// order; `tunable` is the fact BuildSignalList splits the board on.
 	inline constexpr SignalKindSpec kSignalKinds[]{
 		{ SignalKindId::kConstant, "constant", true },
 		{ SignalKindId::kPulse, "pulse", false },
@@ -88,8 +72,6 @@ namespace WornEnchantmentPBR
 	static_assert(std::size(kSignalKinds) == kSignalKindCount);
 
 	inline constexpr Named<Surface> kSurfaces[]{ { Surface::kMaterial, "material" }, { Surface::kShell, "shell" } };
-	// Glint's fallbacks are the values CS starts a material at; the rest are
-	// what a fresh output should look like in the studio.
 	inline constexpr ScalarFieldSpec kScalarFields[]{
 		{ ScalarField::kStrength, "strength", &SlotScalars::strength, 1.0f },
 		{ ScalarField::kScale, "scale", &SlotScalars::scale, 1.0f },
@@ -119,15 +101,12 @@ namespace WornEnchantmentPBR
 		inline constexpr ScalarField kCoatScalars[]{ ScalarField::kRoughness, ScalarField::kLevel };
 		inline constexpr ScalarField kSubsurfaceScalars[]{ ScalarField::kColor, ScalarField::kThickness };
 
-		// CS evaluates one of coat, subsurface and fuzz per material, and
-		// glint excludes fuzz; every other pair coexists.
 		inline constexpr Slot kFuzzExcludes[]{ Slot::kGlint, Slot::kCoat, Slot::kSubsurface };
 		inline constexpr Slot kGlintExcludes[]{ Slot::kFuzz };
 		inline constexpr Slot kCoatExcludes[]{ Slot::kFuzz, Slot::kSubsurface };
 		inline constexpr Slot kSubsurfaceExcludes[]{ Slot::kFuzz, Slot::kCoat };
 	}
 
-	// Channels and notes as CS reads each map (BSLightingShaderMaterialPBR.h).
 	inline constexpr SlotSpec kSlots[]{
 		{ Slot::kDiffuse, "diffuse", SlotColumns::kRgba, "r, g, b: albedo; a: on a shell, per-texel visibility (with the shell's alpha blend and alpha test)", {}, false, {}, MaterialMap::kDiffuse },
 		{ Slot::kEmissive, "emissive", SlotColumns::kRgb, "r, g, b: emitted colour, scaled by strength; no alpha", SlotColumns::kEmissiveScalars, true, {}, MaterialMap::kNone },
@@ -140,8 +119,6 @@ namespace WornEnchantmentPBR
 		{ Slot::kSubsurface, "subsurface", SlotColumns::kRgba, "r, g, b: subsurface colour; a: thickness; shares one map with coat, so a material takes one of the two", SlotColumns::kSubsurfaceScalars, true, SlotColumns::kSubsurfaceExcludes, MaterialMap::kNone },
 	};
 	static_assert(std::size(kSlots) == kSlotCount);
-	// Shader modes as the layer pass's Blend function switches on them; lerp
-	// is replace under the opacity mix, so it shares replace's arithmetic.
 	inline constexpr BlendSpec kBlends[]{
 		{ Blend::kReplace, "replace", 0, false },
 		{ Blend::kMultiply, "multiply", 1, false },

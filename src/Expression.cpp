@@ -29,10 +29,6 @@ namespace WornEnchantmentPBR
 			{ "if", Program::Op::kIf, 3 },
 		} };
 
-		// ---------------------------------------------------- value maths
-		// Every operation is defined for scalar-scalar, scalar-vector (the
-		// scalar broadcasts) and same-size vectors; anything else is 0.
-
 		template <class F>
 		Value Unary(const Value& a, F a_f) noexcept
 		{
@@ -101,8 +97,6 @@ namespace WornEnchantmentPBR
 			return AsScalar(a) > 0.0f ? 1.0f : 0.0f;
 		}
 
-		// ---------------------------------------------------- type rules
-
 		std::expected<ValueType, std::string> Join(ValueType a, ValueType b, std::string_view a_what)
 		{
 			if (a == ValueType::kScalar) {
@@ -114,8 +108,6 @@ namespace WornEnchantmentPBR
 			return std::unexpected(std::format("'{}' mixes {} with {}", a_what, Name(a), Name(b)));
 		}
 	}
-
-	// --------------------------------------------------------------- parser
 
 	class ExpressionParser
 	{
@@ -172,7 +164,6 @@ namespace WornEnchantmentPBR
 			return false;
 		}
 
-		// A keyword is a whole word: "or" inside "orbit" is not one.
 		bool TakeWord(std::string_view a_word) noexcept
 		{
 			Skip();
@@ -360,7 +351,7 @@ namespace WornEnchantmentPBR
 
 		Error ParseVector()
 		{
-			++pos_;  // '['
+			++pos_;
 			int count = 0;
 			for (;;) {
 				if (auto e = ParseOr()) {
@@ -402,13 +393,12 @@ namespace WornEnchantmentPBR
 
 		Error ParseReference()
 		{
-			++pos_;  // '@'
+			++pos_;
 			if (!(std::isalpha(static_cast<unsigned char>(At())) || At() == '_')) {
 				return std::format("'@' must be followed by a name, at {}", pos_);
 			}
 			const auto name = ReadName();
 			if (Take("(")) {
-				// A declared curve applied to a value.
 				if (auto e = ParseOr()) {
 					return e;
 				}
@@ -494,8 +484,6 @@ namespace WornEnchantmentPBR
 		}
 		return program;
 	}
-
-	// ---------------------------------------------------------- type check
 
 	std::expected<ValueType, std::string> Program::Check(const RefTyper& a_types, ValueType a_xType) const
 	{
@@ -620,8 +608,6 @@ namespace WornEnchantmentPBR
 		}
 		return stack.empty() ? ValueType::kScalar : stack.back();
 	}
-
-	// ---------------------------------------------------------- evaluation
 
 	Value Program::Evaluate(const Inputs& a_inputs) const noexcept
 	{

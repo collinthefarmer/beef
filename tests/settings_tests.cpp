@@ -1,5 +1,3 @@
-// Round-trip and clamp checks for the settings table.
-
 #include "SettingsCore.h"
 
 #include <cstdio>
@@ -22,7 +20,6 @@ namespace
 
 int main()
 {
-	// Every table row has a unique (section, key) and page/label text.
 	{
 		const auto table = SettingTable();
 		for (std::size_t i = 0; i < table.size(); ++i) {
@@ -33,7 +30,6 @@ int main()
 		}
 	}
 
-	// Defaults survive a serialise/parse round trip.
 	{
 		const Settings a{};
 		const auto     text = a.Serialize();
@@ -41,7 +37,6 @@ int main()
 		Check(!SettingsDiffer(a, b), "defaults round-trip");
 	}
 
-	// Edited values and overrides survive a round trip.
 	{
 		Settings a{};
 		a.emissiveStrength = 3.25f;
@@ -55,7 +50,6 @@ int main()
 		Check(SettingsDiffer(a, Settings{}), "edited differs from defaults");
 	}
 
-	// Parser: sections, case, comments, clamps, 0..255 colours, unknown keys.
 	{
 		const auto s = Settings::Parse(
 			"[general]\n"

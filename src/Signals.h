@@ -1,10 +1,5 @@
 #pragma once
 
-// The signal graph: every scalar or vector a recipe animates, compiled once
-// per recipe and evaluated once per tick in dependency order. Engine-free;
-// the wearer's state comes in through SignalEnvironment and firings through
-// Fire(). The same graph types the expressions that masks use per texel.
-
 #include "Expression.h"
 #include "Recipe.h"
 #include "Timing.h"
@@ -19,7 +14,6 @@
 
 namespace WornEnchantmentPBR
 {
-	// What an event on the bus carries; a source fills what it has.
 	struct TriggerPayload
 	{
 		std::string         node;
@@ -29,7 +23,6 @@ namespace WornEnchantmentPBR
 		float               value = 0.0f;
 	};
 
-	// One event as delivered: an id and its payload.
 	struct EventRecord
 	{
 		std::string    id;
@@ -42,7 +35,6 @@ namespace WornEnchantmentPBR
 		TriggerPayload payload;
 	};
 
-	// The wearer, as the engine (or a test) supplies it each tick.
 	class SignalEnvironment
 	{
 	public:
@@ -53,7 +45,6 @@ namespace WornEnchantmentPBR
 		[[nodiscard]] virtual std::optional<Timing::EffectParams> EffectShader(const FormRef& a_record) const = 0;
 	};
 
-	// Everything zero: tests and recipes without actor input.
 	class NullEnvironment final : public SignalEnvironment
 	{
 	public:
@@ -65,13 +56,10 @@ namespace WornEnchantmentPBR
 
 	struct TickInputs
 	{
-		float time = 0.0f;   // recipe seconds since apply, speed applied
-		float delta = 0.0f;  // seconds since the previous tick, speed applied
+		float time = 0.0f;
+		float delta = 0.0f;
 	};
 
-	// Compiled once per recipe. A node in a cycle, with an unknown reference,
-	// a bad expression or a type mismatch is inert (0 or black) and reported
-	// on its row, as is anything that reads it.
 	class SignalGraph
 	{
 	public:
@@ -84,9 +72,7 @@ namespace WornEnchantmentPBR
 		[[nodiscard]] ValueType                    TypeOf(std::size_t a_index) const noexcept { return nodes_[a_index].type; }
 		[[nodiscard]] std::optional<ValueType>     TypeOf(std::string_view a_name) const noexcept;
 		[[nodiscard]] bool                         Inert(std::size_t a_index) const noexcept { return nodes_[a_index].inert; }
-		// Evaluation order: every node after the nodes it reads.
 		[[nodiscard]] std::span<const std::size_t> Order() const noexcept { return order_; }
-		// A declared curve's program, by name.
 		[[nodiscard]] const Program*               CurveProgram(std::string_view a_name) const noexcept;
 
 	private:
@@ -95,10 +81,10 @@ namespace WornEnchantmentPBR
 			Signal                     signal;
 			ValueType                  type = ValueType::kScalar;
 			std::vector<std::size_t>   deps;
-			std::optional<Program>     expression;  // expr signals
-			std::vector<std::uint32_t> exprRefs;    // node index per expression reference
-			std::vector<const Program*> exprCurves;  // per expression curve call
-			std::optional<Program>     curve;       // the row's curve, declared or inline
+			std::optional<Program>     expression;
+			std::vector<std::uint32_t> exprRefs;
+			std::vector<const Program*> exprCurves;
+			std::optional<Program>     curve;
 			bool                       inert = false;
 		};
 		std::vector<Node>                            nodes_;
@@ -109,15 +95,12 @@ namespace WornEnchantmentPBR
 		friend class SignalState;
 	};
 
-	// Per applied recipe: phases, firings, counters, previous values and
-	// the current value of every signal.
 	class SignalState
 	{
 	public:
 		explicit SignalState(const SignalGraph& a_graph);
 
 		void Tick(const SignalEnvironment& a_environment, const TickInputs& a_inputs);
-		// Delivers one event to every trigger whose source accepts it.
 		void Fire(const EventRecord& a_event, float a_time);
 
 		[[nodiscard]] Value ValueOf(std::size_t a_index) const noexcept;
@@ -133,14 +116,14 @@ namespace WornEnchantmentPBR
 	private:
 		struct NodeState
 		{
-			float                      phase = 0.0f;       // pulse
-			std::vector<TriggerFiring> firings;            // trigger
-			std::uint64_t              fired = 0;          // trigger: total firings ever
-			std::uint64_t              seen = 0;           // counter, accumulate: firings consumed
+			float                      phase = 0.0f;
+			std::vector<TriggerFiring> firings;
+			std::uint64_t              fired = 0;
+			std::uint64_t              seen = 0;
 			std::uint64_t              seenReset = 0;
 			float                      accumulator = 0.0f;
-			std::optional<Value>       previous;           // delta, smooth, when
-			Value                      held = 0.0f;        // payload: last value seen
+			std::optional<Value>       previous;
+			Value                      held = 0.0f;
 		};
 
 		[[nodiscard]] float Scalar(std::size_t a_index) const noexcept;

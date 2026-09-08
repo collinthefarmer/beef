@@ -1,7 +1,3 @@
-// The region stack: terms build to the one expression the file holds, the
-// built shape parses back to the same terms, anything else loads as one raw
-// term, and garbage never gets past the bounds.
-
 #include "TermStack.h"
 #include "Expression.h"
 #include "test_support.h"
@@ -19,7 +15,6 @@ namespace
 		return Term{ a_op, a_text, {} };
 	}
 
-	// Parsing the built text gives the same ops and texts (labels aside).
 	void RoundTrips(const std::vector<Term>& a_terms, const std::string& a_what)
 	{
 		const auto built = BuildRegion(a_terms);
@@ -54,8 +49,6 @@ namespace
 		Check(BuildRegion(std::vector{ T(TermOp::kSet, ""), T(TermOp::kAnd, "@b") }) == "@b", "an empty term is skipped");
 		Check(BuildRegion(std::vector{ T(TermOp::kSet, "(@a)") }) == "(@a)", "a wrapped single term keeps its own parentheses");
 
-		// The cap: terms that would build past the expression length are
-		// left off, and what is built still reads as an expression.
 		std::vector<Term> longTerms;
 		for (std::size_t i = 0; i < kMaxTerms; ++i) {
 			longTerms.push_back(Term{ TermOp::kAnd, "@" + std::string(120, 'n'), {} });

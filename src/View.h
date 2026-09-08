@@ -1,10 +1,5 @@
 #pragma once
 
-// How the piece is being looked at, as opposed to what the recipe says:
-// freeze and scrub, isolate a recipe, an output or a layer, mute layers.
-// Held by the manager, set by the menu, read by the tick. Nothing here is
-// ever written to a file.
-
 #include <compare>
 #include <cstddef>
 #include <set>
@@ -24,11 +19,11 @@ namespace WornEnchantmentPBR::Studio
 	{
 		bool               freeze = false;
 		float              scrubSeconds = 0.0f;
-		float              speed = 1.0f;  // multiplies every recipe's clock while the studio runs it
-		std::string        isolateRecipe;       // recipe id, empty = all
-		int                isolateOutput = -1;  // output index in that recipe, -1 = all
-		int                isolateLayer = -1;   // layer index in that output, -1 = all
-		bool               isolatedBySolo = false;  // the recipe isolate came from an output or layer solo, so that solo turning off clears it
+		float              speed = 1.0f;
+		std::string        isolateRecipe;
+		int                isolateOutput = -1;
+		int                isolateLayer = -1;
+		bool               isolatedBySolo = false;
 		std::set<LayerKey> muted;
 
 		[[nodiscard]] bool Isolating() const noexcept { return !isolateRecipe.empty(); }
@@ -43,8 +38,6 @@ namespace WornEnchantmentPBR::Studio
 			return RecipeShown(a_recipe) && (isolateOutput < 0 || static_cast<std::size_t>(isolateOutput) == a_output);
 		}
 
-		// Solo (isolate layer) wins over mute; a layer outside the isolated
-		// output is hidden with its output.
 		[[nodiscard]] bool LayerShown(const std::string& a_recipe, std::size_t a_output, std::size_t a_layer) const
 		{
 			if (!OutputShown(a_recipe, a_output)) {
@@ -61,8 +54,6 @@ namespace WornEnchantmentPBR::Studio
 			return muted.contains(LayerKey{ a_recipe, a_output, a_layer });
 		}
 
-		// True when any layer of the output is hidden by solo or mute, so a
-		// static stack knows to render again.
 		[[nodiscard]] bool FiltersLayers(const std::string& a_recipe, std::size_t a_output) const
 		{
 			if (isolateLayer >= 0 && isolateRecipe == a_recipe && isolateOutput >= 0 && static_cast<std::size_t>(isolateOutput) == a_output) {

@@ -23,8 +23,6 @@ namespace
 		return a_vertex;
 	}
 
-	// A quad on the spine in one partition, a triangle on the hand in
-	// another, far apart in space and in UV.
 	MeshData TwoPieces()
 	{
 		MeshData      mesh;
@@ -52,8 +50,6 @@ namespace
 		return mesh;
 	}
 
-	// Two triangles that meet along an edge whose vertices are duplicated,
-	// as a UV seam leaves them: same positions, different UV islands.
 	MeshData SeamMesh()
 	{
 		MeshData      mesh;
@@ -62,8 +58,8 @@ namespace
 			At(0, 0, 0, 0.0f, 0.0f),
 			At(1, 0, 0, 0.1f, 0.0f),
 			At(1, 0, 1, 0.1f, 0.1f),
-			At(0, 0, 0, 0.5f, 0.5f),  // duplicates vertex 0 on the far island
-			At(1, 0, 1, 0.6f, 0.6f),  // duplicates vertex 2
+			At(0, 0, 0, 0.5f, 0.5f),
+			At(1, 0, 1, 0.6f, 0.6f),
 			At(0, 0, 1, 0.5f, 0.6f),
 		};
 		part.triangles = { { 0, 1, 2 }, { 3, 4, 5 } };
@@ -138,7 +134,7 @@ namespace
 		const MeshAnalysis withStray = AnalyseMesh(unreached);
 		Check(withStray.componentOf.size() == 7 && withStray.componentOf[6] == kNoIsland && withStray.chartOf[6] == kNoIsland, "a vertex no triangle reaches is kNoIsland in both tables");
 		MeshData welded = SeamMesh();
-		welded.partitions[0].vertices[3].uv = Vec2{ 0.0f, 0.0f + kChartWeldUv * 0.25f };  // within the weld of vertex 0
+		welded.partitions[0].vertices[3].uv = Vec2{ 0.0f, 0.0f + kChartWeldUv * 0.25f };
 		welded.partitions[0].vertices[4].uv = Vec2{ 0.1f, 0.1f };
 		Check(AnalyseMesh(welded).charts == 1, "UVs within the weld join one chart");
 		MeshData outOfRange = SeamMesh();
@@ -203,7 +199,6 @@ namespace
 		sample.height = 8;
 		for (std::size_t i = 0; i < 64; ++i) {
 			MaterialTexel texel = i % 4 == 0 ? Steel() : Leather();
-			// A little spread inside each population, never enough to cross.
 			texel.roughness += static_cast<float>(i % 3) * 0.01f;
 			texel.luma += static_cast<float>(i % 5) * 0.01f;
 			sample.texels.push_back(texel);

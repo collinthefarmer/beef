@@ -1,9 +1,3 @@
-// The importer against the vanilla armor enchant shaders: every fixture in
-// tests/fixtures/efsh imports to a recipe that validates, reads back
-// identical, evaluates to level 1 at rest, follows the default target
-// policy, and matches the checked-in expected file. Run with --update to
-// rewrite the expected files after an intended importer change.
-
 #include "Importer.h"
 #include "Signals.h"
 #include "test_support.h"
@@ -76,8 +70,6 @@ namespace
 		SignalState       state(graph);
 		RecordEnvironment env(a_record);
 		state.Tick(env, { 0.0f, 0.0f });
-		// Expectations from the record itself: its level at t=0 is its alpha
-		// over its steady state (1 for a record without fade-in).
 		const float level = Timing::EvaluateAlpha(a_record.params.fill, 0.0f, 1.0f) / Timing::BaselineAlpha(a_record.params.fill);
 		const float edgeLevel = Timing::EvaluateAlpha(a_record.params.edge, 0.0f, 1.0f) / Timing::BaselineAlpha(a_record.params.edge);
 		const float pulse = std::clamp(level, 0.0f, 2.0f);
@@ -110,7 +102,6 @@ namespace
 		Check(IsAnimated(a_recipe, a_recipe.outputs[0]) == hasFill && IsAnimated(a_recipe, a_recipe.outputs[2]) == hasFill, id + ": field stacks are animated, flat ones static");
 	}
 
-	// Hues the proof of concept logged for these records (apply lines of 2026-09-04).
 	void KnownHues(const Recipe& a_recipe)
 	{
 		const auto* hue = a_recipe.FindSignal("glowHue");
@@ -149,7 +140,6 @@ int main(int argc, char** argv)
 	std::ranges::sort(fixtures);
 	Check(fixtures.size() >= 7, std::format("the six vanilla EnchArmor*FXS fixtures and WaterBreathingFXS under {}", efshDir.string()));
 
-	// Without an editor ID the id and the key fall back to the form key.
 	{
 		EffectShaderRecord anonymous;
 		anonymous.key = *FormKey::Parse("0x92DED~Skyrim.esm");

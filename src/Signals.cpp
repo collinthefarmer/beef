@@ -28,7 +28,6 @@ namespace WornEnchantmentPBR
 			return 0.0f;
 		}
 
-		// Integer hash to -1..1; the seed picks the sequence.
 		float Lattice(std::int64_t a_i, std::uint32_t a_seed) noexcept
 		{
 			std::uint32_t h = static_cast<std::uint32_t>(a_i) * 0x9E3779B1u ^ (a_seed + 0x7F4A7C15u);
@@ -93,7 +92,6 @@ namespace WornEnchantmentPBR
 				});
 		}
 
-		// Names of the signals a signal reads.
 		std::vector<std::string> Dependencies(const Signal& a_signal, const Program* a_expression)
 		{
 			std::vector<std::string> out;
@@ -173,8 +171,6 @@ namespace WornEnchantmentPBR
 		}
 	}
 
-	// ------------------------------------------------------------ SignalGraph
-
 	std::optional<std::size_t> SignalGraph::Index(std::string_view a_name) const noexcept
 	{
 		const auto it = byName_.find(std::string{ a_name });
@@ -204,7 +200,6 @@ namespace WornEnchantmentPBR
 			if (auto program = ParseCurve(c.text)) {
 				g.curves_.emplace(c.name, std::move(*program));
 			}
-			// A bad curve is reported by Validate; callers of it fall back to the identity.
 		}
 
 		g.nodes_.reserve(a_signals.size());
@@ -218,7 +213,6 @@ namespace WornEnchantmentPBR
 			g.nodes_.push_back(std::move(n));
 		}
 
-		// Expressions, references and each row's curve.
 		for (auto& n : g.nodes_) {
 			if (const auto* expr = Get<ExprSignal>(n.signal.kind)) {
 				auto parsed = Program::Parse(expr->text);
@@ -255,8 +249,6 @@ namespace WornEnchantmentPBR
 			}
 		}
 
-		// Dependency order by depth-first search; a back edge is a cycle and
-		// every node on it becomes inert.
 		enum class Mark : std::uint8_t { kNone, kOpen, kDone };
 		std::vector<Mark>                marks(g.nodes_.size(), Mark::kNone);
 		std::vector<std::size_t>         path;
@@ -290,7 +282,6 @@ namespace WornEnchantmentPBR
 			visit(i);
 		}
 
-		// Types, in dependency order so each node sees its inputs typed.
 		for (const auto i : g.order_) {
 			auto&      n = g.nodes_[i];
 			const auto typeOf = [&](std::string_view name) -> std::optional<ValueType> { return g.TypeOf(name); };
@@ -326,7 +317,6 @@ namespace WornEnchantmentPBR
 				},
 				[](const auto&) { return ValueType::kScalar; });
 			if (n.curve && n.type != ValueType::kScalar) {
-				// A curve shapes each component; nothing to check.
 			}
 			if (n.expression) {
 				for (const auto& r : n.expression->References()) {
@@ -343,7 +333,6 @@ namespace WornEnchantmentPBR
 			}
 		}
 
-		// Parameter types: a scalar parameter must read a scalar, a vector one a vector of its size.
 		for (auto& n : g.nodes_) {
 			const auto scalar = [&](const Param& p, const char* what) {
 				if (const auto* ref = Get<Ref>(p)) {
@@ -420,7 +409,6 @@ namespace WornEnchantmentPBR
 				[](const auto&) {});
 		}
 
-		// A node that reads an inert node is inert too.
 		for (const auto i : g.order_) {
 			for (const auto d : g.nodes_[i].deps) {
 				if (g.nodes_[d].inert && !g.nodes_[i].inert) {
@@ -431,8 +419,6 @@ namespace WornEnchantmentPBR
 		}
 		return g;
 	}
-
-	// ------------------------------------------------------------ SignalState
 
 	SignalState::SignalState(const SignalGraph& a_graph) :
 		graph_(a_graph), values_(a_graph.Size(), Value{ 0.0f }), states_(a_graph.Size())
@@ -601,7 +587,6 @@ namespace WornEnchantmentPBR
 			[&](const ActorStateSignal& k) -> Value { return a_environment.ActorState(k.kind); },
 			[&](const EnchantmentSignal& k) -> Value { return a_environment.Enchantment(k.field); },
 			[&](const TriggerSignal& k) -> Value {
-				// A `when` source fires from the graph itself, on the rising edge.
 				if (const auto* when = Get<WhenOrigin>(k.origin)) {
 					const float now = Scalar(when->when.name);
 					const float before = st.previous ? AsScalar(*st.previous) : 0.0f;

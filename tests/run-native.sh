@@ -1,7 +1,4 @@
 #!/usr/bin/env bash
-# Build and run every host-independent test with the native compiler.
-# Usage: tests/run-native.sh [--update]   (--update rewrites the importer's expected recipes)
-# CXX picks the compiler (default: clang++ if present, else g++).
 set -euo pipefail
 cd "$(dirname "$0")/.."
 if [ -z "${CXX:-}" ]; then
@@ -13,8 +10,6 @@ FLAGS=(-std=c++23 -O1 -Wall -Wextra -I src -I src/extern "-DWEPBR_FIXTURES_DIR=\
 MODEL=(src/Recipe.cpp src/RecipeJson.cpp src/Expression.cpp src/Signals.cpp src/Importer.cpp src/Timing.cpp)
 
 status=0
-# Each source compiles once into $OUT; a suite links the objects it names,
-# so the six model sources are not rebuilt nine times.
 compile() {
 	local src="$1" obj="$OUT/$(echo "$1" | tr / _).o"
 	if [ ! -f "$obj" ] || [ "$src" -nt "$obj" ] || [ -n "$(find src -name '*.h' -newer "$obj" 2>/dev/null | head -1)" ]; then
@@ -49,8 +44,6 @@ build_and_run termstack_tests tests/termstack_tests.cpp src/TermStack.cpp src/Ex
 build_and_run studio_tests tests/studio_tests.cpp src/Studio.cpp src/MenuState.cpp src/History.cpp src/Edits.cpp src/EditCheck.cpp src/Paint.cpp src/TermStack.cpp src/Analysis.cpp src/Mesh.cpp "${MODEL[@]}"
 build_and_run edits_tests tests/edits_tests.cpp src/Edits.cpp "${MODEL[@]}"
 
-# Every checked-in recipe validates against the schema when check-jsonschema is
-# on PATH (nix shell nixpkgs#check-jsonschema -c tests/run-native.sh).
 if command -v check-jsonschema >/dev/null 2>&1; then
 	echo "== schema"
 	check-jsonschema --schemafile schema/recipe.schema.json schema/example-magicka.json tests/fixtures/recipes/*.json || status=1

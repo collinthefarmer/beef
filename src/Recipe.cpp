@@ -33,7 +33,6 @@ namespace WornEnchantmentPBR
 			});
 		}
 
-
 		struct SlotEntry
 		{
 			std::uint32_t    slot;
@@ -44,7 +43,6 @@ namespace WornEnchantmentPBR
 			{ 36, "ring" }, { 37, "feet" }, { 38, "calves" }, { 39, "shield" }, { 40, "tail" }
 		};
 
-		// The name a parameter reads, if any.
 		std::optional<std::string_view> RefOf(const Param& a_param) noexcept
 		{
 			const auto* ref = Get<Ref>(a_param);
@@ -66,8 +64,6 @@ namespace WornEnchantmentPBR
 				});
 		}
 	}
-
-	// ------------------------------------------------------------------ forms
 
 	std::optional<FormKey> FormKey::Parse(std::string_view a_text)
 	{
@@ -114,8 +110,6 @@ namespace WornEnchantmentPBR
 		return std::nullopt;
 	}
 
-	// ---------------------------------------------------------------- signals
-
 	SignalKindId SignalKindOf(const SignalKind& a_kind) noexcept
 	{
 		return Match(
@@ -154,8 +148,6 @@ namespace WornEnchantmentPBR
 		return row && row->tunable;
 	}
 
-	// ------------------------------------------------------------------- keys
-
 	std::string_view KeyKindName(KeyKind a_kind) noexcept
 	{
 		return NameOf(kKeyKinds, a_kind);
@@ -191,8 +183,6 @@ namespace WornEnchantmentPBR
 		}
 		return "?";
 	}
-
-	// -------------------------------------------------------------- selectors
 
 	bool GlobMatch(std::string_view a_glob, std::string_view a_text) noexcept
 	{
@@ -239,8 +229,6 @@ namespace WornEnchantmentPBR
 		});
 	}
 
-	// ---------------------------------------------------------------- sources
-
 	std::optional<std::uint32_t> BipedSlotFromName(std::string_view a_name) noexcept
 	{
 		for (const auto& e : kBipedSlots) {
@@ -260,8 +248,6 @@ namespace WornEnchantmentPBR
 		}
 		return std::nullopt;
 	}
-
-	// ---------------------------------------------------------------- outputs
 
 	std::string_view SlotName(Slot a_slot) noexcept
 	{
@@ -372,10 +358,6 @@ namespace WornEnchantmentPBR
 	{
 		return FromName(kRippleShapes, a_name);
 	}
-
-	// ------------------------------------------------------------- slot rules
-	// Every question here is a read of one row of kSlots or kScalarFields; a
-	// slot or field the tables lack answers as an empty one.
 
 	namespace
 	{
@@ -512,8 +494,6 @@ namespace WornEnchantmentPBR
 		return out;
 	}
 
-	// ----------------------------------------------------------------- recipe
-
 	const Signal* Recipe::FindSignal(std::string_view a_name) const noexcept
 	{
 		const auto it = std::ranges::find(signals, a_name, &Signal::name);
@@ -543,19 +523,14 @@ namespace WornEnchantmentPBR
 		return !recipe || std::ranges::any_of(diagnostics, [](const Diagnostic& d) { return d.severity == Severity::kError; });
 	}
 
-	// ------------------------------------------------------------- validation
-
 	namespace
 	{
-		// The type of any row an expression may read, by name, in the
-		// context it is read from.
 		class RowTypes
 		{
 		public:
 			RowTypes(const Recipe& a_recipe, const SignalGraph& a_graph) :
 				recipe_(a_recipe), graph_(a_graph) {}
 
-			// Per texel: sources, masks (typed by their own expression) and signals.
 			std::optional<ValueType> MaterialTexel(std::string_view a_name, std::unordered_set<std::string>& a_visiting) const
 			{
 				if (const auto* source = recipe_.FindSource(a_name)) {
@@ -575,7 +550,7 @@ namespace WornEnchantmentPBR
 			std::optional<ValueType> MaskType(const Mask& a_mask, std::unordered_set<std::string>& a_visiting) const
 			{
 				if (!a_visiting.insert(a_mask.name).second) {
-					return std::nullopt;  // a cycle; reported by the caller
+					return std::nullopt;
 				}
 				const auto program = Program::Parse(a_mask.text);
 				if (!program) {
@@ -660,7 +635,6 @@ namespace WornEnchantmentPBR
 				}
 			}
 
-			// A scalar parameter must name a scalar signal.
 			void Scalar(const std::string& a_where, const Param& a_param, std::string_view a_field)
 			{
 				const auto name = RefOf(a_param);
@@ -830,9 +804,6 @@ namespace WornEnchantmentPBR
 				}
 			}
 
-			// Every scalar a slot carries: a present one must be well typed, a
-			// required one must be present. kColor is the one vector scalar and
-			// lives outside ScalarOf.
 			void Scalars(const std::string& a_where, const SurfaceOutput& a_output)
 			{
 				for (const auto field : ScalarsOf(a_output.slot)) {
@@ -859,7 +830,7 @@ namespace WornEnchantmentPBR
 
 			void Outputs()
 			{
-				std::map<Surface, std::vector<Slot>> bound;  // slots written so far per surface, for SlotsExclude
+				std::map<Surface, std::vector<Slot>> bound;
 				std::size_t                          index = 0;
 				for (const auto& o : recipe_.outputs) {
 					const auto where = std::format("output {}", index++);
@@ -867,8 +838,6 @@ namespace WornEnchantmentPBR
 						o,
 						[&](const SurfaceOutput& m) {
 							Scalars(where, m);
-							// A material and a PBR-copy shell offer every slot, so the
-							// only surface that can lack one is a vanilla shell.
 							if (!SurfaceHasSlot(m.surface, recipe_.shell.material, m.slot)) {
 								Error(where, std::format("a vanilla shell has only the emissive slot; '{}' is not one (its diffuse and normal maps are never written; rim and emissive strength are shell scalars)", SlotName(m.slot)));
 							}
@@ -939,14 +908,8 @@ namespace WornEnchantmentPBR
 		return Validator{ a_recipe }.Run();
 	}
 
-	// ------------------------------------------------------------- resolution
-
 	namespace
 	{
-		// Dispatches on the key's operand, not its kind: `kNone` (default)
-		// matches unconditionally, `kGlob` (material) tests every geometry's
-		// diffuse path, and `kForm` compares the key's form against the row's
-		// single field or (keyword) any form in its list.
 		bool KeyMatches(const RecipeKey& a_key, const WornPiece& a_piece)
 		{
 			const auto* row = RowOf(kKeyKinds, a_key.kind);
@@ -979,7 +942,7 @@ namespace WornEnchantmentPBR
 			ResolvedRecipe resolved;
 			std::size_t    loadIndex;
 		};
-		std::vector<RecipeKey> claimed;  // a key belongs to the last file loaded with it
+		std::vector<RecipeKey> claimed;
 		std::vector<Candidate> matches;
 		bool                   enchantmentMatched = false;
 		for (std::size_t i = a_loaded.size(); i-- > 0;) {
@@ -1105,8 +1068,6 @@ namespace WornEnchantmentPBR
 		return std::ranges::all_of(a_text, [](char c) { return std::isalnum(static_cast<unsigned char>(c)) || c == '_'; });
 	}
 
-	// --------------------------------------------------------- classification
-
 	namespace
 	{
 		class AnimationQuery
@@ -1195,7 +1156,6 @@ namespace WornEnchantmentPBR
 				});
 			}
 
-			// A per-texel name: source, mask or signal.
 			bool Image(std::string_view a_name)
 			{
 				if (recipe_.FindSource(a_name)) {
@@ -1212,7 +1172,7 @@ namespace WornEnchantmentPBR
 			bool Guarded(const std::string& a_key, F a_f)
 			{
 				if (!visiting_.insert(a_key).second) {
-					return false;  // a reference cycle; validation reports it
+					return false;
 				}
 				const bool result = a_f();
 				visiting_.erase(a_key);
@@ -1259,8 +1219,6 @@ namespace WornEnchantmentPBR
 				return false;
 			});
 	}
-
-	// ---------------------------------------------------------- text forms
 
 	namespace
 	{
@@ -1379,7 +1337,6 @@ namespace WornEnchantmentPBR
 		}
 		const auto parts = SplitCommas(text);
 		if (parts.size() == 1) {
-			// One number stands for all three components.
 			const auto single = ParseParam(parts[0]);
 			if (single && Get<float>(*single)) {
 				return Vec3Param{ std::array<Param, 3>{ *single, *single, *single } };
@@ -1416,7 +1373,6 @@ namespace WornEnchantmentPBR
 		}
 		const auto parts = SplitCommas(text);
 		if (parts.size() == 1) {
-			// One number stands for all three components.
 			const auto single = ParseNumber(parts[0]);
 			return single ? std::optional{ LayerSource{ Vec3{ *single, *single, *single } } } : std::nullopt;
 		}
@@ -1442,4 +1398,3 @@ namespace WornEnchantmentPBR
 			[](const auto&) { return ValueType::kScalar; });
 	}
 }
-

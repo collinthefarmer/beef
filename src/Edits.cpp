@@ -6,18 +6,11 @@
 #include <cctype>
 #include <format>
 
-// Every edit follows one shape: find the row the edit names (or refuse with
-// the row in `where`), check the value against the slot rules and the
-// recipe's names, then write. Nothing is written before every check has
-// passed, so a refused edit leaves the recipe equal to what it was.
-
 namespace WornEnchantmentPBR::Studio
 {
 	namespace
 	{
 		using Refusal = std::optional<Diagnostic>;
-
-		// ------------------------------------------------------- row names
 
 		std::string OutputWhere(std::size_t a_output)
 		{
@@ -38,10 +31,6 @@ namespace WornEnchantmentPBR::Studio
 		{
 			return Diagnostic{ Severity::kError, std::move(a_where), std::move(a_message) };
 		}
-
-		// --------------------------------------------------------- lookups
-		// A lookup is the row, or the reason there is none; exactly one of
-		// the two is set.
 
 		struct FoundOutput
 		{
@@ -103,10 +92,6 @@ namespace WornEnchantmentPBR::Studio
 			const auto it = std::ranges::find(a_recipe.sources, a_name, &Source::name);
 			return it == a_recipe.sources.end() ? nullptr : &*it;
 		}
-
-		// ---------------------------------------------------- value checks
-		// A reference in a value must name a row the recipe has. Types and
-		// expression text are Validate's to judge once the edit is in.
 
 		Refusal CheckParam(const Recipe& a_recipe, const std::string& a_where, std::string_view a_field, const Param& a_param)
 		{
@@ -198,8 +183,6 @@ namespace WornEnchantmentPBR::Studio
 			return CheckChannels(a_where, a_layer.channels);
 		}
 
-		// The output of the recipe on the same surface whose slot excludes
-		// this one, if any.
 		std::optional<std::size_t> ExcludingOutput(const Recipe& a_recipe, Surface a_surface, Slot a_slot)
 		{
 			for (std::size_t i = 0; i < a_recipe.outputs.size(); ++i) {
@@ -210,8 +193,6 @@ namespace WornEnchantmentPBR::Studio
 			}
 			return std::nullopt;
 		}
-
-		// ----------------------------------------------------------- text
 
 		std::string ValueText(const Value& a_value)
 		{
@@ -226,8 +207,6 @@ namespace WornEnchantmentPBR::Studio
 		{
 			return a_curve ? a_curve->text : "none";
 		}
-
-		// ------------------------------------------------- layer edits
 
 		Refusal Edit(Recipe& a_recipe, const SetLayerSource& a_edit)
 		{
@@ -327,8 +306,6 @@ namespace WornEnchantmentPBR::Studio
 			}
 			const auto from = stack.begin() + static_cast<std::ptrdiff_t>(a_edit.from);
 			const auto to = stack.begin() + static_cast<std::ptrdiff_t>(a_edit.to);
-			// Rotating the range between the two positions by one slides the
-			// layers in between and lands `from` at `to`.
 			if (a_edit.from < a_edit.to) {
 				std::rotate(from, from + 1, to + 1);
 			} else if (a_edit.to < a_edit.from) {
@@ -344,8 +321,6 @@ namespace WornEnchantmentPBR::Studio
 			found.output->stack.clear();
 			return std::nullopt;
 		}
-
-		// --------------------------------------------------- key edits
 
 		std::string KeyWhere(const RecipeKey& a_key)
 		{
@@ -390,11 +365,6 @@ namespace WornEnchantmentPBR::Studio
 			return std::nullopt;
 		}
 
-		// ------------------------------------------------ output edits
-
-		// The selector every surface output of the recipe carries, when they
-		// all carry the same one; empty otherwise. A recipe whose outputs all
-		// target one geometry keeps targeting it as outputs are added.
 		Selector SharedSelector(const Recipe& a_recipe)
 		{
 			std::optional<Selector> shared;
@@ -467,8 +437,6 @@ namespace WornEnchantmentPBR::Studio
 			return std::nullopt;
 		}
 
-		// ------------------------------------------------ signal edits
-
 		Refusal Edit(Recipe& a_recipe, const SetConstant& a_edit)
 		{
 			auto* signal = FindSignalRow(a_recipe, a_edit.signal);
@@ -532,8 +500,6 @@ namespace WornEnchantmentPBR::Studio
 			return std::nullopt;
 		}
 
-		// ------------------------------------------------------- rows
-
 		std::string CurveWhere(const std::string& a_curve)
 		{
 			return std::format("curve {}", a_curve);
@@ -562,10 +528,6 @@ namespace WornEnchantmentPBR::Studio
 			a_recipe.curves.push_back(Curve{ a_edit.name, "x" });
 			return std::nullopt;
 		}
-
-		// ---------------------------------------------- reference walk
-		// Every place a recipe names a signal by reference, in place. Layer
-		// sources and masks name images, not signals, and are not visited.
 
 		template <class F>
 		void VisitRef(Ref& a_ref, F& a_visit)
@@ -692,9 +654,6 @@ namespace WornEnchantmentPBR::Studio
 			VisitParam(shell.pose.spin, a_visit);
 		}
 
-		// Every expression text, in place: expr signals, curves, masks, and
-		// the inline curves of signals and layers. Masks come with a flag so
-		// a signal rename can leave them alone when an image shares the name.
 		template <class F>
 		void ForEachText(Recipe& a_recipe, F a_visit)
 		{
@@ -723,7 +682,6 @@ namespace WornEnchantmentPBR::Studio
 			}
 		}
 
-		// Every declared-curve reference ("@name" whole), in place.
 		template <class F>
 		void ForEachCurveRef(Recipe& a_recipe, F a_visit)
 		{
@@ -876,15 +834,11 @@ namespace WornEnchantmentPBR::Studio
 			return std::nullopt;
 		}
 
-		// ---------------------------------------------------- sources
-
 		std::string SourceWhere(const std::string& a_source)
 		{
 			return std::format("source {}", a_source);
 		}
 
-		// What the file's own validation would refuse outright: the settings a
-		// kind cannot do without, and the signals a ripple reads.
 		Refusal CheckSourceKind(const Recipe& a_recipe, const std::string& a_where, const SourceKind& a_kind)
 		{
 			return Match(
@@ -939,8 +893,6 @@ namespace WornEnchantmentPBR::Studio
 			if (a_recipe.FindSource(a_edit.name) || a_recipe.FindMask(a_edit.name)) {
 				return Refuse(SourceWhere(a_edit.name), "a source or mask has that name");
 			}
-			// A new source may be incomplete (an image without a path yet); the
-			// row reports it until its settings are filled.
 			a_recipe.sources.push_back(Source{ a_edit.name, a_edit.kind });
 			return std::nullopt;
 		}
@@ -1032,8 +984,6 @@ namespace WornEnchantmentPBR::Studio
 			return std::nullopt;
 		}
 
-		// ------------------------------------------------------- light
-
 		struct FoundLight
 		{
 			LightOutput* light = nullptr;
@@ -1116,8 +1066,6 @@ namespace WornEnchantmentPBR::Studio
 			found.light->bones = a_edit.bones;
 			return std::nullopt;
 		}
-
-		// ------------------------------------------------------- shell
 
 		Refusal Edit(Recipe& a_recipe, const ResetLight& a_edit)
 		{
@@ -1218,8 +1166,6 @@ namespace WornEnchantmentPBR::Studio
 			return std::nullopt;
 		}
 
-		// ------------------------------------------ recipe-wide clears
-
 		Refusal Edit(Recipe& a_recipe, const ClearOutputs&)
 		{
 			a_recipe.outputs.clear();
@@ -1227,8 +1173,6 @@ namespace WornEnchantmentPBR::Studio
 			return std::nullopt;
 		}
 
-		// A parameter that named a signal returns to the value given; an
-		// optional one to its fallback.
 		void Literal(Param& a_param, float a_value)
 		{
 			if (Is<Ref>(a_param)) {
@@ -1274,8 +1218,6 @@ namespace WornEnchantmentPBR::Studio
 							Literal(layer.opacity, 1.0f);
 							Literal(layer.color);
 						}
-						// A scalar the slot requires returns to its fallback, an
-						// optional one to absent, which the binding reads as the same.
 						for (std::size_t i = 0; i < kScalarFieldCount; ++i) {
 							const auto field = static_cast<ScalarField>(i);
 							auto*      scalar = ScalarOf(o.scalars, field);
@@ -1427,8 +1369,6 @@ namespace WornEnchantmentPBR::Studio
 
 	ReferenceCounts CountReferences(const Recipe& a_recipe)
 	{
-		// The walkers write in place, so they run over a copy; a recipe is a
-		// small record.
 		Recipe          copy = a_recipe;
 		ReferenceCounts counts;
 		ForEachSignalRef(copy, [&](Ref& a_ref) { ++counts.signals[a_ref.name]; });
@@ -1443,8 +1383,6 @@ namespace WornEnchantmentPBR::Studio
 				return;
 			}
 			for (const auto& name : program->References()) {
-				// Inside a mask a name reads an image first, a signal after; both
-				// counts rise so a row of either kind knows it is read.
 				++counts.signals[name];
 				if (a_mask) {
 					++counts.images[name];
@@ -1487,7 +1425,6 @@ namespace WornEnchantmentPBR::Studio
 			if (here) {
 				const std::size_t end = at + 1 + a_from.size();
 				const bool        whole = end >= a_text.size() || !nameChar(a_text[end]);
-				// After the name, spaces then '(' make it a curve call.
 				std::size_t next = end;
 				while (next < a_text.size() && a_text[next] == ' ') {
 					++next;

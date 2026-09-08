@@ -30,12 +30,11 @@ import struct
 import sys
 from pathlib import Path
 
-# The plugin name as CMake's project(): folders under Textures and dist are named after it.
 PLUGIN_NAME = "WornEnchantmentPBR"
 
 try:
     from PIL import Image, ImageChops
-except ImportError:  # pragma: no cover
+except ImportError:
     sys.exit("Pillow is required: pip install pillow")
 
 DDS_MAGIC = b"DDS "
@@ -53,14 +52,12 @@ DDSCAPS_COMPLEX = 0x8
 DDSCAPS_TEXTURE = 0x1000
 DDSCAPS_MIPMAP = 0x400000
 
-
 def mip_chain(image: Image.Image) -> list[Image.Image]:
     mips = [image]
     while mips[-1].width > 1 or mips[-1].height > 1:
         prev = mips[-1]
         mips.append(prev.resize((max(1, prev.width // 2), max(1, prev.height // 2)), Image.LANCZOS))
     return mips
-
 
 def dds_header(width: int, height: int, mip_count: int, pixel_format: bytes, size_flag: int, pitch_or_size: int) -> bytes:
     header = struct.pack(
@@ -83,7 +80,6 @@ def dds_header(width: int, height: int, mip_count: int, pixel_format: bytes, siz
     assert len(header) == 124
     return DDS_MAGIC + header
 
-
 def write_dds_bgra8(path: Path, image: Image.Image) -> None:
     mips = mip_chain(image.convert("RGBA"))
     pixel_format = struct.pack("<II4sIIIII", 32, DDPF_RGB | DDPF_ALPHAPIXELS, b"\0\0\0\0", 32, 0x00FF0000, 0x0000FF00, 0x000000FF, 0xFF000000)
@@ -92,7 +88,6 @@ def write_dds_bgra8(path: Path, image: Image.Image) -> None:
         f.write(dds_header(image.width, image.height, len(mips), pixel_format, DDSD_PITCH, image.width * 4))
         for mip in mips:
             f.write(mip.tobytes("raw", "BGRA"))
-
 
 def encode_bc1(image: Image.Image) -> bytes:
     """Opaque BC1: endpoints from the extremes along the block's dominant colour axis."""
@@ -103,14 +98,13 @@ def encode_bc1(image: Image.Image) -> bytes:
     bw, bh = (w + 3) // 4, (h + 3) // 4
     padded = np.zeros((bh * 4, bw * 4, 3), dtype=np.float32)
     padded[:h, :w] = rgb
-    # (blocks, 16, 3)
     blocks = padded.reshape(bh, 4, bw, 4, 3).transpose(0, 2, 1, 3, 4).reshape(-1, 16, 3)
 
     mean = blocks.mean(axis=1, keepdims=True)
     centered = blocks - mean
     cov = np.einsum("bij,bik->bjk", centered, centered)
     axis = np.ones((blocks.shape[0], 3), dtype=np.float32)
-    for _ in range(8):  # power iteration for the principal axis
+    for _ in range(8):
         axis = np.einsum("bjk,bk->bj", cov, axis)
         norm = np.linalg.norm(axis, axis=1, keepdims=True)
         axis = np.where(norm > 1e-6, axis / np.maximum(norm, 1e-6), np.array([1.0, 1.0, 1.0], dtype=np.float32) / np.sqrt(3))
@@ -134,9 +128,9 @@ def encode_bc1(image: Image.Image) -> bytes:
     swap = c0 < c1
     c0, c1 = np.where(swap, c1, c0), np.where(swap, c0, c1)
     p0, p1 = from565(c0), from565(c1)
-    palette = np.stack([p0, p1, (2 * p0 + p1) / 3, (p0 + 2 * p1) / 3], axis=1)  # (blocks, 4, 3)
+    palette = np.stack([p0, p1, (2 * p0 + p1) / 3, (p0 + 2 * p1) / 3], axis=1)
     dist = ((blocks[:, :, None, :] - palette[:, None, :, :]) ** 2).sum(axis=3)
-    idx = dist.argmin(axis=2).astype(np.uint32)  # (blocks, 16)
+    idx = dist.argmin(axis=2).astype(np.uint32)
     equal = c0 == c1
     idx[equal] = 0
     shifts = (np.arange(16, dtype=np.uint32) * 2)[None, :]
@@ -147,7 +141,6 @@ def encode_bc1(image: Image.Image) -> bytes:
     out[:, 4:8] = packed.astype("<u4").view(np.uint8).reshape(-1, 4)
     return out.tobytes()
 
-
 def write_dds_bc1(path: Path, image: Image.Image) -> None:
     mips = mip_chain(image.convert("RGBA"))
     pixel_format = struct.pack("<II4sIIIII", 32, DDPF_FOURCC, b"DXT1", 0, 0, 0, 0, 0)
@@ -157,7 +150,6 @@ def write_dds_bc1(path: Path, image: Image.Image) -> None:
         f.write(dds_header(image.width, image.height, len(mips), pixel_format, DDSD_LINEARSIZE, linear_size))
         for mip in mips:
             f.write(encode_bc1(mip))
-
 
 def tile_and_resize(tile: Image.Image, scale_u: float, scale_v: float, out_size: tuple[int, int]) -> Image.Image:
     reps_u = math.ceil(scale_u)
@@ -170,7 +162,6 @@ def tile_and_resize(tile: Image.Image, scale_u: float, scale_v: float, out_size:
     crop_h = max(1, round(tile.height * scale_v))
     canvas = canvas.crop((0, 0, crop_w, crop_h))
     return canvas.resize(out_size, Image.LANCZOS)
-
 
 def apply_palette(tile: Image.Image, palette_path: Path) -> Image.Image:
     """Greyscale-to-palette-colour (EFSH flag bit 1): each texel's grey looks up
@@ -187,7 +178,6 @@ def apply_palette(tile: Image.Image, palette_path: Path) -> Image.Image:
     out = Image.merge("RGBA", (r, gch, b, alpha))
     return out
 
-
 def build_frames(tile: Image.Image, frames: int, axis: str, scale_u: float, scale_v: float, out_size: tuple[int, int]) -> list[Image.Image]:
     result = []
     for i in range(frames):
@@ -198,7 +188,6 @@ def build_frames(tile: Image.Image, frames: int, axis: str, scale_u: float, scal
             shifted = ImageChops.offset(tile, 0, -round(fraction * tile.height))
         result.append(tile_and_resize(shifted, scale_u, scale_v, out_size))
     return result
-
 
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
@@ -228,8 +217,6 @@ def main() -> int:
     out_dir = args.out / "Textures" / PLUGIN_NAME / name
 
     frames = build_frames(tile, args.frames, args.axis, args.scale_u, args.scale_v, (out_w, out_h))
-    # Mean luminance of what the shader will sample (frame 0 RGB), so the
-    # plugin can divide texture brightness out in its normalised mode.
     lum = frames[0].convert("L")
     hist = lum.histogram()
     mean_luminance = sum(i * n for i, n in enumerate(hist)) / max(1, sum(hist)) / 255.0
@@ -244,7 +231,6 @@ def main() -> int:
 
     print(f"wrote {len(frames)} {args.format} frames ({out_w}x{out_h}, axis {args.axis}, scale {args.scale_u}x{args.scale_v}, mean luminance {mean_luminance:.3f}) to {out_dir}")
     return 0
-
 
 if __name__ == "__main__":
     sys.exit(main())

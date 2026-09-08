@@ -11,7 +11,6 @@
 namespace WornEnchantmentPBR
 {
 	using namespace REX::W32;
-	// These four are also forward-declared at global scope by RE/N/NiTexture.h.
 	using REX::W32::ID3D11DepthStencilView;
 	using REX::W32::ID3D11RenderTargetView;
 	using REX::W32::ID3D11ShaderResourceView;
@@ -24,29 +23,24 @@ namespace WornEnchantmentPBR
 
 	namespace
 	{
-		constexpr std::uint32_t kPresenterCount = 512;  // slot_000..slot_511.dds
+		constexpr std::uint32_t kPresenterCount = 512;
 
-		// Full-screen triangle; the pixel shader tiles, mirrors, transposes and
-		// scrolls the source exactly as tools/make_flipbook.py bakes a frame.
 		constexpr const char* kShaderSource = R"(
 cbuffer Params : register(b0)
 {
-	float4 offsetScale; // xy uv offset, zw tile scale
-	float4 flags;       // x mirrorU, y mirrorV, z transpose, w mode
-	float4 extra;       // x source mip, y armor input (0 none, 1 displacement.r, 2 ao.b, 3 rmaos),
-	                    // zw per mode: height = armor weight, noise weight; roughness = strength, contrast
-	float4 extra2;      // height: x relief mean, y relief contrast, z noise mean
-	                    // masked glow: extra.z channel, extra.w threshold; extra2 = softness, invert, strength
-	                    // channel: extra.z channel (as Pick reads it), extra.w slope instead
-	float4 layer;       // layer pass: x source channel (as Pick reads it), y mesh space, z blend mode, w opacity
-	float4 layerColor;  // layer pass: rgb colour, w normalise factor
-	float4 layerMask;   // layer pass: x mask channel (-1 none), y channel bits, z has previous, w has source
-	float4 layerCurve;  // layer pass: x has curve
+	float4 offsetScale;
+	float4 flags;
+	float4 extra;
+	float4 extra2;
+	float4 layer;
+	float4 layerColor;
+	float4 layerMask;
+	float4 layerCurve;
 };
 Texture2D    src   : register(t0);
 Texture2D    armor : register(t1);
 Texture2D    prev  : register(t2);
-Texture2D    curve : register(t3);  // 256 x 1, the layer's curve over 0..1
+Texture2D    curve : register(t3);
 SamplerState samp  : register(s0);
 
 float Curve(float v)
@@ -65,21 +59,19 @@ VSOut VSMain(uint id : SV_VertexID)
 	return o;
 }
 
-// Relief of the armor input at the raw UV, 0..1 (higher = raised).
 float Relief(int input, float2 uv)
 {
 	float4 a = armor.SampleLevel(samp, uv, 0);
-	if (input == 1) return a.r;                         // displacement map
-	if (input == 2) return a.b;                         // RMAOS occlusion
-	if (input == 4) {                                   // normal slope
+	if (input == 1) return a.r;
+	if (input == 2) return a.b;
+	if (input == 4) {
 		float2 n = a.rg * 2 - 1;
 		return sqrt(saturate(1 - dot(n, n)));
 	}
-	if (input == 5) return dot(a.rgb, float3(0.299, 0.587, 0.114));  // diffuse luminance
+	if (input == 5) return dot(a.rgb, float3(0.299, 0.587, 0.114));
 	return 0.5;
 }
 
-// One armor channel shaped into a 0..1 mask at the raw UV.
 float Mask(float2 uv)
 {
 	float4 a = armor.SampleLevel(samp, uv, 0);
@@ -91,7 +83,6 @@ float Mask(float2 uv)
 	return lerp(1, v, extra2.z);
 }
 
-// One channel of a sample as a broadcast value, or its rgb.
 float3 Pick(float4 s, int channel)
 {
 	if (channel == 0) return s.rrr;
@@ -109,21 +100,16 @@ float3 Blend(int mode, float3 below, float3 value)
 	if (mode == 3) return below - value;
 	if (mode == 4) return 1 - (1 - below) * (1 - value);
 	if (mode == 6) {
-		// Reoriented normal mapping: the value's normal, rotated so its up
-		// follows the normal below; both maps are 0..1 tangent-space encodings.
 		float3 t = below * 2 - float3(1, 1, 0);
 		float3 u = value * float3(-2, -2, 2) + float3(1, 1, -1);
 		float3 r = t * (dot(t, u) / max(t.z, 0.001)) - u;
 		return normalize(r) * 0.5 + 0.5;
 	}
-	return value;  // replace and lerp: lerp is the opacity mix below
+	return value;
 }
 
 float4 LayerPass(float2 rawUv, float2 placedUv)
 {
-	// A stack without a base starts transparent black: alpha is the fuzz
-	// weight, the coat strength or the subsurface thickness, and nothing has
-	// been laid down yet.
 	float4 below = layerMask.z > 0.5 ? prev.SampleLevel(samp, rawUv, 0) : float4(0, 0, 0, 0);
 	float3 value = layerColor.rgb;
 	if (layerMask.w > 0.5) {
@@ -160,30 +146,22 @@ float4 PSMain(VSOut i) : SV_Target
 	float l = dot(c.rgb, float3(0.299, 0.587, 0.114));
 	int mode = (int)flags.w;
 	if (mode == 6) return LayerPass(i.uv, uv);
-	if (mode == 7) return c;  // every channel of the source at the given mip
+	if (mode == 7) return c;
 	if (mode == 1) return float4(1, 1, 1, l);
 	if (mode == 2) {
-		// Height = the armor's own relief plus the scrolling noise, so parallax
-		// follows the piece's real depth and the enchantment rides on it.
 		int   armorInput = (int)extra.y;
 		float relief = armorInput == 0 ? extra2.x : Relief(armorInput, i.uv);
-		// Centred so neither input pins the field at the clamp; the relief is
-		// stretched around its own mean because occlusion maps sit near white.
 		float h = 0.5 + (relief - extra2.x) * extra.z * extra2.y + (l - extra2.z) * extra.w;
 		h = saturate(h);
 		return float4(h, h, h, 1);
 	}
 	if (mode == 4) {
-		// One channel of the armor input (extra.z, as Pick reads it), or its
-		// slope as a normal map (extra.w).
 		if (extra.w > 0.5) { float r = Relief(4, i.uv); return float4(r, r, r, 1); }
 		float4 a = armor.SampleLevel(samp, i.uv, 0);
 		return float4(Pick(a, (int)extra.z), 1);
 	}
 	if (mode == 5) return float4(c.rgb * Mask(i.uv), 1);
 	if (mode == 3) {
-		// Armor RMAOS with roughness (r) pulled toward smooth where the noise is
-		// bright; metallic, occlusion and reflectance pass through untouched.
 		float4 a = armor.SampleLevel(samp, i.uv, 0);
 		float  n = saturate((l - 0.5) * extra.w + 0.5);
 		a.r = saturate(a.r * (1 - extra.z * n));
@@ -191,20 +169,15 @@ float4 PSMain(VSOut i) : SV_Target
 	}
 	return float4(c.rgb, 1);
 }
-// ------------------------------------------------------------ interpreter
-// The same postfix program the CPU evaluator runs (Expression.h), per
-// texel. Every stack value is a float3: a scalar is broadcast, so
-// component-wise arithmetic matches the CPU's broadcast rule. Comparisons
-// and logic are scalar by the type checker and read .x.
 cbuffer ProgramParams : register(b1)
 {
-	float4 code[256];        // x op, y number, z index
-	float4 refs[16];         // x 1 = texture read (y slot), 0 = value
-	float4 refValues[16];    // the value, broadcast
-	float4 texParams[8];     // x channel, y mesh space, z normalise, w mip
-	float4 texTransform[8];  // xy uv offset, zw tile
-	float4 texFlags[8];      // x mirror u, y mirror v, z transpose
-	float4 misc;             // x time, y op count, z vector result
+	float4 code[256];
+	float4 refs[16];
+	float4 refValues[16];
+	float4 texParams[8];
+	float4 texTransform[8];
+	float4 texFlags[8];
+	float4 misc;
 };
 Texture2D tex0 : register(t0);
 Texture2D tex1 : register(t1);
@@ -280,32 +253,29 @@ float4 PSProgram(VSOut i) : SV_Target
 		int    op = (int)c.x;
 		int    idx = (int)c.z;
 		float3 a = 0, b = 0, d = 0;
-		// Operand counts per op; a pop from an empty stack reads 0.
 		int pops = 0;
 		switch (op) {
 		case 0: case 3: case 5: case 6: case 7: pops = 0; break;
 		case 4: case 8: case 9: case 23: case 27: case 28: case 29: case 30: case 31: case 33: case 34: pops = 1; break;
 		case 1: case 10: case 11: case 12: case 13: case 14: case 15: case 16: case 17: case 18: case 19: case 20: case 21:
 		case 24: case 25: case 32: case 35: pops = 2; break;
-		default: pops = 3; break;  // [x,y,z], if, clamp, smoothstep, lerp
+		default: pops = 3; break;
 		}
 		if (pops >= 1) { if (sp > 0) { --sp; a = st[sp]; } }
 		if (pops >= 2) { if (sp > 0) { --sp; b = st[sp]; } }
 		if (pops >= 3) { if (sp > 0) { --sp; d = st[sp]; } }
-		// After the pops: for a binary op, b is the first operand and a the
-		// second; for a ternary op, d, b, a in order.
 		float3 r = 0;
 		switch (op) {
-		case 0:  r = c.y; break;                                   // number
-		case 1:  r = float3(b.x, a.x, 0); break;                   // [x, y]
-		case 2:  r = float3(d.x, b.x, a.x); break;                 // [x, y, z]
+		case 0:  r = c.y; break;
+		case 1:  r = float3(b.x, a.x, 0); break;
+		case 2:  r = float3(d.x, b.x, a.x); break;
 		case 3:  r = refs[idx].x > 0.5 ? ReadTexture((int)refs[idx].y, i.uv) : refValues[idx].xyz; break;
-		case 4:  r = LutAt(idx, a.x); break;                       // @curve(x)
-		case 5:  r = 0; break;                                     // x: not per texel
-		case 6:  r = 0.5; break;                                   // mean
-		case 7:  r = misc.x; break;                                // time
+		case 4:  r = LutAt(idx, a.x); break;
+		case 5:  r = 0; break;
+		case 6:  r = 0.5; break;
+		case 7:  r = misc.x; break;
 		case 8:  r = -a; break;
-		case 9:  r = a.x > 0 ? 0 : 1; break;                       // not
+		case 9:  r = a.x > 0 ? 0 : 1; break;
 		case 10: r = b + a; break;
 		case 11: r = b - a; break;
 		case 12: r = b * a; break;
@@ -316,13 +286,13 @@ float4 PSProgram(VSOut i) : SV_Target
 		case 17: r = b.x >= a.x ? 1 : 0; break;
 		case 18: r = b.x == a.x ? 1 : 0; break;
 		case 19: r = b.x != a.x ? 1 : 0; break;
-		case 20: r = (b.x > 0 ? 1 : 0) * (a.x > 0 ? 1 : 0); break;  // and
-		case 21: r = max(b.x > 0 ? 1 : 0, a.x > 0 ? 1 : 0); break;  // or
-		case 22: r = d.x > 0 ? b : a; break;                        // if(c, a, b)
+		case 20: r = (b.x > 0 ? 1 : 0) * (a.x > 0 ? 1 : 0); break;
+		case 21: r = max(b.x > 0 ? 1 : 0, a.x > 0 ? 1 : 0); break;
+		case 22: r = d.x > 0 ? b : a; break;
 		case 23: r = abs(a); break;
 		case 24: r = min(b, a); break;
 		case 25: r = max(b, a); break;
-		case 26: r = clamp(d, b, a); break;                         // clamp(x, lo, hi)
+		case 26: r = clamp(d, b, a); break;
 		case 27: r = saturate(a); break;
 		case 28: r = floor(a); break;
 		case 29: r = ceil(a); break;
@@ -331,9 +301,9 @@ float4 PSProgram(VSOut i) : SV_Target
 		case 32: r = SafePow(b, a); break;
 		case 33: r = sin(a); break;
 		case 34: r = cos(a); break;
-		case 35: r = float3(a.x < b.x ? 0 : 1, a.y < b.y ? 0 : 1, a.z < b.z ? 0 : 1); break;  // step(edge, x)
-		case 36: r = smoothstep(d, b, a); break;                    // smoothstep(lo, hi, x)
-		default: r = lerp(d, b, a); break;                          // lerp(a, b, t)
+		case 35: r = float3(a.x < b.x ? 0 : 1, a.y < b.y ? 0 : 1, a.z < b.z ? 0 : 1); break;
+		case 36: r = smoothstep(d, b, a); break;
+		default: r = lerp(d, b, a); break;
 		}
 		if (sp < 32) { st[sp] = r; ++sp; }
 	}
@@ -341,8 +311,6 @@ float4 PSProgram(VSOut i) : SV_Target
 	return misc.z > 0.5 ? float4(result, 1) : float4(result.xxx, 1);
 }
 
-// ------------------------------------------------------------------- bakes
-// Mesh triangles drawn with their UV as the position, carrying a value.
 struct BakeIn  { float2 uv : TEXCOORD0; float3 value : COLOR0; };
 struct BakeOut { float4 pos : SV_Position; float3 value : COLOR0; };
 
@@ -359,16 +327,11 @@ float4 BakePS(BakeOut i) : SV_Target
 	return float4(i.value, 1);
 }
 
-// ----------------------------------------------------------------- ripples
-// Each live firing is a front at distance age x speed from its origin; a
-// ring is a band of the given width, a disc everything inside the front.
-// Fronts fade by exp(-decay x age) and combine by max. src is the
-// position bake: rgb = position / (2 frame) + 0.5.
 cbuffer RippleParams : register(b2)
 {
-	float4 rippleFirings[8];  // xyz origin (units), w age (s)
-	float4 rippleShape;       // x speed, y width, z decay, w 1 = disc
-	float4 rippleMisc;        // x firing count, y frame
+	float4 rippleFirings[8];
+	float4 rippleShape;
+	float4 rippleMisc;
 };
 
 float4 PSRipple(VSOut i) : SV_Target
@@ -386,19 +349,12 @@ float4 PSRipple(VSOut i) : SV_Target
 	return float4(v, v, v, 1);
 }
 
-// ---------------------------------------------------------------- classify
-// The RMAOS (armor) and diffuse (src) maps at the raw mesh UV go to the
-// nearest centroid by the distance NearestCluster (Analysis.cpp) uses:
-// the sum over the five axes of weight x (texel - centroid)^2, the
-// first of equals winning, in the analysis' cluster order. That CPU
-// function is the reference: this must agree with it on a texel. The
-// cluster's id is written as id / 255 grey.
 cbuffer ClassifyParams : register(b3)
 {
-	float4 centroidRmaos[8];  // per cluster in analysis order: roughness, metallic, occlusion, reflectance
-	float4 centroidLuma[8];   // x luma, y id
-	float4 classifyWeights;   // roughness, metallic, occlusion, reflectance
-	float4 classifyMisc;      // x luma weight, y cluster count
+	float4 centroidRmaos[8];
+	float4 centroidLuma[8];
+	float4 classifyWeights;
+	float4 classifyMisc;
 };
 
 float4 PSClassify(VSOut i) : SV_Target
@@ -434,7 +390,6 @@ float4 PSClassify(VSOut i) : SV_Target
 			float misc[4];
 		};
 		static_assert(sizeof(ProgramConstants) % 16 == 0);
-		// The shader's op numbers are the enum's; the switch above is written to it.
 		static_assert(static_cast<int>(Program::Op::kNumber) == 0 && static_cast<int>(Program::Op::kRef) == 3 && static_cast<int>(Program::Op::kIf) == 22 &&
 		              static_cast<int>(Program::Op::kClamp) == 26 && static_cast<int>(Program::Op::kStep) == 35 && static_cast<int>(Program::Op::kLerp) == 37);
 
@@ -445,7 +400,6 @@ float4 PSClassify(VSOut i) : SV_Target
 			float misc[4];
 		};
 
-		// The shader's arrays are written to kMaxClusters entries.
 		struct alignas(16) ClassifyConstants
 		{
 			float centroidRmaos[kMaxClusters][4];
@@ -482,8 +436,6 @@ float4 PSClassify(VSOut i) : SV_Target
 		}
 	}
 
-	// Everything the pass touches on the immediate context, put back afterwards
-	// because the engine's state cache does not know we were here.
 	struct TextureLab::SavedState
 	{
 		ID3D11RenderTargetView*   rtv = nullptr;
@@ -547,7 +499,6 @@ float4 PSClassify(VSOut i) : SV_Target
 			a_ctx->OMSetBlendState(blend, blendFactor, sampleMask);
 			a_ctx->OMSetDepthStencilState(depth, stencilRef);
 			a_ctx->RSSetState(raster);
-			// Get* calls AddRef the returned objects.
 			Release(rtv);
 			Release(dsv);
 			Release(vs);
@@ -582,13 +533,6 @@ float4 PSClassify(VSOut i) : SV_Target
 
 	namespace
 	{
-		// The engine's renderer lock: the critical section its render thread
-		// holds around its own use of the immediate context. Every pass and
-		// readback here runs on the game thread while that thread renders,
-		// so each takes the lock for its duration; without it the context is
-		// driven from two threads and the driver crashes on a worker thread
-		// with nothing of ours on the stack (NOTES 53, 57). The lock is
-		// re-entrant, so a pass called from another pass is fine.
 		class RendererLock
 		{
 		public:
@@ -712,8 +656,6 @@ float4 PSClassify(VSOut i) : SV_Target
 
 		auto* vsBlob = compile("VSMain", "vs_5_0");
 		auto* psBlob = compile("PSMain", "ps_5_0");
-		// The interpreter is separate so a fault in it costs the masks it
-		// evaluates, never the layer passes.
 		auto* programBlob = compile("PSProgram", "ps_5_0");
 		bool  ok = vsBlob && psBlob;
 		if (ok) {
@@ -746,7 +688,6 @@ float4 PSClassify(VSOut i) : SV_Target
 			logger::error("TextureLab: the classify pass is unavailable; material cluster maps are black");
 		}
 		Release(classifyBlob);
-		// The bake pass is separate for the same reason.
 		auto* bakeVsBlob = compile("BakeVS", "vs_5_0");
 		auto* bakePsBlob = compile("BakePS", "ps_5_0");
 		if (ok && bakeVsBlob && bakePsBlob) {
@@ -819,7 +760,6 @@ float4 PSClassify(VSOut i) : SV_Target
 		}
 		a_target.originalData = DataOf(a_target.presenter.get());
 		a_target.ourData = new RE::NiTexture::RendererData(static_cast<std::uint16_t>(pixels), static_cast<std::uint16_t>(pixels));
-		// RendererData is declared against the global forward declarations.
 		a_target.ourData->texture = reinterpret_cast<::ID3D11Texture2D*>(a_target.texture);
 		a_target.ourData->resourceView = reinterpret_cast<::ID3D11ShaderResourceView*>(a_target.srv);
 		a_target.presenter->rendererTexture = reinterpret_cast<RE::BSGraphics::Texture*>(a_target.ourData);
@@ -880,8 +820,6 @@ float4 PSClassify(VSOut i) : SV_Target
 		auto& entry = previews_[{ a_source, a_channel }];
 		entry.dynamic = entry.dynamic || a_dynamic;
 		entry.wanted = true;
-		// Stale or missing: the game thread renders it at its next tick; until
-		// then the last picture, if any, is better than none.
 		return entry.target;
 	}
 
@@ -892,13 +830,10 @@ float4 PSClassify(VSOut i) : SV_Target
 		}
 		++previewTick_;
 		const auto generation = previewGeneration_.load(std::memory_order_relaxed);
-		// What to render this tick, taken under the lock; rendering happens
-		// outside it so the render thread is never held for a draw.
 		std::vector<std::pair<PreviewKey, std::shared_ptr<RenderTarget>>> work;
 		{
 			std::scoped_lock lock{ previewLock_ };
 			if (generation != previewSeen_) {
-				// A new generation: entries nobody asked for in the last one go.
 				for (auto it = previews_.begin(); it != previews_.end();) {
 					if (!it->second.wanted && it->second.generation < previewSeen_) {
 						if (it->second.target) {
@@ -929,7 +864,6 @@ float4 PSClassify(VSOut i) : SV_Target
 				entry.generation = generation;
 				work.emplace_back(key, entry.target);
 			}
-			// A retired target outlives the frame that may still reference it.
 			std::erase_if(previewGraveyard_, [&](const auto& a_dead) { return previewTick_ - a_dead.second > 8; });
 		}
 		for (const auto& [key, target] : work) {
@@ -961,7 +895,7 @@ float4 PSClassify(VSOut i) : SV_Target
 		const bool layerPass = a_params.mode == Mode::kLayer;
 		auto*      sourceData = DataOf(layerPass ? a_params.layer.source : a_source);
 		if (!layerPass && (!sourceData || !sourceData->resourceView)) {
-			sourceData = DataOf(a_params.map.texture);  // channel previews only need the input map
+			sourceData = DataOf(a_params.map.texture);
 			if (!sourceData || !sourceData->resourceView) {
 				return false;
 			}
@@ -1000,7 +934,6 @@ float4 PSClassify(VSOut i) : SV_Target
 			constants.layerMask[3] = haveSource ? 1.0f : 0.0f;
 			constants.layerCurve[0] = lp.curve && lp.curve->srv ? 1.0f : 0.0f;
 		}
-		// extra.zw carry the mode's two scalars (see the shader's mode branches).
 		if (a_params.mode == Mode::kRoughness) {
 			constants.extra[2] = a_params.roughness.strength;
 			constants.extra[3] = a_params.roughness.contrast;
@@ -1049,7 +982,6 @@ float4 PSClassify(VSOut i) : SV_Target
 		context_->RSSetState(raster_);
 		context_->Draw(3, 0);
 
-		// Unbind our target and the armor inputs before the engine binds them.
 		ID3D11RenderTargetView*   none = nullptr;
 		ID3D11ShaderResourceView* noSrvs[4]{};
 		context_->OMSetRenderTargets(1, &none, nullptr);
@@ -1060,7 +992,6 @@ float4 PSClassify(VSOut i) : SV_Target
 		return true;
 	}
 
-	// Reads the 1x1 mip of a target back through a staging copy.
 	std::optional<float> TextureLab::ReadBackMean(RenderTarget& a_target)
 	{
 		const RendererLock rendererLock;
@@ -1104,7 +1035,6 @@ float4 PSClassify(VSOut i) : SV_Target
 		}
 		D3D11_TEXTURE2D_DESC desc{};
 		a_target.texture->GetDesc(&desc);
-		// The bytes are read as RGBA8, so any other format is refused before the map.
 		if (desc.format != DXGI_FORMAT_R8G8B8A8_UNORM || desc.width == 0 || desc.height == 0 || desc.width != a_target.size || desc.height != a_target.size) {
 			logger::warn("TextureLab: pixel readback refused: target {}x{} format {}", desc.width, desc.height, static_cast<std::uint32_t>(desc.format));
 			return out;
@@ -1144,8 +1074,6 @@ float4 PSClassify(VSOut i) : SV_Target
 
 	namespace
 	{
-		// The mip of a map whose side is still at least a_side: sampling it at
-		// a_side points reads whole texels of a mip average, not a sparse pick.
 		float MipThatFits(const TextureLab::Extent& a_extent, std::uint32_t a_side) noexcept
 		{
 			std::uint32_t side = (std::max)(a_extent.width, a_extent.height);
@@ -1181,7 +1109,6 @@ float4 PSClassify(VSOut i) : SV_Target
 		if (!target || target->size != kSampleSide) {
 			return fail(a_rmaos, "no sample target");
 		}
-		// Each map copied at its fitting mip into the target, then read back.
 		const auto copyBack = [&](RE::NiSourceTexture* a_map, const Extent& a_extent) -> std::vector<std::uint8_t> {
 			LayerParams params;
 			params.mode = Mode::kCopy;
@@ -1228,7 +1155,6 @@ float4 PSClassify(VSOut i) : SV_Target
 			a_analysis.clusters.size() > kMaxClusters) {
 			return false;
 		}
-		// A weight that is not finite or not positive counts as zero, as ScalesOf does on the CPU.
 		const auto scale = [](float a_weight) { return std::isfinite(a_weight) && a_weight > 0.0f ? a_weight : 0.0f; };
 		ClassifyConstants constants{};
 		for (std::size_t k = 0; k < a_analysis.clusters.size(); ++k) {
@@ -1291,8 +1217,6 @@ float4 PSClassify(VSOut i) : SV_Target
 	bool TextureLab::RenderProgram(RenderTarget& a_target, const ProgramPass& a_pass)
 	{
 		const RendererLock rendererLock;
-		// The counts are checked against the arrays, not trusted: a pass that
-		// claims more than it holds is refused here rather than read past.
 		if (!available_ || !a_target.rtv || !programPs_ || a_pass.code.size() > 256 || a_pass.refCount > a_pass.refs.size() ||
 			a_pass.textureCount > a_pass.textures.size() || a_pass.curveCount > a_pass.curves.size()) {
 			return false;
@@ -1384,7 +1308,6 @@ float4 PSClassify(VSOut i) : SV_Target
 		if (Failed(device_->CreateBuffer(&desc, nullptr, &staging))) {
 			return out;
 		}
-		// A region copy, because the source is longer than the bytes wanted.
 		const D3D11_BOX box{ 0, 0, 0, a_bytes, 1, 1 };
 		context_->CopySubresourceRegion(reinterpret_cast<REX::W32::ID3D11Resource*>(staging), 0, 0, 0, 0, reinterpret_cast<REX::W32::ID3D11Resource*>(a_buffer), 0, &box);
 		D3D11_MAPPED_SUBRESOURCE mapped{};
@@ -1589,7 +1512,7 @@ float4 PSClassify(VSOut i) : SV_Target
 			p.map = { a_source, MapReading::kRmaos };
 			p.channel.channel = a_channel;
 			if (Render(*target, nullptr, p)) {
-				result = ReadBackMean(*target).value_or(0.5f);  // grey output, so luminance is the channel mean
+				result = ReadBackMean(*target).value_or(0.5f);
 			} else {
 				logger::warn("TextureLab: channel mean render failed; using 0.5");
 			}

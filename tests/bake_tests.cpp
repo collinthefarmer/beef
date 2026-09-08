@@ -11,7 +11,6 @@ namespace
 {
 	std::uint16_t FloatToHalf(float a_value)
 	{
-		// Enough for the test values: normal numbers only.
 		std::uint32_t bits;
 		std::memcpy(&bits, &a_value, 4);
 		const std::uint32_t sign = (bits >> 16) & 0x8000u;
@@ -23,7 +22,6 @@ namespace
 		return static_cast<std::uint16_t>(sign | (static_cast<std::uint32_t>(exponent) << 10) | mantissa);
 	}
 
-	// A quad in the engine's packing: position, uv, normal, skinning.
 	std::vector<std::uint8_t> PackedQuad(VertexLayout& a_layout)
 	{
 		a_layout.stride = 16 + 4 + 4 + 12;
@@ -40,13 +38,13 @@ namespace
 			const std::uint16_t u = FloatToHalf(uvs[i][0]), w = FloatToHalf(uvs[i][1]);
 			std::memcpy(v + 16, &u, 2);
 			std::memcpy(v + 18, &w, 2);
-			v[20] = 127;  // nx 0
-			v[21] = 127;  // ny 0
-			v[22] = 255;  // nz 1
+			v[20] = 127;
+			v[21] = 127;
+			v[22] = 255;
 			const std::uint16_t weights[4]{ FloatToHalf(0.75f), FloatToHalf(0.25f), 0, 0 };
 			std::memcpy(v + 24, weights, 8);
-			v[32] = 0;  // bone 0
-			v[33] = 1;  // bone 1
+			v[32] = 0;
+			v[33] = 1;
 		}
 		return bytes;
 	}
@@ -98,7 +96,7 @@ namespace
 		noPosition.stride = 8;
 		Check(!DecodeVertex(bytes, noPosition, 0).has_value(), "a layout without a position is refused");
 		VertexLayout tooShort = layout;
-		tooShort.stride = 8;  // the position no longer fits
+		tooShort.stride = 8;
 		Check(!DecodeVertex(bytes, tooShort, 0).has_value(), "an attribute past the stride is refused");
 	}
 
@@ -180,8 +178,6 @@ namespace
 		Check(kept.size() == 1 && kept[0] == std::array<std::uint32_t, 3>{ 0, 1, 2 }, "a triangle that indexes past the vertices is dropped");
 		Check(TrianglesWithin(triangles, 4).size() == 3, "a triangle whose largest index is the last vertex is kept");
 		Check(TrianglesWithin(triangles, 0).empty(), "no vertices keeps nothing");
-		// A partition whose index buffer points past its vertices, as the
-		// reader hands it on: only the kept triangles are counted.
 		MeshData mesh = Quad();
 		auto&    partition = mesh.partitions[0];
 		partition.triangles = { { 0, 1, 2 }, { 0, 2, 3 }, { 1, 2, 7 }, { 4, 5, 6 } };
@@ -189,8 +185,6 @@ namespace
 		Check(partition.triangles.size() == 2, "the partition keeps its two triangles inside the vertices");
 		const auto bake = BuildBake(mesh, PartitionBake{ 32 });
 		Check(bake.indices.size() == 6, "the bake draws the kept triangles alone");
-		// PartitionsOf (Studio.cpp) sums partition.triangles.size(), so the
-		// snapshot's row counts the same two.
 	}
 
 	void Sizes()
@@ -240,7 +234,6 @@ namespace
 
 namespace
 {
-	// The id-map bakes: keyed like any bake, built only with the analysis.
 	void RegionBakes()
 	{
 		using namespace test;

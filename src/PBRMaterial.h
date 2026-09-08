@@ -1,11 +1,5 @@
 #pragma once
 
-// Layout mirror of Community Shaders' BSLightingShaderMaterialPBR (see
-// cs/BSLightingShaderMaterialPBR.h and cs/SOURCE.txt). CS adds no virtual
-// functions, only overrides, so the vtable slot layout is the base class's and
-// only the data members below extend it. Field order and types are copied
-// exactly; GlintParameters comes from CS src/TruePBR.h at the same commit.
-
 #include "PCH.h"
 
 namespace WornEnchantmentPBR
@@ -19,7 +13,6 @@ namespace WornEnchantmentPBR
 		float densityRandomization = 2.f;
 	};
 
-	// PBRFlags from cs/BSLightingShaderMaterialPBR.h.
 	inline constexpr std::uint32_t kPbrSubsurface = 1u << 0;
 	inline constexpr std::uint32_t kPbrTwoLayer = 1u << 1;
 	inline constexpr std::uint32_t kPbrColoredCoat = 1u << 2;
@@ -59,10 +52,6 @@ namespace WornEnchantmentPBR
 	static_assert(sizeof(PBRMaterialLayout) == 0x148);
 #pragma clang diagnostic pop
 
-	// CS's own test in BSLightingShaderProperty_GetRenderPasses
-	// (reference/community-shaders/TruePBR-GetRenderPasses-excerpt.cpp):
-	// kVertexLighting on the property plus a kDefault/kMultiTexLandLODBlend
-	// material feature means TruePBR draws it.
 	[[nodiscard]] inline bool IsPBRProperty(const RE::BSLightingShaderProperty* a_property)
 	{
 		if (!a_property || !a_property->material) {
@@ -80,9 +69,6 @@ namespace WornEnchantmentPBR
 			feature != RE::BSShaderMaterial::Feature::kMultiTexLandLODBlend) {
 			return false;
 		}
-		// CS's material reports kDefault too, so a vanilla BSLightingShaderMaterial
-		// (0xA0 bytes, no PBR fields) is only told apart by its vtable. Reading
-		// PBR fields off a vanilla material would run past its allocation.
 		const auto vtable = *reinterpret_cast<const std::uintptr_t*>(material);
 		return vtable != RE::VTABLE_BSLightingShaderMaterial[0].address();
 	}

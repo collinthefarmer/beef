@@ -8,8 +8,6 @@ namespace WornEnchantmentPBR::Timing
 {
 	namespace
 	{
-		// The decompile compares against 1e-4 everywhere it guards a divide or a
-		// zero-length segment (plugin.c __real_38d1b717).
 		constexpr float kEpsilon = 1e-4f;
 
 		float Clamp01(float a_value) noexcept
@@ -22,7 +20,6 @@ namespace WornEnchantmentPBR::Timing
 			return a_from + (a_to - a_from) * a_amount;
 		}
 
-		// fmod that lands in [0, a_period) for negative inputs too (plugin.c 4442-4445).
 		float Wrap(float a_value, float a_period) noexcept
 		{
 			float r = std::fmod(a_value, a_period);
@@ -106,8 +103,6 @@ namespace WornEnchantmentPBR::Timing
 		FillState out{};
 		const float t = a_elapsedSeconds * a_speed;
 
-		// Key times are forced monotonic so a mis-authored record cannot produce
-		// a negative segment (plugin.c 4424-4437).
 		const float k1 = std::max(0.0f, a_params.colorKeyTimes[0]);
 		const float k2 = std::max(k1, a_params.colorKeyTimes[1]);
 		const float k3 = std::max(k2, a_params.colorKeyTimes[2]);
@@ -157,14 +152,12 @@ namespace WornEnchantmentPBR::Timing
 			tint = a_edge;
 		}
 		if (!tint) {
-			// No hue to borrow: keep the fill colour (grey stays grey).
 			return brightness == 1.0f && std::max({ a_fill.r, a_fill.g, a_fill.b }) <= 0.02f ? Rgb{ 1.0f, 1.0f, 1.0f } : a_fill;
 		}
 		const float hi = std::max({ tint->r, tint->g, tint->b });
 		if (hi <= 1e-4f) {
 			return a_fill;
 		}
-		// Normalise so the tint sets hue only; the fill keys keep the brightness.
 		return Rgb{ tint->r / hi * brightness, tint->g / hi * brightness, tint->b / hi * brightness };
 	}
 

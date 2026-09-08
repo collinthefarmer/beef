@@ -1,5 +1,4 @@
 #!/usr/bin/env bash
-# Downloads the Windows CRT and SDK (about 630 MB) into $XWIN_DIR via xwin.
 set -euo pipefail
 : "${XWIN_DIR:=$HOME/.xwin/splat}"
 if [ -d "$XWIN_DIR/crt" ] && [ -d "$XWIN_DIR/sdk" ]; then

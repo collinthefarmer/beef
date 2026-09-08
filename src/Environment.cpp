@@ -68,7 +68,6 @@ namespace WornEnchantmentPBR
 			return state && state->IsWeaponDrawn() ? 1.0f : 0.0f;
 		}
 		case ActorStateKind::kHostileDistance: {
-			// Distance to the current combat target in game units; 0 when none.
 			const auto target = actor->GetActorRuntimeData().currentCombatTarget.get();
 			return target ? actor->GetPosition().GetDistance(target->GetPosition()) : 0.0f;
 		}

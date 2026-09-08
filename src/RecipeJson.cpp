@@ -1,8 +1,3 @@
-// Recipe files: JSON text to records and back, in the shape of
-// schema/recipe.schema.json. All JSON mechanics live here; the reader helper
-// below turns field access into named, checked steps that report on the
-// row they belong to.
-
 #include "Recipe.h"
 #include "Vocabulary.h"
 
@@ -98,7 +93,6 @@ namespace WornEnchantmentPBR
 
 	namespace
 	{
-		// The five channel weights by their field name; 0 for a name that is none of them.
 		float WeightOf(const MaterialClustersSource& a_source, std::string_view a_field) noexcept
 		{
 			if (a_field == "roughness") return a_source.roughness;
@@ -161,17 +155,12 @@ namespace WornEnchantmentPBR
 		constexpr Named<ShellMaterial> kShellMaterials[]{ { ShellMaterial::kPbrCopy, "pbrCopy" }, { ShellMaterial::kVanilla, "vanilla" } };
 		constexpr Named<ShellBlend> kShellBlends[]{ { ShellBlend::kAdditive, "additive" }, { ShellBlend::kAlpha, "alpha" } };
 
-		// ----------------------------------------------------------- numbers
-
-		// Shortest decimal that reads back as the same float, as a JSON number.
 		json Num(float a_value)
 		{
 			char       buffer[32];
 			const auto r = std::to_chars(buffer, buffer + sizeof(buffer), a_value);
 			return json(std::strtod(std::string(buffer, r.ptr).c_str(), nullptr));
 		}
-
-		// ------------------------------------------------------- diagnostics
 
 		struct Ctx
 		{
@@ -183,10 +172,6 @@ namespace WornEnchantmentPBR
 			Ctx  At(std::string a_where) const { return Ctx{ out, std::move(a_where) }; }
 		};
 
-		// --------------------------------------------------------- reading
-
-		// One JSON object, read field by field; every field read is
-		// remembered so Finish() can report the ones nobody asked for.
 		class Reader
 		{
 		public:
@@ -196,7 +181,6 @@ namespace WornEnchantmentPBR
 			[[nodiscard]] const Ctx& Context() const noexcept { return ctx_; }
 			[[nodiscard]] bool       Has(std::string_view a_key) const { return object_.is_object() && object_.contains(a_key); }
 
-			// The raw child, marked as read; null when absent.
 			const json* Child(std::string_view a_key)
 			{
 				if (!Has(a_key)) {
@@ -305,7 +289,6 @@ namespace WornEnchantmentPBR
 				return j ? VecFrom<3>(*j, a_key, a_color) : std::nullopt;
 			}
 
-			// A point in space: three numbers, never a colour.
 			static std::optional<Vec3> PointFrom(const json& a_j, std::string_view a_what, const Ctx& a_ctx)
 			{
 				if (!a_j.is_array() || a_j.size() != 3 || !std::ranges::all_of(a_j, [](const json& e) { return e.is_number(); })) {
@@ -327,7 +310,6 @@ namespace WornEnchantmentPBR
 				return j ? ValueFrom(*j, a_key, ctx_) : std::nullopt;
 			}
 
-			// Reports every key that no reader asked for.
 			void Finish()
 			{
 				if (!object_.is_object()) {
@@ -339,8 +321,6 @@ namespace WornEnchantmentPBR
 					}
 				}
 			}
-
-			// ----- value forms, usable on any json
 
 			std::optional<Ref> RefFrom(const json& a_j, std::string_view a_what) const
 			{
@@ -396,7 +376,6 @@ namespace WornEnchantmentPBR
 						allNumbers = false;
 					}
 				}
-				// Light Placer's rule: a component above 1 means a 0..255 colour.
 				if (a_color && allNumbers && largest > 1.0f) {
 					for (auto& p : parts) {
 						p = std::get<float>(p) / 255.0f;
@@ -430,7 +409,6 @@ namespace WornEnchantmentPBR
 			std::unordered_set<std::string> used_;
 		};
 
-		// A one-key object: its kind key and the value under it.
 		struct KindEntry
 		{
 			std::string key;
@@ -460,8 +438,6 @@ namespace WornEnchantmentPBR
 			return found;
 		}
 
-		// ----------------------------------------------------------- forms
-
 		std::optional<FormRef> FormFrom(const json& a_j, const Ctx& a_ctx, std::string_view a_what)
 		{
 			if (!a_j.is_string() || a_j.get<std::string>().empty()) {
@@ -479,8 +455,6 @@ namespace WornEnchantmentPBR
 			}
 			return a_j.get<std::string>();
 		}
-
-		// ------------------------------------------------------------- keys
 
 		std::optional<RecipeKey> KeyFrom(const json& a_j, const Ctx& a_ctx)
 		{
@@ -532,8 +506,6 @@ namespace WornEnchantmentPBR
 			return json();
 		}
 
-		// -------------------------------------------------------- selectors
-
 		Selector SelectorFrom(const json& a_j, const Ctx& a_ctx)
 		{
 			Selector s;
@@ -579,8 +551,6 @@ namespace WornEnchantmentPBR
 			}
 			return out;
 		}
-
-		// ------------------------------------------------------- parameters
 
 		json ParamToJson(const Param& a_param)
 		{
@@ -636,8 +606,6 @@ namespace WornEnchantmentPBR
 			}
 			return CurveRef{ *text };
 		}
-
-		// ---------------------------------------------------------- signals
 
 		std::optional<Signal> SignalFrom(const std::string& a_name, const json& a_j, const Ctx& a_ctx)
 		{
@@ -979,8 +947,6 @@ namespace WornEnchantmentPBR
 			return row;
 		}
 
-		// ---------------------------------------------------------- sources
-
 		std::optional<Source> SourceFrom(const std::string& a_name, const json& a_j, const Ctx& a_ctx)
 		{
 			const auto entry = OneKey(a_j, a_ctx, "a source");
@@ -1247,8 +1213,6 @@ namespace WornEnchantmentPBR
 			return row;
 		}
 
-		// ---------------------------------------------------------- outputs
-
 		std::optional<Layer> LayerFrom(const json& a_j, const Ctx& a_ctx)
 		{
 			if (!a_j.is_object()) {
@@ -1441,8 +1405,6 @@ namespace WornEnchantmentPBR
 				});
 		}
 
-		// ------------------------------------------------------------ shell
-
 		ShellSettings ShellFrom(const json& a_j, const Ctx& a_ctx)
 		{
 			ShellSettings s;
@@ -1500,8 +1462,6 @@ namespace WornEnchantmentPBR
 			return o;
 		}
 
-		// --------------------------------------------------------- variants
-
 		std::optional<Variant> VariantFrom(const json& a_j, const Ctx& a_ctx)
 		{
 			if (!a_j.is_object()) {
@@ -1554,8 +1514,6 @@ namespace WornEnchantmentPBR
 			return o;
 		}
 
-		// ----------------------------------------------------- named rows
-
 		template <class Row, class Parse>
 		void NamedRows(Reader& a_root, const char* a_section, const char* a_rowWord, std::vector<Row>& a_out, Parse a_parse)
 		{
@@ -1574,8 +1532,6 @@ namespace WornEnchantmentPBR
 			}
 		}
 
-		// Duplicate keys inside one object: JSON allows them and most readers
-		// keep the last; here they are an error, found while parsing.
 		struct DuplicateFinder
 		{
 			std::vector<std::unordered_set<std::string>> scopes;
@@ -1604,8 +1560,6 @@ namespace WornEnchantmentPBR
 			}
 		};
 	}
-
-	// ----------------------------------------------------------------- parse
 
 	LoadResult ParseRecipe(std::string_view a_json, std::string_view a_id)
 	{
@@ -1723,8 +1677,6 @@ namespace WornEnchantmentPBR
 		result.recipe = std::move(recipe);
 		return result;
 	}
-
-	// ------------------------------------------------------------- serialise
 
 	std::string SerializeRecipe(const Recipe& a_recipe)
 	{

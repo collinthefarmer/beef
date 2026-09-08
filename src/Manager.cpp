@@ -14,8 +14,6 @@ namespace WornEnchantmentPBR
 {
 	namespace
 	{
-		// The engine swaps the worn mesh after TESEquipEvent fires; the original
-		// plugin re-attaches 100 ms later (plugin.c 1461-1482).
 		constexpr std::uint32_t kEquipFinalizeDelayMS = 100;
 
 		std::uint32_t NowMS()
@@ -29,8 +27,6 @@ namespace WornEnchantmentPBR
 			return property ? netimmerse_cast<RE::BSLightingShaderProperty*>(property) : nullptr;
 		}
 
-		// A player-applied enchantment on the worn extra list beats the base
-		// record (plugin.c 2013-2039).
 		RE::MagicItem* WornEnchantment(RE::Actor* a_actor, RE::TESObjectARMO* a_armor)
 		{
 			auto inventory = a_actor->GetInventory([&](RE::TESBoundObject& a_object) { return &a_object == a_armor; });
@@ -56,8 +52,6 @@ namespace WornEnchantmentPBR
 			return a_texture && a_texture->name.c_str() ? a_texture->name.c_str() : "";
 		}
 
-		// The graph's first diagnostic on a signal row: why the row is inert.
-		// Why each inert signal is inert, by name, gathered once per recipe.
 		std::unordered_map<std::string, std::string> InertReasons(const SignalGraph& a_graph)
 		{
 			std::unordered_map<std::string, std::string> reasons;
@@ -69,8 +63,6 @@ namespace WornEnchantmentPBR
 			return reasons;
 		}
 
-		// The slots a binding wrote, each with the binding's refusal of that
-		// slot when it has one, which is how material rules reach the board.
 		std::vector<Studio::SlotRow> SlotRows(const SlotTarget& a_target)
 		{
 			std::vector<Studio::SlotRow> rows;
@@ -88,13 +80,8 @@ namespace WornEnchantmentPBR
 		return &singleton;
 	}
 
-	// ------------------------------------------------------------- queueing
-	// One pending refresh per actor; a duplicate request while pending makes
-	// the refresh run once more afterwards (plugin.c 1513-1608).
-
 	namespace
 	{
-		// The surface an output writes on this geometry; null when it is not bound.
 		SlotTarget* TargetFor(BoundGeometry& a_bound, Surface a_surface)
 		{
 			if (a_surface == Surface::kShell) {
@@ -103,9 +90,6 @@ namespace WornEnchantmentPBR
 			return a_bound.material.get();
 		}
 
-		// An output's scalars as this tick writes them: a field the file gives
-		// is resolved through the signals, one it leaves out takes the field's
-		// fallback; a hidden output writes zero for what would show.
 		struct TickScalars
 		{
 			const SignalState& signals;
@@ -125,8 +109,6 @@ namespace WornEnchantmentPBR
 			}
 		};
 
-		// One output's writes for this tick: the composite into the slot, then
-		// the slot's scalars through the binding's call for that slot.
 		void WriteSlot(SlotTarget& a_target, const SurfaceOutput& a_output, const SignalState& a_signals, RE::NiSourceTexture* a_texture, bool a_shown)
 		{
 			const TickScalars tick{ a_signals, a_output.scalars, a_shown };
@@ -155,8 +137,6 @@ namespace WornEnchantmentPBR
 			}
 		}
 
-		// What the recipes merging after this one take over with `replace`:
-		// a slot's stacks and scalars on either surface, or the light.
 		Replaced ReplacedBy(std::span<const AppliedRecipe> a_later)
 		{
 			Replaced replaced;
@@ -172,9 +152,6 @@ namespace WornEnchantmentPBR
 			return replaced;
 		}
 
-		// The layers of one output the view hides by solo or mute, as the
-		// compositor's filter. Called only when the view hides some layer of
-		// some recipe, so the common tick never walks a stack.
 		LayerFilter HiddenLayers(const Studio::View& a_view, const std::string& a_recipe, std::size_t a_output, std::size_t a_layerCount)
 		{
 			LayerFilter filter;
@@ -189,7 +166,6 @@ namespace WornEnchantmentPBR
 			return filter;
 		}
 
-		// `equip` carries the centre of the first bound geometry as its position.
 		EventRecord EquipEvent(const std::vector<AppliedPiece>& a_pieces)
 		{
 			EventRecord record;
@@ -256,8 +232,6 @@ namespace WornEnchantmentPBR
 		});
 	}
 
-	// SKSE drains its task queue until empty, so a task may never re-post
-	// itself to wait for a later frame (NOTES 12); due times fire from OnFrame.
 	void Manager::QueueEquipFinalize(RE::FormID a_actorID)
 	{
 		if (a_actorID == 0) {
@@ -284,9 +258,6 @@ namespace WornEnchantmentPBR
 			for (auto it = finalizeDue_.begin(); it != finalizeDue_.end();) {
 				if (static_cast<std::int32_t>(now - it->second) >= 0) {
 					due.push_back(it->first);
-					// The refresh that follows the delay sees the new piece's 3D, so
-					// it is the apply that fires `equip`; the immediate refresh on
-					// the equip event does not (the piece is not there yet).
 					equipped_.insert(it->first);
 					it = finalizeDue_.erase(it);
 				} else {
@@ -326,7 +297,7 @@ namespace WornEnchantmentPBR
 			++generation_;
 		}
 		const auto count = applied_.size();
-		applied_.clear();  // bindings restore in their destructors
+		applied_.clear();
 		loggedNonPBRArmor_.clear();
 		carriedTimes_.clear();
 		Compositor::GetSingleton()->ClearMeshes();
@@ -409,8 +380,6 @@ namespace WornEnchantmentPBR
 		}
 	}
 
-	// --------------------------------------------------------------- apply
-
 	void Manager::Refresh(RE::Actor* a_actor)
 	{
 		const auto& settings = GetSettings();
@@ -465,7 +434,6 @@ namespace WornEnchantmentPBR
 		}
 	}
 
-	// Every worn armor on the biped with a PBR geometry, described for resolution.
 	std::vector<AppliedPiece> Manager::CollectPieces(RE::Actor* a_actor, bool a_firstPerson)
 	{
 		const auto&               settings = GetSettings();
@@ -523,8 +491,6 @@ namespace WornEnchantmentPBR
 				continue;
 			}
 			for (const auto& resolved : Resolve(piece.piece, loaded)) {
-				// An isolated recipe is applied alone, so nothing another recipe
-				// would replace or bind first is missing from it.
 				if (view_.Isolating() && (!resolved.recipe || resolved.recipe->id != view_.isolateRecipe)) {
 					continue;
 				}
@@ -564,8 +530,6 @@ namespace WornEnchantmentPBR
 	void Manager::ApplyRecipes(RE::Actor* a_actor, AppliedPiece& a_piece, RE::NiAVObject* a_clone)
 	{
 		const auto& settings = GetSettings();
-		// Collected first: shells attach siblings while applying, and a live walk
-		// would visit them.
 		std::vector<std::pair<RE::BSGeometry*, RE::BSLightingShaderProperty*>> targets;
 		std::unordered_set<RE::BSLightingShaderProperty*>                      seen;
 		RE::BSVisit::TraverseScenegraphGeometries(a_clone, [&](RE::BSGeometry* a_geometry) {
@@ -594,7 +558,6 @@ namespace WornEnchantmentPBR
 					break;
 				}
 			}
-			// One light per recipe, third person only.
 			if (!a_piece.firstPerson && !applied.replaced.light.empty()) {
 				if (settings.verboseLogging) {
 					logger::info("  recipe {}: light replaced by recipe {}", applied.recipe->id, applied.replaced.light);
@@ -622,7 +585,6 @@ namespace WornEnchantmentPBR
 		std::erase_if(a_piece.recipes, [](const AppliedRecipe& r) { return r.geometries.empty() && !r.light; });
 	}
 
-	// A cheap check that the material really has CS's layout (NOTES 3).
 	bool Manager::LayoutSanityCheck(RE::BSLightingShaderProperty* a_property)
 	{
 		if (layoutVerified_) {
@@ -708,9 +670,6 @@ namespace WornEnchantmentPBR
 				output.problem.empty() ? (output.stack && output.stack->Animated() ? " (animated)" : " (static)") : std::format(" [{}]", output.problem));
 			bound.outputs.push_back(std::move(output));
 		}
-		// A geometry nothing binds on is recorded too, so a recipe stays on
-		// the piece while its outputs are cleared or not yet added and the
-		// studio shows it an empty board.
 		if (settings.verboseLogging) {
 			logger::info("apply recipe {} armor actor {:08X} geometry '{}' material={} {} outputs: {}", recipe.id, a_actor->GetFormID(), bound.name,
 				bound.material ? (bound.material->Private() ? "private" : "shared") : "untouched", bound.shell ? bound.shell->Describe() : "no shell", outputsLog);
@@ -718,8 +677,6 @@ namespace WornEnchantmentPBR
 		a_applied.geometries.push_back(std::move(bound));
 		return true;
 	}
-
-	// ------------------------------------------------------------- editing
 
 	void Manager::WithRecipeRetired(std::string_view a_id, const std::function<void()>& a_action)
 	{
@@ -750,7 +707,6 @@ namespace WornEnchantmentPBR
 					logger::warn("edit: recipe {} is not loaded", id);
 					return;
 				}
-				// A refused edit leaves the recipe as it was and pushes no step.
 				Recipe before = *recipe;
 				edit(*recipe);
 				if (!(*recipe == before)) {
@@ -837,8 +793,6 @@ namespace WornEnchantmentPBR
 		});
 	}
 
-	// Retires every actor now, on the game thread, for a change that moves
-	// the store's list; RetireAll only queues.
 	void Manager::RetireEveryActor()
 	{
 		std::vector<RE::FormID> ids;
@@ -879,8 +833,6 @@ namespace WornEnchantmentPBR
 		});
 	}
 
-	// ------------------------------------------------------------- painting
-
 	void Manager::BeginPaint(std::string a_active, RecipeKey a_key, Surface a_surface)
 	{
 		PostTask([this, active = std::move(a_active), key = std::move(a_key), a_surface] {
@@ -891,8 +843,6 @@ namespace WornEnchantmentPBR
 				return;
 			}
 			Recipe paint = Studio::PaintRecipe(*it, key, a_surface);
-			// The store's list moves on add: every applied recipe points into
-			// it, so each actor is retired here, not queued.
 			RetireEveryActor();
 			if (IsTransient(Studio::kPaintRecipe)) {
 				[[maybe_unused]] const bool dropped = DropTransientRecipe(Studio::kPaintRecipe);
@@ -984,8 +934,6 @@ namespace WornEnchantmentPBR
 					const auto& at = object->world.translate;
 					Vec3        position{ at.x + a_offset.x, at.y + a_offset.y, at.z + a_offset.z };
 					if (a_random > 0.0f) {
-						// A scatter within the radius: three draws of the plain generator,
-						// good enough for a debug firing.
 						static std::mt19937 gen{ std::random_device{}() };
 						std::uniform_real_distribution<float> spread{ -a_random, a_random };
 						position.x += spread(gen);
@@ -1012,8 +960,6 @@ namespace WornEnchantmentPBR
 				for (auto& applied : piece.recipes) {
 					for (auto& bound : applied.geometries) {
 						if (bound.name == name) {
-							// The shape's read: its mesh (analysed as it is read) and its
-							// material's sample and clusters, both once per session.
 							auto* compositor = Compositor::GetSingleton();
 							if (const auto mesh = compositor->MeshOf(bound.geometry.get()); !mesh) {
 								logger::warn("mesh '{}': {}", name, mesh.error());
@@ -1027,8 +973,6 @@ namespace WornEnchantmentPBR
 			}
 		});
 	}
-
-	// -------------------------------------------------------------- retire
 
 	void Manager::Retire(RE::FormID a_actorID)
 	{
@@ -1046,15 +990,13 @@ namespace WornEnchantmentPBR
 				}
 			}
 		}
-		applied_.erase(it);  // bindings restore in their destructors, outputs before shells and materials
+		applied_.erase(it);
 		TextureLab::GetSingleton()->InvalidatePreviews();
 		UnwatchAnimationEvents(RE::TESForm::LookupByID<RE::Actor>(a_actorID));
 		if (GetSettings().verboseLogging) {
 			logger::info("actor {:08X}: retired {} recipe(s)", a_actorID, recipes);
 		}
 	}
-
-	// ---------------------------------------------------------------- tick
 
 	void Manager::OnFrame()
 	{
@@ -1067,8 +1009,6 @@ namespace WornEnchantmentPBR
 		if (!applied_.empty()) {
 			Tick(now);
 		}
-		// Published at the tick's cadence whether or not anything is applied,
-		// so the menu sees pieces go as well as come.
 		PublishSnapshot(now);
 	}
 
@@ -1090,9 +1030,7 @@ namespace WornEnchantmentPBR
 		const auto& settings = GetSettings();
 		auto*       compositor = Compositor::GetSingleton();
 		compositor->BeginTick(a_nowMS);
-		TextureLab::GetSingleton()->RenderPreviews();  // the menu's thumbnails, on this thread only
-		// Leaving freeze: every recipe's clock resumes from the scrub, not from
-		// where the real clock ran on to meanwhile.
+		TextureLab::GetSingleton()->RenderPreviews();
 		const bool resuming = frozenLastTick_ && !view_.freeze;
 		frozenLastTick_ = view_.freeze;
 		for (auto it = applied_.begin(); it != applied_.end();) {
@@ -1113,8 +1051,6 @@ namespace WornEnchantmentPBR
 			it = it->second.pieces.empty() ? applied_.erase(it) : std::next(it);
 		}
 		if (compositor->MeshSweepDue(a_nowMS)) {
-			// A bound geometry keeps its mesh and bakes however old; the sweep
-			// drops the reads of pieces taken off or actors gone.
 			std::vector<RE::BSGeometry*> bound;
 			for (const auto& [actorID, state] : applied_) {
 				for (const auto& piece : state.pieces) {
@@ -1132,10 +1068,6 @@ namespace WornEnchantmentPBR
 	void Manager::TickRecipe(AppliedRecipe& a_applied, float a_time, float a_delta)
 	{
 		const auto& recipe = *a_applied.recipe;
-		// The signal state integrates forward (pulse phase, smoothing, trigger
-		// ages), so a scrub backwards, or a jump, rebuilds it from the start
-		// and advances it to the scrubbed moment in one step; every signal then
-		// stands where a straight run to that time would have left it.
 		if (view_.freeze && a_time + 0.001f < a_applied.lastTime) {
 			a_applied.signals = std::make_unique<SignalState>(*a_applied.graph);
 			a_delta = a_time;
@@ -1186,8 +1118,6 @@ namespace WornEnchantmentPBR
 		}
 	}
 
-	// ----------------------------------------------------------- reporting
-
 	Manager::Status Manager::GetStatus() const
 	{
 		Status s;
@@ -1231,7 +1161,7 @@ namespace WornEnchantmentPBR
 		{
 			std::scoped_lock lock{ snapshotLock_ };
 			if (watchedMS_ == 0 || a_nowMS > watchedMS_ + kWatchWindowMS) {
-				return;  // no page has drawn for a second: the menu is closed
+				return;
 			}
 			request = watch_;
 		}
@@ -1246,9 +1176,6 @@ namespace WornEnchantmentPBR
 	Manager::Snapshot Manager::BuildSnapshot(const std::optional<Studio::SnapshotRequest>& a_request) const
 	{
 		Snapshot out;
-		// The watched piece gets full rows; when nothing applied matches the
-		// request, the first piece does, so the menu's fallback selection
-		// has rows to show.
 		const auto matches = [&](RE::FormID a_actorID, const AppliedPiece& a_piece) {
 			return a_request && a_request->actorID == a_actorID && a_request->armorID == a_piece.armor && a_request->firstPerson == a_piece.firstPerson;
 		};
@@ -1270,7 +1197,6 @@ namespace WornEnchantmentPBR
 				row.armorID = piece.armor;
 				row.armorName = piece.armorName;
 				row.firstPerson = piece.firstPerson;
-				// What a new recipe can be keyed to, most specific first.
 				for (const auto& source : KeyChoicesOf(piece.piece)) {
 					Studio::KeyChoice key;
 					key.key = source;
@@ -1302,7 +1228,6 @@ namespace WornEnchantmentPBR
 					for (const auto& mask : applied.recipe->masks) {
 						r.masks.push_back(mask.name);
 					}
-					// Counted by the store when the recipe changed; the snapshot only copies.
 					const auto* counted = ReferencesOf(r.id);
 					const auto  references = counted ? *counted : Studio::CountReferences(*applied.recipe);
 					for (const auto& source : applied.recipe->sources) {
@@ -1338,8 +1263,6 @@ namespace WornEnchantmentPBR
 								row.text = expr->text;
 							}
 							if (const auto* trigger = Get<TriggerSignal>(declared->kind)) {
-								// The bus id a fire button posts: an event glob as written, or
-								// a plugin id; a `when` source fires from its signal alone.
 								if (const auto* event = Get<EventOrigin>(trigger->origin)) {
 									row.event = event->event;
 								} else if (const auto* plugin = Get<PluginOrigin>(trigger->origin)) {
@@ -1363,7 +1286,6 @@ namespace WornEnchantmentPBR
 						gr.privateMaterial = g.material && g.material->Private();
 						gr.shell = g.shell ? g.shell->Describe() : "";
 						auto* compositor = Compositor::GetSingleton();
-						// The facts were computed when the mesh was read; a copy, no read.
 						if (const auto entry = compositor->CachedMesh(g.geometry.get()); entry && entry->mesh) {
 							gr.meshRead = true;
 							gr.partitions = entry->facts.partitions;
@@ -1417,7 +1339,6 @@ namespace WornEnchantmentPBR
 							orow.problem = o.problem;
 							orow.texture = o.stack ? o.stack->Texture() : nullptr;
 							if (material) {
-								// The slot's scalars the file gives, in field order, resolved now.
 								const auto& sc = material->scalars;
 								const auto& sig = *applied.signals;
 								for (const auto field : ScalarsOf(material->slot)) {
@@ -1430,7 +1351,6 @@ namespace WornEnchantmentPBR
 										orow.scalars.push_back({ name, sig.Resolve(**param), ParamText(**param) });
 									}
 								}
-								// Every layer of the file, with the compositor's verdict where it has one.
 								for (const auto& layer : material->stack) {
 									Snapshot::LayerRow lrow;
 									lrow.source = LayerSourceText(layer.source);
@@ -1450,7 +1370,6 @@ namespace WornEnchantmentPBR
 										}
 									}
 									for (const auto& d : o.stack->Diagnostics()) {
-										// "layer N" rows carry their own problem text.
 										if (d.where.starts_with("layer ")) {
 											const auto at = std::strtoul(d.where.c_str() + 6, nullptr, 10);
 											if (at < orow.layers.size() && orow.layers[at].problem.empty()) {

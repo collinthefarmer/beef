@@ -15,10 +15,6 @@ import sys
 import zlib
 from pathlib import Path
 
-# (file offset, name, kind) inside the DATA subrecord; kind is f (float), c (RGBA
-# colour) or u (uint32). Offsets follow the 400-byte file layout, which differs
-# from CommonLibSSE-NG's EffectShaderData after 0xF4: the file stores the addon
-# models and ambient sound form IDs in 4 bytes each, the runtime in 8.
 FIELDS = [
     (0x010, "fillColorKey1", "c"),
     (0x014, "fillAlphaFadeInTime", "f"),
@@ -53,9 +49,7 @@ FIELDS = [
     (0x188, "fillTextureScaleV", "f"),
 ]
 
-# Older records ship a 308-byte DATA without flags or texture scale; those default to 0 and 1.
 DATA_MIN = 0x15C
-
 
 def read_fields(data: bytes) -> dict:
     out = {}
@@ -71,7 +65,6 @@ def read_fields(data: bytes) -> dict:
             r, g, b, _a = struct.unpack_from("<4B", data, offset)
             out[name] = [r, g, b]
     return out
-
 
 def iter_records(blob: bytes):
     """Yield (type, form_id, flags, payload) for every record, descending into groups."""
@@ -91,7 +84,6 @@ def iter_records(blob: bytes):
         yield rtype.decode("ascii"), form_id, flags, payload
         pos += 24 + size
 
-
 def subrecords(payload: bytes):
     pos = 0
     while pos + 6 <= len(payload):
@@ -99,7 +91,6 @@ def subrecords(payload: bytes):
         size = struct.unpack_from("<H", payload, pos + 4)[0]
         yield stype, payload[pos + 6:pos + 6 + size]
         pos += 6 + size
-
 
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
@@ -139,7 +130,6 @@ def main() -> int:
         count += 1
     print(f"{count} records", file=sys.stderr)
     return 0 if count else 1
-
 
 if __name__ == "__main__":
     sys.exit(main())

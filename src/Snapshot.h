@@ -1,12 +1,5 @@
 #pragma once
 
-// The menu's read model: a copy of everything the runtime knows per actor,
-// piece, recipe, geometry and output, taken once per page draw by
-// Manager::LatestSnapshot. Engine-free so the studio's view models compile
-// natively and are tested without the game. The texture pointers are opaque
-// here: the lab keeps them alive, and only the menu's widgets dereference
-// them, through TextureLab::Preview.
-
 #include "Analysis.h"
 #include "Core.h"
 #include "Recipe.h"
@@ -27,8 +20,6 @@ namespace WornEnchantmentPBR::Studio
 	using TextureHandle = RE::NiSourceTexture*;
 	using FormID = std::uint32_t;
 
-	// A signal of the applied recipe: its live value this tick and, for the
-	// kinds a designer tunes, the editable text.
 	struct SignalRow
 	{
 		std::string          name;
@@ -36,76 +27,70 @@ namespace WornEnchantmentPBR::Studio
 		ValueType            type = ValueType::kScalar;
 		Value                value;
 		bool                 inert = false;
-		std::optional<Value> constant;  // a constant signal's value, editable
-		std::string          text;      // an expr signal's expression, editable
-		std::string          curve;     // the row's curve, editable
-		std::string          problem;   // why the row is inert, when it is
-		std::string          event;     // a trigger's event id, for the fire button; empty otherwise
-		std::size_t          references = 0;  // places that name it; 0 = removable
+		std::optional<Value> constant;
+		std::string          text;
+		std::string          curve;
+		std::string          problem;
+		std::string          event;
+		std::size_t          references = 0;
 	};
 
 	struct TextRow
 	{
 		std::string name;
 		std::string text;
-		std::size_t references = 0;  // places that name it; 0 = removable
+		std::size_t references = 0;
 	};
 
-	// A layer as the file has it, with the compositor's verdict where it has one.
 	struct LayerRow
 	{
-		std::string   source;  // LayerSourceText: "@name" or "r, g, b"
-		std::string   mask;    // "@name" or empty
-		std::string   blend;   // BlendName
+		std::string   source;
+		std::string   mask;
+		std::string   blend;
 		float         opacity = 1.0f;
-		std::string   opacityText;  // ParamText
-		std::string   color;        // Vec3ParamText or empty
+		std::string   opacityText;
+		std::string   color;
 		std::string   curve;
-		std::string   channels;  // ChannelSet::ToString
-		std::string   problem;   // why the layer is skipped, when it is
-		TextureHandle texture = nullptr;  // the source image, when it is one
+		std::string   channels;
+		std::string   problem;
+		TextureHandle texture = nullptr;
 	};
 
 	struct ScalarRow
 	{
-		std::string name;  // ScalarFieldName
+		std::string name;
 		Value       value;
-		std::string text;  // the parameter as written
+		std::string text;
 	};
 
 	struct OutputRow
 	{
-		std::size_t            index = 0;  // into Recipe::outputs
-		std::string            target;     // "material", "shell", "light"
+		std::size_t            index = 0;
+		std::string            target;
 		Surface                surface = Surface::kMaterial;
-		Slot                   slot = Slot::kEmissive;  // material outputs
-		std::string            slotName;                // SlotName, empty for a light
+		Slot                   slot = Slot::kEmissive;
+		std::string            slotName;
 		bool                   light = false;
 		bool                   replace = false;
 		bool                   animated = false;
 		std::uint32_t          size = 0;
 		std::string            problem;
-		std::vector<ScalarRow> scalars;  // the slot's scalars, resolved now
+		std::vector<ScalarRow> scalars;
 		std::vector<LayerRow>  layers;
-		TextureHandle          texture = nullptr;  // the composite
+		TextureHandle          texture = nullptr;
 	};
 
-	// A source or mask of the recipe as the compositor reads it on this geometry.
 	struct PictureRow
 	{
 		std::string   name;
-		std::string   description;  // DescribeSource, or the mask's expression
-		ValueType     type = ValueType::kScalar;  // what the texel reads as (SourceType; a mask is scalar)
+		std::string   description;
+		ValueType     type = ValueType::kScalar;
 		TextureHandle texture = nullptr;
-		ShaderChannel channel = ShaderChannel::kRgb;  // what the preview shows
+		ShaderChannel channel = ShaderChannel::kRgb;
 		bool          animated = false;
 		std::string   problem;
 	};
 
-	// One slot of a surface as the binding wrote it. `problem` is the
-	// binding's refusal when the material cannot take the slot (a hair model,
-	// a coat flag, no texture field), which is how material rules reach the
-	// board.
 	struct SlotRow
 	{
 		Slot        slot = Slot::kEmissive;
@@ -114,8 +99,6 @@ namespace WornEnchantmentPBR::Studio
 		std::string problem;
 	};
 
-	// What the geometry's mesh offers, once read: partitions by biped slot,
-	// and the bones it is skinned to with the share of vertices each moves.
 	struct PartitionRow
 	{
 		std::uint32_t slot = 0;
@@ -125,19 +108,19 @@ namespace WornEnchantmentPBR::Studio
 	struct BoneRow
 	{
 		std::string name;
-		float       coverage = 0.0f;  // 0..1
+		float       coverage = 0.0f;
 	};
 
 	struct GeometryRow
 	{
 		std::string            name;
 		bool                   privateMaterial = false;
-		bool                   meshRead = false;  // the rows below are filled once the mesh has been read
+		bool                   meshRead = false;
 		std::vector<PartitionRow> partitions;
 		std::vector<BoneRow>      bones;
-		std::vector<MeshIsland>      islands;   // the mesh analysis, copied from the cache entry
-		std::vector<MaterialCluster> clusters;  // the material analysis at its default settings
-		std::string            shell;  // description, empty when none
+		std::vector<MeshIsland>      islands;
+		std::vector<MaterialCluster> clusters;
+		std::string            shell;
 		std::vector<SlotRow>   materialSlots;
 		std::vector<SlotRow>   shellSlots;
 		std::vector<PictureRow>  sources;
@@ -145,70 +128,63 @@ namespace WornEnchantmentPBR::Studio
 		std::vector<OutputRow> outputs;
 	};
 
-	// A source as the file has it, every setting as text, for the Sources
-	// tab and its form. Only the kind's own settings are filled; toggles read
-	// "on" or "off". Studio::SourceRowOf builds one from a Source and
-	// Studio::SourceKindOf reads one back.
 	struct SourceRow
 	{
 		std::string name;
-		std::string kind;  // SourceKindName
-		std::string path;  // image
+		std::string kind;
+		std::string path;
 		std::string channel;
 		std::string space;
-		std::string scroll;  // Vec2ParamText, empty for none
+		std::string scroll;
 		std::string tile;
 		std::string mirrorU;
 		std::string mirrorV;
 		std::string transpose;
 		std::string mip;
-		std::string material;   // material: the channel
-		std::string bake;       // bake: BakeKindName
-		std::string partition;  // bake partition: the biped slot's name
-		std::string bones;      // bake boneWeight: comma-separated
-		std::string axis;       // uv
-		std::string from;       // distance: a node name, or "x, y, z"
-		std::string trigger;    // ripple: "@name"
+		std::string material;
+		std::string bake;
+		std::string partition;
+		std::string bones;
+		std::string axis;
+		std::string from;
+		std::string trigger;
 		std::string speed;
 		std::string width;
 		std::string decay;
 		std::string shape;
-		std::string clusters;    // materialClusters: a whole number
-		std::string weights;     // materialClusters: "roughness, metallic, occlusion, reflectance, luma"
+		std::string clusters;
+		std::string weights;
 		std::string seed;
 		std::string iterations;
 		std::size_t references = 0;
 	};
 
-	// The recipe's light as the file has it, for its panel: every parameter
-	// as text, the bones as a kind with its settings.
 	struct LightRow
 	{
 		bool        present = false;
-		std::size_t output = 0;  // into Recipe::outputs
-		std::string color;       // Vec3ParamText
-		std::string intensity;   // ParamText
+		std::size_t output = 0;
+		std::string color;
+		std::string intensity;
 		std::string size;
 		std::string cutoff;
-		std::string offset;      // Vec3ParamText
+		std::string offset;
 		bool        shadow = false;
-		std::string bones;       // "skinned" or "named"
-		std::string bonesMax;    // skinned: how many
+		std::string bones;
+		std::string bonesMax;
 		std::string bonesMinShare;
-		std::string bonesNames;  // named: comma-separated
+		std::string bonesNames;
 	};
 
-	// The recipe's shell settings as the file has it, for its panel.
 	struct ShellRow
 	{
 		ShellMaterial material = ShellMaterial::kPbrCopy;
 		ShellBlend    blend = ShellBlend::kAdditive;
 		bool          depthBias = true;
 		float         alphaTest = 0.0f;
-		std::string   alpha;     // ParamText
+		std::string   alpha;
 		std::string   rimPower;
 		std::string   emissive;
-		std::string   inflate;   // Vec3ParamText
+		std::string   inflate;
 		std::string   offset;
 		std::string   scale;
 		std::string   spin;
@@ -219,33 +195,31 @@ namespace WornEnchantmentPBR::Studio
 	struct RecipeRow
 	{
 		std::string                id;
-		std::string                key;   // the key it resolved to this piece by
-		std::vector<RecipeKey>     keys;  // every key of the recipe, for the keys editor
+		std::string                key;
+		std::vector<RecipeKey>     keys;
 		int                        priority = 0;
 		float                      time = 0.0f;
 		bool                       dirty = false;
 		ShellMaterial              shellMaterial = ShellMaterial::kPbrCopy;
 		std::vector<SignalRow>     signals;
 		std::vector<TextRow>       curves;
-		std::vector<std::string>   masks;  // every mask name, even where no geometry is bound
-		std::vector<TextRow>       maskRows;  // the masks with their expressions and reference counts
+		std::vector<std::string>   masks;
+		std::vector<TextRow>       maskRows;
 		std::vector<SourceRow>     sourceRows;
 		std::vector<GeometryRow>   geometries;
-		std::string                light;  // description, empty when none
+		std::string                light;
 		std::optional<std::size_t> lightOutput;
-		std::vector<Diagnostic>    problems;  // the store's row problems for this recipe
-		std::size_t                undoDepth = 0;  // edits that Undo would take back
+		std::vector<Diagnostic>    problems;
+		std::size_t                undoDepth = 0;
 		std::size_t                redoDepth = 0;
 		LightRow                   lightRow;
 		ShellRow                   shellRow;
 	};
 
-	// A key a new recipe could take from the worn piece: the magic effect,
-	// enchantment and effect shader it carries, the armor, its keywords.
 	struct KeyChoice
 	{
 		PieceKey    key;
-		std::string text;  // the editor ID when known, else the form key
+		std::string text;
 	};
 
 	struct PieceRow
@@ -255,12 +229,10 @@ namespace WornEnchantmentPBR::Studio
 		FormID                 armorID = 0;
 		std::string            armorName;
 		bool                   firstPerson = false;
-		std::vector<KeyChoice> keys;     // what a new recipe can be keyed to, most specific first
-		std::vector<RecipeRow> recipes;  // merge order, lowest priority first
+		std::vector<KeyChoice> keys;
+		std::vector<RecipeRow> recipes;
 	};
 
-	// What the menu is looking at: the tick builds full rows for that piece
-	// alone and light rows (ids, keys, depths) for every other piece.
 	struct SnapshotRequest
 	{
 		FormID actorID = 0;
@@ -268,12 +240,8 @@ namespace WornEnchantmentPBR::Studio
 		bool   firstPerson = false;
 	};
 
-	// Built on the game thread once per tick while the menu watches, and
-	// published whole: the menu reads one immutable snapshot per frame and
-	// never the live state. Equal versions are the same rows.
 	struct Snapshot
 	{
-		// The rows by their names, so Manager::Snapshot::PieceRow still reads.
 		using SignalRow = Studio::SignalRow;
 		using TextRow = Studio::TextRow;
 		using LayerRow = Studio::LayerRow;
@@ -287,7 +255,7 @@ namespace WornEnchantmentPBR::Studio
 
 		std::uint64_t         version = 0;
 		std::uint32_t         tickMS = 0;
-		View                  view;  // how the piece was looked at when the rows were built
+		View                  view;
 		std::vector<PieceRow> pieces;
 	};
 }

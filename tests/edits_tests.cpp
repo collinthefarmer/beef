@@ -1,7 +1,3 @@
-// Every RecipeEdit applied to the canonical recipe: the change lands where
-// it should, an edit that does not fit leaves the recipe untouched and says
-// why, and the result serialises as the file would be written by hand.
-
 #include "Edits.h"
 #include "Expression.h"
 #include "test_support.h"
@@ -16,7 +12,6 @@ using test::Check;
 
 namespace
 {
-	// The canonical file, parsed once; every test edits a copy.
 	Recipe Canonical()
 	{
 		const auto path = std::filesystem::path{ WEPBR_FIXTURES_DIR }.parent_path().parent_path() / "schema" / "example-magicka.json";
@@ -40,15 +35,12 @@ namespace
 		return material && a_layer < material->stack.size() ? &material->stack[a_layer] : nullptr;
 	}
 
-	// The edit lands: Apply accepts it and the recipe changed.
 	void Accepted(Recipe& a_recipe, const RecipeEdit& a_edit, const std::string& a_what)
 	{
 		const auto problem = Apply(a_recipe, a_edit);
 		Check(!problem, a_what + " is accepted" + (problem ? ": " + problem->where + ": " + problem->message : ""));
 	}
 
-	// The edit is refused with the expected row and reason, and the recipe is
-	// what it was before.
 	void Refused(const Recipe& a_recipe, const RecipeEdit& a_edit, const std::string& a_where, const std::string& a_fragment, const std::string& a_what)
 	{
 		Recipe     copy = a_recipe;
@@ -145,7 +137,6 @@ namespace
 		Check(MaterialAt(r, 0) && MaterialAt(r, 0)->stack.size() == 4 && LayerAt(r, 0, 1) && Get<Ref>(LayerAt(r, 0, 1)->source) && Get<Ref>(LayerAt(r, 0, 1)->source)->name == "ring", "layer removed and the rest closed up");
 		Refused(r, RemoveLayer{ 0, 4 }, "output 0 layer 4", "4 layers", "remove layer past the end");
 
-		// Stack 0 is now fill, ring, stepRing, fill (the inserted and appended layers both read @fill).
 		auto NameAt = [&](std::size_t a_layer) -> std::string {
 			const auto* row = LayerAt(r, 0, a_layer);
 			const auto* ref = row ? Get<Ref>(row->source) : nullptr;
@@ -338,9 +329,6 @@ namespace
 		Refused(r, AddCurve{ "ease" }, "curve ease", "a curve has that name", "add a curve twice");
 		Refused(r, AddCurve{ "bad name" }, "curve bad name", "letters, digits and underscores", "add a curve with a bad name");
 
-		// Renaming a signal repoints every reference: a parameter (the
-		// layers' colour, the light's colour), a variant override, and the
-		// expressions that read it.
 		Recipe hue = Canonical();
 		Refused(hue, RenameSignal{ "nothing", "x" }, "signal nothing", "no such signal", "rename a missing signal");
 		Refused(hue, RenameSignal{ "glowHue", "glowStrength" }, "signal glowHue", "already named", "rename onto a taken name");
@@ -378,14 +366,11 @@ namespace
 		Accepted(level, RenameSignal{ "shellOpacity", "veil" }, "rename shellOpacity");
 		Check(Get<Ref>(level.shell.alpha) && Get<Ref>(level.shell.alpha)->name == "veil", "the shell's alpha follows the rename");
 
-		// A signal sharing a name with an image is not renamed inside masks,
-		// where the image wins.
 		Recipe shared = Canonical();
 		shared.signals.push_back(Signal{ "metallic", ConstantSignal{ 1.0f }, std::nullopt });
 		Accepted(shared, RenameSignal{ "metallic", "shine" }, "rename a signal an image shares a name with");
 		Check(shared.masks[0].text == "@metallic", "the mask still reads the image");
 
-		// Renaming a curve repoints "@name" references and "@name(" calls.
 		Recipe curve = Canonical();
 		curve.masks[0].text = "@flash(@metallic) + @flash (0.5)";
 		Refused(curve, RenameCurve{ "nothing", "x" }, "curve nothing", "no such curve", "rename a missing curve");
@@ -399,7 +384,6 @@ namespace
 		const auto* relief = LayerAt(curve, 2, 0);
 		Check(relief && relief->curve && relief->curve->text == "@sharp", "a layer's curve follows the rename");
 
-		// Removing rows: only unreferenced ones go.
 		Recipe remove = Canonical();
 		const auto counts = CountReferences(remove);
 		Check(counts.signals.at("glowHue") == 5 && counts.signals.at("scroll") == 4 && counts.signals.at("struck") == 2 && counts.signals.at("glossBoost") == 1 && counts.curves.at("flash") == 2 && counts.curves.at("crisp") == 1 && counts.curves.at("edgeRest") == 1 && !counts.signals.contains("nothing"), "reference counts over parameters, expressions, curves and variants");
@@ -497,8 +481,6 @@ namespace
 	}
 }
 
-	// Keys: added once each, the last one kept; an output added to a recipe
-	// whose outputs all select one geometry selects it too.
 	void KeyEdits()
 	{
 		Recipe r = Canonical();
@@ -538,7 +520,6 @@ namespace
 		Check(fourth && fourth->selector.All(), "with differing selectors a new output selects every geometry");
 	}
 
-	// The recipe-wide clears: outputs alone, or the resources and what read them.
 	void ClearEdits()
 	{
 		Recipe outputs = Canonical();
