@@ -302,6 +302,7 @@ namespace WornEnchantmentPBR::Studio
 	{
 		std::string id;
 		RecipeKey   key;
+		std::string geometry;  // the first output selects this geometry alone; empty: every geometry
 	};
 	// One firing of an event for the piece's wearer. A node names the
 	// firing's place; an offset (world units) and a random scatter within

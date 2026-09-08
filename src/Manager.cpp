@@ -850,11 +850,11 @@ namespace WornEnchantmentPBR
 		}
 	}
 
-	void Manager::NewRecipe(std::string a_id, RecipeKey a_key)
+	void Manager::NewRecipe(std::string a_id, RecipeKey a_key, std::string a_geometry)
 	{
-		PostTask([this, id = std::move(a_id), key = std::move(a_key)] {
+		PostTask([this, id = std::move(a_id), key = std::move(a_key), geometry = std::move(a_geometry)] {
 			RetireEveryActor();
-			[[maybe_unused]] const bool made = WornEnchantmentPBR::NewRecipe(id, std::move(key));
+			[[maybe_unused]] const bool made = WornEnchantmentPBR::NewRecipe(id, std::move(key), geometry);
 			QueueLoadedActorRefreshes();
 		});
 	}
@@ -1263,6 +1263,7 @@ namespace WornEnchantmentPBR
 					Snapshot::RecipeRow r;
 					r.id = applied.recipe->id;
 					r.key = applied.key.ToString();
+					r.keys = applied.recipe->keys;
 					r.priority = applied.priority;
 					r.time = applied.lastTime;
 					r.dirty = IsDirty(r.id);

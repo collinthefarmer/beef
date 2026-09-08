@@ -157,7 +157,7 @@ namespace WornEnchantmentPBR::Studio
 				},
 				[&](const Undo& i) { manager->UndoRecipe(i.recipe); },
 				[&](const Redo& i) { manager->RedoRecipe(i.recipe); },
-				[&](const CreateRecipe& i) { manager->NewRecipe(i.id, i.key); },
+				[&](const CreateRecipe& i) { manager->NewRecipe(i.id, i.key, i.geometry); },
 				[&](const BeginPaint& i) { manager->BeginPaint(i.recipe, i.key, i.surface); },
 				[&](const SetPaintSurface& i) { manager->SetPaintSurface(i.surface); },
 				[&](const KeepPaint& i) { manager->KeepPaint(i.recipe, i.name); },
@@ -616,43 +616,66 @@ namespace WornEnchantmentPBR::Studio
 
 		// An empty recipe keyed to the worn armor, under an id typed here; it
 		// is selected as soon as the snapshot carries it.
-		void NewRecipePopup(const PieceRow& a_piece, Intents& a_out)
+		std::optional<RecipeKey> DefaultKeyOf(const PieceRow& a_piece);
+
+		// The keys the recipe resolves by, in a popup: each with remove (the
+		// last one greyed), then what the piece carries that the recipe lacks
+		// as a combo, then a keyword by editor id for pieces beyond this one.
+		void KeysPopup(const PieceRow& a_piece, const RecipeRow& a_recipe, Intents& a_out)
 		{
-			if (!ImGui::BeginPopup("new-recipe")) {
+			if (!ImGui::BeginPopup("recipe-keys")) {
 				return;
 			}
-			const auto id = Widgets::LiveTextField("id", "recipe id (its file name)", Width::Px(240.0f), 1.0f);
-			// The key, from what the piece carries; the combo's pick lives with the popup.
-			static std::size_t chosen = 0;
-			if (chosen >= a_piece.keys.size()) {
-				chosen = 0;
+			auto table = Widgets::Table::Begin("keys", { { "key", Width::Fit() }, { "", Width::Px(Widgets::RowButtonWidth()) } }, kFormStyle);
+			if (table.Open()) {
+				for (std::size_t i = 0; i < a_recipe.keys.size(); ++i) {
+					const auto& key = a_recipe.keys[i];
+					ImGui::PushID(static_cast<int>(i));
+					table.Cell();
+					ImGui::AlignTextToFramePadding();
+					ImGui::TextUnformatted(key.ToString().c_str());
+					table.Cell();
+					Widgets::Disabled(a_recipe.keys.size() == 1, [&]() {
+						if (Widgets::RemoveButton(0)) {
+							Post(a_out, a_recipe.id, RemoveKey{ key });
+						}
+					});
+					ImGui::PopID();
+				}
+				table.End();
 			}
 			const auto label = [](const KeyChoice& a_key) { return std::format("{}: {}", KeyKindName(a_key.key.kind), a_key.text); };
+			const auto toKey = [](const KeyChoice& a_key) {
+				RecipeKey key;
+				key.kind = a_key.key.kind;
+				key.form.text = a_key.text;
+				key.form.key = a_key.key.form;
+				return key;
+			};
 			Widgets::NextItemWidth(Width::Px(240.0f));
-			if (ImGui::BeginCombo("##key", a_piece.keys.empty() ? "no key" : label(a_piece.keys[chosen]).c_str())) {
-				for (std::size_t i = 0; i < a_piece.keys.size(); ++i) {
-					if (ImGui::Selectable(label(a_piece.keys[i]).c_str(), i == chosen)) {
-						chosen = i;
+			if (ImGui::BeginCombo("##add-key", "add a key the piece carries")) {
+				for (const auto& choice : a_piece.keys) {
+					const auto key = toKey(choice);
+					if (std::ranges::find(a_recipe.keys, key) != a_recipe.keys.end()) {
+						continue;
+					}
+					if (ImGui::Selectable(label(choice).c_str(), false)) {
+						Post(a_out, a_recipe.id, AddKey{ key });
 					}
 				}
 				ImGui::EndCombo();
 			}
-			const bool ready = !id.empty() && !a_piece.keys.empty();
-			if (!ready) {
-				ImGui::BeginDisabled();
-			}
-			if (ImGui::Button("Create") && ready) {
-				const auto& key = a_piece.keys[chosen];
-				RecipeKey   recipeKey;
-				recipeKey.kind = key.key.kind;
-				recipeKey.form.text = key.text;
-				recipeKey.form.key = key.key.form;
-				a_out.push_back(CreateRecipe{ std::string{ id }, std::move(recipeKey) });
-				ImGui::CloseCurrentPopup();
-			}
-			if (!ready) {
-				ImGui::EndDisabled();
-			}
+			const auto keyword = Widgets::LiveTextField("keyword", "keyword editor id", Width::Px(240.0f), 1.0f);
+			ImGui::SameLine();
+			Widgets::Disabled(keyword.empty(), [&]() {
+				if (ImGui::SmallButton("Add keyword")) {
+					RecipeKey key;
+					key.kind = KeyKind::kKeyword;
+					key.form = FormRef::From(keyword);
+					Post(a_out, a_recipe.id, AddKey{ key });
+				}
+			});
+			Widgets::Tooltip("a keyword by editor id, resolved against the loaded plugins; the recipe then applies to every piece carrying it");
 			ImGui::EndPopup();
 		}
 
@@ -699,19 +722,35 @@ namespace WornEnchantmentPBR::Studio
 			table.End();
 		}
 
-		// The Recipe rule's right group: New, then Undo and Redo, as every
-		// rule carries its actions at its right edge.
-		[[nodiscard]] Widgets::RuleLine RecipeRule(const PieceRow& a_piece, const RecipeRow& a_recipe, Intents& a_out)
+		// The Recipe rule's right group, as every rule carries its actions at
+		// its right edge: New (a recipe named recipe, recipe-2, ..., keyed to
+		// the armor, with one empty emissive output on the material for the
+		// viewed geometry alone), keys, then Undo and Redo.
+		[[nodiscard]] Widgets::RuleLine RecipeRule(const PieceRow& a_piece, const RecipeRow& a_recipe, const GeometryRow& a_geometry, Intents& a_out)
 		{
 			const float newWidth = Widgets::ButtonWidth("New");
+			const float keysWidth = Widgets::ButtonWidth("keys");
 			const float undoWidth = Widgets::ButtonWidth("Undo");
 			const float redoWidth = Widgets::ButtonWidth("Redo");
-			const float rightWidth = newWidth + undoWidth + redoWidth + 2.0f * Widgets::ItemSpacingX();
-			return Widgets::RuleLine{ "Recipe", rightWidth, [=, &a_piece, &a_recipe, &a_out]() {
-									 if (ImGui::Button("New", ImVec2{ newWidth, 0.0f })) {
-										 ImGui::OpenPopup("new-recipe");
+			const float rightWidth = newWidth + keysWidth + undoWidth + redoWidth + 3.0f * Widgets::ItemSpacingX();
+			return Widgets::RuleLine{ "Recipe", rightWidth, [=, &a_piece, &a_recipe, &a_geometry, &a_out]() {
+									 const auto key = DefaultKeyOf(a_piece);
+									 Widgets::Disabled(!key, [&]() {
+										 if (ImGui::Button("New", ImVec2{ newWidth, 0.0f }) && key) {
+											 std::vector<std::string> ids;
+											 for (const auto& recipe : a_piece.recipes) {
+												 ids.push_back(recipe.id);
+											 }
+											 a_out.push_back(CreateRecipe{ UniqueName("recipe", ids), *key, a_geometry.name });
+										 }
+									 });
+									 Widgets::Tooltip("a new recipe keyed to this armor, named recipe-N, with one empty emissive output on the material for the viewed geometry alone; rename it and edit its keys from keys");
+									 ImGui::SameLine();
+									 if (ImGui::Button("keys", ImVec2{ keysWidth, 0.0f })) {
+										 ImGui::OpenPopup("recipe-keys");
 									 }
-									 NewRecipePopup(a_piece, a_out);
+									 KeysPopup(a_piece, a_recipe, a_out);
+									 Widgets::Tooltip("which pieces the recipe applies to");
 									 ImGui::SameLine();
 									 UndoRedoButtons(a_recipe, a_out);
 								 } };
@@ -845,10 +884,10 @@ namespace WornEnchantmentPBR::Studio
 		// Both rows, then what the pick needs under them: Add output for an
 		// empty slot, the light's cell for the light, the reason for a refused
 		// one. Returns the picked cell.
-		const Cell* DrawContext(const Snapshot& a_snapshot, const Board& a_board, const PieceRow& a_piece, const RecipeRow& a_recipe, const Selection& a_selection, Intents& a_out)
+		const Cell* DrawContext(const Snapshot& a_snapshot, const Board& a_board, const PieceRow& a_piece, const RecipeRow& a_recipe, const GeometryRow& a_geometry, const Selection& a_selection, Intents& a_out)
 		{
 			const Cell* picked = PickedCell(a_board, a_selection);
-			Widgets::Rule({}, RecipeRule(a_piece, a_recipe, a_out));
+			Widgets::Rule({}, RecipeRule(a_piece, a_recipe, a_geometry, a_out));
 			DrawRecipeContext(a_snapshot, a_piece, a_recipe, a_out);
 			Widgets::Rule({}, OutputRule(a_board, a_recipe, picked, a_selection, a_out));
 			DrawEditContext(a_board, a_recipe, picked, a_selection, a_out);
@@ -1610,9 +1649,9 @@ namespace WornEnchantmentPBR::Studio
 		// region through the ordinary render path. Keep copies the region
 		// into the active recipe; Discard drops the paint recipe.
 
-		// The key a paint recipe takes from the piece: its armor, else the
-		// first key it offers.
-		[[nodiscard]] std::optional<RecipeKey> PaintKeyOf(const PieceRow& a_piece)
+		// The key a recipe takes from the piece by default, for a new recipe
+		// and the paint recipe: its armor, else the first key it offers.
+		std::optional<RecipeKey> DefaultKeyOf(const PieceRow& a_piece)
 		{
 			const KeyChoice* chosen = nullptr;
 			for (const auto& key : a_piece.keys) {
@@ -2101,7 +2140,7 @@ namespace WornEnchantmentPBR::Studio
 			const auto  board = BuildBoard(*a_recipe, *a_geometry, selection, view);
 			const auto  names = NamesOf(*a_recipe, *a_geometry);
 			const auto  pane = ChoosePane(selection.target, a_state.settings);
-			const Cell* picked = layout.contextRows ? DrawContext(a_snapshot, board, *a_piece, *a_recipe, selection, a_out) : nullptr;
+			const Cell* picked = layout.contextRows ? DrawContext(a_snapshot, board, *a_piece, *a_recipe, *a_geometry, selection, a_out) : nullptr;
 			// Paint: the head, then the session begins for the selected recipe
 			// (the manager applies the paint recipe alone a frame or more
 			// later) and the viewed shape's mesh is read for its offers; the
@@ -2121,7 +2160,7 @@ namespace WornEnchantmentPBR::Studio
 							a_out.push_back(PickRecipe{ it->id });
 						}
 					}
-					if (const auto key = PaintKeyOf(*a_piece)) {
+					if (const auto key = DefaultKeyOf(*a_piece)) {
 						a_out.push_back(BeginPaint{ active->id, *key, Surface::kMaterial });
 					} else {
 						Widgets::Warn("the piece offers no key to paint on");

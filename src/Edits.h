@@ -93,8 +93,19 @@ namespace WornEnchantmentPBR::Studio
 	// another output of the recipe excludes it.
 	struct AddOutput
 	{
-		Surface surface = Surface::kMaterial;
-		Slot    slot = Slot::kEmissive;
+		Surface  surface = Surface::kMaterial;
+		Slot     slot = Slot::kEmissive;
+		Selector selector;  // empty: the selector every existing output shares, else every geometry
+	};
+	// Keys: which pieces the recipe resolves to. An added key must not
+	// repeat one the recipe has; the last key is never removed.
+	struct AddKey
+	{
+		RecipeKey key;
+	};
+	struct RemoveKey
+	{
+		RecipeKey key;
 	};
 	struct RemoveOutput
 	{
@@ -330,7 +341,7 @@ namespace WornEnchantmentPBR::Studio
 	using RecipeEdit = std::variant<
 		SetLayerSource, SetLayerCurve, SetLayerBlend, SetLayerOpacity, SetLayerColor, SetLayerMask, SetLayerChannels,
 		AddLayer, RemoveLayer, MoveLayer, ClearLayers,
-		AddOutput, RemoveOutput, SetScalar, SetColorScalar,
+		AddOutput, RemoveOutput, SetScalar, SetColorScalar, AddKey, RemoveKey,
 		SetConstant, SetExpression, SetSignalCurve, SetCurve, SetMask,
 		AddSignal, AddCurve, RenameSignal, RenameCurve, RemoveSignal, RemoveCurve, AddMask, RenameMask, RemoveMask,
 		AddSource, SetSource, RenameSource, RemoveSource,

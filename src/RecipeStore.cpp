@@ -1,5 +1,6 @@
 #include "RecipeStore.h"
 
+#include "Edits.h"
 #include "EngineForms.h"
 #include "Identity.h"
 #include "Importer.h"
@@ -512,28 +513,33 @@ namespace WornEnchantmentPBR
 		return path;
 	}
 
-	bool NewRecipe(std::string_view a_id, RecipeKey a_key)
+	bool NewRecipe(std::string_view a_id, RecipeKey a_key, std::string_view a_geometry)
 	{
 		const bool stem = !a_id.empty() && std::ranges::all_of(a_id, [](char c) { return std::isalnum(static_cast<unsigned char>(c)) || c == '-' || c == '_' || c == '.'; }) && a_id[0] != '.';
 		if (!stem) {
 			logger::warn("new recipe '{}': an id is a file stem (letters, digits, '-', '_', '.')", a_id);
 			return false;
 		}
-		if (Loaded(a_id)) {
-			logger::warn("new recipe {}: a recipe has that id", a_id);
-			return false;
+		std::string id{ a_id };
+		for (int n = 2; Loaded(id); ++n) {
+			id = std::format("{}-{}", a_id, n);
 		}
 		Recipe recipe;
-		recipe.id = std::string{ a_id };
+		recipe.id = id;
 		recipe.metadata.name = recipe.id;
 		recipe.keys.push_back(std::move(a_key));
-		LoadedRecipe loaded{ std::move(recipe), Identity::UserRecipeFolder() / (std::string{ a_id } + ".json"), {}, nullptr, true };
+		if (!a_geometry.empty()) {
+			Selector selector;
+			selector.anyOf.push_back(SelectorClause{ SelectorKind::kGeometry, {}, std::string{ a_geometry } });
+			[[maybe_unused]] const auto refused = Studio::Apply(recipe, Studio::AddOutput{ Surface::kMaterial, Slot::kEmissive, std::move(selector) });
+		}
+		LoadedRecipe loaded{ std::move(recipe), Identity::UserRecipeFolder() / (id + ".json"), {}, nullptr, true };
 		loaded.diagnostics = Validate(loaded.recipe);
 		ResolveForms(loaded.recipe, loaded.diagnostics);
 		g_loaded.push_back(std::move(loaded));
 		g_loaded.back().references = Studio::CountReferences(g_loaded.back().recipe);
 		g_recipes.push_back(g_loaded.back().recipe);
-		logger::info("new recipe {} keyed by {}; saves to {}", a_id, g_loaded.back().recipe.keys[0].ToString(), g_loaded.back().path.string());
+		logger::info("new recipe {} keyed by {}; saves to {}", id, g_loaded.back().recipe.keys[0].ToString(), g_loaded.back().path.string());
 		return true;
 	}
 

@@ -345,7 +345,71 @@ namespace WornEnchantmentPBR::Studio
 			return std::nullopt;
 		}
 
+		// --------------------------------------------------- key edits
+
+		std::string KeyWhere(const RecipeKey& a_key)
+		{
+			return std::format("key {}", a_key.ToString());
+		}
+
+		Refusal Edit(Recipe& a_recipe, const AddKey& a_edit)
+		{
+			const auto where = KeyWhere(a_edit.key);
+			if (std::ranges::find(a_recipe.keys, a_edit.key) != a_recipe.keys.end()) {
+				return Refuse(where, "the recipe has that key");
+			}
+			switch (KeyOperandOf(a_edit.key.kind)) {
+			case KeyOperand::kForm:
+				if (a_edit.key.form.text.empty()) {
+					return Refuse(where, "a form key names a form");
+				}
+				break;
+			case KeyOperand::kGlob:
+				if (a_edit.key.glob.empty()) {
+					return Refuse(where, "a material key needs a glob");
+				}
+				break;
+			case KeyOperand::kNone:
+				break;
+			}
+			a_recipe.keys.push_back(a_edit.key);
+			return std::nullopt;
+		}
+
+		Refusal Edit(Recipe& a_recipe, const RemoveKey& a_edit)
+		{
+			const auto where = KeyWhere(a_edit.key);
+			const auto it = std::ranges::find(a_recipe.keys, a_edit.key);
+			if (it == a_recipe.keys.end()) {
+				return Refuse(where, "no such key");
+			}
+			if (a_recipe.keys.size() == 1) {
+				return Refuse(where, "a recipe keeps at least one key");
+			}
+			a_recipe.keys.erase(it);
+			return std::nullopt;
+		}
+
 		// ------------------------------------------------ output edits
+
+		// The selector every surface output of the recipe carries, when they
+		// all carry the same one; empty otherwise. A recipe whose outputs all
+		// target one geometry keeps targeting it as outputs are added.
+		Selector SharedSelector(const Recipe& a_recipe)
+		{
+			std::optional<Selector> shared;
+			for (const auto& output : a_recipe.outputs) {
+				const auto* surface = Get<SurfaceOutput>(output);
+				if (!surface) {
+					continue;
+				}
+				if (shared && !(*shared == surface->selector)) {
+					return Selector{};
+				}
+				shared = surface->selector;
+			}
+			return shared.value_or(Selector{});
+		}
 
 		Refusal Edit(Recipe& a_recipe, const AddOutput& a_edit)
 		{
@@ -357,7 +421,9 @@ namespace WornEnchantmentPBR::Studio
 				const auto* row = Get<SurfaceOutput>(a_recipe.outputs[*other]);
 				return Refuse(where, std::format("output {} on '{}' excludes '{}' on the same {}", *other, row ? SlotName(row->slot) : "?", SlotName(a_edit.slot), SurfaceName(a_edit.surface)));
 			}
-			a_recipe.outputs.emplace_back(DefaultOutput(a_edit.surface, a_edit.slot));
+			SurfaceOutput output = DefaultOutput(a_edit.surface, a_edit.slot);
+			output.selector = a_edit.selector.All() ? SharedSelector(a_recipe) : a_edit.selector;
+			a_recipe.outputs.emplace_back(std::move(output));
 			return std::nullopt;
 		}
 
@@ -1175,6 +1241,8 @@ namespace WornEnchantmentPBR::Studio
 			[](const MoveLayer& e) { return std::format("{}: move to {}", LayerWhere(e.output, e.from), e.to); },
 			[](const ClearLayers& e) { return std::format("{}: clear layers", OutputWhere(e.output)); },
 			[](const AddOutput& e) { return std::format("outputs: add {} {}", SurfaceName(e.surface), SlotName(e.slot)); },
+			[](const AddKey& e) { return std::format("keys: add {}", e.key.ToString()); },
+			[](const RemoveKey& e) { return std::format("keys: remove {}", e.key.ToString()); },
 			[](const RemoveOutput& e) { return std::format("{}: remove", OutputWhere(e.output)); },
 			[](const SetScalar& e) { return std::format("{}: {} {}", OutputWhere(e.output), ScalarFieldName(e.field), ParamText(e.value)); },
 			[](const SetColorScalar& e) { return std::format("{}: color {}", OutputWhere(e.output), Vec3ParamText(e.color)); },

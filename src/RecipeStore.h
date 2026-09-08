@@ -78,7 +78,10 @@ namespace WornEnchantmentPBR
 	// saved. The loaded list grows, which moves every recipe in it, so the
 	// caller retires everything that points into it first. False when the
 	// id is taken or is not a file stem.
-	[[nodiscard]] bool NewRecipe(std::string_view a_id, RecipeKey a_key);
+	// A new recipe under the id, or the id with -2, -3 ... when a recipe has
+	// it, keyed as given; with a geometry named, its first output is an empty
+	// emissive stack on the material selecting that geometry alone.
+	[[nodiscard]] bool NewRecipe(std::string_view a_id, RecipeKey a_key, std::string_view a_geometry);
 	// A transient recipe: in the loaded list like any other (so it resolves
 	// and applies), never written, not listed as a file, gone on reload.
 	// The list moves on add and on drop, so the caller retires everything

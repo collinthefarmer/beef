@@ -476,11 +476,16 @@ are in `ARCHITECTURE.md` under "The recipe studio".
   field that names a `@signal` opens that signal in a modal: its editor,
   its curve, and the signals its expression reads as buttons that open
   their own modals, to any depth. The
-  recipe row's **New** opens a popup that makes an empty recipe under
-  the id typed, keyed to one of what the piece carries (its magic
-  effect, enchantment or effect shader, the armor, or a keyword), listed
-  as `user/<id>.json` until saved; a recipe stays on its piece with an
-  empty board while it has no outputs. **Fire** on a trigger row opens a
+  Recipe rule's **New** makes a recipe named `recipe` (then `recipe-2`
+  and on), keyed to the armor, with one empty emissive output on the
+  material selecting the viewed geometry alone, listed as
+  `user/<id>.json` until saved; **keys** beside it opens the recipe's
+  keys: each with remove (the last one stays), a combo adding one of what
+  the piece carries (its magic effect, enchantment or effect shader, the
+  armor, or a keyword), and a keyword by editor id for pieces beyond this
+  one. An output added to a recipe whose outputs all select one geometry
+  selects it too; a recipe stays on its piece with an empty board while
+  it has no outputs. **Fire** on a trigger row opens a
   popup for the firing's payload: a node from the shape's bones, an
   offset from it in world units, a random scatter radius, and the value.
 - **Paint mode** builds a region as a stack of terms, the way Compose

@@ -117,7 +117,7 @@ namespace WornEnchantmentPBR
 		// An empty recipe keyed to the armor, from any thread; everything is
 		// retired around it since the store's list moves, then re-applied,
 		// so the recipe resolves onto the armor's wearers at once.
-		void NewRecipe(std::string a_id, RecipeKey a_key);
+		void NewRecipe(std::string a_id, RecipeKey a_key, std::string a_geometry);
 		// Painting: a transient paint recipe (Studio::PaintRecipe) cloned
 		// from the active recipe, keyed as given, isolated so the region
 		// shows alone; the surface its emissive previews on can change;

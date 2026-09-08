@@ -496,6 +496,47 @@ namespace
 	}
 }
 
+	// Keys: added once each, the last one kept; an output added to a recipe
+	// whose outputs all select one geometry selects it too.
+	void KeyEdits()
+	{
+		Recipe r = Canonical();
+		Check(r.keys.size() == 1, "the canonical recipe has one key");
+		const RecipeKey first = r.keys[0];
+		Refused(r, RemoveKey{ first }, "key " + first.ToString(), "at least one key", "remove the last key");
+		RecipeKey armor;
+		armor.kind = KeyKind::kArmor;
+		armor.form = FormRef::From("0x12E49~Skyrim.esm");
+		Accepted(r, AddKey{ armor }, "add an armor key");
+		Check(r.keys.size() == 2 && r.keys[1] == armor, "the armor key is appended");
+		Refused(r, AddKey{ armor }, "key " + armor.ToString(), "has that key", "add a key twice");
+		RecipeKey blank;
+		blank.kind = KeyKind::kKeyword;
+		Refused(r, AddKey{ blank }, "key " + blank.ToString(), "names a form", "add a keyword key with no form");
+		RecipeKey material;
+		material.kind = KeyKind::kMaterial;
+		Refused(r, AddKey{ material }, "key " + material.ToString(), "needs a glob", "add a material key with no glob");
+		Accepted(r, RemoveKey{ armor }, "remove the armor key");
+		Check(r.keys.size() == 1 && r.keys[0] == first, "the first key remains");
+		Refused(r, RemoveKey{ armor }, "key " + armor.ToString(), "no such key", "remove a key the recipe lacks");
+
+		Recipe s;
+		s.id = "fresh";
+		s.keys.push_back(first);
+		Selector torso;
+		torso.anyOf.push_back(SelectorClause{ SelectorKind::kGeometry, {}, "torso" });
+		Accepted(s, AddOutput{ Surface::kMaterial, Slot::kEmissive, torso }, "add an output selecting the torso");
+		Accepted(s, AddOutput{ Surface::kMaterial, Slot::kRmaos }, "add an output with no selector");
+		const auto* second = Get<SurfaceOutput>(s.outputs[1]);
+		Check(second && second->selector == torso, "the second output inherits the selector every output shares");
+		Selector hands;
+		hands.anyOf.push_back(SelectorClause{ SelectorKind::kGeometry, {}, "hands" });
+		Accepted(s, AddOutput{ Surface::kMaterial, Slot::kHeight, hands }, "add an output selecting the hands");
+		Accepted(s, AddOutput{ Surface::kShell, Slot::kEmissive }, "add an output while the selectors differ");
+		const auto* fourth = Get<SurfaceOutput>(s.outputs[3]);
+		Check(fourth && fourth->selector.All(), "with differing selectors a new output selects every geometry");
+	}
+
 int main()
 {
 	Check(!Canonical().outputs.empty(), "schema/example-magicka.json parses");
@@ -504,6 +545,7 @@ int main()
 	LayerEdits();
 	StackEdits();
 	OutputEdits();
+	KeyEdits();
 	ScalarEdits();
 	SignalEdits();
 	Serialised();

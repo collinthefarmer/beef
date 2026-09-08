@@ -219,7 +219,8 @@ namespace WornEnchantmentPBR::Studio
 	struct RecipeRow
 	{
 		std::string                id;
-		std::string                key;
+		std::string                key;   // the key it resolved to this piece by
+		std::vector<RecipeKey>     keys;  // every key of the recipe, for the keys editor
 		int                        priority = 0;
 		float                      time = 0.0f;
 		bool                       dirty = false;
