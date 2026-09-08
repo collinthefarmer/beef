@@ -530,7 +530,10 @@ are in `ARCHITECTURE.md` under "The recipe studio".
   and ends the session; **Discard** ends it without keeping. On the
   Masks tab, **edit** loads a kept mask into the stack with its terms
   and their settings recovered from the text; any other text comes back
-  as one raw term. Leaving Paint mode discards.
+  as one raw term; so does **edit** on a row of the masks section under
+  Add, without leaving Paint. Opening Paint on a soloed recipe paints for
+  that recipe, and the isolate the studio had when Paint opened comes
+  back when it ends. Leaving Paint mode discards.
 - **Recipes**: every loaded file with keys, row counts, state and path;
   the selection's resolved recipes in merge order; the **board**, the
   grid of every slot on the material and the shell for the selected

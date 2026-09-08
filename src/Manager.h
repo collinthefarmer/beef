@@ -226,6 +226,15 @@ namespace WornEnchantmentPBR
 		bool                                       layoutVerified_ = false;
 		bool                                       frozenLastTick_ = false;  // to notice the tick that leaves freeze
 		Studio::View                               view_{};  // game thread
+		// The isolate the view had when Paint began, put back when it ends.
+		struct IsolateState
+		{
+			std::string recipe;
+			int         output = -1;
+			int         layer = -1;
+			bool        bySolo = false;
+		};
+		IsolateState paintReturn_{};
 
 		// The published snapshot and what the menu watches; the lock covers
 		// the pointer swap and the request, never a build.

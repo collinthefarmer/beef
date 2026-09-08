@@ -883,6 +883,9 @@ namespace WornEnchantmentPBR
 			}
 			histories_.erase(std::string{ Studio::kPaintRecipe });
 			logger::info("paint: previewing {} on the {} through the paint recipe, keyed by {}", active, SurfaceName(a_surface), key.ToString());
+			if (view_.isolateRecipe != Studio::kPaintRecipe) {
+				paintReturn_ = { view_.isolateRecipe, view_.isolateOutput, view_.isolateLayer, view_.isolatedBySolo };
+			}
 			view_.isolateRecipe = std::string{ Studio::kPaintRecipe };
 			view_.isolateOutput = -1;
 			view_.isolateLayer = -1;
@@ -935,11 +938,12 @@ namespace WornEnchantmentPBR
 		PostTask([this] {
 			RetireEveryActor();
 			if (view_.isolateRecipe == Studio::kPaintRecipe) {
-				view_.isolatedBySolo = false;
-				view_.isolateRecipe.clear();
-				view_.isolateOutput = -1;
-				view_.isolateLayer = -1;
+				view_.isolateRecipe = paintReturn_.recipe;
+				view_.isolateOutput = paintReturn_.output;
+				view_.isolateLayer = paintReturn_.layer;
+				view_.isolatedBySolo = paintReturn_.bySolo;
 			}
+			paintReturn_ = {};
 			[[maybe_unused]] const bool dropped = DropTransientRecipe(Studio::kPaintRecipe);
 			histories_.erase(std::string{ Studio::kPaintRecipe });
 			QueueLoadedActorRefreshes();

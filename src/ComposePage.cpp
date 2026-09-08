@@ -1695,8 +1695,19 @@ namespace WornEnchantmentPBR::Studio
 					for (std::size_t i = 0; i < shown.size(); ++i) {
 						const TermOffer& offer = *shown[i];
 						ImGui::PushID(static_cast<int>(i));
-						if (Widgets::ChooserRow(table, offer.name, offer.detail, offer.coverage, offer.unavailable)) {
+						// A kept mask can also be loaded into the stack for editing.
+						const bool mask = a_group == OfferGroup::kMasks;
+						switch (Widgets::ChooserRow(table, offer.name, offer.detail, offer.coverage, offer.unavailable, mask ? "edit" : nullptr)) {
+						case Widgets::ChooserPick::kChosen:
 							AddTermOfKind(offer.kind, a_recipe, a_geometry, a_out);
+							break;
+						case Widgets::ChooserPick::kAction:
+							if (const auto row = std::ranges::find(a_recipe.maskRows, offer.name, &TextRow::name); row != a_recipe.maskRows.end()) {
+								EditMaskAsRegion(a_recipe, *row, a_out);
+							}
+							break;
+						case Widgets::ChooserPick::kNone:
+							break;
 						}
 						ImGui::PopID();
 					}
@@ -2102,8 +2113,17 @@ namespace WornEnchantmentPBR::Studio
 				DrawPaintHead(*a_piece, *a_recipe, a_state, a_out);
 				Widgets::Rule();
 				if (!a_state.paint) {
+					// A soloed recipe is the one painted for: Keep lands there.
+					const RecipeRow* active = a_recipe;
+					if (view.Isolating() && view.isolateRecipe != kPaintRecipe) {
+						const auto it = std::ranges::find(a_piece->recipes, view.isolateRecipe, &RecipeRow::id);
+						if (it != a_piece->recipes.end() && it->id != a_recipe->id) {
+							active = &*it;
+							a_out.push_back(PickRecipe{ it->id });
+						}
+					}
 					if (const auto key = PaintKeyOf(*a_piece)) {
-						a_out.push_back(BeginPaint{ a_recipe->id, *key, Surface::kMaterial });
+						a_out.push_back(BeginPaint{ active->id, *key, Surface::kMaterial });
 					} else {
 						Widgets::Warn("the piece offers no key to paint on");
 					}

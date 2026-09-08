@@ -753,7 +753,7 @@ namespace WornEnchantmentPBR::Studio::Widgets
 	}
 
 
-	bool ChooserRow(Table& a_table, std::string_view a_name, std::string_view a_detail, std::optional<float> a_share, const std::optional<std::string>& a_unavailable)
+	ChooserPick ChooserRow(Table& a_table, std::string_view a_name, std::string_view a_detail, std::optional<float> a_share, const std::optional<std::string>& a_unavailable, const char* a_action)
 	{
 		const bool disabled = a_unavailable.has_value();
 		if (disabled) {
@@ -769,10 +769,14 @@ namespace WornEnchantmentPBR::Studio::Widgets
 		a_table.Cell();
 		Dim(a_detail);
 		a_table.Cell();
-		if (a_share) {
+		if (a_action) {
+			if (ImGui::SmallButton(a_action)) {
+				return ChooserPick::kAction;
+			}
+		} else if (a_share) {
 			ImGui::Text("%.0f%%", *a_share * 100.0f);
 		}
-		return clicked && !disabled;
+		return clicked && !disabled ? ChooserPick::kChosen : ChooserPick::kNone;
 	}
 
 	void RightAligned(float a_width, const std::function<void()>& a_draw)

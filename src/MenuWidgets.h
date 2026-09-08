@@ -198,9 +198,16 @@ namespace WornEnchantmentPBR::Studio::Widgets
 
 	// One row of a chooser table of three columns (name, detail, share): the
 	// name as a selectable spanning the row, the detail dimmed beside it, the
-	// share as a percentage when known. Greyed with the reason as its tooltip
-	// when one is given; true when clicked while available.
-	[[nodiscard]] bool ChooserRow(Table& a_table, std::string_view a_name, std::string_view a_detail, std::optional<float> a_share, const std::optional<std::string>& a_unavailable);
+	// share as a percentage when known, or, when an action is named, a small
+	// button for it in the share's place. Greyed with the reason as its
+	// tooltip when one is given; chosen when clicked while available.
+	enum class ChooserPick
+	{
+		kNone,
+		kChosen,
+		kAction,
+	};
+	[[nodiscard]] ChooserPick ChooserRow(Table& a_table, std::string_view a_name, std::string_view a_detail, std::optional<float> a_share, const std::optional<std::string>& a_unavailable, const char* a_action = nullptr);
 	// A checkbox with a tooltip; true when it changed this frame. Solo,
 	// mute, isolate and freeze are all this.
 	bool Toggle(const char* a_label, bool& a_value, std::string_view a_tooltip);
