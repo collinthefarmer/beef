@@ -1259,9 +1259,9 @@ namespace WornEnchantmentPBR::Studio
 
 	// ------------------------------------------------------------ paint recipe
 
-	MaterialOutput PaintOutput(Surface a_surface)
+	SurfaceOutput PaintOutput(Surface a_surface)
 	{
-		MaterialOutput output = DefaultOutput(a_surface, Slot::kEmissive);
+		SurfaceOutput output = DefaultOutput(a_surface, Slot::kEmissive);
 		Layer          layer = DefaultLayer();
 		layer.mask = Ref{ std::string{ kScratchMask } };
 		output.stack = { std::move(layer) };

@@ -28,9 +28,9 @@ namespace
 		return Ref{ a_name };
 	}
 
-	const MaterialOutput* MaterialAt(const Recipe& a_recipe, std::size_t a_output)
+	const SurfaceOutput* MaterialAt(const Recipe& a_recipe, std::size_t a_output)
 	{
-		return a_output < a_recipe.outputs.size() ? Get<MaterialOutput>(a_recipe.outputs[a_output]) : nullptr;
+		return a_output < a_recipe.outputs.size() ? Get<SurfaceOutput>(a_recipe.outputs[a_output]) : nullptr;
 	}
 
 	const Layer* LayerAt(const Recipe& a_recipe, std::size_t a_output, std::size_t a_layer)

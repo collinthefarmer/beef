@@ -226,7 +226,7 @@ namespace WornEnchantmentPBR
 		// A stack on a slot that edits an existing map (diffuse, normal, rmaos,
 		// height) starts from that map and keeps its resolution up to a_maxSize;
 		// the other slots start from black at a_size.
-		[[nodiscard]] std::unique_ptr<RenderedStack> Prepare(const Recipe& a_recipe, const MaterialOutput& a_output, const GeometryInputs& a_inputs, TextureSize a_size, TextureSize a_maxSize);
+		[[nodiscard]] std::unique_ptr<RenderedStack> Prepare(const Recipe& a_recipe, const SurfaceOutput& a_output, const GeometryInputs& a_inputs, TextureSize a_size, TextureSize a_maxSize);
 
 		// Once per manager tick, so a mask shared by several stacks renders
 		// once; the clock stamps the mesh cache's use.

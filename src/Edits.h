@@ -366,5 +366,5 @@ namespace WornEnchantmentPBR::Studio
 	// A white replace layer at full opacity: what Add layer makes.
 	[[nodiscard]] Layer DefaultLayer();
 	// An empty stack on the slot with its required scalars at their defaults.
-	[[nodiscard]] MaterialOutput DefaultOutput(Surface a_surface, Slot a_slot);
+	[[nodiscard]] SurfaceOutput DefaultOutput(Surface a_surface, Slot a_slot);
 }

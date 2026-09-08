@@ -64,7 +64,7 @@ namespace
 			Check(image && image->scroll && Get<Ref>(*image->scroll) && Get<Ref>(*image->scroll)->name == "scroll", id + ": scrolled by the record's scroll signal");
 		} else {
 			Check(!fill && !a_recipe.FindSource("sheenField") && !a_recipe.FindSource("glossField"), id + ": a record without a fill texture has no fields");
-			const auto* emissive = Get<MaterialOutput>(a_recipe.outputs[0]);
+			const auto* emissive = Get<SurfaceOutput>(a_recipe.outputs[0]);
 			Check(emissive && emissive->stack.size() == 1 && Is<Vec3>(emissive->stack[0].source), id + ": its glow is a flat colour");
 		}
 
@@ -95,7 +95,7 @@ namespace
 		for (const auto& o : a_recipe.outputs) {
 			Match(
 				o,
-				[&](const MaterialOutput& m) {
+				[&](const SurfaceOutput& m) {
 					shellEmissive += m.surface == Surface::kShell && m.slot == Slot::kEmissive;
 					shellFuzz += m.surface == Surface::kShell && m.slot == Slot::kFuzz;
 					materialHeight += m.surface == Surface::kMaterial && m.slot == Slot::kHeight;
@@ -104,7 +104,7 @@ namespace
 				[&](const LightOutput&) { ++lights; });
 		}
 		Check(shellEmissive == 1 && shellFuzz == 1 && materialHeight == 1 && materialRmaos == (hasFill ? 1 : 0) && lights == 1, id + ": default target policy");
-		const auto* emissive = Get<MaterialOutput>(a_recipe.outputs[0]);
+		const auto* emissive = Get<SurfaceOutput>(a_recipe.outputs[0]);
 		Check(emissive && emissive->stack.size() == 1 && emissive->stack[0].mask && emissive->stack[0].mask->name == "metal", id + ": emissive layer masked by metal");
 		Check(a_recipe.shell.material == ShellMaterial::kPbrCopy && a_recipe.shell.blend == ShellBlend::kAdditive && a_recipe.shell.depthBias, id + ": PBR-copy additive shell");
 		Check(IsAnimated(a_recipe, a_recipe.outputs[0]) == hasFill && IsAnimated(a_recipe, a_recipe.outputs[2]) == hasFill, id + ": field stacks are animated, flat ones static");

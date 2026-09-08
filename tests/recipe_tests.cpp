@@ -171,7 +171,7 @@ namespace
 			return l;
 		};
 		{
-			MaterialOutput o;
+			SurfaceOutput o;
 			o.surface = Surface::kShell;
 			o.slot = Slot::kEmissive;
 			o.scalars.strength = At("level");
@@ -189,7 +189,7 @@ namespace
 			r.outputs.push_back(o);
 		}
 		{
-			MaterialOutput o;
+			SurfaceOutput o;
 			o.surface = Surface::kMaterial;
 			o.slot = Slot::kDiffuse;
 			auto l = layer(At("painted"), Blend::kLerp, At("level"));
@@ -198,7 +198,7 @@ namespace
 			r.outputs.push_back(o);
 		}
 		{
-			MaterialOutput o;
+			SurfaceOutput o;
 			o.surface = Surface::kMaterial;
 			o.slot = Slot::kRmaos;
 			auto l = layer(At("fill"), Blend::kSubtract, 1.0f);
@@ -207,14 +207,14 @@ namespace
 			r.outputs.push_back(o);
 		}
 		{
-			MaterialOutput o;
+			SurfaceOutput o;
 			o.surface = Surface::kMaterial;
 			o.slot = Slot::kNormal;
 			o.stack.push_back(layer(At("flames"), Blend::kNormal, 1.0f));
 			r.outputs.push_back(o);
 		}
 		{
-			MaterialOutput o;
+			SurfaceOutput o;
 			o.surface = Surface::kMaterial;
 			o.slot = Slot::kHeight;
 			o.scalars.scale = At("pulse");
@@ -222,7 +222,7 @@ namespace
 			r.outputs.push_back(o);
 		}
 		{
-			MaterialOutput o;
+			SurfaceOutput o;
 			o.surface = Surface::kShell;
 			o.slot = Slot::kFuzz;
 			o.scalars.color = Vec3Param{ At("red") };
@@ -231,7 +231,7 @@ namespace
 			r.outputs.push_back(o);
 		}
 		{
-			MaterialOutput o;
+			SurfaceOutput o;
 			o.surface = Surface::kMaterial;
 			o.slot = Slot::kGlint;
 			o.scalars.screenSpaceScale = 1.5f;
@@ -241,7 +241,7 @@ namespace
 			r.outputs.push_back(o);
 		}
 		{
-			MaterialOutput o;
+			SurfaceOutput o;
 			o.surface = Surface::kMaterial;
 			o.slot = Slot::kCoat;
 			o.scalars.roughness = At("pulse");
@@ -249,7 +249,7 @@ namespace
 			r.outputs.push_back(o);
 		}
 		{
-			MaterialOutput o;
+			SurfaceOutput o;
 			o.surface = Surface::kMaterial;
 			o.slot = Slot::kSubsurface;
 			o.scalars.color = Vec3Param{ At("red") };
@@ -364,7 +364,7 @@ namespace
 		const auto again = ParseRecipe(SerializeRecipe(r), "example-magicka");
 		Check(again.recipe && *again.recipe == r, "serialise then parse is identical");
 		Check(again.recipe && SerializeRecipe(*again.recipe) == SerializeRecipe(r), "second serialisation is byte-identical");
-		Check(IsAnimated(r, *Get<MaterialOutput>(r.outputs[0]) == *Get<MaterialOutput>(r.outputs[0]) ? r.outputs[0] : r.outputs[0]) && IsAnimated(r, r.outputs[2]), "scrolled stacks are animated");
+		Check(IsAnimated(r, *Get<SurfaceOutput>(r.outputs[0]) == *Get<SurfaceOutput>(r.outputs[0]) ? r.outputs[0] : r.outputs[0]) && IsAnimated(r, r.outputs[2]), "scrolled stacks are animated");
 	}
 
 	void RoundTrip()
@@ -517,7 +517,7 @@ namespace
 		const auto* c = r.recipe ? r.recipe->FindSignal("c") : nullptr;
 		const auto* cv = c ? Get<ConstantSignal>(c->kind) : nullptr;
 		Check(cv && Get<Vec3>(cv->value) && Near(Get<Vec3>(cv->value)->y, 128.0f / 255.0f), "0..255 colours read as 0..1");
-		const auto* fuzz = r.recipe && !r.recipe->outputs.empty() ? Get<MaterialOutput>(r.recipe->outputs[0]) : nullptr;
+		const auto* fuzz = r.recipe && !r.recipe->outputs.empty() ? Get<SurfaceOutput>(r.recipe->outputs[0]) : nullptr;
 		const auto* fc = fuzz && fuzz->scalars.color ? Get<std::array<Param, 3>>(*fuzz->scalars.color) : nullptr;
 		Check(fc && Near(std::get<float>((*fc)[0]), 1.0f) && Near(std::get<float>((*fc)[1]), 0.0f), "0..255 colour parameters read as 0..1");
 		r = ParseRecipe(R"json({"format": 1, "keys": ["default"], "sources": {"p": {"bake": {"partition": "torso"}}}})json", "x");
@@ -1001,7 +1001,7 @@ namespace
 		Check(!IsAnimated(r, r.masks[0]) && IsAnimated(r, r.masks[1]) && IsAnimated(r, r.masks[2]) && IsAnimated(r, r.masks[3]), "masks follow what they read");
 
 		const auto stack = [&](const char* a_source, Param a_opacity, const char* a_mask) {
-			MaterialOutput o;
+			SurfaceOutput o;
 			o.slot = Slot::kEmissive;
 			o.scalars.strength = At("one");
 			Layer l;

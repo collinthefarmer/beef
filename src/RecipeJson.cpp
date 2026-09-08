@@ -1360,7 +1360,7 @@ namespace WornEnchantmentPBR
 				a_ctx.Error(std::format("'target' is one of {}, light", Choices(kSurfaces)));
 				return std::nullopt;
 			}
-			MaterialOutput m;
+			SurfaceOutput m;
 			m.surface = *surface;
 			if (auto slot = r.Enum("slot", kSlots)) m.slot = *slot;
 			else if (!r.Has("slot")) a_ctx.Error("'slot' is required");
@@ -1393,7 +1393,7 @@ namespace WornEnchantmentPBR
 		{
 			return Match(
 				a_output,
-				[](const MaterialOutput& m) {
+				[](const SurfaceOutput& m) {
 					json o = json::object();
 					o["target"] = NameOf(kSurfaces, m.surface);
 					o["slot"] = NameOf(kSlots, m.slot);

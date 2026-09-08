@@ -212,7 +212,7 @@ namespace WornEnchantmentPBR
 
 		// Light-adding outputs on the shell, modulating ones on the material.
 		{
-			MaterialOutput o;
+			SurfaceOutput o;
 			o.surface = Surface::kShell;
 			o.slot = Slot::kEmissive;
 			o.scalars.strength = At("glowLevel");
@@ -225,7 +225,7 @@ namespace WornEnchantmentPBR
 		{
 			// Fuzz map: colour x rgb, weight x alpha per texel; white with the
 			// field's luminance in alpha.
-			MaterialOutput o;
+			SurfaceOutput o;
 			o.surface = Surface::kShell;
 			o.slot = Slot::kFuzz;
 			o.scalars.color = Vec3Param{ At("edgeColor") };
@@ -239,7 +239,7 @@ namespace WornEnchantmentPBR
 			r.outputs.push_back(std::move(o));
 		}
 		{
-			MaterialOutput o;
+			SurfaceOutput o;
 			o.surface = Surface::kMaterial;
 			o.slot = Slot::kHeight;
 			o.scalars.scale = At("heightScale");
@@ -252,7 +252,7 @@ namespace WornEnchantmentPBR
 			r.outputs.push_back(std::move(o));
 		}
 		if (hasFill) {
-			MaterialOutput o;
+			SurfaceOutput o;
 			o.surface = Surface::kMaterial;
 			o.slot = Slot::kRmaos;
 			auto gloss = StackLayer(At("glossField"), Blend::kSubtract, At("glossAmount"));

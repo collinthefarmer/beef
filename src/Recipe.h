@@ -720,7 +720,7 @@ namespace WornEnchantmentPBR
 		[[nodiscard]] bool       operator==(const Layer&) const = default;
 	};
 
-	struct MaterialOutput
+	struct SurfaceOutput
 	{
 		Surface            surface = Surface::kMaterial;
 		Slot               slot = Slot::kEmissive;
@@ -728,7 +728,7 @@ namespace WornEnchantmentPBR
 		Selector           selector;
 		bool               replace = false;  // drop lower-priority recipes' stacks and scalars on this slot
 		std::vector<Layer> stack;
-		[[nodiscard]] bool operator==(const MaterialOutput&) const = default;
+		[[nodiscard]] bool operator==(const SurfaceOutput&) const = default;
 	};
 
 	struct SkinnedBones
@@ -762,7 +762,7 @@ namespace WornEnchantmentPBR
 		[[nodiscard]] bool     operator==(const LightOutput&) const = default;
 	};
 
-	using Output = std::variant<MaterialOutput, LightOutput>;
+	using Output = std::variant<SurfaceOutput, LightOutput>;
 
 	// ------------------------------------------------------------------ shell
 

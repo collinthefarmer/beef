@@ -181,7 +181,7 @@ namespace WornEnchantmentPBR
 				const auto where = std::format("output {}", index++);
 				Match(
 					output,
-					[&](MaterialOutput& m) { ResolveSelector(m.selector, a_recipe.id, where, a_out); },
+					[&](SurfaceOutput& m) { ResolveSelector(m.selector, a_recipe.id, where, a_out); },
 					[&](LightOutput& l) {
 						ResolveSelector(l.selector, a_recipe.id, where, a_out);
 						if (l.bulb) {
@@ -494,7 +494,7 @@ namespace WornEnchantmentPBR
 		Recipe written = loaded->recipe;
 		std::erase_if(written.masks, [](const Mask& m) { return m.name == Studio::kScratchMask; });
 		for (auto& output : written.outputs) {
-			if (auto* material = Get<MaterialOutput>(output)) {
+			if (auto* material = Get<SurfaceOutput>(output)) {
 				for (auto& layer : material->stack) {
 					if (layer.mask && layer.mask->name == Studio::kScratchMask) {
 						layer.mask.reset();

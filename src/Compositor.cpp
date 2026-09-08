@@ -481,7 +481,7 @@ namespace WornEnchantmentPBR
 		}
 	}
 
-	std::unique_ptr<RenderedStack> Compositor::Prepare(const Recipe& a_recipe, const MaterialOutput& a_output, const GeometryInputs& a_inputs, TextureSize a_size, TextureSize a_maxSize)
+	std::unique_ptr<RenderedStack> Compositor::Prepare(const Recipe& a_recipe, const SurfaceOutput& a_output, const GeometryInputs& a_inputs, TextureSize a_size, TextureSize a_maxSize)
 	{
 		const auto& a_material = a_inputs.material;
 		auto* lab = TextureLab::GetSingleton();

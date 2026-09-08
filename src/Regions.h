@@ -218,7 +218,7 @@ namespace WornEnchantmentPBR::Studio
 	inline constexpr std::string_view kPaintRecipe = "paint";
 	inline constexpr int              kPaintPriority = 1000;
 
-	[[nodiscard]] MaterialOutput PaintOutput(Surface a_surface);
+	[[nodiscard]] SurfaceOutput PaintOutput(Surface a_surface);
 	[[nodiscard]] Recipe         PaintRecipe(const Recipe& a_active, RecipeKey a_key, Surface a_surface);
 	// The edits that put the paint recipe's scratch mask into the active
 	// recipe under a name: every source the text reads that the active

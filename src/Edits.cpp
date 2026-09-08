@@ -45,13 +45,13 @@ namespace WornEnchantmentPBR::Studio
 
 		struct FoundOutput
 		{
-			MaterialOutput* output = nullptr;
+			SurfaceOutput* output = nullptr;
 			Refusal         problem;
 		};
 
 		struct FoundLayer
 		{
-			MaterialOutput* output = nullptr;
+			SurfaceOutput* output = nullptr;
 			Layer*          layer = nullptr;
 			Refusal         problem;
 		};
@@ -61,7 +61,7 @@ namespace WornEnchantmentPBR::Studio
 			if (a_index >= a_recipe.outputs.size()) {
 				return { nullptr, Refuse(OutputWhere(a_index), std::format("there are {} outputs", a_recipe.outputs.size())) };
 			}
-			auto* material = Get<MaterialOutput>(a_recipe.outputs[a_index]);
+			auto* material = Get<SurfaceOutput>(a_recipe.outputs[a_index]);
 			if (!material) {
 				return { nullptr, Refuse(OutputWhere(a_index), std::format("output {} is a light", a_index)) };
 			}
@@ -203,7 +203,7 @@ namespace WornEnchantmentPBR::Studio
 		std::optional<std::size_t> ExcludingOutput(const Recipe& a_recipe, Surface a_surface, Slot a_slot)
 		{
 			for (std::size_t i = 0; i < a_recipe.outputs.size(); ++i) {
-				const auto* other = Get<MaterialOutput>(a_recipe.outputs[i]);
+				const auto* other = Get<SurfaceOutput>(a_recipe.outputs[i]);
 				if (other && other->surface == a_surface && SlotsExclude(other->slot, a_slot)) {
 					return i;
 				}
@@ -354,7 +354,7 @@ namespace WornEnchantmentPBR::Studio
 				return Refuse(where, std::format("a {} shell offers no '{}' slot", a_recipe.shell.material == ShellMaterial::kVanilla ? "vanilla" : "PBR-copy", SlotName(a_edit.slot)));
 			}
 			if (const auto other = ExcludingOutput(a_recipe, a_edit.surface, a_edit.slot)) {
-				const auto* row = Get<MaterialOutput>(a_recipe.outputs[*other]);
+				const auto* row = Get<SurfaceOutput>(a_recipe.outputs[*other]);
 				return Refuse(where, std::format("output {} on '{}' excludes '{}' on the same {}", *other, row ? SlotName(row->slot) : "?", SlotName(a_edit.slot), SurfaceName(a_edit.surface)));
 			}
 			a_recipe.outputs.emplace_back(DefaultOutput(a_edit.surface, a_edit.slot));
@@ -590,7 +590,7 @@ namespace WornEnchantmentPBR::Studio
 			for (auto& output : a_recipe.outputs) {
 				Match(
 					output,
-					[&](MaterialOutput& o) {
+					[&](SurfaceOutput& o) {
 						auto& sc = o.scalars;
 						VisitParam(sc.strength, a_visit);
 						VisitParam(sc.scale, a_visit);
@@ -647,7 +647,7 @@ namespace WornEnchantmentPBR::Studio
 				a_visit(mask.text, true);
 			}
 			for (auto& output : a_recipe.outputs) {
-				if (auto* material = Get<MaterialOutput>(output)) {
+				if (auto* material = Get<SurfaceOutput>(output)) {
 					for (auto& layer : material->stack) {
 						if (layer.curve && !layer.curve->Named()) {
 							a_visit(layer.curve->text, false);
@@ -667,7 +667,7 @@ namespace WornEnchantmentPBR::Studio
 				}
 			}
 			for (auto& output : a_recipe.outputs) {
-				if (auto* material = Get<MaterialOutput>(output)) {
+				if (auto* material = Get<SurfaceOutput>(output)) {
 					for (auto& layer : material->stack) {
 						if (layer.curve && layer.curve->Named()) {
 							a_visit(*layer.curve);
@@ -777,7 +777,7 @@ namespace WornEnchantmentPBR::Studio
 			}
 			mask->name = a_edit.to;
 			for (auto& output : a_recipe.outputs) {
-				auto* material = Get<MaterialOutput>(output);
+				auto* material = Get<SurfaceOutput>(output);
 				if (!material) {
 					continue;
 				}
@@ -909,7 +909,7 @@ namespace WornEnchantmentPBR::Studio
 			}
 			source->name = a_edit.to;
 			for (auto& output : a_recipe.outputs) {
-				auto* material = Get<MaterialOutput>(output);
+				auto* material = Get<SurfaceOutput>(output);
 				if (!material) {
 					continue;
 				}
@@ -1116,7 +1116,7 @@ namespace WornEnchantmentPBR::Studio
 		Refusal Edit(Recipe& a_recipe, const SetShellMaterial& a_edit)
 		{
 			for (std::size_t i = 0; i < a_recipe.outputs.size(); ++i) {
-				const auto* material = Get<MaterialOutput>(a_recipe.outputs[i]);
+				const auto* material = Get<SurfaceOutput>(a_recipe.outputs[i]);
 				if (material && material->surface == Surface::kShell && !SurfaceHasSlot(Surface::kShell, a_edit.material, material->slot)) {
 					return Refuse("shell", std::format("output {} writes '{}' on the shell, which a {} shell lacks", i, SlotName(material->slot), ShellMaterialName(a_edit.material)));
 				}
@@ -1287,7 +1287,7 @@ namespace WornEnchantmentPBR::Studio
 			}
 		});
 		for (const auto& output : a_recipe.outputs) {
-			const auto* material = Get<MaterialOutput>(output);
+			const auto* material = Get<SurfaceOutput>(output);
 			if (!material) {
 				continue;
 			}
@@ -1347,9 +1347,9 @@ namespace WornEnchantmentPBR::Studio
 		return layer;
 	}
 
-	MaterialOutput DefaultOutput(Surface a_surface, Slot a_slot)
+	SurfaceOutput DefaultOutput(Surface a_surface, Slot a_slot)
 	{
-		MaterialOutput output;
+		SurfaceOutput output;
 		output.surface = a_surface;
 		output.slot = a_slot;
 		for (const auto field : ScalarsOf(a_slot)) {

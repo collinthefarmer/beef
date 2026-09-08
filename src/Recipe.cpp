@@ -833,7 +833,7 @@ namespace WornEnchantmentPBR
 			// Every scalar a slot carries: a present one must be well typed, a
 			// required one must be present. kColor is the one vector scalar and
 			// lives outside ScalarOf.
-			void Scalars(const std::string& a_where, const MaterialOutput& a_output)
+			void Scalars(const std::string& a_where, const SurfaceOutput& a_output)
 			{
 				for (const auto field : ScalarsOf(a_output.slot)) {
 					const auto name = ScalarFieldName(field);
@@ -865,7 +865,7 @@ namespace WornEnchantmentPBR
 					const auto where = std::format("output {}", index++);
 					Match(
 						o,
-						[&](const MaterialOutput& m) {
+						[&](const SurfaceOutput& m) {
 							Scalars(where, m);
 							// A material and a PBR-copy shell offer every slot, so the
 							// only surface that can lack one is a vanilla shell.
@@ -1247,7 +1247,7 @@ namespace WornEnchantmentPBR
 			[&](const LightOutput& l) {
 				return q.Vector(l.color) || q.Param(l.intensity) || q.Param(l.size) || q.Param(l.cutoff) || q.Vector(l.offset);
 			},
-			[&](const MaterialOutput& m) {
+			[&](const SurfaceOutput& m) {
 				for (const auto& l : m.stack) {
 					if (const auto* ref = Get<Ref>(l.source); ref && q.Image(ref->name)) {
 						return true;

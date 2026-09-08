@@ -127,7 +127,7 @@ namespace WornEnchantmentPBR
 
 		// One output's writes for this tick: the composite into the slot, then
 		// the slot's scalars through the binding's call for that slot.
-		void WriteSlot(SlotTarget& a_target, const MaterialOutput& a_output, const SignalState& a_signals, RE::NiSourceTexture* a_texture, bool a_shown)
+		void WriteSlot(SlotTarget& a_target, const SurfaceOutput& a_output, const SignalState& a_signals, RE::NiSourceTexture* a_texture, bool a_shown)
 		{
 			const TickScalars tick{ a_signals, a_output.scalars, a_shown };
 			a_target.WriteTexture(a_output.slot, a_shown ? a_texture : nullptr);
@@ -162,7 +162,7 @@ namespace WornEnchantmentPBR
 			Replaced replaced;
 			for (const auto& later : a_later) {
 				for (const auto& output : later.recipe->outputs) {
-					if (const auto* material = Get<MaterialOutput>(output); material && material->replace) {
+					if (const auto* material = Get<SurfaceOutput>(output); material && material->replace) {
 						replaced.slots.emplace(material->slot, later.recipe->id);
 					} else if (const auto* light = Get<LightOutput>(output); light && light->replace) {
 						replaced.light = later.recipe->id;
@@ -665,7 +665,7 @@ namespace WornEnchantmentPBR
 		std::string outputsLog;
 
 		for (std::size_t i = 0; i < recipe.outputs.size(); ++i) {
-			const auto* material = Get<MaterialOutput>(recipe.outputs[i]);
+			const auto* material = Get<SurfaceOutput>(recipe.outputs[i]);
 			if (!material) {
 				continue;
 			}
@@ -1130,7 +1130,7 @@ namespace WornEnchantmentPBR
 				if (!output.stack) {
 					continue;
 				}
-				const auto* material = output.index < recipe.outputs.size() ? Get<MaterialOutput>(recipe.outputs[output.index]) : nullptr;
+				const auto* material = output.index < recipe.outputs.size() ? Get<SurfaceOutput>(recipe.outputs[output.index]) : nullptr;
 				if (!material) {
 					continue;
 				}
@@ -1377,7 +1377,7 @@ namespace WornEnchantmentPBR
 							gr.masks.push_back(std::move(row));
 						}
 						for (const auto& o : g.outputs) {
-							const auto* material = o.index < applied.recipe->outputs.size() ? Get<MaterialOutput>(applied.recipe->outputs[o.index]) : nullptr;
+							const auto* material = o.index < applied.recipe->outputs.size() ? Get<SurfaceOutput>(applied.recipe->outputs[o.index]) : nullptr;
 							Snapshot::OutputRow orow;
 							orow.index = o.index;
 							orow.target = material ? SurfaceName(material->surface) : "light";

@@ -56,7 +56,7 @@ namespace
 		return rows;
 	}
 
-	std::vector<ScalarRow> ScalarRows(const MaterialOutput& a_output)
+	std::vector<ScalarRow> ScalarRows(const SurfaceOutput& a_output)
 	{
 		std::vector<ScalarRow> rows;
 		for (const auto field : ScalarsOf(a_output.slot)) {
@@ -92,7 +92,7 @@ namespace
 	{
 		OutputRow row;
 		row.index = a_index;
-		if (const auto* material = Get<MaterialOutput>(a_output)) {
+		if (const auto* material = Get<SurfaceOutput>(a_output)) {
 			row.target = material->surface == Surface::kShell ? "shell" : "material";
 			row.surface = material->surface;
 			row.slot = material->slot;
@@ -167,7 +167,7 @@ namespace
 	{
 		Recipe recipe;
 		recipe.id = a_id;
-		MaterialOutput output;
+		SurfaceOutput output;
 		output.surface = Surface::kShell;
 		output.slot = Slot::kEmissive;
 		output.scalars.strength = 1.0f;
@@ -1049,7 +1049,7 @@ namespace
 		Check(paint.id == kPaintRecipe && paint.keys.size() == 1 && paint.keys[0].kind == KeyKind::kArmor && paint.priority == kPaintPriority && paint.variants.empty(), "the paint recipe is keyed alone at the paint priority");
 		Check(paint.signals == active->signals && paint.sources == active->sources && paint.shell == active->shell, "signals, sources and the shell settings are cloned");
 		Check(paint.masks.size() == active->masks.size() + 1 && paint.FindMask(kScratchMask) && paint.FindMask(kScratchMask)->text == "0", "the scratch mask is added, empty");
-		const auto* output = paint.outputs.size() == 1 ? Get<MaterialOutput>(paint.outputs[0]) : nullptr;
+		const auto* output = paint.outputs.size() == 1 ? Get<SurfaceOutput>(paint.outputs[0]) : nullptr;
 		Check(output && output->surface == Surface::kShell && output->slot == Slot::kEmissive && output->stack.size() == 1 && output->stack[0].mask && output->stack[0].mask->name == kScratchMask, "one emissive output on the chosen surface, its layer masked by the scratch");
 		Check(Validate(paint).empty() || std::ranges::none_of(Validate(paint), [](const Diagnostic& d) { return d.severity == Severity::kError; }), "the paint recipe validates");
 
