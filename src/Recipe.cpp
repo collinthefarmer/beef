@@ -121,16 +121,35 @@ namespace WornEnchantmentPBR
 		return NameOf(kKeyKinds, a_kind);
 	}
 
+	KeyOperand KeyOperandOf(KeyKind a_kind) noexcept
+	{
+		const auto* row = RowOf(kKeyKinds, a_kind);
+		return row ? row->operand : KeyOperand::kForm;
+	}
+
+	int DefaultPriority(KeyKind a_kind) noexcept
+	{
+		const auto* row = RowOf(kKeyKinds, a_kind);
+		return row ? row->priority : 0;
+	}
+
+	bool EnchantmentDerived(KeyKind a_kind) noexcept
+	{
+		const auto* row = RowOf(kKeyKinds, a_kind);
+		return row && row->enchantmentDerived;
+	}
+
 	std::string RecipeKey::ToString() const
 	{
-		switch (kind) {
-		case KeyKind::kDefault:
-			return "default";
-		case KeyKind::kMaterial:
-			return std::format("material:{}", glob);
-		default:
+		switch (KeyOperandOf(kind)) {
+		case KeyOperand::kNone:
+			return std::string{ KeyKindName(kind) };
+		case KeyOperand::kGlob:
+			return std::format("{}:{}", KeyKindName(kind), glob);
+		case KeyOperand::kForm:
 			return std::format("{}:{}", KeyKindName(kind), form.text);
 		}
+		return "?";
 	}
 
 	// -------------------------------------------------------------- selectors
@@ -884,26 +903,30 @@ namespace WornEnchantmentPBR
 
 	namespace
 	{
+		// Dispatches on the key's operand, not its kind: `kNone` (default)
+		// matches unconditionally, `kGlob` (material) tests every geometry's
+		// diffuse path, and `kForm` compares the key's form against the row's
+		// single field or (keyword) any form in its list.
 		bool KeyMatches(const RecipeKey& a_key, const WornPiece& a_piece)
 		{
-			const auto same = [&](const std::optional<FormKey>& have) {
-				return have && a_key.form.key && *have == *a_key.form.key;
-			};
-			switch (a_key.kind) {
-			case KeyKind::kMagicEffect:
-				return same(a_piece.magicEffect);
-			case KeyKind::kEnchantment:
-				return same(a_piece.enchantment);
-			case KeyKind::kEffectShader:
-				return same(a_piece.effectShader);
-			case KeyKind::kArmor:
-				return same(a_piece.armor);
-			case KeyKind::kKeyword:
-				return a_key.form.key && std::ranges::any_of(a_piece.keywords, [&](const FormKey& k) { return k == *a_key.form.key; });
-			case KeyKind::kMaterial:
-				return std::ranges::any_of(a_piece.diffusePaths, [&](const std::string& p) { return GlobMatch(a_key.glob, p); });
-			case KeyKind::kDefault:
+			const auto* row = RowOf(kKeyKinds, a_key.kind);
+			if (!row) {
+				return false;
+			}
+			switch (row->operand) {
+			case KeyOperand::kNone:
 				return true;
+			case KeyOperand::kGlob:
+				return std::ranges::any_of(a_piece.diffusePaths, [&](const std::string& p) { return GlobMatch(a_key.glob, p); });
+			case KeyOperand::kForm:
+				if (row->singleForm) {
+					const auto& have = a_piece.*row->singleForm;
+					return have && a_key.form.key && *have == *a_key.form.key;
+				}
+				if (row->formList) {
+					return a_key.form.key && std::ranges::any_of(a_piece.*row->formList, [&](const FormKey& k) { return k == *a_key.form.key; });
+				}
+				return false;
 			}
 			return false;
 		}
@@ -961,9 +984,31 @@ namespace WornEnchantmentPBR
 	{
 		return std::ranges::any_of(a_loaded, [](const Recipe& r) {
 			return std::ranges::any_of(r.keys, [](const RecipeKey& k) {
-				return k.kind == KeyKind::kMaterial || k.kind == KeyKind::kKeyword || k.kind == KeyKind::kArmor;
+				const auto* row = RowOf(kKeyKinds, k.kind);
+				return row && row->operand != KeyOperand::kNone && !row->enchantmentDerived;
 			});
 		});
+	}
+
+	std::vector<KeyChoiceSource> KeyChoicesOf(const WornPiece& a_piece)
+	{
+		std::vector<KeyChoiceSource> out;
+		for (std::size_t i = std::size(kKeyKinds); i-- > 0;) {
+			const auto& row = kKeyKinds[i];
+			if (row.operand != KeyOperand::kForm) {
+				continue;
+			}
+			if (row.singleForm) {
+				if (const auto& form = a_piece.*row.singleForm) {
+					out.push_back({ row.value, *form });
+				}
+			} else if (row.formList) {
+				for (const auto& form : a_piece.*row.formList) {
+					out.push_back({ row.value, form });
+				}
+			}
+		}
+		return out;
 	}
 
 	bool VariantApplies(const Variant& a_variant, const FormKey& a_armor) noexcept

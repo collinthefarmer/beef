@@ -824,6 +824,56 @@ namespace
 		Check(ScalarFieldName(static_cast<ScalarField>(99)) == "?", "an out-of-range field has a placeholder name");
 	}
 
+	// The KeyKind table: one row's word, priority, operand and
+	// enchantment-derived fact, and the choices KeyChoicesOf reads off a
+	// worn piece from the same rows.
+	void KeyKinds()
+	{
+		struct Rule
+		{
+			KeyKind    kind;
+			const char* word;
+			int         priority;
+			KeyOperand  operand;
+			bool        enchantmentDerived;
+		};
+		const Rule rules[]{
+			{ KeyKind::kDefault, "default", 0, KeyOperand::kNone, false },
+			{ KeyKind::kMaterial, "material", 10, KeyOperand::kGlob, false },
+			{ KeyKind::kKeyword, "keyword", 20, KeyOperand::kForm, false },
+			{ KeyKind::kArmor, "armor", 30, KeyOperand::kForm, false },
+			{ KeyKind::kEffectShader, "effectShader", 40, KeyOperand::kForm, true },
+			{ KeyKind::kEnchantment, "enchantment", 50, KeyOperand::kForm, true },
+			{ KeyKind::kMagicEffect, "magicEffect", 60, KeyOperand::kForm, true },
+		};
+		static_assert(std::size(rules) == kKeyKindCount);
+		for (const auto& rule : rules) {
+			Check(KeyKindName(rule.kind) == rule.word, std::format("'{}' names itself", rule.word));
+			Check(DefaultPriority(rule.kind) == rule.priority, std::format("'{}' priority {}", rule.word, rule.priority));
+			Check(KeyOperandOf(rule.kind) == rule.operand, std::format("'{}' operand", rule.word));
+			Check(EnchantmentDerived(rule.kind) == rule.enchantmentDerived, std::format("'{}' enchantment-derived: {}", rule.word, rule.enchantmentDerived));
+		}
+
+		WornPiece piece;
+		piece.magicEffect = Key("0xAB~Skyrim.esm");
+		piece.enchantment = Key("0xAC~Skyrim.esm");
+		piece.effectShader = Key("0x92DED~Skyrim.esm");
+		piece.armor = Key("0x12E49~Skyrim.esm");
+		piece.keywords = { Key("0xAAA~Skyrim.esm"), Key("0xBBB~Skyrim.esm") };
+		piece.diffusePaths = { "textures\\armor\\iron\\cuirass_d.dds" };
+		const auto choices = KeyChoicesOf(piece);
+		Check(choices.size() == 6, "one choice per form-bearing key the piece carries, keywords included");
+		Check(choices[0].kind == KeyKind::kMagicEffect && choices[0].form == *piece.magicEffect, "magic effect first, most specific");
+		Check(choices[1].kind == KeyKind::kEnchantment && choices[1].form == *piece.enchantment, "enchantment next");
+		Check(choices[2].kind == KeyKind::kEffectShader && choices[2].form == *piece.effectShader, "effect shader next");
+		Check(choices[3].kind == KeyKind::kArmor && choices[3].form == *piece.armor, "armor next");
+		Check(choices[4].kind == KeyKind::kKeyword && choices[4].form == piece.keywords[0] && choices[5].kind == KeyKind::kKeyword && choices[5].form == piece.keywords[1], "every keyword last, in the piece's order");
+
+		WornPiece bare;
+		bare.diffusePaths = { "textures\\armor\\iron\\boots_d.dds" };
+		Check(KeyChoicesOf(bare).empty(), "a piece with no forms offers no choices; material and default never do (no single form)");
+	}
+
 	void Resolution()
 	{
 		std::vector<Recipe> loaded;
@@ -1029,6 +1079,7 @@ int main()
 	Validation();
 	Words();
 	SlotRules();
+	KeyKinds();
 	Resolution();
 	Variants();
 	Classification();

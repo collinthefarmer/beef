@@ -76,20 +76,46 @@ namespace WornEnchantmentPBR
 		kEnchantment,
 		kMagicEffect,
 	};
+	inline constexpr std::size_t kKeyKindCount = 7;
 
-	[[nodiscard]] constexpr int DefaultPriority(KeyKind a_kind) noexcept
+	// A key's operand: none for default (matches every worn piece
+	// unconditionally), a diffuse-path glob for material, a form for every
+	// other kind.
+	enum class KeyOperand
 	{
-		return static_cast<int>(a_kind) * 10;
-	}
+		kNone,
+		kForm,
+		kGlob,
+	};
 
-	[[nodiscard]] constexpr bool EnchantmentDerived(KeyKind a_kind) noexcept
+	struct WornPiece;  // defined below, in the resolution section
+
+	// One row per key kind: its word, its default merge/specificity priority
+	// (DefaultPriority), its operand shape, and whether only an enchanted
+	// worn piece can carry it (EnchantmentDerived). `singleForm` and
+	// `formList` say how a key of this kind reads off a WornPiece: one form
+	// to compare the key's form against, or (keyword alone) every form in a
+	// list; both null for default (no form) and material (a glob against
+	// diffusePaths, not a WornPiece field) — those two operands are matched
+	// as code, not a member read. The table itself lives in Vocabulary.h,
+	// once WornPiece is a complete type.
+	struct KeyKindRow
 	{
-		return a_kind == KeyKind::kEffectShader || a_kind == KeyKind::kEnchantment || a_kind == KeyKind::kMagicEffect;
-	}
+		KeyKind                             value;
+		std::string_view                    name;
+		int                                 priority;
+		KeyOperand                          operand;
+		bool                                enchantmentDerived;
+		std::optional<FormKey> WornPiece::* singleForm;
+		std::vector<FormKey> WornPiece::*   formList;
+	};
 
-	// Every word here is spelled once, in Vocabulary.h; a name function reads
-	// that table and a parse function finds the value of a word, or nothing.
+	// Every word, priority, operand and enchantment fact is spelled once, in
+	// Vocabulary.h's kKeyKinds; these read that table.
 	[[nodiscard]] std::string_view KeyKindName(KeyKind a_kind) noexcept;
+	[[nodiscard]] KeyOperand       KeyOperandOf(KeyKind a_kind) noexcept;
+	[[nodiscard]] int              DefaultPriority(KeyKind a_kind) noexcept;
+	[[nodiscard]] bool             EnchantmentDerived(KeyKind a_kind) noexcept;
 
 	struct RecipeKey
 	{
@@ -995,6 +1021,17 @@ namespace WornEnchantmentPBR
 
 	// True when some loaded recipe can apply without an enchantment.
 	[[nodiscard]] bool AnyUnenchantedKey(std::span<const Recipe> a_loaded) noexcept;
+
+	// One form the piece could be keyed to.
+	struct KeyChoiceSource
+	{
+		KeyKind kind;
+		FormKey form;
+	};
+	// Every form the piece could be keyed to, most specific first (by
+	// DefaultPriority): every singular kind it carries, then every keyword.
+	// Drives the studio's "key a new recipe to..." choices.
+	[[nodiscard]] std::vector<KeyChoiceSource> KeyChoicesOf(const WornPiece& a_piece);
 
 	[[nodiscard]] bool VariantApplies(const Variant& a_variant, const FormKey& a_armor) noexcept;
 	[[nodiscard]] bool VariantApplies(const Variant& a_variant, const GeometryIdentity& a_geometry);

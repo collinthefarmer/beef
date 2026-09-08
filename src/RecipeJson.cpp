@@ -495,14 +495,15 @@ namespace WornEnchantmentPBR
 			if (!entry) {
 				return std::nullopt;
 			}
-			const auto kind = FromName(kKeyKinds, entry->key);
-			if (!kind || *kind == KeyKind::kDefault) {
+			const auto  kind = FromName(kKeyKinds, entry->key);
+			const auto* row = kind ? RowOf(kKeyKinds, *kind) : nullptr;
+			if (!row || row->operand == KeyOperand::kNone) {
 				a_ctx.Error(std::format("unknown key kind '{}'; one of {}", entry->key, Choices(kKeyKinds)));
 				return std::nullopt;
 			}
 			RecipeKey key;
-			key.kind = *kind;
-			if (*kind == KeyKind::kMaterial) {
+			key.kind = row->value;
+			if (row->operand == KeyOperand::kGlob) {
 				const auto glob = GlobFrom(*entry->value, a_ctx, entry->key);
 				if (!glob) {
 					return std::nullopt;
@@ -520,14 +521,15 @@ namespace WornEnchantmentPBR
 
 		json KeyToJson(const RecipeKey& a_key)
 		{
-			switch (a_key.kind) {
-			case KeyKind::kDefault:
-				return json("default");
-			case KeyKind::kMaterial:
-				return json::object({ { "material", a_key.glob } });
-			default:
+			switch (KeyOperandOf(a_key.kind)) {
+			case KeyOperand::kNone:
+				return json(std::string{ NameOf(kKeyKinds, a_key.kind) });
+			case KeyOperand::kGlob:
+				return json::object({ { std::string{ NameOf(kKeyKinds, a_key.kind) }, a_key.glob } });
+			case KeyOperand::kForm:
 				return json::object({ { std::string{ NameOf(kKeyKinds, a_key.kind) }, a_key.form.text } });
 			}
+			return json();
 		}
 
 		// -------------------------------------------------------- selectors

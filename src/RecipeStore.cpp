@@ -167,7 +167,7 @@ namespace WornEnchantmentPBR
 		void ResolveForms(Recipe& a_recipe, std::vector<Diagnostic>& a_out)
 		{
 			for (auto& key : a_recipe.keys) {
-				if (key.kind != KeyKind::kDefault && key.kind != KeyKind::kMaterial) {
+				if (KeyOperandOf(key.kind) == KeyOperand::kForm) {
 					ResolveForm(key.form, a_recipe.id, std::format("key {}", key.ToString()), a_out);
 				}
 			}
