@@ -13,11 +13,11 @@
 #include "Recipe.h"
 #include "Snapshot.h"
 
-#include <array>
 #include <cstddef>
 #include <cstdint>
 #include <expected>
 #include <functional>
+#include <iterator>
 #include <map>
 #include <optional>
 #include <set>
@@ -160,16 +160,49 @@ namespace WornEnchantmentPBR::Studio
 	// texels, and the recipe's masks and sources. An offer the piece cannot
 	// make says why; coverage, when measured, is the offer's share of the
 	// piece's texels.
+
+	// One section of the Add popup, in display order.
+	enum class OfferGroup
+	{
+		kParts,
+		kMaterials,
+		kBones,
+		kPartitions,
+		kChannels,
+		kPresets,
+		kMasks,
+		kSources,
+	};
+	// A group's word and whether its section starts open: open for the
+	// groups the analysis already knows enough to fill.
+	struct OfferGroupRow
+	{
+		OfferGroup       value;
+		std::string_view name;
+		bool             openByDefault;
+	};
+	inline constexpr OfferGroupRow kOfferGroups[]{
+		{ OfferGroup::kParts, "parts", true },
+		{ OfferGroup::kMaterials, "materials", true },
+		{ OfferGroup::kBones, "bones", false },
+		{ OfferGroup::kPartitions, "partitions", false },
+		{ OfferGroup::kChannels, "channels", false },
+		{ OfferGroup::kPresets, "presets", false },
+		{ OfferGroup::kMasks, "masks", false },
+		{ OfferGroup::kSources, "sources", false },
+	};
+	inline constexpr std::size_t kOfferGroupCount = 8;
+	static_assert(std::size(kOfferGroups) == kOfferGroupCount);
+
 	struct TermOffer
 	{
-		std::string                group;  // "parts", "materials", "bones", "partitions", "channels", "presets", "masks", "sources"
+		OfferGroup                 group;
 		std::string                name;
 		std::string                detail;  // the measurements
 		std::optional<std::string> unavailable;
 		std::optional<float>       coverage;
 		TermRecipe                 recipe;
 	};
-	inline constexpr std::array<std::string_view, 8> kOfferGroups{ "parts", "materials", "bones", "partitions", "channels", "presets", "masks", "sources" };
 	[[nodiscard]] std::vector<TermOffer> OffersOf(const Presets& a_presets, const RecipeRow& a_recipe, const GeometryRow& a_geometry, std::string_view a_editing);
 	// A term's measurements for its row: the detail of the offer it came
 	// from when one matches, else what the recipe itself says (a threshold's

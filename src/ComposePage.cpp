@@ -1659,8 +1659,6 @@ namespace WornEnchantmentPBR::Studio
 		constexpr const char* kTermPayload = "WEPBR_TERM";
 
 		constexpr TableStyle kChooserStyle{ .borders = TableStyle::Borders::kNone, .stretch = true, .headers = false, .rowBackground = false };
-		// The groups whose sections open by default: what the analysis found.
-		constexpr std::array<std::string_view, 2> kOpenOfferGroups{ "parts", "materials" };
 
 		// A term recipe becomes the source edits it needs on the paint recipe
 		// and one term of the stack, labelled by its recipe.
@@ -1676,7 +1674,7 @@ namespace WornEnchantmentPBR::Studio
 
 		// The offers the filter passes, of one group, as chooser rows;
 		// choosing one adds its term. Nothing when the group has none.
-		void DrawOfferGroup(std::string_view a_group, std::span<const TermOffer> a_offers, std::string_view a_filter, const RecipeRow& a_recipe, const GeometryRow& a_geometry, Intents& a_out)
+		void DrawOfferGroup(OfferGroup a_group, std::span<const TermOffer> a_offers, std::string_view a_filter, const RecipeRow& a_recipe, const GeometryRow& a_geometry, Intents& a_out)
 		{
 			std::vector<const TermOffer*> shown;
 			for (const auto& offer : a_offers) {
@@ -1687,8 +1685,9 @@ namespace WornEnchantmentPBR::Studio
 			if (shown.empty()) {
 				return;
 			}
-			const std::string title = std::format("{} ({})", a_group, shown.size());
-			const bool        openByDefault = std::ranges::find(kOpenOfferGroups, a_group) != kOpenOfferGroups.end();
+			const auto*       row = RowOf(kOfferGroups, a_group);
+			const std::string title = std::format("{} ({})", row ? row->name : "?", shown.size());
+			const bool        openByDefault = row && row->openByDefault;
 			ImGui::PushID(title.c_str());
 			if (Widgets::Section(title.c_str(), openByDefault)) {
 				auto table = Widgets::Table::Begin("offers", { { "name", Width::Fit() }, { "detail", Width::Fill() }, { "%", Width::Fit("100%") } }, kChooserStyle);
@@ -1955,8 +1954,8 @@ namespace WornEnchantmentPBR::Studio
 			if (offers.empty()) {
 				Widgets::Dim(a_geometry.meshRead ? "nothing to offer on this shape" : "reading the mesh");
 			}
-			for (const auto group : kOfferGroups) {
-				DrawOfferGroup(group, offers, filter, a_recipe, a_geometry, a_out);
+			for (const auto& group : kOfferGroups) {
+				DrawOfferGroup(group.value, offers, filter, a_recipe, a_geometry, a_out);
 			}
 		}
 
@@ -2047,7 +2046,7 @@ namespace WornEnchantmentPBR::Studio
 				ImGui::PopID();
 				return;
 			}
-			if (a_state.mode == Mode::kDesign) {
+			if (!a_state.layout.implemented) {
 				ImGui::Text("%s mode is not built yet", std::string{ ModeName(a_state.mode) }.c_str());
 				return;
 			}

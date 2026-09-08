@@ -34,7 +34,8 @@ namespace WornEnchantmentPBR::Studio
 		kPaint,
 		kDesign,
 	};
-	inline constexpr std::array<Mode, 3> kModes{ Mode::kCompose, Mode::kPaint, Mode::kDesign };
+	inline constexpr std::size_t                  kModeCount = 3;
+	inline constexpr std::array<Mode, kModeCount> kModes{ Mode::kCompose, Mode::kPaint, Mode::kDesign };
 	[[nodiscard]] std::string_view ModeName(Mode a_mode) noexcept;
 
 	// The panes sit under each other in one narrow column as collapsible
@@ -62,6 +63,15 @@ namespace WornEnchantmentPBR::Studio
 		// takes the rest.
 		float resourcesShare = 0.35f;
 		bool  developerSignals = true;  // efsh, trigger, av and other rows a designer does not tune
+		bool  implemented = true;       // false shows a "mode is not built yet" placeholder instead of the body
+	};
+	// One row per mode, in Mode order; LayoutFor is the lookup. Paint drops
+	// the resources pane (signals = false): it would edit the paint recipe,
+	// which the session discards.
+	inline constexpr std::array<Layout, kModeCount> kLayouts{
+		Layout{ .mode = Mode::kCompose },
+		Layout{ .mode = Mode::kPaint, .contextRows = false, .signals = false, .regionEditor = true },
+		Layout{ .mode = Mode::kDesign, .stack = false, .inspector = false, .signals = false, .designPanel = true, .widgetScale = 1.6f, .compositeSize = 128.0f, .developerSignals = false, .implemented = false },
 	};
 	[[nodiscard]] Layout LayoutFor(Mode a_mode) noexcept;
 

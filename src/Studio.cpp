@@ -340,27 +340,12 @@ namespace WornEnchantmentPBR::Studio
 
 	Layout LayoutFor(Mode a_mode) noexcept
 	{
-		Layout layout;
-		layout.mode = a_mode;
-		switch (a_mode) {
-		case Mode::kCompose:
-			break;
-		case Mode::kPaint:
-			layout.contextRows = false;
-			layout.regionEditor = true;
-			layout.signals = false;  // the resources would edit the paint recipe, which is dropped
-			break;
-		case Mode::kDesign:
-			layout.stack = false;
-			layout.inspector = false;
-			layout.signals = false;
-			layout.designPanel = true;
-			layout.widgetScale = 1.6f;
-			layout.compositeSize = 128.0f;
-			layout.developerSignals = false;
-			break;
+		for (const auto& layout : kLayouts) {
+			if (layout.mode == a_mode) {
+				return layout;
+			}
 		}
-		return layout;
+		return Layout{};
 	}
 
 	// -------------------------------------------------------------- selection

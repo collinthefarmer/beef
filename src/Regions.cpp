@@ -474,12 +474,6 @@ namespace WornEnchantmentPBR::Studio
 			return static_cast<int>(std::lround(std::clamp(a_share, 0.0f, 1.0f) * 100.0f));
 		}
 
-		// The id map bake of a region source.
-		[[nodiscard]] SourceKind RegionBakeOf(RegionSource a_source)
-		{
-			return a_source == RegionSource::kChart ? SourceKind{ BakeSource{ ChartIdBake{} } } : SourceKind{ BakeSource{ ComponentIdBake{} } };
-		}
-
 		[[nodiscard]] const MeshRegion* RegionOf(const GeometryRow& a_geometry, RegionSource a_source, std::uint16_t a_id)
 		{
 			for (const auto& region : a_geometry.regions) {
@@ -1156,10 +1150,10 @@ namespace WornEnchantmentPBR::Studio
 
 	namespace
 	{
-		[[nodiscard]] TermOffer Offer(std::string_view a_group, std::string a_name, std::string a_detail, TermRecipe a_recipe)
+		[[nodiscard]] TermOffer Offer(OfferGroup a_group, std::string a_name, std::string a_detail, TermRecipe a_recipe)
 		{
 			TermOffer offer;
-			offer.group = std::string{ a_group };
+			offer.group = a_group;
 			offer.name = std::move(a_name);
 			offer.detail = std::move(a_detail);
 			offer.recipe = std::move(a_recipe);
@@ -1167,9 +1161,9 @@ namespace WornEnchantmentPBR::Studio
 		}
 
 		// A group the piece cannot offer yet: one row carrying the reason.
-		[[nodiscard]] TermOffer Unavailable(std::string_view a_group, std::string a_reason, TermRecipe a_recipe)
+		[[nodiscard]] TermOffer Unavailable(OfferGroup a_group, std::string a_reason, TermRecipe a_recipe)
 		{
-			TermOffer offer = Offer(a_group, std::string{ a_group }, {}, std::move(a_recipe));
+			TermOffer offer = Offer(a_group, std::string{ NameOf(kOfferGroups, a_group) }, {}, std::move(a_recipe));
 			offer.unavailable = std::move(a_reason);
 			return offer;
 		}
@@ -1183,7 +1177,7 @@ namespace WornEnchantmentPBR::Studio
 		std::vector<TermOffer> offers;
 		// parts
 		if (!a_geometry.meshRead) {
-			offers.push_back(Unavailable(kOfferGroups[0], std::string{ kMeshUnread }, ComponentTerm{}));
+			offers.push_back(Unavailable(OfferGroup::kParts, std::string{ kMeshUnread }, ComponentTerm{}));
 		}
 		for (const auto& region : a_geometry.regions) {
 			const ComponentTerm term{ region.source, region.id };
@@ -1191,22 +1185,22 @@ namespace WornEnchantmentPBR::Studio
 			if (!region.dominantBone.empty()) {
 				detail += std::format(", {} {}%", PlainBoneName(a_presets, region.dominantBone), Percent(region.dominantShare));
 			}
-			offers.push_back(Offer(kOfferGroups[0], std::format("{} {}", PlainRegionSourceName(region.source), region.id), std::move(detail), term));
+			offers.push_back(Offer(OfferGroup::kParts, std::format("{} {}", PlainRegionSourceName(region.source), region.id), std::move(detail), term));
 		}
 		// materials
 		if (a_geometry.clusters.empty()) {
-			offers.push_back(Unavailable(kOfferGroups[1], std::string{ kNoClusters }, ClusterTerm{}));
+			offers.push_back(Unavailable(OfferGroup::kMaterials, std::string{ kNoClusters }, ClusterTerm{}));
 		}
 		for (const auto& cluster : a_geometry.clusters) {
-			offers.push_back(Offer(kOfferGroups[1], std::format("material {}", cluster.id), std::format("{}, {}%", cluster.description, Percent(cluster.share)), ClusterTerm{ ClusterSettings{}, cluster.id }));
+			offers.push_back(Offer(OfferGroup::kMaterials, std::format("material {}", cluster.id), std::format("{}, {}%", cluster.description, Percent(cluster.share)), ClusterTerm{ ClusterSettings{}, cluster.id }));
 		}
 		// bones
 		for (const auto& bone : a_geometry.bones) {
-			offers.push_back(Offer(kOfferGroups[2], PlainBoneName(a_presets, bone.name), std::format("{}% of the mesh", Percent(bone.coverage)), BoneTerm{ { bone.name } }));
+			offers.push_back(Offer(OfferGroup::kBones, PlainBoneName(a_presets, bone.name), std::format("{}% of the mesh", Percent(bone.coverage)), BoneTerm{ { bone.name } }));
 		}
 		// partitions
 		for (const auto& partition : a_geometry.partitions) {
-			offers.push_back(Offer(kOfferGroups[3], PlainPartitionName(a_presets, partition.slot), std::format("{} triangles", partition.triangles), PartitionTerm{ partition.slot }));
+			offers.push_back(Offer(OfferGroup::kPartitions, PlainPartitionName(a_presets, partition.slot), std::format("{} triangles", partition.triangles), PartitionTerm{ partition.slot }));
 		}
 		// channels
 		for (const auto channel : ThresholdChannels()) {
@@ -1214,23 +1208,23 @@ namespace WornEnchantmentPBR::Studio
 			term.channel = channel;
 			term.low = 0.5f;
 			term.high = 1.0f;
-			offers.push_back(Offer(kOfferGroups[4], std::string{ MaterialChannelName(channel) }, "0.5..1", term));
+			offers.push_back(Offer(OfferGroup::kChannels, std::string{ MaterialChannelName(channel) }, "0.5..1", term));
 		}
 		// presets
 		for (const auto& preset : a_presets.what) {
-			offers.push_back(Offer(kOfferGroups[5], preset.name, preset.expression, WhatPresetTerm{ preset.name }));
+			offers.push_back(Offer(OfferGroup::kPresets, preset.name, preset.expression, WhatPresetTerm{ preset.name }));
 		}
 		// masks
 		for (const auto& mask : a_recipe.maskRows) {
 			if (mask.name == kScratchMask || mask.name == a_editing) {
 				continue;
 			}
-			offers.push_back(Offer(kOfferGroups[6], mask.name, mask.text, ReferenceTerm{ mask.name }));
+			offers.push_back(Offer(OfferGroup::kMasks, mask.name, mask.text, ReferenceTerm{ mask.name }));
 		}
 		// sources
 		for (const auto& source : a_recipe.sourceRows) {
 			const auto kind = SourceKindOf(source);
-			offers.push_back(Offer(kOfferGroups[7], source.name, kind ? DescribeSource(*kind) : source.kind, ReferenceTerm{ source.name }));
+			offers.push_back(Offer(OfferGroup::kSources, source.name, kind ? DescribeSource(*kind) : source.kind, ReferenceTerm{ source.name }));
 		}
 		return offers;
 	}

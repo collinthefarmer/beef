@@ -4,9 +4,11 @@
 #include <array>
 #include <cmath>
 #include <format>
+#include <iterator>
 #include <map>
 #include <numeric>
 #include <optional>
+#include <span>
 #include <tuple>
 
 namespace WornEnchantmentPBR
@@ -20,6 +22,12 @@ namespace WornEnchantmentPBR
 	{
 		const auto* row = RowOf(kRegionSources, a_source);
 		return row ? row->plainName : "?";
+	}
+
+	SourceKind RegionBakeOf(RegionSource a_source) noexcept
+	{
+		const auto* row = RowOf(kRegionSources, a_source);
+		return SourceKind{ BakeSource{ row ? row->bake : BakeKind{ ComponentIdBake{} } } };
 	}
 
 	namespace
@@ -362,12 +370,48 @@ namespace WornEnchantmentPBR
 
 	namespace
 	{
-		// The bands DescribeTexel reads; each is the value a word starts at.
-		constexpr float kMetalAbove = 0.5f;
-		constexpr float kPolishedBelow = 0.35f;
-		constexpr float kMatteBelow = 0.65f;
-		constexpr float kDarkBelow = 0.35f;
-		constexpr float kMidBelow = 0.65f;
+		// One axis DescribeTexel reads: ascending cuts, one more word than
+		// cuts, and which side of a cut a value equal to it takes. Roughness
+		// and luma read low to high with a value at the cut going to the
+		// word above; metallic reads "greater than", so a value at the cut
+		// stays non-metal, hence belowInclusive.
+		struct TexelBand
+		{
+			float Texel::*                     axis;
+			std::span<const float>             cuts;
+			std::span<const std::string_view>  words;
+			bool                               belowInclusive = false;  // false: a value at a cut takes the word above it
+		};
+
+		constexpr float            kRoughnessCuts[]{ 0.35f, 0.65f };
+		constexpr std::string_view kRoughnessWords[]{ "polished", "matte", "rough" };
+		static_assert(std::size(kRoughnessWords) == std::size(kRoughnessCuts) + 1);
+		constexpr float            kLumaCuts[]{ 0.35f, 0.65f };
+		constexpr std::string_view kLumaWords[]{ "dark", "mid", "bright" };
+		static_assert(std::size(kLumaWords) == std::size(kLumaCuts) + 1);
+		constexpr float            kMetallicCuts[]{ 0.5f };
+		constexpr std::string_view kMetallicWords[]{ "non-metal", "metal" };
+		static_assert(std::size(kMetallicWords) == std::size(kMetallicCuts) + 1);
+
+		// Order is the word order in the description: "{finish} {tone} {metal}".
+		constexpr TexelBand kTexelBands[]{
+			{ &Texel::roughness, kRoughnessCuts, kRoughnessWords, false },
+			{ &Texel::luma, kLumaCuts, kLumaWords, false },
+			{ &Texel::metallic, kMetallicCuts, kMetallicWords, true },
+		};
+
+		// The word for one axis: the first band a value falls under, or the
+		// last band past every cut.
+		[[nodiscard]] std::string_view BandWord(const TexelBand& a_band, float a_value) noexcept
+		{
+			for (std::size_t i = 0; i < a_band.cuts.size(); ++i) {
+				const bool below = a_band.belowInclusive ? a_value <= a_band.cuts[i] : a_value < a_band.cuts[i];
+				if (below) {
+					return a_band.words[i];
+				}
+			}
+			return a_band.words.back();
+		}
 
 		// The five channels as axes of one space, in Texel's order.
 		constexpr std::size_t kAxes = 5;
@@ -620,11 +664,15 @@ namespace WornEnchantmentPBR
 
 	std::string DescribeTexel(const Texel& a_texel)
 	{
-		const Texel      texel = Sanitised(a_texel);
-		std::string_view finish = texel.roughness < kPolishedBelow ? "polished" : (texel.roughness < kMatteBelow ? "matte" : "rough");
-		std::string_view tone = texel.luma < kDarkBelow ? "dark" : (texel.luma < kMidBelow ? "mid" : "bright");
-		std::string_view metal = texel.metallic > kMetalAbove ? "metal" : "non-metal";
-		return std::format("{} {} {}", finish, tone, metal);
+		const Texel texel = Sanitised(a_texel);
+		std::string out;
+		for (const auto& band : kTexelBands) {
+			if (!out.empty()) {
+				out += " ";
+			}
+			out += BandWord(band, texel.*band.axis);
+		}
+		return out;
 	}
 
 	ClusterSettings SettingsOf(const MaterialClustersSource& a_source) noexcept
