@@ -99,7 +99,7 @@ namespace WornEnchantmentPBR
 	// diffusePaths, not a WornPiece field) — those two operands are matched
 	// as code, not a member read. The table itself lives in Vocabulary.h,
 	// once WornPiece is a complete type.
-	struct KeyKindRow
+	struct KeyKindSpec
 	{
 		KeyKind                             value;
 		std::string_view                    name;
@@ -402,7 +402,7 @@ namespace WornEnchantmentPBR
 	// A signal kind's word ("constant", "pulse", ...) and whether the
 	// board's tunable list shows the row as designer-editable text
 	// (BuildSignalList: today a constant or an expression).
-	struct SignalKindRow
+	struct SignalKindSpec
 	{
 		SignalKindId     value;
 		std::string_view name;
@@ -677,7 +677,7 @@ namespace WornEnchantmentPBR
 	[[nodiscard]] std::optional<Blend> ParseBlend(std::string_view a_name) noexcept;
 	// One row per blend: its word, the mode the layer shader's Blend function
 	// switches on, and whether only the normal stack takes it.
-	struct BlendRow
+	struct BlendSpec
 	{
 		Blend            value;
 		std::string_view name;
@@ -839,7 +839,7 @@ namespace WornEnchantmentPBR
 	// binding writes when a file leaves the field out. A colour takes the
 	// fallback on every component.
 	using ScalarMember = std::variant<std::optional<Param> SlotScalars::*, std::optional<Vec3Param> SlotScalars::*>;
-	struct ScalarFieldRow
+	struct ScalarFieldSpec
 	{
 		ScalarField      value;
 		std::string_view name;
@@ -861,7 +861,7 @@ namespace WornEnchantmentPBR
 	[[nodiscard]] MaterialMap BaseMapOf(Slot a_slot) noexcept;
 
 	// One row per image channel: its word and the shader channel it reads.
-	struct ImageChannelRow
+	struct ImageChannelSpec
 	{
 		ImageChannel     value;
 		std::string_view name;
@@ -874,7 +874,7 @@ namespace WornEnchantmentPBR
 	// derives (relief picks displacement or occlusion by the map's flatness,
 	// normalSlope is rendered from the normal map, both read as red); what
 	// a texel of it reads as. A threshold tests a scalar channel only.
-	struct MaterialChannelRow
+	struct MaterialChannelSpec
 	{
 		MaterialChannel  value;
 		std::string_view name;
@@ -893,7 +893,7 @@ namespace WornEnchantmentPBR
 	// evaluate on one material beside it; the material map it edits. The
 	// functions below are questions over these rows, shared by Validate,
 	// the studio's board, the parser and the bindings.
-	struct SlotRow
+	struct SlotSpec
 	{
 		Slot                         value;
 		std::string_view             name;

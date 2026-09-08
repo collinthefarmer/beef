@@ -36,7 +36,7 @@ namespace WornEnchantmentPBR::Studio
 	// component reference in a colour or vector a scalar signal; an
 	// expression's references signals (a signal's), or sources, masks and
 	// signals (a mask's); a curve's `@name` a declared curve.
-	[[nodiscard]] std::optional<std::string> CheckField(const FieldSpec& a_field, std::string_view a_text, const Names& a_names);
+	[[nodiscard]] std::optional<std::string> CheckField(const FormField& a_field, std::string_view a_text, const Names& a_names);
 	// The texts the tables hold outside a form: a signal's value (a number,
 	// a colour, or an expression over signals), a curve's expression (in x,
 	// over signals), a mask's expression (per texel, over sources, masks

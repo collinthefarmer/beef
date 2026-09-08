@@ -931,9 +931,9 @@ namespace WornEnchantmentPBR::Studio
 
 	namespace
 	{
-		[[nodiscard]] FieldSpec Spec(std::string a_name, FieldKind a_kind, std::string a_text, std::vector<std::string> a_names = {})
+		[[nodiscard]] FormField Spec(std::string a_name, FieldKind a_kind, std::string a_text, std::vector<std::string> a_names = {})
 		{
-			FieldSpec field;
+			FormField field;
 			field.name = std::move(a_name);
 			field.kind = a_kind;
 			field.text = std::move(a_text);
@@ -944,7 +944,7 @@ namespace WornEnchantmentPBR::Studio
 		// A field whose committed text sets one setting of a copy of the
 		// recipe through a_set, which refuses text that does not parse.
 		template <class Recipe>
-		[[nodiscard]] TermField Setting(const Recipe& a_kind, FieldSpec a_field, std::function<bool(Recipe&, const std::string&)> a_set)
+		[[nodiscard]] TermField Setting(const Recipe& a_kind, FormField a_field, std::function<bool(Recipe&, const std::string&)> a_set)
 		{
 			return TermField{ std::move(a_field), [a_kind, a_set](const std::string& a_text) -> std::optional<TermKind> {
 				Recipe edited = a_kind;

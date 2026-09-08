@@ -196,7 +196,7 @@ namespace WornEnchantmentPBR::Studio
 		// expression, mask, channel set or text is a badge and a text field;
 		// a value (scalar, colour, vector, curve) is a value field whose badge
 		// switches between text and a signal combo.
-		[[nodiscard]] std::optional<std::string> FieldInput(const FieldSpec& a_field, float a_scale, const Names& a_names)
+		[[nodiscard]] std::optional<std::string> FieldInput(const FormField& a_field, float a_scale, const Names& a_names)
 		{
 			const Widgets::TextCheck check = [&](const std::string& a_text) { return CheckField(a_field, a_text, a_names); };
 			const auto*               row = RowOf(kFieldKinds, a_field.kind);
@@ -227,7 +227,7 @@ namespace WornEnchantmentPBR::Studio
 
 		// A combo's creator entry makes its row and binds the field, as the
 		// edits the field's creator returns; any other text is the field's.
-		void PostField(const FieldSpec& a_field, const std::string& a_text, const std::string& a_recipe, Intents& a_out)
+		void PostField(const FormField& a_field, const std::string& a_text, const std::string& a_recipe, Intents& a_out)
 		{
 			if (std::ranges::find(a_field.creators, a_text) != a_field.creators.end()) {
 				if (a_field.create) {
@@ -250,7 +250,7 @@ namespace WornEnchantmentPBR::Studio
 		// row in its own ID scope. A committed text becomes the field's edit,
 		// or a log line when it does not parse. Returns the index into
 		// a_fields of the field whose detail button was clicked.
-		[[nodiscard]] std::optional<std::size_t> DrawFieldTable(const char* a_id, std::span<const FieldSpec> a_fields, const std::string& a_recipe, float a_scale, const Names& a_names, Intents& a_out)
+		[[nodiscard]] std::optional<std::size_t> DrawFieldTable(const char* a_id, std::span<const FormField> a_fields, const std::string& a_recipe, float a_scale, const Names& a_names, Intents& a_out)
 		{
 			std::optional<std::size_t> open;
 			auto                       table = Widgets::Table::Begin(a_id, { { "field", Width::Fit() }, { "", Width::Px(ImGui::GetFrameHeight()) }, { "value", Width::Fill() } }, kFormStyle);
@@ -285,7 +285,7 @@ namespace WornEnchantmentPBR::Studio
 		// side, the fields dealt out in order so a form the pane cannot show
 		// whole fits without scrolling. Returns the index of the field whose
 		// detail button was clicked.
-		[[nodiscard]] std::optional<std::size_t> DrawForm(const char* a_id, std::span<const FieldSpec> a_form, const std::string& a_recipe, float a_scale, const Names& a_names, Intents& a_out, std::size_t a_columns = 1)
+		[[nodiscard]] std::optional<std::size_t> DrawForm(const char* a_id, std::span<const FormField> a_form, const std::string& a_recipe, float a_scale, const Names& a_names, Intents& a_out, std::size_t a_columns = 1)
 		{
 			if (a_columns <= 1) {
 				return DrawFieldTable(a_id, a_form, a_recipe, a_scale, a_names, a_out);
@@ -894,7 +894,7 @@ namespace WornEnchantmentPBR::Studio
 		// the selected row's fields are drawn beside the table.
 
 		void DrawInspectorFields(const Inspector& a_inspector, const RecipeRow& a_recipe, const Layout& a_layout, const Names& a_names, Intents& a_out);
-		void DrawFormWithSignals(const char* a_id, std::span<const FieldSpec> a_form, const RecipeRow& a_recipe, FormID a_actorID, float a_scale, const Names& a_names, Intents& a_out, std::size_t a_columns = 1);
+		void DrawFormWithSignals(const char* a_id, std::span<const FormField> a_form, const RecipeRow& a_recipe, FormID a_actorID, float a_scale, const Names& a_names, Intents& a_out, std::size_t a_columns = 1);
 
 		FormID g_modalActor = 0;  // the piece's actor, for a trigger fired from a modal; the body sets it
 
@@ -1547,7 +1547,7 @@ namespace WornEnchantmentPBR::Studio
 
 		// A form whose value fields may open their signal: the detail button
 		// of a field naming a @signal opens that signal's modal.
-		void DrawFormWithSignals(const char* a_id, std::span<const FieldSpec> a_form, const RecipeRow& a_recipe, FormID a_actorID, float a_scale, const Names& a_names, Intents& a_out, std::size_t a_columns)
+		void DrawFormWithSignals(const char* a_id, std::span<const FormField> a_form, const RecipeRow& a_recipe, FormID a_actorID, float a_scale, const Names& a_names, Intents& a_out, std::size_t a_columns)
 		{
 			const auto open = DrawForm(a_id, a_form, a_recipe.id, a_scale, a_names, a_out, a_columns);
 			for (std::size_t i = 0; i < a_form.size(); ++i) {

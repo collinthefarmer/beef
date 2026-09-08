@@ -545,7 +545,7 @@ namespace
 	// The edit a field's binding makes of a text, as the alternative T, or
 	// null when the text is refused or makes another kind of edit.
 	template <class T>
-	const T* Bound(const FieldSpec& a_field, const char* a_text, std::optional<RecipeEdit>& a_edit)
+	const T* Bound(const FormField& a_field, const char* a_text, std::optional<RecipeEdit>& a_edit)
 	{
 		a_edit = a_field.bind ? a_field.bind(a_text) : std::nullopt;
 		return a_edit ? Get<T>(*a_edit) : nullptr;
@@ -578,8 +578,8 @@ namespace
 		Check(curve.names == inspector->curves && opacity.names == inspector->scalarSignals && colour.names == inspector->colorSignals && mask.names == inspector->masks && channels.names.empty(), "combo names per field");
 		Check(!source.allowEmpty && curve.allowEmpty && !opacity.allowEmpty && colour.allowEmpty && mask.allowEmpty && !channels.allowEmpty, "curve, colour and mask may be empty");
 		Check(source.detail == FieldDetail::kSource && !curve.detail && !opacity.detail && colour.detail == FieldDetail::kColor && mask.detail == FieldDetail::kMask && !channels.detail, "details only where the modal has content: the source row, the colour's signal, the mask row");
-		Check(std::ranges::none_of(form, [](const FieldSpec& a_field) { return a_field.value.has_value(); }), "layer fields show no swatch");
-		Check(std::ranges::all_of(form, [](const FieldSpec& a_field) { return static_cast<bool>(a_field.bind); }), "every field binds");
+		Check(std::ranges::none_of(form, [](const FormField& a_field) { return a_field.value.has_value(); }), "layer fields show no swatch");
+		Check(std::ranges::all_of(form, [](const FormField& a_field) { return static_cast<bool>(a_field.bind); }), "every field binds");
 
 		std::optional<RecipeEdit> edit;
 		const auto*               sourceRef = Bound<SetLayerSource>(source, "@ring", edit);
@@ -665,8 +665,8 @@ namespace
 			return;
 		}
 		const auto fuzzForm = ScalarForm(*fuzz);
-		const auto colour = std::ranges::find(fuzzForm, "color", &FieldSpec::name);
-		const auto weight = std::ranges::find(fuzzForm, "weight", &FieldSpec::name);
+		const auto colour = std::ranges::find(fuzzForm, "color", &FormField::name);
+		const auto weight = std::ranges::find(fuzzForm, "weight", &FormField::name);
 		Check(fuzzForm.size() == 2 && colour != fuzzForm.end() && weight != fuzzForm.end(), "the fuzz form has colour and weight");
 		if (colour == fuzzForm.end() || weight == fuzzForm.end()) {
 			return;
@@ -780,7 +780,7 @@ namespace
 		Check(a_recipe.maskRows.size() == 1 && a_recipe.maskRows[0].name == "metal" && a_recipe.maskRows[0].text == "@metallic" && a_recipe.maskRows[0].references == 1, "the mask row carries its text and one reference (the fill layer)");
 
 		const auto ok = [](const std::optional<std::string>& a_problem) { return !a_problem.has_value(); };
-		FieldSpec scalar{ "opacity", FieldKind::kScalar, "", {}, false, std::nullopt, std::nullopt, {} };
+		FormField scalar{ "opacity", FieldKind::kScalar, "", {}, false, std::nullopt, std::nullopt, {} };
 		for (const auto& [name, type] : names.signals) {
 			if (type == ValueType::kScalar) {
 				scalar.names.push_back(name);
@@ -788,29 +788,29 @@ namespace
 		}
 		Check(ok(CheckField(scalar, "0.5", names)) && ok(CheckField(scalar, "@glowLevel", names)), "a number and a listed signal pass a scalar field");
 		Check(!ok(CheckField(scalar, "@glowHue", names)) && !ok(CheckField(scalar, "@nothing", names)) && !ok(CheckField(scalar, "abc", names)) && !ok(CheckField(scalar, "", names)), "an unlisted signal, an unknown name, text and emptiness fail a scalar field");
-		FieldSpec colour{ "colour", FieldKind::kColor, "", { "glowHue", "edgeColor" }, true, std::nullopt, std::nullopt, {} };
+		FormField colour{ "colour", FieldKind::kColor, "", { "glowHue", "edgeColor" }, true, std::nullopt, std::nullopt, {} };
 		Check(ok(CheckField(colour, "1, 0, 0", names)) && ok(CheckField(colour, "0.5", names)) && ok(CheckField(colour, "@glowHue", names)) && ok(CheckField(colour, "", names)), "numbers, a listed colour signal and emptiness pass a colour field");
 		Check(ok(CheckField(colour, "1, @glowLevel, 0", names)) && !ok(CheckField(colour, "1, @glowHue, 0", names)) && !ok(CheckField(colour, "1, @nothing, 0", names)), "a component reference must be a scalar signal");
-		FieldSpec mask{ "mask", FieldKind::kReference, "", { "metal" }, true, std::nullopt, std::nullopt, {} };
+		FormField mask{ "mask", FieldKind::kReference, "", { "metal" }, true, std::nullopt, std::nullopt, {} };
 		Check(ok(CheckField(mask, "@metal", names)) && !ok(CheckField(mask, "@fill", names)) && !ok(CheckField(mask, "metal", names)), "a reference field takes only its listed rows as @name");
-		FieldSpec expression{ "value", FieldKind::kExpression, "", {}, false, std::nullopt, std::nullopt, {} };
+		FormField expression{ "value", FieldKind::kExpression, "", {}, false, std::nullopt, std::nullopt, {} };
 		Check(ok(CheckField(expression, "@glowStrength * 2", names)) && !ok(CheckField(expression, "@fill * 2", names)) && !ok(CheckField(expression, "@nothing", names)) && !ok(CheckField(expression, "1 +", names)) && !ok(CheckField(expression, "x", names)), "an expression reads signals, parses, and has no x");
 		Check(ok(CheckField(expression, "@glowHue + @glowLevel", names)) && !ok(CheckField(expression, "@scroll + @glowHue", names)), "a scalar broadcasts against a colour; a vec2 against a vec3 fails");
-		FieldSpec maskText{ "mask", FieldKind::kMask, "", {}, false, std::nullopt, std::nullopt, {} };
+		FormField maskText{ "mask", FieldKind::kMask, "", {}, false, std::nullopt, std::nullopt, {} };
 		Check(ok(CheckField(maskText, "@metallic * @glowLevel + @metal", names)) && !ok(CheckField(maskText, "@nothing", names)), "a mask reads sources, masks and signals");
-		FieldSpec curve{ "curve", FieldKind::kCurve, "", { "crisp", "flash" }, true, std::nullopt, std::nullopt, {} };
+		FormField curve{ "curve", FieldKind::kCurve, "", { "crisp", "flash" }, true, std::nullopt, std::nullopt, {} };
 		Check(ok(CheckField(curve, "@crisp", names)) && ok(CheckField(curve, "x * 2", names)) && ok(CheckField(curve, "", names)) && !ok(CheckField(curve, "@rest", names)) && !ok(CheckField(curve, "@nothing", names)), "a curve field takes a listed curve or an expression in x");
-		FieldSpec channels{ "channels", FieldKind::kChannels, "", {}, false, std::nullopt, std::nullopt, {} };
+		FormField channels{ "channels", FieldKind::kChannels, "", {}, false, std::nullopt, std::nullopt, {} };
 		Check(ok(CheckField(channels, "rg", names)) && !ok(CheckField(channels, "xyz", names)), "channels parse");
-		FieldSpec choice{ "material", FieldKind::kChoice, "", { "pbrCopy", "vanilla" }, false, std::nullopt, std::nullopt, {} };
+		FormField choice{ "material", FieldKind::kChoice, "", { "pbrCopy", "vanilla" }, false, std::nullopt, std::nullopt, {} };
 		Check(ok(CheckField(choice, "vanilla", names)) && !ok(CheckField(choice, "glass", names)), "a choice is one of its names");
-		FieldSpec vector{ "offset", FieldKind::kVector, "", {}, false, std::nullopt, std::nullopt, {} };
+		FormField vector{ "offset", FieldKind::kVector, "", {}, false, std::nullopt, std::nullopt, {} };
 		Check(ok(CheckField(vector, "1, 0, 0", names)) && ok(CheckField(vector, "0.5", names)) && !ok(CheckField(vector, "1, @nothing, 0", names)), "a vector field takes the same shape as a colour");
-		FieldSpec vec2{ "scroll", FieldKind::kVec2, "", {}, true, std::nullopt, std::nullopt, {} };
+		FormField vec2{ "scroll", FieldKind::kVec2, "", {}, true, std::nullopt, std::nullopt, {} };
 		Check(ok(CheckField(vec2, "1, 0", names)) && ok(CheckField(vec2, "0.5", names)) && ok(CheckField(vec2, "", names)) && !ok(CheckField(vec2, "1, @nothing", names)), "two numbers, one number and emptiness pass a vec2 field; an unknown component reference fails");
-		FieldSpec toggle{ "flag", FieldKind::kToggle, "", {}, false, std::nullopt, std::nullopt, {} };
+		FormField toggle{ "flag", FieldKind::kToggle, "", {}, false, std::nullopt, std::nullopt, {} };
 		Check(ok(CheckField(toggle, "on", names)) && ok(CheckField(toggle, "off", names)) && !ok(CheckField(toggle, "", names)), "a toggle takes any text, only emptiness fails");
-		FieldSpec text{ "bones", FieldKind::kText, "", {}, true, std::nullopt, std::nullopt, {} };
+		FormField text{ "bones", FieldKind::kText, "", {}, true, std::nullopt, std::nullopt, {} };
 		Check(ok(CheckField(text, "NPC Spine2 [Spn2]", names)) && ok(CheckField(text, "", names)), "text takes anything, and may be empty");
 		Check(ok(CheckSignalValue("1", names)) && ok(CheckSignalValue("1, 0, 0", names)) && ok(CheckSignalValue("@glowLevel * 2", names)) && !ok(CheckSignalValue("@fill", names)) && !ok(CheckSignalValue("", names)), "a signal value is a number, a colour or an expression over signals");
 		Check(ok(CheckCurveText("x * @glowStrength", names)) && !ok(CheckCurveText("@fill", names)) && !ok(CheckCurveText("", names)), "a curve text is an expression in x over signals");

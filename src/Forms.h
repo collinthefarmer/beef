@@ -78,7 +78,7 @@ namespace WornEnchantmentPBR::Studio
 	// adds the ImVec4 colour, keyed by kind, since ImGui types have no home
 	// here; `FieldInput` (ComposePage.cpp) and `CheckField` (EditCheck.cpp)
 	// dispatch on `input` and `check` instead of switching on the kind.
-	struct FieldKindRow
+	struct FieldKindSpec
 	{
 		FieldKind      value;
 		const char*    glyph;
@@ -88,7 +88,7 @@ namespace WornEnchantmentPBR::Studio
 		FieldCheckKind check;
 	};
 
-	inline constexpr FieldKindRow kFieldKinds[]{
+	inline constexpr FieldKindSpec kFieldKinds[]{
 		{ FieldKind::kScalar, "#", true, "scalar: a number, or @signal of scalar type", FieldInputKind::kValue, FieldCheckKind::kScalar },
 		{ FieldKind::kColor, "c", true, "colour: r, g, b in 0..1, or one number for all three, or @signal of colour type", FieldInputKind::kValue, FieldCheckKind::kColorOrVector },
 		{ FieldKind::kVector, "v", true, "vector: x, y, z (a position, direction or scale), or one number for all three, or @signal of vector type", FieldInputKind::kValue, FieldCheckKind::kColorOrVector },
@@ -126,7 +126,7 @@ namespace WornEnchantmentPBR::Studio
 	// One field of a form: what the page draws as a row of the field table.
 	// `detail` is set only when the modal would show something, so a detail
 	// button appears only where there is content.
-	struct FieldSpec
+	struct FormField
 	{
 		std::string                name;
 		FieldKind                  kind = FieldKind::kScalar;
@@ -142,28 +142,28 @@ namespace WornEnchantmentPBR::Studio
 
 	// The selected layer's fields: source, curve, opacity, colour, mask,
 	// channels, in that order.
-	[[nodiscard]] std::vector<FieldSpec> InspectorForm(const Inspector& a_inspector);
+	[[nodiscard]] std::vector<FormField> InspectorForm(const Inspector& a_inspector);
 	// The stack's slot scalars, one field each, in the slot's order.
-	[[nodiscard]] std::vector<FieldSpec> ScalarForm(const StackView& a_stack);
+	[[nodiscard]] std::vector<FormField> ScalarForm(const StackView& a_stack);
 	// A signal's value as one field of the signal table, shown as its kind
 	// (a constant's number or colour, an expr's text) and read as what is
 	// typed: a number keeps or makes a scalar constant, three numbers a
 	// colour constant, anything else that parses an expression. Nothing for
 	// a row edited in the file (efsh, trigger, vec2 ...).
-	[[nodiscard]] std::optional<FieldSpec>  SignalForm(const SignalRow& a_signal);
+	[[nodiscard]] std::optional<FormField>  SignalForm(const SignalRow& a_signal);
 	[[nodiscard]] std::optional<RecipeEdit> SignalValueEdit(const std::string& a_signal, const std::string& a_text);
 	// A source's form: the kind first (a change starts the kind at its
 	// defaults), then the kind's own settings, each rebuilding the whole
 	// kind from the row's texts.
-	[[nodiscard]] std::vector<FieldSpec> SourceForm(const SourceRow& a_source, const SignalNames& a_names);
+	[[nodiscard]] std::vector<FormField> SourceForm(const SourceRow& a_source, const SignalNames& a_names);
 	// The light's panel: colour, intensity, size, cutoff, offset, shadow,
 	// bones as a kind, then the kind's own settings. Empty when the recipe
 	// has no light.
-	[[nodiscard]] std::vector<FieldSpec> LightForm(const LightRow& a_light, const SignalNames& a_names);
+	[[nodiscard]] std::vector<FormField> LightForm(const LightRow& a_light, const SignalNames& a_names);
 	// The shell's settings: material kind, blend, depth bias, alpha test,
 	// alpha, rim power, emissive, and the pose (inflate, offset, scale and
 	// its point, spin and its axis).
-	[[nodiscard]] std::vector<FieldSpec> ShellForm(const ShellRow& a_shell, const SignalNames& a_names);
+	[[nodiscard]] std::vector<FormField> ShellForm(const ShellRow& a_shell, const SignalNames& a_names);
 
 	// ---------------------------------------------------------------- colours
 

@@ -6,7 +6,7 @@
 // Everything here is a pure function of a record read once (the mesh, a
 // low-mip sample of the maps), deterministic on the same input, bounded
 // by fixed caps, and engine-free. This module never spells the mask
-// language: a region becomes a mask in Regions.
+// language: an island becomes a term of a region in Regions.
 
 #include "Core.h"
 #include "Mesh.h"
@@ -29,14 +29,14 @@ namespace WornEnchantmentPBR
 	};
 	// A source's word as the format and the log spell it, the plain word the
 	// studio's labels and offers use, and the bake that reads its id map.
-	struct IslandSourceRow
+	struct IslandSourceSpec
 	{
 		IslandSource     value;
 		std::string_view name;
 		std::string_view plainName;
 		BakeKind         bake;
 	};
-	inline constexpr IslandSourceRow kIslandSources[]{
+	inline constexpr IslandSourceSpec kIslandSources[]{
 		{ IslandSource::kComponent, "component", "part", ComponentIdBake{} },
 		{ IslandSource::kChart, "chart", "chart", ChartIdBake{} },
 	};

@@ -20,7 +20,7 @@ namespace WornEnchantmentPBR
 	// order, ten per step, so a magic-effect key outranks an enchantment
 	// key, which outranks an effect-shader key, and so on down to material
 	// and default; KeyChoicesOf walks the table highest first.
-	inline constexpr KeyKindRow kKeyKinds[]{
+	inline constexpr KeyKindSpec kKeyKinds[]{
 		{ KeyKind::kDefault, "default", 0, KeyOperand::kNone, false, nullptr, nullptr },
 		{ KeyKind::kMaterial, "material", 10, KeyOperand::kGlob, false, nullptr, nullptr },
 		{ KeyKind::kKeyword, "keyword", 20, KeyOperand::kForm, false, nullptr, &WornPiece::keywords },
@@ -39,7 +39,7 @@ namespace WornEnchantmentPBR
 	inline constexpr Named<EnchantmentField> kEnchantmentFields[]{ { EnchantmentField::kMagnitude, "magnitude" }, { EnchantmentField::kCost, "cost" } };
 	inline constexpr Named<PayloadField> kPayloadFields[]{ { PayloadField::kValue, "value" }, { PayloadField::kPosition, "position" }, { PayloadField::kNormal, "normal" } };
 
-	inline constexpr ImageChannelRow kImageChannels[]{
+	inline constexpr ImageChannelSpec kImageChannels[]{
 		{ ImageChannel::kRgb, "rgb", ShaderChannel::kRgb },
 		{ ImageChannel::kR, "r", ShaderChannel::kR },
 		{ ImageChannel::kG, "g", ShaderChannel::kG },
@@ -50,7 +50,7 @@ namespace WornEnchantmentPBR
 	static_assert(std::size(kImageChannels) == kImageChannelCount);
 	inline constexpr Named<ImageSpace> kImageSpaces[]{ { ImageSpace::kTiled, "tiled" }, { ImageSpace::kMesh, "mesh" } };
 	// RMAOS packs roughness, metallic, occlusion and reflectance in r, g, b, a.
-	inline constexpr MaterialChannelRow kMaterialChannels[]{
+	inline constexpr MaterialChannelSpec kMaterialChannels[]{
 		{ MaterialChannel::kDiffuseRgb, "diffuseRgb", MaterialMap::kDiffuse, ShaderChannel::kRgb, ValueType::kVec3 },
 		{ MaterialChannel::kDiffuseLuma, "diffuseLuma", MaterialMap::kDiffuse, ShaderChannel::kLuma, ValueType::kScalar },
 		{ MaterialChannel::kNormalSlope, "normalSlope", MaterialMap::kNone, ShaderChannel::kR, ValueType::kScalar },
@@ -67,7 +67,7 @@ namespace WornEnchantmentPBR
 
 	// One row per alternative of SignalKind, in the variant's declaration
 	// order; `tunable` is the fact BuildSignalList splits the board on.
-	inline constexpr SignalKindRow kSignalKinds[]{
+	inline constexpr SignalKindSpec kSignalKinds[]{
 		{ SignalKindId::kConstant, "constant", true },
 		{ SignalKindId::kPulse, "pulse", false },
 		{ SignalKindId::kRamp, "ramp", false },
@@ -90,7 +90,7 @@ namespace WornEnchantmentPBR
 	inline constexpr Named<Surface> kSurfaces[]{ { Surface::kMaterial, "material" }, { Surface::kShell, "shell" } };
 	// Glint's fallbacks are the values CS starts a material at; the rest are
 	// what a fresh output should look like in the studio.
-	inline constexpr ScalarFieldRow kScalarFields[]{
+	inline constexpr ScalarFieldSpec kScalarFields[]{
 		{ ScalarField::kStrength, "strength", &SlotScalars::strength, 1.0f },
 		{ ScalarField::kScale, "scale", &SlotScalars::scale, 1.0f },
 		{ ScalarField::kColor, "color", &SlotScalars::color, 1.0f },
@@ -128,7 +128,7 @@ namespace WornEnchantmentPBR
 	}
 
 	// Channels and notes as CS reads each map (BSLightingShaderMaterialPBR.h).
-	inline constexpr SlotRow kSlots[]{
+	inline constexpr SlotSpec kSlots[]{
 		{ Slot::kDiffuse, "diffuse", SlotColumns::kRgba, "r, g, b: albedo; a: on a shell, per-texel visibility (with the shell's alpha blend and alpha test)", {}, false, {}, MaterialMap::kDiffuse },
 		{ Slot::kEmissive, "emissive", SlotColumns::kRgb, "r, g, b: emitted colour, scaled by strength; no alpha", SlotColumns::kEmissiveScalars, true, {}, MaterialMap::kNone },
 		{ Slot::kRmaos, "rmaos", SlotColumns::kRgba, "r: roughness; g: metallic; b: ambient occlusion; a: reflectance (f0)", {}, false, {}, MaterialMap::kRmaos },
@@ -142,7 +142,7 @@ namespace WornEnchantmentPBR
 	static_assert(std::size(kSlots) == kSlotCount);
 	// Shader modes as the layer pass's Blend function switches on them; lerp
 	// is replace under the opacity mix, so it shares replace's arithmetic.
-	inline constexpr BlendRow kBlends[]{
+	inline constexpr BlendSpec kBlends[]{
 		{ Blend::kReplace, "replace", 0, false },
 		{ Blend::kMultiply, "multiply", 1, false },
 		{ Blend::kAdd, "add", 2, false },

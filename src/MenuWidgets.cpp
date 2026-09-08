@@ -450,7 +450,7 @@ namespace WornEnchantmentPBR::Studio::Widgets
 		constexpr ImVec4 kBadgeFrame{ 0.20f, 0.20f, 0.24f, 1.0f };
 
 		// The badge colour, keyed by kind: ImVec4 is ImGui-typed, so it stays
-		// here rather than in the engine-free FieldKindRow table. Values
+		// here rather than in the engine-free FieldKindSpec table. Values
 		// (blue, orange, teal) take a @signal in their place.
 		constexpr ImVec4 ColourOf(FieldKind a_kind) noexcept
 		{

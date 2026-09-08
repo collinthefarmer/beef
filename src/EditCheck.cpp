@@ -39,7 +39,7 @@ namespace WornEnchantmentPBR::Studio
 		}
 
 		// A whole "@name": the field's own combo decides what it may name.
-		[[nodiscard]] std::optional<std::string> CheckWholeReference(const FieldSpec& a_field, std::string_view a_name)
+		[[nodiscard]] std::optional<std::string> CheckWholeReference(const FormField& a_field, std::string_view a_name)
 		{
 			if (Listed(a_field.names, a_name)) {
 				return std::nullopt;
@@ -63,7 +63,7 @@ namespace WornEnchantmentPBR::Studio
 			return std::nullopt;
 		}
 
-		[[nodiscard]] std::optional<std::string> CheckScalar(const FieldSpec& a_field, std::string_view a_text)
+		[[nodiscard]] std::optional<std::string> CheckScalar(const FormField& a_field, std::string_view a_text)
 		{
 			const auto param = ParseParam(a_text);
 			if (!param) {
@@ -75,7 +75,7 @@ namespace WornEnchantmentPBR::Studio
 			return std::nullopt;
 		}
 
-		[[nodiscard]] std::optional<std::string> CheckVec3(const FieldSpec& a_field, std::string_view a_text, const Names& a_names)
+		[[nodiscard]] std::optional<std::string> CheckVec3(const FormField& a_field, std::string_view a_text, const Names& a_names)
 		{
 			const auto param = ParseVec3Param(a_text);
 			if (!param) {
@@ -120,7 +120,7 @@ namespace WornEnchantmentPBR::Studio
 			return std::nullopt;
 		}
 
-		[[nodiscard]] std::optional<std::string> CheckVec2(const FieldSpec& a_field, std::string_view a_text, const Names& a_names)
+		[[nodiscard]] std::optional<std::string> CheckVec2(const FormField& a_field, std::string_view a_text, const Names& a_names)
 		{
 			const auto param = ParseVec2Param(a_text);
 			if (!param) {
@@ -137,7 +137,7 @@ namespace WornEnchantmentPBR::Studio
 			return std::nullopt;
 		}
 
-		[[nodiscard]] std::optional<std::string> CheckCurve(const FieldSpec& a_field, std::string_view a_text, const Names& a_names)
+		[[nodiscard]] std::optional<std::string> CheckCurve(const FormField& a_field, std::string_view a_text, const Names& a_names)
 		{
 			const CurveRef ref{ std::string{ a_text } };
 			if (const auto name = ref.Named()) {
@@ -146,7 +146,7 @@ namespace WornEnchantmentPBR::Studio
 			return CheckExpression(a_text, a_names, false, true);
 		}
 
-		[[nodiscard]] std::optional<std::string> CheckReference(const FieldSpec& a_field, std::string_view a_text)
+		[[nodiscard]] std::optional<std::string> CheckReference(const FormField& a_field, std::string_view a_text)
 		{
 			return a_text.starts_with('@') && a_text.size() > 1 ? CheckWholeReference(a_field, a_text.substr(1)) : std::optional<std::string>{ "@name of a row" };
 		}
@@ -156,7 +156,7 @@ namespace WornEnchantmentPBR::Studio
 			return ChannelSet::Parse(a_text) ? std::nullopt : std::optional<std::string>{ "any of r g b a" };
 		}
 
-		[[nodiscard]] std::optional<std::string> CheckChoice(const FieldSpec& a_field, std::string_view a_text)
+		[[nodiscard]] std::optional<std::string> CheckChoice(const FormField& a_field, std::string_view a_text)
 		{
 			return Listed(a_field.names, a_text) ? std::nullopt : std::optional<std::string>{ "one of the listed values" };
 		}
@@ -212,7 +212,7 @@ namespace WornEnchantmentPBR::Studio
 		return CheckExpression(a_text, a_names, true, false);
 	}
 
-	std::optional<std::string> CheckField(const FieldSpec& a_field, std::string_view a_text, const Names& a_names)
+	std::optional<std::string> CheckField(const FormField& a_field, std::string_view a_text, const Names& a_names)
 	{
 		if (a_text.empty()) {
 			return a_field.allowEmpty ? std::nullopt : std::optional<std::string>{ "cannot be empty" };

@@ -148,7 +148,7 @@ namespace WornEnchantmentPBR::Studio
 	// rebuilds the term from it. A RawTerm has no fields.
 	struct TermField
 	{
-		FieldSpec                                                        field;
+		FormField                                                        field;
 		std::function<std::optional<TermKind>(const std::string& a_text)> apply;
 	};
 	[[nodiscard]] std::vector<TermField> TermForm(const TermKind& a_kind, const Presets& a_presets, const GeometryRow& a_geometry);
@@ -175,13 +175,13 @@ namespace WornEnchantmentPBR::Studio
 	};
 	// A group's word and whether its section starts open: open for the
 	// groups the analysis already knows enough to fill.
-	struct OfferGroupRow
+	struct OfferGroupSpec
 	{
 		OfferGroup       value;
 		std::string_view name;
 		bool             openByDefault;
 	};
-	inline constexpr OfferGroupRow kOfferGroups[]{
+	inline constexpr OfferGroupSpec kOfferGroups[]{
 		{ OfferGroup::kParts, "parts", true },
 		{ OfferGroup::kMaterials, "materials", true },
 		{ OfferGroup::kBones, "bones", false },

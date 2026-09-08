@@ -1023,7 +1023,7 @@ namespace WornEnchantmentPBR::Studio
 		}
 	}
 
-	std::vector<FieldSpec> InspectorForm(const Inspector& a_inspector)
+	std::vector<FormField> InspectorForm(const Inspector& a_inspector)
 	{
 		const auto&       in = a_inspector;
 		const std::size_t output = in.output;
@@ -1034,11 +1034,11 @@ namespace WornEnchantmentPBR::Studio
 		const auto sourceNames = Joined(in.sources, in.masks);
 		const auto signalNames = Joined(in.scalarSignals, in.colorSignals);
 
-		std::vector<FieldSpec> form;
-		form.push_back(FieldSpec{ "source", FieldKind::kColor, in.row.source, sourceNames, false, DetailWhen(in.source.has_value(), FieldDetail::kSource), std::nullopt, BindLayerSource(output, layer) });
+		std::vector<FormField> form;
+		form.push_back(FormField{ "source", FieldKind::kColor, in.row.source, sourceNames, false, DetailWhen(in.source.has_value(), FieldDetail::kSource), std::nullopt, BindLayerSource(output, layer) });
 		form.back().creators = Creators(kImageCreators);
 		form.back().create = [sourceNames, bind = form.back().bind](const std::string& a_creator) { return CreateImage(a_creator, sourceNames, bind); };
-		form.push_back(FieldSpec{ "curve", FieldKind::kCurve, in.row.curve, in.curves, true, DetailWhen(in.curve.has_value(), FieldDetail::kCurve), std::nullopt, BindLayerCurve(output, layer) });
+		form.push_back(FormField{ "curve", FieldKind::kCurve, in.row.curve, in.curves, true, DetailWhen(in.curve.has_value(), FieldDetail::kCurve), std::nullopt, BindLayerCurve(output, layer) });
 		form.back().creators = { "new curve" };
 		form.back().create = [curves = in.curves, bind = form.back().bind](const std::string&) {
 			std::vector<RecipeEdit> edits;
@@ -1049,22 +1049,22 @@ namespace WornEnchantmentPBR::Studio
 			}
 			return edits;
 		};
-		form.push_back(FieldSpec{ "opacity", FieldKind::kScalar, in.row.opacityText, in.scalarSignals, false, DetailWhen(NamesSignal(in, in.row.opacityText), FieldDetail::kOpacity), std::nullopt, BindLayerOpacity(output, layer) });
+		form.push_back(FormField{ "opacity", FieldKind::kScalar, in.row.opacityText, in.scalarSignals, false, DetailWhen(NamesSignal(in, in.row.opacityText), FieldDetail::kOpacity), std::nullopt, BindLayerOpacity(output, layer) });
 		form.back().creators = Creators(kValueCreators);
 		form.back().create = [current = in.row.opacityText, signalNames, bind = form.back().bind](const std::string& a_creator) { return CreateValue(a_creator, "opacity", current, false, signalNames, bind); };
-		form.push_back(FieldSpec{ "colour", FieldKind::kColor, in.row.color, in.colorSignals, true, DetailWhen(NamesSignal(in, in.row.color), FieldDetail::kColor), std::nullopt, BindLayerColor(output, layer) });
+		form.push_back(FormField{ "colour", FieldKind::kColor, in.row.color, in.colorSignals, true, DetailWhen(NamesSignal(in, in.row.color), FieldDetail::kColor), std::nullopt, BindLayerColor(output, layer) });
 		form.back().creators = Creators(kValueCreators);
 		form.back().create = [current = in.row.color, signalNames, bind = form.back().bind](const std::string& a_creator) { return CreateValue(a_creator, "colour", current, true, signalNames, bind); };
-		form.push_back(FieldSpec{ "mask", FieldKind::kReference, in.row.mask, in.masks, true, DetailWhen(in.mask.has_value(), FieldDetail::kMask), std::nullopt, BindLayerMask(output, layer) });
+		form.push_back(FormField{ "mask", FieldKind::kReference, in.row.mask, in.masks, true, DetailWhen(in.mask.has_value(), FieldDetail::kMask), std::nullopt, BindLayerMask(output, layer) });
 		form.back().creators = { "new mask" };
 		form.back().create = [sourceNames, bind = form.back().bind](const std::string& a_creator) { return CreateImage(a_creator, sourceNames, bind); };
-		form.push_back(FieldSpec{ "channels", FieldKind::kChannels, in.row.channels, {}, false, std::nullopt, std::nullopt, BindLayerChannels(output, layer) });
+		form.push_back(FormField{ "channels", FieldKind::kChannels, in.row.channels, {}, false, std::nullopt, std::nullopt, BindLayerChannels(output, layer) });
 		return form;
 	}
 
-	std::vector<FieldSpec> ScalarForm(const StackView& a_stack)
+	std::vector<FormField> ScalarForm(const StackView& a_stack)
 	{
-		std::vector<FieldSpec> form;
+		std::vector<FormField> form;
 		form.reserve(a_stack.scalars.size());
 		const auto signalNames = Joined(a_stack.scalarSignals, a_stack.colorSignals);
 		for (const auto& scalar : a_stack.scalars) {
@@ -1072,7 +1072,7 @@ namespace WornEnchantmentPBR::Studio
 			const bool colour = field == std::optional{ ScalarField::kColor };
 			const auto& names = colour ? a_stack.colorSignals : a_stack.scalarSignals;
 			const bool  signal = IsWholeReference(scalar.text) && std::ranges::find(names, ReferenceName(scalar.text)) != names.end();
-			form.push_back(FieldSpec{ scalar.name, colour ? FieldKind::kColor : FieldKind::kScalar, scalar.text, names, false, signal ? std::optional{ FieldDetail::kSignal } : std::nullopt, scalar.value, BindScalar(a_stack.output, field) });
+			form.push_back(FormField{ scalar.name, colour ? FieldKind::kColor : FieldKind::kScalar, scalar.text, names, false, signal ? std::optional{ FieldDetail::kSignal } : std::nullopt, scalar.value, BindScalar(a_stack.output, field) });
 			form.back().creators = Creators(kValueCreators);
 			form.back().create = [name = scalar.name, current = scalar.text, colour, signalNames, bind = form.back().bind](const std::string& a_creator) { return CreateValue(a_creator, name, current, colour, signalNames, bind); };
 		}
@@ -1095,21 +1095,21 @@ namespace WornEnchantmentPBR::Studio
 		return std::nullopt;
 	}
 
-	std::optional<FieldSpec> SignalForm(const SignalRow& a_signal)
+	std::optional<FormField> SignalForm(const SignalRow& a_signal)
 	{
 		const std::string& name = a_signal.name;
 		const FieldBinding bind = [name](const std::string& a_text) { return SignalValueEdit(name, a_text); };
 		if (a_signal.kind == SignalKindId::kExpr) {
-			return FieldSpec{ name, FieldKind::kExpression, a_signal.text, {}, false, std::nullopt, std::nullopt, bind };
+			return FormField{ name, FieldKind::kExpression, a_signal.text, {}, false, std::nullopt, std::nullopt, bind };
 		}
 		if (!a_signal.constant) {
 			return std::nullopt;
 		}
 		if (const auto* number = Get<float>(*a_signal.constant)) {
-			return FieldSpec{ name, FieldKind::kScalar, ParamText(*number), {}, false, std::nullopt, std::nullopt, bind };
+			return FormField{ name, FieldKind::kScalar, ParamText(*number), {}, false, std::nullopt, std::nullopt, bind };
 		}
 		if (const auto* colour = Get<Vec3>(*a_signal.constant)) {
-			return FieldSpec{ name, FieldKind::kColor, LiteralColorText(*colour), {}, false, std::nullopt, std::nullopt, bind };
+			return FormField{ name, FieldKind::kColor, LiteralColorText(*colour), {}, false, std::nullopt, std::nullopt, bind };
 		}
 		return std::nullopt;  // a vec2 constant edits in the file
 	}
@@ -1191,16 +1191,16 @@ namespace WornEnchantmentPBR::Studio
 		}
 
 		// A value field whose text is a whole @signal opens that signal.
-		[[nodiscard]] FieldSpec Field(std::string a_name, FieldKind a_kind, std::string a_text, std::vector<std::string> a_names, FieldBinding a_bind)
+		[[nodiscard]] FormField Field(std::string a_name, FieldKind a_kind, std::string a_text, std::vector<std::string> a_names, FieldBinding a_bind)
 		{
 			const bool signal = (a_kind == FieldKind::kScalar || a_kind == FieldKind::kColor || a_kind == FieldKind::kVector || a_kind == FieldKind::kVec2) && IsWholeReference(a_text) && std::ranges::find(a_names, ReferenceName(a_text)) != a_names.end();
-			return FieldSpec{ std::move(a_name), a_kind, std::move(a_text), std::move(a_names), false, signal ? std::optional{ FieldDetail::kSignal } : std::nullopt, std::nullopt, std::move(a_bind) };
+			return FormField{ std::move(a_name), a_kind, std::move(a_text), std::move(a_names), false, signal ? std::optional{ FieldDetail::kSignal } : std::nullopt, std::nullopt, std::move(a_bind) };
 		}
 	}
 
-	std::vector<FieldSpec> LightForm(const LightRow& a_light, const SignalNames& a_names)
+	std::vector<FormField> LightForm(const LightRow& a_light, const SignalNames& a_names)
 	{
-		std::vector<FieldSpec> form;
+		std::vector<FormField> form;
 		if (!a_light.present) {
 			return form;
 		}
@@ -1258,9 +1258,9 @@ namespace WornEnchantmentPBR::Studio
 		return form;
 	}
 
-	std::vector<FieldSpec> ShellForm(const ShellRow& a_shell, const SignalNames& a_names)
+	std::vector<FormField> ShellForm(const ShellRow& a_shell, const SignalNames& a_names)
 	{
-		std::vector<FieldSpec> form;
+		std::vector<FormField> form;
 		form.push_back(Field("material", FieldKind::kChoice, std::string{ ShellMaterialName(a_shell.material) }, WordsOf(kShellMaterials), [](const std::string& a_text) -> std::optional<RecipeEdit> {
 			const auto material = ParseShellMaterial(a_text);
 			return material ? std::optional<RecipeEdit>{ SetShellMaterial{ *material } } : std::nullopt;
@@ -1315,9 +1315,9 @@ namespace WornEnchantmentPBR::Studio
 		}
 	}
 
-	std::vector<FieldSpec> SourceForm(const SourceRow& a_source, const SignalNames& a_names)
+	std::vector<FormField> SourceForm(const SourceRow& a_source, const SignalNames& a_names)
 	{
-		std::vector<FieldSpec> form;
+		std::vector<FormField> form;
 		const std::string&     name = a_source.name;
 		form.push_back(Field("kind", FieldKind::kChoice, a_source.kind, { "image", "material", "bake", "uv", "distance", "ripple", "materialClusters" }, [name](const std::string& a_text) -> std::optional<RecipeEdit> {
 			const auto kind = DefaultSourceKind(a_text);
@@ -1327,10 +1327,10 @@ namespace WornEnchantmentPBR::Studio
 			form.push_back(Field("path", FieldKind::kText, a_source.path, {}, BindSourceText(a_source, &SourceRow::path)));
 			form.push_back(Field("channel", FieldKind::kChoice, a_source.channel, WordsOf(kImageChannels), BindSourceText(a_source, &SourceRow::channel)));
 			form.push_back(Field("space", FieldKind::kChoice, a_source.space, { "tiled", "mesh" }, BindSourceText(a_source, &SourceRow::space)));
-			FieldSpec scroll = Field("scroll", FieldKind::kVec2, a_source.scroll, a_names.vec2, BindSourceText(a_source, &SourceRow::scroll));
+			FormField scroll = Field("scroll", FieldKind::kVec2, a_source.scroll, a_names.vec2, BindSourceText(a_source, &SourceRow::scroll));
 			scroll.allowEmpty = true;
 			form.push_back(std::move(scroll));
-			FieldSpec tile = Field("tile", FieldKind::kVec2, a_source.tile, a_names.vec2, BindSourceText(a_source, &SourceRow::tile));
+			FormField tile = Field("tile", FieldKind::kVec2, a_source.tile, a_names.vec2, BindSourceText(a_source, &SourceRow::tile));
 			tile.allowEmpty = true;
 			form.push_back(std::move(tile));
 			form.push_back(Field("mirrorU", FieldKind::kToggle, a_source.mirrorU, {}, BindSourceText(a_source, &SourceRow::mirrorU)));
