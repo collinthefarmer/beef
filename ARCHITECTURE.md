@@ -278,34 +278,15 @@ from a plugin file. There is no engine-side test; the in-game checkpoints
 in `README.md` (items 7 onward) are the engine-side verification, and
 each records what to look at and which log lines to expect.
 
-## The recipe studio (the rest, planned)
+## What comes next
 
-The menu redesign in `plans/worn-enchantment-pbr-menu-brief.md` (Design
-section, 2026-09-05). Stages 1 and 2 have landed and their modules are
-in the map above: `Snapshot.h`, `View.h`, the slot rules in `Recipe.h`,
-`Studio`, `Forms.h`, `Edits`, `MenuState` (with `Intent` and `Reduce`),
-`History`, `MenuWidgets`, `ComposePage`, the `LayerFilter` in the
-compositor. Every studio module lives in `WornEnchantmentPBR::Studio`,
-one level deep; the shared core and the slot rules stay in the top
-namespace, which the studio depends on and never the reverse.
-
-Still to come, per the brief's stages 4 to 7:
-
-| Module | Owns | Depends on |
-|---|---|---|
-| `Studio` additions | the expression tokeniser (absorbs `Literals`) | Snapshot, Edits |
-| `Pick.*` | ray against a triangle list, barycentric UV | Mesh |
-| `Dds.*` | single-channel DDS bytes | nothing |
-| `Stage.*` | the scene around the piece: player heading, game hour, weather, third-person camera distance and pitch, as posted tasks | Manager |
-| additions | `View`: live source override, project everywhere, muted material slots, preview as. `Snapshot`: the stage's values, the pick result. `Manager`: `NewRecipe` from a base recipe, `RequestPick(ray)`, `Refresh` honouring preview as. `Compositor`/`Binding`: the branches that read the new view fields. `RuntimeTextures`: texel and histogram readback, neutral maps, the paint target, strokes. | as today |
-
-Modes are a layout table in `Studio` (`LayoutFor`): Compose (board,
-stack, inspector, and the signal table under a rule below them; later triggers
-and the debug clock), Paint (the region stack; later the pick tools), Design (tunables on large controls, preview as, project
-everywhere, muted slots, the stage). Design draws a placeholder
-until its stage. Designer hints (ranges, labels, groups, the base
-recipe) will live in `meta.studio`, which the format keeps verbatim and
-the runtime ignores.
+`plans/worn-enchantment-pbr-roadmap-2026-09-08.md` holds the order of
+work, where each planned feature lands (a row, a variant alternative, a
+view field, a lab pass or a provider) and the naming rules. Every studio
+module lives in `WornEnchantmentPBR::Studio`, one level deep; the shared
+core and the rule tables stay in the top namespace, which the studio
+depends on and never the reverse. Modes are the `kLayouts` table in
+`Studio`; Design draws a placeholder until its stage.
 
 ## Known debts
 

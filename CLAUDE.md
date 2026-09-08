@@ -1,6 +1,8 @@
 # WornEnchantmentPBR: how the code is written
 
-Read `../../plans/worn-enchantment-pbr-compositor-brief.md` (the spec; its
+Read `../../plans/worn-enchantment-pbr-roadmap-2026-09-08.md` (the map: the
+model as it stands, the extension contracts, the order of work, the naming
+rules), `../../plans/worn-enchantment-pbr-compositor-brief.md` (the spec; its
 data model section is recipe format 1), `ARCHITECTURE.md` (module map,
 data flow, threads, ownership, invariants, extension points), `README.md`
 and `NOTES.md` before changing structure; update `ARCHITECTURE.md` with any
