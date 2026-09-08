@@ -696,14 +696,35 @@ namespace WornEnchantmentPBR::Studio
 			table.Cell();
 			Widgets::NextItemWidth(Width::Fit(a_recipe.id));
 			RecipeCombo(a_piece, a_recipe, "##recipe", a_out);
-			ImGui::SameLine();
-			if (ImGui::Button("New")) {
-				ImGui::OpenPopup("new-recipe");
-			}
-			NewRecipePopup(a_piece, a_out);
-			table.Cell();
-			UndoRedoButtons(a_recipe, a_out);
 			table.End();
+		}
+
+		// The Recipe rule's right group: New, then Undo and Redo, as every
+		// rule carries its actions at its right edge.
+		[[nodiscard]] Widgets::RuleLine RecipeRule(const PieceRow& a_piece, const RecipeRow& a_recipe, Intents& a_out)
+		{
+			const float newWidth = Widgets::ButtonWidth("New");
+			const float undoWidth = Widgets::ButtonWidth("Undo");
+			const float redoWidth = Widgets::ButtonWidth("Redo");
+			const float rightWidth = newWidth + undoWidth + redoWidth + 2.0f * Widgets::ItemSpacingX();
+			return Widgets::RuleLine{ "Recipe", rightWidth, [=, &a_piece, &a_recipe, &a_out]() {
+									 if (ImGui::Button("New", ImVec2{ newWidth, 0.0f })) {
+										 ImGui::OpenPopup("new-recipe");
+									 }
+									 NewRecipePopup(a_piece, a_out);
+									 ImGui::SameLine();
+									 UndoRedoButtons(a_recipe, a_out);
+								 } };
+		}
+
+		// The Output rule's right group: Clear, which removes the picked output.
+		[[nodiscard]] Widgets::RuleLine OutputRule(const Board& a_board, const RecipeRow& a_recipe, const Cell* a_picked, const Selection& a_selection, Intents& a_out)
+		{
+			const float clearWidth = Widgets::ButtonWidth("Clear");
+			return Widgets::RuleLine{ "Output", clearWidth, [=, &a_board, &a_recipe, &a_out]() {
+									 const bool light = a_selection.target == Target::kLight;
+									 ClearButton(a_recipe, light ? a_board.light.output : (a_picked ? a_picked->output : std::nullopt), a_out);
+								 } };
 		}
 
 		// Clear removes the picked output, layers and all, so the slot reads
@@ -715,7 +736,7 @@ namespace WornEnchantmentPBR::Studio
 			if (!output) {
 				ImGui::BeginDisabled();
 			}
-			if (ImGui::Button("Clear") && output) {
+			if (ImGui::Button("Clear", ImVec2{ Widgets::ButtonWidth("Clear"), 0.0f }) && output) {
 				Post(a_out, a_recipe.id, RemoveOutput{ *output });
 			}
 			if (!output) {
@@ -748,7 +769,7 @@ namespace WornEnchantmentPBR::Studio
 		void DrawEditContext(const Board& a_board, const RecipeRow& a_recipe, const Cell* a_picked, const Selection& a_selection, Intents& a_out)
 		{
 			const bool light = a_selection.target == Target::kLight;
-			auto       table = Widgets::Table::Begin("context", { { "S", Width::Px(Widgets::RowButtonWidth()) }, { "target", Width::Fit() }, { "slot", Width::Fit() }, { "", Width::Fill() }, { "", Width::Fit() } }, kContextStyle);
+			auto       table = Widgets::Table::Begin("context", { { "S", Width::Px(Widgets::RowButtonWidth()) }, { "target", Width::Fit() }, { "slot", Width::Fit() } }, kContextStyle);
 			if (!table.Open()) {
 				return;
 			}
@@ -776,9 +797,6 @@ namespace WornEnchantmentPBR::Studio
 				Widgets::NextItemWidth(Width::Fit(a_picked ? SlotLabel(*a_picked) : std::string{ "choose a slot" }));
 				SlotChoice(a_board, SurfaceOf(a_selection.target), a_picked, a_out);
 			}
-			table.Cell();
-			table.Cell();
-			ClearButton(a_recipe, light ? a_board.light.output : (a_picked ? a_picked->output : std::nullopt), a_out);
 			table.End();
 		}
 
@@ -830,8 +848,9 @@ namespace WornEnchantmentPBR::Studio
 		const Cell* DrawContext(const Snapshot& a_snapshot, const Board& a_board, const PieceRow& a_piece, const RecipeRow& a_recipe, const Selection& a_selection, Intents& a_out)
 		{
 			const Cell* picked = PickedCell(a_board, a_selection);
+			Widgets::Rule({}, RecipeRule(a_piece, a_recipe, a_out));
 			DrawRecipeContext(a_snapshot, a_piece, a_recipe, a_out);
-			Widgets::Rule();
+			Widgets::Rule({}, OutputRule(a_board, a_recipe, picked, a_selection, a_out));
 			DrawEditContext(a_board, a_recipe, picked, a_selection, a_out);
 
 			if (a_selection.target == Target::kLight) {

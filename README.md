@@ -357,14 +357,15 @@ are in `ARCHITECTURE.md` under "The recipe studio".
 
 - **Studio**: a mode bar (Compose, Paint, Design) over one set of
   view models, in one narrow column of collapsible sections so the game
-  stays in view. Compose starts with two labelled rows. The recipe row:
-  **S**, the recipe applied alone (isolate); the **selection** (actor
-  and piece); and the **recipe** within it. The edit row: **S**, solo for the
-  picked output; the **target** (material, shell or the light, the
-  format's word for where an output goes); the **slot** on it with its
-  state; and at the far right **Clear**, which
-  removes the picked output (a slot's, or the light) so the slot reads
-  empty again. The rule under the rows names what the stack pane shows,
+  stays in view. Compose is three rules, each naming the table under it
+  and carrying that table's actions at its right edge. **Recipe**: **S**,
+  the recipe applied alone (isolate); the **selection** (actor and
+  piece); and the **recipe** within it; at the right **New**, **Undo**
+  and **Redo**. **Output**: **S**, solo for the picked output; the
+  **target** (material, shell or the light, the format's word for where
+  an output goes); the **slot** on it with its state; at the right
+  **Clear**, which removes the picked output (a slot's, or the light) so
+  the slot reads empty again. The third rule names what the stack pane shows,
   one at a time: the picked slot's stack, or the target's settings. At
   the rule's right edge one button switches to the other, and reads
   **settings** while the stack is shown and **stack** while the
