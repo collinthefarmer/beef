@@ -756,6 +756,34 @@ namespace
 		Check(!Bound<SetShellPoint>(shellForm[10], "@inflate", edit), "a point takes no signal");
 	}
 
+	// kFieldKinds: the widget FieldInput draws and the shape CheckField runs,
+	// one row per kind. FieldInput and MenuWidgets::StyleOf read the same
+	// rows; this pins the engine-free half (widths and colours are drawn,
+	// not tested here).
+	void FieldKindTable()
+	{
+		const std::pair<FieldKind, std::pair<FieldInputKind, FieldCheckKind>> rows[]{
+			{ FieldKind::kScalar, { FieldInputKind::kValue, FieldCheckKind::kScalar } },
+			{ FieldKind::kColor, { FieldInputKind::kValue, FieldCheckKind::kColorOrVector } },
+			{ FieldKind::kVector, { FieldInputKind::kValue, FieldCheckKind::kColorOrVector } },
+			{ FieldKind::kReference, { FieldInputKind::kCombo, FieldCheckKind::kReference } },
+			{ FieldKind::kExpression, { FieldInputKind::kText, FieldCheckKind::kExpression } },
+			{ FieldKind::kCurve, { FieldInputKind::kValue, FieldCheckKind::kCurve } },
+			{ FieldKind::kMask, { FieldInputKind::kText, FieldCheckKind::kMask } },
+			{ FieldKind::kChannels, { FieldInputKind::kText, FieldCheckKind::kChannels } },
+			{ FieldKind::kToggle, { FieldInputKind::kToggle, FieldCheckKind::kNone } },
+			{ FieldKind::kChoice, { FieldInputKind::kChoice, FieldCheckKind::kChoice } },
+			{ FieldKind::kText, { FieldInputKind::kText, FieldCheckKind::kNone } },
+			{ FieldKind::kVec2, { FieldInputKind::kValue, FieldCheckKind::kVec2 } },
+		};
+		static_assert(std::size(rows) == kFieldKindCount);
+		for (const auto& [kind, expected] : rows) {
+			const auto* row = RowOf(kFieldKinds, kind);
+			Check(row && row->input == expected.first && row->check == expected.second && row->glyph[0] != '\0' && row->rule[0] != '\0', std::format("field kind {} draws its own widget and check", static_cast<int>(kind)));
+		}
+		Check(RowOf(kFieldKinds, static_cast<FieldKind>(99)) == nullptr, "an unknown field kind has no row");
+	}
+
 	void Checks(const RecipeRow& a_recipe, const GeometryRow& a_geometry)
 	{
 		const auto names = NamesOf(a_recipe, a_geometry);
@@ -788,6 +816,14 @@ namespace
 		Check(ok(CheckField(channels, "rg", names)) && !ok(CheckField(channels, "xyz", names)), "channels parse");
 		FieldSpec choice{ "material", FieldKind::kChoice, "", { "pbrCopy", "vanilla" }, false, std::nullopt, std::nullopt, {} };
 		Check(ok(CheckField(choice, "vanilla", names)) && !ok(CheckField(choice, "glass", names)), "a choice is one of its names");
+		FieldSpec vector{ "offset", FieldKind::kVector, "", {}, false, std::nullopt, std::nullopt, {} };
+		Check(ok(CheckField(vector, "1, 0, 0", names)) && ok(CheckField(vector, "0.5", names)) && !ok(CheckField(vector, "1, @nothing, 0", names)), "a vector field takes the same shape as a colour");
+		FieldSpec vec2{ "scroll", FieldKind::kVec2, "", {}, true, std::nullopt, std::nullopt, {} };
+		Check(ok(CheckField(vec2, "1, 0", names)) && ok(CheckField(vec2, "0.5", names)) && ok(CheckField(vec2, "", names)) && !ok(CheckField(vec2, "1, @nothing", names)), "two numbers, one number and emptiness pass a vec2 field; an unknown component reference fails");
+		FieldSpec toggle{ "flag", FieldKind::kToggle, "", {}, false, std::nullopt, std::nullopt, {} };
+		Check(ok(CheckField(toggle, "on", names)) && ok(CheckField(toggle, "off", names)) && !ok(CheckField(toggle, "", names)), "a toggle takes any text, only emptiness fails");
+		FieldSpec text{ "bones", FieldKind::kText, "", {}, true, std::nullopt, std::nullopt, {} };
+		Check(ok(CheckField(text, "NPC Spine2 [Spn2]", names)) && ok(CheckField(text, "", names)), "text takes anything, and may be empty");
 		Check(ok(CheckSignalValue("1", names)) && ok(CheckSignalValue("1, 0, 0", names)) && ok(CheckSignalValue("@glowLevel * 2", names)) && !ok(CheckSignalValue("@fill", names)) && !ok(CheckSignalValue("", names)), "a signal value is a number, a colour or an expression over signals");
 		Check(ok(CheckCurveText("x * @glowStrength", names)) && !ok(CheckCurveText("@fill", names)) && !ok(CheckCurveText("", names)), "a curve text is an expression in x over signals");
 		Check(ok(CheckMaskText("@metallic > 0.5", names)) && !ok(CheckMaskText("x", names)) && !ok(CheckMaskText("", names)), "a mask text is per texel and has no x");
@@ -1657,6 +1693,7 @@ int main()
 	SignalLists(row);
 	SignalForms(row);
 	PanelForms(row);
+	FieldKindTable();
 	Checks(row, geometry);
 	SourceForms(row);
 	Creators(row, geometry);

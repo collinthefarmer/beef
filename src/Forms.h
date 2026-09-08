@@ -11,6 +11,7 @@
 #include "Studio.h"
 
 #include <functional>
+#include <iterator>
 #include <optional>
 #include <string>
 #include <string_view>
@@ -38,6 +39,70 @@ namespace WornEnchantmentPBR::Studio
 		kText,        // plain text (a list of bone names)
 		kVec2,        // x, y (one number for both), or @signal of vec2 type
 	};
+	inline constexpr std::size_t kFieldKindCount = 12;
+
+	// The widget a field's kind draws: a combo over its names (reference), a
+	// combo over its names spelled as written (choice), a checkbox (toggle),
+	// a badge plus a text field (expression, mask, channels, plain text), or
+	// a value field that switches between text and a signal combo (scalar,
+	// colour, vector, vec2, curve).
+	enum class FieldInputKind
+	{
+		kCombo,
+		kChoice,
+		kToggle,
+		kText,
+		kValue,
+	};
+
+	// The shape EditCheck::CheckField runs for a kind: several kinds share a
+	// shape (colour and vector are both three numbers or @signal), and
+	// toggle and text take no check beyond emptiness.
+	enum class FieldCheckKind
+	{
+		kScalar,
+		kColorOrVector,
+		kVec2,
+		kReference,
+		kExpression,
+		kMask,
+		kCurve,
+		kChannels,
+		kChoice,
+		kNone,
+	};
+
+	// One row per kind, engine-free: the badge's glyph, whether a @signal may
+	// stand in for the value, the tooltip's rule, the widget that draws it
+	// and the shape of its check. `StyleOf` in MenuWidgets.cpp reads this and
+	// adds the ImVec4 colour, keyed by kind, since ImGui types have no home
+	// here; `FieldInput` (ComposePage.cpp) and `CheckField` (EditCheck.cpp)
+	// dispatch on `input` and `check` instead of switching on the kind.
+	struct FieldKindRow
+	{
+		FieldKind      value;
+		const char*    glyph;
+		bool           takesSignal;
+		const char*    rule;
+		FieldInputKind input;
+		FieldCheckKind check;
+	};
+
+	inline constexpr FieldKindRow kFieldKinds[]{
+		{ FieldKind::kScalar, "#", true, "scalar: a number, or @signal of scalar type", FieldInputKind::kValue, FieldCheckKind::kScalar },
+		{ FieldKind::kColor, "c", true, "colour: r, g, b in 0..1, or one number for all three, or @signal of colour type", FieldInputKind::kValue, FieldCheckKind::kColorOrVector },
+		{ FieldKind::kVector, "v", true, "vector: x, y, z (a position, direction or scale), or one number for all three, or @signal of vector type", FieldInputKind::kValue, FieldCheckKind::kColorOrVector },
+		{ FieldKind::kReference, "@", false, "reference: @name of a row of the recipe", FieldInputKind::kCombo, FieldCheckKind::kReference },
+		{ FieldKind::kExpression, "=", false, "expression: numbers, [r, g, b], @signals, + - * /, comparisons, and/or/not, if(c, a, b), abs min max clamp saturate floor ceil frac sqrt pow sin cos step smoothstep lerp, time, pi", FieldInputKind::kText, FieldCheckKind::kExpression },
+		{ FieldKind::kCurve, "x", false, "curve: an expression in x (mean is the source's mean), or @curve", FieldInputKind::kValue, FieldCheckKind::kCurve },
+		{ FieldKind::kMask, "m", false, "mask: an expression per texel where @source and @mask names are images and @signals are this tick's values", FieldInputKind::kText, FieldCheckKind::kMask },
+		{ FieldKind::kChannels, "ch", false, "channels: any of r g b a, in any order", FieldInputKind::kText, FieldCheckKind::kChannels },
+		{ FieldKind::kToggle, "?", false, "on or off", FieldInputKind::kToggle, FieldCheckKind::kNone },
+		{ FieldKind::kChoice, "o", false, "one of the listed values", FieldInputKind::kChoice, FieldCheckKind::kChoice },
+		{ FieldKind::kText, "\"", false, "text", FieldInputKind::kText, FieldCheckKind::kNone },
+		{ FieldKind::kVec2, "v", true, "vec2: x, y, or one number for both, or @signal of vec2 type", FieldInputKind::kValue, FieldCheckKind::kVec2 },
+	};
+	static_assert(std::size(kFieldKinds) == kFieldKindCount);
 
 	// The detail modal a field opens: the row its text names, shown with its
 	// picture or its own editor.
