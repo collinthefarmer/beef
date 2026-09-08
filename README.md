@@ -496,7 +496,9 @@ are in `ARCHITECTURE.md` under "The recipe studio".
   parts and UV charts, each with the bone that carries it and its share
   of the mesh), and samples and clusters the material's maps, once per
   session for each. The head line holds the recipe combo, which
-  keeps naming the recipe being painted for, with **preview on**,
+  keeps naming the recipe being painted for, then **on** and the
+  geometry the offers and picture describe (a combo views another; the
+  region applies to every geometry), with **preview on**,
   material or shell, at its right edge: where the paint recipe's
   emissive goes. The Region rule carries **Clear**, **Keep** and **Discard** at its
   right edge, the way the stack's rule carries its switch. The pane
@@ -504,8 +506,10 @@ are in `ARCHITECTURE.md` under "The recipe studio".
   problem above it when it has one), then the term table across its
   width, then, under a rule that carries a filter,
   what the piece can be shown to have as tables in collapsible sections:
-  parts, materials, bones, partitions, channels, presets, masks and
-  sources, each row with its measurements, greyed with the reason when
+  parts (the mesh's connected pieces; a UV chart with exactly a part's
+  vertices is named on that part's row instead of listed twice), charts
+  (the UV layout's own divisions), materials, bones, partitions,
+  channels, presets, masks and sources, each row with its measurements, greyed with the reason when
   the piece cannot make it; choosing a row adds it as a term. The where
   presets are gone; the shipped `regions.json` keeps only the what
   presets (material thresholds: leather, polished and rough metal,

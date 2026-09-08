@@ -60,7 +60,11 @@ namespace WornEnchantmentPBR
 		std::string        dominantBone;  // the bone carrying the most summed weight; empty when unskinned
 		float              dominantShare = 0.0f;  // that bone's share of the island's summed weight, 0..1
 		Vec3               centroid;      // mean bind-pose position, in the frame the position bake uses
-		[[nodiscard]] bool operator==(const MeshIsland&) const = default;
+		// The island of the other source with exactly the same vertices (a
+		// chart that is a whole component, or the reverse), so the offers
+		// list the two as one.
+		std::optional<std::uint16_t> twin;
+		[[nodiscard]] bool           operator==(const MeshIsland&) const = default;
 	};
 
 	// Per-vertex tables run over the partitions in mesh order, concatenated.

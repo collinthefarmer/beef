@@ -239,10 +239,10 @@ namespace WornEnchantmentPBR::Studio
 				region.dirty = !region.terms.empty();
 			},
 			[&](const ClearRegion&) { region = RegionStack{}; },
-			[&](const BeginPaint& i) { a_state.paint = PaintSession{ i.recipe, i.surface }; },
-			[&](const ReadMesh&) {
+			[&](const BeginPaint& i) { a_state.paint = PaintSession{ i.recipe, i.surface, {} }; },
+			[&](const ReadMesh& i) {
 				if (a_state.paint) {
-					a_state.paint->readPosted = true;
+					a_state.paint->readGeometry = i.geometry;
 				}
 			},
 			[&](const SetPaintSurface& i) {

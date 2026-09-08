@@ -68,7 +68,7 @@ namespace WornEnchantmentPBR::Studio
 	{
 		std::string recipe;
 		Surface     surface = Surface::kMaterial;
-		bool        readPosted = false;  // the shape's read (mesh and material) was asked for once the paint recipe was applied
+		std::string readGeometry;  // the geometry whose read (mesh and material) was asked for once the paint recipe was applied; empty until then
 	};
 
 	using TextBuffer = std::array<char, 1024>;

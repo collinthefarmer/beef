@@ -1127,13 +1127,23 @@ namespace WornEnchantmentPBR::Studio
 		if (!a_geometry.meshRead) {
 			offers.push_back(Unavailable(OfferGroup::kParts, std::string{ kMeshUnread }, IslandTerm{}));
 		}
+		// A chart with the same vertices as a part is that part's twin: the
+		// part's row names it and the chart's row is left out. The charts
+		// that remain are the UV layout's own divisions.
 		for (const auto& island : a_geometry.islands) {
+			const bool chart = island.source == IslandSource::kChart;
+			if (chart && island.twin) {
+				continue;
+			}
 			const IslandTerm term{ island.source, island.id };
-			std::string         detail = std::format("{}% of the mesh", Percent(island.share));
+			std::string      detail = std::format("{}% of the mesh", Percent(island.share));
 			if (!island.dominantBone.empty()) {
 				detail += std::format(", {} {}%", PlainBoneName(a_presets, island.dominantBone), Percent(island.dominantShare));
 			}
-			offers.push_back(Offer(OfferGroup::kParts, std::format("{} {}", PlainIslandSourceName(island.source), island.id), std::move(detail), term));
+			if (island.twin) {
+				detail += std::format(", also {} {}", PlainIslandSourceName(IslandSource::kChart), *island.twin);
+			}
+			offers.push_back(Offer(chart ? OfferGroup::kCharts : OfferGroup::kParts, std::format("{} {}", PlainIslandSourceName(island.source), island.id), std::move(detail), term));
 		}
 		// materials
 		if (a_geometry.clusters.empty()) {

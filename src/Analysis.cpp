@@ -304,6 +304,51 @@ namespace WornEnchantmentPBR
 		}
 	}
 
+	namespace
+	{
+		// A component and a chart are twins when every vertex of the one is a
+		// vertex of the other: each component maps to one chart over all its
+		// vertices, and the two hold the same number of them.
+		void PairTwins(MeshAnalysis& a_analysis)
+		{
+			constexpr std::uint16_t kConflict = 0xFFFF;
+			std::vector<std::uint16_t> chartOfComponent(a_analysis.components, kNoIsland);
+			std::vector<std::size_t>   componentSize(a_analysis.components, 0);
+			std::vector<std::size_t>   chartSize(a_analysis.charts, 0);
+			const std::size_t          vertices = (std::min)(a_analysis.componentOf.size(), a_analysis.chartOf.size());
+			for (std::size_t v = 0; v < vertices; ++v) {
+				const std::uint16_t c = a_analysis.componentOf[v];
+				const std::uint16_t k = a_analysis.chartOf[v];
+				if (c < componentSize.size()) {
+					++componentSize[c];
+				}
+				if (k < chartSize.size()) {
+					++chartSize[k];
+				}
+				if (c >= chartOfComponent.size() || k == kNoIsland) {
+					continue;
+				}
+				auto& seen = chartOfComponent[c];
+				seen = seen == kNoIsland ? k : (seen == k ? k : kConflict);
+			}
+			for (auto& island : a_analysis.islands) {
+				if (island.source != IslandSource::kComponent || island.id >= chartOfComponent.size()) {
+					continue;
+				}
+				const std::uint16_t k = chartOfComponent[island.id];
+				if (k == kNoIsland || k == kConflict || k >= chartSize.size() || chartSize[k] != componentSize[island.id]) {
+					continue;
+				}
+				island.twin = k;
+				for (auto& chart : a_analysis.islands) {
+					if (chart.source == IslandSource::kChart && chart.id == k) {
+						chart.twin = island.id;
+					}
+				}
+			}
+		}
+	}
+
 	MeshAnalysis AnalyseMesh(const MeshData& a_mesh)
 	{
 		MeshAnalysis                  out;
@@ -322,6 +367,7 @@ namespace WornEnchantmentPBR
 		out.islands.insert(out.islands.end(), byChart.islands.begin(), byChart.islands.end());
 		out.componentOf = std::move(byComponent.ofVertex);
 		out.chartOf = std::move(byChart.ofVertex);
+		PairTwins(out);
 		return out;
 	}
 

@@ -117,6 +117,7 @@ namespace
 		}
 		Check(analysis.charts == 2 && analysis.chartOf == std::vector<std::uint16_t>{ 0, 0, 0, 0, 1, 1, 1 }, "pieces apart in UV are two charts");
 		Check(analysis.islands.size() == 4 && analysis.islands[0].source == IslandSource::kComponent && analysis.islands[2].source == IslandSource::kChart, "components list first, then charts");
+		Check(quad && quad->twin == 0 && tri && tri->twin == 1 && analysis.islands[2].twin == 0 && analysis.islands[3].twin == 1, "a chart with a component's vertices is its twin, both ways");
 		Check(AnalyseMesh(TwoPieces()) == analysis, "the same mesh analyses the same way twice");
 	}
 
@@ -131,6 +132,7 @@ namespace
 		const MeshIsland* component = RegionAt(analysis, IslandSource::kComponent, 0);
 		Check(component && component->dominantBone.empty() && Near(component->dominantShare, 0.0f), "an unskinned mesh has no dominant bone");
 		Check(component && Near(component->share, 1.0f), "the one component holds every triangle");
+		Check(component && !component->twin && std::ranges::none_of(analysis.islands, [](const MeshIsland& i) { return i.twin.has_value(); }), "a component split into two charts has no twin, nor do the charts");
 		MeshData unreached = SeamMesh();
 		unreached.partitions[0].vertices.push_back(At(5, 5, 5, 0.9f, 0.9f));
 		const MeshAnalysis withStray = AnalyseMesh(unreached);

@@ -2004,10 +2004,29 @@ namespace WornEnchantmentPBR::Studio
 		// Paint's head: the active recipe's name, held while the session runs
 		// (the piece's applied recipes are the paint recipe alone then), over
 		// a rule; the context rows are Compose's.
-		void DrawPaintHead(const PieceRow& a_piece, const RecipeRow& a_recipe, const MenuState& a_state, Intents& a_out)
+		void DrawPaintHead(const PieceRow& a_piece, const RecipeRow& a_recipe, const GeometryRow* a_geometry, const MenuState& a_state, Intents& a_out)
 		{
 			if (a_state.paint) {
 				Widgets::HeldLabel(a_state.paint->recipe.c_str());
+				// The geometry the offers describe and the picture shows, with a
+				// combo to view another; the region applies to every geometry.
+				if (a_geometry && !a_recipe.geometries.empty()) {
+					ImGui::SameLine();
+					ImGui::AlignTextToFramePadding();
+					Widgets::Dim("on");
+					ImGui::SameLine();
+					const std::string current = GeometryLabel(a_geometry->name, a_piece.armorName);
+					Widgets::NextItemWidth(Width::Fit(current));
+					if (ImGui::BeginCombo("##geometry", current.c_str())) {
+						for (const auto& geometry : a_recipe.geometries) {
+							if (ImGui::Selectable(GeometryLabel(geometry.name, a_piece.armorName).c_str(), geometry.name == a_geometry->name)) {
+								a_out.push_back(ViewGeometry{ geometry.name });
+							}
+						}
+						ImGui::EndCombo();
+					}
+					Widgets::Tooltip("the geometry the offers and the picture describe; the region applies to every geometry of the recipe");
+				}
 				// Where the paint recipe previews, at the right edge of the line.
 				ImGui::SameLine();
 				const float labelWidth = Widgets::TextWidth("preview on");
@@ -2080,7 +2099,7 @@ namespace WornEnchantmentPBR::Studio
 				if (a_state.layout.contextRows) {
 					DrawRecipeContext(a_snapshot, *a_piece, *a_recipe, a_out);
 				} else {
-					DrawPaintHead(*a_piece, *a_recipe, a_state, a_out);
+					DrawPaintHead(*a_piece, *a_recipe, nullptr, a_state, a_out);
 				}
 				Widgets::Rule();
 				Widgets::Dim(std::format("recipe {} is bound to no geometry of this piece: its keys or selectors match none of its geometries", a_recipe->id));
@@ -2110,7 +2129,7 @@ namespace WornEnchantmentPBR::Studio
 			const bool painting = layout.regionEditor;
 			const bool painterReady = painting && a_state.paint && a_recipe->id == kPaintRecipe;
 			if (!layout.contextRows) {
-				DrawPaintHead(*a_piece, *a_recipe, a_state, a_out);
+				DrawPaintHead(*a_piece, *a_recipe, a_geometry, a_state, a_out);
 				Widgets::Rule();
 				if (!a_state.paint) {
 					// A soloed recipe is the one painted for: Keep lands there.
@@ -2127,10 +2146,11 @@ namespace WornEnchantmentPBR::Studio
 					} else {
 						Widgets::Warn("the piece offers no key to paint on");
 					}
-				} else if (painterReady && !a_state.paint->readPosted) {
-					// The shape's read (its mesh and its material's clusters) is asked
-					// for once the paint recipe is the one applied; asked earlier it
-					// would find nothing bound, since the session retires everything.
+				} else if (painterReady && a_state.paint->readGeometry != a_geometry->name) {
+					// The geometry's read (its mesh and its material's clusters) is
+					// asked for once the paint recipe is the one applied, and again
+					// when the viewed geometry changes; asked earlier it would find
+					// nothing bound, since the session retires everything.
 					a_out.push_back(ReadMesh{ a_piece->actorID, a_geometry->name });
 				} else if (!painterReady) {
 					Widgets::Dim("starting the paint recipe");

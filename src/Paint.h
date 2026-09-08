@@ -147,6 +147,7 @@ namespace WornEnchantmentPBR::Studio
 	enum class OfferGroup
 	{
 		kParts,
+		kCharts,
 		kMaterials,
 		kBones,
 		kPartitions,
@@ -165,6 +166,7 @@ namespace WornEnchantmentPBR::Studio
 	};
 	inline constexpr OfferGroupSpec kOfferGroups[]{
 		{ OfferGroup::kParts, "parts", true },
+		{ OfferGroup::kCharts, "charts", false },
 		{ OfferGroup::kMaterials, "materials", true },
 		{ OfferGroup::kBones, "bones", false },
 		{ OfferGroup::kPartitions, "partitions", false },
@@ -173,7 +175,7 @@ namespace WornEnchantmentPBR::Studio
 		{ OfferGroup::kMasks, "masks", false },
 		{ OfferGroup::kSources, "sources", false },
 	};
-	inline constexpr std::size_t kOfferGroupCount = 8;
+	inline constexpr std::size_t kOfferGroupCount = 9;
 	static_assert(std::size(kOfferGroups) == kOfferGroupCount);
 
 	struct TermOffer

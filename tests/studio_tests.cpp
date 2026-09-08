@@ -1285,9 +1285,9 @@ namespace
 		Check(state.paint && state.paint->recipe == kRecipeID && state.paint->surface == Surface::kShell, "a paint session names the active recipe and its surface");
 		Reduce(state, SetPaintSurface{ Surface::kMaterial });
 		Check(state.paint && state.paint->surface == Surface::kMaterial, "the preview surface changes");
-		Check(state.paint && !state.paint->readPosted, "a fresh session has not asked for the geometry's read");
+		Check(state.paint && state.paint->readGeometry.empty(), "a fresh session has not asked for the geometry's read");
 		Reduce(state, ReadMesh{ kPlayer, "Cuirass" });
-		Check(state.paint && state.paint->readPosted, "posting the read marks the session, so it is asked once");
+		Check(state.paint && state.paint->readGeometry == "Cuirass", "posting the read names the geometry read, so it is asked once per geometry");
 		Reduce(state, AddTerm{ Term{ TermOp::kSet, "@a", "a" } });
 		Reduce(state, KeepPaint{ kRecipeID, "chest" });
 		Check(!state.paint && state.region.terms.empty(), "keep ends the session and empties the stack");
@@ -1470,7 +1470,11 @@ namespace
 		chart.source = IslandSource::kChart;
 		chart.id = 0;
 		chart.share = 1.0f;
-		geometry.islands = { body, hand, chart };
+		MeshIsland whole = chart;  // a chart with exactly the body's vertices: folded into the body's row
+		whole.id = 1;
+		whole.twin = 0;
+		body.twin = 1;
+		geometry.islands = { body, hand, chart, whole };
 		MaterialCluster leather;
 		leather.id = 0;
 		leather.share = 0.7f;
@@ -1636,10 +1640,11 @@ namespace
 		}
 		Check(ordered && !offers.empty(), "offers come in group order");
 		const auto count = [&](OfferGroup a_group) { return std::ranges::count(offers, a_group, &TermOffer::group); };
-		Check(count(OfferGroup::kParts) == 3 && count(OfferGroup::kMaterials) == 2 && count(OfferGroup::kBones) == 3 && count(OfferGroup::kPartitions) == 2 && count(OfferGroup::kChannels) == 8 && count(OfferGroup::kPresets) == 8 && count(OfferGroup::kMasks) == 1 && count(OfferGroup::kSources) == 8, "one offer per part, cluster, bone, partition, channel, what preset, mask and source");
-		Check(offers[0].name == "part 0" && offers[0].detail == "60% of the mesh, chest 90%" && !offers[0].unavailable && !offers[0].coverage && Get<IslandTerm>(offers[0].kind) && Get<IslandTerm>(offers[0].kind)->id == 0, "a part's offer carries its measurements, no coverage yet");
+		Check(count(OfferGroup::kParts) == 2 && count(OfferGroup::kCharts) == 1 && count(OfferGroup::kMaterials) == 2 && count(OfferGroup::kBones) == 3 && count(OfferGroup::kPartitions) == 2 && count(OfferGroup::kChannels) == 8 && count(OfferGroup::kPresets) == 8 && count(OfferGroup::kMasks) == 1 && count(OfferGroup::kSources) == 8, "one offer per part, cluster, bone, partition, channel, what preset, mask and source");
+		Check(offers[0].name == "part 0" && offers[0].detail == "60% of the mesh, chest 90%, also chart 1" && !offers[0].unavailable && !offers[0].coverage && Get<IslandTerm>(offers[0].kind) && Get<IslandTerm>(offers[0].kind)->id == 0, "a part's offer carries its measurements, no coverage yet");
 		Check(offers[3].name == "material 0" && offers[3].detail == "rough dark non-metal, 70%" && Get<ClusterTerm>(offers[3].kind) && Get<ClusterTerm>(offers[3].kind)->id == 0 && Get<ClusterTerm>(offers[3].kind)->settings == ClusterSettings{}, "a cluster's offer at the default settings");
-		const auto* channelOffer = Get<ThresholdTerm>(offers[static_cast<std::size_t>(count(OfferGroup::kParts) + count(OfferGroup::kMaterials) + count(OfferGroup::kBones) + count(OfferGroup::kPartitions))].kind);
+		Check(offers[2].group == OfferGroup::kCharts && offers[2].name == "chart 0" && std::ranges::none_of(offers, [](const TermOffer& o) { return o.name == "chart 1"; }), "a chart of its own is offered under charts; a twin chart is folded into its part");
+		const auto* channelOffer = Get<ThresholdTerm>(offers[static_cast<std::size_t>(count(OfferGroup::kParts) + count(OfferGroup::kCharts) + count(OfferGroup::kMaterials) + count(OfferGroup::kBones) + count(OfferGroup::kPartitions))].kind);
 		Check(channelOffer && channelOffer->low == 0.5f && channelOffer->high == 1.0f && channelOffer->channel == MaterialChannel::kDiffuseLuma, "a channel's offer is its upper half");
 		Check(std::ranges::any_of(offers, [](const TermOffer& o) { return o.group == OfferGroup::kMasks && o.name == "metal" && o.detail == "@metallic"; }) && std::ranges::none_of(offers, [](const TermOffer& o) { return o.name == kScratchMask; }), "masks are offered with their expressions");
 		Check(std::ranges::none_of(OffersOf(*presets, a_recipe, geometry, "metal"), [](const TermOffer& o) { return o.group == OfferGroup::kMasks; }), "the mask being edited is not offered");
