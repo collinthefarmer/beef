@@ -465,8 +465,10 @@ are in `ARCHITECTURE.md` under "The recipe studio".
   greyed while anything references the row. **Validation before
   apply**: every typed field is checked as it is typed, with the file's
   own parsers and against the recipe's names and types, and reads red
-  with the message under it until it would be accepted; a failing text
-  is not committed. **Creation in place**: a reference combo ends with
+  with the reason floating under it (above it at the window's edge)
+  until it would be accepted; the label takes no room in the layout, so
+  nothing moves while the text is fixed. Enter on a failing text keeps
+  the text and the focus; it is not committed. **Creation in place**: a reference combo ends with
   what the field can make, "new image", "new bake", "new mask", "new
   curve", "new constant", "new expression", and "promote to signal",
   which turns the literal the field holds into a constant named after

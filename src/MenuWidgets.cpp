@@ -273,6 +273,35 @@ namespace WornEnchantmentPBR::Studio::Widgets
 
 	// ----------------------------------------------------------------- fields
 
+	namespace
+	{
+		// The reason a field's text would be refused, as a label floating under
+		// the field (above it when the window ends too soon), on the foreground
+		// draw list: it takes no layout space, so nothing under the field moves
+		// while the text is being fixed, and a row needs no room for it.
+		void ProblemLabel(std::string_view a_text)
+		{
+			const ImVec2 itemMin = ImGui::GetItemRectMin();
+			const ImVec2 itemMax = ImGui::GetItemRectMax();
+			const ImVec2 windowMin = ImGui::GetWindowPos();
+			const ImVec2 windowSize = ImGui::GetWindowSize();
+			const ImVec2 windowMax{ windowMin.x + windowSize.x, windowMin.y + windowSize.y };
+			const float  pad = ImGui::GetStyle()->FramePadding.x;
+			const float  gap = 2.0f;
+			const float  wrap = (std::max)(windowMax.x - itemMin.x - 2.0f * pad, 4.0f * ImGui::GetFontSize());
+			const ImVec2 text = ImGui::CalcTextSize(a_text.data(), a_text.data() + a_text.size(), false, wrap);
+			const float  height = text.y + 2.0f * pad;
+			const bool   below = itemMax.y + gap + height <= windowMax.y;
+			const ImVec2 boxMin{ itemMin.x, below ? itemMax.y + gap : itemMin.y - gap - height };
+			const ImVec2 boxMax{ itemMin.x + text.x + 2.0f * pad, boxMin.y + height };
+			auto* const  list = ImGui::GetForegroundDrawList();
+			ImGui::ImDrawListManager::PushClipRect(list, windowMin, windowMax, false);
+			ImGui::ImDrawListManager::AddRectFilled(list, boxMin, boxMax, ImGui::GetColorU32(ImGuiMCP::ImGuiCol_PopupBg, 0.95f), 0.0f, 0);
+			ImGui::ImDrawListManager::AddText(list, ImGui::GetFont(), ImGui::GetFontSize(), ImVec2{ boxMin.x + pad, boxMin.y + pad }, ImGui::GetColorU32(kBad), a_text.data(), a_text.data() + a_text.size(), wrap);
+			ImGui::ImDrawListManager::PopClipRect(list);
+		}
+	}
+
 	std::optional<std::string> TextField(const char* a_key, const std::string& a_model, const Width& a_width, float a_scale, const TextCheck& a_check)
 	{
 		auto&          state = State();
@@ -283,8 +312,10 @@ namespace WornEnchantmentPBR::Studio::Widgets
 			std::memcpy(buffer.data(), a_model.data(), n);
 			buffer[n] = '\0';
 		}
-		// While the field is being typed into, its text is checked each frame
-		// and the frame reads red with the message under it until it passes.
+		// While the field is being typed into, its text is checked each frame:
+		// the frame reads red with the reason floating under it until it
+		// passes. Enter on a failing text keeps the text and the focus, so it
+		// can be fixed rather than typed again.
 		const std::optional<std::string> problem = (a_check && state.activeField == key) ? a_check(std::string{ buffer.data() }) : std::nullopt;
 		ImGui::PushID(Literal(a_key));
 		if (problem) {
@@ -294,19 +325,27 @@ namespace WornEnchantmentPBR::Studio::Widgets
 		const bool committed = ImGui::InputText("##text", buffer.data(), buffer.size(), ImGuiMCP::ImGuiInputTextFlags_EnterReturnsTrue);
 		if (problem) {
 			ImGui::PopStyleColor();
-			Problem(*problem);
 		}
+		// Tracked from the input itself: an item drawn after it would report
+		// its own, never active, state and the field would read inactive
+		// every other frame.
 		TrackActive(key);
-		ImGui::PopID();
+		if (problem) {
+			ProblemLabel(*problem);
+		}
+		std::optional<std::string> result;
 		if (committed) {
-			state.activeField = kNoField;
 			std::string text{ buffer.data() };
 			if (a_check && a_check(text)) {
-				return std::nullopt;  // refused before apply; the field shows the model again
+				state.activeField = key;  // refused: the text stays, and the focus with it
+				ImGui::SetKeyboardFocusHere(-1);
+			} else {
+				state.activeField = kNoField;
+				result = std::move(text);
 			}
-			return text;
 		}
-		return std::nullopt;
+		ImGui::PopID();
+		return result;
 	}
 
 	std::string_view LiveTextField(const char* a_key, const char* a_hint, const Width& a_width, float a_scale)
