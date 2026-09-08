@@ -114,42 +114,52 @@ namespace WornEnchantmentPBR
 			return a_bound.material.get();
 		}
 
-		float ScalarOr(const SignalState& a_signals, const std::optional<Param>& a_param, float a_default)
+		// An output's scalars as this tick writes them: a field the file gives
+		// is resolved through the signals, one it leaves out takes the field's
+		// fallback; a hidden output writes zero for what would show.
+		struct TickScalars
 		{
-			return a_param ? a_signals.Resolve(*a_param) : a_default;
-		}
+			const SignalState& signals;
+			const SlotScalars& scalars;
+			bool               shown;
 
-		Vec3 ColorOr(const SignalState& a_signals, const std::optional<Vec3Param>& a_param, const Vec3& a_default)
-		{
-			return a_param ? a_signals.Resolve(*a_param) : a_default;
-		}
+			[[nodiscard]] float Of(ScalarField a_field) const
+			{
+				const auto* param = ScalarOf(scalars, a_field);
+				return param && *param ? signals.Resolve(**param) : ScalarFallback(a_field);
+			}
+			[[nodiscard]] float Shown(ScalarField a_field) const { return shown ? Of(a_field) : 0.0f; }
+			[[nodiscard]] Vec3  Color() const
+			{
+				const float fallback = ScalarFallback(ScalarField::kColor);
+				return scalars.color ? signals.Resolve(*scalars.color) : Vec3{ fallback, fallback, fallback };
+			}
+		};
 
 		// One output's writes for this tick: the composite into the slot, then
-		// the slot's scalars. A hidden output puts the original map back and
-		// zeroes what would show.
+		// the slot's scalars through the binding's call for that slot.
 		void WriteSlot(SlotTarget& a_target, const MaterialOutput& a_output, const SignalState& a_signals, RE::NiSourceTexture* a_texture, bool a_shown)
 		{
-			const Vec3 white{ 1.0f, 1.0f, 1.0f };
+			const TickScalars tick{ a_signals, a_output.scalars, a_shown };
 			a_target.WriteTexture(a_output.slot, a_shown ? a_texture : nullptr);
 			switch (a_output.slot) {
 			case Slot::kEmissive:
-				a_target.WriteEmissive(white, a_shown ? ScalarOr(a_signals, a_output.scalars.strength, 1.0f) : 0.0f);
+				a_target.WriteEmissive(Vec3{ 1.0f, 1.0f, 1.0f }, tick.Shown(ScalarField::kStrength));
 				break;
 			case Slot::kFuzz:
-				a_target.WriteFuzz(ColorOr(a_signals, a_output.scalars.color, white), a_shown ? ScalarOr(a_signals, a_output.scalars.weight, 1.0f) : 0.0f);
+				a_target.WriteFuzz(tick.Color(), tick.Shown(ScalarField::kWeight));
 				break;
 			case Slot::kHeight:
-				a_target.WriteHeightScale(a_shown ? ScalarOr(a_signals, a_output.scalars.scale, 1.0f) : 0.0f);
+				a_target.WriteHeightScale(tick.Shown(ScalarField::kScale));
 				break;
 			case Slot::kGlint:
-				a_target.WriteGlint(ScalarOr(a_signals, a_output.scalars.screenSpaceScale, 1.5f), ScalarOr(a_signals, a_output.scalars.logMicrofacetDensity, 40.0f),
-					ScalarOr(a_signals, a_output.scalars.microfacetRoughness, 0.015f), ScalarOr(a_signals, a_output.scalars.densityRandomization, 2.0f), a_shown);
+				a_target.WriteGlint(tick.Of(ScalarField::kScreenSpaceScale), tick.Of(ScalarField::kLogMicrofacetDensity), tick.Of(ScalarField::kMicrofacetRoughness), tick.Of(ScalarField::kDensityRandomization), a_shown);
 				break;
 			case Slot::kCoat:
-				a_target.WriteCoat(ScalarOr(a_signals, a_output.scalars.roughness, 1.0f), a_shown ? ScalarOr(a_signals, a_output.scalars.level, 0.04f) : 0.0f);
+				a_target.WriteCoat(tick.Of(ScalarField::kRoughness), tick.Shown(ScalarField::kLevel));
 				break;
 			case Slot::kSubsurface:
-				a_target.WriteSubsurface(ColorOr(a_signals, a_output.scalars.color, white), a_shown ? ScalarOr(a_signals, a_output.scalars.thickness, 1.0f) : 0.0f);
+				a_target.WriteSubsurface(tick.Color(), tick.Shown(ScalarField::kThickness));
 				break;
 			default:
 				break;
@@ -1404,24 +1414,16 @@ namespace WornEnchantmentPBR
 							orow.problem = o.problem;
 							orow.texture = o.stack ? o.stack->Texture() : nullptr;
 							if (material) {
+								// The slot's scalars the file gives, in field order, resolved now.
 								const auto& sc = material->scalars;
 								const auto& sig = *applied.signals;
-								if (sc.strength) {
-									orow.scalars.push_back({ "strength", sig.Resolve(*sc.strength), ParamText(*sc.strength) });
-								}
-								if (sc.scale) {
-									orow.scalars.push_back({ "scale", sig.Resolve(*sc.scale), ParamText(*sc.scale) });
-								}
-								if (sc.color) {
-									orow.scalars.push_back({ "color", sig.Resolve(*sc.color), Vec3ParamText(*sc.color) });
-								}
-								if (sc.weight) {
-									orow.scalars.push_back({ "weight", sig.Resolve(*sc.weight), ParamText(*sc.weight) });
-								}
-								for (const auto& [name, param] : { std::pair{ "screenSpaceScale", &sc.screenSpaceScale }, std::pair{ "logMicrofacetDensity", &sc.logMicrofacetDensity },
-										 std::pair{ "microfacetRoughness", &sc.microfacetRoughness }, std::pair{ "densityRandomization", &sc.densityRandomization },
-										 std::pair{ "roughness", &sc.roughness }, std::pair{ "level", &sc.level }, std::pair{ "thickness", &sc.thickness } }) {
-									if (*param) {
+								for (const auto field : ScalarsOf(material->slot)) {
+									const std::string name{ ScalarFieldName(field) };
+									if (field == ScalarField::kColor) {
+										if (sc.color) {
+											orow.scalars.push_back({ name, sig.Resolve(*sc.color), Vec3ParamText(*sc.color) });
+										}
+									} else if (const auto* param = ScalarOf(sc, field); param && *param) {
 										orow.scalars.push_back({ name, sig.Resolve(**param), ParamText(**param) });
 									}
 								}

@@ -1360,18 +1360,12 @@ namespace WornEnchantmentPBR
 			m.surface = *surface;
 			if (auto slot = r.Enum("slot", kSlots)) m.slot = *slot;
 			else if (!r.Has("slot")) a_ctx.Error("'slot' is required");
-			auto& sc = m.scalars;
-			sc.strength = r.Parameter("strength");
-			sc.scale = r.Parameter("scale");
-			sc.color = r.Vector3("color", true);
-			sc.weight = r.Parameter("weight");
-			sc.screenSpaceScale = r.Parameter("screenSpaceScale");
-			sc.logMicrofacetDensity = r.Parameter("logMicrofacetDensity");
-			sc.microfacetRoughness = r.Parameter("microfacetRoughness");
-			sc.densityRandomization = r.Parameter("densityRandomization");
-			sc.roughness = r.Parameter("roughness");
-			sc.level = r.Parameter("level");
-			sc.thickness = r.Parameter("thickness");
+			for (const auto& field : kScalarFields) {
+				Match(
+					field.member,
+					[&](std::optional<Param> SlotScalars::*member) { m.scalars.*member = r.Parameter(field.name); },
+					[&](std::optional<Vec3Param> SlotScalars::*member) { m.scalars.*member = r.Vector3(field.name, true); });
+			}
 			if (const auto* sel = r.Child("selector")) m.selector = SelectorFrom(*sel, a_ctx);
 			if (auto b = r.Boolean("replace")) m.replace = *b;
 			if (const auto* stack = r.Child("stack")) {
@@ -1399,18 +1393,17 @@ namespace WornEnchantmentPBR
 					json o = json::object();
 					o["target"] = NameOf(kSurfaces, m.surface);
 					o["slot"] = NameOf(kSlots, m.slot);
-					const auto& sc = m.scalars;
-					if (sc.strength) o["strength"] = ParamToJson(*sc.strength);
-					if (sc.scale) o["scale"] = ParamToJson(*sc.scale);
-					if (sc.color) o["color"] = VecToJson(*sc.color);
-					if (sc.weight) o["weight"] = ParamToJson(*sc.weight);
-					if (sc.screenSpaceScale) o["screenSpaceScale"] = ParamToJson(*sc.screenSpaceScale);
-					if (sc.logMicrofacetDensity) o["logMicrofacetDensity"] = ParamToJson(*sc.logMicrofacetDensity);
-					if (sc.microfacetRoughness) o["microfacetRoughness"] = ParamToJson(*sc.microfacetRoughness);
-					if (sc.densityRandomization) o["densityRandomization"] = ParamToJson(*sc.densityRandomization);
-					if (sc.roughness) o["roughness"] = ParamToJson(*sc.roughness);
-					if (sc.level) o["level"] = ParamToJson(*sc.level);
-					if (sc.thickness) o["thickness"] = ParamToJson(*sc.thickness);
+					for (const auto& field : kScalarFields) {
+						const std::string key{ field.name };
+						Match(
+							field.member,
+							[&](std::optional<Param> SlotScalars::*member) {
+								if (m.scalars.*member) o[key] = ParamToJson(*(m.scalars.*member));
+							},
+							[&](std::optional<Vec3Param> SlotScalars::*member) {
+								if (m.scalars.*member) o[key] = VecToJson(*(m.scalars.*member));
+							});
+					}
 					if (!m.selector.All()) o["selector"] = SelectorToJson(m.selector);
 					if (m.replace) o["replace"] = true;
 					json stack = json::array();

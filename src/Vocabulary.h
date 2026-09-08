@@ -33,10 +33,58 @@ namespace WornEnchantmentPBR
 	inline constexpr Named<RippleShape> kRippleShapes[]{ { RippleShape::kRing, "ring" }, { RippleShape::kDisc, "disc" } };
 
 	inline constexpr Named<Surface> kSurfaces[]{ { Surface::kMaterial, "material" }, { Surface::kShell, "shell" } };
-	inline constexpr Named<Slot> kSlots[]{ { Slot::kDiffuse, "diffuse" }, { Slot::kEmissive, "emissive" }, { Slot::kRmaos, "rmaos" }, { Slot::kNormal, "normal" }, { Slot::kHeight, "height" }, { Slot::kFuzz, "fuzz" }, { Slot::kGlint, "glint" }, { Slot::kCoat, "coat" }, { Slot::kSubsurface, "subsurface" } };
-	static_assert(std::size(kSlots) == kSlotCount);
-	inline constexpr Named<ScalarField> kScalarFields[]{ { ScalarField::kStrength, "strength" }, { ScalarField::kScale, "scale" }, { ScalarField::kColor, "color" }, { ScalarField::kWeight, "weight" }, { ScalarField::kScreenSpaceScale, "screenSpaceScale" }, { ScalarField::kLogMicrofacetDensity, "logMicrofacetDensity" }, { ScalarField::kMicrofacetRoughness, "microfacetRoughness" }, { ScalarField::kDensityRandomization, "densityRandomization" }, { ScalarField::kRoughness, "roughness" }, { ScalarField::kLevel, "level" }, { ScalarField::kThickness, "thickness" } };
+	// Glint's fallbacks are the values CS starts a material at; the rest are
+	// what a fresh output should look like in the studio.
+	inline constexpr ScalarFieldRow kScalarFields[]{
+		{ ScalarField::kStrength, "strength", &SlotScalars::strength, 1.0f },
+		{ ScalarField::kScale, "scale", &SlotScalars::scale, 1.0f },
+		{ ScalarField::kColor, "color", &SlotScalars::color, 1.0f },
+		{ ScalarField::kWeight, "weight", &SlotScalars::weight, 1.0f },
+		{ ScalarField::kScreenSpaceScale, "screenSpaceScale", &SlotScalars::screenSpaceScale, 1.5f },
+		{ ScalarField::kLogMicrofacetDensity, "logMicrofacetDensity", &SlotScalars::logMicrofacetDensity, 40.0f },
+		{ ScalarField::kMicrofacetRoughness, "microfacetRoughness", &SlotScalars::microfacetRoughness, 0.015f },
+		{ ScalarField::kDensityRandomization, "densityRandomization", &SlotScalars::densityRandomization, 2.0f },
+		{ ScalarField::kRoughness, "roughness", &SlotScalars::roughness, 0.15f },
+		{ ScalarField::kLevel, "level", &SlotScalars::level, 0.6f },
+		{ ScalarField::kThickness, "thickness", &SlotScalars::thickness, 1.0f },
+	};
 	static_assert(std::size(kScalarFields) == kScalarFieldCount);
+
+	namespace SlotColumns
+	{
+		inline constexpr ChannelSet kRgba{ true, true, true, true };
+		inline constexpr ChannelSet kRgb{ true, true, true, false };
+		inline constexpr ChannelSet kRedOnly{ true, false, false, false };
+		inline constexpr ChannelSet kNoMap{ false, false, false, false };
+
+		inline constexpr ScalarField kEmissiveScalars[]{ ScalarField::kStrength };
+		inline constexpr ScalarField kHeightScalars[]{ ScalarField::kScale };
+		inline constexpr ScalarField kFuzzScalars[]{ ScalarField::kColor, ScalarField::kWeight };
+		inline constexpr ScalarField kGlintScalars[]{ ScalarField::kScreenSpaceScale, ScalarField::kLogMicrofacetDensity, ScalarField::kMicrofacetRoughness, ScalarField::kDensityRandomization };
+		inline constexpr ScalarField kCoatScalars[]{ ScalarField::kRoughness, ScalarField::kLevel };
+		inline constexpr ScalarField kSubsurfaceScalars[]{ ScalarField::kColor, ScalarField::kThickness };
+
+		// CS evaluates one of coat, subsurface and fuzz per material, and
+		// glint excludes fuzz; every other pair coexists.
+		inline constexpr Slot kFuzzExcludes[]{ Slot::kGlint, Slot::kCoat, Slot::kSubsurface };
+		inline constexpr Slot kGlintExcludes[]{ Slot::kFuzz };
+		inline constexpr Slot kCoatExcludes[]{ Slot::kFuzz, Slot::kSubsurface };
+		inline constexpr Slot kSubsurfaceExcludes[]{ Slot::kFuzz, Slot::kCoat };
+	}
+
+	// Channels and notes as CS reads each map (BSLightingShaderMaterialPBR.h).
+	inline constexpr SlotRow kSlots[]{
+		{ Slot::kDiffuse, "diffuse", SlotColumns::kRgba, "r, g, b: albedo; a: on a shell, per-texel visibility (with the shell's alpha blend and alpha test)", {}, false, {}, MaterialMap::kDiffuse },
+		{ Slot::kEmissive, "emissive", SlotColumns::kRgb, "r, g, b: emitted colour, scaled by strength; no alpha", SlotColumns::kEmissiveScalars, true, {}, MaterialMap::kNone },
+		{ Slot::kRmaos, "rmaos", SlotColumns::kRgba, "r: roughness; g: metallic; b: ambient occlusion; a: reflectance (f0)", {}, false, {}, MaterialMap::kRmaos },
+		{ Slot::kNormal, "normal", SlotColumns::kRgb, "r, g, b: tangent-space normal; the normal blend reorients rather than replaces; no alpha", {}, false, {}, MaterialMap::kNormal },
+		{ Slot::kHeight, "height", SlotColumns::kRedOnly, "r only: height, offset by (r - 0.5) * scale; green, blue and alpha are never read", SlotColumns::kHeightScalars, true, {}, MaterialMap::kDisplacement },
+		{ Slot::kFuzz, "fuzz", SlotColumns::kRgba, "r, g, b: fuzz colour; a: fuzz weight (the scalars set the base, the map modulates)", SlotColumns::kFuzzScalars, true, SlotColumns::kFuzzExcludes, MaterialMap::kNone },
+		{ Slot::kGlint, "glint", SlotColumns::kNoMap, "no texture: glint is its four scalars alone; channels do not apply", SlotColumns::kGlintScalars, false, SlotColumns::kGlintExcludes, MaterialMap::kNone },
+		{ Slot::kCoat, "coat", SlotColumns::kRgba, "r, g, b: coat colour; a: coat strength; shares one map with subsurface, so a material takes one of the two", SlotColumns::kCoatScalars, true, SlotColumns::kCoatExcludes, MaterialMap::kNone },
+		{ Slot::kSubsurface, "subsurface", SlotColumns::kRgba, "r, g, b: subsurface colour; a: thickness; shares one map with coat, so a material takes one of the two", SlotColumns::kSubsurfaceScalars, true, SlotColumns::kSubsurfaceExcludes, MaterialMap::kNone },
+	};
+	static_assert(std::size(kSlots) == kSlotCount);
 	inline constexpr Named<Blend> kBlends[]{ { Blend::kReplace, "replace" }, { Blend::kMultiply, "multiply" }, { Blend::kAdd, "add" }, { Blend::kSubtract, "subtract" }, { Blend::kScreen, "screen" }, { Blend::kLerp, "lerp" }, { Blend::kNormal, "normal" } };
 
 	inline constexpr Named<ShellMaterial> kShellMaterials[]{ { ShellMaterial::kPbrCopy, "pbrCopy" }, { ShellMaterial::kVanilla, "vanilla" } };

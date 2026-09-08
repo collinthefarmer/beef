@@ -1152,25 +1152,6 @@ namespace WornEnchantmentPBR::Studio
 			return std::nullopt;
 		}
 
-		// ---------------------------------------------------- defaults
-
-		// What a required scalar starts at when the menu adds an output.
-		std::optional<Param> DefaultScalar(ScalarField a_field)
-		{
-			switch (a_field) {
-			case ScalarField::kStrength:
-			case ScalarField::kScale:
-			case ScalarField::kWeight:
-			case ScalarField::kThickness:
-				return Param{ 1.0f };
-			case ScalarField::kRoughness:
-				return Param{ 0.15f };
-			case ScalarField::kLevel:
-				return Param{ 0.6f };
-			default:
-				return std::nullopt;
-			}
-		}
 	}
 
 	std::optional<Diagnostic> Apply(Recipe& a_recipe, const RecipeEdit& a_edit)
@@ -1375,10 +1356,11 @@ namespace WornEnchantmentPBR::Studio
 			if (!ScalarRequired(a_slot, field)) {
 				continue;
 			}
+			const float fallback = ScalarFallback(field);
 			if (field == ScalarField::kColor) {
-				output.scalars.color = std::array<Param, 3>{ 1.0f, 1.0f, 1.0f };
+				output.scalars.color = std::array<Param, 3>{ fallback, fallback, fallback };
 			} else if (auto* scalar = ScalarOf(output.scalars, field)) {
-				*scalar = DefaultScalar(field);
+				*scalar = fallback;
 			}
 		}
 		return output;

@@ -716,6 +716,29 @@ namespace
 		}
 		Check(SlotChannelNote(Slot::kHeight).starts_with("r only") && SlotChannelNote(Slot::kGlint).starts_with("no texture"), "the height and glint notes state their exceptions");
 
+		// BaseMapOf: the four slots that edit a map the material already has
+		const std::pair<Slot, MaterialMap> baseMaps[]{
+			{ Slot::kDiffuse, MaterialMap::kDiffuse }, { Slot::kEmissive, MaterialMap::kNone }, { Slot::kRmaos, MaterialMap::kRmaos }, { Slot::kNormal, MaterialMap::kNormal }, { Slot::kHeight, MaterialMap::kDisplacement },
+			{ Slot::kFuzz, MaterialMap::kNone }, { Slot::kGlint, MaterialMap::kNone }, { Slot::kCoat, MaterialMap::kNone }, { Slot::kSubsurface, MaterialMap::kNone }
+		};
+		static_assert(std::size(baseMaps) == kSlotCount);
+		for (const auto& [slot, expected] : baseMaps) {
+			Check(BaseMapOf(slot) == expected, std::format("base map of '{}'", SlotName(slot)));
+		}
+		Check(BaseMapOf(static_cast<Slot>(99)) == MaterialMap::kNone && ScalarsOf(static_cast<Slot>(99)).empty() && SlotChannelNote(static_cast<Slot>(99)).empty() && !SlotsExclude(static_cast<Slot>(99), Slot::kFuzz), "an unknown slot answers every question as an empty row");
+
+		// ScalarFallback: one value per field, what the menu fills in and the binding writes when the file leaves it out
+		const std::pair<ScalarField, float> fallbacks[]{
+			{ ScalarField::kStrength, 1.0f }, { ScalarField::kScale, 1.0f }, { ScalarField::kColor, 1.0f }, { ScalarField::kWeight, 1.0f },
+			{ ScalarField::kScreenSpaceScale, 1.5f }, { ScalarField::kLogMicrofacetDensity, 40.0f }, { ScalarField::kMicrofacetRoughness, 0.015f }, { ScalarField::kDensityRandomization, 2.0f },
+			{ ScalarField::kRoughness, 0.15f }, { ScalarField::kLevel, 0.6f }, { ScalarField::kThickness, 1.0f }
+		};
+		static_assert(std::size(fallbacks) == kScalarFieldCount);
+		for (const auto& [field, expected] : fallbacks) {
+			Check(ScalarFallback(field) == expected, std::format("fallback of '{}'", ScalarFieldName(field)));
+		}
+		Check(ScalarFallback(static_cast<ScalarField>(99)) == 0.0f && ScalarOf(static_cast<const SlotScalars&>(SlotScalars{}), static_cast<ScalarField>(99)) == nullptr, "an unknown field falls back to zero and reaches no member");
+
 		// ScalarOf: every field but kColor reaches its own member
 		SlotScalars sc;
 		for (std::size_t i = 0; i < kScalarFieldCount; ++i) {

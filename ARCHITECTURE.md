@@ -31,9 +31,9 @@ Engine-free (compile natively, tested through `tests/run-native.sh`):
 | Module | Owns | Depends on |
 |---|---|---|
 | `Core.h` | `Vec2`, `Vec3`, `Value` (variant of the three), `ValueType`, `Ref`, `AsScalar`/`AsVec3`, `Match` (variant visit), `Get<T>`/`Is<T>`, the word-table readers (`Named<E>`, `NameOf`, `FromName`, `RowOf`, `Choices`, `WordsOf` over any table whose rows have `value` and `name`) | nothing |
-| `Vocabulary.h` | the words the format spells, one `inline constexpr` table per enum in enum order (`kKeyKinds`, `kSlots`, `kBlends`, `kScalarFields`, `kSurfaces`, `kShellMaterials`, the signal and source enums); the `XName`/`ParseX` functions declared in `Recipe.h` read these, the parser and writer read them for a field's choices, and a studio choice field lists them with `WordsOf`; no word is spelled anywhere else | Core, Recipe |
+| `Vocabulary.h` | the words the format spells, one `inline constexpr` table per enum in enum order (`kKeyKinds`, `kBlends`, `kSurfaces`, `kShellMaterials`, the signal and source enums); the two tables that carry rules beside their words: `kSlots` (`SlotRow`: channels and their note, the scalars and whether a recipe must give them, the slots CS cannot evaluate beside it, the material map it edits) and `kScalarFields` (`ScalarFieldRow`: the `SlotScalars` member, number or colour, and the one fallback the menu fills in and the binding writes when a file leaves the field out); the `XName`/`ParseX` and slot-rule functions declared in `Recipe.h` read these, the parser and writer loop over them, and a studio choice field lists them with `WordsOf`; no word or slot fact is spelled anywhere else | Core, Recipe |
 | `Expression.*` | the recipe language: `Program` (bounded postfix op list), `Parse`, `Check` (types), `Evaluate`, `ParseCurve`, `ApplyCurve`; limits `kMaxExpressionLength/Depth/Ops` | Core |
-| `Recipe.h`, `Recipe.cpp`, `RecipeJson.cpp` | format 1 records (`Recipe` and everything in it), `ParseRecipe`/`SerializeRecipe`, `Validate`, `Resolve`, variants, `IsAnimated`, glob and selector matching, biped slot names, text forms for the menu, the slot rules (`SlotsOf`, `ScalarsOf`, `SlotsExclude`, `BlendAllowed`, `ChannelsOf`, `ScalarOf`) that `Validate` and the studio's board both read | Core, Expression, Signals (for graph typing in `Validate`) |
+| `Recipe.h`, `Recipe.cpp`, `RecipeJson.cpp` | format 1 records (`Recipe` and everything in it), `ParseRecipe`/`SerializeRecipe`, `Validate`, `Resolve`, variants, `IsAnimated`, glob and selector matching, biped slot names, text forms for the menu, the slot rules (`SlotsOf`, `ScalarsOf`, `ScalarRequired`, `SlotsExclude`, `BlendAllowed`, `ChannelsOf`, `SlotChannelNote`, `BaseMapOf`, `ScalarOf`, `ScalarFallback`), each a read of one row of `Vocabulary.h`'s `kSlots` or `kScalarFields`, that `Validate`, the studio's board, the parser, the compositor and the bindings all read | Core, Expression, Signals (for graph typing in `Validate`) |
 | `Signals.*` | `SignalGraph::Compile` (nodes, order, types, inert), `SignalState` (per applied recipe: `Tick`, `Fire`, `ValueOf`, `Resolve`, `Firings`), `SignalEnvironment` (what a tick reads from the actor), `EventRecord`/`TriggerPayload` | Core, Expression, Recipe |
 | `Importer.*` | `EffectShaderRecord` (an EFSH as data), `ImportEffectShader` (record to recipe), `RecipeIdFor` | Recipe, Timing |
 | `Timing.*` | the vanilla EFSH animation maths the importer encodes | nothing |
@@ -214,13 +214,14 @@ target), and if it renders per tick, a render step in `Compositor::Render`
 and in `RenderMask` for masks that read it. Bake-like kinds go through
 `BakeInto` with a builder in `Mesh.cpp`, which is testable natively.
 
-Adding a slot: `Slot` and `kSlotCount` in `Recipe.h`, `kSlots` in
-`Vocabulary.h`, the schema enum; the texture field in
-`TextureFieldOf` and any flag and scalar handling in `SlotWriter`
-(`Problem`, `Write*`, `Restore`, `Slots`); the scalar routing in the
-manager's `WriteSlot`; the scalar rows in the snapshot build and the menu's
-scalar edit switch; `BaseMapFor` in the compositor if the slot edits an
-existing map.
+Adding a slot: `Slot` and `kSlotCount` in `Recipe.h`, its row in
+`Vocabulary.h`'s `kSlots` (word, channels, note, scalars, exclusions, base
+map; a new scalar field is a row of `kScalarFields` with its member and
+fallback) and the schema enum; engine side, the texture field in
+`TextureFieldOf`, any flag handling in `SlotWriter` (`Problem`, `Write*`,
+`Restore`, `Slots`), and the binding call for its scalars in the manager's
+`WriteSlot`. The parser, the writer, `Validate`, the board, the snapshot's
+scalar rows and the compositor's base map read the rows.
 
 Adding a signal kind: the record and `SignalKind` in `Recipe.h`, parse
 and serialise, `KindName`; compile rules and evaluation in `Signals.cpp`

@@ -280,6 +280,8 @@ namespace WornEnchantmentPBR
 	}
 
 	// ------------------------------------------------------------- slot rules
+	// Every question here is a read of one row of kSlots or kScalarFields; a
+	// slot or field the tables lack answers as an empty one.
 
 	namespace
 	{
@@ -287,16 +289,9 @@ namespace WornEnchantmentPBR
 		static_assert(std::size(kEverySlot) == kSlotCount);
 		constexpr Slot kVanillaShellSlots[]{ Slot::kEmissive };
 
-		constexpr ScalarField kEmissiveScalars[]{ ScalarField::kStrength };
-		constexpr ScalarField kHeightScalars[]{ ScalarField::kScale };
-		constexpr ScalarField kFuzzScalars[]{ ScalarField::kColor, ScalarField::kWeight };
-		constexpr ScalarField kGlintScalars[]{ ScalarField::kScreenSpaceScale, ScalarField::kLogMicrofacetDensity, ScalarField::kMicrofacetRoughness, ScalarField::kDensityRandomization };
-		constexpr ScalarField kCoatScalars[]{ ScalarField::kRoughness, ScalarField::kLevel };
-		constexpr ScalarField kSubsurfaceScalars[]{ ScalarField::kColor, ScalarField::kThickness };
-
-		constexpr bool Feature(Slot a_slot) noexcept
+		bool Contains(std::span<const Slot> a_slots, Slot a_slot) noexcept
 		{
-			return a_slot == Slot::kFuzz || a_slot == Slot::kGlint || a_slot == Slot::kCoat || a_slot == Slot::kSubsurface;
+			return std::ranges::find(a_slots, a_slot) != a_slots.end();
 		}
 	}
 
@@ -310,6 +305,18 @@ namespace WornEnchantmentPBR
 		return FromName(kScalarFields, a_name);
 	}
 
+	float ScalarFallback(ScalarField a_field) noexcept
+	{
+		const auto* row = RowOf(kScalarFields, a_field);
+		return row ? row->fallback : 0.0f;
+	}
+
+	MaterialMap BaseMapOf(Slot a_slot) noexcept
+	{
+		const auto* row = RowOf(kSlots, a_slot);
+		return row ? row->baseMap : MaterialMap::kNone;
+	}
+
 	std::span<const Slot> SlotsOf(Surface a_surface, ShellMaterial a_shell) noexcept
 	{
 		if (a_surface == Surface::kShell && a_shell == ShellMaterial::kVanilla) {
@@ -320,57 +327,25 @@ namespace WornEnchantmentPBR
 
 	bool SurfaceHasSlot(Surface a_surface, ShellMaterial a_shell, Slot a_slot) noexcept
 	{
-		for (const auto slot : SlotsOf(a_surface, a_shell)) {
-			if (slot == a_slot) {
-				return true;
-			}
-		}
-		return false;
+		return Contains(SlotsOf(a_surface, a_shell), a_slot);
 	}
 
 	std::span<const ScalarField> ScalarsOf(Slot a_slot) noexcept
 	{
-		switch (a_slot) {
-		case Slot::kEmissive:
-			return kEmissiveScalars;
-		case Slot::kHeight:
-			return kHeightScalars;
-		case Slot::kFuzz:
-			return kFuzzScalars;
-		case Slot::kGlint:
-			return kGlintScalars;
-		case Slot::kCoat:
-			return kCoatScalars;
-		case Slot::kSubsurface:
-			return kSubsurfaceScalars;
-		default:
-			return {};
-		}
+		const auto* row = RowOf(kSlots, a_slot);
+		return row ? row->scalars : std::span<const ScalarField>{};
 	}
 
 	bool ScalarRequired(Slot a_slot, ScalarField a_field) noexcept
 	{
-		if (a_slot == Slot::kGlint) {
-			return false;
-		}
-		for (const auto field : ScalarsOf(a_slot)) {
-			if (field == a_field) {
-				return true;
-			}
-		}
-		return false;
+		const auto* row = RowOf(kSlots, a_slot);
+		return row && row->scalarsRequired && std::ranges::find(row->scalars, a_field) != row->scalars.end();
 	}
 
 	bool SlotsExclude(Slot a_first, Slot a_second) noexcept
 	{
-		if (a_first == a_second || !Feature(a_first) || !Feature(a_second)) {
-			return false;
-		}
-		const bool glint = a_first == Slot::kGlint || a_second == Slot::kGlint;
-		if (!glint) {
-			return true;  // coat, subsurface and fuzz share one feature
-		}
-		return a_first == Slot::kFuzz || a_second == Slot::kFuzz;  // glint excludes fuzz only
+		const auto* row = RowOf(kSlots, a_first);
+		return row && Contains(row->excludes, a_second);
 	}
 
 	bool BlendAllowed(Slot a_slot, Blend a_blend) noexcept
@@ -380,70 +355,24 @@ namespace WornEnchantmentPBR
 
 	ChannelSet ChannelsOf(Slot a_slot) noexcept
 	{
-		switch (a_slot) {
-		case Slot::kHeight:
-			return ChannelSet{ true, false, false, false };
-		case Slot::kEmissive:
-		case Slot::kNormal:
-			return ChannelSet{ true, true, true, false };
-		case Slot::kGlint:
-			return ChannelSet{ false, false, false, false };
-		default:
-			return ChannelSet{};
-		}
+		const auto* row = RowOf(kSlots, a_slot);
+		return row ? row->channels : ChannelSet{};
 	}
 
 	std::string_view SlotChannelNote(Slot a_slot) noexcept
 	{
-		switch (a_slot) {
-		case Slot::kDiffuse:
-			return "r, g, b: albedo; a: on a shell, per-texel visibility (with the shell's alpha blend and alpha test)";
-		case Slot::kEmissive:
-			return "r, g, b: emitted colour, scaled by strength; no alpha";
-		case Slot::kRmaos:
-			return "r: roughness; g: metallic; b: ambient occlusion; a: reflectance (f0)";
-		case Slot::kNormal:
-			return "r, g, b: tangent-space normal; the normal blend reorients rather than replaces; no alpha";
-		case Slot::kHeight:
-			return "r only: height, offset by (r - 0.5) * scale; green, blue and alpha are never read";
-		case Slot::kFuzz:
-			return "r, g, b: fuzz colour; a: fuzz weight (the scalars set the base, the map modulates)";
-		case Slot::kGlint:
-			return "no texture: glint is its four scalars alone; channels do not apply";
-		case Slot::kCoat:
-			return "r, g, b: coat colour; a: coat strength; shares one map with subsurface, so a material takes one of the two";
-		case Slot::kSubsurface:
-			return "r, g, b: subsurface colour; a: thickness; shares one map with coat, so a material takes one of the two";
-		}
-		return "";
+		const auto* row = RowOf(kSlots, a_slot);
+		return row ? row->note : "";
 	}
 
 	std::optional<Param>* ScalarOf(SlotScalars& a_scalars, ScalarField a_field) noexcept
 	{
-		switch (a_field) {
-		case ScalarField::kStrength:
-			return &a_scalars.strength;
-		case ScalarField::kScale:
-			return &a_scalars.scale;
-		case ScalarField::kWeight:
-			return &a_scalars.weight;
-		case ScalarField::kScreenSpaceScale:
-			return &a_scalars.screenSpaceScale;
-		case ScalarField::kLogMicrofacetDensity:
-			return &a_scalars.logMicrofacetDensity;
-		case ScalarField::kMicrofacetRoughness:
-			return &a_scalars.microfacetRoughness;
-		case ScalarField::kDensityRandomization:
-			return &a_scalars.densityRandomization;
-		case ScalarField::kRoughness:
-			return &a_scalars.roughness;
-		case ScalarField::kLevel:
-			return &a_scalars.level;
-		case ScalarField::kThickness:
-			return &a_scalars.thickness;
-		default:
+		const auto* row = RowOf(kScalarFields, a_field);
+		if (!row) {
 			return nullptr;
 		}
+		const auto* member = Get<std::optional<Param> SlotScalars::*>(row->member);
+		return member ? &(a_scalars.**member) : nullptr;
 	}
 
 	const std::optional<Param>* ScalarOf(const SlotScalars& a_scalars, ScalarField a_field) noexcept

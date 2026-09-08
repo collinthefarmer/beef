@@ -101,21 +101,22 @@ namespace WornEnchantmentPBR
 			std::string                        problem;
 		};
 
-		// The map a slot edits in place, when the slot has one.
+		// The map a slot edits in place (BaseMapOf), as the material holds it.
 		RE::NiPointer<RE::NiSourceTexture> BaseMapFor(Slot a_slot, const MaterialInputs& a_material)
 		{
-			switch (a_slot) {
-			case Slot::kDiffuse:
+			switch (BaseMapOf(a_slot)) {
+			case MaterialMap::kDiffuse:
 				return a_material.diffuse;
-			case Slot::kNormal:
+			case MaterialMap::kNormal:
 				return a_material.normal;
-			case Slot::kRmaos:
+			case MaterialMap::kRmaos:
 				return a_material.rmaos;
-			case Slot::kHeight:
+			case MaterialMap::kDisplacement:
 				return a_material.displacement;
-			default:
+			case MaterialMap::kNone:
 				return nullptr;
 			}
+			return nullptr;
 		}
 
 		// Many PBR sets ship a displacement map that is a real texture and

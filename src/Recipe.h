@@ -755,6 +755,51 @@ namespace WornEnchantmentPBR
 	[[nodiscard]] std::string_view            ScalarFieldName(ScalarField a_field) noexcept;
 	[[nodiscard]] std::optional<ScalarField>  ParseScalarField(std::string_view a_name) noexcept;
 
+	// One row per scalar field: its word, which member of SlotScalars holds
+	// it (a number or, for kColor, a colour), and its fallback: what the menu
+	// fills in when it adds an output that needs the field, and what the
+	// binding writes when a file leaves the field out. A colour takes the
+	// fallback on every component.
+	using ScalarMember = std::variant<std::optional<Param> SlotScalars::*, std::optional<Vec3Param> SlotScalars::*>;
+	struct ScalarFieldRow
+	{
+		ScalarField      value;
+		std::string_view name;
+		ScalarMember     member;
+		float            fallback;
+	};
+	[[nodiscard]] float ScalarFallback(ScalarField a_field) noexcept;
+
+	// The map of the material a slot edits in place; a stack on such a slot
+	// starts from that map, every other stack from transparent black.
+	enum class MaterialMap
+	{
+		kNone,
+		kDiffuse,
+		kNormal,
+		kRmaos,
+		kDisplacement,
+	};
+	[[nodiscard]] MaterialMap BaseMapOf(Slot a_slot) noexcept;
+
+	// One row per slot: its word; the channels its texture carries meaning
+	// in and what each means to Community Shaders; the scalars beside the
+	// texture and whether a recipe must give them; the slots CS cannot
+	// evaluate on one material beside it; the material map it edits. The
+	// functions below are questions over these rows, shared by Validate,
+	// the studio's board, the parser and the bindings.
+	struct SlotRow
+	{
+		Slot                         value;
+		std::string_view             name;
+		ChannelSet                   channels;
+		std::string_view             note;
+		std::span<const ScalarField> scalars;
+		bool                         scalarsRequired;
+		std::span<const Slot>        excludes;
+		MaterialMap                  baseMap;
+	};
+
 	// The slots a surface offers. A material and a PBR-copy shell offer every
 	// slot. A vanilla shell offers emissive only: its diffuse and normal maps
 	// are never written (the binding has no path for them), and rim and
