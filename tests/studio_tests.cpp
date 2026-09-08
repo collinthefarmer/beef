@@ -10,7 +10,7 @@
 #include "History.h"
 #include "MenuState.h"
 #include "TermStack.h"
-#include "Regions.h"
+#include "Paint.h"
 #include "Studio.h"
 #include "test_support.h"
 

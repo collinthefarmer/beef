@@ -6,7 +6,7 @@
 // Everything here is a pure function of a record read once (the mesh, a
 // low-mip sample of the maps), deterministic on the same input, bounded
 // by fixed caps, and engine-free. This module never spells the mask
-// language: an island becomes a term of a region in Regions.
+// language: an island becomes a term of a region in Paint.
 
 #include "Core.h"
 #include "Mesh.h"

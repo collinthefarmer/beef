@@ -1,10 +1,9 @@
 #pragma once
 
-// Region presets: the shipped file of body regions (a partition times the
-// weights of a few bones) and material regions (thresholds over the
-// geometry's own maps), the plain names of bones and partitions, whether a
-// preset resolves on a geometry's facts, and the edits that draw one into
-// the scratch mask. Engine-free; the mesh facts come from the snapshot.
+// Paint mode's engine-free half: the shipped regions file (the what presets
+// and the plain names of bones and partitions), terms built from their kinds
+// and read back from text, the offers a piece makes, the paint recipe and
+// the edits that keep a region. The mesh facts come from the snapshot.
 
 #include "Edits.h"
 #include "Forms.h"
@@ -31,18 +30,6 @@ namespace WornEnchantmentPBR::Studio
 	// The mask the tools draw into, under a reserved name; Keep renames it,
 	// Discard removes it, a save drops it.
 	inline constexpr std::string_view kScratchMask = "scratch";
-
-	// What a geometry's mesh offers: its partitions by biped slot, and the
-	// bones it is skinned to with the share of vertices each one moves.
-	[[nodiscard]] std::vector<PartitionRow> PartitionsOf(const MeshData& a_mesh);
-	[[nodiscard]] std::vector<BoneRow>      BonesOf(const MeshData& a_mesh);
-	// Both together, computed once per mesh read and copied into snapshot rows.
-	struct MeshFacts
-	{
-		std::vector<PartitionRow> partitions;
-		std::vector<BoneRow>      bones;
-	};
-	[[nodiscard]] MeshFacts FactsOf(const MeshData& a_mesh);
 
 	enum class PresetKind
 	{

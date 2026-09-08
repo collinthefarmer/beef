@@ -7,6 +7,7 @@
 // the widgets and turns what comes back into edits (Edits.h) or view
 // changes (View.h).
 
+#include "Mesh.h"
 #include "Recipe.h"
 #include "Snapshot.h"
 #include "View.h"
@@ -298,9 +299,23 @@ namespace WornEnchantmentPBR::Studio
 	[[nodiscard]] std::string ReferenceText(std::string_view a_name);
 	[[nodiscard]] std::string ReferenceName(std::string_view a_text);  // strips a leading '@'
 
-	// What a geometry is called in the menu. An authored shape keeps its
-	// name. A shape the engine built from an armor addon is named
+	// What a geometry is called in the menu. An authored geometry keeps its
+	// name. A geometry the engine built from an armor addon is named
 	// " (<addon id>)[<index>]/ (<armor id>) [<weight>%]", which reads as
-	// "<armor> shape <index> (addon <id>)"; the raw name stays the key.
+	// "<armor> geometry <index> (addon <id>)"; the raw name stays the key.
 	[[nodiscard]] std::string GeometryLabel(std::string_view a_name, std::string_view a_armorName);
+
+	// ------------------------------------------------------------- mesh facts
+	// What a geometry's mesh offers, computed once per mesh read by the
+	// reader's cache and copied into every geometry row that shows it: its
+	// partitions by biped slot, and the bones it is skinned to with the
+	// share of vertices each one moves.
+	[[nodiscard]] std::vector<PartitionRow> PartitionsOf(const MeshData& a_mesh);
+	[[nodiscard]] std::vector<BoneRow>      BonesOf(const MeshData& a_mesh);
+	struct MeshFacts
+	{
+		std::vector<PartitionRow> partitions;
+		std::vector<BoneRow>      bones;
+	};
+	[[nodiscard]] MeshFacts FactsOf(const MeshData& a_mesh);
 }

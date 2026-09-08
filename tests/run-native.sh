@@ -46,7 +46,7 @@ build_and_run importer_tests tests/importer_tests.cpp "${MODEL[@]}"
 build_and_run bake_tests tests/bake_tests.cpp src/Mesh.cpp "${MODEL[@]}"
 build_and_run analysis_tests tests/analysis_tests.cpp src/Analysis.cpp src/Mesh.cpp "${MODEL[@]}"
 build_and_run termstack_tests tests/termstack_tests.cpp src/TermStack.cpp src/Expression.cpp
-build_and_run studio_tests tests/studio_tests.cpp src/Studio.cpp src/MenuState.cpp src/History.cpp src/Edits.cpp src/EditCheck.cpp src/Regions.cpp src/TermStack.cpp src/Analysis.cpp src/Mesh.cpp "${MODEL[@]}"
+build_and_run studio_tests tests/studio_tests.cpp src/Studio.cpp src/MenuState.cpp src/History.cpp src/Edits.cpp src/EditCheck.cpp src/Paint.cpp src/TermStack.cpp src/Analysis.cpp src/Mesh.cpp "${MODEL[@]}"
 build_and_run edits_tests tests/edits_tests.cpp src/Edits.cpp "${MODEL[@]}"
 
 # Every checked-in recipe validates against the schema when check-jsonschema is

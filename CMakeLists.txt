@@ -75,7 +75,7 @@ set(PLUGIN_SOURCES
   src/MenuState.cpp
   src/History.cpp
   src/EditCheck.cpp
-  src/Regions.cpp
+  src/Paint.cpp
   src/TermStack.cpp
   src/MenuWidgets.cpp
   src/ComposePage.cpp
@@ -148,7 +148,7 @@ add_host_test(${PROJECT_NAME}ImporterTests tests/importer_tests.cpp ${RECIPE_MOD
 add_host_test(${PROJECT_NAME}BakeTests tests/bake_tests.cpp src/Mesh.cpp ${RECIPE_MODEL_SOURCES})
 add_host_test(${PROJECT_NAME}AnalysisTests tests/analysis_tests.cpp src/Analysis.cpp src/Mesh.cpp ${RECIPE_MODEL_SOURCES})
 add_host_test(${PROJECT_NAME}TermStackTests tests/termstack_tests.cpp src/TermStack.cpp src/Expression.cpp)
-add_host_test(${PROJECT_NAME}StudioTests tests/studio_tests.cpp src/Studio.cpp src/MenuState.cpp src/History.cpp src/Edits.cpp src/EditCheck.cpp src/Regions.cpp src/TermStack.cpp src/Analysis.cpp src/Mesh.cpp ${RECIPE_MODEL_SOURCES})
+add_host_test(${PROJECT_NAME}StudioTests tests/studio_tests.cpp src/Studio.cpp src/MenuState.cpp src/History.cpp src/Edits.cpp src/EditCheck.cpp src/Paint.cpp src/TermStack.cpp src/Analysis.cpp src/Mesh.cpp ${RECIPE_MODEL_SOURCES})
 add_host_test(${PROJECT_NAME}EditsTests tests/edits_tests.cpp src/Edits.cpp ${RECIPE_MODEL_SOURCES})
 
 # Stage a ready-to-install mod folder: dist/<mod>/SKSE/Plugins/{dll,pdb,ini}.

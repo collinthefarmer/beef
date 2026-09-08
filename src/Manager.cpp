@@ -2,7 +2,7 @@
 
 #include "Edits.h"
 #include "EngineForms.h"
-#include "Regions.h"
+#include "Paint.h"
 
 #include <random>
 #include "Studio.h"

@@ -9,7 +9,7 @@
 #include "MenuState.h"
 #include "MenuWidgets.h"
 #include "RecipeStore.h"
-#include "Regions.h"
+#include "Paint.h"
 #include "Settings.h"
 #include "Studio.h"
 #include "Vocabulary.h"

@@ -1,4 +1,4 @@
-#include "Regions.h"
+#include "Paint.h"
 
 #include "Studio.h"
 
@@ -18,53 +18,6 @@
 namespace WornEnchantmentPBR::Studio
 {
 	using json = nlohmann::json;
-
-	std::vector<PartitionRow> PartitionsOf(const MeshData& a_mesh)
-	{
-		std::vector<PartitionRow> rows;
-		for (const auto& partition : a_mesh.partitions) {
-			if (partition.slot == MeshPartition::kNoSlot) {
-				continue;
-			}
-			const auto it = std::ranges::find(rows, partition.slot, &PartitionRow::slot);
-			if (it != rows.end()) {
-				it->triangles += partition.triangles.size();
-				continue;
-			}
-			PartitionRow row;
-			row.slot = partition.slot;
-			const auto name = BipedSlotName(partition.slot);
-			row.name = name ? std::string{ *name } : std::to_string(partition.slot);
-			row.triangles = partition.triangles.size();
-			rows.push_back(std::move(row));
-		}
-		return rows;
-	}
-
-	std::vector<BoneRow> BonesOf(const MeshData& a_mesh)
-	{
-		// Coverage: the summed weight a bone carries over every vertex, as a
-		// share of all vertices; a bone moving half the mesh fully reads 0.5.
-		std::map<std::string, float> weight;
-		std::size_t                  vertices = 0;
-		for (const auto& partition : a_mesh.partitions) {
-			for (const auto& vertex : partition.vertices) {
-				++vertices;
-				for (std::size_t i = 0; i < 4; ++i) {
-					if (vertex.weights[i] <= 0.0f || vertex.bones[i] >= partition.boneNames.size()) {
-						continue;
-					}
-					weight[partition.boneNames[vertex.bones[i]]] += vertex.weights[i];
-				}
-			}
-		}
-		std::vector<BoneRow> rows;
-		for (const auto& [name, sum] : weight) {
-			rows.push_back(BoneRow{ name, vertices > 0 ? sum / static_cast<float>(vertices) : 0.0f });
-		}
-		std::ranges::sort(rows, [](const BoneRow& a, const BoneRow& b) { return a.coverage > b.coverage; });
-		return rows;
-	}
 
 	namespace
 	{
@@ -1334,8 +1287,4 @@ namespace WornEnchantmentPBR::Studio
 
 namespace WornEnchantmentPBR::Studio
 {
-	MeshFacts FactsOf(const MeshData& a_mesh)
-	{
-		return MeshFacts{ PartitionsOf(a_mesh), BonesOf(a_mesh) };
-	}
 }

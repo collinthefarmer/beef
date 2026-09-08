@@ -11,7 +11,7 @@
 #include "Analysis.h"
 #include "Mesh.h"
 #include "PCH.h"
-#include "Regions.h"
+#include "Studio.h"
 #include "RuntimeTextures.h"
 
 #include <cstddef>

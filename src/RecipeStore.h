@@ -7,7 +7,7 @@
 
 #include "Edits.h"
 #include "Recipe.h"
-#include "Regions.h"
+#include "Paint.h"
 #include "Signals.h"
 
 #include <cstddef>
