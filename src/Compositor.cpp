@@ -937,10 +937,10 @@ namespace WornEnchantmentPBR
 		// other kind from the mesh alone.
 		return BakeInto(**entry, BakeKeyOf(a_bake.bake, a_size), a_size, [&] {
 			if (Is<ComponentIdBake>(a_bake.bake)) {
-				return BuildRegionBake(*(*entry)->mesh, (*entry)->analysis, RegionSource::kComponent);
+				return BuildIslandBake(*(*entry)->mesh, (*entry)->analysis, IslandSource::kComponent);
 			}
 			if (Is<ChartIdBake>(a_bake.bake)) {
-				return BuildRegionBake(*(*entry)->mesh, (*entry)->analysis, RegionSource::kChart);
+				return BuildIslandBake(*(*entry)->mesh, (*entry)->analysis, IslandSource::kChart);
 			}
 			return BuildBake(*(*entry)->mesh, a_bake.bake);
 		});

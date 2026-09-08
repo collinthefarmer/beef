@@ -88,9 +88,9 @@ namespace
 		return mesh;
 	}
 
-	const MeshRegion* RegionAt(const MeshAnalysis& a_analysis, RegionSource a_source, std::uint16_t a_id)
+	const MeshIsland* RegionAt(const MeshAnalysis& a_analysis, IslandSource a_source, std::uint16_t a_id)
 	{
-		for (const MeshRegion& region : a_analysis.regions) {
+		for (const MeshIsland& region : a_analysis.islands) {
 			if (region.source == a_source && region.id == a_id) {
 				return &region;
 			}
@@ -104,8 +104,8 @@ namespace
 		const MeshAnalysis analysis = AnalyseMesh(TwoPieces());
 		Check(analysis.components == 2, "two separate pieces are two components");
 		Check(analysis.componentOf == std::vector<std::uint16_t>{ 0, 0, 0, 0, 1, 1, 1 }, "the component table runs over both partitions, largest first");
-		const MeshRegion* quad = RegionAt(analysis, RegionSource::kComponent, 0);
-		const MeshRegion* tri = RegionAt(analysis, RegionSource::kComponent, 1);
+		const MeshIsland* quad = RegionAt(analysis, IslandSource::kComponent, 0);
+		const MeshIsland* tri = RegionAt(analysis, IslandSource::kComponent, 1);
 		Check(quad && tri, "both components are listed");
 		if (quad && tri) {
 			Check(quad->triangles == 2 && Near(quad->share, 2.0f / 3.0f), "the quad holds two of three triangles");
@@ -116,7 +116,7 @@ namespace
 			Check(Near(tri->centroid.x, 11.0f) && Near(tri->centroid.y, 10.0f) && Near(tri->centroid.z, 11.0f), "the triangle's centroid is its mean position");
 		}
 		Check(analysis.charts == 2 && analysis.chartOf == std::vector<std::uint16_t>{ 0, 0, 0, 0, 1, 1, 1 }, "pieces apart in UV are two charts");
-		Check(analysis.regions.size() == 4 && analysis.regions[0].source == RegionSource::kComponent && analysis.regions[2].source == RegionSource::kChart, "components list first, then charts");
+		Check(analysis.islands.size() == 4 && analysis.islands[0].source == IslandSource::kComponent && analysis.islands[2].source == IslandSource::kChart, "components list first, then charts");
 		Check(AnalyseMesh(TwoPieces()) == analysis, "the same mesh analyses the same way twice");
 	}
 
@@ -128,13 +128,13 @@ namespace
 		Check(analysis.componentOf == std::vector<std::uint16_t>{ 0, 0, 0, 0, 0, 0 }, "every seam vertex is in the one component");
 		Check(analysis.charts == 2, "the two UV islands are two charts");
 		Check(analysis.chartOf == std::vector<std::uint16_t>{ 0, 0, 0, 1, 1, 1 }, "the chart table splits at the seam");
-		const MeshRegion* component = RegionAt(analysis, RegionSource::kComponent, 0);
+		const MeshIsland* component = RegionAt(analysis, IslandSource::kComponent, 0);
 		Check(component && component->dominantBone.empty() && Near(component->dominantShare, 0.0f), "an unskinned mesh has no dominant bone");
 		Check(component && Near(component->share, 1.0f), "the one component holds every triangle");
 		MeshData unreached = SeamMesh();
 		unreached.partitions[0].vertices.push_back(At(5, 5, 5, 0.9f, 0.9f));
 		const MeshAnalysis withStray = AnalyseMesh(unreached);
-		Check(withStray.componentOf.size() == 7 && withStray.componentOf[6] == kNoRegion && withStray.chartOf[6] == kNoRegion, "a vertex no triangle reaches is kNoRegion in both tables");
+		Check(withStray.componentOf.size() == 7 && withStray.componentOf[6] == kNoIsland && withStray.chartOf[6] == kNoIsland, "a vertex no triangle reaches is kNoIsland in both tables");
 		MeshData welded = SeamMesh();
 		welded.partitions[0].vertices[3].uv = Vec2{ 0.0f, 0.0f + kChartWeldUv * 0.25f };  // within the weld of vertex 0
 		welded.partitions[0].vertices[4].uv = Vec2{ 0.1f, 0.1f };
@@ -147,16 +147,16 @@ namespace
 	void Caps()
 	{
 		using namespace test;
-		const std::size_t  count = kMaxRegions + 45;
+		const std::size_t  count = kMaxIslands + 45;
 		const MeshAnalysis analysis = AnalyseMesh(ManyTinyPieces(count));
-		Check(analysis.components == kMaxRegions, "components list at most kMaxRegions");
-		Check(analysis.charts == kMaxRegions, "charts list at most kMaxRegions");
-		Check(analysis.regions.size() == 2 * static_cast<std::size_t>(kMaxRegions), "the region list holds the cap of each source");
+		Check(analysis.components == kMaxIslands, "components list at most kMaxIslands");
+		Check(analysis.charts == kMaxIslands, "charts list at most kMaxIslands");
+		Check(analysis.islands.size() == 2 * static_cast<std::size_t>(kMaxIslands), "the region list holds the cap of each source");
 		Check(analysis.componentOf.size() == count * 3, "the table has one entry per vertex");
-		Check(analysis.componentOf[0] == 0 && analysis.componentOf[(kMaxRegions - 1) * 3] == kMaxRegions - 1, "the listed components keep dense ids");
-		Check(analysis.componentOf[kMaxRegions * 3] == kNoRegion && analysis.componentOf.back() == kNoRegion, "components past the cap are kNoRegion");
-		Check(analysis.regions.front().id == 0 && analysis.regions[kMaxRegions - 1].id == kMaxRegions - 1, "ids are dense from 0");
-		Check(AnalyseMesh(MeshData{}).regions.empty() && AnalyseMesh(MeshData{}).componentOf.empty(), "an empty mesh has no regions and empty tables");
+		Check(analysis.componentOf[0] == 0 && analysis.componentOf[(kMaxIslands - 1) * 3] == kMaxIslands - 1, "the listed components keep dense ids");
+		Check(analysis.componentOf[kMaxIslands * 3] == kNoIsland && analysis.componentOf.back() == kNoIsland, "components past the cap are kNoIsland");
+		Check(analysis.islands.front().id == 0 && analysis.islands[kMaxIslands - 1].id == kMaxIslands - 1, "ids are dense from 0");
+		Check(AnalyseMesh(MeshData{}).islands.empty() && AnalyseMesh(MeshData{}).componentOf.empty(), "an empty mesh has no regions and empty tables");
 	}
 
 	void RegionBakes()
@@ -164,7 +164,7 @@ namespace
 		using namespace test;
 		const MeshData     mesh = TwoPieces();
 		const MeshAnalysis analysis = AnalyseMesh(mesh);
-		const BakeBuffers  bake = BuildRegionBake(mesh, analysis, RegionSource::kComponent);
+		const BakeBuffers  bake = BuildIslandBake(mesh, analysis, IslandSource::kComponent);
 		Check(bake.problem.empty() && !bake.vector, "a component bake is a scalar with no problem");
 		Check(bake.vertices.size() == 7 && bake.indices.size() == 9, "every triangle of every partition bakes");
 		if (bake.vertices.size() == 7) {
@@ -173,15 +173,15 @@ namespace
 			Check(Near(bake.vertices[4].u, 0.5f) && Near(bake.vertices[4].v, 0.5f), "the uv rides along");
 			Check(bake.indices[6] == 4 && bake.indices[8] == 6, "the second partition's indices are offset");
 		}
-		const BakeBuffers charts = BuildRegionBake(mesh, analysis, RegionSource::kChart);
+		const BakeBuffers charts = BuildIslandBake(mesh, analysis, IslandSource::kChart);
 		Check(charts.problem.empty() && Near(charts.vertices[6].value[0], 1.0f / 255.0f), "a chart bake carries the chart id");
 		MeshData stray = mesh;
 		stray.partitions[1].vertices.push_back(At(9, 9, 9, 0.9f, 0.9f));
-		const BakeBuffers withStray = BuildRegionBake(stray, AnalyseMesh(stray), RegionSource::kComponent);
-		Check(withStray.vertices.size() == 8 && Near(withStray.vertices[7].value[0], 1.0f), "a kNoRegion vertex bakes 1");
-		Check(!BuildRegionBake(mesh, MeshAnalysis{}, RegionSource::kComponent).problem.empty(), "an analysis without components is a problem");
-		Check(!BuildRegionBake(mesh, MeshAnalysis{}, RegionSource::kChart).problem.empty(), "an analysis without charts is a problem");
-		Check(!BuildRegionBake(stray, analysis, RegionSource::kComponent).problem.empty(), "an analysis of a smaller mesh is a problem");
+		const BakeBuffers withStray = BuildIslandBake(stray, AnalyseMesh(stray), IslandSource::kComponent);
+		Check(withStray.vertices.size() == 8 && Near(withStray.vertices[7].value[0], 1.0f), "a kNoIsland vertex bakes 1");
+		Check(!BuildIslandBake(mesh, MeshAnalysis{}, IslandSource::kComponent).problem.empty(), "an analysis without components is a problem");
+		Check(!BuildIslandBake(mesh, MeshAnalysis{}, IslandSource::kChart).problem.empty(), "an analysis without charts is a problem");
+		Check(!BuildIslandBake(stray, analysis, IslandSource::kComponent).problem.empty(), "an analysis of a smaller mesh is a problem");
 	}
 
 	Texel Leather()
@@ -310,9 +310,9 @@ namespace
 		Check(DescribeTexel(Texel{ 0.35f, 0.51f, 0.5f, 0.5f, 0.35f }) == "matte mid metal", "the lower edges of the middle bands");
 		Check(DescribeTexel(Texel{ 0.65f, 0.0f, 0.5f, 0.5f, 0.65f }) == "rough bright non-metal", "the upper edges of the middle bands");
 		Check(DescribeTexel(Texel{ 0.0f / 0.0f, 2.0f, 0.5f, 0.5f, -1.0f }) == "polished dark metal", "a texel out of range describes as clamped");
-		Check(RegionSourceName(RegionSource::kComponent) == "component" && RegionSourceName(RegionSource::kChart) == "chart", "region sources have names");
-		Check(PlainRegionSourceName(RegionSource::kComponent) == "part" && PlainRegionSourceName(RegionSource::kChart) == "chart", "region sources have plain names for labels");
-		Check(RegionSourceName(static_cast<RegionSource>(9)) == "?" && PlainRegionSourceName(static_cast<RegionSource>(9)) == "?", "an unknown source names '?'");
+		Check(IslandSourceName(IslandSource::kComponent) == "component" && IslandSourceName(IslandSource::kChart) == "chart", "region sources have names");
+		Check(PlainIslandSourceName(IslandSource::kComponent) == "part" && PlainIslandSourceName(IslandSource::kChart) == "chart", "region sources have plain names for labels");
+		Check(IslandSourceName(static_cast<IslandSource>(9)) == "?" && PlainIslandSourceName(static_cast<IslandSource>(9)) == "?", "an unknown source names '?'");
 	}
 }
 

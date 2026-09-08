@@ -13,20 +13,20 @@
 
 namespace WornEnchantmentPBR
 {
-	std::string_view RegionSourceName(RegionSource a_source) noexcept
+	std::string_view IslandSourceName(IslandSource a_source) noexcept
 	{
-		return NameOf(kRegionSources, a_source);
+		return NameOf(kIslandSources, a_source);
 	}
 
-	std::string_view PlainRegionSourceName(RegionSource a_source) noexcept
+	std::string_view PlainIslandSourceName(IslandSource a_source) noexcept
 	{
-		const auto* row = RowOf(kRegionSources, a_source);
+		const auto* row = RowOf(kIslandSources, a_source);
 		return row ? row->plainName : "?";
 	}
 
-	SourceKind RegionBakeOf(RegionSource a_source) noexcept
+	SourceKind IslandBakeOf(IslandSource a_source) noexcept
 	{
-		const auto* row = RowOf(kRegionSources, a_source);
+		const auto* row = RowOf(kIslandSources, a_source);
 		return SourceKind{ BakeSource{ row ? row->bake : BakeKind{ ComponentIdBake{} } } };
 	}
 
@@ -202,7 +202,7 @@ namespace WornEnchantmentPBR
 		struct Labelling
 		{
 			std::vector<std::uint16_t> ofVertex;
-			std::vector<MeshRegion>    regions;  // descending share
+			std::vector<MeshIsland>    islands;  // descending share
 		};
 
 		struct RootCount
@@ -211,9 +211,9 @@ namespace WornEnchantmentPBR
 			std::size_t   triangles = 0;
 		};
 
-		// Ranks the sets by triangle count, ids the largest kMaxRegions,
+		// Ranks the sets by triangle count, ids the largest kMaxIslands,
 		// and measures each: share, dominant bone, centroid.
-		[[nodiscard]] Labelling Label(const FlatMesh& a_flat, DisjointSets& a_sets, RegionSource a_source)
+		[[nodiscard]] Labelling Label(const FlatMesh& a_flat, DisjointSets& a_sets, IslandSource a_source)
 		{
 			const std::size_t        vertexCount = a_flat.vertices.size();
 			std::vector<std::size_t> trianglesOfRoot(vertexCount, 0);
@@ -233,17 +233,17 @@ namespace WornEnchantmentPBR
 			std::stable_sort(ranked.begin(), ranked.end(), [](const RootCount& a, const RootCount& b) {
 				return a.triangles != b.triangles ? a.triangles > b.triangles : a.root < b.root;
 			});
-			const std::size_t listed = std::min<std::size_t>(ranked.size(), kMaxRegions);
+			const std::size_t listed = std::min<std::size_t>(ranked.size(), kMaxIslands);
 
-			std::vector<std::uint16_t> idOfRoot(vertexCount, kNoRegion);
+			std::vector<std::uint16_t> idOfRoot(vertexCount, kNoIsland);
 			for (std::size_t i = 0; i < listed; ++i) {
 				idOfRoot[ranked[i].root] = static_cast<std::uint16_t>(i);
 			}
 			Labelling out;
-			out.ofVertex.resize(vertexCount, kNoRegion);
+			out.ofVertex.resize(vertexCount, kNoIsland);
 			for (std::uint32_t v = 0; v < vertexCount; ++v) {
 				const std::uint32_t root = a_sets.Find(v);
-				out.ofVertex[v] = root < vertexCount ? idOfRoot[root] : kNoRegion;
+				out.ofVertex[v] = root < vertexCount ? idOfRoot[root] : kNoIsland;
 			}
 
 			const std::size_t                        totalTriangles = a_flat.triangles.size();
@@ -269,14 +269,14 @@ namespace WornEnchantmentPBR
 				}
 			}
 			for (std::size_t i = 0; i < listed; ++i) {
-				MeshRegion region;
-				region.source = a_source;
-				region.id = static_cast<std::uint16_t>(i);
-				region.triangles = ranked[i].triangles;
-				region.share = totalTriangles > 0 ? static_cast<float>(ranked[i].triangles) / static_cast<float>(totalTriangles) : 0.0f;
+				MeshIsland island;
+				island.source = a_source;
+				island.id = static_cast<std::uint16_t>(i);
+				island.triangles = ranked[i].triangles;
+				island.share = totalTriangles > 0 ? static_cast<float>(ranked[i].triangles) / static_cast<float>(totalTriangles) : 0.0f;
 				if (members[i] > 0) {
 					const float count = static_cast<float>(members[i]);
-					region.centroid = Vec3{ positionSum[i].x / count, positionSum[i].y / count, positionSum[i].z / count };
+					island.centroid = Vec3{ positionSum[i].x / count, positionSum[i].y / count, positionSum[i].z / count };
 				}
 				float total = 0.0f;
 				float best = 0.0f;
@@ -284,23 +284,23 @@ namespace WornEnchantmentPBR
 					total += weight;
 					if (weight > best) {
 						best = weight;
-						region.dominantBone = name;
+						island.dominantBone = name;
 					}
 				}
-				region.dominantShare = total > 0.0f ? best / total : 0.0f;
-				out.regions.push_back(std::move(region));
+				island.dominantShare = total > 0.0f ? best / total : 0.0f;
+				out.islands.push_back(std::move(island));
 			}
 			return out;
 		}
 
-		[[nodiscard]] std::size_t RegionsOf(const MeshAnalysis& a_analysis, RegionSource a_source) noexcept
+		[[nodiscard]] std::size_t RegionsOf(const MeshAnalysis& a_analysis, IslandSource a_source) noexcept
 		{
-			return a_source == RegionSource::kComponent ? a_analysis.components : a_analysis.charts;
+			return a_source == IslandSource::kComponent ? a_analysis.components : a_analysis.charts;
 		}
 
-		[[nodiscard]] const std::vector<std::uint16_t>& TableOf(const MeshAnalysis& a_analysis, RegionSource a_source) noexcept
+		[[nodiscard]] const std::vector<std::uint16_t>& TableOf(const MeshAnalysis& a_analysis, IslandSource a_source) noexcept
 		{
-			return a_source == RegionSource::kComponent ? a_analysis.componentOf : a_analysis.chartOf;
+			return a_source == IslandSource::kComponent ? a_analysis.componentOf : a_analysis.chartOf;
 		}
 	}
 
@@ -312,25 +312,25 @@ namespace WornEnchantmentPBR
 			return out;
 		}
 		DisjointSets components = Connect(*flat, &PositionCell);
-		Labelling    byComponent = Label(*flat, components, RegionSource::kComponent);
+		Labelling    byComponent = Label(*flat, components, IslandSource::kComponent);
 		DisjointSets charts = Connect(*flat, &UvCell);
-		Labelling    byChart = Label(*flat, charts, RegionSource::kChart);
+		Labelling    byChart = Label(*flat, charts, IslandSource::kChart);
 
-		out.components = static_cast<std::uint16_t>(byComponent.regions.size());
-		out.charts = static_cast<std::uint16_t>(byChart.regions.size());
-		out.regions = std::move(byComponent.regions);
-		out.regions.insert(out.regions.end(), byChart.regions.begin(), byChart.regions.end());
+		out.components = static_cast<std::uint16_t>(byComponent.islands.size());
+		out.charts = static_cast<std::uint16_t>(byChart.islands.size());
+		out.islands = std::move(byComponent.islands);
+		out.islands.insert(out.islands.end(), byChart.islands.begin(), byChart.islands.end());
 		out.componentOf = std::move(byComponent.ofVertex);
 		out.chartOf = std::move(byChart.ofVertex);
 		return out;
 	}
 
-	BakeBuffers BuildRegionBake(const MeshData& a_mesh, const MeshAnalysis& a_analysis, RegionSource a_source)
+	BakeBuffers BuildIslandBake(const MeshData& a_mesh, const MeshAnalysis& a_analysis, IslandSource a_source)
 	{
 		BakeBuffers out;
 		out.vector = false;
 		if (RegionsOf(a_analysis, a_source) == 0) {
-			out.problem = std::format("the analysis found no {} of the mesh", RegionSourceName(a_source));
+			out.problem = std::format("the analysis found no {} of the mesh", IslandSourceName(a_source));
 			return out;
 		}
 		const std::vector<std::uint16_t>& table = TableOf(a_analysis, a_source);
@@ -348,7 +348,7 @@ namespace WornEnchantmentPBR
 				BakeVertex          bv;
 				bv.u = vertex.uv.x;
 				bv.v = vertex.uv.y;
-				bv.value[0] = id == kNoRegion ? 1.0f : static_cast<float>(id) / 255.0f;
+				bv.value[0] = id == kNoIsland ? 1.0f : static_cast<float>(id) / 255.0f;
 				out.vertices.push_back(bv);
 			}
 			for (const std::array<std::uint32_t, 3>& triangle : partition.triangles) {

@@ -395,7 +395,7 @@ namespace WornEnchantmentPBR::Studio
 			a_kind,
 			[](const RawTerm&) { return "raw"; }, [](const ReferenceTerm&) { return "reference"; }, [](const ThresholdTerm&) { return "threshold"; },
 			[](const WhatPresetTerm&) { return "preset"; }, [](const PartitionTerm&) { return "partition"; }, [](const BoneTerm&) { return "bones"; },
-			[](const ComponentTerm&) { return "component"; }, [](const ClusterTerm&) { return "cluster"; });
+			[](const IslandTerm&) { return "component"; }, [](const ClusterTerm&) { return "cluster"; });
 	}
 
 	namespace
@@ -474,11 +474,11 @@ namespace WornEnchantmentPBR::Studio
 			return static_cast<int>(std::lround(std::clamp(a_share, 0.0f, 1.0f) * 100.0f));
 		}
 
-		[[nodiscard]] const MeshRegion* RegionOf(const GeometryRow& a_geometry, RegionSource a_source, std::uint16_t a_id)
+		[[nodiscard]] const MeshIsland* RegionOf(const GeometryRow& a_geometry, IslandSource a_source, std::uint16_t a_id)
 		{
-			for (const auto& region : a_geometry.regions) {
-				if (region.source == a_source && region.id == a_id) {
-					return &region;
+			for (const auto& island : a_geometry.islands) {
+				if (island.source == a_source && island.id == a_id) {
+					return &island;
 				}
 			}
 			return nullptr;
@@ -771,7 +771,7 @@ namespace WornEnchantmentPBR::Studio
 			if (!name || !cursor.Take(" * 255 - ")) {
 				return std::nullopt;
 			}
-			const auto id = cursor.TakeWhole(kMaxRegions);
+			const auto id = cursor.TakeWhole(kMaxIslands);
 			if (!id || !cursor.Take(") < 0.5") || !cursor.Done()) {
 				return std::nullopt;
 			}
@@ -823,10 +823,10 @@ namespace WornEnchantmentPBR::Studio
 					}
 					if (const auto* bake = Get<BakeSource>(*kind)) {
 						if (Is<ComponentIdBake>(bake->bake)) {
-							return ComponentTerm{ RegionSource::kComponent, static_cast<std::uint16_t>(region->id) };
+							return IslandTerm{ IslandSource::kComponent, static_cast<std::uint16_t>(region->id) };
 						}
 						if (Is<ChartIdBake>(bake->bake)) {
-							return ComponentTerm{ RegionSource::kChart, static_cast<std::uint16_t>(region->id) };
+							return IslandTerm{ IslandSource::kChart, static_cast<std::uint16_t>(region->id) };
 						}
 					}
 				}
@@ -876,8 +876,8 @@ namespace WornEnchantmentPBR::Studio
 			},
 			[&](const PartitionTerm& t) { return ReferenceText(namer.NameFor("partition", BakeSource{ PartitionBake{ t.slot } })); },
 			[&](const BoneTerm& t) { return ReferenceText(namer.NameFor("bones", BakeSource{ BoneWeightBake{ t.bones } })); },
-			[&](const ComponentTerm& t) {
-				const auto name = namer.NameFor(t.source == RegionSource::kChart ? "charts" : "components", RegionBakeOf(t.source));
+			[&](const IslandTerm& t) {
+				const auto name = namer.NameFor(t.source == IslandSource::kChart ? "charts" : "components", IslandBakeOf(t.source));
 				return RegionText(name, t.id);
 			},
 			[&](const ClusterTerm& t) {
@@ -908,15 +908,15 @@ namespace WornEnchantmentPBR::Studio
 				}
 				return label;
 			},
-			[&](const ComponentTerm& t) {
+			[&](const IslandTerm& t) {
 				const auto* region = RegionOf(a_geometry, t.source, t.id);
 				if (!region) {
-					return std::format("{} {}", PlainRegionSourceName(t.source), t.id);
+					return std::format("{} {}", PlainIslandSourceName(t.source), t.id);
 				}
 				if (region->dominantBone.empty()) {
-					return std::format("{} {}: {}%", PlainRegionSourceName(t.source), t.id, Percent(region->share));
+					return std::format("{} {}: {}%", PlainIslandSourceName(t.source), t.id, Percent(region->share));
 				}
-				return std::format("{} {}: {}, {}%", PlainRegionSourceName(t.source), t.id, PlainBoneName(a_presets, region->dominantBone), Percent(region->share));
+				return std::format("{} {}: {}, {}%", PlainIslandSourceName(t.source), t.id, PlainBoneName(a_presets, region->dominantBone), Percent(region->share));
 			},
 			[&](const ClusterTerm& t) {
 				const auto* cluster = ClusterOf(a_geometry, t.id);
@@ -1069,27 +1069,27 @@ namespace WornEnchantmentPBR::Studio
 			return form;
 		}
 
-		std::vector<TermField> ComponentForm(const ComponentTerm& a_term, const Presets& a_presets, const GeometryRow& a_geometry)
+		std::vector<TermField> ComponentForm(const IslandTerm& a_term, const Presets& a_presets, const GeometryRow& a_geometry)
 		{
 			// The choice offers each region of the source by its label; a
 			// committed label picks that region, a bare number that id.
 			std::vector<std::string>   labels;
 			std::vector<std::uint16_t> ids;
-			for (const auto& region : a_geometry.regions) {
-				if (region.source == a_term.source) {
-					labels.push_back(TermLabelOf(ComponentTerm{ a_term.source, region.id }, a_presets, a_geometry));
-					ids.push_back(region.id);
+			for (const auto& island : a_geometry.islands) {
+				if (island.source == a_term.source) {
+					labels.push_back(TermLabelOf(IslandTerm{ a_term.source, island.id }, a_presets, a_geometry));
+					ids.push_back(island.id);
 				}
 			}
 			std::vector<TermField> form;
-			form.push_back(Setting<ComponentTerm>(a_term, Spec("id", FieldKind::kChoice, TermLabelOf(a_term, a_presets, a_geometry), labels), [labels, ids](ComponentTerm& t, const std::string& a_text) {
+			form.push_back(Setting<IslandTerm>(a_term, Spec("id", FieldKind::kChoice, TermLabelOf(a_term, a_presets, a_geometry), labels), [labels, ids](IslandTerm& t, const std::string& a_text) {
 				const auto it = std::ranges::find(labels, a_text);
 				if (it != labels.end()) {
 					const auto index = static_cast<std::size_t>(it - labels.begin());
 					t.id = index < ids.size() ? ids[index] : t.id;
 					return index < ids.size();
 				}
-				const auto id = ReadWhole(a_text, kMaxRegions);
+				const auto id = ReadWhole(a_text, kMaxIslands);
 				return id ? (t.id = static_cast<std::uint16_t>(*id), true) : false;
 			}));
 			return form;
@@ -1141,7 +1141,7 @@ namespace WornEnchantmentPBR::Studio
 			[](const WhatPresetTerm&) { return std::vector<TermField>{}; },
 			[](const ThresholdTerm& t) { return ThresholdForm(t); },
 			[](const ClusterTerm& t) { return ClusterForm(t); },
-			[&](const ComponentTerm& t) { return ComponentForm(t, a_presets, a_geometry); },
+			[&](const IslandTerm& t) { return ComponentForm(t, a_presets, a_geometry); },
 			[](const BoneTerm& t) { return BoneForm(t); },
 			[&](const PartitionTerm& t) { return PartitionForm(t, a_presets, a_geometry); });
 	}
@@ -1177,15 +1177,15 @@ namespace WornEnchantmentPBR::Studio
 		std::vector<TermOffer> offers;
 		// parts
 		if (!a_geometry.meshRead) {
-			offers.push_back(Unavailable(OfferGroup::kParts, std::string{ kMeshUnread }, ComponentTerm{}));
+			offers.push_back(Unavailable(OfferGroup::kParts, std::string{ kMeshUnread }, IslandTerm{}));
 		}
-		for (const auto& region : a_geometry.regions) {
-			const ComponentTerm term{ region.source, region.id };
-			std::string         detail = std::format("{}% of the mesh", Percent(region.share));
-			if (!region.dominantBone.empty()) {
-				detail += std::format(", {} {}%", PlainBoneName(a_presets, region.dominantBone), Percent(region.dominantShare));
+		for (const auto& island : a_geometry.islands) {
+			const IslandTerm term{ island.source, island.id };
+			std::string         detail = std::format("{}% of the mesh", Percent(island.share));
+			if (!island.dominantBone.empty()) {
+				detail += std::format(", {} {}%", PlainBoneName(a_presets, island.dominantBone), Percent(island.dominantShare));
 			}
-			offers.push_back(Offer(OfferGroup::kParts, std::format("{} {}", PlainRegionSourceName(region.source), region.id), std::move(detail), term));
+			offers.push_back(Offer(OfferGroup::kParts, std::format("{} {}", PlainIslandSourceName(island.source), island.id), std::move(detail), term));
 		}
 		// materials
 		if (a_geometry.clusters.empty()) {
@@ -1249,7 +1249,7 @@ namespace WornEnchantmentPBR::Studio
 				return detail;
 			},
 			[&](const ClusterTerm& t) { return std::format("cluster {} of {}", t.id, t.settings.clusters); },
-			[&](const ComponentTerm& t) { return std::format("{} {}", PlainRegionSourceName(t.source), t.id); },
+			[&](const IslandTerm& t) { return std::format("{} {}", PlainIslandSourceName(t.source), t.id); },
 			[&](const ReferenceTerm& t) { return ReferenceText(t.name); },
 			[&](const WhatPresetTerm& t) { return t.preset; },
 			[&](const PartitionTerm& t) { return std::format("partition {}", t.slot); },

@@ -22,53 +22,53 @@ namespace WornEnchantmentPBR
 {
 	// ------------------------------------------------------------ the mesh
 
-	enum class RegionSource
+	enum class IslandSource
 	{
 		kComponent,  // a connected piece of the mesh (triangles sharing vertices)
 		kChart,      // a connected piece in UV space (triangles sharing UV positions)
 	};
 	// A source's word as the format and the log spell it, the plain word the
 	// studio's labels and offers use, and the bake that reads its id map.
-	struct RegionSourceRow
+	struct IslandSourceRow
 	{
-		RegionSource     value;
+		IslandSource     value;
 		std::string_view name;
 		std::string_view plainName;
 		BakeKind         bake;
 	};
-	inline constexpr RegionSourceRow kRegionSources[]{
-		{ RegionSource::kComponent, "component", "part", ComponentIdBake{} },
-		{ RegionSource::kChart, "chart", "chart", ChartIdBake{} },
+	inline constexpr IslandSourceRow kIslandSources[]{
+		{ IslandSource::kComponent, "component", "part", ComponentIdBake{} },
+		{ IslandSource::kChart, "chart", "chart", ChartIdBake{} },
 	};
-	[[nodiscard]] std::string_view RegionSourceName(RegionSource a_source) noexcept;
-	[[nodiscard]] std::string_view PlainRegionSourceName(RegionSource a_source) noexcept;
-	// The id map bake of a region source, as a source's kind.
-	[[nodiscard]] SourceKind RegionBakeOf(RegionSource a_source) noexcept;
+	[[nodiscard]] std::string_view IslandSourceName(IslandSource a_source) noexcept;
+	[[nodiscard]] std::string_view PlainIslandSourceName(IslandSource a_source) noexcept;
+	// The id map bake of a island source, as a source's kind.
+	[[nodiscard]] SourceKind IslandBakeOf(IslandSource a_source) noexcept;
 
-	// Region ids are dense from 0 per source and fit a byte, so an id map
-	// bake carries id / 255 in one channel; kNoRegion marks a vertex no
+	// Island ids are dense from 0 per source and fit a byte, so an id map
+	// bake carries id / 255 in one channel; kNoIsland marks a vertex no
 	// triangle reaches.
-	inline constexpr std::uint16_t kNoRegion = 0xFFFF;
-	inline constexpr std::uint16_t kMaxRegions = 255;
+	inline constexpr std::uint16_t kNoIsland = 0xFFFF;
+	inline constexpr std::uint16_t kMaxIslands = 255;
 
-	struct MeshRegion
+	struct MeshIsland
 	{
-		RegionSource       source = RegionSource::kComponent;
+		IslandSource       source = IslandSource::kComponent;
 		std::uint16_t      id = 0;
 		std::size_t        triangles = 0;
 		float              share = 0.0f;  // of the mesh's triangles, 0..1
 		std::string        dominantBone;  // the bone carrying the most summed weight; empty when unskinned
-		float              dominantShare = 0.0f;  // that bone's share of the region's summed weight, 0..1
+		float              dominantShare = 0.0f;  // that bone's share of the island's summed weight, 0..1
 		Vec3               centroid;      // mean bind-pose position, in the frame the position bake uses
-		[[nodiscard]] bool operator==(const MeshRegion&) const = default;
+		[[nodiscard]] bool operator==(const MeshIsland&) const = default;
 	};
 
 	// Per-vertex tables run over the partitions in mesh order, concatenated.
-	// Past kMaxRegions of a source, the largest regions keep their ids and
-	// the rest are kNoRegion, so a bake never overflows a byte.
+	// Past kMaxIslands of a source, the largest islands keep their ids and
+	// the rest are kNoIsland, so a bake never overflows a byte.
 	struct MeshAnalysis
 	{
-		std::vector<MeshRegion>    regions;      // components first, then charts, each in descending share
+		std::vector<MeshIsland>    islands;      // components first, then charts, each in descending share
 		std::vector<std::uint16_t> componentOf;  // one per vertex
 		std::vector<std::uint16_t> chartOf;      // one per vertex
 		std::uint16_t              components = 0;
@@ -81,10 +81,10 @@ namespace WornEnchantmentPBR
 
 	[[nodiscard]] MeshAnalysis AnalyseMesh(const MeshData& a_mesh);
 
-	// The id map of one source as a bake: each vertex carries its region id
-	// as id / 255 in x (kNoRegion vertices carry 1), rasterised like any
-	// bake. Empty with a problem when the analysis has no region of that source.
-	[[nodiscard]] BakeBuffers BuildRegionBake(const MeshData& a_mesh, const MeshAnalysis& a_analysis, RegionSource a_source);
+	// The id map of one source as a bake: each vertex carries its island id
+	// as id / 255 in x (kNoIsland vertices carry 1), rasterised like any
+	// bake. Empty with a problem when the analysis has no island of that source.
+	[[nodiscard]] BakeBuffers BuildIslandBake(const MeshData& a_mesh, const MeshAnalysis& a_analysis, IslandSource a_source);
 
 	// --------------------------------------------------------- the material
 

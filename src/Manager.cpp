@@ -1344,7 +1344,7 @@ namespace WornEnchantmentPBR
 							gr.meshRead = true;
 							gr.partitions = entry->facts.partitions;
 							gr.bones = entry->facts.bones;
-							gr.regions = entry->analysis.regions;
+							gr.islands = entry->analysis.islands;
 						}
 						if (const auto* material = compositor->CachedMaterial(g.inputs.material); material && material->analysis) {
 							gr.clusters = material->analysis->clusters;

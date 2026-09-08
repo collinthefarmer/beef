@@ -131,14 +131,14 @@ namespace WornEnchantmentPBR
 					sum = std::clamp(sum, 0.0f, 1.0f);
 					return std::array{ sum, sum, sum };
 				},
-				// The id maps come from the analysis (BuildRegionBake); BuildBake
+				// The id maps come from the analysis (BuildIslandBake); BuildBake
 				// refuses them before any vertex is valued.
 				[&](const ComponentIdBake&) { return std::array{ 1.0f, 1.0f, 1.0f }; },
 				[&](const ChartIdBake&) { return std::array{ 1.0f, 1.0f, 1.0f }; });
 		}
 
 		// The id-map bakes need the mesh analysis, which the compositor passes
-		// to BuildRegionBake; from the mesh alone they are a problem, never a
+		// to BuildIslandBake; from the mesh alone they are a problem, never a
 		// silently black map.
 		std::string NeedsAnalysis(const BakeKind& a_kind)
 		{

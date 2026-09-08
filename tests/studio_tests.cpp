@@ -1455,22 +1455,22 @@ namespace
 		geometry.meshRead = true;
 		geometry.partitions = PartitionsOf(SkinnedMesh());
 		geometry.bones = BonesOf(SkinnedMesh());
-		MeshRegion body;
-		body.source = RegionSource::kComponent;
+		MeshIsland body;
+		body.source = IslandSource::kComponent;
 		body.id = 0;
 		body.share = 0.6f;
 		body.dominantBone = "NPC Spine2 [Spn2]";
 		body.dominantShare = 0.9f;
-		MeshRegion hand = body;
+		MeshIsland hand = body;
 		hand.id = 1;
 		hand.share = 0.4f;
 		hand.dominantBone = "NPC L Hand [LHnd]";
 		hand.dominantShare = 1.0f;
-		MeshRegion chart;
-		chart.source = RegionSource::kChart;
+		MeshIsland chart;
+		chart.source = IslandSource::kChart;
 		chart.id = 0;
 		chart.share = 1.0f;
-		geometry.regions = { body, hand, chart };
+		geometry.islands = { body, hand, chart };
 		MaterialCluster leather;
 		leather.id = 0;
 		leather.share = 0.7f;
@@ -1528,7 +1528,7 @@ namespace
 		tuned.seed = 7;
 		const std::vector<TermKind> all{
 			ReferenceTerm{ "metal" }, ReferenceTerm{ "fill" }, roughness, posterized, lowOnly, highOnly, everything, metallic, WhatPresetTerm{ "leather" }, WhatPresetTerm{ "dark" },
-			PartitionTerm{ 33 }, BoneTerm{ { "NPC Spine2 [Spn2]", "NPC L UpperArm [LUar]" } }, ComponentTerm{ RegionSource::kComponent, 1 }, ComponentTerm{ RegionSource::kChart, 0 },
+			PartitionTerm{ 33 }, BoneTerm{ { "NPC Spine2 [Spn2]", "NPC L UpperArm [LUar]" } }, IslandTerm{ IslandSource::kComponent, 1 }, IslandTerm{ IslandSource::kChart, 0 },
 			ClusterTerm{ ClusterSettings{}, 1 }, ClusterTerm{ tuned, 2 }
 		};
 		for (const auto& recipe : all) {
@@ -1555,9 +1555,9 @@ namespace
 		Check(partition.expression == "@partition" && partition.edits.size() == 1 && Get<AddSource>(partition.edits[0])->name == "partition", "a partition adds its bake");
 		const auto bones = BuildTerm(BoneTerm{ { "NPC Spine2 [Spn2]" } }, *presets, existing);
 		Check(bones.expression == "@bones" && bones.edits.size() == 1 && Get<AddSource>(bones.edits[0])->name == "bones", "bones add their bake");
-		const auto component = BuildTerm(ComponentTerm{ RegionSource::kComponent, 1 }, *presets, existing);
+		const auto component = BuildTerm(IslandTerm{ IslandSource::kComponent, 1 }, *presets, existing);
 		Check(component.expression == "abs(@components * 255 - 1) < 0.5" && component.edits.size() == 1 && Get<AddSource>(component.edits[0])->name == "components" && Get<ComponentIdBake>(Get<BakeSource>(Get<AddSource>(component.edits[0])->kind)->bake), "a component tests the componentId bake");
-		const auto chart = BuildTerm(ComponentTerm{ RegionSource::kChart, 0 }, *presets, existing);
+		const auto chart = BuildTerm(IslandTerm{ IslandSource::kChart, 0 }, *presets, existing);
 		Check(chart.expression == "abs(@charts * 255 - 0) < 0.5" && chart.edits.size() == 1 && Get<AddSource>(chart.edits[0])->name == "charts", "a chart tests the chartId bake");
 		const auto cluster = BuildTerm(ClusterTerm{ tuned, 2 }, *presets, existing);
 		const auto* clusterSource = cluster.edits.size() == 1 ? Get<AddSource>(cluster.edits[0]) : nullptr;
@@ -1566,7 +1566,7 @@ namespace
 		Check(BuildTerm(RawTerm{}, *presets, existing).expression.empty() && BuildTerm(RawTerm{}, *presets, existing).edits.empty(), "a raw term builds nothing");
 		Existing componentsTaken = existing;
 		componentsTaken.taken.push_back("components");
-		Check(BuildTerm(ComponentTerm{}, *presets, componentsTaken).expression == "abs(@components2 * 255 - 0) < 0.5", "a taken source name is made unique");
+		Check(BuildTerm(IslandTerm{}, *presets, componentsTaken).expression == "abs(@components2 * 255 - 0) < 0.5", "a taken source name is made unique");
 
 		// Reading: hand-written text and near misses are raw; a lone name of
 		// a mask or an unknown row is a reference.
@@ -1583,8 +1583,8 @@ namespace
 		Check(TermLabelOf(roughness, *presets, geometry) == "roughness 0.35..0.6", "a threshold labels as its channel and range");
 		Check(TermLabelOf(ReferenceTerm{ "metal" }, *presets, geometry) == "@metal" && TermLabelOf(WhatPresetTerm{ "leather" }, *presets, geometry) == "leather" && TermLabelOf(RawTerm{}, *presets, geometry) == "expression", "reference, preset and raw labels");
 		Check(TermLabelOf(PartitionTerm{ 33 }, *presets, geometry) == "hands" && TermLabelOf(BoneTerm{ { "NPC Spine2 [Spn2]", "NPC L Hand [LHnd]" } }, *presets, geometry) == "chest, left hand", "partitions and bones label by their plain names");
-		Check(TermLabelOf(ComponentTerm{ RegionSource::kComponent, 0 }, *presets, geometry) == "part 0: chest, 60%" && TermLabelOf(ComponentTerm{ RegionSource::kChart, 0 }, *presets, geometry) == "chart 0: 100%", "a part labels with its dominant bone and share; an unskinned chart with its share");
-		Check(TermLabelOf(ComponentTerm{ RegionSource::kComponent, 7 }, *presets, geometry) == "part 7" && TermLabelOf(ComponentTerm{ RegionSource::kComponent, 0 }, *presets, a_geometry) == "part 0", "a part the geometry lacks labels by number alone");
+		Check(TermLabelOf(IslandTerm{ IslandSource::kComponent, 0 }, *presets, geometry) == "part 0: chest, 60%" && TermLabelOf(IslandTerm{ IslandSource::kChart, 0 }, *presets, geometry) == "chart 0: 100%", "a part labels with its dominant bone and share; an unskinned chart with its share");
+		Check(TermLabelOf(IslandTerm{ IslandSource::kComponent, 7 }, *presets, geometry) == "part 7" && TermLabelOf(IslandTerm{ IslandSource::kComponent, 0 }, *presets, a_geometry) == "part 0", "a part the geometry lacks labels by number alone");
 		Check(TermLabelOf(ClusterTerm{ ClusterSettings{}, 1 }, *presets, geometry) == "material 1: polished bright metal, 30%" && TermLabelOf(ClusterTerm{ ClusterSettings{}, 5 }, *presets, geometry) == "material 5", "a cluster labels with its description and share");
 
 		// A kept mask comes back with its recipes and labels.
@@ -1608,10 +1608,10 @@ namespace
 		const auto recounted = Applied(clusterForm, "clusters", "5");
 		Check(recounted && Get<ClusterTerm>(*recounted) && Get<ClusterTerm>(*recounted)->settings.clusters == 5 && Get<ClusterTerm>(*recounted)->id == 2, "a cluster count change keeps the id");
 		Check(!Applied(clusterForm, "clusters", "9") && !Applied(clusterForm, "clusters", "0") && !Applied(clusterForm, "luma", "-1") && !Applied(clusterForm, "seed", "x"), "counts past the cap, a negative weight and a word for a seed apply to nothing");
-		const auto componentForm = TermForm(ComponentTerm{ RegionSource::kComponent, 0 }, *presets, geometry);
+		const auto componentForm = TermForm(IslandTerm{ IslandSource::kComponent, 0 }, *presets, geometry);
 		Check(componentForm.size() == 1 && componentForm[0].field.kind == FieldKind::kChoice && componentForm[0].field.names.size() == 2 && componentForm[0].field.names[1] == "part 1: left hand, 40%" && componentForm[0].field.text == "part 0: chest, 60%", "the component form offers the parts of its source by label");
 		const auto picked = Applied(componentForm, "id", "part 1: left hand, 40%");
-		Check(picked && Get<ComponentTerm>(*picked) && Get<ComponentTerm>(*picked)->id == 1 && Get<ComponentTerm>(*picked)->source == RegionSource::kComponent, "a label picks its part");
+		Check(picked && Get<IslandTerm>(*picked) && Get<IslandTerm>(*picked)->id == 1 && Get<IslandTerm>(*picked)->source == IslandSource::kComponent, "a label picks its part");
 		Check(!Applied(componentForm, "id", "part 9: nothing") && !Applied(componentForm, "id", "300"), "an unknown label and an id past the cap apply to nothing");
 		const auto boneForm = TermForm(BoneTerm{ { "NPC Spine2 [Spn2]", "NPC L Hand [LHnd]" } }, *presets, geometry);
 		Check(boneForm.size() == 1 && boneForm[0].field.kind == FieldKind::kText && boneForm[0].field.text == "NPC Spine2 [Spn2], NPC L Hand [LHnd]", "the bone form's list");
@@ -1637,7 +1637,7 @@ namespace
 		Check(ordered && !offers.empty(), "offers come in group order");
 		const auto count = [&](OfferGroup a_group) { return std::ranges::count(offers, a_group, &TermOffer::group); };
 		Check(count(OfferGroup::kParts) == 3 && count(OfferGroup::kMaterials) == 2 && count(OfferGroup::kBones) == 3 && count(OfferGroup::kPartitions) == 2 && count(OfferGroup::kChannels) == 8 && count(OfferGroup::kPresets) == 8 && count(OfferGroup::kMasks) == 1 && count(OfferGroup::kSources) == 8, "one offer per part, cluster, bone, partition, channel, what preset, mask and source");
-		Check(offers[0].name == "part 0" && offers[0].detail == "60% of the mesh, chest 90%" && !offers[0].unavailable && !offers[0].coverage && Get<ComponentTerm>(offers[0].kind) && Get<ComponentTerm>(offers[0].kind)->id == 0, "a part's offer carries its measurements, no coverage yet");
+		Check(offers[0].name == "part 0" && offers[0].detail == "60% of the mesh, chest 90%" && !offers[0].unavailable && !offers[0].coverage && Get<IslandTerm>(offers[0].kind) && Get<IslandTerm>(offers[0].kind)->id == 0, "a part's offer carries its measurements, no coverage yet");
 		Check(offers[3].name == "material 0" && offers[3].detail == "rough dark non-metal, 70%" && Get<ClusterTerm>(offers[3].kind) && Get<ClusterTerm>(offers[3].kind)->id == 0 && Get<ClusterTerm>(offers[3].kind)->settings == ClusterSettings{}, "a cluster's offer at the default settings");
 		const auto* channelOffer = Get<ThresholdTerm>(offers[static_cast<std::size_t>(count(OfferGroup::kParts) + count(OfferGroup::kMaterials) + count(OfferGroup::kBones) + count(OfferGroup::kPartitions))].kind);
 		Check(channelOffer && channelOffer->low == 0.5f && channelOffer->high == 1.0f && channelOffer->channel == MaterialChannel::kDiffuseLuma, "a channel's offer is its upper half");

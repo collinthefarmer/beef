@@ -59,11 +59,11 @@ namespace WornEnchantmentPBR::Studio
 		[[nodiscard]] bool       operator==(const BoneTerm&) const = default;
 	};
 	// One region of the mesh analysis: the id map bake tested for the id.
-	struct ComponentTerm
+	struct IslandTerm
 	{
-		RegionSource       source = RegionSource::kComponent;
+		IslandSource       source = IslandSource::kComponent;
 		std::uint16_t      id = 0;
-		[[nodiscard]] bool operator==(const ComponentTerm&) const = default;
+		[[nodiscard]] bool operator==(const IslandTerm&) const = default;
 	};
 	// One cluster of the material analysis: the cluster map tested for the id.
 	struct ClusterTerm
@@ -73,7 +73,7 @@ namespace WornEnchantmentPBR::Studio
 		[[nodiscard]] bool operator==(const ClusterTerm&) const = default;
 	};
 
-	using TermKind = std::variant<RawTerm, ReferenceTerm, ThresholdTerm, WhatPresetTerm, PartitionTerm, BoneTerm, ComponentTerm, ClusterTerm>;
+	using TermKind = std::variant<RawTerm, ReferenceTerm, ThresholdTerm, WhatPresetTerm, PartitionTerm, BoneTerm, IslandTerm, ClusterTerm>;
 
 	// "raw", "reference", "threshold", "preset", "partition", "bones", "component", "cluster".
 	[[nodiscard]] std::string_view TermKindName(const TermKind& a_recipe) noexcept;

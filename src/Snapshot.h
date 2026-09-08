@@ -135,7 +135,7 @@ namespace WornEnchantmentPBR::Studio
 		bool                   meshRead = false;  // the rows below are filled once the mesh has been read
 		std::vector<PartitionRow> partitions;
 		std::vector<BoneRow>      bones;
-		std::vector<MeshRegion>      regions;   // the mesh analysis, copied from the cache entry
+		std::vector<MeshIsland>      islands;   // the mesh analysis, copied from the cache entry
 		std::vector<MaterialCluster> clusters;  // the material analysis at its default settings
 		std::string            shell;  // description, empty when none
 		std::vector<SlotRow>   materialSlots;
