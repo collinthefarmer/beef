@@ -243,9 +243,8 @@ namespace WornEnchantmentPBR::Studio
 	// enchantment and effect shader it carries, the armor, its keywords.
 	struct KeyChoice
 	{
-		KeyKind     kind = KeyKind::kArmor;
+		PieceKey    key;
 		std::string text;  // the editor ID when known, else the form key
-		FormKey     key;
 	};
 
 	struct PieceRow

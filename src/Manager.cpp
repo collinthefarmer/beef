@@ -1249,8 +1249,7 @@ namespace WornEnchantmentPBR
 				// What a new recipe can be keyed to, most specific first.
 				for (const auto& source : KeyChoicesOf(piece.piece)) {
 					Studio::KeyChoice key;
-					key.kind = source.kind;
-					key.key = source.form;
+					key.key = source;
 					const auto* form = LookupForm(source.form);
 					const auto  editorID = form ? EditorIdOf(*form) : std::string{};
 					key.text = editorID.empty() ? source.form.ToString() : editorID;

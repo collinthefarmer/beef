@@ -1030,9 +1030,9 @@ namespace WornEnchantmentPBR
 		});
 	}
 
-	std::vector<KeyChoiceSource> KeyChoicesOf(const WornPiece& a_piece)
+	std::vector<PieceKey> KeyChoicesOf(const WornPiece& a_piece)
 	{
-		std::vector<KeyChoiceSource> out;
+		std::vector<PieceKey> out;
 		for (std::size_t i = std::size(kKeyKinds); i-- > 0;) {
 			const auto& row = kKeyKinds[i];
 			if (row.operand != KeyOperand::kForm) {

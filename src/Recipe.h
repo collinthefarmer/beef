@@ -1062,7 +1062,7 @@ namespace WornEnchantmentPBR
 	[[nodiscard]] bool AnyUnenchantedKey(std::span<const Recipe> a_loaded) noexcept;
 
 	// One form the piece could be keyed to.
-	struct KeyChoiceSource
+	struct PieceKey
 	{
 		KeyKind kind;
 		FormKey form;
@@ -1070,7 +1070,7 @@ namespace WornEnchantmentPBR
 	// Every form the piece could be keyed to, most specific first (by
 	// DefaultPriority): every singular kind it carries, then every keyword.
 	// Drives the studio's "key a new recipe to..." choices.
-	[[nodiscard]] std::vector<KeyChoiceSource> KeyChoicesOf(const WornPiece& a_piece);
+	[[nodiscard]] std::vector<PieceKey> KeyChoicesOf(const WornPiece& a_piece);
 
 	[[nodiscard]] bool VariantApplies(const Variant& a_variant, const FormKey& a_armor) noexcept;
 	[[nodiscard]] bool VariantApplies(const Variant& a_variant, const GeometryIdentity& a_geometry);

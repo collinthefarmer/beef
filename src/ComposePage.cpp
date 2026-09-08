@@ -671,9 +671,9 @@ namespace WornEnchantmentPBR::Studio
 			if (ImGui::Button("Create") && ready) {
 				const auto& key = a_piece.keys[chosen];
 				RecipeKey   recipeKey;
-				recipeKey.kind = key.kind;
+				recipeKey.kind = key.key.kind;
 				recipeKey.form.text = key.text;
-				recipeKey.form.key = key.key;
+				recipeKey.form.key = key.key.form;
 				a_out.push_back(CreateRecipe{ std::string{ id }, std::move(recipeKey) });
 				ImGui::CloseCurrentPopup();
 			}
@@ -1638,7 +1638,7 @@ namespace WornEnchantmentPBR::Studio
 		{
 			const KeyChoice* chosen = nullptr;
 			for (const auto& key : a_piece.keys) {
-				if (key.kind == KeyKind::kArmor) {
+				if (key.key.kind == KeyKind::kArmor) {
 					chosen = &key;
 					break;
 				}
@@ -1650,9 +1650,9 @@ namespace WornEnchantmentPBR::Studio
 				return std::nullopt;
 			}
 			RecipeKey key;
-			key.kind = chosen->kind;
+			key.kind = chosen->key.kind;
 			key.form.text = chosen->text;
-			key.form.key = chosen->key;
+			key.form.key = chosen->key.form;
 			return key;
 		}
 
