@@ -106,7 +106,7 @@ namespace WornEnchantmentPBR
 		// The normal map's slope as a texture of its own, through the lab's
 		// channel pass with slope set; null with the reason when the map is
 		// not real or the pass fails.
-		std::shared_ptr<TextureLab::Target> RenderNormalSlope(const MaterialInputs& a_material, std::string& a_problem)
+		std::shared_ptr<TextureLab::RenderTarget> RenderNormalSlope(const MaterialInputs& a_material, std::string& a_problem)
 		{
 			if (!RealTexture(a_material.normal)) {
 				a_problem = "normal map: " + DescribeTexture(a_material.normal);
@@ -140,7 +140,7 @@ namespace WornEnchantmentPBR
 		// Null with derived.clustersProblem set when the material was not
 		// sampled or the pass fails. Game thread, from PrepareSource;
 		// InspectSource reads derived.clusters alone.
-		std::shared_ptr<TextureLab::Target> RenderClusterMap(const GeometryInputs& a_inputs, const ClusterSettings& a_settings)
+		std::shared_ptr<TextureLab::RenderTarget> RenderClusterMap(const GeometryInputs& a_inputs, const ClusterSettings& a_settings)
 		{
 			const MaterialInputs& material = a_inputs.material;
 			DerivedMaps&          derived = *a_inputs.derived;
@@ -446,7 +446,7 @@ namespace WornEnchantmentPBR
 		return lookup;
 	}
 
-	std::shared_ptr<TextureLab::Target> Compositor::NeutralHeight()
+	std::shared_ptr<TextureLab::RenderTarget> Compositor::NeutralHeight()
 	{
 		if (neutralHeight_ && neutralHeight_->Texture()) {
 			return neutralHeight_;
@@ -568,7 +568,7 @@ namespace WornEnchantmentPBR
 		}
 
 		// A bake of that definition from the mesh entry, when it has one.
-		std::shared_ptr<TextureLab::Target> CachedBake(const MeshEntry* a_entry, std::string_view a_definition)
+		std::shared_ptr<TextureLab::RenderTarget> CachedBake(const MeshEntry* a_entry, std::string_view a_definition)
 		{
 			return a_entry ? LargestOf(a_entry->bakes, a_definition) : nullptr;
 		}
@@ -900,7 +900,7 @@ namespace WornEnchantmentPBR
 		meshes_.Clear();
 	}
 
-	std::expected<std::shared_ptr<TextureLab::Target>, std::string> Compositor::BakeInto(MeshEntry& a_entry, const std::string& a_key, TextureSize a_size, const std::function<BakeBuffers()>& a_buffers)
+	std::expected<std::shared_ptr<TextureLab::RenderTarget>, std::string> Compositor::BakeInto(MeshEntry& a_entry, const std::string& a_key, TextureSize a_size, const std::function<BakeBuffers()>& a_buffers)
 	{
 		if (const auto it = a_entry.bakes.find(a_key); it != a_entry.bakes.end()) {
 			return it->second;
@@ -927,7 +927,7 @@ namespace WornEnchantmentPBR
 		return target;
 	}
 
-	std::expected<std::shared_ptr<TextureLab::Target>, std::string> Compositor::PrepareBake(const BakeSource& a_bake, const GeometryInputs& a_inputs, TextureSize a_size)
+	std::expected<std::shared_ptr<TextureLab::RenderTarget>, std::string> Compositor::PrepareBake(const BakeSource& a_bake, const GeometryInputs& a_inputs, TextureSize a_size)
 	{
 		const auto entry = MeshOf(a_inputs.geometry.get());
 		if (!entry) {
@@ -946,7 +946,7 @@ namespace WornEnchantmentPBR
 		});
 	}
 
-	std::expected<std::shared_ptr<TextureLab::Target>, std::string> Compositor::PrepareDistance(const DistanceSource& a_distance, const GeometryInputs& a_inputs, TextureSize a_size)
+	std::expected<std::shared_ptr<TextureLab::RenderTarget>, std::string> Compositor::PrepareDistance(const DistanceSource& a_distance, const GeometryInputs& a_inputs, TextureSize a_size)
 	{
 		const auto entry = MeshOf(a_inputs.geometry.get());
 		if (!entry) {
@@ -1153,16 +1153,16 @@ namespace WornEnchantmentPBR
 			return;
 		}
 		auto*               lab = TextureLab::GetSingleton();
-		TextureLab::Target* own = a_stack.target_.get();
-		TextureLab::Target* scratch = lab->Scratch(a_stack.size_);
+		TextureLab::RenderTarget* own = a_stack.target_.get();
+		TextureLab::RenderTarget* scratch = lab->Scratch(a_stack.size_);
 		if (!own || !scratch) {
 			return;
 		}
 		// Writes alternate between the stack's target and the scratch; the
 		// last layer must land in the stack's own target.
-		TextureLab::Target* previous = nullptr;
-		TextureLab::Target* write = shown % 2 == 1 ? own : scratch;
-		TextureLab::Target* other = write == own ? scratch : own;
+		TextureLab::RenderTarget* previous = nullptr;
+		TextureLab::RenderTarget* write = shown % 2 == 1 ? own : scratch;
+		TextureLab::RenderTarget* other = write == own ? scratch : own;
 		for (const auto& prepared : a_stack.layers_) {
 			if (a_filter.Hides(prepared.index)) {
 				continue;

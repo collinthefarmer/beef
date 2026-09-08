@@ -18,7 +18,7 @@
 
 namespace WornEnchantmentPBR
 {
-	// GPU-generated layer textures. Each Target is an NiSourceTexture shell
+	// GPU-generated layer textures. Each RenderTarget is an NiSourceTexture shell
 	// (loaded through the engine from a placeholder DDS) whose renderer data
 	// points at a render target we own, so Community Shaders binds it like any
 	// other material texture while a per-tick pass rewrites its content.
@@ -212,10 +212,10 @@ namespace WornEnchantmentPBR
 			LayerPass       layer;
 		};
 
-		class Target
+		class RenderTarget
 		{
 		public:
-			~Target();
+			~RenderTarget();
 			[[nodiscard]] RE::NiSourceTexture* Texture() const noexcept { return shell.get(); }
 
 			RE::NiPointer<RE::NiSourceTexture>  shell;
@@ -236,18 +236,18 @@ namespace WornEnchantmentPBR
 
 		// A fresh or pooled target of a_size x a_size, or null on failure. A
 		// pooled target keeps its last content: every pass writes every texel.
-		std::shared_ptr<Target> Acquire(TextureSize a_size);
+		std::shared_ptr<RenderTarget> Acquire(TextureSize a_size);
 
 		// Rewrites the target's mip chain from a_source with the given params.
-		bool Render(Target& a_target, RE::NiSourceTexture* a_source, const LayerParams& a_params);
+		bool Render(RenderTarget& a_target, RE::NiSourceTexture* a_source, const LayerParams& a_params);
 		// Runs a program per texel into the target.
-		bool RenderProgram(Target& a_target, const ProgramPass& a_pass);
+		bool RenderProgram(RenderTarget& a_target, const ProgramPass& a_pass);
 		[[nodiscard]] bool InterpreterAvailable() const noexcept { return programPs_ != nullptr; }
 
 		// Rasterises baked triangles (UV as position) into the target, black elsewhere.
-		bool BakeMesh(Target& a_target, const BakeBuffers& a_bake);
+		bool BakeMesh(RenderTarget& a_target, const BakeBuffers& a_bake);
 		// Renders the ripple fronts into the target; no firings clears it.
-		bool RenderRipple(Target& a_target, const RipplePass& a_pass);
+		bool RenderRipple(RenderTarget& a_target, const RipplePass& a_pass);
 		[[nodiscard]] bool RippleAvailable() const noexcept { return ripplePs_ != nullptr; }
 
 		// A low mip of the RMAOS and diffuse maps read back to the CPU: each
@@ -263,7 +263,7 @@ namespace WornEnchantmentPBR
 		// mesh UV go to the nearest of the analysis' centroids under its
 		// weights, written as id / 255 grey; agrees with NearestCluster. Refused
 		// when the analysis holds more than kMaxClusters clusters.
-		bool RenderClusters(Target& a_target, RE::NiSourceTexture* a_rmaos, RE::NiSourceTexture* a_diffuse, const MaterialAnalysis& a_analysis);
+		bool RenderClusters(RenderTarget& a_target, RE::NiSourceTexture* a_rmaos, RE::NiSourceTexture* a_diffuse, const MaterialAnalysis& a_analysis);
 		[[nodiscard]] bool ClassifyAvailable() const noexcept { return classifyPs_ != nullptr; }
 		[[nodiscard]] bool BakingAvailable() const noexcept { return bakeVs_ != nullptr && bakeLayout_ != nullptr; }
 
@@ -294,7 +294,7 @@ namespace WornEnchantmentPBR
 		// (RenderPreviews, once per tick). The immediate context is used on the
 		// game thread only. Static sources render once per generation; dynamic
 		// ones (our own targets) every tick they are asked for.
-		std::shared_ptr<Target> Preview(RE::NiSourceTexture* a_source, ShaderChannel a_channel, bool a_dynamic);
+		std::shared_ptr<RenderTarget> Preview(RE::NiSourceTexture* a_source, ShaderChannel a_channel, bool a_dynamic);
 		void                    RenderPreviews();
 		void                    ClearPreviews();
 		// Game thread, after an apply or retire: pooled targets change hands,
@@ -305,7 +305,7 @@ namespace WornEnchantmentPBR
 
 		// One scratch target per size, shared by every stack for its
 		// intermediate layers; a stack owns only the target its result lands in.
-		[[nodiscard]] Target* Scratch(TextureSize a_size);
+		[[nodiscard]] RenderTarget* Scratch(TextureSize a_size);
 
 		// Drops pooled targets; live shared_ptrs stay valid.
 		void Clear();
@@ -314,9 +314,9 @@ namespace WornEnchantmentPBR
 		struct SavedState;
 
 		bool CompileShaders();
-		bool CreateTarget(Target& a_target, TextureSize a_size);
+		bool CreateTarget(RenderTarget& a_target, TextureSize a_size);
 		RE::NiPointer<RE::NiSourceTexture> LoadShell();
-		void Recycle(Target* a_target);
+		void Recycle(RenderTarget* a_target);
 
 		bool                                            available_ = false;
 		bool                                            initTried_ = false;
@@ -339,20 +339,20 @@ namespace WornEnchantmentPBR
 		REX::W32::ID3D11DepthStencilState*              depth_ = nullptr;
 		REX::W32::ID3D11RasterizerState*                raster_ = nullptr;
 		std::uint32_t                                   nextShell_ = 0;
-		std::vector<std::unique_ptr<Target>>            pool_;
-		std::map<std::uint32_t, std::shared_ptr<Target>> scratch_;
+		std::vector<std::unique_ptr<RenderTarget>>            pool_;
+		std::map<std::uint32_t, std::shared_ptr<RenderTarget>> scratch_;
 		std::unordered_map<RE::NiSourceTexture*, float> luminance_;
 		std::map<std::pair<RE::NiSourceTexture*, ShaderChannel>, float> channelMeans_;
 		std::unordered_set<RE::NiSourceTexture*>        sampleWarned_;  // textures SampleMaterial has already warned about
 
-		std::optional<float> ReadBackMean(Target& a_target);
+		std::optional<float> ReadBackMean(RenderTarget& a_target);
 		// Every texel of the target's top mip as packed RGBA8, through a
 		// staging copy; empty on failure or a format other than the lab's own.
-		std::vector<std::uint8_t> ReadBackPixels(Target& a_target);
+		std::vector<std::uint8_t> ReadBackPixels(RenderTarget& a_target);
 		using PreviewKey = std::pair<RE::NiSourceTexture*, ShaderChannel>;
 		struct PreviewEntry
 		{
-			std::shared_ptr<Target> target;   // null until the game thread has rendered it
+			std::shared_ptr<RenderTarget> target;   // null until the game thread has rendered it
 			std::uint64_t           generation = 0;  // the generation it was last rendered in
 			bool                    dynamic = false;
 			bool                    wanted = false;  // asked for since the last RenderPreviews
@@ -365,7 +365,7 @@ namespace WornEnchantmentPBR
 		std::map<PreviewKey, PreviewEntry>                    previews_;
 		std::atomic<std::uint64_t>                            previewGeneration_{ 1 };
 		std::uint64_t                                         previewSeen_ = 1;  // game thread: the generation previews_ was last purged for
-		std::vector<std::pair<std::shared_ptr<Target>, std::uint64_t>> previewGraveyard_;  // target, tick it was retired
+		std::vector<std::pair<std::shared_ptr<RenderTarget>, std::uint64_t>> previewGraveyard_;  // target, tick it was retired
 		std::uint64_t                                         previewTick_ = 0;
 	};
 }

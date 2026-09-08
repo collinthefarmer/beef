@@ -569,7 +569,7 @@ float4 PSClassify(VSOut i) : SV_Target
 		}
 	};
 
-	TextureLab::Target::~Target()
+	TextureLab::RenderTarget::~RenderTarget()
 	{
 		if (shell && originalData) {
 			shell->rendererTexture = reinterpret_cast<RE::BSGraphics::Texture*>(originalData);
@@ -791,7 +791,7 @@ float4 PSClassify(VSOut i) : SV_Target
 		return RE::NiPointer<RE::NiSourceTexture>{ source };
 	}
 
-	bool TextureLab::CreateTarget(Target& a_target, TextureSize a_size)
+	bool TextureLab::CreateTarget(RenderTarget& a_target, TextureSize a_size)
 	{
 		const std::uint32_t  pixels = a_size.Pixels();
 		D3D11_TEXTURE2D_DESC desc{};
@@ -827,27 +827,27 @@ float4 PSClassify(VSOut i) : SV_Target
 		return true;
 	}
 
-	std::shared_ptr<TextureLab::Target> TextureLab::Acquire(TextureSize a_size)
+	std::shared_ptr<TextureLab::RenderTarget> TextureLab::Acquire(TextureSize a_size)
 	{
 		if (!Init()) {
 			return nullptr;
 		}
-		const auto deleter = [this](Target* a_target) { Recycle(a_target); };
+		const auto deleter = [this](RenderTarget* a_target) { Recycle(a_target); };
 		for (auto it = pool_.begin(); it != pool_.end(); ++it) {
 			if ((*it)->size == a_size.Pixels()) {
 				auto* raw = it->release();
 				pool_.erase(it);
-				return std::shared_ptr<Target>{ raw, deleter };
+				return std::shared_ptr<RenderTarget>{ raw, deleter };
 			}
 		}
-		auto target = std::make_unique<Target>();
+		auto target = std::make_unique<RenderTarget>();
 		if (!CreateTarget(*target, a_size)) {
 			return nullptr;
 		}
-		return std::shared_ptr<Target>{ target.release(), deleter };
+		return std::shared_ptr<RenderTarget>{ target.release(), deleter };
 	}
 
-	TextureLab::Target* TextureLab::Scratch(TextureSize a_size)
+	TextureLab::RenderTarget* TextureLab::Scratch(TextureSize a_size)
 	{
 		auto& target = scratch_[a_size.Pixels()];
 		if (!target) {
@@ -856,7 +856,7 @@ float4 PSClassify(VSOut i) : SV_Target
 		return target.get();
 	}
 
-	void TextureLab::Recycle(Target* a_target)
+	void TextureLab::Recycle(RenderTarget* a_target)
 	{
 		pool_.emplace_back(a_target);
 	}
@@ -871,7 +871,7 @@ float4 PSClassify(VSOut i) : SV_Target
 		sampleWarned_.clear();
 	}
 
-	std::shared_ptr<TextureLab::Target> TextureLab::Preview(RE::NiSourceTexture* a_source, ShaderChannel a_channel, bool a_dynamic)
+	std::shared_ptr<TextureLab::RenderTarget> TextureLab::Preview(RE::NiSourceTexture* a_source, ShaderChannel a_channel, bool a_dynamic)
 	{
 		if (!a_source || !available_) {
 			return nullptr;
@@ -894,7 +894,7 @@ float4 PSClassify(VSOut i) : SV_Target
 		const auto generation = previewGeneration_.load(std::memory_order_relaxed);
 		// What to render this tick, taken under the lock; rendering happens
 		// outside it so the render thread is never held for a draw.
-		std::vector<std::pair<PreviewKey, std::shared_ptr<Target>>> work;
+		std::vector<std::pair<PreviewKey, std::shared_ptr<RenderTarget>>> work;
 		{
 			std::scoped_lock lock{ previewLock_ };
 			if (generation != previewSeen_) {
@@ -952,7 +952,7 @@ float4 PSClassify(VSOut i) : SV_Target
 		previews_.clear();
 	}
 
-	bool TextureLab::Render(Target& a_target, RE::NiSourceTexture* a_source, const LayerParams& a_params)
+	bool TextureLab::Render(RenderTarget& a_target, RE::NiSourceTexture* a_source, const LayerParams& a_params)
 	{
 		const RendererLock rendererLock;
 		if (!available_ || !a_target.rtv) {
@@ -1061,7 +1061,7 @@ float4 PSClassify(VSOut i) : SV_Target
 	}
 
 	// Reads the 1x1 mip of a target back through a staging copy.
-	std::optional<float> TextureLab::ReadBackMean(Target& a_target)
+	std::optional<float> TextureLab::ReadBackMean(RenderTarget& a_target)
 	{
 		const RendererLock rendererLock;
 		std::optional<float> result;
@@ -1095,7 +1095,7 @@ float4 PSClassify(VSOut i) : SV_Target
 		return result;
 	}
 
-	std::vector<std::uint8_t> TextureLab::ReadBackPixels(Target& a_target)
+	std::vector<std::uint8_t> TextureLab::ReadBackPixels(RenderTarget& a_target)
 	{
 		const RendererLock rendererLock;
 		std::vector<std::uint8_t> out;
@@ -1219,7 +1219,7 @@ float4 PSClassify(VSOut i) : SV_Target
 		return sample;
 	}
 
-	bool TextureLab::RenderClusters(Target& a_target, RE::NiSourceTexture* a_rmaos, RE::NiSourceTexture* a_diffuse, const MaterialAnalysis& a_analysis)
+	bool TextureLab::RenderClusters(RenderTarget& a_target, RE::NiSourceTexture* a_rmaos, RE::NiSourceTexture* a_diffuse, const MaterialAnalysis& a_analysis)
 	{
 		const RendererLock rendererLock;
 		const auto* rmaosData = DataOf(a_rmaos);
@@ -1288,7 +1288,7 @@ float4 PSClassify(VSOut i) : SV_Target
 		Release(texture);
 	}
 
-	bool TextureLab::RenderProgram(Target& a_target, const ProgramPass& a_pass)
+	bool TextureLab::RenderProgram(RenderTarget& a_target, const ProgramPass& a_pass)
 	{
 		const RendererLock rendererLock;
 		// The counts are checked against the arrays, not trusted: a pass that
@@ -1396,7 +1396,7 @@ float4 PSClassify(VSOut i) : SV_Target
 		return out;
 	}
 
-	bool TextureLab::BakeMesh(Target& a_target, const BakeBuffers& a_bake)
+	bool TextureLab::BakeMesh(RenderTarget& a_target, const BakeBuffers& a_bake)
 	{
 		const RendererLock rendererLock;
 		if (!available_ || !a_target.rtv || !BakingAvailable() || a_bake.vertices.empty() || a_bake.indices.empty()) {
@@ -1456,7 +1456,7 @@ float4 PSClassify(VSOut i) : SV_Target
 		return true;
 	}
 
-	bool TextureLab::RenderRipple(Target& a_target, const RipplePass& a_pass)
+	bool TextureLab::RenderRipple(RenderTarget& a_target, const RipplePass& a_pass)
 	{
 		const RendererLock rendererLock;
 		const auto* positions = DataOf(a_pass.positions);

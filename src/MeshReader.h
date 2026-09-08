@@ -81,7 +81,7 @@ namespace WornEnchantmentPBR
 		std::string                                                          problem;  // why mesh is null
 		Studio::MeshFacts                                                    facts;
 		MeshAnalysis                                                         analysis;
-		std::unordered_map<std::string, std::shared_ptr<TextureLab::Target>> bakes;
+		std::unordered_map<std::string, std::shared_ptr<TextureLab::RenderTarget>> bakes;
 		std::uint32_t                                                        lastUsedMS = 0;
 	};
 

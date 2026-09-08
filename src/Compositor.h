@@ -92,10 +92,10 @@ namespace WornEnchantmentPBR
 	// other settings.
 	struct DerivedMaps
 	{
-		std::shared_ptr<TextureLab::Target> normalSlope;
+		std::shared_ptr<TextureLab::RenderTarget> normalSlope;
 		std::string                         problem;  // why normalSlope stayed null after a try
 		bool                                tried = false;
-		std::shared_ptr<TextureLab::Target> clusters;         // id / 255 grey, one cluster id per texel
+		std::shared_ptr<TextureLab::RenderTarget> clusters;         // id / 255 grey, one cluster id per texel
 		ClusterSettings                     clusterSettings;  // what clusters was rendered with
 		std::string                         clustersProblem;  // why clusters stayed null after a try
 		bool                                clustersTried = false;
@@ -120,8 +120,8 @@ namespace WornEnchantmentPBR
 
 	private:
 		friend class Compositor;
-		std::shared_ptr<TextureLab::Target> target_;
-		std::shared_ptr<TextureLab::Target> positions_;  // the geometry's position bake
+		std::shared_ptr<TextureLab::RenderTarget> target_;
+		std::shared_ptr<TextureLab::RenderTarget> positions_;  // the geometry's position bake
 		RippleSource                        source_;
 		Vec3                                fallbackOrigin_;  // the geometry's bound centre, for firings without a place
 		RE::NiPointer<RE::BSGeometry>       geometry_;
@@ -154,7 +154,7 @@ namespace WornEnchantmentPBR
 		std::vector<PreparedSource>                      textures_;
 		std::vector<std::shared_ptr<RenderedMask>>       dependencies_;
 		std::vector<std::shared_ptr<TextureLab::Lookup>> curves_;
-		std::shared_ptr<TextureLab::Target>              target_;
+		std::shared_ptr<TextureLab::RenderTarget>              target_;
 		bool                                             animated_ = false;
 		bool                                             vector_ = false;
 		bool                                             renderedOnce_ = false;
@@ -205,9 +205,9 @@ namespace WornEnchantmentPBR
 		friend class Compositor;
 		std::vector<PreparedLayer>           layers_;
 		RE::NiPointer<RE::NiSourceTexture>   base_;  // the material's own map for slots that edit one; null: black
-		std::shared_ptr<TextureLab::Target>  neutral_;  // a height stack's 0.5 base when the material's displacement is flat; keeps base_ alive
-		std::shared_ptr<TextureLab::Target>  target_;  // where the result lands; intermediates use the lab's scratch
-		TextureLab::Target*                  latest_ = nullptr;
+		std::shared_ptr<TextureLab::RenderTarget>  neutral_;  // a height stack's 0.5 base when the material's displacement is flat; keeps base_ alive
+		std::shared_ptr<TextureLab::RenderTarget>  target_;  // where the result lands; intermediates use the lab's scratch
+		TextureLab::RenderTarget*                  latest_ = nullptr;
 		TextureSize                          size_ = TextureSize::Clamp(TextureSize::kMin);
 		bool                                 animated_ = false;
 		bool                                 renderedOnce_ = false;
@@ -293,8 +293,8 @@ namespace WornEnchantmentPBR
 		// CS offsets parallax by (height - 0.5) * scale, so a height stack over
 		// a flat displacement map starts here and its masked layers displace
 		// only where they are.
-		std::shared_ptr<TextureLab::Target> NeutralHeight();
-		std::shared_ptr<TextureLab::Target> neutralHeight_;
+		std::shared_ptr<TextureLab::RenderTarget> NeutralHeight();
+		std::shared_ptr<TextureLab::RenderTarget> neutralHeight_;
 
 		std::optional<PreparedSource> PrepareSource(const Recipe& a_recipe, const Ref& a_ref, const GeometryInputs& a_inputs, TextureSize a_size, std::vector<Diagnostic>& a_out, const std::string& a_where, std::uint32_t a_depth = 0);
 		std::optional<PreparedMask>   PrepareMask(const Recipe& a_recipe, const Ref& a_ref, const GeometryInputs& a_inputs, TextureSize a_size, std::vector<Diagnostic>& a_out, const std::string& a_where);
@@ -303,10 +303,10 @@ namespace WornEnchantmentPBR
 		void                          RenderMask(RenderedMask& a_mask, const SignalState& a_signals, float a_time);
 		// Rasterises buffers into a target kept on the mesh entry under a key
 		// ("<definition>@<size>", Mesh.h), or returns the one already there.
-		std::expected<std::shared_ptr<TextureLab::Target>, std::string> BakeInto(MeshEntry& a_entry, const std::string& a_key, TextureSize a_size, const std::function<BakeBuffers()>& a_buffers);
+		std::expected<std::shared_ptr<TextureLab::RenderTarget>, std::string> BakeInto(MeshEntry& a_entry, const std::string& a_key, TextureSize a_size, const std::function<BakeBuffers()>& a_buffers);
 		// The bake's target from the mesh entry, or rasterised now; a problem when it cannot be.
-		std::expected<std::shared_ptr<TextureLab::Target>, std::string> PrepareBake(const BakeSource& a_bake, const GeometryInputs& a_inputs, TextureSize a_size);
-		std::expected<std::shared_ptr<TextureLab::Target>, std::string> PrepareDistance(const DistanceSource& a_distance, const GeometryInputs& a_inputs, TextureSize a_size);
+		std::expected<std::shared_ptr<TextureLab::RenderTarget>, std::string> PrepareBake(const BakeSource& a_bake, const GeometryInputs& a_inputs, TextureSize a_size);
+		std::expected<std::shared_ptr<TextureLab::RenderTarget>, std::string> PrepareDistance(const DistanceSource& a_distance, const GeometryInputs& a_inputs, TextureSize a_size);
 		std::expected<std::shared_ptr<RenderedRipple>, std::string>     PrepareRipple(const Source& a_source, const RippleSource& a_ripple, const GeometryInputs& a_inputs, TextureSize a_size);
 		void                                                            RenderRipple(RenderedRipple& a_ripple, const SignalState& a_signals, float a_time);
 		std::shared_ptr<TextureLab::Lookup> BakeCurve(const Recipe& a_recipe, const CurveRef& a_curve, const std::optional<PreparedSource>& a_source, std::vector<Diagnostic>& a_out, const std::string& a_where);
