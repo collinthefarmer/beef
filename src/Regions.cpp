@@ -223,15 +223,10 @@ namespace WornEnchantmentPBR::Studio
 		return std::nullopt;
 	}
 
-	ScratchState ScratchOf(const RecipeRow& a_kind)
+	std::optional<std::string> ScratchOf(const RecipeRow& a_recipe)
 	{
-		ScratchState scratch;
-		const auto   it = std::ranges::find(a_kind.maskRows, kScratchMask, &TextRow::name);
-		if (it != a_kind.maskRows.end()) {
-			scratch.present = true;
-			scratch.text = it->text;
-		}
-		return scratch;
+		const auto it = std::ranges::find(a_recipe.maskRows, kScratchMask, &TextRow::name);
+		return it != a_recipe.maskRows.end() ? std::optional{ it->text } : std::nullopt;
 	}
 
 	Existing ExistingOf(const RecipeRow& a_kind)
@@ -249,17 +244,17 @@ namespace WornEnchantmentPBR::Studio
 		return existing;
 	}
 
-	std::vector<RecipeEdit> ScratchEdits(std::span<const Term> a_terms, std::optional<std::size_t> a_solo, const std::set<std::size_t>& a_muted, const ScratchState& a_scratch)
+	std::vector<RecipeEdit> ScratchEdits(std::span<const Term> a_terms, std::optional<std::size_t> a_solo, const std::set<std::size_t>& a_muted, const std::optional<std::string>& a_scratch)
 	{
 		std::vector<RecipeEdit> edits;
 		std::string             text = BuildRegion(a_terms, a_solo, a_muted);
 		if (text.empty()) {
 			text = "0";
 		}
-		if (!a_scratch.present) {
+		if (!a_scratch) {
 			edits.push_back(AddMask{ std::string{ kScratchMask } });
 		}
-		if (!a_scratch.present || a_scratch.text != text) {
+		if (!a_scratch || *a_scratch != text) {
 			edits.push_back(SetMask{ std::string{ kScratchMask }, std::move(text) });
 		}
 		return edits;

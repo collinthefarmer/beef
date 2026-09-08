@@ -1027,10 +1027,10 @@ namespace
 
 		// The scratch mask follows the stack: added when absent, set when the text differs, "0" when nothing shows.
 		const std::vector stackTerms{ Term{ TermOp::kSet, "@a", "a" }, Term{ TermOp::kAnd, "@b", "b" } };
-		const auto        fresh = ScratchEdits(stackTerms, std::nullopt, {}, ScratchState{});
+		const auto        fresh = ScratchEdits(stackTerms, std::nullopt, {}, std::nullopt);
 		Check(fresh.size() == 2 && Get<AddMask>(fresh[0]) && Get<SetMask>(fresh[1]) && Get<SetMask>(fresh[1])->text == "(@a) * (@b)", "an absent scratch is added and set");
-		Check(ScratchEdits(stackTerms, std::nullopt, {}, ScratchState{ true, "(@a) * (@b)" }).empty(), "a scratch that already holds the text needs no edit");
-		const auto muted = ScratchEdits(stackTerms, std::nullopt, { 0, 1 }, ScratchState{ true, "(@a) * (@b)" });
+		Check(ScratchEdits(stackTerms, std::nullopt, {}, std::optional<std::string>{ "(@a) * (@b)" }).empty(), "a scratch that already holds the text needs no edit");
+		const auto muted = ScratchEdits(stackTerms, std::nullopt, { 0, 1 }, std::optional<std::string>{ "(@a) * (@b)" });
 		Check(muted.size() == 1 && Get<SetMask>(muted[0]) && Get<SetMask>(muted[0])->text == "0", "everything muted writes 0");
 
 		// The paint recipe: a clone with one masked emissive output; Keep

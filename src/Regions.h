@@ -88,12 +88,7 @@ namespace WornEnchantmentPBR::Studio
 	[[nodiscard]] std::optional<std::string> Unresolvable(const RegionPreset& a_preset, const GeometryRow& a_geometry);
 
 	// The working selection's mask row, as the recipe has it.
-	struct ScratchState
-	{
-		bool        present = false;
-		std::string text;
-	};
-	[[nodiscard]] ScratchState ScratchOf(const RecipeRow& a_kind);
+	[[nodiscard]] std::optional<std::string> ScratchOf(const RecipeRow& a_recipe);
 
 	// What a recipe already has, for a term to reuse and a new row to avoid:
 	// its sources by name and definition (a source of the same definition
@@ -108,7 +103,7 @@ namespace WornEnchantmentPBR::Studio
 	// The edits that write the stack's built expression into the scratch
 	// mask: the row added when absent, the text set when it differs; "0"
 	// when nothing is shown, so the row always holds an expression.
-	[[nodiscard]] std::vector<RecipeEdit> ScratchEdits(std::span<const Term> a_terms, std::optional<std::size_t> a_solo, const std::set<std::size_t>& a_muted, const ScratchState& a_scratch);
+	[[nodiscard]] std::vector<RecipeEdit> ScratchEdits(std::span<const Term> a_terms, std::optional<std::size_t> a_solo, const std::set<std::size_t>& a_muted, const std::optional<std::string>& a_scratch);
 
 	// A preset as one term of the region stack: the source edits it needs
 	// (an existing source of the same definition is reused; a new one is
