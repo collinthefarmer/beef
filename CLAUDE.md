@@ -48,7 +48,8 @@ refactor that moves a responsibility. `schema/recipe.schema.json` is the recipe 
   (`/mnt/a/mods/SkyrimSE/mods/WornEnchantmentPBR/WornEnchantmentPBR/<folder>/`),
   and keep a copy under `recipes/` in the repo only when it should be an
   example the tests read.
-- Build with `./build.sh Release`, install with `./install.sh`, and stop at
+- Build with `./build.sh Release -j 4` (more jobs exhaust WSL's memory and
+  kill the instance), install with `./install.sh`, and stop at
   each in-game checkpoint for the user to run the game; give the log lines
   to look for.
 - Rename a symbol with `nix shell nixpkgs#llvmPackages.clang-tools -c
