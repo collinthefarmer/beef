@@ -156,17 +156,25 @@ namespace WornEnchantmentPBR
 		return row && row->enchantmentDerived;
 	}
 
+	std::string_view RecipeKey::Glob() const noexcept
+	{
+		const auto* glob = Get<std::string>(operand);
+		return glob ? std::string_view{ *glob } : std::string_view{};
+	}
+
 	std::string RecipeKey::ToString() const
 	{
-		switch (KeyOperandOf(kind)) {
-		case KeyOperand::kNone:
-			return std::string{ KeyKindName(kind) };
-		case KeyOperand::kGlob:
-			return std::format("{}:{}", KeyKindName(kind), glob);
-		case KeyOperand::kForm:
-			return std::format("{}:{}", KeyKindName(kind), form.text);
-		}
-		return "?";
+		return Match(
+			operand,
+			[&](const std::monostate&) { return std::string{ KeyKindName(kind) }; },
+			[&](const FormRef& form) { return std::format("{}:{}", KeyKindName(kind), form.text); },
+			[&](const std::string& glob) { return std::format("{}:{}", KeyKindName(kind), glob); });
+	}
+
+	std::string_view SelectorClause::Glob() const noexcept
+	{
+		const auto* glob = Get<std::string>(operand);
+		return glob ? std::string_view{ *glob } : std::string_view{};
 	}
 
 	bool GlobMatch(std::string_view a_glob, std::string_view a_text) noexcept
@@ -203,12 +211,14 @@ namespace WornEnchantmentPBR
 		}
 		return std::ranges::any_of(a_selector.anyOf, [&](const SelectorClause& t) {
 			switch (t.kind) {
-			case SelectorKind::kAddon:
-				return a_geometry.addon && t.form.key && *a_geometry.addon == *t.form.key;
+			case SelectorKind::kAddon: {
+				const auto* form = t.Form();
+				return form && form->key && a_geometry.addon && *a_geometry.addon == *form->key;
+			}
 			case SelectorKind::kGeometry:
-				return GlobMatch(t.glob, a_geometry.name);
+				return GlobMatch(t.Glob(), a_geometry.name);
 			case SelectorKind::kTexture:
-				return GlobMatch(t.glob, a_geometry.diffusePath);
+				return GlobMatch(t.Glob(), a_geometry.diffusePath);
 			}
 			return false;
 		});
@@ -914,16 +924,21 @@ namespace WornEnchantmentPBR
 			case KeyOperand::kNone:
 				return true;
 			case KeyOperand::kGlob:
-				return std::ranges::any_of(a_piece.diffusePaths, [&](const std::string& p) { return GlobMatch(a_key.glob, p); });
-			case KeyOperand::kForm:
+				return std::ranges::any_of(a_piece.diffusePaths, [&](const std::string& p) { return GlobMatch(a_key.Glob(), p); });
+			case KeyOperand::kForm: {
+				const auto* form = a_key.Form();
+				if (!form || !form->key) {
+					return false;
+				}
 				if (row->singleForm) {
 					const auto& have = a_piece.*row->singleForm;
-					return have && a_key.form.key && *have == *a_key.form.key;
+					return have && *have == *form->key;
 				}
 				if (row->formList) {
-					return a_key.form.key && std::ranges::any_of(a_piece.*row->formList, [&](const FormKey& k) { return k == *a_key.form.key; });
+					return std::ranges::any_of(a_piece.*row->formList, [&](const FormKey& k) { return k == *form->key; });
 				}
 				return false;
+			}
 			}
 			return false;
 		}

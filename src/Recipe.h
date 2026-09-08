@@ -83,14 +83,18 @@ namespace WornEnchantmentPBR
 	[[nodiscard]] int              DefaultPriority(KeyKind a_kind) noexcept;
 	[[nodiscard]] bool             EnchantmentDerived(KeyKind a_kind) noexcept;
 
+	using KeyOperandValue = std::variant<std::monostate, FormRef, std::string>;
+
 	struct RecipeKey
 	{
-		KeyKind     kind = KeyKind::kDefault;
-		FormRef     form;
-		std::string glob;
+		KeyKind         kind = KeyKind::kDefault;
+		KeyOperandValue operand;
 
-		[[nodiscard]] std::string ToString() const;
-		[[nodiscard]] bool        operator==(const RecipeKey&) const = default;
+		[[nodiscard]] const FormRef*   Form() const noexcept { return Get<FormRef>(operand); }
+		[[nodiscard]] FormRef*         Form() noexcept { return Get<FormRef>(operand); }
+		[[nodiscard]] std::string_view Glob() const noexcept;
+		[[nodiscard]] std::string      ToString() const;
+		[[nodiscard]] bool             operator==(const RecipeKey&) const = default;
 	};
 
 	enum class SelectorKind
@@ -102,10 +106,13 @@ namespace WornEnchantmentPBR
 
 	struct SelectorClause
 	{
-		SelectorKind kind = SelectorKind::kGeometry;
-		FormRef      form;
-		std::string  glob;
-		[[nodiscard]] bool operator==(const SelectorClause&) const = default;
+		SelectorKind                        kind = SelectorKind::kGeometry;
+		std::variant<FormRef, std::string> operand;
+
+		[[nodiscard]] const FormRef*   Form() const noexcept { return Get<FormRef>(operand); }
+		[[nodiscard]] FormRef*         Form() noexcept { return Get<FormRef>(operand); }
+		[[nodiscard]] std::string_view Glob() const noexcept;
+		[[nodiscard]] bool             operator==(const SelectorClause&) const = default;
 	};
 
 	struct Selector

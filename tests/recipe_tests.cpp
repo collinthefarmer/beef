@@ -76,9 +76,9 @@ namespace
 		r.metadata.version = "1.0";
 		r.metadata.imported = "WornEnchantmentPBR 0.1.0";
 		r.metadata.meta = R"json({"nexusId":12345,"notes":"kept verbatim"})json";
-		r.keys = { RecipeKey{ KeyKind::kMagicEffect, Form("EnchFortifyHealthConstantSelf"), {} }, RecipeKey{ KeyKind::kEnchantment, Form("0x49509~Skyrim.esm"), {} },
-			RecipeKey{ KeyKind::kEffectShader, Form("EnchArmorMagickaFXS"), {} }, RecipeKey{ KeyKind::kKeyword, Form("ArmorMaterialEbony"), {} },
-			RecipeKey{ KeyKind::kMaterial, {}, "armor/iron/*" }, RecipeKey{ KeyKind::kArmor, Form("0x12E49~Skyrim.esm"), {} }, RecipeKey{ KeyKind::kDefault, {}, {} } };
+		r.keys = { RecipeKey{ KeyKind::kMagicEffect, Form("EnchFortifyHealthConstantSelf") }, RecipeKey{ KeyKind::kEnchantment, Form("0x49509~Skyrim.esm") },
+			RecipeKey{ KeyKind::kEffectShader, Form("EnchArmorMagickaFXS") }, RecipeKey{ KeyKind::kKeyword, Form("ArmorMaterialEbony") },
+			RecipeKey{ KeyKind::kMaterial, "armor/iron/*" }, RecipeKey{ KeyKind::kArmor, Form("0x12E49~Skyrim.esm") }, RecipeKey{ KeyKind::kDefault } };
 		r.priority = 42;
 		r.clock.speed = 1.5f;
 
@@ -169,7 +169,7 @@ namespace
 			o.surface = Surface::kShell;
 			o.slot = Slot::kEmissive;
 			o.scalars.strength = At("level");
-			o.selector.anyOf = { SelectorClause{ SelectorKind::kTexture, {}, "*iron*" }, SelectorClause{ SelectorKind::kGeometry, {}, "Armor*" }, SelectorClause{ SelectorKind::kAddon, Form("0x12E48~Skyrim.esm"), {} } };
+			o.selector.anyOf = { SelectorClause{ SelectorKind::kTexture, "*iron*" }, SelectorClause{ SelectorKind::kGeometry, "Armor*" }, SelectorClause{ SelectorKind::kAddon, Form("0x12E48~Skyrim.esm") } };
 			o.replace = true;
 			auto l = layer(At("fill"), Blend::kReplace, 1.0f);
 			l.color = Vec3Param{ At("mix") };
@@ -292,7 +292,7 @@ namespace
 		r.variants.push_back(iron);
 		Variant body;
 		body.name = "body only";
-		body.key = Selector{ { SelectorClause{ SelectorKind::kGeometry, {}, "*Body*" } } };
+		body.key = Selector{ { SelectorClause{ SelectorKind::kGeometry, "*Body*" } } };
 		body.overrides = { { "pulse", Value{ 0.0f } } };
 		r.variants.push_back(body);
 		return r;
@@ -311,7 +311,7 @@ namespace
 		Check(!edid.Resolved() && edid.text == "EnchArmorMagickaFXS", "an editor ID is unresolved until the store resolves it");
 		Check(Form("0x92DED~Skyrim.esm").Resolved(), "a form key resolves on parse");
 		Check(CurveRef{ "@rest" }.Named() == "rest" && !CurveRef{ "x / 0.05" }.Named() && !CurveRef{ "@rest(x)" }.Named(), "curve reference naming");
-		Check(RecipeKey{ KeyKind::kEffectShader, Form("EnchArmorMagickaFXS"), {} }.ToString() == "effectShader:EnchArmorMagickaFXS", "key text for logs");
+		Check(RecipeKey{ KeyKind::kEffectShader, Form("EnchArmorMagickaFXS") }.ToString() == "effectShader:EnchArmorMagickaFXS", "key text for logs");
 	}
 
 	void Globs()
@@ -326,10 +326,10 @@ namespace
 
 		GeometryIdentity g{ Key("0x12E48~Skyrim.esm"), "ArmorBody", "textures\\armor\\iron\\cuirass_d.dds" };
 		Check(Matches(Selector{}, g), "empty selector matches all");
-		Check(Matches(Selector{ { SelectorClause{ SelectorKind::kAddon, Form("0x12E48~Skyrim.esm"), {} } } }, g), "addon selector");
-		Check(!Matches(Selector{ { SelectorClause{ SelectorKind::kAddon, Form("SomeAddon"), {} } } }, g), "an unresolved addon never matches");
-		Check(Matches(Selector{ { SelectorClause{ SelectorKind::kGeometry, {}, "armor*" } } }, g), "geometry selector");
-		Check(Matches(Selector{ { SelectorClause{ SelectorKind::kTexture, {}, "*steel*" }, SelectorClause{ SelectorKind::kGeometry, {}, "ArmorBody" } } }, g), "any-of");
+		Check(Matches(Selector{ { SelectorClause{ SelectorKind::kAddon, Form("0x12E48~Skyrim.esm") } } }, g), "addon selector");
+		Check(!Matches(Selector{ { SelectorClause{ SelectorKind::kAddon, Form("SomeAddon") } } }, g), "an unresolved addon never matches");
+		Check(Matches(Selector{ { SelectorClause{ SelectorKind::kGeometry, "armor*" } } }, g), "geometry selector");
+		Check(Matches(Selector{ { SelectorClause{ SelectorKind::kTexture, "*steel*" }, SelectorClause{ SelectorKind::kGeometry, "ArmorBody" } } }, g), "any-of");
 
 		Check(ChannelSet::Parse("rgba") == ChannelSet{} && ChannelSet::Parse("ga") == ChannelSet{ false, true, false, true } && !ChannelSet::Parse("") && !ChannelSet::Parse("x") && !ChannelSet::Parse("rgbaa"), "channel sets");
 		Check(BipedSlotFromName("body") == 32u && BipedSlotFromName("Feet") == 37u && !BipedSlotFromName("torso"), "biped slot names");
@@ -349,7 +349,7 @@ namespace
 		}
 		const auto& r = *loaded.recipe;
 		Check(r.metadata.name == "Magicka (vanilla)" && r.metadata.imported == "WornEnchantmentPBR 0.1.0", "metadata read");
-		Check(r.keys.size() == 1 && r.keys[0].kind == KeyKind::kEffectShader && r.keys[0].form.text == "EnchArmorMagickaFXS", "key read");
+		Check(r.keys.size() == 1 && r.keys[0].kind == KeyKind::kEffectShader && r.keys[0].Form() && r.keys[0].Form()->text == "EnchArmorMagickaFXS", "key read");
 		Check(r.signals.size() == 20 && r.curves.size() == 5 && r.sources.size() == 8 && r.masks.size() == 1 && r.outputs.size() == 5 && r.variants.size() == 1, "row counts");
 		const auto* step = r.FindSignal("step");
 		const auto* trig = step ? Get<TriggerSignal>(step->kind) : nullptr;
@@ -397,7 +397,7 @@ namespace
 		Check(text.find("\"kind\"") == std::string::npos && text.find("\"name\": \"one\"") == std::string::npos, "no kind or name fields");
 
 		Recipe minimal;
-		minimal.keys = { RecipeKey{ KeyKind::kDefault, {}, {} } };
+		minimal.keys = { RecipeKey{ KeyKind::kDefault } };
 		const auto minimalText = SerializeRecipe(minimal);
 		Check(minimalText == "{\n  \"format\": 1,\n  \"keys\": [\n    \"default\"\n  ]\n}\n", "an empty recipe writes only format and keys:\n" + minimalText);
 		const auto minimalLoaded = ParseRecipe(minimalText, "");
@@ -463,7 +463,7 @@ namespace
 		Check(HasError(r.diagnostics, "source m", "'bake' is"), "a misspelt bake name refused");
 
 		Recipe                 built;
-		built.keys = { RecipeKey{ KeyKind::kDefault, {}, {} } };
+		built.keys = { RecipeKey{ KeyKind::kDefault } };
 		MaterialClustersSource bad;
 		bad.clusters = 0;
 		bad.iterations = 300;
@@ -878,16 +878,16 @@ namespace
             r.priority = a_priority;
             loaded.push_back(r);
 		};
-		add("fallback", { RecipeKey{ KeyKind::kDefault, {}, {} } });
-		add("iron", { RecipeKey{ KeyKind::kMaterial, {}, "*/iron/*" } });
-		add("ebony", { RecipeKey{ KeyKind::kKeyword, Form("0xAAA~Skyrim.esm"), {} } });
-		add("cuirass", { RecipeKey{ KeyKind::kArmor, Form("0x12E49~Skyrim.esm"), {} } });
-		add("magicka-shader", { RecipeKey{ KeyKind::kEffectShader, Form("0x92DED~Skyrim.esm"), {} } });
-		add("fortify-magicka", { RecipeKey{ KeyKind::kEnchantment, Form("0xAC~Skyrim.esm"), {} } });
-		add("magicka-effect", { RecipeKey{ KeyKind::kMagicEffect, Form("0xAB~Skyrim.esm"), {} } });
-		add("magicka-shader-later", { RecipeKey{ KeyKind::kEffectShader, Form("0x92DED~Skyrim.esm"), {} } });
-		add("low-effect", { RecipeKey{ KeyKind::kMagicEffect, Form("0xAB~Skyrim.esm"), {} } }, -5);
-		add("unresolved", { RecipeKey{ KeyKind::kArmor, Form("ArmorIronCuirass"), {} } });
+		add("fallback", { RecipeKey{ KeyKind::kDefault } });
+		add("iron", { RecipeKey{ KeyKind::kMaterial, "*/iron/*" } });
+		add("ebony", { RecipeKey{ KeyKind::kKeyword, Form("0xAAA~Skyrim.esm") } });
+		add("cuirass", { RecipeKey{ KeyKind::kArmor, Form("0x12E49~Skyrim.esm") } });
+		add("magicka-shader", { RecipeKey{ KeyKind::kEffectShader, Form("0x92DED~Skyrim.esm") } });
+		add("fortify-magicka", { RecipeKey{ KeyKind::kEnchantment, Form("0xAC~Skyrim.esm") } });
+		add("magicka-effect", { RecipeKey{ KeyKind::kMagicEffect, Form("0xAB~Skyrim.esm") } });
+		add("magicka-shader-later", { RecipeKey{ KeyKind::kEffectShader, Form("0x92DED~Skyrim.esm") } });
+		add("low-effect", { RecipeKey{ KeyKind::kMagicEffect, Form("0xAB~Skyrim.esm") } }, -5);
+		add("unresolved", { RecipeKey{ KeyKind::kArmor, Form("ArmorIronCuirass") } });
 
 		WornPiece piece;
 		piece.magicEffect = Key("0xAB~Skyrim.esm");
@@ -938,7 +938,7 @@ namespace
 	void Classification()
 	{
 		Recipe r;
-		r.keys = { RecipeKey{ KeyKind::kDefault, {}, {} } };
+		r.keys = { RecipeKey{ KeyKind::kDefault } };
 		r.signals.push_back(Const("one", 1.0f));
 		r.signals.push_back(Const("half", 0.5f));
 		r.signals.push_back(Colour("red", Vec3{ 1, 0, 0 }));

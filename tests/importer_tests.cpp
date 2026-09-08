@@ -45,7 +45,7 @@ namespace
 	void SpotChecks(const EffectShaderRecord& a_record, const Recipe& a_recipe)
 	{
 		const auto& id = a_recipe.id;
-		Check(a_recipe.keys.size() == 1 && a_recipe.keys[0].kind == KeyKind::kEffectShader && a_recipe.keys[0].form.text == a_record.editorId, id + ": keyed by the effect shader's editor ID");
+		Check(a_recipe.keys.size() == 1 && a_recipe.keys[0].kind == KeyKind::kEffectShader && a_recipe.keys[0].Form() && a_recipe.keys[0].Form()->text == a_record.editorId, id + ": keyed by the effect shader's editor ID");
 		Check(a_recipe.metadata.imported == "WornEnchantmentPBR 0.1.0" && !a_recipe.metadata.description.empty(), id + ": imported and description set");
 
 		const bool  hasFill = !a_record.fillTexture.empty();

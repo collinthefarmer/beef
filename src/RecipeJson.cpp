@@ -404,7 +404,7 @@ namespace WornEnchantmentPBR
 		{
 			if (a_j.is_string()) {
 				if (a_j.get<std::string>() == "default") {
-					return RecipeKey{ KeyKind::kDefault, {}, {} };
+					return RecipeKey{ KeyKind::kDefault };
 				}
 				a_ctx.Error(std::format("a key is \"default\" or {{\"<kind>\": ...}}; got '{}'", a_j.get<std::string>()));
 				return std::nullopt;
@@ -426,28 +426,25 @@ namespace WornEnchantmentPBR
 				if (!glob) {
 					return std::nullopt;
 				}
-				key.glob = *glob;
+				key.operand = *glob;
 				return key;
 			}
 			const auto form = FormFrom(*entry->value, a_ctx, entry->key);
 			if (!form) {
 				return std::nullopt;
 			}
-			key.form = *form;
+			key.operand = *form;
 			return key;
 		}
 
 		json KeyToJson(const RecipeKey& a_key)
 		{
-			switch (KeyOperandOf(a_key.kind)) {
-			case KeyOperand::kNone:
-				return json(std::string{ NameOf(kKeyKinds, a_key.kind) });
-			case KeyOperand::kGlob:
-				return json::object({ { std::string{ NameOf(kKeyKinds, a_key.kind) }, a_key.glob } });
-			case KeyOperand::kForm:
-				return json::object({ { std::string{ NameOf(kKeyKinds, a_key.kind) }, a_key.form.text } });
-			}
-			return json();
+			const std::string word{ NameOf(kKeyKinds, a_key.kind) };
+			return Match(
+				a_key.operand,
+				[&](const std::monostate&) { return json(word); },
+				[&](const FormRef& form) { return json::object({ { word, form.text } }); },
+				[&](const std::string& glob) { return json::object({ { word, glob } }); });
 		}
 
 		Selector SelectorFrom(const json& a_j, const Ctx& a_ctx)
@@ -474,13 +471,13 @@ namespace WornEnchantmentPBR
 					if (!form) {
 						continue;
 					}
-					term.form = *form;
+					term.operand = *form;
 				} else {
 					const auto glob = GlobFrom(*entry->value, a_ctx, entry->key);
 					if (!glob) {
 						continue;
 					}
-					term.glob = *glob;
+					term.operand = *glob;
 				}
 				s.anyOf.push_back(std::move(term));
 			}
@@ -491,7 +488,8 @@ namespace WornEnchantmentPBR
 		{
 			json out = json::array();
 			for (const auto& t : a_selector.anyOf) {
-				out.push_back(json::object({ { std::string{ NameOf(kSelectorKinds, t.kind) }, t.kind == SelectorKind::kAddon ? t.form.text : t.glob } }));
+				const std::string value = Match(t.operand, [](const FormRef& form) { return form.text; }, [](const std::string& glob) { return glob; });
+				out.push_back(json::object({ { std::string{ NameOf(kSelectorKinds, t.kind) }, value } }));
 			}
 			return out;
 		}

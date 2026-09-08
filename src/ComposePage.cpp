@@ -612,8 +612,7 @@ namespace WornEnchantmentPBR::Studio
 			const auto toKey = [](const KeyChoice& a_key) {
 				RecipeKey key;
 				key.kind = a_key.key.kind;
-				key.form.text = a_key.text;
-				key.form.key = a_key.key.form;
+				key.operand = FormRef{ a_key.text, a_key.key.form };
 				return key;
 			};
 			Widgets::NextItemWidth(Width::Px(240.0f));
@@ -635,7 +634,7 @@ namespace WornEnchantmentPBR::Studio
 				if (ImGui::SmallButton("Add keyword")) {
 					RecipeKey key;
 					key.kind = KeyKind::kKeyword;
-					key.form = FormRef::From(keyword);
+					key.operand = FormRef::From(keyword);
 					Post(a_out, a_recipe.id, AddKey{ key });
 				}
 			});
@@ -1531,8 +1530,7 @@ namespace WornEnchantmentPBR::Studio
 			}
 			RecipeKey key;
 			key.kind = chosen->key.kind;
-			key.form.text = chosen->text;
-			key.form.key = chosen->key.form;
+			key.operand = FormRef{ chosen->text, chosen->key.form };
 			return key;
 		}
 

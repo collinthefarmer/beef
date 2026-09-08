@@ -517,7 +517,7 @@ namespace
 		Refused(referenced, RemoveSignal{ "fresh" }, "signal fresh", "referenced", "removing a signal while a layer reads it");
 		Accepted(referenced, SetLayerOpacity{ 0, 0, 0.5f }, "the layer stops reading it");
 		Accepted(referenced, RemoveSignal{ "fresh" }, "removing the signal once nothing reads it");
-		Check(Describe(SetLightParam{ 4, LightParam::kIntensity, 2.0f }) == "output 4: intensity 2" && Describe(AddKey{ RecipeKey{ KeyKind::kDefault, {}, {} } }).starts_with("keys: add") && Describe(ClearOutputs{}) == "outputs: clear, shell reset" && Describe(SetShellParam{ ShellParam::kAlpha, 0.5f }).starts_with("shell"), "describe covers the light, key, clear and shell families");
+		Check(Describe(SetLightParam{ 4, LightParam::kIntensity, 2.0f }) == "output 4: intensity 2" && Describe(AddKey{ RecipeKey{ KeyKind::kDefault } }).starts_with("keys: add") && Describe(ClearOutputs{}) == "outputs: clear, shell reset" && Describe(SetShellParam{ ShellParam::kAlpha, 0.5f }).starts_with("shell"), "describe covers the light, key, clear and shell families");
 		Accepted(s, SetShellPoint{ ShellPoint::kScalePoint, Vec3{ 1.0f, 2.0f, 3.0f } }, "set the scale point");
 		Refused(s, SetShellPoint{ ShellPoint::kSpinAxis, Vec3{} }, "shell", "cannot be zero", "a zero spin axis");
 		Check(s.shell.material == ShellMaterial::kVanilla && s.shell.blend == ShellBlend::kAlpha && !s.shell.depthBias && s.shell.alphaTest == 0.5f && Get<float>(s.shell.rimPower) && Get<Ref>(s.shell.pose.offset) && s.shell.pose.scalePoint == Vec3{ 1.0f, 2.0f, 3.0f }, "the shell carries every edit");
@@ -534,7 +534,7 @@ namespace
 		Refused(r, RemoveKey{ first }, "key " + first.ToString(), "at least one key", "remove the last key");
 		RecipeKey armor;
 		armor.kind = KeyKind::kArmor;
-		armor.form = FormRef::From("0x12E49~Skyrim.esm");
+		armor.operand = FormRef::From("0x12E49~Skyrim.esm");
 		Accepted(r, AddKey{ armor }, "add an armor key");
 		Check(r.keys.size() == 2 && r.keys[1] == armor, "the armor key is appended");
 		Refused(r, AddKey{ armor }, "key " + armor.ToString(), "has that key", "add a key twice");
@@ -552,13 +552,13 @@ namespace
 		s.id = "fresh";
 		s.keys.push_back(first);
 		Selector torso;
-		torso.anyOf.push_back(SelectorClause{ SelectorKind::kGeometry, {}, "torso" });
+		torso.anyOf.push_back(SelectorClause{ SelectorKind::kGeometry, "torso" });
 		Accepted(s, AddOutput{ Surface::kMaterial, Slot::kEmissive, torso }, "add an output selecting the torso");
 		Accepted(s, AddOutput{ Surface::kMaterial, Slot::kRmaos }, "add an output with no selector");
 		const auto* second = Get<SurfaceOutput>(s.outputs[1]);
 		Check(second && second->selector == torso, "the second output inherits the selector every output shares");
 		Selector hands;
-		hands.anyOf.push_back(SelectorClause{ SelectorKind::kGeometry, {}, "hands" });
+		hands.anyOf.push_back(SelectorClause{ SelectorKind::kGeometry, "hands" });
 		Accepted(s, AddOutput{ Surface::kMaterial, Slot::kHeight, hands }, "add an output selecting the hands");
 		Accepted(s, AddOutput{ Surface::kShell, Slot::kEmissive }, "add an output while the selectors differ");
 		const auto* fourth = Get<SurfaceOutput>(s.outputs[3]);
@@ -603,12 +603,12 @@ void BatchEdits()
 	const Recipe before = r;
 	const auto   refused = Apply(r, EditBatch{ { AddSignal{ "batched" }, SetConstant{ "nobody", 1.0f } } });
 	Check(refused && refused->where == "signal nobody" && r == before, "a batch with a refused edit is refused whole and leaves the recipe as it was");
-	AcceptedBatch(r, EditBatch{ { AddSignal{ "batched" }, SetConstant{ "batched", 2.0f }, AddOutput{ Surface::kMaterial, Slot::kCoat, Selector{} }, AddKey{ RecipeKey{ KeyKind::kDefault, {}, {} } } } }, "a batch across signals, outputs and keys");
+	AcceptedBatch(r, EditBatch{ { AddSignal{ "batched" }, SetConstant{ "batched", 2.0f }, AddOutput{ Surface::kMaterial, Slot::kCoat, Selector{} }, AddKey{ RecipeKey{ KeyKind::kDefault } } } }, "a batch across signals, outputs and keys");
 	const auto* made = r.FindSignal("batched");
 	const auto* constant = made ? Get<ConstantSignal>(made->kind) : nullptr;
 	Check(constant && constant->value == Value{ 2.0f } && r.keys.size() == 2, "an accepted batch applies every edit in order");
 	const Recipe kept = r;
-	const auto   rolled = Apply(r, EditBatch{ { RemoveKey{ RecipeKey{ KeyKind::kDefault, {}, {} } }, AddSignal{ "batched" } } });
+	const auto   rolled = Apply(r, EditBatch{ { RemoveKey{ RecipeKey{ KeyKind::kDefault } }, AddSignal{ "batched" } } });
 	Check(rolled && r == kept, "a batch that changes keys and then fails leaves the keys as they were");
 	Check(Describe(EditBatch{ { AddSignal{ "a" }, RemoveSignal{ "a" } } }) == "signals: add a; signal a: remove", "a batch describes as its edits joined");
 	Check(!Apply(r, EditBatch{}) && r.FindSignal("batched"), "an empty batch is accepted and changes nothing");

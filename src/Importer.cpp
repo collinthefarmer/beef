@@ -89,7 +89,7 @@ namespace WornEnchantmentPBR
 		r.metadata.name = a_record.editorId.empty() ? a_record.key.ToString() : a_record.editorId;
 		r.metadata.description = std::format("Imported from effect shader {} with the shipped defaults.", record.text);
 		r.metadata.imported = a_defaults.importer;
-		r.keys.push_back(RecipeKey{ KeyKind::kEffectShader, record, {} });
+		r.keys.push_back(RecipeKey{ KeyKind::kEffectShader, record });
 
 		r.curves.push_back({ "rest", std::format("x / {}", Num(Timing::BaselineAlpha(p.fill))) });
 		r.curves.push_back({ "edgeRest", std::format("x / {}", Num(Timing::BaselineAlpha(p.edge))) });

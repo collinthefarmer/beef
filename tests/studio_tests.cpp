@@ -1011,7 +1011,7 @@ namespace
 		}
 		RecipeKey key;
 		key.kind = KeyKind::kArmor;
-		key.form = FormRef::From("0x12E49~Skyrim.esm");
+		key.operand = FormRef::From("0x12E49~Skyrim.esm");
 		Recipe paint = PaintRecipe(*active, key, Surface::kShell);
 		Check(paint.id == kPaintRecipe && paint.keys.size() == 1 && paint.keys[0].kind == KeyKind::kArmor && paint.priority == kPaintPriority && paint.variants.empty(), "the paint recipe is keyed alone at the paint priority");
 		Check(paint.signals == active->signals && paint.sources == active->sources && paint.shell == active->shell, "signals, sources and the shell settings are cloned");

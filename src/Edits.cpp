@@ -37,7 +37,7 @@ namespace WornEnchantmentPBR::Studio
 		{
 			std::string text;
 			for (const auto& clause : a_selector.anyOf) {
-				const auto value = clause.kind == SelectorKind::kAddon ? clause.form.text : clause.glob;
+				const std::string value = Match(clause.operand, [](const FormRef& form) { return form.text; }, [](const std::string& glob) { return glob; });
 				text += (text.empty() ? "" : ", ") + std::format("{} {}", NameOf(kSelectorKinds, clause.kind), value);
 			}
 			return text;
@@ -365,12 +365,12 @@ namespace WornEnchantmentPBR::Studio
 			}
 			switch (KeyOperandOf(a_edit.key.kind)) {
 			case KeyOperand::kForm:
-				if (a_edit.key.form.text.empty()) {
+				if (!a_edit.key.Form() || a_edit.key.Form()->text.empty()) {
 					return Refuse(where, "a form key names a form");
 				}
 				break;
 			case KeyOperand::kGlob:
-				if (a_edit.key.glob.empty()) {
+				if (a_edit.key.Glob().empty()) {
 					return Refuse(where, "a material key needs a glob");
 				}
 				break;

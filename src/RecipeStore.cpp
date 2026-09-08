@@ -148,8 +148,8 @@ namespace WornEnchantmentPBR
 		void ResolveSelector(Selector& a_selector, const std::string& a_id, const std::string& a_where, std::vector<Diagnostic>& a_out)
 		{
 			for (auto& term : a_selector.anyOf) {
-				if (term.kind == SelectorKind::kAddon) {
-					ResolveForm(term.form, a_id, a_where, a_out);
+				if (auto* form = term.Form()) {
+					ResolveForm(*form, a_id, a_where, a_out);
 				}
 			}
 		}
@@ -157,8 +157,8 @@ namespace WornEnchantmentPBR
 		void ResolveForms(Recipe& a_recipe, std::vector<Diagnostic>& a_out)
 		{
 			for (auto& key : a_recipe.keys) {
-				if (KeyOperandOf(key.kind) == KeyOperand::kForm) {
-					ResolveForm(key.form, a_recipe.id, std::format("key {}", key.ToString()), a_out);
+				if (auto* form = key.Form()) {
+					ResolveForm(*form, a_recipe.id, std::format("key {}", key.ToString()), a_out);
 				}
 			}
 			for (auto& signal : a_recipe.signals) {
@@ -256,7 +256,8 @@ namespace WornEnchantmentPBR
 		{
 			return std::ranges::any_of(g_loaded, [&](const LoadedRecipe& l) {
 				return std::ranges::any_of(l.recipe.keys, [&](const RecipeKey& k) {
-					return k.kind == KeyKind::kEffectShader && k.form.key && *k.form.key == a_key;
+					const auto* form = k.Form();
+					return k.kind == KeyKind::kEffectShader && form && form->key && *form->key == a_key;
 				});
 			});
 		}
@@ -289,7 +290,9 @@ namespace WornEnchantmentPBR
 					LogDiagnostics(recipe.id, parsed.diagnostics);
 				}
 				for (auto& key : recipe.keys) {
-					key.form.key = record.key;
+					if (auto* form = key.Form()) {
+						form->key = record.key;
+					}
 				}
 				for (auto& signal : recipe.signals) {
 					if (auto* efsh = Get<EfshSignal>(signal.kind)) {
@@ -563,7 +566,7 @@ namespace WornEnchantmentPBR
 		recipe.keys.push_back(std::move(a_key));
 		if (!a_geometry.empty()) {
 			Selector selector;
-			selector.anyOf.push_back(SelectorClause{ SelectorKind::kGeometry, {}, std::string{ a_geometry } });
+			selector.anyOf.push_back(SelectorClause{ SelectorKind::kGeometry, std::string{ a_geometry } });
 			[[maybe_unused]] const auto refused = Studio::Apply(recipe, Studio::AddOutput{ Surface::kMaterial, Slot::kEmissive, std::move(selector) });
 		}
 		LoadedRecipe loaded{ std::move(recipe), Identity::UserRecipeFolder() / (id + ".json"), {}, nullptr, true };
