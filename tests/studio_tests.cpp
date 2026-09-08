@@ -9,7 +9,7 @@
 #include "Forms.h"
 #include "History.h"
 #include "MenuState.h"
-#include "MaskStack.h"
+#include "TermStack.h"
 #include "Regions.h"
 #include "Studio.h"
 #include "test_support.h"
@@ -433,7 +433,7 @@ namespace
 		Check(stack->output == 0 && stack->surface == Surface::kShell && stack->slot == Slot::kEmissive, "the stack names its cell");
 		Check(stack->rows.size() == 3 && stack->rows[0].index == 0 && stack->rows[2].index == 2 && stack->rows[0].layer.source == "@fill" && stack->rows[2].layer.source == "@stepRing", "rows are in file order, base first");
 		Check(stack->rows[1].selected && !stack->rows[0].selected && !stack->rows[2].selected, "the selected layer is marked");
-		Check(std::ranges::all_of(stack->rows, [](const StackRow& a_row) { return a_row.inRegion && !a_row.muted && !a_row.soloed; }), "with no region every row is in, none muted or soloed");
+		Check(std::ranges::all_of(stack->rows, [](const LayerStackRow& a_row) { return a_row.inRegion && !a_row.muted && !a_row.soloed; }), "with no region every row is in, none muted or soloed");
 		Check(stack->below.size() == 1 && stack->below[0].recipe == "lower" && stack->below[0].priority == 20 && stack->below[0].layer.source == "1, 0, 0", "the lower neighbour's layer sits below");
 		Check(stack->above.size() == 1 && stack->above[0].recipe == "higher" && stack->above[0].priority == 60, "the higher neighbour's layer sits above");
 		Check(stack->blends.size() == 6 && std::ranges::find(stack->blends, Blend::kNormal) == stack->blends.end(), "emissive takes every blend but normal");
@@ -457,7 +457,7 @@ namespace
 		const auto rmaos = BuildStackView(a_piece, a_recipe, a_geometry, selection, view);
 		Check(rmaos && rmaos->rows.size() == 1 && rmaos->below.empty() && rmaos->above.empty() && rmaos->scalars.empty(), "rmaos on the material has no neighbours and no scalars");
 		Check(rmaos && rmaos->masks == a_recipe.masks, "the stack carries the recipe's mask names for its rows");
-		Check(rmaos && std::ranges::none_of(rmaos->rows, [](const StackRow& a_row) { return a_row.selected; }), "no layer selected, none marked");
+		Check(rmaos && std::ranges::none_of(rmaos->rows, [](const LayerStackRow& a_row) { return a_row.selected; }), "no layer selected, none marked");
 
 		// A recipe the piece does not list: neighbours split by priority.
 		auto stray = a_recipe;

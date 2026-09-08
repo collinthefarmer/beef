@@ -2,7 +2,7 @@
 // built shape parses back to the same terms, anything else loads as one raw
 // term, and garbage never gets past the bounds.
 
-#include "MaskStack.h"
+#include "TermStack.h"
 #include "Expression.h"
 #include "test_support.h"
 

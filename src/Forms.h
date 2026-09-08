@@ -144,7 +144,7 @@ namespace WornEnchantmentPBR::Studio
 	// channels, in that order.
 	[[nodiscard]] std::vector<FormField> InspectorForm(const Inspector& a_inspector);
 	// The stack's slot scalars, one field each, in the slot's order.
-	[[nodiscard]] std::vector<FormField> ScalarForm(const StackView& a_stack);
+	[[nodiscard]] std::vector<FormField> ScalarForm(const LayerStack& a_stack);
 	// A signal's value as one field of the signal table, shown as its kind
 	// (a constant's number or colour, an expr's text) and read as what is
 	// typed: a number keeps or makes a scalar constant, three numbers a

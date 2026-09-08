@@ -178,7 +178,7 @@ namespace WornEnchantmentPBR::Studio
 
 		// Other recipes' layers on the same slot of a geometry of the same
 		// name, split by merge order around this recipe.
-		void FillForeignRows(StackView& a_stack, const PieceRow& a_piece, const RecipeRow& a_recipe, const GeometryRow& a_geometry)
+		void FillForeignRows(LayerStack& a_stack, const PieceRow& a_piece, const RecipeRow& a_recipe, const GeometryRow& a_geometry)
 		{
 			for (const auto& other : a_piece.recipes) {
 				if (other.id == a_recipe.id) {
@@ -479,19 +479,19 @@ namespace WornEnchantmentPBR::Studio
 
 	// ------------------------------------------------------------------ stack
 
-	std::optional<StackView> BuildStackView(const PieceRow& a_piece, const RecipeRow& a_recipe, const GeometryRow& a_geometry, const Selection& a_selection, const View& a_view)
+	std::optional<LayerStack> BuildStackView(const PieceRow& a_piece, const RecipeRow& a_recipe, const GeometryRow& a_geometry, const Selection& a_selection, const View& a_view)
 	{
 		const auto* output = SelectedOutput(&a_geometry, a_selection);
 		if (!output || !IsMaterialOutput(*output)) {
 			return std::nullopt;
 		}
-		StackView stack;
+		LayerStack stack;
 		stack.output = output->index;
 		stack.surface = output->surface;
 		stack.slot = output->slot;
 		stack.rows.reserve(output->layers.size());
 		for (std::size_t i = 0; i < output->layers.size(); ++i) {
-			StackRow row;
+			LayerStackRow row;
 			row.index = i;
 			row.layer = output->layers[i];
 			row.inRegion = LayerInRegion(row.layer, a_selection.region);
@@ -1062,7 +1062,7 @@ namespace WornEnchantmentPBR::Studio
 		return form;
 	}
 
-	std::vector<FormField> ScalarForm(const StackView& a_stack)
+	std::vector<FormField> ScalarForm(const LayerStack& a_stack)
 	{
 		std::vector<FormField> form;
 		form.reserve(a_stack.scalars.size());

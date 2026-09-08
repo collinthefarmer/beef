@@ -8,7 +8,7 @@
 
 #include "Edits.h"
 #include "Forms.h"
-#include "MaskStack.h"
+#include "TermStack.h"
 #include "Mesh.h"
 #include "Recipe.h"
 #include "Snapshot.h"

@@ -180,7 +180,7 @@ namespace WornEnchantmentPBR::Studio
 
 	// ------------------------------------------------------------------ stack
 
-	struct StackRow
+	struct LayerStackRow
 	{
 		std::size_t index = 0;  // into the output's stack (file order)
 		LayerRow    layer;
@@ -202,12 +202,12 @@ namespace WornEnchantmentPBR::Studio
 	// The selected cell's stack. Rows are in file order, base first, which
 	// is also the order the page draws them: the last applied layer at the
 	// bottom.
-	struct StackView
+	struct LayerStack
 	{
 		std::size_t             output = 0;
 		Surface                 surface = Surface::kMaterial;
 		Slot                    slot = Slot::kEmissive;
-		std::vector<StackRow>   rows;
+		std::vector<LayerStackRow>   rows;
 		std::vector<ForeignRow> below;
 		std::vector<ForeignRow> above;
 		TextureHandle           composite = nullptr;
@@ -222,7 +222,7 @@ namespace WornEnchantmentPBR::Studio
 		bool                    isolated = false;
 	};
 
-	[[nodiscard]] std::optional<StackView> BuildStackView(const PieceRow& a_piece, const RecipeRow& a_recipe, const GeometryRow& a_geometry, const Selection& a_selection, const View& a_view);
+	[[nodiscard]] std::optional<LayerStack> BuildStackView(const PieceRow& a_piece, const RecipeRow& a_recipe, const GeometryRow& a_geometry, const Selection& a_selection, const View& a_view);
 
 	// -------------------------------------------------------------- inspector
 

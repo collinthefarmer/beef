@@ -5,7 +5,7 @@
 #include "Edits.h"
 #include "Forms.h"
 #include "Manager.h"
-#include "MaskStack.h"
+#include "TermStack.h"
 #include "MenuState.h"
 #include "MenuWidgets.h"
 #include "RecipeStore.h"
@@ -898,7 +898,7 @@ namespace WornEnchantmentPBR::Studio
 
 		FormID g_modalActor = 0;  // the piece's actor, for a trigger fired from a modal; the body sets it
 
-		void DrawScalars(const StackView& a_stack, const RecipeRow& a_recipe, float a_scale, const Names& a_names, Intents& a_out)
+		void DrawScalars(const LayerStack& a_stack, const RecipeRow& a_recipe, float a_scale, const Names& a_names, Intents& a_out)
 		{
 			if (a_stack.scalars.empty()) {
 				return;
@@ -929,7 +929,7 @@ namespace WornEnchantmentPBR::Studio
 
 		// One layer as a table row, in its own ID scope. Clicking the grip or
 		// the name selects it.
-		void DrawStackRow(Widgets::Table& a_table, const StackView& a_stack, const StackRow& a_row, const RecipeRow& a_recipe, Intents& a_out)
+		void DrawStackRow(Widgets::Table& a_table, const LayerStack& a_stack, const LayerStackRow& a_row, const RecipeRow& a_recipe, Intents& a_out)
 		{
 			const auto&       id = a_recipe.id;
 			const std::size_t output = a_stack.output;
@@ -987,7 +987,7 @@ namespace WornEnchantmentPBR::Studio
 		// A new layer is applied last and lands at the bottom, at the index
 		// the stack has now; under a region lens it is masked by the region
 		// before anything else is chosen. Reduce selects it.
-		void DrawAddLayer(const StackView& a_stack, const RecipeRow& a_recipe, const Selection& a_selection, Intents& a_out)
+		void DrawAddLayer(const LayerStack& a_stack, const RecipeRow& a_recipe, const Selection& a_selection, Intents& a_out)
 		{
 			if (ImGui::SmallButton("Add layer")) {
 				Layer layer = DefaultLayer();
@@ -1002,7 +1002,7 @@ namespace WornEnchantmentPBR::Studio
 		// merging before this one, then this stack's base first and its last
 		// applied layer at the bottom, then the recipes merging after; and
 		// Add layer.
-		void DrawLayers(const StackView& a_stack, const RecipeRow& a_recipe, const Selection& a_selection, Intents& a_out)
+		void DrawLayers(const LayerStack& a_stack, const RecipeRow& a_recipe, const Selection& a_selection, Intents& a_out)
 		{
 			auto table = BeginLayerTable();
 			if (table.Open()) {
@@ -1023,13 +1023,13 @@ namespace WornEnchantmentPBR::Studio
 
 		// The selected layer's fields, flush against the split's rule; the
 		// layer's picture, when it has one, goes under them.
-		void DrawInspector(const StackView& a_stack, const std::optional<Inspector>& a_inspector, const RecipeRow& a_recipe, const Layout& a_layout, const Names& a_names, Intents& a_out)
+		void DrawInspector(const LayerStack& a_stack, const std::optional<Inspector>& a_inspector, const RecipeRow& a_recipe, const Layout& a_layout, const Names& a_names, Intents& a_out)
 		{
 			if (!a_layout.inspector || !a_inspector) {
 				Widgets::Dim("click a layer to inspect it");
 				return;
 			}
-			const auto row = std::ranges::find(a_stack.rows, a_inspector->layer, &StackRow::index);
+			const auto row = std::ranges::find(a_stack.rows, a_inspector->layer, &LayerStackRow::index);
 			ImGui::PushID(static_cast<int>(a_inspector->layer));
 			if (!a_inspector->row.problem.empty()) {
 				Widgets::Warn(a_inspector->row.problem);
@@ -1043,7 +1043,7 @@ namespace WornEnchantmentPBR::Studio
 
 		// The composite as rendered on the shape viewed; on a piece with
 		// several shapes, clicking it views the next one.
-		void DrawComposite(const StackView& a_stack, const PieceRow& a_piece, const RecipeRow& a_recipe, const GeometryRow& a_geometry, const Layout& a_layout, Intents& a_out)
+		void DrawComposite(const LayerStack& a_stack, const PieceRow& a_piece, const RecipeRow& a_recipe, const GeometryRow& a_geometry, const Layout& a_layout, Intents& a_out)
 		{
 			if (a_recipe.geometries.size() < 2) {
 				Widgets::Thumbnail(a_stack.composite, ShaderChannel::kRgb, a_stack.animated, a_layout.compositeSize);
@@ -1057,7 +1057,7 @@ namespace WornEnchantmentPBR::Studio
 			Widgets::Tooltip(std::format("viewed on {} (one of {} shapes; the recipe applies to all)\nclick: view the next shape\nraw name: {}", GeometryLabel(a_geometry.name, a_piece.armorName), a_recipe.geometries.size(), a_geometry.name));
 		}
 
-		void DrawStack(const std::optional<StackView>& a_stack, const std::optional<Inspector>& a_inspector, const PieceRow& a_piece, const RecipeRow& a_recipe, const GeometryRow& a_geometry, const Selection& a_selection, Layout& a_layout, const Names& a_names, Intents& a_out)
+		void DrawStack(const std::optional<LayerStack>& a_stack, const std::optional<Inspector>& a_inspector, const PieceRow& a_piece, const RecipeRow& a_recipe, const GeometryRow& a_geometry, const Selection& a_selection, Layout& a_layout, const Names& a_names, Intents& a_out)
 		{
 			if (!a_stack) {
 				Widgets::Dim("choose a target and a slot");

@@ -12,7 +12,7 @@
 // therefore consistent with the state the frame began with.
 
 #include "Edits.h"
-#include "MaskStack.h"
+#include "TermStack.h"
 #include "Studio.h"
 
 #include <array>
