@@ -496,8 +496,11 @@ are in `ARCHITECTURE.md` under "The recipe studio".
   session for each. The head line holds the recipe combo, which
   keeps naming the recipe being painted for, with **preview on**,
   material or shell, at its right edge: where the paint recipe's
-  emissive goes. The pane holds the term table across its width, then
-  **Keep** and **Discard**, then, under a rule that carries a filter,
+  emissive goes. The Region rule carries **Clear**, **Keep** and **Discard** at its
+  right edge, the way the stack's rule carries its switch. The pane
+  leads with the region's picture (the scratch mask as rendered, its
+  problem above it when it has one), then the term table across its
+  width, then, under a rule that carries a filter,
   what the piece can be shown to have as tables in collapsible sections:
   parts, materials, bones, partitions, channels, presets, masks and
   sources, each row with its measurements, greyed with the reason when
@@ -519,7 +522,7 @@ are in `ARCHITECTURE.md` under "The recipe studio".
   text makes the term raw), and each source or mask it reads as a row
   whose own detail button opens its picture. The stack is page state; its built
   expression is written into the paint recipe's scratch after every
-  change. Under the split, **Keep** writes every term (mutes lifted)
+  change. **Keep** writes every term (mutes lifted)
   under a proposed or typed name into the recipe being painted for, with
   the sources the expression reads copied across, as one undoable step,
   and ends the session; **Discard** ends it without keeping. On the

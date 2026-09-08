@@ -1890,51 +1890,83 @@ namespace WornEnchantmentPBR::Studio
 			ImGui::PopID();
 		}
 
-		// Keep and Discard, at the right edge under the term table. Keep proposes a
-		// name and hands the region to the manager, which copies it into the
-		// active recipe and ends the session; Discard ends it.
-		void DrawKeepDiscard(const MenuState& a_state, Intents& a_out)
+		// The Region rule's right group, as the stack's pane rule carries its
+		// actions: Clear empties the stack; Keep proposes a name and hands the
+		// region to the manager, which copies it into the active recipe and
+		// ends the session; Discard ends it without keeping.
+		[[nodiscard]] Widgets::RuleLine RegionRule(std::string_view a_title, const MenuState& a_state, Intents& a_out)
 		{
-			const auto& region = a_state.region;
+			const float clearWidth = Widgets::ButtonWidth("Clear");
 			const float keepWidth = Widgets::ButtonWidth("Keep");
 			const float discardWidth = Widgets::ButtonWidth("Discard");
-			const bool  painting = a_state.paint.has_value();
-			const bool  something = painting && !BuildRegion(region.terms).empty();
-			Widgets::RightAligned(keepWidth + discardWidth + Widgets::ItemSpacingX(), [&]() {
-				Widgets::Disabled(!something, [&]() {
-					if (ImGui::Button("Keep", ImVec2{ keepWidth, 0.0f })) {
-						ImGui::OpenPopup("keep-region");
-					}
-				});
-				if (ImGui::BeginPopup("keep-region")) {
-					const auto        proposed = ProposedRegionName(region.terms, region.editing);
-					const auto        typed = Widgets::LiveTextField("name", proposed.c_str(), Width::Px(200.0f), 1.0f);
-					const std::string name = typed.empty() ? proposed : std::string{ typed };
-					const bool        ready = painting && IsName(name) && name != kScratchMask;
-					Widgets::Disabled(!ready, [&]() {
-						if (ImGui::Button(std::format("Keep as {}", name).c_str()) && ready) {
-							a_out.push_back(KeepPaint{ a_state.paint->recipe, name });
-							ImGui::CloseCurrentPopup();
-						}
-					});
-					ImGui::EndPopup();
-				}
-				ImGui::SameLine();
-				Widgets::Disabled(!painting, [&]() {
-					if (ImGui::Button("Discard", ImVec2{ discardWidth, 0.0f })) {
-						a_out.push_back(EndPaint{});
-					}
-				});
-			});
+			const float rightWidth = clearWidth + keepWidth + discardWidth + 2.0f * Widgets::ItemSpacingX();
+			return Widgets::RuleLine{ a_title, rightWidth, [=, &a_state, &a_out]() {
+									 const auto& region = a_state.region;
+									 const bool  painting = a_state.paint.has_value();
+									 const bool  something = painting && !BuildRegion(region.terms).empty();
+									 Widgets::Disabled(region.terms.empty(), [&]() {
+										 if (ImGui::Button("Clear", ImVec2{ clearWidth, 0.0f })) {
+											 a_out.push_back(ClearRegion{});
+										 }
+									 });
+									 ImGui::SameLine();
+									 Widgets::Disabled(!something, [&]() {
+										 if (ImGui::Button("Keep", ImVec2{ keepWidth, 0.0f })) {
+											 ImGui::OpenPopup("keep-region");
+										 }
+									 });
+									 if (ImGui::BeginPopup("keep-region")) {
+										 const auto        proposed = ProposedRegionName(region.terms, region.editing);
+										 const auto        typed = Widgets::LiveTextField("name", proposed.c_str(), Width::Px(200.0f), 1.0f);
+										 const std::string name = typed.empty() ? proposed : std::string{ typed };
+										 const bool        ready = painting && IsName(name) && name != kScratchMask;
+										 Widgets::Disabled(!ready, [&]() {
+											 if (ImGui::Button(std::format("Keep as {}", name).c_str()) && ready) {
+												 a_out.push_back(KeepPaint{ a_state.paint->recipe, name });
+												 ImGui::CloseCurrentPopup();
+											 }
+										 });
+										 ImGui::EndPopup();
+									 }
+									 ImGui::SameLine();
+									 Widgets::Disabled(!painting, [&]() {
+										 if (ImGui::Button("Discard", ImVec2{ discardWidth, 0.0f })) {
+											 a_out.push_back(EndPaint{});
+										 }
+									 });
+								 } };
 		}
 
-		// The pane: the term table across the width, Keep and Discard, then
-		// what the piece offers as tables in collapsible sections under a rule
-		// that carries the filter.
+		// The region as rendered, leading the pane the way the composite leads
+		// the stack: the scratch mask's picture beside a summary line, with
+		// its problem (an expression that does not parse, a source not yet
+		// rendered) above them. Nothing until the scratch has a row.
+		void DrawRegionPicture(const GeometryRow& a_geometry, const RegionStack& a_region, const Layout& a_layout)
+		{
+			const auto scratch = std::ranges::find(a_geometry.masks, kScratchMask, &PictureRow::name);
+			if (scratch == a_geometry.masks.end()) {
+				return;
+			}
+			if (!scratch->problem.empty()) {
+				Widgets::Problem(scratch->problem);
+			}
+			Widgets::Thumbnail(scratch->texture, scratch->channel, scratch->animated, a_layout.compositeSize);
+			ImGui::SameLine();
+			ImGui::BeginGroup();
+			const std::size_t shown = a_region.solo ? 1 : a_region.terms.size() - a_region.muted.size();
+			Widgets::Dim(std::format("region of {} term{}, {} shown, {}", a_region.terms.size(), a_region.terms.size() == 1 ? "" : "s", shown, scratch->animated ? "animated" : "static"));
+			ImGui::EndGroup();
+		}
+
+		// The pane: the region's picture, the term table across the width,
+		// then what the piece offers as tables in collapsible sections under
+		// a rule that carries the filter. Clear, Keep and Discard are on the
+		// Region rule above.
 		void DrawRegionStack(const RecipeRow& a_recipe, const GeometryRow& a_geometry, MenuState& a_state, const Names& a_names, Intents& a_out)
 		{
 			const auto& region = a_state.region;
 			const auto  offers = OffersOf(LoadedPresets(), a_recipe, a_geometry, region.editing);
+			DrawRegionPicture(a_geometry, region, a_state.layout);
 			auto        table = BeginTermTable();
 			if (table.Open()) {
 				for (std::size_t i = 0; i < region.terms.size(); ++i) {
@@ -1946,7 +1978,6 @@ namespace WornEnchantmentPBR::Studio
 				Widgets::Dim("no selection yet: choose a term below");
 			}
 			Widgets::HelpMarker("A region is terms combined in order: the first sets it, each next one is and (product), or (max) or not (times the complement). Drag the :: grip to reorder; S shows one term alone, M leaves one out; ... opens a term's settings; Keep writes every term.");
-			DrawKeepDiscard(a_state, a_out);
 
 			std::string_view filter;
 			const float      filterWidth = kFilterWidth * a_state.layout.widgetScale;
@@ -1984,7 +2015,6 @@ namespace WornEnchantmentPBR::Studio
 				Widgets::NextItemWidth(Width::Fit(a_recipe.id));
 				RecipeCombo(a_piece, a_recipe, "##recipe", a_out);
 			}
-			ImGui::Separator();
 		}
 
 		// After the frame: a dirty stack rebuilds the paint recipe's scratch
@@ -2070,6 +2100,7 @@ namespace WornEnchantmentPBR::Studio
 			const bool painterReady = painting && a_state.paint && a_recipe->id == kPaintRecipe;
 			if (!layout.contextRows) {
 				DrawPaintHead(*a_piece, *a_recipe, a_state, a_out);
+				Widgets::Rule();
 				if (!a_state.paint) {
 					if (const auto key = PaintKeyOf(*a_piece)) {
 						a_out.push_back(BeginPaint{ a_recipe->id, *key, Surface::kMaterial });
@@ -2090,7 +2121,7 @@ namespace WornEnchantmentPBR::Studio
 			// or the stack; in Paint mode the pane is the region stack.
 			if (painting) {
 				const std::string title = a_state.region.editing.empty() ? std::string{ "Region" } : std::format("Region: {}", a_state.region.editing);
-				Widgets::Rule({}, Widgets::RuleLine::Text(title));
+				Widgets::Rule({}, RegionRule(title, a_state, a_out));
 			} else {
 				const std::string_view title = pane.settings ? (selection.target == Target::kLight ? "Light settings" : "Shell settings") : "Stack";
 				Widgets::Rule({}, PaneRule(title, pane, board, *a_recipe, selection.target, a_out));
