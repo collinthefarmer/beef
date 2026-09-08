@@ -754,7 +754,7 @@ namespace WornEnchantmentPBR
 				}
 				r.Child(source->key);
 				if (source->key == "event") {
-					EventSource es;
+					EventOrigin es;
 					if (!source->value->is_string() || source->value->get<std::string>().empty()) {
 						a_ctx.Error("'event' is an id glob string");
 						return std::nullopt;
@@ -776,16 +776,16 @@ namespace WornEnchantmentPBR
 						fr.Finish();
 					}
 					if (r.Has("value")) a_ctx.Error("'value' belongs to a 'when' trigger");
-					k.source = es;
+					k.origin = es;
 				} else if (source->key == "plugin") {
 					if (!source->value->is_string() || source->value->get<std::string>().empty()) {
 						a_ctx.Error("'plugin' is an id string");
 						return std::nullopt;
 					}
 					if (r.Has("filter") || r.Has("at") || r.Has("value")) a_ctx.Error("'filter', 'at' and 'value' belong to 'event' or 'when' triggers");
-					k.source = PluginSource{ source->value->get<std::string>() };
+					k.origin = PluginOrigin{ source->value->get<std::string>() };
 				} else if (source->key == "when") {
-					WhenSource ws;
+					WhenOrigin ws;
 					const auto when = r.RefFrom(*source->value, "when");
 					if (!when) {
 						return std::nullopt;
@@ -793,7 +793,7 @@ namespace WornEnchantmentPBR
 					ws.when = *when;
 					ws.value = r.Reference("value");
 					if (r.Has("filter") || r.Has("at")) a_ctx.Error("'filter' and 'at' belong to 'event' triggers");
-					k.source = ws;
+					k.origin = ws;
 				} else {
 					a_ctx.Error(std::format("a trigger's source is 'event', 'plugin' or 'when', not '{}'", source->key));
 					return std::nullopt;
@@ -927,8 +927,8 @@ namespace WornEnchantmentPBR
 				[&](const TriggerSignal& k) {
 					json o = json::object();
 					Match(
-						k.source,
-						[&](const EventSource& e) {
+						k.origin,
+						[&](const EventOrigin& e) {
 							o["event"] = e.event;
 							if (e.filter != EventFilter{}) {
 								json f = json::object();
@@ -941,8 +941,8 @@ namespace WornEnchantmentPBR
 							}
 							if (!e.at.empty()) o["at"] = e.at;
 						},
-						[&](const PluginSource& p) { o["plugin"] = p.id; },
-						[&](const WhenSource& w) {
+						[&](const PluginOrigin& p) { o["plugin"] = p.id; },
+						[&](const WhenOrigin& w) {
 							o["when"] = "@" + w.when.name;
 							if (w.value) o["value"] = "@" + w.value->name;
 						});

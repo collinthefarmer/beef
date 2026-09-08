@@ -561,7 +561,7 @@ namespace WornEnchantmentPBR::Studio
 					[&](RampSignal& s) { VisitParam(s.from, a_visit); VisitParam(s.to, a_visit); VisitParam(s.seconds, a_visit); },
 					[&](TriggerSignal& s) {
 						VisitParam(s.lifetime, a_visit);
-						if (auto* when = Get<WhenSource>(s.source)) {
+						if (auto* when = Get<WhenOrigin>(s.origin)) {
 							VisitRef(when->when, a_visit);
 							VisitRef(when->value, a_visit);
 						}

@@ -112,7 +112,7 @@ namespace WornEnchantmentPBR
 				},
 				[&](const TriggerSignal& k) {
 					AddRef(out, k.lifetime);
-					if (const auto* when = Get<WhenSource>(k.source)) {
+					if (const auto* when = Get<WhenOrigin>(k.origin)) {
 						AddRef(out, when->when.name);
 						if (when->value) {
 							AddRef(out, when->value->name);
@@ -368,7 +368,7 @@ namespace WornEnchantmentPBR
 				},
 				[&](const TriggerSignal& k) {
 					scalar(k.lifetime, "lifetime");
-					if (const auto* when = Get<WhenSource>(k.source)) {
+					if (const auto* when = Get<WhenOrigin>(k.origin)) {
 						if (const auto t = g.TypeOf(when->when.name); t && *t != ValueType::kScalar) {
 							n.inert = true;
 							report(n.signal.name, std::format("'when' must be a scalar; '@{}' is a {}", when->when.name, Name(*t)));
@@ -519,8 +519,8 @@ namespace WornEnchantmentPBR
 		}
 		TriggerFiring firing{ a_time, a_event.payload };
 		const bool    accepted = Match(
-            trigger->source,
-            [&](const EventSource& s) {
+            trigger->origin,
+            [&](const EventOrigin& s) {
                 if (!GlobMatch(s.event, a_event.id) || !MatchesFilter(s.filter, a_event.payload)) {
                     return false;
                 }
@@ -529,8 +529,8 @@ namespace WornEnchantmentPBR
                 }
                 return true;
             },
-            [&](const PluginSource& s) { return GlobMatch(s.id, a_event.id); },
-            [](const WhenSource&) { return false; });
+            [&](const PluginOrigin& s) { return GlobMatch(s.id, a_event.id); },
+            [](const WhenOrigin&) { return false; });
 		if (!accepted) {
 			return;
 		}
@@ -602,7 +602,7 @@ namespace WornEnchantmentPBR
 			[&](const EnchantmentSignal& k) -> Value { return a_environment.Enchantment(k.field); },
 			[&](const TriggerSignal& k) -> Value {
 				// A `when` source fires from the graph itself, on the rising edge.
-				if (const auto* when = Get<WhenSource>(k.source)) {
+				if (const auto* when = Get<WhenOrigin>(k.origin)) {
 					const float now = Scalar(when->when.name);
 					const float before = st.previous ? AsScalar(*st.previous) : 0.0f;
 					st.previous = now;

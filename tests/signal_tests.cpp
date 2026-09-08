@@ -64,7 +64,7 @@ namespace
 		return Signal{ a_name, ExprSignal{ a_text }, std::nullopt };
 	}
 
-	Signal Trigger(const char* a_name, TriggerSource a_source, float a_lifetime, std::uint32_t a_max, std::optional<CurveRef> a_curve = std::nullopt)
+	Signal Trigger(const char* a_name, TriggerOrigin a_source, float a_lifetime, std::uint32_t a_max, std::optional<CurveRef> a_curve = std::nullopt)
 	{
 		return Signal{ a_name, TriggerSignal{ std::move(a_source), a_lifetime, a_max }, std::move(a_curve) };
 	}
@@ -158,13 +158,13 @@ namespace
 	void EventTriggers()
 	{
 		std::vector<Signal> signals{
-			Trigger("hit", EventSource{ "hit.received", {}, "" }, 1.0f, 2),
-			Trigger("flash", EventSource{ "hit.received", {}, "" }, 1.0f, 2, CurveRef{ "1 - x" }),
-			Trigger("spine", EventSource{ "hit.*", EventFilter{ "NPC Spine*", "", {} }, "" }, 1.0f, 2),
-			Trigger("hard", EventSource{ "hit.received", EventFilter{ "", "", ValueRange{ 10.0f, std::nullopt } }, "" }, 1.0f, 2),
-			Trigger("step", EventSource{ "anim.Foot*", {}, "NPC L Foot [Lft ]" }, 0.6f, 2),
-			Trigger("surge", PluginSource{ "MyMod.Surge" }, 2.0f, 1),
-			Trigger("reset", EventSource{ "equip", {}, "" }, 0.1f, 1),
+			Trigger("hit", EventOrigin{ "hit.received", {}, "" }, 1.0f, 2),
+			Trigger("flash", EventOrigin{ "hit.received", {}, "" }, 1.0f, 2, CurveRef{ "1 - x" }),
+			Trigger("spine", EventOrigin{ "hit.*", EventFilter{ "NPC Spine*", "", {} }, "" }, 1.0f, 2),
+			Trigger("hard", EventOrigin{ "hit.received", EventFilter{ "", "", ValueRange{ 10.0f, std::nullopt } }, "" }, 1.0f, 2),
+			Trigger("step", EventOrigin{ "anim.Foot*", {}, "NPC L Foot [Lft ]" }, 0.6f, 2),
+			Trigger("surge", PluginOrigin{ "MyMod.Surge" }, 2.0f, 1),
+			Trigger("reset", EventOrigin{ "equip", {}, "" }, 0.1f, 1),
 			Signal{ "count", CounterSignal{ At("hit"), At("reset"), Param{ 3.0f } }, std::nullopt },
 			Signal{ "heat", AccumulateSignal{ At("hit"), 2.0f }, std::nullopt },
 			Signal{ "force", PayloadSignal{ At("hit"), PayloadField::kValue }, std::nullopt },
@@ -230,14 +230,14 @@ namespace
 		std::vector<Signal> signals{
 			Signal{ "damage", ActorValueSignal{ "Health", Measure::kDamage }, std::nullopt },
 			Signal{ "wound", DeltaSignal{ At("damage") }, std::nullopt },
-			Trigger("hurt", WhenSource{ At("wound"), At("wound") }, 0.8f, 3, CurveRef{ "pow(1 - x, 2)" }),
+			Trigger("hurt", WhenOrigin{ At("wound"), At("wound") }, 0.8f, 3, CurveRef{ "pow(1 - x, 2)" }),
 			Signal{ "drop", PayloadSignal{ At("hurt"), PayloadField::kValue }, std::nullopt },
 			Signal{ "eased", SmoothSignal{ At("damage"), 1.0f }, std::nullopt },
 			Signal{ "healthFrac", ExprSignal{ "@health / @healthMax" }, std::nullopt },
 			Signal{ "health", ActorValueSignal{ "Health", Measure::kCurrent }, std::nullopt },
 			Signal{ "healthMax", ActorValueSignal{ "Health", Measure::kMax }, std::nullopt },
 			Expr("low", "@healthFrac < 0.25"),
-			Trigger("warn", WhenSource{ At("low"), std::nullopt }, 2.0f, 1),
+			Trigger("warn", WhenOrigin{ At("low"), std::nullopt }, 2.0f, 1),
 		};
 		const auto      graph = SignalGraph::Compile(signals, {});
 		Check(graph.Diagnostics().empty(), "when graph compiles");

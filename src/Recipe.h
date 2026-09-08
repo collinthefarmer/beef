@@ -266,33 +266,33 @@ namespace WornEnchantmentPBR
 	};
 	// An id glob on the plugin's own bus (built in: anim.<graph event>,
 	// equip; providers add the rest). `at` supplies a node when the firing has none.
-	struct EventSource
+	struct EventOrigin
 	{
 		std::string event;
 		EventFilter filter;
 		std::string at;
-		[[nodiscard]] bool operator==(const EventSource&) const = default;
+		[[nodiscard]] bool operator==(const EventOrigin&) const = default;
 	};
 	// A firing another SKSE plugin sends by id.
-	struct PluginSource
+	struct PluginOrigin
 	{
 		std::string id;
-		[[nodiscard]] bool operator==(const PluginSource&) const = default;
+		[[nodiscard]] bool operator==(const PluginOrigin&) const = default;
 	};
 	// Fires on the tick a scalar goes from at most 0 to above 0; `value` is
 	// sampled into the firing.
-	struct WhenSource
+	struct WhenOrigin
 	{
 		Ref                when;
 		std::optional<Ref> value;
-		[[nodiscard]] bool operator==(const WhenSource&) const = default;
+		[[nodiscard]] bool operator==(const WhenOrigin&) const = default;
 	};
-	using TriggerSource = std::variant<EventSource, PluginSource, WhenSource>;
+	using TriggerOrigin = std::variant<EventOrigin, PluginOrigin, WhenOrigin>;
 
 	// Value: age of the newest live firing over its lifetime, 1 when none.
 	struct TriggerSignal
 	{
-		TriggerSource source = EventSource{};
+		TriggerOrigin origin = EventOrigin{};
 		Param         lifetime = 1.0f;
 		std::uint32_t max = 4;
 		[[nodiscard]] bool operator==(const TriggerSignal&) const = default;

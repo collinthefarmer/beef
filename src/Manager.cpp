@@ -1316,9 +1316,9 @@ namespace WornEnchantmentPBR
 							if (const auto* trigger = Get<TriggerSignal>(declared->kind)) {
 								// The bus id a fire button posts: an event glob as written, or
 								// a plugin id; a `when` source fires from its signal alone.
-								if (const auto* event = Get<EventSource>(trigger->source)) {
+								if (const auto* event = Get<EventOrigin>(trigger->origin)) {
 									row.event = event->event;
-								} else if (const auto* plugin = Get<PluginSource>(trigger->source)) {
+								} else if (const auto* plugin = Get<PluginOrigin>(trigger->origin)) {
 									row.event = plugin->id;
 								}
 							}

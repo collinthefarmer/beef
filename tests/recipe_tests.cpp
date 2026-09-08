@@ -100,11 +100,11 @@ namespace
 		r.signals.push_back(Signal{ "healthMax", ActorValueSignal{ "Health", Measure::kMax }, std::nullopt });
 		r.signals.push_back(Signal{ "combat", ActorStateSignal{ ActorStateKind::kInCombat }, std::nullopt });
 		r.signals.push_back(Signal{ "magnitude", EnchantmentSignal{ EnchantmentField::kMagnitude }, CurveRef{ "smoothstep(0, 100, x)" } });
-		r.signals.push_back(Signal{ "hit", TriggerSignal{ EventSource{ "hit.received", EventFilter{ "NPC Spine*", "", ValueRange{ 10.0f, std::nullopt } }, "NPC Spine2 [Spn2]" }, 1.5f, 3 }, CurveRef{ "@flash" } });
-		r.signals.push_back(Signal{ "surge", TriggerSignal{ PluginSource{ "MyMod.Surge" }, 2.0f, 1 }, std::nullopt });
+		r.signals.push_back(Signal{ "hit", TriggerSignal{ EventOrigin{ "hit.received", EventFilter{ "NPC Spine*", "", ValueRange{ 10.0f, std::nullopt } }, "NPC Spine2 [Spn2]" }, 1.5f, 3 }, CurveRef{ "@flash" } });
+		r.signals.push_back(Signal{ "surge", TriggerSignal{ PluginOrigin{ "MyMod.Surge" }, 2.0f, 1 }, std::nullopt });
 		r.signals.push_back(Signal{ "wound", DeltaSignal{ At("damage") }, std::nullopt });
 		r.signals.push_back(Signal{ "damage", ActorValueSignal{ "Health", Measure::kDamage }, std::nullopt });
-		r.signals.push_back(Signal{ "hurt", TriggerSignal{ WhenSource{ At("wound"), At("wound") }, 0.8f, 3 }, CurveRef{ "@flash" } });
+		r.signals.push_back(Signal{ "hurt", TriggerSignal{ WhenOrigin{ At("wound"), At("wound") }, 0.8f, 3 }, CurveRef{ "@flash" } });
 		r.signals.push_back(Signal{ "drop", PayloadSignal{ At("hurt"), PayloadField::kValue }, std::nullopt });
 		r.signals.push_back(Signal{ "where", PayloadSignal{ At("hit"), PayloadField::kPosition }, std::nullopt });
 		r.signals.push_back(Signal{ "hits", CounterSignal{ At("hit"), At("surge"), Param{ 5.0f } }, std::nullopt });
@@ -359,7 +359,7 @@ namespace
 		Check(r.signals.size() == 20 && r.curves.size() == 5 && r.sources.size() == 8 && r.masks.size() == 1 && r.outputs.size() == 5 && r.variants.size() == 1, "row counts");
 		const auto* step = r.FindSignal("step");
 		const auto* trig = step ? Get<TriggerSignal>(step->kind) : nullptr;
-		const auto* ev = trig ? Get<EventSource>(trig->source) : nullptr;
+		const auto* ev = trig ? Get<EventOrigin>(trig->origin) : nullptr;
 		Check(ev && ev->event == "anim.FootLeft" && ev->at == "NPC L Foot [Lft ]" && trig->max == 2, "trigger with at read");
 		const auto again = ParseRecipe(SerializeRecipe(r), "example-magicka");
 		Check(again.recipe && *again.recipe == r, "serialise then parse is identical");
