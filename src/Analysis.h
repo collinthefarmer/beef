@@ -27,17 +27,23 @@ namespace WornEnchantmentPBR
 		kComponent,  // a connected piece of the mesh (triangles sharing vertices)
 		kChart,      // a connected piece in UV space (triangles sharing UV positions)
 	};
-	// A source's word as the format and the log spell it, and the plain word
-	// the studio's labels and offers use.
+	// A source's word as the format and the log spell it, the plain word the
+	// studio's labels and offers use, and the bake that reads its id map.
 	struct RegionSourceRow
 	{
 		RegionSource     value;
 		std::string_view name;
 		std::string_view plainName;
+		BakeKind         bake;
 	};
-	inline constexpr RegionSourceRow kRegionSources[]{ { RegionSource::kComponent, "component", "part" }, { RegionSource::kChart, "chart", "chart" } };
+	inline constexpr RegionSourceRow kRegionSources[]{
+		{ RegionSource::kComponent, "component", "part", ComponentIdBake{} },
+		{ RegionSource::kChart, "chart", "chart", ChartIdBake{} },
+	};
 	[[nodiscard]] std::string_view RegionSourceName(RegionSource a_source) noexcept;
 	[[nodiscard]] std::string_view PlainRegionSourceName(RegionSource a_source) noexcept;
+	// The id map bake of a region source, as a source's kind.
+	[[nodiscard]] SourceKind RegionBakeOf(RegionSource a_source) noexcept;
 
 	// Region ids are dense from 0 per source and fit a byte, so an id map
 	// bake carries id / 255 in one channel; kNoRegion marks a vertex no

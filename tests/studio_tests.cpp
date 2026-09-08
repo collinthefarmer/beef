@@ -236,13 +236,13 @@ namespace
 	void Layouts()
 	{
 		const auto compose = LayoutFor(Mode::kCompose);
-		Check(compose.mode == Mode::kCompose && compose.stack && compose.inspector && compose.signals && !compose.regionEditor && !compose.designPanel, "compose shows stack, inspector and the signal table");
+		Check(compose.mode == Mode::kCompose && compose.stack && compose.inspector && compose.signals && !compose.regionEditor && !compose.designPanel && compose.implemented, "compose shows stack, inspector and the signal table");
 		Check(compose.widgetScale == 1.0f && compose.compositeSize == 160.0f && compose.cellSize == 40.0f && compose.rowThumbnail == 32.0f && compose.inspectorThumbnail == 96.0f, "compose at scale 1 with pictures sized for one column");
 		Check(compose.developerSignals && compose.stackSplit == 0.5f, "compose shows developer signals and splits the stack evenly");
 		const auto paint = LayoutFor(Mode::kPaint);
-		Check(paint.stack && paint.inspector && !paint.signals && !paint.contextRows && paint.regionEditor && !paint.designPanel, "paint adds the region editor, drops the context rows and the resources pane (they would edit the paint recipe)");
+		Check(paint.stack && paint.inspector && !paint.signals && !paint.contextRows && paint.regionEditor && !paint.designPanel && paint.implemented, "paint adds the region editor, drops the context rows and the resources pane (they would edit the paint recipe)");
 		const auto design = LayoutFor(Mode::kDesign);
-		Check(!design.stack && !design.inspector && !design.signals && !design.regionEditor && design.designPanel, "design shows the design panel only");
+		Check(!design.stack && !design.inspector && !design.signals && !design.regionEditor && design.designPanel && !design.implemented, "design shows the design panel only, and is not implemented yet");
 		Check(design.widgetScale == 1.6f && design.compositeSize == 128.0f && !design.developerSignals, "design at scale 1.6, 128 px composite, developer signals off");
 		Check(kModes.size() == 3 && kModes[0] == Mode::kCompose && kModes[1] == Mode::kPaint && kModes[2] == Mode::kDesign, "modes are Compose, Paint, Design");
 		Check(ModeName(Mode::kCompose) == "Compose" && ModeName(Mode::kPaint) == "Paint" && ModeName(Mode::kDesign) == "Design", "mode names");
@@ -1605,23 +1605,23 @@ namespace
 		std::size_t group = 0;
 		bool        ordered = true;
 		for (const auto& offer : offers) {
-			const auto it = std::ranges::find(kOfferGroups, offer.group);
-			const auto index = it == kOfferGroups.end() ? kOfferGroups.size() : static_cast<std::size_t>(it - kOfferGroups.begin());
-			ordered = ordered && index >= group && index < kOfferGroups.size();
+			const auto* row = RowOf(kOfferGroups, offer.group);
+			const auto  index = row ? static_cast<std::size_t>(row - kOfferGroups) : std::size(kOfferGroups);
+			ordered = ordered && index >= group && index < std::size(kOfferGroups);
 			group = std::max(group, index);
 		}
 		Check(ordered && !offers.empty(), "offers come in group order");
-		const auto count = [&](std::string_view a_group) { return std::ranges::count(offers, a_group, &TermOffer::group); };
-		Check(count("parts") == 3 && count("materials") == 2 && count("bones") == 3 && count("partitions") == 2 && count("channels") == 8 && count("presets") == 8 && count("masks") == 1 && count("sources") == 8, "one offer per part, cluster, bone, partition, channel, what preset, mask and source");
+		const auto count = [&](OfferGroup a_group) { return std::ranges::count(offers, a_group, &TermOffer::group); };
+		Check(count(OfferGroup::kParts) == 3 && count(OfferGroup::kMaterials) == 2 && count(OfferGroup::kBones) == 3 && count(OfferGroup::kPartitions) == 2 && count(OfferGroup::kChannels) == 8 && count(OfferGroup::kPresets) == 8 && count(OfferGroup::kMasks) == 1 && count(OfferGroup::kSources) == 8, "one offer per part, cluster, bone, partition, channel, what preset, mask and source");
 		Check(offers[0].name == "part 0" && offers[0].detail == "60% of the mesh, chest 90%" && !offers[0].unavailable && !offers[0].coverage && Get<ComponentTerm>(offers[0].recipe) && Get<ComponentTerm>(offers[0].recipe)->id == 0, "a part's offer carries its measurements, no coverage yet");
 		Check(offers[3].name == "material 0" && offers[3].detail == "rough dark non-metal, 70%" && Get<ClusterTerm>(offers[3].recipe) && Get<ClusterTerm>(offers[3].recipe)->id == 0 && Get<ClusterTerm>(offers[3].recipe)->settings == ClusterSettings{}, "a cluster's offer at the default settings");
-		const auto* channelOffer = Get<ThresholdTerm>(offers[static_cast<std::size_t>(count("parts") + count("materials") + count("bones") + count("partitions"))].recipe);
+		const auto* channelOffer = Get<ThresholdTerm>(offers[static_cast<std::size_t>(count(OfferGroup::kParts) + count(OfferGroup::kMaterials) + count(OfferGroup::kBones) + count(OfferGroup::kPartitions))].recipe);
 		Check(channelOffer && channelOffer->low == 0.5f && channelOffer->high == 1.0f && channelOffer->channel == MaterialChannel::kDiffuseLuma, "a channel's offer is its upper half");
-		Check(std::ranges::any_of(offers, [](const TermOffer& o) { return o.group == "masks" && o.name == "metal" && o.detail == "@metallic"; }) && std::ranges::none_of(offers, [](const TermOffer& o) { return o.name == kScratchMask; }), "masks are offered with their expressions");
-		Check(std::ranges::none_of(OffersOf(*presets, a_recipe, geometry, "metal"), [](const TermOffer& o) { return o.group == "masks"; }), "the mask being edited is not offered");
+		Check(std::ranges::any_of(offers, [](const TermOffer& o) { return o.group == OfferGroup::kMasks && o.name == "metal" && o.detail == "@metallic"; }) && std::ranges::none_of(offers, [](const TermOffer& o) { return o.name == kScratchMask; }), "masks are offered with their expressions");
+		Check(std::ranges::none_of(OffersOf(*presets, a_recipe, geometry, "metal"), [](const TermOffer& o) { return o.group == OfferGroup::kMasks; }), "the mask being edited is not offered");
 		const auto unread = OffersOf(*presets, a_recipe, a_geometry, "");
-		Check(unread.size() >= 2 && unread[0].group == "parts" && unread[0].unavailable == "the mesh has not been read yet" && unread[1].group == "materials" && unread[1].unavailable.has_value(), "an unread mesh offers a reason in place of its parts and materials");
-		Check(std::ranges::none_of(unread, [](const TermOffer& o) { return o.group == "bones" || o.group == "partitions"; }) && std::ranges::count(unread, "channels", &TermOffer::group) == 8, "an unread mesh has no bones or partitions to offer; the channels stay");
+		Check(unread.size() >= 2 && unread[0].group == OfferGroup::kParts && unread[0].unavailable == "the mesh has not been read yet" && unread[1].group == OfferGroup::kMaterials && unread[1].unavailable.has_value(), "an unread mesh offers a reason in place of its parts and materials");
+		Check(std::ranges::none_of(unread, [](const TermOffer& o) { return o.group == OfferGroup::kBones || o.group == OfferGroup::kPartitions; }) && std::ranges::count(unread, OfferGroup::kChannels, &TermOffer::group) == 8, "an unread mesh has no bones or partitions to offer; the channels stay");
 	}
 }
 
