@@ -144,6 +144,7 @@ namespace WornEnchantmentPBR
 		void WithRecipeRetired(std::string_view a_id, const std::function<void()>& a_action);
 		void WithListMoved(const std::function<void()>& a_action);
 		void ApplyEdits(const std::string& a_id, const Studio::EditBatch& a_edits);
+		void RestoreRecipe(const std::string& a_id, bool a_redo);
 		void RetireEveryActor();
 		void FireDueFinalizes();
 		void Tick(std::uint32_t a_nowMS);

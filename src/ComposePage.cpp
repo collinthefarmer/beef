@@ -56,12 +56,17 @@ namespace WornEnchantmentPBR::Studio
 			logger::warn("{} not applied: '{}' does not parse", a_field, a_text);
 		}
 
-		void Perform(const Intent& a_intent, const View& a_view)
+		void Perform(const Intent& a_intent, const MenuState& a_state, const View& a_view)
 		{
 			auto*       manager = Manager::GetSingleton();
 			const auto& view = a_view;
 			Match(
 				a_intent,
+				[&](const SetMode& i) {
+					if (a_state.paint && i.mode != Mode::kPaint && a_state.mode == Mode::kPaint) {
+						manager->EndPaint();
+					}
+				},
 				[&](const EditRecipe& i) { manager->EditRecipe(i.recipe, EditBatch{ i.edits }); },
 				[&](const SoloRecipe& i) {
 					manager->UpdateView([](View& a_live) { a_live.isolatedBySolo = false; });
@@ -131,13 +136,34 @@ namespace WornEnchantmentPBR::Studio
 				[&](const EndPaint&) { manager->EndPaint(); },
 				[&](const ReadMesh& i) { manager->RequestMesh(i.actorID, i.geometry); },
 				[&](const FireTrigger& i) { manager->FireAt(i.actorID, i.event, i.node, i.offset, i.random, i.value); },
-				[](const auto&) {});
+				[](const PickPiece&) {},
+				[](const PickRecipe&) {},
+				[](const PickTarget&) {},
+				[](const PickSlot&) {},
+				[](const PickCell&) {},
+				[](const PickLayer&) {},
+				[](const ViewGeometry&) {},
+				[](const SetStackSplit&) {},
+				[](const ShowSettings&) {},
+				[](const ShowResource&) {},
+				[](const AddTerm&) {},
+				[](const SetTermOp&) {},
+				[](const SetTermText&) {},
+				[](const SetTermKind&) {},
+				[](const RemoveTerm&) {},
+				[](const MoveTerm&) {},
+				[](const PickTerm&) {},
+				[](const SoloTerm&) {},
+				[](const MuteTerm&) {},
+				[](const LoadRegion&) {},
+				[](const ClearRegion&) {},
+				[](const ScratchRebuilt&) {});
 		}
 
 		void Dispatch(Intents& a_intents, MenuState& a_state, const Snapshot& a_snapshot)
 		{
 			for (const auto& intent : a_intents) {
-				Perform(intent, a_snapshot.view);
+				Perform(intent, a_state, a_snapshot.view);
 				Reduce(a_state, intent);
 			}
 			ResolveSelection(a_state.selection, a_snapshot);
@@ -1512,15 +1538,18 @@ namespace WornEnchantmentPBR::Studio
 
 		constexpr TableStyle kOffersStyle{ .borders = TableStyle::Borders::kNone, .stretch = true, .headers = true, .rowBackground = false };
 
-		void AddTermOfKind(const TermKind& a_term, const RecipeRow& a_recipe, const GeometryRow& a_geometry, Intents& a_out)
+		void AddTermOfKind(const TermKind& a_term, const RecipeRow& a_recipe, const GeometryRow& a_geometry, bool a_full, Intents& a_out)
 		{
+			if (a_full) {
+				return;
+			}
 			const auto& presets = LoadedPresets();
 			auto [edits, expression] = BuildTerm(a_term, presets, ExistingOf(a_recipe));
 			PostAll(a_out, a_recipe.id, std::move(edits));
 			a_out.push_back(AddTerm{ Term{ TermOp::kAnd, std::move(expression), TermLabelOf(a_term, presets, a_geometry), a_term } });
 		}
 
-		void DrawOffers(std::span<const TermOffer> a_offers, std::string_view a_filter, const PieceRow& a_piece, const RecipeRow& a_recipe, const GeometryRow& a_geometry, Intents& a_out)
+		void DrawOffers(std::span<const TermOffer> a_offers, std::string_view a_filter, const PieceRow& a_piece, const RecipeRow& a_recipe, const GeometryRow& a_geometry, bool a_full, Intents& a_out)
 		{
 			auto table = Widgets::Table::Begin("offers", { { "geometry", Width::Fit() }, { "kind", Width::Fit() }, { "name", Width::Fit() }, { "description", Width::Fill() }, { "coverage", Width::Fit("coverage") }, { "", Width::Fit("edit") } }, kOffersStyle);
 			if (!table.Open()) {
@@ -1540,7 +1569,7 @@ namespace WornEnchantmentPBR::Studio
 				switch (Widgets::ChooserRow(table, leading, offer.name, offer.detail, offer.coverage, offer.unavailable, mask ? "edit" : nullptr)) {
 				case Widgets::ChooserPick::kChosen: {
 					const auto from = std::ranges::find(a_recipe.geometries, offer.geometry, &GeometryRow::name);
-					AddTermOfKind(offer.kind, a_recipe, from != a_recipe.geometries.end() ? *from : a_geometry, a_out);
+					AddTermOfKind(offer.kind, a_recipe, from != a_recipe.geometries.end() ? *from : a_geometry, a_full, a_out);
 					break;
 				}
 				case Widgets::ChooserPick::kAction:
@@ -1755,6 +1784,7 @@ namespace WornEnchantmentPBR::Studio
 										 const bool        ready = painting && IsName(name) && name != kScratchMask;
 										 Widgets::Disabled(!ready, [&]() {
 											 if (ImGui::Button(std::format("Keep as {}", name).c_str()) && ready) {
+												 Post(a_out, std::string{ kPaintRecipe }, SetMask{ std::string{ kScratchMask }, BuildRegion(a_state.region.terms) });
 												 a_out.push_back(KeepPaint{ a_state.paint->recipe, name });
 												 ImGui::CloseCurrentPopup();
 											 }
@@ -1820,7 +1850,7 @@ namespace WornEnchantmentPBR::Studio
 			if (offers.empty()) {
 				Widgets::Dim(a_geometry.meshRead ? "nothing to offer on this geometry" : "reading the mesh");
 			}
-			DrawOffers(offers, filter, a_piece, a_recipe, a_geometry, a_out);
+			DrawOffers(offers, filter, a_piece, a_recipe, a_geometry, region.terms.size() >= kMaxTerms, a_out);
 		}
 
 		void DrawPaintHead(const PieceRow& a_piece, const RecipeRow& a_recipe, const MenuState& a_state, Intents& a_out)
@@ -1869,9 +1899,6 @@ namespace WornEnchantmentPBR::Studio
 
 		void DrawBody(const Snapshot& a_snapshot, const PieceRow* a_piece, const RecipeRow* a_recipe, const GeometryRow* a_geometry, MenuState& a_state, Intents& a_out)
 		{
-			if (a_state.paint && a_state.mode != Mode::kPaint) {
-				a_out.push_back(EndPaint{});
-			}
 			if (!a_piece || !a_recipe) {
 				Widgets::Dim(a_state.paint ? "starting the paint recipe" : "nothing applied; equip enchanted PBR armor or press Re-apply all on the Recipes page");
 				return;

@@ -1,5 +1,4 @@
 #include "Edits.h"
-#include "History.h"
 #include "Expression.h"
 #include "test_support.h"
 
@@ -38,19 +37,21 @@ namespace
 
 	void Accepted(Recipe& a_recipe, const RecipeEdit& a_edit, const std::string& a_what)
 	{
-		const Recipe before = a_recipe;
-		const auto   problem = Apply(a_recipe, a_edit);
+		const auto problem = Apply(a_recipe, a_edit);
 		Check(!problem, a_what + " is accepted" + (problem ? ": " + problem->where + ": " + problem->message : ""));
 		if (problem) {
 			return;
 		}
 		const auto back = ParseRecipe(SerializeRecipe(a_recipe), a_recipe.id);
 		Check(back.recipe && *back.recipe == a_recipe, a_what + ": the edited recipe serialises to a file that reads back identical");
-		EditHistory history;
-		Recipe      current = a_recipe;
-		history.Push(before);
-		const auto undone = history.Undo(current);
-		Check(undone && *undone == before, a_what + ": undo restores the recipe before the edit exactly");
+	}
+
+	void AcceptedBatch(Recipe& a_recipe, const EditBatch& a_batch, const std::string& a_what)
+	{
+		const auto problem = Apply(a_recipe, a_batch);
+		Check(!problem, a_what + " is accepted" + (problem ? ": " + problem->where + ": " + problem->message : ""));
+		const auto back = ParseRecipe(SerializeRecipe(a_recipe), a_recipe.id);
+		Check(back.recipe && *back.recipe == a_recipe, a_what + ": the batched recipe serialises to a file that reads back identical");
 	}
 
 	void Refused(const Recipe& a_recipe, const RecipeEdit& a_edit, const std::string& a_where, const std::string& a_fragment, const std::string& a_what)
@@ -490,6 +491,13 @@ namespace
 		Refused(s, SetShellParam{ ShellParam::kEmissive, Ref{ "nothing" } }, "shell", "unknown signal", "a shell parameter reading a missing signal");
 		Accepted(s, SetShellVector{ ShellVector::kOffset, Ref{ "glowHue" } }, "set the pose offset to a signal");
 		Refused(s, SetShellVector{ ShellVector::kOffset, Ref{ "nobody" } }, "shell", "nobody", "a shell vector naming a signal the recipe lacks");
+		Refused(s, AddMask{ "9lives" }, "mask 9lives", "letters", "a mask under a bad name");
+		Refused(s, AddSource{ "9lives", MaterialSource{} }, "source 9lives", "letters", "a source under a bad name");
+		Refused(s, RenameCurve{ "crisp", "9lives" }, "curve crisp", "letters", "a curve renamed to a bad name");
+		Refused(s, RenameMask{ "metal", "9lives" }, "mask metal", "letters", "a mask renamed to a bad name");
+		Refused(s, RenameSource{ "fill", "9lives" }, "source fill", "letters", "a source renamed to a bad name");
+		Refused(s, RemoveSource{ "nobody" }, "source nobody", "no such", "removing a source the recipe lacks");
+		Refused(s, RemoveCurve{ "nobody" }, "curve nobody", "no such", "removing a curve the recipe lacks");
 		Accepted(s, SetShellPoint{ ShellPoint::kScalePoint, Vec3{ 1.0f, 2.0f, 3.0f } }, "set the scale point");
 		Refused(s, SetShellPoint{ ShellPoint::kSpinAxis, Vec3{} }, "shell", "cannot be zero", "a zero spin axis");
 		Check(s.shell.material == ShellMaterial::kVanilla && s.shell.blend == ShellBlend::kAlpha && !s.shell.depthBias && s.shell.alphaTest == 0.5f && Get<float>(s.shell.rimPower) && Get<Ref>(s.shell.pose.offset) && s.shell.pose.scalePoint == Vec3{ 1.0f, 2.0f, 3.0f }, "the shell carries every edit");
@@ -575,12 +583,14 @@ void BatchEdits()
 	const Recipe before = r;
 	const auto   refused = Apply(r, EditBatch{ { AddSignal{ "batched" }, SetConstant{ "nobody", 1.0f } } });
 	Check(refused && refused->where == "signal nobody" && r == before, "a batch with a refused edit is refused whole and leaves the recipe as it was");
-	const auto accepted = Apply(r, EditBatch{ { AddSignal{ "batched" }, SetConstant{ "batched", 2.0f } } });
+	AcceptedBatch(r, EditBatch{ { AddSignal{ "batched" }, SetConstant{ "batched", 2.0f }, AddOutput{ Surface::kMaterial, Slot::kCoat, Selector{} }, AddKey{ RecipeKey{ KeyKind::kDefault, {}, {} } } } }, "a batch across signals, outputs and keys");
 	const auto* made = r.FindSignal("batched");
 	const auto* constant = made ? Get<ConstantSignal>(made->kind) : nullptr;
-	Check(!accepted && constant && constant->value == Value{ 2.0f }, "an accepted batch applies every edit in order");
+	Check(constant && constant->value == Value{ 2.0f } && r.keys.size() == 2, "an accepted batch applies every edit in order");
+	const Recipe kept = r;
+	const auto   rolled = Apply(r, EditBatch{ { RemoveKey{ RecipeKey{ KeyKind::kDefault, {}, {} } }, AddSignal{ "batched" } } });
+	Check(rolled && r == kept, "a batch that changes keys and then fails leaves the keys as they were");
 	Check(Describe(EditBatch{ { AddSignal{ "a" }, RemoveSignal{ "a" } } }) == "signals: add a; signal a: remove", "a batch describes as its edits joined");
-	Check(ChangesKeys(EditBatch{ { AddKey{ RecipeKey{ KeyKind::kDefault, {}, {} } } } }) && !ChangesKeys(EditBatch{ { AddSignal{ "a" } } }), "a batch knows whether it changes keys");
 	Check(!Apply(r, EditBatch{}) && r.FindSignal("batched"), "an empty batch is accepted and changes nothing");
 }
 }

@@ -546,7 +546,7 @@ namespace
 		const auto& mask = form[4];
 		const auto& channels = form[5];
 		Check(source.name == "source" && curve.name == "curve" && opacity.name == "opacity" && colour.name == "colour" && mask.name == "mask" && channels.name == "channels", "fields are source, curve, opacity, colour, mask, channels");
-		Check(source.kind == FieldKind::kColor && curve.kind == FieldKind::kCurve && opacity.kind == FieldKind::kScalar && colour.kind == FieldKind::kColor && mask.kind == FieldKind::kReference && channels.kind == FieldKind::kChannels, "field kinds");
+		Check(source.kind == FieldKind::kLayerSource && curve.kind == FieldKind::kCurve && opacity.kind == FieldKind::kScalar && colour.kind == FieldKind::kColor && mask.kind == FieldKind::kReference && channels.kind == FieldKind::kChannels, "field kinds");
 		Check(source.text == "@fill" && curve.text.empty() && opacity.text == inspector->row.opacityText && colour.text == "@glowHue" && mask.text == "@metal" && channels.text == inspector->row.channels, "field texts are the layer's");
 		Check(source.names.size() == 9 && source.names[0] == "fill" && source.names[8] == "metal", "the source combo lists sources then masks");
 		Check(curve.names == inspector->curves && opacity.names == inspector->scalarSignals && colour.names == inspector->colorSignals && mask.names == inspector->masks && channels.names.empty(), "combo names per field");
@@ -733,6 +733,7 @@ namespace
 			{ FieldKind::kVec2, { FieldInputKind::kValue, FieldCheckKind::kVec2 } },
 			{ FieldKind::kName, { FieldInputKind::kPlain, FieldCheckKind::kName } },
 			{ FieldKind::kSignalValue, { FieldInputKind::kValue, FieldCheckKind::kSignalValue } },
+			{ FieldKind::kLayerSource, { FieldInputKind::kValue, FieldCheckKind::kLayerSource } },
 		};
 		static_assert(std::size(rows) == kFieldKindCount);
 		for (const auto& [kind, expected] : rows) {
@@ -1154,6 +1155,11 @@ namespace
 		Check(!Bound<SetMask>(maskText, "", edit) && !edit, "an empty mask text binds to nothing");
 		const auto value = FormField{ "v", FieldKind::kSignalValue, "1", {}, false, std::nullopt, std::nullopt, {} };
 		Check(!CheckField(value, "0.5", names) && !CheckField(value, "1, 0, 0", names) && !CheckField(value, "@glowHue * 2", names) && CheckField(value, "@nothing", names), "a signal-value field takes a number, a colour or an expression over signals");
+		const auto layerSource = FormField{ "source", FieldKind::kLayerSource, "@ring", { "ring", "metal" }, false, std::nullopt, std::nullopt, {} };
+		Check(!CheckField(layerSource, "@ring", names) && !CheckField(layerSource, "1, 0, 0", names) && CheckField(layerSource, "1, @glowLevel, 0", names) && CheckField(layerSource, "@nobody", names), "a layer source is a listed reference or a literal colour, never a colour with signal components");
+		const auto lightForm = LightForm(a_recipe.lightRow, SignalNamesOf(a_recipe));
+		const auto maxField = std::ranges::find(lightForm, "max", &FormField::name);
+		Check(maxField != lightForm.end() && maxField->range && maxField->range->second == 64.0f && !CheckField(*maxField, "8", names) && CheckField(*maxField, "99", names), "the bone count field carries its range and the check enforces it");
 	}
 
 	void Colours()
@@ -1280,6 +1286,19 @@ namespace
 		Reduce(state, RenameRecipe{ "after", "later" });
 		Check(state.paint && state.paint->recipe == "later", "a rename follows the recipe painted for");
 		Reduce(state, EndPaint{});
+		Reduce(state, SetMode{ Mode::kPaint });
+		Reduce(state, BeginPaint{ "later", armor, Surface::kMaterial });
+		Reduce(state, AddTerm{ Term{ TermOp::kSet, "@a", "a" } });
+		Check(state.region.dirty, "a term added marks the stack dirty");
+		Reduce(state, ScratchRebuilt{});
+		Check(!state.region.dirty, "the scratch rebuilt clears the flag");
+		Reduce(state, SetMode{ Mode::kCompose });
+		Check(!state.paint && state.region.terms.empty() && state.selection.recipeID == "later", "leaving Paint ends the session and selects the recipe painted for");
+		Reduce(state, SetStackSplit{ 2.0f });
+		Check(state.layout.stackSplit == 0.95f, "a split drag is clamped");
+		Reduce(state, SetMode{ Mode::kPaint });
+		Check(state.layout.stackSplit == 0.95f, "the split survives a mode change");
+		Reduce(state, SetMode{ Mode::kCompose });
 		Reduce(state, BeginPaint{ kRecipeID, armor, Surface::kMaterial });
 		Reduce(state, EndPaint{});
 		Check(!state.paint, "end drops the session");

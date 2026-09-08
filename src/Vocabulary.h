@@ -52,8 +52,10 @@ namespace WornEnchantmentPBR
 	inline constexpr Named<RippleShape> kRippleShapes[]{ { RippleShape::kRing, "ring" }, { RippleShape::kDisc, "disc" } };
 	inline constexpr std::string_view kSourceKindWords[]{ "image", "material", "bake", "uv", "distance", "ripple", "materialClusters" };
 	static_assert(std::size(kSourceKindWords) == std::variant_size_v<SourceKind>);
+	static_assert(std::is_same_v<std::variant_alternative_t<0, SourceKind>, ImageSource> && std::is_same_v<std::variant_alternative_t<1, SourceKind>, MaterialSource> && std::is_same_v<std::variant_alternative_t<2, SourceKind>, BakeSource> && std::is_same_v<std::variant_alternative_t<3, SourceKind>, UvSource> && std::is_same_v<std::variant_alternative_t<4, SourceKind>, DistanceSource> && std::is_same_v<std::variant_alternative_t<5, SourceKind>, RippleSource> && std::is_same_v<std::variant_alternative_t<6, SourceKind>, MaterialClustersSource>);
 	inline constexpr std::string_view kBakeKindWords[]{ "position", "localPosition", "worldUp", "partition", "boneWeight", "componentId", "chartId" };
 	static_assert(std::size(kBakeKindWords) == std::variant_size_v<BakeKind>);
+	static_assert(std::is_same_v<std::variant_alternative_t<0, BakeKind>, PositionBake> && std::is_same_v<std::variant_alternative_t<1, BakeKind>, LocalPositionBake> && std::is_same_v<std::variant_alternative_t<2, BakeKind>, WorldUpBake> && std::is_same_v<std::variant_alternative_t<3, BakeKind>, PartitionBake> && std::is_same_v<std::variant_alternative_t<4, BakeKind>, BoneWeightBake> && std::is_same_v<std::variant_alternative_t<5, BakeKind>, ComponentIdBake> && std::is_same_v<std::variant_alternative_t<6, BakeKind>, ChartIdBake>);
 
 	inline constexpr SignalKindSpec kSignalKinds[]{
 		{ SignalKindId::kConstant, "constant", true },

@@ -705,6 +705,7 @@ namespace WornEnchantmentPBR
 
 	void Manager::ApplyEdits(const std::string& a_id, const Studio::EditBatch& a_edits)
 	{
+		bool keysChanged = false;
 		WithRecipeRetired(a_id, [&] {
 			auto* recipe = MutableRecipe(a_id);
 			if (!recipe) {
@@ -716,6 +717,7 @@ namespace WornEnchantmentPBR
 				logger::warn("edit refused: {} ({}: {})", Studio::Describe(a_edits), problem->where, problem->message);
 				return;
 			}
+			keysChanged = recipe->keys != before.keys;
 			if (!(*recipe == before)) {
 				histories_[a_id].Push(std::move(before));
 			}
@@ -727,7 +729,7 @@ namespace WornEnchantmentPBR
 				}
 			}
 		});
-		if (Studio::ChangesKeys(a_edits)) {
+		if (keysChanged) {
 			QueueLoadedActorRefreshes();
 		}
 	}
@@ -739,38 +741,37 @@ namespace WornEnchantmentPBR
 		QueueLoadedActorRefreshes();
 	}
 
+	void Manager::RestoreRecipe(const std::string& a_id, bool a_redo)
+	{
+		bool keysChanged = false;
+		WithRecipeRetired(a_id, [&] {
+			auto*      recipe = MutableRecipe(a_id);
+			const auto history = histories_.find(a_id);
+			if (!recipe || history == histories_.end()) {
+				return;
+			}
+			auto restored = a_redo ? history->second.Redo(*recipe) : history->second.Undo(*recipe);
+			if (!restored) {
+				return;
+			}
+			keysChanged = restored->keys != recipe->keys;
+			*recipe = std::move(*restored);
+			recipe->id = a_id;
+			Revalidate(a_id);
+		});
+		if (keysChanged) {
+			QueueLoadedActorRefreshes();
+		}
+	}
+
 	void Manager::UndoRecipe(std::string a_id)
 	{
-		PostTask([this, id = std::move(a_id)] {
-			WithRecipeRetired(id, [&] {
-				auto* recipe = MutableRecipe(id);
-				if (!recipe) {
-					return;
-				}
-				if (auto restored = histories_[id].Undo(*recipe)) {
-					*recipe = std::move(*restored);
-					recipe->id = id;
-					Revalidate(id);
-				}
-			});
-		});
+		PostTask([this, id = std::move(a_id)] { RestoreRecipe(id, false); });
 	}
 
 	void Manager::RedoRecipe(std::string a_id)
 	{
-		PostTask([this, id = std::move(a_id)] {
-			WithRecipeRetired(id, [&] {
-				auto* recipe = MutableRecipe(id);
-				if (!recipe) {
-					return;
-				}
-				if (auto restored = histories_[id].Redo(*recipe)) {
-					*recipe = std::move(*restored);
-					recipe->id = id;
-					Revalidate(id);
-				}
-			});
-		});
+		PostTask([this, id = std::move(a_id)] { RestoreRecipe(id, true); });
 	}
 
 	void Manager::SaveRecipe(std::string a_id)
@@ -788,6 +789,7 @@ namespace WornEnchantmentPBR
 	void Manager::RevertRecipe(std::string a_id)
 	{
 		PostTask([this, id = std::move(a_id)] {
+			bool keysChanged = false;
 			WithRecipeRetired(id, [&] {
 				auto* recipe = MutableRecipe(id);
 				if (!recipe) {
@@ -795,12 +797,16 @@ namespace WornEnchantmentPBR
 				}
 				Recipe before = *recipe;
 				if (WornEnchantmentPBR::RevertRecipe(id)) {
+					keysChanged = recipe->keys != before.keys;
 					if (!(*recipe == before)) {
 						histories_[id].Push(std::move(before));
 					}
 					logger::info("recipe {}: reverted to its file", id);
 				}
 			});
+			if (keysChanged) {
+				QueueLoadedActorRefreshes();
+			}
 		});
 	}
 
@@ -902,12 +908,12 @@ namespace WornEnchantmentPBR
 		PostTask([this, active = std::move(a_active), name = std::move(a_name)] {
 			const auto loaded = LoadedRecipes();
 			const auto paint = std::ranges::find(loaded, std::string{ Studio::kPaintRecipe }, &Recipe::id);
-			auto*      recipe = MutableRecipe(active);
-			if (paint == loaded.end() || !recipe) {
+			const auto target = std::ranges::find(loaded, active, &Recipe::id);
+			if (paint == loaded.end() || target == loaded.end()) {
 				logger::warn("keep: the paint recipe or {} is not loaded", active);
 				return;
 			}
-			const Studio::EditBatch edits{ Studio::KeepEdits(*paint, *recipe, name) };
+			const Studio::EditBatch edits{ Studio::KeepEdits(*paint, *target, name) };
 			ApplyEdits(active, edits);
 			logger::info("keep: region {} written into {} ({} edit(s))", name, active, edits.edits.size());
 		});

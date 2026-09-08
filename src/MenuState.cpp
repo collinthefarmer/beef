@@ -90,6 +90,13 @@ namespace WornEnchantmentPBR::Studio
 	{
 		auto& selection = a_state.selection;
 		auto& region = a_state.region;
+		const auto endSession = [&]() {
+			if (a_state.paint) {
+				selection.recipeID = a_state.paint->recipe;
+			}
+			a_state.paint.reset();
+			region = RegionStack{};
+		};
 		Match(
 			a_intent,
 			[&](const SetMode& i) {
@@ -100,6 +107,8 @@ namespace WornEnchantmentPBR::Studio
 					a_state.layout.stackSplit = split;
 					if (i.mode == Mode::kPaint) {
 						a_state.resource = ResourceTab::kMasks;
+					} else if (a_state.paint) {
+						endSession();
 					}
 				}
 			},
@@ -246,20 +255,8 @@ namespace WornEnchantmentPBR::Studio
 					a_state.paint->surface = i.surface;
 				}
 			},
-			[&](const KeepPaint&) {
-				if (a_state.paint) {
-					selection.recipeID = a_state.paint->recipe;
-				}
-				a_state.paint.reset();
-				region = RegionStack{};
-			},
-			[&](const EndPaint&) {
-				if (a_state.paint) {
-					selection.recipeID = a_state.paint->recipe;
-				}
-				a_state.paint.reset();
-				region = RegionStack{};
-			},
+			[&](const KeepPaint&) { endSession(); },
+			[&](const EndPaint&) { endSession(); },
 			[&](const PickTarget& i) {
 				if (selection.target != i.target) {
 					selection.target = i.target;
@@ -300,6 +297,16 @@ namespace WornEnchantmentPBR::Studio
 				selection.layer.reset();
 				region = RegionStack{};
 			},
-			[](const auto&) {});
+			[](const SoloRecipe&) {},
+			[](const SoloOutput&) {},
+			[](const SoloLayer&) {},
+			[](const MuteLayer&) {},
+			[](const SetFreeze&) {},
+			[](const SetScrub&) {},
+			[](const SetSpeed&) {},
+			[](const StepClock&) {},
+			[](const Undo&) {},
+			[](const Redo&) {},
+			[](const FireTrigger&) {});
 	}
 }

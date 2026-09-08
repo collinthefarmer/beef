@@ -541,8 +541,7 @@ namespace WornEnchantmentPBR
 		}
 		loaded->recipe.id = std::string{ a_to };
 		loaded->path = to;
-		loaded->dirty = true;
-		Republish(*loaded);
+		Revalidate(a_to);
 		logger::info("recipe {} renamed {}; saves to {}", a_from, a_to, to.string());
 		return true;
 	}
@@ -580,7 +579,7 @@ namespace WornEnchantmentPBR
 			logger::warn("transient recipe '{}': a recipe has that id", a_recipe.id);
 			return false;
 		}
-		LoadedRecipe loaded{ std::move(a_recipe), {}, {}, nullptr, true, true };
+		LoadedRecipe loaded{ std::move(a_recipe), {}, {}, nullptr, false, true };
 		loaded.diagnostics = Validate(loaded.recipe);
 		ResolveForms(loaded.recipe, loaded.diagnostics);
 		for (const auto& d : loaded.diagnostics) {

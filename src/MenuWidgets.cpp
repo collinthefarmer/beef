@@ -438,43 +438,12 @@ namespace WornEnchantmentPBR::Studio::Widgets
 			Swatch      swatch;
 		};
 
-		constexpr ImVec4 kValueBlue{ 0.55f, 0.80f, 1.00f, 1.0f };
-		constexpr ImVec4 kColourOrange{ 1.00f, 0.70f, 0.45f, 1.0f };
-		constexpr ImVec4 kVectorTeal{ 0.55f, 0.95f, 0.80f, 1.0f };
-		constexpr ImVec4 kReferenceGreen{ 0.60f, 0.95f, 0.60f, 1.0f };
-		constexpr ImVec4 kCodeYellow{ 1.00f, 0.90f, 0.45f, 1.0f };
-		constexpr ImVec4 kCurveCyan{ 0.55f, 0.95f, 0.95f, 1.0f };
-		constexpr ImVec4 kMaskViolet{ 0.85f, 0.65f, 1.00f, 1.0f };
-		constexpr ImVec4 kChannelGrey{ 0.85f, 0.85f, 0.85f, 1.0f };
 		constexpr ImVec4 kBadgeFrame{ 0.20f, 0.20f, 0.24f, 1.0f };
 
-		constexpr ImVec4 ColourOf(FieldKind a_kind) noexcept
+		ImVec4 ColourOf(FieldKind a_kind) noexcept
 		{
-			switch (a_kind) {
-			case FieldKind::kScalar:
-				return kValueBlue;
-			case FieldKind::kColor:
-				return kColourOrange;
-			case FieldKind::kVector:
-			case FieldKind::kVec2:
-				return kVectorTeal;
-			case FieldKind::kReference:
-				return kReferenceGreen;
-			case FieldKind::kExpression:
-			case FieldKind::kSignalValue:
-				return kCodeYellow;
-			case FieldKind::kCurve:
-				return kCurveCyan;
-			case FieldKind::kMask:
-				return kMaskViolet;
-			case FieldKind::kChannels:
-			case FieldKind::kToggle:
-			case FieldKind::kChoice:
-			case FieldKind::kText:
-			case FieldKind::kName:
-				return kChannelGrey;
-			}
-			return kDim;
+			const auto* row = RowOf(kFieldKinds, a_kind);
+			return row ? ImVec4{ row->colour[0], row->colour[1], row->colour[2], 1.0f } : kDim;
 		}
 
 		BadgeStyle StyleOf(FieldKind a_kind) noexcept

@@ -1292,11 +1292,6 @@ namespace WornEnchantmentPBR::Studio
 		return text;
 	}
 
-	bool ChangesKeys(const EditBatch& a_batch) noexcept
-	{
-		return std::ranges::any_of(a_batch.edits, [](const RecipeEdit& e) { return Is<AddKey>(e) || Is<RemoveKey>(e); });
-	}
-
 	std::string Describe(const RecipeEdit& a_edit)
 	{
 		return Match(

@@ -71,7 +71,19 @@ namespace WornEnchantmentPBR::Studio
 			if (const auto* ref = Get<Ref>(*param)) {
 				return CheckWholeReference(a_field, ref->name);
 			}
+			const auto* number = Get<float>(*param);
+			if (a_field.range && number && (*number < a_field.range->first || *number > a_field.range->second)) {
+				return std::format("{} to {}", ParamText(a_field.range->first), ParamText(a_field.range->second));
+			}
 			return std::nullopt;
+		}
+
+		[[nodiscard]] std::optional<std::string> CheckLayerSource(const FormField& a_field, std::string_view a_text)
+		{
+			if (a_text.starts_with('@')) {
+				return CheckWholeReference(a_field, a_text.substr(1));
+			}
+			return LiteralColor(a_text) ? std::nullopt : std::optional<std::string>{ "@source, @mask, or r, g, b" };
 		}
 
 		[[nodiscard]] std::optional<std::string> CheckVec3(const FormField& a_field, std::string_view a_text, const Names& a_names)
@@ -276,6 +288,8 @@ namespace WornEnchantmentPBR::Studio
 			return CheckName(a_field, a_text);
 		case FieldCheckKind::kSignalValue:
 			return CheckSignalValue(a_text, a_names);
+		case FieldCheckKind::kLayerSource:
+			return CheckLayerSource(a_field, a_text);
 		case FieldCheckKind::kNone:
 			return std::nullopt;
 		}

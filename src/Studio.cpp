@@ -980,7 +980,7 @@ namespace WornEnchantmentPBR::Studio
 		const auto signalNames = Joined(in.scalarSignals, in.colorSignals);
 
 		std::vector<FormField> form;
-		form.push_back(FormField{ "source", FieldKind::kColor, in.row.source, sourceNames, false, DetailWhen(in.source.has_value(), FieldDetail::kSource), std::nullopt, BindLayerSource(output, layer) });
+		form.push_back(FormField{ "source", FieldKind::kLayerSource, in.row.source, sourceNames, false, DetailWhen(in.source.has_value(), FieldDetail::kSource), std::nullopt, BindLayerSource(output, layer) });
 		form.back().creators = Creators(kImageCreators);
 		form.back().create = [sourceNames, bind = form.back().bind](const std::string& a_creator) { return CreateImage(a_creator, sourceNames, bind); };
 		form.push_back(FormField{ "curve", FieldKind::kCurve, in.row.curve, in.curves, true, DetailWhen(in.curve.has_value(), FieldDetail::kCurve), std::nullopt, BindLayerCurve(output, layer) });
@@ -1225,6 +1225,7 @@ namespace WornEnchantmentPBR::Studio
 				}
 				return SetLightBones{ output, SkinnedBones{ *count, *shareValue } };
 			}));
+			form.back().range = { 1.0f, 64.0f };
 			form.push_back(Field("minShare", FieldKind::kScalar, minShare, {}, [=](const std::string& a_text) -> std::optional<RecipeEdit> {
 				const auto count = ParseCount(max);
 				const auto share = ParseParam(a_text);
@@ -1234,6 +1235,7 @@ namespace WornEnchantmentPBR::Studio
 				}
 				return SetLightBones{ output, SkinnedBones{ *count, *shareValue } };
 			}));
+			form.back().range = { 0.0f, 1.0f };
 		} else {
 			form.push_back(Field("names", FieldKind::kText, a_light.bonesNames, {}, [=](const std::string& a_text) -> std::optional<RecipeEdit> {
 				auto names = SplitNames(a_text);
@@ -1344,9 +1346,11 @@ namespace WornEnchantmentPBR::Studio
 			form.push_back(Field("shape", FieldKind::kChoice, a_source.shape, WordsOf(kRippleShapes), BindSourceText(a_source, &SourceRow::shape)));
 		} else if (a_source.kind == "materialClusters") {
 			form.push_back(Field("clusters", FieldKind::kScalar, a_source.clusters, {}, BindSourceText(a_source, &SourceRow::clusters)));
+			form.back().range = { 1.0f, static_cast<float>(kMaxMaterialClusters) };
 			form.push_back(Field("weights", FieldKind::kText, a_source.weights, {}, BindSourceText(a_source, &SourceRow::weights)));
 			form.push_back(Field("seed", FieldKind::kScalar, a_source.seed, {}, BindSourceText(a_source, &SourceRow::seed)));
 			form.push_back(Field("iterations", FieldKind::kScalar, a_source.iterations, {}, BindSourceText(a_source, &SourceRow::iterations)));
+			form.back().range = { 1.0f, static_cast<float>(kMaxClusterIterations) };
 		}
 		return form;
 	}
