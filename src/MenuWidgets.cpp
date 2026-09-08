@@ -81,7 +81,7 @@ namespace WornEnchantmentPBR::Studio::Widgets
 		}
 
 		// The preview's shader view, when the lab can make one; null otherwise.
-		[[nodiscard]] ImTextureID PreviewOf(TextureHandle a_texture, std::uint32_t a_channel, bool a_dynamic)
+		[[nodiscard]] ImTextureID PreviewOf(TextureHandle a_texture, ShaderChannel a_channel, bool a_dynamic)
 		{
 			if (!a_texture) {
 				return nullptr;
@@ -351,7 +351,7 @@ namespace WornEnchantmentPBR::Studio::Widgets
 
 	// ------------------------------------------------------------- thumbnails
 
-	void Thumbnail(TextureHandle a_texture, std::uint32_t a_channel, bool a_dynamic, float a_size)
+	void Thumbnail(TextureHandle a_texture, ShaderChannel a_channel, bool a_dynamic, float a_size)
 	{
 		const ImVec2 size{ a_size, a_size };
 		if (const auto view = PreviewOf(a_texture, a_channel, a_dynamic)) {
@@ -361,7 +361,7 @@ namespace WornEnchantmentPBR::Studio::Widgets
 		}
 	}
 
-	bool ThumbnailButton(const char* a_key, TextureHandle a_texture, std::uint32_t a_channel, bool a_dynamic, float a_size)
+	bool ThumbnailButton(const char* a_key, TextureHandle a_texture, ShaderChannel a_channel, bool a_dynamic, float a_size)
 	{
 		const ImVec2 size{ a_size, a_size };
 		ImGui::PushID(Literal(a_key));

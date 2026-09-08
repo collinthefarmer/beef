@@ -97,7 +97,7 @@ namespace WornEnchantmentPBR::Studio
 		std::string   kind;  // DescribeSource, or the mask's expression
 		ValueType     type = ValueType::kScalar;  // what the texel reads as (SourceType; a mask is scalar)
 		TextureHandle texture = nullptr;
-		std::uint32_t channel = 4;  // preview channel: 0..3, 4 rgb, 5 luminance
+		ShaderChannel channel = ShaderChannel::kRgb;  // what the preview shows
 		bool          animated = false;
 		std::string   problem;
 	};

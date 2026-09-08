@@ -26,9 +26,29 @@ namespace WornEnchantmentPBR
 	inline constexpr Named<EnchantmentField> kEnchantmentFields[]{ { EnchantmentField::kMagnitude, "magnitude" }, { EnchantmentField::kCost, "cost" } };
 	inline constexpr Named<PayloadField> kPayloadFields[]{ { PayloadField::kValue, "value" }, { PayloadField::kPosition, "position" }, { PayloadField::kNormal, "normal" } };
 
-	inline constexpr Named<ImageChannel> kImageChannels[]{ { ImageChannel::kRgb, "rgb" }, { ImageChannel::kR, "r" }, { ImageChannel::kG, "g" }, { ImageChannel::kB, "b" }, { ImageChannel::kA, "a" }, { ImageChannel::kLuma, "luma" } };
+	inline constexpr ImageChannelRow kImageChannels[]{
+		{ ImageChannel::kRgb, "rgb", ShaderChannel::kRgb },
+		{ ImageChannel::kR, "r", ShaderChannel::kR },
+		{ ImageChannel::kG, "g", ShaderChannel::kG },
+		{ ImageChannel::kB, "b", ShaderChannel::kB },
+		{ ImageChannel::kA, "a", ShaderChannel::kA },
+		{ ImageChannel::kLuma, "luma", ShaderChannel::kLuma },
+	};
+	static_assert(std::size(kImageChannels) == kImageChannelCount);
 	inline constexpr Named<ImageSpace> kImageSpaces[]{ { ImageSpace::kTiled, "tiled" }, { ImageSpace::kMesh, "mesh" } };
-	inline constexpr Named<MaterialChannel> kMaterialChannels[]{ { MaterialChannel::kDiffuseRgb, "diffuseRgb" }, { MaterialChannel::kDiffuseLuma, "diffuseLuma" }, { MaterialChannel::kNormalSlope, "normalSlope" }, { MaterialChannel::kRoughness, "roughness" }, { MaterialChannel::kMetallic, "metallic" }, { MaterialChannel::kOcclusion, "occlusion" }, { MaterialChannel::kReflectance, "reflectance" }, { MaterialChannel::kDisplacement, "displacement" }, { MaterialChannel::kRelief, "relief" } };
+	// RMAOS packs roughness, metallic, occlusion and reflectance in r, g, b, a.
+	inline constexpr MaterialChannelRow kMaterialChannels[]{
+		{ MaterialChannel::kDiffuseRgb, "diffuseRgb", MaterialMap::kDiffuse, ShaderChannel::kRgb, ValueType::kVec3 },
+		{ MaterialChannel::kDiffuseLuma, "diffuseLuma", MaterialMap::kDiffuse, ShaderChannel::kLuma, ValueType::kScalar },
+		{ MaterialChannel::kNormalSlope, "normalSlope", MaterialMap::kNone, ShaderChannel::kR, ValueType::kScalar },
+		{ MaterialChannel::kRoughness, "roughness", MaterialMap::kRmaos, ShaderChannel::kR, ValueType::kScalar },
+		{ MaterialChannel::kMetallic, "metallic", MaterialMap::kRmaos, ShaderChannel::kG, ValueType::kScalar },
+		{ MaterialChannel::kOcclusion, "occlusion", MaterialMap::kRmaos, ShaderChannel::kB, ValueType::kScalar },
+		{ MaterialChannel::kReflectance, "reflectance", MaterialMap::kRmaos, ShaderChannel::kA, ValueType::kScalar },
+		{ MaterialChannel::kDisplacement, "displacement", MaterialMap::kDisplacement, ShaderChannel::kR, ValueType::kScalar },
+		{ MaterialChannel::kRelief, "relief", MaterialMap::kNone, ShaderChannel::kR, ValueType::kScalar },
+	};
+	static_assert(std::size(kMaterialChannels) == kMaterialChannelCount);
 	inline constexpr Named<UvAxis> kUvAxes[]{ { UvAxis::kU, "u" }, { UvAxis::kV, "v" } };
 	inline constexpr Named<RippleShape> kRippleShapes[]{ { RippleShape::kRing, "ring" }, { RippleShape::kDisc, "disc" } };
 
@@ -85,7 +105,18 @@ namespace WornEnchantmentPBR
 		{ Slot::kSubsurface, "subsurface", SlotColumns::kRgba, "r, g, b: subsurface colour; a: thickness; shares one map with coat, so a material takes one of the two", SlotColumns::kSubsurfaceScalars, true, SlotColumns::kSubsurfaceExcludes, MaterialMap::kNone },
 	};
 	static_assert(std::size(kSlots) == kSlotCount);
-	inline constexpr Named<Blend> kBlends[]{ { Blend::kReplace, "replace" }, { Blend::kMultiply, "multiply" }, { Blend::kAdd, "add" }, { Blend::kSubtract, "subtract" }, { Blend::kScreen, "screen" }, { Blend::kLerp, "lerp" }, { Blend::kNormal, "normal" } };
+	// Shader modes as the layer pass's Blend function switches on them; lerp
+	// is replace under the opacity mix, so it shares replace's arithmetic.
+	inline constexpr BlendRow kBlends[]{
+		{ Blend::kReplace, "replace", 0, false },
+		{ Blend::kMultiply, "multiply", 1, false },
+		{ Blend::kAdd, "add", 2, false },
+		{ Blend::kSubtract, "subtract", 3, false },
+		{ Blend::kScreen, "screen", 4, false },
+		{ Blend::kLerp, "lerp", 5, false },
+		{ Blend::kNormal, "normal", 6, true },
+	};
+	static_assert(std::size(kBlends) == kBlendCount);
 
 	inline constexpr Named<ShellMaterial> kShellMaterials[]{ { ShellMaterial::kPbrCopy, "pbrCopy" }, { ShellMaterial::kVanilla, "vanilla" } };
 	inline constexpr Named<ShellBlend> kShellBlends[]{ { ShellBlend::kAdditive, "additive" }, { ShellBlend::kAlpha, "alpha" } };

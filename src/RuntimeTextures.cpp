@@ -37,7 +37,8 @@ cbuffer Params : register(b0)
 	                    // zw per mode: height = armor weight, noise weight; roughness = strength, contrast
 	float4 extra2;      // height: x relief mean, y relief contrast, z noise mean
 	                    // masked glow: extra.z channel, extra.w threshold; extra2 = softness, invert, strength
-	float4 layer;       // layer pass: x source channel (0-3 rgba, 4 rgb, 5 luma), y mesh space, z blend, w opacity
+	                    // channel: extra.z channel (as Pick reads it), extra.w slope instead
+	float4 layer;       // layer pass: x source channel (as Pick reads it), y mesh space, z blend mode, w opacity
 	float4 layerColor;  // layer pass: rgb colour, w normalise factor
 	float4 layerMask;   // layer pass: x mask channel (-1 none), y channel bits, z has previous, w has source
 	float4 layerCurve;  // layer pass: x has curve
@@ -107,6 +108,14 @@ float3 Blend(int mode, float3 below, float3 value)
 	if (mode == 2) return below + value;
 	if (mode == 3) return below - value;
 	if (mode == 4) return 1 - (1 - below) * (1 - value);
+	if (mode == 6) {
+		// Reoriented normal mapping: the value's normal, rotated so its up
+		// follows the normal below; both maps are 0..1 tangent-space encodings.
+		float3 t = below * 2 - float3(1, 1, 0);
+		float3 u = value * float3(-2, -2, 2) + float3(1, 1, -1);
+		float3 r = t * (dot(t, u) / max(t.z, 0.001)) - u;
+		return normalize(r) * 0.5 + 0.5;
+	}
 	return value;  // replace and lerp: lerp is the opacity mix below
 }
 
@@ -165,15 +174,11 @@ float4 PSMain(VSOut i) : SV_Target
 		return float4(h, h, h, 1);
 	}
 	if (mode == 4) {
+		// One channel of the armor input (extra.z, as Pick reads it), or its
+		// slope as a normal map (extra.w).
+		if (extra.w > 0.5) { float r = Relief(4, i.uv); return float4(r, r, r, 1); }
 		float4 a = armor.SampleLevel(samp, i.uv, 0);
-		int ch = (int)extra.z;
-		if (ch == 0) return float4(a.rrr, 1);
-		if (ch == 1) return float4(a.ggg, 1);
-		if (ch == 2) return float4(a.bbb, 1);
-		if (ch == 3) return float4(a.aaa, 1);
-		if (ch == 5) { float r = Relief(4, i.uv); return float4(r, r, r, 1); }
-		if (ch == 6) { float r = Relief(5, i.uv); return float4(r, r, r, 1); }
-		return float4(a.rgb, 1);
+		return float4(Pick(a, (int)extra.z), 1);
 	}
 	if (mode == 5) return float4(c.rgb * Mask(i.uv), 1);
 	if (mode == 3) {
@@ -866,7 +871,7 @@ float4 PSClassify(VSOut i) : SV_Target
 		sampleWarned_.clear();
 	}
 
-	std::shared_ptr<TextureLab::Target> TextureLab::Preview(RE::NiSourceTexture* a_source, std::uint32_t a_channel, bool a_dynamic)
+	std::shared_ptr<TextureLab::Target> TextureLab::Preview(RE::NiSourceTexture* a_source, ShaderChannel a_channel, bool a_dynamic)
 	{
 		if (!a_source || !available_) {
 			return nullptr;
@@ -981,7 +986,7 @@ float4 PSClassify(VSOut i) : SV_Target
 		const bool havePrev = prevData && prevData->resourceView;
 		if (layerPass) {
 			const auto& lp = a_params.layer;
-			constants.layer[0] = static_cast<float>(lp.input.channel);
+			constants.layer[0] = static_cast<float>(std::to_underlying(lp.input.channel));
 			constants.layer[1] = lp.input.meshSpace ? 1.0f : 0.0f;
 			constants.layer[2] = static_cast<float>(lp.blend);
 			constants.layer[3] = lp.opacity;
@@ -989,7 +994,7 @@ float4 PSClassify(VSOut i) : SV_Target
 			constants.layerColor[1] = lp.color[1];
 			constants.layerColor[2] = lp.color[2];
 			constants.layerColor[3] = lp.normalize;
-			constants.layerMask[0] = haveArmor ? static_cast<float>(lp.maskChannel) : -1.0f;
+			constants.layerMask[0] = haveArmor ? static_cast<float>(std::to_underlying(lp.maskChannel)) : -1.0f;
 			constants.layerMask[1] = static_cast<float>(lp.channels);
 			constants.layerMask[2] = havePrev ? 1.0f : 0.0f;
 			constants.layerMask[3] = haveSource ? 1.0f : 0.0f;
@@ -1000,7 +1005,8 @@ float4 PSClassify(VSOut i) : SV_Target
 			constants.extra[2] = a_params.roughness.strength;
 			constants.extra[3] = a_params.roughness.contrast;
 		} else if (a_params.mode == Mode::kChannel) {
-			constants.extra[2] = static_cast<float>(a_params.channel.channel);
+			constants.extra[2] = static_cast<float>(std::to_underlying(a_params.channel.channel));
+			constants.extra[3] = a_params.channel.slope ? 1.0f : 0.0f;
 		} else if (a_params.mode == Mode::kMaskedGlow) {
 			constants.extra[2] = static_cast<float>(a_params.mask.channel);
 			constants.extra[3] = a_params.mask.threshold;
@@ -1312,7 +1318,7 @@ float4 PSClassify(VSOut i) : SV_Target
 			const auto* data = DataOf(tex.texture);
 			srvs[t] = data ? reinterpret_cast<ID3D11ShaderResourceView*>(data->resourceView) : nullptr;
 			const auto& sc = tex.sampling.transform;
-			constants->texParams[t][0] = static_cast<float>(tex.sampling.channel);
+			constants->texParams[t][0] = static_cast<float>(std::to_underlying(tex.sampling.channel));
 			constants->texParams[t][1] = tex.sampling.meshSpace ? 1.0f : 0.0f;
 			constants->texParams[t][2] = tex.normalize;
 			constants->texParams[t][3] = sc.sourceMip;
@@ -1569,7 +1575,7 @@ float4 PSClassify(VSOut i) : SV_Target
 		return result;
 	}
 
-	float TextureLab::MeanChannel(RE::NiSourceTexture* a_source, std::uint32_t a_channel)
+	float TextureLab::MeanChannel(RE::NiSourceTexture* a_source, ShaderChannel a_channel)
 	{
 		const auto key = std::make_pair(a_source, a_channel);
 		if (const auto it = channelMeans_.find(key); it != channelMeans_.end()) {

@@ -14,8 +14,6 @@ namespace WornEnchantmentPBR::Studio
 {
 	namespace
 	{
-		constexpr Blend kEveryBlend[]{ Blend::kReplace, Blend::kMultiply, Blend::kAdd, Blend::kSubtract, Blend::kScreen, Blend::kLerp, Blend::kNormal };
-
 		// A parameter text names one signal when it is "@name" and nothing else:
 		// a colour written "1, 0.5, @blue" references per component, which the
 		// inspector does not follow.
@@ -54,9 +52,9 @@ namespace WornEnchantmentPBR::Studio
 		[[nodiscard]] std::vector<Blend> BlendsFor(Slot a_slot)
 		{
 			std::vector<Blend> blends;
-			for (const auto blend : kEveryBlend) {
-				if (BlendAllowed(a_slot, blend)) {
-					blends.push_back(blend);
+			for (const auto& row : kBlends) {
+				if (BlendAllowed(a_slot, row.value)) {
+					blends.push_back(row.value);
 				}
 			}
 			return blends;
@@ -1342,7 +1340,7 @@ namespace WornEnchantmentPBR::Studio
 		}));
 		if (a_source.kind == "image") {
 			form.push_back(Field("path", FieldKind::kText, a_source.path, {}, BindSourceText(a_source, &SourceRow::path)));
-			form.push_back(Field("channel", FieldKind::kChoice, a_source.channel, { "rgb", "r", "g", "b", "a", "luma" }, BindSourceText(a_source, &SourceRow::channel)));
+			form.push_back(Field("channel", FieldKind::kChoice, a_source.channel, WordsOf(kImageChannels), BindSourceText(a_source, &SourceRow::channel)));
 			form.push_back(Field("space", FieldKind::kChoice, a_source.space, { "tiled", "mesh" }, BindSourceText(a_source, &SourceRow::space)));
 			FieldSpec scroll = Field("scroll", FieldKind::kVec2, a_source.scroll, a_names.vec2, BindSourceText(a_source, &SourceRow::scroll));
 			scroll.allowEmpty = true;
@@ -1355,7 +1353,7 @@ namespace WornEnchantmentPBR::Studio
 			form.push_back(Field("transpose", FieldKind::kToggle, a_source.transpose, {}, BindSourceText(a_source, &SourceRow::transpose)));
 			form.push_back(Field("mip", FieldKind::kScalar, a_source.mip, {}, BindSourceText(a_source, &SourceRow::mip)));
 		} else if (a_source.kind == "material") {
-			form.push_back(Field("channel", FieldKind::kChoice, a_source.material, { "diffuseRgb", "diffuseLuma", "normalSlope", "roughness", "metallic", "occlusion", "reflectance", "displacement", "relief" }, BindSourceText(a_source, &SourceRow::material)));
+			form.push_back(Field("channel", FieldKind::kChoice, a_source.material, WordsOf(kMaterialChannels), BindSourceText(a_source, &SourceRow::material)));
 		} else if (a_source.kind == "bake") {
 			form.push_back(Field("bake", FieldKind::kChoice, a_source.bake, { "position", "localPosition", "worldUp", "partition", "boneWeight", "componentId", "chartId" }, BindSourceText(a_source, &SourceRow::bake)));
 			if (a_source.bake == "partition") {

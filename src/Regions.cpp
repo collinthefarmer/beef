@@ -5,6 +5,7 @@
 #include <nlohmann/json.hpp>
 
 #include "Expression.h"
+#include "Vocabulary.h"
 
 #include <algorithm>
 #include <cctype>
@@ -399,14 +400,22 @@ namespace WornEnchantmentPBR::Studio
 
 	namespace
 	{
-		// The channels a threshold can test: the scalar ones; diffuseRgb is a colour.
-		constexpr std::array<MaterialChannel, 8> kThresholdChannels{ MaterialChannel::kDiffuseLuma, MaterialChannel::kNormalSlope, MaterialChannel::kRoughness, MaterialChannel::kMetallic,
-			MaterialChannel::kOcclusion, MaterialChannel::kReflectance, MaterialChannel::kDisplacement, MaterialChannel::kRelief };
+		// The channels a threshold can test, in table order: the scalar ones.
+		[[nodiscard]] std::vector<MaterialChannel> ThresholdChannels()
+		{
+			std::vector<MaterialChannel> channels;
+			for (const auto& row : kMaterialChannels) {
+				if (Thresholdable(row.value)) {
+					channels.push_back(row.value);
+				}
+			}
+			return channels;
+		}
 
 		[[nodiscard]] std::vector<std::string> ThresholdChannelNames()
 		{
 			std::vector<std::string> names;
-			for (const auto channel : kThresholdChannels) {
+			for (const auto channel : ThresholdChannels()) {
 				names.emplace_back(MaterialChannelName(channel));
 			}
 			return names;
@@ -831,7 +840,7 @@ namespace WornEnchantmentPBR::Studio
 			if (const auto threshold = ReadThreshold(a_text)) {
 				const auto* kind = KindNamed(a_existing, threshold->name);
 				const auto* material = kind ? Get<MaterialSource>(*kind) : nullptr;
-				if (material && std::ranges::find(kThresholdChannels, material->channel) != kThresholdChannels.end()) {
+				if (material && Thresholdable(material->channel)) {
 					ThresholdTerm term = threshold->term;
 					term.channel = material->channel;
 					return term;
@@ -1004,7 +1013,7 @@ namespace WornEnchantmentPBR::Studio
 			std::vector<TermField> form;
 			form.push_back(Setting<ThresholdTerm>(a_term, Spec("channel", FieldKind::kChoice, std::string{ MaterialChannelName(a_term.channel) }, ThresholdChannelNames()), Set{ [](ThresholdTerm& t, const std::string& a_text) {
 				const auto channel = ParseMaterialChannel(a_text);
-				if (!channel || std::ranges::find(kThresholdChannels, *channel) == kThresholdChannels.end()) {
+				if (!channel || !Thresholdable(*channel)) {
 					return false;
 				}
 				t.channel = *channel;
@@ -1200,7 +1209,7 @@ namespace WornEnchantmentPBR::Studio
 			offers.push_back(Offer(kOfferGroups[3], PlainPartitionName(a_presets, partition.slot), std::format("{} triangles", partition.triangles), PartitionTerm{ partition.slot }));
 		}
 		// channels
-		for (const auto channel : kThresholdChannels) {
+		for (const auto channel : ThresholdChannels()) {
 			ThresholdTerm term;
 			term.channel = channel;
 			term.low = 0.5f;

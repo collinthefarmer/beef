@@ -52,42 +52,6 @@ namespace WornEnchantmentPBR
 			return std::format("'{}' is {}x{}, a placeholder", name, extent->width, extent->height);
 		}
 
-		std::uint32_t ChannelIndex(ImageChannel a_channel)
-		{
-			switch (a_channel) {
-			case ImageChannel::kR:
-				return 0;
-			case ImageChannel::kG:
-				return 1;
-			case ImageChannel::kB:
-				return 2;
-			case ImageChannel::kA:
-				return 3;
-			case ImageChannel::kLuma:
-				return 5;
-			default:
-				return 4;
-			}
-		}
-
-		std::uint32_t BlendIndex(Blend a_blend)
-		{
-			switch (a_blend) {
-			case Blend::kMultiply:
-				return 1;
-			case Blend::kAdd:
-				return 2;
-			case Blend::kSubtract:
-				return 3;
-			case Blend::kScreen:
-				return 4;
-			case Blend::kLerp:
-				return 5;
-			default:
-				return 0;
-			}
-		}
-
 		std::uint32_t ChannelBits(const ChannelSet& a_set)
 		{
 			return (a_set.r ? 1u : 0u) | (a_set.g ? 2u : 0u) | (a_set.b ? 4u : 0u) | (a_set.a ? 8u : 0u);
@@ -97,14 +61,14 @@ namespace WornEnchantmentPBR
 		struct MaterialChannelPick
 		{
 			RE::NiPointer<RE::NiSourceTexture> texture;
-			std::uint32_t                      channel = 4;
+			ShaderChannel                      channel = ShaderChannel::kRgb;
 			std::string                        problem;
 		};
 
-		// The map a slot edits in place (BaseMapOf), as the material holds it.
-		RE::NiPointer<RE::NiSourceTexture> BaseMapFor(Slot a_slot, const MaterialInputs& a_material)
+		// One of the material's maps; null for kNone.
+		RE::NiPointer<RE::NiSourceTexture> MapOf(MaterialMap a_map, const MaterialInputs& a_material)
 		{
-			switch (BaseMapOf(a_slot)) {
+			switch (a_map) {
 			case MaterialMap::kDiffuse:
 				return a_material.diffuse;
 			case MaterialMap::kNormal:
@@ -119,6 +83,12 @@ namespace WornEnchantmentPBR
 			return nullptr;
 		}
 
+		// The map a slot edits in place (BaseMapOf), as the material holds it.
+		RE::NiPointer<RE::NiSourceTexture> BaseMapFor(Slot a_slot, const MaterialInputs& a_material)
+		{
+			return MapOf(BaseMapOf(a_slot), a_material);
+		}
+
 		// Many PBR sets ship a displacement map that is a real texture and
 		// entirely black (NOTES 46): flat when its mean sits at either end.
 		// A readback, so once per material in MaterialInputs::From.
@@ -127,15 +97,15 @@ namespace WornEnchantmentPBR
 			if (!RealTexture(a_displacement)) {
 				return true;
 			}
-			const float mean = TextureLab::GetSingleton()->MeanChannel(a_displacement.get(), 0);
+			const float mean = TextureLab::GetSingleton()->MeanChannel(a_displacement.get(), ShaderChannel::kR);
 			return !(mean > 0.02f && mean < 0.98f);
 		}
 
 		std::optional<MaterialChannel> SingleChannelOf(const Recipe& a_recipe, const Mask& a_mask);
 
 		// The normal map's slope as a texture of its own, through the lab's
-		// channel pass (channel 5 = slope of the armor input); null with the
-		// reason when the map is not real or the pass fails.
+		// channel pass with slope set; null with the reason when the map is
+		// not real or the pass fails.
 		std::shared_ptr<TextureLab::Target> RenderNormalSlope(const MaterialInputs& a_material, std::string& a_problem)
 		{
 			if (!RealTexture(a_material.normal)) {
@@ -152,7 +122,7 @@ namespace WornEnchantmentPBR
 			TextureLab::LayerParams params;
 			params.mode = TextureLab::Mode::kChannel;
 			params.armor = { a_material.normal.get(), TextureLab::ArmorInput::kNormalSlope };
-			params.channel.channel = 5;
+			params.channel.slope = true;
 			if (!lab->Render(*target, nullptr, params)) {
 				a_problem = "the normal slope pass failed";
 				return nullptr;
@@ -209,30 +179,22 @@ namespace WornEnchantmentPBR
 
 		// With a_mayRender the slope is rendered on first use (the prepare
 		// paths, game thread); an inspection only reads what was rendered.
+		// A channel with a map reads that map's channel from the table; the
+		// two derived channels are decided here.
 		MaterialChannelPick PickMaterialChannel(MaterialChannel a_channel, const GeometryInputs& a_inputs, bool a_mayRender)
 		{
 			const MaterialInputs& a_material = a_inputs.material;
+			const auto            map = MaterialMapOf(a_channel);
+			if (map != MaterialMap::kNone) {
+				return { MapOf(map, a_material), ShaderChannelOf(a_channel), {} };
+			}
 			switch (a_channel) {
-			case MaterialChannel::kDiffuseRgb:
-				return { a_material.diffuse, 4, {} };
-			case MaterialChannel::kDiffuseLuma:
-				return { a_material.diffuse, 5, {} };
-			case MaterialChannel::kRoughness:
-				return { a_material.rmaos, 0, {} };
-			case MaterialChannel::kMetallic:
-				return { a_material.rmaos, 1, {} };
-			case MaterialChannel::kOcclusion:
-				return { a_material.rmaos, 2, {} };
-			case MaterialChannel::kReflectance:
-				return { a_material.rmaos, 3, {} };
-			case MaterialChannel::kDisplacement:
-				return { a_material.displacement, 0, {} };
 			case MaterialChannel::kRelief:
 				// A flat height map carries no relief; the occlusion channel does.
 				if (!a_material.flatDisplacement) {
-					return { a_material.displacement, 0, {} };
+					return { a_material.displacement, ShaderChannelOf(MaterialChannel::kDisplacement), {} };
 				}
-				return { a_material.rmaos, 2, {} };
+				return { a_material.rmaos, ShaderChannelOf(MaterialChannel::kOcclusion), {} };
 			case MaterialChannel::kNormalSlope: {
 				auto& derived = *a_inputs.derived;
 				if (!derived.normalSlope && a_mayRender && !derived.tried) {
@@ -240,12 +202,13 @@ namespace WornEnchantmentPBR
 					derived.normalSlope = RenderNormalSlope(a_material, derived.problem);
 				}
 				if (derived.normalSlope) {
-					return { RE::NiPointer<RE::NiSourceTexture>{ derived.normalSlope->Texture() }, 0, {} };
+					return { RE::NiPointer<RE::NiSourceTexture>{ derived.normalSlope->Texture() }, ShaderChannelOf(a_channel), {} };
 				}
-				return { nullptr, 0, derived.tried ? derived.problem : std::string{ Compositor::kNotRendered } };
+				return { nullptr, ShaderChannelOf(a_channel), derived.tried ? derived.problem : std::string{ Compositor::kNotRendered } };
 			}
+			default:
+				return { nullptr, ShaderChannel::kR, "unknown channel" };
 			}
-			return { nullptr, 0, "unknown channel" };
 		}
 	}
 
@@ -306,7 +269,7 @@ namespace WornEnchantmentPBR
 				return prepared;
 			}
 			prepared.texture = RE::NiPointer<RE::NiSourceTexture>{ rendered->Texture() };
-			prepared.sampling.channel = rendered->Vector() ? 4u : 0u;
+			prepared.sampling.channel = rendered->Vector() ? ShaderChannel::kRgb : ShaderChannel::kR;
 			prepared.sampling.meshSpace = true;
 			prepared.animated = rendered->Animated();
 			prepared.rendered = std::move(rendered);
@@ -326,7 +289,7 @@ namespace WornEnchantmentPBR
 				if (!prepared.texture) {
 					prepared.problem = std::format("image '{}' did not load", image.path);
 				}
-				prepared.sampling.channel = ChannelIndex(image.channel);
+				prepared.sampling.channel = ShaderChannelOf(image.channel);
 				prepared.sampling.meshSpace = image.space == ImageSpace::kMesh;
 				prepared.sampling.transform.mirrorU = image.mirror[0];
 				prepared.sampling.transform.mirrorV = image.mirror[1];
@@ -357,7 +320,7 @@ namespace WornEnchantmentPBR
 					return;
 				}
 				prepared.texture = RE::NiPointer<RE::NiSourceTexture>{ (*target)->Texture() };
-				prepared.sampling.channel = Is<PositionBake>(bake.bake) || Is<LocalPositionBake>(bake.bake) ? 4u : 0u;
+				prepared.sampling.channel = Is<PositionBake>(bake.bake) || Is<LocalPositionBake>(bake.bake) ? ShaderChannel::kRgb : ShaderChannel::kR;
 				prepared.sampling.meshSpace = true;
 			},
 			[&](const DistanceSource& distance) {
@@ -367,7 +330,7 @@ namespace WornEnchantmentPBR
 					return;
 				}
 				prepared.texture = RE::NiPointer<RE::NiSourceTexture>{ (*target)->Texture() };
-				prepared.sampling.channel = 0;
+				prepared.sampling.channel = ShaderChannel::kR;
 				prepared.sampling.meshSpace = true;
 			},
 			[&](const RippleSource& ripple) {
@@ -377,7 +340,7 @@ namespace WornEnchantmentPBR
 					return;
 				}
 				prepared.texture = RE::NiPointer<RE::NiSourceTexture>{ (*rendered)->Texture() };
-				prepared.sampling.channel = 0;
+				prepared.sampling.channel = ShaderChannel::kR;
 				prepared.sampling.meshSpace = true;
 				prepared.animated = true;
 				prepared.ripple = std::move(*rendered);
@@ -394,7 +357,7 @@ namespace WornEnchantmentPBR
 					return;
 				}
 				prepared.texture = RE::NiPointer<RE::NiSourceTexture>{ (*target)->Texture() };
-				prepared.sampling.channel = 0;
+				prepared.sampling.channel = ShaderChannel::kR;
 				prepared.sampling.meshSpace = true;
 			},
 			[&](const MaterialClustersSource& clusters) {
@@ -404,7 +367,7 @@ namespace WornEnchantmentPBR
 					return;
 				}
 				prepared.texture = RE::NiPointer<RE::NiSourceTexture>{ target->Texture() };
-				prepared.sampling.channel = 0;
+				prepared.sampling.channel = ShaderChannel::kR;
 				prepared.sampling.meshSpace = true;
 			});
 		if (!prepared.problem.empty()) {
@@ -442,7 +405,7 @@ namespace WornEnchantmentPBR
 			return prepared;
 		}
 		prepared.texture = RE::NiPointer<RE::NiSourceTexture>{ rendered->Texture() };
-		prepared.channel = 0;
+		prepared.channel = ShaderChannel::kR;
 		prepared.animated = rendered->Animated();
 		prepared.rendered = std::move(rendered);
 		return prepared;
@@ -470,7 +433,7 @@ namespace WornEnchantmentPBR
 		if (a_source && a_source->texture) {
 			auto* lab = TextureLab::GetSingleton();
 			const auto channel = a_source->sampling.channel;
-			mean = channel < 4 ? lab->MeanChannel(a_source->texture.get(), channel) : lab->MeanLuminance(a_source->texture.get());
+			mean = channel == ShaderChannel::kRgb || channel == ShaderChannel::kLuma ? lab->MeanLuminance(a_source->texture.get()) : lab->MeanChannel(a_source->texture.get(), channel);
 		}
 		std::array<float, 256> values{};
 		for (std::size_t i = 0; i < values.size(); ++i) {
@@ -627,7 +590,7 @@ namespace WornEnchantmentPBR
 			PreparedSource prepared;
 			if (auto rendered = CachedMask(a_inputs, a_name)) {
 				prepared.texture = RE::NiPointer<RE::NiSourceTexture>{ rendered->Texture() };
-				prepared.sampling.channel = rendered->Vector() ? 4u : 0u;
+				prepared.sampling.channel = rendered->Vector() ? ShaderChannel::kRgb : ShaderChannel::kR;
 				prepared.sampling.meshSpace = true;
 				prepared.animated = rendered->Animated();
 				prepared.problem = rendered->Problem();
@@ -649,7 +612,7 @@ namespace WornEnchantmentPBR
 		const auto notRendered = [&] {
 			prepared.problem = entry && !entry->mesh && !entry->problem.empty() ? "the mesh could not be read: " + entry->problem : std::string{ kNotRendered };
 		};
-		const auto baked = [&](const std::string& a_definition, std::uint32_t a_channel) {
+		const auto baked = [&](const std::string& a_definition, ShaderChannel a_channel) {
 			prepared.sampling.meshSpace = true;
 			if (const auto target = CachedBake(entry.get(), a_definition)) {
 				prepared.texture = RE::NiPointer<RE::NiSourceTexture>{ target->Texture() };
@@ -670,7 +633,7 @@ namespace WornEnchantmentPBR
 				if (!prepared.texture) {
 					prepared.problem = std::format("image '{}' did not load", image.path);
 				}
-				prepared.sampling.channel = ChannelIndex(image.channel);
+				prepared.sampling.channel = ShaderChannelOf(image.channel);
 				prepared.sampling.meshSpace = image.space == ImageSpace::kMesh;
 				prepared.sampling.transform.mirrorU = image.mirror[0];
 				prepared.sampling.transform.mirrorV = image.mirror[1];
@@ -692,13 +655,13 @@ namespace WornEnchantmentPBR
 				}
 			},
 			[&](const BakeSource& bake) {
-				baked(DefinitionOf(bake.bake), Is<PositionBake>(bake.bake) || Is<LocalPositionBake>(bake.bake) ? 4u : 0u);
+				baked(DefinitionOf(bake.bake), Is<PositionBake>(bake.bake) || Is<LocalPositionBake>(bake.bake) ? ShaderChannel::kRgb : ShaderChannel::kR);
 			},
 			[&](const DistanceSource& distance) {
-				baked(DefinitionOf(distance), 0u);
+				baked(DefinitionOf(distance), ShaderChannel::kR);
 			},
 			[&](const UvSource& uv) {
-				baked(DefinitionOf(uv.axis), 0u);
+				baked(DefinitionOf(uv.axis), ShaderChannel::kR);
 			},
 			[&](const RippleSource&) {
 				prepared.sampling.meshSpace = true;
@@ -1225,7 +1188,7 @@ namespace WornEnchantmentPBR
 				pass.color[2] *= colour.z;
 			}
 			pass.opacity = a_signals.Resolve(layer.opacity);
-			pass.blend = BlendIndex(layer.blend);
+			pass.blend = BlendShaderMode(layer.blend);
 			pass.channels = ChannelBits(layer.channels);
 			if (prepared.mask && prepared.mask->texture) {
 				pass.mask = prepared.mask->texture.get();

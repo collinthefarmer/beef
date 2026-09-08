@@ -127,10 +127,10 @@ namespace
 		geometry.name = a_name;
 		geometry.shell = a_recipe.shell.material == ShellMaterial::kVanilla ? "vanilla shell" : "pbr copy shell";
 		for (const auto& source : a_recipe.sources) {
-			geometry.sources.push_back({ source.name, DescribeSource(source.kind), SourceType(source), nullptr, 4, false, "" });
+			geometry.sources.push_back({ source.name, DescribeSource(source.kind), SourceType(source), nullptr, ShaderChannel::kRgb, false, "" });
 		}
 		for (const auto& mask : a_recipe.masks) {
-			geometry.masks.push_back({ mask.name, mask.text, ValueType::kScalar, nullptr, 5, false, "" });
+			geometry.masks.push_back({ mask.name, mask.text, ValueType::kScalar, nullptr, ShaderChannel::kLuma, false, "" });
 		}
 		for (std::size_t i = 0; i < a_recipe.outputs.size(); ++i) {
 			geometry.outputs.push_back(ToRow(i, a_recipe.outputs[i]));

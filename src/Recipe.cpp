@@ -229,6 +229,12 @@ namespace WornEnchantmentPBR
 		return FromName(kBlends, a_name);
 	}
 
+	std::uint32_t BlendShaderMode(Blend a_blend) noexcept
+	{
+		const auto* row = RowOf(kBlends, a_blend);
+		return row ? row->shaderMode : 0;
+	}
+
 	std::string_view MaterialChannelName(MaterialChannel a_channel) noexcept
 	{
 		return NameOf(kMaterialChannels, a_channel);
@@ -247,6 +253,35 @@ namespace WornEnchantmentPBR
 	std::optional<ImageChannel> ParseImageChannel(std::string_view a_name) noexcept
 	{
 		return FromName(kImageChannels, a_name);
+	}
+
+	ShaderChannel ShaderChannelOf(ImageChannel a_channel) noexcept
+	{
+		const auto* row = RowOf(kImageChannels, a_channel);
+		return row ? row->channel : ShaderChannel::kRgb;
+	}
+
+	MaterialMap MaterialMapOf(MaterialChannel a_channel) noexcept
+	{
+		const auto* row = RowOf(kMaterialChannels, a_channel);
+		return row ? row->map : MaterialMap::kNone;
+	}
+
+	ShaderChannel ShaderChannelOf(MaterialChannel a_channel) noexcept
+	{
+		const auto* row = RowOf(kMaterialChannels, a_channel);
+		return row ? row->channel : ShaderChannel::kR;
+	}
+
+	ValueType MaterialChannelType(MaterialChannel a_channel) noexcept
+	{
+		const auto* row = RowOf(kMaterialChannels, a_channel);
+		return row ? row->type : ValueType::kScalar;
+	}
+
+	bool Thresholdable(MaterialChannel a_channel) noexcept
+	{
+		return RowOf(kMaterialChannels, a_channel) && MaterialChannelType(a_channel) == ValueType::kScalar;
 	}
 
 	std::string_view ImageSpaceName(ImageSpace a_space) noexcept
@@ -350,7 +385,8 @@ namespace WornEnchantmentPBR
 
 	bool BlendAllowed(Slot a_slot, Blend a_blend) noexcept
 	{
-		return a_blend != Blend::kNormal || a_slot == Slot::kNormal;
+		const auto* row = RowOf(kBlends, a_blend);
+		return row && (!row->normalStackOnly || a_slot == Slot::kNormal);
 	}
 
 	ChannelSet ChannelsOf(Slot a_slot) noexcept
@@ -1315,8 +1351,8 @@ namespace WornEnchantmentPBR
 	{
 		return Match(
 			a_source.kind,
-			[](const ImageSource& s) { return s.channel == ImageChannel::kRgb ? ValueType::kVec3 : ValueType::kScalar; },
-			[](const MaterialSource& s) { return s.channel == MaterialChannel::kDiffuseRgb ? ValueType::kVec3 : ValueType::kScalar; },
+			[](const ImageSource& s) { return ShaderChannelOf(s.channel) == ShaderChannel::kRgb ? ValueType::kVec3 : ValueType::kScalar; },
+			[](const MaterialSource& s) { return MaterialChannelType(s.channel); },
 			[](const BakeSource& s) { return Is<PositionBake>(s.bake) || Is<LocalPositionBake>(s.bake) ? ValueType::kVec3 : ValueType::kScalar; },
 			[](const auto&) { return ValueType::kScalar; });
 	}

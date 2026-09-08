@@ -41,6 +41,19 @@ namespace WornEnchantmentPBR
 		kVec3,
 	};
 
+	// The channel of a texture sample as the compositor's shader picks it
+	// and as the menu previews it: one component as grey, the rgb, or the
+	// rgb's luminance. The values are the shader's own indices.
+	enum class ShaderChannel : std::uint32_t
+	{
+		kR = 0,
+		kG = 1,
+		kB = 2,
+		kA = 3,
+		kRgb = 4,
+		kLuma = 5,
+	};
+
 	[[nodiscard]] inline ValueType TypeOf(const Value& a_value) noexcept
 	{
 		return static_cast<ValueType>(a_value.index());

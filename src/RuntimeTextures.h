@@ -1,6 +1,7 @@
 #pragma once
 
 #include "Analysis.h"
+#include "Core.h"
 #include "Expression.h"
 #include "Mesh.h"
 #include "PCH.h"
@@ -83,10 +84,12 @@ namespace WornEnchantmentPBR
 			float contrast = 2.0f;   // sharpens the source into patches
 		};
 
-		// 0..3 = r, g, b, a as grey; 4 = rgb; 5 = normal slope relief; 6 = diffuse luminance.
+		// One channel of the armor input as the shader picks it, or, with
+		// slope, the relief of the input read as a normal map.
 		struct ChannelParams
 		{
-			std::uint32_t channel = 4;
+			ShaderChannel channel = ShaderChannel::kRgb;
+			bool          slope = false;
 		};
 
 		// mask = channel of the armor input; above threshold (smoothstep with
@@ -105,7 +108,7 @@ namespace WornEnchantmentPBR
 		// image is placed by its transform (tiled) or by the mesh's own UV.
 		struct LayerInput
 		{
-			std::uint32_t channel = 4;  // 0..3 = r, g, b, a; 4 = rgb; 5 = luminance
+			ShaderChannel channel = ShaderChannel::kRgb;
 			bool          meshSpace = false;
 			Scroll        transform;
 		};
@@ -190,10 +193,10 @@ namespace WornEnchantmentPBR
 			float                normalize = 1.0f;  // multiplies the source (0.5 / mean luminance for colour fields)
 			float                color[3]{ 1.0f, 1.0f, 1.0f };
 			float                opacity = 1.0f;
-			std::uint32_t        blend = 0;  // 0 replace, 1 multiply, 2 add, 3 subtract, 4 screen, 5 lerp
+			std::uint32_t        blend = 0;  // BlendShaderMode of the layer's blend
 			std::uint32_t        channels = 15;  // bit 0 r, 1 g, 2 b, 3 a
 			RE::NiSourceTexture* mask = nullptr;  // sampled by mesh UV; null: no mask
-			std::uint32_t        maskChannel = 0;  // 0..3 = r, g, b, a; 5 = luminance
+			ShaderChannel        maskChannel = ShaderChannel::kR;
 			const Lookup*        curve = nullptr;  // applied to the source value per channel; null: identity
 		};
 
@@ -283,7 +286,7 @@ namespace WornEnchantmentPBR
 		// Mean luminance of a_source's RGB (0..1) via its 1x1 mip; cached per texture.
 		float MeanLuminance(RE::NiSourceTexture* a_source);
 		// Mean of one channel (0..3) of a_source, same method; cached.
-		float MeanChannel(RE::NiSourceTexture* a_source, std::uint32_t a_channel);
+		float MeanChannel(RE::NiSourceTexture* a_source, ShaderChannel a_channel);
 
 		// Inspector thumbnails: a small target showing one channel of a_source.
 		// The render thread asks (Preview) and gets the last finished target,
@@ -291,7 +294,7 @@ namespace WornEnchantmentPBR
 		// (RenderPreviews, once per tick). The immediate context is used on the
 		// game thread only. Static sources render once per generation; dynamic
 		// ones (our own targets) every tick they are asked for.
-		std::shared_ptr<Target> Preview(RE::NiSourceTexture* a_source, std::uint32_t a_channel, bool a_dynamic);
+		std::shared_ptr<Target> Preview(RE::NiSourceTexture* a_source, ShaderChannel a_channel, bool a_dynamic);
 		void                    RenderPreviews();
 		void                    ClearPreviews();
 		// Game thread, after an apply or retire: pooled targets change hands,
@@ -339,14 +342,14 @@ namespace WornEnchantmentPBR
 		std::vector<std::unique_ptr<Target>>            pool_;
 		std::map<std::uint32_t, std::shared_ptr<Target>> scratch_;
 		std::unordered_map<RE::NiSourceTexture*, float> luminance_;
-		std::map<std::pair<RE::NiSourceTexture*, std::uint32_t>, float> channelMeans_;
+		std::map<std::pair<RE::NiSourceTexture*, ShaderChannel>, float> channelMeans_;
 		std::unordered_set<RE::NiSourceTexture*>        sampleWarned_;  // textures SampleMaterial has already warned about
 
 		std::optional<float> ReadBackMean(Target& a_target);
 		// Every texel of the target's top mip as packed RGBA8, through a
 		// staging copy; empty on failure or a format other than the lab's own.
 		std::vector<std::uint8_t> ReadBackPixels(Target& a_target);
-		using PreviewKey = std::pair<RE::NiSourceTexture*, std::uint32_t>;
+		using PreviewKey = std::pair<RE::NiSourceTexture*, ShaderChannel>;
 		struct PreviewEntry
 		{
 			std::shared_ptr<Target> target;   // null until the game thread has rendered it

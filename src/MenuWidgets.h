@@ -134,8 +134,8 @@ namespace WornEnchantmentPBR::Studio::Widgets
 
 	// Channel: 0..3 one channel as grey, 4 rgb, 5 luminance. A dynamic
 	// texture is re-rendered every frame; a null handle draws a blank.
-	void               Thumbnail(TextureHandle a_texture, std::uint32_t a_channel, bool a_dynamic, float a_size);
-	[[nodiscard]] bool ThumbnailButton(const char* a_key, TextureHandle a_texture, std::uint32_t a_channel, bool a_dynamic, float a_size);
+	void               Thumbnail(TextureHandle a_texture, ShaderChannel a_channel, bool a_dynamic, float a_size);
+	[[nodiscard]] bool ThumbnailButton(const char* a_key, TextureHandle a_texture, ShaderChannel a_channel, bool a_dynamic, float a_size);
 
 	[[nodiscard]] std::optional<Blend> BlendCombo(const char* a_key, std::string_view a_current, std::span<const Blend> a_allowed, const Width& a_width, float a_scale);
 	// Lists the names as "@name" and returns the chosen text; the empty

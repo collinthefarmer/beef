@@ -448,7 +448,7 @@ namespace WornEnchantmentPBR::Studio
 		void DrawWrittenCell(const Cell& a_cell, const RecipeRow& a_recipe, const GeometryRow& a_geometry, const Board& a_board, const Selection& a_selection, const Layout& a_layout, Intents& a_out)
 		{
 			const bool selected = a_selection.target != Target::kLight && SurfaceOf(a_selection.target) == a_cell.surface && a_selection.slot == a_cell.slot;
-			if (Widgets::ThumbnailButton("cell", a_cell.composite, 4, a_cell.animated, a_layout.cellSize * a_layout.widgetScale)) {
+			if (Widgets::ThumbnailButton("cell", a_cell.composite, ShaderChannel::kRgb, a_cell.animated, a_layout.cellSize * a_layout.widgetScale)) {
 				a_out.push_back(PickOf(a_cell));
 			}
 			Widgets::Tooltip(CellTooltip(a_cell, a_geometry));
@@ -1041,7 +1041,7 @@ namespace WornEnchantmentPBR::Studio
 			}
 			DrawInspectorFields(*a_inspector, a_recipe, a_layout, a_names, a_out);
 			if (row != a_stack.rows.end() && row->layer.texture) {
-				Widgets::Thumbnail(row->layer.texture, 4, false, a_layout.inspectorThumbnail * a_layout.widgetScale);
+				Widgets::Thumbnail(row->layer.texture, ShaderChannel::kRgb, false, a_layout.inspectorThumbnail * a_layout.widgetScale);
 			}
 			ImGui::PopID();
 		}
@@ -1051,10 +1051,10 @@ namespace WornEnchantmentPBR::Studio
 		void DrawComposite(const StackView& a_stack, const PieceRow& a_piece, const RecipeRow& a_recipe, const GeometryRow& a_geometry, const Layout& a_layout, Intents& a_out)
 		{
 			if (a_recipe.geometries.size() < 2) {
-				Widgets::Thumbnail(a_stack.composite, 4, a_stack.animated, a_layout.compositeSize);
+				Widgets::Thumbnail(a_stack.composite, ShaderChannel::kRgb, a_stack.animated, a_layout.compositeSize);
 				return;
 			}
-			if (Widgets::ThumbnailButton("composite", a_stack.composite, 4, a_stack.animated, a_layout.compositeSize)) {
+			if (Widgets::ThumbnailButton("composite", a_stack.composite, ShaderChannel::kRgb, a_stack.animated, a_layout.compositeSize)) {
 				if (const auto next = NextGeometry(a_recipe, a_geometry)) {
 					a_out.push_back(*next);
 				}

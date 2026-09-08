@@ -703,6 +703,54 @@ namespace
 				Check(BlendAllowed(slot, blend) == (blend != Blend::kNormal || slot == Slot::kNormal), std::format("blend '{}' on '{}'", BlendName(blend), SlotName(slot)));
 			}
 		}
+		Check(!BlendAllowed(Slot::kNormal, static_cast<Blend>(99)), "an unknown blend is allowed nowhere");
+
+		// BlendShaderMode: every blend has its own mode in enum order, so the shader's Blend function has a case per row
+		for (std::size_t i = 0; i < std::size(blends); ++i) {
+			Check(BlendShaderMode(blends[i]) == i, std::format("shader mode of '{}'", BlendName(blends[i])));
+		}
+		Check(BlendShaderMode(static_cast<Blend>(99)) == 0, "an unknown blend renders as replace");
+
+		// ShaderChannelOf: an image channel reads the shader channel of the same name
+		const std::pair<ImageChannel, ShaderChannel> imageChannels[]{
+			{ ImageChannel::kRgb, ShaderChannel::kRgb }, { ImageChannel::kR, ShaderChannel::kR }, { ImageChannel::kG, ShaderChannel::kG },
+			{ ImageChannel::kB, ShaderChannel::kB }, { ImageChannel::kA, ShaderChannel::kA }, { ImageChannel::kLuma, ShaderChannel::kLuma }
+		};
+		static_assert(std::size(imageChannels) == kImageChannelCount);
+		for (const auto& [channel, expected] : imageChannels) {
+			Check(ShaderChannelOf(channel) == expected, std::format("shader channel of image channel '{}'", ImageChannelName(channel)));
+			Check(ParseImageChannel(ImageChannelName(channel)) == channel, std::format("image channel '{}' round-trips", ImageChannelName(channel)));
+		}
+		Check(ShaderChannelOf(static_cast<ImageChannel>(99)) == ShaderChannel::kRgb, "an unknown image channel reads rgb");
+
+		// The material channel rows: map and shader channel (kNone: derived, read as red), type, and what a threshold can test
+		struct MaterialChannelFacts
+		{
+			MaterialChannel channel;
+			MaterialMap     map;
+			ShaderChannel   shader;
+			ValueType       type;
+		};
+		const MaterialChannelFacts materialChannels[]{
+			{ MaterialChannel::kDiffuseRgb, MaterialMap::kDiffuse, ShaderChannel::kRgb, ValueType::kVec3 },
+			{ MaterialChannel::kDiffuseLuma, MaterialMap::kDiffuse, ShaderChannel::kLuma, ValueType::kScalar },
+			{ MaterialChannel::kNormalSlope, MaterialMap::kNone, ShaderChannel::kR, ValueType::kScalar },
+			{ MaterialChannel::kRoughness, MaterialMap::kRmaos, ShaderChannel::kR, ValueType::kScalar },
+			{ MaterialChannel::kMetallic, MaterialMap::kRmaos, ShaderChannel::kG, ValueType::kScalar },
+			{ MaterialChannel::kOcclusion, MaterialMap::kRmaos, ShaderChannel::kB, ValueType::kScalar },
+			{ MaterialChannel::kReflectance, MaterialMap::kRmaos, ShaderChannel::kA, ValueType::kScalar },
+			{ MaterialChannel::kDisplacement, MaterialMap::kDisplacement, ShaderChannel::kR, ValueType::kScalar },
+			{ MaterialChannel::kRelief, MaterialMap::kNone, ShaderChannel::kR, ValueType::kScalar },
+		};
+		static_assert(std::size(materialChannels) == kMaterialChannelCount);
+		for (const auto& facts : materialChannels) {
+			const auto name = MaterialChannelName(facts.channel);
+			Check(MaterialMapOf(facts.channel) == facts.map && ShaderChannelOf(facts.channel) == facts.shader, std::format("map and shader channel of '{}'", name));
+			Check(MaterialChannelType(facts.channel) == facts.type, std::format("type of '{}'", name));
+			Check(Thresholdable(facts.channel) == (facts.type == ValueType::kScalar), std::format("a threshold can test '{}'", name));
+			Check(ParseMaterialChannel(name) == facts.channel, std::format("material channel '{}' round-trips", name));
+		}
+		Check(MaterialMapOf(static_cast<MaterialChannel>(99)) == MaterialMap::kNone && !Thresholdable(static_cast<MaterialChannel>(99)), "an unknown material channel has no map and no threshold");
 
 		// ChannelsOf, as CS reads each map (BSLightingShaderMaterialPBR.h)
 		const std::pair<Slot, const char*> channels[]{

@@ -371,6 +371,7 @@ namespace WornEnchantmentPBR
 		kA,
 		kLuma,
 	};
+	inline constexpr std::size_t kImageChannelCount = 6;
 	enum class ImageSpace
 	{
 		kTiled,  // placed by the transform; scrolled, it is a field
@@ -400,6 +401,7 @@ namespace WornEnchantmentPBR
 		kDisplacement,
 		kRelief,  // the displacement map when the material has a real one, else occlusion
 	};
+	inline constexpr std::size_t kMaterialChannelCount = 9;
 	// The geometry's own maps.
 	struct MaterialSource
 	{
@@ -591,6 +593,7 @@ namespace WornEnchantmentPBR
 		kLerp,
 		kNormal,  // normal stack only: reoriented normal mapping
 	};
+	inline constexpr std::size_t kBlendCount = 7;
 
 	struct ChannelSet
 	{
@@ -607,6 +610,16 @@ namespace WornEnchantmentPBR
 
 	[[nodiscard]] std::string_view BlendName(Blend a_blend) noexcept;
 	[[nodiscard]] std::optional<Blend> ParseBlend(std::string_view a_name) noexcept;
+	// One row per blend: its word, the mode the layer shader's Blend function
+	// switches on, and whether only the normal stack takes it.
+	struct BlendRow
+	{
+		Blend            value;
+		std::string_view name;
+		std::uint32_t    shaderMode;
+		bool             normalStackOnly;
+	};
+	[[nodiscard]] std::uint32_t BlendShaderMode(Blend a_blend) noexcept;
 	[[nodiscard]] std::string                LayerSourceText(const LayerSource& a_source);
 	[[nodiscard]] std::optional<LayerSource> ParseLayerSource(std::string_view a_text);
 	[[nodiscard]] std::string_view                 MaterialChannelName(MaterialChannel a_channel) noexcept;
@@ -781,6 +794,33 @@ namespace WornEnchantmentPBR
 		kDisplacement,
 	};
 	[[nodiscard]] MaterialMap BaseMapOf(Slot a_slot) noexcept;
+
+	// One row per image channel: its word and the shader channel it reads.
+	struct ImageChannelRow
+	{
+		ImageChannel     value;
+		std::string_view name;
+		ShaderChannel    channel;
+	};
+	[[nodiscard]] ShaderChannel ShaderChannelOf(ImageChannel a_channel) noexcept;
+
+	// One row per material channel: its word; the map it reads and the
+	// shader channel of that map, or kNone for a channel the compositor
+	// derives (relief picks displacement or occlusion by the map's flatness,
+	// normalSlope is rendered from the normal map, both read as red); what
+	// a texel of it reads as. A threshold tests a scalar channel only.
+	struct MaterialChannelRow
+	{
+		MaterialChannel  value;
+		std::string_view name;
+		MaterialMap      map;
+		ShaderChannel    channel;
+		ValueType        type;
+	};
+	[[nodiscard]] MaterialMap   MaterialMapOf(MaterialChannel a_channel) noexcept;
+	[[nodiscard]] ShaderChannel ShaderChannelOf(MaterialChannel a_channel) noexcept;
+	[[nodiscard]] ValueType     MaterialChannelType(MaterialChannel a_channel) noexcept;
+	[[nodiscard]] bool          Thresholdable(MaterialChannel a_channel) noexcept;
 
 	// One row per slot: its word; the channels its texture carries meaning
 	// in and what each means to Community Shaders; the scalars beside the

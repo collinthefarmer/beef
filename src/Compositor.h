@@ -69,7 +69,7 @@ namespace WornEnchantmentPBR
 	struct PreparedMask
 	{
 		RE::NiPointer<RE::NiSourceTexture> texture;
-		std::uint32_t                      channel = 0;
+		ShaderChannel                      channel = ShaderChannel::kR;
 		bool                               animated = false;
 		std::string                        problem;
 		std::shared_ptr<RenderedMask>      rendered;

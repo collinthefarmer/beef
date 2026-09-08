@@ -638,3 +638,20 @@ rewrite (`src/RecipeStore.cpp`, 2026-09-04), not yet run in game.
     a menu opened) ran without a crash on the locked build. If wrong: the same
     crash again with the lock held, or a hang with the render thread
     waiting on the lock while our `Map` waits on the GPU.
+
+58. **The `normal` blend is reoriented normal mapping in the layer
+    shader (mode 6), and a preview reads the same channel vocabulary as
+    the layer pass.** Unconfirmed 2026-09-08. The blend rotates the
+    layer's tangent-space normal so its up follows the normal below
+    (Barré-Brisebois and Hill's RNM: `t = below * 2 - (1, 1, 0)`,
+    `u = value * (-2, -2, 2) + (1, 1, -1)`, `r = t * dot(t, u) / t.z - u`),
+    with `t.z` floored so a black texel below cannot divide by zero; the
+    stack starts from the material's normal map, so the first layer
+    reorients over the real surface. Before this the mode fell through to
+    replace. The lab's channel pass used to number luminance 6 and the
+    normal slope 5 while the layer pass numbered luminance 5, so a `luma`
+    image source's thumbnail drew the image's slope; both now take one
+    `ShaderChannel`, and the slope is a flag on the pass. If wrong: a
+    normal-stack layer on `normal` blend shows seams or flattening where
+    the base normal tilts, or a `luma` source's thumbnail still looks
+    like an embossed relief rather than a grey image.
