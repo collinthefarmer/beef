@@ -62,13 +62,7 @@ namespace WornEnchantmentPBR::Studio
 			const auto& view = a_view;
 			Match(
 				a_intent,
-				[&](const EditRecipe& i) {
-					manager->EditRecipe(i.recipe, [edit = i.edit](Recipe& a_recipe) {
-						if (const auto problem = Apply(a_recipe, edit)) {
-							logger::warn("edit refused: {} ({}: {})", Describe(edit), problem->where, problem->message);
-						}
-					});
-				},
+				[&](const EditRecipe& i) { manager->EditRecipe(i.recipe, EditBatch{ i.edits }); },
 				[&](const SoloRecipe& i) {
 					manager->UpdateView([](View& a_live) { a_live.isolatedBySolo = false; });
 					manager->Isolate(i.on ? i.recipe : std::string{}, -1, -1);
@@ -146,13 +140,20 @@ namespace WornEnchantmentPBR::Studio
 				Perform(intent, a_snapshot.view);
 				Reduce(a_state, intent);
 			}
-			ClampSelection(a_state.selection, a_snapshot);
+			ResolveSelection(a_state.selection, a_snapshot);
 			a_intents.clear();
+		}
+
+		void PostAll(Intents& a_out, const std::string& a_recipe, std::vector<RecipeEdit> a_edits)
+		{
+			if (!a_edits.empty()) {
+				a_out.push_back(EditRecipe{ a_recipe, std::move(a_edits) });
+			}
 		}
 
 		void Post(Intents& a_out, const std::string& a_recipe, RecipeEdit a_edit)
 		{
-			a_out.push_back(EditRecipe{ a_recipe, std::move(a_edit) });
+			PostAll(a_out, a_recipe, { std::move(a_edit) });
 		}
 
 		void EditMaskAsRegion(const RecipeRow& a_recipe, const TextRow& a_mask, Intents& a_out);
@@ -190,9 +191,7 @@ namespace WornEnchantmentPBR::Studio
 		{
 			if (std::ranges::find(a_field.creators, a_text) != a_field.creators.end()) {
 				if (a_field.create) {
-					for (auto& edit : a_field.create(a_text)) {
-						Post(a_out, a_recipe, std::move(edit));
-					}
+					PostAll(a_out, a_recipe, a_field.create(a_text));
 				}
 				return;
 			}
@@ -1538,9 +1537,7 @@ namespace WornEnchantmentPBR::Studio
 		{
 			const auto& presets = LoadedPresets();
 			auto [edits, expression] = BuildTerm(a_term, presets, ExistingOf(a_recipe));
-			for (auto& edit : edits) {
-				Post(a_out, a_recipe.id, std::move(edit));
-			}
+			PostAll(a_out, a_recipe.id, std::move(edits));
 			a_out.push_back(AddTerm{ Term{ TermOp::kAnd, std::move(expression), TermLabelOf(a_term, presets, a_geometry), a_term } });
 		}
 
@@ -1666,9 +1663,7 @@ namespace WornEnchantmentPBR::Studio
 					const std::optional<TermKind> changed = setting.apply ? setting.apply(*text) : std::nullopt;
 					if (changed) {
 						auto [edits, expression] = BuildTerm(*changed, presets, ExistingOf(a_recipe));
-						for (auto& edit : edits) {
-							Post(a_out, a_recipe.id, std::move(edit));
-						}
+						PostAll(a_out, a_recipe.id, std::move(edits));
 						a_out.push_back(SetTermKind{ a_index, *changed, std::move(expression), TermLabelOf(*changed, presets, a_geometry) });
 					} else {
 						Refuse(setting.field.name, *text);
@@ -2068,6 +2063,7 @@ namespace WornEnchantmentPBR::Studio
 		manager->Watch(RequestOf(state.selection));
 		const auto  held = manager->LatestSnapshot();
 		const auto& snapshot = *held;
+		ResolveSelection(state.selection, snapshot);
 		Intents     intents;
 
 		Mode mode = state.mode;

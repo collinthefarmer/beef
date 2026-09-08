@@ -683,6 +683,35 @@ namespace WornEnchantmentPBR::Studio
 		}
 
 		template <class F>
+		void ForEachImageRef(Recipe& a_recipe, F a_visit)
+		{
+			for (auto& output : a_recipe.outputs) {
+				if (auto* material = Get<SurfaceOutput>(output)) {
+					for (auto& layer : material->stack) {
+						if (auto* ref = Get<Ref>(layer.source)) {
+							a_visit(*ref);
+						}
+						if (layer.mask) {
+							a_visit(*layer.mask);
+						}
+					}
+				}
+			}
+		}
+
+		void RenameImageRefs(Recipe& a_recipe, std::string_view a_from, std::string_view a_to)
+		{
+			ForEachImageRef(a_recipe, [&](Ref& a_ref) {
+				if (a_ref.name == a_from) {
+					a_ref.name = std::string{ a_to };
+				}
+			});
+			for (auto& mask : a_recipe.masks) {
+				mask.text = RenameInExpression(mask.text, a_from, a_to, false);
+			}
+		}
+
+		template <class F>
 		void ForEachCurveRef(Recipe& a_recipe, F a_visit)
 		{
 			for (auto& signal : a_recipe.signals) {
@@ -800,23 +829,7 @@ namespace WornEnchantmentPBR::Studio
 				return Refuse(MaskWhere(a_edit.from), std::format("a mask or source is already named '{}'", a_edit.to));
 			}
 			mask->name = a_edit.to;
-			for (auto& output : a_recipe.outputs) {
-				auto* material = Get<SurfaceOutput>(output);
-				if (!material) {
-					continue;
-				}
-				for (auto& layer : material->stack) {
-					if (layer.mask && layer.mask->name == a_edit.from) {
-						layer.mask->name = a_edit.to;
-					}
-					if (auto* ref = Get<Ref>(layer.source); ref && ref->name == a_edit.from) {
-						ref->name = a_edit.to;
-					}
-				}
-			}
-			for (auto& other : a_recipe.masks) {
-				other.text = RenameInExpression(other.text, a_edit.from, a_edit.to, false);
-			}
+			RenameImageRefs(a_recipe, a_edit.from, a_edit.to);
 			return std::nullopt;
 		}
 
@@ -926,20 +939,7 @@ namespace WornEnchantmentPBR::Studio
 				return Refuse(SourceWhere(a_edit.from), std::format("a source or mask is already named '{}'", a_edit.to));
 			}
 			source->name = a_edit.to;
-			for (auto& output : a_recipe.outputs) {
-				auto* material = Get<SurfaceOutput>(output);
-				if (!material) {
-					continue;
-				}
-				for (auto& layer : material->stack) {
-					if (auto* ref = Get<Ref>(layer.source); ref && ref->name == a_edit.from) {
-						ref->name = a_edit.to;
-					}
-				}
-			}
-			for (auto& mask : a_recipe.masks) {
-				mask.text = RenameInExpression(mask.text, a_edit.from, a_edit.to, false);
-			}
+			RenameImageRefs(a_recipe, a_edit.from, a_edit.to);
 			return std::nullopt;
 		}
 
@@ -1169,8 +1169,7 @@ namespace WornEnchantmentPBR::Studio
 		Refusal Edit(Recipe& a_recipe, const ClearOutputs&)
 		{
 			a_recipe.outputs.clear();
-			a_recipe.shell = ShellSettings{};
-			return std::nullopt;
+			return Edit(a_recipe, ResetShell{});
 		}
 
 		void Literal(Param& a_param, float a_value)
@@ -1268,6 +1267,32 @@ namespace WornEnchantmentPBR::Studio
 	std::optional<Diagnostic> Apply(Recipe& a_recipe, const RecipeEdit& a_edit)
 	{
 		return Match(a_edit, [&](const auto& edit) { return Edit(a_recipe, edit); });
+	}
+
+	std::optional<Diagnostic> Apply(Recipe& a_recipe, const EditBatch& a_batch)
+	{
+		Recipe copy = a_recipe;
+		for (const auto& edit : a_batch.edits) {
+			if (auto problem = Apply(copy, edit)) {
+				return problem;
+			}
+		}
+		a_recipe = std::move(copy);
+		return std::nullopt;
+	}
+
+	std::string Describe(const EditBatch& a_batch)
+	{
+		std::string text;
+		for (const auto& edit : a_batch.edits) {
+			text += text.empty() ? Describe(edit) : "; " + Describe(edit);
+		}
+		return text;
+	}
+
+	bool ChangesKeys(const EditBatch& a_batch) noexcept
+	{
+		return std::ranges::any_of(a_batch.edits, [](const RecipeEdit& e) { return Is<AddKey>(e) || Is<RemoveKey>(e); });
 	}
 
 	std::string Describe(const RecipeEdit& a_edit)
@@ -1398,20 +1423,7 @@ namespace WornEnchantmentPBR::Studio
 				++counts.curves[name];
 			}
 		});
-		for (const auto& output : a_recipe.outputs) {
-			const auto* material = Get<SurfaceOutput>(output);
-			if (!material) {
-				continue;
-			}
-			for (const auto& layer : material->stack) {
-				if (const auto* ref = Get<Ref>(layer.source)) {
-					++counts.images[ref->name];
-				}
-				if (layer.mask) {
-					++counts.images[layer.mask->name];
-				}
-			}
-		}
+		ForEachImageRef(copy, [&](Ref& a_ref) { ++counts.images[a_ref.name]; });
 		for (const auto& variant : a_recipe.variants) {
 			for (const auto& [name, value] : variant.overrides) {
 				++counts.signals[name];

@@ -552,6 +552,21 @@ namespace
 		Check(errors.empty(), "a cleared recipe validates without errors: " + errors);
 	}
 
+void BatchEdits()
+{
+	Recipe r = Canonical();
+	const Recipe before = r;
+	const auto   refused = Apply(r, EditBatch{ { AddSignal{ "batched" }, SetConstant{ "nobody", 1.0f } } });
+	Check(refused && refused->where == "signal nobody" && r == before, "a batch with a refused edit is refused whole and leaves the recipe as it was");
+	const auto accepted = Apply(r, EditBatch{ { AddSignal{ "batched" }, SetConstant{ "batched", 2.0f } } });
+	const auto* made = r.FindSignal("batched");
+	const auto* constant = made ? Get<ConstantSignal>(made->kind) : nullptr;
+	Check(!accepted && constant && constant->value == Value{ 2.0f }, "an accepted batch applies every edit in order");
+	Check(Describe(EditBatch{ { AddSignal{ "a" }, RemoveSignal{ "a" } } }) == "signals: add a; signal a: remove", "a batch describes as its edits joined");
+	Check(ChangesKeys(EditBatch{ { AddKey{ RecipeKey{ KeyKind::kDefault, {}, {} } } } }) && !ChangesKeys(EditBatch{ { AddSignal{ "a" } } }), "a batch knows whether it changes keys");
+	Check(!Apply(r, EditBatch{}) && r.FindSignal("batched"), "an empty batch is accepted and changes nothing");
+}
+
 int main()
 {
 	Check(!Canonical().outputs.empty(), "schema/example-magicka.json parses");
@@ -566,5 +581,6 @@ int main()
 	SignalEdits();
 	Serialised();
 	Described();
+	BatchEdits();
 	return test::Finish("edits");
 }

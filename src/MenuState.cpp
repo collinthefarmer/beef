@@ -245,10 +245,16 @@ namespace WornEnchantmentPBR::Studio
 				}
 			},
 			[&](const KeepPaint&) {
+				if (a_state.paint) {
+					selection.recipeID = a_state.paint->recipe;
+				}
 				a_state.paint.reset();
 				region = RegionStack{};
 			},
 			[&](const EndPaint&) {
+				if (a_state.paint) {
+					selection.recipeID = a_state.paint->recipe;
+				}
 				a_state.paint.reset();
 				region = RegionStack{};
 			},
@@ -272,7 +278,11 @@ namespace WornEnchantmentPBR::Studio
 			[&](const ViewGeometry& i) { selection.geometry = i.name; },
 			[&](const ShowSettings& i) { a_state.settings = i.on; },
 			[&](const ShowResource& i) { a_state.resource = i.tab; },
-			[&](const EditRecipe& i) { ReduceEdit(selection, i.edit); },
+			[&](const EditRecipe& i) {
+				for (const auto& edit : i.edits) {
+					ReduceEdit(selection, edit);
+				}
+			},
 			[&](const RenameRecipe& i) {
 				if (selection.recipeID == i.from) {
 					selection.recipeID = i.to;

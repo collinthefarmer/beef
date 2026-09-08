@@ -360,13 +360,26 @@ namespace WornEnchantmentPBR::Studio
 		return SnapshotRequest{ a_selection.actorID, a_selection.armorID, a_selection.firstPerson };
 	}
 
-	void ClampSelection(Selection& a_selection, const Snapshot& a_snapshot) noexcept
+	void ResolveSelection(Selection& a_selection, const Snapshot& a_snapshot) noexcept
 	{
-		if (!a_selection.layer || a_selection.target == Target::kLight || !a_selection.slot) {
+		const auto* piece = SelectedPiece(a_snapshot, a_selection);
+		if (!piece) {
 			return;
 		}
-		const auto* geometry = SelectedGeometry(SelectedRecipe(SelectedPiece(a_snapshot, a_selection), a_selection), a_selection);
+		a_selection.actorID = piece->actorID;
+		a_selection.armorID = piece->armorID;
+		a_selection.firstPerson = piece->firstPerson;
+		const auto* recipe = SelectedRecipe(piece, a_selection);
+		if (!recipe) {
+			return;
+		}
+		a_selection.recipeID = recipe->id;
+		const auto* geometry = SelectedGeometry(recipe, a_selection);
 		if (!geometry) {
+			return;
+		}
+		a_selection.geometry = geometry->name;
+		if (!a_selection.layer || a_selection.target == Target::kLight || !a_selection.slot) {
 			return;
 		}
 		const Surface surface = SurfaceOf(a_selection.target);

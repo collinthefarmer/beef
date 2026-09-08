@@ -140,6 +140,7 @@ namespace WornEnchantmentPBR::Studio
 	inline constexpr int              kPaintPriority = 1000;
 
 	[[nodiscard]] SurfaceOutput PaintOutput(Surface a_surface);
+	[[nodiscard]] std::vector<RecipeEdit> PaintSurfaceEdits(Surface a_surface);
 	[[nodiscard]] Recipe         PaintRecipe(const Recipe& a_active, RecipeKey a_key, Surface a_surface);
 	[[nodiscard]] std::vector<RecipeEdit> KeepEdits(const Recipe& a_paint, const Recipe& a_active, std::string_view a_name);
 }

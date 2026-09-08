@@ -79,7 +79,7 @@ namespace WornEnchantmentPBR::Studio
 	[[nodiscard]] const RecipeRow*   SelectedRecipe(const PieceRow* a_piece, const Selection& a_selection) noexcept;
 	[[nodiscard]] const GeometryRow* SelectedGeometry(const RecipeRow* a_recipe, const Selection& a_selection) noexcept;
 	[[nodiscard]] std::optional<SnapshotRequest> RequestOf(const Selection& a_selection) noexcept;
-	void ClampSelection(Selection& a_selection, const Snapshot& a_snapshot) noexcept;
+	void ResolveSelection(Selection& a_selection, const Snapshot& a_snapshot) noexcept;
 	[[nodiscard]] const OutputRow*   SelectedOutput(const GeometryRow* a_geometry, const Selection& a_selection) noexcept;
 
 	enum class CellState

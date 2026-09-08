@@ -192,8 +192,8 @@ namespace WornEnchantmentPBR::Studio
 	};
 	struct EditRecipe
 	{
-		std::string recipe;
-		RecipeEdit  edit;
+		std::string             recipe;
+		std::vector<RecipeEdit> edits;
 	};
 	struct SoloRecipe
 	{

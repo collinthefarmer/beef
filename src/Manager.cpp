@@ -698,29 +698,45 @@ namespace WornEnchantmentPBR
 		}
 	}
 
-	void Manager::EditRecipe(std::string a_id, std::function<void(Recipe&)> a_edit)
+	void Manager::EditRecipe(std::string a_id, Studio::EditBatch a_edits)
 	{
-		PostTask([this, id = std::move(a_id), edit = std::move(a_edit)] {
-			WithRecipeRetired(id, [&] {
-				auto* recipe = MutableRecipe(id);
-				if (!recipe) {
-					logger::warn("edit: recipe {} is not loaded", id);
-					return;
+		PostTask([this, id = std::move(a_id), edits = std::move(a_edits)] { ApplyEdits(id, edits); });
+	}
+
+	void Manager::ApplyEdits(const std::string& a_id, const Studio::EditBatch& a_edits)
+	{
+		WithRecipeRetired(a_id, [&] {
+			auto* recipe = MutableRecipe(a_id);
+			if (!recipe) {
+				logger::warn("edit: recipe {} is not loaded", a_id);
+				return;
+			}
+			Recipe before = *recipe;
+			if (const auto problem = Studio::Apply(*recipe, a_edits)) {
+				logger::warn("edit refused: {} ({}: {})", Studio::Describe(a_edits), problem->where, problem->message);
+				return;
+			}
+			if (!(*recipe == before)) {
+				histories_[a_id].Push(std::move(before));
+			}
+			for (const auto& d : Revalidate(a_id)) {
+				if (d.severity == Severity::kError) {
+					logger::error("recipe {} {}: {}", a_id, d.where, d.message);
+				} else {
+					logger::warn("recipe {} {}: {}", a_id, d.where, d.message);
 				}
-				Recipe before = *recipe;
-				edit(*recipe);
-				if (!(*recipe == before)) {
-					histories_[id].Push(std::move(before));
-				}
-				for (const auto& d : Revalidate(id)) {
-					if (d.severity == Severity::kError) {
-						logger::error("recipe {} {}: {}", id, d.where, d.message);
-					} else {
-						logger::warn("recipe {} {}: {}", id, d.where, d.message);
-					}
-				}
-			});
+			}
 		});
+		if (Studio::ChangesKeys(a_edits)) {
+			QueueLoadedActorRefreshes();
+		}
+	}
+
+	void Manager::WithListMoved(const std::function<void()>& a_action)
+	{
+		RetireEveryActor();
+		a_action();
+		QueueLoadedActorRefreshes();
 	}
 
 	void Manager::UndoRecipe(std::string a_id)
@@ -759,11 +775,13 @@ namespace WornEnchantmentPBR
 
 	void Manager::SaveRecipe(std::string a_id)
 	{
-		PostTask([id = std::move(a_id)] {
-			const auto saved = WornEnchantmentPBR::SaveRecipe(id);
-			if (!saved) {
-				logger::error("recipe {}: save failed ({})", id, saved.error());
-			}
+		PostTask([this, id = std::move(a_id)] {
+			WithRecipeRetired(id, [&] {
+				const auto saved = WornEnchantmentPBR::SaveRecipe(id);
+				if (!saved) {
+					logger::error("recipe {}: save failed ({})", id, saved.error());
+				}
+			});
 		});
 	}
 
@@ -771,8 +789,15 @@ namespace WornEnchantmentPBR
 	{
 		PostTask([this, id = std::move(a_id)] {
 			WithRecipeRetired(id, [&] {
+				auto* recipe = MutableRecipe(id);
+				if (!recipe) {
+					return;
+				}
+				Recipe before = *recipe;
 				if (WornEnchantmentPBR::RevertRecipe(id)) {
-					histories_.erase(id);
+					if (!(*recipe == before)) {
+						histories_[id].Push(std::move(before));
+					}
 					logger::info("recipe {}: reverted to its file", id);
 				}
 			});
@@ -782,16 +807,18 @@ namespace WornEnchantmentPBR
 	void Manager::ReloadRecipes()
 	{
 		PostTask([this] {
-			std::vector<RE::FormID> ids;
-			for (const auto& [id, state] : applied_) {
-				ids.push_back(id);
-			}
-			for (const auto id : ids) {
-				Retire(id);
-			}
-			histories_.clear();
-			LoadRecipes();
-			QueueLoadedActorRefreshes();
+			WithListMoved([&] {
+				histories_.clear();
+				LoadRecipes();
+				paintReturn_ = {};
+				const auto loaded = LoadedRecipes();
+				if (std::ranges::find(loaded, view_.isolateRecipe, &Recipe::id) == loaded.end()) {
+					view_.isolateRecipe.clear();
+					view_.isolateOutput = -1;
+					view_.isolateLayer = -1;
+					view_.isolatedBySolo = false;
+				}
+			});
 		});
 	}
 
@@ -809,17 +836,17 @@ namespace WornEnchantmentPBR
 	void Manager::NewRecipe(std::string a_id, RecipeKey a_key, std::string a_geometry)
 	{
 		PostTask([this, id = std::move(a_id), key = std::move(a_key), geometry = std::move(a_geometry)] {
-			RetireEveryActor();
-			[[maybe_unused]] const bool made = WornEnchantmentPBR::NewRecipe(id, std::move(key), geometry);
-			QueueLoadedActorRefreshes();
+			WithListMoved([&] { [[maybe_unused]] const bool made = WornEnchantmentPBR::NewRecipe(id, std::move(key), geometry); });
 		});
 	}
 
 	void Manager::RenameRecipe(std::string a_from, std::string a_to)
 	{
 		PostTask([this, from = std::move(a_from), to = std::move(a_to)] {
-			RetireEveryActor();
-			if (WornEnchantmentPBR::RenameRecipe(from, to)) {
+			WithListMoved([&] {
+				if (!WornEnchantmentPBR::RenameRecipe(from, to)) {
+					return;
+				}
 				if (auto node = histories_.extract(from)) {
 					node.key() = to;
 					node.mapped().Rename(to);
@@ -831,8 +858,7 @@ namespace WornEnchantmentPBR
 				if (paintReturn_.recipe == from) {
 					paintReturn_.recipe = to;
 				}
-			}
-			QueueLoadedActorRefreshes();
+			});
 		});
 	}
 
@@ -846,32 +872,29 @@ namespace WornEnchantmentPBR
 				return;
 			}
 			Recipe paint = Studio::PaintRecipe(*it, key, a_surface);
-			RetireEveryActor();
-			if (IsTransient(Studio::kPaintRecipe)) {
-				[[maybe_unused]] const bool dropped = DropTransientRecipe(Studio::kPaintRecipe);
-			}
-			if (!AddTransientRecipe(std::move(paint))) {
-				QueueLoadedActorRefreshes();
-				return;
-			}
-			histories_.erase(std::string{ Studio::kPaintRecipe });
-			logger::info("paint: previewing {} on the {} through the paint recipe, keyed by {}", active, SurfaceName(a_surface), key.ToString());
-			if (view_.isolateRecipe != Studio::kPaintRecipe) {
-				paintReturn_ = { view_.isolateRecipe, view_.isolateOutput, view_.isolateLayer, view_.isolatedBySolo };
-			}
-			view_.isolateRecipe = std::string{ Studio::kPaintRecipe };
-			view_.isolateOutput = -1;
-			view_.isolateLayer = -1;
-			view_.isolatedBySolo = false;
-			QueueLoadedActorRefreshes();
+			WithListMoved([&] {
+				if (IsTransient(Studio::kPaintRecipe)) {
+					[[maybe_unused]] const bool dropped = DropTransientRecipe(Studio::kPaintRecipe);
+				}
+				if (!AddTransientRecipe(std::move(paint))) {
+					return;
+				}
+				histories_.erase(std::string{ Studio::kPaintRecipe });
+				logger::info("paint: previewing {} on the {} through the paint recipe, keyed by {}", active, SurfaceName(a_surface), key.ToString());
+				if (view_.isolateRecipe != Studio::kPaintRecipe) {
+					paintReturn_ = { view_.isolateRecipe, view_.isolateOutput, view_.isolateLayer, view_.isolatedBySolo };
+				}
+				view_.isolateRecipe = std::string{ Studio::kPaintRecipe };
+				view_.isolateOutput = -1;
+				view_.isolateLayer = -1;
+				view_.isolatedBySolo = false;
+			});
 		});
 	}
 
 	void Manager::SetPaintSurface(Surface a_surface)
 	{
-		EditRecipe(std::string{ Studio::kPaintRecipe }, [a_surface](Recipe& a_recipe) {
-			a_recipe.outputs = { Studio::PaintOutput(a_surface) };
-		});
+		EditRecipe(std::string{ Studio::kPaintRecipe }, Studio::EditBatch{ Studio::PaintSurfaceEdits(a_surface) });
 	}
 
 	void Manager::KeepPaint(std::string a_active, std::string a_name)
@@ -884,24 +907,9 @@ namespace WornEnchantmentPBR
 				logger::warn("keep: the paint recipe or {} is not loaded", active);
 				return;
 			}
-			const auto edits = Studio::KeepEdits(*paint, *recipe, name);
-			WithRecipeRetired(active, [&] {
-				Recipe before = *recipe;
-				for (const auto& edit : edits) {
-					if (const auto problem = Studio::Apply(*recipe, edit)) {
-						logger::warn("keep refused: {} ({}: {})", Studio::Describe(edit), problem->where, problem->message);
-					}
-				}
-				if (!(*recipe == before)) {
-					histories_[active].Push(std::move(before));
-				}
-				for (const auto& d : Revalidate(active)) {
-					if (d.severity == Severity::kError) {
-						logger::error("recipe {} {}: {}", active, d.where, d.message);
-					}
-				}
-			});
-			logger::info("keep: region {} written into {} ({} edit(s))", name, active, edits.size());
+			const Studio::EditBatch edits{ Studio::KeepEdits(*paint, *recipe, name) };
+			ApplyEdits(active, edits);
+			logger::info("keep: region {} written into {} ({} edit(s))", name, active, edits.edits.size());
 		});
 		EndPaint();
 	}
@@ -909,17 +917,17 @@ namespace WornEnchantmentPBR
 	void Manager::EndPaint()
 	{
 		PostTask([this] {
-			RetireEveryActor();
-			if (view_.isolateRecipe == Studio::kPaintRecipe) {
-				view_.isolateRecipe = paintReturn_.recipe;
-				view_.isolateOutput = paintReturn_.output;
-				view_.isolateLayer = paintReturn_.layer;
-				view_.isolatedBySolo = paintReturn_.bySolo;
-			}
-			paintReturn_ = {};
-			[[maybe_unused]] const bool dropped = DropTransientRecipe(Studio::kPaintRecipe);
-			histories_.erase(std::string{ Studio::kPaintRecipe });
-			QueueLoadedActorRefreshes();
+			WithListMoved([&] {
+				if (view_.isolateRecipe == Studio::kPaintRecipe) {
+					view_.isolateRecipe = paintReturn_.recipe;
+					view_.isolateOutput = paintReturn_.output;
+					view_.isolateLayer = paintReturn_.layer;
+					view_.isolatedBySolo = paintReturn_.bySolo;
+				}
+				paintReturn_ = {};
+				[[maybe_unused]] const bool dropped = DropTransientRecipe(Studio::kPaintRecipe);
+				histories_.erase(std::string{ Studio::kPaintRecipe });
+			});
 		});
 	}
 

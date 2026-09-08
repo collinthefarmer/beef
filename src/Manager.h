@@ -2,6 +2,7 @@
 
 #include "Binding.h"
 #include "Compositor.h"
+#include "Edits.h"
 #include "Environment.h"
 #include "PCH.h"
 #include "Recipe.h"
@@ -86,7 +87,7 @@ namespace WornEnchantmentPBR
 		void Isolate(std::string a_recipe, int a_output, int a_layer);
 		void RetireAll();
 
-		void EditRecipe(std::string a_id, std::function<void(Recipe&)> a_edit);
+		void EditRecipe(std::string a_id, Studio::EditBatch a_edits);
 		void UndoRecipe(std::string a_id);
 		void RedoRecipe(std::string a_id);
 		void SaveRecipe(std::string a_id);
@@ -141,6 +142,8 @@ namespace WornEnchantmentPBR
 		void Refresh(RE::Actor* a_actor);
 		void Retire(RE::FormID a_actorID);
 		void WithRecipeRetired(std::string_view a_id, const std::function<void()>& a_action);
+		void WithListMoved(const std::function<void()>& a_action);
+		void ApplyEdits(const std::string& a_id, const Studio::EditBatch& a_edits);
 		void RetireEveryActor();
 		void FireDueFinalizes();
 		void Tick(std::uint32_t a_nowMS);

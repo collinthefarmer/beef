@@ -761,6 +761,13 @@ namespace WornEnchantmentPBR::Studio
 		return output;
 	}
 
+	std::vector<RecipeEdit> PaintSurfaceEdits(Surface a_surface)
+	{
+		Layer layer = DefaultLayer();
+		layer.mask = Ref{ std::string{ kScratchMask } };
+		return { RemoveOutput{ 0 }, AddOutput{ a_surface, Slot::kEmissive, Selector{} }, AddLayer{ 0, std::move(layer), std::nullopt } };
+	}
+
 	Recipe PaintRecipe(const Recipe& a_active, RecipeKey a_key, Surface a_surface)
 	{
 		Recipe recipe = a_active;

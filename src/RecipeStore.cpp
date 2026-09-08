@@ -24,6 +24,7 @@ namespace WornEnchantmentPBR
 			bool                               dirty = false;
 			bool                               transient = false;
 			Studio::ReferenceCounts            references;
+			Recipe                             saved;
 		};
 
 		std::vector<LoadedRecipe> g_loaded;
@@ -357,6 +358,7 @@ namespace WornEnchantmentPBR
 		g_recipes.clear();
 		for (auto& l : g_loaded) {
 			l.references = Studio::CountReferences(l.recipe);
+			l.saved = l.recipe;
 			g_recipes.push_back(l.recipe);
 		}
 		logger::info("recipes: {} loaded, {} with errors, {} unresolved editor IDs, {} imported this session, folder {}", g_status.loaded, g_status.withErrors, g_status.unresolved, g_status.imported, std::filesystem::absolute(root, ec).string());
@@ -415,6 +417,23 @@ namespace WornEnchantmentPBR
 			const auto index = static_cast<std::size_t>(&a_loaded - g_loaded.data());
 			if (index < g_recipes.size()) {
 				g_recipes[index] = a_loaded.recipe;
+			} else {
+				logger::error("recipe {}: the published list has {} entries for {} loaded", a_loaded.recipe.id, g_recipes.size(), g_loaded.size());
+			}
+		}
+
+		void Publish(LoadedRecipe a_loaded)
+		{
+			a_loaded.references = Studio::CountReferences(a_loaded.recipe);
+			g_loaded.push_back(std::move(a_loaded));
+			g_recipes.push_back(g_loaded.back().recipe);
+		}
+
+		void Unpublish(std::size_t a_index)
+		{
+			g_loaded.erase(g_loaded.begin() + static_cast<std::ptrdiff_t>(a_index));
+			if (a_index < g_recipes.size()) {
+				g_recipes.erase(g_recipes.begin() + static_cast<std::ptrdiff_t>(a_index));
 			}
 		}
 	}
@@ -434,7 +453,7 @@ namespace WornEnchantmentPBR
 		loaded->diagnostics = Validate(loaded->recipe);
 		ResolveForms(loaded->recipe, loaded->diagnostics);
 		loaded->graph.reset();
-		loaded->dirty = true;
+		loaded->dirty = !loaded->transient && !(loaded->recipe == loaded->saved);
 		Republish(*loaded);
 		return loaded->diagnostics;
 	}
@@ -480,6 +499,7 @@ namespace WornEnchantmentPBR
 			return std::unexpected(std::format("could not write {}", path.string()));
 		}
 		loaded->path = path;
+		loaded->saved = loaded->recipe;
 		loaded->dirty = false;
 		Republish(*loaded);
 		logger::info("recipe {} saved to {}", loaded->recipe.id, path.string());
@@ -490,14 +510,14 @@ namespace WornEnchantmentPBR
 	{
 		bool IsStem(std::string_view a_id)
 		{
-			return !a_id.empty() && std::ranges::all_of(a_id, [](char c) { return std::isalnum(static_cast<unsigned char>(c)) || c == '-' || c == '_' || c == '.'; }) && a_id[0] != '.';
+			return !a_id.empty() && a_id != Studio::kPaintRecipe && std::ranges::all_of(a_id, [](char c) { return std::isalnum(static_cast<unsigned char>(c)) || c == '-' || c == '_' || c == '.'; }) && a_id[0] != '.';
 		}
 	}
 
 	bool RenameRecipe(std::string_view a_from, std::string_view a_to)
 	{
 		if (!IsStem(a_to)) {
-			logger::warn("rename '{}': an id is a file stem (letters, digits, '-', '_', '.')", a_to);
+			logger::warn("rename '{}': an id is a file stem (letters, digits, '-', '_', '.') and not the paint recipe's", a_to);
 			return false;
 		}
 		if (Loaded(a_to)) {
@@ -530,7 +550,7 @@ namespace WornEnchantmentPBR
 	bool NewRecipe(std::string_view a_id, RecipeKey a_key, std::string_view a_geometry)
 	{
 		if (!IsStem(a_id)) {
-			logger::warn("new recipe '{}': an id is a file stem (letters, digits, '-', '_', '.')", a_id);
+			logger::warn("new recipe '{}': an id is a file stem (letters, digits, '-', '_', '.') and not the paint recipe's", a_id);
 			return false;
 		}
 		std::string id{ a_id };
@@ -549,9 +569,7 @@ namespace WornEnchantmentPBR
 		LoadedRecipe loaded{ std::move(recipe), Identity::UserRecipeFolder() / (id + ".json"), {}, nullptr, true };
 		loaded.diagnostics = Validate(loaded.recipe);
 		ResolveForms(loaded.recipe, loaded.diagnostics);
-		g_loaded.push_back(std::move(loaded));
-		g_loaded.back().references = Studio::CountReferences(g_loaded.back().recipe);
-		g_recipes.push_back(g_loaded.back().recipe);
+		Publish(std::move(loaded));
 		logger::info("new recipe {} keyed by {}; saves to {}", id, g_loaded.back().recipe.keys[0].ToString(), g_loaded.back().path.string());
 		return true;
 	}
@@ -570,9 +588,7 @@ namespace WornEnchantmentPBR
 				logger::warn("transient recipe {} {}: {}", loaded.recipe.id, d.where, d.message);
 			}
 		}
-		g_loaded.push_back(std::move(loaded));
-		g_loaded.back().references = Studio::CountReferences(g_loaded.back().recipe);
-		g_recipes.push_back(g_loaded.back().recipe);
+		Publish(std::move(loaded));
 		return true;
 	}
 
@@ -582,11 +598,7 @@ namespace WornEnchantmentPBR
 		if (it == g_loaded.end() || !it->transient) {
 			return false;
 		}
-		const auto index = static_cast<std::size_t>(it - g_loaded.begin());
-		g_loaded.erase(it);
-		if (index < g_recipes.size()) {
-			g_recipes.erase(g_recipes.begin() + static_cast<std::ptrdiff_t>(index));
-		}
+		Unpublish(static_cast<std::size_t>(it - g_loaded.begin()));
 		return true;
 	}
 
@@ -599,7 +611,7 @@ namespace WornEnchantmentPBR
 	bool RevertRecipe(std::string_view a_id)
 	{
 		auto* loaded = Loaded(a_id);
-		if (!loaded) {
+		if (!loaded || loaded->transient) {
 			return false;
 		}
 		auto result = ParseRecipe(ReadText(loaded->path), loaded->recipe.id);
@@ -611,6 +623,7 @@ namespace WornEnchantmentPBR
 		loaded->recipe = std::move(*result.recipe);
 		loaded->diagnostics = std::move(result.diagnostics);
 		loaded->graph.reset();
+		loaded->saved = loaded->recipe;
 		loaded->dirty = false;
 		Republish(*loaded);
 		return true;

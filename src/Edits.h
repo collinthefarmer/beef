@@ -312,6 +312,14 @@ namespace WornEnchantmentPBR::Studio
 
 	[[nodiscard]] std::string Describe(const RecipeEdit& a_edit);
 
+	struct EditBatch
+	{
+		std::vector<RecipeEdit> edits;
+	};
+	[[nodiscard]] std::optional<Diagnostic> Apply(Recipe& a_recipe, const EditBatch& a_batch);
+	[[nodiscard]] std::string               Describe(const EditBatch& a_batch);
+	[[nodiscard]] bool                      ChangesKeys(const EditBatch& a_batch) noexcept;
+
 	struct ReferenceCounts
 	{
 		std::map<std::string, std::size_t> signals;
