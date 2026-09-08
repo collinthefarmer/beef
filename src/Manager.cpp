@@ -733,6 +733,7 @@ namespace WornEnchantmentPBR
 				}
 				if (auto restored = histories_[id].Undo(*recipe)) {
 					*recipe = std::move(*restored);
+					recipe->id = id;
 					Revalidate(id);
 				}
 			});
@@ -749,6 +750,7 @@ namespace WornEnchantmentPBR
 				}
 				if (auto restored = histories_[id].Redo(*recipe)) {
 					*recipe = std::move(*restored);
+					recipe->id = id;
 					Revalidate(id);
 				}
 			});
@@ -820,6 +822,7 @@ namespace WornEnchantmentPBR
 			if (WornEnchantmentPBR::RenameRecipe(from, to)) {
 				if (auto node = histories_.extract(from)) {
 					node.key() = to;
+					node.mapped().Rename(to);
 					histories_.insert(std::move(node));
 				}
 				if (view_.isolateRecipe == from) {

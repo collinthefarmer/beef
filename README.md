@@ -118,8 +118,10 @@ $XWIN_DIR/crt /winsdkdir $XWIN_DIR/sdk` to clang-cl and the matching
 `/LIBPATH`s to lld-link. Set `XWIN_DIR` to move the SDK. Only the release CRT
 is splatted, so Debug builds also link `/MD`.
 
-Outputs land in `dist/WornEnchantmentPBR/SKSE/Plugins/` (DLL, PDB, INI) and
-the test exe in `build/Release/WornEnchantmentPBRTests.exe`.
+Outputs land in `dist/WornEnchantmentPBR/SKSE/Plugins/` (DLL, PDB, INI). The
+test exes are not part of this build; build them on request with
+`cmake --build build/Release --target host-tests`, which puts
+`build/Release/WornEnchantmentPBRTests.exe` and the rest alongside the DLL.
 
 Pinned dependencies: CommonLibSSE-NG `b93280e8` (CharmedBaryon, 2024-09-03),
 spdlog v1.15.3, rapidcsv v8.99. Xbyak is not fetched; the only hook is a vtable
@@ -361,9 +363,9 @@ are in `ARCHITECTURE.md` under "The recipe studio".
   and carrying that table's actions at its right edge. **Recipe**: **S**,
   the recipe applied alone (isolate); the **selection** (actor and
   piece); and the **recipe** within it; at the right **New**, **Rename**
-  (the file follows when it is the user's), **Clear** (a popup: the
-  outputs, or the resources and what read them), **keys**, **Undo** and
-  **Redo**. **Output**: **S**, solo for the picked output; the
+  (the file follows when it is the user's), **Clear** (empties the
+  recipe: every output, the shell settings and every resource go; its
+  name and keys stay), **keys**, **Undo** and **Redo**. **Output**: **S**, solo for the picked output; the
   **target** (material, shell or the light, the format's word for where
   an output goes); the **slot** on it with its state; at the right
   **Clear**, which removes the picked output (a slot's, or the light) so
@@ -373,7 +375,7 @@ are in `ARCHITECTURE.md` under "The recipe studio".
   **settings** while the stack is shown and **stack** while the
   settings are; the material has no settings and the light no stack, so
   the button is greyed on those. While the settings are shown a
-  **Clear** beside it puts them back to the format's defaults (the
+  **Apply Defaults** beside it puts them back to the format's defaults (the
   light's placement, its selector and replace, stays). The settings are
   dealt into two field tables side by side so the pane shows them
   without scrolling. The light's settings are the
@@ -457,10 +459,13 @@ are in `ARCHITECTURE.md` under "The recipe studio".
   channel, space, scroll, tile, mirrors, transpose and mip, a bake's
   kind with its partition or bones, and so on; and the definition as the
   file describes it); and the **masks** table (remove, name, expression).
-  The Resources rule carries **Add** for the open tab (a constant 0 named
-  `signal`, `signal2`, ...; a curve `x` named `curve`, ...; a material
-  source named `source`, ...; a mask `1` named `mask`, ...) and that
-  tab's name filter at its right edge. Names in every table are fields:
+  The Resources rule carries, at its right edge, **Clear** (every
+  signal, curve, source, mask and variant goes, and what read them: a
+  layer on a source, the mask and curve of a layer that stays, a
+  parameter that named a signal, which returns to its default), **Add**
+  for the open tab (a constant 0 named `signal`, `signal2`, ...; a curve
+  `x` named `curve`, ...; a material source named `source`, ...; a mask
+  `1` named `mask`, ...) and that tab's name filter. Names in every table are fields:
   committing another name renames the row and repoints every reference
   to it, in parameters, variant overrides and expressions; remove is
   greyed while anything references the row. **Validation before
@@ -498,25 +503,27 @@ are in `ARCHITECTURE.md` under "The recipe studio".
   keyed to the worn armor, never written, gone when Paint closes),
   applied alone while the session runs, so the armor shows the region
   the way any recipe's emissive shows. Opening Paint also reads the
-  viewed geometry's mesh, which is analysed as it is read (its connected
-  parts and UV charts, each with the bone that carries it and its share
-  of the mesh), and samples and clusters the material's maps, once per
-  session for each. The head line holds the recipe combo, which
-  keeps naming the recipe being painted for, then **on** and the
-  geometry the offers and picture describe (a combo views another; the
-  region applies to every geometry), with **preview on**,
-  material or shell, at its right edge: where the paint recipe's
-  emissive goes. The Region rule carries **Clear**, **Keep** and **Discard** at its
+  mesh of every geometry the recipe is bound to, each analysed as it is
+  read (its connected parts and UV charts, each with the bone that
+  carries it and its share of the mesh), and samples and clusters each
+  material's maps, once per session for each. The head line holds the
+  recipe combo, which keeps naming the recipe being painted for, with
+  **preview on**, material or shell, at its right edge: where the paint
+  recipe's emissive goes. The region's picture shows one geometry;
+  clicking it views the next (the region applies to every geometry). The Region rule carries **Clear**, **Keep** and **Discard** at its
   right edge, the way the stack's rule carries its switch. The pane
   leads with the region's picture (the scratch mask as rendered, its
   problem above it when it has one), then the term table across its
-  width, then, under a rule that carries a filter,
-  what the piece can be shown to have as tables in collapsible sections:
-  parts (the mesh's connected pieces; a UV chart with exactly a part's
-  vertices is named on that part's row instead of listed twice), charts
-  (the UV layout's own divisions), materials, bones, partitions,
-  channels, presets, masks and sources, each row with its measurements, greyed with the reason when
-  the piece cannot make it; choosing a row adds it as a term. The where
+  width, then, under the Terms rule, which carries a filter, one table
+  of what the piece can be shown to have, a row per offer with its
+  geometry (blank for a preset, mask or source, which are the same on
+  every geometry), its kind, its name, its description (the
+  measurements) and its coverage: parts (the mesh's connected pieces; a
+  UV chart with exactly a part's vertices is named on that part's row
+  instead of listed twice), charts (the UV layout's own divisions),
+  materials, bones, partitions, channels, presets, masks and sources,
+  greyed with the reason when the piece cannot make it; choosing a row
+  adds it as a term. The where
   presets are gone; the shipped `regions.json` keeps only the what
   presets (material thresholds: leather, polished and rough metal,
   cloth, engravings, raised, dark, bright). A term's settings are its
@@ -538,10 +545,10 @@ are in `ARCHITECTURE.md` under "The recipe studio".
   under a proposed or typed name into the recipe being painted for, with
   the sources the expression reads copied across, as one undoable step,
   and ends the session; **Discard** ends it without keeping. On the
-  Masks tab, **edit** loads a kept mask into the stack with its terms
-  and their settings recovered from the text; any other text comes back
-  as one raw term; so does **edit** on a row of the masks section under
-  Add, without leaving Paint. Opening Paint on a soloed recipe paints for
+  Masks tab, **edit** opens Paint with the mask's expression as the
+  stack's one `set` term, to add terms over it; Keep writes back under
+  the mask's name. **edit** on a mask row of the Terms table does the
+  same without leaving Paint. Opening Paint on a soloed recipe paints for
   that recipe, and the isolate the studio had when Paint opened comes
   back when it ends. Leaving Paint mode discards.
 - **Recipes**: every loaded file with keys, row counts, state and path;
@@ -622,8 +629,9 @@ also why vanilla armor enchant glow is barely visible in the first place.
 
 ## Tests
 
-Five host-independent executables, built as Windows console exes by the
-normal build (`build/Release/WornEnchantmentPBR{,Settings,Recipe,Signal,Importer}Tests.exe`)
+Five host-independent executables, built as Windows console exes on request
+(`cmake --build build/Release --target host-tests`, giving
+`build/Release/WornEnchantmentPBR{,Settings,Recipe,Signal,Importer}Tests.exe`)
 and natively by `tests/run-native.sh` (uses `clang++` when present, else
 `g++`; set `CXX` to choose). Each prints `all N ... checks passed` and exits 0.
 

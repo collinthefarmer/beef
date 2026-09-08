@@ -77,11 +77,9 @@ namespace WornEnchantmentPBR::Studio
 	[[nodiscard]] BuiltTerm MaterialiseTerm(const RegionPreset& a_preset, const Existing& a_existing);
 
 	[[nodiscard]] std::string TermLabel(std::string_view a_text, const RegionsFile& a_presets, const Existing& a_existing);
-	[[nodiscard]] std::optional<std::vector<Term>> TermsOfMask(std::string_view a_text, const RegionsFile& a_presets, const Existing& a_existing);
 	[[nodiscard]] std::string ProposedRegionName(std::span<const Term> a_terms, std::string_view a_editing);
 
 	[[nodiscard]] BuiltTerm  BuildTerm(const TermKind& a_kind, const RegionsFile& a_presets, const Existing& a_existing);
-	[[nodiscard]] TermKind  ReadTerm(std::string_view a_text, const RegionsFile& a_presets, const RecipeRow& a_kind);
 	[[nodiscard]] std::string TermLabelOf(const TermKind& a_kind, const RegionsFile& a_presets, const GeometryRow& a_geometry);
 
 	struct TermField
@@ -107,18 +105,19 @@ namespace WornEnchantmentPBR::Studio
 	{
 		OfferGroup       value;
 		std::string_view name;
-		bool             openByDefault;
+		std::string_view word;
+		bool             ofGeometry;
 	};
 	inline constexpr OfferGroupSpec kOfferGroups[]{
-		{ OfferGroup::kParts, "parts", true },
-		{ OfferGroup::kCharts, "charts", false },
-		{ OfferGroup::kMaterials, "materials", true },
-		{ OfferGroup::kBones, "bones", false },
-		{ OfferGroup::kPartitions, "partitions", false },
-		{ OfferGroup::kChannels, "channels", false },
-		{ OfferGroup::kPresets, "presets", false },
-		{ OfferGroup::kMasks, "masks", false },
-		{ OfferGroup::kSources, "sources", false },
+		{ OfferGroup::kParts, "parts", "part", true },
+		{ OfferGroup::kCharts, "charts", "chart", true },
+		{ OfferGroup::kMaterials, "materials", "material", true },
+		{ OfferGroup::kBones, "bones", "bone", true },
+		{ OfferGroup::kPartitions, "partitions", "partition", true },
+		{ OfferGroup::kChannels, "channels", "channel", true },
+		{ OfferGroup::kPresets, "presets", "preset", false },
+		{ OfferGroup::kMasks, "masks", "mask", false },
+		{ OfferGroup::kSources, "sources", "source", false },
 	};
 	inline constexpr std::size_t kOfferGroupCount = 9;
 	static_assert(std::size(kOfferGroups) == kOfferGroupCount);
@@ -131,8 +130,10 @@ namespace WornEnchantmentPBR::Studio
 		std::optional<std::string> unavailable;
 		std::optional<float>       coverage;
 		TermKind                 kind;
+		std::string                geometry;
 	};
 	[[nodiscard]] std::vector<TermOffer> OffersOf(const RegionsFile& a_presets, const RecipeRow& a_recipe, const GeometryRow& a_geometry, std::string_view a_editing);
+	[[nodiscard]] std::vector<TermOffer> OffersOfRecipe(const RegionsFile& a_presets, const RecipeRow& a_recipe, std::string_view a_editing);
 	[[nodiscard]] std::string TermDetailOf(const Term& a_term, std::span<const TermOffer> a_offers);
 
 	inline constexpr std::string_view kPaintRecipe = "paint";

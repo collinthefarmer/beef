@@ -1053,9 +1053,8 @@ namespace
 			paintExisting.sources.emplace_back(source.name, source.kind);
 			paintExisting.taken.push_back(source.name);
 		}
-		const auto terms = TermsOfMask(paint.FindMask(kScratchMask)->text, *presets, paintExisting);
-		Check(terms && terms->size() == 2 && (*terms)[0].label == "leftPauldron" && (*terms)[1].label == "leather", "a kept expression comes back as its labelled terms");
-		Check(ProposedRegionName(*terms, "") == "leftPauldronLeather" && ProposedRegionName(*terms, "metal") == "metal" && ProposedRegionName({}, "") == "region", "the proposed name");
+		const std::vector<Term> terms{ Term{ TermOp::kSet, "@leftPauldron", "leftPauldron" }, Term{ TermOp::kAnd, "@leather", "leather" } };
+		Check(ProposedRegionName(terms, "") == "leftPauldronLeather" && ProposedRegionName(terms, "metal") == "metal" && ProposedRegionName({}, "") == "region", "the proposed name");
 		const std::vector<Term> unlabelled{ Term{ TermOp::kSet, "@a + 1", "expression" }, Term{ TermOp::kAnd, "0.5", "expression" } };
 		Check(ProposedRegionName(unlabelled, "") == "region", "terms that are all expressions propose 'region'");
 		Check(TermLabel("@", *presets, paintExisting) == "expression", "a bare '@' labels as an expression");
@@ -1232,9 +1231,9 @@ namespace
 		Check(state.paint && state.paint->recipe == kRecipeID && state.paint->surface == Surface::kShell, "a paint session names the active recipe and its surface");
 		Reduce(state, SetPaintSurface{ Surface::kMaterial });
 		Check(state.paint && state.paint->surface == Surface::kMaterial, "the preview surface changes");
-		Check(state.paint && state.paint->readGeometry.empty(), "a fresh session has not asked for the geometry's read");
+		Check(state.paint && state.paint->readGeometries.empty(), "a fresh session has not asked for any geometry's read");
 		Reduce(state, ReadMesh{ kPlayer, "Cuirass" });
-		Check(state.paint && state.paint->readGeometry == "Cuirass", "posting the read names the geometry read, so it is asked once per geometry");
+		Check(state.paint && state.paint->readGeometries.contains("Cuirass"), "posting the read names the geometry read, so it is asked once per geometry");
 		Reduce(state, AddTerm{ Term{ TermOp::kSet, "@a", "a" } });
 		Reduce(state, KeepPaint{ kRecipeID, "chest" });
 		Check(!state.paint && state.region.terms.empty(), "keep ends the session and empties the stack");
@@ -1303,6 +1302,14 @@ namespace
 		Check(history.UndoDepth() == EditHistory::kCap, "the history is capped");
 		history.Clear();
 		Check(history.UndoDepth() == 0 && history.RedoDepth() == 0, "clear empties both");
+		history.Push(recipe);
+		history.Push(recipe);
+		[[maybe_unused]] const auto toRedo = history.Undo(recipe);
+		history.Rename("renamed");
+		const auto redoneRenamed = history.Redo(recipe);
+		[[maybe_unused]] const auto pushedByRedo = history.Undo(recipe);
+		const auto undoneRenamed = history.Undo(recipe);
+		Check(undoneRenamed && undoneRenamed->id == "renamed" && redoneRenamed && redoneRenamed->id == "renamed", "a rename stamps the new id on every undo and redo step");
 	}
 
 	void References()
@@ -1379,17 +1386,6 @@ namespace
 
 namespace
 {
-	RecipeRow WithSources(const RecipeRow& a_recipe, const std::vector<RecipeEdit>& a_edits)
-	{
-		RecipeRow row = a_recipe;
-		for (const auto& edit : a_edits) {
-			if (const auto* add = Get<AddSource>(edit)) {
-				row.sourceRows.push_back(SourceRowOf(Source{ add->name, add->kind }, 0));
-			}
-		}
-		return row;
-	}
-
 	GeometryRow Analysed(const GeometryRow& a_geometry)
 	{
 		GeometryRow geometry = a_geometry;
@@ -1474,9 +1470,6 @@ namespace
 		};
 		for (const auto& recipe : all) {
 			const auto built = BuildTerm(recipe, *presets, existing);
-			const auto row = WithSources(a_recipe, built.edits);
-			const auto back = ReadTerm(built.expression, *presets, row);
-			Check(back == recipe, std::format("{} round-trips through BuildTerm and ReadTerm: {}", TermKindName(recipe), built.expression));
 			Check(Program::Parse(built.expression).has_value(), std::format("{} builds an expression that parses: {}", TermKindName(recipe), built.expression));
 		}
 
@@ -1508,14 +1501,6 @@ namespace
 		componentsTaken.taken.push_back("components");
 		Check(BuildTerm(IslandTerm{}, *presets, componentsTaken).expression == "abs(@components2 * 255 - 0) < 0.5", "a taken source name is made unique");
 
-		Check(Is<RawTerm>(ReadTerm("@metallic * 2", *presets, a_recipe)), "hand-written text reads as raw");
-		Check(Is<RawTerm>(ReadTerm("smoothstep(0.35 - 0.05, 0.35 + 0.06, @metallic)", *presets, a_recipe)), "an edge whose softness differs between its bounds is raw");
-		Check(Is<RawTerm>(ReadTerm("smoothstep(0.35 - 0.05, 0.35 + 0.05, @fill)", *presets, a_recipe)), "a threshold over an image source is raw");
-		Check(Is<RawTerm>(ReadTerm("abs(@metallic * 255 - 1) < 0.5", *presets, a_recipe)), "the region form over a material source is raw");
-		Check(Is<RawTerm>(ReadTerm("", *presets, a_recipe)) && Is<RawTerm>(ReadTerm("1 - (", *presets, a_recipe)) && Is<RawTerm>(ReadTerm("smoothstep(", *presets, a_recipe)), "empty and truncated texts are raw");
-		Check(ReadTerm("@metal", *presets, a_recipe) == TermKind{ ReferenceTerm{ "metal" } } && ReadTerm("@nothingKnown", *presets, a_recipe) == TermKind{ ReferenceTerm{ "nothingKnown" } }, "a lone name reads as a reference");
-		Check(ReadTerm("(1 - @metallic) * smoothstep(0.35, 0.6, @roughness)", *presets, WithSources(a_recipe, leather.edits)) == TermKind{ WhatPresetTerm{ "leather" } }, "a what preset's expression over the recipe's names reads as the preset");
-		Check(Is<RawTerm>(ReadTerm("(1 - @metallic) * smoothstep(0.35, 0.6, @roughness)", *presets, a_recipe)), "the same text without the roughness source is raw");
 
 		Check(TermLabelOf(roughness, *presets, geometry) == "roughness 0.35..0.6", "a threshold labels as its channel and range");
 		Check(TermLabelOf(ReferenceTerm{ "metal" }, *presets, geometry) == "@metal" && TermLabelOf(WhatPresetTerm{ "leather" }, *presets, geometry) == "leather" && TermLabelOf(RawTerm{}, *presets, geometry) == "expression", "reference, preset and raw labels");
@@ -1524,10 +1509,6 @@ namespace
 		Check(TermLabelOf(IslandTerm{ IslandSource::kComponent, 7 }, *presets, geometry) == "part 7" && TermLabelOf(IslandTerm{ IslandSource::kComponent, 0 }, *presets, a_geometry) == "part 0", "a part the geometry lacks labels by number alone");
 		Check(TermLabelOf(ClusterTerm{ ClusterSettings{}, 1 }, *presets, geometry) == "material 1: polished bright metal, 30%" && TermLabelOf(ClusterTerm{ ClusterSettings{}, 5 }, *presets, geometry) == "material 5", "a cluster labels with its description and share");
 
-		const auto keptText = std::format("({}) * ({})", builtRoughness.expression, "@metal");
-		const auto terms = TermsOfMask(keptText, *presets, ExistingOf(WithSources(a_recipe, builtRoughness.edits)));
-		Check(terms && terms->size() == 2 && (*terms)[0].kind == TermKind{ roughness } && (*terms)[0].label == "roughness 0.35..0.6" && (*terms)[1].kind == TermKind{ ReferenceTerm{ "metal" } } && (*terms)[1].label == "@metal", "a kept mask's terms carry their recipes and labels");
-		Check(terms && ProposedRegionName(*terms, "") == "region" && ProposedRegionName(std::vector<Term>{ (*terms)[1] }, "") == "metal", "a reference label proposes its name");
 
 		const auto thresholdForm = TermForm(roughness, *presets, geometry);
 		Check(thresholdForm.size() == 6 && thresholdForm[0].field.name == "channel" && thresholdForm[0].field.kind == FieldKind::kChoice && thresholdForm[0].field.names.size() == 8 && thresholdForm[1].field.name == "low" && thresholdForm[1].field.text == "0.35" && thresholdForm[4].field.name == "posterize" && thresholdForm[5].field.name == "invert" && thresholdForm[5].field.kind == FieldKind::kToggle && thresholdForm[5].field.text == "off", "the threshold form's fields");
@@ -1571,8 +1552,8 @@ namespace
 		Check(ordered && !offers.empty(), "offers come in group order");
 		const auto count = [&](OfferGroup a_group) { return std::ranges::count(offers, a_group, &TermOffer::group); };
 		Check(count(OfferGroup::kParts) == 2 && count(OfferGroup::kCharts) == 1 && count(OfferGroup::kMaterials) == 2 && count(OfferGroup::kBones) == 3 && count(OfferGroup::kPartitions) == 2 && count(OfferGroup::kChannels) == 8 && count(OfferGroup::kPresets) == 8 && count(OfferGroup::kMasks) == 1 && count(OfferGroup::kSources) == 8, "one offer per part, cluster, bone, partition, channel, what preset, mask and source");
-		Check(offers[0].name == "part 0" && offers[0].detail == "60% of the mesh, chest 90%, also chart 1" && !offers[0].unavailable && !offers[0].coverage && Get<IslandTerm>(offers[0].kind) && Get<IslandTerm>(offers[0].kind)->id == 0, "a part's offer carries its measurements, no coverage yet");
-		Check(offers[3].name == "material 0" && offers[3].detail == "rough dark non-metal, 70%" && Get<ClusterTerm>(offers[3].kind) && Get<ClusterTerm>(offers[3].kind)->id == 0 && Get<ClusterTerm>(offers[3].kind)->settings == ClusterSettings{}, "a cluster's offer at the default settings");
+		Check(offers[0].name == "part 0" && offers[0].detail == "chest 90%, also chart 1" && !offers[0].unavailable && offers[0].coverage && test::Near(*offers[0].coverage, 0.6f) && Get<IslandTerm>(offers[0].kind) && Get<IslandTerm>(offers[0].kind)->id == 0, "a part's offer carries its share as coverage and the rest as detail");
+		Check(offers[3].name == "material 0" && offers[3].detail == "rough dark non-metal" && offers[3].coverage && test::Near(*offers[3].coverage, 0.7f) && Get<ClusterTerm>(offers[3].kind) && Get<ClusterTerm>(offers[3].kind)->id == 0 && Get<ClusterTerm>(offers[3].kind)->settings == ClusterSettings{}, "a cluster's offer at the default settings");
 		Check(offers[2].group == OfferGroup::kCharts && offers[2].name == "chart 0" && std::ranges::none_of(offers, [](const TermOffer& o) { return o.name == "chart 1"; }), "a chart of its own is offered under charts; a twin chart is folded into its part");
 		const auto* channelOffer = Get<ThresholdTerm>(offers[static_cast<std::size_t>(count(OfferGroup::kParts) + count(OfferGroup::kCharts) + count(OfferGroup::kMaterials) + count(OfferGroup::kBones) + count(OfferGroup::kPartitions))].kind);
 		Check(channelOffer && channelOffer->low == 0.5f && channelOffer->high == 1.0f && channelOffer->channel == MaterialChannel::kDiffuseLuma, "a channel's offer is its upper half");

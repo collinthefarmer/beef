@@ -125,7 +125,7 @@ namespace WornEnchantmentPBR::Studio::Widgets
 		kChosen,
 		kAction,
 	};
-	[[nodiscard]] ChooserPick ChooserRow(Table& a_table, std::string_view a_name, std::string_view a_detail, std::optional<float> a_share, const std::optional<std::string>& a_unavailable, const char* a_action = nullptr);
+	[[nodiscard]] ChooserPick ChooserRow(Table& a_table, std::span<const std::string_view> a_leading, std::string_view a_name, std::string_view a_detail, std::optional<float> a_share, const std::optional<std::string>& a_unavailable, const char* a_action = nullptr);
 	bool Toggle(const char* a_label, bool& a_value, std::string_view a_tooltip);
 	[[nodiscard]] std::optional<std::string> ChoiceCombo(const char* a_key, const std::string& a_current, std::span<const std::string> a_names, const Width& a_width, float a_scale);
 	void DetailModal(const char* a_title, const std::function<void()>& a_body);

@@ -5,6 +5,7 @@
 #include <cstddef>
 #include <deque>
 #include <optional>
+#include <string_view>
 
 namespace WornEnchantmentPBR::Studio
 {
@@ -17,6 +18,7 @@ namespace WornEnchantmentPBR::Studio
 		[[nodiscard]] std::optional<Recipe> Undo(const Recipe& a_current);
 		[[nodiscard]] std::optional<Recipe> Redo(const Recipe& a_current);
 		void                                Clear() noexcept;
+		void                                Rename(std::string_view a_id);
 
 		[[nodiscard]] std::size_t UndoDepth() const noexcept { return past_.size(); }
 		[[nodiscard]] std::size_t RedoDepth() const noexcept { return future_.size(); }

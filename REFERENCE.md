@@ -373,18 +373,17 @@ Decompile provenance (`decompiled/WornEnchantmentFX/plugin.c` unless noted):
   `max`, `not` is the product with the complement, and the first term is
   `set`. `Build` writes a fixed shape (`or` as `max(chain, (T))`; `set`,
   `and` and `not` as the last group `(X)` and what precedes it), one term
-  alone bare, and `Parse` reads only that shape back, so a hand-written
-  expression loads as a single raw term. The built text never exceeds
+  alone bare. Nothing reads the shape back: editing a kept mask loads its
+  whole text as one raw `set` term. The built text never exceeds
   `kMaxExpressionLength`: a term that would push it past stops the build.
-- Template spellings, so a text reads back as the settings that wrote it:
-  numbers carry at most four decimals (what `ParamText` writes); a
+- Template spellings, one exact text per template: numbers carry at most
+  four decimals (what `ParamText` writes); a
   threshold's operand is the source quantised to P levels when posterize >
   1; each edge is `smoothstep(c - s, c + s, X)` with the settings written
   as themselves, never summed; the threshold is the low edge times the
   complement of the high edge, each omitted where trivial (low 0, high 1),
   `step(0, X)` when both are, and invert wraps it; a component or cluster
-  is `abs(@name * 255 - ID) < 0.5`. The reader is a left-to-right pass over
-  those spellings that never recurses.
+  is `abs(@name * 255 - ID) < 0.5`.
 - A term's source is named by an existing twin's name (same definition
   under another name), else a new row named as wanted and made unique among
   the taken names, so a term never adds a row the recipe already has.

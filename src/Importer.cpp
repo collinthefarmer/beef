@@ -1,7 +1,5 @@
 #include "Importer.h"
 
-#include <nlohmann/json.hpp>
-
 #include <algorithm>
 #include <cmath>
 #include <format>
@@ -10,26 +8,6 @@ namespace WornEnchantmentPBR
 {
 	namespace
 	{
-		using json = nlohmann::json;
-
-		Timing::Rgb ColorFrom(const json& a_j)
-		{
-			if (!a_j.is_array() || a_j.size() != 3) {
-				return {};
-			}
-			return Timing::Rgb{ a_j[0].get<float>() / 255.0f, a_j[1].get<float>() / 255.0f, a_j[2].get<float>() / 255.0f };
-		}
-
-		float FloatAt(const json& a_j, const char* a_field, float a_default = 0.0f)
-		{
-			return a_j.contains(a_field) && a_j.at(a_field).is_number() ? a_j.at(a_field).get<float>() : a_default;
-		}
-
-		std::string TextAt(const json& a_j, const char* a_field)
-		{
-			return a_j.contains(a_field) && a_j.at(a_field).is_string() ? a_j.at(a_field).get<std::string>() : std::string{};
-		}
-
 		Signal Constant(std::string a_name, float a_value)
 		{
 			return Signal{ std::move(a_name), ConstantSignal{ a_value }, std::nullopt };
@@ -87,45 +65,6 @@ namespace WornEnchantmentPBR
 	FormRef EffectShaderRecord::Reference() const
 	{
 		return FormRef::From(editorId.empty() ? key.ToString() : editorId);
-	}
-
-	std::expected<EffectShaderRecord, std::string> ParseEffectShaderRecord(std::string_view a_json)
-	{
-		const json root = json::parse(a_json, nullptr, false);
-		if (root.is_discarded() || !root.is_object()) {
-			return std::unexpected("not a JSON object");
-		}
-		EffectShaderRecord r;
-		const auto         key = FormKey::Parse(TextAt(root, "formKey"));
-		if (!key) {
-			return std::unexpected("'formKey' is missing or malformed (expected 0x<id>~<plugin>)");
-		}
-		r.key = *key;
-		r.editorId = TextAt(root, "editorId");
-		r.fillTexture = TextAt(root, "fillTexture");
-		auto& p = r.params;
-		p.colorKeys = { ColorFrom(root.value("fillColorKey1", json::array())), ColorFrom(root.value("fillColorKey2", json::array())), ColorFrom(root.value("fillColorKey3", json::array())) };
-		p.colorKeyTimes = { FloatAt(root, "fillColorKey1Time"), FloatAt(root, "fillColorKey2Time"), FloatAt(root, "fillColorKey3Time") };
-		p.colorKeyScales = { FloatAt(root, "fillColorKey1Scale", 1.0f), FloatAt(root, "fillColorKey2Scale", 1.0f), FloatAt(root, "fillColorKey3Scale", 1.0f) };
-		p.colorScale = FloatAt(root, "colorScale", 1.0f);
-		p.fill.fullAlphaRatio = FloatAt(root, "fillFullAlphaRatio", 1.0f);
-		p.fill.persistentAlphaRatio = FloatAt(root, "fillPersistentAlphaRatio", 1.0f);
-		p.fill.pulseAmplitude = FloatAt(root, "fillAlphaPulseAmplitude");
-		p.fill.pulseFrequency = FloatAt(root, "fillAlphaPulseFrequency");
-		p.fill.fadeInTime = FloatAt(root, "fillAlphaFadeInTime");
-		p.animationSpeedU = FloatAt(root, "fillTextureAnimationSpeedU");
-		p.animationSpeedV = FloatAt(root, "fillTextureAnimationSpeedV");
-		p.edgeColor = ColorFrom(root.value("edgeColor", json::array()));
-		p.edge.fullAlphaRatio = FloatAt(root, "edgeFullAlphaRatio", 1.0f);
-		p.edge.persistentAlphaRatio = FloatAt(root, "edgePersistentAlphaRatio", 1.0f);
-		p.edge.pulseAmplitude = FloatAt(root, "edgeAlphaPulseAmplitude");
-		p.edge.pulseFrequency = FloatAt(root, "edgeAlphaPulseFrequency");
-		p.edge.fadeInTime = FloatAt(root, "edgeAlphaFadeInTime");
-		p.edgeFalloff = FloatAt(root, "edgeFallOff", 1.0f);
-		r.tileU = FloatAt(root, "fillTextureScaleU", 1.0f);
-		r.tileV = FloatAt(root, "fillTextureScaleV", 1.0f);
-		r.flags = root.contains("flags") && root.at("flags").is_number_unsigned() ? root.at("flags").get<std::uint32_t>() : 0u;
-		return r;
 	}
 
 	std::string RecipeIdFor(const EffectShaderRecord& a_record)

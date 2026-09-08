@@ -36,6 +36,16 @@ namespace WornEnchantmentPBR::Studio
 		return restored;
 	}
 
+	void EditHistory::Rename(std::string_view a_id)
+	{
+		for (auto& recipe : past_) {
+			recipe.id = a_id;
+		}
+		for (auto& recipe : future_) {
+			recipe.id = a_id;
+		}
+	}
+
 	void EditHistory::Clear() noexcept
 	{
 		past_.clear();

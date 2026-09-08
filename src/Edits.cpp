@@ -1258,6 +1258,11 @@ namespace WornEnchantmentPBR::Studio
 			return std::nullopt;
 		}
 
+		Refusal Edit(Recipe& a_recipe, const ClearRecipe&)
+		{
+			if (auto problem = Edit(a_recipe, ClearOutputs{})) return problem;
+			return Edit(a_recipe, ClearResources{});
+		}
 	}
 
 	std::optional<Diagnostic> Apply(Recipe& a_recipe, const RecipeEdit& a_edit)
@@ -1319,7 +1324,8 @@ namespace WornEnchantmentPBR::Studio
 			[](const SetShellAlphaTest& e) { return std::format("shell: alphaTest {}", e.value); },
 			[](const ResetShell&) { return std::string{ "shell: reset" }; },
 			[](const ClearOutputs&) { return std::string{ "outputs: clear" }; },
-			[](const ClearResources&) { return std::string{ "resources: clear" }; });
+			[](const ClearResources&) { return std::string{ "resources: clear" }; },
+			[](const ClearRecipe&) { return std::string{ "recipe: clear" }; });
 	}
 
 	std::string_view LightParamName(LightParam a_field) noexcept

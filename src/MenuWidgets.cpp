@@ -589,17 +589,23 @@ namespace WornEnchantmentPBR::Studio::Widgets
 
 	bool ModeBar(Mode& a_mode)
 	{
-		const Mode before = a_mode;
+		static Mode drawn = a_mode;
+		const Mode  before = a_mode;
+		const bool  setByState = a_mode != drawn;
 		if (ImGui::BeginTabBar("modes")) {
 			for (const Mode mode : kModes) {
 				const std::string name{ ModeName(mode) };
-				if (ImGui::BeginTabItem(name.c_str())) {
-					a_mode = mode;
+				const auto        flags = setByState && mode == before ? ImGuiMCP::ImGuiTabItemFlags_SetSelected : ImGuiMCP::ImGuiTabItemFlags_None;
+				if (ImGui::BeginTabItem(name.c_str(), nullptr, flags)) {
+					if (!setByState) {
+						a_mode = mode;
+					}
 					ImGui::EndTabItem();
 				}
 			}
 			ImGui::EndTabBar();
 		}
+		drawn = a_mode;
 		return a_mode != before;
 	}
 
@@ -650,7 +656,9 @@ namespace WornEnchantmentPBR::Studio::Widgets
 			const float here = ImGui::GetCursorPosX();
 			const float edge = here + ImGui::GetContentRegionAvail().x - a_line.rightWidth;
 			ImGui::SetCursorPosX((std::max)(here, edge));
+			ImGui::PushID(a_line.text.data(), a_line.text.data() + a_line.text.size());
 			a_line.right();
+			ImGui::PopID();
 		}
 	}
 
@@ -688,11 +696,15 @@ namespace WornEnchantmentPBR::Studio::Widgets
 		ImGui::EndPopup();
 	}
 
-	ChooserPick ChooserRow(Table& a_table, std::string_view a_name, std::string_view a_detail, std::optional<float> a_share, const std::optional<std::string>& a_unavailable, const char* a_action)
+	ChooserPick ChooserRow(Table& a_table, std::span<const std::string_view> a_leading, std::string_view a_name, std::string_view a_detail, std::optional<float> a_share, const std::optional<std::string>& a_unavailable, const char* a_action)
 	{
 		const bool disabled = a_unavailable.has_value();
 		if (disabled) {
 			ImGui::BeginDisabled();
+		}
+		for (const auto text : a_leading) {
+			a_table.Cell();
+			Dim(text);
 		}
 		a_table.Cell();
 		const std::string name{ a_name };
@@ -704,12 +716,12 @@ namespace WornEnchantmentPBR::Studio::Widgets
 		a_table.Cell();
 		Dim(a_detail);
 		a_table.Cell();
-		if (a_action) {
-			if (ImGui::SmallButton(a_action)) {
-				return ChooserPick::kAction;
-			}
-		} else if (a_share) {
+		if (a_share) {
 			ImGui::Text("%.0f%%", *a_share * 100.0f);
+		}
+		a_table.Cell();
+		if (a_action && ImGui::SmallButton(a_action)) {
+			return ChooserPick::kAction;
 		}
 		return clicked && !disabled ? ChooserPick::kChosen : ChooserPick::kNone;
 	}

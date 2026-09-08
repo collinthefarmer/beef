@@ -688,23 +688,9 @@ namespace WornEnchantmentPBR::Studio
 									 Widgets::Tooltip("rename the recipe; its file follows when it is the user's");
 									 ImGui::SameLine();
 									 if (ImGui::Button("Clear", ImVec2{ clearWidth, 0.0f })) {
-										 ImGui::OpenPopup("clear-recipe");
+										 Post(a_out, a_recipe.id, ClearRecipe{});
 									 }
-									 if (ImGui::BeginPopup("clear-recipe")) {
-										 if (ImGui::Button("outputs")) {
-											 Post(a_out, a_recipe.id, ClearOutputs{});
-											 ImGui::CloseCurrentPopup();
-										 }
-										 Widgets::Tooltip("remove every output and reset the shell settings; keys, signals, curves, sources and masks stay");
-										 ImGui::SameLine();
-										 if (ImGui::Button("resources")) {
-											 Post(a_out, a_recipe.id, ClearResources{});
-											 ImGui::CloseCurrentPopup();
-										 }
-										 Widgets::Tooltip("remove every signal, curve, source, mask and variant, and what read them: layers on a source, the masks and curves of the layers that stay, and parameters that named a signal return to their defaults");
-										 ImGui::EndPopup();
-									 }
-									 Widgets::Tooltip("clear the recipe's outputs, or its resources and what read them");
+									 Widgets::Tooltip("empty the recipe: every output, the shell settings, and every signal, curve, source, mask and variant go; its name and keys stay");
 									 ImGui::SameLine();
 									 if (ImGui::Button("keys", ImVec2{ keysWidth, 0.0f })) {
 										 ImGui::OpenPopup("recipe-keys");
@@ -795,8 +781,8 @@ namespace WornEnchantmentPBR::Studio
 		[[nodiscard]] Widgets::RuleLine PaneRule(std::string_view a_title, const PaneChoice& a_pane, const Board& a_board, const RecipeRow& a_recipe, Target a_target, Intents& a_out)
 		{
 			const float switchWidth = (std::max)(Widgets::ButtonWidth("settings"), Widgets::ButtonWidth("stack"));
-			const float clearWidth = Widgets::ButtonWidth("Clear");
-			const float rightWidth = switchWidth + (a_pane.settings ? clearWidth + Widgets::ItemSpacingX() : 0.0f);
+			const float defaultsWidth = Widgets::ButtonWidth("Apply Defaults");
+			const float rightWidth = switchWidth + (a_pane.settings ? defaultsWidth + Widgets::ItemSpacingX() : 0.0f);
 			return Widgets::RuleLine{ a_title, rightWidth, [=, &a_board, &a_recipe, &a_out]() {
 									 if (a_pane.settings) {
 										 const bool light = a_target == Target::kLight;
@@ -804,7 +790,7 @@ namespace WornEnchantmentPBR::Studio
 										 if (!present) {
 											 ImGui::BeginDisabled();
 										 }
-										 if (ImGui::Button("Clear", ImVec2{ clearWidth, 0.0f }) && present) {
+										 if (ImGui::Button("Apply Defaults", ImVec2{ defaultsWidth, 0.0f }) && present) {
 											 if (light) {
 												 Post(a_out, a_recipe.id, ResetLight{ a_board.light.output.value_or(0) });
 											 } else {
@@ -1294,9 +1280,15 @@ namespace WornEnchantmentPBR::Studio
 
 		[[nodiscard]] Widgets::RuleLine ResourcesRule(ResourceTab a_tab, const RecipeRow& a_recipe, float a_scale, std::string_view& a_filter, Intents& a_out)
 		{
+			const float clearWidth = Widgets::ButtonWidth("Clear");
 			const float addWidth = Widgets::ButtonWidth("Add");
-			const float rightWidth = addWidth + Widgets::ItemSpacingX() + kFilterWidth * a_scale;
+			const float rightWidth = clearWidth + addWidth + 2.0f * Widgets::ItemSpacingX() + kFilterWidth * a_scale;
 			return Widgets::RuleLine{ "Resources", rightWidth, [=, &a_recipe, &a_filter, &a_out]() {
+									 if (ImGui::Button("Clear", ImVec2{ clearWidth, 0.0f })) {
+										 Post(a_out, a_recipe.id, ClearResources{});
+									 }
+									 Widgets::Tooltip("remove every signal, curve, source, mask and variant, and what read them: layers on a source go, the masks and curves of the layers that stay are dropped, and a parameter that named a signal returns to its default");
+									 ImGui::SameLine();
 									 ImGui::PushID(static_cast<int>(a_tab));
 									 if (ImGui::Button("Add", ImVec2{ addWidth, 0.0f })) {
 										 std::vector<std::string> names;
@@ -1540,7 +1532,7 @@ namespace WornEnchantmentPBR::Studio
 
 		constexpr const char* kTermPayload = "WEPBR_TERM";
 
-		constexpr TableStyle kChooserStyle{ .borders = TableStyle::Borders::kNone, .stretch = true, .headers = false, .rowBackground = false };
+		constexpr TableStyle kOffersStyle{ .borders = TableStyle::Borders::kNone, .stretch = true, .headers = true, .rowBackground = false };
 
 		void AddTermOfKind(const TermKind& a_term, const RecipeRow& a_recipe, const GeometryRow& a_geometry, Intents& a_out)
 		{
@@ -1552,46 +1544,40 @@ namespace WornEnchantmentPBR::Studio
 			a_out.push_back(AddTerm{ Term{ TermOp::kAnd, std::move(expression), TermLabelOf(a_term, presets, a_geometry), a_term } });
 		}
 
-		void DrawOfferGroup(OfferGroup a_group, std::span<const TermOffer> a_offers, std::string_view a_filter, const RecipeRow& a_recipe, const GeometryRow& a_geometry, Intents& a_out)
+		void DrawOffers(std::span<const TermOffer> a_offers, std::string_view a_filter, const PieceRow& a_piece, const RecipeRow& a_recipe, const GeometryRow& a_geometry, Intents& a_out)
 		{
-			std::vector<const TermOffer*> shown;
-			for (const auto& offer : a_offers) {
-				if (offer.group == a_group && (NameMatches(offer.name, a_filter) || NameMatches(offer.detail, a_filter))) {
-					shown.push_back(&offer);
-				}
-			}
-			if (shown.empty()) {
+			auto table = Widgets::Table::Begin("offers", { { "geometry", Width::Fit() }, { "kind", Width::Fit() }, { "name", Width::Fit() }, { "description", Width::Fill() }, { "coverage", Width::Fit("coverage") }, { "", Width::Fit("edit") } }, kOffersStyle);
+			if (!table.Open()) {
 				return;
 			}
-			const auto*       row = RowOf(kOfferGroups, a_group);
-			const std::string title = std::format("{} ({})", row ? row->name : "?", shown.size());
-			const bool        openByDefault = row && row->openByDefault;
-			ImGui::PushID(title.c_str());
-			if (Widgets::Section(title.c_str(), openByDefault)) {
-				auto table = Widgets::Table::Begin("offers", { { "name", Width::Fit() }, { "detail", Width::Fill() }, { "%", Width::Fit("100%") } }, kChooserStyle);
-				if (table.Open()) {
-					for (std::size_t i = 0; i < shown.size(); ++i) {
-						const TermOffer& offer = *shown[i];
-						ImGui::PushID(static_cast<int>(i));
-						const bool mask = a_group == OfferGroup::kMasks;
-						switch (Widgets::ChooserRow(table, offer.name, offer.detail, offer.coverage, offer.unavailable, mask ? "edit" : nullptr)) {
-						case Widgets::ChooserPick::kChosen:
-							AddTermOfKind(offer.kind, a_recipe, a_geometry, a_out);
-							break;
-						case Widgets::ChooserPick::kAction:
-							if (const auto row = std::ranges::find(a_recipe.maskRows, offer.name, &TextRow::name); row != a_recipe.maskRows.end()) {
-								EditMaskAsRegion(a_recipe, *row, a_out);
-							}
-							break;
-						case Widgets::ChooserPick::kNone:
-							break;
-						}
-						ImGui::PopID();
-					}
-					table.End();
+			int shown = 0;
+			for (const auto& offer : a_offers) {
+				const auto*            row = RowOf(kOfferGroups, offer.group);
+				const std::string_view kind = row ? row->word : std::string_view{ "?" };
+				if (!NameMatches(offer.name, a_filter) && !NameMatches(offer.detail, a_filter) && !NameMatches(kind, a_filter)) {
+					continue;
 				}
+				ImGui::PushID(shown++);
+				const bool             mask = offer.group == OfferGroup::kMasks;
+				const std::string      geometry = offer.geometry.empty() ? std::string{} : GeometryLabel(offer.geometry, a_piece.armorName);
+				const std::string_view leading[]{ geometry, kind };
+				switch (Widgets::ChooserRow(table, leading, offer.name, offer.detail, offer.coverage, offer.unavailable, mask ? "edit" : nullptr)) {
+				case Widgets::ChooserPick::kChosen: {
+					const auto from = std::ranges::find(a_recipe.geometries, offer.geometry, &GeometryRow::name);
+					AddTermOfKind(offer.kind, a_recipe, from != a_recipe.geometries.end() ? *from : a_geometry, a_out);
+					break;
+				}
+				case Widgets::ChooserPick::kAction:
+					if (const auto it = std::ranges::find(a_recipe.maskRows, offer.name, &TextRow::name); it != a_recipe.maskRows.end()) {
+						EditMaskAsRegion(a_recipe, *it, a_out);
+					}
+					break;
+				case Widgets::ChooserPick::kNone:
+					break;
+				}
+				ImGui::PopID();
 			}
-			ImGui::PopID();
+			table.End();
 		}
 
 		[[nodiscard]] Widgets::Table BeginTermTable()
@@ -1810,7 +1796,7 @@ namespace WornEnchantmentPBR::Studio
 								 } };
 		}
 
-		void DrawRegionPicture(const GeometryRow& a_geometry, const RegionStack& a_region, const Layout& a_layout)
+		void DrawRegionPicture(const PieceRow& a_piece, const RecipeRow& a_recipe, const GeometryRow& a_geometry, const RegionStack& a_region, const Layout& a_layout, Intents& a_out)
 		{
 			const auto scratch = std::ranges::find(a_geometry.masks, kScratchMask, &PictureRow::name);
 			if (scratch == a_geometry.masks.end()) {
@@ -1819,7 +1805,16 @@ namespace WornEnchantmentPBR::Studio
 			if (!scratch->problem.empty()) {
 				Widgets::Problem(scratch->problem);
 			}
-			Widgets::Thumbnail(scratch->texture, scratch->channel, scratch->animated, a_layout.compositeSize);
+			if (a_recipe.geometries.size() < 2) {
+				Widgets::Thumbnail(scratch->texture, scratch->channel, scratch->animated, a_layout.compositeSize);
+			} else {
+				if (Widgets::ThumbnailButton("region", scratch->texture, scratch->channel, scratch->animated, a_layout.compositeSize)) {
+					if (const auto next = NextGeometry(a_recipe, a_geometry)) {
+						a_out.push_back(*next);
+					}
+				}
+				Widgets::Tooltip(std::format("viewed on {} (one of {} geometries; the region applies to all)\nclick: view the next geometry", GeometryLabel(a_geometry.name, a_piece.armorName), a_recipe.geometries.size()));
+			}
 			ImGui::SameLine();
 			ImGui::BeginGroup();
 			const std::size_t shown = a_region.solo ? 1 : a_region.terms.size() - a_region.muted.size();
@@ -1827,11 +1822,11 @@ namespace WornEnchantmentPBR::Studio
 			ImGui::EndGroup();
 		}
 
-		void DrawRegionStack(const RecipeRow& a_recipe, const GeometryRow& a_geometry, MenuState& a_state, const Names& a_names, Intents& a_out)
+		void DrawRegionStack(const PieceRow& a_piece, const RecipeRow& a_recipe, const GeometryRow& a_geometry, MenuState& a_state, const Names& a_names, Intents& a_out)
 		{
 			const auto& region = a_state.region;
-			const auto  offers = OffersOf(LoadedPresets(), a_recipe, a_geometry, region.editing);
-			DrawRegionPicture(a_geometry, region, a_state.layout);
+			const auto  offers = OffersOfRecipe(LoadedPresets(), a_recipe, region.editing);
+			DrawRegionPicture(a_piece, a_recipe, a_geometry, region, a_state.layout, a_out);
 			auto        table = BeginTermTable();
 			if (table.Open()) {
 				for (std::size_t i = 0; i < region.terms.size(); ++i) {
@@ -1845,38 +1840,19 @@ namespace WornEnchantmentPBR::Studio
 			Widgets::HelpMarker("A region is terms combined in order: the first sets it, each next one is and (product), or (max) or not (times the complement). Drag the :: grip to reorder; S shows one term alone, M leaves one out; ... opens a term's settings; Keep writes every term.");
 
 			std::string_view filter;
-			const char*      hint = "filter by name or measurement";
+			const char*      hint = "filter by kind, name or measurement";
 			const float      filterWidth = Widgets::FitWidth(hint) * a_state.layout.widgetScale;
-			Widgets::Rule({}, Widgets::RuleLine{ "Add a term", filterWidth, [&]() { filter = Widgets::LiveTextField("offer-filter", hint, Width::Px(Widgets::FitWidth(hint)), a_state.layout.widgetScale); } });
+			Widgets::Rule({}, Widgets::RuleLine{ "Terms", filterWidth, [&]() { filter = Widgets::LiveTextField("offer-filter", hint, Width::Px(Widgets::FitWidth(hint)), a_state.layout.widgetScale); } });
 			if (offers.empty()) {
 				Widgets::Dim(a_geometry.meshRead ? "nothing to offer on this geometry" : "reading the mesh");
 			}
-			for (const auto& group : kOfferGroups) {
-				DrawOfferGroup(group.value, offers, filter, a_recipe, a_geometry, a_out);
-			}
+			DrawOffers(offers, filter, a_piece, a_recipe, a_geometry, a_out);
 		}
 
-		void DrawPaintHead(const PieceRow& a_piece, const RecipeRow& a_recipe, const GeometryRow* a_geometry, const MenuState& a_state, Intents& a_out)
+		void DrawPaintHead(const PieceRow& a_piece, const RecipeRow& a_recipe, const MenuState& a_state, Intents& a_out)
 		{
 			if (a_state.paint) {
 				Widgets::HeldLabel(a_state.paint->recipe.c_str());
-				if (a_geometry && !a_recipe.geometries.empty()) {
-					ImGui::SameLine();
-					ImGui::AlignTextToFramePadding();
-					Widgets::Dim("on");
-					ImGui::SameLine();
-					const std::string current = GeometryLabel(a_geometry->name, a_piece.armorName);
-					Widgets::NextItemWidth(Width::Fit(current));
-					if (ImGui::BeginCombo("##geometry", current.c_str())) {
-						for (const auto& geometry : a_recipe.geometries) {
-							if (ImGui::Selectable(GeometryLabel(geometry.name, a_piece.armorName).c_str(), geometry.name == a_geometry->name)) {
-								a_out.push_back(ViewGeometry{ geometry.name });
-							}
-						}
-						ImGui::EndCombo();
-					}
-					Widgets::Tooltip("the geometry the offers and the picture describe; the region applies to every geometry of the recipe");
-				}
 				ImGui::SameLine();
 				const float labelWidth = Widgets::TextWidth("preview on");
 				const float comboWidth = Widgets::FitWidth("material");
@@ -1912,11 +1888,8 @@ namespace WornEnchantmentPBR::Studio
 
 		void EditMaskAsRegion(const RecipeRow& a_recipe, const TextRow& a_mask, Intents& a_out)
 		{
-			auto terms = TermsOfMask(a_mask.text, LoadedPresets(), ExistingOf(a_recipe));
-			if (!terms) {
-				return;
-			}
-			a_out.push_back(LoadRegion{ std::move(*terms), a_mask.name });
+			const std::string label = TermLabel(a_mask.text, LoadedPresets(), ExistingOf(a_recipe));
+			a_out.push_back(LoadRegion{ { Term{ TermOp::kSet, a_mask.text, label, RawTerm{} } }, a_mask.name });
 			a_out.push_back(SetMode{ Mode::kPaint });
 		}
 
@@ -1934,7 +1907,7 @@ namespace WornEnchantmentPBR::Studio
 				if (a_state.layout.contextRows) {
 					DrawRecipeContext(a_snapshot, *a_piece, *a_recipe, a_out);
 				} else {
-					DrawPaintHead(*a_piece, *a_recipe, nullptr, a_state, a_out);
+					DrawPaintHead(*a_piece, *a_recipe, a_state, a_out);
 				}
 				Widgets::Rule();
 				Widgets::Dim(std::format("recipe {} is bound to no geometry of this piece: its keys or selectors match none of its geometries", a_recipe->id));
@@ -1960,7 +1933,7 @@ namespace WornEnchantmentPBR::Studio
 			const bool painting = layout.regionEditor;
 			const bool painterReady = painting && a_state.paint && a_recipe->id == kPaintRecipe;
 			if (!layout.contextRows) {
-				DrawPaintHead(*a_piece, *a_recipe, a_geometry, a_state, a_out);
+				DrawPaintHead(*a_piece, *a_recipe, a_state, a_out);
 				Widgets::Rule();
 				if (!a_state.paint) {
 					const RecipeRow* active = a_recipe;
@@ -1976,9 +1949,13 @@ namespace WornEnchantmentPBR::Studio
 					} else {
 						Widgets::Warn("the piece offers no key to paint on");
 					}
-				} else if (painterReady && a_state.paint->readGeometry != a_geometry->name) {
-					a_out.push_back(ReadMesh{ a_piece->actorID, a_geometry->name });
-				} else if (!painterReady) {
+				} else if (painterReady) {
+					for (const auto& geometry : a_recipe->geometries) {
+						if (!a_state.paint->readGeometries.contains(geometry.name)) {
+							a_out.push_back(ReadMesh{ a_piece->actorID, geometry.name });
+						}
+					}
+				} else {
 					Widgets::Dim("starting the paint recipe");
 				}
 			}
@@ -1997,7 +1974,7 @@ namespace WornEnchantmentPBR::Studio
 			if (ImGui::BeginChild("stack-pane", ImVec2{ 0.0f, stackHeight }, 0, 0)) {
 				if (painting) {
 					if (painterReady) {
-						DrawRegionStack(*a_recipe, *a_geometry, a_state, names, a_out);
+						DrawRegionStack(*a_piece, *a_recipe, *a_geometry, a_state, names, a_out);
 					}
 				} else if (pane.settings) {
 					if (selection.target == Target::kLight) {

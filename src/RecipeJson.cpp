@@ -1,6 +1,10 @@
 #include "Recipe.h"
 #include "Vocabulary.h"
 
+#include "Expression.h"
+#include "Importer.h"
+#include "Paint.h"
+
 #include <nlohmann/json.hpp>
 
 #include <charconv>
@@ -1733,5 +1737,190 @@ namespace WornEnchantmentPBR
 			root["variants"] = std::move(variants);
 		}
 		return root.dump(2) + "\n";
+	}
+
+	namespace
+	{
+		Timing::Rgb ColorFrom(const json& a_j)
+		{
+			if (!a_j.is_array() || a_j.size() != 3) {
+				return {};
+			}
+			return Timing::Rgb{ a_j[0].get<float>() / 255.0f, a_j[1].get<float>() / 255.0f, a_j[2].get<float>() / 255.0f };
+		}
+
+		float FloatAt(const json& a_j, const char* a_field, float a_default = 0.0f)
+		{
+			return a_j.contains(a_field) && a_j.at(a_field).is_number() ? a_j.at(a_field).get<float>() : a_default;
+		}
+
+		std::string TextAt(const json& a_j, const char* a_field)
+		{
+			return a_j.contains(a_field) && a_j.at(a_field).is_string() ? a_j.at(a_field).get<std::string>() : std::string{};
+		}
+	}
+
+	std::expected<EffectShaderRecord, std::string> ParseEffectShaderRecord(std::string_view a_json)
+	{
+		const json root = json::parse(a_json, nullptr, false);
+		if (root.is_discarded() || !root.is_object()) {
+			return std::unexpected("not a JSON object");
+		}
+		EffectShaderRecord r;
+		const auto         key = FormKey::Parse(TextAt(root, "formKey"));
+		if (!key) {
+			return std::unexpected("'formKey' is missing or malformed (expected 0x<id>~<plugin>)");
+		}
+		r.key = *key;
+		r.editorId = TextAt(root, "editorId");
+		r.fillTexture = TextAt(root, "fillTexture");
+		auto& p = r.params;
+		p.colorKeys = { ColorFrom(root.value("fillColorKey1", json::array())), ColorFrom(root.value("fillColorKey2", json::array())), ColorFrom(root.value("fillColorKey3", json::array())) };
+		p.colorKeyTimes = { FloatAt(root, "fillColorKey1Time"), FloatAt(root, "fillColorKey2Time"), FloatAt(root, "fillColorKey3Time") };
+		p.colorKeyScales = { FloatAt(root, "fillColorKey1Scale", 1.0f), FloatAt(root, "fillColorKey2Scale", 1.0f), FloatAt(root, "fillColorKey3Scale", 1.0f) };
+		p.colorScale = FloatAt(root, "colorScale", 1.0f);
+		p.fill.fullAlphaRatio = FloatAt(root, "fillFullAlphaRatio", 1.0f);
+		p.fill.persistentAlphaRatio = FloatAt(root, "fillPersistentAlphaRatio", 1.0f);
+		p.fill.pulseAmplitude = FloatAt(root, "fillAlphaPulseAmplitude");
+		p.fill.pulseFrequency = FloatAt(root, "fillAlphaPulseFrequency");
+		p.fill.fadeInTime = FloatAt(root, "fillAlphaFadeInTime");
+		p.animationSpeedU = FloatAt(root, "fillTextureAnimationSpeedU");
+		p.animationSpeedV = FloatAt(root, "fillTextureAnimationSpeedV");
+		p.edgeColor = ColorFrom(root.value("edgeColor", json::array()));
+		p.edge.fullAlphaRatio = FloatAt(root, "edgeFullAlphaRatio", 1.0f);
+		p.edge.persistentAlphaRatio = FloatAt(root, "edgePersistentAlphaRatio", 1.0f);
+		p.edge.pulseAmplitude = FloatAt(root, "edgeAlphaPulseAmplitude");
+		p.edge.pulseFrequency = FloatAt(root, "edgeAlphaPulseFrequency");
+		p.edge.fadeInTime = FloatAt(root, "edgeAlphaFadeInTime");
+		p.edgeFalloff = FloatAt(root, "edgeFallOff", 1.0f);
+		r.tileU = FloatAt(root, "fillTextureScaleU", 1.0f);
+		r.tileV = FloatAt(root, "fillTextureScaleV", 1.0f);
+		r.flags = root.contains("flags") && root.at("flags").is_number_unsigned() ? root.at("flags").get<std::uint32_t>() : 0u;
+		return r;
+	}
+}
+
+namespace WornEnchantmentPBR::Studio
+{
+	namespace
+	{
+		std::optional<SourceKind> SourceFromJson(const json& a_value)
+		{
+			if (!a_value.is_object() || a_value.size() != 1) {
+				return std::nullopt;
+			}
+			const auto& [key, value] = *a_value.items().begin();
+			if (key == "material" && value.is_string()) {
+				const auto channel = ParseMaterialChannel(value.get<std::string>());
+				return channel ? std::optional<SourceKind>{ MaterialSource{ *channel } } : std::nullopt;
+			}
+			if (key == "bake" && value.is_string()) {
+				const auto bake = DefaultBakeKind(value.get<std::string>());
+				return bake ? std::optional<SourceKind>{ BakeSource{ *bake } } : std::nullopt;
+			}
+			if (key == "uv" && value.is_string()) {
+				const auto axis = ParseUvAxis(value.get<std::string>());
+				return axis ? std::optional<SourceKind>{ UvSource{ *axis } } : std::nullopt;
+			}
+			return std::nullopt;
+		}
+	}
+
+	std::expected<RegionsFile, std::string> ParsePresets(std::string_view a_json)
+	{
+		const auto parsed = json::parse(a_json, nullptr, false);
+		if (parsed.is_discarded() || !parsed.is_object()) {
+			return std::unexpected("the preset file is not a JSON object");
+		}
+		RegionsFile presets;
+		if (const auto names = parsed.find("names"); names != parsed.end() && names->is_object()) {
+			if (const auto partitions = names->find("partitions"); partitions != names->end() && partitions->is_object()) {
+				for (const auto& [slot, name] : partitions->items()) {
+					const auto number = std::strtoul(slot.c_str(), nullptr, 10);
+					if (number >= 30 && number <= 61 && name.is_string()) {
+						presets.partitionNames[static_cast<std::uint32_t>(number)] = name.get<std::string>();
+					}
+				}
+			}
+			if (const auto bones = names->find("bones"); bones != names->end() && bones->is_object()) {
+				for (const auto& [bone, name] : bones->items()) {
+					if (name.is_string()) {
+						presets.boneNames[bone] = name.get<std::string>();
+					}
+				}
+			}
+		}
+		if (const auto where = parsed.find("where"); where != parsed.end() && where->is_array()) {
+			if (where->size() > kMaxPresets) {
+				return std::unexpected(std::format("more than {} where presets", kMaxPresets));
+			}
+			for (const auto& entry : *where) {
+				RegionPreset preset;
+				preset.kind = PresetKind::kWhere;
+				if (!entry.is_object() || !entry.contains("name") || !entry["name"].is_string() || !IsName(entry["name"].get<std::string>())) {
+					return std::unexpected("a where preset needs a name");
+				}
+				preset.name = entry["name"].get<std::string>();
+				if (entry.contains("partition")) {
+					const auto& partition = entry["partition"];
+					const auto slot = partition.is_string() ? BipedSlotFromName(partition.get<std::string>()) : (partition.is_number_unsigned() ? std::optional{ partition.get<std::uint32_t>() } : std::nullopt);
+					if (!slot) {
+						return std::unexpected(std::format("where preset {}: unknown partition", preset.name));
+					}
+					preset.partition = *slot;
+				}
+				if (const auto bones = entry.find("bones"); bones != entry.end() && bones->is_array()) {
+					if (bones->size() > kMaxPresetBones) {
+						return std::unexpected(std::format("where preset {}: more than {} bones", preset.name, kMaxPresetBones));
+					}
+					for (const auto& bone : *bones) {
+						if (bone.is_string()) {
+							preset.bones.push_back(bone.get<std::string>());
+						}
+					}
+				}
+				if (!preset.partition && preset.bones.empty()) {
+					return std::unexpected(std::format("where preset {}: needs a partition or bones", preset.name));
+				}
+				presets.where.push_back(std::move(preset));
+			}
+		}
+		if (const auto what = parsed.find("what"); what != parsed.end() && what->is_array()) {
+			if (what->size() > kMaxPresets) {
+				return std::unexpected(std::format("more than {} what presets", kMaxPresets));
+			}
+			for (const auto& entry : *what) {
+				RegionPreset preset;
+				preset.kind = PresetKind::kWhat;
+				if (!entry.is_object() || !entry.contains("name") || !entry["name"].is_string() || !IsName(entry["name"].get<std::string>())) {
+					return std::unexpected("a what preset needs a name");
+				}
+				preset.name = entry["name"].get<std::string>();
+				if (!entry.contains("expression") || !entry["expression"].is_string()) {
+					return std::unexpected(std::format("what preset {}: needs an expression", preset.name));
+				}
+				preset.expression = entry["expression"].get<std::string>();
+				if (preset.expression.size() > kMaxExpressionLength) {
+					return std::unexpected(std::format("what preset {}: expression longer than {} characters", preset.name, kMaxExpressionLength));
+				}
+				if (const auto program = Program::Parse(preset.expression); !program) {
+					return std::unexpected(std::format("what preset {}: expression: {}", preset.name, program.error()));
+				}
+				if (const auto sources = entry.find("sources"); sources != entry.end() && sources->is_object()) {
+					if (sources->size() > kMaxPresetSources) {
+						return std::unexpected(std::format("what preset {}: more than {} sources", preset.name, kMaxPresetSources));
+					}
+					for (const auto& [name, definition] : sources->items()) {
+						const auto kind = SourceFromJson(definition);
+						if (!IsName(name) || !kind) {
+							return std::unexpected(std::format("what preset {}: source '{}' is not a material channel, bake or uv", preset.name, name));
+						}
+						preset.sources.emplace_back(name, *kind);
+					}
+				}
+				presets.what.push_back(std::move(preset));
+			}
+		}
+		return presets;
 	}
 }

@@ -42,8 +42,8 @@ namespace WornEnchantmentPBR::Studio
 	struct PaintSession
 	{
 		std::string recipe;
-		Surface     surface = Surface::kMaterial;
-		std::string readGeometry;
+		Surface               surface = Surface::kMaterial;
+		std::set<std::string> readGeometries;
 	};
 
 	using TextBuffer = std::array<char, 1024>;

@@ -115,24 +115,61 @@ target_compile_options(CommonLibSSE PRIVATE ${CLANG_CL_FLAGS} -Wno-invalid-offse
 target_compile_options(${PROJECT_NAME} PRIVATE /Zi)
 target_link_options(${PROJECT_NAME} PRIVATE /DEBUG:FULL /PDBALTPATH:%_PDB%)
 
-set(RECIPE_MODEL_SOURCES src/Recipe.cpp src/RecipeJson.cpp src/Expression.cpp src/Signals.cpp src/Importer.cpp src/Timing.cpp)
+set(HOST_OBJECT_SOURCES
+  src/Timing.cpp
+  src/SettingsCore.cpp
+  src/Expression.cpp
+  src/Recipe.cpp
+  src/RecipeJson.cpp
+  src/Signals.cpp
+  src/Importer.cpp
+  src/Mesh.cpp
+  src/Analysis.cpp
+  src/TermStack.cpp
+  src/Studio.cpp
+  src/MenuState.cpp
+  src/History.cpp
+  src/Edits.cpp
+  src/EditCheck.cpp
+  src/Paint.cpp)
+add_library(${PROJECT_NAME}HostObjects OBJECT ${HOST_OBJECT_SOURCES})
+set_target_properties(${PROJECT_NAME}HostObjects PROPERTIES EXCLUDE_FROM_ALL TRUE)
+target_include_directories(${PROJECT_NAME}HostObjects PRIVATE src src/extern)
+target_compile_options(${PROJECT_NAME}HostObjects PRIVATE /EHsc /W4 /utf-8)
+target_compile_definitions(${PROJECT_NAME}HostObjects PRIVATE WEPBR_FIXTURES_DIR="${CMAKE_SOURCE_DIR}/tests/fixtures")
+
 function(add_host_test NAME)
   add_executable(${NAME} ${ARGN})
+  set_target_properties(${NAME} PROPERTIES EXCLUDE_FROM_ALL TRUE)
   target_include_directories(${NAME} PRIVATE src src/extern)
   target_compile_options(${NAME} PRIVATE /EHsc /W4 /utf-8)
   target_compile_definitions(${NAME} PRIVATE WEPBR_FIXTURES_DIR="${CMAKE_SOURCE_DIR}/tests/fixtures")
+  target_link_libraries(${NAME} PRIVATE ${PROJECT_NAME}HostObjects)
 endfunction()
-add_host_test(${PROJECT_NAME}Tests tests/timing_tests.cpp src/Timing.cpp)
-add_host_test(${PROJECT_NAME}SettingsTests tests/settings_tests.cpp src/SettingsCore.cpp src/Timing.cpp)
-add_host_test(${PROJECT_NAME}ExpressionTests tests/expression_tests.cpp src/Expression.cpp)
-add_host_test(${PROJECT_NAME}RecipeTests tests/recipe_tests.cpp ${RECIPE_MODEL_SOURCES})
-add_host_test(${PROJECT_NAME}SignalTests tests/signal_tests.cpp ${RECIPE_MODEL_SOURCES})
-add_host_test(${PROJECT_NAME}ImporterTests tests/importer_tests.cpp ${RECIPE_MODEL_SOURCES})
-add_host_test(${PROJECT_NAME}BakeTests tests/bake_tests.cpp src/Mesh.cpp ${RECIPE_MODEL_SOURCES})
-add_host_test(${PROJECT_NAME}AnalysisTests tests/analysis_tests.cpp src/Analysis.cpp src/Mesh.cpp ${RECIPE_MODEL_SOURCES})
-add_host_test(${PROJECT_NAME}TermStackTests tests/termstack_tests.cpp src/TermStack.cpp src/Expression.cpp)
-add_host_test(${PROJECT_NAME}StudioTests tests/studio_tests.cpp src/Studio.cpp src/MenuState.cpp src/History.cpp src/Edits.cpp src/EditCheck.cpp src/Paint.cpp src/TermStack.cpp src/Analysis.cpp src/Mesh.cpp ${RECIPE_MODEL_SOURCES})
-add_host_test(${PROJECT_NAME}EditsTests tests/edits_tests.cpp src/Edits.cpp ${RECIPE_MODEL_SOURCES})
+add_host_test(${PROJECT_NAME}Tests tests/timing_tests.cpp)
+add_host_test(${PROJECT_NAME}SettingsTests tests/settings_tests.cpp)
+add_host_test(${PROJECT_NAME}ExpressionTests tests/expression_tests.cpp)
+add_host_test(${PROJECT_NAME}RecipeTests tests/recipe_tests.cpp)
+add_host_test(${PROJECT_NAME}SignalTests tests/signal_tests.cpp)
+add_host_test(${PROJECT_NAME}ImporterTests tests/importer_tests.cpp)
+add_host_test(${PROJECT_NAME}BakeTests tests/bake_tests.cpp)
+add_host_test(${PROJECT_NAME}AnalysisTests tests/analysis_tests.cpp)
+add_host_test(${PROJECT_NAME}TermStackTests tests/termstack_tests.cpp)
+add_host_test(${PROJECT_NAME}StudioTests tests/studio_tests.cpp)
+add_host_test(${PROJECT_NAME}EditsTests tests/edits_tests.cpp)
+
+add_custom_target(host-tests DEPENDS
+  ${PROJECT_NAME}Tests
+  ${PROJECT_NAME}SettingsTests
+  ${PROJECT_NAME}ExpressionTests
+  ${PROJECT_NAME}RecipeTests
+  ${PROJECT_NAME}SignalTests
+  ${PROJECT_NAME}ImporterTests
+  ${PROJECT_NAME}BakeTests
+  ${PROJECT_NAME}AnalysisTests
+  ${PROJECT_NAME}TermStackTests
+  ${PROJECT_NAME}StudioTests
+  ${PROJECT_NAME}EditsTests)
 
 set(DIST_DIR "${CMAKE_SOURCE_DIR}/dist/${PROJECT_NAME}")
 add_custom_command(TARGET ${PROJECT_NAME} POST_BUILD

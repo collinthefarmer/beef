@@ -526,6 +526,12 @@ namespace
 		Accepted(outputs, ClearOutputs{}, "clear the outputs");
 		Check(outputs.outputs.empty() && outputs.shell == ShellSettings{} && outputs.keys == Canonical().keys && outputs.signals.size() == Canonical().signals.size(), "clearing outputs leaves keys and resources");
 
+		Recipe whole = Canonical();
+		Accepted(whole, ClearRecipe{}, "clear the recipe");
+		Check(whole.id == Canonical().id && whole.metadata.name == Canonical().metadata.name && whole.keys == Canonical().keys, "clearing the recipe keeps its id, name and keys");
+		Check(whole.outputs.empty() && whole.shell == ShellSettings{} && whole.signals.empty() && whole.curves.empty() && whole.sources.empty() && whole.masks.empty() && whole.variants.empty(), "clearing the recipe empties everything else");
+		Check(Describe(ClearRecipe{}) == "recipe: clear", "describe clear recipe");
+
 		Recipe resources = Canonical();
 		Accepted(resources, ClearResources{}, "clear the resources");
 		Check(resources.signals.empty() && resources.curves.empty() && resources.sources.empty() && resources.masks.empty() && resources.variants.empty(), "every resource is gone");

@@ -236,7 +236,7 @@ namespace WornEnchantmentPBR::Studio
 			[&](const BeginPaint& i) { a_state.paint = PaintSession{ i.recipe, i.surface, {} }; },
 			[&](const ReadMesh& i) {
 				if (a_state.paint) {
-					a_state.paint->readGeometry = i.geometry;
+					a_state.paint->readGeometries.insert(i.geometry);
 				}
 			},
 			[&](const SetPaintSurface& i) {

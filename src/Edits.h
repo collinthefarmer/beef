@@ -96,6 +96,9 @@ namespace WornEnchantmentPBR::Studio
 	struct ClearResources
 	{
 	};
+	struct ClearRecipe
+	{
+	};
 	struct RemoveOutput
 	{
 		std::size_t output = 0;
@@ -298,7 +301,7 @@ namespace WornEnchantmentPBR::Studio
 	using RecipeEdit = std::variant<
 		SetLayerSource, SetLayerCurve, SetLayerBlend, SetLayerOpacity, SetLayerColor, SetLayerMask, SetLayerChannels,
 		AddLayer, RemoveLayer, MoveLayer, ClearLayers,
-		AddOutput, RemoveOutput, SetScalar, SetColorScalar, AddKey, RemoveKey, ClearOutputs, ClearResources,
+		AddOutput, RemoveOutput, SetScalar, SetColorScalar, AddKey, RemoveKey, ClearOutputs, ClearResources, ClearRecipe,
 		SetConstant, SetExpression, SetSignalCurve, SetCurve, SetMask,
 		AddSignal, AddCurve, RenameSignal, RenameCurve, RemoveSignal, RemoveCurve, AddMask, RenameMask, RemoveMask,
 		AddSource, SetSource, RenameSource, RemoveSource,

@@ -2,8 +2,6 @@
 
 #include "Studio.h"
 
-#include <nlohmann/json.hpp>
-
 #include "Expression.h"
 #include "Vocabulary.h"
 
@@ -17,130 +15,6 @@
 
 namespace WornEnchantmentPBR::Studio
 {
-	using json = nlohmann::json;
-
-	namespace
-	{
-		[[nodiscard]] std::optional<SourceKind> SourceFromJson(const json& a_value)
-		{
-			if (!a_value.is_object() || a_value.size() != 1) {
-				return std::nullopt;
-			}
-			const auto& [key, value] = *a_value.items().begin();
-			if (key == "material" && value.is_string()) {
-				const auto channel = ParseMaterialChannel(value.get<std::string>());
-				return channel ? std::optional<SourceKind>{ MaterialSource{ *channel } } : std::nullopt;
-			}
-			if (key == "bake" && value.is_string()) {
-				const auto bake = DefaultBakeKind(value.get<std::string>());
-				return bake ? std::optional<SourceKind>{ BakeSource{ *bake } } : std::nullopt;
-			}
-			if (key == "uv" && value.is_string()) {
-				const auto axis = ParseUvAxis(value.get<std::string>());
-				return axis ? std::optional<SourceKind>{ UvSource{ *axis } } : std::nullopt;
-			}
-			return std::nullopt;
-		}
-	}
-
-	std::expected<RegionsFile, std::string> ParsePresets(std::string_view a_json)
-	{
-		const auto parsed = json::parse(a_json, nullptr, false);
-		if (parsed.is_discarded() || !parsed.is_object()) {
-			return std::unexpected("the preset file is not a JSON object");
-		}
-		RegionsFile presets;
-		if (const auto names = parsed.find("names"); names != parsed.end() && names->is_object()) {
-			if (const auto partitions = names->find("partitions"); partitions != names->end() && partitions->is_object()) {
-				for (const auto& [slot, name] : partitions->items()) {
-					const auto number = std::strtoul(slot.c_str(), nullptr, 10);
-					if (number >= 30 && number <= 61 && name.is_string()) {
-						presets.partitionNames[static_cast<std::uint32_t>(number)] = name.get<std::string>();
-					}
-				}
-			}
-			if (const auto bones = names->find("bones"); bones != names->end() && bones->is_object()) {
-				for (const auto& [bone, name] : bones->items()) {
-					if (name.is_string()) {
-						presets.boneNames[bone] = name.get<std::string>();
-					}
-				}
-			}
-		}
-		if (const auto where = parsed.find("where"); where != parsed.end() && where->is_array()) {
-			if (where->size() > kMaxPresets) {
-				return std::unexpected(std::format("more than {} where presets", kMaxPresets));
-			}
-			for (const auto& entry : *where) {
-				RegionPreset preset;
-				preset.kind = PresetKind::kWhere;
-				if (!entry.is_object() || !entry.contains("name") || !entry["name"].is_string() || !IsName(entry["name"].get<std::string>())) {
-					return std::unexpected("a where preset needs a name");
-				}
-				preset.name = entry["name"].get<std::string>();
-				if (entry.contains("partition")) {
-					const auto& partition = entry["partition"];
-					const auto slot = partition.is_string() ? BipedSlotFromName(partition.get<std::string>()) : (partition.is_number_unsigned() ? std::optional{ partition.get<std::uint32_t>() } : std::nullopt);
-					if (!slot) {
-						return std::unexpected(std::format("where preset {}: unknown partition", preset.name));
-					}
-					preset.partition = *slot;
-				}
-				if (const auto bones = entry.find("bones"); bones != entry.end() && bones->is_array()) {
-					if (bones->size() > kMaxPresetBones) {
-						return std::unexpected(std::format("where preset {}: more than {} bones", preset.name, kMaxPresetBones));
-					}
-					for (const auto& bone : *bones) {
-						if (bone.is_string()) {
-							preset.bones.push_back(bone.get<std::string>());
-						}
-					}
-				}
-				if (!preset.partition && preset.bones.empty()) {
-					return std::unexpected(std::format("where preset {}: needs a partition or bones", preset.name));
-				}
-				presets.where.push_back(std::move(preset));
-			}
-		}
-		if (const auto what = parsed.find("what"); what != parsed.end() && what->is_array()) {
-			if (what->size() > kMaxPresets) {
-				return std::unexpected(std::format("more than {} what presets", kMaxPresets));
-			}
-			for (const auto& entry : *what) {
-				RegionPreset preset;
-				preset.kind = PresetKind::kWhat;
-				if (!entry.is_object() || !entry.contains("name") || !entry["name"].is_string() || !IsName(entry["name"].get<std::string>())) {
-					return std::unexpected("a what preset needs a name");
-				}
-				preset.name = entry["name"].get<std::string>();
-				if (!entry.contains("expression") || !entry["expression"].is_string()) {
-					return std::unexpected(std::format("what preset {}: needs an expression", preset.name));
-				}
-				preset.expression = entry["expression"].get<std::string>();
-				if (preset.expression.size() > kMaxExpressionLength) {
-					return std::unexpected(std::format("what preset {}: expression longer than {} characters", preset.name, kMaxExpressionLength));
-				}
-				if (const auto program = Program::Parse(preset.expression); !program) {
-					return std::unexpected(std::format("what preset {}: expression: {}", preset.name, program.error()));
-				}
-				if (const auto sources = entry.find("sources"); sources != entry.end() && sources->is_object()) {
-					if (sources->size() > kMaxPresetSources) {
-						return std::unexpected(std::format("what preset {}: more than {} sources", preset.name, kMaxPresetSources));
-					}
-					for (const auto& [name, definition] : sources->items()) {
-						const auto kind = SourceFromJson(definition);
-						if (!IsName(name) || !kind) {
-							return std::unexpected(std::format("what preset {}: source '{}' is not a material channel, bake or uv", preset.name, name));
-						}
-						preset.sources.emplace_back(name, *kind);
-					}
-				}
-				presets.what.push_back(std::move(preset));
-			}
-		}
-		return presets;
-	}
-
 	std::string PlainBoneName(const RegionsFile& a_presets, std::string_view a_bone)
 	{
 		const auto it = a_presets.boneNames.find(std::string{ a_bone });
@@ -285,25 +159,6 @@ namespace WornEnchantmentPBR::Studio
 			}
 		}
 		return std::string{ kExpressionLabel };
-	}
-
-	namespace
-	{
-		TermKind ReadTermOver(std::string_view a_text, const RegionsFile& a_presets, const Existing& a_existing);
-	}
-
-	std::optional<std::vector<Term>> TermsOfMask(std::string_view a_text, const RegionsFile& a_presets, const Existing& a_existing)
-	{
-		auto terms = ParseRegion(a_text);
-		if (!terms) {
-			return std::nullopt;
-		}
-		const GeometryRow unread;
-		for (auto& term : *terms) {
-			term.kind = ReadTermOver(term.text, a_presets, a_existing);
-			term.label = Is<RawTerm>(term.kind) ? TermLabel(term.text, a_presets, a_existing) : TermLabelOf(term.kind, a_presets, unread);
-		}
-		return terms;
 	}
 
 	std::string ProposedRegionName(std::span<const Term> a_terms, std::string_view a_editing)
@@ -465,296 +320,10 @@ namespace WornEnchantmentPBR::Studio
 			return std::format("abs({} * 255 - {}) < 0.5", ReferenceText(a_name), a_id);
 		}
 
-		class Cursor
-		{
-		public:
-			explicit Cursor(std::string_view a_text) :
-				text_(a_text)
-			{}
-
-			[[nodiscard]] bool Take(std::string_view a_literal)
-			{
-				if (!text_.substr(at_).starts_with(a_literal)) {
-					return false;
-				}
-				at_ += a_literal.size();
-				return true;
-			}
-
-			[[nodiscard]] std::optional<std::string> TakeName()
-			{
-				std::size_t end = at_;
-				while (end < text_.size() && (std::isalnum(static_cast<unsigned char>(text_[end])) || text_[end] == '_')) {
-					++end;
-				}
-				const auto name = text_.substr(at_, end - at_);
-				if (!IsName(name)) {
-					return std::nullopt;
-				}
-				at_ = end;
-				return std::string{ name };
-			}
-
-			[[nodiscard]] std::optional<float> TakeNumber()
-			{
-				std::size_t end = at_;
-				if (end < text_.size() && text_[end] == '-') {
-					++end;
-				}
-				while (end < text_.size() && (std::isdigit(static_cast<unsigned char>(text_[end])) || text_[end] == '.')) {
-					++end;
-				}
-				const auto number = ReadNumber(text_.substr(at_, end - at_));
-				if (number) {
-					at_ = end;
-				}
-				return number;
-			}
-
-			[[nodiscard]] std::optional<std::uint32_t> TakeWhole(std::uint32_t a_max)
-			{
-				std::size_t end = at_;
-				while (end < text_.size() && std::isdigit(static_cast<unsigned char>(text_[end]))) {
-					++end;
-				}
-				const auto number = ReadWhole(text_.substr(at_, end - at_), a_max);
-				if (number) {
-					at_ = end;
-				}
-				return number;
-			}
-
-			[[nodiscard]] bool Done() const noexcept { return at_ == text_.size(); }
-
-		private:
-			std::string_view text_;
-			std::size_t      at_ = 0;
-		};
-
-		struct Operand
-		{
-			std::string        name;
-			std::uint8_t       posterize = 0;
-			[[nodiscard]] bool operator==(const Operand&) const = default;
-		};
-
-		[[nodiscard]] std::optional<Operand> TakeOperand(Cursor& a_cursor)
-		{
-			Operand operand;
-			if (a_cursor.Take("floor(@")) {
-				const auto name = a_cursor.TakeName();
-				if (!name || !a_cursor.Take(" * ")) {
-					return std::nullopt;
-				}
-				const auto levels = a_cursor.TakeWhole(255);
-				if (!levels || *levels < 2 || !a_cursor.Take(") / ")) {
-					return std::nullopt;
-				}
-				const auto again = a_cursor.TakeWhole(255);
-				if (!again || *again != *levels) {
-					return std::nullopt;
-				}
-				operand.name = *name;
-				operand.posterize = static_cast<std::uint8_t>(*levels);
-				return operand;
-			}
-			if (!a_cursor.Take("@")) {
-				return std::nullopt;
-			}
-			const auto name = a_cursor.TakeName();
-			if (!name) {
-				return std::nullopt;
-			}
-			operand.name = *name;
-			return operand;
-		}
-
-		struct Edge
-		{
-			float   centre = 0.0f;
-			float   softness = 0.0f;
-			Operand operand;
-		};
-
-		[[nodiscard]] std::optional<Edge> TakeEdge(Cursor& a_cursor)
-		{
-			Edge edge;
-			if (!a_cursor.Take("smoothstep(")) {
-				return std::nullopt;
-			}
-			const auto centre = a_cursor.TakeNumber();
-			if (!centre || !a_cursor.Take(" - ")) {
-				return std::nullopt;
-			}
-			const auto softness = a_cursor.TakeNumber();
-			if (!softness || !a_cursor.Take(", ")) {
-				return std::nullopt;
-			}
-			const auto centreAgain = a_cursor.TakeNumber();
-			if (!centreAgain || *centreAgain != *centre || !a_cursor.Take(" + ")) {
-				return std::nullopt;
-			}
-			const auto softnessAgain = a_cursor.TakeNumber();
-			if (!softnessAgain || *softnessAgain != *softness || !a_cursor.Take(", ")) {
-				return std::nullopt;
-			}
-			const auto operand = TakeOperand(a_cursor);
-			if (!operand || !a_cursor.Take(")")) {
-				return std::nullopt;
-			}
-			edge.centre = *centre;
-			edge.softness = *softness;
-			edge.operand = *operand;
-			return edge;
-		}
-
-		struct ThresholdRead
-		{
-			ThresholdTerm term;
-			std::string   name;
-		};
-
-		[[nodiscard]] std::optional<ThresholdRead> ReadThreshold(std::string_view a_text)
-		{
-			Cursor        cursor(a_text);
-			ThresholdRead read;
-			read.term.invert = cursor.Take("1 - (");
-			std::optional<Operand> operand;
-			if (cursor.Take("step(0, ")) {
-				operand = TakeOperand(cursor);
-				if (!operand || !cursor.Take(")")) {
-					return std::nullopt;
-				}
-				read.term.low = 0.0f;
-				read.term.high = 1.0f;
-				read.term.softness = ThresholdTerm{}.softness;
-			} else if (cursor.Take("1 - ")) {
-				const auto high = TakeEdge(cursor);
-				if (!high) {
-					return std::nullopt;
-				}
-				operand = high->operand;
-				read.term.low = 0.0f;
-				read.term.high = high->centre;
-				read.term.softness = high->softness;
-			} else {
-				const auto low = TakeEdge(cursor);
-				if (!low) {
-					return std::nullopt;
-				}
-				operand = low->operand;
-				read.term.low = low->centre;
-				read.term.high = 1.0f;
-				read.term.softness = low->softness;
-				if (cursor.Take(" * (1 - ")) {
-					const auto high = TakeEdge(cursor);
-					if (!high || high->operand != *operand || high->softness != low->softness || !cursor.Take(")")) {
-						return std::nullopt;
-					}
-					read.term.high = high->centre;
-				}
-			}
-			if (read.term.invert && !cursor.Take(")")) {
-				return std::nullopt;
-			}
-			if (!cursor.Done()) {
-				return std::nullopt;
-			}
-			read.term.posterize = operand->posterize;
-			read.name = operand->name;
-			return read;
-		}
-
-		struct RegionRead
-		{
-			std::string   name;
-			std::uint32_t id = 0;
-		};
-
-		[[nodiscard]] std::optional<RegionRead> ReadRegion(std::string_view a_text)
-		{
-			Cursor cursor(a_text);
-			if (!cursor.Take("abs(@")) {
-				return std::nullopt;
-			}
-			const auto name = cursor.TakeName();
-			if (!name || !cursor.Take(" * 255 - ")) {
-				return std::nullopt;
-			}
-			const auto id = cursor.TakeWhole(kMaxIslands);
-			if (!id || !cursor.Take(") < 0.5") || !cursor.Done()) {
-				return std::nullopt;
-			}
-			return RegionRead{ *name, *id };
-		}
-
-		[[nodiscard]] const SourceKind* KindNamed(const Existing& a_existing, std::string_view a_name)
-		{
-			for (const auto& [name, kind] : a_existing.sources) {
-				if (name == a_name) {
-					return &kind;
-				}
-			}
-			return nullptr;
-		}
-
 		[[nodiscard]] const RegionPreset* WhatPresetNamed(const RegionsFile& a_presets, std::string_view a_name)
 		{
 			const auto it = std::ranges::find(a_presets.what, a_name, &RegionPreset::name);
 			return it == a_presets.what.end() ? nullptr : &*it;
-		}
-
-		TermKind ReadTermOver(std::string_view a_text, const RegionsFile& a_presets, const Existing& a_existing)
-		{
-			if (a_text.empty() || a_text.size() > kMaxExpressionLength) {
-				return RawTerm{};
-			}
-			if (a_text.front() == '@' && IsName(a_text.substr(1))) {
-				const auto  name = std::string{ a_text.substr(1) };
-				const auto* kind = KindNamed(a_existing, name);
-				const auto* bake = kind ? Get<BakeSource>(*kind) : nullptr;
-				if (bake) {
-					if (const auto* partition = Get<PartitionBake>(bake->bake)) {
-						return PartitionTerm{ partition->slot };
-					}
-					if (const auto* bones = Get<BoneWeightBake>(bake->bake)) {
-						return BoneTerm{ bones->bones };
-					}
-				}
-				return ReferenceTerm{ name };
-			}
-			if (const auto region = ReadRegion(a_text)) {
-				const auto* kind = KindNamed(a_existing, region->name);
-				if (kind) {
-					if (const auto* clusters = Get<MaterialClustersSource>(*kind); clusters && region->id <= kMaxClusters) {
-						return ClusterTerm{ SettingsOf(*clusters), static_cast<std::uint8_t>(region->id) };
-					}
-					if (const auto* bake = Get<BakeSource>(*kind)) {
-						if (Is<ComponentIdBake>(bake->bake)) {
-							return IslandTerm{ IslandSource::kComponent, static_cast<std::uint16_t>(region->id) };
-						}
-						if (Is<ChartIdBake>(bake->bake)) {
-							return IslandTerm{ IslandSource::kChart, static_cast<std::uint16_t>(region->id) };
-						}
-					}
-				}
-			}
-			if (const auto threshold = ReadThreshold(a_text)) {
-				const auto* kind = KindNamed(a_existing, threshold->name);
-				const auto* material = kind ? Get<MaterialSource>(*kind) : nullptr;
-				if (material && Thresholdable(material->channel)) {
-					ThresholdTerm term = threshold->term;
-					term.channel = material->channel;
-					return term;
-				}
-			}
-			for (const auto& preset : a_presets.what) {
-				const auto term = MaterialiseTerm(preset, a_existing);
-				if (term.edits.empty() && term.expression == a_text) {
-					return WhatPresetTerm{ preset.name };
-				}
-			}
-			return RawTerm{};
 		}
 	}
 
@@ -793,11 +362,6 @@ namespace WornEnchantmentPBR::Studio
 				return RegionText(name, t.id);
 			});
 		return BuiltTerm{ std::move(namer).Edits(), std::move(text) };
-	}
-
-	TermKind ReadTerm(std::string_view a_text, const RegionsFile& a_presets, const RecipeRow& a_kind)
-	{
-		return ReadTermOver(a_text, a_presets, ExistingOf(a_kind));
 	}
 
 	std::string TermLabelOf(const TermKind& a_kind, const RegionsFile& a_presets, const GeometryRow& a_geometry)
@@ -1055,6 +619,15 @@ namespace WornEnchantmentPBR::Studio
 			return offer;
 		}
 
+		[[nodiscard]] std::string Joined(std::span<const std::string> a_facts)
+		{
+			std::string text;
+			for (const auto& fact : a_facts) {
+				text += text.empty() ? fact : ", " + fact;
+			}
+			return text;
+		}
+
 		[[nodiscard]] TermOffer Unavailable(OfferGroup a_group, std::string a_reason, TermKind a_kind)
 		{
 			TermOffer offer = Offer(a_group, std::string{ NameOf(kOfferGroups, a_group) }, {}, std::move(a_kind));
@@ -1077,24 +650,27 @@ namespace WornEnchantmentPBR::Studio
 			if (chart && island.twin) {
 				continue;
 			}
-			const IslandTerm term{ island.source, island.id };
-			std::string      detail = std::format("{}% of the mesh", Percent(island.share));
+			const IslandTerm         term{ island.source, island.id };
+			std::vector<std::string> facts;
 			if (!island.dominantBone.empty()) {
-				detail += std::format(", {} {}%", PlainBoneName(a_presets, island.dominantBone), Percent(island.dominantShare));
+				facts.push_back(std::format("{} {}%", PlainBoneName(a_presets, island.dominantBone), Percent(island.dominantShare)));
 			}
 			if (island.twin) {
-				detail += std::format(", also {} {}", PlainIslandSourceName(IslandSource::kChart), *island.twin);
+				facts.push_back(std::format("also {} {}", PlainIslandSourceName(IslandSource::kChart), *island.twin));
 			}
-			offers.push_back(Offer(chart ? OfferGroup::kCharts : OfferGroup::kParts, std::format("{} {}", PlainIslandSourceName(island.source), island.id), std::move(detail), term));
+			offers.push_back(Offer(chart ? OfferGroup::kCharts : OfferGroup::kParts, std::format("{} {}", PlainIslandSourceName(island.source), island.id), Joined(facts), term));
+			offers.back().coverage = island.share;
 		}
 		if (a_geometry.clusters.empty()) {
 			offers.push_back(Unavailable(OfferGroup::kMaterials, std::string{ kNoClusters }, ClusterTerm{}));
 		}
 		for (const auto& cluster : a_geometry.clusters) {
-			offers.push_back(Offer(OfferGroup::kMaterials, std::format("material {}", cluster.id), std::format("{}, {}%", cluster.description, Percent(cluster.share)), ClusterTerm{ ClusterSettings{}, cluster.id }));
+			offers.push_back(Offer(OfferGroup::kMaterials, std::format("material {}", cluster.id), cluster.description, ClusterTerm{ ClusterSettings{}, cluster.id }));
+			offers.back().coverage = cluster.share;
 		}
 		for (const auto& bone : a_geometry.bones) {
-			offers.push_back(Offer(OfferGroup::kBones, PlainBoneName(a_presets, bone.name), std::format("{}% of the mesh", Percent(bone.coverage)), BoneTerm{ { bone.name } }));
+			offers.push_back(Offer(OfferGroup::kBones, PlainBoneName(a_presets, bone.name), {}, BoneTerm{ { bone.name } }));
+			offers.back().coverage = bone.coverage;
 		}
 		for (const auto& partition : a_geometry.partitions) {
 			offers.push_back(Offer(OfferGroup::kPartitions, PlainPartitionName(a_presets, partition.slot), std::format("{} triangles", partition.triangles), PartitionTerm{ partition.slot }));
@@ -1119,14 +695,40 @@ namespace WornEnchantmentPBR::Studio
 			const auto kind = SourceKindOf(source);
 			offers.push_back(Offer(OfferGroup::kSources, source.name, kind ? DescribeSource(*kind) : source.kind, ReferenceTerm{ source.name }));
 		}
+		for (auto& offer : offers) {
+			const auto* row = RowOf(kOfferGroups, offer.group);
+			if (row && row->ofGeometry) {
+				offer.geometry = a_geometry.name;
+			}
+		}
 		return offers;
+	}
+
+	std::vector<TermOffer> OffersOfRecipe(const RegionsFile& a_presets, const RecipeRow& a_recipe, std::string_view a_editing)
+	{
+		std::vector<TermOffer> all;
+		bool                   first = true;
+		for (const auto& geometry : a_recipe.geometries) {
+			for (auto& offer : OffersOf(a_presets, a_recipe, geometry, a_editing)) {
+				const auto* row = RowOf(kOfferGroups, offer.group);
+				if (first || (row && row->ofGeometry)) {
+					all.push_back(std::move(offer));
+				}
+			}
+			first = false;
+		}
+		return all;
 	}
 
 	std::string TermDetailOf(const Term& a_term, std::span<const TermOffer> a_offers)
 	{
 		for (const auto& offer : a_offers) {
 			if (offer.kind == a_term.kind) {
-				return offer.detail;
+				if (!offer.coverage) {
+					return offer.detail;
+				}
+				const std::string share = std::format("{}%", Percent(*offer.coverage));
+				return offer.detail.empty() ? share : offer.detail + ", " + share;
 			}
 		}
 		return Match(

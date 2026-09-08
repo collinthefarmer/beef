@@ -36,5 +36,4 @@ namespace WornEnchantmentPBR::Studio
 
 	[[nodiscard]] std::string BuildRegion(std::span<const Term> a_terms, std::optional<std::size_t> a_solo = std::nullopt, const std::set<std::size_t>& a_muted = {});
 
-	[[nodiscard]] std::optional<std::vector<Term>> ParseRegion(std::string_view a_text);
 }
