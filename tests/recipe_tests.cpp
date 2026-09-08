@@ -636,6 +636,28 @@ namespace
 		}
 		const auto r = ParseRecipe(R"json({"format": 1, "keys": [{"default": "X"}]})json", "x");
 		Check(HasError(r.diagnostics, "recipe", "unknown key kind 'default'"), "a default key written as an object is refused");
+
+		// SignalKindId: kSignalKinds is in the SignalKind variant's own order,
+		// so SignalKindOf on one instance of each alternative must land on the
+		// row at the same index; the word and the tunable fact round trip.
+		const SignalKind signalSamples[]{
+			ConstantSignal{}, PulseSignal{}, RampSignal{}, EfshSignal{}, ActorValueSignal{}, ActorStateSignal{},
+			EnchantmentSignal{}, TriggerSignal{}, PayloadSignal{}, CounterSignal{}, AccumulateSignal{}, NoiseSignal{},
+			GradientSignal{}, DeltaSignal{}, SmoothSignal{}, ExprSignal{}
+		};
+		static_assert(std::size(kSignalKinds) == kSignalKindCount);
+		std::set<std::string_view> signalKindNames;
+		for (std::size_t i = 0; i < std::size(signalSamples); ++i) {
+			const auto& row = kSignalKinds[i];
+			Check(SignalKindOf(signalSamples[i]) == row.value, std::format("SignalKindOf agrees with the table at row {} ('{}')", i, row.name));
+			Check(SignalKindName(row.value) == row.name, std::format("'{}' names itself", row.name));
+			Check(ParseSignalKind(row.name) == row.value, std::format("'{}' parses back", row.name));
+			const bool expectTunable = row.value == SignalKindId::kConstant || row.value == SignalKindId::kExpr;
+			Check(row.tunable == expectTunable && SignalKindTunable(row.value) == expectTunable, std::format("'{}' tunable matches BuildSignalList's rule (constant or expr)", row.name));
+			signalKindNames.insert(row.name);
+		}
+		Check(signalKindNames.size() == kSignalKindCount, "signal kind words are distinct");
+		Check(SignalKindName(static_cast<SignalKindId>(99)) == "?" && !ParseSignalKind("bogus") && !SignalKindTunable(static_cast<SignalKindId>(99)), "an unknown signal kind names '?', does not parse, and is not tunable");
 	}
 
 	// The format's slot rules, which Validate and the menu's board share.

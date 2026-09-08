@@ -649,6 +649,7 @@ namespace WornEnchantmentPBR
 			const auto& kind = entry->key;
 			const json& v = *entry->value;
 			row.Child(kind);
+			const auto kindId = ParseSignalKind(kind);
 			const auto object = [&](auto a_fill) -> bool {
 				if (!v.is_object()) {
 					a_ctx.Error(std::format("'{}' takes an object", kind));
@@ -660,13 +661,13 @@ namespace WornEnchantmentPBR
 				return true;
 			};
 
-			if (kind == "constant") {
+			if (kindId == SignalKindId::kConstant) {
 				const auto value = Reader::ValueFrom(v, kind, a_ctx);
 				if (!value) {
 					return std::nullopt;
 				}
 				s.kind = ConstantSignal{ *value };
-			} else if (kind == "pulse") {
+			} else if (kindId == SignalKindId::kPulse) {
 				PulseSignal k;
 				if (!object([&](Reader& r) {
 						if (auto p = r.Parameter("base")) k.base = *p;
@@ -678,7 +679,7 @@ namespace WornEnchantmentPBR
 					return std::nullopt;
 				}
 				s.kind = k;
-			} else if (kind == "ramp") {
+			} else if (kindId == SignalKindId::kRamp) {
 				RampSignal k;
 				if (!object([&](Reader& r) {
 						if (auto p = r.Parameter("from")) k.from = *p;
@@ -688,7 +689,7 @@ namespace WornEnchantmentPBR
 					return std::nullopt;
 				}
 				s.kind = k;
-			} else if (kind == "efsh") {
+			} else if (kindId == SignalKindId::kEfsh) {
 				EfshSignal k;
 				if (!object([&](Reader& r) {
 						if (auto f = r.Enum("field", kEfshFields)) k.field = *f;
@@ -702,7 +703,7 @@ namespace WornEnchantmentPBR
 					return std::nullopt;
 				}
 				s.kind = k;
-			} else if (kind == "av") {
+			} else if (kindId == SignalKindId::kActorValue) {
 				ActorValueSignal k;
 				if (v.is_string()) {
 					k.actorValue = v.get<std::string>();
@@ -716,21 +717,21 @@ namespace WornEnchantmentPBR
 					a_ctx.Error("'av' needs an actor value name");
 				}
 				s.kind = k;
-			} else if (kind == "actorState") {
+			} else if (kindId == SignalKindId::kActorState) {
 				const auto state = v.is_string() ? FromName(kActorStates, v.get<std::string>()) : std::nullopt;
 				if (!state) {
 					a_ctx.Error(std::format("'actorState' is one of {}", Choices(kActorStates)));
 					return std::nullopt;
 				}
 				s.kind = ActorStateSignal{ *state };
-			} else if (kind == "enchantment") {
+			} else if (kindId == SignalKindId::kEnchantment) {
 				const auto field = v.is_string() ? FromName(kEnchantmentFields, v.get<std::string>()) : std::nullopt;
 				if (!field) {
 					a_ctx.Error(std::format("'enchantment' is one of {}", Choices(kEnchantmentFields)));
 					return std::nullopt;
 				}
 				s.kind = EnchantmentSignal{ *field };
-			} else if (kind == "trigger") {
+			} else if (kindId == SignalKindId::kTrigger) {
 				TriggerSignal k;
 				if (!v.is_object()) {
 					a_ctx.Error("'trigger' takes an object");
@@ -797,7 +798,7 @@ namespace WornEnchantmentPBR
 				}
 				r.Finish();
 				s.kind = k;
-			} else if (kind == "payload") {
+			} else if (kindId == SignalKindId::kPayload) {
 				PayloadSignal k;
 				if (!object([&](Reader& r) {
 						if (auto t = r.Reference("trigger")) k.trigger = *t;
@@ -808,7 +809,7 @@ namespace WornEnchantmentPBR
 					return std::nullopt;
 				}
 				s.kind = k;
-			} else if (kind == "counter") {
+			} else if (kindId == SignalKindId::kCounter) {
 				CounterSignal k;
 				if (!object([&](Reader& r) {
 						if (auto t = r.Reference("trigger")) k.trigger = *t;
@@ -819,7 +820,7 @@ namespace WornEnchantmentPBR
 					return std::nullopt;
 				}
 				s.kind = k;
-			} else if (kind == "accumulate") {
+			} else if (kindId == SignalKindId::kAccumulate) {
 				AccumulateSignal k;
 				if (!object([&](Reader& r) {
 						if (auto t = r.Reference("trigger")) k.trigger = *t;
@@ -829,7 +830,7 @@ namespace WornEnchantmentPBR
 					return std::nullopt;
 				}
 				s.kind = k;
-			} else if (kind == "noise") {
+			} else if (kindId == SignalKindId::kNoise) {
 				NoiseSignal k;
 				if (!object([&](Reader& r) {
 						if (auto p = r.Parameter("frequency")) k.frequency = *p;
@@ -839,7 +840,7 @@ namespace WornEnchantmentPBR
 					return std::nullopt;
 				}
 				s.kind = k;
-			} else if (kind == "gradient") {
+			} else if (kindId == SignalKindId::kGradient) {
 				GradientSignal k;
 				if (!object([&](Reader& r) {
 						if (auto p = r.Parameter("t")) k.t = *p;
@@ -863,13 +864,13 @@ namespace WornEnchantmentPBR
 					return std::nullopt;
 				}
 				s.kind = k;
-			} else if (kind == "delta") {
+			} else if (kindId == SignalKindId::kDelta) {
 				const auto of = row.RefFrom(v, kind);
 				if (!of) {
 					return std::nullopt;
 				}
 				s.kind = DeltaSignal{ *of };
-			} else if (kind == "smooth") {
+			} else if (kindId == SignalKindId::kSmooth) {
 				SmoothSignal k;
 				if (!object([&](Reader& r) {
 						if (auto of = r.Reference("of")) k.of = *of;
@@ -879,14 +880,14 @@ namespace WornEnchantmentPBR
 					return std::nullopt;
 				}
 				s.kind = k;
-			} else if (kind == "expr") {
+			} else if (kindId == SignalKindId::kExpr) {
 				if (!v.is_string() || v.get<std::string>().empty()) {
 					a_ctx.Error("'expr' is an expression string");
 					return std::nullopt;
 				}
 				s.kind = ExprSignal{ v.get<std::string>() };
 			} else {
-				a_ctx.Error(std::format("unknown signal kind '{}'", kind));
+				a_ctx.Error(std::format("unknown signal kind '{}'; one of {}", kind, Choices(kSignalKinds)));
 				return std::nullopt;
 			}
 			s.curve = CurveRefFrom(row);
@@ -896,10 +897,11 @@ namespace WornEnchantmentPBR
 
 		json SignalToJson(const Signal& a_signal)
 		{
-			json row = json::object();
+			json       row = json::object();
+			const auto key = [](SignalKindId a_id) { return std::string{ SignalKindName(a_id) }; };
 			Match(
 				a_signal.kind,
-				[&](const ConstantSignal& k) { row["constant"] = ValueToJson(k.value); },
+				[&](const ConstantSignal& k) { row[key(SignalKindId::kConstant)] = ValueToJson(k.value); },
 				[&](const PulseSignal& k) {
 					json o = json::object();
 					o["base"] = ParamToJson(k.base);
@@ -907,19 +909,19 @@ namespace WornEnchantmentPBR
 					o["period"] = ParamToJson(k.period);
 					if (k.phase != Param{ 0.0f }) o["phase"] = ParamToJson(k.phase);
 					if (k.waveform != Waveform::kSine) o["waveform"] = NameOf(kWaveforms, k.waveform);
-					row["pulse"] = std::move(o);
+					row[key(SignalKindId::kPulse)] = std::move(o);
 				},
-				[&](const RampSignal& k) { row["ramp"] = json::object({ { "from", ParamToJson(k.from) }, { "to", ParamToJson(k.to) }, { "seconds", ParamToJson(k.seconds) } }); },
-				[&](const EfshSignal& k) { row["efsh"] = json::object({ { "field", NameOf(kEfshFields, k.field) }, { "record", k.record.text } }); },
+				[&](const RampSignal& k) { row[key(SignalKindId::kRamp)] = json::object({ { "from", ParamToJson(k.from) }, { "to", ParamToJson(k.to) }, { "seconds", ParamToJson(k.seconds) } }); },
+				[&](const EfshSignal& k) { row[key(SignalKindId::kEfsh)] = json::object({ { "field", NameOf(kEfshFields, k.field) }, { "record", k.record.text } }); },
 				[&](const ActorValueSignal& k) {
 					if (k.measure == Measure::kCurrent) {
-						row["av"] = k.actorValue;
+						row[key(SignalKindId::kActorValue)] = k.actorValue;
 					} else {
-						row["av"] = json::object({ { "of", k.actorValue }, { "measure", NameOf(kMeasures, k.measure) } });
+						row[key(SignalKindId::kActorValue)] = json::object({ { "of", k.actorValue }, { "measure", NameOf(kMeasures, k.measure) } });
 					}
 				},
-				[&](const ActorStateSignal& k) { row["actorState"] = NameOf(kActorStates, k.kind); },
-				[&](const EnchantmentSignal& k) { row["enchantment"] = NameOf(kEnchantmentFields, k.field); },
+				[&](const ActorStateSignal& k) { row[key(SignalKindId::kActorState)] = NameOf(kActorStates, k.kind); },
+				[&](const EnchantmentSignal& k) { row[key(SignalKindId::kEnchantment)] = NameOf(kEnchantmentFields, k.field); },
 				[&](const TriggerSignal& k) {
 					json o = json::object();
 					Match(
@@ -944,31 +946,31 @@ namespace WornEnchantmentPBR
 						});
 					o["lifetime"] = ParamToJson(k.lifetime);
 					o["max"] = k.max;
-					row["trigger"] = std::move(o);
+					row[key(SignalKindId::kTrigger)] = std::move(o);
 				},
-				[&](const PayloadSignal& k) { row["payload"] = json::object({ { "trigger", "@" + k.trigger.name }, { "field", NameOf(kPayloadFields, k.field) } }); },
+				[&](const PayloadSignal& k) { row[key(SignalKindId::kPayload)] = json::object({ { "trigger", "@" + k.trigger.name }, { "field", NameOf(kPayloadFields, k.field) } }); },
 				[&](const CounterSignal& k) {
 					json o = json::object({ { "trigger", "@" + k.trigger.name } });
 					if (k.reset) o["reset"] = "@" + k.reset->name;
 					if (k.cap) o["cap"] = ParamToJson(*k.cap);
-					row["counter"] = std::move(o);
+					row[key(SignalKindId::kCounter)] = std::move(o);
 				},
-				[&](const AccumulateSignal& k) { row["accumulate"] = json::object({ { "trigger", "@" + k.trigger.name }, { "decay", ParamToJson(k.decay) } }); },
+				[&](const AccumulateSignal& k) { row[key(SignalKindId::kAccumulate)] = json::object({ { "trigger", "@" + k.trigger.name }, { "decay", ParamToJson(k.decay) } }); },
 				[&](const NoiseSignal& k) {
 					json o = json::object({ { "frequency", ParamToJson(k.frequency) }, { "amplitude", ParamToJson(k.amplitude) } });
 					if (k.seed != 0) o["seed"] = k.seed;
-					row["noise"] = std::move(o);
+					row[key(SignalKindId::kNoise)] = std::move(o);
 				},
 				[&](const GradientSignal& k) {
 					json stops = json::array();
 					for (const auto& s : k.stops) {
 						stops.push_back(json::object({ { "at", Num(s.at) }, { "color", VecToJson(s.color) } }));
 					}
-					row["gradient"] = json::object({ { "t", ParamToJson(k.t) }, { "stops", std::move(stops) } });
+					row[key(SignalKindId::kGradient)] = json::object({ { "t", ParamToJson(k.t) }, { "stops", std::move(stops) } });
 				},
-				[&](const DeltaSignal& k) { row["delta"] = "@" + k.of.name; },
-				[&](const SmoothSignal& k) { row["smooth"] = json::object({ { "of", "@" + k.of.name }, { "seconds", ParamToJson(k.seconds) } }); },
-				[&](const ExprSignal& k) { row["expr"] = k.text; });
+				[&](const DeltaSignal& k) { row[key(SignalKindId::kDelta)] = "@" + k.of.name; },
+				[&](const SmoothSignal& k) { row[key(SignalKindId::kSmooth)] = json::object({ { "of", "@" + k.of.name }, { "seconds", ParamToJson(k.seconds) } }); },
+				[&](const ExprSignal& k) { row[key(SignalKindId::kExpr)] = k.text; });
 			if (a_signal.curve) {
 				row["curve"] = CurveRefToJson(*a_signal.curve);
 			}

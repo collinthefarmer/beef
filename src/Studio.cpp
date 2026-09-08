@@ -659,7 +659,7 @@ namespace WornEnchantmentPBR::Studio
 			} else if (signal.type == ValueType::kVec2) {
 				names.vec2.push_back(signal.name);
 			}
-			if (signal.kind == "trigger") {
+			if (signal.kind == SignalKindId::kTrigger) {
 				names.triggers.push_back(signal.name);
 			}
 		}
@@ -910,7 +910,7 @@ namespace WornEnchantmentPBR::Studio
 	{
 		SignalList list;
 		for (const auto& signal : a_recipe.signals) {
-			const bool tunable = signal.kind == "constant" || signal.kind == "expr";
+			const bool tunable = SignalKindTunable(signal.kind);
 			if (tunable) {
 				list.tunable.push_back(signal);
 			} else if (a_layout.developerSignals) {
@@ -1114,7 +1114,7 @@ namespace WornEnchantmentPBR::Studio
 	{
 		const std::string& name = a_signal.name;
 		const FieldBinding bind = [name](const std::string& a_text) { return SignalValueEdit(name, a_text); };
-		if (a_signal.kind == "expr") {
+		if (a_signal.kind == SignalKindId::kExpr) {
 			return FieldSpec{ name, FieldKind::kExpression, a_signal.text, {}, false, std::nullopt, std::nullopt, bind };
 		}
 		if (!a_signal.constant) {

@@ -1151,7 +1151,7 @@ namespace WornEnchantmentPBR::Studio
 					FirePopup(a_signal, a_actorID, g_modalBones, a_out);
 					ImGui::SameLine();
 				}
-				Widgets::Dim(a_signal.kind + ": edits in the file");
+				Widgets::Dim(std::format("{}: edits in the file", SignalKindName(a_signal.kind)));
 				return;
 			}
 			// The value's kind follows the text, so the check is the union of the
@@ -1192,7 +1192,7 @@ namespace WornEnchantmentPBR::Studio
 			if (const auto renamed = Widgets::TextField("name", a_signal.name, Width::Fill(), a_scale)) {
 				Post(a_out, a_id, RenameSignal{ a_signal.name, *renamed });
 			}
-			Widgets::Tooltip(a_signal.kind);
+			Widgets::Tooltip(SignalKindName(a_signal.kind));
 			a_table.Cell();
 			DrawSignalEditor(a_id, a_signal, a_actorID, a_scale, a_names, a_out);
 			a_table.Cell();

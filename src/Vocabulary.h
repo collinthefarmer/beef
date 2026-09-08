@@ -52,6 +52,28 @@ namespace WornEnchantmentPBR
 	inline constexpr Named<UvAxis> kUvAxes[]{ { UvAxis::kU, "u" }, { UvAxis::kV, "v" } };
 	inline constexpr Named<RippleShape> kRippleShapes[]{ { RippleShape::kRing, "ring" }, { RippleShape::kDisc, "disc" } };
 
+	// One row per alternative of SignalKind, in the variant's declaration
+	// order; `tunable` is the fact BuildSignalList splits the board on.
+	inline constexpr SignalKindRow kSignalKinds[]{
+		{ SignalKindId::kConstant, "constant", true },
+		{ SignalKindId::kPulse, "pulse", false },
+		{ SignalKindId::kRamp, "ramp", false },
+		{ SignalKindId::kEfsh, "efsh", false },
+		{ SignalKindId::kActorValue, "av", false },
+		{ SignalKindId::kActorState, "actorState", false },
+		{ SignalKindId::kEnchantment, "enchantment", false },
+		{ SignalKindId::kTrigger, "trigger", false },
+		{ SignalKindId::kPayload, "payload", false },
+		{ SignalKindId::kCounter, "counter", false },
+		{ SignalKindId::kAccumulate, "accumulate", false },
+		{ SignalKindId::kNoise, "noise", false },
+		{ SignalKindId::kGradient, "gradient", false },
+		{ SignalKindId::kDelta, "delta", false },
+		{ SignalKindId::kSmooth, "smooth", false },
+		{ SignalKindId::kExpr, "expr", true },
+	};
+	static_assert(std::size(kSignalKinds) == kSignalKindCount);
+
 	inline constexpr Named<Surface> kSurfaces[]{ { Surface::kMaterial, "material" }, { Surface::kShell, "shell" } };
 	// Glint's fallbacks are the values CS starts a material at; the rest are
 	// what a fresh output should look like in the studio.
