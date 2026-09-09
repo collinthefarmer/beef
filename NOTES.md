@@ -358,7 +358,7 @@ added 2026-09-04 and not yet run in game.
 Items 38-40 cover the recipe store added by phase 1 of the compositor
 rewrite (`src/RecipeStore.cpp`, 2026-09-04), not yet run in game.
 
-38. **Files written by relative path under `Data/BetterEnchantmentEffects/imported/`
+38. **Files written by relative path under `Data/SKSE/Plugins/BetterEnchantmentEffects/recipes/imported/`
     from the game folder land somewhere the next read by the same path finds
     them.** Basis: item 8 for reads; MO2's usvfs redirects new files under
     `Data` to its overwrite folder and serves them back on later reads. The

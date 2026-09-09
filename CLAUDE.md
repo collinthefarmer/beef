@@ -53,7 +53,7 @@ refactor that moves a responsibility. `schema/recipe.schema.json` is the recipe 
 - Do not modify `decompiled/`, `reference/` or anything under `/mnt/a/mods/`,
   with one exception: recipe files. The installer stages no recipes; when
   the user asks for a recipe, write it into the MO2 mod folder
-  (`/mnt/a/mods/SkyrimSE/mods/BetterEnchantmentEffects/BetterEnchantmentEffects/<folder>/`),
+  (`/mnt/a/mods/SkyrimSE/mods/BetterEnchantmentEffects/SKSE/Plugins/BetterEnchantmentEffects/recipes/<folder>/`),
   and keep a copy under `recipes/` in the repo only when it should be an
   example the tests read.
 - Build with `./build.sh Release -j 4` (more jobs exhaust WSL's memory and

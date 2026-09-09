@@ -27,9 +27,14 @@ namespace BetterEnchantmentEffects::Identity
 		return std::filesystem::current_path() / "Data" / "SKSE" / "Plugins" / std::format("{}.ini", kName);
 	}
 
+	inline std::filesystem::path PluginFolder()
+	{
+		return std::filesystem::path{ "Data" } / "SKSE" / "Plugins" / std::string{ kName };
+	}
+
 	inline std::filesystem::path RecipeRoot()
 	{
-		return std::filesystem::path{ "Data" } / std::string{ kName };
+		return PluginFolder() / "recipes";
 	}
 
 	inline std::filesystem::path ImportedRecipeFolder()
@@ -44,7 +49,7 @@ namespace BetterEnchantmentEffects::Identity
 
 	inline std::filesystem::path PresetsPath()
 	{
-		return std::filesystem::path{ "Data" } / "SKSE" / "Plugins" / std::string{ kName } / "regions.json";
+		return PluginFolder() / "regions.json";
 	}
 
 	inline std::string PresenterTexturePath(std::uint32_t a_index)

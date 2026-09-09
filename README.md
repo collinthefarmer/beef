@@ -257,9 +257,9 @@ file format is `schema/recipe.schema.json`, and `schema/example-magicka.json`
 is the canonical file. The runtime does not read recipes yet (phase 2); the
 store loads and validates them and the importer writes them.
 
-Files live under `Data/BetterEnchantmentEffects/<Mod>/*.json`, any depth, loaded
-in path order; `Data/BetterEnchantmentEffects/user/` loads last and is where the
-menu will save; the importer writes to `Data/BetterEnchantmentEffects/imported/`.
+Files live under `Data/SKSE/Plugins/BetterEnchantmentEffects/recipes/<Mod>/*.json`, any depth, loaded
+in path order; `Data/SKSE/Plugins/BetterEnchantmentEffects/recipes/user/` loads last and is where the
+menu will save; the importer writes to `Data/SKSE/Plugins/BetterEnchantmentEffects/recipes/imported/`.
 At `kDataLoaded` the store reads every file, resolves editor IDs against the
 loaded forms, logs each row problem on its row (`recipe <id>: signal x:
 ...`), then imports a recipe for every effect shader that a constant-effect
@@ -748,7 +748,7 @@ animation events reach triggers):
     base or type a new expression for `glowLevel` and press Enter: the
     log shows `retired`, then the piece re-applies with the new value,
     and the Recipes page marks the recipe `edited, not saved`. Save writes
-    `Data/BetterEnchantmentEffects/user/<id>.json` (the imported file stays),
+    `Data/SKSE/Plugins/BetterEnchantmentEffects/recipes/user/<id>.json` (the imported file stays),
     logs `recipe <id> saved to ...`, and the next load logs `<user path>
     replaces <imported path>`. Revert to file discards the edits. A bad
     expression logs `recipe <id> signal <name>: ...` and the row shows
