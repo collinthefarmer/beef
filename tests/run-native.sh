@@ -40,6 +40,7 @@ RUN_ARGS=("$@")
 build_and_run importer_tests tests/importer_tests.cpp "${MODEL[@]}"
 build_and_run bake_tests tests/bake_tests.cpp src/Mesh.cpp "${MODEL[@]}"
 build_and_run analysis_tests tests/analysis_tests.cpp src/Analysis.cpp src/Mesh.cpp "${MODEL[@]}"
+build_and_run merge_tests tests/merge_tests.cpp src/Merge.cpp "${MODEL[@]}"
 build_and_run region_tests tests/region_tests.cpp src/Region.cpp src/Expression.cpp
 build_and_run studio_tests tests/studio_tests.cpp src/Studio.cpp src/MenuState.cpp src/History.cpp src/Edits.cpp src/EditCheck.cpp src/Paint.cpp src/Region.cpp src/Analysis.cpp src/Mesh.cpp "${MODEL[@]}"
 build_and_run edits_tests tests/edits_tests.cpp src/Edits.cpp src/History.cpp "${MODEL[@]}"

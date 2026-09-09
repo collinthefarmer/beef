@@ -84,6 +84,7 @@ set(PLUGIN_SOURCES
   src/Compositor.cpp
   src/Mesh.cpp
   src/Analysis.cpp
+  src/Merge.cpp
   src/MeshReader.cpp
   src/Binding.cpp
   src/Manager.cpp
@@ -125,6 +126,7 @@ set(HOST_OBJECT_SOURCES
   src/Importer.cpp
   src/Mesh.cpp
   src/Analysis.cpp
+  src/Merge.cpp
   src/Region.cpp
   src/Studio.cpp
   src/MenuState.cpp
@@ -154,6 +156,7 @@ add_host_test(${PROJECT_NAME}SignalTests tests/signal_tests.cpp)
 add_host_test(${PROJECT_NAME}ImporterTests tests/importer_tests.cpp)
 add_host_test(${PROJECT_NAME}BakeTests tests/bake_tests.cpp)
 add_host_test(${PROJECT_NAME}AnalysisTests tests/analysis_tests.cpp)
+add_host_test(${PROJECT_NAME}MergeTests tests/merge_tests.cpp)
 add_host_test(${PROJECT_NAME}RegionTests tests/region_tests.cpp)
 add_host_test(${PROJECT_NAME}StudioTests tests/studio_tests.cpp)
 add_host_test(${PROJECT_NAME}EditsTests tests/edits_tests.cpp)
@@ -167,6 +170,7 @@ add_custom_target(host-tests DEPENDS
   ${PROJECT_NAME}ImporterTests
   ${PROJECT_NAME}BakeTests
   ${PROJECT_NAME}AnalysisTests
+  ${PROJECT_NAME}MergeTests
   ${PROJECT_NAME}RegionTests
   ${PROJECT_NAME}StudioTests
   ${PROJECT_NAME}EditsTests)
