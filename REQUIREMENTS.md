@@ -115,6 +115,11 @@ The model:
   arithmetic operators, comparisons yielding 0 or 1, `and`/`or`/`not`,
   `if(c, a, b)`, and a fixed function set, with `time`, `pi`, `x`, and
   `mean`. Arithmetic is component-wise on vectors; division by zero is 0.
+  `recipe/Expression` is also the editor's API over expressions: a compiled
+  `Program` exposes the references it uses (`References`, `Curves`) for
+  rename and dependency, and the module exposes a tokeniser over expression
+  text for the editor. The expression editor itself is deferred; this API
+  is not.
 
 ## Architecture
 
