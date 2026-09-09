@@ -23,6 +23,27 @@ pieces whose biped clone carries a CS PBR material. Non-PBR geometry, weapons,
 skin, hair, EFSH particle systems, holes, edge/rim effects and projected UVs
 are ignored on purpose.
 
+## Licence
+
+GNU General Public License version 3 or later. The full text is in `LICENSE`.
+
+Two headers this project carries are themselves GPL-3.0, which is why that is
+the licence:
+
+- `src/extern/SKSEMenuFramework.h`, from SKSE Menu Framework 3. Every function
+  in it resolves through `GetProcAddress`, so there is no link-time dependency
+  and the plugin runs without the framework, but the header is redistributed
+  here.
+- `src/cs/BSLightingShaderMaterialPBR.h`, from Community Shaders. It is not
+  compiled; `src/PBRMaterial.h` mirrors the layout and asserts it. It is kept
+  verbatim so the mirror can be checked against its origin.
+
+`src/extern/nlohmann/json.hpp` is MIT, which GPL-3.0 permits. Each vendored
+file's origin and commit is recorded in the `SOURCE.txt` beside it.
+
+Recipe files are data, not derived works of this plugin. Authoring a recipe
+puts no licence requirement on the author.
+
 ## How it works
 
 1. On equip / load / NiNode update, the actor's worn armor is mapped to an

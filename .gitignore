@@ -3,3 +3,4 @@ dist/
 build-last.log
 native-last.log
 .cache/
+__pycache__/
