@@ -109,6 +109,45 @@ Do not decide these. Ask once, when a wave reaches them.
   (`priority`, `clock.speed`, `output.replace`, light `selector`),
   `UniqueMaterial`, and whether `CheckSourceKind` goes.
 
+## What not to read, and how to read the rest
+
+The frozen tree is the only description of how this plugin behaves. Every
+prose sentence in the repository is a claim to verify against it.
+
+**Not as fact: `README.md`, `NOTES.md`, `../../plans/`.** Four verified
+proofs that they describe a plugin that no longer exists. `README.md:104`
+records the deletion of `EffectManager`, `Layers`, `Outputs` and
+`Flipbook`, while 58 settings and half of `TextureLab::Mode` outlived
+them. `:557` says the where presets are gone; they still ship and parse.
+`:197` is a section on frame folders, a deleted feature. And the in-game
+checklist at `:698` tells a reader to expect a log line reading
+`texture=flipbook frames=16`, when the plugin emits
+`apply armor {:08X} actor {:08X} geometry '{}' material={} {} outputs: {}`
+— a verification procedure that cannot pass. Read these for topics nobody
+thought of, never for behaviour.
+
+**As a claim set: `ARCHITECTURE.md`.** The only place threads, ownership
+and invariants are written down, and partly right — `:386` correctly says
+the settings carry dead rows. But `:170` states a render-thread rule that
+two call sites violate, and it uses "region" for two unrelated things.
+`CLAUDE.md` requires updating it with any refactor that moves a
+responsibility, so it is an output as well as an input.
+
+**Trust `REFERENCE.md`.** It holds facts the code cannot state — engine
+layouts, Community Shaders rules, decompile lines, packings. That content
+is not derivable from the source, which is why it earns trust the
+narrative documents do not.
+
+**Do not ingest `src/_old` wholesale.** 27,300 lines. Read the module you
+are replacing and its callers. `ComposePage.cpp` alone is 2,168 lines.
+
+**`docs/wip/tidy-baseline-frozen.txt` is a record, not a work list.** Its
+322 findings describe code being deleted.
+
+**`decompiled/`, `reference/` and everything under `/mnt/a/mods/` are
+read-only.** `CLAUDE.md` forbids modifying them; recipe files are the one
+exception.
+
 ## What not to do
 
 - Do not edit `src/_old`. It is frozen. You delete from it; you never
