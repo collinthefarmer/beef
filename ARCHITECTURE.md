@@ -68,7 +68,7 @@ Engine side (compile with CommonLibSSE; thin over the above):
 | `RuntimeTextures.*` | `TextureSize` (64 to 4096; `Clamp` is the only constructor, so no pass is asked for a 0 px target); `TextureLab`: the D3D passes and their resources (`ProgramPass` and `RipplePass` are fixed arrays with counts, so a tick allocates nothing; `SampleMaterial` copies the RMAOS and diffuse maps at the mip that fits 64 px and reads them back as a `MaterialSample`; `RenderClusters` is the classify pass, nearest centroid per texel under the analysis' weights as id / 255, in step with `NearestCluster`): render targets presented through shell textures (`RenderTarget`, `Acquire`, `Scratch`, both by `TextureSize`), the layer pass (`Render` with `Mode::kLayer`), the interpreter (`RenderProgram`), bakes (`BakeMesh`), ripples (`RenderRipple`), curve lookups (`CreateLookup`), readback (`ReadBuffer`, `ExtentOf`, `MeanLuminance`, `MeanChannel`), previews for the menu (`Preview`, the channel pass over one `ShaderChannel` or, with `slope`, the input's relief as a normal map) | Core, Expression, Mesh, PBRMaterial |
 | `Compositor.*` | recipes to textures: `Prepare` (an output's stack on a geometry, sized by a `TextureSize` pair: sources, masks, curves, bakes, distance, ripples, base map, size), `DerivedMaps` (the normal map's slope, and the material's cluster map for the `materialClusters` source: the stored sample re-clustered on the CPU for other settings, then the classify pass; each rendered once per apply on first use), `MaterialInputs` (the maps and the flat-displacement measure), `AnalyseMaterial`/`CachedMaterial` (the material's `MaterialSample` and default `MaterialAnalysis`, read back once per pair of maps and kept for the session; never at apply, since the readback stalls the game thread on the GPU: Paint's read of a shape asks for it and a `materialClusters` source asks at prepare), `Render` (per tick, with a `LayerFilter` of hidden layers; a static stack renders again when the filter changes), `RenderedStack`/`RenderedMask`/`RenderedRipple`, `MaterialInputs` (the material's maps, the displacement measured once at apply), `GeometryInputs` (a geometry's material maps plus the masks and ripples of one apply), the one `MeshCache` (`MeshOf` reads through it on the game thread, `CachedMesh` for the snapshot, `SweepMeshes` every 5 s from the tick keeping bound geometries, `ClearMeshes`), bakes stored on the mesh entry under their definition key, `InspectSource`/`InspectMask` (const cache reads for the snapshot: no load, read, bake or render; a row nothing rendered reports `kNotRendered`) | Recipe, Signals, RuntimeTextures, Mesh, MeshReader, Settings, RecipeStore (graph for mask typing) |
 | `Binding.*` | the only writer of engine state: `SlotTarget` (interface), `SlotWriter` (slots of one PBR material with save and restore), `MaterialBinding` (a geometry's own material, made private), `ShellBinding` (a clone with a PBR copy or vanilla material, pose), `LightBinding` (point lights with the CS ISL overlay), `PlaceLights` | Recipe, PBRMaterial, Identity |
-| `Manager.*` | the object the sinks and the hook call: queues, apply and retire per actor (every PBR geometry a recipe applies to is recorded, bound or not, so an empty recipe stays on its piece), the tick (which reads the `View` for isolate, solo, mute and speed and hands the compositor a `LayerFilter`), `PinRecipe` (sets or clears the view's pin around a list move, so the pinned recipe is applied to the piece on the next refresh), events to triggers, recipe editing on the game thread as `EditBatch`es with one `EditHistory` per recipe (`EditRecipe` applies a batch through `ApplyEdits` and pushes; `UndoRecipe`/`RedoRecipe` restore and reassert the id; `RevertRecipe` pushes the recipe before the revert; a batch that changes keys refreshes every actor), `WithListMoved` (retires everything around a change that moves the store's list: `NewRecipe`, `RenameRecipe`, the paint session, `ReloadRecipes`, which also drops a paint return and an isolate naming a recipe no longer loaded), `RequestMesh` (a shape's read for Paint: its mesh, analysed as it is read, and its material's sample and clusters, once per session), `FireAt` (a firing placed at a node), the paint session (`BeginPaint` adds the paint recipe and isolates it, `SetPaintSurface`, `KeepPaint` applies the keep edits to the active recipe as one history step, `EndPaint` drops it), the menu's read side (`Watch`, `LatestSnapshot`, the snapshot built at the tick's end and published whole; `UpdateView` for the view's posted changes) | everything above |
+| `Manager.*` | the object the sinks and the hook call: queues, the `ActorState` tables (pieces with their geometry bindings and matches, recipe instances, placements) and apply and retire per actor, the tick (which reads the `View` for isolate, solo, mute and speed and hands the compositor a `LayerFilter`), `PinRecipe` (sets or clears the view's pin around a list move, so the pinned recipe is applied to the piece on the next refresh), events to triggers, recipe editing on the game thread as `EditBatch`es with one `EditHistory` per recipe (`EditRecipe` applies a batch through `ApplyEdits` and pushes; `UndoRecipe`/`RedoRecipe` restore and reassert the id; `RevertRecipe` pushes the recipe before the revert; a batch that changes keys refreshes every actor), `WithListMoved` (retires everything around a change that moves the store's list: `NewRecipe`, `RenameRecipe`, the paint session, `ReloadRecipes`, which also drops a paint return and an isolate naming a recipe no longer loaded), `RequestMesh` (a shape's read for Paint: its mesh, analysed as it is read, and its material's sample and clusters, once per session), `FireAt` (a firing placed at a node), the paint session (`BeginPaint` adds the paint recipe and isolates it, `SetPaintSurface`, `KeepPaint` applies the keep edits to the active recipe as one history step, `EndPaint` drops it), the menu's read side (`Watch`, `LatestSnapshot`, the snapshot built at the tick's end and published whole; `UpdateView` for the view's posted changes) | everything above |
 | `Events.*`, `Hooks.*` | engine event sinks (equip, load, node update, hits, animation graph) and the per-frame hook, each a few lines that call the manager | Manager |
 | `MenuWidgets.*` | `Studio::Widgets`, every ImGui mechanic in one place: `Width` (fill, fit a text, pixels) and `NextItemWidth`; `Table` (id, `{label, Width}` columns, a `TableStyle`; `Cell` advances, `End` closes); `Section`, `Split` (two resizable columns over a ratio), `Rule` (a rule with a text line above and below, the line's right group anchored on the edge by its exact `ButtonWidth`/`CheckboxWidth`); `Toggle` (a checkbox with a tooltip; isolate and freeze are it), `LitButton` (lit until a step is taken), `Disabled` (a greyed scope), `RightAligned` (a group ending on the line's right edge), `HeldLabel` (a value shown uneditable), `DetailModal` (the one detail modal: opened by name, a definition's width, a close button); the row buttons of a stack, each a square of `RowButtonWidth` (the badge's size, so a column of that width is filled): `RemoveButton` (greyed while referenced), `SoloButton`, `MuteButton` and `SoloMute` (the pair), `DragHandle`; fields at the layout's scale under literal keys, thumbnails (the one place a texture handle is dereferenced, through `TextureLab::Preview`), blend and reference combos, `ValueField` (a @signal combo and a literal text field as one control), the badges per `FieldKind` (`StyleOf` reads glyph, takes-signal and rule from `Forms`' `kFieldKinds` row and keys the ImVec4 colour on the kind itself), the mode bar, drag handle and drop target, text helpers; widgets return values and never edit | Snapshot, Studio, RuntimeTextures |
 | `ComposePage.*` | the studio page: snapshot once, selection resolved, the context rows (piece, recipe, New, Undo, Redo; target, slot, region, Clear; in Paint a head line naming the recipe painted for instead) over three scrolling panes (the stack with the inspector, or the light panel or the shell settings by target, switched and reset from the pane's rule, or in Paint the term table across the width (each term's label, its measurements, and a details button whose modal holds its settings, its expression and what it reads), Keep and Discard under it, then what the piece offers as one table (geometry, kind, name, description, coverage) under the Terms rule carrying the filter; the preview surface sits on the head line; the signals; the curves) and the Timeline footer, drawn from `Studio` records under the mode's layout; widgets return `Intent`s into a per-frame list and `Dispatch` runs each through `Reduce` and `Perform` (the manager's edit, undo, redo, new recipe, fire and isolate, and the `View`'s solo, mute, freeze, scrub, speed and step) after the frame; `DrawForm` draws any `FormField` list as the field table, or as several side by side; `DrawBoardPage` draws the board for the Recipes page | Studio, Forms, Edits, MenuWidgets, MenuState, Manager |
@@ -91,31 +91,44 @@ resolves editor IDs against loaded forms, imports a recipe under
 publishes `LoadedRecipes()`. A key belongs to the last file loaded with
 it; the store warns about the rest. The menu registers its pages.
 
+An actor's state is three tables, not a nesting: `pieces` (a worn armor,
+its `WornPiece` keys, its `GeometryBinding`s and the `PieceMatch`es it
+resolved), `instances` (one `RecipeInstance` per recipe per actor per
+enchantment form: the graph, the `SignalState`, the `ActorEnvironment`,
+the clock and the light, so pieces sharing an enchantment share one) and
+`placements` (one per instance per geometry: a `RenderedStack` and a
+problem per surface output). A geometry's `MaterialBinding` and
+`ShellBinding` belong to the piece, so two recipes on one geometry
+compose instead of installing two private materials and fighting.
+
 Apply (`Manager::Refresh`, game thread, from a posted task): retire the
 actor's previous state, then for the third person and (player only) first
 person: `CollectPieces` walks the worn armor's PBR geometries into a
 `WornPiece` (armor, addon, enchantment, magic effect, effect shader,
-keywords, diffuse paths), `Resolve` picks the matching recipes in merge
-order, and for each an `AppliedRecipe` is built: the store's compiled
-graph, a fresh `SignalState`, an `ActorEnvironment`, then per geometry
-`ApplyGeometry`: the material's maps into `GeometryInputs`, one
-`MaterialBinding` or `ShellBinding` per surface as outputs need them, a
-`RenderedStack` per material output from `Compositor::Prepare`, and after
-the geometries one `LightBinding`. Higher recipes' `replace` outputs drop
-lower recipes' outputs on that slot. Every problem is a string on the row
-and a log line; nothing throws.
+keywords, diffuse paths) and a `GeometryBinding` per PBR geometry;
+`MatchRecipes` runs `Resolve` through `ViewedRecipes` and turns each
+match into a `PieceMatch` naming an instance (`InstanceFor` reuses one or
+compiles it); `PlaceInstances` places every instance on every geometry:
+the outputs whose selector matches become a `Placement`, `PlanGeometry`
+orders them per slot and cuts each chain at the highest `replace`, the
+surfaces the plan needs are bound once, and `Compositor::Prepare` builds
+each stack. `PlaceLightsOf` does the same for the instances' lights
+through `PlanLights`. Every problem is a string on the row and a log
+line; nothing throws.
 
 Tick (`Manager::OnFrame`, game thread, from the `PlayerCharacter::Update`
-hook, at the settings' rate): `Compositor::BeginTick`; per applied
-recipe, `SignalState::Tick` with the environment (a frozen scrub that
-moves backwards rebuilds the state and advances it to the moment in one
-step, since the state only integrates forward), then per geometry per
-output `Compositor::Render` (ripples and masks the stack reads first, then
-the layers, alternating the stack's own target with the lab's shared
-scratch), then `WriteSlot` into the surface: the composite texture and
-the slot's scalars, or the originals and zeros when the output is hidden
-by isolate. Then the shell's pose and the light's parameters. Static
-stacks render once.
+hook, at the settings' rate): `Compositor::BeginTick`; `DropLostGeometries`
+drops a geometry whose material or shell another system replaced, with
+every placement on it; per instance, `SignalState::Tick` with the
+environment (a frozen scrub that moves backwards rebuilds the state and
+advances it to the moment in one step, since the state only integrates
+forward); per placement `RenderPlacement` (ripples and masks the stack
+reads first, then the layers, alternating the stack's own target with the
+lab's shared scratch); then `WriteGeometry` walks each geometry's plan and
+writes each slot's chain in priority order, lowest first, so the highest
+lands last, followed by the shell's pose from the instance the plan names
+its owner; `UpdateLights` writes the lights' parameters. An output hidden
+by isolate writes the originals and zeros. Static stacks render once.
 
 Events (any thread to the game thread): the sinks call `QueueEvent`,
 which posts `Fire` to the game thread; `Fire` gives the `EventRecord` to
@@ -125,7 +138,7 @@ filter and record a firing with the payload (position, node, arg, value).
 apply), `hit.received`/`hit.dealt` from the hit sink, `equip` from the
 finalize refresh after an equip event.
 
-Retire (`Manager::Retire`): the recipes' clocks are noted per actor and
+Retire (`Manager::Retire`): the instances' clocks are noted per actor and
 recipe, and a re-apply within two seconds (an edit, isolate, re-apply
 all) resumes them, so a change never restarts the animation; erasing
 the actor's state destroys the bindings in declaration order; each restores what it saved if it still

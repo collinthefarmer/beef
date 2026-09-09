@@ -82,7 +82,27 @@ namespace WornEnchantmentPBR
 
 	namespace
 	{
-		SlotTarget* TargetFor(BoundGeometry& a_bound, Surface a_surface)
+		PlacedOutput* OutputAt(Placement& a_placement, std::size_t a_index)
+		{
+			for (auto& output : a_placement.outputs) {
+				if (output.index == a_index) {
+					return &output;
+				}
+			}
+			return nullptr;
+		}
+
+		const PlacedOutput* OutputAt(const Placement& a_placement, std::size_t a_index)
+		{
+			for (const auto& output : a_placement.outputs) {
+				if (output.index == a_index) {
+					return &output;
+				}
+			}
+			return nullptr;
+		}
+
+		SlotTarget* TargetFor(GeometryBinding& a_bound, Surface a_surface)
 		{
 			if (a_surface == Surface::kShell) {
 				return a_bound.shell.get();
@@ -137,21 +157,6 @@ namespace WornEnchantmentPBR
 			}
 		}
 
-		Replaced ReplacedBy(std::span<const AppliedRecipe> a_later)
-		{
-			Replaced replaced;
-			for (const auto& later : a_later) {
-				for (const auto& output : later.recipe->outputs) {
-					if (const auto* material = Get<SurfaceOutput>(output); material && material->replace) {
-						replaced.slots.emplace(material->slot, later.recipe->id);
-					} else if (const auto* light = Get<LightOutput>(output); light && light->replace) {
-						replaced.light = later.recipe->id;
-					}
-				}
-			}
-			return replaced;
-		}
-
 		LayerFilter HiddenLayers(const Studio::View& a_view, const std::string& a_recipe, std::size_t a_output, std::size_t a_layerCount)
 		{
 			LayerFilter filter;
@@ -171,13 +176,11 @@ namespace WornEnchantmentPBR
 			EventRecord record;
 			record.id = "equip";
 			for (const auto& piece : a_pieces) {
-				for (const auto& applied : piece.recipes) {
-					for (const auto& bound : applied.geometries) {
-						if (bound.geometry) {
-							const auto& c = bound.geometry->worldBound.center;
-							record.payload.position = Vec3{ c.x, c.y, c.z };
-							return record;
-						}
+				for (const auto& bound : piece.geometries) {
+					if (bound.geometry) {
+						const auto& c = bound.geometry->worldBound.center;
+						record.payload.position = Vec3{ c.x, c.y, c.z };
+						return record;
 					}
 				}
 			}
@@ -433,17 +436,16 @@ namespace WornEnchantmentPBR
 				state.pieces.push_back(std::move(piece));
 			}
 		}
-		std::erase_if(state.pieces, [](const AppliedPiece& p) { return p.recipes.empty(); });
+		MatchRecipes(a_actor, state);
+		std::erase_if(state.pieces, [](const AppliedPiece& a_piece) { return a_piece.matches.empty(); });
 		TextureLab::GetSingleton()->InvalidatePreviews();
 		if (state.pieces.empty()) {
 			return;
 		}
+		PlaceInstances(a_actor, state);
+		PlaceLightsOf(a_actor, state);
 		if (settings.verboseLogging) {
-			std::size_t recipes = 0;
-			for (const auto& p : state.pieces) {
-				recipes += p.recipes.size();
-			}
-			logger::info("actor {:08X} ({}): {} piece(s), {} recipe(s) applied", actorID, a_actor->GetName(), state.pieces.size(), recipes);
+			logger::info("actor {:08X} ({}): {} piece(s), {} recipe(s) applied", actorID, a_actor->GetName(), state.pieces.size(), state.instances.size());
 		}
 		applied_[actorID] = std::move(state);
 		WatchAnimationEvents(a_actor);
@@ -468,6 +470,7 @@ namespace WornEnchantmentPBR
 		}
 		const auto                          loaded = LoadedRecipes();
 		const bool                          walkUnenchanted = AnyUnenchantedKey(loaded);
+		auto*                               root = a_actor->Get3D(a_firstPerson);
 		std::unordered_set<RE::NiAVObject*> seenClones;
 		for (const auto& object : biped->objects) {
 			auto* armor = object.item ? object.item->As<RE::TESObjectARMO>() : nullptr;
@@ -480,7 +483,8 @@ namespace WornEnchantmentPBR
 			piece.armorName = armor->GetName() ? armor->GetName() : "";
 			piece.firstPerson = a_firstPerson;
 			piece.piece.armor = FormKeyFor(*armor);
-			if (auto* magic = WornEnchantment(a_actor, armor)) {
+			piece.enchantment = WornEnchantment(a_actor, armor);
+			if (auto* magic = piece.enchantment) {
 				piece.piece.enchantment = FormKeyFor(*magic);
 				if (const auto* costliest = magic->GetCostliestEffectItem(); costliest && costliest->baseEffect) {
 					piece.piece.magicEffect = FormKeyFor(*costliest->baseEffect);
@@ -497,15 +501,34 @@ namespace WornEnchantmentPBR
 					piece.piece.keywords.push_back(FormKeyFor(**keyword));
 				}
 			}
+			std::unordered_set<RE::BSLightingShaderProperty*> seen;
 			RE::BSVisit::TraverseScenegraphGeometries(clone, [&](RE::BSGeometry* a_geometry) {
 				const std::string_view name{ a_geometry->name.c_str() ? a_geometry->name.c_str() : "" };
 				if (name.ends_with(ShellSuffix())) {
 					return RE::BSVisit::BSVisitControl::kContinue;
 				}
 				auto* property = LightingPropertyOf(a_geometry);
-				if (property && IsPBRProperty(property)) {
-					piece.piece.diffusePaths.push_back(TexturePath(static_cast<PBRMaterialLayout*>(property->material)->diffuseTexture));
+				if (!property || !IsPBRProperty(property) || !seen.insert(property).second) {
+					return RE::BSVisit::BSVisitControl::kContinue;
 				}
+				piece.piece.diffusePaths.push_back(TexturePath(static_cast<PBRMaterialLayout*>(property->material)->diffuseTexture));
+				if (!LayoutSanityCheck(property)) {
+					return RE::BSVisit::BSVisitControl::kStop;
+				}
+				if (!property->emissiveColor) {
+					if (settings.verboseLogging) {
+						logger::info("skip geometry {}: property has no emissive colour storage", name);
+					}
+					return RE::BSVisit::BSVisitControl::kContinue;
+				}
+				GeometryBinding bound;
+				bound.geometry = RE::NiPointer{ a_geometry };
+				bound.property = RE::NiPointer{ property };
+				bound.name = std::string{ name };
+				bound.inputs.material = MaterialInputs::From(*static_cast<PBRMaterialLayout*>(property->material));
+				bound.inputs.geometry = RE::NiPointer{ a_geometry };
+				bound.inputs.root = RE::NiPointer{ root };
+				piece.geometries.push_back(std::move(bound));
 				return RE::BSVisit::BSVisitControl::kContinue;
 			});
 			if (piece.piece.diffusePaths.empty()) {
@@ -514,97 +537,220 @@ namespace WornEnchantmentPBR
 				}
 				continue;
 			}
-			const Studio::PieceRef ref{ a_actor->GetFormID(), piece.armor, piece.firstPerson };
-			for (const auto& resolved : Studio::ViewedRecipes(Resolve(piece.piece, loaded), piece.piece, ref, view_, loaded)) {
-				AppliedRecipe applied;
-				applied.recipe = resolved.recipe;
-				applied.key = resolved.key;
-				applied.priority = resolved.priority;
-				applied.graph = GraphFor(*resolved.recipe);
-				if (!applied.graph) {
-					continue;
-				}
-				applied.signals = std::make_unique<SignalState>(*applied.graph);
-				applied.environment = std::make_unique<ActorEnvironment>(a_actor, WornEnchantment(a_actor, armor));
-				applied.startMS = NowMS();
-				if (const auto carried = carriedTimes_.find({ a_actor->GetFormID(), resolved.recipe->id }); carried != carriedTimes_.end()) {
-					const float speed = settings.animationSpeed * resolved.recipe->clock.speed;
-					if (applied.startMS - carried->second.retiredMS <= kCarryWindowMS && speed > 0.0f) {
-						applied.startMS -= static_cast<std::uint32_t>(carried->second.seconds / speed * 1000.0f);
-						applied.lastTime = carried->second.seconds;
-					}
-					carriedTimes_.erase(carried);
-				}
-				piece.recipes.push_back(std::move(applied));
-			}
-			if (piece.recipes.empty()) {
-				if (settings.verboseLogging) {
-					logger::info("armor {:08X} ({}): no recipe resolved{}", piece.armor, piece.armorName, piece.piece.effectShader ? "" : " (unenchanted)");
-				}
-				continue;
-			}
-			ApplyRecipes(a_actor, piece, clone);
 			out.push_back(std::move(piece));
 		}
 		return out;
 	}
 
-	void Manager::ApplyRecipes(RE::Actor* a_actor, AppliedPiece& a_piece, RE::NiAVObject* a_clone)
+	void Manager::MatchRecipes(RE::Actor* a_actor, ActorState& a_state)
 	{
 		const auto& settings = GetSettings();
-		std::vector<std::pair<RE::BSGeometry*, RE::BSLightingShaderProperty*>> targets;
-		std::unordered_set<RE::BSLightingShaderProperty*>                      seen;
-		RE::BSVisit::TraverseScenegraphGeometries(a_clone, [&](RE::BSGeometry* a_geometry) {
-			const std::string_view name{ a_geometry->name.c_str() ? a_geometry->name.c_str() : "" };
-			if (name.ends_with(ShellSuffix())) {
-				return RE::BSVisit::BSVisitControl::kContinue;
-			}
-			auto* property = LightingPropertyOf(a_geometry);
-			if (property && seen.insert(property).second && IsPBRProperty(property)) {
-				targets.emplace_back(a_geometry, property);
-			}
-			return RE::BSVisit::BSVisitControl::kContinue;
-		});
-
-		for (std::size_t r = 0; r < a_piece.recipes.size(); ++r) {
-			auto& applied = a_piece.recipes[r];
-			if (settings.verboseLogging) {
-				logger::info("armor {:08X} ({}) {} actor {:08X}: recipe {} by {} (priority {})", a_piece.armor, a_piece.armorName, a_piece.firstPerson ? "1st" : "3rd", a_actor->GetFormID(),
-					applied.recipe->id, applied.key.ToString(), applied.priority);
-			}
-			applied.signals->Tick(*applied.environment, { 0.0f, 0.0f });
-			applied.replaced = ReplacedBy(std::span{ a_piece.recipes }.subspan(r + 1));
-			auto* root = a_actor->Get3D(a_piece.firstPerson);
-			for (const auto& [geometry, property] : targets) {
-				if (!ApplyGeometry(a_actor, root, applied, geometry, property)) {
-					break;
+		const auto  loaded = LoadedRecipes();
+		for (auto& piece : a_state.pieces) {
+			const Studio::PieceRef ref{ a_actor->GetFormID(), piece.armor, piece.firstPerson };
+			for (const auto& resolved : Studio::ViewedRecipes(Resolve(piece.piece, loaded), piece.piece, ref, view_, loaded)) {
+				if (!resolved.recipe) {
+					continue;
 				}
-			}
-			if (!a_piece.firstPerson && !applied.replaced.light.empty()) {
+				const auto instance = InstanceFor(a_actor, a_state, *resolved.recipe, piece.enchantment);
+				if (!instance) {
+					continue;
+				}
+				a_state.instances[*instance].priority = std::max(a_state.instances[*instance].priority, resolved.priority);
+				piece.matches.push_back(PieceMatch{ *instance, resolved.key, resolved.priority });
 				if (settings.verboseLogging) {
-					logger::info("  recipe {}: light replaced by recipe {}", applied.recipe->id, applied.replaced.light);
-				}
-			} else if (!a_piece.firstPerson) {
-				for (std::size_t i = 0; i < applied.recipe->outputs.size(); ++i) {
-					const auto* light = Get<LightOutput>(applied.recipe->outputs[i]);
-					if (!light) {
-						continue;
-					}
-					std::vector<RE::BSGeometry*> geometries;
-					for (const auto& g : applied.geometries) {
-						geometries.push_back(g.geometry.get());
-					}
-					const auto placements = PlaceLights(light->bones, geometries, a_actor->Get3D(false), applied.signals->Resolve(light->offset));
-					applied.light = LightBinding::Create(placements, light->shadow);
-					applied.lightOutput = i;
-					if (settings.verboseLogging) {
-						logger::info("  recipe {}: {}", applied.recipe->id, applied.light ? applied.light->Describe() : "light not created");
-					}
-					break;
+					logger::info("armor {:08X} ({}) {} actor {:08X}: recipe {} by {} (priority {})", piece.armor, piece.armorName, piece.firstPerson ? "1st" : "3rd", a_actor->GetFormID(),
+						resolved.recipe->id, resolved.key.ToString(), resolved.priority);
 				}
 			}
 		}
-		std::erase_if(a_piece.recipes, [](const AppliedRecipe& r) { return r.geometries.empty() && !r.light; });
+	}
+
+	std::optional<std::size_t> Manager::InstanceFor(RE::Actor* a_actor, ActorState& a_state, const Recipe& a_recipe, RE::MagicItem* a_enchantment)
+	{
+		const RE::FormID enchantment = a_enchantment ? a_enchantment->GetFormID() : 0;
+		for (std::size_t i = 0; i < a_state.instances.size(); ++i) {
+			const auto& instance = a_state.instances[i];
+			if (instance.recipe && instance.recipe->id == a_recipe.id && instance.enchantment == enchantment) {
+				return i;
+			}
+		}
+		RecipeInstance instance;
+		instance.recipe = &a_recipe;
+		instance.enchantment = enchantment;
+		instance.graph = GraphFor(a_recipe);
+		if (!instance.graph) {
+			return std::nullopt;
+		}
+		instance.signals = std::make_unique<SignalState>(*instance.graph);
+		instance.environment = std::make_unique<ActorEnvironment>(a_actor, a_enchantment);
+		instance.startMS = NowMS();
+		if (const auto carried = carriedTimes_.find({ a_actor->GetFormID(), a_recipe.id }); carried != carriedTimes_.end()) {
+			const float speed = GetSettings().animationSpeed * a_recipe.clock.speed;
+			if (instance.startMS - carried->second.retiredMS <= kCarryWindowMS && speed > 0.0f) {
+				instance.startMS -= static_cast<std::uint32_t>(carried->second.seconds / speed * 1000.0f);
+				instance.lastTime = carried->second.seconds;
+			}
+			carriedTimes_.erase(carried);
+		}
+		a_state.instances.push_back(std::move(instance));
+		return a_state.instances.size() - 1;
+	}
+	void Manager::PlaceInstances(RE::Actor* a_actor, ActorState& a_state)
+	{
+		for (auto& instance : a_state.instances) {
+			instance.signals->Tick(*instance.environment, { 0.0f, 0.0f });
+		}
+		for (std::size_t p = 0; p < a_state.pieces.size(); ++p) {
+			for (std::size_t g = 0; g < a_state.pieces[p].geometries.size(); ++g) {
+				PlaceOnGeometry(a_actor, a_state, p, g);
+			}
+		}
+	}
+
+	void Manager::PlaceOnGeometry(RE::Actor* a_actor, ActorState& a_state, std::size_t a_piece, std::size_t a_geometry)
+	{
+		const auto&            settings = GetSettings();
+		auto&                  piece = a_state.pieces[a_piece];
+		auto&                  bound = piece.geometries[a_geometry];
+		const GeometryIdentity identity{ std::nullopt, bound.name, bound.inputs.material.diffuse ? TexturePath(bound.inputs.material.diffuse) : "" };
+
+		std::vector<PlacedRecipe> placed;
+		for (const auto& match : piece.matches) {
+			const auto&  instance = a_state.instances[match.instance];
+			Placement    placement;
+			placement.instance = match.instance;
+			placement.piece = a_piece;
+			placement.geometry = a_geometry;
+			placement.priority = match.priority;
+			PlacedRecipe row;
+			row.recipe = instance.recipe;
+			row.priority = match.priority;
+			for (std::size_t i = 0; i < instance.recipe->outputs.size(); ++i) {
+				const auto* output = Get<SurfaceOutput>(instance.recipe->outputs[i]);
+				if (!output) {
+					continue;
+				}
+				PlacedOutput placedOutput;
+				placedOutput.index = i;
+				if (Matches(output->selector, identity)) {
+					row.outputs.push_back(i);
+				} else {
+					placedOutput.problem = "selector did not match";
+				}
+				placement.outputs.push_back(std::move(placedOutput));
+			}
+			bound.placements.push_back(a_state.placements.size());
+			a_state.placements.push_back(std::move(placement));
+			placed.push_back(std::move(row));
+		}
+		bound.plan = PlanGeometry(placed);
+
+		const auto instanceOf = [&](std::size_t a_placed) -> std::size_t { return a_state.placements[bound.placements[a_placed]].instance; };
+		const auto outputAt = [&](Contribution a_c) { return OutputAt(a_state.placements[bound.placements[a_c.placed]], a_c.output); };
+
+		for (const auto& slot : bound.plan.slots) {
+			for (const auto& c : slot.replaced) {
+				if (auto* output = outputAt(c)) {
+					const auto replacer = ReplacerOf(slot, c);
+					output->problem = std::format("replaced by recipe {}", replacer ? a_state.instances[instanceOf(*replacer)].recipe->id : std::string{});
+				}
+			}
+		}
+
+		std::optional<Contribution> shellTop;
+		for (const auto& slot : bound.plan.slots) {
+			if (slot.surface != Surface::kShell || slot.chain.empty()) {
+				continue;
+			}
+			const auto top = slot.chain.back();
+			if (!shellTop || placed[top.placed].priority > placed[shellTop->placed].priority) {
+				shellTop = top;
+			}
+		}
+
+		std::string outputsLog;
+		for (const auto& slot : bound.plan.slots) {
+			for (const auto& c : slot.chain) {
+				auto* output = outputAt(c);
+				if (!output) {
+					continue;
+				}
+				const auto& instance = a_state.instances[instanceOf(c.placed)];
+				const auto* material = Get<SurfaceOutput>(instance.recipe->outputs[c.output]);
+				if (slot.surface == Surface::kShell && !bound.shell) {
+					const auto owner = instanceOf(shellTop ? shellTop->placed : c.placed);
+					bound.shell = ShellBinding::Create(bound.geometry.get(), bound.property.get(), a_state.instances[owner].recipe->shell);
+					bound.shellOwner = owner;
+					if (!bound.shell) {
+						output->problem = "shell could not be created";
+					}
+				}
+				if (slot.surface == Surface::kMaterial && !bound.material) {
+					bound.material = MaterialBinding::Install(bound.geometry.get(), bound.property.get(), settings.uniqueMaterial);
+					if (!bound.material) {
+						output->problem = "material binding failed";
+					}
+				}
+				if (output->problem.empty()) {
+					auto* target = TargetFor(bound, slot.surface);
+					output->problem = target ? target->Problem(slot.slot) : "the surface is not bound";
+				}
+				if (output->problem.empty()) {
+					output->stack = Compositor::GetSingleton()->Prepare(*instance.recipe, *material, bound.inputs, TextureSize::Clamp(settings.runtimeTextureSize), TextureSize::Clamp(settings.glossMapSize));
+					if (!output->stack) {
+						output->problem = "the texture lab is unavailable";
+					} else {
+						for (const auto& d : output->stack->Diagnostics()) {
+							logger::warn("recipe {} output {} on '{}': {}: {}", instance.recipe->id, c.output, bound.name, d.where, d.message);
+						}
+					}
+				}
+				outputsLog += std::format("{}{} {}->{}{}", outputsLog.empty() ? "" : ", ", instance.recipe->id, SlotName(slot.slot), SurfaceName(slot.surface),
+					output->problem.empty() ? (output->stack && output->stack->Animated() ? " (animated)" : " (static)") : std::format(" [{}]", output->problem));
+			}
+		}
+		if (settings.verboseLogging) {
+			logger::info("apply armor {:08X} actor {:08X} geometry '{}' material={} {} outputs: {}", piece.armor, a_actor->GetFormID(), bound.name,
+				bound.material ? (bound.material->Private() ? "private" : "shared") : "untouched", bound.shell ? bound.shell->Describe() : "no shell", outputsLog.empty() ? "none" : outputsLog);
+		}
+	}
+
+	void Manager::PlaceLightsOf(RE::Actor* a_actor, ActorState& a_state)
+	{
+		const auto&               settings = GetSettings();
+		std::vector<PlacedRecipe> placed;
+		for (const auto& instance : a_state.instances) {
+			placed.push_back(PlacedRecipe{ instance.recipe, instance.priority, {} });
+		}
+		const auto plan = PlanLights(placed);
+		for (const auto& c : plan.replaced) {
+			auto& instance = a_state.instances[c.placed];
+			instance.lightReplacedBy = plan.replacer ? a_state.instances[plan.replacer->placed].recipe->id : std::string{};
+			if (settings.verboseLogging) {
+				logger::info("  recipe {}: light replaced by recipe {}", instance.recipe->id, instance.lightReplacedBy);
+			}
+		}
+		for (const auto& c : plan.shown) {
+			auto&                        instance = a_state.instances[c.placed];
+			std::vector<RE::BSGeometry*> geometries;
+			for (const auto& placement : a_state.placements) {
+				if (placement.instance != c.placed || a_state.pieces[placement.piece].firstPerson) {
+					continue;
+				}
+				geometries.push_back(a_state.pieces[placement.piece].geometries[placement.geometry].geometry.get());
+			}
+			if (geometries.empty()) {
+				continue;
+			}
+			const auto* light = Get<LightOutput>(instance.recipe->outputs[c.output]);
+			const auto  placements = PlaceLights(light->bones, geometries, a_actor->Get3D(false), instance.signals->Resolve(light->offset));
+			instance.light = LightBinding::Create(placements, light->shadow);
+			instance.lightOutput = c.output;
+			if (settings.verboseLogging) {
+				logger::info("  recipe {}: {}", instance.recipe->id, instance.light ? instance.light->Describe() : "light not created");
+			}
+		}
 	}
 
 	bool Manager::LayoutSanityCheck(RE::BSLightingShaderProperty* a_property)
@@ -626,89 +772,12 @@ namespace WornEnchantmentPBR
 		return true;
 	}
 
-	bool Manager::ApplyGeometry(RE::Actor* a_actor, RE::NiAVObject* a_root, AppliedRecipe& a_applied, RE::BSGeometry* a_geometry, RE::BSLightingShaderProperty* a_property)
-	{
-		const auto& settings = GetSettings();
-		if (!LayoutSanityCheck(a_property)) {
-			return false;
-		}
-		if (!a_property->emissiveColor) {
-			if (settings.verboseLogging) {
-				logger::info("skip geometry {}: property has no emissive colour storage", a_geometry->name.c_str());
-			}
-			return true;
-		}
-		const auto&   recipe = *a_applied.recipe;
-		BoundGeometry bound;
-		bound.geometry = RE::NiPointer{ a_geometry };
-		bound.name = a_geometry->name.c_str() ? a_geometry->name.c_str() : "";
-		bound.inputs.material = MaterialInputs::From(*static_cast<PBRMaterialLayout*>(a_property->material));
-		bound.inputs.geometry = RE::NiPointer{ a_geometry };
-		bound.inputs.root = RE::NiPointer{ a_root };
-		const auto& inputs = bound.inputs;
-		std::string outputsLog;
-
-		for (std::size_t i = 0; i < recipe.outputs.size(); ++i) {
-			const auto* material = Get<SurfaceOutput>(recipe.outputs[i]);
-			if (!material) {
-				continue;
-			}
-			BoundOutput output;
-			output.index = i;
-			GeometryIdentity identity{ std::nullopt, bound.name, inputs.material.diffuse ? TexturePath(inputs.material.diffuse) : "" };
-			if (!Matches(material->selector, identity)) {
-				output.problem = "selector did not match";
-			} else if (const auto replaced = a_applied.replaced.slots.find(material->slot); replaced != a_applied.replaced.slots.end()) {
-				output.problem = std::format("replaced by recipe {}", replaced->second);
-			} else {
-				if (material->surface == Surface::kShell && !bound.shell) {
-					bound.shell = ShellBinding::Create(a_geometry, a_property, recipe.shell);
-					if (!bound.shell) {
-						output.problem = "shell could not be created";
-					}
-				}
-				if (material->surface == Surface::kMaterial && !bound.material) {
-					bound.material = MaterialBinding::Install(a_geometry, a_property, settings.uniqueMaterial);
-					if (!bound.material) {
-						output.problem = "material binding failed";
-					}
-				}
-				if (output.problem.empty()) {
-					auto* target = TargetFor(bound, material->surface);
-					output.problem = target ? target->Problem(material->slot) : "the surface is not bound";
-				}
-				if (output.problem.empty()) {
-					output.stack = Compositor::GetSingleton()->Prepare(recipe, *material, inputs, TextureSize::Clamp(settings.runtimeTextureSize), TextureSize::Clamp(settings.glossMapSize));
-					if (!output.stack) {
-						output.problem = "the texture lab is unavailable";
-					} else {
-						for (const auto& d : output.stack->Diagnostics()) {
-							logger::warn("recipe {} output {} on '{}': {}: {}", recipe.id, i, bound.name, d.where, d.message);
-						}
-					}
-				}
-			}
-			outputsLog += std::format("{}{}->{}{}", outputsLog.empty() ? "" : ", ", SlotName(material->slot), SurfaceName(material->surface),
-				output.problem.empty() ? (output.stack && output.stack->Animated() ? " (animated)" : " (static)") : std::format(" [{}]", output.problem));
-			bound.outputs.push_back(std::move(output));
-		}
-		if (settings.verboseLogging) {
-			logger::info("apply recipe {} armor actor {:08X} geometry '{}' material={} {} outputs: {}", recipe.id, a_actor->GetFormID(), bound.name,
-				bound.material ? (bound.material->Private() ? "private" : "shared") : "untouched", bound.shell ? bound.shell->Describe() : "no shell", outputsLog);
-		}
-		a_applied.geometries.push_back(std::move(bound));
-		return true;
-	}
-
 	void Manager::WithRecipeRetired(std::string_view a_id, const std::function<void()>& a_action)
 	{
 		std::vector<RE::FormID> wearers;
 		for (const auto& [actorID, state] : applied_) {
-			for (const auto& piece : state.pieces) {
-				if (std::ranges::any_of(piece.recipes, [&](const AppliedRecipe& r) { return r.recipe && r.recipe->id == a_id; })) {
-					wearers.push_back(actorID);
-					break;
-				}
+			if (std::ranges::any_of(state.instances, [&](const RecipeInstance& a_instance) { return a_instance.recipe && a_instance.recipe->id == a_id; })) {
+				wearers.push_back(actorID);
 			}
 		}
 		for (const auto actorID : wearers) {
@@ -1007,17 +1076,16 @@ namespace WornEnchantmentPBR
 				return;
 			}
 			for (auto& piece : it->second.pieces) {
-				for (auto& applied : piece.recipes) {
-					for (auto& bound : applied.geometries) {
-						if (bound.name == name) {
-							auto* compositor = Compositor::GetSingleton();
-							if (const auto mesh = compositor->MeshOf(bound.geometry.get()); !mesh) {
-								logger::warn("mesh '{}': {}", name, mesh.error());
-							}
-							if (const auto& material = compositor->AnalyseMaterial(bound.inputs.material); !material.sample) {
-								logger::warn("material of '{}': {}", name, material.problem);
-							}
-						}
+				for (auto& bound : piece.geometries) {
+					if (bound.name != name || bound.lost) {
+						continue;
+					}
+					auto* compositor = Compositor::GetSingleton();
+					if (const auto mesh = compositor->MeshOf(bound.geometry.get()); !mesh) {
+						logger::warn("mesh '{}': {}", name, mesh.error());
+					}
+					if (const auto& material = compositor->AnalyseMaterial(bound.inputs.material); !material.sample) {
+						logger::warn("material of '{}': {}", name, material.problem);
 					}
 				}
 			}
@@ -1030,14 +1098,11 @@ namespace WornEnchantmentPBR
 		if (it == applied_.end()) {
 			return;
 		}
-		std::size_t recipes = 0;
-		const auto  now = NowMS();
-		for (const auto& p : it->second.pieces) {
-			recipes += p.recipes.size();
-			for (const auto& applied : p.recipes) {
-				if (applied.recipe) {
-					carriedTimes_[{ a_actorID, applied.recipe->id }] = CarriedTime{ applied.lastTime, now };
-				}
+		const auto recipes = it->second.instances.size();
+		const auto now = NowMS();
+		for (const auto& instance : it->second.instances) {
+			if (instance.recipe) {
+				carriedTimes_[{ a_actorID, instance.recipe->id }] = CarriedTime{ instance.lastTime, now };
 			}
 		}
 		applied_.erase(it);
@@ -1068,13 +1133,10 @@ namespace WornEnchantmentPBR
 		if (it == applied_.end()) {
 			return;
 		}
-		for (auto& piece : it->second.pieces) {
-			for (auto& applied : piece.recipes) {
-				applied.signals->Fire(a_event, applied.lastTime);
-			}
+		for (auto& instance : it->second.instances) {
+			instance.signals->Fire(a_event, instance.lastTime);
 		}
 	}
-
 	void Manager::Tick(std::uint32_t a_nowMS)
 	{
 		const auto& settings = GetSettings();
@@ -1084,28 +1146,35 @@ namespace WornEnchantmentPBR
 		const bool resuming = frozenLastTick_ && !view_.freeze;
 		frozenLastTick_ = view_.freeze;
 		for (auto it = applied_.begin(); it != applied_.end();) {
-			for (auto& piece : it->second.pieces) {
-				for (auto& applied : piece.recipes) {
-					const float speed = settings.animationSpeed * view_.speed * applied.recipe->clock.speed;
-					if (resuming && speed > 0.0f) {
-						applied.startMS = a_nowMS - static_cast<std::uint32_t>(view_.scrubSeconds / speed * 1000.0f);
-					}
-					const float time = view_.freeze ? view_.scrubSeconds : static_cast<float>(a_nowMS - applied.startMS) * 0.001f * speed;
-					const float delta = std::max(0.0f, time - applied.lastTime);
-					TickRecipe(applied, time, delta);
-					applied.lastTime = time;
+			auto& state = it->second;
+			DropLostGeometries(state);
+			for (auto& instance : state.instances) {
+				const float speed = settings.animationSpeed * view_.speed * instance.recipe->clock.speed;
+				if (resuming && speed > 0.0f) {
+					instance.startMS = a_nowMS - static_cast<std::uint32_t>(view_.scrubSeconds / speed * 1000.0f);
 				}
-				std::erase_if(piece.recipes, [](const AppliedRecipe& r) { return r.geometries.empty() && !r.light; });
+				const float time = view_.freeze ? view_.scrubSeconds : static_cast<float>(a_nowMS - instance.startMS) * 0.001f * speed;
+				const float delta = std::max(0.0f, time - instance.lastTime);
+				TickInstance(instance, time, delta);
+				instance.lastTime = time;
 			}
-			std::erase_if(it->second.pieces, [](const AppliedPiece& p) { return p.recipes.empty(); });
-			it = it->second.pieces.empty() ? applied_.erase(it) : std::next(it);
+			for (auto& placement : state.placements) {
+				RenderPlacement(state, placement, state.instances[placement.instance].lastTime);
+			}
+			for (auto& piece : state.pieces) {
+				for (auto& bound : piece.geometries) {
+					WriteGeometry(state, bound);
+				}
+			}
+			UpdateLights(state);
+			it = Alive(state) ? std::next(it) : applied_.erase(it);
 		}
 		if (compositor->MeshSweepDue(a_nowMS)) {
 			std::vector<RE::BSGeometry*> bound;
 			for (const auto& [actorID, state] : applied_) {
 				for (const auto& piece : state.pieces) {
-					for (const auto& applied : piece.recipes) {
-						for (const auto& g : applied.geometries) {
+					for (const auto& g : piece.geometries) {
+						if (!g.lost) {
 							bound.push_back(g.geometry.get());
 						}
 					}
@@ -1115,57 +1184,114 @@ namespace WornEnchantmentPBR
 		}
 	}
 
-	void Manager::TickRecipe(AppliedRecipe& a_applied, float a_time, float a_delta)
+	void Manager::TickInstance(RecipeInstance& a_instance, float a_time, float a_delta)
 	{
-		const auto& recipe = *a_applied.recipe;
-		if (view_.freeze && a_time + 0.001f < a_applied.lastTime) {
-			a_applied.signals = std::make_unique<SignalState>(*a_applied.graph);
+		if (view_.freeze && a_time + 0.001f < a_instance.lastTime) {
+			a_instance.signals = std::make_unique<SignalState>(*a_instance.graph);
 			a_delta = a_time;
 		}
-		auto& signals = *a_applied.signals;
-		signals.Tick(*a_applied.environment, { a_time, a_delta });
-		const auto& view = view_;
-		const bool  anyLayerHidden = view.isolateLayer >= 0 || !view.muted.empty();
+		a_instance.signals->Tick(*a_instance.environment, { a_time, a_delta });
+	}
 
-		std::erase_if(a_applied.geometries, [&](BoundGeometry& a_bound) {
-			if ((a_bound.material && !a_bound.material->StillOwned()) || (a_bound.shell && !a_bound.shell->StillOwned())) {
-				logger::info("dropping '{}': its material or shell was replaced by another system", a_bound.name);
-				return true;
-			}
-			for (auto& output : a_bound.outputs) {
-				if (!output.stack) {
+	void Manager::DropLostGeometries(ActorState& a_state)
+	{
+		for (auto& piece : a_state.pieces) {
+			for (auto& bound : piece.geometries) {
+				if (bound.lost) {
 					continue;
 				}
-				const auto* material = output.index < recipe.outputs.size() ? Get<SurfaceOutput>(recipe.outputs[output.index]) : nullptr;
-				if (!material) {
-					continue;
+				if ((bound.material && !bound.material->StillOwned()) || (bound.shell && !bound.shell->StillOwned())) {
+					logger::info("dropping '{}': its material or shell was replaced by another system", bound.name);
+					bound.lost = true;
+					bound.material.reset();
+					bound.shell.reset();
+					bound.shellOwner.reset();
+					bound.plan = GeometryPlan{};
 				}
-				const bool  shown = view.OutputShown(recipe.id, output.index);
-				LayerFilter filter;
-				if (shown && anyLayerHidden) {
-					filter = HiddenLayers(view, recipe.id, output.index, material->stack.size());
-				}
-				Compositor::GetSingleton()->Render(*output.stack, signals, a_time, filter);
-				auto* target = TargetFor(a_bound, material->surface);
-				if (!target) {
-					continue;
-				}
-				WriteSlot(*target, *material, signals, output.stack->Texture(), shown);
-			}
-			if (a_bound.shell) {
-				const auto& pose = recipe.shell.pose;
-				a_bound.shell->Pose(signals.Resolve(pose.inflate), signals.Resolve(recipe.shell.alpha), signals.Resolve(recipe.shell.rimPower), signals.Resolve(recipe.shell.emissive));
-				a_bound.shell->SetVisible(view.RecipeShown(recipe.id));
-			}
-			return false;
-		});
-
-		if (a_applied.light && a_applied.lightOutput) {
-			const auto* light = *a_applied.lightOutput < recipe.outputs.size() ? Get<LightOutput>(recipe.outputs[*a_applied.lightOutput]) : nullptr;
-			if (light) {
-				a_applied.light->Update(signals.Resolve(light->color), signals.Resolve(light->intensity), signals.Resolve(light->size), signals.Resolve(light->cutoff), view.OutputShown(recipe.id, *a_applied.lightOutput));
 			}
 		}
+	}
+
+	void Manager::RenderPlacement(ActorState& a_state, Placement& a_placement, float a_time)
+	{
+		if (a_state.pieces[a_placement.piece].geometries[a_placement.geometry].lost) {
+			return;
+		}
+		const auto& instance = a_state.instances[a_placement.instance];
+		const auto& recipe = *instance.recipe;
+		const bool  anyLayerHidden = view_.isolateLayer >= 0 || !view_.muted.empty();
+		for (auto& output : a_placement.outputs) {
+			if (!output.stack) {
+				continue;
+			}
+			const auto* material = output.index < recipe.outputs.size() ? Get<SurfaceOutput>(recipe.outputs[output.index]) : nullptr;
+			if (!material) {
+				continue;
+			}
+			LayerFilter filter;
+			if (view_.OutputShown(recipe.id, output.index) && anyLayerHidden) {
+				filter = HiddenLayers(view_, recipe.id, output.index, material->stack.size());
+			}
+			Compositor::GetSingleton()->Render(*output.stack, *instance.signals, a_time, filter);
+		}
+	}
+
+	void Manager::WriteGeometry(ActorState& a_state, GeometryBinding& a_bound)
+	{
+		if (a_bound.lost) {
+			return;
+		}
+		for (const auto& slot : a_bound.plan.slots) {
+			auto* target = TargetFor(a_bound, slot.surface);
+			if (!target) {
+				continue;
+			}
+			for (const auto& c : slot.chain) {
+				const auto& placement = a_state.placements[a_bound.placements[c.placed]];
+				const auto& instance = a_state.instances[placement.instance];
+				const auto* material = c.output < instance.recipe->outputs.size() ? Get<SurfaceOutput>(instance.recipe->outputs[c.output]) : nullptr;
+				const auto* output = OutputAt(placement, c.output);
+				if (!material || !output || !output->stack) {
+					continue;
+				}
+				WriteSlot(*target, *material, *instance.signals, output->stack->Texture(), view_.OutputShown(instance.recipe->id, c.output));
+			}
+		}
+		if (a_bound.shell && a_bound.shellOwner) {
+			const auto& instance = a_state.instances[*a_bound.shellOwner];
+			const auto& shell = instance.recipe->shell;
+			auto&       signals = *instance.signals;
+			a_bound.shell->Pose(signals.Resolve(shell.pose.inflate), signals.Resolve(shell.alpha), signals.Resolve(shell.rimPower), signals.Resolve(shell.emissive));
+			a_bound.shell->SetVisible(view_.RecipeShown(instance.recipe->id));
+		}
+	}
+
+	void Manager::UpdateLights(ActorState& a_state)
+	{
+		for (auto& instance : a_state.instances) {
+			if (!instance.light || !instance.lightOutput) {
+				continue;
+			}
+			const auto* light = *instance.lightOutput < instance.recipe->outputs.size() ? Get<LightOutput>(instance.recipe->outputs[*instance.lightOutput]) : nullptr;
+			if (!light) {
+				continue;
+			}
+			auto& signals = *instance.signals;
+			instance.light->Update(signals.Resolve(light->color), signals.Resolve(light->intensity), signals.Resolve(light->size), signals.Resolve(light->cutoff),
+				view_.OutputShown(instance.recipe->id, *instance.lightOutput));
+		}
+	}
+
+	bool Manager::Alive(const ActorState& a_state) noexcept
+	{
+		for (const auto& piece : a_state.pieces) {
+			for (const auto& bound : piece.geometries) {
+				if (!bound.lost) {
+					return true;
+				}
+			}
+		}
+		return std::ranges::any_of(a_state.instances, [](const RecipeInstance& a_instance) { return static_cast<bool>(a_instance.light); });
 	}
 
 	Manager::Status Manager::GetStatus() const
@@ -1177,15 +1303,18 @@ namespace WornEnchantmentPBR
 		s.actors = static_cast<std::uint32_t>(applied_.size());
 		for (const auto& [id, state] : applied_) {
 			s.pieces += static_cast<std::uint32_t>(state.pieces.size());
+			s.recipes += static_cast<std::uint32_t>(state.instances.size());
 			for (const auto& piece : state.pieces) {
-				s.recipes += static_cast<std::uint32_t>(piece.recipes.size());
-				for (const auto& applied : piece.recipes) {
-					s.geometries += static_cast<std::uint32_t>(applied.geometries.size());
-					for (const auto& g : applied.geometries) {
-						s.shells += g.shell ? 1 : 0;
+				for (const auto& bound : piece.geometries) {
+					if (bound.lost) {
+						continue;
 					}
-					s.lights += applied.light ? 1 : 0;
+					++s.geometries;
+					s.shells += bound.shell ? 1 : 0;
 				}
+			}
+			for (const auto& instance : state.instances) {
+				s.lights += instance.light ? 1 : 0;
 			}
 		}
 		s.tickMS = GetSettings().TickIntervalMS();
@@ -1225,7 +1354,7 @@ namespace WornEnchantmentPBR
 
 	Manager::Snapshot Manager::BuildSnapshot(const std::optional<Studio::PieceRef>& a_request) const
 	{
-		Snapshot out;
+		Snapshot   out;
 		const auto refOf = [](RE::FormID a_actorID, const AppliedPiece& a_piece) {
 			return Studio::PieceRef{ a_actorID, a_piece.armor, a_piece.firstPerson };
 		};
@@ -1256,19 +1385,22 @@ namespace WornEnchantmentPBR
 					key.text = editorID.empty() ? source.form.ToString() : editorID;
 					row.keys.push_back(std::move(key));
 				}
-				for (const auto& applied : piece.recipes) {
+				for (std::size_t m = 0; m < piece.matches.size(); ++m) {
+					const auto& match = piece.matches[m];
+					const auto& instance = state.instances[match.instance];
+					const auto& recipe = *instance.recipe;
 					Snapshot::RecipeRow r;
-					r.id = applied.recipe->id;
-					r.key = applied.key.ToString();
-					r.keys = applied.recipe->keys;
-					r.priority = applied.priority;
-					r.time = applied.lastTime;
+					r.id = recipe.id;
+					r.key = match.key.ToString();
+					r.keys = recipe.keys;
+					r.priority = match.priority;
+					r.time = instance.lastTime;
 					r.dirty = IsDirty(r.id);
-					r.pinned = view_.pin && view_.pin->piece == refOf(actorID, piece) && view_.pin->recipeID == r.id;
-					r.shellMaterial = applied.recipe->shell.material;
-					r.lightOutput = applied.lightOutput;
-					r.lightRow = Studio::LightRowOf(*applied.recipe);
-					r.shellRow = Studio::ShellRowOf(*applied.recipe);
+					r.pinned = view_.pin && view_.pin->piece == row.ref && view_.pin->recipeID == r.id;
+					r.shellMaterial = recipe.shell.material;
+					r.lightOutput = instance.lightOutput;
+					r.lightRow = Studio::LightRowOf(recipe);
+					r.shellRow = Studio::ShellRowOf(recipe);
 					if (const auto history = histories_.find(r.id); history != histories_.end()) {
 						r.undoDepth = history->second.UndoDepth();
 						r.redoDepth = history->second.RedoDepth();
@@ -1277,106 +1409,110 @@ namespace WornEnchantmentPBR
 						row.recipes.push_back(std::move(r));
 						continue;
 					}
-					for (const auto& mask : applied.recipe->masks) {
+					for (const auto& mask : recipe.masks) {
 						r.masks.push_back(mask.name);
 					}
 					const auto* counted = ReferencesOf(r.id);
-					const auto  references = counted ? *counted : Studio::CountReferences(*applied.recipe);
-					for (const auto& source : applied.recipe->sources) {
+					const auto  references = counted ? *counted : Studio::CountReferences(recipe);
+					for (const auto& source : recipe.sources) {
 						const auto count = references.images.find(source.name);
 						r.sourceRows.push_back(Studio::SourceRowOf(source, count != references.images.end() ? count->second : 0));
 					}
-					for (const auto& mask : applied.recipe->masks) {
+					for (const auto& mask : recipe.masks) {
 						const auto count = references.images.find(mask.name);
 						r.maskRows.push_back({ mask.name, mask.text, count != references.images.end() ? count->second : 0 });
 					}
-					if (const auto origin = OriginOf(*applied.recipe)) {
+					if (const auto origin = OriginOf(recipe)) {
 						r.problems.assign(origin->diagnostics.begin(), origin->diagnostics.end());
 					}
-					const auto inertReasons = InertReasons(*applied.graph);
-					for (std::size_t i = 0; i < applied.graph->Size(); ++i) {
-						const auto& signal = applied.graph->At(i);
-						Snapshot::SignalRow row;
-						row.name = signal.name;
-						row.kind = SignalKindOf(signal.kind);
-						row.type = applied.graph->TypeOf(i);
-						row.value = applied.signals->ValueOf(i);
-						row.inert = applied.graph->Inert(i);
-						if (row.inert) {
+					const auto inertReasons = InertReasons(*instance.graph);
+					for (std::size_t i = 0; i < instance.graph->Size(); ++i) {
+						const auto& signal = instance.graph->At(i);
+						Snapshot::SignalRow srow;
+						srow.name = signal.name;
+						srow.kind = SignalKindOf(signal.kind);
+						srow.type = instance.graph->TypeOf(i);
+						srow.value = instance.signals->ValueOf(i);
+						srow.inert = instance.graph->Inert(i);
+						if (srow.inert) {
 							if (const auto reason = inertReasons.find(signal.name); reason != inertReasons.end()) {
-								row.problem = reason->second;
+								srow.problem = reason->second;
 							}
 						}
-						if (const auto* declared = applied.recipe->FindSignal(signal.name)) {
-							row.definition = declared->kind;
+						if (const auto* declared = recipe.FindSignal(signal.name)) {
+							srow.definition = declared->kind;
 							if (const auto* constant = Get<ConstantSignal>(declared->kind)) {
-								row.constant = constant->value;
+								srow.constant = constant->value;
 							}
 							if (const auto* expr = Get<ExprSignal>(declared->kind)) {
-								row.text = expr->text;
+								srow.text = expr->text;
 							}
 							if (const auto* trigger = Get<TriggerSignal>(declared->kind)) {
 								if (const auto* event = Get<EventOrigin>(trigger->origin)) {
-									row.event = event->event;
+									srow.event = event->event;
 								} else if (const auto* plugin = Get<PluginOrigin>(trigger->origin)) {
-									row.event = plugin->id;
+									srow.event = plugin->id;
 								}
 							}
-							row.curve = declared->curve ? declared->curve->text : "";
+							srow.curve = declared->curve ? declared->curve->text : "";
 						}
-						if (const auto count = references.signals.find(row.name); count != references.signals.end()) {
-							row.references = count->second;
+						if (const auto count = references.signals.find(srow.name); count != references.signals.end()) {
+							srow.references = count->second;
 						}
-						r.signals.push_back(std::move(row));
+						r.signals.push_back(std::move(srow));
 					}
-					for (const auto& curve : applied.recipe->curves) {
+					for (const auto& curve : recipe.curves) {
 						const auto count = references.curves.find(curve.name);
 						r.curves.push_back({ curve.name, curve.text, count != references.curves.end() ? count->second : 0 });
 					}
-					for (const auto& g : applied.geometries) {
+					for (const auto& bound : piece.geometries) {
+						if (bound.lost || m >= bound.placements.size()) {
+							continue;
+						}
+						const auto& placement = state.placements[bound.placements[m]];
 						Snapshot::GeometryRow gr;
-						gr.name = g.name;
-						gr.privateMaterial = g.material && g.material->Private();
-						gr.shell = g.shell ? g.shell->Describe() : "";
+						gr.name = bound.name;
+						gr.privateMaterial = bound.material && bound.material->Private();
+						gr.shell = bound.shell ? bound.shell->Describe() : "";
 						auto* compositor = Compositor::GetSingleton();
-						if (const auto entry = compositor->CachedMesh(g.geometry.get()); entry && entry->mesh) {
+						if (const auto entry = compositor->CachedMesh(bound.geometry.get()); entry && entry->mesh) {
 							gr.meshRead = true;
 							gr.partitions = entry->facts.partitions;
 							gr.bones = entry->facts.bones;
 							gr.islands = entry->analysis.islands;
 						}
-						if (const auto* material = compositor->CachedMaterial(g.inputs.material); material && material->analysis) {
+						if (const auto* material = compositor->CachedMaterial(bound.inputs.material); material && material->analysis) {
 							gr.clusters = material->analysis->clusters;
 						}
-						gr.materialSlots = g.material ? SlotRows(*g.material) : std::vector<Snapshot::SlotRow>{};
-						gr.shellSlots = g.shell ? SlotRows(*g.shell) : std::vector<Snapshot::SlotRow>{};
-						for (const auto& source : applied.recipe->sources) {
-							Snapshot::PictureRow row;
-							row.name = source.name;
-							row.description = DescribeSource(source.kind);
-							row.type = SourceType(source);
-							if (const auto prepared = compositor->InspectSource(*applied.recipe, source.name, g.inputs)) {
-								row.texture = prepared->texture.get();
-								row.channel = prepared->sampling.channel;
-								row.animated = prepared->animated;
-								row.problem = prepared->problem;
+						gr.materialSlots = bound.material ? SlotRows(*bound.material) : std::vector<Snapshot::SlotRow>{};
+						gr.shellSlots = bound.shell ? SlotRows(*bound.shell) : std::vector<Snapshot::SlotRow>{};
+						for (const auto& source : recipe.sources) {
+							Snapshot::PictureRow prow;
+							prow.name = source.name;
+							prow.description = DescribeSource(source.kind);
+							prow.type = SourceType(source);
+							if (const auto prepared = compositor->InspectSource(recipe, source.name, bound.inputs)) {
+								prow.texture = prepared->texture.get();
+								prow.channel = prepared->sampling.channel;
+								prow.animated = prepared->animated;
+								prow.problem = prepared->problem;
 							}
-							gr.sources.push_back(std::move(row));
+							gr.sources.push_back(std::move(prow));
 						}
-						for (const auto& mask : applied.recipe->masks) {
-							Snapshot::PictureRow row;
-							row.name = mask.name;
-							row.description = mask.text;
-							if (const auto prepared = compositor->InspectMask(*applied.recipe, mask.name, g.inputs)) {
-								row.texture = prepared->texture.get();
-								row.channel = prepared->channel;
-								row.animated = prepared->animated;
-								row.problem = prepared->problem;
+						for (const auto& mask : recipe.masks) {
+							Snapshot::PictureRow prow;
+							prow.name = mask.name;
+							prow.description = mask.text;
+							if (const auto prepared = compositor->InspectMask(recipe, mask.name, bound.inputs)) {
+								prow.texture = prepared->texture.get();
+								prow.channel = prepared->channel;
+								prow.animated = prepared->animated;
+								prow.problem = prepared->problem;
 							}
-							gr.masks.push_back(std::move(row));
+							gr.masks.push_back(std::move(prow));
 						}
-						for (const auto& o : g.outputs) {
-							const auto* material = o.index < applied.recipe->outputs.size() ? Get<SurfaceOutput>(applied.recipe->outputs[o.index]) : nullptr;
+						for (const auto& o : placement.outputs) {
+							const auto* material = o.index < recipe.outputs.size() ? Get<SurfaceOutput>(recipe.outputs[o.index]) : nullptr;
 							Snapshot::OutputRow orow;
 							orow.index = o.index;
 							orow.target = material ? TargetOf(material->surface) : Target::kLight;
@@ -1391,7 +1527,7 @@ namespace WornEnchantmentPBR
 							orow.texture = o.stack ? o.stack->Texture() : nullptr;
 							if (material) {
 								const auto& sc = material->scalars;
-								const auto& sig = *applied.signals;
+								const auto& sig = *instance.signals;
 								for (const auto field : ScalarsOf(material->slot)) {
 									const std::string name{ ScalarFieldName(field) };
 									if (field == ScalarField::kColor) {
@@ -1407,7 +1543,7 @@ namespace WornEnchantmentPBR
 									lrow.source = LayerSourceText(layer.source);
 									lrow.mask = layer.mask ? "@" + layer.mask->name : "";
 									lrow.blend = std::string{ BlendName(layer.blend) };
-									lrow.opacity = applied.signals->Resolve(layer.opacity);
+									lrow.opacity = sig.Resolve(layer.opacity);
 									lrow.opacityText = ParamText(layer.opacity);
 									lrow.color = layer.color ? Vec3ParamText(*layer.color) : "";
 									lrow.curve = layer.curve ? layer.curve->text : "";
@@ -1434,7 +1570,7 @@ namespace WornEnchantmentPBR
 						}
 						r.geometries.push_back(std::move(gr));
 					}
-					r.light = applied.light ? applied.light->Describe() : "";
+					r.light = instance.light ? instance.light->Describe() : "";
 					row.recipes.push_back(std::move(r));
 				}
 				out.pieces.push_back(std::move(row));

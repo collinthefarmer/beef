@@ -4,6 +4,7 @@
 #include "Compositor.h"
 #include "Edits.h"
 #include "Environment.h"
+#include "Merge.h"
 #include "PCH.h"
 #include "Recipe.h"
 #include "Signals.h"
@@ -23,52 +24,74 @@
 
 namespace WornEnchantmentPBR
 {
-	struct BoundOutput
+	struct PlacedOutput
 	{
 		std::size_t                    index = 0;
 		std::unique_ptr<RenderedStack> stack;
 		std::string                    problem;
 	};
 
-	struct BoundGeometry
+	struct GeometryBinding
 	{
-		RE::NiPointer<RE::BSGeometry>    geometry;
-		std::string                      name;
-		GeometryInputs                   inputs;
-		std::unique_ptr<MaterialBinding> material;
-		std::unique_ptr<ShellBinding>    shell;
-		std::vector<BoundOutput>         outputs;
+		RE::NiPointer<RE::BSGeometry>               geometry;
+		RE::NiPointer<RE::BSLightingShaderProperty> property;
+		std::string                                 name;
+		GeometryInputs                              inputs;
+		std::unique_ptr<MaterialBinding>            material;
+		std::unique_ptr<ShellBinding>               shell;
+		std::optional<std::size_t>                  shellOwner;
+		std::vector<std::size_t>                    placements;
+		GeometryPlan                                plan;
+		bool                                        lost = false;
 	};
 
-	struct Replaced
+	struct PieceMatch
 	{
-		std::map<Slot, std::string> slots;
-		std::string                 light;
-	};
-
-	struct AppliedRecipe
-	{
-		const Recipe*                       recipe = nullptr;
-		RecipeKey                           key;
-		int                                 priority = 0;
-		std::shared_ptr<const SignalGraph>  graph;
-		std::unique_ptr<SignalState>        signals;
-		std::unique_ptr<ActorEnvironment>   environment;
-		std::vector<BoundGeometry>          geometries;
-		std::unique_ptr<LightBinding>       light;
-		std::optional<std::size_t>          lightOutput;
-		Replaced                            replaced;
-		std::uint32_t                       startMS = 0;
-		float                               lastTime = 0.0f;
+		std::size_t instance = 0;
+		RecipeKey   key;
+		int         priority = 0;
 	};
 
 	struct AppliedPiece
 	{
-		RE::FormID                 armor = 0;
-		std::string                armorName;
-		bool                       firstPerson = false;
-		WornPiece                  piece;
-		std::vector<AppliedRecipe> recipes;
+		RE::FormID                   armor = 0;
+		std::string                  armorName;
+		bool                         firstPerson = false;
+		WornPiece                    piece;
+		RE::MagicItem*               enchantment = nullptr;
+		std::vector<GeometryBinding> geometries;
+		std::vector<PieceMatch>      matches;
+	};
+
+	struct RecipeInstance
+	{
+		const Recipe*                      recipe = nullptr;
+		RE::FormID                         enchantment = 0;
+		int                                priority = 0;
+		std::shared_ptr<const SignalGraph> graph;
+		std::unique_ptr<SignalState>       signals;
+		std::unique_ptr<ActorEnvironment>  environment;
+		std::unique_ptr<LightBinding>      light;
+		std::optional<std::size_t>         lightOutput;
+		std::string                        lightReplacedBy;
+		std::uint32_t                      startMS = 0;
+		float                              lastTime = 0.0f;
+	};
+
+	struct Placement
+	{
+		std::size_t               instance = 0;
+		std::size_t               piece = 0;
+		std::size_t               geometry = 0;
+		int                       priority = 0;
+		std::vector<PlacedOutput> outputs;
+	};
+
+	struct ActorState
+	{
+		std::vector<AppliedPiece>   pieces;
+		std::vector<RecipeInstance> instances;
+		std::vector<Placement>      placements;
 	};
 
 	class Manager
@@ -133,11 +156,6 @@ namespace WornEnchantmentPBR
 		[[nodiscard]] std::shared_ptr<const Snapshot> LatestSnapshot() const;
 
 	private:
-		struct ActorState
-		{
-			std::vector<AppliedPiece> pieces;
-		};
-
 		void PostTask(std::function<void()> a_task);
 		void RunRefresh(RE::FormID a_actorID, std::uint64_t a_generation);
 		void Refresh(RE::Actor* a_actor);
@@ -149,11 +167,19 @@ namespace WornEnchantmentPBR
 		void RetireEveryActor();
 		void FireDueFinalizes();
 		void Tick(std::uint32_t a_nowMS);
-		void TickRecipe(AppliedRecipe& a_applied, float a_time, float a_delta);
+		void TickInstance(RecipeInstance& a_instance, float a_time, float a_delta);
+		void DropLostGeometries(ActorState& a_state);
+		void RenderPlacement(ActorState& a_state, Placement& a_placement, float a_time);
+		void WriteGeometry(ActorState& a_state, GeometryBinding& a_bound);
+		void UpdateLights(ActorState& a_state);
+		[[nodiscard]] static bool Alive(const ActorState& a_state) noexcept;
 
 		[[nodiscard]] std::vector<AppliedPiece> CollectPieces(RE::Actor* a_actor, bool a_firstPerson);
-		void                                    ApplyRecipes(RE::Actor* a_actor, AppliedPiece& a_piece, RE::NiAVObject* a_clone);
-		bool                                    ApplyGeometry(RE::Actor* a_actor, RE::NiAVObject* a_root, AppliedRecipe& a_applied, RE::BSGeometry* a_geometry, RE::BSLightingShaderProperty* a_property);
+		void                                    MatchRecipes(RE::Actor* a_actor, ActorState& a_state);
+		[[nodiscard]] std::optional<std::size_t> InstanceFor(RE::Actor* a_actor, ActorState& a_state, const Recipe& a_recipe, RE::MagicItem* a_enchantment);
+		void                                    PlaceInstances(RE::Actor* a_actor, ActorState& a_state);
+		void                                    PlaceOnGeometry(RE::Actor* a_actor, ActorState& a_state, std::size_t a_piece, std::size_t a_geometry);
+		void                                    PlaceLightsOf(RE::Actor* a_actor, ActorState& a_state);
 		bool                                    LayoutSanityCheck(RE::BSLightingShaderProperty* a_property);
 
 		std::mutex                                    queueLock_;
