@@ -29,7 +29,6 @@ namespace BetterEnchantmentEffects::Studio
 		}
 		std::string CurveWhere(const std::string& a_curve);
 		std::string MaskWhere(const std::string& a_mask);
-		bool        NamesSignal(const Vec3Param& a_param);
 		Refusal     CheckSourceKind(const Recipe& a_recipe, const std::string& a_where, const SourceKind& a_kind);
 		Diagnostic  Refuse(std::string a_where, std::string a_message);
 
@@ -1321,15 +1320,6 @@ namespace BetterEnchantmentEffects::Studio
 		{
 			a_recipe.outputs.clear();
 			return Edit(a_recipe, ResetShell{});
-		}
-
-		bool NamesSignal(const Vec3Param& a_param)
-		{
-			if (Is<Ref>(a_param)) {
-				return true;
-			}
-			const auto* parts = Get<std::array<Param, 3>>(a_param);
-			return parts && std::ranges::any_of(*parts, [](const Param& p) { return Is<Ref>(p); });
 		}
 
 		Refusal CheckSignalKind(const Recipe& a_recipe, const std::string& a_where, const SignalKind& a_kind)

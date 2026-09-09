@@ -99,19 +99,23 @@ add_commonlibsse_plugin(${PROJECT_NAME}
   USE_ADDRESS_LIBRARY
   SOURCES ${PLUGIN_SOURCES})
 
-target_include_directories(${PROJECT_NAME} PRIVATE src src/extern)
+target_include_directories(${PROJECT_NAME} PRIVATE src)
+target_include_directories(${PROJECT_NAME} SYSTEM PRIVATE src/extern)
 target_compile_definitions(${PROJECT_NAME} PRIVATE BEEF_PLUGIN_NAME="${PROJECT_NAME}")
 target_precompile_headers(${PROJECT_NAME} PRIVATE src/PCH.h)
 
 set(CLANG_CL_FLAGS
   /permissive- /EHsc /W4 /utf-8
-  -fdelayed-template-parsing -Wno-delayed-template-parsing-in-cxx20
+  -fdelayed-template-parsing -Wno-delayed-template-parsing-in-cxx20)
+set(COMMONLIBSSE_SUPPRESSIONS
   -Wno-overloaded-virtual
   -Wno-delete-non-abstract-non-virtual-dtor
   -Wno-inconsistent-missing-override
-  -Wno-reinterpret-base-class)
-target_compile_options(${PROJECT_NAME} PRIVATE ${CLANG_CL_FLAGS})
-target_compile_options(CommonLibSSE PRIVATE ${CLANG_CL_FLAGS} -Wno-invalid-offsetof -Wno-nontrivial-memcall)
+  -Wno-reinterpret-base-class
+  -Wno-invalid-offsetof
+  -Wno-nontrivial-memcall)
+target_compile_options(${PROJECT_NAME} PRIVATE ${CLANG_CL_FLAGS} -Werror=switch)
+target_compile_options(CommonLibSSE PRIVATE ${CLANG_CL_FLAGS} ${COMMONLIBSSE_SUPPRESSIONS})
 
 target_compile_options(${PROJECT_NAME} PRIVATE /Zi)
 target_link_options(${PROJECT_NAME} PRIVATE /DEBUG:FULL /PDBALTPATH:%_PDB%)

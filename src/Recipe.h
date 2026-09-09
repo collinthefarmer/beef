@@ -88,7 +88,7 @@ namespace BetterEnchantmentEffects
 	struct RecipeKey
 	{
 		KeyKind         kind = KeyKind::kDefault;
-		KeyOperandValue operand;
+		KeyOperandValue operand{};
 
 		[[nodiscard]] const FormRef*   Form() const noexcept { return Get<FormRef>(operand); }
 		[[nodiscard]] FormRef*         Form() noexcept { return Get<FormRef>(operand); }

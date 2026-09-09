@@ -16,7 +16,7 @@
 
 #pragma clang diagnostic push
 #pragma clang diagnostic ignored "-Wmismatched-tags"
-#include "extern/SKSEMenuFramework.h"
+#include <SKSEMenuFramework.h>
 #pragma clang diagnostic pop
 
 namespace ImGui = ImGuiMCP;

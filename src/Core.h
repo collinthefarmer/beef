@@ -209,7 +209,7 @@ namespace BetterEnchantmentEffects
 	[[nodiscard]] std::optional<Variant> AlternativeAt(std::size_t a_index, std::index_sequence<I...>)
 	{
 		std::optional<Variant> made;
-		((a_index == I ? (made.emplace(std::in_place_index<I>), true) : false) || ...);
+		static_cast<void>(((a_index == I ? (made.emplace(std::in_place_index<I>), true) : false) || ...));
 		return made;
 	}
 

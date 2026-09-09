@@ -92,16 +92,6 @@ namespace BetterEnchantmentEffects
 			return nullptr;
 		}
 
-		const PlacedOutput* OutputAt(const Placement& a_placement, std::size_t a_index)
-		{
-			for (const auto& output : a_placement.outputs) {
-				if (output.index == a_index) {
-					return &output;
-				}
-			}
-			return nullptr;
-		}
-
 		std::optional<std::size_t> MergeOf(const GeometryPlan& a_plan, Contribution a_contribution)
 		{
 			for (const auto& slot : a_plan.slots) {

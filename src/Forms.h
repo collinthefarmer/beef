@@ -125,9 +125,9 @@ namespace BetterEnchantmentEffects::Studio
 		std::optional<FieldDetail> detail;
 		std::optional<Value>       value;
 		FieldBinding               bind;
-		std::vector<std::string>   creators;
-		FieldCreator               create;
-		std::optional<std::pair<float, float>> range;
+		std::vector<std::string>   creators{};
+		FieldCreator               create{};
+		std::optional<std::pair<float, float>> range{};
 	};
 
 	enum class RowKind

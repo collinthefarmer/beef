@@ -23,8 +23,8 @@ namespace BetterEnchantmentEffects
 			std::shared_ptr<const SignalGraph> graph;
 			bool                               dirty = false;
 			bool                               transient = false;
-			Studio::ReferenceCounts            references;
-			Recipe                             saved;
+			Studio::ReferenceCounts            references{};
+			Recipe                             saved{};
 		};
 
 		std::vector<LoadedRecipe> g_loaded;

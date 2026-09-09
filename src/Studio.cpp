@@ -90,7 +90,7 @@ namespace BetterEnchantmentEffects::Studio
 			return badges;
 		}
 
-		void FillCell(Cell& a_cell, const RecipeRow& a_recipe, const GeometryRow& a_geometry, const Selection& a_selection, const View& a_view)
+		void FillCell(Cell& a_cell, const RecipeRow& a_recipe, const GeometryRow& a_geometry, [[maybe_unused]] const Selection& a_selection, const View& a_view)
 		{
 			const OutputRow* first = nullptr;
 			for (const auto& output : a_geometry.outputs) {
