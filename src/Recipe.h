@@ -12,7 +12,7 @@
 #include <variant>
 #include <vector>
 
-namespace WornEnchantmentPBR
+namespace BetterEnchantmentEffects
 {
 
 	struct FormKey

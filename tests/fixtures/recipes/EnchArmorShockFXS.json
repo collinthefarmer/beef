@@ -2,7 +2,7 @@
   "format": 1,
   "name": "EnchArmorShockFXS",
   "description": "Imported from effect shader EnchArmorShockFXS with the shipped defaults.",
-  "imported": "WornEnchantmentPBR 0.1.0",
+  "imported": "BetterEnchantmentEffects 0.1.0",
   "keys": [
     {
       "effectShader": "EnchArmorShockFXS"

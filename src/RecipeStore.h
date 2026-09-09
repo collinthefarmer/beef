@@ -12,7 +12,7 @@
 #include <span>
 #include <string_view>
 
-namespace WornEnchantmentPBR
+namespace BetterEnchantmentEffects
 {
 	struct RecipeStoreStatus
 	{

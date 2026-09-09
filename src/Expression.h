@@ -10,7 +10,7 @@
 #include <string_view>
 #include <vector>
 
-namespace WornEnchantmentPBR
+namespace BetterEnchantmentEffects
 {
 	inline constexpr std::size_t kMaxExpressionLength = 4096;
 	inline constexpr std::size_t kMaxExpressionDepth = 32;

@@ -5,7 +5,7 @@
 
 #include <iterator>
 
-namespace WornEnchantmentPBR
+namespace BetterEnchantmentEffects
 {
 	inline constexpr KeyKindSpec kKeyKinds[]{
 		{ KeyKind::kDefault, "default", 0, KeyOperand::kNone, false, nullptr, nullptr },

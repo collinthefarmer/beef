@@ -6,7 +6,7 @@ if [ -z "${CXX:-}" ]; then
 fi
 OUT="${TEST_OUT_DIR:-build/native-tests}"
 mkdir -p "$OUT"
-FLAGS=(-std=c++23 -O1 -Wall -Wextra -I src -I src/extern "-DWEPBR_FIXTURES_DIR=\"$PWD/tests/fixtures\"")
+FLAGS=(-std=c++23 -O1 -Wall -Wextra -I src -I src/extern "-DBEEF_FIXTURES_DIR=\"$PWD/tests/fixtures\"")
 MODEL=(src/Recipe.cpp src/RecipeJson.cpp src/Expression.cpp src/Signals.cpp src/Importer.cpp src/Timing.cpp)
 
 status=0

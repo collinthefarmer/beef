@@ -8,7 +8,7 @@
 #include <charconv>
 #include <functional>
 
-namespace WornEnchantmentPBR
+namespace BetterEnchantmentEffects
 {
 	float HalfToFloat(std::uint16_t a_half) noexcept
 	{

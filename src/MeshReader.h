@@ -17,7 +17,7 @@
 #include <unordered_map>
 #include <vector>
 
-namespace WornEnchantmentPBR
+namespace BetterEnchantmentEffects
 {
 	[[nodiscard]] std::expected<std::shared_ptr<const MeshData>, std::string> ReadMesh(RE::BSGeometry* a_geometry);
 

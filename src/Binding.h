@@ -10,7 +10,7 @@
 #include <string>
 #include <vector>
 
-namespace WornEnchantmentPBR
+namespace BetterEnchantmentEffects
 {
 	struct SlotState
 	{

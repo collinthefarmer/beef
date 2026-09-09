@@ -3,7 +3,7 @@
 #include "PCH.h"
 #include "SettingsCore.h"
 
-namespace WornEnchantmentPBR
+namespace BetterEnchantmentEffects
 {
 	[[nodiscard]] std::filesystem::path SettingsPath();
 	[[nodiscard]] Settings              LoadSettingsFromDisk();

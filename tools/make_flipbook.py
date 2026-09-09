@@ -30,7 +30,7 @@ import struct
 import sys
 from pathlib import Path
 
-PLUGIN_NAME = "WornEnchantmentPBR"
+PLUGIN_NAME = "BetterEnchantmentEffects"
 
 try:
     from PIL import Image, ImageChops

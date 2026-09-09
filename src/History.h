@@ -8,7 +8,7 @@
 #include <string_view>
 #include <utility>
 
-namespace WornEnchantmentPBR::Studio
+namespace BetterEnchantmentEffects::Studio
 {
 	template <class T>
 	class History

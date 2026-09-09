@@ -4,8 +4,8 @@
 
 #include <string>
 
-using namespace WornEnchantmentPBR;
-using namespace WornEnchantmentPBR::Studio;
+using namespace BetterEnchantmentEffects;
+using namespace BetterEnchantmentEffects::Studio;
 using test::Check;
 
 namespace

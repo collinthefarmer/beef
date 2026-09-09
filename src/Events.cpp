@@ -2,7 +2,7 @@
 
 #include "Manager.h"
 
-namespace WornEnchantmentPBR
+namespace BetterEnchantmentEffects
 {
 	namespace
 	{

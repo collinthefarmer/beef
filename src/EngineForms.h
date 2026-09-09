@@ -7,7 +7,7 @@
 #include <optional>
 #include <string>
 
-namespace WornEnchantmentPBR
+namespace BetterEnchantmentEffects
 {
 	[[nodiscard]] FormKey FormKeyFor(const RE::TESForm& a_form);
 

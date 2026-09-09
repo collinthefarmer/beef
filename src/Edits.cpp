@@ -7,7 +7,7 @@
 #include <cctype>
 #include <format>
 
-namespace WornEnchantmentPBR::Studio
+namespace BetterEnchantmentEffects::Studio
 {
 	namespace
 	{

@@ -13,7 +13,7 @@
 #include <utility>
 #include <vector>
 
-namespace WornEnchantmentPBR::Studio
+namespace BetterEnchantmentEffects::Studio
 {
 
 	enum class FieldKind

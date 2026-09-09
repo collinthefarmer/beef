@@ -8,8 +8,8 @@
 #include <string>
 #include <string_view>
 
-#ifndef WEPBR_FIXTURES_DIR
-#	define WEPBR_FIXTURES_DIR "tests/fixtures"
+#ifndef BEEF_FIXTURES_DIR
+#	define BEEF_FIXTURES_DIR "tests/fixtures"
 #endif
 
 namespace test
@@ -40,7 +40,7 @@ namespace test
 
 	inline std::filesystem::path Fixtures()
 	{
-		return std::filesystem::path{ WEPBR_FIXTURES_DIR };
+		return std::filesystem::path{ BEEF_FIXTURES_DIR };
 	}
 
 	inline std::string ReadFile(const std::filesystem::path& a_path)

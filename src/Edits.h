@@ -9,7 +9,7 @@
 #include <string>
 #include <variant>
 
-namespace WornEnchantmentPBR::Studio
+namespace BetterEnchantmentEffects::Studio
 {
 
 	struct SetLayerSource

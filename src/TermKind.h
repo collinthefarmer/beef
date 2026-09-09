@@ -8,7 +8,7 @@
 #include <string_view>
 #include <variant>
 
-namespace WornEnchantmentPBR::Studio
+namespace BetterEnchantmentEffects::Studio
 {
 	struct RawTerm
 	{

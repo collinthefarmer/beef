@@ -12,7 +12,7 @@
 #include <unordered_map>
 #include <vector>
 
-namespace WornEnchantmentPBR
+namespace BetterEnchantmentEffects
 {
 	struct TriggerPayload
 	{

@@ -5,7 +5,7 @@
 #include <bit>
 #include <cstring>
 
-namespace WornEnchantmentPBR
+namespace BetterEnchantmentEffects
 {
 	namespace
 	{

@@ -5,7 +5,7 @@
 
 Without --apply the edits are listed and nothing is written. The symbol is
 found by workspace/symbol on its unqualified name; when several symbols
-share it (Studio::SlotRow and WornEnchantmentPBR::SlotRow), pass the
+share it (Studio::SlotRow and BetterEnchantmentEffects::SlotRow), pass the
 qualified name (Studio::SlotRow) or --kind to pick one. Renames go through
 textDocument/rename, so references in strings and comments are left
 alone and a file rename is applied when clangd asks for one.

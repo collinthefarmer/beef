@@ -11,7 +11,7 @@
 #include <fstream>
 #include <sstream>
 
-namespace WornEnchantmentPBR
+namespace BetterEnchantmentEffects
 {
 	namespace
 	{

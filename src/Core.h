@@ -9,7 +9,7 @@
 #include <variant>
 #include <vector>
 
-namespace WornEnchantmentPBR
+namespace BetterEnchantmentEffects
 {
 	struct Vec2
 	{

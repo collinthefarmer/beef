@@ -3,7 +3,7 @@
 #include <cmath>
 #include <cstdio>
 
-using namespace WornEnchantmentPBR::Timing;
+using namespace BetterEnchantmentEffects::Timing;
 
 namespace
 {

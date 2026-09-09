@@ -9,7 +9,7 @@
 #include <unordered_map>
 #include <variant>
 
-namespace WornEnchantmentPBR
+namespace BetterEnchantmentEffects
 {
 	struct Settings
 	{

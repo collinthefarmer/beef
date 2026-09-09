@@ -8,7 +8,7 @@
 #include <cstring>
 #include <string_view>
 
-namespace WornEnchantmentPBR
+namespace BetterEnchantmentEffects
 {
 	using namespace REX::W32;
 	using REX::W32::ID3D11DepthStencilView;

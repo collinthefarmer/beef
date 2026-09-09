@@ -13,7 +13,7 @@
 #include <functional>
 #include <limits>
 
-namespace WornEnchantmentPBR::Studio
+namespace BetterEnchantmentEffects::Studio
 {
 	std::string PlainBoneName(const RegionsFile& a_presets, std::string_view a_bone)
 	{

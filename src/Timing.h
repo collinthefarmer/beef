@@ -4,7 +4,7 @@
 #include <cstdint>
 #include <optional>
 
-namespace WornEnchantmentPBR::Timing
+namespace BetterEnchantmentEffects::Timing
 {
 	struct Rgb
 	{

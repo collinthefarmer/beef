@@ -2,7 +2,7 @@
 
 #include "EngineForms.h"
 
-namespace WornEnchantmentPBR
+namespace BetterEnchantmentEffects
 {
 	ActorEnvironment::ActorEnvironment(RE::Actor* a_actor, RE::MagicItem* a_enchantment) :
 		actor_(a_actor ? a_actor->GetHandle() : RE::ActorHandle{}), enchantment_(a_enchantment ? a_enchantment->GetFormID() : 0)

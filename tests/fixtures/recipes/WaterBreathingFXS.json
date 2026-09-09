@@ -2,7 +2,7 @@
   "format": 1,
   "name": "WaterBreathingFXS",
   "description": "Imported from effect shader WaterBreathingFXS with the shipped defaults.",
-  "imported": "WornEnchantmentPBR 0.1.0",
+  "imported": "BetterEnchantmentEffects 0.1.0",
   "keys": [
     {
       "effectShader": "WaterBreathingFXS"

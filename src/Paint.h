@@ -20,7 +20,7 @@
 #include <utility>
 #include <vector>
 
-namespace WornEnchantmentPBR::Studio
+namespace BetterEnchantmentEffects::Studio
 {
 	inline constexpr std::string_view kScratchMask = "scratch";
 

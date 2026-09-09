@@ -2,7 +2,7 @@
   "format": 1,
   "name": "EnchArmorMagickaFXS",
   "description": "Imported from effect shader EnchArmorMagickaFXS with the shipped defaults.",
-  "imported": "WornEnchantmentPBR 0.1.0",
+  "imported": "BetterEnchantmentEffects 0.1.0",
   "keys": [
     {
       "effectShader": "EnchArmorMagickaFXS"

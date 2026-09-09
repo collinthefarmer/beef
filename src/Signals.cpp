@@ -6,7 +6,7 @@
 #include <functional>
 #include <numbers>
 
-namespace WornEnchantmentPBR
+namespace BetterEnchantmentEffects
 {
 	namespace
 	{
@@ -287,7 +287,7 @@ namespace WornEnchantmentPBR
 			const auto typeOf = [&](std::string_view name) -> std::optional<ValueType> { return g.TypeOf(name); };
 			n.type = Match(
 				n.signal.kind,
-				[](const ConstantSignal& k) { return WornEnchantmentPBR::TypeOf(k.value); },
+				[](const ConstantSignal& k) { return BetterEnchantmentEffects::TypeOf(k.value); },
 				[](const EfshSignal& k) {
 					switch (k.field) {
 					case EfshField::kFillColor:

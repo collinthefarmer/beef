@@ -14,8 +14,8 @@
 #include <format>
 #include <string>
 
-using namespace WornEnchantmentPBR;
-using namespace WornEnchantmentPBR::Studio;
+using namespace BetterEnchantmentEffects;
+using namespace BetterEnchantmentEffects::Studio;
 using test::Check;
 
 namespace
@@ -176,7 +176,7 @@ namespace
 
 	std::optional<Recipe> Canonical()
 	{
-		const auto path = std::filesystem::path{ WEPBR_FIXTURES_DIR }.parent_path().parent_path() / "schema" / "example-magicka.json";
+		const auto path = std::filesystem::path{ BEEF_FIXTURES_DIR }.parent_path().parent_path() / "schema" / "example-magicka.json";
 		const auto text = test::ReadFile(path);
 		Check(!text.empty(), "schema/example-magicka.json is readable at " + path.string());
 		auto loaded = ParseRecipe(text, kRecipeID);
@@ -991,7 +991,7 @@ namespace
 		const auto bones = BonesOf(mesh);
 		Check(bones.size() == 3 && bones[0].name == "NPC L Hand [LHnd]" && bones[0].coverage == 0.5f && bones[1].name == "NPC Spine2 [Spn2]" && bones[1].coverage == 0.375f && bones[2].coverage == 0.125f, "bones by coverage, the share of all vertices each moves");
 
-		const auto file = test::ReadFile(std::filesystem::path{ WEPBR_FIXTURES_DIR } / ".." / ".." / "presets" / "regions.json");
+		const auto file = test::ReadFile(std::filesystem::path{ BEEF_FIXTURES_DIR } / ".." / ".." / "presets" / "regions.json");
 		const auto presets = ParsePresets(file);
 		Check(presets.has_value(), presets ? "the shipped preset file parses" : "the shipped preset file parses: " + presets.error());
 		if (!presets) {
@@ -1621,7 +1621,7 @@ namespace
 
 	void TermTemplates(const RecipeRow& a_recipe, const GeometryRow& a_geometry)
 	{
-		const auto file = test::ReadFile(std::filesystem::path{ WEPBR_FIXTURES_DIR } / ".." / ".." / "presets" / "regions.json");
+		const auto file = test::ReadFile(std::filesystem::path{ BEEF_FIXTURES_DIR } / ".." / ".." / "presets" / "regions.json");
 		const auto presets = ParsePresets(file);
 		if (!presets) {
 			test::Skip("the term template checks need presets/regions.json");

@@ -8,7 +8,7 @@
 #include <format>
 #include <numbers>
 
-namespace WornEnchantmentPBR
+namespace BetterEnchantmentEffects
 {
 	namespace
 	{

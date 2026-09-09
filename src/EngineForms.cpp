@@ -1,6 +1,6 @@
 #include "EngineForms.h"
 
-namespace WornEnchantmentPBR
+namespace BetterEnchantmentEffects
 {
 	namespace
 	{

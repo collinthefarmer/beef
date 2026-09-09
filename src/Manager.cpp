@@ -10,7 +10,7 @@
 #include "RecipeStore.h"
 #include "Settings.h"
 
-namespace WornEnchantmentPBR
+namespace BetterEnchantmentEffects
 {
 	namespace
 	{
@@ -896,7 +896,7 @@ namespace WornEnchantmentPBR
 			WithRecipeRetired(id, [&] {
 				const auto*  recipe = MutableRecipe(id);
 				const Recipe before = recipe ? *recipe : Recipe{};
-				const auto   saved = WornEnchantmentPBR::SaveRecipe(id);
+				const auto   saved = BetterEnchantmentEffects::SaveRecipe(id);
 				if (!saved) {
 					logger::error("recipe {}: save failed ({})", id, saved.error());
 					return;
@@ -918,7 +918,7 @@ namespace WornEnchantmentPBR
 					return;
 				}
 				Recipe before = *recipe;
-				if (WornEnchantmentPBR::RevertRecipe(id)) {
+				if (BetterEnchantmentEffects::RevertRecipe(id)) {
 					keysChanged = recipe->keys != before.keys;
 					if (!(*recipe == before)) {
 						histories_[id].Push(std::move(before));
@@ -963,7 +963,7 @@ namespace WornEnchantmentPBR
 	void Manager::NewRecipe(std::string a_id, RecipeKey a_key, std::string a_geometry)
 	{
 		PostTask([this, id = std::move(a_id), key = std::move(a_key), geometry = std::move(a_geometry)] {
-			WithListMoved([&] { [[maybe_unused]] const bool made = WornEnchantmentPBR::NewRecipe(id, std::move(key), geometry); });
+			WithListMoved([&] { [[maybe_unused]] const bool made = BetterEnchantmentEffects::NewRecipe(id, std::move(key), geometry); });
 		});
 	}
 
@@ -971,7 +971,7 @@ namespace WornEnchantmentPBR
 	{
 		PostTask([this, from = std::move(a_from), to = std::move(a_to)] {
 			WithListMoved([&] {
-				if (!WornEnchantmentPBR::RenameRecipe(from, to)) {
+				if (!BetterEnchantmentEffects::RenameRecipe(from, to)) {
 					return;
 				}
 				if (auto node = histories_.extract(from)) {

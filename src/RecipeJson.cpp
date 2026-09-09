@@ -13,7 +13,7 @@
 #include <unordered_set>
 #include <utility>
 
-namespace WornEnchantmentPBR
+namespace BetterEnchantmentEffects
 {
 	using json = nlohmann::ordered_json;
 
@@ -1730,7 +1730,7 @@ namespace WornEnchantmentPBR
 	}
 }
 
-namespace WornEnchantmentPBR::Studio
+namespace BetterEnchantmentEffects::Studio
 {
 	namespace
 	{

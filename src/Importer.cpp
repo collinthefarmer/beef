@@ -4,7 +4,7 @@
 #include <cmath>
 #include <format>
 
-namespace WornEnchantmentPBR
+namespace BetterEnchantmentEffects
 {
 	namespace
 	{

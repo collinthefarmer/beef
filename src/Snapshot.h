@@ -15,7 +15,7 @@ namespace RE
 	class NiSourceTexture;
 }
 
-namespace WornEnchantmentPBR::Studio
+namespace BetterEnchantmentEffects::Studio
 {
 	using TextureHandle = RE::NiSourceTexture*;
 

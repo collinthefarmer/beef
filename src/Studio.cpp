@@ -11,7 +11,7 @@
 #include <format>
 #include <limits>
 
-namespace WornEnchantmentPBR::Studio
+namespace BetterEnchantmentEffects::Studio
 {
 	namespace
 	{

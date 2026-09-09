@@ -1,4 +1,4 @@
-# WornEnchantmentPBR: what the code cannot say
+# BetterEnchantmentEffects: what the code cannot say
 
 The sources carry no comments. This file holds the facts a reader would
 otherwise have needed one for: engine and Community Shaders (CS) behaviour

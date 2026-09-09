@@ -15,7 +15,7 @@
 #include <string>
 #include <string_view>
 
-namespace WornEnchantmentPBR::Studio::Widgets
+namespace BetterEnchantmentEffects::Studio::Widgets
 {
 
 	struct Width

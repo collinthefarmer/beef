@@ -8,7 +8,7 @@
 #include "RecipeStore.h"
 #include "Settings.h"
 
-namespace WornEnchantmentPBR
+namespace BetterEnchantmentEffects
 {
 	std::shared_ptr<spdlog::sinks::ringbuffer_sink_mt> g_logRing;
 }
@@ -21,10 +21,10 @@ namespace
 		if (!path) {
 			return;
 		}
-		*path /= WornEnchantmentPBR::Identity::LogFileName();
+		*path /= BetterEnchantmentEffects::Identity::LogFileName();
 		auto sink = std::make_shared<spdlog::sinks::basic_file_sink_mt>(path->string(), true);
-		WornEnchantmentPBR::g_logRing = std::make_shared<spdlog::sinks::ringbuffer_sink_mt>(300);
-		auto log = std::make_shared<spdlog::logger>("global", spdlog::sinks_init_list{ sink, WornEnchantmentPBR::g_logRing });
+		BetterEnchantmentEffects::g_logRing = std::make_shared<spdlog::sinks::ringbuffer_sink_mt>(300);
+		auto log = std::make_shared<spdlog::logger>("global", spdlog::sinks_init_list{ sink, BetterEnchantmentEffects::g_logRing });
 		log->set_level(spdlog::level::info);
 		log->flush_on(spdlog::level::info);
 		spdlog::set_default_logger(std::move(log));
@@ -38,7 +38,7 @@ namespace
 
 	void OnMessage(SKSE::MessagingInterface::Message* a_msg)
 	{
-		using namespace WornEnchantmentPBR;
+		using namespace BetterEnchantmentEffects;
 		auto* manager = Manager::GetSingleton();
 		switch (a_msg->type) {
 		case SKSE::MessagingInterface::kDataLoaded:

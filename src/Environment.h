@@ -6,7 +6,7 @@
 #include <string>
 #include <unordered_map>
 
-namespace WornEnchantmentPBR
+namespace BetterEnchantmentEffects
 {
 	class ActorEnvironment final : public SignalEnvironment
 	{

@@ -8,7 +8,7 @@
 #include <string>
 #include <string_view>
 
-namespace WornEnchantmentPBR
+namespace BetterEnchantmentEffects
 {
 	struct EffectShaderRecord
 	{
@@ -49,7 +49,7 @@ namespace WornEnchantmentPBR
 		float               shellInflatePercent = 1.0f;
 		float               shellInflatePulsePercent = 1.0f;
 		MaterialChannel     glowMaskChannel = MaterialChannel::kMetallic;
-		std::string         importer = "WornEnchantmentPBR 0.1.0";
+		std::string         importer = "BetterEnchantmentEffects 0.1.0";
 	};
 
 	[[nodiscard]] std::string RecipeIdFor(const EffectShaderRecord& a_record);

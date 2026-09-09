@@ -16,7 +16,7 @@
 #include <utility>
 #include <vector>
 
-namespace WornEnchantmentPBR
+namespace BetterEnchantmentEffects
 {
 	class TextureLab
 	{

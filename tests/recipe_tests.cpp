@@ -7,7 +7,7 @@
 #include <set>
 #include <utility>
 
-using namespace WornEnchantmentPBR;
+using namespace BetterEnchantmentEffects;
 using test::Check;
 using test::Near;
 
@@ -74,7 +74,7 @@ namespace
 		r.metadata.author = "tests";
 		r.metadata.description = "one of each row";
 		r.metadata.version = "1.0";
-		r.metadata.imported = "WornEnchantmentPBR 0.1.0";
+		r.metadata.imported = "BetterEnchantmentEffects 0.1.0";
 		r.metadata.meta = R"json({"nexusId":12345,"notes":"kept verbatim"})json";
 		r.keys = { RecipeKey{ KeyKind::kMagicEffect, Form("EnchFortifyHealthConstantSelf") }, RecipeKey{ KeyKind::kEnchantment, Form("0x49509~Skyrim.esm") },
 			RecipeKey{ KeyKind::kEffectShader, Form("EnchArmorMagickaFXS") }, RecipeKey{ KeyKind::kKeyword, Form("ArmorMaterialEbony") },
@@ -124,7 +124,7 @@ namespace
 		fill.mip = 2.0f;
 		r.sources.push_back({ "fill", fill });
 		ImageSource painted;
-		painted.path = "WornEnchantmentPBR\\iron_mask.dds";
+		painted.path = "BetterEnchantmentEffects\\iron_mask.dds";
 		painted.channel = ImageChannel::kR;
 		painted.space = ImageSpace::kMesh;
 		r.sources.push_back({ "painted", painted });
@@ -338,7 +338,7 @@ namespace
 
 	void CanonicalFile()
 	{
-		const auto path = std::filesystem::path{ WEPBR_FIXTURES_DIR }.parent_path().parent_path() / "schema" / "example-magicka.json";
+		const auto path = std::filesystem::path{ BEEF_FIXTURES_DIR }.parent_path().parent_path() / "schema" / "example-magicka.json";
 		const auto text = test::ReadFile(path);
 		Check(!text.empty(), "schema/example-magicka.json is readable at " + path.string());
 		const auto loaded = ParseRecipe(text, "example-magicka");
@@ -348,7 +348,7 @@ namespace
 			return;
 		}
 		const auto& r = *loaded.recipe;
-		Check(r.metadata.name == "Magicka (vanilla)" && r.metadata.imported == "WornEnchantmentPBR 0.1.0", "metadata read");
+		Check(r.metadata.name == "Magicka (vanilla)" && r.metadata.imported == "BetterEnchantmentEffects 0.1.0", "metadata read");
 		Check(r.keys.size() == 1 && r.keys[0].kind == KeyKind::kEffectShader && r.keys[0].Form() && r.keys[0].Form()->text == "EnchArmorMagickaFXS", "key read");
 		Check(r.signals.size() == 20 && r.curves.size() == 5 && r.sources.size() == 8 && r.masks.size() == 1 && r.outputs.size() == 5 && r.variants.size() == 1, "row counts");
 		const auto* step = r.FindSignal("step");

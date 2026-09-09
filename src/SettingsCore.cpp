@@ -9,7 +9,7 @@
 #include <optional>
 #include <sstream>
 
-namespace WornEnchantmentPBR
+namespace BetterEnchantmentEffects
 {
 	namespace
 	{

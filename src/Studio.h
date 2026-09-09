@@ -14,7 +14,7 @@
 #include <string_view>
 #include <vector>
 
-namespace WornEnchantmentPBR::Studio
+namespace BetterEnchantmentEffects::Studio
 {
 
 	enum class Mode

@@ -3,7 +3,7 @@
 
 #include <format>
 
-using namespace WornEnchantmentPBR;
+using namespace BetterEnchantmentEffects;
 using test::Check;
 using test::Near;
 

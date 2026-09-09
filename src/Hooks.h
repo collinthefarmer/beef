@@ -2,7 +2,7 @@
 
 #include "PCH.h"
 
-namespace WornEnchantmentPBR
+namespace BetterEnchantmentEffects
 {
 	void InstallHooks();
 }

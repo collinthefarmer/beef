@@ -3,7 +3,7 @@
 #include <algorithm>
 #include <cstdint>
 
-namespace WornEnchantmentPBR
+namespace BetterEnchantmentEffects
 {
 	class TextureSize
 	{

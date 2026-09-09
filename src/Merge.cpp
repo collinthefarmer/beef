@@ -2,7 +2,7 @@
 
 #include <algorithm>
 
-namespace WornEnchantmentPBR
+namespace BetterEnchantmentEffects
 {
 	namespace
 	{

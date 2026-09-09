@@ -1,6 +1,6 @@
 cmake_minimum_required(VERSION 3.24)
 
-project(WornEnchantmentPBR VERSION 0.1.0 LANGUAGES CXX)
+project(BetterEnchantmentEffects VERSION 0.1.0 LANGUAGES CXX)
 
 set(CMAKE_CXX_STANDARD 23)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -100,7 +100,7 @@ add_commonlibsse_plugin(${PROJECT_NAME}
   SOURCES ${PLUGIN_SOURCES})
 
 target_include_directories(${PROJECT_NAME} PRIVATE src src/extern)
-target_compile_definitions(${PROJECT_NAME} PRIVATE WEPBR_PLUGIN_NAME="${PROJECT_NAME}")
+target_compile_definitions(${PROJECT_NAME} PRIVATE BEEF_PLUGIN_NAME="${PROJECT_NAME}")
 target_precompile_headers(${PROJECT_NAME} PRIVATE src/PCH.h)
 
 set(CLANG_CL_FLAGS
@@ -138,14 +138,14 @@ add_library(${PROJECT_NAME}HostObjects OBJECT ${HOST_OBJECT_SOURCES})
 set_target_properties(${PROJECT_NAME}HostObjects PROPERTIES EXCLUDE_FROM_ALL TRUE)
 target_include_directories(${PROJECT_NAME}HostObjects PRIVATE src src/extern)
 target_compile_options(${PROJECT_NAME}HostObjects PRIVATE /EHsc /W4 /utf-8)
-target_compile_definitions(${PROJECT_NAME}HostObjects PRIVATE WEPBR_FIXTURES_DIR="${CMAKE_SOURCE_DIR}/tests/fixtures")
+target_compile_definitions(${PROJECT_NAME}HostObjects PRIVATE BEEF_FIXTURES_DIR="${CMAKE_SOURCE_DIR}/tests/fixtures")
 
 function(add_host_test NAME)
   add_executable(${NAME} ${ARGN})
   set_target_properties(${NAME} PROPERTIES EXCLUDE_FROM_ALL TRUE)
   target_include_directories(${NAME} PRIVATE src src/extern)
   target_compile_options(${NAME} PRIVATE /EHsc /W4 /utf-8)
-  target_compile_definitions(${NAME} PRIVATE WEPBR_FIXTURES_DIR="${CMAKE_SOURCE_DIR}/tests/fixtures")
+  target_compile_definitions(${NAME} PRIVATE BEEF_FIXTURES_DIR="${CMAKE_SOURCE_DIR}/tests/fixtures")
   target_link_libraries(${NAME} PRIVATE ${PROJECT_NAME}HostObjects)
 endfunction()
 add_host_test(${PROJECT_NAME}Tests tests/timing_tests.cpp)

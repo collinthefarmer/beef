@@ -4,7 +4,7 @@
 #include <cmath>
 #include <numbers>
 
-namespace WornEnchantmentPBR::Timing
+namespace BetterEnchantmentEffects::Timing
 {
 	namespace
 	{

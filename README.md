@@ -1,4 +1,4 @@
-# WornEnchantmentPBR (alpha)
+# BetterEnchantmentEffects (alpha)
 
 Status (2026-09-04): the runtime is still the proof of concept; the rewrite
 it informs is specified in `../../plans/worn-enchantment-pbr-compositor-brief.md`.
@@ -83,8 +83,8 @@ tools/make_flipbook.py              bakes EFSH fill textures into frames
 tools/efsh_dump.py                  dumps EFSH records from a plugin as fixture JSON
 recipes/                            example recipes the tests read; not installed (a recipe for the game is written into the MO2 mod folder by hand)
 ARCHITECTURE.md                     module map, data flow, threads, ownership, extension points
-WornEnchantmentPBR.ini              settings shipped with the mod
-dist/WornEnchantmentPBR/            staged mod folder (after a build)
+BetterEnchantmentEffects.ini              settings shipped with the mod
+dist/BetterEnchantmentEffects/            staged mod folder (after a build)
 ```
 
 Sources: `main.cpp` (SKSE lifecycle), `Events.cpp` (equip / load / NiNode
@@ -119,10 +119,10 @@ Requirements: `nix` with flakes (everything else comes from nixpkgs) and
 network access for the first build.
 
 ```sh
-cd plugins/WornEnchantmentPBR
+cd plugins/BetterEnchantmentEffects
 ./setup-xwin.sh          # once: Windows CRT + SDK into ~/.xwin/splat (630 MB)
 ./build.sh Release       # configure + build; ~5 min the first time
-./install.sh             # copies dist/WornEnchantmentPBR to /mnt/a/mods/SkyrimSE/mods/WornEnchantmentPBR
+./install.sh             # copies dist/BetterEnchantmentEffects to /mnt/a/mods/SkyrimSE/mods/BetterEnchantmentEffects
 ```
 
 `build.sh` runs, inside `nix shell nixpkgs#llvmPackages.clang-unwrapped
@@ -139,10 +139,10 @@ $XWIN_DIR/crt /winsdkdir $XWIN_DIR/sdk` to clang-cl and the matching
 `/LIBPATH`s to lld-link. Set `XWIN_DIR` to move the SDK. Only the release CRT
 is splatted, so Debug builds also link `/MD`.
 
-Outputs land in `dist/WornEnchantmentPBR/SKSE/Plugins/` (DLL, PDB, INI). The
+Outputs land in `dist/BetterEnchantmentEffects/SKSE/Plugins/` (DLL, PDB, INI). The
 test exes are not part of this build; build them on request with
 `cmake --build build/Release --target host-tests`, which puts
-`build/Release/WornEnchantmentPBRTests.exe` and the rest alongside the DLL.
+`build/Release/BetterEnchantmentEffectsTests.exe` and the rest alongside the DLL.
 
 Pinned dependencies: CommonLibSSE-NG `b93280e8` (CharmedBaryon, 2024-09-03),
 spdlog v1.15.3, rapidcsv v8.99. Xbyak is not fetched; the only hook is a vtable
@@ -151,12 +151,12 @@ write, which needs no trampoline.
 ## Installing and first run
 
 1. `./install.sh`, then in MO2 refresh the left pane and tick
-   **WornEnchantmentPBR**. It needs SKSE, Address Library and Community
+   **BetterEnchantmentEffects**. It needs SKSE, Address Library and Community
    Shaders (tested against CS 1.8.3, Skyrim 1.6.1170).
 2. Start the game. `Documents/My Games/Skyrim Special Edition/SKSE/skse64.log`
-   should contain `plugin WornEnchantmentPBR.dll ... loaded correctly`, and
-   `WornEnchantmentPBR.log` next to it should start with
-   `WornEnchantmentPBR 0.1.0 loading on runtime 1.6.1170.0` followed by
+   should contain `plugin BetterEnchantmentEffects.dll ... loaded correctly`, and
+   `BetterEnchantmentEffects.log` next to it should start with
+   `BetterEnchantmentEffects 0.1.0 loading on runtime 1.6.1170.0` followed by
    `kDataLoaded`, a `settings:` line, `event sinks registered` and
    `hooked PlayerCharacter::Update (vfunc 0xad)`.
    If CS is missing you get `CommunityShaders.dll is not loaded; emissive path
@@ -169,7 +169,7 @@ GPU every tick instead of read from frame folders. The EFSH fill texture is
 loaded through the engine and a full-screen pass tiles, mirrors, transposes
 and scrolls it into render targets we own; each target is presented to CS
 through an `NiSourceTexture` shell loaded from a placeholder DDS under
-`Textures/WornEnchantmentPBR/slots/` (512 shells; a stack owns one and shares a scratch per size for its intermediate layers). The
+`Textures/BetterEnchantmentEffects/slots/` (512 shells; a stack owns one and shares a scratch per size for its intermediate layers). The
 scroll is exact per pixel, there are no compression artefacts, and the mean
 luminance for normalisation is read back from the target's 1x1 mip.
 
@@ -195,7 +195,7 @@ that input with a different output slot.
 ## Frame folders (fallback only)
 
 When the GPU lab cannot initialise, an effect falls back to frame folders
-under `Textures/WornEnchantmentPBR/<form key>/` or `<fill texture stem>/`
+under `Textures/BetterEnchantmentEffects/<form key>/` or `<fill texture stem>/`
 (`frame_<i>.dds`, optional `meta.ini` with `luminance=`), and without those
 to the raw fill texture unscrolled. The mod ships no frames; the baker in
 `tools/make_flipbook.py` still produces them (BC1 or BGRA8, mirror and
@@ -222,7 +222,7 @@ Sheen and sparkle share one shader slot in CS and neither fits a material that
 already has a clear coat or hair model; those geometries log a skip line.
 Per-record colour overrides go in `[Colors]` keyed by the form key printed
 in the apply line (`skyrim~092dee`). Frames baked for one record live under
-`Textures/WornEnchantmentPBR/<form key>/` and win over the fill-texture folder;
+`Textures/BetterEnchantmentEffects/<form key>/` and win over the fill-texture folder;
 `skyrim~092de7` (fire) ships that way with its palette baked in.
 
 ## Output spikes: light and shell
@@ -257,9 +257,9 @@ file format is `schema/recipe.schema.json`, and `schema/example-magicka.json`
 is the canonical file. The runtime does not read recipes yet (phase 2); the
 store loads and validates them and the importer writes them.
 
-Files live under `Data/WornEnchantmentPBR/<Mod>/*.json`, any depth, loaded
-in path order; `Data/WornEnchantmentPBR/user/` loads last and is where the
-menu will save; the importer writes to `Data/WornEnchantmentPBR/imported/`.
+Files live under `Data/BetterEnchantmentEffects/<Mod>/*.json`, any depth, loaded
+in path order; `Data/BetterEnchantmentEffects/user/` loads last and is where the
+menu will save; the importer writes to `Data/BetterEnchantmentEffects/imported/`.
 At `kDataLoaded` the store reads every file, resolves editor IDs against the
 loaded forms, logs each row problem on its row (`recipe <id>: signal x:
 ...`), then imports a recipe for every effect shader that a constant-effect
@@ -358,7 +358,7 @@ import with a white glow.
 ## In-game menu
 
 With SKSE Menu Framework installed, the mod control panel gets a
-**Worn Enchantment PBR** section: the recipe studio and two support
+**Better Enchantment Effects** section: the recipe studio and two support
 pages. The support pages start with the status line (emissive path,
 layout check, lab, counts, tick interval, recipe files); the Studio
 starts with its mode bar and holds the selection (actor and piece, then
@@ -603,7 +603,7 @@ plugin runs without the framework and only logs that no menu is available.
 
 ## INI
 
-`Data/SKSE/Plugins/WornEnchantmentPBR.ini`, read at `kDataLoaded`:
+`Data/SKSE/Plugins/BetterEnchantmentEffects.ini`, read at `kDataLoaded`:
 
 | Key | Default | Range |
 |---|---|---|
@@ -659,7 +659,7 @@ also why vanilla armor enchant glow is barely visible in the first place.
 
 Five host-independent executables, built as Windows console exes on request
 (`cmake --build build/Release --target host-tests`, giving
-`build/Release/WornEnchantmentPBR{,Settings,Recipe,Signal,Importer}Tests.exe`)
+`build/Release/BetterEnchantmentEffects{,Settings,Recipe,Signal,Importer}Tests.exe`)
 and natively by `tests/run-native.sh` (uses `clang++` when present, else
 `g++`; set `CXX` to choose). Each prints `all N ... checks passed` and exits 0.
 
@@ -748,7 +748,7 @@ animation events reach triggers):
     base or type a new expression for `glowLevel` and press Enter: the
     log shows `retired`, then the piece re-applies with the new value,
     and the Recipes page marks the recipe `edited, not saved`. Save writes
-    `Data/WornEnchantmentPBR/user/<id>.json` (the imported file stays),
+    `Data/BetterEnchantmentEffects/user/<id>.json` (the imported file stays),
     logs `recipe <id> saved to ...`, and the next load logs `<user path>
     replaces <imported path>`. Revert to file discards the edits. A bad
     expression logs `recipe <id> signal <name>: ...` and the row shows
@@ -938,7 +938,7 @@ Phase 1 checkpoint (recipe store, no visual change):
    `recipe ...: ... :` error line is a finding.
 8. **Compare a written file with the fixture.** Under MO2 the files land
    where SKSE output is routed (here `mods/SKSE Output/`) at
-   `WornEnchantmentPBR/imported/`.
+   `BetterEnchantmentEffects/imported/`.
    `EnchArmorMagickaFXS.json` there must be identical to
    `tests/fixtures/recipes/EnchArmorMagickaFXS.json` (the fixture is the
    Tweaks case; without Tweaks only the `name`, the key and the `efsh`
@@ -948,5 +948,5 @@ Phase 1 checkpoint (recipe store, no visual change):
 9. **Start again.** The second run logs `N loaded, 0 with errors, 0
    unresolved editor IDs, 0 imported` and one `recipe <id> loaded from ...`
    line per file, each ending `imported, not yet edited`. Files from the
-   phase 1 shape under `SKSE/Plugins/WornEnchantmentPBR/recipes/` in the
+   phase 1 shape under `SKSE/Plugins/BetterEnchantmentEffects/recipes/` in the
    overwrite folder are no longer read and can be deleted.

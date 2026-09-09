@@ -15,7 +15,7 @@
 #include <unordered_map>
 #include <variant>
 
-namespace WornEnchantmentPBR::Studio
+namespace BetterEnchantmentEffects::Studio
 {
 	using FieldKey = std::uint32_t;
 	inline constexpr FieldKey kNoField = 0;

@@ -28,7 +28,7 @@ using namespace std::literals;
 #include <functional>
 #include <mutex>
 
-namespace WornEnchantmentPBR
+namespace BetterEnchantmentEffects
 {
 	extern std::shared_ptr<spdlog::sinks::ringbuffer_sink_mt> g_logRing;
 }

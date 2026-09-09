@@ -22,7 +22,7 @@
 #include <unordered_set>
 #include <vector>
 
-namespace WornEnchantmentPBR
+namespace BetterEnchantmentEffects
 {
 	struct PlacedOutput
 	{

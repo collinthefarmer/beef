@@ -6,16 +6,16 @@
 #include <string>
 #include <string_view>
 
-#ifndef WEPBR_PLUGIN_NAME
-#	define WEPBR_PLUGIN_NAME "WornEnchantmentPBR"
+#ifndef BEEF_PLUGIN_NAME
+#	define BEEF_PLUGIN_NAME "BetterEnchantmentEffects"
 #endif
 
-namespace WornEnchantmentPBR::Identity
+namespace BetterEnchantmentEffects::Identity
 {
-	inline constexpr std::string_view kName = WEPBR_PLUGIN_NAME;
-	inline constexpr std::string_view kMenuTitle = "Worn Enchantment PBR";
-	inline constexpr std::string_view kNodePrefix = "WEPBR";
-	inline constexpr std::string_view kTextureFolder = WEPBR_PLUGIN_NAME;
+	inline constexpr std::string_view kName = BEEF_PLUGIN_NAME;
+	inline constexpr std::string_view kMenuTitle = "Better Enchantment Effects";
+	inline constexpr std::string_view kNodePrefix = "BEEF";
+	inline constexpr std::string_view kTextureFolder = BEEF_PLUGIN_NAME;
 
 	inline std::string LogFileName()
 	{

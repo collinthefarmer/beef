@@ -63,12 +63,12 @@ what happens if it is wrong.
    `textures\...` prefixed path.**
    Basis: the original passes `fillTexture.textureName` unchanged
    (`decompiled/WornEnchantmentFX/plugin.c` 4332-4380). Flipbook frames are
-   requested as `textures\WornEnchantmentPBR\<name>\frame_<i>.dds`. If the
+   requested as `textures\BetterEnchantmentEffects\<name>\frame_<i>.dds`. If the
    prefix form fails, `flipbook: ... exists on disk but failed to load` appears
    and the fallback texture is used.
 
 8. **Frame discovery via `std::filesystem::exists` on
-   `Data/Textures/WornEnchantmentPBR/<name>/frame_<i>.dds` works under MO2's
+   `Data/Textures/BetterEnchantmentEffects/<name>/frame_<i>.dds` works under MO2's
    usvfs and the working directory is the game folder.**
    Basis: usvfs hooks the Win32 file APIs the STL uses; every SKSE plugin that
    reads `Data/SKSE/Plugins/*.ini` by relative path relies on the same. If
@@ -358,7 +358,7 @@ added 2026-09-04 and not yet run in game.
 Items 38-40 cover the recipe store added by phase 1 of the compositor
 rewrite (`src/RecipeStore.cpp`, 2026-09-04), not yet run in game.
 
-38. **Files written by relative path under `Data/WornEnchantmentPBR/imported/`
+38. **Files written by relative path under `Data/BetterEnchantmentEffects/imported/`
     from the game folder land somewhere the next read by the same path finds
     them.** Basis: item 8 for reads; MO2's usvfs redirects new files under
     `Data` to its overwrite folder and serves them back on later reads. The

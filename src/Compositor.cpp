@@ -10,7 +10,7 @@
 #include <cctype>
 #include <array>
 
-namespace WornEnchantmentPBR
+namespace BetterEnchantmentEffects
 {
 	namespace
 	{

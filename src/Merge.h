@@ -7,7 +7,7 @@
 #include <span>
 #include <vector>
 
-namespace WornEnchantmentPBR
+namespace BetterEnchantmentEffects
 {
 	struct PlacedRecipe
 	{

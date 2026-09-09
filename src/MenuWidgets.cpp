@@ -20,9 +20,9 @@ using ImGuiMCP::ImTextureID;
 using ImGuiMCP::ImVec2;
 using ImGuiMCP::ImVec4;
 
-static_assert(std::is_same_v<WornEnchantmentPBR::Studio::FieldKey, ImGuiID>);
+static_assert(std::is_same_v<BetterEnchantmentEffects::Studio::FieldKey, ImGuiID>);
 
-namespace WornEnchantmentPBR::Studio::Widgets
+namespace BetterEnchantmentEffects::Studio::Widgets
 {
 	namespace
 	{

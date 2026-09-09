@@ -4,7 +4,7 @@
 
 #include <format>
 
-namespace WornEnchantmentPBR::Studio
+namespace BetterEnchantmentEffects::Studio
 {
 	std::string_view TermOpName(TermOp a_op) noexcept
 	{

@@ -4,7 +4,7 @@
 #include <string>
 #include <vector>
 
-using namespace WornEnchantmentPBR;
+using namespace BetterEnchantmentEffects;
 
 namespace
 {

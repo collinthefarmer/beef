@@ -11,7 +11,7 @@
 #include <span>
 #include <tuple>
 
-namespace WornEnchantmentPBR
+namespace BetterEnchantmentEffects
 {
 	std::string_view IslandSourceName(IslandSource a_source) noexcept
 	{

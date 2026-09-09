@@ -3,7 +3,7 @@
 #include "PCH.h"
 #include "Snapshot.h"
 
-namespace WornEnchantmentPBR
+namespace BetterEnchantmentEffects
 {
 	void RegisterMenu();
 

@@ -5,7 +5,7 @@
 #include <span>
 #include <string>
 
-using namespace WornEnchantmentPBR;
+using namespace BetterEnchantmentEffects;
 
 namespace
 {

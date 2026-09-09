@@ -2,7 +2,7 @@
   "format": 1,
   "name": "Magicka (vanilla)",
   "description": "EnchArmorMagickaFXS as the importer writes it, plus a hit ring and a footstep ripple.",
-  "imported": "WornEnchantmentPBR 0.1.0",
+  "imported": "BetterEnchantmentEffects 0.1.0",
   "keys": [ { "effectShader": "EnchArmorMagickaFXS" } ],
   "clock": { "speed": 1.0 },
 

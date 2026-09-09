@@ -23,7 +23,7 @@ namespace ImGui = ImGuiMCP;
 using ImGuiMCP::ImVec2;
 using ImGuiMCP::ImGuiSliderFlags_Logarithmic;
 
-namespace WornEnchantmentPBR
+namespace BetterEnchantmentEffects
 {
 	namespace
 	{

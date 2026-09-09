@@ -11,7 +11,7 @@
 #include <unordered_set>
 #include <utility>
 
-namespace WornEnchantmentPBR
+namespace BetterEnchantmentEffects
 {
 	namespace
 	{
@@ -566,7 +566,7 @@ namespace WornEnchantmentPBR
 
 			static ValueType SourceType(const Source& a_source)
 			{
-				return WornEnchantmentPBR::SourceType(a_source);
+				return BetterEnchantmentEffects::SourceType(a_source);
 			}
 
 			std::optional<ValueType> MaskType(const Mask& a_mask, std::unordered_set<std::string>& a_visiting) const
@@ -809,7 +809,7 @@ namespace WornEnchantmentPBR
 				}
 			}
 
-			void Layer(const std::string& a_where, const WornEnchantmentPBR::Layer& a_layer, Slot a_slot)
+			void Layer(const std::string& a_where, const BetterEnchantmentEffects::Layer& a_layer, Slot a_slot)
 			{
 				if (const auto* ref = Get<Ref>(a_layer.source)) {
 					if (!recipe_.FindSource(ref->name) && !recipe_.FindMask(ref->name)) {
@@ -1156,14 +1156,14 @@ namespace WornEnchantmentPBR
 				});
 			}
 
-			bool Param(const WornEnchantmentPBR::Param& a_param)
+			bool Param(const BetterEnchantmentEffects::Param& a_param)
 			{
 				const auto name = RefOf(a_param);
 				return name && Signal(*name);
 			}
 
 			template <std::size_t N>
-			bool Vector(const std::variant<std::array<WornEnchantmentPBR::Param, N>, Ref>& a_param)
+			bool Vector(const std::variant<std::array<BetterEnchantmentEffects::Param, N>, Ref>& a_param)
 			{
 				std::vector<std::string_view> refs;
 				CollectRefs(a_param, refs);

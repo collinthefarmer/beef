@@ -9,7 +9,7 @@
 #include <string_view>
 #include <vector>
 
-namespace WornEnchantmentPBR::Studio
+namespace BetterEnchantmentEffects::Studio
 {
 	using FormID = std::uint32_t;
 

@@ -2,7 +2,7 @@
 
 #include "Snapshot.h"
 
-namespace WornEnchantmentPBR::Studio
+namespace BetterEnchantmentEffects::Studio
 {
 	void __stdcall RenderStudio();
 

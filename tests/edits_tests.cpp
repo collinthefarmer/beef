@@ -6,8 +6,8 @@
 #include <filesystem>
 #include <string>
 
-using namespace WornEnchantmentPBR;
-using namespace WornEnchantmentPBR::Studio;
+using namespace BetterEnchantmentEffects;
+using namespace BetterEnchantmentEffects::Studio;
 using test::Check;
 
 namespace
@@ -15,7 +15,7 @@ namespace
 	const Recipe& Canonical()
 	{
 		static const Recipe recipe = [] {
-			const auto path = std::filesystem::path{ WEPBR_FIXTURES_DIR }.parent_path().parent_path() / "schema" / "example-magicka.json";
+			const auto path = std::filesystem::path{ BEEF_FIXTURES_DIR }.parent_path().parent_path() / "schema" / "example-magicka.json";
 			const auto loaded = ParseRecipe(test::ReadFile(path), "example-magicka");
 			Check(loaded.recipe.has_value(), "schema/example-magicka.json parses");
 			return loaded.recipe.value_or(Recipe{});

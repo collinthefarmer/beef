@@ -13,7 +13,7 @@
 #include <string_view>
 #include <vector>
 
-namespace WornEnchantmentPBR
+namespace BetterEnchantmentEffects
 {
 	struct MeshVertex
 	{

@@ -1,4 +1,4 @@
-# WornEnchantmentPBR: how the code is written
+# BetterEnchantmentEffects: how the code is written
 
 Read `../../plans/worn-enchantment-pbr-roadmap-2026-09-08.md` (the map: the
 model as it stands, the extension contracts, the order of work, the naming
@@ -53,7 +53,7 @@ refactor that moves a responsibility. `schema/recipe.schema.json` is the recipe 
 - Do not modify `decompiled/`, `reference/` or anything under `/mnt/a/mods/`,
   with one exception: recipe files. The installer stages no recipes; when
   the user asks for a recipe, write it into the MO2 mod folder
-  (`/mnt/a/mods/SkyrimSE/mods/WornEnchantmentPBR/WornEnchantmentPBR/<folder>/`),
+  (`/mnt/a/mods/SkyrimSE/mods/BetterEnchantmentEffects/BetterEnchantmentEffects/<folder>/`),
   and keep a copy under `recipes/` in the repo only when it should be an
   example the tests read.
 - Build with `./build.sh Release -j 4` (more jobs exhaust WSL's memory and

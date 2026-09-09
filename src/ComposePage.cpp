@@ -32,7 +32,7 @@
 namespace ImGui = ImGuiMCP;
 using ImGuiMCP::ImVec2;
 
-namespace WornEnchantmentPBR::Studio
+namespace BetterEnchantmentEffects::Studio
 {
 	namespace
 	{
@@ -41,7 +41,7 @@ namespace WornEnchantmentPBR::Studio
 		using Intents = std::vector<Intent>;
 
 		constexpr float       kFilterWidth = 160.0f;
-		constexpr const char* kLayerPayload = "WEPBR_LAYER";
+		constexpr const char* kLayerPayload = "BEEF_LAYER";
 
 		constexpr TableStyle kGridStyle{ .borders = TableStyle::Borders::kAll, .stretch = true, .headers = true, .rowBackground = true };
 		constexpr TableStyle kContextStyle{ .borders = TableStyle::Borders::kAll, .stretch = false, .headers = true, .rowBackground = false };
@@ -1559,7 +1559,7 @@ namespace WornEnchantmentPBR::Studio
 			return RecipeKeyOf(chosen->key, chosen->text);
 		}
 
-		constexpr const char* kTermPayload = "WEPBR_TERM";
+		constexpr const char* kTermPayload = "BEEF_TERM";
 
 		constexpr TableStyle kOffersStyle{ .borders = TableStyle::Borders::kNone, .stretch = true, .headers = true, .rowBackground = false };
 

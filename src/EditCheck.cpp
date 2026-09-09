@@ -6,7 +6,7 @@
 #include <algorithm>
 #include <format>
 
-namespace WornEnchantmentPBR::Studio
+namespace BetterEnchantmentEffects::Studio
 {
 	namespace
 	{

@@ -1,4 +1,4 @@
-# WornEnchantmentPBR: architecture and API reference
+# BetterEnchantmentEffects: architecture and API reference
 
 How the modules fit, what flows between them, who owns what, and how to
 add a kind of thing. The headers state each module's types and functions
@@ -301,7 +301,7 @@ signal (64), importer (158; goldens in `tests/fixtures/recipes`), bake
 schema when `check-jsonschema` is on the path. The same sources build as
 host executables through CMake's `host-tests` target (`cmake --build
 build/Release --target host-tests`, excluded from the normal build), each
-shared engine-free source compiled once into a `WornEnchantmentPBRHostObjects`
+shared engine-free source compiled once into a `BetterEnchantmentEffectsHostObjects`
 object library the test executables link rather than recompile.
 `tools/efsh_dump.py` writes EFSH fixtures
 from a plugin file. There is no engine-side test; the in-game checkpoints
@@ -313,7 +313,7 @@ each records what to look at and which log lines to expect.
 `plans/worn-enchantment-pbr-roadmap-2026-09-08.md` holds the order of
 work, where each planned feature lands (a row, a variant alternative, a
 view field, a lab pass or a provider) and the naming rules. Every studio
-module lives in `WornEnchantmentPBR::Studio`, one level deep; the shared
+module lives in `BetterEnchantmentEffects::Studio`, one level deep; the shared
 core and the rule tables stay in the top namespace, which the studio
 depends on and never the reverse. Modes are the `kLayouts` table in
 `Studio`; Design draws a placeholder until its stage.

@@ -1,7 +1,7 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://github.com/collin/WornEnchantmentPBR/schema/recipe.schema.json",
-  "title": "WornEnchantmentPBR recipe, format 1",
+  "$id": "https://github.com/collin/BetterEnchantmentEffects/schema/recipe.schema.json",
+  "title": "BetterEnchantmentEffects recipe, format 1",
   "description": "One recipe: what an enchantment, material or armor looks like, as signals, sources, masks and per-output layer stacks. Strings starting with @ reference another row; enum values are bare strings; anything discriminated is a one-key object.",
   "type": "object",
   "additionalProperties": false,

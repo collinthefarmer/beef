@@ -3,7 +3,7 @@
 #include <algorithm>
 #include <functional>
 
-namespace WornEnchantmentPBR::Studio
+namespace BetterEnchantmentEffects::Studio
 {
 	namespace
 	{
