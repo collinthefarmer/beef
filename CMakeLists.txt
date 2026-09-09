@@ -57,53 +57,6 @@ foreach(_lib IN LISTS _clib_links)
 endforeach()
 set_target_properties(CommonLibSSE PROPERTIES INTERFACE_LINK_LIBRARIES "${_clib_links_fixed}")
 
-set(PLUGIN_SOURCES
-  src/_old/main.cpp
-  src/_old/Events.cpp
-  src/_old/Hooks.cpp
-  src/_old/Menu.cpp
-  src/_old/MenuState.cpp
-  src/_old/History.cpp
-  src/_old/EditCheck.cpp
-  src/_old/Paint.cpp
-  src/_old/Region.cpp
-  src/_old/MenuWidgets.cpp
-  src/_old/ComposePage.cpp
-  src/_old/RuntimeTextures.cpp
-  src/_old/Settings.cpp
-  src/_old/SettingsCore.cpp
-  src/_old/Timing.cpp
-  src/_old/Recipe.cpp
-  src/_old/RecipeJson.cpp
-  src/_old/Expression.cpp
-  src/_old/Signals.cpp
-  src/_old/Importer.cpp
-  src/_old/RecipeStore.cpp
-  src/_old/EngineForms.cpp
-  src/_old/Environment.cpp
-  src/_old/Compositor.cpp
-  src/_old/Mesh.cpp
-  src/_old/Analysis.cpp
-  src/_old/Merge.cpp
-  src/_old/MeshReader.cpp
-  src/_old/Binding.cpp
-  src/_old/Manager.cpp
-  src/_old/Studio.cpp
-  src/_old/Edits.cpp
-)
-
-add_commonlibsse_plugin(${PROJECT_NAME}
-  NAME    ${PROJECT_NAME}
-  AUTHOR  "collin"
-  VERSION ${PROJECT_VERSION}
-  USE_ADDRESS_LIBRARY
-  SOURCES ${PLUGIN_SOURCES})
-
-target_include_directories(${PROJECT_NAME} PRIVATE src src/_old)
-target_include_directories(${PROJECT_NAME} SYSTEM PRIVATE src/extern)
-target_compile_definitions(${PROJECT_NAME} PRIVATE BEEF_PLUGIN_NAME="${PROJECT_NAME}")
-target_precompile_headers(${PROJECT_NAME} PRIVATE src/_old/PCH.h)
-
 set(CLANG_CL_FLAGS
   /permissive- /EHsc /W4 /utf-8
   -fdelayed-template-parsing -Wno-delayed-template-parsing-in-cxx20)
@@ -114,70 +67,46 @@ set(COMMONLIBSSE_SUPPRESSIONS
   -Wno-reinterpret-base-class
   -Wno-invalid-offsetof
   -Wno-nontrivial-memcall)
+
+# The engine-free host surface. Later waves drop their pure modules into
+# src/recipe, src/mesh and src/studio; the globs pick them up with no edit here.
+file(GLOB_RECURSE NATIVE_MODULE_SOURCES CONFIGURE_DEPENDS
+  "${CMAKE_SOURCE_DIR}/src/recipe/*.cpp"
+  "${CMAKE_SOURCE_DIR}/src/mesh/*.cpp"
+  "${CMAKE_SOURCE_DIR}/src/studio/*.cpp")
+set(NATIVE_SOURCES
+  src/Settings.cpp
+  ${NATIVE_MODULE_SOURCES})
+
+add_library(${PROJECT_NAME}Native OBJECT ${NATIVE_SOURCES})
+target_include_directories(${PROJECT_NAME}Native PRIVATE src)
+target_include_directories(${PROJECT_NAME}Native SYSTEM PRIVATE src/extern)
+target_compile_options(${PROJECT_NAME}Native PRIVATE ${CLANG_CL_FLAGS} -Werror=switch)
+
+# The plugin DLL. Engine-facing sources only; engine/, render/ and menu/ are
+# added by wave 3 and wave 4.
+set(PLUGIN_SOURCES
+  src/main.cpp
+  src/Settings.cpp
+  src/SettingsFile.cpp)
+
+add_commonlibsse_plugin(${PROJECT_NAME}
+  NAME    ${PROJECT_NAME}
+  AUTHOR  "collin"
+  VERSION ${PROJECT_VERSION}
+  USE_ADDRESS_LIBRARY
+  SOURCES ${PLUGIN_SOURCES})
+
+target_include_directories(${PROJECT_NAME} PRIVATE src)
+target_include_directories(${PROJECT_NAME} SYSTEM PRIVATE src/extern)
+target_compile_definitions(${PROJECT_NAME} PRIVATE BEEF_PLUGIN_NAME="${PROJECT_NAME}")
+target_precompile_headers(${PROJECT_NAME} PRIVATE src/PCH.h)
+
 target_compile_options(${PROJECT_NAME} PRIVATE ${CLANG_CL_FLAGS} -Werror=switch)
 target_compile_options(CommonLibSSE PRIVATE ${CLANG_CL_FLAGS} ${COMMONLIBSSE_SUPPRESSIONS})
 
 target_compile_options(${PROJECT_NAME} PRIVATE /Zi)
 target_link_options(${PROJECT_NAME} PRIVATE /DEBUG:FULL /PDBALTPATH:%_PDB%)
-
-set(HOST_OBJECT_SOURCES
-  src/_old/Timing.cpp
-  src/_old/SettingsCore.cpp
-  src/_old/Expression.cpp
-  src/_old/Recipe.cpp
-  src/_old/RecipeJson.cpp
-  src/_old/Signals.cpp
-  src/_old/Importer.cpp
-  src/_old/Mesh.cpp
-  src/_old/Analysis.cpp
-  src/_old/Merge.cpp
-  src/_old/Region.cpp
-  src/_old/Studio.cpp
-  src/_old/MenuState.cpp
-  src/_old/History.cpp
-  src/_old/Edits.cpp
-  src/_old/EditCheck.cpp
-  src/_old/Paint.cpp)
-add_library(${PROJECT_NAME}HostObjects OBJECT ${HOST_OBJECT_SOURCES})
-set_target_properties(${PROJECT_NAME}HostObjects PROPERTIES EXCLUDE_FROM_ALL TRUE)
-target_include_directories(${PROJECT_NAME}HostObjects PRIVATE src src/_old src/extern)
-target_compile_options(${PROJECT_NAME}HostObjects PRIVATE /EHsc /W4 /utf-8)
-target_compile_definitions(${PROJECT_NAME}HostObjects PRIVATE BEEF_FIXTURES_DIR="${CMAKE_SOURCE_DIR}/tests/fixtures")
-
-function(add_host_test NAME)
-  add_executable(${NAME} ${ARGN})
-  set_target_properties(${NAME} PROPERTIES EXCLUDE_FROM_ALL TRUE)
-  target_include_directories(${NAME} PRIVATE src src/_old src/extern)
-  target_compile_options(${NAME} PRIVATE /EHsc /W4 /utf-8)
-  target_compile_definitions(${NAME} PRIVATE BEEF_FIXTURES_DIR="${CMAKE_SOURCE_DIR}/tests/fixtures")
-  target_link_libraries(${NAME} PRIVATE ${PROJECT_NAME}HostObjects)
-endfunction()
-add_host_test(${PROJECT_NAME}Tests tests/timing_tests.cpp)
-add_host_test(${PROJECT_NAME}SettingsTests tests/settings_tests.cpp)
-add_host_test(${PROJECT_NAME}ExpressionTests tests/expression_tests.cpp)
-add_host_test(${PROJECT_NAME}RecipeTests tests/recipe_tests.cpp)
-add_host_test(${PROJECT_NAME}SignalTests tests/signal_tests.cpp)
-add_host_test(${PROJECT_NAME}ImporterTests tests/importer_tests.cpp)
-add_host_test(${PROJECT_NAME}BakeTests tests/bake_tests.cpp)
-add_host_test(${PROJECT_NAME}AnalysisTests tests/analysis_tests.cpp)
-add_host_test(${PROJECT_NAME}MergeTests tests/merge_tests.cpp)
-add_host_test(${PROJECT_NAME}RegionTests tests/region_tests.cpp)
-add_host_test(${PROJECT_NAME}StudioTests tests/studio_tests.cpp)
-add_host_test(${PROJECT_NAME}EditsTests tests/edits_tests.cpp)
-
-add_custom_target(host-tests DEPENDS
-  ${PROJECT_NAME}Tests
-  ${PROJECT_NAME}SettingsTests
-  ${PROJECT_NAME}ExpressionTests
-  ${PROJECT_NAME}RecipeTests
-  ${PROJECT_NAME}SignalTests
-  ${PROJECT_NAME}ImporterTests
-  ${PROJECT_NAME}BakeTests
-  ${PROJECT_NAME}AnalysisTests
-  ${PROJECT_NAME}MergeTests
-  ${PROJECT_NAME}RegionTests
-  ${PROJECT_NAME}StudioTests
-  ${PROJECT_NAME}EditsTests)
 
 set(DIST_DIR "${CMAKE_SOURCE_DIR}/dist/${PROJECT_NAME}")
 add_custom_command(TARGET ${PROJECT_NAME} POST_BUILD

@@ -10,6 +10,91 @@ ownership rules are in `ARCHITECTURE.md`; the recipe format is
 `schema/recipe.schema.json`. Third-party copies (`src/extern/`,
 `src/cs/BSLightingShaderMaterialPBR.h`) keep their own comments.
 
+## Foundation (`Core.h`, `Identity.h`, `PCH.h`, `Settings.*`, `SettingsFile.*`)
+
+The plugin name is spelled once, in `Identity.h`. `BEEF_PLUGIN_NAME` is
+defined by CMake from the project name (`target_compile_definitions … BEEF_PLUGIN_NAME="${PROJECT_NAME}"`);
+the `#ifndef` fallback in `Identity.h` only keeps native builds, which do not
+pass the define, compiling. `kNodePrefix` ("BEEF") names the shell and light
+nodes the plugin adds to the skeleton; `kTextureFolder` is the plugin name and
+roots the presenter texture paths under `textures\`.
+
+`FormKeyOf` (`SettingsFile.cpp`) builds a per-record key `<plugin stem>~<local
+form id hex>`. The local id is `id & 0xFFF` for an ESL/light master and
+`id & 0xFFFFFF` otherwise, because a light master occupies only the low twelve
+bits of the form id and the rest is the FE/xxx load-order prefix. The key is
+lowercased so a later wave can match records case-insensitively.
+
+`Settings` (`Settings.h`) is the engine-free preference record. It carries
+only the preferences with a live consumer — the scope switches (`playerOnly`,
+`enableShaders`, `thirdPerson`, `firstPerson`, `uniqueMaterial`),
+`verboseLogging`, the animation clock (`animationFPS`, `animationSpeed`), and
+`textureScale`. The INI is driven by one `SettingDesc` table
+(`SettingTable()`), so a preference is spelled once and read by parse, write
+and diff alike. The animation-speed clamp constants (`kMinAnimationSpeed`
+0.05, `kMaxAnimationSpeed` 4.0) bound `animationSpeed`.
+
+`textureScale` is the frozen absolute `runtimeTextureSize` reborn as a
+`TextureScale` enum — a resolution *relative* to the armor's own maps
+(`kQuarter`, `kHalf`, `kFull`), not a pixel count. It serialises to the INI as
+a word (`TextureScale=Full`); an unrecognised word parses to the default
+`kFull` (the pure `Settings::Parse` is total and never throws), and the
+engine-facing `LoadSettingsFromDisk` logs the unrecognised token because the
+pure core has no logger. Turning a scale into pixels and clamping the result to
+64..4096 is wave-3 render/ work; the setting here has no consumer yet.
+
+`SettingsFile` is the engine-facing half: the on-disk path
+(`Identity::IniPath()`), load/save, and the process's single copy behind
+`GetSettings`/`SetSettings`.
+
+`g_logRing` (declared in `PCH.h`, defined in `main.cpp`) is a 300-line
+in-memory spdlog ring the menu reads to show recent log lines; it is attached
+to the logger alongside the file sink at plugin load.
+
+## The recipe model (`recipe/Recipe.h`, `recipe/Words.h`, `recipe/Efsh.h`, `recipe/Merge.h`, `recipe/Signals.h`, `recipe/Importer.h`)
+
+- `Words.h` is the frozen `Vocabulary.h`: one `inline constexpr` spec table
+  per enum, in enum order, with a `static_assert` on row count. It is the
+  single spelling the parser, writer, validation and bindings read, so a
+  vocabulary word is never hand-copied. `kBipedSlots` (slots 30..40, with
+  names `head`..`tail`) was a private table in the frozen `Recipe.cpp`; it
+  lives in `Words.h` now so `mesh/` reads the slot names from one place.
+- `kMaxRecipeRows` caps every recipe collection at read, the cap the frozen
+  `NamedRows` lacked while `ParsePresets` had it. `kMaxRecipeDepth` bounds
+  the recipe's recursive walks (the animation query and texel-type
+  resolution through masks); the frozen code bounded only termination with a
+  visited set, never depth.
+- `Efsh.h` is the vanilla effect-shader animation model, the half of the
+  frozen `Timing` module that serves the `efsh` signal; `Efsh::Evaluate` is
+  called once per tick from the signal graph. Colours are `Core.h`'s `Vec3`,
+  not a private `Rgb`. `EffectParams` drops the frozen `edgeFalloff` (never
+  read). There are no intensity clamp constants: `Evaluate`'s speed and
+  intensity are `1.0f` at the one call site. `SegmentAmount`, `LerpColor`
+  and `EvaluateAlpha` are `Evaluate`-internal, not public. The colour-seeding
+  logic (`ResolveEmissiveColor`, `NormalizeHue`, `Chroma`, `ColorPolicy`) is
+  now private to `Importer.cpp`, since only the importer reads it;
+  `BaselineAlpha` stays public because the importer seeds the `rest` and
+  `edgeRest` curves from it.
+- `Importer.h` imports from a vanilla effect shader with fixed defaults: the
+  frozen `ImportDefaults` struct is gone (both call sites passed nothing),
+  and `EffectShaderRecord::flags` with `kGreyscaleToColor`/`kGreyscaleToAlpha`
+  are dropped (declarations with no reader).
+- `Merge.h` splits the frozen `Contribution` into `SlotContribution` and
+  `LightContribution` over two `enum class` index types, `SlotSource` and
+  `LightSource`. One `std::size_t` field in the frozen code meant an index
+  into a geometry's placed recipes under `PlanGeometry` and into the actor's
+  recipe instances under `PlanLights`; the two index spaces are now two
+  types the compiler keeps apart.
+- `RowTypes` (in `Signals.h`, bundling the `Recipe` and its compiled
+  `SignalGraph`) carries the per-row type resolution and reference checks —
+  `TexelTypeOf`, `SignalTypeOf`, `NamesTrigger`, and the per-row `Check*`
+  functions — as free functions. Validation and the studio's edit-time check
+  both call them, so the three diverging copies the frozen tree carried
+  (`Validator`, `CheckSourceKind`, `EditCheck`) become one. A curve on a
+  non-scalar signal is an error `SignalGraph::Compile` reports as a
+  diagnostic, closing the frozen code's empty `if (n.curve && n.type !=
+  kScalar) {}`.
+
 ## The recipe language (`Expression.h`, `Expression.cpp`)
 
 One grammar serves signals (evaluated per tick on the CPU), masks (per
@@ -261,8 +346,23 @@ Decompile provenance (`decompiled/WornEnchantmentFX/plugin.c` unless noted):
   current = max - damage; `damage` is the damage modifier negated; `max` is
   permanent plus the temporary modifier.
 
-## Meshes, bakes and analysis (`Mesh.h`, `MeshReader.cpp`, `Analysis.cpp`)
+## Meshes, bakes and analysis (`mesh/Mesh.h`, `mesh/TextureSize.h`, `mesh/Islands.h`, `mesh/MaterialClusters.h`, `mesh/MeshFacts.h`)
 
+- The frozen `Analysis` module is split in two that share no type, function
+  or test: `Islands.h` holds the connected-component and UV-chart
+  segmentation (`MeshAnalysis`, `AnalyseMesh`, `BuildIslandBake`),
+  `MaterialClusters.h` holds the k-means++ material segmentation
+  (`MaterialSample`, `ClusterMaterial`, `NearestCluster`, `DescribeTexel`).
+  `MaterialClusters.h` does not include `Mesh.h`; it works on a
+  `MaterialSample`, not a `MeshData`.
+- Decode is a `mesh/` boundary, not the engine's: the engine reader fetches
+  raw bytes only, and `DecodePartition(const RawPartition&)` turns raw
+  vertex and index bytes into the trusted `MeshData`. `RawPartition` carries
+  sized spans plus the vertex and triangle counts, so the decode bounds both
+  counts against the actual buffer size and never reads past a buffer;
+  malformed bytes yield no partition, never undefined behaviour. `TextureSize`
+  is the other boundary type: its one constructor clamps to 64..4096, so a
+  bake size downstream is always in range.
 - The engine packs one vertex as: position 4 floats (xyz and a tangent
   component), uv 2 halfs, normal 4 bytes (xyz biased, 1 tangent), skinning
   4 half weights then 4 byte bone indices. Offsets come from the vertex
