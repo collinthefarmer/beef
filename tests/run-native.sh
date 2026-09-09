@@ -1,12 +1,21 @@
 #!/usr/bin/env bash
 set -euo pipefail
 cd "$(dirname "$0")/.."
-if [ -z "${CXX:-}" ]; then
-	if command -v clang++ >/dev/null 2>&1; then CXX=clang++; else CXX=g++; fi
+CXX="${NATIVE_CXX:-${CXX:-}}"
+if [ -z "$CXX" ]; then
+	command -v clang++ >/dev/null 2>&1 || { echo "clang++ is not on PATH; run 'nix develop' first" >&2; exit 1; }
+	CXX=clang++
 fi
-OUT="${TEST_OUT_DIR:-build/native-tests}"
+if [ -n "${BEEF_SANITIZE:-}" ] && [ "$(basename "$CXX")" = "g++" ]; then
+	echo "g++ cannot build this project under BEEF_SANITIZE; run 'nix develop' first, or set NATIVE_CXX to a clang++" >&2
+	exit 1
+fi
+OUT="${TEST_OUT_DIR:-build/native-tests-$(basename "$CXX")${BEEF_SANITIZE:+-sanitized}}"
 mkdir -p "$OUT"
 FLAGS=(-std=c++23 -O1 -Wall -Wextra -I src -I src/extern "-DBEEF_FIXTURES_DIR=\"$PWD/tests/fixtures\"")
+if [ -n "${BEEF_SANITIZE:-}" ]; then
+	FLAGS+=(-fsanitize=address,undefined -fno-sanitize=vptr -fno-omit-frame-pointer -fno-sanitize-recover=undefined -g)
+fi
 MODEL=(src/Recipe.cpp src/RecipeJson.cpp src/Expression.cpp src/Signals.cpp src/Importer.cpp src/Timing.cpp)
 
 status=0

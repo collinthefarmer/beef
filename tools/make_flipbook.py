@@ -13,8 +13,8 @@ Pillow reads the source (DDS incl. DXT1/3/5, PNG, TGA, ...).
 Frame count sets smoothness: the step between frames is (tile texels / N), so
 a 512 px frame at texture scale 3 needs about 128 frames for ~1.3 texel steps.
 
-On NixOS run it as
-  nix-shell -p 'python313.withPackages (ps: with ps; [numpy pillow])' --run 'python tools/make_flipbook.py ...'
+Run it inside `nix develop`, whose python3 carries numpy and Pillow:
+  python3 tools/make_flipbook.py ...
 
 Sampling convention: the membrane shader samples at uv + offset with offset
 growing over time, so frame i corresponds to offset i/N and the image content

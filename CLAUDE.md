@@ -60,9 +60,10 @@ refactor that moves a responsibility. `schema/recipe.schema.json` is the recipe 
   kill the instance), install with `./install.sh`, and stop at
   each in-game checkpoint for the user to run the game; give the log lines
   to look for.
-- Rename a symbol with `nix shell nixpkgs#llvmPackages.clang-tools -c
-  tools/rename.py Old New --apply` (clangd through `tools/rename.py`;
-  omit `--apply` to list the edits). It renames references, not comments
-  or docs, and prints what it left for a hand pass. It reads
-  `build/clangd/compile_commands.json`; `tools/compile-db.sh` rewrites
-  that after a source file is added.
+- Work inside `nix develop`; every script calls its tools from `PATH` and
+  stops with a message naming the missing one if you are outside the shell.
+- Rename a symbol with `tools/rename.py Old New --apply`, which drives
+  clangd; omit `--apply` to list the edits. It renames
+  references, not comments or docs, and prints what it left for a hand
+  pass. It reads `build/clangd/compile_commands.json`;
+  `tools/compile-db.sh` rewrites that after a source file is added.

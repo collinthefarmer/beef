@@ -12,9 +12,9 @@ alone and a file rename is applied when clangd asks for one.
 
 Needs build/clangd/compile_commands.json (tools/compile-db.sh writes it
 from a configure with -DCMAKE_EXPORT_COMPILE_COMMANDS=ON, keeping this
-repo's own sources) and clangd on PATH:
+repo's own sources) and clangd on PATH, so run it inside `nix develop`:
 
-    nix shell nixpkgs#llvmPackages.clang-tools -c tools/rename.py Old New --apply
+    tools/rename.py Old New --apply
 
 The first run builds clangd's background index under .cache/clangd, which
 takes a few minutes; later runs reuse it.
@@ -38,9 +38,12 @@ class Clangd:
     """A minimal JSON-RPC client over clangd's stdio."""
 
     def __init__(self):
+        clangd = shutil.which("clangd")
+        if clangd is None:
+            sys.exit("clangd is not on PATH; run 'nix develop' first")
         self.proc = subprocess.Popen(
             [
-                shutil.which("clangd-unwrapped") or "clangd",
+                clangd,
                 f"--compile-commands-dir={COMPILE_DB_DIR}",
                 "--background-index",
                 "--background-index-priority=normal",

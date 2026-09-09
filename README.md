@@ -115,8 +115,9 @@ ignores an SDK path, so it cannot drive clang-cl against an xwin SDK layout.
 CMake takes a toolchain file, and FetchContent pulls CommonLibSSE-NG, spdlog
 and rapidcsv without vcpkg (which cannot target Windows from Linux).
 
-Requirements: `nix` with flakes (everything else comes from nixpkgs) and
-network access for the first build.
+Requirements: `nix` with flakes (the dev shell carries every tool) and
+network access for the first build. Run `nix develop` first; the scripts
+below take their tools from `PATH`.
 
 ```sh
 cd plugins/BetterEnchantmentEffects
@@ -125,8 +126,9 @@ cd plugins/BetterEnchantmentEffects
 ./install.sh             # copies dist/BetterEnchantmentEffects to /mnt/a/mods/SkyrimSE/mods/BetterEnchantmentEffects
 ```
 
-`build.sh` runs, inside `nix shell nixpkgs#llvmPackages.clang-unwrapped
-nixpkgs#llvmPackages.llvm nixpkgs#lld nixpkgs#cmake nixpkgs#ninja`:
+Every script calls its tools from `PATH`, so work inside `nix develop`;
+outside it a script stops with a message naming the tool it wanted.
+`build.sh` runs:
 
 ```sh
 cmake -S . -B build/Release -G Ninja -DCMAKE_BUILD_TYPE=Release \

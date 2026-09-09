@@ -445,21 +445,23 @@ Decompile provenance (`decompiled/WornEnchantmentFX/plugin.c` unless noted):
   the user's settings; a DLL locked by the running game fails on that one
   file while the rest transfer, and the exit status is kept.
 - `tests/run-native.sh [--update]` builds and runs every engine-free suite
-  with `CXX` (clang++ if present, else g++) into `TEST_OUT_DIR` (default
-  `build/native-tests`); each source compiles once and a suite links the
-  objects it names; `--update` rewrites the importer's expected recipes;
-  the checked-in recipes are validated against the schema when
-  `check-jsonschema` is on PATH (`nix shell nixpkgs#check-jsonschema -c
-  tests/run-native.sh`).
+  with `NATIVE_CXX`, else `CXX`, else clang++ on PATH, into `TEST_OUT_DIR`
+  (default `build/native-tests-<compiler>`); the dev shell exports
+  `NATIVE_CXX` because its `CXX` is g++, which cannot build this code under
+  `BEEF_SANITIZE`, and the run stops rather than use it there. Each source
+  compiles once and a suite links the objects it names; `--update` rewrites
+  the importer's expected recipes; the checked-in recipes are validated
+  against the schema when `check-jsonschema` is on PATH.
 - `tools/compile-db.sh` writes `build/clangd/compile_commands.json` from the
   Release configure, reduced to this repo's `src/` and `tests/` so clangd
   indexes our code and not CommonLibSSE's; rerun after adding a source.
-- `tools/rename.py` drives the unwrapped clangd binary because nixpkgs'
-  wrapper adds the host's glibc and libstdc++ include paths, which shadow
-  the Windows SDK's. clangd starts indexing when a file it covers is first
-  opened; a file edited since the last run is re-indexed after the progress
-  token ends, so a symbol it declares can be missing for a while; edits are
-  applied from the end so earlier offsets stay valid.
+- `tools/rename.py` drives the `clangd` on `PATH`, which the dev shell
+  makes the unwrapped one: a wrapped clangd adds the host's glibc and
+  libstdc++ include paths, which shadow the Windows SDK's. clangd starts
+  indexing when a file it covers is first opened; a file edited since the
+  last run is re-indexed after the progress token ends, so a symbol it
+  declares can be missing for a while; edits are applied from the end so
+  earlier offsets stay valid.
 - `tools/efsh_dump.py` reads EFSH `DATA` by file offset: the 400-byte file
   layout differs from CommonLibSSE-NG's `EffectShaderData` after 0xF4 (the
   file stores the addon models and ambient sound form IDs in 4 bytes each,
