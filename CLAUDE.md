@@ -1,15 +1,15 @@
 # BetterEnchantmentEffects: how the code is written
 
-Read `../../plans/worn-enchantment-pbr-roadmap-2026-09-08.md` (the map: the
-model as it stands, the extension contracts, the order of work, the naming
-rules), `../../plans/worn-enchantment-pbr-compositor-brief.md` (the spec; its
-data model section is recipe format 1), `ARCHITECTURE.md` (module map,
-data flow, threads, ownership, invariants, extension points),
-`REFERENCE.md` (what the code relies on but cannot say: engine layouts,
-CS rules, decompile lines, shader packings, by module), `README.md`
-and `NOTES.md` before changing structure; update `ARCHITECTURE.md` with any
-refactor that moves a responsibility. `schema/recipe.schema.json` is the recipe format;
-`schema/example-magicka.json` is the canonical file.
+Read `REQUIREMENTS.md` first (the canonical document: what the plugin must
+do, how it is built, how it is verified, and the module-by-module buildup).
+`REFERENCE.md` holds what the code relies on but cannot say — engine
+layouts, CS rules, decompile lines, shader packings, by module.
+`src/_old/` is the frozen previous implementation and the behaviour oracle
+each new module diffs against. `schema/recipe.schema.json` is the recipe
+format and `schema/example-magicka.json` is the canonical file.
+`docs/wip/clusters.md` and `docs/wip/deletions.md` are the per-module
+checklists the buildup consumes: which defects to fix as a module is
+written, and which apparently dead code must not be dropped.
 
 ## Three rules, in priority order
 
