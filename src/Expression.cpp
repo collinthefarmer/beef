@@ -193,6 +193,8 @@ namespace BetterEnchantmentEffects
 			explicit Depth(std::size_t& a_counter) :
 				counter(a_counter) { ++counter; }
 			~Depth() { --counter; }
+			Depth(const Depth&) = delete;
+			Depth& operator=(const Depth&) = delete;
 		};
 
 		Error ParseOr()
