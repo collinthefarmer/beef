@@ -117,6 +117,35 @@ namespace
 		Check(PlanGeometry({}).slots.empty(), "no placements, no plan");
 	}
 
+	void ScalarSources()
+	{
+		SurfaceOutput bare = Surface_(Surface::kShell, Slot::kEmissive);
+		SurfaceOutput lower = bare;
+		lower.scalars.strength = 1.0f;
+		SurfaceOutput higher = bare;
+		higher.scalars.strength = 5.0f;
+		const std::vector<const SurfaceOutput*> none{ &bare, &bare };
+		const std::vector<const SurfaceOutput*> one{ &lower, &bare };
+		const std::vector<const SurfaceOutput*> both{ &lower, &higher };
+		Check(!ScalarSource(Slot::kEmissive, ScalarField::kStrength, none), "a field no link sets has no source");
+		Check(ScalarSource(Slot::kEmissive, ScalarField::kStrength, one) == 0uz, "the only link that sets a field owns it, wherever it sits");
+		Check(ScalarSource(Slot::kEmissive, ScalarField::kStrength, both) == 1uz, "the highest link that sets a field owns it");
+		Check(!ScalarSource(Slot::kEmissive, ScalarField::kWeight, both), "a field the slot does not carry has no source");
+		Check(!ScalarSource(Slot::kEmissive, ScalarField::kStrength, {}), "no links, no source");
+		const std::vector<const SurfaceOutput*> holed{ nullptr, &lower };
+		Check(ScalarSource(Slot::kEmissive, ScalarField::kStrength, holed) == 1uz, "a link with no output is skipped");
+
+		const std::vector<const SurfaceOutput*> visible{ &lower };
+		Check(ScalarSource(Slot::kEmissive, ScalarField::kStrength, visible) == 0uz, "hiding the highest link hands the field to the highest that is left");
+
+		SurfaceOutput fuzz = Surface_(Surface::kMaterial, Slot::kFuzz);
+		SurfaceOutput coloured = fuzz;
+		coloured.scalars.color = std::array<Param, 3>{ 1.0f, 0.0f, 0.0f };
+		const std::vector<const SurfaceOutput*> colours{ &fuzz, &coloured };
+		Check(ScalarSource(Slot::kFuzz, ScalarField::kColor, colours) == 1uz, "a colour is owned like any other field");
+		Check(!ScalarSource(Slot::kFuzz, ScalarField::kColor, std::vector<const SurfaceOutput*>{ &fuzz }), "an unset colour is not owned");
+	}
+
 	void Lights()
 	{
 		Recipe lower = RecipeNamed("lower");
@@ -141,6 +170,7 @@ int main()
 	Chains();
 	Replaces();
 	Selections();
+	ScalarSources();
 	Lights();
 	return test::Finish("merge");
 }

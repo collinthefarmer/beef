@@ -146,16 +146,14 @@ namespace WornEnchantmentPBR
 			return write;
 		}
 
-		void TakeScalars(SlotWrite& a_write, const SlotScalars& a_scalars, const SignalState& a_signals)
+		void TakeScalar(SlotWrite& a_write, ScalarField a_field, const SlotScalars& a_scalars, const SignalState& a_signals)
 		{
-			for (const auto field : ScalarsOf(a_write.slot)) {
-				if (field == ScalarField::kColor) {
-					if (a_scalars.color) {
-						a_write.color = a_signals.Resolve(*a_scalars.color);
-					}
-				} else if (const auto* param = ScalarOf(a_scalars, field); param && *param) {
-					a_write.scalars[static_cast<std::size_t>(field)] = a_signals.Resolve(**param);
+			if (a_field == ScalarField::kColor) {
+				if (a_scalars.color) {
+					a_write.color = a_signals.Resolve(*a_scalars.color);
 				}
+			} else if (const auto* param = ScalarOf(a_scalars, a_field); param && *param) {
+				a_write.scalars[static_cast<std::size_t>(a_field)] = a_signals.Resolve(**param);
 			}
 		}
 
@@ -651,7 +649,6 @@ namespace WornEnchantmentPBR
 			placement.instance = match.instance;
 			placement.piece = a_piece;
 			placement.geometry = a_geometry;
-			placement.priority = match.priority;
 			PlacedRecipe row;
 			row.recipe = instance.recipe;
 			row.priority = match.priority;
@@ -754,10 +751,9 @@ namespace WornEnchantmentPBR
 		}
 		const auto plan = PlanLights(placed);
 		for (const auto& c : plan.replaced) {
-			auto& instance = a_state.instances[c.placed];
-			instance.lightReplacedBy = plan.replacer ? a_state.instances[plan.replacer->placed].recipe->id : std::string{};
 			if (settings.verboseLogging) {
-				logger::info("  recipe {}: light replaced by recipe {}", instance.recipe->id, instance.lightReplacedBy);
+				logger::info("  recipe {}: light replaced by recipe {}", a_state.instances[c.placed].recipe->id,
+					plan.replacer ? a_state.instances[plan.replacer->placed].recipe->id : std::string{});
 			}
 		}
 		for (const auto& c : plan.shown) {
@@ -1249,8 +1245,10 @@ namespace WornEnchantmentPBR
 			if (!target) {
 				continue;
 			}
-			SlotWrite write = EmptyWrite(slot.slot);
-			StackBase base;
+			SlotWrite                         write = EmptyWrite(slot.slot);
+			StackBase                         base;
+			std::vector<const SurfaceOutput*> shown;
+			std::vector<const SignalState*>   signals;
 			for (const auto& c : slot.chain) {
 				auto&       placement = a_state.placements[a_bound.placements[c.placed]];
 				const auto& instance = a_state.instances[placement.instance];
@@ -1269,7 +1267,13 @@ namespace WornEnchantmentPBR
 					base = StackBase{ texture, base.animated || output->stack->Animated() };
 					write.texture = texture;
 				}
-				TakeScalars(write, material->scalars, *instance.signals);
+				shown.push_back(material);
+				signals.push_back(instance.signals.get());
+			}
+			for (const auto field : ScalarsOf(slot.slot)) {
+				if (const auto at = ScalarSource(slot.slot, field, shown)) {
+					TakeScalar(write, field, shown[*at]->scalars, *signals[*at]);
+				}
 			}
 			WriteSlot(*target, write);
 		}

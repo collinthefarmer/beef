@@ -53,6 +53,20 @@ namespace WornEnchantmentPBR
 		}
 	}
 
+	std::optional<std::size_t> ScalarSource(Slot a_slot, ScalarField a_field, std::span<const SurfaceOutput* const> a_outputs)
+	{
+		const auto fields = ScalarsOf(a_slot);
+		if (std::ranges::find(fields, a_field) == fields.end()) {
+			return std::nullopt;
+		}
+		for (std::size_t i = a_outputs.size(); i-- > 0;) {
+			if (a_outputs[i] && NamesScalar(a_outputs[i]->scalars, a_field)) {
+				return i;
+			}
+		}
+		return std::nullopt;
+	}
+
 	GeometryPlan PlanGeometry(std::span<const PlacedRecipe> a_placed)
 	{
 		GeometryPlan plan;
@@ -77,13 +91,13 @@ namespace WornEnchantmentPBR
 				flagged.push_back(Flagged{ c, output && output->replace });
 			}
 			CutAtReplace(flagged, slot.chain, slot.replaced, slot.replacer);
+			std::vector<const SurfaceOutput*> outputs;
+			for (const auto& c : slot.chain) {
+				outputs.push_back(SurfaceOutputAt(a_placed[c.placed], c.output));
+			}
 			for (const auto field : ScalarsOf(slot.slot)) {
-				for (auto it = slot.chain.rbegin(); it != slot.chain.rend(); ++it) {
-					const auto* output = SurfaceOutputAt(a_placed[it->placed], it->output);
-					if (output && NamesScalar(output->scalars, field)) {
-						slot.scalars.push_back(ScalarOwner{ field, *it });
-						break;
-					}
+				if (const auto at = ScalarSource(slot.slot, field, outputs)) {
+					slot.scalars.push_back(ScalarOwner{ field, slot.chain[*at] });
 				}
 			}
 		}

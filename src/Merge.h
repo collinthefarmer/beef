@@ -51,7 +51,8 @@ namespace WornEnchantmentPBR
 		std::optional<Contribution> replacer;
 	};
 
-	[[nodiscard]] GeometryPlan    PlanGeometry(std::span<const PlacedRecipe> a_placed);
+	[[nodiscard]] std::optional<std::size_t> ScalarSource(Slot a_slot, ScalarField a_field, std::span<const SurfaceOutput* const> a_outputs);
+	[[nodiscard]] GeometryPlan               PlanGeometry(std::span<const PlacedRecipe> a_placed);
 	[[nodiscard]] LightPlan       PlanLights(std::span<const PlacedRecipe> a_placed);
 	[[nodiscard]] const SlotPlan* SlotPlanOf(const GeometryPlan& a_plan, Surface a_surface, Slot a_slot) noexcept;
 	[[nodiscard]] std::optional<Contribution> ScalarOwnerOf(const SlotPlan& a_plan, ScalarField a_field) noexcept;

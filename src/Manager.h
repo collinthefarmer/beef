@@ -73,7 +73,6 @@ namespace WornEnchantmentPBR
 		std::unique_ptr<ActorEnvironment>  environment;
 		std::unique_ptr<LightBinding>      light;
 		std::optional<std::size_t>         lightOutput;
-		std::string                        lightReplacedBy;
 		std::uint32_t                      startMS = 0;
 		float                              lastTime = 0.0f;
 	};
@@ -83,7 +82,6 @@ namespace WornEnchantmentPBR
 		std::size_t               instance = 0;
 		std::size_t               piece = 0;
 		std::size_t               geometry = 0;
-		int                       priority = 0;
 		std::vector<PlacedOutput> outputs;
 	};
 
