@@ -1264,10 +1264,10 @@ namespace WornEnchantmentPBR
 					filter = HiddenLayers(view_, instance.recipe->id, c.output, material->stack.size());
 				}
 				Compositor::GetSingleton()->Render(*output->stack, *instance.signals, instance.lastTime, filter, base);
+				write.shown = true;
 				if (auto* texture = output->stack->Texture()) {
 					base = StackBase{ texture, base.animated || output->stack->Animated() };
 					write.texture = texture;
-					write.shown = true;
 				}
 				TakeScalars(write, material->scalars, *instance.signals);
 			}
