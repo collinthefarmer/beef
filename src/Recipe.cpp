@@ -1044,6 +1044,23 @@ namespace WornEnchantmentPBR
 		return out;
 	}
 
+	const PieceKey* DefaultKeyChoice(std::span<const PieceKey> a_choices) noexcept
+	{
+		const auto armor = std::ranges::find(a_choices, KeyKind::kArmor, &PieceKey::kind);
+		if (armor != a_choices.end()) {
+			return &*armor;
+		}
+		return a_choices.empty() ? nullptr : &a_choices.front();
+	}
+
+	RecipeKey RecipeKeyOf(const PieceKey& a_key, std::string_view a_text)
+	{
+		RecipeKey key;
+		key.kind = a_key.kind;
+		key.operand = FormRef{ std::string{ a_text }, a_key.form };
+		return key;
+	}
+
 	bool VariantApplies(const Variant& a_variant, const FormKey& a_armor) noexcept
 	{
 		const auto* armor = Get<FormRef>(a_variant.key);

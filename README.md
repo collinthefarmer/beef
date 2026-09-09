@@ -482,7 +482,12 @@ are in `ARCHITECTURE.md` under "The recipe studio".
   unique, and binds the field to it. A `...` button beside any value
   field that names a `@signal` opens that signal in a modal: its editor,
   its curve, and the signals its expression reads as buttons that open
-  their own modals, to any depth. The
+  their own modals, to any depth. The recipe combo lists the piece's
+  recipes, then, under a divider, every other loaded recipe as "not worn
+  here"; picking one of those pins it: the recipe is applied to the
+  viewed piece as if keyed to its armor, so it renders, shows live values
+  and takes edits and undo, and reads "pinned here" until another recipe
+  is picked on that piece. The
   Recipe rule's **New** makes a recipe named `recipe` (then `recipe-2`
   and on), keyed to the armor, with one empty emissive output on the
   material selecting the viewed geometry alone, listed as

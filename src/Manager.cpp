@@ -319,6 +319,30 @@ namespace WornEnchantmentPBR
 		});
 	}
 
+	void Manager::PinRecipe(Studio::PieceRef a_piece, std::string a_recipeID)
+	{
+		PostTask([this, a_piece, id = std::move(a_recipeID)] {
+			std::optional<Studio::Pin> pin;
+			if (!id.empty()) {
+				const auto loaded = LoadedRecipes();
+				if (std::ranges::find(loaded, id, &Recipe::id) == loaded.end()) {
+					logger::warn("pin: recipe {} is not loaded", id);
+					return;
+				}
+				pin = Studio::Pin{ a_piece, id };
+			}
+			if (view_.pin == pin) {
+				return;
+			}
+			WithListMoved([&] { view_.pin = pin; });
+			if (pin) {
+				logger::info("pin: {} shown on armor {:08X} of actor {:08X} ({}) while viewed", id, a_piece.armorID, a_piece.actorID, a_piece.firstPerson ? "1st" : "3rd");
+			} else {
+				logger::info("pin: cleared");
+			}
+		});
+	}
+
 	void Manager::UpdateView(std::function<void(Studio::View&)> a_change)
 	{
 		PostTask([this, change = std::move(a_change)] { change(view_); });
@@ -490,10 +514,8 @@ namespace WornEnchantmentPBR
 				}
 				continue;
 			}
-			for (const auto& resolved : Resolve(piece.piece, loaded)) {
-				if (view_.Isolating() && (!resolved.recipe || resolved.recipe->id != view_.isolateRecipe)) {
-					continue;
-				}
+			const Studio::PieceRef ref{ a_actor->GetFormID(), piece.armor, piece.firstPerson };
+			for (const auto& resolved : Studio::ViewedRecipes(Resolve(piece.piece, loaded), piece.piece, ref, view_, loaded)) {
 				AppliedRecipe applied;
 				applied.recipe = resolved.recipe;
 				applied.key = resolved.key;
@@ -1242,6 +1264,7 @@ namespace WornEnchantmentPBR
 					r.priority = applied.priority;
 					r.time = applied.lastTime;
 					r.dirty = IsDirty(r.id);
+					r.pinned = view_.pin && view_.pin->piece == refOf(actorID, piece) && view_.pin->recipeID == r.id;
 					r.shellMaterial = applied.recipe->shell.material;
 					r.lightOutput = applied.lightOutput;
 					r.lightRow = Studio::LightRowOf(*applied.recipe);
@@ -1415,6 +1438,11 @@ namespace WornEnchantmentPBR
 					row.recipes.push_back(std::move(r));
 				}
 				out.pieces.push_back(std::move(row));
+			}
+		}
+		for (const auto& recipe : LoadedRecipes()) {
+			if (!IsTransient(recipe.id)) {
+				out.loaded.push_back(recipe.id);
 			}
 		}
 		return out;

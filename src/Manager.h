@@ -85,6 +85,7 @@ namespace WornEnchantmentPBR
 		void Clear();
 		void ReapplyAll();
 		void Isolate(std::string a_recipe, int a_output, int a_layer);
+		void PinRecipe(Studio::PieceRef a_piece, std::string a_recipeID);
 		void RetireAll();
 
 		void EditRecipe(std::string a_id, Studio::EditBatch a_edits);

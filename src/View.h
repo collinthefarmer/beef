@@ -3,6 +3,7 @@
 #include <compare>
 #include <cstddef>
 #include <cstdint>
+#include <optional>
 #include <set>
 #include <string>
 #include <string_view>
@@ -18,6 +19,13 @@ namespace WornEnchantmentPBR::Studio
 		FormID armorID = 0;
 		bool   firstPerson = false;
 		[[nodiscard]] bool operator==(const PieceRef&) const = default;
+	};
+
+	struct Pin
+	{
+		PieceRef    piece;
+		std::string recipeID;
+		[[nodiscard]] bool operator==(const Pin&) const = default;
 	};
 
 	struct LayerKey
@@ -38,6 +46,7 @@ namespace WornEnchantmentPBR::Studio
 		int                isolateLayer = -1;
 		bool               isolatedBySolo = false;
 		std::set<LayerKey> muted;
+		std::optional<Pin> pin;
 
 		[[nodiscard]] bool Isolating() const noexcept { return !isolateRecipe.empty(); }
 

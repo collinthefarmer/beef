@@ -356,6 +356,9 @@ namespace WornEnchantmentPBR::Studio
 				out.push_back(key.recipeID);
 			}
 		}
+		if (pin && std::ranges::find(out, pin->recipeID) == out.end()) {
+			out.push_back(pin->recipeID);
+		}
 		return out;
 	}
 
@@ -369,6 +372,9 @@ namespace WornEnchantmentPBR::Studio
 			renamed.insert(LayerKey{ key.recipeID == a_from ? std::string{ a_to } : key.recipeID, key.output, key.layer });
 		}
 		muted = std::move(renamed);
+		if (pin && pin->recipeID == a_from) {
+			pin->recipeID = std::string{ a_to };
+		}
 	}
 
 	void View::ForgetRecipe(std::string_view a_id)
@@ -380,6 +386,28 @@ namespace WornEnchantmentPBR::Studio
 			isolatedBySolo = false;
 		}
 		std::erase_if(muted, [&](const LayerKey& a_key) { return a_key.recipeID == a_id; });
+		if (pin && pin->recipeID == a_id) {
+			pin.reset();
+		}
+	}
+
+	std::vector<ResolvedRecipe> ViewedRecipes(std::vector<ResolvedRecipe> a_resolved, const WornPiece& a_piece, PieceRef a_ref, const View& a_view, std::span<const Recipe> a_loaded)
+	{
+		if (a_view.pin && a_view.pin->piece == a_ref) {
+			const auto& id = a_view.pin->recipeID;
+			const auto  pinned = std::ranges::find(a_loaded, id, &Recipe::id);
+			const bool  present = std::ranges::any_of(a_resolved, [&](const ResolvedRecipe& a_r) { return a_r.recipe && a_r.recipe->id == id; });
+			const auto  choices = KeyChoicesOf(a_piece);
+			const auto* choice = DefaultKeyChoice(choices);
+			if (pinned != a_loaded.end() && !present && choice) {
+				const RecipeKey key = RecipeKeyOf(*choice, choice->form.ToString());
+				a_resolved.push_back({ &*pinned, key, pinned->priority.value_or(DefaultPriority(key.kind)) });
+			}
+		}
+		if (a_view.Isolating()) {
+			std::erase_if(a_resolved, [&](const ResolvedRecipe& a_r) { return !a_r.recipe || a_r.recipe->id != a_view.isolateRecipe; });
+		}
+		return a_resolved;
 	}
 
 	void ResolveSelection(Selection& a_selection, const Snapshot& a_snapshot) noexcept

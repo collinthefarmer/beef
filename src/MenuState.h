@@ -94,6 +94,10 @@ namespace WornEnchantmentPBR::Studio
 	{
 		std::string recipeID;
 	};
+	struct PinRecipe
+	{
+		std::string recipeID;
+	};
 	struct PickTarget
 	{
 		Target target = Target::kMaterial;
@@ -288,7 +292,7 @@ namespace WornEnchantmentPBR::Studio
 	};
 
 	using Intent = std::variant<
-		SetMode, PickPiece, PickRecipe, PickTarget, PickSlot, PickCell, PickLayer, ViewGeometry, SetStackSplit, ShowSettings, ShowResource, ReadMesh,
+		SetMode, PickPiece, PickRecipe, PinRecipe, PickTarget, PickSlot, PickCell, PickLayer, ViewGeometry, SetStackSplit, ShowSettings, ShowResource, ReadMesh,
 		AddTerm, SetTermOp, SetTermText, SetTermKind, RemoveTerm, MoveTerm, PickTerm, SoloTerm, MuteTerm, LoadRegion, ClearRegion, UndoRegion, RedoRegion, ScratchRebuilt,
 		BeginPaint, SetPaintSurface, KeepPaint, EndPaint,
 		EditRecipe, SoloRecipe, SoloOutput, SoloLayer, MuteLayer,

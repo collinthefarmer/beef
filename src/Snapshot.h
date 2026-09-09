@@ -198,6 +198,7 @@ namespace WornEnchantmentPBR::Studio
 		int                        priority = 0;
 		float                      time = 0.0f;
 		bool                       dirty = false;
+		bool                       pinned = false;
 		ShellMaterial              shellMaterial = ShellMaterial::kPbrCopy;
 		std::vector<SignalRow>     signals;
 		std::vector<TextRow>       curves;
@@ -244,7 +245,8 @@ namespace WornEnchantmentPBR::Studio
 
 		std::uint64_t         version = 0;
 		std::uint32_t         tickMS = 0;
-		View                  view;
-		std::vector<PieceRow> pieces;
+		View                     view;
+		std::vector<PieceRow>    pieces;
+		std::vector<std::string> loaded;
 	};
 }

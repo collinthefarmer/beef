@@ -226,6 +226,51 @@ namespace
 		Check(view.isolateRecipe == "new" && view.muted.size() == 1, "forgetting one recipe leaves the others' state");
 		view.ForgetRecipe("new");
 		Check(!view.Isolating() && view.isolateOutput == -1 && view.muted.empty(), "forgetting the isolated recipe clears the isolate and its muted keys");
+		const PieceRef here{ kPlayer, kCuirass, false };
+		view.pin = Pin{ here, "old" };
+		Check(view.RecipeIDs() == std::vector<std::string>{ "old" }, "the pin's recipe is one the view refers to");
+		view.RenameRecipe("old", "new");
+		Check(view.pin && view.pin->recipeID == "new", "rename follows the pin");
+		view.ForgetRecipe("new");
+		Check(!view.pin, "forgetting the pinned recipe drops the pin");
+	}
+
+	void ViewedRecipeLists()
+	{
+		WornPiece piece;
+		piece.magicEffect = FormKey::Parse("0xAB~Skyrim.esm");
+		piece.armor = FormKey::Parse("0x12E49~Skyrim.esm");
+		std::vector<Recipe> loaded(2);
+		loaded[0].id = "worn";
+		loaded[1].id = "elsewhere";
+		loaded[1].priority = 7;
+		const PieceRef here{ kPlayer, kCuirass, false };
+		const PieceRef there{ kPlayer, 0x777, false };
+		const auto matched = [&]() { return std::vector<ResolvedRecipe>{ { &loaded[0], RecipeKey{}, 10 } }; };
+		View plain;
+		Check(ViewedRecipes(matched(), piece, here, plain, loaded).size() == 1, "no pin, no isolate: the matched list as is");
+		View pinned;
+		pinned.pin = Pin{ here, "elsewhere" };
+		const auto withPin = ViewedRecipes(matched(), piece, here, pinned, loaded);
+		Check(withPin.size() == 2 && withPin[1].recipe == &loaded[1] && withPin[1].key.kind == KeyKind::kArmor && withPin[1].key.Form() && withPin[1].key.Form()->key == piece.armor && withPin[1].priority == 7, "a pinned recipe joins last, keyed to the piece's armor, at its own priority");
+		Check(ViewedRecipes({}, piece, here, pinned, loaded).size() == 1, "a pin applies to a piece nothing matched");
+		Check(ViewedRecipes(matched(), piece, there, pinned, loaded).size() == 1, "a pin names one piece; others are left alone");
+		View pinnedWorn;
+		pinnedWorn.pin = Pin{ here, "worn" };
+		Check(ViewedRecipes(matched(), piece, here, pinnedWorn, loaded).size() == 1, "pinning a recipe the piece already wears adds nothing");
+		View pinnedGone;
+		pinnedGone.pin = Pin{ here, "unloaded" };
+		Check(ViewedRecipes(matched(), piece, here, pinnedGone, loaded).size() == 1, "a pin on a recipe that is not loaded adds nothing");
+		View isolated = pinned;
+		isolated.isolateRecipe = "worn";
+		const auto onlyWorn = ViewedRecipes(matched(), piece, here, isolated, loaded);
+		Check(onlyWorn.size() == 1 && onlyWorn[0].recipe == &loaded[0], "isolating another recipe hides the pinned one");
+		isolated.isolateRecipe = "elsewhere";
+		const auto onlyPinned = ViewedRecipes(matched(), piece, here, isolated, loaded);
+		Check(onlyPinned.size() == 1 && onlyPinned[0].recipe == &loaded[1], "isolating the pinned recipe shows it alone");
+		WornPiece bare;
+		Check(ViewedRecipes({}, bare, here, pinned, loaded).empty(), "a piece with no form to key by cannot take a pin");
+		Check(DefaultKeyChoice({}) == nullptr, "no choices, no default key");
 	}
 
 	void Layouts()
@@ -1257,6 +1302,8 @@ namespace
 
 		Reduce(state, PickPiece{ PieceRef{ kPlayer, kCuirass, false } });
 		Check(state.selection.piece == PieceRef{ kPlayer, kCuirass, false } && state.selection.recipeID.empty(), "a piece pick starts the selection over");
+		Reduce(state, PinRecipe{ "elsewhere" });
+		Check(state.selection.recipeID == "elsewhere", "pinning selects the pinned recipe");
 		Reduce(state, PickRecipe{ kRecipeID });
 		Reduce(state, PickCell{ Surface::kShell, Slot::kEmissive, 2 });
 		Check(state.selection.recipeID == kRecipeID && state.selection.target == Target::kShell && state.selection.slot == Slot::kEmissive && state.selection.layer == 2, "a cell pick sets target, slot and top layer");
@@ -1706,6 +1753,7 @@ namespace
 int main()
 {
 	Views();
+	ViewedRecipeLists();
 	Layouts();
 	MaterialClusterRows();
 	Colours();

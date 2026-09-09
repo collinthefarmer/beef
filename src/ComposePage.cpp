@@ -137,7 +137,12 @@ namespace WornEnchantmentPBR::Studio
 				[&](const ReadMesh& i) { manager->RequestMesh(i.actorID, i.geometry); },
 				[&](const FireTrigger& i) { manager->FireAt(i.actorID, i.event, i.node, i.offset, i.random, i.value); },
 				[](const PickPiece&) {},
-				[](const PickRecipe&) {},
+				[&](const PickRecipe& i) {
+					if (view.pin && view.pin->piece == a_state.selection.piece && view.pin->recipeID != i.recipeID) {
+						manager->PinRecipe(a_state.selection.piece, {});
+					}
+				},
+				[&](const PinRecipe& i) { manager->PinRecipe(a_state.selection.piece, i.recipeID); },
 				[](const PickTarget&) {},
 				[](const PickSlot&) {},
 				[](const PickCell&) {},
@@ -325,12 +330,31 @@ namespace WornEnchantmentPBR::Studio
 			}
 		}
 
-		void RecipeCombo(const PieceRow& a_piece, const RecipeRow& a_recipe, const char* a_label, Intents& a_out)
+		std::string RecipeLabel(const RecipeRow& a_recipe)
 		{
-			if (ImGui::BeginCombo(a_label, a_recipe.id.c_str())) {
+			return a_recipe.pinned ? std::format("{} (pinned here)", a_recipe.id) : a_recipe.id;
+		}
+
+		void RecipeCombo(const PieceRow& a_piece, const RecipeRow& a_recipe, std::span<const std::string> a_loaded, const char* a_label, Intents& a_out)
+		{
+			if (ImGui::BeginCombo(a_label, RecipeLabel(a_recipe).c_str())) {
 				for (const auto& r : a_piece.recipes) {
-					if (ImGui::Selectable(std::format("{} ({}, priority {})", r.id, r.key, r.priority).c_str(), &r == &a_recipe)) {
+					const auto label = r.pinned ? RecipeLabel(r) : std::format("{} ({}, priority {})", r.id, r.key, r.priority);
+					if (ImGui::Selectable(label.c_str(), &r == &a_recipe)) {
 						a_out.push_back(PickRecipe{ r.id });
+					}
+				}
+				bool divided = false;
+				for (const auto& id : a_loaded) {
+					if (std::ranges::find(a_piece.recipes, id, &RecipeRow::id) != a_piece.recipes.end()) {
+						continue;
+					}
+					if (!divided) {
+						ImGui::Separator();
+						divided = true;
+					}
+					if (ImGui::Selectable(std::format("{} (not worn here)", id).c_str(), false)) {
+						a_out.push_back(PinRecipe{ id });
 					}
 				}
 				ImGui::EndCombo();
@@ -609,12 +633,7 @@ namespace WornEnchantmentPBR::Studio
 				table.End();
 			}
 			const auto label = [](const KeyChoice& a_key) { return std::format("{}: {}", KeyKindName(a_key.key.kind), a_key.text); };
-			const auto toKey = [](const KeyChoice& a_key) {
-				RecipeKey key;
-				key.kind = a_key.key.kind;
-				key.operand = FormRef{ a_key.text, a_key.key.form };
-				return key;
-			};
+			const auto toKey = [](const KeyChoice& a_key) { return RecipeKeyOf(a_key.key, a_key.text); };
 			Widgets::NextItemWidth(Width::Px(240.0f));
 			if (ImGui::BeginCombo("##add-key", "add a key the piece carries")) {
 				for (const auto& choice : a_piece.keys) {
@@ -680,8 +699,8 @@ namespace WornEnchantmentPBR::Studio
 			Widgets::NextItemWidth(Width::Fit(std::format("{} / {} (3rd)", a_piece.actorName, a_piece.armorName)));
 			SelectionCombo(a_snapshot, &a_piece, "##selection", a_out);
 			table.Cell();
-			Widgets::NextItemWidth(Width::Fit(a_recipe.id));
-			RecipeCombo(a_piece, a_recipe, "##recipe", a_out);
+			Widgets::NextItemWidth(Width::Fit(RecipeLabel(a_recipe)));
+			RecipeCombo(a_piece, a_recipe, a_snapshot.loaded, "##recipe", a_out);
 			table.End();
 		}
 
@@ -1537,10 +1556,7 @@ namespace WornEnchantmentPBR::Studio
 			if (!chosen) {
 				return std::nullopt;
 			}
-			RecipeKey key;
-			key.kind = chosen->key.kind;
-			key.operand = FormRef{ chosen->text, chosen->key.form };
-			return key;
+			return RecipeKeyOf(chosen->key, chosen->text);
 		}
 
 		constexpr const char* kTermPayload = "WEPBR_TERM";
@@ -1896,8 +1912,8 @@ namespace WornEnchantmentPBR::Studio
 					}
 				});
 			} else {
-				Widgets::NextItemWidth(Width::Fit(a_recipe.id));
-				RecipeCombo(a_piece, a_recipe, "##recipe", a_out);
+				Widgets::NextItemWidth(Width::Fit(RecipeLabel(a_recipe)));
+				RecipeCombo(a_piece, a_recipe, {}, "##recipe", a_out);
 			}
 		}
 

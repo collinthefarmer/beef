@@ -910,6 +910,8 @@ namespace WornEnchantmentPBR
 		FormKey form;
 	};
 	[[nodiscard]] std::vector<PieceKey> KeyChoicesOf(const WornPiece& a_piece);
+	[[nodiscard]] const PieceKey*       DefaultKeyChoice(std::span<const PieceKey> a_choices) noexcept;
+	[[nodiscard]] RecipeKey             RecipeKeyOf(const PieceKey& a_key, std::string_view a_text);
 
 	[[nodiscard]] bool VariantApplies(const Variant& a_variant, const FormKey& a_armor) noexcept;
 	[[nodiscard]] bool VariantApplies(const Variant& a_variant, const GeometryIdentity& a_geometry);

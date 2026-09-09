@@ -99,6 +99,13 @@ namespace WornEnchantmentPBR::Studio
 			a_state.regionHistory.Clear();
 		};
 		const auto remember = [&]() { a_state.regionHistory.Push(region); };
+		const auto pickRecipe = [&](const std::string& a_id) {
+			if (selection.recipeID != a_id) {
+				region = RegionStack{};
+			}
+			selection.recipeID = a_id;
+			selection.layer.reset();
+		};
 		Match(
 			a_intent,
 			[&](const SetMode& i) {
@@ -119,13 +126,8 @@ namespace WornEnchantmentPBR::Studio
 				selection.piece = i.piece;
 				region = RegionStack{};
 			},
-			[&](const PickRecipe& i) {
-				if (selection.recipeID != i.recipeID) {
-					region = RegionStack{};
-				}
-				selection.recipeID = i.recipeID;
-				selection.layer.reset();
-			},
+			[&](const PickRecipe& i) { pickRecipe(i.recipeID); },
+			[&](const PinRecipe& i) { pickRecipe(i.recipeID); },
 			[&](const AddTerm& i) {
 				if (region.terms.size() >= kMaxTerms) {
 					return;
