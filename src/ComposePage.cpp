@@ -312,13 +312,13 @@ namespace WornEnchantmentPBR::Studio
 
 		void SelectionCombo(const Snapshot& a_snapshot, const PieceRow* a_piece, const char* a_label, Intents& a_out)
 		{
-			const auto preview = a_piece ? std::format("{} / {} ({})", a_piece->actorName, a_piece->armorName, a_piece->firstPerson ? "1st" : "3rd") : std::string{ "nothing applied" };
+			const auto preview = a_piece ? std::format("{} / {} ({})", a_piece->actorName, a_piece->armorName, a_piece->ref.firstPerson ? "1st" : "3rd") : std::string{ "nothing applied" };
 			if (ImGui::BeginCombo(a_label, preview.c_str())) {
 				std::size_t i = 0;
 				for (const auto& p : a_snapshot.pieces) {
-					const auto label = std::format("{} / {} ({})##sel{}", p.actorName, p.armorName, p.firstPerson ? "1st" : "3rd", i++);
+					const auto label = std::format("{} / {} ({})##sel{}", p.actorName, p.armorName, p.ref.firstPerson ? "1st" : "3rd", i++);
 					if (ImGui::Selectable(label.c_str(), &p == a_piece)) {
-						a_out.push_back(PickPiece{ p.actorID, p.armorID, p.firstPerson });
+						a_out.push_back(PickPiece{ p.ref });
 					}
 				}
 				ImGui::EndCombo();
@@ -1037,7 +1037,7 @@ namespace WornEnchantmentPBR::Studio
 			ImGui::SameLine();
 			ImGui::BeginGroup();
 			Widgets::Dim(std::format("composite {} px, {}", stack.size, stack.animated ? "animated" : "static"));
-			DrawScalars(stack, a_recipe, a_piece.actorID, a_geometry.bones, a_layout.widgetScale, a_names, a_out);
+			DrawScalars(stack, a_recipe, a_piece.ref.actorID, a_geometry.bones, a_layout.widgetScale, a_names, a_out);
 			ImGui::EndGroup();
 
 			if (stack.rows.empty()) {
@@ -1048,7 +1048,7 @@ namespace WornEnchantmentPBR::Studio
 			const auto dragged = Widgets::Split(
 				"stack-split", a_layout.stackSplit,
 				[&]() { DrawLayers(stack, a_recipe, a_out); },
-				[&]() { DrawInspector(stack, a_inspector, a_recipe, a_piece.actorID, a_geometry.bones, a_layout, a_names, a_out); });
+				[&]() { DrawInspector(stack, a_inspector, a_recipe, a_piece.ref.actorID, a_geometry.bones, a_layout, a_names, a_out); });
 			if (dragged) {
 				a_out.push_back(SetStackSplit{ *dragged });
 			}
@@ -1179,12 +1179,12 @@ namespace WornEnchantmentPBR::Studio
 			}
 			for (const auto& signal : list.tunable) {
 				if (NameMatches(signal.name, a_filter)) {
-					DrawSignalRow(signals, id, signal, signalNames, true, curveNames, curveWidth, a_piece.actorID, a_geometry.bones, scale, a_names, a_out);
+					DrawSignalRow(signals, id, signal, signalNames, true, curveNames, curveWidth, a_piece.ref.actorID, a_geometry.bones, scale, a_names, a_out);
 				}
 			}
 			for (const auto& signal : list.developer) {
 				if (NameMatches(signal.name, a_filter)) {
-					DrawSignalRow(signals, id, signal, signalNames, false, curveNames, curveWidth, a_piece.actorID, a_geometry.bones, scale, a_names, a_out);
+					DrawSignalRow(signals, id, signal, signalNames, false, curveNames, curveWidth, a_piece.ref.actorID, a_geometry.bones, scale, a_names, a_out);
 				}
 			}
 			signals.End();
@@ -1976,7 +1976,7 @@ namespace WornEnchantmentPBR::Studio
 				} else if (painterReady) {
 					for (const auto& geometry : a_recipe->geometries) {
 						if (!a_state.paint->readGeometries.contains(geometry.name)) {
-							a_out.push_back(ReadMesh{ a_piece->actorID, geometry.name });
+							a_out.push_back(ReadMesh{ a_piece->ref.actorID, geometry.name });
 						}
 					}
 				} else {
@@ -2003,12 +2003,12 @@ namespace WornEnchantmentPBR::Studio
 				} else if (pane.settings) {
 					if (selection.target == Target::kLight) {
 						if (a_recipe->lightRow.present) {
-							DrawFormWithSignals("light", LightForm(a_recipe->lightRow, SignalNamesOf(*a_recipe)), *a_recipe, a_piece->actorID, a_geometry->bones, scale, names, a_out, kSettingsColumns);
+							DrawFormWithSignals("light", LightForm(a_recipe->lightRow, SignalNamesOf(*a_recipe)), *a_recipe, a_piece->ref.actorID, a_geometry->bones, scale, names, a_out, kSettingsColumns);
 						} else {
 							Widgets::Dim("the recipe has no light");
 						}
 					} else {
-						DrawFormWithSignals("shell", ShellForm(a_recipe->shellRow, SignalNamesOf(*a_recipe)), *a_recipe, a_piece->actorID, a_geometry->bones, scale, names, a_out, kSettingsColumns);
+						DrawFormWithSignals("shell", ShellForm(a_recipe->shellRow, SignalNamesOf(*a_recipe)), *a_recipe, a_piece->ref.actorID, a_geometry->bones, scale, names, a_out, kSettingsColumns);
 					}
 				} else if (picked && picked->output) {
 					const auto stack = BuildStackView(*a_piece, *a_recipe, *a_geometry, selection, view);

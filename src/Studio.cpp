@@ -317,7 +317,7 @@ namespace WornEnchantmentPBR::Studio
 	const PieceRow* SelectedPiece(const Snapshot& a_snapshot, const Selection& a_selection) noexcept
 	{
 		for (const auto& piece : a_snapshot.pieces) {
-			if (piece.actorID == a_selection.actorID && piece.armorID == a_selection.armorID && piece.firstPerson == a_selection.firstPerson) {
+			if (piece.ref == a_selection.piece) {
 				return &piece;
 			}
 		}
@@ -337,12 +337,49 @@ namespace WornEnchantmentPBR::Studio
 		return &a_piece->recipes.back();
 	}
 
-	std::optional<SnapshotRequest> RequestOf(const Selection& a_selection) noexcept
+	std::optional<PieceRef> RequestOf(const Selection& a_selection) noexcept
 	{
-		if (a_selection.actorID == 0) {
+		if (a_selection.piece.actorID == 0) {
 			return std::nullopt;
 		}
-		return SnapshotRequest{ a_selection.actorID, a_selection.armorID, a_selection.firstPerson };
+		return a_selection.piece;
+	}
+
+	std::vector<std::string> View::RecipeIDs() const
+	{
+		std::vector<std::string> out;
+		if (Isolating()) {
+			out.push_back(isolateRecipe);
+		}
+		for (const auto& key : muted) {
+			if (std::ranges::find(out, key.recipeID) == out.end()) {
+				out.push_back(key.recipeID);
+			}
+		}
+		return out;
+	}
+
+	void View::RenameRecipe(std::string_view a_from, std::string_view a_to)
+	{
+		if (isolateRecipe == a_from) {
+			isolateRecipe = std::string{ a_to };
+		}
+		std::set<LayerKey> renamed;
+		for (const auto& key : muted) {
+			renamed.insert(LayerKey{ key.recipeID == a_from ? std::string{ a_to } : key.recipeID, key.output, key.layer });
+		}
+		muted = std::move(renamed);
+	}
+
+	void View::ForgetRecipe(std::string_view a_id)
+	{
+		if (isolateRecipe == a_id) {
+			isolateRecipe.clear();
+			isolateOutput = -1;
+			isolateLayer = -1;
+			isolatedBySolo = false;
+		}
+		std::erase_if(muted, [&](const LayerKey& a_key) { return a_key.recipeID == a_id; });
 	}
 
 	void ResolveSelection(Selection& a_selection, const Snapshot& a_snapshot) noexcept
@@ -351,14 +388,14 @@ namespace WornEnchantmentPBR::Studio
 		if (!piece) {
 			return;
 		}
-		a_selection.actorID = piece->actorID;
-		a_selection.armorID = piece->armorID;
-		a_selection.firstPerson = piece->firstPerson;
+		a_selection.piece = piece->ref;
 		const auto* recipe = SelectedRecipe(piece, a_selection);
 		if (!recipe) {
 			return;
 		}
-		a_selection.recipeID = recipe->id;
+		if (a_selection.recipeID.empty()) {
+			a_selection.recipeID = recipe->id;
+		}
 		const auto* geometry = SelectedGeometry(recipe, a_selection);
 		if (!geometry) {
 			return;

@@ -2,11 +2,24 @@
 
 #include <compare>
 #include <cstddef>
+#include <cstdint>
 #include <set>
 #include <string>
+#include <string_view>
+#include <vector>
 
 namespace WornEnchantmentPBR::Studio
 {
+	using FormID = std::uint32_t;
+
+	struct PieceRef
+	{
+		FormID actorID = 0;
+		FormID armorID = 0;
+		bool   firstPerson = false;
+		[[nodiscard]] bool operator==(const PieceRef&) const = default;
+	};
+
 	struct LayerKey
 	{
 		std::string recipeID;
@@ -27,6 +40,10 @@ namespace WornEnchantmentPBR::Studio
 		std::set<LayerKey> muted;
 
 		[[nodiscard]] bool Isolating() const noexcept { return !isolateRecipe.empty(); }
+
+		[[nodiscard]] std::vector<std::string> RecipeIDs() const;
+		void                                   RenameRecipe(std::string_view a_from, std::string_view a_to);
+		void                                   ForgetRecipe(std::string_view a_id);
 
 		[[nodiscard]] bool RecipeShown(const std::string& a_recipe) const noexcept
 		{

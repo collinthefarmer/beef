@@ -88,9 +88,7 @@ namespace WornEnchantmentPBR::Studio
 	};
 	struct PickPiece
 	{
-		FormID actorID = 0;
-		FormID armorID = 0;
-		bool   firstPerson = false;
+		PieceRef piece;
 	};
 	struct PickRecipe
 	{

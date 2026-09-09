@@ -18,7 +18,6 @@ namespace RE
 namespace WornEnchantmentPBR::Studio
 {
 	using TextureHandle = RE::NiSourceTexture*;
-	using FormID = std::uint32_t;
 
 	struct SignalRow
 	{
@@ -223,20 +222,11 @@ namespace WornEnchantmentPBR::Studio
 
 	struct PieceRow
 	{
-		FormID                 actorID = 0;
+		PieceRef               ref;
 		std::string            actorName;
-		FormID                 armorID = 0;
 		std::string            armorName;
-		bool                   firstPerson = false;
 		std::vector<KeyChoice> keys;
 		std::vector<RecipeRow> recipes;
-	};
-
-	struct SnapshotRequest
-	{
-		FormID actorID = 0;
-		FormID armorID = 0;
-		bool   firstPerson = false;
 	};
 
 	struct Snapshot

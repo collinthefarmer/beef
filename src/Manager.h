@@ -128,7 +128,7 @@ namespace WornEnchantmentPBR
 		[[nodiscard]] Status GetStatus() const;
 
 		using Snapshot = Studio::Snapshot;
-		void                                          Watch(const std::optional<Studio::SnapshotRequest>& a_request);
+		void                                          Watch(const std::optional<Studio::PieceRef>& a_request);
 		[[nodiscard]] std::shared_ptr<const Snapshot> LatestSnapshot() const;
 
 	private:
@@ -186,11 +186,11 @@ namespace WornEnchantmentPBR
 		};
 		IsolateState paintReturn_{};
 
-		[[nodiscard]] Snapshot BuildSnapshot(const std::optional<Studio::SnapshotRequest>& a_request) const;
+		[[nodiscard]] Snapshot BuildSnapshot(const std::optional<Studio::PieceRef>& a_request) const;
 		void                   PublishSnapshot(std::uint32_t a_nowMS);
 		mutable std::mutex                     snapshotLock_;
 		std::shared_ptr<const Snapshot>        latest_ = std::make_shared<Snapshot>();
-		std::optional<Studio::SnapshotRequest> watch_;
+		std::optional<Studio::PieceRef> watch_;
 		std::uint32_t                          watchedMS_ = 0;
 		std::uint64_t                          snapshotVersion_ = 0;
 		static constexpr std::uint32_t         kWatchWindowMS = 1000;

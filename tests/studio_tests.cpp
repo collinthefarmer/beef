@@ -183,9 +183,8 @@ namespace
 	Snapshot SnapshotOf(const Recipe& a_recipe)
 	{
 		PieceRow piece;
-		piece.actorID = kPlayer;
+		piece.ref = PieceRef{ kPlayer, kCuirass, false };
 		piece.actorName = "Player";
-		piece.armorID = kCuirass;
 		piece.armorName = "Ebony Cuirass";
 		piece.recipes.push_back(Neighbour("lower", 20));
 		piece.recipes.push_back(RecipeOf(a_recipe, 40));
@@ -205,11 +204,28 @@ namespace
 	Selection SelectCanonical()
 	{
 		Selection selection;
-		selection.actorID = kPlayer;
-		selection.armorID = kCuirass;
+		selection.piece = PieceRef{ kPlayer, kCuirass, false };
 		selection.recipeID = kRecipeID;
 		selection.geometry = kGeometry;
 		return selection;
+	}
+
+	void Views()
+	{
+		View view;
+		view.isolateRecipe = "old";
+		view.isolateOutput = 2;
+		view.muted.insert(LayerKey{ "old", 0, 1 });
+		view.muted.insert(LayerKey{ "other", 3, 0 });
+		auto ids = view.RecipeIDs();
+		std::ranges::sort(ids);
+		Check(ids == std::vector<std::string>{ "old", "other" }, "the view names each recipe it refers to once");
+		view.RenameRecipe("old", "new");
+		Check(view.isolateRecipe == "new" && view.muted.contains(LayerKey{ "new", 0, 1 }) && view.muted.contains(LayerKey{ "other", 3, 0 }) && !view.muted.contains(LayerKey{ "old", 0, 1 }), "rename follows the isolate id and every muted key");
+		view.ForgetRecipe("other");
+		Check(view.isolateRecipe == "new" && view.muted.size() == 1, "forgetting one recipe leaves the others' state");
+		view.ForgetRecipe("new");
+		Check(!view.Isolating() && view.isolateOutput == -1 && view.muted.empty(), "forgetting the isolated recipe clears the isolate and its muted keys");
 	}
 
 	void Layouts()
@@ -231,7 +247,7 @@ namespace
 	{
 		const Selection none;
 		const auto*     piece = SelectedPiece(a_snapshot, none);
-		Check(piece && piece->armorID == kCuirass, "an unset selection yields the first piece");
+		Check(piece && piece->ref.armorID == kCuirass, "an unset selection yields the first piece");
 		const auto* recipe = SelectedRecipe(piece, none);
 		Check(recipe && recipe->id == "higher", "an unset recipe yields the last (highest priority)");
 		const auto* geometry = SelectedGeometry(recipe, none);
@@ -267,15 +283,19 @@ namespace
 			ResolveSelection(light_rows, bare);
 			Check(light_rows.layer == 99, "an empty snapshot (light rows) leaves the selection alone");
 			Selection gone = SelectCanonical();
-			gone.recipeID = "not-applied-any-more";
+			gone.recipeID = "not-applied-yet";
 			gone.geometry = "no-such-shape";
 			ResolveSelection(gone, a_snapshot);
 			const auto* resolvedPiece = SelectedPiece(a_snapshot, gone);
-			Check(resolvedPiece && gone.recipeID == resolvedPiece->recipes.back().id && gone.geometry == resolvedPiece->recipes.back().geometries.front().name, "a recipe or geometry the snapshot lacks resolves to the shown one and is written back");
+			Check(resolvedPiece && gone.recipeID == "not-applied-yet" && gone.geometry == resolvedPiece->recipes.back().geometries.front().name, "a recipe the snapshot lacks stays requested (its row may be a tick away); a geometry it lacks is written back");
+			Selection unset = SelectCanonical();
+			unset.recipeID.clear();
+			ResolveSelection(unset, a_snapshot);
+			Check(unset.recipeID == "higher", "no recipe requested: the shown one is written back");
 			Selection elsewhere = SelectCanonical();
-			elsewhere.actorID = 0x999;
+			elsewhere.piece.actorID = 0x999;
 			ResolveSelection(elsewhere, a_snapshot);
-			Check(elsewhere.actorID == kPlayer && elsewhere.armorID == kCuirass, "a piece the snapshot lacks resolves to its first piece and is written back");
+			Check(elsewhere.piece == PieceRef{ kPlayer, kCuirass, false }, "a piece the snapshot lacks resolves to its first piece and is written back");
 		}
 
 		auto chosen = SelectCanonical();
@@ -1235,8 +1255,8 @@ namespace
 		Check(state.layout.stackSplit == 0.3f, "the same mode again keeps the layout as dragged");
 		Reduce(state, SetMode{ Mode::kCompose });
 
-		Reduce(state, PickPiece{ kPlayer, kCuirass, false });
-		Check(state.selection.actorID == kPlayer && state.selection.armorID == kCuirass && state.selection.recipeID.empty(), "a piece pick starts the selection over");
+		Reduce(state, PickPiece{ PieceRef{ kPlayer, kCuirass, false } });
+		Check(state.selection.piece == PieceRef{ kPlayer, kCuirass, false } && state.selection.recipeID.empty(), "a piece pick starts the selection over");
 		Reduce(state, PickRecipe{ kRecipeID });
 		Reduce(state, PickCell{ Surface::kShell, Slot::kEmissive, 2 });
 		Check(state.selection.recipeID == kRecipeID && state.selection.target == Target::kShell && state.selection.slot == Slot::kEmissive && state.selection.layer == 2, "a cell pick sets target, slot and top layer");
@@ -1685,6 +1705,7 @@ namespace
 
 int main()
 {
+	Views();
 	Layouts();
 	MaterialClusterRows();
 	Colours();

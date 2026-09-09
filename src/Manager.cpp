@@ -824,11 +824,10 @@ namespace WornEnchantmentPBR
 				LoadRecipes();
 				paintReturn_ = {};
 				const auto loaded = LoadedRecipes();
-				if (std::ranges::find(loaded, view_.isolateRecipe, &Recipe::id) == loaded.end()) {
-					view_.isolateRecipe.clear();
-					view_.isolateOutput = -1;
-					view_.isolateLayer = -1;
-					view_.isolatedBySolo = false;
+				for (const auto& id : view_.RecipeIDs()) {
+					if (std::ranges::find(loaded, id, &Recipe::id) == loaded.end()) {
+						view_.ForgetRecipe(id);
+					}
 				}
 			});
 		});
@@ -864,9 +863,7 @@ namespace WornEnchantmentPBR
 					node.mapped().Rename(to);
 					histories_.insert(std::move(node));
 				}
-				if (view_.isolateRecipe == from) {
-					view_.isolateRecipe = to;
-				}
+				view_.RenameRecipe(from, to);
 				if (paintReturn_.recipeID == from) {
 					paintReturn_.recipeID = to;
 				}
@@ -944,6 +941,7 @@ namespace WornEnchantmentPBR
 					view_.isolatedBySolo = paintReturn_.bySolo;
 					paintReturn_ = {};
 				}
+				view_.ForgetRecipe(Studio::kPaintRecipe);
 				[[maybe_unused]] const bool dropped = DropTransientRecipe(Studio::kPaintRecipe);
 				histories_.erase(std::string{ Studio::kPaintRecipe });
 			});
@@ -1172,7 +1170,7 @@ namespace WornEnchantmentPBR
 		return s;
 	}
 
-	void Manager::Watch(const std::optional<Studio::SnapshotRequest>& a_request)
+	void Manager::Watch(const std::optional<Studio::PieceRef>& a_request)
 	{
 		std::scoped_lock lock{ snapshotLock_ };
 		watch_ = a_request;
@@ -1187,7 +1185,7 @@ namespace WornEnchantmentPBR
 
 	void Manager::PublishSnapshot(std::uint32_t a_nowMS)
 	{
-		std::optional<Studio::SnapshotRequest> request;
+		std::optional<Studio::PieceRef> request;
 		{
 			std::scoped_lock lock{ snapshotLock_ };
 			if (watchedMS_ == 0 || a_nowMS > watchedMS_ + kWatchWindowMS) {
@@ -1203,11 +1201,14 @@ namespace WornEnchantmentPBR
 		latest_ = std::move(built);
 	}
 
-	Manager::Snapshot Manager::BuildSnapshot(const std::optional<Studio::SnapshotRequest>& a_request) const
+	Manager::Snapshot Manager::BuildSnapshot(const std::optional<Studio::PieceRef>& a_request) const
 	{
 		Snapshot out;
+		const auto refOf = [](RE::FormID a_actorID, const AppliedPiece& a_piece) {
+			return Studio::PieceRef{ a_actorID, a_piece.armor, a_piece.firstPerson };
+		};
 		const auto matches = [&](RE::FormID a_actorID, const AppliedPiece& a_piece) {
-			return a_request && a_request->actorID == a_actorID && a_request->armorID == a_piece.armor && a_request->firstPerson == a_piece.firstPerson;
+			return a_request && *a_request == refOf(a_actorID, a_piece);
 		};
 		bool anyMatch = false;
 		for (const auto& [actorID, state] : applied_) {
@@ -1222,11 +1223,9 @@ namespace WornEnchantmentPBR
 				const bool full = anyMatch ? matches(actorID, piece) : first;
 				first = false;
 				Snapshot::PieceRow row;
-				row.actorID = actorID;
+				row.ref = refOf(actorID, piece);
 				row.actorName = actor && actor->GetName() ? actor->GetName() : "?";
-				row.armorID = piece.armor;
 				row.armorName = piece.armorName;
-				row.firstPerson = piece.firstPerson;
 				for (const auto& source : KeyChoicesOf(piece.piece)) {
 					Studio::KeyChoice key;
 					key.key = source;

@@ -116,9 +116,7 @@ namespace WornEnchantmentPBR::Studio
 			},
 			[&](const PickPiece& i) {
 				selection = Selection{};
-				selection.actorID = i.actorID;
-				selection.armorID = i.armorID;
-				selection.firstPerson = i.firstPerson;
+				selection.piece = i.piece;
 				region = RegionStack{};
 			},
 			[&](const PickRecipe& i) {

@@ -55,9 +55,7 @@ namespace WornEnchantmentPBR::Studio
 
 	struct Selection
 	{
-		FormID                     actorID = 0;
-		FormID                     armorID = 0;
-		bool                       firstPerson = false;
+		PieceRef                   piece;
 		std::string                recipeID;
 		std::string                geometry;
 		Target                     target = Target::kMaterial;
@@ -68,7 +66,7 @@ namespace WornEnchantmentPBR::Studio
 	[[nodiscard]] const PieceRow*    SelectedPiece(const Snapshot& a_snapshot, const Selection& a_selection) noexcept;
 	[[nodiscard]] const RecipeRow*   SelectedRecipe(const PieceRow* a_piece, const Selection& a_selection) noexcept;
 	[[nodiscard]] const GeometryRow* SelectedGeometry(const RecipeRow* a_recipe, const Selection& a_selection) noexcept;
-	[[nodiscard]] std::optional<SnapshotRequest> RequestOf(const Selection& a_selection) noexcept;
+	[[nodiscard]] std::optional<PieceRef> RequestOf(const Selection& a_selection) noexcept;
 	void ResolveSelection(Selection& a_selection, const Snapshot& a_snapshot) noexcept;
 	[[nodiscard]] const OutputRow*   SelectedOutput(const GeometryRow* a_geometry, const Selection& a_selection) noexcept;
 
