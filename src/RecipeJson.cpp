@@ -1739,7 +1739,9 @@ namespace BetterEnchantmentEffects::Studio
 			if (!a_value.is_object() || a_value.size() != 1) {
 				return std::nullopt;
 			}
-			const auto& [key, value] = *a_value.items().begin();
+			const auto  first = a_value.begin();
+			const auto& key = first.key();
+			const auto& value = first.value();
 			if (key == "material" && value.is_string()) {
 				const auto channel = ParseMaterialChannel(value.get<std::string>());
 				return channel ? std::optional<SourceKind>{ MaterialSource{ *channel } } : std::nullopt;

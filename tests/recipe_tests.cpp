@@ -931,7 +931,8 @@ namespace
 		Check(one && Get<ConstantSignal>(one->kind)->value == Value{ 0.5f }, "scalar override applied");
 		Check(red && Get<ConstantSignal>(red->kind)->value == Value{ Vec3{ 0, 1, 0 } }, "colour override applied");
 		Check(applied.outputs == recipe.outputs && applied.sources == recipe.sources, "a variant changes no structure");
-		const auto* pulse = ApplyVariant(recipe, body).FindSignal("pulse");
+		const auto  bodyApplied = ApplyVariant(recipe, body);
+		const auto* pulse = bodyApplied.FindSignal("pulse");
 		Check(pulse && Is<ConstantSignal>(pulse->kind) && !pulse->curve, "an override turns any signal into a constant");
 	}
 
