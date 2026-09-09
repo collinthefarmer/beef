@@ -1047,15 +1047,18 @@ namespace WornEnchantmentPBR
 		}
 	}
 
-	void Compositor::Render(RenderedStack& a_stack, const SignalState& a_signals, float a_time, const LayerFilter& a_filter)
+	void Compositor::Render(RenderedStack& a_stack, const SignalState& a_signals, float a_time, const LayerFilter& a_filter, const StackBase& a_base)
 	{
 		if (a_stack.layers_.empty()) {
 			return;
 		}
+		auto*      base = a_base.texture ? a_base.texture : a_stack.base_.get();
 		const bool filterChanged = a_stack.filter_ != a_filter;
-		if (!a_stack.animated_ && a_stack.renderedOnce_ && !filterChanged) {
+		const bool baseChanged = a_stack.renderedBase_ != base;
+		if (!a_stack.animated_ && !a_base.animated && a_stack.renderedOnce_ && !filterChanged && !baseChanged) {
 			return;
 		}
+		a_stack.renderedBase_ = base;
 		std::size_t shown = 0;
 		for (const auto& prepared : a_stack.layers_) {
 			if (a_filter.Hides(prepared.index)) {
@@ -1095,7 +1098,7 @@ namespace WornEnchantmentPBR
 			TextureLab::LayerParams params;
 			params.mode = TextureLab::Mode::kLayer;
 			auto& pass = params.layer;
-			pass.previous = previous ? previous->Texture() : a_stack.base_.get();
+			pass.previous = previous ? previous->Texture() : base;
 			if (prepared.source) {
 				pass.source = prepared.source->texture.get();
 				pass.input = SamplingNow(*prepared.source, a_signals);

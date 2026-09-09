@@ -152,6 +152,12 @@ namespace WornEnchantmentPBR
 		[[nodiscard]] bool operator==(const LayerFilter&) const = default;
 	};
 
+	struct StackBase
+	{
+		RE::NiSourceTexture* texture = nullptr;
+		bool                 animated = false;
+	};
+
 	class RenderedStack
 	{
 	public:
@@ -168,6 +174,7 @@ namespace WornEnchantmentPBR
 		std::shared_ptr<TextureLab::RenderTarget>  neutral_;
 		std::shared_ptr<TextureLab::RenderTarget>  target_;
 		TextureLab::RenderTarget*                  latest_ = nullptr;
+		RE::NiSourceTexture*                 renderedBase_ = nullptr;
 		TextureSize                          size_ = TextureSize::Clamp(TextureSize::kMin);
 		bool                                 animated_ = false;
 		bool                                 renderedOnce_ = false;
@@ -188,7 +195,7 @@ namespace WornEnchantmentPBR
 			nowMS_ = a_nowMS;
 		}
 
-		void Render(RenderedStack& a_stack, const SignalState& a_signals, float a_time, const LayerFilter& a_filter);
+		void Render(RenderedStack& a_stack, const SignalState& a_signals, float a_time, const LayerFilter& a_filter, const StackBase& a_base = {});
 
 		[[nodiscard]] RE::NiPointer<RE::NiSourceTexture> LoadImage(std::string_view a_path);
 

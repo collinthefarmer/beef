@@ -110,47 +110,64 @@ namespace WornEnchantmentPBR
 			return a_bound.material.get();
 		}
 
-		struct TickScalars
+		struct SlotWrite
 		{
-			const SignalState& signals;
-			const SlotScalars& scalars;
-			bool               shown;
+			Slot                                slot = Slot::kEmissive;
+			RE::NiSourceTexture*                texture = nullptr;
+			bool                                shown = false;
+			std::array<float, kScalarFieldCount> scalars{};
+			Vec3                                color{ 1.0f, 1.0f, 1.0f };
 
-			[[nodiscard]] float Of(ScalarField a_field) const
-			{
-				const auto* param = ScalarOf(scalars, a_field);
-				return param && *param ? signals.Resolve(**param) : ScalarFallback(a_field);
-			}
+			[[nodiscard]] float Of(ScalarField a_field) const { return scalars[static_cast<std::size_t>(a_field)]; }
 			[[nodiscard]] float Shown(ScalarField a_field) const { return shown ? Of(a_field) : 0.0f; }
-			[[nodiscard]] Vec3  Color() const
-			{
-				const float fallback = ScalarFallback(ScalarField::kColor);
-				return scalars.color ? signals.Resolve(*scalars.color) : Vec3{ fallback, fallback, fallback };
-			}
 		};
 
-		void WriteSlot(SlotTarget& a_target, const SurfaceOutput& a_output, const SignalState& a_signals, RE::NiSourceTexture* a_texture, bool a_shown)
+		SlotWrite EmptyWrite(Slot a_slot)
 		{
-			const TickScalars tick{ a_signals, a_output.scalars, a_shown };
-			a_target.WriteTexture(a_output.slot, a_shown ? a_texture : nullptr);
-			switch (a_output.slot) {
+			SlotWrite write;
+			write.slot = a_slot;
+			for (const auto field : ScalarsOf(a_slot)) {
+				write.scalars[static_cast<std::size_t>(field)] = ScalarFallback(field);
+			}
+			const float fallback = ScalarFallback(ScalarField::kColor);
+			write.color = Vec3{ fallback, fallback, fallback };
+			return write;
+		}
+
+		void TakeScalars(SlotWrite& a_write, const SlotScalars& a_scalars, const SignalState& a_signals)
+		{
+			for (const auto field : ScalarsOf(a_write.slot)) {
+				if (field == ScalarField::kColor) {
+					if (a_scalars.color) {
+						a_write.color = a_signals.Resolve(*a_scalars.color);
+					}
+				} else if (const auto* param = ScalarOf(a_scalars, field); param && *param) {
+					a_write.scalars[static_cast<std::size_t>(field)] = a_signals.Resolve(**param);
+				}
+			}
+		}
+
+		void WriteSlot(SlotTarget& a_target, const SlotWrite& a_write)
+		{
+			a_target.WriteTexture(a_write.slot, a_write.shown ? a_write.texture : nullptr);
+			switch (a_write.slot) {
 			case Slot::kEmissive:
-				a_target.WriteEmissive(Vec3{ 1.0f, 1.0f, 1.0f }, tick.Shown(ScalarField::kStrength));
+				a_target.WriteEmissive(Vec3{ 1.0f, 1.0f, 1.0f }, a_write.Shown(ScalarField::kStrength));
 				break;
 			case Slot::kFuzz:
-				a_target.WriteFuzz(tick.Color(), tick.Shown(ScalarField::kWeight));
+				a_target.WriteFuzz(a_write.color, a_write.Shown(ScalarField::kWeight));
 				break;
 			case Slot::kHeight:
-				a_target.WriteHeightScale(tick.Shown(ScalarField::kScale));
+				a_target.WriteHeightScale(a_write.Shown(ScalarField::kScale));
 				break;
 			case Slot::kGlint:
-				a_target.WriteGlint(tick.Of(ScalarField::kScreenSpaceScale), tick.Of(ScalarField::kLogMicrofacetDensity), tick.Of(ScalarField::kMicrofacetRoughness), tick.Of(ScalarField::kDensityRandomization), a_shown);
+				a_target.WriteGlint(a_write.Of(ScalarField::kScreenSpaceScale), a_write.Of(ScalarField::kLogMicrofacetDensity), a_write.Of(ScalarField::kMicrofacetRoughness), a_write.Of(ScalarField::kDensityRandomization), a_write.shown);
 				break;
 			case Slot::kCoat:
-				a_target.WriteCoat(tick.Of(ScalarField::kRoughness), tick.Shown(ScalarField::kLevel));
+				a_target.WriteCoat(a_write.Of(ScalarField::kRoughness), a_write.Shown(ScalarField::kLevel));
 				break;
 			case Slot::kSubsurface:
-				a_target.WriteSubsurface(tick.Color(), tick.Shown(ScalarField::kThickness));
+				a_target.WriteSubsurface(a_write.color, a_write.Shown(ScalarField::kThickness));
 				break;
 			default:
 				break;
@@ -1158,12 +1175,9 @@ namespace WornEnchantmentPBR
 				TickInstance(instance, time, delta);
 				instance.lastTime = time;
 			}
-			for (auto& placement : state.placements) {
-				RenderPlacement(state, placement, state.instances[placement.instance].lastTime);
-			}
 			for (auto& piece : state.pieces) {
 				for (auto& bound : piece.geometries) {
-					WriteGeometry(state, bound);
+					RenderGeometry(state, bound);
 				}
 			}
 			UpdateLights(state);
@@ -1212,50 +1226,40 @@ namespace WornEnchantmentPBR
 		}
 	}
 
-	void Manager::RenderPlacement(ActorState& a_state, Placement& a_placement, float a_time)
-	{
-		if (a_state.pieces[a_placement.piece].geometries[a_placement.geometry].lost) {
-			return;
-		}
-		const auto& instance = a_state.instances[a_placement.instance];
-		const auto& recipe = *instance.recipe;
-		const bool  anyLayerHidden = view_.isolateLayer >= 0 || !view_.muted.empty();
-		for (auto& output : a_placement.outputs) {
-			if (!output.stack) {
-				continue;
-			}
-			const auto* material = output.index < recipe.outputs.size() ? Get<SurfaceOutput>(recipe.outputs[output.index]) : nullptr;
-			if (!material) {
-				continue;
-			}
-			LayerFilter filter;
-			if (view_.OutputShown(recipe.id, output.index) && anyLayerHidden) {
-				filter = HiddenLayers(view_, recipe.id, output.index, material->stack.size());
-			}
-			Compositor::GetSingleton()->Render(*output.stack, *instance.signals, a_time, filter);
-		}
-	}
-
-	void Manager::WriteGeometry(ActorState& a_state, GeometryBinding& a_bound)
+	void Manager::RenderGeometry(ActorState& a_state, GeometryBinding& a_bound)
 	{
 		if (a_bound.lost) {
 			return;
 		}
+		const bool anyLayerHidden = view_.isolateLayer >= 0 || !view_.muted.empty();
 		for (const auto& slot : a_bound.plan.slots) {
 			auto* target = TargetFor(a_bound, slot.surface);
 			if (!target) {
 				continue;
 			}
+			SlotWrite write = EmptyWrite(slot.slot);
+			StackBase base;
 			for (const auto& c : slot.chain) {
-				const auto& placement = a_state.placements[a_bound.placements[c.placed]];
+				auto&       placement = a_state.placements[a_bound.placements[c.placed]];
 				const auto& instance = a_state.instances[placement.instance];
 				const auto* material = c.output < instance.recipe->outputs.size() ? Get<SurfaceOutput>(instance.recipe->outputs[c.output]) : nullptr;
-				const auto* output = OutputAt(placement, c.output);
-				if (!material || !output || !output->stack) {
+				auto*       output = OutputAt(placement, c.output);
+				if (!material || !output || !output->stack || !view_.OutputShown(instance.recipe->id, c.output)) {
 					continue;
 				}
-				WriteSlot(*target, *material, *instance.signals, output->stack->Texture(), view_.OutputShown(instance.recipe->id, c.output));
+				LayerFilter filter;
+				if (anyLayerHidden) {
+					filter = HiddenLayers(view_, instance.recipe->id, c.output, material->stack.size());
+				}
+				Compositor::GetSingleton()->Render(*output->stack, *instance.signals, instance.lastTime, filter, base);
+				if (auto* texture = output->stack->Texture()) {
+					base = StackBase{ texture, base.animated || output->stack->Animated() };
+					write.texture = texture;
+					write.shown = true;
+				}
+				TakeScalars(write, material->scalars, *instance.signals);
 			}
+			WriteSlot(*target, write);
 		}
 		if (a_bound.shell && a_bound.shellOwner) {
 			const auto& instance = a_state.instances[*a_bound.shellOwner];

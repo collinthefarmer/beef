@@ -331,7 +331,10 @@ Decompile provenance (`decompiled/WornEnchantmentFX/plugin.c` unless noted):
   resolution, clamped between the requested size and the maximum; other
   slots start from black at the requested size. Writes alternate between
   the stack's target and the lab's scratch, and the last layer must land in
-  the stack's own target.
+  the stack's own target: the first write is chosen by the parity of the
+  shown layer count for that reason. Chaining depends on it. A stack given
+  another stack's texture as its base reads that stack's own target while
+  ping-ponging through the shared scratch, so the two never collide.
 - A rendered mask is entered in the cache before its dependencies recurse,
   so a cycle finds an unfinished mask and stops. Depth is bounded at
   preparation; the interpreter refuses a mask that reads more names,

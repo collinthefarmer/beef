@@ -169,8 +169,7 @@ namespace WornEnchantmentPBR
 		void Tick(std::uint32_t a_nowMS);
 		void TickInstance(RecipeInstance& a_instance, float a_time, float a_delta);
 		void DropLostGeometries(ActorState& a_state);
-		void RenderPlacement(ActorState& a_state, Placement& a_placement, float a_time);
-		void WriteGeometry(ActorState& a_state, GeometryBinding& a_bound);
+		void RenderGeometry(ActorState& a_state, GeometryBinding& a_bound);
 		void UpdateLights(ActorState& a_state);
 		[[nodiscard]] static bool Alive(const ActorState& a_state) noexcept;
 

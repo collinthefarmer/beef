@@ -122,13 +122,17 @@ drops a geometry whose material or shell another system replaced, with
 every placement on it; per instance, `SignalState::Tick` with the
 environment (a frozen scrub that moves backwards rebuilds the state and
 advances it to the moment in one step, since the state only integrates
-forward); per placement `RenderPlacement` (ripples and masks the stack
-reads first, then the layers, alternating the stack's own target with the
-lab's shared scratch); then `WriteGeometry` walks each geometry's plan and
-writes each slot's chain in priority order, lowest first, so the highest
-lands last, followed by the shell's pose from the instance the plan names
-its owner; `UpdateLights` writes the lights' parameters. An output hidden
-by isolate writes the originals and zeros. Static stacks render once.
+forward); then `RenderGeometry` per geometry, which walks each slot's
+chain from the plan, lowest priority first, rendering each link over the
+one below it (`Compositor::Render` takes that link's texture as its
+`StackBase`; ripples and masks the stack reads come first, then the
+layers, alternating the stack's own target with the lab's shared scratch)
+and writing the slot once: the chain's last texture, and per scalar field
+the highest link that sets it. Then the shell's pose from the instance the
+plan names its owner, and `UpdateLights`. A link hidden by isolate or mute
+leaves the chain, so the next re-bases onto the one below it; an empty
+chain writes the originals and zeros. A static stack renders once, and
+again when its base changes or its base is animated.
 
 Events (any thread to the game thread): the sinks call `QueueEvent`,
 which posts `Fire` to the game thread; `Fire` gives the `EventRecord` to
