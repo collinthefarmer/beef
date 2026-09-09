@@ -156,6 +156,21 @@ namespace WornEnchantmentPBR::Studio
 
 		void FillForeignRows(LayerStack& a_stack, const PieceRow& a_piece, const RecipeRow& a_recipe, const GeometryRow& a_geometry)
 		{
+			const bool                 known = std::ranges::find(a_piece.recipes, a_recipe.id, &RecipeRow::id) != a_piece.recipes.end();
+			std::optional<std::size_t> mine;
+			for (const auto& output : a_geometry.outputs) {
+				if (known && output.merged && WritesCell(output, a_stack.surface, a_stack.slot)) {
+					mine = output.merge;
+					break;
+				}
+			}
+			struct Neighbour
+			{
+				std::size_t      merge = 0;
+				const RecipeRow* recipe = nullptr;
+				const OutputRow* output = nullptr;
+			};
+			std::vector<Neighbour> neighbours;
 			for (const auto& other : a_piece.recipes) {
 				if (other.id == a_recipe.id) {
 					continue;
@@ -164,14 +179,19 @@ namespace WornEnchantmentPBR::Studio
 				if (!geometry) {
 					continue;
 				}
-				auto& rows = MergesBefore(a_piece, other, a_recipe) ? a_stack.below : a_stack.above;
 				for (const auto& output : geometry->outputs) {
-					if (!WritesCell(output, a_stack.surface, a_stack.slot)) {
+					if (!output.merged || !WritesCell(output, a_stack.surface, a_stack.slot)) {
 						continue;
 					}
-					for (const auto& layer : output.layers) {
-						rows.push_back(ForeignRow{ other.id, other.priority, layer });
-					}
+					neighbours.push_back(Neighbour{ output.merge, &other, &output });
+				}
+			}
+			std::ranges::stable_sort(neighbours, {}, &Neighbour::merge);
+			for (const auto& neighbour : neighbours) {
+				const bool below = mine ? neighbour.merge < *mine : MergesBefore(a_piece, *neighbour.recipe, a_recipe);
+				auto&      rows = below ? a_stack.below : a_stack.above;
+				for (const auto& layer : neighbour.output->layers) {
+					rows.push_back(ForeignRow{ neighbour.recipe->id, neighbour.recipe->priority, layer });
 				}
 			}
 		}

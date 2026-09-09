@@ -70,6 +70,8 @@ namespace WornEnchantmentPBR::Studio
 		Surface                surface = Surface::kMaterial;
 		Slot                   slot = Slot::kEmissive;
 		bool                   replace = false;
+		bool                   merged = false;
+		std::size_t            merge = 0;
 		bool                   animated = false;
 		std::uint32_t          size = 0;
 		std::string            problem;

@@ -135,6 +135,10 @@ namespace
 			row.masks.push_back(mask.name);
 		}
 		row.geometries.push_back(GeometryOf(a_recipe, kGeometry));
+		for (auto& output : row.geometries.front().outputs) {
+			output.merged = output.target != Target::kLight;
+			output.merge = static_cast<std::size_t>(a_priority) / 10;
+		}
 		row.lightRow = LightRowOf(a_recipe);
 		row.shellRow = ShellRowOf(a_recipe);
 		const auto counts = CountReferences(a_recipe);

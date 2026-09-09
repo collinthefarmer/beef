@@ -102,6 +102,18 @@ namespace WornEnchantmentPBR
 			return nullptr;
 		}
 
+		std::optional<std::size_t> MergeOf(const GeometryPlan& a_plan, Contribution a_contribution)
+		{
+			for (const auto& slot : a_plan.slots) {
+				for (std::size_t i = 0; i < slot.chain.size(); ++i) {
+					if (slot.chain[i] == a_contribution) {
+						return i;
+					}
+				}
+			}
+			return std::nullopt;
+		}
+
 		SlotTarget* TargetFor(GeometryBinding& a_bound, Surface a_surface)
 		{
 			if (a_surface == Surface::kShell) {
@@ -1524,6 +1536,10 @@ namespace WornEnchantmentPBR
 								orow.surface = material->surface;
 								orow.slot = material->slot;
 								orow.replace = material->replace;
+							}
+							if (const auto merge = MergeOf(bound.plan, Contribution{ m, o.index })) {
+								orow.merged = true;
+								orow.merge = *merge;
 							}
 							orow.animated = o.stack && o.stack->Animated();
 							orow.size = o.stack ? o.stack->Size().Pixels() : 0;
