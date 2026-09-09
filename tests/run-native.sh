@@ -12,11 +12,11 @@ if [ -n "${BEEF_SANITIZE:-}" ] && [ "$(basename "$CXX")" = "g++" ]; then
 fi
 OUT="${TEST_OUT_DIR:-build/native-tests-$(basename "$CXX")${BEEF_SANITIZE:+-sanitized}}"
 mkdir -p "$OUT"
-FLAGS=(-std=c++23 -O1 -Wall -Wextra -I src -I src/extern "-DBEEF_FIXTURES_DIR=\"$PWD/tests/fixtures\"")
+FLAGS=(-std=c++23 -O1 -Wall -Wextra -I src -I src/_old -I src/extern "-DBEEF_FIXTURES_DIR=\"$PWD/tests/fixtures\"")
 if [ -n "${BEEF_SANITIZE:-}" ]; then
 	FLAGS+=(-fsanitize=address,undefined -fno-sanitize=vptr -fno-omit-frame-pointer -fno-sanitize-recover=undefined -g)
 fi
-MODEL=(src/Recipe.cpp src/RecipeJson.cpp src/Expression.cpp src/Signals.cpp src/Importer.cpp src/Timing.cpp)
+MODEL=(src/_old/Recipe.cpp src/_old/RecipeJson.cpp src/_old/Expression.cpp src/_old/Signals.cpp src/_old/Importer.cpp src/_old/Timing.cpp)
 
 status=0
 compile() {
@@ -40,19 +40,19 @@ build_and_run() {
 	"$OUT/$name" "${RUN_ARGS[@]}" || status=1
 }
 RUN_ARGS=()
-build_and_run timing_tests tests/timing_tests.cpp src/Timing.cpp
-build_and_run settings_tests tests/settings_tests.cpp src/SettingsCore.cpp src/Timing.cpp
-build_and_run expression_tests tests/expression_tests.cpp src/Expression.cpp
+build_and_run timing_tests tests/timing_tests.cpp src/_old/Timing.cpp
+build_and_run settings_tests tests/settings_tests.cpp src/_old/SettingsCore.cpp src/_old/Timing.cpp
+build_and_run expression_tests tests/expression_tests.cpp src/_old/Expression.cpp
 build_and_run recipe_tests tests/recipe_tests.cpp "${MODEL[@]}"
 build_and_run signal_tests tests/signal_tests.cpp "${MODEL[@]}"
 RUN_ARGS=("$@")
 build_and_run importer_tests tests/importer_tests.cpp "${MODEL[@]}"
-build_and_run bake_tests tests/bake_tests.cpp src/Mesh.cpp "${MODEL[@]}"
-build_and_run analysis_tests tests/analysis_tests.cpp src/Analysis.cpp src/Mesh.cpp "${MODEL[@]}"
-build_and_run merge_tests tests/merge_tests.cpp src/Merge.cpp "${MODEL[@]}"
-build_and_run region_tests tests/region_tests.cpp src/Region.cpp src/Expression.cpp
-build_and_run studio_tests tests/studio_tests.cpp src/Studio.cpp src/MenuState.cpp src/History.cpp src/Edits.cpp src/EditCheck.cpp src/Paint.cpp src/Region.cpp src/Analysis.cpp src/Mesh.cpp "${MODEL[@]}"
-build_and_run edits_tests tests/edits_tests.cpp src/Edits.cpp src/History.cpp "${MODEL[@]}"
+build_and_run bake_tests tests/bake_tests.cpp src/_old/Mesh.cpp "${MODEL[@]}"
+build_and_run analysis_tests tests/analysis_tests.cpp src/_old/Analysis.cpp src/_old/Mesh.cpp "${MODEL[@]}"
+build_and_run merge_tests tests/merge_tests.cpp src/_old/Merge.cpp "${MODEL[@]}"
+build_and_run region_tests tests/region_tests.cpp src/_old/Region.cpp src/_old/Expression.cpp
+build_and_run studio_tests tests/studio_tests.cpp src/_old/Studio.cpp src/_old/MenuState.cpp src/_old/History.cpp src/_old/Edits.cpp src/_old/EditCheck.cpp src/_old/Paint.cpp src/_old/Region.cpp src/_old/Analysis.cpp src/_old/Mesh.cpp "${MODEL[@]}"
+build_and_run edits_tests tests/edits_tests.cpp src/_old/Edits.cpp src/_old/History.cpp "${MODEL[@]}"
 
 if command -v check-jsonschema >/dev/null 2>&1; then
 	echo "== schema"

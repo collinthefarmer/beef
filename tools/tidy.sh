@@ -12,13 +12,13 @@ for arg in "$@"; do
 		--analyzer) ANALYZER=1; OUT=build/tidy-analyzer ;;
 		--force) FORCE=1 ;;
 		--jobs=*) JOBS="${arg#--jobs=}" ;;
-		--changed) mapfile -t FILES < <(git diff --name-only HEAD -- 'src/*.cpp') ;;
+		--changed) mapfile -t FILES < <(git diff --name-only HEAD -- 'src/*.cpp' | grep -v '^src/_old/') ;;
 		--summary) SUMMARY_ONLY=1 ;;
 		-*) echo "usage: tools/tidy.sh [--analyzer] [--changed] [--force] [--jobs=N] [--summary] [file...]" >&2; exit 2 ;;
 		*) FILES+=("$arg") ;;
 	esac
 done
-[ ${#FILES[@]} -eq 0 ] && mapfile -t FILES < <(ls -S -r src/*.cpp)
+[ ${#FILES[@]} -eq 0 ] && mapfile -t FILES < <(find src -name '*.cpp' -not -path 'src/_old/*' -not -path 'src/extern/*' -printf '%s %p\n' | sort -n | cut -d' ' -f2-)
 
 DB=build/clangd/compile_commands.json
 [ -f "$DB" ] || { echo "no $DB; run tools/compile-db.sh" >&2; exit 1; }

@@ -4,7 +4,20 @@ Six phases, ordered so that everything free runs before anything that
 costs a refactor. Each phase says what it proves, because a check nobody
 can act on is a check that gets muted.
 
-## Baseline, taken 2026-09-09
+## The tree is frozen
+
+On 2026-09-09 the 72 sources moved to `src/_old` and stay there, building
+and shipping, as the reference implementation. Each wave writes new code
+into `src/recipe`, `src/mesh`, `src/engine`, `src/render`, `src/studio`
+and `src/menu`, and deletes the frozen files it replaces.
+
+The measurements below describe the frozen tree, reproducible with
+`python3 tools/readability.py --frozen`, and recorded in
+`docs/wip/tidy-baseline-frozen.txt`. Every tool now measures new code by
+default and reports zero until there is some. That is the point: a wave
+is assessed on what it wrote, not on what it inherited.
+
+## Baseline of the frozen tree, taken 2026-09-09
 
 72 files, 27,316 lines, 1,237 functions. Function length: median 8,
 p95 48, max 256.

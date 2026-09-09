@@ -434,8 +434,9 @@ def report(findings: Sequence[Finding], scans: Sequence[Scan], names: Sequence[s
 
 def main() -> int:
     parser = argparse.ArgumentParser(description="Readability metrics over C++ sources.")
-    parser.add_argument("globs", nargs="*", default=["src/*.cpp", "src/*.h"])
-    parser.add_argument("--exclude", action="append", default=["extern"])
+    parser.add_argument("globs", nargs="*", default=["src/**/*.cpp", "src/**/*.h"])
+    parser.add_argument("--exclude", action="append", default=["extern", "cs"])
+    parser.add_argument("--frozen", action="store_true", help="measure src/_old instead of new code")
     parser.add_argument("--metric", action="append", choices=sorted(METRICS), help="run only these")
     parser.add_argument("--top", type=int, default=15)
     parser.add_argument("--nesting", type=int, default=Thresholds.nesting)
@@ -445,6 +446,10 @@ def main() -> int:
     args = parser.parse_args()
 
     root = Path.cwd()
+    if args.frozen:
+        args.globs = ["src/_old/*.cpp", "src/_old/*.h"]
+    else:
+        args.exclude.append("_old")
     paths = sorted(
         {
             p
@@ -454,7 +459,8 @@ def main() -> int:
         }
     )
     if not paths:
-        parser.error("no files matched")
+        print("0 files, 0 lines, 0 functions")
+        return 0
     paths = [p.relative_to(root) for p in paths]
 
     names = args.metric or [n for n in METRICS if n not in SPECULATIVE]

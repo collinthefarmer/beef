@@ -75,6 +75,49 @@ five.
 because format 1 may be frozen. Its first three items are independent of
 the two that need a game checkpoint.
 
+## Parallel execution
+
+Three properties decide the shape.
+
+**There is no barrier.** The previous tree stands frozen under
+`src/_old`, and new code is written directly into `src/recipe`,
+`src/mesh` and the rest. Nothing rewrites an include across the whole
+repository, so nothing has to serialize around it. `src` and `src/_old`
+are both include roots: old code's `#include "Recipe.h"` still resolves
+to the frozen copy, new code says `#include "recipe/Recipe.h"`, and the
+two never collide.
+
+**Partition by file ownership, not by task.** Two streams editing the
+same file conflict however unrelated their tasks are. The unit of
+parallelism is a set of files one stream owns exclusively.
+
+**Four hub files force serialization.** `RecipeJson.cpp`, `Recipe.h`,
+`Manager.cpp` and `Studio.cpp` are each touched by five or more work
+items. Each gets exactly one owner per wave.
+
+| Wave | Stream | Owns | Verified by |
+| --- | --- | --- | --- |
+| 1 | Settings | `SettingsCore`, `Settings`, the ini, `Menu.cpp`'s page filter | native |
+| 1 | Render | `RuntimeTextures.{h,cpp}`: dead modes, `kProgramStack` | game |
+| 1 | Import | `Importer`, `Timing`, `EngineForms` | native |
+| 1 | Scaffolding | `tools/`, `History.cpp`, `CMakeLists`, stale doc sections | build |
+| 2 | Format surface | `Recipe.{h,cpp}`, `RecipeJson.cpp`, `schema/` | native |
+| 2 | Actor state | `Manager.{h,cpp}`, `Merge.{h,cpp}`, `Snapshot.h` | game |
+| 2 | Interface | `ComposePage`, `Studio`, `MenuWidgets`, `MenuState`, `History.h` | build |
+| 3 | Four modules | one per new directory, disjoint by construction | mixed |
+
+Two things do not parallelize. Game checkpoints serialize on the user, so
+the streams needing Skyrim are batched into one checkpoint per wave. And
+the clang-tidy baseline regenerates once per wave rather than per stream,
+because deletions move it substantially; each stream instead states what
+it expects to retire and integration checks the total.
+
+Each stream runs in its own git worktree. Its exit condition is four
+checks: the plugin builds at zero warnings, `tests/run-native.sh` passes,
+`tools/tidy-baseline.sh --check` reports only what that stream meant to
+add, and the frozen files the stream replaced are gone from the build and
+from `src/_old`. A module is not done while both copies are in the tree.
+
 ## Decisions this path is waiting on
 
 - Is recipe format 1 frozen? Stage 5 depends on it entirely.

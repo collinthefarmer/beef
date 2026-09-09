@@ -58,38 +58,38 @@ endforeach()
 set_target_properties(CommonLibSSE PROPERTIES INTERFACE_LINK_LIBRARIES "${_clib_links_fixed}")
 
 set(PLUGIN_SOURCES
-  src/main.cpp
-  src/Events.cpp
-  src/Hooks.cpp
-  src/Menu.cpp
-  src/MenuState.cpp
-  src/History.cpp
-  src/EditCheck.cpp
-  src/Paint.cpp
-  src/Region.cpp
-  src/MenuWidgets.cpp
-  src/ComposePage.cpp
-  src/RuntimeTextures.cpp
-  src/Settings.cpp
-  src/SettingsCore.cpp
-  src/Timing.cpp
-  src/Recipe.cpp
-  src/RecipeJson.cpp
-  src/Expression.cpp
-  src/Signals.cpp
-  src/Importer.cpp
-  src/RecipeStore.cpp
-  src/EngineForms.cpp
-  src/Environment.cpp
-  src/Compositor.cpp
-  src/Mesh.cpp
-  src/Analysis.cpp
-  src/Merge.cpp
-  src/MeshReader.cpp
-  src/Binding.cpp
-  src/Manager.cpp
-  src/Studio.cpp
-  src/Edits.cpp
+  src/_old/main.cpp
+  src/_old/Events.cpp
+  src/_old/Hooks.cpp
+  src/_old/Menu.cpp
+  src/_old/MenuState.cpp
+  src/_old/History.cpp
+  src/_old/EditCheck.cpp
+  src/_old/Paint.cpp
+  src/_old/Region.cpp
+  src/_old/MenuWidgets.cpp
+  src/_old/ComposePage.cpp
+  src/_old/RuntimeTextures.cpp
+  src/_old/Settings.cpp
+  src/_old/SettingsCore.cpp
+  src/_old/Timing.cpp
+  src/_old/Recipe.cpp
+  src/_old/RecipeJson.cpp
+  src/_old/Expression.cpp
+  src/_old/Signals.cpp
+  src/_old/Importer.cpp
+  src/_old/RecipeStore.cpp
+  src/_old/EngineForms.cpp
+  src/_old/Environment.cpp
+  src/_old/Compositor.cpp
+  src/_old/Mesh.cpp
+  src/_old/Analysis.cpp
+  src/_old/Merge.cpp
+  src/_old/MeshReader.cpp
+  src/_old/Binding.cpp
+  src/_old/Manager.cpp
+  src/_old/Studio.cpp
+  src/_old/Edits.cpp
 )
 
 add_commonlibsse_plugin(${PROJECT_NAME}
@@ -99,10 +99,10 @@ add_commonlibsse_plugin(${PROJECT_NAME}
   USE_ADDRESS_LIBRARY
   SOURCES ${PLUGIN_SOURCES})
 
-target_include_directories(${PROJECT_NAME} PRIVATE src)
+target_include_directories(${PROJECT_NAME} PRIVATE src src/_old)
 target_include_directories(${PROJECT_NAME} SYSTEM PRIVATE src/extern)
 target_compile_definitions(${PROJECT_NAME} PRIVATE BEEF_PLUGIN_NAME="${PROJECT_NAME}")
-target_precompile_headers(${PROJECT_NAME} PRIVATE src/PCH.h)
+target_precompile_headers(${PROJECT_NAME} PRIVATE src/_old/PCH.h)
 
 set(CLANG_CL_FLAGS
   /permissive- /EHsc /W4 /utf-8
@@ -121,33 +121,33 @@ target_compile_options(${PROJECT_NAME} PRIVATE /Zi)
 target_link_options(${PROJECT_NAME} PRIVATE /DEBUG:FULL /PDBALTPATH:%_PDB%)
 
 set(HOST_OBJECT_SOURCES
-  src/Timing.cpp
-  src/SettingsCore.cpp
-  src/Expression.cpp
-  src/Recipe.cpp
-  src/RecipeJson.cpp
-  src/Signals.cpp
-  src/Importer.cpp
-  src/Mesh.cpp
-  src/Analysis.cpp
-  src/Merge.cpp
-  src/Region.cpp
-  src/Studio.cpp
-  src/MenuState.cpp
-  src/History.cpp
-  src/Edits.cpp
-  src/EditCheck.cpp
-  src/Paint.cpp)
+  src/_old/Timing.cpp
+  src/_old/SettingsCore.cpp
+  src/_old/Expression.cpp
+  src/_old/Recipe.cpp
+  src/_old/RecipeJson.cpp
+  src/_old/Signals.cpp
+  src/_old/Importer.cpp
+  src/_old/Mesh.cpp
+  src/_old/Analysis.cpp
+  src/_old/Merge.cpp
+  src/_old/Region.cpp
+  src/_old/Studio.cpp
+  src/_old/MenuState.cpp
+  src/_old/History.cpp
+  src/_old/Edits.cpp
+  src/_old/EditCheck.cpp
+  src/_old/Paint.cpp)
 add_library(${PROJECT_NAME}HostObjects OBJECT ${HOST_OBJECT_SOURCES})
 set_target_properties(${PROJECT_NAME}HostObjects PROPERTIES EXCLUDE_FROM_ALL TRUE)
-target_include_directories(${PROJECT_NAME}HostObjects PRIVATE src src/extern)
+target_include_directories(${PROJECT_NAME}HostObjects PRIVATE src src/_old src/extern)
 target_compile_options(${PROJECT_NAME}HostObjects PRIVATE /EHsc /W4 /utf-8)
 target_compile_definitions(${PROJECT_NAME}HostObjects PRIVATE BEEF_FIXTURES_DIR="${CMAKE_SOURCE_DIR}/tests/fixtures")
 
 function(add_host_test NAME)
   add_executable(${NAME} ${ARGN})
   set_target_properties(${NAME} PROPERTIES EXCLUDE_FROM_ALL TRUE)
-  target_include_directories(${NAME} PRIVATE src src/extern)
+  target_include_directories(${NAME} PRIVATE src src/_old src/extern)
   target_compile_options(${NAME} PRIVATE /EHsc /W4 /utf-8)
   target_compile_definitions(${NAME} PRIVATE BEEF_FIXTURES_DIR="${CMAKE_SOURCE_DIR}/tests/fixtures")
   target_link_libraries(${NAME} PRIVATE ${PROJECT_NAME}HostObjects)

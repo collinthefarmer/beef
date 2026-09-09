@@ -1,5 +1,9 @@
 # Proposed structure
 
+The tree is built up rather than rearranged: the previous sources are
+frozen under `src/_old` and each module is written fresh into its
+directory, replacing its frozen counterpart when it lands.
+
 A sketch, not a plan. Synthesised from three agent passes and verified
 where it names a defect. About eleven developer-days if taken whole.
 
