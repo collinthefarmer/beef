@@ -28,6 +28,31 @@ FindGeometry(const RecipeRow &a_recipe, std::string_view a_name) noexcept {
       std::ranges::find(a_recipe.geometries, a_name, &GeometryRow::name);
   return it == a_recipe.geometries.end() ? nullptr : &*it;
 }
+
+void InjectPinnedRecipe(std::vector<ResolvedRecipe> &a_resolved,
+                        const WornPiece &a_piece, const View &a_view,
+                        std::span<const Recipe> a_loaded) {
+  const std::string &id = a_view.pin->recipeID;
+  const auto pinned = std::ranges::find(a_loaded, id, &Recipe::id);
+  const bool present =
+      std::ranges::any_of(a_resolved, [&](const ResolvedRecipe &a_r) {
+        return a_r.recipe && a_r.recipe->id == id;
+      });
+  const std::vector<PieceKey> choices = KeyChoicesOf(a_piece);
+  const PieceKey *choice = DefaultKeyChoice(choices);
+  if (pinned != a_loaded.end() && !present && choice) {
+    const RecipeKey key = RecipeKeyOf(*choice, choice->form.ToString());
+    a_resolved.push_back(
+        {&*pinned, key, pinned->priority.value_or(DefaultPriority(key.kind))});
+  }
+}
+
+void FilterIsolated(std::vector<ResolvedRecipe> &a_resolved,
+                    const View &a_view) {
+  std::erase_if(a_resolved, [&](const ResolvedRecipe &a_r) {
+    return !a_r.recipe || a_r.recipe->id != a_view.isolateRecipe;
+  });
+}
 }
 
 const PieceRow *SelectedPiece(const Snapshot &a_snapshot,
@@ -84,8 +109,7 @@ std::optional<PieceRef> RequestOf(const Selection &a_selection) noexcept {
   return a_selection.piece;
 }
 
-void ResolveSelection(Selection &a_selection,
-                      const Snapshot &a_snapshot) noexcept {
+void ResolveSelection(Selection &a_selection, const Snapshot &a_snapshot) {
   const PieceRow *piece = SelectedPiece(a_snapshot, a_selection);
   if (!piece) {
     return;
@@ -123,25 +147,10 @@ ViewedRecipes(std::vector<ResolvedRecipe> a_resolved, const WornPiece &a_piece,
               PieceRef a_ref, const View &a_view,
               std::span<const Recipe> a_loaded) {
   if (a_view.pin && a_view.pin->piece == a_ref) {
-    const std::string &id = a_view.pin->recipeID;
-    const auto pinned = std::ranges::find(a_loaded, id, &Recipe::id);
-    const bool present =
-        std::ranges::any_of(a_resolved, [&](const ResolvedRecipe &a_r) {
-          return a_r.recipe && a_r.recipe->id == id;
-        });
-    const std::vector<PieceKey> choices = KeyChoicesOf(a_piece);
-    const PieceKey *choice = DefaultKeyChoice(choices);
-    if (pinned != a_loaded.end() && !present && choice) {
-      const RecipeKey key = RecipeKeyOf(*choice, choice->form.ToString());
-      a_resolved.push_back(
-          {&*pinned, key,
-           pinned->priority.value_or(DefaultPriority(key.kind))});
-    }
+    InjectPinnedRecipe(a_resolved, a_piece, a_view, a_loaded);
   }
   if (a_view.Isolating()) {
-    std::erase_if(a_resolved, [&](const ResolvedRecipe &a_r) {
-      return !a_r.recipe || a_r.recipe->id != a_view.isolateRecipe;
-    });
+    FilterIsolated(a_resolved, a_view);
   }
   return a_resolved;
 }
