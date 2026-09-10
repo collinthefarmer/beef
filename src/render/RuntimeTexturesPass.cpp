@@ -38,6 +38,8 @@ public:
   }
   RendererLock(const RendererLock &) = delete;
   RendererLock &operator=(const RendererLock &) = delete;
+  RendererLock(RendererLock &&) = delete;
+  RendererLock &operator=(RendererLock &&) = delete;
 
 private:
   RE::BSGraphics::Renderer *renderer_ = nullptr;
@@ -496,7 +498,8 @@ bool TextureLab::RenderRipple(RenderTarget &a_target,
 std::optional<MaterialSample>
 TextureLab::SampleMaterial(RE::NiSourceTexture *a_rmaos,
                            RE::NiSourceTexture *a_diffuse) {
-  static_assert(kSampleSide * kSampleSide <= kMaxSampleTexels);
+  static_assert(static_cast<std::size_t>(kSampleSide) * kSampleSide <=
+                kMaxSampleTexels);
   const auto fail =
       [&](RE::NiSourceTexture *a_texture,
           std::string_view a_why) -> std::optional<MaterialSample> {

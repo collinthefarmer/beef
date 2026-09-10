@@ -36,6 +36,8 @@ public:
   }
   RendererLock(const RendererLock &) = delete;
   RendererLock &operator=(const RendererLock &) = delete;
+  RendererLock(RendererLock &&) = delete;
+  RendererLock &operator=(RendererLock &&) = delete;
 
 private:
   RE::BSGraphics::Renderer *renderer_ = nullptr;

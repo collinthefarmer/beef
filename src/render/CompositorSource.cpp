@@ -73,7 +73,7 @@ bool MeasureFlatDisplacement(
   }
   const float mean = TextureLab::GetSingleton()->MeanChannel(
       a_displacement.get(), ShaderChannel::kR);
-  return !(mean > 0.02f && mean < 0.98f);
+  return mean <= 0.02f || mean >= 0.98f;
 }
 
 std::shared_ptr<TextureLab::RenderTarget>

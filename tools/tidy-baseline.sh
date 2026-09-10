@@ -16,7 +16,7 @@ for f in sorted(source.glob('*.txt')):
 		try:
 			rel = str(pathlib.Path(path).resolve().relative_to(root))
 		except ValueError:
-			rel = path
+			continue
 		rows.append((rel, int(line_no), check))
 rows.sort()
 counts = collections.Counter(c for _, _, c in rows)

@@ -146,7 +146,7 @@ void Manager::NewRecipe(std::string a_id, RecipeKey a_key,
             geometry = std::move(a_geometry)] {
     WithListMoved([&] {
       [[maybe_unused]] const bool made =
-          BetterEnchantmentEffects::NewRecipe(id, std::move(key), geometry);
+          BetterEnchantmentEffects::NewRecipe(id, key, geometry);
     });
   });
 }
