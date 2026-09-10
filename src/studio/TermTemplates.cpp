@@ -49,10 +49,10 @@ ScratchEdits(std::span<const Term> a_terms, std::optional<std::size_t> a_solo,
     text = "0";
   }
   if (!a_scratch) {
-    edits.push_back(AddMask{std::string{kScratchMask}});
+    edits.emplace_back(AddMask{std::string{kScratchMask}});
   }
   if (!a_scratch || *a_scratch != text) {
-    edits.push_back(SetMask{std::string{kScratchMask}, std::move(text)});
+    edits.emplace_back(SetMask{std::string{kScratchMask}, std::move(text)});
   }
   return edits;
 }
@@ -77,7 +77,7 @@ public:
     }
     const std::string name = UniqueName(a_wanted, taken_);
     taken_.push_back(name);
-    edits_.push_back(AddSource{name, a_kind});
+    edits_.emplace_back(AddSource{name, a_kind});
     return name;
   }
 
@@ -259,7 +259,7 @@ namespace {
 
 [[nodiscard]] std::string OperandText(const std::string &a_name,
                                       std::uint8_t a_posterize) {
-  const std::string reference = ReferenceText(a_name);
+  std::string reference = ReferenceText(a_name);
   if (a_posterize > 1) {
     return std::format("floor({} * {}) / {}", reference, a_posterize,
                        a_posterize);
@@ -400,15 +400,16 @@ std::string TermLabelOf(const TermKind &a_kind, const MaskPresets &a_presets,
 namespace {
 template <class Kind>
 [[nodiscard]] TermField
-Setting(const Kind &a_kind, FormField a_field,
+Setting(Kind a_kind, FormField a_field,
         std::function<bool(Kind &, const std::string &)> a_set) {
-  return TermField{
-      std::move(a_field),
-      [a_kind, a_set](const std::string &a_text) -> std::optional<TermKind> {
-        Kind edited = a_kind;
-        return a_set(edited, a_text) ? std::optional<TermKind>{edited}
-                                     : std::nullopt;
-      }};
+  return TermField{std::move(a_field),
+                   [a_kind = std::move(a_kind), a_set = std::move(a_set)](
+                       const std::string &a_text) -> std::optional<TermKind> {
+                     Kind edited = a_kind;
+                     return a_set(edited, a_text)
+                                ? std::optional<TermKind>{edited}
+                                : std::nullopt;
+                   }};
 }
 
 [[nodiscard]] std::optional<float> NumberIn(const std::string &a_text,
@@ -673,16 +674,12 @@ namespace {
 
 constexpr std::string_view kMeshUnread = "the mesh has not been read yet";
 constexpr std::string_view kNoClusters = "the material has no clusters yet";
-}
 
-std::vector<TermOffer> OffersOf(const MaskPresets &a_presets,
-                                const RecipeRow &a_recipe,
-                                const GeometryRow &a_geometry,
-                                std::string_view a_editing) {
-  std::vector<TermOffer> offers;
+void AppendPartOffers(std::vector<TermOffer> &a_offers,
+                      const GeometryRow &a_geometry) {
   if (!a_geometry.meshRead) {
-    offers.push_back(Unavailable(OfferGroup::kParts, std::string{kMeshUnread},
-                                 IslandTerm{}));
+    a_offers.push_back(Unavailable(OfferGroup::kParts, std::string{kMeshUnread},
+                                   IslandTerm{}));
   }
   for (const MeshIsland &island : a_geometry.islands) {
     const bool chart = island.source == IslandSource::kChart;
@@ -700,59 +697,102 @@ std::vector<TermOffer> OffersOf(const MaskPresets &a_presets,
                                   PlainIslandSourceName(IslandSource::kChart),
                                   *island.twin));
     }
-    offers.push_back(Offer(
+    a_offers.push_back(Offer(
         chart ? OfferGroup::kCharts : OfferGroup::kParts,
         std::format("{} {}", PlainIslandSourceName(island.source), island.id),
         Joined(facts), term));
-    offers.back().coverage = island.share;
+    a_offers.back().coverage = island.share;
   }
+}
+
+void AppendMaterialOffers(std::vector<TermOffer> &a_offers,
+                          const GeometryRow &a_geometry) {
   if (a_geometry.clusters.empty()) {
-    offers.push_back(Unavailable(OfferGroup::kMaterials,
-                                 std::string{kNoClusters}, ClusterTerm{}));
+    a_offers.push_back(Unavailable(OfferGroup::kMaterials,
+                                   std::string{kNoClusters}, ClusterTerm{}));
   }
   for (const MaterialCluster &cluster : a_geometry.clusters) {
-    offers.push_back(
+    a_offers.push_back(
         Offer(OfferGroup::kMaterials, std::format("material {}", cluster.id),
               cluster.description, ClusterTerm{ClusterSettings{}, cluster.id}));
-    offers.back().coverage = cluster.share;
+    a_offers.back().coverage = cluster.share;
   }
+}
+
+void AppendBoneOffers(std::vector<TermOffer> &a_offers,
+                      const GeometryRow &a_geometry) {
   for (const BoneCoverage &bone : a_geometry.bones) {
-    offers.push_back(
+    a_offers.push_back(
         Offer(OfferGroup::kBones, bone.name, {}, BoneTerm{{bone.name}}));
-    offers.back().coverage = bone.coverage;
+    a_offers.back().coverage = bone.coverage;
   }
+}
+
+void AppendPartitionOffers(std::vector<TermOffer> &a_offers,
+                           const GeometryRow &a_geometry) {
   for (const SlotCoverage &partition : a_geometry.partitions) {
-    offers.push_back(Offer(OfferGroup::kPartitions,
-                           PartitionName(a_geometry, partition.slot),
-                           std::format("{} triangles", partition.triangles),
-                           PartitionTerm{partition.slot}));
+    a_offers.push_back(Offer(OfferGroup::kPartitions,
+                             PartitionName(a_geometry, partition.slot),
+                             std::format("{} triangles", partition.triangles),
+                             PartitionTerm{partition.slot}));
   }
+}
+
+void AppendChannelOffers(std::vector<TermOffer> &a_offers) {
   for (const MaterialChannel channel : ThresholdChannels()) {
     ThresholdTerm term;
     term.channel = channel;
     term.low = 0.5f;
     term.high = 1.0f;
-    offers.push_back(Offer(OfferGroup::kChannels,
-                           std::string{MaterialChannelName(channel)}, "0.5..1",
-                           term));
+    a_offers.push_back(Offer(OfferGroup::kChannels,
+                             std::string{MaterialChannelName(channel)},
+                             "0.5..1", term));
   }
+}
+
+void AppendPresetOffers(std::vector<TermOffer> &a_offers,
+                        const MaskPresets &a_presets) {
   for (const MaskPreset &preset : a_presets.presets) {
-    offers.push_back(Offer(OfferGroup::kPresets, preset.name, preset.expression,
-                           PresetTerm{preset.name}));
+    a_offers.push_back(Offer(OfferGroup::kPresets, preset.name,
+                             preset.expression, PresetTerm{preset.name}));
   }
+}
+
+void AppendMaskOffers(std::vector<TermOffer> &a_offers,
+                      const RecipeRow &a_recipe, std::string_view a_editing) {
   for (const TextRow &mask : a_recipe.maskRows) {
     if (mask.name == kScratchMask || mask.name == a_editing) {
       continue;
     }
-    offers.push_back(Offer(OfferGroup::kMasks, mask.name, mask.text,
-                           ReferenceTerm{mask.name}));
+    a_offers.push_back(Offer(OfferGroup::kMasks, mask.name, mask.text,
+                             ReferenceTerm{mask.name}));
   }
+}
+
+void AppendSourceOffers(std::vector<TermOffer> &a_offers,
+                        const RecipeRow &a_recipe) {
   for (const SourceRow &source : a_recipe.sourceRows) {
     const auto kind = SourceKindOf(source);
-    offers.push_back(Offer(OfferGroup::kSources, source.name,
-                           kind ? DescribeSource(*kind) : source.kind,
-                           ReferenceTerm{source.name}));
+    a_offers.push_back(Offer(OfferGroup::kSources, source.name,
+                             kind ? DescribeSource(*kind) : source.kind,
+                             ReferenceTerm{source.name}));
   }
+}
+}
+
+std::vector<TermOffer> OffersOf(const MaskPresets &a_presets,
+                                const RecipeRow &a_recipe,
+                                const GeometryRow &a_geometry,
+                                std::string_view a_editing) {
+  std::vector<TermOffer> offers;
+  AppendPartOffers(offers, a_geometry);
+  AppendMaterialOffers(offers, a_geometry);
+  AppendBoneOffers(offers, a_geometry);
+  AppendPartitionOffers(offers, a_geometry);
+  AppendChannelOffers(offers);
+  AppendPresetOffers(offers, a_presets);
+  AppendMaskOffers(offers, a_recipe, a_editing);
+  AppendSourceOffers(offers, a_recipe);
   for (TermOffer &offer : offers) {
     const OfferGroupSpec *row = RowOf(kOfferGroups, offer.group);
     if (row && row->ofGeometry) {
