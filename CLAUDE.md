@@ -7,9 +7,9 @@ layouts, CS rules, decompile lines, shader packings, by module.
 `src/_old/` is the frozen previous implementation and the behaviour oracle
 each new module diffs against. `schema/recipe.schema.json` is the recipe
 format and `schema/example-magicka.json` is the canonical file.
-`docs/wip/clusters.md` and `docs/wip/deletions.md` are the per-module
-checklists the buildup consumes: which defects to fix as a module is
-written, and which apparently dead code must not be dropped.
+`docs/conventions.md` records the canon patterns a new module is built on,
+and `docs/wip/deletions.md` is the per-module checklist of apparently dead
+code that must not be dropped.
 
 ## Three rules, in priority order
 

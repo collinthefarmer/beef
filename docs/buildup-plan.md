@@ -87,11 +87,13 @@ tree links do you build and run the suite.
   `docs/wip/tidy-baseline.txt`. `tidy.sh` reads
   `build/clangd/compile_commands.json`; run `tools/compile-db.sh` first if a
   source file was added or removed this cluster.
-- Triage the findings. Separate the accepted-by-policy ones — the flat
-  per-texel / per-tick switches and the arity-floor generic helpers
-  (`NamedRows`, `CheckVector`), recorded in `docs/wip/clusters.md` and
-  carried in the baseline — from the actionable ones the refactor stage will
-  clear. A finding is accepted only if `clusters.md` says so.
+- Triage the findings against the two reasons a finding legitimately stays in
+  the baseline. **Accepted by policy:** the per-tick / per-texel switches kept
+  flat by design — the reason is in `docs/conventions.md`. **Deferred by
+  scope:** findings in a module this wave chose not to re-open. Everything else
+  is actionable and the refactor stage clears it. The baseline is the record of
+  what stayed; keep it to exactly those two sets, and re-triage when either the
+  policy or the wave's scope changes.
 
 Formatting is gated earlier and separately: `.githooks/pre-commit` and the
 Claude `PreToolUse` gate in `.claude/settings.json` both run
@@ -117,8 +119,11 @@ before writing a variant):
   `ResolveRefs` → `OrderNodes` → `InferTypes` → `CheckReferenceTypes` →
   `PropagateInert`).
 - Keep an exhaustive `Match` of tiny arms flat. Do not table a per-texel
-  switch: `clusters.md` rejects it because the switch compiles to an inlined
-  jump table and an indirection would cost more than it cleans.
+  switch: it compiles to an inlined jump table and an indirection would cost
+  more than it cleans (the rule is in `docs/conventions.md`). Where a fat
+  exhaustive `Match` trips the complexity metric, move each arm into a named
+  visitor-struct overload so the dispatch is one line and `std::visit` still
+  enforces coverage — do not split the variant into a hand-maintained layer.
 - Lift any idiom that recurs across the cluster into the shared vocabulary
   (`Core.h` / `Recipe.h`) rather than duplicating it. Wave 1 lifted
   `Reporter` (the one diagnostic sink), the `Reader` / `Writer` binders,
@@ -184,8 +189,12 @@ criterion from the loop's inspect stage.
 `Edits.cpp` (apply-or-refuse, tested with a round-trip-and-undo property
 per edit), `FieldCheck.cpp`, `MenuState.cpp` (the `Reduce` reducer), the
 view-model builders (`Rows`/`Panels`/`Board`/`Selection`/`Names`),
-`History`, and the mask editor (`Region`/`Presets`/`TermTemplates`/
-`PaintSession`). Depends on recipe/ + mesh/ from wave 1.
+`History`, and the mask editor (`Mask`/`Presets`/`TermTemplates`/
+`PaintSession`). Studio also holds the shared pure UI-primitive layer (`Page`,
+the `Widgets` specs, the `Bind*` field factories in `Fields`) and the
+structured `SelectorEdit` model, and owns the recipe-to-view projections (they
+are a view-model concern, not a planner one). Depends on recipe/ + mesh/ from
+wave 1.
 
 **planners/** (pure) — the decision halves of the engine modules, written
 and native-tested now so wave 3 holds no logic: the compositor's stack plan
@@ -218,11 +227,15 @@ tests.
 
 ## Wave 4 — menu surface (parallel by page)
 
-Shape agent lands `MenuWidgets` (every drawing mechanic) and `FormDraw`
-first. Then one agent per page: `BoardPage`, `ContextRows`, `StackPanel`,
-`ResourcePanels`, `PaintPanel`, `StudioPage`, plus `Menu` registration and
-`Intents` collection. Each page reads the immutable snapshot and posts
-intents; none touches engine state. Build-verified.
+The pure widget vocabulary already lives in `studio/` — `Page`, the `Widgets`
+specs, the `Bind*` field factories (`Fields`) — landed in wave 2. Wave 4 is the
+thin ImGui renderer over it: a `MenuWidgets`/`FormDraw` layer that draws the
+studio specs and resolves only what they deliberately leave to the engine (a
+`Width` to pixels, a `RuleButton` press to a returned index). Then one agent
+per page: `BoardPage`, `ContextRows`, `StackPanel`, `ResourcePanels`,
+`PaintPanel`, `StudioPage`, plus `Menu` registration and `Intents` collection.
+Each page reads the immutable snapshot and posts intents; none touches engine
+state. Build-verified.
 
 ## Wave 5 — integration (1 owner, serial)
 
@@ -247,10 +260,9 @@ intents; none touches engine state. Build-verified.
 - **Each agent brief carries:** its exclusive file set, the frozen
   counterpart(s) to read for reference (never to import), `docs/conventions.md`
   (the canon patterns to build on, so a fill does not regrow the wave-1
-  monsters and arrives near its floor), the relevant `docs/wip/clusters.md`
-  (fix-as-you-write) and `docs/wip/deletions.md` (do-not-write, and the
-  "looked dead, keep" list) entries, the three rules from `CLAUDE.md`, and
-  its exact verification command.
+  monsters and arrives near its floor), the relevant `docs/wip/deletions.md`
+  (do-not-write, and the "looked dead, keep" list) entries, the three rules
+  from `CLAUDE.md`, and its exact verification command.
 - **Never dispatch two agents whose file sets overlap.** The directory
   split makes this automatic across clusters; within a cluster the
   file-per-agent rule enforces it.
@@ -291,21 +303,23 @@ These are general, not tied to one wave. They cost real detours to learn.
   re-solve the same shared need.** Expect duplicated file-local helpers and
   a shared-vocabulary pull at merge; either pre-place the shared helper
   before fan-out or make "lift the recurring idiom" an expected merge task.
-- **The accepted-vs-actionable policy lives in one curated place
-  (`clusters.md`); editing it is a scope change.** It sets how large a
-  reduction pass is. Re-triage when it changes; never let an agent decide
-  what is acceptable on its own.
+- **What counts as an acceptable finding is an orchestrator decision, not an
+  agent's.** The keep-flat policy is in `docs/conventions.md`, and the tidy
+  baseline is the record of what stayed; a wave also defers findings in modules
+  it chooses not to re-open. Changing either the policy or the wave's scope
+  re-triages the reduction pass — never let an agent decide acceptability on
+  its own.
 - **Only parallel-refactor code that has a behaviour oracle.** Rewriting the
   exhaustive `Match`es into visitor structs was safe to fan out only because
   the fills had already written real tests; compile-green would not catch a
   dropped arm. Tests-first is what makes aggressive refactoring
   parallelizable.
-- **Design around the hard resource limit up front.** Decide the
-  concurrency cap, the staging, and where the heavy gate runs before
-  dispatching; brief agents to the cheap local check plus your central
-  authoritative one. Clean up worktrees and stop lingering build-watchers
-  after merge. Group tiny agents by cohesion (the mask editor as one), not
-  by one-file-per-agent dogma.
+- **Design around the hard resource limit up front.** The memory ceiling caps
+  how many full builds run at once, which is why verification centralizes (the
+  first lesson) — decide the concurrency cap and staging before dispatching,
+  not per agent. Clean up worktrees and stop lingering build-watchers after
+  merge. Group tiny agents by cohesion (the mask editor as one), not by
+  one-file-per-agent dogma.
 
 ## Where the risk sits
 

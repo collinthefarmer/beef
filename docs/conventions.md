@@ -107,7 +107,7 @@ Dispatch over a variant is `Match` (`Core.h`), index dispatch over
 valueless, so `Match` inside a `noexcept` path cannot become `std::terminate`.
 `Get<T>` and `Is<T>` are the get-if / holds-alternative shorthands.
 
-Big arm vs tiny arm — the recorded judgment (`docs/wip/clusters.md`):
+Big arm vs tiny arm — the recorded judgment:
 - When each per-kind arm is a substantial body, extract per-kind functions and
   dispatch through an enum-ordered function-pointer table with a size assert:
   `kSignalParsers` and `kSourceParsers` (`RecipeRead.cpp`), each
@@ -118,9 +118,9 @@ Big arm vs tiny arm — the recorded judgment (`docs/wip/clusters.md`):
 - When arms are one-liners, keep them as a single exhaustive `Match` — the
   compiler then demands an arm when a kind is added. `SignalState::Evaluate`
   and the per-texel expression `Evaluate`/`Reduce`-style switches are kept flat
-  deliberately: clusters.md **rejects** turning them into function-pointer
-  tables because the per-texel `Evaluate` switch compiles to an inlined jump
-  table and an indirection would cost more than it cleans. Make illegal states
+  deliberately: turning them into function-pointer tables is **rejected**
+  because the per-texel `Evaluate` switch compiles to an inlined jump table and
+  an indirection would cost more than it cleans. Make illegal states
   unrepresentable at load and edit time; on per-tick/per-texel paths keep the
   check cheap, explicit and tested.
 
@@ -192,7 +192,7 @@ testable without the engine and the adapter thin.
 Illegal states unrepresentable where a type can carry it: `Merge.h` gives the
 two index spaces distinct types (`enum class SlotSource`/`LightSource` and
 `SlotContribution`/`LightContribution`) so a light index cannot be used as a
-slot index — the fix clusters.md prescribed, already built into the new tree.
+slot index — already built into the new tree.
 
 ## Reuse across modules: call the core, do not re-implement it
 
@@ -208,8 +208,8 @@ the right type."
 
 The anti-pattern this avoids is on record: the frozen tree wrote one row-check
 three times (`Validator`, `CheckSourceKind`, `EditCheck`) and they diverged, so
-the editor accepted values the loader rejected (`docs/wip/clusters.md`). One
-check over `RowTypes`, reused, is why the new tree cannot drift that way.
+the editor accepted values the loader rejected. One check over `RowTypes`,
+reused, is why the new tree cannot drift that way.
 
 Name lookup is a `Find*`, never a re-scan: `Recipe::FindSignal`/`FindCurve`/
 `FindSource`/`FindMask` (`Recipe.cpp`) are the single lookups; call them rather
