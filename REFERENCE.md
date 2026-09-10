@@ -542,7 +542,7 @@ Decompile provenance (`decompiled/WornEnchantmentFX/plugin.c` unless noted):
 - The framework's `ImTextureID` is a D3D11 shader resource view pointer
   (NOTES 28).
 
-## studio (`studio/Snapshot.h`, `View.h`, `Intent.h`, `Forms.h`, `Edits.h`, `Mask.h`, `Presets.h`, `TermTemplates.h`, `PaintSession.h`, `Board.h`, `Panels.h`, `Selection.h`, `Names.h`, `Rows.h`, `FieldCheck.h`, `History.h`, `Page.h`, `Widgets.h`, `Fields.h`)
+## studio (`studio/Snapshot.h`, `View.h`, `Intent.h`, `Forms.h`, `Edits.h`, `Mask.h`, `Presets.h`, `TermTemplates.h`, `PaintSession.h`, `Board.h`, `Panels.h`, `SelectorEdit.h`, `Selection.h`, `Names.h`, `Rows.h`, `FieldCheck.h`, `History.h`, `Page.h`, `Widgets.h`, `Fields.h`)
 
 - `Snapshot::Status` (nine engine scalars plus a recipe-error count) is filled
   once on the game thread where the snapshot is built, so the render thread
@@ -590,6 +590,23 @@ Decompile provenance (`decompiled/WornEnchantmentFX/plugin.c` unless noted):
   these arms cover fields `_old` left uneditable: `SetPriority`,
   `SetClockSpeed`, `SetOutputReplace` and `SetOutputSelector` (material
   outputs), and `SetLightReplace`/`SetLightSelector` (lights).
+- A `Selector` has no free-text spelling in the editor; `SelectorEdit.h` is its
+  structured editor. `SelectorViewOf` projects a `Selector` to a `SelectorView`
+  (`matchAll` = the `anyOf` is empty, one `SelectorClauseRow` per clause with
+  `isForm` set exactly when the kind is `kAddon`, `value` the form-ref text for
+  an addon clause or the glob otherwise). `SelectorWithClause`/`WithoutClause`/
+  `WithKind`/`WithOperand` return a new `Selector`; each is bounds-checked and
+  returns the input unchanged on an out-of-range index. A kind change to or from
+  `kAddon` resets the operand to the matching variant alternative (an empty
+  `FormRef` or an empty glob), because the two carry different operand types. A
+  `kAddon` operand parses through `FormRef::From`; a blank string is refused
+  (the clause is left unchanged, matching the loader's "must be an editor ID or
+  \"0x<id>~<plugin>\"" rule), and an unresolved-but-non-blank ref is kept for
+  the field check to report against loaded plugins rather than rejected here.
+  The page picks `SetOutputSelector` or `SetLightSelector` for the amended
+  `Selector`; `OutputHeaderForm` surfaces the `SelectorView` beside the material
+  output's `replace` toggle, and `RecipeHeaderForm` exposes `priority`
+  (empty clears to the key-derived default) and `clockSpeed`.
 - The UI-primitive layer (`studio/Page.h`, `Widgets.h`, `Fields.h`,
   `Fields.cpp`) is pure spec data; the engine renderer resolves what needs an
   ImGui call. `Width` carries the intent only: `kPx` a pixel count, `kFill` a

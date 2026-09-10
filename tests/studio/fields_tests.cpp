@@ -131,6 +131,38 @@ int main() {
           "BindCurveText captures the curve name by value, not by reference");
   }
 
+  const std::optional<RecipeEdit> priorityEdit = BindPriority()("-5");
+  const SetPriority *priority =
+      priorityEdit ? Get<SetPriority>(*priorityEdit) : nullptr;
+  Check(priority != nullptr && priority->priority == std::optional{-5},
+        "BindPriority parses a signed integer into an explicit priority");
+  const std::optional<RecipeEdit> clearPriorityEdit = BindPriority()("  ");
+  const SetPriority *clearPriority =
+      clearPriorityEdit ? Get<SetPriority>(*clearPriorityEdit) : nullptr;
+  Check(clearPriority != nullptr && !clearPriority->priority.has_value(),
+        "an empty priority clears to none rather than refusing");
+  Check(!BindPriority()("1.5") && !BindPriority()("high"),
+        "BindPriority refuses a non-integer");
+
+  const std::optional<RecipeEdit> clockEdit = BindClockSpeed()("2.5");
+  const SetClockSpeed *clock =
+      clockEdit ? Get<SetClockSpeed>(*clockEdit) : nullptr;
+  Check(clock != nullptr && test::Near(clock->speed, 2.5f),
+        "BindClockSpeed parses a float into SetClockSpeed");
+  Check(!BindClockSpeed()("fast") && !BindClockSpeed()("@signal"),
+        "BindClockSpeed refuses a non-number and a signal reference");
+
+  const std::optional<RecipeEdit> replaceOnEdit = BindOutputReplace(3)("on");
+  const SetOutputReplace *replaceOn =
+      replaceOnEdit ? Get<SetOutputReplace>(*replaceOnEdit) : nullptr;
+  Check(replaceOn != nullptr && replaceOn->output == 3 && replaceOn->replace,
+        "BindOutputReplace reads the on token at its output index");
+  const std::optional<RecipeEdit> replaceOffEdit = BindOutputReplace(3)("off");
+  const SetOutputReplace *replaceOff =
+      replaceOffEdit ? Get<SetOutputReplace>(*replaceOffEdit) : nullptr;
+  Check(replaceOff != nullptr && !replaceOff->replace,
+        "BindOutputReplace reads the off token");
+
   const FormField value =
       ValueField("opacity", FieldKind::kScalar, "0.5", {},
                  BindLayerOpacity(0, 0), std::nullopt, FieldDetail::kOpacity);

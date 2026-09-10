@@ -1523,6 +1523,25 @@ std::vector<FormField> SourceForm(const SourceRow &a_source,
   return form;
 }
 
+std::vector<FormField> RecipeHeaderForm(const RecipeRow &a_recipe) {
+  std::vector<FormField> form;
+  form.push_back(TextedField("priority", FieldKind::kText,
+                             std::to_string(a_recipe.priority), BindPriority(),
+                             true));
+  form.push_back(TextedField("clockSpeed", FieldKind::kText,
+                             ParamText(a_recipe.clockSpeed), BindClockSpeed()));
+  return form;
+}
+
+OutputHeader OutputHeaderForm(std::size_t a_output, bool a_replace,
+                              const Selector &a_selector) {
+  OutputHeader header;
+  header.fields.push_back(
+      ToggleField("replace", a_replace, BindOutputReplace(a_output)));
+  header.selector = SelectorViewOf(a_selector);
+  return header;
+}
+
 std::vector<FormField> LightForm(const LightRow &a_light,
                                  const SignalNames &a_names) {
   std::vector<FormField> form;

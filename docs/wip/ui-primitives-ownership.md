@@ -23,8 +23,9 @@ Binding factories (each returns a `FieldBinding`, captures by value):
 `BindLayerMask`, `BindLayerChannels`, `BindLayerBlend`, `BindScalar`,
 `BindLightParam`, `BindLightVector`, `BindLightShadow`, `BindLightReplace`,
 `BindShellParam`, `BindShellVector`, `BindShellPoint`, `BindShellMaterial`,
-`BindShellBlend`, `BindShellDepthBias`, `BindShellAlphaTest`, `BindSignalKind`,
-`BindCurveText`, `BindMaskText`.
+`BindShellBlend`, `BindShellDepthBias`, `BindShellAlphaTest`, `BindPriority`,
+`BindClockSpeed`, `BindOutputReplace`, `BindSignalKind`, `BindCurveText`,
+`BindMaskText`.
 
 Widget-kind `FormField` builders: `ValueField`, `ReferenceField`,
 `ChoiceField`, `BlendField`, `ToggleField`, `TextedField`.

@@ -45,6 +45,10 @@ namespace BetterEnchantmentEffects::Studio {
 [[nodiscard]] FieldBinding BindShellDepthBias();
 [[nodiscard]] FieldBinding BindShellAlphaTest();
 
+[[nodiscard]] FieldBinding BindPriority();
+[[nodiscard]] FieldBinding BindClockSpeed();
+[[nodiscard]] FieldBinding BindOutputReplace(std::size_t a_output);
+
 [[nodiscard]] FieldBinding BindSignalKind(std::string a_signal);
 [[nodiscard]] FieldBinding BindCurveText(std::string a_curve);
 [[nodiscard]] FieldBinding BindMaskText(std::string a_mask);

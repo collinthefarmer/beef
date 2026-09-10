@@ -4,6 +4,9 @@
 #include "studio/Page.h"
 
 #include <array>
+#include <charconv>
+#include <string_view>
+#include <system_error>
 
 namespace BetterEnchantmentEffects::Studio {
 namespace {
@@ -26,6 +29,26 @@ namespace {
     *slots[i] = *number;
   }
   return out;
+}
+
+[[nodiscard]] std::optional<int> WholeInt(std::string_view a_text) {
+  while (!a_text.empty() && a_text.front() == ' ') {
+    a_text.remove_prefix(1);
+  }
+  while (!a_text.empty() && a_text.back() == ' ') {
+    a_text.remove_suffix(1);
+  }
+  int value = 0;
+  const auto result =
+      std::from_chars(a_text.data(), a_text.data() + a_text.size(), value);
+  if (result.ec != std::errc{} || result.ptr != a_text.data() + a_text.size()) {
+    return std::nullopt;
+  }
+  return value;
+}
+
+[[nodiscard]] bool BlankText(std::string_view a_text) noexcept {
+  return a_text.find_first_not_of(' ') == std::string_view::npos;
 }
 }
 
@@ -231,6 +254,36 @@ FieldBinding BindShellAlphaTest() {
       return std::nullopt;
     }
     return SetShellAlphaTest{*number};
+  };
+}
+
+FieldBinding BindPriority() {
+  return [](const std::string &a_text) -> std::optional<RecipeEdit> {
+    if (BlankText(a_text)) {
+      return SetPriority{std::nullopt};
+    }
+    const auto value = WholeInt(a_text);
+    if (!value) {
+      return std::nullopt;
+    }
+    return SetPriority{*value};
+  };
+}
+
+FieldBinding BindClockSpeed() {
+  return [](const std::string &a_text) -> std::optional<RecipeEdit> {
+    const auto value = ParseParam(a_text);
+    const float *number = value ? Get<float>(*value) : nullptr;
+    if (number == nullptr) {
+      return std::nullopt;
+    }
+    return SetClockSpeed{*number};
+  };
+}
+
+FieldBinding BindOutputReplace(std::size_t a_output) {
+  return [a_output](const std::string &a_text) -> std::optional<RecipeEdit> {
+    return SetOutputReplace{a_output, a_text == "on"};
   };
 }
 
