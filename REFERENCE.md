@@ -542,6 +542,55 @@ Decompile provenance (`decompiled/WornEnchantmentFX/plugin.c` unless noted):
 - The framework's `ImTextureID` is a D3D11 shader resource view pointer
   (NOTES 28).
 
+## studio (`studio/Snapshot.h`, `View.h`, `Intent.h`, `Forms.h`, `Edits.h`, `Mask.h`, `Presets.h`, `TermTemplates.h`, `PaintSession.h`, `Board.h`, `Panels.h`, `Selection.h`, `Names.h`, `Rows.h`, `FieldCheck.h`, `History.h`)
+
+- `Snapshot::Status` (nine engine scalars plus a recipe-error count) is filled
+  once on the game thread where the snapshot is built, so the render thread
+  reads it from the immutable snapshot and never calls a live getter. The cost
+  is a one-tick lag in the status line; the frozen tree paid a data race for
+  freshness instead.
+- `Studio::TextureHandle` is `RE::NiSourceTexture*` behind a forward
+  declaration, so the pure module compiles and unit-tests natively with only
+  the name in scope. The engine writes the pointer during snapshot build; no
+  studio code dereferences it, which is why the native tests link without
+  CommonLibSSE.
+- `BuildMask` (`Mask.h`) composes a term stack into one expression, the shape
+  the frozen `BuildRegion` used: `and` is the product, `or` is `max`, `not` is
+  the product with the complement, the first term is `set`, and the built text
+  never exceeds `kMaxExpressionLength` — a term that would push it past stops
+  the build. Editing a kept mask loads its whole text as one raw `set` term;
+  nothing reads the shape back.
+- Term template spellings are one exact text per template (numbers carry at
+  most four decimals, matching `ParamText`): a threshold's operand is the
+  source quantised to P levels when posterize > 1; each edge is
+  `smoothstep(c - s, c + s, X)`; the threshold is the low edge times the
+  complement of the high edge, each omitted where trivial, `step(0, X)` when
+  both are, invert wrapping it; a component, chart or cluster is
+  `abs(@name * 255 - ID) < 0.5`. A term's source reuses an existing twin's row
+  (same definition under another name) or adds a new uniquely-named row, so a
+  term never duplicates a row the recipe already has.
+- The mask editor names parts, charts, materials, bones and partitions from
+  `mesh/` results (`MeshFacts`, `MeshAnalysis`, `MaterialAnalysis`,
+  `PlainIslandSourceName`), not a studio-owned name table. The frozen tree
+  carried `RegionsFile::partitionNames`/`boneNames` and `PlainBoneName`/
+  `PlainPartitionName`; those are dropped so studio and mesh cannot disagree on
+  what a partition is called.
+- Names that changed from the frozen tree, and why: `region` is gone
+  everywhere (`BuildRegion`→`BuildMask`, `RegionStack`→`MaskStack`,
+  `RegionsFile`→`MaskPresets`, `WhatPresetTerm`→`PresetTerm`,
+  `ProposedRegionName`→`ProposedMaskName`, the `LoadRegion`/`ClearRegion`/
+  `UndoRegion`/`RedoRegion` intents→`LoadMask`/`ClearMask`/`UndoMask`/
+  `RedoMask`, `MenuState::region`→`mask`, `regionHistory`→`maskHistory`); the
+  format calls the thing a mask and `island` stays the mesh word.
+- Dropped from the frozen studio surface as dead or design-only:
+  `Mode::kDesign` (so `kModeCount == 2`), `Layout::rowThumbnail`/`designPanel`/
+  `widgetScale`/`compositeSize`/`implemented`, `Studio::Unresolvable`, and the
+  thirteen `where` presets with their `PresetKind` split.
+- Studio edits the full recipe format. Beyond the frozen `RecipeEdit` set,
+  these arms cover fields `_old` left uneditable: `SetPriority`,
+  `SetClockSpeed`, `SetOutputReplace` and `SetOutputSelector` (material
+  outputs), and `SetLightReplace`/`SetLightSelector` (lights).
+
 ## Build and tools
 
 - `CMakeLists.txt`: nothing is installed, which also keeps CommonLibSSE-NG
