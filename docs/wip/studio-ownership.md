@@ -12,12 +12,13 @@ own no translation unit.
 | `View.h` | `PieceRef`, `Pin`, `LayerKey`, `View`, `Mode`, `Layout` |
 | `Snapshot.h` | `TextureHandle`, all `*Row` records, `Status`, `Snapshot` |
 | `Edits.h` | the `Set*`/`Add*`/`Remove*` edit structs, `RecipeEdit`, `EditBatch`, `ReferenceCounts` |
-| `Forms.h` | `FieldKind`+`kFieldKinds`, `FieldInputKind`, `FieldCheckKind`, `Swatch`, `FieldDetail`, `FormField`, `FieldBinding`, `FieldCreator` |
+| `Forms.h` | `FieldKind`+`kFieldKinds`, `FieldInputKind`, `FieldCheckKind`, `Swatch`, `FieldDetail`, `FormField`, `FieldBinding`, `FieldCreator`, `OutputHeader` |
 | `FieldCheck.h` | (functions only, over `Names`) |
 | `Names.h` | `RowKind`, `Names` |
 | `Selection.h` | `Selection` |
 | `Board.h` | `CellState`, `Cell`, `LightCell`, `Board` |
 | `Panels.h` | `LayerStackRow`, `ForeignRow`, `LayerStack`, `Inspector`, `SignalNames`, `SignalList` |
+| `SelectorEdit.h` | `SelectorClauseRow`, `SelectorView` |
 | `Rows.h` | (functions only — pure per-row projections) |
 | `Mask.h` | `TermKind` alternatives, `TermKind`, `TermOp`, `Term`, `MaskStack` |
 | `Presets.h` | `MaskPreset`, `MaskPresets` |
@@ -54,7 +55,12 @@ RecipeEdit)`, `ResourceTabName`, `ModeName` (`View.h`), `LayoutFor` (`View.h`).
 `LightRowOf`, `ShellRowOf`, `SourceRowOf`, `SourceKindOf`, and every `Forms.h`
 builder: `FieldDetailName`, `RowNameField`, `CurveTextField`, `MaskTextField`,
 `InspectorForm`, `ScalarForm`, `SignalForm`, `SignalValueEdit`, `SourceForm`,
-`LightForm`, `ShellForm`, `LiteralColor`, `LiteralColorText`.
+`RecipeHeaderForm`, `OutputHeaderForm`, `LightForm`, `ShellForm`,
+`LiteralColor`, `LiteralColorText`.
+
+### `SelectorEdit.cpp`
+`SelectorViewOf`, `SelectorWithClause`, `SelectorWithoutClause`,
+`SelectorWithKind`, `SelectorWithOperand`.
 
 ### `Selection.cpp`
 `SelectedPiece`, `SelectedRecipe`, `SelectedGeometry`, `SelectedOutput`,

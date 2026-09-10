@@ -4,6 +4,7 @@
 #include "studio/Edits.h"
 #include "studio/Names.h"
 #include "studio/Panels.h"
+#include "studio/SelectorEdit.h"
 #include "studio/Snapshot.h"
 
 #include <array>
@@ -253,6 +254,17 @@ InspectorForm(const Inspector &a_inspector);
 SignalValueEdit(const std::string &a_signal, const std::string &a_text);
 [[nodiscard]] std::vector<FormField> SourceForm(const SourceRow &a_source,
                                                 const SignalNames &a_names);
+[[nodiscard]] std::vector<FormField>
+RecipeHeaderForm(const RecipeRow &a_recipe);
+
+struct OutputHeader {
+  std::vector<FormField> fields;
+  SelectorView selector;
+};
+[[nodiscard]] OutputHeader OutputHeaderForm(std::size_t a_output,
+                                            bool a_replace,
+                                            const Selector &a_selector);
+
 [[nodiscard]] std::vector<FormField> LightForm(const LightRow &a_light,
                                                const SignalNames &a_names);
 [[nodiscard]] std::vector<FormField> ShellForm(const ShellRow &a_shell,

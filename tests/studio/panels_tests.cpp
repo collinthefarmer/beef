@@ -169,6 +169,41 @@ void TestLightAndShellRows() {
         "ShellForm exposes the full pose surface");
 }
 
+void TestRecipeHeaderForm() {
+  RecipeRow recipe = SampleRecipe();
+  recipe.priority = 40;
+  recipe.clockSpeed = 2.0f;
+  const std::vector<FormField> form = RecipeHeaderForm(recipe);
+  const FormField *priority = Field(form, "priority");
+  const FormField *clock = Field(form, "clockSpeed");
+  Check(priority != nullptr && priority->allowEmpty && priority->text == "40" &&
+            priority->bind &&
+            std::holds_alternative<SetPriority>(*priority->bind("50")),
+        "RecipeHeaderForm exposes an editable priority bound to SetPriority");
+  Check(clock != nullptr && clock->bind &&
+            std::holds_alternative<SetClockSpeed>(*clock->bind("3")),
+        "RecipeHeaderForm exposes a clock speed bound to SetClockSpeed");
+}
+
+void TestOutputHeaderForm() {
+  Selector selector;
+  SelectorClause clause;
+  clause.kind = SelectorKind::kGeometry;
+  clause.operand = std::string{"Body*"};
+  selector.anyOf.push_back(clause);
+
+  const OutputHeader header = OutputHeaderForm(2, true, selector);
+  const FormField *replace = Field(header.fields, "replace");
+  Check(
+      replace != nullptr && replace->kind == FieldKind::kToggle &&
+          replace->text == "on" && replace->bind &&
+          std::holds_alternative<SetOutputReplace>(*replace->bind("off")),
+      "OutputHeaderForm exposes the replace toggle bound to SetOutputReplace");
+  Check(!header.selector.matchAll && header.selector.clauses.size() == 1 &&
+            header.selector.clauses[0].value == "Body*",
+        "OutputHeaderForm surfaces the selector as an editable clause view");
+}
+
 void TestInspectorForm() {
   Inspector inspector;
   inspector.output = 0;
@@ -256,6 +291,8 @@ int main() {
   TestSourceRoundTrip();
   TestSourceForm();
   TestLightAndShellRows();
+  TestRecipeHeaderForm();
+  TestOutputHeaderForm();
   TestInspectorForm();
   TestScalarForm();
   TestStackAndInspectorViews();
