@@ -257,6 +257,56 @@ intents; none touches engine state. Build-verified.
 - **Build discipline:** `./build.sh Release -j 4` only; never a build and
   clang-tidy at once; work inside `nix develop`.
 
+## Lessons for the orchestrator (carried across waves)
+
+These are general, not tied to one wave. They cost real detours to learn.
+
+- **An agent's self-check is only as strong as the gate it can actually
+  run; the orchestrator owns the authoritative gate.** The memory ceiling
+  forbids many concurrent full builds, so agents verify with
+  `-fsyntax-only` — which cannot link sibling `.cpp` or run clang-tidy.
+  Their "done" is a hypothesis. Run the full build + suite + tidy centrally
+  after every fan-out and budget a verify-and-fix round; test failures and
+  threshold misses only appear there. Treat agent reports as leads, the
+  central gate as truth.
+- **Know a metric's real trigger before briefing the fix.**
+  `readability-function-size` fires on line count OR nesting OR
+  `ParameterThreshold` (4). Briefs that guessed the cause sent agents to
+  extract helpers that could not touch a parameter-count violation, and
+  once split a 5-param function into two 5-param functions. Read the
+  `.clang-tidy` config; classify each finding by its actual cause.
+- **A structural change moves the metric it clears; re-measure the whole
+  tree.** Parameter-structs cleared six findings but their verbose
+  designated-initializer call sites pushed two other functions over the
+  line threshold. "Cleared N" holds only after a full re-run.
+- **The barrier is where correctness is cheapest — over-invest there.** The
+  ownership map proves every *declared* function has one owner; it does not
+  prove the shape *covers the decisions already made*, nor that each
+  responsibility sits in the right cluster. Add both checks at the shape
+  step: does the frozen header let you do what was decided (a promised
+  capability with no form/type is a silent gap), and is any responsibility
+  in the wrong cluster (view projections belong to the view-model, not the
+  planners).
+- **Parallel agents on disjoint files re-derive the same helper and
+  re-solve the same shared need.** Expect duplicated file-local helpers and
+  a shared-vocabulary pull at merge; either pre-place the shared helper
+  before fan-out or make "lift the recurring idiom" an expected merge task.
+- **The accepted-vs-actionable policy lives in one curated place
+  (`clusters.md`); editing it is a scope change.** It sets how large a
+  reduction pass is. Re-triage when it changes; never let an agent decide
+  what is acceptable on its own.
+- **Only parallel-refactor code that has a behaviour oracle.** Rewriting the
+  exhaustive `Match`es into visitor structs was safe to fan out only because
+  the fills had already written real tests; compile-green would not catch a
+  dropped arm. Tests-first is what makes aggressive refactoring
+  parallelizable.
+- **Design around the hard resource limit up front.** Decide the
+  concurrency cap, the staging, and where the heavy gate runs before
+  dispatching; brief agents to the cheap local check plus your central
+  authoritative one. Clean up worktrees and stop lingering build-watchers
+  after merge. Group tiny agents by cohesion (the mask editor as one), not
+  by one-file-per-agent dogma.
+
 ## Where the risk sits
 
 - `recipe/Recipe.h` is the critical path and every wave-2+ module waits on
