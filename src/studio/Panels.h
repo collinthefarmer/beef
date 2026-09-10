@@ -45,10 +45,16 @@ struct LayerStack {
   bool isolated = false;
 };
 
+struct StackViewInput {
+  const PieceRow &piece;
+  const RecipeRow &recipe;
+  const GeometryRow &geometry;
+  const Selection &selection;
+  const View &view;
+};
+
 [[nodiscard]] std::optional<LayerStack>
-BuildStackView(const PieceRow &a_piece, const RecipeRow &a_recipe,
-               const GeometryRow &a_geometry, const Selection &a_selection,
-               const View &a_view);
+BuildStackView(const StackViewInput &a_input);
 
 struct Inspector {
   std::size_t output = 0;

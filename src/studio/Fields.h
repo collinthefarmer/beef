@@ -12,6 +12,36 @@
 #include <vector>
 
 namespace BetterEnchantmentEffects::Studio {
+struct ValueFieldSpec {
+  std::string name;
+  FieldKind kind;
+  std::string text;
+  std::vector<std::string> names;
+  FieldBinding bind;
+  std::optional<Value> value = std::nullopt;
+  std::optional<FieldDetail> detail = std::nullopt;
+  bool allowEmpty = false;
+};
+
+struct ReferenceFieldSpec {
+  std::string name;
+  std::string text;
+  std::vector<std::string> names;
+  bool allowEmpty = false;
+  FieldBinding bind;
+  std::optional<FieldDetail> detail = std::nullopt;
+  std::vector<std::string> creators = {};
+  FieldCreator create = {};
+};
+
+struct TextedFieldSpec {
+  std::string name;
+  FieldKind kind;
+  std::string text;
+  FieldBinding bind = {};
+  bool allowEmpty = false;
+};
+
 [[nodiscard]] FieldBinding BindLayerSource(std::size_t a_output,
                                            std::size_t a_layer);
 [[nodiscard]] FieldBinding BindLayerCurve(std::size_t a_output,
@@ -93,17 +123,8 @@ template <class S, class M, class Parse>
   };
 }
 
-[[nodiscard]] FormField
-ValueField(std::string a_name, FieldKind a_kind, std::string a_text,
-           std::vector<std::string> a_names, FieldBinding a_bind,
-           std::optional<Value> a_value = std::nullopt,
-           std::optional<FieldDetail> a_detail = std::nullopt,
-           bool a_allowEmpty = false);
-[[nodiscard]] FormField ReferenceField(
-    std::string a_name, std::string a_text, std::vector<std::string> a_names,
-    bool a_allowEmpty, FieldBinding a_bind,
-    std::optional<FieldDetail> a_detail = std::nullopt,
-    std::vector<std::string> a_creators = {}, FieldCreator a_create = {});
+[[nodiscard]] FormField ValueField(ValueFieldSpec a_spec);
+[[nodiscard]] FormField ReferenceField(ReferenceFieldSpec a_spec);
 [[nodiscard]] FormField ChoiceField(std::string a_name, std::string a_current,
                                     std::vector<std::string> a_choices,
                                     FieldBinding a_bind);
@@ -112,7 +133,5 @@ ValueField(std::string a_name, FieldKind a_kind, std::string a_text,
                                    FieldBinding a_bind);
 [[nodiscard]] FormField ToggleField(std::string a_name, bool a_on,
                                     FieldBinding a_bind);
-[[nodiscard]] FormField TextedField(std::string a_name, FieldKind a_kind,
-                                    std::string a_text, FieldBinding a_bind,
-                                    bool a_allowEmpty = false);
+[[nodiscard]] FormField TextedField(TextedFieldSpec a_spec);
 }

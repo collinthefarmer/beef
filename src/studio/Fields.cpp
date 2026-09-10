@@ -312,38 +312,30 @@ FieldBinding BindMaskText(std::string a_mask) {
   };
 }
 
-FormField ValueField(std::string a_name, FieldKind a_kind, std::string a_text,
-                     std::vector<std::string> a_names, FieldBinding a_bind,
-                     std::optional<Value> a_value,
-                     std::optional<FieldDetail> a_detail, bool a_allowEmpty) {
+FormField ValueField(ValueFieldSpec a_spec) {
   FormField field;
-  field.name = std::move(a_name);
-  field.kind = a_kind;
-  field.text = std::move(a_text);
-  field.names = std::move(a_names);
-  field.allowEmpty = a_allowEmpty;
-  field.detail = a_detail;
-  field.value = a_value;
-  field.bind = std::move(a_bind);
+  field.name = std::move(a_spec.name);
+  field.kind = a_spec.kind;
+  field.text = std::move(a_spec.text);
+  field.names = std::move(a_spec.names);
+  field.allowEmpty = a_spec.allowEmpty;
+  field.detail = a_spec.detail;
+  field.value = a_spec.value;
+  field.bind = std::move(a_spec.bind);
   return field;
 }
 
-FormField ReferenceField(std::string a_name, std::string a_text,
-                         std::vector<std::string> a_names, bool a_allowEmpty,
-                         FieldBinding a_bind,
-                         std::optional<FieldDetail> a_detail,
-                         std::vector<std::string> a_creators,
-                         FieldCreator a_create) {
+FormField ReferenceField(ReferenceFieldSpec a_spec) {
   FormField field;
-  field.name = std::move(a_name);
+  field.name = std::move(a_spec.name);
   field.kind = FieldKind::kReference;
-  field.text = std::move(a_text);
-  field.names = std::move(a_names);
-  field.allowEmpty = a_allowEmpty;
-  field.detail = a_detail;
-  field.bind = std::move(a_bind);
-  field.creators = std::move(a_creators);
-  field.create = std::move(a_create);
+  field.text = std::move(a_spec.text);
+  field.names = std::move(a_spec.names);
+  field.allowEmpty = a_spec.allowEmpty;
+  field.detail = a_spec.detail;
+  field.bind = std::move(a_spec.bind);
+  field.creators = std::move(a_spec.creators);
+  field.create = std::move(a_spec.create);
   return field;
 }
 
@@ -381,14 +373,13 @@ FormField ToggleField(std::string a_name, bool a_on, FieldBinding a_bind) {
   return field;
 }
 
-FormField TextedField(std::string a_name, FieldKind a_kind, std::string a_text,
-                      FieldBinding a_bind, bool a_allowEmpty) {
+FormField TextedField(TextedFieldSpec a_spec) {
   FormField field;
-  field.name = std::move(a_name);
-  field.kind = a_kind;
-  field.text = std::move(a_text);
-  field.allowEmpty = a_allowEmpty;
-  field.bind = std::move(a_bind);
+  field.name = std::move(a_spec.name);
+  field.kind = a_spec.kind;
+  field.text = std::move(a_spec.text);
+  field.allowEmpty = a_spec.allowEmpty;
+  field.bind = std::move(a_spec.bind);
   return field;
 }
 
