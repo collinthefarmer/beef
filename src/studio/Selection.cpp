@@ -32,6 +32,9 @@ FindGeometry(const RecipeRow &a_recipe, std::string_view a_name) noexcept {
 void InjectPinnedRecipe(std::vector<ResolvedRecipe> &a_resolved,
                         const WornPiece &a_piece, const View &a_view,
                         std::span<const Recipe> a_loaded) {
+  if (!a_view.pin) {
+    return;
+  }
   const std::string &id = a_view.pin->recipeID;
   const auto pinned = std::ranges::find(a_loaded, id, &Recipe::id);
   const bool present =
@@ -142,17 +145,15 @@ void ResolveSelection(Selection &a_selection, const Snapshot &a_snapshot) {
   a_selection.layer.reset();
 }
 
-std::vector<ResolvedRecipe>
-ViewedRecipes(std::vector<ResolvedRecipe> a_resolved, const WornPiece &a_piece,
-              PieceRef a_ref, const View &a_view,
-              std::span<const Recipe> a_loaded) {
-  if (a_view.pin && a_view.pin->piece == a_ref) {
-    InjectPinnedRecipe(a_resolved, a_piece, a_view, a_loaded);
+std::vector<ResolvedRecipe> ViewedRecipes(ViewedRecipesInput a_input) {
+  if (a_input.view.pin && a_input.view.pin->piece == a_input.ref) {
+    InjectPinnedRecipe(a_input.resolved, a_input.piece, a_input.view,
+                       a_input.loaded);
   }
-  if (a_view.Isolating()) {
-    FilterIsolated(a_resolved, a_view);
+  if (a_input.view.Isolating()) {
+    FilterIsolated(a_input.resolved, a_input.view);
   }
-  return a_resolved;
+  return std::move(a_input.resolved);
 }
 
 std::vector<std::string> View::RecipeIDs() const {

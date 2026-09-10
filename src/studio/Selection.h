@@ -34,8 +34,14 @@ SelectedOutput(const GeometryRow *a_geometry,
 [[nodiscard]] std::optional<PieceRef>
 RequestOf(const Selection &a_selection) noexcept;
 void ResolveSelection(Selection &a_selection, const Snapshot &a_snapshot);
+struct ViewedRecipesInput {
+  std::vector<ResolvedRecipe> resolved;
+  const WornPiece &piece;
+  PieceRef ref;
+  const View &view;
+  std::span<const Recipe> loaded;
+};
+
 [[nodiscard]] std::vector<ResolvedRecipe>
-ViewedRecipes(std::vector<ResolvedRecipe> a_resolved, const WornPiece &a_piece,
-              PieceRef a_ref, const View &a_view,
-              std::span<const Recipe> a_loaded);
+ViewedRecipes(ViewedRecipesInput a_input);
 }
