@@ -5,10 +5,133 @@ using namespace BetterEnchantmentEffects;
 using namespace BetterEnchantmentEffects::Studio;
 using test::Check;
 
-int main() {
-  Selection selection;
+namespace {
+Snapshot MakeSnapshot() {
   Snapshot snapshot;
-  Check(selection.target == Target::kMaterial && snapshot.pieces.empty(),
-        "TODO: selection resolution and the isolation-aware viewed recipes");
+
+  OutputRow emissive;
+  emissive.index = 0;
+  emissive.target = Target::kMaterial;
+  emissive.surface = Surface::kMaterial;
+  emissive.slot = Slot::kEmissive;
+  emissive.layers.resize(2);
+
+  GeometryRow geometry;
+  geometry.name = "body";
+  geometry.outputs.push_back(emissive);
+
+  RecipeRow recipe;
+  recipe.id = "glow";
+  recipe.geometries.push_back(geometry);
+
+  PieceRow piece;
+  piece.ref = PieceRef{.actorID = 1, .armorID = 2, .firstPerson = false};
+  piece.recipes.push_back(recipe);
+
+  snapshot.pieces.push_back(piece);
+  return snapshot;
+}
+
+Selection ValidSelection() {
+  Selection selection;
+  selection.piece = PieceRef{.actorID = 1, .armorID = 2, .firstPerson = false};
+  selection.recipeID = "glow";
+  selection.geometry = "body";
+  selection.target = Target::kMaterial;
+  selection.slot = Slot::kEmissive;
+  selection.layer = 0;
+  return selection;
+}
+}
+
+int main() {
+  const Snapshot snapshot = MakeSnapshot();
+
+  {
+    Selection selection = ValidSelection();
+    const PieceRow *piece = SelectedPiece(snapshot, selection);
+    Check(piece != nullptr && piece->ref.actorID == 1,
+          "valid selection resolves the matching piece");
+    const RecipeRow *recipe = SelectedRecipe(piece, selection);
+    Check(recipe != nullptr && recipe->id == "glow",
+          "valid selection resolves the matching recipe");
+    const GeometryRow *geometry = SelectedGeometry(recipe, selection);
+    Check(geometry != nullptr && geometry->name == "body",
+          "valid selection resolves the matching geometry");
+    const OutputRow *output = SelectedOutput(geometry, selection);
+    Check(output != nullptr && output->slot == Slot::kEmissive,
+          "valid selection resolves the emissive output");
+
+    ResolveSelection(selection, snapshot);
+    Check(selection.piece.actorID == 1 && selection.recipeID == "glow" &&
+              selection.geometry == "body" && selection.layer == 0,
+          "resolving a valid selection leaves it intact");
+  }
+
+  {
+    Selection stale;
+    stale.piece = PieceRef{.actorID = 999, .armorID = 0, .firstPerson = false};
+    stale.recipeID = "missing";
+    stale.geometry = "missing";
+    stale.target = Target::kMaterial;
+    stale.slot = Slot::kEmissive;
+    stale.layer = 5;
+    ResolveSelection(stale, snapshot);
+    Check(stale.piece.actorID == 1 && stale.recipeID == "glow" &&
+              stale.geometry == "body",
+          "stale selection falls back to defined rows, never out of bounds");
+    Check(!stale.layer.has_value(),
+          "stale out-of-range layer is cleared, not indexed");
+  }
+
+  {
+    Snapshot empty;
+    Selection selection = ValidSelection();
+    Check(SelectedPiece(empty, selection) == nullptr,
+          "empty snapshot has no selected piece");
+    ResolveSelection(selection, empty);
+    Check(selection.recipeID == "glow",
+          "resolving against an empty snapshot is inert");
+    Check(SelectedRecipe(nullptr, selection) == nullptr &&
+              SelectedGeometry(nullptr, selection) == nullptr &&
+              SelectedOutput(nullptr, selection) == nullptr,
+          "null parents resolve to null, never dereferenced");
+  }
+
+  {
+    Selection none;
+    Check(!RequestOf(none).has_value(),
+          "a zero-actor selection requests no piece");
+    Selection some = ValidSelection();
+    const std::optional<PieceRef> request = RequestOf(some);
+    Check(request.has_value() && request->actorID == 1,
+          "a set selection requests its piece");
+  }
+
+  {
+    View view;
+    view.isolateRecipe = "glow";
+    view.isolateOutput = 0;
+    view.isolateLayer = 0;
+    view.muted.insert(LayerKey{"glow", 0, 1});
+    view.pin = Pin{PieceRef{.actorID = 1, .armorID = 2}, "glow"};
+
+    std::vector<std::string> ids = view.RecipeIDs();
+    Check(ids.size() == 1 && ids.front() == "glow",
+          "recipe ids collapse the isolate, muted and pin references");
+
+    view.RenameRecipe("glow", "spark");
+    Check(view.isolateRecipe == "spark" &&
+              view.muted.contains(LayerKey{"spark", 0, 1}) && view.pin &&
+              view.pin->recipeID == "spark",
+          "renaming a recipe rewrites every reference in the view");
+
+    view.ForgetRecipe("spark");
+    Check(view.isolateRecipe.empty() && view.isolateOutput == -1 &&
+              view.isolateLayer == -1 && view.muted.empty() &&
+              !view.pin.has_value(),
+          "forgetting a recipe drops every reference in the view");
+  }
+
   return test::Finish("studio_selection");
 }
