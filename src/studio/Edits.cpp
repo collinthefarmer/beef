@@ -142,36 +142,45 @@ Refusal CheckScalarRef(const RowTypes &a_rows, const std::string &a_where,
   return std::nullopt;
 }
 
+Refusal CheckVectorRefSignal(const RowTypes &a_rows, const std::string &a_where,
+                             std::string_view a_field, const Ref &a_ref) {
+  const auto type = SignalTypeOf(a_rows, a_ref.name);
+  if (!type) {
+    return Refuse(a_where, std::format("'{}' reads unknown signal '@{}'",
+                                       a_field, a_ref.name));
+  }
+  if (*type != ValueType::kVec3) {
+    return Refuse(a_where, std::format("'{}' must be a vec3; '@{}' is a {}",
+                                       a_field, a_ref.name, Name(*type)));
+  }
+  return std::nullopt;
+}
+
+Refusal CheckVectorRefParts(const RowTypes &a_rows, const std::string &a_where,
+                            std::string_view a_field,
+                            const std::array<Param, 3> &a_parts, bool a_color) {
+  for (const auto &part : a_parts) {
+    if (auto problem = CheckScalarRef(a_rows, a_where, a_field, part)) {
+      return problem;
+    }
+    const auto *number = Get<float>(part);
+    if (a_color && number && (*number < 0.0f || *number > 1.0f)) {
+      return Refuse(a_where, std::format("'{}' components are 0..1", a_field));
+    }
+  }
+  return std::nullopt;
+}
+
 Refusal CheckVectorRef(const RowTypes &a_rows, const std::string &a_where,
                        std::string_view a_field, const Vec3Param &a_param,
                        bool a_color) {
   return Match(
       a_param,
       [&](const Ref &a_ref) -> Refusal {
-        const auto type = SignalTypeOf(a_rows, a_ref.name);
-        if (!type) {
-          return Refuse(a_where, std::format("'{}' reads unknown signal '@{}'",
-                                             a_field, a_ref.name));
-        }
-        if (*type != ValueType::kVec3) {
-          return Refuse(a_where,
-                        std::format("'{}' must be a vec3; '@{}' is a {}",
-                                    a_field, a_ref.name, Name(*type)));
-        }
-        return std::nullopt;
+        return CheckVectorRefSignal(a_rows, a_where, a_field, a_ref);
       },
       [&](const std::array<Param, 3> &a_parts) -> Refusal {
-        for (const auto &part : a_parts) {
-          if (auto problem = CheckScalarRef(a_rows, a_where, a_field, part)) {
-            return problem;
-          }
-          if (const auto *number = Get<float>(part);
-              a_color && number && (*number < 0.0f || *number > 1.0f)) {
-            return Refuse(a_where,
-                          std::format("'{}' components are 0..1", a_field));
-          }
-        }
-        return std::nullopt;
+        return CheckVectorRefParts(a_rows, a_where, a_field, a_parts, a_color);
       });
 }
 
@@ -934,7 +943,7 @@ Refusal Edit(Recipe &a_recipe, const AddLight &) {
                     std::format("output {} is already the light", i));
     }
   }
-  a_recipe.outputs.push_back(LightOutput{});
+  a_recipe.outputs.emplace_back(LightOutput{});
   return std::nullopt;
 }
 
@@ -1120,7 +1129,7 @@ Refusal Edit(Recipe &a_recipe, const SetShellDepthBias &a_edit) {
 }
 
 Refusal Edit(Recipe &a_recipe, const SetShellAlphaTest &a_edit) {
-  if (!(a_edit.value >= 0.0f && a_edit.value <= 1.0f)) {
+  if (a_edit.value < 0.0f || a_edit.value > 1.0f) {
     return Refuse("shell", "alphaTest is 0..1");
   }
   a_recipe.shell.alphaTest = a_edit.value;
@@ -1259,66 +1268,85 @@ void VisitSignalParams(SignalKind &a_kind, Visitor &a_visit) {
       [](auto &) {});
 }
 
+template <class Visitor>
+void VisitSourceParams(SourceKind &a_kind, Visitor &a_visit) {
+  Match(
+      a_kind,
+      [&](ImageSource &s) {
+        VisitVector(s.scroll, std::nullopt, a_visit);
+        VisitVector(s.tile, std::nullopt, a_visit);
+      },
+      [&](RippleSource &s) {
+        VisitRef(s.trigger, a_visit);
+        VisitParam(s.speed, std::nullopt, a_visit);
+        VisitParam(s.width, std::nullopt, a_visit);
+        VisitParam(s.decay, std::nullopt, a_visit);
+      },
+      [](auto &) {});
+}
+
+template <class Visitor>
+void VisitSurfaceParams(SurfaceOutput &a_output, Visitor &a_visit) {
+  for (const auto &row : kScalarFields) {
+    if (auto *scalar = ScalarOf(a_output.scalars, row.value)) {
+      VisitParam(*scalar, ScalarDefault(a_output.slot, row.value), a_visit);
+    }
+  }
+  const auto colour = ScalarDefault(a_output.slot, ScalarField::kColor);
+  VisitVector(
+      a_output.scalars.color,
+      colour ? std::optional{std::array<float, 3>{*colour, *colour, *colour}}
+             : std::nullopt,
+      a_visit);
+  const Layer layerDefaults = DefaultLayer();
+  for (auto &layer : a_output.stack) {
+    VisitParam(layer.opacity, LiteralOf(layerDefaults.opacity), a_visit);
+    VisitVector(layer.color, std::nullopt, a_visit);
+  }
+}
+
+template <class Visitor>
+void VisitLightParams(LightOutput &a_output, Visitor &a_visit) {
+  const LightOutput lightDefaults{};
+  VisitVector(a_output.offset, LiteralOf(lightDefaults.offset), a_visit);
+  VisitVector(a_output.color, LiteralOf(lightDefaults.color), a_visit);
+  VisitParam(a_output.intensity, LiteralOf(lightDefaults.intensity), a_visit);
+  VisitParam(a_output.size, LiteralOf(lightDefaults.size), a_visit);
+  VisitParam(a_output.cutoff, LiteralOf(lightDefaults.cutoff), a_visit);
+}
+
+template <class Visitor>
+void VisitOutputParams(Output &a_output, Visitor &a_visit) {
+  Match(
+      a_output, [&](SurfaceOutput &o) { VisitSurfaceParams(o, a_visit); },
+      [&](LightOutput &o) { VisitLightParams(o, a_visit); });
+}
+
+template <class Visitor>
+void VisitShellParams(ShellSettings &a_shell, Visitor &a_visit) {
+  const ShellSettings shellDefaults{};
+  VisitParam(a_shell.alpha, LiteralOf(shellDefaults.alpha), a_visit);
+  VisitParam(a_shell.rimPower, LiteralOf(shellDefaults.rimPower), a_visit);
+  VisitParam(a_shell.emissive, LiteralOf(shellDefaults.emissive), a_visit);
+  VisitVector(a_shell.pose.inflate, LiteralOf(shellDefaults.pose.inflate),
+              a_visit);
+  VisitVector(a_shell.pose.offset, LiteralOf(shellDefaults.pose.offset),
+              a_visit);
+  VisitParam(a_shell.pose.scale, LiteralOf(shellDefaults.pose.scale), a_visit);
+  VisitParam(a_shell.pose.spin, LiteralOf(shellDefaults.pose.spin), a_visit);
+}
+
 template <class Visitor> void ForEachParam(Recipe &a_recipe, Visitor &a_visit) {
   for (auto &signal : a_recipe.signals) {
     VisitSignalParams(signal.kind, a_visit);
   }
   for (auto &source : a_recipe.sources) {
-    Match(
-        source.kind,
-        [&](ImageSource &s) {
-          VisitVector(s.scroll, std::nullopt, a_visit);
-          VisitVector(s.tile, std::nullopt, a_visit);
-        },
-        [&](RippleSource &s) {
-          VisitRef(s.trigger, a_visit);
-          VisitParam(s.speed, std::nullopt, a_visit);
-          VisitParam(s.width, std::nullopt, a_visit);
-          VisitParam(s.decay, std::nullopt, a_visit);
-        },
-        [](auto &) {});
+    VisitSourceParams(source.kind, a_visit);
   }
-  const Layer layerDefaults = DefaultLayer();
-  const LightOutput lightDefaults{};
   for (auto &output : a_recipe.outputs) {
-    Match(
-        output,
-        [&](SurfaceOutput &o) {
-          for (const auto &row : kScalarFields) {
-            if (auto *scalar = ScalarOf(o.scalars, row.value)) {
-              VisitParam(*scalar, ScalarDefault(o.slot, row.value), a_visit);
-            }
-          }
-          const auto colour = ScalarDefault(o.slot, ScalarField::kColor);
-          VisitVector(o.scalars.color,
-                      colour ? std::optional{std::array<float, 3>{
-                                   *colour, *colour, *colour}}
-                             : std::nullopt,
-                      a_visit);
-          for (auto &layer : o.stack) {
-            VisitParam(layer.opacity, LiteralOf(layerDefaults.opacity),
-                       a_visit);
-            VisitVector(layer.color, std::nullopt, a_visit);
-          }
-        },
-        [&](LightOutput &o) {
-          VisitVector(o.offset, LiteralOf(lightDefaults.offset), a_visit);
-          VisitVector(o.color, LiteralOf(lightDefaults.color), a_visit);
-          VisitParam(o.intensity, LiteralOf(lightDefaults.intensity), a_visit);
-          VisitParam(o.size, LiteralOf(lightDefaults.size), a_visit);
-          VisitParam(o.cutoff, LiteralOf(lightDefaults.cutoff), a_visit);
-        });
+    VisitOutputParams(output, a_visit);
   }
-  const ShellSettings shellDefaults{};
-  auto &shell = a_recipe.shell;
-  VisitParam(shell.alpha, LiteralOf(shellDefaults.alpha), a_visit);
-  VisitParam(shell.rimPower, LiteralOf(shellDefaults.rimPower), a_visit);
-  VisitParam(shell.emissive, LiteralOf(shellDefaults.emissive), a_visit);
-  VisitVector(shell.pose.inflate, LiteralOf(shellDefaults.pose.inflate),
-              a_visit);
-  VisitVector(shell.pose.offset, LiteralOf(shellDefaults.pose.offset), a_visit);
-  VisitParam(shell.pose.scale, LiteralOf(shellDefaults.pose.scale), a_visit);
-  VisitParam(shell.pose.spin, LiteralOf(shellDefaults.pose.spin), a_visit);
+  VisitShellParams(a_recipe.shell, a_visit);
 }
 
 template <class Fn> struct RefVisitor {
@@ -1434,6 +1462,18 @@ void RenameOverrides(Recipe &a_recipe, const std::string &a_from,
   }
 }
 
+template <class Fn> void ForEachMaterialLayer(Recipe &a_recipe, Fn a_visit) {
+  for (auto &output : a_recipe.outputs) {
+    auto *material = Get<SurfaceOutput>(output);
+    if (!material) {
+      continue;
+    }
+    for (auto &layer : material->stack) {
+      a_visit(layer);
+    }
+  }
+}
+
 template <class Fn> void ForEachText(Recipe &a_recipe, Fn a_visit) {
   for (auto &signal : a_recipe.signals) {
     if (auto *expr = Get<ExprSignal>(signal.kind)) {
@@ -1449,30 +1489,22 @@ template <class Fn> void ForEachText(Recipe &a_recipe, Fn a_visit) {
   for (auto &mask : a_recipe.masks) {
     a_visit(mask.text, true);
   }
-  for (auto &output : a_recipe.outputs) {
-    if (auto *material = Get<SurfaceOutput>(output)) {
-      for (auto &layer : material->stack) {
-        if (layer.curve && !layer.curve->Named()) {
-          a_visit(layer.curve->text, false);
-        }
-      }
+  ForEachMaterialLayer(a_recipe, [&](Layer &a_layer) {
+    if (a_layer.curve && !a_layer.curve->Named()) {
+      a_visit(a_layer.curve->text, false);
     }
-  }
+  });
 }
 
 template <class Fn> void ForEachImageRef(Recipe &a_recipe, Fn a_visit) {
-  for (auto &output : a_recipe.outputs) {
-    if (auto *material = Get<SurfaceOutput>(output)) {
-      for (auto &layer : material->stack) {
-        if (auto *ref = Get<Ref>(layer.source)) {
-          a_visit(*ref);
-        }
-        if (layer.mask) {
-          a_visit(*layer.mask);
-        }
-      }
+  ForEachMaterialLayer(a_recipe, [&](Layer &a_layer) {
+    if (auto *ref = Get<Ref>(a_layer.source)) {
+      a_visit(*ref);
     }
-  }
+    if (a_layer.mask) {
+      a_visit(*a_layer.mask);
+    }
+  });
 }
 
 void RenameImageRefs(Recipe &a_recipe, std::string_view a_from,
@@ -1493,15 +1525,11 @@ template <class Fn> void ForEachCurveRef(Recipe &a_recipe, Fn a_visit) {
       a_visit(*signal.curve);
     }
   }
-  for (auto &output : a_recipe.outputs) {
-    if (auto *material = Get<SurfaceOutput>(output)) {
-      for (auto &layer : material->stack) {
-        if (layer.curve && layer.curve->Named()) {
-          a_visit(*layer.curve);
-        }
-      }
+  ForEachMaterialLayer(a_recipe, [&](Layer &a_layer) {
+    if (a_layer.curve && a_layer.curve->Named()) {
+      a_visit(*a_layer.curve);
     }
-  }
+  });
 }
 
 Refusal CheckSignalKind(const Recipe &a_recipe, const std::string &a_where,
@@ -1556,6 +1584,217 @@ Refusal Edit(Recipe &a_recipe, const ClearRecipe &) {
     return problem;
   return Edit(a_recipe, ClearResources{});
 }
+
+struct DescribeVisitor {
+  std::string operator()(const SetLayerSource &e) const {
+    return std::format("{}: source {}", LayerWhere(e.output, e.layer),
+                       LayerSourceText(e.source));
+  }
+  std::string operator()(const SetLayerCurve &e) const {
+    return std::format("{}: curve {}", LayerWhere(e.output, e.layer),
+                       CurveText(e.curve));
+  }
+  std::string operator()(const SetLayerBlend &e) const {
+    return std::format("{}: blend {}", LayerWhere(e.output, e.layer),
+                       BlendName(e.blend));
+  }
+  std::string operator()(const SetLayerOpacity &e) const {
+    return std::format("{}: opacity {}", LayerWhere(e.output, e.layer),
+                       ParamText(e.opacity));
+  }
+  std::string operator()(const SetLayerColor &e) const {
+    return std::format("{}: color {}", LayerWhere(e.output, e.layer),
+                       e.color ? Vec3ParamText(*e.color) : "none");
+  }
+  std::string operator()(const SetLayerMask &e) const {
+    return std::format("{}: mask {}", LayerWhere(e.output, e.layer),
+                       e.mask ? "@" + e.mask->name : "none");
+  }
+  std::string operator()(const SetLayerChannels &e) const {
+    return std::format("{}: channels {}", LayerWhere(e.output, e.layer),
+                       e.channels.ToString());
+  }
+  std::string operator()(const AddLayer &e) const {
+    return e.at ? std::format("{}: add layer", LayerWhere(e.output, *e.at))
+                : std::format("{}: add layer on top", OutputWhere(e.output));
+  }
+  std::string operator()(const RemoveLayer &e) const {
+    return std::format("{}: remove", LayerWhere(e.output, e.layer));
+  }
+  std::string operator()(const MoveLayer &e) const {
+    return std::format("{}: move to {}", LayerWhere(e.output, e.from), e.to);
+  }
+  std::string operator()(const ClearLayers &e) const {
+    return std::format("{}: clear layers", OutputWhere(e.output));
+  }
+  std::string operator()(const AddOutput &e) const {
+    return e.selector.All()
+               ? std::format("outputs: add {} {}", SurfaceName(e.surface),
+                             SlotName(e.slot))
+               : std::format("outputs: add {} {} on {}", SurfaceName(e.surface),
+                             SlotName(e.slot), SelectorText(e.selector));
+  }
+  std::string operator()(const RemoveOutput &e) const {
+    return std::format("{}: remove", OutputWhere(e.output));
+  }
+  std::string operator()(const SetScalar &e) const {
+    return std::format("{}: {} {}", OutputWhere(e.output),
+                       ScalarFieldName(e.field), ParamText(e.value));
+  }
+  std::string operator()(const SetColorScalar &e) const {
+    return std::format("{}: color {}", OutputWhere(e.output),
+                       Vec3ParamText(e.color));
+  }
+  std::string operator()(const SetOutputReplace &e) const {
+    return std::format("{}: replace {}", OutputWhere(e.output),
+                       e.replace ? "on" : "off");
+  }
+  std::string operator()(const SetOutputSelector &e) const {
+    return e.selector.All() ? std::format("{}: all", OutputWhere(e.output))
+                            : std::format("{}: on {}", OutputWhere(e.output),
+                                          SelectorText(e.selector));
+  }
+  std::string operator()(const AddKey &e) const {
+    return std::format("keys: add {}", e.key.ToString());
+  }
+  std::string operator()(const RemoveKey &e) const {
+    return std::format("keys: remove {}", e.key.ToString());
+  }
+  std::string operator()(const ClearOutputs &) const {
+    return std::string{"outputs: clear, shell reset"};
+  }
+  std::string operator()(const ClearResources &) const {
+    return std::string{"resources: clear"};
+  }
+  std::string operator()(const ClearRecipe &) const {
+    return std::string{"recipe: clear"};
+  }
+  std::string operator()(const SetPriority &e) const {
+    return e.priority ? std::format("priority: {}", *e.priority)
+                      : std::string{"priority: none"};
+  }
+  std::string operator()(const SetClockSpeed &e) const {
+    return std::format("clock: speed {}", e.speed);
+  }
+  std::string operator()(const SetConstant &e) const {
+    return std::format("{}: constant {}", SignalWhere(e.signal),
+                       ValueText(e.value));
+  }
+  std::string operator()(const SetExpression &e) const {
+    return std::format("{}: expr {}", SignalWhere(e.signal), e.text);
+  }
+  std::string operator()(const SetSignal &e) const {
+    return std::format("{}: {}", SignalWhere(e.signal),
+                       SignalKindName(SignalKindOf(e.kind)));
+  }
+  std::string operator()(const SetSignalCurve &e) const {
+    return std::format("{}: curve {}", SignalWhere(e.signal),
+                       CurveText(e.curve));
+  }
+  std::string operator()(const SetCurve &e) const {
+    return std::format("curve {}: {}", e.curve, e.text);
+  }
+  std::string operator()(const SetMask &e) const {
+    return std::format("mask {}: {}", e.mask, e.text);
+  }
+  std::string operator()(const AddSignal &e) const {
+    return std::format("signals: add {}", e.name);
+  }
+  std::string operator()(const AddCurve &e) const {
+    return std::format("curves: add {}", e.name);
+  }
+  std::string operator()(const RenameSignal &e) const {
+    return std::format("{}: rename to {}", SignalWhere(e.from), e.to);
+  }
+  std::string operator()(const RenameCurve &e) const {
+    return std::format("{}: rename to {}", CurveWhere(e.from), e.to);
+  }
+  std::string operator()(const RemoveSignal &e) const {
+    return std::format("{}: remove", SignalWhere(e.name));
+  }
+  std::string operator()(const RemoveCurve &e) const {
+    return std::format("{}: remove", CurveWhere(e.name));
+  }
+  std::string operator()(const AddMask &e) const {
+    return std::format("masks: add {}", e.name);
+  }
+  std::string operator()(const RenameMask &e) const {
+    return std::format("{}: rename to {}", MaskWhere(e.from), e.to);
+  }
+  std::string operator()(const RemoveMask &e) const {
+    return std::format("{}: remove", MaskWhere(e.name));
+  }
+  std::string operator()(const AddSource &e) const {
+    return std::format("sources: add {} ({})", e.name, SourceKindName(e.kind));
+  }
+  std::string operator()(const SetSource &e) const {
+    return std::format("{}: {}", SourceWhere(e.name), DescribeSource(e.kind));
+  }
+  std::string operator()(const RenameSource &e) const {
+    return std::format("{}: rename to {}", SourceWhere(e.from), e.to);
+  }
+  std::string operator()(const RemoveSource &e) const {
+    return std::format("{}: remove", SourceWhere(e.name));
+  }
+  std::string operator()(const AddLight &) const {
+    return std::string{"outputs: add light"};
+  }
+  std::string operator()(const SetLightParam &e) const {
+    return std::format("{}: {} {}", OutputWhere(e.output),
+                       LightParamName(e.field), ParamText(e.value));
+  }
+  std::string operator()(const SetLightVector &e) const {
+    return std::format("{}: {} {}", OutputWhere(e.output),
+                       LightVectorName(e.field), Vec3ParamText(e.value));
+  }
+  std::string operator()(const SetLightShadow &e) const {
+    return std::format("{}: shadow {}", OutputWhere(e.output),
+                       e.shadow ? "on" : "off");
+  }
+  std::string operator()(const SetLightBones &e) const {
+    return std::format("{}: bones {}", OutputWhere(e.output),
+                       Is<NamedBones>(e.bones) ? "named" : "skinned");
+  }
+  std::string operator()(const SetLightReplace &e) const {
+    return std::format("{}: replace {}", OutputWhere(e.output),
+                       e.replace ? "on" : "off");
+  }
+  std::string operator()(const SetLightSelector &e) const {
+    return e.selector.All() ? std::format("{}: all", OutputWhere(e.output))
+                            : std::format("{}: on {}", OutputWhere(e.output),
+                                          SelectorText(e.selector));
+  }
+  std::string operator()(const ResetLight &e) const {
+    return std::format("{}: reset light", OutputWhere(e.output));
+  }
+  std::string operator()(const SetShellParam &e) const {
+    return std::format("shell: {} {}", ShellParamName(e.field),
+                       ParamText(e.value));
+  }
+  std::string operator()(const SetShellVector &e) const {
+    return std::format("shell: {} {}", ShellVectorName(e.field),
+                       Vec3ParamText(e.value));
+  }
+  std::string operator()(const SetShellPoint &e) const {
+    return std::format("shell: {} {}, {}, {}", ShellPointName(e.field),
+                       e.value.x, e.value.y, e.value.z);
+  }
+  std::string operator()(const SetShellMaterial &e) const {
+    return std::format("shell: material {}", ShellMaterialName(e.material));
+  }
+  std::string operator()(const SetShellBlend &e) const {
+    return std::format("shell: blend {}", ShellBlendName(e.blend));
+  }
+  std::string operator()(const SetShellDepthBias &e) const {
+    return std::format("shell: depthBias {}", e.on ? "on" : "off");
+  }
+  std::string operator()(const SetShellAlphaTest &e) const {
+    return std::format("shell: alphaTest {}", e.value);
+  }
+  std::string operator()(const ResetShell &) const {
+    return std::string{"shell: reset"};
+  }
+};
 }
 
 std::optional<Diagnostic> Apply(Recipe &a_recipe, const RecipeEdit &a_edit) {
@@ -1584,209 +1823,7 @@ std::string Describe(const EditBatch &a_batch) {
 }
 
 std::string Describe(const RecipeEdit &a_edit) {
-  return Match(
-      a_edit,
-      [](const SetLayerSource &e) {
-        return std::format("{}: source {}", LayerWhere(e.output, e.layer),
-                           LayerSourceText(e.source));
-      },
-      [](const SetLayerCurve &e) {
-        return std::format("{}: curve {}", LayerWhere(e.output, e.layer),
-                           CurveText(e.curve));
-      },
-      [](const SetLayerBlend &e) {
-        return std::format("{}: blend {}", LayerWhere(e.output, e.layer),
-                           BlendName(e.blend));
-      },
-      [](const SetLayerOpacity &e) {
-        return std::format("{}: opacity {}", LayerWhere(e.output, e.layer),
-                           ParamText(e.opacity));
-      },
-      [](const SetLayerColor &e) {
-        return std::format("{}: color {}", LayerWhere(e.output, e.layer),
-                           e.color ? Vec3ParamText(*e.color) : "none");
-      },
-      [](const SetLayerMask &e) {
-        return std::format("{}: mask {}", LayerWhere(e.output, e.layer),
-                           e.mask ? "@" + e.mask->name : "none");
-      },
-      [](const SetLayerChannels &e) {
-        return std::format("{}: channels {}", LayerWhere(e.output, e.layer),
-                           e.channels.ToString());
-      },
-      [](const AddLayer &e) {
-        return e.at
-                   ? std::format("{}: add layer", LayerWhere(e.output, *e.at))
-                   : std::format("{}: add layer on top", OutputWhere(e.output));
-      },
-      [](const RemoveLayer &e) {
-        return std::format("{}: remove", LayerWhere(e.output, e.layer));
-      },
-      [](const MoveLayer &e) {
-        return std::format("{}: move to {}", LayerWhere(e.output, e.from),
-                           e.to);
-      },
-      [](const ClearLayers &e) {
-        return std::format("{}: clear layers", OutputWhere(e.output));
-      },
-      [](const AddOutput &e) {
-        return e.selector.All()
-                   ? std::format("outputs: add {} {}", SurfaceName(e.surface),
-                                 SlotName(e.slot))
-                   : std::format("outputs: add {} {} on {}",
-                                 SurfaceName(e.surface), SlotName(e.slot),
-                                 SelectorText(e.selector));
-      },
-      [](const RemoveOutput &e) {
-        return std::format("{}: remove", OutputWhere(e.output));
-      },
-      [](const SetScalar &e) {
-        return std::format("{}: {} {}", OutputWhere(e.output),
-                           ScalarFieldName(e.field), ParamText(e.value));
-      },
-      [](const SetColorScalar &e) {
-        return std::format("{}: color {}", OutputWhere(e.output),
-                           Vec3ParamText(e.color));
-      },
-      [](const SetOutputReplace &e) {
-        return std::format("{}: replace {}", OutputWhere(e.output),
-                           e.replace ? "on" : "off");
-      },
-      [](const SetOutputSelector &e) {
-        return e.selector.All()
-                   ? std::format("{}: all", OutputWhere(e.output))
-                   : std::format("{}: on {}", OutputWhere(e.output),
-                                 SelectorText(e.selector));
-      },
-      [](const AddKey &e) {
-        return std::format("keys: add {}", e.key.ToString());
-      },
-      [](const RemoveKey &e) {
-        return std::format("keys: remove {}", e.key.ToString());
-      },
-      [](const ClearOutputs &) {
-        return std::string{"outputs: clear, shell reset"};
-      },
-      [](const ClearResources &) { return std::string{"resources: clear"}; },
-      [](const ClearRecipe &) { return std::string{"recipe: clear"}; },
-      [](const SetPriority &e) {
-        return e.priority ? std::format("priority: {}", *e.priority)
-                          : std::string{"priority: none"};
-      },
-      [](const SetClockSpeed &e) {
-        return std::format("clock: speed {}", e.speed);
-      },
-      [](const SetConstant &e) {
-        return std::format("{}: constant {}", SignalWhere(e.signal),
-                           ValueText(e.value));
-      },
-      [](const SetExpression &e) {
-        return std::format("{}: expr {}", SignalWhere(e.signal), e.text);
-      },
-      [](const SetSignal &e) {
-        return std::format("{}: {}", SignalWhere(e.signal),
-                           SignalKindName(SignalKindOf(e.kind)));
-      },
-      [](const SetSignalCurve &e) {
-        return std::format("{}: curve {}", SignalWhere(e.signal),
-                           CurveText(e.curve));
-      },
-      [](const SetCurve &e) {
-        return std::format("curve {}: {}", e.curve, e.text);
-      },
-      [](const SetMask &e) {
-        return std::format("mask {}: {}", e.mask, e.text);
-      },
-      [](const AddSignal &e) { return std::format("signals: add {}", e.name); },
-      [](const AddCurve &e) { return std::format("curves: add {}", e.name); },
-      [](const RenameSignal &e) {
-        return std::format("{}: rename to {}", SignalWhere(e.from), e.to);
-      },
-      [](const RenameCurve &e) {
-        return std::format("{}: rename to {}", CurveWhere(e.from), e.to);
-      },
-      [](const RemoveSignal &e) {
-        return std::format("{}: remove", SignalWhere(e.name));
-      },
-      [](const RemoveCurve &e) {
-        return std::format("{}: remove", CurveWhere(e.name));
-      },
-      [](const AddMask &e) { return std::format("masks: add {}", e.name); },
-      [](const RenameMask &e) {
-        return std::format("{}: rename to {}", MaskWhere(e.from), e.to);
-      },
-      [](const RemoveMask &e) {
-        return std::format("{}: remove", MaskWhere(e.name));
-      },
-      [](const AddSource &e) {
-        return std::format("sources: add {} ({})", e.name,
-                           SourceKindName(e.kind));
-      },
-      [](const SetSource &e) {
-        return std::format("{}: {}", SourceWhere(e.name),
-                           DescribeSource(e.kind));
-      },
-      [](const RenameSource &e) {
-        return std::format("{}: rename to {}", SourceWhere(e.from), e.to);
-      },
-      [](const RemoveSource &e) {
-        return std::format("{}: remove", SourceWhere(e.name));
-      },
-      [](const AddLight &) { return std::string{"outputs: add light"}; },
-      [](const SetLightParam &e) {
-        return std::format("{}: {} {}", OutputWhere(e.output),
-                           LightParamName(e.field), ParamText(e.value));
-      },
-      [](const SetLightVector &e) {
-        return std::format("{}: {} {}", OutputWhere(e.output),
-                           LightVectorName(e.field), Vec3ParamText(e.value));
-      },
-      [](const SetLightShadow &e) {
-        return std::format("{}: shadow {}", OutputWhere(e.output),
-                           e.shadow ? "on" : "off");
-      },
-      [](const SetLightBones &e) {
-        return std::format("{}: bones {}", OutputWhere(e.output),
-                           Is<NamedBones>(e.bones) ? "named" : "skinned");
-      },
-      [](const SetLightReplace &e) {
-        return std::format("{}: replace {}", OutputWhere(e.output),
-                           e.replace ? "on" : "off");
-      },
-      [](const SetLightSelector &e) {
-        return e.selector.All()
-                   ? std::format("{}: all", OutputWhere(e.output))
-                   : std::format("{}: on {}", OutputWhere(e.output),
-                                 SelectorText(e.selector));
-      },
-      [](const ResetLight &e) {
-        return std::format("{}: reset light", OutputWhere(e.output));
-      },
-      [](const SetShellParam &e) {
-        return std::format("shell: {} {}", ShellParamName(e.field),
-                           ParamText(e.value));
-      },
-      [](const SetShellVector &e) {
-        return std::format("shell: {} {}", ShellVectorName(e.field),
-                           Vec3ParamText(e.value));
-      },
-      [](const SetShellPoint &e) {
-        return std::format("shell: {} {}, {}, {}", ShellPointName(e.field),
-                           e.value.x, e.value.y, e.value.z);
-      },
-      [](const SetShellMaterial &e) {
-        return std::format("shell: material {}", ShellMaterialName(e.material));
-      },
-      [](const SetShellBlend &e) {
-        return std::format("shell: blend {}", ShellBlendName(e.blend));
-      },
-      [](const SetShellDepthBias &e) {
-        return std::format("shell: depthBias {}", e.on ? "on" : "off");
-      },
-      [](const SetShellAlphaTest &e) {
-        return std::format("shell: alphaTest {}", e.value);
-      },
-      [](const ResetShell &) { return std::string{"shell: reset"}; });
+  return Match(a_edit, DescribeVisitor{});
 }
 
 std::string_view LightParamName(LightParam a_field) noexcept {
