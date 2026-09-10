@@ -141,7 +141,7 @@ namespace BetterEnchantmentEffects
 		using Op = Program::Op;
 		using Error = std::optional<std::string>;
 
-		char At(std::size_t a_ahead = 0) const noexcept
+		[[nodiscard]] char At(std::size_t a_ahead = 0) const noexcept
 		{
 			const auto i = pos_ + a_ahead;
 			return i < text_.size() ? text_[i] : '\0';
@@ -195,6 +195,8 @@ namespace BetterEnchantmentEffects
 			~Depth() { --counter; }
 			Depth(const Depth&) = delete;
 			Depth& operator=(const Depth&) = delete;
+			Depth(Depth&&) = delete;
+			Depth& operator=(Depth&&) = delete;
 		};
 
 		Error ParseOr()
@@ -396,7 +398,7 @@ namespace BetterEnchantmentEffects
 		Error ParseReference()
 		{
 			++pos_;
-			if (!(std::isalpha(static_cast<unsigned char>(At())) || At() == '_')) {
+			if (!std::isalpha(static_cast<unsigned char>(At())) && At() != '_') {
 				return std::format("'@' must be followed by a name, at {}", pos_);
 			}
 			const auto name = ReadName();
@@ -624,7 +626,7 @@ namespace BetterEnchantmentEffects
 		};
 		const auto push = [&](Value v) {
 			if (top < kStack) {
-				stack[top++] = std::move(v);
+				stack[top++] = v;
 			}
 		};
 		const auto lift = [](auto a_f) {

@@ -88,6 +88,7 @@ namespace BetterEnchantmentEffects
 		void PlanScalars(SlotPlan& a_slot, std::span<const PlacedRecipe> a_placed)
 		{
 			std::vector<const SurfaceOutput*> outputs;
+			outputs.reserve(a_slot.chain.size());
 			for (const SlotContribution& c : a_slot.chain) {
 				outputs.push_back(SlotOutputAt(a_placed, c));
 			}

@@ -132,6 +132,6 @@ namespace BetterEnchantmentEffects
 
 	void SetSettings(Settings a_settings) noexcept
 	{
-		g_settings = std::move(a_settings);
+		g_settings = a_settings;
 	}
 }

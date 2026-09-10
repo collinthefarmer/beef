@@ -251,7 +251,7 @@ namespace BetterEnchantmentEffects
 
 		bool IsIdentifier(std::string_view a_text) noexcept
 		{
-			if (a_text.empty() || !(std::isalpha(static_cast<unsigned char>(a_text[0])) || a_text[0] == '_')) {
+			if (a_text.empty() || (!std::isalpha(static_cast<unsigned char>(a_text[0])) && a_text[0] != '_')) {
 				return false;
 			}
 			return std::ranges::all_of(a_text, [](char c) { return std::isalnum(static_cast<unsigned char>(c)) || c == '_'; });
@@ -775,7 +775,7 @@ namespace BetterEnchantmentEffects
 					report.Error(std::format("'iterations' is 1..{}", kMaxClusterIterations));
 				}
 				for (const auto& [weight, field] : { std::pair{ s.roughness, "roughness" }, std::pair{ s.metallic, "metallic" }, std::pair{ s.occlusion, "occlusion" }, std::pair{ s.reflectance, "reflectance" }, std::pair{ s.luma, "luma" } }) {
-					if (!(weight >= 0.0f && weight <= kMaxChannelWeight)) {
+					if (weight < 0.0f || weight > kMaxChannelWeight) {
 						report.Error(std::format("'weights.{}' is 0..{}", field, kMaxChannelWeight));
 					}
 				}

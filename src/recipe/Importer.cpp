@@ -272,7 +272,7 @@ namespace BetterEnchantmentEffects
 			l.color = Vec3Param{ At("glowHue") };
 			l.mask = At("metal");
 			o.stack.push_back(std::move(l));
-			r.outputs.push_back(std::move(o));
+			r.outputs.emplace_back(std::move(o));
 		}
 		{
 			SurfaceOutput o;
@@ -286,7 +286,7 @@ namespace BetterEnchantmentEffects
 				alpha.channels = ChannelSet{ false, false, false, true };
 				o.stack.push_back(std::move(alpha));
 			}
-			r.outputs.push_back(std::move(o));
+			r.outputs.emplace_back(std::move(o));
 		}
 		{
 			SurfaceOutput o;
@@ -299,7 +299,7 @@ namespace BetterEnchantmentEffects
 			if (hasFill) {
 				o.stack.push_back(StackLayer(At("shimmerField"), Blend::kAdd, kShimmerNoiseWeight));
 			}
-			r.outputs.push_back(std::move(o));
+			r.outputs.emplace_back(std::move(o));
 		}
 		if (hasFill) {
 			SurfaceOutput o;
@@ -309,7 +309,7 @@ namespace BetterEnchantmentEffects
 			gloss.curve = CurveRef{ "@punchy" };
 			gloss.channels = ChannelSet{ true, false, false, false };
 			o.stack.push_back(std::move(gloss));
-			r.outputs.push_back(std::move(o));
+			r.outputs.emplace_back(std::move(o));
 		}
 		{
 			LightOutput light;
@@ -318,7 +318,7 @@ namespace BetterEnchantmentEffects
 			light.intensity = At("lightLevel");
 			light.size = kLightSize;
 			light.cutoff = kLightCutoff;
-			r.outputs.push_back(light);
+			r.outputs.emplace_back(light);
 		}
 
 		r.shell.material = ShellMaterial::kPbrCopy;

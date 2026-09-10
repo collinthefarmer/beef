@@ -60,6 +60,7 @@ namespace BetterEnchantmentEffects
 			}
 		}
 		std::vector<BoneCoverage> bones;
+		bones.reserve(weight.size());
 		for (const auto& [name, sum] : weight) {
 			bones.push_back(BoneCoverage{ name, vertices > 0 ? sum / static_cast<float>(vertices) : 0.0f });
 		}

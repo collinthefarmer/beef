@@ -26,7 +26,7 @@ namespace BetterEnchantmentEffects
 
 			void Error(std::string a_message) const { out.push_back({ Severity::kError, where, std::move(a_message) }); }
 			void Warn(std::string a_message) const { out.push_back({ Severity::kWarning, where, std::move(a_message) }); }
-			Ctx  At(std::string a_where) const { return Ctx{ out, std::move(a_where) }; }
+			[[nodiscard]] Ctx At(std::string a_where) const { return Ctx{ out, std::move(a_where) }; }
 		};
 
 		bool RowCapReached(std::size_t a_count, const Ctx& a_ctx, std::string_view a_what)
@@ -217,7 +217,7 @@ namespace BetterEnchantmentEffects
 				}
 			}
 
-			std::optional<Ref> RefFrom(const json& a_j, std::string_view a_what) const
+			[[nodiscard]] std::optional<Ref> RefFrom(const json& a_j, std::string_view a_what) const
 			{
 				if (a_j.is_string()) {
 					const auto text = a_j.get<std::string>();
@@ -231,7 +231,7 @@ namespace BetterEnchantmentEffects
 				return std::nullopt;
 			}
 
-			std::optional<Param> ParamFrom(const json& a_j, std::string_view a_what) const
+			[[nodiscard]] std::optional<Param> ParamFrom(const json& a_j, std::string_view a_what) const
 			{
 				if (a_j.is_number()) {
 					return Param{ static_cast<float>(a_j.get<double>()) };
@@ -245,7 +245,7 @@ namespace BetterEnchantmentEffects
 			}
 
 			template <std::size_t N>
-			std::optional<std::variant<std::array<Param, N>, Ref>> VecFrom(const json& a_j, std::string_view a_what, bool a_color) const
+			[[nodiscard]] std::optional<std::variant<std::array<Param, N>, Ref>> VecFrom(const json& a_j, std::string_view a_what, bool a_color) const
 			{
 				using V = std::variant<std::array<Param, N>, Ref>;
 				if (a_j.is_string()) {
@@ -856,7 +856,7 @@ namespace BetterEnchantmentEffects
 						Reader wr(*w, a_ctx);
 						for (const auto& [field, weight] : { std::pair{ "roughness", &k.roughness }, std::pair{ "metallic", &k.metallic }, std::pair{ "occlusion", &k.occlusion }, std::pair{ "reflectance", &k.reflectance }, std::pair{ "luma", &k.luma } }) {
 							if (auto x = wr.Number(field)) {
-								if (!(*x >= 0.0f && *x <= kMaxChannelWeight)) {
+								if (*x < 0.0f || *x > kMaxChannelWeight) {
 									a_ctx.Error(std::format("'weights.{}' is 0..{}", field, kMaxChannelWeight));
 									inRange = false;
 								} else {

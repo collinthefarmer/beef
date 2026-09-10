@@ -20,7 +20,7 @@ namespace BetterEnchantmentEffects
 	{
 		struct TexelBand
 		{
-			float MaterialTexel::*            axis;
+			float MaterialTexel::*            axis = nullptr;
 			std::span<const float>            cuts;
 			std::span<const std::string_view> words;
 			bool                              belowInclusive = false;

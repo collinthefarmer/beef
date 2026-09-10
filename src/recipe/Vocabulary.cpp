@@ -267,7 +267,7 @@ namespace BetterEnchantmentEffects
 
 	bool IsName(std::string_view a_text) noexcept
 	{
-		if (a_text.empty() || !(std::isalpha(static_cast<unsigned char>(a_text[0])) || a_text[0] == '_')) {
+		if (a_text.empty() || (!std::isalpha(static_cast<unsigned char>(a_text[0])) && a_text[0] != '_')) {
 			return false;
 		}
 		return std::ranges::all_of(a_text, [](char c) { return std::isalnum(static_cast<unsigned char>(c)) || c == '_'; });
