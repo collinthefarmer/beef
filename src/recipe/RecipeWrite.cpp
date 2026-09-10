@@ -143,6 +143,77 @@ namespace BetterEnchantmentEffects
 			return out;
 		}
 
+		json PulseToJson(const PulseSignal& k)
+		{
+			json o = json::object();
+			o["base"] = ParamToJson(k.base);
+			o["amplitude"] = ParamToJson(k.amplitude);
+			o["period"] = ParamToJson(k.period);
+			if (k.phase != Param{ 0.0f }) o["phase"] = ParamToJson(k.phase);
+			if (k.waveform != Waveform::kSine) o["waveform"] = NameOf(kWaveforms, k.waveform);
+			return o;
+		}
+
+		json ActorValueToJson(const ActorValueSignal& k)
+		{
+			if (k.measure == Measure::kCurrent) {
+				return json(k.actorValue);
+			}
+			return json::object({ { "of", k.actorValue }, { "measure", NameOf(kMeasures, k.measure) } });
+		}
+
+		json TriggerToJson(const TriggerSignal& k)
+		{
+			json o = json::object();
+			Match(
+				k.origin,
+				[&](const EventOrigin& e) {
+					o["event"] = e.event;
+					if (e.filter != EventFilter{}) {
+						json f = json::object();
+						if (!e.filter.node.empty()) f["node"] = e.filter.node;
+						if (!e.filter.arg.empty()) f["arg"] = e.filter.arg;
+						if (e.filter.value != ValueRange{}) {
+							f["value"] = json::array({ e.filter.value.min ? Num(*e.filter.value.min) : json(nullptr), e.filter.value.max ? Num(*e.filter.value.max) : json(nullptr) });
+						}
+						o["filter"] = std::move(f);
+					}
+					if (!e.at.empty()) o["at"] = e.at;
+				},
+				[&](const PluginOrigin& p) { o["plugin"] = p.id; },
+				[&](const WhenOrigin& w) {
+					o["when"] = "@" + w.when.name;
+					if (w.value) o["value"] = "@" + w.value->name;
+				});
+			o["lifetime"] = ParamToJson(k.lifetime);
+			o["max"] = k.max;
+			return o;
+		}
+
+		json CounterToJson(const CounterSignal& k)
+		{
+			json o = json::object({ { "trigger", "@" + k.trigger.name } });
+			if (k.reset) o["reset"] = "@" + k.reset->name;
+			if (k.cap) o["cap"] = ParamToJson(*k.cap);
+			return o;
+		}
+
+		json NoiseToJson(const NoiseSignal& k)
+		{
+			json o = json::object({ { "frequency", ParamToJson(k.frequency) }, { "amplitude", ParamToJson(k.amplitude) } });
+			if (k.seed != 0) o["seed"] = k.seed;
+			return o;
+		}
+
+		json GradientToJson(const GradientSignal& k)
+		{
+			json stops = json::array();
+			for (const auto& s : k.stops) {
+				stops.push_back(json::object({ { "at", Num(s.at) }, { "color", VecToJson(s.color) } }));
+			}
+			return json::object({ { "t", ParamToJson(k.t) }, { "stops", std::move(stops) } });
+		}
+
 		json SignalToJson(const Signal& a_signal)
 		{
 			json       row = json::object();
@@ -150,72 +221,18 @@ namespace BetterEnchantmentEffects
 			Match(
 				a_signal.kind,
 				[&](const ConstantSignal& k) { row[key(SignalKindId::kConstant)] = ValueToJson(k.value); },
-				[&](const PulseSignal& k) {
-					json o = json::object();
-					o["base"] = ParamToJson(k.base);
-					o["amplitude"] = ParamToJson(k.amplitude);
-					o["period"] = ParamToJson(k.period);
-					if (k.phase != Param{ 0.0f }) o["phase"] = ParamToJson(k.phase);
-					if (k.waveform != Waveform::kSine) o["waveform"] = NameOf(kWaveforms, k.waveform);
-					row[key(SignalKindId::kPulse)] = std::move(o);
-				},
+				[&](const PulseSignal& k) { row[key(SignalKindId::kPulse)] = PulseToJson(k); },
 				[&](const RampSignal& k) { row[key(SignalKindId::kRamp)] = json::object({ { "from", ParamToJson(k.from) }, { "to", ParamToJson(k.to) }, { "seconds", ParamToJson(k.seconds) } }); },
 				[&](const EfshSignal& k) { row[key(SignalKindId::kEfsh)] = json::object({ { "field", NameOf(kEfshFields, k.field) }, { "record", k.record.text } }); },
-				[&](const ActorValueSignal& k) {
-					if (k.measure == Measure::kCurrent) {
-						row[key(SignalKindId::kActorValue)] = k.actorValue;
-					} else {
-						row[key(SignalKindId::kActorValue)] = json::object({ { "of", k.actorValue }, { "measure", NameOf(kMeasures, k.measure) } });
-					}
-				},
+				[&](const ActorValueSignal& k) { row[key(SignalKindId::kActorValue)] = ActorValueToJson(k); },
 				[&](const ActorStateSignal& k) { row[key(SignalKindId::kActorState)] = NameOf(kActorStates, k.kind); },
 				[&](const EnchantmentSignal& k) { row[key(SignalKindId::kEnchantment)] = NameOf(kEnchantmentFields, k.field); },
-				[&](const TriggerSignal& k) {
-					json o = json::object();
-					Match(
-						k.origin,
-						[&](const EventOrigin& e) {
-							o["event"] = e.event;
-							if (e.filter != EventFilter{}) {
-								json f = json::object();
-								if (!e.filter.node.empty()) f["node"] = e.filter.node;
-								if (!e.filter.arg.empty()) f["arg"] = e.filter.arg;
-								if (e.filter.value != ValueRange{}) {
-									f["value"] = json::array({ e.filter.value.min ? Num(*e.filter.value.min) : json(nullptr), e.filter.value.max ? Num(*e.filter.value.max) : json(nullptr) });
-								}
-								o["filter"] = std::move(f);
-							}
-							if (!e.at.empty()) o["at"] = e.at;
-						},
-						[&](const PluginOrigin& p) { o["plugin"] = p.id; },
-						[&](const WhenOrigin& w) {
-							o["when"] = "@" + w.when.name;
-							if (w.value) o["value"] = "@" + w.value->name;
-						});
-					o["lifetime"] = ParamToJson(k.lifetime);
-					o["max"] = k.max;
-					row[key(SignalKindId::kTrigger)] = std::move(o);
-				},
+				[&](const TriggerSignal& k) { row[key(SignalKindId::kTrigger)] = TriggerToJson(k); },
 				[&](const PayloadSignal& k) { row[key(SignalKindId::kPayload)] = json::object({ { "trigger", "@" + k.trigger.name }, { "field", NameOf(kPayloadFields, k.field) } }); },
-				[&](const CounterSignal& k) {
-					json o = json::object({ { "trigger", "@" + k.trigger.name } });
-					if (k.reset) o["reset"] = "@" + k.reset->name;
-					if (k.cap) o["cap"] = ParamToJson(*k.cap);
-					row[key(SignalKindId::kCounter)] = std::move(o);
-				},
+				[&](const CounterSignal& k) { row[key(SignalKindId::kCounter)] = CounterToJson(k); },
 				[&](const AccumulateSignal& k) { row[key(SignalKindId::kAccumulate)] = json::object({ { "trigger", "@" + k.trigger.name }, { "decay", ParamToJson(k.decay) } }); },
-				[&](const NoiseSignal& k) {
-					json o = json::object({ { "frequency", ParamToJson(k.frequency) }, { "amplitude", ParamToJson(k.amplitude) } });
-					if (k.seed != 0) o["seed"] = k.seed;
-					row[key(SignalKindId::kNoise)] = std::move(o);
-				},
-				[&](const GradientSignal& k) {
-					json stops = json::array();
-					for (const auto& s : k.stops) {
-						stops.push_back(json::object({ { "at", Num(s.at) }, { "color", VecToJson(s.color) } }));
-					}
-					row[key(SignalKindId::kGradient)] = json::object({ { "t", ParamToJson(k.t) }, { "stops", std::move(stops) } });
-				},
+				[&](const NoiseSignal& k) { row[key(SignalKindId::kNoise)] = NoiseToJson(k); },
+				[&](const GradientSignal& k) { row[key(SignalKindId::kGradient)] = GradientToJson(k); },
 				[&](const DeltaSignal& k) { row[key(SignalKindId::kDelta)] = "@" + k.of.name; },
 				[&](const SmoothSignal& k) { row[key(SignalKindId::kSmooth)] = json::object({ { "of", "@" + k.of.name }, { "seconds", ParamToJson(k.seconds) } }); },
 				[&](const ExprSignal& k) { row[key(SignalKindId::kExpr)] = k.text; });
@@ -225,34 +242,57 @@ namespace BetterEnchantmentEffects
 			return row;
 		}
 
+		json ImageToJson(const ImageSource& k)
+		{
+			json o = json::object({ { "path", k.path } });
+			if (k.channel != ImageChannel::kRgb) o["channel"] = NameOf(kImageChannels, k.channel);
+			if (k.space != ImageSpace::kTiled) o["space"] = NameOf(kImageSpaces, k.space);
+			if (k.scroll) o["scroll"] = VecToJson(*k.scroll);
+			if (k.tile) o["tile"] = VecToJson(*k.tile);
+			if (k.mirror[0] || k.mirror[1]) o["mirror"] = json::array({ k.mirror[0], k.mirror[1] });
+			if (k.transpose) o["transpose"] = true;
+			if (k.mip != 0.0f) o["mip"] = Num(k.mip);
+			return o;
+		}
+
+		json BakeToJson(const BakeSource& k)
+		{
+			return Match(
+				k.bake,
+				[&](const PartitionBake& p) {
+					const auto name = BipedSlotName(p.slot);
+					return json::object({ { "partition", name ? json(std::string{ *name }) : json(p.slot) } });
+				},
+				[&](const BoneWeightBake& b) { return json::object({ { "boneWeight", b.bones } }); },
+				[&](const auto&) { return json(std::string{ BakeKindName(k.bake) }); });
+		}
+
+		json MaterialClustersToJson(const MaterialClustersSource& k)
+		{
+			const MaterialClustersSource defaults;
+			json                         o = json::object();
+			if (k.clusters != defaults.clusters) o["clusters"] = static_cast<unsigned>(k.clusters);
+			json w = json::object();
+			if (k.roughness != defaults.roughness) w["roughness"] = Num(k.roughness);
+			if (k.metallic != defaults.metallic) w["metallic"] = Num(k.metallic);
+			if (k.occlusion != defaults.occlusion) w["occlusion"] = Num(k.occlusion);
+			if (k.reflectance != defaults.reflectance) w["reflectance"] = Num(k.reflectance);
+			if (k.luma != defaults.luma) w["luma"] = Num(k.luma);
+			if (!w.empty()) o["weights"] = std::move(w);
+			if (k.seed != defaults.seed) o["seed"] = k.seed;
+			if (k.iterations != defaults.iterations) o["iterations"] = k.iterations;
+			return o;
+		}
+
 		json SourceToJson(const Source& a_source)
 		{
 			const std::string word{ SourceKindName(a_source.kind) };
 			json              row = json::object();
 			Match(
 				a_source.kind,
-				[&](const ImageSource& k) {
-					json o = json::object({ { "path", k.path } });
-					if (k.channel != ImageChannel::kRgb) o["channel"] = NameOf(kImageChannels, k.channel);
-					if (k.space != ImageSpace::kTiled) o["space"] = NameOf(kImageSpaces, k.space);
-					if (k.scroll) o["scroll"] = VecToJson(*k.scroll);
-					if (k.tile) o["tile"] = VecToJson(*k.tile);
-					if (k.mirror[0] || k.mirror[1]) o["mirror"] = json::array({ k.mirror[0], k.mirror[1] });
-					if (k.transpose) o["transpose"] = true;
-					if (k.mip != 0.0f) o["mip"] = Num(k.mip);
-					row[word] = std::move(o);
-				},
+				[&](const ImageSource& k) { row[word] = ImageToJson(k); },
 				[&](const MaterialSource& k) { row[word] = NameOf(kMaterialChannels, k.channel); },
-				[&](const BakeSource& k) {
-					Match(
-						k.bake,
-						[&](const PartitionBake& p) {
-							const auto name = BipedSlotName(p.slot);
-							row[word] = json::object({ { "partition", name ? json(std::string{ *name }) : json(p.slot) } });
-						},
-						[&](const BoneWeightBake& b) { row[word] = json::object({ { "boneWeight", b.bones } }); },
-						[&](const auto&) { row[word] = std::string{ BakeKindName(k.bake) }; });
-				},
+				[&](const BakeSource& k) { row[word] = BakeToJson(k); },
 				[&](const UvSource& k) { row[word] = NameOf(kUvAxes, k.axis); },
 				[&](const DistanceSource& k) {
 					Match(
@@ -265,21 +305,7 @@ namespace BetterEnchantmentEffects
 					if (k.shape != RippleShape::kRing) o["shape"] = NameOf(kRippleShapes, k.shape);
 					row[word] = std::move(o);
 				},
-				[&](const MaterialClustersSource& k) {
-					const MaterialClustersSource defaults;
-					json                         o = json::object();
-					if (k.clusters != defaults.clusters) o["clusters"] = static_cast<unsigned>(k.clusters);
-					json w = json::object();
-					if (k.roughness != defaults.roughness) w["roughness"] = Num(k.roughness);
-					if (k.metallic != defaults.metallic) w["metallic"] = Num(k.metallic);
-					if (k.occlusion != defaults.occlusion) w["occlusion"] = Num(k.occlusion);
-					if (k.reflectance != defaults.reflectance) w["reflectance"] = Num(k.reflectance);
-					if (k.luma != defaults.luma) w["luma"] = Num(k.luma);
-					if (!w.empty()) o["weights"] = std::move(w);
-					if (k.seed != defaults.seed) o["seed"] = k.seed;
-					if (k.iterations != defaults.iterations) o["iterations"] = k.iterations;
-					row[word] = std::move(o);
-				});
+				[&](const MaterialClustersSource& k) { row[word] = MaterialClustersToJson(k); });
 			return row;
 		}
 
@@ -299,56 +325,62 @@ namespace BetterEnchantmentEffects
 			return o;
 		}
 
+		json SurfaceOutputToJson(const SurfaceOutput& m)
+		{
+			json o = json::object();
+			o["target"] = NameOf(kSurfaces, m.surface);
+			o["slot"] = NameOf(kSlots, m.slot);
+			for (const auto& field : kScalarFields) {
+				const std::string key{ field.name };
+				Match(
+					field.member,
+					[&](std::optional<Param> SlotScalars::*member) {
+						if (m.scalars.*member) o[key] = ParamToJson(*(m.scalars.*member));
+					},
+					[&](std::optional<Vec3Param> SlotScalars::*member) {
+						if (m.scalars.*member) o[key] = VecToJson(*(m.scalars.*member));
+					});
+			}
+			if (!m.selector.All()) o["selector"] = SelectorToJson(m.selector);
+			if (m.replace) o["replace"] = true;
+			json stack = json::array();
+			for (const auto& l : m.stack) {
+				stack.push_back(LayerToJson(l));
+			}
+			o["stack"] = std::move(stack);
+			return o;
+		}
+
+		json LightOutputToJson(const LightOutput& l)
+		{
+			json o = json::object();
+			o["target"] = "light";
+			Match(
+				l.bones,
+				[&](const SkinnedBones& s) {
+					json b = json::object({ { "max", s.max } });
+					if (s.minShare != 0.0f) b["minShare"] = Num(s.minShare);
+					o["bones"] = json::object({ { "skinned", std::move(b) } });
+				},
+				[&](const NamedBones& n) { o["bones"] = json::object({ { "named", n.bones } }); });
+			if (l.offset != Vec3Param{ std::array<Param, 3>{ 0.0f, 0.0f, 0.0f } }) o["offset"] = VecToJson(l.offset);
+			o["color"] = VecToJson(l.color);
+			o["intensity"] = ParamToJson(l.intensity);
+			o["size"] = ParamToJson(l.size);
+			o["cutoff"] = ParamToJson(l.cutoff);
+			if (l.shadow) o["shadow"] = true;
+			if (l.bulb) o["bulb"] = l.bulb->text;
+			if (!l.selector.All()) o["selector"] = SelectorToJson(l.selector);
+			if (l.replace) o["replace"] = true;
+			return o;
+		}
+
 		json OutputToJson(const Output& a_output)
 		{
 			return Match(
 				a_output,
-				[](const SurfaceOutput& m) {
-					json o = json::object();
-					o["target"] = NameOf(kSurfaces, m.surface);
-					o["slot"] = NameOf(kSlots, m.slot);
-					for (const auto& field : kScalarFields) {
-						const std::string key{ field.name };
-						Match(
-							field.member,
-							[&](std::optional<Param> SlotScalars::*member) {
-								if (m.scalars.*member) o[key] = ParamToJson(*(m.scalars.*member));
-							},
-							[&](std::optional<Vec3Param> SlotScalars::*member) {
-								if (m.scalars.*member) o[key] = VecToJson(*(m.scalars.*member));
-							});
-					}
-					if (!m.selector.All()) o["selector"] = SelectorToJson(m.selector);
-					if (m.replace) o["replace"] = true;
-					json stack = json::array();
-					for (const auto& l : m.stack) {
-						stack.push_back(LayerToJson(l));
-					}
-					o["stack"] = std::move(stack);
-					return o;
-				},
-				[](const LightOutput& l) {
-					json o = json::object();
-					o["target"] = "light";
-					Match(
-						l.bones,
-						[&](const SkinnedBones& s) {
-							json b = json::object({ { "max", s.max } });
-							if (s.minShare != 0.0f) b["minShare"] = Num(s.minShare);
-							o["bones"] = json::object({ { "skinned", std::move(b) } });
-						},
-						[&](const NamedBones& n) { o["bones"] = json::object({ { "named", n.bones } }); });
-					if (l.offset != Vec3Param{ std::array<Param, 3>{ 0.0f, 0.0f, 0.0f } }) o["offset"] = VecToJson(l.offset);
-					o["color"] = VecToJson(l.color);
-					o["intensity"] = ParamToJson(l.intensity);
-					o["size"] = ParamToJson(l.size);
-					o["cutoff"] = ParamToJson(l.cutoff);
-					if (l.shadow) o["shadow"] = true;
-					if (l.bulb) o["bulb"] = l.bulb->text;
-					if (!l.selector.All()) o["selector"] = SelectorToJson(l.selector);
-					if (l.replace) o["replace"] = true;
-					return o;
-				});
+				[](const SurfaceOutput& m) { return SurfaceOutputToJson(m); },
+				[](const LightOutput& l) { return LightOutputToJson(l); });
 		}
 
 		json ShellToJson(const ShellSettings& a_shell)

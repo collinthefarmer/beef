@@ -1041,6 +1041,103 @@ namespace BetterEnchantmentEffects
 			return l;
 		}
 
+		std::optional<Bones> BonesFrom(const json& a_j, const Ctx& a_ctx)
+		{
+			const auto entry = OneKey(a_j, a_ctx, "'bones'");
+			if (!entry) {
+				return std::nullopt;
+			}
+			if (entry->key == "skinned") {
+				SkinnedBones sb;
+				if (entry->value->is_object()) {
+					Reader b(*entry->value, a_ctx);
+					if (auto m = b.Integer("max")) sb.max = static_cast<std::uint32_t>(std::max(0, *m));
+					if (auto share = b.Number("minShare")) sb.minShare = *share;
+					b.Finish();
+				} else {
+					a_ctx.Error("'skinned' takes {\"max\", \"minShare\"}");
+				}
+				return Bones{ sb };
+			}
+			if (entry->key == "named") {
+				NamedBones nb;
+				if (entry->value->is_array()) {
+					for (const auto& b : *entry->value) {
+						if (RowCapReached(nb.bones.size(), a_ctx, "named")) {
+							break;
+						}
+						if (b.is_string()) nb.bones.push_back(b.get<std::string>());
+						else a_ctx.Error("'named' entries are bone names");
+					}
+				} else {
+					a_ctx.Error("'named' is an array of bone names");
+				}
+				return Bones{ nb };
+			}
+			a_ctx.Error(std::format("'bones' is 'skinned' or 'named', not '{}'", entry->key));
+			return std::nullopt;
+		}
+
+		void StackFrom(const json& a_stack, std::vector<Layer>& a_out, const Ctx& a_ctx)
+		{
+			if (!a_stack.is_array()) {
+				a_ctx.Error("'stack' must be an array of layers");
+				return;
+			}
+			std::size_t i = 0;
+			for (const auto& layer : a_stack) {
+				if (RowCapReached(a_out.size(), a_ctx, "stack")) {
+					break;
+				}
+				if (auto l = LayerFrom(layer, a_ctx.At(std::format("{} layer {}", a_ctx.where, i)))) {
+					a_out.push_back(std::move(*l));
+				}
+				++i;
+			}
+		}
+
+		Output LightOutputFrom(Reader& a_r, const Ctx& a_ctx)
+		{
+			LightOutput l;
+			if (const auto* bones = a_r.Child("bones")) {
+				if (auto b = BonesFrom(*bones, a_ctx)) l.bones = *b;
+			} else {
+				a_ctx.Error("a light needs 'bones'");
+			}
+			a_r.Read("offset", l.offset);
+			a_r.Read("color", l.color, true);
+			if (!a_r.Has("color")) a_ctx.Error("a light needs 'color'");
+			a_r.Read("intensity", l.intensity);
+			if (!a_r.Has("intensity")) a_ctx.Error("a light needs 'intensity'");
+			a_r.Read("size", l.size);
+			a_r.Read("cutoff", l.cutoff);
+			a_r.Read("shadow", l.shadow);
+			if (const auto* bulb = a_r.Child("bulb")) l.bulb = FormFrom(*bulb, a_ctx, "bulb");
+			if (const auto* sel = a_r.Child("selector")) l.selector = SelectorFrom(*sel, a_ctx);
+			a_r.Read("replace", l.replace);
+			a_r.Finish();
+			return Output{ l };
+		}
+
+		Output SurfaceOutputFrom(Reader& a_r, Surface a_surface, const Ctx& a_ctx)
+		{
+			SurfaceOutput m;
+			m.surface = a_surface;
+			a_r.Read("slot", kSlots, m.slot);
+			if (!a_r.Has("slot")) a_ctx.Error("'slot' is required");
+			for (const auto& field : kScalarFields) {
+				Match(
+					field.member,
+					[&](std::optional<Param> SlotScalars::*member) { m.scalars.*member = a_r.Parameter(field.name); },
+					[&](std::optional<Vec3Param> SlotScalars::*member) { m.scalars.*member = a_r.Vector3(field.name, true); });
+			}
+			if (const auto* sel = a_r.Child("selector")) m.selector = SelectorFrom(*sel, a_ctx);
+			a_r.Read("replace", m.replace);
+			if (const auto* stack = a_r.Child("stack")) StackFrom(*stack, m.stack, a_ctx);
+			a_r.Finish();
+			return Output{ m };
+		}
+
 		std::optional<Output> OutputFrom(const json& a_j, const Ctx& a_ctx)
 		{
 			if (!a_j.is_object()) {
@@ -1050,89 +1147,14 @@ namespace BetterEnchantmentEffects
 			Reader     r(a_j, a_ctx);
 			const auto target = r.Required("target");
 			if (target == "light") {
-				LightOutput l;
-				if (const auto* bones = r.Child("bones")) {
-					const auto entry = OneKey(*bones, a_ctx, "'bones'");
-					if (entry && entry->key == "skinned") {
-						SkinnedBones sb;
-						if (entry->value->is_object()) {
-							Reader b(*entry->value, a_ctx);
-							if (auto m = b.Integer("max")) sb.max = static_cast<std::uint32_t>(std::max(0, *m));
-							if (auto share = b.Number("minShare")) sb.minShare = *share;
-							b.Finish();
-						} else {
-							a_ctx.Error("'skinned' takes {\"max\", \"minShare\"}");
-						}
-						l.bones = sb;
-					} else if (entry && entry->key == "named") {
-						NamedBones nb;
-						if (entry->value->is_array()) {
-							for (const auto& b : *entry->value) {
-								if (RowCapReached(nb.bones.size(), a_ctx, "named")) {
-									break;
-								}
-								if (b.is_string()) nb.bones.push_back(b.get<std::string>());
-								else a_ctx.Error("'named' entries are bone names");
-							}
-						} else {
-							a_ctx.Error("'named' is an array of bone names");
-						}
-						l.bones = nb;
-					} else if (entry) {
-						a_ctx.Error(std::format("'bones' is 'skinned' or 'named', not '{}'", entry->key));
-					}
-				} else {
-					a_ctx.Error("a light needs 'bones'");
-				}
-				if (auto v = r.Vector3("offset")) l.offset = *v;
-				if (auto c = r.Vector3("color", true)) l.color = *c;
-				else if (!r.Has("color")) a_ctx.Error("a light needs 'color'");
-				if (auto p = r.Parameter("intensity")) l.intensity = *p;
-				else if (!r.Has("intensity")) a_ctx.Error("a light needs 'intensity'");
-				if (auto p = r.Parameter("size")) l.size = *p;
-				if (auto p = r.Parameter("cutoff")) l.cutoff = *p;
-				if (auto b = r.Boolean("shadow")) l.shadow = *b;
-				if (const auto* bulb = r.Child("bulb")) l.bulb = FormFrom(*bulb, a_ctx, "bulb");
-				if (const auto* sel = r.Child("selector")) l.selector = SelectorFrom(*sel, a_ctx);
-				if (auto b = r.Boolean("replace")) l.replace = *b;
-				r.Finish();
-				return Output{ l };
+				return LightOutputFrom(r, a_ctx);
 			}
 			const auto surface = FromName(kSurfaces, target);
 			if (!surface) {
 				a_ctx.Error(std::format("'target' is one of {}, light", Choices(kSurfaces)));
 				return std::nullopt;
 			}
-			SurfaceOutput m;
-			m.surface = *surface;
-			if (auto slot = r.Enum("slot", kSlots)) m.slot = *slot;
-			else if (!r.Has("slot")) a_ctx.Error("'slot' is required");
-			for (const auto& field : kScalarFields) {
-				Match(
-					field.member,
-					[&](std::optional<Param> SlotScalars::*member) { m.scalars.*member = r.Parameter(field.name); },
-					[&](std::optional<Vec3Param> SlotScalars::*member) { m.scalars.*member = r.Vector3(field.name, true); });
-			}
-			if (const auto* sel = r.Child("selector")) m.selector = SelectorFrom(*sel, a_ctx);
-			if (auto b = r.Boolean("replace")) m.replace = *b;
-			if (const auto* stack = r.Child("stack")) {
-				if (!stack->is_array()) {
-					a_ctx.Error("'stack' must be an array of layers");
-				} else {
-					std::size_t i = 0;
-					for (const auto& layer : *stack) {
-						if (RowCapReached(m.stack.size(), a_ctx, "stack")) {
-							break;
-						}
-						if (auto l = LayerFrom(layer, a_ctx.At(std::format("{} layer {}", a_ctx.where, i)))) {
-							m.stack.push_back(std::move(*l));
-						}
-						++i;
-					}
-				}
-			}
-			r.Finish();
-			return Output{ m };
+			return SurfaceOutputFrom(r, *surface, a_ctx);
 		}
 
 		ShellSettings ShellFrom(const json& a_j, const Ctx& a_ctx)
