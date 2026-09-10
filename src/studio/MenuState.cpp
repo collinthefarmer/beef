@@ -109,260 +109,310 @@ void Post(Intents &a_out, Intent a_intent) {
 void Post(Intents &a_out, const std::string &a_recipe, RecipeEdit a_edit) {
   std::vector<RecipeEdit> edits;
   edits.push_back(std::move(a_edit));
-  a_out.push_back(EditRecipe{a_recipe, std::move(edits)});
+  a_out.emplace_back(std::in_place_type<EditRecipe>, a_recipe,
+                     std::move(edits));
 }
 
-void Reduce(MenuState &a_state, const Intent &a_intent) {
-  Selection &selection = a_state.selection;
-  MaskStack &mask = a_state.mask;
-  const auto endSession = [&]() {
-    if (a_state.paint) {
-      selection.recipeID = a_state.paint->recipeID;
+namespace {
+struct ReduceVisitor {
+  MenuState &state;
+  Selection &selection;
+  MaskStack &mask;
+
+  explicit ReduceVisitor(MenuState &a_state)
+      : state(a_state), selection(a_state.selection), mask(a_state.mask) {}
+
+  void endSession() {
+    if (state.paint) {
+      selection.recipeID = state.paint->recipeID;
     }
-    a_state.paint.reset();
+    state.paint.reset();
     mask = MaskStack{};
-    a_state.maskHistory.Clear();
-  };
-  const auto remember = [&]() { a_state.maskHistory.Push(mask); };
-  const auto pickRecipe = [&](const std::string &a_id) {
+    state.maskHistory.Clear();
+  }
+
+  void remember() { state.maskHistory.Push(mask); }
+
+  void pickRecipe(const std::string &a_id) {
     if (selection.recipeID != a_id) {
       mask = MaskStack{};
     }
     selection.recipeID = a_id;
     selection.layer.reset();
-  };
-  Match(
-      a_intent,
-      [&](const SetMode &a_i) {
-        if (a_state.mode != a_i.mode) {
-          const float split = a_state.layout.stackSplit;
-          a_state.mode = a_i.mode;
-          a_state.layout = LayoutFor(a_i.mode);
-          a_state.layout.stackSplit = split;
-          if (a_i.mode == Mode::kPaint) {
-            a_state.resource = ResourceTab::kMasks;
-          } else if (a_state.paint) {
-            endSession();
-          }
-        }
-      },
-      [&](const PickPiece &a_i) {
-        selection = Selection{};
-        selection.piece = a_i.piece;
-        mask = MaskStack{};
-      },
-      [&](const PickRecipe &a_i) { pickRecipe(a_i.recipeID); },
-      [&](const PinRecipe &a_i) { pickRecipe(a_i.recipeID); },
-      [&](const PickTarget &a_i) {
-        if (selection.target != a_i.target) {
-          selection.target = a_i.target;
-          selection.slot.reset();
-          selection.layer.reset();
-        }
-      },
-      [&](const PickSlot &a_i) {
-        selection.slot = a_i.slot;
-        selection.layer.reset();
-      },
-      [&](const PickCell &a_i) {
-        selection.target = TargetOf(a_i.surface);
-        selection.slot = a_i.slot;
-        selection.layer = a_i.topLayer;
-      },
-      [&](const PickLayer &a_i) { selection.layer = a_i.index; },
-      [&](const ViewGeometry &a_i) { selection.geometry = a_i.name; },
-      [&](const SetStackSplit &a_i) {
-        a_state.layout.stackSplit = std::clamp(a_i.ratio, 0.05f, 0.95f);
-      },
-      [&](const ShowSettings &a_i) { a_state.settings = a_i.on; },
-      [&](const ShowResource &a_i) { a_state.resource = a_i.tab; },
-      [&](const ReadMesh &a_i) {
-        if (a_state.paint) {
-          a_state.paint->readGeometries.insert(a_i.geometry);
-        }
-      },
-      [&](const AddTerm &a_i) {
-        if (mask.terms.size() >= kMaxTerms) {
-          return;
-        }
-        remember();
-        Term term = a_i.term;
-        if (mask.terms.empty()) {
-          term.op = TermOp::kSet;
-        } else if (term.op == TermOp::kSet) {
-          term.op = TermOp::kAnd;
-        }
-        mask.terms.push_back(std::move(term));
-        mask.selected = mask.terms.size() - 1;
-        mask.dirty = true;
-      },
-      [&](const SetTermOp &a_i) {
-        remember();
-        if (a_i.index < mask.terms.size() && a_i.index > 0) {
-          mask.terms[a_i.index].op =
-              a_i.op == TermOp::kSet ? TermOp::kAnd : a_i.op;
-          mask.dirty = true;
-        }
-      },
-      [&](const SetTermText &a_i) {
-        remember();
-        if (a_i.index < mask.terms.size()) {
-          mask.terms[a_i.index].text = a_i.text;
-          mask.terms[a_i.index].label = std::string{kExpressionLabel};
-          mask.terms[a_i.index].kind = RawTerm{};
-          mask.dirty = true;
-        }
-      },
-      [&](const SetTermKind &a_i) {
-        remember();
-        if (a_i.index < mask.terms.size()) {
-          mask.terms[a_i.index].kind = a_i.kind;
-          mask.terms[a_i.index].text = a_i.text;
-          mask.terms[a_i.index].label = a_i.label;
-          mask.dirty = true;
-        }
-      },
-      [&](const RemoveTerm &a_i) {
-        remember();
-        if (a_i.index >= mask.terms.size()) {
-          return;
-        }
-        mask.terms.erase(mask.terms.begin() +
-                         static_cast<std::ptrdiff_t>(a_i.index));
-        if (!mask.terms.empty()) {
-          mask.terms.front().op = TermOp::kSet;
-        }
-        RemapMask(mask, [&](std::size_t a_at) -> std::optional<std::size_t> {
-          if (a_at == a_i.index) {
-            return std::nullopt;
-          }
-          return a_at > a_i.index ? a_at - 1 : a_at;
-        });
-        mask.dirty = true;
-      },
-      [&](const MoveTerm &a_i) {
-        remember();
-        const std::size_t count = mask.terms.size();
-        if (a_i.from >= count || a_i.to >= count || a_i.from == a_i.to) {
-          return;
-        }
-        Term moved = mask.terms[a_i.from];
-        mask.terms.erase(mask.terms.begin() +
-                         static_cast<std::ptrdiff_t>(a_i.from));
-        mask.terms.insert(mask.terms.begin() +
-                              static_cast<std::ptrdiff_t>(a_i.to),
-                          std::move(moved));
-        for (std::size_t k = 1; k < mask.terms.size(); ++k) {
-          if (mask.terms[k].op == TermOp::kSet) {
-            mask.terms[k].op = TermOp::kAnd;
-          }
-        }
-        mask.terms.front().op = TermOp::kSet;
-        RemapMask(mask, [&](std::size_t a_at) -> std::optional<std::size_t> {
-          if (a_at == a_i.from) {
-            return a_i.to;
-          }
-          if (a_i.from < a_at && a_at <= a_i.to) {
-            return a_at - 1;
-          }
-          if (a_i.to <= a_at && a_at < a_i.from) {
-            return a_at + 1;
-          }
-          return a_at;
-        });
-        mask.dirty = true;
-      },
-      [&](const PickTerm &a_i) {
-        if (a_i.index < mask.terms.size()) {
-          mask.selected = a_i.index;
-        }
-      },
-      [&](const SoloTerm &a_i) {
-        if (a_i.index >= mask.terms.size()) {
-          return;
-        }
-        if (a_i.on) {
-          mask.solo = a_i.index;
-        } else if (mask.solo == a_i.index) {
-          mask.solo.reset();
-        }
-        mask.dirty = true;
-      },
-      [&](const MuteTerm &a_i) {
-        if (a_i.index >= mask.terms.size()) {
-          return;
-        }
-        if (a_i.on) {
-          mask.muted.insert(a_i.index);
-        } else {
-          mask.muted.erase(a_i.index);
-        }
-        mask.dirty = true;
-      },
-      [&](const LoadMask &a_i) {
-        remember();
-        mask = MaskStack{};
-        const std::size_t kept = std::min(a_i.terms.size(), kMaxTerms);
-        mask.terms.assign(a_i.terms.begin(),
-                          a_i.terms.begin() +
-                              static_cast<std::ptrdiff_t>(kept));
-        if (!mask.terms.empty()) {
-          mask.terms.front().op = TermOp::kSet;
-          mask.selected = 0;
-        }
-        mask.editing = a_i.editing;
-        mask.dirty = !mask.terms.empty();
-      },
-      [&](const ClearMask &) {
-        remember();
-        mask = MaskStack{};
-      },
-      [&](const UndoMask &) {
-        if (std::optional<MaskStack> past = a_state.maskHistory.Undo(mask)) {
-          mask = std::move(*past);
-          mask.dirty = true;
-        }
-      },
-      [&](const RedoMask &) {
-        if (std::optional<MaskStack> next = a_state.maskHistory.Redo(mask)) {
-          mask = std::move(*next);
-          mask.dirty = true;
-        }
-      },
-      [&](const ScratchRebuilt &) { mask.dirty = false; },
-      [&](const BeginPaint &a_i) {
-        a_state.paint = PaintSession{a_i.recipeID, a_i.surface, {}};
-        a_state.maskHistory.Clear();
-      },
-      [&](const SetPaintSurface &a_i) {
-        if (a_state.paint) {
-          a_state.paint->surface = a_i.surface;
-        }
-      },
-      [&](const KeepPaint &) { endSession(); },
-      [&](const EndPaint &) { endSession(); },
-      [&](const EditRecipe &a_i) {
-        for (const RecipeEdit &edit : a_i.edits) {
-          ReduceEdit(selection, edit);
-        }
-      },
-      [&](const RenameRecipe &a_i) {
-        if (selection.recipeID == a_i.from) {
-          selection.recipeID = a_i.to;
-        }
-        if (a_state.paint && a_state.paint->recipeID == a_i.from) {
-          a_state.paint->recipeID = a_i.to;
-        }
-      },
-      [&](const CreateRecipe &a_i) {
-        selection.recipeID = a_i.recipeID;
-        selection.layer.reset();
-        mask = MaskStack{};
-      },
-      [](const SoloRecipe &) {}, [](const SoloOutput &) {},
-      [](const SoloLayer &) {}, [](const MuteLayer &) {},
-      [](const SetFreeze &) {}, [](const SetScrub &) {},
-      [](const SetSpeed &) {}, [](const StepClock &) {}, [](const Undo &) {},
-      [](const Redo &) {}, [](const FireTrigger &) {});
+  }
+
+  void operator()(const SetMode &a_i) {
+    if (state.mode != a_i.mode) {
+      const float split = state.layout.stackSplit;
+      state.mode = a_i.mode;
+      state.layout = LayoutFor(a_i.mode);
+      state.layout.stackSplit = split;
+      if (a_i.mode == Mode::kPaint) {
+        state.resource = ResourceTab::kMasks;
+      } else if (state.paint) {
+        endSession();
+      }
+    }
+  }
+
+  void operator()(const PickPiece &a_i) {
+    selection = Selection{};
+    selection.piece = a_i.piece;
+    mask = MaskStack{};
+  }
+
+  void operator()(const PickRecipe &a_i) { pickRecipe(a_i.recipeID); }
+
+  void operator()(const PinRecipe &a_i) { pickRecipe(a_i.recipeID); }
+
+  void operator()(const PickTarget &a_i) {
+    if (selection.target != a_i.target) {
+      selection.target = a_i.target;
+      selection.slot.reset();
+      selection.layer.reset();
+    }
+  }
+
+  void operator()(const PickSlot &a_i) {
+    selection.slot = a_i.slot;
+    selection.layer.reset();
+  }
+
+  void operator()(const PickCell &a_i) {
+    selection.target = TargetOf(a_i.surface);
+    selection.slot = a_i.slot;
+    selection.layer = a_i.topLayer;
+  }
+
+  void operator()(const PickLayer &a_i) { selection.layer = a_i.index; }
+
+  void operator()(const ViewGeometry &a_i) { selection.geometry = a_i.name; }
+
+  void operator()(const SetStackSplit &a_i) {
+    state.layout.stackSplit = std::clamp(a_i.ratio, 0.05f, 0.95f);
+  }
+
+  void operator()(const ShowSettings &a_i) { state.settings = a_i.on; }
+
+  void operator()(const ShowResource &a_i) { state.resource = a_i.tab; }
+
+  void operator()(const ReadMesh &a_i) {
+    if (state.paint) {
+      state.paint->readGeometries.insert(a_i.geometry);
+    }
+  }
+
+  void operator()(const AddTerm &a_i) {
+    if (mask.terms.size() >= kMaxTerms) {
+      return;
+    }
+    remember();
+    Term term = a_i.term;
+    if (mask.terms.empty()) {
+      term.op = TermOp::kSet;
+    } else if (term.op == TermOp::kSet) {
+      term.op = TermOp::kAnd;
+    }
+    mask.terms.push_back(std::move(term));
+    mask.selected = mask.terms.size() - 1;
+    mask.dirty = true;
+  }
+
+  void operator()(const SetTermOp &a_i) {
+    remember();
+    if (a_i.index < mask.terms.size() && a_i.index > 0) {
+      mask.terms[a_i.index].op = a_i.op == TermOp::kSet ? TermOp::kAnd : a_i.op;
+      mask.dirty = true;
+    }
+  }
+
+  void operator()(const SetTermText &a_i) {
+    remember();
+    if (a_i.index < mask.terms.size()) {
+      mask.terms[a_i.index].text = a_i.text;
+      mask.terms[a_i.index].label = std::string{kExpressionLabel};
+      mask.terms[a_i.index].kind = RawTerm{};
+      mask.dirty = true;
+    }
+  }
+
+  void operator()(const SetTermKind &a_i) {
+    remember();
+    if (a_i.index < mask.terms.size()) {
+      mask.terms[a_i.index].kind = a_i.kind;
+      mask.terms[a_i.index].text = a_i.text;
+      mask.terms[a_i.index].label = a_i.label;
+      mask.dirty = true;
+    }
+  }
+
+  void operator()(const RemoveTerm &a_i) {
+    remember();
+    if (a_i.index >= mask.terms.size()) {
+      return;
+    }
+    mask.terms.erase(mask.terms.begin() +
+                     static_cast<std::ptrdiff_t>(a_i.index));
+    if (!mask.terms.empty()) {
+      mask.terms.front().op = TermOp::kSet;
+    }
+    RemapMask(mask, [&](std::size_t a_at) -> std::optional<std::size_t> {
+      if (a_at == a_i.index) {
+        return std::nullopt;
+      }
+      return a_at > a_i.index ? a_at - 1 : a_at;
+    });
+    mask.dirty = true;
+  }
+
+  void operator()(const MoveTerm &a_i) {
+    remember();
+    const std::size_t count = mask.terms.size();
+    if (a_i.from >= count || a_i.to >= count || a_i.from == a_i.to) {
+      return;
+    }
+    Term moved = mask.terms[a_i.from];
+    mask.terms.erase(mask.terms.begin() +
+                     static_cast<std::ptrdiff_t>(a_i.from));
+    mask.terms.insert(mask.terms.begin() + static_cast<std::ptrdiff_t>(a_i.to),
+                      std::move(moved));
+    for (std::size_t k = 1; k < mask.terms.size(); ++k) {
+      if (mask.terms[k].op == TermOp::kSet) {
+        mask.terms[k].op = TermOp::kAnd;
+      }
+    }
+    mask.terms.front().op = TermOp::kSet;
+    RemapMask(mask, [&](std::size_t a_at) -> std::optional<std::size_t> {
+      if (a_at == a_i.from) {
+        return a_i.to;
+      }
+      if (a_i.from < a_at && a_at <= a_i.to) {
+        return a_at - 1;
+      }
+      if (a_i.to <= a_at && a_at < a_i.from) {
+        return a_at + 1;
+      }
+      return a_at;
+    });
+    mask.dirty = true;
+  }
+
+  void operator()(const PickTerm &a_i) {
+    if (a_i.index < mask.terms.size()) {
+      mask.selected = a_i.index;
+    }
+  }
+
+  void operator()(const SoloTerm &a_i) {
+    if (a_i.index >= mask.terms.size()) {
+      return;
+    }
+    if (a_i.on) {
+      mask.solo = a_i.index;
+    } else if (mask.solo == a_i.index) {
+      mask.solo.reset();
+    }
+    mask.dirty = true;
+  }
+
+  void operator()(const MuteTerm &a_i) {
+    if (a_i.index >= mask.terms.size()) {
+      return;
+    }
+    if (a_i.on) {
+      mask.muted.insert(a_i.index);
+    } else {
+      mask.muted.erase(a_i.index);
+    }
+    mask.dirty = true;
+  }
+
+  void operator()(const LoadMask &a_i) {
+    remember();
+    mask = MaskStack{};
+    const std::size_t kept = std::min(a_i.terms.size(), kMaxTerms);
+    mask.terms.assign(a_i.terms.begin(),
+                      a_i.terms.begin() + static_cast<std::ptrdiff_t>(kept));
+    if (!mask.terms.empty()) {
+      mask.terms.front().op = TermOp::kSet;
+      mask.selected = 0;
+    }
+    mask.editing = a_i.editing;
+    mask.dirty = !mask.terms.empty();
+  }
+
+  void operator()(const ClearMask &) {
+    remember();
+    mask = MaskStack{};
+  }
+
+  void operator()(const UndoMask &) {
+    if (std::optional<MaskStack> past = state.maskHistory.Undo(mask)) {
+      mask = std::move(*past);
+      mask.dirty = true;
+    }
+  }
+
+  void operator()(const RedoMask &) {
+    if (std::optional<MaskStack> next = state.maskHistory.Redo(mask)) {
+      mask = std::move(*next);
+      mask.dirty = true;
+    }
+  }
+
+  void operator()(const ScratchRebuilt &) { mask.dirty = false; }
+
+  void operator()(const BeginPaint &a_i) {
+    state.paint = PaintSession{a_i.recipeID, a_i.surface, {}};
+    state.maskHistory.Clear();
+  }
+
+  void operator()(const SetPaintSurface &a_i) {
+    if (state.paint) {
+      state.paint->surface = a_i.surface;
+    }
+  }
+
+  void operator()(const KeepPaint &) { endSession(); }
+
+  void operator()(const EndPaint &) { endSession(); }
+
+  void operator()(const EditRecipe &a_i) {
+    for (const RecipeEdit &edit : a_i.edits) {
+      ReduceEdit(selection, edit);
+    }
+  }
+
+  void operator()(const RenameRecipe &a_i) {
+    if (selection.recipeID == a_i.from) {
+      selection.recipeID = a_i.to;
+    }
+    if (state.paint && state.paint->recipeID == a_i.from) {
+      state.paint->recipeID = a_i.to;
+    }
+  }
+
+  void operator()(const CreateRecipe &a_i) {
+    selection.recipeID = a_i.recipeID;
+    selection.layer.reset();
+    mask = MaskStack{};
+  }
+
+  void operator()(const SoloRecipe &) {}
+  void operator()(const SoloOutput &) {}
+  void operator()(const SoloLayer &) {}
+  void operator()(const MuteLayer &) {}
+  void operator()(const SetFreeze &) {}
+  void operator()(const SetScrub &) {}
+  void operator()(const SetSpeed &) {}
+  void operator()(const StepClock &) {}
+  void operator()(const Undo &) {}
+  void operator()(const Redo &) {}
+  void operator()(const FireTrigger &) {}
+};
+}
+
+void Reduce(MenuState &a_state, const Intent &a_intent) {
+  Match(a_intent, ReduceVisitor{a_state});
 }
 }
