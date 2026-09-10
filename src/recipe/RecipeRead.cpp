@@ -554,6 +554,24 @@ namespace BetterEnchantmentEffects
 			return EnchantmentSignal{ *field };
 		}
 
+		EventFilter FilterFrom(const json& a_f, const Ctx& a_ctx)
+		{
+			EventFilter filter;
+			Reader      fr(a_f, a_ctx);
+			if (auto n = fr.String("node")) filter.node = *n;
+			if (auto arg = fr.String("arg")) filter.arg = *arg;
+			if (const auto* range = fr.Child("value")) {
+				if (!range->is_array() || range->size() != 2) {
+					a_ctx.Error("'filter.value' is [min, max], either may be null");
+				} else {
+					if ((*range)[0].is_number()) filter.value.min = (*range)[0].get<float>();
+					if ((*range)[1].is_number()) filter.value.max = (*range)[1].get<float>();
+				}
+			}
+			fr.Finish();
+			return filter;
+		}
+
 		std::optional<SignalKind> ParseTrigger(const json& a_v, const Ctx& a_ctx)
 		{
 			TriggerSignal k;
@@ -583,20 +601,7 @@ namespace BetterEnchantmentEffects
 				}
 				es.event = source->value->get<std::string>();
 				if (auto at = r.String("at")) es.at = *at;
-				if (const auto* f = r.Child("filter")) {
-					Reader fr(*f, a_ctx);
-					if (auto n = fr.String("node")) es.filter.node = *n;
-					if (auto arg = fr.String("arg")) es.filter.arg = *arg;
-					if (const auto* range = fr.Child("value")) {
-						if (!range->is_array() || range->size() != 2) {
-							a_ctx.Error("'filter.value' is [min, max], either may be null");
-						} else {
-							if ((*range)[0].is_number()) es.filter.value.min = (*range)[0].get<float>();
-							if ((*range)[1].is_number()) es.filter.value.max = (*range)[1].get<float>();
-						}
-					}
-					fr.Finish();
-				}
+				if (const auto* f = r.Child("filter")) es.filter = FilterFrom(*f, a_ctx);
 				if (r.Has("value")) a_ctx.Error("'value' belongs to a 'when' trigger");
 				k.origin = es;
 			} else if (source->key == "plugin") {
@@ -1278,6 +1283,87 @@ namespace BetterEnchantmentEffects
 				return true;
 			}
 		};
+
+		void ReadMetadata(Reader& a_r, const Ctx& a_ctx, Metadata& a_meta)
+		{
+			a_meta.name = a_r.String("name").value_or("");
+			a_meta.author = a_r.String("author").value_or("");
+			a_meta.description = a_r.String("description").value_or("");
+			a_meta.version = a_r.String("version").value_or("");
+			a_meta.imported = a_r.String("imported").value_or("");
+			if (const auto* m = a_r.Child("meta")) {
+				if (m->is_object()) {
+					a_meta.meta = m->dump();
+				} else {
+					a_ctx.Error("'meta' must be an object");
+				}
+			}
+		}
+
+		void ReadKeys(Reader& a_r, const Ctx& a_ctx, std::vector<RecipeKey>& a_out)
+		{
+			const auto* keys = a_r.Child("keys");
+			if (!keys) {
+				a_ctx.Error("'keys' is required");
+				return;
+			}
+			if (!keys->is_array() || keys->empty()) {
+				a_ctx.Error("'keys' must be a non-empty array");
+				return;
+			}
+			for (const auto& k : *keys) {
+				if (RowCapReached(a_out.size(), a_ctx, "keys")) {
+					break;
+				}
+				if (auto key = KeyFrom(k, a_ctx)) {
+					a_out.push_back(std::move(*key));
+				}
+			}
+		}
+
+		void ReadOutputs(Reader& a_r, const Ctx& a_ctx, std::vector<Output>& a_out)
+		{
+			const auto* outputs = a_r.Child("outputs");
+			if (!outputs) {
+				return;
+			}
+			if (!outputs->is_array()) {
+				a_ctx.Error("'outputs' must be an array");
+				return;
+			}
+			std::size_t i = 0;
+			for (const auto& o : *outputs) {
+				if (RowCapReached(a_out.size(), a_ctx, "outputs")) {
+					break;
+				}
+				if (auto out = OutputFrom(o, a_ctx.At(std::format("output {}", i)))) {
+					a_out.push_back(std::move(*out));
+				}
+				++i;
+			}
+		}
+
+		void ReadVariants(Reader& a_r, const Ctx& a_ctx, std::vector<Variant>& a_out)
+		{
+			const auto* variants = a_r.Child("variants");
+			if (!variants) {
+				return;
+			}
+			if (!variants->is_array()) {
+				a_ctx.Error("'variants' must be an array");
+				return;
+			}
+			std::size_t i = 0;
+			for (const auto& v : *variants) {
+				if (RowCapReached(a_out.size(), a_ctx, "variants")) {
+					break;
+				}
+				if (auto var = VariantFrom(v, a_ctx.At(std::format("variant {}", i)))) {
+					a_out.push_back(std::move(*var));
+				}
+				++i;
+			}
+		}
 	}
 
 	LoadResult ParseRecipe(std::string_view a_json, std::string_view a_id)
@@ -1313,36 +1399,8 @@ namespace BetterEnchantmentEffects
 			return result;
 		}
 
-		auto& meta = recipe.metadata;
-		meta.name = r.String("name").value_or("");
-		meta.author = r.String("author").value_or("");
-		meta.description = r.String("description").value_or("");
-		meta.version = r.String("version").value_or("");
-		meta.imported = r.String("imported").value_or("");
-		if (const auto* m = r.Child("meta")) {
-			if (m->is_object()) {
-				meta.meta = m->dump();
-			} else {
-				ctx.Error("'meta' must be an object");
-			}
-		}
-
-		if (const auto* keys = r.Child("keys")) {
-			if (!keys->is_array() || keys->empty()) {
-				ctx.Error("'keys' must be a non-empty array");
-			} else {
-				for (const auto& k : *keys) {
-					if (RowCapReached(recipe.keys.size(), ctx, "keys")) {
-						break;
-					}
-					if (auto key = KeyFrom(k, ctx)) {
-						recipe.keys.push_back(std::move(*key));
-					}
-				}
-			}
-		} else {
-			ctx.Error("'keys' is required");
-		}
+		ReadMetadata(r, ctx, recipe.metadata);
+		ReadKeys(r, ctx, recipe.keys);
 		recipe.priority = r.Integer("priority");
 		if (const auto* clock = r.Child("clock")) {
 			Reader c(*clock, ctx.At("clock"));
@@ -1367,41 +1425,11 @@ namespace BetterEnchantmentEffects
 			return Mask{ name, j.get<std::string>() };
 		});
 
-		if (const auto* outputs = r.Child("outputs")) {
-			if (!outputs->is_array()) {
-				ctx.Error("'outputs' must be an array");
-			} else {
-				std::size_t i = 0;
-				for (const auto& o : *outputs) {
-					if (RowCapReached(recipe.outputs.size(), ctx, "outputs")) {
-						break;
-					}
-					if (auto out = OutputFrom(o, ctx.At(std::format("output {}", i)))) {
-						recipe.outputs.push_back(std::move(*out));
-					}
-					++i;
-				}
-			}
-		}
+		ReadOutputs(r, ctx, recipe.outputs);
 		if (const auto* shell = r.Child("shell")) {
 			recipe.shell = ShellFrom(*shell, ctx.At("shell"));
 		}
-		if (const auto* variants = r.Child("variants")) {
-			if (!variants->is_array()) {
-				ctx.Error("'variants' must be an array");
-			} else {
-				std::size_t i = 0;
-				for (const auto& v : *variants) {
-					if (RowCapReached(recipe.variants.size(), ctx, "variants")) {
-						break;
-					}
-					if (auto var = VariantFrom(v, ctx.At(std::format("variant {}", i)))) {
-						recipe.variants.push_back(std::move(*var));
-					}
-					++i;
-				}
-			}
-		}
+		ReadVariants(r, ctx, recipe.variants);
 		r.Finish();
 
 		for (auto& d : Validate(recipe)) {
