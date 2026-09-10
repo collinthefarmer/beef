@@ -835,58 +835,134 @@ namespace BetterEnchantmentEffects
 		return out;
 	}
 
+	namespace
+	{
+		void CheckSurfaceScalars(const RowTypes& a_rows, const SurfaceOutput& a_m, const Report& a_report)
+		{
+			for (const auto field : ScalarsFor(a_m.slot)) {
+				const auto name = NameOf(kScalarFields, field);
+				if (field == ScalarField::kColor) {
+					if (a_m.scalars.color) {
+						CheckVector<3>(a_rows, a_report, *a_m.scalars.color, "color", true);
+					} else if (ScalarNeeded(a_m.slot, field)) {
+						a_report.Error(std::format("slot '{}' needs '{}'", NameOf(kSlots, a_m.slot), name));
+					}
+					continue;
+				}
+				const std::optional<Param>* param = ScalarMemberOf(a_m.scalars, field);
+				if (!param) {
+					continue;
+				}
+				if (*param) {
+					CheckScalar(a_rows, a_report, **param, name);
+				} else if (ScalarNeeded(a_m.slot, field)) {
+					a_report.Error(std::format("slot '{}' needs '{}'", NameOf(kSlots, a_m.slot), name));
+				}
+			}
+		}
+
+		std::vector<Diagnostic> CheckSurfaceOutput(const RowTypes& a_rows, const SurfaceOutput& a_m, std::string_view a_where)
+		{
+			std::vector<Diagnostic> out;
+			const Report            report{ out, a_where };
+			CheckSurfaceScalars(a_rows, a_m, report);
+			if (!SlotWritable(a_m.surface, a_rows.recipe.shell.material, a_m.slot)) {
+				report.Error(std::format("a vanilla shell has only the emissive slot; '{}' is not one", NameOf(kSlots, a_m.slot)));
+			}
+			std::size_t li = 0;
+			for (const auto& l : a_m.stack) {
+				const auto layerWhere = std::format("{} layer {}", a_where, li++);
+				for (auto& d : CheckLayer(a_rows, l, a_m.slot, layerWhere)) {
+					out.push_back(std::move(d));
+				}
+			}
+			return out;
+		}
+
+		std::vector<Diagnostic> CheckLightOutput(const RowTypes& a_rows, const LightOutput& a_l, std::string_view a_where)
+		{
+			std::vector<Diagnostic> out;
+			const Report            report{ out, a_where };
+			CheckVector<3>(a_rows, report, a_l.offset, "offset", false);
+			CheckVector<3>(a_rows, report, a_l.color, "color", true);
+			CheckScalar(a_rows, report, a_l.intensity, "intensity");
+			CheckScalar(a_rows, report, a_l.size, "size");
+			CheckScalar(a_rows, report, a_l.cutoff, "cutoff");
+			if (const auto* named = Get<NamedBones>(a_l.bones); named && named->bones.empty()) {
+				report.Error("'named' needs at least one bone");
+			}
+			if (const auto* skinned = Get<SkinnedBones>(a_l.bones); skinned && skinned->max == 0) {
+				report.Error("'skinned.max' must be at least 1");
+			}
+			return out;
+		}
+	}
+
 	std::vector<Diagnostic> CheckOutput(const RowTypes& a_rows, const Output& a_output, std::string_view a_where)
 	{
-		std::vector<Diagnostic> out;
-		const Report            report{ out, a_where };
-		Match(
+		return Match(
 			a_output,
-			[&](const SurfaceOutput& m) {
-				for (const auto field : ScalarsFor(m.slot)) {
-					const auto name = NameOf(kScalarFields, field);
-					if (field == ScalarField::kColor) {
-						if (m.scalars.color) {
-							CheckVector<3>(a_rows, report, *m.scalars.color, "color", true);
-						} else if (ScalarNeeded(m.slot, field)) {
-							report.Error(std::format("slot '{}' needs '{}'", NameOf(kSlots, m.slot), name));
-						}
-						continue;
+			[&](const SurfaceOutput& m) { return CheckSurfaceOutput(a_rows, m, a_where); },
+			[&](const LightOutput& l) { return CheckLightOutput(a_rows, l, a_where); });
+	}
+
+	namespace
+	{
+		void CheckSlotExclusions(std::string_view a_where, Slot a_slot, const std::vector<Slot>& a_held, std::vector<Diagnostic>& a_out)
+		{
+			for (const auto other : a_held) {
+				if (SlotsExclude(other, a_slot)) {
+					a_out.push_back({ Severity::kWarning, std::string{ a_where }, std::format("'{}' and '{}' on the same material exclude each other; this output is dropped", SlotName(other), SlotName(a_slot)) });
+				}
+			}
+		}
+
+		void CheckOutputs(const RowTypes& a_rows, std::vector<Diagnostic>& a_out)
+		{
+			std::map<Surface, std::vector<Slot>> bound;
+			std::size_t                          index = 0;
+			for (const auto& o : a_rows.recipe.outputs) {
+				const auto where = std::format("output {}", index++);
+				for (auto& d : CheckOutput(a_rows, o, where)) {
+					a_out.push_back(std::move(d));
+				}
+				const auto* m = Get<SurfaceOutput>(o);
+				if (!m) {
+					continue;
+				}
+				CheckSlotExclusions(where, m->slot, bound[m->surface], a_out);
+				bound[m->surface].push_back(m->slot);
+			}
+		}
+
+		void CheckShell(const RowTypes& a_rows, std::vector<Diagnostic>& a_out)
+		{
+			const ShellSettings& s = a_rows.recipe.shell;
+			const Report         shell{ a_out, "shell" };
+			CheckScalar(a_rows, shell, s.alpha, "alpha");
+			CheckScalar(a_rows, shell, s.rimPower, "rimPower");
+			CheckScalar(a_rows, shell, s.emissive, "emissive");
+			const Report pose{ a_out, "shell pose" };
+			CheckVector<3>(a_rows, pose, s.pose.inflate, "inflate", false);
+			CheckVector<3>(a_rows, pose, s.pose.offset, "offset", false);
+			CheckScalar(a_rows, pose, s.pose.scale, "scale");
+			CheckScalar(a_rows, pose, s.pose.spin, "spin");
+		}
+
+		void CheckVariants(const RowTypes& a_rows, std::vector<Diagnostic>& a_out)
+		{
+			for (const auto& v : a_rows.recipe.variants) {
+				const auto where = std::format("variant {}", v.name);
+				for (const auto& [name, value] : v.overrides) {
+					const auto type = a_rows.graph.TypeOf(name);
+					if (!type) {
+						a_out.push_back({ Severity::kError, where, std::format("overrides unknown signal '{}'", name) });
+					} else if (*type != TypeOf(value)) {
+						a_out.push_back({ Severity::kError, where, std::format("override of '{}' is a {}; the signal is a {}", name, Name(TypeOf(value)), Name(*type)) });
 					}
-					const std::optional<Param>* param = ScalarMemberOf(m.scalars, field);
-					if (!param) {
-						continue;
-					}
-					if (*param) {
-						CheckScalar(a_rows, report, **param, name);
-					} else if (ScalarNeeded(m.slot, field)) {
-						report.Error(std::format("slot '{}' needs '{}'", NameOf(kSlots, m.slot), name));
-					}
 				}
-				if (!SlotWritable(m.surface, a_rows.recipe.shell.material, m.slot)) {
-					report.Error(std::format("a vanilla shell has only the emissive slot; '{}' is not one", NameOf(kSlots, m.slot)));
-				}
-				std::size_t li = 0;
-				for (const auto& l : m.stack) {
-					const auto layerWhere = std::format("{} layer {}", a_where, li++);
-					for (auto& d : CheckLayer(a_rows, l, m.slot, layerWhere)) {
-						out.push_back(std::move(d));
-					}
-				}
-			},
-			[&](const LightOutput& l) {
-				CheckVector<3>(a_rows, report, l.offset, "offset", false);
-				CheckVector<3>(a_rows, report, l.color, "color", true);
-				CheckScalar(a_rows, report, l.intensity, "intensity");
-				CheckScalar(a_rows, report, l.size, "size");
-				CheckScalar(a_rows, report, l.cutoff, "cutoff");
-				if (const auto* named = Get<NamedBones>(l.bones); named && named->bones.empty()) {
-					report.Error("'named' needs at least one bone");
-				}
-				if (const auto* skinned = Get<SkinnedBones>(l.bones); skinned && skinned->max == 0) {
-					report.Error("'skinned.max' must be at least 1");
-				}
-			});
-		return out;
+			}
+		}
 	}
 
 	std::vector<Diagnostic> Validate(const Recipe& a_recipe)
@@ -904,9 +980,7 @@ namespace BetterEnchantmentEffects
 		for (const auto& d : graph.Diagnostics()) {
 			out.push_back(d);
 		}
-
 		CheckUniqueNames(a_recipe, out);
-
 		for (const auto& c : a_recipe.curves) {
 			append(CheckCurve(rows, c));
 		}
@@ -916,45 +990,9 @@ namespace BetterEnchantmentEffects
 		for (const auto& m : a_recipe.masks) {
 			append(CheckMask(rows, m));
 		}
-
-		std::map<Surface, std::vector<Slot>> bound;
-		std::size_t                          index = 0;
-		for (const auto& o : a_recipe.outputs) {
-			const auto where = std::format("output {}", index++);
-			append(CheckOutput(rows, o, where));
-			if (const auto* m = Get<SurfaceOutput>(o)) {
-				auto& held = bound[m->surface];
-				for (const auto other : held) {
-					if (SlotsExclude(other, m->slot)) {
-						out.push_back({ Severity::kWarning, where, std::format("'{}' and '{}' on the same material exclude each other; this output is dropped", SlotName(other), SlotName(m->slot)) });
-					}
-				}
-				held.push_back(m->slot);
-			}
-		}
-
-		const Report shell{ out, "shell" };
-		CheckScalar(rows, shell, a_recipe.shell.alpha, "alpha");
-		CheckScalar(rows, shell, a_recipe.shell.rimPower, "rimPower");
-		CheckScalar(rows, shell, a_recipe.shell.emissive, "emissive");
-		const Report pose{ out, "shell pose" };
-		CheckVector<3>(rows, pose, a_recipe.shell.pose.inflate, "inflate", false);
-		CheckVector<3>(rows, pose, a_recipe.shell.pose.offset, "offset", false);
-		CheckScalar(rows, pose, a_recipe.shell.pose.scale, "scale");
-		CheckScalar(rows, pose, a_recipe.shell.pose.spin, "spin");
-
-		for (const auto& v : a_recipe.variants) {
-			const auto where = std::format("variant {}", v.name);
-			for (const auto& [name, value] : v.overrides) {
-				const auto type = graph.TypeOf(name);
-				if (!type) {
-					out.push_back({ Severity::kError, where, std::format("overrides unknown signal '{}'", name) });
-				} else if (*type != TypeOf(value)) {
-					out.push_back({ Severity::kError, where, std::format("override of '{}' is a {}; the signal is a {}", name, Name(TypeOf(value)), Name(*type)) });
-				}
-			}
-		}
-
+		CheckOutputs(rows, out);
+		CheckShell(rows, out);
+		CheckVariants(rows, out);
 		return out;
 	}
 

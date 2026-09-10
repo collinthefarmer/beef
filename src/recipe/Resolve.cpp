@@ -56,6 +56,22 @@ namespace BetterEnchantmentEffects
 
 	namespace
 	{
+		bool FormKeyMatches(const RecipeKey& a_key, const KeyKindSpec& a_row, const WornPiece& a_piece)
+		{
+			const auto* form = a_key.Form();
+			if (!form || !form->key) {
+				return false;
+			}
+			if (a_row.singleForm) {
+				const auto& have = a_piece.*a_row.singleForm;
+				return have && *have == *form->key;
+			}
+			if (a_row.formList) {
+				return std::ranges::any_of(a_piece.*a_row.formList, [&](const FormKey& k) { return k == *form->key; });
+			}
+			return false;
+		}
+
 		bool KeyMatches(const RecipeKey& a_key, const WornPiece& a_piece)
 		{
 			const auto* row = RowOf(kKeyKinds, a_key.kind);
@@ -67,20 +83,8 @@ namespace BetterEnchantmentEffects
 				return true;
 			case KeyOperand::kGlob:
 				return std::ranges::any_of(a_piece.diffusePaths, [&](const std::string& p) { return GlobMatch(a_key.Glob(), p); });
-			case KeyOperand::kForm: {
-				const auto* form = a_key.Form();
-				if (!form || !form->key) {
-					return false;
-				}
-				if (row->singleForm) {
-					const auto& have = a_piece.*row->singleForm;
-					return have && *have == *form->key;
-				}
-				if (row->formList) {
-					return std::ranges::any_of(a_piece.*row->formList, [&](const FormKey& k) { return k == *form->key; });
-				}
-				return false;
-			}
+			case KeyOperand::kForm:
+				return FormKeyMatches(a_key, *row, a_piece);
 			}
 			return false;
 		}
