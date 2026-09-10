@@ -1,0 +1,27 @@
+# clang-tidy baseline, 17 sources, 21 findings
+# regenerate: tools/tidy.sh && tools/tidy-baseline.sh
+
+# readability-function-size                            15
+# readability-function-cognitive-complexity            6
+
+src/mesh/Islands.cpp:178: [readability-function-cognitive-complexity]
+src/mesh/Islands.cpp:178: [readability-function-size]
+src/mesh/Islands.cpp:276: [readability-function-cognitive-complexity]
+src/mesh/MaterialClusters.cpp:215: [readability-function-size]
+src/mesh/MeshFacts.cpp:43: [readability-function-size]
+src/recipe/Expression.cpp:480: [readability-function-cognitive-complexity]
+src/recipe/Expression.cpp:480: [readability-function-size]
+src/recipe/Expression.cpp:605: [readability-function-cognitive-complexity]
+src/recipe/Expression.cpp:605: [readability-function-size]
+src/recipe/RecipeRead.cpp:366: [readability-function-size]
+src/recipe/RecipeRead.cpp:1414: [readability-function-size]
+src/recipe/RecipeRead.cpp:1530: [readability-function-size]
+src/recipe/RecipeWrite.cpp:32: [readability-function-size]
+src/recipe/RecipeWrite.cpp:348: [readability-function-size]
+src/recipe/RecipeWrite.cpp:627: [readability-function-size]
+src/recipe/Signals.cpp:296: [readability-function-size]
+src/recipe/Signals.cpp:505: [readability-function-size]
+src/recipe/Signals.cpp:632: [readability-function-cognitive-complexity]
+src/recipe/Signals.cpp:632: [readability-function-size]
+src/recipe/Signals.cpp:1200: [readability-function-cognitive-complexity]
+src/recipe/Signals.cpp:1200: [readability-function-size]

@@ -32,6 +32,7 @@
             export ASAN_SYMBOLIZER_PATH=${pkgs.llvmPackages.llvm}/bin/llvm-symbolizer
             : "''${XWIN_DIR:=$HOME/.xwin/splat}"
             export XWIN_DIR
+            git rev-parse --git-dir >/dev/null 2>&1 && git config core.hooksPath .githooks
           '';
         };
       });
