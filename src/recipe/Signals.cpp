@@ -410,7 +410,7 @@ namespace BetterEnchantmentEffects
 
 	void SignalGraph::ReportSignal(SignalGraph& a_graph, std::string_view a_name, std::string a_message)
 	{
-		a_graph.diagnostics_.push_back({ Severity::kError, std::format("signal {}", a_name), std::move(a_message) });
+		Reporter{ a_graph.diagnostics_, std::format("signal {}", a_name) }.Error(std::move(a_message));
 	}
 
 	void SignalGraph::ParseCurves(SignalGraph& a_graph, std::span<const Curve> a_curves)
@@ -675,7 +675,7 @@ namespace BetterEnchantmentEffects
 			for (const auto d : a_graph.nodes_[i].deps) {
 				if (a_graph.nodes_[d].inert && !a_graph.nodes_[i].inert) {
 					a_graph.nodes_[i].inert = true;
-					a_graph.diagnostics_.push_back({ Severity::kWarning, std::format("signal {}", a_graph.nodes_[i].signal.name), std::format("inert because '@{}' is", a_graph.nodes_[d].signal.name) });
+					Reporter{ a_graph.diagnostics_, std::format("signal {}", a_graph.nodes_[i].signal.name) }.Warn(std::format("inert because '@{}' is", a_graph.nodes_[d].signal.name));
 				}
 			}
 		}
