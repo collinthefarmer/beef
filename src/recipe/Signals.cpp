@@ -226,29 +226,6 @@ namespace BetterEnchantmentEffects
 				[](const auto&) { return ValueType::kScalar; });
 		}
 
-		const Source* SourceNamed(const Recipe& a_recipe, std::string_view a_name) noexcept
-		{
-			const auto it = std::ranges::find(a_recipe.sources, a_name, &Source::name);
-			return it == a_recipe.sources.end() ? nullptr : &*it;
-		}
-
-		const Mask* MaskNamed(const Recipe& a_recipe, std::string_view a_name) noexcept
-		{
-			const auto it = std::ranges::find(a_recipe.masks, a_name, &Mask::name);
-			return it == a_recipe.masks.end() ? nullptr : &*it;
-		}
-
-		const Signal* SignalNamed(const Recipe& a_recipe, std::string_view a_name) noexcept
-		{
-			const auto it = std::ranges::find(a_recipe.signals, a_name, &Signal::name);
-			return it == a_recipe.signals.end() ? nullptr : &*it;
-		}
-
-		bool CurveNamed(const Recipe& a_recipe, std::string_view a_name) noexcept
-		{
-			return std::ranges::find(a_recipe.curves, a_name, &Curve::name) != a_recipe.curves.end();
-		}
-
 		bool IsIdentifier(std::string_view a_text) noexcept
 		{
 			if (a_text.empty() || (!std::isalpha(static_cast<unsigned char>(a_text[0])) && a_text[0] != '_')) {
@@ -351,7 +328,7 @@ namespace BetterEnchantmentEffects
 
 		void CheckTrigger(const RowTypes& a_rows, const Report& a_report, const Ref& a_ref, std::string_view a_field)
 		{
-			const auto* signal = SignalNamed(a_rows.recipe, a_ref.name);
+			const auto* signal = a_rows.recipe.FindSignal(a_ref.name);
 			if (!signal) {
 				a_report.Error(std::format("'{}' names unknown signal '@{}'", a_field, a_ref.name));
 			} else if (!Is<TriggerSignal>(signal->kind)) {
@@ -365,7 +342,7 @@ namespace BetterEnchantmentEffects
 				return;
 			}
 			if (const auto name = NamedCurve(*a_curve)) {
-				if (!CurveNamed(a_rows.recipe, *name)) {
+				if (!a_rows.recipe.FindCurve(*name)) {
 					a_report.Error(std::format("'curve' names unknown curve '@{}'", *name));
 				}
 				return;
@@ -736,10 +713,10 @@ namespace BetterEnchantmentEffects
 		if (a_depth >= kMaxRecipeDepth) {
 			return std::nullopt;
 		}
-		if (const auto* source = SourceNamed(a_rows.recipe, a_name)) {
+		if (const auto* source = a_rows.recipe.FindSource(a_name)) {
 			return SourceValueType(*source);
 		}
-		if (const auto* mask = MaskNamed(a_rows.recipe, a_name)) {
+		if (const auto* mask = a_rows.recipe.FindMask(a_name)) {
 			return MaskTypeOf(a_rows, *mask, a_depth + 1);
 		}
 		return a_rows.graph.TypeOf(a_name);
@@ -760,7 +737,7 @@ namespace BetterEnchantmentEffects
 
 	bool NamesTrigger(const RowTypes& a_rows, std::string_view a_name) noexcept
 	{
-		const auto* signal = SignalNamed(a_rows.recipe, a_name);
+		const auto* signal = a_rows.recipe.FindSignal(a_name);
 		return signal && Is<TriggerSignal>(signal->kind);
 	}
 
@@ -846,7 +823,7 @@ namespace BetterEnchantmentEffects
 			out.push_back({ Severity::kError, where, type.error() });
 		}
 		for (const auto& curve : program->Curves()) {
-			if (!CurveNamed(a_rows.recipe, curve)) {
+			if (!a_rows.recipe.FindCurve(curve)) {
 				out.push_back({ Severity::kError, where, std::format("calls unknown curve '@{}'", curve) });
 			}
 		}
@@ -858,7 +835,7 @@ namespace BetterEnchantmentEffects
 		std::vector<Diagnostic> out;
 		const Report            report{ out, a_where };
 		if (const auto* ref = Get<Ref>(a_layer.source)) {
-			if (!SourceNamed(a_rows.recipe, ref->name) && !MaskNamed(a_rows.recipe, ref->name)) {
+			if (!a_rows.recipe.FindSource(ref->name) && !a_rows.recipe.FindMask(ref->name)) {
 				report.Error(std::format("'source' names unknown source or mask '@{}'", ref->name));
 			}
 		}
@@ -867,7 +844,7 @@ namespace BetterEnchantmentEffects
 		if (a_layer.color) {
 			CheckVector<3>(a_rows, report, *a_layer.color, "color", true);
 		}
-		if (a_layer.mask && !MaskNamed(a_rows.recipe, a_layer.mask->name)) {
+		if (a_layer.mask && !a_rows.recipe.FindMask(a_layer.mask->name)) {
 			report.Error(std::format("'mask' names unknown mask '@{}'", a_layer.mask->name));
 		}
 		if (!BlendOnSlot(a_slot, a_layer.blend)) {

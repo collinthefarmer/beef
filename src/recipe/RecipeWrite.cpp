@@ -143,6 +143,24 @@ namespace BetterEnchantmentEffects
 			return out;
 		}
 
+		struct Writer
+		{
+			json& out;
+
+			void Write(std::string_view a_key, std::string_view a_value) { out[std::string{ a_key }] = std::string{ a_value }; }
+			void Write(std::string_view a_key, const Param& a_value) { out[std::string{ a_key }] = ParamToJson(a_value); }
+			void Write(std::string_view a_key, const Param& a_value, const Param& a_default) { if (a_value != a_default) Write(a_key, a_value); }
+			void Write(std::string_view a_key, const Vec3Param& a_value, const Vec3Param& a_default) { if (a_value != a_default) out[std::string{ a_key }] = VecToJson(a_value); }
+			void Write(std::string_view a_key, const std::optional<Vec2Param>& a_value) { if (a_value) out[std::string{ a_key }] = VecToJson(*a_value); }
+			void Write(std::string_view a_key, bool a_value, bool a_default) { if (a_value != a_default) out[std::string{ a_key }] = a_value; }
+			void Write(std::string_view a_key, std::uint32_t a_value, std::uint32_t a_default) { if (a_value != a_default) out[std::string{ a_key }] = a_value; }
+			void WriteNumber(std::string_view a_key, float a_value, float a_default) { if (a_value != a_default) out[std::string{ a_key }] = Num(a_value); }
+			void WritePoint(std::string_view a_key, const Vec3& a_value, const Vec3& a_default) { if (!(a_value == a_default)) out[std::string{ a_key }] = PointToJson(a_value); }
+
+			template <class Row, std::size_t N, class E>
+			void Write(std::string_view a_key, const Row (&a_table)[N], E a_value, E a_default) { if (a_value != a_default) out[std::string{ a_key }] = NameOf(a_table, a_value); }
+		};
+
 		json PulseToJson(const PulseSignal& k)
 		{
 			json o = json::object();
@@ -244,14 +262,16 @@ namespace BetterEnchantmentEffects
 
 		json ImageToJson(const ImageSource& k)
 		{
-			json o = json::object({ { "path", k.path } });
-			if (k.channel != ImageChannel::kRgb) o["channel"] = NameOf(kImageChannels, k.channel);
-			if (k.space != ImageSpace::kTiled) o["space"] = NameOf(kImageSpaces, k.space);
-			if (k.scroll) o["scroll"] = VecToJson(*k.scroll);
-			if (k.tile) o["tile"] = VecToJson(*k.tile);
+			json   o = json::object();
+			Writer w{ o };
+			w.Write("path", k.path);
+			w.Write("channel", kImageChannels, k.channel, ImageChannel::kRgb);
+			w.Write("space", kImageSpaces, k.space, ImageSpace::kTiled);
+			w.Write("scroll", k.scroll);
+			w.Write("tile", k.tile);
 			if (k.mirror[0] || k.mirror[1]) o["mirror"] = json::array({ k.mirror[0], k.mirror[1] });
-			if (k.transpose) o["transpose"] = true;
-			if (k.mip != 0.0f) o["mip"] = Num(k.mip);
+			w.Write("transpose", k.transpose, false);
+			w.WriteNumber("mip", k.mip, 0.0f);
 			return o;
 		}
 
@@ -271,16 +291,18 @@ namespace BetterEnchantmentEffects
 		{
 			const MaterialClustersSource defaults;
 			json                         o = json::object();
-			if (k.clusters != defaults.clusters) o["clusters"] = static_cast<unsigned>(k.clusters);
-			json w = json::object();
-			if (k.roughness != defaults.roughness) w["roughness"] = Num(k.roughness);
-			if (k.metallic != defaults.metallic) w["metallic"] = Num(k.metallic);
-			if (k.occlusion != defaults.occlusion) w["occlusion"] = Num(k.occlusion);
-			if (k.reflectance != defaults.reflectance) w["reflectance"] = Num(k.reflectance);
-			if (k.luma != defaults.luma) w["luma"] = Num(k.luma);
-			if (!w.empty()) o["weights"] = std::move(w);
-			if (k.seed != defaults.seed) o["seed"] = k.seed;
-			if (k.iterations != defaults.iterations) o["iterations"] = k.iterations;
+			Writer                       w{ o };
+			w.Write("clusters", static_cast<std::uint32_t>(k.clusters), static_cast<std::uint32_t>(defaults.clusters));
+			json   weights = json::object();
+			Writer ww{ weights };
+			ww.WriteNumber("roughness", k.roughness, defaults.roughness);
+			ww.WriteNumber("metallic", k.metallic, defaults.metallic);
+			ww.WriteNumber("occlusion", k.occlusion, defaults.occlusion);
+			ww.WriteNumber("reflectance", k.reflectance, defaults.reflectance);
+			ww.WriteNumber("luma", k.luma, defaults.luma);
+			if (!weights.empty()) o["weights"] = std::move(weights);
+			w.Write("seed", k.seed, defaults.seed);
+			w.Write("iterations", k.iterations, defaults.iterations);
 			return o;
 		}
 
@@ -387,22 +409,24 @@ namespace BetterEnchantmentEffects
 		{
 			const ShellSettings defaults;
 			json                o = json::object();
-			if (a_shell.material != defaults.material) o["material"] = NameOf(kShellMaterials, a_shell.material);
-			if (a_shell.blend != defaults.blend) o["blend"] = NameOf(kShellBlends, a_shell.blend);
-			if (a_shell.depthBias != defaults.depthBias) o["depthBias"] = a_shell.depthBias;
-			if (a_shell.alphaTest != defaults.alphaTest) o["alphaTest"] = Num(a_shell.alphaTest);
-			if (a_shell.alpha != defaults.alpha) o["alpha"] = ParamToJson(a_shell.alpha);
-			if (a_shell.rimPower != defaults.rimPower) o["rimPower"] = ParamToJson(a_shell.rimPower);
-			if (a_shell.emissive != defaults.emissive) o["emissive"] = ParamToJson(a_shell.emissive);
-			const auto& p = a_shell.pose;
-			const auto& d = defaults.pose;
-			json        pose = json::object();
-			if (p.inflate != d.inflate) pose["inflate"] = VecToJson(p.inflate);
-			if (p.offset != d.offset) pose["offset"] = VecToJson(p.offset);
-			if (p.scale != d.scale) pose["scale"] = ParamToJson(p.scale);
-			if (p.scalePoint != d.scalePoint) pose["scalePoint"] = PointToJson(p.scalePoint);
-			if (p.spin != d.spin) pose["spin"] = ParamToJson(p.spin);
-			if (p.spinAxis != d.spinAxis) pose["spinAxis"] = PointToJson(p.spinAxis);
+			Writer              w{ o };
+			w.Write("material", kShellMaterials, a_shell.material, defaults.material);
+			w.Write("blend", kShellBlends, a_shell.blend, defaults.blend);
+			w.Write("depthBias", a_shell.depthBias, defaults.depthBias);
+			w.WriteNumber("alphaTest", a_shell.alphaTest, defaults.alphaTest);
+			w.Write("alpha", a_shell.alpha, defaults.alpha);
+			w.Write("rimPower", a_shell.rimPower, defaults.rimPower);
+			w.Write("emissive", a_shell.emissive, defaults.emissive);
+			const ShellPose& p = a_shell.pose;
+			const ShellPose& d = defaults.pose;
+			json             pose = json::object();
+			Writer           wp{ pose };
+			wp.Write("inflate", p.inflate, d.inflate);
+			wp.Write("offset", p.offset, d.offset);
+			wp.Write("scale", p.scale, d.scale);
+			wp.WritePoint("scalePoint", p.scalePoint, d.scalePoint);
+			wp.Write("spin", p.spin, d.spin);
+			wp.WritePoint("spinAxis", p.spinAxis, d.spinAxis);
 			if (!pose.empty()) o["pose"] = std::move(pose);
 			return o;
 		}
