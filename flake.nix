@@ -27,6 +27,7 @@
             export BEEF_DEV_SHELL=1
             export CLANG_TIDY=${pkgs.llvmPackages.clang-unwrapped}/bin/clang-tidy
             export CLANG_QUERY=${pkgs.llvmPackages.clang-unwrapped}/bin/clang-query
+            export CLANG_FORMAT=${pkgs.llvmPackages.clang-unwrapped}/bin/clang-format
             export NATIVE_CXX=${pkgs.clang}/bin/clang++
             export ASAN_SYMBOLIZER_PATH=${pkgs.llvmPackages.llvm}/bin/llvm-symbolizer
             : "''${XWIN_DIR:=$HOME/.xwin/splat}"
