@@ -205,6 +205,18 @@ namespace BetterEnchantmentEffects
 				return j ? ValueFrom(*j, a_key, ctx_) : std::nullopt;
 			}
 
+			void Read(std::string_view a_key, Param& a_out) { if (auto p = Parameter(a_key)) a_out = *p; }
+			void Read(std::string_view a_key, std::optional<Param>& a_out) { if (auto p = Parameter(a_key)) a_out = *p; }
+			void Read(std::string_view a_key, bool& a_out) { if (auto b = Boolean(a_key)) a_out = *b; }
+			void Read(std::string_view a_key, Ref& a_out) { if (auto r = Reference(a_key)) a_out = *r; }
+			void Read(std::string_view a_key, std::optional<Ref>& a_out) { if (auto r = Reference(a_key)) a_out = *r; }
+			void Read(std::string_view a_key, Vec2Param& a_out) { if (auto v = Vector2(a_key)) a_out = *v; }
+			void Read(std::string_view a_key, std::optional<Vec2Param>& a_out) { if (auto v = Vector2(a_key)) a_out = *v; }
+			void Read(std::string_view a_key, Vec3Param& a_out, bool a_color = false) { if (auto v = Vector3(a_key, a_color)) a_out = *v; }
+			void Read(std::string_view a_key, std::optional<Vec3Param>& a_out, bool a_color = false) { if (auto v = Vector3(a_key, a_color)) a_out = *v; }
+			template <class Row, std::size_t N>
+			void Read(std::string_view a_key, const Row (&a_table)[N], decltype(Row::value)& a_out) { if (auto e = Enum(a_key, a_table)) a_out = *e; }
+
 			void Finish()
 			{
 				if (!object_.is_object()) {
@@ -292,6 +304,29 @@ namespace BetterEnchantmentEffects
 			Ctx                             ctx_;
 			std::unordered_set<std::string> used_;
 		};
+
+		template <class Fill>
+		bool ReadObject(const json& a_v, std::string_view a_word, const Ctx& a_ctx, Fill a_fill)
+		{
+			if (!a_v.is_object()) {
+				a_ctx.Error(std::format("'{}' takes an object", a_word));
+				return false;
+			}
+			Reader inner(a_v, a_ctx);
+			a_fill(inner);
+			inner.Finish();
+			return true;
+		}
+
+		template <class Row, std::size_t N>
+		std::optional<decltype(Row::value)> EnumShorthand(const json& a_v, const Row (&a_table)[N], std::string_view a_what, const Ctx& a_ctx)
+		{
+			const auto value = a_v.is_string() ? FromName(a_table, a_v.get<std::string>()) : std::nullopt;
+			if (!value) {
+				a_ctx.Error(std::format("'{}' is one of {}", a_what, Choices(a_table)));
+			}
+			return value;
+		}
 
 		struct KindEntry
 		{
@@ -430,266 +465,521 @@ namespace BetterEnchantmentEffects
 			return CurveRef{ *text };
 		}
 
+		std::optional<SignalKind> ParseConstant(const json& a_v, const Ctx& a_ctx)
+		{
+			const auto value = Reader::ValueFrom(a_v, "constant", a_ctx);
+			if (!value) {
+				return std::nullopt;
+			}
+			return ConstantSignal{ *value };
+		}
+
+		std::optional<SignalKind> ParsePulse(const json& a_v, const Ctx& a_ctx)
+		{
+			PulseSignal k;
+			if (!ReadObject(a_v, "pulse", a_ctx, [&](Reader& r) {
+					r.Read("base", k.base);
+					r.Read("amplitude", k.amplitude);
+					r.Read("period", k.period);
+					r.Read("phase", k.phase);
+					r.Read("waveform", kWaveforms, k.waveform);
+				})) {
+				return std::nullopt;
+			}
+			return k;
+		}
+
+		std::optional<SignalKind> ParseRamp(const json& a_v, const Ctx& a_ctx)
+		{
+			RampSignal k;
+			if (!ReadObject(a_v, "ramp", a_ctx, [&](Reader& r) {
+					r.Read("from", k.from);
+					r.Read("to", k.to);
+					r.Read("seconds", k.seconds);
+				})) {
+				return std::nullopt;
+			}
+			return k;
+		}
+
+		std::optional<SignalKind> ParseEfsh(const json& a_v, const Ctx& a_ctx)
+		{
+			EfshSignal k;
+			if (!ReadObject(a_v, "efsh", a_ctx, [&](Reader& r) {
+					r.Read("field", kEfshFields, k.field);
+					if (!r.Has("field")) a_ctx.Error("'efsh' needs 'field'");
+					if (const auto* rec = r.Child("record")) {
+						if (auto form = FormFrom(*rec, a_ctx, "record")) k.record = *form;
+					} else {
+						a_ctx.Error("'efsh' needs 'record'");
+					}
+				})) {
+				return std::nullopt;
+			}
+			return k;
+		}
+
+		std::optional<SignalKind> ParseActorValue(const json& a_v, const Ctx& a_ctx)
+		{
+			ActorValueSignal k;
+			if (a_v.is_string()) {
+				k.actorValue = a_v.get<std::string>();
+			} else if (!ReadObject(a_v, "av", a_ctx, [&](Reader& r) {
+						   k.actorValue = r.Required("of");
+						   r.Read("measure", kMeasures, k.measure);
+					   })) {
+				return std::nullopt;
+			}
+			if (k.actorValue.empty()) {
+				a_ctx.Error("'av' needs an actor value name");
+			}
+			return k;
+		}
+
+		std::optional<SignalKind> ParseActorState(const json& a_v, const Ctx& a_ctx)
+		{
+			const auto state = EnumShorthand(a_v, kActorStates, "actorState", a_ctx);
+			if (!state) {
+				return std::nullopt;
+			}
+			return ActorStateSignal{ *state };
+		}
+
+		std::optional<SignalKind> ParseEnchantment(const json& a_v, const Ctx& a_ctx)
+		{
+			const auto field = EnumShorthand(a_v, kEnchantmentFields, "enchantment", a_ctx);
+			if (!field) {
+				return std::nullopt;
+			}
+			return EnchantmentSignal{ *field };
+		}
+
+		std::optional<SignalKind> ParseTrigger(const json& a_v, const Ctx& a_ctx)
+		{
+			TriggerSignal k;
+			if (!a_v.is_object()) {
+				a_ctx.Error("'trigger' takes an object");
+				return std::nullopt;
+			}
+			const auto source = OneKey(a_v, a_ctx, "a trigger", { "lifetime", "max", "filter", "at", "value" });
+			if (!source) {
+				return std::nullopt;
+			}
+			Reader r(a_v, a_ctx);
+			r.Read("lifetime", k.lifetime);
+			if (auto m = r.Integer("max")) {
+				if (*m < 1) {
+					a_ctx.Error("'max' must be at least 1");
+				} else {
+					k.max = static_cast<std::uint32_t>(*m);
+				}
+			}
+			r.Child(source->key);
+			if (source->key == "event") {
+				EventOrigin es;
+				if (!source->value->is_string() || source->value->get<std::string>().empty()) {
+					a_ctx.Error("'event' is an id glob string");
+					return std::nullopt;
+				}
+				es.event = source->value->get<std::string>();
+				if (auto at = r.String("at")) es.at = *at;
+				if (const auto* f = r.Child("filter")) {
+					Reader fr(*f, a_ctx);
+					if (auto n = fr.String("node")) es.filter.node = *n;
+					if (auto arg = fr.String("arg")) es.filter.arg = *arg;
+					if (const auto* range = fr.Child("value")) {
+						if (!range->is_array() || range->size() != 2) {
+							a_ctx.Error("'filter.value' is [min, max], either may be null");
+						} else {
+							if ((*range)[0].is_number()) es.filter.value.min = (*range)[0].get<float>();
+							if ((*range)[1].is_number()) es.filter.value.max = (*range)[1].get<float>();
+						}
+					}
+					fr.Finish();
+				}
+				if (r.Has("value")) a_ctx.Error("'value' belongs to a 'when' trigger");
+				k.origin = es;
+			} else if (source->key == "plugin") {
+				if (!source->value->is_string() || source->value->get<std::string>().empty()) {
+					a_ctx.Error("'plugin' is an id string");
+					return std::nullopt;
+				}
+				if (r.Has("filter") || r.Has("at") || r.Has("value")) a_ctx.Error("'filter', 'at' and 'value' belong to 'event' or 'when' triggers");
+				k.origin = PluginOrigin{ source->value->get<std::string>() };
+			} else if (source->key == "when") {
+				WhenOrigin ws;
+				const auto when = r.RefFrom(*source->value, "when");
+				if (!when) {
+					return std::nullopt;
+				}
+				ws.when = *when;
+				ws.value = r.Reference("value");
+				if (r.Has("filter") || r.Has("at")) a_ctx.Error("'filter' and 'at' belong to 'event' triggers");
+				k.origin = ws;
+			} else {
+				a_ctx.Error(std::format("a trigger's source is 'event', 'plugin' or 'when', not '{}'", source->key));
+				return std::nullopt;
+			}
+			r.Finish();
+			return k;
+		}
+
+		std::optional<SignalKind> ParsePayload(const json& a_v, const Ctx& a_ctx)
+		{
+			PayloadSignal k;
+			if (!ReadObject(a_v, "payload", a_ctx, [&](Reader& r) {
+					r.Read("trigger", k.trigger);
+					if (!r.Has("trigger")) a_ctx.Error("'payload' needs 'trigger'");
+					r.Read("field", kPayloadFields, k.field);
+					if (!r.Has("field")) a_ctx.Error("'payload' needs 'field'");
+				})) {
+				return std::nullopt;
+			}
+			return k;
+		}
+
+		std::optional<SignalKind> ParseCounter(const json& a_v, const Ctx& a_ctx)
+		{
+			CounterSignal k;
+			if (!ReadObject(a_v, "counter", a_ctx, [&](Reader& r) {
+					r.Read("trigger", k.trigger);
+					if (!r.Has("trigger")) a_ctx.Error("'counter' needs 'trigger'");
+					r.Read("reset", k.reset);
+					r.Read("cap", k.cap);
+				})) {
+				return std::nullopt;
+			}
+			return k;
+		}
+
+		std::optional<SignalKind> ParseAccumulate(const json& a_v, const Ctx& a_ctx)
+		{
+			AccumulateSignal k;
+			if (!ReadObject(a_v, "accumulate", a_ctx, [&](Reader& r) {
+					r.Read("trigger", k.trigger);
+					if (!r.Has("trigger")) a_ctx.Error("'accumulate' needs 'trigger'");
+					r.Read("decay", k.decay);
+				})) {
+				return std::nullopt;
+			}
+			return k;
+		}
+
+		std::optional<SignalKind> ParseNoise(const json& a_v, const Ctx& a_ctx)
+		{
+			NoiseSignal k;
+			if (!ReadObject(a_v, "noise", a_ctx, [&](Reader& r) {
+					r.Read("frequency", k.frequency);
+					r.Read("amplitude", k.amplitude);
+					if (auto seed = r.Integer("seed")) k.seed = static_cast<std::uint32_t>(std::max(0, *seed));
+				})) {
+				return std::nullopt;
+			}
+			return k;
+		}
+
+		std::optional<SignalKind> ParseGradient(const json& a_v, const Ctx& a_ctx)
+		{
+			GradientSignal k;
+			if (!ReadObject(a_v, "gradient", a_ctx, [&](Reader& r) {
+					r.Read("t", k.t);
+					if (!r.Has("t")) a_ctx.Error("'gradient' needs 't'");
+					const auto* stops = r.Child("stops");
+					if (!stops || !stops->is_array() || stops->empty()) {
+						a_ctx.Error("'gradient' needs a non-empty 'stops' array");
+						return;
+					}
+					for (const auto& stop : *stops) {
+						if (RowCapReached(k.stops.size(), a_ctx, "stops")) {
+							break;
+						}
+						GradientStop gs;
+						Reader       sr(stop, a_ctx);
+						if (auto at = sr.Number("at")) gs.at = *at;
+						else if (!sr.Has("at")) a_ctx.Error("a stop needs 'at'");
+						if (auto c = sr.Vector3("color", true)) gs.color = *c;
+						else if (!sr.Has("color")) a_ctx.Error("a stop needs 'color'");
+						sr.Finish();
+						k.stops.push_back(gs);
+					}
+				})) {
+				return std::nullopt;
+			}
+			return k;
+		}
+
+		std::optional<SignalKind> ParseDelta(const json& a_v, const Ctx& a_ctx)
+		{
+			Reader     r(a_v, a_ctx);
+			const auto of = r.RefFrom(a_v, "delta");
+			if (!of) {
+				return std::nullopt;
+			}
+			return DeltaSignal{ *of };
+		}
+
+		std::optional<SignalKind> ParseSmooth(const json& a_v, const Ctx& a_ctx)
+		{
+			SmoothSignal k;
+			if (!ReadObject(a_v, "smooth", a_ctx, [&](Reader& r) {
+					r.Read("of", k.of);
+					if (!r.Has("of")) a_ctx.Error("'smooth' needs 'of'");
+					r.Read("seconds", k.seconds);
+				})) {
+				return std::nullopt;
+			}
+			return k;
+		}
+
+		std::optional<SignalKind> ParseExpr(const json& a_v, const Ctx& a_ctx)
+		{
+			if (!a_v.is_string() || a_v.get<std::string>().empty()) {
+				a_ctx.Error("'expr' is an expression string");
+				return std::nullopt;
+			}
+			return ExprSignal{ a_v.get<std::string>() };
+		}
+
+		using SignalParser = std::optional<SignalKind> (*)(const json&, const Ctx&);
+		constexpr SignalParser kSignalParsers[]{
+			&ParseConstant, &ParsePulse, &ParseRamp, &ParseEfsh, &ParseActorValue,
+			&ParseActorState, &ParseEnchantment, &ParseTrigger, &ParsePayload, &ParseCounter,
+			&ParseAccumulate, &ParseNoise, &ParseGradient, &ParseDelta, &ParseSmooth, &ParseExpr
+		};
+		static_assert(std::size(kSignalParsers) == kSignalKindCount);
+
 		std::optional<Signal> SignalFrom(const std::string& a_name, const json& a_j, const Ctx& a_ctx)
 		{
 			const auto entry = OneKey(a_j, a_ctx, "a signal", { "curve" });
 			if (!entry) {
 				return std::nullopt;
 			}
-			Signal      s;
-			s.name = a_name;
-			Reader      row(a_j, a_ctx);
-			const auto& kind = entry->key;
-			const json& v = *entry->value;
-			row.Child(kind);
-			const auto kindId = ParseSignalKind(kind);
-			const auto object = [&](auto a_fill) -> bool {
-				if (!v.is_object()) {
-					a_ctx.Error(std::format("'{}' takes an object", kind));
-					return false;
-				}
-				Reader inner(v, a_ctx);
-				a_fill(inner);
-				inner.Finish();
-				return true;
-			};
-
-			if (kindId == SignalKindId::kConstant) {
-				const auto value = Reader::ValueFrom(v, kind, a_ctx);
-				if (!value) {
-					return std::nullopt;
-				}
-				s.kind = ConstantSignal{ *value };
-			} else if (kindId == SignalKindId::kPulse) {
-				PulseSignal k;
-				if (!object([&](Reader& r) {
-						if (auto p = r.Parameter("base")) k.base = *p;
-						if (auto p = r.Parameter("amplitude")) k.amplitude = *p;
-						if (auto p = r.Parameter("period")) k.period = *p;
-						if (auto p = r.Parameter("phase")) k.phase = *p;
-						if (auto w = r.Enum("waveform", kWaveforms)) k.waveform = *w;
-					})) {
-					return std::nullopt;
-				}
-				s.kind = k;
-			} else if (kindId == SignalKindId::kRamp) {
-				RampSignal k;
-				if (!object([&](Reader& r) {
-						if (auto p = r.Parameter("from")) k.from = *p;
-						if (auto p = r.Parameter("to")) k.to = *p;
-						if (auto p = r.Parameter("seconds")) k.seconds = *p;
-					})) {
-					return std::nullopt;
-				}
-				s.kind = k;
-			} else if (kindId == SignalKindId::kEfsh) {
-				EfshSignal k;
-				if (!object([&](Reader& r) {
-						if (auto f = r.Enum("field", kEfshFields)) k.field = *f;
-						else if (!r.Has("field")) a_ctx.Error("'efsh' needs 'field'");
-						if (const auto* rec = r.Child("record")) {
-							if (auto form = FormFrom(*rec, a_ctx, "record")) k.record = *form;
-						} else {
-							a_ctx.Error("'efsh' needs 'record'");
-						}
-					})) {
-					return std::nullopt;
-				}
-				s.kind = k;
-			} else if (kindId == SignalKindId::kActorValue) {
-				ActorValueSignal k;
-				if (v.is_string()) {
-					k.actorValue = v.get<std::string>();
-				} else if (!object([&](Reader& r) {
-							   k.actorValue = r.Required("of");
-							   if (auto m = r.Enum("measure", kMeasures)) k.measure = *m;
-						   })) {
-					return std::nullopt;
-				}
-				if (k.actorValue.empty()) {
-					a_ctx.Error("'av' needs an actor value name");
-				}
-				s.kind = k;
-			} else if (kindId == SignalKindId::kActorState) {
-				const auto state = v.is_string() ? FromName(kActorStates, v.get<std::string>()) : std::nullopt;
-				if (!state) {
-					a_ctx.Error(std::format("'actorState' is one of {}", Choices(kActorStates)));
-					return std::nullopt;
-				}
-				s.kind = ActorStateSignal{ *state };
-			} else if (kindId == SignalKindId::kEnchantment) {
-				const auto field = v.is_string() ? FromName(kEnchantmentFields, v.get<std::string>()) : std::nullopt;
-				if (!field) {
-					a_ctx.Error(std::format("'enchantment' is one of {}", Choices(kEnchantmentFields)));
-					return std::nullopt;
-				}
-				s.kind = EnchantmentSignal{ *field };
-			} else if (kindId == SignalKindId::kTrigger) {
-				TriggerSignal k;
-				if (!v.is_object()) {
-					a_ctx.Error("'trigger' takes an object");
-					return std::nullopt;
-				}
-				const auto source = OneKey(v, a_ctx, "a trigger", { "lifetime", "max", "filter", "at", "value" });
-				if (!source) {
-					return std::nullopt;
-				}
-				Reader r(v, a_ctx);
-				if (auto p = r.Parameter("lifetime")) k.lifetime = *p;
-				if (auto m = r.Integer("max")) {
-					if (*m < 1) {
-						a_ctx.Error("'max' must be at least 1");
-					} else {
-						k.max = static_cast<std::uint32_t>(*m);
-					}
-				}
-				r.Child(source->key);
-				if (source->key == "event") {
-					EventOrigin es;
-					if (!source->value->is_string() || source->value->get<std::string>().empty()) {
-						a_ctx.Error("'event' is an id glob string");
-						return std::nullopt;
-					}
-					es.event = source->value->get<std::string>();
-					if (auto at = r.String("at")) es.at = *at;
-					if (const auto* f = r.Child("filter")) {
-						Reader fr(*f, a_ctx);
-						if (auto n = fr.String("node")) es.filter.node = *n;
-						if (auto arg = fr.String("arg")) es.filter.arg = *arg;
-						if (const auto* range = fr.Child("value")) {
-							if (!range->is_array() || range->size() != 2) {
-								a_ctx.Error("'filter.value' is [min, max], either may be null");
-							} else {
-								if ((*range)[0].is_number()) es.filter.value.min = (*range)[0].get<float>();
-								if ((*range)[1].is_number()) es.filter.value.max = (*range)[1].get<float>();
-							}
-						}
-						fr.Finish();
-					}
-					if (r.Has("value")) a_ctx.Error("'value' belongs to a 'when' trigger");
-					k.origin = es;
-				} else if (source->key == "plugin") {
-					if (!source->value->is_string() || source->value->get<std::string>().empty()) {
-						a_ctx.Error("'plugin' is an id string");
-						return std::nullopt;
-					}
-					if (r.Has("filter") || r.Has("at") || r.Has("value")) a_ctx.Error("'filter', 'at' and 'value' belong to 'event' or 'when' triggers");
-					k.origin = PluginOrigin{ source->value->get<std::string>() };
-				} else if (source->key == "when") {
-					WhenOrigin ws;
-					const auto when = r.RefFrom(*source->value, "when");
-					if (!when) {
-						return std::nullopt;
-					}
-					ws.when = *when;
-					ws.value = r.Reference("value");
-					if (r.Has("filter") || r.Has("at")) a_ctx.Error("'filter' and 'at' belong to 'event' triggers");
-					k.origin = ws;
-				} else {
-					a_ctx.Error(std::format("a trigger's source is 'event', 'plugin' or 'when', not '{}'", source->key));
-					return std::nullopt;
-				}
-				r.Finish();
-				s.kind = k;
-			} else if (kindId == SignalKindId::kPayload) {
-				PayloadSignal k;
-				if (!object([&](Reader& r) {
-						if (auto t = r.Reference("trigger")) k.trigger = *t;
-						else if (!r.Has("trigger")) a_ctx.Error("'payload' needs 'trigger'");
-						if (auto f = r.Enum("field", kPayloadFields)) k.field = *f;
-						else if (!r.Has("field")) a_ctx.Error("'payload' needs 'field'");
-					})) {
-					return std::nullopt;
-				}
-				s.kind = k;
-			} else if (kindId == SignalKindId::kCounter) {
-				CounterSignal k;
-				if (!object([&](Reader& r) {
-						if (auto t = r.Reference("trigger")) k.trigger = *t;
-						else if (!r.Has("trigger")) a_ctx.Error("'counter' needs 'trigger'");
-						k.reset = r.Reference("reset");
-						k.cap = r.Parameter("cap");
-					})) {
-					return std::nullopt;
-				}
-				s.kind = k;
-			} else if (kindId == SignalKindId::kAccumulate) {
-				AccumulateSignal k;
-				if (!object([&](Reader& r) {
-						if (auto t = r.Reference("trigger")) k.trigger = *t;
-						else if (!r.Has("trigger")) a_ctx.Error("'accumulate' needs 'trigger'");
-						if (auto p = r.Parameter("decay")) k.decay = *p;
-					})) {
-					return std::nullopt;
-				}
-				s.kind = k;
-			} else if (kindId == SignalKindId::kNoise) {
-				NoiseSignal k;
-				if (!object([&](Reader& r) {
-						if (auto p = r.Parameter("frequency")) k.frequency = *p;
-						if (auto p = r.Parameter("amplitude")) k.amplitude = *p;
-						if (auto seed = r.Integer("seed")) k.seed = static_cast<std::uint32_t>(std::max(0, *seed));
-					})) {
-					return std::nullopt;
-				}
-				s.kind = k;
-			} else if (kindId == SignalKindId::kGradient) {
-				GradientSignal k;
-				if (!object([&](Reader& r) {
-						if (auto p = r.Parameter("t")) k.t = *p;
-						else if (!r.Has("t")) a_ctx.Error("'gradient' needs 't'");
-						const auto* stops = r.Child("stops");
-						if (!stops || !stops->is_array() || stops->empty()) {
-							a_ctx.Error("'gradient' needs a non-empty 'stops' array");
-							return;
-						}
-						for (const auto& stop : *stops) {
-							if (RowCapReached(k.stops.size(), a_ctx, "stops")) {
-								break;
-							}
-							GradientStop gs;
-							Reader       sr(stop, a_ctx);
-							if (auto at = sr.Number("at")) gs.at = *at;
-							else if (!sr.Has("at")) a_ctx.Error("a stop needs 'at'");
-							if (auto c = sr.Vector3("color", true)) gs.color = *c;
-							else if (!sr.Has("color")) a_ctx.Error("a stop needs 'color'");
-							sr.Finish();
-							k.stops.push_back(gs);
-						}
-					})) {
-					return std::nullopt;
-				}
-				s.kind = k;
-			} else if (kindId == SignalKindId::kDelta) {
-				const auto of = row.RefFrom(v, kind);
-				if (!of) {
-					return std::nullopt;
-				}
-				s.kind = DeltaSignal{ *of };
-			} else if (kindId == SignalKindId::kSmooth) {
-				SmoothSignal k;
-				if (!object([&](Reader& r) {
-						if (auto of = r.Reference("of")) k.of = *of;
-						else if (!r.Has("of")) a_ctx.Error("'smooth' needs 'of'");
-						if (auto p = r.Parameter("seconds")) k.seconds = *p;
-					})) {
-					return std::nullopt;
-				}
-				s.kind = k;
-			} else if (kindId == SignalKindId::kExpr) {
-				if (!v.is_string() || v.get<std::string>().empty()) {
-					a_ctx.Error("'expr' is an expression string");
-					return std::nullopt;
-				}
-				s.kind = ExprSignal{ v.get<std::string>() };
-			} else {
-				a_ctx.Error(std::format("unknown signal kind '{}'; one of {}", kind, Choices(kSignalKinds)));
+			const auto kindId = ParseSignalKind(entry->key);
+			if (!kindId) {
+				a_ctx.Error(std::format("unknown signal kind '{}'; one of {}", entry->key, Choices(kSignalKinds)));
 				return std::nullopt;
 			}
+			auto kind = kSignalParsers[static_cast<std::size_t>(*kindId)](*entry->value, a_ctx);
+			if (!kind) {
+				return std::nullopt;
+			}
+			Signal s;
+			s.name = a_name;
+			s.kind = std::move(*kind);
+			Reader row(a_j, a_ctx);
+			row.Child(entry->key);
 			s.curve = CurveRefFrom(row);
 			row.Finish();
 			return s;
 		}
+
+		std::optional<SourceKind> ParseImage(const json& a_v, const Ctx& a_ctx)
+		{
+			if (!a_v.is_object()) {
+				a_ctx.Error("'image' takes an object with 'path'");
+				return std::nullopt;
+			}
+			ImageSource k;
+			Reader      r(a_v, a_ctx);
+			k.path = r.Required("path");
+			r.Read("channel", kImageChannels, k.channel);
+			r.Read("space", kImageSpaces, k.space);
+			r.Read("scroll", k.scroll);
+			r.Read("tile", k.tile);
+			if (const auto* m = r.Child("mirror")) {
+				if (!m->is_array() || m->size() != 2 || !(*m)[0].is_boolean() || !(*m)[1].is_boolean()) {
+					a_ctx.Error("'mirror' is [u, v] booleans");
+				} else {
+					k.mirror = { (*m)[0].get<bool>(), (*m)[1].get<bool>() };
+				}
+			}
+			r.Read("transpose", k.transpose);
+			if (auto mip = r.Number("mip")) k.mip = std::max(0.0f, *mip);
+			r.Finish();
+			return k;
+		}
+
+		std::optional<SourceKind> ParseMaterial(const json& a_v, const Ctx& a_ctx)
+		{
+			const auto channel = EnumShorthand(a_v, kMaterialChannels, "material", a_ctx);
+			if (!channel) {
+				return std::nullopt;
+			}
+			return MaterialSource{ *channel };
+		}
+
+		std::optional<SourceKind> ParseBake(const json& a_v, const Ctx& a_ctx)
+		{
+			BakeSource k;
+			if (a_v.is_string()) {
+				const auto bare = DefaultBakeKind(a_v.get<std::string>());
+				if (!bare || Is<PartitionBake>(*bare) || Is<BoneWeightBake>(*bare)) {
+					a_ctx.Error(std::format("'bake' is one of {}, or {{\"partition\": slot}} or {{\"boneWeight\": [bones]}}", Choices(kBakeKindWords)));
+					return std::nullopt;
+				}
+				k.bake = *bare;
+			} else {
+				const auto inner = OneKey(a_v, a_ctx, "'bake'");
+				if (!inner) {
+					return std::nullopt;
+				}
+				if (inner->key == "partition") {
+					PartitionBake pb;
+					if (inner->value->is_string()) {
+						const auto slot = BipedSlotFromName(inner->value->get<std::string>());
+						if (!slot) {
+							a_ctx.Error(std::format("unknown biped slot name '{}'", inner->value->get<std::string>()));
+							return std::nullopt;
+						}
+						pb.slot = *slot;
+					} else if (inner->value->is_number_integer() && inner->value->get<int>() >= 30 && inner->value->get<int>() <= 61) {
+						pb.slot = inner->value->get<std::uint32_t>();
+					} else {
+						a_ctx.Error("'partition' is a biped slot name or a number 30..61");
+						return std::nullopt;
+					}
+					k.bake = pb;
+				} else if (inner->key == "boneWeight") {
+					BoneWeightBake bw;
+					if (!inner->value->is_array()) {
+						a_ctx.Error("'boneWeight' is an array of bone names");
+						return std::nullopt;
+					}
+					for (const auto& b : *inner->value) {
+						if (RowCapReached(bw.bones.size(), a_ctx, "boneWeight")) {
+							break;
+						}
+						if (b.is_string()) {
+							bw.bones.push_back(b.get<std::string>());
+						} else {
+							a_ctx.Error("'boneWeight' entries are bone names");
+						}
+					}
+					k.bake = bw;
+				} else {
+					a_ctx.Error(std::format("unknown bake '{}'", inner->key));
+					return std::nullopt;
+				}
+			}
+			return k;
+		}
+
+		std::optional<SourceKind> ParseUv(const json& a_v, const Ctx& a_ctx)
+		{
+			const auto axis = a_v.is_string() ? FromName(kUvAxes, a_v.get<std::string>()) : std::nullopt;
+			if (!axis) {
+				a_ctx.Error("'uv' is \"u\" or \"v\"");
+				return std::nullopt;
+			}
+			return UvSource{ *axis };
+		}
+
+		std::optional<SourceKind> ParseDistance(const json& a_v, const Ctx& a_ctx)
+		{
+			DistanceSource k;
+			if (a_v.is_string()) {
+				k.from = a_v.get<std::string>();
+			} else if (a_v.is_object()) {
+				Reader r(a_v, a_ctx);
+				if (const auto* from = r.Child("from")) {
+					if (from->is_string()) {
+						k.from = from->get<std::string>();
+					} else if (auto point = Reader::PointFrom(*from, "from", a_ctx)) {
+						k.from = *point;
+					}
+				} else {
+					a_ctx.Error("'distance' needs 'from'");
+				}
+				r.Finish();
+			} else {
+				a_ctx.Error("'distance' is a node name or {\"from\": ...}");
+				return std::nullopt;
+			}
+			return k;
+		}
+
+		std::optional<SourceKind> ParseRipple(const json& a_v, const Ctx& a_ctx)
+		{
+			if (!a_v.is_object()) {
+				a_ctx.Error("'ripple' takes an object with 'trigger'");
+				return std::nullopt;
+			}
+			RippleSource k;
+			Reader       r(a_v, a_ctx);
+			r.Read("trigger", k.trigger);
+			if (!r.Has("trigger")) a_ctx.Error("'ripple' needs 'trigger'");
+			r.Read("speed", k.speed);
+			r.Read("width", k.width);
+			r.Read("decay", k.decay);
+			r.Read("shape", kRippleShapes, k.shape);
+			r.Finish();
+			return k;
+		}
+
+		std::optional<SourceKind> ParseMaterialClusters(const json& a_v, const Ctx& a_ctx)
+		{
+			if (!a_v.is_object()) {
+				a_ctx.Error("'materialClusters' takes an object with 'clusters', 'weights', 'seed' and 'iterations'");
+				return std::nullopt;
+			}
+			MaterialClustersSource k;
+			Reader                 r(a_v, a_ctx);
+			bool                   inRange = true;
+			if (auto n = r.Integer("clusters")) {
+				if (*n < 1 || *n > kMaxMaterialClusters) {
+					a_ctx.Error(std::format("'clusters' is 1..{}", kMaxMaterialClusters));
+					inRange = false;
+				} else {
+					k.clusters = static_cast<std::uint8_t>(*n);
+				}
+			}
+			if (const auto* w = r.Child("weights")) {
+				if (!w->is_object()) {
+					a_ctx.Error("'weights' is an object of roughness, metallic, occlusion, reflectance and luma");
+					inRange = false;
+				} else {
+					Reader wr(*w, a_ctx);
+					for (const auto& [field, weight] : { std::pair{ "roughness", &k.roughness }, std::pair{ "metallic", &k.metallic }, std::pair{ "occlusion", &k.occlusion }, std::pair{ "reflectance", &k.reflectance }, std::pair{ "luma", &k.luma } }) {
+						if (auto x = wr.Number(field)) {
+							if (*x < 0.0f || *x > kMaxChannelWeight) {
+								a_ctx.Error(std::format("'weights.{}' is 0..{}", field, kMaxChannelWeight));
+								inRange = false;
+							} else {
+								*weight = *x;
+							}
+						}
+					}
+					wr.Finish();
+				}
+			}
+			if (auto n = r.Integer("seed")) {
+				if (*n < 0) {
+					a_ctx.Error("'seed' is a whole number");
+					inRange = false;
+				} else {
+					k.seed = static_cast<std::uint32_t>(*n);
+				}
+			}
+			if (auto n = r.Integer("iterations")) {
+				if (*n < 1 || *n > static_cast<int>(kMaxClusterIterations)) {
+					a_ctx.Error(std::format("'iterations' is 1..{}", kMaxClusterIterations));
+					inRange = false;
+				} else {
+					k.iterations = static_cast<std::uint32_t>(*n);
+				}
+			}
+			r.Finish();
+			if (!inRange) {
+				return std::nullopt;
+			}
+			return k;
+		}
+
+		using SourceParser = std::optional<SourceKind> (*)(const json&, const Ctx&);
+		constexpr SourceParser kSourceParsers[]{
+			&ParseImage, &ParseMaterial, &ParseBake, &ParseUv, &ParseDistance, &ParseRipple, &ParseMaterialClusters
+		};
+		static_assert(std::size(kSourceParsers) == std::variant_size_v<SourceKind>);
 
 		std::optional<Source> SourceFrom(const std::string& a_name, const json& a_j, const Ctx& a_ctx)
 		{
@@ -697,198 +987,18 @@ namespace BetterEnchantmentEffects
 			if (!entry) {
 				return std::nullopt;
 			}
-			Source      s;
-			s.name = a_name;
-			const auto& kind = entry->key;
-			const json& v = *entry->value;
-			const auto  blank = DefaultSourceKind(kind);
+			const auto blank = DefaultSourceKind(entry->key);
 			if (!blank) {
-				a_ctx.Error(std::format("unknown source kind '{}'", kind));
+				a_ctx.Error(std::format("unknown source kind '{}'", entry->key));
 				return std::nullopt;
 			}
-			if (Is<ImageSource>(*blank)) {
-				if (!v.is_object()) {
-					a_ctx.Error("'image' takes an object with 'path'");
-					return std::nullopt;
-				}
-				ImageSource k;
-				Reader      r(v, a_ctx);
-				k.path = r.Required("path");
-				if (auto c = r.Enum("channel", kImageChannels)) k.channel = *c;
-				if (auto sp = r.Enum("space", kImageSpaces)) k.space = *sp;
-				k.scroll = r.Vector2("scroll");
-				k.tile = r.Vector2("tile");
-				if (const auto* m = r.Child("mirror")) {
-					if (!m->is_array() || m->size() != 2 || !(*m)[0].is_boolean() || !(*m)[1].is_boolean()) {
-						a_ctx.Error("'mirror' is [u, v] booleans");
-					} else {
-						k.mirror = { (*m)[0].get<bool>(), (*m)[1].get<bool>() };
-					}
-				}
-				if (auto t = r.Boolean("transpose")) k.transpose = *t;
-				if (auto mip = r.Number("mip")) k.mip = std::max(0.0f, *mip);
-				r.Finish();
-				s.kind = k;
-			} else if (Is<MaterialSource>(*blank)) {
-				const auto channel = v.is_string() ? FromName(kMaterialChannels, v.get<std::string>()) : std::nullopt;
-				if (!channel) {
-					a_ctx.Error(std::format("'material' is one of {}", Choices(kMaterialChannels)));
-					return std::nullopt;
-				}
-				s.kind = MaterialSource{ *channel };
-			} else if (Is<BakeSource>(*blank)) {
-				BakeSource k;
-				if (v.is_string()) {
-					const auto bare = DefaultBakeKind(v.get<std::string>());
-					if (!bare || Is<PartitionBake>(*bare) || Is<BoneWeightBake>(*bare)) {
-						a_ctx.Error(std::format("'bake' is one of {}, or {{\"partition\": slot}} or {{\"boneWeight\": [bones]}}", Choices(kBakeKindWords)));
-						return std::nullopt;
-					}
-					k.bake = *bare;
-				} else {
-					const auto inner = OneKey(v, a_ctx, "'bake'");
-					if (!inner) {
-						return std::nullopt;
-					}
-					if (inner->key == "partition") {
-						PartitionBake pb;
-						if (inner->value->is_string()) {
-							const auto slot = BipedSlotFromName(inner->value->get<std::string>());
-							if (!slot) {
-								a_ctx.Error(std::format("unknown biped slot name '{}'", inner->value->get<std::string>()));
-								return std::nullopt;
-							}
-							pb.slot = *slot;
-						} else if (inner->value->is_number_integer() && inner->value->get<int>() >= 30 && inner->value->get<int>() <= 61) {
-							pb.slot = inner->value->get<std::uint32_t>();
-						} else {
-							a_ctx.Error("'partition' is a biped slot name or a number 30..61");
-							return std::nullopt;
-						}
-						k.bake = pb;
-					} else if (inner->key == "boneWeight") {
-						BoneWeightBake bw;
-						if (!inner->value->is_array()) {
-							a_ctx.Error("'boneWeight' is an array of bone names");
-							return std::nullopt;
-						}
-						for (const auto& b : *inner->value) {
-							if (RowCapReached(bw.bones.size(), a_ctx, "boneWeight")) {
-								break;
-							}
-							if (b.is_string()) {
-								bw.bones.push_back(b.get<std::string>());
-							} else {
-								a_ctx.Error("'boneWeight' entries are bone names");
-							}
-						}
-						k.bake = bw;
-					} else {
-						a_ctx.Error(std::format("unknown bake '{}'", inner->key));
-						return std::nullopt;
-					}
-				}
-				s.kind = k;
-			} else if (Is<UvSource>(*blank)) {
-				const auto axis = v.is_string() ? FromName(kUvAxes, v.get<std::string>()) : std::nullopt;
-				if (!axis) {
-					a_ctx.Error("'uv' is \"u\" or \"v\"");
-					return std::nullopt;
-				}
-				s.kind = UvSource{ *axis };
-			} else if (Is<DistanceSource>(*blank)) {
-				DistanceSource k;
-				if (v.is_string()) {
-					k.from = v.get<std::string>();
-				} else if (v.is_object()) {
-					Reader r(v, a_ctx);
-					if (const auto* from = r.Child("from")) {
-						if (from->is_string()) {
-							k.from = from->get<std::string>();
-						} else if (auto point = Reader::PointFrom(*from, "from", a_ctx)) {
-							k.from = *point;
-						}
-					} else {
-						a_ctx.Error("'distance' needs 'from'");
-					}
-					r.Finish();
-				} else {
-					a_ctx.Error("'distance' is a node name or {\"from\": ...}");
-					return std::nullopt;
-				}
-				s.kind = k;
-			} else if (Is<RippleSource>(*blank)) {
-				if (!v.is_object()) {
-					a_ctx.Error("'ripple' takes an object with 'trigger'");
-					return std::nullopt;
-				}
-				RippleSource k;
-				Reader       r(v, a_ctx);
-				if (auto t = r.Reference("trigger")) k.trigger = *t;
-				else if (!r.Has("trigger")) a_ctx.Error("'ripple' needs 'trigger'");
-				if (auto p = r.Parameter("speed")) k.speed = *p;
-				if (auto p = r.Parameter("width")) k.width = *p;
-				if (auto p = r.Parameter("decay")) k.decay = *p;
-				if (auto sh = r.Enum("shape", kRippleShapes)) k.shape = *sh;
-				r.Finish();
-				s.kind = k;
-			} else {
-				if (!v.is_object()) {
-					a_ctx.Error("'materialClusters' takes an object with 'clusters', 'weights', 'seed' and 'iterations'");
-					return std::nullopt;
-				}
-				MaterialClustersSource k;
-				Reader                 r(v, a_ctx);
-				bool                   inRange = true;
-				if (auto n = r.Integer("clusters")) {
-					if (*n < 1 || *n > kMaxMaterialClusters) {
-						a_ctx.Error(std::format("'clusters' is 1..{}", kMaxMaterialClusters));
-						inRange = false;
-					} else {
-						k.clusters = static_cast<std::uint8_t>(*n);
-					}
-				}
-				if (const auto* w = r.Child("weights")) {
-					if (!w->is_object()) {
-						a_ctx.Error("'weights' is an object of roughness, metallic, occlusion, reflectance and luma");
-						inRange = false;
-					} else {
-						Reader wr(*w, a_ctx);
-						for (const auto& [field, weight] : { std::pair{ "roughness", &k.roughness }, std::pair{ "metallic", &k.metallic }, std::pair{ "occlusion", &k.occlusion }, std::pair{ "reflectance", &k.reflectance }, std::pair{ "luma", &k.luma } }) {
-							if (auto x = wr.Number(field)) {
-								if (*x < 0.0f || *x > kMaxChannelWeight) {
-									a_ctx.Error(std::format("'weights.{}' is 0..{}", field, kMaxChannelWeight));
-									inRange = false;
-								} else {
-									*weight = *x;
-								}
-							}
-						}
-						wr.Finish();
-					}
-				}
-				if (auto n = r.Integer("seed")) {
-					if (*n < 0) {
-						a_ctx.Error("'seed' is a whole number");
-						inRange = false;
-					} else {
-						k.seed = static_cast<std::uint32_t>(*n);
-					}
-				}
-				if (auto n = r.Integer("iterations")) {
-					if (*n < 1 || *n > static_cast<int>(kMaxClusterIterations)) {
-						a_ctx.Error(std::format("'iterations' is 1..{}", kMaxClusterIterations));
-						inRange = false;
-					} else {
-						k.iterations = static_cast<std::uint32_t>(*n);
-					}
-				}
-				r.Finish();
-				if (!inRange) {
-					return std::nullopt;
-				}
-				s.kind = k;
+			auto kind = kSourceParsers[blank->index()](*entry->value, a_ctx);
+			if (!kind) {
+				return std::nullopt;
 			}
+			Source s;
+			s.name = a_name;
+			s.kind = std::move(*kind);
 			return s;
 		}
 
