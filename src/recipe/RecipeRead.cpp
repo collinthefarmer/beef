@@ -17,26 +17,6 @@ namespace BetterEnchantmentEffects
 {
 	using json = nlohmann::ordered_json;
 
-	std::optional<SourceKind> DefaultSourceKind(std::string_view a_name)
-	{
-		for (std::size_t i = 0; i < std::size(kSourceKindWords); ++i) {
-			if (kSourceKindWords[i] == a_name) {
-				return AlternativeAt<SourceKind>(i);
-			}
-		}
-		return std::nullopt;
-	}
-
-	std::optional<BakeKind> DefaultBakeKind(std::string_view a_name)
-	{
-		for (std::size_t i = 0; i < std::size(kBakeKindWords); ++i) {
-			if (kBakeKindWords[i] == a_name) {
-				return AlternativeAt<BakeKind>(i);
-			}
-		}
-		return std::nullopt;
-	}
-
 	namespace
 	{
 		struct Ctx

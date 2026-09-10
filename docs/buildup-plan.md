@@ -63,6 +63,11 @@ skeletons. It is the critical path: everything above depends on `Recipe.h`.
 Format 1 is frozen, so it reads `src/_old/Recipe.h` and
 `schema/recipe.schema.json` for the target shape and writes the header
 fresh. Then fill agents, disjoint by file:
+- `Recipe.cpp` / `Vocabulary.cpp` / `Resolve.cpp` — the recipe core: record
+  accessors, variants and `IsAnimated` (`Recipe.cpp`); the format's static
+  vocabulary and atomic text forms over `Words.h` (`Vocabulary.cpp`); piece
+  matching and resolution (`Resolve.cpp`). Every symbol is declared in
+  `Recipe.h`; these back it.
 - `RecipeRead.cpp` / `RecipeWrite.cpp` — verified by round-trip against the
   canonical recipe files (byte-identical read-back).
 - `Expression.cpp` — parser and evaluator, bounded depth/op/stack, fed

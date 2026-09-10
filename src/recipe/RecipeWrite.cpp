@@ -13,18 +13,6 @@ namespace BetterEnchantmentEffects
 {
 	using json = nlohmann::ordered_json;
 
-	std::string_view SourceKindName(const SourceKind& a_kind) noexcept
-	{
-		const std::size_t index = a_kind.index();
-		return index < std::size(kSourceKindWords) ? kSourceKindWords[index] : std::string_view{ "?" };
-	}
-
-	std::string_view BakeKindName(const BakeKind& a_bake) noexcept
-	{
-		const std::size_t index = a_bake.index();
-		return index < std::size(kBakeKindWords) ? kBakeKindWords[index] : std::string_view{ "?" };
-	}
-
 	namespace
 	{
 		float ClusterWeight(const MaterialClustersSource& a_source, std::string_view a_field) noexcept

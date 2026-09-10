@@ -9,6 +9,7 @@
 #include <cmath>
 #include <format>
 #include <functional>
+#include <map>
 #include <numbers>
 #include <unordered_set>
 
@@ -371,6 +372,52 @@ namespace BetterEnchantmentEffects
 			}
 			if (const auto program = ParseCurve(a_curve->text); !program) {
 				a_report.Error(std::format("curve: {}", program.error()));
+			}
+		}
+
+		void CheckUniqueNames(const Recipe& a_recipe, std::vector<Diagnostic>& a_out)
+		{
+			const auto error = [&](std::string a_where, std::string a_message) {
+				a_out.push_back({ Severity::kError, std::move(a_where), std::move(a_message) });
+			};
+			const auto warn = [&](std::string a_where, std::string a_message) {
+				a_out.push_back({ Severity::kWarning, std::move(a_where), std::move(a_message) });
+			};
+			const auto unique = [&]<class Row>(const std::vector<Row>& a_rows, const char* a_what) {
+				std::unordered_set<std::string> seen;
+				for (const auto& row : a_rows) {
+					if (!IsName(row.name)) {
+						error(std::format("{} '{}'", a_what, row.name), "names are letters, digits and underscores, not starting with a digit");
+					} else if (!seen.insert(row.name).second) {
+						error(std::format("{} {}", a_what, row.name), "duplicate name");
+					}
+				}
+			};
+			unique(a_recipe.signals, "signal");
+			unique(a_recipe.curves, "curve");
+			unique(a_recipe.sources, "source");
+			unique(a_recipe.masks, "mask");
+			std::unordered_set<std::string> images;
+			for (const auto& s : a_recipe.sources) {
+				images.insert(s.name);
+			}
+			for (const auto& m : a_recipe.masks) {
+				if (!images.insert(m.name).second) {
+					error(std::format("mask {}", m.name), "a source has the same name; per-texel expressions read both by name");
+				}
+			}
+			for (const auto& s : a_recipe.signals) {
+				if (images.contains(s.name)) {
+					warn(std::format("signal {}", s.name), "a source or mask has the same name; inside masks the image wins");
+				}
+			}
+			std::unordered_set<std::string> variants;
+			for (const auto& v : a_recipe.variants) {
+				if (v.name.empty()) {
+					error("variant", "has no name");
+				} else if (!variants.insert(v.name).second) {
+					error(std::format("variant {}", v.name), "duplicate name");
+				}
 			}
 		}
 	}
@@ -839,6 +886,75 @@ namespace BetterEnchantmentEffects
 					report.Error("'skinned.max' must be at least 1");
 				}
 			});
+		return out;
+	}
+
+	std::vector<Diagnostic> Validate(const Recipe& a_recipe)
+	{
+		const SignalGraph graph = SignalGraph::Compile(a_recipe.signals, a_recipe.curves);
+		const RowTypes    rows{ a_recipe, graph };
+
+		std::vector<Diagnostic> out;
+		const auto              append = [&](std::vector<Diagnostic> a_more) {
+            for (auto& d : a_more) {
+                out.push_back(std::move(d));
+            }
+		};
+
+		for (const auto& d : graph.Diagnostics()) {
+			out.push_back(d);
+		}
+
+		CheckUniqueNames(a_recipe, out);
+
+		for (const auto& c : a_recipe.curves) {
+			append(CheckCurve(rows, c));
+		}
+		for (const auto& s : a_recipe.sources) {
+			append(CheckSource(rows, s));
+		}
+		for (const auto& m : a_recipe.masks) {
+			append(CheckMask(rows, m));
+		}
+
+		std::map<Surface, std::vector<Slot>> bound;
+		std::size_t                          index = 0;
+		for (const auto& o : a_recipe.outputs) {
+			const auto where = std::format("output {}", index++);
+			append(CheckOutput(rows, o, where));
+			if (const auto* m = Get<SurfaceOutput>(o)) {
+				auto& held = bound[m->surface];
+				for (const auto other : held) {
+					if (SlotsExclude(other, m->slot)) {
+						out.push_back({ Severity::kWarning, where, std::format("'{}' and '{}' on the same material exclude each other; this output is dropped", SlotName(other), SlotName(m->slot)) });
+					}
+				}
+				held.push_back(m->slot);
+			}
+		}
+
+		const Report shell{ out, "shell" };
+		CheckScalar(rows, shell, a_recipe.shell.alpha, "alpha");
+		CheckScalar(rows, shell, a_recipe.shell.rimPower, "rimPower");
+		CheckScalar(rows, shell, a_recipe.shell.emissive, "emissive");
+		const Report pose{ out, "shell pose" };
+		CheckVector<3>(rows, pose, a_recipe.shell.pose.inflate, "inflate", false);
+		CheckVector<3>(rows, pose, a_recipe.shell.pose.offset, "offset", false);
+		CheckScalar(rows, pose, a_recipe.shell.pose.scale, "scale");
+		CheckScalar(rows, pose, a_recipe.shell.pose.spin, "spin");
+
+		for (const auto& v : a_recipe.variants) {
+			const auto where = std::format("variant {}", v.name);
+			for (const auto& [name, value] : v.overrides) {
+				const auto type = graph.TypeOf(name);
+				if (!type) {
+					out.push_back({ Severity::kError, where, std::format("overrides unknown signal '{}'", name) });
+				} else if (*type != TypeOf(value)) {
+					out.push_back({ Severity::kError, where, std::format("override of '{}' is a {}; the signal is a {}", name, Name(TypeOf(value)), Name(*type)) });
+				}
+			}
+		}
+
 		return out;
 	}
 
