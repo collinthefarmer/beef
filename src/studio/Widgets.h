@@ -89,7 +89,7 @@ RuleActionLabel(RuleAction a_action) noexcept {
 
 struct RuleButton {
   RuleAction action = RuleAction::kNew;
-  std::string_view label;
+  std::string_view label = {};
   Width width = Width::Fit();
   bool enabled = true;
 
