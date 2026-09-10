@@ -33,8 +33,7 @@ SelectedOutput(const GeometryRow *a_geometry,
                const Selection &a_selection) noexcept;
 [[nodiscard]] std::optional<PieceRef>
 RequestOf(const Selection &a_selection) noexcept;
-void ResolveSelection(Selection &a_selection,
-                      const Snapshot &a_snapshot) noexcept;
+void ResolveSelection(Selection &a_selection, const Snapshot &a_snapshot);
 [[nodiscard]] std::vector<ResolvedRecipe>
 ViewedRecipes(std::vector<ResolvedRecipe> a_resolved, const WornPiece &a_piece,
               PieceRef a_ref, const View &a_view,
