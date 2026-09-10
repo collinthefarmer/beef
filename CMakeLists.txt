@@ -84,12 +84,18 @@ target_include_directories(${PROJECT_NAME}Native PRIVATE src)
 target_include_directories(${PROJECT_NAME}Native SYSTEM PRIVATE src/extern)
 target_compile_options(${PROJECT_NAME}Native PRIVATE ${CLANG_CL_FLAGS} -Werror=switch)
 
-# The plugin DLL. Engine-facing sources only; engine/, render/ and menu/ are
-# added by wave 3 and wave 4.
+# The plugin DLL. Engine-facing sources: the wave-3 engine/ and render/
+# adapters plus the entrypoint and settings I/O. menu/ is added by wave 4.
+# The engine-free modules (recipe/mesh/studio/planners) and Settings.cpp come
+# from the Native object library, linked below, so each is compiled once and
+# shared with the native test host.
+file(GLOB_RECURSE ENGINE_RENDER_SOURCES CONFIGURE_DEPENDS
+  "${CMAKE_SOURCE_DIR}/src/engine/*.cpp"
+  "${CMAKE_SOURCE_DIR}/src/render/*.cpp")
 set(PLUGIN_SOURCES
   src/main.cpp
-  src/Settings.cpp
-  src/SettingsFile.cpp)
+  src/SettingsFile.cpp
+  ${ENGINE_RENDER_SOURCES})
 
 add_commonlibsse_plugin(${PROJECT_NAME}
   NAME    ${PROJECT_NAME}
@@ -102,6 +108,8 @@ target_include_directories(${PROJECT_NAME} PRIVATE src)
 target_include_directories(${PROJECT_NAME} SYSTEM PRIVATE src/extern)
 target_compile_definitions(${PROJECT_NAME} PRIVATE BEEF_PLUGIN_NAME="${PROJECT_NAME}")
 target_precompile_headers(${PROJECT_NAME} PRIVATE src/PCH.h)
+
+target_sources(${PROJECT_NAME} PRIVATE $<TARGET_OBJECTS:${PROJECT_NAME}Native>)
 
 target_compile_options(${PROJECT_NAME} PRIVATE ${CLANG_CL_FLAGS} -Werror=switch)
 target_compile_options(CommonLibSSE PRIVATE ${CLANG_CL_FLAGS} ${COMMONLIBSSE_SUPPRESSIONS})

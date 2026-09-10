@@ -1,0 +1,264 @@
+#include "render/Binding.h"
+
+#include "Identity.h"
+
+#include <algorithm>
+#include <bit>
+#include <cmath>
+#include <cstring>
+
+namespace BetterEnchantmentEffects {
+namespace {
+constexpr REL::RelocationID kNiPointLightCtor{69583, 70967};
+constexpr REL::RelocationID kNiPointLightSetAttenuation{17224, 17626};
+constexpr REL::RelocationID kShadowSceneNodeAddLight{99692, 106326};
+constexpr REL::RelocationID kShadowSceneNodeRemoveLight{99698, 106332};
+
+struct LightCreateParams {
+  bool dynamic = true;
+  bool shadowLight = false;
+  bool portalStrict = false;
+  bool affectLand = true;
+  bool affectWater = true;
+  bool neverFades = true;
+  float fov = 1.5707964f;
+  float falloff = 1.0f;
+  float nearDistance = 5.0f;
+  float depthBias = 1.0f;
+  std::uint32_t sceneGraphIndex = 0;
+  void *restrictedNode = nullptr;
+  void *lensFlareData = nullptr;
+};
+static_assert(sizeof(LightCreateParams) == 0x30);
+
+constexpr std::uint32_t kLlfInitialised = 1u << 8;
+constexpr std::uint32_t kLlfInverseSquare = 1u << 10;
+constexpr float kIslScaledUnitsSq = 0.8f * 70.0f * 70.0f;
+constexpr float kIslDefaultCutoff = 0.05f;
+constexpr float kIslShadowCutoff = 0.022f;
+
+RE::NiColor ToNi(const Vec3 &a_v) { return RE::NiColor{a_v.x, a_v.y, a_v.z}; }
+
+RE::NiPointLight *CreatePointLight() {
+  auto *light = RE::malloc<RE::NiPointLight>();
+  if (!light) {
+    return nullptr;
+  }
+  std::memset(static_cast<void *>(light), 0, sizeof(RE::NiPointLight));
+  using ctor_t = RE::NiPointLight *(*)(RE::NiPointLight *);
+  static REL::Relocation<ctor_t> ctor{kNiPointLightCtor};
+  return ctor(light);
+}
+
+void SetAttenuation(RE::NiPointLight *a_light, float a_radius) {
+  using func_t = void (*)(RE::NiPointLight *, float);
+  static REL::Relocation<func_t> func{kNiPointLightSetAttenuation};
+  func(a_light, a_radius);
+}
+
+RE::ShadowSceneNode *MainShadowSceneNode() {
+  return RE::BSShaderManager::State::GetSingleton().shadowSceneNode[0];
+}
+
+float IslRadius(float a_fade, float a_size, float a_cutoff, bool a_shadow) {
+  const float cutoff = a_cutoff >= 1.0f
+                           ? (a_shadow ? kIslShadowCutoff : kIslDefaultCutoff)
+                           : std::clamp(a_cutoff, 0.01f, 1.0f);
+  const float intensity = a_fade * 4.0f;
+  const float radius = std::sqrt(
+      kIslScaledUnitsSq *
+      ((2.0f * intensity - cutoff * a_size * a_size) / (2.0f * cutoff)));
+  return std::isfinite(radius) && radius > 1.0f ? radius : 1.0f;
+}
+}
+
+std::vector<LightPlacement>
+PlaceLightNodes(const Bones &a_bones,
+                std::span<RE::BSGeometry *const> a_geometries,
+                RE::NiAVObject *a_root, const Vec3 &a_offset) {
+  std::vector<LightPlacement> out;
+  const RE::NiPoint3 offset{a_offset.x, a_offset.y, a_offset.z};
+  Match(
+      a_bones,
+      [&](const NamedBones &named) {
+        for (const auto &name : named.bones) {
+          auto *object = a_root
+                             ? a_root->GetObjectByName(RE::BSFixedString{name})
+                             : nullptr;
+          auto *bone = object ? object->AsNode() : nullptr;
+          if (bone) {
+            out.push_back(
+                {RE::NiPointer<RE::NiNode>{bone}, name, offset, 1.0f});
+          } else {
+            logger::warn("light: bone '{}' not found on the wearer", name);
+          }
+        }
+        for (auto &p : out) {
+          p.share = 1.0f / static_cast<float>(out.size());
+        }
+      },
+      [&](const SkinnedBones &skinned) {
+        struct Candidate {
+          RE::NiNode *bone = nullptr;
+          std::uint32_t verts = 0;
+          std::uint32_t bestVerts = 0;
+          RE::NiPoint3 center;
+        };
+        std::vector<Candidate> candidates;
+        for (auto *geometry : a_geometries) {
+          const auto *skin =
+              geometry ? geometry->GetGeometryRuntimeData().skinInstance.get()
+                       : nullptr;
+          if (!skin || !skin->bones || !skin->skinData ||
+              !skin->skinData->boneData) {
+            continue;
+          }
+          const auto *data = skin->skinData.get();
+          for (std::uint32_t i = 0; i < data->bones; ++i) {
+            auto *bone = skin->bones[i] ? skin->bones[i]->AsNode() : nullptr;
+            if (!bone) {
+              continue;
+            }
+            const auto &bd = data->boneData[i];
+            auto it = std::ranges::find(candidates, bone, &Candidate::bone);
+            if (it == candidates.end()) {
+              candidates.push_back({bone, 0, 0, {}});
+              it = std::prev(candidates.end());
+            }
+            it->verts += bd.verts;
+            if (bd.verts > it->bestVerts) {
+              it->bestVerts = bd.verts;
+              it->center = bd.bound.center;
+            }
+          }
+        }
+        std::ranges::sort(candidates,
+                          [](const Candidate &a, const Candidate &b) {
+                            return a.verts > b.verts;
+                          });
+        if (candidates.empty()) {
+          return;
+        }
+        const float top = static_cast<float>(candidates.front().verts);
+        for (const auto &c : candidates) {
+          const float share =
+              top > 0 ? static_cast<float>(c.verts) / top : 1.0f;
+          if (share < std::max(skinned.minShare, 0.3f) ||
+              out.size() >= std::max<std::uint32_t>(1, skinned.max)) {
+            break;
+          }
+          out.push_back({RE::NiPointer<RE::NiNode>{c.bone},
+                         c.bone->name.c_str() ? c.bone->name.c_str() : "?",
+                         c.center + offset, share});
+        }
+      });
+  return out;
+}
+
+std::unique_ptr<LightBinding>
+LightBinding::Create(const std::vector<LightPlacement> &a_placements,
+                     bool a_shadow) {
+  auto *scene = MainShadowSceneNode();
+  if (!scene || a_placements.empty()) {
+    logger::warn("light: {}",
+                 scene ? "no bones to place on" : "no shadow scene node");
+    return nullptr;
+  }
+  std::unique_ptr<LightBinding> out{new LightBinding{}};
+  out->shadow_ = a_shadow;
+  for (const auto &placement : a_placements) {
+    if (!placement.bone) {
+      continue;
+    }
+    auto *light = CreatePointLight();
+    if (!light) {
+      logger::warn("light: NiPointLight constructor returned null");
+      continue;
+    }
+    Entry entry;
+    entry.light = RE::NiPointer<RE::NiPointLight>{light};
+    entry.bone = placement.bone;
+    entry.name = placement.name;
+    entry.share = placement.share;
+
+    light->name = RE::BSFixedString{Identity::LightNodeName()};
+    light->local.translate = placement.offset;
+    auto &ld = light->GetLightRuntimeData();
+    ld.ambient = RE::NiColor{
+        std::bit_cast<float>(kLlfInitialised | kLlfInverseSquare), 1.0f, 0.0f};
+    ld.diffuse = RE::NiColor{0.0f, 0.0f, 0.0f};
+    ld.radius = RE::NiPoint3{1.0f, 1.0f, 1.4142f};
+    ld.fade = 0.0f;
+    SetAttenuation(light, 1.0f);
+
+    placement.bone->AttachChild(light, true);
+    RE::NiUpdateData data{};
+    light->Update(data);
+
+    LightCreateParams params{};
+    params.shadowLight = a_shadow;
+    using add_t = RE::BSLight *(*)(RE::ShadowSceneNode *, RE::NiLight *,
+                                   const LightCreateParams &);
+    static REL::Relocation<add_t> add{kShadowSceneNodeAddLight};
+    auto *bsLight = add(scene, light, params);
+    if (!bsLight) {
+      logger::warn("light: ShadowSceneNode::AddLight returned null for {}",
+                   placement.name);
+      placement.bone->DetachChild(light);
+      continue;
+    }
+    entry.bsLight = RE::NiPointer<RE::BSLight>{bsLight};
+    out->entries_.push_back(std::move(entry));
+  }
+  return out->entries_.empty() ? nullptr : std::move(out);
+}
+
+LightBinding::~LightBinding() {
+  auto *scene = MainShadowSceneNode();
+  for (auto &entry : entries_) {
+    if (entry.bsLight && scene) {
+      using remove_t =
+          void (*)(RE::ShadowSceneNode *, const RE::NiPointer<RE::BSLight> &);
+      static REL::Relocation<remove_t> remove{kShadowSceneNodeRemoveLight};
+      remove(scene, entry.bsLight);
+    }
+    entry.bsLight.reset();
+    if (entry.bone && entry.light) {
+      entry.bone->DetachChild(entry.light.get());
+    }
+  }
+  entries_.clear();
+}
+
+void LightBinding::Update(const Vec3 &a_color, float a_intensity, float a_size,
+                          float a_cutoff, bool a_visible) {
+  const float size = std::clamp(a_size, 0.01f, 50.0f);
+  for (auto &entry : entries_) {
+    if (!entry.light) {
+      continue;
+    }
+    auto &ld = entry.light->GetLightRuntimeData();
+    const float fade =
+        a_visible ? std::max(0.0f, a_intensity) * entry.share / 4.0f : 0.0f;
+    ld.diffuse = a_visible ? ToNi(a_color) : RE::NiColor{0.0f, 0.0f, 0.0f};
+    ld.fade = fade;
+    ld.ambient.green = a_cutoff;
+    ld.radius.z = size;
+    const float radius = IslRadius(fade, size, a_cutoff, shadow_);
+    if (std::fabs(ld.radius.x - radius) > 1.0f) {
+      ld.radius.x = radius;
+      ld.radius.y = radius;
+      SetAttenuation(entry.light.get(), radius);
+    }
+  }
+}
+
+std::string LightBinding::Describe() const {
+  std::string names;
+  for (const auto &entry : entries_) {
+    names += std::format("{}{} x{:.2f}", names.empty() ? "" : ", ", entry.name,
+                         entry.share);
+  }
+  return std::format("light on {}{}", names, shadow_ ? " (shadow)" : "");
+}
+}
