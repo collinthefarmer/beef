@@ -64,8 +64,13 @@ int main() {
       MaterialiseTerm(presets.presets[0], Existing{});
   Check(materialised.edits.size() == 1 && materialised.expression == "@r",
         "MaterialiseTerm reuses the preset expression and names its source");
-  Check(TermLabel("@r", presets, Existing{}) == "leather",
-        "TermLabel recognises a materialised preset by its expression");
+  Check(TermLabel("@r", presets, Existing{}) == "r",
+        "a bare @reference labels as its name; a preset carrying a source edit "
+        "is not matched by expression alone");
+  presets.presets.push_back(
+      MaskPreset{"combo", std::nullopt, {}, "@metal * @r", {}});
+  Check(TermLabel("@metal * @r", presets, Existing{}) == "combo",
+        "TermLabel recognises a pure-expression preset by its expression");
 
   const GeometryRow geometry = SampleGeometry();
   const RecipeRow row;

@@ -615,6 +615,34 @@ Decompile provenance (`decompiled/WornEnchantmentFX/plugin.c` unless noted):
   a `SetSignal`/`SetSource` carrying the amended record. The record is captured
   by value (init-capture), not by `const&`, so the closure owns its state and
   no dangling reference outlives the form build.
+- `Names::GeometryLabel` parses the engine-built geometry name and renders it as
+  `"<armorName|armor <armorId>> geometry <index> (addon <addonId>)"`. The engine
+  grammar it recognises is
+  `" (" + <8-hex addon FormID> + ")[" + <decimal index> + "]/ (" + <8-hex armor FormID> + ") [" + <percent> + "]"`;
+  any string not matching this exact shape is returned verbatim.
+- Edit-time validation (`Edits.cpp`) reuses the `recipe/Signals.h` `RowTypes`
+  checks (`CheckLayer`/`CheckSource`/`CheckMask`/`CheckCurve`/`CheckOutput`); an
+  edit is refused only when it introduces a new diagnostic, so the editor cannot
+  accept a value the loader rejects. `Apply` compiles a `SignalGraph` for edits
+  that need typed-row checks: an interactive edit-time path, not per-tick. No
+  public shell row-check exists, so shell scalar/vector reference type-checks
+  compose the public `SignalTypeOf` query directly; route them through a
+  `CheckShell`-equivalent if one is later published.
+- The mask-editor presets file (`regions.json`, path from `Identity.h`) is one
+  top-level `presets` array; the old `where`/`what` split and the
+  `names.partitions`/`names.bones` maps are gone. Each entry: `name` (required),
+  optional `partition`, `bones`, `expression`, `sources`, and must carry at least
+  one of expression/partition/bones. Caps are parse errors, never UB:
+  `kMaxPresets` 256 entries, `kMaxPresetBones` 64 per preset, `kMaxPresetSources`
+  16 per preset. A file with no `presets` array is zero presets, not an error.
+- `BuildMask` emits into the recipe expression language: `and`→`a * b`,
+  `or`→`max(a, b)`, `not`→`a * (1 - b)`; a single whole-parenthesised term is
+  unwrapped; growth stops at `kMaxExpressionLength`.
+- Mask-editor term and analysis names come from `mesh/`: partition label =
+  `SlotCoverage.name` (fallback `BipedSlotName`), bone label = raw
+  `BoneCoverage.name`/`MeshIsland.dominantBone`, material label =
+  `MaterialCluster.description`. The old friendly-name table is dropped, so bone
+  labels are raw skeleton names.
 
 ## Build and tools
 

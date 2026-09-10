@@ -1,15 +1,12 @@
 #include "studio/Fields.h"
 
+#include "studio/Names.h"
 #include "studio/Page.h"
 
 #include <array>
 
 namespace BetterEnchantmentEffects::Studio {
 namespace {
-[[nodiscard]] std::string SigilName(const std::string &a_text) {
-  return a_text.starts_with('@') ? a_text.substr(1) : a_text;
-}
-
 [[nodiscard]] std::optional<Vec3> LiteralVec3(const std::string &a_text) {
   const auto parsed = ParseVec3Param(a_text);
   if (!parsed) {
@@ -82,7 +79,7 @@ FieldBinding BindLayerColor(std::size_t a_output, std::size_t a_layer) {
 FieldBinding BindLayerMask(std::size_t a_output, std::size_t a_layer) {
   return [a_output,
           a_layer](const std::string &a_text) -> std::optional<RecipeEdit> {
-    const auto name = SigilName(a_text);
+    const auto name = ReferenceName(a_text);
     std::optional<Ref> mask;
     if (!name.empty()) {
       mask = Ref{name};

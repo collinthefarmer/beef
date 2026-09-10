@@ -95,9 +95,7 @@ void ResolveSelection(Selection &a_selection,
   if (!recipe) {
     return;
   }
-  if (a_selection.recipeID.empty()) {
-    a_selection.recipeID = recipe->id;
-  }
+  a_selection.recipeID = recipe->id;
   const GeometryRow *geometry = SelectedGeometry(recipe, a_selection);
   if (!geometry) {
     return;
