@@ -440,114 +440,127 @@ namespace BetterEnchantmentEffects
 		return it == curves_.end() ? nullptr : &it->second;
 	}
 
-	SignalGraph SignalGraph::Compile(std::span<const Signal> a_signals, std::span<const Curve> a_curves)
+	void SignalGraph::ReportSignal(SignalGraph& a_graph, std::string_view a_name, std::string a_message)
 	{
-		SignalGraph g;
-		const auto  report = [&](const std::string& a_name, std::string a_message) {
-			g.diagnostics_.push_back({ Severity::kError, std::format("signal {}", a_name), std::move(a_message) });
-		};
+		a_graph.diagnostics_.push_back({ Severity::kError, std::format("signal {}", a_name), std::move(a_message) });
+	}
 
+	void SignalGraph::ParseCurves(SignalGraph& a_graph, std::span<const Curve> a_curves)
+	{
 		for (const auto& c : a_curves) {
 			if (auto program = ParseCurve(c.text)) {
-				g.curves_.emplace(c.name, std::move(*program));
+				a_graph.curves_.emplace(c.name, std::move(*program));
 			}
 		}
+	}
 
-		g.nodes_.reserve(a_signals.size());
+	void SignalGraph::RegisterNodes(SignalGraph& a_graph, std::span<const Signal> a_signals)
+	{
+		a_graph.nodes_.reserve(a_signals.size());
 		for (const auto& s : a_signals) {
 			Node n;
 			n.signal = s;
-			if (!g.byName_.emplace(s.name, g.nodes_.size()).second) {
+			if (!a_graph.byName_.emplace(s.name, a_graph.nodes_.size()).second) {
 				n.inert = true;
-				report(s.name, "duplicate name; this row is inert");
+				ReportSignal(a_graph, s.name, "duplicate name; this row is inert");
 			}
-			g.nodes_.push_back(std::move(n));
+			a_graph.nodes_.push_back(std::move(n));
 		}
+	}
 
-		for (auto& n : g.nodes_) {
+	void SignalGraph::ResolveRefs(SignalGraph& a_graph)
+	{
+		for (auto& n : a_graph.nodes_) {
 			if (const auto* expr = Get<ExprSignal>(n.signal.kind)) {
 				auto parsed = Program::Parse(expr->text);
 				if (!parsed) {
 					n.inert = true;
-					report(n.signal.name, std::format("expr: {}", parsed.error()));
+					ReportSignal(a_graph, n.signal.name, std::format("expr: {}", parsed.error()));
 				} else {
 					n.expression = std::move(*parsed);
 				}
 			}
 			for (const auto& dep : Dependencies(n.signal, n.expression ? &*n.expression : nullptr)) {
-				const auto idx = g.Index(dep);
+				const auto idx = a_graph.Index(dep);
 				if (!idx) {
 					n.inert = true;
-					report(n.signal.name, std::format("reads unknown signal '@{}'", dep));
+					ReportSignal(a_graph, n.signal.name, std::format("reads unknown signal '@{}'", dep));
 					continue;
 				}
 				n.deps.push_back(*idx);
 			}
 			if (n.signal.curve) {
-				if (const auto name = NamedCurve(*n.signal.curve)) {
-					if (const auto* program = g.CurveProgram(*name)) {
+				const CurveRef& curveRef = *n.signal.curve;
+				if (const auto name = NamedCurve(curveRef)) {
+					if (const auto* program = a_graph.CurveProgram(*name)) {
 						n.curve = *program;
 					} else {
 						n.inert = true;
-						report(n.signal.name, std::format("curve names unknown curve '@{}'", *name));
+						ReportSignal(a_graph, n.signal.name, std::format("curve names unknown curve '@{}'", *name));
 					}
-				} else if (auto program = ParseCurve(n.signal.curve->text)) {
+				} else if (auto program = ParseCurve(curveRef.text)) {
 					n.curve = std::move(*program);
 				} else {
 					n.inert = true;
-					report(n.signal.name, std::format("curve: {}", program.error()));
+					ReportSignal(a_graph, n.signal.name, std::format("curve: {}", program.error()));
 				}
 			}
 		}
+	}
 
+	void SignalGraph::OrderNodes(SignalGraph& a_graph)
+	{
 		enum class Mark : std::uint8_t
 		{
 			kNone,
 			kOpen,
 			kDone
 		};
-		std::vector<Mark>                             marks(g.nodes_.size(), Mark::kNone);
-		std::vector<std::size_t>                      path;
-		std::function<void(std::size_t, std::size_t)> visit = [&](std::size_t i, std::size_t depth) {
-			if (marks[i] == Mark::kDone) {
+		std::vector<Mark>        marks(a_graph.nodes_.size(), Mark::kNone);
+		std::vector<std::size_t> path;
+		const auto               visit = [&](this auto&& a_self, std::size_t a_i, std::size_t a_depth) -> void {
+			if (marks[a_i] == Mark::kDone) {
 				return;
 			}
-			if (marks[i] == Mark::kOpen) {
+			if (marks[a_i] == Mark::kOpen) {
 				std::string cycle;
 				bool        on = false;
 				for (const auto p : path) {
-					on = on || p == i;
+					on = on || p == a_i;
 					if (on) {
-						g.nodes_[p].inert = true;
-						cycle += g.nodes_[p].signal.name + " -> ";
+						a_graph.nodes_[p].inert = true;
+						cycle += a_graph.nodes_[p].signal.name + " -> ";
 					}
 				}
-				report(g.nodes_[i].signal.name, std::format("cycle: {}{}", cycle, g.nodes_[i].signal.name));
+				ReportSignal(a_graph, a_graph.nodes_[a_i].signal.name, std::format("cycle: {}{}", cycle, a_graph.nodes_[a_i].signal.name));
 				return;
 			}
-			if (depth >= kMaxRecipeDepth) {
-				g.nodes_[i].inert = true;
-				report(g.nodes_[i].signal.name, std::format("dependency chain is deeper than {} signals; this row is inert", kMaxRecipeDepth));
-				marks[i] = Mark::kDone;
-				g.order_.push_back(i);
+			if (a_depth >= kMaxRecipeDepth) {
+				a_graph.nodes_[a_i].inert = true;
+				ReportSignal(a_graph, a_graph.nodes_[a_i].signal.name, std::format("dependency chain is deeper than {} signals; this row is inert", kMaxRecipeDepth));
+				marks[a_i] = Mark::kDone;
+				a_graph.order_.push_back(a_i);
 				return;
 			}
-			marks[i] = Mark::kOpen;
-			path.push_back(i);
-			for (const auto d : g.nodes_[i].deps) {
-				visit(d, depth + 1);
+			marks[a_i] = Mark::kOpen;
+			path.push_back(a_i);
+			for (const auto d : a_graph.nodes_[a_i].deps) {
+				a_self(d, a_depth + 1);
 			}
 			path.pop_back();
-			marks[i] = Mark::kDone;
-			g.order_.push_back(i);
+			marks[a_i] = Mark::kDone;
+			a_graph.order_.push_back(a_i);
 		};
-		for (std::size_t i = 0; i < g.nodes_.size(); ++i) {
+		for (std::size_t i = 0; i < a_graph.nodes_.size(); ++i) {
 			visit(i, 0);
 		}
+	}
 
-		for (const auto i : g.order_) {
-			auto&      n = g.nodes_[i];
-			const auto typeOf = [&](std::string_view name) -> std::optional<ValueType> { return g.TypeOf(name); };
+	void SignalGraph::InferTypes(SignalGraph& a_graph)
+	{
+		for (const auto i : a_graph.order_) {
+			auto&      n = a_graph.nodes_[i];
+			const auto typeOf = [&](std::string_view name) -> std::optional<ValueType> { return a_graph.TypeOf(name); };
 			n.type = Match(
 				n.signal.kind,
 				[](const ConstantSignal& k) { return BetterEnchantmentEffects::TypeOf(k.value); },
@@ -573,7 +586,7 @@ namespace BetterEnchantmentEffects
 					auto checked = n.expression->Check(typeOf);
 					if (!checked) {
 						n.inert = true;
-						report(n.signal.name, std::format("expr: {}", checked.error()));
+						ReportSignal(a_graph, n.signal.name, std::format("expr: {}", checked.error()));
 						return ValueType::kScalar;
 					}
 					return *checked;
@@ -581,30 +594,40 @@ namespace BetterEnchantmentEffects
 				[](const auto&) { return ValueType::kScalar; });
 			if (n.curve && n.type != ValueType::kScalar) {
 				n.inert = true;
-				report(n.signal.name, std::format("a curve applies only to a scalar signal; this one is a {}", Name(n.type)));
+				ReportSignal(a_graph, n.signal.name, std::format("a curve applies only to a scalar signal; this one is a {}", Name(n.type)));
 			}
 			if (n.expression) {
 				for (const auto& r : n.expression->References()) {
-					n.exprRefs.push_back(static_cast<std::uint32_t>(g.Index(r).value_or(0)));
+					n.exprRefs.push_back(static_cast<std::uint32_t>(a_graph.Index(r).value_or(0)));
 				}
 				for (const auto& c : n.expression->Curves()) {
-					const auto* program = g.CurveProgram(c);
+					const auto* program = a_graph.CurveProgram(c);
 					if (!program) {
 						n.inert = true;
-						report(n.signal.name, std::format("expr calls unknown curve '@{}'", c));
+						ReportSignal(a_graph, n.signal.name, std::format("expr calls unknown curve '@{}'", c));
 					}
 					n.exprCurves.push_back(program);
 				}
 			}
 		}
+	}
 
-		for (auto& n : g.nodes_) {
+	void SignalGraph::CheckReferenceTypes(SignalGraph& a_graph)
+	{
+		for (auto& n : a_graph.nodes_) {
 			const auto scalar = [&](const Param& p, std::string_view what) {
 				if (const auto* ref = Get<Ref>(p)) {
-					if (const auto t = g.TypeOf(ref->name); t && *t != ValueType::kScalar) {
+					if (const auto t = a_graph.TypeOf(ref->name); t && *t != ValueType::kScalar) {
 						n.inert = true;
-						report(n.signal.name, std::format("'{}' must be a scalar; '@{}' is a {}", what, ref->name, Name(*t)));
+						ReportSignal(a_graph, n.signal.name, std::format("'{}' must be a scalar; '@{}' is a {}", what, ref->name, Name(*t)));
 					}
+				}
+			};
+			const auto trigger = [&](std::string_view a_ref, std::string a_message) {
+				const auto idx = a_graph.Index(a_ref);
+				if (idx && !Is<TriggerSignal>(a_graph.nodes_[*idx].signal.kind)) {
+					n.inert = true;
+					ReportSignal(a_graph, n.signal.name, std::move(a_message));
 				}
 			};
 			Match(
@@ -623,36 +646,22 @@ namespace BetterEnchantmentEffects
 				[&](const TriggerSignal& k) {
 					scalar(k.lifetime, "lifetime");
 					if (const auto* when = Get<WhenOrigin>(k.origin)) {
-						if (const auto t = g.TypeOf(when->when.name); t && *t != ValueType::kScalar) {
+						if (const auto t = a_graph.TypeOf(when->when.name); t && *t != ValueType::kScalar) {
 							n.inert = true;
-							report(n.signal.name, std::format("'when' must be a scalar; '@{}' is a {}", when->when.name, Name(*t)));
+							ReportSignal(a_graph, n.signal.name, std::format("'when' must be a scalar; '@{}' is a {}", when->when.name, Name(*t)));
 						}
 					}
 				},
 				[&](const PayloadSignal& k) {
-					const auto idx = g.Index(k.trigger.name);
-					if (idx && !Is<TriggerSignal>(g.nodes_[*idx].signal.kind)) {
-						n.inert = true;
-						report(n.signal.name, std::format("'trigger' must name a trigger; '@{}' is not one", k.trigger.name));
-					}
+					trigger(k.trigger.name, std::format("'trigger' must name a trigger; '@{}' is not one", k.trigger.name));
 				},
 				[&](const CounterSignal& k) {
-					for (const auto* ref : { &k.trigger, k.reset ? &*k.reset : nullptr }) {
-						if (!ref) continue;
-						const auto idx = g.Index(ref->name);
-						if (idx && !Is<TriggerSignal>(g.nodes_[*idx].signal.kind)) {
-							n.inert = true;
-							report(n.signal.name, std::format("'@{}' must be a trigger", ref->name));
-						}
-					}
+					trigger(k.trigger.name, std::format("'@{}' must be a trigger", k.trigger.name));
+					if (k.reset) trigger(k.reset->name, std::format("'@{}' must be a trigger", k.reset->name));
 					if (k.cap) scalar(*k.cap, "cap");
 				},
 				[&](const AccumulateSignal& k) {
-					const auto idx = g.Index(k.trigger.name);
-					if (idx && !Is<TriggerSignal>(g.nodes_[*idx].signal.kind)) {
-						n.inert = true;
-						report(n.signal.name, std::format("'@{}' must be a trigger", k.trigger.name));
-					}
+					trigger(k.trigger.name, std::format("'@{}' must be a trigger", k.trigger.name));
 					scalar(k.decay, "decay");
 				},
 				[&](const NoiseSignal& k) {
@@ -663,9 +672,9 @@ namespace BetterEnchantmentEffects
 					scalar(k.t, "t");
 					for (const auto& s : k.stops) {
 						if (const auto* ref = Get<Ref>(s.color)) {
-							if (const auto t = g.TypeOf(ref->name); t && *t != ValueType::kVec3) {
+							if (const auto t = a_graph.TypeOf(ref->name); t && *t != ValueType::kVec3) {
 								n.inert = true;
-								report(n.signal.name, std::format("a stop colour must be a vec3; '@{}' is a {}", ref->name, Name(*t)));
+								ReportSignal(a_graph, n.signal.name, std::format("a stop colour must be a vec3; '@{}' is a {}", ref->name, Name(*t)));
 							}
 						}
 					}
@@ -673,15 +682,30 @@ namespace BetterEnchantmentEffects
 				[&](const SmoothSignal& k) { scalar(k.seconds, "seconds"); },
 				[](const auto&) {});
 		}
+	}
 
-		for (const auto i : g.order_) {
-			for (const auto d : g.nodes_[i].deps) {
-				if (g.nodes_[d].inert && !g.nodes_[i].inert) {
-					g.nodes_[i].inert = true;
-					g.diagnostics_.push_back({ Severity::kWarning, std::format("signal {}", g.nodes_[i].signal.name), std::format("inert because '@{}' is", g.nodes_[d].signal.name) });
+	void SignalGraph::PropagateInert(SignalGraph& a_graph)
+	{
+		for (const auto i : a_graph.order_) {
+			for (const auto d : a_graph.nodes_[i].deps) {
+				if (a_graph.nodes_[d].inert && !a_graph.nodes_[i].inert) {
+					a_graph.nodes_[i].inert = true;
+					a_graph.diagnostics_.push_back({ Severity::kWarning, std::format("signal {}", a_graph.nodes_[i].signal.name), std::format("inert because '@{}' is", a_graph.nodes_[d].signal.name) });
 				}
 			}
 		}
+	}
+
+	SignalGraph SignalGraph::Compile(std::span<const Signal> a_signals, std::span<const Curve> a_curves)
+	{
+		SignalGraph g;
+		ParseCurves(g, a_curves);
+		RegisterNodes(g, a_signals);
+		ResolveRefs(g);
+		OrderNodes(g);
+		InferTypes(g);
+		CheckReferenceTypes(g);
+		PropagateInert(g);
 		return g;
 	}
 

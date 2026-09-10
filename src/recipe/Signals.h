@@ -92,6 +92,16 @@ namespace BetterEnchantmentEffects
 		std::unordered_map<std::string, std::size_t> byName_;
 		std::unordered_map<std::string, Program>     curves_;
 		std::vector<Diagnostic>                      diagnostics_;
+
+		static void ReportSignal(SignalGraph& a_graph, std::string_view a_name, std::string a_message);
+		static void ParseCurves(SignalGraph& a_graph, std::span<const Curve> a_curves);
+		static void RegisterNodes(SignalGraph& a_graph, std::span<const Signal> a_signals);
+		static void ResolveRefs(SignalGraph& a_graph);
+		static void OrderNodes(SignalGraph& a_graph);
+		static void InferTypes(SignalGraph& a_graph);
+		static void CheckReferenceTypes(SignalGraph& a_graph);
+		static void PropagateInert(SignalGraph& a_graph);
+
 		friend class SignalState;
 	};
 
