@@ -258,7 +258,11 @@ void TestStackAndInspectorViews() {
   selection.layer = 0;
 
   const std::optional<LayerStack> stack =
-      BuildStackView(piece, recipe, geometry, selection, View{});
+      BuildStackView({.piece = piece,
+                      .recipe = recipe,
+                      .geometry = geometry,
+                      .selection = selection,
+                      .view = View{}});
   Check(stack.has_value() && stack->rows.size() == 2,
         "BuildStackView projects the selected output's layers");
 

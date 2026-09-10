@@ -417,27 +417,34 @@ CreateImage(const std::string &a_creator, std::span<const std::string> a_taken,
   return edits;
 }
 
+struct CreateValueSpec {
+  const std::string &creator;
+  std::string_view field;
+  const std::string &current;
+  bool colour;
+  std::span<const std::string> taken;
+  const FieldBinding &bind;
+};
+
 [[nodiscard]] std::vector<RecipeEdit>
-CreateValue(const std::string &a_creator, std::string_view a_field,
-            const std::string &a_current, bool a_colour,
-            std::span<const std::string> a_taken, const FieldBinding &a_bind) {
+CreateValue(const CreateValueSpec &a_spec) {
   std::vector<RecipeEdit> edits;
   const auto bindTo = [&](const std::string &a_name) {
-    if (const auto bound = a_bind(ReferenceText(a_name))) {
+    if (const auto bound = a_spec.bind(ReferenceText(a_name))) {
       edits.push_back(*bound);
     }
   };
-  if (a_creator == "promote to signal") {
-    const auto name = UniqueName(a_field, a_taken);
+  if (a_spec.creator == "promote to signal") {
+    const auto name = UniqueName(a_spec.field, a_spec.taken);
     Value value = 0.0f;
-    if (a_colour) {
-      const auto colour = LiteralColor(a_current);
+    if (a_spec.colour) {
+      const auto colour = LiteralColor(a_spec.current);
       if (!colour) {
         return edits;
       }
       value = *colour;
     } else {
-      const auto param = ParseParam(a_current);
+      const auto param = ParseParam(a_spec.current);
       const float *number = param ? Get<float>(*param) : nullptr;
       if (number == nullptr) {
         return edits;
@@ -449,47 +456,63 @@ CreateValue(const std::string &a_creator, std::string_view a_field,
     bindTo(name);
     return edits;
   }
-  if (a_creator == "new constant") {
-    const auto name = UniqueName("signal", a_taken);
+  if (a_spec.creator == "new constant") {
+    const auto name = UniqueName("signal", a_spec.taken);
     edits.emplace_back(AddSignal{name});
-    if (a_colour) {
+    if (a_spec.colour) {
       edits.emplace_back(SetConstant{name, Vec3{1.0f, 1.0f, 1.0f}});
     }
     bindTo(name);
     return edits;
   }
-  if (a_creator == "new expression") {
-    const auto name = UniqueName("signal", a_taken);
+  if (a_spec.creator == "new expression") {
+    const auto name = UniqueName("signal", a_spec.taken);
     edits.emplace_back(AddSignal{name});
-    edits.emplace_back(SetExpression{name, a_colour ? "[1, 1, 1]" : "1"});
+    edits.emplace_back(SetExpression{name, a_spec.colour ? "[1, 1, 1]" : "1"});
     bindTo(name);
     return edits;
   }
   return edits;
 }
 
-[[nodiscard]] FormField ParamField(const std::string &a_name, FieldKind a_kind,
-                                   const std::string &a_text,
-                                   std::vector<std::string> a_names,
-                                   FieldBinding a_bind) {
+struct ParamFieldSpec {
+  std::string name;
+  FieldKind kind;
+  std::string text;
+  std::vector<std::string> names;
+  FieldBinding bind;
+};
+
+[[nodiscard]] FormField ParamField(ParamFieldSpec a_spec) {
   const bool valued =
-      a_kind == FieldKind::kScalar || a_kind == FieldKind::kColor ||
-      a_kind == FieldKind::kVector || a_kind == FieldKind::kVec2;
+      a_spec.kind == FieldKind::kScalar || a_spec.kind == FieldKind::kColor ||
+      a_spec.kind == FieldKind::kVector || a_spec.kind == FieldKind::kVec2;
   const bool signal =
-      valued && IsWholeReference(a_text) &&
-      std::ranges::find(a_names, ReferenceName(a_text)) != a_names.end();
-  const bool offers = !a_names.empty() && (a_kind == FieldKind::kScalar ||
-                                           a_kind == FieldKind::kColor);
+      valued && IsWholeReference(a_spec.text) &&
+      std::ranges::find(a_spec.names, ReferenceName(a_spec.text)) !=
+          a_spec.names.end();
+  const bool offers =
+      !a_spec.names.empty() &&
+      (a_spec.kind == FieldKind::kScalar || a_spec.kind == FieldKind::kColor);
   FormField field = ValueField(
-      a_name, a_kind, a_text, a_names, std::move(a_bind), std::nullopt,
-      signal ? std::optional{FieldDetail::kSignal} : std::nullopt);
+      {.name = a_spec.name,
+       .kind = a_spec.kind,
+       .text = a_spec.text,
+       .names = a_spec.names,
+       .bind = std::move(a_spec.bind),
+       .detail = signal ? std::optional{FieldDetail::kSignal} : std::nullopt});
   if (offers) {
     field.creators = Creators(kValueCreators);
-    field.create = [name = a_name, current = a_text,
-                    colour = a_kind == FieldKind::kColor,
-                    taken = std::move(a_names),
+    field.create = [name = a_spec.name, current = a_spec.text,
+                    colour = a_spec.kind == FieldKind::kColor,
+                    taken = std::move(a_spec.names),
                     bind = field.bind](const std::string &a_creator) {
-      return CreateValue(a_creator, name, current, colour, taken, bind);
+      return CreateValue({.creator = a_creator,
+                          .field = name,
+                          .current = current,
+                          .colour = colour,
+                          .taken = taken,
+                          .bind = bind});
     };
   }
   return field;
@@ -677,11 +700,12 @@ BindImageMirror(std::string a_name, SourceKind a_record, std::size_t a_axis) {
 }
 }
 
-std::optional<LayerStack> BuildStackView(const PieceRow &a_piece,
-                                         const RecipeRow &a_recipe,
-                                         const GeometryRow &a_geometry,
-                                         const Selection &a_selection,
-                                         const View &a_view) {
+std::optional<LayerStack> BuildStackView(const StackViewInput &a_input) {
+  const PieceRow &a_piece = a_input.piece;
+  const RecipeRow &a_recipe = a_input.recipe;
+  const GeometryRow &a_geometry = a_input.geometry;
+  const Selection &a_selection = a_input.selection;
+  const View &a_view = a_input.view;
   const OutputRow *output = SelectedOutput(&a_geometry, a_selection);
   if (output == nullptr || !IsMaterialOutput(*output)) {
     return std::nullopt;
@@ -1099,18 +1123,26 @@ FormField RowNameField(RowKind a_kind, const std::string &a_name,
     }
     return std::nullopt;
   };
-  return ValueField(a_name, FieldKind::kName, a_name, std::move(a_taken),
-                    std::move(bind));
+  return ValueField({.name = a_name,
+                     .kind = FieldKind::kName,
+                     .text = a_name,
+                     .names = std::move(a_taken),
+                     .bind = std::move(bind)});
 }
 
 FormField CurveTextField(const std::string &a_curve,
                          const std::string &a_text) {
-  return TextedField(a_curve, FieldKind::kCurve, a_text,
-                     BindCurveText(a_curve));
+  return TextedField({.name = a_curve,
+                      .kind = FieldKind::kCurve,
+                      .text = a_text,
+                      .bind = BindCurveText(a_curve)});
 }
 
 FormField MaskTextField(const std::string &a_mask, const std::string &a_text) {
-  return TextedField(a_mask, FieldKind::kMask, a_text, BindMaskText(a_mask));
+  return TextedField({.name = a_mask,
+                      .kind = FieldKind::kMask,
+                      .text = a_text,
+                      .bind = BindMaskText(a_mask)});
 }
 
 namespace {
@@ -1118,9 +1150,13 @@ namespace {
 SourceFieldOf(const Inspector &a_in,
               const std::vector<std::string> &a_sourceNames) {
   FormField source = ValueField(
-      "source", FieldKind::kLayerSource, a_in.row.source, a_sourceNames,
-      BindLayerSource(a_in.output, a_in.layer), std::nullopt,
-      DetailWhen(a_in.source.has_value(), FieldDetail::kSource));
+      {.name = "source",
+       .kind = FieldKind::kLayerSource,
+       .text = a_in.row.source,
+       .names = a_sourceNames,
+       .bind = BindLayerSource(a_in.output, a_in.layer),
+       .value = std::nullopt,
+       .detail = DetailWhen(a_in.source.has_value(), FieldDetail::kSource)});
   source.creators = Creators(kImageCreators);
   source.create = [taken = a_sourceNames,
                    bind = source.bind](const std::string &a_creator) {
@@ -1130,10 +1166,15 @@ SourceFieldOf(const Inspector &a_in,
 }
 
 [[nodiscard]] FormField CurveFieldOf(const Inspector &a_in) {
-  FormField curve =
-      ValueField("curve", FieldKind::kCurve, a_in.row.curve, a_in.curves,
-                 BindLayerCurve(a_in.output, a_in.layer), std::nullopt,
-                 DetailWhen(a_in.curve.has_value(), FieldDetail::kCurve), true);
+  FormField curve = ValueField(
+      {.name = "curve",
+       .kind = FieldKind::kCurve,
+       .text = a_in.row.curve,
+       .names = a_in.curves,
+       .bind = BindLayerCurve(a_in.output, a_in.layer),
+       .value = std::nullopt,
+       .detail = DetailWhen(a_in.curve.has_value(), FieldDetail::kCurve),
+       .allowEmpty = true});
   curve.creators = {"new curve"};
   curve.create = [curves = a_in.curves,
                   bind = curve.bind](const std::string &) {
@@ -1151,15 +1192,24 @@ SourceFieldOf(const Inspector &a_in,
 [[nodiscard]] FormField
 OpacityFieldOf(const Inspector &a_in,
                const std::vector<std::string> &a_signalNames) {
-  FormField opacity = ValueField(
-      "opacity", FieldKind::kScalar, a_in.row.opacityText, a_in.scalarSignals,
-      BindLayerOpacity(a_in.output, a_in.layer), std::nullopt,
-      DetailWhen(NamesSignal(a_in, a_in.row.opacityText),
-                 FieldDetail::kOpacity));
+  FormField opacity =
+      ValueField({.name = "opacity",
+                  .kind = FieldKind::kScalar,
+                  .text = a_in.row.opacityText,
+                  .names = a_in.scalarSignals,
+                  .bind = BindLayerOpacity(a_in.output, a_in.layer),
+                  .value = std::nullopt,
+                  .detail = DetailWhen(NamesSignal(a_in, a_in.row.opacityText),
+                                       FieldDetail::kOpacity)});
   opacity.creators = Creators(kValueCreators);
   opacity.create = [current = a_in.row.opacityText, taken = a_signalNames,
                     bind = opacity.bind](const std::string &a_creator) {
-    return CreateValue(a_creator, "opacity", current, false, taken, bind);
+    return CreateValue({.creator = a_creator,
+                        .field = "opacity",
+                        .current = current,
+                        .colour = false,
+                        .taken = taken,
+                        .bind = bind});
   };
   return opacity;
 }
@@ -1167,14 +1217,25 @@ OpacityFieldOf(const Inspector &a_in,
 [[nodiscard]] FormField
 ColourFieldOf(const Inspector &a_in,
               const std::vector<std::string> &a_signalNames) {
-  FormField colour = ValueField(
-      "colour", FieldKind::kColor, a_in.row.color, a_in.colorSignals,
-      BindLayerColor(a_in.output, a_in.layer), std::nullopt,
-      DetailWhen(NamesSignal(a_in, a_in.row.color), FieldDetail::kColor), true);
+  FormField colour =
+      ValueField({.name = "colour",
+                  .kind = FieldKind::kColor,
+                  .text = a_in.row.color,
+                  .names = a_in.colorSignals,
+                  .bind = BindLayerColor(a_in.output, a_in.layer),
+                  .value = std::nullopt,
+                  .detail = DetailWhen(NamesSignal(a_in, a_in.row.color),
+                                       FieldDetail::kColor),
+                  .allowEmpty = true});
   colour.creators = Creators(kValueCreators);
   colour.create = [current = a_in.row.color, taken = a_signalNames,
                    bind = colour.bind](const std::string &a_creator) {
-    return CreateValue(a_creator, "colour", current, true, taken, bind);
+    return CreateValue({.creator = a_creator,
+                        .field = "colour",
+                        .current = current,
+                        .colour = true,
+                        .taken = taken,
+                        .bind = bind});
   };
   return colour;
 }
@@ -1183,9 +1244,13 @@ ColourFieldOf(const Inspector &a_in,
 MaskFieldOf(const Inspector &a_in,
             const std::vector<std::string> &a_sourceNames) {
   FormField mask = ReferenceField(
-      "mask", a_in.row.mask, a_in.masks, true,
-      BindLayerMask(a_in.output, a_in.layer),
-      DetailWhen(a_in.mask.has_value(), FieldDetail::kMask), {"new mask"});
+      {.name = "mask",
+       .text = a_in.row.mask,
+       .names = a_in.masks,
+       .allowEmpty = true,
+       .bind = BindLayerMask(a_in.output, a_in.layer),
+       .detail = DetailWhen(a_in.mask.has_value(), FieldDetail::kMask),
+       .creators = {"new mask"}});
   mask.create = [taken = a_sourceNames,
                  bind = mask.bind](const std::string &a_creator) {
     return CreateImage(a_creator, taken, bind);
@@ -1204,8 +1269,11 @@ std::vector<FormField> InspectorForm(const Inspector &a_inspector) {
   form.push_back(OpacityFieldOf(in, signalNames));
   form.push_back(ColourFieldOf(in, signalNames));
   form.push_back(MaskFieldOf(in, sourceNames));
-  form.push_back(ValueField("channels", FieldKind::kChannels, in.row.channels,
-                            {}, BindLayerChannels(in.output, in.layer)));
+  form.push_back(ValueField({.name = "channels",
+                             .kind = FieldKind::kChannels,
+                             .text = in.row.channels,
+                             .names = {},
+                             .bind = BindLayerChannels(in.output, in.layer)}));
   return form;
 }
 
@@ -1220,15 +1288,25 @@ std::vector<FormField> ScalarForm(const LayerStack &a_stack) {
     const bool signal =
         IsWholeReference(scalar.text) &&
         std::ranges::find(names, ReferenceName(scalar.text)) != names.end();
-    FormField row = ValueField(
-        scalar.name, colour ? FieldKind::kColor : FieldKind::kScalar,
-        scalar.text, names, BindScalar(a_stack.output, field), scalar.value,
-        signal ? std::optional{FieldDetail::kSignal} : std::nullopt);
+    FormField row =
+        ValueField({.name = scalar.name,
+                    .kind = colour ? FieldKind::kColor : FieldKind::kScalar,
+                    .text = scalar.text,
+                    .names = names,
+                    .bind = BindScalar(a_stack.output, field),
+                    .value = scalar.value,
+                    .detail = signal ? std::optional{FieldDetail::kSignal}
+                                     : std::nullopt});
     row.creators = Creators(kValueCreators);
     row.create = [name = scalar.name, current = scalar.text, colour,
                   taken = signalNames,
                   bind = row.bind](const std::string &a_creator) {
-      return CreateValue(a_creator, name, current, colour, taken, bind);
+      return CreateValue({.creator = a_creator,
+                          .field = name,
+                          .current = current,
+                          .colour = colour,
+                          .taken = taken,
+                          .bind = bind});
     };
     form.push_back(std::move(row));
   }
@@ -1267,36 +1345,50 @@ void ConstantFields(std::vector<FormField> &a_form, const SignalContext &a_ctx,
         return std::format("{}, {}", ParamText(a_pair.x), ParamText(a_pair.y));
       },
       [](const Vec3 &a_colour) { return LiteralColorText(a_colour); });
-  a_form.push_back(TextedField("value", FieldKind::kSignalValue, text,
-                               BindSignalValue(a_ctx.name)));
+  a_form.push_back(TextedField({.name = "value",
+                                .kind = FieldKind::kSignalValue,
+                                .text = text,
+                                .bind = BindSignalValue(a_ctx.name)}));
 }
 
 void ExprFields(std::vector<FormField> &a_form, const SignalContext &a_ctx,
                 const ExprSignal &a_expr) {
-  a_form.push_back(TextedField("value", FieldKind::kSignalValue, a_expr.text,
-                               BindSignalValue(a_ctx.name)));
+  a_form.push_back(TextedField({.name = "value",
+                                .kind = FieldKind::kSignalValue,
+                                .text = a_expr.text,
+                                .bind = BindSignalValue(a_ctx.name)}));
 }
 
 void PulseFields(std::vector<FormField> &a_form, const SignalContext &a_ctx,
                  const PulseSignal &a_pulse) {
-  a_form.push_back(ParamField(
-      "base", FieldKind::kScalar, ParamText(a_pulse.base), a_ctx.names.scalar,
-      BindSignalMember(a_ctx.name, a_ctx.record, &PulseSignal::base,
-                       ParseParam)));
   a_form.push_back(
-      ParamField("amplitude", FieldKind::kScalar, ParamText(a_pulse.amplitude),
-                 a_ctx.names.scalar,
-                 BindSignalMember(a_ctx.name, a_ctx.record,
-                                  &PulseSignal::amplitude, ParseParam)));
-  a_form.push_back(
-      ParamField("period", FieldKind::kScalar, ParamText(a_pulse.period),
-                 a_ctx.names.scalar,
-                 BindSignalMember(a_ctx.name, a_ctx.record,
-                                  &PulseSignal::period, ParseParam)));
+      ParamField({.name = "base",
+                  .kind = FieldKind::kScalar,
+                  .text = ParamText(a_pulse.base),
+                  .names = a_ctx.names.scalar,
+                  .bind = BindSignalMember(a_ctx.name, a_ctx.record,
+                                           &PulseSignal::base, ParseParam)}));
   a_form.push_back(ParamField(
-      "phase", FieldKind::kScalar, ParamText(a_pulse.phase), a_ctx.names.scalar,
-      BindSignalMember(a_ctx.name, a_ctx.record, &PulseSignal::phase,
-                       ParseParam)));
+      {.name = "amplitude",
+       .kind = FieldKind::kScalar,
+       .text = ParamText(a_pulse.amplitude),
+       .names = a_ctx.names.scalar,
+       .bind = BindSignalMember(a_ctx.name, a_ctx.record,
+                                &PulseSignal::amplitude, ParseParam)}));
+  a_form.push_back(
+      ParamField({.name = "period",
+                  .kind = FieldKind::kScalar,
+                  .text = ParamText(a_pulse.period),
+                  .names = a_ctx.names.scalar,
+                  .bind = BindSignalMember(a_ctx.name, a_ctx.record,
+                                           &PulseSignal::period, ParseParam)}));
+  a_form.push_back(
+      ParamField({.name = "phase",
+                  .kind = FieldKind::kScalar,
+                  .text = ParamText(a_pulse.phase),
+                  .names = a_ctx.names.scalar,
+                  .bind = BindSignalMember(a_ctx.name, a_ctx.record,
+                                           &PulseSignal::phase, ParseParam)}));
   a_form.push_back(ChoiceField(
       "waveform", std::string{NameOf(kWaveforms, a_pulse.waveform)},
       WordsOf(kWaveforms),
@@ -1306,18 +1398,27 @@ void PulseFields(std::vector<FormField> &a_form, const SignalContext &a_ctx,
 
 void RampFields(std::vector<FormField> &a_form, const SignalContext &a_ctx,
                 const RampSignal &a_ramp) {
-  a_form.push_back(ParamField("from", FieldKind::kScalar,
-                              ParamText(a_ramp.from), a_ctx.names.scalar,
-                              BindSignalMember(a_ctx.name, a_ctx.record,
-                                               &RampSignal::from, ParseParam)));
-  a_form.push_back(ParamField(
-      "to", FieldKind::kScalar, ParamText(a_ramp.to), a_ctx.names.scalar,
-      BindSignalMember(a_ctx.name, a_ctx.record, &RampSignal::to, ParseParam)));
   a_form.push_back(
-      ParamField("seconds", FieldKind::kScalar, ParamText(a_ramp.seconds),
-                 a_ctx.names.scalar,
-                 BindSignalMember(a_ctx.name, a_ctx.record,
-                                  &RampSignal::seconds, ParseParam)));
+      ParamField({.name = "from",
+                  .kind = FieldKind::kScalar,
+                  .text = ParamText(a_ramp.from),
+                  .names = a_ctx.names.scalar,
+                  .bind = BindSignalMember(a_ctx.name, a_ctx.record,
+                                           &RampSignal::from, ParseParam)}));
+  a_form.push_back(
+      ParamField({.name = "to",
+                  .kind = FieldKind::kScalar,
+                  .text = ParamText(a_ramp.to),
+                  .names = a_ctx.names.scalar,
+                  .bind = BindSignalMember(a_ctx.name, a_ctx.record,
+                                           &RampSignal::to, ParseParam)}));
+  a_form.push_back(
+      ParamField({.name = "seconds",
+                  .kind = FieldKind::kScalar,
+                  .text = ParamText(a_ramp.seconds),
+                  .names = a_ctx.names.scalar,
+                  .bind = BindSignalMember(a_ctx.name, a_ctx.record,
+                                           &RampSignal::seconds, ParseParam)}));
 }
 
 void EfshFields(std::vector<FormField> &a_form, const SignalContext &a_ctx,
@@ -1327,18 +1428,23 @@ void EfshFields(std::vector<FormField> &a_form, const SignalContext &a_ctx,
                   WordsOf(kEfshFields),
                   BindSignalMember(a_ctx.name, a_ctx.record, &EfshSignal::field,
                                    WordOf(kEfshFields))));
-  a_form.push_back(TextedField(
-      "record", FieldKind::kText, a_efsh.record.text,
-      BindSignalMember(a_ctx.name, a_ctx.record, &EfshSignal::record, FormOf)));
+  a_form.push_back(
+      TextedField({.name = "record",
+                   .kind = FieldKind::kText,
+                   .text = a_efsh.record.text,
+                   .bind = BindSignalMember(a_ctx.name, a_ctx.record,
+                                            &EfshSignal::record, FormOf)}));
 }
 
 void ActorValueFields(std::vector<FormField> &a_form,
                       const SignalContext &a_ctx,
                       const ActorValueSignal &a_actorValue) {
-  a_form.push_back(
-      TextedField("actorValue", FieldKind::kText, a_actorValue.actorValue,
-                  BindSignalMember(a_ctx.name, a_ctx.record,
-                                   &ActorValueSignal::actorValue, TextOf)));
+  a_form.push_back(TextedField(
+      {.name = "actorValue",
+       .kind = FieldKind::kText,
+       .text = a_actorValue.actorValue,
+       .bind = BindSignalMember(a_ctx.name, a_ctx.record,
+                                &ActorValueSignal::actorValue, TextOf)}));
   a_form.push_back(ChoiceField(
       "measure", std::string{NameOf(kMeasures, a_actorValue.measure)},
       WordsOf(kMeasures),
@@ -1379,40 +1485,58 @@ void TriggerFields(std::vector<FormField> &a_form, const SignalContext &a_ctx,
   Match(
       a_trigger.origin,
       [&](const EventOrigin &a_event) {
+        a_form.push_back(TextedField(
+            {.name = "event",
+             .kind = FieldKind::kText,
+             .text = a_event.event,
+             .bind = BindTriggerMember(a_ctx.name, a_ctx.record,
+                                       &EventOrigin::event, TextOf)}));
         a_form.push_back(
-            TextedField("event", FieldKind::kText, a_event.event,
-                        BindTriggerMember(a_ctx.name, a_ctx.record,
-                                          &EventOrigin::event, TextOf)));
-        a_form.push_back(
-            TextedField("at", FieldKind::kText, a_event.at,
-                        BindTriggerMember(a_ctx.name, a_ctx.record,
-                                          &EventOrigin::at, StringAny),
-                        true));
+            TextedField({.name = "at",
+                         .kind = FieldKind::kText,
+                         .text = a_event.at,
+                         .bind = BindTriggerMember(a_ctx.name, a_ctx.record,
+                                                   &EventOrigin::at, StringAny),
+                         .allowEmpty = true}));
       },
       [&](const PluginOrigin &a_plugin) {
-        a_form.push_back(
-            TextedField("id", FieldKind::kText, a_plugin.id,
-                        BindTriggerMember(a_ctx.name, a_ctx.record,
-                                          &PluginOrigin::id, TextOf)));
+        a_form.push_back(TextedField(
+            {.name = "id",
+             .kind = FieldKind::kText,
+             .text = a_plugin.id,
+             .bind = BindTriggerMember(a_ctx.name, a_ctx.record,
+                                       &PluginOrigin::id, TextOf)}));
       },
       [&](const WhenOrigin &a_when) {
-        a_form.push_back(
-            ReferenceField("when", RefText(a_when.when), a_ctx.all, false,
-                           BindTriggerMember(a_ctx.name, a_ctx.record,
-                                             &WhenOrigin::when, RefOf)));
         a_form.push_back(ReferenceField(
-            "value", RefText(a_when.value), a_ctx.all, true,
-            BindTriggerMember(a_ctx.name, a_ctx.record, &WhenOrigin::value,
-                              OptionalRefOf)));
+            {.name = "when",
+             .text = RefText(a_when.when),
+             .names = a_ctx.all,
+             .allowEmpty = false,
+             .bind = BindTriggerMember(a_ctx.name, a_ctx.record,
+                                       &WhenOrigin::when, RefOf)}));
+        a_form.push_back(ReferenceField(
+            {.name = "value",
+             .text = RefText(a_when.value),
+             .names = a_ctx.all,
+             .allowEmpty = true,
+             .bind = BindTriggerMember(a_ctx.name, a_ctx.record,
+                                       &WhenOrigin::value, OptionalRefOf)}));
       });
-  a_form.push_back(
-      ParamField("lifetime", FieldKind::kScalar, ParamText(a_trigger.lifetime),
-                 a_ctx.names.scalar,
-                 BindSignalMember(a_ctx.name, a_ctx.record,
-                                  &TriggerSignal::lifetime, ParseParam)));
-  FormField max = ParamField(
-      "max", FieldKind::kScalar, std::to_string(a_trigger.max), {},
-      BindSignalMember(a_ctx.name, a_ctx.record, &TriggerSignal::max, CountOf));
+  a_form.push_back(ParamField(
+      {.name = "lifetime",
+       .kind = FieldKind::kScalar,
+       .text = ParamText(a_trigger.lifetime),
+       .names = a_ctx.names.scalar,
+       .bind = BindSignalMember(a_ctx.name, a_ctx.record,
+                                &TriggerSignal::lifetime, ParseParam)}));
+  FormField max =
+      ParamField({.name = "max",
+                  .kind = FieldKind::kScalar,
+                  .text = std::to_string(a_trigger.max),
+                  .names = {},
+                  .bind = BindSignalMember(a_ctx.name, a_ctx.record,
+                                           &TriggerSignal::max, CountOf)});
   max.range = std::pair{1.0f, 64.0f};
   a_form.push_back(std::move(max));
 }
@@ -1420,9 +1544,12 @@ void TriggerFields(std::vector<FormField> &a_form, const SignalContext &a_ctx,
 void PayloadFields(std::vector<FormField> &a_form, const SignalContext &a_ctx,
                    const PayloadSignal &a_payload) {
   a_form.push_back(ReferenceField(
-      "trigger", RefText(a_payload.trigger), a_ctx.names.triggers, false,
-      BindSignalMember(a_ctx.name, a_ctx.record, &PayloadSignal::trigger,
-                       RefOf)));
+      {.name = "trigger",
+       .text = RefText(a_payload.trigger),
+       .names = a_ctx.names.triggers,
+       .allowEmpty = false,
+       .bind = BindSignalMember(a_ctx.name, a_ctx.record,
+                                &PayloadSignal::trigger, RefOf)}));
   a_form.push_back(ChoiceField(
       "field", std::string{NameOf(kPayloadFields, a_payload.field)},
       WordsOf(kPayloadFields),
@@ -1433,17 +1560,26 @@ void PayloadFields(std::vector<FormField> &a_form, const SignalContext &a_ctx,
 void CounterFields(std::vector<FormField> &a_form, const SignalContext &a_ctx,
                    const CounterSignal &a_counter) {
   a_form.push_back(ReferenceField(
-      "trigger", RefText(a_counter.trigger), a_ctx.names.triggers, false,
-      BindSignalMember(a_ctx.name, a_ctx.record, &CounterSignal::trigger,
-                       RefOf)));
+      {.name = "trigger",
+       .text = RefText(a_counter.trigger),
+       .names = a_ctx.names.triggers,
+       .allowEmpty = false,
+       .bind = BindSignalMember(a_ctx.name, a_ctx.record,
+                                &CounterSignal::trigger, RefOf)}));
   a_form.push_back(ReferenceField(
-      "reset", RefText(a_counter.reset), a_ctx.names.triggers, true,
-      BindSignalMember(a_ctx.name, a_ctx.record, &CounterSignal::reset,
-                       OptionalRefOf)));
+      {.name = "reset",
+       .text = RefText(a_counter.reset),
+       .names = a_ctx.names.triggers,
+       .allowEmpty = true,
+       .bind = BindSignalMember(a_ctx.name, a_ctx.record, &CounterSignal::reset,
+                                OptionalRefOf)}));
   FormField cap = ParamField(
-      "cap", FieldKind::kScalar, ParamTextOf(a_counter.cap), a_ctx.names.scalar,
-      BindSignalMember(a_ctx.name, a_ctx.record, &CounterSignal::cap,
-                       OptionalParamOf));
+      {.name = "cap",
+       .kind = FieldKind::kScalar,
+       .text = ParamTextOf(a_counter.cap),
+       .names = a_ctx.names.scalar,
+       .bind = BindSignalMember(a_ctx.name, a_ctx.record, &CounterSignal::cap,
+                                OptionalParamOf)});
   cap.allowEmpty = true;
   a_form.push_back(std::move(cap));
 }
@@ -1452,58 +1588,84 @@ void AccumulateFields(std::vector<FormField> &a_form,
                       const SignalContext &a_ctx,
                       const AccumulateSignal &a_accumulate) {
   a_form.push_back(ReferenceField(
-      "trigger", RefText(a_accumulate.trigger), a_ctx.names.triggers, false,
-      BindSignalMember(a_ctx.name, a_ctx.record, &AccumulateSignal::trigger,
-                       RefOf)));
-  a_form.push_back(
-      ParamField("decay", FieldKind::kScalar, ParamText(a_accumulate.decay),
-                 a_ctx.names.scalar,
-                 BindSignalMember(a_ctx.name, a_ctx.record,
-                                  &AccumulateSignal::decay, ParseParam)));
+      {.name = "trigger",
+       .text = RefText(a_accumulate.trigger),
+       .names = a_ctx.names.triggers,
+       .allowEmpty = false,
+       .bind = BindSignalMember(a_ctx.name, a_ctx.record,
+                                &AccumulateSignal::trigger, RefOf)}));
+  a_form.push_back(ParamField(
+      {.name = "decay",
+       .kind = FieldKind::kScalar,
+       .text = ParamText(a_accumulate.decay),
+       .names = a_ctx.names.scalar,
+       .bind = BindSignalMember(a_ctx.name, a_ctx.record,
+                                &AccumulateSignal::decay, ParseParam)}));
 }
 
 void NoiseFields(std::vector<FormField> &a_form, const SignalContext &a_ctx,
                  const NoiseSignal &a_noise) {
-  a_form.push_back(
-      ParamField("frequency", FieldKind::kScalar, ParamText(a_noise.frequency),
-                 a_ctx.names.scalar,
-                 BindSignalMember(a_ctx.name, a_ctx.record,
-                                  &NoiseSignal::frequency, ParseParam)));
-  a_form.push_back(
-      ParamField("amplitude", FieldKind::kScalar, ParamText(a_noise.amplitude),
-                 a_ctx.names.scalar,
-                 BindSignalMember(a_ctx.name, a_ctx.record,
-                                  &NoiseSignal::amplitude, ParseParam)));
   a_form.push_back(ParamField(
-      "seed", FieldKind::kScalar, std::to_string(a_noise.seed), {},
-      BindSignalMember(a_ctx.name, a_ctx.record, &NoiseSignal::seed, CountOf)));
+      {.name = "frequency",
+       .kind = FieldKind::kScalar,
+       .text = ParamText(a_noise.frequency),
+       .names = a_ctx.names.scalar,
+       .bind = BindSignalMember(a_ctx.name, a_ctx.record,
+                                &NoiseSignal::frequency, ParseParam)}));
+  a_form.push_back(ParamField(
+      {.name = "amplitude",
+       .kind = FieldKind::kScalar,
+       .text = ParamText(a_noise.amplitude),
+       .names = a_ctx.names.scalar,
+       .bind = BindSignalMember(a_ctx.name, a_ctx.record,
+                                &NoiseSignal::amplitude, ParseParam)}));
+  a_form.push_back(
+      ParamField({.name = "seed",
+                  .kind = FieldKind::kScalar,
+                  .text = std::to_string(a_noise.seed),
+                  .names = {},
+                  .bind = BindSignalMember(a_ctx.name, a_ctx.record,
+                                           &NoiseSignal::seed, CountOf)}));
 }
 
 void GradientFields(std::vector<FormField> &a_form, const SignalContext &a_ctx,
                     const GradientSignal &a_gradient) {
-  a_form.push_back(ParamField(
-      "t", FieldKind::kScalar, ParamText(a_gradient.t), a_ctx.names.scalar,
-      BindSignalMember(a_ctx.name, a_ctx.record, &GradientSignal::t,
-                       ParseParam)));
+  a_form.push_back(
+      ParamField({.name = "t",
+                  .kind = FieldKind::kScalar,
+                  .text = ParamText(a_gradient.t),
+                  .names = a_ctx.names.scalar,
+                  .bind = BindSignalMember(a_ctx.name, a_ctx.record,
+                                           &GradientSignal::t, ParseParam)}));
 }
 
 void DeltaFields(std::vector<FormField> &a_form, const SignalContext &a_ctx,
                  const DeltaSignal &a_delta) {
-  a_form.push_back(ReferenceField(
-      "of", RefText(a_delta.of), a_ctx.all, false,
-      BindSignalMember(a_ctx.name, a_ctx.record, &DeltaSignal::of, RefOf)));
+  a_form.push_back(
+      ReferenceField({.name = "of",
+                      .text = RefText(a_delta.of),
+                      .names = a_ctx.all,
+                      .allowEmpty = false,
+                      .bind = BindSignalMember(a_ctx.name, a_ctx.record,
+                                               &DeltaSignal::of, RefOf)}));
 }
 
 void SmoothFields(std::vector<FormField> &a_form, const SignalContext &a_ctx,
                   const SmoothSignal &a_smooth) {
-  a_form.push_back(ReferenceField(
-      "of", RefText(a_smooth.of), a_ctx.all, false,
-      BindSignalMember(a_ctx.name, a_ctx.record, &SmoothSignal::of, RefOf)));
   a_form.push_back(
-      ParamField("seconds", FieldKind::kScalar, ParamText(a_smooth.seconds),
-                 a_ctx.names.scalar,
-                 BindSignalMember(a_ctx.name, a_ctx.record,
-                                  &SmoothSignal::seconds, ParseParam)));
+      ReferenceField({.name = "of",
+                      .text = RefText(a_smooth.of),
+                      .names = a_ctx.all,
+                      .allowEmpty = false,
+                      .bind = BindSignalMember(a_ctx.name, a_ctx.record,
+                                               &SmoothSignal::of, RefOf)}));
+  a_form.push_back(ParamField(
+      {.name = "seconds",
+       .kind = FieldKind::kScalar,
+       .text = ParamText(a_smooth.seconds),
+       .names = a_ctx.names.scalar,
+       .bind = BindSignalMember(a_ctx.name, a_ctx.record,
+                                &SmoothSignal::seconds, ParseParam)}));
 }
 }
 
@@ -1568,8 +1730,10 @@ void ImageFields(std::vector<FormField> &a_form, const SourceContext &a_ctx) {
   const SourceKind &record = a_ctx.record;
   const SourceRow &source = a_ctx.source;
   a_form.push_back(TextedField(
-      "path", FieldKind::kText, source.path,
-      BindSourceMember(name, record, &ImageSource::path, StringAny)));
+      {.name = "path",
+       .kind = FieldKind::kText,
+       .text = source.path,
+       .bind = BindSourceMember(name, record, &ImageSource::path, StringAny)}));
   a_form.push_back(
       ChoiceField("channel", source.channel, WordsOf(kImageChannels),
                   BindSourceMember(name, record, &ImageSource::channel,
@@ -1577,14 +1741,22 @@ void ImageFields(std::vector<FormField> &a_form, const SourceContext &a_ctx) {
   a_form.push_back(ChoiceField(
       "space", source.space, WordsOf(kImageSpaces),
       BindSourceMember(name, record, &ImageSource::space, ParseImageSpace)));
-  FormField scroll = ParamField(
-      "scroll", FieldKind::kVec2, source.scroll, a_ctx.names.vec2,
-      BindSourceMember(name, record, &ImageSource::scroll, OptionalVec2Of));
+  FormField scroll =
+      ParamField({.name = "scroll",
+                  .kind = FieldKind::kVec2,
+                  .text = source.scroll,
+                  .names = a_ctx.names.vec2,
+                  .bind = BindSourceMember(name, record, &ImageSource::scroll,
+                                           OptionalVec2Of)});
   scroll.allowEmpty = true;
   a_form.push_back(std::move(scroll));
-  FormField tile = ParamField(
-      "tile", FieldKind::kVec2, source.tile, a_ctx.names.vec2,
-      BindSourceMember(name, record, &ImageSource::tile, OptionalVec2Of));
+  FormField tile =
+      ParamField({.name = "tile",
+                  .kind = FieldKind::kVec2,
+                  .text = source.tile,
+                  .names = a_ctx.names.vec2,
+                  .bind = BindSourceMember(name, record, &ImageSource::tile,
+                                           OptionalVec2Of)});
   tile.allowEmpty = true;
   a_form.push_back(std::move(tile));
   a_form.push_back(ToggleField("mirrorU", source.mirrorU == "on",
@@ -1594,9 +1766,12 @@ void ImageFields(std::vector<FormField> &a_form, const SourceContext &a_ctx) {
   a_form.push_back(ToggleField(
       "transpose", source.transpose == "on",
       BindSourceMember(name, record, &ImageSource::transpose, OnOffAny)));
-  a_form.push_back(
-      ParamField("mip", FieldKind::kScalar, source.mip, {},
-                 BindSourceMember(name, record, &ImageSource::mip, NumberOf)));
+  a_form.push_back(ParamField(
+      {.name = "mip",
+       .kind = FieldKind::kScalar,
+       .text = source.mip,
+       .names = {},
+       .bind = BindSourceMember(name, record, &ImageSource::mip, NumberOf)}));
 }
 
 void MaterialFields(std::vector<FormField> &a_form,
@@ -1618,8 +1793,10 @@ void BakeFields(std::vector<FormField> &a_form, const SourceContext &a_ctx) {
                                  BipedSlotNames(),
                                  BindBakePartition(name, record)));
   } else if (a_ctx.source.bake == "boneWeight") {
-    a_form.push_back(TextedField("bones", FieldKind::kText, a_ctx.source.bones,
-                                 BindBakeBones(name, record)));
+    a_form.push_back(TextedField({.name = "bones",
+                                  .kind = FieldKind::kText,
+                                  .text = a_ctx.source.bones,
+                                  .bind = BindBakeBones(name, record)}));
   }
 }
 
@@ -1631,10 +1808,12 @@ void UvFields(std::vector<FormField> &a_form, const SourceContext &a_ctx) {
 
 void DistanceFields(std::vector<FormField> &a_form,
                     const SourceContext &a_ctx) {
-  a_form.push_back(
-      TextedField("from", FieldKind::kText, a_ctx.source.from,
-                  BindSourceMember(a_ctx.name, a_ctx.record,
-                                   &DistanceSource::from, DistanceFromOf)));
+  a_form.push_back(TextedField(
+      {.name = "from",
+       .kind = FieldKind::kText,
+       .text = a_ctx.source.from,
+       .bind = BindSourceMember(a_ctx.name, a_ctx.record, &DistanceSource::from,
+                                DistanceFromOf)}));
 }
 
 void RippleFields(std::vector<FormField> &a_form, const SourceContext &a_ctx) {
@@ -1642,17 +1821,32 @@ void RippleFields(std::vector<FormField> &a_form, const SourceContext &a_ctx) {
   const SourceKind &record = a_ctx.record;
   const SourceRow &source = a_ctx.source;
   a_form.push_back(ReferenceField(
-      "trigger", source.trigger, a_ctx.names.triggers, false,
-      BindSourceMember(name, record, &RippleSource::trigger, RefOf)));
-  a_form.push_back(ParamField(
-      "speed", FieldKind::kScalar, source.speed, a_ctx.names.scalar,
-      BindSourceMember(name, record, &RippleSource::speed, ParseParam)));
-  a_form.push_back(ParamField(
-      "width", FieldKind::kScalar, source.width, a_ctx.names.scalar,
-      BindSourceMember(name, record, &RippleSource::width, ParseParam)));
-  a_form.push_back(ParamField(
-      "decay", FieldKind::kScalar, source.decay, a_ctx.names.scalar,
-      BindSourceMember(name, record, &RippleSource::decay, ParseParam)));
+      {.name = "trigger",
+       .text = source.trigger,
+       .names = a_ctx.names.triggers,
+       .allowEmpty = false,
+       .bind = BindSourceMember(name, record, &RippleSource::trigger, RefOf)}));
+  a_form.push_back(
+      ParamField({.name = "speed",
+                  .kind = FieldKind::kScalar,
+                  .text = source.speed,
+                  .names = a_ctx.names.scalar,
+                  .bind = BindSourceMember(name, record, &RippleSource::speed,
+                                           ParseParam)}));
+  a_form.push_back(
+      ParamField({.name = "width",
+                  .kind = FieldKind::kScalar,
+                  .text = source.width,
+                  .names = a_ctx.names.scalar,
+                  .bind = BindSourceMember(name, record, &RippleSource::width,
+                                           ParseParam)}));
+  a_form.push_back(
+      ParamField({.name = "decay",
+                  .kind = FieldKind::kScalar,
+                  .text = source.decay,
+                  .names = a_ctx.names.scalar,
+                  .bind = BindSourceMember(name, record, &RippleSource::decay,
+                                           ParseParam)}));
   a_form.push_back(ChoiceField(
       "shape", source.shape, WordsOf(kRippleShapes),
       BindSourceMember(name, record, &RippleSource::shape, ParseRippleShape)));
@@ -1664,20 +1858,32 @@ void ClustersFields(std::vector<FormField> &a_form,
   const SourceKind &record = a_ctx.record;
   const SourceRow &source = a_ctx.source;
   FormField clusters = ParamField(
-      "clusters", FieldKind::kScalar, source.clusters, {},
-      BindSourceMember(name, record, &MaterialClustersSource::clusters,
-                       ClusterCountOf));
+      {.name = "clusters",
+       .kind = FieldKind::kScalar,
+       .text = source.clusters,
+       .names = {},
+       .bind = BindSourceMember(name, record, &MaterialClustersSource::clusters,
+                                ClusterCountOf)});
   clusters.range = std::pair{1.0f, static_cast<float>(kMaxMaterialClusters)};
   a_form.push_back(std::move(clusters));
-  a_form.push_back(TextedField("weights", FieldKind::kText, source.weights,
-                               BindClusterWeights(name, record)));
-  a_form.push_back(ParamField(
-      "seed", FieldKind::kScalar, source.seed, {},
-      BindSourceMember(name, record, &MaterialClustersSource::seed, SeedOf)));
+  a_form.push_back(TextedField({.name = "weights",
+                                .kind = FieldKind::kText,
+                                .text = source.weights,
+                                .bind = BindClusterWeights(name, record)}));
+  a_form.push_back(
+      ParamField({.name = "seed",
+                  .kind = FieldKind::kScalar,
+                  .text = source.seed,
+                  .names = {},
+                  .bind = BindSourceMember(
+                      name, record, &MaterialClustersSource::seed, SeedOf)}));
   FormField iterations = ParamField(
-      "iterations", FieldKind::kScalar, source.iterations, {},
-      BindSourceMember(name, record, &MaterialClustersSource::iterations,
-                       IterationsOf));
+      {.name = "iterations",
+       .kind = FieldKind::kScalar,
+       .text = source.iterations,
+       .names = {},
+       .bind = BindSourceMember(
+           name, record, &MaterialClustersSource::iterations, IterationsOf)});
   iterations.range = std::pair{1.0f, static_cast<float>(kMaxClusterIterations)};
   a_form.push_back(std::move(iterations));
 }
@@ -1714,11 +1920,15 @@ std::vector<FormField> SourceForm(const SourceRow &a_source,
 
 std::vector<FormField> RecipeHeaderForm(const RecipeRow &a_recipe) {
   std::vector<FormField> form;
-  form.push_back(TextedField("priority", FieldKind::kText,
-                             std::to_string(a_recipe.priority), BindPriority(),
-                             true));
-  form.push_back(TextedField("clockSpeed", FieldKind::kText,
-                             ParamText(a_recipe.clockSpeed), BindClockSpeed()));
+  form.push_back(TextedField({.name = "priority",
+                              .kind = FieldKind::kText,
+                              .text = std::to_string(a_recipe.priority),
+                              .bind = BindPriority(),
+                              .allowEmpty = true}));
+  form.push_back(TextedField({.name = "clockSpeed",
+                              .kind = FieldKind::kText,
+                              .text = ParamText(a_recipe.clockSpeed),
+                              .bind = BindClockSpeed()}));
   return form;
 }
 
@@ -1738,21 +1948,36 @@ std::vector<FormField> LightForm(const LightRow &a_light,
     return form;
   }
   const std::size_t output = a_light.output;
-  form.push_back(ParamField("color", FieldKind::kColor, a_light.color,
-                            a_names.color,
-                            BindLightVector(output, LightVector::kColor)));
-  form.push_back(ParamField("intensity", FieldKind::kScalar, a_light.intensity,
-                            a_names.scalar,
-                            BindLightParam(output, LightParam::kIntensity)));
-  form.push_back(ParamField("size", FieldKind::kScalar, a_light.size,
-                            a_names.scalar,
-                            BindLightParam(output, LightParam::kSize)));
-  form.push_back(ParamField("cutoff", FieldKind::kScalar, a_light.cutoff,
-                            a_names.scalar,
-                            BindLightParam(output, LightParam::kCutoff)));
-  form.push_back(ParamField("offset", FieldKind::kVector, a_light.offset,
-                            a_names.color,
-                            BindLightVector(output, LightVector::kOffset)));
+  form.push_back(
+      ParamField({.name = "color",
+                  .kind = FieldKind::kColor,
+                  .text = a_light.color,
+                  .names = a_names.color,
+                  .bind = BindLightVector(output, LightVector::kColor)}));
+  form.push_back(
+      ParamField({.name = "intensity",
+                  .kind = FieldKind::kScalar,
+                  .text = a_light.intensity,
+                  .names = a_names.scalar,
+                  .bind = BindLightParam(output, LightParam::kIntensity)}));
+  form.push_back(
+      ParamField({.name = "size",
+                  .kind = FieldKind::kScalar,
+                  .text = a_light.size,
+                  .names = a_names.scalar,
+                  .bind = BindLightParam(output, LightParam::kSize)}));
+  form.push_back(
+      ParamField({.name = "cutoff",
+                  .kind = FieldKind::kScalar,
+                  .text = a_light.cutoff,
+                  .names = a_names.scalar,
+                  .bind = BindLightParam(output, LightParam::kCutoff)}));
+  form.push_back(
+      ParamField({.name = "offset",
+                  .kind = FieldKind::kVector,
+                  .text = a_light.offset,
+                  .names = a_names.color,
+                  .bind = BindLightVector(output, LightVector::kOffset)}));
   form.push_back(
       ToggleField("shadow", a_light.shadow, BindLightShadow(output)));
   form.push_back(
@@ -1761,19 +1986,27 @@ std::vector<FormField> LightForm(const LightRow &a_light,
   form.push_back(ChoiceField("bones", skinned ? "skinned" : "named",
                              {"skinned", "named"}, BindLightBonesKind(output)));
   if (skinned) {
-    FormField max =
-        ValueField("max", FieldKind::kScalar, a_light.bonesMax, {},
-                   BindLightSkinnedMax(output, a_light.bonesMinShare));
+    FormField max = ValueField(
+        {.name = "max",
+         .kind = FieldKind::kScalar,
+         .text = a_light.bonesMax,
+         .names = {},
+         .bind = BindLightSkinnedMax(output, a_light.bonesMinShare)});
     max.range = std::pair{1.0f, 64.0f};
     form.push_back(std::move(max));
-    FormField minShare =
-        ValueField("minShare", FieldKind::kScalar, a_light.bonesMinShare, {},
-                   BindLightSkinnedMinShare(output, a_light.bonesMax));
+    FormField minShare = ValueField(
+        {.name = "minShare",
+         .kind = FieldKind::kScalar,
+         .text = a_light.bonesMinShare,
+         .names = {},
+         .bind = BindLightSkinnedMinShare(output, a_light.bonesMax)});
     minShare.range = std::pair{0.0f, 1.0f};
     form.push_back(std::move(minShare));
   } else {
-    form.push_back(TextedField("names", FieldKind::kText, a_light.bonesNames,
-                               BindLightNames(output)));
+    form.push_back(TextedField({.name = "names",
+                                .kind = FieldKind::kText,
+                                .text = a_light.bonesNames,
+                                .bind = BindLightNames(output)}));
   }
   return form;
 }
@@ -1789,35 +2022,56 @@ std::vector<FormField> ShellForm(const ShellRow &a_shell,
                              WordsOf(kShellBlends), BindShellBlend()));
   form.push_back(
       ToggleField("depthBias", a_shell.depthBias, BindShellDepthBias()));
-  form.push_back(ValueField("alphaTest", FieldKind::kScalar,
-                            ParamText(a_shell.alphaTest), {},
-                            BindShellAlphaTest()));
-  form.push_back(ParamField("alpha", FieldKind::kScalar, a_shell.alpha,
-                            a_names.scalar,
-                            BindShellParam(ShellParam::kAlpha)));
-  form.push_back(ParamField("rimPower", FieldKind::kScalar, a_shell.rimPower,
-                            a_names.scalar,
-                            BindShellParam(ShellParam::kRimPower)));
-  form.push_back(ParamField("emissive", FieldKind::kScalar, a_shell.emissive,
-                            a_names.scalar,
-                            BindShellParam(ShellParam::kEmissive)));
-  form.push_back(ParamField("inflate", FieldKind::kVector, a_shell.inflate,
-                            a_names.color,
-                            BindShellVector(ShellVector::kInflate)));
-  form.push_back(ParamField("offset", FieldKind::kVector, a_shell.offset,
-                            a_names.color,
-                            BindShellVector(ShellVector::kOffset)));
-  form.push_back(ParamField("scale", FieldKind::kScalar, a_shell.scale,
-                            a_names.scalar,
-                            BindShellParam(ShellParam::kScale)));
-  form.push_back(ValueField("scalePoint", FieldKind::kVector,
-                            LiteralColorText(a_shell.scalePoint), {},
-                            BindShellPoint(ShellPoint::kScalePoint)));
-  form.push_back(ParamField("spin", FieldKind::kScalar, a_shell.spin,
-                            a_names.scalar, BindShellParam(ShellParam::kSpin)));
-  form.push_back(ValueField("spinAxis", FieldKind::kVector,
-                            LiteralColorText(a_shell.spinAxis), {},
-                            BindShellPoint(ShellPoint::kSpinAxis)));
+  form.push_back(ValueField({.name = "alphaTest",
+                             .kind = FieldKind::kScalar,
+                             .text = ParamText(a_shell.alphaTest),
+                             .names = {},
+                             .bind = BindShellAlphaTest()}));
+  form.push_back(ParamField({.name = "alpha",
+                             .kind = FieldKind::kScalar,
+                             .text = a_shell.alpha,
+                             .names = a_names.scalar,
+                             .bind = BindShellParam(ShellParam::kAlpha)}));
+  form.push_back(ParamField({.name = "rimPower",
+                             .kind = FieldKind::kScalar,
+                             .text = a_shell.rimPower,
+                             .names = a_names.scalar,
+                             .bind = BindShellParam(ShellParam::kRimPower)}));
+  form.push_back(ParamField({.name = "emissive",
+                             .kind = FieldKind::kScalar,
+                             .text = a_shell.emissive,
+                             .names = a_names.scalar,
+                             .bind = BindShellParam(ShellParam::kEmissive)}));
+  form.push_back(ParamField({.name = "inflate",
+                             .kind = FieldKind::kVector,
+                             .text = a_shell.inflate,
+                             .names = a_names.color,
+                             .bind = BindShellVector(ShellVector::kInflate)}));
+  form.push_back(ParamField({.name = "offset",
+                             .kind = FieldKind::kVector,
+                             .text = a_shell.offset,
+                             .names = a_names.color,
+                             .bind = BindShellVector(ShellVector::kOffset)}));
+  form.push_back(ParamField({.name = "scale",
+                             .kind = FieldKind::kScalar,
+                             .text = a_shell.scale,
+                             .names = a_names.scalar,
+                             .bind = BindShellParam(ShellParam::kScale)}));
+  form.push_back(ValueField({.name = "scalePoint",
+                             .kind = FieldKind::kVector,
+                             .text = LiteralColorText(a_shell.scalePoint),
+                             .names = {},
+                             .bind = BindShellPoint(ShellPoint::kScalePoint)}));
+  form.push_back(ParamField({.name = "spin",
+                             .kind = FieldKind::kScalar,
+                             .text = a_shell.spin,
+                             .names = a_names.scalar,
+                             .bind = BindShellParam(ShellParam::kSpin)}));
+  form.push_back(ValueField({.name = "spinAxis",
+                             .kind = FieldKind::kVector,
+                             .text = LiteralColorText(a_shell.spinAxis),
+                             .names = {},
+                             .bind = BindShellPoint(ShellPoint::kSpinAxis)}));
   return form;
 }
 

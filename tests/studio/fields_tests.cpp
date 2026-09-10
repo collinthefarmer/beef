@@ -163,9 +163,13 @@ int main() {
   Check(replaceOff != nullptr && !replaceOff->replace,
         "BindOutputReplace reads the off token");
 
-  const FormField value =
-      ValueField("opacity", FieldKind::kScalar, "0.5", {},
-                 BindLayerOpacity(0, 0), std::nullopt, FieldDetail::kOpacity);
+  const FormField value = ValueField({.name = "opacity",
+                                      .kind = FieldKind::kScalar,
+                                      .text = "0.5",
+                                      .names = {},
+                                      .bind = BindLayerOpacity(0, 0),
+                                      .value = std::nullopt,
+                                      .detail = FieldDetail::kOpacity});
   Check(value.kind == FieldKind::kScalar && value.name == "opacity" &&
             value.detail == FieldDetail::kOpacity &&
             static_cast<bool>(value.bind),
@@ -174,8 +178,11 @@ int main() {
             FieldCheckKind::kSignalValue,
         "a field carries its check as a value read from the kind table");
 
-  const FormField reference =
-      ReferenceField("mask", "@grime", {"grime"}, true, BindLayerMask(0, 0));
+  const FormField reference = ReferenceField({.name = "mask",
+                                              .text = "@grime",
+                                              .names = {"grime"},
+                                              .allowEmpty = true,
+                                              .bind = BindLayerMask(0, 0)});
   Check(reference.kind == FieldKind::kReference && reference.allowEmpty &&
             reference.names.size() == 1,
         "ReferenceField builds a reference combo that allows the empty pick");
