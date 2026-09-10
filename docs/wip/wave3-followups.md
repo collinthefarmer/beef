@@ -62,13 +62,17 @@ move these identical definitions there (compile-verified, no behaviour change):
 
 ## Seam gaps the integrator surfaced (need decisions before wave 5)
 
-1. **`textureScale` → pixel size.** The frozen Manager read
-   `settings.runtimeTextureSize` / `glossMapSize`; those settings were removed
-   (dead per `deletions.md`) and the live setting is `Settings::textureScale`
-   (`kQuarter`/`kHalf`/`kFull`). `ManagerApply::RuntimeSizes` currently maps
-   these to 1024/2048/4096 with the max at `TextureSize::kMax`. This is a guess;
-   the intended base resolutions want confirming (a checkpoint-tunable — a wrong
-   value shows as too-coarse or too-fine textures, not a crash).
+1. **`textureScale` → pixel size. RESOLVED.** `textureScale`
+   (`kQuarter`/`kHalf`/`kFull`) is a fraction of the *target geometry's* native
+   texture resolution, not a fixed pixel size. `ManagerApply::RuntimeSizes` now
+   reads the native resolution from the geometry's material maps
+   (`TextureLab::ExtentOf` over rmaos/diffuse/normal/displacement, taking the
+   largest side), sets `maxSize` to that native size (clamped to `TextureSize`'s
+   64..4096) and the requested `size` to native / {1,2,4} for full/half/quarter.
+   From-black slots then render at the scaled size and edit-existing slots at
+   their own map resolution up to the native ceiling, matching the Compositor
+   rule in `REFERENCE.md`. Falls back to `TextureSize::kMax` when the material
+   exposes no real map.
 2. **`MatchActor` ignores the studio `View`.** The frozen match ran
    `Studio::ViewedRecipes(Resolve(...), piece, ref, view, loaded)` for
    pin-injection and match-time isolate filtering. The wave-2 planner

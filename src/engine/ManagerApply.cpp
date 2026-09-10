@@ -140,20 +140,33 @@ PlacedOutput *OutputAt(LivePlacement &a_placement, std::size_t a_index) {
   return nullptr;
 }
 
-std::pair<TextureSize, TextureSize> RuntimeSizes(const Settings &a_settings) {
-  std::uint32_t base = 4096;
+std::pair<TextureSize, TextureSize>
+RuntimeSizes(const Settings &a_settings, const MaterialInputs &a_material) {
+  std::uint32_t native = 0;
+  const auto consider =
+      [&native](const RE::NiPointer<RE::NiSourceTexture> &a_texture) {
+        if (const std::optional<TextureLab::Extent> extent =
+                TextureLab::ExtentOf(a_texture.get())) {
+          native = std::max({native, extent->width, extent->height});
+        }
+      };
+  consider(a_material.rmaos);
+  consider(a_material.diffuse);
+  consider(a_material.normal);
+  consider(a_material.displacement);
+  const TextureSize maxSize{native == 0 ? TextureSize::kMax : native};
+  std::uint32_t requested = maxSize.Pixels();
   switch (a_settings.textureScale) {
   case TextureScale::kQuarter:
-    base = 1024;
+    requested /= 4;
     break;
   case TextureScale::kHalf:
-    base = 2048;
+    requested /= 2;
     break;
   case TextureScale::kFull:
-    base = 4096;
     break;
   }
-  return {TextureSize(base), TextureSize(TextureSize::kMax)};
+  return {TextureSize(requested), maxSize};
 }
 
 EventRecord EquipEvent(const std::vector<LivePiece> &a_pieces) {
@@ -550,7 +563,7 @@ void Manager::PlaceOnGeometry(RE::Actor *a_actor, LiveActor &a_state,
     }
   }
 
-  const auto [size, maxSize] = RuntimeSizes(settings);
+  const auto [size, maxSize] = RuntimeSizes(settings, bound.inputs.material);
   for (const SlotPlan &slot : bound.plan.slots) {
     for (const SlotContribution &c : slot.chain) {
       const std::size_t placed = static_cast<std::size_t>(c.placed);
