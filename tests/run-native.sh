@@ -17,7 +17,7 @@ if [ -n "${BEEF_SANITIZE:-}" ]; then
 	FLAGS+=(-fsanitize=address,undefined -fno-sanitize=vptr -fno-omit-frame-pointer -fno-sanitize-recover=undefined -g)
 fi
 
-MODULES=(recipe mesh studio)
+MODULES=(recipe mesh studio planners)
 
 status=0
 compile() {

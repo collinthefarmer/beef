@@ -73,7 +73,8 @@ set(COMMONLIBSSE_SUPPRESSIONS
 file(GLOB_RECURSE NATIVE_MODULE_SOURCES CONFIGURE_DEPENDS
   "${CMAKE_SOURCE_DIR}/src/recipe/*.cpp"
   "${CMAKE_SOURCE_DIR}/src/mesh/*.cpp"
-  "${CMAKE_SOURCE_DIR}/src/studio/*.cpp")
+  "${CMAKE_SOURCE_DIR}/src/studio/*.cpp"
+  "${CMAKE_SOURCE_DIR}/src/planners/*.cpp")
 set(NATIVE_SOURCES
   src/Settings.cpp
   ${NATIVE_MODULE_SOURCES})

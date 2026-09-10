@@ -651,3 +651,66 @@ Decompile provenance (`decompiled/WornEnchantmentFX/plugin.c` unless noted):
   `user/`, which loads last. The shipped region presets sit beside the DLL
   rather than under the recipe root, which loads every `.json` below it as
   a recipe.
+
+## planners (`planners/ActorState.h`, `planners/StackPlan.h`, `planners/BindingDiff.h`, `planners/ManagerDecisions.h`)
+
+The pure decision halves of the wave-3 engine modules (`engine/Manager`,
+`render/Compositor`, `render/Binding`). Each is data-in / data-out and native-
+tested; the wave-3 shell is a thin adapter that owns the real `RE::` handles and
+calls these with value records. The split's discipline: no planner takes or
+stores an `RE::` pointer.
+
+- **Opaque handle spaces.** `PieceId`, `InstanceId`, `PlacementId`, `RecipeId`,
+  `OutputIndex` are `enum class : std::size_t` typed index spaces (as
+  `Merge.h`'s `SlotSource`/`LightSource` already are). They carry no
+  enumerators, so the one-spec-table-per-enum rule does not apply to them — a
+  handle is an index, not a closed set. `RecipeId` indexes the recipe store the
+  shell passes as `std::span<const Recipe>`; the pure `ActorState` never stores
+  a `const Recipe*`, because a long-lived table cannot own a pointer's validity.
+  `Merge`'s `PlacedRecipe` holds `const Recipe*` only as a transient function
+  argument, never in a table — `GeometryPlacement`/`ActorLightPlan` follow that
+  same transient-only rule.
+
+- **Three-table `ActorState`** (DECIDED 2026-09-09; `design-actor-state-tables`).
+  A `Piece` is one engine geometry, not an armor: it carries its own
+  `GeometryIdentity` plus the armor's `WornPiece` match keys, denormalised onto
+  each geometry so selector matching is per-geometry. `Instance` grain is per
+  recipe per actor per enchantment form (`FindInstance` dedups by
+  `RecipeId` + enchantment `FormKey`; unenchanted matches share one instance per
+  recipe). `Placement` joins an instance to a piece with the `RecipeKey` it
+  matched by and per-surface-output selection. The engine runtime that the
+  frozen `Manager` nested under these — `MaterialBinding`/`ShellBinding`/
+  `LightBinding`, `SignalState`/`ActorEnvironment`, `startMS`/`lastTime` — is
+  shell-owned state keyed by the same handles, not fields of the pure tables.
+  `Piece::lost` is the one shell-maintained flag the pure `AnyLivePiece` reads
+  (a geometry whose material or shell another system replaced); light-liveness
+  stays a shell check because a light is a `RE::` binding.
+
+- **Row projections.** The frozen `BuildSnapshot` inlined its row builds;
+  `ProjectSignals`/`ProjectScalars`/`ProjectLayers`/`ProjectOutput` pull out the
+  ones computable from pure data (recipe + `SignalGraph` + a ticked
+  `SignalState` + a chain index), returning planner-local records. The studio
+  `Snapshot` is assembled in wave-3 glue, which layers the engine-only fields
+  (resident `RE::NiSourceTexture*`, rendered stack size, `EditorID` lookups,
+  reference counts) over these; the planners never build the `Snapshot` type.
+
+- **`StackPlan` classification.** A slot's chain and its replace cut come from
+  `Merge`'s `SlotPlan`; `PlanStacks` adds static-vs-animated. `selfAnimated` is
+  `IsAnimated(recipe, Output{SurfaceOutput})` (`Recipe.cpp`) — true iff a layer
+  reads a scrolling/tiling image, a ripple, a non-constant signal, or a mask
+  over one. `animated` is the chained-base result: link 0 renders over the
+  static base map (an armor's own texture and the neutral-height base do not
+  animate), so `animated[0] = selfAnimated[0]` and
+  `animated[i] = selfAnimated[i] || animated[i-1]`. This is the frozen
+  `Compositor::Render` guard `!animated_ && !base.animated && renderedOnce_`
+  turned into a plan: a static link over an animated base has `animated == true`
+  and re-renders each tick. `ChainIndexOf` is the frozen anonymous `MergeOf`,
+  retyped onto `SlotContribution`.
+
+- **`BindingDiff`.** `PlanBinding` decides per geometry which surface bindings
+  must exist (a surface is needed iff the plan writes any of its slots),
+  `shellOwner` as the highest-priority shell contribution (the frozen
+  `shellTop`), and — as a diff against the previously written slots — which
+  slots to restore (written before, absent from the new plan). The writer that
+  applies it, holds the saved `RE::` originals, and null-checks each pointer is
+  wave-3 `render/Binding`.
