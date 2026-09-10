@@ -686,13 +686,15 @@ stores an `RE::` pointer.
   (a geometry whose material or shell another system replaced); light-liveness
   stays a shell check because a light is a `RE::` binding.
 
-- **Row projections.** The frozen `BuildSnapshot` inlined its row builds;
-  `ProjectSignals`/`ProjectScalars`/`ProjectLayers`/`ProjectOutput` pull out the
-  ones computable from pure data (recipe + `SignalGraph` + a ticked
-  `SignalState` + a chain index), returning planner-local records. The studio
-  `Snapshot` is assembled in wave-3 glue, which layers the engine-only fields
-  (resident `RE::NiSourceTexture*`, rendered stack size, `EditorID` lookups,
-  reference counts) over these; the planners never build the `Snapshot` type.
+- **Row projections belong to `studio/`, not here.** The frozen `BuildSnapshot`
+  inlined its row builds. The recipe-definition → row projection is a view-model
+  concern owned by `studio/Rows`/`Panels`/`Board`. The planners expose only the
+  `ActorState` tables and structural queries. The studio `Snapshot` is assembled
+  in wave-3 glue, which reads `ActorState` for structure and overlays the live
+  and engine-only fields (evaluated `SignalState` values, the `StackPlan`'s
+  animated flag, resident `RE::NiSourceTexture*`, rendered stack size, `EditorID`
+  lookups, reference counts) over the studio rows. The planners never build the
+  `Snapshot` type.
 
 - **`StackPlan` classification.** A slot's chain and its replace cut come from
   `Merge`'s `SlotPlan`; `PlanStacks` adds static-vs-animated. `selfAnimated` is

@@ -1,8 +1,6 @@
 #pragma once
 
-#include "recipe/Merge.h"
 #include "recipe/Recipe.h"
-#include "recipe/Signals.h"
 
 #include <cstddef>
 #include <optional>
@@ -66,59 +64,4 @@ FindInstance(const ActorState &a_state, RecipeId a_recipe,
 PlacementsOfPiece(const ActorState &a_state, PieceId a_piece);
 [[nodiscard]] std::vector<PlacementId>
 PlacementsOfInstance(const ActorState &a_state, InstanceId a_instance);
-
-struct SignalProjection {
-  std::string name;
-  SignalKindId kind = SignalKindId::kConstant;
-  ValueType type = ValueType::kScalar;
-  Value value = 0.0f;
-  bool inert = false;
-  std::string problem;
-  std::optional<SignalKind> definition;
-  std::optional<Value> constant;
-  std::string text;
-  std::string event;
-  std::string curve;
-};
-
-struct ScalarProjection {
-  ScalarField field = ScalarField::kStrength;
-  float value = 0.0f;
-  std::string text;
-  [[nodiscard]] bool operator==(const ScalarProjection &) const = default;
-};
-
-struct LayerProjection {
-  std::string source;
-  std::string mask;
-  std::string blend;
-  float opacity = 0.0f;
-  std::string opacityText;
-  std::string color;
-  std::string curve;
-  std::string channels;
-  [[nodiscard]] bool operator==(const LayerProjection &) const = default;
-};
-
-struct OutputProjection {
-  OutputIndex output{};
-  Target target = Target::kMaterial;
-  Surface surface = Surface::kMaterial;
-  Slot slot = Slot::kEmissive;
-  bool replace = false;
-  std::optional<std::size_t> chain;
-  std::vector<ScalarProjection> scalars;
-  std::vector<LayerProjection> layers;
-};
-
-[[nodiscard]] std::vector<SignalProjection>
-ProjectSignals(const Recipe &a_recipe, const SignalGraph &a_graph,
-               const SignalState &a_signals);
-[[nodiscard]] std::vector<ScalarProjection>
-ProjectScalars(const SurfaceOutput &a_output, const SignalState &a_signals);
-[[nodiscard]] std::vector<LayerProjection>
-ProjectLayers(const SurfaceOutput &a_output, const SignalState &a_signals);
-[[nodiscard]] OutputProjection
-ProjectOutput(const Recipe &a_recipe, OutputIndex a_output,
-              const SignalState &a_signals, std::optional<std::size_t> a_chain);
 }

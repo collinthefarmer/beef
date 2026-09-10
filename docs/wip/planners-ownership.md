@@ -13,13 +13,6 @@ No function is unowned. Fill agents implement one `.cpp` each, disjoint.
 - `std::vector<PlacementId> PlacementsOfPiece(const ActorState &, PieceId)`
 - `std::vector<PlacementId> PlacementsOfInstance(const ActorState &, InstanceId)`
 
-## `src/planners/Projections.cpp` (owns `ActorState.h` projections)
-
-- `std::vector<SignalProjection> ProjectSignals(const Recipe &, const SignalGraph &, const SignalState &)`
-- `std::vector<ScalarProjection> ProjectScalars(const SurfaceOutput &, const SignalState &)`
-- `std::vector<LayerProjection> ProjectLayers(const SurfaceOutput &, const SignalState &)`
-- `OutputProjection ProjectOutput(const Recipe &, OutputIndex, const SignalState &, std::optional<std::size_t>)`
-
 ## `src/planners/StackPlan.cpp` (owns `StackPlan.h`)
 
 - `GeometryStackPlan PlanStacks(std::span<const PlacedRecipe>, const GeometryPlan &)`
@@ -39,9 +32,10 @@ No function is unowned. Fill agents implement one `.cpp` each, disjoint.
 
 ## Header → owning `.cpp`(s)
 
-- `ActorState.h` → `ActorState.cpp` (tables/queries) + `Projections.cpp` (projections).
-  Two owners, disjoint symbol sets, mirroring `recipe/Recipe.h`'s split across
-  `Recipe.cpp` / `Vocabulary.cpp` / `Resolve.cpp`.
+- `ActorState.h` → `ActorState.cpp` (tables and queries). The recipe/state →
+  view projections live in `studio/` (the view-model layer); the wave-3
+  `SnapshotBuild` glue reads `ActorState` for structure and overlays live
+  `SignalState` values and render textures onto studio's rows.
 - `StackPlan.h` → `StackPlan.cpp`.
 - `BindingDiff.h` → `BindingDiff.cpp`.
 - `ManagerDecisions.h` → `ManagerDecisions.cpp`.
@@ -49,7 +43,6 @@ No function is unowned. Fill agents implement one `.cpp` each, disjoint.
 ## Test fill units (one skeleton per `.cpp`)
 
 - `tests/planners/actorstate_tests.cpp` → `ActorState.cpp`
-- `tests/planners/projections_tests.cpp` → `Projections.cpp`
 - `tests/planners/stackplan_tests.cpp` → `StackPlan.cpp`
 - `tests/planners/bindingdiff_tests.cpp` → `BindingDiff.cpp`
 - `tests/planners/managerdecisions_tests.cpp` → `ManagerDecisions.cpp`
