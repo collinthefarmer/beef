@@ -27,7 +27,6 @@
 namespace logger = SKSE::log;
 using namespace std::literals;
 
-namespace BetterEnchantmentEffects
-{
-	extern std::shared_ptr<spdlog::sinks::ringbuffer_sink_mt> g_logRing;
+namespace BetterEnchantmentEffects {
+extern std::shared_ptr<spdlog::sinks::ringbuffer_sink_mt> g_logRing;
 }
