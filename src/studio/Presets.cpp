@@ -44,6 +44,77 @@ using json = nlohmann::ordered_json;
   return std::nullopt;
 }
 
+[[nodiscard]] std::optional<std::string> ReadPartition(const json &a_entry,
+                                                       MaskPreset &a_preset) {
+  if (!a_entry.contains("partition")) {
+    return std::nullopt;
+  }
+  const auto slot = PartitionFrom(a_entry["partition"]);
+  if (!slot) {
+    return std::format("preset {}: unknown partition", a_preset.name);
+  }
+  a_preset.partition = *slot;
+  return std::nullopt;
+}
+
+[[nodiscard]] std::optional<std::string> ReadBones(const json &a_entry,
+                                                   MaskPreset &a_preset) {
+  const auto bones = a_entry.find("bones");
+  if (bones == a_entry.end() || !bones->is_array()) {
+    return std::nullopt;
+  }
+  if (bones->size() > kMaxPresetBones) {
+    return std::format("preset {}: more than {} bones", a_preset.name,
+                       kMaxPresetBones);
+  }
+  for (const auto &bone : *bones) {
+    if (bone.is_string()) {
+      a_preset.bones.push_back(bone.get<std::string>());
+    }
+  }
+  return std::nullopt;
+}
+
+[[nodiscard]] std::optional<std::string> ReadExpression(const json &a_entry,
+                                                        MaskPreset &a_preset) {
+  const auto expression = a_entry.find("expression");
+  if (expression == a_entry.end() || !expression->is_string()) {
+    return std::nullopt;
+  }
+  a_preset.expression = expression->get<std::string>();
+  if (a_preset.expression.size() > kMaxExpressionLength) {
+    return std::format("preset {}: expression longer than {} characters",
+                       a_preset.name, kMaxExpressionLength);
+  }
+  if (const auto program = Program::Parse(a_preset.expression); !program) {
+    return std::format("preset {}: expression: {}", a_preset.name,
+                       program.error());
+  }
+  return std::nullopt;
+}
+
+[[nodiscard]] std::optional<std::string> ReadSources(const json &a_entry,
+                                                     MaskPreset &a_preset) {
+  const auto sources = a_entry.find("sources");
+  if (sources == a_entry.end() || !sources->is_object()) {
+    return std::nullopt;
+  }
+  if (sources->size() > kMaxPresetSources) {
+    return std::format("preset {}: more than {} sources", a_preset.name,
+                       kMaxPresetSources);
+  }
+  for (const auto &[name, definition] : sources->items()) {
+    const auto kind = SourceFromJson(definition);
+    if (!IsName(name) || !kind) {
+      return std::format(
+          "preset {}: source '{}' is not a material channel, bake or uv",
+          a_preset.name, name);
+    }
+    a_preset.sources.emplace_back(name, *kind);
+  }
+  return std::nullopt;
+}
+
 [[nodiscard]] std::expected<MaskPreset, std::string>
 PresetFrom(const json &a_entry) {
   if (!a_entry.is_object() || !a_entry.contains("name") ||
@@ -53,58 +124,21 @@ PresetFrom(const json &a_entry) {
   }
   MaskPreset preset;
   preset.name = a_entry["name"].get<std::string>();
-  if (a_entry.contains("partition")) {
-    const auto slot = PartitionFrom(a_entry["partition"]);
-    if (!slot) {
-      return std::unexpected(
-          std::format("preset {}: unknown partition", preset.name));
-    }
-    preset.partition = *slot;
+  if (auto error = ReadPartition(a_entry, preset)) {
+    return std::unexpected(std::move(*error));
   }
-  if (const auto bones = a_entry.find("bones");
-      bones != a_entry.end() && bones->is_array()) {
-    if (bones->size() > kMaxPresetBones) {
-      return std::unexpected(std::format("preset {}: more than {} bones",
-                                         preset.name, kMaxPresetBones));
-    }
-    for (const auto &bone : *bones) {
-      if (bone.is_string()) {
-        preset.bones.push_back(bone.get<std::string>());
-      }
-    }
+  if (auto error = ReadBones(a_entry, preset)) {
+    return std::unexpected(std::move(*error));
   }
-  if (const auto expression = a_entry.find("expression");
-      expression != a_entry.end() && expression->is_string()) {
-    preset.expression = expression->get<std::string>();
-    if (preset.expression.size() > kMaxExpressionLength) {
-      return std::unexpected(
-          std::format("preset {}: expression longer than {} characters",
-                      preset.name, kMaxExpressionLength));
-    }
-    if (const auto program = Program::Parse(preset.expression); !program) {
-      return std::unexpected(std::format("preset {}: expression: {}",
-                                         preset.name, program.error()));
-    }
+  if (auto error = ReadExpression(a_entry, preset)) {
+    return std::unexpected(std::move(*error));
   }
   if (preset.expression.empty() && !preset.partition && preset.bones.empty()) {
     return std::unexpected(std::format(
         "preset {}: needs an expression, a partition or bones", preset.name));
   }
-  if (const auto sources = a_entry.find("sources");
-      sources != a_entry.end() && sources->is_object()) {
-    if (sources->size() > kMaxPresetSources) {
-      return std::unexpected(std::format("preset {}: more than {} sources",
-                                         preset.name, kMaxPresetSources));
-    }
-    for (const auto &[name, definition] : sources->items()) {
-      const auto kind = SourceFromJson(definition);
-      if (!IsName(name) || !kind) {
-        return std::unexpected(std::format(
-            "preset {}: source '{}' is not a material channel, bake or uv",
-            preset.name, name));
-      }
-      preset.sources.emplace_back(name, *kind);
-    }
+  if (auto error = ReadSources(a_entry, preset)) {
+    return std::unexpected(std::move(*error));
   }
   return preset;
 }

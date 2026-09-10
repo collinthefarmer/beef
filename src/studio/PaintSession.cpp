@@ -65,7 +65,7 @@ public:
     }
     const std::string name = UniqueName(a_wanted, taken_);
     taken_.push_back(name);
-    edits_.push_back(AddSource{name, a_kind});
+    edits_.emplace_back(AddSource{name, a_kind});
     return name;
   }
 
@@ -104,9 +104,9 @@ std::vector<RecipeEdit> KeepEdits(const Recipe &a_paint, const Recipe &a_active,
   }
   edits = std::move(namer).Edits();
   if (!a_active.FindMask(a_name)) {
-    edits.push_back(AddMask{std::string{a_name}});
+    edits.emplace_back(AddMask{std::string{a_name}});
   }
-  edits.push_back(SetMask{std::string{a_name}, std::move(text)});
+  edits.emplace_back(SetMask{std::string{a_name}, std::move(text)});
   return edits;
 }
 }
