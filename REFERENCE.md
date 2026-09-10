@@ -90,6 +90,12 @@ to the logger alongside the file sink at plugin load.
   vanilla thresholds the code cannot name: a fill whose brightest channel is at
   or below `0.02` is treated as white (an unlit fill glows), and the edge tint
   is used only when its chroma exceeds `0.05` (a grey edge does not tint).
+  `Importer.cpp` parses the EFSH dump with its own guarded `FloatAt`/`TextAt`/
+  `ColorFrom` accessors over `nlohmann::json` and returns a single-error
+  `std::expected`, deliberately separate from the recipe `Reader`/`LoadResult`
+  vocabulary: the dump is a different, flat input and the recipe `Reader` is
+  private to `RecipeRead.cpp`. This is the one place recipe/ uses a second JSON
+  style, and it is intentional, not drift.
 - `Merge.h` splits the frozen `Contribution` into `SlotContribution` and
   `LightContribution` over two `enum class` index types, `SlotSource` and
   `LightSource`. One `std::size_t` field in the frozen code meant an index

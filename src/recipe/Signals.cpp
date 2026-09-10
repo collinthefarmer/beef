@@ -68,38 +68,12 @@ Value ZeroOf(ValueType a_type) noexcept {
   }
 }
 
-bool GlobMatches(std::string_view a_glob, std::string_view a_text) noexcept {
-  const auto norm = [](char c) {
-    c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
-    return c == '\\' ? '/' : c;
-  };
-  std::size_t g = 0, t = 0, starG = std::string_view::npos, starT = 0;
-  while (t < a_text.size()) {
-    if (g < a_glob.size() && a_glob[g] == '*') {
-      starG = g++;
-      starT = t;
-    } else if (g < a_glob.size() && norm(a_glob[g]) == norm(a_text[t])) {
-      ++g;
-      ++t;
-    } else if (starG != std::string_view::npos) {
-      g = starG + 1;
-      t = ++starT;
-    } else {
-      return false;
-    }
-  }
-  while (g < a_glob.size() && a_glob[g] == '*') {
-    ++g;
-  }
-  return g == a_glob.size();
-}
-
 bool MatchesFilter(const EventFilter &a_filter,
                    const TriggerPayload &a_payload) noexcept {
-  if (!a_filter.node.empty() && !GlobMatches(a_filter.node, a_payload.node)) {
+  if (!a_filter.node.empty() && !GlobMatch(a_filter.node, a_payload.node)) {
     return false;
   }
-  if (!a_filter.arg.empty() && !GlobMatches(a_filter.arg, a_payload.arg)) {
+  if (!a_filter.arg.empty() && !GlobMatch(a_filter.arg, a_payload.arg)) {
     return false;
   }
   if (a_filter.value.min && a_payload.value < *a_filter.value.min) {
@@ -350,12 +324,10 @@ void CheckCurveRef(const RowTypes &a_rows, const Reporter &a_report,
 
 void CheckUniqueNames(const Recipe &a_recipe, std::vector<Diagnostic> &a_out) {
   const auto error = [&](std::string a_where, std::string a_message) {
-    a_out.push_back(
-        {Severity::kError, std::move(a_where), std::move(a_message)});
+    Reporter{a_out, std::move(a_where)}.Error(std::move(a_message));
   };
   const auto warn = [&](std::string a_where, std::string a_message) {
-    a_out.push_back(
-        {Severity::kWarning, std::move(a_where), std::move(a_message)});
+    Reporter{a_out, std::move(a_where)}.Warn(std::move(a_message));
   };
   const auto unique = [&]<class Row>(const std::vector<Row> &a_rows,
                                      const char *a_what) {
@@ -786,9 +758,9 @@ bool NamesTrigger(const RowTypes &a_rows, std::string_view a_name) noexcept {
 
 std::vector<Diagnostic> CheckCurve(const RowTypes &, const Curve &a_curve) {
   std::vector<Diagnostic> out;
-  const auto where = std::format("curve {}", a_curve.name);
+  const Reporter report{out, std::format("curve {}", a_curve.name)};
   if (const auto program = ParseCurve(a_curve.text); !program) {
-    out.push_back({Severity::kError, where, program.error()});
+    report.Error(program.error());
   }
   return out;
 }
@@ -856,30 +828,28 @@ std::vector<Diagnostic> CheckSource(const RowTypes &a_rows,
 
 std::vector<Diagnostic> CheckMask(const RowTypes &a_rows, const Mask &a_mask) {
   std::vector<Diagnostic> out;
-  const auto where = std::format("mask {}", a_mask.name);
+  const Reporter report{out, std::format("mask {}", a_mask.name)};
   const auto program = Program::Parse(a_mask.text);
   if (!program) {
-    out.push_back({Severity::kError, where, program.error()});
+    report.Error(program.error());
     return out;
   }
   if (program->UsesX()) {
-    out.push_back(
-        {Severity::kError, where, "'x' is only defined inside a curve"});
+    report.Error("'x' is only defined inside a curve");
   }
   if (std::ranges::find(program->References(), a_mask.name) !=
       program->References().end()) {
-    out.push_back({Severity::kError, where, "reads itself"});
+    report.Error("reads itself");
     return out;
   }
   const auto type = program->Check(
       [&](std::string_view name) { return TexelTypeOf(a_rows, name, 1); });
   if (!type) {
-    out.push_back({Severity::kError, where, type.error()});
+    report.Error(type.error());
   }
   for (const auto &curve : program->Curves()) {
     if (!a_rows.recipe.FindCurve(curve)) {
-      out.push_back({Severity::kError, where,
-                     std::format("calls unknown curve '@{}'", curve)});
+      report.Error(std::format("calls unknown curve '@{}'", curve));
     }
   }
   return out;
@@ -999,12 +969,12 @@ namespace {
 void CheckSlotExclusions(std::string_view a_where, Slot a_slot,
                          const std::vector<Slot> &a_held,
                          std::vector<Diagnostic> &a_out) {
+  const Reporter report{a_out, a_where};
   for (const auto other : a_held) {
     if (SlotsExclude(other, a_slot)) {
-      a_out.push_back({Severity::kWarning, std::string{a_where},
-                       std::format("'{}' and '{}' on the same material exclude "
-                                   "each other; this output is dropped",
-                                   SlotName(other), SlotName(a_slot))});
+      report.Warn(std::format("'{}' and '{}' on the same material exclude "
+                              "each other; this output is dropped",
+                              SlotName(other), SlotName(a_slot)));
     }
   }
 }
@@ -1041,17 +1011,14 @@ void CheckShell(const RowTypes &a_rows, std::vector<Diagnostic> &a_out) {
 
 void CheckVariants(const RowTypes &a_rows, std::vector<Diagnostic> &a_out) {
   for (const auto &v : a_rows.recipe.variants) {
-    const auto where = std::format("variant {}", v.name);
+    const Reporter report{a_out, std::format("variant {}", v.name)};
     for (const auto &[name, value] : v.overrides) {
       const auto type = a_rows.graph.TypeOf(name);
       if (!type) {
-        a_out.push_back({Severity::kError, where,
-                         std::format("overrides unknown signal '{}'", name)});
+        report.Error(std::format("overrides unknown signal '{}'", name));
       } else if (*type != TypeOf(value)) {
-        a_out.push_back(
-            {Severity::kError, where,
-             std::format("override of '{}' is a {}; the signal is a {}", name,
-                         Name(TypeOf(value)), Name(*type))});
+        report.Error(std::format("override of '{}' is a {}; the signal is a {}",
+                                 name, Name(TypeOf(value)), Name(*type)));
       }
     }
   }
@@ -1168,7 +1135,7 @@ void SignalState::Accept(std::size_t a_index, const EventRecord &a_event,
   const bool accepted = Match(
       trigger->origin,
       [&](const EventOrigin &s) {
-        if (!GlobMatches(s.event, a_event.id) ||
+        if (!GlobMatch(s.event, a_event.id) ||
             !MatchesFilter(s.filter, a_event.payload)) {
           return false;
         }
@@ -1177,7 +1144,7 @@ void SignalState::Accept(std::size_t a_index, const EventRecord &a_event,
         }
         return true;
       },
-      [&](const PluginOrigin &s) { return GlobMatches(s.id, a_event.id); },
+      [&](const PluginOrigin &s) { return GlobMatch(s.id, a_event.id); },
       [](const WhenOrigin &) { return false; });
   if (!accepted) {
     return;
