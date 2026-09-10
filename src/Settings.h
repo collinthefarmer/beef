@@ -20,7 +20,7 @@ namespace BetterEnchantmentEffects
 	};
 
 	[[nodiscard]] std::string_view              TextureScaleName(TextureScale a_scale) noexcept;
-	[[nodiscard]] std::optional<TextureScale>   TextureScaleFromString(std::string_view a_text) noexcept;
+	[[nodiscard]] std::optional<TextureScale>   TextureScaleFromString(std::string_view a_text);
 	[[nodiscard]] std::span<const std::string_view> TextureScaleNames() noexcept;
 
 	struct Settings

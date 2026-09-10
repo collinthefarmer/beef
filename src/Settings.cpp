@@ -120,7 +120,7 @@ namespace BetterEnchantmentEffects
 		return index < std::size(kTextureScaleNames) ? kTextureScaleNames[index] : kTextureScaleNames[static_cast<std::size_t>(TextureScale::kFull)];
 	}
 
-	std::optional<TextureScale> TextureScaleFromString(std::string_view a_text) noexcept
+	std::optional<TextureScale> TextureScaleFromString(std::string_view a_text)
 	{
 		const auto text = Lower(Trim(a_text));
 		for (std::size_t i = 0; i < std::size(kTextureScaleNames); ++i) {

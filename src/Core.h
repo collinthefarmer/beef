@@ -127,12 +127,35 @@ namespace BetterEnchantmentEffects
 	inline constexpr bool kAlternativesNothrowMovable =
 		AlternativesNothrowMovable<V>(std::make_index_sequence<std::variant_size_v<V>>{});
 
+	template <std::size_t I, class Visitor, class Variant>
+	[[nodiscard]] decltype(auto) VisitFrom(Visitor& a_visitor, Variant&& a_variant)
+	{
+		constexpr std::size_t last = std::variant_size_v<std::remove_cvref_t<Variant>> - 1;
+		if constexpr (I == last) {
+			if constexpr (std::is_lvalue_reference_v<Variant>) {
+				return a_visitor(*std::get_if<I>(&a_variant));
+			} else {
+				return a_visitor(std::move(*std::get_if<I>(&a_variant)));
+			}
+		} else {
+			if (a_variant.index() == I) {
+				if constexpr (std::is_lvalue_reference_v<Variant>) {
+					return a_visitor(*std::get_if<I>(&a_variant));
+				} else {
+					return a_visitor(std::move(*std::get_if<I>(&a_variant)));
+				}
+			}
+			return VisitFrom<I + 1>(a_visitor, std::forward<Variant>(a_variant));
+		}
+	}
+
 	template <class Variant, class... Fs>
 	[[nodiscard]] decltype(auto) Match(Variant&& a_variant, Fs&&... a_cases)
 	{
 		static_assert(kAlternativesNothrowMovable<std::remove_cvref_t<Variant>>,
-			"Match requires nothrow-move-constructible variant alternatives so the variant can never be valueless and std::visit never throws");
-		return std::visit(Overloaded<std::decay_t<Fs>...>{ std::forward<Fs>(a_cases)... }, std::forward<Variant>(a_variant));
+			"Match requires nothrow-move-constructible variant alternatives so the variant can never be valueless");
+		Overloaded<std::decay_t<Fs>...> visitor{ std::forward<Fs>(a_cases)... };
+		return VisitFrom<0>(visitor, std::forward<Variant>(a_variant));
 	}
 
 	template <class T, class Variant>
