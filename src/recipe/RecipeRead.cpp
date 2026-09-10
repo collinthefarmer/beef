@@ -19,17 +19,7 @@ namespace BetterEnchantmentEffects
 
 	namespace
 	{
-		struct Ctx
-		{
-			std::vector<Diagnostic>& out;
-			std::string              where;
-
-			void Error(std::string a_message) const { out.push_back({ Severity::kError, where, std::move(a_message) }); }
-			void Warn(std::string a_message) const { out.push_back({ Severity::kWarning, where, std::move(a_message) }); }
-			[[nodiscard]] Ctx At(std::string a_where) const { return Ctx{ out, std::move(a_where) }; }
-		};
-
-		bool RowCapReached(std::size_t a_count, const Ctx& a_ctx, std::string_view a_what)
+		bool RowCapReached(std::size_t a_count, const Reporter& a_ctx, std::string_view a_what)
 		{
 			if (a_count >= kMaxRecipeRows) {
 				a_ctx.Error(std::format("'{}' has more than {} entries", a_what, kMaxRecipeRows));
@@ -70,10 +60,10 @@ namespace BetterEnchantmentEffects
 		class Reader
 		{
 		public:
-			Reader(const json& a_object, Ctx a_ctx) :
+			Reader(const json& a_object, Reporter a_ctx) :
 				object_(a_object), ctx_(std::move(a_ctx)) {}
 
-			[[nodiscard]] const Ctx& Context() const noexcept { return ctx_; }
+			[[nodiscard]] const Reporter& Context() const noexcept { return ctx_; }
 			[[nodiscard]] bool       Has(std::string_view a_key) const { return object_.is_object() && object_.contains(a_key); }
 
 			const json* Child(std::string_view a_key)
@@ -184,7 +174,7 @@ namespace BetterEnchantmentEffects
 				return j ? VecFrom<3>(*j, a_key, a_color) : std::nullopt;
 			}
 
-			static std::optional<Vec3> PointFrom(const json& a_j, std::string_view a_what, const Ctx& a_ctx)
+			static std::optional<Vec3> PointFrom(const json& a_j, std::string_view a_what, const Reporter& a_ctx)
 			{
 				if (!a_j.is_array() || a_j.size() != 3 || !std::ranges::all_of(a_j, [](const json& e) { return e.is_number(); })) {
 					a_ctx.Error(std::format("'{}' must be [x, y, z]", a_what));
@@ -299,7 +289,7 @@ namespace BetterEnchantmentEffects
 				return V{ parts };
 			}
 
-			static std::optional<Value> ValueFrom(const json& a_j, std::string_view a_what, const Ctx& a_ctx)
+			static std::optional<Value> ValueFrom(const json& a_j, std::string_view a_what, const Reporter& a_ctx)
 			{
 				if (a_j.is_number()) {
 					return Value{ static_cast<float>(a_j.get<double>()) };
@@ -316,12 +306,12 @@ namespace BetterEnchantmentEffects
 
 		private:
 			const json&                     object_;
-			Ctx                             ctx_;
+			Reporter                             ctx_;
 			std::unordered_set<std::string> used_;
 		};
 
 		template <class Fill>
-		bool ReadObject(const json& a_v, std::string_view a_word, const Ctx& a_ctx, Fill a_fill)
+		bool ReadObject(const json& a_v, std::string_view a_word, const Reporter& a_ctx, Fill a_fill)
 		{
 			if (!a_v.is_object()) {
 				a_ctx.Error(std::format("'{}' takes an object", a_word));
@@ -334,7 +324,7 @@ namespace BetterEnchantmentEffects
 		}
 
 		template <class Row, std::size_t N>
-		std::optional<decltype(Row::value)> EnumShorthand(const json& a_v, const Row (&a_table)[N], std::string_view a_what, const Ctx& a_ctx)
+		std::optional<decltype(Row::value)> EnumShorthand(const json& a_v, const Row (&a_table)[N], std::string_view a_what, const Reporter& a_ctx)
 		{
 			const auto value = a_v.is_string() ? FromName(a_table, a_v.get<std::string>()) : std::nullopt;
 			if (!value) {
@@ -344,7 +334,7 @@ namespace BetterEnchantmentEffects
 		}
 
 		template <class T, class Parse>
-		void ReadRows(const json& a_array, const char* a_word, const Ctx& a_ctx, std::vector<T>& a_out, Parse a_parse)
+		void ReadRows(const json& a_array, const char* a_word, const Reporter& a_ctx, std::vector<T>& a_out, Parse a_parse)
 		{
 			std::size_t index = 0;
 			for (const auto& element : a_array) {
@@ -364,7 +354,7 @@ namespace BetterEnchantmentEffects
 			const json* value = nullptr;
 		};
 
-		std::optional<KindEntry> OneKey(const json& a_j, const Ctx& a_ctx, std::string_view a_what, std::initializer_list<std::string_view> a_common = {})
+		std::optional<KindEntry> OneKey(const json& a_j, const Reporter& a_ctx, std::string_view a_what, std::initializer_list<std::string_view> a_common = {})
 		{
 			if (!a_j.is_object()) {
 				a_ctx.Error(std::format("{} must be an object with one kind key", a_what));
@@ -387,7 +377,7 @@ namespace BetterEnchantmentEffects
 			return found;
 		}
 
-		std::optional<FormRef> FormFrom(const json& a_j, const Ctx& a_ctx, std::string_view a_what)
+		std::optional<FormRef> FormFrom(const json& a_j, const Reporter& a_ctx, std::string_view a_what)
 		{
 			if (!a_j.is_string() || a_j.get<std::string>().empty()) {
 				a_ctx.Error(std::format("'{}' must be an editor ID or \"0x<id>~<plugin>\"", a_what));
@@ -396,7 +386,7 @@ namespace BetterEnchantmentEffects
 			return FormRef::From(a_j.get<std::string>());
 		}
 
-		std::optional<std::string> GlobFrom(const json& a_j, const Ctx& a_ctx, std::string_view a_what)
+		std::optional<std::string> GlobFrom(const json& a_j, const Reporter& a_ctx, std::string_view a_what)
 		{
 			if (!a_j.is_string() || a_j.get<std::string>().empty()) {
 				a_ctx.Error(std::format("'{}' must be a glob string", a_what));
@@ -405,7 +395,7 @@ namespace BetterEnchantmentEffects
 			return a_j.get<std::string>();
 		}
 
-		std::optional<RecipeKey> KeyFrom(const json& a_j, const Ctx& a_ctx)
+		std::optional<RecipeKey> KeyFrom(const json& a_j, const Reporter& a_ctx)
 		{
 			if (a_j.is_string()) {
 				if (a_j.get<std::string>() == "default") {
@@ -442,7 +432,7 @@ namespace BetterEnchantmentEffects
 			return key;
 		}
 
-		Selector SelectorFrom(const json& a_j, const Ctx& a_ctx)
+		Selector SelectorFrom(const json& a_j, const Reporter& a_ctx)
 		{
 			Selector s;
 			if (!a_j.is_array()) {
@@ -495,7 +485,7 @@ namespace BetterEnchantmentEffects
 			return CurveRef{ *text };
 		}
 
-		std::optional<SignalKind> ParseConstant(const json& a_v, const Ctx& a_ctx)
+		std::optional<SignalKind> ParseConstant(const json& a_v, const Reporter& a_ctx)
 		{
 			const auto value = Reader::ValueFrom(a_v, "constant", a_ctx);
 			if (!value) {
@@ -504,7 +494,7 @@ namespace BetterEnchantmentEffects
 			return ConstantSignal{ *value };
 		}
 
-		std::optional<SignalKind> ParsePulse(const json& a_v, const Ctx& a_ctx)
+		std::optional<SignalKind> ParsePulse(const json& a_v, const Reporter& a_ctx)
 		{
 			PulseSignal k;
 			if (!ReadObject(a_v, "pulse", a_ctx, [&](Reader& r) {
@@ -519,7 +509,7 @@ namespace BetterEnchantmentEffects
 			return k;
 		}
 
-		std::optional<SignalKind> ParseRamp(const json& a_v, const Ctx& a_ctx)
+		std::optional<SignalKind> ParseRamp(const json& a_v, const Reporter& a_ctx)
 		{
 			RampSignal k;
 			if (!ReadObject(a_v, "ramp", a_ctx, [&](Reader& r) {
@@ -532,7 +522,7 @@ namespace BetterEnchantmentEffects
 			return k;
 		}
 
-		std::optional<SignalKind> ParseEfsh(const json& a_v, const Ctx& a_ctx)
+		std::optional<SignalKind> ParseEfsh(const json& a_v, const Reporter& a_ctx)
 		{
 			EfshSignal k;
 			if (!ReadObject(a_v, "efsh", a_ctx, [&](Reader& r) {
@@ -549,7 +539,7 @@ namespace BetterEnchantmentEffects
 			return k;
 		}
 
-		std::optional<SignalKind> ParseActorValue(const json& a_v, const Ctx& a_ctx)
+		std::optional<SignalKind> ParseActorValue(const json& a_v, const Reporter& a_ctx)
 		{
 			ActorValueSignal k;
 			if (a_v.is_string()) {
@@ -566,7 +556,7 @@ namespace BetterEnchantmentEffects
 			return k;
 		}
 
-		std::optional<SignalKind> ParseActorState(const json& a_v, const Ctx& a_ctx)
+		std::optional<SignalKind> ParseActorState(const json& a_v, const Reporter& a_ctx)
 		{
 			const auto state = EnumShorthand(a_v, kActorStates, "actorState", a_ctx);
 			if (!state) {
@@ -575,7 +565,7 @@ namespace BetterEnchantmentEffects
 			return ActorStateSignal{ *state };
 		}
 
-		std::optional<SignalKind> ParseEnchantment(const json& a_v, const Ctx& a_ctx)
+		std::optional<SignalKind> ParseEnchantment(const json& a_v, const Reporter& a_ctx)
 		{
 			const auto field = EnumShorthand(a_v, kEnchantmentFields, "enchantment", a_ctx);
 			if (!field) {
@@ -584,7 +574,7 @@ namespace BetterEnchantmentEffects
 			return EnchantmentSignal{ *field };
 		}
 
-		EventFilter FilterFrom(const json& a_f, const Ctx& a_ctx)
+		EventFilter FilterFrom(const json& a_f, const Reporter& a_ctx)
 		{
 			EventFilter filter;
 			Reader      fr(a_f, a_ctx);
@@ -602,7 +592,7 @@ namespace BetterEnchantmentEffects
 			return filter;
 		}
 
-		std::optional<TriggerOrigin> EventOriginFrom(const json& a_source, Reader& a_r, const Ctx& a_ctx)
+		std::optional<TriggerOrigin> EventOriginFrom(const json& a_source, Reader& a_r, const Reporter& a_ctx)
 		{
 			if (!a_source.is_string() || a_source.get<std::string>().empty()) {
 				a_ctx.Error("'event' is an id glob string");
@@ -616,7 +606,7 @@ namespace BetterEnchantmentEffects
 			return TriggerOrigin{ es };
 		}
 
-		std::optional<TriggerOrigin> PluginOriginFrom(const json& a_source, Reader& a_r, const Ctx& a_ctx)
+		std::optional<TriggerOrigin> PluginOriginFrom(const json& a_source, Reader& a_r, const Reporter& a_ctx)
 		{
 			if (!a_source.is_string() || a_source.get<std::string>().empty()) {
 				a_ctx.Error("'plugin' is an id string");
@@ -626,7 +616,7 @@ namespace BetterEnchantmentEffects
 			return TriggerOrigin{ PluginOrigin{ a_source.get<std::string>() } };
 		}
 
-		std::optional<TriggerOrigin> WhenOriginFrom(const json& a_source, Reader& a_r, const Ctx& a_ctx)
+		std::optional<TriggerOrigin> WhenOriginFrom(const json& a_source, Reader& a_r, const Reporter& a_ctx)
 		{
 			const auto when = a_r.RefFrom(a_source, "when");
 			if (!when) {
@@ -639,7 +629,7 @@ namespace BetterEnchantmentEffects
 			return TriggerOrigin{ ws };
 		}
 
-		std::optional<SignalKind> ParseTrigger(const json& a_v, const Ctx& a_ctx)
+		std::optional<SignalKind> ParseTrigger(const json& a_v, const Reporter& a_ctx)
 		{
 			if (!a_v.is_object()) {
 				a_ctx.Error("'trigger' takes an object");
@@ -676,7 +666,7 @@ namespace BetterEnchantmentEffects
 			return k;
 		}
 
-		std::optional<SignalKind> ParsePayload(const json& a_v, const Ctx& a_ctx)
+		std::optional<SignalKind> ParsePayload(const json& a_v, const Reporter& a_ctx)
 		{
 			PayloadSignal k;
 			if (!ReadObject(a_v, "payload", a_ctx, [&](Reader& r) {
@@ -690,7 +680,7 @@ namespace BetterEnchantmentEffects
 			return k;
 		}
 
-		std::optional<SignalKind> ParseCounter(const json& a_v, const Ctx& a_ctx)
+		std::optional<SignalKind> ParseCounter(const json& a_v, const Reporter& a_ctx)
 		{
 			CounterSignal k;
 			if (!ReadObject(a_v, "counter", a_ctx, [&](Reader& r) {
@@ -704,7 +694,7 @@ namespace BetterEnchantmentEffects
 			return k;
 		}
 
-		std::optional<SignalKind> ParseAccumulate(const json& a_v, const Ctx& a_ctx)
+		std::optional<SignalKind> ParseAccumulate(const json& a_v, const Reporter& a_ctx)
 		{
 			AccumulateSignal k;
 			if (!ReadObject(a_v, "accumulate", a_ctx, [&](Reader& r) {
@@ -717,7 +707,7 @@ namespace BetterEnchantmentEffects
 			return k;
 		}
 
-		std::optional<SignalKind> ParseNoise(const json& a_v, const Ctx& a_ctx)
+		std::optional<SignalKind> ParseNoise(const json& a_v, const Reporter& a_ctx)
 		{
 			NoiseSignal k;
 			if (!ReadObject(a_v, "noise", a_ctx, [&](Reader& r) {
@@ -730,7 +720,7 @@ namespace BetterEnchantmentEffects
 			return k;
 		}
 
-		std::optional<SignalKind> ParseGradient(const json& a_v, const Ctx& a_ctx)
+		std::optional<SignalKind> ParseGradient(const json& a_v, const Reporter& a_ctx)
 		{
 			GradientSignal k;
 			if (!ReadObject(a_v, "gradient", a_ctx, [&](Reader& r) {
@@ -760,7 +750,7 @@ namespace BetterEnchantmentEffects
 			return k;
 		}
 
-		std::optional<SignalKind> ParseDelta(const json& a_v, const Ctx& a_ctx)
+		std::optional<SignalKind> ParseDelta(const json& a_v, const Reporter& a_ctx)
 		{
 			Reader     r(a_v, a_ctx);
 			const auto of = r.RefFrom(a_v, "delta");
@@ -770,7 +760,7 @@ namespace BetterEnchantmentEffects
 			return DeltaSignal{ *of };
 		}
 
-		std::optional<SignalKind> ParseSmooth(const json& a_v, const Ctx& a_ctx)
+		std::optional<SignalKind> ParseSmooth(const json& a_v, const Reporter& a_ctx)
 		{
 			SmoothSignal k;
 			if (!ReadObject(a_v, "smooth", a_ctx, [&](Reader& r) {
@@ -783,7 +773,7 @@ namespace BetterEnchantmentEffects
 			return k;
 		}
 
-		std::optional<SignalKind> ParseExpr(const json& a_v, const Ctx& a_ctx)
+		std::optional<SignalKind> ParseExpr(const json& a_v, const Reporter& a_ctx)
 		{
 			if (!a_v.is_string() || a_v.get<std::string>().empty()) {
 				a_ctx.Error("'expr' is an expression string");
@@ -792,7 +782,7 @@ namespace BetterEnchantmentEffects
 			return ExprSignal{ a_v.get<std::string>() };
 		}
 
-		using SignalParser = std::optional<SignalKind> (*)(const json&, const Ctx&);
+		using SignalParser = std::optional<SignalKind> (*)(const json&, const Reporter&);
 		constexpr SignalParser kSignalParsers[]{
 			&ParseConstant, &ParsePulse, &ParseRamp, &ParseEfsh, &ParseActorValue,
 			&ParseActorState, &ParseEnchantment, &ParseTrigger, &ParsePayload, &ParseCounter,
@@ -800,7 +790,7 @@ namespace BetterEnchantmentEffects
 		};
 		static_assert(std::size(kSignalParsers) == kSignalKindCount);
 
-		std::optional<Signal> SignalFrom(const std::string& a_name, const json& a_j, const Ctx& a_ctx)
+		std::optional<Signal> SignalFrom(const std::string& a_name, const json& a_j, const Reporter& a_ctx)
 		{
 			const auto entry = OneKey(a_j, a_ctx, "a signal", { "curve" });
 			if (!entry) {
@@ -825,7 +815,7 @@ namespace BetterEnchantmentEffects
 			return s;
 		}
 
-		std::optional<SourceKind> ParseImage(const json& a_v, const Ctx& a_ctx)
+		std::optional<SourceKind> ParseImage(const json& a_v, const Reporter& a_ctx)
 		{
 			if (!a_v.is_object()) {
 				a_ctx.Error("'image' takes an object with 'path'");
@@ -851,7 +841,7 @@ namespace BetterEnchantmentEffects
 			return k;
 		}
 
-		std::optional<SourceKind> ParseMaterial(const json& a_v, const Ctx& a_ctx)
+		std::optional<SourceKind> ParseMaterial(const json& a_v, const Reporter& a_ctx)
 		{
 			const auto channel = EnumShorthand(a_v, kMaterialChannels, "material", a_ctx);
 			if (!channel) {
@@ -860,7 +850,7 @@ namespace BetterEnchantmentEffects
 			return MaterialSource{ *channel };
 		}
 
-		std::optional<BakeKind> PartitionBakeFrom(const json& a_v, const Ctx& a_ctx)
+		std::optional<BakeKind> PartitionBakeFrom(const json& a_v, const Reporter& a_ctx)
 		{
 			PartitionBake pb;
 			if (a_v.is_string()) {
@@ -879,7 +869,7 @@ namespace BetterEnchantmentEffects
 			return pb;
 		}
 
-		std::optional<BakeKind> BoneWeightBakeFrom(const json& a_v, const Ctx& a_ctx)
+		std::optional<BakeKind> BoneWeightBakeFrom(const json& a_v, const Reporter& a_ctx)
 		{
 			if (!a_v.is_array()) {
 				a_ctx.Error("'boneWeight' is an array of bone names");
@@ -896,7 +886,7 @@ namespace BetterEnchantmentEffects
 			return bw;
 		}
 
-		std::optional<SourceKind> ParseBake(const json& a_v, const Ctx& a_ctx)
+		std::optional<SourceKind> ParseBake(const json& a_v, const Reporter& a_ctx)
 		{
 			BakeSource k;
 			if (a_v.is_string()) {
@@ -928,7 +918,7 @@ namespace BetterEnchantmentEffects
 			return k;
 		}
 
-		std::optional<SourceKind> ParseUv(const json& a_v, const Ctx& a_ctx)
+		std::optional<SourceKind> ParseUv(const json& a_v, const Reporter& a_ctx)
 		{
 			const auto axis = a_v.is_string() ? FromName(kUvAxes, a_v.get<std::string>()) : std::nullopt;
 			if (!axis) {
@@ -938,7 +928,7 @@ namespace BetterEnchantmentEffects
 			return UvSource{ *axis };
 		}
 
-		std::optional<SourceKind> ParseDistance(const json& a_v, const Ctx& a_ctx)
+		std::optional<SourceKind> ParseDistance(const json& a_v, const Reporter& a_ctx)
 		{
 			DistanceSource k;
 			if (a_v.is_string()) {
@@ -962,7 +952,7 @@ namespace BetterEnchantmentEffects
 			return k;
 		}
 
-		std::optional<SourceKind> ParseRipple(const json& a_v, const Ctx& a_ctx)
+		std::optional<SourceKind> ParseRipple(const json& a_v, const Reporter& a_ctx)
 		{
 			if (!a_v.is_object()) {
 				a_ctx.Error("'ripple' takes an object with 'trigger'");
@@ -980,7 +970,7 @@ namespace BetterEnchantmentEffects
 			return k;
 		}
 
-		bool ClusterWeightsFrom(Reader& a_r, MaterialClustersSource& a_k, const Ctx& a_ctx)
+		bool ClusterWeightsFrom(Reader& a_r, MaterialClustersSource& a_k, const Reporter& a_ctx)
 		{
 			const auto* w = a_r.Child("weights");
 			if (!w) {
@@ -1006,7 +996,7 @@ namespace BetterEnchantmentEffects
 			return ok;
 		}
 
-		std::optional<SourceKind> ParseMaterialClusters(const json& a_v, const Ctx& a_ctx)
+		std::optional<SourceKind> ParseMaterialClusters(const json& a_v, const Reporter& a_ctx)
 		{
 			if (!a_v.is_object()) {
 				a_ctx.Error("'materialClusters' takes an object with 'clusters', 'weights', 'seed' and 'iterations'");
@@ -1033,13 +1023,13 @@ namespace BetterEnchantmentEffects
 			return k;
 		}
 
-		using SourceParser = std::optional<SourceKind> (*)(const json&, const Ctx&);
+		using SourceParser = std::optional<SourceKind> (*)(const json&, const Reporter&);
 		constexpr SourceParser kSourceParsers[]{
 			&ParseImage, &ParseMaterial, &ParseBake, &ParseUv, &ParseDistance, &ParseRipple, &ParseMaterialClusters
 		};
 		static_assert(std::size(kSourceParsers) == std::variant_size_v<SourceKind>);
 
-		std::optional<Source> SourceFrom(const std::string& a_name, const json& a_j, const Ctx& a_ctx)
+		std::optional<Source> SourceFrom(const std::string& a_name, const json& a_j, const Reporter& a_ctx)
 		{
 			const auto entry = OneKey(a_j, a_ctx, "a source");
 			if (!entry) {
@@ -1060,7 +1050,7 @@ namespace BetterEnchantmentEffects
 			return s;
 		}
 
-		std::optional<Layer> LayerFrom(const json& a_j, const Ctx& a_ctx)
+		std::optional<Layer> LayerFrom(const json& a_j, const Reporter& a_ctx)
 		{
 			if (!a_j.is_object()) {
 				a_ctx.Error("a layer must be an object");
@@ -1099,7 +1089,7 @@ namespace BetterEnchantmentEffects
 			return l;
 		}
 
-		Bones SkinnedBonesFrom(const json& a_v, const Ctx& a_ctx)
+		Bones SkinnedBonesFrom(const json& a_v, const Reporter& a_ctx)
 		{
 			SkinnedBones sb;
 			if (a_v.is_object()) {
@@ -1113,7 +1103,7 @@ namespace BetterEnchantmentEffects
 			return sb;
 		}
 
-		Bones NamedBonesFrom(const json& a_v, const Ctx& a_ctx)
+		Bones NamedBonesFrom(const json& a_v, const Reporter& a_ctx)
 		{
 			NamedBones nb;
 			if (a_v.is_array()) {
@@ -1130,7 +1120,7 @@ namespace BetterEnchantmentEffects
 			return nb;
 		}
 
-		std::optional<Bones> BonesFrom(const json& a_j, const Ctx& a_ctx)
+		std::optional<Bones> BonesFrom(const json& a_j, const Reporter& a_ctx)
 		{
 			const auto entry = OneKey(a_j, a_ctx, "'bones'");
 			if (!entry) {
@@ -1146,7 +1136,7 @@ namespace BetterEnchantmentEffects
 			return std::nullopt;
 		}
 
-		void StackFrom(const json& a_stack, std::vector<Layer>& a_out, const Ctx& a_ctx)
+		void StackFrom(const json& a_stack, std::vector<Layer>& a_out, const Reporter& a_ctx)
 		{
 			if (!a_stack.is_array()) {
 				a_ctx.Error("'stack' must be an array of layers");
@@ -1157,7 +1147,7 @@ namespace BetterEnchantmentEffects
 			});
 		}
 
-		Output LightOutputFrom(Reader& a_r, const Ctx& a_ctx)
+		Output LightOutputFrom(Reader& a_r, const Reporter& a_ctx)
 		{
 			LightOutput l;
 			if (const auto* bones = a_r.Child("bones")) {
@@ -1180,7 +1170,7 @@ namespace BetterEnchantmentEffects
 			return Output{ l };
 		}
 
-		Output SurfaceOutputFrom(Reader& a_r, Surface a_surface, const Ctx& a_ctx)
+		Output SurfaceOutputFrom(Reader& a_r, Surface a_surface, const Reporter& a_ctx)
 		{
 			SurfaceOutput m;
 			m.surface = a_surface;
@@ -1199,7 +1189,7 @@ namespace BetterEnchantmentEffects
 			return Output{ m };
 		}
 
-		std::optional<Output> OutputFrom(const json& a_j, const Ctx& a_ctx)
+		std::optional<Output> OutputFrom(const json& a_j, const Reporter& a_ctx)
 		{
 			if (!a_j.is_object()) {
 				a_ctx.Error("an output must be an object");
@@ -1218,7 +1208,7 @@ namespace BetterEnchantmentEffects
 			return SurfaceOutputFrom(r, *surface, a_ctx);
 		}
 
-		void PoseFrom(const json& a_j, ShellPose& a_pose, const Ctx& a_ctx)
+		void PoseFrom(const json& a_j, ShellPose& a_pose, const Reporter& a_ctx)
 		{
 			if (!a_j.is_object()) {
 				a_ctx.Error("'pose' must be an object");
@@ -1234,7 +1224,7 @@ namespace BetterEnchantmentEffects
 			p.Finish();
 		}
 
-		ShellSettings ShellFrom(const json& a_j, const Ctx& a_ctx)
+		ShellSettings ShellFrom(const json& a_j, const Reporter& a_ctx)
 		{
 			ShellSettings s;
 			if (!a_j.is_object()) {
@@ -1254,7 +1244,7 @@ namespace BetterEnchantmentEffects
 			return s;
 		}
 
-		void ReadOverrides(const json& a_overrides, std::map<std::string, Value>& a_out, const Ctx& a_ctx)
+		void ReadOverrides(const json& a_overrides, std::map<std::string, Value>& a_out, const Reporter& a_ctx)
 		{
 			if (!a_overrides.is_object()) {
 				a_ctx.Error("'overrides' is an object of signal name to value");
@@ -1270,7 +1260,7 @@ namespace BetterEnchantmentEffects
 			}
 		}
 
-		std::optional<VariantKey> VariantKeyFrom(const json& a_key, const Ctx& a_ctx)
+		std::optional<VariantKey> VariantKeyFrom(const json& a_key, const Reporter& a_ctx)
 		{
 			const auto entry = OneKey(a_key, a_ctx, "'key'");
 			if (!entry) {
@@ -1287,7 +1277,7 @@ namespace BetterEnchantmentEffects
 			return std::nullopt;
 		}
 
-		std::optional<Variant> VariantFrom(const json& a_j, const Ctx& a_ctx)
+		std::optional<Variant> VariantFrom(const json& a_j, const Reporter& a_ctx)
 		{
 			if (!a_j.is_object()) {
 				a_ctx.Error("a variant must be an object");
@@ -1307,7 +1297,7 @@ namespace BetterEnchantmentEffects
 			return v;
 		}
 
-		std::optional<Curve> CurveFrom(const std::string& a_name, const json& a_j, const Ctx& a_ctx)
+		std::optional<Curve> CurveFrom(const std::string& a_name, const json& a_j, const Reporter& a_ctx)
 		{
 			if (!a_j.is_string() || a_j.get<std::string>().empty()) {
 				a_ctx.Error("a curve is an expression string in x");
@@ -1316,7 +1306,7 @@ namespace BetterEnchantmentEffects
 			return Curve{ a_name, a_j.get<std::string>() };
 		}
 
-		std::optional<Mask> MaskFrom(const std::string& a_name, const json& a_j, const Ctx& a_ctx)
+		std::optional<Mask> MaskFrom(const std::string& a_name, const json& a_j, const Reporter& a_ctx)
 		{
 			if (!a_j.is_string() || a_j.get<std::string>().empty()) {
 				a_ctx.Error("a mask is an expression string over sources");
@@ -1374,7 +1364,7 @@ namespace BetterEnchantmentEffects
 			}
 		};
 
-		void ReadMetadata(Reader& a_r, const Ctx& a_ctx, Metadata& a_meta)
+		void ReadMetadata(Reader& a_r, const Reporter& a_ctx, Metadata& a_meta)
 		{
 			a_meta.name = a_r.String("name").value_or("");
 			a_meta.author = a_r.String("author").value_or("");
@@ -1390,7 +1380,7 @@ namespace BetterEnchantmentEffects
 			}
 		}
 
-		void ReadKeys(Reader& a_r, const Ctx& a_ctx, std::vector<RecipeKey>& a_out)
+		void ReadKeys(Reader& a_r, const Reporter& a_ctx, std::vector<RecipeKey>& a_out)
 		{
 			const auto* keys = a_r.Child("keys");
 			if (!keys) {
@@ -1404,7 +1394,7 @@ namespace BetterEnchantmentEffects
 			ReadRows(*keys, "keys", a_ctx, a_out, [&](const json& a_key, std::size_t) { return KeyFrom(a_key, a_ctx); });
 		}
 
-		void ReadOutputs(Reader& a_r, const Ctx& a_ctx, std::vector<Output>& a_out)
+		void ReadOutputs(Reader& a_r, const Reporter& a_ctx, std::vector<Output>& a_out)
 		{
 			const auto* outputs = a_r.Child("outputs");
 			if (!outputs) {
@@ -1419,7 +1409,7 @@ namespace BetterEnchantmentEffects
 			});
 		}
 
-		void ReadVariants(Reader& a_r, const Ctx& a_ctx, std::vector<Variant>& a_out)
+		void ReadVariants(Reader& a_r, const Reporter& a_ctx, std::vector<Variant>& a_out)
 		{
 			const auto* variants = a_r.Child("variants");
 			if (!variants) {
@@ -1438,7 +1428,7 @@ namespace BetterEnchantmentEffects
 	LoadResult ParseRecipe(std::string_view a_json, std::string_view a_id)
 	{
 		LoadResult result;
-		const Ctx  fileCtx{ result.diagnostics, "file" };
+		const Reporter  fileCtx{ result.diagnostics, "file" };
 
 		if (MaxNestingDepth(a_json) > kMaxRecipeDepth) {
 			fileCtx.Error(std::format("nested deeper than {} levels", kMaxRecipeDepth));
@@ -1457,7 +1447,7 @@ namespace BetterEnchantmentEffects
 
 		Recipe recipe;
 		recipe.id = std::string{ a_id };
-		const Ctx ctx{ result.diagnostics, "recipe" };
+		const Reporter ctx{ result.diagnostics, "recipe" };
 		Reader    r(root, ctx);
 
 		const auto format = r.Integer("format");

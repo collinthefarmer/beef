@@ -279,16 +279,7 @@ namespace BetterEnchantmentEffects
 			return member ? &(a_scalars.**member) : nullptr;
 		}
 
-		struct Report
-		{
-			std::vector<Diagnostic>& out;
-			std::string_view         where;
-
-			void Error(std::string a_message) const { out.push_back({ Severity::kError, std::string{ where }, std::move(a_message) }); }
-			void Warn(std::string a_message) const { out.push_back({ Severity::kWarning, std::string{ where }, std::move(a_message) }); }
-		};
-
-		void CheckScalar(const RowTypes& a_rows, const Report& a_report, const Param& a_param, std::string_view a_field)
+		void CheckScalar(const RowTypes& a_rows, const Reporter& a_report, const Param& a_param, std::string_view a_field)
 		{
 			const auto* ref = Get<Ref>(a_param);
 			if (!ref) {
@@ -303,7 +294,7 @@ namespace BetterEnchantmentEffects
 		}
 
 		template <std::size_t N>
-		void CheckVector(const RowTypes& a_rows, const Report& a_report, const std::variant<std::array<Param, N>, Ref>& a_param, std::string_view a_field, bool a_color)
+		void CheckVector(const RowTypes& a_rows, const Reporter& a_report, const std::variant<std::array<Param, N>, Ref>& a_param, std::string_view a_field, bool a_color)
 		{
 			const ValueType want = N == 2 ? ValueType::kVec2 : ValueType::kVec3;
 			Match(
@@ -326,7 +317,7 @@ namespace BetterEnchantmentEffects
 				});
 		}
 
-		void CheckTrigger(const RowTypes& a_rows, const Report& a_report, const Ref& a_ref, std::string_view a_field)
+		void CheckTrigger(const RowTypes& a_rows, const Reporter& a_report, const Ref& a_ref, std::string_view a_field)
 		{
 			const auto* signal = a_rows.recipe.FindSignal(a_ref.name);
 			if (!signal) {
@@ -336,7 +327,7 @@ namespace BetterEnchantmentEffects
 			}
 		}
 
-		void CheckCurveRef(const RowTypes& a_rows, const Report& a_report, const std::optional<CurveRef>& a_curve)
+		void CheckCurveRef(const RowTypes& a_rows, const Reporter& a_report, const std::optional<CurveRef>& a_curve)
 		{
 			if (!a_curve) {
 				return;
@@ -755,7 +746,7 @@ namespace BetterEnchantmentEffects
 	{
 		std::vector<Diagnostic> out;
 		const auto              where = std::format("source {}", a_source.name);
-		const Report            report{ out, where };
+		const Reporter            report{ out, where };
 		Match(
 			a_source.kind,
 			[&](const ImageSource& s) {
@@ -833,7 +824,7 @@ namespace BetterEnchantmentEffects
 	std::vector<Diagnostic> CheckLayer(const RowTypes& a_rows, const Layer& a_layer, Slot a_slot, std::string_view a_where)
 	{
 		std::vector<Diagnostic> out;
-		const Report            report{ out, a_where };
+		const Reporter            report{ out, a_where };
 		if (const auto* ref = Get<Ref>(a_layer.source)) {
 			if (!a_rows.recipe.FindSource(ref->name) && !a_rows.recipe.FindMask(ref->name)) {
 				report.Error(std::format("'source' names unknown source or mask '@{}'", ref->name));
@@ -855,7 +846,7 @@ namespace BetterEnchantmentEffects
 
 	namespace
 	{
-		void CheckSurfaceScalars(const RowTypes& a_rows, const SurfaceOutput& a_m, const Report& a_report)
+		void CheckSurfaceScalars(const RowTypes& a_rows, const SurfaceOutput& a_m, const Reporter& a_report)
 		{
 			for (const auto field : ScalarsFor(a_m.slot)) {
 				const auto name = NameOf(kScalarFields, field);
@@ -882,7 +873,7 @@ namespace BetterEnchantmentEffects
 		std::vector<Diagnostic> CheckSurfaceOutput(const RowTypes& a_rows, const SurfaceOutput& a_m, std::string_view a_where)
 		{
 			std::vector<Diagnostic> out;
-			const Report            report{ out, a_where };
+			const Reporter            report{ out, a_where };
 			CheckSurfaceScalars(a_rows, a_m, report);
 			if (!SlotWritable(a_m.surface, a_rows.recipe.shell.material, a_m.slot)) {
 				report.Error(std::format("a vanilla shell has only the emissive slot; '{}' is not one", NameOf(kSlots, a_m.slot)));
@@ -900,7 +891,7 @@ namespace BetterEnchantmentEffects
 		std::vector<Diagnostic> CheckLightOutput(const RowTypes& a_rows, const LightOutput& a_l, std::string_view a_where)
 		{
 			std::vector<Diagnostic> out;
-			const Report            report{ out, a_where };
+			const Reporter            report{ out, a_where };
 			CheckVector<3>(a_rows, report, a_l.offset, "offset", false);
 			CheckVector<3>(a_rows, report, a_l.color, "color", true);
 			CheckScalar(a_rows, report, a_l.intensity, "intensity");
@@ -956,11 +947,11 @@ namespace BetterEnchantmentEffects
 		void CheckShell(const RowTypes& a_rows, std::vector<Diagnostic>& a_out)
 		{
 			const ShellSettings& s = a_rows.recipe.shell;
-			const Report         shell{ a_out, "shell" };
+			const Reporter         shell{ a_out, "shell" };
 			CheckScalar(a_rows, shell, s.alpha, "alpha");
 			CheckScalar(a_rows, shell, s.rimPower, "rimPower");
 			CheckScalar(a_rows, shell, s.emissive, "emissive");
-			const Report pose{ a_out, "shell pose" };
+			const Reporter pose{ a_out, "shell pose" };
 			CheckVector<3>(a_rows, pose, s.pose.inflate, "inflate", false);
 			CheckVector<3>(a_rows, pose, s.pose.offset, "offset", false);
 			CheckScalar(a_rows, pose, s.pose.scale, "scale");

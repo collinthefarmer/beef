@@ -878,6 +878,19 @@ namespace BetterEnchantmentEffects
 		std::string message;
 	};
 
+	struct Reporter
+	{
+		std::vector<Diagnostic>& out;
+		std::string              where;
+
+		Reporter(std::vector<Diagnostic>& a_out, std::string_view a_where) :
+			out(a_out), where(a_where) {}
+
+		void                   Error(std::string a_message) const { out.push_back({ Severity::kError, where, std::move(a_message) }); }
+		void                   Warn(std::string a_message) const { out.push_back({ Severity::kWarning, where, std::move(a_message) }); }
+		[[nodiscard]] Reporter At(std::string_view a_where) const { return Reporter{ out, a_where }; }
+	};
+
 	struct LoadResult
 	{
 		std::optional<Recipe>   recipe;
