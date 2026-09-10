@@ -468,6 +468,40 @@ namespace BetterEnchantmentEffects
 		}
 	}
 
+	void SignalGraph::ResolveDependencies(SignalGraph& a_graph, Node& a_node)
+	{
+		for (const auto& dep : Dependencies(a_node.signal, a_node.expression ? &*a_node.expression : nullptr)) {
+			const auto idx = a_graph.Index(dep);
+			if (!idx) {
+				a_node.inert = true;
+				ReportSignal(a_graph, a_node.signal.name, std::format("reads unknown signal '@{}'", dep));
+				continue;
+			}
+			a_node.deps.push_back(*idx);
+		}
+	}
+
+	void SignalGraph::ResolveNodeCurve(SignalGraph& a_graph, Node& a_node)
+	{
+		if (!a_node.signal.curve) {
+			return;
+		}
+		const CurveRef& curveRef = *a_node.signal.curve;
+		if (const auto name = NamedCurve(curveRef)) {
+			if (const auto* program = a_graph.CurveProgram(*name)) {
+				a_node.curve = *program;
+			} else {
+				a_node.inert = true;
+				ReportSignal(a_graph, a_node.signal.name, std::format("curve names unknown curve '@{}'", *name));
+			}
+		} else if (auto program = ParseCurve(curveRef.text)) {
+			a_node.curve = std::move(*program);
+		} else {
+			a_node.inert = true;
+			ReportSignal(a_graph, a_node.signal.name, std::format("curve: {}", program.error()));
+		}
+	}
+
 	void SignalGraph::ResolveRefs(SignalGraph& a_graph)
 	{
 		for (auto& n : a_graph.nodes_) {
@@ -480,31 +514,8 @@ namespace BetterEnchantmentEffects
 					n.expression = std::move(*parsed);
 				}
 			}
-			for (const auto& dep : Dependencies(n.signal, n.expression ? &*n.expression : nullptr)) {
-				const auto idx = a_graph.Index(dep);
-				if (!idx) {
-					n.inert = true;
-					ReportSignal(a_graph, n.signal.name, std::format("reads unknown signal '@{}'", dep));
-					continue;
-				}
-				n.deps.push_back(*idx);
-			}
-			if (n.signal.curve) {
-				const CurveRef& curveRef = *n.signal.curve;
-				if (const auto name = NamedCurve(curveRef)) {
-					if (const auto* program = a_graph.CurveProgram(*name)) {
-						n.curve = *program;
-					} else {
-						n.inert = true;
-						ReportSignal(a_graph, n.signal.name, std::format("curve names unknown curve '@{}'", *name));
-					}
-				} else if (auto program = ParseCurve(curveRef.text)) {
-					n.curve = std::move(*program);
-				} else {
-					n.inert = true;
-					ReportSignal(a_graph, n.signal.name, std::format("curve: {}", program.error()));
-				}
-			}
+			ResolveDependencies(a_graph, n);
+			ResolveNodeCurve(a_graph, n);
 		}
 	}
 
@@ -556,6 +567,24 @@ namespace BetterEnchantmentEffects
 		}
 	}
 
+	void SignalGraph::LinkExpr(SignalGraph& a_graph, Node& a_node)
+	{
+		if (!a_node.expression) {
+			return;
+		}
+		for (const auto& r : a_node.expression->References()) {
+			a_node.exprRefs.push_back(static_cast<std::uint32_t>(a_graph.Index(r).value_or(0)));
+		}
+		for (const auto& c : a_node.expression->Curves()) {
+			const auto* program = a_graph.CurveProgram(c);
+			if (!program) {
+				a_node.inert = true;
+				ReportSignal(a_graph, a_node.signal.name, std::format("expr calls unknown curve '@{}'", c));
+			}
+			a_node.exprCurves.push_back(program);
+		}
+	}
+
 	void SignalGraph::InferTypes(SignalGraph& a_graph)
 	{
 		for (const auto i : a_graph.order_) {
@@ -596,19 +625,7 @@ namespace BetterEnchantmentEffects
 				n.inert = true;
 				ReportSignal(a_graph, n.signal.name, std::format("a curve applies only to a scalar signal; this one is a {}", Name(n.type)));
 			}
-			if (n.expression) {
-				for (const auto& r : n.expression->References()) {
-					n.exprRefs.push_back(static_cast<std::uint32_t>(a_graph.Index(r).value_or(0)));
-				}
-				for (const auto& c : n.expression->Curves()) {
-					const auto* program = a_graph.CurveProgram(c);
-					if (!program) {
-						n.inert = true;
-						ReportSignal(a_graph, n.signal.name, std::format("expr calls unknown curve '@{}'", c));
-					}
-					n.exprCurves.push_back(program);
-				}
-			}
+			LinkExpr(a_graph, n);
 		}
 	}
 

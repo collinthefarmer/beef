@@ -96,8 +96,11 @@ namespace BetterEnchantmentEffects
 		static void ReportSignal(SignalGraph& a_graph, std::string_view a_name, std::string a_message);
 		static void ParseCurves(SignalGraph& a_graph, std::span<const Curve> a_curves);
 		static void RegisterNodes(SignalGraph& a_graph, std::span<const Signal> a_signals);
+		static void ResolveDependencies(SignalGraph& a_graph, Node& a_node);
+		static void ResolveNodeCurve(SignalGraph& a_graph, Node& a_node);
 		static void ResolveRefs(SignalGraph& a_graph);
 		static void OrderNodes(SignalGraph& a_graph);
+		static void LinkExpr(SignalGraph& a_graph, Node& a_node);
 		static void InferTypes(SignalGraph& a_graph);
 		static void CheckReferenceTypes(SignalGraph& a_graph);
 		static void PropagateInert(SignalGraph& a_graph);
