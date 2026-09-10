@@ -78,7 +78,18 @@ to the logger alongside the file sink at plugin load.
 - `Importer.h` imports from a vanilla effect shader with fixed defaults: the
   frozen `ImportDefaults` struct is gone (both call sites passed nothing),
   and `EffectShaderRecord::flags` with `kGreyscaleToColor`/`kGreyscaleToAlpha`
-  are dropped (declarations with no reader).
+  are dropped (declarations with no reader). The shipped default values that
+  were `ImportDefaults` fields are now `inline constexpr` in `Importer.cpp`;
+  the version string `BetterEnchantmentEffects 0.1.0` stamped into
+  `metadata.imported` lives there too. `ParseEffectShaderRecord` reads the
+  vanilla EFSH JSON: colour keys and `edgeColor` are 0..255 bytes divided by
+  255 into `Vec3`, missing or non-numeric fields fall back (alpha ratios and
+  colour scale to 1, texture scale to 1, times and speeds to 0), and the frozen
+  `edgeFalloff` is not read (its `EffectParams` field is gone). The
+  colour-seeding helpers moved from `Timing` into `Importer.cpp` carry the two
+  vanilla thresholds the code cannot name: a fill whose brightest channel is at
+  or below `0.02` is treated as white (an unlit fill glows), and the edge tint
+  is used only when its chroma exceeds `0.05` (a grey edge does not tint).
 - `Merge.h` splits the frozen `Contribution` into `SlotContribution` and
   `LightContribution` over two `enum class` index types, `SlotSource` and
   `LightSource`. One `std::size_t` field in the frozen code meant an index
@@ -443,7 +454,7 @@ Decompile provenance (`decompiled/WornEnchantmentFX/plugin.c` unless noted):
   another source asks for other settings, so a source that reads it must
   hold the returned target for as long as it samples it.
 
-## Recipe format details beyond the schema (`Recipe.h`, `RecipeJson.cpp`)
+## Recipe format details beyond the schema (`Recipe.h`, `RecipeRead.cpp`, `RecipeWrite.cpp`)
 
 - Key priority is in `KeyKind` enum order, ten per step, so a magic-effect
   key outranks an enchantment key, which outranks an effect-shader key,
@@ -460,7 +471,15 @@ Decompile provenance (`decompiled/WornEnchantmentFX/plugin.c` unless noted):
   back as the same float.
 - Duplicate keys inside one JSON object are an error, found while parsing;
   every key no reader asked for is reported. `//` and `/* */` comments are
-  accepted in recipe files.
+  accepted in recipe files. Nesting past `kMaxRecipeDepth` levels is rejected
+  before the JSON parser recurses, from a brace/bracket scan of the raw text.
+- `SerializeRecipe` writes the canonical form: `nlohmann::ordered_json` keeps
+  object key order equal to the model's field order, and every field at its
+  default is omitted. Parse-then-serialise reproduces a file byte-for-byte
+  only when that file is already canonical (a shipped or importer-generated
+  recipe, and the `tests/fixtures/recipes/*.json`). `schema/example-magicka.json`
+  is a hand-authored illustration with explicit defaults, alignment and blank
+  lines, so it round-trips to an equal recipe but not to identical bytes.
 - Text forms: a parameter is `@name` for a reference, a number for a
   constant, `r, g, b` for a colour. A row name is letters, digits and
   underscores, not starting with a digit; a recipe id is a file stem
