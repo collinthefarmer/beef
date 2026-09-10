@@ -212,32 +212,3 @@ findings. `Evaluate` is the per-texel path; the switch compiles to a jump
 table with inlined kernels and a function-pointer table forbids both.
 Both switches are long but flat. The metric is complaining about a shape
 that is correct.
-
-**Splitting `Perform` (`src/ComposePage.cpp:59`) and `Reduce`
-(`src/MenuState.cpp:89`).** Worth 4 findings, and they are the fattest
-single targets. They are long because `Intent` has 48 alternatives and
-each gets a one-line arm: the length is the intent list. The exhaustive
-`Match` is what makes the compiler demand an arm when someone adds an
-intent, and splitting trades that for a hand-maintained dispatch layer.
-
-**Driving the 61 raw engine pointer members to zero.** They are five
-populations: 2 regex false positives matching `return *v;`, 9 `const
-char*` to string literals, 18 D3D COM handles owned for the process
-lifetime, 7 per-call parameter structs, and about 10 real ones — 6 of
-which are already guarded by `SlotWriter::StillOwned`
-(`src/Binding.cpp:341`), a destructor that refuses to restore when the
-check fails, and `DropLostGeometries` logging `dropping '{}': its
-material or shell was replaced by another system`. Replacing those with
-keys would mean a per-frame lookup to learn what two comparisons already
-know. Fix the check, not the code.
-
-**The 34 `bugprone-exception-escape` findings.** `~LightBinding`
-(`src/Binding.cpp:877`) fires because it calls the engine through
-`REL::Relocation` function pointers that carry no exception
-specification, which no annotation short of lying removes. The rest are
-`noexcept` interface lambdas that allocate, where allocation failure
-inside a Skyrim process is already fatal.
-
-**The 78 `modernize-use-emplace` findings** outside cluster 1's sixty:
-mostly menu-draw row building, no measurable frame cost, and applying
-them churns readable code.
