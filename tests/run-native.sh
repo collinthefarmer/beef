@@ -18,6 +18,12 @@ if [ -n "${BEEF_SANITIZE:-}" ]; then
 fi
 
 MODULES=(recipe mesh studio planners)
+declare -A MODULE_DEPS=(
+	[recipe]=""
+	[mesh]="recipe"
+	[studio]="recipe mesh"
+	[planners]="recipe mesh"
+)
 
 status=0
 compile() {
@@ -45,9 +51,11 @@ RUN_ARGS=("$@")
 suites=0
 for mod in "${MODULES[@]}"; do
 	module_sources=()
-	while IFS= read -r -d '' src; do
-		module_sources+=("$src")
-	done < <(find "src/$mod" -name '*.cpp' -print0 2>/dev/null | sort -z)
+	for dir in ${MODULE_DEPS[$mod]:-} "$mod"; do
+		while IFS= read -r -d '' src; do
+			module_sources+=("$src")
+		done < <(find "src/$dir" -name '*.cpp' -print0 2>/dev/null | sort -z)
+	done
 	while IFS= read -r -d '' test; do
 		suites=$((suites + 1))
 		name="${mod}_$(basename "$test" .cpp)"

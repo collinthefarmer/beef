@@ -542,7 +542,7 @@ Decompile provenance (`decompiled/WornEnchantmentFX/plugin.c` unless noted):
 - The framework's `ImTextureID` is a D3D11 shader resource view pointer
   (NOTES 28).
 
-## studio (`studio/Snapshot.h`, `View.h`, `Intent.h`, `Forms.h`, `Edits.h`, `Mask.h`, `Presets.h`, `TermTemplates.h`, `PaintSession.h`, `Board.h`, `Panels.h`, `Selection.h`, `Names.h`, `Rows.h`, `FieldCheck.h`, `History.h`)
+## studio (`studio/Snapshot.h`, `View.h`, `Intent.h`, `Forms.h`, `Edits.h`, `Mask.h`, `Presets.h`, `TermTemplates.h`, `PaintSession.h`, `Board.h`, `Panels.h`, `Selection.h`, `Names.h`, `Rows.h`, `FieldCheck.h`, `History.h`, `Page.h`, `Widgets.h`, `Fields.h`)
 
 - `Snapshot::Status` (nine engine scalars plus a recipe-error count) is filled
   once on the game thread where the snapshot is built, so the render thread
@@ -590,6 +590,31 @@ Decompile provenance (`decompiled/WornEnchantmentFX/plugin.c` unless noted):
   these arms cover fields `_old` left uneditable: `SetPriority`,
   `SetClockSpeed`, `SetOutputReplace` and `SetOutputSelector` (material
   outputs), and `SetLightReplace`/`SetLightSelector` (lights).
+- The UI-primitive layer (`studio/Page.h`, `Widgets.h`, `Fields.h`,
+  `Fields.cpp`) is pure spec data; the engine renderer resolves what needs an
+  ImGui call. `Width` carries the intent only: `kPx` a pixel count, `kFill` a
+  fraction of the available width, `kFit` the label text the renderer measures
+  against the current font. Measuring `kFit`, turning a `RuleSpec` into drawn
+  buttons, and reporting which button was pressed (`RuleClick.index`, the
+  data replacement for `_old`'s `RuleLine` `std::function`) all belong to the
+  renderer; the pure side supplies only the button records and their action
+  tags. `ThumbnailSpec` likewise carries a texture handle, channel and a size
+  the renderer draws.
+- `Page::scale` and `ScaleOf` carry the UI scale the frozen tree threaded as
+  `Layout::widgetScale` (dropped from `Layout` as a per-mode design field). It
+  is renderer-supplied — a font/DPI factor no pure data can compute — so it
+  lives on the per-frame `Page` and the field/width specs consume it there.
+- Toggle and choice fields cross the `FieldBinding` boundary as text: a toggle
+  is the literal `"on"`/`"off"`, a choice is the exact word from its table
+  (`BlendName`, `ShellMaterialName`, `DefaultSignalKind`'s kind word). This is
+  why `BindLightShadow`, `BindShellDepthBias` and `ToggleField` compare against
+  `"on"` — the renderer maps a checkbox state to that token, and the pure bind
+  turns the token back into a boolean edit.
+- `BindSignalMember`/`BindSourceMember` copy the whole signal/source record
+  into the closure by value, set one member through a member pointer, and emit
+  a `SetSignal`/`SetSource` carrying the amended record. The record is captured
+  by value (init-capture), not by `const&`, so the closure owns its state and
+  no dangling reference outlives the form build.
 
 ## Build and tools
 
