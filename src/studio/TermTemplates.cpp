@@ -454,6 +454,41 @@ ParseBoneList(std::string_view a_text) {
   return bones;
 }
 
+void ThresholdRangeFields(std::vector<TermField> &a_form,
+                          const ThresholdTerm &a_term) {
+  using Set = std::function<bool(ThresholdTerm &, const std::string &)>;
+  a_form.push_back(Setting<ThresholdTerm>(
+      a_term,
+      TextedField({.name = "low",
+                   .kind = FieldKind::kScalar,
+                   .text = NumberText(a_term.low),
+                   .bind = {}}),
+      Set{[](ThresholdTerm &t, const std::string &a_text) {
+        const auto number = NumberIn(a_text, -1.0f, 2.0f);
+        return number ? (t.low = *number, true) : false;
+      }}));
+  a_form.push_back(Setting<ThresholdTerm>(
+      a_term,
+      TextedField({.name = "high",
+                   .kind = FieldKind::kScalar,
+                   .text = NumberText(a_term.high),
+                   .bind = {}}),
+      Set{[](ThresholdTerm &t, const std::string &a_text) {
+        const auto number = NumberIn(a_text, -1.0f, 2.0f);
+        return number ? (t.high = *number, true) : false;
+      }}));
+  a_form.push_back(Setting<ThresholdTerm>(
+      a_term,
+      TextedField({.name = "softness",
+                   .kind = FieldKind::kScalar,
+                   .text = NumberText(a_term.softness),
+                   .bind = {}}),
+      Set{[](ThresholdTerm &t, const std::string &a_text) {
+        const auto number = NumberIn(a_text, 0.0f, 1.0f);
+        return number ? (t.softness = *number, true) : false;
+      }}));
+}
+
 std::vector<TermField> ThresholdForm(const ThresholdTerm &a_term) {
   using Set = std::function<bool(ThresholdTerm &, const std::string &)>;
   std::vector<TermField> form;
@@ -469,36 +504,7 @@ std::vector<TermField> ThresholdForm(const ThresholdTerm &a_term) {
         t.channel = *channel;
         return true;
       }}));
-  form.push_back(Setting<ThresholdTerm>(
-      a_term,
-      TextedField({.name = "low",
-                   .kind = FieldKind::kScalar,
-                   .text = NumberText(a_term.low),
-                   .bind = {}}),
-      Set{[](ThresholdTerm &t, const std::string &a_text) {
-        const auto number = NumberIn(a_text, -1.0f, 2.0f);
-        return number ? (t.low = *number, true) : false;
-      }}));
-  form.push_back(Setting<ThresholdTerm>(
-      a_term,
-      TextedField({.name = "high",
-                   .kind = FieldKind::kScalar,
-                   .text = NumberText(a_term.high),
-                   .bind = {}}),
-      Set{[](ThresholdTerm &t, const std::string &a_text) {
-        const auto number = NumberIn(a_text, -1.0f, 2.0f);
-        return number ? (t.high = *number, true) : false;
-      }}));
-  form.push_back(Setting<ThresholdTerm>(
-      a_term,
-      TextedField({.name = "softness",
-                   .kind = FieldKind::kScalar,
-                   .text = NumberText(a_term.softness),
-                   .bind = {}}),
-      Set{[](ThresholdTerm &t, const std::string &a_text) {
-        const auto number = NumberIn(a_text, 0.0f, 1.0f);
-        return number ? (t.softness = *number, true) : false;
-      }}));
+  ThresholdRangeFields(form, a_term);
   form.push_back(Setting<ThresholdTerm>(
       a_term,
       TextedField({.name = "posterize",

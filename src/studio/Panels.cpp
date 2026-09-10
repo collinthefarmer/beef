@@ -1472,16 +1472,9 @@ void EnchantmentFields(std::vector<FormField> &a_form,
                        WordOf(kEnchantmentFields))));
 }
 
-void TriggerFields(std::vector<FormField> &a_form, const SignalContext &a_ctx,
-                   const TriggerSignal &a_trigger) {
-  const std::size_t origin = a_trigger.origin.index();
-  a_form.push_back(
-      ChoiceField("origin",
-                  std::string{origin < std::size(kTriggerOriginWords)
-                                  ? kTriggerOriginWords[origin]
-                                  : "?"},
-                  WordsOf(kTriggerOriginWords),
-                  BindTriggerOrigin(a_ctx.name, a_ctx.record)));
+void TriggerOriginFields(std::vector<FormField> &a_form,
+                         const SignalContext &a_ctx,
+                         const TriggerSignal &a_trigger) {
   Match(
       a_trigger.origin,
       [&](const EventOrigin &a_event) {
@@ -1523,6 +1516,19 @@ void TriggerFields(std::vector<FormField> &a_form, const SignalContext &a_ctx,
              .bind = BindTriggerMember(a_ctx.name, a_ctx.record,
                                        &WhenOrigin::value, OptionalRefOf)}));
       });
+}
+
+void TriggerFields(std::vector<FormField> &a_form, const SignalContext &a_ctx,
+                   const TriggerSignal &a_trigger) {
+  const std::size_t origin = a_trigger.origin.index();
+  a_form.push_back(
+      ChoiceField("origin",
+                  std::string{origin < std::size(kTriggerOriginWords)
+                                  ? kTriggerOriginWords[origin]
+                                  : "?"},
+                  WordsOf(kTriggerOriginWords),
+                  BindTriggerOrigin(a_ctx.name, a_ctx.record)));
+  TriggerOriginFields(a_form, a_ctx, a_trigger);
   a_form.push_back(ParamField(
       {.name = "lifetime",
        .kind = FieldKind::kScalar,
@@ -1941,50 +1947,52 @@ OutputHeader OutputHeaderForm(std::size_t a_output, bool a_replace,
   return header;
 }
 
-std::vector<FormField> LightForm(const LightRow &a_light,
-                                 const SignalNames &a_names) {
-  std::vector<FormField> form;
-  if (!a_light.present) {
-    return form;
-  }
+namespace {
+void LightColorFields(std::vector<FormField> &a_form, const LightRow &a_light,
+                      const SignalNames &a_names) {
   const std::size_t output = a_light.output;
-  form.push_back(
+  a_form.push_back(
       ParamField({.name = "color",
                   .kind = FieldKind::kColor,
                   .text = a_light.color,
                   .names = a_names.color,
                   .bind = BindLightVector(output, LightVector::kColor)}));
-  form.push_back(
+  a_form.push_back(
       ParamField({.name = "intensity",
                   .kind = FieldKind::kScalar,
                   .text = a_light.intensity,
                   .names = a_names.scalar,
                   .bind = BindLightParam(output, LightParam::kIntensity)}));
-  form.push_back(
+  a_form.push_back(
       ParamField({.name = "size",
                   .kind = FieldKind::kScalar,
                   .text = a_light.size,
                   .names = a_names.scalar,
                   .bind = BindLightParam(output, LightParam::kSize)}));
-  form.push_back(
+  a_form.push_back(
       ParamField({.name = "cutoff",
                   .kind = FieldKind::kScalar,
                   .text = a_light.cutoff,
                   .names = a_names.scalar,
                   .bind = BindLightParam(output, LightParam::kCutoff)}));
-  form.push_back(
+  a_form.push_back(
       ParamField({.name = "offset",
                   .kind = FieldKind::kVector,
                   .text = a_light.offset,
                   .names = a_names.color,
                   .bind = BindLightVector(output, LightVector::kOffset)}));
-  form.push_back(
+}
+
+void LightShapeFields(std::vector<FormField> &a_form, const LightRow &a_light) {
+  const std::size_t output = a_light.output;
+  a_form.push_back(
       ToggleField("shadow", a_light.shadow, BindLightShadow(output)));
-  form.push_back(
+  a_form.push_back(
       ToggleField("replace", a_light.replace, BindLightReplace(output)));
   const bool skinned = a_light.bones != "named";
-  form.push_back(ChoiceField("bones", skinned ? "skinned" : "named",
-                             {"skinned", "named"}, BindLightBonesKind(output)));
+  a_form.push_back(ChoiceField("bones", skinned ? "skinned" : "named",
+                               {"skinned", "named"},
+                               BindLightBonesKind(output)));
   if (skinned) {
     FormField max = ValueField(
         {.name = "max",
@@ -1993,7 +2001,7 @@ std::vector<FormField> LightForm(const LightRow &a_light,
          .names = {},
          .bind = BindLightSkinnedMax(output, a_light.bonesMinShare)});
     max.range = std::pair{1.0f, 64.0f};
-    form.push_back(std::move(max));
+    a_form.push_back(std::move(max));
     FormField minShare = ValueField(
         {.name = "minShare",
          .kind = FieldKind::kScalar,
@@ -2001,77 +2009,102 @@ std::vector<FormField> LightForm(const LightRow &a_light,
          .names = {},
          .bind = BindLightSkinnedMinShare(output, a_light.bonesMax)});
     minShare.range = std::pair{0.0f, 1.0f};
-    form.push_back(std::move(minShare));
+    a_form.push_back(std::move(minShare));
   } else {
-    form.push_back(TextedField({.name = "names",
-                                .kind = FieldKind::kText,
-                                .text = a_light.bonesNames,
-                                .bind = BindLightNames(output)}));
+    a_form.push_back(TextedField({.name = "names",
+                                  .kind = FieldKind::kText,
+                                  .text = a_light.bonesNames,
+                                  .bind = BindLightNames(output)}));
   }
+}
+}
+
+std::vector<FormField> LightForm(const LightRow &a_light,
+                                 const SignalNames &a_names) {
+  std::vector<FormField> form;
+  if (!a_light.present) {
+    return form;
+  }
+  LightColorFields(form, a_light, a_names);
+  LightShapeFields(form, a_light);
   return form;
+}
+
+namespace {
+void ShellMaterialFields(std::vector<FormField> &a_form,
+                         const ShellRow &a_shell, const SignalNames &a_names) {
+  a_form.push_back(ChoiceField("material",
+                               std::string{ShellMaterialName(a_shell.material)},
+                               WordsOf(kShellMaterials), BindShellMaterial()));
+  a_form.push_back(ChoiceField("blend",
+                               std::string{ShellBlendName(a_shell.blend)},
+                               WordsOf(kShellBlends), BindShellBlend()));
+  a_form.push_back(
+      ToggleField("depthBias", a_shell.depthBias, BindShellDepthBias()));
+  a_form.push_back(ValueField({.name = "alphaTest",
+                               .kind = FieldKind::kScalar,
+                               .text = ParamText(a_shell.alphaTest),
+                               .names = {},
+                               .bind = BindShellAlphaTest()}));
+  a_form.push_back(ParamField({.name = "alpha",
+                               .kind = FieldKind::kScalar,
+                               .text = a_shell.alpha,
+                               .names = a_names.scalar,
+                               .bind = BindShellParam(ShellParam::kAlpha)}));
+  a_form.push_back(ParamField({.name = "rimPower",
+                               .kind = FieldKind::kScalar,
+                               .text = a_shell.rimPower,
+                               .names = a_names.scalar,
+                               .bind = BindShellParam(ShellParam::kRimPower)}));
+  a_form.push_back(ParamField({.name = "emissive",
+                               .kind = FieldKind::kScalar,
+                               .text = a_shell.emissive,
+                               .names = a_names.scalar,
+                               .bind = BindShellParam(ShellParam::kEmissive)}));
+}
+
+void ShellPoseFields(std::vector<FormField> &a_form, const ShellRow &a_shell,
+                     const SignalNames &a_names) {
+  a_form.push_back(
+      ParamField({.name = "inflate",
+                  .kind = FieldKind::kVector,
+                  .text = a_shell.inflate,
+                  .names = a_names.color,
+                  .bind = BindShellVector(ShellVector::kInflate)}));
+  a_form.push_back(ParamField({.name = "offset",
+                               .kind = FieldKind::kVector,
+                               .text = a_shell.offset,
+                               .names = a_names.color,
+                               .bind = BindShellVector(ShellVector::kOffset)}));
+  a_form.push_back(ParamField({.name = "scale",
+                               .kind = FieldKind::kScalar,
+                               .text = a_shell.scale,
+                               .names = a_names.scalar,
+                               .bind = BindShellParam(ShellParam::kScale)}));
+  a_form.push_back(
+      ValueField({.name = "scalePoint",
+                  .kind = FieldKind::kVector,
+                  .text = LiteralColorText(a_shell.scalePoint),
+                  .names = {},
+                  .bind = BindShellPoint(ShellPoint::kScalePoint)}));
+  a_form.push_back(ParamField({.name = "spin",
+                               .kind = FieldKind::kScalar,
+                               .text = a_shell.spin,
+                               .names = a_names.scalar,
+                               .bind = BindShellParam(ShellParam::kSpin)}));
+  a_form.push_back(ValueField({.name = "spinAxis",
+                               .kind = FieldKind::kVector,
+                               .text = LiteralColorText(a_shell.spinAxis),
+                               .names = {},
+                               .bind = BindShellPoint(ShellPoint::kSpinAxis)}));
+}
 }
 
 std::vector<FormField> ShellForm(const ShellRow &a_shell,
                                  const SignalNames &a_names) {
   std::vector<FormField> form;
-  form.push_back(ChoiceField("material",
-                             std::string{ShellMaterialName(a_shell.material)},
-                             WordsOf(kShellMaterials), BindShellMaterial()));
-  form.push_back(ChoiceField("blend",
-                             std::string{ShellBlendName(a_shell.blend)},
-                             WordsOf(kShellBlends), BindShellBlend()));
-  form.push_back(
-      ToggleField("depthBias", a_shell.depthBias, BindShellDepthBias()));
-  form.push_back(ValueField({.name = "alphaTest",
-                             .kind = FieldKind::kScalar,
-                             .text = ParamText(a_shell.alphaTest),
-                             .names = {},
-                             .bind = BindShellAlphaTest()}));
-  form.push_back(ParamField({.name = "alpha",
-                             .kind = FieldKind::kScalar,
-                             .text = a_shell.alpha,
-                             .names = a_names.scalar,
-                             .bind = BindShellParam(ShellParam::kAlpha)}));
-  form.push_back(ParamField({.name = "rimPower",
-                             .kind = FieldKind::kScalar,
-                             .text = a_shell.rimPower,
-                             .names = a_names.scalar,
-                             .bind = BindShellParam(ShellParam::kRimPower)}));
-  form.push_back(ParamField({.name = "emissive",
-                             .kind = FieldKind::kScalar,
-                             .text = a_shell.emissive,
-                             .names = a_names.scalar,
-                             .bind = BindShellParam(ShellParam::kEmissive)}));
-  form.push_back(ParamField({.name = "inflate",
-                             .kind = FieldKind::kVector,
-                             .text = a_shell.inflate,
-                             .names = a_names.color,
-                             .bind = BindShellVector(ShellVector::kInflate)}));
-  form.push_back(ParamField({.name = "offset",
-                             .kind = FieldKind::kVector,
-                             .text = a_shell.offset,
-                             .names = a_names.color,
-                             .bind = BindShellVector(ShellVector::kOffset)}));
-  form.push_back(ParamField({.name = "scale",
-                             .kind = FieldKind::kScalar,
-                             .text = a_shell.scale,
-                             .names = a_names.scalar,
-                             .bind = BindShellParam(ShellParam::kScale)}));
-  form.push_back(ValueField({.name = "scalePoint",
-                             .kind = FieldKind::kVector,
-                             .text = LiteralColorText(a_shell.scalePoint),
-                             .names = {},
-                             .bind = BindShellPoint(ShellPoint::kScalePoint)}));
-  form.push_back(ParamField({.name = "spin",
-                             .kind = FieldKind::kScalar,
-                             .text = a_shell.spin,
-                             .names = a_names.scalar,
-                             .bind = BindShellParam(ShellParam::kSpin)}));
-  form.push_back(ValueField({.name = "spinAxis",
-                             .kind = FieldKind::kVector,
-                             .text = LiteralColorText(a_shell.spinAxis),
-                             .names = {},
-                             .bind = BindShellPoint(ShellPoint::kSpinAxis)}));
+  ShellMaterialFields(form, a_shell, a_names);
+  ShellPoseFields(form, a_shell, a_names);
   return form;
 }
 
