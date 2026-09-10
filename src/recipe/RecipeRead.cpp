@@ -343,6 +343,21 @@ namespace BetterEnchantmentEffects
 			return value;
 		}
 
+		template <class T, class Parse>
+		void ReadRows(const json& a_array, const char* a_word, const Ctx& a_ctx, std::vector<T>& a_out, Parse a_parse)
+		{
+			std::size_t index = 0;
+			for (const auto& element : a_array) {
+				if (RowCapReached(a_out.size(), a_ctx, a_word)) {
+					break;
+				}
+				if (auto row = a_parse(element, index)) {
+					a_out.push_back(std::move(*row));
+				}
+				++index;
+			}
+		}
+
 		struct KindEntry
 		{
 			std::string key;
@@ -1137,16 +1152,9 @@ namespace BetterEnchantmentEffects
 				a_ctx.Error("'stack' must be an array of layers");
 				return;
 			}
-			std::size_t i = 0;
-			for (const auto& layer : a_stack) {
-				if (RowCapReached(a_out.size(), a_ctx, "stack")) {
-					break;
-				}
-				if (auto l = LayerFrom(layer, a_ctx.At(std::format("{} layer {}", a_ctx.where, i)))) {
-					a_out.push_back(std::move(*l));
-				}
-				++i;
-			}
+			ReadRows(a_stack, "stack", a_ctx, a_out, [&](const json& a_layer, std::size_t a_index) {
+				return LayerFrom(a_layer, a_ctx.At(std::format("{} layer {}", a_ctx.where, a_index)));
+			});
 		}
 
 		Output LightOutputFrom(Reader& a_r, const Ctx& a_ctx)
@@ -1393,14 +1401,7 @@ namespace BetterEnchantmentEffects
 				a_ctx.Error("'keys' must be a non-empty array");
 				return;
 			}
-			for (const auto& k : *keys) {
-				if (RowCapReached(a_out.size(), a_ctx, "keys")) {
-					break;
-				}
-				if (auto key = KeyFrom(k, a_ctx)) {
-					a_out.push_back(std::move(*key));
-				}
-			}
+			ReadRows(*keys, "keys", a_ctx, a_out, [&](const json& a_key, std::size_t) { return KeyFrom(a_key, a_ctx); });
 		}
 
 		void ReadOutputs(Reader& a_r, const Ctx& a_ctx, std::vector<Output>& a_out)
@@ -1413,16 +1414,9 @@ namespace BetterEnchantmentEffects
 				a_ctx.Error("'outputs' must be an array");
 				return;
 			}
-			std::size_t i = 0;
-			for (const auto& o : *outputs) {
-				if (RowCapReached(a_out.size(), a_ctx, "outputs")) {
-					break;
-				}
-				if (auto out = OutputFrom(o, a_ctx.At(std::format("output {}", i)))) {
-					a_out.push_back(std::move(*out));
-				}
-				++i;
-			}
+			ReadRows(*outputs, "outputs", a_ctx, a_out, [&](const json& a_output, std::size_t a_index) {
+				return OutputFrom(a_output, a_ctx.At(std::format("output {}", a_index)));
+			});
 		}
 
 		void ReadVariants(Reader& a_r, const Ctx& a_ctx, std::vector<Variant>& a_out)
@@ -1435,16 +1429,9 @@ namespace BetterEnchantmentEffects
 				a_ctx.Error("'variants' must be an array");
 				return;
 			}
-			std::size_t i = 0;
-			for (const auto& v : *variants) {
-				if (RowCapReached(a_out.size(), a_ctx, "variants")) {
-					break;
-				}
-				if (auto var = VariantFrom(v, a_ctx.At(std::format("variant {}", i)))) {
-					a_out.push_back(std::move(*var));
-				}
-				++i;
-			}
+			ReadRows(*variants, "variants", a_ctx, a_out, [&](const json& a_variant, std::size_t a_index) {
+				return VariantFrom(a_variant, a_ctx.At(std::format("variant {}", a_index)));
+			});
 		}
 	}
 
