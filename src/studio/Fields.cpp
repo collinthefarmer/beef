@@ -323,7 +323,7 @@ FormField ValueField(std::string a_name, FieldKind a_kind, std::string a_text,
   field.names = std::move(a_names);
   field.allowEmpty = a_allowEmpty;
   field.detail = a_detail;
-  field.value = std::move(a_value);
+  field.value = a_value;
   field.bind = std::move(a_bind);
   return field;
 }
