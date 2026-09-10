@@ -217,6 +217,21 @@ namespace BetterEnchantmentEffects
 			template <class Row, std::size_t N>
 			void Read(std::string_view a_key, const Row (&a_table)[N], decltype(Row::value)& a_out) { if (auto e = Enum(a_key, a_table)) a_out = *e; }
 
+			template <class T>
+			bool IntRange(std::string_view a_key, int a_lo, int a_hi, T& a_out)
+			{
+				const auto n = Integer(a_key);
+				if (!n) {
+					return true;
+				}
+				if (*n < a_lo || *n > a_hi) {
+					ctx_.Error(std::format("'{}' is {}..{}", a_key, a_lo, a_hi));
+					return false;
+				}
+				a_out = static_cast<T>(*n);
+				return true;
+			}
+
 			void Finish()
 			{
 				if (!object_.is_object()) {
@@ -572,9 +587,45 @@ namespace BetterEnchantmentEffects
 			return filter;
 		}
 
+		std::optional<TriggerOrigin> EventOriginFrom(const json& a_source, Reader& a_r, const Ctx& a_ctx)
+		{
+			if (!a_source.is_string() || a_source.get<std::string>().empty()) {
+				a_ctx.Error("'event' is an id glob string");
+				return std::nullopt;
+			}
+			EventOrigin es;
+			es.event = a_source.get<std::string>();
+			if (auto at = a_r.String("at")) es.at = *at;
+			if (const auto* f = a_r.Child("filter")) es.filter = FilterFrom(*f, a_ctx);
+			if (a_r.Has("value")) a_ctx.Error("'value' belongs to a 'when' trigger");
+			return TriggerOrigin{ es };
+		}
+
+		std::optional<TriggerOrigin> PluginOriginFrom(const json& a_source, Reader& a_r, const Ctx& a_ctx)
+		{
+			if (!a_source.is_string() || a_source.get<std::string>().empty()) {
+				a_ctx.Error("'plugin' is an id string");
+				return std::nullopt;
+			}
+			if (a_r.Has("filter") || a_r.Has("at") || a_r.Has("value")) a_ctx.Error("'filter', 'at' and 'value' belong to 'event' or 'when' triggers");
+			return TriggerOrigin{ PluginOrigin{ a_source.get<std::string>() } };
+		}
+
+		std::optional<TriggerOrigin> WhenOriginFrom(const json& a_source, Reader& a_r, const Ctx& a_ctx)
+		{
+			const auto when = a_r.RefFrom(a_source, "when");
+			if (!when) {
+				return std::nullopt;
+			}
+			WhenOrigin ws;
+			ws.when = *when;
+			ws.value = a_r.Reference("value");
+			if (a_r.Has("filter") || a_r.Has("at")) a_ctx.Error("'filter' and 'at' belong to 'event' triggers");
+			return TriggerOrigin{ ws };
+		}
+
 		std::optional<SignalKind> ParseTrigger(const json& a_v, const Ctx& a_ctx)
 		{
-			TriggerSignal k;
 			if (!a_v.is_object()) {
 				a_ctx.Error("'trigger' takes an object");
 				return std::nullopt;
@@ -583,48 +634,29 @@ namespace BetterEnchantmentEffects
 			if (!source) {
 				return std::nullopt;
 			}
-			Reader r(a_v, a_ctx);
+			TriggerSignal k;
+			Reader        r(a_v, a_ctx);
 			r.Read("lifetime", k.lifetime);
 			if (auto m = r.Integer("max")) {
-				if (*m < 1) {
-					a_ctx.Error("'max' must be at least 1");
-				} else {
-					k.max = static_cast<std::uint32_t>(*m);
-				}
+				if (*m < 1) a_ctx.Error("'max' must be at least 1");
+				else k.max = static_cast<std::uint32_t>(*m);
 			}
 			r.Child(source->key);
+			std::optional<TriggerOrigin> origin;
 			if (source->key == "event") {
-				EventOrigin es;
-				if (!source->value->is_string() || source->value->get<std::string>().empty()) {
-					a_ctx.Error("'event' is an id glob string");
-					return std::nullopt;
-				}
-				es.event = source->value->get<std::string>();
-				if (auto at = r.String("at")) es.at = *at;
-				if (const auto* f = r.Child("filter")) es.filter = FilterFrom(*f, a_ctx);
-				if (r.Has("value")) a_ctx.Error("'value' belongs to a 'when' trigger");
-				k.origin = es;
+				origin = EventOriginFrom(*source->value, r, a_ctx);
 			} else if (source->key == "plugin") {
-				if (!source->value->is_string() || source->value->get<std::string>().empty()) {
-					a_ctx.Error("'plugin' is an id string");
-					return std::nullopt;
-				}
-				if (r.Has("filter") || r.Has("at") || r.Has("value")) a_ctx.Error("'filter', 'at' and 'value' belong to 'event' or 'when' triggers");
-				k.origin = PluginOrigin{ source->value->get<std::string>() };
+				origin = PluginOriginFrom(*source->value, r, a_ctx);
 			} else if (source->key == "when") {
-				WhenOrigin ws;
-				const auto when = r.RefFrom(*source->value, "when");
-				if (!when) {
-					return std::nullopt;
-				}
-				ws.when = *when;
-				ws.value = r.Reference("value");
-				if (r.Has("filter") || r.Has("at")) a_ctx.Error("'filter' and 'at' belong to 'event' triggers");
-				k.origin = ws;
+				origin = WhenOriginFrom(*source->value, r, a_ctx);
 			} else {
 				a_ctx.Error(std::format("a trigger's source is 'event', 'plugin' or 'when', not '{}'", source->key));
 				return std::nullopt;
 			}
+			if (!origin) {
+				return std::nullopt;
+			}
+			k.origin = *origin;
 			r.Finish();
 			return k;
 		}
@@ -813,6 +845,42 @@ namespace BetterEnchantmentEffects
 			return MaterialSource{ *channel };
 		}
 
+		std::optional<BakeKind> PartitionBakeFrom(const json& a_v, const Ctx& a_ctx)
+		{
+			PartitionBake pb;
+			if (a_v.is_string()) {
+				const auto slot = BipedSlotFromName(a_v.get<std::string>());
+				if (!slot) {
+					a_ctx.Error(std::format("unknown biped slot name '{}'", a_v.get<std::string>()));
+					return std::nullopt;
+				}
+				pb.slot = *slot;
+			} else if (a_v.is_number_integer() && a_v.get<int>() >= 30 && a_v.get<int>() <= 61) {
+				pb.slot = a_v.get<std::uint32_t>();
+			} else {
+				a_ctx.Error("'partition' is a biped slot name or a number 30..61");
+				return std::nullopt;
+			}
+			return pb;
+		}
+
+		std::optional<BakeKind> BoneWeightBakeFrom(const json& a_v, const Ctx& a_ctx)
+		{
+			if (!a_v.is_array()) {
+				a_ctx.Error("'boneWeight' is an array of bone names");
+				return std::nullopt;
+			}
+			BoneWeightBake bw;
+			for (const auto& b : a_v) {
+				if (RowCapReached(bw.bones.size(), a_ctx, "boneWeight")) {
+					break;
+				}
+				if (b.is_string()) bw.bones.push_back(b.get<std::string>());
+				else a_ctx.Error("'boneWeight' entries are bone names");
+			}
+			return bw;
+		}
+
 		std::optional<SourceKind> ParseBake(const json& a_v, const Ctx& a_ctx)
 		{
 			BakeSource k;
@@ -823,49 +891,25 @@ namespace BetterEnchantmentEffects
 					return std::nullopt;
 				}
 				k.bake = *bare;
-			} else {
-				const auto inner = OneKey(a_v, a_ctx, "'bake'");
-				if (!inner) {
-					return std::nullopt;
-				}
-				if (inner->key == "partition") {
-					PartitionBake pb;
-					if (inner->value->is_string()) {
-						const auto slot = BipedSlotFromName(inner->value->get<std::string>());
-						if (!slot) {
-							a_ctx.Error(std::format("unknown biped slot name '{}'", inner->value->get<std::string>()));
-							return std::nullopt;
-						}
-						pb.slot = *slot;
-					} else if (inner->value->is_number_integer() && inner->value->get<int>() >= 30 && inner->value->get<int>() <= 61) {
-						pb.slot = inner->value->get<std::uint32_t>();
-					} else {
-						a_ctx.Error("'partition' is a biped slot name or a number 30..61");
-						return std::nullopt;
-					}
-					k.bake = pb;
-				} else if (inner->key == "boneWeight") {
-					BoneWeightBake bw;
-					if (!inner->value->is_array()) {
-						a_ctx.Error("'boneWeight' is an array of bone names");
-						return std::nullopt;
-					}
-					for (const auto& b : *inner->value) {
-						if (RowCapReached(bw.bones.size(), a_ctx, "boneWeight")) {
-							break;
-						}
-						if (b.is_string()) {
-							bw.bones.push_back(b.get<std::string>());
-						} else {
-							a_ctx.Error("'boneWeight' entries are bone names");
-						}
-					}
-					k.bake = bw;
-				} else {
-					a_ctx.Error(std::format("unknown bake '{}'", inner->key));
-					return std::nullopt;
-				}
+				return k;
 			}
+			const auto inner = OneKey(a_v, a_ctx, "'bake'");
+			if (!inner) {
+				return std::nullopt;
+			}
+			std::optional<BakeKind> bake;
+			if (inner->key == "partition") {
+				bake = PartitionBakeFrom(*inner->value, a_ctx);
+			} else if (inner->key == "boneWeight") {
+				bake = BoneWeightBakeFrom(*inner->value, a_ctx);
+			} else {
+				a_ctx.Error(std::format("unknown bake '{}'", inner->key));
+				return std::nullopt;
+			}
+			if (!bake) {
+				return std::nullopt;
+			}
+			k.bake = *bake;
 			return k;
 		}
 
@@ -921,6 +965,32 @@ namespace BetterEnchantmentEffects
 			return k;
 		}
 
+		bool ClusterWeightsFrom(Reader& a_r, MaterialClustersSource& a_k, const Ctx& a_ctx)
+		{
+			const auto* w = a_r.Child("weights");
+			if (!w) {
+				return true;
+			}
+			if (!w->is_object()) {
+				a_ctx.Error("'weights' is an object of roughness, metallic, occlusion, reflectance and luma");
+				return false;
+			}
+			bool   ok = true;
+			Reader wr(*w, a_ctx);
+			for (const auto& [field, weight] : { std::pair{ "roughness", &a_k.roughness }, std::pair{ "metallic", &a_k.metallic }, std::pair{ "occlusion", &a_k.occlusion }, std::pair{ "reflectance", &a_k.reflectance }, std::pair{ "luma", &a_k.luma } }) {
+				if (auto x = wr.Number(field)) {
+					if (*x < 0.0f || *x > kMaxChannelWeight) {
+						a_ctx.Error(std::format("'weights.{}' is 0..{}", field, kMaxChannelWeight));
+						ok = false;
+					} else {
+						*weight = *x;
+					}
+				}
+			}
+			wr.Finish();
+			return ok;
+		}
+
 		std::optional<SourceKind> ParseMaterialClusters(const json& a_v, const Ctx& a_ctx)
 		{
 			if (!a_v.is_object()) {
@@ -929,52 +999,20 @@ namespace BetterEnchantmentEffects
 			}
 			MaterialClustersSource k;
 			Reader                 r(a_v, a_ctx);
-			bool                   inRange = true;
-			if (auto n = r.Integer("clusters")) {
-				if (*n < 1 || *n > kMaxMaterialClusters) {
-					a_ctx.Error(std::format("'clusters' is 1..{}", kMaxMaterialClusters));
-					inRange = false;
-				} else {
-					k.clusters = static_cast<std::uint8_t>(*n);
-				}
-			}
-			if (const auto* w = r.Child("weights")) {
-				if (!w->is_object()) {
-					a_ctx.Error("'weights' is an object of roughness, metallic, occlusion, reflectance and luma");
-					inRange = false;
-				} else {
-					Reader wr(*w, a_ctx);
-					for (const auto& [field, weight] : { std::pair{ "roughness", &k.roughness }, std::pair{ "metallic", &k.metallic }, std::pair{ "occlusion", &k.occlusion }, std::pair{ "reflectance", &k.reflectance }, std::pair{ "luma", &k.luma } }) {
-						if (auto x = wr.Number(field)) {
-							if (*x < 0.0f || *x > kMaxChannelWeight) {
-								a_ctx.Error(std::format("'weights.{}' is 0..{}", field, kMaxChannelWeight));
-								inRange = false;
-							} else {
-								*weight = *x;
-							}
-						}
-					}
-					wr.Finish();
-				}
-			}
+			bool                   ok = true;
+			ok &= r.IntRange("clusters", 1, kMaxMaterialClusters, k.clusters);
+			ok &= ClusterWeightsFrom(r, k, a_ctx);
 			if (auto n = r.Integer("seed")) {
 				if (*n < 0) {
 					a_ctx.Error("'seed' is a whole number");
-					inRange = false;
+					ok = false;
 				} else {
 					k.seed = static_cast<std::uint32_t>(*n);
 				}
 			}
-			if (auto n = r.Integer("iterations")) {
-				if (*n < 1 || *n > static_cast<int>(kMaxClusterIterations)) {
-					a_ctx.Error(std::format("'iterations' is 1..{}", kMaxClusterIterations));
-					inRange = false;
-				} else {
-					k.iterations = static_cast<std::uint32_t>(*n);
-				}
-			}
+			ok &= r.IntRange("iterations", 1, static_cast<int>(kMaxClusterIterations), k.iterations);
 			r.Finish();
-			if (!inRange) {
+			if (!ok) {
 				return std::nullopt;
 			}
 			return k;
@@ -1046,6 +1084,37 @@ namespace BetterEnchantmentEffects
 			return l;
 		}
 
+		Bones SkinnedBonesFrom(const json& a_v, const Ctx& a_ctx)
+		{
+			SkinnedBones sb;
+			if (a_v.is_object()) {
+				Reader b(a_v, a_ctx);
+				if (auto m = b.Integer("max")) sb.max = static_cast<std::uint32_t>(std::max(0, *m));
+				if (auto share = b.Number("minShare")) sb.minShare = *share;
+				b.Finish();
+			} else {
+				a_ctx.Error("'skinned' takes {\"max\", \"minShare\"}");
+			}
+			return sb;
+		}
+
+		Bones NamedBonesFrom(const json& a_v, const Ctx& a_ctx)
+		{
+			NamedBones nb;
+			if (a_v.is_array()) {
+				for (const auto& b : a_v) {
+					if (RowCapReached(nb.bones.size(), a_ctx, "named")) {
+						break;
+					}
+					if (b.is_string()) nb.bones.push_back(b.get<std::string>());
+					else a_ctx.Error("'named' entries are bone names");
+				}
+			} else {
+				a_ctx.Error("'named' is an array of bone names");
+			}
+			return nb;
+		}
+
 		std::optional<Bones> BonesFrom(const json& a_j, const Ctx& a_ctx)
 		{
 			const auto entry = OneKey(a_j, a_ctx, "'bones'");
@@ -1053,31 +1122,10 @@ namespace BetterEnchantmentEffects
 				return std::nullopt;
 			}
 			if (entry->key == "skinned") {
-				SkinnedBones sb;
-				if (entry->value->is_object()) {
-					Reader b(*entry->value, a_ctx);
-					if (auto m = b.Integer("max")) sb.max = static_cast<std::uint32_t>(std::max(0, *m));
-					if (auto share = b.Number("minShare")) sb.minShare = *share;
-					b.Finish();
-				} else {
-					a_ctx.Error("'skinned' takes {\"max\", \"minShare\"}");
-				}
-				return Bones{ sb };
+				return SkinnedBonesFrom(*entry->value, a_ctx);
 			}
 			if (entry->key == "named") {
-				NamedBones nb;
-				if (entry->value->is_array()) {
-					for (const auto& b : *entry->value) {
-						if (RowCapReached(nb.bones.size(), a_ctx, "named")) {
-							break;
-						}
-						if (b.is_string()) nb.bones.push_back(b.get<std::string>());
-						else a_ctx.Error("'named' entries are bone names");
-					}
-				} else {
-					a_ctx.Error("'named' is an array of bone names");
-				}
-				return Bones{ nb };
+				return NamedBonesFrom(*entry->value, a_ctx);
 			}
 			a_ctx.Error(std::format("'bones' is 'skinned' or 'named', not '{}'", entry->key));
 			return std::nullopt;
@@ -1162,6 +1210,22 @@ namespace BetterEnchantmentEffects
 			return SurfaceOutputFrom(r, *surface, a_ctx);
 		}
 
+		void PoseFrom(const json& a_j, ShellPose& a_pose, const Ctx& a_ctx)
+		{
+			if (!a_j.is_object()) {
+				a_ctx.Error("'pose' must be an object");
+				return;
+			}
+			Reader p(a_j, a_ctx.At("shell pose"));
+			p.Read("inflate", a_pose.inflate);
+			p.Read("offset", a_pose.offset);
+			p.Read("scale", a_pose.scale);
+			if (auto pt = p.Point("scalePoint")) a_pose.scalePoint = *pt;
+			p.Read("spin", a_pose.spin);
+			if (auto ax = p.Point("spinAxis")) a_pose.spinAxis = *ax;
+			p.Finish();
+		}
+
 		ShellSettings ShellFrom(const json& a_j, const Ctx& a_ctx)
 		{
 			ShellSettings s;
@@ -1170,29 +1234,49 @@ namespace BetterEnchantmentEffects
 				return s;
 			}
 			Reader r(a_j, a_ctx);
-			if (auto m = r.Enum("material", kShellMaterials)) s.material = *m;
-			if (auto b = r.Enum("blend", kShellBlends)) s.blend = *b;
-			if (auto d = r.Boolean("depthBias")) s.depthBias = *d;
+			r.Read("material", kShellMaterials, s.material);
+			r.Read("blend", kShellBlends, s.blend);
+			r.Read("depthBias", s.depthBias);
 			if (auto t = r.Number("alphaTest")) s.alphaTest = std::clamp(*t, 0.0f, 1.0f);
-			if (auto p = r.Parameter("alpha")) s.alpha = *p;
-			if (auto p = r.Parameter("rimPower")) s.rimPower = *p;
-			if (auto p = r.Parameter("emissive")) s.emissive = *p;
-			if (const auto* pose = r.Child("pose")) {
-				if (!pose->is_object()) {
-					a_ctx.Error("'pose' must be an object");
-				} else {
-					Reader p(*pose, a_ctx.At("shell pose"));
-					if (auto v = p.Vector3("inflate")) s.pose.inflate = *v;
-					if (auto v = p.Vector3("offset")) s.pose.offset = *v;
-					if (auto sc = p.Parameter("scale")) s.pose.scale = *sc;
-					if (auto pt = p.Point("scalePoint")) s.pose.scalePoint = *pt;
-					if (auto sp = p.Parameter("spin")) s.pose.spin = *sp;
-					if (auto ax = p.Point("spinAxis")) s.pose.spinAxis = *ax;
-					p.Finish();
-				}
-			}
+			r.Read("alpha", s.alpha);
+			r.Read("rimPower", s.rimPower);
+			r.Read("emissive", s.emissive);
+			if (const auto* pose = r.Child("pose")) PoseFrom(*pose, s.pose, a_ctx);
 			r.Finish();
 			return s;
+		}
+
+		void ReadOverrides(const json& a_overrides, std::map<std::string, Value>& a_out, const Ctx& a_ctx)
+		{
+			if (!a_overrides.is_object()) {
+				a_ctx.Error("'overrides' is an object of signal name to value");
+				return;
+			}
+			for (const auto& [name, value] : a_overrides.items()) {
+				if (RowCapReached(a_out.size(), a_ctx, "overrides")) {
+					break;
+				}
+				if (auto val = Reader::ValueFrom(value, name, a_ctx)) {
+					a_out[name] = *val;
+				}
+			}
+		}
+
+		std::optional<VariantKey> VariantKeyFrom(const json& a_key, const Ctx& a_ctx)
+		{
+			const auto entry = OneKey(a_key, a_ctx, "'key'");
+			if (!entry) {
+				return std::nullopt;
+			}
+			if (entry->key == "armor") {
+				if (auto form = FormFrom(*entry->value, a_ctx, "armor")) return VariantKey{ *form };
+				return std::nullopt;
+			}
+			if (entry->key == "selector") {
+				return VariantKey{ SelectorFrom(*entry->value, a_ctx) };
+			}
+			a_ctx.Error(std::format("'key' is 'armor' or 'selector', not '{}'", entry->key));
+			return std::nullopt;
 		}
 
 		std::optional<Variant> VariantFrom(const json& a_j, const Ctx& a_ctx)
@@ -1206,33 +1290,31 @@ namespace BetterEnchantmentEffects
 			v.name = r.Required("name");
 			const auto ctx = a_ctx.At(std::format("variant {}", v.name));
 			if (const auto* key = r.Child("key")) {
-				const auto entry = OneKey(*key, ctx, "'key'");
-				if (entry && entry->key == "armor") {
-					if (auto form = FormFrom(*entry->value, ctx, "armor")) v.key = *form;
-				} else if (entry && entry->key == "selector") {
-					v.key = SelectorFrom(*entry->value, ctx);
-				} else if (entry) {
-					ctx.Error(std::format("'key' is 'armor' or 'selector', not '{}'", entry->key));
-				}
+				if (auto k = VariantKeyFrom(*key, ctx)) v.key = *k;
 			} else {
 				ctx.Error("a variant needs 'key'");
 			}
-			if (const auto* overrides = r.Child("overrides")) {
-				if (!overrides->is_object()) {
-					ctx.Error("'overrides' is an object of signal name to value");
-				} else {
-					for (const auto& [name, value] : overrides->items()) {
-						if (RowCapReached(v.overrides.size(), ctx, "overrides")) {
-							break;
-						}
-						if (auto val = Reader::ValueFrom(value, name, ctx)) {
-							v.overrides[name] = *val;
-						}
-					}
-				}
-			}
+			if (const auto* overrides = r.Child("overrides")) ReadOverrides(*overrides, v.overrides, ctx);
 			r.Finish();
 			return v;
+		}
+
+		std::optional<Curve> CurveFrom(const std::string& a_name, const json& a_j, const Ctx& a_ctx)
+		{
+			if (!a_j.is_string() || a_j.get<std::string>().empty()) {
+				a_ctx.Error("a curve is an expression string in x");
+				return std::nullopt;
+			}
+			return Curve{ a_name, a_j.get<std::string>() };
+		}
+
+		std::optional<Mask> MaskFrom(const std::string& a_name, const json& a_j, const Ctx& a_ctx)
+		{
+			if (!a_j.is_string() || a_j.get<std::string>().empty()) {
+				a_ctx.Error("a mask is an expression string over sources");
+				return std::nullopt;
+			}
+			return Mask{ a_name, a_j.get<std::string>() };
 		}
 
 		template <class Row, class Parse>
@@ -1408,22 +1490,10 @@ namespace BetterEnchantmentEffects
 			c.Finish();
 		}
 
-		NamedRows(r, "signals", "signal", recipe.signals, [](const std::string& name, const json& j, const Ctx& c) { return SignalFrom(name, j, c); });
-		NamedRows(r, "curves", "curve", recipe.curves, [](const std::string& name, const json& j, const Ctx& c) -> std::optional<Curve> {
-			if (!j.is_string() || j.get<std::string>().empty()) {
-				c.Error("a curve is an expression string in x");
-				return std::nullopt;
-			}
-			return Curve{ name, j.get<std::string>() };
-		});
-		NamedRows(r, "sources", "source", recipe.sources, [](const std::string& name, const json& j, const Ctx& c) { return SourceFrom(name, j, c); });
-		NamedRows(r, "masks", "mask", recipe.masks, [](const std::string& name, const json& j, const Ctx& c) -> std::optional<Mask> {
-			if (!j.is_string() || j.get<std::string>().empty()) {
-				c.Error("a mask is an expression string over sources");
-				return std::nullopt;
-			}
-			return Mask{ name, j.get<std::string>() };
-		});
+		NamedRows(r, "signals", "signal", recipe.signals, SignalFrom);
+		NamedRows(r, "curves", "curve", recipe.curves, CurveFrom);
+		NamedRows(r, "sources", "source", recipe.sources, SourceFrom);
+		NamedRows(r, "masks", "mask", recipe.masks, MaskFrom);
 
 		ReadOutputs(r, ctx, recipe.outputs);
 		if (const auto* shell = r.Child("shell")) {
