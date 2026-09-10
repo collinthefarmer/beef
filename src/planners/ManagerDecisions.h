@@ -4,6 +4,7 @@
 #include "recipe/Merge.h"
 #include "recipe/Recipe.h"
 
+#include <functional>
 #include <span>
 #include <vector>
 
@@ -20,8 +21,14 @@ struct ActorLightPlan {
   LightPlan plan;
 };
 
+using RecipeResolver =
+    std::function<std::vector<ResolvedRecipe>(const Piece &, std::size_t)>;
+
 [[nodiscard]] ActorState MatchActor(std::span<const Piece> a_pieces,
                                     std::span<const Recipe> a_store);
+[[nodiscard]] ActorState MatchActor(std::span<const Piece> a_pieces,
+                                    std::span<const Recipe> a_store,
+                                    const RecipeResolver &a_resolver);
 [[nodiscard]] GeometryPlacement PlaceGeometry(const ActorState &a_state,
                                               std::span<const Recipe> a_store,
                                               PieceId a_piece);

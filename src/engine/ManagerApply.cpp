@@ -9,6 +9,7 @@
 #include "render/Compositor.h"
 #include "render/PBRMaterial.h"
 #include "render/RuntimeTextures.h"
+#include "studio/Selection.h"
 
 #include <algorithm>
 #include <array>
@@ -375,7 +376,9 @@ std::vector<LivePiece> Manager::CollectPieces(RE::Actor *a_actor,
 void Manager::MatchRecipes(RE::Actor *a_actor, LiveActor &a_state) {
   const std::span<const Recipe> loaded = LoadedRecipes();
   RE::NiAVObject *firstPersonRoot = a_actor->Get3D(true);
+  const RE::FormID actorID = a_actor->GetFormID();
   std::vector<Piece> pieces;
+  std::vector<Studio::PieceRef> refs;
   for (LivePiece &live : a_state.pieces) {
     RE::TESObjectARMO *armor =
         RE::TESForm::LookupByID<RE::TESObjectARMO>(live.armor);
@@ -387,6 +390,7 @@ void Manager::MatchRecipes(RE::Actor *a_actor, LiveActor &a_state) {
     const bool firstPerson =
         !live.geometries.empty() && live.geometries.front().inputs.root &&
         live.geometries.front().inputs.root.get() == firstPersonRoot;
+    const Studio::PieceRef ref{actorID, live.armor, firstPerson};
     for (const LiveGeometry &geometry : live.geometries) {
       Piece piece;
       piece.identity =
@@ -396,9 +400,18 @@ void Manager::MatchRecipes(RE::Actor *a_actor, LiveActor &a_state) {
       piece.firstPerson = firstPerson;
       piece.lost = geometry.lost;
       pieces.push_back(std::move(piece));
+      refs.push_back(ref);
     }
   }
-  a_state.structure = MatchActor(pieces, loaded);
+  a_state.structure = MatchActor(
+      pieces, loaded,
+      [this, loaded, &refs](const Piece &a_piece, std::size_t a_index) {
+        std::vector<ResolvedRecipe> resolved = Resolve(a_piece.keys, loaded);
+        const Studio::PieceRef ref =
+            a_index < refs.size() ? refs[a_index] : Studio::PieceRef{};
+        return Studio::ViewedRecipes(
+            {std::move(resolved), a_piece.keys, ref, view_, loaded});
+      });
   a_state.instances.clear();
   for (std::size_t i = 0; i < a_state.structure.instances.size(); ++i) {
     const Instance &instance = a_state.structure.instances[i];

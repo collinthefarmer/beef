@@ -60,12 +60,13 @@ InstanceFor(ActorState &a_state, RecipeId a_recipe,
 }
 
 ActorState MatchActor(std::span<const Piece> a_pieces,
-                      std::span<const Recipe> a_store) {
+                      std::span<const Recipe> a_store,
+                      const RecipeResolver &a_resolver) {
   ActorState state;
   state.pieces.assign(a_pieces.begin(), a_pieces.end());
   for (std::size_t p = 0; p < state.pieces.size(); ++p) {
     const Piece &piece = state.pieces[p];
-    for (const ResolvedRecipe &resolved : Resolve(piece.keys, a_store)) {
+    for (const ResolvedRecipe &resolved : a_resolver(piece, p)) {
       const std::optional<RecipeId> recipe =
           RecipeIdOf(a_store, resolved.recipe);
       if (!recipe) {
@@ -82,6 +83,14 @@ ActorState MatchActor(std::span<const Piece> a_pieces,
     }
   }
   return state;
+}
+
+ActorState MatchActor(std::span<const Piece> a_pieces,
+                      std::span<const Recipe> a_store) {
+  return MatchActor(a_pieces, a_store,
+                    [a_store](const Piece &a_piece, std::size_t) {
+                      return Resolve(a_piece.keys, a_store);
+                    });
 }
 
 GeometryPlacement PlaceGeometry(const ActorState &a_state,

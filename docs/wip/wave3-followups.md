@@ -73,13 +73,16 @@ move these identical definitions there (compile-verified, no behaviour change):
    their own map resolution up to the native ceiling, matching the Compositor
    rule in `REFERENCE.md`. Falls back to `TextureSize::kMax` when the material
    exposes no real map.
-2. **`MatchActor` ignores the studio `View`.** The frozen match ran
-   `Studio::ViewedRecipes(Resolve(...), piece, ref, view, loaded)` for
-   pin-injection and match-time isolate filtering. The wave-2 planner
-   `MatchActor` calls plain `Resolve(piece.keys, store)` with no `View`, so
-   **pinning a recipe onto a piece it does not natively match is lost**
-   (render-time isolate via `view_.OutputShown`/`RecipeShown` still works). This
-   is a wave-2 planner boundary: either thread the `View` (pins + isolate) into a
-   Manager pre-pass over `MatchActor`'s result, or extend the planner. Pinning is
-   a studio-editing feature, so this matters most for the wave-5 "studio editing
-   a live recipe" checkpoint.
+2. **`MatchActor` ignores the studio `View`. RESOLVED.** Restored pin-injection
+   and match-time isolate via a resolver hook rather than a result-transform: a
+   pure post-pass would have had to re-implement the planner's private
+   `SurfacePlacements`/`InstanceFor` in the adapter (the duplication
+   `conventions.md` forbids). Instead `MatchActor` gained a 3-arg overload taking
+   a `RecipeResolver` (`(const Piece &, std::size_t) -> vector<ResolvedRecipe>`);
+   the existing 2-arg version delegates to it with plain `Resolve`, so its
+   signature, behaviour, and native tests are unchanged and the planner stays
+   pure. `Manager::MatchRecipes` builds a `PieceRef` per piece and passes a
+   resolver that wraps `Resolve` with `Studio::ViewedRecipes`, so pins and
+   isolate apply at the point resolution happens, with all placement-building
+   still in the planner. Verified: DLL zero-warning, full native suite green
+   (incl. `planners_managerdecisions_tests`).
