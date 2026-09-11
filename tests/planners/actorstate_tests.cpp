@@ -97,5 +97,25 @@ int main() {
   Check(PlacementsOfInstance(state, InstanceId{2}).empty(),
         "PlacementsOfInstance is empty for an instance with no placements");
 
+  const std::vector<PieceMatch> piece0Matches = MatchesForPiece(state, 0, 1);
+  Check(
+      piece0Matches.size() == 2 && piece0Matches[0].instance == 0 &&
+          piece0Matches[0].priority == 0 && piece0Matches[1].instance == 1 &&
+          piece0Matches[1].priority == 1,
+      "MatchesForPiece returns one match per placement in the geometry range");
+  Check(MatchesForPiece(state, 0, 2).size() == 2,
+        "MatchesForPiece dedupes an instance placed on more than one geometry");
+  Check(MatchesForPiece(state, 5, 1).empty(),
+        "MatchesForPiece is empty for a geometry range with no placements");
+
+  const std::vector<PlacementId> geomPlacements{PlacementId{1}, PlacementId{2}};
+  const std::optional<std::size_t> placed =
+      PlacedIndexOf(state, geomPlacements, InstanceId{0});
+  Check(placed.has_value() && *placed == 1,
+        "PlacedIndexOf returns the position of the instance's placement");
+  const std::vector<PlacementId> onlyOther{PlacementId{1}};
+  Check(!PlacedIndexOf(state, onlyOther, InstanceId{0}).has_value(),
+        "PlacedIndexOf returns nullopt when the instance is not placed here");
+
   return test::Finish("planners actorstate");
 }

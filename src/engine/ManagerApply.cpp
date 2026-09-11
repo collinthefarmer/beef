@@ -189,6 +189,7 @@ EventRecord EquipEvent(const std::vector<LivePiece> &a_pieces) {
 void Manager::ReapplyAll() {
   PostTask([this] {
     std::vector<RE::FormID> ids;
+    ids.reserve(applied_.size());
     for (const auto &[id, state] : applied_) {
       ids.push_back(id);
     }
@@ -204,6 +205,7 @@ void Manager::ReapplyAll() {
 void Manager::RetireAll() {
   PostTask([this] {
     std::vector<RE::FormID> ids;
+    ids.reserve(applied_.size());
     for (const auto &[id, state] : applied_) {
       ids.push_back(id);
     }
@@ -752,6 +754,7 @@ void Manager::WithListMoved(const std::function<void()> &a_action) {
 
 void Manager::RetireEveryActor() {
   std::vector<RE::FormID> ids;
+  ids.reserve(applied_.size());
   for (const auto &[actorID, state] : applied_) {
     ids.push_back(actorID);
   }

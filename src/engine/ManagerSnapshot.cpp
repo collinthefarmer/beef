@@ -46,49 +46,6 @@ std::size_t ReferenceCount(const std::map<std::string, std::size_t> &a_counts,
   const auto it = a_counts.find(a_name);
   return it != a_counts.end() ? it->second : 0;
 }
-
-struct PieceMatch {
-  std::size_t instance = 0;
-  RecipeKey key;
-  int priority = 0;
-};
-
-std::vector<PieceMatch> MatchesForPiece(const LiveActor &a_state,
-                                        std::size_t a_flatStart,
-                                        std::size_t a_geomCount) {
-  std::vector<PieceMatch> out;
-  for (const Placement &placement : a_state.structure.placements) {
-    const std::size_t flat = static_cast<std::size_t>(placement.piece);
-    if (flat < a_flatStart || flat >= a_flatStart + a_geomCount) {
-      continue;
-    }
-    const std::size_t instance = static_cast<std::size_t>(placement.instance);
-    if (std::ranges::any_of(out, [&](const PieceMatch &a_m) {
-          return a_m.instance == instance;
-        })) {
-      continue;
-    }
-    const int priority = instance < a_state.structure.instances.size()
-                             ? a_state.structure.instances[instance].priority
-                             : 0;
-    out.push_back(PieceMatch{instance, placement.key, priority});
-  }
-  return out;
-}
-
-std::optional<std::size_t> PlacedIndexOf(const LiveActor &a_state,
-                                         const LiveGeometry &a_bound,
-                                         std::size_t a_instance) {
-  for (std::size_t i = 0; i < a_bound.placements.size(); ++i) {
-    const std::size_t k = static_cast<std::size_t>(a_bound.placements[i]);
-    if (k < a_state.structure.placements.size() &&
-        static_cast<std::size_t>(a_state.structure.placements[k].instance) ==
-            a_instance) {
-      return i;
-    }
-  }
-  return std::nullopt;
-}
 }
 
 void Manager::Isolate(std::string a_recipe, int a_output, int a_layer) {
@@ -216,7 +173,7 @@ Manager::BuildSnapshot(const std::optional<Studio::PieceRef> &a_request) const {
       flatBase += geomCount;
 
       const std::vector<PieceMatch> matches =
-          MatchesForPiece(state, flatStart, geomCount);
+          MatchesForPiece(state.structure, flatStart, geomCount);
       if (matches.empty()) {
         continue;
       }
@@ -318,8 +275,8 @@ Manager::BuildSnapshot(const std::optional<Studio::PieceRef> &a_request) const {
           if (bound.lost) {
             continue;
           }
-          const std::optional<std::size_t> placedIndex =
-              PlacedIndexOf(state, bound, match.instance);
+          const std::optional<std::size_t> placedIndex = PlacedIndexOf(
+              state.structure, bound.placements, InstanceId{match.instance});
           if (!placedIndex) {
             continue;
           }

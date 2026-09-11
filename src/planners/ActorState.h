@@ -4,6 +4,7 @@
 
 #include <cstddef>
 #include <optional>
+#include <span>
 #include <string>
 #include <vector>
 
@@ -64,4 +65,17 @@ FindInstance(const ActorState &a_state, RecipeId a_recipe,
 PlacementsOfPiece(const ActorState &a_state, PieceId a_piece);
 [[nodiscard]] std::vector<PlacementId>
 PlacementsOfInstance(const ActorState &a_state, InstanceId a_instance);
+
+struct PieceMatch {
+  std::size_t instance = 0;
+  RecipeKey key;
+  int priority = 0;
+};
+
+[[nodiscard]] std::vector<PieceMatch> MatchesForPiece(const ActorState &a_state,
+                                                      std::size_t a_flatStart,
+                                                      std::size_t a_geomCount);
+[[nodiscard]] std::optional<std::size_t>
+PlacedIndexOf(const ActorState &a_state,
+              std::span<const PlacementId> a_placements, InstanceId a_instance);
 }

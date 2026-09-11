@@ -69,4 +69,41 @@ std::vector<PlacementId> PlacementsOfInstance(const ActorState &a_state,
   }
   return found;
 }
+
+std::vector<PieceMatch> MatchesForPiece(const ActorState &a_state,
+                                        std::size_t a_flatStart,
+                                        std::size_t a_geomCount) {
+  std::vector<PieceMatch> out;
+  for (const Placement &placement : a_state.placements) {
+    const std::size_t flat = static_cast<std::size_t>(placement.piece);
+    if (flat < a_flatStart || flat >= a_flatStart + a_geomCount) {
+      continue;
+    }
+    const std::size_t instance = static_cast<std::size_t>(placement.instance);
+    if (std::ranges::any_of(out, [&](const PieceMatch &a_match) {
+          return a_match.instance == instance;
+        })) {
+      continue;
+    }
+    const int priority = instance < a_state.instances.size()
+                             ? a_state.instances[instance].priority
+                             : 0;
+    out.push_back(PieceMatch{instance, placement.key, priority});
+  }
+  return out;
+}
+
+std::optional<std::size_t>
+PlacedIndexOf(const ActorState &a_state,
+              std::span<const PlacementId> a_placements,
+              InstanceId a_instance) {
+  for (std::size_t i = 0; i < a_placements.size(); ++i) {
+    const std::size_t k = static_cast<std::size_t>(a_placements[i]);
+    if (k < a_state.placements.size() &&
+        a_state.placements[k].instance == a_instance) {
+      return i;
+    }
+  }
+  return std::nullopt;
+}
 }
