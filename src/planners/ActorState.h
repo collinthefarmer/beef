@@ -78,4 +78,10 @@ struct PieceMatch {
 [[nodiscard]] std::optional<std::size_t>
 PlacedIndexOf(const ActorState &a_state,
               std::span<const PlacementId> a_placements, InstanceId a_instance);
+[[nodiscard]] std::optional<InstanceId>
+InstanceOfPlaced(const ActorState &a_state,
+                 std::span<const PlacementId> a_placements,
+                 std::size_t a_placed);
+[[nodiscard]] std::vector<PieceId>
+ThirdPersonPiecesOfInstance(const ActorState &a_state, InstanceId a_instance);
 }

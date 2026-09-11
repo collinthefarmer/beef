@@ -2,6 +2,7 @@
 
 #include "SettingsFile.h"
 #include "engine/EngineForms.h"
+#include "engine/ManagerShared.h"
 #include "engine/RecipeStore.h"
 #include "render/Binding.h"
 #include "render/Compositor.h"
@@ -21,8 +22,6 @@
 
 namespace BetterEnchantmentEffects {
 namespace {
-std::uint32_t NowMS() { return RE::GetDurationOfApplicationRunTime(); }
-
 std::vector<Studio::SlotRow> SlotRows(const SlotTarget &a_target) {
   std::vector<Studio::SlotRow> rows;
   for (const SlotState &s : a_target.Slots()) {

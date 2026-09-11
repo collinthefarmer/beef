@@ -9,10 +9,49 @@
 #include <algorithm>
 #include <format>
 #include <random>
+#include <span>
 #include <string>
+#include <string_view>
+#include <unordered_map>
 #include <utility>
+#include <vector>
 
 namespace BetterEnchantmentEffects {
+namespace {
+const Recipe *FindLoaded(std::span<const Recipe> a_loaded,
+                         std::string_view a_id) {
+  const auto it = std::ranges::find(a_loaded, a_id, &Recipe::id);
+  return it == a_loaded.end() ? nullptr : &*it;
+}
+
+void PushHistory(
+    std::unordered_map<std::string, Studio::History<Recipe>> &a_histories,
+    const std::string &a_id, const Recipe &a_before, const Recipe &a_after) {
+  if (!(a_after == a_before)) {
+    a_histories[a_id].Push(a_before);
+  }
+}
+
+void AssignIsolate(Studio::View &a_view, std::string a_recipe, int a_output,
+                   int a_layer, bool a_bySolo) {
+  a_view.isolateRecipe = std::move(a_recipe);
+  a_view.isolateOutput = a_output;
+  a_view.isolateLayer = a_layer;
+  a_view.isolatedBySolo = a_bySolo;
+}
+
+void LogRecipeDiagnostics(std::string_view a_id,
+                          std::span<const Diagnostic> a_diagnostics) {
+  for (const Diagnostic &d : a_diagnostics) {
+    if (d.severity == Severity::kError) {
+      logger::error("recipe {} {}: {}", a_id, d.where, d.message);
+    } else {
+      logger::warn("recipe {} {}: {}", a_id, d.where, d.message);
+    }
+  }
+}
+}
+
 void Manager::EditRecipe(std::string a_id, Studio::EditBatch a_edits) {
   PostTask([this, id = std::move(a_id), edits = std::move(a_edits)] {
     ApplyEdits(id, edits);
@@ -36,16 +75,8 @@ void Manager::ApplyEdits(const std::string &a_id,
       return;
     }
     keysChanged = recipe->keys != before.keys;
-    if (!(*recipe == before)) {
-      histories_[a_id].Push(before);
-    }
-    for (const Diagnostic &d : Revalidate(a_id)) {
-      if (d.severity == Severity::kError) {
-        logger::error("recipe {} {}: {}", a_id, d.where, d.message);
-      } else {
-        logger::warn("recipe {} {}: {}", a_id, d.where, d.message);
-      }
-    }
+    PushHistory(histories_, a_id, before, *recipe);
+    LogRecipeDiagnostics(a_id, Revalidate(a_id));
   });
   if (keysChanged) {
     QueueLoadedActorRefreshes();
@@ -94,8 +125,8 @@ void Manager::SaveRecipe(std::string a_id) {
         logger::error("recipe {}: save failed ({})", id, saved.error());
         return;
       }
-      if (recipe && !(*recipe == before)) {
-        histories_[id].Push(before);
+      if (recipe) {
+        PushHistory(histories_, id, before, *recipe);
       }
     });
   });
@@ -112,9 +143,7 @@ void Manager::RevertRecipe(std::string a_id) {
       const Recipe before = *recipe;
       if (BetterEnchantmentEffects::RevertRecipe(id)) {
         keysChanged = recipe->keys != before.keys;
-        if (!(*recipe == before)) {
-          histories_[id].Push(before);
-        }
+        PushHistory(histories_, id, before, *recipe);
         logger::info("recipe {}: reverted to its file", id);
       }
     });
@@ -132,7 +161,7 @@ void Manager::ReloadRecipes() {
       paintReturn_ = {};
       const std::span<const Recipe> loaded = LoadedRecipes();
       for (const std::string &id : view_.RecipeIDs()) {
-        if (std::ranges::find(loaded, id, &Recipe::id) == loaded.end()) {
+        if (!FindLoaded(loaded, id)) {
           view_.ForgetRecipe(id);
         }
       }
@@ -175,12 +204,12 @@ void Manager::BeginPaint(std::string a_active, RecipeKey a_key,
   PostTask([this, active = std::move(a_active), key = std::move(a_key),
             a_surface] {
     const std::span<const Recipe> loaded = LoadedRecipes();
-    const auto it = std::ranges::find(loaded, active, &Recipe::id);
-    if (it == loaded.end()) {
+    const Recipe *source = FindLoaded(loaded, active);
+    if (!source) {
       logger::warn("paint: recipe {} is not loaded", active);
       return;
     }
-    Recipe paint = Studio::PaintRecipe(*it, key, a_surface);
+    Recipe paint = Studio::PaintRecipe(*source, key, a_surface);
     WithListMoved([&] {
       if (IsTransient(Studio::kPaintRecipe)) {
         [[maybe_unused]] const bool dropped =
@@ -188,10 +217,8 @@ void Manager::BeginPaint(std::string a_active, RecipeKey a_key,
       }
       if (!AddTransientRecipe(std::move(paint))) {
         if (view_.isolateRecipe == Studio::kPaintRecipe) {
-          view_.isolateRecipe = paintReturn_.recipeID;
-          view_.isolateOutput = paintReturn_.output;
-          view_.isolateLayer = paintReturn_.layer;
-          view_.isolatedBySolo = paintReturn_.bySolo;
+          AssignIsolate(view_, paintReturn_.recipeID, paintReturn_.output,
+                        paintReturn_.layer, paintReturn_.bySolo);
           paintReturn_ = {};
         }
         return;
@@ -204,10 +231,7 @@ void Manager::BeginPaint(std::string a_active, RecipeKey a_key,
         paintReturn_ = {view_.isolateRecipe, view_.isolateOutput,
                         view_.isolateLayer, view_.isolatedBySolo};
       }
-      view_.isolateRecipe = std::string{Studio::kPaintRecipe};
-      view_.isolateOutput = -1;
-      view_.isolateLayer = -1;
-      view_.isolatedBySolo = false;
+      AssignIsolate(view_, std::string{Studio::kPaintRecipe}, -1, -1, false);
     });
   });
 }
@@ -220,10 +244,9 @@ void Manager::SetPaintSurface(Surface a_surface) {
 void Manager::KeepPaint(std::string a_active, std::string a_name) {
   PostTask([this, active = std::move(a_active), name = std::move(a_name)] {
     const std::span<const Recipe> loaded = LoadedRecipes();
-    const auto paint = std::ranges::find(
-        loaded, std::string{Studio::kPaintRecipe}, &Recipe::id);
-    const auto target = std::ranges::find(loaded, active, &Recipe::id);
-    if (paint == loaded.end() || target == loaded.end()) {
+    const Recipe *paint = FindLoaded(loaded, Studio::kPaintRecipe);
+    const Recipe *target = FindLoaded(loaded, active);
+    if (!paint || !target) {
       logger::warn("keep: the paint recipe or {} is not loaded", active);
       return;
     }
@@ -239,10 +262,8 @@ void Manager::EndPaint() {
   PostTask([this] {
     WithListMoved([&] {
       if (view_.isolateRecipe == Studio::kPaintRecipe) {
-        view_.isolateRecipe = paintReturn_.recipeID;
-        view_.isolateOutput = paintReturn_.output;
-        view_.isolateLayer = paintReturn_.layer;
-        view_.isolatedBySolo = paintReturn_.bySolo;
+        AssignIsolate(view_, paintReturn_.recipeID, paintReturn_.output,
+                      paintReturn_.layer, paintReturn_.bySolo);
         paintReturn_ = {};
       }
       view_.ForgetRecipe(Studio::kPaintRecipe);

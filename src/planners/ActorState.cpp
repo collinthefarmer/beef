@@ -106,4 +106,32 @@ PlacedIndexOf(const ActorState &a_state,
   }
   return std::nullopt;
 }
+
+std::optional<InstanceId>
+InstanceOfPlaced(const ActorState &a_state,
+                 std::span<const PlacementId> a_placements,
+                 std::size_t a_placed) {
+  if (a_placed >= a_placements.size()) {
+    return std::nullopt;
+  }
+  const Placement *placement = PlacementAt(a_state, a_placements[a_placed]);
+  return placement ? std::optional<InstanceId>{placement->instance}
+                   : std::nullopt;
+}
+
+std::vector<PieceId> ThirdPersonPiecesOfInstance(const ActorState &a_state,
+                                                 InstanceId a_instance) {
+  std::vector<PieceId> found;
+  for (const Placement &placement : a_state.placements) {
+    if (placement.instance != a_instance) {
+      continue;
+    }
+    const std::size_t flat = static_cast<std::size_t>(placement.piece);
+    if (flat >= a_state.pieces.size() || a_state.pieces[flat].firstPerson) {
+      continue;
+    }
+    found.push_back(placement.piece);
+  }
+  return found;
+}
 }

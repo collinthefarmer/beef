@@ -4,6 +4,7 @@
 #include "SettingsFile.h"
 #include "engine/EngineForms.h"
 #include "engine/Events.h"
+#include "engine/ManagerShared.h"
 #include "engine/RecipeStore.h"
 #include "mesh/TextureSize.h"
 #include "render/Compositor.h"
@@ -24,8 +25,6 @@
 
 namespace BetterEnchantmentEffects {
 namespace {
-std::uint32_t NowMS() { return RE::GetDurationOfApplicationRunTime(); }
-
 RE::BSLightingShaderProperty *LightingPropertyOf(RE::BSGeometry *a_geometry) {
   RE::NiProperty *property = a_geometry->GetGeometryRuntimeData()
                                  .properties[RE::BSGeometry::States::kEffect]
@@ -125,22 +124,6 @@ RE::MagicItem *EnchantmentForInstance(LiveActor &a_state,
   return nullptr;
 }
 
-SlotTarget *TargetFor(LiveGeometry &a_bound, Surface a_surface) {
-  if (a_surface == Surface::kShell) {
-    return a_bound.shell.get();
-  }
-  return a_bound.material.get();
-}
-
-PlacedOutput *OutputAt(LivePlacement &a_placement, std::size_t a_index) {
-  for (PlacedOutput &output : a_placement.outputs) {
-    if (output.index == a_index) {
-      return &output;
-    }
-  }
-  return nullptr;
-}
-
 std::pair<TextureSize, TextureSize>
 RuntimeSizes(const Settings &a_settings, const MaterialInputs &a_material) {
   std::uint32_t native = 0;
@@ -183,6 +166,248 @@ EventRecord EquipEvent(const std::vector<LivePiece> &a_pieces) {
     }
   }
   return record;
+}
+
+LiveGeometry MakeGeometry(RE::BSGeometry *a_geometry,
+                          RE::BSLightingShaderProperty *a_property,
+                          RE::NiAVObject *a_root, std::string_view a_name) {
+  auto *layout = static_cast<PBRMaterialLayout *>(a_property->material);
+  LiveGeometry bound;
+  bound.geometry = RE::NiPointer{a_geometry};
+  bound.property = RE::NiPointer{a_property};
+  bound.name = std::string{a_name};
+  bound.inputs.material = MaterialInputs::From(*layout);
+  bound.inputs.geometry = RE::NiPointer{a_geometry};
+  bound.inputs.root = RE::NiPointer{a_root};
+  return bound;
+}
+
+std::pair<std::vector<Piece>, std::vector<Studio::PieceRef>>
+BuildPieces(LiveActor &a_state, RE::NiAVObject *a_firstPersonRoot,
+            RE::FormID a_actorID) {
+  std::vector<Piece> pieces;
+  std::vector<Studio::PieceRef> refs;
+  for (LivePiece &live : a_state.pieces) {
+    RE::TESObjectARMO *armor =
+        RE::TESForm::LookupByID<RE::TESObjectARMO>(live.armor);
+    WornPiece keys = WornKeysOf(armor, live.enchantment);
+    for (const LiveGeometry &geometry : live.geometries) {
+      keys.diffusePaths.push_back(
+          TexturePath(geometry.inputs.material.diffuse));
+    }
+    const bool firstPerson =
+        !live.geometries.empty() && live.geometries.front().inputs.root &&
+        live.geometries.front().inputs.root.get() == a_firstPersonRoot;
+    const Studio::PieceRef ref{a_actorID, live.armor, firstPerson};
+    for (const LiveGeometry &geometry : live.geometries) {
+      Piece piece;
+      piece.identity =
+          GeometryIdentity{std::nullopt, geometry.name,
+                           TexturePath(geometry.inputs.material.diffuse)};
+      piece.keys = keys;
+      piece.firstPerson = firstPerson;
+      piece.lost = geometry.lost;
+      pieces.push_back(std::move(piece));
+      refs.push_back(ref);
+    }
+  }
+  return {std::move(pieces), std::move(refs)};
+}
+
+void PreparePlacement(LiveActor &a_state, std::span<const Recipe> a_loaded,
+                      std::size_t a_piece, std::size_t a_geometry,
+                      std::size_t a_flat) {
+  const GeometryPlacement placement =
+      PlaceGeometry(a_state.structure, a_loaded, PieceId{a_flat});
+  LiveGeometry &bound = a_state.pieces[a_piece].geometries[a_geometry];
+  bound.placements = placement.sources;
+  bound.plan = placement.plan;
+  bound.stackPlan = PlanStacks(placement.placed, placement.plan);
+  bound.binding = PlanBinding(placement.placed, placement.plan, {}, {});
+  for (const PlacementId source : placement.sources) {
+    const std::size_t k = static_cast<std::size_t>(source);
+    if (k >= a_state.placements.size() ||
+        k >= a_state.structure.placements.size()) {
+      continue;
+    }
+    LivePlacement &live = a_state.placements[k];
+    live.geometry = a_flat;
+    live.outputs.clear();
+    for (const OutputPlacement &output :
+         a_state.structure.placements[k].outputs) {
+      live.outputs.push_back(PlacedOutput{
+          static_cast<std::size_t>(output.output), nullptr, output.problem});
+    }
+  }
+}
+
+void InstallSurfaces(LiveActor &a_state, LiveGeometry &a_bound,
+                     bool a_uniqueMaterial) {
+  if (a_bound.binding.material) {
+    a_bound.material = MaterialBinding::Install(
+        a_bound.geometry.get(), a_bound.property.get(), a_uniqueMaterial);
+  }
+  if (a_bound.binding.shell) {
+    std::optional<std::size_t> ownerInstance;
+    if (a_bound.binding.shellOwner) {
+      if (const std::optional<InstanceId> owner = InstanceOfPlaced(
+              a_state.structure, a_bound.placements,
+              static_cast<std::size_t>(*a_bound.binding.shellOwner))) {
+        ownerInstance = static_cast<std::size_t>(*owner);
+      }
+    }
+    if (ownerInstance && *ownerInstance < a_state.instances.size() &&
+        a_state.instances[*ownerInstance].recipe) {
+      a_bound.shellOwner = ownerInstance;
+      a_bound.shell =
+          ShellBinding::Create(a_bound.geometry.get(), a_bound.property.get(),
+                               a_state.instances[*ownerInstance].recipe->shell);
+    }
+  }
+}
+
+void MarkReplaced(LiveActor &a_state, LiveGeometry &a_bound) {
+  for (const SlotPlan &slot : a_bound.plan.slots) {
+    for (const SlotContribution &c : slot.replaced) {
+      const std::size_t placed = static_cast<std::size_t>(c.placed);
+      if (placed >= a_bound.placements.size()) {
+        continue;
+      }
+      const std::size_t placementIndex =
+          static_cast<std::size_t>(a_bound.placements[placed]);
+      if (placementIndex >= a_state.placements.size()) {
+        continue;
+      }
+      PlacedOutput *output =
+          OutputAt(a_state.placements[placementIndex], c.output);
+      if (!output) {
+        continue;
+      }
+      std::string replacerId;
+      if (const std::optional<std::size_t> replacer = ReplacerOf(slot, c)) {
+        if (const std::optional<InstanceId> instance = InstanceOfPlaced(
+                a_state.structure, a_bound.placements, *replacer)) {
+          const std::size_t instanceIndex = static_cast<std::size_t>(*instance);
+          if (instanceIndex < a_state.instances.size() &&
+              a_state.instances[instanceIndex].recipe) {
+            replacerId = a_state.instances[instanceIndex].recipe->id;
+          }
+        }
+      }
+      output->problem = std::format("replaced by recipe {}", replacerId);
+    }
+  }
+}
+
+void RenderChain(LiveActor &a_state, LiveGeometry &a_bound,
+                 const Settings &a_settings) {
+  const auto [size, maxSize] =
+      RuntimeSizes(a_settings, a_bound.inputs.material);
+  for (const SlotPlan &slot : a_bound.plan.slots) {
+    for (const SlotContribution &c : slot.chain) {
+      const std::size_t placed = static_cast<std::size_t>(c.placed);
+      if (placed >= a_bound.placements.size()) {
+        continue;
+      }
+      const std::size_t placementIndex =
+          static_cast<std::size_t>(a_bound.placements[placed]);
+      if (placementIndex >= a_state.structure.placements.size() ||
+          placementIndex >= a_state.placements.size()) {
+        continue;
+      }
+      const std::size_t instanceIndex = static_cast<std::size_t>(
+          a_state.structure.placements[placementIndex].instance);
+      if (instanceIndex >= a_state.instances.size()) {
+        continue;
+      }
+      const LiveInstance &instance = a_state.instances[instanceIndex];
+      if (!instance.recipe) {
+        continue;
+      }
+      const SurfaceOutput *material =
+          c.output < instance.recipe->outputs.size()
+              ? Get<SurfaceOutput>(instance.recipe->outputs[c.output])
+              : nullptr;
+      if (!material) {
+        continue;
+      }
+      PlacedOutput *output =
+          OutputAt(a_state.placements[placementIndex], c.output);
+      if (!output) {
+        continue;
+      }
+      if (slot.surface == Surface::kShell && !a_bound.shell) {
+        output->problem = "shell could not be created";
+      } else if (slot.surface == Surface::kMaterial && !a_bound.material) {
+        output->problem = "material binding failed";
+      }
+      if (output->problem.empty()) {
+        SlotTarget *target = TargetFor(a_bound, slot.surface);
+        output->problem =
+            target ? target->Problem(slot.slot) : "the surface is not bound";
+      }
+      if (output->problem.empty()) {
+        output->stack = Compositor::GetSingleton()->Prepare(
+            *instance.recipe, *material, a_bound.inputs, size, maxSize);
+        if (!output->stack) {
+          output->problem = "the texture lab is unavailable";
+        } else if (a_settings.verboseLogging) {
+          for (const Diagnostic &d : output->stack->Diagnostics()) {
+            logger::warn("recipe {} output {} on '{}': {}: {}",
+                         instance.recipe->id, c.output, a_bound.name, d.where,
+                         d.message);
+          }
+        }
+      }
+    }
+  }
+}
+
+void PlaceLight(LiveActor &a_state, const ActorLightPlan &a_plan,
+                const LightContribution &a_c, RE::Actor *a_actor,
+                bool a_verbose) {
+  const std::size_t sourceIndex = static_cast<std::size_t>(a_c.placed);
+  if (sourceIndex >= a_plan.sources.size()) {
+    return;
+  }
+  const std::size_t instanceIndex =
+      static_cast<std::size_t>(a_plan.sources[sourceIndex]);
+  if (instanceIndex >= a_state.instances.size()) {
+    return;
+  }
+  LiveInstance &instance = a_state.instances[instanceIndex];
+  if (!instance.recipe || !instance.signals) {
+    return;
+  }
+  std::vector<RE::BSGeometry *> geometries;
+  for (const PieceId flat : ThirdPersonPiecesOfInstance(
+           a_state.structure, InstanceId{instanceIndex})) {
+    if (LiveGeometry *geometry =
+            GeometryAtFlat(a_state, static_cast<std::size_t>(flat));
+        geometry && geometry->geometry) {
+      geometries.push_back(geometry->geometry.get());
+    }
+  }
+  if (geometries.empty()) {
+    return;
+  }
+  const LightOutput *light =
+      a_c.output < instance.recipe->outputs.size()
+          ? Get<LightOutput>(instance.recipe->outputs[a_c.output])
+          : nullptr;
+  if (!light) {
+    return;
+  }
+  const std::vector<LightPlacement> placements =
+      PlaceLightNodes(light->bones, geometries, a_actor->Get3D(false),
+                      instance.signals->Resolve(light->offset));
+  instance.light = LightBinding::Create(placements, light->shadow);
+  instance.lightOutput = a_c.output;
+  if (a_verbose) {
+    logger::info("  recipe {}: {}", instance.recipe->id,
+                 instance.light ? instance.light->Describe()
+                                : "light not created");
+  }
 }
 }
 
@@ -348,15 +573,8 @@ std::vector<LivePiece> Manager::CollectPieces(RE::Actor *a_actor,
             }
             return RE::BSVisit::BSVisitControl::kContinue;
           }
-          auto *layout = static_cast<PBRMaterialLayout *>(property->material);
-          LiveGeometry bound;
-          bound.geometry = RE::NiPointer{a_geometry};
-          bound.property = RE::NiPointer{property};
-          bound.name = std::string{name};
-          bound.inputs.material = MaterialInputs::From(*layout);
-          bound.inputs.geometry = RE::NiPointer{a_geometry};
-          bound.inputs.root = RE::NiPointer{root};
-          piece.geometries.push_back(std::move(bound));
+          piece.geometries.push_back(
+              MakeGeometry(a_geometry, property, root, name));
           return RE::BSVisit::BSVisitControl::kContinue;
         });
     if (layoutFailed) {
@@ -379,34 +597,11 @@ void Manager::MatchRecipes(RE::Actor *a_actor, LiveActor &a_state) {
   const std::span<const Recipe> loaded = LoadedRecipes();
   RE::NiAVObject *firstPersonRoot = a_actor->Get3D(true);
   const RE::FormID actorID = a_actor->GetFormID();
-  std::vector<Piece> pieces;
-  std::vector<Studio::PieceRef> refs;
-  for (LivePiece &live : a_state.pieces) {
-    RE::TESObjectARMO *armor =
-        RE::TESForm::LookupByID<RE::TESObjectARMO>(live.armor);
-    WornPiece keys = WornKeysOf(armor, live.enchantment);
-    for (const LiveGeometry &geometry : live.geometries) {
-      keys.diffusePaths.push_back(
-          TexturePath(geometry.inputs.material.diffuse));
-    }
-    const bool firstPerson =
-        !live.geometries.empty() && live.geometries.front().inputs.root &&
-        live.geometries.front().inputs.root.get() == firstPersonRoot;
-    const Studio::PieceRef ref{actorID, live.armor, firstPerson};
-    for (const LiveGeometry &geometry : live.geometries) {
-      Piece piece;
-      piece.identity =
-          GeometryIdentity{std::nullopt, geometry.name,
-                           TexturePath(geometry.inputs.material.diffuse)};
-      piece.keys = keys;
-      piece.firstPerson = firstPerson;
-      piece.lost = geometry.lost;
-      pieces.push_back(std::move(piece));
-      refs.push_back(ref);
-    }
-  }
+  const std::pair<std::vector<Piece>, std::vector<Studio::PieceRef>> built =
+      BuildPieces(a_state, firstPersonRoot, actorID);
+  const std::vector<Studio::PieceRef> &refs = built.second;
   a_state.structure = MatchActor(
-      pieces, loaded,
+      built.first, loaded,
       [this, loaded, &refs](const Piece &a_piece, std::size_t a_index) {
         std::vector<ResolvedRecipe> resolved = Resolve(a_piece.keys, loaded);
         const Studio::PieceRef ref =
@@ -478,29 +673,7 @@ void Manager::PlaceInstances(RE::Actor *a_actor, LiveActor &a_state) {
   std::size_t flat = 0;
   for (std::size_t p = 0; p < a_state.pieces.size(); ++p) {
     for (std::size_t g = 0; g < a_state.pieces[p].geometries.size(); ++g) {
-      const GeometryPlacement placement =
-          PlaceGeometry(a_state.structure, loaded, PieceId{flat});
-      LiveGeometry &bound = a_state.pieces[p].geometries[g];
-      bound.placements = placement.sources;
-      bound.plan = placement.plan;
-      bound.stackPlan = PlanStacks(placement.placed, placement.plan);
-      bound.binding = PlanBinding(placement.placed, placement.plan, {}, {});
-      for (const PlacementId source : placement.sources) {
-        const std::size_t k = static_cast<std::size_t>(source);
-        if (k >= a_state.placements.size() ||
-            k >= a_state.structure.placements.size()) {
-          continue;
-        }
-        LivePlacement &live = a_state.placements[k];
-        live.geometry = flat;
-        live.outputs.clear();
-        for (const OutputPlacement &output :
-             a_state.structure.placements[k].outputs) {
-          live.outputs.push_back(
-              PlacedOutput{static_cast<std::size_t>(output.output), nullptr,
-                           output.problem});
-        }
-      }
+      PreparePlacement(a_state, loaded, p, g, flat);
       PlaceOnGeometry(a_actor, a_state, PieceId{p}, g);
       ++flat;
     }
@@ -517,126 +690,10 @@ void Manager::PlaceOnGeometry(RE::Actor *a_actor, LiveActor &a_state,
   }
   LiveGeometry &bound = a_state.pieces[pieceIndex].geometries[a_geometry];
 
-  if (bound.binding.material) {
-    bound.material = MaterialBinding::Install(
-        bound.geometry.get(), bound.property.get(), settings.uniqueMaterial);
-  }
-  if (bound.binding.shell) {
-    std::optional<std::size_t> ownerInstance;
-    if (bound.binding.shellOwner) {
-      const std::size_t owner =
-          static_cast<std::size_t>(*bound.binding.shellOwner);
-      if (owner < bound.placements.size()) {
-        const std::size_t placementIndex =
-            static_cast<std::size_t>(bound.placements[owner]);
-        if (placementIndex < a_state.structure.placements.size()) {
-          ownerInstance = static_cast<std::size_t>(
-              a_state.structure.placements[placementIndex].instance);
-        }
-      }
-    }
-    if (ownerInstance && *ownerInstance < a_state.instances.size() &&
-        a_state.instances[*ownerInstance].recipe) {
-      bound.shellOwner = ownerInstance;
-      bound.shell =
-          ShellBinding::Create(bound.geometry.get(), bound.property.get(),
-                               a_state.instances[*ownerInstance].recipe->shell);
-    }
-  }
+  InstallSurfaces(a_state, bound, settings.uniqueMaterial);
+  MarkReplaced(a_state, bound);
+  RenderChain(a_state, bound, settings);
 
-  for (const SlotPlan &slot : bound.plan.slots) {
-    for (const SlotContribution &c : slot.replaced) {
-      const std::size_t placed = static_cast<std::size_t>(c.placed);
-      if (placed >= bound.placements.size()) {
-        continue;
-      }
-      const std::size_t placementIndex =
-          static_cast<std::size_t>(bound.placements[placed]);
-      if (placementIndex >= a_state.placements.size()) {
-        continue;
-      }
-      PlacedOutput *output =
-          OutputAt(a_state.placements[placementIndex], c.output);
-      if (!output) {
-        continue;
-      }
-      std::string replacerId;
-      if (const std::optional<std::size_t> replacer = ReplacerOf(slot, c);
-          replacer && *replacer < bound.placements.size()) {
-        const std::size_t replacerPlacement =
-            static_cast<std::size_t>(bound.placements[*replacer]);
-        if (replacerPlacement < a_state.structure.placements.size()) {
-          const std::size_t instanceIndex = static_cast<std::size_t>(
-              a_state.structure.placements[replacerPlacement].instance);
-          if (instanceIndex < a_state.instances.size() &&
-              a_state.instances[instanceIndex].recipe) {
-            replacerId = a_state.instances[instanceIndex].recipe->id;
-          }
-        }
-      }
-      output->problem = std::format("replaced by recipe {}", replacerId);
-    }
-  }
-
-  const auto [size, maxSize] = RuntimeSizes(settings, bound.inputs.material);
-  for (const SlotPlan &slot : bound.plan.slots) {
-    for (const SlotContribution &c : slot.chain) {
-      const std::size_t placed = static_cast<std::size_t>(c.placed);
-      if (placed >= bound.placements.size()) {
-        continue;
-      }
-      const std::size_t placementIndex =
-          static_cast<std::size_t>(bound.placements[placed]);
-      if (placementIndex >= a_state.structure.placements.size() ||
-          placementIndex >= a_state.placements.size()) {
-        continue;
-      }
-      const std::size_t instanceIndex = static_cast<std::size_t>(
-          a_state.structure.placements[placementIndex].instance);
-      if (instanceIndex >= a_state.instances.size()) {
-        continue;
-      }
-      const LiveInstance &instance = a_state.instances[instanceIndex];
-      if (!instance.recipe) {
-        continue;
-      }
-      const SurfaceOutput *material =
-          c.output < instance.recipe->outputs.size()
-              ? Get<SurfaceOutput>(instance.recipe->outputs[c.output])
-              : nullptr;
-      if (!material) {
-        continue;
-      }
-      PlacedOutput *output =
-          OutputAt(a_state.placements[placementIndex], c.output);
-      if (!output) {
-        continue;
-      }
-      if (slot.surface == Surface::kShell && !bound.shell) {
-        output->problem = "shell could not be created";
-      } else if (slot.surface == Surface::kMaterial && !bound.material) {
-        output->problem = "material binding failed";
-      }
-      if (output->problem.empty()) {
-        SlotTarget *target = TargetFor(bound, slot.surface);
-        output->problem =
-            target ? target->Problem(slot.slot) : "the surface is not bound";
-      }
-      if (output->problem.empty()) {
-        output->stack = Compositor::GetSingleton()->Prepare(
-            *instance.recipe, *material, bound.inputs, size, maxSize);
-        if (!output->stack) {
-          output->problem = "the texture lab is unavailable";
-        } else if (settings.verboseLogging) {
-          for (const Diagnostic &d : output->stack->Diagnostics()) {
-            logger::warn("recipe {} output {} on '{}': {}: {}",
-                         instance.recipe->id, c.output, bound.name, d.where,
-                         d.message);
-          }
-        }
-      }
-    }
-  }
   if (settings.verboseLogging) {
     logger::info(
         "apply armor {:08X} actor {:08X} geometry '{}' material={} {}",
@@ -652,54 +709,7 @@ void Manager::PlaceLightsOf(RE::Actor *a_actor, LiveActor &a_state) {
   const std::span<const Recipe> loaded = LoadedRecipes();
   const ActorLightPlan plan = PlaceLights(a_state.structure, loaded);
   for (const LightContribution &c : plan.plan.shown) {
-    const std::size_t sourceIndex = static_cast<std::size_t>(c.placed);
-    if (sourceIndex >= plan.sources.size()) {
-      continue;
-    }
-    const std::size_t instanceIndex =
-        static_cast<std::size_t>(plan.sources[sourceIndex]);
-    if (instanceIndex >= a_state.instances.size()) {
-      continue;
-    }
-    LiveInstance &instance = a_state.instances[instanceIndex];
-    if (!instance.recipe || !instance.signals) {
-      continue;
-    }
-    std::vector<RE::BSGeometry *> geometries;
-    for (const Placement &placement : a_state.structure.placements) {
-      if (static_cast<std::size_t>(placement.instance) != instanceIndex) {
-        continue;
-      }
-      const std::size_t flat = static_cast<std::size_t>(placement.piece);
-      if (flat >= a_state.structure.pieces.size() ||
-          a_state.structure.pieces[flat].firstPerson) {
-        continue;
-      }
-      if (LiveGeometry *geometry = GeometryAtFlat(a_state, flat);
-          geometry && geometry->geometry) {
-        geometries.push_back(geometry->geometry.get());
-      }
-    }
-    if (geometries.empty()) {
-      continue;
-    }
-    const LightOutput *light =
-        c.output < instance.recipe->outputs.size()
-            ? Get<LightOutput>(instance.recipe->outputs[c.output])
-            : nullptr;
-    if (!light) {
-      continue;
-    }
-    const std::vector<LightPlacement> placements =
-        PlaceLightNodes(light->bones, geometries, a_actor->Get3D(false),
-                        instance.signals->Resolve(light->offset));
-    instance.light = LightBinding::Create(placements, light->shadow);
-    instance.lightOutput = c.output;
-    if (settings.verboseLogging) {
-      logger::info("  recipe {}: {}", instance.recipe->id,
-                   instance.light ? instance.light->Describe()
-                                  : "light not created");
-    }
+    PlaceLight(a_state, plan, c, a_actor, settings.verboseLogging);
   }
 }
 

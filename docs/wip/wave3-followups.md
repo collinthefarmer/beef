@@ -45,13 +45,37 @@ baseline, not suppressed):**
   are apply-time (load) paths; `conventions.md` says do not optimise a load-time
   path on speculation, so the `reserve()` is not added.
 
+## Done: pure cores extracted from the engine adapters (native-tested)
+
+Rather than accept every adapter function-size finding, the pure logic trapped
+in the engine-only Manager TUs was extracted into the native-tested layer with
+tests, and the remaining engine orchestration was decomposed into named phases
+(behaviour-preserving, verified by the central DLL build + full native suite):
+- `planners/ActorState`: `MatchesForPiece`, `PlacedIndexOf`, `InstanceOfPlaced`,
+  `ThirdPersonPiecesOfInstance` — the placement-index queries (were in
+  ManagerSnapshot/ManagerApply). Covered by `actorstate`/`placementlookup` tests.
+- `studio/RecipeContent`: the recipe-row projection (was ManagerSnapshot's
+  per-recipe assembly). Covered by `recipecontent` tests.
+- `studio/ResolveOutput`: `ResolveOutput`/`ResolveLight` — the scalar/opacity/
+  colour resolution of an output through a `SignalState` (was inline in
+  ManagerTick's `RenderGeometry`/`UpdateLights`, and duplicated in
+  ManagerSnapshot's geometry loop). Covered by `resolveoutput` tests.
+- Engine-internal dedup: `NowMS`/`TargetFor`/`OutputAt` (re-derived across the
+  four Manager TUs by the parallel decomposition) lifted to
+  `engine/ManagerShared`.
+
+`ManagerTick`/`ManagerApply`/`ManagerRecipes` are now sequences of named phases
+over these helpers. The function-size findings that remain are the phases that
+still need an `RE::`/`render::` type (genuine engine orchestration) plus the
+per-texel/per-pass render functions — accepted by policy; their correctness
+rides the wave-5 checkpoint.
+
 ## Deferred: render-internal helper de-duplication
 
-Parallel fills on disjoint files each re-derived the same file-local helpers
-(the expected "parallel agents re-derive the same helper" merge cost). None is a
-bug and none is a tidy finding after the RendererLock fix, so the lift is
-deferred to a dedicated pass. When done, create a render-internal header and
-move these identical definitions there (compile-verified, no behaviour change):
+The `render/` fills re-derived the same file-local helpers (not a bug, not a
+tidy finding after the RendererLock fix). Deferred to a dedicated pass: create a
+render-internal header and move these identical definitions there
+(compile-verified, no behaviour change):
 - Lab D3D internals across `RuntimeTexturesLab/Pass/Readback.cpp`: `Failed`,
   `Release<T>`, `DataOf`, `RendererLock`, and the cbuffer mirror structs
   `Constants`/`ProgramConstants`/`RippleConstants`/`ClassifyConstants` (with
@@ -59,6 +83,9 @@ move these identical definitions there (compile-verified, no behaviour change):
 - Compositor helpers across `Compositor/CompositorSource/CompositorBake.cpp`:
   `Lower`, `RealTexture`, `MapOf`, `DescribeTexture`, `SamplingNow`.
 - `ToNi(const Vec3 &) -> RE::NiColor` across `Binding/Shell/Light.cpp`.
+- Optional: `ManagerSnapshot`'s geometry loop can now read `Studio::ResolveOutput`
+  instead of its own hand-rolled scalar/opacity resolution (align on the
+  `named` flags, not a running index — per the ResolveOutput author's note).
 
 ## Seam gaps the integrator surfaced (need decisions before wave 5)
 

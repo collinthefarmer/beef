@@ -1,35 +1,31 @@
-# clang-tidy baseline, 58 sources, 84 findings
+# clang-tidy baseline, 61 sources, 82 findings
 # regenerate: tools/tidy.sh && tools/tidy-baseline.sh
 
-# readability-function-size                            52
-# readability-function-cognitive-complexity            22
-# performance-inefficient-vector-operation             3
+# readability-function-size                            56
+# readability-function-cognitive-complexity            19
 # bugprone-exception-escape                            3
 # performance-unnecessary-value-param                  2
 # bugprone-suspicious-stringview-data-usage            1
 # cppcoreguidelines-owning-memory                      1
 
-src/engine/ManagerApply.cpp:179: [performance-inefficient-vector-operation]
-src/engine/ManagerApply.cpp:194: [performance-inefficient-vector-operation]
-src/engine/ManagerApply.cpp:278: [readability-function-cognitive-complexity]
-src/engine/ManagerApply.cpp:278: [readability-function-size]
-src/engine/ManagerApply.cpp:441: [readability-function-size]
-src/engine/ManagerApply.cpp:482: [readability-function-cognitive-complexity]
-src/engine/ManagerApply.cpp:482: [readability-function-size]
-src/engine/ManagerApply.cpp:622: [readability-function-cognitive-complexity]
-src/engine/ManagerApply.cpp:730: [performance-inefficient-vector-operation]
-src/engine/ManagerRecipes.cpp:104: [readability-function-size]
-src/engine/ManagerRecipes.cpp:127: [readability-function-size]
-src/engine/ManagerRecipes.cpp:173: [readability-function-size]
-src/engine/ManagerRecipes.cpp:277: [readability-function-size]
-src/engine/ManagerRecipes.cpp:309: [readability-function-size]
-src/engine/ManagerSnapshot.cpp:136: [readability-function-size]
-src/engine/ManagerSnapshot.cpp:191: [readability-function-cognitive-complexity]
-src/engine/ManagerSnapshot.cpp:191: [readability-function-size]
-src/engine/ManagerTick.cpp:156: [readability-function-cognitive-complexity]
-src/engine/ManagerTick.cpp:156: [readability-function-size]
-src/engine/ManagerTick.cpp:244: [readability-function-cognitive-complexity]
-src/engine/ManagerTick.cpp:244: [readability-function-size]
+src/engine/ManagerApply.cpp:217: [readability-function-size]
+src/engine/ManagerApply.cpp:269: [readability-function-size]
+src/engine/ManagerApply.cpp:302: [readability-function-cognitive-complexity]
+src/engine/ManagerApply.cpp:302: [readability-function-size]
+src/engine/ManagerApply.cpp:366: [readability-function-size]
+src/engine/ManagerApply.cpp:519: [readability-function-cognitive-complexity]
+src/engine/ManagerApply.cpp:519: [readability-function-size]
+src/engine/ManagerRecipes.cpp:35: [readability-function-size]
+src/engine/ManagerRecipes.cpp:156: [readability-function-size]
+src/engine/ManagerRecipes.cpp:202: [readability-function-size]
+src/engine/ManagerRecipes.cpp:298: [readability-function-size]
+src/engine/ManagerRecipes.cpp:330: [readability-function-size]
+src/engine/ManagerSnapshot.cpp:76: [readability-function-size]
+src/engine/ManagerSnapshot.cpp:131: [readability-function-cognitive-complexity]
+src/engine/ManagerSnapshot.cpp:131: [readability-function-size]
+src/engine/ManagerTick.cpp:102: [readability-function-size]
+src/engine/ManagerTick.cpp:198: [readability-function-size]
+src/engine/ManagerTick.cpp:216: [readability-function-size]
 src/engine/MeshReader.cpp:130: [readability-function-cognitive-complexity]
 src/engine/MeshReader.cpp:130: [readability-function-size]
 src/engine/MeshReader.cpp:261: [readability-function-size]
@@ -93,3 +89,4 @@ src/render/Shell.cpp:66: [readability-function-cognitive-complexity]
 src/render/Shell.cpp:66: [readability-function-size]
 src/render/Shell.cpp:331: [readability-function-size]
 src/render/Shell.cpp:357: [readability-function-size]
+src/studio/RecipeContent.cpp:30: [readability-function-size]

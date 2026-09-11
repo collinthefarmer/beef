@@ -1,6 +1,7 @@
 #include "engine/Manager.h"
 
 #include "SettingsFile.h"
+#include "engine/ManagerShared.h"
 #include "engine/RecipeStore.h"
 #include "render/Compositor.h"
 #include "render/RuntimeTextures.h"
@@ -11,8 +12,6 @@
 namespace BetterEnchantmentEffects {
 namespace {
 constexpr std::uint32_t kEquipFinalizeDelayMS = 100;
-
-std::uint32_t NowMS() { return RE::GetDurationOfApplicationRunTime(); }
 }
 
 Manager *Manager::GetSingleton() {
