@@ -8,7 +8,11 @@ root=$(git rev-parse --show-toplevel 2>/dev/null) || exit 0
 cd "$root" || exit 0
 
 if [ -x .githooks/pre-commit ]; then
-	.githooks/pre-commit >&2 || {
+	if command -v clang-format >/dev/null 2>&1; then
+		.githooks/pre-commit >&2
+	else
+		nix develop --command .githooks/pre-commit >&2
+	fi || {
 		echo "commit blocked by Claude Code format gate (bypasses --no-verify)." >&2
 		exit 2
 	}
