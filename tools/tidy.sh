@@ -5,7 +5,7 @@ cd "$(dirname "$0")/.."
 OUT=build/tidy
 ANALYZER=0
 FORCE=0
-JOBS=1
+JOBS=6
 FILES=()
 for arg in "$@"; do
 	case "$arg" in
@@ -24,6 +24,15 @@ DB=build/clangd/compile_commands.json
 [ -f "$DB" ] || { echo "no $DB; run tools/compile-db.sh" >&2; exit 1; }
 mkdir -p "$OUT"
 
+result_fresh() {
+	local dest="$1" src="$2"
+	[ -f "$dest" ] || return 1
+	[ "$src" -nt "$dest" ] && return 1
+	[ "$DB" -nt "$dest" ] && return 1
+	[ -n "$(find src -name '*.h' -not -path 'src/_old/*' -not -path 'src/extern/*' -newer "$dest" -print -quit 2>/dev/null)" ] && return 1
+	return 0
+}
+
 
 if [ "${SUMMARY_ONLY:-0}" -eq 0 ]; then
 	TIDY_BIN="${CLANG_TIDY:-clang-tidy}"
@@ -34,12 +43,8 @@ if [ "${SUMMARY_ONLY:-0}" -eq 0 ]; then
 	for f in "${FILES[@]}"; do
 		[ -f "$f" ] || continue
 		dest="$OUT/$(basename "$f" .cpp).txt"
-		if [ -f "$dest.part" ]; then
-			mv "$dest.part" "$dest.skipped"
-			echo "skip $f (a previous run was killed on it)" >&2
-			continue
-		fi
-		if [ "$FORCE" -eq 0 ] && { [ -f "$dest" ] || [ -f "$dest.skipped" ]; }; then
+		rm -f "$dest.part"
+		if [ "$FORCE" -eq 0 ] && result_fresh "$dest" "$f"; then
 			continue
 		fi
 		TODO+=("$f")
@@ -57,7 +62,5 @@ fi
 
 echo
 echo "# clang-tidy: $(ls "$OUT"/*.txt 2>/dev/null | wc -l) of ${#FILES[@]} files, $(cat "$OUT"/*.txt 2>/dev/null | grep -c 'warning:' || true) findings"
-SKIPPED=$(ls "$OUT"/*.skipped 2>/dev/null | wc -l)
-[ "$SKIPPED" -gt 0 ] && echo "  $SKIPPED file(s) too heavy to lint here: $(ls "$OUT"/*.skipped | xargs -n1 basename | sed 's/\.txt\.skipped//' | tr '\n' ' ')"
 echo
 cat "$OUT"/*.txt 2>/dev/null | grep -oE '\[[a-z][a-z0-9-]+-[a-z0-9.-]+\]$' | sort | uniq -c | sort -rn | sed 's/^/  /' || true

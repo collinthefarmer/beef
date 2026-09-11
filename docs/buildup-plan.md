@@ -95,10 +95,11 @@ tree links do you build and run the suite.
   what stayed; keep it to exactly those two sets, and re-triage when either the
   policy or the wave's scope changes.
 
-Formatting is gated earlier and separately: `.githooks/pre-commit` and the
-Claude `PreToolUse` gate in `.claude/settings.json` both run
-`tools/format.sh --check` on staged sources, so no unformatted commit
-reaches merge. A module is done, per `REQUIREMENTS.md`, only when four things
+Format and lint are gated at commit, separately from module completion: the
+commit gate (`tools/gate.sh commit`, run by `.githooks/pre-commit` and the
+Claude `PreToolUse` hook in `.claude/settings.json`) blocks any staged source
+that is unformatted or that adds a clang-tidy finding above the baseline, so
+neither reaches merge. A module is done, per `REQUIREMENTS.md`, only when four things
 hold together: zero-warning build, green native suite, tidy baseline showing
 only what the module meant to add, and the frozen counterpart gone from the
 build and from `src/_old`. It is not done while both copies are in the tree.

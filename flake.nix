@@ -15,6 +15,7 @@
             pkgs.llvmPackages.clang-unwrapped
             pkgs.llvmPackages.llvm
             pkgs.lld
+            pkgs.ccache
             pkgs.cmake
             pkgs.ninja
             (pkgs.python3.withPackages (ps: [ ps.numpy ps.pillow ]))
@@ -30,6 +31,7 @@
             export CLANG_FORMAT=${pkgs.llvmPackages.clang-unwrapped}/bin/clang-format
             export NATIVE_CXX=${pkgs.clang}/bin/clang++
             export ASAN_SYMBOLIZER_PATH=${pkgs.llvmPackages.llvm}/bin/llvm-symbolizer
+            export CCACHE_SLOPPINESS=pch_defines,time_macros
             : "''${XWIN_DIR:=$HOME/.xwin/splat}"
             export XWIN_DIR
             git rev-parse --git-dir >/dev/null 2>&1 && git config core.hooksPath .githooks

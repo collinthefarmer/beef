@@ -13,6 +13,19 @@ import json, pathlib
 root = str(pathlib.Path('.').resolve())
 db = json.load(open('build/Release/compile_commands.json'))
 own = [d for d in db if d['file'].startswith(root + '/src/') or d['file'].startswith(root + '/tests/')]
+
+# CMAKE_CXX_COMPILER_LAUNCHER prepends ccache to each command; clang-tidy and
+# clangd need the real compiler as argv[0], so drop the launcher token.
+def strip_launcher(entry):
+    if 'arguments' in entry and entry['arguments']:
+        if pathlib.Path(entry['arguments'][0]).name == 'ccache':
+            entry['arguments'] = entry['arguments'][1:]
+    if 'command' in entry:
+        parts = entry['command'].split(' ', 1)
+        if len(parts) == 2 and pathlib.Path(parts[0]).name == 'ccache':
+            entry['command'] = parts[1]
+    return entry
+own = [strip_launcher(d) for d in own]
 pathlib.Path('build/clangd').mkdir(exist_ok=True)
 json.dump(own, open('build/clangd/compile_commands.json', 'w'), indent=1)
 print(f"{len(own)} entries in build/clangd/compile_commands.json")

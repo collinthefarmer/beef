@@ -13,6 +13,15 @@ endif()
 
 set(CMAKE_SKIP_INSTALL_RULES ON)
 
+# Cache object files across clean builds and branch switches. The big win is
+# CommonLibSSE, which is set up below and inherits this launcher; the plugin's
+# own /Zi objects are uncacheable and fall through to the compiler untouched.
+find_program(CCACHE_PROGRAM ccache)
+if(CCACHE_PROGRAM)
+  set(CMAKE_CXX_COMPILER_LAUNCHER "${CCACHE_PROGRAM}")
+  set(CMAKE_C_COMPILER_LAUNCHER "${CCACHE_PROGRAM}")
+endif()
+
 include(FetchContent)
 set(FETCHCONTENT_QUIET OFF)
 

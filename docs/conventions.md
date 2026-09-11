@@ -247,15 +247,22 @@ animated stack re-renders each tick).
 - **Formatting** — `.clang-format` is `BasedOnStyle: LLVM` with
   `FixNamespaceComments: false`. Vendored and frozen trees opt out with their
   own `DisableFormat: true` (`src/extern`, `src/cs`, `src/_old`).
-  `tools/format.sh` formats or `--check`s all of `src` except those trees;
-  `.githooks/pre-commit` blocks a commit whose staged sources are unformatted.
-- **Lint baseline** — `.githooks/pre-push` runs `tools/format.sh --check`, then
-  `tools/tidy.sh --force`, then `tools/tidy-baseline.sh --check`, which fails
-  if the current clang-tidy findings differ from `docs/wip/tidy-baseline.txt`.
-  A new module should add only the findings it meant to. Regenerate the
-  baseline after an intended change with `tools/tidy.sh --force &&
-  tools/tidy-baseline.sh` (no args writes the file). `tidy.sh` reads
-  `build/clangd/compile_commands.json`; `tools/compile-db.sh` rewrites that
+  `tools/format.sh` formats or `--check`s all of `src` except those trees.
+- **The gate** — `tools/gate.sh {commit|push}` is one script that the git hooks
+  (`.githooks/pre-commit`, `pre-push`) and the Claude Code hook all call; it
+  re-execs into `nix develop` so the pinned clang tools are always used.
+  `commit` blocks a commit whose staged sources are unformatted or that adds a
+  clang-tidy finding above the baseline for a touched `.cpp`, compared per
+  `(file, check)` count so line shifts from an edit do not false-trigger
+  (`tools/tidy-baseline.sh --gate`). `push` runs `tools/format.sh --check`, the
+  sanitized native tests (`BEEF_SANITIZE=1 tests/run-native.sh`), a full
+  incremental `tools/tidy.sh`, then `tools/tidy-baseline.sh --check`, which
+  fails if the findings differ from `docs/wip/tidy-baseline.txt`. A new module
+  should add only the findings it meant to. Regenerate the baseline after an
+  intended change with `tools/tidy.sh --force && tools/tidy-baseline.sh` (no
+  args writes the file). `tidy.sh` caches per-file results under `build/tidy`
+  and re-lints only files newer than their result; it reads
+  `build/clangd/compile_commands.json`, which `tools/compile-db.sh` rewrites
   after a source file is added or removed.
 - **Native build and tests** — engine-free modules compile natively and run
   through `tests/run-native.sh`. A module is done (`REQUIREMENTS.md`) when the

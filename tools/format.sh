@@ -23,14 +23,13 @@ fi
 [ ${#FILES[@]} -eq 0 ] && mapfile -t FILES < <(find src -name '*.cpp' -o -name '*.h' | grep -Ev '^src/(_old|extern|cs)/' | sort)
 
 if [ "$CHECK" -eq 1 ]; then
-	bad=0
-	for f in "${FILES[@]}"; do
-		[ -f "$f" ] || continue
-		if ! "$FMT_BIN" "$f" | diff -q "$f" - >/dev/null; then
-			echo "needs formatting: $f"
-			bad=$((bad + 1))
-		fi
-	done
+	mapfile -t bad_files < <(printf '%s\n' "${FILES[@]}" | xargs -r -P "$(nproc)" -I{} bash -c '
+		f="$1"; bin="$2"
+		[ -f "$f" ] || exit 0
+		"$bin" "$f" | diff -q "$f" - >/dev/null 2>&1 || echo "$f"
+	' _ {} "$FMT_BIN")
+	for f in "${bad_files[@]}"; do echo "needs formatting: $f"; done
+	bad=${#bad_files[@]}
 	[ "$bad" -eq 0 ] && echo "all ${#FILES[@]} files formatted" || echo "$bad of ${#FILES[@]} files need formatting"
 	exit $((bad > 0))
 fi

@@ -9,10 +9,9 @@
         "hooks": [
           {
             "type": "command",
-            "if": "Bash(git commit*)",
-            "command": "\"${CLAUDE_PROJECT_DIR:-$(git rev-parse --show-toplevel)}\"/.claude/hooks/commit-format-gate.sh",
-            "timeout": 30,
-            "statusMessage": "format gate"
+            "command": "\"${CLAUDE_PROJECT_DIR:-$(git rev-parse --show-toplevel)}\"/.claude/hooks/commit-gate.sh",
+            "timeout": 120,
+            "statusMessage": "format + lint gate"
           }
         ]
       }

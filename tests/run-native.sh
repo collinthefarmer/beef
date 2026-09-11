@@ -26,10 +26,21 @@ declare -A MODULE_DEPS=(
 )
 
 status=0
+needs_rebuild() {
+	local src="$1" obj="$2" dep="$2.d" prereq
+	[ -f "$obj" ] || return 0
+	[ "$src" -nt "$obj" ] && return 0
+	[ -f "$dep" ] || return 0
+	while IFS= read -r prereq; do
+		[ -n "$prereq" ] || continue
+		[ "$prereq" -nt "$obj" ] && return 0
+	done < <(sed -e 's/^[^:]*://' -e 's/\\//g' "$dep" | tr ' \t' '\n\n' | grep -v '^$')
+	return 1
+}
 compile() {
 	local src="$1" obj="$OUT/$(echo "$1" | tr / _).o"
-	if [ ! -f "$obj" ] || [ "$src" -nt "$obj" ] || [ -n "$(find src tests -name '*.h' -newer "$obj" 2>/dev/null | head -1)" ]; then
-		"$CXX" "${FLAGS[@]}" -c "$src" -o "$obj" || return 1
+	if needs_rebuild "$src" "$obj"; then
+		"$CXX" "${FLAGS[@]}" -MMD -MF "$obj.d" -c "$src" -o "$obj" || return 1
 	fi
 	echo "$obj"
 }
