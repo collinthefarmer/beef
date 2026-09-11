@@ -71,10 +71,12 @@ void SelectionCombo(const Studio::Snapshot &a_snapshot,
   ImGui::EndCombo();
 }
 
-void RecipeCombo(const Studio::PieceRow &a_piece,
-                 const Studio::RecipeRow &a_recipe,
-                 std::span<const std::string> a_loaded, const char *a_label,
-                 Studio::Intents &a_out) {
+void RecipeCombo(const Frame &a_frame, const char *a_label) {
+  const Studio::PieceRow &a_piece = *a_frame.piece;
+  const Studio::RecipeRow &a_recipe = *a_frame.recipe;
+  const auto &a_loaded = a_frame.snapshot->loaded;
+  Studio::Intents &a_out = *a_frame.intents;
+
   if (!ImGui::BeginCombo(a_label, RecipeLabel(a_recipe).c_str())) {
     return;
   }
@@ -124,32 +126,37 @@ void IsolateCheckbox(const Studio::RecipeRow &a_recipe,
   }
 }
 
+void DrawKeysTable(const Studio::RecipeRow &a_recipe, Studio::Intents &a_out) {
+  auto table = Table::Begin("keys",
+                            {{"key", Studio::Width::Fit()},
+                             {"", Studio::Width::Px(RowButtonWidth())}},
+                            kFormStyle);
+  if (!table.Open()) {
+    return;
+  }
+  for (std::size_t i = 0; i < a_recipe.keys.size(); ++i) {
+    const auto &key = a_recipe.keys[i];
+    ImGui::PushID(static_cast<int>(i));
+    table.Cell();
+    ImGui::AlignTextToFramePadding();
+    ImGui::TextUnformatted(key.ToString().c_str());
+    table.Cell();
+    Disabled(a_recipe.keys.size() == 1, [&]() {
+      if (RemoveButton(0)) {
+        Studio::Post(a_out, a_recipe.id, Studio::RemoveKey{key});
+      }
+    });
+    ImGui::PopID();
+  }
+  table.End();
+}
+
 void KeysPopup(const Studio::PieceRow &a_piece,
                const Studio::RecipeRow &a_recipe, Studio::Intents &a_out) {
   if (!ImGui::BeginPopup("recipe-keys")) {
     return;
   }
-  auto table = Table::Begin("keys",
-                            {{"key", Studio::Width::Fit()},
-                             {"", Studio::Width::Px(RowButtonWidth())}},
-                            kFormStyle);
-  if (table.Open()) {
-    for (std::size_t i = 0; i < a_recipe.keys.size(); ++i) {
-      const auto &key = a_recipe.keys[i];
-      ImGui::PushID(static_cast<int>(i));
-      table.Cell();
-      ImGui::AlignTextToFramePadding();
-      ImGui::TextUnformatted(key.ToString().c_str());
-      table.Cell();
-      Disabled(a_recipe.keys.size() == 1, [&]() {
-        if (RemoveButton(0)) {
-          Studio::Post(a_out, a_recipe.id, Studio::RemoveKey{key});
-        }
-      });
-      ImGui::PopID();
-    }
-    table.End();
-  }
+  DrawKeysTable(a_recipe, a_out);
   NextItemWidth(Studio::Width::Px(240.0f));
   if (ImGui::BeginCombo("##add-key", "add a key the piece carries")) {
     for (const auto &choice : a_piece.keys) {
@@ -210,7 +217,7 @@ void ClearButton(const Studio::RecipeRow &a_recipe,
 }
 
 [[nodiscard]] std::string SlotLabel(const Studio::Cell &a_cell) {
-  const std::string name{SlotName(a_cell.slot)};
+  std::string name{SlotName(a_cell.slot)};
   switch (a_cell.state) {
   case Studio::CellState::kWritten:
     return std::format("{} ({} layer{})", name, a_cell.layers,
@@ -243,6 +250,21 @@ void TargetChoice(const Studio::Selection &a_selection,
   ImGui::EndCombo();
 }
 
+void DrawSlotPick(const Studio::Cell &a_cell, bool a_selected,
+                  Studio::Intents &a_out) {
+  if (!ImGui::Selectable(SlotLabel(a_cell).c_str(), a_selected)) {
+    return;
+  }
+  if (a_cell.output) {
+    Studio::Post(a_out, Studio::PickCell{a_cell.surface, a_cell.slot,
+                                         a_cell.layers > 0
+                                             ? std::optional{a_cell.layers - 1}
+                                             : std::nullopt});
+  } else {
+    Studio::Post(a_out, Studio::PickSlot{a_cell.slot});
+  }
+}
+
 void SlotChoice(const Studio::Board &a_board, Surface a_surface,
                 const Studio::Cell *a_picked, Studio::Intents &a_out) {
   if (!ImGui::BeginCombo("##slot", a_picked ? SlotLabel(*a_picked).c_str()
@@ -257,19 +279,7 @@ void SlotChoice(const Studio::Board &a_board, Surface a_surface,
     }
     ImGui::PushID(static_cast<int>(i));
     const bool excluded = cell->state == Studio::CellState::kExcluded;
-    Disabled(excluded, [&]() {
-      if (ImGui::Selectable(SlotLabel(*cell).c_str(), cell == a_picked)) {
-        if (cell->output) {
-          Studio::Post(a_out,
-                       Studio::PickCell{cell->surface, cell->slot,
-                                        cell->layers > 0
-                                            ? std::optional{cell->layers - 1}
-                                            : std::nullopt});
-        } else {
-          Studio::Post(a_out, Studio::PickSlot{cell->slot});
-        }
-      }
-    });
+    Disabled(excluded, [&]() { DrawSlotPick(*cell, cell == a_picked, a_out); });
     if (!cell->reason.empty()) {
       Tooltip(cell->reason);
     }
@@ -278,29 +288,16 @@ void SlotChoice(const Studio::Board &a_board, Surface a_surface,
   ImGui::EndCombo();
 }
 
-[[maybe_unused]] [[nodiscard]] std::optional<Studio::ViewGeometry>
-NextGeometry(const Studio::RecipeRow &a_recipe,
-             const Studio::GeometryRow &a_geometry) {
-  const auto &shapes = a_recipe.geometries;
-  if (shapes.empty()) {
-    return std::nullopt;
-  }
-  const auto it =
-      std::ranges::find(shapes, a_geometry.name, &Studio::GeometryRow::name);
-  const std::size_t at =
-      it == shapes.end() ? 0 : static_cast<std::size_t>(it - shapes.begin());
-  return Studio::ViewGeometry{shapes[(at + 1) % shapes.size()].name};
-}
+void DrawRecipeContext(const Frame &a_frame) {
+  const Studio::Snapshot &a_snapshot = *a_frame.snapshot;
+  const Studio::PieceRow &a_piece = *a_frame.piece;
+  const Studio::RecipeRow &a_recipe = *a_frame.recipe;
+  Studio::Intents &a_out = *a_frame.intents;
 
-void DrawRecipeContext(const Studio::Snapshot &a_snapshot,
-                       const Studio::PieceRow &a_piece,
-                       const Studio::RecipeRow &a_recipe,
-                       Studio::Intents &a_out) {
   auto table = Table::Begin("recipe-context",
                             {{"S", Studio::Width::Fit()},
                              {"selection", Studio::Width::Fit()},
-                             {"recipe", Studio::Width::Fit()},
-                             {"history", Studio::Width::Fit()}},
+                             {"recipe", Studio::Width::Fit()}},
                             kContextStyle);
   if (!table.Open()) {
     return;
@@ -314,15 +311,16 @@ void DrawRecipeContext(const Studio::Snapshot &a_snapshot,
   SelectionCombo(a_snapshot, &a_piece, "##selection", a_out);
   table.Cell();
   NextItemWidth(Studio::Width::Fit(RecipeLabel(a_recipe)));
-  RecipeCombo(a_piece, a_recipe, a_snapshot.loaded, "##recipe", a_out);
+  RecipeCombo(a_frame, "##recipe");
   table.End();
 }
 
-void DrawEditContext(const Studio::Board &a_board,
-                     const Studio::RecipeRow &a_recipe,
-                     const Studio::Cell *a_picked,
-                     const Studio::Selection &a_selection,
-                     Studio::Intents &a_out) {
+void DrawEditContext(const Studio::Board &a_board, const Studio::Cell *a_picked,
+                     const Frame &a_frame) {
+  const Studio::RecipeRow &a_recipe = *a_frame.recipe;
+  const Studio::Selection &a_selection = SelectionOf(a_frame);
+  Studio::Intents &a_out = *a_frame.intents;
+
   const bool light = a_selection.target == Target::kLight;
   auto table = Table::Begin("context",
                             {{"S", Studio::Width::Px(RowButtonWidth())},
@@ -410,21 +408,52 @@ std::optional<RecipeKey> DefaultKeyOf(const Studio::PieceRow &a_piece) {
   return RecipeKeyOf(chosen->key, chosen->text);
 }
 
-const Studio::Cell *DrawContext(const Studio::Board &a_board,
-                                const Frame &a_frame) {
-  if (!a_frame.snapshot || !a_frame.piece || !a_frame.recipe ||
-      !a_frame.geometry || !a_frame.state || !a_frame.intents) {
-    return nullptr;
+namespace {
+void NewRecipeButton(const Frame &a_frame) {
+  const std::optional<RecipeKey> key = DefaultKeyOf(*a_frame.piece);
+  Disabled(!key, [&]() {
+    if (ImGui::Button("New", ImVec2{ButtonWidth("New"), 0.0f}) && key) {
+      std::vector<std::string> ids;
+      ids.reserve(a_frame.piece->recipes.size());
+      for (const auto &existing : a_frame.piece->recipes) {
+        ids.push_back(existing.id);
+      }
+      Studio::Post(*a_frame.intents,
+                   Studio::CreateRecipe{Studio::UniqueName("recipe", ids), *key,
+                                        a_frame.geometry->name});
+    }
+  });
+  Tooltip("a new recipe keyed to this armor, named recipe-N, with one empty "
+          "emissive output on the material for the viewed geometry alone; "
+          "rename it and edit its keys from keys");
+}
+
+void RenameRecipeButton(const Frame &a_frame) {
+  if (ImGui::Button("Rename", ImVec2{ButtonWidth("Rename"), 0.0f})) {
+    ImGui::OpenPopup("rename-recipe");
   }
-  const Studio::Snapshot &snapshot = *a_frame.snapshot;
+  if (ImGui::BeginPopup("rename-recipe")) {
+    const std::string_view typed = LiveTextField(
+        "rename", a_frame.recipe->id.c_str(), Studio::Width::Px(240.0f), 1.0f);
+    const bool ready = !typed.empty() && typed != a_frame.recipe->id;
+    ImGui::SameLine();
+    Disabled(!ready, [&]() {
+      if (ImGui::Button("Rename##do") && ready) {
+        Studio::Post(
+            *a_frame.intents,
+            Studio::RenameRecipe{a_frame.recipe->id, std::string{typed}});
+        ImGui::CloseCurrentPopup();
+      }
+    });
+    ImGui::EndPopup();
+  }
+  Tooltip("rename the recipe; its file follows when it is the user's");
+}
+
+void DrawRecipeHeader(const Frame &a_frame) {
   const Studio::PieceRow &piece = *a_frame.piece;
   const Studio::RecipeRow &recipe = *a_frame.recipe;
-  const Studio::GeometryRow &geometry = *a_frame.geometry;
-  const Studio::Selection &selection = SelectionOf(a_frame);
   Studio::Intents &out = *a_frame.intents;
-
-  const Studio::Cell *picked = PickedCell(a_board, selection);
-
   const float newWidth = ButtonWidth("New");
   const float renameWidth = ButtonWidth("Rename");
   const float clearWidth = ButtonWidth("Clear");
@@ -434,40 +463,9 @@ const Studio::Cell *DrawContext(const Studio::Board &a_board,
   const float recipeRight = newWidth + renameWidth + clearWidth + keysWidth +
                             undoWidth + redoWidth + 5.0f * ItemSpacingX();
   DrawRuleTitle("Recipe", recipeRight, [&]() {
-    const std::optional<RecipeKey> key = DefaultKeyOf(piece);
-    Disabled(!key, [&]() {
-      if (ImGui::Button("New", ImVec2{newWidth, 0.0f}) && key) {
-        std::vector<std::string> ids;
-        for (const auto &existing : piece.recipes) {
-          ids.push_back(existing.id);
-        }
-        Studio::Post(out,
-                     Studio::CreateRecipe{Studio::UniqueName("recipe", ids),
-                                          *key, geometry.name});
-      }
-    });
-    Tooltip("a new recipe keyed to this armor, named recipe-N, with one empty "
-            "emissive output on the material for the viewed geometry alone; "
-            "rename it and edit its keys from keys");
+    NewRecipeButton(a_frame);
     ImGui::SameLine();
-    if (ImGui::Button("Rename", ImVec2{renameWidth, 0.0f})) {
-      ImGui::OpenPopup("rename-recipe");
-    }
-    if (ImGui::BeginPopup("rename-recipe")) {
-      const std::string_view typed = LiveTextField(
-          "rename", recipe.id.c_str(), Studio::Width::Px(240.0f), 1.0f);
-      const bool ready = !typed.empty() && typed != recipe.id;
-      ImGui::SameLine();
-      Disabled(!ready, [&]() {
-        if (ImGui::Button("Rename##do") && ready) {
-          Studio::Post(out,
-                       Studio::RenameRecipe{recipe.id, std::string{typed}});
-          ImGui::CloseCurrentPopup();
-        }
-      });
-      ImGui::EndPopup();
-    }
-    Tooltip("rename the recipe; its file follows when it is the user's");
+    RenameRecipeButton(a_frame);
     ImGui::SameLine();
     if (ImGui::Button("Clear", ImVec2{clearWidth, 0.0f})) {
       Studio::Post(out, recipe.id, Studio::ClearRecipe{});
@@ -484,48 +482,130 @@ const Studio::Cell *DrawContext(const Studio::Board &a_board,
     ImGui::SameLine();
     UndoRedoButtons(recipe, out);
   });
-  DrawRecipeContext(snapshot, piece, recipe, out);
+  DrawRecipeContext(a_frame);
 
-  const std::optional<std::size_t> outputForClear =
+  DrawRecipeSettings(a_frame);
+}
+
+void DrawLightContext(const Studio::Board &a_board, const Frame &a_frame) {
+  const Studio::RecipeRow &recipe = *a_frame.recipe;
+  if (!recipe.lightRow.present) {
+    if (ImGui::Button("Add light")) {
+      Studio::Post(*a_frame.intents, recipe.id, Studio::AddLight{});
+    }
+    return;
+  }
+  ImGui::TextUnformatted(a_board.light.description.c_str());
+  if (recipe.lightRow.present) {
+    DrawSelector(Studio::SelectorViewOf(recipe.lightRow.selection),
+                 recipe.lightRow.output, true, a_frame);
+  }
+}
+
+void DrawSurfaceContext(const Studio::Cell &a_picked, const Frame &a_frame) {
+  if (a_picked.state == Studio::CellState::kEmpty) {
+    if (ImGui::Button("Add output")) {
+      Studio::Post(*a_frame.intents, a_frame.recipe->id,
+                   Studio::AddOutput{a_picked.surface, a_picked.slot, {}});
+    }
+    Tooltip(std::format("add an empty stack on {} of the {}",
+                        SlotName(a_picked.slot),
+                        SurfaceName(a_picked.surface)));
+    return;
+  }
+  if (!a_picked.reason.empty()) {
+    Warn(a_picked.reason);
+  }
+  if (!a_picked.output) {
+    return;
+  }
+  const auto &outputs = a_frame.geometry->outputs;
+  const auto output =
+      std::ranges::find(outputs, *a_picked.output, &Studio::OutputRow::index);
+  if (output != outputs.end()) {
+    DrawOutputHeader(output->index, output->replace, output->selection,
+                     a_frame);
+  }
+}
+}
+
+const Studio::Cell *DrawContext(const Studio::Board &a_board,
+                                const Frame &a_frame) {
+  if (!a_frame.snapshot || !a_frame.piece || !a_frame.recipe ||
+      !a_frame.geometry || !a_frame.state || !a_frame.intents) {
+    return nullptr;
+  }
+  const Studio::Selection &selection = SelectionOf(a_frame);
+  const Studio::Cell *picked = PickedCell(a_board, selection);
+  DrawRecipeHeader(a_frame);
+  const std::optional<std::size_t> output =
       selection.target == Target::kLight
           ? a_board.light.output
           : (picked ? picked->output : std::nullopt);
-  DrawRuleTitle("Output", ButtonWidth("Clear"),
-                [&]() { ClearButton(recipe, outputForClear, out); });
-  DrawEditContext(a_board, recipe, picked, selection, out);
-
+  DrawRuleTitle("Output", ButtonWidth("Clear"), [&]() {
+    ClearButton(*a_frame.recipe, output, *a_frame.intents);
+  });
+  DrawEditContext(a_board, picked, a_frame);
   if (selection.target == Target::kLight) {
-    if (a_board.light.present) {
-      ImGui::TextUnformatted(a_board.light.description.c_str());
-      if (a_board.light.output) {
-        ImGui::SameLine();
-        bool solo = a_board.light.isolated;
-        if (SoloButton(solo)) {
-          Studio::Post(
-              out, Studio::SoloOutput{recipe.id, *a_board.light.output, solo});
-        }
-      }
-    } else if (ImGui::Button("Add light")) {
-      Studio::Post(out, recipe.id, Studio::AddLight{});
-    }
+    DrawLightContext(a_board, a_frame);
     return nullptr;
   }
-  if (!picked) {
-    return nullptr;
-  }
-  if (picked->state == Studio::CellState::kEmpty) {
-    if (ImGui::Button("Add output")) {
-      Studio::Post(out, recipe.id,
-                   Studio::AddOutput{picked->surface, picked->slot, {}});
-    }
-    Tooltip(std::format("add an empty stack on {} of the {}",
-                        SlotName(picked->slot), SurfaceName(picked->surface)));
-    return picked;
-  }
-  if (!picked->reason.empty()) {
-    Warn(picked->reason);
+  if (picked) {
+    DrawSurfaceContext(*picked, a_frame);
   }
   return picked;
+}
+
+void DrawRecipeSettings(const Frame &a_frame) {
+  if (!a_frame.recipe || !a_frame.intents || !a_frame.names) {
+    return;
+  }
+  const Studio::RecipeRow &recipe = *a_frame.recipe;
+  [[maybe_unused]] const std::optional<std::size_t> detail =
+      DrawForm("recipe-header", Studio::RecipeHeaderForm(recipe), a_frame);
+  if (ImGui::Button("Output settings")) {
+    ImGui::OpenPopup("Output settings");
+  }
+  DetailModal("Output settings", [&]() {
+    for (const Studio::OutputRow &output : recipe.outputs) {
+      ImGui::PushID(static_cast<int>(output.index));
+      ImGui::SeparatorText(
+          std::format("Output {}: {}", output.index, TargetName(output.target))
+              .c_str());
+      if (output.target == Target::kLight) {
+        const Studio::FormField replace = Studio::ToggleField(
+            "replace", output.replace, Studio::BindLightReplace(output.index));
+        DrawRowField("light-replace", replace, a_frame);
+        DrawSelector(Studio::SelectorViewOf(output.selection), output.index,
+                     true, a_frame);
+      } else {
+        DrawOutputHeader(output.index, output.replace, output.selection,
+                         a_frame);
+      }
+      ImGui::PopID();
+    }
+  });
+}
+
+namespace {
+void ApplyDefaultsButton(const Studio::Board &a_board, const Frame &a_frame) {
+  const bool light = SelectionOf(a_frame).target == Target::kLight;
+  const bool present =
+      !light || (a_board.light.present && a_board.light.output.has_value());
+  Disabled(!present, [&]() {
+    if (!ImGui::Button("Apply Defaults",
+                       ImVec2{ButtonWidth("Apply Defaults"), 0.0f}) ||
+        !present) {
+      return;
+    }
+    if (light) {
+      Studio::Post(*a_frame.intents, a_frame.recipe->id,
+                   Studio::ResetLight{*a_board.light.output});
+    } else {
+      Studio::Post(*a_frame.intents, a_frame.recipe->id, Studio::ResetShell{});
+    }
+  });
+}
 }
 
 void DrawPaneRule(std::string_view a_title, const PaneChoice &a_pane,
@@ -533,31 +613,14 @@ void DrawPaneRule(std::string_view a_title, const PaneChoice &a_pane,
   if (!a_frame.recipe || !a_frame.state || !a_frame.intents) {
     return;
   }
-  const Studio::RecipeRow &recipe = *a_frame.recipe;
-  const Target target = SelectionOf(a_frame).target;
-  Studio::Intents &out = *a_frame.intents;
-
   const float switchWidth =
       (std::max)(ButtonWidth("settings"), ButtonWidth("stack"));
-  const float defaultsWidth = ButtonWidth("Apply Defaults");
   const float rightWidth =
-      switchWidth + (a_pane.settings ? defaultsWidth + ItemSpacingX() : 0.0f);
+      switchWidth +
+      (a_pane.settings ? ButtonWidth("Apply Defaults") + ItemSpacingX() : 0.0f);
   DrawRuleTitle(a_title, rightWidth, [&]() {
     if (a_pane.settings) {
-      const bool light = target == Target::kLight;
-      const bool present =
-          !light || (a_board.light.present && a_board.light.output.has_value());
-      Disabled(!present, [&]() {
-        if (ImGui::Button("Apply Defaults", ImVec2{defaultsWidth, 0.0f}) &&
-            present) {
-          if (light) {
-            Studio::Post(out, recipe.id,
-                         Studio::ResetLight{a_board.light.output.value_or(0)});
-          } else {
-            Studio::Post(out, recipe.id, Studio::ResetShell{});
-          }
-        }
-      });
+      ApplyDefaultsButton(a_board, a_frame);
       ImGui::SameLine();
     }
     const bool enabled = a_pane.settings ? a_pane.hasStack : a_pane.hasSettings;
@@ -565,7 +628,7 @@ void DrawPaneRule(std::string_view a_title, const PaneChoice &a_pane,
       if (ImGui::Button(a_pane.settings ? "stack" : "settings",
                         ImVec2{switchWidth, 0.0f}) &&
           enabled) {
-        Studio::Post(out, Studio::ShowSettings{!a_pane.settings});
+        Studio::Post(*a_frame.intents, Studio::ShowSettings{!a_pane.settings});
       }
     });
   });

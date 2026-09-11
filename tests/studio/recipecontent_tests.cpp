@@ -25,7 +25,13 @@ Recipe MakeRecipe() {
   surface.surface = Surface::kMaterial;
   surface.slot = Slot::kFuzz;
   surface.replace = true;
-  recipe.outputs = {Output{surface}, Output{LightOutput{}}};
+  surface.selector.anyOf.push_back(
+      {SelectorKind::kGeometry, std::string{"ExcludedGeometry*"}});
+  LightOutput light;
+  light.replace = true;
+  light.selector.anyOf.push_back(
+      {SelectorKind::kAddon, FormRef::From("ArmorAddon")});
+  recipe.outputs = {Output{surface}, Output{light}};
   return recipe;
 }
 
@@ -54,7 +60,8 @@ int main() {
   Check(basic.undoDepth == 2 && basic.redoDepth == 1,
         "RecipeContent passes through the history depths");
   Check(basic.signals.empty() && basic.masks.empty() &&
-            basic.sourceRows.empty() && basic.curves.empty(),
+            basic.sourceRows.empty() && basic.curves.empty() &&
+            basic.outputs.empty(),
         "a lean (not full) row carries no detail rows");
 
   RecipeContentInput detailed = BaseInput(recipe, refs);
@@ -62,6 +69,19 @@ int main() {
   detailed.graph = &graph;
   detailed.signals = &state;
   const RecipeRow full = RecipeContent(detailed);
+  Check(full.geometries.empty() && full.outputs.size() == recipe.outputs.size(),
+        "full recipe rows retain all output definitions without geometry");
+  if (full.outputs.size() == 2) {
+    const SurfaceOutput *surface = Get<SurfaceOutput>(recipe.outputs[0]);
+    const LightOutput *light = Get<LightOutput>(recipe.outputs[1]);
+    Check(surface && full.outputs[0].index == 0 && full.outputs[0].replace &&
+              full.outputs[0].selection == surface->selector,
+          "excluded surface output retains its editable selector and replace");
+    Check(light && full.outputs[1].target == Target::kLight &&
+              full.outputs[1].index == 1 && full.outputs[1].replace &&
+              full.outputs[1].selection == light->selector,
+          "light output retains its editable selector and replace");
+  }
   Check(full.signals.size() == recipe.signals.size(),
         "a full row has one signal row per signal");
   Check(!full.signals.empty() && full.signals[0].name == "glow" &&

@@ -60,8 +60,11 @@ void MaskIntentsBuildAndUndo() {
   Check(state.mask.terms[1].op == TermOp::kAnd,
         "a following term defaults to kAnd, not kSet");
 
+  Reduce(state, ScratchRebuilt{});
+  Check(!state.mask.dirty, "a rebuilt scratch preview is clean");
   Reduce(state, ClearMask{});
   Check(state.mask.terms.empty(), "ClearMask empties the terms");
+  Check(state.mask.dirty, "ClearMask schedules a cleared scratch preview");
 
   Reduce(state, UndoMask{});
   Check(state.mask.terms.size() == 2, "UndoMask restores the pre-clear mask");

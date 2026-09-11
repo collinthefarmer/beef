@@ -26,6 +26,8 @@ Recipe MakeRecipe() {
   surface.surface = Surface::kMaterial;
   surface.slot = Slot::kFuzz;
   surface.replace = true;
+  surface.selector.anyOf.push_back(
+      {SelectorKind::kGeometry, std::string{"Body*"}});
   surface.scalars.color = std::array<Param, 3>{1.0f, 0.5f, 0.0f};
   surface.scalars.weight = Param{0.75f};
 
@@ -43,7 +45,11 @@ Recipe MakeRecipe() {
 
   surface.stack = {first, second};
 
-  recipe.outputs = {Output{surface}, Output{LightOutput{}}};
+  LightOutput light;
+  light.replace = true;
+  light.selector.anyOf.push_back(
+      {SelectorKind::kAddon, FormRef::From("ArmorAddon")});
+  recipe.outputs = {Output{surface}, Output{light}};
   return recipe;
 }
 }
@@ -87,6 +93,9 @@ int main() {
   Check(surface.surface == Surface::kMaterial && surface.slot == Slot::kFuzz,
         "surface output projects surface and slot");
   Check(surface.replace, "surface output projects replace");
+  const SurfaceOutput *surfaceDefinition = Get<SurfaceOutput>(recipe.outputs[0]);
+  Check(surfaceDefinition && surface.selection == surfaceDefinition->selector,
+        "surface output preserves the typed selector for editing");
   Check(surface.layers.size() == 2, "surface output projects every layer");
   Check(surface.scalars.size() == 2,
         "fuzz output projects its two set scalars");
@@ -116,6 +125,10 @@ int main() {
 
   const OutputRow light = OutputRowOf(recipe, 1);
   Check(light.target == Target::kLight, "light output targets light");
+  const LightOutput *lightDefinition = Get<LightOutput>(recipe.outputs[1]);
+  Check(lightDefinition && light.replace &&
+            light.selection == lightDefinition->selector,
+        "light output preserves replace and its typed form selector");
   Check(light.layers.empty() && light.scalars.empty(),
         "light output carries no material layers or scalars");
 

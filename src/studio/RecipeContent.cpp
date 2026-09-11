@@ -48,6 +48,9 @@ RecipeRow RecipeContent(const RecipeContentInput &a_input) {
     return r;
   }
 
+  for (std::size_t i = 0; i < recipe.outputs.size(); ++i) {
+    r.outputs.push_back(OutputRowOf(recipe, i));
+  }
   for (const Mask &mask : recipe.masks) {
     r.masks.push_back(mask.name);
   }

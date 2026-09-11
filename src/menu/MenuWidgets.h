@@ -35,6 +35,27 @@ struct RuleFilter {
   std::string_view filter;
 };
 
+struct WidgetSize {
+  Studio::Width width = Studio::Width::Fill();
+  float scale = 1.0f;
+};
+
+struct FilterSpec {
+  const char *key;
+  const char *hint;
+  float width;
+  float scale = 1.0f;
+};
+
+struct ChooserRowSpec {
+  std::span<const std::string_view> leading;
+  std::string_view name;
+  std::string_view detail;
+  std::optional<float> share;
+  std::optional<std::string> unavailable;
+  const char *action = nullptr;
+};
+
 class Table {
 public:
   [[nodiscard]] static Table Begin(const char *a_id,
@@ -68,8 +89,7 @@ void NextItemWidth(const Studio::Width &a_width, float a_scale = 1.0f);
 
 [[nodiscard]] std::optional<std::string>
 TextField(const char *a_key, const std::string &a_model,
-          const Studio::Width &a_width, float a_scale,
-          const TextCheck &a_check = {});
+          const WidgetSize &a_size, const TextCheck &a_check = {});
 [[nodiscard]] std::string_view LiveTextField(const char *a_key,
                                              const char *a_hint,
                                              const Studio::Width &a_width,
@@ -82,24 +102,18 @@ void Thumbnail(const Studio::ThumbnailSpec &a_spec);
 [[nodiscard]] std::optional<Blend> BlendCombo(const char *a_key,
                                               std::string_view a_current,
                                               std::span<const Blend> a_allowed,
-                                              const Studio::Width &a_width,
-                                              float a_scale);
+                                              const WidgetSize &a_size);
 [[nodiscard]] std::optional<std::string>
 ChoiceCombo(const char *a_key, const std::string &a_current,
-            std::span<const std::string> a_names, const Studio::Width &a_width,
-            float a_scale);
+            std::span<const std::string> a_names, const WidgetSize &a_size);
 [[nodiscard]] std::optional<std::string>
-ReferenceCombo(const char *a_key, const std::string &a_current,
-               std::span<const std::string> a_names, bool a_allowEmpty,
-               const Studio::Width &a_width, float a_scale,
-               std::span<const std::string> a_creators = {});
+ReferenceCombo(const char *a_key, const Studio::FormField &a_field,
+               const WidgetSize &a_size);
 
 void Badge(Studio::FieldKind a_kind);
 [[nodiscard]] std::optional<std::string>
-ValueWidget(const char *a_key, Studio::FieldKind a_kind,
-            const std::string &a_current, std::span<const std::string> a_names,
-            bool a_allowEmpty, float a_scale, const TextCheck &a_check = {},
-            std::span<const std::string> a_creators = {});
+ValueWidget(const char *a_key, const Studio::FormField &a_field, float a_scale,
+            const TextCheck &a_check = {});
 [[nodiscard]] bool DetailButton();
 
 [[nodiscard]] std::string ValueText(const Value &a_value);
@@ -114,15 +128,10 @@ bool ModeBar(Studio::Mode &a_mode, Studio::Mode &a_drawn);
 void Rule();
 [[nodiscard]] Studio::RuleClick Rule(const Studio::RuleSpec &a_spec);
 [[nodiscard]] RuleFilter RuleWithFilter(const Studio::RuleSpec &a_spec,
-                                        const char *a_key, const char *a_hint,
-                                        float a_filterWidth, float a_scale);
+                                        const FilterSpec &a_filter);
 
-[[nodiscard]] ChooserPick
-ChooserRow(Table &a_table, std::span<const std::string_view> a_leading,
-           std::string_view a_name, std::string_view a_detail,
-           std::optional<float> a_share,
-           const std::optional<std::string> &a_unavailable,
-           const char *a_action = nullptr);
+[[nodiscard]] ChooserPick ChooserRow(Table &a_table,
+                                     const ChooserRowSpec &a_row);
 bool Toggle(const char *a_label, bool &a_value, std::string_view a_tooltip);
 void DetailModal(const char *a_title, const std::function<void()> &a_body);
 void RightAligned(float a_width, const std::function<void()> &a_draw);

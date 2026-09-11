@@ -175,15 +175,43 @@ struct BadgeStyle {
 }
 
 void BadgeFrame(const char *a_label, const ImVec4 &a_colour, bool a_filled,
-                float a_width, float a_height) {
+                const ImVec2 &a_size) {
   const ImVec4 back = a_filled ? a_colour : kBadgeFrame;
   const ImVec4 text = a_filled ? kBadgeFrame : a_colour;
   ImGui::PushStyleColor(ImGuiMCP::ImGuiCol_Button, back);
   ImGui::PushStyleColor(ImGuiMCP::ImGuiCol_ButtonHovered, back);
   ImGui::PushStyleColor(ImGuiMCP::ImGuiCol_ButtonActive, back);
   ImGui::PushStyleColor(ImGuiMCP::ImGuiCol_Text, text);
-  ImGui::Button(a_label, ImVec2{a_width, a_height});
+  ImGui::Button(a_label, a_size);
   ImGui::PopStyleColor(4);
+}
+
+void DrawValueBadge(const BadgeStyle &a_style, bool a_takesSignal,
+                    bool &a_combo, Studio::FieldKey a_key) {
+  const float side = ImGui::GetFrameHeight();
+  if (a_takesSignal) {
+    ImGui::PushStyleColor(ImGuiMCP::ImGuiCol_Button, a_style.colour);
+    ImGui::PushStyleColor(ImGuiMCP::ImGuiCol_ButtonHovered,
+                          ImVec4{a_style.colour.x * 0.85f,
+                                 a_style.colour.y * 0.85f,
+                                 a_style.colour.z * 0.85f, 1.0f});
+    ImGui::PushStyleColor(ImGuiMCP::ImGuiCol_ButtonActive,
+                          ImVec4{a_style.colour.x * 0.7f,
+                                 a_style.colour.y * 0.7f,
+                                 a_style.colour.z * 0.7f, 1.0f});
+    ImGui::PushStyleColor(ImGuiMCP::ImGuiCol_Text, kBadgeFrame);
+    if (ImGui::Button(a_style.glyph, ImVec2{side, side})) {
+      a_combo = !a_combo;
+      Studio::State().focusField = a_key;
+    }
+    ImGui::PopStyleColor(4);
+    Tooltip(std::string{a_style.rule} +
+            (a_combo ? "\nclick: type a value instead"
+                     : "\nclick: choose a signal instead"));
+  } else {
+    BadgeFrame(a_style.glyph, a_style.colour, false, ImVec2{side, side});
+    Tooltip(a_style.rule);
+  }
 }
 
 bool SquareToggle(const char *a_label, bool &a_value,
@@ -428,8 +456,8 @@ float RuleHeight() {
 
 std::optional<std::string> TextField(const char *a_key,
                                      const std::string &a_model,
-                                     const Studio::Width &a_width,
-                                     float a_scale, const TextCheck &a_check) {
+                                     const WidgetSize &a_size,
+                                     const TextCheck &a_check) {
   auto &state = Studio::State();
   const Studio::FieldKey key = KeyOf(a_key);
   auto &buffer = state.textBuffers[key];
@@ -446,7 +474,7 @@ std::optional<std::string> TextField(const char *a_key,
   if (problem) {
     ImGui::PushStyleColor(ImGuiMCP::ImGuiCol_FrameBg, kProblemFrame);
   }
-  NextItemWidth(a_width, a_scale);
+  NextItemWidth(a_size.width, a_size.scale);
   const bool committed =
       ImGui::InputText("##text", buffer.data(), buffer.size(),
                        ImGuiMCP::ImGuiInputTextFlags_EnterReturnsTrue);
@@ -508,11 +536,11 @@ bool ThumbnailButton(const char *a_key, const Studio::ThumbnailSpec &a_spec) {
 
 std::optional<Blend> BlendCombo(const char *a_key, std::string_view a_current,
                                 std::span<const Blend> a_allowed,
-                                const Studio::Width &a_width, float a_scale) {
+                                const WidgetSize &a_size) {
   std::optional<Blend> chosen;
   const std::string current{a_current};
   ImGui::PushID(Literal(a_key));
-  NextItemWidth(a_width, a_scale);
+  NextItemWidth(a_size.width, a_size.scale);
   if (ImGui::BeginCombo("##blend", current.c_str())) {
     for (const Blend blend : a_allowed) {
       const std::string name{BlendName(blend)};
@@ -529,11 +557,10 @@ std::optional<Blend> BlendCombo(const char *a_key, std::string_view a_current,
 std::optional<std::string> ChoiceCombo(const char *a_key,
                                        const std::string &a_current,
                                        std::span<const std::string> a_names,
-                                       const Studio::Width &a_width,
-                                       float a_scale) {
+                                       const WidgetSize &a_size) {
   std::optional<std::string> chosen;
   ImGui::PushID(Literal(a_key));
-  NextItemWidth(a_width, a_scale);
+  NextItemWidth(a_size.width, a_size.scale);
   if (ImGui::BeginCombo("##choice", a_current.c_str())) {
     for (const auto &name : a_names) {
       if (ImGui::Selectable(name.c_str(), name == a_current)) {
@@ -546,17 +573,17 @@ std::optional<std::string> ChoiceCombo(const char *a_key,
   return chosen;
 }
 
-std::optional<std::string>
-ReferenceCombo(const char *a_key, const std::string &a_current,
-               std::span<const std::string> a_names, bool a_allowEmpty,
-               const Studio::Width &a_width, float a_scale,
-               std::span<const std::string> a_creators) {
+std::optional<std::string> ReferenceCombo(const char *a_key,
+                                          const Studio::FormField &a_field,
+                                          const WidgetSize &a_size) {
   std::optional<std::string> chosen;
   ImGui::PushID(Literal(a_key));
-  NextItemWidth(a_width, a_scale);
-  if (ImGui::BeginCombo("##reference",
-                        a_current.empty() ? "(none)" : a_current.c_str())) {
-    chosen = ReferenceEntries(a_current, a_names, a_allowEmpty, a_creators);
+  NextItemWidth(a_size.width, a_size.scale);
+  if (ImGui::BeginCombo("##reference", a_field.text.empty()
+                                           ? "(none)"
+                                           : a_field.text.c_str())) {
+    chosen = ReferenceEntries(a_field.text, a_field.names, a_field.allowEmpty,
+                              a_field.creators);
     ImGui::EndCombo();
   }
   ImGui::PopID();
@@ -566,49 +593,27 @@ ReferenceCombo(const char *a_key, const std::string &a_current,
 void Badge(Studio::FieldKind a_kind) {
   const auto style = StyleOf(a_kind);
   const float side = ImGui::GetFrameHeight();
-  BadgeFrame(style.glyph, style.colour, style.takesSignal, side, side);
+  BadgeFrame(style.glyph, style.colour, style.takesSignal, ImVec2{side, side});
   Tooltip(style.rule);
   ImGui::SameLine(0.0f, 0.0f);
 }
 
-std::optional<std::string>
-ValueWidget(const char *a_key, Studio::FieldKind a_kind,
-            const std::string &a_current, std::span<const std::string> a_names,
-            bool a_allowEmpty, float a_scale, const TextCheck &a_check,
-            std::span<const std::string> a_creators) {
+std::optional<std::string> ValueWidget(const char *a_key,
+                                       const Studio::FormField &a_field,
+                                       float a_scale,
+                                       const TextCheck &a_check) {
   auto &state = Studio::State();
-  const auto style = StyleOf(a_kind);
-  const float side = ImGui::GetFrameHeight();
-  const bool takesSignal =
-      style.takesSignal && (!a_names.empty() || !a_creators.empty());
-  const bool reference = a_current.starts_with('@');
+  const auto style = StyleOf(a_field.kind);
+  const bool takesSignal = style.takesSignal && (!a_field.names.empty() ||
+                                                 !a_field.creators.empty());
+  const bool reference = a_field.text.starts_with('@');
   const Studio::FieldKey key = KeyOf(a_key);
   auto mode = state.comboMode.find(key);
   if (mode == state.comboMode.end()) {
     mode = state.comboMode.emplace(key, reference).first;
   }
   ImGui::PushID(Literal(a_key));
-  if (takesSignal) {
-    ImGui::PushStyleColor(ImGuiMCP::ImGuiCol_Button, style.colour);
-    ImGui::PushStyleColor(ImGuiMCP::ImGuiCol_ButtonHovered,
-                          ImVec4{style.colour.x * 0.85f, style.colour.y * 0.85f,
-                                 style.colour.z * 0.85f, 1.0f});
-    ImGui::PushStyleColor(ImGuiMCP::ImGuiCol_ButtonActive,
-                          ImVec4{style.colour.x * 0.7f, style.colour.y * 0.7f,
-                                 style.colour.z * 0.7f, 1.0f});
-    ImGui::PushStyleColor(ImGuiMCP::ImGuiCol_Text, kBadgeFrame);
-    if (ImGui::Button(style.glyph, ImVec2{side, side})) {
-      mode->second = !mode->second;
-      state.focusField = key;
-    }
-    ImGui::PopStyleColor(4);
-    Tooltip(std::string{style.rule} +
-            (mode->second ? "\nclick: type a value instead"
-                          : "\nclick: choose a signal instead"));
-  } else {
-    BadgeFrame(style.glyph, style.colour, false, side, side);
-    Tooltip(style.rule);
-  }
+  DrawValueBadge(style, takesSignal, mode->second, key);
   ImGui::SameLine(0.0f, 0.0f);
 
   std::optional<std::string> chosen;
@@ -618,21 +623,22 @@ ValueWidget(const char *a_key, Studio::FieldKind a_kind,
   }
   if (mode->second && takesSignal) {
     const std::string preview =
-        reference ? a_current : std::string{"choose a signal"};
+        reference ? a_field.text : std::string{"choose a signal"};
     NextItemWidth(Studio::Width::Fill());
     if (ImGui::BeginCombo("##combo", preview.c_str())) {
-      chosen = ReferenceEntries(a_current, a_names, a_allowEmpty, a_creators);
+      chosen = ReferenceEntries(a_field.text, a_field.names, a_field.allowEmpty,
+                                a_field.creators);
       ImGui::EndCombo();
     }
   } else {
     if (style.swatch == Studio::Swatch::kAlways ||
         (style.swatch == Studio::Swatch::kWhenColour &&
-         Studio::LiteralColor(a_current))) {
-      chosen = ColorSwatchPicker(key, a_current);
+         Studio::LiteralColor(a_field.text))) {
+      chosen = ColorSwatchPicker(key, a_field.text);
       ImGui::SameLine(0.0f, 0.0f);
     }
-    if (const auto typed = TextField("text", a_current, Studio::Width::Fill(),
-                                     a_scale, a_check)) {
+    if (const auto typed = TextField(
+            "text", a_field.text, {Studio::Width::Fill(), a_scale}, a_check)) {
       chosen = typed;
     }
   }
@@ -669,21 +675,24 @@ void ValueSwatch(const Value &a_value) {
 bool ModeBar(Studio::Mode &a_mode, Studio::Mode &a_drawn) {
   const Studio::Mode before = a_mode;
   const bool setByState = a_mode != a_drawn;
-  if (ImGui::BeginTabBar("modes")) {
-    for (const Studio::Mode mode : Studio::kModes) {
-      const std::string name{Studio::ModeName(mode)};
-      const auto flags = setByState && mode == before
-                             ? ImGuiMCP::ImGuiTabItemFlags_SetSelected
-                             : ImGuiMCP::ImGuiTabItemFlags_None;
-      if (ImGui::BeginTabItem(name.c_str(), nullptr, flags)) {
-        if (!setByState) {
-          a_mode = mode;
-        }
-        ImGui::EndTabItem();
-      }
-    }
-    ImGui::EndTabBar();
+  if (!ImGui::BeginTabBar("modes")) {
+    a_drawn = a_mode;
+    return false;
   }
+  for (const Studio::Mode mode : Studio::kModes) {
+    const std::string name{Studio::ModeName(mode)};
+    const auto flags = setByState && mode == before
+                           ? ImGuiMCP::ImGuiTabItemFlags_SetSelected
+                           : ImGuiMCP::ImGuiTabItemFlags_None;
+    if (!ImGui::BeginTabItem(name.c_str(), nullptr, flags)) {
+      continue;
+    }
+    if (!setByState) {
+      a_mode = mode;
+    }
+    ImGui::EndTabItem();
+  }
+  ImGui::EndTabBar();
   a_drawn = a_mode;
   return a_mode != before;
 }
@@ -735,50 +744,45 @@ Studio::RuleClick Rule(const Studio::RuleSpec &a_spec) {
   return DrawRuleLine(a_spec.text, a_spec.buttons, 0.0f, {});
 }
 
-RuleFilter RuleWithFilter(const Studio::RuleSpec &a_spec, const char *a_key,
-                          const char *a_hint, float a_filterWidth,
-                          float a_scale) {
+RuleFilter RuleWithFilter(const Studio::RuleSpec &a_spec,
+                          const FilterSpec &a_filter) {
   ImGui::Dummy(ImVec2{0.0f, ImGui::GetFrameHeight()});
   ImGui::Separator();
   std::string_view filter;
-  const Studio::RuleClick click =
-      DrawRuleLine(a_spec.text, a_spec.buttons, a_filterWidth * a_scale, [&]() {
-        filter = LiveTextField(a_key, a_hint, Studio::Width::Px(a_filterWidth),
-                               a_scale);
+  const Studio::RuleClick click = DrawRuleLine(
+      a_spec.text, a_spec.buttons, a_filter.width * a_filter.scale, [&]() {
+        filter =
+            LiveTextField(a_filter.key, a_filter.hint,
+                          Studio::Width::Px(a_filter.width), a_filter.scale);
       });
   return RuleFilter{click, filter};
 }
 
-ChooserPick ChooserRow(Table &a_table,
-                       std::span<const std::string_view> a_leading,
-                       std::string_view a_name, std::string_view a_detail,
-                       std::optional<float> a_share,
-                       const std::optional<std::string> &a_unavailable,
-                       const char *a_action) {
-  const bool disabled = a_unavailable.has_value();
+ChooserPick ChooserRow(Table &a_table, const ChooserRowSpec &a_row) {
+  const bool disabled = a_row.unavailable.has_value();
   if (disabled) {
     ImGui::BeginDisabled();
   }
-  for (const auto text : a_leading) {
+  for (const auto text : a_row.leading) {
     a_table.Cell();
     Dim(text);
   }
   a_table.Cell();
-  const std::string name{a_name};
+  const std::string name{a_row.name};
   const bool clicked = ImGui::Selectable(
       name.c_str(), false, ImGuiMCP::ImGuiSelectableFlags_SpanAllColumns);
   if (disabled) {
     ImGui::EndDisabled();
-    Tooltip(*a_unavailable);
+    Tooltip(*a_row.unavailable);
   }
   a_table.Cell();
-  Dim(a_detail);
+  Dim(a_row.detail);
   a_table.Cell();
-  if (a_share) {
-    ImGui::Text("%.0f%%", *a_share * 100.0f);
+  if (a_row.share) {
+    ImGui::Text("%.0f%%", *a_row.share * 100.0f);
   }
   a_table.Cell();
-  if (a_action && ImGui::SmallButton(a_action)) {
+  if (a_row.action && ImGui::SmallButton(a_row.action)) {
     return ChooserPick::kAction;
   }
   return clicked && !disabled ? ChooserPick::kChosen : ChooserPick::kNone;
@@ -888,20 +892,20 @@ bool DragHandle(const char *a_type, std::size_t a_index, const char *a_noun) {
 
 std::optional<Studio::RowMove> DropTarget(const char *a_type,
                                           std::size_t a_index) {
-  std::optional<Studio::RowMove> move;
-  if (ImGui::BeginDragDropTarget()) {
-    if (const auto *payload = ImGui::AcceptDragDropPayload(a_type)) {
-      if (payload->Data &&
-          payload->DataSize == static_cast<int>(sizeof(std::size_t))) {
-        std::size_t from = 0;
-        std::memcpy(&from, payload->Data, sizeof(from));
-        if (from != a_index) {
-          move = Studio::RowMove{from, a_index};
-        }
-      }
-    }
-    ImGui::EndDragDropTarget();
+  if (!ImGui::BeginDragDropTarget()) {
+    return std::nullopt;
   }
+  std::optional<Studio::RowMove> move;
+  const auto *payload = ImGui::AcceptDragDropPayload(a_type);
+  if (payload && payload->Data &&
+      payload->DataSize == static_cast<int>(sizeof(std::size_t))) {
+    std::size_t from = 0;
+    std::memcpy(&from, payload->Data, sizeof(from));
+    if (from != a_index) {
+      move = Studio::RowMove{from, a_index};
+    }
+  }
+  ImGui::EndDragDropTarget();
   return move;
 }
 

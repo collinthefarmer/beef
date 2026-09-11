@@ -78,9 +78,12 @@ void DrawSignalEditor(const Studio::SignalRow &a_signal,
 void DrawSignalCurve(const Studio::SignalRow &a_signal,
                      std::span<const std::string> a_curves, float a_width,
                      const Frame &a_frame) {
-  if (const std::optional<std::string> chosen =
-          ReferenceCombo("curve", a_signal.curve, a_curves, true,
-                         Studio::Width::Px(a_width), a_frame.scale)) {
+  Studio::FormField field;
+  field.text = a_signal.curve;
+  field.names.assign(a_curves.begin(), a_curves.end());
+  field.allowEmpty = true;
+  if (const std::optional<std::string> chosen = ReferenceCombo(
+          "curve", field, {Studio::Width::Px(a_width), a_frame.scale})) {
     Studio::Post(*a_frame.intents, a_frame.recipe->id,
                  Studio::SetSignalCurve{
                      a_signal.name, chosen->empty()
@@ -138,6 +141,8 @@ void DrawSignals(const Frame &a_frame, std::string_view a_filter) {
 
   std::vector<std::string> curveNames;
   std::vector<std::string> curveTexts{"none"};
+  curveNames.reserve(recipe.curves.size());
+  curveTexts.reserve(recipe.curves.size() + 1);
   for (const Studio::TextRow &curve : recipe.curves) {
     curveNames.push_back(curve.name);
     curveTexts.push_back(Studio::ReferenceText(curve.name));
@@ -145,6 +150,7 @@ void DrawSignals(const Frame &a_frame, std::string_view a_filter) {
   const float curveWidth = WidestOf(curveTexts) * scale;
 
   std::vector<std::string> names;
+  names.reserve(recipe.signals.size());
   for (const Studio::SignalRow &signal : recipe.signals) {
     names.push_back(signal.name);
   }
@@ -180,6 +186,7 @@ void DrawCurves(const Frame &a_frame, std::string_view a_filter) {
   const Studio::RecipeRow &recipe = *a_frame.recipe;
   const float scale = a_frame.scale;
   std::vector<std::string> names;
+  names.reserve(recipe.curves.size());
   for (const Studio::TextRow &curve : recipe.curves) {
     names.push_back(curve.name);
   }
@@ -222,6 +229,7 @@ void DrawSources(const Frame &a_frame, std::string_view a_filter) {
   const float scale = a_frame.scale;
   const Studio::SignalNames signalNames = Studio::SignalNamesOf(recipe);
   std::vector<std::string> names;
+  names.reserve(recipe.sourceRows.size());
   for (const Studio::SourceRow &source : recipe.sourceRows) {
     names.push_back(source.name);
   }
@@ -276,6 +284,7 @@ void DrawMasks(const Frame &a_frame, std::string_view a_filter) {
   const Studio::RecipeRow &recipe = *a_frame.recipe;
   const float scale = a_frame.scale;
   std::vector<std::string> names;
+  names.reserve(recipe.maskRows.size());
   for (const Studio::TextRow &mask : recipe.maskRows) {
     names.push_back(mask.name);
   }
@@ -316,62 +325,32 @@ void DrawMasks(const Frame &a_frame, std::string_view a_filter) {
   masks.End();
 }
 
-[[maybe_unused]] void DrawImageRow(const Studio::PictureRow &a_image,
-                                   bool a_editable, const Frame &a_frame) {
-  Thumbnail(Studio::ThumbnailSpec{.texture = a_image.texture,
-                                  .channel = a_image.channel,
-                                  .dynamic = a_image.animated,
-                                  .size = LayoutOf(a_frame).inspectorThumbnail *
-                                          a_frame.scale});
-  ImGui::TextUnformatted((Studio::ReferenceText(a_image.name) + " =").c_str());
-  ImGui::SameLine();
-  if (a_editable) {
-    DrawRowField("text",
-                 Studio::MaskTextField(a_image.name, a_image.description),
-                 a_frame);
-  } else {
-    ImGui::TextWrapped("%s", a_image.description.c_str());
-  }
-  if (!a_image.problem.empty()) {
-    Warn(a_image.problem);
-  }
-}
-
 void PostResourceAdd(const Frame &a_frame) {
-  const Studio::RecipeRow &recipe = *a_frame.recipe;
-  std::vector<std::string> names;
+  if (!a_frame.recipe || !a_frame.names || !a_frame.state || !a_frame.intents) {
+    return;
+  }
+  const auto name = [&](Studio::RowKind a_kind, const char *a_stem) {
+    return Studio::UniqueName(a_stem,
+                              Studio::TakenNames(a_kind, *a_frame.names));
+  };
+  const std::string &id = a_frame.recipe->id;
   switch (a_frame.state->resource) {
   case Studio::ResourceTab::kSignals:
-    for (const Studio::SignalRow &signal : recipe.signals) {
-      names.push_back(signal.name);
-    }
-    Studio::Post(*a_frame.intents, recipe.id,
-                 Studio::AddSignal{Studio::UniqueName("signal", names)});
+    Studio::Post(*a_frame.intents, id,
+                 Studio::AddSignal{name(Studio::RowKind::kSignal, "signal")});
     break;
   case Studio::ResourceTab::kCurves:
-    for (const Studio::TextRow &curve : recipe.curves) {
-      names.push_back(curve.name);
-    }
-    Studio::Post(*a_frame.intents, recipe.id,
-                 Studio::AddCurve{Studio::UniqueName("curve", names)});
+    Studio::Post(*a_frame.intents, id,
+                 Studio::AddCurve{name(Studio::RowKind::kCurve, "curve")});
     break;
   case Studio::ResourceTab::kSources:
-    for (const Studio::SourceRow &source : recipe.sourceRows) {
-      names.push_back(source.name);
-    }
-    for (const std::string &mask : recipe.masks) {
-      names.push_back(mask);
-    }
-    Studio::Post(*a_frame.intents, recipe.id,
-                 Studio::AddSource{Studio::UniqueName("source", names),
+    Studio::Post(*a_frame.intents, id,
+                 Studio::AddSource{name(Studio::RowKind::kSource, "source"),
                                    MaterialSource{}});
     break;
   case Studio::ResourceTab::kMasks:
-    for (const std::string &mask : recipe.masks) {
-      names.push_back(mask);
-    }
-    Studio::Post(*a_frame.intents, recipe.id,
-                 Studio::AddMask{Studio::UniqueName("mask", names)});
+    Studio::Post(*a_frame.intents, id,
+                 Studio::AddMask{name(Studio::RowKind::kMask, "mask")});
     break;
   }
 }
@@ -384,8 +363,8 @@ std::string_view DrawResourcesRule(const Frame &a_frame) {
   };
   const Studio::RuleSpec spec{.text = "Resources", .buttons = buttons};
   const RuleFilter result =
-      RuleWithFilter(spec, "filter", "filter by name",
-                     kFilterWidth * a_frame.scale, a_frame.scale);
+      RuleWithFilter(spec, {"filter", "filter by name",
+                            kFilterWidth * a_frame.scale, a_frame.scale});
   if (result.click.clicked && result.click.index < buttons.size()) {
     switch (buttons[result.click.index].action) {
     case Studio::RuleAction::kClear:

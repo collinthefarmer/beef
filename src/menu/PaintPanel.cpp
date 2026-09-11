@@ -158,8 +158,9 @@ void DrawOffers(std::span<const Studio::TermOffer> a_offers,
             ? std::string{}
             : Studio::GeometryLabel(offer.geometry, piece.armorName);
     const std::string_view leading[]{geometryLabel, kind};
-    switch (ChooserRow(table, leading, offer.name, offer.detail, offer.coverage,
-                       offer.unavailable, mask ? "edit" : nullptr)) {
+    switch (
+        ChooserRow(table, {leading, offer.name, offer.detail, offer.coverage,
+                           offer.unavailable, mask ? "edit" : nullptr})) {
     case ChooserPick::kChosen: {
       const auto from = std::ranges::find(recipe.geometries, offer.geometry,
                                           &Studio::GeometryRow::name);
@@ -324,7 +325,7 @@ void DrawTermDetails(std::size_t a_index, const Studio::Term &a_term,
       Dim("set (the first term leads)");
     } else if (const auto chosen = ChoiceCombo(
                    "op", std::string{Studio::TermOpName(a_term.op)}, kTermOps,
-                   Studio::Width::Fit("and"), a_frame.scale)) {
+                   {Studio::Width::Fit("and"), a_frame.scale})) {
       if (const auto op = Studio::ParseTermOp(*chosen)) {
         Studio::Post(*a_frame.intents, Studio::SetTermOp{a_index, *op});
       }
@@ -337,8 +338,9 @@ void DrawTermDetails(std::size_t a_index, const Studio::Term &a_term,
     const TextCheck check = [&](const std::string &a_text) {
       return Studio::CheckMaskText(a_text, *a_frame.names);
     };
-    if (const auto edited = TextField(
-            "text", a_term.text, Studio::Width::Fill(), a_frame.scale, check)) {
+    if (const auto edited =
+            TextField("text", a_term.text,
+                      {Studio::Width::Fill(), a_frame.scale}, check)) {
       Studio::Post(*a_frame.intents, Studio::SetTermText{a_index, *edited});
     }
     fields.End();
@@ -347,15 +349,8 @@ void DrawTermDetails(std::size_t a_index, const Studio::Term &a_term,
   ImGui::PopID();
 }
 
-void DrawTermRow(Table &a_table, std::size_t a_index,
-                 std::span<const Studio::TermOffer> a_offers,
-                 const Frame &a_frame) {
-  const Studio::MaskStack &mask = a_frame.state->mask;
-  if (a_index >= mask.terms.size()) {
-    return;
-  }
-  const Studio::Term &term = mask.terms[a_index];
-  ImGui::PushID(static_cast<int>(a_index));
+void DrawTermControls(Table &a_table, std::size_t a_index,
+                      const Frame &a_frame) {
   a_table.Cell();
   ImGui::AlignTextToFramePadding();
   ImGui::Text("%zu", a_index);
@@ -371,22 +366,34 @@ void DrawTermRow(Table &a_table, std::size_t a_index,
     Studio::Post(*a_frame.intents, Studio::MoveTerm{move->from, move->to});
   }
   a_table.Cell();
-  bool solo = mask.solo == a_index;
+  bool solo = a_frame.state->mask.solo == a_index;
   if (SoloButton(solo)) {
     Studio::Post(*a_frame.intents, Studio::SoloTerm{a_index, solo});
   }
   a_table.Cell();
-  bool mute = mask.muted.contains(a_index);
+  bool mute = a_frame.state->mask.muted.contains(a_index);
   if (MuteButton(mute)) {
     Studio::Post(*a_frame.intents, Studio::MuteTerm{a_index, mute});
   }
+}
+
+void DrawTermRow(Table &a_table, std::size_t a_index,
+                 std::span<const Studio::TermOffer> a_offers,
+                 const Frame &a_frame) {
+  const Studio::MaskStack &mask = a_frame.state->mask;
+  if (a_index >= mask.terms.size()) {
+    return;
+  }
+  const Studio::Term &term = mask.terms[a_index];
+  ImGui::PushID(static_cast<int>(a_index));
+  DrawTermControls(a_table, a_index, a_frame);
   a_table.Cell();
   if (a_index == 0) {
     ImGui::AlignTextToFramePadding();
     Dim("set");
   } else if (const auto chosen =
                  ChoiceCombo("op", std::string{Studio::TermOpName(term.op)},
-                             kTermOps, Studio::Width::Fit("and"), 1.0f)) {
+                             kTermOps, {Studio::Width::Fit("and"), 1.0f})) {
     if (const auto op = Studio::ParseTermOp(*chosen)) {
       Studio::Post(*a_frame.intents, Studio::SetTermOp{a_index, *op});
     }
@@ -454,7 +461,27 @@ void DrawMaskPicture(const Frame &a_frame) {
                   scratch->animated ? "animated" : "static"));
   ImGui::EndGroup();
 }
-} // namespace
+}
+
+namespace {
+void DrawPaintSurface(const Frame &a_frame) {
+  const Studio::MenuState &state = *a_frame.state;
+  if (!state.paint) {
+    return;
+  }
+  const float comboWidth = FitWidth("material");
+  ImGui::AlignTextToFramePadding();
+  Dim("preview on");
+  ImGui::SameLine();
+  if (const auto chosen = ChoiceCombo(
+          "surface", std::string{SurfaceName(state.paint->surface)},
+          WordsOf(kSurfaces), {Studio::Width::Px(comboWidth), 1.0f})) {
+    if (const auto surface = ParseSurface(*chosen)) {
+      Studio::Post(*a_frame.intents, Studio::SetPaintSurface{*surface});
+    }
+  }
+}
+}
 
 void DrawPaintHead(const Frame &a_frame) {
   if (!a_frame.piece || !a_frame.recipe) {
@@ -466,22 +493,40 @@ void DrawPaintHead(const Frame &a_frame) {
     ImGui::SameLine();
     const float labelWidth = TextWidth("preview on");
     const float comboWidth = FitWidth("material");
-    RightAligned(labelWidth + ItemSpacingX() + comboWidth, [&]() {
-      ImGui::AlignTextToFramePadding();
-      Dim("preview on");
-      ImGui::SameLine();
-      if (const auto chosen = ChoiceCombo(
-              "surface", std::string{SurfaceName(state.paint->surface)},
-              WordsOf(kSurfaces), Studio::Width::Px(comboWidth), 1.0f)) {
-        if (const auto surface = ParseSurface(*chosen)) {
-          Studio::Post(*a_frame.intents, Studio::SetPaintSurface{*surface});
-        }
-      }
-    });
+    RightAligned(labelWidth + ItemSpacingX() + comboWidth,
+                 [&]() { DrawPaintSurface(a_frame); });
   } else {
     NextItemWidth(Studio::Width::Fit(RecipeLabel(*a_frame.recipe)));
     RecipeCombo(*a_frame.piece, *a_frame.recipe, a_frame);
   }
+}
+
+namespace {
+void KeepMaskPopup(const Frame &a_frame) {
+  const Studio::MenuState &state = *a_frame.state;
+  const Studio::MaskStack &mask = state.mask;
+  const bool painting = state.paint.has_value();
+  if (ImGui::BeginPopup("keep-mask")) {
+    const std::string proposed =
+        Studio::ProposedMaskName(mask.terms, mask.editing);
+    const std::string_view typed = LiveTextField(
+        "name", proposed.c_str(), Studio::Width::Px(200.0f), 1.0f);
+    const std::string name = typed.empty() ? proposed : std::string{typed};
+    const bool ready =
+        painting && IsName(name) && name != std::string{Studio::kScratchMask};
+    Disabled(!ready, [&]() {
+      if (ImGui::Button(std::format("Keep as {}", name).c_str()) && ready) {
+        Studio::Post(*a_frame.intents, std::string{Studio::kPaintRecipe},
+                     Studio::SetMask{std::string{Studio::kScratchMask},
+                                     Studio::BuildMask(mask.terms)});
+        Studio::Post(*a_frame.intents,
+                     Studio::KeepPaint{state.paint->recipeID, name});
+        ImGui::CloseCurrentPopup();
+      }
+    });
+    ImGui::EndPopup();
+  }
+}
 }
 
 void DrawMaskRule(std::string_view a_title, const Frame &a_frame) {
@@ -530,26 +575,7 @@ void DrawMaskRule(std::string_view a_title, const Frame &a_frame) {
     }
   }
 
-  if (ImGui::BeginPopup("keep-mask")) {
-    const std::string proposed =
-        Studio::ProposedMaskName(mask.terms, mask.editing);
-    const std::string_view typed = LiveTextField(
-        "name", proposed.c_str(), Studio::Width::Px(200.0f), 1.0f);
-    const std::string name = typed.empty() ? proposed : std::string{typed};
-    const bool ready =
-        painting && IsName(name) && name != std::string{Studio::kScratchMask};
-    Disabled(!ready, [&]() {
-      if (ImGui::Button(std::format("Keep as {}", name).c_str()) && ready) {
-        Studio::Post(*a_frame.intents, std::string{Studio::kPaintRecipe},
-                     Studio::SetMask{std::string{Studio::kScratchMask},
-                                     Studio::BuildMask(mask.terms)});
-        Studio::Post(*a_frame.intents,
-                     Studio::KeepPaint{state.paint->recipeID, name});
-        ImGui::CloseCurrentPopup();
-      }
-    });
-    ImGui::EndPopup();
-  }
+  KeepMaskPopup(a_frame);
 }
 
 void DrawMaskStack(const Frame &a_frame) {
@@ -582,8 +608,8 @@ void DrawMaskStack(const Frame &a_frame) {
 
   const char *hint = "filter by kind, name or measurement";
   const Studio::RuleSpec termsSpec{"Terms", {}};
-  const RuleFilter rule = RuleWithFilter(termsSpec, "offer-filter", hint,
-                                         FitWidth(hint), a_frame.scale);
+  const RuleFilter rule = RuleWithFilter(
+      termsSpec, {"offer-filter", hint, FitWidth(hint), a_frame.scale});
   if (offers.empty()) {
     Dim(geometry.meshRead ? "nothing to offer on this geometry"
                           : "reading the mesh");
@@ -622,4 +648,4 @@ void EditMaskAsTerms(const Studio::TextRow &a_mask, const Frame &a_frame) {
                                 a_mask.name});
   Studio::Post(*a_frame.intents, Studio::SetMode{Studio::Mode::kPaint});
 }
-} // namespace BetterEnchantmentEffects::Menu
+}

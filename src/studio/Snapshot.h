@@ -70,6 +70,7 @@ struct OutputRow {
   bool animated = false;
   std::uint32_t size = 0;
   std::string selector;
+  Selector selection;
   std::string problem;
   std::vector<ScalarRow> scalars;
   std::vector<LayerRow> layers;
@@ -150,6 +151,7 @@ struct LightRow {
   bool shadow = false;
   bool replace = false;
   std::string selector;
+  Selector selection;
   std::string bones;
   std::string bonesMax;
   std::string bonesMinShare;
@@ -188,6 +190,7 @@ struct RecipeRow {
   std::vector<TextRow> maskRows;
   std::vector<SourceRow> sourceRows;
   std::vector<GeometryRow> geometries;
+  std::vector<OutputRow> outputs;
   std::string light;
   std::optional<std::size_t> lightOutput;
   std::vector<Diagnostic> problems;
@@ -210,6 +213,19 @@ struct PieceRow {
   std::vector<RecipeRow> recipes;
 };
 
+struct LoadedRecipeRow {
+  std::string id;
+  std::vector<RecipeKey> keys;
+  std::size_t signals = 0;
+  std::size_t curves = 0;
+  std::size_t sources = 0;
+  std::size_t masks = 0;
+  std::size_t outputs = 0;
+  bool imported = false;
+  std::vector<Diagnostic> diagnostics;
+  std::string path;
+};
+
 struct Status {
   bool emissivePath = false;
   bool layoutVerified = false;
@@ -220,7 +236,8 @@ struct Status {
   std::uint32_t geometries = 0;
   std::uint32_t shells = 0;
   std::uint32_t lights = 0;
-  std::uint32_t withErrors = 0;
+  std::size_t loadedFiles = 0;
+  std::size_t withErrors = 0;
 };
 
 struct Snapshot {
@@ -230,5 +247,6 @@ struct Snapshot {
   View view;
   std::vector<PieceRow> pieces;
   std::vector<std::string> loaded;
+  std::vector<LoadedRecipeRow> loadedRecipes;
 };
 }

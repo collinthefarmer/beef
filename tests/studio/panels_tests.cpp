@@ -148,6 +148,8 @@ void TestLightAndShellRows() {
   LightOutput light;
   light.intensity = 2.0f;
   light.replace = true;
+  light.selector.anyOf.push_back(
+      {SelectorKind::kAddon, FormRef::From("ArmorAddon")});
   recipe.outputs.push_back(SurfaceOutput{});
   recipe.outputs.push_back(light);
   recipe.shell.material = ShellMaterial::kVanilla;
@@ -155,6 +157,8 @@ void TestLightAndShellRows() {
   const LightRow lightRow = LightRowOf(recipe);
   Check(lightRow.present && lightRow.output == 1 && lightRow.replace,
         "LightRowOf finds the light output and its replace flag");
+  Check(lightRow.selection == light.selector,
+        "LightRowOf preserves the typed form selector for editing");
   const ShellRow shellRow = ShellRowOf(recipe);
   Check(shellRow.material == ShellMaterial::kVanilla,
         "ShellRowOf reads the shell material");

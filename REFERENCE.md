@@ -523,6 +523,14 @@ Decompile provenance (`decompiled/WornEnchantmentFX/plugin.c` unless noted):
 
 ## Menu mechanics (`MenuWidgets.cpp`, `MenuState.h`)
 
+- `menu/MenuWidgets.cpp` is the menu's sole direct render dependency. It calls
+  `TextureLab::Preview` through `render/RuntimeTextures.h` to obtain the
+  read-only preview for a `Studio::TextureHandle`.
+- `Studio::FieldKey` and the framework's `ImGuiID` are the same type, enforced
+  by the renderer's static assertion; text and number buffers share that key.
+- The menu frame borrows the snapshot, selected rows, names, state and intent
+  collection. Widget scale comes from `Frame::scale`; geometry bone coverage
+  comes from `GeometryRow::bones`. The mode bar exposes compose and paint.
 - A field is keyed by the ImGuiID of its literal key in the ID scope it is
   drawn in; the page pushes a scope per recipe, output, layer and row, so
   one literal names a different field on every row and no string is built
@@ -544,11 +552,18 @@ Decompile provenance (`decompiled/WornEnchantmentFX/plugin.c` unless noted):
 
 ## studio (`studio/Snapshot.h`, `View.h`, `Intent.h`, `Forms.h`, `Edits.h`, `Mask.h`, `Presets.h`, `TermTemplates.h`, `PaintSession.h`, `Board.h`, `Panels.h`, `SelectorEdit.h`, `Selection.h`, `Names.h`, `Rows.h`, `FieldCheck.h`, `History.h`, `Page.h`, `Widgets.h`, `Fields.h`)
 
-- `Snapshot::Status` (nine engine scalars plus a recipe-error count) is filled
+- `Snapshot::status` (engine scalars plus loaded-file and recipe-error counts) is filled
   once on the game thread where the snapshot is built, so the render thread
   reads it from the immutable snapshot and never calls a live getter. The cost
   is a one-tick lag in the status line; the frozen tree paid a data race for
   freshness instead.
+- `Snapshot::tickMS` is the configured tick interval. Loaded-recipe summaries
+  own their keys, row counts, diagnostics and file paths; menu rendering never
+  borrows the recipe store's mutable containers.
+- Full recipe projections carry every output definition independently of
+  geometry placement. The output-settings editor can therefore repair a
+  selector that excludes every geometry. Selector editing uses typed values,
+  never a parse of the human-readable selector description.
 - `Studio::TextureHandle` is `RE::NiSourceTexture*` behind a forward
   declaration, so the pure module compiles and unit-tests natively with only
   the name in scope. The engine writes the pointer during snapshot build; no

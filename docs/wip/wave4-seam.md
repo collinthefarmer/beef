@@ -66,8 +66,10 @@ against the wave-3 `engine/Manager.h`.
 `Manager::Snapshot`, which is `= Studio::Snapshot` (Manager.h line 141). The page
 reads `*held`; it never builds a snapshot (`Manager::BuildSnapshot`/
 `PublishSnapshot` are engine-private, wave 3). The status bar reads
-`Manager::GetStatus()` (a distinct `Manager::Status`) and
-`engine::GetRecipeStoreStatus()`.
+`snapshot.status` and `snapshot.tickMS`; the loaded-recipe table reads
+`snapshot.loadedRecipes`. At merge, these projections were populated on the
+game thread to remove the recovered menu's unsynchronized reads of manager
+and recipe-store containers. `snapshot.loaded` remains the list of recipe IDs.
 
 **Intents out.** Pages push `Studio::Intent`s into `frame.intents` (via
 `Studio::Post`). At frame end the registered page frame calls
@@ -102,8 +104,8 @@ Every engine entry point Perform and the pages need already exists on
   `ReloadRecipes`, `NewRecipe`, `RenameRecipe`, `Isolate`, `UpdateView`,
   `PinRecipe`, `BeginPaint`, `SetPaintSurface`, `KeepPaint`, `EndPaint`,
   `RequestMesh`, `FireAt`, `ReapplyAll`, `RetireAll`.
-- read: `Watch`, `LatestSnapshot`, `GetStatus`; `GetRecipeStoreStatus`,
-  `LoadedRecipes`, `OriginOf`, `IsTransient` (`engine/RecipeStore.h`);
+- read: `Watch`, `LatestSnapshot`; status and loaded-recipe summaries are
+  copied into the snapshot by the engine, including origin diagnostics and paths;
   `GetSettings`/`GetMutableSettings`/`SetSettings`/`SettingTable`/
   `SettingsDiffer`/`SaveSettingsToDisk`/`LoadSettingsFromDisk`
   (`Settings.h`/`SettingsFile.h`); `g_logRing` (`PCH.h`).
@@ -163,6 +165,22 @@ a `Studio::SelectorView` and posts `SetOutputSelector`/`SetLightSelector`;
 `ContextRows::DrawOutputHeader` composes it with the output's `FormField`s. This
 is the one page area with no `_old` oracle — fills build it from the wave-2 model,
 not from ComposePage.
+
+The merge connected the previously uncalled forms. `OutputRow::selection` and
+`LightRow::selection` retain the typed selector, and `RecipeRow::outputs` keeps
+all output definitions in the full recipe projection. `DrawRecipeSettings`
+draws recipe priority/clock speed and an Output settings modal. That modal is
+also available when no geometry matches, so editing a selector never removes
+the only path to correct it. Selected surface and light contexts also draw
+their selectors inline.
+
+## Merge revision — renderer argument records
+
+The frozen positional widget signatures exceeded the four-parameter gate.
+`WidgetSize` groups width and scale; `FilterSpec` holds the filter entry;
+`ChooserRowSpec` holds a chooser's displayed data. `ReferenceCombo` and
+`ValueWidget` consume the existing `Studio::FormField` record. The renderer
+and all callers use these records; ownership and intent flow are unchanged.
 
 ## To fold in at merge
 

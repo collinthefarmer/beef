@@ -50,13 +50,19 @@ if [ "${SUMMARY_ONLY:-0}" -eq 0 ]; then
 		TODO+=("$f")
 	done
 	if [ ${#TODO[@]} -gt 0 ]; then
-		printf '%s\n' "${TODO[@]}" | xargs -P "$JOBS" -I{} bash -c '
+		if ! printf '%s\n' "${TODO[@]}" | xargs -P "$JOBS" -I{} bash -c '
 			f="$1"; out="$2"; bin="$3"; checks="$4"
 			dest="$out/$(basename "$f" .cpp).txt"
 			echo "tidy $f" >&2
-			"$bin" -p build/clangd --quiet $checks "$f" > "$dest.part" 2>/dev/null
+			if ! "$bin" -p build/clangd --quiet $checks "$f" > "$dest.part" 2>&1; then
+				cat "$dest.part" >&2
+				exit 1
+			fi
 			mv "$dest.part" "$dest"
-		' _ {} "$OUT" "$TIDY_BIN" "$CHECKS"
+		' _ {} "$OUT" "$TIDY_BIN" "$CHECKS"; then
+			echo "clang-tidy failed; incomplete results were not cached" >&2
+			exit 1
+		fi
 	fi
 fi
 

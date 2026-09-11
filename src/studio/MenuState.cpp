@@ -344,6 +344,7 @@ struct ReduceVisitor {
   void operator()(const ClearMask &) {
     remember();
     mask = MaskStack{};
+    mask.dirty = true;
   }
 
   void operator()(const UndoMask &) {

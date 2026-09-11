@@ -42,13 +42,17 @@ void Refuse(const std::string &a_field, const std::string &a_text) {
   logger::warn("{} not applied: '{}' does not parse", a_field, a_text);
 }
 
+void RefuseCreate(const std::string &a_field, const std::string &a_text) {
+  logger::warn("{} not applied: '{}' could not create edits", a_field, a_text);
+}
+
 [[nodiscard]] Selector SelectorOf(const SelectorView &a_view) {
   Selector selector;
   selector.anyOf.reserve(a_view.clauses.size());
   for (const SelectorClauseRow &clause : a_view.clauses) {
     SelectorClause built;
     built.kind = clause.kind;
-    if (clause.isForm) {
+    if (clause.kind == SelectorKind::kAddon) {
       built.operand = FormRef::From(clause.value);
     } else {
       built.operand = clause.value;
@@ -77,10 +81,74 @@ void PostSelector(const Frame &a_frame, std::size_t a_output, bool a_light,
   }
   const std::string current{NameOf(kSelectorKinds, a_kind)};
   if (const auto chosen = ChoiceCombo("kind", current, names,
-                                      Width::Px(WidestOf(names)), a_scale)) {
+                                      {Width::Px(WidestOf(names)), a_scale})) {
     return FromName(kSelectorKinds, *chosen);
   }
   return std::nullopt;
+}
+
+struct SelectorTarget {
+  const Selector &selector;
+  std::size_t output;
+  bool light;
+};
+
+void DrawSelectorClauses(const SelectorView &a_view,
+                         const SelectorTarget &a_target, const Frame &a_frame) {
+  auto table = Table::Begin("selector-clauses",
+                            {{"match", Width::Fit()},
+                             {"value", Width::Fill()},
+                             {"", Width::Px(RowButtonWidth())}},
+                            kFormStyle);
+  if (table.Open()) {
+    for (std::size_t i = 0; i < a_view.clauses.size(); ++i) {
+      const SelectorClauseRow &clause = a_view.clauses[i];
+      ImGui::PushID(static_cast<int>(i));
+      table.Cell();
+      if (const auto kind = ClauseKindCombo(clause.kind, a_frame.scale)) {
+        PostSelector(a_frame, a_target.output, a_target.light,
+                     SelectorWithKind(a_target.selector, i, *kind));
+      }
+      table.Cell();
+      if (const auto text = TextField("value", clause.value,
+                                      {Width::Fill(), a_frame.scale})) {
+        PostSelector(a_frame, a_target.output, a_target.light,
+                     SelectorWithOperand(a_target.selector, i, *text));
+      }
+      table.Cell();
+      if (RemoveButton(0)) {
+        PostSelector(a_frame, a_target.output, a_target.light,
+                     SelectorWithoutClause(a_target.selector, i));
+      }
+      ImGui::PopID();
+    }
+    table.End();
+  }
+}
+
+void DrawSignalReads(const std::string &a_text, const Frame &a_frame,
+                     int a_depth) {
+  if (a_text.empty() || a_depth >= kMaxSignalModalDepth) {
+    return;
+  }
+  const auto program = Program::Parse(a_text);
+  if (!program) {
+    return;
+  }
+  const RecipeRow &recipe = *a_frame.recipe;
+  bool any = false;
+  for (const std::string &read : program->References()) {
+    if (std::ranges::find(recipe.signals, read, &SignalRow::name) ==
+        recipe.signals.end()) {
+      continue;
+    }
+    if (!any) {
+      Dim("reads");
+      any = true;
+    }
+    ImGui::SameLine();
+    DrawSignalModal(read, a_frame, a_depth + 1);
+  }
 }
 
 void DrawSignalEditorInline(const SignalRow &a_signal, const Frame &a_frame) {
@@ -120,13 +188,11 @@ std::optional<std::string> FieldInput(const FormField &a_field, float a_scale,
   switch (input) {
   case FieldInputKind::kCombo:
     Badge(a_field.kind);
-    return ReferenceCombo("value", a_field.text, a_field.names,
-                          a_field.allowEmpty, Width::Fill(), a_scale,
-                          a_field.creators);
+    return ReferenceCombo("value", a_field, {Width::Fill(), a_scale});
   case FieldInputKind::kChoice:
     Badge(a_field.kind);
-    return ChoiceCombo("value", a_field.text, a_field.names, Width::Fill(),
-                       a_scale);
+    return ChoiceCombo("value", a_field.text, a_field.names,
+                       {Width::Fill(), a_scale});
   case FieldInputKind::kToggle: {
     Badge(a_field.kind);
     bool on = a_field.text == "on";
@@ -137,12 +203,11 @@ std::optional<std::string> FieldInput(const FormField &a_field, float a_scale,
   }
   case FieldInputKind::kText:
     Badge(a_field.kind);
-    return TextField("value", a_field.text, Width::Fill(), a_scale, check);
+    return TextField("value", a_field.text, {Width::Fill(), a_scale}, check);
   case FieldInputKind::kPlain:
-    return TextField("value", a_field.text, Width::Fill(), a_scale, check);
+    return TextField("value", a_field.text, {Width::Fill(), a_scale}, check);
   case FieldInputKind::kValue:
-    return ValueWidget("value", a_field.kind, a_field.text, a_field.names,
-                       a_field.allowEmpty, a_scale, check, a_field.creators);
+    return ValueWidget("value", a_field, a_scale, check);
   }
   return std::nullopt;
 }
@@ -154,8 +219,10 @@ void PostField(const FormField &a_field, const std::string &a_text,
       std::vector<RecipeEdit> edits = a_field.create(a_text);
       if (!edits.empty()) {
         Post(a_out, EditRecipe{a_recipe, std::move(edits)});
+        return;
       }
     }
+    RefuseCreate(a_field.name, a_text);
     return;
   }
   const std::optional<RecipeEdit> edit =
@@ -334,23 +401,7 @@ void DrawSignalDetail(const std::string &a_text, const Frame &a_frame,
   if (it->inert) {
     Problem(it->problem.empty() ? "inert" : "inert: " + it->problem);
   }
-  if (!it->text.empty() && a_depth < kMaxSignalModalDepth) {
-    if (const auto program = Program::Parse(it->text)) {
-      bool any = false;
-      for (const std::string &read : program->References()) {
-        if (std::ranges::find(recipe.signals, read, &SignalRow::name) ==
-            recipe.signals.end()) {
-          continue;
-        }
-        if (!any) {
-          Dim("reads");
-          any = true;
-        }
-        ImGui::SameLine();
-        DrawSignalModal(read, a_frame, a_depth + 1);
-      }
-    }
-  }
+  DrawSignalReads(it->text, a_frame, a_depth);
   ImGui::PopID();
 }
 
@@ -381,35 +432,7 @@ void DrawSelector(const SelectorView &a_selector, std::size_t a_output,
   if (a_selector.matchAll && a_selector.clauses.empty()) {
     Dim("applies to every geometry of the piece");
   } else {
-    auto table = Table::Begin("selector-clauses",
-                              {{"match", Width::Fit()},
-                               {"value", Width::Fill()},
-                               {"", Width::Px(RowButtonWidth())}},
-                              kFormStyle);
-    if (table.Open()) {
-      for (std::size_t i = 0; i < a_selector.clauses.size(); ++i) {
-        const SelectorClauseRow &clause = a_selector.clauses[i];
-        ImGui::PushID(static_cast<int>(i));
-        table.Cell();
-        if (const auto kind = ClauseKindCombo(clause.kind, a_frame.scale)) {
-          PostSelector(a_frame, a_output, a_light,
-                       SelectorWithKind(current, i, *kind));
-        }
-        table.Cell();
-        if (const auto text = TextField("value", clause.value, Width::Fill(),
-                                        a_frame.scale)) {
-          PostSelector(a_frame, a_output, a_light,
-                       SelectorWithOperand(current, i, *text));
-        }
-        table.Cell();
-        if (RemoveButton(0)) {
-          PostSelector(a_frame, a_output, a_light,
-                       SelectorWithoutClause(current, i));
-        }
-        ImGui::PopID();
-      }
-      table.End();
-    }
+    DrawSelectorClauses(a_selector, {current, a_output, a_light}, a_frame);
   }
   if (ImGui::SmallButton("Add match")) {
     PostSelector(a_frame, a_output, a_light,

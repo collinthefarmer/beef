@@ -176,23 +176,6 @@ void DrawLightCell(const LightCell &a_light, const Frame &a_frame) {
   }
 }
 
-[[maybe_unused]] [[nodiscard]] std::string SlotLabel(const Cell &a_cell) {
-  const std::string name{SlotName(a_cell.slot)};
-  switch (a_cell.state) {
-  case CellState::kWritten:
-    return std::format("{} ({} layer{})", name, a_cell.layers,
-                       a_cell.layers == 1 ? "" : "s");
-  case CellState::kRefused:
-    return name + " (refused)";
-  case CellState::kExcluded:
-    return name + " (excluded)";
-  case CellState::kEmpty:
-    return name + " (empty)";
-  case CellState::kAbsent:
-    return name;
-  }
-  return name;
-}
 }
 
 void DrawBoard(const Studio::Board &a_board, const Frame &a_frame) {

@@ -1,4 +1,4 @@
-# clang-tidy baseline, 61 sources, 82 findings
+# clang-tidy baseline, 72 sources, 82 findings
 # regenerate: tools/tidy.sh && tools/tidy-baseline.sh
 
 # readability-function-size                            56
@@ -21,8 +21,8 @@ src/engine/ManagerRecipes.cpp:202: [readability-function-size]
 src/engine/ManagerRecipes.cpp:298: [readability-function-size]
 src/engine/ManagerRecipes.cpp:330: [readability-function-size]
 src/engine/ManagerSnapshot.cpp:76: [readability-function-size]
-src/engine/ManagerSnapshot.cpp:131: [readability-function-cognitive-complexity]
-src/engine/ManagerSnapshot.cpp:131: [readability-function-size]
+src/engine/ManagerSnapshot.cpp:130: [readability-function-cognitive-complexity]
+src/engine/ManagerSnapshot.cpp:130: [readability-function-size]
 src/engine/ManagerTick.cpp:102: [readability-function-size]
 src/engine/ManagerTick.cpp:198: [readability-function-size]
 src/engine/ManagerTick.cpp:216: [readability-function-size]

@@ -69,46 +69,51 @@ void MarkReapply(bool a_changed) {
   return it == table.end() ? nullptr : &*it;
 }
 
+[[nodiscard]] bool TextureScaleWidget(TextureScale &a_value,
+                                      const SettingDesc &a_desc,
+                                      const char *a_label) {
+  bool changed = false;
+  const int current = static_cast<int>(a_value);
+  const std::string preview =
+      current >= 0 && static_cast<std::size_t>(current) < a_desc.items.size()
+          ? std::string{a_desc.items[static_cast<std::size_t>(current)]}
+          : std::string{};
+  if (ImGui::BeginCombo(a_label, preview.c_str())) {
+    for (std::size_t i = 0; i < a_desc.items.size(); ++i) {
+      const std::string item{a_desc.items[i]};
+      if (ImGui::Selectable(item.c_str(),
+                            static_cast<std::size_t>(current) == i)) {
+        a_value = static_cast<TextureScale>(i);
+        changed = true;
+      }
+    }
+    ImGui::EndCombo();
+  }
+  return changed;
+}
+
 void Widget(Settings &a_settings, const SettingDesc &a_desc,
             const char *a_label) {
   bool changed = false;
-  std::visit(
-      [&](auto a_member) {
-        using T = std::remove_cvref_t<decltype(a_settings.*a_member)>;
-        if constexpr (std::is_same_v<T, bool>) {
-          changed = ImGui::Checkbox(a_label, &(a_settings.*a_member));
-        } else if constexpr (std::is_same_v<T, float>) {
-          changed = ImGui::SliderFloat(
-              a_label, &(a_settings.*a_member), a_desc.min, a_desc.max,
-              a_desc.max - a_desc.min > 10 ? "%.2f" : "%.3f", 0);
-        } else if constexpr (std::is_same_v<T, TextureScale>) {
-          const int current = static_cast<int>(a_settings.*a_member);
-          const std::string preview =
-              current >= 0 &&
-                      static_cast<std::size_t>(current) < a_desc.items.size()
-                  ? std::string{a_desc.items[static_cast<std::size_t>(current)]}
-                  : std::string{};
-          if (ImGui::BeginCombo(a_label, preview.c_str())) {
-            for (std::size_t i = 0; i < a_desc.items.size(); ++i) {
-              const std::string item{a_desc.items[i]};
-              if (ImGui::Selectable(item.c_str(),
-                                    static_cast<std::size_t>(current) == i)) {
-                a_settings.*a_member = static_cast<TextureScale>(i);
-                changed = true;
-              }
-            }
-            ImGui::EndCombo();
-          }
-        } else {
-          int v = static_cast<int>(a_settings.*a_member);
-          if (ImGui::SliderInt(a_label, &v, static_cast<int>(a_desc.min),
-                               static_cast<int>(a_desc.max))) {
-            a_settings.*a_member = static_cast<std::uint32_t>(v);
-            changed = true;
-          }
-        }
-      },
-      a_desc.member);
+  Match(a_desc.member, [&](auto a_member) {
+    using T = std::remove_cvref_t<decltype(a_settings.*a_member)>;
+    if constexpr (std::is_same_v<T, bool>) {
+      changed = ImGui::Checkbox(a_label, &(a_settings.*a_member));
+    } else if constexpr (std::is_same_v<T, float>) {
+      changed = ImGui::SliderFloat(
+          a_label, &(a_settings.*a_member), a_desc.min, a_desc.max,
+          a_desc.max - a_desc.min > 10 ? "%.2f" : "%.3f", 0);
+    } else if constexpr (std::is_same_v<T, TextureScale>) {
+      changed = TextureScaleWidget(a_settings.*a_member, a_desc, a_label);
+    } else {
+      int v = static_cast<int>(a_settings.*a_member);
+      if (ImGui::SliderInt(a_label, &v, static_cast<int>(a_desc.min),
+                           static_cast<int>(a_desc.max))) {
+        a_settings.*a_member = static_cast<std::uint32_t>(v);
+        changed = true;
+      }
+    }
+  });
   if (a_desc.reapply) {
     MarkReapply(changed);
   }

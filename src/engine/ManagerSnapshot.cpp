@@ -121,7 +121,6 @@ void Manager::PublishSnapshot(std::uint32_t a_nowMS) {
   }
   auto built = std::make_shared<Snapshot>(BuildSnapshot(request));
   built->version = ++snapshotVersion_;
-  built->tickMS = a_nowMS;
   built->view = view_;
   std::scoped_lock lock{snapshotLock_};
   latest_ = std::move(built);
@@ -130,6 +129,13 @@ void Manager::PublishSnapshot(std::uint32_t a_nowMS) {
 Manager::Snapshot
 Manager::BuildSnapshot(const std::optional<Studio::PieceRef> &a_request) const {
   Snapshot out;
+  const Status status = GetStatus();
+  const RecipeStoreStatus store = GetRecipeStoreStatus();
+  out.tickMS = status.tickMS;
+  out.status = {status.emissivePath, status.layoutVerified, status.runtimeLab,
+                status.actors,       status.pieces,         status.recipes,
+                status.geometries,   status.shells,         status.lights,
+                store.loaded,        store.withErrors};
   Compositor *compositor = Compositor::GetSingleton();
 
   bool anyMatch = false;
@@ -357,9 +363,25 @@ Manager::BuildSnapshot(const std::optional<Studio::PieceRef> &a_request) const {
     }
   }
   for (const Recipe &recipe : LoadedRecipes()) {
-    if (!IsTransient(recipe.id)) {
-      out.loaded.push_back(recipe.id);
+    if (IsTransient(recipe.id)) {
+      continue;
     }
+    Studio::LoadedRecipeRow row;
+    row.id = recipe.id;
+    row.keys = recipe.keys;
+    row.signals = recipe.signals.size();
+    row.curves = recipe.curves.size();
+    row.sources = recipe.sources.size();
+    row.masks = recipe.masks.size();
+    row.outputs = recipe.outputs.size();
+    row.imported = !recipe.metadata.imported.empty();
+    if (const std::optional<RecipeOrigin> origin = OriginOf(recipe)) {
+      row.diagnostics.assign(origin->diagnostics.begin(),
+                             origin->diagnostics.end());
+      row.path = origin->path.string();
+    }
+    out.loaded.push_back(recipe.id);
+    out.loadedRecipes.push_back(std::move(row));
   }
   return out;
 }

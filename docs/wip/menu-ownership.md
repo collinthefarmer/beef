@@ -12,7 +12,7 @@ the frozen interface; if a fill needs to diverge, stop and raise it.
 | Header | Key types |
 | --- | --- |
 | `Frame.h` | `Frame` (the per-frame context every page reads/writes) |
-| `MenuWidgets.h` | `Table`, `ChooserPick`, `SoloMuteChange`, `RuleFilter`, `TextCheck` |
+| `MenuWidgets.h` | `Table`, `ChooserPick`, `SoloMuteChange`, `RuleFilter`, `TextCheck`, `WidgetSize`, `FilterSpec`, `ChooserRowSpec` |
 | `FormDraw.h` | `kMaxSignalModalDepth` |
 | `BoardPage.h` | (functions only) |
 | `ContextRows.h` | `PaneChoice` |
@@ -73,16 +73,17 @@ resulting `RecipeEdit`, and runs the signal-detail modal chain. Pre-placed here
 - `DrawBoard`, `DrawBoardPage`
 
 TU-local: `DrawCell`, `DrawWrittenCell`, `DrawLightCell`, `CellTooltip`,
-`SlotLabel`, `PickOf`, `Joined`.
+`PickOf`, `Joined`.
 
 ### `src/menu/ContextRows.cpp` (diffs `_old/ComposePage.cpp` context block)
 
 - `ChoosePane`, `PickedCell`, `DefaultKeyOf`
-- `DrawContext`, `DrawPaneRule`, `DrawOutputHeader`
+- `DrawContext`, `DrawPaneRule`, `DrawOutputHeader`, `DrawRecipeSettings`
 
 TU-local: `DrawRecipeContext`, `DrawEditContext`, `SelectionCombo`,
 `RecipeCombo`, `RecipeLabel`, `IsolateCheckbox`, `KeysPopup`, `UndoRedoButtons`,
-`TargetChoice`, `SlotChoice`, `ClearButton`, `NextGeometry`.
+`TargetChoice`, `SlotChoice`, `ClearButton`. The merge split recipe actions,
+key rows, slot choices and default-setting actions into smaller local helpers.
 
 ### `src/menu/StackPanel.cpp` (diffs `_old/ComposePage.cpp` stack block)
 
@@ -97,7 +98,7 @@ TU-local: `DrawComposite`, `DrawScalars`, `BeginLayerTable`, `DrawLayers`,
 - `DrawResourcesRule`, `DrawResources`
 
 TU-local: `DrawSignals`, `DrawSignalRow`, `DrawSignalEditor`, `DrawSignalCurve`,
-`DrawCurves`, `DrawSources`, `DrawMasks`, `DrawImageRow`.
+`DrawCurves`, `DrawSources`, `DrawMasks`.
 
 ### `src/menu/PaintPanel.cpp` (diffs `_old/ComposePage.cpp` region block)
 

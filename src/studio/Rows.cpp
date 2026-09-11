@@ -94,12 +94,18 @@ OutputRow OutputRowOf(const Recipe &a_recipe, std::size_t a_index) {
   const SurfaceOutput *material = Get<SurfaceOutput>(a_recipe.outputs[a_index]);
   if (!material) {
     row.target = Target::kLight;
+    if (const LightOutput *light =
+            Get<LightOutput>(a_recipe.outputs[a_index])) {
+      row.replace = light->replace;
+      row.selection = light->selector;
+    }
     return row;
   }
   row.target = TargetOf(material->surface);
   row.surface = material->surface;
   row.slot = material->slot;
   row.replace = material->replace;
+  row.selection = material->selector;
   row.scalars = ScalarRowsOf(a_recipe, *material);
   for (const Layer &layer : material->stack) {
     row.layers.push_back(LayerRowOf(a_recipe, layer, material->slot));

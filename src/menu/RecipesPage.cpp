@@ -1,7 +1,6 @@
 #include "menu/Menu.h"
 
 #include "engine/Manager.h"
-#include "engine/RecipeStore.h"
 #include "menu/BoardPage.h"
 #include "menu/Frame.h"
 #include "menu/MenuWidgets.h"
@@ -32,7 +31,7 @@ constexpr Studio::TableStyle kGridStyle{.borders = Studio::TableBorders::kAll,
                                         .headers = true,
                                         .rowBackground = true};
 
-void DrawLoadedTable() {
+void DrawLoadedTable(const Studio::Snapshot &a_snapshot) {
   auto table = Table::Begin("recipes",
                             {{"recipe", Studio::Width::Fill()},
                              {"keys", Studio::Width::Fill()},
@@ -43,10 +42,7 @@ void DrawLoadedTable() {
   if (!table.Open()) {
     return;
   }
-  for (const Recipe &recipe : LoadedRecipes()) {
-    if (IsTransient(recipe.id)) {
-      continue;
-    }
+  for (const Studio::LoadedRecipeRow &recipe : a_snapshot.loadedRecipes) {
     table.Cell();
     ImGui::TextUnformatted(recipe.id.c_str());
     table.Cell();
@@ -57,17 +53,13 @@ void DrawLoadedTable() {
     ImGui::TextWrapped("%s", keys.c_str());
     table.Cell();
     ImGui::Text("%zu signals, %zu curves, %zu sources, %zu masks, %zu outputs",
-                recipe.signals.size(), recipe.curves.size(),
-                recipe.sources.size(), recipe.masks.size(),
-                recipe.outputs.size());
+                recipe.signals, recipe.curves, recipe.sources, recipe.masks,
+                recipe.outputs);
     table.Cell();
-    const auto origin = OriginOf(recipe);
     std::size_t errors = 0;
     std::size_t warnings = 0;
-    if (origin) {
-      for (const auto &diagnostic : origin->diagnostics) {
-        (diagnostic.severity == Severity::kError ? errors : warnings)++;
-      }
+    for (const Diagnostic &diagnostic : recipe.diagnostics) {
+      (diagnostic.severity == Severity::kError ? errors : warnings)++;
     }
     if (errors) {
       Problem(std::format("{} error(s)", errors));
@@ -76,14 +68,42 @@ void DrawLoadedTable() {
     } else {
       Ok("ok");
     }
-    if (!recipe.metadata.imported.empty()) {
+    if (recipe.imported) {
       ImGui::SameLine();
       Dim("imported, not yet edited");
     }
     table.Cell();
-    ImGui::TextWrapped("%s", origin ? origin->path.string().c_str() : "");
+    ImGui::TextWrapped("%s", recipe.path.c_str());
   }
   table.End();
+}
+
+[[nodiscard]] std::string OutputDescription(const Studio::OutputRow &a_output) {
+  const std::string state =
+      a_output.problem.empty()
+          ? (a_output.animated ? " (animated)" : " (static)")
+          : std::format(" [{}]", a_output.problem);
+  return std::format("{}->{}{}",
+                     a_output.target == Target::kLight
+                         ? std::string_view{}
+                         : SlotName(a_output.slot),
+                     TargetName(a_output.target), state);
+}
+
+void DrawResolvedGeometry(const Studio::GeometryRow &a_geometry,
+                          const Studio::PieceRow &a_piece) {
+  std::string outputs;
+  for (const Studio::OutputRow &output : a_geometry.outputs) {
+    outputs += (outputs.empty() ? "" : ", ") + OutputDescription(output);
+  }
+  ImGui::Indent();
+  ImGui::TextWrapped(
+      "%s  [%s]%s%s  %s",
+      Studio::GeometryLabel(a_geometry.name, a_piece.armorName).c_str(),
+      a_geometry.privateMaterial ? "private material" : "material untouched",
+      a_geometry.shell.empty() ? "" : "  ", a_geometry.shell.c_str(),
+      outputs.c_str());
+  ImGui::Unindent();
 }
 
 void DrawResolved(const Studio::PieceRow &a_piece) {
@@ -94,26 +114,87 @@ void DrawResolved(const Studio::PieceRow &a_piece) {
                       recipe.geometries.size() == 1 ? "y" : "ies",
                       recipe.light.empty() ? "" : "  ", recipe.light.c_str());
     for (const Studio::GeometryRow &geometry : recipe.geometries) {
-      std::string outputs;
-      for (const Studio::OutputRow &output : geometry.outputs) {
-        outputs +=
-            std::format("{}{}->{}{}", outputs.empty() ? "" : ", ",
-                        output.target == Target::kLight ? std::string_view{}
-                                                        : SlotName(output.slot),
-                        TargetName(output.target),
-                        output.problem.empty()
-                            ? (output.animated ? " (animated)" : " (static)")
-                            : std::format(" [{}]", output.problem));
-      }
-      ImGui::Indent();
-      ImGui::TextWrapped(
-          "%s  [%s]%s%s  %s",
-          Studio::GeometryLabel(geometry.name, a_piece.armorName).c_str(),
-          geometry.privateMaterial ? "private material" : "material untouched",
-          geometry.shell.empty() ? "" : "  ", geometry.shell.c_str(),
-          outputs.c_str());
-      ImGui::Unindent();
+      DrawResolvedGeometry(geometry, a_piece);
     }
+  }
+}
+
+void DrawStoreActions(Manager &a_manager, Studio::MenuState &a_state) {
+  if (ImGui::Button("Reload recipes")) {
+    Studio::Reduce(a_state, Studio::EndPaint{});
+    a_manager.ReloadRecipes();
+  }
+  ImGui::SameLine();
+  if (ImGui::Button("Re-apply all")) {
+    a_manager.ReapplyAll();
+  }
+  ImGui::SameLine();
+  if (ImGui::Button("Retire all (baseline)")) {
+    a_manager.RetireAll();
+  }
+}
+
+void DrawRecipeFile(const Studio::RecipeRow &a_recipe, Manager &a_manager) {
+  ImGui::SeparatorText(
+      a_recipe.dirty
+          ? std::format("{} (edited, not saved)", a_recipe.id).c_str()
+          : a_recipe.id.c_str());
+  if (ImGui::Button("Save")) {
+    a_manager.SaveRecipe(a_recipe.id);
+  }
+  ImGui::SameLine();
+  if (ImGui::Button("Revert to file")) {
+    a_manager.RevertRecipe(a_recipe.id);
+  }
+  ImGui::SameLine();
+  HelpMarker("Save writes the recipe to its file. An imported recipe is saved "
+             "to user/<id>.json with its imported line dropped, and loads from "
+             "there afterwards.");
+  if (!a_recipe.problems.empty()) {
+    ImGui::SeparatorText("Rows with problems");
+    for (const Diagnostic &diagnostic : a_recipe.problems) {
+      const std::string line =
+          std::format("{}: {}", diagnostic.where, diagnostic.message);
+      if (diagnostic.severity == Severity::kError) {
+        Problem(line);
+      } else {
+        Warn(line);
+      }
+    }
+  }
+}
+
+void DrawSelection(const Studio::Snapshot &a_snapshot,
+                   Studio::MenuState &a_state, Manager &a_manager) {
+  const Studio::PieceRow *piece =
+      Studio::SelectedPiece(a_snapshot, a_state.selection);
+  ImGui::SeparatorText("Resolved for the selection (merge order)");
+  if (!piece) {
+    ImGui::TextDisabled(
+        "nothing applied; equip enchanted PBR armor or press Re-apply all");
+    return;
+  }
+  DrawResolved(*piece);
+  ImGui::SeparatorText("Board: what the selected recipe writes");
+  const Studio::RecipeRow *selected =
+      Studio::SelectedRecipe(piece, a_state.selection);
+  const Studio::GeometryRow *geometry =
+      Studio::SelectedGeometry(selected, a_state.selection);
+  const Studio::Names names = selected && geometry
+                                  ? Studio::NamesOf(*selected, *geometry)
+                                  : Studio::Names{};
+  Studio::Intents intents;
+  const Frame frame{.snapshot = &a_snapshot,
+                    .piece = piece,
+                    .recipe = selected,
+                    .geometry = geometry,
+                    .names = &names,
+                    .state = &a_state,
+                    .intents = &intents};
+  DrawBoardPage(frame);
+  Dispatch(intents, a_state, a_snapshot);
+  if (selected) {
+    DrawRecipeFile(*selected, a_manager);
   }
 }
 }
@@ -130,85 +211,11 @@ void __stdcall RenderRecipes() {
   if (!held) {
     return;
   }
-  const Studio::Snapshot &snapshot = *held;
-  Studio::ResolveSelection(state.selection, snapshot);
-  RenderHeader(snapshot);
-  const Studio::Selection &selection = state.selection;
-
-  if (ImGui::Button("Reload recipes")) {
-    Studio::Reduce(state, Studio::EndPaint{});
-    manager->ReloadRecipes();
-  }
-  ImGui::SameLine();
-  if (ImGui::Button("Re-apply all")) {
-    manager->ReapplyAll();
-  }
-  ImGui::SameLine();
-  if (ImGui::Button("Retire all (baseline)")) {
-    manager->RetireAll();
-  }
-
+  Studio::ResolveSelection(state.selection, *held);
+  RenderHeader(*held);
+  DrawStoreActions(*manager, state);
   ImGui::SeparatorText("Loaded");
-  DrawLoadedTable();
-
-  const Studio::PieceRow *piece = Studio::SelectedPiece(snapshot, selection);
-  ImGui::SeparatorText("Resolved for the selection (merge order)");
-  if (!piece) {
-    ImGui::TextDisabled(
-        "nothing applied; equip enchanted PBR armor or press Re-apply all");
-    return;
-  }
-  DrawResolved(*piece);
-
-  ImGui::SeparatorText("Board: what the selected recipe writes");
-  const Studio::RecipeRow *selected = Studio::SelectedRecipe(piece, selection);
-  const Studio::GeometryRow *geometry =
-      Studio::SelectedGeometry(selected, selection);
-  Studio::Names names;
-  if (selected && geometry) {
-    names = Studio::NamesOf(*selected, *geometry);
-  }
-  Studio::Intents intents;
-  Frame frame{};
-  frame.snapshot = &snapshot;
-  frame.piece = piece;
-  frame.recipe = selected;
-  frame.geometry = geometry;
-  frame.names = &names;
-  frame.state = &state;
-  frame.intents = &intents;
-  DrawBoardPage(frame);
-  Dispatch(intents, state, snapshot);
-
-  if (!selected) {
-    return;
-  }
-  ImGui::SeparatorText(
-      selected->dirty
-          ? std::format("{} (edited, not saved)", selected->id).c_str()
-          : selected->id.c_str());
-  if (ImGui::Button("Save")) {
-    manager->SaveRecipe(selected->id);
-  }
-  ImGui::SameLine();
-  if (ImGui::Button("Revert to file")) {
-    manager->RevertRecipe(selected->id);
-  }
-  ImGui::SameLine();
-  HelpMarker("Save writes the recipe to its file. An imported recipe is saved "
-             "to user/<id>.json with its imported line dropped, and loads from "
-             "there afterwards.");
-  if (!selected->problems.empty()) {
-    ImGui::SeparatorText("Rows with problems");
-    for (const Diagnostic &diagnostic : selected->problems) {
-      const std::string line =
-          std::format("{}: {}", diagnostic.where, diagnostic.message);
-      if (diagnostic.severity == Severity::kError) {
-        Problem(line);
-      } else {
-        Warn(line);
-      }
-    }
-  }
+  DrawLoadedTable(*held);
+  DrawSelection(*held, state, *manager);
 }
 }

@@ -847,6 +847,7 @@ LightRow LightRowOf(const Recipe &a_recipe) {
     row.offset = Vec3ParamText(light->offset);
     row.shadow = light->shadow;
     row.replace = light->replace;
+    row.selection = light->selector;
     Match(
         light->bones,
         [&](const SkinnedBones &a_bones) {

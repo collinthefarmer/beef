@@ -28,6 +28,8 @@ int main() {
   geometry.shell = "SkinShell";
 
   OutputRow emissive = MaterialOutput(0, Slot::kEmissive);
+  int textureToken = 0;
+  emissive.texture = reinterpret_cast<TextureHandle>(&textureToken);
   LayerRow layer;
   layer.mask = "@edges";
   emissive.layers.push_back(layer);
@@ -60,6 +62,8 @@ int main() {
         "an output that writes a slot marks the cell written");
   Check(written != nullptr && written->output == 0,
         "the written cell names its output");
+  Check(written != nullptr && written->composite == emissive.texture,
+        "the written cell carries its output texture for the board preview");
   Check(written != nullptr && std::ranges::find(written->badges, "edges") !=
                                   written->badges.end(),
         "a layer mask becomes a cell badge");

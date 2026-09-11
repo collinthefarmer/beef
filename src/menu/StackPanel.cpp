@@ -144,7 +144,7 @@ void DrawStackRow(Table &a_table, const LayerStack &a_stack,
   a_table.Cell();
   if (const auto blend =
           BlendCombo("blend", a_row.layer.blend, a_stack.blends,
-                     Studio::Width::Px(BlendWidth(a_stack.blends)), 1.0f)) {
+                     {Studio::Width::Px(BlendWidth(a_stack.blends)), 1.0f})) {
     Studio::Post(*a_frame.intents, id,
                  Studio::SetLayerBlend{output, index, *blend});
   }
@@ -186,28 +186,29 @@ void DrawLayers(const LayerStack &a_stack, const Frame &a_frame) {
              "mutes. Enter commits a text field; a drag commits on release.");
 }
 
+void DrawDetailImage(const PictureRow &a_image, bool a_editable,
+                     const Frame &a_frame) {
+  const Layout &layout = LayoutOf(a_frame);
+  const Studio::ThumbnailSpec picture{
+      a_image.texture, a_image.channel, a_image.animated,
+      layout.inspectorThumbnail * a_frame.scale};
+  Thumbnail(picture);
+  ImGui::TextUnformatted((Studio::ReferenceText(a_image.name) + " =").c_str());
+  ImGui::SameLine();
+  if (a_editable) {
+    DrawRowField("text",
+                 Studio::MaskTextField(a_image.name, a_image.description),
+                 a_frame);
+  } else {
+    ImGui::TextWrapped("%s", a_image.description.c_str());
+  }
+  if (!a_image.problem.empty()) {
+    Warn(a_image.problem);
+  }
+}
+
 void DrawDetailModal(FieldDetail a_detail, const Inspector &a_inspector,
                      const Frame &a_frame) {
-  const auto drawImage = [&](const PictureRow &a_image, bool a_editable) {
-    const Layout &layout = LayoutOf(a_frame);
-    const Studio::ThumbnailSpec picture{
-        a_image.texture, a_image.channel, a_image.animated,
-        layout.inspectorThumbnail * a_frame.scale};
-    Thumbnail(picture);
-    ImGui::TextUnformatted(
-        (Studio::ReferenceText(a_image.name) + " =").c_str());
-    ImGui::SameLine();
-    if (a_editable) {
-      DrawRowField("text",
-                   Studio::MaskTextField(a_image.name, a_image.description),
-                   a_frame);
-    } else {
-      ImGui::TextWrapped("%s", a_image.description.c_str());
-    }
-    if (!a_image.problem.empty()) {
-      Warn(a_image.problem);
-    }
-  };
 
   switch (a_detail) {
   case FieldDetail::kSource:
@@ -215,7 +216,7 @@ void DrawDetailModal(FieldDetail a_detail, const Inspector &a_inspector,
       const bool isMask =
           std::ranges::find(a_inspector.masks, a_inspector.source->name) !=
           a_inspector.masks.end();
-      drawImage(*a_inspector.source, isMask);
+      DrawDetailImage(*a_inspector.source, isMask, a_frame);
     } else {
       Dim("a constant colour, or a name no source or mask has");
     }
@@ -244,7 +245,7 @@ void DrawDetailModal(FieldDetail a_detail, const Inspector &a_inspector,
     break;
   case FieldDetail::kMask:
     if (a_inspector.mask) {
-      drawImage(*a_inspector.mask, true);
+      DrawDetailImage(*a_inspector.mask, true, a_frame);
     } else {
       Dim("no mask");
     }

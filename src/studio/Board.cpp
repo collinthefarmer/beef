@@ -61,6 +61,7 @@ void FillCell(Cell &a_cell, const RecipeRow &a_recipe,
       a_cell.reason = first->problem;
     }
     a_cell.output = first->index;
+    a_cell.composite = first->texture;
     a_cell.layers = first->layers.size();
     a_cell.animated = first->animated;
     a_cell.replace = first->replace;
