@@ -8,6 +8,7 @@
 #include "render/RuntimeTextures.h"
 #include "studio/Edits.h"
 #include "studio/Panels.h"
+#include "studio/RecipeContent.h"
 #include "studio/Rows.h"
 
 #include <algorithm>
@@ -28,23 +29,6 @@ std::vector<Studio::SlotRow> SlotRows(const SlotTarget &a_target) {
     rows.push_back({s.slot, s.original, s.written, a_target.Problem(s.slot)});
   }
   return rows;
-}
-
-std::unordered_map<std::string, std::string>
-InertReasons(const SignalGraph &a_graph) {
-  std::unordered_map<std::string, std::string> reasons;
-  for (const Diagnostic &d : a_graph.Diagnostics()) {
-    if (d.where.starts_with("signal ")) {
-      reasons.emplace(d.where.substr(7), d.message);
-    }
-  }
-  return reasons;
-}
-
-std::size_t ReferenceCount(const std::map<std::string, std::size_t> &a_counts,
-                           const std::string &a_name) {
-  const auto it = a_counts.find(a_name);
-  return it != a_counts.end() ? it->second : 0;
 }
 }
 
@@ -207,68 +191,33 @@ Manager::BuildSnapshot(const std::optional<Studio::PieceRef> &a_request) const {
           continue;
         }
         const Recipe &recipe = *instance.recipe;
-        Studio::RecipeRow r;
-        r.id = recipe.id;
-        r.key = match.key.ToString();
-        r.keys = recipe.keys;
-        r.priority = match.priority;
-        r.clockSpeed = recipe.clock.speed;
-        r.time = instance.lastTime;
-        r.dirty = IsDirty(r.id);
-        r.pinned = view_.pin && view_.pin->piece == row.ref &&
-                   view_.pin->recipeID == r.id;
-        r.shellMaterial = recipe.shell.material;
-        r.lightOutput = instance.lightOutput;
-        r.lightRow = Studio::LightRowOf(recipe);
-        r.shellRow = Studio::ShellRowOf(recipe);
-        if (const auto history = histories_.find(r.id);
+        std::size_t undoDepth = 0;
+        std::size_t redoDepth = 0;
+        if (const auto history = histories_.find(recipe.id);
             history != histories_.end()) {
-          r.undoDepth = history->second.UndoDepth();
-          r.redoDepth = history->second.RedoDepth();
+          undoDepth = history->second.UndoDepth();
+          redoDepth = history->second.RedoDepth();
         }
+        Studio::ReferenceCounts references;
+        std::vector<Diagnostic> problems;
+        if (full) {
+          const Studio::ReferenceCounts *counted = ReferencesOf(recipe.id);
+          references = counted ? *counted : Studio::CountReferences(recipe);
+          if (const std::optional<RecipeOrigin> origin = OriginOf(recipe)) {
+            problems.assign(origin->diagnostics.begin(),
+                            origin->diagnostics.end());
+          }
+        }
+        const bool pinned = view_.pin && view_.pin->piece == row.ref &&
+                            view_.pin->recipeID == recipe.id;
+        Studio::RecipeRow r = Studio::RecipeContent(
+            {recipe, match.key, match.priority, instance.lastTime,
+             instance.lightOutput, IsDirty(recipe.id), pinned, full, undoDepth,
+             redoDepth, references, instance.graph.get(),
+             instance.signals.get(), problems});
         if (!full) {
           row.recipes.push_back(std::move(r));
           continue;
-        }
-
-        for (const Mask &mask : recipe.masks) {
-          r.masks.push_back(mask.name);
-        }
-        const Studio::ReferenceCounts *counted = ReferencesOf(r.id);
-        const Studio::ReferenceCounts references =
-            counted ? *counted : Studio::CountReferences(recipe);
-        for (const Source &source : recipe.sources) {
-          r.sourceRows.push_back(Studio::SourceRowOf(
-              source, ReferenceCount(references.images, source.name)));
-        }
-        for (const Mask &mask : recipe.masks) {
-          r.maskRows.push_back(Studio::MaskRowOf(
-              mask, ReferenceCount(references.images, mask.name)));
-        }
-        if (const std::optional<RecipeOrigin> origin = OriginOf(recipe)) {
-          r.problems.assign(origin->diagnostics.begin(),
-                            origin->diagnostics.end());
-        }
-        if (instance.graph && instance.signals) {
-          const RowTypes rows{recipe, *instance.graph};
-          const std::unordered_map<std::string, std::string> reasons =
-              InertReasons(*instance.graph);
-          for (const Signal &signal : recipe.signals) {
-            Studio::SignalRow srow = Studio::SignalRowOf(
-                signal, rows, ReferenceCount(references.signals, signal.name));
-            srow.value = instance.signals->ValueOf(signal.name);
-            if (srow.inert) {
-              if (const auto reason = reasons.find(signal.name);
-                  reason != reasons.end()) {
-                srow.problem = reason->second;
-              }
-            }
-            r.signals.push_back(std::move(srow));
-          }
-        }
-        for (const Curve &curve : recipe.curves) {
-          r.curves.push_back(Studio::CurveRowOf(
-              curve, ReferenceCount(references.curves, curve.name)));
         }
 
         for (const LiveGeometry &bound : piece.geometries) {
