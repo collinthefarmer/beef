@@ -2,6 +2,7 @@
 
 #include "Identity.h"
 #include "SettingsFile.h"
+#include "menu/Menu.h"
 
 namespace BetterEnchantmentEffects {
 std::shared_ptr<spdlog::sinks::ringbuffer_sink_mt> g_logRing;
@@ -37,6 +38,7 @@ void OnMessage(SKSE::MessagingInterface::Message *a_msg) {
   case SKSE::MessagingInterface::kDataLoaded:
     logger::info("kDataLoaded");
     SetSettings(LoadSettingsFromDisk());
+    Menu::RegisterMenu();
     if (!CommunityShadersLoaded()) {
       logger::error("CommunityShaders.dll is not loaded; emissive path "
                     "disabled, plugin idle");

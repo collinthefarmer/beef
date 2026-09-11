@@ -93,14 +93,15 @@ target_include_directories(${PROJECT_NAME}Native PRIVATE src)
 target_include_directories(${PROJECT_NAME}Native SYSTEM PRIVATE src/extern)
 target_compile_options(${PROJECT_NAME}Native PRIVATE ${CLANG_CL_FLAGS} -Werror=switch)
 
-# The plugin DLL. Engine-facing sources: the wave-3 engine/ and render/
-# adapters plus the entrypoint and settings I/O. menu/ is added by wave 4.
+# The plugin DLL. Engine-facing sources: the wave-3 engine/, render/, and menu/
+# adapters plus the entrypoint and settings I/O.
 # The engine-free modules (recipe/mesh/studio/planners) and Settings.cpp come
 # from the Native object library, linked below, so each is compiled once and
 # shared with the native test host.
 file(GLOB_RECURSE ENGINE_RENDER_SOURCES CONFIGURE_DEPENDS
   "${CMAKE_SOURCE_DIR}/src/engine/*.cpp"
-  "${CMAKE_SOURCE_DIR}/src/render/*.cpp")
+  "${CMAKE_SOURCE_DIR}/src/render/*.cpp"
+  "${CMAKE_SOURCE_DIR}/src/menu/*.cpp")
 set(PLUGIN_SOURCES
   src/main.cpp
   src/SettingsFile.cpp
