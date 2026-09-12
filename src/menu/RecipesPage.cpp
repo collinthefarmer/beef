@@ -122,7 +122,7 @@ void DrawResolved(const Studio::PieceRow &a_piece) {
 void DrawStoreActions(Manager &a_manager, Studio::MenuState &a_state) {
   if (ImGui::Button("Reload recipes")) {
     Studio::Reduce(a_state, Studio::EndPaint{});
-    a_manager.ReloadRecipes();
+    a_manager.Editor().ReloadRecipes();
   }
   ImGui::SameLine();
   if (ImGui::Button("Re-apply all")) {
@@ -140,11 +140,11 @@ void DrawRecipeFile(const Studio::RecipeRow &a_recipe, Manager &a_manager) {
           ? std::format("{} (edited, not saved)", a_recipe.id).c_str()
           : a_recipe.id.c_str());
   if (ImGui::Button("Save")) {
-    a_manager.SaveRecipe(a_recipe.id);
+    a_manager.Editor().SaveRecipe(a_recipe.id);
   }
   ImGui::SameLine();
   if (ImGui::Button("Revert to file")) {
-    a_manager.RevertRecipe(a_recipe.id);
+    a_manager.Editor().RevertRecipe(a_recipe.id);
   }
   ImGui::SameLine();
   HelpMarker("Save writes the recipe to its file. An imported recipe is saved "

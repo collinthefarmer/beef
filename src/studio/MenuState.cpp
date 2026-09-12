@@ -127,6 +127,10 @@ struct ReduceVisitor {
       selection.recipeID = state.paint->recipeID;
     }
     state.paint.reset();
+    state.mode = Mode::kCompose;
+    const float split = state.layout.stackSplit;
+    state.layout = LayoutFor(Mode::kCompose);
+    state.layout.stackSplit = split;
     mask = MaskStack{};
     state.maskHistory.Clear();
   }
@@ -213,6 +217,10 @@ struct ReduceVisitor {
     } else if (term.op == TermOp::kSet) {
       term.op = TermOp::kAnd;
     }
+    if (state.paint) {
+      state.paint->sources.insert(state.paint->sources.end(),
+                                  a_i.sources.begin(), a_i.sources.end());
+    }
     mask.terms.push_back(std::move(term));
     mask.selected = mask.terms.size() - 1;
     mask.dirty = true;
@@ -239,6 +247,10 @@ struct ReduceVisitor {
   void operator()(const SetTermKind &a_i) {
     remember();
     if (a_i.index < mask.terms.size()) {
+      if (state.paint) {
+        state.paint->sources.insert(state.paint->sources.end(),
+                                    a_i.sources.begin(), a_i.sources.end());
+      }
       mask.terms[a_i.index].kind = a_i.kind;
       mask.terms[a_i.index].text = a_i.text;
       mask.terms[a_i.index].label = a_i.label;
@@ -364,7 +376,11 @@ struct ReduceVisitor {
   void operator()(const ScratchRebuilt &) { mask.dirty = false; }
 
   void operator()(const BeginPaint &a_i) {
-    state.paint = PaintSession{a_i.recipeID, a_i.surface, {}};
+    state.paint = PaintSession{};
+    state.paint->recipeID = a_i.recipeID;
+    state.paint->surface = a_i.surface;
+    state.paint->sessionID = a_i.sessionID;
+    mask.dirty = true;
     state.maskHistory.Clear();
   }
 
@@ -374,9 +390,21 @@ struct ReduceVisitor {
     }
   }
 
-  void operator()(const KeepPaint &) { endSession(); }
+  void operator()(const KeepPaint &a_i) {
+    if (state.paint && state.paint->recipeID == a_i.request.recipeID) {
+      state.paint->pendingCommit = a_i.request.id;
+      state.paint->problem.reset();
+    }
+  }
 
   void operator()(const EndPaint &) { endSession(); }
+
+  void operator()(const UpdatePaint &a_i) {
+    if (state.paint) {
+      state.paint->pendingRevision = a_i.request.revision;
+      state.paint->problem.reset();
+    }
+  }
 
   void operator()(const EditRecipe &a_i) {
     for (const RecipeEdit &edit : a_i.edits) {
@@ -413,7 +441,187 @@ struct ReduceVisitor {
 };
 }
 
+SourceCatalog PaintSources(const MenuState &a_state, const RecipeRow &a_recipe,
+                           const Intents &a_pending) {
+  SourceCatalog catalog = SourceCatalogOf(a_recipe);
+  const auto append = [&](const std::vector<RecipeEdit> &a_edits) {
+    for (const RecipeEdit &edit : a_edits) {
+      if (const auto *source = Get<AddSource>(edit)) {
+        catalog.sources.push_back(Source{source->name, source->kind});
+        catalog.reservedNames.push_back(source->name);
+      }
+    }
+  };
+  if (a_state.paint) {
+    append(a_state.paint->sources);
+  }
+  for (const Intent &intent : a_pending) {
+    Match(
+        intent, [&](const AddTerm &a_i) { append(a_i.sources); },
+        [&](const SetTermKind &a_i) { append(a_i.sources); },
+        [](const auto &) {});
+  }
+  return catalog;
+}
+
+namespace {
+[[nodiscard]] bool ChangesPaint(const Intent &a_intent) {
+  return Match(
+      a_intent, [](const AddTerm &) { return true; },
+      [](const SetTermKind &) { return true; },
+      [](const SetTermText &) { return true; },
+      [](const SetTermOp &) { return true; },
+      [](const RemoveTerm &) { return true; },
+      [](const MoveTerm &) { return true; },
+      [](const SoloTerm &) { return true; },
+      [](const MuteTerm &) { return true; },
+      [](const LoadMask &) { return true; },
+      [](const ClearMask &) { return true; },
+      [](const UndoMask &) { return true; },
+      [](const RedoMask &) { return true; },
+      [](const SetPaintSurface &) { return true; },
+      [](const auto &) { return false; });
+}
+}
+
+bool AcceptIntent(const MenuState &a_state, const Intent &a_intent) {
+  if (a_state.paint && a_state.paint->pendingCommit && ChangesPaint(a_intent)) {
+    return false;
+  }
+  return Match(
+      a_intent,
+      [&](const BeginPaint &a_begin) {
+        return a_state.mode == Mode::kPaint && !a_state.paint &&
+               a_begin.recipeID != kPaintRecipe &&
+               a_begin.resetID == a_state.lastPaintReset;
+      },
+      [&](const KeepPaint &a_keep) {
+        return a_state.paint && a_state.paint->ready &&
+               !a_state.paint->pendingCommit &&
+               a_state.paint->sessionID == a_keep.request.sessionID &&
+               a_state.paint->recipeID == a_keep.request.recipeID;
+      },
+      [&](const UpdatePaint &a_update) {
+        return a_state.paint && a_state.paint->ready &&
+               !a_state.paint->pendingRevision &&
+               !a_state.paint->pendingCommit &&
+               a_state.paint->sessionID == a_update.request.sessionID;
+      },
+      [](const auto &) { return true; });
+}
+
 void Reduce(MenuState &a_state, const Intent &a_intent) {
+  if (!AcceptIntent(a_state, a_intent)) {
+    return;
+  }
+  const bool exceeds = Match(
+      a_intent,
+      [&](const AddTerm &a_add) {
+        return a_state.mask.terms.size() >= kMaxTerms ||
+               (a_state.paint &&
+                a_add.sources.size() >
+                    kMaxRecipeRows - std::min(kMaxRecipeRows,
+                                              a_state.paint->sources.size()));
+      },
+      [&](const SetTermKind &a_set) {
+        return a_state.paint &&
+               a_set.sources.size() >
+                   kMaxRecipeRows -
+                       std::min(kMaxRecipeRows, a_state.paint->sources.size());
+      },
+      [&](const LoadMask &a_load) { return a_load.terms.size() > kMaxTerms; },
+      [](const auto &) { return false; });
+  if (exceeds) {
+    if (a_state.paint) {
+      a_state.paint->problem =
+          MakeDiagnostic(Severity::kError, "paint",
+                         "the mask term or source limit was reached");
+    }
+    return;
+  }
   Match(a_intent, ReduceVisitor{a_state});
+  const bool changed = ChangesPaint(a_intent);
+  if (a_state.paint && changed) {
+    ++a_state.paint->revision;
+    a_state.mask.dirty = true;
+    a_state.paint->problem.reset();
+  }
+}
+
+std::optional<UpdatePaint> PendingPaintUpdate(const MenuState &a_state) {
+  if (!a_state.paint || !a_state.paint->ready || !a_state.mask.dirty ||
+      a_state.paint->pendingRevision || a_state.paint->pendingCommit ||
+      a_state.paint->problem) {
+    return std::nullopt;
+  }
+  const PaintSession &paint = *a_state.paint;
+  const auto built = CheckedBuildMask(a_state.mask.terms, a_state.mask.solo,
+                                      a_state.mask.muted);
+  if (!built) {
+    return std::nullopt;
+  }
+  std::string expression = *built;
+  if (expression.empty()) {
+    expression = "0";
+  }
+  return UpdatePaint{PaintUpdateRequest{paint.sessionID, paint.revision,
+                                        std::move(expression), paint.sources,
+                                        paint.surface}};
+}
+
+void ObservePaintRecipe(MenuState &a_state, const RecipeRow *a_recipe) {
+  if (!a_state.paint || !a_state.paint->ready) {
+    return;
+  }
+  if (a_recipe && a_recipe->id == kPaintRecipe) {
+    a_state.paint->projected = true;
+  }
+}
+
+void AcknowledgePaintUpdate(MenuState &a_state,
+                            const PaintUpdateResult &a_result) {
+  if (a_result.ended) {
+    if (a_result.revision > a_state.lastPaintReset) {
+      a_state.lastPaintReset = a_result.revision;
+      if (a_state.paint) {
+        Reduce(a_state, EndPaint{});
+      }
+    }
+    return;
+  }
+  if (!a_state.paint || a_state.paint->sessionID != a_result.sessionID) {
+    return;
+  }
+  PaintSession &paint = *a_state.paint;
+  if (a_result.revision == 0) {
+    if (paint.ready || paint.problem) {
+      return;
+    }
+    paint.problem = a_result.problem;
+    paint.ready = !a_result.problem;
+    return;
+  }
+  if (paint.pendingRevision != a_result.revision) {
+    return;
+  }
+  paint.pendingRevision.reset();
+  paint.problem =
+      paint.revision == a_result.revision ? a_result.problem : std::nullopt;
+  if (!a_result.problem && paint.revision == a_result.revision) {
+    a_state.mask.dirty = false;
+  }
+}
+
+void AcknowledgePaintCommit(MenuState &a_state,
+                            const PaintCommitResult &a_result) {
+  if (!a_state.paint || a_state.paint->pendingCommit != a_result.requestID) {
+    return;
+  }
+  if (a_result.problem) {
+    a_state.paint->pendingCommit.reset();
+    a_state.paint->problem = a_result.problem;
+    return;
+  }
+  Reduce(a_state, EndPaint{});
 }
 }

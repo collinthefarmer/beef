@@ -10,7 +10,7 @@
 #include <span>
 
 namespace BetterEnchantmentEffects::Studio {
-struct RecipeContentInput {
+struct RecipeRowInput {
   const Recipe &recipe;
   RecipeKey key;
   int priority = 0;
@@ -27,5 +27,5 @@ struct RecipeContentInput {
   std::span<const Diagnostic> problems;
 };
 
-[[nodiscard]] RecipeRow RecipeContent(const RecipeContentInput &a_input);
+[[nodiscard]] RecipeRow BuildRecipeRow(const RecipeRowInput &a_input);
 }

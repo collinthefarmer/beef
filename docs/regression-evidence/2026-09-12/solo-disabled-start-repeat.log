@@ -1,0 +1,299 @@
+[15:27:03.684] [info] BetterEnchantmentEffects 0-1-0-0 loading on runtime 1-6-1170-0
+[15:27:13.808] [info] kDataLoaded
+[15:27:13.808] [info] settings loaded from A:\SteamLibrary\steamapps\common\Skyrim Special Edition\Data\SKSE\Plugins\BetterEnchantmentEffects.ini:
+[15:27:13.808] [info]   [General]
+[15:27:13.808] [info]   PlayerOnly=false
+[15:27:13.808] [info]   EnableShaders=true
+[15:27:13.808] [info]   ThirdPerson=true
+[15:27:13.808] [info]   FirstPerson=true
+[15:27:13.808] [info]   UniqueMaterial=true
+[15:27:13.808] [info]   VerboseLogging=true
+[15:27:13.808] [info]   AnimationFPS=60
+[15:27:13.808] [info]   AnimationSpeed=1
+[15:27:13.808] [info]   TextureScale=Full
+[15:27:13.809] [info] recipes: 1295 editor IDs indexed (po3's Tweaks not loaded: only the engine's own)
+[15:27:13.811] [info] recipe Skyrim-1F03A loaded from Data\SKSE\Plugins\BetterEnchantmentEffects\recipes\imported\Skyrim-1F03A.json (keys: effectShader:0x1F03A~Skyrim.esm; 18 signals, 4 curves, 6 sources, 1 masks, 5 outputs; imported, not yet edited)
+[15:27:13.811] [info] recipe Skyrim-5D606 loaded from Data\SKSE\Plugins\BetterEnchantmentEffects\recipes\imported\Skyrim-5D606.json (keys: effectShader:0x5D606~Skyrim.esm; 18 signals, 4 curves, 6 sources, 1 masks, 5 outputs; imported, not yet edited)
+[15:27:13.811] [info] recipe Skyrim-92DE7 loaded from Data\SKSE\Plugins\BetterEnchantmentEffects\recipes\imported\Skyrim-92DE7.json (keys: effectShader:0x92DE7~Skyrim.esm; 18 signals, 4 curves, 6 sources, 1 masks, 5 outputs; imported, not yet edited)
+[15:27:13.812] [info] recipe Skyrim-92DE8 loaded from Data\SKSE\Plugins\BetterEnchantmentEffects\recipes\imported\Skyrim-92DE8.json (keys: effectShader:0x92DE8~Skyrim.esm; 18 signals, 4 curves, 6 sources, 1 masks, 5 outputs; imported, not yet edited)
+[15:27:13.812] [info] recipe Skyrim-92DE9 loaded from Data\SKSE\Plugins\BetterEnchantmentEffects\recipes\imported\Skyrim-92DE9.json (keys: effectShader:0x92DE9~Skyrim.esm; 18 signals, 4 curves, 6 sources, 1 masks, 5 outputs; imported, not yet edited)
+[15:27:13.813] [info] recipe Skyrim-92DEC loaded from Data\SKSE\Plugins\BetterEnchantmentEffects\recipes\imported\Skyrim-92DEC.json (keys: effectShader:0x92DEC~Skyrim.esm; 18 signals, 4 curves, 6 sources, 1 masks, 5 outputs; imported, not yet edited)
+[15:27:13.813] [info] recipe Skyrim-92DED loaded from Data\SKSE\Plugins\BetterEnchantmentEffects\recipes\imported\Skyrim-92DED.json (keys: effectShader:0x92DED~Skyrim.esm; 18 signals, 4 curves, 6 sources, 1 masks, 5 outputs; imported, not yet edited)
+[15:27:13.814] [info] recipe Skyrim-92DEE loaded from Data\SKSE\Plugins\BetterEnchantmentEffects\recipes\imported\Skyrim-92DEE.json (keys: effectShader:0x92DEE~Skyrim.esm; 18 signals, 4 curves, 6 sources, 1 masks, 5 outputs; imported, not yet edited)
+[15:27:13.814] [info] recipe Skyrim-BCF27 loaded from Data\SKSE\Plugins\BetterEnchantmentEffects\recipes\imported\Skyrim-BCF27.json (keys: effectShader:0xBCF27~Skyrim.esm; 14 signals, 4 curves, 2 sources, 1 masks, 4 outputs; imported, not yet edited)
+[15:27:13.814] [info] recipe abc loaded from Data\SKSE\Plugins\BetterEnchantmentEffects\recipes\user\abc.json (keys: effectShader:0x92DEC~Skyrim.esm; 0 signals, 0 curves, 0 sources, 0 masks, 1 outputs)
+[15:27:13.814] [warning] recipe Skyrim-92DEC: key effectShader:0x92DEC~Skyrim.esm is owned by recipe abc (loaded later); Skyrim-92DEC does not resolve by it
+[15:27:13.814] [info] presets: 0 mask presets
+[15:27:13.815] [info] recipes: 10 loaded, 0 with errors, 0 unresolved editor IDs, 0 imported this session, folder A:\SteamLibrary\steamapps\common\Skyrim Special Edition\Data\SKSE\Plugins\BetterEnchantmentEffects\recipes
+[15:27:13.815] [info] SKSE Menu Framework pages registered
+[15:27:13.815] [info] event sinks registered
+[15:27:13.815] [info] hooked PlayerCharacter::Update (vfunc 0xad)
+[15:27:34.896] [info] kPreLoadGame
+[15:27:34.896] [info] cleared 0 actor states
+[15:27:39.074] [info] kPostLoadGame
+[15:27:39.397] [info] PBR material layout check passed
+[15:27:39.611] [info] TextureLab: ready (runtime layer textures)
+[15:27:39.618] [info] apply armor 000CF80F actor 00000014 geometry ' (00036198)[0]/ (000CF80F) [75%]' material=private shell (PBR copy, additive, skin cloned, buffers shared, emissive storage cloned, inflation own skin data (copied))
+[15:27:39.619] [info] apply armor 000FE2FF actor 00000014 geometry 'TorsoLow:0' material=private no shell
+[15:27:39.619] [info] apply armor 000FE2FF actor 00000014 geometry ' (00098BB3)[0]/ (000FE2FF) [75%]' material=private no shell
+[15:27:39.619] [info]   recipe Skyrim-92DED: light on NPC Head [Head] x1.00
+[15:27:39.619] [info] actor 00000014 (123): 3 piece(s), 2 recipe(s) applied
+[15:27:39.620] [info] apply armor 000FE300 actor FF00095A geometry 'TorsoLow:0' material=private no shell
+[15:27:39.620] [info] actor FF00095A (Faendal): 1 piece(s), 1 recipe(s) applied
+[15:27:46.529] [info] actor 00000014: retired 2 recipe(s)
+[15:27:46.529] [info] actor FF00095A: retired 1 recipe(s)
+[15:27:46.530] [info] apply armor 000CF80F actor 00000014 geometry ' (00036198)[0]/ (000CF80F) [75%]' material=untouched no shell
+[15:27:46.530] [info] apply armor 000FE2FF actor 00000014 geometry 'TorsoLow:0' material=private no shell
+[15:27:46.530] [info] apply armor 000FE2FF actor 00000014 geometry ' (00098BB3)[0]/ (000FE2FF) [75%]' material=private no shell
+[15:27:46.530] [info] actor 00000014 (123): 3 piece(s), 1 recipe(s) applied
+[15:27:46.530] [info] apply armor 000FE300 actor FF00095A geometry 'TorsoLow:0' material=private no shell
+[15:27:46.530] [info] actor FF00095A (Faendal): 1 piece(s), 1 recipe(s) applied
+[15:27:47.399] [info] actor 00000014: retired 1 recipe(s)
+[15:27:47.399] [info] actor FF00095A: retired 1 recipe(s)
+[15:27:47.399] [info] apply armor 000CF80F actor 00000014 geometry ' (00036198)[0]/ (000CF80F) [75%]' material=private shell (PBR copy, additive, skin cloned, buffers shared, emissive storage cloned, inflation own skin data (copied))
+[15:27:47.399] [info] apply armor 000FE2FF actor 00000014 geometry 'TorsoLow:0' material=private no shell
+[15:27:47.399] [info] apply armor 000FE2FF actor 00000014 geometry ' (00098BB3)[0]/ (000FE2FF) [75%]' material=private no shell
+[15:27:47.399] [info]   recipe Skyrim-92DED: light on NPC Head [Head] x1.00
+[15:27:47.399] [info] actor 00000014 (123): 3 piece(s), 2 recipe(s) applied
+[15:27:47.400] [info] apply armor 000FE300 actor FF00095A geometry 'TorsoLow:0' material=private no shell
+[15:27:47.400] [info] actor FF00095A (Faendal): 1 piece(s), 1 recipe(s) applied
+[15:27:48.186] [info] actor 00000014: retired 2 recipe(s)
+[15:27:48.186] [info] actor FF00095A: retired 1 recipe(s)
+[15:27:48.186] [info] apply armor 000CF80F actor 00000014 geometry ' (00036198)[0]/ (000CF80F) [75%]' material=untouched no shell
+[15:27:48.186] [info] apply armor 000FE2FF actor 00000014 geometry 'TorsoLow:0' material=private no shell
+[15:27:48.186] [info] apply armor 000FE2FF actor 00000014 geometry ' (00098BB3)[0]/ (000FE2FF) [75%]' material=private no shell
+[15:27:48.186] [info] actor 00000014 (123): 3 piece(s), 1 recipe(s) applied
+[15:27:48.186] [info] apply armor 000FE300 actor FF00095A geometry 'TorsoLow:0' material=private no shell
+[15:27:48.186] [info] actor FF00095A (Faendal): 1 piece(s), 1 recipe(s) applied
+[15:27:48.771] [info] actor 00000014: retired 1 recipe(s)
+[15:27:48.772] [info] actor FF00095A: retired 1 recipe(s)
+[15:27:48.772] [info] apply armor 000CF80F actor 00000014 geometry ' (00036198)[0]/ (000CF80F) [75%]' material=private shell (PBR copy, additive, skin cloned, buffers shared, emissive storage cloned, inflation own skin data (copied))
+[15:27:48.773] [info] apply armor 000FE2FF actor 00000014 geometry 'TorsoLow:0' material=private no shell
+[15:27:48.773] [info] apply armor 000FE2FF actor 00000014 geometry ' (00098BB3)[0]/ (000FE2FF) [75%]' material=private no shell
+[15:27:48.773] [info]   recipe Skyrim-92DED: light on NPC Head [Head] x1.00
+[15:27:48.773] [info] actor 00000014 (123): 3 piece(s), 2 recipe(s) applied
+[15:27:48.773] [info] apply armor 000FE300 actor FF00095A geometry 'TorsoLow:0' material=private no shell
+[15:27:48.773] [info] actor FF00095A (Faendal): 1 piece(s), 1 recipe(s) applied
+[15:27:49.156] [info] actor 00000014: retired 2 recipe(s)
+[15:27:49.156] [info] actor FF00095A: retired 1 recipe(s)
+[15:27:49.156] [info] apply armor 000CF80F actor 00000014 geometry ' (00036198)[0]/ (000CF80F) [75%]' material=untouched no shell
+[15:27:49.156] [info] apply armor 000FE2FF actor 00000014 geometry 'TorsoLow:0' material=private no shell
+[15:27:49.156] [info] apply armor 000FE2FF actor 00000014 geometry ' (00098BB3)[0]/ (000FE2FF) [75%]' material=private no shell
+[15:27:49.156] [info] actor 00000014 (123): 3 piece(s), 1 recipe(s) applied
+[15:27:49.156] [info] apply armor 000FE300 actor FF00095A geometry 'TorsoLow:0' material=private no shell
+[15:27:49.156] [info] actor FF00095A (Faendal): 1 piece(s), 1 recipe(s) applied
+[15:27:50.170] [info] kPreLoadGame
+[15:27:50.170] [info] cleared 2 actor states
+[15:27:50.942] [info] kPostLoadGame
+[15:27:51.043] [info] apply armor 000CF80F actor 00000014 geometry ' (00036198)[0]/ (000CF80F) [75%]' material=untouched no shell
+[15:27:51.044] [info] apply armor 000FE2FF actor 00000014 geometry 'TorsoLow:0' material=private no shell
+[15:27:51.044] [info] apply armor 000FE2FF actor 00000014 geometry ' (00098BB3)[0]/ (000FE2FF) [75%]' material=private no shell
+[15:27:51.044] [info] actor 00000014 (123): 3 piece(s), 1 recipe(s) applied
+[15:27:51.045] [info] apply armor 000FE300 actor FF00095A geometry 'TorsoLow:0' material=private no shell
+[15:27:51.045] [info] actor FF00095A (Faendal): 1 piece(s), 1 recipe(s) applied
+[15:27:54.538] [info] actor 00000014: retired 1 recipe(s)
+[15:27:54.538] [info] actor FF00095A: retired 1 recipe(s)
+[15:27:54.540] [info] apply armor 000CF80F actor 00000014 geometry ' (00036198)[0]/ (000CF80F) [75%]' material=private shell (PBR copy, additive, skin cloned, buffers shared, emissive storage cloned, inflation own skin data (copied))
+[15:27:54.540] [info] apply armor 000FE2FF actor 00000014 geometry 'TorsoLow:0' material=private no shell
+[15:27:54.541] [info] apply armor 000FE2FF actor 00000014 geometry ' (00098BB3)[0]/ (000FE2FF) [75%]' material=private no shell
+[15:27:54.541] [info]   recipe Skyrim-92DED: light on NPC Head [Head] x1.00
+[15:27:54.541] [info] actor 00000014 (123): 3 piece(s), 2 recipe(s) applied
+[15:27:54.541] [info] apply armor 000FE300 actor FF00095A geometry 'TorsoLow:0' material=private no shell
+[15:27:54.541] [info] actor FF00095A (Faendal): 1 piece(s), 1 recipe(s) applied
+[15:27:56.003] [info] kPreLoadGame
+[15:27:56.003] [info] cleared 2 actor states
+[15:27:56.702] [info] kPostLoadGame
+[15:27:56.796] [info] apply armor 000CF80F actor 00000014 geometry ' (00036198)[0]/ (000CF80F) [75%]' material=private shell (PBR copy, additive, skin cloned, buffers shared, emissive storage cloned, inflation own skin data (copied))
+[15:27:56.797] [info] apply armor 000FE2FF actor 00000014 geometry 'TorsoLow:0' material=private no shell
+[15:27:56.797] [info] apply armor 000FE2FF actor 00000014 geometry ' (00098BB3)[0]/ (000FE2FF) [75%]' material=private no shell
+[15:27:56.797] [info]   recipe Skyrim-92DED: light on NPC Head [Head] x1.00
+[15:27:56.797] [info] actor 00000014 (123): 3 piece(s), 2 recipe(s) applied
+[15:27:56.797] [info] apply armor 000FE300 actor FF00095A geometry 'TorsoLow:0' material=private no shell
+[15:27:56.797] [info] actor FF00095A (Faendal): 1 piece(s), 1 recipe(s) applied
+[15:28:18.752] [info] actor 00000014: retired 2 recipe(s)
+[15:28:18.752] [info] actor FF00095A: retired 1 recipe(s)
+[15:28:18.752] [info] apply armor 000CF80F actor 00000014 geometry ' (00036198)[0]/ (000CF80F) [75%]' material=untouched no shell
+[15:28:18.752] [info] apply armor 000FE2FF actor 00000014 geometry 'TorsoLow:0' material=private no shell
+[15:28:18.753] [info] apply armor 000FE2FF actor 00000014 geometry ' (00098BB3)[0]/ (000FE2FF) [75%]' material=private no shell
+[15:28:18.753] [info] actor 00000014 (123): 3 piece(s), 1 recipe(s) applied
+[15:28:18.753] [info] apply armor 000FE300 actor FF00095A geometry 'TorsoLow:0' material=private no shell
+[15:28:18.753] [info] actor FF00095A (Faendal): 1 piece(s), 1 recipe(s) applied
+[15:28:27.394] [info] actor 00000014: retired 1 recipe(s)
+[15:28:27.394] [info] actor FF00095A: retired 1 recipe(s)
+[15:28:27.394] [info] apply armor 000CF80F actor 00000014 geometry ' (00036198)[0]/ (000CF80F) [75%]' material=private shell (PBR copy, additive, skin cloned, buffers shared, emissive storage cloned, inflation own skin data (copied))
+[15:28:27.395] [info] apply armor 000FE2FF actor 00000014 geometry 'TorsoLow:0' material=private no shell
+[15:28:27.395] [info] apply armor 000FE2FF actor 00000014 geometry ' (00098BB3)[0]/ (000FE2FF) [75%]' material=private no shell
+[15:28:27.395] [info]   recipe Skyrim-92DED: light on NPC Head [Head] x1.00
+[15:28:27.395] [info] actor 00000014 (123): 3 piece(s), 2 recipe(s) applied
+[15:28:27.395] [info] apply armor 000FE300 actor FF00095A geometry 'TorsoLow:0' material=private no shell
+[15:28:27.395] [info] actor FF00095A (Faendal): 1 piece(s), 1 recipe(s) applied
+[15:29:22.685] [info] actor 00000014: retired 2 recipe(s)
+[15:29:22.685] [info] actor FF00095A: retired 1 recipe(s)
+[15:29:22.685] [info] apply armor 000CF80F actor 00000014 geometry ' (00036198)[0]/ (000CF80F) [75%]' material=untouched no shell
+[15:29:22.685] [info] apply armor 000FE2FF actor 00000014 geometry 'TorsoLow:0' material=private no shell
+[15:29:22.685] [info] apply armor 000FE2FF actor 00000014 geometry ' (00098BB3)[0]/ (000FE2FF) [75%]' material=private no shell
+[15:29:22.685] [info] actor 00000014 (123): 3 piece(s), 1 recipe(s) applied
+[15:29:22.685] [info] apply armor 000FE300 actor FF00095A geometry 'TorsoLow:0' material=private no shell
+[15:29:22.685] [info] actor FF00095A (Faendal): 1 piece(s), 1 recipe(s) applied
+[15:29:31.182] [info] actor 00000014: retired 1 recipe(s)
+[15:29:31.182] [info] actor FF00095A: retired 1 recipe(s)
+[15:29:31.183] [info] apply armor 000CF80F actor 00000014 geometry ' (00036198)[0]/ (000CF80F) [75%]' material=private shell (PBR copy, additive, skin cloned, buffers shared, emissive storage cloned, inflation own skin data (copied))
+[15:29:31.183] [info] apply armor 000FE2FF actor 00000014 geometry 'TorsoLow:0' material=private no shell
+[15:29:31.183] [info] apply armor 000FE2FF actor 00000014 geometry ' (00098BB3)[0]/ (000FE2FF) [75%]' material=private no shell
+[15:29:31.183] [info]   recipe Skyrim-92DED: light on NPC Head [Head] x1.00
+[15:29:31.183] [info] actor 00000014 (123): 3 piece(s), 2 recipe(s) applied
+[15:29:31.183] [info] apply armor 000FE300 actor FF00095A geometry 'TorsoLow:0' material=private no shell
+[15:29:31.183] [info] actor FF00095A (Faendal): 1 piece(s), 1 recipe(s) applied
+[15:29:37.720] [info] actor 00000014: retired 2 recipe(s)
+[15:29:37.720] [info] actor FF00095A: retired 1 recipe(s)
+[15:29:37.721] [info] apply armor 000CF80F actor 00000014 geometry ' (00036198)[0]/ (000CF80F) [75%]' material=untouched no shell
+[15:29:37.721] [info] apply armor 000FE2FF actor 00000014 geometry 'TorsoLow:0' material=private no shell
+[15:29:37.721] [info] apply armor 000FE2FF actor 00000014 geometry ' (00098BB3)[0]/ (000FE2FF) [75%]' material=private no shell
+[15:29:37.721] [info] actor 00000014 (123): 3 piece(s), 1 recipe(s) applied
+[15:29:37.721] [info] apply armor 000FE300 actor FF00095A geometry 'TorsoLow:0' material=private no shell
+[15:29:37.721] [info] actor FF00095A (Faendal): 1 piece(s), 1 recipe(s) applied
+[15:29:38.956] [info] actor 00000014: retired 1 recipe(s)
+[15:29:38.956] [info] actor FF00095A: retired 1 recipe(s)
+[15:29:38.957] [info] apply armor 000CF80F actor 00000014 geometry ' (00036198)[0]/ (000CF80F) [75%]' material=private shell (PBR copy, additive, skin cloned, buffers shared, emissive storage cloned, inflation own skin data (copied))
+[15:29:38.957] [info] apply armor 000FE2FF actor 00000014 geometry 'TorsoLow:0' material=private no shell
+[15:29:38.957] [info] apply armor 000FE2FF actor 00000014 geometry ' (00098BB3)[0]/ (000FE2FF) [75%]' material=private no shell
+[15:29:38.957] [info]   recipe Skyrim-92DED: light on NPC Head [Head] x1.00
+[15:29:38.957] [info] actor 00000014 (123): 3 piece(s), 2 recipe(s) applied
+[15:29:38.958] [info] apply armor 000FE300 actor FF00095A geometry 'TorsoLow:0' material=private no shell
+[15:29:38.958] [info] actor FF00095A (Faendal): 1 piece(s), 1 recipe(s) applied
+[15:29:39.508] [info] actor 00000014: retired 2 recipe(s)
+[15:29:39.508] [info] actor FF00095A: retired 1 recipe(s)
+[15:29:39.508] [info] apply armor 000CF80F actor 00000014 geometry ' (00036198)[0]/ (000CF80F) [75%]' material=untouched no shell
+[15:29:39.508] [info] apply armor 000FE2FF actor 00000014 geometry 'TorsoLow:0' material=private no shell
+[15:29:39.508] [info] apply armor 000FE2FF actor 00000014 geometry ' (00098BB3)[0]/ (000FE2FF) [75%]' material=private no shell
+[15:29:39.509] [info] actor 00000014 (123): 3 piece(s), 1 recipe(s) applied
+[15:29:39.509] [info] apply armor 000FE300 actor FF00095A geometry 'TorsoLow:0' material=private no shell
+[15:29:39.509] [info] actor FF00095A (Faendal): 1 piece(s), 1 recipe(s) applied
+[15:29:40.026] [info] actor 00000014: retired 1 recipe(s)
+[15:29:40.026] [info] actor FF00095A: retired 1 recipe(s)
+[15:29:40.027] [info] apply armor 000CF80F actor 00000014 geometry ' (00036198)[0]/ (000CF80F) [75%]' material=private shell (PBR copy, additive, skin cloned, buffers shared, emissive storage cloned, inflation own skin data (copied))
+[15:29:40.027] [info] apply armor 000FE2FF actor 00000014 geometry 'TorsoLow:0' material=private no shell
+[15:29:40.027] [info] apply armor 000FE2FF actor 00000014 geometry ' (00098BB3)[0]/ (000FE2FF) [75%]' material=private no shell
+[15:29:40.027] [info]   recipe Skyrim-92DED: light on NPC Head [Head] x1.00
+[15:29:40.027] [info] actor 00000014 (123): 3 piece(s), 2 recipe(s) applied
+[15:29:40.027] [info] apply armor 000FE300 actor FF00095A geometry 'TorsoLow:0' material=private no shell
+[15:29:40.027] [info] actor FF00095A (Faendal): 1 piece(s), 1 recipe(s) applied
+[15:29:40.427] [info] actor 00000014: retired 2 recipe(s)
+[15:29:40.428] [info] actor FF00095A: retired 1 recipe(s)
+[15:29:40.428] [info] apply armor 000CF80F actor 00000014 geometry ' (00036198)[0]/ (000CF80F) [75%]' material=untouched no shell
+[15:29:40.428] [info] apply armor 000FE2FF actor 00000014 geometry 'TorsoLow:0' material=private no shell
+[15:29:40.428] [info] apply armor 000FE2FF actor 00000014 geometry ' (00098BB3)[0]/ (000FE2FF) [75%]' material=private no shell
+[15:29:40.428] [info] actor 00000014 (123): 3 piece(s), 1 recipe(s) applied
+[15:29:40.428] [info] apply armor 000FE300 actor FF00095A geometry 'TorsoLow:0' material=private no shell
+[15:29:40.428] [info] actor FF00095A (Faendal): 1 piece(s), 1 recipe(s) applied
+[15:29:40.946] [info] actor 00000014: retired 1 recipe(s)
+[15:29:40.946] [info] actor FF00095A: retired 1 recipe(s)
+[15:29:40.947] [info] apply armor 000CF80F actor 00000014 geometry ' (00036198)[0]/ (000CF80F) [75%]' material=private shell (PBR copy, additive, skin cloned, buffers shared, emissive storage cloned, inflation own skin data (copied))
+[15:29:40.947] [info] apply armor 000FE2FF actor 00000014 geometry 'TorsoLow:0' material=private no shell
+[15:29:40.947] [info] apply armor 000FE2FF actor 00000014 geometry ' (00098BB3)[0]/ (000FE2FF) [75%]' material=private no shell
+[15:29:40.947] [info]   recipe Skyrim-92DED: light on NPC Head [Head] x1.00
+[15:29:40.947] [info] actor 00000014 (123): 3 piece(s), 2 recipe(s) applied
+[15:29:40.947] [info] apply armor 000FE300 actor FF00095A geometry 'TorsoLow:0' material=private no shell
+[15:29:40.947] [info] actor FF00095A (Faendal): 1 piece(s), 1 recipe(s) applied
+[15:29:41.464] [info] actor 00000014: retired 2 recipe(s)
+[15:29:41.464] [info] actor FF00095A: retired 1 recipe(s)
+[15:29:41.464] [info] apply armor 000CF80F actor 00000014 geometry ' (00036198)[0]/ (000CF80F) [75%]' material=untouched no shell
+[15:29:41.464] [info] apply armor 000FE2FF actor 00000014 geometry 'TorsoLow:0' material=private no shell
+[15:29:41.464] [info] apply armor 000FE2FF actor 00000014 geometry ' (00098BB3)[0]/ (000FE2FF) [75%]' material=private no shell
+[15:29:41.464] [info] actor 00000014 (123): 3 piece(s), 1 recipe(s) applied
+[15:29:41.464] [info] apply armor 000FE300 actor FF00095A geometry 'TorsoLow:0' material=private no shell
+[15:29:41.464] [info] actor FF00095A (Faendal): 1 piece(s), 1 recipe(s) applied
+[15:29:41.965] [info] actor 00000014: retired 1 recipe(s)
+[15:29:41.965] [info] actor FF00095A: retired 1 recipe(s)
+[15:29:41.965] [info] apply armor 000CF80F actor 00000014 geometry ' (00036198)[0]/ (000CF80F) [75%]' material=private shell (PBR copy, additive, skin cloned, buffers shared, emissive storage cloned, inflation own skin data (copied))
+[15:29:41.965] [info] apply armor 000FE2FF actor 00000014 geometry 'TorsoLow:0' material=private no shell
+[15:29:41.965] [info] apply armor 000FE2FF actor 00000014 geometry ' (00098BB3)[0]/ (000FE2FF) [75%]' material=private no shell
+[15:29:41.965] [info]   recipe Skyrim-92DED: light on NPC Head [Head] x1.00
+[15:29:41.965] [info] actor 00000014 (123): 3 piece(s), 2 recipe(s) applied
+[15:29:41.966] [info] apply armor 000FE300 actor FF00095A geometry 'TorsoLow:0' material=private no shell
+[15:29:41.966] [info] actor FF00095A (Faendal): 1 piece(s), 1 recipe(s) applied
+[15:29:42.449] [info] actor 00000014: retired 2 recipe(s)
+[15:29:42.449] [info] actor FF00095A: retired 1 recipe(s)
+[15:29:42.449] [info] apply armor 000CF80F actor 00000014 geometry ' (00036198)[0]/ (000CF80F) [75%]' material=untouched no shell
+[15:29:42.449] [info] apply armor 000FE2FF actor 00000014 geometry 'TorsoLow:0' material=private no shell
+[15:29:42.449] [info] apply armor 000FE2FF actor 00000014 geometry ' (00098BB3)[0]/ (000FE2FF) [75%]' material=private no shell
+[15:29:42.449] [info] actor 00000014 (123): 3 piece(s), 1 recipe(s) applied
+[15:29:42.450] [info] apply armor 000FE300 actor FF00095A geometry 'TorsoLow:0' material=private no shell
+[15:29:42.450] [info] actor FF00095A (Faendal): 1 piece(s), 1 recipe(s) applied
+[15:29:42.833] [info] actor 00000014: retired 1 recipe(s)
+[15:29:42.833] [info] actor FF00095A: retired 1 recipe(s)
+[15:29:42.834] [info] apply armor 000CF80F actor 00000014 geometry ' (00036198)[0]/ (000CF80F) [75%]' material=private shell (PBR copy, additive, skin cloned, buffers shared, emissive storage cloned, inflation own skin data (copied))
+[15:29:42.834] [info] apply armor 000FE2FF actor 00000014 geometry 'TorsoLow:0' material=private no shell
+[15:29:42.834] [info] apply armor 000FE2FF actor 00000014 geometry ' (00098BB3)[0]/ (000FE2FF) [75%]' material=private no shell
+[15:29:42.834] [info]   recipe Skyrim-92DED: light on NPC Head [Head] x1.00
+[15:29:42.834] [info] actor 00000014 (123): 3 piece(s), 2 recipe(s) applied
+[15:29:42.834] [info] apply armor 000FE300 actor FF00095A geometry 'TorsoLow:0' material=private no shell
+[15:29:42.834] [info] actor FF00095A (Faendal): 1 piece(s), 1 recipe(s) applied
+[15:29:43.151] [info] actor 00000014: retired 2 recipe(s)
+[15:29:43.151] [info] actor FF00095A: retired 1 recipe(s)
+[15:29:43.152] [info] apply armor 000CF80F actor 00000014 geometry ' (00036198)[0]/ (000CF80F) [75%]' material=untouched no shell
+[15:29:43.152] [info] apply armor 000FE2FF actor 00000014 geometry 'TorsoLow:0' material=private no shell
+[15:29:43.152] [info] apply armor 000FE2FF actor 00000014 geometry ' (00098BB3)[0]/ (000FE2FF) [75%]' material=private no shell
+[15:29:43.152] [info] actor 00000014 (123): 3 piece(s), 1 recipe(s) applied
+[15:29:43.152] [info] apply armor 000FE300 actor FF00095A geometry 'TorsoLow:0' material=private no shell
+[15:29:43.152] [info] actor FF00095A (Faendal): 1 piece(s), 1 recipe(s) applied
+[15:29:43.502] [info] actor 00000014: retired 1 recipe(s)
+[15:29:43.502] [info] actor FF00095A: retired 1 recipe(s)
+[15:29:43.503] [info] apply armor 000CF80F actor 00000014 geometry ' (00036198)[0]/ (000CF80F) [75%]' material=private shell (PBR copy, additive, skin cloned, buffers shared, emissive storage cloned, inflation own skin data (copied))
+[15:29:43.503] [info] apply armor 000FE2FF actor 00000014 geometry 'TorsoLow:0' material=private no shell
+[15:29:43.503] [info] apply armor 000FE2FF actor 00000014 geometry ' (00098BB3)[0]/ (000FE2FF) [75%]' material=private no shell
+[15:29:43.503] [info]   recipe Skyrim-92DED: light on NPC Head [Head] x1.00
+[15:29:43.503] [info] actor 00000014 (123): 3 piece(s), 2 recipe(s) applied
+[15:29:43.503] [info] apply armor 000FE300 actor FF00095A geometry 'TorsoLow:0' material=private no shell
+[15:29:43.503] [info] actor FF00095A (Faendal): 1 piece(s), 1 recipe(s) applied
+[15:29:43.869] [info] actor 00000014: retired 2 recipe(s)
+[15:29:43.869] [info] actor FF00095A: retired 1 recipe(s)
+[15:29:43.870] [info] apply armor 000CF80F actor 00000014 geometry ' (00036198)[0]/ (000CF80F) [75%]' material=untouched no shell
+[15:29:43.870] [info] apply armor 000FE2FF actor 00000014 geometry 'TorsoLow:0' material=private no shell
+[15:29:43.870] [info] apply armor 000FE2FF actor 00000014 geometry ' (00098BB3)[0]/ (000FE2FF) [75%]' material=private no shell
+[15:29:43.870] [info] actor 00000014 (123): 3 piece(s), 1 recipe(s) applied
+[15:29:43.870] [info] apply armor 000FE300 actor FF00095A geometry 'TorsoLow:0' material=private no shell
+[15:29:43.870] [info] actor FF00095A (Faendal): 1 piece(s), 1 recipe(s) applied
+[15:29:44.236] [info] actor 00000014: retired 1 recipe(s)
+[15:29:44.236] [info] actor FF00095A: retired 1 recipe(s)
+[15:29:44.237] [info] apply armor 000CF80F actor 00000014 geometry ' (00036198)[0]/ (000CF80F) [75%]' material=private shell (PBR copy, additive, skin cloned, buffers shared, emissive storage cloned, inflation own skin data (copied))
+[15:29:44.237] [info] apply armor 000FE2FF actor 00000014 geometry 'TorsoLow:0' material=private no shell
+[15:29:44.237] [info] apply armor 000FE2FF actor 00000014 geometry ' (00098BB3)[0]/ (000FE2FF) [75%]' material=private no shell
+[15:29:44.237] [info]   recipe Skyrim-92DED: light on NPC Head [Head] x1.00
+[15:29:44.237] [info] actor 00000014 (123): 3 piece(s), 2 recipe(s) applied
+[15:29:44.237] [info] apply armor 000FE300 actor FF00095A geometry 'TorsoLow:0' material=private no shell
+[15:29:44.237] [info] actor FF00095A (Faendal): 1 piece(s), 1 recipe(s) applied
+[15:29:44.837] [info] actor 00000014: retired 2 recipe(s)
+[15:29:44.837] [info] actor FF00095A: retired 1 recipe(s)
+[15:29:44.838] [info] apply armor 000CF80F actor 00000014 geometry ' (00036198)[0]/ (000CF80F) [75%]' material=untouched no shell
+[15:29:44.838] [info] apply armor 000FE2FF actor 00000014 geometry 'TorsoLow:0' material=private no shell
+[15:29:44.838] [info] apply armor 000FE2FF actor 00000014 geometry ' (00098BB3)[0]/ (000FE2FF) [75%]' material=private no shell
+[15:29:44.838] [info] actor 00000014 (123): 3 piece(s), 1 recipe(s) applied
+[15:29:44.838] [info] apply armor 000FE300 actor FF00095A geometry 'TorsoLow:0' material=private no shell
+[15:29:44.838] [info] actor FF00095A (Faendal): 1 piece(s), 1 recipe(s) applied
+[15:30:11.949] [info] actor 00000014: retired 1 recipe(s)
+[15:30:11.949] [info] actor FF00095A: retired 1 recipe(s)
+[15:30:11.950] [info] apply armor 000CF80F actor 00000014 geometry ' (00036198)[0]/ (000CF80F) [75%]' material=private shell (PBR copy, additive, skin cloned, buffers shared, emissive storage cloned, inflation own skin data (copied))
+[15:30:11.950] [info] apply armor 000FE2FF actor 00000014 geometry 'TorsoLow:0' material=private no shell
+[15:30:11.950] [info] apply armor 000FE2FF actor 00000014 geometry ' (00098BB3)[0]/ (000FE2FF) [75%]' material=private no shell
+[15:30:11.950] [info]   recipe Skyrim-92DED: light on NPC Head [Head] x1.00
+[15:30:11.950] [info] actor 00000014 (123): 3 piece(s), 2 recipe(s) applied
+[15:30:11.950] [info] apply armor 000FE300 actor FF00095A geometry 'TorsoLow:0' material=private no shell
+[15:30:11.950] [info] actor FF00095A (Faendal): 1 piece(s), 1 recipe(s) applied
+[15:30:14.442] [info] actor 00000014: retired 2 recipe(s)
+[15:30:14.442] [info] actor FF00095A: retired 1 recipe(s)
+[15:30:14.442] [info] apply armor 000CF80F actor 00000014 geometry ' (00036198)[0]/ (000CF80F) [75%]' material=untouched no shell
+[15:30:14.442] [info] apply armor 000FE2FF actor 00000014 geometry 'TorsoLow:0' material=private no shell
+[15:30:14.442] [info] apply armor 000FE2FF actor 00000014 geometry ' (00098BB3)[0]/ (000FE2FF) [75%]' material=private no shell
+[15:30:14.442] [info] actor 00000014 (123): 3 piece(s), 1 recipe(s) applied
+[15:30:14.443] [info] apply armor 000FE300 actor FF00095A geometry 'TorsoLow:0' material=private no shell
+[15:30:14.443] [info] actor FF00095A (Faendal): 1 piece(s), 1 recipe(s) applied
+[15:30:14.827] [info] actor 00000014: retired 1 recipe(s)
+[15:30:14.827] [info] actor FF00095A: retired 1 recipe(s)
+[15:30:14.827] [info] apply armor 000CF80F actor 00000014 geometry ' (00036198)[0]/ (000CF80F) [75%]' material=private shell (PBR copy, additive, skin cloned, buffers shared, emissive storage cloned, inflation own skin data (copied))
+[15:30:14.828] [info] apply armor 000FE2FF actor 00000014 geometry 'TorsoLow:0' material=private no shell
+[15:30:14.828] [info] apply armor 000FE2FF actor 00000014 geometry ' (00098BB3)[0]/ (000FE2FF) [75%]' material=private no shell
+[15:30:14.828] [info]   recipe Skyrim-92DED: light on NPC Head [Head] x1.00
+[15:30:14.828] [info] actor 00000014 (123): 3 piece(s), 2 recipe(s) applied
+[15:30:14.828] [info] apply armor 000FE300 actor FF00095A geometry 'TorsoLow:0' material=private no shell
+[15:30:14.828] [info] actor FF00095A (Faendal): 1 piece(s), 1 recipe(s) applied

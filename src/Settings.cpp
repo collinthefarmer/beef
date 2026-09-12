@@ -1,8 +1,11 @@
 #include "Settings.h"
 
+#include "Core.h"
+
 #include <algorithm>
 #include <array>
 #include <cctype>
+#include <cmath>
 #include <cstdlib>
 #include <format>
 #include <optional>
@@ -35,8 +38,8 @@ constexpr std::array kTable{
                 "diagnostics.",
                 &Settings::verboseLogging, 0, 1, W::kCheckbox, false},
     SettingDesc{"General", "AnimationFPS", "Animation FPS",
-                "Animation update rate.", &Settings::animationFPS, 15, 60,
-                W::kIntSlider, false},
+                "Animation update rate.", &Settings::animationFPS,
+                kMinAnimationFPS, kMaxAnimationFPS, W::kIntSlider, false},
     SettingDesc{"General", "AnimationSpeed", "Animation speed",
                 "Time multiplier for the EFSH animation.",
                 &Settings::animationSpeed, kMinAnimationSpeed,
@@ -82,7 +85,7 @@ std::optional<float> ParseFloat(std::string_view a_value) {
   std::string buf{a_value};
   char *end = nullptr;
   const float v = std::strtof(buf.c_str(), &end);
-  if (end == buf.c_str() || !Trim({end}).empty()) {
+  if (end == buf.c_str() || !Trim({end}).empty() || !std::isfinite(v)) {
     return std::nullopt;
   }
   return v;
@@ -212,6 +215,32 @@ std::string Settings::Serialize() const {
     out += std::format("{}={}\n", desc.key, Format(*this, desc));
   }
   return out;
+}
+
+Settings NormalizeSettings(Settings a_settings) {
+  const Settings defaults;
+  for (const SettingDesc &desc : SettingTable()) {
+    Match(desc.member, [&](auto a_member) {
+      using T = std::remove_cvref_t<decltype(a_settings.*a_member)>;
+      if constexpr (std::is_same_v<T, float>) {
+        const float value = a_settings.*a_member;
+        a_settings.*a_member = std::isfinite(value)
+                                   ? std::clamp(value, desc.min, desc.max)
+                                   : defaults.*a_member;
+      } else if constexpr (std::is_same_v<T, std::uint32_t>) {
+        a_settings.*a_member = std::clamp(a_settings.*a_member,
+                                          static_cast<std::uint32_t>(desc.min),
+                                          static_cast<std::uint32_t>(desc.max));
+      } else if constexpr (std::is_same_v<T, TextureScale>) {
+        const TextureScale value = a_settings.*a_member;
+        a_settings.*a_member =
+            static_cast<std::size_t>(value) < desc.items.size()
+                ? value
+                : defaults.*a_member;
+      }
+    });
+  }
+  return a_settings;
 }
 
 bool SettingsDiffer(const Settings &a_lhs, const Settings &a_rhs) {

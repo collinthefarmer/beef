@@ -7,8 +7,8 @@ the new source tree.
 Three artifacts hold what this document does not restate, and it defers to
 them:
 
-- `src/_old/` is the frozen previous implementation. It still builds and
-  ships, and it is the reference for the behaviour the new tree must
+- `src/_old/` is the frozen previous implementation. It is excluded from
+  the active build and retained as the reference for the behaviour the new tree must
   reproduce. Where prose and the frozen tree disagree, the frozen tree is
   the fact.
 - `schema/recipe.schema.json` and `schema/example-magicka.json` are the
@@ -123,7 +123,7 @@ The model:
 
 ## Architecture
 
-### Six directories, read in dependency order
+### Seven directories, read in dependency order
 
 ```
 src/
@@ -132,15 +132,24 @@ src/
 
   recipe/   what an effect is            (pure)
   mesh/     what an effect is applied to (pure)
+  planners/ how recipes are placed, merged, and bound (pure)
+  studio/   the editor's model           (pure)
   engine/   how an effect reaches an actor
   render/   how an effect becomes pixels
-  studio/   the editor's model           (pure)
   menu/     the editor's surface
 ```
 
-`recipe/`, `mesh/`, and `studio/` are engine-free. `engine/`, `render/`,
+`recipe/`, `mesh/`, `planners/`, and `studio/` are engine-free. `engine/`, `render/`,
 and `menu/` are the adapters over them. `src` is the only include root, so
 every include names its directory.
+
+The native object library builds those four pure directories and `Settings.cpp`.
+The plugin DLL adds `main.cpp`, `SettingsFile.cpp`, and the three adapter
+directories. `CMakeLists.txt` defines both source lists; neither includes `_old`.
+The native test runner also compiles `engine/SessionQueue.cpp` and
+`engine/ApplicationService.cpp` directly. The scheduler is injected, so load
+transitions, task lifetime, application revisions, and controlled preparation/
+render outcomes can be tested without SKSE or engine objects.
 
 ### Functional core, thin adapter
 
@@ -211,6 +220,9 @@ It rests on two disciplines.
 
 ## Verification
 
+- The repeatable [in-game regression flow](docs/in-game-regression.md) exercises
+  the integrated plugin with existing logs and visual checkpoints, and records
+  branches that require additional fixtures or instrumentation.
 - **Native first.** `recipe/`, `mesh/`, `studio/`, and every planner
   extracted from the engine modules are tested through the native suite.
   The recipe module is checked by round-trip against the frozen fixtures.

@@ -22,7 +22,7 @@ render→engine edge is `render/Compositor.h` including `engine/MeshReader.h` fo
 
 ## Decision 1 — `PlaceLights` name collision → render's is `PlaceLightNodes`
 
-`planners/ManagerDecisions.h` owns the decision
+`planners/ActorPlanning.h` owns the decision
 `ActorLightPlan PlaceLights(const ActorState &, std::span<const Recipe>)`.
 Render's geometry-space node placer is renamed `PlaceLightNodes`
 (`render/Binding.h`, owned by `render/Light.cpp`). `Manager::PlaceLightsOf`

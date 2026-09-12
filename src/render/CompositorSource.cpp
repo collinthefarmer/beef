@@ -220,8 +220,11 @@ LargestOf(const std::unordered_map<std::string, std::shared_ptr<T>> &a_cache,
 }
 
 std::shared_ptr<RenderedMask> CachedMask(const GeometryInputs &a_inputs,
+                                         const Recipe &a_recipe,
                                          std::string_view a_name) {
-  return a_inputs.masks ? LargestOf(*a_inputs.masks, a_name) : nullptr;
+  return a_inputs.masks
+             ? LargestRecipeTexture(*a_inputs.masks, a_recipe.id, a_name)
+             : nullptr;
 }
 
 std::shared_ptr<TextureLab::RenderTarget>
@@ -246,12 +249,15 @@ TextureLab::LayerInput SamplingNow(const PreparedSource &a_source,
 }
 }
 
-MaterialInputs MaterialInputs::From(const PBRMaterialLayout &a_material) {
+MaterialInputs MaterialInputs::From(const PbrMaterial &a_material) {
   MaterialInputs in;
-  in.diffuse = a_material.diffuseTexture;
-  in.normal = a_material.normalTexture;
-  in.rmaos = a_material.rmaosTexture;
-  in.displacement = a_material.displacementTexture;
+  if (!a_material.Attached()) {
+    return in;
+  }
+  in.diffuse = a_material.material_->diffuseTexture;
+  in.normal = a_material.material_->normalTexture;
+  in.rmaos = a_material.material_->rmaosTexture;
+  in.displacement = a_material.material_->displacementTexture;
   in.flatDisplacement = MeasureFlatDisplacement(in.displacement);
   return in;
 }
@@ -283,8 +289,8 @@ Compositor::PrepareSource(const Recipe &a_recipe, const Ref &a_ref,
     if (!rendered || !rendered->Problem().empty()) {
       prepared.problem =
           rendered ? rendered->Problem() : "mask could not be prepared";
-      report.Warn(std::format("'@{}': {}; the layer is skipped", a_ref.name,
-                              prepared.problem));
+      report.Warn(std::format("'@{}': {}; the active layer cannot be rendered",
+                              a_ref.name, prepared.problem));
       return prepared;
     }
     prepared.texture = RE::NiPointer<RE::NiSourceTexture>{rendered->Texture()};
@@ -359,7 +365,8 @@ Compositor::PrepareSource(const Recipe &a_recipe, const Ref &a_ref,
         prepared.sampling.meshSpace = true;
       },
       [&](const RippleSource &ripple) {
-        auto rendered = PrepareRipple(*source, ripple, a_inputs, a_size);
+        const RecipeTextureKey key{a_recipe.id, source->name, a_size};
+        auto rendered = PrepareRipple(key, ripple, a_inputs);
         if (!rendered) {
           prepared.problem = rendered.error();
           return;
@@ -401,8 +408,8 @@ Compositor::PrepareSource(const Recipe &a_recipe, const Ref &a_ref,
         prepared.sampling.meshSpace = true;
       });
   if (!prepared.problem.empty()) {
-    report.Warn(std::format("'@{}': {}; the layer is skipped", a_ref.name,
-                            prepared.problem));
+    report.Warn(std::format("'@{}': {}; the active layer cannot be rendered",
+                            a_ref.name, prepared.problem));
   }
   return prepared;
 }
@@ -424,7 +431,7 @@ Compositor::PrepareMask(const Recipe &a_recipe, const Ref &a_ref,
     auto pick = PickMaterialChannel(*channel, a_inputs, true);
     if (!pick.problem.empty() || !RealTexture(pick.texture)) {
       prepared.problem = pick.problem.empty() ? DescribeTexture(pick.texture) +
-                                                    "; evaluates as white"
+                                                    "; mask cannot be rendered"
                                               : pick.problem;
       report.Warn(std::format("mask '@{}': {}", a_ref.name, prepared.problem));
       return prepared;
@@ -438,7 +445,7 @@ Compositor::PrepareMask(const Recipe &a_recipe, const Ref &a_ref,
   if (!rendered || !rendered->Problem().empty()) {
     prepared.problem =
         (rendered ? rendered->Problem() : "mask could not be prepared") +
-        "; evaluates as white";
+        "; mask cannot be rendered";
     report.Warn(std::format("mask '@{}': {}", a_ref.name, prepared.problem));
     return prepared;
   }
@@ -493,7 +500,7 @@ Compositor::InspectSource(const Recipe &a_recipe, std::string_view a_name,
                           const GeometryInputs &a_inputs) const {
   if (a_recipe.FindMask(a_name)) {
     PreparedSource prepared;
-    if (auto rendered = CachedMask(a_inputs, a_name)) {
+    if (auto rendered = CachedMask(a_inputs, a_recipe, a_name)) {
       prepared.texture =
           RE::NiPointer<RE::NiSourceTexture>{rendered->Texture()};
       prepared.sampling.channel =
@@ -575,7 +582,9 @@ Compositor::InspectSource(const Recipe &a_recipe, std::string_view a_name,
       [&](const RippleSource &) {
         prepared.sampling.meshSpace = true;
         const auto rendered =
-            a_inputs.ripples ? LargestOf(*a_inputs.ripples, a_name) : nullptr;
+            a_inputs.ripples
+                ? LargestRecipeTexture(*a_inputs.ripples, a_recipe.id, a_name)
+                : nullptr;
         if (!rendered) {
           notRendered();
           return;
@@ -611,7 +620,7 @@ Compositor::InspectMask(const Recipe &a_recipe, std::string_view a_name,
   }
   PreparedMask prepared;
   prepared.animated = IsAnimated(a_recipe, *mask);
-  if (auto rendered = CachedMask(a_inputs, a_name)) {
+  if (auto rendered = CachedMask(a_inputs, a_recipe, a_name)) {
     prepared.texture = RE::NiPointer<RE::NiSourceTexture>{rendered->Texture()};
     prepared.animated = rendered->Animated();
     prepared.problem = rendered->Problem();
@@ -622,7 +631,7 @@ Compositor::InspectMask(const Recipe &a_recipe, std::string_view a_name,
     auto pick = PickMaterialChannel(*channel, a_inputs, false);
     if (!pick.problem.empty() || !RealTexture(pick.texture)) {
       prepared.problem = pick.problem.empty() ? DescribeTexture(pick.texture) +
-                                                    "; evaluates as white"
+                                                    "; mask cannot be rendered"
                                               : pick.problem;
       return prepared;
     }
@@ -643,7 +652,7 @@ Compositor::PrepareRenderedMask(const Recipe &a_recipe, std::string_view a_name,
   if (!mask || !a_inputs.masks) {
     return nullptr;
   }
-  const auto key = std::format("{}@{}", a_name, a_size.Pixels());
+  const RecipeTextureKey key{a_recipe.id, a_name, a_size};
   if (const auto it = a_inputs.masks->find(key); it != a_inputs.masks->end()) {
     return it->second;
   }
@@ -733,7 +742,8 @@ Compositor::PrepareRenderedMask(const Recipe &a_recipe, std::string_view a_name,
           return SourceType(*source);
         }
         if (a_recipe.FindMask(name)) {
-          const auto dep = CachedMask(a_inputs, name);
+          const auto dep =
+              FindRecipeTexture(*a_inputs.masks, a_recipe.id, name, a_size);
           return dep && dep->Vector() ? ValueType::kVec3 : ValueType::kScalar;
         }
         return graph ? graph->TypeOf(name) : std::nullopt;
@@ -756,13 +766,14 @@ Compositor::PrepareRenderedMask(const Recipe &a_recipe, std::string_view a_name,
 }
 
 std::expected<std::shared_ptr<RenderedRipple>, std::string>
-Compositor::PrepareRipple(const Source &a_source, const RippleSource &a_ripple,
-                          const GeometryInputs &a_inputs, TextureSize a_size) {
+Compositor::PrepareRipple(const RecipeTextureKey &a_key,
+                          const RippleSource &a_ripple,
+                          const GeometryInputs &a_inputs) {
   if (!a_inputs.ripples) {
     return std::unexpected("no geometry to ripple over");
   }
-  const auto key = std::format("{}@{}", a_source.name, a_size.Pixels());
-  if (const auto it = a_inputs.ripples->find(key);
+  const TextureSize size{a_key.pixels};
+  if (const auto it = a_inputs.ripples->find(a_key);
       it != a_inputs.ripples->end()) {
     return it->second;
   }
@@ -776,13 +787,13 @@ Compositor::PrepareRipple(const Source &a_source, const RippleSource &a_ripple,
     return std::unexpected(entry.error());
   }
   auto positions =
-      BakeInto(**entry, BakeKeyOf(PositionBake{}, a_size), a_size,
+      BakeInto(**entry, BakeKeyOf(PositionBake{}, size), size,
                [&] { return BuildBake(*(*entry)->mesh, PositionBake{}); });
   if (!positions) {
     return std::unexpected(positions.error());
   }
   auto ripple = std::make_shared<RenderedRipple>();
-  ripple->target_ = lab->Acquire(a_size);
+  ripple->target_ = lab->Acquire(size);
   if (!ripple->target_) {
     return std::unexpected("no render target available");
   }
@@ -793,18 +804,21 @@ Compositor::PrepareRipple(const Source &a_source, const RippleSource &a_ripple,
   ripple->root_ = a_inputs.root;
   TextureLab::RipplePass clear;
   clear.positions = ripple->positions_->Texture();
-  lab->RenderRipple(*ripple->target_, clear);
-  (*a_inputs.ripples)[key] = ripple;
+  if (!lab->RenderRipple(*ripple->target_, clear)) {
+    return std::unexpected("the ripple target could not be initialized");
+  }
+  (*a_inputs.ripples)[a_key] = ripple;
   return ripple;
 }
 
-void Compositor::RenderRipple(RenderedRipple &a_ripple,
+bool Compositor::RenderRipple(RenderedRipple &a_ripple,
                               const SignalState &a_signals, float a_time) {
-  if (!a_ripple.target_ || !a_ripple.positions_ ||
-      a_ripple.renderedTick_ == tick_) {
-    return;
+  if (!a_ripple.target_ || !a_ripple.positions_) {
+    return false;
   }
-  a_ripple.renderedTick_ = tick_;
+  if (a_ripple.renderedTick_ == tick_) {
+    return true;
+  }
   TextureLab::RipplePass pass;
   pass.positions = a_ripple.positions_->Texture();
   pass.frame = kPositionFrame;
@@ -828,36 +842,40 @@ void Compositor::RenderRipple(RenderedRipple &a_ripple,
         std::max(0.0f, a_time - firing.startTime)};
   }
   if (pass.firingCount == 0 && !a_ripple.hadFirings_) {
-    return;
+    return true;
+  }
+  if (!TextureLab::GetSingleton()->RenderRipple(*a_ripple.target_, pass)) {
+    return false;
   }
   a_ripple.hadFirings_ = pass.firingCount > 0;
-  TextureLab::GetSingleton()->RenderRipple(*a_ripple.target_, pass);
+  a_ripple.renderedTick_ = tick_;
+  return true;
 }
 
-void Compositor::RenderMask(RenderedMask &a_mask, const SignalState &a_signals,
+bool Compositor::RenderMask(RenderedMask &a_mask, const SignalState &a_signals,
                             float a_time) {
   if (!a_mask.program_ || !a_mask.target_ || !a_mask.problem_.empty()) {
-    return;
+    return false;
   }
   if (a_mask.renderedOnce_ &&
       (!a_mask.animated_ || a_mask.renderedTick_ == tick_)) {
-    return;
+    return true;
   }
   for (const auto &dependency : a_mask.dependencies_) {
-    if (dependency) {
-      RenderMask(*dependency, a_signals, a_time);
+    if (dependency && !RenderMask(*dependency, a_signals, a_time)) {
+      return false;
     }
   }
   for (const auto &texture : a_mask.textures_) {
-    if (texture.ripple) {
-      RenderRipple(*texture.ripple, a_signals, a_time);
+    if (texture.ripple && !RenderRipple(*texture.ripple, a_signals, a_time)) {
+      return false;
     }
   }
   TextureLab::ProgramPass pass;
   pass.code = a_mask.program_->Code();
   for (const auto &binding : a_mask.refs_) {
     if (pass.refCount >= pass.refs.size()) {
-      return;
+      return false;
     }
     TextureLab::ProgramRef ref;
     ref.isTexture = binding.isTexture;
@@ -869,14 +887,14 @@ void Compositor::RenderMask(RenderedMask &a_mask, const SignalState &a_signals,
   }
   for (const auto &source : a_mask.textures_) {
     if (pass.textureCount >= pass.textures.size()) {
-      return;
+      return false;
     }
     pass.textures[pass.textureCount++] = {
         source.texture.get(), SamplingNow(source, a_signals), source.normalize};
   }
   for (const auto &curve : a_mask.curves_) {
     if (pass.curveCount >= pass.curves.size()) {
-      return;
+      return false;
     }
     pass.curves[pass.curveCount++] = curve.get();
   }
@@ -885,6 +903,8 @@ void Compositor::RenderMask(RenderedMask &a_mask, const SignalState &a_signals,
   if (TextureLab::GetSingleton()->RenderProgram(*a_mask.target_, pass)) {
     a_mask.renderedOnce_ = true;
     a_mask.renderedTick_ = tick_;
+    return true;
   }
+  return false;
 }
 }

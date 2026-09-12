@@ -4,6 +4,7 @@
 
 #include <algorithm>
 #include <format>
+#include <limits>
 #include <span>
 #include <vector>
 
@@ -86,7 +87,7 @@ std::expected<RawBytes, std::string> ReadBuffers(const BufferSet &a_set,
   if (!shape) {
     return std::unexpected("no renderer buffers");
   }
-  const std::uint32_t indexCount = a_set.triangles * 3;
+  const std::size_t indexCount = static_cast<std::size_t>(a_set.triangles) * 3;
   if (a_set.vertices == 0 || indexCount == 0 || a_set.layout.stride == 0) {
     return std::unexpected("empty buffers");
   }
@@ -94,6 +95,10 @@ std::expected<RawBytes, std::string> ReadBuffers(const BufferSet &a_set,
       static_cast<std::size_t>(a_set.vertices) * a_set.layout.stride;
   const std::size_t indexBytes =
       static_cast<std::size_t>(indexCount) * sizeof(std::uint16_t);
+  if (vertexBytes > std::numeric_limits<std::uint32_t>::max() ||
+      indexBytes > std::numeric_limits<std::uint32_t>::max()) {
+    return std::unexpected("renderer buffer size exceeds the D3D11 byte range");
+  }
   RawBytes out;
   if (!a_forceGpu && shape->rawVertexData && shape->rawIndexData) {
     out.vertices.assign(shape->rawVertexData,

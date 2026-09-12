@@ -2,6 +2,10 @@
 
 #include "Identity.h"
 #include "SettingsFile.h"
+#include "engine/Events.h"
+#include "engine/Hooks.h"
+#include "engine/Manager.h"
+#include "engine/RecipeStore.h"
 #include "menu/Menu.h"
 
 namespace BetterEnchantmentEffects {
@@ -34,15 +38,48 @@ bool CommunityShadersLoaded() {
 
 void OnMessage(SKSE::MessagingInterface::Message *a_msg) {
   using namespace BetterEnchantmentEffects;
+  if (!a_msg) {
+    return;
+  }
+  auto *manager = Manager::GetSingleton();
   switch (a_msg->type) {
-  case SKSE::MessagingInterface::kDataLoaded:
+  case SKSE::MessagingInterface::kDataLoaded: {
+    static bool initialized = false;
+    if (initialized) {
+      return;
+    }
+    initialized = true;
     logger::info("kDataLoaded");
     SetSettings(LoadSettingsFromDisk());
+    LoadRecipes();
     Menu::RegisterMenu();
-    if (!CommunityShadersLoaded()) {
+    const bool available = CommunityShadersLoaded();
+    manager->SetEmissivePathEnabled(available);
+    if (!available) {
       logger::error("CommunityShaders.dll is not loaded; emissive path "
                     "disabled, plugin idle");
+      break;
     }
+    RegisterEventSinks();
+    InstallHooks();
+    break;
+  }
+  case SKSE::MessagingInterface::kPreLoadGame:
+    logger::info("kPreLoadGame");
+    manager->BeginLoad();
+    break;
+  case SKSE::MessagingInterface::kPostLoadGame:
+    logger::info("kPostLoadGame");
+    if (a_msg->data) {
+      manager->FinishLoad();
+    } else {
+      logger::warn("save load failed; engine effects remain paused");
+    }
+    break;
+  case SKSE::MessagingInterface::kNewGame:
+    logger::info("kNewGame");
+    manager->BeginLoad();
+    manager->FinishLoad();
     break;
   default:
     break;

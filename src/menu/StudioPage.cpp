@@ -46,7 +46,8 @@ constexpr Studio::TableStyle kFooterStyle{.borders = Studio::TableBorders::kAll,
                                           .rowBackground = false};
 
 [[nodiscard]] bool PainterReady(const Frame &a_frame) {
-  return LayoutOf(a_frame).maskEditor && a_frame.state->paint &&
+  return LayoutOf(a_frame).maskEditor && a_frame.recipe &&
+         a_frame.state->paint && a_frame.state->paint->ready &&
          a_frame.recipe->id == Studio::kPaintRecipe;
 }
 
@@ -54,9 +55,9 @@ void BeginPainting(const Frame &a_frame) {
   const Studio::RecipeRow *active = a_frame.recipe;
   const Studio::View &view = ViewOf(a_frame);
   const auto &recipes = a_frame.piece->recipes;
-  if (view.Isolating() && view.isolateRecipe != Studio::kPaintRecipe) {
-    const auto it =
-        std::ranges::find(recipes, view.isolateRecipe, &Studio::RecipeRow::id);
+  if (view.Isolating() && view.isolation.recipeID != Studio::kPaintRecipe) {
+    const auto it = std::ranges::find(recipes, view.isolation.recipeID,
+                                      &Studio::RecipeRow::id);
     if (it != recipes.end() && it->id != active->id) {
       active = &*it;
       Studio::Post(*a_frame.intents, Studio::PickRecipe{it->id});
@@ -64,9 +65,27 @@ void BeginPainting(const Frame &a_frame) {
   }
   if (const std::optional<RecipeKey> key = DefaultKeyOf(*a_frame.piece)) {
     Studio::Post(*a_frame.intents,
-                 Studio::BeginPaint{active->id, *key, Surface::kMaterial});
+                 Studio::BeginPaint{active->id, *key, Surface::kMaterial,
+                                    a_frame.state->nextPaintSessionID++,
+                                    a_frame.state->lastPaintReset});
   } else {
     Warn("the piece offers no key to paint on");
+  }
+}
+
+void DrawPaintWaiting(const Frame &a_frame) {
+  if (!a_frame.state->paint) {
+    return;
+  }
+  const Studio::PaintSession &paint = *a_frame.state->paint;
+  if (paint.problem) {
+    Problem(paint.problem->message);
+  } else {
+    Dim(paint.projected ? "waiting for the paint preview"
+                        : "starting the paint recipe");
+  }
+  if (ImGui::Button("Return to Compose")) {
+    Studio::Post(*a_frame.intents, Studio::EndPaint{});
   }
 }
 
@@ -78,7 +97,7 @@ void PreparePainter(const Frame &a_frame) {
     return;
   }
   if (!PainterReady(a_frame)) {
-    Dim("starting the paint recipe");
+    DrawPaintWaiting(a_frame);
     return;
   }
   for (const Studio::GeometryRow &geometry : a_frame.recipe->geometries) {
@@ -181,12 +200,52 @@ void DrawGeometryBody(const Frame &a_frame) {
   }
 }
 
+void DrawApplication(const Frame &a_frame) {
+  const auto &selection = SelectionOf(a_frame);
+  const std::string_view recipeID = a_frame.state->paint
+                                        ? Studio::kPaintRecipe
+                                        : std::string_view{selection.recipeID};
+  const ApplicationRecord *latest = nullptr;
+  for (const ApplicationRecord &record : a_frame.snapshot->applications) {
+    if (record.token.actorID != 0 && selection.piece.actorID != 0 &&
+        record.token.actorID != selection.piece.actorID) {
+      continue;
+    }
+    if (!record.token.recipeID.empty() && record.token.recipeID != recipeID) {
+      continue;
+    }
+    if (!latest || record.token.revision > latest->token.revision) {
+      latest = &record;
+    }
+  }
+  if (!latest) {
+    return;
+  }
+  ApplicationPhase phase = latest->phase;
+  std::string problem = latest->problem;
+  for (const ApplicationActor &actor : latest->actors) {
+    if (actor.actorID != selection.piece.actorID) {
+      continue;
+    }
+    phase = actor.phase;
+    problem = actor.problem;
+    break;
+  }
+  Dim(std::format("Application: {}", ApplicationPhaseName(phase)));
+  if (!problem.empty()) {
+    Problem(problem);
+  }
+}
+
 void DrawBody(const Frame &a_frame) {
+  DrawApplication(a_frame);
   if (!a_frame.piece || !a_frame.recipe) {
-    Dim(a_frame.state->paint
-            ? "starting the paint recipe"
-            : "nothing applied; equip enchanted PBR armor or press "
-              "Re-apply all on the Recipes page");
+    if (a_frame.state->paint) {
+      DrawPaintWaiting(a_frame);
+    } else {
+      Dim("nothing applied; equip enchanted PBR armor or press Re-apply all on "
+          "the Recipes page");
+    }
     return;
   }
   ImGui::PushID(a_frame.recipe->id.c_str());
@@ -258,6 +317,9 @@ void DrawFooter(const Frame &a_frame) {
 void HistoryKeys(const Frame &a_frame) {
   const Studio::RecipeRow *recipe = a_frame.recipe;
   const Studio::MenuState &state = *a_frame.state;
+  if (state.paint && state.paint->pendingCommit) {
+    return;
+  }
   const auto *io = ImGui::GetIO();
   if (!recipe || !io || !io->KeyCtrl || state.activeField != Studio::kNoField) {
     return;
@@ -296,6 +358,12 @@ void __stdcall RenderStudio() {
     return;
   }
   const Studio::Snapshot &snapshot = *held;
+  if (snapshot.paintUpdate) {
+    Studio::AcknowledgePaintUpdate(state, *snapshot.paintUpdate);
+  }
+  if (snapshot.paintCommit) {
+    Studio::AcknowledgePaintCommit(state, *snapshot.paintCommit);
+  }
   Studio::ResolveSelection(state.selection, snapshot);
   Studio::Intents intents;
 
@@ -308,6 +376,7 @@ void __stdcall RenderStudio() {
       Studio::SelectedPiece(snapshot, state.selection);
   const Studio::RecipeRow *recipe =
       Studio::SelectedRecipe(piece, state.selection);
+  Studio::ObservePaintRecipe(state, recipe);
   const Studio::GeometryRow *geometry =
       Studio::SelectedGeometry(recipe, state.selection);
   const Studio::Names names = (recipe && geometry)
@@ -327,7 +396,8 @@ void __stdcall RenderStudio() {
   const float footer =
       RuleHeight() + ImGui::GetFrameHeightWithSpacing() * 2.0f + 8.0f;
   if (ImGui::BeginChild("studio-body", ImVec2{0.0f, -footer}, 0, 0)) {
-    DrawBody(frame);
+    Disabled(state.paint && state.paint->pendingCommit,
+             [&] { DrawBody(frame); });
   }
   ImGui::EndChild();
   DrawFooter(frame);

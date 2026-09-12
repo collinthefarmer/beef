@@ -105,14 +105,32 @@ void WatchAnimationEvents(RE::Actor *a_actor) {
   if (!a_actor) {
     return;
   }
-  AnimationSink *sink = AnimationSink::GetSingleton();
-  a_actor->RemoveAnimationGraphEventSink(sink);
-  a_actor->AddAnimationGraphEventSink(sink);
+  RE::BSAnimationGraphManagerPtr manager;
+  if (!a_actor->GetAnimationGraphManager(manager) || !manager) {
+    return;
+  }
+  for (const auto &graph : manager->graphs) {
+    if (graph) {
+      graph->GetEventSource<RE::BSAnimationGraphEvent>()->AddEventSink(
+          AnimationSink::GetSingleton());
+      return;
+    }
+  }
 }
 
 void UnwatchAnimationEvents(RE::Actor *a_actor) {
-  if (a_actor) {
-    a_actor->RemoveAnimationGraphEventSink(AnimationSink::GetSingleton());
+  if (!a_actor) {
+    return;
+  }
+  RE::BSAnimationGraphManagerPtr manager;
+  if (!a_actor->GetAnimationGraphManager(manager) || !manager) {
+    return;
+  }
+  for (const auto &graph : manager->graphs) {
+    if (graph) {
+      graph->GetEventSource<RE::BSAnimationGraphEvent>()->RemoveEventSink(
+          AnimationSink::GetSingleton());
+    }
   }
 }
 

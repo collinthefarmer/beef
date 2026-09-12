@@ -17,10 +17,13 @@ struct PlayerUpdate {
 }
 
 void InstallHooks() {
-  REL::Relocation<std::uintptr_t> vtable{RE::VTABLE_PlayerCharacter[0]};
-  PlayerUpdate::func =
-      vtable.write_vfunc(PlayerUpdate::kIndex, PlayerUpdate::thunk);
-  logger::info("hooked PlayerCharacter::Update (vfunc {:#x})",
-               PlayerUpdate::kIndex);
+  static std::once_flag installed;
+  std::call_once(installed, [] {
+    REL::Relocation<std::uintptr_t> vtable{RE::VTABLE_PlayerCharacter[0]};
+    PlayerUpdate::func =
+        vtable.write_vfunc(PlayerUpdate::kIndex, PlayerUpdate::thunk);
+    logger::info("hooked PlayerCharacter::Update (vfunc {:#x})",
+                 PlayerUpdate::kIndex);
+  });
 }
 }

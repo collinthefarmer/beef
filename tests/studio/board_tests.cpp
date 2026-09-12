@@ -48,8 +48,8 @@ int main() {
 
   Selection selection;
   View view;
-  view.isolateRecipe = "glow";
-  view.isolateOutput = 0;
+  view.isolation.recipeID = "glow";
+  view.isolation.output = 0;
 
   const Board board = BuildBoard(recipe, geometry, selection, view);
 

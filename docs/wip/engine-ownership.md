@@ -33,7 +33,7 @@ the non-template `LookupForm`; it has no `.cpp` body.
 - `float ActorEnvironment::ActorState(ActorStateKind) const`
 - `float ActorEnvironment::Enchantment(EnchantmentField) const`
 - `std::optional<Efsh::EffectParams> ActorEnvironment::EffectShader(const FormRef &) const`
-- `RE::Actor *ActorEnvironment::Actor() const noexcept` (private)
+- `RE::NiPointer<RE::Actor> ActorEnvironment::Actor() const noexcept` (private)
 
 `ActorEnvironment` is the live `SignalEnvironment` (`recipe/Signals.h`): it holds
 an `RE::ActorHandle` and a form id, never `RE::` pointers across ticks, and
@@ -59,7 +59,7 @@ answers zero for anything it cannot reach.
 - `std::shared_ptr<const SignalGraph> GraphFor(const Recipe &)`
 - `const Studio::ReferenceCounts *ReferencesOf(std::string_view) noexcept`
 - `Recipe *MutableRecipe(std::string_view) noexcept`
-- `std::span<const Diagnostic> Revalidate(std::string_view)`
+- `std::span<const Diagnostic> RefreshRecipeDerivedState(std::string_view)`
 - `bool IsDirty(std::string_view) noexcept`
 - `std::expected<std::filesystem::path, std::string> SaveRecipe(std::string_view)`
 - `bool RevertRecipe(std::string_view)`
@@ -102,11 +102,13 @@ here so no linchpin surfaces as an undefined symbol at merge.
 - `void Manager::QueueEquipFinalize(RE::FormID)`
 - `void Manager::QueueLoadedActorRefreshes()`
 - `void Manager::Clear()`
+- `void Manager::BeginLoad()`
+- `void Manager::FinishLoad()`
 - `void Manager::SetEmissivePathEnabled(bool)`
 
 ### `src/engine/ManagerApply.cpp` (responsibility: ActorApply)
 
-Wires `MatchActor` / `PlaceGeometry` / `PlaceLights` (planner) / `RetirePlan`,
+Wires `MatchActor` / `PlanGeometryPlacement` / `PlaceLights` (planner) / `RecipesOfInactiveInstances`,
 `PlanStacks`, and `PlanBinding` to real handles and the render bindings.
 
 - `void Manager::ReapplyAll()`
@@ -120,7 +122,7 @@ Wires `MatchActor` / `PlaceGeometry` / `PlaceLights` (planner) / `RetirePlan`,
 - `std::vector<LivePiece> Manager::CollectPieces(RE::Actor *, bool)`
 - `void Manager::MatchRecipes(RE::Actor *, LiveActor &)` — calls `MatchActor`
 - `std::optional<std::size_t> Manager::InstanceFor(RE::Actor *, LiveActor &, RecipeId, RE::MagicItem *)`
-- `void Manager::PlaceInstances(RE::Actor *, LiveActor &)` — calls `PlaceGeometry`, `PlanStacks`, `PlanBinding`
+- `void Manager::PlaceInstances(RE::Actor *, LiveActor &)` — calls `PlanGeometryPlacement`, `PlanStacks`, `PlanBinding`
 - `void Manager::PlaceOnGeometry(RE::Actor *, LiveActor &, PieceId, std::size_t)` — calls `Compositor::Prepare`, `MaterialBinding::Install`, `ShellBinding::Create`
 - `void Manager::PlaceLightsOf(RE::Actor *, LiveActor &)` — calls planner `PlaceLights`, render `PlaceLightNodes`, `LightBinding::Create`
 - `bool Manager::LayoutSanityCheck(RE::BSLightingShaderProperty *)`
@@ -256,7 +258,7 @@ REFERENCE.md under the engine headings:
 Resolve these before dispatching fills — a promised capability with no
 home, or a cross-cluster name collision, is what the barrier exists to catch.
 
-1. `PlaceLights` name collision across clusters. `planners/ManagerDecisions.h`
+1. `PlaceLights` name collision across clusters. `planners/ActorPlanning.h`
    declares `ActorLightPlan PlaceLights(const ActorState &, std::span<const Recipe>)`;
    `render/Binding.h` (frozen) declares
    `std::vector<LightPlacement> PlaceLights(const Bones &, std::span<RE::BSGeometry * const>, RE::NiAVObject *, const Vec3 &)`.

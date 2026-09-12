@@ -8,6 +8,7 @@
 #include "studio/PaintSession.h"
 #include "studio/Selection.h"
 #include "studio/Snapshot.h"
+#include "studio/SourcePlan.h"
 #include "studio/View.h"
 
 #include <array>
@@ -52,6 +53,9 @@ struct MenuState {
   bool settings = false;
   MaskStack mask;
   std::optional<PaintSession> paint;
+  std::uint64_t nextPaintCommitID = 1;
+  std::uint64_t nextPaintSessionID = 1;
+  std::uint64_t lastPaintReset = 0;
   ResourceTab resource = ResourceTab::kSignals;
   std::unordered_map<FieldKey, TextBuffer> textBuffers;
   std::unordered_map<FieldKey, NumberBuffer> numberBuffers;
@@ -109,6 +113,7 @@ struct ShowResource {
 };
 struct AddTerm {
   Term term;
+  std::vector<RecipeEdit> sources{};
 };
 struct SetTermOp {
   std::size_t index = 0;
@@ -123,6 +128,7 @@ struct SetTermKind {
   TermKind kind;
   std::string text;
   std::string label;
+  std::vector<RecipeEdit> sources{};
 };
 struct RemoveTerm {
   std::size_t index = 0;
@@ -153,15 +159,19 @@ struct BeginPaint {
   std::string recipeID;
   RecipeKey key;
   Surface surface = Surface::kMaterial;
+  std::uint64_t sessionID = 0;
+  std::uint64_t resetID = 0;
 };
 struct SetPaintSurface {
   Surface surface = Surface::kMaterial;
 };
 struct KeepPaint {
-  std::string recipeID;
-  std::string name;
+  PaintCommitRequest request;
 };
 struct EndPaint {};
+struct UpdatePaint {
+  PaintUpdateRequest request;
+};
 struct ReadMesh {
   FormID actorID = 0;
   std::string geometry;
@@ -233,10 +243,10 @@ using Intent =
                  SetTermText, SetTermKind, RemoveTerm, MoveTerm, PickTerm,
                  SoloTerm, MuteTerm, LoadMask, ClearMask, UndoMask, RedoMask,
                  ScratchRebuilt, BeginPaint, SetPaintSurface, KeepPaint,
-                 EndPaint, EditRecipe, SoloRecipe, SoloOutput, SoloLayer,
-                 MuteLayer, SetFreeze, SetScrub, SetSpeed, StepClock, Undo,
-                 Redo, CreateRecipe, RenameRecipe, FireTrigger>;
-inline constexpr std::size_t kIntentCount = 45;
+                 EndPaint, UpdatePaint, EditRecipe, SoloRecipe, SoloOutput,
+                 SoloLayer, MuteLayer, SetFreeze, SetScrub, SetSpeed, StepClock,
+                 Undo, Redo, CreateRecipe, RenameRecipe, FireTrigger>;
+inline constexpr std::size_t kIntentCount = 46;
 static_assert(std::variant_size_v<Intent> == kIntentCount);
 
 using Intents = std::vector<Intent>;
@@ -244,5 +254,17 @@ using Intents = std::vector<Intent>;
 void Post(Intents &a_out, Intent a_intent);
 void Post(Intents &a_out, const std::string &a_recipe, RecipeEdit a_edit);
 
+[[nodiscard]] SourceCatalog PaintSources(const MenuState &a_state,
+                                         const RecipeRow &a_recipe,
+                                         const Intents &a_pending);
+[[nodiscard]] bool AcceptIntent(const MenuState &a_state,
+                                const Intent &a_intent);
 void Reduce(MenuState &a_state, const Intent &a_intent);
+void ObservePaintRecipe(MenuState &a_state, const RecipeRow *a_recipe);
+void AcknowledgePaintUpdate(MenuState &a_state,
+                            const PaintUpdateResult &a_result);
+[[nodiscard]] std::optional<UpdatePaint>
+PendingPaintUpdate(const MenuState &a_state);
+void AcknowledgePaintCommit(MenuState &a_state,
+                            const PaintCommitResult &a_result);
 }

@@ -1,5 +1,6 @@
 #pragma once
 
+#include <algorithm>
 #include <cstdint>
 #include <optional>
 #include <span>
@@ -8,6 +9,8 @@
 #include <variant>
 
 namespace BetterEnchantmentEffects {
+inline constexpr std::uint32_t kMinAnimationFPS = 15;
+inline constexpr std::uint32_t kMaxAnimationFPS = 60;
 inline constexpr float kMinAnimationSpeed = 0.05f;
 inline constexpr float kMaxAnimationSpeed = 4.0f;
 
@@ -34,7 +37,7 @@ struct Settings {
   TextureScale textureScale = TextureScale::kFull;
 
   [[nodiscard]] std::uint32_t TickIntervalMS() const noexcept {
-    return 1000u / animationFPS;
+    return 1000u / std::clamp(animationFPS, kMinAnimationFPS, kMaxAnimationFPS);
   }
 
   [[nodiscard]] static Settings Parse(std::string_view a_text);
@@ -66,6 +69,8 @@ struct SettingDesc {
 };
 
 [[nodiscard]] std::span<const SettingDesc> SettingTable();
+
+[[nodiscard]] Settings NormalizeSettings(Settings a_settings);
 
 [[nodiscard]] bool SettingsDiffer(const Settings &a_lhs, const Settings &a_rhs);
 }

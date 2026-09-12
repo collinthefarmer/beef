@@ -4,8 +4,14 @@
 
 #include <algorithm>
 #include <unordered_set>
+#include <utility>
 
 namespace BetterEnchantmentEffects {
+Diagnostic MakeDiagnostic(Severity a_severity, std::string a_where,
+                          std::string a_message) {
+  return Diagnostic{a_severity, std::move(a_where), std::move(a_message)};
+}
+
 namespace {
 std::optional<std::string_view> RefOf(const Param &a_param) noexcept {
   const auto *ref = Get<Ref>(a_param);

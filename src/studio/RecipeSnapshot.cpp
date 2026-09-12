@@ -1,6 +1,5 @@
-#include "studio/RecipeContent.h"
+#include "studio/RecipeSnapshot.h"
 
-#include "studio/Panels.h"
 #include "studio/Rows.h"
 
 #include <string>
@@ -27,7 +26,7 @@ InertReasons(const SignalGraph &a_graph) {
 }
 }
 
-RecipeRow RecipeContent(const RecipeContentInput &a_input) {
+RecipeRow BuildRecipeRow(const RecipeRowInput &a_input) {
   const Recipe &recipe = a_input.recipe;
   RecipeRow r;
   r.id = recipe.id;

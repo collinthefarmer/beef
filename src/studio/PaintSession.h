@@ -2,8 +2,11 @@
 
 #include "recipe/Recipe.h"
 #include "studio/Edits.h"
+#include "studio/PaintCommit.h"
 #include "studio/Snapshot.h"
 
+#include <array>
+#include <expected>
 #include <optional>
 #include <set>
 #include <string>
@@ -19,7 +22,19 @@ struct PaintSession {
   std::string recipeID;
   Surface surface = Surface::kMaterial;
   std::set<std::string> readGeometries;
+  std::optional<std::uint64_t> pendingCommit;
+  std::optional<Diagnostic> problem;
+  std::uint64_t sessionID = 0;
+  bool ready = false;
+  bool projected = false;
+  std::uint64_t revision = 1;
+  std::optional<std::uint64_t> pendingRevision;
+  std::vector<RecipeEdit> sources{};
+  std::array<char, 1024> keepName{};
 };
+
+[[nodiscard]] std::expected<EditBatch, Diagnostic>
+PreparePaintUpdate(const Recipe *a_paint, const PaintUpdateRequest &a_request);
 
 [[nodiscard]] std::optional<std::string> ScratchOf(const RecipeRow &a_recipe);
 
@@ -30,4 +45,7 @@ struct PaintSession {
 [[nodiscard]] std::vector<RecipeEdit> KeepEdits(const Recipe &a_paint,
                                                 const Recipe &a_active,
                                                 std::string_view a_name);
+[[nodiscard]] std::expected<EditBatch, Diagnostic>
+PreparePaintCommit(const Recipe *a_paint, const Recipe *a_target,
+                   const PaintCommitRequest &a_request);
 }

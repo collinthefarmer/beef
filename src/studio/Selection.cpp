@@ -1,6 +1,7 @@
 #include "studio/Selection.h"
 
 #include "recipe/Recipe.h"
+#include "studio/Rows.h"
 #include "studio/Snapshot.h"
 #include "studio/View.h"
 
@@ -12,16 +13,6 @@
 
 namespace BetterEnchantmentEffects::Studio {
 namespace {
-[[nodiscard]] bool IsMaterialOutput(const OutputRow &a_output) noexcept {
-  return a_output.target != Target::kLight;
-}
-
-[[nodiscard]] bool WritesCell(const OutputRow &a_output, Surface a_surface,
-                              Slot a_slot) noexcept {
-  return IsMaterialOutput(a_output) && a_output.surface == a_surface &&
-         a_output.slot == a_slot;
-}
-
 [[nodiscard]] const GeometryRow *
 FindGeometry(const RecipeRow &a_recipe, std::string_view a_name) noexcept {
   const auto it =
@@ -53,7 +44,7 @@ void InjectPinnedRecipe(std::vector<ResolvedRecipe> &a_resolved,
 void FilterIsolated(std::vector<ResolvedRecipe> &a_resolved,
                     const View &a_view) {
   std::erase_if(a_resolved, [&](const ResolvedRecipe &a_r) {
-    return !a_r.recipe || a_r.recipe->id != a_view.isolateRecipe;
+    return !a_r.recipe || a_r.recipe->id != a_view.isolation.recipeID;
   });
 }
 }
@@ -146,6 +137,15 @@ void ResolveSelection(Selection &a_selection, const Snapshot &a_snapshot) {
 }
 
 std::vector<ResolvedRecipe> ViewedRecipes(ViewedRecipesInput a_input) {
+  if (a_input.view.Isolating()) {
+    const auto isolated = std::ranges::find(
+        a_input.loaded, a_input.view.isolation.recipeID, &Recipe::id);
+    a_input.resolved =
+        isolated == a_input.loaded.end()
+            ? std::vector<ResolvedRecipe>{}
+            : Resolve(a_input.piece,
+                      std::span<const Recipe>{&*isolated, std::size_t{1}});
+  }
   if (a_input.view.pin && a_input.view.pin->piece == a_input.ref) {
     InjectPinnedRecipe(a_input.resolved, a_input.piece, a_input.view,
                        a_input.loaded);
@@ -159,7 +159,7 @@ std::vector<ResolvedRecipe> ViewedRecipes(ViewedRecipesInput a_input) {
 std::vector<std::string> View::RecipeIDs() const {
   std::vector<std::string> out;
   if (Isolating()) {
-    out.push_back(isolateRecipe);
+    out.push_back(isolation.recipeID);
   }
   for (const auto &key : muted) {
     if (std::ranges::find(out, key.recipeID) == out.end()) {
@@ -173,8 +173,8 @@ std::vector<std::string> View::RecipeIDs() const {
 }
 
 void View::RenameRecipe(std::string_view a_from, std::string_view a_to) {
-  if (isolateRecipe == a_from) {
-    isolateRecipe = std::string{a_to};
+  if (isolation.recipeID == a_from) {
+    isolation.recipeID = std::string{a_to};
   }
   std::set<LayerKey> renamed;
   for (const auto &key : muted) {
@@ -189,11 +189,8 @@ void View::RenameRecipe(std::string_view a_from, std::string_view a_to) {
 }
 
 void View::ForgetRecipe(std::string_view a_id) {
-  if (isolateRecipe == a_id) {
-    isolateRecipe.clear();
-    isolateOutput = -1;
-    isolateLayer = -1;
-    isolatedBySolo = false;
+  if (isolation.recipeID == a_id) {
+    isolation = {};
   }
   std::erase_if(muted,
                 [&](const LayerKey &a_key) { return a_key.recipeID == a_id; });

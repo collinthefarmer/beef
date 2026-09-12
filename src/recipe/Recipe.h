@@ -824,6 +824,9 @@ struct Diagnostic {
   std::string message;
 };
 
+[[nodiscard]] Diagnostic
+MakeDiagnostic(Severity a_severity, std::string a_where, std::string a_message);
+
 struct Reporter {
   std::vector<Diagnostic> &out;
   std::string where;
@@ -832,10 +835,12 @@ struct Reporter {
       : out(a_out), where(a_where) {}
 
   void Error(std::string a_message) const {
-    out.push_back({Severity::kError, where, std::move(a_message)});
+    out.push_back(
+        MakeDiagnostic(Severity::kError, where, std::move(a_message)));
   }
   void Warn(std::string a_message) const {
-    out.push_back({Severity::kWarning, where, std::move(a_message)});
+    out.push_back(
+        MakeDiagnostic(Severity::kWarning, where, std::move(a_message)));
   }
   [[nodiscard]] Reporter At(std::string_view a_where) const {
     return Reporter{out, a_where};

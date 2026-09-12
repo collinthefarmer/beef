@@ -24,6 +24,12 @@ build a `Diagnostic{Severity::…, where, msg}` and `push_back` it. `CheckSource
 and `CheckLayer` (`Signals.cpp`) show the form — `const Reporter report{out,
 where};` then `report.Error(…)`.
 
+For a function that returns one error through `std::expected` or `std::optional`,
+construct it with `MakeDiagnostic(severity, where, message)` (`recipe/Recipe.h`).
+`Reporter::Error` and `Warn` use the same factory. Do not create a temporary
+diagnostic vector just to return its first element; use `Reporter` when collecting
+diagnostics and the factory when returning one.
+
 `SignalGraph` emits through `ReportSignal` (`Signals.cpp`), a static helper
 that wraps a `Reporter{diagnostics_, "signal <name>"}`; graph phases call it,
 they do not touch `diagnostics_` directly.
@@ -214,6 +220,161 @@ reused, is why the new tree cannot drift that way.
 Name lookup is a `Find*`, never a re-scan: `Recipe::FindSignal`/`FindCurve`/
 `FindSource`/`FindMask` (`Recipe.cpp`) are the single lookups; call them rather
 than re-iterating `recipe.signals`.
+
+## Runtime identities and editor commits
+
+`SourcePlanBuilder` (`studio/SourcePlan.h`) is shared by paint transfers and term
+templates. It prefers an existing source with the requested name and definition,
+then an equivalent source under another name, then reserves a unique name and
+stages an `AddSource` edit. Newly staged sources immediately become available to
+later requests in that operation. The builder owns its working copy; it does not
+change its caller's input. `ReuseOrAdd` returns the selected name; `TakeEdits`
+consumes the staged additions. `SourceCatalogOf` adapts both recipe records and studio
+snapshots to a `SourceCatalog` of reusable source records and reserved names.
+Mask names are reserved too, even though masks are not reusable sources.
+
+The board, inspector, and selection code share `WritesCell` (`studio/Rows.h`)
+to match surface outputs to slots. `SelectedOutput` only returns surface outputs.
+Isolation indicators use `Isolation::TargetsOutput` and `TargetsLayer`; visibility
+and muting remain the responsibility of `View`.
+
+`ActorState::geometries` is flat: each planner `Geometry` describes one
+renderable geometry. Its `GeometryId` also identifies the corresponding
+geometry in the runtime's nested traversal order. `LiveActor::pieces` groups
+runtime geometries by worn armor part; `LivePieceId` indexes those groups.
+These handles are distinct even when their numeric values happen to match.
+`LocateGeometry` returns a runtime geometry and its owning piece together,
+using one definition of their traversal order.
+`MatchesForPiece` combines placements over a contiguous range of geometry IDs
+to build the studio's armor-piece view.
+
+`planners/ActorPlanning` matches recipes and builds geometry/light plans through
+`PlanGeometryPlacement` and `PlanActorLights`. It does not apply them to the
+engine. `RecipesOfInactiveInstances` is an `ActorState` query: it reports one
+recipe ID per instance without live geometry, so results can repeat a recipe ID
+or name a recipe that still has another active instance.
+
+`BuildRecipeRow` in `studio/RecipeSnapshot` projects a recipe and optional live
+signal data into a snapshot row. Individual row builders, including light and
+shell projections, live in `studio/Rows`; panel assembly stays in `Panels`.
+
+Live instances and prepared layers borrow recipe storage.
+`PrepareEdits` applies a batch to a candidate recipe without modifying the original;
+the native batch `Apply` and runtime editor both use it. The runtime returns before
+retiring actors when preparation fails or the candidate equals the current recipe.
+`RebuildRecipeWearersAfterChange` and `RebuildAllActorsAfterChange` use one
+application path. It conservatively includes applied and loaded actor candidates,
+retains targets across pending revisions, retires them before mutation, then
+queues refreshes. Keep recipe-store mutations inside these lifetimes;
+the callbacks run synchronously, while the refresh is queued.
+For prepared edits, retirement still happens before replacing the recipe and
+republishing it through `RefreshRecipeDerivedState`. This operation validates the
+recipe, resolves forms, invalidates the signal graph, recomputes dirty state, and
+republishes derived data. Retirement itself does not mutate recipe storage, so
+the target remains valid through the commit callback.
+
+`engine/ApplicationService` owns engine-free application tokens, actor targets,
+and queued/prepared/rendered/failed/unmatched/cancelled results. A model commit
+does not establish render success. Refresh stamps live state with captured tokens;
+the compositor reports success explicitly, and snapshots publish outcomes even
+when no geometry row exists. Old-token reports cannot complete newer work.
+Solo commands reduce against the owning thread's view. Recipe isolation precedes
+duplicate-key resolution; output filters run before replacement planning and
+first-light selection. Layer filters run in the shared compositor. Geometry-local
+mask and ripple caches use owning recipe ID, local name, and texture size, and
+are discarded by recipe retirement before mutation.
+
+Paint commits carry the requested expression, target, and mask name in one
+`PaintCommitRequest`. Preparation checks a copy of the paint recipe; applying
+the resulting batch commits the target atomically. Only a successful apply
+ends the runtime preview. The menu keeps its session until a snapshot carries
+the matching `PaintCommitResult`; an older result cannot close a newer session.
+
+## Component ownership
+
+`Manager` owns actor application, retirement, event delivery, task scheduling,
+and snapshot publication. `engine/LiveActor.h` holds the runtime records;
+helpers over those records include it without depending on the manager.
+
+`RecipeEditor`, owned by `Manager`, owns recipe history, paint commits, and the
+editor view. Menu commands go through `Manager::Editor()`. The editor queues work
+through the manager and uses its retirement callbacks before changing recipe
+storage. These callbacks remain synchronous; actor refresh remains queued.
+`RecipeEditor` has friend access for these scheduling and lifetime operations.
+Snapshots and rendering read editor state through const queries on the game
+thread. The editor cannot be copied or moved while queued tasks refer to it.
+Runtime events live in `ManagerEvents.cpp`, mesh inspection in
+`ManagerInspection.cpp`, and recipe editing in `RecipeEditor.cpp`.
+
+`TextureLab` owns shader setup, render passes, and readback. It delegates texture
+allocation, presenter slots, scratch targets, and reuse to `RenderTargetPool`.
+Each drawing path uses `TextureLab::RenderPass`, a noncopyable, nonmovable scope
+that owns the renderer lock and captured D3D state together. Context commands go
+through the pass; its destructor restores state before its lock member releases
+the renderer. Capture includes bindings D3D can unbind implicitly, as well as
+the fields the pass explicitly sets. Staging resources have COM owners and
+successful read mappings have a scoped unmap.
+Outstanding targets return through a weak reference to the pool's shared return
+cache, never through a captured pool address. Returning a target after that cache
+expires destroys the target directly. Cache access is locked, and target destruction
+and shared-pointer construction happen outside the cache lock.
+Within the pool, scratch targets are destroyed before the return cache.
+Recycling from a shared-pointer deleter cannot throw. If caching a returned
+target fails, local unique ownership releases it instead.
+Each render target owns its replacement presenter metadata with `unique_ptr`;
+teardown restores the original presenter pointer while it still points to that
+target's replacement, before releasing resources.
+`TexturePreviews` owns preview requests, generations, locking, and delayed
+release. It uses the renderer's public API and holds no shader/device state.
+The renderer destroys previews before the pool, so preview targets can still
+return to the pool during destruction. Clearing preserves the order: scratch
+release, preview retirement, unused-target release, then readback-cache reset.
+Preview retirement still retains targets for the existing eight-tick interval.
+Preview entries and work batches retain their source textures. `Manager::Snapshot`
+extends the studio's value snapshot with owning texture references; menu code keeps
+the shared snapshot alive while using its borrowed texture handles. These references
+preserve texture object lifetime, not an immutable copy of rendered pixels.
+
+`PbrMaterial::Bind` checks a shader property before constructing an owning PBR
+record. `SlotWriter` requires that record and cannot be default-constructed or
+copied; `MaterialInputs::From` also requires it. The record keeps both the material
+and property alive and exposes no raw layout access to callers. Replacing a
+property's material can release the previous material. Writes check geometry and
+material attachment identity before touching them. Temporary engine materials and scene clones gain
+an owning reference immediately, including paths that fail before installation.
+Private skin copies own each copied bone-weight array, and remain destructible
+at every allocation failure point.
+
+Runtime starts loading and resumes on successful post-load or new-game notification. `BeginLoad`
+pauses ticks and task submission, invalidates queued tasks through the generation,
+unwatches actors, clears bindings and caches, and publishes an empty snapshot.
+`FinishLoad` resumes work and requests loaded actors through ApplicationService.
+ApplicationService owns the only runtime SessionQueue. Its actor callback creates
+lifecycle tokens and captures current recipe-attempt tokens before invoking the
+Manager adapter. Equipment finalization and coalesced reruns use that callback too.
+`SessionQueue` owns the loading
+state, generation, pending refreshes, follow-ups, and equip deadlines behind one
+mutex. The manager submits actor IDs and owned command values rather than handling
+epochs. Failed submissions release pending markers and notify the service's
+rejection mailbox while holding the queue generation lock. That notification
+only appends actor IDs; it must not re-enter the queue or call engine APIs.
+The owning thread drains failures before starting newer attempts, and loading
+cancels the queue before clearing the mailbox. Queued callbacks hold weak
+queue-state references and cannot run after the queue is destroyed. The native
+runner tests this engine-free queue adapter directly. Queue callbacks and load
+transitions run on the game thread; the mutex protects submission bookkeeping and
+is released before engine calls, which can re-enter the queue.
+Live actors retain actor handles and resolve an owning reference during each tick;
+unloaded or deleted actors retire through the same cleanup path as explicit retires.
+Worn-piece enchantments are form IDs, resolved when read. Lights retain the shadow
+scene that registered them and remove themselves from that scene during teardown.
+
+`studio/Panels.cpp` builds stack, inspector, and signal-list views.
+`studio/Forms.cpp` builds form fields and their edit bindings.
+`studio/Rows.cpp` and `studio/SourceRows.cpp` project recipe records into rows;
+source reconstruction lives beside its projection. `studio/FieldParsing` holds
+the parsers shared by source reconstruction and forms. Row conversion and source
+planning do not depend on panel assembly or form construction.
 
 ## Performance discipline: clarity at load time, measured per tick/texel
 

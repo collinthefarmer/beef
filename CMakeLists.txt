@@ -13,9 +13,7 @@ endif()
 
 set(CMAKE_SKIP_INSTALL_RULES ON)
 
-# Cache object files across clean builds and branch switches. The big win is
-# CommonLibSSE, which is set up below and inherits this launcher; the plugin's
-# own /Zi objects are uncacheable and fall through to the compiler untouched.
+# Cache third-party object files across clean builds and branch switches.
 find_program(CCACHE_PROGRAM ccache)
 if(CCACHE_PROGRAM)
   set(CMAKE_CXX_COMPILER_LAUNCHER "${CCACHE_PROGRAM}")
@@ -120,6 +118,9 @@ target_compile_definitions(${PROJECT_NAME} PRIVATE BEEF_PLUGIN_NAME="${PROJECT_N
 target_precompile_headers(${PROJECT_NAME} PRIVATE src/PCH.h)
 
 target_sources(${PROJECT_NAME} PRIVATE $<TARGET_OBJECTS:${PROJECT_NAME}Native>)
+
+set_target_properties(${PROJECT_NAME} ${PROJECT_NAME}Native PROPERTIES
+  CXX_COMPILER_LAUNCHER "")
 
 target_compile_options(${PROJECT_NAME} PRIVATE ${CLANG_CL_FLAGS} -Werror=switch)
 target_compile_options(CommonLibSSE PRIVATE ${CLANG_CL_FLAGS} ${COMMONLIBSSE_SUPPRESSIONS})

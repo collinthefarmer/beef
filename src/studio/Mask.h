@@ -6,6 +6,7 @@
 
 #include <cstddef>
 #include <cstdint>
+#include <expected>
 #include <optional>
 #include <set>
 #include <span>
@@ -87,6 +88,11 @@ inline constexpr std::string_view kExpressionLabel = "expression";
 BuildMask(std::span<const Term> a_terms,
           std::optional<std::size_t> a_solo = std::nullopt,
           const std::set<std::size_t> &a_muted = {});
+
+[[nodiscard]] std::expected<std::string, Diagnostic>
+CheckedBuildMask(std::span<const Term> a_terms,
+                 std::optional<std::size_t> a_solo = std::nullopt,
+                 const std::set<std::size_t> &a_muted = {});
 
 struct MaskStack {
   std::vector<Term> terms;

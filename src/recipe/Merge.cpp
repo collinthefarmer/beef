@@ -101,10 +101,11 @@ void PlanScalars(SlotPlan &a_slot, std::span<const PlacedRecipe> a_placed) {
   }
 }
 
-const LightOutput *FirstLight(const Recipe &a_recipe,
-                              std::size_t &a_index) noexcept {
+const LightOutput *FirstLight(const Recipe &a_recipe, std::size_t &a_index,
+                              const OutputFilter &a_filter) {
   for (std::size_t i = 0; i < a_recipe.outputs.size(); ++i) {
-    if (const LightOutput *light = Get<LightOutput>(a_recipe.outputs[i])) {
+    if (const LightOutput *light = Get<LightOutput>(a_recipe.outputs[i]);
+        light && (!a_filter || a_filter(a_recipe, i))) {
       a_index = i;
       return light;
     }
@@ -155,7 +156,8 @@ GeometryPlan PlanGeometry(std::span<const PlacedRecipe> a_placed) {
   return plan;
 }
 
-LightPlan PlanLights(std::span<const PlacedRecipe> a_placed) {
+LightPlan PlanLights(std::span<const PlacedRecipe> a_placed,
+                     const OutputFilter &a_filter) {
   LightPlan plan;
   std::vector<Flagged<LightContribution>> flagged;
   for (const std::size_t placed : PriorityOrder(a_placed)) {
@@ -164,7 +166,7 @@ LightPlan PlanLights(std::span<const PlacedRecipe> a_placed) {
       continue;
     }
     std::size_t index = 0;
-    const LightOutput *light = FirstLight(*recipe, index);
+    const LightOutput *light = FirstLight(*recipe, index, a_filter);
     if (!light) {
       continue;
     }

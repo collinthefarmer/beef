@@ -220,16 +220,39 @@ int main() {
     EditBatch good;
     good.edits.push_back(AddSignal{"batchOne"});
     good.edits.push_back(RenameSignal{"batchOne", "batchTwo"});
+    const Recipe before = copy;
+    const auto prepared = PrepareEdits(copy, good);
+    Check(prepared && prepared->FindSignal("batchTwo") &&
+              !prepared->FindSignal("batchOne"),
+          "preparation evaluates edits in sequence against the candidate");
+    Check(copy == before, "preparation leaves the live recipe unchanged");
     Check(!Apply(copy, good), "a valid batch applies");
+    Check(prepared && copy == *prepared,
+          "applying a batch commits the same candidate as preparation");
     Check(RoundTrips(copy), "the batched recipe round-trips");
 
     Recipe rollback = base;
     EditBatch bad;
     bad.edits.push_back(AddSignal{"batchThree"});
     bad.edits.push_back(RemoveSignal{"noSuchSignal"});
+    const auto refused = PrepareEdits(rollback, bad);
+    Check(!refused && rollback == base,
+          "failed preparation discards earlier edits without touching the original");
+    if (!refused) {
+      Check(refused.error().severity == Severity::kError &&
+                refused.error().where == "signal noSuchSignal",
+            "preparation preserves the refusing edit's diagnostic location");
+    }
     Check(Apply(rollback, bad).has_value(),
           "a batch with a bad edit is refused");
     Check(rollback == base, "a refused batch leaves the recipe unchanged");
+
+    const auto empty = PrepareEdits(base, EditBatch{});
+    Check(empty && *empty == base, "an empty batch yields an unchanged candidate");
+    const EditBatch cancelled{{AddSignal{"temporary"}, RemoveSignal{"temporary"}}};
+    const auto unchanged = PrepareEdits(base, cancelled);
+    Check(unchanged && *unchanged == base,
+          "edits that cancel each other can be recognized before retiring actors");
   }
 
   return test::Finish("studio_edits");

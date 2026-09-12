@@ -1,6 +1,7 @@
 #include "SettingsFile.h"
 
 #include "Identity.h"
+#include "SettingsPublication.h"
 
 #include <cctype>
 #include <fstream>
@@ -8,7 +9,7 @@
 
 namespace BetterEnchantmentEffects {
 namespace {
-Settings g_settings{};
+SettingsPublication g_settings;
 
 std::string_view TrimIni(std::string_view a_text) {
   while (!a_text.empty() &&
@@ -121,9 +122,7 @@ std::string FormKeyOf(const RE::TESForm &a_form) {
   return key;
 }
 
-const Settings &GetSettings() noexcept { return g_settings; }
+Settings GetSettings() { return g_settings.Read(); }
 
-Settings &GetMutableSettings() noexcept { return g_settings; }
-
-void SetSettings(Settings a_settings) noexcept { g_settings = a_settings; }
+void SetSettings(Settings a_settings) { g_settings.Publish(a_settings); }
 }

@@ -22,7 +22,7 @@ own no translation unit.
 | `Rows.h` | (functions only — pure per-row projections) |
 | `Mask.h` | `TermKind` alternatives, `TermKind`, `TermOp`, `Term`, `MaskStack` |
 | `Presets.h` | `MaskPreset`, `MaskPresets` |
-| `TermTemplates.h` | `Existing`, `BuiltTerm`, `TermField`, `OfferGroup`+`kOfferGroups`, `TermOffer` |
+| `TermTemplates.h` | `SourceCatalog`, `BuiltTerm`, `TermField`, `OfferGroup`+`kOfferGroups`, `TermOffer` |
 | `PaintSession.h` | `PaintSession` |
 | `Intent.h` | `MenuState`, `FiringDraft`, `ResourceTab`, the 45 intent structs, `Intent`, `Intents` |
 | `History.h` | `History<T>` (template, inline), `EditHistory` |
@@ -82,7 +82,7 @@ members `View::RecipeIDs`, `View::RenameRecipe`, `View::ForgetRecipe`.
 `ParsePresets`.
 
 ### `TermTemplates.cpp`
-`ExistingOf(const RecipeRow&)`, `ExistingOf(const Recipe&)`, `MaterialiseTerm`,
+`SourceCatalogOf(const RecipeRow&)`, `SourceCatalogOf(const Recipe&)`, `MaterialiseTerm`,
 `BuildTerm`, `TermLabel`, `TermLabelOf`, `ProposedMaskName`, `TermForm`,
 `OffersOf`, `OffersOfRecipe`, `TermDetailOf`, `ScratchEdits`.
 

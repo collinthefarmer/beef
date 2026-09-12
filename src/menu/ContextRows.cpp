@@ -113,12 +113,12 @@ void IsolateCheckbox(const Studio::RecipeRow &a_recipe,
   bool isolating = a_view.Isolating();
   std::string text;
   if (isolating) {
-    text = "isolating " + a_view.isolateRecipe;
-    if (a_view.isolateOutput >= 0) {
-      text += std::format(" output {}", a_view.isolateOutput);
+    text = "isolating " + a_view.isolation.recipeID;
+    if (a_view.isolation.output.has_value()) {
+      text += std::format(" output {}", *a_view.isolation.output);
     }
-    if (a_view.isolateLayer >= 0) {
-      text += std::format(" layer {}", a_view.isolateLayer);
+    if (a_view.isolation.layer.has_value()) {
+      text += std::format(" layer {}", *a_view.isolation.layer);
     }
   }
   if (Toggle(a_label, isolating, text)) {

@@ -40,14 +40,14 @@ int main() {
   recipe.sources.push_back(
       Source{"metal", MaterialSource{MaterialChannel::kMetallic}});
   recipe.masks.push_back(Mask{"scratch", "0"});
-  const Existing existing = ExistingOf(recipe);
-  Check(existing.sources.size() == 1 && existing.taken.size() == 2 &&
-            existing.sources[0].first == "metal",
-        "ExistingOf reads sources and taken names off a Recipe");
+  const SourceCatalog existing = SourceCatalogOf(recipe);
+  Check(existing.sources.size() == 1 && existing.reservedNames.size() == 2 &&
+            existing.sources[0].name == "metal",
+        "SourceCatalogOf reads sources and reserved names off a Recipe");
 
   const BuiltTerm threshold = BuildTerm(
       TermKind{ThresholdTerm{MaterialChannel::kRoughness, 0.5f, 1.0f}},
-      MaskPresets{}, Existing{});
+      MaskPresets{}, SourceCatalog{});
   Check(threshold.edits.size() == 1 &&
             threshold.expression.find("smoothstep") != std::string::npos &&
             threshold.expression.find("@roughness") != std::string::npos,
@@ -61,15 +61,23 @@ int main() {
       "@r",
       {{"r", SourceKind{MaterialSource{MaterialChannel::kRoughness}}}}});
   const BuiltTerm materialised =
-      MaterialiseTerm(presets.presets[0], Existing{});
+      MaterialiseTerm(presets.presets[0], SourceCatalog{});
   Check(materialised.edits.size() == 1 && materialised.expression == "@r",
         "MaterialiseTerm reuses the preset expression and names its source");
-  Check(TermLabel("@r", presets, Existing{}) == "r",
+  const SourceKind roughness = MaterialSource{MaterialChannel::kRoughness};
+  presets.presets.push_back(MaskPreset{
+      "aliases", std::nullopt, {}, "@first + @second",
+      {{"first", roughness}, {"second", roughness}}});
+  const BuiltTerm aliases =
+      BuildTerm(PresetTerm{"aliases"}, presets, SourceCatalog{});
+  Check(aliases.edits.size() == 1 && aliases.expression == "@first + @first",
+        "preset aliases share one staged source and the expression uses its name");
+  Check(TermLabel("@r", presets, SourceCatalog{}) == "r",
         "a bare @reference labels as its name; a preset carrying a source edit "
         "is not matched by expression alone");
   presets.presets.push_back(
       MaskPreset{"combo", std::nullopt, {}, "@metal * @r", {}});
-  Check(TermLabel("@metal * @r", presets, Existing{}) == "combo",
+  Check(TermLabel("@metal * @r", presets, SourceCatalog{}) == "combo",
         "TermLabel recognises a pure-expression preset by its expression");
 
   const GeometryRow geometry = SampleGeometry();

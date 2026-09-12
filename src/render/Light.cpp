@@ -166,6 +166,8 @@ LightBinding::Create(const std::vector<LightPlacement> &a_placements,
   }
   std::unique_ptr<LightBinding> out{new LightBinding{}};
   out->shadow_ = a_shadow;
+  out->scene_ = RE::NiPointer<RE::ShadowSceneNode>{scene};
+  out->entries_.reserve(a_placements.size());
   for (const auto &placement : a_placements) {
     if (!placement.bone) {
       continue;
@@ -214,7 +216,7 @@ LightBinding::Create(const std::vector<LightPlacement> &a_placements,
 }
 
 LightBinding::~LightBinding() {
-  auto *scene = MainShadowSceneNode();
+  auto *scene = scene_.get();
   for (auto &entry : entries_) {
     if (entry.bsLight && scene) {
       using remove_t =

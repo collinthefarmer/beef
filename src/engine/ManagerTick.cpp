@@ -141,8 +141,13 @@ SlotChain RenderSlotChain(LiveActor &a_state, LiveGeometry &a_bound,
       filter = HiddenLayers(a_view, instance.recipe->id, c.output,
                             material->stack.size());
     }
-    Compositor::GetSingleton()->Render(*output->stack, *instance.signals,
-                                       instance.lastTime, filter, base);
+    const bool rendered = Compositor::GetSingleton()->Render(
+        *output->stack, *instance.signals, instance.lastTime, filter, base);
+    output->rendered = rendered;
+    output->renderFailed = !rendered;
+    if (!rendered) {
+      continue;
+    }
     chain.shown = true;
     if (RE::NiSourceTexture *texture = output->stack->Texture()) {
       base = StackBase{texture, base.animated || output->stack->Animated()};
@@ -235,47 +240,41 @@ void SweepBoundMeshes(
 }
 
 void Manager::OnFrame() {
+  if (applications_.Loading()) {
+    return;
+  }
   FireDueFinalizes();
   const std::uint32_t now = NowMS();
-  if (now - lastTickMS_ < GetSettings().TickIntervalMS()) {
+  const Settings settings = GetSettings();
+  if (now - lastTickMS_ < settings.TickIntervalMS()) {
     return;
   }
   lastTickMS_ = now;
   if (!applied_.empty()) {
-    Tick(now);
+    Tick(now, settings);
   }
   PublishSnapshot(now);
 }
 
-void Manager::FireDueFinalizes() {
-  std::vector<RE::FormID> due;
-  {
-    std::scoped_lock lock{queueLock_};
-    const std::uint32_t now = NowMS();
-    for (auto it = finalizeDue_.begin(); it != finalizeDue_.end();) {
-      if (static_cast<std::int32_t>(now - it->second) >= 0) {
-        due.push_back(it->first);
-        equipped_.insert(it->first);
-        it = finalizeDue_.erase(it);
-      } else {
-        ++it;
-      }
-    }
-  }
-  for (const RE::FormID id : due) {
-    QueueRefresh(id);
-  }
-}
+void Manager::FireDueFinalizes() { applications_.FinalizeDue(NowMS()); }
 
-void Manager::Tick(std::uint32_t a_nowMS) {
-  const Settings &settings = GetSettings();
+void Manager::Tick(std::uint32_t a_nowMS, const Settings &a_settings) {
+  const Studio::View &view = editor_.CurrentView();
   Compositor *compositor = Compositor::GetSingleton();
   compositor->BeginTick(a_nowMS);
   TextureLab::GetSingleton()->RenderPreviews();
-  const bool resuming = frozenLastTick_ && !view_.freeze;
-  frozenLastTick_ = view_.freeze;
+  const bool resuming = frozenLastTick_ && !view.freeze;
+  frozenLastTick_ = view.freeze;
   for (auto it = applied_.begin(); it != applied_.end();) {
     LiveActor &state = it->second;
+    const auto actor = state.actor.get();
+    if (!actor || actor->IsDeleted() || !actor->Is3DLoaded()) {
+      const RE::FormID id = it->first;
+      AbandonApplications(id);
+      ++it;
+      Retire(id);
+      continue;
+    }
     DropLostGeometries(state);
     for (LiveInstance &instance : state.instances) {
       if (!instance.recipe || !instance.graph || !instance.signals ||
@@ -283,7 +282,7 @@ void Manager::Tick(std::uint32_t a_nowMS) {
         continue;
       }
       const InstanceTiming timing =
-          InstanceTimeFor(instance, settings, view_, resuming, a_nowMS);
+          InstanceTimeFor(instance, a_settings, view, resuming, a_nowMS);
       TickInstance(instance, timing.time, timing.delta);
       instance.lastTime = timing.time;
     }
@@ -293,7 +292,14 @@ void Manager::Tick(std::uint32_t a_nowMS) {
       }
     }
     UpdateLights(state);
-    it = Alive(state) ? std::next(it) : applied_.erase(it);
+    FinishApplications(it->first, state);
+    if (Alive(state)) {
+      ++it;
+    } else {
+      const RE::FormID id = it->first;
+      ++it;
+      Retire(id);
+    }
   }
   SweepBoundMeshes(*compositor, applied_, a_nowMS);
 }
@@ -303,7 +309,7 @@ void Manager::TickInstance(LiveInstance &a_instance, float a_time,
   if (!a_instance.graph || !a_instance.signals || !a_instance.environment) {
     return;
   }
-  if (view_.freeze && a_time + 0.001f < a_instance.lastTime) {
+  if (editor_.CurrentView().freeze && a_time + 0.001f < a_instance.lastTime) {
     a_instance.signals = std::make_unique<SignalState>(*a_instance.graph);
     a_delta = a_time;
   }
@@ -337,10 +343,21 @@ void Manager::DropLostGeometries(LiveActor &a_state) {
 void Manager::RenderGeometry(LiveActor &a_state,
                              [[maybe_unused]] LivePiece &a_piece,
                              LiveGeometry &a_bound) {
+  const Studio::View &view = editor_.CurrentView();
   if (a_bound.lost) {
+    for (const PlacementId id : a_bound.placements) {
+      const auto index = static_cast<std::size_t>(id);
+      if (index >= a_state.placements.size()) {
+        continue;
+      }
+      for (PlacedOutput &output : a_state.placements[index].outputs) {
+        output.renderFailed = true;
+      }
+    }
     return;
   }
-  const bool anyLayerHidden = view_.isolateLayer >= 0 || !view_.muted.empty();
+  const bool anyLayerHidden =
+      view.isolation.layer.has_value() || !view.muted.empty();
   for (const SlotStackPlan &slot : a_bound.stackPlan.slots) {
     SlotTarget *target = TargetFor(a_bound, slot.surface);
     if (!target) {
@@ -348,16 +365,17 @@ void Manager::RenderGeometry(LiveActor &a_state,
     }
     SlotWrite write = EmptyWrite(slot.slot);
     const SlotChain chain =
-        RenderSlotChain(a_state, a_bound, view_, slot, anyLayerHidden);
+        RenderSlotChain(a_state, a_bound, view, slot, anyLayerHidden);
     write.shown = chain.shown;
     write.texture = chain.texture;
     ApplySlotScalars(write, slot.slot, chain);
     WriteSlot(*target, write);
   }
-  PoseShell(a_bound, a_state, view_);
+  PoseShell(a_bound, a_state, view);
 }
 
 void Manager::UpdateLights(LiveActor &a_state) {
+  const Studio::View &view = editor_.CurrentView();
   for (LiveInstance &instance : a_state.instances) {
     if (!instance.light || !instance.lightOutput || !instance.recipe ||
         !instance.signals) {
@@ -374,7 +392,7 @@ void Manager::UpdateLights(LiveActor &a_state) {
         Studio::ResolveLight(*light, *instance.signals);
     instance.light->Update(
         resolved.color, resolved.intensity, resolved.size, resolved.cutoff,
-        view_.OutputShown(instance.recipe->id, *instance.lightOutput));
+        view.OutputShown(instance.recipe->id, *instance.lightOutput));
   }
 }
 

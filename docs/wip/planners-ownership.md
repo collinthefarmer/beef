@@ -5,13 +5,14 @@ No function is unowned. Fill agents implement one `.cpp` each, disjoint.
 
 ## `src/planners/ActorState.cpp` (owns `ActorState.h` tables + queries)
 
-- `const Piece *PieceAt(const ActorState &, PieceId)`
+- `const Geometry *GeometryAt(const ActorState &, GeometryId)`
 - `const Instance *InstanceAt(const ActorState &, InstanceId)`
 - `const Placement *PlacementAt(const ActorState &, PlacementId)`
-- `bool AnyLivePiece(const ActorState &)`
+- `bool AnyLiveGeometry(const ActorState &)`
 - `std::optional<InstanceId> FindInstance(const ActorState &, RecipeId, const std::optional<FormKey> &)`
-- `std::vector<PlacementId> PlacementsOfPiece(const ActorState &, PieceId)`
+- `std::vector<PlacementId> PlacementsOfGeometry(const ActorState &, GeometryId)`
 - `std::vector<PlacementId> PlacementsOfInstance(const ActorState &, InstanceId)`
+- `std::vector<RecipeId> RecipesOfInactiveInstances(const ActorState &)`
 
 ## `src/planners/StackPlan.cpp` (owns `StackPlan.h`)
 
@@ -23,12 +24,11 @@ No function is unowned. Fill agents implement one `.cpp` each, disjoint.
 
 - `BindingDiff PlanBinding(std::span<const PlacedRecipe>, const GeometryPlan &, std::span<const Slot>, std::span<const Slot>)`
 
-## `src/planners/ManagerDecisions.cpp` (owns `ManagerDecisions.h`)
+## `src/planners/ActorPlanning.cpp` (owns `ActorPlanning.h`)
 
-- `ActorState MatchActor(std::span<const Piece>, std::span<const Recipe>)`
-- `GeometryPlacement PlaceGeometry(const ActorState &, std::span<const Recipe>, PieceId)`
-- `ActorLightPlan PlaceLights(const ActorState &, std::span<const Recipe>)`
-- `std::vector<RecipeId> RetirePlan(const ActorState &)`
+- `ActorState MatchActor(std::span<const Geometry>, std::span<const Recipe>)`
+- `GeometryPlacementPlan PlanGeometryPlacement(const ActorState &, std::span<const Recipe>, GeometryId)`
+- `ActorLightPlan PlanActorLights(const ActorState &, std::span<const Recipe>)`
 
 ## Header → owning `.cpp`(s)
 
@@ -38,11 +38,11 @@ No function is unowned. Fill agents implement one `.cpp` each, disjoint.
   `SignalState` values and render textures onto studio's rows.
 - `StackPlan.h` → `StackPlan.cpp`.
 - `BindingDiff.h` → `BindingDiff.cpp`.
-- `ManagerDecisions.h` → `ManagerDecisions.cpp`.
+- `ActorPlanning.h` → `ActorPlanning.cpp`.
 
 ## Test fill units (one skeleton per `.cpp`)
 
 - `tests/planners/actorstate_tests.cpp` → `ActorState.cpp`
 - `tests/planners/stackplan_tests.cpp` → `StackPlan.cpp`
 - `tests/planners/bindingdiff_tests.cpp` → `BindingDiff.cpp`
-- `tests/planners/managerdecisions_tests.cpp` → `ManagerDecisions.cpp`
+- `tests/planners/actorplanning_tests.cpp` → `ActorPlanning.cpp`

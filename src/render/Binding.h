@@ -38,9 +38,11 @@ public:
 
 class SlotWriter {
 public:
-  SlotWriter() = default;
-  SlotWriter(PBRMaterialLayout *a_material,
-             RE::BSLightingShaderProperty *a_property);
+  explicit SlotWriter(PbrMaterial a_material);
+  SlotWriter(const SlotWriter &) = delete;
+  SlotWriter &operator=(const SlotWriter &) = delete;
+  SlotWriter(SlotWriter &&) = default;
+  SlotWriter &operator=(SlotWriter &&) = default;
 
   [[nodiscard]] std::string Problem(Slot a_slot) const;
   void WriteTexture(Slot a_slot, RE::NiSourceTexture *a_texture);
@@ -58,6 +60,7 @@ public:
   [[nodiscard]] std::vector<SlotState> Slots() const;
 
 private:
+  [[nodiscard]] bool MaterialAttached() const noexcept;
   void SetFeature(std::uint32_t a_bits, bool a_on);
   void EnableFuzz();
   void EnableCoat();
@@ -65,7 +68,7 @@ private:
 
   struct SavedTexture {
     RE::NiPointer<RE::NiSourceTexture> original;
-    RE::NiSourceTexture *written = nullptr;
+    RE::NiPointer<RE::NiSourceTexture> written;
   };
   struct SavedEmissive {
     RE::NiColor color;
@@ -88,8 +91,7 @@ private:
     float rolloff = 0.0f;
   };
 
-  PBRMaterialLayout *material_ = nullptr;
-  RE::BSLightingShaderProperty *property_ = nullptr;
+  PbrMaterial binding_;
   std::array<std::optional<SavedTexture>, kSlotCount> textures_;
   std::optional<SavedEmissive> emissive_;
   std::optional<std::uint32_t> flags_;
@@ -109,7 +111,6 @@ public:
   MaterialBinding(const MaterialBinding &) = delete;
   MaterialBinding &operator=(const MaterialBinding &) = delete;
 
-  [[nodiscard]] PBRMaterialLayout *Material() const noexcept;
   [[nodiscard]] RE::BSLightingShaderProperty *Property() const noexcept;
   [[nodiscard]] bool Private() const noexcept;
 
@@ -132,9 +133,8 @@ private:
 
   RE::NiPointer<RE::BSGeometry> geometry_;
   RE::NiPointer<RE::BSLightingShaderProperty> property_;
-  PBRMaterialLayout *material_ = nullptr;
   RE::BSTSmartPointer<RE::BSShaderMaterial> original_;
-  SlotWriter slots_;
+  std::optional<SlotWriter> slots_;
 };
 
 class ShellBinding final : public SlotTarget {
@@ -148,7 +148,6 @@ public:
 
   [[nodiscard]] RE::BSGeometry *Geometry() const noexcept;
   [[nodiscard]] RE::BSLightingShaderProperty *Property() const noexcept;
-  [[nodiscard]] PBRMaterialLayout *PbrMaterial() const noexcept;
   [[nodiscard]] const std::string &Describe() const noexcept;
 
   [[nodiscard]] std::string Problem(Slot a_slot) const override;
@@ -178,9 +177,9 @@ private:
   RE::NiPointer<RE::NiAlphaProperty> alpha_;
   RE::NiPointer<RE::NiSkinData> skinData_;
   std::vector<RE::NiSkinData::BoneData> restSkinToBone_;
-  PBRMaterialLayout *pbr_ = nullptr;
+  RE::BSTSmartPointer<RE::BSShaderMaterial> materialOwner_;
   RE::BSLightingShaderMaterialBase *vanilla_ = nullptr;
-  SlotWriter slots_;
+  std::optional<SlotWriter> slots_;
   Vec3 lastInflate_{-1.0f, -1.0f, -1.0f};
   std::string description_;
 };
@@ -220,6 +219,7 @@ private:
     float share = 1.0f;
   };
   std::vector<Entry> entries_;
+  RE::NiPointer<RE::ShadowSceneNode> scene_;
   bool shadow_ = false;
 };
 }

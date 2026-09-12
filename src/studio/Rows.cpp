@@ -6,6 +6,66 @@
 #include <vector>
 
 namespace BetterEnchantmentEffects::Studio {
+bool WritesCell(const OutputRow &a_output, Surface a_surface,
+                Slot a_slot) noexcept {
+  return a_output.target != Target::kLight && a_output.surface == a_surface &&
+         a_output.slot == a_slot;
+}
+
+LightRow LightRowOf(const Recipe &a_recipe) {
+  LightRow row;
+  for (std::size_t i = 0; i < a_recipe.outputs.size(); ++i) {
+    const LightOutput *light = Get<LightOutput>(a_recipe.outputs[i]);
+    if (light == nullptr) {
+      continue;
+    }
+    row.present = true;
+    row.output = i;
+    row.color = Vec3ParamText(light->color);
+    row.intensity = ParamText(light->intensity);
+    row.size = ParamText(light->size);
+    row.cutoff = ParamText(light->cutoff);
+    row.offset = Vec3ParamText(light->offset);
+    row.shadow = light->shadow;
+    row.replace = light->replace;
+    row.selection = light->selector;
+    Match(
+        light->bones,
+        [&](const SkinnedBones &a_bones) {
+          row.bones = "skinned";
+          row.bonesMax = std::to_string(a_bones.max);
+          row.bonesMinShare = ParamText(a_bones.minShare);
+        },
+        [&](const NamedBones &a_bones) {
+          row.bones = "named";
+          for (const auto &bone : a_bones.bones) {
+            row.bonesNames += (row.bonesNames.empty() ? "" : ", ") + bone;
+          }
+        });
+    break;
+  }
+  return row;
+}
+
+ShellRow ShellRowOf(const Recipe &a_recipe) {
+  const ShellSettings &shell = a_recipe.shell;
+  ShellRow row;
+  row.material = shell.material;
+  row.blend = shell.blend;
+  row.depthBias = shell.depthBias;
+  row.alphaTest = shell.alphaTest;
+  row.alpha = ParamText(shell.alpha);
+  row.rimPower = ParamText(shell.rimPower);
+  row.emissive = ParamText(shell.emissive);
+  row.inflate = Vec3ParamText(shell.pose.inflate);
+  row.offset = Vec3ParamText(shell.pose.offset);
+  row.scale = ParamText(shell.pose.scale);
+  row.spin = ParamText(shell.pose.spin);
+  row.scalePoint = shell.pose.scalePoint;
+  row.spinAxis = shell.pose.spinAxis;
+  return row;
+}
+
 SignalRow SignalRowOf(const Signal &a_signal, const RowTypes &a_rows,
                       std::size_t a_references) {
   SignalRow row;

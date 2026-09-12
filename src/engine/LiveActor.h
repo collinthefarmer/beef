@@ -1,0 +1,83 @@
+#pragma once
+
+#include "PCH.h"
+#include "engine/ApplicationService.h"
+#include "engine/Environment.h"
+#include "planners/ActorState.h"
+#include "planners/BindingDiff.h"
+#include "planners/StackPlan.h"
+#include "recipe/Merge.h"
+#include "recipe/Recipe.h"
+#include "recipe/Signals.h"
+#include "render/Binding.h"
+#include "render/Compositor.h"
+
+#include <cstddef>
+#include <cstdint>
+#include <memory>
+#include <optional>
+#include <string>
+#include <vector>
+
+namespace BetterEnchantmentEffects {
+struct PlacedOutput {
+  std::size_t index = 0;
+  std::unique_ptr<RenderedStack> stack;
+  std::string problem;
+  bool active = false;
+  bool rendered = false;
+  bool renderFailed = false;
+};
+
+struct LiveGeometry {
+  RE::NiPointer<RE::BSGeometry> geometry;
+  RE::NiPointer<RE::BSLightingShaderProperty> property;
+  std::string name;
+  GeometryInputs inputs;
+  std::unique_ptr<MaterialBinding> material;
+  std::unique_ptr<ShellBinding> shell;
+  std::optional<std::size_t> shellOwner;
+  std::vector<PlacementId> placements;
+  GeometryPlan plan;
+  GeometryStackPlan stackPlan;
+  BindingDiff binding;
+  bool lost = false;
+};
+
+enum class LivePieceId : std::size_t {};
+
+struct LivePiece {
+  RE::FormID armor = 0;
+  std::string armorName;
+  RE::FormID enchantment = 0;
+  std::vector<LiveGeometry> geometries;
+};
+
+struct LiveInstance {
+  const Recipe *recipe = nullptr;
+  RE::FormID enchantment = 0;
+  int priority = 0;
+  std::shared_ptr<const SignalGraph> graph;
+  std::unique_ptr<SignalState> signals;
+  std::unique_ptr<ActorEnvironment> environment;
+  std::unique_ptr<LightBinding> light;
+  std::optional<std::size_t> lightOutput;
+  std::uint32_t startMS = 0;
+  float lastTime = 0.0f;
+};
+
+struct LivePlacement {
+  GeometryId geometry{};
+  std::vector<PlacedOutput> outputs;
+};
+
+struct LiveActor {
+  RE::ActorHandle actor;
+  ActorState structure;
+  std::vector<LivePiece> pieces;
+  std::vector<LiveInstance> instances;
+  std::vector<LivePlacement> placements;
+  std::vector<ApplicationToken> applications;
+};
+
+}

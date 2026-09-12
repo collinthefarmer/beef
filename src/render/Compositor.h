@@ -7,6 +7,7 @@
 #include "mesh/Mesh.h"
 #include "mesh/MeshFacts.h"
 #include "mesh/TextureSize.h"
+#include "planners/RecipeTextureCache.h"
 #include "planners/StackPlan.h"
 #include "recipe/Expression.h"
 #include "recipe/Merge.h"
@@ -35,7 +36,7 @@ struct MaterialInputs {
   RE::NiPointer<RE::NiSourceTexture> displacement;
   bool flatDisplacement = true;
 
-  [[nodiscard]] static MaterialInputs From(const PBRMaterialLayout &a_material);
+  [[nodiscard]] static MaterialInputs From(const PbrMaterial &a_material);
 };
 
 class RenderedMask;
@@ -61,10 +62,8 @@ struct PreparedMask {
   std::shared_ptr<RenderedMask> rendered;
 };
 
-using MaskCache =
-    std::unordered_map<std::string, std::shared_ptr<RenderedMask>>;
-using RippleCache =
-    std::unordered_map<std::string, std::shared_ptr<RenderedRipple>>;
+using MaskCache = RecipeTextureCache<RenderedMask>;
+using RippleCache = RecipeTextureCache<RenderedRipple>;
 
 struct DerivedMaps {
   std::shared_ptr<TextureLab::RenderTarget> normalSlope;
@@ -167,6 +166,7 @@ private:
   TextureSize size_{TextureSize::kMin};
   bool animated_ = false;
   bool renderedOnce_ = false;
+  bool preparationFailed_ = false;
   LayerFilter filter_;
   std::vector<Diagnostic> diagnostics_;
 };
@@ -208,7 +208,7 @@ public:
           const GeometryInputs &a_inputs, TextureSize a_size,
           TextureSize a_maxSize);
 
-  void Render(RenderedStack &a_stack, const SignalState &a_signals,
+  bool Render(RenderedStack &a_stack, const SignalState &a_signals,
               float a_time, const LayerFilter &a_filter,
               const StackBase &a_base = {});
 
@@ -265,7 +265,7 @@ private:
   PrepareRenderedMask(const Recipe &a_recipe, std::string_view a_name,
                       const GeometryInputs &a_inputs, TextureSize a_size,
                       std::uint32_t a_depth);
-  void RenderMask(RenderedMask &a_mask, const SignalState &a_signals,
+  bool RenderMask(RenderedMask &a_mask, const SignalState &a_signals,
                   float a_time);
   std::expected<std::shared_ptr<TextureLab::RenderTarget>, std::string>
   BakeInto(MeshEntry &a_entry, const std::string &a_key, TextureSize a_size,
@@ -277,9 +277,9 @@ private:
   PrepareDistance(const DistanceSource &a_distance,
                   const GeometryInputs &a_inputs, TextureSize a_size);
   std::expected<std::shared_ptr<RenderedRipple>, std::string>
-  PrepareRipple(const Source &a_source, const RippleSource &a_ripple,
-                const GeometryInputs &a_inputs, TextureSize a_size);
-  void RenderRipple(RenderedRipple &a_ripple, const SignalState &a_signals,
+  PrepareRipple(const RecipeTextureKey &a_key, const RippleSource &a_ripple,
+                const GeometryInputs &a_inputs);
+  bool RenderRipple(RenderedRipple &a_ripple, const SignalState &a_signals,
                     float a_time);
   std::shared_ptr<TextureLab::Lookup>
   BakeCurve(const Recipe &a_recipe, const CurveRef &a_curve,

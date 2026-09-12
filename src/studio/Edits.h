@@ -5,6 +5,7 @@
 
 #include <array>
 #include <cstddef>
+#include <expected>
 #include <map>
 #include <optional>
 #include <string>
@@ -290,6 +291,8 @@ using RecipeEdit = std::variant<
 struct EditBatch {
   std::vector<RecipeEdit> edits;
 };
+[[nodiscard]] std::expected<Recipe, Diagnostic>
+PrepareEdits(const Recipe &a_recipe, const EditBatch &a_batch);
 [[nodiscard]] std::optional<Diagnostic> Apply(Recipe &a_recipe,
                                               const EditBatch &a_batch);
 [[nodiscard]] std::string Describe(const EditBatch &a_batch);
@@ -300,6 +303,15 @@ struct ReferenceCounts {
   std::map<std::string, std::size_t> images;
 };
 [[nodiscard]] ReferenceCounts CountReferences(const Recipe &a_recipe);
+
+struct ExpressionRename {
+  std::string from;
+  std::string to;
+};
+
+[[nodiscard]] std::string
+RenameInExpression(std::string_view a_text,
+                   std::span<const ExpressionRename> a_renames, bool a_curve);
 
 [[nodiscard]] std::string RenameInExpression(std::string_view a_text,
                                              std::string_view a_from,

@@ -22,7 +22,7 @@ public:
   EffectShader(const FormRef &a_record) const override;
 
 private:
-  [[nodiscard]] RE::Actor *Actor() const noexcept;
+  [[nodiscard]] RE::NiPointer<RE::Actor> Actor() const noexcept;
 
   RE::ActorHandle actor_;
   RE::FormID enchantment_ = 0;

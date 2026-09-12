@@ -35,19 +35,42 @@ struct LayerKey {
   [[nodiscard]] auto operator<=>(const LayerKey &) const = default;
 };
 
+struct Isolation {
+  std::string recipeID;
+  std::optional<std::size_t> output;
+  std::optional<std::size_t> layer;
+  bool bySolo = false;
+  bool outputBySolo = false;
+
+  [[nodiscard]] bool TargetsOutput(std::string_view a_recipe,
+                                   std::size_t a_output) const noexcept;
+  [[nodiscard]] bool TargetsLayer(std::string_view a_recipe,
+                                  std::size_t a_output,
+                                  std::size_t a_layer) const noexcept;
+
+  [[nodiscard]] static Isolation ForRecipe(std::string a_recipe);
+  [[nodiscard]] static Isolation ForOutput(std::string a_recipe,
+                                           std::size_t a_output);
+  [[nodiscard]] static Isolation
+  ForLayer(std::string a_recipe, std::size_t a_output, std::size_t a_layer);
+  [[nodiscard]] Isolation SoloRecipe(std::string a_recipe, bool a_on) const;
+  [[nodiscard]] Isolation SoloOutput(std::string a_recipe, std::size_t a_output,
+                                     bool a_on) const;
+  [[nodiscard]] Isolation SoloLayer(std::string a_recipe, std::size_t a_output,
+                                    std::size_t a_layer, bool a_on) const;
+  [[nodiscard]] bool operator==(const Isolation &) const = default;
+};
+
 struct View {
   bool freeze = false;
   float scrubSeconds = 0.0f;
   float speed = 1.0f;
-  std::string isolateRecipe;
-  int isolateOutput = -1;
-  int isolateLayer = -1;
-  bool isolatedBySolo = false;
+  Isolation isolation;
   std::set<LayerKey> muted;
   std::optional<Pin> pin;
 
   [[nodiscard]] bool Isolating() const noexcept {
-    return !isolateRecipe.empty();
+    return !isolation.recipeID.empty();
   }
 
   [[nodiscard]] std::vector<std::string> RecipeIDs() const;
@@ -55,14 +78,13 @@ struct View {
   void ForgetRecipe(std::string_view a_id);
 
   [[nodiscard]] bool RecipeShown(const std::string &a_recipe) const noexcept {
-    return !Isolating() || isolateRecipe == a_recipe;
+    return !Isolating() || isolation.recipeID == a_recipe;
   }
 
   [[nodiscard]] bool OutputShown(const std::string &a_recipe,
                                  std::size_t a_output) const noexcept {
     return RecipeShown(a_recipe) &&
-           (isolateOutput < 0 ||
-            static_cast<std::size_t>(isolateOutput) == a_output);
+           (!isolation.output || *isolation.output == a_output);
   }
 
   [[nodiscard]] bool LayerShown(const std::string &a_recipe,
@@ -71,11 +93,10 @@ struct View {
     if (!OutputShown(a_recipe, a_output)) {
       return false;
     }
-    if (isolateLayer >= 0 && isolateRecipe == a_recipe && isolateOutput >= 0 &&
-        static_cast<std::size_t>(isolateOutput) == a_output) {
-      return static_cast<std::size_t>(isolateLayer) == a_layer;
+    if (isolation.layer && isolation.TargetsOutput(a_recipe, a_output)) {
+      return *isolation.layer == a_layer;
     }
-    return !muted.contains(LayerKey{a_recipe, a_output, a_layer});
+    return !LayerMuted(a_recipe, a_output, a_layer);
   }
 
   [[nodiscard]] bool LayerMuted(const std::string &a_recipe,
@@ -86,8 +107,7 @@ struct View {
 
   [[nodiscard]] bool FiltersLayers(const std::string &a_recipe,
                                    std::size_t a_output) const {
-    if (isolateLayer >= 0 && isolateRecipe == a_recipe && isolateOutput >= 0 &&
-        static_cast<std::size_t>(isolateOutput) == a_output) {
+    if (isolation.layer && isolation.TargetsOutput(a_recipe, a_output)) {
       return true;
     }
     for (const auto &key : muted) {
@@ -98,6 +118,13 @@ struct View {
     return false;
   }
 };
+
+struct ViewCommand {
+  Isolation target;
+  bool on = false;
+};
+
+[[nodiscard]] bool ApplyViewCommand(View &a_view, const ViewCommand &a_command);
 
 enum class Mode {
   kCompose,

@@ -12,7 +12,7 @@ if [ -n "${BEEF_SANITIZE:-}" ] && [ "$(basename "$CXX")" = "g++" ]; then
 fi
 OUT="${TEST_OUT_DIR:-build/native-tests-$(basename "$CXX")${BEEF_SANITIZE:+-sanitized}}"
 mkdir -p "$OUT"
-FLAGS=(-std=c++23 -O1 -Wall -Wextra -I src -I src/extern -I tests "-DBEEF_FIXTURES_DIR=\"$PWD/tests/fixtures\"")
+FLAGS=(-std=c++23 -O1 -Wall -Wextra -pthread -I src -I src/extern -I tests "-DBEEF_FIXTURES_DIR=\"$PWD/tests/fixtures\"")
 if [ -n "${BEEF_SANITIZE:-}" ]; then
 	FLAGS+=(-fsanitize=address,undefined -fno-sanitize=vptr -fno-omit-frame-pointer -fno-sanitize-recover=undefined -g)
 fi
@@ -73,6 +73,18 @@ for mod in "${MODULES[@]}"; do
 		build_and_run "$name" "$test" "${module_sources[@]}"
 	done < <(find "tests/$mod" -name '*_tests.cpp' -print0 2>/dev/null | sort -z)
 done
+
+build_and_run engine_sessionqueue tests/engine/sessionqueue_tests.cpp src/engine/SessionQueue.cpp
+suites=$((suites + 1))
+
+build_and_run engine_applicator tests/engine/applicator_tests.cpp src/engine/ApplicationService.cpp src/engine/SessionQueue.cpp
+suites=$((suites + 1))
+
+build_and_run engine_applicationservice tests/engine/applicationservice_tests.cpp src/engine/ApplicationService.cpp src/engine/SessionQueue.cpp
+suites=$((suites + 1))
+
+build_and_run settingspublication tests/settingspublication_tests.cpp src/Settings.cpp
+suites=$((suites + 1))
 
 if [ "$suites" -eq 0 ]; then
 	echo "zero suites green"

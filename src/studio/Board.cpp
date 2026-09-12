@@ -1,29 +1,13 @@
 #include "studio/Board.h"
 
 #include "studio/Names.h"
+#include "studio/Rows.h"
 
 #include <algorithm>
 #include <format>
 
 namespace BetterEnchantmentEffects::Studio {
 namespace {
-[[nodiscard]] bool IsMaterialOutput(const OutputRow &a_output) noexcept {
-  return a_output.target != Target::kLight;
-}
-
-[[nodiscard]] bool WritesCell(const OutputRow &a_output, Surface a_surface,
-                              Slot a_slot) noexcept {
-  return IsMaterialOutput(a_output) && a_output.surface == a_surface &&
-         a_output.slot == a_slot;
-}
-
-[[nodiscard]] bool OutputIsolated(const View &a_view,
-                                  const std::string &a_recipe,
-                                  std::size_t a_output) noexcept {
-  return a_view.isolateRecipe == a_recipe && a_view.isolateOutput >= 0 &&
-         static_cast<std::size_t>(a_view.isolateOutput) == a_output;
-}
-
 [[nodiscard]] std::vector<std::string>
 BadgesOf(const std::vector<LayerRow> &a_layers) {
   std::vector<std::string> badges;
@@ -67,11 +51,11 @@ void FillCell(Cell &a_cell, const RecipeRow &a_recipe,
     a_cell.replace = first->replace;
     a_cell.scalars = first->scalars;
     a_cell.badges = BadgesOf(first->layers);
-    a_cell.isolated = OutputIsolated(a_view, a_recipe.id, first->index);
+    a_cell.isolated = a_view.isolation.TargetsOutput(a_recipe.id, first->index);
     return;
   }
   for (const auto &output : a_geometry.outputs) {
-    if (IsMaterialOutput(output) && output.surface == a_cell.surface &&
+    if (output.target != Target::kLight && output.surface == a_cell.surface &&
         SlotsExclude(a_cell.slot, output.slot)) {
       a_cell.state = CellState::kExcluded;
       a_cell.reason = std::format("excluded by {} (output {})",
@@ -98,8 +82,8 @@ void FillCell(Cell &a_cell, const RecipeRow &a_recipe,
   }
   light.present = light.output.has_value();
   light.description = a_recipe.light;
-  light.isolated =
-      light.output && OutputIsolated(a_view, a_recipe.id, *light.output);
+  light.isolated = light.output &&
+                   a_view.isolation.TargetsOutput(a_recipe.id, *light.output);
   return light;
 }
 }

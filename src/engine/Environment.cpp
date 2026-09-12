@@ -8,14 +8,13 @@ ActorEnvironment::ActorEnvironment(RE::Actor *a_actor,
     : actor_(a_actor ? a_actor->GetHandle() : RE::ActorHandle{}),
       enchantment_(a_enchantment ? a_enchantment->GetFormID() : 0) {}
 
-RE::Actor *ActorEnvironment::Actor() const noexcept {
-  const auto actor = actor_.get();
-  return actor ? actor.get() : nullptr;
+RE::NiPointer<RE::Actor> ActorEnvironment::Actor() const noexcept {
+  return actor_.get();
 }
 
 float ActorEnvironment::ActorValue(std::string_view a_name,
                                    Measure a_measure) const {
-  auto *actor = Actor();
+  const auto actor = Actor();
   if (!actor) {
     return 0.0f;
   }
@@ -54,7 +53,7 @@ float ActorEnvironment::ActorValue(std::string_view a_name,
 }
 
 float ActorEnvironment::ActorState(ActorStateKind a_kind) const {
-  auto *actor = Actor();
+  const auto actor = Actor();
   if (!actor) {
     return 0.0f;
   }

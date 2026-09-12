@@ -9,13 +9,13 @@
 #include <vector>
 
 namespace BetterEnchantmentEffects {
-enum class PieceId : std::size_t {};
+enum class GeometryId : std::size_t {};
 enum class InstanceId : std::size_t {};
 enum class PlacementId : std::size_t {};
 enum class RecipeId : std::size_t {};
 enum class OutputIndex : std::size_t {};
 
-struct Piece {
+struct Geometry {
   GeometryIdentity identity;
   WornPiece keys;
   bool firstPerson = false;
@@ -38,31 +38,33 @@ struct OutputPlacement {
 
 struct Placement {
   InstanceId instance{};
-  PieceId piece{};
+  GeometryId geometry{};
   RecipeKey key;
   std::vector<OutputPlacement> outputs;
   [[nodiscard]] bool operator==(const Placement &) const = default;
 };
 
 struct ActorState {
-  std::vector<Piece> pieces;
+  std::vector<Geometry> geometries;
   std::vector<Instance> instances;
   std::vector<Placement> placements;
 };
 
-[[nodiscard]] const Piece *PieceAt(const ActorState &a_state,
-                                   PieceId a_piece) noexcept;
+[[nodiscard]] const Geometry *GeometryAt(const ActorState &a_state,
+                                         GeometryId a_geometry) noexcept;
 [[nodiscard]] const Instance *InstanceAt(const ActorState &a_state,
                                          InstanceId a_instance) noexcept;
 [[nodiscard]] const Placement *PlacementAt(const ActorState &a_state,
                                            PlacementId a_placement) noexcept;
 
-[[nodiscard]] bool AnyLivePiece(const ActorState &a_state) noexcept;
+[[nodiscard]] bool AnyLiveGeometry(const ActorState &a_state) noexcept;
 [[nodiscard]] std::optional<InstanceId>
 FindInstance(const ActorState &a_state, RecipeId a_recipe,
              const std::optional<FormKey> &a_enchantment) noexcept;
+[[nodiscard]] std::vector<RecipeId>
+RecipesOfInactiveInstances(const ActorState &a_state);
 [[nodiscard]] std::vector<PlacementId>
-PlacementsOfPiece(const ActorState &a_state, PieceId a_piece);
+PlacementsOfGeometry(const ActorState &a_state, GeometryId a_geometry);
 [[nodiscard]] std::vector<PlacementId>
 PlacementsOfInstance(const ActorState &a_state, InstanceId a_instance);
 
@@ -72,9 +74,9 @@ struct PieceMatch {
   int priority = 0;
 };
 
-[[nodiscard]] std::vector<PieceMatch> MatchesForPiece(const ActorState &a_state,
-                                                      std::size_t a_flatStart,
-                                                      std::size_t a_geomCount);
+[[nodiscard]] std::vector<PieceMatch>
+MatchesForPiece(const ActorState &a_state, GeometryId a_firstGeometry,
+                std::size_t a_geomCount);
 [[nodiscard]] std::optional<std::size_t>
 PlacedIndexOf(const ActorState &a_state,
               std::span<const PlacementId> a_placements, InstanceId a_instance);
@@ -82,6 +84,7 @@ PlacedIndexOf(const ActorState &a_state,
 InstanceOfPlaced(const ActorState &a_state,
                  std::span<const PlacementId> a_placements,
                  std::size_t a_placed);
-[[nodiscard]] std::vector<PieceId>
-ThirdPersonPiecesOfInstance(const ActorState &a_state, InstanceId a_instance);
+[[nodiscard]] std::vector<GeometryId>
+ThirdPersonGeometriesOfInstance(const ActorState &a_state,
+                                InstanceId a_instance);
 }

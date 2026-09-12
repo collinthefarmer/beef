@@ -1,5 +1,7 @@
 #include "render/RuntimeTextures.h"
 
+#include <REX/W32/COMPTR.h>
+
 #include <cstring>
 #include <utility>
 
@@ -8,13 +10,6 @@ using namespace REX::W32;
 
 namespace {
 constexpr bool Failed(std::int32_t a_hr) noexcept { return a_hr < 0; }
-
-template <class T> void Release(T *&a_ptr) {
-  if (a_ptr) {
-    a_ptr->Release();
-    a_ptr = nullptr;
-  }
-}
 
 RE::NiTexture::RendererData *DataOf(RE::NiSourceTexture *a_texture) {
   return a_texture ? reinterpret_cast<RE::NiTexture::RendererData *>(
@@ -42,6 +37,57 @@ public:
 private:
   RE::BSGraphics::Renderer *renderer_ = nullptr;
 };
+
+class UnconditionalReadback {
+public:
+  explicit UnconditionalReadback(ID3D11DeviceContext *a_context)
+      : borrowedContext_(a_context) {
+    borrowedContext_->GetPredication(predicate_.GetAddressOf(), &value_);
+    borrowedContext_->SetPredication(nullptr, false);
+  }
+  ~UnconditionalReadback() {
+    borrowedContext_->SetPredication(predicate_.Get(), value_);
+  }
+  UnconditionalReadback(const UnconditionalReadback &) = delete;
+  UnconditionalReadback &operator=(const UnconditionalReadback &) = delete;
+  UnconditionalReadback(UnconditionalReadback &&) = delete;
+  UnconditionalReadback &operator=(UnconditionalReadback &&) = delete;
+
+private:
+  ID3D11DeviceContext *borrowedContext_;
+  ComPtr<ID3D11Predicate> predicate_;
+  REX::W32::BOOL value_ = false;
+};
+
+class ReadMapping {
+public:
+  ReadMapping(ID3D11DeviceContext *a_context, ID3D11Resource *a_resource)
+      : borrowedContext_(a_context), resource_(a_resource),
+        active_(!Failed(borrowedContext_->Map(resource_, 0, D3D11_MAP_READ, 0,
+                                              &mapped_))) {}
+  ~ReadMapping() {
+    if (active_) {
+      borrowedContext_->Unmap(resource_, 0);
+    }
+  }
+  ReadMapping(const ReadMapping &) = delete;
+  ReadMapping &operator=(const ReadMapping &) = delete;
+  ReadMapping(ReadMapping &&) = delete;
+  ReadMapping &operator=(ReadMapping &&) = delete;
+
+  [[nodiscard]] const std::uint8_t *Data() const noexcept {
+    return active_ ? static_cast<const std::uint8_t *>(mapped_.data) : nullptr;
+  }
+  [[nodiscard]] std::uint32_t RowPitch() const noexcept {
+    return mapped_.rowPitch;
+  }
+
+private:
+  ID3D11DeviceContext *borrowedContext_;
+  ID3D11Resource *resource_;
+  D3D11_MAPPED_SUBRESOURCE mapped_{};
+  bool active_ = false;
+};
 }
 
 std::vector<std::uint8_t>
@@ -53,35 +99,43 @@ TextureLab::ReadBuffer(REX::W32::ID3D11Buffer *a_buffer,
     return out;
   }
   D3D11_BUFFER_DESC desc{};
+  a_buffer->GetDesc(&desc);
+  if (a_bytes > desc.byteWidth) {
+    return out;
+  }
+  desc = {};
   desc.byteWidth = a_bytes;
   desc.usage = D3D11_USAGE_STAGING;
   desc.cpuAccessFlags = D3D11_CPU_ACCESS_READ;
-  REX::W32::ID3D11Buffer *staging = nullptr;
-  if (Failed(device_->CreateBuffer(&desc, nullptr, &staging))) {
+  ComPtr<ID3D11Buffer> staging;
+  if (Failed(borrowedDevice_->CreateBuffer(&desc, nullptr,
+                                           staging.GetAddressOf()))) {
     return out;
   }
   const D3D11_BOX box{0, 0, 0, a_bytes, 1, 1};
-  context_->CopySubresourceRegion(
-      reinterpret_cast<REX::W32::ID3D11Resource *>(staging), 0, 0, 0, 0,
+  const UnconditionalReadback unconditional{borrowedContext_};
+  borrowedContext_->CopySubresourceRegion(
+      reinterpret_cast<REX::W32::ID3D11Resource *>(staging.Get()), 0, 0, 0, 0,
       reinterpret_cast<REX::W32::ID3D11Resource *>(a_buffer), 0, &box);
-  D3D11_MAPPED_SUBRESOURCE mapped{};
-  if (!Failed(
-          context_->Map(reinterpret_cast<REX::W32::ID3D11Resource *>(staging),
-                        0, D3D11_MAP_READ, 0, &mapped)) &&
-      mapped.data) {
-    out.assign(static_cast<const std::uint8_t *>(mapped.data),
-               static_cast<const std::uint8_t *>(mapped.data) + a_bytes);
-    context_->Unmap(reinterpret_cast<REX::W32::ID3D11Resource *>(staging), 0);
+  const ReadMapping mapped{borrowedContext_,
+                           reinterpret_cast<ID3D11Resource *>(staging.Get())};
+  if (const auto *data = mapped.Data()) {
+    out.assign(data, data + a_bytes);
   }
-  Release(staging);
   return out;
 }
 
 std::optional<float> TextureLab::ReadBackMean(RenderTarget &a_target) {
   const RendererLock rendererLock;
   std::optional<float> result;
+  if (!a_target.texture.Get() || !available_) {
+    return result;
+  }
   D3D11_TEXTURE2D_DESC desc{};
   a_target.texture->GetDesc(&desc);
+  if (desc.mipLevels == 0 || desc.format != DXGI_FORMAT_R8G8B8A8_UNORM) {
+    return result;
+  }
   const auto lastMip = desc.mipLevels - 1;
   D3D11_TEXTURE2D_DESC stagingDesc{};
   stagingDesc.width = 1;
@@ -92,19 +146,18 @@ std::optional<float> TextureLab::ReadBackMean(RenderTarget &a_target) {
   stagingDesc.sampleDesc.count = 1;
   stagingDesc.usage = D3D11_USAGE_STAGING;
   stagingDesc.cpuAccessFlags = D3D11_CPU_ACCESS_READ;
-  REX::W32::ID3D11Texture2D *staging = nullptr;
-  if (!Failed(device_->CreateTexture2D(&stagingDesc, nullptr, &staging))) {
-    context_->CopySubresourceRegion(staging, 0, 0, 0, 0, a_target.texture,
-                                    lastMip, nullptr);
-    D3D11_MAPPED_SUBRESOURCE mapped{};
-    if (!Failed(context_->Map(staging, 0, D3D11_MAP_READ, 0, &mapped))) {
-      const auto *px = static_cast<const std::uint8_t *>(mapped.data);
+  ComPtr<REX::W32::ID3D11Texture2D> staging;
+  if (!Failed(borrowedDevice_->CreateTexture2D(&stagingDesc, nullptr,
+                                               staging.GetAddressOf()))) {
+    const UnconditionalReadback unconditional{borrowedContext_};
+    borrowedContext_->CopySubresourceRegion(
+        staging.Get(), 0, 0, 0, 0, a_target.texture.Get(), lastMip, nullptr);
+    const ReadMapping mapped{borrowedContext_, staging.Get()};
+    if (const auto *px = mapped.Data(); px && mapped.RowPitch() >= 4) {
       result = (0.299f * px[0] + 0.587f * px[1] + 0.114f * px[2]) / 255.0f;
-      context_->Unmap(staging, 0);
     } else {
       logger::warn("TextureLab: staging map failed; mean readback unavailable");
     }
-    Release(staging);
   } else {
     logger::warn("TextureLab: staging texture creation failed; mean readback "
                  "unavailable");
@@ -115,7 +168,7 @@ std::optional<float> TextureLab::ReadBackMean(RenderTarget &a_target) {
 std::vector<std::uint8_t> TextureLab::ReadBackPixels(RenderTarget &a_target) {
   const RendererLock rendererLock;
   std::vector<std::uint8_t> out;
-  if (!a_target.texture) {
+  if (!a_target.texture.Get() || !available_) {
     return out;
   }
   D3D11_TEXTURE2D_DESC desc{};
@@ -137,32 +190,30 @@ std::vector<std::uint8_t> TextureLab::ReadBackPixels(RenderTarget &a_target) {
   stagingDesc.sampleDesc.count = 1;
   stagingDesc.usage = D3D11_USAGE_STAGING;
   stagingDesc.cpuAccessFlags = D3D11_CPU_ACCESS_READ;
-  REX::W32::ID3D11Texture2D *staging = nullptr;
-  if (Failed(device_->CreateTexture2D(&stagingDesc, nullptr, &staging))) {
+  ComPtr<REX::W32::ID3D11Texture2D> staging;
+  if (Failed(borrowedDevice_->CreateTexture2D(&stagingDesc, nullptr,
+                                              staging.GetAddressOf()))) {
     logger::warn("TextureLab: staging texture creation failed; pixel readback "
                  "unavailable");
     return out;
   }
-  context_->CopySubresourceRegion(staging, 0, 0, 0, 0, a_target.texture, 0,
-                                  nullptr);
-  D3D11_MAPPED_SUBRESOURCE mapped{};
-  if (!Failed(context_->Map(staging, 0, D3D11_MAP_READ, 0, &mapped)) &&
-      mapped.data) {
+  const UnconditionalReadback unconditional{borrowedContext_};
+  borrowedContext_->CopySubresourceRegion(staging.Get(), 0, 0, 0, 0,
+                                          a_target.texture.Get(), 0, nullptr);
+  const ReadMapping mapped{borrowedContext_, staging.Get()};
+  if (const auto *rows = mapped.Data()) {
     const std::size_t rowBytes = static_cast<std::size_t>(desc.width) * 4;
-    if (mapped.rowPitch >= rowBytes) {
+    if (mapped.RowPitch() >= rowBytes) {
       out.resize(rowBytes * desc.height);
-      const auto *rows = static_cast<const std::uint8_t *>(mapped.data);
       for (std::uint32_t y = 0; y < desc.height; ++y) {
         std::memcpy(out.data() + y * rowBytes,
-                    rows + static_cast<std::size_t>(y) * mapped.rowPitch,
+                    rows + static_cast<std::size_t>(y) * mapped.RowPitch(),
                     rowBytes);
       }
     }
-    context_->Unmap(staging, 0);
   } else {
     logger::warn("TextureLab: staging map failed; pixel readback unavailable");
   }
-  Release(staging);
   return out;
 }
 
@@ -171,7 +222,7 @@ TextureLab::CreateLookup(std::span<const float, 256> a_values) {
   if (!Init()) {
     return nullptr;
   }
-  auto lookup = std::make_shared<Lookup>();
+  auto lookup = std::make_shared<Lookup>(Lookup::ConstructionKey{});
   D3D11_TEXTURE2D_DESC desc{};
   desc.width = 256;
   desc.height = 1;
@@ -182,9 +233,10 @@ TextureLab::CreateLookup(std::span<const float, 256> a_values) {
   desc.usage = D3D11_USAGE_IMMUTABLE;
   desc.bindFlags = D3D11_BIND_SHADER_RESOURCE;
   D3D11_SUBRESOURCE_DATA data{a_values.data(), 256 * sizeof(float), 0};
-  if (Failed(device_->CreateTexture2D(&desc, &data, &lookup->texture)) ||
-      Failed(device_->CreateShaderResourceView(lookup->texture, nullptr,
-                                               &lookup->srv))) {
+  if (Failed(borrowedDevice_->CreateTexture2D(
+          &desc, &data, lookup->texture.GetAddressOf())) ||
+      Failed(borrowedDevice_->CreateShaderResourceView(
+          lookup->texture.Get(), nullptr, lookup->srv.GetAddressOf()))) {
     logger::error("TextureLab: could not create a curve lookup");
     return nullptr;
   }
@@ -193,28 +245,27 @@ TextureLab::CreateLookup(std::span<const float, 256> a_values) {
 
 std::optional<TextureLab::Extent>
 TextureLab::ExtentOf(RE::NiSourceTexture *a_source) {
+  const RendererLock rendererLock;
   const auto *data = DataOf(a_source);
   if (!data || !data->resourceView) {
     return std::nullopt;
   }
   auto *srv = reinterpret_cast<REX::W32::ID3D11ShaderResourceView *>(
       data->resourceView);
-  REX::W32::ID3D11Resource *resource = nullptr;
-  srv->GetResource(&resource);
-  if (!resource) {
+  ComPtr<ID3D11Resource> resource;
+  srv->GetResource(resource.GetAddressOf());
+  if (!resource.Get()) {
     return std::nullopt;
   }
-  REX::W32::ID3D11Texture2D *texture = nullptr;
+  ComPtr<REX::W32::ID3D11Texture2D> texture;
   resource->QueryInterface(IID_ID3D11Texture2D,
-                           reinterpret_cast<void **>(&texture));
+                           reinterpret_cast<void **>(texture.GetAddressOf()));
   std::optional<Extent> extent;
-  if (texture) {
+  if (texture.Get()) {
     D3D11_TEXTURE2D_DESC desc{};
     texture->GetDesc(&desc);
     extent = Extent{desc.width, desc.height};
   }
-  Release(texture);
-  Release(resource);
   return extent;
 }
 

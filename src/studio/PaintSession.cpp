@@ -2,13 +2,90 @@
 
 #include "Core.h"
 #include "recipe/Expression.h"
-#include "studio/Names.h"
-#include "studio/TermTemplates.h"
+#include "studio/SourcePlan.h"
 
 #include <algorithm>
 #include <ranges>
 
 namespace BetterEnchantmentEffects::Studio {
+std::expected<EditBatch, Diagnostic>
+PreparePaintCommit(const Recipe *a_paint, const Recipe *a_target,
+                   const PaintCommitRequest &a_request) {
+  const auto refuse =
+      [](std::string a_message) -> std::expected<EditBatch, Diagnostic> {
+    return std::unexpected(
+        MakeDiagnostic(Severity::kError, "paint", std::move(a_message)));
+  };
+  if (!a_paint || !a_target) {
+    return refuse("the paint recipe or target recipe is not loaded");
+  }
+  if (a_target->id != a_request.recipeID || a_target->id == kPaintRecipe) {
+    return refuse("the target recipe does not match the paint request");
+  }
+  if (!IsName(a_request.maskName) || a_request.maskName == kScratchMask) {
+    return refuse("choose a mask name other than scratch");
+  }
+  Recipe paint = *a_paint;
+  const auto prepared = PreparePaintUpdate(
+      a_paint, PaintUpdateRequest{a_request.sessionID, 0, a_request.expression,
+                                  a_request.sources});
+  if (!prepared) {
+    return std::unexpected(prepared.error());
+  }
+  if (const auto problem = Apply(paint, *prepared)) {
+    return std::unexpected(*problem);
+  }
+  EditBatch edits{KeepEdits(paint, *a_target, a_request.maskName)};
+  if (edits.edits.empty()) {
+    return refuse("the paint mask could not be prepared");
+  }
+  return edits;
+}
+
+std::expected<EditBatch, Diagnostic>
+PreparePaintUpdate(const Recipe *a_paint, const PaintUpdateRequest &a_request) {
+  const auto refuse =
+      [](std::string a_message) -> std::expected<EditBatch, Diagnostic> {
+    return std::unexpected(
+        MakeDiagnostic(Severity::kError, "paint", std::move(a_message)));
+  };
+  if (!a_paint || a_paint->id != kPaintRecipe) {
+    return refuse("the paint recipe is not loaded");
+  }
+  if (a_request.sources.size() > kMaxRecipeRows) {
+    return refuse("the paint source limit was reached");
+  }
+  EditBatch batch;
+  Recipe available = *a_paint;
+  for (const RecipeEdit &edit : a_request.sources) {
+    const AddSource *source = Get<AddSource>(edit);
+    if (!source) {
+      return refuse("paint dependencies must be source additions");
+    }
+    if (const Source *existing = available.FindSource(source->name)) {
+      if (existing->kind != source->kind) {
+        return refuse("a paint source name has a conflicting definition");
+      }
+      continue;
+    }
+    if (available.sources.size() >= kMaxRecipeRows) {
+      return refuse("the recipe source limit was reached");
+    }
+    available.sources.push_back(Source{source->name, source->kind});
+    batch.edits.push_back(edit);
+  }
+  batch.edits.emplace_back(
+      SetMask{std::string{kScratchMask}, a_request.expression});
+  for (RecipeEdit &edit : PaintSurfaceEdits(a_request.surface)) {
+    batch.edits.push_back(std::move(edit));
+  }
+  const auto prepared = PrepareEdits(*a_paint, batch);
+  if (!prepared) {
+    return std::unexpected(prepared.error());
+  }
+  return batch;
+}
+
 std::optional<std::string> ScratchOf(const RecipeRow &a_recipe) {
   const auto it =
       std::ranges::find(a_recipe.maskRows, kScratchMask, &TextRow::name);
@@ -45,39 +122,6 @@ Recipe PaintRecipe(const Recipe &a_active, RecipeKey a_key, Surface a_surface) {
   return recipe;
 }
 
-namespace {
-class SourceNamer {
-public:
-  explicit SourceNamer(const Existing &a_existing)
-      : existing_(a_existing), taken_(a_existing.taken) {}
-
-  [[nodiscard]] std::string NameFor(const std::string &a_wanted,
-                                    const SourceKind &a_kind) {
-    for (const auto &[name, kind] : existing_.sources) {
-      if (name == a_wanted && kind == a_kind) {
-        return name;
-      }
-    }
-    for (const auto &[name, kind] : existing_.sources) {
-      if (kind == a_kind) {
-        return name;
-      }
-    }
-    const std::string name = UniqueName(a_wanted, taken_);
-    taken_.push_back(name);
-    edits_.emplace_back(AddSource{name, a_kind});
-    return name;
-  }
-
-  [[nodiscard]] std::vector<RecipeEdit> Edits() && { return std::move(edits_); }
-
-private:
-  const Existing &existing_;
-  std::vector<std::string> taken_;
-  std::vector<RecipeEdit> edits_;
-};
-}
-
 std::vector<RecipeEdit> KeepEdits(const Recipe &a_paint, const Recipe &a_active,
                                   std::string_view a_name) {
   std::vector<RecipeEdit> edits;
@@ -90,19 +134,21 @@ std::vector<RecipeEdit> KeepEdits(const Recipe &a_paint, const Recipe &a_active,
   if (!program) {
     return edits;
   }
-  const Existing existing = ExistingOf(a_active);
-  SourceNamer namer(existing);
+  const SourceCatalog existing = SourceCatalogOf(a_active);
+  SourcePlanBuilder sources(existing);
+  std::vector<ExpressionRename> renames;
   for (const std::string &read : program->References()) {
     const Source *source = a_paint.FindSource(read);
     if (!source) {
       continue;
     }
-    const std::string to = namer.NameFor(read, source->kind);
+    const std::string to = sources.ReuseOrAdd(read, source->kind);
     if (to != read) {
-      text = RenameInExpression(text, read, to, false);
+      renames.push_back({read, to});
     }
   }
-  edits = std::move(namer).Edits();
+  text = RenameInExpression(text, renames, false);
+  edits = std::move(sources).TakeEdits();
   if (!a_active.FindMask(a_name)) {
     edits.emplace_back(AddMask{std::string{a_name}});
   }

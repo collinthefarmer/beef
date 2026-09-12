@@ -7,20 +7,25 @@
 #include "mesh/TextureSize.h"
 #include "recipe/Expression.h"
 
+#include <REX/W32/COMPTR.h>
+
 #include <array>
 #include <atomic>
 #include <cstdint>
 #include <map>
 #include <memory>
-#include <mutex>
 #include <optional>
 #include <span>
+#include <type_traits>
 #include <unordered_map>
 #include <unordered_set>
 #include <utility>
 #include <vector>
 
 namespace BetterEnchantmentEffects {
+class RenderTargetPool;
+class TexturePreviews;
+
 class TextureLab {
 public:
   enum class Mode : std::uint32_t {
@@ -64,11 +69,29 @@ public:
   };
 
   class Lookup {
+    class ConstructionKey {
+      friend class TextureLab;
+      ConstructionKey() = default;
+    };
+
   public:
-    ~Lookup();
-    REX::W32::ID3D11Texture2D *texture = nullptr;
-    REX::W32::ID3D11ShaderResourceView *srv = nullptr;
+    explicit Lookup(ConstructionKey) {}
+    Lookup(const Lookup &) = delete;
+    Lookup &operator=(const Lookup &) = delete;
+    Lookup(Lookup &&) = delete;
+    Lookup &operator=(Lookup &&) = delete;
+
+  private:
+    friend class TextureLab;
+    REX::W32::ComPtr<REX::W32::ID3D11Texture2D> texture;
+    REX::W32::ComPtr<REX::W32::ID3D11ShaderResourceView> srv;
   };
+
+  static_assert(!std::is_default_constructible_v<Lookup>);
+  static_assert(!std::is_copy_constructible_v<Lookup>);
+  static_assert(!std::is_copy_assignable_v<Lookup>);
+  static_assert(!std::is_move_constructible_v<Lookup>);
+  static_assert(!std::is_move_assignable_v<Lookup>);
 
   inline static constexpr std::uint32_t kProgramTextures = 8;
   inline static constexpr std::uint32_t kProgramRefs = 16;
@@ -137,17 +160,36 @@ public:
 
   class RenderTarget {
   public:
+    RenderTarget() = default;
     ~RenderTarget();
+    RenderTarget(const RenderTarget &) = delete;
+    RenderTarget &operator=(const RenderTarget &) = delete;
+    RenderTarget(RenderTarget &&) = delete;
+    RenderTarget &operator=(RenderTarget &&) = delete;
+    [[nodiscard]] REX::W32::ID3D11ShaderResourceView *View() const noexcept {
+      return srv.Get();
+    }
     [[nodiscard]] RE::NiSourceTexture *Texture() const noexcept;
 
+  private:
+    friend class TextureLab;
+    friend class RenderTargetPool;
     RE::NiPointer<RE::NiSourceTexture> presenter;
     RE::NiTexture::RendererData *originalData = nullptr;
-    RE::NiTexture::RendererData *ourData = nullptr;
-    REX::W32::ID3D11Texture2D *texture = nullptr;
-    REX::W32::ID3D11ShaderResourceView *srv = nullptr;
-    REX::W32::ID3D11RenderTargetView *rtv = nullptr;
+    std::unique_ptr<RE::NiTexture::RendererData> ourData;
+    REX::W32::ComPtr<REX::W32::ID3D11Texture2D> texture;
+    REX::W32::ComPtr<REX::W32::ID3D11ShaderResourceView> srv;
+    REX::W32::ComPtr<REX::W32::ID3D11RenderTargetView> rtv;
     std::uint32_t size = 0;
   };
+
+  static_assert(!std::is_copy_constructible_v<RenderTarget>);
+  static_assert(!std::is_copy_assignable_v<RenderTarget>);
+  static_assert(!std::is_move_constructible_v<RenderTarget>);
+  static_assert(!std::is_move_assignable_v<RenderTarget>);
+
+  TextureLab();
+  ~TextureLab();
 
   [[nodiscard]] static TextureLab *GetSingleton();
 
@@ -202,57 +244,47 @@ public:
   void Clear();
 
 private:
-  struct SavedState;
+  struct RenderPass;
 
-  bool CompileShaders();
-  bool CreateTarget(RenderTarget &a_target, TextureSize a_size);
-  RE::NiPointer<RE::NiSourceTexture> LoadPresenter();
-  void Recycle(RenderTarget *a_target);
+  struct PixelPipeline {
+    REX::W32::ComPtr<REX::W32::ID3D11PixelShader> shader;
+    REX::W32::ComPtr<REX::W32::ID3D11Buffer> constants;
+  };
+  struct BakePipeline {
+    REX::W32::ComPtr<REX::W32::ID3D11VertexShader> vertex;
+    REX::W32::ComPtr<REX::W32::ID3D11PixelShader> pixel;
+    REX::W32::ComPtr<REX::W32::ID3D11InputLayout> layout;
+  };
+  struct GpuResources {
+    REX::W32::ComPtr<REX::W32::ID3D11VertexShader> vertex;
+    REX::W32::ComPtr<REX::W32::ID3D11PixelShader> pixel;
+    REX::W32::ComPtr<REX::W32::ID3D11Buffer> constants;
+    REX::W32::ComPtr<REX::W32::ID3D11SamplerState> sampler;
+    REX::W32::ComPtr<REX::W32::ID3D11BlendState> blend;
+    REX::W32::ComPtr<REX::W32::ID3D11DepthStencilState> depth;
+    REX::W32::ComPtr<REX::W32::ID3D11RasterizerState> raster;
+    std::optional<PixelPipeline> program;
+    std::optional<PixelPipeline> ripple;
+    std::optional<PixelPipeline> classify;
+    std::optional<BakePipeline> bake;
+  };
+
+  bool CompileShaders(GpuResources &a_resources);
 
   std::optional<float> ReadBackMean(RenderTarget &a_target);
   std::vector<std::uint8_t> ReadBackPixels(RenderTarget &a_target);
 
-  bool available_ = false;
+  std::atomic<bool> available_{false};
   bool initTried_ = false;
-  REX::W32::ID3D11Device *device_ = nullptr;
-  REX::W32::ID3D11DeviceContext *context_ = nullptr;
-  REX::W32::ID3D11VertexShader *vs_ = nullptr;
-  REX::W32::ID3D11PixelShader *ps_ = nullptr;
-  REX::W32::ID3D11PixelShader *programPs_ = nullptr;
-  REX::W32::ID3D11VertexShader *bakeVs_ = nullptr;
-  REX::W32::ID3D11PixelShader *bakePs_ = nullptr;
-  REX::W32::ID3D11InputLayout *bakeLayout_ = nullptr;
-  REX::W32::ID3D11PixelShader *ripplePs_ = nullptr;
-  REX::W32::ID3D11Buffer *rippleConstants_ = nullptr;
-  REX::W32::ID3D11PixelShader *classifyPs_ = nullptr;
-  REX::W32::ID3D11Buffer *classifyConstants_ = nullptr;
-  REX::W32::ID3D11Buffer *constants_ = nullptr;
-  REX::W32::ID3D11Buffer *programConstants_ = nullptr;
-  REX::W32::ID3D11SamplerState *sampler_ = nullptr;
-  REX::W32::ID3D11BlendState *blend_ = nullptr;
-  REX::W32::ID3D11DepthStencilState *depth_ = nullptr;
-  REX::W32::ID3D11RasterizerState *raster_ = nullptr;
-  std::uint32_t nextPresenter_ = 0;
-  std::vector<std::unique_ptr<RenderTarget>> pool_;
-  std::map<std::uint32_t, std::shared_ptr<RenderTarget>> scratch_;
+  REX::W32::ID3D11Device *borrowedDevice_ = nullptr;
+  REX::W32::ID3D11DeviceContext *borrowedContext_ = nullptr;
+  std::unique_ptr<GpuResources> gpu_;
   std::unordered_map<RE::NiSourceTexture *, float> luminance_;
   std::map<std::pair<RE::NiSourceTexture *, ShaderChannel>, float>
       channelMeans_;
   std::unordered_set<RE::NiSourceTexture *> sampleWarned_;
 
-  using PreviewKey = std::pair<RE::NiSourceTexture *, ShaderChannel>;
-  struct PreviewEntry {
-    std::shared_ptr<RenderTarget> target;
-    std::uint64_t generation = 0;
-    bool dynamic = false;
-    bool wanted = false;
-  };
-  std::mutex previewLock_;
-  std::map<PreviewKey, PreviewEntry> previews_;
-  std::atomic<std::uint64_t> previewGeneration_{1};
-  std::uint64_t previewSeen_ = 1;
-  std::vector<std::pair<std::shared_ptr<RenderTarget>, std::uint64_t>>
-      previewGraveyard_;
-  std::uint64_t previewTick_ = 0;
+  std::unique_ptr<RenderTargetPool> targets_;
+  std::unique_ptr<TexturePreviews> previews_;
 };
 }

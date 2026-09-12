@@ -229,19 +229,48 @@ Lab mechanics:
 - Presenters are `slot_000.dds` .. `slot_511.dds` (`kPresenterCount`):
   placeholder files an `NiSourceTexture` is loaded through so CS binds the
   target like any material texture (NOTES 22).
+- A target restores its presenter's original renderer metadata only while
+  the presenter still points to that target's replacement. Teardown must not
+  overwrite metadata installed by another owner. The lab's availability flag
+  is atomic because initialization writes it on the game thread and preview
+  requests read it on the render thread.
 - Every pass saves and restores everything it touches on the immediate
   context, because the engine's state cache does not know the pass ran,
   and unbinds its target and the armor inputs before the engine binds them.
   `Get*` calls on the context AddRef what they return.
+- Pass state is scoped: all eight render-target slots and all viewports are
+  retained, including a zero-viewport state. Binding one target clears the
+  other target slots and can clear conflicting SRVs in any shader stage
+  ([D3D11 target binding](https://learn.microsoft.com/en-us/windows/win32/api/d3d11/nf-d3d11-id3d11devicecontext-omsetrendertargets)).
+  All six stages' SRVs are therefore saved. The five graphics shaders retain
+  their class instances; geometry, hull and domain shaders and predication are
+  disabled for our draws, then restored. Output-merger UAV slot zero is saved
+  when no render target is bound, because our one-target pass can displace it;
+  its append/consume counter is preserved when rebinding. Other UAV slots are
+  untouched, and restoration uses the last populated RTV slot rather than
+  declaring all eight occupied
+  ([D3D11 output-merger rules](https://learn.microsoft.com/en-us/windows/win32/api/d3d11/nf-d3d11-id3d11devicecontext-omsetrendertargetsandunorderedaccessviews)).
 - Every pass and readback runs on the game thread while the render thread
   renders with the same context, so each takes the engine's renderer lock
   (re-entrant) for its duration; without it the driver crashes on a worker
   thread with nothing of ours on the stack (NOTES 53, 57).
+  `TextureLab::RenderPass` owns that lock before capturing state. Its destructor
+  restores the context, then releases captured COM references, then unlocks.
+  It requires nonnull renderer/context references and cannot be copied or moved.
 - A readback goes through a staging copy of the 1x1 mip and waits on the
   GPU; the log line before it names the step should the wait never end.
   Bytes are read as RGBA8, so any other format is refused before the map.
   `SampleMaterial` picks the mip whose side is still at least
   `kSampleSide`, so a sample point reads a mip average, never a sparse pick.
+- Staging resources have COM ownership, and each successful map has a scoped
+  unmap even if the returned data is unusable or a CPU allocation throws.
+  Readback also disables and restores predication: D3D's predicate applies to
+  `CopySubresourceRegion` as well as draw calls
+  ([D3D11 predication](https://learn.microsoft.com/en-us/windows/win32/api/d3d11/nf-d3d11-id3d11devicecontext-setpredication)).
+  Mean readback checks the source format, mip count, data pointer and row
+  pitch. Texture-extent queries take the renderer lock while reading resident
+  metadata. Mesh-bake uploads reject sizes exceeding the D3D11 byte range
+  before narrowing to the buffer descriptor's 32-bit width.
 - Previews: the render thread records a request under `previewLock_` and
   gets the last finished target; the game thread renders what was asked
   for once per tick. A new generation drops entries nobody asked for in
@@ -256,6 +285,23 @@ Lab mechanics:
 
 ## Bindings (`Binding.cpp`, `Binding.h`, `PBRMaterial.h`)
 
+- Slot writers retain both the property and its installed material. Retaining
+  a property alone does not keep a replaced material alive. Writes check the
+  installed material identity; material-binding liveness also checks the
+  geometry's property identity. Shells retain their vanilla material and
+  check the clone's property and parent before posing or writing emissive.
+  `PbrMaterial::Bind` is the checked construction boundary; only it casts the
+  engine material to the pinned PBR layout. `SlotWriter` and `MaterialInputs`
+  consume that owning record. Raw layout getters on material and shell bindings
+  have been removed; attachment checks remain necessary after construction.
+- Temporary materials returned by `Create` and `CreateMaterial` are held in
+  `BSTSmartPointer` through installation. The pinned CommonLib uses intrusive
+  material references; CS's `Create` returns a regular-heap material with the
+  matching virtual destructor (`reference/community-shaders/BSLightingShaderMaterialPBR.cpp`).
+  A failed private-material installation drops the binding.
+- Saved texture writes retain a `NiPointer` as well as the original texture.
+  A replaced material slot can release its texture before the studio reads
+  the saved texture's name; pointer identity alone does not keep it alive.
 - `PBRMaterial.h` mirrors CS's `BSLightingShaderMaterialPBR` (pinned copy
   in `src/cs/`, provenance in `src/cs/SOURCE.txt`). CS adds no virtual
   functions, so the vtable layout is the base class's and only the data
@@ -266,6 +312,14 @@ Lab mechanics:
   (`reference/community-shaders/TruePBR-GetRenderPasses-excerpt.cpp`).
   Reading PBR fields off a vanilla material runs past its allocation
   (NOTES 3, 4).
+- Rejecting only `VTABLE_BSLightingShaderMaterial` does not identify PBR:
+  vanilla `BSLightingShaderMaterialLandscape` also reports
+  `kMultiTexLandLODBlend` and has a different vtable and field layout.
+  `IsPBRProperty` additionally requires the vtable's allocation base, queried
+  with `VirtualQuery`, to be the loaded `CommunityShaders.dll` module before
+  reading extended fields. This rejects vanilla and other plugins' material
+  implementations. It does not establish ABI compatibility across CS versions;
+  the pinned layout remains an integration requirement.
 - Slot to material field: emissive `emissiveTexture`; fuzz
   `featuresTexture1` (colour in rgb, weight in a); coat and subsurface
   share `featuresTexture0` (coat colour + strength, or subsurface colour +
@@ -291,6 +345,11 @@ Lab mechanics:
   laid out by hand as vtable, zero refcount, empty `NiObjectNET`, flags
   (NOTES 32). The private `NiSkinData` copy is the same: vtable at word 0,
   refcount at word 2 (NOTES 35).
+- A private skin copy keeps its bone count zero until its bone array is ready.
+  Copied bone-weight pointers are cleared before individually allocating and
+  copying the weights with the engine allocator. An owning `NiPointer`
+  releases the partial skin if allocation fails; no weight allocation is
+  shared with the source skin.
 - Lights: Address Library IDs (SE, AE) for `NiPointLight`'s constructor and
   the shadow scene node's light registration come from powerof3's
   CommonLibSSE fork; the pinned CommonLibSSE-NG does not wrap them (NOTES
@@ -311,6 +370,38 @@ Lab mechanics:
 
 ## Engine events, hooks and the manager
 
+- `kPostLoadGame` reports whether the load succeeded as the value of `data`,
+  not a pointer to a boolean: SKSE dispatches `(void*)result` with length one
+  ([SKSE load hook](https://github.com/ianpatt/skse64/blob/master/skse64/Hooks_SaveLoad.cpp)).
+  A failed load leaves engine effects paused; only a successful load or new
+  game resumes discovery and ticks.
+- `SessionQueue` owns loading, generation, refresh coalescing, and equip timers
+  under one mutex. Refresh reservations and their later callbacks must belong to
+  the same active generation. Loading clears all bookkeeping atomically; failed
+  submission releases its reservation only if that generation is still current.
+  A stale callback cannot consume a new session's pending actor or carry its
+  follow-up into that session. Scheduled callbacks reference queue state weakly.
+  The submit adapter returns true only when SKSE accepts the task for later
+  execution. Load transitions, callback execution, and queue destruction remain
+  game-thread operations; producers may submit from other threads. The queue
+  does not hold its mutex across engine calls or synchronize actor state itself.
+
+- `kDataLoaded` loads recipes, registers the menu, and installs the event sinks
+  and player-update hook when Community Shaders is present. The emissive path
+  defaults off. Hook installation uses `call_once`: installing the same thunk
+  twice would otherwise replace the saved original with the thunk itself.
+- `kPreLoadGame` pauses runtime work and clears the prior session;
+  `kPostLoadGame` resumes it. `kNewGame` clears then resumes. Tasks queued before
+  clearing fail their generation check; ticks and new tasks are suppressed
+  while loading. The player hook calls the prior update function first.
+- CommonLib's `Actor::AddAnimationGraphEventSink` indexes `graphs.front()`
+  without checking emptiness and both actor helpers scan the sink array without
+  taking the event-source lock. This adapter instead checks graph pointers and
+  calls the source's `AddEventSink`/`RemoveEventSink`, which lock and deduplicate
+  registrations. An empty graph list leaves the actor unwatched safely.
+- `ActorHandle::get()` returns an owning `NiPointer<Actor>`. The signal
+  environment keeps that owner through each actor query; returning its raw
+  pointer from a helper would release the reference before the query.
 Decompile provenance (`decompiled/WornEnchantmentFX/plugin.c` unless noted):
 
 | what | lines |
@@ -365,6 +456,12 @@ Decompile provenance (`decompiled/WornEnchantmentFX/plugin.c` unless noted):
 
 ## Meshes, bakes and analysis (`mesh/Mesh.h`, `mesh/TextureSize.h`, `mesh/Islands.h`, `mesh/MaterialClusters.h`, `mesh/MeshFacts.h`)
 
+- Renderer byte counts must fit D3D11's 32-bit byte range before a mesh
+  copy or readback. Index-count multiplication uses `size_t` to avoid
+  wrapping first. GPU readback also checks the source buffer's `GetDesc`
+  byte width before submitting a copy. CPU buffer allocation lengths are
+  not exposed by CommonLib's `BSGraphics::TriShape`; those copies still
+  depend on the engine's vertex and triangle counts matching its storage.
 - The frozen `Analysis` module is split in two that share no type, function
   or test: `Islands.h` holds the connected-component and UV-chart
   segmentation (`MeshAnalysis`, `AnalyseMesh`, `BuildIslandBake`),
@@ -678,6 +775,12 @@ Decompile provenance (`decompiled/WornEnchantmentFX/plugin.c` unless noted):
 
 ## Build and tools
 
+- Project targets bypass the compiler launcher; third-party targets still
+  use ccache when available. A cached rebuild produced Ninja objects with
+  zero header dependencies, allowing incompatible `TextureLab` layouts in
+  one DLL. The binary evidence and dependency reproduction are recorded in
+  `docs/wip/crash-2026-09-11.md`. Do not restore caching for project targets
+  without verifying that cache hits preserve their header dependencies.
 - `CMakeLists.txt`: nothing is installed, which also keeps CommonLibSSE-NG
   from exporting a target set that would need spdlog exported too; spdlog is
   fetched with `OVERRIDE_FIND_PACKAGE` because CommonLibSSE-NG calls
@@ -737,7 +840,7 @@ Decompile provenance (`decompiled/WornEnchantmentFX/plugin.c` unless noted):
   rather than under the recipe root, which loads every `.json` below it as
   a recipe.
 
-## planners (`planners/ActorState.h`, `planners/StackPlan.h`, `planners/BindingDiff.h`, `planners/ManagerDecisions.h`)
+## planners (`planners/ActorState.h`, `planners/StackPlan.h`, `planners/BindingDiff.h`, `planners/ActorPlanning.h`)
 
 The pure decision halves of the wave-3 engine modules (`engine/Manager`,
 `render/Compositor`, `render/Binding`). Each is data-in / data-out and native-

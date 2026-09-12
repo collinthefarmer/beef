@@ -1,0 +1,321 @@
+# Better Enchantment Effects: in-game regression flow
+
+This is a manual integration run for the active source tree, checked against the
+code on 2026-09-12. It follows startup → matching → actor state → GPU output →
+studio edits → persistence → teardown. It uses the existing log and menu; no
+debugger or instrumented DLL is required. It is a test procedure, not a record
+of a completed in-game run.
+
+## Prepare a repeatable scene
+
+Use a disposable save and a separate test profile. Record the DLL build/revision,
+Skyrim runtime, SKSE, Community Shaders, SKSE Menu Framework, armor/PBR replacer,
+recipe files, and INI. Keep copies of the initial INI and recipe directory outside
+the recipe root: every JSON below that root is a candidate recipe. Installation
+alone does not supply a regression recipe set.
+
+Prepare these actors/items using the test profile's actual forms; record their
+IDs instead of relying on load-order-dependent console commands:
+
+- Player wearing enchanted PBR body armor and visible PBR first-person gloves.
+- A nearby NPC wearing the same base armor without the enchantment. Later give
+  that NPC an enchanted copy too. Keep unrelated armor/default recipes out of
+  this isolation comparison.
+- A known non-PBR armor item as the negative control.
+- A quiet, consistently lit spot beside a wall for color and point-light checks,
+  a brighter spot for material highlights, and a door to another cell.
+
+Under **Better Enchantment Effects → Setup**, enable **Enabled**, **Third person**,
+**First person**, **Unique material per clone**, and **Verbose logging**. Start
+with **Player only** enabled, **Texture scale = Full**, normal animation speed,
+and automatic re-apply enabled. Use **Save INI** so startup logging is verbose
+on the next launch. Open the framework with the profile's configured hotkey.
+
+Evidence comes from three places:
+
+- `BetterEnchantmentEffects.log` in SKSE's log directory, normally the Windows
+  Documents `My Games/Skyrim Special Edition/SKSE` directory. The file is
+  truncated at each plugin launch: archive it before restarting.
+- **Setup**'s filtered log view, which retains only the latest 300 lines.
+- **Recipes**' loaded/merge-order tables and Board, plus **Studio**'s thumbnails,
+  live values, and `Application: rendered` status when an application is shown.
+
+INI: `Data/SKSE/Plugins/BetterEnchantmentEffects.ini`. Recipe root:
+`Data/SKSE/Plugins/BetterEnchantmentEffects/recipes/`, including `imported/` and
+`user/`. In MO2, inspect the winning virtual file and any generated Overwrite
+files, not just the original mod directory.
+
+Record a wall-clock start/end time for each numbered checkpoint. Log fragments
+below are literal searchable text with variable IDs/counts omitted. Wait for
+application to settle and close the menu for world checks. Allow up to 10 seconds
+as a practical test timeout; a persistent queued/prepared state is a failure to
+investigate, not a successful application. A log saying “applied” alone does not
+prove that pixels rendered.
+
+## Fixture contract
+
+Use small, saved test recipes, authored in Studio or JSON following
+[`recipe.schema.json`](../schema/recipe.schema.json). Freeze their files with the
+run evidence so the next build can replay exactly the same inputs. These are
+fixture specifications, not names of bundled files:
+
+| Fixture | Configuration and unmistakable result |
+| --- | --- |
+| A: base | Enchantment key for the player item; low-strength red emissive output on the material. No shell or light initially. |
+| B: overlay | A different matching key, such as that armor's key, with an explicitly higher priority; blue emissive added over A. Use unequal priorities and different keys so both recipes survive key ownership. |
+| C: animation/events | A slow pulse driving emissive strength; an actor-state signal for sneaking; a trigger/counter for `hit.received`; a ripple using that trigger. Route each signal to a visible output in turn. |
+| D: sources | Small asymmetric image, a material channel, UV expression, curve, mesh bake, distance, ripple, and material-cluster source. Feed each separately into an emissive diagnostic output. |
+| E: shell/light | A visibly offset, translucent shell and a modest colored point light on a known valid wearer bone. |
+
+Start with only A affecting the isolation scene. Add the other fixtures at their
+checkpoints, then disable/remove their test keys before returning to A. An armor
+key deliberately affects unenchanted copies too. Missing fixtures make the
+corresponding cases **blocked**, never implicitly passed.
+
+## Ordered run
+
+### 1. Boot, import, and first application
+
+1. Launch through SKSE and load the test save. Confirm `loading on runtime`,
+   `kDataLoaded`, `settings loaded from`, `recipes:`,
+   `SKSE Menu Framework pages registered`, `event sinks registered`, and
+   `hooked PlayerCharacter::Update` in the file log.
+2. For the import branch, use an armor enchantment with a vanilla effect shader
+   whose effect-shader key is not already provided in the test recipe set.
+   Reload recipes after preparing that condition. Confirm
+   `imported recipe` with `reads back identical`, the generated JSON, and the
+   imported row in Recipes. Reload again: the existing imported recipe should
+   load without another new import for the same effect-shader key.
+3. Equip the enchanted PBR armor and select it in Studio. Confirm
+   `TextureLab: ready (runtime layer textures)`,
+   `PBR material layout check passed`, `apply armor`, `material=private`, and
+   `recipe(s) applied`. The layout check is once per process, not once per equip.
+4. Confirm an effect on the intended geometry, a populated Board, and no failed
+   application. Retire it with **Recipes → Retire all (baseline)**, capture the
+   original appearance, then **Re-apply all** and capture the effect.
+
+Pass: initialization and first rendering succeed; imported files read back;
+baseline and applied states are visibly distinct. Recipe totals are
+profile-dependent, so record them rather than expecting a hard-coded count.
+
+### 2. Matching, selection, and per-wearer isolation
+
+1. Apply A. In **Resolved for the selection (merge order)**, verify its recipe ID,
+   key, priority, geometry, and private material. The player glows red.
+2. Disable **Player only**. The NPC's unenchanted copy stays at baseline. Equip
+   the enchanted copy on the NPC: both actors now have the intended effect.
+   Unequip it from one actor: only that actor loses the effect.
+3. Re-enable **Player only**: the NPC returns to baseline while the player stays
+   affected. Restore NPC processing for subsequent crowd tests.
+4. Equip the non-PBR control. Expect `has no PBR geometry; left alone` under
+   verbose logging and no plugin effect. Re-equip the PBR item successfully.
+5. On a multi-geometry item, restrict A's output selector to one actual geometry;
+   only that geometry changes. Use a nonmatching selector and confirm no output
+   on the excluded geometry, then restore the selector.
+6. For matching coverage, repeat A with one key at a time: `magicEffect`,
+   `enchantment`, `effectShader`, `keyword`, `armor`, `material`, `default`.
+   Record the matching key shown in Recipes and one positive/negative item where
+   applicable. A default key has no key-level negative control. Remove broad
+   keys before continuing.
+
+Pass: affected actors and geometries agree with the keys/selectors; no effect
+leaks to the control wearer. Application counts may include first-person pieces.
+
+### 3. Shared binding and layer composition
+
+1. Enable A and B together. Confirm both appear in merge order. Red plus blue
+   produces a combined result that remains stable for 30 seconds and after
+   closing/reopening the menu; neither contribution disappears on the next tick.
+2. Set the higher-priority output's `replace` flag: its result cuts out the lower
+   contribution. Clear it: the combined result returns.
+3. Reorder two visibly different layers within one output, vary opacity, and
+   mute/solo layers or outputs. Check the thumbnail and armor agree, then clear
+   every solo/mute override.
+4. Animate A and keep B static. B's composite must still follow the changing
+   underlying result. Verify Recipes labels the dependent output animated.
+5. Remove B's output and then A's output. The first removal leaves A visible;
+   the second restores the original material slot. Undo both removals.
+
+Pass: one stable combined appearance, correct replace cut, and no “material
+fight.” Unexpected `dropping` or `restore skipped:` lines in this controlled
+scene require investigation.
+
+### 4. Signals, clocks, and actual game events
+
+1. Apply C's pulse. Watch at least two full periods in both the live signal value
+   and armor. Freeze the Timeline, step with `>|`, scrub to two distinct times,
+   then unfreeze. Hold is stable; step/scrub changes it; motion resumes.
+2. Compare Timeline speed 0.5x and 2x. Restore 1x. Separately vary Setup's
+   **Animation FPS** and **Animation speed**, checking continued motion and
+   restoring the original values.
+3. Route sneaking to the visible output. Sneak/stand twice: value and effect
+   follow the wearer. Route a current actor value such as magicka, spend some
+   with a spell, and let it recover: the live value and effect follow it.
+4. With `hit.received` wired to the counter/ripple, take one controlled hit.
+   Record the counter delta and visible front, then repeat after re-applying.
+   A single hit must not multiply its response after repeated re-applies.
+   Exercise `hit.dealt` separately by striking a target.
+5. If the fixture uses an animation event, trigger its documented game action
+   and verify the signal. Record the actual `anim.<tag>` used by the profile;
+   do not substitute a manually fired trigger for testing the engine event sink.
+
+Pass: values, clocks, and pixels agree. Existing logging does not acknowledge
+every event; the counter/live signal is the observable for event delivery.
+
+### 5. GPU sources, previews, and all output families
+
+For each row, show only that diagnostic output, compare its thumbnail to the
+armor, change one parameter, then restore/remove it. Use moderate strengths.
+
+| Case | Action and simple confirmation | Existing log evidence |
+| --- | --- | --- |
+| Image/copy | Use an asymmetric image; tile, offset, mirror, and select a channel. Orientation and channel change as expected. | Application logs; inspect pixels. |
+| Material/curve | Display a material channel, then apply a threshold/curve. Recognizable armor detail becomes a sharply different mask. | Material sampling logs when sampling is requested. |
+| UV/expression | Display `u`/`v`-based bands and invert the expression. Bands move/invert on the same surface. | Application status plus thumbnail. |
+| Mesh bake/distance | Display position, partition or component data; move a distance origin. Regions stay attached to the posed armor. Repeat the same request. | `mesh '`, `bake '`; `cached` may appear on reuse. |
+| Material clusters | Select a visibly different cluster on an armor with distinct materials. Highlight moves between those regions. | `sampling`, then `sampled` with dimensions and cluster count. |
+| Ripple | Fire the configured event, observe a traveling front, then let it decay. Idle output returns to black without a stale ring. | Live trigger/counter and pixels; no dedicated success log. |
+
+Sweep all nine Board slots separately: **diffuse**, **emissive**, **rmaos**,
+**normal**, **height**, **fuzz**, **glint**, **coat**, **subsurface**. Use a tint for
+diffuse, strength for emissive, roughness for rmaos, a patterned normal/height,
+and an obvious scalar change for the remaining slots. Rotate the camera in the
+brighter spot for highlights. For every slot, check written/original information
+in its Board tooltip and baseline restoration when the output is removed.
+Glint has scalars only: do not require a texture thumbnail. Coat and subsurface
+share a map; test them separately and check incompatible combinations display
+an exclusion/refusal rather than silently corrupting the other output.
+
+Repeat a detailed bake at Full, Half, Quarter, then Full texture scale. Expect
+corresponding `bake '…' … at … px` sizes, subject to the 64–4096 clamp, and the
+same spatial pattern at different sharpness. Use an unclamped input to prove the
+ratios; record the actual dimensions. Ordinary output success alone does not
+prove resolution scaling or cache efficiency.
+
+Pass: all available source/output paths render and restore. Unexpected
+`TextureLab:` failures, persistent blank previews, unrelated world/UI corruption,
+or a visually unchanged diagnostic are failures. Unsupported fixture/material
+combinations are blocked with their displayed reason.
+
+### 6. Shells and point lights
+
+1. Apply E beside the wall. Confirm shell details in the geometry/application
+   output and one visible translucent offset layer. Walk, turn, crouch, and draw
+   a weapon: the shell follows the pose without detached or duplicate geometry.
+2. Change shell alpha/offset, then restore. Toggle the shell output off/on and
+   repeat equip/re-apply five times; shell thickness must not accumulate.
+3. Change light color/range and walk toward/away from the wall. Confirm the wall
+   illumination changes, not just the armor's emissive color. Remove the light:
+   illumination disappears. Re-add it and unequip: it disappears again.
+4. Test a deliberately nonexistent bone on the disposable light fixture. Expect
+   `light: bone '` with `not found on the wearer`, no crash, and successful
+   recovery after restoring the valid bone.
+
+### 7. Studio edit, paint, validation, and persistence
+
+1. On a test recipe, change emissive color, Undo, then Redo. Confirm each visible
+   state and the dirty indicator. Repeat using Ctrl+Z/Ctrl+Y with no text field
+   active. Rename a referenced signal and confirm references still resolve.
+2. Enter malformed text in a typed field, and separately try an expression with
+   an unknown reference/cycle. Confirm inline diagnostics or `not applied:` /
+   `edit refused:` / recipe row diagnostics as appropriate. Do not assume all
+   invalid inputs take the same path. No crash, unrelated-output corruption, or
+   falsely successful application is acceptable. Restore the valid expression.
+3. Enter Paint from the selected recipe. Wait for the temporary paint preview
+   (`paint: previewing`). Add a conspicuous region term, change its threshold,
+   mute/solo it, Undo/Redo, and compare the mask thumbnail to the armor preview.
+4. Leave Paint without Keep: the temporary preview disappears and the authored
+   recipe is unchanged. Re-enter, build the same mask, and choose **Keep → Keep
+   as regression_mask**. Expect `keep: mask regression_mask written into` the
+   intended recipe. Use the mask in an emissive layer and confirm the same region.
+5. Start another paint preview and switch actor/piece or reload recipes while it
+   is preparing. The old result must not appear on the new selection or commit
+   into another recipe. Return to Compose and confirm normal rendering recovers.
+6. **Save** the test recipe. Expect `recipe … saved to …`; record that exact file.
+   Change the color without saving, then **Revert to file**: expect
+   `reverted to its file` and the saved color. **Reload recipes** must retain the
+   saved mask/color. An edited imported recipe saves under `user/`.
+7. Change a Setup preference, **Save INI**, change it again, then **Reload INI**.
+   Confirm `settings: saved`, `settings loaded from`, and the saved value.
+   Disable automatic re-apply, change an apply-time setting, verify `re-apply
+   needed`, then press **Re-apply** and restore automatic mode.
+8. Archive the log, exit completely, relaunch and load the save. Saved recipe and
+   INI changes survive; unsaved edits and temporary paint/solo state do not
+   become saved recipe changes.
+
+### 8. Lifecycle, camera, and repeated cleanup
+
+1. Toggle third/first-person view ten times with visible enchanted gloves.
+   Disable each corresponding Setup switch in turn: only the intended model is
+   affected. Restore both. Do not expect body armor to appear in first person.
+2. Equip/unequip five times, then rapidly swap two test armors five times. Wait
+   for the queue to settle: only the final equipment is affected, with no stale
+   shell, light, or material. Correlate `recipe(s) applied` and `retired` by actor.
+3. Cross the cell door and return three times with NPC processing enabled. NPCs
+   recover their correct effects on return. Visit a populated area for two
+   minutes, then return; no growing stutter, duplicated effects, or warning flood.
+4. Save while an effect is active. Start a visible edit or paint preview and load
+   the earlier save. Expect `kPreLoadGame`, `cleared … actor states`, and
+   `kPostLoadGame`; the loaded actor/equipment wins over old queued work.
+   Repeat three times, including a load with armor unequipped.
+5. Use **Retire all (baseline)** and inspect immediately without changing
+   equipment: all plugin surface changes, shells, and lights disappear. Re-apply
+   restores them. Disable **Enabled** for a persistent baseline, move and swap
+   equipment, then re-enable it. No residual effect survives while disabled.
+6. On a separate disposable new-game run, verify `kNewGame` and a successful
+   first equip. Archive the prior session's log first.
+
+Pass: no crash, hang, stale application, duplicate response, or visible resource
+accumulation. A quiet log alone is insufficient evidence of cleanup.
+
+## Additional negative and coexistence runs
+
+- **Bad file and recovery:** add one malformed JSON in the isolated test recipe
+  directory, reload, and record its filename/diagnostic. A separate valid recipe
+  must still render. Repair/remove the bad fixture and reload successfully.
+  Also try an unresolved editor ID and confirm `matched no loaded form`.
+- **Key ownership:** supply two differently named files with the same key and
+  distinguishable colors, with the intended winner in `user/`. Expect `key … is
+  owned by recipe … (loaded later)` and only the winner for that key. This is
+  distinct from two different matching keys merging in checkpoint 3.
+- **Vanilla effect shader coexistence:** with an already installed flesh-spell,
+  blood, or scripted effect-shader fixture, show its effect on the same armor
+  while A is active. Retire A: the other effect continues. Let the other effect
+  expire: A continues when re-applied.
+- **Ownership takeover:** only if an available test mod can actually replace a
+  bound material/shell, trigger it while A is active, then retire A. Expect
+  `dropping '…': its material or shell was replaced by another system` and/or
+  `restore skipped: '…' changed hands`; the other owner's result survives.
+  Ordinary unequip is not evidence of this branch. Otherwise mark it blocked.
+- **Missing dependencies:** in separate launches of the disposable profile,
+  disable Community Shaders and expect `CommunityShaders.dll is not loaded;
+  emissive path disabled, plugin idle`. Disable only SKSE Menu Framework and
+  expect `SKSE Menu Framework not installed; no in-game menu`, while a saved
+  recipe still renders. Restore dependencies afterward; archive each log.
+
+## Record and acceptance
+
+Copy this row for each numbered checkpoint and each additional run:
+
+| Case | Build/profile | Time interval | Actor/armor/recipe IDs | Expected vs actual visual | Log excerpt / screenshot | Result |
+| --- | --- | --- | --- | --- | --- | --- |
+| | | | | | | PASS / FAIL / BLOCKED |
+
+A full pass requires every numbered checkpoint with its fixtures, no unexpected
+errors, and successful return to baseline. Report blocked and optional branches
+explicitly. Keep the complete session logs, starting and final recipe/INI files,
+and baseline/applied/retired screenshots with the same camera and lighting.
+Restore the initial profile files and remove generated test overrides afterward.
+
+This run exercises the integration boundaries; it does not prove every signal
+kind/expression operator, exact GPU/CPU numerical agreement, per-field ownership
+under every competing mod, absence of COM leaks, or the 60 Hz/twelve-geometry
+performance budget. Native tests cover pure logic. Allocation-failure and GPU
+live-object checks require the separate
+[GPU ownership validation](wip/gpu-ownership-validation-2026-09-12.md).
+There are no current per-pass timing, event-acknowledgment, or resource-count logs;
+do not infer those guarantees from `ready`, `applied`, or an absence of warnings.
+
+The log vocabulary and controls above are grounded in `src/main.cpp`,
+`src/Settings.cpp`, `src/engine/{RecipeStore,RecipeEditor,ManagerApply,ManagerTick,
+Events}.cpp`, `src/render/{CompositorBake,Binding}.cpp`, and `src/menu/`.

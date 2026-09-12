@@ -91,10 +91,4 @@ struct SignalList {
 };
 [[nodiscard]] SignalList BuildSignalList(const RecipeRow &a_recipe,
                                          const Layout &a_layout);
-
-[[nodiscard]] LightRow LightRowOf(const Recipe &a_recipe);
-[[nodiscard]] ShellRow ShellRowOf(const Recipe &a_recipe);
-[[nodiscard]] SourceRow SourceRowOf(const Source &a_source,
-                                    std::size_t a_references);
-[[nodiscard]] std::optional<SourceKind> SourceKindOf(const SourceRow &a_row);
 }

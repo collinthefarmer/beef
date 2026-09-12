@@ -455,7 +455,7 @@ Recipe *MutableRecipe(std::string_view a_id) noexcept {
   return loaded ? &loaded->recipe : nullptr;
 }
 
-std::span<const Diagnostic> Revalidate(std::string_view a_id) {
+std::span<const Diagnostic> RefreshRecipeDerivedState(std::string_view a_id) {
   auto *loaded = Loaded(a_id);
   if (!loaded) {
     return {};
@@ -562,7 +562,7 @@ bool RenameRecipe(std::string_view a_from, std::string_view a_to) {
   }
   loaded->recipe.id = std::string{a_to};
   loaded->path = to;
-  Revalidate(a_to);
+  RefreshRecipeDerivedState(a_to);
   logger::info("recipe {} renamed {}; saves to {}", a_from, a_to, to.string());
   return true;
 }

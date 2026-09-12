@@ -110,9 +110,9 @@ int main() {
 
   {
     View view;
-    view.isolateRecipe = "glow";
-    view.isolateOutput = 0;
-    view.isolateLayer = 0;
+    view.isolation.recipeID = "glow";
+    view.isolation.output = 0;
+    view.isolation.layer = 0;
     view.muted.insert(LayerKey{"glow", 0, 1});
     view.pin = Pin{PieceRef{.actorID = 1, .armorID = 2}, "glow"};
 
@@ -121,16 +121,58 @@ int main() {
           "recipe ids collapse the isolate, muted and pin references");
 
     view.RenameRecipe("glow", "spark");
-    Check(view.isolateRecipe == "spark" &&
+    Check(view.isolation.recipeID == "spark" &&
               view.muted.contains(LayerKey{"spark", 0, 1}) && view.pin &&
               view.pin->recipeID == "spark",
           "renaming a recipe rewrites every reference in the view");
 
     view.ForgetRecipe("spark");
-    Check(view.isolateRecipe.empty() && view.isolateOutput == -1 &&
-              view.isolateLayer == -1 && view.muted.empty() &&
+    Check(view.isolation.recipeID.empty() && !view.isolation.output &&
+              !view.isolation.layer && view.muted.empty() &&
               !view.pin.has_value(),
           "forgetting a recipe drops every reference in the view");
+  }
+
+  {
+    Recipe shadowed;
+    shadowed.id = "shadowed";
+    shadowed.keys = {
+        RecipeKey{KeyKind::kMaterial, KeyOperandValue{std::string{"*"}}}};
+    Recipe winner = shadowed;
+    winner.id = "winner";
+    Recipe unmatched = shadowed;
+    unmatched.id = "unmatched";
+    unmatched.keys = {RecipeKey{KeyKind::kMaterial,
+                                KeyOperandValue{std::string{"other.dds"}}}};
+    const std::vector<Recipe> loaded{shadowed, winner, unmatched};
+    WornPiece piece;
+    piece.diffusePaths = {"body.dds"};
+    piece.armor = FormKey{"Test.esp", 0x123};
+    const PieceRef ref{1, 2, false};
+    View view;
+    const auto normal = Resolve(piece, loaded);
+    Check(normal.size() == 1 && normal.front().recipe == &loaded[1],
+          "duplicate-key fixture normally resolves only the later recipe");
+    view.isolation = Isolation::ForRecipe("shadowed");
+    const auto isolated = ViewedRecipes({normal, piece, ref, view, loaded});
+    Check(isolated.size() == 1 && isolated.front().recipe == &loaded[0],
+          "recipe Solo resolves before duplicate-key exclusion and recovers "
+          "the shadowed recipe");
+    view.isolation = {};
+    const auto restored = ViewedRecipes({normal, piece, ref, view, loaded});
+    Check(restored.size() == 1 && restored.front().recipe == &loaded[1],
+          "ending recipe Solo restores the normal duplicate-key winner");
+    view.isolation = Isolation::ForRecipe("unmatched");
+    Check(ViewedRecipes({normal, piece, ref, view, loaded}).empty(),
+          "recipe Solo does not force an unmatched recipe onto the piece");
+    view.pin = Pin{ref, "unmatched"};
+    const auto pinned = ViewedRecipes({normal, piece, ref, view, loaded});
+    Check(pinned.size() == 1 && pinned.front().recipe == &loaded[2],
+          "an explicit pin still permits previewing the unmatched isolated "
+          "recipe");
+    view.pin->piece.actorID = 99;
+    Check(ViewedRecipes({normal, piece, ref, view, loaded}).empty(),
+          "a pin on another piece cannot force the isolated recipe to apply");
   }
 
   return test::Finish("studio_selection");

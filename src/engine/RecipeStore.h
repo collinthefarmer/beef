@@ -42,7 +42,7 @@ GraphFor(const Recipe &a_recipe);
 ReferencesOf(std::string_view a_id) noexcept;
 
 [[nodiscard]] Recipe *MutableRecipe(std::string_view a_id) noexcept;
-std::span<const Diagnostic> Revalidate(std::string_view a_id);
+std::span<const Diagnostic> RefreshRecipeDerivedState(std::string_view a_id);
 [[nodiscard]] bool IsDirty(std::string_view a_id) noexcept;
 [[nodiscard]] std::expected<std::filesystem::path, std::string>
 SaveRecipe(std::string_view a_id);

@@ -3,6 +3,7 @@
 #include "menu/FormDraw.h"
 #include "menu/MenuWidgets.h"
 #include "menu/PaintPanel.h"
+#include "studio/Rows.h"
 
 #include "recipe/Recipe.h"
 #include "studio/Edits.h"

@@ -114,8 +114,10 @@ void Widget(Settings &a_settings, const SettingDesc &a_desc,
       }
     }
   });
-  if (a_desc.reapply) {
-    MarkReapply(changed);
+  if (changed) {
+    a_settings = NormalizeSettings(a_settings);
+    SetSettings(a_settings);
+    MarkReapply(a_desc.reapply);
   }
 }
 
@@ -151,7 +153,8 @@ void DrawSaveBar(Settings &a_settings) {
   table.Cell();
   if (ImGui::Button("Reload INI")) {
     SetSettings(LoadSettingsFromDisk());
-    g_savedSettings = GetSettings();
+    a_settings = GetSettings();
+    g_savedSettings = a_settings;
     g_needsReapply = false;
     manager->ReapplyAll();
   }
@@ -241,7 +244,7 @@ void __stdcall RenderSetup() {
   if (!manager) {
     return;
   }
-  Settings &settings = GetMutableSettings();
+  Settings settings = GetSettings();
   manager->Watch(Studio::RequestOf(Studio::State().selection));
   const std::shared_ptr<const Studio::Snapshot> held =
       manager->LatestSnapshot();

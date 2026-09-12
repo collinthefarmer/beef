@@ -1,6 +1,6 @@
 #pragma once
 
-#include "engine/Manager.h"
+#include "engine/LiveActor.h"
 
 #include <cstddef>
 #include <cstdint>

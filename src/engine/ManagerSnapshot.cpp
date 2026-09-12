@@ -9,7 +9,7 @@
 #include "render/RuntimeTextures.h"
 #include "studio/Edits.h"
 #include "studio/Panels.h"
-#include "studio/RecipeContent.h"
+#include "studio/RecipeSnapshot.h"
 #include "studio/Rows.h"
 
 #include <algorithm>
@@ -22,6 +22,14 @@
 
 namespace BetterEnchantmentEffects {
 namespace {
+RE::NiSourceTexture *RetainTexture(Manager::Snapshot &a_snapshot,
+                                   RE::NiSourceTexture *a_texture) {
+  if (a_texture) {
+    a_snapshot.textures.emplace_back(a_texture);
+  }
+  return a_texture;
+}
+
 std::vector<Studio::SlotRow> SlotRows(const SlotTarget &a_target) {
   std::vector<Studio::SlotRow> rows;
   for (const SlotState &s : a_target.Slots()) {
@@ -29,48 +37,6 @@ std::vector<Studio::SlotRow> SlotRows(const SlotTarget &a_target) {
   }
   return rows;
 }
-}
-
-void Manager::Isolate(std::string a_recipe, int a_output, int a_layer) {
-  PostTask([this, recipe = std::move(a_recipe), a_output, a_layer] {
-    const bool changed = view_.isolateRecipe != recipe;
-    view_.isolateRecipe = recipe;
-    view_.isolateOutput = a_output;
-    view_.isolateLayer = a_layer;
-    if (changed) {
-      ReapplyAll();
-    }
-  });
-}
-
-void Manager::PinRecipe(Studio::PieceRef a_piece, std::string a_recipeID) {
-  PostTask([this, a_piece, id = std::move(a_recipeID)] {
-    std::optional<Studio::Pin> pin;
-    if (!id.empty()) {
-      const std::span<const Recipe> loaded = LoadedRecipes();
-      if (std::ranges::find(loaded, id, &Recipe::id) == loaded.end()) {
-        logger::warn("pin: recipe {} is not loaded", id);
-        return;
-      }
-      pin = Studio::Pin{a_piece, id};
-    }
-    if (view_.pin == pin) {
-      return;
-    }
-    WithListMoved([&] { view_.pin = pin; });
-    if (pin) {
-      logger::info("pin: {} shown on armor {:08X} of actor {:08X} ({}) while "
-                   "viewed",
-                   id, a_piece.armorID, a_piece.actorID,
-                   a_piece.firstPerson ? "1st" : "3rd");
-    } else {
-      logger::info("pin: cleared");
-    }
-  });
-}
-
-void Manager::UpdateView(std::function<void(Studio::View &)> a_change) {
-  PostTask([this, change = std::move(a_change)] { change(view_); });
 }
 
 Manager::Status Manager::GetStatus() const {
@@ -121,14 +87,18 @@ void Manager::PublishSnapshot(std::uint32_t a_nowMS) {
   }
   auto built = std::make_shared<Snapshot>(BuildSnapshot(request));
   built->version = ++snapshotVersion_;
-  built->view = view_;
+  built->view = editor_.CurrentView();
   std::scoped_lock lock{snapshotLock_};
   latest_ = std::move(built);
 }
 
 Manager::Snapshot
 Manager::BuildSnapshot(const std::optional<Studio::PieceRef> &a_request) const {
+  const Studio::View &view = editor_.CurrentView();
   Snapshot out;
+  out.applications = applications_.Snapshot();
+  out.paintCommit = editor_.LastPaintCommit();
+  out.paintUpdate = editor_.LastPaintUpdate();
   const Status status = GetStatus();
   const RecipeStoreStatus store = GetRecipeStoreStatus();
   out.tickMS = status.tickMS;
@@ -142,8 +112,8 @@ Manager::BuildSnapshot(const std::optional<Studio::PieceRef> &a_request) const {
   for (const auto &[actorID, state] : applied_) {
     std::size_t flatBase = 0;
     for (const LivePiece &piece : state.pieces) {
-      const bool firstPerson = flatBase < state.structure.pieces.size() &&
-                               state.structure.pieces[flatBase].firstPerson;
+      const bool firstPerson = flatBase < state.structure.geometries.size() &&
+                               state.structure.geometries[flatBase].firstPerson;
       const Studio::PieceRef ref{actorID, piece.armor, firstPerson};
       if (a_request && *a_request == ref) {
         anyMatch = true;
@@ -162,12 +132,13 @@ Manager::BuildSnapshot(const std::optional<Studio::PieceRef> &a_request) const {
       flatBase += geomCount;
 
       const std::vector<PieceMatch> matches =
-          MatchesForPiece(state.structure, flatStart, geomCount);
+          MatchesForPiece(state.structure, GeometryId{flatStart}, geomCount);
       if (matches.empty()) {
         continue;
       }
-      const bool firstPerson = flatStart < state.structure.pieces.size() &&
-                               state.structure.pieces[flatStart].firstPerson;
+      const bool firstPerson =
+          flatStart < state.structure.geometries.size() &&
+          state.structure.geometries[flatStart].firstPerson;
       Studio::PieceRow row;
       row.ref = Studio::PieceRef{actorID, piece.armor, firstPerson};
       row.actorName = actor && actor->GetName() ? actor->GetName() : "?";
@@ -175,9 +146,9 @@ Manager::BuildSnapshot(const std::optional<Studio::PieceRef> &a_request) const {
       const bool full = anyMatch ? (a_request && *a_request == row.ref) : first;
       first = false;
 
-      if (flatStart < state.structure.pieces.size()) {
+      if (flatStart < state.structure.geometries.size()) {
         for (const PieceKey &source :
-             KeyChoicesOf(state.structure.pieces[flatStart].keys)) {
+             KeyChoicesOf(state.structure.geometries[flatStart].keys)) {
           Studio::KeyChoice key;
           key.key = source;
           const RE::TESForm *form = LookupForm(source.form);
@@ -198,10 +169,10 @@ Manager::BuildSnapshot(const std::optional<Studio::PieceRef> &a_request) const {
         const Recipe &recipe = *instance.recipe;
         std::size_t undoDepth = 0;
         std::size_t redoDepth = 0;
-        if (const auto history = histories_.find(recipe.id);
-            history != histories_.end()) {
-          undoDepth = history->second.UndoDepth();
-          redoDepth = history->second.RedoDepth();
+        if (const Studio::History<Recipe> *history =
+                editor_.HistoryOf(recipe.id)) {
+          undoDepth = history->UndoDepth();
+          redoDepth = history->RedoDepth();
         }
         Studio::ReferenceCounts references;
         std::vector<Diagnostic> problems;
@@ -213,9 +184,9 @@ Manager::BuildSnapshot(const std::optional<Studio::PieceRef> &a_request) const {
                             origin->diagnostics.end());
           }
         }
-        const bool pinned = view_.pin && view_.pin->piece == row.ref &&
-                            view_.pin->recipeID == recipe.id;
-        Studio::RecipeRow r = Studio::RecipeContent(
+        const bool pinned = view.pin && view.pin->piece == row.ref &&
+                            view.pin->recipeID == recipe.id;
+        Studio::RecipeRow r = Studio::BuildRecipeRow(
             {recipe, match.key, match.priority, instance.lastTime,
              instance.lightOutput, IsDirty(recipe.id), pinned, full, undoDepth,
              redoDepth, references, instance.graph.get(),
@@ -269,7 +240,7 @@ Manager::BuildSnapshot(const std::optional<Studio::PieceRef> &a_request) const {
             if (const std::optional<PreparedSource> prepared =
                     compositor->InspectSource(recipe, source.name,
                                               bound.inputs)) {
-              prow.texture = prepared->texture.get();
+              prow.texture = RetainTexture(out, prepared->texture.get());
               prow.channel = prepared->sampling.channel;
               prow.animated = prepared->animated;
               prow.problem = prepared->problem;
@@ -282,7 +253,7 @@ Manager::BuildSnapshot(const std::optional<Studio::PieceRef> &a_request) const {
             prow.description = mask.text;
             if (const std::optional<PreparedMask> prepared =
                     compositor->InspectMask(recipe, mask.name, bound.inputs)) {
-              prow.texture = prepared->texture.get();
+              prow.texture = RetainTexture(out, prepared->texture.get());
               prow.channel = prepared->channel;
               prow.animated = prepared->animated;
               prow.problem = prepared->problem;
@@ -294,7 +265,8 @@ Manager::BuildSnapshot(const std::optional<Studio::PieceRef> &a_request) const {
             orow.animated = o.stack && o.stack->Animated();
             orow.size = o.stack ? o.stack->Size().Pixels() : 0;
             orow.problem = o.problem;
-            orow.texture = o.stack ? o.stack->Texture() : nullptr;
+            orow.texture =
+                RetainTexture(out, o.stack ? o.stack->Texture() : nullptr);
             if (const std::optional<std::size_t> merge = ChainIndexOf(
                     bound.plan,
                     SlotContribution{SlotSource{*placedIndex}, o.index})) {
@@ -337,7 +309,7 @@ Manager::BuildSnapshot(const std::optional<Studio::PieceRef> &a_request) const {
                 for (const PreparedLayer &prepared : o.stack->Layers()) {
                   if (prepared.index < orow.layers.size() && prepared.source) {
                     orow.layers[prepared.index].texture =
-                        prepared.source->texture.get();
+                        RetainTexture(out, prepared.source->texture.get());
                   }
                 }
                 for (const Diagnostic &d : o.stack->Diagnostics()) {

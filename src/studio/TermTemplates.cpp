@@ -4,6 +4,7 @@
 #include "recipe/Words.h"
 #include "studio/Fields.h"
 #include "studio/PaintSession.h"
+#include "studio/Rows.h"
 
 #include <algorithm>
 #include <cctype>
@@ -13,32 +14,6 @@
 #include <limits>
 
 namespace BetterEnchantmentEffects::Studio {
-Existing ExistingOf(const RecipeRow &a_recipe) {
-  Existing existing;
-  for (const SourceRow &source : a_recipe.sourceRows) {
-    if (const auto kind = SourceKindOf(source)) {
-      existing.sources.emplace_back(source.name, *kind);
-    }
-    existing.taken.push_back(source.name);
-  }
-  for (const std::string &mask : a_recipe.masks) {
-    existing.taken.push_back(mask);
-  }
-  return existing;
-}
-
-Existing ExistingOf(const Recipe &a_recipe) {
-  Existing existing;
-  for (const Source &source : a_recipe.sources) {
-    existing.sources.emplace_back(source.name, source.kind);
-    existing.taken.push_back(source.name);
-  }
-  for (const Mask &mask : a_recipe.masks) {
-    existing.taken.push_back(mask.name);
-  }
-  return existing;
-}
-
 std::vector<RecipeEdit>
 ScratchEdits(std::span<const Term> a_terms, std::optional<std::size_t> a_solo,
              const std::set<std::size_t> &a_muted,
@@ -57,70 +32,37 @@ ScratchEdits(std::span<const Term> a_terms, std::optional<std::size_t> a_solo,
   return edits;
 }
 
-namespace {
-class SourceNamer {
-public:
-  explicit SourceNamer(const Existing &a_existing)
-      : existing_(a_existing), taken_(a_existing.taken) {}
-
-  [[nodiscard]] std::string NameFor(const std::string &a_wanted,
-                                    const SourceKind &a_kind) {
-    for (const auto &[name, kind] : existing_.sources) {
-      if (name == a_wanted && kind == a_kind) {
-        return name;
-      }
-    }
-    for (const auto &[name, kind] : existing_.sources) {
-      if (kind == a_kind) {
-        return name;
-      }
-    }
-    const std::string name = UniqueName(a_wanted, taken_);
-    taken_.push_back(name);
-    edits_.emplace_back(AddSource{name, a_kind});
-    return name;
-  }
-
-  [[nodiscard]] std::vector<RecipeEdit> Edits() && { return std::move(edits_); }
-
-private:
-  const Existing &existing_;
-  std::vector<std::string> taken_;
-  std::vector<RecipeEdit> edits_;
-};
-}
-
 BuiltTerm MaterialiseTerm(const MaskPreset &a_preset,
-                          const Existing &a_existing) {
-  SourceNamer namer(a_existing);
+                          const SourceCatalog &a_existing) {
+  SourcePlanBuilder sources(a_existing);
   std::vector<std::string> factors;
   if (a_preset.partition) {
-    factors.push_back(ReferenceText(namer.NameFor(
+    factors.push_back(ReferenceText(sources.ReuseOrAdd(
         "partition", BakeSource{PartitionBake{*a_preset.partition}})));
   }
   if (!a_preset.bones.empty()) {
-    factors.push_back(ReferenceText(
-        namer.NameFor("bones", BakeSource{BoneWeightBake{a_preset.bones}})));
+    factors.push_back(ReferenceText(sources.ReuseOrAdd(
+        "bones", BakeSource{BoneWeightBake{a_preset.bones}})));
   }
   if (!a_preset.expression.empty()) {
-    std::string expression = a_preset.expression;
+    std::vector<ExpressionRename> renames;
     for (const auto &[wanted, kind] : a_preset.sources) {
-      const std::string name = namer.NameFor(wanted, kind);
+      const std::string name = sources.ReuseOrAdd(wanted, kind);
       if (name != wanted) {
-        expression = RenameInExpression(expression, wanted, name, false);
+        renames.push_back({wanted, name});
       }
     }
-    factors.push_back(std::move(expression));
+    factors.push_back(RenameInExpression(a_preset.expression, renames, false));
   }
   std::string expression;
   for (const std::string &factor : factors) {
     expression += (expression.empty() ? "" : " * ") + factor;
   }
-  return BuiltTerm{std::move(namer).Edits(), std::move(expression)};
+  return BuiltTerm{std::move(sources).TakeEdits(), std::move(expression)};
 }
 
 std::string TermLabel(std::string_view a_text, const MaskPresets &a_presets,
-                      const Existing &a_existing) {
+                      const SourceCatalog &a_existing) {
   if (a_text.size() > 1 && a_text.front() == '@' && IsName(a_text.substr(1))) {
     return std::string{a_text.substr(1)};
   }
@@ -310,15 +252,15 @@ namespace {
 }
 
 BuiltTerm BuildTerm(const TermKind &a_kind, const MaskPresets &a_presets,
-                    const Existing &a_existing) {
-  SourceNamer namer(a_existing);
+                    const SourceCatalog &a_existing) {
+  SourcePlanBuilder sources(a_existing);
   std::string text = Match(
       a_kind, [](const RawTerm &) { return std::string{}; },
       [](const ReferenceTerm &t) { return ReferenceText(t.name); },
       [&](const ThresholdTerm &t) {
         const std::string name =
-            namer.NameFor(std::string{MaterialChannelName(t.channel)},
-                          MaterialSource{t.channel});
+            sources.ReuseOrAdd(std::string{MaterialChannelName(t.channel)},
+                               MaterialSource{t.channel});
         return ThresholdText(t, name);
       },
       [&](const PresetTerm &t) {
@@ -329,31 +271,31 @@ BuiltTerm BuildTerm(const TermKind &a_kind, const MaskPresets &a_presets,
         BuiltTerm term = MaterialiseTerm(*preset, a_existing);
         for (const RecipeEdit &edit : term.edits) {
           if (const auto *add = Get<AddSource>(edit)) {
-            (void)namer.NameFor(add->name, add->kind);
+            (void)sources.ReuseOrAdd(add->name, add->kind);
           }
         }
         return term.expression;
       },
       [&](const PartitionTerm &t) {
         return ReferenceText(
-            namer.NameFor("partition", BakeSource{PartitionBake{t.slot}}));
+            sources.ReuseOrAdd("partition", BakeSource{PartitionBake{t.slot}}));
       },
       [&](const BoneTerm &t) {
         return ReferenceText(
-            namer.NameFor("bones", BakeSource{BoneWeightBake{t.bones}}));
+            sources.ReuseOrAdd("bones", BakeSource{BoneWeightBake{t.bones}}));
       },
       [&](const IslandTerm &t) {
-        const std::string name = namer.NameFor(
+        const std::string name = sources.ReuseOrAdd(
             t.source == IslandSource::kChart ? "charts" : "components",
             IslandBakeOf(t.source));
         return IdMatchText(name, t.id);
       },
       [&](const ClusterTerm &t) {
         const std::string name =
-            namer.NameFor("clusters", SourceOf(t.settings));
+            sources.ReuseOrAdd("clusters", SourceOf(t.settings));
         return IdMatchText(name, t.id);
       });
-  return BuiltTerm{std::move(namer).Edits(), std::move(text)};
+  return BuiltTerm{std::move(sources).TakeEdits(), std::move(text)};
 }
 
 std::string TermLabelOf(const TermKind &a_kind, const MaskPresets &a_presets,

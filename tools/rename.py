@@ -259,7 +259,7 @@ def main():
             },
         )
         client.notify("initialized", {})
-        open_document(client, ROOT / "src" / "Recipe.cpp")
+        open_document(client, ROOT / "src" / "recipe" / "Recipe.cpp")
         print("waiting for clangd's index ...", flush=True)
         client.wait_for_index()
 

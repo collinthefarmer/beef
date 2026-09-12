@@ -2,6 +2,7 @@
 #include "studio/Fields.h"
 #include "studio/Forms.h"
 #include "studio/Panels.h"
+#include "studio/Rows.h"
 #include "test_support.h"
 
 #include <algorithm>

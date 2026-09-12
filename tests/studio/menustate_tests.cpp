@@ -87,6 +87,44 @@ void RenameRecipeFollowsSelection() {
   Check(state.selection.recipeID == "new",
         "RenameRecipe retargets the selection");
 }
+
+void PaintCommitWaitsForAcknowledgment() {
+  MenuState state;
+  Reduce(state, SetMode{Mode::kPaint});
+  Reduce(state, BeginPaint{"glow", RecipeKey{}, Surface::kMaterial});
+  AcknowledgePaintUpdate(state, PaintUpdateResult{0, 0, {}});
+  Reduce(state, AddTerm{Term{}});
+  Reduce(state, KeepPaint{PaintCommitRequest{1, "glow", "engraving", "1"}});
+  Check(state.paint && state.paint->pendingCommit == 1 &&
+            !state.mask.terms.empty(),
+        "requesting a commit retains the paint session and its mask");
+  AcknowledgePaintCommit(state, PaintCommitResult{2, std::nullopt});
+  Check(state.paint && state.paint->pendingCommit == 1,
+        "an unrelated acknowledgment cannot close the pending session");
+  AcknowledgePaintCommit(
+      state,
+      PaintCommitResult{1, MakeDiagnostic(Severity::kError, "mask engraving",
+                                          "name already used")});
+  Check(state.paint && !state.paint->pendingCommit && state.paint->problem &&
+            !state.mask.terms.empty() && state.maskHistory.UndoDepth() > 0,
+        "a refused commit retains the editable mask and history and exposes "
+        "the error");
+  Reduce(state, KeepPaint{PaintCommitRequest{3, "glow", "retry", "1"}});
+  AcknowledgePaintCommit(state, PaintCommitResult{1, std::nullopt});
+  Check(state.paint && state.paint->pendingCommit == 3,
+        "an acknowledgment from a previous attempt cannot finish a retry");
+  AcknowledgePaintCommit(state, PaintCommitResult{3, std::nullopt});
+  Check(!state.paint && state.mask.terms.empty() &&
+            state.selection.recipeID == "glow",
+        "a successful acknowledgment closes the session and selects the target "
+        "recipe");
+
+  Reduce(state, SetMode{Mode::kPaint});
+  Reduce(state, BeginPaint{"next", RecipeKey{}, Surface::kShell});
+  AcknowledgePaintCommit(state, PaintCommitResult{3, std::nullopt});
+  Check(state.paint && state.paint->recipeID == "next",
+        "a repeated snapshot result cannot close a new paint session");
+}
 }
 
 int main() {
@@ -97,5 +135,6 @@ int main() {
   MaskIntentsBuildAndUndo();
   EditRecipeRemapsSelectedLayer();
   RenameRecipeFollowsSelection();
+  PaintCommitWaitsForAcknowledgment();
   return test::Finish("studio_menustate");
 }

@@ -66,13 +66,6 @@ void Refuse(std::string_view a_field, const std::string &a_text) {
   logger::warn("{} not applied: '{}' does not parse", a_field, a_text);
 }
 
-void PostEdits(Studio::Intents &a_out, const std::string &a_recipe,
-               std::vector<Studio::RecipeEdit> a_edits) {
-  if (!a_edits.empty()) {
-    Studio::Post(a_out, Studio::EditRecipe{a_recipe, std::move(a_edits)});
-  }
-}
-
 [[nodiscard]] std::string RecipeLabel(const Studio::RecipeRow &a_recipe) {
   return a_recipe.pinned ? std::format("{} (pinned here)", a_recipe.id)
                          : a_recipe.id;
@@ -116,13 +109,16 @@ void AddTermOfKind(const Studio::TermKind &a_kind,
     return;
   }
   const Studio::MaskPresets &presets = LoadedPresets();
-  Studio::BuiltTerm built =
-      Studio::BuildTerm(a_kind, presets, Studio::ExistingOf(*a_frame.recipe));
-  PostEdits(*a_frame.intents, a_frame.recipe->id, std::move(built.edits));
-  Studio::Post(*a_frame.intents,
-               Studio::AddTerm{Studio::Term{
-                   Studio::TermOp::kAnd, std::move(built.expression),
-                   Studio::TermLabelOf(a_kind, presets, a_geometry), a_kind}});
+  Studio::BuiltTerm built = Studio::BuildTerm(
+      a_kind, presets,
+      Studio::PaintSources(*a_frame.state, *a_frame.recipe, *a_frame.intents));
+  Studio::Post(
+      *a_frame.intents,
+      Studio::AddTerm{
+          Studio::Term{Studio::TermOp::kAnd, std::move(built.expression),
+                       Studio::TermLabelOf(a_kind, presets, a_geometry),
+                       a_kind},
+          std::move(built.edits)});
 }
 
 void DrawOffers(std::span<const Studio::TermOffer> a_offers,
@@ -227,12 +223,14 @@ void DrawTermSettings(std::size_t a_index, const Studio::Term &a_term,
           setting.apply ? setting.apply(*text) : std::nullopt;
       if (changed) {
         Studio::BuiltTerm built = Studio::BuildTerm(
-            *changed, presets, Studio::ExistingOf(*a_frame.recipe));
-        PostEdits(*a_frame.intents, a_frame.recipe->id, std::move(built.edits));
+            *changed, presets,
+            Studio::PaintSources(*a_frame.state, *a_frame.recipe,
+                                 *a_frame.intents));
         Studio::Post(*a_frame.intents,
                      Studio::SetTermKind{
                          a_index, *changed, std::move(built.expression),
-                         Studio::TermLabelOf(*changed, presets, geometry)});
+                         Studio::TermLabelOf(*changed, presets, geometry),
+                         std::move(built.edits)});
       } else {
         Refuse(setting.field.name, *text);
       }
@@ -503,24 +501,32 @@ void DrawPaintHead(const Frame &a_frame) {
 
 namespace {
 void KeepMaskPopup(const Frame &a_frame) {
-  const Studio::MenuState &state = *a_frame.state;
+  Studio::MenuState &state = *a_frame.state;
   const Studio::MaskStack &mask = state.mask;
   const bool painting = state.paint.has_value();
   if (ImGui::BeginPopup("keep-mask")) {
     const std::string proposed =
         Studio::ProposedMaskName(mask.terms, mask.editing);
-    const std::string_view typed = LiveTextField(
-        "name", proposed.c_str(), Studio::Width::Px(200.0f), 1.0f);
-    const std::string name = typed.empty() ? proposed : std::string{typed};
-    const bool ready =
-        painting && IsName(name) && name != std::string{Studio::kScratchMask};
+    if (painting) {
+      NextItemWidth(Studio::Width::Px(200.0f));
+      ImGui::InputTextWithHint("name", proposed.c_str(),
+                               state.paint->keepName.data(),
+                               state.paint->keepName.size());
+    }
+    const std::string name = painting && state.paint->keepName.front() != '\0'
+                                 ? std::string{state.paint->keepName.data()}
+                                 : proposed;
+    const auto expression = Studio::CheckedBuildMask(mask.terms);
+    const bool ready = painting && state.paint->ready && expression &&
+                       !state.paint->pendingCommit && IsName(name) &&
+                       name != std::string{Studio::kScratchMask};
     Disabled(!ready, [&]() {
       if (ImGui::Button(std::format("Keep as {}", name).c_str()) && ready) {
-        Studio::Post(*a_frame.intents, std::string{Studio::kPaintRecipe},
-                     Studio::SetMask{std::string{Studio::kScratchMask},
-                                     Studio::BuildMask(mask.terms)});
-        Studio::Post(*a_frame.intents,
-                     Studio::KeepPaint{state.paint->recipeID, name});
+        Studio::Post(
+            *a_frame.intents,
+            Studio::KeepPaint{Studio::PaintCommitRequest{
+                state.nextPaintCommitID++, state.paint->recipeID, name,
+                *expression, state.paint->sessionID, state.paint->sources}});
         ImGui::CloseCurrentPopup();
       }
     });
@@ -533,7 +539,10 @@ void DrawMaskRule(std::string_view a_title, const Frame &a_frame) {
   const Studio::MenuState &state = *a_frame.state;
   const Studio::MaskStack &mask = state.mask;
   const bool painting = state.paint.has_value();
-  const bool something = painting && !Studio::BuildMask(mask.terms).empty();
+  const auto expression = Studio::CheckedBuildMask(mask.terms);
+  const bool something = painting && state.paint->ready &&
+                         !state.paint->pendingCommit && expression &&
+                         !expression->empty();
 
   const Studio::RuleButton buttons[]{
       {Studio::RuleAction::kUndo,
@@ -575,6 +584,15 @@ void DrawMaskRule(std::string_view a_title, const Frame &a_frame) {
     }
   }
 
+  if (!expression) {
+    Problem(expression.error().message);
+  }
+  if (state.paint && state.paint->problem) {
+    Problem(state.paint->problem->message);
+    if (state.paint->ready && ImGui::Button("Retry preview")) {
+      a_frame.state->paint->problem.reset();
+    }
+  }
   KeepMaskPopup(a_frame);
 }
 
@@ -624,16 +642,9 @@ void RebuildScratch(const Frame &a_frame) {
   if (!state || !recipe || !a_frame.intents) {
     return;
   }
-  const Studio::MaskStack &mask = state->mask;
-  if (!mask.dirty || !state->paint ||
-      recipe->id != std::string{Studio::kPaintRecipe}) {
-    return;
+  if (const auto update = Studio::PendingPaintUpdate(*state)) {
+    Studio::Post(*a_frame.intents, *update);
   }
-  for (auto &edit : Studio::ScratchEdits(mask.terms, mask.solo, mask.muted,
-                                         Studio::ScratchOf(*recipe))) {
-    Studio::Post(*a_frame.intents, recipe->id, std::move(edit));
-  }
-  Studio::Post(*a_frame.intents, Studio::ScratchRebuilt{});
 }
 
 void EditMaskAsTerms(const Studio::TextRow &a_mask, const Frame &a_frame) {
@@ -641,7 +652,7 @@ void EditMaskAsTerms(const Studio::TextRow &a_mask, const Frame &a_frame) {
     return;
   }
   const std::string label = Studio::TermLabel(
-      a_mask.text, LoadedPresets(), Studio::ExistingOf(*a_frame.recipe));
+      a_mask.text, LoadedPresets(), Studio::SourceCatalogOf(*a_frame.recipe));
   Studio::Post(*a_frame.intents,
                Studio::LoadMask{{Studio::Term{Studio::TermOp::kSet, a_mask.text,
                                               label, Studio::RawTerm{}}},

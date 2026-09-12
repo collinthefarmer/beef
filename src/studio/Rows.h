@@ -5,9 +5,15 @@
 #include "studio/Snapshot.h"
 
 #include <cstddef>
+#include <optional>
 #include <vector>
 
 namespace BetterEnchantmentEffects::Studio {
+[[nodiscard]] bool WritesCell(const OutputRow &a_output, Surface a_surface,
+                              Slot a_slot) noexcept;
+
+[[nodiscard]] LightRow LightRowOf(const Recipe &a_recipe);
+[[nodiscard]] ShellRow ShellRowOf(const Recipe &a_recipe);
 [[nodiscard]] SignalRow SignalRowOf(const Signal &a_signal,
                                     const RowTypes &a_rows,
                                     std::size_t a_references);
@@ -20,4 +26,7 @@ namespace BetterEnchantmentEffects::Studio {
 ScalarRowsOf(const Recipe &a_recipe, const SurfaceOutput &a_output);
 [[nodiscard]] OutputRow OutputRowOf(const Recipe &a_recipe,
                                     std::size_t a_index);
+[[nodiscard]] SourceRow SourceRowOf(const Source &a_source,
+                                    std::size_t a_references);
+[[nodiscard]] std::optional<SourceKind> SourceKindOf(const SourceRow &a_row);
 }

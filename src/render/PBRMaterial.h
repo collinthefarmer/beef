@@ -4,6 +4,7 @@
 
 #include <array>
 #include <cstdint>
+#include <optional>
 #include <string>
 
 namespace BetterEnchantmentEffects {
@@ -55,4 +56,20 @@ static_assert(sizeof(PBRMaterialLayout) == 0x148);
 
 [[nodiscard]] bool
 IsPBRProperty(const RE::BSLightingShaderProperty *a_property) noexcept;
+
+class PbrMaterial {
+public:
+  [[nodiscard]] static std::optional<PbrMaterial>
+  Bind(RE::BSLightingShaderProperty *a_property);
+  [[nodiscard]] bool Attached() const noexcept;
+  [[nodiscard]] bool TextureSlotsValid() const;
+
+private:
+  friend class SlotWriter;
+  friend struct MaterialInputs;
+  explicit PbrMaterial(RE::BSLightingShaderProperty *a_property);
+
+  RE::BSTSmartPointer<PBRMaterialLayout> material_;
+  RE::NiPointer<RE::BSLightingShaderProperty> property_;
+};
 }

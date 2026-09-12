@@ -84,30 +84,23 @@ WornPiece WornKeysOf(RE::TESObjectARMO *a_armor, RE::MagicItem *a_magic) {
   return keys;
 }
 
-LiveGeometry *GeometryAtFlat(LiveActor &a_state, std::size_t a_flat) {
-  std::size_t i = 0;
+struct LocatedGeometry {
+  LivePiece &piece;
+  LiveGeometry &bound;
+};
+
+[[nodiscard]] std::optional<LocatedGeometry>
+LocateGeometry(LiveActor &a_state, GeometryId a_geometry) noexcept {
+  std::size_t index = 0;
   for (LivePiece &piece : a_state.pieces) {
     for (LiveGeometry &geometry : piece.geometries) {
-      if (i == a_flat) {
-        return &geometry;
+      if (GeometryId{index} == a_geometry) {
+        return LocatedGeometry{piece, geometry};
       }
-      ++i;
+      ++index;
     }
   }
-  return nullptr;
-}
-
-LivePiece *OwningPieceFlat(LiveActor &a_state, std::size_t a_flat) {
-  std::size_t i = 0;
-  for (LivePiece &piece : a_state.pieces) {
-    for ([[maybe_unused]] LiveGeometry &geometry : piece.geometries) {
-      if (i == a_flat) {
-        return &piece;
-      }
-      ++i;
-    }
-  }
-  return nullptr;
+  return std::nullopt;
 }
 
 RE::MagicItem *EnchantmentForInstance(LiveActor &a_state,
@@ -116,9 +109,9 @@ RE::MagicItem *EnchantmentForInstance(LiveActor &a_state,
     if (static_cast<std::size_t>(placement.instance) != a_instance) {
       continue;
     }
-    if (LivePiece *piece = OwningPieceFlat(
-            a_state, static_cast<std::size_t>(placement.piece))) {
-      return piece->enchantment;
+    if (const std::optional<LocatedGeometry> located =
+            LocateGeometry(a_state, placement.geometry)) {
+      return RE::TESForm::LookupByID<RE::MagicItem>(located->piece.enchantment);
     }
   }
   return nullptr;
@@ -170,27 +163,32 @@ EventRecord EquipEvent(const std::vector<LivePiece> &a_pieces) {
 
 LiveGeometry MakeGeometry(RE::BSGeometry *a_geometry,
                           RE::BSLightingShaderProperty *a_property,
-                          RE::NiAVObject *a_root, std::string_view a_name) {
-  auto *layout = static_cast<PBRMaterialLayout *>(a_property->material);
+                          RE::NiAVObject *a_root,
+                          const PbrMaterial &a_material) {
   LiveGeometry bound;
   bound.geometry = RE::NiPointer{a_geometry};
   bound.property = RE::NiPointer{a_property};
-  bound.name = std::string{a_name};
-  bound.inputs.material = MaterialInputs::From(*layout);
+  bound.name = a_geometry->name.c_str() ? a_geometry->name.c_str() : "";
+  bound.inputs.material = MaterialInputs::From(a_material);
   bound.inputs.geometry = RE::NiPointer{a_geometry};
   bound.inputs.root = RE::NiPointer{a_root};
   return bound;
 }
 
-std::pair<std::vector<Piece>, std::vector<Studio::PieceRef>>
-BuildPieces(LiveActor &a_state, RE::NiAVObject *a_firstPersonRoot,
-            RE::FormID a_actorID) {
-  std::vector<Piece> pieces;
-  std::vector<Studio::PieceRef> refs;
-  for (LivePiece &live : a_state.pieces) {
+struct PlannerGeometries {
+  std::vector<Geometry> geometries;
+  std::vector<Studio::PieceRef> owners;
+};
+
+PlannerGeometries BuildPlannerGeometries(const LiveActor &a_state,
+                                         RE::NiAVObject *a_firstPersonRoot,
+                                         RE::FormID a_actorID) {
+  PlannerGeometries out;
+  for (const LivePiece &live : a_state.pieces) {
     RE::TESObjectARMO *armor =
         RE::TESForm::LookupByID<RE::TESObjectARMO>(live.armor);
-    WornPiece keys = WornKeysOf(armor, live.enchantment);
+    WornPiece keys = WornKeysOf(
+        armor, RE::TESForm::LookupByID<RE::MagicItem>(live.enchantment));
     for (const LiveGeometry &geometry : live.geometries) {
       keys.diffusePaths.push_back(
           TexturePath(geometry.inputs.material.diffuse));
@@ -200,26 +198,26 @@ BuildPieces(LiveActor &a_state, RE::NiAVObject *a_firstPersonRoot,
         live.geometries.front().inputs.root.get() == a_firstPersonRoot;
     const Studio::PieceRef ref{a_actorID, live.armor, firstPerson};
     for (const LiveGeometry &geometry : live.geometries) {
-      Piece piece;
-      piece.identity =
+      Geometry planned;
+      planned.identity =
           GeometryIdentity{std::nullopt, geometry.name,
                            TexturePath(geometry.inputs.material.diffuse)};
-      piece.keys = keys;
-      piece.firstPerson = firstPerson;
-      piece.lost = geometry.lost;
-      pieces.push_back(std::move(piece));
-      refs.push_back(ref);
+      planned.keys = keys;
+      planned.firstPerson = firstPerson;
+      planned.lost = geometry.lost;
+      out.geometries.push_back(std::move(planned));
+      out.owners.push_back(ref);
     }
   }
-  return {std::move(pieces), std::move(refs)};
+  return out;
 }
 
-void PreparePlacement(LiveActor &a_state, std::span<const Recipe> a_loaded,
-                      std::size_t a_piece, std::size_t a_geometry,
-                      std::size_t a_flat) {
-  const GeometryPlacement placement =
-      PlaceGeometry(a_state.structure, a_loaded, PieceId{a_flat});
-  LiveGeometry &bound = a_state.pieces[a_piece].geometries[a_geometry];
+void PreparePlacement(LiveActor &a_state,
+                      const GeometryPlacementPlan &placement,
+                      LivePieceId a_piece, std::size_t a_geometry,
+                      GeometryId a_flat) {
+  LiveGeometry &bound =
+      a_state.pieces[static_cast<std::size_t>(a_piece)].geometries[a_geometry];
   bound.placements = placement.sources;
   bound.plan = placement.plan;
   bound.stackPlan = PlanStacks(placement.placed, placement.plan);
@@ -299,8 +297,8 @@ void MarkReplaced(LiveActor &a_state, LiveGeometry &a_bound) {
   }
 }
 
-void RenderChain(LiveActor &a_state, LiveGeometry &a_bound,
-                 const Settings &a_settings) {
+void PrepareChainStacks(LiveActor &a_state, LiveGeometry &a_bound,
+                        const Settings &a_settings) {
   const auto [size, maxSize] =
       RuntimeSizes(a_settings, a_bound.inputs.material);
   for (const SlotPlan &slot : a_bound.plan.slots) {
@@ -336,6 +334,7 @@ void RenderChain(LiveActor &a_state, LiveGeometry &a_bound,
       if (!output) {
         continue;
       }
+      output->active = true;
       if (slot.surface == Surface::kShell && !a_bound.shell) {
         output->problem = "shell could not be created";
       } else if (slot.surface == Surface::kMaterial && !a_bound.material) {
@@ -380,12 +379,12 @@ void PlaceLight(LiveActor &a_state, const ActorLightPlan &a_plan,
     return;
   }
   std::vector<RE::BSGeometry *> geometries;
-  for (const PieceId flat : ThirdPersonPiecesOfInstance(
+  for (const GeometryId flat : ThirdPersonGeometriesOfInstance(
            a_state.structure, InstanceId{instanceIndex})) {
-    if (LiveGeometry *geometry =
-            GeometryAtFlat(a_state, static_cast<std::size_t>(flat));
-        geometry && geometry->geometry) {
-      geometries.push_back(geometry->geometry.get());
+    if (const std::optional<LocatedGeometry> located =
+            LocateGeometry(a_state, flat);
+        located && located->bound.geometry) {
+      geometries.push_back(located->bound.geometry.get());
     }
   }
   if (geometries.empty()) {
@@ -412,19 +411,7 @@ void PlaceLight(LiveActor &a_state, const ActorLightPlan &a_plan,
 }
 
 void Manager::ReapplyAll() {
-  PostTask([this] {
-    std::vector<RE::FormID> ids;
-    ids.reserve(applied_.size());
-    for (const auto &[id, state] : applied_) {
-      ids.push_back(id);
-    }
-    for (const RE::FormID id : ids) {
-      QueueRefresh(id);
-    }
-    if (ids.empty()) {
-      QueueLoadedActorRefreshes();
-    }
-  });
+  PostTask([this] { RebuildAllActorsAfterChange([] {}); });
 }
 
 void Manager::RetireAll() {
@@ -440,29 +427,23 @@ void Manager::RetireAll() {
   });
 }
 
-void Manager::RunRefresh(RE::FormID a_actorID, std::uint64_t a_generation) {
-  if (a_generation != generation_.load()) {
-    return;
-  }
-  bool rerun = false;
-  {
-    std::scoped_lock lock{queueLock_};
-    pending_.erase(a_actorID);
-    rerun = rerun_.erase(a_actorID) > 0;
-  }
-  RE::Actor *actor = RE::TESForm::LookupByID<RE::Actor>(a_actorID);
+void Manager::RunRefresh(RE::FormID a_actorID,
+                         const std::vector<ApplicationToken> &a_tokens) {
+  const RE::NiPointer<RE::Actor> actor{
+      RE::TESForm::LookupByID<RE::Actor>(a_actorID)};
   if (!actor) {
     Retire(a_actorID);
   } else {
-    Refresh(actor);
+    Refresh(actor.get());
   }
-  if (rerun) {
-    QueueRefresh(a_actorID);
-  }
+  PrepareApplications(a_actorID, a_tokens);
 }
 
 void Manager::Refresh(RE::Actor *a_actor) {
-  const Settings &settings = GetSettings();
+  if (!a_actor) {
+    return;
+  }
+  const Settings settings = GetSettings();
   const RE::FormID actorID = a_actor->GetFormID();
   Retire(actorID);
   if (!settings.enableShaders || !emissivePathEnabled_ ||
@@ -481,23 +462,24 @@ void Manager::Refresh(RE::Actor *a_actor) {
     return;
   }
   LiveActor state;
+  state.actor = a_actor->GetHandle();
   if (settings.thirdPerson) {
-    for (LivePiece &piece : CollectPieces(a_actor, false)) {
+    for (LivePiece &piece : CollectPieces(a_actor, false, settings)) {
       state.pieces.push_back(std::move(piece));
     }
   }
   if (settings.firstPerson && isPlayer) {
-    for (LivePiece &piece : CollectPieces(a_actor, true)) {
+    for (LivePiece &piece : CollectPieces(a_actor, true, settings)) {
       state.pieces.push_back(std::move(piece));
     }
   }
-  MatchRecipes(a_actor, state);
+  MatchRecipes(a_actor, state, settings);
   TextureLab::GetSingleton()->InvalidatePreviews();
   if (state.structure.placements.empty()) {
     return;
   }
-  PlaceInstances(a_actor, state);
-  PlaceLightsOf(a_actor, state);
+  PlaceInstances(state, settings);
+  PlaceLightsOf(a_actor, state, settings);
   if (settings.verboseLogging) {
     logger::info("actor {:08X} ({}): {} piece(s), {} recipe(s) applied",
                  actorID, a_actor->GetName(), state.pieces.size(),
@@ -506,19 +488,14 @@ void Manager::Refresh(RE::Actor *a_actor) {
   applied_[actorID] = std::move(state);
   WatchAnimationEvents(a_actor);
 
-  bool equipped = false;
-  {
-    std::scoped_lock lock{queueLock_};
-    equipped = equipped_.erase(actorID) > 0;
-  }
-  if (equipped) {
+  if (applications_.TakeEquipped(actorID)) {
     Fire(actorID, EquipEvent(applied_[actorID].pieces));
   }
 }
 
 std::vector<LivePiece> Manager::CollectPieces(RE::Actor *a_actor,
-                                              bool a_firstPerson) {
-  const Settings &settings = GetSettings();
+                                              bool a_firstPerson,
+                                              const Settings &a_settings) {
   std::vector<LivePiece> out;
   const auto &biped = a_actor->GetBiped(a_firstPerson);
   if (!biped) {
@@ -543,7 +520,7 @@ std::vector<LivePiece> Manager::CollectPieces(RE::Actor *a_actor,
     LivePiece piece;
     piece.armor = armor->GetFormID();
     piece.armorName = armor->GetName() ? armor->GetName() : "";
-    piece.enchantment = enchantment;
+    piece.enchantment = enchantment ? enchantment->GetFormID() : 0;
     std::unordered_set<RE::BSLightingShaderProperty *> seen;
     bool anyPBR = false;
     bool layoutFailed = false;
@@ -556,17 +533,18 @@ std::vector<LivePiece> Manager::CollectPieces(RE::Actor *a_actor,
           }
           RE::BSLightingShaderProperty *property =
               LightingPropertyOf(a_geometry);
-          if (!property || !IsPBRProperty(property) ||
-              !seen.insert(property).second) {
+          const std::optional<PbrMaterial> material =
+              PbrMaterial::Bind(property);
+          if (!property || !material || !seen.insert(property).second) {
             return RE::BSVisit::BSVisitControl::kContinue;
           }
           anyPBR = true;
-          if (!LayoutSanityCheck(property)) {
+          if (!LayoutSanityCheck(*material, name)) {
             layoutFailed = true;
             return RE::BSVisit::BSVisitControl::kStop;
           }
           if (!property->emissiveColor) {
-            if (settings.verboseLogging) {
+            if (a_settings.verboseLogging) {
               logger::info(
                   "skip geometry {}: property has no emissive colour storage",
                   name);
@@ -574,14 +552,14 @@ std::vector<LivePiece> Manager::CollectPieces(RE::Actor *a_actor,
             return RE::BSVisit::BSVisitControl::kContinue;
           }
           piece.geometries.push_back(
-              MakeGeometry(a_geometry, property, root, name));
+              MakeGeometry(a_geometry, property, root, *material));
           return RE::BSVisit::BSVisitControl::kContinue;
         });
     if (layoutFailed) {
       continue;
     }
     if (!anyPBR || piece.geometries.empty()) {
-      if (!anyPBR && settings.verboseLogging &&
+      if (!anyPBR && a_settings.verboseLogging &&
           loggedNonPBRArmor_.insert(piece.armor).second) {
         logger::info("armor {:08X} ({}) has no PBR geometry; left alone",
                      piece.armor, piece.armorName);
@@ -593,34 +571,41 @@ std::vector<LivePiece> Manager::CollectPieces(RE::Actor *a_actor,
   return out;
 }
 
-void Manager::MatchRecipes(RE::Actor *a_actor, LiveActor &a_state) {
+void Manager::MatchRecipes(RE::Actor *a_actor, LiveActor &a_state,
+                           const Settings &a_settings) {
   const std::span<const Recipe> loaded = LoadedRecipes();
   RE::NiAVObject *firstPersonRoot = a_actor->Get3D(true);
   const RE::FormID actorID = a_actor->GetFormID();
-  const std::pair<std::vector<Piece>, std::vector<Studio::PieceRef>> built =
-      BuildPieces(a_state, firstPersonRoot, actorID);
-  const std::vector<Studio::PieceRef> &refs = built.second;
+  const PlannerGeometries built =
+      BuildPlannerGeometries(a_state, firstPersonRoot, actorID);
+  const std::vector<Studio::PieceRef> &refs = built.owners;
   a_state.structure = MatchActor(
-      built.first, loaded,
-      [this, loaded, &refs](const Piece &a_piece, std::size_t a_index) {
-        std::vector<ResolvedRecipe> resolved = Resolve(a_piece.keys, loaded);
+      built.geometries, loaded,
+      [this, loaded, &refs](const Geometry &a_geometry,
+                            GeometryId a_geometryID) {
+        const std::size_t index = static_cast<std::size_t>(a_geometryID);
+        std::vector<ResolvedRecipe> resolved = Resolve(a_geometry.keys, loaded);
         const Studio::PieceRef ref =
-            a_index < refs.size() ? refs[a_index] : Studio::PieceRef{};
-        return Studio::ViewedRecipes(
-            {std::move(resolved), a_piece.keys, ref, view_, loaded});
+            index < refs.size() ? refs[index] : Studio::PieceRef{};
+        return Studio::ViewedRecipes({std::move(resolved), a_geometry.keys, ref,
+                                      editor_.CurrentView(), loaded});
       });
   a_state.instances.clear();
   for (std::size_t i = 0; i < a_state.structure.instances.size(); ++i) {
     const Instance &instance = a_state.structure.instances[i];
     RE::MagicItem *enchantment = EnchantmentForInstance(a_state, i);
-    (void)InstanceFor(a_actor, a_state, instance.recipe, enchantment);
+    (void)InstanceFor(a_state, instance.recipe, enchantment, a_settings);
   }
 }
 
-std::optional<std::size_t> Manager::InstanceFor(RE::Actor *a_actor,
-                                                LiveActor &a_state,
+std::optional<std::size_t> Manager::InstanceFor(LiveActor &a_state,
                                                 RecipeId a_recipe,
-                                                RE::MagicItem *a_enchantment) {
+                                                RE::MagicItem *a_enchantment,
+                                                const Settings &a_settings) {
+  const auto actor = a_state.actor.get();
+  if (!actor) {
+    return std::nullopt;
+  }
   const std::span<const Recipe> loaded = LoadedRecipes();
   const std::size_t recipeIndex = static_cast<std::size_t>(a_recipe);
   if (recipeIndex >= loaded.size()) {
@@ -643,12 +628,11 @@ std::optional<std::size_t> Manager::InstanceFor(RE::Actor *a_actor,
     instance.signals = std::make_unique<SignalState>(*instance.graph);
   }
   instance.environment =
-      std::make_unique<ActorEnvironment>(a_actor, a_enchantment);
+      std::make_unique<ActorEnvironment>(actor.get(), a_enchantment);
   instance.startMS = NowMS();
-  if (const auto carried =
-          carriedTimes_.find({a_actor->GetFormID(), recipe->id});
+  if (const auto carried = carriedTimes_.find({actor->GetFormID(), recipe->id});
       carried != carriedTimes_.end()) {
-    const float speed = GetSettings().animationSpeed * recipe->clock.speed;
+    const float speed = a_settings.animationSpeed * recipe->clock.speed;
     if (instance.startMS - carried->second.retiredMS <= kCarryWindowMS &&
         speed > 0.0f) {
       instance.startMS -=
@@ -661,7 +645,7 @@ std::optional<std::size_t> Manager::InstanceFor(RE::Actor *a_actor,
   return a_state.instances.size() - 1;
 }
 
-void Manager::PlaceInstances(RE::Actor *a_actor, LiveActor &a_state) {
+void Manager::PlaceInstances(LiveActor &a_state, const Settings &a_settings) {
   for (LiveInstance &instance : a_state.instances) {
     if (instance.signals && instance.environment) {
       instance.signals->Tick(*instance.environment, {0.0f, 0.0f});
@@ -673,16 +657,21 @@ void Manager::PlaceInstances(RE::Actor *a_actor, LiveActor &a_state) {
   std::size_t flat = 0;
   for (std::size_t p = 0; p < a_state.pieces.size(); ++p) {
     for (std::size_t g = 0; g < a_state.pieces[p].geometries.size(); ++g) {
-      PreparePlacement(a_state, loaded, p, g, flat);
-      PlaceOnGeometry(a_actor, a_state, PieceId{p}, g);
+      const auto placement = PlanGeometryPlacement(
+          a_state.structure, loaded, GeometryId{flat},
+          [this](const Recipe &recipe, std::size_t output) {
+            return editor_.CurrentView().OutputShown(recipe.id, output);
+          });
+      PreparePlacement(a_state, placement, LivePieceId{p}, g, GeometryId{flat});
+      PlaceOnGeometry(a_state, LivePieceId{p}, g, a_settings);
       ++flat;
     }
   }
 }
 
-void Manager::PlaceOnGeometry(RE::Actor *a_actor, LiveActor &a_state,
-                              PieceId a_piece, std::size_t a_geometry) {
-  const Settings &settings = GetSettings();
+void Manager::PlaceOnGeometry(LiveActor &a_state, LivePieceId a_piece,
+                              std::size_t a_geometry,
+                              const Settings &a_settings) {
   const std::size_t pieceIndex = static_cast<std::size_t>(a_piece);
   if (pieceIndex >= a_state.pieces.size() ||
       a_geometry >= a_state.pieces[pieceIndex].geometries.size()) {
@@ -690,76 +679,49 @@ void Manager::PlaceOnGeometry(RE::Actor *a_actor, LiveActor &a_state,
   }
   LiveGeometry &bound = a_state.pieces[pieceIndex].geometries[a_geometry];
 
-  InstallSurfaces(a_state, bound, settings.uniqueMaterial);
+  InstallSurfaces(a_state, bound, a_settings.uniqueMaterial);
   MarkReplaced(a_state, bound);
-  RenderChain(a_state, bound, settings);
+  PrepareChainStacks(a_state, bound, a_settings);
 
-  if (settings.verboseLogging) {
+  const auto actor = a_state.actor.get();
+  if (a_settings.verboseLogging && actor) {
     logger::info(
         "apply armor {:08X} actor {:08X} geometry '{}' material={} {}",
-        a_state.pieces[pieceIndex].armor, a_actor->GetFormID(), bound.name,
+        a_state.pieces[pieceIndex].armor, actor->GetFormID(), bound.name,
         bound.material ? (bound.material->Private() ? "private" : "shared")
                        : "untouched",
         bound.shell ? bound.shell->Describe() : "no shell");
   }
 }
 
-void Manager::PlaceLightsOf(RE::Actor *a_actor, LiveActor &a_state) {
-  const Settings &settings = GetSettings();
+void Manager::PlaceLightsOf(RE::Actor *a_actor, LiveActor &a_state,
+                            const Settings &a_settings) {
   const std::span<const Recipe> loaded = LoadedRecipes();
-  const ActorLightPlan plan = PlaceLights(a_state.structure, loaded);
+  const ActorLightPlan plan = PlanActorLights(
+      a_state.structure, loaded,
+      [this](const Recipe &recipe, std::size_t output) {
+        return editor_.CurrentView().OutputShown(recipe.id, output);
+      });
   for (const LightContribution &c : plan.plan.shown) {
-    PlaceLight(a_state, plan, c, a_actor, settings.verboseLogging);
+    PlaceLight(a_state, plan, c, a_actor, a_settings.verboseLogging);
   }
 }
 
-bool Manager::LayoutSanityCheck(RE::BSLightingShaderProperty *a_property) {
+bool Manager::LayoutSanityCheck(const PbrMaterial &a_material,
+                                std::string_view a_propertyName) {
   if (layoutVerified_) {
     return true;
   }
-  auto *material = static_cast<PBRMaterialLayout *>(a_property->material);
-  const std::array textures{
-      material->rmaosTexture.get(), material->emissiveTexture.get(),
-      material->displacementTexture.get(), material->featuresTexture0.get(),
-      material->featuresTexture1.get()};
-  for (auto *texture : textures) {
-    if (!texture || !netimmerse_cast<RE::NiSourceTexture *>(
-                        static_cast<RE::NiTexture *>(texture))) {
-      logger::error("PBR material layout check failed on {}: texture slots are "
-                    "not all NiSourceTexture; emissive path disabled",
-                    a_property->name.c_str());
-      emissivePathEnabled_ = false;
-      return false;
-    }
+  if (!a_material.TextureSlotsValid()) {
+    logger::error("PBR material layout check failed on {}: texture slots are "
+                  "not all NiSourceTexture; emissive path disabled",
+                  a_propertyName);
+    emissivePathEnabled_ = false;
+    return false;
   }
   layoutVerified_ = true;
   logger::info("PBR material layout check passed");
   return true;
-}
-
-void Manager::WithRecipeRetired(std::string_view a_id,
-                                const std::function<void()> &a_action) {
-  std::vector<RE::FormID> wearers;
-  for (const auto &[actorID, state] : applied_) {
-    if (std::ranges::any_of(state.instances, [&](const LiveInstance &a_i) {
-          return a_i.recipe && a_i.recipe->id == a_id;
-        })) {
-      wearers.push_back(actorID);
-    }
-  }
-  for (const RE::FormID actorID : wearers) {
-    Retire(actorID);
-  }
-  a_action();
-  for (const RE::FormID actorID : wearers) {
-    QueueRefresh(actorID);
-  }
-}
-
-void Manager::WithListMoved(const std::function<void()> &a_action) {
-  RetireEveryActor();
-  a_action();
-  QueueLoadedActorRefreshes();
 }
 
 void Manager::RetireEveryActor() {

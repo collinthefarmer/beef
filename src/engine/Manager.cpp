@@ -1,6 +1,7 @@
 #include "engine/Manager.h"
 
 #include "SettingsFile.h"
+#include "engine/Events.h"
 #include "engine/ManagerShared.h"
 #include "engine/RecipeStore.h"
 #include "render/Compositor.h"
@@ -11,38 +12,37 @@
 
 namespace BetterEnchantmentEffects {
 namespace {
-constexpr std::uint32_t kEquipFinalizeDelayMS = 100;
+bool SubmitTask(std::function<void()> a_task) {
+  const SKSE::TaskInterface *tasks = SKSE::GetTaskInterface();
+  if (!tasks) {
+    logger::error("no SKSE task interface; dropping work");
+    return false;
+  }
+  tasks->AddTask(std::move(a_task));
+  return true;
 }
+}
+
+Manager::Manager()
+    : applications_(SubmitTask,
+                    [this](std::uint32_t a_id,
+                           const std::vector<ApplicationToken> &a_tokens) {
+                      RunRefresh(a_id, a_tokens);
+                    }) {}
 
 Manager *Manager::GetSingleton() {
   static Manager singleton;
   return &singleton;
 }
 
+RecipeEditor &Manager::Editor() noexcept { return editor_; }
+
 void Manager::PostTask(std::function<void()> a_task) {
-  const SKSE::TaskInterface *tasks = SKSE::GetTaskInterface();
-  if (!tasks) {
-    logger::error("no SKSE task interface; dropping work");
-    return;
-  }
-  tasks->AddTask(std::move(a_task));
+  applications_.Post(std::move(a_task));
 }
 
 void Manager::QueueRefresh(RE::FormID a_actorID) {
-  if (a_actorID == 0) {
-    return;
-  }
-  std::uint64_t generation = 0;
-  {
-    std::scoped_lock lock{queueLock_};
-    if (!pending_.insert(a_actorID).second) {
-      rerun_.insert(a_actorID);
-      return;
-    }
-    generation = generation_.load();
-  }
-  PostTask(
-      [this, a_actorID, generation] { RunRefresh(a_actorID, generation); });
+  applications_.Refresh(a_actorID);
 }
 
 void Manager::QueueRefresh(RE::Actor *a_actor) {
@@ -55,20 +55,14 @@ void Manager::QueueRetire(RE::FormID a_actorID) {
   if (a_actorID == 0) {
     return;
   }
-  const std::uint64_t generation = generation_.load();
-  PostTask([this, a_actorID, generation] {
-    if (generation == generation_.load()) {
-      Retire(a_actorID);
-    }
+  PostTask([this, a_actorID] {
+    AbandonApplications(a_actorID);
+    Retire(a_actorID);
   });
 }
 
 void Manager::QueueEquipFinalize(RE::FormID a_actorID) {
-  if (a_actorID == 0) {
-    return;
-  }
-  std::scoped_lock lock{queueLock_};
-  finalizeDue_[a_actorID] = NowMS() + kEquipFinalizeDelayMS;
+  applications_.Equip(a_actorID, NowMS());
 }
 
 void Manager::QueueLoadedActorRefreshes() {
@@ -86,22 +80,38 @@ void Manager::QueueLoadedActorRefreshes() {
   }
 }
 
+void Manager::BeginLoad() { Clear(); }
+
+void Manager::FinishLoad() {
+  applications_.Resume();
+  QueueLoadedActorRefreshes();
+}
+
 void Manager::Clear() {
-  {
-    std::scoped_lock lock{queueLock_};
-    pending_.clear();
-    rerun_.clear();
-    finalizeDue_.clear();
-    equipped_.clear();
-    ++generation_;
-  }
+  applications_.BeginLoad();
   const std::size_t count = applied_.size();
+  for (const auto &[actorID, state] : applied_) {
+    UnwatchAnimationEvents(RE::TESForm::LookupByID<RE::Actor>(actorID));
+  }
   applied_.clear();
+  editor_.CancelPaintForLoad();
   loggedNonPBRArmor_.clear();
   carriedTimes_.clear();
   Compositor::GetSingleton()->ClearMeshes();
   Compositor::GetSingleton()->ClearMaterials();
   TextureLab::GetSingleton()->Clear();
+  {
+    std::scoped_lock lock{snapshotLock_};
+    auto empty = std::make_shared<Snapshot>();
+    empty->version = ++snapshotVersion_;
+    empty->paintUpdate = editor_.LastPaintUpdate();
+    empty->applications = applications_.Snapshot();
+    latest_ = std::move(empty);
+    watch_.reset();
+    watchedMS_ = 0;
+  }
+  lastTickMS_ = 0;
+  frozenLastTick_ = false;
   logger::info("cleared {} actor states", count);
 }
 

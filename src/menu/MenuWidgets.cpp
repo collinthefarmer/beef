@@ -71,8 +71,9 @@ void Colored(const ImVec4 &a_color, std::string_view a_text) {
     return nullptr;
   }
   const auto preview = lab->Preview(a_texture, a_channel, a_dynamic);
-  return preview && preview->srv ? reinterpret_cast<ImTextureID>(preview->srv)
-                                 : nullptr;
+  return preview && preview->View()
+             ? reinterpret_cast<ImTextureID>(preview->View())
+             : nullptr;
 }
 
 [[nodiscard]] std::optional<std::string>

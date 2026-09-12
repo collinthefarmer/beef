@@ -3,11 +3,14 @@
 #include "recipe/Recipe.h"
 
 #include <cstddef>
+#include <functional>
 #include <optional>
 #include <span>
 #include <vector>
 
 namespace BetterEnchantmentEffects {
+using OutputFilter = std::function<bool(const Recipe &, std::size_t)>;
+
 struct PlacedRecipe {
   const Recipe *recipe = nullptr;
   int priority = 0;
@@ -57,7 +60,8 @@ struct LightPlan {
 ScalarSource(Slot a_slot, ScalarField a_field,
              std::span<const SurfaceOutput *const> a_outputs);
 [[nodiscard]] GeometryPlan PlanGeometry(std::span<const PlacedRecipe> a_placed);
-[[nodiscard]] LightPlan PlanLights(std::span<const PlacedRecipe> a_placed);
+[[nodiscard]] LightPlan PlanLights(std::span<const PlacedRecipe> a_placed,
+                                   const OutputFilter &a_filter = {});
 [[nodiscard]] const SlotPlan *
 SlotPlanOf(const GeometryPlan &a_plan, Surface a_surface, Slot a_slot) noexcept;
 [[nodiscard]] std::optional<SlotContribution>

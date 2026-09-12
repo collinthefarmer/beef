@@ -54,8 +54,8 @@ tests, and the remaining engine orchestration was decomposed into named phases
 - `planners/ActorState`: `MatchesForPiece`, `PlacedIndexOf`, `InstanceOfPlaced`,
   `ThirdPersonPiecesOfInstance` — the placement-index queries (were in
   ManagerSnapshot/ManagerApply). Covered by `actorstate`/`placementlookup` tests.
-- `studio/RecipeContent`: the recipe-row projection (was ManagerSnapshot's
-  per-recipe assembly). Covered by `recipecontent` tests.
+- `studio/RecipeSnapshot`: the recipe-row projection (was ManagerSnapshot's
+  per-recipe assembly). Covered by `recipesnapshot` tests.
 - `studio/ResolveOutput`: `ResolveOutput`/`ResolveLight` — the scalar/opacity/
   colour resolution of an output through a `SignalState` (was inline in
   ManagerTick's `RenderGeometry`/`UpdateLights`, and duplicated in
@@ -112,4 +112,4 @@ render-internal header and move these identical definitions there
    resolver that wraps `Resolve` with `Studio::ViewedRecipes`, so pins and
    isolate apply at the point resolution happens, with all placement-building
    still in the planner. Verified: DLL zero-warning, full native suite green
-   (incl. `planners_managerdecisions_tests`).
+   (incl. `planners_actorplanning_tests`).

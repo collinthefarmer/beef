@@ -6,6 +6,7 @@
 #include "studio/Mask.h"
 #include "studio/Presets.h"
 #include "studio/Snapshot.h"
+#include "studio/SourcePlan.h"
 
 #include <cstddef>
 #include <functional>
@@ -18,26 +19,19 @@
 #include <vector>
 
 namespace BetterEnchantmentEffects::Studio {
-struct Existing {
-  std::vector<std::pair<std::string, SourceKind>> sources;
-  std::vector<std::string> taken;
-};
-[[nodiscard]] Existing ExistingOf(const RecipeRow &a_recipe);
-[[nodiscard]] Existing ExistingOf(const Recipe &a_recipe);
-
 struct BuiltTerm {
   std::vector<RecipeEdit> edits;
   std::string expression;
 };
 [[nodiscard]] BuiltTerm MaterialiseTerm(const MaskPreset &a_preset,
-                                        const Existing &a_existing);
+                                        const SourceCatalog &a_existing);
 [[nodiscard]] BuiltTerm BuildTerm(const TermKind &a_kind,
                                   const MaskPresets &a_presets,
-                                  const Existing &a_existing);
+                                  const SourceCatalog &a_existing);
 
 [[nodiscard]] std::string TermLabel(std::string_view a_text,
                                     const MaskPresets &a_presets,
-                                    const Existing &a_existing);
+                                    const SourceCatalog &a_existing);
 [[nodiscard]] std::string TermLabelOf(const TermKind &a_kind,
                                       const MaskPresets &a_presets,
                                       const GeometryRow &a_geometry);

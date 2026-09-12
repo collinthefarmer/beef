@@ -1,10 +1,12 @@
 #pragma once
 
 #include "Core.h"
+#include "engine/ApplicationService.h"
 #include "mesh/Islands.h"
 #include "mesh/MaterialClusters.h"
 #include "mesh/MeshFacts.h"
 #include "recipe/Recipe.h"
+#include "studio/PaintCommit.h"
 #include "studio/View.h"
 
 #include <cstdint>
@@ -241,10 +243,13 @@ struct Status {
 };
 
 struct Snapshot {
+  std::vector<ApplicationRecord> applications;
   std::uint64_t version = 0;
   std::uint32_t tickMS = 0;
   Status status;
   View view;
+  std::optional<PaintCommitResult> paintCommit;
+  std::optional<PaintUpdateResult> paintUpdate;
   std::vector<PieceRow> pieces;
   std::vector<std::string> loaded;
   std::vector<LoadedRecipeRow> loadedRecipes;

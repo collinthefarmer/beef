@@ -1,4 +1,4 @@
-#include "studio/RecipeContent.h"
+#include "studio/RecipeSnapshot.h"
 #include "test_support.h"
 
 #include <array>
@@ -35,11 +35,11 @@ Recipe MakeRecipe() {
   return recipe;
 }
 
-RecipeContentInput BaseInput(const Recipe &a_recipe,
-                             const ReferenceCounts &a_refs) {
-  return RecipeContentInput{a_recipe, RecipeKey{}, 3,       0.5f, std::nullopt,
-                            false,    false,       false,   2,    1,
-                            a_refs,   nullptr,     nullptr, {}};
+RecipeRowInput BaseInput(const Recipe &a_recipe,
+                         const ReferenceCounts &a_refs) {
+  return RecipeRowInput{a_recipe, RecipeKey{}, 3,       0.5f, std::nullopt,
+                        false,    false,       false,   2,    1,
+                        a_refs,   nullptr,     nullptr, {}};
 }
 }
 
@@ -51,24 +51,24 @@ int main() {
   state.Tick(environment, TickInputs{0.0f, 0.0f});
   const ReferenceCounts refs;
 
-  RecipeContentInput lean = BaseInput(recipe, refs);
+  RecipeRowInput lean = BaseInput(recipe, refs);
   lean.priority = 7;
-  const RecipeRow basic = RecipeContent(lean);
-  Check(basic.id == "test", "RecipeContent copies the recipe id");
-  Check(basic.priority == 7, "RecipeContent copies the match priority");
-  Check(Near(basic.clockSpeed, 2.0f), "RecipeContent copies the clock speed");
+  const RecipeRow basic = BuildRecipeRow(lean);
+  Check(basic.id == "test", "BuildRecipeRow copies the recipe id");
+  Check(basic.priority == 7, "BuildRecipeRow copies the match priority");
+  Check(Near(basic.clockSpeed, 2.0f), "BuildRecipeRow copies the clock speed");
   Check(basic.undoDepth == 2 && basic.redoDepth == 1,
-        "RecipeContent passes through the history depths");
+        "BuildRecipeRow passes through the history depths");
   Check(basic.signals.empty() && basic.masks.empty() &&
             basic.sourceRows.empty() && basic.curves.empty() &&
             basic.outputs.empty(),
         "a lean (not full) row carries no detail rows");
 
-  RecipeContentInput detailed = BaseInput(recipe, refs);
+  RecipeRowInput detailed = BaseInput(recipe, refs);
   detailed.full = true;
   detailed.graph = &graph;
   detailed.signals = &state;
-  const RecipeRow full = RecipeContent(detailed);
+  const RecipeRow full = BuildRecipeRow(detailed);
   Check(full.geometries.empty() && full.outputs.size() == recipe.outputs.size(),
         "full recipe rows retain all output definitions without geometry");
   if (full.outputs.size() == 2) {
@@ -86,7 +86,7 @@ int main() {
         "a full row has one signal row per signal");
   Check(!full.signals.empty() && full.signals[0].name == "glow" &&
             full.signals[0].value == state.ValueOf("glow"),
-        "RecipeContent overlays the live signal value");
+        "BuildRecipeRow overlays the live signal value");
   Check(full.masks.size() == 1 && full.masks[0] == "edge",
         "a full row lists the mask names");
   Check(full.maskRows.size() == 1, "a full row has one mask row per mask");
@@ -96,13 +96,13 @@ int main() {
         "a full row has one curve row per curve");
 
   Diagnostic diag{Severity::kError, "output 0", "bad"};
-  RecipeContentInput withProblem = BaseInput(recipe, refs);
+  RecipeRowInput withProblem = BaseInput(recipe, refs);
   withProblem.full = true;
   const std::array<Diagnostic, 1> problems{diag};
   withProblem.problems = problems;
-  const RecipeRow flagged = RecipeContent(withProblem);
+  const RecipeRow flagged = BuildRecipeRow(withProblem);
   Check(flagged.problems.size() == 1 && flagged.problems[0].message == "bad",
-        "RecipeContent carries the supplied problems");
+        "BuildRecipeRow carries the supplied problems");
 
-  return test::Finish("studio recipecontent");
+  return test::Finish("studio recipesnapshot");
 }

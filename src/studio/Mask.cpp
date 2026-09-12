@@ -59,6 +59,25 @@ namespace {
 }
 }
 
+std::expected<std::string, Diagnostic>
+CheckedBuildMask(std::span<const Term> a_terms,
+                 std::optional<std::size_t> a_solo,
+                 const std::set<std::size_t> &a_muted) {
+  if (a_terms.size() > kMaxTerms) {
+    return std::unexpected(MakeDiagnostic(
+        Severity::kError, "paint", "a mask may contain at most 64 terms"));
+  }
+  std::string text = BuildMask(a_terms, a_solo, a_muted);
+  if (text.empty()) {
+    return text;
+  }
+  if (const auto program = Program::Parse(text); !program) {
+    return std::unexpected(
+        MakeDiagnostic(Severity::kError, "paint", program.error()));
+  }
+  return text;
+}
+
 std::string BuildMask(std::span<const Term> a_terms,
                       std::optional<std::size_t> a_solo,
                       const std::set<std::size_t> &a_muted) {
@@ -85,9 +104,6 @@ std::string BuildMask(std::span<const Term> a_terms,
         next = std::format("{} * (1 - ({}))", built, term.text);
         break;
       }
-    }
-    if (next.size() > kMaxExpressionLength) {
-      break;
     }
     built = std::move(next);
   }

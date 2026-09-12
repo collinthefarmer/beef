@@ -196,6 +196,7 @@ Compositor::Prepare(const Recipe &a_recipe, const SurfaceOutput &a_output,
       prepared.source = PrepareSource(a_recipe, *ref, a_inputs, size,
                                       stack->diagnostics_, where);
       if (!prepared.source || !prepared.source->problem.empty()) {
+        stack->layers_.push_back(std::move(prepared));
         continue;
       }
     }
@@ -214,6 +215,7 @@ Compositor::Prepare(const Recipe &a_recipe, const SurfaceOutput &a_output,
     if (!stack->target_ || !lab->Scratch(size)) {
       stack->diagnostics_.push_back(
           {Severity::kError, "stack", "no render targets available"});
+      stack->preparationFailed_ = true;
       stack->layers_.clear();
       stack->target_.reset();
     }
@@ -221,11 +223,14 @@ Compositor::Prepare(const Recipe &a_recipe, const SurfaceOutput &a_output,
   return stack;
 }
 
-void Compositor::Render(RenderedStack &a_stack, const SignalState &a_signals,
+bool Compositor::Render(RenderedStack &a_stack, const SignalState &a_signals,
                         float a_time, const LayerFilter &a_filter,
                         const StackBase &a_base) {
+  if (a_stack.preparationFailed_) {
+    return false;
+  }
   if (a_stack.layers_.empty()) {
-    return;
+    return true;
   }
   RE::NiSourceTexture *base =
       a_base.texture ? a_base.texture : a_stack.base_.get();
@@ -233,36 +238,52 @@ void Compositor::Render(RenderedStack &a_stack, const SignalState &a_signals,
   const bool baseChanged = a_stack.renderedBase_ != base;
   if (!a_stack.animated_ && !a_base.animated && a_stack.renderedOnce_ &&
       !filterChanged && !baseChanged) {
-    return;
+    return true;
   }
-  a_stack.renderedBase_ = base;
+  a_stack.renderedOnce_ = false;
   std::size_t shown = 0;
   for (const PreparedLayer &prepared : a_stack.layers_) {
     if (a_filter.Hides(prepared.index)) {
       continue;
     }
     ++shown;
+    if (!prepared.layer ||
+        (Is<Ref>(prepared.layer->source) &&
+         (!prepared.source || !prepared.source->problem.empty() ||
+          !prepared.source->texture)) ||
+        (prepared.layer->mask &&
+         (!prepared.mask || !prepared.mask->problem.empty() ||
+          !prepared.mask->texture))) {
+      return false;
+    }
     if (prepared.source && prepared.source->ripple) {
-      RenderRipple(*prepared.source->ripple, a_signals, a_time);
+      if (!RenderRipple(*prepared.source->ripple, a_signals, a_time)) {
+        return false;
+      }
     }
     if (prepared.source && prepared.source->rendered) {
-      RenderMask(*prepared.source->rendered, a_signals, a_time);
+      if (!RenderMask(*prepared.source->rendered, a_signals, a_time)) {
+        return false;
+      }
     }
     if (prepared.mask && prepared.mask->rendered) {
-      RenderMask(*prepared.mask->rendered, a_signals, a_time);
+      if (!RenderMask(*prepared.mask->rendered, a_signals, a_time)) {
+        return false;
+      }
     }
   }
   if (shown == 0) {
     a_stack.latest_ = nullptr;
     a_stack.renderedOnce_ = true;
     a_stack.filter_ = a_filter;
-    return;
+    a_stack.renderedBase_ = base;
+    return true;
   }
   TextureLab *lab = TextureLab::GetSingleton();
   TextureLab::RenderTarget *own = a_stack.target_.get();
   TextureLab::RenderTarget *scratch = lab->Scratch(a_stack.size_);
   if (!own || !scratch) {
-    return;
+    return false;
   }
   TextureLab::RenderTarget *previous = nullptr;
   TextureLab::RenderTarget *write = shown % 2 == 1 ? own : scratch;
@@ -300,7 +321,7 @@ void Compositor::Render(RenderedStack &a_stack, const SignalState &a_signals,
     }
     pass.curve = prepared.curve.get();
     if (!lab->Render(*write, nullptr, params)) {
-      return;
+      return false;
     }
     previous = write;
     std::swap(write, other);
@@ -308,5 +329,7 @@ void Compositor::Render(RenderedStack &a_stack, const SignalState &a_signals,
   a_stack.latest_ = previous;
   a_stack.renderedOnce_ = true;
   a_stack.filter_ = a_filter;
+  a_stack.renderedBase_ = base;
+  return true;
 }
 }

@@ -2,6 +2,7 @@
 
 #include "Core.h"
 #include "studio/Edits.h"
+#include "studio/FieldParsing.h"
 #include "studio/Names.h"
 #include "studio/Panels.h"
 #include "studio/SelectorEdit.h"
@@ -270,6 +271,4 @@ struct OutputHeader {
 [[nodiscard]] std::vector<FormField> ShellForm(const ShellRow &a_shell,
                                                const SignalNames &a_names);
 
-[[nodiscard]] std::optional<Vec3> LiteralColor(std::string_view a_text);
-[[nodiscard]] std::string LiteralColorText(const Vec3 &a_color);
 }

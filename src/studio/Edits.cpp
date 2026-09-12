@@ -21,7 +21,8 @@ namespace {
 using Refusal = std::optional<Diagnostic>;
 
 Diagnostic Refuse(std::string a_where, std::string a_message) {
-  return Diagnostic{Severity::kError, std::move(a_where), std::move(a_message)};
+  return MakeDiagnostic(Severity::kError, std::move(a_where),
+                        std::move(a_message));
 }
 
 std::string OutputWhere(std::size_t a_output) {
@@ -206,7 +207,7 @@ struct FoundLight {
   Refusal problem;
 };
 
-FoundOutput FindMaterialOutput(Recipe &a_recipe, std::size_t a_index) {
+FoundOutput FindSurfaceOutput(Recipe &a_recipe, std::size_t a_index) {
   if (a_index >= a_recipe.outputs.size()) {
     return {nullptr,
             Refuse(OutputWhere(a_index), std::format("there are {} outputs",
@@ -222,7 +223,7 @@ FoundOutput FindMaterialOutput(Recipe &a_recipe, std::size_t a_index) {
 
 FoundLayer FindLayer(Recipe &a_recipe, std::size_t a_output,
                      std::size_t a_layer) {
-  auto found = FindMaterialOutput(a_recipe, a_output);
+  auto found = FindSurfaceOutput(a_recipe, a_output);
   if (found.problem) {
     return {nullptr, nullptr, found.problem};
   }
@@ -380,7 +381,7 @@ Refusal Edit(Recipe &a_recipe, const SetLayerChannels &a_edit) {
 }
 
 Refusal Edit(Recipe &a_recipe, const AddLayer &a_edit) {
-  auto found = FindMaterialOutput(a_recipe, a_edit.output);
+  auto found = FindSurfaceOutput(a_recipe, a_edit.output);
   if (found.problem)
     return found.problem;
   auto &stack = found.output->stack;
@@ -429,7 +430,7 @@ Refusal Edit(Recipe &a_recipe, const MoveLayer &a_edit) {
 }
 
 Refusal Edit(Recipe &a_recipe, const ClearLayers &a_edit) {
-  auto found = FindMaterialOutput(a_recipe, a_edit.output);
+  auto found = FindSurfaceOutput(a_recipe, a_edit.output);
   if (found.problem)
     return found.problem;
   found.output->stack.clear();
@@ -499,7 +500,7 @@ Refusal Edit(Recipe &a_recipe, const RemoveOutput &a_edit) {
 }
 
 Refusal Edit(Recipe &a_recipe, const SetScalar &a_edit) {
-  auto found = FindMaterialOutput(a_recipe, a_edit.output);
+  auto found = FindSurfaceOutput(a_recipe, a_edit.output);
   if (found.problem)
     return found.problem;
   const auto where = OutputWhere(a_edit.output);
@@ -525,7 +526,7 @@ Refusal Edit(Recipe &a_recipe, const SetScalar &a_edit) {
 }
 
 Refusal Edit(Recipe &a_recipe, const SetColorScalar &a_edit) {
-  auto found = FindMaterialOutput(a_recipe, a_edit.output);
+  auto found = FindSurfaceOutput(a_recipe, a_edit.output);
   if (found.problem)
     return found.problem;
   const auto where = OutputWhere(a_edit.output);
@@ -547,7 +548,7 @@ Refusal Edit(Recipe &a_recipe, const SetColorScalar &a_edit) {
 }
 
 Refusal Edit(Recipe &a_recipe, const SetOutputReplace &a_edit) {
-  auto found = FindMaterialOutput(a_recipe, a_edit.output);
+  auto found = FindSurfaceOutput(a_recipe, a_edit.output);
   if (found.problem)
     return found.problem;
   found.output->replace = a_edit.replace;
@@ -555,7 +556,7 @@ Refusal Edit(Recipe &a_recipe, const SetOutputReplace &a_edit) {
 }
 
 Refusal Edit(Recipe &a_recipe, const SetOutputSelector &a_edit) {
-  auto found = FindMaterialOutput(a_recipe, a_edit.output);
+  auto found = FindSurfaceOutput(a_recipe, a_edit.output);
   if (found.problem)
     return found.problem;
   found.output->selector = a_edit.selector;
@@ -1812,14 +1813,23 @@ std::optional<Diagnostic> Apply(Recipe &a_recipe, const RecipeEdit &a_edit) {
   });
 }
 
-std::optional<Diagnostic> Apply(Recipe &a_recipe, const EditBatch &a_batch) {
+std::expected<Recipe, Diagnostic> PrepareEdits(const Recipe &a_recipe,
+                                               const EditBatch &a_batch) {
   Recipe copy = a_recipe;
   for (const auto &edit : a_batch.edits) {
     if (auto problem = Apply(copy, edit)) {
-      return problem;
+      return std::unexpected(*problem);
     }
   }
-  a_recipe = std::move(copy);
+  return copy;
+}
+
+std::optional<Diagnostic> Apply(Recipe &a_recipe, const EditBatch &a_batch) {
+  std::expected<Recipe, Diagnostic> prepared = PrepareEdits(a_recipe, a_batch);
+  if (!prepared) {
+    return prepared.error();
+  }
+  a_recipe = std::move(*prepared);
   return std::nullopt;
 }
 
@@ -1905,8 +1915,9 @@ ReferenceCounts CountReferences(const Recipe &a_recipe) {
   return counts;
 }
 
-std::string RenameInExpression(std::string_view a_text, std::string_view a_from,
-                               std::string_view a_to, bool a_curve) {
+std::string RenameInExpression(std::string_view a_text,
+                               std::span<const ExpressionRename> a_renames,
+                               bool a_curve) {
   const auto nameChar = [](char c) {
     return std::isalnum(static_cast<unsigned char>(c)) || c == '_';
   };
@@ -1914,19 +1925,27 @@ std::string RenameInExpression(std::string_view a_text, std::string_view a_from,
   out.reserve(a_text.size());
   std::size_t at = 0;
   while (at < a_text.size()) {
-    const bool here =
-        a_text[at] == '@' && a_text.substr(at + 1).starts_with(a_from);
-    if (here) {
-      const std::size_t end = at + 1 + a_from.size();
-      const bool whole = end >= a_text.size() || !nameChar(a_text[end]);
-      std::size_t next = end;
-      while (next < a_text.size() && a_text[next] == ' ') {
-        ++next;
-      }
-      const bool call = next < a_text.size() && a_text[next] == '(';
-      if (whole && call == a_curve) {
+    if (a_text[at] != '@') {
+      out += a_text[at++];
+      continue;
+    }
+    std::size_t end = at + 1;
+    while (end < a_text.size() && nameChar(a_text[end])) {
+      ++end;
+    }
+    const std::string_view name = a_text.substr(at + 1, end - at - 1);
+    std::size_t next = end;
+    while (next < a_text.size() &&
+           std::isspace(static_cast<unsigned char>(a_text[next]))) {
+      ++next;
+    }
+    const bool call = next < a_text.size() && a_text[next] == '(';
+    if (!name.empty() && call == a_curve) {
+      const auto rename =
+          std::ranges::find(a_renames, name, &ExpressionRename::from);
+      if (rename != a_renames.end()) {
         out += '@';
-        out += a_to;
+        out += rename->to;
         at = end;
         continue;
       }
@@ -1935,6 +1954,12 @@ std::string RenameInExpression(std::string_view a_text, std::string_view a_from,
     ++at;
   }
   return out;
+}
+
+std::string RenameInExpression(std::string_view a_text, std::string_view a_from,
+                               std::string_view a_to, bool a_curve) {
+  const ExpressionRename rename{std::string{a_from}, std::string{a_to}};
+  return RenameInExpression(a_text, std::span{&rename, 1}, a_curve);
 }
 
 Layer DefaultLayer() {

@@ -48,46 +48,27 @@ struct IntentPerformer {
 
   void operator()(const SetMode &i) const {
     if (state.paint && i.mode != Mode::kPaint && state.mode == Mode::kPaint) {
-      manager->EndPaint();
+      manager->Editor().EndPaint(state.paint ? state.paint->sessionID : 0);
     }
   }
   void operator()(const EditRecipe &i) const {
-    manager->EditRecipe(i.recipeID, EditBatch{i.edits});
+    manager->Editor().EditRecipe(i.recipeID, EditBatch{i.edits});
   }
   void operator()(const SoloRecipe &i) const {
-    manager->UpdateView([](View &a_live) { a_live.isolatedBySolo = false; });
-    manager->Isolate(i.on ? i.recipeID : std::string{}, -1, -1);
+    manager->Editor().ChangeView(
+        ViewCommand{Isolation::ForRecipe(i.recipeID), i.on});
   }
   void operator()(const SoloOutput &i) const {
-    if (i.on) {
-      manager->UpdateView([began = !view.Isolating()](View &a_live) {
-        a_live.isolatedBySolo = a_live.isolatedBySolo || began;
-      });
-      manager->Isolate(i.recipeID, static_cast<int>(i.output), -1);
-    } else if (view.isolatedBySolo) {
-      manager->UpdateView([](View &a_live) { a_live.isolatedBySolo = false; });
-      manager->Isolate(std::string{}, -1, -1);
-    } else {
-      manager->Isolate(view.isolateRecipe, -1, -1);
-    }
+    manager->Editor().ChangeView(
+        ViewCommand{Isolation::ForOutput(i.recipeID, i.output), i.on});
   }
   void operator()(const SoloLayer &i) const {
-    if (i.on) {
-      manager->UpdateView([began = !view.Isolating()](View &a_live) {
-        a_live.isolatedBySolo = a_live.isolatedBySolo || began;
-      });
-      manager->Isolate(i.recipeID, static_cast<int>(i.output),
-                       static_cast<int>(i.layer));
-    } else if (view.isolatedBySolo && view.isolateOutput < 0) {
-      manager->UpdateView([](View &a_live) { a_live.isolatedBySolo = false; });
-      manager->Isolate(std::string{}, -1, -1);
-    } else {
-      manager->Isolate(view.isolateRecipe, view.isolateOutput, -1);
-    }
+    manager->Editor().ChangeView(
+        ViewCommand{Isolation::ForLayer(i.recipeID, i.output, i.layer), i.on});
   }
   void operator()(const MuteLayer &i) const {
-    manager->UpdateView([key = LayerKey{i.recipeID, i.output, i.layer},
-                         on = i.on](View &a_live) {
+    manager->Editor().UpdateView([key = LayerKey{i.recipeID, i.output, i.layer},
+                                  on = i.on](View &a_live) {
       if (on) {
         a_live.muted.insert(key);
       } else {
@@ -96,7 +77,7 @@ struct IntentPerformer {
     });
   }
   void operator()(const SetFreeze &i) const {
-    manager->UpdateView([on = i.on, at = i.at](View &a_live) {
+    manager->Editor().UpdateView([on = i.on, at = i.at](View &a_live) {
       a_live.freeze = on;
       if (on) {
         a_live.scrubSeconds = at;
@@ -104,41 +85,46 @@ struct IntentPerformer {
     });
   }
   void operator()(const SetScrub &i) const {
-    manager->UpdateView([seconds = i.seconds](View &a_live) {
+    manager->Editor().UpdateView([seconds = i.seconds](View &a_live) {
       a_live.freeze = true;
       a_live.scrubSeconds = seconds;
     });
   }
   void operator()(const SetSpeed &i) const {
-    manager->UpdateView([speed = std::clamp(i.speed, 0.0f, 8.0f)](
-                            View &a_live) { a_live.speed = speed; });
+    manager->Editor().UpdateView([speed = std::clamp(i.speed, 0.0f, 8.0f)](
+                                     View &a_live) { a_live.speed = speed; });
   }
   void operator()(const StepClock &) const {
-    manager->UpdateView([](View &a_live) {
+    manager->Editor().UpdateView([](View &a_live) {
       a_live.freeze = true;
       a_live.scrubSeconds +=
           static_cast<float>(GetSettings().TickIntervalMS()) * 0.001f *
           a_live.speed;
     });
   }
-  void operator()(const Undo &i) const { manager->UndoRecipe(i.recipeID); }
-  void operator()(const Redo &i) const { manager->RedoRecipe(i.recipeID); }
+  void operator()(const Undo &i) const {
+    manager->Editor().UndoRecipe(i.recipeID);
+  }
+  void operator()(const Redo &i) const {
+    manager->Editor().RedoRecipe(i.recipeID);
+  }
   void operator()(const CreateRecipe &i) const {
-    manager->NewRecipe(i.recipeID, i.key, i.geometry);
+    manager->Editor().NewRecipe(i.recipeID, i.key, i.geometry);
   }
   void operator()(const Studio::RenameRecipe &i) const {
-    manager->RenameRecipe(i.from, i.to);
+    manager->Editor().RenameRecipe(i.from, i.to);
   }
   void operator()(const BeginPaint &i) const {
-    manager->BeginPaint(i.recipeID, i.key, i.surface);
+    manager->Editor().BeginPaint(i.recipeID, i.key, i.surface, i.sessionID,
+                                 i.resetID);
   }
-  void operator()(const SetPaintSurface &i) const {
-    manager->SetPaintSurface(i.surface);
-  }
+  void operator()(const SetPaintSurface &i) const { (void)i; }
   void operator()(const KeepPaint &i) const {
-    manager->KeepPaint(i.recipeID, i.name);
+    manager->Editor().KeepPaint(i.request);
   }
-  void operator()(const EndPaint &) const { manager->EndPaint(); }
+  void operator()(const EndPaint &) const {
+    manager->Editor().EndPaint(state.paint ? state.paint->sessionID : 0);
+  }
   void operator()(const Studio::ReadMesh &i) const {
     manager->RequestMesh(i.actorID, i.geometry);
   }
@@ -149,11 +135,11 @@ struct IntentPerformer {
   void operator()(const PickRecipe &i) const {
     if (view.pin && view.pin->piece == state.selection.piece &&
         view.pin->recipeID != i.recipeID) {
-      manager->PinRecipe(state.selection.piece, {});
+      manager->Editor().PinRecipe(state.selection.piece, {});
     }
   }
   void operator()(const PinRecipe &i) const {
-    manager->PinRecipe(state.selection.piece, i.recipeID);
+    manager->Editor().PinRecipe(state.selection.piece, i.recipeID);
   }
   void operator()(const PickTarget &) const {}
   void operator()(const PickSlot &) const {}
@@ -177,6 +163,9 @@ struct IntentPerformer {
   void operator()(const UndoMask &) const {}
   void operator()(const RedoMask &) const {}
   void operator()(const ScratchRebuilt &) const {}
+  void operator()(const UpdatePaint &i) const {
+    manager->Editor().UpdatePaint(i.request);
+  }
 };
 }
 
@@ -190,6 +179,9 @@ void Perform(const Studio::Intent &a_intent, const Studio::MenuState &a_state,
 void Dispatch(Studio::Intents &a_intents, Studio::MenuState &a_state,
               const Studio::Snapshot &a_snapshot) {
   for (const Studio::Intent &intent : a_intents) {
+    if (!Studio::AcceptIntent(a_state, intent)) {
+      continue;
+    }
     Perform(intent, a_state, a_snapshot.view);
     Studio::Reduce(a_state, intent);
   }

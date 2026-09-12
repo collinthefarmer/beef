@@ -10,30 +10,30 @@ namespace {
 ActorState MakeState() {
   ActorState state;
 
-  Piece thirdA;
+  Geometry thirdA;
   thirdA.firstPerson = false;
-  Piece first;
+  Geometry first;
   first.firstPerson = true;
-  Piece thirdB;
+  Geometry thirdB;
   thirdB.firstPerson = false;
-  state.pieces.push_back(thirdA);
-  state.pieces.push_back(first);
-  state.pieces.push_back(thirdB);
+  state.geometries.push_back(thirdA);
+  state.geometries.push_back(first);
+  state.geometries.push_back(thirdB);
 
   state.instances.push_back(Instance{RecipeId{0}, std::nullopt, 0});
   state.instances.push_back(Instance{RecipeId{1}, std::nullopt, 0});
 
-  const auto place = [&](InstanceId a_instance, PieceId a_piece) {
+  const auto place = [&](InstanceId a_instance, GeometryId a_piece) {
     Placement p;
     p.instance = a_instance;
-    p.piece = a_piece;
+    p.geometry = a_piece;
     state.placements.push_back(std::move(p));
   };
-  place(InstanceId{0}, PieceId{0});
-  place(InstanceId{0}, PieceId{1});
-  place(InstanceId{1}, PieceId{2});
-  place(InstanceId{0}, PieceId{0});
-  place(InstanceId{0}, PieceId{5});
+  place(InstanceId{0}, GeometryId{0});
+  place(InstanceId{0}, GeometryId{1});
+  place(InstanceId{1}, GeometryId{2});
+  place(InstanceId{0}, GeometryId{0});
+  place(InstanceId{0}, GeometryId{5});
 
   return state;
 }
@@ -60,21 +60,22 @@ int main() {
   Check(!InstanceOfPlaced(state, std::span<const PlacementId>{}, 0).has_value(),
         "InstanceOfPlaced is nullopt for an empty placement list");
 
-  const std::vector<PieceId> ofInstance0 =
-      ThirdPersonPiecesOfInstance(state, InstanceId{0});
-  Check(ofInstance0.size() == 2 && ofInstance0[0] == PieceId{0} &&
-            ofInstance0[1] == PieceId{0},
-        "ThirdPersonPiecesOfInstance keeps one entry per placement in order, "
-        "skipping first-person and out-of-range pieces");
+  const std::vector<GeometryId> ofInstance0 =
+      ThirdPersonGeometriesOfInstance(state, InstanceId{0});
+  Check(
+      ofInstance0.size() == 2 && ofInstance0[0] == GeometryId{0} &&
+          ofInstance0[1] == GeometryId{0},
+      "ThirdPersonGeometriesOfInstance keeps one entry per placement in order, "
+      "skipping first-person and out-of-range pieces");
 
-  const std::vector<PieceId> ofInstance1 =
-      ThirdPersonPiecesOfInstance(state, InstanceId{1});
-  Check(ofInstance1.size() == 1 && ofInstance1[0] == PieceId{2},
-        "ThirdPersonPiecesOfInstance returns the third-person piece of an "
+  const std::vector<GeometryId> ofInstance1 =
+      ThirdPersonGeometriesOfInstance(state, InstanceId{1});
+  Check(ofInstance1.size() == 1 && ofInstance1[0] == GeometryId{2},
+        "ThirdPersonGeometriesOfInstance returns the third-person piece of an "
         "instance");
 
-  Check(ThirdPersonPiecesOfInstance(state, InstanceId{9}).empty(),
-        "ThirdPersonPiecesOfInstance is empty for an instance with no "
+  Check(ThirdPersonGeometriesOfInstance(state, InstanceId{9}).empty(),
+        "ThirdPersonGeometriesOfInstance is empty for an instance with no "
         "placements");
 
   return test::Finish("planners placementlookup");
