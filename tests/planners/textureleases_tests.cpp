@@ -21,9 +21,11 @@ int main() {
         "a consumer receives producer identity and generation");
   producer.reset();
   material.target.reset();
-  Check(!recycled.expired(), "retiring the producer and material cannot recycle a snapshot");
+  Check(!recycled.expired(),
+        "retiring the producer and material cannot recycle a snapshot");
   snapshot.target.reset();
-  Check(!recycled.expired(), "queued preview work retains its source independently");
+  Check(!recycled.expired(),
+        "queued preview work retains its source independently");
   preview.target.reset();
   Check(recycled.expired(), "the last consumer releases the target");
   const auto retired = leases.Retain(42);

@@ -1149,6 +1149,9 @@ SignalState::Firings(std::string_view a_trigger) const noexcept {
 
 void SignalState::Accept(std::size_t a_index, const EventRecord &a_event,
                          float a_time) {
+  if (a_index >= graph_.nodes_.size() || a_index >= states_.size()) {
+    return;
+  }
   const auto &node = graph_.nodes_[a_index];
   const auto *trigger = Get<TriggerSignal>(node.signal.kind);
   if (!trigger || node.inert) {

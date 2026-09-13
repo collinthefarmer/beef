@@ -104,3 +104,13 @@ Add every edited header/test to formatting commands. The native runner's argumen
 The pass is complete when repeated work has been reduced with understandable names, semantic changes (if any) have explicit evidence, meaningful regressions and the release build pass, formatting is clean, and no new lint findings remain unexplained. Record the final source/build identity and actual counts in a new checkpoint linked from this handoff. Do not require zero warnings or another in-game test to finish this scoped pass.
 
 After expressions, assess the remaining cognitive-complexity sites by actual readability and risk: `RuntimeTexturesPass::Render` (41), `MeshReader::ReadMesh` (33), and island `Label` (34) / `PairTwins` (26). These are review candidates, not a mandate to split every function. Small argument-count findings remain lower priority.
+
+## Bounds items handed over from critique Plan F (2026-09-13)
+
+Critique Plan F (`critique-plan-f-tests-and-bounds-2026-09-13.md`, part F2 items 1 to 3) found three unchecked sites in `src/recipe/Expression.cpp`. Because this handoff and UI slice 3C own that file, Plan F did not edit it. The owner of this pass applies them; each is small and independent of the type-checking work.
+
+1. **`Program::Check` indexes `refs_` and `curves_` unchecked** (near the `Check` member, the sites the critique cited at lines 576 and 587). `Evaluate` bounds-checks the same indices (its lines 680 and 685 to 688). Bounds-check `node.index` against `refs_` and `curves_` in `Check` and return `std::unexpected("malformed program")` on overflow, matching `Evaluate`.
+2. **`std::get<float>` guarded only by a prior `TypeOf` comparison** (the critique cited lines 52 and 80). Replace with `Get<float>` from `Core.h` and a zero fallback, so the guard is local instead of an unstated invariant.
+3. **`JoinOperands` writes `operands[i - 1]` into a three-element array with no clamp** (the critique cited lines 138 to 148). Take a `std::span<const ValueType>` and return early when the size is not two or three. Add a native test that feeds it one and four operands.
+
+Plan F's acceptance list names tests for items 1 and 3 (`Program::Check` with a corrupted ref index; `JoinOperands` with one and four operands). Add them under `tests/recipe/` when the items land; the harness now prints `file:line` on failure and `SUITE=expression tests/run-native.sh` runs only the expression suites.

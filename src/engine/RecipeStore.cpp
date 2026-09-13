@@ -3,6 +3,7 @@
 #include "Identity.h"
 #include "PCH.h"
 #include "engine/EngineForms.h"
+#include "engine/TextFile.h"
 #include "recipe/Importer.h"
 #include "recipe/Recipe.h"
 #include "studio/Edits.h"
@@ -11,8 +12,6 @@
 
 #include <algorithm>
 #include <cctype>
-#include <fstream>
-#include <sstream>
 #include <type_traits>
 #include <unordered_map>
 #include <unordered_set>
@@ -42,33 +41,20 @@ std::vector<Recipe> g_recipes;
 RecipeStoreStatus g_status;
 Studio::MaskPresets g_presets;
 
-std::string ReadText(const std::filesystem::path &a_path) {
-  std::ifstream in(a_path, std::ios::binary);
-  std::stringstream ss;
-  ss << in.rdbuf();
-  return ss.str();
-}
-
-bool WriteText(const std::filesystem::path &a_path, std::string_view a_text) {
-  std::error_code ec;
-  std::filesystem::create_directories(a_path.parent_path(), ec);
-  std::ofstream out(a_path, std::ios::binary | std::ios::trunc);
-  out << a_text;
-  out.flush();
-  out.close();
-  return static_cast<bool>(out);
-}
-
 void LoadPresets() {
   g_presets = {};
   const auto path = Identity::PresetsPath();
   const auto text = ReadText(path);
-  if (text.empty()) {
-    logger::warn("presets: {} is missing or empty; no mask presets",
-                 path.string());
+  if (!text) {
+    logger::warn("presets: {} {}; no mask presets", path.string(),
+                 text.error());
     return;
   }
-  auto parsed = Studio::ParsePresets(text);
+  if (text->empty()) {
+    logger::warn("presets: {} is empty; no mask presets", path.string());
+    return;
+  }
+  auto parsed = Studio::ParsePresets(*text);
   if (!parsed) {
     logger::warn("presets: {}: {}", path.string(), parsed.error());
     return;
@@ -227,7 +213,14 @@ bool HasErrors(const std::vector<Diagnostic> &a_diagnostics) {
 
 void LoadFile(const std::filesystem::path &a_path) {
   const auto id = a_path.stem().string();
-  auto result = ParseRecipe(ReadText(a_path), id);
+  const auto text = ReadText(a_path);
+  if (!text || text->empty()) {
+    logger::error("recipe {}: unreadable ({})", a_path.string(),
+                  text ? "empty" : text.error());
+    ++g_status.withErrors;
+    return;
+  }
+  auto result = ParseRecipe(*text, id);
   if (!result.recipe) {
     logger::error(
         "recipe {}: unreadable ({})", a_path.string(),
@@ -308,7 +301,7 @@ void ImportMissing(const std::filesystem::path &a_folder) {
       logger::error("recipe {}: could not write {}", recipe.id, path.string());
       continue;
     }
-    const auto readBack = ReadText(path);
+    const std::string readBack = ReadText(path).value_or("");
     auto parsed = ParseRecipe(readBack, recipe.id);
     const bool identical = readBack == text && parsed.recipe &&
                            *parsed.recipe == recipe && !parsed.HasErrors();
@@ -428,22 +421,31 @@ std::shared_ptr<const SignalGraph> GraphFor(const Recipe &a_recipe) {
 }
 
 namespace {
-LoadedRecipe *Loaded(std::string_view a_id) noexcept {
+std::optional<std::size_t> LoadedIndex(std::string_view a_id) noexcept {
   const auto it = std::ranges::find(g_loaded, a_id, [](const LoadedRecipe &l) {
     return std::string_view{l.recipe.id};
   });
-  return it == g_loaded.end() ? nullptr : &*it;
+  if (it == g_loaded.end()) {
+    return std::nullopt;
+  }
+  return static_cast<std::size_t>(it - g_loaded.begin());
 }
 
-void Republish(LoadedRecipe &a_loaded) {
-  a_loaded.references = Studio::CountReferences(a_loaded.recipe);
-  const auto index = static_cast<std::size_t>(&a_loaded - g_loaded.data());
-  if (index < g_recipes.size()) {
-    g_recipes[index] = a_loaded.recipe;
-  } else {
-    logger::error("recipe {}: the published list has {} entries for {} loaded",
-                  a_loaded.recipe.id, g_recipes.size(), g_loaded.size());
+LoadedRecipe *Loaded(std::string_view a_id) noexcept {
+  const auto index = LoadedIndex(a_id);
+  return index ? &g_loaded[*index] : nullptr;
+}
+
+void Republish(std::size_t a_index) {
+  if (a_index >= g_loaded.size() || a_index >= g_recipes.size()) {
+    logger::error("recipe store: entry {} cannot be republished; {} loaded, "
+                  "{} published",
+                  a_index, g_loaded.size(), g_recipes.size());
+    return;
   }
+  LoadedRecipe &loaded = g_loaded[a_index];
+  loaded.references = Studio::CountReferences(loaded.recipe);
+  g_recipes[a_index] = loaded.recipe;
 }
 
 void Publish(LoadedRecipe a_loaded) {
@@ -466,16 +468,17 @@ Recipe *MutableRecipe(std::string_view a_id) noexcept {
 }
 
 std::span<const Diagnostic> RefreshRecipeDerivedState(std::string_view a_id) {
-  auto *loaded = Loaded(a_id);
-  if (!loaded) {
+  const auto index = LoadedIndex(a_id);
+  if (!index) {
     return {};
   }
-  loaded->diagnostics = Validate(loaded->recipe);
-  ResolveForms(loaded->recipe, loaded->diagnostics);
-  loaded->graph.reset();
-  loaded->dirty = !loaded->transient && !(loaded->recipe == loaded->saved);
-  Republish(*loaded);
-  return loaded->diagnostics;
+  LoadedRecipe &loaded = g_loaded[*index];
+  loaded.diagnostics = Validate(loaded.recipe);
+  ResolveForms(loaded.recipe, loaded.diagnostics);
+  loaded.graph.reset();
+  loaded.dirty = !loaded.transient && !(loaded.recipe == loaded.saved);
+  Republish(*index);
+  return loaded.diagnostics;
 }
 
 const Studio::ReferenceCounts *ReferencesOf(std::string_view a_id) noexcept {
@@ -490,10 +493,11 @@ bool IsDirty(std::string_view a_id) noexcept {
 
 std::expected<std::filesystem::path, std::string>
 SaveRecipe(std::string_view a_id) {
-  auto *loaded = Loaded(a_id);
-  if (!loaded) {
+  const auto index = LoadedIndex(a_id);
+  if (!index) {
     return std::unexpected("not loaded");
   }
+  LoadedRecipe *loaded = &g_loaded[*index];
   if (loaded->transient) {
     return std::unexpected("the paint recipe is never written");
   }
@@ -520,7 +524,7 @@ SaveRecipe(std::string_view a_id) {
   loaded->path = path;
   loaded->saved = loaded->recipe;
   loaded->dirty = false;
-  Republish(*loaded);
+  Republish(*index);
   logger::info("recipe {} saved to {}", loaded->recipe.id, path.string());
   return path;
 }
@@ -651,23 +655,32 @@ bool IsTransient(std::string_view a_id) noexcept {
 }
 
 bool RevertRecipe(std::string_view a_id) {
-  auto *loaded = Loaded(a_id);
-  if (!loaded || loaded->transient) {
+  const auto index = LoadedIndex(a_id);
+  if (!index || g_loaded[*index].transient) {
     return false;
   }
-  auto result = ParseRecipe(ReadText(loaded->path), loaded->recipe.id);
+  LoadedRecipe &loaded = g_loaded[*index];
+  const auto text = ReadText(loaded.path);
+  if (!text) {
+    logger::error("recipe {}: revert failed, {} {}", loaded.recipe.id,
+                  loaded.path.string(), text.error());
+    return false;
+  }
+  auto result = ParseRecipe(*text, loaded.recipe.id);
   if (!result.recipe) {
-    logger::error("recipe {}: revert failed, {} is unreadable",
-                  loaded->recipe.id, loaded->path.string());
+    logger::error(
+        "recipe {}: revert failed, {} is unreadable ({})", loaded.recipe.id,
+        loaded.path.string(),
+        result.diagnostics.empty() ? "" : result.diagnostics.front().message);
     return false;
   }
   ResolveForms(*result.recipe, result.diagnostics);
-  loaded->recipe = std::move(*result.recipe);
-  loaded->diagnostics = std::move(result.diagnostics);
-  loaded->graph.reset();
-  loaded->saved = loaded->recipe;
-  loaded->dirty = false;
-  Republish(*loaded);
+  loaded.recipe = std::move(*result.recipe);
+  loaded.diagnostics = std::move(result.diagnostics);
+  loaded.graph.reset();
+  loaded.saved = loaded.recipe;
+  loaded.dirty = false;
+  Republish(*index);
   return true;
 }
 }

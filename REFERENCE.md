@@ -434,6 +434,13 @@ Lab mechanics:
 
 ## Engine events, hooks and the manager
 
+- `kMaxTextFileBytes` (`engine/TextFile.h`) caps a recipe or presets file at
+  4 MiB. A recipe is a few kilobytes; the cap stops a stray binary dropped
+  into the recipes folder from being read into memory whole. `ReadText`
+  names the failure ("does not exist", "cannot be opened", "larger than
+  the ... cap") so the recipe store's log line states the real cause instead
+  of the parser's "not a JSON object"; an empty file reads as empty text and
+  the store reports it as "empty".
 - `kPostLoadGame` reports whether the load succeeded as the value of `data`,
   not a pointer to a boolean: SKSE dispatches `(void*)result` with length one
   ([SKSE load hook](https://github.com/ianpatt/skse64/blob/master/skse64/Hooks_SaveLoad.cpp)).
@@ -904,7 +911,16 @@ Decompile provenance (`decompiled/WornEnchantmentFX/plugin.c` unless noted):
   rather than under the recipe root, which loads every `.json` below it as
   a recipe.
 
-## planners (`planners/ActorState.h`, `planners/StackPlan.h`, `planners/BindingPlan.h`, `planners/ActorPlanning.h`)
+## planners (`planners/ActorState.h`, `planners/StackPlan.h`, `planners/BindingPlan.h`, `planners/ActorPlanning.h`, `planners/TextureIdentity.h`)
+
+- `TextureIdentity.h` holds the two engine-free halves of
+  `render/SourceSampling`: `ImageCacheKey` lowercases a texture path so
+  the compositor's image cache treats two spellings of one file as one
+  entry, and `IsPlaceholderExtent` treats a map of
+  `kPlaceholderTextureExtent` (4) texels or fewer on either axis as a
+  placeholder. The threshold is carried from the frozen tree
+  (`src/_old/Compositor.cpp`); it separates the engine's tiny fallback
+  textures from real maps, and no source records a finer reason.
 
 The pure decision halves of the wave-3 engine modules (`engine/Manager`,
 `render/Compositor`, `render/Binding`). Each is data-in / data-out and native-

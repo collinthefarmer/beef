@@ -189,6 +189,9 @@ void SlotWriter::EndWrite(Slot a_slot) {
 }
 
 void SlotWriter::SetFeature(Slot a_slot, bool a_on) {
+  if (!MaterialAttached()) {
+    return;
+  }
   auto &flags = binding_.material_->pbrFlags;
   const auto mask = FeatureMask(a_slot);
   const auto &group = groups_[static_cast<std::size_t>(a_slot)];

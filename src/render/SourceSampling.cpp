@@ -1,20 +1,11 @@
 #include "render/SourceSampling.h"
 #include <algorithm>
-#include <cctype>
 
 namespace BetterEnchantmentEffects {
-std::string ImageCacheKey(std::string_view a_path) {
-  std::string out{a_path};
-  for (char &c : out) {
-    c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
-  }
-  return out;
-}
-
 bool IsNonPlaceholderTexture(const TextureRef &a_texture) {
   const std::optional<TextureLab::Extent> extent =
       TextureLab::ExtentOf(a_texture.get());
-  return extent && extent->width > 4 && extent->height > 4;
+  return extent && !IsPlaceholderExtent(extent->width, extent->height);
 }
 
 TextureRef MaterialTexture(MaterialMap a_map,

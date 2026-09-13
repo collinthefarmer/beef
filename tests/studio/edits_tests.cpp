@@ -236,8 +236,8 @@ int main() {
     bad.edits.push_back(AddSignal{"batchThree"});
     bad.edits.push_back(RemoveSignal{"noSuchSignal"});
     const auto refused = PrepareEdits(rollback, bad);
-    Check(!refused && rollback == base,
-          "failed preparation discards earlier edits without touching the original");
+    Check(!refused && rollback == base, "failed preparation discards earlier "
+                                        "edits without touching the original");
     if (!refused) {
       Check(refused.error().severity == Severity::kError &&
                 refused.error().where == "signal noSuchSignal",
@@ -248,11 +248,14 @@ int main() {
     Check(rollback == base, "a refused batch leaves the recipe unchanged");
 
     const auto empty = PrepareEdits(base, EditBatch{});
-    Check(empty && *empty == base, "an empty batch yields an unchanged candidate");
-    const EditBatch cancelled{{AddSignal{"temporary"}, RemoveSignal{"temporary"}}};
+    Check(empty && *empty == base,
+          "an empty batch yields an unchanged candidate");
+    const EditBatch cancelled{
+        {AddSignal{"temporary"}, RemoveSignal{"temporary"}}};
     const auto unchanged = PrepareEdits(base, cancelled);
     Check(unchanged && *unchanged == base,
-          "edits that cancel each other can be recognized before retiring actors");
+          "edits that cancel each other can be recognized before retiring "
+          "actors");
   }
 
   return test::Finish("studio_edits");

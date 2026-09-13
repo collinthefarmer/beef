@@ -254,3 +254,15 @@ These are settled. Do not re-open them; apply them where the plans say.
 ## Status log
 
 Append one line per plan as it completes: date, plan letter, branch, outcome.
+
+- 2026-09-13: the four-piece commit was superseded; the user committed the
+  whole tree as `505f24c cleanup, ui in progress. not verified` (including
+  `docs/.obsidian/`). That commit does not build on its own:
+  `studio/Snapshot.h` includes `studio/Gesture.h`, which is still untracked
+  in the UI wave's checkout, and `menu/RecipesPage.cpp` calls the two-argument
+  `Manager::Watch` that exists only in the UI wave's uncommitted `Manager.h`.
+  Critique branches are cut from it anyway and verified with untracked copies
+  of the missing pieces; every in-game checkpoint waits for the UI wave to
+  commit a building tree.
+- 2026-09-13, F, `critique/f-tests-and-bounds`: implemented and native-verified;
+  in-game checkpoint pending on a buildable base (see the plan's Status).

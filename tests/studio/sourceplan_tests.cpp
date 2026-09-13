@@ -23,7 +23,8 @@ int main() {
   Check(original.sources.size() == 1 && original.reservedNames.size() == 2,
         "staging sources leaves the caller's naming input unchanged");
   const auto edits = std::move(sources).TakeEdits();
-  const AddSource *added = edits.size() == 1 ? Get<AddSource>(edits.front()) : nullptr;
+  const AddSource *added =
+      edits.size() == 1 ? Get<AddSource>(edits.front()) : nullptr;
   Check(added && added->name == rough && added->kind == roughness,
         "all requests for the staged definition produce only one AddSource");
 
