@@ -32,42 +32,106 @@ makes variant dispatch exhaustive, the `Reader` and `Reporter` boundary in
 `src/recipe/Words.h`. Every plan extends those patterns to the places that
 lack them. No plan replaces them.
 
-## Repository state at handoff
+## Repository state (updated 2026-09-13, after Plan F)
 
-- Branch `cleanup/stage-0`, last commit `a983787 cleanup`.
-- The working tree holds 138 modified, deleted or untracked paths, including
-  source edits across engine, render, studio and menu, two deleted planner
-  files, and untracked regression evidence under `docs/regression-evidence/`.
-- The user reported an in-game smoke test passing for the render cleanup
-  described in `docs/wip/render-cleanup-2026-09-13.md`. That report predates
-  some of the uncommitted edits.
+The original handoff asked for a four-piece commit of the working tree.
+That did not happen: the user committed the whole tree as
+`505f24c cleanup, ui in progress. not verified` on `cleanup/stage-0`,
+including `docs/.obsidian/`. Every critique branch is cut from `505f24c`.
 
-Part of that uncommitted work is the UI v2 rework's first wave (see the next
-section). It belongs to other agents. Do not stash, reset or reformat it.
+Two checkouts exist and they must stay separate:
 
-First action (decided by the user 2026-09-13): commit the tree in four
-pieces, in this order, each through `tools/gate.sh commit`, on
-`cleanup/stage-0`:
+| Path | Branch | Who edits it |
+|---|---|---|
+| `/home/nixos/projects/skyrim-modding/plugins/WornEnchantmentPBR` | `cleanup/stage-0` | the UI v2 agent, live and uncommitted (`Manager.h`, `ManagerSnapshot.cpp`, `Panels.*`, `Selection.*`, untracked `Gesture.*`, and more as they go) |
+| `/tmp/beef-critique` (a `git worktree` of the same repository) | `critique/<letter>-<slug>` | the critique admin |
 
-1. The cleanup source edits: every modified path under `src/` that is not
-   in piece 2, the two deleted `src/planners/BindingDiff.*` files and their
-   test, `tests/`, `tools/`, `CMakeLists.txt`, and the `docs/wip/*-cleanup-*`,
-   `*-checkpoint-*`, `render-state-*`, `expression-cleanup-*` notes.
-2. The UI v2 first wave: `src/menu/Workspace.*`, `src/menu/RecipeActions.*`,
-   `src/studio/EditResult.*`, `src/studio/FileOperation.h`,
-   `src/studio/Navigation.h`, and the modified files under `src/menu/` and
-   `src/studio/` listed in `docs/wip/ui-v2-framework-checkpoint-2026-09-13.md`,
-   plus that checkpoint, `docs/ui-*.md` and `docs/wip/ui-primitives-ownership.md`.
-   Use `git diff` per file to confirm a studio or menu hunk is UI work and
-   not cleanup; the checkpoint names what the wave touched.
-3. Regression evidence: `docs/regression-evidence/`, and
-   `docs/regression-feedback-*`.
-4. The critique documents: `docs/wip/critique-*.md`.
+Do not run critique work in the main checkout: its uncommitted UI edits
+would be swept into your commits, and the gate would format or lint them.
+Do not stash, reset, format or otherwise touch those edits. The worktree
+has its own `build/` (dependencies fetched, compile database generated) and
+its own native test output; `git log` and `git branch` see the same
+history in both.
 
-Leave `docs/.obsidian/` uncommitted and add it to `.gitignore` in piece 4.
-Hand the user the `git push` command after the four commits. Each plan then
-starts from that clean tree on its own branch named
-`critique/<plan-letter>-<slug>`.
+**`505f24c` does not build on its own.** Two pieces of the UI wave are still
+uncommitted in the main checkout:
+
+- `src/studio/Gesture.{h,cpp}` are untracked there, but the committed
+  `src/studio/Snapshot.h` includes `studio/Gesture.h`. Every studio native
+  suite and the DLL fail without them.
+- The committed `src/menu/RecipesPage.cpp` calls a two-argument
+  `Manager::Watch(request, document)` that exists only in the UI agent's
+  uncommitted `src/engine/Manager.h`. The DLL does not link and a full
+  `clang-tidy` run fails on that file, so `tools/tidy-baseline.sh --check`
+  cannot complete.
+- Nine committed sources are not clang-formatted: `engine/ManagerSnapshot.cpp`,
+  `menu/ContextRows.cpp`, `menu/StudioPage.cpp`, `render/RuntimeTextures.h`,
+  `render/RuntimeTexturesLab.cpp`, `render/TexturePreviews.{h,cpp}`,
+  `studio/RecipeSnapshot.cpp`, `studio/Selection.cpp`. They are all UI
+  seams, so the critique leaves them alone and `tools/gate.sh push` stops at
+  its format step.
+
+Consequences for every plan until the UI wave commits a building tree:
+
+- Verify natively with an untracked copy of `Gesture.{h,cpp}` in the
+  worktree (`cp` them from the main checkout; `git status` must keep showing
+  them as `??`; never `git add` them). The copy is already in place.
+- Prove engine and render edits compile by building the touched objects by
+  ninja target instead of the whole DLL:
+  `grep -o 'CMakeFiles/[^ ]*/src/<path>.cpp.obj' build/Release/build.ninja`
+  gives the target; `nix develop --command ninja -C build/Release -j 4 <targets>`.
+- `tools/gate.sh commit` works (it formats and lints only the staged files).
+  `tools/gate.sh push` is red for the reasons above, not for anything on the
+  critique branches; say so in the report rather than working around it.
+- In-game checkpoints cannot run. Record each plan as "implemented,
+  checkpoint pending" and run the checkpoints in plan order once the base
+  builds (see Resuming).
+
+Plan F's branch is `critique/f-tests-and-bounds`, one commit `f4edc48` on
+top of `505f24c`, Status block in its plan file. Branch each later plan from
+the previous plan's tip (A from F's tip, B from A's tip, and so on), because
+each plan uses what the one before it built; the plans are merged into
+`cleanup/stage-0` in the same order, by the user, after their checkpoints.
+
+## Resuming
+
+1. In the main checkout, check whether the UI wave has committed: `git log
+   --oneline -5 cleanup/stage-0`, then `git status --short`. The base is
+   buildable when `src/studio/Gesture.h` is tracked, `Manager.h` declares
+   `Watch` with a `std::string_view a_document` parameter, and
+   `nix develop --command tools/format.sh --check` reports every file
+   formatted.
+2. In `/tmp/beef-critique` (`git worktree list` confirms it; if it is gone,
+   `git worktree add /tmp/beef-critique critique/f-tests-and-bounds`), run
+   `nix develop --command tests/run-native.sh` first. Green means the copies
+   and tools are in place.
+3. If the base is buildable: rebase the critique branches onto the new
+   `cleanup/stage-0` tip in order (F, then A on F, ...), delete the untracked
+   `Gesture.*` copies, run `tools/compile-db.sh`, `./build.sh Release -j 4`,
+   `./install.sh`, then the pending in-game checkpoints in plan order, each
+   with the log lines its plan file names. Then `tools/gate.sh push` per
+   branch and hand the user the push command.
+4. If the base is not buildable: continue with the next plan under the
+   consequences listed above. Next in order is Plan A on
+   `critique/a-error-contract`, branched from `critique/f-tests-and-bounds`.
+
+Tooling facts that cost time to rediscover:
+
+- Inside `nix develop`, the native compiler is `$NATIVE_CXX` (the wrapped
+  `clang++`); bare `clang++` on that PATH has no standard-library include
+  paths. `tests/run-native.sh` already uses `$NATIVE_CXX`.
+- `tests/run-native.sh` takes `SUITE=<substring>` to run only matching
+  suites (`SUITE=recipe_recipe`, `SUITE=expression`). It no longer forwards
+  arguments to the test binaries.
+- A first `tools/compile-db.sh` in a fresh worktree fetches CommonLibSSE and
+  spdlog (minutes). A first `./build.sh` compiles CommonLibSSE (about ten
+  minutes at `-j 4`). Never run `clang-tidy` while a build runs.
+- `tools/format.sh` with no file arguments formats all of `src/` and
+  `tests/`; pass the files you touched, or it will reformat the nine UI-seam
+  files above.
+- Native test scratch files go under the test output directory through
+  `test::ScratchDir("<suite>")` (`tests/test_support.h`), never under
+  `tests/fixtures`.
 
 ## Interaction with the UI v2 rework
 
@@ -171,6 +235,46 @@ is not done until the user reports the checkpoint passed.
 | E | `critique-plan-e-docs-2026-09-13.md` | 8 | comment removal in `render/`, `engine/` |
 | G | `critique-plan-g-shell-pose-2026-09-13.md` | user decision on `ShellPose` | `render/Shell.cpp`, `engine/ManagerTick.cpp` |
 
+### Progress
+
+| Plan | Branch | Commit | State |
+|---|---|---|---|
+| F | `critique/f-tests-and-bounds` | `f4edc48` | implemented, native-verified; in-game checkpoint pending on a buildable base |
+| A | `critique/a-error-contract` | | not started; branch from F's tip |
+| B | | | not started |
+| C | | | not started |
+| D | | | not started |
+| E | | | not started |
+| G | | | deferred until UI slice 2A and the six plans |
+
+What Plan F left for the later plans:
+
+- `src/engine/TextFile.{h,cpp}` now holds `ReadText` (returns
+  `std::expected<std::string, std::string>` with the failure named) and
+  `WriteText`, engine-free and native-tested. Plan A's `RecipeStore` work
+  (A2, A2.5) builds on the `LoadFile` path that already logs
+  `unreadable (does not exist | cannot be opened | larger than ... | empty)`.
+- `src/planners/TextureIdentity.{h,cpp}` holds `ImageCacheKey` and
+  `IsPlaceholderExtent`; `render/SourceSampling.h` includes it. Plan C's
+  layer check should accept render including planners. Plan D's glossary
+  should list both names.
+- `Republish` in `RecipeStore.cpp` takes an index from `LoadedIndex`, not a
+  recipe id, because `RenameRecipe` changes the id before republishing.
+  Plan A touches the same file; keep that.
+- Plan F's F2 items 1 to 3 (`Program::Check` bounds, `std::get<float>`,
+  `JoinOperands`) are recorded at the end of
+  `expression-cleanup-implementation-handoff-2026-09-13.md` for that pass's
+  owner. If that pass is abandoned, they come back to Plan A's bounds work.
+- The test harness API: `test::Check(ok, what)`, `test::Equal(actual,
+  expected, what)`, `test::Near(actual, expected, what[, eps])`,
+  `test::Skip(what)`, `test::ScratchDir(suite)`. All print `file:line` on
+  failure. New suites are named scenario functions called from `main`, as in
+  `tests/planners/actorplanning_tests.cpp`.
+- `tests/` is formatted by the same `.clang-format` as `src/` and the commit
+  gate checks staged test files. `tests/_old/` is excluded like `src/_old/`.
+- `RecipeStore.cpp` still carries comments (a `NOLINTNEXTLINE` note and two
+  prose comments near `LoadedRecipe`); they are Plan E's.
+
 ### Order and dependencies
 
 Run the plans in the order F, A, B, C, D, E, then G. The reasons:
@@ -196,7 +300,8 @@ Nothing else may be merged across plans.
 
 1. Read the plan file, then re-verify every cited line against the current
    tree. Line numbers drift; the finding is the contract, not the number.
-2. Branch from the clean base. One plan per branch.
+2. Branch from the previous plan's tip in the worktree (see Repository
+   state). One plan per branch.
 3. Do the steps in order. Where a plan says "decide", the decision is stated
    in the plan. Do not re-open it. Where a plan says "ask the user", stop and
    ask before proceeding on that step; finish every other step first.
