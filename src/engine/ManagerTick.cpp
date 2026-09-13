@@ -19,7 +19,7 @@ namespace {
 
 struct SlotWrite {
   Slot slot = Slot::kEmissive;
-  RE::NiSourceTexture *texture = nullptr;
+  TextureRef texture;
   bool shown = false;
   std::array<float, kScalarFieldCount> scalars{};
   Vec3 color{1.0f, 1.0f, 1.0f};
@@ -58,11 +58,13 @@ void WriteSlot(SlotTarget &a_target, const SlotWrite &a_write) {
     a_target.WriteHeightScale(a_write.Shown(ScalarField::kScale));
     break;
   case Slot::kGlint:
-    a_target.WriteGlint(a_write.Of(ScalarField::kScreenSpaceScale),
-                        a_write.Of(ScalarField::kLogMicrofacetDensity),
-                        a_write.Of(ScalarField::kMicrofacetRoughness),
-                        a_write.Of(ScalarField::kDensityRandomization),
-                        a_write.shown);
+    a_target.WriteGlint(
+        {.enabled = a_write.shown,
+         .screenSpaceScale = a_write.Of(ScalarField::kScreenSpaceScale),
+         .logMicrofacetDensity = a_write.Of(ScalarField::kLogMicrofacetDensity),
+         .microfacetRoughness = a_write.Of(ScalarField::kMicrofacetRoughness),
+         .densityRandomization =
+             a_write.Of(ScalarField::kDensityRandomization)});
     break;
   case Slot::kCoat:
     a_target.WriteCoat(a_write.Of(ScalarField::kRoughness),
@@ -95,7 +97,7 @@ LayerFilter HiddenLayers(const Studio::View &a_view,
 struct SlotChain {
   std::vector<const SurfaceOutput *> outputs;
   std::vector<Studio::ResolvedOutput> resolved;
-  RE::NiSourceTexture *texture = nullptr;
+  TextureRef texture;
   bool shown = false;
 };
 
@@ -149,7 +151,7 @@ SlotChain RenderSlotChain(LiveActor &a_state, LiveGeometry &a_bound,
       continue;
     }
     chain.shown = true;
-    if (RE::NiSourceTexture *texture = output->stack->Texture()) {
+    if (TextureRef texture = output->stack->Texture()) {
       base = StackBase{texture, base.animated || output->stack->Animated()};
       chain.texture = texture;
     }
@@ -243,6 +245,8 @@ void Manager::OnFrame() {
   if (applications_.Loading()) {
     return;
   }
+  SweepRetiredMaterialTextures();
+  TextureLab::GetSingleton()->CollectPreviewDraws();
   FireDueFinalizes();
   const std::uint32_t now = NowMS();
   const Settings settings = GetSettings();
@@ -328,13 +332,7 @@ void Manager::DropLostGeometries(LiveActor &a_state) {
             "dropping '{}': its material or shell was replaced by another "
             "system",
             bound.name);
-        bound.lost = true;
-        bound.material.reset();
-        bound.shell.reset();
-        bound.shellOwner.reset();
-        bound.plan = GeometryPlan{};
-        bound.stackPlan = GeometryStackPlan{};
-        bound.binding = BindingDiff{};
+        RetireGeometry(bound);
       }
     }
   }

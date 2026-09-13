@@ -1,4 +1,5 @@
 #include "engine/Manager.h"
+#include "diagnostics/Trace.h"
 
 #include "SettingsFile.h"
 #include "engine/Events.h"
@@ -66,34 +67,39 @@ void Manager::QueueEquipFinalize(RE::FormID a_actorID) {
 }
 
 void Manager::QueueLoadedActorRefreshes() {
-  if (RE::PlayerCharacter *player = RE::PlayerCharacter::GetSingleton()) {
-    QueueRefresh(player);
-  }
-  if (GetSettings().playerOnly) {
-    return;
-  }
-  if (RE::ProcessLists *lists = RE::ProcessLists::GetSingleton()) {
-    lists->ForEachHighActor([this](RE::Actor *a_actor) {
-      QueueRefresh(a_actor);
-      return RE::BSContainer::ForEachResult::kContinue;
-    });
-  }
+  for (const auto id : LoadedActorIDs())
+    QueueRefresh(id);
 }
 
 void Manager::BeginLoad() { Clear(); }
 
 void Manager::FinishLoad() {
+  const Trace::Scope trace{Trace::Command("load.finish")};
+  Trace::Safely(
+      [&] { Trace::Emit(Trace::Event::kLoad, {{"action", "resume"}}); });
   applications_.Resume();
   QueueLoadedActorRefreshes();
 }
 
 void Manager::Clear() {
+  const auto session = Trace::BeginSession();
+  const Trace::Scope trace{Trace::Command("load.begin")};
+  Trace::Safely([&] {
+    Trace::Emit(Trace::Event::kLoad,
+                {{"action", "clear_begin"},
+                 {"generation", std::to_string(session)},
+                 {"actors", std::to_string(applied_.size())}});
+  });
   applications_.BeginLoad();
+  editor_.CancelFileOperationsForLoad();
   const std::size_t count = applied_.size();
   for (const auto &[actorID, state] : applied_) {
     UnwatchAnimationEvents(RE::TESForm::LookupByID<RE::Actor>(actorID));
   }
+  for (auto &[actorID, state] : applied_)
+    RetireActorEffects(state);
   applied_.clear();
+  SweepRetiredMaterialTextures();
   editor_.CancelPaintForLoad();
   loggedNonPBRArmor_.clear();
   carriedTimes_.clear();
@@ -106,12 +112,18 @@ void Manager::Clear() {
     empty->version = ++snapshotVersion_;
     empty->paintUpdate = editor_.LastPaintUpdate();
     empty->applications = applications_.Snapshot();
+    empty->fileOperations = editor_.FileOperations();
+    empty->editResults = editor_.EditResults();
     latest_ = std::move(empty);
     watch_.reset();
     watchedMS_ = 0;
   }
   lastTickMS_ = 0;
   frozenLastTick_ = false;
+  Trace::Safely([&] {
+    Trace::Emit(Trace::Event::kLoad,
+                {{"action", "clear_end"}, {"actors", std::to_string(count)}});
+  });
   logger::info("cleared {} actor states", count);
 }
 

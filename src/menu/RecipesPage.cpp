@@ -1,9 +1,11 @@
+#include "diagnostics/Trace.h"
 #include "menu/Menu.h"
 
 #include "engine/Manager.h"
 #include "menu/BoardPage.h"
 #include "menu/Frame.h"
 #include "menu/MenuWidgets.h"
+#include "menu/RecipeActions.h"
 #include "recipe/Recipe.h"
 #include "studio/Intent.h"
 #include "studio/Names.h"
@@ -121,8 +123,11 @@ void DrawResolved(const Studio::PieceRow &a_piece) {
 
 void DrawStoreActions(Manager &a_manager, Studio::MenuState &a_state) {
   if (ImGui::Button("Reload recipes")) {
+    a_state.navigation = {};
+    a_state.selection.subject = Studio::RecipeSubject{};
     Studio::Reduce(a_state, Studio::EndPaint{});
-    a_manager.Editor().ReloadRecipes();
+    a_state.pendingIndexedEdit =
+        Studio::PendingIndexedEdit{a_manager.Editor().ReloadRecipes(), {}};
   }
   ImGui::SameLine();
   if (ImGui::Button("Re-apply all")) {
@@ -134,19 +139,12 @@ void DrawStoreActions(Manager &a_manager, Studio::MenuState &a_state) {
   }
 }
 
-void DrawRecipeFile(const Studio::RecipeRow &a_recipe, Manager &a_manager) {
+void DrawRecipeFile(const Studio::RecipeRow &a_recipe, const Frame &a_frame) {
   ImGui::SeparatorText(
       a_recipe.dirty
           ? std::format("{} (edited, not saved)", a_recipe.id).c_str()
           : a_recipe.id.c_str());
-  if (ImGui::Button("Save")) {
-    a_manager.Editor().SaveRecipe(a_recipe.id);
-  }
-  ImGui::SameLine();
-  if (ImGui::Button("Revert to file")) {
-    a_manager.Editor().RevertRecipe(a_recipe.id);
-  }
-  ImGui::SameLine();
+  DrawRecipeFileActions(a_frame);
   HelpMarker("Save writes the recipe to its file. An imported recipe is saved "
              "to user/<id>.json with its imported line dropped, and loads from "
              "there afterwards.");
@@ -165,7 +163,7 @@ void DrawRecipeFile(const Studio::RecipeRow &a_recipe, Manager &a_manager) {
 }
 
 void DrawSelection(const Studio::Snapshot &a_snapshot,
-                   Studio::MenuState &a_state, Manager &a_manager) {
+                   Studio::MenuState &a_state) {
   const Studio::PieceRow *piece =
       Studio::SelectedPiece(a_snapshot, a_state.selection);
   ImGui::SeparatorText("Resolved for the selection (merge order)");
@@ -191,10 +189,13 @@ void DrawSelection(const Studio::Snapshot &a_snapshot,
                     .names = &names,
                     .state = &a_state,
                     .intents = &intents};
-  DrawBoardPage(frame);
+  const bool pending = a_state.pendingIndexedEdit.has_value() ||
+                       a_state.pendingRecipeFile.has_value() ||
+                       RecipeFilePending(frame);
+  Disabled(pending, [&] { DrawBoardPage(frame); });
   Dispatch(intents, a_state, a_snapshot);
   if (selected) {
-    DrawRecipeFile(*selected, a_manager);
+    Disabled(pending, [&] { DrawRecipeFile(*selected, frame); });
   }
 }
 }
@@ -205,17 +206,31 @@ void __stdcall RenderRecipes() {
     return;
   }
   Studio::MenuState &state = Studio::State();
-  manager->Watch(Studio::RequestOf(state.selection));
+  const auto &traceSelection = Studio::State().selection;
+  Trace::Page("Recipes",
+              std::format("actor={:08X} armor={:08X} camera={} recipe={}",
+                          traceSelection.piece.actorID,
+                          traceSelection.piece.armorID,
+                          traceSelection.piece.firstPerson ? "1st" : "3rd",
+                          traceSelection.recipeID));
+  manager->Watch(Studio::RequestOf(state.selection),
+                 state.selection.document ? state.selection.recipeID : "");
   const std::shared_ptr<const Studio::Snapshot> held =
       manager->LatestSnapshot();
   if (!held) {
     return;
   }
-  Studio::ResolveSelection(state.selection, *held);
+  Studio::ResolveEditorSelection(state, *held);
+  Studio::AcknowledgeEditorOperations(state, *held);
+  if (held->paintUpdate) {
+    Studio::AcknowledgePaintUpdate(state, *held->paintUpdate);
+  }
   RenderHeader(*held);
-  DrawStoreActions(*manager, state);
+  Disabled(state.pendingIndexedEdit.has_value() ||
+               state.pendingRecipeFile.has_value(),
+           [&] { DrawStoreActions(*manager, state); });
   ImGui::SeparatorText("Loaded");
   DrawLoadedTable(*held);
-  DrawSelection(*held, state, *manager);
+  DrawSelection(*held, state);
 }
 }

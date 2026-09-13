@@ -21,6 +21,9 @@ struct ValueFieldSpec {
   std::optional<Value> value = std::nullopt;
   std::optional<FieldDetail> detail = std::nullopt;
   bool allowEmpty = false;
+  std::optional<std::pair<float, float>> workingRange{};
+  std::string units{};
+  bool integral = false;
 };
 
 struct ReferenceFieldSpec {

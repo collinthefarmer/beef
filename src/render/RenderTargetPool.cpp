@@ -1,13 +1,26 @@
 #include "render/RenderTargetPool.h"
 
 #include "Identity.h"
+#include "render/TextureRef.h"
+
+#include <algorithm>
+#include <cctype>
 
 namespace BetterEnchantmentEffects {
 using namespace REX::W32;
 
 namespace {
 constexpr bool Failed(std::int32_t a_hr) noexcept { return a_hr < 0; }
-constexpr std::uint32_t kPresenterCount = 512;
+
+std::string TextureName(std::string a_name) {
+  std::ranges::transform(a_name, a_name.begin(), [](unsigned char a_char) {
+    return a_char == '/' ? '\\' : static_cast<char>(std::tolower(a_char));
+  });
+  if (a_name.starts_with("textures\\")) {
+    a_name.erase(0, 9);
+  }
+  return a_name;
+}
 
 RE::NiTexture::RendererData *DataOf(RE::NiSourceTexture *a_texture) {
   return a_texture ? reinterpret_cast<RE::NiTexture::RendererData *>(
@@ -16,13 +29,20 @@ RE::NiTexture::RendererData *DataOf(RE::NiSourceTexture *a_texture) {
 }
 }
 
-RE::NiPointer<RE::NiSourceTexture> RenderTargetPool::LoadPresenter() {
-  if (nextPresenter_ >= kPresenterCount) {
-    logger::error("TextureLab: out of presenter textures ({})",
-                  kPresenterCount);
+RE::NiPointer<RE::NiSourceTexture>
+RenderTargetPool::LoadPresenter(std::size_t a_slot) {
+  const auto path =
+      Identity::PresenterTexturePath(static_cast<std::uint32_t>(a_slot));
+  RE::BSResourceNiBinaryStream resource{path};
+  if (!resource.good()) {
+    logger::error("TextureLab: presenter asset missing: {}", path);
+    Trace::Safely([&] {
+      Trace::Emit(Trace::Event::kTexture, {{"action", "presenter_rejected"},
+                                           {"path", path},
+                                           {"reason", "missing_asset"}});
+    });
     return nullptr;
   }
-  const auto path = Identity::PresenterTexturePath(nextPresenter_);
   RE::NiPointer<RE::NiTexture> texture;
   RE::BSShaderManager::GetTexture(path.c_str(), true, texture, false);
   auto *source =
@@ -34,8 +54,57 @@ RE::NiPointer<RE::NiSourceTexture> RenderTargetPool::LoadPresenter() {
         path);
     return nullptr;
   }
-  ++nextPresenter_;
+  if (!ValidatePresenter(a_slot, source, path))
+    return nullptr;
+  auto &presenter = presenters_[a_slot];
+  presenter = {RE::NiPointer<RE::NiSourceTexture>{source}, DataOf(source)};
+  Trace::Safely([&] {
+    Trace::Emit(Trace::Event::kTexture,
+                {{"action", "presenter_loaded"},
+                 {"path", path},
+                 {"loaded_name", source->name.c_str()},
+                 {"presenter", Trace::Pointer(source)}});
+  });
   return RE::NiPointer<RE::NiSourceTexture>{source};
+}
+
+bool RenderTargetPool::ValidatePresenter(std::size_t a_slot,
+                                         RE::NiSourceTexture *a_source,
+                                         const std::string &a_path) const {
+  if (TextureName(a_source->name.c_str()) != TextureName(a_path)) {
+    logger::error("TextureLab: presenter fallback rejected: {} loaded {}",
+                  a_path, a_source->name.c_str());
+    Trace::Safely([&] {
+      Trace::Emit(Trace::Event::kTexture,
+                  {{"action", "presenter_rejected"},
+                   {"path", a_path},
+                   {"loaded_name", a_source->name.c_str()},
+                   {"reason", "unexpected_texture"}});
+    });
+    return false;
+  }
+  for (std::size_t i = 0; i < presenters_.size(); ++i) {
+    if (i != a_slot && presenters_[i].texture.get() == a_source) {
+      logger::error("TextureLab: presenter alias rejected: {} ({})", a_path,
+                    Trace::Pointer(a_source));
+      Trace::Safely([&] {
+        Trace::Emit(Trace::Event::kTexture,
+                    {{"action", "presenter_rejected"},
+                     {"path", a_path},
+                     {"reason", "duplicate_presenter"},
+                     {"presenter", Trace::Pointer(a_source)}});
+      });
+      return false;
+    }
+  }
+  const auto &presenter = presenters_[a_slot];
+  if (presenter.texture && (presenter.texture.get() != a_source ||
+                            presenter.original != DataOf(a_source))) {
+    logger::error("TextureLab: retired presenter {} changed renderer ownership",
+                  a_path);
+    return false;
+  }
+  return true;
 }
 
 bool RenderTargetPool::CreateTarget(ID3D11Device *a_device,
@@ -64,7 +133,13 @@ bool RenderTargetPool::CreateTarget(ID3D11Device *a_device,
     logger::error("TextureLab: view creation failed");
     return false;
   }
-  a_target.presenter = LoadPresenter();
+  a_target.presenterSlot_ = presenterSlots_.Acquire();
+  if (!a_target.presenterSlot_) {
+    logger::error("TextureLab: all {} presenter slots are retained",
+                  kPresenterCount);
+    return false;
+  }
+  a_target.presenter = LoadPresenter(*a_target.presenterSlot_);
   if (!a_target.presenter) {
     return false;
   }
@@ -105,7 +180,43 @@ RenderTargetPool::Acquire(ID3D11Device *a_device, TextureSize a_size) {
       return nullptr;
     }
   }
-  return std::shared_ptr<RenderTarget>{target.release(), deleter};
+  if (!target->Texture()) {
+    logger::error("TextureLab: target {} lost its presenter renderer",
+                  target->traceID_);
+    Trace::Safely([&] {
+      Trace::Emit(Trace::Event::kTexture,
+                  {{"action", "presenter_rejected"},
+                   {"reason", "renderer_replaced"},
+                   {"target", std::to_string(target->traceID_)}});
+    });
+    return nullptr;
+  }
+  target->generation_ = ++nextGeneration_;
+  Trace::Safely([&] {
+    Trace::Emit(
+        Trace::Event::kTexture,
+        {{"action", "acquire"},
+         {"target", std::to_string(target->traceID_)},
+         {"generation", std::to_string(target->generation_)},
+         {"address", Trace::Pointer(target.get())},
+         {"presenter", Trace::Pointer(target->presenter.get())},
+         {"renderer", Trace::Pointer(target->ourData.get())},
+         {"current_renderer",
+          Trace::Pointer(target->presenter ? target->presenter->rendererTexture
+                                           : nullptr)},
+         {"srv", Trace::Pointer(target->srv.Get())},
+         {"size", std::to_string(target->size)}});
+  });
+  auto acquired = std::shared_ptr<RenderTarget>{target.release(), deleter};
+  if (!RegisterTextureTarget(acquired)) {
+    Trace::Safely([&] {
+      Trace::Emit(
+          Trace::Event::kTexture,
+          {{"action", "lease_rejected"}, {"reason", "registration_conflict"}});
+    });
+    return nullptr;
+  }
+  return acquired;
 }
 
 RenderTargetPool::RenderTarget *
@@ -125,6 +236,13 @@ void RenderTargetPool::Recycle(const std::weak_ptr<Pool> &a_pool,
     return;
   }
   try {
+    Trace::Safely([&] {
+      Trace::Emit(Trace::Event::kTexture,
+                  {{"action", "recycle"},
+                   {"target", std::to_string(target->traceID_)},
+                   {"generation", std::to_string(target->generation_)},
+                   {"presenter", Trace::Pointer(target->presenter.get())}});
+    });
     std::scoped_lock lock{pool->lock};
     pool->targets.push_back(std::move(target));
   } catch (...) {

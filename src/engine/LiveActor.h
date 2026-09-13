@@ -4,7 +4,7 @@
 #include "engine/ApplicationService.h"
 #include "engine/Environment.h"
 #include "planners/ActorState.h"
-#include "planners/BindingDiff.h"
+#include "planners/BindingPlan.h"
 #include "planners/StackPlan.h"
 #include "recipe/Merge.h"
 #include "recipe/Recipe.h"
@@ -40,7 +40,7 @@ struct LiveGeometry {
   std::vector<PlacementId> placements;
   GeometryPlan plan;
   GeometryStackPlan stackPlan;
-  BindingDiff binding;
+  BindingPlan binding;
   bool lost = false;
 };
 

@@ -62,14 +62,23 @@ RecipeRow BuildRecipeRow(const RecipeRowInput &a_input) {
         MaskRowOf(mask, RefCount(a_input.references.images, mask.name)));
   }
   r.problems.assign(a_input.problems.begin(), a_input.problems.end());
-  if (a_input.graph && a_input.signals) {
-    const RowTypes rows{recipe, *a_input.graph};
+  {
+    const std::optional<SignalGraph> compiled =
+        a_input.graph
+            ? std::nullopt
+            : std::optional<SignalGraph>{
+                  SignalGraph::Compile(recipe.signals, recipe.curves)};
+    const SignalGraph &graph = a_input.graph ? *a_input.graph : *compiled;
+    const RowTypes rows{recipe, graph};
     const std::unordered_map<std::string, std::string> reasons =
-        InertReasons(*a_input.graph);
+        InertReasons(graph);
     for (const Signal &signal : recipe.signals) {
       SignalRow srow = SignalRowOf(
           signal, rows, RefCount(a_input.references.signals, signal.name));
-      srow.value = a_input.signals->ValueOf(signal.name);
+      if (a_input.signals) {
+        srow.value = a_input.signals->ValueOf(signal.name);
+        srow.live = true;
+      }
       if (srow.inert) {
         if (const auto reason = reasons.find(signal.name);
             reason != reasons.end()) {

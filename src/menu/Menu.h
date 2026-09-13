@@ -5,7 +5,7 @@
 #include "studio/View.h"
 
 namespace BetterEnchantmentEffects::Menu {
-void Perform(const Studio::Intent &a_intent, const Studio::MenuState &a_state,
+void Perform(const Studio::Intent &a_intent, Studio::MenuState &a_state,
              const Studio::View &a_view);
 void Dispatch(Studio::Intents &a_intents, Studio::MenuState &a_state,
               const Studio::Snapshot &a_snapshot);

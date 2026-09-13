@@ -1,3 +1,4 @@
+#include "diagnostics/Trace.h"
 #include "menu/Menu.h"
 
 #include "PCH.h"
@@ -245,6 +246,13 @@ void __stdcall RenderSetup() {
     return;
   }
   Settings settings = GetSettings();
+  const auto &traceSelection = Studio::State().selection;
+  Trace::Page("Setup",
+              std::format("actor={:08X} armor={:08X} camera={} recipe={}",
+                          traceSelection.piece.actorID,
+                          traceSelection.piece.armorID,
+                          traceSelection.piece.firstPerson ? "1st" : "3rd",
+                          traceSelection.recipeID));
   manager->Watch(Studio::RequestOf(Studio::State().selection));
   const std::shared_ptr<const Studio::Snapshot> held =
       manager->LatestSnapshot();

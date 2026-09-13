@@ -1,44 +1,13 @@
 #include "render/Compositor.h"
+#include "render/SourceSampling.h"
 
 #include <algorithm>
 #include <cctype>
 
 namespace BetterEnchantmentEffects {
 namespace {
-std::string Lower(std::string_view a_text) {
-  std::string out{a_text};
-  for (char &c : out) {
-    c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
-  }
-  return out;
-}
-
-bool RealTexture(const RE::NiPointer<RE::NiSourceTexture> &a_texture) {
-  const std::optional<TextureLab::Extent> extent =
-      TextureLab::ExtentOf(a_texture.get());
-  return extent && extent->width > 4 && extent->height > 4;
-}
-
-RE::NiPointer<RE::NiSourceTexture> MapOf(MaterialMap a_map,
-                                         const MaterialInputs &a_material) {
-  switch (a_map) {
-  case MaterialMap::kDiffuse:
-    return a_material.diffuse;
-  case MaterialMap::kNormal:
-    return a_material.normal;
-  case MaterialMap::kRmaos:
-    return a_material.rmaos;
-  case MaterialMap::kDisplacement:
-    return a_material.displacement;
-  case MaterialMap::kNone:
-    return nullptr;
-  }
-  return nullptr;
-}
-
-RE::NiPointer<RE::NiSourceTexture>
-BaseMapFor(Slot a_slot, const MaterialInputs &a_material) {
-  return MapOf(BaseMapOf(a_slot), a_material);
+TextureRef BaseMapFor(Slot a_slot, const MaterialInputs &a_material) {
+  return MaterialTexture(BaseMapOf(a_slot), a_material);
 }
 
 TextureSize SizeOverBase(TextureSize a_size, TextureSize a_maxSize,
@@ -53,21 +22,6 @@ std::uint32_t ChannelBits(const ChannelSet &a_set) {
          (a_set.a ? 8u : 0u);
 }
 
-TextureLab::LayerInput SamplingNow(const PreparedSource &a_source,
-                                   const SignalState &a_signals) {
-  TextureLab::LayerInput input = a_source.sampling;
-  if (a_source.scroll) {
-    const Vec2 scroll = a_signals.Resolve(*a_source.scroll);
-    input.transform.uOffset = scroll.x;
-    input.transform.vOffset = scroll.y;
-  }
-  if (a_source.tile) {
-    const Vec2 tile = a_signals.Resolve(*a_source.tile);
-    input.transform.tileU = std::max(tile.x, 0.01f);
-    input.transform.tileV = std::max(tile.y, 0.01f);
-  }
-  return input;
-}
 }
 
 bool LayerFilter::Hides(std::size_t a_index) const noexcept {
@@ -79,9 +33,7 @@ bool LayerFilter::Hides(std::size_t a_index) const noexcept {
   return false;
 }
 
-RE::NiSourceTexture *RenderedStack::Texture() const noexcept {
-  return latest_ ? latest_->Texture() : nullptr;
-}
+TextureRef RenderedStack::Texture() const noexcept { return latest_; }
 
 bool RenderedStack::Animated() const noexcept { return animated_; }
 
@@ -105,12 +57,11 @@ void Compositor::BeginTick(std::uint32_t a_nowMS) noexcept {
   nowMS_ = a_nowMS;
 }
 
-RE::NiPointer<RE::NiSourceTexture>
-Compositor::LoadImage(std::string_view a_path) {
+TextureRef Compositor::LoadImage(std::string_view a_path) {
   if (a_path.empty()) {
     return nullptr;
   }
-  const std::string key = Lower(a_path);
+  const std::string key = ImageCacheKey(a_path);
   if (const auto it = images_.find(key); it != images_.end()) {
     return it->second;
   }
@@ -125,8 +76,7 @@ Compositor::LoadImage(std::string_view a_path) {
     source = texture ? netimmerse_cast<RE::NiSourceTexture *>(texture.get())
                      : nullptr;
   }
-  RE::NiPointer<RE::NiSourceTexture> result{
-      source && source->rendererTexture ? source : nullptr};
+  TextureRef result{source && source->rendererTexture ? source : nullptr};
   images_[key] = result;
   return result;
 }
@@ -167,16 +117,15 @@ Compositor::Prepare(const Recipe &a_recipe, const SurfaceOutput &a_output,
   if (a_output.slot == Slot::kHeight && material.flatDisplacement) {
     stack->neutral_ = NeutralHeight();
     if (stack->neutral_ && stack->neutral_->Texture()) {
-      stack->base_ = RE::NiPointer{stack->neutral_->Texture()};
+      stack->base_ = TextureRef{stack->neutral_};
     } else {
       stack->diagnostics_.push_back(
           {Severity::kWarning, "stack",
            "the neutral height base could not be rendered; the stack starts "
            "from black"});
     }
-  } else if (const RE::NiPointer<RE::NiSourceTexture> base =
-                 BaseMapFor(a_output.slot, material);
-             RealTexture(base)) {
+  } else if (const TextureRef base = BaseMapFor(a_output.slot, material);
+             IsNonPlaceholderTexture(base)) {
     stack->base_ = base;
     const std::optional<TextureLab::Extent> extent =
         TextureLab::ExtentOf(base.get());
@@ -223,30 +172,15 @@ Compositor::Prepare(const Recipe &a_recipe, const SurfaceOutput &a_output,
   return stack;
 }
 
-bool Compositor::Render(RenderedStack &a_stack, const SignalState &a_signals,
-                        float a_time, const LayerFilter &a_filter,
-                        const StackBase &a_base) {
-  if (a_stack.preparationFailed_) {
-    return false;
-  }
-  if (a_stack.layers_.empty()) {
-    return true;
-  }
-  RE::NiSourceTexture *base =
-      a_base.texture ? a_base.texture : a_stack.base_.get();
-  const bool filterChanged = a_stack.filter_ != a_filter;
-  const bool baseChanged = a_stack.renderedBase_ != base;
-  if (!a_stack.animated_ && !a_base.animated && a_stack.renderedOnce_ &&
-      !filterChanged && !baseChanged) {
-    return true;
-  }
-  a_stack.renderedOnce_ = false;
-  std::size_t shown = 0;
-  for (const PreparedLayer &prepared : a_stack.layers_) {
-    if (a_filter.Hides(prepared.index)) {
-      continue;
-    }
-    ++shown;
+struct Compositor::StackRenderer {
+  Compositor &compositor;
+  RenderedStack &stack;
+  const SignalState &signals;
+  float time;
+  const LayerFilter &filter;
+  const StackBase &overrideBase;
+
+  bool RenderInputs(const PreparedLayer &prepared) {
     if (!prepared.layer ||
         (Is<Ref>(prepared.layer->source) &&
          (!prepared.source || !prepared.source->problem.empty() ||
@@ -257,49 +191,48 @@ bool Compositor::Render(RenderedStack &a_stack, const SignalState &a_signals,
       return false;
     }
     if (prepared.source && prepared.source->ripple) {
-      if (!RenderRipple(*prepared.source->ripple, a_signals, a_time)) {
+      if (!compositor.RenderRipple(*prepared.source->ripple, signals, time)) {
         return false;
       }
     }
     if (prepared.source && prepared.source->rendered) {
-      if (!RenderMask(*prepared.source->rendered, a_signals, a_time)) {
+      if (!compositor.RenderMask(*prepared.source->rendered, signals, time)) {
         return false;
       }
     }
     if (prepared.mask && prepared.mask->rendered) {
-      if (!RenderMask(*prepared.mask->rendered, a_signals, a_time)) {
+      if (!compositor.RenderMask(*prepared.mask->rendered, signals, time)) {
         return false;
       }
     }
-  }
-  if (shown == 0) {
-    a_stack.latest_ = nullptr;
-    a_stack.renderedOnce_ = true;
-    a_stack.filter_ = a_filter;
-    a_stack.renderedBase_ = base;
     return true;
   }
-  TextureLab *lab = TextureLab::GetSingleton();
-  TextureLab::RenderTarget *own = a_stack.target_.get();
-  TextureLab::RenderTarget *scratch = lab->Scratch(a_stack.size_);
-  if (!own || !scratch) {
-    return false;
-  }
-  TextureLab::RenderTarget *previous = nullptr;
-  TextureLab::RenderTarget *write = shown % 2 == 1 ? own : scratch;
-  TextureLab::RenderTarget *other = write == own ? scratch : own;
-  for (const PreparedLayer &prepared : a_stack.layers_) {
-    if (a_filter.Hides(prepared.index)) {
-      continue;
+
+  [[nodiscard]] std::optional<std::size_t> RenderShownInputs() {
+    std::size_t shown = 0;
+    for (const PreparedLayer &prepared : stack.layers_) {
+      if (filter.Hides(prepared.index)) {
+        continue;
+      }
+      ++shown;
+      if (!RenderInputs(prepared)) {
+        return std::nullopt;
+      }
     }
+    return shown;
+  }
+
+  [[nodiscard]] TextureLab::LayerParams
+  LayerParams(const PreparedLayer &prepared,
+              RE::NiSourceTexture *previous) const {
     const Layer &layer = *prepared.layer;
     TextureLab::LayerParams params;
     params.mode = TextureLab::Mode::kLayer;
     TextureLab::LayerPass &pass = params.layer;
-    pass.previous = previous ? previous->Texture() : base;
+    pass.previous = previous;
     if (prepared.source) {
       pass.source = prepared.source->texture.get();
-      pass.input = SamplingNow(*prepared.source, a_signals);
+      pass.input = ResolveSampling(*prepared.source, signals);
       pass.normalize = prepared.source->normalize;
     } else if (const Vec3 *constant = Get<Vec3>(layer.source)) {
       pass.color[0] = constant->x;
@@ -307,12 +240,12 @@ bool Compositor::Render(RenderedStack &a_stack, const SignalState &a_signals,
       pass.color[2] = constant->z;
     }
     if (layer.color) {
-      const Vec3 colour = a_signals.Resolve(*layer.color);
+      const Vec3 colour = signals.Resolve(*layer.color);
       pass.color[0] *= colour.x;
       pass.color[1] *= colour.y;
       pass.color[2] *= colour.z;
     }
-    pass.opacity = a_signals.Resolve(layer.opacity);
+    pass.opacity = signals.Resolve(layer.opacity);
     pass.blend = BlendShaderMode(layer.blend);
     pass.channels = ChannelBits(layer.channels);
     if (prepared.mask && prepared.mask->texture) {
@@ -320,16 +253,99 @@ bool Compositor::Render(RenderedStack &a_stack, const SignalState &a_signals,
       pass.maskChannel = prepared.mask->channel;
     }
     pass.curve = prepared.curve.get();
-    if (!lab->Render(*write, nullptr, params)) {
+    return params;
+  }
+
+  [[nodiscard]] TextureLab::RenderTarget *RenderLayers(std::size_t shown,
+                                                       const TextureRef &base) {
+    TextureLab *lab = TextureLab::GetSingleton();
+    TextureLab::RenderTarget *own = stack.target_.get();
+    TextureLab::RenderTarget *scratch = lab->Scratch(stack.size_);
+    if (!own || !scratch) {
+      return nullptr;
+    }
+    TextureLab::RenderTarget *previous = nullptr;
+    // Choose the first target so the final shown layer lands in our owned
+    // target.
+    TextureLab::RenderTarget *write = shown % 2 == 1 ? own : scratch;
+    TextureLab::RenderTarget *other = write == own ? scratch : own;
+    for (const PreparedLayer &prepared : stack.layers_) {
+      if (filter.Hides(prepared.index)) {
+        continue;
+      }
+      const auto params =
+          LayerParams(prepared, previous ? previous->Texture() : base.get());
+      if (!lab->Render(*write, nullptr, params)) {
+        return nullptr;
+      }
+      previous = write;
+      std::swap(write, other);
+    }
+    return previous;
+  }
+
+  void TracePublish(TextureLab::RenderTarget *previous, const TextureRef &base,
+                    std::size_t shown) const {
+    Trace::Safely([&] {
+      Trace::Emit(Trace::Event::kTexture,
+                  {{"action", "stack_publish"},
+                   {"stack", Trace::Pointer(&stack)},
+                   {"target_address", Trace::Pointer(previous)},
+                   {"presenter",
+                    Trace::Pointer(previous ? previous->Texture() : nullptr)},
+                   {"base", Trace::Pointer(base.get())},
+                   {"layers", std::to_string(shown)}});
+    });
+  }
+
+  void Publish(const TextureRef &texture, const TextureRef &base) {
+    stack.latest_ = texture;
+    stack.renderedOnce_ = true;
+    stack.filter_ = filter;
+    stack.renderedBase_ = base;
+  }
+
+  bool Run() {
+    if (stack.preparationFailed_) {
       return false;
     }
-    previous = write;
-    std::swap(write, other);
+    if (stack.layers_.empty()) {
+      return true;
+    }
+    const TextureRef &base =
+        overrideBase.texture ? overrideBase.texture : stack.base_;
+    const bool filterChanged = stack.filter_ != filter;
+    const bool baseChanged = stack.renderedBase_.get() != base.get();
+    if (!stack.animated_ && !overrideBase.animated && stack.renderedOnce_ &&
+        !filterChanged && !baseChanged) {
+      return true;
+    }
+    const bool firstRender = !stack.renderedOnce_;
+    stack.renderedOnce_ = false;
+    const auto shown = RenderShownInputs();
+    if (!shown.has_value()) {
+      return false;
+    }
+    if (*shown == 0) {
+      Publish(nullptr, base);
+      return true;
+    }
+    auto *previous = RenderLayers(*shown, base);
+    if (!previous) {
+      return false;
+    }
+    if (firstRender || filterChanged || baseChanged) {
+      TracePublish(previous, base, *shown);
+    }
+    Publish(TextureRef{stack.target_}, base);
+    return true;
   }
-  a_stack.latest_ = previous;
-  a_stack.renderedOnce_ = true;
-  a_stack.filter_ = a_filter;
-  a_stack.renderedBase_ = base;
-  return true;
+};
+
+bool Compositor::Render(RenderedStack &a_stack, const SignalState &a_signals,
+                        float a_time, const LayerFilter &a_filter,
+                        const StackBase &a_base) {
+  return StackRenderer{*this, a_stack, a_signals, a_time, a_filter, a_base}
+      .Run();
 }
 }

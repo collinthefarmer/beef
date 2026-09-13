@@ -1,4 +1,5 @@
 #include "render/Compositor.h"
+#include "render/SourceSampling.h"
 
 #include "engine/MeshReader.h"
 #include "mesh/MaterialClusters.h"
@@ -14,21 +15,16 @@
 
 namespace BetterEnchantmentEffects {
 namespace {
-std::string Lower(std::string_view a_text) {
-  std::string out{a_text};
-  for (auto &c : out) {
-    c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
+std::shared_ptr<TextureLab::Lookup> CreateCurveLookup(const Program &program,
+                                                      float mean) {
+  std::array<float, 256> values{};
+  for (std::size_t i = 0; i < values.size(); ++i) {
+    values[i] = ApplyCurve(program, static_cast<float>(i) / 255.0f, mean);
   }
-  return out;
+  return TextureLab::GetSingleton()->CreateLookup(values);
 }
 
-bool RealTexture(const RE::NiPointer<RE::NiSourceTexture> &a_texture) {
-  const auto extent = TextureLab::ExtentOf(a_texture.get());
-  return extent && extent->width > 4 && extent->height > 4;
-}
-
-std::string
-DescribeTexture(const RE::NiPointer<RE::NiSourceTexture> &a_texture) {
+std::string DescribeTexture(const TextureRef &a_texture) {
   if (!a_texture) {
     return "the material has no texture in this slot";
   }
@@ -49,26 +45,8 @@ DescribeTexture(const RE::NiPointer<RE::NiSourceTexture> &a_texture) {
                      extent->height);
 }
 
-RE::NiPointer<RE::NiSourceTexture> MapOf(MaterialMap a_map,
-                                         const MaterialInputs &a_material) {
-  switch (a_map) {
-  case MaterialMap::kDiffuse:
-    return a_material.diffuse;
-  case MaterialMap::kNormal:
-    return a_material.normal;
-  case MaterialMap::kRmaos:
-    return a_material.rmaos;
-  case MaterialMap::kDisplacement:
-    return a_material.displacement;
-  case MaterialMap::kNone:
-    return nullptr;
-  }
-  return nullptr;
-}
-
-bool MeasureFlatDisplacement(
-    const RE::NiPointer<RE::NiSourceTexture> &a_displacement) {
-  if (!RealTexture(a_displacement)) {
+bool MeasureFlatDisplacement(const TextureRef &a_displacement) {
+  if (!IsNonPlaceholderTexture(a_displacement)) {
     return true;
   }
   const float mean = TextureLab::GetSingleton()->MeanChannel(
@@ -78,7 +56,7 @@ bool MeasureFlatDisplacement(
 
 std::shared_ptr<TextureLab::RenderTarget>
 RenderNormalSlope(const MaterialInputs &a_material, std::string &a_problem) {
-  if (!RealTexture(a_material.normal)) {
+  if (!IsNonPlaceholderTexture(a_material.normal)) {
     a_problem = "normal map: " + DescribeTexture(a_material.normal);
     return nullptr;
   }
@@ -147,7 +125,7 @@ RenderClusterMap(const GeometryInputs &a_inputs,
 }
 
 struct MaterialChannelPick {
-  RE::NiPointer<RE::NiSourceTexture> texture;
+  TextureRef texture;
   ShaderChannel channel = ShaderChannel::kRgb;
   std::string problem;
 };
@@ -158,7 +136,7 @@ MaterialChannelPick PickMaterialChannel(MaterialChannel a_channel,
   const MaterialInputs &a_material = a_inputs.material;
   const auto map = MaterialMapOf(a_channel);
   if (map != MaterialMap::kNone) {
-    return {MapOf(map, a_material), ShaderChannelOf(a_channel), {}};
+    return {MaterialTexture(map, a_material), ShaderChannelOf(a_channel), {}};
   }
   switch (a_channel) {
   case MaterialChannel::kRelief:
@@ -170,23 +148,97 @@ MaterialChannelPick PickMaterialChannel(MaterialChannel a_channel,
     return {a_material.rmaos, ShaderChannelOf(MaterialChannel::kOcclusion), {}};
   case MaterialChannel::kNormalSlope: {
     auto &derived = *a_inputs.derived;
-    if (!derived.normalSlope && a_mayRender && !derived.tried) {
-      derived.tried = true;
-      derived.normalSlope = RenderNormalSlope(a_material, derived.problem);
+    if (!derived.normalSlope && a_mayRender && !derived.normalSlopeTried) {
+      derived.normalSlopeTried = true;
+      derived.normalSlope =
+          RenderNormalSlope(a_material, derived.normalSlopeProblem);
     }
     if (derived.normalSlope) {
-      return {
-          RE::NiPointer<RE::NiSourceTexture>{derived.normalSlope->Texture()},
-          ShaderChannelOf(a_channel),
-          {}};
+      return {TextureRef{derived.normalSlope}, ShaderChannelOf(a_channel), {}};
     }
     return {nullptr, ShaderChannelOf(a_channel),
-            derived.tried ? derived.problem
-                          : std::string{Compositor::kNotRendered}};
+            derived.normalSlopeTried ? derived.normalSlopeProblem
+                                     : std::string{Compositor::kNotRendered}};
   }
   default:
     return {nullptr, ShaderChannel::kR, "unknown channel"};
   }
+}
+
+void SetImageSampling(PreparedSource &prepared, const ImageSource &image) {
+  prepared.sampling.channel = ShaderChannelOf(image.channel);
+  prepared.sampling.meshSpace = image.space == ImageSpace::kMesh;
+  prepared.sampling.transform.mirrorU = image.mirror[0];
+  prepared.sampling.transform.mirrorV = image.mirror[1];
+  prepared.sampling.transform.transpose = image.transpose;
+  prepared.sampling.transform.sourceMip = image.mip;
+  prepared.scroll = image.scroll;
+  prepared.tile = image.tile;
+}
+
+void SetMaterialSource(PreparedSource &prepared,
+                       const MaterialChannelPick &pick) {
+  prepared.texture = pick.texture;
+  prepared.sampling.channel = pick.channel;
+  prepared.sampling.meshSpace = true;
+  prepared.problem = pick.problem;
+  if (prepared.problem.empty() && !IsNonPlaceholderTexture(prepared.texture)) {
+    prepared.problem = DescribeTexture(prepared.texture);
+  }
+}
+
+void SetMaterialMask(PreparedMask &prepared, const MaterialChannelPick &pick) {
+  if (!pick.problem.empty() || !IsNonPlaceholderTexture(pick.texture)) {
+    prepared.problem = pick.problem.empty() ? DescribeTexture(pick.texture) +
+                                                  "; mask cannot be rendered"
+                                            : pick.problem;
+    return;
+  }
+  prepared.texture = pick.texture;
+  prepared.channel = pick.channel;
+}
+
+void SetImageSource(PreparedSource &prepared, const ImageSource &image,
+                    const TextureRef &texture) {
+  prepared.texture = texture;
+  if (!prepared.texture) {
+    prepared.problem = std::format("image '{}' did not load", image.path);
+  }
+  SetImageSampling(prepared, image);
+}
+
+ShaderChannel BakeChannel(const BakeSource &bake) {
+  return Is<PositionBake>(bake.bake) || Is<LocalPositionBake>(bake.bake)
+             ? ShaderChannel::kRgb
+             : ShaderChannel::kR;
+}
+
+void SetMeshTexture(PreparedSource &prepared, const TextureRef &texture,
+                    ShaderChannel channel) {
+  prepared.texture = texture;
+  prepared.sampling.channel = channel;
+  prepared.sampling.meshSpace = true;
+}
+
+void SetBakeResult(
+    PreparedSource &prepared,
+    const std::expected<std::shared_ptr<TextureLab::RenderTarget>, std::string>
+        &target,
+    ShaderChannel channel) {
+  if (!target) {
+    prepared.problem = target.error();
+    return;
+  }
+  SetMeshTexture(prepared, TextureRef{*target}, channel);
+}
+
+void SetRenderedMaskSource(PreparedSource &prepared,
+                           std::shared_ptr<RenderedMask> rendered) {
+  SetMeshTexture(prepared, rendered->Texture(),
+                 rendered->Vector() ? ShaderChannel::kRgb : ShaderChannel::kR);
+  prepared.animated = rendered->Animated();
+  prepared.problem = rendered->Problem();
+  prepared.rendered = std::move(rendered);
 }
 
 std::optional<MaterialChannel> SingleChannelOf(const Recipe &a_recipe,
@@ -232,21 +284,6 @@ CachedBake(const MeshEntry *a_entry, std::string_view a_definition) {
   return a_entry ? LargestOf(a_entry->bakes, a_definition) : nullptr;
 }
 
-TextureLab::LayerInput SamplingNow(const PreparedSource &a_source,
-                                   const SignalState &a_signals) {
-  auto input = a_source.sampling;
-  if (a_source.scroll) {
-    const auto scroll = a_signals.Resolve(*a_source.scroll);
-    input.transform.uOffset = scroll.x;
-    input.transform.vOffset = scroll.y;
-  }
-  if (a_source.tile) {
-    const auto tile = a_signals.Resolve(*a_source.tile);
-    input.transform.tileU = std::max(tile.x, 0.01f);
-    input.transform.tileV = std::max(tile.y, 0.01f);
-  }
-  return input;
-}
 }
 
 MaterialInputs MaterialInputs::From(const PbrMaterial &a_material) {
@@ -262,12 +299,12 @@ MaterialInputs MaterialInputs::From(const PbrMaterial &a_material) {
   return in;
 }
 
-RE::NiSourceTexture *RenderedRipple::Texture() const noexcept {
-  return target_ ? target_->Texture() : nullptr;
+TextureRef RenderedRipple::Texture() const noexcept {
+  return TextureRef{target_};
 }
 
-RE::NiSourceTexture *RenderedMask::Texture() const noexcept {
-  return target_ ? target_->Texture() : nullptr;
+TextureRef RenderedMask::Texture() const noexcept {
+  return TextureRef{target_};
 }
 
 bool RenderedMask::Animated() const noexcept { return animated_; }
@@ -275,6 +312,75 @@ bool RenderedMask::Animated() const noexcept { return animated_; }
 bool RenderedMask::Vector() const noexcept { return vector_; }
 
 const std::string &RenderedMask::Problem() const noexcept { return problem_; }
+
+struct Compositor::SourcePreparer {
+  Compositor &compositor;
+  const Recipe &recipe;
+  const GeometryInputs &inputs;
+  TextureSize size{TextureSize::kMin};
+  const Source &source;
+  PreparedSource &prepared;
+
+  void operator()(const ImageSource &image) const {
+    SetImageSource(prepared, image, compositor.LoadImage(image.path));
+    if (prepared.texture && image.channel == ImageChannel::kRgb) {
+      const float mean =
+          TextureLab::GetSingleton()->MeanLuminance(prepared.texture.get());
+      prepared.normalize = 0.5f / std::max(mean, 0.05f);
+    }
+  }
+
+  void operator()(const MaterialSource &material) const {
+    auto pick = PickMaterialChannel(material.channel, inputs, true);
+    SetMaterialSource(prepared, pick);
+  }
+
+  void operator()(const BakeSource &bake) const {
+    auto target = compositor.PrepareBake(bake, inputs, size);
+    SetBakeResult(prepared, target, BakeChannel(bake));
+  }
+
+  void operator()(const DistanceSource &distance) const {
+    auto target = compositor.PrepareDistance(distance, inputs, size);
+    SetBakeResult(prepared, target, ShaderChannel::kR);
+  }
+
+  void operator()(const RippleSource &ripple) const {
+    const RecipeTextureKey key{recipe.id, source.name, size};
+    auto rendered = compositor.PrepareRipple(key, ripple, inputs);
+    if (!rendered) {
+      prepared.problem = rendered.error();
+      return;
+    }
+    prepared.texture = TextureRef{(*rendered)->Texture()};
+    prepared.sampling.channel = ShaderChannel::kR;
+    prepared.sampling.meshSpace = true;
+    prepared.animated = true;
+    prepared.ripple = std::move(*rendered);
+  }
+
+  void operator()(const UvSource &uv) const {
+    const auto entry = compositor.MeshOf(inputs.geometry.get());
+    if (!entry) {
+      prepared.problem = entry.error();
+      return;
+    }
+    auto target =
+        compositor.BakeInto(**entry, UvKeyOf(uv.axis, size), size, [&] {
+          return BuildUvBake(*(*entry)->mesh, uv.axis);
+        });
+    SetBakeResult(prepared, target, ShaderChannel::kR);
+  }
+
+  void operator()(const MaterialClustersSource &clusters) const {
+    const auto target = RenderClusterMap(inputs, SettingsOf(clusters));
+    if (!target) {
+      prepared.problem = inputs.derived->clustersProblem;
+      return;
+    }
+    SetMeshTexture(prepared, TextureRef{target}, ShaderChannel::kR);
+  }
+};
 
 std::optional<PreparedSource>
 Compositor::PrepareSource(const Recipe &a_recipe, const Ref &a_ref,
@@ -293,12 +399,7 @@ Compositor::PrepareSource(const Recipe &a_recipe, const Ref &a_ref,
                               a_ref.name, prepared.problem));
       return prepared;
     }
-    prepared.texture = RE::NiPointer<RE::NiSourceTexture>{rendered->Texture()};
-    prepared.sampling.channel =
-        rendered->Vector() ? ShaderChannel::kRgb : ShaderChannel::kR;
-    prepared.sampling.meshSpace = true;
-    prepared.animated = rendered->Animated();
-    prepared.rendered = std::move(rendered);
+    SetRenderedMaskSource(prepared, std::move(rendered));
     return prepared;
   }
   const auto *source = a_recipe.FindSource(a_ref.name);
@@ -308,105 +409,8 @@ Compositor::PrepareSource(const Recipe &a_recipe, const Ref &a_ref,
   }
   PreparedSource prepared;
   prepared.animated = IsAnimated(a_recipe, *source);
-  Match(
-      source->kind,
-      [&](const ImageSource &image) {
-        prepared.texture = LoadImage(image.path);
-        if (!prepared.texture) {
-          prepared.problem = std::format("image '{}' did not load", image.path);
-        }
-        prepared.sampling.channel = ShaderChannelOf(image.channel);
-        prepared.sampling.meshSpace = image.space == ImageSpace::kMesh;
-        prepared.sampling.transform.mirrorU = image.mirror[0];
-        prepared.sampling.transform.mirrorV = image.mirror[1];
-        prepared.sampling.transform.transpose = image.transpose;
-        prepared.sampling.transform.sourceMip = image.mip;
-        prepared.scroll = image.scroll;
-        prepared.tile = image.tile;
-        if (prepared.texture && image.channel == ImageChannel::kRgb) {
-          const float mean =
-              TextureLab::GetSingleton()->MeanLuminance(prepared.texture.get());
-          prepared.normalize = 0.5f / std::max(mean, 0.05f);
-        }
-      },
-      [&](const MaterialSource &material) {
-        auto pick = PickMaterialChannel(material.channel, a_inputs, true);
-        prepared.texture = pick.texture;
-        prepared.sampling.channel = pick.channel;
-        prepared.sampling.meshSpace = true;
-        prepared.problem = pick.problem;
-        if (prepared.problem.empty() && !RealTexture(prepared.texture)) {
-          prepared.problem = DescribeTexture(prepared.texture);
-        }
-      },
-      [&](const BakeSource &bake) {
-        auto target = PrepareBake(bake, a_inputs, a_size);
-        if (!target) {
-          prepared.problem = target.error();
-          return;
-        }
-        prepared.texture =
-            RE::NiPointer<RE::NiSourceTexture>{(*target)->Texture()};
-        prepared.sampling.channel =
-            Is<PositionBake>(bake.bake) || Is<LocalPositionBake>(bake.bake)
-                ? ShaderChannel::kRgb
-                : ShaderChannel::kR;
-        prepared.sampling.meshSpace = true;
-      },
-      [&](const DistanceSource &distance) {
-        auto target = PrepareDistance(distance, a_inputs, a_size);
-        if (!target) {
-          prepared.problem = target.error();
-          return;
-        }
-        prepared.texture =
-            RE::NiPointer<RE::NiSourceTexture>{(*target)->Texture()};
-        prepared.sampling.channel = ShaderChannel::kR;
-        prepared.sampling.meshSpace = true;
-      },
-      [&](const RippleSource &ripple) {
-        const RecipeTextureKey key{a_recipe.id, source->name, a_size};
-        auto rendered = PrepareRipple(key, ripple, a_inputs);
-        if (!rendered) {
-          prepared.problem = rendered.error();
-          return;
-        }
-        prepared.texture =
-            RE::NiPointer<RE::NiSourceTexture>{(*rendered)->Texture()};
-        prepared.sampling.channel = ShaderChannel::kR;
-        prepared.sampling.meshSpace = true;
-        prepared.animated = true;
-        prepared.ripple = std::move(*rendered);
-      },
-      [&](const UvSource &uv) {
-        const auto entry = MeshOf(a_inputs.geometry.get());
-        if (!entry) {
-          prepared.problem = entry.error();
-          return;
-        }
-        auto target = BakeInto(**entry, UvKeyOf(uv.axis, a_size), a_size, [&] {
-          return BuildUvBake(*(*entry)->mesh, uv.axis);
-        });
-        if (!target) {
-          prepared.problem = target.error();
-          return;
-        }
-        prepared.texture =
-            RE::NiPointer<RE::NiSourceTexture>{(*target)->Texture()};
-        prepared.sampling.channel = ShaderChannel::kR;
-        prepared.sampling.meshSpace = true;
-      },
-      [&](const MaterialClustersSource &clusters) {
-        const auto target = RenderClusterMap(a_inputs, SettingsOf(clusters));
-        if (!target) {
-          prepared.problem = a_inputs.derived->clustersProblem;
-          return;
-        }
-        prepared.texture =
-            RE::NiPointer<RE::NiSourceTexture>{target->Texture()};
-        prepared.sampling.channel = ShaderChannel::kR;
-        prepared.sampling.meshSpace = true;
-      });
+  Match(source->kind,
+        SourcePreparer{*this, a_recipe, a_inputs, a_size, *source, prepared});
   if (!prepared.problem.empty()) {
     report.Warn(std::format("'@{}': {}; the active layer cannot be rendered",
                             a_ref.name, prepared.problem));
@@ -428,16 +432,10 @@ Compositor::PrepareMask(const Recipe &a_recipe, const Ref &a_ref,
   PreparedMask prepared;
   prepared.animated = IsAnimated(a_recipe, *mask);
   if (const auto channel = SingleChannelOf(a_recipe, *mask)) {
-    auto pick = PickMaterialChannel(*channel, a_inputs, true);
-    if (!pick.problem.empty() || !RealTexture(pick.texture)) {
-      prepared.problem = pick.problem.empty() ? DescribeTexture(pick.texture) +
-                                                    "; mask cannot be rendered"
-                                              : pick.problem;
+    SetMaterialMask(prepared, PickMaterialChannel(*channel, a_inputs, true));
+    if (!prepared.problem.empty()) {
       report.Warn(std::format("mask '@{}': {}", a_ref.name, prepared.problem));
-      return prepared;
     }
-    prepared.texture = pick.texture;
-    prepared.channel = pick.channel;
     return prepared;
   }
   auto rendered =
@@ -449,7 +447,7 @@ Compositor::PrepareMask(const Recipe &a_recipe, const Ref &a_ref,
     report.Warn(std::format("mask '@{}': {}", a_ref.name, prepared.problem));
     return prepared;
   }
-  prepared.texture = RE::NiPointer<RE::NiSourceTexture>{rendered->Texture()};
+  prepared.texture = TextureRef{rendered->Texture()};
   prepared.channel = ShaderChannel::kR;
   prepared.animated = rendered->Animated();
   prepared.rendered = std::move(rendered);
@@ -484,16 +482,89 @@ Compositor::BakeCurve(const Recipe &a_recipe, const CurveRef &a_curve,
                ? lab->MeanLuminance(a_source->texture.get())
                : lab->MeanChannel(a_source->texture.get(), channel);
   }
-  std::array<float, 256> values{};
-  for (std::size_t i = 0; i < values.size(); ++i) {
-    values[i] = ApplyCurve(*program, static_cast<float>(i) / 255.0f, mean);
-  }
-  auto lookup = TextureLab::GetSingleton()->CreateLookup(values);
+  auto lookup = CreateCurveLookup(*program, mean);
   if (!lookup) {
     report.Warn("curve lookup could not be created; ignored");
   }
   return lookup;
 }
+
+struct Compositor::SourceInspector {
+  const Compositor &compositor;
+  const Recipe &recipe;
+  const GeometryInputs &inputs;
+  std::string_view name;
+  const std::shared_ptr<const MeshEntry> &entry;
+  PreparedSource &prepared;
+
+  void SetMissingTextureProblem() const {
+    prepared.problem = entry && !entry->mesh && !entry->problem.empty()
+                           ? "the mesh could not be read: " + entry->problem
+                           : std::string{kNotRendered};
+  }
+  void InspectBake(const std::string &a_definition,
+                   ShaderChannel a_channel) const {
+    prepared.sampling.meshSpace = true;
+    if (const auto target = CachedBake(entry.get(), a_definition)) {
+      prepared.texture = TextureRef{target};
+      prepared.sampling.channel = a_channel;
+    } else {
+      SetMissingTextureProblem();
+    }
+  }
+
+  void operator()(const ImageSource &image) const {
+    const auto loaded = compositor.images_.find(ImageCacheKey(image.path));
+    if (loaded == compositor.images_.end()) {
+      prepared.problem = kNotRendered;
+      return;
+    }
+    SetImageSource(prepared, image, loaded->second);
+  }
+
+  void operator()(const MaterialSource &material) const {
+    auto pick = PickMaterialChannel(material.channel, inputs, false);
+    SetMaterialSource(prepared, pick);
+  }
+
+  void operator()(const BakeSource &bake) const {
+    InspectBake(DefinitionOf(bake.bake), BakeChannel(bake));
+  }
+
+  void operator()(const DistanceSource &distance) const {
+    InspectBake(DefinitionOf(distance), ShaderChannel::kR);
+  }
+
+  void operator()(const UvSource &uv) const {
+    InspectBake(DefinitionOf(uv.axis), ShaderChannel::kR);
+  }
+
+  void operator()(const RippleSource &) const {
+    prepared.sampling.meshSpace = true;
+    const auto rendered =
+        inputs.ripples ? LargestRecipeTexture(*inputs.ripples, recipe.id, name)
+                       : nullptr;
+    if (!rendered) {
+      SetMissingTextureProblem();
+      return;
+    }
+    prepared.texture = TextureRef{rendered->Texture()};
+    prepared.animated = true;
+    prepared.ripple = rendered;
+  }
+
+  void operator()(const MaterialClustersSource &clusters) const {
+    prepared.sampling.meshSpace = true;
+    const DerivedMaps &derived = *inputs.derived;
+    if (derived.clusters && derived.clusterSettings == SettingsOf(clusters)) {
+      prepared.texture = TextureRef{derived.clusters};
+      return;
+    }
+    prepared.problem = derived.clustersTried && !derived.clustersProblem.empty()
+                           ? derived.clustersProblem
+                           : std::string{kNotRendered};
+  }
+};
 
 std::optional<PreparedSource>
 Compositor::InspectSource(const Recipe &a_recipe, std::string_view a_name,
@@ -501,14 +572,7 @@ Compositor::InspectSource(const Recipe &a_recipe, std::string_view a_name,
   if (a_recipe.FindMask(a_name)) {
     PreparedSource prepared;
     if (auto rendered = CachedMask(a_inputs, a_recipe, a_name)) {
-      prepared.texture =
-          RE::NiPointer<RE::NiSourceTexture>{rendered->Texture()};
-      prepared.sampling.channel =
-          rendered->Vector() ? ShaderChannel::kRgb : ShaderChannel::kR;
-      prepared.sampling.meshSpace = true;
-      prepared.animated = rendered->Animated();
-      prepared.problem = rendered->Problem();
-      prepared.rendered = std::move(rendered);
+      SetRenderedMaskSource(prepared, std::move(rendered));
     } else {
       prepared.problem = kNotRendered;
     }
@@ -521,93 +585,8 @@ Compositor::InspectSource(const Recipe &a_recipe, std::string_view a_name,
   const auto entry = CachedMesh(a_inputs.geometry.get());
   PreparedSource prepared;
   prepared.animated = IsAnimated(a_recipe, *source);
-  const auto notRendered = [&] {
-    prepared.problem = entry && !entry->mesh && !entry->problem.empty()
-                           ? "the mesh could not be read: " + entry->problem
-                           : std::string{kNotRendered};
-  };
-  const auto baked = [&](const std::string &a_definition,
-                         ShaderChannel a_channel) {
-    prepared.sampling.meshSpace = true;
-    if (const auto target = CachedBake(entry.get(), a_definition)) {
-      prepared.texture = RE::NiPointer<RE::NiSourceTexture>{target->Texture()};
-      prepared.sampling.channel = a_channel;
-    } else {
-      notRendered();
-    }
-  };
-  Match(
-      source->kind,
-      [&](const ImageSource &image) {
-        const auto loaded = images_.find(Lower(image.path));
-        if (loaded == images_.end()) {
-          prepared.problem = kNotRendered;
-          return;
-        }
-        prepared.texture = loaded->second;
-        if (!prepared.texture) {
-          prepared.problem = std::format("image '{}' did not load", image.path);
-        }
-        prepared.sampling.channel = ShaderChannelOf(image.channel);
-        prepared.sampling.meshSpace = image.space == ImageSpace::kMesh;
-        prepared.sampling.transform.mirrorU = image.mirror[0];
-        prepared.sampling.transform.mirrorV = image.mirror[1];
-        prepared.sampling.transform.transpose = image.transpose;
-        prepared.sampling.transform.sourceMip = image.mip;
-        prepared.scroll = image.scroll;
-        prepared.tile = image.tile;
-      },
-      [&](const MaterialSource &material) {
-        auto pick = PickMaterialChannel(material.channel, a_inputs, false);
-        prepared.texture = pick.texture;
-        prepared.sampling.channel = pick.channel;
-        prepared.sampling.meshSpace = true;
-        prepared.problem = pick.problem;
-        if (prepared.problem.empty() && !RealTexture(prepared.texture)) {
-          prepared.problem = DescribeTexture(prepared.texture);
-        }
-      },
-      [&](const BakeSource &bake) {
-        baked(DefinitionOf(bake.bake),
-              Is<PositionBake>(bake.bake) || Is<LocalPositionBake>(bake.bake)
-                  ? ShaderChannel::kRgb
-                  : ShaderChannel::kR);
-      },
-      [&](const DistanceSource &distance) {
-        baked(DefinitionOf(distance), ShaderChannel::kR);
-      },
-      [&](const UvSource &uv) {
-        baked(DefinitionOf(uv.axis), ShaderChannel::kR);
-      },
-      [&](const RippleSource &) {
-        prepared.sampling.meshSpace = true;
-        const auto rendered =
-            a_inputs.ripples
-                ? LargestRecipeTexture(*a_inputs.ripples, a_recipe.id, a_name)
-                : nullptr;
-        if (!rendered) {
-          notRendered();
-          return;
-        }
-        prepared.texture =
-            RE::NiPointer<RE::NiSourceTexture>{rendered->Texture()};
-        prepared.animated = true;
-        prepared.ripple = rendered;
-      },
-      [&](const MaterialClustersSource &clusters) {
-        prepared.sampling.meshSpace = true;
-        const DerivedMaps &derived = *a_inputs.derived;
-        if (derived.clusters &&
-            derived.clusterSettings == SettingsOf(clusters)) {
-          prepared.texture =
-              RE::NiPointer<RE::NiSourceTexture>{derived.clusters->Texture()};
-          return;
-        }
-        prepared.problem =
-            derived.clustersTried && !derived.clustersProblem.empty()
-                ? derived.clustersProblem
-                : std::string{kNotRendered};
-      });
+  Match(source->kind,
+        SourceInspector{*this, a_recipe, a_inputs, a_name, entry, prepared});
   return prepared;
 }
 
@@ -621,27 +600,135 @@ Compositor::InspectMask(const Recipe &a_recipe, std::string_view a_name,
   PreparedMask prepared;
   prepared.animated = IsAnimated(a_recipe, *mask);
   if (auto rendered = CachedMask(a_inputs, a_recipe, a_name)) {
-    prepared.texture = RE::NiPointer<RE::NiSourceTexture>{rendered->Texture()};
+    prepared.texture = TextureRef{rendered->Texture()};
     prepared.animated = rendered->Animated();
     prepared.problem = rendered->Problem();
     prepared.rendered = std::move(rendered);
     return prepared;
   }
   if (const auto channel = SingleChannelOf(a_recipe, *mask)) {
-    auto pick = PickMaterialChannel(*channel, a_inputs, false);
-    if (!pick.problem.empty() || !RealTexture(pick.texture)) {
-      prepared.problem = pick.problem.empty() ? DescribeTexture(pick.texture) +
-                                                    "; mask cannot be rendered"
-                                              : pick.problem;
-      return prepared;
-    }
-    prepared.texture = pick.texture;
-    prepared.channel = pick.channel;
+    SetMaterialMask(prepared, PickMaterialChannel(*channel, a_inputs, false));
     return prepared;
   }
   prepared.problem = kNotRendered;
   return prepared;
 }
+
+struct Compositor::MaskBuilder {
+  Compositor &compositor;
+  RenderedMask &mask;
+  const Recipe &recipe;
+  const GeometryInputs &inputs;
+  TextureSize size{TextureSize::kMin};
+  std::uint32_t depth = 0;
+  const Program &program;
+  const SignalGraph &graph;
+
+  std::expected<void, std::string>
+  BindTexture(const std::string &name, RenderedMask::RefBinding &binding) {
+    std::vector<Diagnostic> ignored;
+    if (mask.textures_.size() >= TextureLab::kProgramTextures) {
+      return std::unexpected(std::format("reads more than {} images",
+                                         TextureLab::kProgramTextures));
+    }
+    auto source = compositor.PrepareSource(recipe, Ref{name}, inputs, size,
+                                           ignored, "mask", depth + 1);
+    if (!source || !source->problem.empty()) {
+      return std::unexpected(std::format(
+          "'@{}': {}", name, source ? source->problem : "not found"));
+    }
+    if (source->rendered) {
+      if (!source->rendered->program_ && source->rendered->problem_.empty()) {
+        return std::unexpected(
+            std::format("'@{}' reads back into this mask", name));
+      }
+      mask.dependencies_.push_back(source->rendered);
+    }
+    binding.isTexture = true;
+    binding.texture = static_cast<std::uint32_t>(mask.textures_.size());
+    mask.animated_ = mask.animated_ || source->animated;
+    mask.textures_.push_back(std::move(*source));
+    return {};
+  }
+
+  std::expected<void, std::string> BindReferences() {
+    for (const auto &name : program.References()) {
+      RenderedMask::RefBinding binding;
+      if (recipe.FindSource(name) || recipe.FindMask(name)) {
+        if (auto result = BindTexture(name, binding); !result) {
+          return result;
+        }
+      } else if (graph.Index(name)) {
+        binding.signal = name;
+        mask.animated_ = true;
+      } else {
+        return std::unexpected(
+            std::format("'@{}' is not a source, mask or signal", name));
+      }
+      mask.refs_.push_back(std::move(binding));
+      if (mask.refs_.size() > TextureLab::kProgramRefs) {
+        return std::unexpected(
+            std::format("reads more than {} names", TextureLab::kProgramRefs));
+      }
+    }
+    return {};
+  }
+
+  std::expected<void, std::string> BindCurves() {
+    for (const auto &curveName : program.Curves()) {
+      const auto *curve = recipe.FindCurve(curveName);
+      if (!curve) {
+        return std::unexpected(std::format("curve '@{}' not found", curveName));
+      }
+      const auto curveProgram = ParseCurve(curve->text);
+      if (!curveProgram) {
+        return std::unexpected(
+            std::format("curve '@{}': {}", curveName, curveProgram.error()));
+      }
+      auto lookup = CreateCurveLookup(*curveProgram, 0.5f);
+      if (!lookup) {
+        return std::unexpected("curve lookup could not be created");
+      }
+      mask.curves_.push_back(std::move(lookup));
+      if (mask.curves_.size() > TextureLab::kProgramCurves) {
+        return std::unexpected(std::format("calls more than {} curves",
+                                           TextureLab::kProgramCurves));
+      }
+    }
+    return {};
+  }
+
+  std::expected<void, std::string> CheckType() {
+    const auto type =
+        program.Check([&](std::string_view name) -> std::optional<ValueType> {
+          if (const auto *source = recipe.FindSource(name)) {
+            return SourceType(*source);
+          }
+          if (recipe.FindMask(name)) {
+            const auto dep =
+                FindRecipeTexture(*inputs.masks, recipe.id, name, size);
+            return dep && dep->Vector() ? ValueType::kVec3 : ValueType::kScalar;
+          }
+          return graph.TypeOf(name);
+        });
+    if (!type) {
+      return std::unexpected(type.error());
+    }
+    mask.vector_ = *type != ValueType::kScalar;
+    mask.animated_ = mask.animated_ || program.UsesTime();
+    return {};
+  }
+
+  std::expected<void, std::string> Prepare() {
+    if (auto result = BindReferences(); !result) {
+      return result;
+    }
+    if (auto result = BindCurves(); !result) {
+      return result;
+    }
+    return CheckType();
+  }
+};
 
 std::shared_ptr<RenderedMask>
 Compositor::PrepareRenderedMask(const Recipe &a_recipe, std::string_view a_name,
@@ -672,87 +759,12 @@ Compositor::PrepareRenderedMask(const Recipe &a_recipe, std::string_view a_name,
   if (!program) {
     return fail(program.error());
   }
-  const auto graph = std::make_shared<const SignalGraph>(
-      SignalGraph::Compile(a_recipe.signals, a_recipe.curves));
-
-  std::vector<Diagnostic> ignored;
-  for (const auto &name : program->References()) {
-    RenderedMask::RefBinding binding;
-    if (a_recipe.FindSource(name) || a_recipe.FindMask(name)) {
-      if (r.textures_.size() >= TextureLab::kProgramTextures) {
-        return fail(std::format("reads more than {} images",
-                                TextureLab::kProgramTextures));
-      }
-      auto source = PrepareSource(a_recipe, Ref{name}, a_inputs, a_size,
-                                  ignored, "mask", a_depth + 1);
-      if (!source || !source->problem.empty()) {
-        return fail(std::format("'@{}': {}", name,
-                                source ? source->problem : "not found"));
-      }
-      if (source->rendered) {
-        if (!source->rendered->program_ && source->rendered->problem_.empty()) {
-          return fail(std::format("'@{}' reads back into this mask", name));
-        }
-        r.dependencies_.push_back(source->rendered);
-      }
-      binding.isTexture = true;
-      binding.texture = static_cast<std::uint32_t>(r.textures_.size());
-      r.animated_ = r.animated_ || source->animated;
-      r.textures_.push_back(std::move(*source));
-    } else if (graph && graph->Index(name)) {
-      binding.signal = name;
-      r.animated_ = true;
-    } else {
-      return fail(std::format("'@{}' is not a source, mask or signal", name));
-    }
-    r.refs_.push_back(std::move(binding));
-    if (r.refs_.size() > TextureLab::kProgramRefs) {
-      return fail(
-          std::format("reads more than {} names", TextureLab::kProgramRefs));
-    }
+  const auto graph = SignalGraph::Compile(a_recipe.signals, a_recipe.curves);
+  MaskBuilder builder{*this,  r,       a_recipe, a_inputs,
+                      a_size, a_depth, *program, graph};
+  if (auto result = builder.Prepare(); !result) {
+    return fail(result.error());
   }
-  for (const auto &curveName : program->Curves()) {
-    const auto *curve = a_recipe.FindCurve(curveName);
-    if (!curve) {
-      return fail(std::format("curve '@{}' not found", curveName));
-    }
-    const auto curveProgram = ParseCurve(curve->text);
-    if (!curveProgram) {
-      return fail(
-          std::format("curve '@{}': {}", curveName, curveProgram.error()));
-    }
-    std::array<float, 256> values{};
-    for (std::size_t i = 0; i < values.size(); ++i) {
-      values[i] =
-          ApplyCurve(*curveProgram, static_cast<float>(i) / 255.0f, 0.5f);
-    }
-    auto lookup = TextureLab::GetSingleton()->CreateLookup(values);
-    if (!lookup) {
-      return fail("curve lookup could not be created");
-    }
-    r.curves_.push_back(std::move(lookup));
-    if (r.curves_.size() > TextureLab::kProgramCurves) {
-      return fail(
-          std::format("calls more than {} curves", TextureLab::kProgramCurves));
-    }
-  }
-  const auto type =
-      program->Check([&](std::string_view name) -> std::optional<ValueType> {
-        if (const auto *source = a_recipe.FindSource(name)) {
-          return SourceType(*source);
-        }
-        if (a_recipe.FindMask(name)) {
-          const auto dep =
-              FindRecipeTexture(*a_inputs.masks, a_recipe.id, name, a_size);
-          return dep && dep->Vector() ? ValueType::kVec3 : ValueType::kScalar;
-        }
-        return graph ? graph->TypeOf(name) : std::nullopt;
-      });
-  if (!type) {
-    return fail(type.error());
-  }
-  r.vector_ = *type != ValueType::kScalar;
-  r.animated_ = r.animated_ || program->UsesTime();
   if (!TextureLab::GetSingleton()->InterpreterAvailable()) {
     return fail(
         "the interpreter shader did not compile (see the log at start)");
@@ -889,8 +901,9 @@ bool Compositor::RenderMask(RenderedMask &a_mask, const SignalState &a_signals,
     if (pass.textureCount >= pass.textures.size()) {
       return false;
     }
-    pass.textures[pass.textureCount++] = {
-        source.texture.get(), SamplingNow(source, a_signals), source.normalize};
+    pass.textures[pass.textureCount++] = {source.texture.get(),
+                                          ResolveSampling(source, a_signals),
+                                          source.normalize};
   }
   for (const auto &curve : a_mask.curves_) {
     if (pass.curveCount >= pass.curves.size()) {

@@ -18,6 +18,10 @@ inline constexpr std::string_view kTextureFolder = BEEF_PLUGIN_NAME;
 
 inline std::string LogFileName() { return std::format("{}.log", kName); }
 
+inline std::string TraceFileName(std::string_view a_run) {
+  return std::format("{}-trace-{}.jsonl", kName, a_run);
+}
+
 inline std::filesystem::path IniPath() {
   return std::filesystem::current_path() / "Data" / "SKSE" / "Plugins" /
          std::format("{}.ini", kName);

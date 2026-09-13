@@ -2,6 +2,7 @@
 
 #include "Identity.h"
 #include "SettingsPublication.h"
+#include "diagnostics/Trace.h"
 
 #include <cctype>
 #include <fstream>
@@ -124,5 +125,14 @@ std::string FormKeyOf(const RE::TESForm &a_form) {
 
 Settings GetSettings() { return g_settings.Read(); }
 
-void SetSettings(Settings a_settings) { g_settings.Publish(a_settings); }
+void SetSettings(Settings a_settings) {
+  a_settings = NormalizeSettings(a_settings);
+  Trace::Get().Enable(true);
+  Trace::Emit(
+      Trace::Event::kSettings,
+      {{"fingerprint_fnv1a64", Trace::Fingerprint(a_settings.Serialize())},
+       {"effective", a_settings.Serialize()}});
+  Trace::Get().Enable(a_settings.diagnosticLogging);
+  g_settings.Publish(a_settings);
+}
 }

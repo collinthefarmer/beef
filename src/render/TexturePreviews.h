@@ -1,6 +1,6 @@
 #pragma once
 
-#include "render/RuntimeTextures.h"
+#include "render/TextureRef.h"
 
 #include <atomic>
 #include <cstdint>
@@ -8,6 +8,8 @@
 #include <memory>
 #include <mutex>
 #include <utility>
+#include <tuple>
+#include <string>
 #include <vector>
 
 namespace BetterEnchantmentEffects {
@@ -19,26 +21,51 @@ public:
   [[nodiscard]] std::shared_ptr<RenderTarget>
   Preview(RE::NiSourceTexture *a_source, ShaderChannel a_channel,
           bool a_dynamic);
+  [[nodiscard]] std::shared_ptr<RenderTarget>
+  SampledPreview(std::string a_context, RE::NiSourceTexture *a_source,
+                 const TextureLab::LayerInput &a_sampling, float a_normalize,
+                 bool a_dynamic);
+  [[nodiscard]] TextureLab::PreviewDraw *
+  RetainDraw(std::shared_ptr<RenderTarget> a_target);
+  void CollectDraws();
   void RenderPreviews();
   void ClearPreviews();
   void InvalidatePreviews() noexcept;
 
 private:
   TextureLab &renderer_;
-  using PreviewKey = std::pair<RE::NiSourceTexture *, ShaderChannel>;
+  using PreviewKey = std::tuple<RE::NiSourceTexture *, ShaderChannel, std::string>;
+  struct Sampling {
+    TextureLab::LayerInput input;
+    float normalize = 1.0f;
+    [[nodiscard]] bool operator==(const Sampling &) const = default;
+  };
   struct PreviewEntry {
-    RE::NiPointer<RE::NiSourceTexture> source;
+    TextureRef source;
     std::shared_ptr<RenderTarget> target;
     std::uint64_t generation = 0;
     bool dynamic = false;
     bool wanted = false;
+    bool ready = false;
+    bool dirty = false;
+    std::optional<Sampling> sampling;
   };
+  struct PreviewWork {
+    PreviewKey key;
+    TextureRef source;
+    ShaderChannel channel;
+    std::shared_ptr<RenderTarget> target;
+    std::optional<Sampling> sampling;
+  };
+  void ExpireUnused(std::uint64_t a_generation);
+  [[nodiscard]] std::optional<PreviewWork>
+  PrepareRequest(const PreviewKey &a_key, PreviewEntry &a_entry,
+                 std::uint64_t a_generation);
   std::mutex previewLock_;
   std::map<PreviewKey, PreviewEntry> previews_;
   std::atomic<std::uint64_t> previewGeneration_{1};
   std::uint64_t previewSeen_ = 1;
-  std::vector<std::pair<std::shared_ptr<RenderTarget>, std::uint64_t>>
-      previewGraveyard_;
-  std::uint64_t previewTick_ = 0;
+  ConsumptionLeases<RenderTarget> draws_{2048};
+  std::atomic<bool> drawPressure_{false};
 };
 }

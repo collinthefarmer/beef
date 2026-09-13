@@ -1,4 +1,5 @@
 #include "engine/RecipeEditor.h"
+#include "diagnostics/Trace.h"
 
 #include "engine/Manager.h"
 
@@ -8,6 +9,7 @@
 
 #include <algorithm>
 #include <format>
+#include <mutex>
 #include <span>
 #include <string>
 #include <string_view>
@@ -43,13 +45,162 @@ void LogRecipeDiagnostics(std::string_view a_id,
 }
 }
 
-void RecipeEditor::EditRecipe(std::string a_id, Studio::EditBatch a_edits) {
-  runtime_.PostTask([this, id = std::move(a_id), edits = std::move(a_edits)] {
-    if (const auto applied = ApplyEdits(id, edits); !applied) {
-      logger::warn("edit refused: {} ({}: {})", Studio::Describe(edits),
-                   applied.error().where, applied.error().message);
+struct RecipeEditor::FileOperationJournal {
+  std::mutex lock;
+  std::uint64_t nextID = 0;
+  std::vector<Studio::FileOperationResult> results;
+  struct EditEntry {
+    Studio::RecipeEditResult result;
+    bool pending = true;
+  };
+  std::vector<EditEntry> edits;
+
+  std::uint64_t BeginEdit(const std::string &a_id) {
+    std::scoped_lock guard{lock};
+    std::erase_if(edits, [&](const EditEntry &a_entry) {
+      return a_entry.result.recipeID == a_id;
+    });
+    if (edits.size() >= 64) {
+      edits.erase(edits.begin());
     }
-  });
+    const std::uint64_t id = ++nextID;
+    edits.push_back({{id, a_id, std::nullopt}, true});
+    return id;
+  }
+
+  void FinishEdit(std::uint64_t a_id, std::optional<std::string> a_error) {
+    std::scoped_lock guard{lock};
+    for (EditEntry &entry : edits) {
+      if (entry.result.requestID == a_id && entry.pending) {
+        entry.result.error = std::move(a_error);
+        entry.pending = false;
+        return;
+      }
+    }
+  }
+
+  std::uint64_t Begin(const std::string &a_id, Studio::FileAction a_action) {
+    std::scoped_lock guard{lock};
+    std::erase_if(results, [&](const Studio::FileOperationResult &result) {
+      return result.recipeID == a_id;
+    });
+    if (results.size() >= 64) {
+      results.erase(results.begin());
+    }
+    const std::uint64_t id = ++nextID;
+    results.push_back(
+        {id, a_id, a_action, Studio::FileOperationState::kPending, {}, {}});
+    return id;
+  }
+
+  void CancelPending() {
+    std::scoped_lock guard{lock};
+    for (EditEntry &entry : edits) {
+      if (entry.pending) {
+        entry.result.error = "Recipe edit was canceled by game load.";
+        entry.pending = false;
+      }
+    }
+    for (Studio::FileOperationResult &result : results) {
+      if (result.state == Studio::FileOperationState::kPending) {
+        result.state = Studio::FileOperationState::kFailed;
+        result.error = "File operation was canceled by game load.";
+      }
+    }
+  }
+
+  void Finish(std::uint64_t a_id, std::string a_path, std::string a_error) {
+    std::scoped_lock guard{lock};
+    const auto found = std::ranges::find(
+        results, a_id, &Studio::FileOperationResult::requestID);
+    if (found == results.end() ||
+        found->state != Studio::FileOperationState::kPending) {
+      return;
+    }
+    found->state = a_error.empty() ? Studio::FileOperationState::kSucceeded
+                                   : Studio::FileOperationState::kFailed;
+    found->path = std::move(a_path);
+    found->error = std::move(a_error);
+  }
+};
+
+struct RecipeEditor::PendingFileOperation {
+  std::shared_ptr<FileOperationJournal> journal;
+  std::uint64_t id;
+
+  PendingFileOperation(std::shared_ptr<FileOperationJournal> a_journal,
+                       const std::string &a_recipe, Studio::FileAction a_action)
+      : journal(std::move(a_journal)), id(journal->Begin(a_recipe, a_action)) {}
+
+  PendingFileOperation(const PendingFileOperation &) = delete;
+  PendingFileOperation &operator=(const PendingFileOperation &) = delete;
+  PendingFileOperation(PendingFileOperation &&) = delete;
+  PendingFileOperation &operator=(PendingFileOperation &&) = delete;
+
+  ~PendingFileOperation() {
+    journal->Finish(id, {}, "File operation was canceled before completion.");
+  }
+
+  void Finish(std::string a_path, std::string a_error = {}) const {
+    journal->Finish(id, std::move(a_path), std::move(a_error));
+  }
+};
+
+struct RecipeEditor::PendingRecipeEdit {
+  std::shared_ptr<FileOperationJournal> journal;
+  std::uint64_t id;
+
+  PendingRecipeEdit(std::shared_ptr<FileOperationJournal> a_journal,
+                    const std::string &a_recipe)
+      : journal(std::move(a_journal)), id(journal->BeginEdit(a_recipe)) {}
+
+  PendingRecipeEdit(const PendingRecipeEdit &) = delete;
+  PendingRecipeEdit &operator=(const PendingRecipeEdit &) = delete;
+  PendingRecipeEdit(PendingRecipeEdit &&) = delete;
+  PendingRecipeEdit &operator=(PendingRecipeEdit &&) = delete;
+
+  ~PendingRecipeEdit() {
+    journal->FinishEdit(id, "Recipe edit was canceled before completion.");
+  }
+
+  void Finish(std::optional<std::string> a_error = std::nullopt) const {
+    journal->FinishEdit(id, std::move(a_error));
+  }
+};
+
+std::vector<Studio::RecipeEditResult> RecipeEditor::EditResults() const {
+  std::scoped_lock guard{fileOperations_->lock};
+  std::vector<Studio::RecipeEditResult> results;
+  for (const FileOperationJournal::EditEntry &entry : fileOperations_->edits) {
+    if (!entry.pending) {
+      results.push_back(entry.result);
+    }
+  }
+  return results;
+}
+
+std::vector<Studio::FileOperationResult> RecipeEditor::FileOperations() const {
+  std::scoped_lock guard{fileOperations_->lock};
+  return fileOperations_->results;
+}
+
+std::uint64_t RecipeEditor::EditRecipe(std::string a_id,
+                                       Studio::EditBatch a_edits) {
+  const Trace::Scope trace{Trace::Command("editor.EditRecipe")};
+  const auto operation =
+      std::make_shared<PendingRecipeEdit>(fileOperations_, a_id);
+  runtime_.PostTask(
+      [this, id = std::move(a_id), edits = std::move(a_edits), operation] {
+        if (const auto applied = ApplyEdits(id, edits); !applied) {
+          logger::warn("edit refused: {} ({}: {})", Studio::Describe(edits),
+                       applied.error().where, applied.error().message);
+          operation->Finish(std::format("{}: {}", applied.error().where,
+                                        applied.error().message));
+          return;
+        }
+        operation->Finish();
+      });
+  return operation->id;
 }
 
 std::expected<void, Diagnostic>
@@ -68,7 +219,7 @@ RecipeEditor::ApplyEdits(const std::string &a_id,
   if (*prepared == *recipe) {
     return {};
   }
-  runtime_.RebuildRecipeWearersAfterChange(a_id, [&] {
+  runtime_.ChangeAndRebuildActors(a_id, [&] {
     PushHistory(histories_, a_id, *recipe, *prepared);
     *recipe = std::move(*prepared);
     LogRecipeDiagnostics(a_id, RefreshRecipeDerivedState(a_id));
@@ -76,88 +227,137 @@ RecipeEditor::ApplyEdits(const std::string &a_id,
   return {};
 }
 
-void RecipeEditor::RestoreRecipe(const std::string &a_id, bool a_redo) {
-  runtime_.RebuildRecipeWearersAfterChange(a_id, [&] {
-    Recipe *recipe = MutableRecipe(a_id);
-    const auto history = histories_.find(a_id);
-    if (!recipe || history == histories_.end()) {
-      return;
-    }
-    std::optional<Recipe> restored =
-        a_redo ? history->second.Redo(*recipe) : history->second.Undo(*recipe);
-    if (!restored) {
-      return;
-    }
+std::optional<std::string> RecipeEditor::RestoreRecipe(const std::string &a_id,
+                                                       bool a_redo) {
+  Recipe *recipe = MutableRecipe(a_id);
+  const auto history = histories_.find(a_id);
+  if (!recipe)
+    return "Recipe is not loaded.";
+  if (history == histories_.end())
+    return "No recipe history is available.";
+  auto restored =
+      a_redo ? history->second.Redo(*recipe) : history->second.Undo(*recipe);
+  if (!restored)
+    return a_redo ? "Nothing to redo." : "Nothing to undo.";
+  runtime_.ChangeAndRebuildActors(a_id, [&] {
     *recipe = std::move(*restored);
     recipe->id = a_id;
     RefreshRecipeDerivedState(a_id);
   });
+  return std::nullopt;
 }
 
-void RecipeEditor::UndoRecipe(std::string a_id) {
-  runtime_.PostTask([this, id = std::move(a_id)] { RestoreRecipe(id, false); });
-}
-
-void RecipeEditor::RedoRecipe(std::string a_id) {
-  runtime_.PostTask([this, id = std::move(a_id)] { RestoreRecipe(id, true); });
-}
-
-void RecipeEditor::SaveRecipe(std::string a_id) {
-  runtime_.PostTask([this, id = std::move(a_id)] {
-    runtime_.RebuildRecipeWearersAfterChange(id, [&] {
-      const Recipe *recipe = MutableRecipe(id);
-      const Recipe before = recipe ? *recipe : Recipe{};
-      const std::expected<std::filesystem::path, std::string> saved =
-          BetterEnchantmentEffects::SaveRecipe(id);
-      if (!saved) {
-        logger::error("recipe {}: save failed ({})", id, saved.error());
-        return;
-      }
-      if (recipe) {
-        PushHistory(histories_, id, before, *recipe);
-      }
-    });
+std::uint64_t RecipeEditor::UndoRecipe(std::string a_id) {
+  const Trace::Scope trace{Trace::Command("editor.UndoRecipe")};
+  const auto operation =
+      std::make_shared<PendingRecipeEdit>(fileOperations_, a_id);
+  runtime_.PostTask([this, id = std::move(a_id), operation] {
+    operation->Finish(RestoreRecipe(id, false));
   });
+  return operation->id;
 }
 
-void RecipeEditor::RevertRecipe(std::string a_id) {
-  runtime_.PostTask([this, id = std::move(a_id)] {
-    runtime_.RebuildRecipeWearersAfterChange(id, [&] {
+std::uint64_t RecipeEditor::RedoRecipe(std::string a_id) {
+  const Trace::Scope trace{Trace::Command("editor.RedoRecipe")};
+  const auto operation =
+      std::make_shared<PendingRecipeEdit>(fileOperations_, a_id);
+  runtime_.PostTask([this, id = std::move(a_id), operation] {
+    operation->Finish(RestoreRecipe(id, true));
+  });
+  return operation->id;
+}
+
+std::uint64_t RecipeEditor::SaveRecipe(std::string a_id) {
+  const Trace::Scope trace{Trace::Command("editor.SaveRecipe")};
+  const auto operation = std::make_shared<PendingFileOperation>(
+      fileOperations_, a_id, Studio::FileAction::kSave);
+  runtime_.PostTask([this, id = std::move(a_id), operation] {
+    runtime_.ChangeAndRebuildActors(id, [&] { SaveRecipeNow(id, *operation); });
+  });
+  return operation->id;
+}
+
+void RecipeEditor::SaveRecipeNow(const std::string &a_id,
+                                 const PendingFileOperation &a_operation) {
+  Recipe *recipe = MutableRecipe(a_id);
+  const Recipe before = recipe ? *recipe : Recipe{};
+  const std::expected<std::filesystem::path, std::string> saved =
+      BetterEnchantmentEffects::SaveRecipe(a_id);
+  if (!saved) {
+    if (recipe && *recipe != before) {
+      *recipe = before;
+      RefreshRecipeDerivedState(a_id);
+    }
+    a_operation.Finish({}, saved.error());
+    logger::error("recipe {}: save failed ({})", a_id, saved.error());
+    return;
+  }
+  if (recipe) {
+    PushHistory(histories_, a_id, before, *recipe);
+  }
+  a_operation.Finish(saved->string());
+}
+
+std::uint64_t RecipeEditor::RevertRecipe(std::string a_id) {
+  const Trace::Scope trace{Trace::Command("editor.RevertRecipe")};
+  const auto operation = std::make_shared<PendingFileOperation>(
+      fileOperations_, a_id, Studio::FileAction::kRevert);
+  runtime_.PostTask([this, id = std::move(a_id), operation] {
+    runtime_.ChangeAndRebuildActors(id, [&] {
       Recipe *recipe = MutableRecipe(id);
       if (!recipe) {
+        operation->Finish({}, "Recipe is not loaded.");
         return;
       }
-      const Recipe before = *recipe;
-      if (BetterEnchantmentEffects::RevertRecipe(id)) {
-        PushHistory(histories_, id, before, *recipe);
-        logger::info("recipe {}: reverted to its file", id);
+      if (IsTransient(id)) {
+        operation->Finish({}, "The paint draft has no recipe file to revert.");
+        return;
       }
+      const std::optional<RecipeOrigin> origin = OriginOf(*recipe);
+      const std::string path = origin ? origin->path.string() : std::string{};
+      const Recipe before = *recipe;
+      if (!BetterEnchantmentEffects::RevertRecipe(id)) {
+        operation->Finish(path, "Recipe file could not be read or parsed.");
+        return;
+      }
+      PushHistory(histories_, id, before, *recipe);
+      operation->Finish(path);
+      logger::info("recipe {}: reverted to its file", id);
     });
   });
+  return operation->id;
 }
 
-void RecipeEditor::ReloadRecipes() {
-  runtime_.PostTask([this] {
-    runtime_.RebuildAllActorsAfterChange([&] {
-      CancelPaintForLoad();
-      histories_.clear();
-      LoadRecipes();
-      paintReturn_ = {};
-      const std::span<const Recipe> loaded = LoadedRecipes();
-      for (const std::string &id : view_.RecipeIDs()) {
-        if (!FindLoaded(loaded, id)) {
-          view_.ForgetRecipe(id);
-        }
-      }
-    });
+std::uint64_t RecipeEditor::ReloadRecipes() {
+  const Trace::Scope trace{Trace::Command("editor.ReloadRecipes")};
+  const auto operation =
+      std::make_shared<PendingRecipeEdit>(fileOperations_, std::string{});
+  runtime_.PostTask([this, operation] {
+    runtime_.ChangeAndRebuildActors({}, [this] { ReloadRecipesNow(); });
+    operation->Finish();
   });
+  return operation->id;
+}
+
+void RecipeEditor::ReloadRecipesNow() {
+  CancelPaintForLoad();
+  histories_.clear();
+  LoadRecipes();
+  paintReturn_ = {};
+  const std::span<const Recipe> loaded = LoadedRecipes();
+  for (const std::string &id : view_.RecipeIDs()) {
+    if (!FindLoaded(loaded, id)) {
+      view_.ForgetRecipe(id);
+    }
+  }
 }
 
 void RecipeEditor::NewRecipe(std::string a_id, RecipeKey a_key,
                              std::string a_geometry) {
+  const Trace::Scope trace{Trace::Command("editor.NewRecipe")};
   runtime_.PostTask([this, id = std::move(a_id), key = std::move(a_key),
                      geometry = std::move(a_geometry)] {
-    runtime_.RebuildAllActorsAfterChange([&] {
+    runtime_.ChangeAndRebuildActors({}, [&] {
       [[maybe_unused]] const bool made =
           BetterEnchantmentEffects::NewRecipe(id, key, geometry);
     });
@@ -165,8 +365,9 @@ void RecipeEditor::NewRecipe(std::string a_id, RecipeKey a_key,
 }
 
 void RecipeEditor::RenameRecipe(std::string a_from, std::string a_to) {
+  const Trace::Scope trace{Trace::Command("editor.RenameRecipe")};
   runtime_.PostTask([this, from = std::move(a_from), to = std::move(a_to)] {
-    runtime_.RebuildAllActorsAfterChange([&] {
+    runtime_.ChangeAndRebuildActors({}, [&] {
       if (!BetterEnchantmentEffects::RenameRecipe(from, to)) {
         return;
       }
@@ -186,6 +387,7 @@ void RecipeEditor::RenameRecipe(std::string a_from, std::string a_to) {
 void RecipeEditor::BeginPaint(std::string a_active, RecipeKey a_key,
                               Surface a_surface, std::uint64_t a_sessionID,
                               std::uint64_t a_resetID) {
+  const Trace::Scope trace{Trace::Command("editor.BeginPaint")};
   runtime_.PostTask([this, active = std::move(a_active), key = std::move(a_key),
                      a_surface, a_sessionID, a_resetID] {
     if (a_resetID != paintResetID_) {
@@ -203,7 +405,7 @@ void RecipeEditor::BeginPaint(std::string a_active, RecipeKey a_key,
       return;
     }
     Recipe paint = Studio::PaintRecipe(*source, key, a_surface);
-    runtime_.RebuildAllActorsAfterChange([&] {
+    runtime_.ChangeAndRebuildActors({}, [&] {
       if (IsTransient(Studio::kPaintRecipe)) {
         [[maybe_unused]] const bool dropped =
             DropTransientRecipe(Studio::kPaintRecipe);
@@ -231,6 +433,7 @@ void RecipeEditor::BeginPaint(std::string a_active, RecipeKey a_key,
 }
 
 void RecipeEditor::UpdatePaint(Studio::PaintUpdateRequest a_request) {
+  const Trace::Scope trace{Trace::Command("editor.UpdatePaint")};
   runtime_.PostTask([this, request = std::move(a_request)] {
     if (request.sessionID != paintSessionID_ ||
         request.revision <= paintRevision_) {
@@ -252,6 +455,7 @@ void RecipeEditor::UpdatePaint(Studio::PaintUpdateRequest a_request) {
 }
 
 void RecipeEditor::KeepPaint(Studio::PaintCommitRequest a_request) {
+  const Trace::Scope trace{Trace::Command("editor.KeepPaint")};
   runtime_.PostTask([this, request = std::move(a_request)] {
     if (request.sessionID != paintSessionID_ ||
         (paintCommit_ && paintCommit_->requestID == request.id)) {
@@ -278,11 +482,16 @@ void RecipeEditor::KeepPaint(Studio::PaintCommitRequest a_request) {
 }
 
 void RecipeEditor::EndPaint(std::uint64_t a_sessionID) {
+  const Trace::Scope trace{Trace::Command("editor.EndPaint")};
   runtime_.PostTask([this, a_sessionID] {
     if (a_sessionID == 0 || a_sessionID == paintSessionID_) {
       FinishPaint();
     }
   });
+}
+
+void RecipeEditor::CancelFileOperationsForLoad() {
+  fileOperations_->CancelPending();
 }
 
 void RecipeEditor::CancelPaintForLoad() {
@@ -303,7 +512,7 @@ void RecipeEditor::CancelPaintForLoad() {
 void RecipeEditor::FinishPaint() {
   paintSessionID_ = 0;
   paintRevision_ = 0;
-  runtime_.RebuildAllActorsAfterChange([&] {
+  runtime_.ChangeAndRebuildActors({}, [&] {
     if (view_.isolation.recipeID == Studio::kPaintRecipe) {
       view_.isolation = paintReturn_;
       paintReturn_ = {};
@@ -316,25 +525,28 @@ void RecipeEditor::FinishPaint() {
 }
 
 void RecipeEditor::Isolate(Studio::Isolation a_isolation) {
+  const Trace::Scope trace{Trace::Command("editor.Isolate")};
   runtime_.PostTask([this, isolation = std::move(a_isolation)] {
     if (view_.isolation == isolation) {
       return;
     }
-    runtime_.RebuildAllActorsAfterChange([&] { view_.isolation = isolation; });
+    runtime_.ChangeAndRebuildActors({}, [&] { view_.isolation = isolation; });
   });
 }
 
 void RecipeEditor::ChangeView(Studio::ViewCommand a_command) {
+  const Trace::Scope trace{Trace::Command("editor.ChangeView")};
   runtime_.PostTask([this, command = std::move(a_command)] {
     Studio::View next = view_;
     if (!Studio::ApplyViewCommand(next, command)) {
       return;
     }
-    runtime_.RebuildAllActorsAfterChange([&] { view_ = std::move(next); });
+    runtime_.ChangeAndRebuildActors({}, [&] { view_ = std::move(next); });
   });
 }
 
 void RecipeEditor::PinRecipe(Studio::PieceRef a_piece, std::string a_recipeID) {
+  const Trace::Scope trace{Trace::Command("editor.PinRecipe")};
   runtime_.PostTask([this, a_piece, id = std::move(a_recipeID)] {
     std::optional<Studio::Pin> pin;
     if (!id.empty()) {
@@ -348,7 +560,7 @@ void RecipeEditor::PinRecipe(Studio::PieceRef a_piece, std::string a_recipeID) {
     if (view_.pin == pin) {
       return;
     }
-    runtime_.RebuildAllActorsAfterChange([&] { view_.pin = pin; });
+    runtime_.ChangeAndRebuildActors({}, [&] { view_.pin = pin; });
     if (pin) {
       logger::info("pin: {} shown on armor {:08X} of actor {:08X} ({}) while "
                    "viewed",
@@ -361,18 +573,21 @@ void RecipeEditor::PinRecipe(Studio::PieceRef a_piece, std::string a_recipeID) {
 }
 
 void RecipeEditor::UpdateView(std::function<void(Studio::View &)> a_change) {
+  const Trace::Scope trace{Trace::Command("editor.UpdateView")};
   runtime_.PostTask([this, change = std::move(a_change)] {
     Studio::View next = view_;
     change(next);
-    if (next.muted != view_.muted) {
-      runtime_.RebuildAllActorsAfterChange([&] { view_ = std::move(next); });
+    if (next.muted != view_.muted || next.isolation != view_.isolation) {
+      runtime_.ChangeAndRebuildActors({}, [&] { view_ = std::move(next); });
     } else {
       view_ = std::move(next);
     }
   });
 }
 
-RecipeEditor::RecipeEditor(Manager &a_runtime) : runtime_(a_runtime) {}
+RecipeEditor::RecipeEditor(Manager &a_runtime)
+    : fileOperations_(std::make_shared<FileOperationJournal>()),
+      runtime_(a_runtime) {}
 
 const Studio::View &RecipeEditor::CurrentView() const noexcept { return view_; }
 

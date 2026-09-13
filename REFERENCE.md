@@ -12,6 +12,21 @@ ownership rules are in `ARCHITECTURE.md`; the recipe format is
 
 ## Foundation (`Core.h`, `Identity.h`, `PCH.h`, `Settings.*`, `SettingsFile.*`)
 
+- `diagnostics/Trace` records bounded, owning text records without retaining engine
+  objects. Command context is thread-local and explicitly carried through
+  `SessionQueue` callbacks; a captured old load session remains identifiable after
+  cancellation. The recorder serializes and flushes transition events under its
+  own mutex, with a 512-event ring and 32-MiB per-run file limit. This diagnostic
+  mutex is not a renderer synchronization mechanism. Logging instrumentation does
+  not establish engine resource ownership or GPU completion.
+- `tools/build-identity.py` runs before plugin compilation, writes a header only
+  when identity changes, and stages the corresponding JSON manifest. The source
+  SHA256 includes active project and vendored source, shader and build inputs;
+  it excludes `_old`, tests, documents, generated build output, and external
+  toolchain binaries. Effective recipe/settings fingerprints use FNV-1a 64 and
+  are diagnostic comparisons, not security identities. Capture procedure and
+  current limits: `docs/wip/render-state-diagnostic-checkpoint-2026-09-12.md`.
+
 The plugin name is spelled once, in `Identity.h`. `BEEF_PLUGIN_NAME` is
 defined by CMake from the project name (`target_compile_definitions … BEEF_PLUGIN_NAME="${PROJECT_NAME}"`);
 the `#ifndef` fallback in `Identity.h` only keeps native builds, which do not
@@ -226,9 +241,28 @@ not positive counts as zero on both sides.
 
 Lab mechanics:
 
-- Presenters are `slot_000.dds` .. `slot_511.dds` (`kPresenterCount`):
-  placeholder files an `NiSourceTexture` is loaded through so CS binds the
-  target like any material texture (NOTES 22).
+- Presenters are `slot_00.dds` .. `slot_99.dds`, then `slot_100.dds` ..
+  `slot_511.dds` (`kPresenterCount`, minimum two digits in `Identity.h`).
+  `tools/presenter-textures.py` stages 512 opaque-black, 1x1 RGBA8 DDS files
+  through an always-run CMake target. Each is a separate engine resource name.
+  The files let an `NiSourceTexture` present a generated target like a material
+  texture (NOTES 22). The generator is part of the build fingerprint.
+- Loading must find the requested resource through the engine resource system,
+  return the requested texture name (case/slash normalization and optional
+  `textures\` prefix), and return an unclaimed presenter object. Retained
+  presenter references reserve identities for the pool lifetime; allocation is
+  still bounded to 512 names. A non-null fallback is not successful loading.
+  Checks precede renderer replacement. Acquisition rejects changed renderer
+  ownership, and `Texture()` returns null if the presenter no longer points to
+  its target's renderer metadata. This does not provide target leases to existing
+  material snapshots or preview consumers; that remains a separate change.
+- Run 1789247531051909 demonstrated six simultaneous target identities sharing
+  one presenter, with 24/32 acquisitions in the eight-Solo comparison pointing
+  at another target's renderer. The installed mod had no texture directory and
+  the previous CMake build staged no presenter assets. The new trace records
+  requested and loaded presenter names and rejection reasons. The report counts
+  acquisitions aliasing live presenters and acquisitions with wrong renderer
+  pointers; correct captures must report zero for both.
 - A target restores its presenter's original renderer metadata only while
   the presenter still points to that target's replacement. Teardown must not
   overwrite metadata installed by another owner. The lab's availability flag
@@ -341,6 +375,36 @@ Lab mechanics:
   the original's normal map, rim lighting from the material's rim power
   (NOTES 33). Inflation edits the shell's private `NiSkinData`; Skyrim
   bones point along local X, Y and Z run across the bone (NOTES 35).
+- Shell diagnostics capture source/clone palettes during creation, both after
+  attachment/update, and the clone before/after its first pose plus after calls
+  2 and 30. Pose-call count is not a render-frame counter; the skin frame ID
+  and matrix-cache addresses are logged to distinguish actual cache progress.
+  Local/world geometry transforms accompany these new snapshots. Bone records
+  carry their stage role and cover up to 256 entries; `bone_count`,
+  `sampled_bones` and `palette_limited` expose coverage. World-transform entries
+  and node addresses are logged without dereferencing them. No source geometry
+  or external transform owner is retained by the added diagnostics.
+- `render/SkinPalette` restores only missing clone world-transform entries whose
+  source bone node is null and whose transform address belongs to a recognized
+  flattened tree. Source and clone must have distinct arrays, matching roots,
+  bone counts and node identities. Validation finishes before any pointer write.
+  Source geometry/skin, root and flattened owners are retained until teardown;
+  the clone keeps its own skin data and matrix cache. Array/count/root changes
+  invalidate the lease through `StillOwned`; the existing tick retirement path
+  then drops it. Teardown clears only still-owned repaired entries before
+  releasing the retained owners. No original skeleton field is changed.
+- Flattened-tree layout comes from
+  [PLANCK's BSFlattenedBoneTree declaration](https://github.com/adamhynek/activeragdoll/blob/master/include/RE/misc.h):
+  0x80-byte entries with world transform at 0x34; VR count/array offsets are
+  0x150/0x158. SE/AE offsets 0x128/0x130 are inferred by subtracting the
+  NiNode base-size difference documented in the pinned CommonLib NiNode header.
+  Access requires the engine's BSFlattenedBoneTree NiRTTI. Address membership
+  must match an exact world-transform entry, not merely fall in an allocation.
+  This layout inference still requires the live checkpoint; unknown ownership
+  rejects the shell. Searches are bounded to 4096 nodes/bones and do not
+  dereference external transform addresses. Owner array stability is checked
+  before writes on the existing engine execution path; this change does not
+  establish new synchronization against concurrent scene mutation.
 - The engine exposes no constructor for `NiAlphaProperty`; the object is
   laid out by hand as vtable, zero refcount, empty `NiObjectNET`, flags
   (NOTES 32). The private `NiSkinData` copy is the same: vtable at word 0,
@@ -840,7 +904,7 @@ Decompile provenance (`decompiled/WornEnchantmentFX/plugin.c` unless noted):
   rather than under the recipe root, which loads every `.json` below it as
   a recipe.
 
-## planners (`planners/ActorState.h`, `planners/StackPlan.h`, `planners/BindingDiff.h`, `planners/ActorPlanning.h`)
+## planners (`planners/ActorState.h`, `planners/StackPlan.h`, `planners/BindingPlan.h`, `planners/ActorPlanning.h`)
 
 The pure decision halves of the wave-3 engine modules (`engine/Manager`,
 `render/Compositor`, `render/Binding`). Each is data-in / data-out and native-
@@ -897,10 +961,40 @@ stores an `RE::` pointer.
   and re-renders each tick. `ChainIndexOf` is the frozen anonymous `MergeOf`,
   retyped onto `SlotContribution`.
 
-- **`BindingDiff`.** `PlanBinding` decides per geometry which surface bindings
-  must exist (a surface is needed iff the plan writes any of its slots),
-  `shellOwner` as the highest-priority shell contribution (the frozen
-  `shellTop`), and — as a diff against the previously written slots — which
-  slots to restore (written before, absent from the new plan). The writer that
-  applies it, holds the saved `RE::` originals, and null-checks each pointer is
-  wave-3 `render/Binding`.
+- **`BindingPlan`.** `PlanBinding` decides which surface bindings a geometry
+  needs and selects the highest-priority shell contribution as `shellOwner`.
+  It does not describe incremental restoration: application rebuilds actors;
+  material ownership and restoration belong to `render/Binding`.
+
+## Generated texture references
+
+`TextureRef` distinguishes static engine textures from registered generated
+textures. A generated reference retains its RenderTarget and acquisition
+generation. The target cannot enter the pool until every lease is released;
+static textures retain their ordinary NiPointer. The registry stores weak targets
+and tombstones, so it does not extend target lifetime or reinterpret an expired
+generated handle as static. Presenter objects remain retained for pointer identity; presenter slots are
+leased to live targets and become reusable after target teardown. Registering a still-live presenter for another target
+or generation is rejected. This is CPU lifetime ownership, not GPU completion.
+
+Material journals, prepared sources/masks/material inputs, compositor base and
+material-analysis records, snapshots and preview entries/work retain TextureRef.
+SlotTarget writes accept a TextureRef; raw pointers remain at engine/renderer
+calls and Studio row transport, backed by their retaining snapshot. References
+validate generation and renderer backing on access. Empty means restore/default;
+a rejected reference is invalid and cannot request a material restore.
+
+The current producer may update its pixels while consumers retain the same
+resource. Snapshot pixel immutability, per-field restore ownership, atomic
+application replacement, resource budgets and GPU retirement fences remain
+separate contracts. The existing render/update synchronization policy is unchanged.
+
+## Cleanup ownership contracts (2026-09-13)
+
+See [the cleanup checkpoint](docs/wip/cleanup-checkpoint-2026-09-13.md) for the
+material group journal, retained external textures, explicit actor retirement,
+presenter slot leases, skin palette ownership, and preview submission contract.
+`SourceSampling` centralizes compositor sampling policy. `ChangeAndRebuildActors`
+retires candidates before mutation and rebuilds them afterward; its recipe
+argument scopes reporting, not actor selection. Generated compositor outputs and
+snapshot retention now use `TextureRef` directly.

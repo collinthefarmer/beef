@@ -7,6 +7,7 @@
 #include "render/Binding.h"
 #include "render/Compositor.h"
 #include "render/RuntimeTextures.h"
+#include "render/SourceSampling.h"
 #include "studio/Edits.h"
 #include "studio/Panels.h"
 #include "studio/RecipeSnapshot.h"
@@ -15,6 +16,7 @@
 #include <algorithm>
 #include <cstddef>
 #include <cstdlib>
+#include <format>
 #include <optional>
 #include <string>
 #include <unordered_map>
@@ -23,11 +25,12 @@
 namespace BetterEnchantmentEffects {
 namespace {
 RE::NiSourceTexture *RetainTexture(Manager::Snapshot &a_snapshot,
-                                   RE::NiSourceTexture *a_texture) {
+                                   const TextureRef &a_texture) {
   if (a_texture) {
     a_snapshot.textures.emplace_back(a_texture);
+    return a_snapshot.textures.back().get();
   }
-  return a_texture;
+  return nullptr;
 }
 
 std::vector<Studio::SlotRow> SlotRows(const SlotTarget &a_target) {
@@ -37,6 +40,325 @@ std::vector<Studio::SlotRow> SlotRows(const SlotTarget &a_target) {
   }
   return rows;
 }
+struct GeometrySnapshotBuilder {
+  Manager::Snapshot &snapshot;
+  const Recipe &recipe;
+  const SignalState *signals;
+  const LiveGeometry &bound;
+  std::size_t placedIndex;
+
+  void InspectSources(Studio::GeometryRow &row) const {
+    auto *compositor = Compositor::GetSingleton();
+    for (const Source &source : recipe.sources) {
+      Studio::PictureRow picture;
+      picture.name = source.name;
+      picture.description = DescribeSource(source.kind);
+      picture.type = SourceType(source);
+      if (const std::optional<PreparedSource> prepared =
+              compositor->InspectSource(recipe, source.name, bound.inputs)) {
+        picture.channel = prepared->sampling.channel;
+        picture.animated = prepared->animated;
+        picture.problem = prepared->problem;
+        if (Is<ImageSource>(source.kind) && signals && prepared->texture) {
+          const std::string context = std::format("{}:{}:{}", recipe.id,
+              reinterpret_cast<std::uintptr_t>(bound.geometry.get()), source.name);
+          const auto preview = TextureLab::GetSingleton()->SampledPreview(
+              context, prepared->texture.get(), ResolveSampling(*prepared, *signals),
+              prepared->normalize, prepared->animated);
+          picture.texture = RetainTexture(snapshot, TextureRef{preview});
+          picture.channel = ShaderChannel::kRgb;
+        } else {
+          picture.texture = RetainTexture(snapshot, prepared->texture);
+        }
+      }
+      row.sources.push_back(std::move(picture));
+    }
+  }
+
+  void InspectMasks(Studio::GeometryRow &row) const {
+    auto *compositor = Compositor::GetSingleton();
+    for (const Mask &mask : recipe.masks) {
+      Studio::PictureRow picture;
+      picture.name = mask.name;
+      picture.description = mask.text;
+      if (const std::optional<PreparedMask> prepared =
+              compositor->InspectMask(recipe, mask.name, bound.inputs)) {
+        picture.texture = RetainTexture(snapshot, prepared->texture);
+        picture.channel = prepared->channel;
+        picture.animated = prepared->animated;
+        picture.problem = prepared->problem;
+      }
+      row.masks.push_back(std::move(picture));
+    }
+  }
+
+  void ResolveScalars(Studio::OutputRow &row,
+                      const SurfaceOutput &material) const {
+    const SlotScalars &scalars = material.scalars;
+    std::size_t scalarIndex = 0;
+    for (const ScalarField field : ScalarsOf(material.slot)) {
+      if (field == ScalarField::kColor) {
+        if (!scalars.color) {
+          continue;
+        }
+        if (scalarIndex < row.scalars.size()) {
+          row.scalars[scalarIndex].value = signals->Resolve(*scalars.color);
+        }
+      } else {
+        const std::optional<Param> *param = ScalarOf(scalars, field);
+        if (!param || !*param) {
+          continue;
+        }
+        if (scalarIndex < row.scalars.size()) {
+          row.scalars[scalarIndex].value = signals->Resolve(**param);
+        }
+      }
+      ++scalarIndex;
+    }
+  }
+
+  void InspectLayers(Studio::OutputRow &row, const SurfaceOutput &material,
+                     const PlacedOutput &output) const {
+    for (std::size_t i = 0; i < material.stack.size() && i < row.layers.size();
+         ++i) {
+      row.layers[i].opacity = signals->Resolve(material.stack[i].opacity);
+    }
+    if (!output.stack) {
+      return;
+    }
+    for (const PreparedLayer &prepared : output.stack->Layers()) {
+      if (prepared.index < row.layers.size() && prepared.source) {
+        row.layers[prepared.index].texture =
+            RetainTexture(snapshot, prepared.source->texture);
+      }
+    }
+    for (const Diagnostic &diagnostic : output.stack->Diagnostics()) {
+      if (diagnostic.where.starts_with("layer ")) {
+        const unsigned long at =
+            std::strtoul(diagnostic.where.c_str() + 6, nullptr, 10);
+        if (at < row.layers.size() && row.layers[at].problem.empty()) {
+          row.layers[at].problem = diagnostic.message;
+        }
+      }
+    }
+  }
+
+  [[nodiscard]] Studio::OutputRow
+  BuildOutput(const PlacedOutput &output) const {
+    Studio::OutputRow row = Studio::OutputRowOf(recipe, output.index);
+    row.animated = output.stack && output.stack->Animated();
+    row.size = output.stack ? output.stack->Size().Pixels() : 0;
+    row.problem = output.problem;
+    row.texture = RetainTexture(snapshot, output.stack ? output.stack->Texture()
+                                                       : nullptr);
+    if (const std::optional<std::size_t> merge =
+            ChainIndexOf(bound.plan, SlotContribution{SlotSource{placedIndex},
+                                                      output.index})) {
+      row.merged = true;
+      row.merge = *merge;
+    }
+    const SurfaceOutput *material =
+        output.index < recipe.outputs.size()
+            ? Get<SurfaceOutput>(recipe.outputs[output.index])
+            : nullptr;
+    if (material && signals) {
+      ResolveScalars(row, *material);
+      InspectLayers(row, *material, output);
+    }
+    return row;
+  }
+
+  [[nodiscard]] Studio::GeometryRow
+  Build(const LivePlacement &placement) const {
+    auto *compositor = Compositor::GetSingleton();
+    Studio::GeometryRow row;
+    row.name = bound.name;
+    row.privateMaterial = bound.material && bound.material->Private();
+    row.shell = bound.shell ? bound.shell->Describe() : "";
+    if (const std::shared_ptr<const MeshEntry> entry =
+            compositor->CachedMesh(bound.geometry.get());
+        entry && entry->mesh) {
+      row.meshRead = true;
+      row.partitions = entry->facts.slots;
+      row.bones = entry->facts.bones;
+      row.islands = entry->analysis.islands;
+    }
+    if (const Compositor::MaterialRecord *material =
+            compositor->CachedMaterial(bound.inputs.material);
+        material && material->analysis) {
+      row.clusters = material->analysis->clusters;
+    }
+    row.materialSlots = bound.material ? SlotRows(*bound.material)
+                                       : std::vector<Studio::SlotRow>{};
+    row.shellSlots =
+        bound.shell ? SlotRows(*bound.shell) : std::vector<Studio::SlotRow>{};
+    InspectSources(row);
+    InspectMasks(row);
+    for (const PlacedOutput &output : placement.outputs) {
+      row.outputs.push_back(BuildOutput(output));
+    }
+    return row;
+  }
+};
+
+struct PieceSnapshotBuilder {
+  Manager::Snapshot &snapshot;
+  const RecipeEditor &editor;
+  const LiveActor &state;
+  const LivePiece &piece;
+  Studio::PieceRef ref;
+  std::size_t flatStart = 0;
+  bool full = false;
+
+  void InspectGeometries(Studio::RecipeRow &row, const LiveInstance &instance,
+                         std::size_t instanceIndex) const {
+    for (const LiveGeometry &bound : piece.geometries) {
+      if (bound.lost) {
+        continue;
+      }
+      const std::optional<std::size_t> placedIndex = PlacedIndexOf(
+          state.structure, bound.placements, InstanceId{instanceIndex});
+      if (!placedIndex) {
+        continue;
+      }
+      const std::size_t placementIndex =
+          static_cast<std::size_t>(bound.placements[*placedIndex]);
+      if (placementIndex >= state.placements.size()) {
+        continue;
+      }
+      const LivePlacement &placement = state.placements[placementIndex];
+      row.geometries.push_back(
+          GeometrySnapshotBuilder{snapshot, *instance.recipe,
+                                  instance.signals.get(), bound, *placedIndex}
+              .Build(placement));
+    }
+  }
+
+  [[nodiscard]] std::optional<Studio::RecipeRow>
+  BuildRecipe(const PieceMatch &match) const {
+    const auto &view = editor.CurrentView();
+    if (match.instance >= state.instances.size()) {
+      return std::nullopt;
+    }
+    const LiveInstance &instance = state.instances[match.instance];
+    if (!instance.recipe) {
+      return std::nullopt;
+    }
+    const Recipe &recipe = *instance.recipe;
+    std::size_t undoDepth = 0;
+    std::size_t redoDepth = 0;
+    if (const Studio::History<Recipe> *history = editor.HistoryOf(recipe.id)) {
+      undoDepth = history->UndoDepth();
+      redoDepth = history->RedoDepth();
+    }
+    Studio::ReferenceCounts references;
+    std::vector<Diagnostic> problems;
+    if (full) {
+      const Studio::ReferenceCounts *counted = ReferencesOf(recipe.id);
+      references = counted ? *counted : Studio::CountReferences(recipe);
+      if (const std::optional<RecipeOrigin> origin = OriginOf(recipe)) {
+        problems.assign(origin->diagnostics.begin(), origin->diagnostics.end());
+      }
+    }
+    const bool pinned =
+        view.pin && view.pin->piece == ref && view.pin->recipeID == recipe.id;
+    Studio::RecipeRow row = Studio::BuildRecipeRow(
+        {recipe, match.key, match.priority, instance.lastTime,
+         instance.lightOutput, IsDirty(recipe.id), pinned, full, undoDepth,
+         redoDepth, references, instance.graph.get(), instance.signals.get(),
+         problems});
+    if (!full) {
+      return row;
+    }
+
+    InspectGeometries(row, instance, match.instance);
+    row.light = instance.light ? instance.light->Describe() : "";
+    return row;
+  }
+
+  [[nodiscard]] Studio::PieceRow
+  Build(const std::vector<PieceMatch> &matches) const {
+    const RE::Actor *actor = RE::TESForm::LookupByID<RE::Actor>(ref.actorID);
+    Studio::PieceRow row;
+    row.ref = ref;
+    row.actorName = actor && actor->GetName() ? actor->GetName() : "?";
+    row.armorName = piece.armorName;
+    if (flatStart < state.structure.geometries.size()) {
+      for (const PieceKey &source :
+           KeyChoicesOf(state.structure.geometries[flatStart].keys)) {
+        Studio::KeyChoice key;
+        key.key = source;
+        const RE::TESForm *form = LookupForm(source.form);
+        const std::string editorID = form ? EditorIdOf(*form) : std::string{};
+        key.text = editorID.empty() ? source.form.ToString() : editorID;
+        row.keys.push_back(std::move(key));
+      }
+    }
+
+    for (const PieceMatch &match : matches) {
+      if (auto recipe = BuildRecipe(match)) {
+        row.recipes.push_back(std::move(*recipe));
+      }
+    }
+    return row;
+  }
+};
+
+void AccumulateStatus(Manager::Status &s, const LiveActor &state) {
+  s.pieces += static_cast<std::uint32_t>(state.pieces.size());
+  s.recipes += static_cast<std::uint32_t>(state.instances.size());
+  for (const LivePiece &piece : state.pieces) {
+    for (const LiveGeometry &bound : piece.geometries) {
+      if (bound.lost) {
+        continue;
+      }
+      ++s.geometries;
+      s.shells += bound.shell ? 1 : 0;
+    }
+  }
+  for (const LiveInstance &instance : state.instances) {
+    s.lights += instance.light ? 1 : 0;
+  }
+}
+
+bool ContainsPiece(const LiveActor &state, RE::FormID actorID,
+                   const Studio::PieceRef &request) {
+  std::size_t flatBase = 0;
+  for (const LivePiece &piece : state.pieces) {
+    const bool firstPerson = flatBase < state.structure.geometries.size() &&
+                             state.structure.geometries[flatBase].firstPerson;
+    if (request == Studio::PieceRef{actorID, piece.armor, firstPerson}) {
+      return true;
+    }
+    flatBase += piece.geometries.size();
+  }
+  return false;
+}
+
+void AppendLoadedRecipes(Manager::Snapshot &snapshot) {
+  for (const Recipe &recipe : LoadedRecipes()) {
+    if (IsTransient(recipe.id)) {
+      continue;
+    }
+    Studio::LoadedRecipeRow row;
+    row.id = recipe.id;
+    row.keys = recipe.keys;
+    row.signals = recipe.signals.size();
+    row.curves = recipe.curves.size();
+    row.sources = recipe.sources.size();
+    row.masks = recipe.masks.size();
+    row.outputs = recipe.outputs.size();
+    row.imported = !recipe.metadata.imported.empty();
+    if (const std::optional<RecipeOrigin> origin = OriginOf(recipe)) {
+      row.diagnostics.assign(origin->diagnostics.begin(),
+                             origin->diagnostics.end());
+      row.path = origin->path.string();
+    }
+    snapshot.loaded.push_back(recipe.id);
+    snapshot.loadedRecipes.push_back(std::move(row));
+  }
+}
+
 }
 
 Manager::Status Manager::GetStatus() const {
@@ -46,20 +368,7 @@ Manager::Status Manager::GetStatus() const {
   s.runtimeLab = TextureLab::GetSingleton()->Available();
   s.actors = static_cast<std::uint32_t>(applied_.size());
   for (const auto &[id, state] : applied_) {
-    s.pieces += static_cast<std::uint32_t>(state.pieces.size());
-    s.recipes += static_cast<std::uint32_t>(state.instances.size());
-    for (const LivePiece &piece : state.pieces) {
-      for (const LiveGeometry &bound : piece.geometries) {
-        if (bound.lost) {
-          continue;
-        }
-        ++s.geometries;
-        s.shells += bound.shell ? 1 : 0;
-      }
-    }
-    for (const LiveInstance &instance : state.instances) {
-      s.lights += instance.light ? 1 : 0;
-    }
+    AccumulateStatus(s, state);
   }
   s.tickMS = GetSettings().TickIntervalMS();
   return s;
@@ -94,9 +403,10 @@ void Manager::PublishSnapshot(std::uint32_t a_nowMS) {
 
 Manager::Snapshot
 Manager::BuildSnapshot(const std::optional<Studio::PieceRef> &a_request) const {
-  const Studio::View &view = editor_.CurrentView();
   Snapshot out;
   out.applications = applications_.Snapshot();
+  out.fileOperations = editor_.FileOperations();
+  out.editResults = editor_.EditResults();
   out.paintCommit = editor_.LastPaintCommit();
   out.paintUpdate = editor_.LastPaintUpdate();
   const Status status = GetStatus();
@@ -106,25 +416,14 @@ Manager::BuildSnapshot(const std::optional<Studio::PieceRef> &a_request) const {
                 status.actors,       status.pieces,         status.recipes,
                 status.geometries,   status.shells,         status.lights,
                 store.loaded,        store.withErrors};
-  Compositor *compositor = Compositor::GetSingleton();
 
-  bool anyMatch = false;
-  for (const auto &[actorID, state] : applied_) {
-    std::size_t flatBase = 0;
-    for (const LivePiece &piece : state.pieces) {
-      const bool firstPerson = flatBase < state.structure.geometries.size() &&
-                               state.structure.geometries[flatBase].firstPerson;
-      const Studio::PieceRef ref{actorID, piece.armor, firstPerson};
-      if (a_request && *a_request == ref) {
-        anyMatch = true;
-      }
-      flatBase += piece.geometries.size();
-    }
-  }
+  const bool anyMatch =
+      a_request && std::ranges::any_of(applied_, [&](const auto &entry) {
+        return ContainsPiece(entry.second, entry.first, *a_request);
+      });
 
   bool first = true;
   for (const auto &[actorID, state] : applied_) {
-    const RE::Actor *actor = RE::TESForm::LookupByID<RE::Actor>(actorID);
     std::size_t flatBase = 0;
     for (const LivePiece &piece : state.pieces) {
       const std::size_t flatStart = flatBase;
@@ -139,222 +438,16 @@ Manager::BuildSnapshot(const std::optional<Studio::PieceRef> &a_request) const {
       const bool firstPerson =
           flatStart < state.structure.geometries.size() &&
           state.structure.geometries[flatStart].firstPerson;
-      Studio::PieceRow row;
-      row.ref = Studio::PieceRef{actorID, piece.armor, firstPerson};
-      row.actorName = actor && actor->GetName() ? actor->GetName() : "?";
-      row.armorName = piece.armorName;
-      const bool full = anyMatch ? (a_request && *a_request == row.ref) : first;
+      const Studio::PieceRef ref{actorID, piece.armor, firstPerson};
+      const bool full = anyMatch ? (a_request && *a_request == ref) : first;
       first = false;
 
-      if (flatStart < state.structure.geometries.size()) {
-        for (const PieceKey &source :
-             KeyChoicesOf(state.structure.geometries[flatStart].keys)) {
-          Studio::KeyChoice key;
-          key.key = source;
-          const RE::TESForm *form = LookupForm(source.form);
-          const std::string editorID = form ? EditorIdOf(*form) : std::string{};
-          key.text = editorID.empty() ? source.form.ToString() : editorID;
-          row.keys.push_back(std::move(key));
-        }
-      }
-
-      for (const PieceMatch &match : matches) {
-        if (match.instance >= state.instances.size()) {
-          continue;
-        }
-        const LiveInstance &instance = state.instances[match.instance];
-        if (!instance.recipe) {
-          continue;
-        }
-        const Recipe &recipe = *instance.recipe;
-        std::size_t undoDepth = 0;
-        std::size_t redoDepth = 0;
-        if (const Studio::History<Recipe> *history =
-                editor_.HistoryOf(recipe.id)) {
-          undoDepth = history->UndoDepth();
-          redoDepth = history->RedoDepth();
-        }
-        Studio::ReferenceCounts references;
-        std::vector<Diagnostic> problems;
-        if (full) {
-          const Studio::ReferenceCounts *counted = ReferencesOf(recipe.id);
-          references = counted ? *counted : Studio::CountReferences(recipe);
-          if (const std::optional<RecipeOrigin> origin = OriginOf(recipe)) {
-            problems.assign(origin->diagnostics.begin(),
-                            origin->diagnostics.end());
-          }
-        }
-        const bool pinned = view.pin && view.pin->piece == row.ref &&
-                            view.pin->recipeID == recipe.id;
-        Studio::RecipeRow r = Studio::BuildRecipeRow(
-            {recipe, match.key, match.priority, instance.lastTime,
-             instance.lightOutput, IsDirty(recipe.id), pinned, full, undoDepth,
-             redoDepth, references, instance.graph.get(),
-             instance.signals.get(), problems});
-        if (!full) {
-          row.recipes.push_back(std::move(r));
-          continue;
-        }
-
-        for (const LiveGeometry &bound : piece.geometries) {
-          if (bound.lost) {
-            continue;
-          }
-          const std::optional<std::size_t> placedIndex = PlacedIndexOf(
-              state.structure, bound.placements, InstanceId{match.instance});
-          if (!placedIndex) {
-            continue;
-          }
-          const std::size_t pid =
-              static_cast<std::size_t>(bound.placements[*placedIndex]);
-          if (pid >= state.placements.size()) {
-            continue;
-          }
-          const LivePlacement &placement = state.placements[pid];
-          Studio::GeometryRow gr;
-          gr.name = bound.name;
-          gr.privateMaterial = bound.material && bound.material->Private();
-          gr.shell = bound.shell ? bound.shell->Describe() : "";
-          if (const std::shared_ptr<const MeshEntry> entry =
-                  compositor->CachedMesh(bound.geometry.get());
-              entry && entry->mesh) {
-            gr.meshRead = true;
-            gr.partitions = entry->facts.slots;
-            gr.bones = entry->facts.bones;
-            gr.islands = entry->analysis.islands;
-          }
-          if (const Compositor::MaterialRecord *material =
-                  compositor->CachedMaterial(bound.inputs.material);
-              material && material->analysis) {
-            gr.clusters = material->analysis->clusters;
-          }
-          gr.materialSlots = bound.material ? SlotRows(*bound.material)
-                                            : std::vector<Studio::SlotRow>{};
-          gr.shellSlots = bound.shell ? SlotRows(*bound.shell)
-                                      : std::vector<Studio::SlotRow>{};
-          for (const Source &source : recipe.sources) {
-            Studio::PictureRow prow;
-            prow.name = source.name;
-            prow.description = DescribeSource(source.kind);
-            prow.type = SourceType(source);
-            if (const std::optional<PreparedSource> prepared =
-                    compositor->InspectSource(recipe, source.name,
-                                              bound.inputs)) {
-              prow.texture = RetainTexture(out, prepared->texture.get());
-              prow.channel = prepared->sampling.channel;
-              prow.animated = prepared->animated;
-              prow.problem = prepared->problem;
-            }
-            gr.sources.push_back(std::move(prow));
-          }
-          for (const Mask &mask : recipe.masks) {
-            Studio::PictureRow prow;
-            prow.name = mask.name;
-            prow.description = mask.text;
-            if (const std::optional<PreparedMask> prepared =
-                    compositor->InspectMask(recipe, mask.name, bound.inputs)) {
-              prow.texture = RetainTexture(out, prepared->texture.get());
-              prow.channel = prepared->channel;
-              prow.animated = prepared->animated;
-              prow.problem = prepared->problem;
-            }
-            gr.masks.push_back(std::move(prow));
-          }
-          for (const PlacedOutput &o : placement.outputs) {
-            Studio::OutputRow orow = Studio::OutputRowOf(recipe, o.index);
-            orow.animated = o.stack && o.stack->Animated();
-            orow.size = o.stack ? o.stack->Size().Pixels() : 0;
-            orow.problem = o.problem;
-            orow.texture =
-                RetainTexture(out, o.stack ? o.stack->Texture() : nullptr);
-            if (const std::optional<std::size_t> merge = ChainIndexOf(
-                    bound.plan,
-                    SlotContribution{SlotSource{*placedIndex}, o.index})) {
-              orow.merged = true;
-              orow.merge = *merge;
-            }
-            const SurfaceOutput *material =
-                o.index < recipe.outputs.size()
-                    ? Get<SurfaceOutput>(recipe.outputs[o.index])
-                    : nullptr;
-            if (material && instance.signals) {
-              const SlotScalars &sc = material->scalars;
-              const SignalState &sig = *instance.signals;
-              std::size_t si = 0;
-              for (const ScalarField field : ScalarsOf(material->slot)) {
-                if (field == ScalarField::kColor) {
-                  if (!sc.color) {
-                    continue;
-                  }
-                  if (si < orow.scalars.size()) {
-                    orow.scalars[si].value = sig.Resolve(*sc.color);
-                  }
-                } else {
-                  const std::optional<Param> *param = ScalarOf(sc, field);
-                  if (!param || !*param) {
-                    continue;
-                  }
-                  if (si < orow.scalars.size()) {
-                    orow.scalars[si].value = sig.Resolve(**param);
-                  }
-                }
-                ++si;
-              }
-              for (std::size_t i = 0;
-                   i < material->stack.size() && i < orow.layers.size(); ++i) {
-                orow.layers[i].opacity =
-                    sig.Resolve(material->stack[i].opacity);
-              }
-              if (o.stack) {
-                for (const PreparedLayer &prepared : o.stack->Layers()) {
-                  if (prepared.index < orow.layers.size() && prepared.source) {
-                    orow.layers[prepared.index].texture =
-                        RetainTexture(out, prepared.source->texture.get());
-                  }
-                }
-                for (const Diagnostic &d : o.stack->Diagnostics()) {
-                  if (d.where.starts_with("layer ")) {
-                    const unsigned long at =
-                        std::strtoul(d.where.c_str() + 6, nullptr, 10);
-                    if (at < orow.layers.size() &&
-                        orow.layers[at].problem.empty()) {
-                      orow.layers[at].problem = d.message;
-                    }
-                  }
-                }
-              }
-            }
-            gr.outputs.push_back(std::move(orow));
-          }
-          r.geometries.push_back(std::move(gr));
-        }
-        r.light = instance.light ? instance.light->Describe() : "";
-        row.recipes.push_back(std::move(r));
-      }
-      out.pieces.push_back(std::move(row));
+      out.pieces.push_back(
+          PieceSnapshotBuilder{out, editor_, state, piece, ref, flatStart, full}
+              .Build(matches));
     }
   }
-  for (const Recipe &recipe : LoadedRecipes()) {
-    if (IsTransient(recipe.id)) {
-      continue;
-    }
-    Studio::LoadedRecipeRow row;
-    row.id = recipe.id;
-    row.keys = recipe.keys;
-    row.signals = recipe.signals.size();
-    row.curves = recipe.curves.size();
-    row.sources = recipe.sources.size();
-    row.masks = recipe.masks.size();
-    row.outputs = recipe.outputs.size();
-    row.imported = !recipe.metadata.imported.empty();
-    if (const std::optional<RecipeOrigin> origin = OriginOf(recipe)) {
-      row.diagnostics.assign(origin->diagnostics.begin(),
-                             origin->diagnostics.end());
-      row.path = origin->path.string();
-    }
-    out.loaded.push_back(recipe.id);
-    out.loadedRecipes.push_back(std::move(row));
-  }
+  AppendLoadedRecipes(out);
   return out;
 }
 }

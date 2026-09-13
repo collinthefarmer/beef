@@ -1,3 +1,4 @@
+#include "diagnostics/Trace.h"
 #include "engine/SessionQueue.h"
 #include "test_support.h"
 
@@ -201,6 +202,32 @@ void QueueLifetime() {
 }
 
 int main() {
+  {
+    Scheduler scheduler;
+    std::uint64_t seen = 0;
+    SessionQueue queue{[&](SessionQueue::Task task) {
+                         return scheduler.Submit(std::move(task));
+                       },
+                       [&](std::uint32_t) { seen = Trace::Current().command; }};
+    queue.Resume();
+    const auto cause = Trace::Command("test.refresh");
+    {
+      const Trace::Scope scope{cause};
+      queue.Refresh(42);
+    }
+    scheduler.Run();
+    Check(seen == cause.command,
+          "queued refresh retains its originating command");
+    Check(Trace::Current().command == 0,
+          "refresh context is cleared after execution");
+    {
+      const Trace::Scope scope{cause};
+      queue.Post([&] { seen = Trace::Current().command; });
+    }
+    seen = 0;
+    scheduler.Run();
+    Check(seen == cause.command, "posted task retains its originating command");
+  }
   LoadAndCoalesce();
   SubmissionFailure();
   LoadDuringSubmission();

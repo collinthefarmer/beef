@@ -37,6 +37,10 @@ constexpr std::array kTable{
                 "One line per geometry on apply, plus restore and ownership "
                 "diagnostics.",
                 &Settings::verboseLogging, 0, 1, W::kCheckbox, false},
+    SettingDesc{
+        "General", "DiagnosticLogging", "Diagnostic trace",
+        "Write bounded transition and resource events to a unique JSONL log.",
+        &Settings::diagnosticLogging, 0, 1, W::kCheckbox, false},
     SettingDesc{"General", "AnimationFPS", "Animation FPS",
                 "Animation update rate.", &Settings::animationFPS,
                 kMinAnimationFPS, kMaxAnimationFPS, W::kIntSlider, false},

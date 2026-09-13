@@ -69,7 +69,19 @@ const RecipeRow *SelectedRecipe(const PieceRow *a_piece,
       return &recipe;
     }
   }
-  return &a_piece->recipes.back();
+  return a_selection.document ? nullptr : &a_piece->recipes.back();
+}
+
+const RecipeRow *SelectedRecipe(const Snapshot &a_snapshot,
+                                const Selection &a_selection) noexcept {
+  const RecipeRow *live =
+      SelectedRecipe(SelectedPiece(a_snapshot, a_selection), a_selection);
+  if (live || !a_selection.document) {
+    return live;
+  }
+  const auto document = std::ranges::find(
+      a_snapshot.documents, a_selection.recipeID, &RecipeRow::id);
+  return document == a_snapshot.documents.end() ? nullptr : &*document;
 }
 
 const GeometryRow *SelectedGeometry(const RecipeRow *a_recipe,
@@ -105,17 +117,26 @@ std::optional<PieceRef> RequestOf(const Selection &a_selection) noexcept {
 
 void ResolveSelection(Selection &a_selection, const Snapshot &a_snapshot) {
   const PieceRow *piece = SelectedPiece(a_snapshot, a_selection);
-  if (!piece) {
+  if (!piece && !a_selection.document) {
     return;
   }
-  a_selection.piece = piece->ref;
-  const RecipeRow *recipe = SelectedRecipe(piece, a_selection);
+  if (piece) {
+    a_selection.piece = piece->ref;
+  }
+  const RecipeRow *recipe = SelectedRecipe(a_snapshot, a_selection);
   if (!recipe) {
+    if (a_selection.document) {
+      a_selection.geometry.clear();
+      a_selection.layer.reset();
+    }
     return;
   }
   a_selection.recipeID = recipe->id;
   const GeometryRow *geometry = SelectedGeometry(recipe, a_selection);
   if (!geometry) {
+    if (a_selection.document) {
+      a_selection.geometry.clear();
+    }
     return;
   }
   a_selection.geometry = geometry->name;

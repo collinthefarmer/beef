@@ -72,87 +72,113 @@ float IslRadius(float a_fade, float a_size, float a_cutoff, bool a_shadow) {
 }
 }
 
+namespace {
+std::vector<LightPlacement> PlaceNamedBones(const NamedBones &a_bones,
+                                            RE::NiAVObject *a_root,
+                                            const RE::NiPoint3 &a_offset) {
+  std::vector<LightPlacement> out;
+  for (const auto &name : a_bones.bones) {
+    auto *object =
+        a_root ? a_root->GetObjectByName(RE::BSFixedString{name}) : nullptr;
+    auto *bone = object ? object->AsNode() : nullptr;
+    if (bone) {
+      out.push_back({RE::NiPointer<RE::NiNode>{bone}, name, a_offset, 1.0f});
+    } else {
+      logger::warn("light: bone '{}' not found on the wearer", name);
+    }
+  }
+  for (auto &placement : out) {
+    placement.share = 1.0f / static_cast<float>(out.size());
+  }
+  return out;
+}
+
+struct BoneInfluence {
+  RE::NiNode *bone = nullptr;
+  std::uint32_t totalVertices = 0;
+  std::uint32_t largestVertexCount = 0;
+  RE::NiPoint3 center;
+};
+
+void AddBoneInfluences(std::vector<BoneInfluence> &a_candidates,
+                       const RE::NiSkinInstance &a_skin) {
+  const auto *data = a_skin.skinData.get();
+  for (std::uint32_t i = 0; i < data->bones; ++i) {
+    auto *bone = a_skin.bones[i] ? a_skin.bones[i]->AsNode() : nullptr;
+    if (!bone) {
+      continue;
+    }
+    const auto &boneData = data->boneData[i];
+    auto it = std::ranges::find(a_candidates, bone, &BoneInfluence::bone);
+    if (it == a_candidates.end()) {
+      a_candidates.push_back({bone, 0, 0, {}});
+      it = std::prev(a_candidates.end());
+    }
+    it->totalVertices += boneData.verts;
+    if (boneData.verts > it->largestVertexCount) {
+      it->largestVertexCount = boneData.verts;
+      it->center = boneData.bound.center;
+    }
+  }
+}
+
+std::vector<BoneInfluence>
+RankBoneInfluences(std::span<RE::BSGeometry *const> a_geometries) {
+  std::vector<BoneInfluence> candidates;
+  for (auto *geometry : a_geometries) {
+    const auto *skin =
+        geometry ? geometry->GetGeometryRuntimeData().skinInstance.get()
+                 : nullptr;
+    if (skin && skin->bones && skin->skinData && skin->skinData->boneData) {
+      AddBoneInfluences(candidates, *skin);
+    }
+  }
+  std::ranges::sort(candidates,
+                    [](const BoneInfluence &a, const BoneInfluence &b) {
+                      return a.totalVertices > b.totalVertices;
+                    });
+  return candidates;
+}
+
+std::vector<LightPlacement>
+PlaceSkinnedBones(const SkinnedBones &a_bones,
+                  std::span<RE::BSGeometry *const> a_geometries,
+                  const RE::NiPoint3 &a_offset) {
+  const auto candidates = RankBoneInfluences(a_geometries);
+  std::vector<LightPlacement> out;
+  if (candidates.empty()) {
+    return out;
+  }
+  const float top = static_cast<float>(candidates.front().totalVertices);
+  for (const auto &candidate : candidates) {
+    const float share =
+        top > 0 ? static_cast<float>(candidate.totalVertices) / top : 1.0f;
+    if (share < std::max(a_bones.minShare, 0.3f) ||
+        out.size() >= std::max<std::uint32_t>(1, a_bones.max)) {
+      break;
+    }
+    out.push_back(
+        {RE::NiPointer<RE::NiNode>{candidate.bone},
+         candidate.bone->name.c_str() ? candidate.bone->name.c_str() : "?",
+         candidate.center + a_offset, share});
+  }
+  return out;
+}
+}
+
 std::vector<LightPlacement>
 PlaceLightNodes(const Bones &a_bones,
                 std::span<RE::BSGeometry *const> a_geometries,
                 RE::NiAVObject *a_root, const Vec3 &a_offset) {
-  std::vector<LightPlacement> out;
   const RE::NiPoint3 offset{a_offset.x, a_offset.y, a_offset.z};
-  Match(
+  return Match(
       a_bones,
       [&](const NamedBones &named) {
-        for (const auto &name : named.bones) {
-          auto *object = a_root
-                             ? a_root->GetObjectByName(RE::BSFixedString{name})
-                             : nullptr;
-          auto *bone = object ? object->AsNode() : nullptr;
-          if (bone) {
-            out.push_back(
-                {RE::NiPointer<RE::NiNode>{bone}, name, offset, 1.0f});
-          } else {
-            logger::warn("light: bone '{}' not found on the wearer", name);
-          }
-        }
-        for (auto &p : out) {
-          p.share = 1.0f / static_cast<float>(out.size());
-        }
+        return PlaceNamedBones(named, a_root, offset);
       },
       [&](const SkinnedBones &skinned) {
-        struct Candidate {
-          RE::NiNode *bone = nullptr;
-          std::uint32_t verts = 0;
-          std::uint32_t bestVerts = 0;
-          RE::NiPoint3 center;
-        };
-        std::vector<Candidate> candidates;
-        for (auto *geometry : a_geometries) {
-          const auto *skin =
-              geometry ? geometry->GetGeometryRuntimeData().skinInstance.get()
-                       : nullptr;
-          if (!skin || !skin->bones || !skin->skinData ||
-              !skin->skinData->boneData) {
-            continue;
-          }
-          const auto *data = skin->skinData.get();
-          for (std::uint32_t i = 0; i < data->bones; ++i) {
-            auto *bone = skin->bones[i] ? skin->bones[i]->AsNode() : nullptr;
-            if (!bone) {
-              continue;
-            }
-            const auto &bd = data->boneData[i];
-            auto it = std::ranges::find(candidates, bone, &Candidate::bone);
-            if (it == candidates.end()) {
-              candidates.push_back({bone, 0, 0, {}});
-              it = std::prev(candidates.end());
-            }
-            it->verts += bd.verts;
-            if (bd.verts > it->bestVerts) {
-              it->bestVerts = bd.verts;
-              it->center = bd.bound.center;
-            }
-          }
-        }
-        std::ranges::sort(candidates,
-                          [](const Candidate &a, const Candidate &b) {
-                            return a.verts > b.verts;
-                          });
-        if (candidates.empty()) {
-          return;
-        }
-        const float top = static_cast<float>(candidates.front().verts);
-        for (const auto &c : candidates) {
-          const float share =
-              top > 0 ? static_cast<float>(c.verts) / top : 1.0f;
-          if (share < std::max(skinned.minShare, 0.3f) ||
-              out.size() >= std::max<std::uint32_t>(1, skinned.max)) {
-            break;
-          }
-          out.push_back({RE::NiPointer<RE::NiNode>{c.bone},
-                         c.bone->name.c_str() ? c.bone->name.c_str() : "?",
-                         c.center + offset, share});
-        }
+        return PlaceSkinnedBones(skinned, a_geometries, offset);
       });
-  return out;
 }
 
 std::unique_ptr<LightBinding>
@@ -165,6 +191,10 @@ LightBinding::Create(const std::vector<LightPlacement> &a_placements,
     return nullptr;
   }
   std::unique_ptr<LightBinding> out{new LightBinding{}};
+  // Resolve teardown before attaching anything; destruction must not perform
+  // address-library initialization or its potentially allocating error path.
+  static REL::Relocation<RemoveLight> remove{kShadowSceneNodeRemoveLight};
+  out->removeLight_ = remove.get();
   out->shadow_ = a_shadow;
   out->scene_ = RE::NiPointer<RE::ShadowSceneNode>{scene};
   out->entries_.reserve(a_placements.size());
@@ -219,10 +249,7 @@ LightBinding::~LightBinding() {
   auto *scene = scene_.get();
   for (auto &entry : entries_) {
     if (entry.bsLight && scene) {
-      using remove_t =
-          void (*)(RE::ShadowSceneNode *, const RE::NiPointer<RE::BSLight> &);
-      static REL::Relocation<remove_t> remove{kShadowSceneNodeRemoveLight};
-      remove(scene, entry.bsLight);
+      removeLight_(scene, entry.bsLight);
     }
     entry.bsLight.reset();
     if (entry.bone && entry.light) {

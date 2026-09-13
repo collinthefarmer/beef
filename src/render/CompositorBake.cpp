@@ -9,13 +9,12 @@
 
 namespace BetterEnchantmentEffects {
 namespace {
-bool RealTexture(const RE::NiPointer<RE::NiSourceTexture> &a_texture) {
+bool RealTexture(const TextureRef &a_texture) {
   const auto extent = TextureLab::ExtentOf(a_texture.get());
   return extent && extent->width > 4 && extent->height > 4;
 }
 
-std::string
-DescribeTexture(const RE::NiPointer<RE::NiSourceTexture> &a_texture) {
+std::string DescribeTexture(const TextureRef &a_texture) {
   if (!a_texture) {
     return "the material has no texture in this slot";
   }

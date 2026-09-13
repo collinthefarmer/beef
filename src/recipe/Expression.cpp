@@ -110,6 +110,79 @@ std::expected<ValueType, std::string> Join(ValueType a, ValueType b,
   return std::unexpected(
       std::format("'{}' mixes {} with {}", a_what, Name(a), Name(b)));
 }
+
+// Checking owns a dynamic type stack; evaluation deliberately has a separate
+// fixed-capacity value stack with zero fallback and ignored excess pushes.
+class TypeStack {
+public:
+  TypeStack() { values_.reserve(16); }
+  void Push(ValueType type) { values_.push_back(type); }
+  ValueType Pop() {
+    if (values_.empty()) {
+      return ValueType::kScalar;
+    }
+    const auto type = values_.back();
+    values_.pop_back();
+    return type;
+  }
+  bool TakeScalars(int count) {
+    for (int i = 0; i < count; ++i) {
+      if (Pop() != ValueType::kScalar) {
+        return false;
+      }
+    }
+    return true;
+  }
+  std::expected<ValueType, std::string> JoinOperands(int count,
+                                                     std::string_view context) {
+    std::array<ValueType, 3> operands{};
+    for (int i = count; i > 0; --i) {
+      operands[i - 1] = Pop();
+    }
+    auto type = operands[0];
+    for (int i = 1; i < count; ++i) {
+      auto joined = Join(type, operands[i], context);
+      if (!joined) {
+        return joined;
+      }
+      type = *joined;
+    }
+    return type;
+  }
+
+private:
+  std::vector<ValueType> values_;
+};
+
+class ValueStack {
+public:
+  Value Pop() noexcept { return top_ == 0 ? Value{0.0f} : values_[--top_]; }
+  void Push(Value value) noexcept {
+    if (top_ < values_.size()) {
+      values_[top_++] = value;
+    }
+  }
+  template <class F> void ApplyUnary(F operation) noexcept {
+    Push(Unary(Pop(), operation));
+  }
+  template <class F> void ApplyBinary(F operation) noexcept {
+    const auto b = Pop(), a = Pop();
+    Push(Binary(a, b, operation));
+  }
+  template <class F> void ApplyScalarBinary(F operation) noexcept {
+    const auto b = Pop(), a = Pop();
+    Push(operation(AsScalar(a), AsScalar(b)));
+  }
+  template <class F> void ApplyTernary(F operation) noexcept {
+    const auto c = Pop(), b = Pop(), a = Pop();
+    Push(Ternary(a, b, c, operation));
+  }
+
+private:
+  std::array<Value, 64> values_;
+  std::size_t top_ = 0;
+};
+
 }
 
 class ExpressionParser {
@@ -479,34 +552,24 @@ std::expected<Program, std::string> ParseCurve(std::string_view a_text) {
 
 std::expected<ValueType, std::string> Program::Check(const RefTyper &a_types,
                                                      ValueType a_xType) const {
-  std::vector<ValueType> stack;
-  stack.reserve(16);
-  const auto pop = [&]() {
-    const auto t = stack.empty() ? ValueType::kScalar : stack.back();
-    if (!stack.empty()) {
-      stack.pop_back();
-    }
-    return t;
-  };
+  TypeStack stack;
   for (const auto &node : code_) {
     switch (node.op) {
     case Op::kNumber:
     case Op::kTime:
     case Op::kMean:
-      stack.push_back(ValueType::kScalar);
+      stack.Push(ValueType::kScalar);
       break;
     case Op::kX:
-      stack.push_back(a_xType);
+      stack.Push(a_xType);
       break;
     case Op::kMakeVec2:
     case Op::kMakeVec3: {
       const int n = node.op == Op::kMakeVec2 ? 2 : 3;
-      for (int i = 0; i < n; ++i) {
-        if (pop() != ValueType::kScalar) {
-          return std::unexpected("vector components must be scalars");
-        }
+      if (!stack.TakeScalars(n)) {
+        return std::unexpected("vector components must be scalars");
       }
-      stack.push_back(n == 2 ? ValueType::kVec2 : ValueType::kVec3);
+      stack.Push(n == 2 ? ValueType::kVec2 : ValueType::kVec3);
       break;
     }
     case Op::kRef: {
@@ -515,15 +578,15 @@ std::expected<ValueType, std::string> Program::Check(const RefTyper &a_types,
       if (!t) {
         return std::unexpected(std::format("unknown row '@{}'", name));
       }
-      stack.push_back(*t);
+      stack.Push(*t);
       break;
     }
     case Op::kCurve:
-      if (pop() != ValueType::kScalar) {
+      if (stack.Pop() != ValueType::kScalar) {
         return std::unexpected(
             std::format("curve '@{}' takes a scalar", curves_[node.index]));
       }
-      stack.push_back(ValueType::kScalar);
+      stack.Push(ValueType::kScalar);
       break;
     case Op::kNeg:
     case Op::kAbs:
@@ -534,7 +597,7 @@ std::expected<ValueType, std::string> Program::Check(const RefTyper &a_types,
     case Op::kSqrt:
     case Op::kSin:
     case Op::kCos:
-      stack.push_back(pop());
+      stack.Push(stack.Pop());
       break;
     case Op::kNot:
     case Op::kLt:
@@ -546,12 +609,10 @@ std::expected<ValueType, std::string> Program::Check(const RefTyper &a_types,
     case Op::kAnd:
     case Op::kOr: {
       const int n = node.op == Op::kNot ? 1 : 2;
-      for (int i = 0; i < n; ++i) {
-        if (pop() != ValueType::kScalar) {
-          return std::unexpected("comparisons and logic take scalars");
-        }
+      if (!stack.TakeScalars(n)) {
+        return std::unexpected("comparisons and logic take scalars");
       }
-      stack.push_back(ValueType::kScalar);
+      stack.Push(ValueType::kScalar);
       break;
     }
     case Op::kAdd:
@@ -562,31 +623,25 @@ std::expected<ValueType, std::string> Program::Check(const RefTyper &a_types,
     case Op::kMax:
     case Op::kPow:
     case Op::kStep: {
-      const auto b = pop(), a = pop();
-      auto t = Join(a, b, "operator");
+      auto t = stack.JoinOperands(2, "operator");
       if (!t) {
         return std::unexpected(t.error());
       }
-      stack.push_back(*t);
+      stack.Push(*t);
       break;
     }
     case Op::kClamp:
     case Op::kSmoothstep:
     case Op::kLerp: {
-      const auto c = pop(), b = pop(), a = pop();
-      auto t = Join(a, b, "function");
+      auto t = stack.JoinOperands(3, "function");
       if (!t) {
         return std::unexpected(t.error());
       }
-      t = Join(*t, c, "function");
-      if (!t) {
-        return std::unexpected(t.error());
-      }
-      stack.push_back(*t);
+      stack.Push(*t);
       break;
     }
     case Op::kIf: {
-      const auto b = pop(), a = pop(), c = pop();
+      const auto b = stack.Pop(), a = stack.Pop(), c = stack.Pop();
       if (c != ValueType::kScalar) {
         return std::unexpected("if() takes a scalar condition");
       }
@@ -594,212 +649,168 @@ std::expected<ValueType, std::string> Program::Check(const RefTyper &a_types,
       if (!t) {
         return std::unexpected(t.error());
       }
-      stack.push_back(*t);
+      stack.Push(*t);
       break;
     }
     }
   }
-  return stack.empty() ? ValueType::kScalar : stack.back();
+  return stack.Pop();
 }
 
 Value Program::Evaluate(const Inputs &a_inputs) const noexcept {
-  constexpr std::size_t kStack = 64;
-  Value stack[kStack];
-  std::size_t top = 0;
-  const auto pop = [&]() -> Value {
-    if (top == 0) {
-      return 0.0f;
-    }
-    return stack[--top];
-  };
-  const auto push = [&](Value v) {
-    if (top < kStack) {
-      stack[top++] = v;
-    }
-  };
-  const auto lift = [](auto a_f) { return [a_f](float x) { return a_f(x); }; };
+  ValueStack stack;
 
   for (const auto &node : code_) {
     switch (node.op) {
     case Op::kNumber:
-      push(node.number);
+      stack.Push(node.number);
       break;
     case Op::kMakeVec2: {
-      const float y = AsScalar(pop()), x = AsScalar(pop());
-      push(Vec2{x, y});
+      const float y = AsScalar(stack.Pop()), x = AsScalar(stack.Pop());
+      stack.Push(Vec2{x, y});
       break;
     }
     case Op::kMakeVec3: {
-      const float z = AsScalar(pop()), y = AsScalar(pop()), x = AsScalar(pop());
-      push(Vec3{x, y, z});
+      const float z = AsScalar(stack.Pop()), y = AsScalar(stack.Pop()),
+                  x = AsScalar(stack.Pop());
+      stack.Push(Vec3{x, y, z});
       break;
     }
     case Op::kRef:
-      push(node.index < a_inputs.refs.size() ? a_inputs.refs[node.index]
-                                             : Value{0.0f});
+      stack.Push(node.index < a_inputs.refs.size() ? a_inputs.refs[node.index]
+                                                   : Value{0.0f});
       break;
     case Op::kCurve: {
-      const float x = AsScalar(pop());
+      const float x = AsScalar(stack.Pop());
       const Program *curve = node.index < a_inputs.curves.size()
                                  ? a_inputs.curves[node.index]
                                  : nullptr;
-      push(curve ? ApplyCurve(*curve, x, a_inputs.mean) : x);
+      stack.Push(curve ? ApplyCurve(*curve, x, a_inputs.mean) : x);
       break;
     }
     case Op::kX:
-      push(a_inputs.x);
+      stack.Push(a_inputs.x);
       break;
     case Op::kMean:
-      push(a_inputs.mean);
+      stack.Push(a_inputs.mean);
       break;
     case Op::kTime:
-      push(a_inputs.time);
+      stack.Push(a_inputs.time);
       break;
     case Op::kNeg:
-      push(Unary(pop(), lift([](float x) { return -x; })));
+      stack.ApplyUnary([](float x) { return -x; });
       break;
     case Op::kNot:
-      push(1.0f - Truth(pop()));
+      stack.Push(1.0f - Truth(stack.Pop()));
       break;
-    case Op::kAdd: {
-      const auto b = pop(), a = pop();
-      push(Binary(a, b, [](float x, float y) { return x + y; }));
+    case Op::kAdd:
+      stack.ApplyBinary([](float x, float y) { return x + y; });
       break;
-    }
-    case Op::kSub: {
-      const auto b = pop(), a = pop();
-      push(Binary(a, b, [](float x, float y) { return x - y; }));
+    case Op::kSub:
+      stack.ApplyBinary([](float x, float y) { return x - y; });
       break;
-    }
-    case Op::kMul: {
-      const auto b = pop(), a = pop();
-      push(Binary(a, b, [](float x, float y) { return x * y; }));
+    case Op::kMul:
+      stack.ApplyBinary([](float x, float y) { return x * y; });
       break;
-    }
-    case Op::kDiv: {
-      const auto b = pop(), a = pop();
-      push(Binary(a, b, [](float x, float y) {
+    case Op::kDiv:
+      stack.ApplyBinary([](float x, float y) {
         return std::fabs(y) <= kEpsilon ? 0.0f : x / y;
-      }));
+      });
       break;
-    }
-    case Op::kLt: {
-      const auto b = pop(), a = pop();
-      push(AsScalar(a) < AsScalar(b) ? 1.0f : 0.0f);
+    case Op::kLt:
+      stack.ApplyScalarBinary(
+          [](float a, float b) { return a < b ? 1.0f : 0.0f; });
       break;
-    }
-    case Op::kGt: {
-      const auto b = pop(), a = pop();
-      push(AsScalar(a) > AsScalar(b) ? 1.0f : 0.0f);
+    case Op::kGt:
+      stack.ApplyScalarBinary(
+          [](float a, float b) { return a > b ? 1.0f : 0.0f; });
       break;
-    }
-    case Op::kLe: {
-      const auto b = pop(), a = pop();
-      push(AsScalar(a) <= AsScalar(b) ? 1.0f : 0.0f);
+    case Op::kLe:
+      stack.ApplyScalarBinary(
+          [](float a, float b) { return a <= b ? 1.0f : 0.0f; });
       break;
-    }
-    case Op::kGe: {
-      const auto b = pop(), a = pop();
-      push(AsScalar(a) >= AsScalar(b) ? 1.0f : 0.0f);
+    case Op::kGe:
+      stack.ApplyScalarBinary(
+          [](float a, float b) { return a >= b ? 1.0f : 0.0f; });
       break;
-    }
-    case Op::kEq: {
-      const auto b = pop(), a = pop();
-      push(std::fabs(AsScalar(a) - AsScalar(b)) <= kEpsilon ? 1.0f : 0.0f);
+    case Op::kEq:
+      stack.ApplyScalarBinary([](float a, float b) {
+        return std::fabs(a - b) <= kEpsilon ? 1.0f : 0.0f;
+      });
       break;
-    }
-    case Op::kNe: {
-      const auto b = pop(), a = pop();
-      push(std::fabs(AsScalar(a) - AsScalar(b)) > kEpsilon ? 1.0f : 0.0f);
+    case Op::kNe:
+      stack.ApplyScalarBinary([](float a, float b) {
+        return std::fabs(a - b) > kEpsilon ? 1.0f : 0.0f;
+      });
       break;
-    }
-    case Op::kAnd: {
-      const auto b = pop(), a = pop();
-      push(Truth(a) * Truth(b));
+    case Op::kAnd:
+      stack.ApplyScalarBinary(
+          [](float a, float b) { return Truth(a) * Truth(b); });
       break;
-    }
-    case Op::kOr: {
-      const auto b = pop(), a = pop();
-      push(std::max(Truth(a), Truth(b)));
+    case Op::kOr:
+      stack.ApplyScalarBinary(
+          [](float a, float b) { return std::max(Truth(a), Truth(b)); });
       break;
-    }
     case Op::kIf: {
-      const auto b = pop(), a = pop(), c = pop();
-      push(Truth(c) > 0.0f ? a : b);
+      const auto b = stack.Pop(), a = stack.Pop(), c = stack.Pop();
+      stack.Push(Truth(c) > 0.0f ? a : b);
       break;
     }
     case Op::kAbs:
-      push(Unary(pop(), lift([](float x) { return std::fabs(x); })));
+      stack.ApplyUnary([](float x) { return std::fabs(x); });
       break;
-    case Op::kMin: {
-      const auto b = pop(), a = pop();
-      push(Binary(a, b, [](float x, float y) { return std::min(x, y); }));
+    case Op::kMin:
+      stack.ApplyBinary([](float x, float y) { return std::min(x, y); });
       break;
-    }
-    case Op::kMax: {
-      const auto b = pop(), a = pop();
-      push(Binary(a, b, [](float x, float y) { return std::max(x, y); }));
+    case Op::kMax:
+      stack.ApplyBinary([](float x, float y) { return std::max(x, y); });
       break;
-    }
-    case Op::kClamp: {
-      const auto hi = pop(), lo = pop(), x = pop();
-      push(Ternary(x, lo, hi, [](float v, float l, float h) {
+    case Op::kClamp:
+      stack.ApplyTernary([](float v, float l, float h) {
         return std::clamp(v, std::min(l, h), std::max(l, h));
-      }));
+      });
       break;
-    }
     case Op::kSaturate:
-      push(Unary(pop(), lift([](float x) { return Clamp01(x); })));
+      stack.ApplyUnary([](float x) { return Clamp01(x); });
       break;
     case Op::kFloor:
-      push(Unary(pop(), lift([](float x) { return std::floor(x); })));
+      stack.ApplyUnary([](float x) { return std::floor(x); });
       break;
     case Op::kCeil:
-      push(Unary(pop(), lift([](float x) { return std::ceil(x); })));
+      stack.ApplyUnary([](float x) { return std::ceil(x); });
       break;
     case Op::kFrac:
-      push(Unary(pop(), lift([](float x) { return x - std::floor(x); })));
+      stack.ApplyUnary([](float x) { return x - std::floor(x); });
       break;
     case Op::kSqrt:
-      push(Unary(pop(),
-                 lift([](float x) { return std::sqrt(std::max(0.0f, x)); })));
+      stack.ApplyUnary([](float x) { return std::sqrt(std::max(0.0f, x)); });
       break;
-    case Op::kPow: {
-      const auto b = pop(), a = pop();
-      push(Binary(a, b, [](float x, float y) {
+    case Op::kPow:
+      stack.ApplyBinary([](float x, float y) {
         const float r = std::pow(x, y);
         return std::isfinite(r) ? r : 0.0f;
-      }));
+      });
       break;
-    }
     case Op::kSin:
-      push(Unary(pop(), lift([](float x) { return std::sin(x); })));
+      stack.ApplyUnary([](float x) { return std::sin(x); });
       break;
     case Op::kCos:
-      push(Unary(pop(), lift([](float x) { return std::cos(x); })));
+      stack.ApplyUnary([](float x) { return std::cos(x); });
       break;
-    case Op::kStep: {
-      const auto x = pop(), edge = pop();
-      push(Binary(edge, x,
-                  [](float e, float v) { return v < e ? 0.0f : 1.0f; }));
+    case Op::kStep:
+      stack.ApplyBinary([](float e, float v) { return v < e ? 0.0f : 1.0f; });
       break;
-    }
-    case Op::kSmoothstep: {
-      const auto x = pop(), hi = pop(), lo = pop();
-      push(Ternary(lo, hi, x, [](float l, float h, float v) {
-        return Smoothstep(l, h, v);
-      }));
+    case Op::kSmoothstep:
+      stack.ApplyTernary(
+          [](float l, float h, float v) { return Smoothstep(l, h, v); });
       break;
-    }
-    case Op::kLerp: {
-      const auto t = pop(), b = pop(), a = pop();
-      push(Ternary(a, b, t,
-                   [](float x, float y, float s) { return x + (y - x) * s; }));
+    case Op::kLerp:
+      stack.ApplyTernary(
+          [](float x, float y, float s) { return x + (y - x) * s; });
       break;
-    }
     }
   }
-  return top > 0 ? stack[top - 1] : Value{0.0f};
+  return stack.Pop();
 }
 
 float ApplyCurve(const Program &a_curve, float a_x, float a_mean) noexcept {

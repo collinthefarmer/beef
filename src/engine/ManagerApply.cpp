@@ -1,3 +1,4 @@
+#include "diagnostics/Trace.h"
 #include "engine/Manager.h"
 
 #include "Identity.h"
@@ -55,7 +56,7 @@ RE::MagicItem *WornEnchantment(RE::Actor *a_actor, RE::TESObjectARMO *a_armor) {
   return a_armor->formEnchanting;
 }
 
-std::string TexturePath(const RE::NiPointer<RE::NiSourceTexture> &a_texture) {
+std::string TexturePath(const TextureRef &a_texture) {
   return a_texture && a_texture->name.c_str() ? a_texture->name.c_str() : "";
 }
 
@@ -120,13 +121,12 @@ RE::MagicItem *EnchantmentForInstance(LiveActor &a_state,
 std::pair<TextureSize, TextureSize>
 RuntimeSizes(const Settings &a_settings, const MaterialInputs &a_material) {
   std::uint32_t native = 0;
-  const auto consider =
-      [&native](const RE::NiPointer<RE::NiSourceTexture> &a_texture) {
-        if (const std::optional<TextureLab::Extent> extent =
-                TextureLab::ExtentOf(a_texture.get())) {
-          native = std::max({native, extent->width, extent->height});
-        }
-      };
+  const auto consider = [&native](const TextureRef &a_texture) {
+    if (const std::optional<TextureLab::Extent> extent =
+            TextureLab::ExtentOf(a_texture.get())) {
+      native = std::max({native, extent->width, extent->height});
+    }
+  };
   consider(a_material.rmaos);
   consider(a_material.diffuse);
   consider(a_material.normal);
@@ -221,7 +221,7 @@ void PreparePlacement(LiveActor &a_state,
   bound.placements = placement.sources;
   bound.plan = placement.plan;
   bound.stackPlan = PlanStacks(placement.placed, placement.plan);
-  bound.binding = PlanBinding(placement.placed, placement.plan, {}, {});
+  bound.binding = PlanBinding(placement.placed, placement.plan);
   for (const PlacementId source : placement.sources) {
     const std::size_t k = static_cast<std::size_t>(source);
     if (k >= a_state.placements.size() ||
@@ -297,66 +297,90 @@ void MarkReplaced(LiveActor &a_state, LiveGeometry &a_bound) {
   }
 }
 
+struct LocatedStackOutput {
+  const Recipe &recipe;
+  const SurfaceOutput &surface;
+  PlacedOutput &placed;
+};
+
+std::optional<LocatedStackOutput>
+LocateStackOutput(LiveActor &a_state, const LiveGeometry &a_bound,
+                  const SlotContribution &a_contribution) {
+  const std::size_t placed = static_cast<std::size_t>(a_contribution.placed);
+  if (placed >= a_bound.placements.size()) {
+    return std::nullopt;
+  }
+  const std::size_t placementIndex =
+      static_cast<std::size_t>(a_bound.placements[placed]);
+  if (placementIndex >= a_state.structure.placements.size() ||
+      placementIndex >= a_state.placements.size()) {
+    return std::nullopt;
+  }
+  const std::size_t instanceIndex = static_cast<std::size_t>(
+      a_state.structure.placements[placementIndex].instance);
+  if (instanceIndex >= a_state.instances.size()) {
+    return std::nullopt;
+  }
+  const Recipe *recipe = a_state.instances[instanceIndex].recipe;
+  if (!recipe || a_contribution.output >= recipe->outputs.size()) {
+    return std::nullopt;
+  }
+  const auto *surface =
+      Get<SurfaceOutput>(recipe->outputs[a_contribution.output]);
+  auto *output =
+      OutputAt(a_state.placements[placementIndex], a_contribution.output);
+  if (!surface || !output) {
+    return std::nullopt;
+  }
+  return LocatedStackOutput{*recipe, *surface, *output};
+}
+
+std::string SurfaceProblem(LiveGeometry &a_bound, const SlotPlan &a_slot,
+                           const std::string &a_existingProblem) {
+  if (a_slot.surface == Surface::kShell && !a_bound.shell) {
+    return "shell could not be created";
+  }
+  if (a_slot.surface == Surface::kMaterial && !a_bound.material) {
+    return "material binding failed";
+  }
+  if (!a_existingProblem.empty()) {
+    return a_existingProblem;
+  }
+  SlotTarget *target = TargetFor(a_bound, a_slot.surface);
+  return target ? target->Problem(a_slot.slot) : "the surface is not bound";
+}
+
+void LogStackDiagnostics(const LocatedStackOutput &a_output,
+                         const std::string &a_geometry) {
+  for (const Diagnostic &diagnostic : a_output.placed.stack->Diagnostics()) {
+    logger::warn("recipe {} output {} on '{}': {}: {}", a_output.recipe.id,
+                 a_output.placed.index, a_geometry, diagnostic.where,
+                 diagnostic.message);
+  }
+}
+
 void PrepareChainStacks(LiveActor &a_state, LiveGeometry &a_bound,
                         const Settings &a_settings) {
   const auto [size, maxSize] =
       RuntimeSizes(a_settings, a_bound.inputs.material);
   for (const SlotPlan &slot : a_bound.plan.slots) {
-    for (const SlotContribution &c : slot.chain) {
-      const std::size_t placed = static_cast<std::size_t>(c.placed);
-      if (placed >= a_bound.placements.size()) {
+    for (const SlotContribution &contribution : slot.chain) {
+      const auto located = LocateStackOutput(a_state, a_bound, contribution);
+      if (!located) {
         continue;
       }
-      const std::size_t placementIndex =
-          static_cast<std::size_t>(a_bound.placements[placed]);
-      if (placementIndex >= a_state.structure.placements.size() ||
-          placementIndex >= a_state.placements.size()) {
+      PlacedOutput &output = located->placed;
+      output.active = true;
+      output.problem = SurfaceProblem(a_bound, slot, output.problem);
+      if (!output.problem.empty()) {
         continue;
       }
-      const std::size_t instanceIndex = static_cast<std::size_t>(
-          a_state.structure.placements[placementIndex].instance);
-      if (instanceIndex >= a_state.instances.size()) {
-        continue;
-      }
-      const LiveInstance &instance = a_state.instances[instanceIndex];
-      if (!instance.recipe) {
-        continue;
-      }
-      const SurfaceOutput *material =
-          c.output < instance.recipe->outputs.size()
-              ? Get<SurfaceOutput>(instance.recipe->outputs[c.output])
-              : nullptr;
-      if (!material) {
-        continue;
-      }
-      PlacedOutput *output =
-          OutputAt(a_state.placements[placementIndex], c.output);
-      if (!output) {
-        continue;
-      }
-      output->active = true;
-      if (slot.surface == Surface::kShell && !a_bound.shell) {
-        output->problem = "shell could not be created";
-      } else if (slot.surface == Surface::kMaterial && !a_bound.material) {
-        output->problem = "material binding failed";
-      }
-      if (output->problem.empty()) {
-        SlotTarget *target = TargetFor(a_bound, slot.surface);
-        output->problem =
-            target ? target->Problem(slot.slot) : "the surface is not bound";
-      }
-      if (output->problem.empty()) {
-        output->stack = Compositor::GetSingleton()->Prepare(
-            *instance.recipe, *material, a_bound.inputs, size, maxSize);
-        if (!output->stack) {
-          output->problem = "the texture lab is unavailable";
-        } else if (a_settings.verboseLogging) {
-          for (const Diagnostic &d : output->stack->Diagnostics()) {
-            logger::warn("recipe {} output {} on '{}': {}: {}",
-                         instance.recipe->id, c.output, a_bound.name, d.where,
-                         d.message);
-          }
-        }
+      output.stack = Compositor::GetSingleton()->Prepare(
+          located->recipe, located->surface, a_bound.inputs, size, maxSize);
+      if (!output.stack) {
+        output.problem = "the texture lab is unavailable";
+      } else if (a_settings.verboseLogging) {
+        LogStackDiagnostics(*located, a_bound.name);
       }
     }
   }
@@ -411,10 +435,12 @@ void PlaceLight(LiveActor &a_state, const ActorLightPlan &a_plan,
 }
 
 void Manager::ReapplyAll() {
-  PostTask([this] { RebuildAllActorsAfterChange([] {}); });
+  const Trace::Scope trace{Trace::Command("manager.ReapplyAll")};
+  PostTask([this] { ChangeAndRebuildActors({}, [] {}); });
 }
 
 void Manager::RetireAll() {
+  const Trace::Scope trace{Trace::Command("manager.RetireAll")};
   PostTask([this] {
     std::vector<RE::FormID> ids;
     ids.reserve(applied_.size());
@@ -445,6 +471,11 @@ void Manager::Refresh(RE::Actor *a_actor) {
   }
   const Settings settings = GetSettings();
   const RE::FormID actorID = a_actor->GetFormID();
+  Trace::Safely([&] {
+    Trace::Emit(
+        Trace::Event::kApplication,
+        {{"action", "refresh_begin"}, {"actor", std::to_string(actorID)}});
+  });
   Retire(actorID);
   if (!settings.enableShaders || !emissivePathEnabled_ ||
       a_actor->IsDeleted()) {
@@ -485,12 +516,66 @@ void Manager::Refresh(RE::Actor *a_actor) {
                  actorID, a_actor->GetName(), state.pieces.size(),
                  state.instances.size());
   }
+  Trace::Safely([&] {
+    Trace::Emit(Trace::Event::kApplication,
+                {{"action", "installed"},
+                 {"actor", std::to_string(actorID)},
+                 {"pieces", std::to_string(state.pieces.size())},
+                 {"recipes", std::to_string(state.instances.size())}});
+  });
   applied_[actorID] = std::move(state);
   WatchAnimationEvents(a_actor);
 
   if (applications_.TakeEquipped(actorID)) {
     Fire(actorID, EquipEvent(applied_[actorID].pieces));
   }
+}
+
+bool Manager::CollectPieceGeometries(LivePiece &piece, RE::NiAVObject *clone,
+                                     RE::NiAVObject *root, bool verbose) {
+  std::unordered_set<RE::BSLightingShaderProperty *> seen;
+  bool anyPBR = false;
+  bool layoutFailed = false;
+  RE::BSVisit::TraverseScenegraphGeometries(
+      clone, [&](RE::BSGeometry *a_geometry) {
+        const std::string_view name{
+            a_geometry->name.c_str() ? a_geometry->name.c_str() : ""};
+        if (name.ends_with(Identity::ShellNodeSuffix())) {
+          return RE::BSVisit::BSVisitControl::kContinue;
+        }
+        RE::BSLightingShaderProperty *property = LightingPropertyOf(a_geometry);
+        const std::optional<PbrMaterial> material = PbrMaterial::Bind(property);
+        if (!property || !material || !seen.insert(property).second) {
+          return RE::BSVisit::BSVisitControl::kContinue;
+        }
+        anyPBR = true;
+        if (!LayoutSanityCheck(*material, name)) {
+          layoutFailed = true;
+          return RE::BSVisit::BSVisitControl::kStop;
+        }
+        if (!property->emissiveColor) {
+          if (verbose) {
+            logger::info(
+                "skip geometry {}: property has no emissive colour storage",
+                name);
+          }
+          return RE::BSVisit::BSVisitControl::kContinue;
+        }
+        piece.geometries.push_back(
+            MakeGeometry(a_geometry, property, root, *material));
+        return RE::BSVisit::BSVisitControl::kContinue;
+      });
+  if (layoutFailed) {
+    return false;
+  }
+  if (!anyPBR || piece.geometries.empty()) {
+    if (!anyPBR && verbose && loggedNonPBRArmor_.insert(piece.armor).second) {
+      logger::info("armor {:08X} ({}) has no PBR geometry; left alone",
+                   piece.armor, piece.armorName);
+    }
+    return false;
+  }
+  return true;
 }
 
 std::vector<LivePiece> Manager::CollectPieces(RE::Actor *a_actor,
@@ -521,49 +606,8 @@ std::vector<LivePiece> Manager::CollectPieces(RE::Actor *a_actor,
     piece.armor = armor->GetFormID();
     piece.armorName = armor->GetName() ? armor->GetName() : "";
     piece.enchantment = enchantment ? enchantment->GetFormID() : 0;
-    std::unordered_set<RE::BSLightingShaderProperty *> seen;
-    bool anyPBR = false;
-    bool layoutFailed = false;
-    RE::BSVisit::TraverseScenegraphGeometries(
-        clone, [&](RE::BSGeometry *a_geometry) {
-          const std::string_view name{
-              a_geometry->name.c_str() ? a_geometry->name.c_str() : ""};
-          if (name.ends_with(Identity::ShellNodeSuffix())) {
-            return RE::BSVisit::BSVisitControl::kContinue;
-          }
-          RE::BSLightingShaderProperty *property =
-              LightingPropertyOf(a_geometry);
-          const std::optional<PbrMaterial> material =
-              PbrMaterial::Bind(property);
-          if (!property || !material || !seen.insert(property).second) {
-            return RE::BSVisit::BSVisitControl::kContinue;
-          }
-          anyPBR = true;
-          if (!LayoutSanityCheck(*material, name)) {
-            layoutFailed = true;
-            return RE::BSVisit::BSVisitControl::kStop;
-          }
-          if (!property->emissiveColor) {
-            if (a_settings.verboseLogging) {
-              logger::info(
-                  "skip geometry {}: property has no emissive colour storage",
-                  name);
-            }
-            return RE::BSVisit::BSVisitControl::kContinue;
-          }
-          piece.geometries.push_back(
-              MakeGeometry(a_geometry, property, root, *material));
-          return RE::BSVisit::BSVisitControl::kContinue;
-        });
-    if (layoutFailed) {
-      continue;
-    }
-    if (!anyPBR || piece.geometries.empty()) {
-      if (!anyPBR && a_settings.verboseLogging &&
-          loggedNonPBRArmor_.insert(piece.armor).second) {
-        logger::info("armor {:08X} ({}) has no PBR geometry; left alone",
-                     piece.armor, piece.armorName);
-      }
+    if (!CollectPieceGeometries(piece, clone, root,
+                                a_settings.verboseLogging)) {
       continue;
     }
     out.push_back(std::move(piece));
@@ -684,6 +728,20 @@ void Manager::PlaceOnGeometry(LiveActor &a_state, LivePieceId a_piece,
   PrepareChainStacks(a_state, bound, a_settings);
 
   const auto actor = a_state.actor.get();
+  if (actor) {
+    Trace::Safely([&] {
+      Trace::Emit(
+          Trace::Event::kBinding,
+          {{"action", "geometry_scope"},
+           {"actor", std::to_string(actor->GetFormID())},
+           {"armor", std::to_string(a_state.pieces[pieceIndex].armor)},
+           {"geometry", Trace::Pointer(bound.geometry.get())},
+           {"property", Trace::Pointer(bound.property.get())},
+           {"name", bound.name},
+           {"shell",
+            Trace::Pointer(bound.shell ? bound.shell->Geometry() : nullptr)}});
+    });
+  }
   if (a_settings.verboseLogging && actor) {
     logger::info(
         "apply armor {:08X} actor {:08X} geometry '{}' material={} {}",
@@ -748,7 +806,17 @@ void Manager::Retire(RE::FormID a_actorID) {
           CarriedTime{instance.lastTime, now};
     }
   }
+  Trace::Safely([&] {
+    Trace::Emit(Trace::Event::kRetire, {{"action", "begin"},
+                                        {"actor", std::to_string(a_actorID)},
+                                        {"recipes", std::to_string(recipes)}});
+  });
+  RetireActorEffects(it->second);
   applied_.erase(it);
+  Trace::Safely([&] {
+    Trace::Emit(Trace::Event::kRetire,
+                {{"action", "end"}, {"actor", std::to_string(a_actorID)}});
+  });
   TextureLab::GetSingleton()->InvalidatePreviews();
   UnwatchAnimationEvents(RE::TESForm::LookupByID<RE::Actor>(a_actorID));
   if (GetSettings().verboseLogging) {

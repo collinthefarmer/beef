@@ -140,6 +140,8 @@ struct ReduceVisitor {
   void pickRecipe(const std::string &a_id) {
     if (selection.recipeID != a_id) {
       mask = MaskStack{};
+      state.navigation = Navigation{};
+      selection.subject = RecipeSubject{};
     }
     selection.recipeID = a_id;
     selection.layer.reset();
@@ -161,13 +163,20 @@ struct ReduceVisitor {
 
   void operator()(const PickPiece &a_i) {
     selection = Selection{};
+    state.navigation = Navigation{};
     selection.piece = a_i.piece;
     mask = MaskStack{};
   }
 
-  void operator()(const PickRecipe &a_i) { pickRecipe(a_i.recipeID); }
+  void operator()(const PickRecipe &a_i) {
+    pickRecipe(a_i.recipeID);
+    selection.document = a_i.document;
+  }
 
-  void operator()(const PinRecipe &a_i) { pickRecipe(a_i.recipeID); }
+  void operator()(const PinRecipe &a_i) {
+    pickRecipe(a_i.recipeID);
+    selection.document = false;
+  }
 
   void operator()(const PickTarget &a_i) {
     if (selection.target != a_i.target) {
@@ -407,12 +416,18 @@ struct ReduceVisitor {
   }
 
   void operator()(const EditRecipe &a_i) {
-    for (const RecipeEdit &edit : a_i.edits) {
-      ReduceEdit(selection, edit);
+    if (selection.recipeID == a_i.recipeID) {
+      for (const RecipeEdit &edit : a_i.edits) {
+        ReduceEdit(selection, edit);
+      }
+    }
+    if (ShouldInvalidateIndexedSubjects(a_i.edits)) {
+      InvalidateIndexedSubjects(state.navigation, selection, a_i.recipeID);
     }
   }
 
   void operator()(const RenameRecipe &a_i) {
+    state.navigation = Navigation{};
     if (selection.recipeID == a_i.from) {
       selection.recipeID = a_i.to;
     }
@@ -422,6 +437,8 @@ struct ReduceVisitor {
   }
 
   void operator()(const CreateRecipe &a_i) {
+    state.navigation = Navigation{};
+    selection.subject = RecipeSubject{};
     selection.recipeID = a_i.recipeID;
     selection.layer.reset();
     mask = MaskStack{};
@@ -435,8 +452,12 @@ struct ReduceVisitor {
   void operator()(const SetScrub &) {}
   void operator()(const SetSpeed &) {}
   void operator()(const StepClock &) {}
-  void operator()(const Undo &) {}
-  void operator()(const Redo &) {}
+  void operator()(const Undo &a_i) {
+    InvalidateIndexedSubjects(state.navigation, selection, a_i.recipeID);
+  }
+  void operator()(const Redo &a_i) {
+    InvalidateIndexedSubjects(state.navigation, selection, a_i.recipeID);
+  }
   void operator()(const FireTrigger &) {}
 };
 }
@@ -482,9 +503,23 @@ namespace {
       [](const SetPaintSurface &) { return true; },
       [](const auto &) { return false; });
 }
+
+[[nodiscard]] bool RequiresSettledEditor(const Intent &a_intent) {
+  return Is<EditRecipe>(a_intent) || Is<Undo>(a_intent) || Is<Redo>(a_intent) ||
+         Is<CreateRecipe>(a_intent) || Is<RenameRecipe>(a_intent) ||
+         Is<BeginPaint>(a_intent) || Is<KeepPaint>(a_intent) ||
+         Is<UpdatePaint>(a_intent) || Is<SoloOutput>(a_intent) ||
+         Is<SoloLayer>(a_intent) || Is<MuteLayer>(a_intent) ||
+         Is<PickCell>(a_intent) || Is<PickLayer>(a_intent) ||
+         ChangesPaint(a_intent);
+}
 }
 
 bool AcceptIntent(const MenuState &a_state, const Intent &a_intent) {
+  if ((a_state.pendingIndexedEdit || a_state.pendingRecipeFile) &&
+      RequiresSettledEditor(a_intent)) {
+    return false;
+  }
   if (a_state.paint && a_state.paint->pendingCommit && ChangesPaint(a_intent)) {
     return false;
   }
@@ -508,6 +543,34 @@ bool AcceptIntent(const MenuState &a_state, const Intent &a_intent) {
                a_state.paint->sessionID == a_update.request.sessionID;
       },
       [](const auto &) { return true; });
+}
+
+void ResolveEditorSelection(MenuState &a_state, const Snapshot &a_snapshot) {
+  const Selection previous = a_state.selection;
+  ResolveSelection(a_state.selection, a_snapshot);
+  if (previous.piece != a_state.selection.piece ||
+      previous.recipeID != a_state.selection.recipeID) {
+    a_state.navigation = Navigation{};
+    a_state.selection.subject = RecipeSubject{};
+    a_state.selection.layer.reset();
+  } else if (previous.geometry != a_state.selection.geometry) {
+    a_state.navigation = Navigation{};
+  }
+}
+
+void AcknowledgeEditorOperations(MenuState &a_state,
+                                 const Snapshot &a_snapshot) {
+  for (const RecipeEditResult &result : a_snapshot.editResults) {
+    (void)AcknowledgeIndexedEdit(a_state.pendingIndexedEdit, &result);
+  }
+  for (const FileOperationResult &result : a_snapshot.fileOperations) {
+    if (result.state != FileOperationState::kPending &&
+        a_state.pendingRecipeFile &&
+        a_state.pendingRecipeFile->requestID == result.requestID &&
+        a_state.pendingRecipeFile->recipeID == result.recipeID) {
+      a_state.pendingRecipeFile.reset();
+    }
+  }
 }
 
 void Reduce(MenuState &a_state, const Intent &a_intent) {
@@ -583,6 +646,9 @@ void AcknowledgePaintUpdate(MenuState &a_state,
   if (a_result.ended) {
     if (a_result.revision > a_state.lastPaintReset) {
       a_state.lastPaintReset = a_result.revision;
+      a_state.navigation = Navigation{};
+      a_state.selection.subject = RecipeSubject{};
+      a_state.selection.layer.reset();
       if (a_state.paint) {
         Reduce(a_state, EndPaint{});
       }

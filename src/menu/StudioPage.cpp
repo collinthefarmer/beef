@@ -1,4 +1,5 @@
 #include "menu/StudioPage.h"
+#include "diagnostics/Trace.h"
 
 #include "menu/ContextRows.h"
 #include "menu/FormDraw.h"
@@ -6,8 +7,10 @@
 #include "menu/Menu.h"
 #include "menu/MenuWidgets.h"
 #include "menu/PaintPanel.h"
+#include "menu/RecipeActions.h"
 #include "menu/ResourcePanels.h"
 #include "menu/StackPanel.h"
+#include "menu/Workspace.h"
 
 #include "engine/Manager.h"
 #include "studio/Board.h"
@@ -239,7 +242,7 @@ void DrawApplication(const Frame &a_frame) {
 
 void DrawBody(const Frame &a_frame) {
   DrawApplication(a_frame);
-  if (!a_frame.piece || !a_frame.recipe) {
+  if (!a_frame.recipe) {
     if (a_frame.state->paint) {
       DrawPaintWaiting(a_frame);
     } else {
@@ -250,10 +253,13 @@ void DrawBody(const Frame &a_frame) {
   }
   ImGui::PushID(a_frame.recipe->id.c_str());
   if (a_frame.geometry) {
-    DrawGeometryBody(a_frame);
+    if (a_frame.state->mode == Studio::Mode::kPaint) {
+      DrawGeometryBody(a_frame);
+    } else {
+      DrawWorkspace(a_frame);
+    }
   } else {
-    DrawPaintHead(a_frame);
-    DrawRecipeSettings(a_frame);
+    DrawWorkspace(a_frame);
     Rule();
     Dim(std::format("recipe {} is bound to no geometry of this piece: its keys "
                     "or selectors match none of its geometries",
@@ -262,12 +268,47 @@ void DrawBody(const Frame &a_frame) {
   ImGui::PopID();
 }
 
+void ReturnToLive() {
+  Manager *manager = Manager::GetSingleton();
+  if (!manager) {
+    return;
+  }
+  manager->Editor().UpdateView([](Studio::View &a_live) {
+    a_live.isolation = {};
+    a_live.muted.clear();
+    a_live.freeze = false;
+    a_live.speed = 1.0f;
+  });
+}
+
+void DrawTryStatus(const Frame &a_frame) {
+  const Studio::View &view = ViewOf(a_frame);
+  static_cast<void>(
+      Rule(Studio::RuleSpec{.text = "Try / global clock", .buttons = {}}));
+  Disabled(a_frame.state->paint.has_value(), [&] {
+    if (ImGui::SmallButton("Return to live")) {
+      ReturnToLive();
+    }
+  });
+  Tooltip("clear solo and mute, resume the global clock at normal speed");
+  if (view.Isolating()) {
+    Warn(std::format("Solo: {}", view.isolation.recipeID));
+  }
+  if (!view.muted.empty()) {
+    Warn(std::format("{} muted layer(s)", view.muted.size()));
+  }
+  if (view.freeze || view.speed != 1.0f) {
+    Dim(std::format("Clock: {} at {:.2f}x", view.freeze ? "held" : "running",
+                    view.speed));
+  }
+}
+
 void DrawFooter(const Frame &a_frame) {
   const Studio::RecipeRow *recipe = a_frame.recipe;
   const Studio::View &view = ViewOf(a_frame);
   Studio::Intents &out = *a_frame.intents;
   const float now = recipe ? recipe->time : 0.0f;
-  static_cast<void>(Rule(Studio::RuleSpec{.text = "Timeline", .buttons = {}}));
+  DrawTryStatus(a_frame);
   Table table = Table::Begin("footer",
                              {{"freeze", Studio::Width::Fit()},
                               {"step", Studio::Width::Fit()},
@@ -343,6 +384,45 @@ void HistoryKeys(const Frame &a_frame) {
     Studio::Post(out, Studio::Redo{recipe->id});
   }
 }
+
+void TraceStudioSelection(const Studio::Selection &a_selection) {
+  Trace::Page("Studio",
+              std::format("actor={:08X} armor={:08X} camera={} recipe={}",
+                          a_selection.piece.actorID, a_selection.piece.armorID,
+                          a_selection.piece.firstPerson ? "1st" : "3rd",
+                          a_selection.recipeID));
+}
+
+void DrawStudioFrame(const Frame &frame) {
+  Studio::MenuState &state = *frame.state;
+  const Studio::Snapshot &snapshot = *frame.snapshot;
+  const bool editPending = state.pendingIndexedEdit.has_value() ||
+                           state.pendingRecipeFile.has_value() ||
+                           RecipeFilePending(frame);
+  Disabled(editPending || state.paint.has_value(), [&] {
+    DrawStudioContext(frame);
+    DrawRecipeFileActions(frame);
+  });
+  if (editPending) {
+    Dim("Waiting for the recipe change.");
+  }
+  const Studio::View &view = snapshot.view;
+  const float footerRows = 3.0f + (view.Isolating() ? 1.0f : 0.0f) +
+                           (!view.muted.empty() ? 1.0f : 0.0f) +
+                           ((view.freeze || view.speed != 1.0f) ? 1.0f : 0.0f);
+  const float footer =
+      RuleHeight() + ImGui::GetFrameHeightWithSpacing() * footerRows + 8.0f;
+  if (ImGui::BeginChild("studio-body", ImVec2{0.0f, -footer}, 0, 0)) {
+    Disabled(editPending || (state.paint && state.paint->pendingCommit),
+             [&] { DrawBody(frame); });
+  }
+  ImGui::EndChild();
+  DrawFooter(frame);
+  if (!editPending) {
+    HistoryKeys(frame);
+  }
+}
+
 }
 
 void __stdcall RenderStudio() {
@@ -351,7 +431,9 @@ void __stdcall RenderStudio() {
     return;
   }
   Studio::MenuState &state = Studio::State();
-  manager->Watch(Studio::RequestOf(state.selection));
+  TraceStudioSelection(state.selection);
+  manager->Watch(Studio::RequestOf(state.selection),
+                 state.selection.document ? state.selection.recipeID : "");
   const std::shared_ptr<const Manager::Snapshot> held =
       manager->LatestSnapshot();
   if (!held) {
@@ -364,7 +446,8 @@ void __stdcall RenderStudio() {
   if (snapshot.paintCommit) {
     Studio::AcknowledgePaintCommit(state, *snapshot.paintCommit);
   }
-  Studio::ResolveSelection(state.selection, snapshot);
+  Studio::ResolveEditorSelection(state, snapshot);
+  Studio::AcknowledgeEditorOperations(state, snapshot);
   Studio::Intents intents;
 
   Studio::Mode mode = state.mode;
@@ -375,12 +458,14 @@ void __stdcall RenderStudio() {
   const Studio::PieceRow *piece =
       Studio::SelectedPiece(snapshot, state.selection);
   const Studio::RecipeRow *recipe =
-      Studio::SelectedRecipe(piece, state.selection);
+      Studio::SelectedRecipe(snapshot, state.selection);
+  [[maybe_unused]] const bool resolved =
+      Studio::ResolveInspectorSubject(state.selection, recipe);
   Studio::ObservePaintRecipe(state, recipe);
   const Studio::GeometryRow *geometry =
       Studio::SelectedGeometry(recipe, state.selection);
-  const Studio::Names names = (recipe && geometry)
-                                  ? Studio::NamesOf(*recipe, *geometry)
+  const Studio::Names names = recipe
+                                  ? Studio::NamesOf(*recipe, geometry ? *geometry : Studio::GeometryRow{})
                                   : Studio::Names{};
 
   const Frame frame{
@@ -393,15 +478,7 @@ void __stdcall RenderStudio() {
       .intents = &intents,
   };
 
-  const float footer =
-      RuleHeight() + ImGui::GetFrameHeightWithSpacing() * 2.0f + 8.0f;
-  if (ImGui::BeginChild("studio-body", ImVec2{0.0f, -footer}, 0, 0)) {
-    Disabled(state.paint && state.paint->pendingCommit,
-             [&] { DrawBody(frame); });
-  }
-  ImGui::EndChild();
-  DrawFooter(frame);
-  HistoryKeys(frame);
+  DrawStudioFrame(frame);
   Dispatch(intents, state, snapshot);
   RebuildScratch(frame);
   Dispatch(intents, state, snapshot);

@@ -237,6 +237,9 @@ struct FormField {
   std::vector<std::string> creators{};
   FieldCreator create{};
   std::optional<std::pair<float, float>> range{};
+  std::optional<std::pair<float, float>> workingRange{};
+  std::string units{};
+  bool integral = false;
 };
 
 [[nodiscard]] FormField RowNameField(RowKind a_kind, const std::string &a_name,

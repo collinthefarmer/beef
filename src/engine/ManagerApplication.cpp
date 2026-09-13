@@ -1,12 +1,44 @@
+#include "diagnostics/Trace.h"
 #include "engine/Manager.h"
 
 #include "SettingsFile.h"
+#include "engine/RecipeStore.h"
 
 #include <algorithm>
 #include <utility>
 
 namespace BetterEnchantmentEffects {
 namespace {
+void TraceRebuildState(const ApplicationToken &a_token,
+                       const Studio::View &a_view) {
+  Trace::Safely([&] {
+    Trace::Emit(
+        Trace::Event::kApplication,
+        {{"action", "rebuild_state"},
+         {"recipe", a_token.recipeID},
+         {"revision", std::to_string(a_token.revision)},
+         {"isolation", a_view.isolation.recipeID},
+         {"output", a_view.isolation.output
+                        ? std::to_string(*a_view.isolation.output)
+                        : "none"},
+         {"layer", a_view.isolation.layer
+                       ? std::to_string(*a_view.isolation.layer)
+                       : "none"},
+         {"pin", a_view.pin ? a_view.pin->recipeID : "none"},
+         {"pin_actor",
+          a_view.pin ? std::to_string(a_view.pin->piece.actorID) : "none"},
+         {"pin_armor",
+          a_view.pin ? std::to_string(a_view.pin->piece.armorID) : "none"},
+         {"muted", std::to_string(a_view.muted.size())}});
+    for (const Recipe &recipe : LoadedRecipes()) {
+      Trace::Emit(Trace::Event::kRecipe,
+                  {{"id", recipe.id},
+                   {"fingerprint_fnv1a64",
+                    Trace::Fingerprint(SerializeRecipe(recipe))}});
+    }
+  });
+}
+
 struct ApplicationObservation {
   std::size_t outputs = 0;
   bool waiting = false;
@@ -82,11 +114,16 @@ ApplicationPhase PhaseOf(const ApplicationObservation &a_result,
 }
 
 std::vector<RE::FormID> Manager::ApplicationActors() const {
-  std::vector<RE::FormID> ids;
-  ids.reserve(applied_.size() + 1);
-  for (const auto &[id, state] : applied_) {
+  auto ids = LoadedActorIDs();
+  for (const auto &[id, state] : applied_)
     ids.push_back(id);
-  }
+  std::ranges::sort(ids);
+  ids.erase(std::unique(ids.begin(), ids.end()), ids.end());
+  return ids;
+}
+
+std::vector<RE::FormID> Manager::LoadedActorIDs() const {
+  std::vector<RE::FormID> ids;
   if (const auto *player = RE::PlayerCharacter::GetSingleton()) {
     ids.push_back(player->GetFormID());
   }
@@ -106,31 +143,22 @@ std::vector<RE::FormID> Manager::ApplicationActors() const {
   return ids;
 }
 
-void Manager::RebuildActorsAfterChange(std::string a_recipe,
-                                       const std::function<void()> &a_action) {
+void Manager::ChangeAndRebuildActors(std::string a_reportRecipe,
+                                     const std::function<void()> &a_action) {
   const ApplicationToken token =
-      applications_.Begin(std::move(a_recipe), ApplicationActors());
+      applications_.Begin(std::move(a_reportRecipe), ApplicationActors());
   const auto actors = applications_.ActorsFor(token.recipeID);
   for (const RE::FormID actor : actors) {
     Retire(actor);
   }
   a_action();
+  TraceRebuildState(token, editor_.CurrentView());
   for (const RE::FormID actor : actors) {
     if (!applications_.Refresh(actor)) {
       applications_.Report(token, actor, ApplicationPhase::kFailed,
                            "actor refresh could not be queued");
     }
   }
-}
-
-void Manager::RebuildRecipeWearersAfterChange(
-    std::string_view a_id, const std::function<void()> &a_action) {
-  RebuildActorsAfterChange(std::string{a_id}, a_action);
-}
-
-void Manager::RebuildAllActorsAfterChange(
-    const std::function<void()> &a_action) {
-  RebuildActorsAfterChange({}, a_action);
 }
 
 void Manager::PrepareApplications(

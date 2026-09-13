@@ -1,5 +1,6 @@
 #pragma once
 
+#include "planners/ResourceSlots.h"
 #include "render/RuntimeTextures.h"
 
 #include <cstdint>
@@ -32,11 +33,20 @@ private:
 
   bool CreateTarget(REX::W32::ID3D11Device *a_device, RenderTarget &a_target,
                     TextureSize a_size);
-  RE::NiPointer<RE::NiSourceTexture> LoadPresenter();
+  RE::NiPointer<RE::NiSourceTexture> LoadPresenter(std::size_t a_slot);
+  bool ValidatePresenter(std::size_t a_slot, RE::NiSourceTexture *a_source,
+                         const std::string &a_path) const;
   static void Recycle(const std::weak_ptr<Pool> &a_pool,
                       RenderTarget *a_target) noexcept;
 
-  std::uint32_t nextPresenter_ = 0;
+  static constexpr std::size_t kPresenterCount = 512;
+  struct Presenter {
+    RE::NiPointer<RE::NiSourceTexture> texture;
+    RE::NiTexture::RendererData *original = nullptr;
+  };
+  ResourceSlots presenterSlots_{kPresenterCount};
+  std::array<Presenter, kPresenterCount> presenters_{};
+  std::uint64_t nextGeneration_ = 0;
   std::shared_ptr<Pool> pool_ = std::make_shared<Pool>();
   std::map<std::uint32_t, std::shared_ptr<RenderTarget>> scratch_;
 };

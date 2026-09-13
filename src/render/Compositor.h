@@ -15,6 +15,7 @@
 #include "recipe/Signals.h"
 #include "render/PBRMaterial.h"
 #include "render/RuntimeTextures.h"
+#include "render/TextureRef.h"
 
 #include <cstdint>
 #include <expected>
@@ -30,10 +31,10 @@
 
 namespace BetterEnchantmentEffects {
 struct MaterialInputs {
-  RE::NiPointer<RE::NiSourceTexture> diffuse;
-  RE::NiPointer<RE::NiSourceTexture> normal;
-  RE::NiPointer<RE::NiSourceTexture> rmaos;
-  RE::NiPointer<RE::NiSourceTexture> displacement;
+  TextureRef diffuse;
+  TextureRef normal;
+  TextureRef rmaos;
+  TextureRef displacement;
   bool flatDisplacement = true;
 
   [[nodiscard]] static MaterialInputs From(const PbrMaterial &a_material);
@@ -43,7 +44,7 @@ class RenderedMask;
 class RenderedRipple;
 
 struct PreparedSource {
-  RE::NiPointer<RE::NiSourceTexture> texture;
+  TextureRef texture;
   TextureLab::LayerInput sampling;
   std::optional<Vec2Param> scroll;
   std::optional<Vec2Param> tile;
@@ -55,7 +56,7 @@ struct PreparedSource {
 };
 
 struct PreparedMask {
-  RE::NiPointer<RE::NiSourceTexture> texture;
+  TextureRef texture;
   ShaderChannel channel = ShaderChannel::kR;
   bool animated = false;
   std::string problem;
@@ -67,8 +68,8 @@ using RippleCache = RecipeTextureCache<RenderedRipple>;
 
 struct DerivedMaps {
   std::shared_ptr<TextureLab::RenderTarget> normalSlope;
-  std::string problem;
-  bool tried = false;
+  std::string normalSlopeProblem;
+  bool normalSlopeTried = false;
   std::shared_ptr<TextureLab::RenderTarget> clusters;
   ClusterSettings clusterSettings;
   std::string clustersProblem;
@@ -86,7 +87,7 @@ struct GeometryInputs {
 
 class RenderedRipple {
 public:
-  [[nodiscard]] RE::NiSourceTexture *Texture() const noexcept;
+  [[nodiscard]] TextureRef Texture() const noexcept;
 
 private:
   friend class Compositor;
@@ -102,7 +103,7 @@ private:
 
 class RenderedMask {
 public:
-  [[nodiscard]] RE::NiSourceTexture *Texture() const noexcept;
+  [[nodiscard]] TextureRef Texture() const noexcept;
   [[nodiscard]] bool Animated() const noexcept;
   [[nodiscard]] bool Vector() const noexcept;
   [[nodiscard]] const std::string &Problem() const noexcept;
@@ -143,13 +144,13 @@ struct LayerFilter {
 };
 
 struct StackBase {
-  RE::NiSourceTexture *texture = nullptr;
+  TextureRef texture;
   bool animated = false;
 };
 
 class RenderedStack {
 public:
-  [[nodiscard]] RE::NiSourceTexture *Texture() const noexcept;
+  [[nodiscard]] TextureRef Texture() const noexcept;
   [[nodiscard]] bool Animated() const noexcept;
   [[nodiscard]] TextureSize Size() const noexcept;
   [[nodiscard]] std::span<const PreparedLayer> Layers() const noexcept;
@@ -158,11 +159,11 @@ public:
 private:
   friend class Compositor;
   std::vector<PreparedLayer> layers_;
-  RE::NiPointer<RE::NiSourceTexture> base_;
+  TextureRef base_;
   std::shared_ptr<TextureLab::RenderTarget> neutral_;
   std::shared_ptr<TextureLab::RenderTarget> target_;
-  TextureLab::RenderTarget *latest_ = nullptr;
-  RE::NiSourceTexture *renderedBase_ = nullptr;
+  TextureRef latest_;
+  TextureRef renderedBase_;
   TextureSize size_{TextureSize::kMin};
   bool animated_ = false;
   bool renderedOnce_ = false;
@@ -212,8 +213,7 @@ public:
               float a_time, const LayerFilter &a_filter,
               const StackBase &a_base = {});
 
-  [[nodiscard]] RE::NiPointer<RE::NiSourceTexture>
-  LoadImage(std::string_view a_path);
+  [[nodiscard]] TextureRef LoadImage(std::string_view a_path);
 
   static constexpr std::string_view kNotRendered =
       "not rendered on this geometry; add a layer that reads it";
@@ -236,8 +236,8 @@ public:
   void ClearMeshes() noexcept;
 
   struct MaterialRecord {
-    RE::NiPointer<RE::NiSourceTexture> rmaos;
-    RE::NiPointer<RE::NiSourceTexture> diffuse;
+    TextureRef rmaos;
+    TextureRef diffuse;
     std::shared_ptr<const MaterialSample> sample;
     std::shared_ptr<const MaterialAnalysis> analysis;
     std::string problem;
@@ -250,6 +250,10 @@ public:
 
 private:
   std::shared_ptr<TextureLab::RenderTarget> NeutralHeight();
+  struct StackRenderer;
+  struct MaskBuilder;
+  struct SourcePreparer;
+  struct SourceInspector;
   std::shared_ptr<TextureLab::RenderTarget> neutralHeight_;
 
   std::optional<PreparedSource>
@@ -286,7 +290,7 @@ private:
             const std::optional<PreparedSource> &a_source,
             std::vector<Diagnostic> &a_out, const std::string &a_where);
 
-  std::unordered_map<std::string, RE::NiPointer<RE::NiSourceTexture>> images_;
+  std::unordered_map<std::string, TextureRef> images_;
   MeshCache meshes_;
   std::map<std::pair<RE::NiSourceTexture *, RE::NiSourceTexture *>,
            MaterialRecord>

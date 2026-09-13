@@ -269,6 +269,19 @@ std::optional<std::size_t> DrawFieldTable(const char *a_id,
     table.Cell();
     ImGui::AlignTextToFramePadding();
     ImGui::TextUnformatted(field.name.c_str());
+    if (!field.units.empty()) {
+      ImGui::SameLine();
+      Dim("(" + field.units + ")");
+    }
+    if (field.range) {
+      Tooltip(std::format("Allowed range: {} to {}{}", field.range->first,
+                          field.range->second,
+                          field.integral ? "; whole numbers" : ""));
+    } else if (field.workingRange) {
+      Tooltip(std::format("Suggested tuning range: {} to {}; not a hard limit",
+                          field.workingRange->first,
+                          field.workingRange->second));
+    }
     table.Cell();
     if (field.detail && DetailButton()) {
       open = i;

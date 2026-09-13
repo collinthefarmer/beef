@@ -6,6 +6,9 @@
 #include "mesh/MaterialClusters.h"
 #include "mesh/MeshFacts.h"
 #include "recipe/Recipe.h"
+#include "studio/EditResult.h"
+#include "studio/FileOperation.h"
+#include "studio/Gesture.h"
 #include "studio/PaintCommit.h"
 #include "studio/View.h"
 
@@ -34,6 +37,7 @@ struct SignalRow {
   std::string event;
   std::size_t references = 0;
   SignalKind definition = ConstantSignal{};
+  bool live = false;
 };
 
 struct TextRow {
@@ -200,6 +204,7 @@ struct RecipeRow {
   std::size_t redoDepth = 0;
   LightRow lightRow;
   ShellRow shellRow;
+  std::uint64_t documentRevision = 0;
 };
 
 struct KeyChoice {
@@ -244,6 +249,8 @@ struct Status {
 
 struct Snapshot {
   std::vector<ApplicationRecord> applications;
+  std::vector<FileOperationResult> fileOperations;
+  std::vector<RecipeEditResult> editResults;
   std::uint64_t version = 0;
   std::uint32_t tickMS = 0;
   Status status;
@@ -253,5 +260,7 @@ struct Snapshot {
   std::vector<PieceRow> pieces;
   std::vector<std::string> loaded;
   std::vector<LoadedRecipeRow> loadedRecipes;
+  std::vector<RecipeRow> documents;
+  std::optional<GestureResult> gesture;
 };
 }

@@ -61,6 +61,13 @@ struct alignas(16) Constants {
 }
 
 TextureLab::RenderTarget::~RenderTarget() {
+  Trace::Safely([&] {
+    Trace::Emit(Trace::Event::kTexture,
+                {{"action", "destroy"},
+                 {"target", std::to_string(traceID_)},
+                 {"generation", std::to_string(generation_)},
+                 {"presenter", Trace::Pointer(presenter.get())}});
+  });
   if (presenter && originalData &&
       presenter->rendererTexture ==
           reinterpret_cast<RE::BSGraphics::Texture *>(ourData.get())) {
@@ -70,7 +77,11 @@ TextureLab::RenderTarget::~RenderTarget() {
 }
 
 RE::NiSourceTexture *TextureLab::RenderTarget::Texture() const noexcept {
-  return presenter.get();
+  return presenter && ourData &&
+                 presenter->rendererTexture ==
+                     reinterpret_cast<RE::BSGraphics::Texture *>(ourData.get())
+             ? presenter.get()
+             : nullptr;
 }
 
 TextureLab::TextureLab()
@@ -166,14 +177,15 @@ bool TextureLab::Init() {
 }
 
 bool TextureLab::CompileShaders(GpuResources &a_resources) {
+  const std::string sourceName{Identity::kName};
   const auto compile = [&](const char *a_entry,
                            const char *a_target) -> ComPtr<ID3DBlob> {
     ComPtr<ID3DBlob> out;
     ComPtr<ID3DBlob> errors;
     const auto hr =
         D3DCompile(kShaderSource, std::strlen(kShaderSource),
-                   Identity::kName.data(), nullptr, nullptr, a_entry, a_target,
-                   0, 0, out.GetAddressOf(), errors.GetAddressOf());
+                   sourceName.c_str(), nullptr, nullptr, a_entry, a_target, 0,
+                   0, out.GetAddressOf(), errors.GetAddressOf());
     if (Failed(hr)) {
       logger::error("TextureLab: {} compile failed: {}", a_entry,
                     errors.Get()
@@ -260,6 +272,20 @@ TextureLab::Preview(RE::NiSourceTexture *a_source, ShaderChannel a_channel,
                     bool a_dynamic) {
   return previews_->Preview(a_source, a_channel, a_dynamic);
 }
+
+std::shared_ptr<TextureLab::RenderTarget>
+TextureLab::SampledPreview(std::string a_context, RE::NiSourceTexture *a_source,
+                           const LayerInput &a_sampling, float a_normalize,
+                           bool a_dynamic) {
+  return previews_->SampledPreview(std::move(a_context), a_source, a_sampling,
+                                    a_normalize, a_dynamic);
+}
+
+TextureLab::PreviewDraw *
+TextureLab::RetainPreviewDraw(std::shared_ptr<RenderTarget> a_target) {
+  return previews_->RetainDraw(std::move(a_target));
+}
+void TextureLab::CollectPreviewDraws() { previews_->CollectDraws(); }
 
 void TextureLab::RenderPreviews() { previews_->RenderPreviews(); }
 void TextureLab::ClearPreviews() { previews_->ClearPreviews(); }

@@ -1,0 +1,117 @@
+warning: Git tree '/home/nixos/projects/skyrim-modding/plugins/WornEnchantmentPBR' is dirty
+== recipe_efsh_tests
+all 33 efsh checks passed
+== recipe_expression_tests
+all 141 expression checks passed
+== recipe_expressionoperations_tests
+all 98 expression operations checks passed
+== recipe_importer_tests
+all 76 importer checks passed
+== recipe_merge_tests
+all 36 merge checks passed
+== recipe_recipe_tests
+all 67 recipe checks passed
+== recipe_referencetypes_tests
+all 29 reference types checks passed
+== recipe_signals_tests
+all 55 signals checks passed
+== mesh_islands_tests
+all 36 islands checks passed
+== mesh_materialclusters_tests
+all 24 materialclusters checks passed
+== mesh_mesh_tests
+all 49 mesh checks passed
+== mesh_meshfacts_tests
+all 14 meshfacts checks passed
+== mesh_texturesize_tests
+all 5 texturesize checks passed
+== studio_board_tests
+all 14 studio_board checks passed
+== studio_edits_tests
+all 143 studio_edits checks passed
+== studio_expressionrename_tests
+all 25 studio_expressionrename checks passed
+== studio_fieldcheck_tests
+all 21 studio_fieldcheck checks passed
+== studio_fields_tests
+all 30 studio_fields checks passed
+== studio_history_tests
+all 5 studio_history checks passed
+== studio_isolation_tests
+all 17 studio_isolation checks passed
+== studio_mask_tests
+all 9 studio_mask checks passed
+== studio_menustate_tests
+all 29 studio_menustate checks passed
+== studio_names_tests
+all 28 studio_names checks passed
+== studio_page_tests
+all 5 studio_page checks passed
+== studio_paintflow_tests
+all 51 studio_paintflow checks passed
+== studio_paintsession_tests
+all 20 studio_paintsession checks passed
+== studio_panels_tests
+all 45 studio_panels checks passed
+== studio_presets_tests
+all 10 studio_presets checks passed
+== studio_recipesnapshot_tests
+all 15 studio recipesnapshot checks passed
+== studio_resolveoutput_tests
+all 17 studio_resolveoutput checks passed
+== studio_rows_tests
+all 35 studio_rows checks passed
+== studio_selection_tests
+all 21 studio_selection checks passed
+== studio_selectoredit_tests
+all 19 studio_selectoredit checks passed
+== studio_sourceplan_tests
+all 9 studio_sourceplan checks passed
+== studio_termtemplates_tests
+all 10 studio_termtemplates checks passed
+== studio_widgets_tests
+all 11 studio_widgets checks passed
+== planners_actorplanning_tests
+all 24 planners actorplanning checks passed
+== planners_actorstate_tests
+all 23 planners actorstate checks passed
+== planners_bindingplan_tests
+all 6 binding plan checks passed
+== planners_consumptionleases_tests
+all 5 consumption leases checks passed
+== planners_ownedstate_tests
+all 6 owned state checks passed
+== planners_placementlookup_tests
+all 8 planners placementlookup checks passed
+== planners_recipetexturecache_tests
+all 18 planners recipe texture cache checks passed
+== planners_resourceslots_tests
+all 5 resource slots checks passed
+== planners_stackplan_tests
+all 30 planners stackplan checks passed
+== planners_textureleases_tests
+all 9 texture leases checks passed
+== planners_transformstorage_tests
+all 13 transform storage checks passed
+== engine_sessionqueue
+all 24 session queue checks passed
+== engine_applicator
+all 45 engine_applicator checks passed
+== engine_applicationservice
+all 86 application service checks passed
+== diagnostics_trace
+all 529 diagnostic trace checks passed
+== settingspublication
+all 20 settings publication checks passed
+== schema
+ok -- validation done
+..
+----------------------------------------------------------------------
+Ran 2 tests in 0.306s
+
+OK
+....
+----------------------------------------------------------------------
+Ran 4 tests in 0.185s
+
+OK

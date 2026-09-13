@@ -115,6 +115,7 @@ private:
   static void OrderNodes(SignalGraph &a_graph);
   static void LinkExpr(SignalGraph &a_graph, Node &a_node);
   static void InferTypes(SignalGraph &a_graph);
+  struct ReferenceTypeChecker;
   static void CheckReferenceTypes(SignalGraph &a_graph);
   static void PropagateInert(SignalGraph &a_graph);
 
@@ -169,7 +170,11 @@ public:
   Firings(std::string_view a_trigger) const noexcept;
 
 private:
+  struct Evaluator;
+
   struct NodeState {
+    void RecordFiring(TriggerFiring a_firing, std::uint32_t a_limit);
+
     float phase = 0.0f;
     std::vector<TriggerFiring> firings;
     std::uint64_t fired = 0;

@@ -7,18 +7,19 @@ ANALYZER=0
 FORCE=0
 JOBS=6
 FILES=()
+SELECTED=0
 for arg in "$@"; do
 	case "$arg" in
 		--analyzer) ANALYZER=1; OUT=build/tidy-analyzer ;;
 		--force) FORCE=1 ;;
 		--jobs=*) JOBS="${arg#--jobs=}" ;;
-		--changed) mapfile -t FILES < <(git diff --name-only HEAD -- 'src/*.cpp' | grep -v '^src/_old/') ;;
+		--changed) SELECTED=1; mapfile -t FILES < <(git diff --name-only --diff-filter=ACMRT HEAD -- 'src/*.cpp' | grep -v '^src/_old/') ;;
 		--summary) SUMMARY_ONLY=1 ;;
 		-*) echo "usage: tools/tidy.sh [--analyzer] [--changed] [--force] [--jobs=N] [--summary] [file...]" >&2; exit 2 ;;
-		*) FILES+=("$arg") ;;
+		*) SELECTED=1; FILES+=("$arg") ;;
 	esac
 done
-[ ${#FILES[@]} -eq 0 ] && mapfile -t FILES < <(find src -name '*.cpp' -not -path 'src/_old/*' -not -path 'src/extern/*' -printf '%s %p\n' | sort -n | cut -d' ' -f2-)
+[ "$SELECTED" -eq 0 ] && mapfile -t FILES < <(find src -name '*.cpp' -not -path 'src/_old/*' -not -path 'src/extern/*' -printf '%s %p\n' | sort -n | cut -d' ' -f2-)
 
 DB=build/clangd/compile_commands.json
 [ -f "$DB" ] || { echo "no $DB; run tools/compile-db.sh" >&2; exit 1; }
@@ -26,9 +27,12 @@ mkdir -p "$OUT"
 
 result_fresh() {
 	local dest="$1" src="$2"
+	[ -f "$src" ] || return 1
 	[ -f "$dest" ] || return 1
+	[ ! -f "$dest.part" ] || return 1
 	[ "$src" -nt "$dest" ] && return 1
 	[ "$DB" -nt "$dest" ] && return 1
+	[ .clang-tidy -nt "$dest" ] && return 1
 	[ -n "$(find src -name '*.h' -not -path 'src/_old/*' -not -path 'src/extern/*' -newer "$dest" -print -quit 2>/dev/null)" ] && return 1
 	return 0
 }
@@ -43,7 +47,6 @@ if [ "${SUMMARY_ONLY:-0}" -eq 0 ]; then
 	for f in "${FILES[@]}"; do
 		[ -f "$f" ] || continue
 		dest="$OUT/$(basename "$f" .cpp).txt"
-		rm -f "$dest.part"
 		if [ "$FORCE" -eq 0 ] && result_fresh "$dest" "$f"; then
 			continue
 		fi
@@ -66,7 +69,20 @@ if [ "${SUMMARY_ONLY:-0}" -eq 0 ]; then
 	fi
 fi
 
+# Summarize only fresh results for this selection. Old logs (including deleted
+# sources) must not silently contribute findings to a targeted run.
+RESULTS=()
+for f in "${FILES[@]}"; do
+	dest="$OUT/$(basename "$f" .cpp).txt"
+	if result_fresh "$dest" "$f"; then
+		RESULTS+=("$dest")
+	fi
+done
 echo
-echo "# clang-tidy: $(ls "$OUT"/*.txt 2>/dev/null | wc -l) of ${#FILES[@]} files, $(cat "$OUT"/*.txt 2>/dev/null | grep -c 'warning:' || true) findings"
-echo
-cat "$OUT"/*.txt 2>/dev/null | grep -oE '\[[a-z][a-z0-9-]+-[a-z0-9.-]+\]$' | sort | uniq -c | sort -rn | sed 's/^/  /' || true
+if [ ${#RESULTS[@]} -eq 0 ]; then
+	echo "# clang-tidy: 0 of ${#FILES[@]} files have fresh results"
+else
+	echo "# clang-tidy: ${#RESULTS[@]} of ${#FILES[@]} files have fresh results, $(cat "${RESULTS[@]}" | grep -c 'warning:' || true) findings"
+	echo
+	cat "${RESULTS[@]}" | grep -oE '\[[a-z][a-z0-9-]+-[a-z0-9.-]+\]$' | sort | uniq -c | sort -rn | sed 's/^/  /' || true
+fi

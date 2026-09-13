@@ -61,19 +61,34 @@ void Colored(const ImVec4 &a_color, std::string_view a_text) {
                      a_text.data());
 }
 
-[[nodiscard]] ImTextureID PreviewOf(Studio::TextureHandle a_texture,
-                                    ShaderChannel a_channel, bool a_dynamic) {
-  if (!a_texture) {
-    return nullptr;
-  }
+struct PreviewImage {
+  ImTextureID texture = nullptr;
+  TextureLab::PreviewDraw *draw = nullptr;
+  explicit operator bool() const { return texture && draw; }
+};
+
+[[nodiscard]] PreviewImage PreviewOf(Studio::TextureHandle a_texture,
+                                     ShaderChannel a_channel, bool a_dynamic) {
+  if (!a_texture)
+    return {};
   auto *lab = TextureLab::GetSingleton();
-  if (!lab) {
-    return nullptr;
-  }
   const auto preview = lab->Preview(a_texture, a_channel, a_dynamic);
-  return preview && preview->View()
-             ? reinterpret_cast<ImTextureID>(preview->View())
-             : nullptr;
+  if (!preview || !preview->View())
+    return {};
+  auto *draw = lab->RetainPreviewDraw(preview);
+  return {reinterpret_cast<ImTextureID>(preview->View()), draw};
+}
+
+void FinishPreviewDraw(const PreviewImage &a_image) {
+  // DX11's ImGui backend invokes this after submitting the preceding image.
+  // It only acknowledges consumption; collection releases leases.
+  ImGui::ImDrawListManager::AddCallback(
+      ImGui::GetWindowDrawList(),
+      [](const ImGuiMCP::ImDrawList *, const ImGuiMCP::ImDrawCmd *a_command) {
+        static_cast<TextureLab::PreviewDraw *>(a_command->UserCallbackData)
+            ->Consumed();
+      },
+      a_image.draw);
 }
 
 [[nodiscard]] std::optional<std::string>
@@ -515,7 +530,8 @@ void Thumbnail(const Studio::ThumbnailSpec &a_spec) {
   const ImVec2 size{a_spec.size, a_spec.size};
   if (const auto view =
           PreviewOf(a_spec.texture, a_spec.channel, a_spec.dynamic)) {
-    ImGui::Image(view, size);
+    ImGui::Image(view.texture, size);
+    FinishPreviewDraw(view);
   } else {
     ImGui::Dummy(size);
   }
@@ -527,7 +543,8 @@ bool ThumbnailButton(const char *a_key, const Studio::ThumbnailSpec &a_spec) {
   bool clicked = false;
   if (const auto view =
           PreviewOf(a_spec.texture, a_spec.channel, a_spec.dynamic)) {
-    clicked = ImGui::ImageButton("image", view, size);
+    clicked = ImGui::ImageButton("image", view.texture, size);
+    FinishPreviewDraw(view);
   } else {
     clicked = ImGui::Button("##blank", size);
   }

@@ -277,6 +277,32 @@ void TestStackAndInspectorViews() {
         "BuildInspector opens the selected layer");
 }
 
+void TestIntegerSignalFields() {
+  SignalRow noise;
+  noise.name = "noise";
+  noise.kind = SignalKindId::kNoise;
+  noise.definition = NoiseSignal{};
+  const auto form = SignalForm(noise, SignalNames{});
+  const auto *seed = Field(form, "seed");
+  Check(seed && seed->bind, "noise exposes a seed binding");
+  if (!seed || !seed->bind)
+    return;
+  for (const auto &[text, expected] :
+       std::vector<std::pair<std::string, std::uint32_t>>{
+           {"16777217", 16777217u}, {"4294967295", 4294967295u}, {"0", 0u}}) {
+    const auto edit = seed->bind(text);
+    const auto *record = edit ? std::get_if<SetSignal>(&*edit) : nullptr;
+    const auto *value =
+        record ? std::get_if<NoiseSignal>(&record->kind) : nullptr;
+    Check(value && value->seed == expected,
+          "integer seeds preserve every bit: " + text);
+  }
+  for (const char *text : {"1.5", "-1", "4294967296", "1e30"}) {
+    Check(!seed->bind(text),
+          "invalid integer seed is refused: " + std::string{text});
+  }
+}
+
 void TestHelpers() {
   Check(FieldDetailName(FieldDetail::kSource) == "source" &&
             FieldDetailName(FieldDetail::kMask) == "mask",
@@ -305,6 +331,7 @@ int main() {
   TestInspectorForm();
   TestScalarForm();
   TestStackAndInspectorViews();
+  TestIntegerSignalFields();
   TestHelpers();
   return test::Finish("studio_panels");
 }

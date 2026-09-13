@@ -152,6 +152,46 @@ int main()
 		Check(state.Firings("hit").size() == 2, "the trigger reports its firings");
 	}
 
+	for (const bool conditional : {false, true}) {
+		const TriggerOrigin origin =
+				conditional ? TriggerOrigin{WhenOrigin{Ref{"gate"}, Ref{"gate"}}}
+										: TriggerOrigin{EventOrigin{"hit", {}, ""}};
+		const std::vector<Signal> signals{
+				Signal{"gate", ActorValueSignal{"Gate", Measure::kCurrent},
+							std::nullopt},
+				Signal{"hit", TriggerSignal{origin, 10.0f, 2}, std::nullopt},
+				Signal{"count", CounterSignal{Ref{"hit"}, std::nullopt, std::nullopt},
+							std::nullopt}};
+		const auto graph = SignalGraph::Compile(signals, {});
+		Check(graph.Diagnostics().empty(),
+					"bounded event and conditional triggers compile");
+		SignalState state{graph};
+		FakeEnvironment environment;
+		for (int firing = 1; firing <= 4; ++firing) {
+			environment.actorValues["Gate"] = 0.0f;
+			state.Tick(environment, {0.0f, 0.0f});
+			environment.actorValues["Gate"] = static_cast<float>(firing);
+			if (!conditional) {
+				EventRecord event;
+				event.id = "hit";
+				event.payload.value = static_cast<float>(firing);
+				state.Fire(event, 0.0f);
+			}
+			state.Tick(environment, {0.0f, 0.0f});
+		}
+		const auto retained = state.Firings("hit");
+		Check(retained.size() == 2,
+					"both trigger origins retain only their configured maximum");
+		Check(retained.size() == 2 && Near(retained.front().payload.value, 3.0f) &&
+							Near(retained.back().payload.value, 4.0f),
+					"retention discards oldest firings and preserves payload order");
+		Check(Near(state.Scalar("count"), 4.0f),
+					"discarding old payloads does not lose counter events");
+		state.Tick(environment, {10.0f, 0.0f});
+		Check(state.Firings("hit").empty(),
+					"retained firings expire at their lifetime boundary");
+	}
+
 	{
 		std::vector<Signal> signals{ Signal{ "n", NoiseSignal{ 1.0f, 2.0f, 7 }, std::nullopt } };
 		const auto          graph = SignalGraph::Compile(signals, {});

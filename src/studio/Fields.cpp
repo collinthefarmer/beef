@@ -322,6 +322,9 @@ FormField ValueField(ValueFieldSpec a_spec) {
   field.detail = a_spec.detail;
   field.value = a_spec.value;
   field.bind = std::move(a_spec.bind);
+  field.workingRange = a_spec.workingRange;
+  field.units = std::move(a_spec.units);
+  field.integral = a_spec.integral;
   return field;
 }
 

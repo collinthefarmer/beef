@@ -1,4 +1,5 @@
 #include "engine/ApplicationService.h"
+#include "diagnostics/Trace.h"
 
 #include <algorithm>
 #include <array>
@@ -262,6 +263,17 @@ void ApplicationService::Report(const ApplicationToken &a_token,
   if (actor == application.actors.end() || !Pending(actor->phase) ||
       actor->attempt != a_token.attempt) {
     return;
+  }
+  if (actor->phase != a_phase || actor->problem != a_problem) {
+    Trace::Safely([&] {
+      Trace::Emit(Trace::Event::kApplication,
+                  {{"phase", std::string{ApplicationPhaseName(a_phase)}},
+                   {"actor", std::to_string(a_actorID)},
+                   {"recipe", a_token.recipeID},
+                   {"revision", std::to_string(a_token.revision)},
+                   {"attempt", std::to_string(a_token.attempt)},
+                   {"problem", a_problem}});
+    });
   }
   actor->phase = a_phase;
   actor->problem = std::move(a_problem);

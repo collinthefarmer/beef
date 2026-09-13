@@ -1,4 +1,5 @@
 #include "engine/Events.h"
+#include "diagnostics/Trace.h"
 
 #include "engine/Manager.h"
 
@@ -17,6 +18,7 @@ public:
   RE::BSEventNotifyControl
   ProcessEvent(const RE::TESEquipEvent *a_event,
                RE::BSTEventSource<RE::TESEquipEvent> *) override {
+    const Trace::Scope trace{Trace::Command("event.equip")};
     if (a_event && a_event->actor) {
       if (RE::Actor *actor = a_event->actor->As<RE::Actor>()) {
         Manager *manager = Manager::GetSingleton();
@@ -36,9 +38,11 @@ public:
       Manager *manager = Manager::GetSingleton();
       if (a_event->loaded) {
         if (RE::TESForm::LookupByID<RE::Actor>(a_event->formID)) {
+          const Trace::Scope trace{Trace::Command("event.actor_loaded")};
           manager->QueueRefresh(a_event->formID);
         }
       } else {
+        const Trace::Scope trace{Trace::Command("event.object_unloaded")};
         manager->QueueRetire(a_event->formID);
       }
     }
@@ -69,6 +73,7 @@ public:
   RE::BSEventNotifyControl
   ProcessEvent(const SKSE::NiNodeUpdateEvent *a_event,
                RE::BSTEventSource<SKSE::NiNodeUpdateEvent> *) override {
+    const Trace::Scope trace{Trace::Command("event.node_update")};
     if (a_event && a_event->reference) {
       if (RE::Actor *actor = a_event->reference->As<RE::Actor>()) {
         Manager::GetSingleton()->QueueRefresh(actor);

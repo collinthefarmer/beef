@@ -72,12 +72,13 @@ void MaskIntentsBuildAndUndo() {
 
 void EditRecipeRemapsSelectedLayer() {
   MenuState state;
+  Reduce(state, PickRecipe{"aurora"});
   Reduce(state, PickLayer{2});
   std::vector<RecipeEdit> edits;
   edits.push_back(RemoveLayer{0, 0});
   Reduce(state, EditRecipe{"aurora", std::move(edits)});
-  Check(state.selection.layer == std::size_t{1},
-        "removing an earlier layer shifts the selected index down");
+  Check(!state.selection.layer,
+        "a structural edit clears the selected index until publication");
 }
 
 void RenameRecipeFollowsSelection() {

@@ -6,6 +6,7 @@
 
 #include <algorithm>
 #include <array>
+#include <cmath>
 #include <format>
 #include <optional>
 #include <span>
@@ -76,6 +77,9 @@ CheckWholeReference(const FormField &a_field, std::string_view a_name) {
     return CheckWholeReference(a_field, ref->name);
   }
   const float *number = Get<float>(*param);
+  if (a_field.integral && number && std::trunc(*number) != *number) {
+    return "a whole number";
+  }
   if (a_field.range && number &&
       (*number < a_field.range->first || *number > a_field.range->second)) {
     return std::format("{} to {}", ParamText(a_field.range->first),

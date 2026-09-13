@@ -2,9 +2,11 @@
 
 #include "Core.h"
 #include "PCH.h"
+#include "diagnostics/Trace.h"
 #include "mesh/MaterialClusters.h"
 #include "mesh/Mesh.h"
 #include "mesh/TextureSize.h"
+#include "planners/ConsumptionLeases.h"
 #include "recipe/Expression.h"
 
 #include <REX/W32/COMPTR.h>
@@ -50,6 +52,7 @@ public:
     bool mirrorV = false;
     bool transpose = false;
     float sourceMip = 0.0f;
+    [[nodiscard]] bool operator==(const Scroll &) const = default;
   };
 
   struct InputMap {
@@ -66,6 +69,7 @@ public:
     ShaderChannel channel = ShaderChannel::kRgb;
     bool meshSpace = false;
     Scroll transform;
+    [[nodiscard]] bool operator==(const LayerInput &) const = default;
   };
 
   class Lookup {
@@ -170,10 +174,17 @@ public:
       return srv.Get();
     }
     [[nodiscard]] RE::NiSourceTexture *Texture() const noexcept;
+    [[nodiscard]] std::uint64_t Generation() const noexcept {
+      return generation_;
+    }
 
   private:
     friend class TextureLab;
     friend class RenderTargetPool;
+    // Declared first so the slot is returned after presenter/resource teardown.
+    std::shared_ptr<const std::size_t> presenterSlot_;
+    std::uint64_t traceID_ = Trace::NextID();
+    std::uint64_t generation_ = 0;
     RE::NiPointer<RE::NiSourceTexture> presenter;
     RE::NiTexture::RendererData *originalData = nullptr;
     std::unique_ptr<RE::NiTexture::RendererData> ourData;
@@ -235,6 +246,13 @@ public:
   std::shared_ptr<RenderTarget> Preview(RE::NiSourceTexture *a_source,
                                         ShaderChannel a_channel,
                                         bool a_dynamic);
+  [[nodiscard]] std::shared_ptr<RenderTarget>
+  SampledPreview(std::string a_context, RE::NiSourceTexture *a_source,
+                 const LayerInput &a_sampling, float a_normalize, bool a_dynamic);
+  using PreviewDraw = ConsumptionLeases<RenderTarget>::Ticket;
+  [[nodiscard]] PreviewDraw *
+  RetainPreviewDraw(std::shared_ptr<RenderTarget> a_target);
+  void CollectPreviewDraws();
   void RenderPreviews();
   void ClearPreviews();
   void InvalidatePreviews() noexcept;

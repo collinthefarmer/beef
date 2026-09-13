@@ -7,6 +7,7 @@
 #include "engine/RecipeEditor.h"
 #include "planners/ActorPlanning.h"
 #include "recipe/Recipe.h"
+#include "render/TextureRef.h"
 #include "studio/Snapshot.h"
 
 #include <cstddef>
@@ -67,7 +68,7 @@ public:
   [[nodiscard]] Status GetStatus() const;
 
   struct Snapshot : Studio::Snapshot {
-    std::vector<RE::NiPointer<RE::NiSourceTexture>> textures;
+    std::vector<TextureRef> textures;
   };
   void Watch(const std::optional<Studio::PieceRef> &a_request);
   [[nodiscard]] std::shared_ptr<const Snapshot> LatestSnapshot() const;
@@ -83,11 +84,11 @@ private:
   void Refresh(RE::Actor *a_actor);
   void Retire(RE::FormID a_actorID);
   void RetireEveryActor();
-  void RebuildRecipeWearersAfterChange(std::string_view a_id,
-                                       const std::function<void()> &a_action);
-  void RebuildAllActorsAfterChange(const std::function<void()> &a_action);
-  void RebuildActorsAfterChange(std::string a_recipe,
-                                const std::function<void()> &a_action);
+  // Retire candidates, perform the mutation, then rebuild them. Recipe scope
+  // affects status reporting only; changing selectors can affect any actor.
+  void ChangeAndRebuildActors(std::string a_reportRecipe,
+                              const std::function<void()> &a_action);
+  [[nodiscard]] std::vector<RE::FormID> LoadedActorIDs() const;
   [[nodiscard]] std::vector<RE::FormID> ApplicationActors() const;
   void PrepareApplications(RE::FormID a_actor,
                            const std::vector<ApplicationToken> &a_tokens);
@@ -96,6 +97,10 @@ private:
   [[nodiscard]] std::vector<LivePiece>
   CollectPieces(RE::Actor *a_actor, bool a_firstPerson,
                 const Settings &a_settings);
+  // False rejects the entire piece, including geometry collected before a
+  // layout failure. Clone identity is filtered by CollectPieces separately.
+  bool CollectPieceGeometries(LivePiece &piece, RE::NiAVObject *clone,
+                              RE::NiAVObject *root, bool verbose);
   void MatchRecipes(RE::Actor *a_actor, LiveActor &a_state,
                     const Settings &a_settings);
   [[nodiscard]] std::optional<std::size_t>

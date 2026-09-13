@@ -1,0 +1,10 @@
+warning: Git tree '/home/nixos/projects/skyrim-modding/plugins/WornEnchantmentPBR' is dirty
+all 141 expression checks passed
+all 107 expression operations checks passed
+all 2 files formatted
+tidy src/recipe/Expression.cpp
+
+# clang-tidy: 1 of 1 files have fresh results, 4 findings
+
+        2 [readability-function-size]
+        2 [readability-function-cognitive-complexity]

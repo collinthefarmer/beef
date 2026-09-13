@@ -2,9 +2,11 @@
 
 #include "Core.h"
 #include "recipe/Recipe.h"
+#include "studio/EditResult.h"
 #include "studio/Edits.h"
 #include "studio/History.h"
 #include "studio/Mask.h"
+#include "studio/Navigation.h"
 #include "studio/PaintSession.h"
 #include "studio/Selection.h"
 #include "studio/Snapshot.h"
@@ -50,6 +52,9 @@ struct MenuState {
   Mode mode = Mode::kCompose;
   Layout layout;
   Selection selection;
+  Navigation navigation;
+  std::optional<PendingIndexedEdit> pendingIndexedEdit;
+  std::optional<PendingIndexedEdit> pendingRecipeFile;
   bool settings = false;
   MaskStack mask;
   std::optional<PaintSession> paint;
@@ -80,6 +85,7 @@ struct PickPiece {
 };
 struct PickRecipe {
   std::string recipeID;
+  bool document = false;
 };
 struct PinRecipe {
   std::string recipeID;
@@ -261,6 +267,9 @@ void Post(Intents &a_out, const std::string &a_recipe, RecipeEdit a_edit);
                                 const Intent &a_intent);
 void Reduce(MenuState &a_state, const Intent &a_intent);
 void ObservePaintRecipe(MenuState &a_state, const RecipeRow *a_recipe);
+void ResolveEditorSelection(MenuState &a_state, const Snapshot &a_snapshot);
+void AcknowledgeEditorOperations(MenuState &a_state,
+                                 const Snapshot &a_snapshot);
 void AcknowledgePaintUpdate(MenuState &a_state,
                             const PaintUpdateResult &a_result);
 [[nodiscard]] std::optional<UpdatePaint>

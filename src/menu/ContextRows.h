@@ -27,6 +27,7 @@ DefaultKeyOf(const Studio::PieceRow &a_piece);
 [[nodiscard]] const Studio::Cell *DrawContext(const Studio::Board &a_board,
                                               const Frame &a_frame);
 void DrawRecipeSettings(const Frame &a_frame);
+void DrawStudioContext(const Frame &a_frame);
 void DrawPaneRule(std::string_view a_title, const PaneChoice &a_pane,
                   const Studio::Board &a_board, const Frame &a_frame);
 void DrawOutputHeader(std::size_t a_output, bool a_replace,

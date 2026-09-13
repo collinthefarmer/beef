@@ -1,11 +1,16 @@
 #pragma once
 
+#include "render/SkinPalette.h"
+#include "render/TextureRef.h"
+
 #include "PCH.h"
-#include "planners/BindingDiff.h"
+#include "planners/BindingPlan.h"
+#include "planners/OwnedState.h"
 #include "recipe/Recipe.h"
 #include "render/PBRMaterial.h"
 
 #include <array>
+#include <list>
 #include <memory>
 #include <optional>
 #include <span>
@@ -23,14 +28,11 @@ class SlotTarget {
 public:
   virtual ~SlotTarget() = default;
   [[nodiscard]] virtual std::string Problem(Slot a_slot) const = 0;
-  virtual void WriteTexture(Slot a_slot, RE::NiSourceTexture *a_texture) = 0;
+  virtual void WriteTexture(Slot a_slot, const TextureRef &a_texture) = 0;
   virtual void WriteEmissive(const Vec3 &a_color, float a_multiplier) = 0;
   virtual void WriteFuzz(const Vec3 &a_color, float a_weight) = 0;
   virtual void WriteHeightScale(float a_scale) = 0;
-  virtual void WriteGlint(float a_screenSpaceScale,
-                          float a_logMicrofacetDensity,
-                          float a_microfacetRoughness,
-                          float a_densityRandomization, bool a_enabled) = 0;
+  virtual void WriteGlint(const GlintParameters &a_parameters) = 0;
   virtual void WriteCoat(float a_roughness, float a_level) = 0;
   virtual void WriteSubsurface(const Vec3 &a_color, float a_thickness) = 0;
   [[nodiscard]] virtual std::vector<SlotState> Slots() const = 0;
@@ -45,13 +47,11 @@ public:
   SlotWriter &operator=(SlotWriter &&) = default;
 
   [[nodiscard]] std::string Problem(Slot a_slot) const;
-  void WriteTexture(Slot a_slot, RE::NiSourceTexture *a_texture);
+  void WriteTexture(Slot a_slot, const TextureRef &a_texture);
   void WriteEmissive(const Vec3 &a_color, float a_multiplier);
   void WriteFuzz(const Vec3 &a_color, float a_weight);
   void WriteHeightScale(float a_scale);
-  void WriteGlint(float a_screenSpaceScale, float a_logMicrofacetDensity,
-                  float a_microfacetRoughness, float a_densityRandomization,
-                  bool a_enabled);
+  void WriteGlint(const GlintParameters &a_parameters);
   void WriteCoat(float a_roughness, float a_level);
   void WriteSubsurface(const Vec3 &a_color, float a_thickness);
 
@@ -60,47 +60,46 @@ public:
   [[nodiscard]] std::vector<SlotState> Slots() const;
 
 private:
+  struct GroupState {
+    std::uintptr_t texture = 0;
+    std::uintptr_t storage = 0;
+    Vec3 color{};
+    float scalar = 0.0f;
+    float roughness = 0.0f;
+    GlintParameters glint{};
+    std::uint32_t flags = 0;
+    bool operator==(const GroupState &) const = default;
+  };
+  struct Group {
+    OwnedState<GroupState> state;
+    TextureRef original;
+    TextureRef written;
+  };
   [[nodiscard]] bool MaterialAttached() const noexcept;
-  void SetFeature(std::uint32_t a_bits, bool a_on);
-  void EnableFuzz();
-  void EnableCoat();
-  void EnableSubsurface();
-
-  struct SavedTexture {
-    RE::NiPointer<RE::NiSourceTexture> original;
-    RE::NiPointer<RE::NiSourceTexture> written;
+  [[nodiscard]] GroupState Capture(Slot a_slot) const;
+  [[nodiscard]] Group *BeginWrite(Slot a_slot, bool a_enableFeature = false);
+  void EndWrite(Slot a_slot);
+  void RestoreGroup(Slot a_slot, const GroupState &a_state,
+                    const TextureRef &a_originalTexture);
+  void RetainPublishedTextures() noexcept;
+  struct PublishedTexture {
+    RE::BSTSmartPointer<PBRMaterialLayout> material;
+    Slot slot;
+    TextureRef texture;
   };
-  struct SavedEmissive {
-    RE::NiColor color;
-    float multiplier = 0.0f;
-    bool ownEmit = false;
-  };
-  struct SavedFuzz {
-    RE::NiColor color;
-    float weight = 0.0f;
-  };
-  struct SavedGlint {
-    GlintParameters parameters;
-  };
-  struct SavedCoat {
-    float roughness = 1.0f;
-    float level = 0.04f;
-  };
-  struct SavedSubsurface {
-    RE::NiColor color;
-    float rolloff = 0.0f;
-  };
+  static std::list<PublishedTexture> &RetiredTextures();
+  friend void SweepRetiredMaterialTextures();
+  void SetFeature(Slot a_slot, bool a_on);
+  [[nodiscard]] bool HasGroup(Slot a_slot) const;
 
   PbrMaterial binding_;
-  std::array<std::optional<SavedTexture>, kSlotCount> textures_;
-  std::optional<SavedEmissive> emissive_;
-  std::optional<std::uint32_t> flags_;
-  std::optional<SavedFuzz> fuzz_;
-  std::optional<SavedGlint> glint_;
-  std::optional<SavedCoat> coat_;
-  std::optional<SavedSubsurface> subsurface_;
-  std::optional<float> heightScale_;
+  std::uint64_t traceID_ = 0;
+  std::array<std::optional<Group>, kSlotCount> groups_;
+  std::list<PublishedTexture> published_;
 };
+
+// Called on the engine thread, including while no actors are applied.
+void SweepRetiredMaterialTextures();
 
 class MaterialBinding final : public SlotTarget {
 public:
@@ -115,13 +114,11 @@ public:
   [[nodiscard]] bool Private() const noexcept;
 
   [[nodiscard]] std::string Problem(Slot a_slot) const override;
-  void WriteTexture(Slot a_slot, RE::NiSourceTexture *a_texture) override;
+  void WriteTexture(Slot a_slot, const TextureRef &a_texture) override;
   void WriteEmissive(const Vec3 &a_color, float a_multiplier) override;
   void WriteFuzz(const Vec3 &a_color, float a_weight) override;
   void WriteHeightScale(float a_scale) override;
-  void WriteGlint(float a_screenSpaceScale, float a_logMicrofacetDensity,
-                  float a_microfacetRoughness, float a_densityRandomization,
-                  bool a_enabled) override;
+  void WriteGlint(const GlintParameters &a_parameters) override;
   void WriteCoat(float a_roughness, float a_level) override;
   void WriteSubsurface(const Vec3 &a_color, float a_thickness) override;
   [[nodiscard]] std::vector<SlotState> Slots() const override;
@@ -133,7 +130,7 @@ private:
 
   RE::NiPointer<RE::BSGeometry> geometry_;
   RE::NiPointer<RE::BSLightingShaderProperty> property_;
-  RE::BSTSmartPointer<RE::BSShaderMaterial> original_;
+  bool privateMaterial_ = false;
   std::optional<SlotWriter> slots_;
 };
 
@@ -151,13 +148,11 @@ public:
   [[nodiscard]] const std::string &Describe() const noexcept;
 
   [[nodiscard]] std::string Problem(Slot a_slot) const override;
-  void WriteTexture(Slot a_slot, RE::NiSourceTexture *a_texture) override;
+  void WriteTexture(Slot a_slot, const TextureRef &a_texture) override;
   void WriteEmissive(const Vec3 &a_color, float a_multiplier) override;
   void WriteFuzz(const Vec3 &a_color, float a_weight) override;
   void WriteHeightScale(float a_scale) override;
-  void WriteGlint(float a_screenSpaceScale, float a_logMicrofacetDensity,
-                  float a_microfacetRoughness, float a_densityRandomization,
-                  bool a_enabled) override;
+  void WriteGlint(const GlintParameters &a_parameters) override;
   void WriteCoat(float a_roughness, float a_level) override;
   void WriteSubsurface(const Vec3 &a_color, float a_thickness) override;
   [[nodiscard]] std::vector<SlotState> Slots() const override;
@@ -169,9 +164,11 @@ public:
 
 private:
   ShellBinding() = default;
+  struct Builder;
   void Detach();
 
   RE::NiPointer<RE::BSGeometry> clone_;
+  std::unique_ptr<SkinPaletteLease> palette_;
   RE::NiPointer<RE::NiNode> parent_;
   RE::NiPointer<RE::BSLightingShaderProperty> property_;
   RE::NiPointer<RE::NiAlphaProperty> alpha_;
@@ -180,6 +177,8 @@ private:
   RE::BSTSmartPointer<RE::BSShaderMaterial> materialOwner_;
   RE::BSLightingShaderMaterialBase *vanilla_ = nullptr;
   std::optional<SlotWriter> slots_;
+  bool tracedPose_ = false;
+  std::uint8_t tracedPoseCalls_ = 0;
   Vec3 lastInflate_{-1.0f, -1.0f, -1.0f};
   std::string description_;
 };
@@ -220,6 +219,9 @@ private:
   };
   std::vector<Entry> entries_;
   RE::NiPointer<RE::ShadowSceneNode> scene_;
+  using RemoveLight = void (*)(RE::ShadowSceneNode *,
+                               const RE::NiPointer<RE::BSLight> &);
+  RemoveLight removeLight_ = nullptr;
   bool shadow_ = false;
 };
 }

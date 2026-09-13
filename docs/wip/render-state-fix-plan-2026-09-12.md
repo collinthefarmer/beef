@@ -3,6 +3,19 @@
 Status: proposed implementation plan, 2026-09-12. No fixes or sequencer have been
 implemented by writing this plan.
 
+Implementation progress: stage-0 captures confirmed zero-inflation stretching
+and exposed presenter aliasing across simultaneous targets. The
+[checkpoint record](render-state-diagnostic-checkpoint-2026-09-12.md) contains
+preserved evidence and the first targeted presenter repair: stage missing assets,
+reject fallback/duplicate identities, and check renderer ownership. This bounded
+part of stage 3 is moved ahead of the sequencer because the identity violation is
+now demonstrated. A bounded stage-2 shell palette repair is now prepared after captures showed
+eight missing entries persisting through cache initialization and pose 30. It
+retains recognized flattened-tree owners and rejects unresolved transforms.
+Full published leases, retirement ordering, the sequencer, remaining shell work,
+stages 4–7, remaining stage-0 coverage and shell visual validation remain
+outstanding.
+
 Basis: [source investigation](render-state-investigation-2026-09-12.md),
 [reported reproductions](../regression-feedback-2026-09-12.md), and
 [integration procedure](../in-game-regression.md). Preserve the existing working
@@ -26,6 +39,42 @@ The work must establish these observable contracts:
 Logging a successful application is not visual validation. Report structural
 checks, GPU output checks, and user observations separately. Do not assume the
 color cycle, stretching, UV appearance, and Quickload crash share a root cause.
+
+## Shared contracts incorporated after the targeted fixes
+
+The presenter and flattened-palette fixes now pass the exercised visual,
+recreation, save/load and equipment checks. Extend their common contracts through
+bounded checkpoints, preserving those reproductions as regression fixtures:
+
+1. **Ownership-bearing texture references.** Replace handle-only retention in
+   material journals, prepared compositor inputs, snapshots and queued previews
+   with `TextureRef`. Generated references retain the target and acquisition
+   generation; static textures retain only their engine reference. Retiring a
+   producer must not recycle a target while any consumer lease remains. Register
+   generated targets before exposing them, and reject expired generated handles
+   instead of treating them as static. Native tests cover competing consumers,
+   generation changes, expired handles and attempted live reassignment.
+2. **Prepare, validate, publish.** Extend the existing palette validation boundary
+   to texture publication and complete applications. Build candidates with their
+   dependencies, validate them, and commit only after preparation succeeds.
+   Preserve the previous application on preparation failure where engine state
+   permits. Do not describe the current retire/reapply path as transactional.
+3. **Application lifecycle and identity.** Represent Preparing, Active, Retiring
+   and Retired explicitly, with application identity and load generation on
+   resources and events. Ownership invalidation carries a specific reason and
+   enters ordered retirement. Integrate with the existing ApplicationService
+   instead of maintaining a second authoritative state machine.
+4. **Restoration remains a separate contract.** Retaining a resource does not
+   authorize overwriting another owner's material field. Keep the stage-4
+   per-field restoration journal distinct from resource lifetime tracking.
+5. **Sequencer asserts the contracts.** Drive the real editor/load/equipment
+   paths; assert lifetime, identity, validation and retirement invariants. Report
+   visible appearance separately. Keep `TextureRef` and `SkinPaletteLease`
+   domain-specific; shared mechanisms belong underneath those contracts.
+
+The first implementation checkpoint is item 1. A lease preserves resource
+identity and prevents reuse; it does not freeze pixels produced by an animated
+source, nor guarantee GPU completion. Those remain explicit later requirements.
 
 ## Delivery order
 

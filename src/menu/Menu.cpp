@@ -6,7 +6,9 @@
 
 #include "Identity.h"
 #include "SettingsFile.h"
+#include "diagnostics/Trace.h"
 #include "engine/Manager.h"
+#include "studio/Board.h"
 #include "studio/Edits.h"
 
 #include <algorithm>
@@ -43,7 +45,7 @@ using namespace Studio;
 
 struct IntentPerformer {
   Manager *manager;
-  const MenuState &state;
+  MenuState &state;
   const View &view;
 
   void operator()(const SetMode &i) const {
@@ -52,7 +54,11 @@ struct IntentPerformer {
     }
   }
   void operator()(const EditRecipe &i) const {
-    manager->Editor().EditRecipe(i.recipeID, EditBatch{i.edits});
+    const std::uint64_t request =
+        manager->Editor().EditRecipe(i.recipeID, EditBatch{i.edits});
+    if (ShouldInvalidateIndexedSubjects(i.edits)) {
+      state.pendingIndexedEdit = PendingIndexedEdit{request, i.recipeID};
+    }
   }
   void operator()(const SoloRecipe &i) const {
     manager->Editor().ChangeView(
@@ -103,10 +109,12 @@ struct IntentPerformer {
     });
   }
   void operator()(const Undo &i) const {
-    manager->Editor().UndoRecipe(i.recipeID);
+    state.pendingIndexedEdit = PendingIndexedEdit{
+        manager->Editor().UndoRecipe(i.recipeID), i.recipeID};
   }
   void operator()(const Redo &i) const {
-    manager->Editor().RedoRecipe(i.recipeID);
+    state.pendingIndexedEdit = PendingIndexedEdit{
+        manager->Editor().RedoRecipe(i.recipeID), i.recipeID};
   }
   void operator()(const CreateRecipe &i) const {
     manager->Editor().NewRecipe(i.recipeID, i.key, i.geometry);
@@ -133,7 +141,7 @@ struct IntentPerformer {
   }
   void operator()(const PickPiece &) const {}
   void operator()(const PickRecipe &i) const {
-    if (view.pin && view.pin->piece == state.selection.piece &&
+    if (!i.document && view.pin && view.pin->piece == state.selection.piece &&
         view.pin->recipeID != i.recipeID) {
       manager->Editor().PinRecipe(state.selection.piece, {});
     }
@@ -169,11 +177,43 @@ struct IntentPerformer {
 };
 }
 
-void Perform(const Studio::Intent &a_intent, const Studio::MenuState &a_state,
+void Perform(const Studio::Intent &a_intent, Studio::MenuState &a_state,
              const Studio::View &a_view) {
   if (Manager *manager = Manager::GetSingleton()) {
     Match(a_intent, IntentPerformer{manager, a_state, a_view});
   }
+}
+
+namespace {
+void FollowPickedSubject(const Studio::Intent &a_intent,
+                         Studio::MenuState &a_state,
+                         const Studio::Snapshot &a_snapshot) {
+  const Studio::RecipeRow *recipe =
+      Studio::SelectedRecipe(a_snapshot, a_state.selection);
+  const Studio::GeometryRow *geometry =
+      Studio::SelectedGeometry(recipe, a_state.selection);
+  if (!recipe || !geometry) {
+    return;
+  }
+  std::optional<Studio::InspectorSubject> subject;
+  if (const auto *pick = Get<Studio::PickLayer>(a_intent)) {
+    if (const auto *output =
+            Get<Studio::OutputSubject>(a_state.selection.subject)) {
+      subject = Studio::LayerSubject{output->output, pick->index};
+    }
+  } else if (const auto *pick = Get<Studio::PickCell>(a_intent)) {
+    const Studio::Board board = Studio::BuildBoard(
+        *recipe, *geometry, a_state.selection, a_snapshot.view);
+    const auto *cell = Studio::CellAt(board, pick->surface, pick->slot);
+    if (cell && cell->output) {
+      subject = Studio::OutputSubject{*cell->output};
+    }
+  }
+  if (subject) {
+    [[maybe_unused]] const bool changed = Studio::Navigate(
+        a_state.navigation, a_state.selection, *subject, *recipe);
+  }
+}
 }
 
 void Dispatch(Studio::Intents &a_intents, Studio::MenuState &a_state,
@@ -182,14 +222,28 @@ void Dispatch(Studio::Intents &a_intents, Studio::MenuState &a_state,
     if (!Studio::AcceptIntent(a_state, intent)) {
       continue;
     }
-    Perform(intent, a_state, a_snapshot.view);
-    Studio::Reduce(a_state, intent);
+    if (Is<Studio::EditRecipe>(intent) || Is<Studio::Undo>(intent) ||
+        Is<Studio::Redo>(intent)) {
+      Studio::Reduce(a_state, intent);
+      Perform(intent, a_state, a_snapshot.view);
+    } else {
+      Perform(intent, a_state, a_snapshot.view);
+      Studio::Reduce(a_state, intent);
+    }
+    FollowPickedSubject(intent, a_state, a_snapshot);
   }
-  Studio::ResolveSelection(a_state.selection, a_snapshot);
+  Studio::ResolveEditorSelection(a_state, a_snapshot);
   a_intents.clear();
 }
 
 void RenderStatus(const Studio::Snapshot &a_snapshot) {
+  const auto diagnostics = Trace::Get().Inspect();
+  if (diagnostics.fileFailed) {
+    Problem("Diagnostic trace file failed; recent events remain in memory.");
+  } else if (diagnostics.limitReached) {
+    Warn("Diagnostic trace reached its size limit; restart for a new trace "
+         "file.");
+  }
   const Studio::Status &st = a_snapshot.status;
   if (st.emissivePath) {
     Ok("emissive path on");

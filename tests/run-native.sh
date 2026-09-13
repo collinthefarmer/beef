@@ -74,13 +74,16 @@ for mod in "${MODULES[@]}"; do
 	done < <(find "tests/$mod" -name '*_tests.cpp' -print0 2>/dev/null | sort -z)
 done
 
-build_and_run engine_sessionqueue tests/engine/sessionqueue_tests.cpp src/engine/SessionQueue.cpp
+build_and_run engine_sessionqueue tests/engine/sessionqueue_tests.cpp src/engine/SessionQueue.cpp src/diagnostics/Trace.cpp
 suites=$((suites + 1))
 
-build_and_run engine_applicator tests/engine/applicator_tests.cpp src/engine/ApplicationService.cpp src/engine/SessionQueue.cpp
+build_and_run engine_applicator tests/engine/applicator_tests.cpp src/engine/ApplicationService.cpp src/engine/SessionQueue.cpp src/diagnostics/Trace.cpp
 suites=$((suites + 1))
 
-build_and_run engine_applicationservice tests/engine/applicationservice_tests.cpp src/engine/ApplicationService.cpp src/engine/SessionQueue.cpp
+build_and_run engine_applicationservice tests/engine/applicationservice_tests.cpp src/engine/ApplicationService.cpp src/engine/SessionQueue.cpp src/diagnostics/Trace.cpp
+suites=$((suites + 1))
+
+build_and_run diagnostics_trace tests/diagnostics/trace_tests.cpp src/diagnostics/Trace.cpp
 suites=$((suites + 1))
 
 build_and_run settingspublication tests/settingspublication_tests.cpp src/Settings.cpp
@@ -96,5 +99,8 @@ if command -v check-jsonschema >/dev/null 2>&1; then
 else
 	echo "== schema (skipped: check-jsonschema not on PATH)"
 fi
+
+python3 tests/tools/presenter_tests.py || status=1
+python3 tests/tools/tidy_tests.py || status=1
 
 exit $status

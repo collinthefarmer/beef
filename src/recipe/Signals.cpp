@@ -323,11 +323,11 @@ void CheckCurveRef(const RowTypes &a_rows, const Reporter &a_report,
 }
 
 void CheckUniqueNames(const Recipe &a_recipe, std::vector<Diagnostic> &a_out) {
-  const auto error = [&](std::string a_where, std::string a_message) {
-    Reporter{a_out, std::move(a_where)}.Error(std::move(a_message));
+  const auto error = [&](const std::string &a_where, std::string a_message) {
+    Reporter{a_out, a_where}.Error(std::move(a_message));
   };
-  const auto warn = [&](std::string a_where, std::string a_message) {
-    Reporter{a_out, std::move(a_where)}.Warn(std::move(a_message));
+  const auto warn = [&](const std::string &a_where, std::string a_message) {
+    Reporter{a_out, a_where}.Warn(std::move(a_message));
   };
   const auto unique = [&]<class Row>(const std::vector<Row> &a_rows,
                                      const char *a_what) {
@@ -601,91 +601,114 @@ void SignalGraph::InferTypes(SignalGraph &a_graph) {
   }
 }
 
+struct SignalGraph::ReferenceTypeChecker {
+  SignalGraph &graph;
+  Node &node;
+
+  void Reject(std::string message) const {
+    node.inert = true;
+    ReportSignal(graph, node.signal.name, std::move(message));
+  }
+
+  [[nodiscard]] std::optional<ValueType>
+  MismatchedType(const Ref &reference, ValueType expected) const {
+    const auto type = graph.TypeOf(reference.name);
+    return type && *type != expected ? type : std::nullopt;
+  }
+
+  void CheckScalarReference(const Ref &reference,
+                            std::string_view field) const {
+    if (const auto type = MismatchedType(reference, ValueType::kScalar)) {
+      Reject(std::format("'{}' must be a scalar; '@{}' is a {}", field,
+                         reference.name, Name(*type)));
+    }
+  }
+
+  void CheckScalar(const Param &parameter, std::string_view field) const {
+    if (const auto *reference = Get<Ref>(parameter)) {
+      CheckScalarReference(*reference, field);
+    }
+  }
+
+  void CheckTrigger(std::string_view reference, std::string message) const {
+    const auto index = graph.Index(reference);
+    if (index && !Is<TriggerSignal>(graph.nodes_[*index].signal.kind)) {
+      Reject(std::move(message));
+    }
+  }
+
+  void CheckColor(const Vec3Param &color) const {
+    if (const auto *reference = Get<Ref>(color)) {
+      if (const auto type = MismatchedType(*reference, ValueType::kVec3)) {
+        Reject(std::format("a stop colour must be a vec3; '@{}' is a {}",
+                           reference->name, Name(*type)));
+      }
+    }
+  }
+
+  void operator()(const PulseSignal &k) const {
+    CheckScalar(k.base, "base");
+    CheckScalar(k.amplitude, "amplitude");
+    CheckScalar(k.period, "period");
+    CheckScalar(k.phase, "phase");
+  }
+
+  void operator()(const RampSignal &k) const {
+    CheckScalar(k.from, "from");
+    CheckScalar(k.to, "to");
+    CheckScalar(k.seconds, "seconds");
+  }
+
+  void operator()(const TriggerSignal &k) const {
+    CheckScalar(k.lifetime, "lifetime");
+    if (const auto *when = Get<WhenOrigin>(k.origin)) {
+      CheckScalarReference(when->when, "when");
+    }
+  }
+
+  void operator()(const PayloadSignal &k) const {
+    CheckTrigger(k.trigger.name,
+                 std::format("'trigger' must name a trigger; '@{}' is not one",
+                             k.trigger.name));
+  }
+
+  void operator()(const CounterSignal &k) const {
+    CheckTrigger(k.trigger.name,
+                 std::format("'@{}' must be a trigger", k.trigger.name));
+    if (k.reset)
+      CheckTrigger(k.reset->name,
+                   std::format("'@{}' must be a trigger", k.reset->name));
+    if (k.cap)
+      CheckScalar(*k.cap, "cap");
+  }
+
+  void operator()(const AccumulateSignal &k) const {
+    CheckTrigger(k.trigger.name,
+                 std::format("'@{}' must be a trigger", k.trigger.name));
+    CheckScalar(k.decay, "decay");
+  }
+
+  void operator()(const NoiseSignal &k) const {
+    CheckScalar(k.frequency, "frequency");
+    CheckScalar(k.amplitude, "amplitude");
+  }
+
+  void operator()(const GradientSignal &k) const {
+    CheckScalar(k.t, "t");
+    for (const auto &stop : k.stops) {
+      CheckColor(stop.color);
+    }
+  }
+
+  void operator()(const SmoothSignal &k) const {
+    CheckScalar(k.seconds, "seconds");
+  }
+  template <class T> void operator()(const T &) const {}
+};
+
 void SignalGraph::CheckReferenceTypes(SignalGraph &a_graph) {
-  for (auto &n : a_graph.nodes_) {
-    const auto scalar = [&](const Param &p, std::string_view what) {
-      if (const auto *ref = Get<Ref>(p)) {
-        if (const auto t = a_graph.TypeOf(ref->name);
-            t && *t != ValueType::kScalar) {
-          n.inert = true;
-          ReportSignal(a_graph, n.signal.name,
-                       std::format("'{}' must be a scalar; '@{}' is a {}", what,
-                                   ref->name, Name(*t)));
-        }
-      }
-    };
-    const auto trigger = [&](std::string_view a_ref, std::string a_message) {
-      const auto idx = a_graph.Index(a_ref);
-      if (idx && !Is<TriggerSignal>(a_graph.nodes_[*idx].signal.kind)) {
-        n.inert = true;
-        ReportSignal(a_graph, n.signal.name, std::move(a_message));
-      }
-    };
-    Match(
-        n.signal.kind,
-        [&](const PulseSignal &k) {
-          scalar(k.base, "base");
-          scalar(k.amplitude, "amplitude");
-          scalar(k.period, "period");
-          scalar(k.phase, "phase");
-        },
-        [&](const RampSignal &k) {
-          scalar(k.from, "from");
-          scalar(k.to, "to");
-          scalar(k.seconds, "seconds");
-        },
-        [&](const TriggerSignal &k) {
-          scalar(k.lifetime, "lifetime");
-          if (const auto *when = Get<WhenOrigin>(k.origin)) {
-            if (const auto t = a_graph.TypeOf(when->when.name);
-                t && *t != ValueType::kScalar) {
-              n.inert = true;
-              ReportSignal(a_graph, n.signal.name,
-                           std::format("'when' must be a scalar; '@{}' is a {}",
-                                       when->when.name, Name(*t)));
-            }
-          }
-        },
-        [&](const PayloadSignal &k) {
-          trigger(k.trigger.name,
-                  std::format("'trigger' must name a trigger; '@{}' is not one",
-                              k.trigger.name));
-        },
-        [&](const CounterSignal &k) {
-          trigger(k.trigger.name,
-                  std::format("'@{}' must be a trigger", k.trigger.name));
-          if (k.reset)
-            trigger(k.reset->name,
-                    std::format("'@{}' must be a trigger", k.reset->name));
-          if (k.cap)
-            scalar(*k.cap, "cap");
-        },
-        [&](const AccumulateSignal &k) {
-          trigger(k.trigger.name,
-                  std::format("'@{}' must be a trigger", k.trigger.name));
-          scalar(k.decay, "decay");
-        },
-        [&](const NoiseSignal &k) {
-          scalar(k.frequency, "frequency");
-          scalar(k.amplitude, "amplitude");
-        },
-        [&](const GradientSignal &k) {
-          scalar(k.t, "t");
-          for (const auto &s : k.stops) {
-            if (const auto *ref = Get<Ref>(s.color)) {
-              if (const auto t = a_graph.TypeOf(ref->name);
-                  t && *t != ValueType::kVec3) {
-                n.inert = true;
-                ReportSignal(
-                    a_graph, n.signal.name,
-                    std::format("a stop colour must be a vec3; '@{}' is a {}",
-                                ref->name, Name(*t)));
-              }
-            }
-          }
-        },
-        [&](const SmoothSignal &k) { scalar(k.seconds, "seconds"); },
-        [](const auto &) {});
+  for (auto &node : a_graph.nodes_) {
+    Match(node.signal.kind, ReferenceTypeChecker{a_graph, node});
   }
 }
 
@@ -1150,11 +1173,16 @@ void SignalState::Accept(std::size_t a_index, const EventRecord &a_event,
     return;
   }
   auto &st = states_[a_index];
-  st.firings.push_back(std::move(firing));
-  ++st.fired;
-  const std::size_t keep = std::max<std::uint32_t>(1, trigger->max);
-  while (st.firings.size() > keep) {
-    st.firings.erase(st.firings.begin());
+  st.RecordFiring(std::move(firing), trigger->max);
+}
+
+void SignalState::NodeState::RecordFiring(TriggerFiring a_firing,
+                                          std::uint32_t a_limit) {
+  firings.push_back(std::move(a_firing));
+  ++fired;
+  const std::size_t keep = std::max<std::uint32_t>(1, a_limit);
+  if (firings.size() > keep) {
+    firings.erase(firings.begin(), firings.end() - keep);
   }
 }
 
@@ -1164,221 +1192,244 @@ void SignalState::Fire(const EventRecord &a_event, float a_time) {
   }
 }
 
+// Each signal kind has an independent state transition; dispatch only supplies
+// the shared evaluation context.
+struct SignalState::Evaluator {
+  SignalState &state;
+  const SignalGraph::Node &node;
+  NodeState &memory;
+  const SignalEnvironment &environment;
+  float time;
+  float delta;
+
+  [[nodiscard]] const NodeState *TriggerState(const Ref &a_ref) const {
+    const auto index = state.graph_.Index(a_ref.name);
+    return index ? &state.states_[*index] : nullptr;
+  }
+
+  Value operator()(const ConstantSignal &k) const { return k.value; }
+
+  Value operator()(const PulseSignal &k) const {
+    const float period = state.Resolve(k.period);
+    if (period > kEpsilon) {
+      memory.phase += delta / period;
+      memory.phase -= std::floor(memory.phase);
+    }
+    return state.Resolve(k.base) +
+           state.Resolve(k.amplitude) *
+               Wave(k.waveform, memory.phase + state.Resolve(k.phase));
+  }
+
+  Value operator()(const RampSignal &k) const {
+    const float seconds = state.Resolve(k.seconds);
+    const float t = seconds <= kEpsilon ? 1.0f : Clamp01(time / seconds);
+    return state.Resolve(k.from) +
+           (state.Resolve(k.to) - state.Resolve(k.from)) * t;
+  }
+
+  Value operator()(const EfshSignal &k) const {
+    const auto params = environment.EffectShader(k.record);
+    if (!params) {
+      return ZeroOf(node.type);
+    }
+    const auto fill = Efsh::Evaluate(*params, time, 1.0f, 1.0f);
+    switch (k.field) {
+    case EfshField::kFillAlpha:
+      return fill.alpha;
+    case EfshField::kFillColor:
+      return Vec3{fill.color.x * fill.scale, fill.color.y * fill.scale,
+                  fill.color.z * fill.scale};
+    case EfshField::kEdgeAlpha:
+      return fill.edgeAlpha;
+    case EfshField::kEdgeColor:
+      return fill.edgeColor;
+    case EfshField::kScroll:
+      return Vec2{fill.uOffset, fill.vOffset};
+    }
+    return 0.0f;
+  }
+
+  Value operator()(const ActorValueSignal &k) const {
+    return environment.ActorValue(k.actorValue, k.measure);
+  }
+
+  Value operator()(const ActorStateSignal &k) const {
+    return environment.ActorState(k.kind);
+  }
+
+  Value operator()(const EnchantmentSignal &k) const {
+    return environment.Enchantment(k.field);
+  }
+
+  Value operator()(const TriggerSignal &k) const {
+    if (const auto *when = Get<WhenOrigin>(k.origin)) {
+      const float now = state.Scalar(when->when.name);
+      const float before = memory.previous ? AsScalar(*memory.previous) : 0.0f;
+      memory.previous = now;
+      if (before <= 0.0f && now > 0.0f) {
+        TriggerFiring firing{time, {}};
+        if (when->value) {
+          firing.payload.value = state.Scalar(when->value->name);
+        }
+        memory.RecordFiring(std::move(firing), k.max);
+      }
+    }
+    const float lifetime = std::max(kEpsilon, state.Resolve(k.lifetime));
+    std::erase_if(memory.firings, [&](const TriggerFiring &f) {
+      return time - f.startTime >= lifetime;
+    });
+    if (memory.firings.empty()) {
+      return 1.0f;
+    }
+    return Clamp01((time - memory.firings.back().startTime) / lifetime);
+  }
+
+  Value operator()(const PayloadSignal &k) const {
+    const auto *src = TriggerState(k.trigger);
+    if (src && !src->firings.empty()) {
+      const auto &p = src->firings.back().payload;
+      switch (k.field) {
+      case PayloadField::kValue:
+        memory.held = p.value;
+        break;
+      case PayloadField::kPosition:
+        memory.held = p.position.value_or(AsVec3(memory.held));
+        break;
+      case PayloadField::kNormal:
+        memory.held = p.normal.value_or(AsVec3(memory.held));
+        break;
+      }
+    }
+    return memory.held;
+  }
+
+  Value operator()(const CounterSignal &k) const {
+    const auto *src = TriggerState(k.trigger);
+    const auto *reset = k.reset ? TriggerState(*k.reset) : nullptr;
+    if (reset && reset->fired > memory.seenReset) {
+      memory.seenReset = reset->fired;
+      memory.accumulator = 0.0f;
+    }
+    if (src) {
+      memory.accumulator += static_cast<float>(src->fired - memory.seen);
+      memory.seen = src->fired;
+    }
+    if (k.cap) {
+      const float cap = state.Resolve(*k.cap);
+      if (cap > 0.0f) {
+        memory.accumulator = std::min(memory.accumulator, cap);
+      }
+    }
+    return memory.accumulator;
+  }
+
+  Value operator()(const AccumulateSignal &k) const {
+    memory.accumulator =
+        std::max(0.0f, memory.accumulator - state.Resolve(k.decay) * delta);
+    if (const auto *src = TriggerState(k.trigger)) {
+      memory.accumulator += static_cast<float>(src->fired - memory.seen);
+      memory.seen = src->fired;
+    }
+    return memory.accumulator;
+  }
+
+  Value operator()(const NoiseSignal &k) const {
+    return state.Resolve(k.amplitude) *
+           ValueNoise(time * state.Resolve(k.frequency), k.seed);
+  }
+
+  Value operator()(const GradientSignal &k) const {
+    if (k.stops.empty()) {
+      return Vec3{};
+    }
+    const float t = state.Resolve(k.t);
+    const auto *lo = &k.stops.front();
+    const auto *hi = &k.stops.back();
+    for (const auto &s : k.stops) {
+      if (s.at <= t && s.at >= lo->at)
+        lo = &s;
+      if (s.at >= t && s.at <= hi->at)
+        hi = &s;
+    }
+    if (t <= k.stops.front().at) {
+      return state.Resolve(k.stops.front().color);
+    }
+    if (t >= k.stops.back().at) {
+      return state.Resolve(k.stops.back().color);
+    }
+    const float span = hi->at - lo->at;
+    return Lerp(state.Resolve(lo->color), state.Resolve(hi->color),
+                span <= kEpsilon ? 0.0f : (t - lo->at) / span);
+  }
+
+  Value operator()(const DeltaSignal &k) const {
+    const Value now = state.ValueOf(k.of.name);
+    const Value before = memory.previous.value_or(now);
+    memory.previous = now;
+    return Match(
+        now, [&](float f) -> Value { return f - AsScalar(before); },
+        [&](const Vec2 &v) -> Value {
+          const auto b = AsVec2(before);
+          return Vec2{v.x - b.x, v.y - b.y};
+        },
+        [&](const Vec3 &v) -> Value {
+          const auto b = AsVec3(before);
+          return Vec3{v.x - b.x, v.y - b.y, v.z - b.z};
+        });
+  }
+
+  Value operator()(const SmoothSignal &k) const {
+    const Value target = state.ValueOf(k.of.name);
+    if (!memory.previous) {
+      memory.previous = target;
+      return target;
+    }
+    const float seconds = state.Resolve(k.seconds);
+    const float a =
+        seconds <= kEpsilon ? 1.0f : 1.0f - std::exp(-delta / seconds);
+    const Value next = Match(
+        target,
+        [&](float f) -> Value {
+          return AsScalar(*memory.previous) +
+                 (f - AsScalar(*memory.previous)) * a;
+        },
+        [&](const Vec2 &v) -> Value {
+          const auto p = AsVec2(*memory.previous);
+          return Vec2{p.x + (v.x - p.x) * a, p.y + (v.y - p.y) * a};
+        },
+        [&](const Vec3 &v) -> Value {
+          return Lerp(AsVec3(*memory.previous), v, a);
+        });
+    memory.previous = next;
+    return next;
+  }
+
+  Value operator()(const ExprSignal &) const {
+    if (!node.expression) {
+      return ZeroOf(node.type);
+    }
+    Value refs[64];
+    std::size_t count = 0;
+    for (const auto r : node.exprRefs) {
+      if (count < std::size(refs)) {
+        refs[count++] = state.ValueOf(r);
+      }
+    }
+    Program::Inputs in;
+    in.refs = std::span{refs, count};
+    in.curves = node.exprCurves;
+    in.time = time;
+    return node.expression->Evaluate(in);
+  }
+};
+
 Value SignalState::Evaluate(std::size_t a_index,
                             const SignalEnvironment &a_environment,
                             const TickInputs &a_inputs) {
   const auto &node = graph_.nodes_[a_index];
-  auto &st = states_[a_index];
-  const float time = a_inputs.time;
-  const float dt = std::max(0.0f, a_inputs.delta);
-  const auto triggerState = [&](const Ref &a_ref) -> const NodeState * {
-    const auto idx = graph_.Index(a_ref.name);
-    return idx ? &states_[*idx] : nullptr;
-  };
-
-  return Match(
-      node.signal.kind,
-      [&](const ConstantSignal &k) -> Value { return k.value; },
-      [&](const PulseSignal &k) -> Value {
-        const float period = Resolve(k.period);
-        if (period > kEpsilon) {
-          st.phase += dt / period;
-          st.phase -= std::floor(st.phase);
-        }
-        return Resolve(k.base) +
-               Resolve(k.amplitude) *
-                   Wave(k.waveform, st.phase + Resolve(k.phase));
-      },
-      [&](const RampSignal &k) -> Value {
-        const float seconds = Resolve(k.seconds);
-        const float t = seconds <= kEpsilon ? 1.0f : Clamp01(time / seconds);
-        return Resolve(k.from) + (Resolve(k.to) - Resolve(k.from)) * t;
-      },
-      [&](const EfshSignal &k) -> Value {
-        const auto params = a_environment.EffectShader(k.record);
-        if (!params) {
-          return ZeroOf(node.type);
-        }
-        const auto fill = Efsh::Evaluate(*params, time, 1.0f, 1.0f);
-        switch (k.field) {
-        case EfshField::kFillAlpha:
-          return fill.alpha;
-        case EfshField::kFillColor:
-          return Vec3{fill.color.x * fill.scale, fill.color.y * fill.scale,
-                      fill.color.z * fill.scale};
-        case EfshField::kEdgeAlpha:
-          return fill.edgeAlpha;
-        case EfshField::kEdgeColor:
-          return fill.edgeColor;
-        case EfshField::kScroll:
-          return Vec2{fill.uOffset, fill.vOffset};
-        }
-        return 0.0f;
-      },
-      [&](const ActorValueSignal &k) -> Value {
-        return a_environment.ActorValue(k.actorValue, k.measure);
-      },
-      [&](const ActorStateSignal &k) -> Value {
-        return a_environment.ActorState(k.kind);
-      },
-      [&](const EnchantmentSignal &k) -> Value {
-        return a_environment.Enchantment(k.field);
-      },
-      [&](const TriggerSignal &k) -> Value {
-        if (const auto *when = Get<WhenOrigin>(k.origin)) {
-          const float now = Scalar(when->when.name);
-          const float before = st.previous ? AsScalar(*st.previous) : 0.0f;
-          st.previous = now;
-          if (before <= 0.0f && now > 0.0f) {
-            TriggerFiring firing{time, {}};
-            if (when->value) {
-              firing.payload.value = Scalar(when->value->name);
-            }
-            st.firings.push_back(std::move(firing));
-            ++st.fired;
-            const std::size_t keep = std::max<std::uint32_t>(1, k.max);
-            while (st.firings.size() > keep) {
-              st.firings.erase(st.firings.begin());
-            }
-          }
-        }
-        const float lifetime = std::max(kEpsilon, Resolve(k.lifetime));
-        std::erase_if(st.firings, [&](const TriggerFiring &f) {
-          return time - f.startTime >= lifetime;
-        });
-        if (st.firings.empty()) {
-          return 1.0f;
-        }
-        return Clamp01((time - st.firings.back().startTime) / lifetime);
-      },
-      [&](const PayloadSignal &k) -> Value {
-        const auto *src = triggerState(k.trigger);
-        if (src && !src->firings.empty()) {
-          const auto &p = src->firings.back().payload;
-          switch (k.field) {
-          case PayloadField::kValue:
-            st.held = p.value;
-            break;
-          case PayloadField::kPosition:
-            st.held = p.position.value_or(AsVec3(st.held));
-            break;
-          case PayloadField::kNormal:
-            st.held = p.normal.value_or(AsVec3(st.held));
-            break;
-          }
-        }
-        return st.held;
-      },
-      [&](const CounterSignal &k) -> Value {
-        const auto *src = triggerState(k.trigger);
-        const auto *reset = k.reset ? triggerState(*k.reset) : nullptr;
-        if (reset && reset->fired > st.seenReset) {
-          st.seenReset = reset->fired;
-          st.accumulator = 0.0f;
-        }
-        if (src) {
-          st.accumulator += static_cast<float>(src->fired - st.seen);
-          st.seen = src->fired;
-        }
-        if (k.cap) {
-          const float cap = Resolve(*k.cap);
-          if (cap > 0.0f) {
-            st.accumulator = std::min(st.accumulator, cap);
-          }
-        }
-        return st.accumulator;
-      },
-      [&](const AccumulateSignal &k) -> Value {
-        st.accumulator = std::max(0.0f, st.accumulator - Resolve(k.decay) * dt);
-        if (const auto *src = triggerState(k.trigger)) {
-          st.accumulator += static_cast<float>(src->fired - st.seen);
-          st.seen = src->fired;
-        }
-        return st.accumulator;
-      },
-      [&](const NoiseSignal &k) -> Value {
-        return Resolve(k.amplitude) *
-               ValueNoise(time * Resolve(k.frequency), k.seed);
-      },
-      [&](const GradientSignal &k) -> Value {
-        if (k.stops.empty()) {
-          return Vec3{};
-        }
-        const float t = Resolve(k.t);
-        const auto *lo = &k.stops.front();
-        const auto *hi = &k.stops.back();
-        for (const auto &s : k.stops) {
-          if (s.at <= t && s.at >= lo->at)
-            lo = &s;
-          if (s.at >= t && s.at <= hi->at)
-            hi = &s;
-        }
-        if (t <= k.stops.front().at) {
-          return Resolve(k.stops.front().color);
-        }
-        if (t >= k.stops.back().at) {
-          return Resolve(k.stops.back().color);
-        }
-        const float span = hi->at - lo->at;
-        return Lerp(Resolve(lo->color), Resolve(hi->color),
-                    span <= kEpsilon ? 0.0f : (t - lo->at) / span);
-      },
-      [&](const DeltaSignal &k) -> Value {
-        const Value now = ValueOf(k.of.name);
-        const Value before = st.previous.value_or(now);
-        st.previous = now;
-        return Match(
-            now, [&](float f) -> Value { return f - AsScalar(before); },
-            [&](const Vec2 &v) -> Value {
-              const auto b = AsVec2(before);
-              return Vec2{v.x - b.x, v.y - b.y};
-            },
-            [&](const Vec3 &v) -> Value {
-              const auto b = AsVec3(before);
-              return Vec3{v.x - b.x, v.y - b.y, v.z - b.z};
-            });
-      },
-      [&](const SmoothSignal &k) -> Value {
-        const Value target = ValueOf(k.of.name);
-        if (!st.previous) {
-          st.previous = target;
-          return target;
-        }
-        const float seconds = Resolve(k.seconds);
-        const float a =
-            seconds <= kEpsilon ? 1.0f : 1.0f - std::exp(-dt / seconds);
-        const Value next = Match(
-            target,
-            [&](float f) -> Value {
-              return AsScalar(*st.previous) + (f - AsScalar(*st.previous)) * a;
-            },
-            [&](const Vec2 &v) -> Value {
-              const auto p = AsVec2(*st.previous);
-              return Vec2{p.x + (v.x - p.x) * a, p.y + (v.y - p.y) * a};
-            },
-            [&](const Vec3 &v) -> Value {
-              return Lerp(AsVec3(*st.previous), v, a);
-            });
-        st.previous = next;
-        return next;
-      },
-      [&](const ExprSignal &) -> Value {
-        if (!node.expression) {
-          return ZeroOf(node.type);
-        }
-        Value refs[64];
-        std::size_t count = 0;
-        for (const auto r : node.exprRefs) {
-          if (count < std::size(refs)) {
-            refs[count++] = ValueOf(r);
-          }
-        }
-        Program::Inputs in;
-        in.refs = std::span{refs, count};
-        in.curves = node.exprCurves;
-        in.time = time;
-        return node.expression->Evaluate(in);
-      });
+  return Match(node.signal.kind,
+               Evaluator{*this, node, states_[a_index], a_environment,
+                         a_inputs.time, std::max(0.0f, a_inputs.delta)});
 }
 
 void SignalState::Tick(const SignalEnvironment &a_environment,

@@ -13,11 +13,15 @@
 #include <cctype>
 #include <fstream>
 #include <sstream>
+#include <type_traits>
 #include <unordered_map>
 #include <unordered_set>
 
 namespace BetterEnchantmentEffects {
 namespace {
+// clang-tidy misclassifies the implicit move as noexcept when following MSVC's
+// map sentinel allocation. The assertion below checks the compiler's contract.
+// NOLINTNEXTLINE(bugprone-exception-escape)
 struct LoadedRecipe {
   Recipe recipe;
   std::filesystem::path path;
@@ -28,6 +32,10 @@ struct LoadedRecipe {
   Studio::ReferenceCounts references{};
   Recipe saved{};
 };
+// MSVC's map move can allocate. The aggregate must preserve that throwing
+// contract rather than terminate if moving its reference counts fails.
+static_assert(std::is_nothrow_move_constructible_v<Studio::ReferenceCounts> ||
+              !std::is_nothrow_move_constructible_v<LoadedRecipe>);
 
 std::vector<LoadedRecipe> g_loaded;
 std::vector<Recipe> g_recipes;
@@ -46,6 +54,8 @@ bool WriteText(const std::filesystem::path &a_path, std::string_view a_text) {
   std::filesystem::create_directories(a_path.parent_path(), ec);
   std::ofstream out(a_path, std::ios::binary | std::ios::trunc);
   out << a_text;
+  out.flush();
+  out.close();
   return static_cast<bool>(out);
 }
 

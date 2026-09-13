@@ -81,7 +81,8 @@ file(GLOB_RECURSE NATIVE_MODULE_SOURCES CONFIGURE_DEPENDS
   "${CMAKE_SOURCE_DIR}/src/recipe/*.cpp"
   "${CMAKE_SOURCE_DIR}/src/mesh/*.cpp"
   "${CMAKE_SOURCE_DIR}/src/studio/*.cpp"
-  "${CMAKE_SOURCE_DIR}/src/planners/*.cpp")
+  "${CMAKE_SOURCE_DIR}/src/planners/*.cpp"
+  "${CMAKE_SOURCE_DIR}/src/diagnostics/*.cpp")
 set(NATIVE_SOURCES
   src/Settings.cpp
   ${NATIVE_MODULE_SOURCES})
@@ -112,7 +113,17 @@ add_commonlibsse_plugin(${PROJECT_NAME}
   USE_ADDRESS_LIBRARY
   SOURCES ${PLUGIN_SOURCES})
 
-target_include_directories(${PROJECT_NAME} PRIVATE src)
+find_program(BEEF_PYTHON python3 REQUIRED)
+add_custom_target(BuildIdentity
+  COMMAND "${BEEF_PYTHON}" "${CMAKE_SOURCE_DIR}/tools/build-identity.py"
+          --root "${CMAKE_SOURCE_DIR}" --output "${CMAKE_BINARY_DIR}/generated"
+          --config "${CMAKE_BUILD_TYPE}"
+  BYPRODUCTS "${CMAKE_BINARY_DIR}/generated/BuildIdentity.h"
+             "${CMAKE_BINARY_DIR}/generated/build-identity.json"
+  VERBATIM)
+add_dependencies(${PROJECT_NAME} BuildIdentity)
+
+target_include_directories(${PROJECT_NAME} PRIVATE src "${CMAKE_BINARY_DIR}/generated")
 target_include_directories(${PROJECT_NAME} SYSTEM PRIVATE src/extern)
 target_compile_definitions(${PROJECT_NAME} PRIVATE BEEF_PLUGIN_NAME="${PROJECT_NAME}")
 target_precompile_headers(${PROJECT_NAME} PRIVATE src/PCH.h)
@@ -129,12 +140,20 @@ target_compile_options(${PROJECT_NAME} PRIVATE /Zi)
 target_link_options(${PROJECT_NAME} PRIVATE /DEBUG:FULL /PDBALTPATH:%_PDB%)
 
 set(DIST_DIR "${CMAKE_SOURCE_DIR}/dist/${PROJECT_NAME}")
+add_custom_target(PresenterTextures ALL
+  COMMAND "${BEEF_PYTHON}" "${CMAKE_SOURCE_DIR}/tools/presenter-textures.py"
+          --output "${DIST_DIR}/textures/${PROJECT_NAME}/slots"
+  VERBATIM)
+add_dependencies(${PROJECT_NAME} PresenterTextures)
 add_custom_command(TARGET ${PROJECT_NAME} POST_BUILD
   COMMAND ${CMAKE_COMMAND} -E make_directory "${DIST_DIR}/SKSE/Plugins"
   COMMAND ${CMAKE_COMMAND} -E copy_if_different
           "$<TARGET_FILE:${PROJECT_NAME}>"
           "$<TARGET_PDB_FILE:${PROJECT_NAME}>"
           "${DIST_DIR}/SKSE/Plugins/"
+  COMMAND ${CMAKE_COMMAND} -E copy_if_different
+          "${CMAKE_BINARY_DIR}/generated/build-identity.json"
+          "${DIST_DIR}/SKSE/Plugins/${PROJECT_NAME}-build.json"
   COMMAND ${CMAKE_COMMAND} -E copy_if_different
           "${CMAKE_SOURCE_DIR}/${PROJECT_NAME}.ini"
           "${DIST_DIR}/SKSE/Plugins/"

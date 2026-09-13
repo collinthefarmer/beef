@@ -14,6 +14,7 @@ struct GlintParameters {
   float logMicrofacetDensity = 40.0f;
   float microfacetRoughness = 0.015f;
   float densityRandomization = 2.0f;
+  bool operator==(const GlintParameters &) const = default;
 };
 
 inline constexpr std::uint32_t kPbrSubsurface = 1u << 0;

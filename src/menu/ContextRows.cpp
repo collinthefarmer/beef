@@ -72,36 +72,15 @@ void SelectionCombo(const Studio::Snapshot &a_snapshot,
 }
 
 void RecipeCombo(const Frame &a_frame, const char *a_label) {
-  const Studio::PieceRow &a_piece = *a_frame.piece;
-  const Studio::RecipeRow &a_recipe = *a_frame.recipe;
-  const auto &a_loaded = a_frame.snapshot->loaded;
-  Studio::Intents &a_out = *a_frame.intents;
-
-  if (!ImGui::BeginCombo(a_label, RecipeLabel(a_recipe).c_str())) {
+  const std::string preview = a_frame.recipe ? RecipeLabel(*a_frame.recipe)
+                                           : SelectionOf(a_frame).recipeID;
+  if (!ImGui::BeginCombo(a_label, preview.empty() ? "Choose recipe" : preview.c_str())) {
     return;
   }
-  for (const auto &recipe : a_piece.recipes) {
-    const std::string label =
-        recipe.pinned ? RecipeLabel(recipe)
-                      : std::format("{} ({}, priority {})", recipe.id,
-                                    recipe.key, recipe.priority);
-    if (ImGui::Selectable(label.c_str(), &recipe == &a_recipe)) {
-      Studio::Post(a_out, Studio::PickRecipe{recipe.id});
-    }
-  }
-  bool divided = false;
-  for (const auto &id : a_loaded) {
-    if (std::ranges::find(a_piece.recipes, id, &Studio::RecipeRow::id) !=
-        a_piece.recipes.end()) {
-      continue;
-    }
-    if (!divided) {
-      ImGui::Separator();
-      divided = true;
-    }
-    if (ImGui::Selectable(std::format("{} (not worn here)", id).c_str(),
-                          false)) {
-      Studio::Post(a_out, Studio::PinRecipe{id});
+  for (const std::string &id : a_frame.snapshot->loaded) {
+    const bool selected = id == SelectionOf(a_frame).recipeID;
+    if (ImGui::Selectable(id.c_str(), selected)) {
+      Studio::Post(*a_frame.intents, Studio::PickRecipe{id, true});
     }
   }
   ImGui::EndCombo();
@@ -289,28 +268,18 @@ void SlotChoice(const Studio::Board &a_board, Surface a_surface,
 }
 
 void DrawRecipeContext(const Frame &a_frame) {
-  const Studio::Snapshot &a_snapshot = *a_frame.snapshot;
-  const Studio::PieceRow &a_piece = *a_frame.piece;
-  const Studio::RecipeRow &a_recipe = *a_frame.recipe;
-  Studio::Intents &a_out = *a_frame.intents;
-
   auto table = Table::Begin("recipe-context",
-                            {{"S", Studio::Width::Fit()},
-                             {"selection", Studio::Width::Fit()},
-                             {"recipe", Studio::Width::Fit()}},
+                            {{"selection", Studio::Width::Fill()},
+                             {"recipe", Studio::Width::Fill()}},
                             kContextStyle);
   if (!table.Open()) {
     return;
   }
   table.Cell();
-  IsolateCheckbox(a_recipe, a_snapshot.view, "##isolate", a_out);
-  Tooltip("solo the recipe: apply it alone");
+  NextItemWidth(Studio::Width::Fill());
+  SelectionCombo(*a_frame.snapshot, a_frame.piece, "##selection", *a_frame.intents);
   table.Cell();
-  NextItemWidth(Studio::Width::Fit(
-      std::format("{} / {} (3rd)", a_piece.actorName, a_piece.armorName)));
-  SelectionCombo(a_snapshot, &a_piece, "##selection", a_out);
-  table.Cell();
-  NextItemWidth(Studio::Width::Fit(RecipeLabel(a_recipe)));
+  NextItemWidth(Studio::Width::Fill());
   RecipeCombo(a_frame, "##recipe");
   table.End();
 }
@@ -554,6 +523,29 @@ const Studio::Cell *DrawContext(const Studio::Board &a_board,
     DrawSurfaceContext(*picked, a_frame);
   }
   return picked;
+}
+
+void DrawStudioContext(const Frame &a_frame) {
+  if (!a_frame.snapshot || !a_frame.intents) {
+    return;
+  }
+  DrawRecipeContext(a_frame);
+  if (!a_frame.recipe) {
+    return;
+  }
+  UndoRedoButtons(*a_frame.recipe, *a_frame.intents);
+  ImGui::SameLine();
+  if (a_frame.geometry) {
+    NewRecipeButton(a_frame);
+    ImGui::SameLine();
+  }
+  RenameRecipeButton(a_frame);
+  ImGui::SameLine();
+  if (ImGui::Button("Recipe keys")) {
+    ImGui::OpenPopup("recipe-keys");
+  }
+  KeysPopup(a_frame.piece ? *a_frame.piece : Studio::PieceRow{},
+            *a_frame.recipe, *a_frame.intents);
 }
 
 void DrawRecipeSettings(const Frame &a_frame) {

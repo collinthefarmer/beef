@@ -32,6 +32,7 @@ struct Settings {
   bool firstPerson = true;
   bool uniqueMaterial = true;
   bool verboseLogging = true;
+  bool diagnosticLogging = true;
   std::uint32_t animationFPS = 60;
   float animationSpeed = 1.0f;
   TextureScale textureScale = TextureScale::kFull;

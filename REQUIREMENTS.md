@@ -134,6 +134,7 @@ src/
   mesh/     what an effect is applied to (pure)
   planners/ how recipes are placed, merged, and bound (pure)
   studio/   the editor's model           (pure)
+  diagnostics/ bounded trace recording  (engine-free)
   engine/   how an effect reaches an actor
   render/   how an effect becomes pixels
   menu/     the editor's surface
@@ -143,7 +144,9 @@ src/
 and `menu/` are the adapters over them. `src` is the only include root, so
 every include names its directory.
 
-The native object library builds those four pure directories and `Settings.cpp`.
+The native object library builds those four pure directories, the engine-free
+diagnostic recorder, and `Settings.cpp`. The recorder performs file I/O and is
+not part of the pure recipe or planning decisions.
 The plugin DLL adds `main.cpp`, `SettingsFile.cpp`, and the three adapter
 directories. `CMakeLists.txt` defines both source lists; neither includes `_old`.
 The native test runner also compiles `engine/SessionQueue.cpp` and
@@ -151,13 +154,19 @@ The native test runner also compiles `engine/SessionQueue.cpp` and
 transitions, task lifetime, application revisions, and controlled preparation/
 render outcomes can be tested without SKSE or engine objects.
 
+The diagnostic recorder and queue-context propagation are tested natively for
+bounded storage, JSONL framing, concurrent event ordering, load-session identity,
+and deferred command identity. Runtime traces are evidence of recorded state,
+not proof of rendered pixels or visual correctness. The initial integration
+checkpoint is `docs/wip/render-state-diagnostic-checkpoint-2026-09-12.md`.
+
 ### Functional core, thin adapter
 
 For each engine-facing responsibility, the decision is pure and the effect
 is a thin call over existing APIs:
 
-- The **binding** planner computes what to install and what to restore as
-  a diff over records; the writer applies it and null-checks pointers.
+- The **binding** planner computes required surfaces and their shell owner as
+  a plan over records; the writer owns coupled field journals and retirement.
 - The **compositor** planner decides which layers, static or animated,
   their stack order, and the cut at the highest `replace`; the execution
   runs the GPU passes.
@@ -282,3 +291,35 @@ tree must not reproduce them.
 - `Identity.h` is the only place the plugin name is spelled.
 - Do not modify `decompiled/`, `reference/`, or anything under
   `/mnt/a/mods/`. Recipe files are the one exception.
+
+## Shell palette repair checkpoint
+
+A cloned shell must preserve effective bone world-transform references, including
+flattened bones without individual scene nodes. Missing entries may be restored
+only after identifying and retaining their owning tree. The shell retains private
+skin data and pointer arrays; unknown owners or incompatible skins reject shell
+creation. Ownership changes invalidate the shell, and retirement clears repaired
+references before releasing their retained owners. Engine-free storage membership
+checks have native boundary tests; live animation and zero-inflation appearance
+remain an in-game acceptance check.
+
+## Texture consumer lifetime checkpoint
+
+Generated texture consumers retain the render target and acquisition generation,
+not only an engine presenter pointer. A producer can retire while snapshots,
+material journals or queued previews still use its target; the pool may recycle
+it only after the last retained reference releases it. Expired generated handles
+and live presenter reassignment are rejected. Static engine textures retain
+ordinary engine ownership. These references preserve identity, not frozen pixels.
+Preparation/publication, application lifecycle and per-field restoration are
+separate follow-up checkpoints in the rendering-state plan.
+
+## Cleanup acceptance (2026-09-13)
+
+Material retirement must preserve external changes by coupled physical field
+group, without restoring unrelated flag bits or releasing generated textures
+still installed after takeover. Presenter capacity is concurrent retained usage,
+not cumulative allocations over loads. Pending UI draws retain their targets
+until draw submission is acknowledged; a tick delay is not completion evidence.
+The concrete contracts and outstanding in-game cases are recorded in
+`docs/wip/cleanup-checkpoint-2026-09-13.md`.
