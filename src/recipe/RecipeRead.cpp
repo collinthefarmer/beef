@@ -1134,7 +1134,6 @@ LoadResult ParseRecipe(std::string_view a_json, std::string_view a_id) {
   } else if (format && *format > kRecipeFormat) {
     ctx.Error(std::format("format {} is newer than this loader's {}", *format,
                           kRecipeFormat));
-    return result;
   }
 
   ReadMetadata(r, ctx, recipe.metadata);

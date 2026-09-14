@@ -771,10 +771,14 @@ Decompile provenance (`decompiled/WornEnchantmentFX/plugin.c` unless noted):
   A missing `format` is reported ("'format' is required; this loader reads
   format 1") and the parse continues, so an author who forgot the field still
   sees every other problem in the file at once. A `format` above
-  `kRecipeFormat` is reported and the parse stops there, because a newer file
-  may spell anything and the diagnostics from reading it would be noise about
-  this loader, not about the file. Both are recipe-level errors, so either
-  holds the recipe out of the applied set while leaving it in the menu.
+  `kRecipeFormat` is reported and the parse also continues: keys this loader
+  does not know surface as `unknown key` errors, which are recipe-level too.
+  Both are recipe-level errors, so either holds the recipe out of the
+  applied set while leaving it in the menu, where the author can set
+  `format` to 1 and see what else the loader refuses. Stopping the parse
+  instead (the behaviour until 2026-09-14) left no recipe for the menu, and
+  the store reported the file as unreadable, which the in-game checkpoint
+  for Plan A showed.
 - Duplicate keys inside one JSON object are an error, found while parsing;
   every key no reader asked for is reported. `//` and `/* */` comments are
   accepted in recipe files. Nesting past `kMaxRecipeDepth` levels is rejected

@@ -254,8 +254,11 @@ int main() {
   {
     const LoadResult badFormat =
         ParseRecipe(R"({"format": 9999, "keys": ["default"]})", "held");
-    Check(badFormat.HasRecipeErrors(),
-          "a bad format is a recipe-level error that holds the recipe back");
+    Check(badFormat.recipe.has_value() && badFormat.HasRecipeErrors(),
+          "a newer format still yields a recipe for the menu, held back by a "
+          "recipe-level error");
+    Check(badFormat.recipe && badFormat.recipe->keys.size() == 1,
+          "the rest of a newer-format file is still read");
     const LoadResult badKeys =
         ParseRecipe(R"({"format": 1, "keys": []})", "held");
     Check(badKeys.HasRecipeErrors(), "empty keys are a recipe-level error");
