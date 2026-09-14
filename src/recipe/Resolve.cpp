@@ -11,25 +11,29 @@ bool GlobMatch(std::string_view a_glob, std::string_view a_text) noexcept {
     c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
     return c == '\\' ? '/' : c;
   };
-  std::size_t g = 0, t = 0, starG = std::string_view::npos, starT = 0;
-  while (t < a_text.size()) {
-    if (g < a_glob.size() && a_glob[g] == '*') {
-      starG = g++;
-      starT = t;
-    } else if (g < a_glob.size() && norm(a_glob[g]) == norm(a_text[t])) {
-      ++g;
-      ++t;
-    } else if (starG != std::string_view::npos) {
-      g = starG + 1;
-      t = ++starT;
+  std::size_t globAt = 0;
+  std::size_t textAt = 0;
+  std::size_t starAt = std::string_view::npos;
+  std::size_t starMatchedTo = 0;
+  while (textAt < a_text.size()) {
+    if (globAt < a_glob.size() && a_glob[globAt] == '*') {
+      starAt = globAt++;
+      starMatchedTo = textAt;
+    } else if (globAt < a_glob.size() &&
+               norm(a_glob[globAt]) == norm(a_text[textAt])) {
+      ++globAt;
+      ++textAt;
+    } else if (starAt != std::string_view::npos) {
+      globAt = starAt + 1;
+      textAt = ++starMatchedTo;
     } else {
       return false;
     }
   }
-  while (g < a_glob.size() && a_glob[g] == '*') {
-    ++g;
+  while (globAt < a_glob.size() && a_glob[globAt] == '*') {
+    ++globAt;
   }
-  return g == a_glob.size();
+  return globAt == a_glob.size();
 }
 
 bool Matches(const Selector &a_selector, const GeometryIdentity &a_geometry) {
