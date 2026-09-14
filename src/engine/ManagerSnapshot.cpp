@@ -227,7 +227,7 @@ struct PieceSnapshotBuilder {
         continue;
       }
       const std::optional<std::size_t> placedIndex = PlacedIndexOf(
-          state.structure, bound.placements, InstanceId{instanceIndex});
+          state.plan, bound.placements, InstanceId{instanceIndex});
       if (!placedIndex) {
         continue;
       }
@@ -294,9 +294,9 @@ struct PieceSnapshotBuilder {
     row.ref = ref;
     row.actorName = actor && actor->GetName() ? actor->GetName() : "?";
     row.armorName = piece.armorName;
-    if (flatStart < state.structure.geometries.size()) {
+    if (flatStart < state.plan.geometries.size()) {
       for (const PieceKey &source :
-           KeyChoicesOf(state.structure.geometries[flatStart].keys)) {
+           KeyChoicesOf(state.plan.geometries[flatStart].keys)) {
         Studio::KeyChoice key;
         key.key = source;
         const RE::TESForm *form = LookupForm(source.form);
@@ -336,8 +336,8 @@ bool ContainsPiece(const LiveActor &state, RE::FormID actorID,
                    const Studio::PieceRef &request) {
   std::size_t flatBase = 0;
   for (const LivePiece &piece : state.pieces) {
-    const bool firstPerson = flatBase < state.structure.geometries.size() &&
-                             state.structure.geometries[flatBase].firstPerson;
+    const bool firstPerson = flatBase < state.plan.geometries.size() &&
+                             state.plan.geometries[flatBase].firstPerson;
     if (request == Studio::PieceRef{actorID, piece.armor, firstPerson}) {
       return true;
     }
@@ -448,13 +448,12 @@ Manager::BuildSnapshot(const std::optional<Studio::PieceRef> &a_request,
       flatBase += geomCount;
 
       const std::vector<PieceMatch> matches =
-          MatchesForPiece(state.structure, GeometryId{flatStart}, geomCount);
+          MatchesForPiece(state.plan, GeometryId{flatStart}, geomCount);
       if (matches.empty()) {
         continue;
       }
-      const bool firstPerson =
-          flatStart < state.structure.geometries.size() &&
-          state.structure.geometries[flatStart].firstPerson;
+      const bool firstPerson = flatStart < state.plan.geometries.size() &&
+                               state.plan.geometries[flatStart].firstPerson;
       const Studio::PieceRef ref{actorID, piece.armor, firstPerson};
       const bool full = anyMatch ? (a_request && *a_request == ref) : first;
       first = false;

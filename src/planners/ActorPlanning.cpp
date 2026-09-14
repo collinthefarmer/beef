@@ -46,26 +46,26 @@ SurfacePlacements(const Recipe &a_recipe, const GeometryIdentity &a_identity) {
 }
 
 [[nodiscard]] InstanceId
-InstanceFor(ActorState &a_state, RecipeId a_recipe,
+InstanceFor(ActorPlan &a_plan, RecipeId a_recipe,
             const std::optional<FormKey> &a_enchantment, int a_priority) {
   if (const std::optional<InstanceId> existing =
-          FindInstance(a_state, a_recipe, a_enchantment)) {
-    Instance &instance = a_state.instances[static_cast<std::size_t>(*existing)];
+          FindInstance(a_plan, a_recipe, a_enchantment)) {
+    Instance &instance = a_plan.instances[static_cast<std::size_t>(*existing)];
     instance.priority = std::max(instance.priority, a_priority);
     return *existing;
   }
-  a_state.instances.push_back(Instance{a_recipe, a_enchantment, a_priority});
-  return InstanceId{a_state.instances.size() - 1};
+  a_plan.instances.push_back(Instance{a_recipe, a_enchantment, a_priority});
+  return InstanceId{a_plan.instances.size() - 1};
 }
 }
 
-ActorState MatchActor(std::span<const Geometry> a_geometries,
-                      std::span<const Recipe> a_store,
-                      const RecipeResolver &a_resolver) {
-  ActorState state;
-  state.geometries.assign(a_geometries.begin(), a_geometries.end());
-  for (std::size_t p = 0; p < state.geometries.size(); ++p) {
-    const Geometry &geometry = state.geometries[p];
+ActorPlan MatchActor(std::span<const Geometry> a_geometries,
+                     std::span<const Recipe> a_store,
+                     const RecipeResolver &a_resolver) {
+  ActorPlan plan;
+  plan.geometries.assign(a_geometries.begin(), a_geometries.end());
+  for (std::size_t p = 0; p < plan.geometries.size(); ++p) {
+    const Geometry &geometry = plan.geometries[p];
     for (const ResolvedRecipe &resolved : a_resolver(geometry, GeometryId{p})) {
       const std::optional<RecipeId> recipe =
           RecipeIdOf(a_store, resolved.recipe);
@@ -73,39 +73,39 @@ ActorState MatchActor(std::span<const Geometry> a_geometries,
         continue;
       }
       const InstanceId instance = InstanceFor(
-          state, *recipe, geometry.keys.enchantment, resolved.priority);
+          plan, *recipe, geometry.keys.enchantment, resolved.priority);
       Placement placement;
       placement.instance = instance;
       placement.geometry = GeometryId{p};
       placement.key = resolved.key;
       placement.outputs =
           SurfacePlacements(*resolved.recipe, geometry.identity);
-      state.placements.push_back(std::move(placement));
+      plan.placements.push_back(std::move(placement));
     }
   }
-  return state;
+  return plan;
 }
 
-ActorState MatchActor(std::span<const Geometry> a_geometries,
-                      std::span<const Recipe> a_store) {
+ActorPlan MatchActor(std::span<const Geometry> a_geometries,
+                     std::span<const Recipe> a_store) {
   return MatchActor(a_geometries, a_store,
                     [a_store](const Geometry &a_geometry, GeometryId) {
                       return Resolve(a_geometry.keys, a_store);
                     });
 }
 
-GeometryPlacementPlan PlanGeometryPlacement(const ActorState &a_state,
+GeometryPlacementPlan PlanGeometryPlacement(const ActorPlan &a_plan,
                                             std::span<const Recipe> a_store,
                                             GeometryId a_geometry,
                                             const OutputFilter &a_filter) {
   GeometryPlacementPlan out;
   for (const PlacementId placementId :
-       PlacementsOfGeometry(a_state, a_geometry)) {
-    const Placement *placement = PlacementAt(a_state, placementId);
+       PlacementsOfGeometry(a_plan, a_geometry)) {
+    const Placement *placement = PlacementAt(a_plan, placementId);
     if (!placement) {
       continue;
     }
-    const Instance *instance = InstanceAt(a_state, placement->instance);
+    const Instance *instance = InstanceAt(a_plan, placement->instance);
     if (!instance) {
       continue;
     }
@@ -130,12 +130,12 @@ GeometryPlacementPlan PlanGeometryPlacement(const ActorState &a_state,
   return out;
 }
 
-ActorLightPlan PlanActorLights(const ActorState &a_state,
+ActorLightPlan PlanActorLights(const ActorPlan &a_plan,
                                std::span<const Recipe> a_store,
                                const OutputFilter &a_filter) {
   ActorLightPlan out;
-  for (std::size_t i = 0; i < a_state.instances.size(); ++i) {
-    const Instance &instance = a_state.instances[i];
+  for (std::size_t i = 0; i < a_plan.instances.size(); ++i) {
+    const Instance &instance = a_plan.instances[i];
     out.placed.push_back(PlacedRecipe{
         RecipeAt(a_store, instance.recipe), instance.priority, {}});
     out.sources.push_back(InstanceId{i});

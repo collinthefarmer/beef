@@ -268,7 +268,7 @@ adapter executes.
 A planner decides over value records and opaque handles, never over engine
 (`RE::`) pointers. It takes plain records or `enum class` handle types (as
 `Merge`'s `Plan*` take `PlacedRecipe`/`SlotSource`, and an actor planner takes
-an `ActorState` over opaque ids) and returns a plan the adapter carries out. If
+an `ActorPlan` over opaque ids) and returns a plan the adapter carries out. If
 a decision needs a live pointer to make up its mind, the split is wrong: that
 logic belongs in the adapter, not the planner. This is what keeps the pure core
 testable without the engine and the adapter thin.
@@ -316,7 +316,7 @@ to match surface outputs to slots. `SelectedOutput` only returns surface outputs
 Isolation indicators use `Isolation::TargetsOutput` and `TargetsLayer`; visibility
 and muting remain the responsibility of `View`.
 
-`ActorState::geometries` is flat: each planner `Geometry` describes one
+`ActorPlan::geometries` is flat: each planner `Geometry` describes one
 renderable geometry. Its `GeometryId` also identifies the corresponding
 geometry in the runtime's nested traversal order. `LiveActor::pieces` groups
 runtime geometries by worn armor part; `LivePieceId` indexes those groups.
@@ -328,7 +328,7 @@ to build the studio's armor-piece view.
 
 `planners/ActorPlanning` matches recipes and builds geometry/light plans through
 `PlanGeometryPlacement` and `PlanActorLights`. It does not apply them to the
-engine. `RecipesOfInactiveInstances` is an `ActorState` query: it reports one
+engine. `RecipesOfInactiveInstances` is an `ActorPlan` query: it reports one
 recipe ID per instance without live geometry, so results can repeat a recipe ID
 or name a recipe that still has another active instance.
 

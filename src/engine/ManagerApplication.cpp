@@ -72,11 +72,11 @@ ApplicationObservation ObserveApplication(const LiveActor &a_state,
                                           bool a_rendered) {
   ApplicationObservation result;
   for (std::size_t p = 0; p < a_state.placements.size(); ++p) {
-    if (p >= a_state.structure.placements.size()) {
+    if (p >= a_state.plan.placements.size()) {
       continue;
     }
     const auto i =
-        static_cast<std::size_t>(a_state.structure.placements[p].instance);
+        static_cast<std::size_t>(a_state.plan.placements[p].instance);
     if (i >= a_state.instances.size() ||
         !Includes(a_token, a_state.instances[i])) {
       continue;

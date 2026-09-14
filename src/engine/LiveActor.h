@@ -3,7 +3,7 @@
 #include "PCH.h"
 #include "engine/ApplicationService.h"
 #include "engine/Environment.h"
-#include "planners/ActorState.h"
+#include "planners/ActorPlan.h"
 #include "planners/BindingPlan.h"
 #include "planners/StackPlan.h"
 #include "recipe/Merge.h"
@@ -73,7 +73,7 @@ struct LivePlacement {
 
 struct LiveActor {
   RE::ActorHandle actor;
-  ActorState structure;
+  ActorPlan plan;
   std::vector<LivePiece> pieces;
   std::vector<LiveInstance> instances;
   std::vector<LivePlacement> placements;

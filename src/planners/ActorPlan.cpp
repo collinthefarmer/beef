@@ -1,4 +1,4 @@
-#include "planners/ActorState.h"
+#include "planners/ActorPlan.h"
 
 #include <algorithm>
 
@@ -17,32 +17,32 @@ template <typename Row, typename Handle>
 }
 }
 
-const Geometry *GeometryAt(const ActorState &a_state,
+const Geometry *GeometryAt(const ActorPlan &a_plan,
                            GeometryId a_geometry) noexcept {
-  return RowAt(a_state.geometries, a_geometry);
+  return RowAt(a_plan.geometries, a_geometry);
 }
 
-const Instance *InstanceAt(const ActorState &a_state,
+const Instance *InstanceAt(const ActorPlan &a_plan,
                            InstanceId a_instance) noexcept {
-  return RowAt(a_state.instances, a_instance);
+  return RowAt(a_plan.instances, a_instance);
 }
 
-const Placement *PlacementAt(const ActorState &a_state,
+const Placement *PlacementAt(const ActorPlan &a_plan,
                              PlacementId a_placement) noexcept {
-  return RowAt(a_state.placements, a_placement);
+  return RowAt(a_plan.placements, a_placement);
 }
 
-bool AnyLiveGeometry(const ActorState &a_state) noexcept {
+bool AnyLiveGeometry(const ActorPlan &a_plan) noexcept {
   return std::any_of(
-      a_state.geometries.begin(), a_state.geometries.end(),
+      a_plan.geometries.begin(), a_plan.geometries.end(),
       [](const Geometry &a_geometry) { return !a_geometry.lost; });
 }
 
 std::optional<InstanceId>
-FindInstance(const ActorState &a_state, RecipeId a_recipe,
+FindInstance(const ActorPlan &a_plan, RecipeId a_recipe,
              const std::optional<FormKey> &a_enchantment) noexcept {
-  for (std::size_t i = 0; i < a_state.instances.size(); ++i) {
-    const Instance &instance = a_state.instances[i];
+  for (std::size_t i = 0; i < a_plan.instances.size(); ++i) {
+    const Instance &instance = a_plan.instances[i];
     if (instance.recipe == a_recipe && instance.enchantment == a_enchantment) {
       return InstanceId{i};
     }
@@ -50,34 +50,34 @@ FindInstance(const ActorState &a_state, RecipeId a_recipe,
   return std::nullopt;
 }
 
-std::vector<PlacementId> PlacementsOfGeometry(const ActorState &a_state,
+std::vector<PlacementId> PlacementsOfGeometry(const ActorPlan &a_plan,
                                               GeometryId a_geometry) {
   std::vector<PlacementId> found;
-  for (std::size_t i = 0; i < a_state.placements.size(); ++i) {
-    if (a_state.placements[i].geometry == a_geometry) {
+  for (std::size_t i = 0; i < a_plan.placements.size(); ++i) {
+    if (a_plan.placements[i].geometry == a_geometry) {
       found.push_back(PlacementId{i});
     }
   }
   return found;
 }
 
-std::vector<PlacementId> PlacementsOfInstance(const ActorState &a_state,
+std::vector<PlacementId> PlacementsOfInstance(const ActorPlan &a_plan,
                                               InstanceId a_instance) {
   std::vector<PlacementId> found;
-  for (std::size_t i = 0; i < a_state.placements.size(); ++i) {
-    if (a_state.placements[i].instance == a_instance) {
+  for (std::size_t i = 0; i < a_plan.placements.size(); ++i) {
+    if (a_plan.placements[i].instance == a_instance) {
       found.push_back(PlacementId{i});
     }
   }
   return found;
 }
 
-std::vector<PieceMatch> MatchesForPiece(const ActorState &a_state,
+std::vector<PieceMatch> MatchesForPiece(const ActorPlan &a_plan,
                                         GeometryId a_firstGeometry,
                                         std::size_t a_geomCount) {
   const std::size_t first = static_cast<std::size_t>(a_firstGeometry);
   std::vector<PieceMatch> out;
-  for (const Placement &placement : a_state.placements) {
+  for (const Placement &placement : a_plan.placements) {
     const std::size_t flat = static_cast<std::size_t>(placement.geometry);
     if (flat < first || flat - first >= a_geomCount) {
       continue;
@@ -88,8 +88,8 @@ std::vector<PieceMatch> MatchesForPiece(const ActorState &a_state,
         })) {
       continue;
     }
-    const int priority = instance < a_state.instances.size()
-                             ? a_state.instances[instance].priority
+    const int priority = instance < a_plan.instances.size()
+                             ? a_plan.instances[instance].priority
                              : 0;
     out.push_back(PieceMatch{instance, placement.key, priority});
   }
@@ -97,13 +97,13 @@ std::vector<PieceMatch> MatchesForPiece(const ActorState &a_state,
 }
 
 std::optional<std::size_t>
-PlacedIndexOf(const ActorState &a_state,
+PlacedIndexOf(const ActorPlan &a_plan,
               std::span<const PlacementId> a_placements,
               InstanceId a_instance) {
   for (std::size_t i = 0; i < a_placements.size(); ++i) {
     const std::size_t k = static_cast<std::size_t>(a_placements[i]);
-    if (k < a_state.placements.size() &&
-        a_state.placements[k].instance == a_instance) {
+    if (k < a_plan.placements.size() &&
+        a_plan.placements[k].instance == a_instance) {
       return i;
     }
   }
@@ -111,28 +111,27 @@ PlacedIndexOf(const ActorState &a_state,
 }
 
 std::optional<InstanceId>
-InstanceOfPlaced(const ActorState &a_state,
+InstanceOfPlaced(const ActorPlan &a_plan,
                  std::span<const PlacementId> a_placements,
                  std::size_t a_placed) {
   if (a_placed >= a_placements.size()) {
     return std::nullopt;
   }
-  const Placement *placement = PlacementAt(a_state, a_placements[a_placed]);
+  const Placement *placement = PlacementAt(a_plan, a_placements[a_placed]);
   return placement ? std::optional<InstanceId>{placement->instance}
                    : std::nullopt;
 }
 
-std::vector<GeometryId>
-ThirdPersonGeometriesOfInstance(const ActorState &a_state,
-                                InstanceId a_instance) {
+std::vector<GeometryId> ThirdPersonGeometriesOfInstance(const ActorPlan &a_plan,
+                                                        InstanceId a_instance) {
   std::vector<GeometryId> found;
-  for (const Placement &placement : a_state.placements) {
+  for (const Placement &placement : a_plan.placements) {
     if (placement.instance != a_instance) {
       continue;
     }
     const std::size_t flat = static_cast<std::size_t>(placement.geometry);
-    if (flat >= a_state.geometries.size() ||
-        a_state.geometries[flat].firstPerson) {
+    if (flat >= a_plan.geometries.size() ||
+        a_plan.geometries[flat].firstPerson) {
       continue;
     }
     found.push_back(placement.geometry);
@@ -140,24 +139,24 @@ ThirdPersonGeometriesOfInstance(const ActorState &a_state,
   return found;
 }
 
-std::vector<RecipeId> RecipesOfInactiveInstances(const ActorState &a_state) {
+std::vector<RecipeId> RecipesOfInactiveInstances(const ActorPlan &a_plan) {
   std::vector<RecipeId> out;
-  for (std::size_t i = 0; i < a_state.instances.size(); ++i) {
+  for (std::size_t i = 0; i < a_plan.instances.size(); ++i) {
     bool live = false;
     for (const PlacementId placementId :
-         PlacementsOfInstance(a_state, InstanceId{i})) {
-      const Placement *placement = PlacementAt(a_state, placementId);
+         PlacementsOfInstance(a_plan, InstanceId{i})) {
+      const Placement *placement = PlacementAt(a_plan, placementId);
       if (!placement) {
         continue;
       }
-      const Geometry *geometry = GeometryAt(a_state, placement->geometry);
+      const Geometry *geometry = GeometryAt(a_plan, placement->geometry);
       if (geometry && !geometry->lost) {
         live = true;
         break;
       }
     }
     if (!live) {
-      out.push_back(a_state.instances[i].recipe);
+      out.push_back(a_plan.instances[i].recipe);
     }
   }
   return out;

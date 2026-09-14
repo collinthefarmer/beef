@@ -1,6 +1,6 @@
 #pragma once
 
-#include "planners/ActorState.h"
+#include "planners/ActorPlan.h"
 #include "recipe/Merge.h"
 #include "recipe/Recipe.h"
 
@@ -24,16 +24,15 @@ struct ActorLightPlan {
 using RecipeResolver =
     std::function<std::vector<ResolvedRecipe>(const Geometry &, GeometryId)>;
 
-[[nodiscard]] ActorState MatchActor(std::span<const Geometry> a_geometries,
-                                    std::span<const Recipe> a_store);
-[[nodiscard]] ActorState MatchActor(std::span<const Geometry> a_geometries,
-                                    std::span<const Recipe> a_store,
-                                    const RecipeResolver &a_resolver);
+[[nodiscard]] ActorPlan MatchActor(std::span<const Geometry> a_geometries,
+                                   std::span<const Recipe> a_store);
+[[nodiscard]] ActorPlan MatchActor(std::span<const Geometry> a_geometries,
+                                   std::span<const Recipe> a_store,
+                                   const RecipeResolver &a_resolver);
 [[nodiscard]] GeometryPlacementPlan
-PlanGeometryPlacement(const ActorState &a_state,
-                      std::span<const Recipe> a_store, GeometryId a_geometry,
-                      const OutputFilter &a_filter = {});
-[[nodiscard]] ActorLightPlan PlanActorLights(const ActorState &a_state,
+PlanGeometryPlacement(const ActorPlan &a_plan, std::span<const Recipe> a_store,
+                      GeometryId a_geometry, const OutputFilter &a_filter = {});
+[[nodiscard]] ActorLightPlan PlanActorLights(const ActorPlan &a_plan,
                                              std::span<const Recipe> a_store,
                                              const OutputFilter &a_filter = {});
 }

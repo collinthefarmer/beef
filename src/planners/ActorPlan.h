@@ -44,29 +44,29 @@ struct Placement {
   [[nodiscard]] bool operator==(const Placement &) const = default;
 };
 
-struct ActorState {
+struct ActorPlan {
   std::vector<Geometry> geometries;
   std::vector<Instance> instances;
   std::vector<Placement> placements;
 };
 
-[[nodiscard]] const Geometry *GeometryAt(const ActorState &a_state,
+[[nodiscard]] const Geometry *GeometryAt(const ActorPlan &a_plan,
                                          GeometryId a_geometry) noexcept;
-[[nodiscard]] const Instance *InstanceAt(const ActorState &a_state,
+[[nodiscard]] const Instance *InstanceAt(const ActorPlan &a_plan,
                                          InstanceId a_instance) noexcept;
-[[nodiscard]] const Placement *PlacementAt(const ActorState &a_state,
+[[nodiscard]] const Placement *PlacementAt(const ActorPlan &a_plan,
                                            PlacementId a_placement) noexcept;
 
-[[nodiscard]] bool AnyLiveGeometry(const ActorState &a_state) noexcept;
+[[nodiscard]] bool AnyLiveGeometry(const ActorPlan &a_plan) noexcept;
 [[nodiscard]] std::optional<InstanceId>
-FindInstance(const ActorState &a_state, RecipeId a_recipe,
+FindInstance(const ActorPlan &a_plan, RecipeId a_recipe,
              const std::optional<FormKey> &a_enchantment) noexcept;
 [[nodiscard]] std::vector<RecipeId>
-RecipesOfInactiveInstances(const ActorState &a_state);
+RecipesOfInactiveInstances(const ActorPlan &a_plan);
 [[nodiscard]] std::vector<PlacementId>
-PlacementsOfGeometry(const ActorState &a_state, GeometryId a_geometry);
+PlacementsOfGeometry(const ActorPlan &a_plan, GeometryId a_geometry);
 [[nodiscard]] std::vector<PlacementId>
-PlacementsOfInstance(const ActorState &a_state, InstanceId a_instance);
+PlacementsOfInstance(const ActorPlan &a_plan, InstanceId a_instance);
 
 struct PieceMatch {
   std::size_t instance = 0;
@@ -75,16 +75,15 @@ struct PieceMatch {
 };
 
 [[nodiscard]] std::vector<PieceMatch>
-MatchesForPiece(const ActorState &a_state, GeometryId a_firstGeometry,
+MatchesForPiece(const ActorPlan &a_plan, GeometryId a_firstGeometry,
                 std::size_t a_geomCount);
 [[nodiscard]] std::optional<std::size_t>
-PlacedIndexOf(const ActorState &a_state,
+PlacedIndexOf(const ActorPlan &a_plan,
               std::span<const PlacementId> a_placements, InstanceId a_instance);
 [[nodiscard]] std::optional<InstanceId>
-InstanceOfPlaced(const ActorState &a_state,
+InstanceOfPlaced(const ActorPlan &a_plan,
                  std::span<const PlacementId> a_placements,
                  std::size_t a_placed);
 [[nodiscard]] std::vector<GeometryId>
-ThirdPersonGeometriesOfInstance(const ActorState &a_state,
-                                InstanceId a_instance);
+ThirdPersonGeometriesOfInstance(const ActorPlan &a_plan, InstanceId a_instance);
 }

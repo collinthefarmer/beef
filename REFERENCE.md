@@ -948,7 +948,7 @@ Decompile provenance (`decompiled/WornEnchantmentFX/plugin.c` unless noted):
   rather than under the recipe root, which loads every `.json` below it as
   a recipe.
 
-## planners (`planners/ActorState.h`, `planners/StackPlan.h`, `planners/BindingPlan.h`, `planners/ActorPlanning.h`, `planners/TextureIdentity.h`)
+## planners (`planners/ActorPlan.h`, `planners/StackPlan.h`, `planners/BindingPlan.h`, `planners/ActorPlanning.h`, `planners/TextureIdentity.h`)
 
 - `TextureIdentity.h` holds the two engine-free halves of
   `render/SourceSampling`: `ImageCacheKey` lowercases a texture path so
@@ -970,13 +970,13 @@ stores an `RE::` pointer.
   `Merge.h`'s `SlotSource`/`LightSource` already are). They carry no
   enumerators, so the one-spec-table-per-enum rule does not apply to them — a
   handle is an index, not a closed set. `RecipeId` indexes the recipe store the
-  shell passes as `std::span<const Recipe>`; the pure `ActorState` never stores
+  shell passes as `std::span<const Recipe>`; the pure `ActorPlan` never stores
   a `const Recipe*`, because a long-lived table cannot own a pointer's validity.
   `Merge`'s `PlacedRecipe` holds `const Recipe*` only as a transient function
   argument, never in a table — `GeometryPlacement`/`ActorLightPlan` follow that
   same transient-only rule.
 
-- **Three-table `ActorState`** (DECIDED 2026-09-09; `design-actor-state-tables`).
+- **Three-table `ActorPlan`** (DECIDED 2026-09-09; `design-actor-state-tables`).
   A `Piece` is one engine geometry, not an armor: it carries its own
   `GeometryIdentity` plus the armor's `WornPiece` match keys, denormalised onto
   each geometry so selector matching is per-geometry. `Instance` grain is per
@@ -994,8 +994,8 @@ stores an `RE::` pointer.
 - **Row projections belong to `studio/`, not here.** The frozen `BuildSnapshot`
   inlined its row builds. The recipe-definition → row projection is a view-model
   concern owned by `studio/Rows`/`Panels`/`Board`. The planners expose only the
-  `ActorState` tables and structural queries. The studio `Snapshot` is assembled
-  in wave-3 glue, which reads `ActorState` for structure and overlays the live
+  `ActorPlan` tables and structural queries. The studio `Snapshot` is assembled
+  in wave-3 glue, which reads `ActorPlan` for structure and overlays the live
   and engine-only fields (evaluated `SignalState` values, the `StackPlan`'s
   animated flag, resident `RE::NiSourceTexture*`, rendered stack size, `EditorID`
   lookups, reference counts) over the studio rows. The planners never build the

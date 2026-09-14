@@ -114,11 +114,11 @@ SlotChain RenderSlotChain(LiveActor &a_state, LiveGeometry &a_bound,
     }
     const std::size_t placementIndex =
         static_cast<std::size_t>(a_bound.placements[placed]);
-    if (placementIndex >= a_state.structure.placements.size() ||
+    if (placementIndex >= a_state.plan.placements.size() ||
         placementIndex >= a_state.placements.size()) {
       continue;
     }
-    const Placement &placement = a_state.structure.placements[placementIndex];
+    const Placement &placement = a_state.plan.placements[placementIndex];
     const std::size_t instanceIndex =
         static_cast<std::size_t>(placement.instance);
     if (instanceIndex >= a_state.instances.size()) {
