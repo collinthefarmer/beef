@@ -155,6 +155,27 @@ later and not listed here. Three findings for the UI owner:
    for the rename can carry it), and the popup should draw its own result
    rather than depend on the page's resolved row.
 
+7. **The overview is blank for a recipe bound to no geometry.** Selecting
+   "Recipe / overview" on `test-bad-row` (whose key resolves to no form,
+   so it matches no piece) draws nothing: `DrawBoardPage` in
+   `menu/BoardPage.cpp` returns silently when the frame has no piece, and
+   dims "no geometry bound" when it has a piece but no geometry. An
+   unmatched document should still show its authored outputs; Plan B's
+   `BuildStackView(recipe, selection, view)` and `BuildInspector(recipe,
+   selection)` already project a recipe without geometry, and the board
+   needs the same authored overload. Until then the overview should at
+   least say why it is empty rather than draw nothing.
+8. **A row that failed to parse is invisible in Studio.** The parser drops
+   a row it cannot read (`NamedRows` skips it), so `test-bad-row`'s
+   `brokenSignal` is not in `recipe.signals`; its diagnostic (`signal
+   brokenSignal: unknown signal kind 'bogus'`) is in `RecipeRow::problems`,
+   which only the Recipes page draws ("Rows with problems"). The workspace
+   draws `problems` nowhere, so in Studio the recipe looks healthy and the
+   user cannot tell which row is bad or that the fix is in the file (a row
+   with no readable kind has no record to edit). The navigator or the
+   recipe overview should list `problems`, and a diagnostic whose row is
+   absent from the recipe should say "not loaded; fix the file".
+
 Recipe-level rename and the add-resource menu work. Findings 2 and 3 are
 regressions from slice 1C's replacement of the resource tables and belong
 to its owner; `ResourcePanels.cpp` can be deleted once its two remaining
