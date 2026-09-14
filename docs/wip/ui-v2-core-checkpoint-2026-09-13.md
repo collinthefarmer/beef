@@ -63,6 +63,43 @@ plus critique Plans F to E and the segment-rotating trace):
   in-game pass below has not been run; it is batched with the critique
   checkpoints.
 
+## Game check findings, 2026-09-14
+
+The user ran the complete-editor check on build
+`9e8247c88ca0-3f5e6004ba107e76-Release`. The log carries no warning or error;
+the trace rotated as designed. Steps 3, 4, 6 and 8 are evidenced by the
+command trace (undo, edits, expression promotion, a full paint session, view
+changes); the rest passed on the user's report. Layout issues are noted for
+later and not listed here. Three findings for the UI owner:
+
+1. **Custom slider ranges are keyed by layout.** `menu/Tuning.cpp` stores a
+   user-set range in `MenuState::tuningRanges` under `ImGui::GetID("tune")`,
+   which hashes the ImGui id stack. The wide workspace draws the inspector
+   inside `Split("workspace", ...)` and the narrow one does not, so the same
+   field has two ids and a range set in one layout is absent in the other
+   (observed on `glossBoost`, which showed "Set slider range" again after a
+   resize and kept two independent ranges). Key the range, and the number
+   and text buffers in the same record, by the field's own identity from the
+   form rather than the widget id.
+2. **Row renaming is unreachable.** The old resource tables
+   (`menu/ResourcePanels.cpp`, `DrawResources`) drew a name field on every
+   signal, curve, source and mask row through `Studio::RowNameField`, which
+   binds the `Rename*` edits and rewrites references. The workspace's
+   per-subject inspectors in `menu/Workspace.cpp` draw the form but not the
+   name field, and `DrawResources` has no caller left. The edits, the form
+   builder and their native tests are intact; each row inspector needs the
+   name field at its top.
+3. **Row removal is unreachable for the same reason.** The remove button
+   the tables drew (`RemoveButton`, guarded by the row's reference count)
+   is drawn by no inspector; the `Remove*` intents are still posted only by
+   `ResourcePanels.cpp`. The add menu survived (`DrawResourceAddMenu` is
+   called from the navigator).
+
+Recipe-level rename and the add-resource menu work. Findings 2 and 3 are
+regressions from slice 1C's replacement of the resource tables and belong
+to its owner; `ResourcePanels.cpp` can be deleted once its two remaining
+behaviours are moved.
+
 ## Complete-editor game check
 
 Use a disposable copy of a working recipe for destructive edits.
