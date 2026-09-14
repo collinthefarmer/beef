@@ -32,6 +32,13 @@
             export NATIVE_CXX=${pkgs.clang}/bin/clang++
             export ASAN_SYMBOLIZER_PATH=${pkgs.llvmPackages.llvm}/bin/llvm-symbolizer
             export CCACHE_SLOPPINESS=pch_defines,time_macros
+            # Rewrite each worktree's absolute paths to its own repo-relative
+            # form before hashing, so worktrees and clones of the same commit
+            # share ccache hits instead of missing on the checkout path.
+            if beef_git_root="$(git rev-parse --show-toplevel 2>/dev/null)"; then
+              export CCACHE_BASEDIR="$beef_git_root"
+            fi
+            unset beef_git_root
             : "''${XWIN_DIR:=$HOME/.xwin/splat}"
             export XWIN_DIR
             git rev-parse --git-dir >/dev/null 2>&1 && git config core.hooksPath .githooks

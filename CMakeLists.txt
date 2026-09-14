@@ -20,6 +20,12 @@ if(CCACHE_PROGRAM)
   set(CMAKE_C_COMPILER_LAUNCHER "${CCACHE_PROGRAM}")
 endif()
 
+# Shared across worktrees and build configs so a fresh checkout reuses an
+# already-fetched CommonLibSSE/spdlog/rapidcsv instead of re-cloning them.
+# Must be set before `include(FetchContent)`, which caches its own default
+# (${CMAKE_BINARY_DIR}/_deps) the moment the module loads.
+set(FETCHCONTENT_BASE_DIR "$ENV{HOME}/.cache/beef-fetchcontent" CACHE PATH
+  "Dependency source cache for FetchContent")
 include(FetchContent)
 set(FETCHCONTENT_QUIET OFF)
 
