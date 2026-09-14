@@ -162,6 +162,25 @@ preview state stays visible. Keep existing regression failures separately labele
 | 2D | Draw numeric sliders plus exact input from metadata; retain colors, vectors, and reference controls. | `MenuWidgets::ValueWidget`, `FormDraw` |
 | 2E | Render driver strip and used-by inspector; follow links through the Stage 1 subject resolver. | `Panels`, `FormDraw`, inspector navigation |
 
+2026-09-14 spot-check against `cleanup/stage-0` at `1d92ce8`: 2A-2E are
+closed. `FormField`/`ValueFieldSpec` carry `range` (hard limit),
+`workingRange` and `units` (`Fields.h:14-27`, `Forms.h:228-244`);
+`Tuning.cpp:34-67` preserves an unknown range explicitly, falling through to
+a per-field custom-limit popup rather than assuming one. `recipe/Visit.h`'s
+`PropertyLocation.owner` is 2B's owning-location traversal, consumed by
+`RelationshipPanel.cpp`'s driver/consumer rendering (2E). `studio/Gesture.h`
+implements the Begin/Update/Commit-or-Cancel contract below with revision
+checks (`CheckEditRevision`, `GestureMatches`) and a coalescing mailbox
+(`QueueGestureUpdate`, `ScheduleGestureDelivery`, `TakeGestureDelivery`),
+wired in through `Tuning.cpp`'s `Editor().BeginGesture`. The only confirmed
+gaps are checkpoint findings against landed code, not missing features:
+finding 1 (2D, `Tuning.cpp`, ranges keyed by ImGui widget id instead of
+field identity) and finding 5 (2B, `Edits.cpp`, `Edit(SetSource)` refuses a
+kind change instead of admitting the blank record as a row problem); both in
+`ui-v2-core-checkpoint-2026-09-13.md`. 2A's "supported operations" wording
+has no matching field or type anywhere in `studio/` or `menu/`; disregard
+unless it resurfaces in a stage 3 slice.
+
 ### Gesture contract
 
 ```text

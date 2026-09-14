@@ -1,7 +1,9 @@
 # Plan G: the shell honours its whole pose — 2026-09-13
 
-Status: not started. Runs after Plans F to E and after UI slice 2A has
-passed its checkpoint, because it reads the shell form in `Forms.cpp`.
+Status: not started; unblocked. Plans F to E are done and UI slice 2A is
+closed (spot-checked 2026-09-14 against `cleanup/stage-0` at `1d92ce8`; see
+`docs/ui-v2-implementation-plan.md` section 5), so the shell form in
+`Forms.cpp` it reads is settled.
 
 The user decided on 2026-09-13 that the five `ShellPose` fields the format
 already carries are to be implemented rather than removed. This plan is

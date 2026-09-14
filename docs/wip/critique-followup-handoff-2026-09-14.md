@@ -45,9 +45,10 @@ that is over), then the plan file for whatever thread you take.
 `critique-plan-g-shell-pose-2026-09-13.md`. Implements `offset`, `scale`,
 `scalePoint`, `spin` and `spinAxis` in the shell pose alongside `inflate`
 (decided 2026-09-13; the reader, writer, schema and form controls already
-exist). It waits on **UI slice 2A**, which owns the shell form in
-`src/studio/Forms.cpp`. Check `docs/ui-v2-implementation-plan.md` for 2A's
-state before starting. It has its own in-game checkpoint.
+exist). **UI slice 2A is closed**, confirmed by a 2026-09-14 spot-check
+against `cleanup/stage-0` at `1d92ce8` (dated note in
+`docs/ui-v2-implementation-plan.md` section 5), so Plan G is unblocked. It
+has its own in-game checkpoint.
 
 ### 2. The eight UI findings
 
