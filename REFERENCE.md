@@ -828,39 +828,70 @@ Decompile provenance (`decompiled/WornEnchantmentFX/plugin.c` unless noted):
   emissive and normal are rgb, glint has no texture, the diffuse's alpha is
   a shell's visibility, and the feature maps pack a colour with a weight.
 
-## Menu mechanics (`menu/MenuWidgets.cpp`, `studio/Intent.h`)
+## Menu mechanics (`menu/MenuWidgets.cpp`, `studio/Intent.h`, `studio/MenuState.h`)
 
-`MenuState` still lives in `studio/Intent.h`; its extraction into a
-`MenuState.h` waits on UI slice 1B. The UI v2 rework is replacing the code
-this section describes, so it is rewritten after that plan's complete-editor
-checkpoint, not before.
-
-- `menu/MenuWidgets.cpp` is the menu's sole direct render dependency. It calls
-  `TextureLab::Preview` through `render/TextureLab.h` to obtain the
-  read-only preview for a `Studio::TextureHandle`.
-- `Studio::FieldKey` and the framework's `ImGuiID` are the same type, enforced
-  by the renderer's static assertion; text and number buffers share that key.
-- The menu frame borrows the snapshot, selected rows, names, state and intent
-  collection. Widget scale comes from `Frame::scale`; geometry bone coverage
-  comes from `GeometryRow::bones`. The mode bar exposes compose and paint.
-- A field is keyed by the ImGuiID of its literal key in the ID scope it is
-  drawn in; the page pushes a scope per recipe, output, layer and row, so
-  one literal names a different field on every row and no string is built
-  per frame. Zero is no field, as ImGui reads it (NOTES 54).
-- `-FLT_MIN` is ImGui's exact "everything left"; `-1` leaves a pixel, and a
-  stretch table measuring such content shrinks a pixel per frame (NOTES
-  51).
-- A field's active state is tracked from the input item itself: an item
-  drawn after it would report its own state and the field would read
-  inactive every other frame. A refused text keeps the text and the focus.
-  The refusal reason is drawn on the foreground draw list so it takes no
-  layout space.
-- A drag payload is bytes ImGui copied; only a whole index is a row. An
-  auto-resizing window starts narrow, so a floor on the width keeps a
-  definition on one or two lines. A table's column weights set the split
-  only when it first appears; after that ImGui keeps the dragged widths.
+- `menu/MenuWidgets.cpp` is the menu's sole direct render dependency: no other
+  file under `menu/` includes `render/`. It calls `TextureLab::Preview`
+  through `render/TextureLab.h` to obtain the read-only preview for a
+  `Studio::TextureHandle`, and DX11's ImGui backend invokes a queued draw
+  callback only after it submits the *previous* frame's image, so
+  `FinishPreviewDraw`'s callback only marks the ticket `Consumed` (an atomic
+  flag, `planners/ConsumptionLeases.h`); the retained `RenderTarget` it holds
+  is not released there. `TexturePreviews::CollectDraws` (called from
+  `RenderPreviews`, once per tick like every preview request) erases and so
+  releases every ticket already marked consumed — the actual lease release is
+  that later collection pass, not this callback.
+- `Studio::FieldKey` (`studio/MenuState.h`, a `std::uint32_t`) and the
+  framework's `ImGuiID` are the same type, enforced by `MenuWidgets.cpp`'s
+  static assertion; `MenuState::textBuffers`, `numberBuffers` and `comboMode`
+  are keyed by it, and `kNoField` (zero) is "no field", matching how ImGui
+  itself reads a zero ID.
+- The menu frame (`menu/Frame.h`) borrows the snapshot, selected rows, names,
+  a `Studio::MenuState*` and the outgoing `Studio::Intents*` collection.
+  Widget scale comes from `Frame::scale`; geometry bone coverage comes from
+  `GeometryRow::bones`. `ModeBar` (`MenuWidgets.cpp`) draws one tab per
+  `Studio::kModes` entry — compose and paint are the only two modes; the
+  frozen tree's design mode is gone.
+- A field's key is `ImGui::GetID` of its literal name (`KeyOf` in
+  `MenuWidgets.cpp`) inside whatever ID scope is active when it draws, so the
+  same literal (`"text"`, a field's own name) names a different
+  `Studio::FieldKey` on every row without building a per-frame string. Callers
+  push that scope by nesting `ImGui::PushID`: a recipe's id
+  (`StudioPage.cpp`), an output or layer index (`StackPanel.cpp`,
+  `Workspace.cpp`), then a row's field name (`FormDraw.cpp`'s
+  `DrawRowField`/`DrawFieldTable`) — each level is a plain `PushID` call at
+  its own draw site, not a mechanism `MenuWidgets.cpp` provides.
+- `-FLT_MIN` is ImGui's exact "everything left" (`kFillWidth` in
+  `MenuWidgets.cpp`); `-1` leaves a pixel, and a stretch table measuring such
+  content shrinks a pixel per frame (NOTES 51).
+- A field's active state (`TrackActive`) is read from the input item itself
+  right after drawing it: an item drawn after it would report its own state,
+  and the field would otherwise read inactive every other frame. A refused
+  text (its `TextCheck` still fails) keeps the typed text and keyboard focus
+  instead of committing; the refusal reason (`ProblemLabel`) draws to the
+  foreground draw list, in a box placed below or above the field depending on
+  which side has room, so it takes no layout space of its own.
+- A drag payload (`DragHandle`/`DropTarget`) is the bytes ImGui copied for a
+  `std::size_t` row index; only a payload of that exact size is accepted as a
+  row move. An auto-resizing popup starts narrow, so `DetailModal`'s minimum
+  width constraint keeps a definition on one or two lines rather than one
+  character per line. A `Split` table's column weights set the divider
+  position only the first time the table appears; after that ImGui keeps
+  whatever width the user last dragged, and `Split` reports the ratio back
+  only when it has moved by more than a small deadband.
 - The framework's `ImTextureID` is a D3D11 shader resource view pointer
-  (NOTES 28).
+  (NOTES 28); `PreviewOf` builds one from `TextureLab::Preview`'s result with
+  `reinterpret_cast`.
+- `studio/Intent.h`'s `Intent` variant and `studio/Edits.h`'s `RecipeEdit`
+  variant are each dispatched by an exhaustive set of lambdas or `operator()`
+  overloads in `studio/MenuState.cpp` (`ReduceVisitor` for `Intent`,
+  `ReduceEdit` for `RecipeEdit`, plus the separate `Match` calls in
+  `AcceptIntent`, `ChangesPaint`, `PaintSources` and `Reduce`'s own
+  size-limit check) — one arm per alternative, no catch-all case.
+  `kIntentCount`'s `static_assert` in `Intent.h` only guards the variant's own
+  size; it is these per-alternative arms, not that assertion, that fail to
+  compile when a new `Intent` or `RecipeEdit` alternative is added without
+  updating every dispatch site.
 
 ## studio (`studio/Snapshot.h`, `View.h`, `Intent.h`, `MenuState.h`, `Forms.h`, `Edits.h`, `Mask.h`, `Presets.h`, `TermTemplates.h`, `PaintSession.h`, `Board.h`, `Panels.h`, `SelectorEdit.h`, `Selection.h`, `Names.h`, `Rows.h`, `FieldCheck.h`, `History.h`, `Widgets.h`, `Fields.h`)
 
