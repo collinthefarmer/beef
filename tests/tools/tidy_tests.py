@@ -1,4 +1,5 @@
 """Exercise lint selection and cache validity without invoking clang-tidy."""
+import json
 import os
 import pathlib
 import shutil
@@ -57,6 +58,32 @@ class TidyTests(unittest.TestCase):
                 result = self.run_tidy('--summary', 'src/Selected.cpp')
                 self.assertIn('0 of 1 files have fresh results', result.stdout)
                 os.utime(self.root / dependency, (self.old, self.old))
+
+    def test_recorded_dependencies_narrow_header_invalidation(self):
+        (self.root / 'build/Release').mkdir(parents=True)
+        self.write('build/Release/.ninja_deps', '')
+        self.write('src/Other.h', '', self.old)
+        obj = 'CMakeFiles/Native.dir/src/Selected.cpp.obj'
+        self.write('build/clangd/compile_commands.json', json.dumps([{
+            'file': str(self.root / 'src/Selected.cpp'),
+            'output': str(self.root / 'build/Release' / obj),
+            'command': 'clang-cl src/Selected.cpp',
+        }]), self.old)
+        ninja = self.write('bin/ninja', '#!/usr/bin/env bash\n'
+                           f'printf "{obj}: #deps 2, deps mtime 1 (VALID)\\n'
+                           f'    {self.root}/src/Selected.cpp\\n'
+                           f'    {self.root}/src/Shared.h\\n"\n')
+        ninja.chmod(0o755)
+        os.utime(self.root / 'build/tidy/src_Selected.txt',
+                 (self.old + 25, self.old + 25))
+        os.utime(self.root / 'src/Other.h', (self.old + 50, self.old + 50))
+        result = self.run_tidy('--summary', 'src/Selected.cpp')
+        self.assertIn('1 of 1 files have fresh results', result.stdout,
+                      'a header the object never included does not invalidate it')
+        os.utime(self.root / 'src/Shared.h', (self.old + 50, self.old + 50))
+        result = self.run_tidy('--summary', 'src/Selected.cpp')
+        self.assertIn('0 of 1 files have fresh results', result.stdout,
+                      'a header the object included does invalidate it')
 
     def test_empty_changed_selection_does_not_fall_back_to_all_sources(self):
         git = self.write('bin/git', '#!/usr/bin/env bash\nexit 0\n')

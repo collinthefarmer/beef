@@ -324,17 +324,20 @@ Nothing else may be merged across plans.
 
 1. Read the plan file, then re-verify every cited line against the current
    tree. Line numbers drift; the finding is the contract, not the number.
-2. Branch from the previous plan's tip in the worktree (see Repository
-   state). One plan per branch.
+2. Branch from `cleanup/stage-0` in the main checkout (the previous plan is
+   merged there before the next starts). One plan per branch.
 3. Do the steps in order. Where a plan says "decide", the decision is stated
    in the plan. Do not re-open it. Where a plan says "ask the user", stop and
    ask before proceeding on that step; finish every other step first.
-4. Run `tests/run-native.sh`, then commit through the gate.
-5. Build the DLL if engine, render or menu code changed. The sanitized
-   suite, `tools/gate.sh push`, the tidy baseline comparison, `./install.sh`
-   and the in-game checkpoints run once after the last plan (decided by the
-   user 2026-09-14), because each takes a long time. Run the plan's own
-   acceptance checks before declaring it done.
+4. Run `tests/run-native.sh` (about 3 minutes cold, 30 seconds warm since
+   the runner compiles in parallel), then commit through the gate.
+5. Before declaring the plan done: `BEEF_SANITIZE=1 tests/run-native.sh`
+   (about 5 minutes cold), the plan's own acceptance checks, and a DLL build
+   if engine, render or menu code changed. `tools/gate.sh push` is optional
+   per plan: its tidy step re-lints only the files whose recorded headers
+   changed, so it costs 5 minutes plus that re-lint, and it is mandatory once
+   after the last plan. `./install.sh` and the in-game checkpoints are
+   batched into that final pass (decided by the user 2026-09-14).
 6. Update the `Status` block at the top of the plan file: date, branch,
    commits, what was done, what was left and why, checkpoint outcome as the
    user reported it.
@@ -375,9 +378,9 @@ These are settled. Do not re-open them; apply them where the plans say.
 
 - All seven plan files show `Status: done` with the checkpoint outcome
   recorded, or `Status: deferred` with the UI slice they wait on named.
-- `tools/gate.sh push` is green on the final branch after the single
-  verification pass that follows the last plan (sanitized suite, full tidy,
-  baseline comparison, install, in-game checkpoints; decided 2026-09-14).
+- `tools/gate.sh push` is green on the final branch after the verification
+  pass that follows the last plan (full tidy, baseline comparison, install,
+  in-game checkpoints; decided 2026-09-14).
 - The layer check added in Plan C reports no upward include.
 - `grep -rn '^\s*//' src --include='*.cpp' --include='*.h' | grep -v _old |
   grep -v extern | grep -v src/cs` prints nothing.
@@ -411,6 +414,14 @@ Append one line per plan as it completes: date, plan letter, branch, outcome.
   base now builds, so the fallback rules under Repository state no longer
   apply: work in the main checkout on a branch from `cleanup/stage-0`, and
   the F and A in-game checkpoints wait only on the user's run.
+- 2026-09-14, tooling (`tools/fast-gates`, merged into `cleanup/stage-0`
+  after B): `tests/run-native.sh` compiles the union of the selected
+  suites' sources in parallel (`NATIVE_JOBS`, default 4): cold full run
+  3 min 8 s and sanitized 5 min 11 s instead of about 10 each, warm 28 s.
+  `tools/tidy.sh` treats a result as stale only when its own recorded
+  headers changed (ninja's dependency log), so a header edit re-lints its
+  includers, not all 107 files. The per-plan procedure above restores the
+  sanitized run per plan; installs and in-game checkpoints stay batched.
 - 2026-09-14, B, `critique/b-source-kinds`: B1, B2 and B4 implemented and
   native-verified (64 suites green, commit gate green on both commits, DLL
   builds); B3 deferred per the plan's UI classification. Tidy baseline

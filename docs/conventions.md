@@ -500,11 +500,20 @@ animated stack re-renders each tick).
   should add only the findings it meant to. Regenerate the baseline after an
   intended change with `tools/tidy.sh --force && tools/tidy-baseline.sh` (no
   args writes the file). `tidy.sh` caches per-file results under `build/tidy`
-  and re-lints only files newer than their result; it reads
+  (named by source path, `src_engine_X.txt`) and re-lints a file only when
+  it, the compile database, `.clang-tidy`, or one of the headers its object
+  included at the last build (from ninja's dependency log in
+  `build/Release`) is newer than the result; a file that has never been
+  built falls back to "any header under `src` is newer". Run the build
+  after adding an include so the dependency log knows about it. It reads
   `build/clangd/compile_commands.json`, which `tools/compile-db.sh` rewrites
   after a source file is added or removed.
 - **Native build and tests** — engine-free modules compile natively and run
-  through `tests/run-native.sh`. A module is done (`REQUIREMENTS.md`) when the
+  through `tests/run-native.sh`, which compiles the union of every selected
+  suite's sources in parallel (`NATIVE_JOBS`, default 4) and then links and
+  runs the suites in order; `SUITE=<substring>` selects suites and
+  `BEEF_SANITIZE=1` builds them under ASan/UBSan into a separate object
+  directory. A module is done (`REQUIREMENTS.md`) when the
   build is zero-warning, the native suite passes, the tidy baseline shows only
   what the module added, and the frozen counterpart is gone from the build.
 - Build with `./build.sh Release -j 4` (more jobs OOM-kill WSL); never build
