@@ -113,7 +113,7 @@ int main() {
   const LayerRow &first = surface.layers[0];
   Check(first.source == "@tex", "layer reference source becomes @name");
   Check(first.mask == "@edge", "layer mask becomes @name");
-  Check(first.blend == "add", "layer blend projects its name");
+  Check(first.blend == Blend::kAdd, "layer blend projects its kind");
   Check(first.opacityText == "0.5", "layer opacity text projects the param");
   Check(first.curve == "@ramp", "layer curve projects its reference");
   Check(!first.color.empty(), "layer colour projects when present");

@@ -111,8 +111,8 @@ void DrawResolvedGeometry(const Studio::GeometryRow &a_geometry,
 void DrawResolved(const Studio::PieceRow &a_piece) {
   for (const Studio::RecipeRow &recipe : a_piece.recipes) {
     ImGui::BulletText("%s  by %s  priority %d  t %.1fs  %zu geometr%s%s%s",
-                      recipe.id.c_str(), recipe.key.c_str(), recipe.priority,
-                      recipe.time, recipe.geometries.size(),
+                      recipe.id.c_str(), recipe.matchedKey.ToString().c_str(),
+                      recipe.priority, recipe.time, recipe.geometries.size(),
                       recipe.geometries.size() == 1 ? "y" : "ies",
                       recipe.light.empty() ? "" : "  ", recipe.light.c_str());
     for (const Studio::GeometryRow &geometry : recipe.geometries) {

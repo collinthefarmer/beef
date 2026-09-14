@@ -190,11 +190,16 @@ and the alternative-order asserts), `RecipeRead.cpp` (undefined
 `CheckSource`, `Vocabulary.cpp` `AnimationQuery::Source`, `RecipeWrite.cpp`
 `DescribeSource` and `SourceKindToJson`, `studio/Edits.cpp`
 `VisitSourceParams`, `studio/SourceRows.cpp` `BuildSourceRow`, and
-`render/CompositorSource.cpp` `SourcePreparer` and `SourceInspector`. Still
-discipline-only until Plan B3 lands: `studio/SourceRows.cpp` `SourceKindOf`,
-`studio/Forms.cpp` `SourceForm` (string if-chains) and the `SourceRow` field
-union in `studio/Snapshot.h`. `tests/recipe/schema_tests.cpp` then fails
-until `schema/recipe.schema.json` lists the new word.
+`render/CompositorSource.cpp` `SourcePreparer` and `SourceInspector`.
+Compiler-enforced since Plan B3 (2026-09-14): `SourceRow` holds a
+`SourceRowKind` variant, one per-kind row struct per `SourceKind`
+alternative, pinned to `SourceKindId` order by the same
+`std::is_same_v<std::variant_alternative_t<I, V>, …>` run described above.
+`studio/SourceRows.cpp` `SourceKindOf` and `studio/Forms.cpp` `SourceForm`
+dispatch over it with `Match` and no catch-all arm, so a new alternative is a
+compile error at both sites rather than a silently-ignored row.
+`tests/recipe/schema_tests.cpp` then fails until `schema/recipe.schema.json`
+lists the new word.
 
 Big arm vs tiny arm — the recorded judgment:
 - When each per-kind arm is a substantial body, extract per-kind functions and

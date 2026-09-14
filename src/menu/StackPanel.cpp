@@ -99,7 +99,7 @@ void DrawForeignRow(Table &a_table, const ForeignRow &a_row) {
   a_table.Cell();
   Dim(a_row.layer.source.starts_with('@') ? "@" : "c");
   a_table.Cell();
-  Dim(a_row.layer.blend);
+  Dim(BlendName(a_row.layer.blend));
   a_table.Cell();
   Dim(std::format("{}  ({}, priority {}: {} {})", a_row.layer.source,
                   a_row.recipeID, a_row.priority, a_row.layer.opacityText,
@@ -143,7 +143,7 @@ void DrawStackRow(Table &a_table, const LayerStack &a_stack,
   Badge(constant ? FieldKind::kColor : FieldKind::kReference);
   a_table.Cell();
   if (const auto blend =
-          BlendCombo("blend", a_row.layer.blend, a_stack.blends,
+          BlendCombo("blend", BlendName(a_row.layer.blend), a_stack.blends,
                      {Studio::Width::Px(BlendWidth(a_stack.blends)), 1.0f})) {
     Studio::Post(*a_frame.intents, id,
                  Studio::SetLayerBlend{output, index, *blend});

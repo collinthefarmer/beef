@@ -123,7 +123,7 @@ LayerRow LayerRowOf([[maybe_unused]] const Recipe &a_recipe,
   LayerRow row;
   row.source = LayerSourceText(a_layer.source);
   row.mask = a_layer.mask ? "@" + a_layer.mask->name : "";
-  row.blend = std::string{BlendName(a_layer.blend)};
+  row.blend = a_layer.blend;
   row.opacityText = ParamText(a_layer.opacity);
   row.color = a_layer.color ? Vec3ParamText(*a_layer.color) : "";
   row.curve = a_layer.curve ? a_layer.curve->text : "";

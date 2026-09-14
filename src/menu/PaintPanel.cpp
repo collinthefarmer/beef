@@ -73,10 +73,11 @@ void RecipeCombo(const Studio::PieceRow &a_piece,
     return;
   }
   for (const auto &recipe : a_piece.recipes) {
-    const auto label = recipe.pinned
-                           ? RecipeLabel(recipe)
-                           : std::format("{} ({}, priority {})", recipe.id,
-                                         recipe.key, recipe.priority);
+    const auto label =
+        recipe.pinned
+            ? RecipeLabel(recipe)
+            : std::format("{} ({}, priority {})", recipe.id,
+                          recipe.matchedKey.ToString(), recipe.priority);
     if (ImGui::Selectable(label.c_str(), &recipe == &a_recipe)) {
       Studio::Post(*a_frame.intents, Studio::PickRecipe{recipe.id});
     }

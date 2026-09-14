@@ -745,9 +745,12 @@ void AppendSourceOffers(std::vector<TermOffer> &a_offers,
                         const RecipeRow &a_recipe) {
   for (const SourceRow &source : a_recipe.sourceRows) {
     const auto kind = SourceKindOf(source);
-    a_offers.push_back(Offer(OfferGroup::kSources, source.name,
-                             kind ? DescribeSource(*kind) : source.kind,
-                             ReferenceTerm{source.name}));
+    a_offers.push_back(
+        Offer(OfferGroup::kSources, source.name,
+              kind ? DescribeSource(*kind)
+                   : std::string{NameOf(kSourceKindWords,
+                                        SourceRowKindId(source.kind))},
+              ReferenceTerm{source.name}));
   }
 }
 }

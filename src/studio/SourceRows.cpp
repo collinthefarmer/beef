@@ -20,70 +20,108 @@ namespace {
   return name ? std::string{*name} : std::to_string(std::to_underlying(a_slot));
 }
 
+[[nodiscard]] ImageSourceRow ImageRowOf(const ImageSource &a_image) {
+  ImageSourceRow image;
+  image.path = a_image.path;
+  image.channel = std::string{ImageChannelName(a_image.channel)};
+  image.space = std::string{ImageSpaceName(a_image.space)};
+  image.scroll = a_image.scroll ? Vec2ParamText(*a_image.scroll) : "";
+  image.tile = a_image.tile ? Vec2ParamText(*a_image.tile) : "";
+  image.mirrorU = OnOff(a_image.mirror[0]);
+  image.mirrorV = OnOff(a_image.mirror[1]);
+  image.transpose = OnOff(a_image.transpose);
+  image.mip = ParamText(a_image.mip);
+  return image;
+}
+
+[[nodiscard]] MaterialSourceRow
+MaterialRowOf(const MaterialSource &a_material) {
+  return MaterialSourceRow{
+      std::string{MaterialChannelName(a_material.channel)}};
+}
+
+[[nodiscard]] BakeSourceRow BakeRowOf(const BakeSource &a_bake) {
+  BakeSourceRow bake;
+  bake.bake = std::string{BakeKindName(a_bake.bake)};
+  if (const PartitionBake *partition = Get<PartitionBake>(a_bake.bake)) {
+    bake.partition = PartitionText(partition->bipedSlot);
+  }
+  if (const BoneWeightBake *bones = Get<BoneWeightBake>(a_bake.bake)) {
+    for (const auto &bone : bones->bones) {
+      bake.bones += (bake.bones.empty() ? "" : ", ") + bone;
+    }
+  }
+  return bake;
+}
+
+[[nodiscard]] UvSourceRow UvRowOf(const UvSource &a_uv) {
+  return UvSourceRow{std::string{UvAxisName(a_uv.axis)}};
+}
+
+[[nodiscard]] DistanceSourceRow
+DistanceRowOf(const DistanceSource &a_distance) {
+  return DistanceSourceRow{Match(
+      a_distance.from, [](const std::string &a_node) { return a_node; },
+      [](const Vec3 &a_point) { return PointText(a_point); })};
+}
+
+[[nodiscard]] RippleSourceRow RippleRowOf(const RippleSource &a_ripple) {
+  RippleSourceRow ripple;
+  ripple.trigger = "@" + a_ripple.trigger.name;
+  ripple.speed = ParamText(a_ripple.speed);
+  ripple.width = ParamText(a_ripple.width);
+  ripple.decay = ParamText(a_ripple.decay);
+  ripple.shape = std::string{RippleShapeName(a_ripple.shape)};
+  return ripple;
+}
+
+[[nodiscard]] MaterialClustersSourceRow
+ClustersRowOf(const MaterialClustersSource &a_clusters) {
+  MaterialClustersSourceRow clusters;
+  clusters.clusters = std::to_string(a_clusters.clusters);
+  clusters.weights = std::format(
+      "{}, {}, {}, {}, {}", ParamText(a_clusters.roughness),
+      ParamText(a_clusters.metallic), ParamText(a_clusters.occlusion),
+      ParamText(a_clusters.reflectance), ParamText(a_clusters.luma));
+  clusters.seed = std::to_string(a_clusters.seed);
+  clusters.iterations = std::to_string(a_clusters.iterations);
+  return clusters;
+}
+
 }
 
 SourceRow SourceRowOf(const Source &a_source, std::size_t a_references) {
   SourceRow row;
   row.type = SourceType(a_source);
   row.name = a_source.name;
-  row.kind = std::string{SourceKindName(a_source.kind)};
   row.references = a_references;
-  Match(
+  row.kind = Match(
       a_source.kind,
-      [&](const ImageSource &a_image) {
-        row.path = a_image.path;
-        row.channel = std::string{ImageChannelName(a_image.channel)};
-        row.space = std::string{ImageSpaceName(a_image.space)};
-        row.scroll = a_image.scroll ? Vec2ParamText(*a_image.scroll) : "";
-        row.tile = a_image.tile ? Vec2ParamText(*a_image.tile) : "";
-        row.mirrorU = OnOff(a_image.mirror[0]);
-        row.mirrorV = OnOff(a_image.mirror[1]);
-        row.transpose = OnOff(a_image.transpose);
-        row.mip = ParamText(a_image.mip);
+      [](const ImageSource &a_image) -> SourceRowKind {
+        return ImageRowOf(a_image);
       },
-      [&](const MaterialSource &a_material) {
-        row.material = std::string{MaterialChannelName(a_material.channel)};
+      [](const MaterialSource &a_material) -> SourceRowKind {
+        return MaterialRowOf(a_material);
       },
-      [&](const BakeSource &a_bake) {
-        row.bake = std::string{BakeKindName(a_bake.bake)};
-        if (const PartitionBake *partition = Get<PartitionBake>(a_bake.bake)) {
-          row.partition = PartitionText(partition->bipedSlot);
-        }
-        if (const BoneWeightBake *bones = Get<BoneWeightBake>(a_bake.bake)) {
-          for (const auto &bone : bones->bones) {
-            row.bones += (row.bones.empty() ? "" : ", ") + bone;
-          }
-        }
+      [](const BakeSource &a_bake) -> SourceRowKind {
+        return BakeRowOf(a_bake);
       },
-      [&](const UvSource &a_uv) {
-        row.axis = std::string{UvAxisName(a_uv.axis)};
+      [](const UvSource &a_uv) -> SourceRowKind { return UvRowOf(a_uv); },
+      [](const DistanceSource &a_distance) -> SourceRowKind {
+        return DistanceRowOf(a_distance);
       },
-      [&](const DistanceSource &a_distance) {
-        row.from = Match(
-            a_distance.from, [](const std::string &a_node) { return a_node; },
-            [](const Vec3 &a_point) { return PointText(a_point); });
+      [](const RippleSource &a_ripple) -> SourceRowKind {
+        return RippleRowOf(a_ripple);
       },
-      [&](const RippleSource &a_ripple) {
-        row.trigger = "@" + a_ripple.trigger.name;
-        row.speed = ParamText(a_ripple.speed);
-        row.width = ParamText(a_ripple.width);
-        row.decay = ParamText(a_ripple.decay);
-        row.shape = std::string{RippleShapeName(a_ripple.shape)};
-      },
-      [&](const MaterialClustersSource &a_clusters) {
-        row.clusters = std::to_string(a_clusters.clusters);
-        row.weights = std::format(
-            "{}, {}, {}, {}, {}", ParamText(a_clusters.roughness),
-            ParamText(a_clusters.metallic), ParamText(a_clusters.occlusion),
-            ParamText(a_clusters.reflectance), ParamText(a_clusters.luma));
-        row.seed = std::to_string(a_clusters.seed);
-        row.iterations = std::to_string(a_clusters.iterations);
+      [](const MaterialClustersSource &a_clusters) -> SourceRowKind {
+        return ClustersRowOf(a_clusters);
       });
   return row;
 }
 
 namespace {
-[[nodiscard]] std::optional<SourceKind> ImageKindOf(const SourceRow &a_row) {
+[[nodiscard]] std::optional<SourceKind>
+ImageKindOf(const ImageSourceRow &a_row) {
   ImageSource image;
   image.path = a_row.path;
   const auto channel = ParseImageChannel(a_row.channel);
@@ -115,13 +153,14 @@ namespace {
   return SourceKind{image};
 }
 
-[[nodiscard]] std::optional<SourceKind> MaterialKindOf(const SourceRow &a_row) {
+[[nodiscard]] std::optional<SourceKind>
+MaterialKindOf(const MaterialSourceRow &a_row) {
   const auto channel = ParseMaterialChannel(a_row.material);
   return channel ? std::optional<SourceKind>{MaterialSource{*channel}}
                  : std::nullopt;
 }
 
-[[nodiscard]] std::optional<SourceKind> BakeKindOf(const SourceRow &a_row) {
+[[nodiscard]] std::optional<SourceKind> BakeKindOf(const BakeSourceRow &a_row) {
   auto bake = DefaultBakeKind(a_row.bake);
   if (!bake) {
     return std::nullopt;
@@ -139,12 +178,13 @@ namespace {
   return SourceKind{BakeSource{*bake}};
 }
 
-[[nodiscard]] std::optional<SourceKind> UvKindOf(const SourceRow &a_row) {
+[[nodiscard]] std::optional<SourceKind> UvKindOf(const UvSourceRow &a_row) {
   const auto axis = ParseUvAxis(a_row.axis);
   return axis ? std::optional<SourceKind>{UvSource{*axis}} : std::nullopt;
 }
 
-[[nodiscard]] std::optional<SourceKind> DistanceKindOf(const SourceRow &a_row) {
+[[nodiscard]] std::optional<SourceKind>
+DistanceKindOf(const DistanceSourceRow &a_row) {
   DistanceSource distance;
   if (const auto point = LiteralColor(a_row.from)) {
     distance.from = *point;
@@ -154,7 +194,8 @@ namespace {
   return SourceKind{distance};
 }
 
-[[nodiscard]] std::optional<SourceKind> RippleKindOf(const SourceRow &a_row) {
+[[nodiscard]] std::optional<SourceKind>
+RippleKindOf(const RippleSourceRow &a_row) {
   RippleSource ripple;
   if (!a_row.trigger.starts_with('@') || a_row.trigger.size() < 2) {
     return std::nullopt;
@@ -174,7 +215,8 @@ namespace {
   return SourceKind{ripple};
 }
 
-[[nodiscard]] std::optional<SourceKind> ClustersKindOf(const SourceRow &a_row) {
+[[nodiscard]] std::optional<SourceKind>
+ClustersKindOf(const MaterialClustersSourceRow &a_row) {
   MaterialClustersSource clusters;
   const auto count = WholeNumber(a_row.clusters, kMaxMaterialClusters);
   const auto weights = FiveNumbers(a_row.weights);
@@ -198,28 +240,17 @@ namespace {
 }
 
 std::optional<SourceKind> SourceKindOf(const SourceRow &a_row) {
-  if (a_row.kind == "image") {
-    return ImageKindOf(a_row);
-  }
-  if (a_row.kind == "material") {
-    return MaterialKindOf(a_row);
-  }
-  if (a_row.kind == "bake") {
-    return BakeKindOf(a_row);
-  }
-  if (a_row.kind == "uv") {
-    return UvKindOf(a_row);
-  }
-  if (a_row.kind == "distance") {
-    return DistanceKindOf(a_row);
-  }
-  if (a_row.kind == "ripple") {
-    return RippleKindOf(a_row);
-  }
-  if (a_row.kind == "materialClusters") {
-    return ClustersKindOf(a_row);
-  }
-  return std::nullopt;
+  return Match(
+      a_row.kind,
+      [](const ImageSourceRow &a_row) { return ImageKindOf(a_row); },
+      [](const MaterialSourceRow &a_row) { return MaterialKindOf(a_row); },
+      [](const BakeSourceRow &a_row) { return BakeKindOf(a_row); },
+      [](const UvSourceRow &a_row) { return UvKindOf(a_row); },
+      [](const DistanceSourceRow &a_row) { return DistanceKindOf(a_row); },
+      [](const RippleSourceRow &a_row) { return RippleKindOf(a_row); },
+      [](const MaterialClustersSourceRow &a_row) {
+        return ClustersKindOf(a_row);
+      });
 }
 
 }
