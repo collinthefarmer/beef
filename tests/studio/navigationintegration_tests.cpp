@@ -117,7 +117,8 @@ int main() {
     Check(
         state.pendingIndexedEdit && state.pendingRecipeFile,
         "old edit results and in-progress file operations preserve both gates");
-    snapshot.editResults.push_back({9, "glow", "Edit refused"});
+    snapshot.editResults.push_back(
+        {9, "glow", MakeDiagnostic(Severity::kError, "glow", "Edit refused")});
     AcknowledgeEditorOperations(state, snapshot);
     Check(!state.pendingIndexedEdit && state.pendingRecipeFile &&
               !AcceptIntent(state, Undo{"glow"}),

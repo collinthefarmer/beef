@@ -1,5 +1,7 @@
 #pragma once
 
+#include "recipe/Recipe.h"
+
 #include <cstdint>
 #include <optional>
 #include <string>
@@ -9,7 +11,7 @@ namespace BetterEnchantmentEffects::Studio {
 struct RecipeEditResult {
   std::uint64_t requestID = 0;
   std::string recipeID;
-  std::optional<std::string> error;
+  std::optional<Diagnostic> error;
 };
 
 struct PendingIndexedEdit {

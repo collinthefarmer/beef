@@ -150,6 +150,10 @@ void DrawRecipeFile(const Studio::RecipeRow &a_recipe, const Frame &a_frame) {
              "there afterwards.");
   if (!a_recipe.problems.empty()) {
     ImGui::SeparatorText("Rows with problems");
+    if (a_recipe.heldBack) {
+      Problem("Held back: recipe-level errors keep it out of the applied "
+              "set until they are fixed");
+    }
     for (const Diagnostic &diagnostic : a_recipe.problems) {
       const std::string line =
           std::format("{}: {}", diagnostic.where, diagnostic.message);

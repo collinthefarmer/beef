@@ -199,6 +199,7 @@ struct RecipeRow {
   std::string light;
   std::optional<std::size_t> lightOutput;
   std::vector<Diagnostic> problems;
+  bool heldBack = false;
   std::size_t undoDepth = 0;
   std::size_t redoDepth = 0;
   LightRow lightRow;

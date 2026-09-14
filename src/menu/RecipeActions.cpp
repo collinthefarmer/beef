@@ -2,6 +2,7 @@
 
 #include "engine/Manager.h"
 #include "menu/MenuWidgets.h"
+#include "recipe/Recipe.h"
 #include "studio/FileOperation.h"
 #include "studio/Navigation.h"
 #include "studio/PaintSession.h"
@@ -31,7 +32,7 @@ void DrawFileResult(const Studio::FileOperationResult &a_result) {
   if (a_result.state == Studio::FileOperationState::kPending) {
     Dim(std::format("{} pending", action));
   } else if (a_result.state == Studio::FileOperationState::kFailed) {
-    Problem(std::format("{} failed: {}", action, a_result.error));
+    Problem(std::format("{} failed: {}", action, ProblemText(a_result.error)));
   } else {
     Dim(std::format("{} completed: {}", action, a_result.path));
   }
@@ -49,7 +50,7 @@ void DrawRecipeResults(const Studio::Snapshot &a_snapshot,
   const auto edit = std::ranges::find(a_snapshot.editResults, a_recipeID,
                                       &Studio::RecipeEditResult::recipeID);
   if (edit != a_snapshot.editResults.end() && edit->error) {
-    Problem(*edit->error);
+    Problem(ProblemText(edit->error));
   }
 }
 

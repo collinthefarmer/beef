@@ -251,8 +251,12 @@ void DrawTermDetails(std::size_t a_index, const Studio::Term &a_term,
     ImGui::TextUnformatted("expression");
     fields.Cell();
     Badge(Studio::FieldKind::kMask);
-    const TextCheck check = [&](const std::string &a_text) {
-      return Studio::CheckMaskText(a_text, *a_frame.names);
+    const TextCheck check =
+        [&](const std::string &a_text) -> std::optional<std::string> {
+      const std::optional<Diagnostic> diagnostic =
+          Studio::CheckMaskText(a_text, *a_frame.names);
+      return diagnostic ? std::optional<std::string>{ProblemText(diagnostic)}
+                        : std::nullopt;
     };
     if (const auto edited =
             TextField("text", a_term.text,

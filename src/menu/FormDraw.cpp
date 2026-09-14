@@ -202,8 +202,14 @@ void DrawSignalEditorInline(const SignalRow &a_signal, const Frame &a_frame) {
 
 std::optional<std::string> FieldInput(const FormField &a_field, float a_scale,
                                       const Names &a_names) {
-  const TextCheck check = [&](const std::string &a_text) {
+  const auto check = [&](const std::string &a_text) {
     return CheckField(a_field, a_text, a_names);
+  };
+  const TextCheck displayCheck =
+      [&](const std::string &a_text) -> std::optional<std::string> {
+    const std::optional<Diagnostic> diagnostic = check(a_text);
+    return diagnostic ? std::optional<std::string>{ProblemText(diagnostic)}
+                      : std::nullopt;
   };
   const FieldKindSpec *row = RowOf(kFieldKinds, a_field.kind);
   const FieldInputKind input = row ? row->input : FieldInputKind::kText;
@@ -225,11 +231,13 @@ std::optional<std::string> FieldInput(const FormField &a_field, float a_scale,
   }
   case FieldInputKind::kText:
     Badge(a_field.kind);
-    return TextField("value", a_field.text, {Width::Fill(), a_scale}, check);
+    return TextField("value", a_field.text, {Width::Fill(), a_scale},
+                     displayCheck);
   case FieldInputKind::kPlain:
-    return TextField("value", a_field.text, {Width::Fill(), a_scale}, check);
+    return TextField("value", a_field.text, {Width::Fill(), a_scale},
+                     displayCheck);
   case FieldInputKind::kValue:
-    return ValueWidget("value", a_field, a_scale, check);
+    return ValueWidget("value", a_field, a_scale, displayCheck);
   }
   return std::nullopt;
 }

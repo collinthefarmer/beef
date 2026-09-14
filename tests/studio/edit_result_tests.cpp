@@ -33,9 +33,12 @@ int main() {
   }
   {
     std::optional<PendingIndexedEdit> pending = PendingIndexedEdit{4, "glow"};
-    const RecipeEditResult refusal{4, "glow", "The layer no longer exists"};
+    const RecipeEditResult refusal{
+        4, "glow",
+        MakeDiagnostic(BetterEnchantmentEffects::Severity::kError, "glow",
+                       "The layer no longer exists")};
     Check(AcknowledgeIndexedEdit(pending, &refusal) && !pending &&
-              refusal.error == "The layer no longer exists",
+              ProblemText(refusal.error) == "The layer no longer exists",
           "a refused edit releases the gate while preserving its displayed "
           "error");
     pending = PendingIndexedEdit{5, "glow"};

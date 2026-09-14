@@ -29,26 +29,27 @@ int main() {
 
   Check(!CheckSignalValue("1.0", names).has_value(),
         "a bare number is a valid signal value");
-  Check(CheckSignalValue("", names) == "cannot be empty",
+  Check(ProblemText(CheckSignalValue("", names)) == "cannot be empty",
         "an empty signal value is refused");
   Check(!CheckSignalValue("@glow * 2", names).has_value(),
         "an expression over a known scalar signal is a valid signal value");
-  Check(CheckSignalValue("@missing", names) == "'@missing' is not a signal",
+  Check(ProblemText(CheckSignalValue("@missing", names)) ==
+            "'@missing' is not a signal",
         "an unknown reference in a signal value names the missing signal");
 
   Check(!CheckCurveText("x * 2", names).has_value(),
         "x is defined inside a curve");
-  Check(CheckCurveText("", names) == "cannot be empty",
+  Check(ProblemText(CheckCurveText("", names)) == "cannot be empty",
         "an empty curve is refused");
   Check(CheckCurveText("@glow +", names).has_value(),
         "a malformed curve expression is caught");
 
   Check(!CheckMaskText("@diffuse", names).has_value(),
         "a source name is a valid mask texel reference");
-  Check(CheckMaskText("@missing", names) ==
+  Check(ProblemText(CheckMaskText("@missing", names)) ==
             "'@missing' is not a source, mask or signal",
         "an unknown mask reference names sources, masks and signals");
-  Check(CheckMaskText("", names) == "cannot be empty",
+  Check(ProblemText(CheckMaskText("", names)) == "cannot be empty",
         "an empty mask is refused");
 
   FormField scalar;
@@ -58,7 +59,8 @@ int main() {
         "an in-range scalar field passes");
   Check(CheckField(scalar, "5", names).has_value(),
         "an out-of-range scalar field fails with a bound hint");
-  Check(CheckField(scalar, "not a number", names) == "a number, or @signal",
+  Check(ProblemText(CheckField(scalar, "not a number", names)) ==
+            "a number, or @signal",
         "an unparseable scalar field reports the expected shape");
 
   FormField colour;
@@ -66,13 +68,13 @@ int main() {
   colour.names = {"tint"};
   Check(!CheckField(colour, "@tint", names).has_value(),
         "a colour field accepts a listed reference");
-  Check(CheckField(colour, "@missing", names) ==
+  Check(ProblemText(CheckField(colour, "@missing", names)) ==
             "'@missing' is not one of the rows this field takes",
         "a colour field rejects an unlisted reference by name");
 
   FormField signalValue;
   signalValue.kind = FieldKind::kSignalValue;
-  Check(CheckField(signalValue, "x + 1", names) ==
+  Check(ProblemText(CheckField(signalValue, "x + 1", names)) ==
             "'x' is only defined inside a curve",
         "x outside a curve is rejected in a signal-value field");
 
@@ -82,9 +84,10 @@ int main() {
   name.names = {"glow", "tint"};
   Check(!CheckField(name, "glow", names).has_value(),
         "a name field accepts the row's own current name");
-  Check(CheckField(name, "tint", names) == "another row is named 'tint'",
+  Check(ProblemText(CheckField(name, "tint", names)) ==
+            "another row is named 'tint'",
         "a name field rejects another row's name");
-  Check(CheckField(name, "1bad", names) ==
+  Check(ProblemText(CheckField(name, "1bad", names)) ==
             "letters, digits and underscores, not starting with a digit",
         "a name field rejects an identifier starting with a digit");
 
@@ -92,7 +95,7 @@ int main() {
   channels.kind = FieldKind::kChannels;
   Check(!CheckField(channels, "rgb", names).has_value(),
         "a channels field accepts r g b a in any order");
-  Check(CheckField(channels, "xyz", names) == "any of r g b a",
+  Check(ProblemText(CheckField(channels, "xyz", names)) == "any of r g b a",
         "a channels field rejects non-channel letters");
 
   return test::Finish("studio_fieldcheck");

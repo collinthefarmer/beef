@@ -8,13 +8,13 @@
 #include <string_view>
 
 namespace BetterEnchantmentEffects::Studio {
-[[nodiscard]] std::optional<std::string> CheckField(const FormField &a_field,
-                                                    std::string_view a_text,
-                                                    const Names &a_names);
-[[nodiscard]] std::optional<std::string>
+[[nodiscard]] std::optional<Diagnostic> CheckField(const FormField &a_field,
+                                                   std::string_view a_text,
+                                                   const Names &a_names);
+[[nodiscard]] std::optional<Diagnostic>
 CheckSignalValue(std::string_view a_text, const Names &a_names);
-[[nodiscard]] std::optional<std::string> CheckCurveText(std::string_view a_text,
-                                                        const Names &a_names);
-[[nodiscard]] std::optional<std::string> CheckMaskText(std::string_view a_text,
+[[nodiscard]] std::optional<Diagnostic> CheckCurveText(std::string_view a_text,
                                                        const Names &a_names);
+[[nodiscard]] std::optional<Diagnostic> CheckMaskText(std::string_view a_text,
+                                                      const Names &a_names);
 }
