@@ -177,6 +177,14 @@ to them; its arrays are sized to `kMaxExpressionOps`, `kProgramRefs`,
 `kProgramCurves`, `kRippleFirings` and `kMaxClusters`, and every count is
 checked against the array before a pass runs.
 
+The C++ side of every `cbuffer` below is declared once in
+`render/ShaderConstants.h` (`LayerConstants` for `Params`, plus
+`ProgramConstants`, `RippleConstants` and `ClassifyConstants`); the lab and
+the pass files include it rather than each declaring their own copy, so a
+field added here has one place to be added there. `render/D3DResult.h` holds
+the two D3D helpers every render file needs, `Failed` on an `HRESULT` and
+`DataOf` on an `NiSourceTexture`.
+
 `cbuffer Params` (b0):
 
 | field | packing |

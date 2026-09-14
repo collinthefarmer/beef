@@ -242,7 +242,7 @@ is not done until the user reports the checkpoint passed.
 | F | `critique/f-tests-and-bounds` | `f4edc48`, merged in `303d352` | merged into `cleanup/stage-0`; in-game checkpoint pending (installed build) |
 | A | `critique/a-error-contract` | `f69d908`, merged in `303d352` | merged into `cleanup/stage-0`; in-game checkpoint pending (installed build) |
 | B | `critique/b-source-kinds` | `6fb02d2`, `8f80b67`, plus a docs commit | implemented and native-verified on `cleanup/stage-0` (`6f9750e`); DLL builds; B3 deferred to the UI complete-editor checkpoint; sanitized suite, push gate, install and in-game checkpoint wait for the single pass after the last plan |
-| C | | | not started |
+| C | `critique/c-structure` | `8233030`, `8ddcc08`, `4dfa74d`, `6453b63`, `83fe74b`, `eb77f40`, plus a docs commit | implemented and native-verified on `cleanup/stage-0` (`4d2dc16`); DLL builds; `tools/layers.sh` is the one layer graph and the push gate runs it; C3 step 3 and C5 step 1 deferred to the UI complete-editor checkpoint; push gate, install and in-game checkpoint wait for the single pass after the last plan |
 | D | | | not started |
 | E | | | not started |
 | G | | | deferred until UI slice 2A and the six plans |
@@ -427,6 +427,15 @@ Append one line per plan as it completes: date, plan letter, branch, outcome.
   builds); B3 deferred per the plan's UI classification. Tidy baseline
   regenerated (+3 intended findings). Sanitized suite, push gate, install and
   the in-game checkpoint wait for the single pass after the last plan.
+- 2026-09-14, C, `critique/c-structure`: C1, C2, C4 and C5 step 2 implemented,
+  plus C3 steps 1 and 2 (the coordinate steps, done ahead of UI slices 2B and
+  3C). 67 suites green plain and sanitized, commit gate green on every commit,
+  DLL builds, `tools/layers.sh` exits zero and is now the push gate's layer
+  check. C3 step 3 (`EditChecks`) and C5 step 1 (`Page.h`) deferred to UI
+  slices 2B and 2A; C5 step 3 (`ManagerShared`) left to Plan D as the plan
+  directs. Tidy baseline regenerated for the moved code, 57 findings before
+  and after, after fixing `tools/tidy.sh` to prune the cached result of a
+  source that has been moved or deleted.
 
 What Plan B left for the later plans and for the UI owner:
 
@@ -453,3 +462,41 @@ What Plan B left for the later plans and for the UI owner:
 - B3 (`SourceRow` as a variant of per-kind field records, `LayerRow::blend`,
   `RecipeRow::key`) and the five `MenuState.cpp` catch-alls over
   `RecipeEdit`/`Intent` wait on UI slices 2A/2D and 1B.
+
+What Plan C left for the later plans and for the UI owner:
+
+- `src/recipe/Visit.h` is the published recipe traversal. It holds the
+  location vocabulary too (`ResourceKind`, `ResourceRef`, `OutputOwner`,
+  `LayerOwner`, `ShellOwner`, `VariantOwner`, `RelationshipOwner`,
+  `PropertyLocation`), moved out of `studio/Relationships.h` into the root
+  namespace; `Relationships.h` keeps `Relationship` and `RelationshipsOf`.
+  UI slice 2B extends `Visit.h`, not an anonymous namespace, which is what
+  the UI plan's reuse audit asked for. A non-template helper added there
+  needs `inline`.
+- `tools/layers.sh` is the one layer graph and the push gate runs it. A new
+  directory, or a widened edge, is an edit to its `ALLOWS` table. It also
+  enforces that every include names its directory. Tell the UI owner it
+  exists: `studio/` may not include `menu/` or `engine/`, which is the UI
+  plan's own rule.
+- `tests/run-native.sh` links every engine-free module into every suite and
+  discovers suites in one loop. A new engine-free engine unit is one line in
+  `SUITE_EXTRAS`. Suite names lost the `_tests` suffix (`recipe_recipe`, not
+  `recipe_recipe_tests`).
+- Plan D's renames land after these moves: `MeshReader` and `MeshCache` are
+  in `src/render/`, `MeshEntry` with them; `Constants` is now
+  `LayerConstants` in `render/ShaderConstants.h`; `Failed` and `DataOf` are
+  in `render/D3DResult.h`; `VariantApplies`/`ApplyVariant` are in
+  `recipe/Variants.cpp` and `IsAnimated` in `recipe/Vocabulary.cpp`.
+  `engine/ManagerShared.{h,cpp}` were left for Plan D to empty and delete.
+- Plan E documents against those paths. `REFERENCE.md`'s shader section now
+  names `render/ShaderConstants.h` and `render/D3DResult.h`;
+  `docs/conventions.md` gained a Gates bullet for `tools/layers.sh`.
+  `docs/wip/render-ownership.md`, `docs/wip/engine-ownership.md`,
+  `docs/wip/engine-types-survey-2026-09-12.md` and `docs/buildup-plan.md`
+  still cite `engine/MeshReader`; they are history, and Plan E decides
+  whether to correct or mark them.
+- `src/studio/Edits.cpp` is 1652 lines, not the plan's target of 1200. The
+  residue is about 890 lines of `Edit` overloads and 210 of
+  `DescribeVisitor`, which the plan says that file keeps. Splitting those is
+  a design question, not a move; it belongs in a follow-up beside the
+  `Manager` decomposition.

@@ -1,6 +1,189 @@
 # Plan C: layering and file structure — 2026-09-13
 
-Status: not started.
+Status: implemented and verified natively 2026-09-14 on
+`critique/c-structure`, branched from `cleanup/stage-0` at `4d2dc16`.
+Five commits, one per step group. Install and the in-game checkpoint are
+batched into the single pass after the last plan.
+
+| Commit | Step |
+|---|---|
+| `8233030` | C1: `MeshReader` moves to `src/render/` |
+| `8ddcc08` | C2: `tools/layers.sh`, the push gate, `tests/run-native.sh` |
+| `4dfa74d` | C3 steps 1 and 2: `recipe/Visit.h`, `RenameInExpression` |
+| `6453b63` | C4: `ShaderConstants.h`, `D3DResult.h`, `MeshCache` |
+| `83fe74b` | C5 step 2: `Recipe.cpp` split |
+| `eb77f40` | the tidy-cache prune and the regenerated baseline |
+
+### What was done
+
+**C1.** `src/engine/MeshReader.{h,cpp}` are now `src/render/MeshReader.{h,cpp}`
+(`git mv`, history follows). `Compositor.h` and `CompositorSource.cpp` were
+the only includers, as the finding said; `ReadMesh`, `IdentityOf`,
+`CompareWithGpu`, `NodeBindPosition` and `ToRootSpace` have no caller under
+`src/engine/` or `src/menu/` (`Studio::ReadMesh` in `Intent.h` is an
+unrelated intent record). Step 2's question is answered by C4: once
+`MeshEntry` left `Compositor.h`, nothing there named a `MeshReader`
+declaration, so the header now reaches it through `render/MeshCache.h`.
+
+**C2.** `tools/layers.sh` holds one row per directory listing what it may
+include, checks every `#include "..."` under `src/` against it, and also
+carries the engine-free rule the Plan B purity grep held (no `RE::` symbol
+in `recipe`, `mesh`, `planners`, `studio`, `diagnostics`; `PCH.h` is an
+adapter-only root header, so the table covers that half). It reports
+file, line and the offending include, and exits non-zero on any. The push
+stage of `tools/gate.sh` runs it in place of the grep.
+
+Its first run found no layer edge beyond the `MeshReader` one C1 had just
+removed (the `Snapshot.h` edge was already gone with Plan B4), and four
+includes that name no directory, against `REQUIREMENTS.md:144`'s "src is
+the only include root": `recipe/Merge.cpp`, `render/RuntimeTexturesLab.cpp`,
+`render/ShaderSource.cpp`, `render/PBRMaterial.cpp`. All four are fixed in
+the same commit. `tools/layers.sh` now exits zero.
+
+`tests/run-native.sh` has no `MODULE_DEPS`. `MODULES` is `recipe mesh
+planners studio diagnostics`, every suite links the union of their sources,
+and the engine, diagnostics and settings suites are discovered by the same
+loop, naming only their extra sources in a `SUITE_EXTRAS` table at the top.
+Suite names drop the `_tests` suffix, which the hand-written engine suites
+already lacked, so `recipe_recipe_tests` is now `recipe_recipe` and
+`SUITE=studio` still selects exactly the 31 studio suites.
+
+**C3 steps 1 and 2.** `src/recipe/Visit.h` publishes the traversal toolkit
+that was unreachable in `Edits.cpp`'s anonymous namespace: the `VisitRef` /
+`VisitParam` / `VisitVector` skeleton, `LiteralOf`, `ScalarDefault`, the
+per-kind `VisitSignalParams`, `VisitSourceParams`, `VisitSurfaceParams`,
+`VisitLightParams`, `VisitOutputParams` and `VisitShellParams`,
+`ForEachParam`, `LocatedVisitor`, `RefVisitor` and the five `ForEach*`
+reference walks.
+
+The plan's rule was that nothing moved may depend on studio types. The
+dependency turned out to be the owner and property records the traversal
+reports with, and they are recipe vocabulary, not editor vocabulary: they
+name a row and a field of a `Recipe`, the same thing `Reporter`'s `where`
+names. So `ResourceKind`, `kResourceKindNames`, `ResourceRef`,
+`OutputOwner`, `LayerOwner`, `ShellOwner`, `VariantOwner`,
+`RelationshipOwner` and `PropertyLocation` move from
+`studio/Relationships.h` into `recipe/Visit.h` in the root namespace, and
+`Relationships.h` keeps `Relationship` and `RelationshipsOf`. Every studio
+user reads those names unqualified from inside `Studio` and is unchanged;
+the one file that qualified them, `menu/RelationshipPanel.cpp`, drops the
+`Studio::` prefix on them (18 lines, mechanical; that file is named by no
+UI slice).
+
+Two small changes were needed to make the move compile:
+
+- `VisitSurfaceParams` read a layer's default opacity from
+  `Studio::DefaultLayer()`. It now default-constructs a `Layer`, as the
+  neighbouring `VisitLightParams` and `VisitShellParams` already do for
+  their defaults. `Layer::opacity` is `1.0f` in the struct and
+  `DefaultLayer()` set it to `1.0f`, so the value is identical.
+- `LiteralOf(const Param &)` and `ScalarDefault` are not templates, so in a
+  header they need `inline`. Without it every studio translation unit that
+  reaches `Visit.h` emits a definition and the native link fails on
+  multiple definitions.
+
+`RenameInExpression` and `ExpressionRename` move from `studio/Edits.{h,cpp}`
+to `recipe/Expression.{h,cpp}`. The expression cleanup pass had finished, so
+no hand-off was needed. `studio/TermTemplates.cpp` gains the explicit
+`recipe/Expression.h` include it was getting transitively, and `Edits.h`
+loses a `std::span` use it never included `<span>` for.
+
+The test moved as a split rather than a whole file. Only the first eight
+checks in `tests/studio/expressionrename_tests.cpp` are about the text
+surgery; the rest exercise `KeepEdits`, `MaterialiseTerm` and `BuildTerm`,
+which are studio. The eight are now `tests/recipe/expressionrename_tests.cpp`
+and pull only `recipe/Expression.h`; the studio suite of the same name keeps
+the rest. Moving the file whole would have put `studio/` includes in a
+`tests/recipe` suite, which is the edge this plan exists to remove.
+
+**C4.** `src/render/ShaderConstants.h` declares `LayerConstants` (the
+`Constants` rename), `ProgramConstants`, `RippleConstants` and
+`ClassifyConstants` with their `static_assert`s once;
+`RuntimeTexturesLab.cpp` and `RuntimeTexturesPass.cpp` include it and drop
+their byte-identical copies. `src/render/D3DResult.h` holds `Failed` and
+`DataOf`, replacing four copies of `Failed` (Lab, Pass, Readback,
+`RenderTargetPool`) and three of `DataOf` (Pass, Readback,
+`RenderTargetPool`). `MeshEntry` and `MeshCache` move from `Compositor.h`
+to `render/MeshCache.h`, and the four methods with their `NameOf` and
+`LogRead` helpers from `CompositorBake.cpp` to `render/MeshCache.cpp`.
+
+Step 4: the `RenderedMask` forward declaration at the top of `Compositor.h`
+stays. The cycle is between the two records themselves — `PreparedSource`
+holds a `std::shared_ptr<RenderedMask>` and `RenderedMask` holds a
+`std::vector<PreparedSource>` — so moving the `Prepared*` records into a
+`render/Prepared.h` would carry the forward declaration along rather than
+remove it. Moving `MeshCache` out does not touch that pair.
+
+**C5 step 2.** `recipe/Recipe.cpp` is 92 lines: `MakeDiagnostic`, the
+`Recipe::Find*` lookups, the `*Where` names, and the error predicates over
+a `LoadResult`. `VariantApplies` and `ApplyVariant` are
+`src/recipe/Variants.cpp` (27 lines); the four `IsAnimated` overloads, the
+`AnimationQuery` walk behind them and the `RefOf` / `CollectRefs` helpers
+only they use are at the end of `Vocabulary.cpp` (852 lines). Their
+declarations were already grouped in `Recipe.h` and did not move.
+
+### One tooling fix the moves exposed
+
+`tools/tidy.sh` caches one result per source path and never removed the
+result of a source that had been deleted or moved.
+`tools/tidy-baseline.sh` reads the whole cache directory, so after C1 the
+baseline carried `src/engine/MeshReader.cpp` and `src/render/MeshReader.cpp`
+alike and reported 60 findings where clang-tidy had found 57. A full
+`tools/tidy.sh` run now prunes results with no source behind them (a
+targeted run does not, since it does not know the whole source list). Plan D
+renames across every module and would have hit this on every move.
+
+### Deferred
+
+- **C3 step 3, the `EditChecks` split.** `CheckText`, `CheckCurveText`,
+  `CheckCtx`, `CheckScalarRef`, `CheckVectorRefSignal`,
+  `CheckVectorRefParts` and `CheckVectorRef` stay in `Edits.cpp`. UI slice
+  2B owns the reference traversal in that file; the split is a pure move
+  and costs nothing to wait for.
+- **C5 step 1, deleting `studio/Page.h`.** `Fields.cpp` is UI slice 2A's
+  seam. `Page.h` is still vestigial (no file under `src/menu/` uses it;
+  `menu/Frame.h` is the real per-frame bundle), so delete it when 2A is
+  done.
+- **C5 step 3, deleting `engine/ManagerShared.{h,cpp}`.** Plan D owns the
+  rename that empties it, and C ran first, so the files stay as the plan
+  directs.
+- **B3 and the `MenuState` catch-alls** are Plan B's deferrals and were not
+  picked up.
+
+### Acceptance
+
+| Check | Result |
+|---|---|
+| `tools/layers.sh` exits zero | yes: "layers: every include stays inside the graph" |
+| `tests/run-native.sh` has no dependency table and passes | yes: `MODULE_DEPS` is gone; 67 suites green, exit 0 |
+| `SUITE=studio` runs only studio suites | yes: 31 suites, all `studio_*` |
+| `BEEF_SANITIZE=1 tests/run-native.sh` | yes: 67 suites green, exit 0, no ASan or UBSan report |
+| `grep -rn 'struct alignas(16)' src/render` shows each struct once | yes: four, all in `render/ShaderConstants.h` |
+| `grep -rn 'Failed(std::int32_t' src/render` shows one definition | yes: `render/D3DResult.h:8` |
+| `src/studio/Page.h` does not exist | no: deferred with C5 step 1 |
+| `src/render/MeshReader.h` exists, `src/engine/MeshReader.h` does not | yes |
+| `wc -l src/studio/Edits.cpp` under 1200 | no: 1652, down from 2060 |
+| DLL builds (`./build.sh Release -j 4`) | yes, exit 0 |
+| Tidy baseline | regenerated, 57 findings before and after; `--check` matches. Sources 108 to 110 (`render/MeshCache.cpp`, `recipe/Variants.cpp`) |
+| `tools/gate.sh push` | not run; batched into the pass after the last plan |
+| In-game checkpoint | not run; batched |
+
+The 1200-line target for `Edits.cpp` is not reachable from this plan's
+moves. The traversal took 408 lines out and `RenameInExpression` 46; the
+deferred `EditChecks` split is about 105 more, which would leave roughly
+1545. What remains is what the plan says `Edits.cpp` keeps: about 890 lines
+of `Edit` overloads and 210 of `DescribeVisitor`. Splitting those is a
+design question (one file per subject area, or a table), not a move, and
+belongs in a follow-up.
+
+### In-game checkpoint (pending, batched)
+
+Load a save, render a stack with an animated layer, a ripple source and a
+material-clusters source, and confirm all three draw as before. Log lines:
+the `TextureLab` pass creation lines, and any `Failed` report from
+`RenderTargetPool`. A silent constant-buffer size mismatch is what a header
+split in D3D constant layouts would hide, so the three sources are the
+point of the check.
 
 Covers critique recommendations 5 (the render-to-engine include, the
 duplicated layer table) and 7 (split `Edits.cpp`, hoist the GPU constant

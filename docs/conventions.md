@@ -508,6 +508,14 @@ animated stack re-renders each tick).
   after adding an include so the dependency log knows about it. It reads
   `build/clangd/compile_commands.json`, which `tools/compile-db.sh` rewrites
   after a source file is added or removed.
+- **Layers** — `tools/layers.sh` holds the only copy of the include graph:
+  one row per directory under `src/`, listing what that directory may
+  include. It reports every `#include "..."` outside its row, every include
+  that names no directory (`src` is the only include root), and every `RE::`
+  symbol in an engine-free directory, each with file and line, and the push
+  gate fails on any. Adding a directory or widening an edge means editing
+  that table, which is the point: the graph changes in one place and the
+  change is visible in the diff.
 - **Native build and tests** — engine-free modules compile natively and run
   through `tests/run-native.sh`, which compiles the union of every selected
   suite's sources in parallel (`NATIVE_JOBS`, default 4) and then links and
