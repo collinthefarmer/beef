@@ -1,6 +1,170 @@
 # Plan E: documentation that matches the tree — 2026-09-13
 
-Status: not started.
+## Status
+
+Implemented 2026-09-14 on `critique/e-docs`, branched from `cleanup/stage-0`
+at `c357f26`. Five commits: `ea88b12` (E1), `4e69da4` (E2), `314bb99` (E3),
+`1c0c3da` (E4), `3ab6c3f` (the tidy baseline E4's line shifts moved).
+
+### What was done
+
+**E1.** `README.md` (93 lines) states what the plugin does for a player and for
+a recipe author, the reading order as a table with one line per document saying
+what question it answers, the three commands and `./install.sh`, where recipes
+and presets live at runtime, and the source layout. `docs/README.md` indexes
+every file under `docs/` and `docs/wip/` exactly once, grouped as canon, active
+plans, checkpoints and evidence, and history. Fourteen history documents gained
+a one-line status header naming what superseded them, following
+`docs/wip/render-ownership.md`'s pattern. `CLAUDE.md`'s reading order became a
+pointer to the README, so there is one copy.
+
+**E2.** `REQUIREMENTS.md`: the directory heading counts eight, the artifact list
+counts four (the same class of error, found while checking the first), the
+signal kind is `av` with the sentence naming it the community's abbreviation,
+and a module is done when its frozen counterpart leaves the build rather than
+`src/_old`, which stays until the roadmap's release gate. `docs/wip/deletions.md`
+gained a status header: the settings citation carries its `src/_old/` path, the
+two citations into the deleted root readme and architecture document are
+dropped, and the entries a grep of the active tree found already resolved are
+listed. The `ShellPose` entry says the fields are implemented by Plan G; the
+`where` presets entry says Plan A resolved it. `REFERENCE.md`: the preamble
+names the four cited sources that are not in the repository (`NOTES.md`,
+`ARCHITECTURE.md`, `reference/`, `decompiled/`), the lab heading names its four
+files, the compositor heading its three, the menu-mechanics heading the files
+that exist; `Vocabulary.h` reads `Words.h` and `IsAnimated` reads
+`recipe/Vocabulary.cpp`. Paint's term templates moved under a new `## History`
+heading, since `Paint.cpp`, `Region.cpp` and `TermKind.h` live only in
+`src/_old`. `docs/conventions.md`'s list of `recipe/` `.cpp` homes matches Plan
+C's split. `presets/regions.json` became `presets/presets.json` by `git mv`,
+with `CMakeLists.txt`, `src/Identity.h`, `tests/studio/presets_tests.cpp` and
+`REFERENCE.md` following; the two ownership docs named the vocabulary, not the
+file, so neither needed an edit. Plan A's conventions edits (the `Reporter`
+rule, the `Trace` paragraph, the `SettingsFile.cpp` exception) and Plan B's
+source-kind checklist under the variants heading were both verified present.
+
+**E3.** Each value was searched in the order the plan gives, stopping at the
+first hit: `src/_old`, then `git log -S`, then the pre-strip tree (`667bb88`,
+the commit before `adac71d` moved every comment into `REFERENCE.md`). The
+`reference/` and `decompiled/` trees the plan names are not in the repository
+and never were, so that step could not run; the pre-strip tree carried the
+citation that step was meant to find.
+
+| value | file | reason | citation |
+|---|---|---|---|
+| `kIslDefaultCutoff` 0.05, `kIslShadowCutoff` 0.022 | `render/Light.cpp` | ISL's own default cutoff, and its cutoff for a shadow-casting light | `667bb88:src/Binding.cpp:42` "ISL's radius formula constants (CS InverseSquareLighting.cpp)"; frozen at `src/_old/Binding.cpp:38-39` |
+| the 0.5 in `0.5f / std::max(mean, 0.05f)` | `render/CompositorSource.cpp` | normalise a colour field to mid grey | `667bb88:src/Compositor.cpp:300`; frozen at `src/_old/Compositor.cpp:273` |
+| `kMaxExpressionOps` 256, as a coupling | `recipe/Expression.h` | pinned to the interpreter shader's bare literal `float4 code[256]` | `render/ShaderSource.cpp:123` |
+| the two `format` failures | `recipe/RecipeRead.cpp` | missing: report and continue, so the author sees every problem at once. newer: report and stop, because reading it would produce noise about this loader | the code; the frozen `RecipeJson.cpp` had no comment either |
+| `kMaxExpressionOps` 256, as a magnitude | `recipe/Expression.h` | **no trace** | carried unchanged from `src/_old/Expression.h:17` |
+| `kMaxMaskDepth` 8 | `render/CompositorSource.cpp` | **no trace** | carried unchanged from `src/_old/Compositor.cpp:675` |
+| flatness margins 0.02 and 0.98 | `render/CompositorSource.cpp` | **no trace** | carried unchanged from `src/_old/Compositor.cpp:92` |
+| the 0.05 floor under the normalisation mean | `render/CompositorSource.cpp` | **no trace** (it caps the factor at ten, which the code shows; why ten is not recorded) | carried unchanged from `src/_old/Compositor.cpp:273` |
+| the freeze epsilon `a_time + 0.001f` | `engine/ManagerTick.cpp` | **no trace** for the magnitude. 0.001 is one millisecond in the seconds base the same function builds from `(nowMS - startMS) * 0.001f` | carried unchanged from `src/_old/Manager.cpp:1139`; `667bb88:src/Manager.cpp:1135-1138` explains the rebuild, not the epsilon |
+| `kMaxTextFileBytes` 4 MiB | `engine/TextFile.h` | already recorded by Plan F | `REFERENCE.md`, engine heading |
+| the biped slot range 30..61 | `recipe/Recipe.h` | already recorded by Plan A | `REFERENCE.md`, mesh heading |
+| `kPlaceholderTextureExtent` 4 | `planners/TextureIdentity.h` | already recorded by Plan A | `REFERENCE.md`, planners heading |
+
+Each of the five untraced values has a `REFERENCE.md` line that gives the value,
+the file, what it does and where it came from, and says the reason is not
+recorded. The batched question to the user is in the implementer's report; no
+derivation was invented and the lines are written so the answer replaces the
+"not recorded" sentence without touching anything else.
+
+**E4.** The count before this pass was 40 line-start comments, not the plan's
+fifty: Plan D had already moved three, and the tree has no trailing comments
+(`grep -rn ' // '`) and no block comments (`grep -rn '/\*'`) outside the frozen
+and vendored trees. Thirty-eight lines are gone. Thirteen comments stated a fact
+the code cannot and moved to `REFERENCE.md` under their module: the intrusive
+refcount sample in `SweepRetiredMaterialTextures`, the allocation-free `splice`
+at retirement, why `SlotWriter::Restore` writes only through an attached
+material and why `~MaterialBinding` leaves the private material in place,
+`CopySkinData`'s ownership split, `SkinPaletteLease`'s teardown order, the
+address-library resolve before the light attaches, `RenderTarget`'s member
+order, `TextureRef`'s two constructor kinds, `OwnedState`'s equality test and
+its blind spot, `ConsumptionLeases`' acknowledgement rule, the two expression
+stacks, and `CollectPieceGeometries`' all-or-nothing piece. Three said what
+`REFERENCE.md` already said (the write parity in `Compositor.cpp`,
+`ChangeAndRebuildActors` in `Manager.h`, the `Evaluator`'s shared context in
+`Signals.cpp`) and are simply gone.
+
+The `NOLINTNEXTLINE(cppcoreguidelines-owning-memory)` in `render/Binding.cpp`
+was removed by restructuring: `SlotWriter::RetiredTextures` no longer leaks a
+raw `new` but holds a never-destroyed local union named `ImmortalList`, which
+says through its name why the list outlives the plugin's statics and satisfies
+`CLAUDE.md`'s no-raw-`new` rule at the same time. clang-tidy reports zero
+findings for that file afterwards.
+
+The one exception: `src/engine/RecipeStore.cpp:21` keeps
+`NOLINTNEXTLINE(bugprone-exception-escape)` on `struct LoadedRecipe`. MSVC's map
+move can allocate, so the aggregate's implicit move is not `noexcept`;
+clang-tidy reads it as `noexcept` and then reports that it can throw. The only
+restructurings that would silence it are making `Studio::ReferenceCounts`'
+move `noexcept` or changing its container, both of which are studio design
+changes outside this plan and neither of which the finding actually argues for.
+The `static_assert` below the struct is the real check and its reason is now in
+`REFERENCE.md` under the engine heading.
+
+The push stage of `tools/gate.sh` now greps `src/` for a `//` that begins a line
+or follows whitespace after a `;` or `}`, and fails on a hit. It excludes
+`src/_old`, `src/extern` and `src/cs` (frozen or vendored), `NOLINT` directives,
+and `src/studio` and `src/menu`, the last with a dated note to delete them from
+the pattern after the UI complete-editor checkpoint. `docs/conventions.md` gained
+a Gates bullet for it.
+
+### Deferred
+
+To the UI v2 plan's complete-editor checkpoint, per this plan's UI rework
+impact section:
+
+- `REFERENCE.md`'s "Menu mechanics" section content. Its heading now names the
+  files that exist (`menu/MenuWidgets.cpp`, `studio/Intent.h`, since `MenuState`
+  is still in `Intent.h` pending UI slice 1B) and carries a note saying the body
+  is rewritten after that checkpoint. The body still describes the compose/paint
+  mode bar and the field-key scheme the rework is replacing.
+- The two comment lines in `src/menu/MenuWidgets.cpp:89-90` (the DX11 backend's
+  consumption acknowledgement). `src/studio` carries none, so the studio half of
+  the exclusion is precautionary.
+- Deleting `studio` and `menu` from the gate's exclusion pattern
+  (`tools/gate.sh`) and from the Gates bullet in `docs/conventions.md`.
+- The `REFERENCE.md` studio heading's header list, which is inside a UI seam and
+  was left alone; every header it names exists, but the rework has added others.
+
+### Acceptance
+
+| check | command | result |
+|---|---|---|
+| the README and the index exist | `ls README.md docs/README.md` | both |
+| every docs file indexed once | a loop over `git ls-files docs` grepping `docs/README.md` for `(<path>)` | no misses; `.obsidian/` editor config and the `regression-evidence/` leaves are covered by their directory line, not one line each |
+| REQUIREMENTS claims | `grep -n 'Seven directories\|actorValue' REQUIREMENTS.md` | nothing |
+| deletions.md citations | `grep -n 'SettingsCore\|ARCHITECTURE.md' docs/wip/deletions.md` | one line, `29:... \`src/_old/SettingsCore.h:19-89\`` — the repoint step 4 offers, which the literal grep cannot distinguish from the broken citation it replaced |
+| REFERENCE headings | `grep -n 'RuntimeTextures.cpp\|Paint.cpp\|Region.cpp\|TermKind.h' REFERENCE.md` | one line, 1166, under `## History` |
+| every constant has a line | grep for each value in `REFERENCE.md` | `0.022`, `kMaxMaskDepth`, `0.98`, `0.02`, `0.05`, `0.001`, `kMaxExpressionOps`, `'format' is required`, `4 MiB`, `kPlaceholderTextureExtent` all present |
+| the comment grep | the gate's own pattern | nothing |
+| the presets rename | `grep -rn 'regions.json' . --exclude-dir=_old --exclude-dir=.git --exclude-dir=build --exclude-dir=dist` | eleven lines, all in this plan file, Plan A's finding and the handoff's decision record, where the old name is the subject. `presets/presets.json` exists |
+| native suite | `tests/run-native.sh` | 66 suites green, exit 0 |
+| sanitized suite | `BEEF_SANITIZE=1 tests/run-native.sh` | green, exit 0 |
+| layers | `tools/layers.sh` | "every include stays inside the graph", exit 0 |
+| DLL | `./build.sh Release -j 4` | links, 106 targets |
+| commit gate | the hook on every commit | green; "staged files: no new clang-tidy findings" |
+| tidy baseline | `tools/tidy.sh && tools/tidy-baseline.sh` | 57 findings before and after; seven rows moved by deleted lines, no count changed |
+
+`tools/gate.sh push` was not run; it is optional per plan and mandatory once
+after the last plan. `./install.sh` and the in-game checkpoint are batched into
+that final pass.
+
+### In-game checkpoint (batched)
+
+The presets rename is the only behaviour change. After `./install.sh`:
+
+1. Delete the stale
+   `/mnt/a/mods/SkyrimSE/mods/BetterEnchantmentEffects/SKSE/Plugins/BetterEnchantmentEffects/regions.json`
+   by hand. The installer no longer stages it and there is no fallback, so it
+   would otherwise sit there unread. (`dist/` was cleaned of it already.)
+2. Load a save and look for the `presets:` line the plugin logs, which reads
+   `presets: <n> mask presets from Data\SKSE\Plugins\BetterEnchantmentEffects\presets.json`.
+   `<n>` must match the count the previous build reported from `regions.json`.
+   A `presets: ... does not exist; no mask presets` line means the new file did
+   not install.
 
 Covers critique recommendation 8: a README, an index for `docs/`, and the
 correction of every stale claim the critique found, plus moving the fifty

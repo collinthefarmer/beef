@@ -244,7 +244,7 @@ is not done until the user reports the checkpoint passed.
 | B | `critique/b-source-kinds` | `6fb02d2`, `8f80b67`, plus a docs commit | implemented and native-verified on `cleanup/stage-0` (`6f9750e`); DLL builds; B3 deferred to the UI complete-editor checkpoint; sanitized suite, push gate, install and in-game checkpoint wait for the single pass after the last plan |
 | C | `critique/c-structure` | `8233030`, `8ddcc08`, `4dfa74d`, `6453b63`, `83fe74b`, `eb77f40`, plus a docs commit | implemented and native-verified on `cleanup/stage-0` (`4d2dc16`); DLL builds; `tools/layers.sh` is the one layer graph and the push gate runs it; C3 step 3 and C5 step 1 deferred to the UI complete-editor checkpoint; push gate, install and in-game checkpoint wait for the single pass after the last plan |
 | D | `critique/d-naming` | `b542ca1`, `81fd23b`, `850989d`, `638c052`, `51c95fa`, `9bbc313`, `4438acd`, `f6b3d3d`, `340d7b4` | implemented and verified on `critique/d-naming` (66 suites green plain and sanitized, `tools/layers.sh` green, DLL builds, commit gate green on every commit); the `MenuState.h` extraction and `ScratchRebuilt` deferred to UI slices 1B and 3E; push gate, install and in-game checkpoint wait for the single pass after the last plan |
-| E | | | not started |
+| E | `critique/e-docs` | `ea88b12`, `4e69da4`, `314bb99`, `1c0c3da`, `3ab6c3f`, plus a docs commit | implemented and verified on `critique/e-docs`, branched from `cleanup/stage-0` at `c357f26` (66 suites green plain and sanitized, `tools/layers.sh` green, DLL builds, commit gate green on every commit, tidy baseline 57 findings before and after); `README.md` and `docs/README.md` exist and the push gate now fails on a comment in `src/`; the REFERENCE menu-mechanics body and the two `menu/MenuWidgets.cpp` comments deferred to the UI complete-editor checkpoint; push gate, install and the in-game checkpoint (the presets rename) wait for the single pass after the last plan |
 | G | | | deferred until UI slice 2A and the six plans |
 
 What Plan F left for the later plans:
@@ -436,6 +436,20 @@ Append one line per plan as it completes: date, plan letter, branch, outcome.
   directs. Tidy baseline regenerated for the moved code, 57 findings before
   and after, after fixing `tools/tidy.sh` to prune the cached result of a
   source that has been moved or deleted.
+- 2026-09-14, E, `critique/e-docs`: E1 to E4 implemented. `README.md` and
+  `docs/README.md` added, `CLAUDE.md` reduced to a pointer, fourteen history
+  documents given a status header; the REQUIREMENTS, `deletions.md` and
+  `REFERENCE.md` claims the critique listed corrected, with Paint's term
+  templates moved under a new `## History` heading; `presets/regions.json`
+  renamed to `presets/presets.json` with no fallback; the reason for each
+  constant recorded under its module, five of them as "not recorded" with the
+  search that found nothing; 38 of the 40 comment lines moved to `REFERENCE.md`
+  or deleted, the owning-memory `NOLINT` restructured away, and a comment check
+  added to the push gate. 66 suites green plain and sanitized, `tools/layers.sh`
+  green, DLL builds, commit gate green on every commit, tidy baseline
+  regenerated for the line shifts (57 findings before and after). The menu
+  mechanics section body and the `menu/` comments are deferred; the in-game
+  checkpoint joins the batched pass.
 - 2026-09-14, D, `critique/d-naming`: every "safe now" rename plus the one
   "coordinate" rename (`Status::runtimeLab` -> `textureLab`, one line in
   `menu/Menu.cpp` and one in `studio/Snapshot.h`). `ActorState` -> `ActorPlan`,
@@ -515,6 +529,35 @@ What Plan C left for the later plans and for the UI owner:
   `DescribeVisitor`, which the plan says that file keeps. Splitting those is
   a design question, not a move; it belongs in a follow-up beside the
   `Manager` decomposition.
+
+What Plan E left for Plan G and the final pass:
+
+- `README.md` is the reading order and `docs/README.md` the index; `CLAUDE.md`
+  points at them instead of carrying a second copy. A new document is one line
+  in `docs/README.md`, in one of its four groups, or it is not indexed.
+- The push gate fails on a comment in `src/` outside `_old`, `extern`, `cs`,
+  `studio` and `menu`, and on anything but a `NOLINT` directive. Plan G writes
+  render and engine code: a fact it cannot say in a name goes in `REFERENCE.md`
+  under the module's heading, not in a comment, or `tools/gate.sh push` stops.
+- `src/engine/RecipeStore.cpp:21` holds the tree's only `NOLINT`, with its
+  reason under the engine heading in `REFERENCE.md`. A second one needs the same
+  treatment and an entry in the gate's note.
+- `REFERENCE.md`'s "Menu mechanics" section body, the two comments in
+  `src/menu/MenuWidgets.cpp`, and deleting `studio` and `menu` from the gate's
+  exclusion pattern all wait on the UI complete-editor checkpoint. They are in
+  Plan E's `Deferred` list.
+- Five constants have a `REFERENCE.md` line that says their reason is not
+  recorded: `kMaxExpressionOps`' magnitude, `kMaxMaskDepth` 8, the flatness
+  margins 0.02 and 0.98, the 0.05 floor under the normalisation mean, and the
+  one-millisecond freeze epsilon. The batched question went to the user with
+  Plan E's report; the answer replaces the "not recorded" sentence in each line.
+- Plan E's in-game checkpoint joins the batched pass: after `./install.sh` the
+  user deletes the stale `regions.json` from the plugin folder by hand and the
+  `presets:` log line must report the same count from `presets.json`.
+- `REFERENCE.md`'s preamble now says that `NOTES.md`, `ARCHITECTURE.md`,
+  `reference/` and `decompiled/` are cited but not in the repository. The
+  `NOTES n` numbers and the decompile line ranges stay as provenance; do not
+  treat them as files to open.
 
 What Plan D left for the later plans and for the UI owner:
 
