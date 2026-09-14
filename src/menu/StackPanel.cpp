@@ -287,7 +287,8 @@ void DrawInspector(const LayerStack &a_stack,
     Warn(a_inspector->row.problem);
   }
   DrawInspectorFields(*a_inspector, a_frame);
-  if (row != a_stack.rows.end() && row->layer.texture) {
+  if (row != a_stack.rows.end() &&
+      row->layer.texture != Studio::TextureHandle{}) {
     const Studio::ThumbnailSpec preview{
         row->layer.texture, ShaderChannel::kRgb, false,
         layout.inspectorThumbnail * a_frame.scale};

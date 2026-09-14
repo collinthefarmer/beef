@@ -50,7 +50,7 @@ int main() {
         "the renderer reports the clicked button as an index");
 
   const ThumbnailSpec thumb{.channel = ShaderChannel::kRgb, .size = 96.0f};
-  Check(thumb.texture == nullptr && test::Near(thumb.size, 96.0f),
+  Check(thumb.texture == TextureHandle{} && test::Near(thumb.size, 96.0f),
         "a thumbnail is pure data the renderer draws");
   return test::Finish("studio_widgets");
 }

@@ -99,7 +99,8 @@ void DrawPatternPreview(const Studio::TermOffer &a_offer,
                              : a_geometry.sources;
   const auto picture =
       std::ranges::find(pictures, reference->name, &Studio::PictureRow::name);
-  if (picture == pictures.end() || !picture->texture) {
+  if (picture == pictures.end() ||
+      picture->texture == Studio::TextureHandle{}) {
     Dim("No live texture preview is available for this input.");
     return;
   }

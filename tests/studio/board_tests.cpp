@@ -2,6 +2,7 @@
 #include "test_support.h"
 
 #include <algorithm>
+#include <cstdint>
 
 using namespace BetterEnchantmentEffects;
 using namespace BetterEnchantmentEffects::Studio;
@@ -29,7 +30,8 @@ int main() {
 
   OutputRow emissive = MaterialOutput(0, Slot::kEmissive);
   int textureToken = 0;
-  emissive.texture = reinterpret_cast<TextureHandle>(&textureToken);
+  emissive.texture = static_cast<TextureHandle>(
+      reinterpret_cast<std::uintptr_t>(&textureToken));
   LayerRow layer;
   layer.mask = "@edges";
   emissive.layers.push_back(layer);

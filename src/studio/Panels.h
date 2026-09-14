@@ -33,7 +33,7 @@ struct LayerStack {
   std::vector<LayerStackRow> rows;
   std::vector<ForeignRow> below;
   std::vector<ForeignRow> above;
-  TextureHandle composite = nullptr;
+  TextureHandle composite{};
   bool animated = false;
   std::uint32_t size = 0;
   std::string problem;

@@ -79,6 +79,17 @@ if ! tools/format.sh --check; then
 	exit 1
 fi
 
+# The pure directories compile natively and never name the engine: no include
+# of engine/, render/ or menu/, no PCH, no RE:: symbol.
+mapfile -t impure < <(grep -rln '"engine/\|"render/\|"menu/\|#include "PCH.h"\|\bRE::' src/recipe src/mesh src/planners src/studio src/diagnostics)
+if [ ${#impure[@]} -gt 0 ]; then
+	{
+		echo "push blocked: these pure sources name the engine (an engine/, render/ or menu/ include, PCH.h, or RE::):"
+		printf '    %s\n' "${impure[@]}"
+	} >&2
+	exit 1
+fi
+
 if ! BEEF_SANITIZE=1 tests/run-native.sh >/dev/null; then
 	echo "push blocked: sanitized native tests failed (ASan/UBSan). run BEEF_SANITIZE=1 tests/run-native.sh." >&2
 	exit 1

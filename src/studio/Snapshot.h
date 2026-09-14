@@ -1,11 +1,11 @@
 #pragma once
 
 #include "Core.h"
-#include "engine/ApplicationService.h"
 #include "mesh/Islands.h"
 #include "mesh/MaterialClusters.h"
 #include "mesh/MeshFacts.h"
 #include "recipe/Recipe.h"
+#include "studio/ApplicationRecord.h"
 #include "studio/EditResult.h"
 #include "studio/FileOperation.h"
 #include "studio/Gesture.h"
@@ -19,12 +19,8 @@
 #include <string>
 #include <vector>
 
-namespace RE {
-class NiSourceTexture;
-}
-
 namespace BetterEnchantmentEffects::Studio {
-using TextureHandle = RE::NiSourceTexture *;
+enum class TextureHandle : std::uintptr_t {};
 
 struct SignalRow {
   std::string name;
@@ -58,7 +54,7 @@ struct LayerRow {
   std::string curve;
   std::string channels;
   std::string problem;
-  TextureHandle texture = nullptr;
+  TextureHandle texture{};
 };
 
 struct ScalarRow {
@@ -82,14 +78,14 @@ struct OutputRow {
   std::string problem;
   std::vector<ScalarRow> scalars;
   std::vector<LayerRow> layers;
-  TextureHandle texture = nullptr;
+  TextureHandle texture{};
 };
 
 struct PictureRow {
   std::string name;
   std::string description;
   ValueType type = ValueType::kScalar;
-  TextureHandle texture = nullptr;
+  TextureHandle texture{};
   ShaderChannel channel = ShaderChannel::kRgb;
   bool animated = false;
   std::string problem;

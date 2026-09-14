@@ -25,13 +25,18 @@
 
 namespace BetterEnchantmentEffects {
 namespace {
-RE::NiSourceTexture *RetainTexture(Manager::Snapshot &a_snapshot,
-                                   const TextureRef &a_texture) {
+Studio::TextureHandle TextureHandleOf(RE::NiSourceTexture *a_texture) {
+  return static_cast<Studio::TextureHandle>(
+      reinterpret_cast<std::uintptr_t>(a_texture));
+}
+
+Studio::TextureHandle RetainTexture(Manager::Snapshot &a_snapshot,
+                                    const TextureRef &a_texture) {
   if (a_texture) {
     a_snapshot.textures.emplace_back(a_texture);
-    return a_snapshot.textures.back().get();
+    return TextureHandleOf(a_snapshot.textures.back().get());
   }
-  return nullptr;
+  return Studio::TextureHandle{};
 }
 
 std::vector<Studio::SlotRow> SlotRows(const SlotTarget &a_target) {

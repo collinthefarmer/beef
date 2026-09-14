@@ -30,7 +30,7 @@ struct Cell {
   std::size_t layers = 0;
   bool animated = false;
   bool replace = false;
-  TextureHandle composite = nullptr;
+  TextureHandle composite{};
   std::vector<ScalarRow> scalars;
   std::vector<std::string> badges;
   bool isolated = false;

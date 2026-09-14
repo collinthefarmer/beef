@@ -115,7 +115,7 @@ struct RowMove {
 };
 
 struct ThumbnailSpec {
-  TextureHandle texture = nullptr;
+  TextureHandle texture{};
   ShaderChannel channel = ShaderChannel::kRgb;
   bool dynamic = false;
   float size = 0.0f;

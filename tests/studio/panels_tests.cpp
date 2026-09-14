@@ -294,8 +294,8 @@ void TestStackAndInspectorViews() {
   const auto documentStack = BuildStackView(recipe, selection, View{});
   const auto documentInspector = BuildInspector(recipe, selection);
   Check(documentStack && documentStack->rows.size() == 2 &&
-            !documentStack->composite && documentStack->below.empty() &&
-            documentStack->above.empty(),
+            documentStack->composite == TextureHandle{} &&
+            documentStack->below.empty() && documentStack->above.empty(),
         "authored stack inspection needs no live geometry or foreign "
         "contributions");
   Check(documentInspector && documentInspector->layer == 1 &&

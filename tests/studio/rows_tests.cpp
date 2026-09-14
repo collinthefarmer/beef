@@ -118,7 +118,7 @@ int main() {
   Check(first.curve == "@ramp", "layer curve projects its reference");
   Check(!first.color.empty(), "layer colour projects when present");
   Check(Near(first.opacity, 1.0f), "layer live opacity stays at its default");
-  Check(first.texture == nullptr, "layer live texture stays null");
+  Check(first.texture == TextureHandle{}, "layer live texture stays empty");
 
   const LayerRow &second = surface.layers[1];
   Check(second.source == "1, 0, 0", "layer colour source becomes a literal");

@@ -82,8 +82,8 @@ for mod in "${MODULES[@]}"; do
 done
 
 build_and_run engine_sessionqueue tests/engine/sessionqueue_tests.cpp src/engine/SessionQueue.cpp src/diagnostics/Trace.cpp
-build_and_run engine_applicator tests/engine/applicator_tests.cpp src/engine/ApplicationService.cpp src/engine/SessionQueue.cpp src/diagnostics/Trace.cpp
-build_and_run engine_applicationservice tests/engine/applicationservice_tests.cpp src/engine/ApplicationService.cpp src/engine/SessionQueue.cpp src/diagnostics/Trace.cpp
+build_and_run engine_applicator tests/engine/applicator_tests.cpp src/engine/ApplicationService.cpp src/studio/ApplicationRecord.cpp src/engine/SessionQueue.cpp src/diagnostics/Trace.cpp
+build_and_run engine_applicationservice tests/engine/applicationservice_tests.cpp src/engine/ApplicationService.cpp src/studio/ApplicationRecord.cpp src/engine/SessionQueue.cpp src/diagnostics/Trace.cpp
 build_and_run engine_textfile tests/engine/textfile_tests.cpp src/engine/TextFile.cpp
 build_and_run diagnostics_trace tests/diagnostics/trace_tests.cpp src/diagnostics/Trace.cpp
 build_and_run settingspublication tests/settingspublication_tests.cpp src/Settings.cpp

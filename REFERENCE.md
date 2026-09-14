@@ -638,6 +638,10 @@ Decompile provenance (`decompiled/WornEnchantmentFX/plugin.c` unless noted):
 - The cluster map is rendered under a source's settings and replaced when
   another source asks for other settings, so a source that reads it must
   hold the returned target for as long as it samples it.
+- Known debt: `PreparedSource` (`Compositor.h`) is texture-shaped, with one
+  `shared_ptr` per non-texture kind (`rendered`, `ripple`). A procedural
+  source kind would add a third. Reshaping it is render work with its own
+  in-game checkpoint and is deferred (critique Plan B, out of scope).
 
 ## Recipe format details beyond the schema (`Recipe.h`, `RecipeRead.cpp`, `RecipeWrite.cpp`)
 
@@ -739,6 +743,20 @@ Decompile provenance (`decompiled/WornEnchantmentFX/plugin.c` unless noted):
 - `Snapshot::tickMS` is the configured tick interval. Loaded-recipe summaries
   own their keys, row counts, diagnostics and file paths; menu rendering never
   borrows the recipe store's mutable containers.
+- `TextureHandle` (`Snapshot.h`) is an opaque `enum class` over
+  `std::uintptr_t`; its value is the address of an `RE::NiSourceTexture` the
+  engine retained in `Manager::Snapshot::textures` when it built the
+  snapshot, and `TextureHandle{}` is "no texture". Exactly two places convert:
+  `TextureHandleOf` in `engine/ManagerSnapshot.cpp` (pointer to handle, while
+  retaining the texture) and `TextureOf` in `menu/MenuWidgets.cpp` (handle to
+  pointer, for `TextureLab::Preview`). A handle is valid only while the
+  snapshot that published it is alive; a pinned preview must copy the
+  snapshot's `shared_ptr`, never the handle alone.
+- `ApplicationRecord.h` holds the application phase, token, actor and record
+  types the snapshot shows; the engine's `ApplicationService` includes it, so
+  studio never includes `engine/`. The namespace stays
+  `BetterEnchantmentEffects` because the engine and its tests name the types
+  unqualified.
 - Full recipe projections carry every output definition independently of
   geometry placement. The output-settings editor can therefore repair a
   selector that excludes every geometry. Selector editing uses typed values,

@@ -67,12 +67,18 @@ struct PreviewImage {
   explicit operator bool() const { return texture && draw; }
 };
 
+[[nodiscard]] RE::NiSourceTexture *TextureOf(Studio::TextureHandle a_handle) {
+  return reinterpret_cast<RE::NiSourceTexture *>(
+      static_cast<std::uintptr_t>(a_handle));
+}
+
 [[nodiscard]] PreviewImage PreviewOf(Studio::TextureHandle a_texture,
                                      ShaderChannel a_channel, bool a_dynamic) {
-  if (!a_texture)
+  RE::NiSourceTexture *texture = TextureOf(a_texture);
+  if (!texture)
     return {};
   auto *lab = TextureLab::GetSingleton();
-  const auto preview = lab->Preview(a_texture, a_channel, a_dynamic);
+  const auto preview = lab->Preview(texture, a_channel, a_dynamic);
   if (!preview || !preview->View())
     return {};
   auto *draw = lab->RetainPreviewDraw(preview);

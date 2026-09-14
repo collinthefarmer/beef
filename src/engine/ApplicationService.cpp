@@ -13,11 +13,6 @@ struct ApplicationService::Rejections {
 };
 
 namespace {
-constexpr std::array<std::string_view, 6> kPhaseNames{
-    "queued", "prepared", "rendered", "failed", "unmatched", "cancelled"};
-static_assert(kPhaseNames.size() ==
-              static_cast<std::size_t>(ApplicationPhase::kCancelled) + 1);
-
 bool Pending(ApplicationPhase a_phase) {
   return a_phase == ApplicationPhase::kQueued ||
          a_phase == ApplicationPhase::kPrepared;
@@ -175,11 +170,6 @@ ApplicationRecord *ApplicationService::Find(const ApplicationToken &a_token) {
   return found != records_.end() ? &found->second : nullptr;
 }
 
-std::string_view ApplicationPhaseName(ApplicationPhase a_phase) noexcept {
-  const auto index = static_cast<std::size_t>(a_phase);
-  return index < kPhaseNames.size() ? kPhaseNames[index] : "unknown";
-}
-
 ApplicationToken
 ApplicationService::Begin(std::string a_recipeID,
                           std::vector<std::uint32_t> a_actors) {
@@ -254,7 +244,7 @@ void ApplicationService::Report(const ApplicationToken &a_token,
       record->token.revision != a_token.revision ||
       record->token.actorID != a_token.actorID ||
       a_phase == ApplicationPhase::kQueued ||
-      static_cast<std::size_t>(a_phase) >= kPhaseNames.size()) {
+      static_cast<std::size_t>(a_phase) >= kApplicationPhaseCount) {
     return;
   }
   auto &application = *record;
