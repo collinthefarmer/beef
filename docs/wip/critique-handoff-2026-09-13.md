@@ -240,8 +240,8 @@ is not done until the user reports the checkpoint passed.
 | Plan | Branch | Commit | State |
 |---|---|---|---|
 | F | `critique/f-tests-and-bounds` | `f4edc48` | implemented, native-verified; in-game checkpoint pending on a buildable base |
-| A | `critique/a-error-contract` | | not started; branch from F's tip |
-| B | | | not started |
+| A | `critique/a-error-contract` | (see `git log`) | implemented, native-verified; in-game checkpoint pending on a buildable base |
+| B | `critique/b-source-kinds` | | not started; branch from A's tip |
 | C | | | not started |
 | D | | | not started |
 | E | | | not started |
@@ -274,6 +274,30 @@ What Plan F left for the later plans:
   gate checks staged test files. `tests/_old/` is excluded like `src/_old/`.
 - `RecipeStore.cpp` still carries comments (a `NOLINTNEXTLINE` note and two
   prose comments near `LoadedRecipe`); they are Plan E's.
+
+What Plan A left for the later plans and for the UI owner:
+
+- `recipe/Binders.h` is the JSON boundary; Plan B's index-checked source
+  table lives behind `ParseSourceKind` there. `ParseObjectDocument`,
+  `ReadRows(..., cap)` and `NamedRows(..., whereBuilder, ...)` are the
+  row-reading vocabulary for any new format.
+- The store's applied set is rebuilt by `RebuildApplied` from `g_loaded`;
+  recipes with recipe-level errors are held back (`HasRecipeErrors`,
+  `RowLevel`). Plan B's snapshot work and the UI's recipes page should
+  label a held-back row with `HasRecipeErrors(row.problems)`; a dedicated
+  `RecipeRow::heldBack` field waits on the UI's `Snapshot.h` edits.
+- `RecipeEditor::NewRecipe` and `RenameRecipe` return a request id and
+  finish a `RecipeEditResult`, the same journal Undo and Redo use, so a
+  rename collision is visible to the page that reads `editResults`. The
+  UI wave's uncommitted `RecipeEditor.cpp` rewrite will conflict with those
+  two functions and with the `MessageOf` helper above the journal; the
+  branch side is small and the message routing is what matters.
+- `presets/regions.json` is now in the parser's format (it was in the
+  frozen tree's format and never loaded). Plan E renames it to
+  `presets.json`; UI slice 3F reads `MaskPresets` and can rely on
+  `SerializePresets` for round-trips.
+- `SlotTarget::Problem` returns `std::optional<Diagnostic>`; Plan D's
+  naming pass sees `ProblemText` as the projection helper.
 
 ### Order and dependencies
 

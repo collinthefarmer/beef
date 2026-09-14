@@ -434,6 +434,17 @@ Lab mechanics:
 
 ## Engine events, hooks and the manager
 
+- Recipes with errors (decided 2026-09-13): a row error (`where` starts
+  with `signal`, `curve`, `source`, `mask`, `output` or `variant`,
+  `RowLevel` in `Recipe.cpp`) keeps that row inert and the recipe applied.
+  A recipe-level error (`file`, `recipe`, `clock`, `key ...`, format,
+  metadata) keeps the recipe in the menu's loaded set (`g_loaded`, so it
+  can be fixed in place) but out of the applied set (`LoadedRecipes()`,
+  rebuilt by `RebuildApplied` on every publish). `RecipeStoreStatus::heldBack`
+  counts them and the `recipes: ... held back` log line reports the count.
+  Fixing the error in the menu applies the recipe on the next republish;
+  introducing one withdraws it. The menu reads the same fact from a row's
+  `problems` through `HasRecipeErrors`.
 - `kMaxTextFileBytes` (`engine/TextFile.h`) caps a recipe or presets file at
   4 MiB. A recipe is a few kilobytes; the cap stops a stray binary dropped
   into the recipes folder from being read into memory whole. `ReadText`

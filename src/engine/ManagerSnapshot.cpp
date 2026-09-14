@@ -36,7 +36,8 @@ RE::NiSourceTexture *RetainTexture(Manager::Snapshot &a_snapshot,
 std::vector<Studio::SlotRow> SlotRows(const SlotTarget &a_target) {
   std::vector<Studio::SlotRow> rows;
   for (const SlotState &s : a_target.Slots()) {
-    rows.push_back({s.slot, s.original, s.written, a_target.Problem(s.slot)});
+    rows.push_back(
+        {s.slot, s.original, s.written, ProblemText(a_target.Problem(s.slot))});
   }
   return rows;
 }
@@ -60,11 +61,14 @@ struct GeometrySnapshotBuilder {
         picture.animated = prepared->animated;
         picture.problem = prepared->problem;
         if (Is<ImageSource>(source.kind) && signals && prepared->texture) {
-          const std::string context = std::format("{}:{}:{}", recipe.id,
-              reinterpret_cast<std::uintptr_t>(bound.geometry.get()), source.name);
+          const std::string context = std::format(
+              "{}:{}:{}", recipe.id,
+              reinterpret_cast<std::uintptr_t>(bound.geometry.get()),
+              source.name);
           const auto preview = TextureLab::GetSingleton()->SampledPreview(
-              context, prepared->texture.get(), ResolveSampling(*prepared, *signals),
-              prepared->normalize, prepared->animated);
+              context, prepared->texture.get(),
+              ResolveSampling(*prepared, *signals), prepared->normalize,
+              prepared->animated);
           picture.texture = RetainTexture(snapshot, TextureRef{preview});
           picture.channel = ShaderChannel::kRgb;
         } else {

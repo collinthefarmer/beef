@@ -164,7 +164,7 @@ SlotWriter::GroupState SlotWriter::Capture(Slot a_slot) const {
 }
 
 SlotWriter::Group *SlotWriter::BeginWrite(Slot a_slot, bool a_enableFeature) {
-  if (!MaterialAttached() || !Problem(a_slot).empty())
+  if (!MaterialAttached() || Problem(a_slot))
     return nullptr;
   auto &group = groups_[static_cast<std::size_t>(a_slot)];
   const auto current = Capture(a_slot);
@@ -201,7 +201,16 @@ void SlotWriter::SetFeature(Slot a_slot, bool a_on) {
   }
 }
 
-std::string SlotWriter::Problem(Slot a_slot) const {
+std::optional<Diagnostic> SlotWriter::Problem(Slot a_slot) const {
+  const std::optional<std::string> message = ProblemMessage(a_slot);
+  if (!message) {
+    return std::nullopt;
+  }
+  return MakeDiagnostic(Severity::kError, std::string{SlotName(a_slot)},
+                        *message);
+}
+
+std::optional<std::string> SlotWriter::ProblemMessage(Slot a_slot) const {
   if (!MaterialAttached()) {
     return "material unavailable or replaced";
   }
@@ -241,7 +250,7 @@ std::string SlotWriter::Problem(Slot a_slot) const {
        (binding_.material_->pbrFlags & kPbrTwoLayer))) {
     return "the material carries a coat; coat and subsurface share one map";
   }
-  return {};
+  return std::nullopt;
 }
 
 void SlotWriter::WriteTexture(Slot a_slot, const TextureRef &a_texture) {
@@ -494,8 +503,12 @@ RE::BSLightingShaderProperty *MaterialBinding::Property() const noexcept {
 
 bool MaterialBinding::Private() const noexcept { return privateMaterial_; }
 
-std::string MaterialBinding::Problem(Slot a_slot) const {
-  return slots_ ? slots_->Problem(a_slot) : "material unavailable";
+std::optional<Diagnostic> MaterialBinding::Problem(Slot a_slot) const {
+  if (slots_) {
+    return slots_->Problem(a_slot);
+  }
+  return MakeDiagnostic(Severity::kError, std::string{SlotName(a_slot)},
+                        "material unavailable");
 }
 
 void MaterialBinding::WriteTexture(Slot a_slot, const TextureRef &a_texture) {

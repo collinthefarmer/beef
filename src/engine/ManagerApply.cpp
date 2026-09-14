@@ -347,7 +347,8 @@ std::string SurfaceProblem(LiveGeometry &a_bound, const SlotPlan &a_slot,
     return a_existingProblem;
   }
   SlotTarget *target = TargetFor(a_bound, a_slot.surface);
-  return target ? target->Problem(a_slot.slot) : "the surface is not bound";
+  return target ? ProblemText(target->Problem(a_slot.slot))
+                : std::string{"the surface is not bound"};
 }
 
 void LogStackDiagnostics(const LocatedStackOutput &a_output,

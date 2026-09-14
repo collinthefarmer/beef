@@ -352,14 +352,14 @@ void CheckUniqueNames(const Recipe &a_recipe, std::vector<Diagnostic> &a_out) {
   }
   for (const auto &m : a_recipe.masks) {
     if (!images.insert(m.name).second) {
-      error(std::format("mask {}", m.name),
+      error(MaskWhere(m.name),
             "a source has the same name; per-texel expressions read both by "
             "name");
     }
   }
   for (const auto &s : a_recipe.signals) {
     if (images.contains(s.name)) {
-      warn(std::format("signal {}", s.name),
+      warn(SignalWhere(s.name),
            "a source or mask has the same name; inside masks the image wins");
     }
   }
@@ -368,7 +368,7 @@ void CheckUniqueNames(const Recipe &a_recipe, std::vector<Diagnostic> &a_out) {
     if (v.name.empty()) {
       error("variant", "has no name");
     } else if (!variants.insert(v.name).second) {
-      error(std::format("variant {}", v.name), "duplicate name");
+      error(VariantWhere(v.name), "duplicate name");
     }
   }
 }
@@ -394,7 +394,7 @@ SignalGraph::CurveProgram(std::string_view a_name) const noexcept {
 
 void SignalGraph::ReportSignal(SignalGraph &a_graph, std::string_view a_name,
                                std::string a_message) {
-  Reporter{a_graph.diagnostics_, std::format("signal {}", a_name)}.Error(
+  Reporter{a_graph.diagnostics_, SignalWhere(a_name)}.Error(
       std::move(a_message));
 }
 
@@ -718,7 +718,7 @@ void SignalGraph::PropagateInert(SignalGraph &a_graph) {
       if (a_graph.nodes_[d].inert && !a_graph.nodes_[i].inert) {
         a_graph.nodes_[i].inert = true;
         Reporter{a_graph.diagnostics_,
-                 std::format("signal {}", a_graph.nodes_[i].signal.name)}
+                 SignalWhere(a_graph.nodes_[i].signal.name)}
             .Warn(std::format("inert because '@{}' is",
                               a_graph.nodes_[d].signal.name));
       }
@@ -781,7 +781,7 @@ bool NamesTrigger(const RowTypes &a_rows, std::string_view a_name) noexcept {
 
 std::vector<Diagnostic> CheckCurve(const RowTypes &, const Curve &a_curve) {
   std::vector<Diagnostic> out;
-  const Reporter report{out, std::format("curve {}", a_curve.name)};
+  const Reporter report{out, CurveWhere(a_curve.name)};
   if (const auto program = ParseCurve(a_curve.text); !program) {
     report.Error(program.error());
   }
@@ -791,7 +791,7 @@ std::vector<Diagnostic> CheckCurve(const RowTypes &, const Curve &a_curve) {
 std::vector<Diagnostic> CheckSource(const RowTypes &a_rows,
                                     const Source &a_source) {
   std::vector<Diagnostic> out;
-  const auto where = std::format("source {}", a_source.name);
+  const auto where = SourceWhere(a_source.name);
   const Reporter report{out, where};
   Match(
       a_source.kind,
@@ -851,7 +851,7 @@ std::vector<Diagnostic> CheckSource(const RowTypes &a_rows,
 
 std::vector<Diagnostic> CheckMask(const RowTypes &a_rows, const Mask &a_mask) {
   std::vector<Diagnostic> out;
-  const Reporter report{out, std::format("mask {}", a_mask.name)};
+  const Reporter report{out, MaskWhere(a_mask.name)};
   const auto program = Program::Parse(a_mask.text);
   if (!program) {
     report.Error(program.error());
@@ -1006,7 +1006,7 @@ void CheckOutputs(const RowTypes &a_rows, std::vector<Diagnostic> &a_out) {
   std::map<Surface, std::vector<Slot>> bound;
   std::size_t index = 0;
   for (const auto &o : a_rows.recipe.outputs) {
-    const auto where = std::format("output {}", index++);
+    const auto where = OutputWhere(index++);
     for (auto &d : CheckOutput(a_rows, o, where)) {
       a_out.push_back(std::move(d));
     }
@@ -1034,7 +1034,7 @@ void CheckShell(const RowTypes &a_rows, std::vector<Diagnostic> &a_out) {
 
 void CheckVariants(const RowTypes &a_rows, std::vector<Diagnostic> &a_out) {
   for (const auto &v : a_rows.recipe.variants) {
-    const Reporter report{a_out, std::format("variant {}", v.name)};
+    const Reporter report{a_out, VariantWhere(v.name)};
     for (const auto &[name, value] : v.overrides) {
       const auto type = a_rows.graph.TypeOf(name);
       if (!type) {

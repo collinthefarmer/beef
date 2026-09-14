@@ -251,5 +251,29 @@ int main() {
   ExpectError(std::string(64, '['), "input nested past the depth cap",
               "nested deeper than");
 
+  {
+    const LoadResult badFormat =
+        ParseRecipe(R"({"format": 9999, "keys": ["default"]})", "held");
+    Check(badFormat.HasRecipeErrors(),
+          "a bad format is a recipe-level error that holds the recipe back");
+    const LoadResult badKeys =
+        ParseRecipe(R"({"format": 1, "keys": []})", "held");
+    Check(badKeys.HasRecipeErrors(), "empty keys are a recipe-level error");
+    const LoadResult badSignal = ParseRecipe(
+        R"({"format": 1, "keys": ["default"], "signals": { "x": { "bogus": 1 } }})",
+        "row");
+    Check(badSignal.HasErrors() && !badSignal.HasRecipeErrors(),
+          "one bad signal is a row error and does not hold the recipe back");
+    Check(
+        RowLevel(MakeDiagnostic(Severity::kError, SignalWhere("x"), "m")) &&
+            RowLevel(MakeDiagnostic(Severity::kError, LayerWhere(1, 0), "m")) &&
+            !RowLevel(MakeDiagnostic(Severity::kError, "recipe", "m")) &&
+            !RowLevel(MakeDiagnostic(Severity::kError, "clock", "m")) &&
+            !RowLevel(
+                MakeDiagnostic(Severity::kError, KeyWhere(RecipeKey{}), "m")),
+        "row-level wheres are the signal, curve, source, mask, output and "
+        "variant rows; keys, clock and the recipe itself are not");
+  }
+
   return test::Finish("recipe");
 }

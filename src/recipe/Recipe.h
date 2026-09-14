@@ -457,6 +457,8 @@ struct BipedSlotSpec {
   std::uint32_t slot;
   std::string_view name;
 };
+inline constexpr std::uint32_t kFirstBipedSlot = 30;
+inline constexpr std::uint32_t kLastBipedSlot = 61;
 
 [[nodiscard]] std::optional<std::uint32_t>
 BipedSlotFromName(std::string_view a_name) noexcept;
@@ -847,10 +849,28 @@ struct Reporter {
   }
 };
 
+[[nodiscard]] std::string SignalWhere(std::string_view a_signal);
+[[nodiscard]] std::string CurveWhere(std::string_view a_curve);
+[[nodiscard]] std::string SourceWhere(std::string_view a_source);
+[[nodiscard]] std::string MaskWhere(std::string_view a_mask);
+[[nodiscard]] std::string OutputWhere(std::size_t a_output);
+[[nodiscard]] std::string LayerWhere(std::size_t a_output, std::size_t a_layer);
+[[nodiscard]] std::string VariantWhere(std::string_view a_variant);
+[[nodiscard]] std::string KeyWhere(const RecipeKey &a_key);
+
+[[nodiscard]] bool RowLevel(const Diagnostic &a_diagnostic) noexcept;
+[[nodiscard]] bool
+HasErrors(std::span<const Diagnostic> a_diagnostics) noexcept;
+[[nodiscard]] bool
+HasRecipeErrors(std::span<const Diagnostic> a_diagnostics) noexcept;
+[[nodiscard]] std::string
+ProblemText(const std::optional<Diagnostic> &a_problem);
+
 struct LoadResult {
   std::optional<Recipe> recipe;
   std::vector<Diagnostic> diagnostics;
   [[nodiscard]] bool HasErrors() const noexcept;
+  [[nodiscard]] bool HasRecipeErrors() const noexcept;
 };
 
 [[nodiscard]] LoadResult ParseRecipe(std::string_view a_json,

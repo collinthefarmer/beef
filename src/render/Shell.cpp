@@ -467,17 +467,22 @@ bool ShellBinding::StillOwned() const noexcept {
   return vanilla_ && property->material == vanilla_;
 }
 
-std::string ShellBinding::Problem(Slot a_slot) const {
+std::optional<Diagnostic> ShellBinding::Problem(Slot a_slot) const {
   if (slots_) {
     return slots_->Problem(a_slot);
   }
+  const auto refuse = [&](std::string a_message) {
+    return MakeDiagnostic(Severity::kError, std::string{SlotName(a_slot)},
+                          std::move(a_message));
+  };
   if (a_slot != Slot::kEmissive) {
-    return std::format("a vanilla shell material has no '{}' slot",
-                       SlotName(a_slot));
+    return refuse(std::format("a vanilla shell material has no '{}' slot",
+                              SlotName(a_slot)));
   }
-  return property_ && property_->emissiveColor
-             ? std::string{}
-             : "the shell has no emissive colour storage";
+  if (property_ && property_->emissiveColor) {
+    return std::nullopt;
+  }
+  return refuse("the shell has no emissive colour storage");
 }
 
 void ShellBinding::WriteTexture(Slot a_slot, const TextureRef &a_texture) {

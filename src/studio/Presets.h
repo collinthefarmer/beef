@@ -4,7 +4,6 @@
 
 #include <cstddef>
 #include <cstdint>
-#include <expected>
 #include <optional>
 #include <string>
 #include <string_view>
@@ -28,6 +27,13 @@ inline constexpr std::size_t kMaxPresets = 256;
 inline constexpr std::size_t kMaxPresetBones = 64;
 inline constexpr std::size_t kMaxPresetSources = 16;
 
-[[nodiscard]] std::expected<MaskPresets, std::string>
-ParsePresets(std::string_view a_json);
+struct PresetsLoadResult {
+  std::optional<MaskPresets> presets;
+  std::vector<Diagnostic> diagnostics;
+  [[nodiscard]] bool HasErrors() const noexcept;
+};
+
+[[nodiscard]] std::string PresetWhere(std::string_view a_preset);
+[[nodiscard]] PresetsLoadResult ParsePresets(std::string_view a_json);
+[[nodiscard]] std::string SerializePresets(const MaskPresets &a_presets);
 }
