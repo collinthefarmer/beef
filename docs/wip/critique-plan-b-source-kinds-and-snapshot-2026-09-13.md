@@ -1,6 +1,13 @@
 # Plan B: source kinds by the compiler, and an engine-free snapshot — 2026-09-13
 
-Status: implemented and native-verified 2026-09-14 on `critique/b-source-kinds`
+Status: done. In-game checkpoint passed 2026-09-14 on build `dff63dd0817a-f192084d1834f565-Release`
+(user report: source forms edit and persist, previews draw through the
+opaque handle). A source cannot change kind to image, ripple or distance
+because the blank record fails validation before it is stored; that is
+older than this plan and is UI finding 5 in
+`ui-v2-core-checkpoint-2026-09-13.md`, on slice 2B's `Edits.cpp`.
+
+Implemented and native-verified 2026-09-14 on `critique/b-source-kinds`
 (branched from `cleanup/stage-0` at `6f9750e`); in-game checkpoint pending.
 Commits: `6fb02d2` (B1, B2, tidy baseline), `8f80b67` (B4), plus the docs
 commit that carries this block.

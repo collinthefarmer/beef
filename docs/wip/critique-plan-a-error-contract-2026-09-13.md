@@ -1,6 +1,21 @@
 # Plan A: one error contract and a published Reader — 2026-09-13
 
-Status: implemented 2026-09-14 on branch `critique/a-error-contract`
+Status: done. In-game checkpoint passed 2026-09-14 on build `dff63dd0817a-f192084d1834f565-Release`
+(with `dff63dd`): a recipe with `format 9999` loads for the menu, logs
+`held back from the applied set`, and the summary counts `1 held back`; a
+recipe with one unknown signal kind loads with that row's error and stays
+applied. The parser's earlier stop on a newer format (which left no recipe
+and logged the file as unreadable) was corrected by `dff63dd`. Re-admitting
+a repaired recipe is verified natively and by reload only: the user decided
+2026-09-14 that in-game repair of a broken recipe is not a supported path
+(the plugin never writes a file its loader refuses), so `7450b02`, which
+made Save re-validate, was reverted in `1948ac4`. A refused rename is
+handled by the store (log: `a recipe named 'abc' already exists`) but the
+popup shows stale text and hides the refusal; that is UI finding 6 in
+`ui-v2-core-checkpoint-2026-09-13.md`. Save, revert and create work; the
+presets line reports 21 presets.
+
+Implemented 2026-09-14 on branch `critique/a-error-contract`
 (branched from Plan F's tip); awaiting the in-game checkpoint, which needs
 a buildable base (see the handoff's Repository state).
 

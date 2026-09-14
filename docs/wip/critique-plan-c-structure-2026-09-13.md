@@ -1,6 +1,11 @@
 # Plan C: layering and file structure — 2026-09-13
 
-Status: implemented and verified natively 2026-09-14 on
+Status: done. In-game checkpoint passed 2026-09-14 on build `dff63dd0817a-f192084d1834f565-Release`:
+stacks with animated, ripple and material-clusters sources rendered as
+before; no `TextureLab` or `RenderTargetPool` failure in the log or the
+trace (0 presenter rejections, 0 lease rejections).
+
+Implemented and verified natively 2026-09-14 on
 `critique/c-structure`, branched from `cleanup/stage-0` at `4d2dc16`.
 Five commits, one per step group. Install and the in-game checkpoint are
 batched into the single pass after the last plan.

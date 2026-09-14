@@ -2,6 +2,11 @@
 
 ## Status
 
+Done. In-game checkpoint passed 2026-09-14 on build `dff63dd0817a-f192084d1834f565-Release`: one
+load-and-equip cycle with the same recipe load, placement and render lines
+as before; no new lines and no warning or error outside the recipes the
+checkpoint planted.
+
 Implemented 2026-09-14 on `critique/d-naming`, branched from
 `cleanup/stage-0` at `3534771`. Nine commits:
 

@@ -2,6 +2,13 @@
 
 ## Status
 
+Done. In-game checkpoint passed 2026-09-14 on build `dff63dd0817a-f192084d1834f565-Release`: the stale
+`regions.json` was deleted from the plugin folder by hand and the log reads
+`presets: 21 mask presets from ...\presets.json`, the count the previous
+build reported. The five constants with no recorded reason stay recorded as
+"not recorded" in `REFERENCE.md`; the user has not answered the batched
+question, and each line is written so the answer replaces one sentence.
+
 Implemented 2026-09-14 on `critique/e-docs`, branched from `cleanup/stage-0`
 at `c357f26`. Five commits: `ea88b12` (E1), `4e69da4` (E2), `314bb99` (E3),
 `1c0c3da` (E4), `3ab6c3f` (the tidy baseline E4's line shifts moved), and
