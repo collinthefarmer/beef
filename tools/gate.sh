@@ -92,10 +92,8 @@ fi
 # string literal is not one. src/_old, src/extern and src/cs are frozen or
 # vendored and keep their comments. A NOLINT marker is a tool directive rather
 # than prose; the one in src/engine/RecipeStore.cpp is the only one and its
-# reason is in REFERENCE.md. src/studio and src/menu are excluded until the UI
-# v2 plan's complete-editor checkpoint, which owns those files; delete them from
-# the pattern then (exclusion added 2026-09-14, critique Plan E).
-mapfile -t commented < <(grep -rnE '(^|[[:space:];}])//' src --include='*.cpp' --include='*.h' | grep -Ev '^src/(_old|extern|cs|studio|menu)/' | grep -v NOLINT)
+# reason is in REFERENCE.md.
+mapfile -t commented < <(grep -rnE '(^|[[:space:];}])//' src --include='*.cpp' --include='*.h' | grep -Ev '^src/(_old|extern|cs)/' | grep -v NOLINT)
 if [ ${#commented[@]} -gt 0 ]; then
 	{
 		printf '%s\n' "${commented[@]}"

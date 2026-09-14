@@ -86,8 +86,6 @@ struct PreviewImage {
 }
 
 void FinishPreviewDraw(const PreviewImage &a_image) {
-  // DX11's ImGui backend invokes this after submitting the preceding image.
-  // It only acknowledges consumption; collection releases leases.
   ImGui::ImDrawListManager::AddCallback(
       ImGui::GetWindowDrawList(),
       [](const ImGuiMCP::ImDrawList *, const ImGuiMCP::ImDrawCmd *a_command) {
