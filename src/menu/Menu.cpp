@@ -167,7 +167,6 @@ struct IntentPerformer {
   void operator()(const ClearMask &) const {}
   void operator()(const UndoMask &) const {}
   void operator()(const RedoMask &) const {}
-  void operator()(const ScratchRebuilt &) const {}
   void operator()(const UpdatePaint &i) const {
     manager->Editor().UpdatePaint(i.request);
   }
