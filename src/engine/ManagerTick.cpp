@@ -191,9 +191,17 @@ void PoseShell(LiveGeometry &a_bound, LiveActor &a_state,
   }
   const ShellSettings &shell = instance.recipe->shell;
   SignalState &signals = *instance.signals;
-  a_bound.shell->Pose(
-      signals.Resolve(shell.pose.inflate), signals.Resolve(shell.alpha),
-      signals.Resolve(shell.rimPower), signals.Resolve(shell.emissive));
+  const ShellPoseValues pose{
+      .inflate = signals.Resolve(shell.pose.inflate),
+      .offset = signals.Resolve(shell.pose.offset),
+      .scale = signals.Resolve(shell.pose.scale),
+      .scalePoint = shell.pose.scalePoint,
+      .spin = signals.Resolve(shell.pose.spin),
+      .spinAxis = shell.pose.spinAxis,
+  };
+  a_bound.shell->Pose(pose, signals.Resolve(shell.alpha),
+                      signals.Resolve(shell.rimPower),
+                      signals.Resolve(shell.emissive));
   a_bound.shell->SetVisible(a_view.RecipeShown(instance.recipe->id));
 }
 

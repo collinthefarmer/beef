@@ -1,5 +1,6 @@
 #pragma once
 
+#include "mesh/ShellPose.h"
 #include "render/SkinPalette.h"
 #include "render/TextureRef.h"
 
@@ -158,7 +159,7 @@ public:
   void WriteSubsurface(const Vec3 &a_color, float a_thickness) override;
   [[nodiscard]] std::vector<SlotState> Slots() const override;
 
-  void Pose(const Vec3 &a_inflate, float a_alpha, float a_rimPower,
+  void Pose(const ShellPoseValues &a_pose, float a_alpha, float a_rimPower,
             float a_emissive);
   void SetVisible(bool a_visible);
   [[nodiscard]] bool StillOwned() const noexcept;
@@ -180,7 +181,12 @@ private:
   std::optional<SlotWriter> slots_;
   bool tracedPose_ = false;
   std::uint8_t tracedPoseCalls_ = 0;
-  Vec3 lastInflate_{-1.0f, -1.0f, -1.0f};
+  ShellPoseValues lastPose_{.inflate{-1.0f, -1.0f, -1.0f},
+                            .offset{0.0f, 0.0f, 0.0f},
+                            .scale = 1.0f,
+                            .scalePoint{0.0f, 0.0f, 0.0f},
+                            .spin = 0.0f,
+                            .spinAxis{0.0f, 0.0f, 1.0f}};
   std::string description_;
 };
 

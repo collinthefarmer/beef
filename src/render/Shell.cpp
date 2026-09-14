@@ -90,19 +90,30 @@ void TraceShellState(std::string_view a_role, RE::BSGeometry *a_geometry) {
   });
 }
 
-RE::NiTransform InflatedTransform(const RE::NiTransform &rest,
-                                  const Vec3 &inflate) {
-  const float axis[3]{1.0f + inflate.x, 1.0f + inflate.y, 1.0f + inflate.z};
-  RE::NiTransform live = rest;
+RestSkinToBone ToRestSkinToBone(const RE::NiTransform &a_transform) {
+  RestSkinToBone out;
   for (int row = 0; row < 3; ++row) {
     for (int col = 0; col < 3; ++col) {
-      live.rotate.entry[row][col] = rest.rotate.entry[row][col] * axis[row];
+      out.rotate[row][col] = a_transform.rotate.entry[row][col];
     }
   }
-  live.translate.x = rest.translate.x * axis[0];
-  live.translate.y = rest.translate.y * axis[1];
-  live.translate.z = rest.translate.z * axis[2];
-  return live;
+  out.translate = Vec3{a_transform.translate.x, a_transform.translate.y,
+                       a_transform.translate.z};
+  out.scale = a_transform.scale;
+  return out;
+}
+
+RE::NiTransform ToNiTransform(const RestSkinToBone &a_transform) {
+  RE::NiTransform out;
+  for (int row = 0; row < 3; ++row) {
+    for (int col = 0; col < 3; ++col) {
+      out.rotate.entry[row][col] = a_transform.rotate[row][col];
+    }
+  }
+  out.translate = RE::NiPoint3{a_transform.translate.x, a_transform.translate.y,
+                               a_transform.translate.z};
+  out.scale = a_transform.scale;
+  return out;
 }
 
 RE::NiColor ToNi(const Vec3 &a_v) { return RE::NiColor{a_v.x, a_v.y, a_v.z}; }
@@ -560,8 +571,8 @@ std::vector<SlotState> ShellBinding::Slots() const {
   return slots_ ? slots_->Slots() : std::vector<SlotState>{};
 }
 
-void ShellBinding::Pose(const Vec3 &a_inflate, float a_alpha, float a_rimPower,
-                        float a_emissive) {
+void ShellBinding::Pose(const ShellPoseValues &a_pose, float a_alpha,
+                        float a_rimPower, float a_emissive) {
   auto *property = property_.get();
   if (!StillOwned()) {
     return;
@@ -570,14 +581,24 @@ void ShellBinding::Pose(const Vec3 &a_inflate, float a_alpha, float a_rimPower,
     TraceShellState("clone_before_first_pose", clone_.get());
     tracedPose_ = true;
     Trace::Safely([&] {
-      Trace::Emit(Trace::Event::kShell,
-                  {{"action", "first_pose"},
-                   {"clone", Trace::Pointer(clone_.get())},
-                   {"skin_data", Trace::Pointer(skinData_.get())},
-                   {"inflate", std::format("{},{},{}", a_inflate.x, a_inflate.y,
-                                           a_inflate.z)},
-                   {"alpha", std::to_string(a_alpha)},
-                   {"emissive", std::to_string(a_emissive)}});
+      Trace::Emit(
+          Trace::Event::kShell,
+          {{"action", "first_pose"},
+           {"clone", Trace::Pointer(clone_.get())},
+           {"skin_data", Trace::Pointer(skinData_.get())},
+           {"inflate", std::format("{},{},{}", a_pose.inflate.x,
+                                   a_pose.inflate.y, a_pose.inflate.z)},
+           {"offset", std::format("{},{},{}", a_pose.offset.x, a_pose.offset.y,
+                                  a_pose.offset.z)},
+           {"scale", std::to_string(a_pose.scale)},
+           {"scale_point",
+            std::format("{},{},{}", a_pose.scalePoint.x, a_pose.scalePoint.y,
+                        a_pose.scalePoint.z)},
+           {"spin_turns", std::to_string(a_pose.spin)},
+           {"spin_axis", std::format("{},{},{}", a_pose.spinAxis.x,
+                                     a_pose.spinAxis.y, a_pose.spinAxis.z)},
+           {"alpha", std::to_string(a_alpha)},
+           {"emissive", std::to_string(a_emissive)}});
     });
   }
   property->SetMaterialAlpha(std::clamp(a_alpha, 0.0f, 1.0f));
@@ -586,12 +607,12 @@ void ShellBinding::Pose(const Vec3 &a_inflate, float a_alpha, float a_rimPower,
     property->emissiveMult = a_emissive;
   }
   if (skinData_ && skinData_->boneData && !restSkinToBone_.empty() &&
-      !(a_inflate == lastInflate_)) {
-    lastInflate_ = a_inflate;
+      !(a_pose == lastPose_)) {
+    lastPose_ = a_pose;
     for (std::uint32_t i = 0;
          i < restSkinToBone_.size() && i < skinData_->bones; ++i) {
-      skinData_->boneData[i].skinToBone =
-          InflatedTransform(restSkinToBone_[i].skinToBone, a_inflate);
+      skinData_->boneData[i].skinToBone = ToNiTransform(PosedTransform(
+          ToRestSkinToBone(restSkinToBone_[i].skinToBone), a_pose));
     }
   }
   if (tracedPoseCalls_ < 30) {

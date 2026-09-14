@@ -52,11 +52,13 @@ and live.
 
 **`ImportDefaults`** — twenty fields, both call sites pass nothing.
 
-**Five of six `ShellPose` fields.** Resolved by implementation, not deletion
-(decided 2026-09-13). Only `inflate` reached the engine; `offset`, `scale`,
-`scalePoint`, `spin` and `spinAxis` were parsed, validated, editable and never
-applied. Critique Plan G makes the shell honour all six, so the schema, reader,
-writer and form stay as they are.
+**Five of six `ShellPose` fields: implemented** (decided 2026-09-13, done by
+critique Plan G on 2026-09-14). `offset`, `scale`, `scalePoint`, `spin` and
+`spinAxis` had been parsed, validated, editable and never applied; only
+`inflate` reached the engine. `render/Shell.cpp`'s `PosedTransform`
+(`mesh/ShellPose.h`) now composes all six onto the shell's per-bone
+skin-to-bone transform, so the schema, reader, writer and form stay as they
+are.
 
 **`variants`.** ~80 mentions across eight files, fully plumbed;
 `ApplyVariant` is called only from tests. `schema/example-magicka.json`

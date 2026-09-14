@@ -1014,6 +1014,9 @@ void CheckShell(const RowTypes &a_rows, std::vector<Diagnostic> &a_out) {
   CheckVector<3>(a_rows, pose, s.pose.offset, "offset", false);
   CheckScalar(a_rows, pose, s.pose.scale, "scale");
   CheckScalar(a_rows, pose, s.pose.spin, "spin");
+  if (s.pose.spinAxis == Vec3{0.0f, 0.0f, 0.0f}) {
+    pose.Error("spinAxis must not be zero");
+  }
 }
 
 void CheckVariants(const RowTypes &a_rows, std::vector<Diagnostic> &a_out) {
