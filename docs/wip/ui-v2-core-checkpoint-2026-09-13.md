@@ -145,7 +145,15 @@ later and not listed here. Three findings for the UI owner:
    that result, so the user sees no reason. The popup should stay open on
    a refusal and draw the result's error under the field. This is the
    case Plan A's checkpoint was written to catch; Plan A's routing works
-   and the presentation does not.
+   and the presentation does not. Observed too: the refusal appeared in
+   the file-actions strip only after changing recipes and changing back.
+   The strip looks up the result by the resolved recipe id, and after the
+   preceding successful rename (`Skyrim-92DEC` to `defg`) the selection
+   still named the old id, so `ResolveSelection` re-picked a row through
+   the piece until `defg` was reselected. A successful rename must move
+   `MenuState::selection.recipeID` to the new id (the `RecipeEditResult`
+   for the rename can carry it), and the popup should draw its own result
+   rather than depend on the page's resolved row.
 
 Recipe-level rename and the add-resource menu work. Findings 2 and 3 are
 regressions from slice 1C's replacement of the resource tables and belong
