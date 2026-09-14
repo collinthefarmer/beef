@@ -243,7 +243,7 @@ is not done until the user reports the checkpoint passed.
 | A | `critique/a-error-contract` | `f69d908`, merged in `303d352` | merged into `cleanup/stage-0`; in-game checkpoint pending (installed build) |
 | B | `critique/b-source-kinds` | `6fb02d2`, `8f80b67`, plus a docs commit | implemented and native-verified on `cleanup/stage-0` (`6f9750e`); DLL builds; B3 deferred to the UI complete-editor checkpoint; sanitized suite, push gate, install and in-game checkpoint wait for the single pass after the last plan |
 | C | `critique/c-structure` | `8233030`, `8ddcc08`, `4dfa74d`, `6453b63`, `83fe74b`, `eb77f40`, plus a docs commit | implemented and native-verified on `cleanup/stage-0` (`4d2dc16`); DLL builds; `tools/layers.sh` is the one layer graph and the push gate runs it; C3 step 3 and C5 step 1 deferred to the UI complete-editor checkpoint; push gate, install and in-game checkpoint wait for the single pass after the last plan |
-| D | | | not started |
+| D | `critique/d-naming` | `b542ca1`, `81fd23b`, `850989d`, `638c052`, `51c95fa`, `9bbc313`, `4438acd`, `f6b3d3d`, plus a docs commit | implemented and verified on `critique/d-naming` (66 suites green plain and sanitized, `tools/layers.sh` green, DLL builds, commit gate green on every commit); the `MenuState.h` extraction and `ScratchRebuilt` deferred to UI slices 1B and 3E; push gate, install and in-game checkpoint wait for the single pass after the last plan |
 | E | | | not started |
 | G | | | deferred until UI slice 2A and the six plans |
 
@@ -436,6 +436,21 @@ Append one line per plan as it completes: date, plan letter, branch, outcome.
   directs. Tidy baseline regenerated for the moved code, 57 findings before
   and after, after fixing `tools/tidy.sh` to prune the cached result of a
   source that has been moved or deleted.
+- 2026-09-14, D, `critique/d-naming`: every "safe now" rename plus the one
+  "coordinate" rename (`Status::runtimeLab` -> `textureLab`, one line in
+  `menu/Menu.cpp` and one in `studio/Snapshot.h`). `ActorState` -> `ActorPlan`,
+  `LiveActor::structure` -> `plan`, `OutputIndex` -> `OutputId`,
+  `SlotSource`/`LightSource` -> `SlotContributor`/`LightContributor`,
+  `PartitionBake::slot` -> `bipedSlot` behind a new `enum class BipedSlot`,
+  `ResourceSlots` -> `TargetPool`, `SlotWriter::binding_` -> `material_` (with
+  `PbrMaterial::material_` -> `layout_`), `ManagerShared` split into
+  `engine/Clock` and `engine/LiveActor.cpp` and deleted, `RuntimeTextures.h`
+  -> `TextureLab.h` with its three sources, the glob matcher's indices, and
+  the glossary in `docs/conventions.md`. 66 suites green plain and sanitized,
+  `tools/layers.sh` green, DLL builds, commit gate green on every commit.
+  Tidy baseline regenerated for the renamed files, 57 findings before and
+  after. The `MenuState.h` extraction and `ScratchRebuilt` are deferred; the
+  in-game checkpoint joins the batched pass.
 
 What Plan B left for the later plans and for the UI owner:
 
@@ -500,3 +515,30 @@ What Plan C left for the later plans and for the UI owner:
   `DescribeVisitor`, which the plan says that file keeps. Splitting those is
   a design question, not a move; it belongs in a follow-up beside the
   `Manager` decomposition.
+
+What Plan D left for the later plans and for the UI owner:
+
+- `docs/conventions.md` now carries a **glossary** under House rules: one
+  line per word the whole codebase must use one way. Plan E documents
+  against those words; a new name that means something already in the table
+  is an edit to the table, not a second word.
+- The names as they now stand, for Plan E's doc pass: `ActorPlan`,
+  `OutputId`, `SlotContributor`/`LightContributor`, `BipedSlot`,
+  `PartitionBake::bipedSlot`, `TargetPool`, `engine/Clock.h`,
+  `engine/LiveActor.cpp`, `render/TextureLab.h` with
+  `TextureLabLifecycle/Pass/Readback.cpp`, `Status::textureLab`,
+  `PbrMaterial::layout_`.
+- `REFERENCE.md` gained three entries this pass: the two biped-slot
+  representations (mesh), `TargetPool`'s lease invariant (planners), and
+  `RetireActorEffects`'s clearing order (engine). They replace comments
+  that were deleted, so Plan E should not treat them as duplicates.
+- Plan G reads the shell form in `studio/Forms.cpp`, which this pass touched
+  in four lines (`BipedSlotNames` and the partition field's parse). Nothing
+  in the shell form itself changed.
+- `docs/wip/cleanup-checkpoint-2026-09-13.md:36` still names `ResourceSlots`,
+  a symbol that no longer exists. It is a dated checkpoint record; Plan E
+  decides whether to correct it or leave it as history.
+- Deferred to the UI complete-editor checkpoint: the `MenuState.h`
+  extraction (`MenuState`, `FiringDraft`, `ResourceTab`, `State()` still in
+  `studio/Intent.h`; `State()` is the last singleton under `studio/`) and
+  `ScratchRebuilt`, which UI slice 3E owns.

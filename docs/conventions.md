@@ -142,7 +142,12 @@ value in enum order, with `static_assert(Complete(table, kFooCount))`
 `kScalarFields`, `kMaterialChannels`). `Complete` (`Core.h`) checks that the
 table has `kFooCount` rows and that every value below the count appears in
 exactly one row, so `NameOf`'s `"?"` branch is unreachable for a table that
-passes. Every enum in `Recipe.h` has a `kFooCount` beside it for that assert.
+passes. Every enum in `Recipe.h` that names a closed set has a `kFooCount`
+beside it for that assert. An `enum class` with no enumerators is not a
+closed set but a typed value or index space (`BipedSlot`, `GeometryId`,
+`SlotContributor`); it carries no table and no count, and the boundary that
+builds one is what keeps it in range.
+
 For variant closed sets, the table is either a `Named<Id>` table over an id
 enum whose enumerators follow alternative order (`kSourceKindWords` over
 `SourceKindId`, with `SourceKindIdOf(kind)` reading the id from
