@@ -17,6 +17,8 @@
 #include <cstdint>
 #include <optional>
 #include <string>
+#include <type_traits>
+#include <variant>
 #include <vector>
 
 namespace BetterEnchantmentEffects::Studio {
@@ -47,7 +49,7 @@ struct TextRow {
 struct LayerRow {
   std::string source;
   std::string mask;
-  std::string blend;
+  Blend blend = Blend::kReplace;
   float opacity = 1.0f;
   std::string opacityText;
   std::string color;
@@ -114,10 +116,7 @@ struct GeometryRow {
   std::vector<OutputRow> outputs;
 };
 
-struct SourceRow {
-  std::string name;
-  ValueType type = ValueType::kScalar;
-  std::string kind;
+struct ImageSourceRow {
   std::string path;
   std::string channel;
   std::string space;
@@ -127,21 +126,70 @@ struct SourceRow {
   std::string mirrorV;
   std::string transpose;
   std::string mip;
+};
+
+struct MaterialSourceRow {
   std::string material;
+};
+
+struct BakeSourceRow {
   std::string bake;
   std::string partition;
   std::string bones;
+};
+
+struct UvSourceRow {
   std::string axis;
+};
+
+struct DistanceSourceRow {
   std::string from;
+};
+
+struct RippleSourceRow {
   std::string trigger;
   std::string speed;
   std::string width;
   std::string decay;
   std::string shape;
+};
+
+struct MaterialClustersSourceRow {
   std::string clusters;
   std::string weights;
   std::string seed;
   std::string iterations;
+};
+
+using SourceRowKind =
+    std::variant<ImageSourceRow, MaterialSourceRow, BakeSourceRow, UvSourceRow,
+                 DistanceSourceRow, RippleSourceRow, MaterialClustersSourceRow>;
+static_assert(std::variant_size_v<SourceRowKind> == kSourceKindCount);
+static_assert(std::is_same_v<std::variant_alternative_t<0, SourceRowKind>,
+                             ImageSourceRow> &&
+                  std::is_same_v<std::variant_alternative_t<1, SourceRowKind>,
+                                 MaterialSourceRow> &&
+                  std::is_same_v<std::variant_alternative_t<2, SourceRowKind>,
+                                 BakeSourceRow> &&
+                  std::is_same_v<std::variant_alternative_t<3, SourceRowKind>,
+                                 UvSourceRow> &&
+                  std::is_same_v<std::variant_alternative_t<4, SourceRowKind>,
+                                 DistanceSourceRow> &&
+                  std::is_same_v<std::variant_alternative_t<5, SourceRowKind>,
+                                 RippleSourceRow> &&
+                  std::is_same_v<std::variant_alternative_t<6, SourceRowKind>,
+                                 MaterialClustersSourceRow>,
+              "SourceRowKind alternative order must match SourceKindId");
+
+[[nodiscard]] inline SourceKindId
+SourceRowKindId(const SourceRowKind &a_kind) noexcept {
+  return static_cast<SourceKindId>(a_kind.index());
+}
+
+struct SourceRow {
+  std::string name;
+  ValueType type = ValueType::kScalar;
+  SourceRowKind kind = MaterialSourceRow{};
   std::size_t references = 0;
 };
 
@@ -181,7 +229,7 @@ struct ShellRow {
 
 struct RecipeRow {
   std::string id;
-  std::string key;
+  RecipeKey matchedKey;
   std::vector<RecipeKey> keys;
   int priority = 0;
   float clockSpeed = 1.0f;

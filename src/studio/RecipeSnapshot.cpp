@@ -31,7 +31,7 @@ RecipeRow BuildRecipeRow(const RecipeRowInput &a_input) {
   const Recipe &recipe = a_input.recipe;
   RecipeRow r;
   r.id = recipe.id;
-  r.key = a_input.key.ToString();
+  r.matchedKey = a_input.key;
   r.keys = recipe.keys;
   r.priority = a_input.priority;
   r.clockSpeed = recipe.clock.speed;

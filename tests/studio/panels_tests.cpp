@@ -118,7 +118,7 @@ void TestSignalFormPulse() {
 void TestSourceRoundTrip() {
   const Source source{"mat", MaterialSource{MaterialChannel::kRoughness}};
   const SourceRow row = SourceRowOf(source, 3);
-  Check(row.kind == "material" && row.references == 3,
+  Check(Is<MaterialSourceRow>(row.kind) && row.references == 3,
         "SourceRowOf projects a material source");
   const std::optional<SourceKind> back = SourceKindOf(row);
   const MaterialSource *material = back ? Get<MaterialSource>(*back) : nullptr;

@@ -1139,13 +1139,13 @@ struct SourceContext {
   const std::string &name;
   const SourceKind &record;
   const SignalNames &names;
-  const SourceRow &source;
 };
 
-void ImageFields(std::vector<FormField> &a_form, const SourceContext &a_ctx) {
+void ImageFields(std::vector<FormField> &a_form, const SourceContext &a_ctx,
+                 const ImageSourceRow &a_source) {
   const std::string &name = a_ctx.name;
   const SourceKind &record = a_ctx.record;
-  const SourceRow &source = a_ctx.source;
+  const ImageSourceRow &source = a_source;
   a_form.push_back(TextedField(
       {.name = "path",
        .kind = FieldKind::kText,
@@ -1194,52 +1194,55 @@ void ImageFields(std::vector<FormField> &a_form, const SourceContext &a_ctx) {
        .units = "mip level"}));
 }
 
-void MaterialFields(std::vector<FormField> &a_form,
-                    const SourceContext &a_ctx) {
+void MaterialFields(std::vector<FormField> &a_form, const SourceContext &a_ctx,
+                    const MaterialSourceRow &a_source) {
   a_form.push_back(ChoiceField(
-      "channel", a_ctx.source.material, WordsOf(kMaterialChannels),
+      "channel", a_source.material, WordsOf(kMaterialChannels),
       BindSourceMember(a_ctx.name, a_ctx.record, &MaterialSource::channel,
                        ParseMaterialChannel)));
 }
 
-void BakeFields(std::vector<FormField> &a_form, const SourceContext &a_ctx) {
+void BakeFields(std::vector<FormField> &a_form, const SourceContext &a_ctx,
+                const BakeSourceRow &a_source) {
   const std::string &name = a_ctx.name;
   const SourceKind &record = a_ctx.record;
   a_form.push_back(ChoiceField(
-      "bake", a_ctx.source.bake, WordsOf(kBakeKindWords),
+      "bake", a_source.bake, WordsOf(kBakeKindWords),
       BindSourceMember(name, record, &BakeSource::bake, DefaultBakeKind)));
-  if (a_ctx.source.bake == "partition") {
-    a_form.push_back(ChoiceField("partition", a_ctx.source.partition,
+  if (a_source.bake == "partition") {
+    a_form.push_back(ChoiceField("partition", a_source.partition,
                                  BipedSlotNames(),
                                  BindBakePartition(name, record)));
-  } else if (a_ctx.source.bake == "boneWeight") {
+  } else if (a_source.bake == "boneWeight") {
     a_form.push_back(TextedField({.name = "bones",
                                   .kind = FieldKind::kText,
-                                  .text = a_ctx.source.bones,
+                                  .text = a_source.bones,
                                   .bind = BindBakeBones(name, record)}));
   }
 }
 
-void UvFields(std::vector<FormField> &a_form, const SourceContext &a_ctx) {
-  a_form.push_back(ChoiceField("axis", a_ctx.source.axis, WordsOf(kUvAxes),
+void UvFields(std::vector<FormField> &a_form, const SourceContext &a_ctx,
+              const UvSourceRow &a_source) {
+  a_form.push_back(ChoiceField("axis", a_source.axis, WordsOf(kUvAxes),
                                BindSourceMember(a_ctx.name, a_ctx.record,
                                                 &UvSource::axis, ParseUvAxis)));
 }
 
-void DistanceFields(std::vector<FormField> &a_form,
-                    const SourceContext &a_ctx) {
+void DistanceFields(std::vector<FormField> &a_form, const SourceContext &a_ctx,
+                    const DistanceSourceRow &a_source) {
   a_form.push_back(TextedField(
       {.name = "from",
        .kind = FieldKind::kText,
-       .text = a_ctx.source.from,
+       .text = a_source.from,
        .bind = BindSourceMember(a_ctx.name, a_ctx.record, &DistanceSource::from,
                                 DistanceFromOf)}));
 }
 
-void RippleFields(std::vector<FormField> &a_form, const SourceContext &a_ctx) {
+void RippleFields(std::vector<FormField> &a_form, const SourceContext &a_ctx,
+                  const RippleSourceRow &a_source) {
   const std::string &name = a_ctx.name;
   const SourceKind &record = a_ctx.record;
-  const SourceRow &source = a_ctx.source;
+  const RippleSourceRow &source = a_source;
   a_form.push_back(ReferenceField(
       {.name = "trigger",
        .text = source.trigger,
@@ -1272,11 +1275,11 @@ void RippleFields(std::vector<FormField> &a_form, const SourceContext &a_ctx) {
       BindSourceMember(name, record, &RippleSource::shape, ParseRippleShape)));
 }
 
-void ClustersFields(std::vector<FormField> &a_form,
-                    const SourceContext &a_ctx) {
+void ClustersFields(std::vector<FormField> &a_form, const SourceContext &a_ctx,
+                    const MaterialClustersSourceRow &a_source) {
   const std::string &name = a_ctx.name;
   const SourceKind &record = a_ctx.record;
-  const SourceRow &source = a_ctx.source;
+  const MaterialClustersSourceRow &source = a_source;
   FormField clusters = ParamField(
       {.name = "clusters",
        .kind = FieldKind::kScalar,
@@ -1318,28 +1321,32 @@ std::vector<FormField> SourceForm(const SourceRow &a_source,
                                   const SignalNames &a_names) {
   std::vector<FormField> form;
   const std::string &name = a_source.name;
-  form.push_back(ChoiceField("kind", a_source.kind, WordsOf(kSourceKindWords),
-                             BindSourceKindChoice(name)));
+  form.push_back(ChoiceField(
+      "kind",
+      std::string{NameOf(kSourceKindWords, SourceRowKindId(a_source.kind))},
+      WordsOf(kSourceKindWords), BindSourceKindChoice(name)));
   const std::optional<SourceKind> record = SourceKindOf(a_source);
   if (!record) {
     return form;
   }
-  const SourceContext ctx{name, *record, a_names, a_source};
-  if (a_source.kind == "image") {
-    ImageFields(form, ctx);
-  } else if (a_source.kind == "material") {
-    MaterialFields(form, ctx);
-  } else if (a_source.kind == "bake") {
-    BakeFields(form, ctx);
-  } else if (a_source.kind == "uv") {
-    UvFields(form, ctx);
-  } else if (a_source.kind == "distance") {
-    DistanceFields(form, ctx);
-  } else if (a_source.kind == "ripple") {
-    RippleFields(form, ctx);
-  } else if (a_source.kind == "materialClusters") {
-    ClustersFields(form, ctx);
-  }
+  const SourceContext ctx{name, *record, a_names};
+  Match(
+      a_source.kind,
+      [&](const ImageSourceRow &a_image) { ImageFields(form, ctx, a_image); },
+      [&](const MaterialSourceRow &a_material) {
+        MaterialFields(form, ctx, a_material);
+      },
+      [&](const BakeSourceRow &a_bake) { BakeFields(form, ctx, a_bake); },
+      [&](const UvSourceRow &a_uv) { UvFields(form, ctx, a_uv); },
+      [&](const DistanceSourceRow &a_distance) {
+        DistanceFields(form, ctx, a_distance);
+      },
+      [&](const RippleSourceRow &a_ripple) {
+        RippleFields(form, ctx, a_ripple);
+      },
+      [&](const MaterialClustersSourceRow &a_clusters) {
+        ClustersFields(form, ctx, a_clusters);
+      });
   return form;
 }
 
