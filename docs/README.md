@@ -35,6 +35,7 @@ Open work. Each carries its own status line.
 - [wip/ui-primitives-ownership.md](wip/ui-primitives-ownership.md) — which
   `.cpp` owns each function of the UI-primitive headers under `studio/`.
 - [wip/critique-handoff-2026-09-13.md](wip/critique-handoff-2026-09-13.md) — the
+- `wip/critique-followup-handoff-2026-09-14.md` — where to pick up after Plans F to E: Plan G, the eight UI findings, the deferred items, the constants question, the closing critique re-run.
   2026-09-13 critique's findings, the seven plans, their order, how each is
   verified, and the decisions closed with the user.
 - [wip/critique-plan-f-tests-and-bounds-2026-09-13.md](wip/critique-plan-f-tests-and-bounds-2026-09-13.md)
