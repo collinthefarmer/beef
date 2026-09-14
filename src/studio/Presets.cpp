@@ -1,169 +1,164 @@
 #include "studio/Presets.h"
 
+#include "recipe/Binders.h"
 #include "recipe/Expression.h"
 #include "recipe/Recipe.h"
-
-#include <nlohmann/json.hpp>
 
 #include <format>
 
 namespace BetterEnchantmentEffects::Studio {
 namespace {
-using json = nlohmann::ordered_json;
+using PresetSource = std::pair<std::string, SourceKind>;
 
-[[nodiscard]] std::optional<SourceKind> SourceFromJson(const json &a_value) {
-  if (!a_value.is_object() || a_value.size() != 1) {
+std::string PresetLabel(const json &a_entry, std::size_t a_index) {
+  std::vector<Diagnostic> ignored;
+  Reader head(a_entry, Reporter{ignored, ""});
+  const std::string name = head.String("name").value_or(std::string{});
+  return name.empty() ? std::to_string(a_index) : name;
+}
+
+void ReadName(Reader &a_r, MaskPreset &a_preset) {
+  a_preset.name = a_r.Required("name");
+  if (!a_preset.name.empty() && !IsName(a_preset.name)) {
+    a_r.Context().Error(
+        std::format("'name' must be an identifier (letters, digits, '_'): '{}'",
+                    a_preset.name));
+    a_preset.name.clear();
+  }
+}
+
+void ReadExpression(Reader &a_r, MaskPreset &a_preset) {
+  const auto expression = a_r.String("expression");
+  if (!expression) {
+    return;
+  }
+  if (expression->size() > kMaxExpressionLength) {
+    a_r.Context().Error(std::format("'expression' is longer than {} characters",
+                                    kMaxExpressionLength));
+    return;
+  }
+  if (const auto program = Program::Parse(*expression); !program) {
+    a_r.Context().Error(std::format("'expression': {}", program.error()));
+    return;
+  }
+  a_preset.expression = *expression;
+}
+
+std::optional<PresetSource> SourceFrom(const std::string &a_name,
+                                       const json &a_value,
+                                       const Reporter &a_ctx) {
+  if (!IsName(a_name)) {
+    a_ctx.Error(std::format(
+        "a source name is an identifier (letters, digits, '_'): '{}'", a_name));
     return std::nullopt;
   }
-  const auto first = a_value.begin();
-  const std::string &key = first.key();
-  const json &value = first.value();
-  if (key == "material" && value.is_string()) {
-    const auto channel = ParseMaterialChannel(value.get<std::string>());
-    return channel ? std::optional<SourceKind>{MaterialSource{*channel}}
-                   : std::nullopt;
-  }
-  if (key == "bake" && value.is_string()) {
-    const auto bake = DefaultBakeKind(value.get<std::string>());
-    return bake ? std::optional<SourceKind>{BakeSource{*bake}} : std::nullopt;
-  }
-  if (key == "uv" && value.is_string()) {
-    const auto axis = ParseUvAxis(value.get<std::string>());
-    return axis ? std::optional<SourceKind>{UvSource{*axis}} : std::nullopt;
-  }
-  return std::nullopt;
-}
-
-[[nodiscard]] std::optional<std::uint32_t> PartitionFrom(const json &a_value) {
-  if (a_value.is_string()) {
-    return BipedSlotFromName(a_value.get<std::string>());
-  }
-  if (a_value.is_number_unsigned()) {
-    return a_value.get<std::uint32_t>();
-  }
-  return std::nullopt;
-}
-
-[[nodiscard]] std::optional<std::string> ReadPartition(const json &a_entry,
-                                                       MaskPreset &a_preset) {
-  if (!a_entry.contains("partition")) {
+  Reader r(a_value, a_ctx);
+  auto kind = ParseSourceKind(r);
+  if (!kind) {
     return std::nullopt;
   }
-  const auto slot = PartitionFrom(a_entry["partition"]);
-  if (!slot) {
-    return std::format("preset {}: unknown partition", a_preset.name);
-  }
-  a_preset.partition = *slot;
-  return std::nullopt;
+  r.Finish();
+  return PresetSource{a_name, std::move(*kind)};
 }
 
-[[nodiscard]] std::optional<std::string> ReadBones(const json &a_entry,
-                                                   MaskPreset &a_preset) {
-  const auto bones = a_entry.find("bones");
-  if (bones == a_entry.end() || !bones->is_array()) {
-    return std::nullopt;
+void ReadSources(Reader &a_r, MaskPreset &a_preset) {
+  const std::string where = a_r.Context().where;
+  NamedRows(
+      a_r, "sources",
+      [&](const std::string &a_name) {
+        return std::format("{} {}", where, SourceWhere(a_name));
+      },
+      a_preset.sources, SourceFrom);
+  if (a_preset.sources.size() > kMaxPresetSources) {
+    a_r.Context().Error(std::format("more than {} sources", kMaxPresetSources));
+    a_preset.sources.resize(kMaxPresetSources);
   }
-  if (bones->size() > kMaxPresetBones) {
-    return std::format("preset {}: more than {} bones", a_preset.name,
-                       kMaxPresetBones);
-  }
-  for (const auto &bone : *bones) {
-    if (bone.is_string()) {
-      a_preset.bones.push_back(bone.get<std::string>());
-    }
-  }
-  return std::nullopt;
 }
 
-[[nodiscard]] std::optional<std::string> ReadExpression(const json &a_entry,
-                                                        MaskPreset &a_preset) {
-  const auto expression = a_entry.find("expression");
-  if (expression == a_entry.end() || !expression->is_string()) {
-    return std::nullopt;
-  }
-  a_preset.expression = expression->get<std::string>();
-  if (a_preset.expression.size() > kMaxExpressionLength) {
-    return std::format("preset {}: expression longer than {} characters",
-                       a_preset.name, kMaxExpressionLength);
-  }
-  if (const auto program = Program::Parse(a_preset.expression); !program) {
-    return std::format("preset {}: expression: {}", a_preset.name,
-                       program.error());
-  }
-  return std::nullopt;
-}
-
-[[nodiscard]] std::optional<std::string> ReadSources(const json &a_entry,
-                                                     MaskPreset &a_preset) {
-  const auto sources = a_entry.find("sources");
-  if (sources == a_entry.end() || !sources->is_object()) {
-    return std::nullopt;
-  }
-  if (sources->size() > kMaxPresetSources) {
-    return std::format("preset {}: more than {} sources", a_preset.name,
-                       kMaxPresetSources);
-  }
-  for (const auto &[name, definition] : sources->items()) {
-    const auto kind = SourceFromJson(definition);
-    if (!IsName(name) || !kind) {
-      return std::format(
-          "preset {}: source '{}' is not a material channel, bake or uv",
-          a_preset.name, name);
-    }
-    a_preset.sources.emplace_back(name, *kind);
-  }
-  return std::nullopt;
-}
-
-[[nodiscard]] std::expected<MaskPreset, std::string>
-PresetFrom(const json &a_entry) {
-  if (!a_entry.is_object() || !a_entry.contains("name") ||
-      !a_entry["name"].is_string() ||
-      !IsName(a_entry["name"].get<std::string>())) {
-    return std::unexpected("a preset needs a name");
-  }
+std::optional<MaskPreset> PresetFrom(const json &a_entry,
+                                     const Reporter &a_ctx) {
   MaskPreset preset;
-  preset.name = a_entry["name"].get<std::string>();
-  if (auto error = ReadPartition(a_entry, preset)) {
-    return std::unexpected(std::move(*error));
-  }
-  if (auto error = ReadBones(a_entry, preset)) {
-    return std::unexpected(std::move(*error));
-  }
-  if (auto error = ReadExpression(a_entry, preset)) {
-    return std::unexpected(std::move(*error));
+  Reader r(a_entry, a_ctx);
+  ReadName(r, preset);
+  preset.partition = r.BipedSlot("partition");
+  preset.bones =
+      r.Strings("bones", kMaxPresetBones).value_or(std::vector<std::string>{});
+  ReadExpression(r, preset);
+  ReadSources(r, preset);
+  r.Finish();
+  if (preset.name.empty()) {
+    return std::nullopt;
   }
   if (preset.expression.empty() && !preset.partition && preset.bones.empty()) {
-    return std::unexpected(std::format(
-        "preset {}: needs an expression, a partition or bones", preset.name));
-  }
-  if (auto error = ReadSources(a_entry, preset)) {
-    return std::unexpected(std::move(*error));
+    a_ctx.Error("needs an expression, a partition or bones");
+    return std::nullopt;
   }
   return preset;
 }
+
+json PresetToJson(const MaskPreset &a_preset) {
+  json o = json::object();
+  Writer w{o};
+  w.WriteText("name", a_preset.name);
+  if (a_preset.partition) {
+    w.Set("partition", BipedSlotToJson(*a_preset.partition));
+  }
+  w.WriteStringsIf("bones", a_preset.bones);
+  w.WriteTextIf("expression", a_preset.expression);
+  if (!a_preset.sources.empty()) {
+    json sources = json::object();
+    for (const auto &[name, kind] : a_preset.sources) {
+      sources[name] = SourceKindToJson(kind);
+    }
+    w.Set("sources", std::move(sources));
+  }
+  return o;
+}
 }
 
-std::expected<MaskPresets, std::string> ParsePresets(std::string_view a_json) {
-  const auto parsed = json::parse(a_json, nullptr, false);
-  if (parsed.is_discarded() || !parsed.is_object()) {
-    return std::unexpected("the preset file is not a JSON object");
+bool PresetsLoadResult::HasErrors() const noexcept {
+  return !presets || BetterEnchantmentEffects::HasErrors(diagnostics);
+}
+
+std::string PresetWhere(std::string_view a_preset) {
+  return std::format("preset {}", a_preset);
+}
+
+PresetsLoadResult ParsePresets(std::string_view a_json) {
+  PresetsLoadResult result;
+  const Reporter fileCtx{result.diagnostics, "file"};
+  const std::optional<json> root = ParseObjectDocument(a_json, fileCtx);
+  if (!root) {
+    return result;
   }
   MaskPresets presets;
-  const auto entries = parsed.find("presets");
-  if (entries == parsed.end() || !entries->is_array()) {
-    return presets;
-  }
-  if (entries->size() > kMaxPresets) {
-    return std::unexpected(std::format("more than {} presets", kMaxPresets));
-  }
-  for (const auto &entry : *entries) {
-    auto preset = PresetFrom(entry);
-    if (!preset) {
-      return std::unexpected(std::move(preset).error());
+  const Reporter ctx{result.diagnostics, "presets"};
+  Reader r(*root, ctx);
+  if (const json *entries = r.Child("presets")) {
+    if (!entries->is_array()) {
+      ctx.Error("'presets' must be an array");
+    } else {
+      ReadRows(
+          *entries, "presets", ctx, presets.presets,
+          [&](const json &a_entry, std::size_t a_index) {
+            return PresetFrom(
+                a_entry, ctx.At(PresetWhere(PresetLabel(a_entry, a_index))));
+          },
+          kMaxPresets);
     }
-    presets.presets.push_back(std::move(*preset));
   }
-  return presets;
+  r.Finish();
+  result.presets = std::move(presets);
+  return result;
+}
+
+std::string SerializePresets(const MaskPresets &a_presets) {
+  json root = json::object();
+  json entries = json::array();
+  for (const MaskPreset &preset : a_presets.presets) {
+    entries.push_back(PresetToJson(preset));
+  }
+  root["presets"] = std::move(entries);
+  return DumpDocument(root);
 }
 }

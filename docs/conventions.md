@@ -34,19 +34,65 @@ diagnostics and the factory when returning one.
 that wraps a `Reporter{diagnostics_, "signal <name>"}`; graph phases call it,
 they do not touch `diagnostics_` directly.
 
-Exception, documented: several `Check*` functions in `Signals.cpp`
-(`CheckCurve`, `CheckMask`, `CheckUniqueNames`, `CheckVariants`,
-`CheckSlotExclusions`) still `push_back({Severity::kError, where, …})`
-directly, mostly to forward a parser's `program.error()` string. This is a
-residual inconsistency, not the target pattern — see Cleanup below. New code
-uses `Reporter`.
+The contract, for every module:
+
+> A failure that a person may need to see is a `Diagnostic` with a `where`.
+> A function that can fail that way returns `std::optional<Diagnostic>`
+> (nullopt is success) or `std::expected<T, Diagnostic>`. Several failures
+> are `std::vector<Diagnostic>` collected through a `Reporter`. No function
+> returns `bool` or an empty string to mean "it failed, see the log". Snapshot
+> rows carry `std::string problem` as the display projection of a
+> `Diagnostic::message` (`ProblemText` in `Recipe.h` makes that projection);
+> they are not a place a failure originates.
+
+The row `where` words are spelled once, by the helpers beside `Reporter` in
+`Recipe.h` (`SignalWhere`, `CurveWhere`, `SourceWhere`, `MaskWhere`,
+`OutputWhere`, `LayerWhere`, `VariantWhere`, `KeyWhere`); the parser, the
+validator, the editor and the store all build their `where` through them.
+`RowLevel` tells a row's diagnostic from a recipe-level one, which is how the
+store decides whether a recipe with errors is applied or held back.
+`RecipeStore`'s operations (`SaveRecipe`, `RevertRecipe`, `NewRecipe`,
+`RenameRecipe`, `AddTransientRecipe`, `DropTransientRecipe`) return a
+`Diagnostic` whose `where` is `recipe <id>`; `RecipeEditor` copies its
+`message` into the `FileOperationResult` or `RecipeEditResult` that reaches
+the menu. `SlotTarget::Problem` returns one whose `where` is the slot's name.
+
+Logging, same rule:
+
+> `Trace::Emit` records structured events for the diagnostic trace. `logger::`
+> writes the human log. A failure is logged once, at the boundary that turns
+> it into a `Diagnostic`, and never again downstream. A file that needs both
+> uses `Trace` for state and `logger` for the human sentence.
+
+`diagnostics/Trace.h` is the trace recorder: `Trace::Emit(Event, fields)`
+appends one structured line per event (`kStartup`, `kSettings`, `kRecipe`,
+`kCommand`, `kPage`, `kQueue`, `kLoad`, `kApplication`, `kRetire`,
+`kBinding`, `kRestore`, `kTexture`, `kShell`, `kPreview`,
+`kCaptureFailure`) to the run's trace file under a byte cap; `Trace::Scope`
+tags the events of one command with a command id, and `Trace::Safely` wraps
+a capture so a throwing capture becomes a `kCaptureFailure` event instead of
+a crash. `tools/trace-report.py` reads the file.
+
+The one stated exception is `SettingsFile.cpp`: the INI reader logs a bad
+line and keeps the default. Settings are not recipe data, no menu row shows
+them, and a wrong value must never stop the plugin from starting, so that
+file has no diagnostics and no `Reporter`.
 
 ## The JSON boundary: `Reader`/`Writer` binders, read/write symmetric
 
 Recipe JSON is parsed and serialized by two mirrored vocabularies, both over
-`nlohmann::ordered_json` (ordered, so a round-trip preserves key order).
+`nlohmann::ordered_json` (ordered, so a round-trip preserves key order). Both
+are published by `recipe/Binders.h`, the one place a module includes to read
+or write a JSON document: `RecipeRead.cpp`, `RecipeWrite.cpp` and
+`studio/Presets.cpp` all build on it and none names `nlohmann` for itself.
+`ParseObjectDocument(text, Reporter)` is the entry for a whole file: it
+refuses text nested past `kMaxRecipeDepth` before parsing, parses with a
+duplicate-key detector, and reports "not a JSON object" for anything that is
+not one. `ParseSourceKind(Reader &)` and `SourceKindToJson` publish the
+source-kind pair so a second format (presets) reads and writes sources
+through the recipe's own table rather than an if-chain of its own.
 
-`Reader` (`RecipeRead.cpp`) is the parse binder. It tracks which keys it
+`Reader` (`Binders.h`) is the parse binder. It tracks which keys it
 consumed and `Finish()` reports every unconsumed one as `unknown key`, so an
 object is fully specified by the `Read`/`Child`/typed-accessor calls made
 against it. Vocabulary:
@@ -59,7 +105,7 @@ against it. Vocabulary:
   table via `FromName`, reporting `Choices(table)` on a miss.
 - `IntRange(key, lo, hi, out)` for a bounded integer.
 
-`Writer` (`RecipeWrite.cpp`) is the mirror: `Set`, `Write` (Param/Vec3Param),
+`Writer` (`Binders.h`) is the mirror: `Set`, `Write` (Param/Vec3Param),
 `WriteText`/`WriteTextIf`, `WriteRef`/`WriteRefIf`, `WriteEnum`/`WriteEnumIf`,
 `WriteIf` (value-vs-default overloads), `WriteNumberIf`, `WritePointIf`. The
 `*If` forms omit a field equal to its default, which is how "defaults are

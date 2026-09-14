@@ -46,6 +46,16 @@ void LogRecipeDiagnostics(std::string_view a_id,
 }
 }
 
+namespace {
+std::optional<std::string>
+MessageOf(const std::optional<Diagnostic> &a_refusal) {
+  if (!a_refusal) {
+    return std::nullopt;
+  }
+  return a_refusal->message;
+}
+}
+
 struct RecipeEditor::FileOperationJournal {
   std::mutex lock;
   std::uint64_t nextID = 0;
@@ -596,15 +606,15 @@ void RecipeEditor::SaveRecipeNow(const std::string &a_id,
   FinishActiveGesture(true);
   Recipe *recipe = MutableRecipe(a_id);
   const Recipe before = recipe ? *recipe : Recipe{};
-  const std::expected<std::filesystem::path, std::string> saved =
+  const std::expected<std::filesystem::path, Diagnostic> saved =
       BetterEnchantmentEffects::SaveRecipe(a_id);
   if (!saved) {
     if (recipe && *recipe != before) {
       *recipe = before;
       RefreshRecipeDerivedState(a_id);
     }
-    a_operation.Finish({}, saved.error());
-    logger::error("recipe {}: save failed ({})", a_id, saved.error());
+    a_operation.Finish({}, saved.error().message);
+    logger::error("recipe {}: save failed ({})", a_id, saved.error().message);
     return;
   }
   if (recipe) {
@@ -635,8 +645,9 @@ std::uint64_t RecipeEditor::RevertRecipe(std::string a_id) {
       const std::optional<RecipeOrigin> origin = OriginOf(*recipe);
       const std::string path = origin ? origin->path.string() : std::string{};
       const Recipe before = *recipe;
-      if (!BetterEnchantmentEffects::RevertRecipe(id)) {
-        operation->Finish(path, "Recipe file could not be read or parsed.");
+      if (const std::optional<Diagnostic> refused =
+              BetterEnchantmentEffects::RevertRecipe(id)) {
+        operation->Finish(path, refused->message);
         return;
       }
       PushHistory(histories_, id, before, *recipe);
@@ -674,43 +685,54 @@ void RecipeEditor::ReloadRecipesNow() {
   }
 }
 
-void RecipeEditor::NewRecipe(std::string a_id, RecipeKey a_key,
-                             std::string a_geometry) {
+std::uint64_t RecipeEditor::NewRecipe(std::string a_id, RecipeKey a_key,
+                                      std::string a_geometry) {
   const Trace::Scope trace{Trace::Command("editor.NewRecipe")};
+  const auto operation =
+      std::make_shared<PendingRecipeEdit>(fileOperations_, a_id);
   runtime_.PostTask([this, id = std::move(a_id), key = std::move(a_key),
-                     geometry = std::move(a_geometry)] {
+                     geometry = std::move(a_geometry), operation] {
     FinishActiveGesture(true);
     runtime_.ChangeAndRebuildActors({}, [&] {
-      [[maybe_unused]] const bool made =
+      const std::optional<Diagnostic> refused =
           BetterEnchantmentEffects::NewRecipe(id, key, geometry);
-      if (made) {
+      if (!refused) {
         AdvanceDocumentRevision(id);
       }
+      operation->Finish(MessageOf(refused));
     });
   });
+  return operation->id;
 }
 
-void RecipeEditor::RenameRecipe(std::string a_from, std::string a_to) {
+std::uint64_t RecipeEditor::RenameRecipe(std::string a_from, std::string a_to) {
   const Trace::Scope trace{Trace::Command("editor.RenameRecipe")};
-  runtime_.PostTask([this, from = std::move(a_from), to = std::move(a_to)] {
-    FinishActiveGesture(true);
-    runtime_.ChangeAndRebuildActors({}, [&] {
-      if (!BetterEnchantmentEffects::RenameRecipe(from, to)) {
-        return;
-      }
-      AdvanceDocumentRevision(from);
-      AdvanceDocumentRevision(to);
-      if (auto node = histories_.extract(from)) {
-        node.key() = to;
-        node.mapped().Rename(to);
-        histories_.insert(std::move(node));
-      }
-      view_.RenameRecipe(from, to);
-      if (paintReturn_.recipeID == from) {
-        paintReturn_.recipeID = to;
-      }
-    });
-  });
+  const auto operation =
+      std::make_shared<PendingRecipeEdit>(fileOperations_, a_from);
+  runtime_.PostTask(
+      [this, from = std::move(a_from), to = std::move(a_to), operation] {
+        FinishActiveGesture(true);
+        runtime_.ChangeAndRebuildActors({}, [&] {
+          if (const std::optional<Diagnostic> refused =
+                  BetterEnchantmentEffects::RenameRecipe(from, to)) {
+            operation->Finish(refused->message);
+            return;
+          }
+          AdvanceDocumentRevision(from);
+          AdvanceDocumentRevision(to);
+          if (auto node = histories_.extract(from)) {
+            node.key() = to;
+            node.mapped().Rename(to);
+            histories_.insert(std::move(node));
+          }
+          view_.RenameRecipe(from, to);
+          if (paintReturn_.recipeID == from) {
+            paintReturn_.recipeID = to;
+          }
+          operation->Finish();
+        });
+      });
+  return operation->id;
 }
 
 void RecipeEditor::BeginPaint(std::string a_active, RecipeKey a_key,
@@ -737,12 +759,15 @@ void RecipeEditor::BeginPaint(std::string a_active, RecipeKey a_key,
     FinishActiveGesture(true);
     runtime_.ChangeAndRebuildActors({}, [&] {
       if (IsTransient(Studio::kPaintRecipe)) {
-        [[maybe_unused]] const bool dropped =
+        [[maybe_unused]] const std::optional<Diagnostic> dropped =
             DropTransientRecipe(Studio::kPaintRecipe);
       }
-      if (!AddTransientRecipe(std::move(paint))) {
+      if (const std::optional<Diagnostic> refused =
+              AddTransientRecipe(std::move(paint))) {
         paintUpdate_->problem = MakeDiagnostic(
-            Severity::kError, "paint", "the paint recipe could not be started");
+            Severity::kError, "paint",
+            std::format("the paint recipe could not be started: {}",
+                        refused->message));
         if (view_.isolation.recipeID == Studio::kPaintRecipe) {
           view_.isolation = paintReturn_;
           paintReturn_ = {};
@@ -837,7 +862,7 @@ void RecipeEditor::CancelPaintForLoad() {
   }
   paintReturn_ = {};
   view_.ForgetRecipe(Studio::kPaintRecipe);
-  [[maybe_unused]] const bool dropped =
+  [[maybe_unused]] const std::optional<Diagnostic> dropped =
       DropTransientRecipe(Studio::kPaintRecipe);
   histories_.erase(std::string{Studio::kPaintRecipe});
   paintSessionID_ = 0;
@@ -855,7 +880,7 @@ void RecipeEditor::FinishPaint() {
       paintReturn_ = {};
     }
     view_.ForgetRecipe(Studio::kPaintRecipe);
-    [[maybe_unused]] const bool dropped =
+    [[maybe_unused]] const std::optional<Diagnostic> dropped =
         DropTransientRecipe(Studio::kPaintRecipe);
     histories_.erase(std::string{Studio::kPaintRecipe});
   });

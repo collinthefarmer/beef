@@ -50,7 +50,7 @@ warn_missing_from_db() {
 }
 
 if [ "$STAGE" = commit ]; then
-	mapfile -t staged < <(git diff --cached --name-only --diff-filter=ACM -- 'src/*.cpp' 'src/*.h' | grep -Ev '^src/(_old|extern|cs)/')
+	mapfile -t staged < <(git diff --cached --name-only --diff-filter=ACM -- 'src/*.cpp' 'src/*.h' 'tests/*.cpp' 'tests/*.h' | grep -Ev '^(src/(_old|extern|cs)|tests/_old)/')
 	[ ${#staged[@]} -eq 0 ] && exit 0
 
 	if ! tools/format.sh --check "${staged[@]}"; then
@@ -63,7 +63,7 @@ if [ "$STAGE" = commit ]; then
 		exit 1
 	fi
 
-	mapfile -t staged_cpp < <(printf '%s\n' "${staged[@]}" | grep '\.cpp$')
+	mapfile -t staged_cpp < <(printf '%s\n' "${staged[@]}" | grep '^src/.*\.cpp$')
 	if [ ${#staged_cpp[@]} -gt 0 ]; then
 		require_compile_db
 		warn_missing_from_db "${staged_cpp[@]}"

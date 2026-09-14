@@ -17,10 +17,11 @@ done
 FMT_BIN="${CLANG_FORMAT:-clang-format}"
 command -v "$FMT_BIN" >/dev/null 2>&1 || { echo "$FMT_BIN is not on PATH; run 'nix develop' first" >&2; exit 1; }
 
+FROZEN='^(src/(_old|extern|cs)|tests/_old)/'
 if [ "$CHANGED" -eq 1 ]; then
-	mapfile -t FILES < <(git diff --name-only HEAD -- 'src/*.cpp' 'src/*.h' | grep -Ev '^src/(_old|extern|cs)/')
+	mapfile -t FILES < <(git diff --name-only HEAD -- 'src/*.cpp' 'src/*.h' 'tests/*.cpp' 'tests/*.h' | grep -Ev "$FROZEN")
 fi
-[ ${#FILES[@]} -eq 0 ] && mapfile -t FILES < <(find src -name '*.cpp' -o -name '*.h' | grep -Ev '^src/(_old|extern|cs)/' | sort)
+[ ${#FILES[@]} -eq 0 ] && mapfile -t FILES < <(find src tests -name '*.cpp' -o -name '*.h' | grep -Ev "$FROZEN" | sort)
 
 if [ "$CHECK" -eq 1 ]; then
 	mapfile -t bad_files < <(printf '%s\n' "${FILES[@]}" | xargs -r -P "$(nproc)" -I{} bash -c '

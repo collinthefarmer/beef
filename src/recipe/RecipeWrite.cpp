@@ -1,17 +1,12 @@
+#include "recipe/Binders.h"
 #include "recipe/Recipe.h"
 #include "recipe/Words.h"
 
-#include <nlohmann/json.hpp>
-
-#include <charconv>
-#include <cstdlib>
 #include <format>
 #include <string>
 #include <utility>
 
 namespace BetterEnchantmentEffects {
-using json = nlohmann::ordered_json;
-
 namespace {
 float ClusterWeight(const MaterialClustersSource &a_source,
                     std::string_view a_field) noexcept {
@@ -120,44 +115,6 @@ std::string DescribeSource(const SourceKind &a_kind) {
 }
 
 namespace {
-json Num(float a_value) {
-  char buffer[32];
-  const auto r = std::to_chars(buffer, buffer + sizeof(buffer), a_value);
-  return json(std::strtod(std::string(buffer, r.ptr).c_str(), nullptr));
-}
-
-json ParamToJson(const Param &a_param) {
-  return Match(
-      a_param, [](float f) { return Num(f); },
-      [](const Ref &r) { return json("@" + r.name); });
-}
-
-template <std::size_t N>
-json VecToJson(const std::variant<std::array<Param, N>, Ref> &a_param) {
-  return Match(
-      a_param, [](const Ref &r) { return json("@" + r.name); },
-      [](const std::array<Param, N> &parts) {
-        json out = json::array();
-        for (const auto &p : parts) {
-          out.push_back(ParamToJson(p));
-        }
-        return out;
-      });
-}
-
-json ValueToJson(const Value &a_value) {
-  return Match(
-      a_value, [](float f) { return Num(f); },
-      [](const Vec2 &v) { return json::array({Num(v.x), Num(v.y)}); },
-      [](const Vec3 &v) {
-        return json::array({Num(v.x), Num(v.y), Num(v.z)});
-      });
-}
-
-json PointToJson(const Vec3 &a_v) {
-  return json::array({Num(a_v.x), Num(a_v.y), Num(a_v.z)});
-}
-
 json CurveRefToJson(const CurveRef &a_curve) { return json(a_curve.text); }
 
 json KeyToJson(const RecipeKey &a_key) {
@@ -179,88 +136,6 @@ json SelectorToJson(const Selector &a_selector) {
   }
   return out;
 }
-
-struct Writer {
-  json &out;
-
-  void Set(std::string_view a_key, json a_value) {
-    out[std::string{a_key}] = std::move(a_value);
-  }
-  void Write(std::string_view a_key, const Param &a_value) {
-    Set(a_key, ParamToJson(a_value));
-  }
-  void Write(std::string_view a_key, const Vec3Param &a_value) {
-    Set(a_key, VecToJson(a_value));
-  }
-  void WriteText(std::string_view a_key, std::string_view a_value) {
-    Set(a_key, std::string{a_value});
-  }
-  void WriteTextIf(std::string_view a_key, std::string_view a_value) {
-    if (!a_value.empty())
-      WriteText(a_key, a_value);
-  }
-  void WriteRef(std::string_view a_key, const Ref &a_ref) {
-    Set(a_key, "@" + a_ref.name);
-  }
-  void WriteRefIf(std::string_view a_key, const std::optional<Ref> &a_ref) {
-    if (a_ref)
-      WriteRef(a_key, *a_ref);
-  }
-
-  void WriteIf(std::string_view a_key, const Param &a_value,
-               const Param &a_default) {
-    if (a_value != a_default)
-      Write(a_key, a_value);
-  }
-  void WriteIf(std::string_view a_key, const Vec3Param &a_value,
-               const Vec3Param &a_default) {
-    if (a_value != a_default)
-      Write(a_key, a_value);
-  }
-  void WriteIf(std::string_view a_key, bool a_value, bool a_default) {
-    if (a_value != a_default)
-      Set(a_key, a_value);
-  }
-  void WriteIf(std::string_view a_key, std::uint32_t a_value,
-               std::uint32_t a_default) {
-    if (a_value != a_default)
-      Set(a_key, a_value);
-  }
-  void WriteIf(std::string_view a_key, const std::optional<Param> &a_value) {
-    if (a_value)
-      Write(a_key, *a_value);
-  }
-  void WriteIf(std::string_view a_key,
-               const std::optional<Vec2Param> &a_value) {
-    if (a_value)
-      Set(a_key, VecToJson(*a_value));
-  }
-  void WriteIf(std::string_view a_key,
-               const std::optional<Vec3Param> &a_value) {
-    if (a_value)
-      Set(a_key, VecToJson(*a_value));
-  }
-  void WriteNumberIf(std::string_view a_key, float a_value, float a_default) {
-    if (a_value != a_default)
-      Set(a_key, Num(a_value));
-  }
-  void WritePointIf(std::string_view a_key, const Vec3 &a_value,
-                    const Vec3 &a_default) {
-    if (!(a_value == a_default))
-      Set(a_key, PointToJson(a_value));
-  }
-
-  template <class Row, std::size_t N, class E>
-  void WriteEnum(std::string_view a_key, const Row (&a_table)[N], E a_value) {
-    Set(a_key, std::string{NameOf(a_table, a_value)});
-  }
-  template <class Row, std::size_t N, class E>
-  void WriteEnumIf(std::string_view a_key, const Row (&a_table)[N], E a_value,
-                   E a_default) {
-    if (a_value != a_default)
-      Set(a_key, std::string{NameOf(a_table, a_value)});
-  }
-};
 
 json PulseToJson(const PulseSignal &k) {
   json o = json::object();
@@ -434,9 +309,7 @@ json BakeToJson(const BakeSource &k) {
   return Match(
       k.bake,
       [&](const PartitionBake &p) {
-        const auto name = BipedSlotName(p.slot);
-        return json::object(
-            {{"partition", name ? json(std::string{*name}) : json(p.slot)}});
+        return json::object({{"partition", BipedSlotToJson(p.slot)}});
       },
       [&](const BoneWeightBake &b) {
         return json::object({{"boneWeight", b.bones}});
@@ -475,11 +348,13 @@ json RippleToJson(const RippleSource &k) {
   return o;
 }
 
-json SourceToJson(const Source &a_source) {
-  const std::string word{SourceKindName(a_source.kind)};
+}
+
+json SourceKindToJson(const SourceKind &a_kind) {
+  const std::string word{SourceKindName(a_kind)};
   json row = json::object();
   Match(
-      a_source.kind, [&](const ImageSource &k) { row[word] = ImageToJson(k); },
+      a_kind, [&](const ImageSource &k) { row[word] = ImageToJson(k); },
       [&](const MaterialSource &k) {
         row[word] = NameOf(kMaterialChannels, k.channel);
       },
@@ -498,6 +373,8 @@ json SourceToJson(const Source &a_source) {
       });
   return row;
 }
+
+namespace {
 
 json LayerToJson(const Layer &a_layer) {
   json o = json::object();
@@ -667,7 +544,7 @@ std::string SerializeRecipe(const Recipe &a_recipe) {
         [](const Signal &s) { return SignalToJson(s); });
   named("curves", a_recipe.curves, [](const Curve &c) { return json(c.text); });
   named("sources", a_recipe.sources,
-        [](const Source &s) { return SourceToJson(s); });
+        [](const Source &s) { return SourceKindToJson(s.kind); });
   named("masks", a_recipe.masks, [](const Mask &m) { return json(m.text); });
 
   if (!a_recipe.outputs.empty()) {
@@ -687,6 +564,6 @@ std::string SerializeRecipe(const Recipe &a_recipe) {
     }
     root["variants"] = std::move(variants);
   }
-  return root.dump(2) + "\n";
+  return DumpDocument(root);
 }
 }

@@ -1,6 +1,53 @@
 # Plan F: test harness and bounds checks — 2026-09-13
 
-Status: not started.
+Status: implemented 2026-09-13 on branch `critique/f-tests-and-bounds`;
+awaiting the in-game checkpoint.
+
+- Base: `505f24c` on `cleanup/stage-0`. That commit includes
+  `studio/Snapshot.h` with an `#include "studio/Gesture.h"`, but
+  `src/studio/Gesture.{h,cpp}` are still untracked in the UI wave's checkout,
+  so the base does not compile on its own. Verification here used an
+  untracked copy of that pair; the copy is not committed. Nine committed
+  UI-seam sources (`ManagerSnapshot.cpp`, `ContextRows.cpp`,
+  `StudioPage.cpp`, `RuntimeTextures.h`, `RuntimeTexturesLab.cpp`,
+  `TexturePreviews.*`, `RecipeSnapshot.cpp`, `Selection.cpp`) are also not
+  clang-formatted at the base; they were left alone under the seam rule, so
+  `tools/gate.sh push` fails its format check until the UI wave formats
+  them.
+- F1 done: `test::Check`/`Equal`/`Near`/`Skip` take a `std::source_location`
+  and print `file:line: FAIL: what`, with both values for `Equal` and `Near`;
+  `actorplanning_tests.cpp` is ten named scenarios including empty
+  geometry, empty store and duplicate placement; `ExpectError` takes the
+  expected message fragment and prints every diagnostic it saw on a miss;
+  fixtures are globbed from `tests/fixtures/recipes` with a count floor of
+  seven; `RUN_ARGS` is gone and `SUITE=<substring>` filters suites; the
+  standard is C++23 on both sides and `REQUIREMENTS.md` says so; every test
+  file is in the source style and `tools/format.sh` plus the commit gate
+  cover `tests/`. Step 8: `SourceSampling.h` includes `render/Compositor.h`
+  and `IsNonPlaceholderTexture` reads a D3D extent, so the pure halves moved
+  to `src/planners/TextureIdentity.{h,cpp}` (`ImageCacheKey`,
+  `IsPlaceholderExtent`) with `tests/planners/textureidentity_tests.cpp`;
+  `IsNonPlaceholderTexture` stays in render and calls the planner predicate.
+- F2 done except items 1 to 3, which are recorded for the expression cleanup
+  owner at the end of
+  `expression-cleanup-implementation-handoff-2026-09-13.md`. Item 4:
+  `At` returns a pointer, `TypeOf(size_t)` an optional, `Inert` is true out
+  of range, and `SignalState::Accept` returns on an out-of-range index. Item
+  7: `ReadText`/`WriteText` moved to `src/engine/TextFile.{h,cpp}` (engine-free,
+  tested by `tests/engine/textfile_tests.cpp`) with a 4 MiB cap recorded in
+  `REFERENCE.md`; the store logs "does not exist", "cannot be opened",
+  "larger than the ... cap" and "empty". Item 8 deviates from the letter of
+  the plan: a lookup by recipe id breaks `RenameRecipe`, which changes the id
+  before republishing, so `Republish` takes the index that `LoadedIndex`
+  found and refuses (error log, no publish) when either list is shorter.
+- Verified: `tests/run-native.sh` green (57 suites), `BEEF_SANITIZE=1` green,
+  the nine plugin objects this plan touches compile under clang-cl (the DLL
+  itself does not link at the base, see above),
+  `SUITE=expression` runs only the three expression suites, a deliberately
+  broken assertion prints `file:line` and both values,
+  `tools/format.sh --check` passes for every file this plan touched.
+
+Deferred: none.
 
 Covers critique recommendations 9 (test harness failure output and style) and
 10 (unchecked indices and the missing-file diagnostic). Runs first because it

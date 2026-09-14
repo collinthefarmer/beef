@@ -69,16 +69,20 @@ public:
   [[nodiscard]] std::size_t Size() const noexcept { return nodes_.size(); }
   [[nodiscard]] std::optional<std::size_t>
   Index(std::string_view a_name) const noexcept;
-  [[nodiscard]] const Signal &At(std::size_t a_index) const noexcept {
-    return nodes_[a_index].signal;
+  [[nodiscard]] const Signal *At(std::size_t a_index) const noexcept {
+    return a_index < nodes_.size() ? &nodes_[a_index].signal : nullptr;
   }
-  [[nodiscard]] ValueType TypeOf(std::size_t a_index) const noexcept {
+  [[nodiscard]] std::optional<ValueType>
+  TypeOf(std::size_t a_index) const noexcept {
+    if (a_index >= nodes_.size()) {
+      return std::nullopt;
+    }
     return nodes_[a_index].type;
   }
   [[nodiscard]] std::optional<ValueType>
   TypeOf(std::string_view a_name) const noexcept;
   [[nodiscard]] bool Inert(std::size_t a_index) const noexcept {
-    return nodes_[a_index].inert;
+    return a_index >= nodes_.size() || nodes_[a_index].inert;
   }
   [[nodiscard]] std::span<const std::size_t> Order() const noexcept {
     return order_;

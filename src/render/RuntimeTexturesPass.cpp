@@ -495,9 +495,9 @@ bool TextureLab::RenderProgram(RenderTarget &a_target,
 
 bool TextureLab::BakeMesh(RenderTarget &a_target, const BakeBuffers &a_bake) {
   auto *renderer = RE::BSGraphics::Renderer::GetSingleton();
-  if (!available_ || !renderer || !borrowedContext_ || !a_target.rtv.Get() ||
-      !gpu_->bake.has_value() || a_bake.vertices.empty() ||
-      a_bake.indices.empty()) {
+  if (!available_ || !renderer || !borrowedContext_ || !borrowedDevice_ ||
+      !a_target.rtv.Get() || !gpu_->bake.has_value() ||
+      a_bake.vertices.empty() || a_bake.indices.empty()) {
     return false;
   }
   const BakePipeline &pipeline = *gpu_->bake;

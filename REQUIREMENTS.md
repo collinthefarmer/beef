@@ -283,6 +283,9 @@ tree must not reproduce them.
 
 - Build with `./build.sh Release -j 4`. More jobs exhaust WSL and kill the
   instance. Install with `./install.sh`.
+- The language standard is C++23 (`CMAKE_CXX_STANDARD 23` in
+  `CMakeLists.txt`); `tests/run-native.sh` compiles the native suites with
+  the same `-std=c++23`. The two must not disagree.
 - Work inside `nix develop`; every script names the tool it wants if you
   are outside the shell.
 - The game runs on the user's machine. Batch every change that needs the

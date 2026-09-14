@@ -1,6 +1,88 @@
 # Plan A: one error contract and a published Reader — 2026-09-13
 
-Status: not started.
+Status: implemented 2026-09-14 on branch `critique/a-error-contract`
+(branched from Plan F's tip); awaiting the in-game checkpoint, which needs
+a buildable base (see the handoff's Repository state).
+
+- A1 done. `src/recipe/Binders.{h,cpp}` publish `Reader`, `Writer`, the row
+  helpers (`ReadObject`, `ReadRows` with a caller-chosen cap, `NamedRows`
+  taking a `where` builder, `OneKey`, `EnumShorthand`), the JSON atoms
+  (`Num`, `ParamToJson`, `VecToJson`, `ValueToJson`, `PointToJson`,
+  `BipedSlotToJson`) and `ParseObjectDocument` (depth cap, duplicate keys,
+  "not a JSON object"), which `ParseRecipe` and `ParsePresets` both call.
+  `ParseSourceKind(Reader &)` and `SourceKindToJson` are declared in
+  `Binders.h` rather than `Recipe.h`, because the pair needs `Reader` and
+  `json` and `Recipe.h` stays free of nlohmann. `Reader` gained `Object()`,
+  `Strings(key, cap)`, `BipedSlot(key)` and the static `BipedSlotFrom`; the
+  bake partition parser uses the last, so the 30..61 range is spelled once
+  (`kFirstBipedSlot`/`kLastBipedSlot` in `Recipe.h`).
+- A2 done as far as the UI seams allow. The six store operations return
+  `std::optional<Diagnostic>` / `std::expected<path, Diagnostic>` with
+  `where` `recipe <id>`, still logging once at the point of failure.
+  `RecipeEditor` copies the message into the existing records: save and
+  revert into `FileOperationResult`, and `NewRecipe`/`RenameRecipe` now
+  return a request id and finish a `RecipeEditResult`, so a rename
+  collision reaches the recipes page through the same journal undo and
+  redo use. The menu's `Menu.cpp` dispatch is untouched (it ignores the
+  id). A2.5: the `*Where` helpers live in `Recipe.h`/`Recipe.cpp`
+  (`VariantWhere` added); `RecipeRead`, `Signals`, `Edits` and
+  `RecipeStore` build every `where` through them. `RowLevel`,
+  `HasErrors(span)`, `HasRecipeErrors(span)`, `LoadResult::HasRecipeErrors`
+  and `ProblemText` are published. The store keeps every parsed recipe in
+  `g_loaded` and rebuilds the applied set (`LoadedRecipes()`) through
+  `RebuildApplied` on every publish, skipping held-back recipes;
+  `RecipeStoreStatus::heldBack` and the load summary line report the count.
+  Deviation: no `heldBack` field was added to `Studio::RecipeRow`, because
+  `Snapshot.h` and `RecipeSnapshot.cpp` are under live UI edits; the row's
+  `problems` already carry the diagnostics and the menu derives the flag
+  with `HasRecipeErrors(row.problems)`. Told to the UI owner through the
+  handoff.
+- A3 done. `Presets.cpp` is written on `Reader`/`Writer`/`ParseSourceKind`;
+  `ParsePresets` returns `PresetsLoadResult` (`presets`, `diagnostics`,
+  `HasErrors`), collects every diagnostic with `where` `preset <name>` (or
+  the index when the name is missing) and `preset <name> source <s>`,
+  reports unknown keys, keeps the healthy presets when one is bad, and
+  accepts every source kind. `SerializePresets` mirrors it field for
+  field. Finding: the shipped `presets/regions.json` was in the frozen
+  tree's `format`/`names`/`where`/`what` layout, which the parser never
+  read, so the plugin loaded zero presets; the file is converted to the
+  parser's `presets` array (13 region presets, then 8 material presets;
+  the `names` block had no reader in the new tree and is dropped) and
+  written by `SerializePresets`, so the round-trip test is byte-exact. The
+  file keeps its name until Plan E renames it. `LoadPresets` logs each
+  diagnostic and the count loaded.
+- A4 step 2 done: `SlotTarget::Problem` and its three implementations
+  return `std::optional<Diagnostic>` with `where` = `SlotName(slot)`;
+  `ManagerApply` and `ManagerSnapshot` project it with `ProblemText`.
+  Step 1 (`FieldCheck`) is deferred to UI slice 2A.
+- A5 done in `docs/conventions.md`: the contract, the logging rule, the
+  `Trace` paragraph, the INI exception, and `Binders.h` as the JSON
+  boundary.
+- Verified: native suite green (58 suites, including the new
+  `recipe_binders` and the rewritten `studio_presets`), sanitized run,
+  every plugin object compiles except the two that fail at the base
+  (`RecipesPage.cpp`, `StudioPage.cpp`, both on the UI wave's uncommitted
+  `Manager::Watch`). Acceptance greps: no `bool` failure result remains in
+  `RecipeStore.h`; `Reader` is declared once in `Binders.h` and both
+  parsers include it; the row `where` words appear only in `Recipe.cpp`
+  (the remaining `std::format("output {} ...")` hits in `Edits.cpp` and
+  `Board.cpp` are messages, not `where`s). `std::expected<T, std::string>`
+  still appears in `engine/TextFile.h` (a read failure reason the store
+  rewraps, like `Expression.h`), `engine/MeshReader.h` and `render/`
+  (Plan C moves `MeshReader`; the render ones are out of this plan's
+  scope) and `recipe/Importer.h`.
+
+Deferred (revisit after the UI complete-editor checkpoint):
+- `FileOperationResult::error` and `RecipeEditResult::error` to
+  `std::optional<Diagnostic>` (A2 "defer").
+- A4 step 1: `FieldCheck` returning `Diagnostic` (UI slice 2A owns
+  `FieldCheck`).
+- A `heldBack` field on `Studio::RecipeRow` and its label on the recipes
+  page (UI slices 1F/1B own `Snapshot.h`, `RecipeSnapshot.cpp` and the
+  page); until then the page can call `HasRecipeErrors(row.problems)`.
+- `MeshReader.h`, `Compositor.h` and `Importer.h` still return
+  `std::expected<T, std::string>`; nothing in this plan's scope consumes
+  them as menu-visible failures.
 
 Covers critique recommendations 1 (one `Diagnostic` everywhere) and 2
 (publish `Reader` and `Reporter`, rebuild `Presets` on them). Depends on

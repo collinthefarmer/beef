@@ -19,6 +19,7 @@ namespace BetterEnchantmentEffects {
 struct RecipeStoreStatus {
   std::size_t loaded = 0;
   std::size_t withErrors = 0;
+  std::size_t heldBack = 0;
   std::size_t unresolved = 0;
   std::size_t imported = 0;
 };
@@ -44,13 +45,15 @@ ReferencesOf(std::string_view a_id) noexcept;
 [[nodiscard]] Recipe *MutableRecipe(std::string_view a_id) noexcept;
 std::span<const Diagnostic> RefreshRecipeDerivedState(std::string_view a_id);
 [[nodiscard]] bool IsDirty(std::string_view a_id) noexcept;
-[[nodiscard]] std::expected<std::filesystem::path, std::string>
+[[nodiscard]] std::expected<std::filesystem::path, Diagnostic>
 SaveRecipe(std::string_view a_id);
-[[nodiscard]] bool RevertRecipe(std::string_view a_id);
-[[nodiscard]] bool NewRecipe(std::string_view a_id, RecipeKey a_key,
-                             std::string_view a_geometry);
-[[nodiscard]] bool RenameRecipe(std::string_view a_from, std::string_view a_to);
-[[nodiscard]] bool AddTransientRecipe(Recipe a_recipe);
-[[nodiscard]] bool DropTransientRecipe(std::string_view a_id);
+[[nodiscard]] std::optional<Diagnostic> RevertRecipe(std::string_view a_id);
+[[nodiscard]] std::optional<Diagnostic>
+NewRecipe(std::string_view a_id, RecipeKey a_key, std::string_view a_geometry);
+[[nodiscard]] std::optional<Diagnostic> RenameRecipe(std::string_view a_from,
+                                                     std::string_view a_to);
+[[nodiscard]] std::optional<Diagnostic> AddTransientRecipe(Recipe a_recipe);
+[[nodiscard]] std::optional<Diagnostic>
+DropTransientRecipe(std::string_view a_id);
 [[nodiscard]] bool IsTransient(std::string_view a_id) noexcept;
 }

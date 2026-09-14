@@ -1,7 +1,6 @@
+#include "recipe/Binders.h"
 #include "recipe/Recipe.h"
 #include "recipe/Words.h"
-
-#include <nlohmann/json.hpp>
 
 #include <algorithm>
 #include <format>
@@ -14,399 +13,7 @@
 #include <vector>
 
 namespace BetterEnchantmentEffects {
-using json = nlohmann::ordered_json;
-
 namespace {
-bool RowCapReached(std::size_t a_count, const Reporter &a_ctx,
-                   std::string_view a_what) {
-  if (a_count >= kMaxRecipeRows) {
-    a_ctx.Error(
-        std::format("'{}' has more than {} entries", a_what, kMaxRecipeRows));
-    return true;
-  }
-  return false;
-}
-
-std::size_t MaxNestingDepth(std::string_view a_json) noexcept {
-  std::size_t depth = 0;
-  std::size_t deepest = 0;
-  bool inString = false;
-  bool escaped = false;
-  for (const char c : a_json) {
-    if (inString) {
-      if (escaped) {
-        escaped = false;
-      } else if (c == '\\') {
-        escaped = true;
-      } else if (c == '"') {
-        inString = false;
-      }
-      continue;
-    }
-    if (c == '"') {
-      inString = true;
-    } else if (c == '{' || c == '[') {
-      ++depth;
-      deepest = std::max(deepest, depth);
-    } else if ((c == '}' || c == ']') && depth > 0) {
-      --depth;
-    }
-  }
-  return deepest;
-}
-
-class Reader {
-public:
-  Reader(const json &a_object, Reporter a_ctx)
-      : object_(a_object), ctx_(std::move(a_ctx)) {}
-
-  [[nodiscard]] const Reporter &Context() const noexcept { return ctx_; }
-  [[nodiscard]] bool Has(std::string_view a_key) const {
-    return object_.is_object() && object_.contains(a_key);
-  }
-
-  const json *Child(std::string_view a_key) {
-    if (!Has(a_key)) {
-      return nullptr;
-    }
-    used_.insert(std::string{a_key});
-    return &object_.at(a_key);
-  }
-
-  std::optional<float> Number(std::string_view a_key) {
-    const auto *j = Child(a_key);
-    if (!j) {
-      return std::nullopt;
-    }
-    if (!j->is_number()) {
-      ctx_.Error(std::format("'{}' must be a number", a_key));
-      return std::nullopt;
-    }
-    return static_cast<float>(j->get<double>());
-  }
-
-  std::optional<int> Integer(std::string_view a_key) {
-    const auto *j = Child(a_key);
-    if (!j) {
-      return std::nullopt;
-    }
-    if (!j->is_number_integer()) {
-      ctx_.Error(std::format("'{}' must be an integer", a_key));
-      return std::nullopt;
-    }
-    return j->get<int>();
-  }
-
-  std::optional<bool> Boolean(std::string_view a_key) {
-    const auto *j = Child(a_key);
-    if (!j) {
-      return std::nullopt;
-    }
-    if (!j->is_boolean()) {
-      ctx_.Error(std::format("'{}' must be true or false", a_key));
-      return std::nullopt;
-    }
-    return j->get<bool>();
-  }
-
-  std::optional<std::string> String(std::string_view a_key) {
-    const auto *j = Child(a_key);
-    if (!j) {
-      return std::nullopt;
-    }
-    if (!j->is_string()) {
-      ctx_.Error(std::format("'{}' must be a string", a_key));
-      return std::nullopt;
-    }
-    return j->get<std::string>();
-  }
-
-  std::string Required(std::string_view a_key) {
-    if (!Has(a_key)) {
-      ctx_.Error(std::format("'{}' is required", a_key));
-      return {};
-    }
-    return String(a_key).value_or(std::string{});
-  }
-
-  template <class Row, std::size_t N>
-  std::optional<decltype(Row::value)> Enum(std::string_view a_key,
-                                           const Row (&a_table)[N]) {
-    const auto text = String(a_key);
-    if (!text) {
-      return std::nullopt;
-    }
-    const auto value = FromName(a_table, *text);
-    if (!value) {
-      ctx_.Error(std::format("'{}' is not one of {}: '{}'", a_key,
-                             Choices(a_table), *text));
-    }
-    return value;
-  }
-
-  std::optional<Ref> Reference(std::string_view a_key) {
-    const auto *j = Child(a_key);
-    return j ? RefFrom(*j, a_key) : std::nullopt;
-  }
-
-  std::optional<Param> Parameter(std::string_view a_key) {
-    const auto *j = Child(a_key);
-    return j ? ParamFrom(*j, a_key) : std::nullopt;
-  }
-
-  std::optional<Vec2Param> Vector2(std::string_view a_key) {
-    const auto *j = Child(a_key);
-    return j ? VecFrom<2>(*j, a_key, false) : std::nullopt;
-  }
-
-  std::optional<Vec3Param> Vector3(std::string_view a_key,
-                                   bool a_color = false) {
-    const auto *j = Child(a_key);
-    return j ? VecFrom<3>(*j, a_key, a_color) : std::nullopt;
-  }
-
-  static std::optional<Vec3> PointFrom(const json &a_j, std::string_view a_what,
-                                       const Reporter &a_ctx) {
-    if (!a_j.is_array() || a_j.size() != 3 ||
-        !std::ranges::all_of(a_j,
-                             [](const json &e) { return e.is_number(); })) {
-      a_ctx.Error(std::format("'{}' must be [x, y, z]", a_what));
-      return std::nullopt;
-    }
-    return Vec3{a_j[0].get<float>(), a_j[1].get<float>(), a_j[2].get<float>()};
-  }
-
-  std::optional<Vec3> Point(std::string_view a_key) {
-    const auto *j = Child(a_key);
-    return j ? PointFrom(*j, a_key, ctx_) : std::nullopt;
-  }
-
-  std::optional<Value> Literal(std::string_view a_key) {
-    const auto *j = Child(a_key);
-    return j ? ValueFrom(*j, a_key, ctx_) : std::nullopt;
-  }
-
-  void Read(std::string_view a_key, Param &a_out) {
-    if (auto p = Parameter(a_key))
-      a_out = *p;
-  }
-  void Read(std::string_view a_key, std::optional<Param> &a_out) {
-    if (auto p = Parameter(a_key))
-      a_out = *p;
-  }
-  void Read(std::string_view a_key, bool &a_out) {
-    if (auto b = Boolean(a_key))
-      a_out = *b;
-  }
-  void Read(std::string_view a_key, Ref &a_out) {
-    if (auto r = Reference(a_key))
-      a_out = *r;
-  }
-  void Read(std::string_view a_key, std::optional<Ref> &a_out) {
-    if (auto r = Reference(a_key))
-      a_out = *r;
-  }
-  void Read(std::string_view a_key, Vec2Param &a_out) {
-    if (auto v = Vector2(a_key))
-      a_out = *v;
-  }
-  void Read(std::string_view a_key, std::optional<Vec2Param> &a_out) {
-    if (auto v = Vector2(a_key))
-      a_out = *v;
-  }
-  void Read(std::string_view a_key, Vec3Param &a_out, bool a_color = false) {
-    if (auto v = Vector3(a_key, a_color))
-      a_out = *v;
-  }
-  void Read(std::string_view a_key, std::optional<Vec3Param> &a_out,
-            bool a_color = false) {
-    if (auto v = Vector3(a_key, a_color))
-      a_out = *v;
-  }
-  template <class Row, std::size_t N>
-  void Read(std::string_view a_key, const Row (&a_table)[N],
-            decltype(Row::value) &a_out) {
-    if (auto e = Enum(a_key, a_table))
-      a_out = *e;
-  }
-
-  template <class T>
-  bool IntRange(std::string_view a_key, int a_lo, int a_hi, T &a_out) {
-    const auto n = Integer(a_key);
-    if (!n) {
-      return true;
-    }
-    if (*n < a_lo || *n > a_hi) {
-      ctx_.Error(std::format("'{}' is {}..{}", a_key, a_lo, a_hi));
-      return false;
-    }
-    a_out = static_cast<T>(*n);
-    return true;
-  }
-
-  void Finish() {
-    if (!object_.is_object()) {
-      return;
-    }
-    for (const auto &[key, value] : object_.items()) {
-      if (!used_.contains(key)) {
-        ctx_.Error(std::format("unknown key '{}'", key));
-      }
-    }
-  }
-
-  [[nodiscard]] std::optional<Ref> RefFrom(const json &a_j,
-                                           std::string_view a_what) const {
-    if (a_j.is_string()) {
-      const auto text = a_j.get<std::string>();
-      if (text.size() > 1 && text[0] == '@') {
-        return Ref{text.substr(1)};
-      }
-      ctx_.Error(std::format("'{}' names a row and must start with '@': '{}'",
-                             a_what, text));
-      return std::nullopt;
-    }
-    ctx_.Error(std::format("'{}' must be \"@name\"", a_what));
-    return std::nullopt;
-  }
-
-  [[nodiscard]] std::optional<Param> ParamFrom(const json &a_j,
-                                               std::string_view a_what) const {
-    if (a_j.is_number()) {
-      return Param{static_cast<float>(a_j.get<double>())};
-    }
-    if (a_j.is_string()) {
-      const auto ref = RefFrom(a_j, a_what);
-      return ref ? std::optional<Param>{*ref} : std::nullopt;
-    }
-    ctx_.Error(std::format("'{}' must be a number or \"@name\"", a_what));
-    return std::nullopt;
-  }
-
-  template <std::size_t N>
-  [[nodiscard]] std::optional<std::variant<std::array<Param, N>, Ref>>
-  VecFrom(const json &a_j, std::string_view a_what, bool a_color) const {
-    using V = std::variant<std::array<Param, N>, Ref>;
-    if (a_j.is_string()) {
-      const auto ref = RefFrom(a_j, a_what);
-      return ref ? std::optional<V>{*ref} : std::nullopt;
-    }
-    if (!a_j.is_array() || a_j.size() != N) {
-      ctx_.Error(std::format(
-          "'{}' must be an array of {} numbers or \"@name\"s, or one \"@name\"",
-          a_what, N));
-      return std::nullopt;
-    }
-    std::array<Param, N> parts;
-    for (std::size_t i = 0; i < N; ++i) {
-      const auto p = ParamFrom(a_j[i], a_what);
-      if (!p) {
-        return std::nullopt;
-      }
-      parts[i] = *p;
-    }
-    if constexpr (N == 3) {
-      if (a_color) {
-        NormaliseColor(parts);
-      }
-    }
-    return V{parts};
-  }
-
-  static std::optional<Value>
-  ValueFrom(const json &a_j, std::string_view a_what, const Reporter &a_ctx) {
-    if (a_j.is_number()) {
-      return Value{static_cast<float>(a_j.get<double>())};
-    }
-    if (a_j.is_array() && (a_j.size() == 2 || a_j.size() == 3) &&
-        std::ranges::all_of(a_j, [](const json &e) { return e.is_number(); })) {
-      if (a_j.size() == 2) {
-        return Value{Vec2{a_j[0].get<float>(), a_j[1].get<float>()}};
-      }
-      return Value{
-          Vec3{a_j[0].get<float>(), a_j[1].get<float>(), a_j[2].get<float>()}};
-    }
-    a_ctx.Error(
-        std::format("'{}' must be a number, [x, y] or [r, g, b]", a_what));
-    return std::nullopt;
-  }
-
-private:
-  const json &object_;
-  Reporter ctx_;
-  std::unordered_set<std::string> used_;
-};
-
-template <class Fill>
-bool ReadObject(const json &a_v, std::string_view a_word, const Reporter &a_ctx,
-                Fill a_fill) {
-  if (!a_v.is_object()) {
-    a_ctx.Error(std::format("'{}' takes an object", a_word));
-    return false;
-  }
-  Reader inner(a_v, a_ctx);
-  a_fill(inner);
-  inner.Finish();
-  return true;
-}
-
-template <class Row, std::size_t N>
-std::optional<decltype(Row::value)>
-EnumShorthand(const json &a_v, const Row (&a_table)[N], std::string_view a_what,
-              const Reporter &a_ctx) {
-  const auto value = a_v.is_string() ? FromName(a_table, a_v.get<std::string>())
-                                     : std::nullopt;
-  if (!value) {
-    a_ctx.Error(std::format("'{}' is one of {}", a_what, Choices(a_table)));
-  }
-  return value;
-}
-
-template <class T, class Parse>
-void ReadRows(const json &a_array, const char *a_word, const Reporter &a_ctx,
-              std::vector<T> &a_out, Parse a_parse) {
-  std::size_t index = 0;
-  for (const auto &element : a_array) {
-    if (RowCapReached(a_out.size(), a_ctx, a_word)) {
-      break;
-    }
-    if (auto row = a_parse(element, index)) {
-      a_out.push_back(std::move(*row));
-    }
-    ++index;
-  }
-}
-
-struct KindEntry {
-  std::string key;
-  const json *value = nullptr;
-};
-
-std::optional<KindEntry>
-OneKey(const json &a_j, const Reporter &a_ctx, std::string_view a_what,
-       std::initializer_list<std::string_view> a_common = {}) {
-  if (!a_j.is_object()) {
-    a_ctx.Error(std::format("{} must be an object with one kind key", a_what));
-    return std::nullopt;
-  }
-  std::optional<KindEntry> found;
-  for (const auto &[key, value] : a_j.items()) {
-    if (std::ranges::find(a_common, key) != a_common.end()) {
-      continue;
-    }
-    if (found) {
-      a_ctx.Error(std::format("{} has two kind keys, '{}' and '{}'", a_what,
-                              found->key, key));
-      return std::nullopt;
-    }
-    found = KindEntry{key, &value};
-  }
-  if (!found) {
-    a_ctx.Error(std::format("{} has no kind key", a_what));
-  }
-  return found;
-}
-
 std::optional<FormRef> FormFrom(const json &a_j, const Reporter &a_ctx,
                                 std::string_view a_what) {
   if (!a_j.is_string() || a_j.get<std::string>().empty()) {
@@ -906,23 +513,11 @@ std::optional<SourceKind> ParseMaterial(const json &a_v,
 
 std::optional<BakeKind> PartitionBakeFrom(const json &a_v,
                                           const Reporter &a_ctx) {
-  PartitionBake pb;
-  if (a_v.is_string()) {
-    const auto slot = BipedSlotFromName(a_v.get<std::string>());
-    if (!slot) {
-      a_ctx.Error(
-          std::format("unknown biped slot name '{}'", a_v.get<std::string>()));
-      return std::nullopt;
-    }
-    pb.slot = *slot;
-  } else if (a_v.is_number_integer() && a_v.get<int>() >= 30 &&
-             a_v.get<int>() <= 61) {
-    pb.slot = a_v.get<std::uint32_t>();
-  } else {
-    a_ctx.Error("'partition' is a biped slot name or a number 30..61");
+  const auto slot = Reader::BipedSlotFrom(a_v, "partition", a_ctx);
+  if (!slot) {
     return std::nullopt;
   }
-  return pb;
+  return PartitionBake{*slot};
 }
 
 std::optional<BakeKind> BoneWeightBakeFrom(const json &a_v,
@@ -1100,16 +695,8 @@ static_assert(std::size(kSourceParsers) == std::variant_size_v<SourceKind>);
 
 std::optional<Source> SourceFrom(const std::string &a_name, const json &a_j,
                                  const Reporter &a_ctx) {
-  const auto entry = OneKey(a_j, a_ctx, "a source");
-  if (!entry) {
-    return std::nullopt;
-  }
-  const auto blank = DefaultSourceKind(entry->key);
-  if (!blank) {
-    a_ctx.Error(std::format("unknown source kind '{}'", entry->key));
-    return std::nullopt;
-  }
-  auto kind = kSourceParsers[blank->index()](*entry->value, a_ctx);
+  Reader r(a_j, a_ctx);
+  auto kind = ParseSourceKind(r);
   if (!kind) {
     return std::nullopt;
   }
@@ -1118,6 +705,24 @@ std::optional<Source> SourceFrom(const std::string &a_name, const json &a_j,
   s.kind = std::move(*kind);
   return s;
 }
+}
+
+std::optional<SourceKind> ParseSourceKind(Reader &a_reader) {
+  const Reporter &ctx = a_reader.Context();
+  const auto entry = OneKey(a_reader.Object(), ctx, "a source");
+  if (!entry) {
+    return std::nullopt;
+  }
+  const auto blank = DefaultSourceKind(entry->key);
+  if (!blank) {
+    ctx.Error(std::format("unknown source kind '{}'", entry->key));
+    return std::nullopt;
+  }
+  a_reader.Child(entry->key);
+  return kSourceParsers[blank->index()](*entry->value, ctx);
+}
+
+namespace {
 
 std::optional<Layer> LayerFrom(const json &a_j, const Reporter &a_ctx) {
   if (!a_j.is_object()) {
@@ -1379,7 +984,7 @@ std::optional<Variant> VariantFrom(const json &a_j, const Reporter &a_ctx) {
   Variant v;
   Reader r(a_j, a_ctx);
   v.name = r.Required("name");
-  const auto ctx = a_ctx.At(std::format("variant {}", v.name));
+  const auto ctx = a_ctx.At(VariantWhere(v.name));
   if (const auto *key = r.Child("key")) {
     if (auto k = VariantKeyFrom(*key, ctx))
       v.key = *k;
@@ -1409,57 +1014,6 @@ std::optional<Mask> MaskFrom(const std::string &a_name, const json &a_j,
   }
   return Mask{a_name, a_j.get<std::string>()};
 }
-
-template <class Row, class Parse>
-void NamedRows(Reader &a_root, const char *a_section, const char *a_rowWord,
-               std::vector<Row> &a_out, Parse a_parse) {
-  const auto *section = a_root.Child(a_section);
-  if (!section) {
-    return;
-  }
-  if (!section->is_object()) {
-    a_root.Context().Error(
-        std::format("'{}' must be an object keyed by name", a_section));
-    return;
-  }
-  for (const auto &[name, value] : section->items()) {
-    if (RowCapReached(a_out.size(), a_root.Context(), a_section)) {
-      break;
-    }
-    if (auto row = a_parse(
-            name, value,
-            a_root.Context().At(std::format("{} {}", a_rowWord, name)))) {
-      a_out.push_back(std::move(*row));
-    }
-  }
-}
-
-struct DuplicateFinder {
-  std::vector<std::unordered_set<std::string>> scopes;
-  std::vector<std::string> duplicates;
-
-  bool operator()(int, json::parse_event_t a_event, json &a_parsed) {
-    switch (a_event) {
-    case json::parse_event_t::object_start:
-      scopes.emplace_back();
-      break;
-    case json::parse_event_t::object_end:
-      if (!scopes.empty()) {
-        scopes.pop_back();
-      }
-      break;
-    case json::parse_event_t::key:
-      if (!scopes.empty() && a_parsed.is_string() &&
-          !scopes.back().insert(a_parsed.get<std::string>()).second) {
-        duplicates.push_back(a_parsed.get<std::string>());
-      }
-      break;
-    default:
-      break;
-    }
-    return true;
-  }
-};
 
 void ReadMetadata(Reader &a_r, const Reporter &a_ctx, Metadata &a_meta) {
   a_meta.name = a_r.String("name").value_or("");
@@ -1504,8 +1058,7 @@ void ReadOutputs(Reader &a_r, const Reporter &a_ctx,
   }
   ReadRows(*outputs, "outputs", a_ctx, a_out,
            [&](const json &a_output, std::size_t a_index) {
-             return OutputFrom(a_output,
-                               a_ctx.At(std::format("output {}", a_index)));
+             return OutputFrom(a_output, a_ctx.At(OutputWhere(a_index)));
            });
 }
 
@@ -1521,8 +1074,8 @@ void ReadVariants(Reader &a_r, const Reporter &a_ctx,
   }
   ReadRows(*variants, "variants", a_ctx, a_out,
            [&](const json &a_variant, std::size_t a_index) {
-             return VariantFrom(a_variant,
-                                a_ctx.At(std::format("variant {}", a_index)));
+             return VariantFrom(
+                 a_variant, a_ctx.At(VariantWhere(std::to_string(a_index))));
            });
 }
 }
@@ -1530,27 +1083,15 @@ void ReadVariants(Reader &a_r, const Reporter &a_ctx,
 LoadResult ParseRecipe(std::string_view a_json, std::string_view a_id) {
   LoadResult result;
   const Reporter fileCtx{result.diagnostics, "file"};
-
-  if (MaxNestingDepth(a_json) > kMaxRecipeDepth) {
-    fileCtx.Error(std::format("nested deeper than {} levels", kMaxRecipeDepth));
+  const std::optional<json> root = ParseObjectDocument(a_json, fileCtx);
+  if (!root) {
     return result;
-  }
-
-  DuplicateFinder finder;
-  json root = json::parse(a_json, std::ref(finder), false, true);
-  if (root.is_discarded() || !root.is_object()) {
-    fileCtx.Error(
-        "not a JSON object (a syntax error, or the file is not a recipe)");
-    return result;
-  }
-  for (const auto &d : finder.duplicates) {
-    fileCtx.Error(std::format("duplicate key '{}'", d));
   }
 
   Recipe recipe;
   recipe.id = std::string{a_id};
   const Reporter ctx{result.diagnostics, "recipe"};
-  Reader r(root, ctx);
+  Reader r(*root, ctx);
 
   const auto format = r.Integer("format");
   if (!r.Has("format")) {
@@ -1572,10 +1113,10 @@ LoadResult ParseRecipe(std::string_view a_json, std::string_view a_id) {
     c.Finish();
   }
 
-  NamedRows(r, "signals", "signal", recipe.signals, SignalFrom);
-  NamedRows(r, "curves", "curve", recipe.curves, CurveFrom);
-  NamedRows(r, "sources", "source", recipe.sources, SourceFrom);
-  NamedRows(r, "masks", "mask", recipe.masks, MaskFrom);
+  NamedRows(r, "signals", SignalWhere, recipe.signals, SignalFrom);
+  NamedRows(r, "curves", CurveWhere, recipe.curves, CurveFrom);
+  NamedRows(r, "sources", SourceWhere, recipe.sources, SourceFrom);
+  NamedRows(r, "masks", MaskWhere, recipe.masks, MaskFrom);
 
   ReadOutputs(r, ctx, recipe.outputs);
   if (const auto *shell = r.Child("shell")) {

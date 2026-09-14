@@ -37,7 +37,8 @@ RE::NiSourceTexture *RetainTexture(Manager::Snapshot &a_snapshot,
 std::vector<Studio::SlotRow> SlotRows(const SlotTarget &a_target) {
   std::vector<Studio::SlotRow> rows;
   for (const SlotState &s : a_target.Slots()) {
-    rows.push_back({s.slot, s.original, s.written, a_target.Problem(s.slot)});
+    rows.push_back(
+        {s.slot, s.original, s.written, ProblemText(a_target.Problem(s.slot))});
   }
   return rows;
 }

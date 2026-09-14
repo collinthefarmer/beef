@@ -27,7 +27,8 @@ struct SlotState {
 class SlotTarget {
 public:
   virtual ~SlotTarget() = default;
-  [[nodiscard]] virtual std::string Problem(Slot a_slot) const = 0;
+  [[nodiscard]] virtual std::optional<Diagnostic>
+  Problem(Slot a_slot) const = 0;
   virtual void WriteTexture(Slot a_slot, const TextureRef &a_texture) = 0;
   virtual void WriteEmissive(const Vec3 &a_color, float a_multiplier) = 0;
   virtual void WriteFuzz(const Vec3 &a_color, float a_weight) = 0;
@@ -46,7 +47,7 @@ public:
   SlotWriter(SlotWriter &&) = default;
   SlotWriter &operator=(SlotWriter &&) = default;
 
-  [[nodiscard]] std::string Problem(Slot a_slot) const;
+  [[nodiscard]] std::optional<Diagnostic> Problem(Slot a_slot) const;
   void WriteTexture(Slot a_slot, const TextureRef &a_texture);
   void WriteEmissive(const Vec3 &a_color, float a_multiplier);
   void WriteFuzz(const Vec3 &a_color, float a_weight);
@@ -76,6 +77,7 @@ private:
     TextureRef written;
   };
   [[nodiscard]] bool MaterialAttached() const noexcept;
+  [[nodiscard]] std::optional<std::string> ProblemMessage(Slot a_slot) const;
   [[nodiscard]] GroupState Capture(Slot a_slot) const;
   [[nodiscard]] Group *BeginWrite(Slot a_slot, bool a_enableFeature = false);
   void EndWrite(Slot a_slot);
@@ -113,7 +115,7 @@ public:
   [[nodiscard]] RE::BSLightingShaderProperty *Property() const noexcept;
   [[nodiscard]] bool Private() const noexcept;
 
-  [[nodiscard]] std::string Problem(Slot a_slot) const override;
+  [[nodiscard]] std::optional<Diagnostic> Problem(Slot a_slot) const override;
   void WriteTexture(Slot a_slot, const TextureRef &a_texture) override;
   void WriteEmissive(const Vec3 &a_color, float a_multiplier) override;
   void WriteFuzz(const Vec3 &a_color, float a_weight) override;
@@ -147,7 +149,7 @@ public:
   [[nodiscard]] RE::BSLightingShaderProperty *Property() const noexcept;
   [[nodiscard]] const std::string &Describe() const noexcept;
 
-  [[nodiscard]] std::string Problem(Slot a_slot) const override;
+  [[nodiscard]] std::optional<Diagnostic> Problem(Slot a_slot) const override;
   void WriteTexture(Slot a_slot, const TextureRef &a_texture) override;
   void WriteEmissive(const Vec3 &a_color, float a_multiplier) override;
   void WriteFuzz(const Vec3 &a_color, float a_weight) override;

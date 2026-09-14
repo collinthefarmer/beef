@@ -65,13 +65,17 @@ int main() {
   Check(materialised.edits.size() == 1 && materialised.expression == "@r",
         "MaterialiseTerm reuses the preset expression and names its source");
   const SourceKind roughness = MaterialSource{MaterialChannel::kRoughness};
-  presets.presets.push_back(MaskPreset{
-      "aliases", std::nullopt, {}, "@first + @second",
-      {{"first", roughness}, {"second", roughness}}});
+  presets.presets.push_back(
+      MaskPreset{"aliases",
+                 std::nullopt,
+                 {},
+                 "@first + @second",
+                 {{"first", roughness}, {"second", roughness}}});
   const BuiltTerm aliases =
       BuildTerm(PresetTerm{"aliases"}, presets, SourceCatalog{});
   Check(aliases.edits.size() == 1 && aliases.expression == "@first + @first",
-        "preset aliases share one staged source and the expression uses its name");
+        "preset aliases share one staged source and the expression uses its "
+        "name");
   Check(TermLabel("@r", presets, SourceCatalog{}) == "r",
         "a bare @reference labels as its name; a preset carrying a source edit "
         "is not matched by expression alone");

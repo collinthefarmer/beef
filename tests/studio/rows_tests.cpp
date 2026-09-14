@@ -93,7 +93,8 @@ int main() {
   Check(surface.surface == Surface::kMaterial && surface.slot == Slot::kFuzz,
         "surface output projects surface and slot");
   Check(surface.replace, "surface output projects replace");
-  const SurfaceOutput *surfaceDefinition = Get<SurfaceOutput>(recipe.outputs[0]);
+  const SurfaceOutput *surfaceDefinition =
+      Get<SurfaceOutput>(recipe.outputs[0]);
   Check(surfaceDefinition && surface.selection == surfaceDefinition->selector,
         "surface output preserves the typed selector for editing");
   Check(surface.layers.size() == 2, "surface output projects every layer");

@@ -91,14 +91,11 @@ int main() {
   request.maskName = "missingSignal";
   request.expression = "@metallic + @paintOnly";
   const auto conflicting = PreparePaintCommit(&painted, &conflict, request);
-  Check(conflicting.has_value(),
-        "the transfer can be prepared before checking the target edits");
-  if (conflicting) {
-    Check(Apply(conflict, *conflicting).has_value(),
-          "a signal missing from the target refuses the edit batch");
-    Check(conflict == beforeConflict,
-          "a refused commit rolls back sources added earlier in the batch");
-  }
+  Check(!conflicting.has_value(),
+        "a signal missing from the target refuses the commit while it is "
+        "prepared, before anything is applied");
+  Check(conflict == beforeConflict,
+        "a refused commit leaves the target untouched");
 
   Recipe aliases;
   aliases.sources.push_back(

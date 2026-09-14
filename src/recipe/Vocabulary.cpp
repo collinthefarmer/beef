@@ -180,7 +180,7 @@ BipedSlotFromName(std::string_view a_name) noexcept {
                           [](char c) { return c >= '0' && c <= '9'; })) {
     const std::uint32_t slot =
         static_cast<std::uint32_t>(std::stoul(std::string{a_name}));
-    if (slot >= 30 && slot <= 61) {
+    if (slot >= kFirstBipedSlot && slot <= kLastBipedSlot) {
       return slot;
     }
   }

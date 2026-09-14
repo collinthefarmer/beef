@@ -26,28 +26,6 @@ Diagnostic Refuse(std::string a_where, std::string a_message) {
                         std::move(a_message));
 }
 
-std::string OutputWhere(std::size_t a_output) {
-  return std::format("output {}", a_output);
-}
-std::string LayerWhere(std::size_t a_output, std::size_t a_layer) {
-  return std::format("output {} layer {}", a_output, a_layer);
-}
-std::string SignalWhere(const std::string &a_signal) {
-  return std::format("signal {}", a_signal);
-}
-std::string CurveWhere(const std::string &a_curve) {
-  return std::format("curve {}", a_curve);
-}
-std::string MaskWhere(const std::string &a_mask) {
-  return std::format("mask {}", a_mask);
-}
-std::string SourceWhere(const std::string &a_source) {
-  return std::format("source {}", a_source);
-}
-std::string KeyWhere(const RecipeKey &a_key) {
-  return std::format("key {}", a_key.ToString());
-}
-
 std::string SelectorText(const Selector &a_selector) {
   std::string text;
   for (const auto &clause : a_selector.anyOf) {
