@@ -128,19 +128,24 @@ later and not listed here. Three findings for the UI owner:
    switches material to image, then sets the path, and expects the row to
    validate. `Edits.cpp` is slice 2B's seam.
 
-6. **A refused recipe rename is not shown beside the row.** The user
-   reported the Rename button as disabled for an existing name; the code
-   (`menu/ContextRows.cpp`, `RenameRecipeButton`) disables it only for an
-   empty or unchanged name, so a collision is posted and refused by the
-   store with `where` `recipe <id>` ("a recipe named '<to>' already
-   exists"), and `RecipeEditor::RenameRecipe` finishes a `RecipeEditResult`
-   carrying that message. Only `menu/RecipeActions.cpp` reads
-   `editResults`, and it does so for the recipe's file actions; the rename
-   popup and the recipes page draw nothing from it, so the refusal is
-   visible in the log alone. This is the case Plan A's checkpoint was
-   written to catch. Fix: the rename popup keeps the typed name and draws
-   the latest `RecipeEditResult` error for the recipe under the field, and
-   the page row shows it as a `Problem` until the next edit succeeds.
+6. **The rename popup keeps stale text and hides the refusal.** The store
+   is correct: the log shows `rename Skyrim-92DEC -> abc: a recipe named
+   'abc' already exists` and the same for `defg -> abc`, and no recipe was
+   renamed onto an existing id. Two UI defects sit on top of it. First,
+   `RenameRecipeButton` in `menu/ContextRows.cpp` draws its name through
+   `LiveTextField`, whose buffer lives in `MenuState::textBuffers` keyed by
+   the widget and is never reset, so the popup opens showing whatever was
+   typed last time rather than the recipe's current id; the Rename button
+   is then disabled when that stale text equals the current id, which
+   reads as "the button will not enable for an existing name". The field
+   should be seeded with the recipe's id each time the popup opens.
+   Second, the refusal reaches the snapshot as a `RecipeEditResult` with
+   the store's message, but the popup closes on submit and only the file
+   actions strip (`menu/RecipeActions.cpp`, `DrawRecipeResults`) draws
+   that result, so the user sees no reason. The popup should stay open on
+   a refusal and draw the result's error under the field. This is the
+   case Plan A's checkpoint was written to catch; Plan A's routing works
+   and the presentation does not.
 
 Recipe-level rename and the add-resource menu work. Findings 2 and 3 are
 regressions from slice 1C's replacement of the resource tables and belong
