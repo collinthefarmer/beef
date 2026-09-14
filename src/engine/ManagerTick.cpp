@@ -1,7 +1,7 @@
 #include "engine/Manager.h"
 
 #include "SettingsFile.h"
-#include "engine/ManagerShared.h"
+#include "engine/Clock.h"
 #include "render/Compositor.h"
 #include "render/RuntimeTextures.h"
 #include "studio/ResolveOutput.h"

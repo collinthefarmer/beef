@@ -442,6 +442,13 @@ Lab mechanics:
 
 ## Engine events, hooks and the manager
 
+- `RetireActorEffects` (`engine/LiveActor.cpp`) clears in a fixed order:
+  application tokens, then lights, then each geometry through
+  `RetireGeometry`, and only then the placement, instance and piece tables.
+  A texture producer must not release until the shells that read it have
+  detached and the material journals have retired, so the tables that own
+  the producers go last.
+
 - Recipes with errors (decided 2026-09-13): a row error (`where` starts
   with `signal`, `curve`, `source`, `mask`, `output` or `variant`,
   `RowLevel` in `Recipe.cpp`) keeps that row inert and the recipe applied.

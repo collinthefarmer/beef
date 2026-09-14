@@ -1,4 +1,4 @@
-#include "engine/ManagerShared.h"
+#include "engine/LiveActor.h"
 
 namespace BetterEnchantmentEffects {
 void RetireGeometry(LiveGeometry &a_geometry) {
@@ -19,13 +19,10 @@ void RetireActorEffects(LiveActor &a_actor) {
     for (auto &geometry : piece.geometries)
       RetireGeometry(geometry);
   }
-  // Producers release after shells detach and material journals retire.
   a_actor.placements.clear();
   a_actor.instances.clear();
   a_actor.pieces.clear();
 }
-
-std::uint32_t NowMS() { return RE::GetDurationOfApplicationRunTime(); }
 
 SlotTarget *TargetFor(LiveGeometry &a_bound, Surface a_surface) {
   if (a_surface == Surface::kShell) {

@@ -2,8 +2,8 @@
 #include "engine/Manager.h"
 
 #include "SettingsFile.h"
+#include "engine/Clock.h"
 #include "engine/EngineForms.h"
-#include "engine/ManagerShared.h"
 #include "engine/RecipeStore.h"
 #include "render/Binding.h"
 #include "render/Compositor.h"
