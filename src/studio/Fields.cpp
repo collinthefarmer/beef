@@ -1,7 +1,6 @@
 #include "studio/Fields.h"
 
 #include "studio/Names.h"
-#include "studio/Page.h"
 
 #include <array>
 #include <charconv>
@@ -385,17 +384,4 @@ FormField TextedField(TextedFieldSpec a_spec) {
   field.bind = std::move(a_spec.bind);
   return field;
 }
-
-FormID ActorOf(const Page &a_page) noexcept {
-  return a_page.piece != nullptr ? a_page.piece->ref.actorID : FormID{0};
-}
-
-std::span<const BoneCoverage> BonesOf(const Page &a_page) noexcept {
-  if (a_page.geometry == nullptr) {
-    return {};
-  }
-  return a_page.geometry->bones;
-}
-
-float ScaleOf(const Page &a_page) noexcept { return a_page.scale; }
 }

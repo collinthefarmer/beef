@@ -836,7 +836,7 @@ checkpoint, not before.
 - The framework's `ImTextureID` is a D3D11 shader resource view pointer
   (NOTES 28).
 
-## studio (`studio/Snapshot.h`, `View.h`, `Intent.h`, `Forms.h`, `Edits.h`, `Mask.h`, `Presets.h`, `TermTemplates.h`, `PaintSession.h`, `Board.h`, `Panels.h`, `SelectorEdit.h`, `Selection.h`, `Names.h`, `Rows.h`, `FieldCheck.h`, `History.h`, `Page.h`, `Widgets.h`, `Fields.h`)
+## studio (`studio/Snapshot.h`, `View.h`, `Intent.h`, `Forms.h`, `Edits.h`, `Mask.h`, `Presets.h`, `TermTemplates.h`, `PaintSession.h`, `Board.h`, `Panels.h`, `SelectorEdit.h`, `Selection.h`, `Names.h`, `Rows.h`, `FieldCheck.h`, `History.h`, `Widgets.h`, `Fields.h`)
 
 - `Snapshot::status` (engine scalars plus loaded-file and recipe-error counts) is filled
   once on the game thread where the snapshot is built, so the render thread
