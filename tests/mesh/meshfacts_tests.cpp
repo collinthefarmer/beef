@@ -24,7 +24,7 @@ MeshPartition Slotted(std::uint16_t a_slot, std::size_t a_triangles) {
 }
 
 int main() {
-  Check(kBipedSlots[2].slot == 32 && kBipedSlots[2].name == "body",
+  Check(kBipedSlots[2].slot == BipedSlot{32} && kBipedSlots[2].name == "body",
         "MeshFacts reads slot names from the single table");
 
   {

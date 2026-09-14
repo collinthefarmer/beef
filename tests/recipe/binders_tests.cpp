@@ -102,9 +102,9 @@ void SourceKindsRoundTrip() {
 }
 
 void SlotWordsRoundTrip() {
-  Equal(BipedSlotToJson(32).dump(), std::string{"\"body\""},
+  Equal(BipedSlotToJson(BipedSlot{32}).dump(), std::string{"\"body\""},
         "a named slot writes its name");
-  Equal(BipedSlotToJson(45).dump(), std::string{"45"},
+  Equal(BipedSlotToJson(BipedSlot{45}).dump(), std::string{"45"},
         "an unnamed slot writes its number");
 }
 }

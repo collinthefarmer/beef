@@ -9,6 +9,7 @@
 #include <cstring>
 #include <format>
 #include <functional>
+#include <utility>
 
 namespace BetterEnchantmentEffects {
 float HalfToFloat(std::uint16_t a_half) noexcept {
@@ -143,7 +144,8 @@ std::optional<MeshPartition> DecodePartition(const RawPartition &a_raw) {
 namespace {
 bool Wanted(const MeshPartition &a_partition, const BakeKind &a_kind) {
   const auto *partition = std::get_if<PartitionBake>(&a_kind);
-  return !partition || a_partition.slot == partition->slot;
+  return !partition ||
+         a_partition.slot == std::to_underlying(partition->bipedSlot);
 }
 
 std::array<float, 3> ValueOf(const MeshVertex &a_vertex,
@@ -206,14 +208,6 @@ std::string NeedsAnalysis(const BakeKind &a_kind) {
       [](const BoneWeightBake &) { return std::string{}; });
 }
 
-std::optional<std::string_view> SlotName(std::uint32_t a_slot) noexcept {
-  for (const auto &row : kBipedSlots) {
-    if (row.slot == a_slot) {
-      return row.name;
-    }
-  }
-  return std::nullopt;
-}
 }
 
 BakeBuffers BuildBake(const MeshData &a_mesh, const BakeKind &a_kind) {
@@ -257,10 +251,10 @@ BakeBuffers BuildBake(const MeshData &a_mesh, const BakeKind &a_kind) {
   if (out.indices.empty()) {
     out.vertices.clear();
     if (const auto *partition = std::get_if<PartitionBake>(&a_kind)) {
-      const auto name = SlotName(partition->slot);
-      out.problem =
-          std::format("no partition in biped slot {}{}", partition->slot,
-                      name ? std::format(" ({})", *name) : "");
+      const auto name = BipedSlotName(partition->bipedSlot);
+      out.problem = std::format("no partition in biped slot {}{}",
+                                std::to_underlying(partition->bipedSlot),
+                                name ? std::format(" ({})", *name) : "");
     } else {
       out.problem = "the mesh has no triangles to bake";
     }
@@ -333,7 +327,7 @@ std::string Definition(const BakeKind &a_kind) {
       [](const LocalPositionBake &) { return std::string{"localPosition"}; },
       [](const WorldUpBake &) { return std::string{"worldUp"}; },
       [](const PartitionBake &p) {
-        return std::format("partition {}", p.slot);
+        return std::format("partition {}", std::to_underlying(p.bipedSlot));
       },
       [](const BoneWeightBake &b) {
         std::vector<std::string> sorted = b.bones;

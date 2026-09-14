@@ -60,10 +60,10 @@ void WellFormedFileParses() {
             ok.presets->presets[0].sources.size() == 2 &&
             ok.presets->presets[0].expression == "(1 - @m) * @r",
         "the material preset keeps its expression and sources");
-  Check(ok.presets->presets[1].partition == std::uint32_t{32} &&
+  Check(ok.presets->presets[1].partition == BipedSlot{32} &&
             ok.presets->presets[1].bones.size() == 1,
         "the spatial preset resolves its partition name and bones");
-  Check(ok.presets->presets[2].partition == std::uint32_t{40},
+  Check(ok.presets->presets[2].partition == BipedSlot{40},
         "a numeric partition is kept as the slot number");
 }
 

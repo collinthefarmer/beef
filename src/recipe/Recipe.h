@@ -392,8 +392,21 @@ struct LocalPositionBake {
 struct WorldUpBake {
   [[nodiscard]] bool operator==(const WorldUpBake &) const = default;
 };
+enum class BipedSlot : std::uint32_t {};
+struct BipedSlotSpec {
+  BipedSlot slot;
+  std::string_view name;
+};
+inline constexpr BipedSlot kFirstBipedSlot{30};
+inline constexpr BipedSlot kLastBipedSlot{61};
+
+[[nodiscard]] std::optional<BipedSlot>
+BipedSlotFromName(std::string_view a_name) noexcept;
+[[nodiscard]] std::optional<std::string_view>
+BipedSlotName(BipedSlot a_slot) noexcept;
+
 struct PartitionBake {
-  std::uint32_t slot = 32;
+  BipedSlot bipedSlot{32};
   [[nodiscard]] bool operator==(const PartitionBake &) const = default;
 };
 struct BoneWeightBake {
@@ -477,18 +490,6 @@ struct Source {
   SourceKind kind = MaterialSource{};
   [[nodiscard]] bool operator==(const Source &) const = default;
 };
-
-struct BipedSlotSpec {
-  std::uint32_t slot;
-  std::string_view name;
-};
-inline constexpr std::uint32_t kFirstBipedSlot = 30;
-inline constexpr std::uint32_t kLastBipedSlot = 61;
-
-[[nodiscard]] std::optional<std::uint32_t>
-BipedSlotFromName(std::string_view a_name) noexcept;
-[[nodiscard]] std::optional<std::string_view>
-BipedSlotName(std::uint32_t a_slot) noexcept;
 
 struct Mask {
   std::string name;

@@ -13,6 +13,7 @@
 #include <cmath>
 #include <format>
 #include <limits>
+#include <utility>
 
 namespace BetterEnchantmentEffects::Studio {
 std::vector<RecipeEdit>
@@ -169,14 +170,14 @@ namespace {
 }
 
 [[nodiscard]] std::string PartitionName(const GeometryRow &a_geometry,
-                                        std::uint32_t a_slot) {
-  const auto it =
-      std::ranges::find(a_geometry.partitions, a_slot, &SlotCoverage::slot);
+                                        BipedSlot a_slot) {
+  const auto it = std::ranges::find(
+      a_geometry.partitions, std::to_underlying(a_slot), &SlotCoverage::slot);
   if (it != a_geometry.partitions.end() && !it->name.empty()) {
     return it->name;
   }
   const auto name = BipedSlotName(a_slot);
-  return name ? std::string{*name} : std::to_string(a_slot);
+  return name ? std::string{*name} : std::to_string(std::to_underlying(a_slot));
 }
 
 [[nodiscard]] const MeshIsland *IslandOf(const GeometryRow &a_geometry,
@@ -569,10 +570,10 @@ std::vector<TermField> BoneForm(const BoneTerm &a_term) {
 std::vector<TermField> PartitionForm(const PartitionTerm &a_term,
                                      const GeometryRow &a_geometry) {
   std::vector<std::string> names;
-  std::vector<std::uint32_t> slots;
+  std::vector<BipedSlot> slots;
   for (const SlotCoverage &partition : a_geometry.partitions) {
-    names.push_back(PartitionName(a_geometry, partition.slot));
-    slots.push_back(partition.slot);
+    names.push_back(PartitionName(a_geometry, BipedSlot{partition.slot}));
+    slots.push_back(BipedSlot{partition.slot});
   }
   std::vector<TermField> form;
   form.push_back(Setting<PartitionTerm>(
@@ -588,9 +589,11 @@ std::vector<TermField> PartitionForm(const PartitionTerm &a_term,
             }
             const auto named = BipedSlotFromName(a_text);
             const auto numbered = ReadWhole(a_text, 61);
-            const auto slot =
+            const std::optional<BipedSlot> slot =
                 named ? named
-                      : (numbered && *numbered >= 30 ? numbered : std::nullopt);
+                      : (numbered && *numbered >= 30
+                             ? std::optional<BipedSlot>{BipedSlot{*numbered}}
+                             : std::nullopt);
             return slot ? (t.slot = *slot, true) : false;
           }}));
   return form;
@@ -699,10 +702,11 @@ void AppendBoneOffers(std::vector<TermOffer> &a_offers,
 void AppendPartitionOffers(std::vector<TermOffer> &a_offers,
                            const GeometryRow &a_geometry) {
   for (const SlotCoverage &partition : a_geometry.partitions) {
-    a_offers.push_back(Offer(OfferGroup::kPartitions,
-                             PartitionName(a_geometry, partition.slot),
-                             std::format("{} triangles", partition.triangles),
-                             PartitionTerm{partition.slot}));
+    a_offers.push_back(
+        Offer(OfferGroup::kPartitions,
+              PartitionName(a_geometry, BipedSlot{partition.slot}),
+              std::format("{} triangles", partition.triangles),
+              PartitionTerm{BipedSlot{partition.slot}}));
   }
 }
 
@@ -822,7 +826,7 @@ std::string TermDetailOf(const Term &a_term,
       [&](const ReferenceTerm &t) { return ReferenceText(t.name); },
       [&](const PresetTerm &t) { return t.preset; },
       [&](const PartitionTerm &t) {
-        return std::format("partition {}", t.slot);
+        return std::format("partition {}", std::to_underlying(t.slot));
       },
       [&](const BoneTerm &t) {
         return std::to_string(t.bones.size()) + " bone(s)";

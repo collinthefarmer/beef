@@ -128,7 +128,8 @@ public:
     return out;
   }
 
-  std::optional<std::uint32_t> BipedSlot(std::string_view a_key) {
+  std::optional<BetterEnchantmentEffects::BipedSlot>
+  BipedSlot(std::string_view a_key) {
     const auto *j = Child(a_key);
     return j ? BipedSlotFrom(*j, a_key, ctx_) : std::nullopt;
   }
@@ -335,9 +336,9 @@ public:
     return std::nullopt;
   }
 
-  static std::optional<std::uint32_t> BipedSlotFrom(const json &a_j,
-                                                    std::string_view a_what,
-                                                    const Reporter &a_ctx) {
+  static std::optional<BetterEnchantmentEffects::BipedSlot>
+  BipedSlotFrom(const json &a_j, std::string_view a_what,
+                const Reporter &a_ctx) {
     if (a_j.is_string()) {
       const auto slot = BipedSlotFromName(a_j.get<std::string>());
       if (!slot) {
@@ -349,10 +350,11 @@ public:
     if (a_j.is_number_integer() &&
         a_j.get<int>() >= static_cast<int>(kFirstBipedSlot) &&
         a_j.get<int>() <= static_cast<int>(kLastBipedSlot)) {
-      return a_j.get<std::uint32_t>();
+      return BetterEnchantmentEffects::BipedSlot{a_j.get<std::uint32_t>()};
     }
     a_ctx.Error(std::format("'{}' is a biped slot name or a number {}..{}",
-                            a_what, kFirstBipedSlot, kLastBipedSlot));
+                            a_what, std::to_underlying(kFirstBipedSlot),
+                            std::to_underlying(kLastBipedSlot)));
     return std::nullopt;
   }
 
@@ -440,7 +442,7 @@ void NamedRows(Reader &a_root, const char *a_section, Where a_where,
 [[nodiscard]] json ParamToJson(const Param &a_param);
 [[nodiscard]] json ValueToJson(const Value &a_value);
 [[nodiscard]] json PointToJson(const Vec3 &a_v);
-[[nodiscard]] json BipedSlotToJson(std::uint32_t a_slot);
+[[nodiscard]] json BipedSlotToJson(BipedSlot a_slot);
 [[nodiscard]] json SourceKindToJson(const SourceKind &a_kind);
 
 template <std::size_t N>

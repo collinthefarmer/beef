@@ -10,12 +10,8 @@
 namespace BetterEnchantmentEffects {
 namespace {
 std::string SlotLabel(std::uint32_t a_slot) {
-  for (const BipedSlotSpec &spec : kBipedSlots) {
-    if (spec.slot == a_slot) {
-      return std::string{spec.name};
-    }
-  }
-  return std::to_string(a_slot);
+  const auto name = BipedSlotName(BipedSlot{a_slot});
+  return name ? std::string{*name} : std::to_string(a_slot);
 }
 }
 

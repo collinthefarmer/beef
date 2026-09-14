@@ -546,6 +546,16 @@ Decompile provenance (`decompiled/WornEnchantmentFX/plugin.c` unless noted):
 
 ## Meshes, bakes and analysis (`mesh/Mesh.h`, `mesh/TextureSize.h`, `mesh/Islands.h`, `mesh/MaterialClusters.h`, `mesh/MeshFacts.h`)
 
+- A biped slot has two representations and they are not the same type.
+  `BipedSlot` (`recipe/Recipe.h`) is the parsed recipe value: the boundary
+  (`Reader::BipedSlotFrom`) admits a name from `kBipedSlots` or a number in
+  `kFirstBipedSlot`..`kLastBipedSlot` (30..61), so anything downstream can
+  trust it. `MeshPartition::slot` and `SlotCoverage::slot` are the raw
+  16-bit field the NIF's dismember skin instance carries, including the
+  `MeshPartition::kNoSlot` (0xFFFF) sentinel and values outside 30..61 that
+  other tools write; they stay `std::uint32_t`/`std::uint16_t` and convert
+  with `std::to_underlying` at the comparison.
+
 - Renderer byte counts must fit D3D11's 32-bit byte range before a mesh
   copy or readback. Index-count multiplication uses `size_t` to avoid
   wrapping first. GPU readback also checks the source buffer's `GetDesc`

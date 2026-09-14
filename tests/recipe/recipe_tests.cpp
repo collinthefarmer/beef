@@ -110,7 +110,7 @@ int main() {
         "blend screen parses back");
 
   Check(std::size(kBipedSlots) == 11, "the biped-slot table is exposed");
-  Check(kBipedSlots[2].slot == 32 && kBipedSlots[2].name == "body",
+  Check(kBipedSlots[2].slot == BipedSlot{32} && kBipedSlots[2].name == "body",
         "slot 32 is body");
 
   Check(Recipe{} == Recipe{}, "two empty recipes compare equal");

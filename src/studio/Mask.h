@@ -37,7 +37,7 @@ struct PresetTerm {
   [[nodiscard]] bool operator==(const PresetTerm &) const = default;
 };
 struct PartitionTerm {
-  std::uint32_t slot = 32;
+  BipedSlot slot{32};
   [[nodiscard]] bool operator==(const PartitionTerm &) const = default;
 };
 struct BoneTerm {

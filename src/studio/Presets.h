@@ -13,7 +13,7 @@
 namespace BetterEnchantmentEffects::Studio {
 struct MaskPreset {
   std::string name;
-  std::optional<std::uint32_t> partition;
+  std::optional<BipedSlot> partition;
   std::vector<std::string> bones;
   std::string expression;
   std::vector<std::pair<std::string, SourceKind>> sources;

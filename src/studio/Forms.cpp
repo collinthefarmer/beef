@@ -44,8 +44,9 @@ Joined(std::span<const std::string> a_a, std::span<const std::string> a_b) {
 
 [[nodiscard]] std::vector<std::string> BipedSlotNames() {
   std::vector<std::string> names;
-  for (std::uint32_t slot = 30; slot <= 61; ++slot) {
-    if (const auto name = BipedSlotName(slot)) {
+  for (std::uint32_t slot = std::to_underlying(kFirstBipedSlot);
+       slot <= std::to_underlying(kLastBipedSlot); ++slot) {
+    if (const auto name = BipedSlotName(BipedSlot{slot})) {
       names.emplace_back(*name);
     }
   }
@@ -383,7 +384,7 @@ BindImageMirror(std::string a_name, SourceKind a_record, std::size_t a_axis) {
     if (!slot) {
       return std::nullopt;
     }
-    partition->slot = *slot;
+    partition->bipedSlot = *slot;
     return SetSource{name, kind};
   };
 }

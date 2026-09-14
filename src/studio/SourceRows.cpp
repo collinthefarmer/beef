@@ -5,6 +5,7 @@
 
 #include <format>
 #include <limits>
+#include <utility>
 
 namespace BetterEnchantmentEffects::Studio {
 namespace {
@@ -12,6 +13,11 @@ namespace {
 
 [[nodiscard]] std::string PointText(const Vec3 &a_point) {
   return LiteralColorText(a_point);
+}
+
+[[nodiscard]] std::string PartitionText(BipedSlot a_slot) {
+  const auto name = BipedSlotName(a_slot);
+  return name ? std::string{*name} : std::to_string(std::to_underlying(a_slot));
 }
 
 }
@@ -41,9 +47,7 @@ SourceRow SourceRowOf(const Source &a_source, std::size_t a_references) {
       [&](const BakeSource &a_bake) {
         row.bake = std::string{BakeKindName(a_bake.bake)};
         if (const PartitionBake *partition = Get<PartitionBake>(a_bake.bake)) {
-          const auto name = BipedSlotName(partition->slot);
-          row.partition =
-              name ? std::string{*name} : std::to_string(partition->slot);
+          row.partition = PartitionText(partition->bipedSlot);
         }
         if (const BoneWeightBake *bones = Get<BoneWeightBake>(a_bake.bake)) {
           for (const auto &bone : bones->bones) {
@@ -127,7 +131,7 @@ namespace {
     if (!slot) {
       return std::nullopt;
     }
-    partition->slot = *slot;
+    partition->bipedSlot = *slot;
   }
   if (BoneWeightBake *bones = Get<BoneWeightBake>(*bake)) {
     bones->bones = SplitNames(a_row.bones);

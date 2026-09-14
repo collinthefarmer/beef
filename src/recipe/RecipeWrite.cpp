@@ -51,7 +51,8 @@ std::string DescribeSource(const SourceKind &a_kind) {
               return std::string{"bake worldUp (bind-pose normal)"};
             },
             [](const PartitionBake &p) {
-              return std::format("bake partition {}", p.slot);
+              return std::format("bake partition {}",
+                                 std::to_underlying(p.bipedSlot));
             },
             [](const BoneWeightBake &b) {
               return std::format("bake boneWeight of {} bone(s)",
@@ -309,7 +310,7 @@ json BakeToJson(const BakeSource &k) {
   return Match(
       k.bake,
       [&](const PartitionBake &p) {
-        return json::object({{"partition", BipedSlotToJson(p.slot)}});
+        return json::object({{"partition", BipedSlotToJson(p.bipedSlot)}});
       },
       [&](const BoneWeightBake &b) {
         return json::object({{"boneWeight", b.bones}});

@@ -114,7 +114,7 @@ int main() {
         "an unread mesh reports parts as unavailable rather than crashing");
 
   const std::string label =
-      TermLabelOf(TermKind{PartitionTerm{32}}, presets, geometry);
+      TermLabelOf(TermKind{PartitionTerm{BipedSlot{32}}}, presets, geometry);
   Check(label == "body", "TermLabelOf names a partition from the mesh facts");
 
   return test::Finish("studio_termtemplates");

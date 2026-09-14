@@ -105,8 +105,8 @@ void DelayedUndo() {
 void RapidOffersAndKeep() {
   Flow flow;
   flow.Ready();
-  flow.Offer(PartitionTerm{32});
-  flow.Offer(PartitionTerm{33});
+  flow.Offer(PartitionTerm{BipedSlot{32}});
+  flow.Offer(PartitionTerm{BipedSlot{33}});
   flow.DispatchFrame();
   Check(flow.state.mask.terms.size() == 2 &&
             flow.state.mask.terms[0].text != flow.state.mask.terms[1].text,
@@ -134,14 +134,14 @@ void RapidOffersAndKeep() {
         "resending previously applied dependencies is idempotent");
   const auto *partition = Get<BakeSource>(flow.paint.sources.front().kind);
   Check(partition && Get<PartitionBake>(partition->bake) &&
-            Get<PartitionBake>(partition->bake)->slot == 32,
+            Get<PartitionBake>(partition->bake)->bipedSlot == BipedSlot{32},
         "first partition retains its own source definition");
 }
 
 void RefusalAndRetry() {
   Flow flow;
   flow.Ready();
-  flow.Offer(PartitionTerm{32});
+  flow.Offer(PartitionTerm{BipedSlot{32}});
   flow.DispatchFrame();
   flow.Submit();
   flow.Drain(true);

@@ -8,6 +8,7 @@
 #include <charconv>
 #include <format>
 #include <unordered_set>
+#include <utility>
 #include <vector>
 
 namespace BetterEnchantmentEffects {
@@ -171,8 +172,7 @@ std::string_view SelectorClause::Glob() const noexcept {
   return glob ? std::string_view{*glob} : std::string_view{};
 }
 
-std::optional<std::uint32_t>
-BipedSlotFromName(std::string_view a_name) noexcept {
+std::optional<BipedSlot> BipedSlotFromName(std::string_view a_name) noexcept {
   for (const auto &e : kBipedSlots) {
     if (EqualsIgnoringCase(e.name, a_name)) {
       return e.slot;
@@ -181,16 +181,17 @@ BipedSlotFromName(std::string_view a_name) noexcept {
   if (!a_name.empty() && a_name.size() <= 2 &&
       std::ranges::all_of(a_name,
                           [](char c) { return c >= '0' && c <= '9'; })) {
-    const std::uint32_t slot =
+    const std::uint32_t number =
         static_cast<std::uint32_t>(std::stoul(std::string{a_name}));
-    if (slot >= kFirstBipedSlot && slot <= kLastBipedSlot) {
-      return slot;
+    if (number >= std::to_underlying(kFirstBipedSlot) &&
+        number <= std::to_underlying(kLastBipedSlot)) {
+      return BipedSlot{number};
     }
   }
   return std::nullopt;
 }
 
-std::optional<std::string_view> BipedSlotName(std::uint32_t a_slot) noexcept {
+std::optional<std::string_view> BipedSlotName(BipedSlot a_slot) noexcept {
   for (const auto &e : kBipedSlots) {
     if (e.slot == a_slot) {
       return e.name;

@@ -202,7 +202,7 @@ int main() {
             localBake.problem == "the mesh has no bound to map positions into",
         "a local bake without a bound reports it");
 
-  const auto partitionBake = BuildBake(mesh, PartitionBake{32});
+  const auto partitionBake = BuildBake(mesh, PartitionBake{BipedSlot{32}});
   Check(partitionBake.problem == "no partition in biped slot 32 (body)",
         "a partition bake naming an absent slot reports it with the slot name");
 

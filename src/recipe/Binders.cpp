@@ -3,6 +3,7 @@
 #include <charconv>
 #include <cstdlib>
 #include <functional>
+#include <utility>
 
 namespace BetterEnchantmentEffects {
 bool RowCapReached(std::size_t a_count, const Reporter &a_ctx,
@@ -140,9 +141,9 @@ json PointToJson(const Vec3 &a_v) {
   return json::array({Num(a_v.x), Num(a_v.y), Num(a_v.z)});
 }
 
-json BipedSlotToJson(std::uint32_t a_slot) {
+json BipedSlotToJson(BipedSlot a_slot) {
   const auto name = BipedSlotName(a_slot);
-  return name ? json(std::string{*name}) : json(a_slot);
+  return name ? json(std::string{*name}) : json(std::to_underlying(a_slot));
 }
 
 std::string DumpDocument(const json &a_root) { return a_root.dump(2) + "\n"; }

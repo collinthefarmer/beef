@@ -145,9 +145,12 @@ static_assert(
     std::is_same_v<std::variant_alternative_t<6, BakeKind>, ChartIdBake>);
 
 inline constexpr BipedSlotSpec kBipedSlots[]{
-    {30, "head"},     {31, "hair"},   {32, "body"}, {33, "hands"},
-    {34, "forearms"}, {35, "amulet"}, {36, "ring"}, {37, "feet"},
-    {38, "calves"},   {39, "shield"}, {40, "tail"}};
+    {BipedSlot{30}, "head"},     {BipedSlot{31}, "hair"},
+    {BipedSlot{32}, "body"},     {BipedSlot{33}, "hands"},
+    {BipedSlot{34}, "forearms"}, {BipedSlot{35}, "amulet"},
+    {BipedSlot{36}, "ring"},     {BipedSlot{37}, "feet"},
+    {BipedSlot{38}, "calves"},   {BipedSlot{39}, "shield"},
+    {BipedSlot{40}, "tail"}};
 
 inline constexpr SignalKindSpec kSignalKinds[]{
     {SignalKindId::kConstant, "constant", true},
