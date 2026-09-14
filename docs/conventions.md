@@ -187,7 +187,7 @@ B, 2026-09-14): `Recipe.h` (`kSourceKindCount` against `variant_size_v`, and
 `SourceKindId` needs its enumerator), `Words.h` (`Complete(kSourceKindWords)`
 and the alternative-order asserts), `RecipeRead.cpp` (undefined
 `ParseSourceAlternative<T>`), `Vocabulary.cpp` `SourceType`, `Signals.cpp`
-`CheckSource`, `Recipe.cpp` `AnimationQuery::Source`, `RecipeWrite.cpp`
+`CheckSource`, `Vocabulary.cpp` `AnimationQuery::Source`, `RecipeWrite.cpp`
 `DescribeSource` and `SourceKindToJson`, `studio/Edits.cpp`
 `VisitSourceParams`, `studio/SourceRows.cpp` `BuildSourceRow`, and
 `render/CompositorSource.cpp` `SourcePreparer` and `SourceInspector`. Still
@@ -252,12 +252,16 @@ files. A header states its data types first, then the free functions over them
 
 Every declared function has one assigned `.cpp` home; there is no catch-all
 translation unit. `recipe/` splits by concern:
-- `Recipe.cpp` — record accessors (`Recipe::Find*`), variants (`ApplyVariant`,
-  `VariantApplies`), `IsAnimated` (the `AnimationQuery` walker).
+- `Recipe.cpp` — record accessors (`Recipe::Find*`), the `where` builders, and
+  the diagnostic predicates over them (`RowLevel`, `HasErrors`,
+  `HasRecipeErrors`, `ProblemText`).
+- `Variants.cpp` — `VariantApplies` and `ApplyVariant`.
 - `Vocabulary.cpp` — the static vocabulary and atomic text forms over the
-  `Words.h` tables (every `…Name`/`Parse…`/spec accessor).
+  `Words.h` tables (every `…Name`/`Parse…`/spec accessor), and `IsAnimated`
+  (the `AnimationQuery` walker).
 - `Resolve.cpp` — piece matching and resolution (`Resolve`, `KeyMatches`,
   `Matches`, `GlobMatch`, `KeyChoicesOf`).
+- `Binders.cpp` — the `Reader`/`Writer` binders `Binders.h` publishes.
 - `RecipeRead.cpp` / `RecipeWrite.cpp` — the JSON boundary, verified by
   round-trip against the canonical files.
 - `Signals.cpp` — graph compile, per-tick evaluation, and validation.
@@ -469,7 +473,7 @@ cost and measured. Do not optimise a load-time path on speculation.
 
 The concrete consequences are the flat switches kept in `Evaluate`
 (`Signals.cpp`) and the expression evaluator, and the `Match` index dispatch
-that stays branch-cheap. `IsAnimated` (`Recipe.cpp`) is the static-vs-animated
+that stays branch-cheap. `IsAnimated` (`recipe/Vocabulary.cpp`) is the static-vs-animated
 classification a stack's caching turns on (a static stack bakes once, an
 animated stack re-renders each tick).
 

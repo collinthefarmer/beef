@@ -1,5 +1,22 @@
 # What to delete
 
+Status, 2026-09-14 (critique Plan E). This checklist was written against the
+frozen tree and cited two root documents that no longer exist: the
+pre-`REQUIREMENTS` readme and the architecture document, both deleted by
+`47cb742`. The readme at the root today is a different document and says none
+of what was cited here. Those two citations are repointed or dropped below, and
+the settings header now carries its `src/_old/` path, which is where it lives.
+
+Resolved since it was written. A grep of the active tree on 2026-09-14 found no
+`ColorPolicyFor`, `Studio::Unresolvable`, `Mode::kDesign`, `Layout::rowThumbnail`,
+`Layout::designPanel`, `RecipeDirectory`, `CheckSourceKind`, `ImportDefaults`,
+`EffectShaderRecord::flags`, `ShaderMode::kMaskedGlow`, or any of `Timing`'s dead
+exports: the modules were rewritten without them, which is what "dead code is
+never written" (`REQUIREMENTS.md`) means in practice. `Program::UsesMean` has a
+caller (`studio/ResponseGraph.cpp`) and `Manager::EmissivePathEnabled` has one
+(`main.cpp`), so neither is dead. The five `ShellPose` fields and the `where`
+presets are resolved in place below.
+
 One thread runs through most of it. A proof-of-concept layer pipeline was
 replaced by recipes on 2026-09-04 and its modules were deleted. Its
 settings, shader modes, parameter records, importer defaults, flipbook
@@ -9,11 +26,11 @@ removal, not ten, and doing it first makes every later change smaller.
 ## Certain
 
 **58 of 68 settings do nothing.** `GetSettings()` has four call sites and
-ten fields are read. The rest are declared in `src/SettingsCore.h:19-89`,
+ten fields are read. The rest are declared in `src/_old/SettingsCore.h:19-89`,
 given a table row, parsed, written, and read by nothing: the `GlowMask`,
 `SheenMap`, `Shimmer`, `GlossMap` and `Glint` groups, all of `[Outputs]`,
 all of `[Colors]`, and `Intensity`/`EmissiveScale`/`NormalizeBrightness`/
-`EmissiveStrength`. `ARCHITECTURE.md:386` already says so. Three of the
+`EmissiveStrength`. Three of the
 dead ones — `MaxEffectsPerActor`, `DebugSolidGlow`, `RuntimeTextures` —
 are visible in the Setup page, so a player can toggle them and watch
 nothing happen. Cascade: 58 fields, 58 table rows, ~110 ini lines,
@@ -35,10 +52,11 @@ and live.
 
 **`ImportDefaults`** — twenty fields, both call sites pass nothing.
 
-**Five of six `ShellPose` fields.** Only `inflate` reaches the engine.
-`offset`, `scale`, `scalePoint`, `spin` and `spinAxis` are parsed,
-validated, editable and never applied — the menu offers five controls
-that move nothing. ~53 sites.
+**Five of six `ShellPose` fields.** Resolved by implementation, not deletion
+(decided 2026-09-13). Only `inflate` reached the engine; `offset`, `scale`,
+`scalePoint`, `spin` and `spinAxis` were parsed, validated, editable and never
+applied. Critique Plan G makes the shell honour all six, so the schema, reader,
+writer and form stay as they are.
 
 **`variants`.** ~80 mentions across eight files, fully plumbed;
 `ApplyVariant` is called only from tests. `schema/example-magicka.json`
@@ -72,19 +90,20 @@ collapses `Layout::widgetScale`, `compositeSize` and `developerSignals`
 to constants.
 
 **`blend: "lerp"`** is byte-identical to `replace`; the shader falls
-through. `REFERENCE.md:90` says so.
+through. `REFERENCE.md` says so under the lab's shaders.
 
-**The `where` region presets.** Thirteen ship in `presets/regions.json`,
-parsed, never offered — `OffersOf` iterates `what` only. `README.md:557`
-already says they are gone.
+**The `where` presets.** Resolved by critique Plan A: the shipped file is one
+top-level `presets` array, and the old `where`/`what` split with its thirteen
+unoffered entries is gone. Plan E renamed the file to `presets/presets.json`.
 
 **Scaffolding.** `tools/__pycache__/*.pyc` are committed despite
 `.gitignore`. `tools/make_flipbook.py` and `tools/bsa_extract.py` served
 the deleted flipbook path. `src/History.cpp` contains exactly
 `#include "History.h"` and is listed twice in `CMakeLists.txt`.
-`README.md`'s frame-folder section and its console-command procedure
-document features that do not exist — there is no console handling in the
-plugin at all.
+Resolved: the `README.md` that carried a frame-folder section and a
+console-command procedure was deleted with the architecture document in
+`47cb742`, and the readme at the root today documents neither. There is still no console handling
+in the plugin.
 
 ## Judgement calls, needing a decision
 

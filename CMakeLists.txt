@@ -159,6 +159,6 @@ add_custom_command(TARGET ${PROJECT_NAME} POST_BUILD
           "${DIST_DIR}/SKSE/Plugins/"
   COMMAND ${CMAKE_COMMAND} -E make_directory "${DIST_DIR}/SKSE/Plugins/${PROJECT_NAME}"
   COMMAND ${CMAKE_COMMAND} -E copy_if_different
-          "${CMAKE_SOURCE_DIR}/presets/regions.json"
+          "${CMAKE_SOURCE_DIR}/presets/presets.json"
           "${DIST_DIR}/SKSE/Plugins/${PROJECT_NAME}/"
   VERBATIM)

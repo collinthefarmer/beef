@@ -85,7 +85,7 @@ void EverySourceKindIsAccepted() {
 
 void RoundTripsTheShippedFile() {
   const std::filesystem::path path =
-      std::filesystem::path{"presets"} / "regions.json";
+      std::filesystem::path{"presets"} / "presets.json";
   const std::string text = test::ReadFile(path);
   Check(!text.empty(), "the shipped presets file is readable");
   const PresetsLoadResult loaded = ParsePresets(text);

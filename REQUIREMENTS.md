@@ -4,7 +4,7 @@ This is the canonical description of what the plugin must do, how it is
 built, and how it is verified. It governs the module-by-module buildup of
 the new source tree.
 
-Three artifacts hold what this document does not restate, and it defers to
+Four artifacts hold what this document does not restate, and it defers to
 them:
 
 - `src/_old/` is the frozen previous implementation. It is excluded from
@@ -95,9 +95,10 @@ The model:
 - **Recipe** — `keys`, `priority`, `clock`, `signals`, `curves`,
   `sources`, `masks`, `outputs`, `shell`, `variants`, plus metadata.
 - **Signals** — a value that varies per tick. Sixteen kinds: `constant`,
-  `pulse`, `ramp`, `efsh`, `actorValue`, `actorState`, `enchantment`,
-  `trigger`, `payload`, `counter`, `accumulate`, `noise`, `gradient`,
-  `delta`, `smooth`, `expr`. Evaluated once per tick in dependency order.
+  `pulse`, `ramp`, `efsh`, `av`, `actorState`, `enchantment`, `trigger`,
+  `payload`, `counter`, `accumulate`, `noise`, `gradient`, `delta`, `smooth`,
+  `expr`. The wire word `av` is the modding community's abbreviation for
+  actor value. Evaluated once per tick in dependency order.
 - **Sources** — a value that varies per texel, in a geometry's UV space.
   Seven kinds: `image`, `material`, `bake`, `uv`, `distance`, `ripple`,
   `materialClusters`.
@@ -123,7 +124,7 @@ The model:
 
 ## Architecture
 
-### Seven directories, read in dependency order
+### Eight directories, read in dependency order
 
 ```
 src/
@@ -236,10 +237,11 @@ It rests on two disciplines.
   extracted from the engine modules are tested through the native suite.
   The recipe module is checked by round-trip against the frozen fixtures.
 - **A module is done when four things hold:** the plugin builds at zero
-  warnings, the native suite passes, the clang-tidy baseline shows only
-  what the module meant to add, and the frozen files it replaced are gone
-  from the build and from `src/_old`. A module is not done while both
-  copies are in the tree.
+  warnings, the native suite passes, the clang-tidy baseline shows only what
+  the module meant to add, and the frozen files it replaced are gone from the
+  build. `src/_old` itself stays whole: it is the behaviour oracle every
+  module is diffed against, and the release gate in the roadmap is what
+  removes it.
 - **The irreducible engine surface** rides one deliberate integration
   checkpoint in the game, because native tests cannot reach it: the GPU
   pixel output, the `PBRMaterial` layout's agreement with Community

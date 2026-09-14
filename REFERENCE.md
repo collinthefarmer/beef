@@ -4,11 +4,15 @@ The sources carry no comments. This file holds the facts a reader would
 otherwise have needed one for: engine and Community Shaders (CS) behaviour
 the bindings rely on, the decompile lines a port follows, binary layouts and
 constant-buffer packings, and the reasons behind constants. It is organised
-by module. Numbered `NOTES n` references point at `NOTES.md`, which records
-each assumption with its basis and what happens if it is wrong; thread and
-ownership rules are in `ARCHITECTURE.md`; the recipe format is
-`schema/recipe.schema.json`. Third-party copies (`src/extern/`,
-`src/cs/BSLightingShaderMaterialPBR.h`) keep their own comments.
+by module. The recipe format is `schema/recipe.schema.json`; `README.md` gives
+the reading order and `docs/README.md` indexes the rest. Third-party copies
+(`src/extern/`, `src/cs/BSLightingShaderMaterialPBR.h`) keep their own comments.
+
+Four sources cited below are not in the repository and never were: `NOTES.md`
+(numbered `NOTES n` assumptions with their basis), `ARCHITECTURE.md` (thread and
+ownership rules, deleted by `47cb742` when `REQUIREMENTS.md` became canonical),
+and the local `reference/` and `decompiled/` trees the ports were read from. A
+citation into them names provenance, not a file a reader here can open.
 
 ## Foundation (`Core.h`, `Identity.h`, `PCH.h`, `Settings.*`, `SettingsFile.*`)
 
@@ -167,7 +171,8 @@ atom   := number | "[" expr "," expr ("," expr)? "]" | "(" expr ")"
   In `RenameReferences`, a signal reference is `@name` followed by anything
   but a name character or `(`; a curve reference is `@name(`.
 
-## The lab's shaders (`TextureLab.h`, `ShaderSource.cpp`, `kShaderSource`)
+## The lab's shaders (`render/TextureLab.h`, `TextureLabLifecycle.cpp`,
+`TextureLabPass.cpp`, `TextureLabReadback.cpp`, `ShaderSource.cpp`)
 
 One pixel shader over a full-screen triangle serves every mode of
 `ShaderMode`; the interpreter, bake, ripple and classify passes are
@@ -371,7 +376,7 @@ Lab mechanics:
   hair material takes none of them (NOTES 24, 48).
 - CS keeps the subsurface colour in `specularColor` and its opacity in
   `subSurfaceLightRolloff`, and the PBR displacement scale in
-  `rimLightPower` (NOTES 22, 48). Glint's fallbacks in `Vocabulary.h` are
+  `rimLightPower` (NOTES 22, 48). Glint's fallbacks in `Words.h` are
   the values CS starts a material at.
 - Materials are pooled by content (NOTES 5): a shared one would glow on
   every wearer, so a bound property gets a private copy. A feature's flag
@@ -637,7 +642,7 @@ Decompile provenance (`decompiled/WornEnchantmentFX/plugin.c` unless noted):
 - Coverage of a bone is the summed weight it carries over every vertex as a
   share of all vertices: a bone moving half the mesh fully reads 0.5.
 
-## Compositor (`Compositor.cpp`)
+## Compositor (`render/Compositor.cpp`, `CompositorSource.cpp`, `CompositorBake.cpp`)
 
 - Many PBR sets ship a displacement map that is a real texture and
   entirely black; a map is flat when its mean sits at either end (NOTES
@@ -701,35 +706,17 @@ Decompile provenance (`decompiled/WornEnchantmentFX/plugin.c` unless noted):
 - `meta` is free-form JSON object text kept verbatim; `imported` is
   `<plugin> <version>` on a generated recipe not yet edited, and a save
   drops it and moves the recipe to `user/<id>.json`.
-- The slot tables in `Vocabulary.h` are the one spelling of what CS reads
+- The slot tables in `Words.h` are the one spelling of what CS reads
   from each map (`BSLightingShaderMaterialPBR.h`): height reads red alone,
   emissive and normal are rgb, glint has no texture, the diffuse's alpha is
   a shell's visibility, and the feature maps pack a colour with a weight.
 
-## Paint's term templates (`Paint.cpp`, `Region.cpp`, `TermKind.h`)
+## Menu mechanics (`menu/MenuWidgets.cpp`, `studio/Intent.h`)
 
-- A region stack builds to one expression: `and` is the product, `or` is
-  `max`, `not` is the product with the complement, and the first term is
-  `set`. `Build` writes a fixed shape (`or` as `max(chain, (T))`; `set`,
-  `and` and `not` as the last group `(X)` and what precedes it), one term
-  alone bare. Nothing reads the shape back: editing a kept mask loads its
-  whole text as one raw `set` term. The built text never exceeds
-  `kMaxExpressionLength`: a term that would push it past stops the build.
-- Template spellings, one exact text per template: numbers carry at most
-  four decimals (what `ParamText` writes); a
-  threshold's operand is the source quantised to P levels when posterize >
-  1; each edge is `smoothstep(c - s, c + s, X)` with the settings written
-  as themselves, never summed; the threshold is the low edge times the
-  complement of the high edge, each omitted where trivial (low 0, high 1),
-  `step(0, X)` when both are, and invert wraps it; a component or cluster
-  is `abs(@name * 255 - ID) < 0.5`.
-- A term's source is named by an existing twin's name (same definition
-  under another name), else a new row named as wanted and made unique among
-  the taken names, so a term never adds a row the recipe already has.
-- The scratch mask lives under a reserved name; Keep renames it, Discard
-  removes it, a save drops it, and a layer still masked by it is unmasked.
-
-## Menu mechanics (`MenuWidgets.cpp`, `MenuState.h`)
+`MenuState` still lives in `studio/Intent.h`; its extraction into a
+`MenuState.h` waits on UI slice 1B. The UI v2 rework is replacing the code
+this section describes, so it is rewritten after that plan's complete-editor
+checkpoint, not before.
 
 - `menu/MenuWidgets.cpp` is the menu's sole direct render dependency. It calls
   `TextureLab::Preview` through `render/TextureLab.h` to obtain the
@@ -882,7 +869,7 @@ Decompile provenance (`decompiled/WornEnchantmentFX/plugin.c` unless noted):
   public shell row-check exists, so shell scalar/vector reference type-checks
   compose the public `SignalTypeOf` query directly; route them through a
   `CheckShell`-equivalent if one is later published.
-- The mask-editor presets file (`regions.json`, path from `Identity.h`) is one
+- The mask-editor presets file (`presets.json`, path from `Identity.h`) is one
   top-level `presets` array; the old `where`/`what` split and the
   `names.partitions`/`names.bones` maps are gone. Each entry: `name` (required),
   optional `partition`, `bones`, `expression`, `sources`, and must carry at least
@@ -1026,9 +1013,9 @@ stores an `RE::` pointer.
 
 - **`StackPlan` classification.** A slot's chain and its replace cut come from
   `Merge`'s `SlotPlan`; `PlanStacks` adds static-vs-animated. `selfAnimated` is
-  `IsAnimated(recipe, Output{SurfaceOutput})` (`Recipe.cpp`) — true iff a layer
-  reads a scrolling/tiling image, a ripple, a non-constant signal, or a mask
-  over one. `animated` is the chained-base result: link 0 renders over the
+  `IsAnimated(recipe, Output{SurfaceOutput})` (`recipe/Vocabulary.cpp`) — true
+  iff a layer reads a scrolling/tiling image, a ripple, a non-constant signal,
+  or a mask over one. `animated` is the chained-base result: link 0 renders over the
   static base map (an armor's own texture and the neutral-height base do not
   animate), so `animated[0] = selfAnimated[0]` and
   `animated[i] = selfAnimated[i] || animated[i-1]`. This is the frozen
@@ -1074,3 +1061,35 @@ presenter slot leases, skin palette ownership, and preview submission contract.
 retires candidates before mutation and rebuilds them afterward; its recipe
 argument scopes reporting, not actor selection. Generated compositor outputs and
 snapshot retention now use `TextureRef` directly.
+
+## History
+
+Sections describing code that lives only in `src/_old/`. They stay because the
+frozen tree stays: it is the behaviour oracle each module is diffed against.
+
+### Paint's term templates (`_old/Paint.cpp`, `_old/Region.cpp`, `_old/TermKind.h`)
+
+The frozen tree's shape. The live rules are under studio above
+(`studio/Mask.h`, `studio/TermTemplates.h`, `studio/PaintSession.h`), where
+`BuildRegion` is `BuildMask` and the paint-era word "region" is gone.
+
+- A region stack builds to one expression: `and` is the product, `or` is
+  `max`, `not` is the product with the complement, and the first term is
+  `set`. `Build` writes a fixed shape (`or` as `max(chain, (T))`; `set`,
+  `and` and `not` as the last group `(X)` and what precedes it), one term
+  alone bare. Nothing reads the shape back: editing a kept mask loads its
+  whole text as one raw `set` term. The built text never exceeds
+  `kMaxExpressionLength`: a term that would push it past stops the build.
+- Template spellings, one exact text per template: numbers carry at most
+  four decimals (what `ParamText` writes); a
+  threshold's operand is the source quantised to P levels when posterize >
+  1; each edge is `smoothstep(c - s, c + s, X)` with the settings written
+  as themselves, never summed; the threshold is the low edge times the
+  complement of the high edge, each omitted where trivial (low 0, high 1),
+  `step(0, X)` when both are, and invert wraps it; a component or cluster
+  is `abs(@name * 255 - ID) < 0.5`.
+- A term's source is named by an existing twin's name (same definition
+  under another name), else a new row named as wanted and made unique among
+  the taken names, so a term never adds a row the recipe already has.
+- The scratch mask lives under a reserved name; Keep renames it, Discard
+  removes it, a save drops it, and a layer still masked by it is unmasked.

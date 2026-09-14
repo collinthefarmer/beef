@@ -43,7 +43,7 @@ inline std::filesystem::path UserRecipeFolder() {
 }
 
 inline std::filesystem::path PresetsPath() {
-  return PluginFolder() / "regions.json";
+  return PluginFolder() / "presets.json";
 }
 
 inline std::string PresenterTexturePath(std::uint32_t a_index) {
