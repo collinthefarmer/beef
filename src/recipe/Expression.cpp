@@ -890,4 +890,51 @@ float ApplyCurve(const Program &a_curve, float a_x, float a_mean) noexcept {
   in.mean = a_mean;
   return AsScalar(a_curve.Evaluate(in));
 }
+
+std::string RenameInExpression(std::string_view a_text,
+                               std::span<const ExpressionRename> a_renames,
+                               bool a_curve) {
+  const auto nameChar = [](char c) {
+    return std::isalnum(static_cast<unsigned char>(c)) || c == '_';
+  };
+  std::string out;
+  out.reserve(a_text.size());
+  std::size_t at = 0;
+  while (at < a_text.size()) {
+    if (a_text[at] != '@') {
+      out += a_text[at++];
+      continue;
+    }
+    std::size_t end = at + 1;
+    while (end < a_text.size() && nameChar(a_text[end])) {
+      ++end;
+    }
+    const std::string_view name = a_text.substr(at + 1, end - at - 1);
+    std::size_t next = end;
+    while (next < a_text.size() &&
+           std::isspace(static_cast<unsigned char>(a_text[next]))) {
+      ++next;
+    }
+    const bool call = next < a_text.size() && a_text[next] == '(';
+    if (!name.empty() && call == a_curve) {
+      const auto rename =
+          std::ranges::find(a_renames, name, &ExpressionRename::from);
+      if (rename != a_renames.end()) {
+        out += '@';
+        out += rename->to;
+        at = end;
+        continue;
+      }
+    }
+    out += a_text[at];
+    ++at;
+  }
+  return out;
+}
+
+std::string RenameInExpression(std::string_view a_text, std::string_view a_from,
+                               std::string_view a_to, bool a_curve) {
+  const ExpressionRename rename{std::string{a_from}, std::string{a_to}};
+  return RenameInExpression(a_text, std::span{&rename, 1}, a_curve);
+}
 }

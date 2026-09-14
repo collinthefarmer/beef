@@ -29,6 +29,11 @@ struct NumericLiteralSelection {
   std::size_t index = 0;
 };
 
+struct ExpressionRename {
+  std::string from;
+  std::string to;
+};
+
 class Program {
 public:
   [[nodiscard]] static std::expected<Program, std::string>
@@ -136,4 +141,13 @@ ParseCurve(std::string_view a_text);
 
 [[nodiscard]] float ApplyCurve(const Program &a_curve, float a_x,
                                float a_mean = 0.5f) noexcept;
+
+[[nodiscard]] std::string
+RenameInExpression(std::string_view a_text,
+                   std::span<const ExpressionRename> a_renames, bool a_curve);
+
+[[nodiscard]] std::string RenameInExpression(std::string_view a_text,
+                                             std::string_view a_from,
+                                             std::string_view a_to,
+                                             bool a_curve);
 }

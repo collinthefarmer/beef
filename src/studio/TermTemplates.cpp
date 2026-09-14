@@ -1,6 +1,7 @@
 #include "studio/TermTemplates.h"
 
 #include "Core.h"
+#include "recipe/Expression.h"
 #include "recipe/Words.h"
 #include "studio/Fields.h"
 #include "studio/PaintSession.h"

@@ -5,6 +5,7 @@
 #include "recipe/Expression.h"
 #include "recipe/Recipe.h"
 #include "recipe/Signals.h"
+#include "recipe/Visit.h"
 #include "recipe/Words.h"
 
 #include <algorithm>
@@ -743,11 +744,6 @@ Refusal Edit(Recipe &a_recipe, const SetSource &a_edit) {
   return std::nullopt;
 }
 
-template <class Fn> void ForEachSignalRef(Recipe &a_recipe, Fn a_visit);
-template <class Fn> void ForEachImageRef(Recipe &a_recipe, Fn a_visit);
-template <class Fn> void ForEachCurveRef(Recipe &a_recipe, Fn a_visit);
-template <class Fn> void ForEachText(Recipe &a_recipe, Fn a_visit);
-template <class Fn> void ForEachOverrideName(Recipe &a_recipe, Fn a_visit);
 void RenameOverrides(Recipe &a_recipe, const std::string &a_from,
                      const std::string &a_to);
 void RenameImageRefs(Recipe &a_recipe, std::string_view a_from,
@@ -1137,289 +1133,8 @@ Refusal Edit(Recipe &a_recipe, const ClearOutputs &) {
   return Edit(a_recipe, ResetShell{});
 }
 
-template <class Visitor> void ForEachParam(Recipe &a_recipe, Visitor &a_visit);
-struct LiteralVisitor;
-
 Refusal Edit(Recipe &a_recipe, const ClearResources &);
 Refusal Edit(Recipe &a_recipe, const ClearRecipe &);
-
-template <class Visitor>
-void VisitRef(Ref &a_ref, Visitor &a_visit, std::string_view a_property) {
-  a_visit.Property(a_property);
-  a_visit.Reference(a_ref);
-}
-template <class Visitor>
-void VisitRef(std::optional<Ref> &a_ref, Visitor &a_visit,
-              std::string_view a_property) {
-  a_visit.Property(a_property);
-  if (a_ref) {
-    a_visit.Reference(*a_ref);
-  }
-}
-template <class Visitor>
-void VisitParam(Param &a_param, std::optional<float> a_default,
-                Visitor &a_visit, std::string_view a_property) {
-  a_visit.Property(a_property);
-  a_visit.Scalar(a_param, a_default);
-}
-template <class Visitor>
-void VisitParam(std::optional<Param> &a_param, std::optional<float> a_default,
-                Visitor &a_visit, std::string_view a_property) {
-  a_visit.Property(a_property);
-  if (a_param) {
-    a_visit.OptionalScalar(a_param, a_default);
-  }
-}
-template <std::size_t N, class Visitor>
-void VisitVector(
-    std::variant<std::array<Param, N>, Ref> &a_param,
-    std::type_identity_t<std::optional<std::array<float, N>>> a_default,
-    Visitor &a_visit, std::string_view a_property) {
-  a_visit.Property(a_property);
-  a_visit.Vector(a_param, a_default);
-}
-template <std::size_t N, class Visitor>
-void VisitVector(
-    std::optional<std::variant<std::array<Param, N>, Ref>> &a_param,
-    std::type_identity_t<std::optional<std::array<float, N>>> a_default,
-    Visitor &a_visit, std::string_view a_property) {
-  a_visit.Property(a_property);
-  if (a_param) {
-    a_visit.OptionalVector(a_param, a_default);
-  }
-}
-
-std::optional<float> LiteralOf(const Param &a_param) {
-  const auto *number = Get<float>(a_param);
-  return number ? std::optional{*number} : std::nullopt;
-}
-template <std::size_t N>
-std::optional<std::array<float, N>>
-LiteralOf(const std::variant<std::array<Param, N>, Ref> &a_param) {
-  const auto *parts = Get<std::array<Param, N>>(a_param);
-  if (!parts) {
-    return std::nullopt;
-  }
-  std::array<float, N> out{};
-  for (std::size_t i = 0; i < N; ++i) {
-    const auto number = LiteralOf((*parts)[i]);
-    if (!number) {
-      return std::nullopt;
-    }
-    out[i] = *number;
-  }
-  return out;
-}
-
-std::optional<float> ScalarDefault(Slot a_slot, ScalarField a_field) {
-  return ScalarRequired(a_slot, a_field)
-             ? std::optional{ScalarFallback(a_field)}
-             : std::nullopt;
-}
-
-template <class Visitor>
-void VisitSignalParams(SignalKind &a_kind, Visitor &a_visit) {
-  Match(
-      a_kind,
-      [&](PulseSignal &s) {
-        VisitParam(s.base, std::nullopt, a_visit, "base");
-        VisitParam(s.amplitude, std::nullopt, a_visit, "amplitude");
-        VisitParam(s.period, std::nullopt, a_visit, "period");
-        VisitParam(s.phase, std::nullopt, a_visit, "phase");
-      },
-      [&](RampSignal &s) {
-        VisitParam(s.from, std::nullopt, a_visit, "from");
-        VisitParam(s.to, std::nullopt, a_visit, "to");
-        VisitParam(s.seconds, std::nullopt, a_visit, "seconds");
-      },
-      [&](TriggerSignal &s) {
-        VisitParam(s.lifetime, std::nullopt, a_visit, "lifetime");
-        if (auto *when = Get<WhenOrigin>(s.origin)) {
-          VisitRef(when->when, a_visit, "when");
-          VisitRef(when->value, a_visit, "value");
-        }
-      },
-      [&](PayloadSignal &s) { VisitRef(s.trigger, a_visit, "trigger"); },
-      [&](CounterSignal &s) {
-        VisitRef(s.trigger, a_visit, "trigger");
-        VisitRef(s.reset, a_visit, "reset");
-        VisitParam(s.cap, std::nullopt, a_visit, "cap");
-      },
-      [&](AccumulateSignal &s) {
-        VisitRef(s.trigger, a_visit, "trigger");
-        VisitParam(s.decay, std::nullopt, a_visit, "decay");
-      },
-      [&](NoiseSignal &s) {
-        VisitParam(s.frequency, std::nullopt, a_visit, "frequency");
-        VisitParam(s.amplitude, std::nullopt, a_visit, "amplitude");
-      },
-      [&](GradientSignal &s) {
-        VisitParam(s.t, std::nullopt, a_visit, "t");
-        std::size_t stopIndex = 0;
-        for (auto &stop : s.stops) {
-          VisitVector(stop.color, std::nullopt, a_visit,
-                      std::format("stops[{}].color", stopIndex++));
-        }
-      },
-      [&](DeltaSignal &s) { VisitRef(s.of, a_visit, "of"); },
-      [&](SmoothSignal &s) {
-        VisitRef(s.of, a_visit, "of");
-        VisitParam(s.seconds, std::nullopt, a_visit, "seconds");
-      },
-      [](ConstantSignal &) {}, [](EfshSignal &) {}, [](ActorValueSignal &) {},
-      [](ActorStateSignal &) {}, [](EnchantmentSignal &) {},
-      [](ExprSignal &) {});
-}
-
-template <class Visitor>
-void VisitSourceParams(SourceKind &a_kind, Visitor &a_visit) {
-  Match(
-      a_kind,
-      [&](ImageSource &s) {
-        VisitVector(s.scroll, std::nullopt, a_visit, "scroll");
-        VisitVector(s.tile, std::nullopt, a_visit, "tile");
-      },
-      [&](RippleSource &s) {
-        VisitRef(s.trigger, a_visit, "trigger");
-        VisitParam(s.speed, std::nullopt, a_visit, "speed");
-        VisitParam(s.width, std::nullopt, a_visit, "width");
-        VisitParam(s.decay, std::nullopt, a_visit, "decay");
-      },
-      [](MaterialSource &) {}, [](BakeSource &) {}, [](UvSource &) {},
-      [](DistanceSource &) {}, [](MaterialClustersSource &) {});
-}
-
-template <class Visitor>
-void VisitSurfaceParams(SurfaceOutput &a_output, Visitor &a_visit) {
-  for (const auto &row : kScalarFields) {
-    if (auto *scalar = ScalarOf(a_output.scalars, row.value)) {
-      VisitParam(*scalar, ScalarDefault(a_output.slot, row.value), a_visit,
-                 row.name);
-    }
-  }
-  const auto colour = ScalarDefault(a_output.slot, ScalarField::kColor);
-  VisitVector(
-      a_output.scalars.color,
-      colour ? std::optional{std::array<float, 3>{*colour, *colour, *colour}}
-             : std::nullopt,
-      a_visit, "color");
-  const Layer layerDefaults = DefaultLayer();
-  std::size_t layerIndex = 0;
-  const RelationshipOwner outputOwner = a_visit.location.owner;
-  for (auto &layer : a_output.stack) {
-    const auto *owner = Get<OutputOwner>(outputOwner);
-    a_visit.Owner(LayerOwner{owner ? owner->output : 0, layerIndex++});
-    VisitParam(layer.opacity, LiteralOf(layerDefaults.opacity), a_visit,
-               "opacity");
-    VisitVector(layer.color, std::nullopt, a_visit, "color");
-  }
-  a_visit.Owner(outputOwner);
-}
-
-template <class Visitor>
-void VisitLightParams(LightOutput &a_output, Visitor &a_visit) {
-  const LightOutput lightDefaults{};
-  VisitVector(a_output.offset, LiteralOf(lightDefaults.offset), a_visit,
-              "offset");
-  VisitVector(a_output.color, LiteralOf(lightDefaults.color), a_visit, "color");
-  VisitParam(a_output.intensity, LiteralOf(lightDefaults.intensity), a_visit,
-             "intensity");
-  VisitParam(a_output.size, LiteralOf(lightDefaults.size), a_visit, "size");
-  VisitParam(a_output.cutoff, LiteralOf(lightDefaults.cutoff), a_visit,
-             "cutoff");
-}
-
-template <class Visitor>
-void VisitOutputParams(Output &a_output, Visitor &a_visit) {
-  Match(
-      a_output, [&](SurfaceOutput &o) { VisitSurfaceParams(o, a_visit); },
-      [&](LightOutput &o) { VisitLightParams(o, a_visit); });
-}
-
-template <class Visitor>
-void VisitShellParams(ShellSettings &a_shell, Visitor &a_visit) {
-  const ShellSettings shellDefaults{};
-  VisitParam(a_shell.alpha, LiteralOf(shellDefaults.alpha), a_visit, "alpha");
-  VisitParam(a_shell.rimPower, LiteralOf(shellDefaults.rimPower), a_visit,
-             "rimPower");
-  VisitParam(a_shell.emissive, LiteralOf(shellDefaults.emissive), a_visit,
-             "emissive");
-  VisitVector(a_shell.pose.inflate, LiteralOf(shellDefaults.pose.inflate),
-              a_visit, "inflate");
-  VisitVector(a_shell.pose.offset, LiteralOf(shellDefaults.pose.offset),
-              a_visit, "offset");
-  VisitParam(a_shell.pose.scale, LiteralOf(shellDefaults.pose.scale), a_visit,
-             "scale");
-  VisitParam(a_shell.pose.spin, LiteralOf(shellDefaults.pose.spin), a_visit,
-             "spin");
-}
-
-template <class Visitor> void ForEachParam(Recipe &a_recipe, Visitor &a_visit) {
-  for (auto &signal : a_recipe.signals) {
-    a_visit.Owner(ResourceRef{ResourceKind::kSignal, signal.name});
-    VisitSignalParams(signal.kind, a_visit);
-  }
-  for (auto &source : a_recipe.sources) {
-    a_visit.Owner(ResourceRef{ResourceKind::kSource, source.name});
-    VisitSourceParams(source.kind, a_visit);
-  }
-  std::size_t outputIndex = 0;
-  for (auto &output : a_recipe.outputs) {
-    a_visit.Owner(OutputOwner{outputIndex++});
-    VisitOutputParams(output, a_visit);
-  }
-  a_visit.Owner(ShellOwner{});
-  VisitShellParams(a_recipe.shell, a_visit);
-}
-
-struct LocatedVisitor {
-  PropertyLocation location;
-  void Owner(RelationshipOwner a_owner) { location.owner = std::move(a_owner); }
-  void Property(std::string_view a_property) {
-    location.property = a_property;
-    location.component.reset();
-  }
-};
-
-template <class Fn> struct RefVisitor : LocatedVisitor {
-  Fn &visit;
-  explicit RefVisitor(Fn &a_visit) : visit(a_visit) {}
-  void Reference(Ref &a_ref) { visit(a_ref, location); }
-  void Scalar(Param &a_param, std::optional<float>) {
-    if (auto *ref = Get<Ref>(a_param)) {
-      Reference(*ref);
-    }
-  }
-  void OptionalScalar(std::optional<Param> &a_param,
-                      std::optional<float> a_default) {
-    Scalar(*a_param, a_default);
-  }
-  template <std::size_t N>
-  void Vector(std::variant<std::array<Param, N>, Ref> &a_param,
-              std::optional<std::array<float, N>>) {
-    if (auto *ref = Get<Ref>(a_param)) {
-      Reference(*ref);
-    } else if (auto *parts = Get<std::array<Param, N>>(a_param)) {
-      std::size_t component = 0;
-      for (auto &part : *parts) {
-        location.component = component++;
-        Scalar(part, std::nullopt);
-      }
-      location.component.reset();
-    }
-  }
-  template <std::size_t N>
-  void OptionalVector(
-      std::optional<std::variant<std::array<Param, N>, Ref>> &a_param,
-      std::optional<std::array<float, N>> a_default) {
-    Vector(*a_param, a_default);
-  }
-};
-
-template <class Fn> void ForEachSignalRef(Recipe &a_recipe, Fn a_visit) {
-  RefVisitor<Fn> visitor{a_visit};
-  ForEachParam(a_recipe, visitor);
-}
 
 struct LiteralVisitor : LocatedVisitor {
   void Reference(Ref &) {}
@@ -1478,14 +1193,6 @@ struct LiteralVisitor : LocatedVisitor {
   }
 };
 
-template <class Fn> void ForEachOverrideName(Recipe &a_recipe, Fn a_visit) {
-  for (std::size_t index = 0; index < a_recipe.variants.size(); ++index) {
-    for (const auto &[name, value] : a_recipe.variants[index].overrides) {
-      a_visit(name, PropertyLocation{VariantOwner{index}, "override", {}});
-    }
-  }
-}
-
 void RenameOverrides(Recipe &a_recipe, const std::string &a_from,
                      const std::string &a_to) {
   for (auto &variant : a_recipe.variants) {
@@ -1498,58 +1205,6 @@ void RenameOverrides(Recipe &a_recipe, const std::string &a_from,
   }
 }
 
-template <class Fn> void ForEachMaterialLayer(Recipe &a_recipe, Fn a_visit) {
-  for (std::size_t output = 0; output < a_recipe.outputs.size(); ++output) {
-    auto *material = Get<SurfaceOutput>(a_recipe.outputs[output]);
-    if (!material) {
-      continue;
-    }
-    for (std::size_t layer = 0; layer < material->stack.size(); ++layer) {
-      a_visit(material->stack[layer], LayerOwner{output, layer});
-    }
-  }
-}
-
-template <class Fn> void ForEachText(Recipe &a_recipe, Fn a_visit) {
-  for (auto &signal : a_recipe.signals) {
-    const ResourceRef owner{ResourceKind::kSignal, signal.name};
-    if (auto *expr = Get<ExprSignal>(signal.kind)) {
-      a_visit(expr->text, false, PropertyLocation{owner, "expression", {}});
-    }
-    if (signal.curve && !signal.curve->Named()) {
-      a_visit(signal.curve->text, false, PropertyLocation{owner, "curve", {}});
-    }
-  }
-  for (auto &curve : a_recipe.curves) {
-    a_visit(curve.text, false,
-            PropertyLocation{ResourceRef{ResourceKind::kCurve, curve.name},
-                             "expression",
-                             {}});
-  }
-  for (auto &mask : a_recipe.masks) {
-    a_visit(mask.text, true,
-            PropertyLocation{
-                ResourceRef{ResourceKind::kMask, mask.name}, "expression", {}});
-  }
-  ForEachMaterialLayer(a_recipe, [&](Layer &a_layer, LayerOwner a_owner) {
-    if (a_layer.curve && !a_layer.curve->Named()) {
-      a_visit(a_layer.curve->text, false,
-              PropertyLocation{a_owner, "curve", {}});
-    }
-  });
-}
-
-template <class Fn> void ForEachImageRef(Recipe &a_recipe, Fn a_visit) {
-  ForEachMaterialLayer(a_recipe, [&](Layer &a_layer, LayerOwner a_owner) {
-    if (auto *ref = Get<Ref>(a_layer.source)) {
-      a_visit(*ref, PropertyLocation{a_owner, "source", {}});
-    }
-    if (a_layer.mask) {
-      a_visit(*a_layer.mask, PropertyLocation{a_owner, "mask", {}});
-    }
-  });
-}
-
 void RenameImageRefs(Recipe &a_recipe, std::string_view a_from,
                      std::string_view a_to) {
   ForEachImageRef(a_recipe, [&](Ref &a_ref, const PropertyLocation &) {
@@ -1560,22 +1215,6 @@ void RenameImageRefs(Recipe &a_recipe, std::string_view a_from,
   for (auto &mask : a_recipe.masks) {
     mask.text = RenameInExpression(mask.text, a_from, a_to, false);
   }
-}
-
-template <class Fn> void ForEachCurveRef(Recipe &a_recipe, Fn a_visit) {
-  for (auto &signal : a_recipe.signals) {
-    if (signal.curve && signal.curve->Named()) {
-      a_visit(*signal.curve,
-              PropertyLocation{ResourceRef{ResourceKind::kSignal, signal.name},
-                               "curve",
-                               {}});
-    }
-  }
-  ForEachMaterialLayer(a_recipe, [&](Layer &a_layer, LayerOwner a_owner) {
-    if (a_layer.curve && a_layer.curve->Named()) {
-      a_visit(*a_layer.curve, PropertyLocation{a_owner, "curve", {}});
-    }
-  });
 }
 
 Refusal CheckSignalKind(const Recipe &a_recipe, const std::string &a_where,
@@ -1983,53 +1622,6 @@ ReferenceCounts CountReferences(const Recipe &a_recipe) {
     }
   }
   return counts;
-}
-
-std::string RenameInExpression(std::string_view a_text,
-                               std::span<const ExpressionRename> a_renames,
-                               bool a_curve) {
-  const auto nameChar = [](char c) {
-    return std::isalnum(static_cast<unsigned char>(c)) || c == '_';
-  };
-  std::string out;
-  out.reserve(a_text.size());
-  std::size_t at = 0;
-  while (at < a_text.size()) {
-    if (a_text[at] != '@') {
-      out += a_text[at++];
-      continue;
-    }
-    std::size_t end = at + 1;
-    while (end < a_text.size() && nameChar(a_text[end])) {
-      ++end;
-    }
-    const std::string_view name = a_text.substr(at + 1, end - at - 1);
-    std::size_t next = end;
-    while (next < a_text.size() &&
-           std::isspace(static_cast<unsigned char>(a_text[next]))) {
-      ++next;
-    }
-    const bool call = next < a_text.size() && a_text[next] == '(';
-    if (!name.empty() && call == a_curve) {
-      const auto rename =
-          std::ranges::find(a_renames, name, &ExpressionRename::from);
-      if (rename != a_renames.end()) {
-        out += '@';
-        out += rename->to;
-        at = end;
-        continue;
-      }
-    }
-    out += a_text[at];
-    ++at;
-  }
-  return out;
-}
-
-std::string RenameInExpression(std::string_view a_text, std::string_view a_from,
-                               std::string_view a_to, bool a_curve) {
-  const ExpressionRename rename{std::string{a_from}, std::string{a_to}};
-  return RenameInExpression(a_text, std::span{&rename, 1}, a_curve);
 }
 
 Layer DefaultLayer() {

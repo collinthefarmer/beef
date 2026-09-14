@@ -304,20 +304,6 @@ struct ReferenceCounts {
 };
 [[nodiscard]] ReferenceCounts CountReferences(const Recipe &a_recipe);
 
-struct ExpressionRename {
-  std::string from;
-  std::string to;
-};
-
-[[nodiscard]] std::string
-RenameInExpression(std::string_view a_text,
-                   std::span<const ExpressionRename> a_renames, bool a_curve);
-
-[[nodiscard]] std::string RenameInExpression(std::string_view a_text,
-                                             std::string_view a_from,
-                                             std::string_view a_to,
-                                             bool a_curve);
-
 [[nodiscard]] Layer DefaultLayer();
 [[nodiscard]] SurfaceOutput DefaultOutput(Surface a_surface, Slot a_slot);
 }
