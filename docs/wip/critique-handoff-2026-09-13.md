@@ -239,9 +239,9 @@ is not done until the user reports the checkpoint passed.
 
 | Plan | Branch | Commit | State |
 |---|---|---|---|
-| F | `critique/f-tests-and-bounds` | `f4edc48` | implemented, native-verified; in-game checkpoint pending on a buildable base |
-| A | `critique/a-error-contract` | (see `git log`) | implemented, native-verified; in-game checkpoint pending on a buildable base |
-| B | `critique/b-source-kinds` | | not started; branch from A's tip |
+| F | `critique/f-tests-and-bounds` | `f4edc48`, merged in `303d352` | merged into `cleanup/stage-0`; in-game checkpoint pending (installed build) |
+| A | `critique/a-error-contract` | `f69d908`, merged in `303d352` | merged into `cleanup/stage-0`; in-game checkpoint pending (installed build) |
+| B | `critique/b-source-kinds` | | not started; branch from `cleanup/stage-0` |
 | C | | | not started |
 | D | | | not started |
 | E | | | not started |
@@ -395,3 +395,14 @@ Append one line per plan as it completes: date, plan letter, branch, outcome.
   commit a building tree.
 - 2026-09-13, F, `critique/f-tests-and-bounds`: implemented and native-verified;
   in-game checkpoint pending on a buildable base (see the plan's Status).
+- 2026-09-14, A, `critique/a-error-contract`: implemented and native-verified
+  on top of F.
+- 2026-09-14, integration: the paused UI wave was committed as `8f7b8b5`
+  (unverified, its in-game checklist unwritten, four new tidy findings
+  absorbed into a regenerated baseline), the critique branch merged as
+  `303d352` (one conflict in `RecipeEditor.cpp`, both sides kept;
+  `paintsession_tests.cpp` updated to the wave's preflight semantics), the
+  worktree `/tmp/beef-critique` removed, the DLL built and installed. The
+  base now builds, so the fallback rules under Repository state no longer
+  apply: work in the main checkout on a branch from `cleanup/stage-0`, and
+  the F and A in-game checkpoints wait only on the user's run.

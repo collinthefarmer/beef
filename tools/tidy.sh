@@ -25,6 +25,13 @@ DB=build/clangd/compile_commands.json
 [ -f "$DB" ] || { echo "no $DB; run tools/compile-db.sh" >&2; exit 1; }
 mkdir -p "$OUT"
 
+# One result per source path, not per basename: src/engine/X.cpp and
+# src/studio/X.cpp must not share a cache file.
+result_name() {
+	local stem="${1%.cpp}"
+	echo "${stem//\//_}.txt"
+}
+
 result_fresh() {
 	local dest="$1" src="$2"
 	[ -f "$src" ] || return 1
@@ -46,7 +53,7 @@ if [ "${SUMMARY_ONLY:-0}" -eq 0 ]; then
 	TODO=()
 	for f in "${FILES[@]}"; do
 		[ -f "$f" ] || continue
-		dest="$OUT/$(basename "$f" .cpp).txt"
+		dest="$OUT/$(result_name "$f")"
 		if [ "$FORCE" -eq 0 ] && result_fresh "$dest" "$f"; then
 			continue
 		fi
@@ -55,7 +62,8 @@ if [ "${SUMMARY_ONLY:-0}" -eq 0 ]; then
 	if [ ${#TODO[@]} -gt 0 ]; then
 		if ! printf '%s\n' "${TODO[@]}" | xargs -P "$JOBS" -I{} bash -c '
 			f="$1"; out="$2"; bin="$3"; checks="$4"
-			dest="$out/$(basename "$f" .cpp).txt"
+			stem="${f%.cpp}"
+			dest="$out/${stem//\//_}.txt"
 			echo "tidy $f" >&2
 			if ! "$bin" -p build/clangd --quiet $checks "$f" > "$dest.part" 2>&1; then
 				cat "$dest.part" >&2
@@ -73,7 +81,7 @@ fi
 # sources) must not silently contribute findings to a targeted run.
 RESULTS=()
 for f in "${FILES[@]}"; do
-	dest="$OUT/$(basename "$f" .cpp).txt"
+	dest="$OUT/$(result_name "$f")"
 	if result_fresh "$dest" "$f"; then
 		RESULTS+=("$dest")
 	fi

@@ -22,8 +22,8 @@ class TidyTests(unittest.TestCase):
         for path in ('src/Selected.cpp', 'src/Shared.h', '.clang-tidy',
                      'build/clangd/compile_commands.json'):
             self.write(path, '', self.old)
-        self.write('build/tidy/Selected.txt', '')
-        self.write('build/tidy/Unrelated.txt',
+        self.write('build/tidy/src_Selected.txt', '')
+        self.write('build/tidy/src_Unrelated.txt',
                    '/repo/src/Unrelated.cpp:1:1: warning: cached [bugprone-example]\n')
         self.environment = dict(os.environ)
         self.environment['PATH'] = str(self.root / 'bin') + os.pathsep + os.environ['PATH']
@@ -52,7 +52,7 @@ class TidyTests(unittest.TestCase):
                            'build/clangd/compile_commands.json'):
             with self.subTest(dependency=dependency):
                 os.utime(self.root / dependency, (self.old + 50, self.old + 50))
-                os.utime(self.root / 'build/tidy/Selected.txt',
+                os.utime(self.root / 'build/tidy/src_Selected.txt',
                          (self.old + 25, self.old + 25))
                 result = self.run_tidy('--summary', 'src/Selected.cpp')
                 self.assertIn('0 of 1 files have fresh results', result.stdout)
@@ -78,7 +78,7 @@ class TidyTests(unittest.TestCase):
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertIn('tidy src/Selected.cpp', result.stderr)
         self.assertIn('1 of 1 files have fresh results, 0 findings', result.stdout)
-        self.assertFalse((self.root / 'build/tidy/Selected.txt.part').exists())
+        self.assertFalse((self.root / 'build/tidy/src_Selected.txt.part').exists())
 
 
 if __name__ == '__main__':

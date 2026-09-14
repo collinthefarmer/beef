@@ -55,7 +55,7 @@ if '--gate' in sys.argv:
         rel = rel_to_root(src)
         if rel is None:
             continue
-        result = source / (pathlib.Path(src).stem + '.txt')
+        result = source / (rel.removesuffix('.cpp').replace('/', '_') + '.txt')
         cur = collections.Counter()
         if result.exists():
             for line in result.read_text(errors='replace').splitlines():
