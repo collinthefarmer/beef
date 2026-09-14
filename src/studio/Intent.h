@@ -2,32 +2,21 @@
 
 #include "Core.h"
 #include "recipe/Recipe.h"
-#include "studio/EditResult.h"
 #include "studio/Edits.h"
-#include "studio/History.h"
 #include "studio/Mask.h"
-#include "studio/Navigation.h"
 #include "studio/PaintSession.h"
-#include "studio/Selection.h"
-#include "studio/Snapshot.h"
-#include "studio/SourcePlan.h"
 #include "studio/View.h"
 
 #include <array>
 #include <cstddef>
 #include <cstdint>
-#include <functional>
 #include <optional>
 #include <string>
 #include <string_view>
-#include <unordered_map>
 #include <variant>
 #include <vector>
 
 namespace BetterEnchantmentEffects::Studio {
-using FieldKey = std::uint32_t;
-inline constexpr FieldKey kNoField = 0;
-
 enum class ResourceTab {
   kSignals,
   kCurves,
@@ -38,66 +27,6 @@ inline constexpr std::array<ResourceTab, 4> kResourceTabs{
     ResourceTab::kSignals, ResourceTab::kCurves, ResourceTab::kSources,
     ResourceTab::kMasks};
 [[nodiscard]] std::string_view ResourceTabName(ResourceTab a_tab) noexcept;
-
-using TextBuffer = std::array<char, 1024>;
-using NumberBuffer = std::array<float, 3>;
-
-struct FiringDraft {
-  std::string node;
-  Vec3 offset;
-  float random = 0.0f;
-  float value = 1.0f;
-};
-
-struct ExpressionDraft {
-  std::string text;
-  std::uint64_t revision = 0;
-};
-
-struct TuningGesture {
-  std::uint64_t id = 0;
-  FieldKey field = kNoField;
-  std::string recipeID;
-  InspectorSubject subject;
-  float value = 0.0f;
-  std::function<std::optional<RecipeEdit>(const std::string &)> bind;
-  bool seen = false;
-  bool finishing = false;
-};
-
-struct MenuState {
-  Mode mode = Mode::kCompose;
-  Layout layout;
-  Selection selection;
-  Navigation navigation;
-  std::optional<PropertyLocation> revealedProperty;
-  std::optional<PreviewPin> previewPin;
-  std::optional<PendingIndexedEdit> pendingIndexedEdit;
-  std::optional<PendingIndexedEdit> pendingRecipeFile;
-  std::optional<TuningGesture> tuning;
-  std::unordered_map<FieldKey, std::pair<float, float>> tuningRanges;
-  std::unordered_map<FieldKey, ExpressionDraft> expressionDrafts;
-  bool settings = false;
-  MaskStack mask;
-  std::optional<PaintSession> paint;
-  std::uint64_t nextPaintCommitID = 1;
-  std::uint64_t nextPaintSessionID = 1;
-  std::uint64_t lastPaintReset = 0;
-  ResourceTab resource = ResourceTab::kSignals;
-  std::unordered_map<FieldKey, TextBuffer> textBuffers;
-  std::unordered_map<FieldKey, NumberBuffer> numberBuffers;
-  FieldKey activeField = kNoField;
-  std::unordered_map<FieldKey, bool> comboMode;
-  FieldKey focusField = kNoField;
-  Mode modeDrawn = Mode::kCompose;
-  FiringDraft firing;
-  History<MaskStack> maskHistory;
-};
-
-[[nodiscard]] inline MenuState &State() {
-  static MenuState state;
-  return state;
-}
 
 struct SetMode {
   Mode mode = Mode::kCompose;
@@ -282,22 +211,4 @@ using Intents = std::vector<Intent>;
 
 void Post(Intents &a_out, Intent a_intent);
 void Post(Intents &a_out, const std::string &a_recipe, RecipeEdit a_edit);
-
-[[nodiscard]] SourceCatalog PaintSources(const MenuState &a_state,
-                                         const RecipeRow &a_recipe,
-                                         const Intents &a_pending);
-[[nodiscard]] bool AcceptIntent(const MenuState &a_state,
-                                const Intent &a_intent);
-void Reduce(MenuState &a_state, const Intent &a_intent);
-void ObservePaintRecipe(MenuState &a_state, const RecipeRow *a_recipe);
-[[nodiscard]] bool MaskTaskActive(const MenuState &a_state);
-void ResolveEditorSelection(MenuState &a_state, const Snapshot &a_snapshot);
-void AcknowledgeEditorOperations(MenuState &a_state,
-                                 const Snapshot &a_snapshot);
-void AcknowledgePaintUpdate(MenuState &a_state,
-                            const PaintUpdateResult &a_result);
-[[nodiscard]] std::optional<UpdatePaint>
-PendingPaintUpdate(const MenuState &a_state);
-void AcknowledgePaintCommit(MenuState &a_state,
-                            const PaintCommitResult &a_result);
 }

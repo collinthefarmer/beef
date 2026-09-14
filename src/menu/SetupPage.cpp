@@ -6,7 +6,7 @@
 #include "SettingsFile.h"
 #include "engine/Manager.h"
 #include "menu/MenuWidgets.h"
-#include "studio/Intent.h"
+#include "studio/MenuState.h"
 #include "studio/Selection.h"
 #include "studio/Snapshot.h"
 #include "studio/Widgets.h"

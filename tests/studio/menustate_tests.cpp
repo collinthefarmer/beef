@@ -1,4 +1,4 @@
-#include "studio/Intent.h"
+#include "studio/MenuState.h"
 #include "test_support.h"
 
 using namespace BetterEnchantmentEffects;

@@ -10,6 +10,7 @@
 #include "studio/Edits.h"
 #include "studio/FieldCheck.h"
 #include "studio/Intent.h"
+#include "studio/MenuState.h"
 #include "studio/Names.h"
 #include "studio/Panels.h"
 
