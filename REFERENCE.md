@@ -161,7 +161,12 @@ atom   := number | "[" expr "," expr ("," expr)? "]" | "(" expr ")"
   runtime yields 0 and never throws.
 - A keyword is a whole word: `or` inside `orbit` is not one.
 - The limits in `Expression.h` (nesting depth, op count, stack size) are
-  hard: input past them is an error, never a deep stack.
+  hard: input past them is an error, never a deep stack. `kMaxExpressionOps`
+  (256) is also the interpreter shader's array size, written there as the bare
+  literal `float4 code[256]` (`render/ShaderSource.cpp`), so the two must agree
+  or a long mask overruns the constant buffer. The value is carried unchanged
+  from the frozen `src/_old/Expression.h`; why 256 rather than another power of
+  two is not recorded anywhere.
 - A curve is a `Program` over `x` and `mean` that reads no rows, scalar in
   and scalar out; a null curve pointer evaluates to its argument. The
   curve's `mean` is the source's own mean luminance, so `x - mean` centres
@@ -438,9 +443,12 @@ Lab mechanics:
   `InverseSquareLighting/Common.h`; NOTES 42). ISL's radius is
   sqrt(3920 (8 fade - cutoff size^2) / (2 cutoff)) with fade = intensity /
   4 and the cutoff at ISL's default unless overridden; the plugin writes
-  the same reach for the non-ISL path. One light per recipe, third person
-  only, at the skinned centre of the bones carrying the most vertices
-  (NOTES 34).
+  the same reach for the non-ISL path. Those defaults are ISL's own, read from
+  CS `InverseSquareLighting.cpp` when the frozen light path was written:
+  `kIslDefaultCutoff` 0.05 and, for a shadow-casting light, `kIslShadowCutoff`
+  0.022 (`render/Light.cpp`). A recipe's own `cutoff` below 1 overrides them,
+  clamped to 0.01..1. One light per recipe, third person only, at the skinned
+  centre of the bones carrying the most vertices (NOTES 34).
 - Geometry names ending in `Identity::ShellSuffix()` are shells the plugin
   attached; the apply traversal skips them, and shells are collected before
   applying because attaching one adds a sibling a live walk would visit.
@@ -543,7 +551,13 @@ Decompile provenance (`decompiled/WornEnchantmentFX/plugin.c` unless noted):
   scrub, not from where the real clock ran on to.
 - Signal state integrates forward (pulse phase, smoothing, trigger ages),
   so a scrub backwards or a jump rebuilds it from the start and advances it
-  to the scrubbed moment in one step.
+  to the scrubbed moment in one step. While frozen, the rebuild triggers on
+  `a_time + 0.001f < lastTime` (`engine/ManagerTick.cpp`): 0.001 is one
+  millisecond in the seconds time base the same function builds from
+  `(nowMS - startMS) * 0.001f`, so a scrub that moves the clock by less than
+  the clock's own resolution does not rebuild. The epsilon is carried unchanged
+  from the frozen `src/_old/Manager.cpp`; why one millisecond rather than a
+  larger guard is not recorded.
 - Editor IDs: the engine keeps them for a few form types (keywords, magic
   effects); po3's Tweaks export answers for every type (NOTES 41). At load
   the store asks for every effect shader, enchantment, magic effect,
@@ -646,13 +660,20 @@ Decompile provenance (`decompiled/WornEnchantmentFX/plugin.c` unless noted):
 
 - Many PBR sets ship a displacement map that is a real texture and
   entirely black; a map is flat when its mean sits at either end (NOTES
-  46), measured by a readback once per material. A height stack over a flat
-  map starts from the shared neutral 0.5 target because CS offsets parallax
-  by (height - 0.5) x scale (NOTES 50); the `relief` channel reads
-  displacement when it is real and occlusion otherwise.
-- A colour field is normalised by 0.5 / its mean luminance; mask data is
-  not. A mask that is exactly one material channel reads the map directly;
-  any other expression renders through the interpreter.
+  46) — at or below 0.02, or at or above 0.98 (`render/CompositorSource.cpp`)
+  — measured by a readback once per material. The two margins are carried
+  unchanged from the frozen `src/_old/Compositor.cpp`; no source records why
+  the band is that wide. A height stack over a flat map starts from the shared
+  neutral 0.5 target because CS offsets parallax by (height - 0.5) x scale
+  (NOTES 50); the `relief` channel reads displacement when it is real and
+  occlusion otherwise.
+- A colour field is normalised by 0.5 / its mean luminance, so a map of any
+  brightness arrives at mid grey; mask data is not. The mean is floored at 0.05
+  (`render/CompositorSource.cpp`), which caps the factor at ten and keeps a
+  near-black map from dividing by nothing. The floor is carried unchanged from
+  the frozen `src/_old/Compositor.cpp`; why 0.05 rather than another floor is
+  not recorded. A mask that is exactly one material channel reads the map
+  directly; any other expression renders through the interpreter.
 - A stack on a slot that edits an existing map renders at that map's own
   resolution, clamped between the requested size and the maximum; other
   slots start from black at the requested size. Writes alternate between
@@ -663,8 +684,11 @@ Decompile provenance (`decompiled/WornEnchantmentFX/plugin.c` unless noted):
   ping-ponging through the shared scratch, so the two never collide.
 - A rendered mask is entered in the cache before its dependencies recurse,
   so a cycle finds an unfinished mask and stops. Depth is bounded at
-  preparation; the interpreter refuses a mask that reads more names,
-  images or curves than the pass holds.
+  preparation by `kMaxMaskDepth` (8, `render/CompositorSource.cpp`), which
+  reports "masks nest deeper than 8" and leaves the mask inert; the interpreter
+  refuses a mask that reads more names, images or curves than the pass holds.
+  The bound is carried unchanged from the frozen `src/_old/Compositor.cpp`; no
+  source records why 8.
 - The cluster map is rendered under a source's settings and replaced when
   another source asks for other settings, so a source that reads it must
   hold the returned target for as long as it samples it.
@@ -688,6 +712,14 @@ Decompile provenance (`decompiled/WornEnchantmentFX/plugin.c` unless noted):
   component outside 0..1. A single number in a colour or vector field
   stands for all three components. Numbers serialise as the shortest decimal that reads
   back as the same float.
+- The two `format` failures are deliberately different (`RecipeRead.cpp`).
+  A missing `format` is reported ("'format' is required; this loader reads
+  format 1") and the parse continues, so an author who forgot the field still
+  sees every other problem in the file at once. A `format` above
+  `kRecipeFormat` is reported and the parse stops there, because a newer file
+  may spell anything and the diagnostics from reading it would be noise about
+  this loader, not about the file. Both are recipe-level errors, so either
+  holds the recipe out of the applied set while leaving it in the menu.
 - Duplicate keys inside one JSON object are an error, found while parsing;
   every key no reader asked for is reported. `//` and `/* */` comments are
   accepted in recipe files. Nesting past `kMaxRecipeDepth` levels is rejected
