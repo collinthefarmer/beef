@@ -95,10 +95,26 @@ later and not listed here. Three findings for the UI owner:
    `ResourcePanels.cpp`. The add menu survived (`DrawResourceAddMenu` is
    called from the navigator).
 
+4. **Adding a layer does not select it.** "Add layer" in
+   `menu/StackPanel.cpp` posts `AddLayer{output, DefaultLayer(), index}`
+   and leaves the selection where it was, so the user must find the new
+   row by hand. The add is asynchronous: the editor applies it on the game
+   thread and the menu learns the outcome from a `RecipeEditResult` in a
+   later snapshot, while `MenuState::pendingIndexedEdit` blocks output and
+   layer selection until then. The fix is a follow-up subject recorded
+   beside the pending edit when the add is posted (`AddLayer` already
+   names the index the layer will occupy, so `LayerSubject{output, index}`
+   is known up front) and applied by `AcknowledgeEditorOperations` in
+   `studio/MenuState.cpp` through `Navigate` when the result arrives
+   without an error. The same slot serves `AddOutput` and the resource
+   adds. A native test in `tests/studio/menustate_tests.cpp` can cover it
+   without the menu: post, acknowledge, assert the selection.
+
 Recipe-level rename and the add-resource menu work. Findings 2 and 3 are
 regressions from slice 1C's replacement of the resource tables and belong
 to its owner; `ResourcePanels.cpp` can be deleted once its two remaining
-behaviours are moved.
+behaviours are moved. Finding 4 is a usability gap in slice 1B's selection
+model rather than a regression.
 
 ## Complete-editor game check
 
