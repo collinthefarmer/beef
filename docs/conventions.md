@@ -482,6 +482,35 @@ animated stack re-renders each tick).
   the plugin name is spelled. Rename with `tools/rename.py Old New --apply`.
 - Names describe the code as it stands, never the change that produced it.
 
+### Glossary
+
+One word, one meaning, for the whole codebase. New code uses these words
+with these meanings and no other word for the same thing.
+
+| Word | Meaning |
+|---|---|
+| `Slot` | A PBR texture slot only — `Slot` in `recipe/Recipe.h`, one of the nine channels a material writes (`kSlots`, `SlotName`). Never an equipment slot, a partition, or a pool index. |
+| `BipedSlot` | An armor equipment slot, 30 to 61 (`enum class BipedSlot`, `kBipedSlots`, `BipedSlotFromName`). Parsed once at the JSON boundary; the NIF's raw partition field is not this type (REFERENCE.md, mesh). |
+| `Partition` | A run of triangles inside one mesh (`MeshPartition`). A `PartitionBake` selects one by its `bipedSlot`. |
+| `Contributor` | The placed recipe that won a slot or a light (`SlotContributor`, `LightContributor` in `recipe/Merge.h`), paired with an output index in a `SlotContribution` / `LightContribution`. |
+| `Plan` | What a planner decided, as plain data, before anything is applied: `ActorPlan`, `GeometryPlan`, `LightPlan`, `StackPlan`, `BindingPlan`. A plan holds no `RE::` pointer. |
+| `Binding` | A live attachment to an engine object that must be undone — `MaterialBinding`, `ShellBinding`, `LightBinding`, all `SlotTarget`s. The decision that produced one is a `BindingPlan`. |
+| `Lease` | A `shared_ptr` whose lifetime reserves a shared resource; the resource frees when the last lease drops (`TargetPool`, `TextureLeases`, `ConsumptionLeases`). |
+| `Target` | A render target the lab owns (`TextureLab::RenderTarget`), pooled by `RenderTargetPool` and referenced through a `TextureRef`. `SlotTarget` is the unrelated write interface a binding implements. |
+| `Region` | A named area of armor coverage, shown by overlays and legends (UI v2, section 4.7). Never the paint vocabulary the 2026-09-09 decision retired. |
+| `Binders` | `recipe/Binders.h`, the one JSON boundary: `Reader`, `Writer`, `ParseObjectDocument`, `ParseSourceKind`/`SourceKindToJson`, `ReadRows`, `NamedRows`, `OneKey`. No other module names `nlohmann`. |
+| `RowLevel` | A `Diagnostic` whose `where` names a row (`signal`, `curve`, `source`, `mask`, `output`, `variant`). `HasRecipeErrors` is its complement over a span: an error above row level holds the recipe out of the applied set. |
+| `ProblemText` | The projection from an `std::optional<Diagnostic>` to the string a row shows (`recipe/Recipe.h`). |
+| `TextFile` | `engine/TextFile.h`: `ReadText` and `WriteText`, the only file reads and writes, each naming its failure. |
+| `TextureIdentity` | `planners/TextureIdentity.h`: `ImageCacheKey` (one cache entry per file however it is spelled) and `IsPlaceholderExtent`. |
+| `TextureHandle` | An opaque `enum class` over `std::uintptr_t` the snapshot carries for a preview. `TextureHandleOf` (engine) and `TextureOf` (menu) are the only conversions; lifetime belongs to the snapshot's `shared_ptr`, never to the handle. |
+| `ApplicationRecord` | `studio/ApplicationRecord.h`, the application record types. Nothing under `studio/` includes `engine/`. |
+| `Visit.h` | `recipe/Visit.h`, the published recipe traversal, and the location vocabulary with it (`ResourceKind`, `ResourceRef`, the `*Owner` records, `PropertyLocation`). A new traversal extends it rather than growing an anonymous namespace. |
+| `ShaderConstants` | `render/ShaderConstants.h`, the one copy of the GPU constant-buffer structs the shaders and the passes share. |
+| `D3DResult` | `render/D3DResult.h`: `Failed(hr)` and `DataOf(texture)`, the two D3D result checks. |
+| `MeshCache` | `render/MeshCache.h`, the per-geometry cache of mesh data, facts, analysis and bakes; `MeshReader` is what fills it from the engine. |
+| `layers.sh` | `tools/layers.sh`, the only copy of the include graph. A new directory or a widened edge is an edit to its `ALLOWS` table. |
+
 ## Gates
 
 - **Formatting** — `.clang-format` is `BasedOnStyle: LLVM` with
