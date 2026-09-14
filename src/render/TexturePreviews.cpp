@@ -1,11 +1,27 @@
 #include "render/TexturePreviews.h"
 
-#include <algorithm>
 #include "recipe/Recipe.h"
+#include <algorithm>
 
 namespace BetterEnchantmentEffects {
 TexturePreviews::TexturePreviews(TextureLab &a_renderer)
     : renderer_(a_renderer) {}
+
+TexturePreviews::PreviewEntry *
+TexturePreviews::FindOrAdd(const PreviewKey &a_key) {
+  if (const auto found = previews_.find(a_key); found != previews_.end()) {
+    return &found->second;
+  }
+  if (previews_.size() >= 256) {
+    const auto unused = std::ranges::find_if(
+        previews_, [](const auto &entry) { return !entry.second.wanted; });
+    if (unused == previews_.end()) {
+      return nullptr;
+    }
+    previews_.erase(unused);
+  }
+  return &previews_.try_emplace(a_key).first->second;
+}
 
 std::shared_ptr<TextureLab::RenderTarget>
 TexturePreviews::Preview(RE::NiSourceTexture *a_source, ShaderChannel a_channel,
@@ -18,7 +34,11 @@ TexturePreviews::Preview(RE::NiSourceTexture *a_source, ShaderChannel a_channel,
     return nullptr;
   }
   std::scoped_lock lock{previewLock_};
-  auto &entry = previews_[{a_source, a_channel, {}}];
+  PreviewEntry *found = FindOrAdd({a_source, a_channel, {}});
+  if (!found) {
+    return nullptr;
+  }
+  PreviewEntry &entry = *found;
   entry.source = std::move(retained);
   entry.dynamic = entry.dynamic || a_dynamic;
   entry.wanted = true;
@@ -26,7 +46,8 @@ TexturePreviews::Preview(RE::NiSourceTexture *a_source, ShaderChannel a_channel,
 }
 
 std::shared_ptr<TextureLab::RenderTarget>
-TexturePreviews::SampledPreview(std::string a_context, RE::NiSourceTexture *a_source,
+TexturePreviews::SampledPreview(std::string a_context,
+                                RE::NiSourceTexture *a_source,
                                 const TextureLab::LayerInput &a_sampling,
                                 float a_normalize, bool a_dynamic) {
   if (!a_source || a_context.empty() || !renderer_.Available()) {
@@ -37,7 +58,12 @@ TexturePreviews::SampledPreview(std::string a_context, RE::NiSourceTexture *a_so
     return nullptr;
   }
   std::scoped_lock lock{previewLock_};
-  auto &entry = previews_[{a_source, a_sampling.channel, std::move(a_context)}];
+  PreviewEntry *found =
+      FindOrAdd({a_source, a_sampling.channel, std::move(a_context)});
+  if (!found) {
+    return nullptr;
+  }
+  PreviewEntry &entry = *found;
   const Sampling sampling{a_sampling, a_normalize};
   entry.dirty = entry.dirty || entry.sampling != sampling;
   entry.sampling = sampling;
@@ -74,8 +100,8 @@ TexturePreviews::PrepareRequest(const PreviewKey &a_key, PreviewEntry &a_entry,
   if (!a_entry.wanted)
     return std::nullopt;
   a_entry.wanted = false;
-  if (a_entry.target && a_entry.generation == a_generation && !a_entry.dynamic &&
-      !a_entry.dirty && a_entry.ready)
+  if (a_entry.target && a_entry.generation == a_generation &&
+      !a_entry.dynamic && !a_entry.dirty && a_entry.ready)
     return std::nullopt;
   if (!a_entry.target)
     a_entry.target = renderer_.Acquire(TextureSize(128));
@@ -93,7 +119,8 @@ TexturePreviews::PrepareRequest(const PreviewKey &a_key, PreviewEntry &a_entry,
             Trace::Pointer(a_entry.source ? a_entry.source->rendererTexture
                                           : nullptr)},
            {"target", Trace::Pointer(a_entry.target.get())},
-           {"channel", std::to_string(static_cast<unsigned>(std::get<1>(a_key)))}});
+           {"channel",
+            std::to_string(static_cast<unsigned>(std::get<1>(a_key)))}});
     });
   }
   a_entry.generation = a_generation;
@@ -111,6 +138,7 @@ void TexturePreviews::RenderPreviews() {
   {
     std::scoped_lock lock{previewLock_};
     ExpireUnused(generation);
+    work.reserve(previews_.size());
     for (auto &[key, entry] : previews_) {
       if (auto request = PrepareRequest(key, entry, generation)) {
         work.push_back(std::move(*request));

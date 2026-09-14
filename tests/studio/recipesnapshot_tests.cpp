@@ -1,6 +1,7 @@
 #include "studio/RecipeSnapshot.h"
 #include "test_support.h"
 
+#include <algorithm>
 #include <array>
 
 using namespace BetterEnchantmentEffects;
@@ -85,7 +86,8 @@ int main() {
   Check(full.signals.size() == recipe.signals.size(),
         "a full row has one signal row per signal");
   Check(!full.signals.empty() && full.signals[0].name == "glow" &&
-            full.signals[0].value == state.ValueOf("glow"),
+            full.signals[0].value == state.ValueOf("glow") &&
+            full.signals[0].live,
         "BuildRecipeRow overlays the live signal value");
   Check(full.masks.size() == 1 && full.masks[0] == "edge",
         "a full row lists the mask names");
@@ -104,5 +106,43 @@ int main() {
   Check(flagged.problems.size() == 1 && flagged.problems[0].message == "bad",
         "BuildRecipeRow carries the supplied problems");
 
+  {
+    RecipeRowInput document = BaseInput(recipe, refs);
+    document.full = true;
+    document.graph = &graph;
+    const RecipeRow projected = BuildRecipeRow(document);
+    Check(projected.signals.size() == recipe.signals.size() &&
+              projected.signals.front().definition ==
+                  recipe.signals.front().kind &&
+              projected.signals.front().constant == Value{2.0f},
+          "document projection retains editable signal definitions without "
+          "actor state");
+    Check(std::ranges::none_of(projected.signals,
+                               [](const SignalRow &row) { return row.live; }) &&
+              projected.geometries.empty(),
+          "document-only projection never claims live values or geometry");
+    document.graph = nullptr;
+    const RecipeRow uncompiled = BuildRecipeRow(document);
+    Check(uncompiled.signals.size() == recipe.signals.size() &&
+              uncompiled.signals.back().inert &&
+              !uncompiled.signals.back().problem.empty(),
+          "missing cached graph still exposes signal definitions and compile "
+          "errors");
+  }
+  {
+    Recipe multiple = recipe;
+    LightOutput extra;
+    extra.intensity = 17.0f;
+    multiple.outputs.push_back(extra);
+    RecipeRowInput input = BaseInput(multiple, refs);
+    input.full = true;
+    const RecipeRow projected = BuildRecipeRow(input);
+    Check(projected.lights.size() == 2 &&
+              projected.lights.front().output == 1 &&
+              projected.lights.back().output == 2 &&
+              projected.lights.back().intensity == "17",
+          "every authored light gets independent editable properties and its "
+          "original output index");
+  }
   return test::Finish("studio recipesnapshot");
 }

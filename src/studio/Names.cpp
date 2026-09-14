@@ -53,7 +53,7 @@ std::string_view RowKindName(RowKind a_kind) noexcept {
   return kRowKindNames[index];
 }
 
-Names NamesOf(const RecipeRow &a_recipe, const GeometryRow &a_geometry) {
+Names NamesOf(const RecipeRow &a_recipe) {
   Names names;
   for (const SignalRow &signal : a_recipe.signals) {
     names.signals.emplace_back(signal.name, signal.type);
@@ -61,13 +61,17 @@ Names NamesOf(const RecipeRow &a_recipe, const GeometryRow &a_geometry) {
   for (const TextRow &curve : a_recipe.curves) {
     names.curves.push_back(curve.name);
   }
-  for (const PictureRow &source : a_geometry.sources) {
+  for (const SourceRow &source : a_recipe.sourceRows) {
     names.sources.emplace_back(source.name, source.type);
   }
-  for (const PictureRow &mask : a_geometry.masks) {
+  for (const TextRow &mask : a_recipe.maskRows) {
     names.masks.push_back(mask.name);
   }
   return names;
+}
+
+Names NamesOf(const RecipeRow &a_recipe, const GeometryRow &) {
+  return NamesOf(a_recipe);
 }
 
 std::vector<std::string> TakenNames(RowKind a_kind, const Names &a_names) {

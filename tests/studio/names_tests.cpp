@@ -1,4 +1,5 @@
 #include "studio/Names.h"
+#include "studio/Rows.h"
 #include "test_support.h"
 
 #include <string>
@@ -44,6 +45,9 @@ void Collects() {
   recipe.signals.push_back(Signal("glow", ValueType::kScalar));
   recipe.signals.push_back(Signal("tint", ValueType::kVec3));
   recipe.curves.push_back(Text("ramp"));
+  recipe.sourceRows.push_back(SourceRowOf(
+      Source{"metal", MaterialSource{MaterialChannel::kDiffuseRgb}}, 0));
+  recipe.maskRows.push_back(Text("edge"));
   GeometryRow geometry;
   geometry.sources.push_back(Picture("metal", ValueType::kVec3));
   geometry.masks.push_back(Picture("edge", ValueType::kScalar));
@@ -60,6 +64,11 @@ void Collects() {
         "sources carry name and value type");
   Check(names.masks.size() == 1 && names.masks[0] == "edge",
         "masks carry names");
+  const Names document = NamesOf(recipe);
+  Check(document.sources == names.sources && document.masks == names.masks &&
+            document.sources.front().second == ValueType::kVec3,
+        "unmatched documents expose the same authored source types and mask "
+        "names");
 
   Check(TakenNames(RowKind::kSignal, names) ==
             std::vector<std::string>{"glow", "tint"},

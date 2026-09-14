@@ -248,7 +248,8 @@ public:
                                         bool a_dynamic);
   [[nodiscard]] std::shared_ptr<RenderTarget>
   SampledPreview(std::string a_context, RE::NiSourceTexture *a_source,
-                 const LayerInput &a_sampling, float a_normalize, bool a_dynamic);
+                 const LayerInput &a_sampling, float a_normalize,
+                 bool a_dynamic);
   using PreviewDraw = ConsumptionLeases<RenderTarget>::Ticket;
   [[nodiscard]] PreviewDraw *
   RetainPreviewDraw(std::shared_ptr<RenderTarget> a_target);

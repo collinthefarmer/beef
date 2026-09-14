@@ -1,6 +1,8 @@
 #include "recipe/Recipe.h"
 #include "studio/Edits.h"
+#include "studio/Relationships.h"
 #include "test_support.h"
+#include <algorithm>
 
 #include <filesystem>
 #include <optional>
@@ -69,7 +71,84 @@ void Undoes(const Recipe &a_base, const RecipeEdit &a_edit,
 }
 }
 
+namespace {
+Recipe RelationshipRecipe() {
+  Recipe recipe;
+  recipe.signals = {{"drive", ConstantSignal{}, {}},
+                    {"pattern", ConstantSignal{}, {}},
+                    {"response", ExprSignal{"@drive + @drive"}, {}}};
+  ImageSource image;
+  image.scroll = std::array<Param, 2>{Ref{"drive"}, 0.0f};
+  recipe.sources = {{"pattern", image}};
+  recipe.curves = {{"tone", "x"}};
+  recipe.masks = {{"coverage", "@pattern * @drive"}};
+  SurfaceOutput output = DefaultOutput(Surface::kMaterial, Slot::kEmissive);
+  Layer layer = DefaultLayer();
+  layer.source = Ref{"pattern"};
+  layer.opacity = Ref{"drive"};
+  layer.mask = Ref{"coverage"};
+  layer.curve = CurveRef{"@tone"};
+  output.stack = {layer};
+  recipe.outputs = {output, output};
+  recipe.shell.alpha = Ref{"drive"};
+  Variant variant;
+  variant.overrides.emplace("drive", 0.0f);
+  recipe.variants.push_back(std::move(variant));
+  return recipe;
+}
+
+void CheckRelationships() {
+  Recipe recipe = RelationshipRecipe();
+  const Recipe before = recipe;
+  const auto links = RelationshipsOf(recipe);
+  const auto contains = [&](const PropertyLocation &location,
+                            const ResourceRef &driver) {
+    return std::ranges::find(links, Relationship{location, driver}) !=
+           links.end();
+  };
+  Check(contains({ResourceRef{ResourceKind::kSource, "pattern"}, "scroll", 0},
+                 {ResourceKind::kSignal, "drive"}),
+        "source vector operand keeps its component and owning resource");
+  Check(contains({LayerOwner{1, 0}, "opacity", {}},
+                 {ResourceKind::kSignal, "drive"}),
+        "same-slot outputs retain exact owner indices");
+  Check(
+      contains({ResourceRef{ResourceKind::kMask, "coverage"}, "expression", {}},
+               {ResourceKind::kSource, "pattern"}),
+      "mask links resolve images ahead of same-name signals");
+  Check(!contains(
+            {ResourceRef{ResourceKind::kMask, "coverage"}, "expression", {}},
+            {ResourceKind::kSignal, "pattern"}),
+        "shadowed signal is not shown as a mask driver");
+  Check(
+      contains({LayerOwner{0, 0}, "curve", {}}, {ResourceKind::kCurve, "tone"}),
+      "named curve connections retain their layer owner");
+  Check(contains({ShellOwner{}, "alpha", {}}, {ResourceKind::kSignal, "drive"}),
+        "shell parameter connections retain their property");
+  Check(contains({VariantOwner{0}, "override", {}},
+                 {ResourceKind::kSignal, "drive"}),
+        "variant uses remain discoverable");
+  const ReferenceCounts counts = CountReferences(recipe);
+  Check(counts.signals.at("drive") == 7,
+        "counts retain expression reference deduplication and direct uses");
+  Check(counts.images.at("pattern") == 3 && counts.signals.at("pattern") == 1,
+        "counts preserve conservative mask deletion protection without phantom "
+        "links");
+  Check(recipe == before, "relationship inspection does not mutate the recipe");
+  Check(!Apply(recipe, RenameSignal{"drive", "energy"}),
+        "enriched walker retains signal renaming");
+  const auto renamed = RelationshipsOf(recipe);
+  Check(std::ranges::none_of(
+            renamed,
+            [](const Relationship &link) {
+              return link.driver == ResourceRef{ResourceKind::kSignal, "drive"};
+            }),
+        "renaming reaches every previously reported signal relationship");
+}
+}
+
 int main() {
+  CheckRelationships();
   const Recipe &base = Canonical();
   Check(!base.outputs.empty(), "canonical recipe has outputs");
 
@@ -236,8 +315,8 @@ int main() {
     bad.edits.push_back(AddSignal{"batchThree"});
     bad.edits.push_back(RemoveSignal{"noSuchSignal"});
     const auto refused = PrepareEdits(rollback, bad);
-    Check(!refused && rollback == base,
-          "failed preparation discards earlier edits without touching the original");
+    Check(!refused && rollback == base, "failed preparation discards earlier "
+                                        "edits without touching the original");
     if (!refused) {
       Check(refused.error().severity == Severity::kError &&
                 refused.error().where == "signal noSuchSignal",
@@ -248,11 +327,14 @@ int main() {
     Check(rollback == base, "a refused batch leaves the recipe unchanged");
 
     const auto empty = PrepareEdits(base, EditBatch{});
-    Check(empty && *empty == base, "an empty batch yields an unchanged candidate");
-    const EditBatch cancelled{{AddSignal{"temporary"}, RemoveSignal{"temporary"}}};
+    Check(empty && *empty == base,
+          "an empty batch yields an unchanged candidate");
+    const EditBatch cancelled{
+        {AddSignal{"temporary"}, RemoveSignal{"temporary"}}};
     const auto unchanged = PrepareEdits(base, cancelled);
     Check(unchanged && *unchanged == base,
-          "edits that cancel each other can be recognized before retiring actors");
+          "edits that cancel each other can be recognized before retiring "
+          "actors");
   }
 
   return test::Finish("studio_edits");

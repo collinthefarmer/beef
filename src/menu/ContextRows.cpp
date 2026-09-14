@@ -73,8 +73,9 @@ void SelectionCombo(const Studio::Snapshot &a_snapshot,
 
 void RecipeCombo(const Frame &a_frame, const char *a_label) {
   const std::string preview = a_frame.recipe ? RecipeLabel(*a_frame.recipe)
-                                           : SelectionOf(a_frame).recipeID;
-  if (!ImGui::BeginCombo(a_label, preview.empty() ? "Choose recipe" : preview.c_str())) {
+                                             : SelectionOf(a_frame).recipeID;
+  if (!ImGui::BeginCombo(a_label,
+                         preview.empty() ? "Choose recipe" : preview.c_str())) {
     return;
   }
   for (const std::string &id : a_frame.snapshot->loaded) {
@@ -268,16 +269,17 @@ void SlotChoice(const Studio::Board &a_board, Surface a_surface,
 }
 
 void DrawRecipeContext(const Frame &a_frame) {
-  auto table = Table::Begin("recipe-context",
-                            {{"selection", Studio::Width::Fill()},
-                             {"recipe", Studio::Width::Fill()}},
-                            kContextStyle);
+  auto table = Table::Begin(
+      "recipe-context",
+      {{"selection", Studio::Width::Fill()}, {"recipe", Studio::Width::Fill()}},
+      kContextStyle);
   if (!table.Open()) {
     return;
   }
   table.Cell();
   NextItemWidth(Studio::Width::Fill());
-  SelectionCombo(*a_frame.snapshot, a_frame.piece, "##selection", *a_frame.intents);
+  SelectionCombo(*a_frame.snapshot, a_frame.piece, "##selection",
+                 *a_frame.intents);
   table.Cell();
   NextItemWidth(Studio::Width::Fill());
   RecipeCombo(a_frame, "##recipe");
@@ -378,23 +380,74 @@ std::optional<RecipeKey> DefaultKeyOf(const Studio::PieceRow &a_piece) {
 }
 
 namespace {
-void NewRecipeButton(const Frame &a_frame) {
-  const std::optional<RecipeKey> key = DefaultKeyOf(*a_frame.piece);
-  Disabled(!key, [&]() {
-    if (ImGui::Button("New", ImVec2{ButtonWidth("New"), 0.0f}) && key) {
-      std::vector<std::string> ids;
-      ids.reserve(a_frame.piece->recipes.size());
-      for (const auto &existing : a_frame.piece->recipes) {
-        ids.push_back(existing.id);
-      }
-      Studio::Post(*a_frame.intents,
-                   Studio::CreateRecipe{Studio::UniqueName("recipe", ids), *key,
-                                        a_frame.geometry->name});
+void CreateForSelectedArmor(const Frame &a_frame, const std::string &a_name,
+                            bool a_nameValid) {
+  if (!a_frame.piece) {
+    return;
+  }
+  const auto key = DefaultKeyOf(*a_frame.piece);
+  if (!key) {
+    return;
+  }
+  Disabled(!a_nameValid, [&] {
+    if (ImGui::Button("Create for selected armor")) {
+      Studio::Post(*a_frame.intents, Studio::CreateRecipe{a_name, *key, {}});
+      ImGui::CloseCurrentPopup();
     }
   });
-  Tooltip("a new recipe keyed to this armor, named recipe-N, with one empty "
-          "emissive output on the material for the viewed geometry alone; "
-          "rename it and edit its keys from keys");
+}
+
+void NewRecipeButton(const Frame &a_frame) {
+  if (ImGui::Button("New recipe")) {
+    ImGui::OpenPopup("new-recipe");
+  }
+  if (!ImGui::BeginPopup("new-recipe")) {
+    return;
+  }
+  static KeyKind kind = KeyKind::kArmor;
+  const std::string proposed =
+      Studio::UniqueName("recipe", a_frame.snapshot->loaded);
+  const std::string_view typed = LiveTextField(
+      "new-name", proposed.c_str(), Studio::Width::Px(240.0f), a_frame.scale);
+  const std::string name = typed.empty() ? proposed : std::string{typed};
+  const KeyKind kinds[]{KeyKind::kArmor,        KeyKind::kKeyword,
+                        KeyKind::kEnchantment,  KeyKind::kMagicEffect,
+                        KeyKind::kEffectShader, KeyKind::kMaterial};
+  if (ImGui::BeginCombo("Key type", std::string{KeyKindName(kind)}.c_str())) {
+    for (const KeyKind choice : kinds) {
+      if (ImGui::Selectable(std::string{KeyKindName(choice)}.c_str(),
+                            choice == kind)) {
+        kind = choice;
+      }
+    }
+    ImGui::EndCombo();
+  }
+  const std::string_view operand = LiveTextField(
+      "new-key",
+      kind == KeyKind::kMaterial ? "texture path or pattern"
+                                 : "form editor ID or plugin form key",
+      Studio::Width::Px(320.0f), a_frame.scale);
+  const bool nameValid =
+      IsName(name) && std::ranges::find(a_frame.snapshot->loaded, name) ==
+                          a_frame.snapshot->loaded.end();
+  const bool ready = nameValid && !operand.empty();
+  Dim("Creates an empty document with the chosen key. Add outputs to make an "
+      "effect.");
+  Disabled(!ready, [&] {
+    if (ImGui::Button("Create document")) {
+      RecipeKey key;
+      key.kind = kind;
+      if (kind == KeyKind::kMaterial) {
+        key.operand = std::string{operand};
+      } else {
+        key.operand = FormRef::From(operand);
+      }
+      Studio::Post(*a_frame.intents, Studio::CreateRecipe{name, key, {}});
+      ImGui::CloseCurrentPopup();
+    }
+  });
+  CreateForSelectedArmor(a_frame, name, nameValid);
+  ImGui::EndPopup();
 }
 
 void RenameRecipeButton(const Frame &a_frame) {
@@ -530,15 +583,14 @@ void DrawStudioContext(const Frame &a_frame) {
     return;
   }
   DrawRecipeContext(a_frame);
+  NewRecipeButton(a_frame);
   if (!a_frame.recipe) {
     return;
   }
+  IsolateCheckbox(*a_frame.recipe, a_frame.snapshot->view, "Solo recipe",
+                  *a_frame.intents);
   UndoRedoButtons(*a_frame.recipe, *a_frame.intents);
   ImGui::SameLine();
-  if (a_frame.geometry) {
-    NewRecipeButton(a_frame);
-    ImGui::SameLine();
-  }
   RenameRecipeButton(a_frame);
   ImGui::SameLine();
   if (ImGui::Button("Recipe keys")) {

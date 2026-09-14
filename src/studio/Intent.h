@@ -48,13 +48,34 @@ struct FiringDraft {
   float value = 1.0f;
 };
 
+struct ExpressionDraft {
+  std::string text;
+  std::uint64_t revision = 0;
+};
+
+struct TuningGesture {
+  std::uint64_t id = 0;
+  FieldKey field = kNoField;
+  std::string recipeID;
+  InspectorSubject subject;
+  float value = 0.0f;
+  std::function<std::optional<RecipeEdit>(const std::string &)> bind;
+  bool seen = false;
+  bool finishing = false;
+};
+
 struct MenuState {
   Mode mode = Mode::kCompose;
   Layout layout;
   Selection selection;
   Navigation navigation;
+  std::optional<PropertyLocation> revealedProperty;
+  std::optional<PreviewPin> previewPin;
   std::optional<PendingIndexedEdit> pendingIndexedEdit;
   std::optional<PendingIndexedEdit> pendingRecipeFile;
+  std::optional<TuningGesture> tuning;
+  std::unordered_map<FieldKey, std::pair<float, float>> tuningRanges;
+  std::unordered_map<FieldKey, ExpressionDraft> expressionDrafts;
   bool settings = false;
   MaskStack mask;
   std::optional<PaintSession> paint;
@@ -167,6 +188,7 @@ struct BeginPaint {
   Surface surface = Surface::kMaterial;
   std::uint64_t sessionID = 0;
   std::uint64_t resetID = 0;
+  std::optional<PaintAssignment> assignment{};
 };
 struct SetPaintSurface {
   Surface surface = Surface::kMaterial;
@@ -185,6 +207,7 @@ struct ReadMesh {
 struct EditRecipe {
   std::string recipeID;
   std::vector<RecipeEdit> edits;
+  std::optional<std::uint64_t> expectedRevision = std::nullopt;
 };
 struct SoloRecipe {
   std::string recipeID;
@@ -267,6 +290,7 @@ void Post(Intents &a_out, const std::string &a_recipe, RecipeEdit a_edit);
                                 const Intent &a_intent);
 void Reduce(MenuState &a_state, const Intent &a_intent);
 void ObservePaintRecipe(MenuState &a_state, const RecipeRow *a_recipe);
+[[nodiscard]] bool MaskTaskActive(const MenuState &a_state);
 void ResolveEditorSelection(MenuState &a_state, const Snapshot &a_snapshot);
 void AcknowledgeEditorOperations(MenuState &a_state,
                                  const Snapshot &a_snapshot);

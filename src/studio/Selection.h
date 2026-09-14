@@ -1,6 +1,7 @@
 #pragma once
 
 #include "recipe/Recipe.h"
+#include "studio/Relationships.h"
 #include "studio/Snapshot.h"
 #include "studio/View.h"
 
@@ -56,6 +57,7 @@ struct Selection {
   std::optional<std::size_t> layer;
   InspectorSubject subject = RecipeSubject{};
   bool document = false;
+  std::optional<PropertyLocation> property;
   [[nodiscard]] bool operator==(const Selection &) const = default;
 };
 
@@ -73,6 +75,9 @@ SelectedGeometry(const RecipeRow *a_recipe,
 [[nodiscard]] const OutputRow *
 SelectedOutput(const GeometryRow *a_geometry,
                const Selection &a_selection) noexcept;
+[[nodiscard]] const OutputRow *
+SelectedAuthoredOutput(const RecipeRow &a_recipe,
+                       const Selection &a_selection) noexcept;
 [[nodiscard]] std::optional<PieceRef>
 RequestOf(const Selection &a_selection) noexcept;
 void ResolveSelection(Selection &a_selection, const Snapshot &a_snapshot);

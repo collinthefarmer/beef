@@ -120,16 +120,11 @@ void AddSignalNamed(std::vector<SignalRow> &a_signals,
   }
 }
 
-}
-
-std::optional<LayerStack> BuildStackView(const StackViewInput &a_input) {
-  const PieceRow &a_piece = a_input.piece;
-  const RecipeRow &a_recipe = a_input.recipe;
-  const GeometryRow &a_geometry = a_input.geometry;
-  const Selection &a_selection = a_input.selection;
-  const View &a_view = a_input.view;
-  const OutputRow *output = SelectedOutput(&a_geometry, a_selection);
-  if (output == nullptr) {
+std::optional<LayerStack> BuildStack(const RecipeRow &a_recipe,
+                                     const OutputRow *output,
+                                     const Selection &a_selection,
+                                     const View &a_view) {
+  if (output == nullptr || output->target == Target::kLight) {
     return std::nullopt;
   }
   LayerStack stack;
@@ -146,7 +141,6 @@ std::optional<LayerStack> BuildStackView(const StackViewInput &a_input) {
     row.selected = a_selection.layer && *a_selection.layer == i;
     stack.rows.push_back(std::move(row));
   }
-  FillForeignRows(stack, a_piece, a_recipe, a_geometry);
   stack.composite = output->texture;
   stack.animated = output->animated;
   stack.size = output->size;
@@ -165,12 +159,12 @@ std::optional<LayerStack> BuildStackView(const StackViewInput &a_input) {
   return stack;
 }
 
-std::optional<Inspector> BuildInspector(const RecipeRow &a_recipe,
-                                        const GeometryRow &a_geometry,
-                                        const Selection &a_selection) {
-  const OutputRow *output = SelectedOutput(&a_geometry, a_selection);
-  if (output == nullptr || !a_selection.layer ||
-      *a_selection.layer >= output->layers.size()) {
+std::optional<Inspector> InspectOutput(const RecipeRow &a_recipe,
+                                       const GeometryRow *a_geometry,
+                                       const OutputRow *output,
+                                       const Selection &a_selection) {
+  if (output == nullptr || output->target == Target::kLight ||
+      !a_selection.layer || *a_selection.layer >= output->layers.size()) {
     return std::nullopt;
   }
   Inspector inspector;
@@ -180,19 +174,19 @@ std::optional<Inspector> BuildInspector(const RecipeRow &a_recipe,
   inspector.row = output->layers[inspector.layer];
   const LayerRow &row = inspector.row;
 
-  if (IsWholeReference(row.source)) {
+  if (a_geometry && IsWholeReference(row.source)) {
     const auto name = ReferenceName(row.source);
-    const PictureRow *image = FindImage(a_geometry.sources, name);
+    const PictureRow *image = FindImage(a_geometry->sources, name);
     if (image == nullptr) {
-      image = FindImage(a_geometry.masks, name);
+      image = FindImage(a_geometry->masks, name);
     }
     if (image != nullptr) {
       inspector.source = *image;
     }
   }
-  if (!row.mask.empty()) {
+  if (a_geometry && !row.mask.empty()) {
     if (const PictureRow *image =
-            FindImage(a_geometry.masks, ReferenceName(row.mask))) {
+            FindImage(a_geometry->masks, ReferenceName(row.mask))) {
       inspector.mask = *image;
     }
   }
@@ -205,10 +199,10 @@ std::optional<Inspector> BuildInspector(const RecipeRow &a_recipe,
     }
   }
   inspector.blends = BlendsFor(output->slot);
-  for (const auto &source : a_geometry.sources) {
+  for (const auto &source : a_recipe.sourceRows) {
     inspector.sources.push_back(source.name);
   }
-  for (const auto &mask : a_geometry.masks) {
+  for (const auto &mask : a_recipe.maskRows) {
     inspector.masks.push_back(mask.name);
   }
   for (const auto &curve : a_recipe.curves) {
@@ -222,6 +216,39 @@ std::optional<Inspector> BuildInspector(const RecipeRow &a_recipe,
     }
   }
   return inspector;
+}
+
+}
+
+std::optional<LayerStack> BuildStackView(const StackViewInput &a_input) {
+  auto stack = BuildStack(a_input.recipe,
+                          SelectedOutput(&a_input.geometry, a_input.selection),
+                          a_input.selection, a_input.view);
+  if (stack) {
+    FillForeignRows(*stack, a_input.piece, a_input.recipe, a_input.geometry);
+  }
+  return stack;
+}
+
+std::optional<LayerStack> BuildStackView(const RecipeRow &a_recipe,
+                                         const Selection &a_selection,
+                                         const View &a_view) {
+  return BuildStack(a_recipe, SelectedAuthoredOutput(a_recipe, a_selection),
+                    a_selection, a_view);
+}
+
+std::optional<Inspector> BuildInspector(const RecipeRow &a_recipe,
+                                        const GeometryRow &a_geometry,
+                                        const Selection &a_selection) {
+  return InspectOutput(a_recipe, &a_geometry,
+                       SelectedOutput(&a_geometry, a_selection), a_selection);
+}
+
+std::optional<Inspector> BuildInspector(const RecipeRow &a_recipe,
+                                        const Selection &a_selection) {
+  return InspectOutput(a_recipe, nullptr,
+                       SelectedAuthoredOutput(a_recipe, a_selection),
+                       a_selection);
 }
 
 SignalNames SignalNamesOf(const RecipeRow &a_recipe) {

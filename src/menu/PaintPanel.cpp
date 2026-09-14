@@ -1,7 +1,9 @@
 #include "menu/PaintPanel.h"
+#include "menu/PatternChooser.h"
 
 #include "PCH.h"
 #include "engine/RecipeStore.h"
+#include "menu/ContextRows.h"
 #include "menu/FormDraw.h"
 #include "menu/MenuWidgets.h"
 #include "recipe/Expression.h"
@@ -51,12 +53,6 @@ constexpr Studio::TableStyle kLayerStyle{
     .stretch = true,
     .headers = true,
     .rowBackground = true};
-constexpr Studio::TableStyle kOffersStyle{.borders =
-                                              Studio::TableBorders::kNone,
-                                          .stretch = true,
-                                          .headers = true,
-                                          .rowBackground = false};
-
 const std::vector<std::string> kTermOps{
     std::string{Studio::TermOpName(Studio::TermOp::kAnd)},
     std::string{Studio::TermOpName(Studio::TermOp::kOr)},
@@ -100,84 +96,6 @@ NextGeometry(const Studio::RecipeRow &a_recipe,
   const std::size_t at =
       it == shapes.end() ? 0 : static_cast<std::size_t>(it - shapes.begin());
   return Studio::ViewGeometry{shapes[(at + 1) % shapes.size()].name};
-}
-
-void AddTermOfKind(const Studio::TermKind &a_kind,
-                   const Studio::GeometryRow &a_geometry, bool a_full,
-                   const Frame &a_frame) {
-  if (a_full) {
-    return;
-  }
-  const Studio::MaskPresets &presets = LoadedPresets();
-  Studio::BuiltTerm built = Studio::BuildTerm(
-      a_kind, presets,
-      Studio::PaintSources(*a_frame.state, *a_frame.recipe, *a_frame.intents));
-  Studio::Post(
-      *a_frame.intents,
-      Studio::AddTerm{
-          Studio::Term{Studio::TermOp::kAnd, std::move(built.expression),
-                       Studio::TermLabelOf(a_kind, presets, a_geometry),
-                       a_kind},
-          std::move(built.edits)});
-}
-
-void DrawOffers(std::span<const Studio::TermOffer> a_offers,
-                std::string_view a_filter, bool a_full, const Frame &a_frame) {
-  const Studio::PieceRow &piece = *a_frame.piece;
-  const Studio::RecipeRow &recipe = *a_frame.recipe;
-  const Studio::GeometryRow &geometry = *a_frame.geometry;
-  auto table = Table::Begin("offers",
-                            {{"geometry", Studio::Width::Fit()},
-                             {"kind", Studio::Width::Fit()},
-                             {"name", Studio::Width::Fit()},
-                             {"description", Studio::Width::Fill()},
-                             {"coverage", Studio::Width::Fit("coverage")},
-                             {"", Studio::Width::Fit("edit")}},
-                            kOffersStyle);
-  if (!table.Open()) {
-    return;
-  }
-  int shown = 0;
-  for (const auto &offer : a_offers) {
-    const Studio::OfferGroupSpec *row =
-        RowOf(Studio::kOfferGroups, offer.group);
-    const std::string_view kind = row ? row->word : std::string_view{"?"};
-    if (!Studio::NameMatches(offer.name, a_filter) &&
-        !Studio::NameMatches(offer.detail, a_filter) &&
-        !Studio::NameMatches(kind, a_filter)) {
-      continue;
-    }
-    ImGui::PushID(shown++);
-    const bool mask = offer.group == Studio::OfferGroup::kMasks;
-    const std::string geometryLabel =
-        offer.geometry.empty()
-            ? std::string{}
-            : Studio::GeometryLabel(offer.geometry, piece.armorName);
-    const std::string_view leading[]{geometryLabel, kind};
-    switch (
-        ChooserRow(table, {leading, offer.name, offer.detail, offer.coverage,
-                           offer.unavailable, mask ? "edit" : nullptr})) {
-    case ChooserPick::kChosen: {
-      const auto from = std::ranges::find(recipe.geometries, offer.geometry,
-                                          &Studio::GeometryRow::name);
-      AddTermOfKind(offer.kind,
-                    from != recipe.geometries.end() ? *from : geometry, a_full,
-                    a_frame);
-      break;
-    }
-    case ChooserPick::kAction:
-      if (const auto it = std::ranges::find(recipe.maskRows, offer.name,
-                                            &Studio::TextRow::name);
-          it != recipe.maskRows.end()) {
-        EditMaskAsTerms(*it, a_frame);
-      }
-      break;
-    case ChooserPick::kNone:
-      break;
-    }
-    ImGui::PopID();
-  }
-  table.End();
 }
 
 [[nodiscard]] Table BeginTermTable() {
@@ -521,12 +439,16 @@ void KeepMaskPopup(const Frame &a_frame) {
                        !state.paint->pendingCommit && IsName(name) &&
                        name != std::string{Studio::kScratchMask};
     Disabled(!ready, [&]() {
-      if (ImGui::Button(std::format("Keep as {}", name).c_str()) && ready) {
+      const std::string label = painting && state.paint->assignment
+                                    ? std::format("Keep and assign as {}", name)
+                                    : std::format("Keep as {}", name);
+      if (ImGui::Button(label.c_str()) && ready) {
         Studio::Post(
             *a_frame.intents,
             Studio::KeepPaint{Studio::PaintCommitRequest{
                 state.nextPaintCommitID++, state.paint->recipeID, name,
-                *expression, state.paint->sessionID, state.paint->sources}});
+                *expression, state.paint->sessionID, state.paint->sources,
+                state.paint->assignment, state.mask.editing}});
         ImGui::CloseCurrentPopup();
       }
     });
@@ -558,7 +480,8 @@ void DrawMaskRule(std::string_view a_title, const Frame &a_frame) {
        Studio::Width::Fit(),
        !mask.terms.empty()},
       {Studio::RuleAction::kAdd, "Keep", Studio::Width::Fit(), something},
-      {Studio::RuleAction::kRemove, "Discard", Studio::Width::Fit(), painting},
+      {Studio::RuleAction::kRemove, "Discard", Studio::Width::Fit(),
+       painting && !state.paint->pendingCommit},
   };
   const Studio::RuleSpec spec{a_title, buttons};
   const Studio::RuleClick click = Rule(spec);
@@ -632,8 +555,8 @@ void DrawMaskStack(const Frame &a_frame) {
     Dim(geometry.meshRead ? "nothing to offer on this geometry"
                           : "reading the mesh");
   }
-  DrawOffers(offers, rule.filter, mask.terms.size() >= Studio::kMaxTerms,
-             a_frame);
+  DrawPatternChooser(offers, rule.filter,
+                     mask.terms.size() >= Studio::kMaxTerms, a_frame);
 }
 
 void RebuildScratch(const Frame &a_frame) {
@@ -648,7 +571,11 @@ void RebuildScratch(const Frame &a_frame) {
 }
 
 void EditMaskAsTerms(const Studio::TextRow &a_mask, const Frame &a_frame) {
-  if (!a_frame.recipe) {
+  if (!a_frame.recipe || !a_frame.piece || a_frame.state->paint) {
+    return;
+  }
+  const auto key = DefaultKeyOf(*a_frame.piece);
+  if (!key) {
     return;
   }
   const std::string label = Studio::TermLabel(
@@ -658,5 +585,102 @@ void EditMaskAsTerms(const Studio::TextRow &a_mask, const Frame &a_frame) {
                                               label, Studio::RawTerm{}}},
                                 a_mask.name});
   Studio::Post(*a_frame.intents, Studio::SetMode{Studio::Mode::kPaint});
+  std::optional<Studio::PaintAssignment> assignment;
+  if (const auto *layer =
+          Get<Studio::LayerSubject>(SelectionOf(a_frame).subject)) {
+    assignment = Studio::PaintAssignment{layer->output, layer->layer,
+                                         a_frame.recipe->documentRevision};
+  }
+  Studio::Post(*a_frame.intents,
+               Studio::BeginPaint{a_frame.recipe->id, *key, Surface::kMaterial,
+                                  a_frame.state->nextPaintSessionID++,
+                                  a_frame.state->lastPaintReset, assignment});
+}
+
+void DrawPaintDraftBar(const Frame &a_frame) {
+  Studio::MenuState &state = *a_frame.state;
+  if (!state.paint) {
+    return;
+  }
+  const bool previewing =
+      ViewOf(a_frame).isolation.recipeID == Studio::kPaintRecipe;
+  Dim(std::format("Mask draft for {} / preview {} / excluded from Save",
+                  state.paint->recipeID, previewing ? "active" : "inactive"));
+  if (state.mode != Studio::Mode::kPaint) {
+    if (ImGui::SmallButton("Resume mask draft")) {
+      Studio::Post(*a_frame.intents, Studio::SetMode{Studio::Mode::kPaint});
+      if (!previewing) {
+        Studio::Post(
+            *a_frame.intents,
+            Studio::SoloRecipe{std::string{Studio::kPaintRecipe}, true});
+      }
+    }
+  } else if (ImGui::SmallButton("Leave mask inspector")) {
+    Studio::Post(*a_frame.intents, Studio::SetMode{Studio::Mode::kCompose});
+  }
+  ImGui::SameLine();
+  Disabled(state.paint->pendingCommit.has_value(), [&] {
+    if (ImGui::SmallButton("Discard mask draft")) {
+      Studio::Post(*a_frame.intents, Studio::EndPaint{});
+    }
+  });
+  if (state.paint->assignmentInvalid) {
+    Warn("The destination changed. Keep saves the mask without assigning it.");
+  }
+}
+
+void DrawMaskTask(const Frame &a_frame) {
+  Studio::MenuState &state = *a_frame.state;
+  if (!state.paint) {
+    return;
+  }
+  DrawPaintHead(a_frame);
+  DrawMaskRule(state.mask.editing.empty() ? "New mask draft"
+                                          : state.mask.editing,
+               a_frame);
+  if (state.paint->assignment) {
+    Dim(std::format("Assign to output {} / layer {} / mask",
+                    state.paint->assignment->output + 1,
+                    state.paint->assignment->layer + 1));
+  } else if (!state.mask.editing.empty()) {
+    Dim("Keeping this name updates the shared mask and all of its consumers.");
+  }
+  if (!state.paint->ready) {
+    Dim("Waiting for the mask preview.");
+    return;
+  }
+  const auto piece =
+      std::ranges::find(a_frame.snapshot->pieces, state.paint->origin.piece,
+                        &Studio::PieceRow::ref);
+  if (piece == a_frame.snapshot->pieces.end()) {
+    Dim("The original armor is unavailable. The draft is retained.");
+    return;
+  }
+  const auto paint = std::ranges::find(piece->recipes, Studio::kPaintRecipe,
+                                       &Studio::RecipeRow::id);
+  if (paint == piece->recipes.end()) {
+    Dim("Waiting for the mask preview geometry.");
+    return;
+  }
+  Studio::ObservePaintRecipe(state, &*paint);
+  const Studio::GeometryRow *geometry =
+      Studio::SelectedGeometry(&*paint, state.paint->origin);
+  if (!geometry) {
+    Dim("No geometry is available for this mask preview.");
+    return;
+  }
+  for (const Studio::GeometryRow &row : paint->geometries) {
+    if (!state.paint->readGeometries.contains(row.name)) {
+      Studio::Post(*a_frame.intents,
+                   Studio::ReadMesh{piece->ref.actorID, row.name});
+    }
+  }
+  const Studio::Names names = Studio::NamesOf(*paint, *geometry);
+  Frame preview = a_frame;
+  preview.piece = &*piece;
+  preview.recipe = &*paint;
+  preview.geometry = geometry;
+  preview.names = &names;
+  DrawMaskStack(preview);
 }
 }

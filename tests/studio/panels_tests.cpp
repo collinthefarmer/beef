@@ -172,6 +172,17 @@ void TestLightAndShellRows() {
   Check(Field(shellForm, "material") != nullptr &&
             Field(shellForm, "spinAxis") != nullptr,
         "ShellForm exposes the full pose surface");
+  recipe.outputs.push_back(light);
+  const auto secondForm = LightForm(LightRowOf(recipe, 2), SignalNames{});
+  const FormField *intensity = Field(secondForm, "intensity");
+  const auto edit =
+      intensity && intensity->bind ? intensity->bind("7") : std::nullopt;
+  const auto *change = edit ? Get<SetLightParam>(*edit) : nullptr;
+  Check(change && change->output == 2,
+        "editing a second light targets its authored output rather than the "
+        "first light");
+  Check(!LightRowOf(recipe, 0).present && !LightRowOf(recipe, 99).present,
+        "non-light and missing output indices cannot become light inspectors");
 }
 
 void TestRecipeHeaderForm() {
@@ -275,6 +286,30 @@ void TestStackAndInspectorViews() {
       BuildInspector(recipe, geometry, selection);
   Check(inspector.has_value() && inspector->layer == 0,
         "BuildInspector opens the selected layer");
+
+  recipe.outputs = {output};
+  recipe.geometries.clear();
+  selection.subject = LayerSubject{0, 1};
+  selection.layer = 1;
+  const auto documentStack = BuildStackView(recipe, selection, View{});
+  const auto documentInspector = BuildInspector(recipe, selection);
+  Check(documentStack && documentStack->rows.size() == 2 &&
+            !documentStack->composite && documentStack->below.empty() &&
+            documentStack->above.empty(),
+        "authored stack inspection needs no live geometry or foreign "
+        "contributions");
+  Check(documentInspector && documentInspector->layer == 1 &&
+            !documentInspector->source && !documentInspector->mask,
+        "authored layer fields are editable without fabricated image previews");
+  if (documentInspector) {
+    Check(documentInspector->sources.size() == recipe.sourceRows.size() &&
+              documentInspector->masks.size() == recipe.maskRows.size(),
+          "document inspector choices come from authored resource definitions");
+  }
+  selection.subject = LayerSubject{9, 1};
+  Check(!BuildInspector(recipe, selection) &&
+            !BuildStackView(recipe, selection, View{}),
+        "missing authored outputs cannot borrow a live slot match");
 }
 
 void TestIntegerSignalFields() {

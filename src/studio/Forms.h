@@ -240,6 +240,7 @@ struct FormField {
   std::optional<std::pair<float, float>> workingRange{};
   std::string units{};
   bool integral = false;
+  std::optional<std::uint64_t> expectedRevision = std::nullopt;
 };
 
 [[nodiscard]] FormField RowNameField(RowKind a_kind, const std::string &a_name,

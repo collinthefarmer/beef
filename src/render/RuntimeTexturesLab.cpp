@@ -278,7 +278,7 @@ TextureLab::SampledPreview(std::string a_context, RE::NiSourceTexture *a_source,
                            const LayerInput &a_sampling, float a_normalize,
                            bool a_dynamic) {
   return previews_->SampledPreview(std::move(a_context), a_source, a_sampling,
-                                    a_normalize, a_dynamic);
+                                   a_normalize, a_dynamic);
 }
 
 TextureLab::PreviewDraw *

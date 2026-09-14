@@ -1,7 +1,7 @@
 # UI v2 implementation plan
 
-Status: implementing, 2026-09-13. First agent wave integrated; early framework
-checkpoint in validation. See the [implementation checkpoint](wip/ui-v2-framework-checkpoint-2026-09-13.md).
+Status: core editor integrated, validation in progress. The early framework
+checkpoint was accepted on 2026-09-13. See the [core checkpoint](wip/ui-v2-core-checkpoint-2026-09-13.md).
 
 Design baseline: [frozen UI v2 proposal](ui-v2-proposal.md).
 Evidence: [current UI assessment](ui-assessment-2026-09-13.md).
@@ -294,33 +294,31 @@ and deferred enchantment appearance experiments are not implementation tasks her
 
 ## 10. Tracking and next action
 
-The first agent wave has implemented the workspace shell, typed inspector
-navigation, shared recipe file actions/results, field metadata, and structural
-edit acknowledgments. These are parts of 1A-1E and 2A/2C, not completion of those
-slices. The early framework checkpoint comes before further inspector work.
+Stages 1-3 are integrated for complete-editor validation. The frozen proposal is
+unchanged. Runtime audition/overlays and new procedural capabilities remain later
+work, following the user's game check.
 
 | Work | Current state |
 | --- | --- |
-| Baseline | Prior dirty tree preserved; separate cleanup edits retained. Automated checks recorded in checkpoint. |
-| Workspace | New navigator/inspector/preview panes; Back and narrow-window dialogs wired to existing forms. Early in-game framework checkpoint accepted by the user on 2026-09-13. |
-| Recipe actions | Save/Revert shared between Studio and Recipes; explicit pending/success/failure results. |
-| Navigation safety | Typed subjects, structural invalidation, pending-edit gates, and load/fallback cleanup implemented with native coverage. |
-| Field metadata | Units, integral constraints, working ranges added to existing forms. Sliders not yet wired. |
-| Gesture history | Not implemented. Request acknowledgments support safety, not one-drag undo. |
-| Document editing | Independent unmatched-document projection remains pending. |
-| Mask lifecycle / authoring helpers | Existing Paint flow retained for this checkpoint; suspended tasks, operand editing, input browser, and graphs remain pending. |
-| Runtime additions | Scoped holds, overlays, new patterns, and coordinated peaks remain pending. |
+| Workspace | Searchable navigator, resizable panes, Back/property links, current-snapshot preview pinning. Early framework accepted. |
+| Recipe actions | Shared Save/Revert/results; standalone creation and unmatched-document editing; no implicit apply when browsing. |
+| Navigation | Typed subjects/property locations; indexed invalidation, pending gates, exact light/output selection. |
+| Tuning | Scalar sliders, exact input, custom working ranges, coalesced gestures, one-step undo/cancel, revision guards. |
+| Relationships | Driver/consumer links derive from the existing reference traversal. |
+| Expressions | Parser-backed number occurrence editing/promotion; exact edits reject stale document revisions. |
+| Inputs | Searchable supported actor values with live measures; direct/fraction/exhaustion/hit connection batches. |
+| Responses | Graphs for recognized pulse/ramp/trigger definitions and simple curves; other formulas retain text editing. |
+| Masks/patterns | Suspended draft, Resume/Keep/Discard, atomic layer assignment, supported pattern chooser using existing sources. |
+| Source previews | Image thumbnails apply scroll/tiling/orientation through the existing sampling/render path. |
+| Runtime additions | Scoped holds, armor overlays, new patterns, and coordinated peaks remain pending (stages 4-5). |
 
-Framework follow-up: source thumbnails currently show the underlying image and
-channel but omit its sampling transforms. Imported scrolling fills (for example,
-`VaporTile01`) therefore appear static even when their composed output animates.
-Resolve source preview sampling through the existing `ResolveSampling` path,
-including scroll, tiling, and orientation, using the recipe clock/signals. Preserve
-retained preview ownership; verify motion, Freeze/Step, and parity with the output.
+Source previews show the sampled source, before the layer's color, opacity,
+normalization, and blend. They share the recipe clock; Freeze/Step and differently
+sampled uses of the same image are part of the core game check.
 
-After the early game checkpoint, continue document/property selection and gesture
-lifecycle, then complete authoring tools. Do not add compatibility UI solely to
-keep intermediate revisions usable.
+The implementation retains useful Recipes/Setup pages and short-task modals.
+Studio uses the workspace for mask tasks; no separate mode switch is required.
+
 
 Plan amendment: at the user's request, intermediate UI usability is no longer a
 requirement. The frozen design scope is unchanged; this changes implementation
@@ -331,10 +329,10 @@ Changes to user-visible scope need an explicit design amendment here.
 
 | Decision | Status |
 | --- | --- |
-| Exact property-address identity and invalidation scheme | Typed recipe/output/layer/resource subjects implemented; index-changing edits invalidate and gate until matching result. Per-property addresses remain pending. |
-| Gesture scheduling/history protocol | Resolve in 2C before slider hookup. |
-| Parser support for editable operand occurrences | Audit confirms no public operand-span API; extend existing parser minimally in 3C. |
-| Suspended Paint draft lifecycle | Resolve before 3E. |
+| Exact property-address identity and invalidation scheme | Typed subjects and property locations implemented; positional edits invalidate and gate until matching result. |
+| Gesture scheduling/history protocol | Coalesced begin/update/commit/cancel; one history entry, revision checks, UI heartbeat and abandoned-gesture completion. |
+| Parser support for editable operand occurrences | Existing parser now exposes numeric occurrence spans; replacement preserves other occurrences and grouping. |
+| Suspended Paint draft lifecycle | Draft/session/history survive navigation; atomic Keep checks destination revision. |
 | Subject-local preview and overlay ownership | Resolve before 4A/4D. |
 
 Reuse audit outcome: no additional implementation stage is needed. Several tasks

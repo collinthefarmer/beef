@@ -3,6 +3,7 @@
 #include "recipe/Recipe.h"
 #include "studio/Edits.h"
 #include "studio/PaintCommit.h"
+#include "studio/Selection.h"
 #include "studio/Snapshot.h"
 
 #include <array>
@@ -31,6 +32,11 @@ struct PaintSession {
   std::optional<std::uint64_t> pendingRevision;
   std::vector<RecipeEdit> sources{};
   std::array<char, 1024> keepName{};
+  Selection origin;
+  std::string previewGeometry;
+  float originScroll = 0.0f;
+  std::optional<PaintAssignment> assignment;
+  bool assignmentInvalid = false;
 };
 
 [[nodiscard]] std::expected<EditBatch, Diagnostic>
@@ -47,5 +53,6 @@ PreparePaintUpdate(const Recipe *a_paint, const PaintUpdateRequest &a_request);
                                                 std::string_view a_name);
 [[nodiscard]] std::expected<EditBatch, Diagnostic>
 PreparePaintCommit(const Recipe *a_paint, const Recipe *a_target,
-                   const PaintCommitRequest &a_request);
+                   const PaintCommitRequest &a_request,
+                   std::uint64_t a_documentRevision = 0);
 }

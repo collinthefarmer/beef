@@ -8,6 +8,11 @@
 #include <string>
 
 namespace BetterEnchantmentEffects::Studio {
+struct PaintAssignment {
+  std::size_t output = 0;
+  std::size_t layer = 0;
+  std::uint64_t documentRevision = 0;
+};
 struct PaintCommitRequest {
   std::uint64_t id = 0;
   std::string recipeID;
@@ -15,6 +20,8 @@ struct PaintCommitRequest {
   std::string expression;
   std::uint64_t sessionID = 0;
   std::vector<RecipeEdit> sources{};
+  std::optional<PaintAssignment> assignment{};
+  std::string replacingMask{};
 };
 
 struct PaintUpdateRequest {

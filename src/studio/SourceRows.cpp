@@ -18,6 +18,7 @@ namespace {
 
 SourceRow SourceRowOf(const Source &a_source, std::size_t a_references) {
   SourceRow row;
+  row.type = SourceType(a_source);
   row.name = a_source.name;
   row.kind = std::string{SourceKindName(a_source.kind)};
   row.references = a_references;

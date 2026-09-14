@@ -4,6 +4,7 @@
 #include "studio/Selection.h"
 
 #include <cstddef>
+#include <cstdint>
 #include <span>
 #include <string_view>
 #include <vector>
@@ -21,6 +22,17 @@ struct Navigation {
   float scroll = 0.0f;
 };
 
+struct PreviewPin {
+  Selection selection;
+  std::uint64_t resetID = 0;
+};
+
+void ResolvePreviewPin(std::optional<PreviewPin> &a_pin,
+                       const Selection &a_selection, const RecipeRow *a_recipe,
+                       std::uint64_t a_resetID);
+void InvalidatePreviewPin(std::optional<PreviewPin> &a_pin,
+                          std::string_view a_recipeID);
+
 [[nodiscard]] bool InspectorSubjectExists(const InspectorSubject &a_subject,
                                           const RecipeRow &a_recipe);
 [[nodiscard]] bool ResolveInspectorSubject(Selection &a_selection,
@@ -28,6 +40,11 @@ struct Navigation {
 [[nodiscard]] bool Navigate(Navigation &a_navigation, Selection &a_selection,
                             InspectorSubject a_subject,
                             const RecipeRow &a_recipe);
+[[nodiscard]] bool NavigateProperty(Navigation &a_navigation,
+                                    Selection &a_selection,
+                                    InspectorSubject a_subject,
+                                    PropertyLocation a_property,
+                                    const RecipeRow &a_recipe);
 [[nodiscard]] bool GoBack(Navigation &a_navigation, Selection &a_selection,
                           const RecipeRow &a_recipe);
 void InvalidateIndexedSubjects(Navigation &a_navigation, Selection &a_selection,

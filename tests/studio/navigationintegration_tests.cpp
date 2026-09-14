@@ -20,6 +20,17 @@ MenuState EditingLayer() {
 int main() {
   {
     MenuState state = EditingLayer();
+    Reduce(state, CreateRecipe{"standalone", {}, {}});
+    ResolveEditorSelection(state, Snapshot{});
+    Check(state.selection.document &&
+              state.selection.recipeID == "standalone" &&
+              Is<RecipeSubject>(state.selection.subject) &&
+              state.navigation.back.empty(),
+          "a newly created document stays selected while its snapshot is "
+          "pending");
+  }
+  {
+    MenuState state = EditingLayer();
     const Intent edit = EditRecipe{"glow", {MoveLayer{0, 1, 0}}};
     Check(AcceptIntent(state, edit),
           "a settled editor accepts an initial structural command");

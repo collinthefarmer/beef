@@ -41,6 +41,38 @@ Selection Context() {
 int main() {
   const RecipeRow recipe = Document();
   {
+    RecipeRow linked = recipe;
+    const PropertyLocation first{LayerOwner{3, 1}, "opacity", {}};
+    const PropertyLocation second{LayerOwner{3, 1}, "tint", 2};
+    linked.relationships = {{first, {ResourceKind::kSignal, "strength"}},
+                            {second, {ResourceKind::kSignal, "strength"}}};
+    Selection selection = Context();
+    Navigation navigation;
+    Check(NavigateProperty(navigation, selection, LayerSubject{3, 1}, first,
+                           linked),
+          "a consumer link selects its owning layer and exact property");
+    navigation.scroll = 42.0f;
+    Check(NavigateProperty(navigation, selection, LayerSubject{3, 1}, second,
+                           linked) &&
+              selection.property == second && navigation.back.size() == 2,
+          "different properties on one owner retain separate Back entries");
+    Check(GoBack(navigation, selection, linked) &&
+              selection.property == first && navigation.scroll == 42.0f,
+          "Back restores the property and scroll position");
+    Check(!NavigateProperty(navigation, selection, OutputSubject{3}, second,
+                            linked),
+          "a property cannot be paired with a different owner");
+    InvalidateIndexedSubjects(navigation, selection, "glow");
+    Check(!selection.property && Is<RecipeSubject>(selection.subject),
+          "structural changes clear positional property focus");
+    Check(NavigateProperty(navigation, selection, LayerSubject{3, 1}, second,
+                           linked),
+          "a surviving consumer can be selected again");
+    linked.relationships.clear();
+    Check(ResolveInspectorSubject(selection, &linked) && !selection.property,
+          "removing a relationship clears its obsolete property focus");
+  }
+  {
     Check(InspectorSubjectExists(RecipeSubject{}, recipe) &&
               InspectorSubjectExists(ShellSubject{}, recipe),
           "document inspectors do not require applied geometry");
@@ -166,6 +198,40 @@ int main() {
     Check(!ShouldInvalidateIndexedSubjects(values) &&
               !ShouldInvalidateIndexedSubjects({}),
           "value edits and empty batches preserve positional subjects");
+  }
+  {
+    RecipeRow live = recipe;
+    GeometryRow geometry;
+    geometry.name = "armor";
+    live.geometries.push_back(geometry);
+    Selection selected = Context();
+    selected.subject = SourceSubject{"pattern"};
+    std::optional<PreviewPin> pin = PreviewPin{selected, 4};
+    selected.subject = SignalSubject{"strength"};
+    live.documentRevision = 7;
+    ResolvePreviewPin(pin, selected, &live, 4);
+    Check(pin && Is<SourceSubject>(pin->selection.subject),
+          "a pinned source survives inspector navigation and value edits");
+    InvalidatePreviewPin(pin, "glow");
+    Check(pin.has_value(),
+          "structural output edits do not invalidate a named resource pin");
+    pin->selection.subject = OutputSubject{3};
+    InvalidatePreviewPin(pin, "other");
+    Check(pin.has_value(), "another recipe cannot invalidate this output pin");
+    InvalidatePreviewPin(pin, "glow");
+    Check(!pin, "an output pin is cleared before indices can be reassigned");
+    pin = PreviewPin{selected, 4};
+    ResolvePreviewPin(pin, selected, &live, 5);
+    Check(!pin, "load reset clears pins even when document names are reused");
+    pin = PreviewPin{selected, 5};
+    selected.piece.actorID = 99;
+    ResolvePreviewPin(pin, selected, &live, 5);
+    Check(!pin, "a preview pin never transfers to another wearer");
+    selected = Context();
+    selected.subject = SourceSubject{"gone"};
+    pin = PreviewPin{selected, 5};
+    ResolvePreviewPin(pin, selected, &live, 5);
+    Check(!pin, "removed resources do not leave stale preview pins");
   }
   return test::Finish("studio_navigation");
 }

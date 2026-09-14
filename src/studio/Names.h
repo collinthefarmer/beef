@@ -29,6 +29,7 @@ struct Names {
 
 [[nodiscard]] Names NamesOf(const RecipeRow &a_recipe,
                             const GeometryRow &a_geometry);
+[[nodiscard]] Names NamesOf(const RecipeRow &a_recipe);
 [[nodiscard]] std::vector<std::string> TakenNames(RowKind a_kind,
                                                   const Names &a_names);
 

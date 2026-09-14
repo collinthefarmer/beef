@@ -91,7 +91,6 @@ void Manager::Clear() {
                  {"actors", std::to_string(applied_.size())}});
   });
   applications_.BeginLoad();
-  editor_.CancelFileOperationsForLoad();
   const std::size_t count = applied_.size();
   for (const auto &[actorID, state] : applied_) {
     UnwatchAnimationEvents(RE::TESForm::LookupByID<RE::Actor>(actorID));
@@ -99,6 +98,7 @@ void Manager::Clear() {
   for (auto &[actorID, state] : applied_)
     RetireActorEffects(state);
   applied_.clear();
+  editor_.CancelFileOperationsForLoad();
   SweepRetiredMaterialTextures();
   editor_.CancelPaintForLoad();
   loggedNonPBRArmor_.clear();
@@ -114,6 +114,7 @@ void Manager::Clear() {
     empty->applications = applications_.Snapshot();
     empty->fileOperations = editor_.FileOperations();
     empty->editResults = editor_.EditResults();
+    empty->gesture = editor_.LastGesture();
     latest_ = std::move(empty);
     watch_.reset();
     watchedMS_ = 0;

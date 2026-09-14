@@ -9,7 +9,9 @@
 #include "studio/EditResult.h"
 #include "studio/FileOperation.h"
 #include "studio/Gesture.h"
+#include "studio/InputCatalog.h"
 #include "studio/PaintCommit.h"
+#include "studio/Relationships.h"
 #include "studio/View.h"
 
 #include <cstdint>
@@ -118,6 +120,7 @@ struct GeometryRow {
 
 struct SourceRow {
   std::string name;
+  ValueType type = ValueType::kScalar;
   std::string kind;
   std::string path;
   std::string channel;
@@ -203,8 +206,10 @@ struct RecipeRow {
   std::size_t undoDepth = 0;
   std::size_t redoDepth = 0;
   LightRow lightRow;
+  std::vector<LightRow> lights;
   ShellRow shellRow;
   std::uint64_t documentRevision = 0;
+  std::vector<Relationship> relationships;
 };
 
 struct KeyChoice {
@@ -262,5 +267,7 @@ struct Snapshot {
   std::vector<LoadedRecipeRow> loadedRecipes;
   std::vector<RecipeRow> documents;
   std::optional<GestureResult> gesture;
+  std::vector<ActorInputInfo> actorInputs;
+  FormID actorInputActorID = 0;
 };
 }

@@ -36,6 +36,23 @@ void DrawFileResult(const Studio::FileOperationResult &a_result) {
     Dim(std::format("{} completed: {}", action, a_result.path));
   }
 }
+
+void DrawRecipeResults(const Studio::Snapshot &a_snapshot,
+                       const std::string &a_recipeID) {
+  if (const auto *result = FileResult(a_snapshot, a_recipeID)) {
+    DrawFileResult(*result);
+  }
+  if (a_snapshot.gesture && a_snapshot.gesture->recipeID == a_recipeID &&
+      a_snapshot.gesture->error) {
+    Problem(*a_snapshot.gesture->error);
+  }
+  const auto edit = std::ranges::find(a_snapshot.editResults, a_recipeID,
+                                      &Studio::RecipeEditResult::recipeID);
+  if (edit != a_snapshot.editResults.end() && edit->error) {
+    Problem(*edit->error);
+  }
+}
+
 }
 
 bool RecipeFilePending(const Frame &a_frame) {
@@ -57,6 +74,9 @@ void DrawRecipeFileActions(const Frame &a_frame) {
   }
   const Studio::RecipeRow &recipe = *a_frame.recipe;
   const bool transient = recipe.id == Studio::kPaintRecipe;
+  if (a_frame.state->paint && a_frame.state->paint->recipeID == recipe.id) {
+    Dim("Save excludes the suspended mask draft.");
+  }
   ImGui::PushID(recipe.id.c_str());
   if (recipe.dirty) {
     Warn("Unsaved changes");
@@ -64,42 +84,39 @@ void DrawRecipeFileActions(const Frame &a_frame) {
     Dim("No unsaved changes");
   }
   ImGui::SameLine();
-  Disabled(transient || RecipeFilePending(a_frame), [&] {
-    if (ImGui::Button("Save")) {
-      a_frame.state->pendingRecipeFile = Studio::PendingIndexedEdit{
-          manager->Editor().SaveRecipe(recipe.id), recipe.id};
-    }
-    ImGui::SameLine();
-    if (ImGui::Button("Revert to file")) {
-      ImGui::OpenPopup("revert-file");
-    }
-    DetailModal("revert-file", [&] {
-      ImGui::TextWrapped("Replace the current edits to %s with its saved file?",
-                         recipe.id.c_str());
-      if (ImGui::Button("Revert edits")) {
-        Studio::InvalidateIndexedSubjects(a_frame.state->navigation,
-                                          a_frame.state->selection, recipe.id);
-        a_frame.state->pendingRecipeFile = Studio::PendingIndexedEdit{
-            manager->Editor().RevertRecipe(recipe.id), recipe.id};
-        ImGui::CloseCurrentPopup();
-      }
-      ImGui::SameLine();
-      if (ImGui::Button("Cancel")) {
-        ImGui::CloseCurrentPopup();
-      }
-    });
-  });
+  Disabled(transient || RecipeFilePending(a_frame) ||
+               (a_frame.state->paint && a_frame.state->paint->pendingCommit),
+           [&] {
+             if (ImGui::Button("Save")) {
+               a_frame.state->pendingRecipeFile = Studio::PendingIndexedEdit{
+                   manager->Editor().SaveRecipe(recipe.id), recipe.id};
+             }
+             ImGui::SameLine();
+             if (ImGui::Button("Revert to file")) {
+               ImGui::OpenPopup("revert-file");
+             }
+             DetailModal("revert-file", [&] {
+               ImGui::TextWrapped(
+                   "Replace the current edits to %s with its saved file?",
+                   recipe.id.c_str());
+               if (ImGui::Button("Revert edits")) {
+                 Studio::InvalidateIndexedSubjects(a_frame.state->navigation,
+                                                   a_frame.state->selection,
+                                                   recipe.id);
+                 a_frame.state->pendingRecipeFile = Studio::PendingIndexedEdit{
+                     manager->Editor().RevertRecipe(recipe.id), recipe.id};
+                 ImGui::CloseCurrentPopup();
+               }
+               ImGui::SameLine();
+               if (ImGui::Button("Cancel")) {
+                 ImGui::CloseCurrentPopup();
+               }
+             });
+           });
   if (transient) {
     Dim("Keep the mask before saving its destination recipe.");
   }
-  if (const auto *result = FileResult(*a_frame.snapshot, recipe.id)) {
-    DrawFileResult(*result);
-  }
-  const auto edit = std::ranges::find(a_frame.snapshot->editResults, recipe.id,
-                                      &Studio::RecipeEditResult::recipeID);
-  if (edit != a_frame.snapshot->editResults.end() && edit->error) {
-    Problem(*edit->error);
-  }
+  DrawRecipeResults(*a_frame.snapshot, recipe.id);
   ImGui::PopID();
 }
 }

@@ -70,7 +70,8 @@ public:
   struct Snapshot : Studio::Snapshot {
     std::vector<TextureRef> textures;
   };
-  void Watch(const std::optional<Studio::PieceRef> &a_request);
+  void Watch(const std::optional<Studio::PieceRef> &a_request,
+             std::string_view a_document = {});
   [[nodiscard]] std::shared_ptr<const Snapshot> LatestSnapshot() const;
 
 private:
@@ -124,7 +125,8 @@ private:
   [[nodiscard]] static bool Alive(const LiveActor &a_state) noexcept;
 
   [[nodiscard]] Snapshot
-  BuildSnapshot(const std::optional<Studio::PieceRef> &a_request) const;
+  BuildSnapshot(const std::optional<Studio::PieceRef> &a_request,
+                std::string_view a_document) const;
   void PublishSnapshot(std::uint32_t a_nowMS);
 
   ApplicationService applications_;
@@ -148,6 +150,7 @@ private:
   mutable std::mutex snapshotLock_;
   std::shared_ptr<const Snapshot> latest_ = std::make_shared<Snapshot>();
   std::optional<Studio::PieceRef> watch_;
+  std::string watchedDocument_;
   std::uint32_t watchedMS_ = 0;
   std::uint64_t snapshotVersion_ = 0;
   static constexpr std::uint32_t kWatchWindowMS = 1000;

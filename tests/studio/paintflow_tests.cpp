@@ -181,8 +181,11 @@ void SessionTransitions() {
         "mode switch rejects startup posted by the old frame body");
   Reduce(flow.state, late);
   AcknowledgePaintUpdate(flow.state, PaintUpdateResult{7, 0, {}});
-  Check(!flow.state.paint && flow.state.mode == Mode::kCompose,
-        "delayed startup acknowledgment cannot resurrect an exited session");
+  Check(flow.state.paint && flow.state.paint->ready &&
+            flow.state.mode == Mode::kCompose,
+        "startup acknowledgment completes a suspended session without "
+        "reopening it");
+  Reduce(flow.state, EndPaint{});
   Reduce(flow.state, SetMode{Mode::kPaint});
   Reduce(flow.state, BeginPaint{"target", RecipeKey{}, Surface::kMaterial, 9});
   AcknowledgePaintUpdate(

@@ -5,6 +5,52 @@
 
 namespace BetterEnchantmentEffects::Studio {
 namespace {
+bool PropertyMatches(const InspectorSubject &a_subject,
+                     const PropertyLocation &a_property) {
+  return Match(
+      a_property.owner,
+      [&](const OutputOwner &owner) {
+        const auto *subject = Get<OutputSubject>(a_subject);
+        return subject && subject->output == owner.output;
+      },
+      [&](const LayerOwner &owner) {
+        const auto *subject = Get<LayerSubject>(a_subject);
+        return subject && subject->output == owner.output &&
+               subject->layer == owner.layer;
+      },
+      [&](const ShellOwner &) { return Is<ShellSubject>(a_subject); },
+      [&](const VariantOwner &) { return Is<RecipeSubject>(a_subject); },
+      [&](const ResourceRef &owner) {
+        switch (owner.kind) {
+        case ResourceKind::kSignal: {
+          const auto *subject = Get<SignalSubject>(a_subject);
+          return subject && subject->name == owner.name;
+        }
+        case ResourceKind::kSource: {
+          const auto *subject = Get<SourceSubject>(a_subject);
+          return subject && subject->name == owner.name;
+        }
+        case ResourceKind::kMask: {
+          const auto *subject = Get<MaskSubject>(a_subject);
+          return subject && subject->name == owner.name;
+        }
+        case ResourceKind::kCurve: {
+          const auto *subject = Get<CurveSubject>(a_subject);
+          return subject && subject->name == owner.name;
+        }
+        default:
+          return false;
+        }
+      });
+}
+
+bool PropertyExists(const PropertyLocation &a_property,
+                    const RecipeRow &a_recipe) {
+  return std::ranges::any_of(
+      a_recipe.relationships,
+      [&](const Relationship &link) { return link.consumer == a_property; });
+}
+
 [[nodiscard]] const OutputRow *OutputAt(const RecipeRow &a_recipe,
                                         std::size_t a_index) {
   const auto found =
@@ -39,6 +85,11 @@ bool InvalidateIndexedSelection(Selection &a_selection,
     return false;
   }
   a_selection.layer.reset();
+  if (a_selection.property && (Is<OutputOwner>(a_selection.property->owner) ||
+                               Is<LayerOwner>(a_selection.property->owner) ||
+                               Is<VariantOwner>(a_selection.property->owner))) {
+    a_selection.property.reset();
+  }
   if (!Is<OutputSubject>(a_selection.subject) &&
       !Is<LayerSubject>(a_selection.subject)) {
     return false;
@@ -84,8 +135,14 @@ bool ResolveInspectorSubject(Selection &a_selection,
   if (!a_recipe || a_recipe->id != a_selection.recipeID ||
       !InspectorSubjectExists(a_selection.subject, *a_recipe)) {
     a_selection.subject = RecipeSubject{};
+    a_selection.property.reset();
     a_selection.layer.reset();
     return false;
+  }
+  if (a_selection.property &&
+      (!PropertyMatches(a_selection.subject, *a_selection.property) ||
+       !PropertyExists(*a_selection.property, *a_recipe))) {
+    a_selection.property.reset();
   }
   AlignOutputSelection(a_selection, *a_recipe);
   return true;
@@ -95,7 +152,7 @@ bool Navigate(Navigation &a_navigation, Selection &a_selection,
               InspectorSubject a_subject, const RecipeRow &a_recipe) {
   if (a_selection.recipeID != a_recipe.id ||
       !InspectorSubjectExists(a_subject, a_recipe) ||
-      a_selection.subject == a_subject) {
+      (a_selection.subject == a_subject && !a_selection.property)) {
     return false;
   }
   if (a_navigation.back.size() >= kMaxInspectorHistory) {
@@ -103,6 +160,29 @@ bool Navigate(Navigation &a_navigation, Selection &a_selection,
   }
   a_navigation.back.push_back({a_selection, a_navigation.scroll});
   a_selection.subject = std::move(a_subject);
+  a_selection.property.reset();
+  AlignOutputSelection(a_selection, a_recipe);
+  a_navigation.scroll = 0.0f;
+  return true;
+}
+
+bool NavigateProperty(Navigation &a_navigation, Selection &a_selection,
+                      InspectorSubject a_subject, PropertyLocation a_property,
+                      const RecipeRow &a_recipe) {
+  if (a_selection.recipeID != a_recipe.id ||
+      !InspectorSubjectExists(a_subject, a_recipe) ||
+      !PropertyMatches(a_subject, a_property) ||
+      !PropertyExists(a_property, a_recipe) ||
+      (a_selection.subject == a_subject &&
+       a_selection.property == a_property)) {
+    return false;
+  }
+  if (a_navigation.back.size() >= kMaxInspectorHistory) {
+    a_navigation.back.erase(a_navigation.back.begin());
+  }
+  a_navigation.back.push_back({a_selection, a_navigation.scroll});
+  a_selection.subject = std::move(a_subject);
+  a_selection.property = std::move(a_property);
   AlignOutputSelection(a_selection, a_recipe);
   a_navigation.scroll = 0.0f;
   return true;
@@ -119,6 +199,10 @@ bool GoBack(Navigation &a_navigation, Selection &a_selection,
       continue;
     }
     AlignOutputSelection(visit.selection, a_recipe);
+    if (visit.selection.property &&
+        !PropertyExists(*visit.selection.property, a_recipe)) {
+      visit.selection.property.reset();
+    }
     if (visit.selection == a_selection) {
       continue;
     }
@@ -147,5 +231,31 @@ bool ShouldInvalidateIndexedSubjects(std::span<const RecipeEdit> a_edits) {
            Is<ClearOutputs>(a_edit) || Is<ClearRecipe>(a_edit) ||
            Is<AddLight>(a_edit);
   });
+}
+
+void ResolvePreviewPin(std::optional<PreviewPin> &a_pin,
+                       const Selection &a_selection, const RecipeRow *a_recipe,
+                       std::uint64_t a_resetID) {
+  if (!a_pin) {
+    return;
+  }
+  if (!a_recipe || a_pin->selection.piece != a_selection.piece ||
+      a_pin->selection.recipeID != a_selection.recipeID ||
+      a_pin->selection.recipeID != a_recipe->id ||
+      a_pin->resetID != a_resetID ||
+      !InspectorSubjectExists(a_pin->selection.subject, *a_recipe) ||
+      std::ranges::find(a_recipe->geometries, a_pin->selection.geometry,
+                        &GeometryRow::name) == a_recipe->geometries.end()) {
+    a_pin.reset();
+  }
+}
+
+void InvalidatePreviewPin(std::optional<PreviewPin> &a_pin,
+                          std::string_view a_recipeID) {
+  if (a_pin && a_pin->selection.recipeID == a_recipeID &&
+      (Is<OutputSubject>(a_pin->selection.subject) ||
+       Is<LayerSubject>(a_pin->selection.subject))) {
+    a_pin.reset();
+  }
 }
 }

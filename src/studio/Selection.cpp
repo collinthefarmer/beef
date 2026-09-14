@@ -79,8 +79,8 @@ const RecipeRow *SelectedRecipe(const Snapshot &a_snapshot,
   if (live || !a_selection.document) {
     return live;
   }
-  const auto document = std::ranges::find(
-      a_snapshot.documents, a_selection.recipeID, &RecipeRow::id);
+  const auto document = std::ranges::find(a_snapshot.documents,
+                                          a_selection.recipeID, &RecipeRow::id);
   return document == a_snapshot.documents.end() ? nullptr : &*document;
 }
 
@@ -113,6 +113,30 @@ std::optional<PieceRef> RequestOf(const Selection &a_selection) noexcept {
     return std::nullopt;
   }
   return a_selection.piece;
+}
+
+const OutputRow *SelectedAuthoredOutput(const RecipeRow &a_recipe,
+                                        const Selection &a_selection) noexcept {
+  if (a_recipe.id != a_selection.recipeID) {
+    return nullptr;
+  }
+  const auto *output = Get<OutputSubject>(a_selection.subject);
+  const auto *layer = Get<LayerSubject>(a_selection.subject);
+  if (output || layer) {
+    const std::size_t index = output ? output->output : layer->output;
+    const auto found =
+        std::ranges::find(a_recipe.outputs, index, &OutputRow::index);
+    return found == a_recipe.outputs.end() ? nullptr : &*found;
+  }
+  if (!a_selection.slot || a_selection.target == Target::kLight) {
+    return nullptr;
+  }
+  const auto found =
+      std::ranges::find_if(a_recipe.outputs, [&](const OutputRow &a_output) {
+        return WritesCell(a_output, SurfaceOf(a_selection.target),
+                          *a_selection.slot);
+      });
+  return found == a_recipe.outputs.end() ? nullptr : &*found;
 }
 
 void ResolveSelection(Selection &a_selection, const Snapshot &a_snapshot) {

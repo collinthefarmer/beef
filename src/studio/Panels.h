@@ -55,6 +55,9 @@ struct StackViewInput {
 
 [[nodiscard]] std::optional<LayerStack>
 BuildStackView(const StackViewInput &a_input);
+[[nodiscard]] std::optional<LayerStack>
+BuildStackView(const RecipeRow &a_recipe, const Selection &a_selection,
+               const View &a_view);
 
 struct Inspector {
   std::size_t output = 0;
@@ -76,6 +79,8 @@ struct Inspector {
 [[nodiscard]] std::optional<Inspector>
 BuildInspector(const RecipeRow &a_recipe, const GeometryRow &a_geometry,
                const Selection &a_selection);
+[[nodiscard]] std::optional<Inspector>
+BuildInspector(const RecipeRow &a_recipe, const Selection &a_selection);
 
 struct SignalNames {
   std::vector<std::string> scalar;

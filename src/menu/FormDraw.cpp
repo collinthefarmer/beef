@@ -1,6 +1,9 @@
 #include "menu/FormDraw.h"
 
+#include "menu/ExpressionShelf.h"
+#include "menu/InputBrowser.h"
 #include "menu/MenuWidgets.h"
+#include "menu/Tuning.h"
 #include "recipe/Expression.h"
 #include "recipe/Recipe.h"
 #include "recipe/Words.h"
@@ -37,6 +40,25 @@ constexpr TableStyle kColumnsStyle{.borders = TableBorders::kNone,
                                    .stretch = true,
                                    .headers = false,
                                    .rowBackground = false};
+
+void RevealProperty(const FormField &a_field, const Frame &a_frame) {
+  if (!a_frame.state || !a_frame.state->selection.property) {
+    return;
+  }
+  const auto &property = *a_frame.state->selection.property;
+  const bool expression =
+      property.property == "expression" && a_field.name == "value";
+  if (property.property != a_field.name && !expression) {
+    return;
+  }
+  if (a_frame.state->revealedProperty != property) {
+    ImGui::SetScrollHereY(0.3f);
+    a_frame.state->revealedProperty = property;
+  }
+  Warn(property.component ? std::format("Selected property / component {}",
+                                        *property.component + 1)
+                          : "Selected property");
+}
 
 void Refuse(const std::string &a_field, const std::string &a_text) {
   logger::warn("{} not applied: '{}' does not parse", a_field, a_text);
@@ -228,7 +250,7 @@ void PostField(const FormField &a_field, const std::string &a_text,
   const std::optional<RecipeEdit> edit =
       a_field.bind ? a_field.bind(a_text) : std::nullopt;
   if (edit) {
-    Post(a_out, a_recipe, *edit);
+    Post(a_out, EditRecipe{a_recipe, {*edit}, a_field.expectedRevision});
   } else {
     Refuse(a_field.name, a_text);
   }
@@ -241,9 +263,13 @@ void DrawRowField(const char *a_key, const FormField &a_field,
     return;
   }
   ImGui::PushID(a_key);
+  RevealProperty(a_field, a_frame);
   if (const auto text = FieldInput(a_field, a_frame.scale, *a_frame.names)) {
     PostField(a_field, *text, a_frame.recipe->id, *a_frame.intents);
   }
+  DrawTuning(a_field, a_frame);
+  DrawExpressionShelf(a_field, a_frame);
+  DrawInputBrowser(a_frame, a_field);
   ImGui::PopID();
 }
 
@@ -287,6 +313,7 @@ std::optional<std::size_t> DrawFieldTable(const char *a_id,
       open = i;
     }
     table.Cell();
+    RevealProperty(field, a_frame);
     if (field.value) {
       ValueSwatch(*field.value);
       ImGui::SameLine();
@@ -294,6 +321,9 @@ std::optional<std::size_t> DrawFieldTable(const char *a_id,
     if (const auto text = FieldInput(field, a_frame.scale, *a_frame.names)) {
       PostField(field, *text, a_frame.recipe->id, *a_frame.intents);
     }
+    DrawTuning(field, a_frame);
+    DrawExpressionShelf(field, a_frame);
+    DrawInputBrowser(a_frame, field);
     ImGui::PopID();
   }
   table.End();
@@ -409,7 +439,11 @@ void DrawSignalDetail(const std::string &a_text, const Frame &a_frame,
   ImGui::Text("%s (%s)", ReferenceText(it->name).c_str(),
               std::string{SignalKindName(it->kind)}.c_str());
   ImGui::SameLine();
-  ValueSwatch(it->value);
+  if (it->live) {
+    ValueSwatch(it->value);
+  } else {
+    Dim("Not live");
+  }
   DrawSignalEditorInline(*it, a_frame);
   if (it->inert) {
     Problem(it->problem.empty() ? "inert" : "inert: " + it->problem);

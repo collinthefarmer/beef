@@ -1,5 +1,6 @@
 #include "studio/RecipeSnapshot.h"
 
+#include "studio/Relationships.h"
 #include "studio/Rows.h"
 
 #include <string>
@@ -46,9 +47,13 @@ RecipeRow BuildRecipeRow(const RecipeRowInput &a_input) {
   if (!a_input.full) {
     return r;
   }
+  r.relationships = RelationshipsOf(recipe);
 
   for (std::size_t i = 0; i < recipe.outputs.size(); ++i) {
     r.outputs.push_back(OutputRowOf(recipe, i));
+    if (Is<LightOutput>(recipe.outputs[i])) {
+      r.lights.push_back(LightRowOf(recipe, i));
+    }
   }
   for (const Mask &mask : recipe.masks) {
     r.masks.push_back(mask.name);
@@ -64,10 +69,9 @@ RecipeRow BuildRecipeRow(const RecipeRowInput &a_input) {
   r.problems.assign(a_input.problems.begin(), a_input.problems.end());
   {
     const std::optional<SignalGraph> compiled =
-        a_input.graph
-            ? std::nullopt
-            : std::optional<SignalGraph>{
-                  SignalGraph::Compile(recipe.signals, recipe.curves)};
+        a_input.graph ? std::nullopt
+                      : std::optional<SignalGraph>{SignalGraph::Compile(
+                            recipe.signals, recipe.curves)};
     const SignalGraph &graph = a_input.graph ? *a_input.graph : *compiled;
     const RowTypes rows{recipe, graph};
     const std::unordered_map<std::string, std::string> reasons =

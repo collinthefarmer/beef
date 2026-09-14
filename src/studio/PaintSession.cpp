@@ -10,7 +10,8 @@
 namespace BetterEnchantmentEffects::Studio {
 std::expected<EditBatch, Diagnostic>
 PreparePaintCommit(const Recipe *a_paint, const Recipe *a_target,
-                   const PaintCommitRequest &a_request) {
+                   const PaintCommitRequest &a_request,
+                   std::uint64_t a_documentRevision) {
   const auto refuse =
       [](std::string a_message) -> std::expected<EditBatch, Diagnostic> {
     return std::unexpected(
@@ -25,6 +26,17 @@ PreparePaintCommit(const Recipe *a_paint, const Recipe *a_target,
   if (!IsName(a_request.maskName) || a_request.maskName == kScratchMask) {
     return refuse("choose a mask name other than scratch");
   }
+  if (!a_request.replacingMask.empty() &&
+      a_request.maskName == a_request.replacingMask &&
+      !a_target->FindMask(a_request.replacingMask)) {
+    return refuse(
+        "the original mask was removed or renamed; choose a new name to Keep");
+  }
+  if (a_request.assignment &&
+      a_request.assignment->documentRevision != a_documentRevision) {
+    return refuse(
+        "the destination changed; select the layer again before assigning");
+  }
   Recipe paint = *a_paint;
   const auto prepared = PreparePaintUpdate(
       a_paint, PaintUpdateRequest{a_request.sessionID, 0, a_request.expression,
@@ -38,6 +50,14 @@ PreparePaintCommit(const Recipe *a_paint, const Recipe *a_target,
   EditBatch edits{KeepEdits(paint, *a_target, a_request.maskName)};
   if (edits.edits.empty()) {
     return refuse("the paint mask could not be prepared");
+  }
+  if (a_request.assignment) {
+    edits.edits.emplace_back(SetLayerMask{a_request.assignment->output,
+                                          a_request.assignment->layer,
+                                          Ref{a_request.maskName}});
+  }
+  if (const auto checked = PrepareEdits(*a_target, edits); !checked) {
+    return std::unexpected(checked.error());
   }
   return edits;
 }

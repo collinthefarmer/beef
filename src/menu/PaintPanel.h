@@ -7,6 +7,8 @@
 
 namespace BetterEnchantmentEffects::Menu {
 void DrawPaintHead(const Frame &a_frame);
+void DrawPaintDraftBar(const Frame &a_frame);
+void DrawMaskTask(const Frame &a_frame);
 void DrawMaskRule(std::string_view a_title, const Frame &a_frame);
 void DrawMaskStack(const Frame &a_frame);
 void RebuildScratch(const Frame &a_frame);

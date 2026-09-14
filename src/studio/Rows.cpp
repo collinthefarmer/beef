@@ -12,39 +12,48 @@ bool WritesCell(const OutputRow &a_output, Surface a_surface,
          a_output.slot == a_slot;
 }
 
-LightRow LightRowOf(const Recipe &a_recipe) {
+LightRow LightRowOf(const Recipe &a_recipe, std::size_t a_output) {
   LightRow row;
-  for (std::size_t i = 0; i < a_recipe.outputs.size(); ++i) {
-    const LightOutput *light = Get<LightOutput>(a_recipe.outputs[i]);
-    if (light == nullptr) {
-      continue;
-    }
-    row.present = true;
-    row.output = i;
-    row.color = Vec3ParamText(light->color);
-    row.intensity = ParamText(light->intensity);
-    row.size = ParamText(light->size);
-    row.cutoff = ParamText(light->cutoff);
-    row.offset = Vec3ParamText(light->offset);
-    row.shadow = light->shadow;
-    row.replace = light->replace;
-    row.selection = light->selector;
-    Match(
-        light->bones,
-        [&](const SkinnedBones &a_bones) {
-          row.bones = "skinned";
-          row.bonesMax = std::to_string(a_bones.max);
-          row.bonesMinShare = ParamText(a_bones.minShare);
-        },
-        [&](const NamedBones &a_bones) {
-          row.bones = "named";
-          for (const auto &bone : a_bones.bones) {
-            row.bonesNames += (row.bonesNames.empty() ? "" : ", ") + bone;
-          }
-        });
-    break;
+  if (a_output >= a_recipe.outputs.size()) {
+    return row;
   }
+  const LightOutput *light = Get<LightOutput>(a_recipe.outputs[a_output]);
+  if (!light) {
+    return row;
+  }
+  row.present = true;
+  row.output = a_output;
+  row.color = Vec3ParamText(light->color);
+  row.intensity = ParamText(light->intensity);
+  row.size = ParamText(light->size);
+  row.cutoff = ParamText(light->cutoff);
+  row.offset = Vec3ParamText(light->offset);
+  row.shadow = light->shadow;
+  row.replace = light->replace;
+  row.selection = light->selector;
+  Match(
+      light->bones,
+      [&](const SkinnedBones &a_bones) {
+        row.bones = "skinned";
+        row.bonesMax = std::to_string(a_bones.max);
+        row.bonesMinShare = ParamText(a_bones.minShare);
+      },
+      [&](const NamedBones &a_bones) {
+        row.bones = "named";
+        for (const auto &bone : a_bones.bones) {
+          row.bonesNames += (row.bonesNames.empty() ? "" : ", ") + bone;
+        }
+      });
   return row;
+}
+
+LightRow LightRowOf(const Recipe &a_recipe) {
+  for (std::size_t i = 0; i < a_recipe.outputs.size(); ++i) {
+    if (Is<LightOutput>(a_recipe.outputs[i])) {
+      return LightRowOf(a_recipe, i);
+    }
+  }
+  return {};
 }
 
 ShellRow ShellRowOf(const Recipe &a_recipe) {

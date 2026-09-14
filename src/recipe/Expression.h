@@ -18,6 +18,17 @@ inline constexpr std::size_t kMaxExpressionOps = 256;
 using RefTyper =
     std::function<std::optional<ValueType>(std::string_view a_name)>;
 
+struct NumericLiteral {
+  std::size_t offset = 0;
+  std::size_t length = 0;
+  float value = 0.0f;
+};
+
+struct NumericLiteralSelection {
+  std::string expression;
+  std::size_t index = 0;
+};
+
 class Program {
 public:
   [[nodiscard]] static std::expected<Program, std::string>
@@ -28,6 +39,10 @@ public:
   }
   [[nodiscard]] std::span<const std::string> Curves() const noexcept {
     return curves_;
+  }
+  [[nodiscard]] std::span<const NumericLiteral>
+  NumericLiterals() const noexcept {
+    return literals_;
   }
   [[nodiscard]] bool UsesTime() const noexcept { return usesTime_; }
   [[nodiscard]] bool UsesX() const noexcept { return usesX_; }
@@ -102,11 +117,17 @@ private:
   std::vector<Node> code_;
   std::vector<std::string> refs_;
   std::vector<std::string> curves_;
+  std::vector<NumericLiteral> literals_;
   bool usesTime_ = false;
   bool usesX_ = false;
   bool usesMean_ = false;
   friend class ExpressionParser;
 };
+
+[[nodiscard]] std::expected<std::string, std::string>
+ReplaceNumericLiteral(std::string_view a_current,
+                      const NumericLiteralSelection &a_selection,
+                      std::string_view a_replacement);
 
 [[nodiscard]] std::expected<Program, std::string>
 ParseCurve(std::string_view a_text);

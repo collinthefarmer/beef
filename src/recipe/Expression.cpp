@@ -366,9 +366,21 @@ private:
     Depth depth{depth_};
     Skip();
     if (At() == '-') {
+      const std::size_t sign = pos_;
       ++pos_;
+      Skip();
+      const std::size_t operand = pos_;
       if (auto e = ParseUnary()) {
         return e;
+      }
+      if (!out_.literals_.empty()) {
+        NumericLiteral &literal = out_.literals_.back();
+        if (literal.offset == operand &&
+            literal.offset + literal.length == pos_) {
+          literal.offset = sign;
+          literal.length = pos_ - sign;
+          literal.value = -literal.value;
+        }
       }
       return Emit(Op::kNeg);
     }
@@ -439,6 +451,7 @@ private:
   }
 
   Error ParseNumber() {
+    const std::size_t start = pos_;
     float value = 0.0f;
     const auto r = std::from_chars(text_.data() + pos_,
                                    text_.data() + text_.size(), value);
@@ -446,6 +459,7 @@ private:
       return std::format("bad number at {}", pos_);
     }
     pos_ = static_cast<std::size_t>(r.ptr - text_.data());
+    out_.literals_.push_back(NumericLiteral{start, pos_ - start, value});
     return Emit(Op::kNumber, value);
   }
 
@@ -532,6 +546,54 @@ private:
 
 std::expected<Program, std::string> Program::Parse(std::string_view a_text) {
   return ExpressionParser{a_text}.Run();
+}
+
+std::expected<std::string, std::string>
+ReplaceNumericLiteral(std::string_view a_current,
+                      const NumericLiteralSelection &a_selection,
+                      std::string_view a_replacement) {
+  if (a_current != a_selection.expression) {
+    return std::unexpected("the expression changed; select the operand again");
+  }
+  const auto original = Program::Parse(a_current);
+  if (!original) {
+    return std::unexpected(original.error());
+  }
+  const std::span<const NumericLiteral> literals = original->NumericLiterals();
+  if (a_selection.index >= literals.size()) {
+    return std::unexpected("the selected numeric operand does not exist");
+  }
+  const auto replacement = Program::Parse(a_replacement);
+  if (!replacement) {
+    return std::unexpected(replacement.error());
+  }
+  const bool atomic =
+      replacement->Code().size() == 1 ||
+      (replacement->NumericLiterals().size() == 1 &&
+       std::ranges::all_of(replacement->Code(),
+                           [](const Program::Node &a_node) {
+                             return a_node.op == Program::Op::kNumber ||
+                                    a_node.op == Program::Op::kNeg;
+                           }));
+  const std::size_t grouping = atomic ? 0 : 2;
+  const NumericLiteral &literal = literals[a_selection.index];
+  if (a_replacement.size() + grouping >
+      kMaxExpressionLength - (a_current.size() - literal.length)) {
+    return std::unexpected("the replacement makes the expression too long");
+  }
+  std::string changed{a_current.substr(0, literal.offset)};
+  if (!atomic) {
+    changed += '(';
+  }
+  changed += a_replacement;
+  if (!atomic) {
+    changed += ')';
+  }
+  changed += a_current.substr(literal.offset + literal.length);
+  if (const auto parsed = Program::Parse(changed); !parsed) {
+    return std::unexpected(parsed.error());
+  }
+  return changed;
 }
 
 std::expected<Program, std::string> ParseCurve(std::string_view a_text) {

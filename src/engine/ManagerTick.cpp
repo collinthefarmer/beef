@@ -248,6 +248,7 @@ void Manager::OnFrame() {
   SweepRetiredMaterialTextures();
   TextureLab::GetSingleton()->CollectPreviewDraws();
   FireDueFinalizes();
+  editor_.TickGesture();
   const std::uint32_t now = NowMS();
   const Settings settings = GetSettings();
   if (now - lastTickMS_ < settings.TickIntervalMS()) {

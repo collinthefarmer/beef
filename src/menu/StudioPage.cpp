@@ -10,6 +10,7 @@
 #include "menu/RecipeActions.h"
 #include "menu/ResourcePanels.h"
 #include "menu/StackPanel.h"
+#include "menu/Tuning.h"
 #include "menu/Workspace.h"
 
 #include "engine/Manager.h"
@@ -42,170 +43,14 @@ using ImGuiMCP::ImVec2;
 
 namespace BetterEnchantmentEffects::Menu {
 namespace {
-constexpr std::size_t kSettingsColumns = 2;
 constexpr Studio::TableStyle kFooterStyle{.borders = Studio::TableBorders::kAll,
                                           .stretch = true,
                                           .headers = true,
                                           .rowBackground = false};
 
-[[nodiscard]] bool PainterReady(const Frame &a_frame) {
-  return LayoutOf(a_frame).maskEditor && a_frame.recipe &&
-         a_frame.state->paint && a_frame.state->paint->ready &&
-         a_frame.recipe->id == Studio::kPaintRecipe;
-}
-
-void BeginPainting(const Frame &a_frame) {
-  const Studio::RecipeRow *active = a_frame.recipe;
-  const Studio::View &view = ViewOf(a_frame);
-  const auto &recipes = a_frame.piece->recipes;
-  if (view.Isolating() && view.isolation.recipeID != Studio::kPaintRecipe) {
-    const auto it = std::ranges::find(recipes, view.isolation.recipeID,
-                                      &Studio::RecipeRow::id);
-    if (it != recipes.end() && it->id != active->id) {
-      active = &*it;
-      Studio::Post(*a_frame.intents, Studio::PickRecipe{it->id});
-    }
-  }
-  if (const std::optional<RecipeKey> key = DefaultKeyOf(*a_frame.piece)) {
-    Studio::Post(*a_frame.intents,
-                 Studio::BeginPaint{active->id, *key, Surface::kMaterial,
-                                    a_frame.state->nextPaintSessionID++,
-                                    a_frame.state->lastPaintReset});
-  } else {
-    Warn("the piece offers no key to paint on");
-  }
-}
-
-void DrawPaintWaiting(const Frame &a_frame) {
-  if (!a_frame.state->paint) {
-    return;
-  }
-  const Studio::PaintSession &paint = *a_frame.state->paint;
-  if (paint.problem) {
-    Problem(paint.problem->message);
-  } else {
-    Dim(paint.projected ? "waiting for the paint preview"
-                        : "starting the paint recipe");
-  }
-  if (ImGui::Button("Return to Compose")) {
-    Studio::Post(*a_frame.intents, Studio::EndPaint{});
-  }
-}
-
-void PreparePainter(const Frame &a_frame) {
-  DrawPaintHead(a_frame);
-  Rule();
-  if (!a_frame.state->paint) {
-    BeginPainting(a_frame);
-    return;
-  }
-  if (!PainterReady(a_frame)) {
-    DrawPaintWaiting(a_frame);
-    return;
-  }
-  for (const Studio::GeometryRow &geometry : a_frame.recipe->geometries) {
-    if (!a_frame.state->paint->readGeometries.contains(geometry.name)) {
-      Studio::Post(*a_frame.intents,
-                   Studio::ReadMesh{a_frame.piece->ref.actorID, geometry.name});
-    }
-  }
-}
-
-void DrawSettings(const Frame &a_frame) {
-  const Studio::RecipeRow &recipe = *a_frame.recipe;
-  if (SelectionOf(a_frame).target == Target::kLight) {
-    if (recipe.lightRow.present) {
-      DrawFormWithSignals(
-          "light",
-          Studio::LightForm(recipe.lightRow, Studio::SignalNamesOf(recipe)),
-          a_frame, kSettingsColumns);
-    } else {
-      Dim("the recipe has no light");
-    }
-    return;
-  }
-  DrawFormWithSignals(
-      "shell",
-      Studio::ShellForm(recipe.shellRow, Studio::SignalNamesOf(recipe)),
-      a_frame, kSettingsColumns);
-}
-
-void DrawPaneTitle(const PaneChoice &a_pane, const Studio::Board &a_board,
-                   const Frame &a_frame) {
-  if (LayoutOf(a_frame).maskEditor) {
-    const std::string &editing = a_frame.state->mask.editing;
-    const std::string title = editing.empty()
-                                  ? std::string{"Mask"}
-                                  : std::format("Mask: {}", editing);
-    DrawMaskRule(title, a_frame);
-    return;
-  }
-  std::string_view title = "Stack";
-  if (a_pane.settings) {
-    title = SelectionOf(a_frame).target == Target::kLight ? "Light settings"
-                                                          : "Shell settings";
-  }
-  DrawPaneRule(title, a_pane, a_board, a_frame);
-}
-
-void DrawPaneContent(const PaneChoice &a_pane, const Studio::Cell *a_picked,
-                     const Frame &a_frame) {
-  if (LayoutOf(a_frame).maskEditor) {
-    if (PainterReady(a_frame)) {
-      DrawMaskStack(a_frame);
-    }
-    return;
-  }
-  if (a_pane.settings) {
-    DrawSettings(a_frame);
-    return;
-  }
-  if (!a_picked || !a_picked->output) {
-    return;
-  }
-  const Studio::Selection &selection = SelectionOf(a_frame);
-  const std::optional<Studio::LayerStack> stack = Studio::BuildStackView(
-      Studio::StackViewInput{*a_frame.piece, *a_frame.recipe, *a_frame.geometry,
-                             selection, ViewOf(a_frame)});
-  const std::optional<Studio::Inspector> inspector =
-      LayoutOf(a_frame).inspector
-          ? Studio::BuildInspector(*a_frame.recipe, *a_frame.geometry,
-                                   selection)
-          : std::nullopt;
-  DrawStack(stack, inspector, a_frame);
-}
-
-void DrawGeometryBody(const Frame &a_frame) {
-  const Studio::Layout &layout = LayoutOf(a_frame);
-  const Studio::Board board =
-      Studio::BuildBoard(*a_frame.recipe, *a_frame.geometry,
-                         SelectionOf(a_frame), ViewOf(a_frame));
-  const PaneChoice pane =
-      ChoosePane(SelectionOf(a_frame).target, a_frame.state->settings);
-  const Studio::Cell *picked =
-      layout.contextRows ? DrawContext(board, a_frame) : nullptr;
-  if (!layout.contextRows) {
-    PreparePainter(a_frame);
-  }
-  DrawPaneTitle(pane, board, a_frame);
-  const float under = ImGui::GetContentRegionAvail().y;
-  const float resourcesHeight =
-      layout.signals ? under * layout.resourcesShare : 0.0f;
-  const float stackHeight =
-      layout.signals ? -(resourcesHeight + RuleHeight()) : 0.0f;
-  if (ImGui::BeginChild("stack-pane", ImVec2{0.0f, stackHeight}, 0, 0)) {
-    DrawPaneContent(pane, picked, a_frame);
-  }
-  ImGui::EndChild();
-  if (layout.signals) {
-    const std::string_view filter = DrawResourcesRule(a_frame);
-    DrawResources(a_frame, filter);
-  }
-}
-
 void DrawApplication(const Frame &a_frame) {
   const auto &selection = SelectionOf(a_frame);
-  const std::string_view recipeID = a_frame.state->paint
+  const std::string_view recipeID = Studio::MaskTaskActive(*a_frame.state)
                                         ? Studio::kPaintRecipe
                                         : std::string_view{selection.recipeID};
   const ApplicationRecord *latest = nullptr;
@@ -242,22 +87,20 @@ void DrawApplication(const Frame &a_frame) {
 
 void DrawBody(const Frame &a_frame) {
   DrawApplication(a_frame);
+  DrawPaintDraftBar(a_frame);
   if (!a_frame.recipe) {
     if (a_frame.state->paint) {
-      DrawPaintWaiting(a_frame);
+      Dim("The draft destination is unavailable. Resume it after restoring the "
+          "recipe, or discard it.");
     } else {
-      Dim("nothing applied; equip enchanted PBR armor or press Re-apply all on "
-          "the Recipes page");
+      Dim("Choose a loaded recipe or create a new document above. The selected "
+          "recipe may still be loading or may have been removed.");
     }
     return;
   }
   ImGui::PushID(a_frame.recipe->id.c_str());
   if (a_frame.geometry) {
-    if (a_frame.state->mode == Studio::Mode::kPaint) {
-      DrawGeometryBody(a_frame);
-    } else {
-      DrawWorkspace(a_frame);
-    }
+    DrawWorkspace(a_frame);
   } else {
     DrawWorkspace(a_frame);
     Rule();
@@ -285,7 +128,7 @@ void DrawTryStatus(const Frame &a_frame) {
   const Studio::View &view = ViewOf(a_frame);
   static_cast<void>(
       Rule(Studio::RuleSpec{.text = "Try / global clock", .buttons = {}}));
-  Disabled(a_frame.state->paint.has_value(), [&] {
+  Disabled(Studio::MaskTaskActive(*a_frame.state), [&] {
     if (ImGui::SmallButton("Return to live")) {
       ReturnToLive();
     }
@@ -368,7 +211,7 @@ void HistoryKeys(const Frame &a_frame) {
   const bool undo = ImGui::IsKeyPressed(ImGuiMCP::ImGuiKey_Z, false);
   const bool redo = ImGui::IsKeyPressed(ImGuiMCP::ImGuiKey_Y, false);
   Studio::Intents &out = *a_frame.intents;
-  if (state.paint) {
+  if (Studio::MaskTaskActive(state)) {
     if (undo) {
       Studio::Post(out, Studio::UndoMask{});
     }
@@ -399,7 +242,7 @@ void DrawStudioFrame(const Frame &frame) {
   const bool editPending = state.pendingIndexedEdit.has_value() ||
                            state.pendingRecipeFile.has_value() ||
                            RecipeFilePending(frame);
-  Disabled(editPending || state.paint.has_value(), [&] {
+  Disabled(editPending || (state.paint && state.paint->pendingCommit), [&] {
     DrawStudioContext(frame);
     DrawRecipeFileActions(frame);
   });
@@ -448,12 +291,8 @@ void __stdcall RenderStudio() {
   }
   Studio::ResolveEditorSelection(state, snapshot);
   Studio::AcknowledgeEditorOperations(state, snapshot);
+  BeginTuningFrame(state, snapshot);
   Studio::Intents intents;
-
-  Studio::Mode mode = state.mode;
-  if (ModeBar(mode, state.modeDrawn)) {
-    Studio::Post(intents, Studio::SetMode{mode});
-  }
 
   const Studio::PieceRow *piece =
       Studio::SelectedPiece(snapshot, state.selection);
@@ -464,9 +303,10 @@ void __stdcall RenderStudio() {
   Studio::ObservePaintRecipe(state, recipe);
   const Studio::GeometryRow *geometry =
       Studio::SelectedGeometry(recipe, state.selection);
-  const Studio::Names names = recipe
-                                  ? Studio::NamesOf(*recipe, geometry ? *geometry : Studio::GeometryRow{})
-                                  : Studio::Names{};
+  const Studio::Names names =
+      recipe ? Studio::NamesOf(*recipe,
+                               geometry ? *geometry : Studio::GeometryRow{})
+             : Studio::Names{};
 
   const Frame frame{
       .snapshot = &snapshot,
@@ -479,6 +319,7 @@ void __stdcall RenderStudio() {
   };
 
   DrawStudioFrame(frame);
+  EndTuningFrame(state);
   Dispatch(intents, state, snapshot);
   RebuildScratch(frame);
   Dispatch(intents, state, snapshot);

@@ -2,6 +2,7 @@
 
 #include "recipe/Recipe.h"
 #include "studio/Edits.h"
+#include "studio/Gesture.h"
 #include "studio/History.h"
 #include "studio/PaintCommit.h"
 #include "studio/Snapshot.h"
@@ -23,7 +24,20 @@ public:
   RecipeEditor(const RecipeEditor &) = delete;
   RecipeEditor &operator=(const RecipeEditor &) = delete;
 
-  std::uint64_t EditRecipe(std::string a_id, Studio::EditBatch a_edits);
+  std::uint64_t BeginGesture(const std::string &a_id,
+                             std::uint64_t a_expectedRevision,
+                             std::string a_propertyID);
+  void UpdateGesture(std::uint64_t a_id, const std::string &a_propertyID,
+                     Studio::EditBatch a_edits);
+  void EndGesture(std::uint64_t a_id, bool a_commit);
+  void TouchGesture(std::uint64_t a_id);
+  void TickGesture();
+  [[nodiscard]] std::optional<Studio::GestureResult> LastGesture() const;
+  [[nodiscard]] std::uint64_t DocumentRevisionOf(const std::string &a_id) const;
+
+  std::uint64_t
+  EditRecipe(std::string a_id, Studio::EditBatch a_edits,
+             std::optional<std::uint64_t> a_expectedRevision = std::nullopt);
   std::uint64_t UndoRecipe(std::string a_id);
   std::uint64_t RedoRecipe(std::string a_id);
   std::uint64_t SaveRecipe(std::string a_id);
@@ -58,6 +72,19 @@ private:
   struct FileOperationJournal;
   struct PendingFileOperation;
   struct PendingRecipeEdit;
+  struct PendingGestureTask;
+  void PostGesture(std::uint64_t a_id);
+  void ProcessGesture(std::uint64_t a_id);
+  void FinishActiveGesture(bool a_commit, bool a_rebuild = true);
+  void ApplyGestureDelivery(const Studio::GestureDelivery &a_delivery);
+  void ApplyGestureUpdate(const Studio::EditBatch &a_edits, Recipe &a_recipe);
+  void AdvanceDocumentRevision(const std::string &a_id);
+  void ResetDocumentRevisions();
+  std::optional<Studio::RecipeGesture> gesture_;
+  std::optional<Studio::GestureResult> gestureStatus_;
+  std::uint64_t documentClock_ = 1;
+  std::uint64_t documentEpoch_ = 1;
+  std::unordered_map<std::string, std::uint64_t> documentRevisions_;
   std::shared_ptr<FileOperationJournal> fileOperations_;
   [[nodiscard]] std::expected<void, Diagnostic>
   ApplyEdits(const std::string &a_id, const Studio::EditBatch &a_edits);

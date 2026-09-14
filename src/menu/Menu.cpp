@@ -1,4 +1,5 @@
 #include "menu/Menu.h"
+#include "menu/Tuning.h"
 
 #include "menu/Frame.h"
 #include "menu/MenuWidgets.h"
@@ -48,14 +49,10 @@ struct IntentPerformer {
   MenuState &state;
   const View &view;
 
-  void operator()(const SetMode &i) const {
-    if (state.paint && i.mode != Mode::kPaint && state.mode == Mode::kPaint) {
-      manager->Editor().EndPaint(state.paint ? state.paint->sessionID : 0);
-    }
-  }
+  void operator()(const SetMode &) const {}
   void operator()(const EditRecipe &i) const {
-    const std::uint64_t request =
-        manager->Editor().EditRecipe(i.recipeID, EditBatch{i.edits});
+    const std::uint64_t request = manager->Editor().EditRecipe(
+        i.recipeID, EditBatch{i.edits}, i.expectedRevision);
     if (ShouldInvalidateIndexedSubjects(i.edits)) {
       state.pendingIndexedEdit = PendingIndexedEdit{request, i.recipeID};
     }
@@ -192,7 +189,7 @@ void FollowPickedSubject(const Studio::Intent &a_intent,
       Studio::SelectedRecipe(a_snapshot, a_state.selection);
   const Studio::GeometryRow *geometry =
       Studio::SelectedGeometry(recipe, a_state.selection);
-  if (!recipe || !geometry) {
+  if (!recipe) {
     return;
   }
   std::optional<Studio::InspectorSubject> subject;
@@ -201,7 +198,8 @@ void FollowPickedSubject(const Studio::Intent &a_intent,
             Get<Studio::OutputSubject>(a_state.selection.subject)) {
       subject = Studio::LayerSubject{output->output, pick->index};
     }
-  } else if (const auto *pick = Get<Studio::PickCell>(a_intent)) {
+  } else if (const auto *pick = Get<Studio::PickCell>(a_intent);
+             pick && geometry) {
     const Studio::Board board = Studio::BuildBoard(
         *recipe, *geometry, a_state.selection, a_snapshot.view);
     const auto *cell = Studio::CellAt(board, pick->surface, pick->slot);
@@ -222,6 +220,7 @@ void Dispatch(Studio::Intents &a_intents, Studio::MenuState &a_state,
     if (!Studio::AcceptIntent(a_state, intent)) {
       continue;
     }
+    FinishTuning(a_state, true);
     if (Is<Studio::EditRecipe>(intent) || Is<Studio::Undo>(intent) ||
         Is<Studio::Redo>(intent)) {
       Studio::Reduce(a_state, intent);

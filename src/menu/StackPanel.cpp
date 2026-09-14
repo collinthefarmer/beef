@@ -47,7 +47,7 @@ void DrawComposite(const LayerStack &a_stack, const Frame &a_frame) {
   const Studio::RecipeRow &recipe = *a_frame.recipe;
   const Studio::ThumbnailSpec composite{a_stack.composite, ShaderChannel::kRgb,
                                         a_stack.animated, kCompositeSize};
-  if (recipe.geometries.size() < 2) {
+  if (!a_frame.geometry || !a_frame.piece || recipe.geometries.size() < 2) {
     Thumbnail(composite);
     return;
   }

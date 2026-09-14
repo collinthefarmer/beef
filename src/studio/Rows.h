@@ -13,6 +13,7 @@ namespace BetterEnchantmentEffects::Studio {
                               Slot a_slot) noexcept;
 
 [[nodiscard]] LightRow LightRowOf(const Recipe &a_recipe);
+[[nodiscard]] LightRow LightRowOf(const Recipe &a_recipe, std::size_t a_output);
 [[nodiscard]] ShellRow ShellRowOf(const Recipe &a_recipe);
 [[nodiscard]] SignalRow SignalRowOf(const Signal &a_signal,
                                     const RowTypes &a_rows,

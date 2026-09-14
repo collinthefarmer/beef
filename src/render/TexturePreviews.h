@@ -7,9 +7,9 @@
 #include <map>
 #include <memory>
 #include <mutex>
-#include <utility>
-#include <tuple>
 #include <string>
+#include <tuple>
+#include <utility>
 #include <vector>
 
 namespace BetterEnchantmentEffects {
@@ -34,7 +34,8 @@ public:
 
 private:
   TextureLab &renderer_;
-  using PreviewKey = std::tuple<RE::NiSourceTexture *, ShaderChannel, std::string>;
+  using PreviewKey =
+      std::tuple<RE::NiSourceTexture *, ShaderChannel, std::string>;
   struct Sampling {
     TextureLab::LayerInput input;
     float normalize = 1.0f;
@@ -57,6 +58,7 @@ private:
     std::shared_ptr<RenderTarget> target;
     std::optional<Sampling> sampling;
   };
+  [[nodiscard]] PreviewEntry *FindOrAdd(const PreviewKey &a_key);
   void ExpireUnused(std::uint64_t a_generation);
   [[nodiscard]] std::optional<PreviewWork>
   PrepareRequest(const PreviewKey &a_key, PreviewEntry &a_entry,

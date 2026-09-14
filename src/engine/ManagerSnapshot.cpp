@@ -1,3 +1,4 @@
+#include "engine/InputCatalog.h"
 #include "engine/Manager.h"
 
 #include "SettingsFile.h"
@@ -60,11 +61,14 @@ struct GeometrySnapshotBuilder {
         picture.animated = prepared->animated;
         picture.problem = prepared->problem;
         if (Is<ImageSource>(source.kind) && signals && prepared->texture) {
-          const std::string context = std::format("{}:{}:{}", recipe.id,
-              reinterpret_cast<std::uintptr_t>(bound.geometry.get()), source.name);
+          const std::string context = std::format(
+              "{}:{}:{}", recipe.id,
+              reinterpret_cast<std::uintptr_t>(bound.geometry.get()),
+              source.name);
           const auto preview = TextureLab::GetSingleton()->SampledPreview(
-              context, prepared->texture.get(), ResolveSampling(*prepared, *signals),
-              prepared->normalize, prepared->animated);
+              context, prepared->texture.get(),
+              ResolveSampling(*prepared, *signals), prepared->normalize,
+              prepared->animated);
           picture.texture = RetainTexture(snapshot, TextureRef{preview});
           picture.channel = ShaderChannel::kRgb;
         } else {
@@ -267,6 +271,7 @@ struct PieceSnapshotBuilder {
          instance.lightOutput, IsDirty(recipe.id), pinned, full, undoDepth,
          redoDepth, references, instance.graph.get(), instance.signals.get(),
          problems});
+    row.documentRevision = editor.DocumentRevisionOf(recipe.id);
     if (!full) {
       return row;
     }
@@ -374,9 +379,11 @@ Manager::Status Manager::GetStatus() const {
   return s;
 }
 
-void Manager::Watch(const std::optional<Studio::PieceRef> &a_request) {
+void Manager::Watch(const std::optional<Studio::PieceRef> &a_request,
+                    std::string_view a_document) {
   std::scoped_lock lock{snapshotLock_};
   watch_ = a_request;
+  watchedDocument_ = a_document;
   watchedMS_ = NowMS();
 }
 
@@ -387,14 +394,16 @@ std::shared_ptr<const Manager::Snapshot> Manager::LatestSnapshot() const {
 
 void Manager::PublishSnapshot(std::uint32_t a_nowMS) {
   std::optional<Studio::PieceRef> request;
+  std::string document;
   {
     std::scoped_lock lock{snapshotLock_};
     if (watchedMS_ == 0 || a_nowMS > watchedMS_ + kWatchWindowMS) {
       return;
     }
     request = watch_;
+    document = watchedDocument_;
   }
-  auto built = std::make_shared<Snapshot>(BuildSnapshot(request));
+  auto built = std::make_shared<Snapshot>(BuildSnapshot(request, document));
   built->version = ++snapshotVersion_;
   built->view = editor_.CurrentView();
   std::scoped_lock lock{snapshotLock_};
@@ -402,11 +411,13 @@ void Manager::PublishSnapshot(std::uint32_t a_nowMS) {
 }
 
 Manager::Snapshot
-Manager::BuildSnapshot(const std::optional<Studio::PieceRef> &a_request) const {
+Manager::BuildSnapshot(const std::optional<Studio::PieceRef> &a_request,
+                       std::string_view a_document) const {
   Snapshot out;
   out.applications = applications_.Snapshot();
   out.fileOperations = editor_.FileOperations();
   out.editResults = editor_.EditResults();
+  out.gesture = editor_.LastGesture();
   out.paintCommit = editor_.LastPaintCommit();
   out.paintUpdate = editor_.LastPaintUpdate();
   const Status status = GetStatus();
@@ -447,7 +458,35 @@ Manager::BuildSnapshot(const std::optional<Studio::PieceRef> &a_request) const {
               .Build(matches));
     }
   }
+  out.actorInputActorID = a_request ? a_request->actorID : 0;
+  out.actorInputs = BuildActorInputCatalog(out.actorInputActorID);
   AppendLoadedRecipes(out);
+  const auto document =
+      std::ranges::find(LoadedRecipes(), a_document, &Recipe::id);
+  if (!a_document.empty() && document != LoadedRecipes().end()) {
+    const Studio::ReferenceCounts *references = ReferencesOf(document->id);
+    const Studio::ReferenceCounts emptyReferences;
+    const std::shared_ptr<const SignalGraph> graph = GraphFor(*document);
+    const std::optional<RecipeOrigin> origin = OriginOf(*document);
+    const Studio::History<Recipe> *history = editor_.HistoryOf(document->id);
+    const RecipeKey key =
+        document->keys.empty() ? RecipeKey{} : document->keys.front();
+    Studio::RecipeRow row = Studio::BuildRecipeRow(
+        {.recipe = *document,
+         .key = key,
+         .priority = document->priority.value_or(DefaultPriority(key.kind)),
+         .lightOutput = std::nullopt,
+         .dirty = IsDirty(document->id),
+         .full = true,
+         .undoDepth = history ? history->UndoDepth() : 0,
+         .redoDepth = history ? history->RedoDepth() : 0,
+         .references = references ? *references : emptyReferences,
+         .graph = graph.get(),
+         .problems =
+             origin ? origin->diagnostics : std::span<const Diagnostic>{}});
+    row.documentRevision = editor_.DocumentRevisionOf(document->id);
+    out.documents.push_back(std::move(row));
+  }
   return out;
 }
 }

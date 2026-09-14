@@ -175,5 +175,64 @@ int main() {
           "a pin on another piece cannot force the isolated recipe to apply");
   }
 
+  {
+    Snapshot documents = MakeSnapshot();
+    RecipeRow document;
+    document.id = "unmatched";
+    documents.documents.push_back(document);
+    Selection selection = ValidSelection();
+    selection.document = true;
+    selection.recipeID = "unmatched";
+    ResolveSelection(selection, documents);
+    Check(selection.recipeID == "unmatched" && selection.geometry.empty() &&
+              SelectedRecipe(documents, selection) ==
+                  &documents.documents.front(),
+          "an explicit unmatched document remains selected without fabricated "
+          "geometry");
+    Check(SelectedRecipe(&documents.pieces.front(), selection) == nullptr,
+          "the live recipe resolver cannot substitute another match for a "
+          "document");
+    documents.documents.clear();
+    ResolveSelection(selection, documents);
+    Check(selection.recipeID == "unmatched" &&
+              SelectedRecipe(documents, selection) == nullptr,
+          "missing or not-yet-published documents preserve identity without "
+          "falling back");
+    documents.pieces.clear();
+    documents.documents.push_back(document);
+    ResolveSelection(selection, documents);
+    Check(selection.recipeID == "unmatched" &&
+              SelectedRecipe(documents, selection) ==
+                  &documents.documents.front(),
+          "document editing does not require a wearer or equipped armor");
+  }
+  {
+    Snapshot documents = MakeSnapshot();
+    RecipeRow document;
+    document.id = "glow";
+    documents.documents.push_back(document);
+    Selection selection = ValidSelection();
+    selection.document = true;
+    Check(SelectedRecipe(documents, selection) ==
+              &documents.pieces.front().recipes.front(),
+          "a document applied to the selected piece retains its live "
+          "observations");
+    RecipeRow authored;
+    authored.id = "glow";
+    OutputRow first;
+    first.index = 2;
+    OutputRow second;
+    second.index = 4;
+    authored.outputs = {first, second};
+    selection.subject = LayerSubject{4, 0};
+    Check(SelectedAuthoredOutput(authored, selection) ==
+              &authored.outputs.back(),
+          "authored selection uses exact output identity when two outputs "
+          "share a slot");
+    selection.subject = OutputSubject{99};
+    Check(
+        !SelectedAuthoredOutput(authored, selection),
+        "stale authored output indices never fall back to another slot match");
+  }
   return test::Finish("studio_selection");
 }
