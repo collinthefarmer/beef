@@ -1,11 +1,14 @@
 #include "recipe/Recipe.h"
 
+#include "recipe/Expression.h"
 #include "recipe/Words.h"
 
 #include <algorithm>
 #include <cctype>
 #include <charconv>
 #include <format>
+#include <unordered_set>
+#include <vector>
 
 namespace BetterEnchantmentEffects {
 namespace {
@@ -665,5 +668,185 @@ std::string_view BakeKindName(const BakeKind &a_bake) noexcept {
   const std::size_t index = a_bake.index();
   return index < std::size(kBakeKindWords) ? kBakeKindWords[index]
                                            : std::string_view{"?"};
+}
+
+namespace {
+std::optional<std::string_view> RefOf(const Param &a_param) noexcept {
+  const auto *ref = Get<Ref>(a_param);
+  return ref ? std::optional<std::string_view>{ref->name} : std::nullopt;
+}
+
+template <std::size_t N>
+void CollectRefs(const std::variant<std::array<Param, N>, Ref> &a_param,
+                 std::vector<std::string_view> &a_out) {
+  Match(
+      a_param, [&](const Ref &r) { a_out.push_back(r.name); },
+      [&](const std::array<Param, N> &parts) {
+        for (const auto &p : parts) {
+          if (const auto r = RefOf(p)) {
+            a_out.push_back(*r);
+          }
+        }
+      });
+}
+
+class AnimationQuery {
+public:
+  explicit AnimationQuery(const Recipe &a_recipe) : recipe_(a_recipe) {}
+
+  bool Signal(std::string_view a_name) {
+    const auto *signal = recipe_.FindSignal(a_name);
+    if (!signal) {
+      return false;
+    }
+    return Guarded("s:" + std::string{a_name}, [&] {
+      return Match(
+          signal->kind, [](const ConstantSignal &) { return false; },
+          [&](const ExprSignal &e) {
+            const auto program = Program::Parse(e.text);
+            if (!program) {
+              return false;
+            }
+            if (program->UsesTime()) {
+              return true;
+            }
+            return std::ranges::any_of(
+                program->References(),
+                [&](const std::string &r) { return Signal(r); });
+          },
+          [&](const GradientSignal &g) {
+            bool any = Param(g.t);
+            for (const auto &stop : g.stops) {
+              any = any || Vector(stop.color);
+            }
+            return any;
+          },
+          [&](const DeltaSignal &d) { return Signal(d.of.name); },
+          [&](const SmoothSignal &s) { return Signal(s.of.name); },
+          [](const PulseSignal &) { return true; },
+          [](const RampSignal &) { return true; },
+          [](const EfshSignal &) { return true; },
+          [](const ActorValueSignal &) { return true; },
+          [](const ActorStateSignal &) { return true; },
+          [](const EnchantmentSignal &) { return true; },
+          [](const TriggerSignal &) { return true; },
+          [](const PayloadSignal &) { return true; },
+          [](const CounterSignal &) { return true; },
+          [](const AccumulateSignal &) { return true; },
+          [](const NoiseSignal &) { return true; });
+    });
+  }
+
+  bool Param(const BetterEnchantmentEffects::Param &a_param) {
+    const auto name = RefOf(a_param);
+    return name && Signal(*name);
+  }
+
+  template <std::size_t N>
+  bool Vector(const std::variant<std::array<BetterEnchantmentEffects::Param, N>,
+                                 Ref> &a_param) {
+    std::vector<std::string_view> refs;
+    CollectRefs(a_param, refs);
+    return std::ranges::any_of(refs,
+                               [&](std::string_view r) { return Signal(r); });
+  }
+
+  bool Source(std::string_view a_name) {
+    const auto *source = recipe_.FindSource(a_name);
+    if (!source) {
+      return false;
+    }
+    return Guarded("r:" + std::string{a_name}, [&] {
+      return Match(
+          source->kind,
+          [&](const ImageSource &s) {
+            return (s.scroll && Vector(*s.scroll)) ||
+                   (s.tile && Vector(*s.tile));
+          },
+          [](const RippleSource &) { return true; },
+          [](const MaterialSource &) { return false; },
+          [](const BakeSource &) { return false; },
+          [](const UvSource &) { return false; },
+          [](const DistanceSource &) { return false; },
+          [](const MaterialClustersSource &) { return false; });
+    });
+  }
+
+  bool Mask(std::string_view a_name) {
+    const auto *mask = recipe_.FindMask(a_name);
+    if (!mask) {
+      return false;
+    }
+    return Guarded("m:" + std::string{a_name}, [&] {
+      const auto program = Program::Parse(mask->text);
+      if (!program) {
+        return false;
+      }
+      if (program->UsesTime()) {
+        return true;
+      }
+      return std::ranges::any_of(
+          program->References(),
+          [&](const std::string &r) { return Image(r); });
+    });
+  }
+
+  bool Image(std::string_view a_name) {
+    if (recipe_.FindSource(a_name)) {
+      return Source(a_name);
+    }
+    if (recipe_.FindMask(a_name)) {
+      return Mask(a_name);
+    }
+    return Signal(a_name);
+  }
+
+private:
+  template <class F> bool Guarded(const std::string &a_key, F a_f) {
+    if (!visiting_.insert(a_key).second) {
+      return false;
+    }
+    const bool result = a_f();
+    visiting_.erase(a_key);
+    return result;
+  }
+
+  const Recipe &recipe_;
+  std::unordered_set<std::string> visiting_;
+};
+}
+
+bool IsAnimated(const Recipe &a_recipe, std::string_view a_signal) {
+  return AnimationQuery{a_recipe}.Signal(a_signal);
+}
+
+bool IsAnimated(const Recipe &a_recipe, const Source &a_source) {
+  return AnimationQuery{a_recipe}.Source(a_source.name);
+}
+
+bool IsAnimated(const Recipe &a_recipe, const Mask &a_mask) {
+  return AnimationQuery{a_recipe}.Mask(a_mask.name);
+}
+
+bool IsAnimated(const Recipe &a_recipe, const Output &a_output) {
+  AnimationQuery q{a_recipe};
+  return Match(
+      a_output,
+      [&](const LightOutput &l) {
+        return q.Vector(l.color) || q.Param(l.intensity) || q.Param(l.size) ||
+               q.Param(l.cutoff) || q.Vector(l.offset);
+      },
+      [&](const SurfaceOutput &m) {
+        for (const auto &l : m.stack) {
+          if (const auto *ref = Get<Ref>(l.source); ref && q.Image(ref->name)) {
+            return true;
+          }
+          if (q.Param(l.opacity) || (l.color && q.Vector(*l.color)) ||
+              (l.mask && q.Mask(l.mask->name))) {
+            return true;
+          }
+        }
+        return false;
+      });
 }
 }
