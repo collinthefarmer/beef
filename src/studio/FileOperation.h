@@ -1,7 +1,10 @@
 #pragma once
 
+#include "recipe/Recipe.h"
+
 #include <array>
 #include <cstdint>
+#include <optional>
 #include <string>
 #include <string_view>
 
@@ -29,6 +32,6 @@ struct FileOperationResult {
   FileAction action = FileAction::kSave;
   FileOperationState state = FileOperationState::kPending;
   std::string path;
-  std::string error;
+  std::optional<Diagnostic> error;
 };
 }

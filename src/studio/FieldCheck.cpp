@@ -213,12 +213,21 @@ CheckChannels(std::string_view a_text) {
   }
   return std::nullopt;
 }
+
+[[nodiscard]] std::optional<Diagnostic>
+DiagnosticOf(std::string_view a_where, std::optional<std::string> a_message) {
+  if (!a_message) {
+    return std::nullopt;
+  }
+  return MakeDiagnostic(Severity::kError, std::string{a_where},
+                        std::move(*a_message));
+}
 }
 
-std::optional<std::string> CheckSignalValue(std::string_view a_text,
-                                            const Names &a_names) {
+std::optional<Diagnostic> CheckSignalValue(std::string_view a_text,
+                                           const Names &a_names) {
   if (a_text.empty()) {
-    return "cannot be empty";
+    return DiagnosticOf("signal value", "cannot be empty");
   }
   if (const std::optional<Param> param = ParseParam(a_text);
       param && Get<float>(*param)) {
@@ -232,31 +241,33 @@ std::optional<std::string> CheckSignalValue(std::string_view a_text,
       return std::nullopt;
     }
   }
-  return CheckExpression(a_text, a_names, false, false);
+  return DiagnosticOf("signal value",
+                      CheckExpression(a_text, a_names, false, false));
 }
 
-std::optional<std::string> CheckCurveText(std::string_view a_text,
-                                          const Names &a_names) {
-  if (a_text.empty()) {
-    return "cannot be empty";
-  }
-  return CheckExpression(a_text, a_names, false, true);
-}
-
-std::optional<std::string> CheckMaskText(std::string_view a_text,
+std::optional<Diagnostic> CheckCurveText(std::string_view a_text,
                                          const Names &a_names) {
   if (a_text.empty()) {
-    return "cannot be empty";
+    return DiagnosticOf("curve", "cannot be empty");
   }
-  return CheckExpression(a_text, a_names, true, false);
+  return DiagnosticOf("curve", CheckExpression(a_text, a_names, false, true));
 }
 
-std::optional<std::string> CheckField(const FormField &a_field,
-                                      std::string_view a_text,
-                                      const Names &a_names) {
+std::optional<Diagnostic> CheckMaskText(std::string_view a_text,
+                                        const Names &a_names) {
   if (a_text.empty()) {
-    return a_field.allowEmpty ? std::nullopt
-                              : std::optional<std::string>{"cannot be empty"};
+    return DiagnosticOf("mask", "cannot be empty");
+  }
+  return DiagnosticOf("mask", CheckExpression(a_text, a_names, true, false));
+}
+
+std::optional<Diagnostic> CheckField(const FormField &a_field,
+                                     std::string_view a_text,
+                                     const Names &a_names) {
+  if (a_text.empty()) {
+    return a_field.allowEmpty
+               ? std::nullopt
+               : DiagnosticOf(a_field.name, std::string{"cannot be empty"});
   }
   const FieldKindSpec *row = RowOf(kFieldKinds, a_field.kind);
   if (row == nullptr) {
@@ -264,29 +275,31 @@ std::optional<std::string> CheckField(const FormField &a_field,
   }
   switch (row->check) {
   case FieldCheckKind::kScalar:
-    return CheckScalar(a_field, a_text);
+    return DiagnosticOf(a_field.name, CheckScalar(a_field, a_text));
   case FieldCheckKind::kColorOrVector:
-    return CheckVec3(a_field, a_text, a_names);
+    return DiagnosticOf(a_field.name, CheckVec3(a_field, a_text, a_names));
   case FieldCheckKind::kVec2:
-    return CheckVec2(a_field, a_text, a_names);
+    return DiagnosticOf(a_field.name, CheckVec2(a_field, a_text, a_names));
   case FieldCheckKind::kReference:
-    return CheckReference(a_field, a_text);
+    return DiagnosticOf(a_field.name, CheckReference(a_field, a_text));
   case FieldCheckKind::kExpression:
-    return CheckExpression(a_text, a_names, false, false);
+    return DiagnosticOf(a_field.name,
+                        CheckExpression(a_text, a_names, false, false));
   case FieldCheckKind::kMask:
-    return CheckExpression(a_text, a_names, true, false);
+    return DiagnosticOf(a_field.name,
+                        CheckExpression(a_text, a_names, true, false));
   case FieldCheckKind::kCurve:
-    return CheckCurve(a_field, a_text, a_names);
+    return DiagnosticOf(a_field.name, CheckCurve(a_field, a_text, a_names));
   case FieldCheckKind::kChannels:
-    return CheckChannels(a_text);
+    return DiagnosticOf(a_field.name, CheckChannels(a_text));
   case FieldCheckKind::kChoice:
-    return CheckChoice(a_field, a_text);
+    return DiagnosticOf(a_field.name, CheckChoice(a_field, a_text));
   case FieldCheckKind::kName:
-    return CheckName(a_field, a_text);
+    return DiagnosticOf(a_field.name, CheckName(a_field, a_text));
   case FieldCheckKind::kSignalValue:
     return CheckSignalValue(a_text, a_names);
   case FieldCheckKind::kLayerSource:
-    return CheckLayerSource(a_field, a_text);
+    return DiagnosticOf(a_field.name, CheckLayerSource(a_field, a_text));
   case FieldCheckKind::kNone:
     return std::nullopt;
   }

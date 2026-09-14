@@ -67,6 +67,7 @@ RecipeRow BuildRecipeRow(const RecipeRowInput &a_input) {
         MaskRowOf(mask, RefCount(a_input.references.images, mask.name)));
   }
   r.problems.assign(a_input.problems.begin(), a_input.problems.end());
+  r.heldBack = HasRecipeErrors(a_input.problems);
   {
     const std::optional<SignalGraph> compiled =
         a_input.graph ? std::nullopt

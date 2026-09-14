@@ -44,15 +44,14 @@ void LogRecipeDiagnostics(std::string_view a_id,
     }
   }
 }
-}
 
-namespace {
-std::optional<std::string>
-MessageOf(const std::optional<Diagnostic> &a_refusal) {
-  if (!a_refusal) {
+std::optional<Diagnostic>
+DiagnosticOf(const std::string &a_where,
+             const std::optional<std::string> &a_message) {
+  if (!a_message) {
     return std::nullopt;
   }
-  return a_refusal->message;
+  return MakeDiagnostic(Severity::kError, a_where, *a_message);
 }
 }
 
@@ -154,7 +153,7 @@ struct RecipeEditor::FileOperationJournal {
     return id;
   }
 
-  void FinishEdit(std::uint64_t a_id, std::optional<std::string> a_error) {
+  void FinishEdit(std::uint64_t a_id, std::optional<Diagnostic> a_error) {
     std::scoped_lock guard{lock};
     for (EditEntry &entry : edits) {
       if (entry.result.requestID == a_id && entry.pending) {
@@ -183,19 +182,24 @@ struct RecipeEditor::FileOperationJournal {
     std::scoped_lock guard{lock};
     for (EditEntry &entry : edits) {
       if (entry.pending) {
-        entry.result.error = "Recipe edit was canceled by game load.";
+        entry.result.error =
+            MakeDiagnostic(Severity::kError, entry.result.recipeID,
+                           "Recipe edit was canceled by game load.");
         entry.pending = false;
       }
     }
     for (Studio::FileOperationResult &result : results) {
       if (result.state == Studio::FileOperationState::kPending) {
         result.state = Studio::FileOperationState::kFailed;
-        result.error = "File operation was canceled by game load.";
+        result.error =
+            MakeDiagnostic(Severity::kError, result.recipeID,
+                           "File operation was canceled by game load.");
       }
     }
   }
 
-  void Finish(std::uint64_t a_id, std::string a_path, std::string a_error) {
+  void Finish(std::uint64_t a_id, std::string a_path,
+              std::optional<Diagnostic> a_error) {
     std::scoped_lock guard{lock};
     const auto found = std::ranges::find(
         results, a_id, &Studio::FileOperationResult::requestID);
@@ -203,8 +207,8 @@ struct RecipeEditor::FileOperationJournal {
         found->state != Studio::FileOperationState::kPending) {
       return;
     }
-    found->state = a_error.empty() ? Studio::FileOperationState::kSucceeded
-                                   : Studio::FileOperationState::kFailed;
+    found->state = a_error ? Studio::FileOperationState::kFailed
+                           : Studio::FileOperationState::kSucceeded;
     found->path = std::move(a_path);
     found->error = std::move(a_error);
   }
@@ -224,10 +228,14 @@ struct RecipeEditor::PendingFileOperation {
   PendingFileOperation &operator=(PendingFileOperation &&) = delete;
 
   ~PendingFileOperation() {
-    journal->Finish(id, {}, "File operation was canceled before completion.");
+    journal->Finish(id, {},
+                    MakeDiagnostic(Severity::kError, "file",
+                                   "File operation was canceled before "
+                                   "completion."));
   }
 
-  void Finish(std::string a_path, std::string a_error = {}) const {
+  void Finish(std::string a_path,
+              std::optional<Diagnostic> a_error = std::nullopt) const {
     journal->Finish(id, std::move(a_path), std::move(a_error));
   }
 };
@@ -266,10 +274,12 @@ struct RecipeEditor::PendingRecipeEdit {
   PendingRecipeEdit &operator=(PendingRecipeEdit &&) = delete;
 
   ~PendingRecipeEdit() {
-    journal->FinishEdit(id, "Recipe edit was canceled before completion.");
+    journal->FinishEdit(id, MakeDiagnostic(Severity::kError, "edit",
+                                           "Recipe edit was canceled before "
+                                           "completion."));
   }
 
-  void Finish(std::optional<std::string> a_error = std::nullopt) const {
+  void Finish(std::optional<Diagnostic> a_error = std::nullopt) const {
     journal->FinishEdit(id, std::move(a_error));
   }
 };
@@ -508,14 +518,13 @@ RecipeEditor::EditRecipe(std::string a_id, Studio::EditBatch a_edits,
     FinishActiveGesture(true);
     if (const auto error = Studio::CheckEditRevision(a_expectedRevision,
                                                      DocumentRevisionOf(id))) {
-      operation->Finish(*error);
+      operation->Finish(MakeDiagnostic(Severity::kError, id, *error));
       return;
     }
     if (const auto applied = ApplyEdits(id, edits); !applied) {
       logger::warn("edit refused: {} ({}: {})", Studio::Describe(edits),
                    applied.error().where, applied.error().message);
-      operation->Finish(std::format("{}: {}", applied.error().where,
-                                    applied.error().message));
+      operation->Finish(applied.error());
       return;
     }
     operation->Finish();
@@ -576,7 +585,7 @@ std::uint64_t RecipeEditor::UndoRecipe(std::string a_id) {
   const auto operation =
       std::make_shared<PendingRecipeEdit>(fileOperations_, a_id);
   runtime_.PostTask([this, id = std::move(a_id), operation] {
-    operation->Finish(RestoreRecipe(id, false));
+    operation->Finish(DiagnosticOf(id, RestoreRecipe(id, false)));
   });
   return operation->id;
 }
@@ -586,7 +595,7 @@ std::uint64_t RecipeEditor::RedoRecipe(std::string a_id) {
   const auto operation =
       std::make_shared<PendingRecipeEdit>(fileOperations_, a_id);
   runtime_.PostTask([this, id = std::move(a_id), operation] {
-    operation->Finish(RestoreRecipe(id, true));
+    operation->Finish(DiagnosticOf(id, RestoreRecipe(id, true)));
   });
   return operation->id;
 }
@@ -613,7 +622,7 @@ void RecipeEditor::SaveRecipeNow(const std::string &a_id,
       *recipe = before;
       RefreshRecipeDerivedState(a_id);
     }
-    a_operation.Finish({}, saved.error().message);
+    a_operation.Finish({}, saved.error());
     logger::error("recipe {}: save failed ({})", a_id, saved.error().message);
     return;
   }
@@ -635,11 +644,15 @@ std::uint64_t RecipeEditor::RevertRecipe(std::string a_id) {
     runtime_.ChangeAndRebuildActors(id, [&] {
       Recipe *recipe = MutableRecipe(id);
       if (!recipe) {
-        operation->Finish({}, "Recipe is not loaded.");
+        operation->Finish(
+            {}, MakeDiagnostic(Severity::kError, id, "Recipe is not loaded."));
         return;
       }
       if (IsTransient(id)) {
-        operation->Finish({}, "The paint draft has no recipe file to revert.");
+        operation->Finish(
+            {}, MakeDiagnostic(Severity::kError, id,
+                               "The paint draft has no recipe file to "
+                               "revert."));
         return;
       }
       const std::optional<RecipeOrigin> origin = OriginOf(*recipe);
@@ -647,7 +660,7 @@ std::uint64_t RecipeEditor::RevertRecipe(std::string a_id) {
       const Recipe before = *recipe;
       if (const std::optional<Diagnostic> refused =
               BetterEnchantmentEffects::RevertRecipe(id)) {
-        operation->Finish(path, refused->message);
+        operation->Finish(path, refused);
         return;
       }
       PushHistory(histories_, id, before, *recipe);
@@ -699,7 +712,7 @@ std::uint64_t RecipeEditor::NewRecipe(std::string a_id, RecipeKey a_key,
       if (!refused) {
         AdvanceDocumentRevision(id);
       }
-      operation->Finish(MessageOf(refused));
+      operation->Finish(refused);
     });
   });
   return operation->id;
@@ -715,7 +728,7 @@ std::uint64_t RecipeEditor::RenameRecipe(std::string a_from, std::string a_to) {
         runtime_.ChangeAndRebuildActors({}, [&] {
           if (const std::optional<Diagnostic> refused =
                   BetterEnchantmentEffects::RenameRecipe(from, to)) {
-            operation->Finish(refused->message);
+            operation->Finish(refused);
             return;
           }
           AdvanceDocumentRevision(from);
