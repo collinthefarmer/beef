@@ -128,6 +128,20 @@ later and not listed here. Three findings for the UI owner:
    switches material to image, then sets the path, and expects the row to
    validate. `Edits.cpp` is slice 2B's seam.
 
+6. **A refused recipe rename is not shown beside the row.** The user
+   reported the Rename button as disabled for an existing name; the code
+   (`menu/ContextRows.cpp`, `RenameRecipeButton`) disables it only for an
+   empty or unchanged name, so a collision is posted and refused by the
+   store with `where` `recipe <id>` ("a recipe named '<to>' already
+   exists"), and `RecipeEditor::RenameRecipe` finishes a `RecipeEditResult`
+   carrying that message. Only `menu/RecipeActions.cpp` reads
+   `editResults`, and it does so for the recipe's file actions; the rename
+   popup and the recipes page draw nothing from it, so the refusal is
+   visible in the log alone. This is the case Plan A's checkpoint was
+   written to catch. Fix: the rename popup keeps the typed name and draws
+   the latest `RecipeEditResult` error for the recipe under the field, and
+   the page row shows it as a `Problem` until the next edit succeeds.
+
 Recipe-level rename and the add-resource menu work. Findings 2 and 3 are
 regressions from slice 1C's replacement of the resource tables and belong
 to its owner; `ResourcePanels.cpp` can be deleted once its two remaining
