@@ -17,6 +17,7 @@
 #include "studio/Board.h"
 #include "studio/Forms.h"
 #include "studio/Intent.h"
+#include "studio/MenuState.h"
 #include "studio/Names.h"
 #include "studio/PaintSession.h"
 #include "studio/Panels.h"

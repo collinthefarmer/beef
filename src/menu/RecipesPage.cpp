@@ -8,6 +8,7 @@
 #include "menu/RecipeActions.h"
 #include "recipe/Recipe.h"
 #include "studio/Intent.h"
+#include "studio/MenuState.h"
 #include "studio/Names.h"
 #include "studio/Selection.h"
 #include "studio/Snapshot.h"

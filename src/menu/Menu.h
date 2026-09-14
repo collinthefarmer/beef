@@ -1,6 +1,7 @@
 #pragma once
 
 #include "studio/Intent.h"
+#include "studio/MenuState.h"
 #include "studio/Snapshot.h"
 #include "studio/View.h"
 
