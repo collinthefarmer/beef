@@ -1,5 +1,10 @@
 # Parallel buildup plan
 
+Status: history. The buildup this schedules is finished and `REQUIREMENTS.md`
+carries the architecture it produced. Names and paths here predate the critique
+remediation of 2026-09-14 (Plan C's file moves and Plan D's renames);
+`docs/README.md` indexes the current set.
+
 Execution scaffolding, not canon. `REQUIREMENTS.md` governs; this file only
 says how the new tree gets written by many agents at once. Delete it when
 the buildup is done.

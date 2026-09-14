@@ -1,5 +1,10 @@
 # Engine integration and ownership review
 
+Status: history. Its seam findings are settled in `REFERENCE.md` and the
+cleanup checkpoints. Names and paths here predate the critique remediation of
+2026-09-14 (Plan C's file moves and Plan D's renames); `docs/README.md` indexes
+the current set.
+
 This pass follows the mixed-layout DLL diagnosis in `crash-2026-09-11.md`.
 It preserves the ongoing refactor and reviews the current engine/render seam.
 

@@ -1,15 +1,9 @@
 # BetterEnchantmentEffects: how the code is written
 
-Read `REQUIREMENTS.md` first (the canonical document: what the plugin must
-do, how it is built, how it is verified, and the module-by-module buildup).
-`REFERENCE.md` holds what the code relies on but cannot say — engine
-layouts, CS rules, decompile lines, shader packings, by module.
-`src/_old/` is the frozen previous implementation and the behaviour oracle
-each new module diffs against. `schema/recipe.schema.json` is the recipe
-format and `schema/example-magicka.json` is the canonical file.
-`docs/conventions.md` records the canon patterns a new module is built on,
-and `docs/wip/deletions.md` is the per-module checklist of apparently dead
-code that must not be dropped.
+`README.md` holds the reading order — one line per document saying what
+question it answers — and `docs/README.md` indexes everything under `docs/`.
+Read them first; this file states only the rules the code obeys and the
+practicalities of working here.
 
 ## Three rules, in priority order
 

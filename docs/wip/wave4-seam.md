@@ -1,5 +1,10 @@
 # wave 4 seam: the menu surface interface
 
+Status: history. The `menu/` interface it froze is superseded by
+`docs/ui-v2-implementation-plan.md`, which owns that surface now. Names and
+paths here predate the critique remediation of 2026-09-14 (Plan C's file moves
+and Plan D's renames); `docs/README.md` indexes the current set.
+
 Barrier output. The shape agent froze the `menu/` headers and the ownership map;
 this file is the interface the fills follow. Where a decision changed a header,
 the header and `docs/wip/menu-ownership.md` already match this file. A fill that

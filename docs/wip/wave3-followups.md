@@ -1,5 +1,10 @@
 # wave 3 follow-ups and tidy triage
 
+Status: history. The deferrals it lists were closed by the 2026-09-13 cleanup
+checkpoints and the critique plans. Names and paths here predate the critique
+remediation of 2026-09-14 (Plan C's file moves and Plan D's renames);
+`docs/README.md` indexes the current set.
+
 The engine/ and render/ clusters build into the first DLL: zero-warning, links
 with no undefined symbols. This records what the reduce stage accepted, what it
 deferred, and the two seam gaps the integrator surfaced.

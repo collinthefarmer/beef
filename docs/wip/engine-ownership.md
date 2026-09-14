@@ -1,5 +1,9 @@
 # engine: `.cpp` ownership map
 
+Status: history. Names and paths here predate the critique remediation of
+2026-09-14 (Plan C's file moves and Plan D's renames); `docs/README.md` indexes
+the current set.
+
 The function→`.cpp` maps below are authoritative. The "Seam with render/" and
 "Silent-gap / conflict risks" sections at the end are the shape agent's original
 proposal and are SUPERSEDED by `docs/wip/wave3-seam.md` (all four flagged risks

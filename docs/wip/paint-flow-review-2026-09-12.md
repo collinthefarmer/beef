@@ -1,5 +1,11 @@
 # Paint flow review and test coverage
 
+Status: history. The mask editor it reviews is rebuilt by
+`docs/ui-v2-implementation-plan.md`, and the paint-era word "region" now means
+an armor coverage area (`docs/conventions.md` glossary). Names and paths here
+predate the critique remediation of 2026-09-14 (Plan C's file moves and Plan
+D's renames); `docs/README.md` indexes the current set.
+
 Reviewed 2026-09-12 against the current working tree, including its existing
 uncommitted changes. This is a review and coverage plan, not a production fix.
 The reported symptom is that selecting an offer adds its term but sometimes

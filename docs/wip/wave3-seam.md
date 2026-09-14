@@ -1,5 +1,10 @@
 # wave 3 seam: the reconciled engine↔render interface
 
+Status: history. The `engine`/`render` seam it froze is now the source itself,
+and `tools/layers.sh` enforces the include graph. Names and paths here predate
+the critique remediation of 2026-09-14 (Plan C's file moves and Plan D's
+renames); `docs/README.md` indexes the current set.
+
 Barrier output. The two shape agents each proposed a seam from their own side;
 this file is the reconciliation the orchestrator froze before dispatching fills.
 Where a decision changed a header, the header and the two ownership maps already
