@@ -267,14 +267,15 @@ adapter executes.
 
 A planner decides over value records and opaque handles, never over engine
 (`RE::`) pointers. It takes plain records or `enum class` handle types (as
-`Merge`'s `Plan*` take `PlacedRecipe`/`SlotSource`, and an actor planner takes
-an `ActorPlan` over opaque ids) and returns a plan the adapter carries out. If
+`Merge`'s `Plan*` take `PlacedRecipe`/`SlotContributor`, and an actor
+planner takes an `ActorPlan` over opaque ids) and returns a plan the adapter carries out. If
 a decision needs a live pointer to make up its mind, the split is wrong: that
 logic belongs in the adapter, not the planner. This is what keeps the pure core
 testable without the engine and the adapter thin.
 
 Illegal states unrepresentable where a type can carry it: `Merge.h` gives the
-two index spaces distinct types (`enum class SlotSource`/`LightSource` and
+two index spaces distinct types (`enum class
+SlotContributor`/`LightContributor` and
 `SlotContribution`/`LightContribution`) so a light index cannot be used as a
 slot index — already built into the new tree.
 

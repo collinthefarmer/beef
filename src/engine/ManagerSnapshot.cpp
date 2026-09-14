@@ -161,9 +161,9 @@ struct GeometrySnapshotBuilder {
     row.problem = output.problem;
     row.texture = RetainTexture(snapshot, output.stack ? output.stack->Texture()
                                                        : nullptr);
-    if (const std::optional<std::size_t> merge =
-            ChainIndexOf(bound.plan, SlotContribution{SlotSource{placedIndex},
-                                                      output.index})) {
+    if (const std::optional<std::size_t> merge = ChainIndexOf(
+            bound.plan,
+            SlotContribution{SlotContributor{placedIndex}, output.index})) {
       row.merged = true;
       row.merge = *merge;
     }

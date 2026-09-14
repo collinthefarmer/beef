@@ -11,7 +11,7 @@ namespace BetterEnchantmentEffects {
 struct BindingPlan {
   bool material = false;
   bool shell = false;
-  std::optional<SlotSource> shellOwner;
+  std::optional<SlotContributor> shellOwner;
   [[nodiscard]] bool operator==(const BindingPlan &) const = default;
 };
 

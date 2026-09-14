@@ -78,10 +78,10 @@ int main() {
     if (emissive) {
       Check(emissive->chain.size() == 2, "both contributions become links");
       Check(emissive->chain.front().contribution ==
-                SlotContribution{SlotSource{0}, 0},
+                SlotContribution{SlotContributor{0}, 0},
             "the lower-priority static link leads the chain");
       Check(emissive->chain.back().contribution ==
-                SlotContribution{SlotSource{1}, 0},
+                SlotContribution{SlotContributor{1}, 0},
             "the higher-priority animated link ends the chain");
       Check(!emissive->chain.front().selfAnimated,
             "the static link is not self-animated");
@@ -159,7 +159,7 @@ int main() {
       Check(emissive->chain.size() == 2,
             "the stack keeps only the replacer and everything above it");
       Check(emissive->chain.front().contribution ==
-                SlotContribution{SlotSource{1}, 0},
+                SlotContribution{SlotContributor{1}, 0},
             "the replacing static contribution begins the surviving stack");
       Check(!emissive->chain.front().selfAnimated,
             "the replacer sees a fresh static base, not the replaced animated "
@@ -177,13 +177,13 @@ int main() {
         PlacedRecipe{&upper, 10, {0}},
     };
     const GeometryPlan geometry = PlanGeometry(placed);
-    Check(ChainIndexOf(geometry, SlotContribution{SlotSource{0}, 0}) ==
+    Check(ChainIndexOf(geometry, SlotContribution{SlotContributor{0}, 0}) ==
               std::optional<std::size_t>{0},
           "the lower contribution sits at chain index 0");
-    Check(ChainIndexOf(geometry, SlotContribution{SlotSource{1}, 0}) ==
+    Check(ChainIndexOf(geometry, SlotContribution{SlotContributor{1}, 0}) ==
               std::optional<std::size_t>{1},
           "the higher contribution sits at chain index 1");
-    Check(ChainIndexOf(geometry, SlotContribution{SlotSource{2}, 0}) ==
+    Check(ChainIndexOf(geometry, SlotContribution{SlotContributor{2}, 0}) ==
               std::nullopt,
           "a contribution no chain holds has no index");
   }

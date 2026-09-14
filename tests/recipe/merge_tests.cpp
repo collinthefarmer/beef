@@ -40,12 +40,12 @@ Recipe RecipeWith(std::vector<Output> a_outputs) {
 }
 
 int main() {
-  const SlotContribution slot{SlotSource{0}, 2};
-  const LightContribution light{LightSource{1}, 0};
+  const SlotContribution slot{SlotContributor{0}, 2};
+  const LightContribution light{LightContributor{1}, 0};
 
-  Check(slot == SlotContribution{SlotSource{0}, 2},
+  Check(slot == SlotContribution{SlotContributor{0}, 2},
         "a slot contribution compares by its two fields");
-  Check(!(light == LightContribution{LightSource{0}, 0}),
+  Check(!(light == LightContribution{LightContributor{0}, 0}),
         "a light contribution distinguishes its source index");
 
   SlotPlan plan;
@@ -82,9 +82,9 @@ int main() {
     if (emissive) {
       Check(emissive->chain.size() == 2,
             "both emissive contributions compose, none dropped");
-      Check(emissive->chain.front().placed == SlotSource{1},
+      Check(emissive->chain.front().placed == SlotContributor{1},
             "the lower-priority recipe leads the chain");
-      Check(emissive->chain.back().placed == SlotSource{0},
+      Check(emissive->chain.back().placed == SlotContributor{0},
             "the higher-priority recipe ends the chain");
       Check(emissive->replacer == std::nullopt,
             "no replace leaves the chain uncut");
@@ -109,19 +109,20 @@ int main() {
     if (emissive) {
       Check(emissive->chain.size() == 2,
             "the replace cut keeps the replacer and everything above it");
-      Check(emissive->chain.front().placed == SlotSource{1},
+      Check(emissive->chain.front().placed == SlotContributor{1},
             "the chain begins at the replacing contribution");
       Check(emissive->replaced.size() == 1,
             "everything below the replace is replaced");
-      Check(emissive->replaced.front() == SlotContribution{SlotSource{0}, 0},
+      Check(emissive->replaced.front() ==
+                SlotContribution{SlotContributor{0}, 0},
             "the lowest contribution is the one replaced");
-      Check(emissive->replacer == SlotContribution{SlotSource{1}, 0},
+      Check(emissive->replacer == SlotContribution{SlotContributor{1}, 0},
             "the replacer is the highest replace");
 
       const std::optional<std::size_t> ofReplaced =
-          ReplacerOf(*emissive, SlotContribution{SlotSource{0}, 0});
+          ReplacerOf(*emissive, SlotContribution{SlotContributor{0}, 0});
       const std::optional<std::size_t> ofSurvivor =
-          ReplacerOf(*emissive, SlotContribution{SlotSource{1}, 0});
+          ReplacerOf(*emissive, SlotContribution{SlotContributor{1}, 0});
       Check(ofReplaced == std::optional<std::size_t>{1},
             "a replaced contribution names the placement that replaced it");
       Check(ofSurvivor == std::nullopt,
@@ -145,7 +146,7 @@ int main() {
             "exactly one owner records strength, no contention");
       const std::optional<SlotContribution> owner =
           ScalarOwnerOf(*emissive, ScalarField::kStrength);
-      Check(owner == SlotContribution{SlotSource{1}, 0},
+      Check(owner == SlotContribution{SlotContributor{1}, 0},
             "the highest-priority namer owns the scalar");
       Check(ScalarOwnerOf(*emissive, ScalarField::kScale) == std::nullopt,
             "a field no output names has no owner");
@@ -162,18 +163,20 @@ int main() {
     const LightPlan lightPlan = PlanLights(placed);
     Check(lightPlan.shown.size() == 1, "the replacing light is all that shows");
     Check(!lightPlan.shown.empty() &&
-              lightPlan.shown.front() == LightContribution{LightSource{1}, 0},
+              lightPlan.shown.front() ==
+                  LightContribution{LightContributor{1}, 0},
           "the higher-priority light replaces the lower");
     Check(
         lightPlan.replaced.size() == 1 &&
-            lightPlan.replaced.front() == LightContribution{LightSource{0}, 1},
+            lightPlan.replaced.front() ==
+                LightContribution{LightContributor{0}, 1},
         "the first recipe's light, found past its surface output, is replaced");
-    Check(lightPlan.replacer == LightContribution{LightSource{1}, 0},
+    Check(lightPlan.replacer == LightContribution{LightContributor{1}, 0},
           "the replacer is the higher-priority light");
-    Check(ReplacerOf(lightPlan, LightContribution{LightSource{0}, 1}) ==
+    Check(ReplacerOf(lightPlan, LightContribution{LightContributor{0}, 1}) ==
               std::optional<std::size_t>{1},
           "the replaced light names its replacer's placement");
-    Check(ReplacerOf(lightPlan, LightContribution{LightSource{1}, 0}) ==
+    Check(ReplacerOf(lightPlan, LightContribution{LightContributor{1}, 0}) ==
               std::nullopt,
           "the shown light has no replacer");
   }
@@ -184,17 +187,17 @@ int main() {
     const std::vector<PlacedRecipe> placed{PlacedRecipe{&recipe, 1, {}}};
     const LightPlan normal = PlanLights(placed);
     Check(normal.shown == std::vector<LightContribution>{LightContribution{
-                              LightSource{0}, 1}},
+                              LightContributor{0}, 1}},
           "normal light planning retains its first-light policy");
     const LightPlan solo =
         PlanLights(placed, [](const Recipe &, std::size_t a_output) {
           return a_output == 2;
         });
     Check(solo.shown == std::vector<LightContribution>{LightContribution{
-                            LightSource{0}, 2}},
+                            LightContributor{0}, 2}},
           "soloing a second light output selects the first visible light "
           "rather than hiding the recipe");
-    Check(solo.replacer == LightContribution{LightSource{0}, 2},
+    Check(solo.replacer == LightContribution{LightContributor{0}, 2},
           "the selected second light participates in replacement planning");
     const LightPlan hidden =
         PlanLights(placed, [](const Recipe &, std::size_t a_output) {

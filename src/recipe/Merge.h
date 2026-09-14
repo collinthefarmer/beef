@@ -17,17 +17,17 @@ struct PlacedRecipe {
   std::vector<std::size_t> outputs;
 };
 
-enum class SlotSource : std::size_t {};
-enum class LightSource : std::size_t {};
+enum class SlotContributor : std::size_t {};
+enum class LightContributor : std::size_t {};
 
 struct SlotContribution {
-  SlotSource placed{};
+  SlotContributor placed{};
   std::size_t output = 0;
   [[nodiscard]] bool operator==(const SlotContribution &) const = default;
 };
 
 struct LightContribution {
-  LightSource placed{};
+  LightContributor placed{};
   std::size_t output = 0;
   [[nodiscard]] bool operator==(const LightContribution &) const = default;
 };

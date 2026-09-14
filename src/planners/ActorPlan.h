@@ -13,7 +13,7 @@ enum class GeometryId : std::size_t {};
 enum class InstanceId : std::size_t {};
 enum class PlacementId : std::size_t {};
 enum class RecipeId : std::size_t {};
-enum class OutputIndex : std::size_t {};
+enum class OutputId : std::size_t {};
 
 struct Geometry {
   GeometryIdentity identity;
@@ -30,7 +30,7 @@ struct Instance {
 };
 
 struct OutputPlacement {
-  OutputIndex output{};
+  OutputId output{};
   bool selected = false;
   std::string problem;
   [[nodiscard]] bool operator==(const OutputPlacement &) const = default;

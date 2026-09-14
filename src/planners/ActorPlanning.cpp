@@ -37,7 +37,7 @@ SurfacePlacements(const Recipe &a_recipe, const GeometryIdentity &a_identity) {
       continue;
     }
     const bool selected = Matches(output->selector, a_identity);
-    out.push_back(OutputPlacement{OutputIndex{i}, selected,
+    out.push_back(OutputPlacement{OutputId{i}, selected,
                                   selected ? std::string{}
                                            : std::string{"selector did not "
                                                          "match"}});

@@ -5,7 +5,7 @@
 
 namespace BetterEnchantmentEffects {
 namespace {
-std::size_t PlacedIndexOf(SlotSource a_placed) noexcept {
+std::size_t PlacedIndexOf(SlotContributor a_placed) noexcept {
   return static_cast<std::size_t>(a_placed);
 }
 

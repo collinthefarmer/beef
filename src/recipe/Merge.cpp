@@ -139,7 +139,7 @@ GeometryPlan PlanGeometry(std::span<const PlacedRecipe> a_placed) {
       }
       SlotPlanFor(plan, *output)
           .chain.push_back(
-              SlotContribution{SourceOf<SlotSource>(placed), index});
+              SlotContribution{SourceOf<SlotContributor>(placed), index});
     }
   }
   for (SlotPlan &slot : plan.slots) {
@@ -170,7 +170,8 @@ LightPlan PlanLights(std::span<const PlacedRecipe> a_placed,
     if (!light) {
       continue;
     }
-    const LightContribution contribution{SourceOf<LightSource>(placed), index};
+    const LightContribution contribution{SourceOf<LightContributor>(placed),
+                                         index};
     plan.shown.push_back(contribution);
     flagged.push_back(Flagged<LightContribution>{contribution, light->replace});
   }

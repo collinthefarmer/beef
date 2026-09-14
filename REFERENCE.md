@@ -112,8 +112,8 @@ to the logger alongside the file sink at plugin load.
   private to `RecipeRead.cpp`. This is the one place recipe/ uses a second JSON
   style, and it is intentional, not drift.
 - `Merge.h` splits the frozen `Contribution` into `SlotContribution` and
-  `LightContribution` over two `enum class` index types, `SlotSource` and
-  `LightSource`. One `std::size_t` field in the frozen code meant an index
+  `LightContribution` over two `enum class` index types, `SlotContributor` and
+  `LightContributor`. One `std::size_t` field in the frozen code meant an index
   into a geometry's placed recipes under `PlanGeometry` and into the actor's
   recipe instances under `PlanLights`; the two index spaces are now two
   types the compiler keeps apart.
@@ -966,8 +966,8 @@ calls these with value records. The split's discipline: no planner takes or
 stores an `RE::` pointer.
 
 - **Opaque handle spaces.** `PieceId`, `InstanceId`, `PlacementId`, `RecipeId`,
-  `OutputIndex` are `enum class : std::size_t` typed index spaces (as
-  `Merge.h`'s `SlotSource`/`LightSource` already are). They carry no
+  `OutputId` are `enum class : std::size_t` typed index spaces (as
+  `Merge.h`'s `SlotContributor`/`LightContributor` already are). They carry no
   enumerators, so the one-spec-table-per-enum rule does not apply to them — a
   handle is an index, not a closed set. `RecipeId` indexes the recipe store the
   shell passes as `std::span<const Recipe>`; the pure `ActorPlan` never stores

@@ -12,7 +12,7 @@ int main() {
   SlotPlan material;
   material.surface = Surface::kMaterial;
   material.slot = Slot::kEmissive;
-  material.chain = {{SlotSource{0}, 0}};
+  material.chain = {{SlotContributor{0}, 0}};
   geometry.slots.push_back(material);
   auto plan = PlanBinding(placed, geometry);
   Check(plan.material && !plan.shell && !plan.shellOwner,
@@ -21,13 +21,13 @@ int main() {
   shell.surface = Surface::kShell;
   geometry.slots.push_back(shell);
   shell.slot = Slot::kDiffuse;
-  shell.chain = {{SlotSource{1}, 0}};
+  shell.chain = {{SlotContributor{1}, 0}};
   geometry.slots.push_back(shell);
   plan = PlanBinding(placed, geometry);
-  Check(plan.material && plan.shell && plan.shellOwner == SlotSource{1},
+  Check(plan.material && plan.shell && plan.shellOwner == SlotContributor{1},
         "highest priority shell contribution controls shell settings");
-  geometry.slots.back().chain.push_back({SlotSource{0}, 1});
-  Check(PlanBinding(placed, geometry).shellOwner == SlotSource{0},
+  geometry.slots.back().chain.push_back({SlotContributor{0}, 1});
+  Check(PlanBinding(placed, geometry).shellOwner == SlotContributor{0},
         "owner is selected from the top of each chain");
   geometry.slots.clear();
   material.chain.clear();

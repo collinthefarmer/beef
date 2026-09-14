@@ -7,7 +7,7 @@ namespace BetterEnchantmentEffects {
 namespace {
 [[nodiscard]] std::optional<int>
 PriorityOf(std::span<const PlacedRecipe> a_placed,
-           SlotSource a_source) noexcept {
+           SlotContributor a_source) noexcept {
   const std::size_t index = static_cast<std::size_t>(a_source);
   if (index >= a_placed.size()) {
     return std::nullopt;
