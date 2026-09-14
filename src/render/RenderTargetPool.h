@@ -1,7 +1,7 @@
 #pragma once
 
 #include "planners/TargetPool.h"
-#include "render/RuntimeTextures.h"
+#include "render/TextureLab.h"
 
 #include <cstdint>
 #include <map>

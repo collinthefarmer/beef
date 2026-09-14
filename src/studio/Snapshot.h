@@ -237,7 +237,7 @@ struct LoadedRecipeRow {
 struct Status {
   bool emissivePath = false;
   bool layoutVerified = false;
-  bool runtimeLab = false;
+  bool textureLab = false;
   std::uint32_t actors = 0;
   std::uint32_t pieces = 0;
   std::uint32_t recipes = 0;

@@ -1,6 +1,6 @@
 #include "menu/MenuWidgets.h"
 
-#include "render/RuntimeTextures.h"
+#include "render/TextureLab.h"
 #include "studio/Forms.h"
 #include "studio/Intent.h"
 #include "studio/Names.h"

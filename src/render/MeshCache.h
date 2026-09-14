@@ -5,7 +5,7 @@
 #include "mesh/Mesh.h"
 #include "mesh/MeshFacts.h"
 #include "render/MeshReader.h"
-#include "render/RuntimeTextures.h"
+#include "render/TextureLab.h"
 
 #include <cstdint>
 #include <expected>

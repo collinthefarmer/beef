@@ -1,6 +1,6 @@
 #pragma once
 
-#include "render/RuntimeTextures.h"
+#include "render/TextureLab.h"
 
 namespace BetterEnchantmentEffects {
 class TextureRef {

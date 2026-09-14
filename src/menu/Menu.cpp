@@ -256,7 +256,7 @@ void RenderStatus(const Studio::Snapshot &a_snapshot) {
     Warn("| layout unverified");
   }
   ImGui::SameLine();
-  if (st.runtimeLab) {
+  if (st.textureLab) {
     Ok("| lab");
   } else {
     Warn("| no lab");

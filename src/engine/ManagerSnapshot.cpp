@@ -7,8 +7,8 @@
 #include "engine/RecipeStore.h"
 #include "render/Binding.h"
 #include "render/Compositor.h"
-#include "render/RuntimeTextures.h"
 #include "render/SourceSampling.h"
+#include "render/TextureLab.h"
 #include "studio/Edits.h"
 #include "studio/Panels.h"
 #include "studio/RecipeSnapshot.h"
@@ -376,7 +376,7 @@ Manager::Status Manager::GetStatus() const {
   Status s;
   s.emissivePath = emissivePathEnabled_;
   s.layoutVerified = layoutVerified_;
-  s.runtimeLab = TextureLab::GetSingleton()->Available();
+  s.textureLab = TextureLab::GetSingleton()->Available();
   s.actors = static_cast<std::uint32_t>(applied_.size());
   for (const auto &[id, state] : applied_) {
     AccumulateStatus(s, state);
@@ -429,7 +429,7 @@ Manager::BuildSnapshot(const std::optional<Studio::PieceRef> &a_request,
   const Status status = GetStatus();
   const RecipeStoreStatus store = GetRecipeStoreStatus();
   out.tickMS = status.tickMS;
-  out.status = {status.emissivePath, status.layoutVerified, status.runtimeLab,
+  out.status = {status.emissivePath, status.layoutVerified, status.textureLab,
                 status.actors,       status.pieces,         status.recipes,
                 status.geometries,   status.shells,         status.lights,
                 store.loaded,        store.withErrors};

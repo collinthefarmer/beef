@@ -10,7 +10,7 @@
 #include "mesh/TextureSize.h"
 #include "render/Compositor.h"
 #include "render/PBRMaterial.h"
-#include "render/RuntimeTextures.h"
+#include "render/TextureLab.h"
 #include "studio/Selection.h"
 
 #include <algorithm>

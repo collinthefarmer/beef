@@ -167,7 +167,7 @@ atom   := number | "[" expr "," expr ("," expr)? "]" | "(" expr ")"
   In `RenameReferences`, a signal reference is `@name` followed by anything
   but a name character or `(`; a curve reference is `@name(`.
 
-## The lab's shaders (`RuntimeTextures.cpp`, `kShaderSource`)
+## The lab's shaders (`TextureLab.h`, `ShaderSource.cpp`, `kShaderSource`)
 
 One pixel shader over a full-screen triangle serves every mode of
 `ShaderMode`; the interpreter, bake, ripple and classify passes are
@@ -732,7 +732,7 @@ Decompile provenance (`decompiled/WornEnchantmentFX/plugin.c` unless noted):
 ## Menu mechanics (`MenuWidgets.cpp`, `MenuState.h`)
 
 - `menu/MenuWidgets.cpp` is the menu's sole direct render dependency. It calls
-  `TextureLab::Preview` through `render/RuntimeTextures.h` to obtain the
+  `TextureLab::Preview` through `render/TextureLab.h` to obtain the
   read-only preview for a `Studio::TextureHandle`.
 - `Studio::FieldKey` and the framework's `ImGuiID` are the same type, enforced
   by the renderer's static assertion; text and number buffers share that key.

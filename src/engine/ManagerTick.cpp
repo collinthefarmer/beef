@@ -3,7 +3,7 @@
 #include "SettingsFile.h"
 #include "engine/Clock.h"
 #include "render/Compositor.h"
-#include "render/RuntimeTextures.h"
+#include "render/TextureLab.h"
 #include "studio/ResolveOutput.h"
 
 #include <algorithm>

@@ -14,7 +14,7 @@
 #include "recipe/Signals.h"
 #include "render/MeshCache.h"
 #include "render/PBRMaterial.h"
-#include "render/RuntimeTextures.h"
+#include "render/TextureLab.h"
 #include "render/TextureRef.h"
 
 #include <cstdint>

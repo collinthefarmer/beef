@@ -6,7 +6,7 @@
 #include "engine/Events.h"
 #include "engine/RecipeStore.h"
 #include "render/Compositor.h"
-#include "render/RuntimeTextures.h"
+#include "render/TextureLab.h"
 
 #include <utility>
 #include <vector>
