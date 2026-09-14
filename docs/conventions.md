@@ -68,7 +68,7 @@ Logging, same rule:
 appends one structured line per event (`kStartup`, `kSettings`, `kRecipe`,
 `kCommand`, `kPage`, `kQueue`, `kLoad`, `kApplication`, `kRetire`,
 `kBinding`, `kRestore`, `kTexture`, `kShell`, `kPreview`,
-`kCaptureFailure`) to the run's trace file under a byte cap; `Trace::Scope`
+`kCaptureFailure`) to the run's trace file, rotated in 32 MiB segments with the last two kept; `Trace::Scope`
 tags the events of one command with a command id, and `Trace::Safely` wraps
 a capture so a throwing capture becomes a `kCaptureFailure` event instead of
 a crash. `tools/trace-report.py` reads the file.

@@ -2,12 +2,41 @@ import argparse
 import collections
 import json
 import pathlib
+import re
+
+
+SEGMENT_SUFFIX = re.compile(r"^(.*?)(?:-(\d+))?\.jsonl$")
+
+
+def segments_of(paths):
+    """The given segments plus their siblings, oldest first."""
+    found = {}
+    for path in paths:
+        match = SEGMENT_SUFFIX.match(path.name)
+        if not match:
+            found[path.resolve()] = (0, path)
+            continue
+        base = match.group(1)
+        for sibling in path.parent.glob(f"{base}*.jsonl"):
+            sibling_match = SEGMENT_SUFFIX.match(sibling.name)
+            if sibling_match and sibling_match.group(1) == base:
+                index = int(sibling_match.group(2) or 1)
+                found[sibling.resolve()] = (index, sibling)
+    return [path for _index, path in sorted(found.values(), key=lambda entry: entry[0])]
+
+
+def lines_in_order(segments):
+    for segment in segments:
+        with segment.open(encoding="utf-8", errors="replace") as stream:
+            yield from stream
 
 
 def main():
     parser = argparse.ArgumentParser(description="Summarize a diagnostic JSONL run")
-    parser.add_argument("trace", type=pathlib.Path)
+    parser.add_argument("trace", type=pathlib.Path, nargs="+",
+                        help="a trace segment; its sibling segments are read too")
     args = parser.parse_args()
+    segments = segments_of(args.trace)
     counts = collections.Counter()
     commands = {}
     transitions = collections.Counter()
@@ -22,8 +51,8 @@ def main():
     renderer_mismatches = 0
     rejected_presenters = 0
     rejected_leases = 0
-    with args.trace.open(encoding="utf-8", errors="replace") as stream:
-        for line in stream:
+    rotations = 0
+    for line in lines_in_order(segments):
             try:
                 event = json.loads(line)
                 if not isinstance(event, dict):
@@ -35,6 +64,10 @@ def main():
                 malformed += 1
                 continue
             kind = event.get("event", "unknown")
+            if kind == "rotated":
+                rotations += 1
+                if not startup:
+                    startup = {k: v for k, v in fields.items() if k in ("build", "source_sha256")}
             if kind == "texture":
                 action = fields.get("action")
                 target = fields.get("target")
@@ -79,8 +112,9 @@ def main():
     print(f"Presenter rejections: {rejected_presenters}")
     print(f"Texture lease rejections: {rejected_leases}")
     print(f"Targets recycled: {len(recycled)}; total recycles: {sum(recycled.values())}")
-    if counts["trace_limit"]:
-        print("Trace reached its disk limit; later file evidence is unavailable.")
+    print(f"Segments read: {len(segments)}; rotations seen: {rotations}")
+    if rotations and len(segments) <= rotations:
+        print("Earlier segments were deleted by rotation; the trace starts mid-run.")
     print("Retirements by originating command:")
     for command, count in transitions.items():
         print(f"  {command}: {commands.get(command, 'unscoped/incomplete trace')}: {count}")

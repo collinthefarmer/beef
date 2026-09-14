@@ -89,17 +89,52 @@ int main() {
        std::to_string(
            std::chrono::steady_clock::now().time_since_epoch().count()) +
        ".jsonl");
+  const auto segment = [&](int a_index) {
+    std::filesystem::path path = file;
+    path.replace_extension();
+    return path.concat("-" + std::to_string(a_index)).concat(".jsonl");
+  };
   {
-    Trace::Recorder bounded{1024};
+    Trace::Recorder bounded{1024, 2};
     Check(bounded.Open(file, "test"), "trace file opens");
+    bounded.Record(Trace::Event::kStartup, {}, {{"build", "test-build"}});
     for (int i = 0; i < 100; ++i) {
       bounded.Record(Trace::Event::kTexture, {}, {});
     }
-    Check(bounded.Inspect().limitReached, "disk limit stops recording");
-    Check(std::filesystem::file_size(file) < 1100,
-          "disk growth remains bounded");
+    const Trace::Status status = bounded.Inspect();
+    Check(status.rotations >= 2 && status.segment == status.rotations + 1,
+          "a full segment rotates into the next one");
+    Check(status.dropped == 0, "rotation drops no events");
+    Check(!std::filesystem::exists(file) &&
+              !std::filesystem::exists(segment(status.segment - 2)),
+          "segments before the previous one are deleted");
+    Check(std::filesystem::exists(segment(status.segment - 1)) &&
+              std::filesystem::exists(segment(status.segment)),
+          "the previous and current segments are kept");
+    Check(std::filesystem::file_size(segment(status.segment - 1)) <= 1024 &&
+              std::filesystem::file_size(segment(status.segment)) <= 1024,
+          "no segment exceeds the segment size");
+    std::ifstream current{segment(status.segment)};
+    std::string first;
+    std::getline(current, first);
+    const auto header = nlohmann::json::parse(first);
+    Check(header["event"] == "rotated" &&
+              header["fields"]["build"] == "test-build" &&
+              header["fields"]["segment"] == status.segment,
+          "each new segment opens with the startup identity");
+    std::string last;
+    std::string line;
+    while (std::getline(current, line)) {
+      last = line;
+    }
+    Check(nlohmann::json::parse(last)["seq"] == status.events,
+          "the newest segment ends with the newest event");
+    for (std::uint64_t i = 1; i <= status.segment; ++i) {
+      std::filesystem::remove(i == 1 ? file : segment(static_cast<int>(i)));
+    }
   }
   {
+    test::WriteFile(file, "");
     Trace::Recorder next;
     Check(!next.Open(file, "second"), "existing evidence is never truncated");
   }

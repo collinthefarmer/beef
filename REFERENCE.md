@@ -20,7 +20,13 @@ citation into them names provenance, not a file a reader here can open.
   objects. Command context is thread-local and explicitly carried through
   `SessionQueue` callbacks; a captured old load session remains identifiable after
   cancellation. The recorder serializes and flushes transition events under its
-  own mutex, with a 512-event ring and 32-MiB per-run file limit. This diagnostic
+  own mutex, with a 512-event ring. The file is written in 32 MiB segments
+  (`kTraceSegmentBytes`): when one fills, the recorder opens the next
+  (`<name>-trace-<run>-<n>.jsonl`), deletes the one before the previous, and
+  starts the new segment with a `rotated` event that repeats the startup
+  identity, so the last 32 MiB of a run are always on disk and at most 64
+  MiB are; `tools/trace-report.py` reads a segment's siblings in sequence
+  order. This diagnostic
   mutex is not a renderer synchronization mechanism. Logging instrumentation does
   not establish engine resource ownership or GPU completion.
 - `tools/build-identity.py` runs before plugin compilation, writes a header only

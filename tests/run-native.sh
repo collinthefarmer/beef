@@ -134,5 +134,6 @@ fi
 
 python3 tests/tools/presenter_tests.py || status=1
 python3 tests/tools/tidy_tests.py || status=1
+python3 tests/tools/trace_report_tests.py || status=1
 
 exit $status

@@ -45,14 +45,19 @@ struct Status {
   std::uint64_t events = 0;
   std::uint64_t dropped = 0;
   std::uint64_t bytes = 0;
+  std::uint64_t segment = 0;
+  std::uint64_t rotations = 0;
   bool enabled = true;
   bool fileFailed = false;
-  bool limitReached = false;
 };
+
+inline constexpr std::uint64_t kTraceSegmentBytes = 32 * 1024 * 1024;
+inline constexpr std::uint64_t kTraceSegmentsKept = 2;
 
 class Recorder {
 public:
-  explicit Recorder(std::uint64_t a_byteLimit = 32 * 1024 * 1024);
+  explicit Recorder(std::uint64_t a_segmentBytes = kTraceSegmentBytes,
+                    std::uint64_t a_segmentsKept = kTraceSegmentsKept);
   bool Open(const std::filesystem::path &a_path, std::string a_run);
   void Enable(bool a_enabled) noexcept;
   void Record(Event a_event, Context a_context,
@@ -62,13 +67,20 @@ public:
 
 private:
   void Write(std::string_view a_line);
+  [[nodiscard]] std::filesystem::path
+  SegmentPath(std::uint64_t a_segment) const;
+  [[nodiscard]] bool OpenSegment(std::uint64_t a_segment);
+  void Rotate();
 
   mutable std::mutex lock_;
   std::ofstream file_;
+  std::filesystem::path firstSegment_;
   std::string run_;
+  std::string identity_;
   std::deque<std::string> recent_;
   Status status_;
-  std::uint64_t byteLimit_;
+  std::uint64_t segmentBytes_;
+  std::uint64_t segmentsKept_;
 };
 
 class Scope {

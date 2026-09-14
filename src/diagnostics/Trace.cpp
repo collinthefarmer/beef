@@ -1,5 +1,6 @@
 #include "diagnostics/Trace.h"
 
+#include <algorithm>
 #include <array>
 #include <chrono>
 #include <format>
@@ -22,17 +23,74 @@ constexpr std::array<std::string_view, 16> names{
     "invalid"};
 }
 
-Recorder::Recorder(std::uint64_t a_byteLimit) : byteLimit_(a_byteLimit) {}
+Recorder::Recorder(std::uint64_t a_segmentBytes, std::uint64_t a_segmentsKept)
+    : segmentBytes_(a_segmentBytes),
+      segmentsKept_(std::max<std::uint64_t>(2, a_segmentsKept)) {}
 
 bool Recorder::Open(const std::filesystem::path &a_path, std::string a_run) {
   std::scoped_lock lock{lock_};
-  if (file_.is_open() || std::filesystem::exists(a_path)) {
+  if (file_.is_open()) {
     return false;
   }
-  file_.open(a_path, std::ios::out | std::ios::binary);
-  status_.fileFailed = !file_;
+  firstSegment_ = a_path;
   run_ = std::move(a_run);
+  return OpenSegment(1);
+}
+
+std::filesystem::path Recorder::SegmentPath(std::uint64_t a_segment) const {
+  if (a_segment <= 1) {
+    return firstSegment_;
+  }
+  std::filesystem::path path = firstSegment_;
+  const std::string extension = path.extension().string();
+  path.replace_extension();
+  return path.concat(std::format("-{}", a_segment)).concat(extension);
+}
+
+bool Recorder::OpenSegment(std::uint64_t a_segment) {
+  const std::filesystem::path path = SegmentPath(a_segment);
+  std::error_code ec;
+  if (std::filesystem::exists(path, ec)) {
+    status_.fileFailed = true;
+    return false;
+  }
+  file_.open(path, std::ios::out | std::ios::binary);
+  status_.fileFailed = !file_;
+  status_.segment = a_segment;
+  status_.bytes = 0;
   return !status_.fileFailed;
+}
+
+void Recorder::Rotate() {
+  file_.close();
+  const std::uint64_t next = status_.segment + 1;
+  if (!OpenSegment(next)) {
+    return;
+  }
+  ++status_.rotations;
+  if (next > segmentsKept_) {
+    std::error_code ec;
+    std::filesystem::remove(SegmentPath(next - segmentsKept_), ec);
+  }
+  nlohmann::json fields =
+      identity_.empty() ? nlohmann::json::object()
+                        : nlohmann::json::parse(identity_, nullptr, false);
+  if (!fields.is_object()) {
+    fields = nlohmann::json::object();
+  }
+  fields["segment"] = next;
+  fields["previous"] = SegmentPath(next - 1).filename().string();
+  fields["dropped"] = status_.dropped;
+  const nlohmann::json event{{"schema", 1},
+                             {"run", run_},
+                             {"seq", status_.events},
+                             {"event", "rotated"},
+                             {"fields", std::move(fields)}};
+  const std::string line = event.dump() + "\n";
+  file_ << line;
+  file_.flush();
+  status_.bytes += line.size();
+  status_.fileFailed = !file_;
 }
 
 void Recorder::Enable(bool a_enabled) noexcept {
@@ -63,6 +121,9 @@ void Recorder::Record(Event a_event, Context a_context,
       truncated = truncated || field.value.size() > 2048;
       fields[std::string{field.name.substr(0, 64)}] =
           field.value.substr(0, 2048);
+    }
+    if (a_event == Event::kStartup) {
+      identity_ = fields.dump();
     }
     nlohmann::json event{
         {"schema", 1},
@@ -100,26 +161,12 @@ void Recorder::Write(std::string_view a_line) {
   if (!file_.is_open() || status_.fileFailed) {
     return;
   }
-  if (status_.bytes + a_line.size() + 513 > byteLimit_) {
-    ++status_.dropped;
-    if (!status_.limitReached) {
-      auto event = nlohmann::json::parse(a_line);
-      event["event"] = "trace_limit";
-      event["fields"] = nlohmann::json::object();
-      const std::string terminal = event.dump() + "\n";
-      if (status_.bytes + terminal.size() <= byteLimit_) {
-        file_ << terminal;
-        file_.flush();
-        status_.bytes += terminal.size();
-        status_.fileFailed = !file_;
-      }
-      status_.limitReached = true;
+  if (status_.bytes + a_line.size() + 1 > segmentBytes_) {
+    Rotate();
+    if (status_.fileFailed) {
+      ++status_.dropped;
+      return;
     }
-    return;
-  }
-  if (status_.limitReached) {
-    ++status_.dropped;
-    return;
   }
   file_ << a_line << '\n';
   file_.flush();
