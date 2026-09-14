@@ -392,6 +392,12 @@ These are settled. Do not re-open them; apply them where the plans say.
 
 Append one line per plan as it completes: date, plan letter, branch, outcome.
 
+- 2026-09-14, final pass: `cleanup/stage-0` and `main` at `9e8247c` (Plans F
+  to E merged, plus the segment-rotating trace). `./build.sh` clean,
+  `tools/gate.sh push` green, `./install.sh` done. The batched in-game
+  checkpoints (F, A, B, C, D, E and the UI core checkpoint) are handed to the
+  user; Plan G still waits on UI slice 2A.
+
 - 2026-09-13: the four-piece commit was superseded; the user committed the
   whole tree as `505f24c cleanup, ui in progress. not verified` (including
   `docs/.obsidian/`). That commit does not build on its own:

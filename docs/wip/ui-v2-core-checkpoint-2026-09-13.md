@@ -47,8 +47,21 @@ texture and draw-ticket path.
 
 ## Validation
 
-Final build identity, test results, and installation status will be recorded here
-after the integrated source checks finish.
+Recorded 2026-09-14 on the merged tree `9e8247c` (this wave as `8f7b8b5`,
+plus critique Plans F to E and the segment-rotating trace):
+
+- Build identity `9e8247c88ca0-3f5e6004ba107e76-Release`, source SHA256
+  `3f5e6004ba107e76...`; `./build.sh Release -j 4` links with no warnings.
+- `tools/gate.sh push` green: formatting, the sanitized native suite
+  (66 suites), full clang-tidy matching `docs/wip/tidy-baseline.txt`,
+  `tools/layers.sh`, and the no-comment check.
+- One test of this wave was updated during integration:
+  `tests/studio/paintsession_tests.cpp` now expects `PreparePaintCommit` to
+  refuse a commit whose target lacks a signal at preparation, which is what
+  this wave's preflight does.
+- Installed to the MO2 mod folder by `./install.sh` on 2026-09-14. The
+  in-game pass below has not been run; it is batched with the critique
+  checkpoints.
 
 ## Complete-editor game check
 
