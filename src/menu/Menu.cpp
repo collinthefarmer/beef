@@ -239,9 +239,6 @@ void RenderStatus(const Studio::Snapshot &a_snapshot) {
   const auto diagnostics = Trace::Get().Inspect();
   if (diagnostics.fileFailed) {
     Problem("Diagnostic trace file failed; recent events remain in memory.");
-  } else if (diagnostics.limitReached) {
-    Warn("Diagnostic trace reached its size limit; restart for a new trace "
-         "file.");
   }
   const Studio::Status &st = a_snapshot.status;
   if (st.emissivePath) {
