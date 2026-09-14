@@ -1,5 +1,8 @@
 #include "render/RuntimeTextures.h"
 
+#include "render/D3DResult.h"
+#include "render/ShaderConstants.h"
+
 #include <algorithm>
 #include <cmath>
 #include <cstring>
@@ -10,19 +13,11 @@ namespace BetterEnchantmentEffects {
 using namespace REX::W32;
 
 namespace {
-constexpr bool Failed(std::int32_t a_hr) noexcept { return a_hr < 0; }
-
 template <class T> void Release(T *&a_ptr) {
   if (a_ptr) {
     a_ptr->Release();
     a_ptr = nullptr;
   }
-}
-
-RE::NiTexture::RendererData *DataOf(RE::NiSourceTexture *a_texture) {
-  return a_texture ? reinterpret_cast<RE::NiTexture::RendererData *>(
-                         a_texture->rendererTexture)
-                   : nullptr;
 }
 
 class RendererLock {
@@ -40,48 +35,6 @@ public:
 private:
   RE::BSGraphics::Renderer &renderer_;
 };
-
-struct alignas(16) Constants {
-  float offsetScale[4];
-  float flags[4];
-  float extra[4];
-  float extra2[4];
-  float layer[4];
-  float layerColor[4];
-  float layerMask[4];
-  float layerCurve[4];
-};
-
-struct alignas(16) ProgramConstants {
-  float code[256][4];
-  float refs[16][4];
-  float refValues[16][4];
-  float texParams[8][4];
-  float texTransform[8][4];
-  float texFlags[8][4];
-  float misc[4];
-};
-static_assert(sizeof(ProgramConstants) % 16 == 0);
-static_assert(static_cast<int>(Program::Op::kNumber) == 0 &&
-              static_cast<int>(Program::Op::kRef) == 3 &&
-              static_cast<int>(Program::Op::kIf) == 22 &&
-              static_cast<int>(Program::Op::kClamp) == 26 &&
-              static_cast<int>(Program::Op::kStep) == 35 &&
-              static_cast<int>(Program::Op::kLerp) == 37);
-
-struct alignas(16) RippleConstants {
-  float firings[8][4];
-  float shape[4];
-  float misc[4];
-};
-
-struct alignas(16) ClassifyConstants {
-  float centroidRmaos[kMaxClusters][4];
-  float centroidLuma[kMaxClusters][4];
-  float weights[4];
-  float misc[4];
-};
-static_assert(kMaxClusters == 8 && sizeof(ClassifyConstants) % 16 == 0);
 
 float MipThatFits(const TextureLab::Extent &a_extent,
                   std::uint32_t a_side) noexcept {
@@ -321,7 +274,7 @@ bool TextureLab::Render(RenderTarget &a_target, RE::NiSourceTexture *a_source,
   const bool haveSource = sourceData && sourceData->resourceView;
 
   const auto &sc = layerPass ? a_params.layer.input.transform : a_params.scroll;
-  Constants constants{};
+  LayerConstants constants{};
   constants.offsetScale[0] = sc.uOffset;
   constants.offsetScale[1] = sc.vOffset;
   constants.offsetScale[2] = sc.tileU;

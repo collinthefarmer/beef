@@ -1,5 +1,7 @@
 #include "render/RuntimeTextures.h"
 
+#include "render/D3DResult.h"
+
 #include <REX/W32/COMPTR.h>
 
 #include <cstring>
@@ -9,14 +11,6 @@ namespace BetterEnchantmentEffects {
 using namespace REX::W32;
 
 namespace {
-constexpr bool Failed(std::int32_t a_hr) noexcept { return a_hr < 0; }
-
-RE::NiTexture::RendererData *DataOf(RE::NiSourceTexture *a_texture) {
-  return a_texture ? reinterpret_cast<RE::NiTexture::RendererData *>(
-                         a_texture->rendererTexture)
-                   : nullptr;
-}
-
 class RendererLock {
 public:
   RendererLock() : renderer_(RE::BSGraphics::Renderer::GetSingleton()) {

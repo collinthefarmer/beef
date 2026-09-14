@@ -1,6 +1,7 @@
 #include "render/RenderTargetPool.h"
 
 #include "Identity.h"
+#include "render/D3DResult.h"
 #include "render/TextureRef.h"
 
 #include <algorithm>
@@ -10,8 +11,6 @@ namespace BetterEnchantmentEffects {
 using namespace REX::W32;
 
 namespace {
-constexpr bool Failed(std::int32_t a_hr) noexcept { return a_hr < 0; }
-
 std::string TextureName(std::string a_name) {
   std::ranges::transform(a_name, a_name.begin(), [](unsigned char a_char) {
     return a_char == '/' ? '\\' : static_cast<char>(std::tolower(a_char));
@@ -20,12 +19,6 @@ std::string TextureName(std::string a_name) {
     a_name.erase(0, 9);
   }
   return a_name;
-}
-
-RE::NiTexture::RendererData *DataOf(RE::NiSourceTexture *a_texture) {
-  return a_texture ? reinterpret_cast<RE::NiTexture::RendererData *>(
-                         a_texture->rendererTexture)
-                   : nullptr;
 }
 }
 
