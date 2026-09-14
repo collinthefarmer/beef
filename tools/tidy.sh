@@ -33,6 +33,18 @@ result_name() {
 	echo "${stem//\//_}.txt"
 }
 
+# A moved or deleted source leaves its result behind. tools/tidy-baseline.sh
+# reads the whole directory, so an orphan would be counted as a current
+# finding under a path that no longer exists. Only a full run knows the
+# complete source list, so only a full run prunes.
+if [ "$SELECTED" -eq 0 ]; then
+	KEEP=$(for f in "${FILES[@]}"; do result_name "$f"; done)
+	for result in "$OUT"/*.txt; do
+		[ -e "$result" ] || continue
+		grep -qxF "$(basename "$result")" <<<"$KEEP" || rm -f "$result"
+	done
+fi
+
 # A result is fresh when it is newer than its source, the compile database,
 # .clang-tidy, and every header its object depended on at the last build
 # (ninja's dependency log). A source with no recorded dependencies falls back
