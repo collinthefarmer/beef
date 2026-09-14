@@ -417,8 +417,6 @@ struct ReduceVisitor {
     }
   }
 
-  void operator()(const ScratchRebuilt &) { mask.dirty = false; }
-
   void operator()(const BeginPaint &a_i) {
     state.paint = PaintSession{};
     state.paint->recipeID = a_i.recipeID;

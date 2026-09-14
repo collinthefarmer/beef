@@ -60,8 +60,22 @@ void MaskIntentsBuildAndUndo() {
   Check(state.mask.terms[1].op == TermOp::kAnd,
         "a following term defaults to kAnd, not kSet");
 
-  Reduce(state, ScratchRebuilt{});
-  Check(!state.mask.dirty, "a rebuilt scratch preview is clean");
+  Reduce(state, SetMode{Mode::kPaint});
+  Reduce(state, BeginPaint{"glow", RecipeKey{}, Surface::kMaterial});
+  AcknowledgePaintUpdate(state, PaintUpdateResult{0, 0, {}});
+  Check(state.paint && state.paint->ready, "the paint session becomes ready");
+
+  const std::optional<UpdatePaint> update = PendingPaintUpdate(state);
+  Check(update.has_value(),
+        "a dirty mask on a ready paint session produces a pending update");
+  Reduce(state, *update);
+  AcknowledgePaintUpdate(state, PaintUpdateResult{state.paint->sessionID,
+                                                  state.paint->revision,
+                                                  std::nullopt});
+  Check(!state.mask.dirty,
+        "acknowledging the paint host's applied update clears the mask's "
+        "dirty flag");
+
   Reduce(state, ClearMask{});
   Check(state.mask.terms.empty(), "ClearMask empties the terms");
   Check(state.mask.dirty, "ClearMask schedules a cleared scratch preview");

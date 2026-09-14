@@ -132,7 +132,6 @@ struct ViewGeometry {
 struct SetStackSplit {
   float ratio = 0.5f;
 };
-struct ScratchRebuilt {};
 struct ShowSettings {
   bool on = false;
 };
@@ -272,11 +271,11 @@ using Intent =
                  ShowSettings, ShowResource, ReadMesh, AddTerm, SetTermOp,
                  SetTermText, SetTermKind, RemoveTerm, MoveTerm, PickTerm,
                  SoloTerm, MuteTerm, LoadMask, ClearMask, UndoMask, RedoMask,
-                 ScratchRebuilt, BeginPaint, SetPaintSurface, KeepPaint,
-                 EndPaint, UpdatePaint, EditRecipe, SoloRecipe, SoloOutput,
-                 SoloLayer, MuteLayer, SetFreeze, SetScrub, SetSpeed, StepClock,
-                 Undo, Redo, CreateRecipe, RenameRecipe, FireTrigger>;
-inline constexpr std::size_t kIntentCount = 46;
+                 BeginPaint, SetPaintSurface, KeepPaint, EndPaint, UpdatePaint,
+                 EditRecipe, SoloRecipe, SoloOutput, SoloLayer, MuteLayer,
+                 SetFreeze, SetScrub, SetSpeed, StepClock, Undo, Redo,
+                 CreateRecipe, RenameRecipe, FireTrigger>;
+inline constexpr std::size_t kIntentCount = 45;
 static_assert(std::variant_size_v<Intent> == kIntentCount);
 
 using Intents = std::vector<Intent>;
