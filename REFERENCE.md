@@ -496,6 +496,32 @@ Lab mechanics:
 - Geometry names ending in `Identity::ShellSuffix()` are shells the plugin
   attached; the apply traversal skips them, and shells are collected before
   applying because attaching one adds a sibling a live walk would visit.
+- `ShellPose` (Plan G, 2026-09-14): `PosedTransform` (`mesh/ShellPose.h`,
+  engine-free, unit-tested in `tests/mesh/shellpose_tests.cpp`) composes all
+  six pose fields onto a bone's rest skin-to-bone transform, per bone, in
+  this order: inflate (as before), then scale about `scalePoint`, then spin
+  about `spinAxis` through `scalePoint`, then translate by `offset`. No code
+  in this plugin writes a shell clone's own `local`/`world` transform for
+  posing, only `skinToBone` (as inflate already did); `skinToBone` is
+  therefore the only hook available for the other five fields too, and
+  `offset` is composed into it alongside them rather than applied
+  separately. `scalePoint` is decided to be bone/skin space, the same space
+  `inflate` already operates in: the schema is silent on the space of
+  `scale`, `scalePoint` and `spinAxis`, and bone space is the only space a
+  `skinToBone` composition can express. `offset`'s schema text says "world
+  space", but composed into `skinToBone` it is applied per bone, in that
+  bone's own bind-pose orientation, not truly world space; it reads as
+  world space only to the extent a shell's dominant bone's bind pose is
+  itself close to axis-aligned with the world, which is typical near a
+  skeleton's rest pose but not guaranteed. The in-game checkpoint's
+  `offset` step is the check on whether this approximation holds; if it
+  does not, `offset` needs a render-side hook this plan did not add.
+  `spin`'s unit is turns (`schema/recipe.schema.json`), converted to
+  radians inside `PosedTransform`; trace and log text say "turns", never
+  "radians".
+  `PosedTransform` normalises `spinAxis` and falls back to +Z when it is
+  zero, so the renderer never divides by zero regardless of what
+  `CheckShell`'s `spinAxis must not be zero` validation caught first.
 
 ## Engine events, hooks and the manager
 
