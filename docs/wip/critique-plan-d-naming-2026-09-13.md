@@ -15,7 +15,7 @@ Implemented 2026-09-14 on `critique/d-naming`, branched from
 | `9bbc313` | `RuntimeTextures.h` -> `TextureLab.h` and its three sources; `Status::runtimeLab` -> `textureLab` |
 | `4438acd` | `Resolve.cpp`'s glob indices spelled out |
 | `f6b3d3d` | the glossary in `docs/conventions.md` |
-| (docs) | this Status block, the handoff row and log |
+| `340d7b4` | this Status block, the handoff row and log |
 
 ### Renames
 
