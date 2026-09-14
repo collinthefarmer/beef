@@ -515,7 +515,11 @@ Lab mechanics:
   rebuilt by `RebuildApplied` on every publish). `RecipeStoreStatus::heldBack`
   counts them and the `recipes: ... held back` log line reports the count.
   Fixing the error in the menu applies the recipe on the next republish;
-  introducing one withdraws it. The menu reads the same fact from a row's
+  introducing one withdraws it. A load-time diagnostic (a newer `format`, a
+  duplicate key) is not reproduced by `Validate`, so `SaveRecipe` refreshes
+  the derived state after writing: the saved file carries the loader's
+  format, and the recipe is re-admitted by the save itself rather than by
+  the next reload. The menu reads the same fact from a row's
   `problems` through `HasRecipeErrors`.
 - `Manager::CollectPieceGeometries` returning false rejects the whole piece,
   including the geometries it already collected before the layout failure, so a

@@ -548,9 +548,9 @@ SaveRecipe(std::string_view a_id) {
   }
   loaded->path = path;
   loaded->saved = loaded->recipe;
-  loaded->dirty = false;
-  Republish(*index);
-  logger::info("recipe {} saved to {}", loaded->recipe.id, path.string());
+  RefreshRecipeDerivedState(a_id);
+  logger::info("recipe {} saved to {}{}", loaded->recipe.id, path.string(),
+               HeldBack(*loaded) ? "; still held back" : "");
   return path;
 }
 
