@@ -958,7 +958,13 @@ Decompile provenance (`decompiled/WornEnchantmentFX/plugin.c` unless noted):
   rather than under the recipe root, which loads every `.json` below it as
   a recipe.
 
-## planners (`planners/ActorPlan.h`, `planners/StackPlan.h`, `planners/BindingPlan.h`, `planners/ActorPlanning.h`, `planners/TextureIdentity.h`)
+## planners (`planners/ActorPlan.h`, `planners/TargetPool.h`, `planners/StackPlan.h`, `planners/BindingPlan.h`, `planners/ActorPlanning.h`, `planners/TextureIdentity.h`)
+
+- `TargetPool` (`planners/TargetPool.h`) hands out an index as a
+  `shared_ptr` lease. An index is free again only after its last owner
+  releases the lease, and a lease outlives the pool that issued it, so
+  `render/RenderTargetPool`'s presenter slots stay reserved while any
+  target still holds one.
 
 - `TextureIdentity.h` holds the two engine-free halves of
   `render/SourceSampling`: `ImageCacheKey` lowercases a texture path so

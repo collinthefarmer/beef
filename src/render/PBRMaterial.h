@@ -70,7 +70,7 @@ private:
   friend struct MaterialInputs;
   explicit PbrMaterial(RE::BSLightingShaderProperty *a_property);
 
-  RE::BSTSmartPointer<PBRMaterialLayout> material_;
+  RE::BSTSmartPointer<PBRMaterialLayout> layout_;
   RE::NiPointer<RE::BSLightingShaderProperty> property_;
 };
 }

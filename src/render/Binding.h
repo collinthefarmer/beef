@@ -94,7 +94,7 @@ private:
   void SetFeature(Slot a_slot, bool a_on);
   [[nodiscard]] bool HasGroup(Slot a_slot) const;
 
-  PbrMaterial binding_;
+  PbrMaterial material_;
   std::uint64_t traceID_ = 0;
   std::array<std::optional<Group>, kSlotCount> groups_;
   std::list<PublishedTexture> published_;

@@ -106,10 +106,10 @@ void SweepRetiredMaterialTextures() {
 }
 
 SlotWriter::SlotWriter(PbrMaterial a_material)
-    : binding_(std::move(a_material)), traceID_(Trace::NextID()) {}
+    : material_(std::move(a_material)), traceID_(Trace::NextID()) {}
 
 bool SlotWriter::MaterialAttached() const noexcept {
-  return binding_.Attached();
+  return material_.Attached();
 }
 
 bool SlotWriter::HasGroup(Slot a_slot) const {
@@ -118,14 +118,14 @@ bool SlotWriter::HasGroup(Slot a_slot) const {
 
 SlotWriter::GroupState SlotWriter::Capture(Slot a_slot) const {
   GroupState state;
-  const auto &material = *binding_.material_;
-  if (const auto *field = TextureFieldOf(*binding_.material_, a_slot)) {
+  const auto &material = *material_.layout_;
+  if (const auto *field = TextureFieldOf(*material_.layout_, a_slot)) {
     state.texture = reinterpret_cast<std::uintptr_t>(field->get());
   }
   state.flags = material.pbrFlags & FeatureMask(a_slot);
   switch (a_slot) {
   case Slot::kEmissive: {
-    const auto &property = *binding_.property_;
+    const auto &property = *material_.property_;
     state.storage = reinterpret_cast<std::uintptr_t>(property.emissiveColor);
     if (property.emissiveColor) {
       const auto &color = *property.emissiveColor;
@@ -170,12 +170,12 @@ SlotWriter::Group *SlotWriter::BeginWrite(Slot a_slot, bool a_enableFeature) {
   const auto current = Capture(a_slot);
   if (group)
     return group->state.Owns(current) ? &*group : nullptr;
-  const auto *field = TextureFieldOf(*binding_.material_, a_slot);
+  const auto *field = TextureFieldOf(*material_.layout_, a_slot);
   TextureRef original{field ? field->get() : nullptr};
   if (!original.Valid())
     return nullptr;
   (void)RetiredTextures();
-  published_.push_back({binding_.material_, a_slot, original});
+  published_.push_back({material_.layout_, a_slot, original});
   auto &created = group.emplace(Group{OwnedState{current}, original, original});
   if (a_enableFeature)
     SetFeature(a_slot, true);
@@ -192,7 +192,7 @@ void SlotWriter::SetFeature(Slot a_slot, bool a_on) {
   if (!MaterialAttached()) {
     return;
   }
-  auto &flags = binding_.material_->pbrFlags;
+  auto &flags = material_.layout_->pbrFlags;
   const auto mask = FeatureMask(a_slot);
   const auto &group = groups_[static_cast<std::size_t>(a_slot)];
   if (group) {
@@ -214,21 +214,21 @@ std::optional<std::string> SlotWriter::ProblemMessage(Slot a_slot) const {
   if (!MaterialAttached()) {
     return "material unavailable or replaced";
   }
-  if (!TextureFieldOf(*binding_.material_, a_slot) && a_slot != Slot::kGlint) {
+  if (!TextureFieldOf(*material_.layout_, a_slot) && a_slot != Slot::kGlint) {
     return std::format("slot '{}' has no place on a PBR material",
                        SlotName(a_slot));
   }
-  if (a_slot == Slot::kEmissive && !binding_.property_->emissiveColor) {
+  if (a_slot == Slot::kEmissive && !material_.property_->emissiveColor) {
     return "the property has no emissive colour storage";
   }
-  const bool hair = (binding_.material_->pbrFlags & kPbrHairMarschner) != 0;
+  const bool hair = (material_.layout_->pbrFlags & kPbrHairMarschner) != 0;
   if ((a_slot == Slot::kFuzz || a_slot == Slot::kGlint ||
        a_slot == Slot::kCoat || a_slot == Slot::kSubsurface) &&
       hair) {
     return "the material has a hair model, which CS evaluates instead";
   }
   if ((a_slot == Slot::kFuzz || a_slot == Slot::kGlint) &&
-      !FuzzPossible(*binding_.material_) && !HasGroup(Slot::kCoat)) {
+      !FuzzPossible(*material_.layout_) && !HasGroup(Slot::kCoat)) {
     return "the material has a coat model, which CS evaluates instead of fuzz "
            "and glint";
   }
@@ -242,25 +242,24 @@ std::optional<std::string> SlotWriter::ProblemMessage(Slot a_slot) const {
   }
   if (a_slot == Slot::kCoat &&
       (HasGroup(Slot::kSubsurface) ||
-       (binding_.material_->pbrFlags & kPbrSubsurface))) {
+       (material_.layout_->pbrFlags & kPbrSubsurface))) {
     return "the material carries subsurface; coat and subsurface share one map";
   }
   if (a_slot == Slot::kSubsurface &&
-      (HasGroup(Slot::kCoat) ||
-       (binding_.material_->pbrFlags & kPbrTwoLayer))) {
+      (HasGroup(Slot::kCoat) || (material_.layout_->pbrFlags & kPbrTwoLayer))) {
     return "the material carries a coat; coat and subsurface share one map";
   }
   return std::nullopt;
 }
 
 void SlotWriter::WriteTexture(Slot a_slot, const TextureRef &a_texture) {
-  if (!a_texture.Valid() || !TextureFieldOf(*binding_.material_, a_slot))
+  if (!a_texture.Valid() || !TextureFieldOf(*material_.layout_, a_slot))
     return;
   auto *group = BeginWrite(a_slot);
   if (!group)
     return;
   const TextureRef &target = a_texture ? a_texture : group->original;
-  *TextureFieldOf(*binding_.material_, a_slot) =
+  *TextureFieldOf(*material_.layout_, a_slot) =
       RE::NiPointer<RE::NiSourceTexture>{target.get()};
   group->written = target;
   SetFeature(a_slot, static_cast<bool>(a_texture));
@@ -270,43 +269,43 @@ void SlotWriter::WriteTexture(Slot a_slot, const TextureRef &a_texture) {
 void SlotWriter::WriteEmissive(const Vec3 &a_color, float a_multiplier) {
   if (!BeginWrite(Slot::kEmissive))
     return;
-  *binding_.property_->emissiveColor = ToNi(a_color);
-  binding_.property_->emissiveMult = a_multiplier;
-  binding_.property_->flags.set(
+  *material_.property_->emissiveColor = ToNi(a_color);
+  material_.property_->emissiveMult = a_multiplier;
+  material_.property_->flags.set(
       RE::BSShaderProperty::EShaderPropertyFlag::kOwnEmit);
   EndWrite(Slot::kEmissive);
 }
 void SlotWriter::WriteFuzz(const Vec3 &a_color, float a_weight) {
   if (!BeginWrite(Slot::kFuzz, true))
     return;
-  binding_.material_->fuzzColor = ToNi(a_color);
-  binding_.material_->fuzzWeight = std::clamp(a_weight, 0.0f, 1.0f);
+  material_.layout_->fuzzColor = ToNi(a_color);
+  material_.layout_->fuzzWeight = std::clamp(a_weight, 0.0f, 1.0f);
   EndWrite(Slot::kFuzz);
 }
 void SlotWriter::WriteHeightScale(float a_scale) {
   if (!BeginWrite(Slot::kHeight))
     return;
-  binding_.material_->rimLightPower = a_scale;
+  material_.layout_->rimLightPower = a_scale;
   EndWrite(Slot::kHeight);
 }
 void SlotWriter::WriteGlint(const GlintParameters &a_parameters) {
   if (!BeginWrite(Slot::kGlint))
     return;
-  binding_.material_->glintParameters = a_parameters;
+  material_.layout_->glintParameters = a_parameters;
   EndWrite(Slot::kGlint);
 }
 void SlotWriter::WriteCoat(float a_roughness, float a_level) {
   if (!BeginWrite(Slot::kCoat, true))
     return;
-  binding_.material_->coatRoughness = std::clamp(a_roughness, 0.0f, 1.0f);
-  binding_.material_->coatSpecularLevel = std::clamp(a_level, 0.0f, 1.0f);
+  material_.layout_->coatRoughness = std::clamp(a_roughness, 0.0f, 1.0f);
+  material_.layout_->coatSpecularLevel = std::clamp(a_level, 0.0f, 1.0f);
   EndWrite(Slot::kCoat);
 }
 void SlotWriter::WriteSubsurface(const Vec3 &a_color, float a_thickness) {
   if (!BeginWrite(Slot::kSubsurface, true))
     return;
-  binding_.material_->specularColor = ToNi(a_color);
-  binding_.material_->subSurfaceLightRolloff =
+  material_.layout_->specularColor = ToNi(a_color);
+  material_.layout_->subSurfaceLightRolloff =
       std::clamp(a_thickness, 0.0f, 1.0f);
   EndWrite(Slot::kSubsurface);
 }
@@ -324,18 +323,18 @@ bool SlotWriter::StillOwned() const noexcept {
 
 void SlotWriter::RestoreGroup(Slot a_slot, const GroupState &a_state,
                               const TextureRef &a_originalTexture) {
-  auto &material = *binding_.material_;
+  auto &material = *material_.layout_;
   switch (a_slot) {
   case Slot::kEmissive:
-    if (binding_.property_->emissiveColor) {
-      *binding_.property_->emissiveColor = ToNi(a_state.color);
+    if (material_.property_->emissiveColor) {
+      *material_.property_->emissiveColor = ToNi(a_state.color);
     }
-    binding_.property_->emissiveMult = a_state.scalar;
+    material_.property_->emissiveMult = a_state.scalar;
     if (a_state.flags)
-      binding_.property_->flags.set(
+      material_.property_->flags.set(
           RE::BSShaderProperty::EShaderPropertyFlag::kOwnEmit);
     else
-      binding_.property_->flags.reset(
+      material_.property_->flags.reset(
           RE::BSShaderProperty::EShaderPropertyFlag::kOwnEmit);
     break;
   case Slot::kFuzz:
@@ -381,7 +380,7 @@ void SlotWriter::Restore() {
             Trace::Event::kRestore,
             {{"binding", std::to_string(traceID_)},
              {"slot", std::string{SlotName(slot)}},
-             {"material", Trace::Pointer(binding_.material_.get())},
+             {"material", Trace::Pointer(material_.layout_.get())},
              {"original_texture",
               std::to_string(group->state.Original().texture)},
              {"written_texture",
@@ -407,7 +406,7 @@ void SlotWriter::RetainPublishedTextures() noexcept {
     return;
   for (auto it = published_.begin(); it != published_.end();) {
     const auto &group = groups_[static_cast<std::size_t>(it->slot)];
-    const auto *field = TextureFieldOf(*binding_.material_, it->slot);
+    const auto *field = TextureFieldOf(*material_.layout_, it->slot);
     const TextureRef *retained = nullptr;
     if (group && field) {
       if (field->get() == group->written.get())

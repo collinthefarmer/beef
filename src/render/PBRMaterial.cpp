@@ -42,11 +42,11 @@ PbrMaterial::Bind(RE::BSLightingShaderProperty *a_property) {
 }
 
 PbrMaterial::PbrMaterial(RE::BSLightingShaderProperty *a_property)
-    : material_(static_cast<PBRMaterialLayout *>(a_property->material)),
+    : layout_(static_cast<PBRMaterialLayout *>(a_property->material)),
       property_(a_property) {}
 
 bool PbrMaterial::Attached() const noexcept {
-  return material_ && property_ && property_->material == material_.get();
+  return layout_ && property_ && property_->material == layout_.get();
 }
 
 bool PbrMaterial::TextureSlotsValid() const {
@@ -54,9 +54,9 @@ bool PbrMaterial::TextureSlotsValid() const {
     return false;
   }
   const std::array textures{
-      material_->rmaosTexture.get(), material_->emissiveTexture.get(),
-      material_->displacementTexture.get(), material_->featuresTexture0.get(),
-      material_->featuresTexture1.get()};
+      layout_->rmaosTexture.get(), layout_->emissiveTexture.get(),
+      layout_->displacementTexture.get(), layout_->featuresTexture0.get(),
+      layout_->featuresTexture1.get()};
   for (auto *texture : textures) {
     if (!texture || !netimmerse_cast<RE::NiSourceTexture *>(
                         static_cast<RE::NiTexture *>(texture))) {

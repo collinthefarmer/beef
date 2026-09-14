@@ -291,10 +291,10 @@ MaterialInputs MaterialInputs::From(const PbrMaterial &a_material) {
   if (!a_material.Attached()) {
     return in;
   }
-  in.diffuse = a_material.material_->diffuseTexture;
-  in.normal = a_material.material_->normalTexture;
-  in.rmaos = a_material.material_->rmaosTexture;
-  in.displacement = a_material.material_->displacementTexture;
+  in.diffuse = a_material.layout_->diffuseTexture;
+  in.normal = a_material.layout_->normalTexture;
+  in.rmaos = a_material.layout_->rmaosTexture;
+  in.displacement = a_material.layout_->displacementTexture;
   in.flatDisplacement = MeasureFlatDisplacement(in.displacement);
   return in;
 }

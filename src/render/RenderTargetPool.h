@@ -1,6 +1,6 @@
 #pragma once
 
-#include "planners/ResourceSlots.h"
+#include "planners/TargetPool.h"
 #include "render/RuntimeTextures.h"
 
 #include <cstdint>
@@ -44,7 +44,7 @@ private:
     RE::NiPointer<RE::NiSourceTexture> texture;
     RE::NiTexture::RendererData *original = nullptr;
   };
-  ResourceSlots presenterSlots_{kPresenterCount};
+  TargetPool presenterSlots_{kPresenterCount};
   std::array<Presenter, kPresenterCount> presenters_{};
   std::uint64_t nextGeneration_ = 0;
   std::shared_ptr<Pool> pool_ = std::make_shared<Pool>();
