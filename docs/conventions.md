@@ -547,6 +547,13 @@ with these meanings and no other word for the same thing.
   after adding an include so the dependency log knows about it. It reads
   `build/clangd/compile_commands.json`, which `tools/compile-db.sh` rewrites
   after a source file is added or removed.
+- **No comments** — the push gate greps `src/` for a `//` that begins a line or
+  follows whitespace after a `;` or `}`, and fails on any hit. `src/_old`,
+  `src/extern` and `src/cs` are frozen or vendored and keep theirs; a `NOLINT`
+  marker is a tool directive, not prose, and the one in
+  `src/engine/RecipeStore.cpp` is the only one in the tree, with its reason in
+  `REFERENCE.md`. `src/studio` and `src/menu` are excluded until the UI v2
+  plan's complete-editor checkpoint, which owns those files.
 - **Layers** — `tools/layers.sh` holds the only copy of the include graph:
   one row per directory under `src/`, listing what that directory may
   include. It reports every `#include "..."` outside its row, every include

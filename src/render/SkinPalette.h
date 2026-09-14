@@ -3,8 +3,6 @@
 
 namespace BetterEnchantmentEffects {
 struct SkinPaletteState;
-// Owns repaired links and the scene storage they reference. Destroy before
-// releasing the clone; cleanup removes only links that still match our repair.
 class SkinPaletteLease {
 public:
   [[nodiscard]] static std::unique_ptr<SkinPaletteLease>

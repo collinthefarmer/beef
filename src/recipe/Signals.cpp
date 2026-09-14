@@ -1179,8 +1179,6 @@ void SignalState::Fire(const EventRecord &a_event, float a_time) {
   }
 }
 
-// Each signal kind has an independent state transition; dispatch only supplies
-// the shared evaluation context.
 struct SignalState::Evaluator {
   SignalState &state;
   const SignalGraph::Node &node;

@@ -265,8 +265,6 @@ struct Compositor::StackRenderer {
       return nullptr;
     }
     TextureLab::RenderTarget *previous = nullptr;
-    // Choose the first target so the final shown layer lands in our owned
-    // target.
     TextureLab::RenderTarget *write = shown % 2 == 1 ? own : scratch;
     TextureLab::RenderTarget *other = write == own ? scratch : own;
     for (const PreparedLayer &prepared : stack.layers_) {

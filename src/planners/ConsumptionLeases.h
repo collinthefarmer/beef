@@ -7,8 +7,6 @@
 #include <vector>
 
 namespace BetterEnchantmentEffects {
-// The consumer acknowledges submission, rather than estimating completion from
-// elapsed ticks. Unacknowledged work remains retained, including across clears.
 template <class Resource> class ConsumptionLeases {
 public:
   class Ticket {

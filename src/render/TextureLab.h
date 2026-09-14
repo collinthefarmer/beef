@@ -181,7 +181,6 @@ public:
   private:
     friend class TextureLab;
     friend class RenderTargetPool;
-    // Declared first so the slot is returned after presenter/resource teardown.
     std::shared_ptr<const std::size_t> presenterSlot_;
     std::uint64_t traceID_ = Trace::NextID();
     std::uint64_t generation_ = 0;

@@ -85,8 +85,6 @@ private:
   void Refresh(RE::Actor *a_actor);
   void Retire(RE::FormID a_actorID);
   void RetireEveryActor();
-  // Retire candidates, perform the mutation, then rebuild them. Recipe scope
-  // affects status reporting only; changing selectors can affect any actor.
   void ChangeAndRebuildActors(std::string a_reportRecipe,
                               const std::function<void()> &a_action);
   [[nodiscard]] std::vector<RE::FormID> LoadedActorIDs() const;
@@ -98,8 +96,6 @@ private:
   [[nodiscard]] std::vector<LivePiece>
   CollectPieces(RE::Actor *a_actor, bool a_firstPerson,
                 const Settings &a_settings);
-  // False rejects the entire piece, including geometry collected before a
-  // layout failure. Clone identity is filtered by CollectPieces separately.
   bool CollectPieceGeometries(LivePiece &piece, RE::NiAVObject *clone,
                               RE::NiAVObject *root, bool verbose);
   void MatchRecipes(RE::Actor *a_actor, LiveActor &a_state,

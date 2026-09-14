@@ -4,8 +4,6 @@
 #include <utility>
 
 namespace BetterEnchantmentEffects {
-// A coupled group is restored only while every value still matches our last
-// write. Equality cannot detect an external writer that writes the same value.
 template <class State> class OwnedState {
 public:
   explicit OwnedState(State a_original)

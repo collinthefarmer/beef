@@ -100,7 +100,6 @@ private:
   std::list<PublishedTexture> published_;
 };
 
-// Called on the engine thread, including while no actors are applied.
 void SweepRetiredMaterialTextures();
 
 class MaterialBinding final : public SlotTarget {

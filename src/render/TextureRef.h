@@ -7,8 +7,6 @@ class TextureRef {
 public:
   TextureRef() = default;
   TextureRef(std::nullptr_t) noexcept {}
-  // Generated textures retain their producer directly; pointer lookup is for
-  // textures arriving from the engine boundary.
   explicit TextureRef(std::shared_ptr<TextureLab::RenderTarget> a_target);
   TextureRef(RE::NiSourceTexture *a_texture);
   TextureRef(const RE::NiPointer<RE::NiSourceTexture> &a_texture);

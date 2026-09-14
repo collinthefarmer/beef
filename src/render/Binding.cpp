@@ -69,12 +69,17 @@ std::uint32_t FeatureMask(Slot a_slot) {
 }
 
 std::list<SlotWriter::PublishedTexture> &SlotWriter::RetiredTextures() {
-  // Process-lived because engine materials can outlive plugin singletons.
-  // Initialized while preparing a write, never for the first time in
-  // retirement.
-  // NOLINTNEXTLINE(cppcoreguidelines-owning-memory)
-  static auto *textures = new std::list<PublishedTexture>;
-  return *textures;
+  union ImmortalList {
+    ImmortalList() : value() {}
+    ImmortalList(const ImmortalList &) = delete;
+    ImmortalList(ImmortalList &&) = delete;
+    ImmortalList &operator=(const ImmortalList &) = delete;
+    ImmortalList &operator=(ImmortalList &&) = delete;
+    ~ImmortalList() {}
+    std::list<PublishedTexture> value;
+  };
+  static ImmortalList retired;
+  return retired.value;
 }
 
 void SweepRetiredMaterialTextures() {
@@ -91,8 +96,6 @@ void SweepRetiredMaterialTextures() {
     if (!inspected.insert(material).second)
       continue;
     const auto ours = retainedOwners.at(material);
-    // Sample through the engine's atomic intrusive-refcount API. If only our
-    // journal records retain this material, no engine consumer still owns it.
     const auto count = material->IncRef();
     material->DecRef();
     if (count == ours + 1)
@@ -366,7 +369,6 @@ void SlotWriter::RestoreGroup(Slot a_slot, const GroupState &a_state,
 }
 
 void SlotWriter::Restore() {
-  // Never restore property state through a replaced material attachment.
   if (MaterialAttached()) {
     for (std::size_t i = 0; i < groups_.size(); ++i) {
       const auto &group = groups_[i];
@@ -421,9 +423,6 @@ void SlotWriter::RetainPublishedTextures() noexcept {
       it = published_.erase(it);
     }
   }
-  // Nodes were allocated before the first write. Retirement transfers ownership
-  // without allocating, so a destructor cannot lose a lease on allocation
-  // failure.
   RetiredTextures().splice(RetiredTextures().end(), published_);
 }
 
@@ -492,8 +491,6 @@ MaterialBinding::Install(RE::BSGeometry *a_geometry,
 MaterialBinding::~MaterialBinding() {
   if (slots_)
     slots_->Restore();
-  // Keep the private material attached. Replacing the entire material here
-  // would discard external writes to fields that our journal never touched.
 }
 
 RE::BSLightingShaderProperty *MaterialBinding::Property() const noexcept {

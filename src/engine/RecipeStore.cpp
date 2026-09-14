@@ -18,8 +18,6 @@
 
 namespace BetterEnchantmentEffects {
 namespace {
-// clang-tidy misclassifies the implicit move as noexcept when following MSVC's
-// map sentinel allocation. The assertion below checks the compiler's contract.
 // NOLINTNEXTLINE(bugprone-exception-escape)
 struct LoadedRecipe {
   Recipe recipe;
@@ -31,8 +29,6 @@ struct LoadedRecipe {
   Studio::ReferenceCounts references{};
   Recipe saved{};
 };
-// MSVC's map move can allocate. The aggregate must preserve that throwing
-// contract rather than terminate if moving its reference counts fails.
 static_assert(std::is_nothrow_move_constructible_v<Studio::ReferenceCounts> ||
               !std::is_nothrow_move_constructible_v<LoadedRecipe>);
 

@@ -160,6 +160,13 @@ atom   := number | "[" expr "," expr ("," expr)? "]" | "(" expr ")"
   vectors; anything else, and division by zero, is 0. A type mismatch at
   runtime yields 0 and never throws.
 - A keyword is a whole word: `or` inside `orbit` is not one.
+- Checking and evaluation keep separate stacks on purpose (`Expression.cpp`).
+  `TypeStack` grows, because a check reports the mismatch it finds and the
+  depth it may reach is bounded only by `kMaxExpressionDepth`. `ValueStack` is
+  a fixed 64 values: a pop from an empty stack reads 0 and a push past the top
+  is dropped, so `Evaluate` allocates nothing, throws nothing, and is `noexcept`
+  throughout. The bounds `Program::Check` enforces are what keep a dropped push
+  from reaching a valid program.
 - The limits in `Expression.h` (nesting depth, op count, stack size) are
   hard: input past them is an error, never a deep stack. `kMaxExpressionOps`
   (256) is also the interpreter shader's array size, written there as the bare
@@ -330,6 +337,10 @@ Lab mechanics:
   draw list the render thread already built can still present it. After an
   apply or retire, pooled targets change hands, so every preview asked for
   again is re-rendered.
+- `RenderTarget::presenterSlot_` (`TextureLab.h`) is declared before the
+  presenter and the D3D resources. Members destroy in reverse declaration order,
+  so the pool's slot is returned only after the presenter and the resources are
+  torn down, and never to a target still holding them.
 - The engine's placeholder textures are 1x1 and its renderer record says
   0x0 for streamed maps, so a texture's real size comes from the D3D
   resource (NOTES 43). `GetTexture` accepts a record's raw path and the
@@ -346,6 +357,33 @@ Lab mechanics:
   engine material to the pinned PBR layout. `SlotWriter` and `MaterialInputs`
   consume that owning record. Raw layout getters on material and shell bindings
   have been removed; attachment checks remain necessary after construction.
+- `SweepRetiredMaterialTextures` (`Binding.h`) is called on the engine thread
+  whether or not any actor is applied, because a retired texture's material can
+  outlive the actor that installed it. It tells a material no engine consumer
+  still owns by sampling the engine's atomic intrusive refcount — `IncRef` then
+  `DecRef` — and comparing the reading against the number of journal records
+  that retain it; equal means the journal is the only owner left. The retired
+  list itself is a never-destroyed function-local (`ImmortalList` in
+  `Binding.cpp`), because an engine material can outlive the plugin's statics
+  and running `~NiPointer` after the engine is gone is undefined. It is
+  populated while preparing a write, never for the first time in retirement.
+- Retirement moves journal entries into that list with `splice`, which takes no
+  allocation, so no destructor can lose a lease to an allocation failure. The
+  nodes were allocated at the first write.
+- `SlotWriter::Restore` writes only while `MaterialAttached()`: a property whose
+  material another system replaced is not ours to restore through.
+  `~MaterialBinding` restores the fields the journal owns and leaves the private
+  material attached, because replacing the whole material would discard external
+  writes to fields the journal never touched.
+- `CopySkinData` (`render/SkinData.h`) copies every owned bone-weight buffer and
+  retains the source's shared skin partition; the copy owns its weights and
+  shares nothing else.
+- `SkinPaletteLease` owns the repaired links and retains the scene storage they
+  point into, so it must be destroyed before the clone is released.
+- `LightBinding::Create` resolves `ShadowSceneNode::RemoveLight` through the
+  Address Library and stores the pointer before it attaches anything, because
+  the destructor must not run address-library initialisation: that path can
+  allocate and can take an error branch, and neither is safe while unwinding.
 - Temporary materials returned by `Create` and `CreateMaterial` are held in
   `BSTSmartPointer` through installation. The pinned CommonLib uses intrusive
   material references; CS's `Create` returns a regular-heap material with the
@@ -473,6 +511,17 @@ Lab mechanics:
   Fixing the error in the menu applies the recipe on the next republish;
   introducing one withdraws it. The menu reads the same fact from a row's
   `problems` through `HasRecipeErrors`.
+- `Manager::CollectPieceGeometries` returning false rejects the whole piece,
+  including the geometries it already collected before the layout failure, so a
+  piece is never applied half-inspected. Clone identity is filtered earlier, by
+  `CollectPieces`.
+- `LoadedRecipe` (`RecipeStore.cpp`) carries a `NOLINTNEXTLINE(bugprone-exception-escape)`,
+  the only suppression in the tree. MSVC's map move can allocate, so the
+  aggregate's implicit move is not `noexcept`; clang-tidy reads it as `noexcept`
+  and then reports that it can throw. The `static_assert` below the struct is the
+  real check: the aggregate must keep whatever throwing contract
+  `Studio::ReferenceCounts` has rather than terminate if moving the reference
+  counts fails.
 - `kMaxTextFileBytes` (`engine/TextFile.h`) caps a recipe or presets file at
   4 MiB. A recipe is a few kilobytes; the cap stops a stray binary dropped
   into the recipes folder from being read into memory whole. `ReadText`
@@ -992,6 +1041,16 @@ checkpoint, not before.
   `render/RenderTargetPool`'s presenter slots stay reserved while any
   target still holds one.
 
+- `OwnedState` (`planners/OwnedState.h`) restores a coupled field group only
+  while every value still equals what we last wrote. Equality is the whole test,
+  so an external writer that happens to write the same value is
+  indistinguishable from us and the restore proceeds.
+
+- `ConsumptionLeases` (`planners/ConsumptionLeases.h`) releases a resource when
+  the consumer acknowledges submission (`Ticket::Consumed`), never on elapsed
+  ticks: a tick delay is not evidence the draw happened. Unacknowledged work
+  stays retained, including across a clear.
+
 - `TextureIdentity.h` holds the two engine-free halves of
   `render/SourceSampling`: `ImageCacheKey` lowercases a texture path so
   the compositor's image cache treats two spellings of one file as one
@@ -1071,6 +1130,11 @@ and tombstones, so it does not extend target lifetime or reinterpret an expired
 generated handle as static. Presenter objects remain retained for pointer identity; presenter slots are
 leased to live targets and become reusable after target teardown. Registering a still-live presenter for another target
 or generation is rejected. This is CPU lifetime ownership, not GPU completion.
+
+A `TextureRef` built from a `RenderTarget` retains that producer directly. The
+`NiSourceTexture` constructors are the engine boundary's: a texture arriving as a
+pointer is looked up in the registry, which is why pointer lookup exists at all
+and why it is not the path a generated texture takes.
 
 Material journals, prepared sources/masks/material inputs, compositor base and
 material-analysis records, snapshots and preview entries/work retain TextureRef.

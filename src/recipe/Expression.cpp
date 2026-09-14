@@ -111,8 +111,6 @@ std::expected<ValueType, std::string> Join(ValueType a, ValueType b,
       std::format("'{}' mixes {} with {}", a_what, Name(a), Name(b)));
 }
 
-// Checking owns a dynamic type stack; evaluation deliberately has a separate
-// fixed-capacity value stack with zero fallback and ignored excess pushes.
 class TypeStack {
 public:
   TypeStack() { values_.reserve(16); }

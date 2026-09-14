@@ -191,8 +191,6 @@ LightBinding::Create(const std::vector<LightPlacement> &a_placements,
     return nullptr;
   }
   std::unique_ptr<LightBinding> out{new LightBinding{}};
-  // Resolve teardown before attaching anything; destruction must not perform
-  // address-library initialization or its potentially allocating error path.
   static REL::Relocation<RemoveLight> remove{kShadowSceneNodeRemoveLight};
   out->removeLight_ = remove.get();
   out->shadow_ = a_shadow;
