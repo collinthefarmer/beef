@@ -1,7 +1,6 @@
 #pragma once
 
 #include "PCH.h"
-#include "engine/MeshReader.h"
 #include "mesh/Islands.h"
 #include "mesh/MaterialClusters.h"
 #include "mesh/Mesh.h"
@@ -13,6 +12,7 @@
 #include "recipe/Merge.h"
 #include "recipe/Recipe.h"
 #include "recipe/Signals.h"
+#include "render/MeshReader.h"
 #include "render/PBRMaterial.h"
 #include "render/RuntimeTextures.h"
 #include "render/TextureRef.h"

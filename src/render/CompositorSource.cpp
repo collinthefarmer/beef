@@ -1,12 +1,12 @@
 #include "render/Compositor.h"
 #include "render/SourceSampling.h"
 
-#include "engine/MeshReader.h"
 #include "mesh/MaterialClusters.h"
 #include "mesh/Mesh.h"
 #include "recipe/Expression.h"
 #include "recipe/Recipe.h"
 #include "recipe/Signals.h"
+#include "render/MeshReader.h"
 
 #include <algorithm>
 #include <array>
