@@ -1,4 +1,4 @@
-#include "PBRMaterial.h"
+#include "render/PBRMaterial.h"
 
 namespace BetterEnchantmentEffects {
 namespace {

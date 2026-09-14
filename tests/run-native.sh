@@ -24,12 +24,18 @@ if [ -n "${BEEF_SANITIZE:-}" ]; then
 fi
 JOBS="${NATIVE_JOBS:-4}"
 
-MODULES=(recipe mesh studio planners)
-declare -A MODULE_DEPS=(
-	[recipe]=""
-	[mesh]="recipe"
-	[studio]="recipe mesh"
-	[planners]="recipe mesh"
+MODULES=(recipe mesh planners studio diagnostics)
+
+# Every suite links every engine-free module. The object cache keys on the
+# source path, so a module compiles once and the extra cost is link time.
+# A suite whose unit lives outside those directories names its extra sources
+# here; an engine-free engine unit is one line.
+declare -A SUITE_EXTRAS=(
+	[engine_sessionqueue]="src/engine/SessionQueue.cpp"
+	[engine_applicator]="src/engine/ApplicationService.cpp src/engine/SessionQueue.cpp"
+	[engine_applicationservice]="src/engine/ApplicationService.cpp src/engine/SessionQueue.cpp"
+	[engine_textfile]="src/engine/TextFile.cpp"
+	[settingspublication]="src/Settings.cpp"
 )
 
 object_of() {
@@ -72,25 +78,26 @@ declare_suite() {
 	SUITE_SOURCES+=("$*")
 }
 
+module_sources=()
 for mod in "${MODULES[@]}"; do
-	module_sources=()
-	for dir in ${MODULE_DEPS[$mod]:-} "$mod"; do
-		while IFS= read -r -d '' src; do
-			module_sources+=("$src")
-		done < <(find "src/$dir" -name '*.cpp' -print0 2>/dev/null | sort -z)
-	done
-	while IFS= read -r -d '' test; do
-		name="${mod}_$(basename "$test" .cpp)"
-		declare_suite "$name" "$test" "${module_sources[@]}"
-	done < <(find "tests/$mod" -name '*_tests.cpp' -print0 2>/dev/null | sort -z)
+	while IFS= read -r -d '' src; do
+		module_sources+=("$src")
+	done < <(find "src/$mod" -name '*.cpp' -print0 2>/dev/null | sort -z)
 done
 
-declare_suite engine_sessionqueue tests/engine/sessionqueue_tests.cpp src/engine/SessionQueue.cpp src/diagnostics/Trace.cpp
-declare_suite engine_applicator tests/engine/applicator_tests.cpp src/engine/ApplicationService.cpp src/studio/ApplicationRecord.cpp src/engine/SessionQueue.cpp src/diagnostics/Trace.cpp
-declare_suite engine_applicationservice tests/engine/applicationservice_tests.cpp src/engine/ApplicationService.cpp src/studio/ApplicationRecord.cpp src/engine/SessionQueue.cpp src/diagnostics/Trace.cpp
-declare_suite engine_textfile tests/engine/textfile_tests.cpp src/engine/TextFile.cpp
-declare_suite diagnostics_trace tests/diagnostics/trace_tests.cpp src/diagnostics/Trace.cpp
-declare_suite settingspublication tests/settingspublication_tests.cpp src/Settings.cpp
+declare_tests_in() {
+	local dir="$1" prefix="$2" test name
+	while IFS= read -r -d '' test; do
+		name="${prefix}$(basename "$test" _tests.cpp)"
+		declare_suite "$name" "$test" "${module_sources[@]}" ${SUITE_EXTRAS[$name]:-}
+	done < <(find "$dir" -maxdepth 1 -name '*_tests.cpp' -print0 2>/dev/null | sort -z)
+}
+
+for mod in "${MODULES[@]}"; do
+	declare_tests_in "tests/$mod" "${mod}_"
+done
+declare_tests_in tests/engine engine_
+declare_tests_in tests ""
 
 if [ ${#SUITE_NAMES[@]} -eq 0 ]; then
 	echo "no suite matched SUITE='${SUITE:-}'" >&2

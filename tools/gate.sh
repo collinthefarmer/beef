@@ -79,14 +79,10 @@ if ! tools/format.sh --check; then
 	exit 1
 fi
 
-# The pure directories compile natively and never name the engine: no include
-# of engine/, render/ or menu/, no PCH, no RE:: symbol.
-mapfile -t impure < <(grep -rln '"engine/\|"render/\|"menu/\|#include "PCH.h"\|\bRE::' src/recipe src/mesh src/planners src/studio src/diagnostics)
-if [ ${#impure[@]} -gt 0 ]; then
-	{
-		echo "push blocked: these pure sources name the engine (an engine/, render/ or menu/ include, PCH.h, or RE::):"
-		printf '    %s\n' "${impure[@]}"
-	} >&2
+# The one layer graph: tools/layers.sh reports every include outside the table
+# in REQUIREMENTS.md, and every RE:: symbol in an engine-free directory.
+if ! tools/layers.sh >/dev/null; then
+	echo "push blocked: see the edges above; the graph is the table in tools/layers.sh." >&2
 	exit 1
 fi
 
