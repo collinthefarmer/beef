@@ -4,7 +4,8 @@
 
 Implemented 2026-09-14 on `critique/e-docs`, branched from `cleanup/stage-0`
 at `c357f26`. Five commits: `ea88b12` (E1), `4e69da4` (E2), `314bb99` (E3),
-`1c0c3da` (E4), `3ab6c3f` (the tidy baseline E4's line shifts moved).
+`1c0c3da` (E4), `3ab6c3f` (the tidy baseline E4's line shifts moved), and
+`ca035bc` (this block, the handoff's row and log).
 
 ### What was done
 
