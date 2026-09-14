@@ -239,13 +239,13 @@ is not done until the user reports the checkpoint passed.
 
 | Plan | Branch | Commit | State |
 |---|---|---|---|
-| F | `critique/f-tests-and-bounds` | `f4edc48`, merged in `303d352` | merged into `cleanup/stage-0`; in-game checkpoint pending (installed build) |
-| A | `critique/a-error-contract` | `f69d908`, merged in `303d352` | merged into `cleanup/stage-0`; in-game checkpoint pending (installed build) |
-| B | `critique/b-source-kinds` | `6fb02d2`, `8f80b67`, plus a docs commit | implemented and native-verified on `cleanup/stage-0` (`6f9750e`); DLL builds; B3 deferred to the UI complete-editor checkpoint; sanitized suite, push gate, install and in-game checkpoint wait for the single pass after the last plan |
-| C | `critique/c-structure` | `8233030`, `8ddcc08`, `4dfa74d`, `6453b63`, `83fe74b`, `eb77f40`, plus a docs commit | implemented and native-verified on `cleanup/stage-0` (`4d2dc16`); DLL builds; `tools/layers.sh` is the one layer graph and the push gate runs it; C3 step 3 and C5 step 1 deferred to the UI complete-editor checkpoint; push gate, install and in-game checkpoint wait for the single pass after the last plan |
-| D | `critique/d-naming` | `b542ca1`, `81fd23b`, `850989d`, `638c052`, `51c95fa`, `9bbc313`, `4438acd`, `f6b3d3d`, `340d7b4` | implemented and verified on `critique/d-naming` (66 suites green plain and sanitized, `tools/layers.sh` green, DLL builds, commit gate green on every commit); the `MenuState.h` extraction and `ScratchRebuilt` deferred to UI slices 1B and 3E; push gate, install and in-game checkpoint wait for the single pass after the last plan |
-| E | `critique/e-docs` | `ea88b12`, `4e69da4`, `314bb99`, `1c0c3da`, `3ab6c3f`, `ca035bc` | implemented and verified on `critique/e-docs`, branched from `cleanup/stage-0` at `c357f26` (66 suites green plain and sanitized, `tools/layers.sh` green, DLL builds, commit gate green on every commit, tidy baseline 57 findings before and after); `README.md` and `docs/README.md` exist and the push gate now fails on a comment in `src/`; the REFERENCE menu-mechanics body and the two `menu/MenuWidgets.cpp` comments deferred to the UI complete-editor checkpoint; push gate, install and the in-game checkpoint (the presets rename) wait for the single pass after the last plan |
-| G | | | deferred until UI slice 2A and the six plans |
+| F | `critique/f-tests-and-bounds` | `f4edc48`, merged in `303d352` | done; checkpoint passed 2026-09-14 (removed-file case verified natively; unreachable under MO2) |
+| A | `critique/a-error-contract` | `f69d908`, merged in `303d352`, plus `dff63dd` | done; checkpoint passed 2026-09-14 (hold-back verified; in-game repair not supported by decision; rename presentation is UI finding 6) |
+| B | `critique/b-source-kinds` | `6fb02d2`, `8f80b67`, plus a docs commit | implemented and native-verified on `cleanup/stage-0` (`6f9750e`); DLL builds; B3 deferred to the UI complete-editor checkpoint; done; push gate green and checkpoint passed 2026-09-14 (see the plan's Status) |
+| C | `critique/c-structure` | `8233030`, `8ddcc08`, `4dfa74d`, `6453b63`, `83fe74b`, `eb77f40`, plus a docs commit | implemented and native-verified on `cleanup/stage-0` (`4d2dc16`); DLL builds; `tools/layers.sh` is the one layer graph and the push gate runs it; C3 step 3 and C5 step 1 deferred to the UI complete-editor checkpoint; done; push gate green and checkpoint passed 2026-09-14 (see the plan's Status) |
+| D | `critique/d-naming` | `b542ca1`, `81fd23b`, `850989d`, `638c052`, `51c95fa`, `9bbc313`, `4438acd`, `f6b3d3d`, `340d7b4` | implemented and verified on `critique/d-naming` (66 suites green plain and sanitized, `tools/layers.sh` green, DLL builds, commit gate green on every commit); the `MenuState.h` extraction and `ScratchRebuilt` deferred to UI slices 1B and 3E; done; push gate green and checkpoint passed 2026-09-14 (see the plan's Status) |
+| E | `critique/e-docs` | `ea88b12`, `4e69da4`, `314bb99`, `1c0c3da`, `3ab6c3f`, `ca035bc` | implemented and verified on `critique/e-docs`, branched from `cleanup/stage-0` at `c357f26` (66 suites green plain and sanitized, `tools/layers.sh` green, DLL builds, commit gate green on every commit, tidy baseline 57 findings before and after); `README.md` and `docs/README.md` exist and the push gate now fails on a comment in `src/`; the REFERENCE menu-mechanics body and the two `menu/MenuWidgets.cpp` comments deferred to the UI complete-editor checkpoint; done; push gate green and checkpoint passed 2026-09-14 (see the plan's Status) |
+| G | | | deferred; waits on UI slice 2A (the shell form in `Forms.cpp`) |
 
 What Plan F left for the later plans:
 
@@ -391,6 +391,17 @@ These are settled. Do not re-open them; apply them where the plans say.
 ## Status log
 
 Append one line per plan as it completes: date, plan letter, branch, outcome.
+
+- 2026-09-14, checkpoints: the batched in-game pass ran on build `dff63dd0817a-f192084d1834f565-Release`
+  (`9e8247c` plus `dff63dd`). F, A, B, C, D and E passed and are closed in
+  their Status blocks. Two corrections came out of it: `dff63dd` (a newer
+  `format` is held back, not unreadable) kept; `7450b02` (Save
+  re-validates) reverted in `1948ac4` after the user decided in-game repair
+  of a broken recipe is not a supported path. Eight UI findings from the
+  same session are in `ui-v2-core-checkpoint-2026-09-13.md` for the UI
+  owner. Open: Plan G (waits on UI slice 2A), the deferred items listed per
+  plan (all on UI seams), the five constants question in Plan E's Status,
+  and the closing critique re-run.
 
 - 2026-09-14, final pass: `cleanup/stage-0` and `main` at `9e8247c` (Plans F
   to E merged, plus the segment-rotating trace). `./build.sh` clean,
