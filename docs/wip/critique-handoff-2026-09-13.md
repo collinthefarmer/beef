@@ -241,7 +241,7 @@ is not done until the user reports the checkpoint passed.
 |---|---|---|---|
 | F | `critique/f-tests-and-bounds` | `f4edc48`, merged in `303d352` | merged into `cleanup/stage-0`; in-game checkpoint pending (installed build) |
 | A | `critique/a-error-contract` | `f69d908`, merged in `303d352` | merged into `cleanup/stage-0`; in-game checkpoint pending (installed build) |
-| B | `critique/b-source-kinds` | | not started; branch from `cleanup/stage-0` |
+| B | `critique/b-source-kinds` | `6fb02d2`, `8f80b67`, plus a docs commit | implemented and native-verified on `cleanup/stage-0` (`6f9750e`); DLL builds; B3 deferred to the UI complete-editor checkpoint; sanitized suite, push gate, install and in-game checkpoint wait for the single pass after the last plan |
 | C | | | not started |
 | D | | | not started |
 | E | | | not started |
@@ -329,9 +329,12 @@ Nothing else may be merged across plans.
 3. Do the steps in order. Where a plan says "decide", the decision is stated
    in the plan. Do not re-open it. Where a plan says "ask the user", stop and
    ask before proceeding on that step; finish every other step first.
-4. Run `tests/run-native.sh`, then `tools/gate.sh commit` per commit.
-5. Before declaring done, run `tools/gate.sh push` and the plan's acceptance
-   checks. Then the in-game checkpoint if the plan requires one.
+4. Run `tests/run-native.sh`, then commit through the gate.
+5. Build the DLL if engine, render or menu code changed. The sanitized
+   suite, `tools/gate.sh push`, the tidy baseline comparison, `./install.sh`
+   and the in-game checkpoints run once after the last plan (decided by the
+   user 2026-09-14), because each takes a long time. Run the plan's own
+   acceptance checks before declaring it done.
 6. Update the `Status` block at the top of the plan file: date, branch,
    commits, what was done, what was left and why, checkpoint outcome as the
    user reported it.
@@ -372,7 +375,9 @@ These are settled. Do not re-open them; apply them where the plans say.
 
 - All seven plan files show `Status: done` with the checkpoint outcome
   recorded, or `Status: deferred` with the UI slice they wait on named.
-- `tools/gate.sh push` is green on the final branch.
+- `tools/gate.sh push` is green on the final branch after the single
+  verification pass that follows the last plan (sanitized suite, full tidy,
+  baseline comparison, install, in-game checkpoints; decided 2026-09-14).
 - The layer check added in Plan C reports no upward include.
 - `grep -rn '^\s*//' src --include='*.cpp' --include='*.h' | grep -v _old |
   grep -v extern | grep -v src/cs` prints nothing.
@@ -406,3 +411,34 @@ Append one line per plan as it completes: date, plan letter, branch, outcome.
   base now builds, so the fallback rules under Repository state no longer
   apply: work in the main checkout on a branch from `cleanup/stage-0`, and
   the F and A in-game checkpoints wait only on the user's run.
+- 2026-09-14, B, `critique/b-source-kinds`: B1, B2 and B4 implemented and
+  native-verified (64 suites green, commit gate green on both commits, DLL
+  builds); B3 deferred per the plan's UI classification. Tidy baseline
+  regenerated (+3 intended findings). Sanitized suite, push gate, install and
+  the in-game checkpoint wait for the single pass after the last plan.
+
+What Plan B left for the later plans and for the UI owner:
+
+- `Complete(table, count)` (`Core.h`) is the assert every enum table in
+  `Words.h` carries; a new enum gets a `kFooCount` beside it in `Recipe.h`.
+  `SourceKindId`/`kSourceKindWords` are the source-kind id and table;
+  `SourceKindIdOf(kind)` reads the id. The extension checklist for a new
+  source kind is in `docs/conventions.md` under the variants heading.
+- `ParseSourceAlternative<T>` (`RecipeRead.cpp`) is where a new source kind's
+  parser goes; `kSourceParsers` is built from it by alternative index.
+- `tests/recipe/schema_tests.cpp` pins `schema/recipe.schema.json`'s enums to
+  the tables; a table change fails it until the schema follows. `FunctionNames()`
+  (`Expression.h`) is the published view of the expression function table.
+- `TextureHandle` is opaque (`enum class` over `std::uintptr_t`); the UI's
+  preview pinning must keep the snapshot `shared_ptr` alive, not the handle
+  (contract in `REFERENCE.md`, studio). `TextureHandleOf` (engine,
+  `ManagerSnapshot.cpp`) and `TextureOf` (menu, `MenuWidgets.cpp`) are the
+  only conversions; compare a handle against `TextureHandle{}`.
+- `studio/ApplicationRecord.h` holds the application record types; nothing
+  under `studio/` includes `engine/` and the push gate now enforces it.
+- Plan C's `MODULE_DEPS` removal: studio's entry is already `recipe mesh`
+  and the two engine suites in `run-native.sh` list
+  `src/studio/ApplicationRecord.cpp` explicitly.
+- B3 (`SourceRow` as a variant of per-kind field records, `LayerRow::blend`,
+  `RecipeRow::key`) and the five `MenuState.cpp` catch-alls over
+  `RecipeEdit`/`Intent` wait on UI slices 2A/2D and 1B.

@@ -137,14 +137,24 @@ lambda is the writer counterpart for the name-keyed sections.
 ## Variants and closed sets: one spec table, dispatch by `Match`
 
 Every enum carries exactly one `constexpr` spec table in `Words.h`, one row per
-value in enum order, with `static_assert(std::size(table) == kFooCount)`
+value in enum order, with `static_assert(Complete(table, kFooCount))`
 (e.g. `kSignalKinds`/`kSignalKindCount`, `kSlots`/`kSlotCount`,
-`kScalarFields`, `kMaterialChannels`). For variant closed sets, the table is a
-word array with a `static_assert` against `std::variant_size_v` plus a run of
-`std::is_same_v<std::variant_alternative_t<I, V>, …>` asserts pinning word
-order to alternative order (`kSourceKindWords`, `kBakeKindWords`,
-`kTriggerOriginWords`). That pin is load-bearing: `SourceFrom` and
-`DefaultSourceKind` index the parser table by `variant::index()`.
+`kScalarFields`, `kMaterialChannels`). `Complete` (`Core.h`) checks that the
+table has `kFooCount` rows and that every value below the count appears in
+exactly one row, so `NameOf`'s `"?"` branch is unreachable for a table that
+passes. Every enum in `Recipe.h` has a `kFooCount` beside it for that assert.
+For variant closed sets, the table is either a `Named<Id>` table over an id
+enum whose enumerators follow alternative order (`kSourceKindWords` over
+`SourceKindId`, with `SourceKindIdOf(kind)` reading the id from
+`variant::index()`) or a word array asserted against `std::variant_size_v`
+(`kBakeKindWords`, `kTriggerOriginWords`); both carry a run of
+`std::is_same_v<std::variant_alternative_t<I, V>, …>` asserts pinning table
+order to alternative order. That pin is load-bearing: `DefaultSourceKind`
+builds the alternative from the id, and `ParseSourceKind` indexes
+`kSourceParsers`, a table built over `std::variant_alternative_t<I,
+SourceKind>` from one `ParseSourceAlternative<T>` specialisation per
+alternative, so an alternative without a parser is an undefined symbol at
+link time rather than a wrong entry at runtime.
 
 The generic table operators live in `Core.h`: `NameOf(table, value)`,
 `FromName(table, word)`, `RowOf(table, value)`, `Choices(table)`,
@@ -158,6 +168,28 @@ Dispatch over a variant is `Match` (`Core.h`), index dispatch over
 `kAlternativesNothrowMovable` `static_assert` proves the variant can never be
 valueless, so `Match` inside a `noexcept` path cannot become `std::terminate`.
 `Get<T>` and `Is<T>` are the get-if / holds-alternative shorthands.
+
+No catch-all arm in a `Match` over a recipe variant (`SignalKind`,
+`SourceKind`, `BakeKind`, `Output`, `Bones`, `VariantKey`): each alternative
+gets its own lambda, empty-bodied where nothing applies (`CheckSource` in
+`Signals.cpp`, `VisitSourceParams` in `Edits.cpp`). A `[](const auto &)` arm
+would silently absorb a new alternative; without one, `Match`'s overload
+resolution fails at every site the new kind must be handled.
+
+Adding a source kind — the sites the compiler reports when `SourceKind` gains
+an alternative (recorded from adding a fake eighth alternative, critique Plan
+B, 2026-09-14): `Recipe.h` (`kSourceKindCount` against `variant_size_v`, and
+`SourceKindId` needs its enumerator), `Words.h` (`Complete(kSourceKindWords)`
+and the alternative-order asserts), `RecipeRead.cpp` (undefined
+`ParseSourceAlternative<T>`), `Vocabulary.cpp` `SourceType`, `Signals.cpp`
+`CheckSource`, `Recipe.cpp` `AnimationQuery::Source`, `RecipeWrite.cpp`
+`DescribeSource` and `SourceKindToJson`, `studio/Edits.cpp`
+`VisitSourceParams`, `studio/SourceRows.cpp` `BuildSourceRow`, and
+`render/CompositorSource.cpp` `SourcePreparer` and `SourceInspector`. Still
+discipline-only until Plan B3 lands: `studio/SourceRows.cpp` `SourceKindOf`,
+`studio/Forms.cpp` `SourceForm` (string if-chains) and the `SourceRow` field
+union in `studio/Snapshot.h`. `tests/recipe/schema_tests.cpp` then fails
+until `schema/recipe.schema.json` lists the new word.
 
 Big arm vs tiny arm — the recorded judgment:
 - When each per-kind arm is a substantial body, extract per-kind functions and

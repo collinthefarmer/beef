@@ -1,6 +1,129 @@
 # Plan B: source kinds by the compiler, and an engine-free snapshot — 2026-09-13
 
-Status: not started.
+Status: implemented and native-verified 2026-09-14 on `critique/b-source-kinds`
+(branched from `cleanup/stage-0` at `6f9750e`); in-game checkpoint pending.
+Commits: `6fb02d2` (B1, B2, tidy baseline), `8f80b67` (B4), plus the docs
+commit that carries this block.
+
+What was done, by step:
+
+- B1.1: `SourceKindId` (`Recipe.h`, one enumerator per alternative, with
+  `kSourceKindCount` asserted against `variant_size_v`) and `SourceKindIdOf`;
+  `kSourceKindWords` is a `Named<SourceKindId>` table with the alternative
+  asserts kept. `DefaultSourceKind` and `SourceKindName` read the table
+  through `FromName`/`NameOf`.
+- B1.2: count constants added beside every enum in `Recipe.h` that lacked one,
+  and their tables asserted: `kSelectorKinds`, `kWaveforms`, `kEfshFields`,
+  `kMeasures`, `kActorStates`, `kEnchantmentFields`, `kPayloadFields`,
+  `kImageSpaces`, `kUvAxes`, `kRippleShapes`, `kSurfaces`, `kShellMaterials`,
+  `kShellBlends` (the plan named six of these; the other seven had no assert
+  either). `kBipedSlots` is keyed by slot number, not an enum, and is not
+  asserted.
+- B1.3: `Complete(table, count)` in `Core.h`; every enum table in `Words.h`
+  now uses `static_assert(Complete(...))` in place of the size assert.
+  `NameOf` keeps its `"?"` branch.
+- B1.4: `kSourceParsers` is a `std::array` built by
+  `SourceParsersInVariantOrder` over `std::variant_alternative_t<I,
+  SourceKind>` from one `ParseSourceAlternative<T>` specialisation per
+  alternative (the seven parsers became those specialisations, bodies
+  unchanged). A missing specialisation is an undefined symbol.
+- B1.5: `tests/recipe/schema_tests.cpp` (56 checks) compares the schema's
+  source kinds, signal kinds (both the `oneOf` required keys and
+  `signalKind.propertyNames`), actor states, waveforms, efsh fields,
+  measures, enchantment and payload fields, image channels and spaces,
+  material channels, uv axes, ripple shapes, bake kinds, blends, surfaces,
+  slots and shell material/blend to the `Words.h` tables, and checks every
+  name from the new `FunctionNames()` (`Expression.h`, the published view of
+  `kFunctions`) appears in the expression description. Removing `"saw"`
+  from the schema fails it at `schema_tests.cpp:58`.
+- B2.1: `SourceType` (`Vocabulary.cpp`) has seven arms. `Signals.cpp` had a
+  private duplicate, `SourceValueType`, with the same catch-all; it and its
+  two private helpers (`ChannelOf`, `ChannelType`) are deleted and the one
+  caller uses `SourceType`.
+- B2.2: `CheckSource` has seven arms (`MaterialSource`, `UvSource` empty).
+- B2.3: `VisitSignalParams` and `VisitSourceParams` (`Edits.cpp`) name every
+  alternative. Reading each alternative: the kinds the catch-alls covered
+  (`Constant`, `Efsh`, `ActorValue`, `ActorState`, `Enchantment`, `Expr`;
+  `Material`, `Bake`, `Uv`, `Distance`, `MaterialClusters`) hold no `Param`,
+  `Ref` or `Vec2Param`, so the catch-alls hid nothing today. The new
+  `edits_tests.cpp` scenario renames a signal read from an image (scroll,
+  tile) and a ripple (trigger, speed, width, decay) beside one source of
+  each other kind and asserts every reference moved.
+- B2.4: other catch-alls over the listed variants, removed: `Signals.cpp`
+  `Dependencies` (SignalKind, five empty arms) and `InferTypes` (SignalKind,
+  nine `kScalar` arms); `Recipe.cpp` `AnimationQuery::Signal` (eleven
+  `true` arms) and `AnimationQuery::Source` (five `false` arms);
+  `RecipeWrite.cpp` `BakeToJson` (BakeKind, five name arms); `mesh/Mesh.cpp`
+  `NeedsAnalysis` (BakeKind, five empty-string arms). Left in place: five
+  `[](const auto &)` arms in `studio/MenuState.cpp` (lines 51, 541, 562,
+  607, 669); they dispatch over `RecipeEdit` and `Intent`, which are not in
+  the plan's variant list, and the file is UI slice 1B's seam.
+- B4.1: `studio/ApplicationRecord.{h,cpp}` hold `ApplicationPhase`,
+  `ApplicationToken`, `ApplicationActor`, `ApplicationRecord` and
+  `ApplicationPhaseName` (with `kApplicationPhaseCount`); nothing in them
+  depended on `SessionQueue` or `RE::`. `engine/ApplicationService.h`
+  includes the studio header; `Snapshot.h` includes it instead of
+  `engine/ApplicationService.h`. The namespace stays
+  `BetterEnchantmentEffects` (engine and its tests name the types
+  unqualified). `tests/run-native.sh` links the new source into the two
+  engine suites that use the names. `studio/Intent.h` gained
+  `#include <functional>`: it used `std::function` and had been getting it
+  through the removed engine include (one-line touch on a 1B-seam file,
+  required for studio to compile).
+- B4.2: `enum class TextureHandle : std::uintptr_t {}` in `Snapshot.h`; the
+  `RE::NiSourceTexture` forward declaration is gone. Populated at one site,
+  `TextureHandleOf` inside `RetainTexture` (`engine/ManagerSnapshot.cpp`, the
+  helper all five row fills call); read at one site, `TextureOf` inside
+  `PreviewOf` (`menu/MenuWidgets.cpp`). The plan named the menu helper
+  `ImTextureIdOf`; the menu converts the handle back to the texture pointer
+  for `TextureLab::Preview` and the `ImTextureID` comes from the preview's
+  view, so the helper is named for what it returns. Defaults in
+  `Widgets.h`, `Panels.h`, `Board.h` are `{}`; `menu/StackPanel.cpp:290`
+  compares against `TextureHandle{}` (one-line touch on a 1C-seam file);
+  four studio tests updated. Contract recorded in `REFERENCE.md` (studio).
+- B4.3: `tools/gate.sh push` fails when the purity grep prints a file.
+- Out of scope: `PreparedSource` debt recorded in `REFERENCE.md`
+  (Compositor).
+
+Acceptance results (2026-09-14):
+
+- Purity grep prints nothing (it printed `src/studio/Snapshot.h` before).
+- `tests/run-native.sh`: 64 suites green, exit 0; studio's `MODULE_DEPS`
+  entry is `recipe mesh` and studio includes nothing under `engine/`
+  (the purity grep is that check).
+- Fake eighth alternative (`FakeSource`, not committed): compile errors at
+  `Recipe.h` (`kSourceKindCount` assert), `Words.h:114` (`Complete`),
+  `Vocabulary.cpp` `SourceType`, `Signals.cpp` `CheckSource`, `Recipe.cpp`
+  `AnimationQuery::Source`, `RecipeWrite.cpp` `DescribeSource` and
+  `SourceKindToJson`, `studio/Edits.cpp` `VisitSourceParams`,
+  `studio/SourceRows.cpp` `BuildSourceRow`, `render/CompositorSource.cpp`
+  `SourcePreparer` and `SourceInspector`; `RecipeRead.o` carries an
+  undefined `ParseSourceAlternative<FakeSource>`. Not reported (B3
+  deferred): `SourceRows.cpp` `SourceKindOf`, `Forms.cpp` `SourceForm`,
+  `Snapshot.h` `SourceRow`. The list is in `docs/conventions.md` under the
+  variants heading.
+- `schema_tests` passes and fails when a word is removed (see B1.5).
+- `./build.sh Release -j 4` links the DLL.
+- Sanitized suite, `tools/gate.sh push` and the baseline comparison: not run
+  for this plan; they run once after the last plan (user decision
+  2026-09-14, recorded in the handoff's per-plan procedure).
+
+Deferred (revisit after the UI complete-editor checkpoint):
+
+- B3 entirely: `SourceRow` as a variant of per-kind field records,
+  `BuildSourceRow`/`SourceKindOf`/`SourceForm` over it, `LayerRow::blend`
+  as `Blend`, `RecipeRow::key` dropped. UI slices 2A and 2D own those forms.
+- `RecipeRow::heldBack` (Plan A's note) waits on the UI's `Snapshot.h`
+  edits; the recipes page can call `HasRecipeErrors(row.problems)`.
+- The five `MenuState.cpp` catch-alls over `RecipeEdit`/`Intent` (slice 1B).
+- `State()` singleton at `Intent.h` (Plan D, slice 1B).
+
+In-game checkpoint: pending; not installed (installs happen once after the
+last plan). When it runs: open the studio, select a recipe with at least an
+image source and a ripple source, open each source's form, edit one field of
+each, confirm the value persists after save and reload, and confirm texture
+previews still draw (the opaque handle). Log lines: the snapshot publication
+line from `ManagerSnapshot` and any `source <name>:` diagnostics.
 
 Covers critique recommendations 3 (a typed `SourceRow`, no engine include in
 `studio/`) and 4 (exhaustive dispatch over source kinds, count asserts,
