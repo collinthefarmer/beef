@@ -132,6 +132,8 @@ ReplaceNumericLiteral(std::string_view a_current,
 [[nodiscard]] std::expected<Program, std::string>
 ParseCurve(std::string_view a_text);
 
+[[nodiscard]] std::vector<std::string_view> FunctionNames();
+
 [[nodiscard]] float ApplyCurve(const Program &a_curve, float a_x,
                                float a_mean = 0.5f) noexcept;
 }

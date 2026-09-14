@@ -3,6 +3,7 @@
 #include "recipe/Words.h"
 
 #include <algorithm>
+#include <array>
 #include <format>
 #include <functional>
 #include <initializer_list>
@@ -475,7 +476,13 @@ std::optional<Signal> SignalFrom(const std::string &a_name, const json &a_j,
   return s;
 }
 
-std::optional<SourceKind> ParseImage(const json &a_v, const Reporter &a_ctx) {
+template <class Alternative>
+std::optional<Alternative> ParseSourceAlternative(const json &a_v,
+                                                  const Reporter &a_ctx);
+
+template <>
+std::optional<ImageSource>
+ParseSourceAlternative<ImageSource>(const json &a_v, const Reporter &a_ctx) {
   if (!a_v.is_object()) {
     a_ctx.Error("'image' takes an object with 'path'");
     return std::nullopt;
@@ -502,8 +509,9 @@ std::optional<SourceKind> ParseImage(const json &a_v, const Reporter &a_ctx) {
   return k;
 }
 
-std::optional<SourceKind> ParseMaterial(const json &a_v,
-                                        const Reporter &a_ctx) {
+template <>
+std::optional<MaterialSource>
+ParseSourceAlternative<MaterialSource>(const json &a_v, const Reporter &a_ctx) {
   const auto channel = EnumShorthand(a_v, kMaterialChannels, "material", a_ctx);
   if (!channel) {
     return std::nullopt;
@@ -539,7 +547,9 @@ std::optional<BakeKind> BoneWeightBakeFrom(const json &a_v,
   return bw;
 }
 
-std::optional<SourceKind> ParseBake(const json &a_v, const Reporter &a_ctx) {
+template <>
+std::optional<BakeSource>
+ParseSourceAlternative<BakeSource>(const json &a_v, const Reporter &a_ctx) {
   BakeSource k;
   if (a_v.is_string()) {
     const auto bare = DefaultBakeKind(a_v.get<std::string>());
@@ -572,7 +582,9 @@ std::optional<SourceKind> ParseBake(const json &a_v, const Reporter &a_ctx) {
   return k;
 }
 
-std::optional<SourceKind> ParseUv(const json &a_v, const Reporter &a_ctx) {
+template <>
+std::optional<UvSource>
+ParseSourceAlternative<UvSource>(const json &a_v, const Reporter &a_ctx) {
   const auto axis = a_v.is_string() ? FromName(kUvAxes, a_v.get<std::string>())
                                     : std::nullopt;
   if (!axis) {
@@ -582,8 +594,9 @@ std::optional<SourceKind> ParseUv(const json &a_v, const Reporter &a_ctx) {
   return UvSource{*axis};
 }
 
-std::optional<SourceKind> ParseDistance(const json &a_v,
-                                        const Reporter &a_ctx) {
+template <>
+std::optional<DistanceSource>
+ParseSourceAlternative<DistanceSource>(const json &a_v, const Reporter &a_ctx) {
   DistanceSource k;
   if (a_v.is_string()) {
     k.from = a_v.get<std::string>();
@@ -606,7 +619,9 @@ std::optional<SourceKind> ParseDistance(const json &a_v,
   return k;
 }
 
-std::optional<SourceKind> ParseRipple(const json &a_v, const Reporter &a_ctx) {
+template <>
+std::optional<RippleSource>
+ParseSourceAlternative<RippleSource>(const json &a_v, const Reporter &a_ctx) {
   if (!a_v.is_object()) {
     a_ctx.Error("'ripple' takes an object with 'trigger'");
     return std::nullopt;
@@ -657,8 +672,10 @@ bool ClusterWeightsFrom(Reader &a_r, MaterialClustersSource &a_k,
   return ok;
 }
 
-std::optional<SourceKind> ParseMaterialClusters(const json &a_v,
-                                                const Reporter &a_ctx) {
+template <>
+std::optional<MaterialClustersSource>
+ParseSourceAlternative<MaterialClustersSource>(const json &a_v,
+                                               const Reporter &a_ctx) {
   if (!a_v.is_object()) {
     a_ctx.Error("'materialClusters' takes an object with 'clusters', "
                 "'weights', 'seed' and 'iterations'");
@@ -688,10 +705,26 @@ std::optional<SourceKind> ParseMaterialClusters(const json &a_v,
 
 using SourceParser = std::optional<SourceKind> (*)(const json &,
                                                    const Reporter &);
-constexpr SourceParser kSourceParsers[]{
-    &ParseImage,  &ParseMaterial,        &ParseBake, &ParseUv, &ParseDistance,
-    &ParseRipple, &ParseMaterialClusters};
-static_assert(std::size(kSourceParsers) == std::variant_size_v<SourceKind>);
+
+template <class Alternative>
+std::optional<SourceKind> ParseSourceAs(const json &a_v,
+                                        const Reporter &a_ctx) {
+  std::optional<Alternative> parsed =
+      ParseSourceAlternative<Alternative>(a_v, a_ctx);
+  if (!parsed) {
+    return std::nullopt;
+  }
+  return SourceKind{std::move(*parsed)};
+}
+
+template <std::size_t... I>
+constexpr std::array<SourceParser, sizeof...(I)>
+SourceParsersInVariantOrder(std::index_sequence<I...>) {
+  return {&ParseSourceAs<std::variant_alternative_t<I, SourceKind>>...};
+}
+
+constexpr std::array<SourceParser, kSourceKindCount> kSourceParsers =
+    SourceParsersInVariantOrder(std::make_index_sequence<kSourceKindCount>{});
 
 std::optional<Source> SourceFrom(const std::string &a_name, const json &a_j,
                                  const Reporter &a_ctx) {
@@ -719,7 +752,8 @@ std::optional<SourceKind> ParseSourceKind(Reader &a_reader) {
     return std::nullopt;
   }
   a_reader.Child(entry->key);
-  return kSourceParsers[blank->index()](*entry->value, ctx);
+  return kSourceParsers[static_cast<std::size_t>(SourceKindIdOf(*blank))](
+      *entry->value, ctx);
 }
 
 namespace {

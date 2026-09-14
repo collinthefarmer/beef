@@ -337,5 +337,47 @@ int main() {
           "actors");
   }
 
+  {
+    Recipe recipe;
+    recipe.id = "sourceRefs";
+    recipe.signals.push_back(Signal{"drive", ConstantSignal{1.0f}, {}});
+    ImageSource image;
+    image.path = "a.dds";
+    image.scroll = Vec2Param{Ref{"drive"}};
+    image.tile = Vec2Param{std::array<Param, 2>{Param{Ref{"drive"}}, 1.0f}};
+    recipe.sources.push_back(Source{"pattern", image});
+    RippleSource ripple;
+    ripple.trigger = Ref{"drive"};
+    ripple.speed = Ref{"drive"};
+    ripple.width = Ref{"drive"};
+    ripple.decay = Ref{"drive"};
+    recipe.sources.push_back(Source{"wave", ripple});
+    recipe.sources.push_back(Source{"rough", MaterialSource{}});
+    recipe.sources.push_back(Source{"pos", BakeSource{}});
+    recipe.sources.push_back(Source{"u", UvSource{}});
+    recipe.sources.push_back(Source{"far", DistanceSource{}});
+    recipe.sources.push_back(Source{"bands", MaterialClustersSource{}});
+    Check(!Apply(recipe, RenameSignal{"drive", "energy"}),
+          "renaming a signal read by every referencing source kind");
+    const auto *renamedImage = Get<ImageSource>(recipe.sources[0].kind);
+    const auto *renamedRipple = Get<RippleSource>(recipe.sources[1].kind);
+    Check(renamedImage && renamedImage->scroll == Vec2Param{Ref{"energy"}} &&
+              renamedImage->tile ==
+                  Vec2Param{std::array<Param, 2>{Param{Ref{"energy"}}, 1.0f}},
+          "image scroll and tile follow the rename");
+    Check(renamedRipple && renamedRipple->trigger == Ref{"energy"} &&
+              renamedRipple->speed == Param{Ref{"energy"}} &&
+              renamedRipple->width == Param{Ref{"energy"}} &&
+              renamedRipple->decay == Param{Ref{"energy"}},
+          "ripple trigger, speed, width and decay follow the rename");
+    Check(recipe.sources.size() == 7 &&
+              Is<MaterialSource>(recipe.sources[2].kind) &&
+              Is<BakeSource>(recipe.sources[3].kind) &&
+              Is<UvSource>(recipe.sources[4].kind) &&
+              Is<DistanceSource>(recipe.sources[5].kind) &&
+              Is<MaterialClustersSource>(recipe.sources[6].kind),
+          "sources without parameters are visited and left unchanged");
+  }
+
   return test::Finish("studio_edits");
 }

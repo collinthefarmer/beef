@@ -314,7 +314,11 @@ json BakeToJson(const BakeSource &k) {
       [&](const BoneWeightBake &b) {
         return json::object({{"boneWeight", b.bones}});
       },
-      [&](const auto &) { return json(std::string{BakeKindName(k.bake)}); });
+      [&](const PositionBake &) { return json(BakeKindName(k.bake)); },
+      [&](const LocalPositionBake &) { return json(BakeKindName(k.bake)); },
+      [&](const WorldUpBake &) { return json(BakeKindName(k.bake)); },
+      [&](const ComponentIdBake &) { return json(BakeKindName(k.bake)); },
+      [&](const ChartIdBake &) { return json(BakeKindName(k.bake)); });
 }
 
 json MaterialClustersToJson(const MaterialClustersSource &k) {

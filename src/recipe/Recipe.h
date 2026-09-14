@@ -97,6 +97,7 @@ enum class SelectorKind {
   kGeometry,
   kTexture,
 };
+inline constexpr std::size_t kSelectorKindCount = 3;
 
 struct SelectorClause {
   SelectorKind kind = SelectorKind::kGeometry;
@@ -133,6 +134,7 @@ enum class Waveform {
   kSquare,
   kSaw,
 };
+inline constexpr std::size_t kWaveformCount = 4;
 
 struct ConstantSignal {
   Value value = 0.0f;
@@ -159,6 +161,7 @@ enum class EfshField {
   kEdgeColor,
   kScroll,
 };
+inline constexpr std::size_t kEfshFieldCount = 5;
 struct EfshSignal {
   EfshField field = EfshField::kFillAlpha;
   FormRef record;
@@ -172,6 +175,7 @@ enum class Measure {
   kDamage,
   kMax,
 };
+inline constexpr std::size_t kMeasureCount = 6;
 struct ActorValueSignal {
   std::string actorValue;
   Measure measure = Measure::kCurrent;
@@ -183,6 +187,7 @@ enum class ActorStateKind {
   kWeaponDrawn,
   kHostileDistance,
 };
+inline constexpr std::size_t kActorStateCount = 4;
 struct ActorStateSignal {
   ActorStateKind kind = ActorStateKind::kInCombat;
   [[nodiscard]] bool operator==(const ActorStateSignal &) const = default;
@@ -191,6 +196,7 @@ enum class EnchantmentField {
   kMagnitude,
   kCost,
 };
+inline constexpr std::size_t kEnchantmentFieldCount = 2;
 struct EnchantmentSignal {
   EnchantmentField field = EnchantmentField::kMagnitude;
   [[nodiscard]] bool operator==(const EnchantmentSignal &) const = default;
@@ -235,6 +241,7 @@ enum class PayloadField {
   kPosition,
   kNormal,
 };
+inline constexpr std::size_t kPayloadFieldCount = 3;
 struct PayloadSignal {
   Ref trigger;
   PayloadField field = PayloadField::kValue;
@@ -348,6 +355,7 @@ enum class ImageSpace {
   kTiled,
   kMesh,
 };
+inline constexpr std::size_t kImageSpaceCount = 2;
 struct ImageSource {
   std::string path;
   ImageChannel channel = ImageChannel::kRgb;
@@ -409,6 +417,7 @@ enum class UvAxis {
   kU,
   kV,
 };
+inline constexpr std::size_t kUvAxisCount = 2;
 struct UvSource {
   UvAxis axis = UvAxis::kU;
   [[nodiscard]] bool operator==(const UvSource &) const = default;
@@ -421,6 +430,7 @@ enum class RippleShape {
   kRing,
   kDisc,
 };
+inline constexpr std::size_t kRippleShapeCount = 2;
 struct RippleSource {
   Ref trigger;
   Param speed = 100.0f;
@@ -446,6 +456,21 @@ struct MaterialClustersSource {
 using SourceKind =
     std::variant<ImageSource, MaterialSource, BakeSource, UvSource,
                  DistanceSource, RippleSource, MaterialClustersSource>;
+enum class SourceKindId {
+  kImage,
+  kMaterial,
+  kBake,
+  kUv,
+  kDistance,
+  kRipple,
+  kMaterialClusters,
+};
+inline constexpr std::size_t kSourceKindCount = 7;
+static_assert(kSourceKindCount == std::variant_size_v<SourceKind>);
+[[nodiscard]] inline SourceKindId
+SourceKindIdOf(const SourceKind &a_kind) noexcept {
+  return static_cast<SourceKindId>(a_kind.index());
+}
 
 struct Source {
   std::string name;
@@ -475,6 +500,7 @@ enum class Surface {
   kMaterial,
   kShell,
 };
+inline constexpr std::size_t kSurfaceCount = 2;
 [[nodiscard]] std::string_view SurfaceName(Surface a_surface) noexcept;
 [[nodiscard]] std::optional<Surface>
 ParseSurface(std::string_view a_name) noexcept;
@@ -641,10 +667,12 @@ enum class ShellMaterial {
   kPbrCopy,
   kVanilla,
 };
+inline constexpr std::size_t kShellMaterialCount = 2;
 enum class ShellBlend {
   kAdditive,
   kAlpha,
 };
+inline constexpr std::size_t kShellBlendCount = 2;
 
 struct ShellPose {
   Vec3Param inflate = std::array<Param, 3>{0.0f, 0.0f, 0.0f};

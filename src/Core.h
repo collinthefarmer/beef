@@ -168,6 +168,26 @@ template <class E> struct Named {
   std::string_view name;
 };
 
+template <class Row, std::size_t N>
+[[nodiscard]] constexpr bool Complete(const Row (&a_table)[N],
+                                      std::size_t a_count) noexcept {
+  if (N != a_count) {
+    return false;
+  }
+  for (std::size_t value = 0; value < a_count; ++value) {
+    std::size_t rows = 0;
+    for (const auto &row : a_table) {
+      if (static_cast<std::size_t>(row.value) == value) {
+        ++rows;
+      }
+    }
+    if (rows != 1) {
+      return false;
+    }
+  }
+  return true;
+}
+
 template <class Row, std::size_t N, class E>
 [[nodiscard]] constexpr std::string_view NameOf(const Row (&a_table)[N],
                                                 E a_value) noexcept {

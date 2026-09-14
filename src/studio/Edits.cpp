@@ -1266,7 +1266,9 @@ void VisitSignalParams(SignalKind &a_kind, Visitor &a_visit) {
         VisitRef(s.of, a_visit, "of");
         VisitParam(s.seconds, std::nullopt, a_visit, "seconds");
       },
-      [](auto &) {});
+      [](ConstantSignal &) {}, [](EfshSignal &) {}, [](ActorValueSignal &) {},
+      [](ActorStateSignal &) {}, [](EnchantmentSignal &) {},
+      [](ExprSignal &) {});
 }
 
 template <class Visitor>
@@ -1283,7 +1285,8 @@ void VisitSourceParams(SourceKind &a_kind, Visitor &a_visit) {
         VisitParam(s.width, std::nullopt, a_visit, "width");
         VisitParam(s.decay, std::nullopt, a_visit, "decay");
       },
-      [](auto &) {});
+      [](MaterialSource &) {}, [](BakeSource &) {}, [](UvSource &) {},
+      [](DistanceSource &) {}, [](MaterialClustersSource &) {});
 }
 
 template <class Visitor>

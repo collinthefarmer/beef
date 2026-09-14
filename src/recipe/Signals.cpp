@@ -168,34 +168,10 @@ std::vector<std::string> Dependencies(const Signal &a_signal,
           }
         }
       },
-      [](const auto &) {});
+      [](const ConstantSignal &) {}, [](const EfshSignal &) {},
+      [](const ActorValueSignal &) {}, [](const ActorStateSignal &) {},
+      [](const EnchantmentSignal &) {});
   return out;
-}
-
-ShaderChannel ChannelOf(ImageChannel a_channel) noexcept {
-  const auto *row = RowOf(kImageChannels, a_channel);
-  return row ? row->channel : ShaderChannel::kRgb;
-}
-
-ValueType ChannelType(MaterialChannel a_channel) noexcept {
-  const auto *row = RowOf(kMaterialChannels, a_channel);
-  return row ? row->type : ValueType::kScalar;
-}
-
-ValueType SourceValueType(const Source &a_source) noexcept {
-  return Match(
-      a_source.kind,
-      [](const ImageSource &s) {
-        return ChannelOf(s.channel) == ShaderChannel::kRgb ? ValueType::kVec3
-                                                           : ValueType::kScalar;
-      },
-      [](const MaterialSource &s) { return ChannelType(s.channel); },
-      [](const BakeSource &s) {
-        return Is<PositionBake>(s.bake) || Is<LocalPositionBake>(s.bake)
-                   ? ValueType::kVec3
-                   : ValueType::kScalar;
-      },
-      [](const auto &) { return ValueType::kScalar; });
 }
 
 bool IsIdentifier(std::string_view a_text) noexcept {
@@ -588,7 +564,15 @@ void SignalGraph::InferTypes(SignalGraph &a_graph) {
           }
           return *checked;
         },
-        [](const auto &) { return ValueType::kScalar; });
+        [](const PulseSignal &) { return ValueType::kScalar; },
+        [](const RampSignal &) { return ValueType::kScalar; },
+        [](const ActorValueSignal &) { return ValueType::kScalar; },
+        [](const ActorStateSignal &) { return ValueType::kScalar; },
+        [](const EnchantmentSignal &) { return ValueType::kScalar; },
+        [](const TriggerSignal &) { return ValueType::kScalar; },
+        [](const CounterSignal &) { return ValueType::kScalar; },
+        [](const AccumulateSignal &) { return ValueType::kScalar; },
+        [](const NoiseSignal &) { return ValueType::kScalar; });
     if (n.curve && n.type != ValueType::kScalar) {
       n.inert = true;
       ReportSignal(
@@ -751,7 +735,7 @@ std::optional<ValueType> TexelTypeOf(const RowTypes &a_rows,
     return std::nullopt;
   }
   if (const auto *source = a_rows.recipe.FindSource(a_name)) {
-    return SourceValueType(*source);
+    return SourceType(*source);
   }
   if (const auto *mask = a_rows.recipe.FindMask(a_name)) {
     return MaskTypeOf(a_rows, *mask, a_depth + 1);
@@ -845,7 +829,7 @@ std::vector<Diagnostic> CheckSource(const RowTypes &a_rows,
           }
         }
       },
-      [](const auto &) {});
+      [](const MaterialSource &) {}, [](const UvSource &) {});
   return out;
 }
 

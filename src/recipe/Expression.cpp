@@ -596,6 +596,15 @@ ReplaceNumericLiteral(std::string_view a_current,
   return changed;
 }
 
+std::vector<std::string_view> FunctionNames() {
+  std::vector<std::string_view> names;
+  names.reserve(kFunctions.size());
+  for (const Function &function : kFunctions) {
+    names.push_back(function.name);
+  }
+  return names;
+}
+
 std::expected<Program, std::string> ParseCurve(std::string_view a_text) {
   auto program = Program::Parse(a_text);
   if (!program) {

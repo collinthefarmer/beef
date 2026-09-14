@@ -22,22 +22,25 @@ inline constexpr KeyKindSpec kKeyKinds[]{
     {KeyKind::kMagicEffect, "magicEffect", 60, KeyOperand::kForm, true,
      &WornPiece::magicEffect, nullptr},
 };
-static_assert(std::size(kKeyKinds) == kKeyKindCount);
+static_assert(Complete(kKeyKinds, kKeyKindCount));
 inline constexpr Named<SelectorKind> kSelectorKinds[]{
     {SelectorKind::kAddon, "addon"},
     {SelectorKind::kGeometry, "geometry"},
     {SelectorKind::kTexture, "texture"}};
+static_assert(Complete(kSelectorKinds, kSelectorKindCount));
 
 inline constexpr Named<Waveform> kWaveforms[]{{Waveform::kSine, "sine"},
                                               {Waveform::kTriangle, "triangle"},
                                               {Waveform::kSquare, "square"},
                                               {Waveform::kSaw, "saw"}};
+static_assert(Complete(kWaveforms, kWaveformCount));
 inline constexpr Named<EfshField> kEfshFields[]{
     {EfshField::kFillAlpha, "fillAlpha"},
     {EfshField::kFillColor, "fillColor"},
     {EfshField::kEdgeAlpha, "edgeAlpha"},
     {EfshField::kEdgeColor, "edgeColor"},
     {EfshField::kScroll, "scroll"}};
+static_assert(Complete(kEfshFields, kEfshFieldCount));
 inline constexpr Named<Measure> kMeasures[]{
     {Measure::kCurrent, "current"},
     {Measure::kBase, "base"},
@@ -45,18 +48,22 @@ inline constexpr Named<Measure> kMeasures[]{
     {Measure::kTemporaryModifier, "temporaryModifier"},
     {Measure::kDamage, "damage"},
     {Measure::kMax, "max"}};
+static_assert(Complete(kMeasures, kMeasureCount));
 inline constexpr Named<ActorStateKind> kActorStates[]{
     {ActorStateKind::kInCombat, "inCombat"},
     {ActorStateKind::kSneaking, "sneaking"},
     {ActorStateKind::kWeaponDrawn, "weaponDrawn"},
     {ActorStateKind::kHostileDistance, "hostileDistance"}};
+static_assert(Complete(kActorStates, kActorStateCount));
 inline constexpr Named<EnchantmentField> kEnchantmentFields[]{
     {EnchantmentField::kMagnitude, "magnitude"},
     {EnchantmentField::kCost, "cost"}};
+static_assert(Complete(kEnchantmentFields, kEnchantmentFieldCount));
 inline constexpr Named<PayloadField> kPayloadFields[]{
     {PayloadField::kValue, "value"},
     {PayloadField::kPosition, "position"},
     {PayloadField::kNormal, "normal"}};
+static_assert(Complete(kPayloadFields, kPayloadFieldCount));
 
 inline constexpr ImageChannelSpec kImageChannels[]{
     {ImageChannel::kRgb, "rgb", ShaderChannel::kRgb},
@@ -66,9 +73,10 @@ inline constexpr ImageChannelSpec kImageChannels[]{
     {ImageChannel::kA, "a", ShaderChannel::kA},
     {ImageChannel::kLuma, "luma", ShaderChannel::kLuma},
 };
-static_assert(std::size(kImageChannels) == kImageChannelCount);
+static_assert(Complete(kImageChannels, kImageChannelCount));
 inline constexpr Named<ImageSpace> kImageSpaces[]{{ImageSpace::kTiled, "tiled"},
                                                   {ImageSpace::kMesh, "mesh"}};
+static_assert(Complete(kImageSpaces, kImageSpaceCount));
 inline constexpr MaterialChannelSpec kMaterialChannels[]{
     {MaterialChannel::kDiffuseRgb, "diffuseRgb", MaterialMap::kDiffuse,
      ShaderChannel::kRgb, ValueType::kVec3},
@@ -89,14 +97,21 @@ inline constexpr MaterialChannelSpec kMaterialChannels[]{
     {MaterialChannel::kRelief, "relief", MaterialMap::kNone, ShaderChannel::kR,
      ValueType::kScalar},
 };
-static_assert(std::size(kMaterialChannels) == kMaterialChannelCount);
+static_assert(Complete(kMaterialChannels, kMaterialChannelCount));
 inline constexpr Named<UvAxis> kUvAxes[]{{UvAxis::kU, "u"}, {UvAxis::kV, "v"}};
+static_assert(Complete(kUvAxes, kUvAxisCount));
 inline constexpr Named<RippleShape> kRippleShapes[]{
     {RippleShape::kRing, "ring"}, {RippleShape::kDisc, "disc"}};
-inline constexpr std::string_view kSourceKindWords[]{
-    "image",  "material",        "bake", "uv", "distance",
-    "ripple", "materialClusters"};
-static_assert(std::size(kSourceKindWords) == std::variant_size_v<SourceKind>);
+static_assert(Complete(kRippleShapes, kRippleShapeCount));
+inline constexpr Named<SourceKindId> kSourceKindWords[]{
+    {SourceKindId::kImage, "image"},
+    {SourceKindId::kMaterial, "material"},
+    {SourceKindId::kBake, "bake"},
+    {SourceKindId::kUv, "uv"},
+    {SourceKindId::kDistance, "distance"},
+    {SourceKindId::kRipple, "ripple"},
+    {SourceKindId::kMaterialClusters, "materialClusters"}};
+static_assert(Complete(kSourceKindWords, kSourceKindCount));
 static_assert(
     std::is_same_v<std::variant_alternative_t<0, SourceKind>, ImageSource> &&
     std::is_same_v<std::variant_alternative_t<1, SourceKind>, MaterialSource> &&
@@ -152,10 +167,11 @@ inline constexpr SignalKindSpec kSignalKinds[]{
     {SignalKindId::kSmooth, "smooth", false},
     {SignalKindId::kExpr, "expr", true},
 };
-static_assert(std::size(kSignalKinds) == kSignalKindCount);
+static_assert(Complete(kSignalKinds, kSignalKindCount));
 
 inline constexpr Named<Surface> kSurfaces[]{{Surface::kMaterial, "material"},
                                             {Surface::kShell, "shell"}};
+static_assert(Complete(kSurfaces, kSurfaceCount));
 inline constexpr ScalarFieldSpec kScalarFields[]{
     {ScalarField::kStrength, "strength", &SlotScalars::strength, 1.0f},
     {ScalarField::kScale, "scale", &SlotScalars::scale, 1.0f},
@@ -173,7 +189,7 @@ inline constexpr ScalarFieldSpec kScalarFields[]{
     {ScalarField::kLevel, "level", &SlotScalars::level, 0.6f},
     {ScalarField::kThickness, "thickness", &SlotScalars::thickness, 1.0f},
 };
-static_assert(std::size(kScalarFields) == kScalarFieldCount);
+static_assert(Complete(kScalarFields, kScalarFieldCount));
 
 namespace SlotColumns {
 inline constexpr ChannelSet kRgba{true, true, true, true};
@@ -264,7 +280,7 @@ inline constexpr SlotSpec kSlots[]{
      SlotColumns::kSubsurfaceScalars, true, SlotColumns::kSubsurfaceExcludes,
      MaterialMap::kNone},
 };
-static_assert(std::size(kSlots) == kSlotCount);
+static_assert(Complete(kSlots, kSlotCount));
 inline constexpr BlendSpec kBlends[]{
     {Blend::kReplace, "replace", 0, false},
     {Blend::kMultiply, "multiply", 1, false},
@@ -274,10 +290,12 @@ inline constexpr BlendSpec kBlends[]{
     {Blend::kLerp, "lerp", 5, false},
     {Blend::kNormal, "normal", 6, true},
 };
-static_assert(std::size(kBlends) == kBlendCount);
+static_assert(Complete(kBlends, kBlendCount));
 
 inline constexpr Named<ShellMaterial> kShellMaterials[]{
     {ShellMaterial::kPbrCopy, "pbrCopy"}, {ShellMaterial::kVanilla, "vanilla"}};
+static_assert(Complete(kShellMaterials, kShellMaterialCount));
 inline constexpr Named<ShellBlend> kShellBlends[]{
     {ShellBlend::kAdditive, "additive"}, {ShellBlend::kAlpha, "alpha"}};
+static_assert(Complete(kShellBlends, kShellBlendCount));
 }

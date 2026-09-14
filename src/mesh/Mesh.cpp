@@ -199,7 +199,11 @@ std::string NeedsAnalysis(const BakeKind &a_kind) {
       [](const ChartIdBake &) {
         return std::string{"chartId needs the mesh analysis"};
       },
-      [](const auto &) { return std::string{}; });
+      [](const PositionBake &) { return std::string{}; },
+      [](const LocalPositionBake &) { return std::string{}; },
+      [](const WorldUpBake &) { return std::string{}; },
+      [](const PartitionBake &) { return std::string{}; },
+      [](const BoneWeightBake &) { return std::string{}; });
 }
 
 std::optional<std::string_view> SlotName(std::uint32_t a_slot) noexcept {

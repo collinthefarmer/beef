@@ -261,7 +261,10 @@ ValueType SourceType(const Source &a_source) noexcept {
                    ? ValueType::kVec3
                    : ValueType::kScalar;
       },
-      [](const auto &) { return ValueType::kScalar; });
+      [](const UvSource &) { return ValueType::kScalar; },
+      [](const DistanceSource &) { return ValueType::kScalar; },
+      [](const RippleSource &) { return ValueType::kScalar; },
+      [](const MaterialClustersSource &) { return ValueType::kScalar; });
 }
 
 bool IsName(std::string_view a_text) noexcept {
@@ -638,12 +641,11 @@ std::string ChannelSet::ToString() const {
 }
 
 std::optional<SourceKind> DefaultSourceKind(std::string_view a_name) {
-  for (std::size_t i = 0; i < std::size(kSourceKindWords); ++i) {
-    if (kSourceKindWords[i] == a_name) {
-      return AlternativeAt<SourceKind>(i);
-    }
+  const std::optional<SourceKindId> id = FromName(kSourceKindWords, a_name);
+  if (!id) {
+    return std::nullopt;
   }
-  return std::nullopt;
+  return AlternativeAt<SourceKind>(static_cast<std::size_t>(*id));
 }
 
 std::optional<BakeKind> DefaultBakeKind(std::string_view a_name) {
@@ -656,9 +658,7 @@ std::optional<BakeKind> DefaultBakeKind(std::string_view a_name) {
 }
 
 std::string_view SourceKindName(const SourceKind &a_kind) noexcept {
-  const std::size_t index = a_kind.index();
-  return index < std::size(kSourceKindWords) ? kSourceKindWords[index]
-                                             : std::string_view{"?"};
+  return NameOf(kSourceKindWords, SourceKindIdOf(a_kind));
 }
 
 std::string_view BakeKindName(const BakeKind &a_bake) noexcept {

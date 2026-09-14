@@ -172,7 +172,17 @@ public:
           },
           [&](const DeltaSignal &d) { return Signal(d.of.name); },
           [&](const SmoothSignal &s) { return Signal(s.of.name); },
-          [](const auto &) { return true; });
+          [](const PulseSignal &) { return true; },
+          [](const RampSignal &) { return true; },
+          [](const EfshSignal &) { return true; },
+          [](const ActorValueSignal &) { return true; },
+          [](const ActorStateSignal &) { return true; },
+          [](const EnchantmentSignal &) { return true; },
+          [](const TriggerSignal &) { return true; },
+          [](const PayloadSignal &) { return true; },
+          [](const CounterSignal &) { return true; },
+          [](const AccumulateSignal &) { return true; },
+          [](const NoiseSignal &) { return true; });
     });
   }
 
@@ -203,7 +213,11 @@ public:
                    (s.tile && Vector(*s.tile));
           },
           [](const RippleSource &) { return true; },
-          [](const auto &) { return false; });
+          [](const MaterialSource &) { return false; },
+          [](const BakeSource &) { return false; },
+          [](const UvSource &) { return false; },
+          [](const DistanceSource &) { return false; },
+          [](const MaterialClustersSource &) { return false; });
     });
   }
 
