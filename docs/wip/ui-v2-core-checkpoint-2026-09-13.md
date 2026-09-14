@@ -110,6 +110,24 @@ later and not listed here. Three findings for the UI owner:
    adds. A native test in `tests/studio/menustate_tests.cpp` can cover it
    without the menu: post, acknowledge, assert the selection.
 
+5. **A source cannot change kind to image, ripple or distance.** The kind
+   field posts `SetSource{name, DefaultSourceKind(word)}`, a blank record
+   of the new kind, and `Edit(SetSource)` in `studio/Edits.cpp` runs the
+   full `CheckSource` on it before storing it. A blank image has an empty
+   `path`, a blank ripple an empty `trigger`, a blank distance neither node
+   nor point, so each is refused with a validation error at the top of the
+   inspector, the kind never changes, and the form that would fill the
+   missing field never opens. Material, uv, bake and material-clusters
+   switch because their defaults are complete. The edit path is identical
+   in the pre-wave tree (`a983787`), so this predates the wave. Fix: when
+   the incoming kind's alternative differs from the current one, store it
+   without the check and let the blank required field surface as the row's
+   `problem` (a row error keeps the row inert; the validator still runs at
+   save and in the snapshot), so the new kind's form opens with its empty
+   field marked; add a scenario in `tests/studio/edits_tests.cpp` that
+   switches material to image, then sets the path, and expects the row to
+   validate. `Edits.cpp` is slice 2B's seam.
+
 Recipe-level rename and the add-resource menu work. Findings 2 and 3 are
 regressions from slice 1C's replacement of the resource tables and belong
 to its owner; `ResourcePanels.cpp` can be deleted once its two remaining
