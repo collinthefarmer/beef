@@ -2,8 +2,10 @@
 
 #include "studio/Names.h"
 
+#include <algorithm>
 #include <array>
 #include <charconv>
+#include <cmath>
 #include <string_view>
 #include <system_error>
 
@@ -49,6 +51,12 @@ namespace {
 [[nodiscard]] bool BlankText(std::string_view a_text) noexcept {
   return a_text.find_first_not_of(' ') == std::string_view::npos;
 }
+}
+
+std::pair<float, float> ValueRelativeRange(float a_value) {
+  constexpr float kZeroTuningSpan = 1.0f;
+  const float span = std::max(std::fabs(a_value), kZeroTuningSpan);
+  return {a_value - span, a_value + span};
 }
 
 FieldBinding BindLayerSource(std::size_t a_output, std::size_t a_layer) {

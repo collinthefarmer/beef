@@ -126,6 +126,8 @@ template <class S, class M, class Parse>
   };
 }
 
+[[nodiscard]] std::pair<float, float> ValueRelativeRange(float a_value);
+
 [[nodiscard]] FormField ValueField(ValueFieldSpec a_spec);
 [[nodiscard]] FormField ReferenceField(ReferenceFieldSpec a_spec);
 [[nodiscard]] FormField ChoiceField(std::string a_name, std::string a_current,

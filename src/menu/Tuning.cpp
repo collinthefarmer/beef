@@ -3,6 +3,7 @@
 #include "engine/Manager.h"
 #include "menu/MenuWidgets.h"
 #include "studio/FieldCheck.h"
+#include "studio/Fields.h"
 
 #include <cmath>
 #include <format>
@@ -43,12 +44,13 @@ TuningRange(const Studio::FormField &a_field, Studio::MenuState &a_state,
       found != a_state.tuningRanges.end()) {
     return found->second;
   }
-  if (ImGui::SmallButton("Set slider range")) {
-    a_state.numberBuffers[a_key] = {a_value, a_value, 0.0f};
+  const std::pair<float, float> fallback = Studio::ValueRelativeRange(a_value);
+  if (ImGui::SmallButton("Adjust range")) {
+    a_state.numberBuffers[a_key] = {fallback.first, fallback.second, 0.0f};
     ImGui::OpenPopup("tuning-range");
   }
-  Tooltip("No expected range is known. Choose limits for this slider; exact "
-          "input remains unrestricted.");
+  Tooltip("The slider spans a range around the current value. Adjust it to set "
+          "exact limits; exact input stays unrestricted.");
   if (ImGui::BeginPopup("tuning-range")) {
     auto &range = a_state.numberBuffers[a_key];
     ImGui::InputFloat("Minimum", &range[0]);
@@ -63,7 +65,7 @@ TuningRange(const Studio::FormField &a_field, Studio::MenuState &a_state,
     });
     ImGui::EndPopup();
   }
-  return std::nullopt;
+  return fallback;
 }
 
 void UpdateTuning(const Studio::FormField &a_field, const Frame &a_frame,

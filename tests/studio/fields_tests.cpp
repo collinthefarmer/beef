@@ -199,5 +199,19 @@ int main() {
   Check(toggle.kind == FieldKind::kToggle && toggle.text == "on",
         "ToggleField spells the boolean as the on token");
 
+  const auto posRange = ValueRelativeRange(0.5f);
+  Check(posRange.first < 0.5f && posRange.second > 0.5f,
+        "ValueRelativeRange brackets a positive value");
+  const auto negRange = ValueRelativeRange(-3.0f);
+  Check(negRange.first < -3.0f && negRange.second > -3.0f &&
+            negRange.first < negRange.second,
+        "ValueRelativeRange extends negative for a negative value, ordered");
+  const auto bigRange = ValueRelativeRange(100.0f);
+  const auto zeroRange = ValueRelativeRange(0.0f);
+  Check(bigRange.second - bigRange.first > zeroRange.second - zeroRange.first,
+        "ValueRelativeRange scales its span with the value magnitude");
+  Check(zeroRange.first < 0.0f && zeroRange.second > 0.0f,
+        "ValueRelativeRange gives a zero value a usable range");
+
   return test::Finish("studio_fields");
 }
