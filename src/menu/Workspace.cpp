@@ -111,6 +111,86 @@ void DrawOutputAddMenu(const Frame &a_frame) {
   ImGui::EndPopup();
 }
 
+constexpr const char *kNavLayerPayload = "BEEF_NAV_LAYER";
+
+void DrawOutputLayerRow(const Frame &a_frame, const Studio::OutputRow &a_output,
+                        std::size_t a_layer) {
+  const std::string &id = a_frame.recipe->id;
+  const Studio::View &view = ViewOf(a_frame);
+  const Studio::LayerRow &layer = a_output.layers[a_layer];
+  ImGui::PushID(static_cast<int>(a_layer));
+  if (RemoveButton(0)) {
+    Studio::Post(*a_frame.intents, id,
+                 Studio::RemoveLayer{a_output.index, a_layer});
+  }
+  ImGui::SameLine();
+  if (DragHandle(kNavLayerPayload, a_layer, "layer")) {
+    Studio::Post(*a_frame.intents, Studio::PickLayer{a_layer});
+  }
+  if (const auto move = DropTarget(kNavLayerPayload, a_layer)) {
+    Studio::Post(*a_frame.intents, id,
+                 Studio::MoveLayer{a_output.index, move->from, move->to});
+  }
+  ImGui::SameLine();
+  bool solo = view.isolation.TargetsLayer(id, a_output.index, a_layer);
+  if (SoloButton(solo)) {
+    Studio::Post(*a_frame.intents,
+                 Studio::SoloLayer{id, a_output.index, a_layer, solo});
+  }
+  ImGui::SameLine();
+  bool mute = view.LayerMuted(id, a_output.index, a_layer);
+  if (MuteButton(mute)) {
+    Studio::Post(*a_frame.intents,
+                 Studio::MuteLayer{id, a_output.index, a_layer, mute});
+  }
+  ImGui::SameLine();
+  Badge(layer.source.starts_with('@') ? Studio::FieldKind::kReference
+                                      : Studio::FieldKind::kColor);
+  ImGui::SameLine();
+  const std::string label = std::format("{}: {}", a_layer + 1, layer.source);
+  PickSubject(label.c_str(), Studio::LayerSubject{a_output.index, a_layer},
+              a_frame);
+  ImGui::PopID();
+}
+
+void DrawOutputNode(const Frame &a_frame, const Studio::OutputRow &a_output,
+                    std::string_view a_filter) {
+  const std::string title = a_output.target == Target::kLight
+                                ? std::format("Light {}", a_output.index + 1)
+                                : std::string{SlotName(a_output.slot)};
+  const bool outputMatches = Studio::NameMatches(title, a_filter);
+  const bool layerMatches =
+      std::ranges::any_of(a_output.layers, [&](const Studio::LayerRow &l) {
+        return Studio::NameMatches(l.source, a_filter) ||
+               Studio::NameMatches(l.mask, a_filter);
+      });
+  if (!outputMatches && !layerMatches) {
+    return;
+  }
+  ImGui::PushID(static_cast<int>(a_output.index));
+  PickSubject(title.c_str(), Studio::OutputSubject{a_output.index}, a_frame);
+  ImGui::Indent();
+  for (std::size_t i = 0; i < a_output.layers.size(); ++i) {
+    if (!outputMatches &&
+        !Studio::NameMatches(a_output.layers[i].source, a_filter) &&
+        !Studio::NameMatches(a_output.layers[i].mask, a_filter)) {
+      continue;
+    }
+    DrawOutputLayerRow(a_frame, a_output, i);
+  }
+  if (a_output.target != Target::kLight) {
+    ImGui::PushID("add");
+    if (ImGui::SmallButton("+ layer")) {
+      Studio::Post(*a_frame.intents, a_frame.recipe->id,
+                   Studio::AddLayer{a_output.index, Studio::DefaultLayer(),
+                                    a_output.layers.size()});
+    }
+    ImGui::PopID();
+  }
+  ImGui::Unindent();
+  ImGui::PopID();
+}
+
 void DrawNavigator(const Frame &a_frame) {
   DrawOutputAddMenu(a_frame);
   ImGui::SameLine();
@@ -119,42 +199,31 @@ void DrawNavigator(const Frame &a_frame) {
       LiveTextField("navigator-search", "Find outputs and resources",
                     Studio::Width::Fill(), a_frame.scale);
   PickSubject("Recipe / overview", Studio::RecipeSubject{}, a_frame);
-  PickSubject("Shell settings", Studio::ShellSubject{}, a_frame);
-  if (NavigatorSection("Outputs", filter)) {
-    for (const Studio::OutputRow &output : a_frame.recipe->outputs) {
-      const std::string title =
-          output.target == Target::kLight
-              ? std::format("Light {}", output.index + 1)
-              : std::format("{} / {}", SurfaceName(output.surface),
-                            SlotName(output.slot));
-      const bool outputMatches = Studio::NameMatches(title, filter);
-      const bool layerMatches = std::ranges::any_of(
-          output.layers, [&](const Studio::LayerRow &layer) {
-            return Studio::NameMatches(layer.source, filter) ||
-                   Studio::NameMatches(layer.mask, filter);
-          });
-      if (!outputMatches && !layerMatches) {
-        continue;
-      }
-      ImGui::PushID(static_cast<int>(output.index));
-      PickSubject(title.c_str(), Studio::OutputSubject{output.index}, a_frame);
-      ImGui::Indent();
-      for (std::size_t i = 0; i < output.layers.size(); ++i) {
-        if (!outputMatches &&
-            !Studio::NameMatches(output.layers[i].source, filter) &&
-            !Studio::NameMatches(output.layers[i].mask, filter)) {
-          continue;
-        }
-        const std::string label =
-            std::format("{}: {}", i + 1, output.layers[i].source);
-        ImGui::PushID(static_cast<int>(i));
-        PickSubject(label.c_str(), Studio::LayerSubject{output.index, i},
-                    a_frame);
-        ImGui::PopID();
-      }
-      ImGui::Unindent();
-      ImGui::PopID();
+  Dim("Outputs");
+  for (const Surface surface : {Surface::kMaterial, Surface::kShell}) {
+    if (surface == Surface::kShell) {
+      PickSubject("Shell", Studio::ShellSubject{}, a_frame);
+    } else {
+      Dim("Material");
     }
+    ImGui::Indent();
+    for (const Studio::OutputRow &output : a_frame.recipe->outputs) {
+      if (output.target != Target::kLight && output.surface == surface) {
+        DrawOutputNode(a_frame, output, filter);
+      }
+    }
+    ImGui::Unindent();
+  }
+  bool anyLight = false;
+  for (const Studio::OutputRow &output : a_frame.recipe->outputs) {
+    if (output.target != Target::kLight) {
+      continue;
+    }
+    if (!anyLight) {
+      Dim("Lights");
+      anyLight = true;
+    }
+    DrawOutputNode(a_frame, output, filter);
   }
   if (NavigatorSection("Sources", filter)) {
     for (const Studio::SourceRow &source : a_frame.recipe->sourceRows) {
