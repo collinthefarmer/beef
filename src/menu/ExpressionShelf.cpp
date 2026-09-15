@@ -73,7 +73,8 @@ void DrawExpressionShelf(const Studio::FormField &a_field,
     return;
   }
   Studio::MenuState &state = *a_frame.state;
-  const auto key = ImGui::GetID("expression-draft");
+  const auto key =
+      Studio::HashFieldKey(Studio::State().fieldScope, a_field.name, "expr");
   if (state.activeField == Studio::kNoField && !state.tuning) {
     if (state.expressionDrafts.size() >= 128) {
       state.expressionDrafts.clear();

@@ -11,6 +11,35 @@
 
 namespace BetterEnchantmentEffects::Studio {
 namespace {
+[[nodiscard]] FieldKey FoldFieldKey(const std::string &a_composed) {
+  const std::size_t hash = std::hash<std::string_view>{}(a_composed);
+  const auto folded = static_cast<FieldKey>(hash ^ (hash >> 32));
+  return folded == kNoField ? FieldKey{1} : folded;
+}
+}
+
+FieldKey HashFieldKey(std::string_view a_scope, std::string_view a_leaf) {
+  std::string composed;
+  composed.reserve(a_scope.size() + a_leaf.size() + 1);
+  composed.append(a_scope);
+  composed.push_back('\x1f');
+  composed.append(a_leaf);
+  return FoldFieldKey(composed);
+}
+
+FieldKey HashFieldKey(std::string_view a_scope, std::string_view a_field,
+                      std::string_view a_leaf) {
+  std::string composed;
+  composed.reserve(a_scope.size() + a_field.size() + a_leaf.size() + 2);
+  composed.append(a_scope);
+  composed.push_back('\x1f');
+  composed.append(a_field);
+  composed.push_back('\x1f');
+  composed.append(a_leaf);
+  return FoldFieldKey(composed);
+}
+
+namespace {
 void ReduceEdit(Selection &a_selection, const RecipeEdit &a_edit) {
   Match(
       a_edit,

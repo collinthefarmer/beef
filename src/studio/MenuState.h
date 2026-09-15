@@ -17,12 +17,19 @@
 #include <functional>
 #include <optional>
 #include <string>
+#include <string_view>
 #include <unordered_map>
 #include <utility>
 
 namespace BetterEnchantmentEffects::Studio {
 using FieldKey = std::uint32_t;
 inline constexpr FieldKey kNoField = 0;
+
+[[nodiscard]] FieldKey HashFieldKey(std::string_view a_scope,
+                                    std::string_view a_leaf);
+[[nodiscard]] FieldKey HashFieldKey(std::string_view a_scope,
+                                    std::string_view a_field,
+                                    std::string_view a_leaf);
 
 using TextBuffer = std::array<char, 1024>;
 using NumberBuffer = std::array<float, 3>;
@@ -74,6 +81,7 @@ struct MenuState {
   FieldKey activeField = kNoField;
   std::unordered_map<FieldKey, bool> comboMode;
   FieldKey focusField = kNoField;
+  std::string fieldScope;
   Mode modeDrawn = Mode::kCompose;
   FiringDraft firing;
   History<MaskStack> maskHistory;

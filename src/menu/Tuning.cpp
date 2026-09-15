@@ -162,7 +162,8 @@ void DrawTuning(const Studio::FormField &a_field, const Frame &a_frame) {
     return;
   }
   Studio::MenuState &state = *a_frame.state;
-  const auto key = ImGui::GetID("tune");
+  const auto key =
+      Studio::HashFieldKey(Studio::State().fieldScope, a_field.name, "tune");
   const bool owned = state.tuning && state.tuning->field == key &&
                      state.tuning->recipeID == a_frame.recipe->id;
   float value = owned ? state.tuning->value : *initial;

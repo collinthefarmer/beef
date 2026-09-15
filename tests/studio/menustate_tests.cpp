@@ -140,10 +140,26 @@ void PaintCommitWaitsForAcknowledgment() {
   Check(state.paint && state.paint->recipeID == "next",
         "a repeated snapshot result cannot close a new paint session");
 }
+
+void FieldKeyDependsOnScopeAndLeaf() {
+  const FieldKey base = HashFieldKey("glow/layer:0:1", "opacity");
+  Check(base == HashFieldKey("glow/layer:0:1", "opacity"),
+        "the same scope and leaf hash to the same key");
+  Check(base != HashFieldKey("glow/layer:0:2", "opacity"),
+        "a different subject scope changes the key");
+  Check(base != HashFieldKey("glow/layer:0:1", "color"),
+        "a different field leaf changes the key");
+  const FieldKey tune = HashFieldKey("glow/layer:0:1", "opacity", "tune");
+  Check(base != tune &&
+            tune != HashFieldKey("glow/layer:0:1", "opacity", "expr"),
+        "the tuning and expression discriminators are distinct");
+  Check(base != kNoField && tune != kNoField, "a key never aliases kNoField");
+}
 }
 
 int main() {
   PostCollectsWithoutReducing();
+  FieldKeyDependsOnScopeAndLeaf();
   PostEditWrapsAsEditRecipe();
   ModeSwitchSetsLayoutAndResource();
   SelectionIntentsResolve();

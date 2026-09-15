@@ -574,6 +574,7 @@ void DrawInspectorPane(const Frame &a_frame,
       ImGui::SetScrollY(a_frame.state->navigation.scroll);
     }
     ImGui::PushID(InspectorKey(SelectionOf(a_frame).subject).c_str());
+    const FieldScope subjectScope(InspectorKey(SelectionOf(a_frame).subject));
     const Studio::InspectorSubject drawn = SelectionOf(a_frame).subject;
     Disabled(a_pending, [&] {
       if (a_frame.state->mode == Studio::Mode::kPaint && a_frame.state->paint) {
@@ -648,6 +649,7 @@ void DrawWorkspace(const Frame &a_input) {
   }
   const Studio::InspectorSubject before = SelectionOf(a_frame).subject;
   ImGui::PushID(a_frame.recipe->id.c_str());
+  const FieldScope recipeScope(a_frame.recipe->id);
   const bool pending = Studio::IndexedEditPendingFor(
       a_frame.state->pendingIndexedEdit, a_frame.recipe->id);
   Disabled(pending || a_frame.state->navigation.back.empty(), [&] {

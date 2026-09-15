@@ -13,6 +13,7 @@
 #include <limits>
 #include <string>
 #include <type_traits>
+#include <utility>
 
 #pragma clang diagnostic push
 #pragma clang diagnostic ignored "-Wmismatched-tags"
@@ -44,7 +45,7 @@ constexpr float kFillWidth = -(std::numeric_limits<float>::min)();
 }
 
 [[nodiscard]] Studio::FieldKey KeyOf(const char *a_key) {
-  return ImGui::GetID(Literal(a_key));
+  return Studio::HashFieldKey(Studio::State().fieldScope, Literal(a_key));
 }
 
 void TrackActive(Studio::FieldKey a_key) {
@@ -957,4 +958,13 @@ void Tooltip(std::string_view a_text) {
   }
   ImGui::SetTooltip("%.*s", static_cast<int>(a_text.size()), a_text.data());
 }
+
+FieldScope::FieldScope(std::string_view a_part) {
+  std::string &scope = Studio::State().fieldScope;
+  previous = scope;
+  scope.push_back('\x1f');
+  scope.append(a_part);
+}
+
+FieldScope::~FieldScope() { Studio::State().fieldScope = std::move(previous); }
 }

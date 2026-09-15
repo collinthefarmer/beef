@@ -18,6 +18,17 @@ namespace BetterEnchantmentEffects::Menu {
 using TextCheck =
     std::function<std::optional<std::string>(const std::string &)>;
 
+class FieldScope {
+public:
+  explicit FieldScope(std::string_view a_part);
+  ~FieldScope();
+  FieldScope(const FieldScope &) = delete;
+  FieldScope &operator=(const FieldScope &) = delete;
+
+private:
+  std::string previous;
+};
+
 enum class ChooserPick {
   kNone,
   kChosen,
