@@ -134,6 +134,26 @@ int main() {
             Get<AddSignal>(connection->edits.front())->name ==
                 "av_stamina_current5",
         "input creation avoids signal, source, mask and curve names");
+  const auto created = CreateInput(
+      names, {InputConnectionKind::kFraction, "Stamina", Measure::kCurrent});
+  const auto bound = ConnectInput(
+      Opacity(), names,
+      {InputConnectionKind::kFraction, "Stamina", Measure::kCurrent});
+  Check(created && bound && !created->edits.empty() &&
+            bound->edits.size() == created->edits.size() + 1,
+        "create-only input builds the same signals, minus the field binding");
+  if (created) {
+    bool binds = false;
+    for (const RecipeEdit &edit : created->edits) {
+      if (Get<SetLayerOpacity>(edit)) {
+        binds = true;
+      }
+    }
+    Check(!binds, "create-only input never binds a destination field");
+  }
+  Check(
+      !CreateInput({}, {InputConnectionKind::kFraction, "", Measure::kCurrent}),
+      "create-only input refuses a missing actor value");
   FormField count = Opacity();
   count.bind = [](const std::string &) -> std::optional<RecipeEdit> {
     return std::nullopt;

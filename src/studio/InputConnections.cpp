@@ -74,19 +74,9 @@ struct ConnectionBuilder {
                        ExprSignal{std::format("if(@{} > 0, @{} / @{}, 0)",
                                               maximum, current, maximum)});
 }
-}
 
-bool CanConnectInput(const FormField &a_field) {
-  return a_field.kind == FieldKind::kScalar && a_field.bind &&
-         a_field.bind("@input").has_value();
-}
-
-std::expected<EditBatch, std::string>
-ConnectInput(const FormField &a_field, const Names &a_names,
-             const InputConnectionSpec &a_spec) {
-  if (!CanConnectInput(a_field)) {
-    return std::unexpected("This property does not accept a scalar input.");
-  }
+[[nodiscard]] std::expected<std::pair<EditBatch, std::string>, std::string>
+BuildInput(const Names &a_names, const InputConnectionSpec &a_spec) {
   if (static_cast<std::size_t>(a_spec.kind) >= kInputConnectionNames.size() ||
       (a_spec.kind != InputConnectionKind::kHitResponse &&
        a_spec.actorValue.empty())) {
@@ -96,13 +86,45 @@ ConnectInput(const FormField &a_field, const Names &a_names,
     return std::unexpected("Choose a supported actor-value measure.");
   }
   ConnectionBuilder builder{{}, InputTakenNames(a_names)};
-  const std::string output = Response(builder, a_spec);
-  const std::optional<RecipeEdit> binding = a_field.bind(ReferenceText(output));
+  std::string output = Response(builder, a_spec);
+  return std::pair{std::move(builder.batch), std::move(output)};
+}
+}
+
+bool CanConnectInput(const FormField &a_field) {
+  return a_field.kind == FieldKind::kScalar && a_field.bind &&
+         a_field.bind("@input").has_value();
+}
+
+std::expected<EditBatch, std::string>
+CreateInput(const Names &a_names, const InputConnectionSpec &a_spec) {
+  std::expected<std::pair<EditBatch, std::string>, std::string> built =
+      BuildInput(a_names, a_spec);
+  if (!built) {
+    return std::unexpected(std::move(built.error()));
+  }
+  return std::move(built->first);
+}
+
+std::expected<EditBatch, std::string>
+ConnectInput(const FormField &a_field, const Names &a_names,
+             const InputConnectionSpec &a_spec) {
+  if (!CanConnectInput(a_field)) {
+    return std::unexpected("This property does not accept a scalar input.");
+  }
+  std::expected<std::pair<EditBatch, std::string>, std::string> built =
+      BuildInput(a_names, a_spec);
+  if (!built) {
+    return std::unexpected(std::move(built.error()));
+  }
+  EditBatch batch = std::move(built->first);
+  const std::optional<RecipeEdit> binding =
+      a_field.bind(ReferenceText(built->second));
   if (!binding) {
     return std::unexpected(
         "The input could not be connected to this property.");
   }
-  builder.batch.edits.push_back(*binding);
-  return std::move(builder.batch);
+  batch.edits.push_back(*binding);
+  return batch;
 }
 }

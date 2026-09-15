@@ -29,6 +29,8 @@ struct InputConnectionSpec {
 
 [[nodiscard]] bool CanConnectInput(const FormField &a_field);
 [[nodiscard]] std::expected<EditBatch, std::string>
+CreateInput(const Names &a_names, const InputConnectionSpec &a_spec);
+[[nodiscard]] std::expected<EditBatch, std::string>
 ConnectInput(const FormField &a_field, const Names &a_names,
              const InputConnectionSpec &a_spec);
 }
