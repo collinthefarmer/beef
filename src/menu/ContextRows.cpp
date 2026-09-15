@@ -589,28 +589,6 @@ void DrawRecipeSettings(const Frame &a_frame) {
   const Studio::RecipeRow &recipe = *a_frame.recipe;
   [[maybe_unused]] const std::optional<std::size_t> detail =
       DrawForm("recipe-header", Studio::RecipeHeaderForm(recipe), a_frame);
-  if (ImGui::Button("Output settings")) {
-    ImGui::OpenPopup("Output settings");
-  }
-  DetailModal("Output settings", [&]() {
-    for (const Studio::OutputRow &output : recipe.outputs) {
-      ImGui::PushID(static_cast<int>(output.index));
-      ImGui::SeparatorText(
-          std::format("Output {}: {}", output.index, TargetName(output.target))
-              .c_str());
-      if (output.target == Target::kLight) {
-        const Studio::FormField replace = Studio::ToggleField(
-            "replace", output.replace, Studio::BindLightReplace(output.index));
-        DrawRowField("light-replace", replace, a_frame);
-        DrawSelector(Studio::SelectorViewOf(output.selection), output.index,
-                     true, a_frame);
-      } else {
-        DrawOutputHeader(output.index, output.replace, output.selection,
-                         a_frame);
-      }
-      ImGui::PopID();
-    }
-  });
   if (!recipe.problems.empty()) {
     ImGui::SeparatorText("Rows with problems");
     if (recipe.heldBack) {
@@ -683,5 +661,11 @@ void DrawOutputHeader(std::size_t a_output, bool a_replace,
   [[maybe_unused]] const std::optional<std::size_t> detail =
       DrawForm("output-header", header.fields, a_frame);
   DrawSelector(header.selector, a_output, false, a_frame);
+  ImGui::Separator();
+  if (a_frame.recipe && a_frame.intents &&
+      ImGui::Button("Remove output")) {
+    Studio::Post(*a_frame.intents, a_frame.recipe->id,
+                 Studio::RemoveOutput{a_output});
+  }
 }
 }

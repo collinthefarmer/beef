@@ -77,31 +77,56 @@ void PickSubject(const char *a_label, Studio::InspectorSubject a_subject,
   ImGui::EndDisabled();
 }
 
-void DrawOutputAddMenu(const Frame &a_frame) {
-  if (ImGui::Button("+ output")) {
+void DrawSurfaceAdd(const Frame &a_frame, Surface a_surface) {
+  ImGui::PushID(static_cast<int>(a_surface));
+  if (ImGui::SmallButton("+ output")) {
     ImGui::OpenPopup("add-output");
   }
-  if (!ImGui::BeginPopup("add-output")) {
-    return;
-  }
-  for (const Surface surface : {Surface::kMaterial, Surface::kShell}) {
-    for (const Slot slot : SlotsOf(surface, a_frame.recipe->shellMaterial)) {
-      const std::string label =
-          std::format("{} / {}", SurfaceName(surface), SlotName(slot));
-      if (ImGui::Selectable(label.c_str())) {
+  if (ImGui::BeginPopup("add-output")) {
+    for (const Slot slot : SlotsOf(a_surface, a_frame.recipe->shellMaterial)) {
+      if (ImGui::Selectable(std::string{SlotName(slot)}.c_str())) {
         Studio::Post(*a_frame.intents, a_frame.recipe->id,
-                     Studio::AddOutput{surface, slot, {}});
+                     Studio::AddOutput{a_surface, slot, {}});
         ImGui::CloseCurrentPopup();
       }
     }
+    ImGui::EndPopup();
   }
-  Disabled(!a_frame.recipe->lights.empty(), [&] {
-    if (ImGui::Selectable("Light")) {
-      Studio::Post(*a_frame.intents, a_frame.recipe->id, Studio::AddLight{});
+  ImGui::PopID();
+}
+
+void DrawShellSettings(const Frame &a_frame) {
+  if (ImGui::SmallButton("settings##shell")) {
+    ImGui::OpenPopup("shell-settings");
+  }
+  DetailModal("shell-settings", [&]() {
+    DrawFormWithSignals("shell",
+                        Studio::ShellForm(a_frame.recipe->shellRow,
+                                          Studio::SignalNamesOf(*a_frame.recipe)),
+                        a_frame);
+  });
+}
+
+void DrawLightSettings(const Frame &a_frame) {
+  if (ImGui::SmallButton("settings##light")) {
+    ImGui::OpenPopup("light-settings");
+  }
+  DetailModal("light-settings", [&]() {
+    if (a_frame.recipe->lights.empty()) {
+      return;
+    }
+    const Studio::LightRow &light = a_frame.recipe->lights.front();
+    DrawFormWithSignals(
+        "light",
+        Studio::LightForm(light, Studio::SignalNamesOf(*a_frame.recipe)),
+        a_frame);
+    ImGui::Separator();
+    if (ImGui::Button("Remove light")) {
+      Studio::Post(*a_frame.intents, a_frame.recipe->id,
+                   Studio::RemoveOutput{light.output});
       ImGui::CloseCurrentPopup();
     }
   });
-  ImGui::EndPopup();
 }
 
 constexpr const char *kNavLayerPayload = "BEEF_NAV_LAYER";
@@ -135,6 +160,11 @@ void DrawOutputLayerRow(const Frame &a_frame, const Studio::OutputRow &a_output,
   if (MuteButton(mute)) {
     Studio::Post(*a_frame.intents,
                  Studio::MuteLayer{id, a_output.index, a_layer, mute});
+  }
+  ImGui::SameLine();
+  if (const auto blend = BlendBadge(layer.blend, a_output.slot)) {
+    Studio::Post(*a_frame.intents, id,
+                 Studio::SetLayerBlend{a_output.index, a_layer, *blend});
   }
   ImGui::SameLine();
   Badge(layer.source.starts_with('@') ? Studio::FieldKind::kReference
@@ -233,12 +263,49 @@ void DrawResourceRows(const Frame &a_frame, Studio::ResourceTab a_tab,
   }
 }
 
+const char *ResourceAddLabel(Studio::ResourceTab a_tab) {
+  switch (a_tab) {
+  case Studio::ResourceTab::kSignals:
+    return "+ signal";
+  case Studio::ResourceTab::kCurves:
+    return "+ curve";
+  case Studio::ResourceTab::kSources:
+    return "+ source";
+  case Studio::ResourceTab::kMasks:
+    return "+ mask";
+  }
+  return "+";
+}
+
+void DrawResourceAddRow(const Frame &a_frame, Studio::ResourceTab a_tab) {
+  const char *add = ResourceAddLabel(a_tab);
+  if (a_tab == Studio::ResourceTab::kSignals) {
+    RightAligned(
+        ButtonWidth(add) + ItemSpacingX() + ButtonWidth("New input"), [&]() {
+          if (ImGui::Button(add)) {
+            PostResourceAdd(a_frame, a_tab);
+          }
+          ImGui::SameLine();
+          DrawSignalWizardButton(a_frame);
+        });
+    return;
+  }
+  RightAligned(ButtonWidth(add), [&]() {
+    if (ImGui::Button(add)) {
+      PostResourceAdd(a_frame, a_tab);
+    }
+  });
+}
+
 void DrawResourceTabs(const Frame &a_frame, std::string_view a_filter) {
   if (!a_filter.empty()) {
-    for (const Studio::ResourceTab tab : Studio::kResourceTabs) {
-      Dim(std::string{Studio::ResourceTabName(tab)});
-      DrawResourceRows(a_frame, tab, a_filter);
+    if (ImGui::BeginChild("resource-rows", ImVec2{0.0f, 0.0f}, 0, 0)) {
+      for (const Studio::ResourceTab tab : Studio::kResourceTabs) {
+        Dim(std::string{Studio::ResourceTabName(tab)});
+        DrawResourceRows(a_frame, tab, a_filter);
+      }
     }
+    ImGui::EndChild();
     return;
   }
   if (!ImGui::BeginTabBar("nav-resources")) {
@@ -252,50 +319,88 @@ void DrawResourceTabs(const Frame &a_frame, std::string_view a_filter) {
     if (tab != a_frame.state->resource) {
       Studio::Post(*a_frame.intents, Studio::ShowResource{tab});
     }
-    if (tab == Studio::ResourceTab::kSignals) {
-      DrawSignalWizardButton(a_frame);
+    DrawResourceAddRow(a_frame, tab);
+    if (ImGui::BeginChild("resource-rows", ImVec2{0.0f, 0.0f}, 0, 0)) {
+      DrawResourceRows(a_frame, tab, a_filter);
     }
-    DrawResourceRows(a_frame, tab, a_filter);
+    ImGui::EndChild();
     ImGui::EndTabItem();
   }
   ImGui::EndTabBar();
 }
 
-void DrawNavigator(const Frame &a_frame) {
-  DrawOutputAddMenu(a_frame);
+void DrawSurfaceOutputs(const Frame &a_frame, Surface a_surface,
+                        std::string_view a_filter) {
+  ImGui::Indent();
+  for (const Studio::OutputRow &output : a_frame.recipe->outputs) {
+    if (output.target != Target::kLight && output.surface == a_surface) {
+      DrawOutputNode(a_frame, output, a_filter);
+    }
+  }
+  ImGui::Unindent();
+}
+
+void DrawRecipeTree(const Frame &a_frame, std::string_view a_filter) {
+  PickSubject("Recipe / overview", Studio::RecipeSubject{}, a_frame);
+
+  ImGui::AlignTextToFramePadding();
+  Dim("Material");
   ImGui::SameLine();
-  DrawResourceAddMenu(a_frame);
+  RightAligned(ButtonWidth("+ output"),
+               [&]() { DrawSurfaceAdd(a_frame, Surface::kMaterial); });
+  DrawSurfaceOutputs(a_frame, Surface::kMaterial, a_filter);
+
+  ImGui::AlignTextToFramePadding();
+  Dim("Shell");
+  ImGui::SameLine();
+  RightAligned(
+      ButtonWidth("settings") + ItemSpacingX() + ButtonWidth("+ output"),
+      [&]() {
+        DrawShellSettings(a_frame);
+        ImGui::SameLine();
+        DrawSurfaceAdd(a_frame, Surface::kShell);
+      });
+  DrawSurfaceOutputs(a_frame, Surface::kShell, a_filter);
+
+  ImGui::AlignTextToFramePadding();
+  if (a_frame.recipe->lights.empty()) {
+    Dim("Light");
+    ImGui::SameLine();
+    RightAligned(ButtonWidth("+ output"), [&]() {
+      if (ImGui::SmallButton("+ output")) {
+        Studio::Post(*a_frame.intents, a_frame.recipe->id, Studio::AddLight{});
+      }
+    });
+  } else {
+    PickSubject(
+        "Light",
+        Studio::OutputSubject{a_frame.recipe->lights.front().output},
+        a_frame);
+    ImGui::SameLine();
+    RightAligned(ButtonWidth("settings"),
+                 [&]() { DrawLightSettings(a_frame); });
+  }
+}
+
+void DrawNavigator(const Frame &a_frame) {
   const std::string_view filter =
       LiveTextField("navigator-search", "Find outputs and resources",
                     Studio::Width::Fill(), a_frame.scale);
-  PickSubject("Recipe / overview", Studio::RecipeSubject{}, a_frame);
-  Dim("Outputs");
-  for (const Surface surface : {Surface::kMaterial, Surface::kShell}) {
-    if (surface == Surface::kShell) {
-      PickSubject("Shell", Studio::ShellSubject{}, a_frame);
-    } else {
-      Dim("Material");
-    }
-    ImGui::Indent();
-    for (const Studio::OutputRow &output : a_frame.recipe->outputs) {
-      if (output.target != Target::kLight && output.surface == surface) {
-        DrawOutputNode(a_frame, output, filter);
-      }
-    }
-    ImGui::Unindent();
+  if (!ImGui::BeginTabBar("navigator")) {
+    return;
   }
-  bool anyLight = false;
-  for (const Studio::OutputRow &output : a_frame.recipe->outputs) {
-    if (output.target != Target::kLight) {
-      continue;
+  if (ImGui::BeginTabItem("Recipe")) {
+    if (ImGui::BeginChild("recipe-scroll", ImVec2{0.0f, 0.0f}, 0, 0)) {
+      DrawRecipeTree(a_frame, filter);
     }
-    if (!anyLight) {
-      Dim("Lights");
-      anyLight = true;
-    }
-    DrawOutputNode(a_frame, output, filter);
+    ImGui::EndChild();
+    ImGui::EndTabItem();
   }
-  DrawResourceTabs(a_frame, filter);
+  if (ImGui::BeginTabItem("Resources")) {
+    DrawResourceTabs(a_frame, filter);
+    ImGui::EndTabItem();
+  }
+  ImGui::EndTabBar();
 }
 
 [[nodiscard]] std::optional<Studio::GeometryRow>

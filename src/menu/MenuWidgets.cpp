@@ -643,6 +643,55 @@ void Badge(Studio::FieldKind a_kind) {
   ImGui::SameLine(0.0f, 0.0f);
 }
 
+const char *BlendGlyph(Blend a_blend) {
+  switch (a_blend) {
+  case Blend::kReplace:
+    return "=";
+  case Blend::kMultiply:
+    return "*";
+  case Blend::kAdd:
+    return "+";
+  case Blend::kSubtract:
+    return "-";
+  case Blend::kScreen:
+    return "s";
+  case Blend::kLerp:
+    return "~";
+  case Blend::kNormal:
+    return "o";
+  }
+  return "?";
+}
+
+std::optional<Blend> BlendBadge(Blend a_current, Slot a_slot) {
+  static constexpr Blend order[]{Blend::kReplace, Blend::kNormal,
+                                 Blend::kMultiply, Blend::kScreen,
+                                 Blend::kAdd,     Blend::kSubtract,
+                                 Blend::kLerp};
+  const float side = ImGui::GetFrameHeight();
+  std::optional<Blend> chosen;
+  ImGui::PushID("blend");
+  if (ImGui::Button(BlendGlyph(a_current), ImVec2{side, side})) {
+    ImGui::OpenPopup("blend-pick");
+  }
+  Tooltip("blend: " + std::string{BlendName(a_current)} + "\nclick to change");
+  if (ImGui::BeginPopup("blend-pick")) {
+    for (const Blend blend : order) {
+      if (!BlendAllowed(a_slot, blend)) {
+        continue;
+      }
+      const std::string label =
+          std::format("{}  {}", BlendGlyph(blend), BlendName(blend));
+      if (ImGui::Selectable(label.c_str(), blend == a_current)) {
+        chosen = blend;
+      }
+    }
+    ImGui::EndPopup();
+  }
+  ImGui::PopID();
+  return chosen;
+}
+
 std::optional<std::string> ValueWidget(const char *a_key,
                                        const Studio::FormField &a_field,
                                        float a_scale,

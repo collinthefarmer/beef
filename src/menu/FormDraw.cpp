@@ -129,6 +129,7 @@ void DrawSelectorClauses(const SelectorView &a_view,
     for (std::size_t i = 0; i < a_view.clauses.size(); ++i) {
       const SelectorClauseRow &clause = a_view.clauses[i];
       ImGui::PushID(static_cast<int>(i));
+      const FieldScope clauseScope(std::to_string(i));
       table.Cell();
       if (const auto kind = ClauseKindCombo(clause.kind, a_frame.scale)) {
         PostSelector(a_frame, a_target.output, a_target.light,
@@ -205,6 +206,7 @@ void DrawSignalEditorInline(const SignalRow &a_signal, const Frame &a_frame) {
 
 std::optional<std::string> FieldInput(const FormField &a_field, float a_scale,
                                       const Names &a_names) {
+  const FieldScope fieldScope(a_field.name);
   const auto check = [&](const std::string &a_text) {
     return CheckField(a_field, a_text, a_names);
   };
@@ -296,6 +298,32 @@ void CommitField(const FormField &a_field, const std::string &a_text,
   }
 }
 
+std::optional<std::string> TextInput(const FormField &a_field, float a_scale,
+                                     const Names &a_names) {
+  const TextCheck check =
+      [&](const std::string &a_text) -> std::optional<std::string> {
+    const std::optional<Diagnostic> diagnostic =
+        CheckField(a_field, a_text, a_names);
+    return diagnostic ? std::optional<std::string>{ProblemText(diagnostic)}
+                      : std::nullopt;
+  };
+  return TextField("value", a_field.text, {Width::Fill(), a_scale}, check);
+}
+
+void DrawFieldInput(const FormField &a_field, const Frame &a_frame) {
+  if (FieldHasExpressionShelf(a_field)) {
+    const FieldScope fieldScope(a_field.name);
+    Badge(a_field.kind);
+    DrawExpressionOpener(a_field, a_frame);
+    if (const auto text = TextInput(a_field, a_frame.scale, *a_frame.names)) {
+      CommitField(a_field, *text, a_frame);
+    }
+  } else if (const auto text =
+                 FieldInput(a_field, a_frame.scale, *a_frame.names)) {
+    CommitField(a_field, *text, a_frame);
+  }
+}
+
 void DrawRowField(const char *a_key, const FormField &a_field,
                   const Frame &a_frame) {
   if (a_frame.recipe == nullptr || a_frame.names == nullptr ||
@@ -304,12 +332,7 @@ void DrawRowField(const char *a_key, const FormField &a_field,
   }
   ImGui::PushID(a_key);
   RevealProperty(a_field, a_frame);
-  if (DrawExpressionShelf(a_field, a_frame)) {
-    ImGui::SameLine(0.0f, 0.0f);
-  }
-  if (const auto text = FieldInput(a_field, a_frame.scale, *a_frame.names)) {
-    CommitField(a_field, *text, a_frame);
-  }
+  DrawFieldInput(a_field, a_frame);
   DrawInputWizard(a_frame, a_field);
   DrawTuning(a_field, a_frame);
   ImGui::PopID();
@@ -360,12 +383,7 @@ std::optional<std::size_t> DrawFieldTable(const char *a_id,
       ValueSwatch(*field.value);
       ImGui::SameLine();
     }
-    if (DrawExpressionShelf(field, a_frame)) {
-      ImGui::SameLine(0.0f, 0.0f);
-    }
-    if (const auto text = FieldInput(field, a_frame.scale, *a_frame.names)) {
-      CommitField(field, *text, a_frame);
-    }
+    DrawFieldInput(field, a_frame);
     DrawInputWizard(a_frame, field);
     DrawTuning(field, a_frame);
     ImGui::PopID();

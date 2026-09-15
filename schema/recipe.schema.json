@@ -24,7 +24,10 @@
     "curves": { "type": "object", "propertyNames": { "$ref": "#/$defs/name" }, "additionalProperties": { "$ref": "#/$defs/expression", "description": "An expression in the free variable x (and mean, the source's mean, where a source is being shaped)." } },
     "sources": { "type": "object", "propertyNames": { "$ref": "#/$defs/name" }, "additionalProperties": { "$ref": "#/$defs/source" } },
     "masks": { "type": "object", "propertyNames": { "$ref": "#/$defs/name" }, "additionalProperties": { "$ref": "#/$defs/expression", "description": "Evaluated per texel; source and mask names stand for images, signal names for the tick's scalars." } },
-    "outputs": { "type": "array", "items": { "$ref": "#/$defs/output" } },
+    "outputs": { "type": "array", "items": { "$ref": "#/$defs/output" },
+      "contains": { "type": "object", "required": ["target"], "properties": { "target": { "const": "light" } } },
+      "minContains": 0, "maxContains": 1,
+      "description": "At most one light output; the studio refuses a second." },
     "shell": { "$ref": "#/$defs/shell" },
     "variants": { "type": "array", "items": { "$ref": "#/$defs/variant" } }
   },

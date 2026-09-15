@@ -124,6 +124,8 @@ ReferenceCombo(const char *a_key, const Studio::FormField &a_field,
                const WidgetSize &a_size);
 
 void Badge(Studio::FieldKind a_kind);
+[[nodiscard]] const char *BlendGlyph(Blend a_blend);
+[[nodiscard]] std::optional<Blend> BlendBadge(Blend a_current, Slot a_slot);
 [[nodiscard]] std::optional<std::string>
 ValueWidget(const char *a_key, const Studio::FormField &a_field, float a_scale,
             const TextCheck &a_check = {});

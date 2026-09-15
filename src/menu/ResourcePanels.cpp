@@ -329,6 +329,7 @@ void DrawMasks(const Frame &a_frame, std::string_view a_filter) {
   }
   masks.End();
 }
+}
 
 void PostResourceAdd(const Frame &a_frame, Studio::ResourceTab a_tab) {
   if (!a_frame.recipe || !a_frame.names || !a_frame.state || !a_frame.intents) {
@@ -357,23 +358,6 @@ void PostResourceAdd(const Frame &a_frame, Studio::ResourceTab a_tab) {
     Studio::Post(*a_frame.intents, id,
                  Studio::AddMask{name(Studio::RowKind::kMask, "mask")});
     break;
-  }
-}
-}
-
-void DrawResourceAddMenu(const Frame &a_frame) {
-  if (ImGui::Button("+ resource")) {
-    ImGui::OpenPopup("add-resource");
-  }
-  if (ImGui::BeginPopup("add-resource")) {
-    for (const Studio::ResourceTab tab : Studio::kResourceTabs) {
-      if (ImGui::Selectable(
-              std::string{Studio::ResourceTabName(tab)}.c_str())) {
-        PostResourceAdd(a_frame, tab);
-        ImGui::CloseCurrentPopup();
-      }
-    }
-    ImGui::EndPopup();
   }
 }
 

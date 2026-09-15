@@ -659,6 +659,9 @@ std::vector<FormField> InspectorForm(const Inspector &a_inspector) {
   std::vector<FormField> form;
   form.push_back(SourceFieldOf(in, sourceNames));
   form.push_back(CurveFieldOf(in));
+  form.push_back(
+      BlendField("blend", in.row.blend, in.blends,
+                 BindLayerBlend(in.output, in.layer)));
   form.push_back(OpacityFieldOf(in, signalNames));
   form.push_back(ColourFieldOf(in, signalNames));
   form.push_back(MaskFieldOf(in, sourceNames));

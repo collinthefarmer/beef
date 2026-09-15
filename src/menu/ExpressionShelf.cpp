@@ -93,6 +93,7 @@ void DrawExpressionNumbers(const Studio::FormField &a_expression,
   std::size_t index = 0;
   for (const NumericLiteral &literal : a_program.NumericLiterals()) {
     ImGui::PushID(static_cast<int>(index));
+    const FieldScope operandScope(std::to_string(index));
     Dim(std::format("Number {} at character {}", index + 1,
                     literal.offset + 1));
     Studio::FormField field;
@@ -109,28 +110,34 @@ void DrawExpressionNumbers(const Studio::FormField &a_expression,
 }
 }
 
-bool DrawExpressionShelf(const Studio::FormField &a_field,
-                         const Frame &a_frame) {
+bool FieldHasExpressionShelf(const Studio::FormField &a_field) {
   if (!HasExpression(a_field) || !a_field.bind ||
       Studio::IsWholeReference(a_field.text)) {
     return false;
   }
+  const auto program = Program::Parse(a_field.text);
+  return program && !program->NumericLiterals().empty();
+}
+
+void DrawExpressionOpener(const Studio::FormField &a_field,
+                          const Frame &a_frame) {
   const auto key =
       Studio::HashFieldKey(Studio::State().fieldScope, a_field.name, "expr");
   const Studio::FormField expression = ExpressionDraft(a_field, a_frame, key);
   const auto program = Program::Parse(expression.text);
-  if (!program || program->NumericLiterals().empty()) {
-    return false;
+  if (!program) {
+    return;
   }
   const std::string popup = std::format("expression-numbers-{}", key);
-  if (ImGui::SmallButton("123")) {
+  const float side = ImGui::GetFrameHeight();
+  if (ImGui::Button("n", ImGuiMCP::ImVec2{side, side})) {
     ImGui::OpenPopup(popup.c_str());
   }
   Tooltip("Edit or promote the numbers written in this expression.");
+  ImGui::SameLine(0.0f, 0.0f);
   if (ImGui::BeginPopup(popup.c_str())) {
     DrawExpressionNumbers(expression, *program, a_frame);
     ImGui::EndPopup();
   }
-  return true;
 }
 }
