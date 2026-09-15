@@ -3,7 +3,9 @@
 #include "menu/MenuWidgets.h"
 #include "studio/Relationships.h"
 
+#include <algorithm>
 #include <format>
+#include <string>
 
 #pragma clang diagnostic push
 #pragma clang diagnostic ignored "-Wmismatched-tags"
@@ -84,42 +86,84 @@ void Follow(const std::string &a_label, Studio::InspectorSubject a_subject,
 }
 }
 
-void DrawRelationships(const Frame &a_frame) {
-  const auto subject = SelectionOf(a_frame).subject;
-  bool drivers = false;
-  bool consumers = false;
+constexpr Studio::TableStyle kRelationStyle{
+    .borders = Studio::TableBorders::kInnerHorizontal,
+    .stretch = true,
+    .headers = true};
+
+void DrawDrivenBy(const Frame &a_frame,
+                  const Studio::InspectorSubject &a_subject) {
+  const auto driven = [&](const auto &a_link) {
+    return SubjectOf(a_link.consumer.owner) == a_subject;
+  };
+  if (std::ranges::none_of(a_frame.recipe->relationships, driven)) {
+    return;
+  }
+  Dim("Driven by");
+  Table table = Table::Begin(
+      "driven-by",
+      {{"Property", Studio::Width::Fill()}, {"Driver", Studio::Width::Fill()}},
+      kRelationStyle);
+  if (!table.Open()) {
+    return;
+  }
   std::size_t index = 0;
   for (const auto &link : a_frame.recipe->relationships) {
-    ImGui::PushID(static_cast<int>(index++));
-    if (SubjectOf(link.consumer.owner) == subject) {
-      if (!drivers) {
-        Rule();
-        Dim("Driven by");
-        drivers = true;
-      }
-      Dim(link.consumer.property);
-      ImGui::SameLine();
-      Follow("@" + link.driver.name, SubjectOf(link.driver), a_frame);
+    if (!driven(link)) {
+      continue;
     }
+    ImGui::PushID(static_cast<int>(index++));
+    table.Cell();
+    Dim(link.consumer.property);
+    table.Cell();
+    Follow("@" + link.driver.name, SubjectOf(link.driver), a_frame);
     ImGui::PopID();
   }
+  table.End();
+}
+
+void DrawUsedBy(const Frame &a_frame,
+                const Studio::InspectorSubject &a_subject) {
+  const auto uses = [&](const auto &a_link) {
+    return SubjectOf(a_link.driver) == a_subject;
+  };
+  if (std::ranges::none_of(a_frame.recipe->relationships, uses)) {
+    return;
+  }
+  Dim("Used by");
+  Table table = Table::Begin("used-by",
+                             {{"Consumer", Studio::Width::Fill()},
+                              {"Property", Studio::Width::Fill()},
+                              {"Component", Studio::Width::Fit()}},
+                             kRelationStyle);
+  if (!table.Open()) {
+    return;
+  }
+  std::size_t index = 0;
   for (const auto &link : a_frame.recipe->relationships) {
-    ImGui::PushID(static_cast<int>(index++));
-    if (SubjectOf(link.driver) == subject) {
-      if (!consumers) {
-        Rule();
-        Dim("Used by");
-        consumers = true;
-      }
-      const std::string component =
-          link.consumer.component
-              ? std::format(" [{}]", *link.consumer.component + 1)
-              : "";
-      Follow(OwnerName(link.consumer.owner) + " / " + link.consumer.property +
-                 component,
-             SubjectOf(link.consumer.owner), a_frame, link.consumer);
+    if (!uses(link)) {
+      continue;
     }
+    ImGui::PushID(static_cast<int>(index++));
+    table.Cell();
+    Follow(OwnerName(link.consumer.owner), SubjectOf(link.consumer.owner),
+           a_frame, link.consumer);
+    table.Cell();
+    Dim(link.consumer.property);
+    table.Cell();
+    const std::string component =
+        link.consumer.component
+            ? std::format("[{}]", *link.consumer.component + 1)
+            : std::string{};
+    Dim(component);
     ImGui::PopID();
   }
+  table.End();
+}
+
+void DrawRelationships(const Frame &a_frame) {
+  const auto subject = SelectionOf(a_frame).subject;
+  DrawDrivenBy(a_frame, subject);
+  DrawUsedBy(a_frame, subject);
 }
 }
