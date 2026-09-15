@@ -152,6 +152,7 @@ struct IntentPerformer {
   void operator()(const PickLayer &) const {}
   void operator()(const ViewGeometry &) const {}
   void operator()(const SetStackSplit &) const {}
+  void operator()(const SetWorkspaceSplit &) const {}
   void operator()(const ShowSettings &) const {}
   void operator()(const ShowResource &) const {}
   void operator()(const AddTerm &) const {}

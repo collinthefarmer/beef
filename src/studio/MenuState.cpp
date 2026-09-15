@@ -293,6 +293,12 @@ struct ReduceVisitor {
     state.layout.stackSplit = std::clamp(a_i.ratio, 0.05f, 0.95f);
   }
 
+  void operator()(const SetWorkspaceSplit &a_i) {
+    float &share = a_i.pane == WorkspacePane::kNavigator ? state.navigatorShare
+                                                         : state.inspectorShare;
+    share = std::clamp(a_i.ratio, 0.05f, 0.95f);
+  }
+
   void operator()(const ShowSettings &a_i) { state.settings = a_i.on; }
 
   void operator()(const ShowResource &a_i) { state.resource = a_i.tab; }
@@ -596,22 +602,23 @@ SourceCatalog PaintSources(const MenuState &a_state, const RecipeRow &a_recipe,
         [](const PickTarget &) {}, [](const PickSlot &) {},
         [](const PickCell &) {}, [](const PickLayer &) {},
         [](const ViewGeometry &) {}, [](const SetStackSplit &) {},
-        [](const ShowSettings &) {}, [](const ShowResource &) {},
-        [](const ReadMesh &) {}, [](const SetTermOp &) {},
-        [](const SetTermText &) {}, [](const RemoveTerm &) {},
-        [](const MoveTerm &) {}, [](const PickTerm &) {},
-        [](const SoloTerm &) {}, [](const MuteTerm &) {},
-        [](const LoadMask &) {}, [](const ClearMask &) {},
-        [](const UndoMask &) {}, [](const RedoMask &) {},
-        [](const BeginPaint &) {}, [](const SetPaintSurface &) {},
-        [](const KeepPaint &) {}, [](const EndPaint &) {},
-        [](const UpdatePaint &) {}, [](const EditRecipe &) {},
-        [](const SoloRecipe &) {}, [](const SoloOutput &) {},
-        [](const SoloLayer &) {}, [](const MuteLayer &) {},
-        [](const SetFreeze &) {}, [](const SetScrub &) {},
-        [](const SetSpeed &) {}, [](const StepClock &) {}, [](const Undo &) {},
-        [](const Redo &) {}, [](const CreateRecipe &) {},
-        [](const RenameRecipe &) {}, [](const FireTrigger &) {});
+        [](const SetWorkspaceSplit &) {}, [](const ShowSettings &) {},
+        [](const ShowResource &) {}, [](const ReadMesh &) {},
+        [](const SetTermOp &) {}, [](const SetTermText &) {},
+        [](const RemoveTerm &) {}, [](const MoveTerm &) {},
+        [](const PickTerm &) {}, [](const SoloTerm &) {},
+        [](const MuteTerm &) {}, [](const LoadMask &) {},
+        [](const ClearMask &) {}, [](const UndoMask &) {},
+        [](const RedoMask &) {}, [](const BeginPaint &) {},
+        [](const SetPaintSurface &) {}, [](const KeepPaint &) {},
+        [](const EndPaint &) {}, [](const UpdatePaint &) {},
+        [](const EditRecipe &) {}, [](const SoloRecipe &) {},
+        [](const SoloOutput &) {}, [](const SoloLayer &) {},
+        [](const MuteLayer &) {}, [](const SetFreeze &) {},
+        [](const SetScrub &) {}, [](const SetSpeed &) {},
+        [](const StepClock &) {}, [](const Undo &) {}, [](const Redo &) {},
+        [](const CreateRecipe &) {}, [](const RenameRecipe &) {},
+        [](const FireTrigger &) {});
   }
   return catalog;
 }
@@ -642,6 +649,7 @@ namespace {
       [](const PickLayer &) { return false; },
       [](const ViewGeometry &) { return false; },
       [](const SetStackSplit &) { return false; },
+      [](const SetWorkspaceSplit &) { return false; },
       [](const ShowSettings &) { return false; },
       [](const ShowResource &) { return false; },
       [](const ReadMesh &) { return false; },
@@ -717,6 +725,7 @@ bool AcceptIntent(const MenuState &a_state, const Intent &a_intent) {
       [](const PickLayer &) { return true; },
       [](const ViewGeometry &) { return true; },
       [](const SetStackSplit &) { return true; },
+      [](const SetWorkspaceSplit &) { return true; },
       [](const ShowSettings &) { return true; },
       [](const ShowResource &) { return true; },
       [](const ReadMesh &) { return true; },
@@ -818,6 +827,7 @@ void Reduce(MenuState &a_state, const Intent &a_intent) {
       [](const PickLayer &) { return false; },
       [](const ViewGeometry &) { return false; },
       [](const SetStackSplit &) { return false; },
+      [](const SetWorkspaceSplit &) { return false; },
       [](const ShowSettings &) { return false; },
       [](const ShowResource &) { return false; },
       [](const ReadMesh &) { return false; },

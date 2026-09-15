@@ -155,11 +155,26 @@ void FieldKeyDependsOnScopeAndLeaf() {
         "the tuning and expression discriminators are distinct");
   Check(base != kNoField && tune != kNoField, "a key never aliases kNoField");
 }
+
+void WorkspaceSplitClampsAndSurvivesModeSwitch() {
+  MenuState state;
+  Reduce(state, SetWorkspaceSplit{WorkspacePane::kNavigator, 2.0f});
+  Check(state.navigatorShare == 0.95f,
+        "SetWorkspaceSplit clamps the navigator share to the upper bound");
+  Reduce(state, SetWorkspaceSplit{WorkspacePane::kInspector, 0.4f});
+  Check(state.inspectorShare == 0.4f,
+        "SetWorkspaceSplit sets the inspector share within range");
+  Reduce(state, SetMode{Mode::kPaint});
+  Reduce(state, SetMode{Mode::kCompose});
+  Check(state.navigatorShare == 0.95f && state.inspectorShare == 0.4f,
+        "workspace shares are not reset by a mode switch");
+}
 }
 
 int main() {
   PostCollectsWithoutReducing();
   FieldKeyDependsOnScopeAndLeaf();
+  WorkspaceSplitClampsAndSurvivesModeSwitch();
   PostEditWrapsAsEditRecipe();
   ModeSwitchSetsLayoutAndResource();
   SelectionIntentsResolve();

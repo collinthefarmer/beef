@@ -602,8 +602,7 @@ void DrawPreviewPane(const Frame &a_frame) {
 void DrawWideWorkspace(const Frame &a_frame,
                        const Studio::InspectorSubject &a_before,
                        bool a_pending) {
-  static float navigatorShare = 0.22f;
-  static float inspectorShare = 0.68f;
+  Studio::MenuState &state = *a_frame.state;
   const auto navigator = [&] {
     if (ImGui::BeginChild("navigator", ImVec2{0.0f, 0.0f}, 0, 0)) {
       DrawNavigator(a_frame);
@@ -612,15 +611,19 @@ void DrawWideWorkspace(const Frame &a_frame,
   };
   const auto editor = [&] {
     if (const auto split = Split(
-            "preview-split", inspectorShare,
+            "preview-split", state.inspectorShare,
             [&] { DrawInspectorPane(a_frame, a_before, a_pending); },
             [&] { DrawPreviewPane(a_frame); })) {
-      inspectorShare = *split;
+      Studio::Post(
+          *a_frame.intents,
+          Studio::SetWorkspaceSplit{Studio::WorkspacePane::kInspector, *split});
     }
   };
   if (const auto split =
-          Split("workspace", navigatorShare, navigator, editor)) {
-    navigatorShare = *split;
+          Split("workspace", state.navigatorShare, navigator, editor)) {
+    Studio::Post(
+        *a_frame.intents,
+        Studio::SetWorkspaceSplit{Studio::WorkspacePane::kNavigator, *split});
   }
 }
 
