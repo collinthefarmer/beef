@@ -2,13 +2,13 @@
 
 Handoff for the fine-tuning round after the in-game test. All 13 slices of the
 [wishlist implementation plan](ui-v2-wishlist-implementation-plan-2026-09-14.md)
-are implemented on branch `ui-v2-layout` (off `cleanup/stage-0`), gated per
+are implemented on branch `main` (off `cleanup/stage-0`), gated per
 commit, whole-plan native + DLL green, installed to MO2. Nothing is pushed.
 S1/S3/S4/S5/S6/S7/S10 landed by hand; S8/S9/S11/S12/S13(+S2) by feature agents
 in worktrees, each cherry-picked and consolidated-built.
 
 The structure is in; interaction polish and a few real gaps remain. Work from
-this doc plus the user's in-game observations. Seams below are on `ui-v2-layout`.
+this doc plus the user's in-game observations. Seams below are on `main`.
 
 ## Per-slice: deferred and flagged follow-ups
 
@@ -75,7 +75,7 @@ the concrete un-closed items, distinct from the interaction polish above.
 
 ## Picking up
 
-1. Branch `ui-v2-layout`, memory `ui-layout-redesign-2026-09-14`.
+1. Branch `main`, memory `ui-layout-redesign-2026-09-14`.
 2. Work from the user's in-game observations by area; this doc lists what is
    deferred so a report of "X is missing" can be checked against intent.
 3. Same cadence: native suite for studio decisions, DLL build for menu changes,
