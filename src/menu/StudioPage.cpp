@@ -1,6 +1,7 @@
 #include "menu/StudioPage.h"
 #include "diagnostics/Trace.h"
 
+#include "menu/BoardPage.h"
 #include "menu/ContextRows.h"
 #include "menu/FormDraw.h"
 #include "menu/Frame.h"
@@ -323,6 +324,48 @@ void __stdcall RenderStudio() {
   EndTuningFrame(state);
   Dispatch(intents, state, snapshot);
   RebuildScratch(frame);
+  Dispatch(intents, state, snapshot);
+}
+
+void __stdcall RenderBoard() {
+  Manager *manager = Manager::GetSingleton();
+  if (!manager) {
+    return;
+  }
+  Studio::MenuState &state = Studio::State();
+  manager->Watch(Studio::RequestOf(state.selection),
+                 state.selection.document ? state.selection.recipeID : "");
+  const std::shared_ptr<const Manager::Snapshot> held =
+      manager->LatestSnapshot();
+  if (!held) {
+    return;
+  }
+  const Studio::Snapshot &snapshot = *held;
+  Studio::Intents intents;
+  const Studio::PieceRow *piece =
+      Studio::SelectedPiece(snapshot, state.selection);
+  const Studio::RecipeRow *recipe =
+      Studio::SelectedRecipe(snapshot, state.selection);
+  const Studio::GeometryRow *geometry =
+      Studio::SelectedGeometry(recipe, state.selection);
+  const Studio::Names names =
+      recipe ? Studio::NamesOf(*recipe,
+                               geometry ? *geometry : Studio::GeometryRow{})
+             : Studio::Names{};
+  const Frame frame{
+      .snapshot = &snapshot,
+      .piece = piece,
+      .recipe = recipe,
+      .geometry = geometry,
+      .names = &names,
+      .state = &state,
+      .intents = &intents,
+  };
+  if (recipe) {
+    DrawBoardPage(frame);
+  } else {
+    Dim("Select a recipe in Studio to see its composition.");
+  }
   Dispatch(intents, state, snapshot);
 }
 }

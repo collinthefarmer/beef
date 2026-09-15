@@ -431,10 +431,7 @@ void DrawCurveInspector(const Studio::CurveSubject &a_curve,
 void DrawSubject(const Frame &a_frame) {
   Match(
       SelectionOf(a_frame).subject,
-      [&](const Studio::RecipeSubject &) {
-        DrawRecipeSettings(a_frame);
-        DrawBoardPage(a_frame);
-      },
+      [&](const Studio::RecipeSubject &) { DrawRecipeSettings(a_frame); },
       [&](const Studio::ShellSubject &) {
         DrawFormWithSignals(
             "shell",

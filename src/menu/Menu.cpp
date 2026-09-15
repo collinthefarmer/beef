@@ -279,6 +279,7 @@ void RegisterMenu() {
   }
   SKSEMenuFramework::SetSection(std::string{Identity::kMenuTitle}.c_str());
   SKSEMenuFramework::AddSectionItem("Studio", RenderStudio);
+  SKSEMenuFramework::AddSectionItem("Board", RenderBoard);
   SKSEMenuFramework::AddSectionItem("Recipes", RenderRecipes);
   SKSEMenuFramework::AddSectionItem("Setup", RenderSetup);
   logger::info("SKSE Menu Framework pages registered");

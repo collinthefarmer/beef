@@ -629,6 +629,22 @@ void DrawRecipeSettings(const Frame &a_frame) {
       ImGui::PopID();
     }
   });
+  if (!recipe.problems.empty()) {
+    ImGui::SeparatorText("Rows with problems");
+    if (recipe.heldBack) {
+      Problem("Held back: recipe-level errors keep it out of the applied "
+              "set until they are fixed");
+    }
+    for (const Diagnostic &diagnostic : recipe.problems) {
+      const std::string line =
+          std::format("{}: {}", diagnostic.where, diagnostic.message);
+      if (diagnostic.severity == Severity::kError) {
+        Problem(line);
+      } else {
+        Warn(line);
+      }
+    }
+  }
 }
 
 namespace {

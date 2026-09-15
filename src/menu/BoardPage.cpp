@@ -182,9 +182,6 @@ void DrawBoard(const Studio::Board &a_board, const Frame &a_frame) {
   if (!a_frame.recipe || !a_frame.geometry) {
     return;
   }
-  if (!Section("Board", true)) {
-    return;
-  }
   if (!a_board.shell.empty()) {
     Dim(a_board.shell);
   }
