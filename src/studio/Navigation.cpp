@@ -1,6 +1,8 @@
 #include "studio/Navigation.h"
 
 #include <algorithm>
+#include <optional>
+#include <span>
 #include <utility>
 
 namespace BetterEnchantmentEffects::Studio {
@@ -164,6 +166,44 @@ bool Navigate(Navigation &a_navigation, Selection &a_selection,
   AlignOutputSelection(a_selection, a_recipe);
   a_navigation.scroll = 0.0f;
   return true;
+}
+
+std::optional<InspectorSubject>
+CreatedSubjectOf(std::span<const RecipeEdit> a_edits) {
+  for (const RecipeEdit &edit : a_edits) {
+    if (const auto *added = Get<AddSignal>(edit)) {
+      return SignalSubject{added->name};
+    }
+    if (const auto *added = Get<AddSource>(edit)) {
+      return SourceSubject{added->name};
+    }
+    if (const auto *added = Get<AddMask>(edit)) {
+      return MaskSubject{added->name};
+    }
+    if (const auto *added = Get<AddCurve>(edit)) {
+      return CurveSubject{added->name};
+    }
+  }
+  return std::nullopt;
+}
+
+bool ResolvePendingSubject(Navigation &a_navigation, Selection &a_selection,
+                           std::optional<InspectorSubject> &a_pending,
+                           const RecipeRow *a_recipe) {
+  if (!a_pending) {
+    return false;
+  }
+  if (!a_recipe || a_recipe->id != a_selection.recipeID) {
+    a_pending.reset();
+    return false;
+  }
+  if (!InspectorSubjectExists(*a_pending, *a_recipe)) {
+    return false;
+  }
+  const bool navigated =
+      Navigate(a_navigation, a_selection, *a_pending, *a_recipe);
+  a_pending.reset();
+  return navigated;
 }
 
 bool NavigateProperty(Navigation &a_navigation, Selection &a_selection,

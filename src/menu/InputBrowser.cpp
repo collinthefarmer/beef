@@ -411,23 +411,18 @@ void DrawWizardPopup(const Frame &a_frame, const char *a_id,
 }
 }
 
+void OpenInputWizard() {
+  ResetWizard();
+  ImGui::OpenPopup("input-wizard");
+}
+
 void DrawInputWizard(const Frame &a_frame, const Studio::FormField &a_field) {
   if (!a_frame.snapshot || !a_frame.recipe || !a_frame.names ||
       !a_frame.intents || !Studio::CanConnectInput(a_field)) {
     return;
   }
-  ImGui::PushID(a_field.name.c_str());
-  if (ImGui::Button("Connect input")) {
-    ResetWizard();
-    ImGui::OpenPopup("input-wizard");
-  }
   const std::string title = std::format("Connect to {}", a_field.name);
   DrawWizardPopup(a_frame, "input-wizard", title.c_str(), &a_field);
-  ImGui::PopID();
-}
-
-void DrawInputBrowser(const Frame &a_frame, const Studio::FormField &a_field) {
-  DrawInputWizard(a_frame, a_field);
 }
 
 void DrawSignalWizardButton(const Frame &a_frame) {

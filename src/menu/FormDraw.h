@@ -19,7 +19,7 @@ inline constexpr int kMaxSignalModalDepth = 6;
 FieldInput(const Studio::FormField &a_field, float a_scale,
            const Studio::Names &a_names);
 void PostField(const Studio::FormField &a_field, const std::string &a_text,
-               const std::string &a_recipe, Studio::Intents &a_out);
+               const Frame &a_frame);
 void DrawRowField(const char *a_key, const Studio::FormField &a_field,
                   const Frame &a_frame);
 

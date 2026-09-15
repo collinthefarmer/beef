@@ -329,6 +329,8 @@ void __stdcall RenderStudio() {
       Studio::SelectedRecipe(snapshot, state.selection);
   [[maybe_unused]] const bool resolved =
       Studio::ResolveInspectorSubject(state.selection, recipe);
+  [[maybe_unused]] const bool followed = Studio::ResolvePendingSubject(
+      state.navigation, state.selection, state.pendingSelection, recipe);
   Studio::ObservePaintRecipe(state, recipe);
   const Studio::GeometryRow *geometry =
       Studio::SelectedGeometry(recipe, state.selection);

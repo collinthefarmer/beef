@@ -2,6 +2,7 @@
 
 #include "render/TextureLab.h"
 #include "studio/Forms.h"
+#include "studio/InputConnections.h"
 #include "studio/MenuState.h"
 #include "studio/Names.h"
 #include "studio/View.h"
@@ -118,6 +119,27 @@ ReferenceEntries(const std::string &a_current,
       }
     }
   }
+  return chosen;
+}
+
+[[nodiscard]] std::optional<std::string>
+SignalCombo(const Studio::FormField &a_field) {
+  const std::string preview = a_field.text.starts_with('@')
+                                  ? a_field.text
+                                  : std::string{"choose a signal"};
+  NextItemWidth(Studio::Width::Fill());
+  if (!ImGui::BeginCombo("##combo", preview.c_str())) {
+    return std::nullopt;
+  }
+  std::optional<std::string> chosen = ReferenceEntries(
+      a_field.text, a_field.names, a_field.allowEmpty, a_field.creators);
+  if (Studio::CanConnectInput(a_field)) {
+    ImGui::Separator();
+    if (ImGui::Selectable("New input", false)) {
+      chosen = std::string{kNewInputChoice};
+    }
+  }
+  ImGui::EndCombo();
   return chosen;
 }
 
@@ -645,14 +667,7 @@ std::optional<std::string> ValueWidget(const char *a_key,
     ImGui::SetKeyboardFocusHere();
   }
   if (mode->second && takesSignal) {
-    const std::string preview =
-        reference ? a_field.text : std::string{"choose a signal"};
-    NextItemWidth(Studio::Width::Fill());
-    if (ImGui::BeginCombo("##combo", preview.c_str())) {
-      chosen = ReferenceEntries(a_field.text, a_field.names, a_field.allowEmpty,
-                                a_field.creators);
-      ImGui::EndCombo();
-    }
+    chosen = SignalCombo(a_field);
   } else {
     if (style.swatch == Studio::Swatch::kAlways ||
         (style.swatch == Studio::Swatch::kWhenColour &&

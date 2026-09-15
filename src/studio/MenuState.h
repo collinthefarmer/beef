@@ -62,6 +62,7 @@ struct MenuState {
   Layout layout;
   Selection selection;
   Navigation navigation;
+  std::optional<InspectorSubject> pendingSelection;
   std::optional<PropertyLocation> revealedProperty;
   std::optional<PreviewPin> previewPin;
   std::optional<PendingIndexedEdit> pendingIndexedEdit;

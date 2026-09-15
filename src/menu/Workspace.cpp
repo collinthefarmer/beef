@@ -3,6 +3,7 @@
 #include "menu/BoardPage.h"
 #include "menu/ContextRows.h"
 #include "menu/FormDraw.h"
+#include "menu/InputBrowser.h"
 #include "menu/MenuWidgets.h"
 #include "menu/PaintPanel.h"
 #include "menu/RelationshipPanel.h"
@@ -250,6 +251,9 @@ void DrawResourceTabs(const Frame &a_frame, std::string_view a_filter) {
     }
     if (tab != a_frame.state->resource) {
       Studio::Post(*a_frame.intents, Studio::ShowResource{tab});
+    }
+    if (tab == Studio::ResourceTab::kSignals) {
+      DrawSignalWizardButton(a_frame);
     }
     DrawResourceRows(a_frame, tab, a_filter);
     ImGui::EndTabItem();

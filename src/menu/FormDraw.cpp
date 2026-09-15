@@ -1,7 +1,9 @@
 #include "menu/FormDraw.h"
 
 #include "menu/ExpressionShelf.h"
+#include "menu/InputBrowser.h"
 #include "menu/MenuWidgets.h"
+#include "menu/PaintPanel.h"
 #include "menu/Tuning.h"
 #include "recipe/Expression.h"
 #include "recipe/Recipe.h"
@@ -11,6 +13,7 @@
 #include "studio/Intent.h"
 #include "studio/MenuState.h"
 #include "studio/Names.h"
+#include "studio/Navigation.h"
 #include "studio/Panels.h"
 
 #include <algorithm>
@@ -242,25 +245,54 @@ std::optional<std::string> FieldInput(const FormField &a_field, float a_scale,
   return std::nullopt;
 }
 
-void PostField(const FormField &a_field, const std::string &a_text,
-               const std::string &a_recipe, Intents &a_out) {
-  if (std::ranges::find(a_field.creators, a_text) != a_field.creators.end()) {
-    if (a_field.create) {
-      std::vector<RecipeEdit> edits = a_field.create(a_text);
-      if (!edits.empty()) {
-        Post(a_out, EditRecipe{a_recipe, std::move(edits)});
-        return;
-      }
-    }
+void AuthorCreated(const InspectorSubject &a_subject, const Frame &a_frame) {
+  if (const auto *mask = Get<MaskSubject>(a_subject)) {
+    EditMaskAsTerms(TextRow{.name = mask->name, .text = "0"}, a_frame);
+    return;
+  }
+  a_frame.state->pendingSelection = a_subject;
+}
+
+[[nodiscard]] bool PostCreate(const FormField &a_field,
+                              const std::string &a_text, const Frame &a_frame) {
+  if (std::ranges::find(a_field.creators, a_text) == a_field.creators.end()) {
+    return false;
+  }
+  std::vector<RecipeEdit> edits =
+      a_field.create ? a_field.create(a_text) : std::vector<RecipeEdit>{};
+  if (edits.empty()) {
     RefuseCreate(a_field.name, a_text);
+    return true;
+  }
+  const std::optional<InspectorSubject> created = CreatedSubjectOf(edits);
+  Post(*a_frame.intents, EditRecipe{a_frame.recipe->id, std::move(edits)});
+  if (created) {
+    AuthorCreated(*created, a_frame);
+  }
+  return true;
+}
+
+void PostField(const FormField &a_field, const std::string &a_text,
+               const Frame &a_frame) {
+  if (PostCreate(a_field, a_text, a_frame)) {
     return;
   }
   const std::optional<RecipeEdit> edit =
       a_field.bind ? a_field.bind(a_text) : std::nullopt;
   if (edit) {
-    Post(a_out, EditRecipe{a_recipe, {*edit}, a_field.expectedRevision});
+    Post(*a_frame.intents,
+         EditRecipe{a_frame.recipe->id, {*edit}, a_field.expectedRevision});
   } else {
     Refuse(a_field.name, a_text);
+  }
+}
+
+void CommitField(const FormField &a_field, const std::string &a_text,
+                 const Frame &a_frame) {
+  if (a_text == kNewInputChoice) {
+    OpenInputWizard();
+  } else {
+    PostField(a_field, a_text, a_frame);
   }
 }
 
@@ -276,8 +308,9 @@ void DrawRowField(const char *a_key, const FormField &a_field,
     ImGui::SameLine(0.0f, 0.0f);
   }
   if (const auto text = FieldInput(a_field, a_frame.scale, *a_frame.names)) {
-    PostField(a_field, *text, a_frame.recipe->id, *a_frame.intents);
+    CommitField(a_field, *text, a_frame);
   }
+  DrawInputWizard(a_frame, a_field);
   DrawTuning(a_field, a_frame);
   ImGui::PopID();
 }
@@ -331,8 +364,9 @@ std::optional<std::size_t> DrawFieldTable(const char *a_id,
       ImGui::SameLine(0.0f, 0.0f);
     }
     if (const auto text = FieldInput(field, a_frame.scale, *a_frame.names)) {
-      PostField(field, *text, a_frame.recipe->id, *a_frame.intents);
+      CommitField(field, *text, a_frame);
     }
+    DrawInputWizard(a_frame, field);
     DrawTuning(field, a_frame);
     ImGui::PopID();
   }
