@@ -87,25 +87,6 @@ void RecipeCombo(const Frame &a_frame, const char *a_label) {
   ImGui::EndCombo();
 }
 
-void IsolateCheckbox(const Studio::RecipeRow &a_recipe,
-                     const Studio::View &a_view, const char *a_label,
-                     Studio::Intents &a_out) {
-  bool isolating = a_view.Isolating();
-  std::string text;
-  if (isolating) {
-    text = "isolating " + a_view.isolation.recipeID;
-    if (a_view.isolation.output.has_value()) {
-      text += std::format(" output {}", *a_view.isolation.output);
-    }
-    if (a_view.isolation.layer.has_value()) {
-      text += std::format(" layer {}", *a_view.isolation.layer);
-    }
-  }
-  if (Toggle(a_label, isolating, text)) {
-    Studio::Post(a_out, Studio::SoloRecipe{a_recipe.id, isolating});
-  }
-}
-
 void DrawKeysTable(const Studio::RecipeRow &a_recipe, Studio::Intents &a_out) {
   auto table = Table::Begin("keys",
                             {{"key", Studio::Width::Fit()},
@@ -582,13 +563,14 @@ void DrawStudioContext(const Frame &a_frame) {
   if (!a_frame.snapshot || !a_frame.intents) {
     return;
   }
+  static_cast<void>(Rule(Studio::RuleSpec{.text = "Session", .buttons = {}}));
   DrawRecipeContext(a_frame);
+  static_cast<void>(Rule(Studio::RuleSpec{.text = "Recipe", .buttons = {}}));
   NewRecipeButton(a_frame);
   if (!a_frame.recipe) {
     return;
   }
-  IsolateCheckbox(*a_frame.recipe, a_frame.snapshot->view, "Solo recipe",
-                  *a_frame.intents);
+  ImGui::SameLine();
   UndoRedoButtons(*a_frame.recipe, *a_frame.intents);
   ImGui::SameLine();
   RenameRecipeButton(a_frame);

@@ -126,34 +126,44 @@ void ReturnToLive() {
   });
 }
 
-void DrawTryStatus(const Frame &a_frame) {
-  const Studio::View &view = ViewOf(a_frame);
-  static_cast<void>(
-      Rule(Studio::RuleSpec{.text = "Try / global clock", .buttons = {}}));
-  Disabled(Studio::MaskTaskActive(*a_frame.state), [&] {
-    if (ImGui::SmallButton("Return to live")) {
-      ReturnToLive();
+void IsolateCheckbox(const Studio::RecipeRow &a_recipe,
+                     const Studio::View &a_view, const char *a_label,
+                     Studio::Intents &a_out) {
+  bool isolating = a_view.Isolating();
+  std::string text;
+  if (isolating) {
+    text = "isolating " + a_view.isolation.recipeID;
+    if (a_view.isolation.output.has_value()) {
+      text += std::format(" output {}", *a_view.isolation.output);
     }
-  });
-  Tooltip("clear solo and mute, resume the global clock at normal speed");
+    if (a_view.isolation.layer.has_value()) {
+      text += std::format(" layer {}", *a_view.isolation.layer);
+    }
+  }
+  if (Toggle(a_label, isolating, text)) {
+    Studio::Post(a_out, Studio::SoloRecipe{a_recipe.id, isolating});
+  }
+}
+
+void DrawAuditionBar(const Frame &a_frame) {
+  const Studio::View &view = ViewOf(a_frame);
+  static_cast<void>(Rule(Studio::RuleSpec{.text = "Audition", .buttons = {}}));
+  if (a_frame.recipe) {
+    IsolateCheckbox(*a_frame.recipe, view, "Solo recipe", *a_frame.intents);
+  }
   if (view.Isolating()) {
     Warn(std::format("Solo: {}", view.isolation.recipeID));
   }
   if (!view.muted.empty()) {
     Warn(std::format("{} muted layer(s)", view.muted.size()));
   }
-  if (view.freeze || view.speed != 1.0f) {
-    Dim(std::format("Clock: {} at {:.2f}x", view.freeze ? "held" : "running",
-                    view.speed));
-  }
 }
 
-void DrawFooter(const Frame &a_frame) {
+void DrawClock(const Frame &a_frame) {
   const Studio::RecipeRow *recipe = a_frame.recipe;
   const Studio::View &view = ViewOf(a_frame);
   Studio::Intents &out = *a_frame.intents;
   const float now = recipe ? recipe->time : 0.0f;
-  DrawTryStatus(a_frame);
   Table table = Table::Begin("footer",
                              {{"freeze", Studio::Width::Fit()},
                               {"step", Studio::Width::Fit()},
@@ -198,6 +208,23 @@ void DrawFooter(const Frame &a_frame) {
                         static_cast<int>(minute / 60.0f) + 1, actual));
   }
   table.End();
+}
+
+void DrawFooter(const Frame &a_frame) {
+  const Studio::View &view = ViewOf(a_frame);
+  DrawAuditionBar(a_frame);
+  static_cast<void>(Rule(Studio::RuleSpec{.text = "Session", .buttons = {}}));
+  Disabled(Studio::MaskTaskActive(*a_frame.state), [&] {
+    if (ImGui::SmallButton("Return to live")) {
+      ReturnToLive();
+    }
+  });
+  Tooltip("clear solo and mute, resume the global clock at normal speed");
+  if (view.freeze || view.speed != 1.0f) {
+    Dim(std::format("Clock: {} at {:.2f}x", view.freeze ? "held" : "running",
+                    view.speed));
+  }
+  DrawClock(a_frame);
 }
 
 void HistoryKeys(const Frame &a_frame) {
@@ -252,11 +279,11 @@ void DrawStudioFrame(const Frame &frame) {
     Dim("Waiting for the recipe change.");
   }
   const Studio::View &view = snapshot.view;
-  const float footerRows = 3.0f + (view.Isolating() ? 1.0f : 0.0f) +
+  const float footerRows = 4.0f + (view.Isolating() ? 1.0f : 0.0f) +
                            (!view.muted.empty() ? 1.0f : 0.0f) +
                            ((view.freeze || view.speed != 1.0f) ? 1.0f : 0.0f);
-  const float footer =
-      RuleHeight() + ImGui::GetFrameHeightWithSpacing() * footerRows + 8.0f;
+  const float footer = RuleHeight() * 2.0f +
+                       ImGui::GetFrameHeightWithSpacing() * footerRows + 8.0f;
   if (ImGui::BeginChild("studio-body", ImVec2{0.0f, -footer}, 0, 0)) {
     Disabled(editPending || (state.paint && state.paint->pendingCommit),
              [&] { DrawBody(frame); });
