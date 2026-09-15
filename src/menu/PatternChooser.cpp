@@ -7,8 +7,8 @@
 #include "studio/PaintSession.h"
 
 #include <algorithm>
+#include <cstddef>
 #include <format>
-#include <optional>
 #include <string>
 
 #pragma clang diagnostic push
@@ -20,71 +20,34 @@ namespace ImGui = ImGuiMCP;
 
 namespace BetterEnchantmentEffects::Menu {
 namespace {
-struct PatternChoice {
-  std::uint64_t sessionID = 0;
-  std::string editing;
-  std::optional<Studio::TermOffer> offer;
-  Studio::TermKind kind;
-  std::string problem;
-};
+constexpr Studio::TableStyle kOfferStyle{
+    .borders = Studio::TableBorders::kInnerHorizontal,
+    .stretch = true,
+    .headers = false,
+    .rowBackground = false};
 
-bool SameOffer(const Studio::TermOffer &a_left,
-               const Studio::TermOffer &a_right) {
-  return a_left.group == a_right.group && a_left.name == a_right.name &&
-         a_left.geometry == a_right.geometry && a_left.kind == a_right.kind;
+[[nodiscard]] const Studio::GeometryRow &
+OfferGeometry(const Studio::TermOffer &a_offer, const Frame &a_frame) {
+  const auto found = std::ranges::find(
+      a_frame.recipe->geometries, a_offer.geometry, &Studio::GeometryRow::name);
+  return found == a_frame.recipe->geometries.end() ? *a_frame.geometry : *found;
 }
 
-void DrawPatternList(std::span<const Studio::TermOffer> a_offers,
-                     std::string_view a_filter, PatternChoice &a_choice) {
-  if (ImGui::BeginChild("pattern-list", ImGuiMCP::ImVec2{0.0f, 180.0f}, 0, 0)) {
-    std::size_t index = 0;
-    for (const Studio::TermOffer &offer : a_offers) {
-      const auto *group = RowOf(Studio::kOfferGroups, offer.group);
-      const std::string_view groupName =
-          group ? group->name : std::string_view{};
-      if (!Studio::NameMatches(offer.name, a_filter) &&
-          !Studio::NameMatches(offer.detail, a_filter) &&
-          !Studio::NameMatches(groupName, a_filter)) {
-        continue;
-      }
-      ImGui::PushID(static_cast<int>(index++));
-      const std::string label = std::format(
-          "{} / {}{}", groupName, offer.name,
-          offer.geometry.empty() ? std::string{} : " / " + offer.geometry);
-      if (ImGui::Selectable(label.c_str(),
-                            a_choice.offer &&
-                                SameOffer(*a_choice.offer, offer))) {
-        a_choice.offer = offer;
-        a_choice.kind = offer.kind;
-        a_choice.problem.clear();
-      }
-      Tooltip(offer.unavailable.value_or(offer.detail));
-      ImGui::PopID();
-    }
-  }
-  ImGui::EndChild();
+[[nodiscard]] std::string OfferLabel(const Studio::TermOffer &a_offer) {
+  const auto *group = RowOf(Studio::kOfferGroups, a_offer.group);
+  const std::string_view groupName = group ? group->name : std::string_view{};
+  return std::format("{} / {}{}", groupName, a_offer.name,
+                     a_offer.geometry.empty() ? std::string{}
+                                              : " / " + a_offer.geometry);
 }
 
-void DrawPatternControls(PatternChoice &a_choice,
-                         const Studio::GeometryRow &a_geometry,
-                         const Frame &a_frame) {
-  const auto fields =
-      Studio::TermForm(a_choice.kind, LoadedPresets(), a_geometry);
-  for (const Studio::TermField &field : fields) {
-    ImGui::PushID(field.field.name.c_str());
-    Dim(field.field.name);
-    if (const auto text =
-            FieldInput(field.field, a_frame.scale, *a_frame.names)) {
-      const auto changed = field.apply ? field.apply(*text) : std::nullopt;
-      if (changed) {
-        a_choice.kind = *changed;
-        a_choice.problem.clear();
-      } else {
-        a_choice.problem = "The pattern setting could not be applied.";
-      }
-    }
-    ImGui::PopID();
-  }
+[[nodiscard]] bool OfferMatches(const Studio::TermOffer &a_offer,
+                                std::string_view a_filter) {
+  const auto *group = RowOf(Studio::kOfferGroups, a_offer.group);
+  const std::string_view groupName = group ? group->name : std::string_view{};
+  return Studio::NameMatches(a_offer.name, a_filter) ||
+         Studio::NameMatches(a_offer.detail, a_filter) ||
+         Studio::NameMatches(groupName, a_filter);
 }
 
 void DrawPatternPreview(const Studio::TermOffer &a_offer,
@@ -111,61 +74,90 @@ void DrawPatternPreview(const Studio::TermOffer &a_offer,
   }
 }
 
-void AddPattern(const PatternChoice &a_choice,
+void AddPattern(const Studio::TermKind &a_kind,
                 const Studio::GeometryRow &a_geometry, const Frame &a_frame) {
   Studio::BuiltTerm built = Studio::BuildTerm(
-      a_choice.kind, LoadedPresets(),
+      a_kind, LoadedPresets(),
       Studio::PaintSources(*a_frame.state, *a_frame.recipe, *a_frame.intents));
   Studio::Post(
       *a_frame.intents,
       Studio::AddTerm{
-          Studio::Term{
-              Studio::TermOp::kAnd, std::move(built.expression),
-              Studio::TermLabelOf(a_choice.kind, LoadedPresets(), a_geometry),
-              a_choice.kind},
+          Studio::Term{Studio::TermOp::kAnd, std::move(built.expression),
+                       Studio::TermLabelOf(a_kind, LoadedPresets(), a_geometry),
+                       a_kind},
           std::move(built.edits)});
 }
 
-void DrawPatternDetails(PatternChoice &a_choice, bool a_full,
-                        const Frame &a_frame) {
-  if (!a_choice.offer) {
-    Dim("Choose a supported pattern, source, or armor region.");
+void DrawOfferRow(Table &a_table, const Studio::TermOffer &a_offer, bool a_full,
+                  const Frame &a_frame) {
+  const Studio::GeometryRow &geometry = OfferGeometry(a_offer, a_frame);
+  a_table.Cell();
+  Disabled(a_full || a_offer.unavailable.has_value(), [&] {
+    if (ImGui::SmallButton("Add")) {
+      AddPattern(a_offer.kind, geometry, a_frame);
+    }
+  });
+  Tooltip(a_offer.unavailable.value_or(
+      "Add to the mask draft with default settings; tune the placed term in "
+      "the preview."));
+  a_table.Cell();
+  ImGui::AlignTextToFramePadding();
+  ImGui::TextUnformatted(OfferLabel(a_offer).c_str());
+  a_table.Cell();
+  ImGui::AlignTextToFramePadding();
+  if (a_offer.unavailable) {
+    Problem(*a_offer.unavailable);
+  } else {
+    std::string detail = a_offer.detail;
+    if (a_offer.coverage) {
+      const std::string share =
+          std::format("{:.1f}%", *a_offer.coverage * 100.0f);
+      detail = detail.empty() ? share : detail + ", " + share;
+    }
+    Dim(detail);
+  }
+  a_table.Cell();
+  const auto title = std::format("{}###offer-preview", OfferLabel(a_offer));
+  if (DetailButton()) {
+    ImGui::OpenPopup(title.c_str());
+  }
+  DetailModal(title.c_str(), [&] {
+    Dim(a_offer.detail);
+    if (!a_offer.geometry.empty()) {
+      Dim("Armor geometry: " + a_offer.geometry);
+    }
+    if (a_offer.coverage) {
+      Dim(std::format("Coverage: {:.1f}%", *a_offer.coverage * 100.0f));
+    }
+    if (a_offer.unavailable) {
+      Problem(*a_offer.unavailable);
+    }
+    DrawPatternPreview(a_offer, geometry);
+  });
+}
+
+void DrawOfferTable(std::span<const Studio::TermOffer> a_offers,
+                    std::string_view a_filter, bool a_full,
+                    const Frame &a_frame) {
+  auto table = Table::Begin("offers",
+                            {{"", Studio::Width::Fit()},
+                             {"pattern", Studio::Width::Fit()},
+                             {"detail", Studio::Width::Fill()},
+                             {"", Studio::Width::Px(RowButtonWidth())}},
+                            kOfferStyle);
+  if (!table.Open()) {
     return;
   }
-  const Studio::TermOffer &offer = *a_choice.offer;
-  const auto found = std::ranges::find(
-      a_frame.recipe->geometries, offer.geometry, &Studio::GeometryRow::name);
-  const Studio::GeometryRow &geometry =
-      found == a_frame.recipe->geometries.end() ? *a_frame.geometry : *found;
-  ImGui::PushID(offer.name.c_str());
-  ImGui::PushID(offer.geometry.c_str());
-  ImGui::PushID(static_cast<int>(offer.group));
-  Dim(offer.detail);
-  if (!offer.geometry.empty()) {
-    Dim("Armor geometry: " + offer.geometry);
+  std::size_t index = 0;
+  for (const Studio::TermOffer &offer : a_offers) {
+    if (!OfferMatches(offer, a_filter)) {
+      continue;
+    }
+    ImGui::PushID(static_cast<int>(index++));
+    DrawOfferRow(table, offer, a_full, a_frame);
+    ImGui::PopID();
   }
-  if (offer.coverage) {
-    Dim(std::format("Coverage: {:.1f}%", *offer.coverage * 100.0f));
-  }
-  if (offer.unavailable) {
-    Problem(*offer.unavailable);
-  }
-  DrawPatternPreview(offer, geometry);
-  DrawPatternControls(a_choice, geometry, a_frame);
-  if (!a_choice.problem.empty()) {
-    Problem(a_choice.problem);
-  }
-  Disabled(a_full || offer.unavailable.has_value() || !a_choice.problem.empty(),
-           [&] {
-             if (ImGui::Button("Add to mask draft")) {
-               AddPattern(a_choice, geometry, a_frame);
-             }
-           });
-  Tooltip(
-      "Adds a term to the draft; tune or undo it before Keep writes the mask.");
-  ImGui::PopID();
-  ImGui::PopID();
-  ImGui::PopID();
+  table.End();
 }
 }
 
@@ -176,28 +168,11 @@ void DrawPatternChooser(std::span<const Studio::TermOffer> a_offers,
       !a_frame.geometry || !a_frame.names || !a_frame.intents) {
     return;
   }
-  static PatternChoice choice;
-  const std::uint64_t session = a_frame.state->paint->sessionID;
-  if (choice.sessionID != session ||
-      choice.editing != a_frame.state->mask.editing) {
-    choice = PatternChoice{};
-    choice.sessionID = session;
-    choice.editing = a_frame.state->mask.editing;
-  }
-  if (choice.offer) {
-    const auto found =
-        std::ranges::find_if(a_offers, [&](const Studio::TermOffer &offer) {
-          return SameOffer(offer, *choice.offer);
-        });
-    if (found == a_offers.end()) {
-      choice.offer.reset();
-    } else {
-      choice.offer = *found;
-    }
-  }
   ImGui::PushID("pattern-chooser");
-  DrawPatternList(a_offers, a_filter, choice);
-  DrawPatternDetails(choice, a_full, a_frame);
+  if (ImGui::BeginChild("pattern-list", ImGuiMCP::ImVec2{0.0f, 180.0f}, 0, 0)) {
+    DrawOfferTable(a_offers, a_filter, a_full, a_frame);
+  }
+  ImGui::EndChild();
   ImGui::PopID();
 }
 }

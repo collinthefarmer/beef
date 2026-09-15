@@ -2,6 +2,8 @@
 #include "test_support.h"
 
 #include <algorithm>
+#include <span>
+#include <string_view>
 
 using namespace BetterEnchantmentEffects;
 using namespace BetterEnchantmentEffects::Studio;
@@ -32,6 +34,14 @@ GeometryRow SampleGeometry() {
 bool HasGroup(std::span<const TermOffer> a_offers, OfferGroup a_group) {
   return std::ranges::any_of(
       a_offers, [a_group](const TermOffer &o) { return o.group == a_group; });
+}
+
+const TermField *FieldNamed(std::span<const TermField> a_form,
+                            std::string_view a_name) {
+  const auto it = std::ranges::find(a_form, a_name, [](const TermField &f) {
+    return std::string_view{f.field.name};
+  });
+  return it == a_form.end() ? nullptr : &*it;
 }
 }
 
@@ -116,6 +126,32 @@ int main() {
   const std::string label =
       TermLabelOf(TermKind{PartitionTerm{BipedSlot{32}}}, presets, geometry);
   Check(label == "body", "TermLabelOf names a partition from the mesh facts");
+
+  const auto thresholdForm =
+      TermForm(TermKind{ThresholdTerm{MaterialChannel::kRoughness, 0.5f, 1.0f}},
+               presets, geometry);
+  const TermField *softness = FieldNamed(thresholdForm, "softness");
+  const TermField *posterize = FieldNamed(thresholdForm, "posterize");
+  Check(softness && softness->field.workingRange && !softness->field.integral &&
+            softness->field.workingRange->first == 0.0f &&
+            softness->field.workingRange->second == 1.0f,
+        "a continuous threshold field carries a tuning range and is not "
+        "integral");
+  Check(posterize && posterize->field.workingRange && posterize->field.integral,
+        "a whole-number threshold field is tunable and integral");
+
+  const auto clusterForm =
+      TermForm(TermKind{ClusterTerm{ClusterSettings{}, 0}}, presets, geometry);
+  const TermField *clusters = FieldNamed(clusterForm, "clusters");
+  const TermField *roughnessWeight = FieldNamed(clusterForm, "roughness");
+  const TermField *seed = FieldNamed(clusterForm, "seed");
+  Check(clusters && clusters->field.integral && clusters->field.workingRange,
+        "the cluster count is tunable and integral");
+  Check(roughnessWeight && roughnessWeight->field.workingRange &&
+            !roughnessWeight->field.integral,
+        "a cluster weight is tunable and continuous");
+  Check(seed && !seed->field.range && !seed->field.workingRange,
+        "the seed has no tuning range and stays a plain entry");
 
   return test::Finish("studio_termtemplates");
 }

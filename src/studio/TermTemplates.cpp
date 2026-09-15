@@ -356,6 +356,13 @@ Setting(Kind a_kind, FormField a_field,
                    }};
 }
 
+[[nodiscard]] FormField
+Tuned(FormField a_field, std::pair<float, float> a_range, bool a_integral) {
+  a_field.workingRange = a_range;
+  a_field.integral = a_integral;
+  return a_field;
+}
+
 [[nodiscard]] std::optional<float> NumberIn(const std::string &a_text,
                                             float a_min, float a_max) {
   const auto number = ReadNumber(a_text);
@@ -403,30 +410,33 @@ void ThresholdRangeFields(std::vector<TermField> &a_form,
   using Set = std::function<bool(ThresholdTerm &, const std::string &)>;
   a_form.push_back(Setting<ThresholdTerm>(
       a_term,
-      TextedField({.name = "low",
-                   .kind = FieldKind::kScalar,
-                   .text = NumberText(a_term.low),
-                   .bind = {}}),
+      Tuned(TextedField({.name = "low",
+                         .kind = FieldKind::kScalar,
+                         .text = NumberText(a_term.low),
+                         .bind = {}}),
+            {-1.0f, 2.0f}, false),
       Set{[](ThresholdTerm &t, const std::string &a_text) {
         const auto number = NumberIn(a_text, -1.0f, 2.0f);
         return number ? (t.low = *number, true) : false;
       }}));
   a_form.push_back(Setting<ThresholdTerm>(
       a_term,
-      TextedField({.name = "high",
-                   .kind = FieldKind::kScalar,
-                   .text = NumberText(a_term.high),
-                   .bind = {}}),
+      Tuned(TextedField({.name = "high",
+                         .kind = FieldKind::kScalar,
+                         .text = NumberText(a_term.high),
+                         .bind = {}}),
+            {-1.0f, 2.0f}, false),
       Set{[](ThresholdTerm &t, const std::string &a_text) {
         const auto number = NumberIn(a_text, -1.0f, 2.0f);
         return number ? (t.high = *number, true) : false;
       }}));
   a_form.push_back(Setting<ThresholdTerm>(
       a_term,
-      TextedField({.name = "softness",
-                   .kind = FieldKind::kScalar,
-                   .text = NumberText(a_term.softness),
-                   .bind = {}}),
+      Tuned(TextedField({.name = "softness",
+                         .kind = FieldKind::kScalar,
+                         .text = NumberText(a_term.softness),
+                         .bind = {}}),
+            {0.0f, 1.0f}, false),
       Set{[](ThresholdTerm &t, const std::string &a_text) {
         const auto number = NumberIn(a_text, 0.0f, 1.0f);
         return number ? (t.softness = *number, true) : false;
@@ -451,10 +461,11 @@ std::vector<TermField> ThresholdForm(const ThresholdTerm &a_term) {
   ThresholdRangeFields(form, a_term);
   form.push_back(Setting<ThresholdTerm>(
       a_term,
-      TextedField({.name = "posterize",
-                   .kind = FieldKind::kScalar,
-                   .text = std::to_string(a_term.posterize),
-                   .bind = {}}),
+      Tuned(TextedField({.name = "posterize",
+                         .kind = FieldKind::kScalar,
+                         .text = std::to_string(a_term.posterize),
+                         .bind = {}}),
+            {1.0f, 16.0f}, true),
       Set{[](ThresholdTerm &t, const std::string &a_text) {
         const auto levels = ReadWhole(a_text, 255);
         return levels ? (t.posterize = static_cast<std::uint8_t>(*levels), true)
@@ -477,10 +488,11 @@ std::vector<TermField> ClusterForm(const ClusterTerm &a_term) {
   std::vector<TermField> form;
   form.push_back(Setting<ClusterTerm>(
       a_term,
-      TextedField({.name = "clusters",
-                   .kind = FieldKind::kScalar,
-                   .text = std::to_string(a_term.settings.clusters),
-                   .bind = {}}),
+      Tuned(TextedField({.name = "clusters",
+                         .kind = FieldKind::kScalar,
+                         .text = std::to_string(a_term.settings.clusters),
+                         .bind = {}}),
+            {1.0f, static_cast<float>(kMaxClusters)}, true),
       Set{[](ClusterTerm &t, const std::string &a_text) {
         const auto count = ReadWhole(a_text, kMaxClusters);
         if (!count || *count < 1) {
@@ -492,10 +504,12 @@ std::vector<TermField> ClusterForm(const ClusterTerm &a_term) {
   const auto weight = [&](const char *a_name, float ChannelWeights::*a_member) {
     form.push_back(Setting<ClusterTerm>(
         a_term,
-        TextedField({.name = a_name,
-                     .kind = FieldKind::kScalar,
-                     .text = NumberText(a_term.settings.weights.*a_member),
-                     .bind = {}}),
+        Tuned(
+            TextedField({.name = a_name,
+                         .kind = FieldKind::kScalar,
+                         .text = NumberText(a_term.settings.weights.*a_member),
+                         .bind = {}}),
+            {0.0f, kMaxChannelWeight}, false),
         Set{[a_member](ClusterTerm &t, const std::string &a_text) {
           const auto number = NumberIn(a_text, 0.0f, kMaxChannelWeight);
           return number ? (t.settings.weights.*a_member = *number, true)

@@ -6,6 +6,7 @@
 #include "menu/ContextRows.h"
 #include "menu/FormDraw.h"
 #include "menu/MenuWidgets.h"
+#include "menu/Tuning.h"
 #include "recipe/Expression.h"
 #include "recipe/Recipe.h"
 #include "recipe/Words.h"
@@ -21,6 +22,7 @@
 #include "studio/TermTemplates.h"
 
 #include <algorithm>
+#include <cmath>
 #include <cstddef>
 #include <format>
 #include <functional>
@@ -115,12 +117,29 @@ NextGeometry(const Studio::RecipeRow &a_recipe,
                       kLayerStyle);
 }
 
+void CommitTermField(std::size_t a_index, const Studio::TermField &a_field,
+                     const std::string &a_text, const Frame &a_frame) {
+  const std::optional<Studio::TermKind> changed =
+      a_field.apply ? a_field.apply(a_text) : std::nullopt;
+  if (!changed) {
+    Refuse(a_field.field.name, a_text);
+    return;
+  }
+  const Studio::MaskPresets &presets = LoadedPresets();
+  Studio::BuiltTerm built = Studio::BuildTerm(
+      *changed, presets,
+      Studio::PaintSources(*a_frame.state, *a_frame.recipe, *a_frame.intents));
+  Studio::Post(*a_frame.intents,
+               Studio::SetTermKind{
+                   a_index, *changed, std::move(built.expression),
+                   Studio::TermLabelOf(*changed, presets, *a_frame.geometry),
+                   std::move(built.edits)});
+}
+
 void DrawTermSettings(std::size_t a_index, const Studio::Term &a_term,
                       const Frame &a_frame) {
-  const Studio::MaskPresets &presets = LoadedPresets();
-  const Studio::GeometryRow &geometry = *a_frame.geometry;
   const std::vector<Studio::TermField> form =
-      Studio::TermForm(a_term.kind, presets, geometry);
+      Studio::TermForm(a_term.kind, LoadedPresets(), *a_frame.geometry);
   if (form.empty()) {
     return;
   }
@@ -139,21 +158,7 @@ void DrawTermSettings(std::size_t a_index, const Studio::Term &a_term,
     table.Cell();
     if (const auto text =
             FieldInput(setting.field, a_frame.scale, *a_frame.names)) {
-      const std::optional<Studio::TermKind> changed =
-          setting.apply ? setting.apply(*text) : std::nullopt;
-      if (changed) {
-        Studio::BuiltTerm built = Studio::BuildTerm(
-            *changed, presets,
-            Studio::PaintSources(*a_frame.state, *a_frame.recipe,
-                                 *a_frame.intents));
-        Studio::Post(*a_frame.intents,
-                     Studio::SetTermKind{
-                         a_index, *changed, std::move(built.expression),
-                         Studio::TermLabelOf(*changed, presets, geometry),
-                         std::move(built.edits)});
-      } else {
-        Refuse(setting.field.name, *text);
-      }
+      CommitTermField(a_index, setting, *text, a_frame);
     }
     ImGui::PopID();
   }
@@ -688,5 +693,102 @@ void DrawMaskTask(const Frame &a_frame) {
   preview.geometry = geometry;
   preview.names = &names;
   DrawMaskStack(preview);
+}
+
+namespace {
+std::optional<Frame> PaintPreviewFrame(const Frame &a_frame,
+                                       Studio::Names &a_names) {
+  Studio::MenuState &state = *a_frame.state;
+  if (!state.paint || !a_frame.snapshot) {
+    return std::nullopt;
+  }
+  const auto piece =
+      std::ranges::find(a_frame.snapshot->pieces, state.paint->origin.piece,
+                        &Studio::PieceRow::ref);
+  if (piece == a_frame.snapshot->pieces.end()) {
+    return std::nullopt;
+  }
+  const auto paint = std::ranges::find(piece->recipes, Studio::kPaintRecipe,
+                                       &Studio::RecipeRow::id);
+  if (paint == piece->recipes.end()) {
+    return std::nullopt;
+  }
+  const Studio::GeometryRow *geometry =
+      Studio::SelectedGeometry(&*paint, state.paint->origin);
+  if (!geometry) {
+    return std::nullopt;
+  }
+  a_names = Studio::NamesOf(*paint, *geometry);
+  Frame preview = a_frame;
+  preview.piece = &*piece;
+  preview.recipe = &*paint;
+  preview.geometry = geometry;
+  preview.names = &a_names;
+  return preview;
+}
+
+void DrawTermParameter(std::size_t a_index, const Studio::TermField &a_field,
+                       const Frame &a_preview, Table &a_table) {
+  ImGui::PushID(a_field.field.name.c_str());
+  a_table.Cell();
+  ImGui::AlignTextToFramePadding();
+  ImGui::TextUnformatted(a_field.field.name.c_str());
+  a_table.Cell();
+  const bool tunable = a_field.field.kind == Studio::FieldKind::kScalar &&
+                       (a_field.field.range || a_field.field.workingRange);
+  if (tunable) {
+    DrawTuning(a_field.field, a_preview,
+               TuningSink{[a_index, &a_field, &a_preview](float a_value) {
+                 const std::string text =
+                     a_field.field.integral
+                         ? std::to_string(
+                               static_cast<long long>(std::llround(a_value)))
+                         : std::format("{:.9g}", a_value);
+                 CommitTermField(a_index, a_field, text, a_preview);
+               }});
+  } else if (const auto text =
+                 FieldInput(a_field.field, a_preview.scale, *a_preview.names)) {
+    CommitTermField(a_index, a_field, *text, a_preview);
+  }
+  ImGui::PopID();
+}
+}
+
+void DrawTermTuningPane(const Frame &a_frame) {
+  Studio::MenuState &state = *a_frame.state;
+  if (state.mode != Studio::Mode::kPaint) {
+    return;
+  }
+  const Studio::MaskStack &mask = state.mask;
+  if (!mask.selected || *mask.selected >= mask.terms.size()) {
+    return;
+  }
+  Studio::Names names;
+  const std::optional<Frame> preview = PaintPreviewFrame(a_frame, names);
+  if (!preview) {
+    return;
+  }
+  const std::size_t index = *mask.selected;
+  const Studio::Term &term = mask.terms[index];
+  const std::vector<Studio::TermField> form =
+      Studio::TermForm(term.kind, LoadedPresets(), *preview->geometry);
+  Dim(std::format("Tuning term {}: {}", index, term.label));
+  if (form.empty()) {
+    Dim("This term has no adjustable settings.");
+    return;
+  }
+  const FieldScope maskScope("mask");
+  const FieldScope termScope(std::to_string(index));
+  auto table = Table::Begin(
+      "term-tune",
+      {{"setting", Studio::Width::Fit()}, {"value", Studio::Width::Fill()}},
+      kFormStyle);
+  if (!table.Open()) {
+    return;
+  }
+  for (const Studio::TermField &field : form) {
+    DrawTermParameter(index, field, *preview, table);
+  }
+  table.End();
 }
 }

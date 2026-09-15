@@ -17,11 +17,7 @@ namespace ImGui = ImGuiMCP;
 
 namespace BetterEnchantmentEffects::Menu {
 namespace {
-std::optional<float> TunableValue(const Studio::FormField &a_field) {
-  if (!a_field.bind || (a_field.kind != Studio::FieldKind::kScalar &&
-                        a_field.kind != Studio::FieldKind::kSignalValue)) {
-    return std::nullopt;
-  }
+std::optional<float> FieldValue(const Studio::FormField &a_field) {
   const auto value = ParseParam(a_field.text);
   if (!value) {
     return std::nullopt;
@@ -29,6 +25,14 @@ std::optional<float> TunableValue(const Studio::FormField &a_field) {
   const auto *number = Get<float>(*value);
   return number && std::isfinite(*number) ? std::optional<float>{*number}
                                           : std::nullopt;
+}
+
+std::optional<float> TunableValue(const Studio::FormField &a_field) {
+  if (!a_field.bind || (a_field.kind != Studio::FieldKind::kScalar &&
+                        a_field.kind != Studio::FieldKind::kSignalValue)) {
+    return std::nullopt;
+  }
+  return FieldValue(a_field);
 }
 
 struct TuneRange {
@@ -73,6 +77,40 @@ void DrawAdjustRange(Studio::MenuState &a_state, Studio::FieldKey a_key,
       }
     });
     ImGui::EndPopup();
+  }
+}
+
+struct SliderScope {
+  const Studio::FormField &field;
+  Studio::MenuState &state;
+  Studio::FieldKey key = Studio::kNoField;
+  TuneRange range{};
+  bool disabled = false;
+};
+
+void DrawRangeSlider(const SliderScope &a_scope, float a_value,
+                     const std::function<void(float)> &a_change,
+                     const std::function<void()> &a_observe) {
+  const float openerWidth =
+      a_scope.range.adjustable ? ButtonWidth("Range") + ItemSpacingX() : 0.0f;
+  Disabled(a_scope.disabled, [&] {
+    const float slider = ImGui::GetContentRegionAvail().x - openerWidth;
+    NextItemWidth(Studio::Width::Px(slider));
+    if (ImGui::SliderFloat("##tune", &a_value, a_scope.range.span.first,
+                           a_scope.range.span.second,
+                           a_scope.field.integral ? "%.0f" : "%.3g")) {
+      if (a_scope.field.integral) {
+        a_value = std::round(a_value);
+      }
+      a_change(a_value);
+    }
+    Tooltip("Drag to preview; release to keep one undo step. Escape cancels. "
+            "Exact input is above.");
+    a_observe();
+  });
+  if (a_scope.range.adjustable) {
+    ImGui::SameLine();
+    DrawAdjustRange(a_scope.state, a_scope.key, a_scope.range.span);
   }
 }
 
@@ -163,9 +201,8 @@ void ObserveTuningItem(Studio::MenuState &a_state, Studio::FieldKey a_key) {
     FinishTuning(a_state, true);
   }
 }
-}
 
-void DrawTuning(const Studio::FormField &a_field, const Frame &a_frame) {
+void DrawRecipeTuning(const Studio::FormField &a_field, const Frame &a_frame) {
   const auto initial = TunableValue(a_field);
   if (!initial || !a_frame.state || !a_frame.recipe || !a_frame.names ||
       (a_frame.state->paint && a_frame.state->mode == Studio::Mode::kPaint)) {
@@ -178,29 +215,39 @@ void DrawTuning(const Studio::FormField &a_field, const Frame &a_frame) {
                      state.tuning->recipeID == a_frame.recipe->id;
   float value = owned ? state.tuning->value : *initial;
   const TuneRange range = ResolveTuningRange(a_field, state, key, value);
-  const float openerWidth =
-      range.adjustable ? ButtonWidth("Range") + ItemSpacingX() : 0.0f;
-  Disabled(state.tuning && (!owned || state.tuning->finishing), [&] {
-    const float slider = ImGui::GetContentRegionAvail().x - openerWidth;
-    NextItemWidth(Studio::Width::Px(slider));
-    if (ImGui::SliderFloat("##tune", &value, range.span.first,
-                           range.span.second,
-                           a_field.integral ? "%.0f" : "%.3g")) {
-      if (a_field.integral) {
-        value = std::round(value);
-      }
-      UpdateTuning(a_field, a_frame, key, value);
-    }
-    Tooltip("Drag to preview; release to keep one undo step. Escape cancels. "
-            "Exact input is above.");
-    ObserveTuningItem(state, key);
-  });
-  if (range.adjustable) {
-    ImGui::SameLine();
-    DrawAdjustRange(state, key, range.span);
-  }
+  const bool disabled = state.tuning && (!owned || state.tuning->finishing);
+  DrawRangeSlider(
+      SliderScope{a_field, state, key, range, disabled}, value,
+      [&](float a_value) { UpdateTuning(a_field, a_frame, key, a_value); },
+      [&] { ObserveTuningItem(state, key); });
   if (a_frame.snapshot->gesture && owned && a_frame.snapshot->gesture->error) {
     Problem(*a_frame.snapshot->gesture->error);
+  }
+}
+
+void DrawSinkTuning(const Studio::FormField &a_field, const Frame &a_frame,
+                    const TuningSink &a_sink) {
+  const auto initial = FieldValue(a_field);
+  if (!initial || !a_frame.state || !a_frame.recipe || !a_frame.names) {
+    return;
+  }
+  Studio::MenuState &state = *a_frame.state;
+  const auto key =
+      Studio::HashFieldKey(Studio::State().fieldScope, a_field.name, "tune");
+  float value = *initial;
+  const TuneRange range = ResolveTuningRange(a_field, state, key, value);
+  DrawRangeSlider(
+      SliderScope{a_field, state, key, range, false}, value,
+      [&](float a_value) { a_sink.commit(a_value); }, [] {});
+}
+}
+
+void DrawTuning(const Studio::FormField &a_field, const Frame &a_frame,
+                const std::optional<TuningSink> &a_sink) {
+  if (a_sink) {
+    DrawSinkTuning(a_field, a_frame, *a_sink);
+  } else {
+    DrawRecipeTuning(a_field, a_frame);
   }
 }
 }

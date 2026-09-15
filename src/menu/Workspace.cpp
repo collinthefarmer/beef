@@ -575,6 +575,7 @@ PreviewOutput(const Frame &a_frame, const Studio::Selection &a_selection) {
 
 void DrawPreview(const Frame &a_input) {
   Studio::MenuState &state = *a_input.state;
+  DrawTermTuningPane(a_input);
   Studio::ResolvePreviewPin(state.previewPin, state.selection, a_input.recipe,
                             state.lastPaintReset);
   if (state.previewPin) {
