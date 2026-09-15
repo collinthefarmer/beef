@@ -76,14 +76,6 @@ void PickSubject(const char *a_label, Studio::InspectorSubject a_subject,
   ImGui::EndDisabled();
 }
 
-bool NavigatorSection(const char *a_title, std::string_view a_filter) {
-  if (!a_filter.empty()) {
-    Dim(a_title);
-    return true;
-  }
-  return Section(a_title, true);
-}
-
 void DrawOutputAddMenu(const Frame &a_frame) {
   if (ImGui::Button("+ output")) {
     ImGui::OpenPopup("add-output");
@@ -191,6 +183,80 @@ void DrawOutputNode(const Frame &a_frame, const Studio::OutputRow &a_output,
   ImGui::PopID();
 }
 
+void DrawResourceRows(const Frame &a_frame, Studio::ResourceTab a_tab,
+                      std::string_view a_filter) {
+  switch (a_tab) {
+  case Studio::ResourceTab::kSignals:
+    for (const Studio::SignalRow &signal : a_frame.recipe->signals) {
+      if (!Studio::NameMatches(signal.name, a_filter)) {
+        continue;
+      }
+      ImGui::PushID("signal");
+      PickSubject(signal.name.c_str(), Studio::SignalSubject{signal.name},
+                  a_frame);
+      ImGui::PopID();
+    }
+    break;
+  case Studio::ResourceTab::kCurves:
+    for (const Studio::TextRow &curve : a_frame.recipe->curves) {
+      if (!Studio::NameMatches(curve.name, a_filter)) {
+        continue;
+      }
+      ImGui::PushID("curve");
+      PickSubject(curve.name.c_str(), Studio::CurveSubject{curve.name},
+                  a_frame);
+      ImGui::PopID();
+    }
+    break;
+  case Studio::ResourceTab::kSources:
+    for (const Studio::SourceRow &source : a_frame.recipe->sourceRows) {
+      if (!Studio::NameMatches(source.name, a_filter)) {
+        continue;
+      }
+      ImGui::PushID("source");
+      PickSubject(source.name.c_str(), Studio::SourceSubject{source.name},
+                  a_frame);
+      ImGui::PopID();
+    }
+    break;
+  case Studio::ResourceTab::kMasks:
+    for (const Studio::TextRow &mask : a_frame.recipe->maskRows) {
+      if (!Studio::NameMatches(mask.name, a_filter)) {
+        continue;
+      }
+      ImGui::PushID("mask");
+      PickSubject(mask.name.c_str(), Studio::MaskSubject{mask.name}, a_frame);
+      ImGui::PopID();
+    }
+    break;
+  }
+}
+
+void DrawResourceTabs(const Frame &a_frame, std::string_view a_filter) {
+  if (!a_filter.empty()) {
+    for (const Studio::ResourceTab tab : Studio::kResourceTabs) {
+      Dim(std::string{Studio::ResourceTabName(tab)});
+      DrawResourceRows(a_frame, tab, a_filter);
+    }
+    return;
+  }
+  if (!ImGui::BeginTabBar("nav-resources")) {
+    return;
+  }
+  for (const Studio::ResourceTab tab : Studio::kResourceTabs) {
+    if (!ImGui::BeginTabItem(
+            std::string{Studio::ResourceTabName(tab)}.c_str())) {
+      continue;
+    }
+    if (tab != a_frame.state->resource) {
+      Studio::Post(*a_frame.intents, Studio::ShowResource{tab});
+    }
+    DrawResourceRows(a_frame, tab, a_filter);
+    ImGui::EndTabItem();
+  }
+  ImGui::EndTabBar();
+}
+
 void DrawNavigator(const Frame &a_frame) {
   DrawOutputAddMenu(a_frame);
   ImGui::SameLine();
@@ -225,49 +291,7 @@ void DrawNavigator(const Frame &a_frame) {
     }
     DrawOutputNode(a_frame, output, filter);
   }
-  if (NavigatorSection("Sources", filter)) {
-    for (const Studio::SourceRow &source : a_frame.recipe->sourceRows) {
-      if (!Studio::NameMatches(source.name, filter)) {
-        continue;
-      }
-      ImGui::PushID("source");
-      PickSubject(source.name.c_str(), Studio::SourceSubject{source.name},
-                  a_frame);
-      ImGui::PopID();
-    }
-  }
-  if (NavigatorSection("Masks", filter)) {
-    for (const Studio::TextRow &mask : a_frame.recipe->maskRows) {
-      if (!Studio::NameMatches(mask.name, filter)) {
-        continue;
-      }
-      ImGui::PushID("mask");
-      PickSubject(mask.name.c_str(), Studio::MaskSubject{mask.name}, a_frame);
-      ImGui::PopID();
-    }
-  }
-  if (NavigatorSection("Signals", filter)) {
-    for (const Studio::SignalRow &signal : a_frame.recipe->signals) {
-      if (!Studio::NameMatches(signal.name, filter)) {
-        continue;
-      }
-      ImGui::PushID("signal");
-      PickSubject(signal.name.c_str(), Studio::SignalSubject{signal.name},
-                  a_frame);
-      ImGui::PopID();
-    }
-  }
-  if (NavigatorSection("Curves", filter)) {
-    for (const Studio::TextRow &curve : a_frame.recipe->curves) {
-      if (!Studio::NameMatches(curve.name, filter)) {
-        continue;
-      }
-      ImGui::PushID("curve");
-      PickSubject(curve.name.c_str(), Studio::CurveSubject{curve.name},
-                  a_frame);
-      ImGui::PopID();
-    }
-  }
+  DrawResourceTabs(a_frame, filter);
 }
 
 [[nodiscard]] std::optional<Studio::GeometryRow>
