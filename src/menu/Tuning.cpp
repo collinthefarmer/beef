@@ -31,26 +31,35 @@ std::optional<float> TunableValue(const Studio::FormField &a_field) {
                                           : std::nullopt;
 }
 
-std::optional<std::pair<float, float>>
-TuningRange(const Studio::FormField &a_field, Studio::MenuState &a_state,
-            Studio::FieldKey a_key, float a_value) {
+struct TuneRange {
+  std::pair<float, float> span;
+  bool adjustable;
+};
+
+TuneRange ResolveTuningRange(const Studio::FormField &a_field,
+                             Studio::MenuState &a_state, Studio::FieldKey a_key,
+                             float a_value) {
   if (a_field.workingRange) {
-    return a_field.workingRange;
+    return {*a_field.workingRange, false};
   }
   if (a_field.range) {
-    return a_field.range;
+    return {*a_field.range, false};
   }
   if (const auto found = a_state.tuningRanges.find(a_key);
       found != a_state.tuningRanges.end()) {
-    return found->second;
+    return {found->second, true};
   }
-  const std::pair<float, float> fallback = Studio::ValueRelativeRange(a_value);
-  if (ImGui::SmallButton("Adjust range")) {
-    a_state.numberBuffers[a_key] = {fallback.first, fallback.second, 0.0f};
+  return {Studio::ValueRelativeRange(a_value), true};
+}
+
+void DrawAdjustRange(Studio::MenuState &a_state, Studio::FieldKey a_key,
+                     std::pair<float, float> a_span) {
+  if (ImGui::SmallButton("Range")) {
+    a_state.numberBuffers[a_key] = {a_span.first, a_span.second, 0.0f};
     ImGui::OpenPopup("tuning-range");
   }
-  Tooltip("The slider spans a range around the current value. Adjust it to set "
-          "exact limits; exact input stays unrestricted.");
+  Tooltip("The slider spans a range around the current value. Set exact "
+          "limits; exact input stays unrestricted.");
   if (ImGui::BeginPopup("tuning-range")) {
     auto &range = a_state.numberBuffers[a_key];
     ImGui::InputFloat("Minimum", &range[0]);
@@ -65,7 +74,6 @@ TuningRange(const Studio::FormField &a_field, Studio::MenuState &a_state,
     });
     ImGui::EndPopup();
   }
-  return fallback;
 }
 
 void UpdateTuning(const Studio::FormField &a_field, const Frame &a_frame,
@@ -169,23 +177,28 @@ void DrawTuning(const Studio::FormField &a_field, const Frame &a_frame) {
   const bool owned = state.tuning && state.tuning->field == key &&
                      state.tuning->recipeID == a_frame.recipe->id;
   float value = owned ? state.tuning->value : *initial;
-  const auto range = TuningRange(a_field, state, key, value);
-  if (!range) {
-    return;
-  }
+  const TuneRange range = ResolveTuningRange(a_field, state, key, value);
+  const float openerWidth =
+      range.adjustable ? ButtonWidth("Range") + ItemSpacingX() : 0.0f;
   Disabled(state.tuning && (!owned || state.tuning->finishing), [&] {
-    NextItemWidth(Studio::Width::Fill());
-    if (ImGui::SliderFloat("##tune", &value, range->first, range->second,
+    const float slider = ImGui::GetContentRegionAvail().x - openerWidth;
+    NextItemWidth(Studio::Width::Px(slider));
+    if (ImGui::SliderFloat("##tune", &value, range.span.first,
+                           range.span.second,
                            a_field.integral ? "%.0f" : "%.3g")) {
       if (a_field.integral) {
         value = std::round(value);
       }
       UpdateTuning(a_field, a_frame, key, value);
     }
+    Tooltip("Drag to preview; release to keep one undo step. Escape cancels. "
+            "Exact input is above.");
     ObserveTuningItem(state, key);
   });
-  Tooltip("Drag to preview; release to keep one undo step. Escape cancels. "
-          "Exact input is above.");
+  if (range.adjustable) {
+    ImGui::SameLine();
+    DrawAdjustRange(state, key, range.span);
+  }
   if (a_frame.snapshot->gesture && owned && a_frame.snapshot->gesture->error) {
     Problem(*a_frame.snapshot->gesture->error);
   }

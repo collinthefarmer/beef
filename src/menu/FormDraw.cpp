@@ -1,7 +1,6 @@
 #include "menu/FormDraw.h"
 
 #include "menu/ExpressionShelf.h"
-#include "menu/InputBrowser.h"
 #include "menu/MenuWidgets.h"
 #include "menu/Tuning.h"
 #include "recipe/Expression.h"
@@ -273,12 +272,13 @@ void DrawRowField(const char *a_key, const FormField &a_field,
   }
   ImGui::PushID(a_key);
   RevealProperty(a_field, a_frame);
+  if (DrawExpressionShelf(a_field, a_frame)) {
+    ImGui::SameLine(0.0f, 0.0f);
+  }
   if (const auto text = FieldInput(a_field, a_frame.scale, *a_frame.names)) {
     PostField(a_field, *text, a_frame.recipe->id, *a_frame.intents);
   }
   DrawTuning(a_field, a_frame);
-  DrawExpressionShelf(a_field, a_frame);
-  DrawInputBrowser(a_frame, a_field);
   ImGui::PopID();
 }
 
@@ -327,12 +327,13 @@ std::optional<std::size_t> DrawFieldTable(const char *a_id,
       ValueSwatch(*field.value);
       ImGui::SameLine();
     }
+    if (DrawExpressionShelf(field, a_frame)) {
+      ImGui::SameLine(0.0f, 0.0f);
+    }
     if (const auto text = FieldInput(field, a_frame.scale, *a_frame.names)) {
       PostField(field, *text, a_frame.recipe->id, *a_frame.intents);
     }
     DrawTuning(field, a_frame);
-    DrawExpressionShelf(field, a_frame);
-    DrawInputBrowser(a_frame, field);
     ImGui::PopID();
   }
   table.End();
