@@ -15,6 +15,10 @@ Current, and a new module is expected to follow them.
 - [conventions.md](conventions.md) — the patterns a new module is built on, the
   glossary of one-word-one-meaning names, and the gates (`tools/gate.sh`,
   `tools/layers.sh`, `tools/format.sh`, the native suite).
+- [ui-api.md](ui-api.md) — how a studio surface is built: the `menu/` widget
+  vocabulary (`Rule`, `Table`, the shared styles), the `Frame`, forms and
+  fields, editing through intents, and navigation. The UI-layer counterpart to
+  `conventions.md`, grounded in the current headers.
 - [in-game-regression.md](in-game-regression.md) — the repeatable manual
   integration run: startup, matching, actor state, GPU output, studio edits,
   persistence, teardown, with the log lines each step prints.
