@@ -10,6 +10,30 @@ names are the stable anchors. Menu draws through the widget vocabulary in
 `menu/MenuWidgets.h` and the form layer in `menu/FormDraw`; the pure field/row
 model is in `studio/`.
 
+## Status: all 17 cases complete (commit 25e63c1)
+
+Every case below is done. The commit message and git history carry the
+per-case detail; the case write-ups here are kept as the reference for what
+each one covered. Highlights of the pass, in case-adjacent order:
+
+- The `Rule` primitive now carries collapsibility plus leading/trailing control
+  slots; rules show their status inline (solo/mute, clock, held-back, problem
+  counts, inspector labels) instead of on a separate row. `SeparatorText` is
+  retired. Shared `TableStyle` constants live in `studio/Widgets.h`.
+- Inspectors, resource tabs, and field rows are unified: navigable resource
+  info-tables, one inspector header shape, the tuning slider inline with the
+  value, the "n" number editor on multi-number value fields, and detail-button
+  navigation for embedded references (single) or an anchored popup (many).
+- `DrawDiagnostics` and `NavigateFromInspector` de-duplicate the diagnostics
+  list and the inspector-side navigation.
+- The mask inspector hosts the terms editor inline (Case 13); the redundant
+  "Build mask for this layer" button is gone (Case 5).
+- Out-of-band from the case list but part of the pass: piece selection in the
+  footer Piece rule (defaulting to the player's first enchanted piece), a
+  PieceRef-keyed "Solo piece" render isolation, Forward/Back inspector history,
+  removal of the standalone Board menu page, a dead-code prune, and a naming
+  cleanup across `menu/` and `studio/`.
+
 ## Case 1 — Hierarchical separators with controls
 
 The "Recipe" separator with `[New recipe] [Undo] [Redo] [Rename] [Recipe Keys]`,
