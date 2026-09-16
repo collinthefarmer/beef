@@ -45,6 +45,12 @@ constexpr float kFillWidth = -(std::numeric_limits<float>::min)();
   return a_key ? a_key : "";
 }
 
+[[nodiscard]] std::string_view DisplayLabel(const char *a_title) noexcept {
+  const std::string_view title{NonNull(a_title)};
+  const std::size_t id = title.find("##");
+  return id == std::string_view::npos ? title : title.substr(0, id);
+}
+
 [[nodiscard]] Studio::FieldKey KeyOf(const char *a_key) {
   return Studio::HashFieldKey(Studio::State().fieldScope, NonNull(a_key));
 }
@@ -830,10 +836,14 @@ void DetailModal(const char *a_title, const std::function<void()> &a_body) {
                               ImGuiMCP::ImGuiWindowFlags_AlwaysAutoResize)) {
     return;
   }
+  static_cast<void>(Rule(
+      Studio::RuleSpec{.text = DisplayLabel(a_title), .leadingSpace = false},
+      RowButtonWidth(), [&] {
+        if (CloseButton()) {
+          ImGui::CloseCurrentPopup();
+        }
+      }));
   a_body();
-  if (ImGui::Button("close")) {
-    ImGui::CloseCurrentPopup();
-  }
   ImGui::EndPopup();
 }
 
@@ -876,8 +886,19 @@ bool RemoveButton(std::size_t a_references) {
   return clicked;
 }
 
+bool CloseButton() {
+  const float side = RowButtonWidth();
+  const bool clicked = ImGui::Button("X", ImVec2{side, side});
+  Tooltip("close");
+  return clicked;
+}
+
+bool SoloButton(bool &a_solo, std::string_view a_tooltip) {
+  return SquareToggle("S", a_solo, a_tooltip);
+}
+
 bool SoloButton(bool &a_solo) {
-  return SquareToggle("S", a_solo, "solo: show this alone");
+  return SoloButton(a_solo, "solo: show this alone");
 }
 
 bool MuteButton(bool &a_mute) {
@@ -921,6 +942,34 @@ void Warn(std::string_view a_text) { Colored(kWarn, a_text); }
 void Ok(std::string_view a_text) { Colored(kOk, a_text); }
 
 void Dim(std::string_view a_text) { Colored(kDim, a_text); }
+
+void ProblemBadge(const char *a_label) {
+  BadgeFrame(a_label, kBad, true, ImVec2{0.0f, 0.0f});
+}
+
+void WarnBadge(const char *a_label) {
+  BadgeFrame(a_label, kWarn, false, ImVec2{0.0f, 0.0f});
+}
+
+void DimBadge(const char *a_label) {
+  BadgeFrame(a_label, kDim, false, ImVec2{0.0f, 0.0f});
+}
+
+void PlaceholderText(std::string_view a_text) {
+  const ImVec2 avail = ImGui::GetContentRegionAvail();
+  const ImVec2 start = ImGui::GetCursorPos();
+  const float wrap = (std::min)(avail.x, 420.0f);
+  const ImVec2 size = ImGui::CalcTextSize(
+      a_text.data(), a_text.data() + a_text.size(), false, wrap);
+  const float x = start.x + (std::max)(0.0f, (avail.x - size.x) * 0.5f);
+  const float y = start.y + (std::max)(0.0f, (avail.y - size.y) * 0.5f);
+  ImGui::SetCursorPos(ImVec2{x, y});
+  ImGui::PushStyleColor(ImGuiMCP::ImGuiCol_Text, kDim);
+  ImGui::PushTextWrapPos(x + wrap);
+  ImGui::TextUnformatted(a_text.data(), a_text.data() + a_text.size());
+  ImGui::PopTextWrapPos();
+  ImGui::PopStyleColor();
+}
 
 void DrawDiagnostics(std::span<const Diagnostic> a_problems, bool a_heldBack) {
   if (a_problems.empty()) {

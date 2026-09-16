@@ -863,14 +863,15 @@ void DrawNarrowWorkspace(const Frame &a_frame,
                          const Studio::InspectorSubject &a_before,
                          bool a_pending) {
   if (ImGui::Button("Browse outputs and resources")) {
-    ImGui::OpenPopup("workspace-navigator");
+    ImGui::OpenPopup("Outputs & resources###workspace-navigator");
   }
-  DetailModal("workspace-navigator", [&] { DrawNavigator(a_frame); });
+  DetailModal("Outputs & resources###workspace-navigator",
+              [&] { DrawNavigator(a_frame); });
   ImGui::SameLine();
   if (ImGui::Button("Preview")) {
-    ImGui::OpenPopup("workspace-preview");
+    ImGui::OpenPopup("Preview###workspace-preview");
   }
-  DetailModal("workspace-preview", [&] { DrawPreview(a_frame); });
+  DetailModal("Preview###workspace-preview", [&] { DrawPreview(a_frame); });
   DrawInspectorPane(a_frame, a_before, a_pending);
 }
 

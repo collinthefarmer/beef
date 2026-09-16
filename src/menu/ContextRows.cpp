@@ -2,6 +2,7 @@
 
 #include "menu/FormDraw.h"
 #include "menu/MenuWidgets.h"
+#include "menu/RecipeActions.h"
 #include "recipe/Recipe.h"
 #include "studio/Edits.h"
 #include "studio/Forms.h"
@@ -243,11 +244,10 @@ void RenameRecipeButton(const Frame &a_frame) {
   Tooltip("rename the recipe; its file follows when it is the user's");
 }
 
-void IsolateCheckbox(const Studio::RecipeRow &a_recipe,
-                     const Studio::View &a_view, const char *a_label,
-                     Studio::Intents &a_out) {
+void SoloRecipeButton(const Studio::RecipeRow &a_recipe,
+                      const Studio::View &a_view, Studio::Intents &a_out) {
   bool isolating = a_view.Isolating();
-  std::string text;
+  std::string text = "solo: show only this recipe";
   if (isolating) {
     text = "isolating " + a_view.isolation.recipeID;
     if (a_view.isolation.output.has_value()) {
@@ -257,7 +257,7 @@ void IsolateCheckbox(const Studio::RecipeRow &a_recipe,
       text += std::format(" layer {}", *a_view.isolation.layer);
     }
   }
-  if (Toggle(a_label, isolating, text)) {
+  if (SoloButton(isolating, text)) {
     Studio::Post(a_out, Studio::SoloRecipe{a_recipe.id, isolating});
   }
 }
@@ -268,55 +268,36 @@ void DrawStudioContext(const Frame &a_frame) {
   if (!a_frame.snapshot || !a_frame.intents) {
     return;
   }
-  float trailing = ButtonWidth("New recipe");
+  float trailing = 0.0f;
   if (a_frame.recipe) {
-    trailing += ItemSpacingX() + ButtonWidth("Undo") + ItemSpacingX() +
-                ButtonWidth("Redo") + ItemSpacingX() + ButtonWidth("Rename") +
-                ItemSpacingX() + ButtonWidth("Recipe keys");
+    trailing = ButtonWidth("Undo") + ItemSpacingX() + ButtonWidth("Redo") +
+               ItemSpacingX() + ButtonWidth("Save") + ItemSpacingX() +
+               ButtonWidth("Revert");
   }
   static_cast<void>(Rule(
       Studio::RuleSpec{.text = "Recipe", .leadingSpace = false}, trailing,
       [&]() {
-        NewRecipeButton(a_frame);
         if (!a_frame.recipe) {
           return;
         }
-        ImGui::SameLine();
         UndoRedoButtons(*a_frame.recipe, *a_frame.intents);
         ImGui::SameLine();
-        RenameRecipeButton(a_frame);
-        ImGui::SameLine();
-        if (ImGui::Button("Recipe keys")) {
-          ImGui::OpenPopup("recipe-keys");
-        }
+        DrawRecipeSaveRevert(a_frame);
       },
-      [&]() {
-        if (!a_frame.recipe) {
-          return;
-        }
-        if (a_frame.recipe->heldBack) {
-          Problem("held back");
-        } else if (!a_frame.recipe->problems.empty()) {
-          Warn(std::format("{} issue(s)", a_frame.recipe->problems.size()));
-        }
-      }));
+      [&]() { DrawRecipeRuleStatus(a_frame); }));
+  NewRecipeButton(a_frame);
+  ImGui::SameLine();
   if (a_frame.recipe) {
-    const float solo =
-        RowButtonWidth() + ItemSpacingX() + TextWidth("Solo recipe");
+    const float solo = RowButtonWidth();
     const float avail = ImGui::GetContentRegionAvail().x;
     NextItemWidth(
         Studio::Width::Px((std::max)(120.0f, avail - solo - ItemSpacingX())));
     RecipeCombo(a_frame, "##recipe");
     ImGui::SameLine();
-    IsolateCheckbox(*a_frame.recipe, ViewOf(a_frame), "Solo recipe",
-                    *a_frame.intents);
+    SoloRecipeButton(*a_frame.recipe, ViewOf(a_frame), *a_frame.intents);
   } else {
     NextItemWidth(Studio::Width::Fill());
     RecipeCombo(a_frame, "##recipe");
-  }
-  if (a_frame.recipe) {
-    KeysPopup(a_frame.piece ? *a_frame.piece : Studio::PieceRow{},
-              *a_frame.recipe, *a_frame.intents);
   }
 }
 
@@ -327,6 +308,13 @@ void DrawRecipeSettings(const Frame &a_frame) {
   const Studio::RecipeRow &recipe = *a_frame.recipe;
   [[maybe_unused]] const std::optional<std::size_t> detail =
       DrawForm("recipe-header", Studio::RecipeHeaderForm(recipe), a_frame);
+  RenameRecipeButton(a_frame);
+  ImGui::SameLine();
+  if (ImGui::Button("Recipe keys")) {
+    ImGui::OpenPopup("recipe-keys");
+  }
+  KeysPopup(a_frame.piece ? *a_frame.piece : Studio::PieceRow{}, recipe,
+            *a_frame.intents);
   DrawDiagnostics(recipe.problems, recipe.heldBack);
 }
 

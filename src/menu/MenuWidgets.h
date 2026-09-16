@@ -139,7 +139,9 @@ void Disabled(bool a_disabled, const std::function<void()> &a_draw);
 void HeldLabel(const char *a_text);
 
 [[nodiscard]] bool RemoveButton(std::size_t a_references);
+[[nodiscard]] bool CloseButton();
 bool SoloButton(bool &a_solo);
+bool SoloButton(bool &a_solo, std::string_view a_tooltip);
 bool MuteButton(bool &a_mute);
 [[nodiscard]] bool DragHandle(const char *a_type, std::size_t a_index,
                               const char *a_noun);
@@ -150,6 +152,10 @@ void Problem(std::string_view a_text);
 void Warn(std::string_view a_text);
 void Ok(std::string_view a_text);
 void Dim(std::string_view a_text);
+void ProblemBadge(const char *a_label);
+void WarnBadge(const char *a_label);
+void DimBadge(const char *a_label);
+void PlaceholderText(std::string_view a_text);
 void DrawDiagnostics(std::span<const Diagnostic> a_problems, bool a_heldBack);
 void HelpMarker(const char *a_text);
 void Tooltip(std::string_view a_text);

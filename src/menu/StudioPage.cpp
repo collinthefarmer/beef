@@ -46,7 +46,12 @@ using ImGuiMCP::ImVec2;
 namespace BetterEnchantmentEffects::Menu {
 namespace {
 
-void DrawApplication(const Frame &a_frame) {
+struct ApplicationStatus {
+  ApplicationPhase phase = ApplicationPhase::kQueued;
+  std::string problem;
+};
+
+std::optional<ApplicationStatus> ResolveApplication(const Frame &a_frame) {
   const auto &selection = SelectionOf(a_frame);
   const std::string_view recipeID = Studio::MaskTaskActive(*a_frame.state)
                                         ? Studio::kPaintRecipe
@@ -65,47 +70,56 @@ void DrawApplication(const Frame &a_frame) {
     }
   }
   if (!latest) {
-    return;
+    return std::nullopt;
   }
-  ApplicationPhase phase = latest->phase;
-  std::string problem = latest->problem;
+  ApplicationStatus status{latest->phase, latest->problem};
   for (const ApplicationActor &actor : latest->actors) {
     if (actor.actorID != selection.piece.actorID) {
       continue;
     }
-    phase = actor.phase;
-    problem = actor.problem;
+    status.phase = actor.phase;
+    status.problem = actor.problem;
     break;
   }
-  Dim(std::format("Application: {}", ApplicationPhaseName(phase)));
-  if (!problem.empty()) {
-    Problem(problem);
+  return status;
+}
+
+void DrawApplicationStatus(const ApplicationStatus &a_status) {
+  const std::string text =
+      std::format("Application: {}", ApplicationPhaseName(a_status.phase));
+  switch (a_status.phase) {
+  case ApplicationPhase::kFailed:
+    Problem(text);
+    break;
+  case ApplicationPhase::kUnmatched:
+  case ApplicationPhase::kCancelled:
+    Warn(text);
+    break;
+  default:
+    Dim(text);
+    break;
+  }
+  if (!a_status.problem.empty()) {
+    Tooltip(a_status.problem);
   }
 }
 
 void DrawBody(const Frame &a_frame) {
-  DrawApplication(a_frame);
   DrawPaintDraftBar(a_frame);
   if (!a_frame.recipe) {
     if (a_frame.state->paint) {
-      Dim("The draft destination is unavailable. Resume it after restoring the "
+      PlaceholderText(
+          "The draft destination is unavailable. Resume it after restoring the "
           "recipe, or discard it.");
     } else {
-      Dim("Choose a loaded recipe or create a new document above. The selected "
+      PlaceholderText(
+          "Choose a loaded recipe or create a new document above. The selected "
           "recipe may still be loading or may have been removed.");
     }
     return;
   }
   ImGui::PushID(a_frame.recipe->id.c_str());
-  if (a_frame.geometry) {
-    DrawWorkspace(a_frame);
-  } else {
-    DrawWorkspace(a_frame);
-    Rule();
-    Dim(std::format("recipe {} is bound to no geometry of this piece: its keys "
-                    "or selectors match none of its geometries",
-                    a_frame.recipe->id));
-  }
+  DrawWorkspace(a_frame);
   ImGui::PopID();
 }
 
@@ -123,7 +137,7 @@ void ReturnToLive() {
   });
 }
 
-void SoloPieceCheckbox(const Frame &a_frame) {
+void SoloPieceButton(const Frame &a_frame) {
   const Studio::PieceRow *piece = a_frame.piece;
   if (!piece) {
     return;
@@ -131,12 +145,12 @@ void SoloPieceCheckbox(const Frame &a_frame) {
   const Studio::View &view = ViewOf(a_frame);
   bool solo = view.soloPiece && view.soloPiece->actorID == piece->ref.actorID &&
               view.soloPiece->armorID == piece->ref.armorID;
-  std::string text;
+  std::string text = "solo: show only this piece";
   if (solo) {
     text =
         std::format("showing only {} / {}", piece->actorName, piece->armorName);
   }
-  if (Toggle("Solo piece", solo, text)) {
+  if (SoloButton(solo, text)) {
     Studio::Post(*a_frame.intents, Studio::SoloPiece{piece->ref, solo});
   }
 }
@@ -214,20 +228,27 @@ void DrawPieceBar(const Frame &a_frame) {
   const Studio::View &view = ViewOf(a_frame);
   float trailing = kPieceComboWidth;
   if (a_frame.piece) {
-    trailing += ItemSpacingX() + RowButtonWidth() + ItemSpacingX() +
-                TextWidth("Solo piece");
+    trailing += ItemSpacingX() + RowButtonWidth();
   }
   const auto indicators = [&]() {
-    bool first = true;
-    if (view.Isolating()) {
-      Warn(std::format("Solo: {}", view.isolation.recipeID));
-      first = false;
-    }
-    if (!view.muted.empty()) {
-      if (!first) {
+    bool shown = false;
+    const auto sep = [&]() {
+      if (shown) {
         ImGui::SameLine();
       }
+      shown = true;
+    };
+    if (view.Isolating()) {
+      sep();
+      Warn(std::format("Solo: {}", view.isolation.recipeID));
+    }
+    if (!view.muted.empty()) {
+      sep();
       Warn(std::format("{} muted layer(s)", view.muted.size()));
+    }
+    if (const auto status = ResolveApplication(a_frame)) {
+      sep();
+      DrawApplicationStatus(*status);
     }
   };
   static_cast<void>(Rule(
@@ -236,7 +257,7 @@ void DrawPieceBar(const Frame &a_frame) {
         DrawPieceCombo(a_frame);
         if (a_frame.piece) {
           ImGui::SameLine();
-          SoloPieceCheckbox(a_frame);
+          SoloPieceButton(a_frame);
         }
       },
       indicators));
@@ -368,11 +389,8 @@ void DrawStudioFrame(const Frame &frame) {
                            RecipeFilePending(frame);
   Disabled(editPending || (state.paint && state.paint->pendingCommit), [&] {
     DrawStudioContext(frame);
-    DrawRecipeFileActions(frame);
+    DrawMaskDraftHints(frame);
   });
-  if (editPending) {
-    Dim("Waiting for the recipe change.");
-  }
   const float footerRows = 2.0f;
   const float footer = RuleHeight() * 2.0f +
                        ImGui::GetFrameHeightWithSpacing() * footerRows + 8.0f;
