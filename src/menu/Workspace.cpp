@@ -606,40 +606,34 @@ void DrawMaskInspector(const Studio::MaskSubject &a_mask,
   if (row == masks.end()) {
     return;
   }
-  static_cast<void>(
-      Rule(Studio::RuleSpec{.text = "Inspector"}, RowButtonWidth(), [&]() {
+  const bool otherDraft = a_frame.state->paint.has_value();
+  static_cast<void>(Rule(
+      Studio::RuleSpec{.text = "Inspector"},
+      ButtonWidth("Advanced Edit") + ItemSpacingX() + RowButtonWidth(),
+      [&]() {
+        Disabled(otherDraft || !a_frame.piece, [&] {
+          if (ImGui::Button("Advanced Edit")) {
+            EditMaskAsTerms(*row, a_frame, false);
+          }
+        });
+        Tooltip(otherDraft       ? "Finish the current mask draft first."
+                : !a_frame.piece ? "Select a piece to edit terms."
+                                 : "Open the terms editor for this mask.");
+        ImGui::SameLine();
         if (RemoveButton(row->references)) {
           Studio::Post(*a_frame.intents, a_frame.recipe->id,
                        Studio::RemoveMask{row->name});
         }
-      }));
-  const ResourceCells cells{.name = row->name};
-  ResourceTable("mask-header", {&cells, 1});
+      },
+      [&]() { Dim(row->name); }));
 
   if (a_frame.state->paint && a_frame.state->mask.editing == row->name) {
-    if (Studio::MaskTaskActive(*a_frame.state)) {
-      DrawMaskTask(a_frame);
-    } else {
-      DrawRowField("expression", Studio::MaskTextField(row->name, row->text),
-                   a_frame);
-      if (ImGui::Button("Resume terms editor")) {
-        Studio::Post(*a_frame.intents, Studio::SetMode{Studio::Mode::kPaint});
-      }
-    }
+    DrawMaskTask(a_frame);
     return;
   }
 
   DrawRowField("expression", Studio::MaskTextField(row->name, row->text),
                a_frame);
-  const bool otherDraft = a_frame.state->paint.has_value();
-  Disabled(otherDraft || !a_frame.piece, [&] {
-    if (ImGui::Button("Open terms editor...")) {
-      EditMaskAsTerms(*row, a_frame);
-    }
-  });
-  if (otherDraft) {
-    Dim("Finish or discard the current mask draft first.");
-  }
 }
 
 void DrawCurveInspector(const Studio::CurveSubject &a_curve,
@@ -806,19 +800,32 @@ void DrawInspectorPane(const Frame &a_frame,
                        const Studio::InspectorSubject &a_before,
                        bool a_pending) {
   if (ImGui::BeginChild("inspector", ImVec2{0.0f, 0.0f}, 0, 0)) {
-    if (a_before != SelectionOf(a_frame).subject) {
-      ImGui::SetScrollY(a_frame.state->navigation.scroll);
+    const bool hasRelationships = HasRelationships(a_frame);
+    const float footer =
+        hasRelationships ? (std::min)(ImGui::GetContentRegionAvail().y * 0.35f,
+                                      ImGui::GetFrameHeightWithSpacing() * 6.0f)
+                         : 0.0f;
+    if (ImGui::BeginChild("inspector-body",
+                          ImVec2{0.0f, footer > 0.0f ? -footer : 0.0f}, 0, 0)) {
+      if (a_before != SelectionOf(a_frame).subject) {
+        ImGui::SetScrollY(a_frame.state->navigation.scroll);
+      }
+      ImGui::PushID(InspectorKey(SelectionOf(a_frame).subject).c_str());
+      const FieldScope subjectScope(InspectorKey(SelectionOf(a_frame).subject));
+      const Studio::InspectorSubject drawn = SelectionOf(a_frame).subject;
+      Disabled(a_pending, [&] { DrawSubject(a_frame); });
+      ImGui::PopID();
+      if (drawn == SelectionOf(a_frame).subject) {
+        a_frame.state->navigation.scroll = ImGui::GetScrollY();
+      }
     }
-    ImGui::PushID(InspectorKey(SelectionOf(a_frame).subject).c_str());
-    const FieldScope subjectScope(InspectorKey(SelectionOf(a_frame).subject));
-    const Studio::InspectorSubject drawn = SelectionOf(a_frame).subject;
-    Disabled(a_pending, [&] {
-      DrawSubject(a_frame);
-      DrawRelationships(a_frame);
-    });
-    ImGui::PopID();
-    if (drawn == SelectionOf(a_frame).subject) {
-      a_frame.state->navigation.scroll = ImGui::GetScrollY();
+    ImGui::EndChild();
+    if (hasRelationships) {
+      if (ImGui::BeginChild("inspector-relationships", ImVec2{0.0f, 0.0f}, 0,
+                            0)) {
+        Disabled(a_pending, [&] { DrawRelationships(a_frame); });
+      }
+      ImGui::EndChild();
     }
   }
   ImGui::EndChild();
@@ -851,6 +858,10 @@ void DrawWideWorkspace(const Frame &a_frame,
           Studio::SetWorkspaceSplit{Studio::WorkspacePane::kInspector, *split});
     }
   };
+  if (Studio::MaskTaskActive(state)) {
+    editor();
+    return;
+  }
   if (const auto split =
           Split("workspace", state.navigatorShare, navigator, editor)) {
     Studio::Post(
@@ -862,12 +873,14 @@ void DrawWideWorkspace(const Frame &a_frame,
 void DrawNarrowWorkspace(const Frame &a_frame,
                          const Studio::InspectorSubject &a_before,
                          bool a_pending) {
-  if (ImGui::Button("Browse outputs and resources")) {
-    ImGui::OpenPopup("Outputs & resources###workspace-navigator");
+  if (!Studio::MaskTaskActive(*a_frame.state)) {
+    if (ImGui::Button("Browse outputs and resources")) {
+      ImGui::OpenPopup("Outputs & resources###workspace-navigator");
+    }
+    DetailModal("Outputs & resources###workspace-navigator",
+                [&] { DrawNavigator(a_frame); });
+    ImGui::SameLine();
   }
-  DetailModal("Outputs & resources###workspace-navigator",
-              [&] { DrawNavigator(a_frame); });
-  ImGui::SameLine();
   if (ImGui::Button("Preview")) {
     ImGui::OpenPopup("Preview###workspace-preview");
   }

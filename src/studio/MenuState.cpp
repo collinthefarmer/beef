@@ -489,6 +489,7 @@ struct ReduceVisitor {
     state.paint->origin.document = true;
     state.paint->originScroll = state.navigation.scroll;
     state.paint->assignment = a_i.assignment;
+    state.paint->createdMask = a_i.createdMask;
     selection.document = true;
     mask.dirty = true;
     state.maskHistory.Clear();
@@ -903,6 +904,24 @@ std::optional<UpdatePaint> PendingPaintUpdate(const MenuState &a_state) {
 
 bool MaskTaskActive(const MenuState &a_state) {
   return a_state.paint.has_value() && a_state.mode == Mode::kPaint;
+}
+
+void ReconcilePaintMode(MenuState &a_state) {
+  const auto *subject = Get<MaskSubject>(a_state.selection.subject);
+  const bool onDraft = a_state.paint && subject &&
+                       !a_state.mask.editing.empty() &&
+                       subject->name == a_state.mask.editing;
+  const Mode target = onDraft ? Mode::kPaint : Mode::kCompose;
+  if (a_state.mode == target) {
+    return;
+  }
+  const float split = a_state.layout.stackSplit;
+  a_state.mode = target;
+  a_state.layout = LayoutFor(target);
+  a_state.layout.stackSplit = split;
+  if (target == Mode::kPaint) {
+    a_state.resource = ResourceTab::kMasks;
+  }
 }
 
 void ObservePaintRecipe(MenuState &a_state, const RecipeRow *a_recipe) {

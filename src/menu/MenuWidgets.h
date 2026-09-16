@@ -155,6 +155,8 @@ void Dim(std::string_view a_text);
 void ProblemBadge(const char *a_label);
 void WarnBadge(const char *a_label);
 void DimBadge(const char *a_label);
+void Banner(std::string_view a_label, float a_trailingWidth,
+            const std::function<void()> &a_trailing);
 void PlaceholderText(std::string_view a_text);
 void DrawDiagnostics(std::span<const Diagnostic> a_problems, bool a_heldBack);
 void HelpMarker(const char *a_text);

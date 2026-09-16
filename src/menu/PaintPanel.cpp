@@ -439,6 +439,10 @@ void KeepMaskPopup(const Frame &a_frame) {
     const bool ready = painting && state.paint->ready && expression &&
                        !state.paint->pendingCommit && IsName(name) &&
                        name != std::string{Studio::kScratchMask};
+    if (painting && !state.paint->assignment && !mask.editing.empty()) {
+      Dim("Keeping this name updates the shared mask and all of its "
+          "consumers.");
+    }
     Disabled(!ready, [&]() {
       const std::string label = painting && state.paint->assignment
                                     ? std::format("Keep and assign as {}", name)
@@ -455,6 +459,22 @@ void KeepMaskPopup(const Frame &a_frame) {
     });
     ImGui::EndPopup();
   }
+}
+
+void DiscardMaskDraft(const Frame &a_frame) {
+  const Studio::MenuState &state = *a_frame.state;
+  if (state.paint && state.paint->createdMask) {
+    std::vector<Studio::RecipeEdit> edits;
+    if (state.paint->assignment) {
+      edits.emplace_back(Studio::SetLayerMask{state.paint->assignment->output,
+                                              state.paint->assignment->layer,
+                                              std::nullopt});
+    }
+    edits.emplace_back(Studio::RemoveMask{*state.paint->createdMask});
+    Studio::Post(*a_frame.intents,
+                 Studio::EditRecipe{state.paint->recipeID, std::move(edits)});
+  }
+  Studio::Post(*a_frame.intents, Studio::EndPaint{});
 }
 }
 
@@ -481,11 +501,31 @@ void DrawMaskRule(std::string_view a_title, const Frame &a_frame) {
        Studio::Width::Fit(),
        !mask.terms.empty()},
       {Studio::RuleAction::kAdd, "Keep", Studio::Width::Fit(), canKeep},
-      {Studio::RuleAction::kRemove, "Discard", Studio::Width::Fit(),
-       painting && !state.paint->pendingCommit},
   };
   const Studio::RuleSpec spec{a_title, buttons};
-  const Studio::RuleClick click = Rule(spec).click;
+  const Studio::RuleClick click =
+      Rule(spec, 0.0f, {}, [&]() {
+        std::string errors;
+        if (!expression) {
+          errors = expression.error().message;
+        }
+        if (state.paint && state.paint->problem) {
+          if (!errors.empty()) {
+            errors += '\n';
+          }
+          errors += state.paint->problem->message;
+        }
+        if (!errors.empty()) {
+          ProblemBadge("!!!");
+          Tooltip(errors);
+        }
+        if (state.paint && state.paint->problem && state.paint->ready) {
+          ImGui::SameLine();
+          if (ImGui::Button("Retry preview")) {
+            a_frame.state->paint->problem.reset();
+          }
+        }
+      }).click;
   if (click.clicked && click.index < std::size(buttons)) {
     switch (buttons[click.index].action) {
     case Studio::RuleAction::kUndo:
@@ -500,23 +540,11 @@ void DrawMaskRule(std::string_view a_title, const Frame &a_frame) {
     case Studio::RuleAction::kAdd:
       ImGui::OpenPopup("keep-mask");
       break;
-    case Studio::RuleAction::kRemove:
-      Studio::Post(*a_frame.intents, Studio::EndPaint{});
-      break;
     default:
       break;
     }
   }
 
-  if (!expression) {
-    Problem(expression.error().message);
-  }
-  if (state.paint && state.paint->problem) {
-    Problem(state.paint->problem->message);
-    if (state.paint->ready && ImGui::Button("Retry preview")) {
-      a_frame.state->paint->problem.reset();
-    }
-  }
   KeepMaskPopup(a_frame);
 }
 
@@ -532,32 +560,37 @@ void DrawMaskStack(const Frame &a_frame) {
 
   DrawMaskPicture(a_frame);
 
-  auto table = BeginTermTable();
-  if (table.Open()) {
-    for (std::size_t i = 0; i < mask.terms.size(); ++i) {
-      DrawTermRow(table, i, offers, a_frame);
+  if (ImGui::BeginChild("mask-scroll", ImGuiMCP::ImVec2{0.0f, 0.0f}, 0, 0)) {
+    auto table = BeginTermTable();
+    if (table.Open()) {
+      for (std::size_t i = 0; i < mask.terms.size(); ++i) {
+        DrawTermRow(table, i, offers, a_frame);
+      }
+      table.End();
     }
-    table.End();
-  }
-  if (mask.terms.empty()) {
-    Dim("no selection yet: choose a term below");
-  }
-  HelpMarker(
-      "A mask is terms combined in order: the first sets it, each next one is "
-      "and (product), or (max) or not (times the complement). Drag the :: grip "
-      "to reorder; S shows one term alone, M leaves one out; ... opens a "
-      "term's settings; Keep writes every term.");
+    if (mask.terms.empty()) {
+      Dim("no selection yet: choose a term below");
+    }
+    HelpMarker(
+        "A mask is terms combined in order: the first sets it, each next one "
+        "is "
+        "and (product), or (max) or not (times the complement). Drag the :: "
+        "grip to reorder; S shows one term alone, M leaves one out; ... opens "
+        "a "
+        "term's settings; Keep writes every term.");
 
-  const char *hint = "filter by kind, name or measurement";
-  const Studio::RuleSpec termsSpec{"Terms", {}};
-  const RuleFilter rule = RuleWithFilter(
-      termsSpec, {"offer-filter", hint, FitWidth(hint), a_frame.scale});
-  if (offers.empty()) {
-    Dim(geometry.meshRead ? "nothing to offer on this geometry"
-                          : "reading the mesh");
+    const char *hint = "filter by kind, name or measurement";
+    const Studio::RuleSpec termsSpec{"Terms", {}};
+    const RuleFilter rule = RuleWithFilter(
+        termsSpec, {"offer-filter", hint, FitWidth(hint), a_frame.scale});
+    if (offers.empty()) {
+      Dim(geometry.meshRead ? "nothing to offer on this geometry"
+                            : "reading the mesh");
+    }
+    DrawPatternChooser(offers, rule.filter,
+                       mask.terms.size() >= Studio::kMaxTerms, a_frame);
   }
-  DrawPatternChooser(offers, rule.filter,
-                     mask.terms.size() >= Studio::kMaxTerms, a_frame);
+  ImGui::EndChild();
 }
 
 void RebuildScratch(const Frame &a_frame) {
@@ -571,7 +604,8 @@ void RebuildScratch(const Frame &a_frame) {
   }
 }
 
-void EditMaskAsTerms(const Studio::TextRow &a_mask, const Frame &a_frame) {
+void EditMaskAsTerms(const Studio::TextRow &a_mask, const Frame &a_frame,
+                     bool a_created) {
   if (!a_frame.recipe || !a_frame.piece || a_frame.state->paint) {
     return;
   }
@@ -592,10 +626,15 @@ void EditMaskAsTerms(const Studio::TextRow &a_mask, const Frame &a_frame) {
     assignment = Studio::PaintAssignment{layer->output, layer->layer,
                                          a_frame.recipe->documentRevision};
   }
+  std::optional<std::string> createdMask;
+  if (a_created) {
+    createdMask = a_mask.name;
+  }
   Studio::Post(*a_frame.intents,
                Studio::BeginPaint{a_frame.recipe->id, *key, Surface::kMaterial,
                                   a_frame.state->nextPaintSessionID++,
-                                  a_frame.state->lastPaintReset, assignment});
+                                  a_frame.state->lastPaintReset, assignment,
+                                  createdMask});
   if (!a_mask.name.empty()) {
     a_frame.state->pendingSelection = Studio::MaskSubject{a_mask.name};
   }
@@ -606,31 +645,47 @@ void DrawPaintDraftBar(const Frame &a_frame) {
   if (!state.paint) {
     return;
   }
-  const bool previewing =
-      ViewOf(a_frame).isolation.recipeID == Studio::kPaintRecipe;
-  Dim(std::format("Mask draft for {} / preview {} / excluded from Save",
-                  state.paint->recipeID, previewing ? "active" : "inactive"));
-  if (state.mode != Studio::Mode::kPaint) {
-    if (ImGui::SmallButton("Resume mask draft")) {
-      Studio::Post(*a_frame.intents, Studio::SetMode{Studio::Mode::kPaint});
-      if (!previewing) {
-        Studio::Post(
-            *a_frame.intents,
-            Studio::SoloRecipe{std::string{Studio::kPaintRecipe}, true});
-      }
-    }
-  } else if (ImGui::SmallButton("Leave mask inspector")) {
-    Studio::Post(*a_frame.intents, Studio::SetMode{Studio::Mode::kCompose});
+  const bool active = Studio::MaskTaskActive(state);
+  const std::string &editing = state.mask.editing;
+  std::string label =
+      std::format("Mask draft: {}", editing.empty() ? "unsaved mask" : editing);
+  if (state.paint->assignmentInvalid) {
+    label += " (destination changed)";
   }
-  ImGui::SameLine();
-  Disabled(state.paint->pendingCommit.has_value(), [&] {
-    if (ImGui::SmallButton("Discard mask draft")) {
-      Studio::Post(*a_frame.intents, Studio::EndPaint{});
+  const bool pending = state.paint->pendingCommit.has_value();
+  const bool hasTerms = !state.mask.terms.empty();
+  const float trailingWidth =
+      active ? ButtonWidth("Discard")
+             : ButtonWidth("Resume") + ItemSpacingX() + ButtonWidth("Discard");
+  Banner(label, trailingWidth, [&] {
+    if (!active) {
+      if (ImGui::Button("Resume") && !editing.empty()) {
+        state.pendingSelection = Studio::MaskSubject{editing};
+      }
+      ImGui::SameLine();
+    }
+    Disabled(pending, [&] {
+      if (ImGui::Button("Discard")) {
+        if (hasTerms) {
+          ImGui::OpenPopup("Discard mask draft?###discard-mask");
+        } else {
+          DiscardMaskDraft(a_frame);
+        }
+      }
+    });
+  });
+  DetailModal("Discard mask draft?###discard-mask", [&] {
+    ImGui::TextWrapped("The %zu term(s) in this draft will be lost.",
+                       state.mask.terms.size());
+    if (ImGui::Button("Discard")) {
+      DiscardMaskDraft(a_frame);
+      ImGui::CloseCurrentPopup();
+    }
+    ImGui::SameLine();
+    if (ImGui::Button("Cancel")) {
+      ImGui::CloseCurrentPopup();
     }
   });
-  if (state.paint->assignmentInvalid) {
-    Warn("The destination changed. Keep saves the mask without assigning it.");
-  }
 }
 
 void DrawMaskTask(const Frame &a_frame) {
@@ -639,38 +694,37 @@ void DrawMaskTask(const Frame &a_frame) {
     return;
   }
   DrawPaintHead(a_frame);
-  DrawMaskRule(state.mask.editing.empty() ? "New mask draft"
-                                          : state.mask.editing,
-               a_frame);
+  std::string title = state.mask.editing.empty() ? std::string{"New mask draft"}
+                                                 : state.mask.editing;
   if (state.paint->assignment) {
-    Dim(std::format("Assign to output {} / layer {} / mask",
-                    state.paint->assignment->output + 1,
-                    state.paint->assignment->layer + 1));
-  } else if (!state.mask.editing.empty()) {
-    Dim("Keeping this name updates the shared mask and all of its consumers.");
+    title += std::format(" -> output {} / layer {}",
+                         state.paint->assignment->output + 1,
+                         state.paint->assignment->layer + 1);
   }
+  DrawMaskRule(title, a_frame);
   if (!state.paint->ready) {
-    Dim("Waiting for the mask preview.");
+    PlaceholderText("Waiting for the mask preview.");
     return;
   }
   const auto piece =
       std::ranges::find(a_frame.snapshot->pieces, state.paint->origin.piece,
                         &Studio::PieceRow::ref);
   if (piece == a_frame.snapshot->pieces.end()) {
-    Dim("The original armor is unavailable. The draft is retained.");
+    PlaceholderText(
+        "The original armor is unavailable. The draft is retained.");
     return;
   }
   const auto paint = std::ranges::find(piece->recipes, Studio::kPaintRecipe,
                                        &Studio::RecipeRow::id);
   if (paint == piece->recipes.end()) {
-    Dim("Waiting for the mask preview geometry.");
+    PlaceholderText("Waiting for the mask preview geometry.");
     return;
   }
   Studio::ObservePaintRecipe(state, &*paint);
   const Studio::GeometryRow *geometry =
       Studio::SelectedGeometry(&*paint, state.paint->origin);
   if (!geometry) {
-    Dim("No geometry is available for this mask preview.");
+    PlaceholderText("No geometry is available for this mask preview.");
     return;
   }
   for (const Studio::GeometryRow &row : paint->geometries) {

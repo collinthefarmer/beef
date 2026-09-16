@@ -1,7 +1,7 @@
-# clang-tidy baseline, 113 sources, 63 findings
+# clang-tidy baseline, 113 sources, 67 findings
 # regenerate: tools/tidy.sh && tools/tidy-baseline.sh
 
-# readability-function-size                            53
+# readability-function-size                            57
 # readability-function-cognitive-complexity            8
 # performance-no-int-to-ptr                            1
 # readability-simplify-boolean-expr                    1
@@ -21,12 +21,16 @@ src/engine/ManagerTick.cpp:274: [readability-function-size]
 src/engine/RecipeEditor.cpp:751: [readability-function-size]
 src/engine/RecipeStore.cpp:519: [readability-function-size]
 src/engine/SessionQueue.cpp:54: [readability-function-size]
-src/menu/MenuWidgets.cpp:73: [performance-no-int-to-ptr]
-src/menu/MenuWidgets.cpp:651: [readability-function-size]
+src/menu/MenuWidgets.cpp:79: [performance-no-int-to-ptr]
+src/menu/MenuWidgets.cpp:657: [readability-function-size]
+src/menu/PaintPanel.cpp:481: [readability-function-size]
+src/menu/PaintPanel.cpp:643: [readability-function-size]
+src/menu/PatternChooser.cpp:85: [readability-function-size]
 src/menu/Tuning.cpp:257: [readability-simplify-boolean-expr]
 src/menu/Workspace.cpp:203: [readability-function-size]
-src/menu/Workspace.cpp:717: [readability-function-cognitive-complexity]
-src/menu/Workspace.cpp:717: [readability-function-size]
+src/menu/Workspace.cpp:711: [readability-function-cognitive-complexity]
+src/menu/Workspace.cpp:711: [readability-function-size]
+src/menu/Workspace.cpp:799: [readability-function-size]
 src/mesh/Islands.cpp:178: [readability-function-cognitive-complexity]
 src/mesh/Islands.cpp:178: [readability-function-size]
 src/mesh/Islands.cpp:276: [readability-function-cognitive-complexity]
@@ -64,8 +68,8 @@ src/render/TextureLabPass.cpp:581: [readability-function-size]
 src/render/TextureLabPass.cpp:649: [readability-function-size]
 src/render/TexturePreviews.cpp:49: [readability-function-size]
 src/studio/MenuState.cpp:43: [readability-function-size]
-src/studio/MenuState.cpp:689: [readability-function-size]
-src/studio/MenuState.cpp:803: [readability-function-size]
-src/studio/Navigation.cpp:210: [readability-function-size]
-src/studio/Navigation.cpp:234: [readability-function-size]
+src/studio/MenuState.cpp:690: [readability-function-size]
+src/studio/MenuState.cpp:804: [readability-function-size]
+src/studio/Navigation.cpp:213: [readability-function-size]
+src/studio/Navigation.cpp:237: [readability-function-size]
 src/studio/RecipeSnapshot.cpp:30: [readability-function-size]

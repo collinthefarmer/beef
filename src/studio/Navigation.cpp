@@ -194,7 +194,10 @@ bool ResolvePendingSubject(Navigation &a_navigation, Selection &a_selection,
   if (!a_pending) {
     return false;
   }
-  if (!a_recipe || a_recipe->id != a_selection.recipeID) {
+  if (!a_recipe) {
+    return false;
+  }
+  if (a_recipe->id != a_selection.recipeID) {
     a_pending.reset();
     return false;
   }

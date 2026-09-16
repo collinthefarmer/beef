@@ -123,6 +123,7 @@ struct BeginPaint {
   std::uint64_t sessionID = 0;
   std::uint64_t resetID = 0;
   std::optional<PaintAssignment> assignment{};
+  std::optional<std::string> createdMask{};
 };
 struct SetPaintSurface {
   Surface surface = Surface::kMaterial;

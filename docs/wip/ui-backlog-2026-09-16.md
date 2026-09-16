@@ -248,3 +248,25 @@ combo backed by the **Game Object Service** (item 4) — keywords, forms, and
 enchantments enumerated from live game data, filterable, with a typed value
 still allowed. Ties to item 3 (collapsible relationship tables) and item 4 (the
 service and the "supersede blind editor-ID fields" theme).
+
+## 9. Remove referenced resources by walking their uses
+
+**Ask.** Removing a resource (mask, source, signal, curve) should be possible
+even when it is referenced — walk its references and delete or replace each use,
+rather than refusing outright.
+
+**Where.** `RemoveButton` disables at `references > 0`
+(`menu/MenuWidgets.cpp`), and the edits themselves refuse when
+`CountReferences` finds a use: `Edit(RemoveMask)` / `Edit(RemoveSource)`
+(`studio/Edits.cpp:803,819`, `"referenced in N place(s)"`), and the sibling
+resource removals. So a referenced resource is currently un-removable from the
+UI at all.
+
+**Direction.** A "remove and clean up" path: enumerate the references (the same
+`CountReferences` / the relationship-panel data), then per use either clear the
+field to its default/empty or remove the consuming row, behind a confirm that
+lists what will change. The `PaintPanel` mask-draft discard now does a narrow
+version of this (removes the not-yet-referenced mask it created,
+`DiscardMaskDraft`); this generalises it to referenced resources and to every
+resource kind. Consider whether "replace with" (repoint uses at another
+resource) is worth offering alongside "delete uses".

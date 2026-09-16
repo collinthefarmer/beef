@@ -85,7 +85,10 @@ void DrawDrivenBy(const Frame &a_frame,
   if (std::ranges::none_of(a_frame.recipe->relationships, driven)) {
     return;
   }
-  if (!Rule(Studio::RuleSpec{.text = "Driven by", .collapsible = true}).open) {
+  if (!Rule(Studio::RuleSpec{.text = "Driven by",
+                             .collapsible = true,
+                             .leadingSpace = false})
+           .open) {
     return;
   }
   Table table = Table::Begin(
@@ -118,7 +121,9 @@ void DrawUsedBy(const Frame &a_frame,
   if (std::ranges::none_of(a_frame.recipe->relationships, uses)) {
     return;
   }
-  if (!Rule(Studio::RuleSpec{.text = "Used by", .collapsible = true}).open) {
+  if (!Rule(Studio::RuleSpec{
+                .text = "Used by", .collapsible = true, .leadingSpace = false})
+           .open) {
     return;
   }
   Table table = Table::Begin("used-by",
@@ -149,6 +154,22 @@ void DrawUsedBy(const Frame &a_frame,
     ImGui::PopID();
   }
   table.End();
+}
+
+bool HasRelationships(const Frame &a_frame) {
+  if (!a_frame.recipe) {
+    return false;
+  }
+  const auto subject = SelectionOf(a_frame).subject;
+  return std::ranges::any_of(a_frame.recipe->relationships,
+                             [&](const auto &a_link) {
+                               return SubjectOf(a_link.consumer.owner) ==
+                                      subject;
+                             }) ||
+         std::ranges::any_of(a_frame.recipe->relationships,
+                             [&](const auto &a_link) {
+                               return SubjectOf(a_link.driver) == subject;
+                             });
 }
 
 void DrawRelationships(const Frame &a_frame) {

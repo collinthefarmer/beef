@@ -37,6 +37,7 @@ struct PaintSession {
   float originScroll = 0.0f;
   std::optional<PaintAssignment> assignment;
   bool assignmentInvalid = false;
+  std::optional<std::string> createdMask;
 };
 
 [[nodiscard]] std::expected<EditBatch, Diagnostic>

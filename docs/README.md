@@ -34,6 +34,9 @@ Open work. Each carries its own status line.
   implement that baseline, and which seam each slice owns.
 - [ui-assessment-2026-09-13.md](ui-assessment-2026-09-13.md) — the source review
   of the existing UI against the design principles.
+- [wip/paint-mask-pass-2026-09-16.md](wip/paint-mask-pass-2026-09-16.md) — the
+  cases for the deferred pass over the mask-editing surface (the draft bar, the
+  mask inspector, the terms editor), grounded in the current headers.
 - [wip/ui-v2-framework-checkpoint-2026-09-13.md](wip/ui-v2-framework-checkpoint-2026-09-13.md)
   — the early framework checkpoint, accepted in game on 2026-09-13.
 - [wip/ui-primitives-ownership.md](wip/ui-primitives-ownership.md) — which

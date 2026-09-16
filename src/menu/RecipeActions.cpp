@@ -182,6 +182,10 @@ void DrawRecipeSaveRevert(const Frame &a_frame) {
                a_frame.state->pendingRecipeFile = Studio::PendingIndexedEdit{
                    manager->Editor().SaveRecipe(recipe.id), recipe.id};
              }
+             if (a_frame.state->paint &&
+                 a_frame.state->paint->recipeID == recipe.id) {
+               Tooltip("Save excludes the suspended mask draft.");
+             }
              ImGui::SameLine();
              Disabled(!recipe.dirty, [&] {
                if (ImGui::Button("Revert")) {
@@ -246,9 +250,6 @@ void DrawMaskDraftHints(const Frame &a_frame) {
     return;
   }
   const Studio::RecipeRow &recipe = *a_frame.recipe;
-  if (a_frame.state->paint && a_frame.state->paint->recipeID == recipe.id) {
-    Dim("Save excludes the suspended mask draft.");
-  }
   if (recipe.id == Studio::kPaintRecipe) {
     Dim("Keep the mask before saving its destination recipe.");
   }
@@ -259,9 +260,6 @@ void DrawRecipeFileActions(const Frame &a_frame) {
     return;
   }
   const Studio::RecipeRow &recipe = *a_frame.recipe;
-  if (a_frame.state->paint && a_frame.state->paint->recipeID == recipe.id) {
-    Dim("Save excludes the suspended mask draft.");
-  }
   if (recipe.dirty) {
     Warn("Unsaved changes");
   } else {

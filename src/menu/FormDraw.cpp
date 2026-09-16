@@ -191,7 +191,7 @@ std::optional<std::string> FieldInput(const FormField &a_field, float a_scale,
 void FocusCreatedSubject(const InspectorSubject &a_subject,
                          const Frame &a_frame) {
   if (const auto *mask = Get<MaskSubject>(a_subject)) {
-    EditMaskAsTerms(TextRow{.name = mask->name, .text = "0"}, a_frame);
+    EditMaskAsTerms(TextRow{.name = mask->name, .text = "0"}, a_frame, true);
     return;
   }
   a_frame.state->pendingSelection = a_subject;

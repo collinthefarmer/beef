@@ -104,6 +104,7 @@ struct MenuState {
 void Reduce(MenuState &a_state, const Intent &a_intent);
 void ObservePaintRecipe(MenuState &a_state, const RecipeRow *a_recipe);
 [[nodiscard]] bool MaskTaskActive(const MenuState &a_state);
+void ReconcilePaintMode(MenuState &a_state);
 void ResolveEditorSelection(MenuState &a_state, const Snapshot &a_snapshot);
 void AcknowledgeEditorOperations(MenuState &a_state,
                                  const Snapshot &a_snapshot);

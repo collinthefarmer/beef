@@ -955,6 +955,26 @@ void DimBadge(const char *a_label) {
   BadgeFrame(a_label, kDim, false, ImVec2{0.0f, 0.0f});
 }
 
+void Banner(std::string_view a_label, float a_trailingWidth,
+            const std::function<void()> &a_trailing) {
+  const ImVec2 origin = ImGui::GetCursorScreenPos();
+  const float width = ImGui::GetContentRegionAvail().x;
+  const float height = ImGui::GetFrameHeight();
+  ImGui::ImDrawListManager::AddRectFilled(
+      ImGui::GetWindowDrawList(), origin,
+      ImVec2{origin.x + width, origin.y + height}, ImGui::GetColorU32(kWarn),
+      ImGui::GetStyle()->FrameRounding, 0);
+  ImGui::PushStyleColor(ImGuiMCP::ImGuiCol_Text, kBadgeFrame);
+  ImGui::AlignTextToFramePadding();
+  const std::string label{a_label};
+  ImGui::TextUnformatted(label.c_str());
+  ImGui::PopStyleColor();
+  if (a_trailing) {
+    ImGui::SameLine();
+    RightAligned(a_trailingWidth, a_trailing);
+  }
+}
+
 void PlaceholderText(std::string_view a_text) {
   const ImVec2 avail = ImGui::GetContentRegionAvail();
   const ImVec2 start = ImGui::GetCursorPos();
