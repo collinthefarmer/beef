@@ -50,52 +50,64 @@ struct IntentPerformer {
   const View &view;
 
   void operator()(const SetMode &) const {}
-  void operator()(const EditRecipe &i) const {
+  void operator()(const EditRecipe &a_intent) const {
     const std::uint64_t request = manager->Editor().EditRecipe(
-        i.recipeID, EditBatch{i.edits}, i.expectedRevision);
-    if (ShouldInvalidateIndexedSubjects(i.edits)) {
-      state.pendingIndexedEdit = PendingIndexedEdit{request, i.recipeID};
+        a_intent.recipeID, EditBatch{a_intent.edits},
+        a_intent.expectedRevision);
+    if (ShouldInvalidateIndexedSubjects(a_intent.edits)) {
+      state.pendingIndexedEdit = PendingIndexedEdit{request, a_intent.recipeID};
     }
   }
-  void operator()(const SoloRecipe &i) const {
+  void operator()(const SoloRecipe &a_intent) const {
+    manager->Editor().ChangeView(ViewCommand{
+        .target = Isolation::ForRecipe(a_intent.recipeID), .on = a_intent.on});
+  }
+  void operator()(const SoloPiece &a_intent) const {
     manager->Editor().ChangeView(
-        ViewCommand{Isolation::ForRecipe(i.recipeID), i.on});
+        ViewCommand{.on = a_intent.on, .piece = a_intent.piece});
   }
-  void operator()(const SoloOutput &i) const {
+  void operator()(const SoloOutput &a_intent) const {
+    manager->Editor().ChangeView(ViewCommand{
+        .target = Isolation::ForOutput(a_intent.recipeID, a_intent.output),
+        .on = a_intent.on});
+  }
+  void operator()(const SoloLayer &a_intent) const {
     manager->Editor().ChangeView(
-        ViewCommand{Isolation::ForOutput(i.recipeID, i.output), i.on});
+        ViewCommand{.target = Isolation::ForLayer(
+                        a_intent.recipeID, a_intent.output, a_intent.layer),
+                    .on = a_intent.on});
   }
-  void operator()(const SoloLayer &i) const {
-    manager->Editor().ChangeView(
-        ViewCommand{Isolation::ForLayer(i.recipeID, i.output, i.layer), i.on});
+  void operator()(const MuteLayer &a_intent) const {
+    manager->Editor().UpdateView(
+        [key = LayerKey{a_intent.recipeID, a_intent.output, a_intent.layer},
+         on = a_intent.on](View &a_live) {
+          if (on) {
+            a_live.muted.insert(key);
+          } else {
+            a_live.muted.erase(key);
+          }
+        });
   }
-  void operator()(const MuteLayer &i) const {
-    manager->Editor().UpdateView([key = LayerKey{i.recipeID, i.output, i.layer},
-                                  on = i.on](View &a_live) {
-      if (on) {
-        a_live.muted.insert(key);
-      } else {
-        a_live.muted.erase(key);
-      }
-    });
+  void operator()(const SetFreeze &a_intent) const {
+    manager->Editor().UpdateView(
+        [on = a_intent.on, at = a_intent.at](View &a_live) {
+          a_live.freeze = on;
+          if (on) {
+            a_live.scrubSeconds = at;
+          }
+        });
   }
-  void operator()(const SetFreeze &i) const {
-    manager->Editor().UpdateView([on = i.on, at = i.at](View &a_live) {
-      a_live.freeze = on;
-      if (on) {
-        a_live.scrubSeconds = at;
-      }
-    });
-  }
-  void operator()(const SetScrub &i) const {
-    manager->Editor().UpdateView([seconds = i.seconds](View &a_live) {
+  void operator()(const SetScrub &a_intent) const {
+    manager->Editor().UpdateView([seconds = a_intent.seconds](View &a_live) {
       a_live.freeze = true;
       a_live.scrubSeconds = seconds;
     });
   }
-  void operator()(const SetSpeed &i) const {
-    manager->Editor().UpdateView([speed = std::clamp(i.speed, 0.0f, 8.0f)](
-                                     View &a_live) { a_live.speed = speed; });
+  void operator()(const SetSpeed &a_intent) const {
+    manager->Editor().UpdateView(
+        [speed = std::clamp(a_intent.speed, 0.0f, 8.0f)](View &a_live) {
+          a_live.speed = speed;
+        });
   }
   void operator()(const StepClock &) const {
     manager->Editor().UpdateView([](View &a_live) {
@@ -105,46 +117,50 @@ struct IntentPerformer {
           a_live.speed;
     });
   }
-  void operator()(const Undo &i) const {
+  void operator()(const Undo &a_intent) const {
     state.pendingIndexedEdit = PendingIndexedEdit{
-        manager->Editor().UndoRecipe(i.recipeID), i.recipeID};
+        manager->Editor().UndoRecipe(a_intent.recipeID), a_intent.recipeID};
   }
-  void operator()(const Redo &i) const {
+  void operator()(const Redo &a_intent) const {
     state.pendingIndexedEdit = PendingIndexedEdit{
-        manager->Editor().RedoRecipe(i.recipeID), i.recipeID};
+        manager->Editor().RedoRecipe(a_intent.recipeID), a_intent.recipeID};
   }
-  void operator()(const CreateRecipe &i) const {
-    manager->Editor().NewRecipe(i.recipeID, i.key, i.geometry);
+  void operator()(const CreateRecipe &a_intent) const {
+    manager->Editor().NewRecipe(a_intent.recipeID, a_intent.key,
+                                a_intent.geometry);
   }
-  void operator()(const Studio::RenameRecipe &i) const {
-    manager->Editor().RenameRecipe(i.from, i.to);
+  void operator()(const Studio::RenameRecipe &a_intent) const {
+    manager->Editor().RenameRecipe(a_intent.from, a_intent.to);
   }
-  void operator()(const BeginPaint &i) const {
-    manager->Editor().BeginPaint(i.recipeID, i.key, i.surface, i.sessionID,
-                                 i.resetID);
+  void operator()(const BeginPaint &a_intent) const {
+    manager->Editor().BeginPaint(a_intent.recipeID, a_intent.key,
+                                 a_intent.surface, a_intent.sessionID,
+                                 a_intent.resetID);
   }
-  void operator()(const SetPaintSurface &i) const { (void)i; }
-  void operator()(const KeepPaint &i) const {
-    manager->Editor().KeepPaint(i.request);
+  void operator()(const SetPaintSurface &a_intent) const { (void)a_intent; }
+  void operator()(const KeepPaint &a_intent) const {
+    manager->Editor().KeepPaint(a_intent.request);
   }
   void operator()(const EndPaint &) const {
     manager->Editor().EndPaint(state.paint ? state.paint->sessionID : 0);
   }
-  void operator()(const Studio::ReadMesh &i) const {
-    manager->RequestMesh(i.actorID, i.geometry);
+  void operator()(const Studio::ReadMesh &a_intent) const {
+    manager->RequestMesh(a_intent.actorID, a_intent.geometry);
   }
-  void operator()(const FireTrigger &i) const {
-    manager->FireAt(i.actorID, i.event, i.node, i.offset, i.random, i.value);
+  void operator()(const FireTrigger &a_intent) const {
+    manager->FireAt(a_intent.actorID, a_intent.event, a_intent.node,
+                    a_intent.offset, a_intent.random, a_intent.value);
   }
   void operator()(const PickPiece &) const {}
-  void operator()(const PickRecipe &i) const {
-    if (!i.document && view.pin && view.pin->piece == state.selection.piece &&
-        view.pin->recipeID != i.recipeID) {
+  void operator()(const PickRecipe &a_intent) const {
+    if (!a_intent.document && view.pin &&
+        view.pin->piece == state.selection.piece &&
+        view.pin->recipeID != a_intent.recipeID) {
       manager->Editor().PinRecipe(state.selection.piece, {});
     }
   }
-  void operator()(const PinRecipe &i) const {
-    manager->Editor().PinRecipe(state.selection.piece, i.recipeID);
+  void operator()(const PinRecipe &a_intent) const {
+    manager->Editor().PinRecipe(state.selection.piece, a_intent.recipeID);
   }
   void operator()(const PickTarget &) const {}
   void operator()(const PickSlot &) const {}
@@ -168,8 +184,8 @@ struct IntentPerformer {
   void operator()(const ClearMask &) const {}
   void operator()(const UndoMask &) const {}
   void operator()(const RedoMask &) const {}
-  void operator()(const UpdatePaint &i) const {
-    manager->Editor().UpdatePaint(i.request);
+  void operator()(const UpdatePaint &a_intent) const {
+    manager->Editor().UpdatePaint(a_intent.request);
   }
 };
 }
@@ -240,20 +256,20 @@ void RenderStatus(const Studio::Snapshot &a_snapshot) {
   if (diagnostics.fileFailed) {
     Problem("Diagnostic trace file failed; recent events remain in memory.");
   }
-  const Studio::Status &st = a_snapshot.status;
-  if (st.emissivePath) {
+  const Studio::Status &status = a_snapshot.status;
+  if (status.emissivePath) {
     Ok("emissive path on");
   } else {
     Problem("emissive path OFF");
   }
   ImGui::SameLine();
-  if (st.layoutVerified) {
+  if (status.layoutVerified) {
     Ok("| layout verified");
   } else {
     Warn("| layout unverified");
   }
   ImGui::SameLine();
-  if (st.textureLab) {
+  if (status.textureLab) {
     Ok("| lab");
   } else {
     Warn("| no lab");
@@ -262,9 +278,10 @@ void RenderStatus(const Studio::Snapshot &a_snapshot) {
   ImGui::Text("| %u actor(s), %u piece(s), %u recipe(s), %u geometr%s, %u "
               "shell(s), %u light(s), tick %u ms | %zu recipe file(s), %zu "
               "with errors",
-              st.actors, st.pieces, st.recipes, st.geometries,
-              st.geometries == 1 ? "y" : "ies", st.shells, st.lights,
-              a_snapshot.tickMS, st.loadedFiles, st.withErrors);
+              status.actors, status.pieces, status.recipes, status.geometries,
+              status.geometries == 1 ? "y" : "ies", status.shells,
+              status.lights, a_snapshot.tickMS, status.loadedFiles,
+              status.withErrors);
 }
 
 void RenderHeader(const Studio::Snapshot &a_snapshot) {
@@ -279,7 +296,6 @@ void RegisterMenu() {
   }
   SKSEMenuFramework::SetSection(std::string{Identity::kMenuTitle}.c_str());
   SKSEMenuFramework::AddSectionItem("Studio", RenderStudio);
-  SKSEMenuFramework::AddSectionItem("Board", RenderBoard);
   SKSEMenuFramework::AddSectionItem("Recipes", RenderRecipes);
   SKSEMenuFramework::AddSectionItem("Setup", RenderSetup);
   logger::info("SKSE Menu Framework pages registered");

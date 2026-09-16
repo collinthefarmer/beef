@@ -73,6 +73,19 @@ Isolation Isolation::SoloLayer(std::string a_recipe, std::size_t a_output,
   return isolation;
 }
 bool ApplyViewCommand(View &a_view, const ViewCommand &a_command) {
+  if (a_command.piece) {
+    std::optional<PieceRef> next = a_view.soloPiece;
+    if (a_command.on) {
+      next = *a_command.piece;
+    } else if (a_view.soloPiece == *a_command.piece) {
+      next = std::nullopt;
+    }
+    if (next == a_view.soloPiece) {
+      return false;
+    }
+    a_view.soloPiece = next;
+    return true;
+  }
   const Isolation &target = a_command.target;
   Isolation next;
   if (target.output && target.layer) {

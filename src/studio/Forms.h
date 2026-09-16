@@ -72,7 +72,7 @@ struct FieldKindSpec {
   FieldKind value;
   const char *glyph;
   bool takesSignal;
-  const char *rule;
+  const char *help;
   FieldInputKind input;
   FieldCheckKind check;
   Swatch swatch;
@@ -217,6 +217,7 @@ enum class FieldDetail {
   kColor,
   kMask,
   kSignal,
+  kReferences,
 };
 
 using FieldBinding =

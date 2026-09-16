@@ -9,7 +9,7 @@
 #include <string_view>
 
 namespace BetterEnchantmentEffects::Studio {
-struct CheckCtx {
+struct CheckContext {
   const RowTypes &rows;
   std::string_view where;
 };
@@ -18,11 +18,10 @@ struct CheckCtx {
                                                   const std::string &a_text);
 [[nodiscard]] std::optional<Diagnostic>
 CheckCurveText(const std::string &a_where, const CurveRef &a_curve);
-[[nodiscard]] std::optional<Diagnostic> CheckScalarRef(const CheckCtx &a_ctx,
-                                                       std::string_view a_field,
-                                                       const Param &a_param);
-[[nodiscard]] std::optional<Diagnostic> CheckVectorRef(const CheckCtx &a_ctx,
-                                                       std::string_view a_field,
-                                                       const Vec3Param &a_param,
-                                                       bool a_color);
+[[nodiscard]] std::optional<Diagnostic>
+CheckScalarRef(const CheckContext &a_ctx, std::string_view a_field,
+               const Param &a_param);
+[[nodiscard]] std::optional<Diagnostic>
+CheckVectorRef(const CheckContext &a_ctx, std::string_view a_field,
+               const Vec3Param &a_param, bool a_color);
 }

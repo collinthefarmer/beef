@@ -1,9 +1,10 @@
-# clang-tidy baseline, 113 sources, 60 findings
+# clang-tidy baseline, 113 sources, 63 findings
 # regenerate: tools/tidy.sh && tools/tidy-baseline.sh
 
-# readability-function-size                            51
+# readability-function-size                            53
 # readability-function-cognitive-complexity            8
 # performance-no-int-to-ptr                            1
+# readability-simplify-boolean-expr                    1
 
 src/engine/ManagerApply.cpp:215: [readability-function-size]
 src/engine/ManagerApply.cpp:265: [readability-function-size]
@@ -11,19 +12,21 @@ src/engine/ManagerApply.cpp:388: [readability-function-size]
 src/engine/ManagerApply.cpp:467: [readability-function-size]
 src/engine/ManagerEvents.cpp:28: [readability-function-size]
 src/engine/ManagerInspection.cpp:8: [readability-function-size]
-src/engine/ManagerSnapshot.cpp:420: [readability-function-size]
+src/engine/ManagerSnapshot.cpp:422: [readability-function-size]
 src/engine/ManagerTick.cpp:104: [readability-function-size]
 src/engine/ManagerTick.cpp:213: [readability-function-size]
 src/engine/ManagerTick.cpp:231: [readability-function-size]
+src/engine/ManagerTick.cpp:274: [readability-function-cognitive-complexity]
+src/engine/ManagerTick.cpp:274: [readability-function-size]
 src/engine/RecipeEditor.cpp:751: [readability-function-size]
 src/engine/RecipeStore.cpp:519: [readability-function-size]
 src/engine/SessionQueue.cpp:54: [readability-function-size]
-src/menu/MenuWidgets.cpp:71: [performance-no-int-to-ptr]
-src/menu/Workspace.cpp:114: [readability-function-cognitive-complexity]
-src/menu/Workspace.cpp:114: [readability-function-size]
-src/menu/Workspace.cpp:325: [readability-function-size]
-src/menu/Workspace.cpp:482: [readability-function-cognitive-complexity]
-src/menu/Workspace.cpp:482: [readability-function-size]
+src/menu/MenuWidgets.cpp:73: [performance-no-int-to-ptr]
+src/menu/MenuWidgets.cpp:651: [readability-function-size]
+src/menu/Tuning.cpp:257: [readability-simplify-boolean-expr]
+src/menu/Workspace.cpp:203: [readability-function-size]
+src/menu/Workspace.cpp:717: [readability-function-cognitive-complexity]
+src/menu/Workspace.cpp:717: [readability-function-size]
 src/mesh/Islands.cpp:178: [readability-function-cognitive-complexity]
 src/mesh/Islands.cpp:178: [readability-function-size]
 src/mesh/Islands.cpp:276: [readability-function-cognitive-complexity]
@@ -60,8 +63,9 @@ src/render/TextureLabPass.cpp:449: [readability-function-size]
 src/render/TextureLabPass.cpp:581: [readability-function-size]
 src/render/TextureLabPass.cpp:649: [readability-function-size]
 src/render/TexturePreviews.cpp:49: [readability-function-size]
-src/studio/MenuState.cpp:14: [readability-function-size]
-src/studio/MenuState.cpp:650: [readability-function-size]
-src/studio/MenuState.cpp:762: [readability-function-size]
-src/studio/Navigation.cpp:169: [readability-function-size]
+src/studio/MenuState.cpp:43: [readability-function-size]
+src/studio/MenuState.cpp:689: [readability-function-size]
+src/studio/MenuState.cpp:803: [readability-function-size]
+src/studio/Navigation.cpp:210: [readability-function-size]
+src/studio/Navigation.cpp:234: [readability-function-size]
 src/studio/RecipeSnapshot.cpp:30: [readability-function-size]

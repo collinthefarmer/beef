@@ -46,8 +46,9 @@ struct ConnectionBuilder {
   }
 };
 
-[[nodiscard]] std::string Response(ConnectionBuilder &a_builder,
-                                   const InputConnectionSpec &a_spec) {
+[[nodiscard]] std::string
+BuildResponseSignal(ConnectionBuilder &a_builder,
+                    const InputConnectionSpec &a_spec) {
   if (a_spec.kind == InputConnectionKind::kHitResponse) {
     TriggerSignal trigger;
     trigger.origin = EventOrigin{"hit.received", {}, {}};
@@ -86,7 +87,7 @@ BuildInput(const Names &a_names, const InputConnectionSpec &a_spec) {
     return std::unexpected("Choose a supported actor-value measure.");
   }
   ConnectionBuilder builder{{}, InputTakenNames(a_names)};
-  std::string output = Response(builder, a_spec);
+  std::string output = BuildResponseSignal(builder, a_spec);
   return std::pair{std::move(builder.batch), std::move(output)};
 }
 }

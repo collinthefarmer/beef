@@ -264,6 +264,7 @@ struct KeyChoice {
 
 struct PieceRow {
   PieceRef ref;
+  bool isPlayer = false;
   std::string actorName;
   std::string armorName;
   std::vector<KeyChoice> keys;

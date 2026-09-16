@@ -25,33 +25,34 @@ BadgesOf(const std::vector<LayerRow> &a_layers) {
 
 void FillCell(Cell &a_cell, const RecipeRow &a_recipe,
               const GeometryRow &a_geometry, const View &a_view) {
-  const OutputRow *first = nullptr;
+  const OutputRow *firstWriter = nullptr;
   for (const auto &output : a_geometry.outputs) {
     if (!WritesCell(output, a_cell.surface, a_cell.slot)) {
       continue;
     }
-    if (first == nullptr) {
-      first = &output;
+    if (firstWriter == nullptr) {
+      firstWriter = &output;
     } else {
       a_cell.reason =
           std::format("output {} also writes this slot; the first one is shown",
                       output.index);
     }
   }
-  if (first != nullptr) {
-    a_cell.state =
-        first->problem.empty() ? CellState::kWritten : CellState::kRefused;
-    if (!first->problem.empty()) {
-      a_cell.reason = first->problem;
+  if (firstWriter != nullptr) {
+    a_cell.state = firstWriter->problem.empty() ? CellState::kWritten
+                                                : CellState::kRefused;
+    if (!firstWriter->problem.empty()) {
+      a_cell.reason = firstWriter->problem;
     }
-    a_cell.output = first->index;
-    a_cell.composite = first->texture;
-    a_cell.layers = first->layers.size();
-    a_cell.animated = first->animated;
-    a_cell.replace = first->replace;
-    a_cell.scalars = first->scalars;
-    a_cell.badges = BadgesOf(first->layers);
-    a_cell.isolated = a_view.isolation.TargetsOutput(a_recipe.id, first->index);
+    a_cell.output = firstWriter->index;
+    a_cell.composite = firstWriter->texture;
+    a_cell.layers = firstWriter->layers.size();
+    a_cell.animated = firstWriter->animated;
+    a_cell.replace = firstWriter->replace;
+    a_cell.scalars = firstWriter->scalars;
+    a_cell.badges = BadgesOf(firstWriter->layers);
+    a_cell.isolated =
+        a_view.isolation.TargetsOutput(a_recipe.id, firstWriter->index);
     return;
   }
   for (const auto &output : a_geometry.outputs) {

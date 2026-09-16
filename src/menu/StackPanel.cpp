@@ -2,10 +2,6 @@
 
 #include "menu/FormDraw.h"
 #include "menu/MenuWidgets.h"
-#include "studio/Edits.h"
-#include "studio/Forms.h"
-#include "studio/Intent.h"
-#include "studio/Names.h"
 #include "studio/Panels.h"
 #include "studio/Widgets.h"
 
@@ -26,81 +22,10 @@ namespace ImGui = ImGuiMCP;
 
 namespace BetterEnchantmentEffects::Menu {
 namespace {
-using Studio::FieldDetail;
-using Studio::FieldKind;
 using Studio::Inspector;
 using Studio::LayerStack;
 using Studio::LayerStackRow;
 using Studio::Layout;
-using Studio::PictureRow;
-
-void DrawDetailImage(const PictureRow &a_image, bool a_editable,
-                     const Frame &a_frame) {
-  const Layout &layout = LayoutOf(a_frame);
-  const Studio::ThumbnailSpec picture{
-      a_image.texture, a_image.channel, a_image.animated,
-      layout.inspectorThumbnail * a_frame.scale};
-  Thumbnail(picture);
-  ImGui::TextUnformatted((Studio::ReferenceText(a_image.name) + " =").c_str());
-  ImGui::SameLine();
-  if (a_editable) {
-    DrawRowField("text",
-                 Studio::MaskTextField(a_image.name, a_image.description),
-                 a_frame);
-  } else {
-    ImGui::TextWrapped("%s", a_image.description.c_str());
-  }
-  if (!a_image.problem.empty()) {
-    Warn(a_image.problem);
-  }
-}
-
-[[maybe_unused]] void DrawDetailModal(FieldDetail a_detail,
-                                      const Inspector &a_inspector,
-                                      const Frame &a_frame) {
-
-  switch (a_detail) {
-  case FieldDetail::kSource:
-    if (a_inspector.source) {
-      const bool isMask =
-          std::ranges::find(a_inspector.masks, a_inspector.source->name) !=
-          a_inspector.masks.end();
-      DrawDetailImage(*a_inspector.source, isMask, a_frame);
-    } else {
-      Dim("a constant colour, or a name no source or mask has");
-    }
-    break;
-  case FieldDetail::kCurve:
-    if (a_inspector.curve) {
-      ImGui::TextUnformatted(
-          (Studio::ReferenceText(a_inspector.curve->name) + " =").c_str());
-      ImGui::SameLine();
-      Badge(FieldKind::kCurve);
-      DrawRowField("text",
-                   Studio::CurveTextField(a_inspector.curve->name,
-                                          a_inspector.curve->text),
-                   a_frame);
-    } else {
-      Dim("no declared curve; the layer's curve is inline or empty");
-    }
-    break;
-  case FieldDetail::kOpacity:
-    DrawSignalDetail(a_inspector.row.opacityText, a_frame, 0);
-    break;
-  case FieldDetail::kColor:
-    DrawSignalDetail(a_inspector.row.color, a_frame, 0);
-    break;
-  case FieldDetail::kSignal:
-    break;
-  case FieldDetail::kMask:
-    if (a_inspector.mask) {
-      DrawDetailImage(*a_inspector.mask, true, a_frame);
-    } else {
-      Dim("no mask");
-    }
-    break;
-  }
-}
 
 void DrawInspector(const LayerStack &a_stack,
                    const std::optional<Inspector> &a_inspector,

@@ -66,11 +66,17 @@ struct View {
   float scrubSeconds = 0.0f;
   float speed = 1.0f;
   Isolation isolation;
+  std::optional<PieceRef> soloPiece;
   std::set<LayerKey> muted;
   std::optional<Pin> pin;
 
   [[nodiscard]] bool Isolating() const noexcept {
     return !isolation.recipeID.empty();
+  }
+
+  [[nodiscard]] bool PieceShown(FormID a_actor, FormID a_armor) const noexcept {
+    return !soloPiece ||
+           (soloPiece->actorID == a_actor && soloPiece->armorID == a_armor);
   }
 
   [[nodiscard]] std::vector<std::string> RecipeIDs() const;
@@ -122,6 +128,7 @@ struct View {
 struct ViewCommand {
   Isolation target;
   bool on = false;
+  std::optional<PieceRef> piece;
 };
 
 [[nodiscard]] bool ApplyViewCommand(View &a_view, const ViewCommand &a_command);

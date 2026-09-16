@@ -31,15 +31,8 @@ using Studio::LightCell;
 using Studio::PickCell;
 using Studio::SlotRow;
 using Studio::SoloOutput;
-using Studio::TableBorders;
-using Studio::TableStyle;
 using Studio::ThumbnailSpec;
 using Studio::Width;
-
-constexpr TableStyle kBoardStyle{.borders = TableBorders::kAll,
-                                 .stretch = true,
-                                 .headers = true,
-                                 .rowBackground = true};
 
 [[nodiscard]] std::span<const SlotRow> SlotRowsOf(const GeometryRow &a_geometry,
                                                   Surface a_surface) noexcept {
@@ -72,7 +65,7 @@ constexpr TableStyle kBoardStyle{.borders = TableBorders::kAll,
   return text;
 }
 
-[[nodiscard]] std::string Joined(std::span<const std::string> a_names) {
+[[nodiscard]] std::string JoinNames(std::span<const std::string> a_names) {
   std::string text;
   for (const std::string &name : a_names) {
     text += (text.empty() ? "" : ", ") + name;
@@ -110,7 +103,7 @@ void DrawWrittenCell(const Cell &a_cell, const Frame &a_frame) {
     ImGui::TextUnformatted(count.c_str());
   }
   if (!a_cell.badges.empty()) {
-    Dim(Joined(a_cell.badges));
+    Dim(JoinNames(a_cell.badges));
   }
   if (a_cell.replace) {
     Dim("replace");
@@ -189,7 +182,7 @@ void DrawBoard(const Studio::Board &a_board, const Frame &a_frame) {
                              {{"slot", Width::Px(80.0f)},
                               {"material", Width::Fill()},
                               {"shell", Width::Fill()}},
-                             kBoardStyle);
+                             Studio::kGridTable);
   if (!table.Open()) {
     return;
   }

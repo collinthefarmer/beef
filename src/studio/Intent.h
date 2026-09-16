@@ -147,6 +147,10 @@ struct SoloRecipe {
   std::string recipeID;
   bool on = false;
 };
+struct SoloPiece {
+  PieceRef piece;
+  bool on = false;
+};
 struct SoloOutput {
   std::string recipeID;
   std::size_t output = 0;
@@ -199,17 +203,16 @@ struct FireTrigger {
   float value = 1.0f;
 };
 
-using Intent =
-    std::variant<SetMode, PickPiece, PickRecipe, PinRecipe, PickTarget,
-                 PickSlot, PickCell, PickLayer, ViewGeometry, SetStackSplit,
-                 SetWorkspaceSplit, ShowSettings, ShowResource, ReadMesh,
-                 AddTerm, SetTermOp, SetTermText, SetTermKind, RemoveTerm,
-                 MoveTerm, PickTerm, SoloTerm, MuteTerm, LoadMask, ClearMask,
-                 UndoMask, RedoMask, BeginPaint, SetPaintSurface, KeepPaint,
-                 EndPaint, UpdatePaint, EditRecipe, SoloRecipe, SoloOutput,
-                 SoloLayer, MuteLayer, SetFreeze, SetScrub, SetSpeed, StepClock,
-                 Undo, Redo, CreateRecipe, RenameRecipe, FireTrigger>;
-inline constexpr std::size_t kIntentCount = 46;
+using Intent = std::variant<
+    SetMode, PickPiece, PickRecipe, PinRecipe, PickTarget, PickSlot, PickCell,
+    PickLayer, ViewGeometry, SetStackSplit, SetWorkspaceSplit, ShowSettings,
+    ShowResource, ReadMesh, AddTerm, SetTermOp, SetTermText, SetTermKind,
+    RemoveTerm, MoveTerm, PickTerm, SoloTerm, MuteTerm, LoadMask, ClearMask,
+    UndoMask, RedoMask, BeginPaint, SetPaintSurface, KeepPaint, EndPaint,
+    UpdatePaint, EditRecipe, SoloRecipe, SoloPiece, SoloOutput, SoloLayer,
+    MuteLayer, SetFreeze, SetScrub, SetSpeed, StepClock, Undo, Redo,
+    CreateRecipe, RenameRecipe, FireTrigger>;
+inline constexpr std::size_t kIntentCount = 47;
 static_assert(std::variant_size_v<Intent> == kIntentCount);
 
 using Intents = std::vector<Intent>;

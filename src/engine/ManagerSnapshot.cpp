@@ -292,6 +292,8 @@ struct PieceSnapshotBuilder {
     const RE::Actor *actor = RE::TESForm::LookupByID<RE::Actor>(ref.actorID);
     Studio::PieceRow row;
     row.ref = ref;
+    row.isPlayer =
+        actor != nullptr && actor == RE::PlayerCharacter::GetSingleton();
     row.actorName = actor && actor->GetName() ? actor->GetName() : "?";
     row.armorName = piece.armorName;
     if (flatStart < state.plan.geometries.size()) {

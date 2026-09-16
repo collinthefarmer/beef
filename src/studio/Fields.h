@@ -37,7 +37,7 @@ struct ReferenceFieldSpec {
   FieldCreator create = {};
 };
 
-struct TextedFieldSpec {
+struct TextEntryFieldSpec {
   std::string name;
   FieldKind kind;
   std::string text;
@@ -93,15 +93,15 @@ template <class S, class M, class Parse>
   return [signal = std::move(a_signal), record = std::move(a_record), a_member,
           a_parse](const std::string &a_text) -> std::optional<RecipeEdit> {
     SignalKind kind = record;
-    S *held = Get<S>(kind);
-    if (held == nullptr) {
+    S *active = Get<S>(kind);
+    if (active == nullptr) {
       return std::nullopt;
     }
     const auto value = a_parse(a_text);
     if (!value) {
       return std::nullopt;
     }
-    held->*a_member = *value;
+    active->*a_member = *value;
     return SetSignal{signal, kind};
   };
 }
@@ -113,15 +113,15 @@ template <class S, class M, class Parse>
   return [source = std::move(a_source), record = std::move(a_record), a_member,
           a_parse](const std::string &a_text) -> std::optional<RecipeEdit> {
     SourceKind kind = record;
-    S *held = Get<S>(kind);
-    if (held == nullptr) {
+    S *active = Get<S>(kind);
+    if (active == nullptr) {
       return std::nullopt;
     }
     const auto value = a_parse(a_text);
     if (!value) {
       return std::nullopt;
     }
-    held->*a_member = *value;
+    active->*a_member = *value;
     return SetSource{source, kind};
   };
 }
@@ -138,5 +138,5 @@ template <class S, class M, class Parse>
                                    FieldBinding a_bind);
 [[nodiscard]] FormField ToggleField(std::string a_name, bool a_on,
                                     FieldBinding a_bind);
-[[nodiscard]] FormField TextedField(TextedFieldSpec a_spec);
+[[nodiscard]] FormField TextEntryField(TextEntryFieldSpec a_spec);
 }

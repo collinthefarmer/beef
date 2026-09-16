@@ -952,7 +952,8 @@ void RecipeEditor::UpdateView(std::function<void(Studio::View &)> a_change) {
   runtime_.PostTask([this, change = std::move(a_change)] {
     Studio::View next = view_;
     change(next);
-    if (next.muted != view_.muted || next.isolation != view_.isolation) {
+    if (next.muted != view_.muted || next.isolation != view_.isolation ||
+        next.soloPiece != view_.soloPiece) {
       runtime_.ChangeAndRebuildActors({}, [&] { view_ = std::move(next); });
     } else {
       view_ = std::move(next);

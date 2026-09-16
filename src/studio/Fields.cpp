@@ -383,7 +383,7 @@ FormField ToggleField(std::string a_name, bool a_on, FieldBinding a_bind) {
   return field;
 }
 
-FormField TextedField(TextedFieldSpec a_spec) {
+FormField TextEntryField(TextEntryFieldSpec a_spec) {
   FormField field;
   field.name = std::move(a_spec.name);
   field.kind = a_spec.kind;

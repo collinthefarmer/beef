@@ -250,4 +250,10 @@ void DrawTuning(const Studio::FormField &a_field, const Frame &a_frame,
     DrawRecipeTuning(a_field, a_frame);
   }
 }
+
+bool FieldTunable(const Studio::FormField &a_field, const Frame &a_frame) {
+  return TunableValue(a_field).has_value() && a_frame.state && a_frame.recipe &&
+         a_frame.names &&
+         !(a_frame.state->paint && a_frame.state->mode == Studio::Mode::kPaint);
+}
 }

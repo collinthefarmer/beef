@@ -15,7 +15,7 @@ struct ResolvedOutput {
   std::vector<float> opacities;
 
   [[nodiscard]] float Scalar(ScalarField a_field) const noexcept;
-  [[nodiscard]] bool Names(ScalarField a_field) const noexcept;
+  [[nodiscard]] bool IsNamed(ScalarField a_field) const noexcept;
 };
 
 [[nodiscard]] ResolvedOutput ResolveOutput(const SurfaceOutput &a_output,

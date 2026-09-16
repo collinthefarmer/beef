@@ -64,6 +64,7 @@ struct MenuState {
   Navigation navigation;
   std::optional<InspectorSubject> pendingSelection;
   std::optional<PropertyLocation> revealedProperty;
+  std::string referencePopup;
   std::optional<PreviewPin> previewPin;
   std::optional<PendingIndexedEdit> pendingIndexedEdit;
   std::optional<PendingIndexedEdit> pendingRecipeFile;

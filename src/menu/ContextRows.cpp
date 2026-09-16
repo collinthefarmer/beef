@@ -30,43 +30,10 @@ using ImGuiMCP::ImVec2;
 
 namespace BetterEnchantmentEffects::Menu {
 namespace {
-constexpr Studio::TableStyle kContextStyle{.borders =
-                                               Studio::TableBorders::kAll,
-                                           .stretch = false,
-                                           .headers = true,
-                                           .rowBackground = false};
-constexpr Studio::TableStyle kFormStyle{
-    .borders = Studio::TableBorders::kInnerHorizontal,
-    .stretch = true,
-    .headers = false,
-    .rowBackground = false};
 
 [[nodiscard]] std::string RecipeLabel(const Studio::RecipeRow &a_recipe) {
   return a_recipe.pinned ? std::format("{} (pinned here)", a_recipe.id)
                          : a_recipe.id;
-}
-
-void SelectionCombo(const Studio::Snapshot &a_snapshot,
-                    const Studio::PieceRow *a_piece, const char *a_label,
-                    Studio::Intents &a_out) {
-  const std::string preview =
-      a_piece
-          ? std::format("{} / {} ({})", a_piece->actorName, a_piece->armorName,
-                        a_piece->ref.firstPerson ? "1st" : "3rd")
-          : std::string{"nothing applied"};
-  if (!ImGui::BeginCombo(a_label, preview.c_str())) {
-    return;
-  }
-  std::size_t i = 0;
-  for (const auto &piece : a_snapshot.pieces) {
-    const std::string label =
-        std::format("{} / {} ({})##sel{}", piece.actorName, piece.armorName,
-                    piece.ref.firstPerson ? "1st" : "3rd", i++);
-    if (ImGui::Selectable(label.c_str(), &piece == a_piece)) {
-      Studio::Post(a_out, Studio::PickPiece{piece.ref});
-    }
-  }
-  ImGui::EndCombo();
 }
 
 void RecipeCombo(const Frame &a_frame, const char *a_label) {
@@ -89,7 +56,7 @@ void DrawKeysTable(const Studio::RecipeRow &a_recipe, Studio::Intents &a_out) {
   auto table = Table::Begin("keys",
                             {{"key", Studio::Width::Fit()},
                              {"", Studio::Width::Px(RowButtonWidth())}},
-                            kFormStyle);
+                            Studio::kFormTable);
   if (!table.Open()) {
     return;
   }
@@ -162,24 +129,6 @@ void UndoRedoButtons(const Studio::RecipeRow &a_recipe,
     }
   });
   Tooltip(std::format("{} edit(s) to redo (Ctrl+Y)", a_recipe.redoDepth));
-}
-
-void DrawRecipeContext(const Frame &a_frame) {
-  auto table = Table::Begin(
-      "recipe-context",
-      {{"selection", Studio::Width::Fill()}, {"recipe", Studio::Width::Fill()}},
-      kContextStyle);
-  if (!table.Open()) {
-    return;
-  }
-  table.Cell();
-  NextItemWidth(Studio::Width::Fill());
-  SelectionCombo(*a_frame.snapshot, a_frame.piece, "##selection",
-                 *a_frame.intents);
-  table.Cell();
-  NextItemWidth(Studio::Width::Fill());
-  RecipeCombo(a_frame, "##recipe");
-  table.End();
 }
 
 }
@@ -294,29 +243,81 @@ void RenameRecipeButton(const Frame &a_frame) {
   Tooltip("rename the recipe; its file follows when it is the user's");
 }
 
+void IsolateCheckbox(const Studio::RecipeRow &a_recipe,
+                     const Studio::View &a_view, const char *a_label,
+                     Studio::Intents &a_out) {
+  bool isolating = a_view.Isolating();
+  std::string text;
+  if (isolating) {
+    text = "isolating " + a_view.isolation.recipeID;
+    if (a_view.isolation.output.has_value()) {
+      text += std::format(" output {}", *a_view.isolation.output);
+    }
+    if (a_view.isolation.layer.has_value()) {
+      text += std::format(" layer {}", *a_view.isolation.layer);
+    }
+  }
+  if (Toggle(a_label, isolating, text)) {
+    Studio::Post(a_out, Studio::SoloRecipe{a_recipe.id, isolating});
+  }
+}
+
 }
 
 void DrawStudioContext(const Frame &a_frame) {
   if (!a_frame.snapshot || !a_frame.intents) {
     return;
   }
-  static_cast<void>(Rule(Studio::RuleSpec{.text = "Session", .buttons = {}}));
-  DrawRecipeContext(a_frame);
-  static_cast<void>(Rule(Studio::RuleSpec{.text = "Recipe", .buttons = {}}));
-  NewRecipeButton(a_frame);
-  if (!a_frame.recipe) {
-    return;
+  float trailing = ButtonWidth("New recipe");
+  if (a_frame.recipe) {
+    trailing += ItemSpacingX() + ButtonWidth("Undo") + ItemSpacingX() +
+                ButtonWidth("Redo") + ItemSpacingX() + ButtonWidth("Rename") +
+                ItemSpacingX() + ButtonWidth("Recipe keys");
   }
-  ImGui::SameLine();
-  UndoRedoButtons(*a_frame.recipe, *a_frame.intents);
-  ImGui::SameLine();
-  RenameRecipeButton(a_frame);
-  ImGui::SameLine();
-  if (ImGui::Button("Recipe keys")) {
-    ImGui::OpenPopup("recipe-keys");
+  static_cast<void>(Rule(
+      Studio::RuleSpec{.text = "Recipe", .leadingSpace = false}, trailing,
+      [&]() {
+        NewRecipeButton(a_frame);
+        if (!a_frame.recipe) {
+          return;
+        }
+        ImGui::SameLine();
+        UndoRedoButtons(*a_frame.recipe, *a_frame.intents);
+        ImGui::SameLine();
+        RenameRecipeButton(a_frame);
+        ImGui::SameLine();
+        if (ImGui::Button("Recipe keys")) {
+          ImGui::OpenPopup("recipe-keys");
+        }
+      },
+      [&]() {
+        if (!a_frame.recipe) {
+          return;
+        }
+        if (a_frame.recipe->heldBack) {
+          Problem("held back");
+        } else if (!a_frame.recipe->problems.empty()) {
+          Warn(std::format("{} issue(s)", a_frame.recipe->problems.size()));
+        }
+      }));
+  if (a_frame.recipe) {
+    const float solo =
+        RowButtonWidth() + ItemSpacingX() + TextWidth("Solo recipe");
+    const float avail = ImGui::GetContentRegionAvail().x;
+    NextItemWidth(
+        Studio::Width::Px((std::max)(120.0f, avail - solo - ItemSpacingX())));
+    RecipeCombo(a_frame, "##recipe");
+    ImGui::SameLine();
+    IsolateCheckbox(*a_frame.recipe, ViewOf(a_frame), "Solo recipe",
+                    *a_frame.intents);
+  } else {
+    NextItemWidth(Studio::Width::Fill());
+    RecipeCombo(a_frame, "##recipe");
   }
-  KeysPopup(a_frame.piece ? *a_frame.piece : Studio::PieceRow{},
-            *a_frame.recipe, *a_frame.intents);
+  if (a_frame.recipe) {
+    KeysPopup(a_frame.piece ? *a_frame.piece : Studio::PieceRow{},
+              *a_frame.recipe, *a_frame.intents);
+  }
 }
 
 void DrawRecipeSettings(const Frame &a_frame) {
@@ -326,22 +327,7 @@ void DrawRecipeSettings(const Frame &a_frame) {
   const Studio::RecipeRow &recipe = *a_frame.recipe;
   [[maybe_unused]] const std::optional<std::size_t> detail =
       DrawForm("recipe-header", Studio::RecipeHeaderForm(recipe), a_frame);
-  if (!recipe.problems.empty()) {
-    static_cast<void>(Rule(Studio::RuleSpec{.text = "Rows with problems"}));
-    if (recipe.heldBack) {
-      Problem("Held back: recipe-level errors keep it out of the applied "
-              "set until they are fixed");
-    }
-    for (const Diagnostic &diagnostic : recipe.problems) {
-      const std::string line =
-          std::format("{}: {}", diagnostic.where, diagnostic.message);
-      if (diagnostic.severity == Severity::kError) {
-        Problem(line);
-      } else {
-        Warn(line);
-      }
-    }
-  }
+  DrawDiagnostics(recipe.problems, recipe.heldBack);
 }
 
 void DrawOutputHeader(const Studio::OutputRow &a_output,
@@ -349,15 +335,17 @@ void DrawOutputHeader(const Studio::OutputRow &a_output,
                       const Frame &a_frame) {
   const Studio::OutputHeader header = Studio::OutputHeaderForm(
       a_output.index, a_output.replace, a_output.selection);
-  static_cast<void>(
-      Rule(Studio::RuleSpec{.text = "Inspector"}, RowButtonWidth(), [&]() {
+  const std::string label = std::format(
+      "{} / {}", SurfaceName(a_output.surface), SlotName(a_output.slot));
+  static_cast<void>(Rule(
+      Studio::RuleSpec{.text = "Inspector"}, RowButtonWidth(),
+      [&]() {
         if (a_frame.recipe && a_frame.intents && RemoveButton(0)) {
           Studio::Post(*a_frame.intents, a_frame.recipe->id,
                        Studio::RemoveOutput{a_output.index});
         }
-      }));
-  Dim(std::format("{} / {}", SurfaceName(a_output.surface),
-                  SlotName(a_output.slot)));
+      },
+      [&]() { Dim(label); }));
   std::vector<Studio::FormField> settings(a_scalars.begin(), a_scalars.end());
   settings.insert(settings.end(), header.fields.begin(), header.fields.end());
   DrawFormWithSignals("settings", settings, a_frame);

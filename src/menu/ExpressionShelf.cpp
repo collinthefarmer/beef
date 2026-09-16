@@ -110,13 +110,17 @@ void DrawExpressionNumbers(const Studio::FormField &a_expression,
 }
 }
 
-bool FieldHasExpressionShelf(const Studio::FormField &a_field) {
-  if (!HasExpression(a_field) || !a_field.bind ||
-      Studio::IsWholeReference(a_field.text)) {
+bool FieldHasNumberShelf(const Studio::FormField &a_field,
+                         std::size_t a_minCount) {
+  if (!a_field.bind || Studio::IsWholeReference(a_field.text)) {
     return false;
   }
   const auto program = Program::Parse(a_field.text);
-  return program && !program->NumericLiterals().empty();
+  return program && program->NumericLiterals().size() >= a_minCount;
+}
+
+bool FieldHasExpressionShelf(const Studio::FormField &a_field) {
+  return HasExpression(a_field) && FieldHasNumberShelf(a_field);
 }
 
 void DrawExpressionOpener(const Studio::FormField &a_field,

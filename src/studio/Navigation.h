@@ -20,6 +20,7 @@ inline constexpr std::size_t kMaxInspectorHistory = 64;
 
 struct Navigation {
   std::vector<InspectorVisit> back;
+  std::vector<InspectorVisit> forward;
   float scroll = 0.0f;
 };
 
@@ -54,6 +55,8 @@ ResolvePendingSubject(Navigation &a_navigation, Selection &a_selection,
                                     const RecipeRow &a_recipe);
 [[nodiscard]] bool GoBack(Navigation &a_navigation, Selection &a_selection,
                           const RecipeRow &a_recipe);
+[[nodiscard]] bool GoForward(Navigation &a_navigation, Selection &a_selection,
+                             const RecipeRow &a_recipe);
 void InvalidateIndexedSubjects(Navigation &a_navigation, Selection &a_selection,
                                std::string_view a_recipeID);
 [[nodiscard]] bool

@@ -46,15 +46,17 @@ int main() {
   const SurfaceOutput fuzz = MakeFuzz();
   const ResolvedOutput resolved = ResolveOutput(fuzz, state);
 
-  Check(resolved.Names(ScalarField::kColor), "the set colour scalar is named");
+  Check(resolved.IsNamed(ScalarField::kColor),
+        "the set colour scalar is named");
   Check(Near(resolved.color.x, 2.0f) && Near(resolved.color.y, 0.5f) &&
             Near(resolved.color.z, 0.0f),
         "colour resolves its signal reference and literals");
-  Check(resolved.Names(ScalarField::kWeight), "the set weight scalar is named");
+  Check(resolved.IsNamed(ScalarField::kWeight),
+        "the set weight scalar is named");
   Check(Near(resolved.Scalar(ScalarField::kWeight), 2.0f),
         "weight resolves through the glow signal");
 
-  Check(!resolved.Names(ScalarField::kStrength),
+  Check(!resolved.IsNamed(ScalarField::kStrength),
         "a scalar the fuzz slot does not carry is not named");
   Check(Near(resolved.Scalar(ScalarField::kStrength),
              ScalarFallback(ScalarField::kStrength)),
@@ -69,7 +71,8 @@ int main() {
   SurfaceOutput bare;
   bare.slot = Slot::kFuzz;
   const ResolvedOutput empty = ResolveOutput(bare, state);
-  Check(!empty.Names(ScalarField::kColor) && !empty.Names(ScalarField::kWeight),
+  Check(!empty.IsNamed(ScalarField::kColor) &&
+            !empty.IsNamed(ScalarField::kWeight),
         "an output that sets no scalar names none");
   Check(Near(empty.color.x, ScalarFallback(ScalarField::kColor)) &&
             Near(empty.color.y, ScalarFallback(ScalarField::kColor)) &&

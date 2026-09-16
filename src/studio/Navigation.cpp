@@ -161,6 +161,7 @@ bool Navigate(Navigation &a_navigation, Selection &a_selection,
     a_navigation.back.erase(a_navigation.back.begin());
   }
   a_navigation.back.push_back({a_selection, a_navigation.scroll});
+  a_navigation.forward.clear();
   a_selection.subject = std::move(a_subject);
   a_selection.property.reset();
   AlignOutputSelection(a_selection, a_recipe);
@@ -221,6 +222,7 @@ bool NavigateProperty(Navigation &a_navigation, Selection &a_selection,
     a_navigation.back.erase(a_navigation.back.begin());
   }
   a_navigation.back.push_back({a_selection, a_navigation.scroll});
+  a_navigation.forward.clear();
   a_selection.subject = std::move(a_subject);
   a_selection.property = std::move(a_property);
   AlignOutputSelection(a_selection, a_recipe);
@@ -228,11 +230,13 @@ bool NavigateProperty(Navigation &a_navigation, Selection &a_selection,
   return true;
 }
 
-bool GoBack(Navigation &a_navigation, Selection &a_selection,
-            const RecipeRow &a_recipe) {
-  while (!a_navigation.back.empty()) {
-    InspectorVisit visit = std::move(a_navigation.back.back());
-    a_navigation.back.pop_back();
+namespace {
+bool StepHistory(std::vector<InspectorVisit> &a_from,
+                 std::vector<InspectorVisit> &a_to, float &a_scroll,
+                 Selection &a_selection, const RecipeRow &a_recipe) {
+  while (!a_from.empty()) {
+    InspectorVisit visit = std::move(a_from.back());
+    a_from.pop_back();
     if (visit.selection.recipeID != a_recipe.id ||
         visit.selection.piece != a_selection.piece ||
         !InspectorSubjectExists(visit.selection.subject, a_recipe)) {
@@ -246,11 +250,28 @@ bool GoBack(Navigation &a_navigation, Selection &a_selection,
     if (visit.selection == a_selection) {
       continue;
     }
+    if (a_to.size() >= kMaxInspectorHistory) {
+      a_to.erase(a_to.begin());
+    }
+    a_to.push_back({a_selection, a_scroll});
     a_selection = std::move(visit.selection);
-    a_navigation.scroll = visit.scroll;
+    a_scroll = visit.scroll;
     return true;
   }
   return false;
+}
+}
+
+bool GoBack(Navigation &a_navigation, Selection &a_selection,
+            const RecipeRow &a_recipe) {
+  return StepHistory(a_navigation.back, a_navigation.forward,
+                     a_navigation.scroll, a_selection, a_recipe);
+}
+
+bool GoForward(Navigation &a_navigation, Selection &a_selection,
+               const RecipeRow &a_recipe) {
+  return StepHistory(a_navigation.forward, a_navigation.back,
+                     a_navigation.scroll, a_selection, a_recipe);
 }
 
 void InvalidateIndexedSubjects(Navigation &a_navigation, Selection &a_selection,
@@ -258,9 +279,11 @@ void InvalidateIndexedSubjects(Navigation &a_navigation, Selection &a_selection,
   if (InvalidateIndexedSelection(a_selection, a_recipeID)) {
     a_navigation.scroll = 0.0f;
   }
-  std::erase_if(a_navigation.back, [&](InspectorVisit &a_visit) {
+  const auto stale = [&](InspectorVisit &a_visit) {
     return InvalidateIndexedSelection(a_visit.selection, a_recipeID);
-  });
+  };
+  std::erase_if(a_navigation.back, stale);
+  std::erase_if(a_navigation.forward, stale);
 }
 
 bool ShouldInvalidateIndexedSubjects(std::span<const RecipeEdit> a_edits) {

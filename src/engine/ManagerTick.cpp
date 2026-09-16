@@ -299,12 +299,33 @@ void Manager::Tick(std::uint32_t a_nowMS, const Settings &a_settings) {
       TickInstance(instance, timing.time, timing.delta);
       instance.lastTime = timing.time;
     }
+    const bool soloingPiece = view.soloPiece.has_value();
+    std::vector<bool> instanceHidden;
+    if (soloingPiece) {
+      instanceHidden.assign(state.instances.size(), false);
+    }
     for (LivePiece &piece : state.pieces) {
+      const bool hidden =
+          soloingPiece && !view.PieceShown(it->first, piece.armor);
       for (LiveGeometry &bound : piece.geometries) {
-        RenderGeometry(state, piece, bound);
+        RenderGeometry(state, piece, bound, hidden);
+        if (!hidden) {
+          continue;
+        }
+        for (const PlacementId id : bound.placements) {
+          const auto placement = static_cast<std::size_t>(id);
+          if (placement >= state.plan.placements.size()) {
+            continue;
+          }
+          const auto instance = static_cast<std::size_t>(
+              state.plan.placements[placement].instance);
+          if (instance < instanceHidden.size()) {
+            instanceHidden[instance] = true;
+          }
+        }
       }
     }
-    UpdateLights(state);
+    UpdateLights(state, instanceHidden);
     FinishApplications(it->first, state);
     if (Alive(state)) {
       ++it;
@@ -349,7 +370,7 @@ void Manager::DropLostGeometries(LiveActor &a_state) {
 
 void Manager::RenderGeometry(LiveActor &a_state,
                              [[maybe_unused]] LivePiece &a_piece,
-                             LiveGeometry &a_bound) {
+                             LiveGeometry &a_bound, bool a_hidden) {
   const Studio::View &view = editor_.CurrentView();
   if (a_bound.lost) {
     for (const PlacementId id : a_bound.placements) {
@@ -371,19 +392,29 @@ void Manager::RenderGeometry(LiveActor &a_state,
       continue;
     }
     SlotWrite write = EmptyWrite(slot.slot);
-    const SlotChain chain =
-        RenderSlotChain(a_state, a_bound, view, slot, anyLayerHidden);
-    write.shown = chain.shown;
-    write.texture = chain.texture;
-    ApplySlotScalars(write, slot.slot, chain);
+    if (!a_hidden) {
+      const SlotChain chain =
+          RenderSlotChain(a_state, a_bound, view, slot, anyLayerHidden);
+      write.shown = chain.shown;
+      write.texture = chain.texture;
+      ApplySlotScalars(write, slot.slot, chain);
+    }
     WriteSlot(*target, write);
   }
-  PoseShell(a_bound, a_state, view);
+  if (a_hidden) {
+    if (a_bound.shell) {
+      a_bound.shell->SetVisible(false);
+    }
+  } else {
+    PoseShell(a_bound, a_state, view);
+  }
 }
 
-void Manager::UpdateLights(LiveActor &a_state) {
+void Manager::UpdateLights(LiveActor &a_state,
+                           const std::vector<bool> &a_instanceHidden) {
   const Studio::View &view = editor_.CurrentView();
-  for (LiveInstance &instance : a_state.instances) {
+  for (std::size_t i = 0; i < a_state.instances.size(); ++i) {
+    LiveInstance &instance = a_state.instances[i];
     if (!instance.light || !instance.lightOutput || !instance.recipe ||
         !instance.signals) {
       continue;
@@ -397,9 +428,11 @@ void Manager::UpdateLights(LiveActor &a_state) {
     }
     const Studio::ResolvedLight resolved =
         Studio::ResolveLight(*light, *instance.signals);
-    instance.light->Update(
-        resolved.color, resolved.intensity, resolved.size, resolved.cutoff,
-        view.OutputShown(instance.recipe->id, *instance.lightOutput));
+    const bool hidden = i < a_instanceHidden.size() && a_instanceHidden[i];
+    instance.light->Update(resolved.color, resolved.intensity, resolved.size,
+                           resolved.cutoff,
+                           !hidden && view.OutputShown(instance.recipe->id,
+                                                       *instance.lightOutput));
   }
 }
 

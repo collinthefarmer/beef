@@ -1,5 +1,6 @@
 #include "menu/RelationshipPanel.h"
 
+#include "menu/FormDraw.h"
 #include "menu/MenuWidgets.h"
 #include "studio/Relationships.h"
 
@@ -71,25 +72,10 @@ void Follow(const std::string &a_label, Studio::InspectorSubject a_subject,
             const Frame &a_frame,
             std::optional<PropertyLocation> a_property = std::nullopt) {
   if (ImGui::SmallButton(a_label.c_str())) {
-    a_frame.state->revealedProperty.reset();
-    a_frame.state->navigation.scroll = ImGui::GetScrollY();
-    if (a_property) {
-      (void)Studio::NavigateProperty(
-          a_frame.state->navigation, a_frame.state->selection,
-          std::move(a_subject), std::move(*a_property), *a_frame.recipe);
-    } else {
-      (void)Studio::Navigate(a_frame.state->navigation,
-                             a_frame.state->selection, std::move(a_subject),
-                             *a_frame.recipe);
-    }
+    NavigateFromInspector(a_frame, std::move(a_subject), std::move(a_property));
   }
 }
 }
-
-constexpr Studio::TableStyle kRelationStyle{
-    .borders = Studio::TableBorders::kInnerHorizontal,
-    .stretch = true,
-    .headers = true};
 
 void DrawDrivenBy(const Frame &a_frame,
                   const Studio::InspectorSubject &a_subject) {
@@ -105,7 +91,7 @@ void DrawDrivenBy(const Frame &a_frame,
   Table table = Table::Begin(
       "driven-by",
       {{"Property", Studio::Width::Fill()}, {"Driver", Studio::Width::Fill()}},
-      kRelationStyle);
+      Studio::kRelationTable);
   if (!table.Open()) {
     return;
   }
@@ -139,7 +125,7 @@ void DrawUsedBy(const Frame &a_frame,
                              {{"Consumer", Studio::Width::Fill()},
                               {"Property", Studio::Width::Fill()},
                               {"Component", Studio::Width::Fit()}},
-                             kRelationStyle);
+                             Studio::kRelationTable);
   if (!table.Open()) {
     return;
   }

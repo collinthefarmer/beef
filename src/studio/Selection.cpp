@@ -47,6 +47,22 @@ void FilterIsolated(std::vector<ResolvedRecipe> &a_resolved,
     return !a_r.recipe || a_r.recipe->id != a_view.isolation.recipeID;
   });
 }
+
+[[nodiscard]] bool PieceEnchanted(const PieceRow &a_piece) noexcept {
+  return std::ranges::any_of(a_piece.keys, [](const KeyChoice &a_key) {
+    return a_key.key.kind == KeyKind::kEnchantment;
+  });
+}
+
+[[nodiscard]] const PieceRow *
+DefaultPiece(const Snapshot &a_snapshot) noexcept {
+  for (const PieceRow &piece : a_snapshot.pieces) {
+    if (piece.isPlayer && PieceEnchanted(piece)) {
+      return &piece;
+    }
+  }
+  return a_snapshot.pieces.empty() ? nullptr : &a_snapshot.pieces.front();
+}
 }
 
 const PieceRow *SelectedPiece(const Snapshot &a_snapshot,
@@ -56,7 +72,7 @@ const PieceRow *SelectedPiece(const Snapshot &a_snapshot,
       return &piece;
     }
   }
-  return a_snapshot.pieces.empty() ? nullptr : &a_snapshot.pieces.front();
+  return DefaultPiece(a_snapshot);
 }
 
 const RecipeRow *SelectedRecipe(const PieceRow *a_piece,

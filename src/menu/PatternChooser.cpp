@@ -20,11 +20,6 @@ namespace ImGui = ImGuiMCP;
 
 namespace BetterEnchantmentEffects::Menu {
 namespace {
-constexpr Studio::TableStyle kOfferStyle{
-    .borders = Studio::TableBorders::kInnerHorizontal,
-    .stretch = true,
-    .headers = false,
-    .rowBackground = false};
 
 [[nodiscard]] const Studio::GeometryRow &
 OfferGeometry(const Studio::TermOffer &a_offer, const Frame &a_frame) {
@@ -144,7 +139,7 @@ void DrawOfferTable(std::span<const Studio::TermOffer> a_offers,
                              {"pattern", Studio::Width::Fit()},
                              {"detail", Studio::Width::Fill()},
                              {"", Studio::Width::Px(RowButtonWidth())}},
-                            kOfferStyle);
+                            Studio::kFormTable);
   if (!table.Open()) {
     return;
   }

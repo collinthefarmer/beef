@@ -8,7 +8,7 @@ float ResolvedOutput::Scalar(ScalarField a_field) const noexcept {
   return scalars[static_cast<std::size_t>(a_field)];
 }
 
-bool ResolvedOutput::Names(ScalarField a_field) const noexcept {
+bool ResolvedOutput::IsNamed(ScalarField a_field) const noexcept {
   return named[static_cast<std::size_t>(a_field)];
 }
 

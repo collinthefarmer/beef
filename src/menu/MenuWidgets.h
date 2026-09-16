@@ -106,7 +106,8 @@ void Badge(Studio::FieldKind a_kind);
 [[nodiscard]] std::optional<Blend> BlendBadge(Blend a_current, Slot a_slot);
 [[nodiscard]] std::optional<std::string>
 ValueWidget(const char *a_key, const Studio::FormField &a_field, float a_scale,
-            const TextCheck &a_check = {});
+            const TextCheck &a_check = {},
+            const Studio::Width &a_width = Studio::Width::Fill());
 [[nodiscard]] bool DetailButton();
 
 [[nodiscard]] std::string ValueText(const Value &a_value);
@@ -116,7 +117,6 @@ struct ResourceCells {
   std::string_view name;
   std::string_view type;
   std::optional<Value> value;
-  std::size_t references = 0;
 };
 void ResourceTable(const char *a_id, std::span<const ResourceCells> a_rows);
 
@@ -127,7 +127,8 @@ void ResourceTable(const char *a_id, std::span<const ResourceCells> a_rows);
 void Rule();
 [[nodiscard]] RuleResult Rule(const Studio::RuleSpec &a_spec,
                               float a_trailingWidth = 0.0f,
-                              const std::function<void()> &a_trailing = {});
+                              const std::function<void()> &a_trailing = {},
+                              const std::function<void()> &a_leading = {});
 [[nodiscard]] RuleFilter RuleWithFilter(const Studio::RuleSpec &a_spec,
                                         const FilterSpec &a_filter);
 
@@ -149,6 +150,7 @@ void Problem(std::string_view a_text);
 void Warn(std::string_view a_text);
 void Ok(std::string_view a_text);
 void Dim(std::string_view a_text);
+void DrawDiagnostics(std::span<const Diagnostic> a_problems, bool a_heldBack);
 void HelpMarker(const char *a_text);
 void Tooltip(std::string_view a_text);
 }

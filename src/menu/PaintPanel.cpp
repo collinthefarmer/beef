@@ -46,16 +46,6 @@ namespace {
 constexpr const char *kTermPayload = "BEEF_TERM";
 constexpr float kMaskPreviewSize = 160.0f;
 
-constexpr Studio::TableStyle kFormStyle{
-    .borders = Studio::TableBorders::kInnerHorizontal,
-    .stretch = true,
-    .headers = false,
-    .rowBackground = false};
-constexpr Studio::TableStyle kLayerStyle{
-    .borders = Studio::TableBorders::kInnerHorizontal,
-    .stretch = true,
-    .headers = true,
-    .rowBackground = true};
 const std::vector<std::string> kTermOps{
     std::string{Studio::TermOpName(Studio::TermOp::kAnd)},
     std::string{Studio::TermOpName(Studio::TermOp::kOr)},
@@ -114,7 +104,7 @@ NextGeometry(const Studio::RecipeRow &a_recipe,
                        {"term", Studio::Width::Fit()},
                        {"detail", Studio::Width::Fill()},
                        {"", button}},
-                      kLayerStyle);
+                      Studio::kLayerTable);
 }
 
 void CommitTermField(std::size_t a_index, const Studio::TermField &a_field,
@@ -146,7 +136,7 @@ void DrawTermSettings(std::size_t a_index, const Studio::Term &a_term,
   auto table = Table::Begin(
       "term-settings",
       {{"setting", Studio::Width::Fit()}, {"value", Studio::Width::Fill()}},
-      kFormStyle);
+      Studio::kFormTable);
   if (!table.Open()) {
     return;
   }
@@ -190,7 +180,7 @@ void DrawTermReads(const Studio::Term &a_term, const Frame &a_frame) {
                             {{"reads", Studio::Width::Fit()},
                              {"", Studio::Width::Px(ImGui::GetFrameHeight())},
                              {"definition", Studio::Width::Fill()}},
-                            kFormStyle);
+                            Studio::kFormTable);
   if (!table.Open()) {
     return;
   }
@@ -237,7 +227,7 @@ void DrawTermDetails(std::size_t a_index, const Studio::Term &a_term,
   auto fields = Table::Begin(
       "term-fields",
       {{"field", Studio::Width::Fit()}, {"value", Studio::Width::Fill()}},
-      kFormStyle);
+      Studio::kFormTable);
   if (fields.Open()) {
     fields.Cell();
     ImGui::AlignTextToFramePadding();
@@ -473,9 +463,9 @@ void DrawMaskRule(std::string_view a_title, const Frame &a_frame) {
   const Studio::MaskStack &mask = state.mask;
   const bool painting = state.paint.has_value();
   const auto expression = Studio::CheckedBuildMask(mask.terms);
-  const bool something = painting && state.paint->ready &&
-                         !state.paint->pendingCommit && expression &&
-                         !expression->empty();
+  const bool canKeep = painting && state.paint->ready &&
+                       !state.paint->pendingCommit && expression &&
+                       !expression->empty();
 
   const Studio::RuleButton buttons[]{
       {Studio::RuleAction::kUndo,
@@ -490,7 +480,7 @@ void DrawMaskRule(std::string_view a_title, const Frame &a_frame) {
        {},
        Studio::Width::Fit(),
        !mask.terms.empty()},
-      {Studio::RuleAction::kAdd, "Keep", Studio::Width::Fit(), something},
+      {Studio::RuleAction::kAdd, "Keep", Studio::Width::Fit(), canKeep},
       {Studio::RuleAction::kRemove, "Discard", Studio::Width::Fit(),
        painting && !state.paint->pendingCommit},
   };
@@ -606,6 +596,9 @@ void EditMaskAsTerms(const Studio::TextRow &a_mask, const Frame &a_frame) {
                Studio::BeginPaint{a_frame.recipe->id, *key, Surface::kMaterial,
                                   a_frame.state->nextPaintSessionID++,
                                   a_frame.state->lastPaintReset, assignment});
+  if (!a_mask.name.empty()) {
+    a_frame.state->pendingSelection = Studio::MaskSubject{a_mask.name};
+  }
 }
 
 void DrawPaintDraftBar(const Frame &a_frame) {
@@ -782,7 +775,7 @@ void DrawTermTuningPane(const Frame &a_frame) {
   auto table = Table::Begin(
       "term-tune",
       {{"setting", Studio::Width::Fit()}, {"value", Studio::Width::Fill()}},
-      kFormStyle);
+      Studio::kFormTable);
   if (!table.Open()) {
     return;
   }

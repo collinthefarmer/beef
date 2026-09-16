@@ -29,10 +29,6 @@ using ImGuiMCP::ImVec2;
 
 namespace BetterEnchantmentEffects::Menu {
 namespace {
-constexpr Studio::TableStyle kGridStyle{.borders = Studio::TableBorders::kAll,
-                                        .stretch = true,
-                                        .headers = true,
-                                        .rowBackground = true};
 
 void DrawLoadedTable(const Studio::Snapshot &a_snapshot) {
   auto table = Table::Begin("recipes",
@@ -41,7 +37,7 @@ void DrawLoadedTable(const Studio::Snapshot &a_snapshot) {
                              {"rows", Studio::Width::Fill()},
                              {"state", Studio::Width::Fill()},
                              {"file", Studio::Width::Fill()}},
-                            kGridStyle);
+                            Studio::kGridTable);
   if (!table.Open()) {
     return;
   }
@@ -149,22 +145,7 @@ void DrawRecipeFile(const Studio::RecipeRow &a_recipe, const Frame &a_frame) {
   HelpMarker("Save writes the recipe to its file. An imported recipe is saved "
              "to user/<id>.json with its imported line dropped, and loads from "
              "there afterwards.");
-  if (!a_recipe.problems.empty()) {
-    static_cast<void>(Rule(Studio::RuleSpec{.text = "Rows with problems"}));
-    if (a_recipe.heldBack) {
-      Problem("Held back: recipe-level errors keep it out of the applied "
-              "set until they are fixed");
-    }
-    for (const Diagnostic &diagnostic : a_recipe.problems) {
-      const std::string line =
-          std::format("{}: {}", diagnostic.where, diagnostic.message);
-      if (diagnostic.severity == Severity::kError) {
-        Problem(line);
-      } else {
-        Warn(line);
-      }
-    }
-  }
+  DrawDiagnostics(a_recipe.problems, a_recipe.heldBack);
 }
 
 void DrawSelection(const Studio::Snapshot &a_snapshot,

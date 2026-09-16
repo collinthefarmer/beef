@@ -78,19 +78,19 @@ RecipeRow BuildRecipeRow(const RecipeRowInput &a_input) {
     const std::unordered_map<std::string, std::string> reasons =
         InertReasons(graph);
     for (const Signal &signal : recipe.signals) {
-      SignalRow srow = SignalRowOf(
+      SignalRow signalRow = SignalRowOf(
           signal, rows, RefCount(a_input.references.signals, signal.name));
       if (a_input.signals) {
-        srow.value = a_input.signals->ValueOf(signal.name);
-        srow.live = true;
+        signalRow.value = a_input.signals->ValueOf(signal.name);
+        signalRow.live = true;
       }
-      if (srow.inert) {
+      if (signalRow.inert) {
         if (const auto reason = reasons.find(signal.name);
             reason != reasons.end()) {
-          srow.problem = reason->second;
+          signalRow.problem = reason->second;
         }
       }
-      r.signals.push_back(std::move(srow));
+      r.signals.push_back(std::move(signalRow));
     }
   }
   for (const Curve &curve : recipe.curves) {

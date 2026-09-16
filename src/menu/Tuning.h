@@ -13,6 +13,8 @@ struct TuningSink {
 
 void DrawTuning(const Studio::FormField &a_field, const Frame &a_frame,
                 const std::optional<TuningSink> &a_sink = std::nullopt);
+[[nodiscard]] bool FieldTunable(const Studio::FormField &a_field,
+                                const Frame &a_frame);
 void BeginTuningFrame(Studio::MenuState &a_state,
                       const Studio::Snapshot &a_snapshot);
 void EndTuningFrame(Studio::MenuState &a_state);

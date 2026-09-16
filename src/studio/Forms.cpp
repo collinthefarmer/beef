@@ -89,11 +89,12 @@ OptionalVec2Of(const std::string &a_text) {
   return a_text.empty() ? std::nullopt : std::optional{a_text};
 }
 
-[[nodiscard]] std::optional<std::string> StringAny(const std::string &a_text) {
+[[nodiscard]] std::optional<std::string>
+AlwaysString(const std::string &a_text) {
   return std::optional{a_text};
 }
 
-[[nodiscard]] std::optional<bool> OnOffAny(const std::string &a_text) {
+[[nodiscard]] std::optional<bool> AlwaysOnOff(const std::string &a_text) {
   return std::optional{a_text == "on"};
 }
 
@@ -264,6 +265,8 @@ struct ParamFieldSpec {
       valued && IsWholeReference(a_spec.text) &&
       std::ranges::find(a_spec.names, ReferenceName(a_spec.text)) !=
           a_spec.names.end();
+  const bool embedsReferences = valued && !IsWholeReference(a_spec.text) &&
+                                a_spec.text.find('@') != std::string::npos;
   const bool offers =
       !a_spec.names.empty() &&
       (a_spec.kind == FieldKind::kScalar || a_spec.kind == FieldKind::kColor);
@@ -273,7 +276,10 @@ struct ParamFieldSpec {
        .text = a_spec.text,
        .names = a_spec.names,
        .bind = std::move(a_spec.bind),
-       .detail = signal ? std::optional{FieldDetail::kSignal} : std::nullopt,
+       .detail =
+           signal ? std::optional{FieldDetail::kSignal}
+                  : (embedsReferences ? std::optional{FieldDetail::kReferences}
+                                      : std::nullopt),
        .workingRange = a_spec.workingRange,
        .units = std::move(a_spec.units),
        .integral = a_spec.integral});
@@ -478,31 +484,32 @@ BindImageMirror(std::string a_name, SourceKind a_record, std::size_t a_axis) {
 
 FormField CurveTextField(const std::string &a_curve,
                          const std::string &a_text) {
-  return TextedField({.name = a_curve,
-                      .kind = FieldKind::kCurve,
-                      .text = a_text,
-                      .bind = BindCurveText(a_curve)});
+  return TextEntryField({.name = a_curve,
+                         .kind = FieldKind::kCurve,
+                         .text = a_text,
+                         .bind = BindCurveText(a_curve)});
 }
 
 FormField MaskTextField(const std::string &a_mask, const std::string &a_text) {
-  return TextedField({.name = a_mask,
-                      .kind = FieldKind::kMask,
-                      .text = a_text,
-                      .bind = BindMaskText(a_mask)});
+  return TextEntryField({.name = a_mask,
+                         .kind = FieldKind::kMask,
+                         .text = a_text,
+                         .bind = BindMaskText(a_mask)});
 }
 
 namespace {
 [[nodiscard]] FormField
-SourceFieldOf(const Inspector &a_in,
+SourceFieldOf(const Inspector &a_inspector,
               const std::vector<std::string> &a_sourceNames) {
   FormField source = ValueField(
       {.name = "source",
        .kind = FieldKind::kLayerSource,
-       .text = a_in.row.source,
+       .text = a_inspector.row.source,
        .names = a_sourceNames,
-       .bind = BindLayerSource(a_in.output, a_in.layer),
+       .bind = BindLayerSource(a_inspector.output, a_inspector.layer),
        .value = std::nullopt,
-       .detail = DetailWhen(a_in.source.has_value(), FieldDetail::kSource)});
+       .detail =
+           DetailWhen(a_inspector.source.has_value(), FieldDetail::kSource)});
   source.creators = Creators(kImageCreators);
   source.create = [taken = a_sourceNames,
                    bind = source.bind](const std::string &a_creator) {
@@ -511,18 +518,18 @@ SourceFieldOf(const Inspector &a_in,
   return source;
 }
 
-[[nodiscard]] FormField CurveFieldOf(const Inspector &a_in) {
+[[nodiscard]] FormField CurveFieldOf(const Inspector &a_inspector) {
   FormField curve = ValueField(
       {.name = "curve",
        .kind = FieldKind::kCurve,
-       .text = a_in.row.curve,
-       .names = a_in.curves,
-       .bind = BindLayerCurve(a_in.output, a_in.layer),
+       .text = a_inspector.row.curve,
+       .names = a_inspector.curves,
+       .bind = BindLayerCurve(a_inspector.output, a_inspector.layer),
        .value = std::nullopt,
-       .detail = DetailWhen(a_in.curve.has_value(), FieldDetail::kCurve),
+       .detail = DetailWhen(a_inspector.curve.has_value(), FieldDetail::kCurve),
        .allowEmpty = true});
   curve.creators = {"new curve"};
-  curve.create = [curves = a_in.curves,
+  curve.create = [curves = a_inspector.curves,
                   bind = curve.bind](const std::string &) {
     std::vector<RecipeEdit> edits;
     const auto name = UniqueName("curve", curves);
@@ -536,21 +543,23 @@ SourceFieldOf(const Inspector &a_in,
 }
 
 [[nodiscard]] FormField
-OpacityFieldOf(const Inspector &a_in,
+OpacityFieldOf(const Inspector &a_inspector,
                const std::vector<std::string> &a_signalNames) {
-  FormField opacity =
-      ValueField({.name = "opacity",
-                  .kind = FieldKind::kScalar,
-                  .text = a_in.row.opacityText,
-                  .names = a_in.scalarSignals,
-                  .bind = BindLayerOpacity(a_in.output, a_in.layer),
-                  .value = std::nullopt,
-                  .detail = DetailWhen(NamesSignal(a_in, a_in.row.opacityText),
-                                       FieldDetail::kOpacity)});
+  FormField opacity = ValueField(
+      {.name = "opacity",
+       .kind = FieldKind::kScalar,
+       .text = a_inspector.row.opacityText,
+       .names = a_inspector.scalarSignals,
+       .bind = BindLayerOpacity(a_inspector.output, a_inspector.layer),
+       .value = std::nullopt,
+       .detail =
+           DetailWhen(NamesSignal(a_inspector, a_inspector.row.opacityText),
+                      FieldDetail::kOpacity)});
   opacity.workingRange = std::pair{0.0f, 1.0f};
   opacity.units = "fraction";
   opacity.creators = Creators(kValueCreators);
-  opacity.create = [current = a_in.row.opacityText, taken = a_signalNames,
+  opacity.create = [current = a_inspector.row.opacityText,
+                    taken = a_signalNames,
                     bind = opacity.bind](const std::string &a_creator) {
     return CreateValue({.creator = a_creator,
                         .field = "opacity",
@@ -563,20 +572,20 @@ OpacityFieldOf(const Inspector &a_in,
 }
 
 [[nodiscard]] FormField
-ColourFieldOf(const Inspector &a_in,
+ColourFieldOf(const Inspector &a_inspector,
               const std::vector<std::string> &a_signalNames) {
-  FormField colour =
-      ValueField({.name = "colour",
-                  .kind = FieldKind::kColor,
-                  .text = a_in.row.color,
-                  .names = a_in.colorSignals,
-                  .bind = BindLayerColor(a_in.output, a_in.layer),
-                  .value = std::nullopt,
-                  .detail = DetailWhen(NamesSignal(a_in, a_in.row.color),
-                                       FieldDetail::kColor),
-                  .allowEmpty = true});
+  FormField colour = ValueField(
+      {.name = "colour",
+       .kind = FieldKind::kColor,
+       .text = a_inspector.row.color,
+       .names = a_inspector.colorSignals,
+       .bind = BindLayerColor(a_inspector.output, a_inspector.layer),
+       .value = std::nullopt,
+       .detail = DetailWhen(NamesSignal(a_inspector, a_inspector.row.color),
+                            FieldDetail::kColor),
+       .allowEmpty = true});
   colour.creators = Creators(kValueCreators);
-  colour.create = [current = a_in.row.color, taken = a_signalNames,
+  colour.create = [current = a_inspector.row.color, taken = a_signalNames,
                    bind = colour.bind](const std::string &a_creator) {
     return CreateValue({.creator = a_creator,
                         .field = "colour",
@@ -589,15 +598,15 @@ ColourFieldOf(const Inspector &a_in,
 }
 
 [[nodiscard]] FormField
-MaskFieldOf(const Inspector &a_in,
+MaskFieldOf(const Inspector &a_inspector,
             const std::vector<std::string> &a_sourceNames) {
   FormField mask = ReferenceField(
       {.name = "mask",
-       .text = a_in.row.mask,
-       .names = a_in.masks,
+       .text = a_inspector.row.mask,
+       .names = a_inspector.masks,
        .allowEmpty = true,
-       .bind = BindLayerMask(a_in.output, a_in.layer),
-       .detail = DetailWhen(a_in.mask.has_value(), FieldDetail::kMask),
+       .bind = BindLayerMask(a_inspector.output, a_inspector.layer),
+       .detail = DetailWhen(a_inspector.mask.has_value(), FieldDetail::kMask),
        .creators = {"new mask"}});
   mask.create = [taken = a_sourceNames,
                  bind = mask.bind](const std::string &a_creator) {
@@ -701,18 +710,18 @@ void ConstantFields(std::vector<FormField> &a_form, const SignalContext &a_ctx,
         return std::format("{}, {}", ParamText(a_pair.x), ParamText(a_pair.y));
       },
       [](const Vec3 &a_colour) { return LiteralColorText(a_colour); });
-  a_form.push_back(TextedField({.name = "value",
-                                .kind = FieldKind::kSignalValue,
-                                .text = text,
-                                .bind = BindSignalValue(a_ctx.name)}));
+  a_form.push_back(TextEntryField({.name = "value",
+                                   .kind = FieldKind::kSignalValue,
+                                   .text = text,
+                                   .bind = BindSignalValue(a_ctx.name)}));
 }
 
 void ExprFields(std::vector<FormField> &a_form, const SignalContext &a_ctx,
                 const ExprSignal &a_expr) {
-  a_form.push_back(TextedField({.name = "value",
-                                .kind = FieldKind::kSignalValue,
-                                .text = a_expr.text,
-                                .bind = BindSignalValue(a_ctx.name)}));
+  a_form.push_back(TextEntryField({.name = "value",
+                                   .kind = FieldKind::kSignalValue,
+                                   .text = a_expr.text,
+                                   .bind = BindSignalValue(a_ctx.name)}));
 }
 
 void PulseFields(std::vector<FormField> &a_form, const SignalContext &a_ctx,
@@ -789,17 +798,17 @@ void EfshFields(std::vector<FormField> &a_form, const SignalContext &a_ctx,
                   BindSignalMember(a_ctx.name, a_ctx.record, &EfshSignal::field,
                                    WordOf(kEfshFields))));
   a_form.push_back(
-      TextedField({.name = "record",
-                   .kind = FieldKind::kText,
-                   .text = a_efsh.record.text,
-                   .bind = BindSignalMember(a_ctx.name, a_ctx.record,
-                                            &EfshSignal::record, FormOf)}));
+      TextEntryField({.name = "record",
+                      .kind = FieldKind::kText,
+                      .text = a_efsh.record.text,
+                      .bind = BindSignalMember(a_ctx.name, a_ctx.record,
+                                               &EfshSignal::record, FormOf)}));
 }
 
 void ActorValueFields(std::vector<FormField> &a_form,
                       const SignalContext &a_ctx,
                       const ActorValueSignal &a_actorValue) {
-  a_form.push_back(TextedField(
+  a_form.push_back(TextEntryField(
       {.name = "actorValue",
        .kind = FieldKind::kText,
        .text = a_actorValue.actorValue,
@@ -838,22 +847,22 @@ void TriggerOriginFields(std::vector<FormField> &a_form,
   Match(
       a_trigger.origin,
       [&](const EventOrigin &a_event) {
-        a_form.push_back(TextedField(
+        a_form.push_back(TextEntryField(
             {.name = "event",
              .kind = FieldKind::kText,
              .text = a_event.event,
              .bind = BindTriggerMember(a_ctx.name, a_ctx.record,
                                        &EventOrigin::event, TextOf)}));
-        a_form.push_back(
-            TextedField({.name = "at",
-                         .kind = FieldKind::kText,
-                         .text = a_event.at,
-                         .bind = BindTriggerMember(a_ctx.name, a_ctx.record,
-                                                   &EventOrigin::at, StringAny),
-                         .allowEmpty = true}));
+        a_form.push_back(TextEntryField(
+            {.name = "at",
+             .kind = FieldKind::kText,
+             .text = a_event.at,
+             .bind = BindTriggerMember(a_ctx.name, a_ctx.record,
+                                       &EventOrigin::at, AlwaysString),
+             .allowEmpty = true}));
       },
       [&](const PluginOrigin &a_plugin) {
-        a_form.push_back(TextedField(
+        a_form.push_back(TextEntryField(
             {.name = "id",
              .kind = FieldKind::kText,
              .text = a_plugin.id,
@@ -1102,11 +1111,12 @@ void ImageFields(std::vector<FormField> &a_form, const SourceContext &a_ctx,
   const std::string &name = a_ctx.name;
   const SourceKind &record = a_ctx.record;
   const ImageSourceRow &source = a_source;
-  a_form.push_back(TextedField(
-      {.name = "path",
-       .kind = FieldKind::kText,
-       .text = source.path,
-       .bind = BindSourceMember(name, record, &ImageSource::path, StringAny)}));
+  a_form.push_back(
+      TextEntryField({.name = "path",
+                      .kind = FieldKind::kText,
+                      .text = source.path,
+                      .bind = BindSourceMember(name, record, &ImageSource::path,
+                                               AlwaysString)}));
   a_form.push_back(
       ChoiceField("channel", source.channel, WordsOf(kImageChannels),
                   BindSourceMember(name, record, &ImageSource::channel,
@@ -1140,7 +1150,7 @@ void ImageFields(std::vector<FormField> &a_form, const SourceContext &a_ctx,
                                BindImageMirror(name, record, 1)));
   a_form.push_back(ToggleField(
       "transpose", source.transpose == "on",
-      BindSourceMember(name, record, &ImageSource::transpose, OnOffAny)));
+      BindSourceMember(name, record, &ImageSource::transpose, AlwaysOnOff)));
   a_form.push_back(ParamField(
       {.name = "mip",
        .kind = FieldKind::kScalar,
@@ -1170,10 +1180,10 @@ void BakeFields(std::vector<FormField> &a_form, const SourceContext &a_ctx,
                                  BipedSlotNames(),
                                  BindBakePartition(name, record)));
   } else if (a_source.bake == "boneWeight") {
-    a_form.push_back(TextedField({.name = "bones",
-                                  .kind = FieldKind::kText,
-                                  .text = a_source.bones,
-                                  .bind = BindBakeBones(name, record)}));
+    a_form.push_back(TextEntryField({.name = "bones",
+                                     .kind = FieldKind::kText,
+                                     .text = a_source.bones,
+                                     .bind = BindBakeBones(name, record)}));
   }
 }
 
@@ -1186,7 +1196,7 @@ void UvFields(std::vector<FormField> &a_form, const SourceContext &a_ctx,
 
 void DistanceFields(std::vector<FormField> &a_form, const SourceContext &a_ctx,
                     const DistanceSourceRow &a_source) {
-  a_form.push_back(TextedField(
+  a_form.push_back(TextEntryField(
       {.name = "from",
        .kind = FieldKind::kText,
        .text = a_source.from,
@@ -1247,10 +1257,10 @@ void ClustersFields(std::vector<FormField> &a_form, const SourceContext &a_ctx,
   clusters.workingRange = clusters.range;
   clusters.integral = true;
   a_form.push_back(std::move(clusters));
-  a_form.push_back(TextedField({.name = "weights",
-                                .kind = FieldKind::kText,
-                                .text = source.weights,
-                                .bind = BindClusterWeights(name, record)}));
+  a_form.push_back(TextEntryField({.name = "weights",
+                                   .kind = FieldKind::kText,
+                                   .text = source.weights,
+                                   .bind = BindClusterWeights(name, record)}));
   a_form.push_back(
       ParamField({.name = "seed",
                   .kind = FieldKind::kScalar,
@@ -1308,15 +1318,15 @@ std::vector<FormField> SourceForm(const SourceRow &a_source,
 
 std::vector<FormField> RecipeHeaderForm(const RecipeRow &a_recipe) {
   std::vector<FormField> form;
-  form.push_back(TextedField({.name = "priority",
-                              .kind = FieldKind::kText,
-                              .text = std::to_string(a_recipe.priority),
-                              .bind = BindPriority(),
-                              .allowEmpty = true}));
-  form.push_back(TextedField({.name = "clockSpeed",
-                              .kind = FieldKind::kText,
-                              .text = ParamText(a_recipe.clockSpeed),
-                              .bind = BindClockSpeed()}));
+  form.push_back(TextEntryField({.name = "priority",
+                                 .kind = FieldKind::kText,
+                                 .text = std::to_string(a_recipe.priority),
+                                 .bind = BindPriority(),
+                                 .allowEmpty = true}));
+  form.push_back(TextEntryField({.name = "clockSpeed",
+                                 .kind = FieldKind::kText,
+                                 .text = ParamText(a_recipe.clockSpeed),
+                                 .bind = BindClockSpeed()}));
   return form;
 }
 
@@ -1397,10 +1407,10 @@ void LightShapeFields(std::vector<FormField> &a_form, const LightRow &a_light) {
     minShare.units = "fraction";
     a_form.push_back(std::move(minShare));
   } else {
-    a_form.push_back(TextedField({.name = "names",
-                                  .kind = FieldKind::kText,
-                                  .text = a_light.bonesNames,
-                                  .bind = BindLightNames(output)}));
+    a_form.push_back(TextEntryField({.name = "names",
+                                     .kind = FieldKind::kText,
+                                     .text = a_light.bonesNames,
+                                     .bind = BindLightNames(output)}));
   }
 }
 }

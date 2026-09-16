@@ -558,6 +558,7 @@ struct ReduceVisitor {
   }
 
   void operator()(const SoloRecipe &) {}
+  void operator()(const SoloPiece &) {}
   void operator()(const SoloOutput &) {}
   void operator()(const SoloLayer &) {}
   void operator()(const MuteLayer &) {}
@@ -613,12 +614,12 @@ SourceCatalog PaintSources(const MenuState &a_state, const RecipeRow &a_recipe,
         [](const SetPaintSurface &) {}, [](const KeepPaint &) {},
         [](const EndPaint &) {}, [](const UpdatePaint &) {},
         [](const EditRecipe &) {}, [](const SoloRecipe &) {},
-        [](const SoloOutput &) {}, [](const SoloLayer &) {},
-        [](const MuteLayer &) {}, [](const SetFreeze &) {},
-        [](const SetScrub &) {}, [](const SetSpeed &) {},
-        [](const StepClock &) {}, [](const Undo &) {}, [](const Redo &) {},
-        [](const CreateRecipe &) {}, [](const RenameRecipe &) {},
-        [](const FireTrigger &) {});
+        [](const SoloPiece &) {}, [](const SoloOutput &) {},
+        [](const SoloLayer &) {}, [](const MuteLayer &) {},
+        [](const SetFreeze &) {}, [](const SetScrub &) {},
+        [](const SetSpeed &) {}, [](const StepClock &) {}, [](const Undo &) {},
+        [](const Redo &) {}, [](const CreateRecipe &) {},
+        [](const RenameRecipe &) {}, [](const FireTrigger &) {});
   }
   return catalog;
 }
@@ -660,6 +661,7 @@ namespace {
       [](const UpdatePaint &) { return false; },
       [](const EditRecipe &) { return false; },
       [](const SoloRecipe &) { return false; },
+      [](const SoloPiece &) { return false; },
       [](const SoloOutput &) { return false; },
       [](const SoloLayer &) { return false; },
       [](const MuteLayer &) { return false; },
@@ -745,6 +747,7 @@ bool AcceptIntent(const MenuState &a_state, const Intent &a_intent) {
       [](const SetPaintSurface &) { return true; },
       [](const EditRecipe &) { return true; },
       [](const SoloRecipe &) { return true; },
+      [](const SoloPiece &) { return true; },
       [](const SoloOutput &) { return true; },
       [](const SoloLayer &) { return true; },
       [](const MuteLayer &) { return true; },
@@ -848,6 +851,7 @@ void Reduce(MenuState &a_state, const Intent &a_intent) {
       [](const UpdatePaint &) { return false; },
       [](const EditRecipe &) { return false; },
       [](const SoloRecipe &) { return false; },
+      [](const SoloPiece &) { return false; },
       [](const SoloOutput &) { return false; },
       [](const SoloLayer &) { return false; },
       [](const MuteLayer &) { return false; },

@@ -35,14 +35,6 @@ namespace BetterEnchantmentEffects::Menu {
 using namespace Studio;
 
 namespace {
-constexpr TableStyle kFormStyle{.borders = TableBorders::kInnerHorizontal,
-                                .stretch = true,
-                                .headers = false,
-                                .rowBackground = false};
-constexpr TableStyle kColumnsStyle{.borders = TableBorders::kNone,
-                                   .stretch = true,
-                                   .headers = false,
-                                   .rowBackground = false};
 
 void RevealProperty(const FormField &a_field, const Frame &a_frame) {
   if (!a_frame.state || !a_frame.state->selection.property) {
@@ -124,7 +116,7 @@ void DrawSelectorClauses(const SelectorView &a_view,
                             {{"match", Width::Fit()},
                              {"value", Width::Fill()},
                              {"", Width::Px(RowButtonWidth())}},
-                            kFormStyle);
+                            Studio::kFormTable);
   if (table.Open()) {
     for (std::size_t i = 0; i < a_view.clauses.size(); ++i) {
       const SelectorClauseRow &clause = a_view.clauses[i];
@@ -152,56 +144,11 @@ void DrawSelectorClauses(const SelectorView &a_view,
   }
 }
 
-void DrawSignalReads(const std::string &a_text, const Frame &a_frame,
-                     int a_depth) {
-  if (a_text.empty() || a_depth >= kMaxSignalModalDepth) {
-    return;
-  }
-  const auto program = Program::Parse(a_text);
-  if (!program) {
-    return;
-  }
-  const RecipeRow &recipe = *a_frame.recipe;
-  bool any = false;
-  for (const std::string &read : program->References()) {
-    if (std::ranges::find(recipe.signals, read, &SignalRow::name) ==
-        recipe.signals.end()) {
-      continue;
-    }
-    if (!any) {
-      Dim("reads");
-      any = true;
-    }
-    ImGui::SameLine();
-    DrawSignalModal(read, a_frame, a_depth + 1);
-  }
-}
-
-void DrawSignalEditorInline(const SignalRow &a_signal, const Frame &a_frame) {
-  const auto form = SignalForm(a_signal, SignalNamesOf(*a_frame.recipe));
-  const bool tunable = a_signal.kind == SignalKindId::kConstant ||
-                       a_signal.kind == SignalKindId::kExpr;
-  const auto value =
-      tunable ? std::ranges::find(form, "value", &FormField::name) : form.end();
-  if (DetailButton()) {
-    logger::warn("TODO");
-  }
-  ImGui::SameLine();
-  if (value != form.end()) {
-    DrawRowField("value", *value, a_frame);
-    return;
-  }
-  if (!a_signal.event.empty()) {
-    FirePopup(a_signal, a_frame);
-    ImGui::SameLine();
-  }
-  ImGui::AlignTextToFramePadding();
-  Dim(SignalKindName(a_signal.kind));
-}
 }
 
 std::optional<std::string> FieldInput(const FormField &a_field, float a_scale,
-                                      const Names &a_names) {
+                                      const Names &a_names,
+                                      const Studio::Width &a_width) {
   const FieldScope fieldScope(a_field.name);
   const auto check = [&](const std::string &a_text) {
     return CheckField(a_field, a_text, a_names);
@@ -217,11 +164,11 @@ std::optional<std::string> FieldInput(const FormField &a_field, float a_scale,
   switch (input) {
   case FieldInputKind::kCombo:
     Badge(a_field.kind);
-    return ReferenceCombo("value", a_field, {Width::Fill(), a_scale});
+    return ReferenceCombo("value", a_field, {a_width, a_scale});
   case FieldInputKind::kChoice:
     Badge(a_field.kind);
     return ChoiceCombo("value", a_field.text, a_field.names,
-                       {Width::Fill(), a_scale});
+                       {a_width, a_scale});
   case FieldInputKind::kToggle: {
     Badge(a_field.kind);
     bool on = a_field.text == "on";
@@ -232,18 +179,17 @@ std::optional<std::string> FieldInput(const FormField &a_field, float a_scale,
   }
   case FieldInputKind::kText:
     Badge(a_field.kind);
-    return TextField("value", a_field.text, {Width::Fill(), a_scale},
-                     displayCheck);
+    return TextField("value", a_field.text, {a_width, a_scale}, displayCheck);
   case FieldInputKind::kPlain:
-    return TextField("value", a_field.text, {Width::Fill(), a_scale},
-                     displayCheck);
+    return TextField("value", a_field.text, {a_width, a_scale}, displayCheck);
   case FieldInputKind::kValue:
-    return ValueWidget("value", a_field, a_scale, displayCheck);
+    return ValueWidget("value", a_field, a_scale, displayCheck, a_width);
   }
   return std::nullopt;
 }
 
-void AuthorCreated(const InspectorSubject &a_subject, const Frame &a_frame) {
+void FocusCreatedSubject(const InspectorSubject &a_subject,
+                         const Frame &a_frame) {
   if (const auto *mask = Get<MaskSubject>(a_subject)) {
     EditMaskAsTerms(TextRow{.name = mask->name, .text = "0"}, a_frame);
     return;
@@ -265,7 +211,7 @@ void AuthorCreated(const InspectorSubject &a_subject, const Frame &a_frame) {
   const std::optional<InspectorSubject> created = CreatedSubjectOf(edits);
   Post(*a_frame.intents, EditRecipe{a_frame.recipe->id, std::move(edits)});
   if (created) {
-    AuthorCreated(*created, a_frame);
+    FocusCreatedSubject(*created, a_frame);
   }
   return true;
 }
@@ -306,7 +252,8 @@ std::optional<std::string> TextInput(const FormField &a_field, float a_scale,
   return TextField("value", a_field.text, {Width::Fill(), a_scale}, check);
 }
 
-void DrawFieldInput(const FormField &a_field, const Frame &a_frame) {
+void DrawFieldInput(const FormField &a_field, const Frame &a_frame,
+                    const Studio::Width &a_width = Studio::Width::Fill()) {
   if (FieldHasExpressionShelf(a_field)) {
     const FieldScope fieldScope(a_field.name);
     Badge(a_field.kind);
@@ -314,8 +261,15 @@ void DrawFieldInput(const FormField &a_field, const Frame &a_frame) {
     if (const auto text = TextInput(a_field, a_frame.scale, *a_frame.names)) {
       CommitField(a_field, *text, a_frame);
     }
-  } else if (const auto text =
-                 FieldInput(a_field, a_frame.scale, *a_frame.names)) {
+    return;
+  }
+  if (FieldHasNumberShelf(a_field, 2)) {
+    const FieldScope fieldScope(a_field.name);
+    DrawExpressionOpener(a_field, a_frame);
+    ImGui::SameLine(0.0f, 0.0f);
+  }
+  if (const auto text =
+          FieldInput(a_field, a_frame.scale, *a_frame.names, a_width)) {
     CommitField(a_field, *text, a_frame);
   }
 }
@@ -346,7 +300,7 @@ std::optional<std::size_t> DrawFieldTable(const char *a_id,
                             {{"field", Width::Fit()},
                              {"", Width::Px(ImGui::GetFrameHeight())},
                              {"value", Width::Fill()}},
-                            kFormStyle);
+                            Studio::kFormTable);
   if (!table.Open()) {
     return open;
   }
@@ -379,9 +333,15 @@ std::optional<std::size_t> DrawFieldTable(const char *a_id,
       ValueSwatch(*field.value);
       ImGui::SameLine();
     }
-    DrawFieldInput(field, a_frame);
-    DrawInputWizard(a_frame, field);
-    DrawTuning(field, a_frame);
+    if (FieldTunable(field, a_frame)) {
+      DrawFieldInput(field, a_frame, Width::Fill(0.5f));
+      DrawInputWizard(a_frame, field);
+      ImGui::SameLine();
+      DrawTuning(field, a_frame);
+    } else {
+      DrawFieldInput(field, a_frame);
+      DrawInputWizard(a_frame, field);
+    }
     ImGui::PopID();
   }
   table.End();
@@ -398,7 +358,7 @@ std::optional<std::size_t> DrawForm(const char *a_id,
   std::optional<std::size_t> open;
   const std::size_t perColumn = (a_form.size() + a_columns - 1) / a_columns;
   std::vector<Column> columns(a_columns, Column{"", Width::Fill()});
-  auto outer = Table::Begin(a_id, columns, kColumnsStyle);
+  auto outer = Table::Begin(a_id, columns, Studio::kColumnsTable);
   if (!outer.Open()) {
     return open;
   }
@@ -417,23 +377,106 @@ std::optional<std::size_t> DrawForm(const char *a_id,
   return open;
 }
 
+namespace {
+[[nodiscard]] std::optional<InspectorSubject>
+ResolveReference(const std::string &a_name, const RecipeRow &a_recipe) {
+  if (std::ranges::find(a_recipe.masks, a_name) != a_recipe.masks.end()) {
+    return MaskSubject{a_name};
+  }
+  if (InspectorSubjectExists(SourceSubject{a_name}, a_recipe)) {
+    return SourceSubject{a_name};
+  }
+  if (InspectorSubjectExists(SignalSubject{a_name}, a_recipe)) {
+    return SignalSubject{a_name};
+  }
+  if (InspectorSubjectExists(CurveSubject{a_name}, a_recipe)) {
+    return CurveSubject{a_name};
+  }
+  return std::nullopt;
+}
+
+void OpenFieldReferences(const FormField &a_field, const Frame &a_frame) {
+  const auto program = Program::Parse(a_field.text);
+  if (!program) {
+    return;
+  }
+  std::optional<InspectorSubject> only;
+  std::size_t count = 0;
+  for (const std::string &read : program->References()) {
+    if (const auto subject = ResolveReference(read, *a_frame.recipe)) {
+      only = *subject;
+      ++count;
+    }
+  }
+  if (count == 0) {
+    return;
+  }
+  if (count == 1) {
+    NavigateFromInspector(a_frame, std::move(*only));
+    return;
+  }
+  a_frame.state->referencePopup = a_field.text;
+  ImGui::OpenPopup("field-references");
+}
+
+void DrawReferencePopup(const Frame &a_frame) {
+  if (!ImGui::BeginPopup("field-references")) {
+    return;
+  }
+  Dim("navigate to");
+  const auto program = Program::Parse(a_frame.state->referencePopup);
+  if (program) {
+    for (const std::string &read : program->References()) {
+      const auto subject = ResolveReference(read, *a_frame.recipe);
+      if (!subject) {
+        continue;
+      }
+      if (ImGui::Selectable(read.c_str())) {
+        NavigateFromInspector(a_frame, *subject);
+        ImGui::CloseCurrentPopup();
+      }
+    }
+  }
+  ImGui::EndPopup();
+}
+}
+
+void NavigateFromInspector(const Frame &a_frame,
+                           Studio::InspectorSubject a_subject,
+                           std::optional<PropertyLocation> a_property) {
+  if (a_frame.recipe == nullptr) {
+    return;
+  }
+  a_frame.state->revealedProperty.reset();
+  a_frame.state->navigation.scroll = ImGui::GetScrollY();
+  const bool changed =
+      a_property
+          ? Studio::NavigateProperty(
+                a_frame.state->navigation, a_frame.state->selection,
+                std::move(a_subject), std::move(*a_property), *a_frame.recipe)
+          : Studio::Navigate(a_frame.state->navigation,
+                             a_frame.state->selection, std::move(a_subject),
+                             *a_frame.recipe);
+  if (changed) {
+    ImGui::SetScrollY(a_frame.state->navigation.scroll);
+  }
+}
+
 void DrawFormWithSignals(const char *a_id, std::span<const FormField> a_form,
                          const Frame &a_frame, std::size_t a_columns) {
   if (a_frame.recipe == nullptr) {
     return;
   }
   const auto open = DrawForm(a_id, a_form, a_frame, a_columns);
-  if (open && *open < a_form.size() &&
-      a_form[*open].detail == FieldDetail::kSignal &&
-      IsWholeReference(a_form[*open].text)) {
-    a_frame.state->navigation.scroll = ImGui::GetScrollY();
-    [[maybe_unused]] const bool changed = Navigate(
-        a_frame.state->navigation, a_frame.state->selection,
-        SignalSubject{ReferenceName(a_form[*open].text)}, *a_frame.recipe);
-    if (changed) {
-      ImGui::SetScrollY(a_frame.state->navigation.scroll);
+  if (open && *open < a_form.size()) {
+    const FormField &field = a_form[*open];
+    if (field.detail == FieldDetail::kSignal && IsWholeReference(field.text)) {
+      NavigateFromInspector(a_frame, SignalSubject{ReferenceName(field.text)});
+    } else if (field.detail == FieldDetail::kReferences) {
+      OpenFieldReferences(field, a_frame);
     }
   }
+  DrawReferencePopup(a_frame);
 }
 
 void FirePopup(const SignalRow &a_signal, const Frame &a_frame) {
@@ -478,48 +521,6 @@ void FirePopup(const SignalRow &a_signal, const Frame &a_frame) {
   ImGui::EndPopup();
 }
 
-void DrawSignalDetail(const std::string &a_text, const Frame &a_frame,
-                      int a_depth) {
-  if (a_frame.recipe == nullptr) {
-    return;
-  }
-  const RecipeRow &recipe = *a_frame.recipe;
-  const auto name = ReferenceName(a_text);
-  const auto it = std::ranges::find(recipe.signals, name, &SignalRow::name);
-  if (a_text.empty() || !a_text.starts_with('@') ||
-      it == recipe.signals.end()) {
-    Dim("a literal; choose a @signal to tune it here");
-    return;
-  }
-  ImGui::PushID(it->name.c_str());
-  ImGui::Text("%s (%s)", ReferenceText(it->name).c_str(),
-              std::string{SignalKindName(it->kind)}.c_str());
-  ImGui::SameLine();
-  if (it->live) {
-    ValueSwatch(it->value);
-  } else {
-    Dim("Not live");
-  }
-  DrawSignalEditorInline(*it, a_frame);
-  if (it->inert) {
-    Problem(it->problem.empty() ? "inert" : "inert: " + it->problem);
-  }
-  DrawSignalReads(it->text, a_frame, a_depth);
-  ImGui::PopID();
-}
-
-void DrawSignalModal(const std::string &a_name,
-                     [[maybe_unused]] const Frame &a_frame, int a_depth) {
-  if (a_depth > kMaxSignalModalDepth) {
-    return;
-  }
-  ImGui::PushID(a_name.c_str());
-  if (ImGui::SmallButton(ReferenceText(a_name).c_str())) {
-    logger::warn("TODO");
-  }
-  ImGui::PopID();
-}
-
 void DrawSelector(const SelectorView &a_selector, std::size_t a_output,
                   bool a_light, const Frame &a_frame) {
   if (a_frame.recipe == nullptr || a_frame.intents == nullptr) {
@@ -546,10 +547,14 @@ void DrawInspectorFields(const Studio::Inspector &a_inspector,
   const std::vector<FormField> form = InspectorForm(a_inspector);
   const auto opened = DrawForm("fields", form, a_frame);
   if (!opened || *opened >= form.size() || !form[*opened].detail) {
+    DrawReferencePopup(a_frame);
     return;
   }
   std::optional<InspectorSubject> destination;
   switch (*form[*opened].detail) {
+  case FieldDetail::kReferences:
+    OpenFieldReferences(form[*opened], a_frame);
+    break;
   case FieldDetail::kSource:
     if (IsWholeReference(form[*opened].text)) {
       const std::string name = ReferenceName(form[*opened].text);
@@ -585,13 +590,8 @@ void DrawInspectorFields(const Studio::Inspector &a_inspector,
     break;
   }
   if (destination) {
-    a_frame.state->navigation.scroll = ImGui::GetScrollY();
-    [[maybe_unused]] const bool changed =
-        Navigate(a_frame.state->navigation, a_frame.state->selection,
-                 std::move(*destination), *a_frame.recipe);
-    if (changed) {
-      ImGui::SetScrollY(a_frame.state->navigation.scroll);
-    }
+    NavigateFromInspector(a_frame, std::move(*destination));
   }
+  DrawReferencePopup(a_frame);
 }
 }

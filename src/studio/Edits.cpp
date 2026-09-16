@@ -946,7 +946,7 @@ Refusal Edit(Recipe &a_recipe, const ResetLight &a_edit) {
 Refusal Edit(Recipe &a_recipe, const SetShellParam &a_edit) {
   const SignalGraph graph = GraphOf(a_recipe);
   const RowTypes rows{a_recipe, graph};
-  if (auto problem = CheckScalarRef(CheckCtx{rows, "shell"},
+  if (auto problem = CheckScalarRef(CheckContext{rows, "shell"},
                                     ShellParamName(a_edit.field), a_edit.value))
     return problem;
   auto &shell = a_recipe.shell;
@@ -974,8 +974,8 @@ Refusal Edit(Recipe &a_recipe, const SetShellVector &a_edit) {
   const SignalGraph graph = GraphOf(a_recipe);
   const RowTypes rows{a_recipe, graph};
   if (auto problem =
-          CheckVectorRef(CheckCtx{rows, "shell"}, ShellVectorName(a_edit.field),
-                         a_edit.value, false))
+          CheckVectorRef(CheckContext{rows, "shell"},
+                         ShellVectorName(a_edit.field), a_edit.value, false))
     return problem;
   if (a_edit.field == ShellVector::kInflate) {
     a_recipe.shell.pose.inflate = a_edit.value;

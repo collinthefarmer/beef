@@ -54,6 +54,28 @@ struct TableStyle {
   bool rowBackground = false;
 };
 
+inline constexpr TableStyle kFormTable{.borders =
+                                           TableBorders::kInnerHorizontal,
+                                       .stretch = true,
+                                       .headers = false};
+inline constexpr TableStyle kColumnsTable{
+    .borders = TableBorders::kNone, .stretch = true, .headers = false};
+inline constexpr TableStyle kGridTable{.borders = TableBorders::kAll,
+                                       .stretch = true,
+                                       .headers = true,
+                                       .rowBackground = true};
+inline constexpr TableStyle kFooterTable{
+    .borders = TableBorders::kAll, .stretch = true, .headers = true};
+inline constexpr TableStyle kRelationTable{.borders =
+                                               TableBorders::kInnerHorizontal,
+                                           .stretch = true,
+                                           .headers = true};
+inline constexpr TableStyle kLayerTable{.borders =
+                                            TableBorders::kInnerHorizontal,
+                                        .stretch = true,
+                                        .headers = true,
+                                        .rowBackground = true};
+
 enum class RuleAction {
   kNew,
   kRename,
@@ -104,6 +126,7 @@ struct RuleSpec {
   std::span<const RuleButton> buttons = {};
   bool collapsible = false;
   bool openByDefault = true;
+  bool leadingSpace = true;
 };
 
 struct RuleClick {

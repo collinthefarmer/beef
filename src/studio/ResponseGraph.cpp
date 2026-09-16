@@ -9,8 +9,8 @@
 
 namespace BetterEnchantmentEffects::Studio {
 namespace {
-[[nodiscard]] std::optional<float> Number(const Param &a_param,
-                                          const RecipeRow &a_recipe) {
+[[nodiscard]] std::optional<float> ResolveNumber(const Param &a_param,
+                                                 const RecipeRow &a_recipe) {
   if (const float *value = Get<float>(a_param)) {
     return std::isfinite(*value) ? std::optional{*value} : std::nullopt;
   }
@@ -31,7 +31,7 @@ namespace {
 }
 
 [[nodiscard]] bool Hold(Param &a_param, const RecipeRow &a_recipe) {
-  const auto number = Number(a_param, a_recipe);
+  const auto number = ResolveNumber(a_param, a_recipe);
   if (!number) {
     return false;
   }
@@ -44,18 +44,18 @@ namespace {
   if (PulseSignal *pulse = Get<PulseSignal>(a_definition)) {
     if (Hold(pulse->base, a_recipe) && Hold(pulse->amplitude, a_recipe) &&
         Hold(pulse->phase, a_recipe) && Hold(pulse->period, a_recipe)) {
-      return Number(pulse->period, a_recipe);
+      return ResolveNumber(pulse->period, a_recipe);
     }
   } else if (RampSignal *ramp = Get<RampSignal>(a_definition)) {
     if (Hold(ramp->from, a_recipe) && Hold(ramp->to, a_recipe) &&
         Hold(ramp->seconds, a_recipe)) {
-      return Number(ramp->seconds, a_recipe);
+      return ResolveNumber(ramp->seconds, a_recipe);
     }
   } else if (TriggerSignal *trigger = Get<TriggerSignal>(a_definition)) {
     trigger->origin = EventOrigin{"studio.response", {}, {}};
     trigger->max = 1;
     if (Hold(trigger->lifetime, a_recipe)) {
-      return Number(trigger->lifetime, a_recipe);
+      return ResolveNumber(trigger->lifetime, a_recipe);
     }
   }
   return std::nullopt;

@@ -1,6 +1,5 @@
 #include "menu/Workspace.h"
 
-#include "menu/BoardPage.h"
 #include "menu/ContextRows.h"
 #include "menu/FormDraw.h"
 #include "menu/InputBrowser.h"
@@ -58,7 +57,8 @@ InspectorKey(const Studio::InspectorSubject &a_subject) {
       });
 }
 
-void NavigateFromNav(const Frame &a_frame, Studio::InspectorSubject a_subject) {
+void NavigateFromNavigator(const Frame &a_frame,
+                           Studio::InspectorSubject a_subject) {
   [[maybe_unused]] const bool changed =
       Studio::Navigate(a_frame.state->navigation, a_frame.state->selection,
                        std::move(a_subject), *a_frame.recipe);
@@ -68,22 +68,25 @@ void NavigateFromNav(const Frame &a_frame, Studio::InspectorSubject a_subject) {
 }
 
 void PickSubject(const char *a_label, Studio::InspectorSubject a_subject,
-                 const Frame &a_frame) {
+                 const Frame &a_frame, bool a_spanColumns = false) {
   const bool blocked =
       Studio::IndexedEditPendingFor(a_frame.state->pendingIndexedEdit,
                                     a_frame.recipe->id) &&
       (Is<Studio::OutputSubject>(a_subject) ||
        Is<Studio::LayerSubject>(a_subject));
+  const int flags =
+      a_spanColumns ? ImGuiMCP::ImGuiSelectableFlags_SpanAllColumns : 0;
   ImGui::BeginDisabled(blocked);
-  if (ImGui::Selectable(a_label, SelectionOf(a_frame).subject == a_subject)) {
-    NavigateFromNav(a_frame, std::move(a_subject));
+  if (ImGui::Selectable(a_label, SelectionOf(a_frame).subject == a_subject,
+                        flags)) {
+    NavigateFromNavigator(a_frame, std::move(a_subject));
   }
   ImGui::EndDisabled();
 }
 
 void DrawSurfaceAdd(const Frame &a_frame, Surface a_surface) {
   ImGui::PushID(static_cast<int>(a_surface));
-  if (ImGui::SmallButton("+ output")) {
+  if (ImGui::Button("+ output")) {
     ImGui::OpenPopup("add-output");
   }
   if (ImGui::BeginPopup("add-output")) {
@@ -100,15 +103,14 @@ void DrawSurfaceAdd(const Frame &a_frame, Surface a_surface) {
 }
 
 void DrawShellSettings(const Frame &a_frame) {
-  if (ImGui::SmallButton("settings##shell")) {
-    NavigateFromNav(a_frame, Studio::ShellSubject{});
+  if (ImGui::Button("settings##shell")) {
+    NavigateFromNavigator(a_frame, Studio::ShellSubject{});
   }
 }
 
 void DrawLightSettings(const Frame &a_frame) {
-  if (ImGui::SmallButton("settings##light") &&
-      !a_frame.recipe->lights.empty()) {
-    NavigateFromNav(
+  if (ImGui::Button("settings##light") && !a_frame.recipe->lights.empty()) {
+    NavigateFromNavigator(
         a_frame, Studio::OutputSubject{a_frame.recipe->lights.front().output});
   }
 }
@@ -187,7 +189,7 @@ void DrawOutputNode(const Frame &a_frame, const Studio::OutputRow &a_output,
   }
   if (a_output.target != Target::kLight) {
     ImGui::PushID("add");
-    if (ImGui::SmallButton("+ layer")) {
+    if (ImGui::Button("+ layer")) {
       Studio::Post(*a_frame.intents, a_frame.recipe->id,
                    Studio::AddLayer{a_output.index, Studio::DefaultLayer(),
                                     a_output.layers.size()});
@@ -198,18 +200,50 @@ void DrawOutputNode(const Frame &a_frame, const Studio::OutputRow &a_output,
   ImGui::PopID();
 }
 
+void ResourceRow(Table &a_table, const Frame &a_frame,
+                 const std::string &a_name, Studio::InspectorSubject a_subject,
+                 std::string_view a_type, const std::optional<Value> &a_value,
+                 std::size_t a_references) {
+  a_table.Cell();
+  PickSubject(a_name.c_str(), std::move(a_subject), a_frame, true);
+  a_table.Cell();
+  if (!a_type.empty()) {
+    ImGui::AlignTextToFramePadding();
+    Dim(a_type);
+  }
+  a_table.Cell();
+  if (a_value) {
+    ValueSwatch(*a_value);
+  }
+  a_table.Cell();
+  ImGui::AlignTextToFramePadding();
+  Dim(std::format("used {}", a_references));
+}
+
 void DrawResourceRows(const Frame &a_frame, Studio::ResourceTab a_tab,
                       std::string_view a_filter) {
+  ImGui::PushID(static_cast<int>(a_tab));
+  Table table = Table::Begin("resource-list",
+                             {{"name", Studio::Width::Fill()},
+                              {"type", Studio::Width::Fit()},
+                              {"value", Studio::Width::Fit()},
+                              {"used", Studio::Width::Fit()}},
+                             Studio::kColumnsTable);
+  if (!table.Open()) {
+    ImGui::PopID();
+    return;
+  }
   switch (a_tab) {
   case Studio::ResourceTab::kSignals:
     for (const Studio::SignalRow &signal : a_frame.recipe->signals) {
       if (!Studio::NameMatches(signal.name, a_filter)) {
         continue;
       }
-      ImGui::PushID("signal");
-      PickSubject(signal.name.c_str(), Studio::SignalSubject{signal.name},
-                  a_frame);
-      ImGui::PopID();
+      ResourceRow(
+          table, a_frame, signal.name, Studio::SignalSubject{signal.name},
+          SignalKindName(signal.kind),
+          signal.live ? std::optional<Value>{signal.value} : std::nullopt,
+          signal.references);
     }
     break;
   case Studio::ResourceTab::kCurves:
@@ -217,10 +251,8 @@ void DrawResourceRows(const Frame &a_frame, Studio::ResourceTab a_tab,
       if (!Studio::NameMatches(curve.name, a_filter)) {
         continue;
       }
-      ImGui::PushID("curve");
-      PickSubject(curve.name.c_str(), Studio::CurveSubject{curve.name},
-                  a_frame);
-      ImGui::PopID();
+      ResourceRow(table, a_frame, curve.name, Studio::CurveSubject{curve.name},
+                  {}, std::nullopt, curve.references);
     }
     break;
   case Studio::ResourceTab::kSources:
@@ -228,10 +260,11 @@ void DrawResourceRows(const Frame &a_frame, Studio::ResourceTab a_tab,
       if (!Studio::NameMatches(source.name, a_filter)) {
         continue;
       }
-      ImGui::PushID("source");
-      PickSubject(source.name.c_str(), Studio::SourceSubject{source.name},
-                  a_frame);
-      ImGui::PopID();
+      ResourceRow(table, a_frame, source.name,
+                  Studio::SourceSubject{source.name},
+                  DescribeSource(Studio::SourceKindOf(source).value_or(
+                      SourceKind{MaterialSource{}})),
+                  std::nullopt, source.references);
     }
     break;
   case Studio::ResourceTab::kMasks:
@@ -239,12 +272,13 @@ void DrawResourceRows(const Frame &a_frame, Studio::ResourceTab a_tab,
       if (!Studio::NameMatches(mask.name, a_filter)) {
         continue;
       }
-      ImGui::PushID("mask");
-      PickSubject(mask.name.c_str(), Studio::MaskSubject{mask.name}, a_frame);
-      ImGui::PopID();
+      ResourceRow(table, a_frame, mask.name, Studio::MaskSubject{mask.name}, {},
+                  std::nullopt, mask.references);
     }
     break;
   }
+  table.End();
+  ImGui::PopID();
 }
 
 const char *ResourceAddLabel(Studio::ResourceTab a_tab) {
@@ -324,18 +358,34 @@ void DrawSurfaceOutputs(const Frame &a_frame, Surface a_surface,
   ImGui::Unindent();
 }
 
+bool SurfaceHasOutput(const Studio::RecipeRow &a_recipe, Surface a_surface) {
+  return std::ranges::any_of(a_recipe.outputs,
+                             [&](const Studio::OutputRow &a_output) {
+                               return a_output.target != Target::kLight &&
+                                      a_output.surface == a_surface;
+                             });
+}
+
+void SurfaceLabel(std::string_view a_text, bool a_lit) {
+  ImGui::AlignTextToFramePadding();
+  if (a_lit) {
+    ImGui::TextUnformatted(a_text.data(), a_text.data() + a_text.size());
+  } else {
+    Dim(a_text);
+  }
+}
+
 void DrawRecipeTree(const Frame &a_frame, std::string_view a_filter) {
   PickSubject("Recipe / overview", Studio::RecipeSubject{}, a_frame);
 
-  ImGui::AlignTextToFramePadding();
-  Dim("Material");
+  SurfaceLabel("Material",
+               SurfaceHasOutput(*a_frame.recipe, Surface::kMaterial));
   ImGui::SameLine();
   RightAligned(ButtonWidth("+ output"),
                [&]() { DrawSurfaceAdd(a_frame, Surface::kMaterial); });
   DrawSurfaceOutputs(a_frame, Surface::kMaterial, a_filter);
 
-  ImGui::AlignTextToFramePadding();
-  Dim("Shell");
+  SurfaceLabel("Shell", SurfaceHasOutput(*a_frame.recipe, Surface::kShell));
   ImGui::SameLine();
   RightAligned(ButtonWidth("settings") + ItemSpacingX() +
                    ButtonWidth("+ output"),
@@ -346,22 +396,20 @@ void DrawRecipeTree(const Frame &a_frame, std::string_view a_filter) {
                });
   DrawSurfaceOutputs(a_frame, Surface::kShell, a_filter);
 
-  ImGui::AlignTextToFramePadding();
-  if (a_frame.recipe->lights.empty()) {
-    Dim("Light");
-    ImGui::SameLine();
-    RightAligned(ButtonWidth("+ output"), [&]() {
-      if (ImGui::SmallButton("+ output")) {
-        Studio::Post(*a_frame.intents, a_frame.recipe->id, Studio::AddLight{});
-      }
-    });
-  } else {
-    PickSubject("Light",
-                Studio::OutputSubject{a_frame.recipe->lights.front().output},
-                a_frame);
-    ImGui::SameLine();
+  const bool hasLight = !a_frame.recipe->lights.empty();
+  SurfaceLabel("Light", hasLight);
+  ImGui::SameLine();
+  if (hasLight) {
     RightAligned(ButtonWidth("settings"),
                  [&]() { DrawLightSettings(a_frame); });
+  } else {
+    RightAligned(ButtonWidth("+ output"), [&]() {
+      if (ImGui::Button("+ output")) {
+        Studio::Post(*a_frame.intents, a_frame.recipe->id, Studio::AddLight{});
+        a_frame.state->pendingSelection =
+            Studio::OutputSubject{a_frame.recipe->outputs.size()};
+      }
+    });
   }
 }
 
@@ -414,14 +462,15 @@ void DrawOutput(const Studio::OutputSubject &a_subject, const Frame &a_frame) {
       Dim("The light definition is unavailable.");
       return;
     }
-    static_cast<void>(
-        Rule(Studio::RuleSpec{.text = "Inspector"}, RowButtonWidth(), [&]() {
+    static_cast<void>(Rule(
+        Studio::RuleSpec{.text = "Inspector"}, RowButtonWidth(),
+        [&]() {
           if (RemoveButton(0)) {
             Studio::Post(*a_frame.intents, a_frame.recipe->id,
                          Studio::RemoveOutput{light->output});
           }
-        }));
-    Dim("Light");
+        },
+        [&]() { Dim("Light"); }));
     DrawFormWithSignals(
         "light",
         Studio::LightForm(*light, Studio::SignalNamesOf(*a_frame.recipe)),
@@ -461,21 +510,22 @@ void DrawOutput(const Studio::OutputSubject &a_subject, const Frame &a_frame) {
 
 void DrawLayerInspector(const Studio::LayerSubject &a_layer,
                         const Frame &a_frame) {
-  static_cast<void>(
-      Rule(Studio::RuleSpec{.text = "Inspector"}, RowButtonWidth(), [&]() {
+  const auto owner = std::ranges::find(a_frame.recipe->outputs, a_layer.output,
+                                       &Studio::OutputRow::index);
+  const std::string label =
+      owner != a_frame.recipe->outputs.end()
+          ? std::format("{} / {} / layer {}", SurfaceName(owner->surface),
+                        SlotName(owner->slot), a_layer.layer + 1)
+          : std::format("layer {}", a_layer.layer + 1);
+  static_cast<void>(Rule(
+      Studio::RuleSpec{.text = "Inspector"}, RowButtonWidth(),
+      [&]() {
         if (RemoveButton(0)) {
           Studio::Post(*a_frame.intents, a_frame.recipe->id,
                        Studio::RemoveLayer{a_layer.output, a_layer.layer});
         }
-      }));
-  const auto owner = std::ranges::find(a_frame.recipe->outputs, a_layer.output,
-                                       &Studio::OutputRow::index);
-  if (owner != a_frame.recipe->outputs.end()) {
-    Dim(std::format("{} / {} / layer {}", SurfaceName(owner->surface),
-                    SlotName(owner->slot), a_layer.layer + 1));
-  } else {
-    Dim(std::format("layer {}", a_layer.layer + 1));
-  }
+      },
+      [&]() { Dim(label); }));
   const auto geometry = OutputGeometry(a_frame, a_layer.output);
   const auto inspector =
       geometry ? Studio::BuildInspector(*a_frame.recipe, *geometry,
@@ -485,21 +535,6 @@ void DrawLayerInspector(const Studio::LayerSubject &a_layer,
     return;
   }
   DrawInspectorFields(*inspector, a_frame);
-  Disabled(a_frame.state->paint.has_value() || !a_frame.piece, [&] {
-    if (ImGui::Button("Build mask for this layer")) {
-      Studio::TextRow mask;
-      mask.text = "0";
-      if (Studio::IsWholeReference(inspector->row.mask)) {
-        const std::string name = Studio::ReferenceName(inspector->row.mask);
-        const auto found = std::ranges::find(a_frame.recipe->maskRows, name,
-                                             &Studio::TextRow::name);
-        if (found != a_frame.recipe->maskRows.end()) {
-          mask = *found;
-        }
-      }
-      EditMaskAsTerms(mask, a_frame);
-    }
-  });
 }
 
 void DrawSourceInspector(const Studio::SourceSubject &a_source,
@@ -519,8 +554,7 @@ void DrawSourceInspector(const Studio::SourceSubject &a_source,
       }));
   const std::string type = DescribeSource(
       Studio::SourceKindOf(*row).value_or(SourceKind{MaterialSource{}}));
-  const ResourceCells cells{
-      .name = row->name, .type = type, .references = row->references};
+  const ResourceCells cells{.name = row->name, .type = type};
   ResourceTable("source-header", {&cells, 1});
   DrawFormWithSignals("source",
                       Studio::SourceForm(*row, Studio::SignalNamesOf(recipe)),
@@ -536,11 +570,11 @@ void DrawSignalInspector(const Studio::SignalSubject &a_signal,
     return;
   }
   const bool canFire = !row->event.empty();
-  const float actionsW =
+  const float actionsWidth =
       RowButtonWidth() +
       (canFire ? ItemSpacingX() + ButtonWidth("Fire") : 0.0f);
   static_cast<void>(
-      Rule(Studio::RuleSpec{.text = "Inspector"}, actionsW, [&]() {
+      Rule(Studio::RuleSpec{.text = "Inspector"}, actionsWidth, [&]() {
         if (RemoveButton(row->references)) {
           Studio::Post(*a_frame.intents, recipe.id,
                        Studio::RemoveSignal{row->name});
@@ -553,8 +587,7 @@ void DrawSignalInspector(const Studio::SignalSubject &a_signal,
   const ResourceCells cells{
       .name = row->name,
       .type = SignalKindName(row->kind),
-      .value = row->live ? std::optional<Value>{row->value} : std::nullopt,
-      .references = row->references};
+      .value = row->live ? std::optional<Value>{row->value} : std::nullopt};
   ResourceTable("signal-header", {&cells, 1});
   if (!row->problem.empty()) {
     Problem(row->problem);
@@ -580,15 +613,33 @@ void DrawMaskInspector(const Studio::MaskSubject &a_mask,
                        Studio::RemoveMask{row->name});
         }
       }));
-  const ResourceCells cells{.name = row->name, .references = row->references};
+  const ResourceCells cells{.name = row->name};
   ResourceTable("mask-header", {&cells, 1});
+
+  if (a_frame.state->paint && a_frame.state->mask.editing == row->name) {
+    if (Studio::MaskTaskActive(*a_frame.state)) {
+      DrawMaskTask(a_frame);
+    } else {
+      DrawRowField("expression", Studio::MaskTextField(row->name, row->text),
+                   a_frame);
+      if (ImGui::Button("Resume terms editor")) {
+        Studio::Post(*a_frame.intents, Studio::SetMode{Studio::Mode::kPaint});
+      }
+    }
+    return;
+  }
+
   DrawRowField("expression", Studio::MaskTextField(row->name, row->text),
                a_frame);
-  Disabled(a_frame.state->paint.has_value() || !a_frame.piece, [&] {
-    if (ImGui::Button("Edit mask as terms")) {
+  const bool otherDraft = a_frame.state->paint.has_value();
+  Disabled(otherDraft || !a_frame.piece, [&] {
+    if (ImGui::Button("Open terms editor...")) {
       EditMaskAsTerms(*row, a_frame);
     }
   });
+  if (otherDraft) {
+    Dim("Finish or discard the current mask draft first.");
+  }
 }
 
 void DrawCurveInspector(const Studio::CurveSubject &a_curve,
@@ -606,7 +657,7 @@ void DrawCurveInspector(const Studio::CurveSubject &a_curve,
                        Studio::RemoveCurve{row->name});
         }
       }));
-  const ResourceCells cells{.name = row->name, .references = row->references};
+  const ResourceCells cells{.name = row->name};
   ResourceTable("curve-header", {&cells, 1});
   Dim("x is the input value.");
   DrawRowField("expression", Studio::CurveTextField(row->name, row->text),
@@ -618,8 +669,8 @@ void DrawSubject(const Frame &a_frame) {
       SelectionOf(a_frame).subject,
       [&](const Studio::RecipeSubject &) { DrawRecipeSettings(a_frame); },
       [&](const Studio::ShellSubject &) {
-        static_cast<void>(Rule(Studio::RuleSpec{.text = "Inspector"}));
-        Dim("Shell");
+        static_cast<void>(Rule(Studio::RuleSpec{.text = "Inspector"}, 0.0f, {},
+                               [&]() { Dim("Shell"); }));
         DrawFormWithSignals(
             "shell",
             Studio::ShellForm(a_frame.recipe->shellRow,
@@ -762,12 +813,8 @@ void DrawInspectorPane(const Frame &a_frame,
     const FieldScope subjectScope(InspectorKey(SelectionOf(a_frame).subject));
     const Studio::InspectorSubject drawn = SelectionOf(a_frame).subject;
     Disabled(a_pending, [&] {
-      if (a_frame.state->mode == Studio::Mode::kPaint && a_frame.state->paint) {
-        DrawMaskTask(a_frame);
-      } else {
-        DrawSubject(a_frame);
-        DrawRelationships(a_frame);
-      }
+      DrawSubject(a_frame);
+      DrawRelationships(a_frame);
     });
     ImGui::PopID();
     if (drawn == SelectionOf(a_frame).subject) {
@@ -840,15 +887,6 @@ void DrawWorkspace(const Frame &a_input) {
   const FieldScope recipeScope(a_frame.recipe->id);
   const bool pending = Studio::IndexedEditPendingFor(
       a_frame.state->pendingIndexedEdit, a_frame.recipe->id);
-  Disabled(pending || a_frame.state->navigation.back.empty(), [&] {
-    if (ImGui::SmallButton("Back")) {
-      [[maybe_unused]] const bool changed = Studio::GoBack(
-          a_frame.state->navigation, a_frame.state->selection, *a_frame.recipe);
-      if (a_frame.state->paint) {
-        Studio::Reduce(*a_frame.state, Studio::SetMode{Studio::Mode::kCompose});
-      }
-    }
-  });
   a_frame.geometry =
       Studio::SelectedGeometry(a_frame.recipe, SelectionOf(a_frame));
   const Studio::Names names =

@@ -41,12 +41,12 @@ constexpr ImVec4 kBadgeFrame{0.20f, 0.20f, 0.24f, 1.0f};
 
 constexpr float kFillWidth = -(std::numeric_limits<float>::min)();
 
-[[nodiscard]] const char *Literal(const char *a_key) noexcept {
+[[nodiscard]] const char *NonNull(const char *a_key) noexcept {
   return a_key ? a_key : "";
 }
 
 [[nodiscard]] Studio::FieldKey KeyOf(const char *a_key) {
-  return Studio::HashFieldKey(Studio::State().fieldScope, Literal(a_key));
+  return Studio::HashFieldKey(Studio::State().fieldScope, NonNull(a_key));
 }
 
 void TrackActive(Studio::FieldKey a_key) {
@@ -175,25 +175,26 @@ void ProblemLabel(std::string_view a_text) {
 
 [[nodiscard]] std::optional<std::string>
 ColorSwatchPicker(Studio::FieldKey a_key, const std::string &a_current) {
-  auto &held = Studio::State().numberBuffers[a_key];
+  auto &channels = Studio::State().numberBuffers[a_key];
   if (!ImGui::IsPopupOpen("picker")) {
     const Vec3 colour =
         Studio::LiteralColor(a_current).value_or(Vec3{0.5f, 0.5f, 0.5f});
-    held = {colour.x, colour.y, colour.z};
+    channels = {colour.x, colour.y, colour.z};
   }
   const float side = ImGui::GetFrameHeight();
-  if (ImGui::ColorButton("##swatch", ImVec4{held[0], held[1], held[2], 1.0f},
-                         ImGuiMCP::ImGuiColorEditFlags_NoTooltip,
-                         ImVec2{side, side})) {
+  if (ImGui::ColorButton(
+          "##swatch", ImVec4{channels[0], channels[1], channels[2], 1.0f},
+          ImGuiMCP::ImGuiColorEditFlags_NoTooltip, ImVec2{side, side})) {
     ImGui::OpenPopup("picker");
   }
   Tooltip("pick a colour; the field takes it as r, g, b");
   std::optional<std::string> picked;
   if (ImGui::BeginPopup("picker")) {
-    ImGui::ColorPicker3("##picker", held.data(),
+    ImGui::ColorPicker3("##picker", channels.data(),
                         ImGuiMCP::ImGuiColorEditFlags_NoSidePreview);
     if (ImGui::IsItemDeactivatedAfterEdit()) {
-      picked = Studio::LiteralColorText(Vec3{held[0], held[1], held[2]});
+      picked =
+          Studio::LiteralColorText(Vec3{channels[0], channels[1], channels[2]});
     }
     ImGui::EndPopup();
   }
@@ -204,7 +205,7 @@ struct BadgeStyle {
   const char *glyph;
   bool takesSignal;
   ImVec4 colour;
-  const char *rule;
+  const char *help;
   Studio::Swatch swatch;
 };
 
@@ -214,7 +215,7 @@ struct BadgeStyle {
     return {"?", false, kDim, "", Studio::Swatch::kNone};
   }
   const ImVec4 colour{row->colour[0], row->colour[1], row->colour[2], 1.0f};
-  return {row->glyph, row->takesSignal, colour, row->rule, row->swatch};
+  return {row->glyph, row->takesSignal, colour, row->help, row->swatch};
 }
 
 void BadgeFrame(const char *a_label, const ImVec4 &a_colour, bool a_filled,
@@ -248,12 +249,12 @@ void DrawValueBadge(const BadgeStyle &a_style, bool a_takesSignal,
       Studio::State().focusField = a_key;
     }
     ImGui::PopStyleColor(4);
-    Tooltip(std::string{a_style.rule} +
+    Tooltip(std::string{a_style.help} +
             (a_combo ? "\nclick: type a value instead"
                      : "\nclick: choose a signal instead"));
   } else {
     BadgeFrame(a_style.glyph, a_style.colour, false, ImVec2{side, side});
-    Tooltip(a_style.rule);
+    Tooltip(a_style.help);
   }
 }
 
@@ -266,7 +267,7 @@ bool SquareToggle(const char *a_label, bool &a_value,
     ImGui::PushStyleColor(ImGuiMCP::ImGuiCol_Button,
                           pressed ? *pressed : ImVec4{0.3f, 0.5f, 0.8f, 1.0f});
   }
-  const bool clicked = ImGui::Button(Literal(a_label), ImVec2{side, side});
+  const bool clicked = ImGui::Button(NonNull(a_label), ImVec2{side, side});
   if (a_value) {
     ImGui::PopStyleColor();
   }
@@ -368,7 +369,7 @@ Table Table::Begin(const char *a_id, std::span<const Studio::Column> a_columns,
   if (a_style.rowBackground) {
     flags |= ImGuiMCP::ImGuiTableFlags_RowBg;
   }
-  if (!ImGui::BeginTable(Literal(a_id), static_cast<int>(a_columns.size()),
+  if (!ImGui::BeginTable(NonNull(a_id), static_cast<int>(a_columns.size()),
                          flags)) {
     return table;
   }
@@ -489,7 +490,7 @@ std::optional<std::string> TextField(const char *a_key,
       (a_check && state.activeField == key)
           ? a_check(std::string{buffer.data()})
           : std::nullopt;
-  ImGui::PushID(Literal(a_key));
+  ImGui::PushID(NonNull(a_key));
   if (problem) {
     ImGui::PushStyleColor(ImGuiMCP::ImGuiCol_FrameBg, kProblemFrame);
   }
@@ -522,7 +523,7 @@ std::optional<std::string> TextField(const char *a_key,
 std::string_view LiveTextField(const char *a_key, const char *a_hint,
                                const Studio::Width &a_width, float a_scale) {
   auto &buffer = Studio::State().textBuffers[KeyOf(a_key)];
-  ImGui::PushID(Literal(a_key));
+  ImGui::PushID(NonNull(a_key));
   NextItemWidth(a_width, a_scale);
   ImGui::InputTextWithHint("##live", a_hint, buffer.data(), buffer.size());
   ImGui::PopID();
@@ -542,7 +543,7 @@ void Thumbnail(const Studio::ThumbnailSpec &a_spec) {
 
 bool ThumbnailButton(const char *a_key, const Studio::ThumbnailSpec &a_spec) {
   const ImVec2 size{a_spec.size, a_spec.size};
-  ImGui::PushID(Literal(a_key));
+  ImGui::PushID(NonNull(a_key));
   bool clicked = false;
   if (const auto view =
           PreviewOf(a_spec.texture, a_spec.channel, a_spec.dynamic)) {
@@ -560,7 +561,7 @@ std::optional<std::string> ChoiceCombo(const char *a_key,
                                        std::span<const std::string> a_names,
                                        const WidgetSize &a_size) {
   std::optional<std::string> chosen;
-  ImGui::PushID(Literal(a_key));
+  ImGui::PushID(NonNull(a_key));
   NextItemWidth(a_size.width, a_size.scale);
   if (ImGui::BeginCombo("##choice", a_current.c_str())) {
     for (const auto &name : a_names) {
@@ -578,7 +579,7 @@ std::optional<std::string> ReferenceCombo(const char *a_key,
                                           const Studio::FormField &a_field,
                                           const WidgetSize &a_size) {
   std::optional<std::string> chosen;
-  ImGui::PushID(Literal(a_key));
+  ImGui::PushID(NonNull(a_key));
   NextItemWidth(a_size.width, a_size.scale);
   if (ImGui::BeginCombo("##reference", a_field.text.empty()
                                            ? "(none)"
@@ -595,7 +596,7 @@ void Badge(Studio::FieldKind a_kind) {
   const auto style = StyleOf(a_kind);
   const float side = ImGui::GetFrameHeight();
   BadgeFrame(style.glyph, style.colour, style.takesSignal, ImVec2{side, side});
-  Tooltip(style.rule);
+  Tooltip(style.help);
   ImGui::SameLine(0.0f, 0.0f);
 }
 
@@ -620,7 +621,7 @@ const char *BlendGlyph(Blend a_blend) {
 }
 
 std::optional<Blend> BlendBadge(Blend a_current, Slot a_slot) {
-  static constexpr Blend order[]{
+  static constexpr Blend kBlendOrder[]{
       Blend::kReplace, Blend::kNormal,   Blend::kMultiply, Blend::kScreen,
       Blend::kAdd,     Blend::kSubtract, Blend::kLerp};
   const float side = ImGui::GetFrameHeight();
@@ -631,7 +632,7 @@ std::optional<Blend> BlendBadge(Blend a_current, Slot a_slot) {
   }
   Tooltip("blend: " + std::string{BlendName(a_current)} + "\nclick to change");
   if (ImGui::BeginPopup("blend-pick")) {
-    for (const Blend blend : order) {
+    for (const Blend blend : kBlendOrder) {
       if (!BlendAllowed(a_slot, blend)) {
         continue;
       }
@@ -649,8 +650,8 @@ std::optional<Blend> BlendBadge(Blend a_current, Slot a_slot) {
 
 std::optional<std::string> ValueWidget(const char *a_key,
                                        const Studio::FormField &a_field,
-                                       float a_scale,
-                                       const TextCheck &a_check) {
+                                       float a_scale, const TextCheck &a_check,
+                                       const Studio::Width &a_width) {
   auto &state = Studio::State();
   const auto style = StyleOf(a_field.kind);
   const bool takesSignal = style.takesSignal && (!a_field.names.empty() ||
@@ -661,7 +662,7 @@ std::optional<std::string> ValueWidget(const char *a_key,
   if (mode == state.comboMode.end()) {
     mode = state.comboMode.emplace(key, reference).first;
   }
-  ImGui::PushID(Literal(a_key));
+  ImGui::PushID(NonNull(a_key));
   DrawValueBadge(style, takesSignal, mode->second, key);
   ImGui::SameLine(0.0f, 0.0f);
 
@@ -679,8 +680,8 @@ std::optional<std::string> ValueWidget(const char *a_key,
       chosen = ColorSwatchPicker(key, a_field.text);
       ImGui::SameLine(0.0f, 0.0f);
     }
-    if (const auto typed = TextField(
-            "text", a_field.text, {Studio::Width::Fill(), a_scale}, a_check)) {
+    if (const auto typed =
+            TextField("text", a_field.text, {a_width, a_scale}, a_check)) {
       chosen = typed;
     }
   }
@@ -715,15 +716,11 @@ void ValueSwatch(const Value &a_value) {
 }
 
 void ResourceTable(const char *a_id, std::span<const ResourceCells> a_rows) {
-  Table table =
-      Table::Begin(a_id,
-                   {{"name", Studio::Width::Fill()},
-                    {"type", Studio::Width::Fit()},
-                    {"value", Studio::Width::Fit()},
-                    {"usage", Studio::Width::Fit()}},
-                   Studio::TableStyle{.borders = Studio::TableBorders::kNone,
-                                      .stretch = true,
-                                      .headers = false});
+  Table table = Table::Begin(a_id,
+                             {{"name", Studio::Width::Fill()},
+                              {"type", Studio::Width::Fit()},
+                              {"value", Studio::Width::Fit()}},
+                             Studio::kColumnsTable);
   if (!table.Open()) {
     return;
   }
@@ -740,9 +737,6 @@ void ResourceTable(const char *a_id, std::span<const ResourceCells> a_rows) {
     if (row.value) {
       ValueSwatch(*row.value);
     }
-    table.Cell();
-    ImGui::AlignTextToFramePadding();
-    Dim(std::format("used {}", row.references));
   }
   table.End();
 }
@@ -751,7 +745,7 @@ std::optional<float> Split(const char *a_id, float a_ratio,
                            const std::function<void()> &a_left,
                            const std::function<void()> &a_right) {
   const float ratio = std::clamp(a_ratio, 0.05f, 0.95f);
-  if (!ImGui::BeginTable(Literal(a_id), 2,
+  if (!ImGui::BeginTable(NonNull(a_id), 2,
                          ImGuiMCP::ImGuiTableFlags_Resizable |
                              ImGuiMCP::ImGuiTableFlags_BordersInnerV |
                              ImGuiMCP::ImGuiTableFlags_SizingStretchProp)) {
@@ -783,8 +777,11 @@ std::optional<float> Split(const char *a_id, float a_ratio,
 void Rule() { ImGui::Separator(); }
 
 RuleResult Rule(const Studio::RuleSpec &a_spec, float a_trailingWidth,
-                const std::function<void()> &a_trailing) {
-  ImGui::Dummy(ImVec2{0.0f, ImGui::GetFrameHeight()});
+                const std::function<void()> &a_trailing,
+                const std::function<void()> &a_leading) {
+  if (a_spec.leadingSpace) {
+    ImGui::Dummy(ImVec2{0.0f, ImGui::GetFrameHeight()});
+  }
   ImGui::Separator();
   bool open = true;
   if (a_spec.collapsible) {
@@ -798,6 +795,10 @@ RuleResult Rule(const Studio::RuleSpec &a_spec, float a_trailingWidth,
     ImGui::AlignTextToFramePadding();
     ImGui::TextUnformatted(a_spec.text.data(),
                            a_spec.text.data() + a_spec.text.size());
+  }
+  if (a_leading) {
+    ImGui::SameLine();
+    a_leading();
   }
   const Studio::RuleClick click =
       DrawRuleControls(a_spec.buttons, a_trailingWidth, a_trailing);
@@ -817,7 +818,7 @@ RuleFilter RuleWithFilter(const Studio::RuleSpec &a_spec,
 }
 
 bool Toggle(const char *a_label, bool &a_value, std::string_view a_tooltip) {
-  const bool changed = ImGui::Checkbox(Literal(a_label), &a_value);
+  const bool changed = ImGui::Checkbox(NonNull(a_label), &a_value);
   Tooltip(a_tooltip);
   return changed;
 }
@@ -825,7 +826,7 @@ bool Toggle(const char *a_label, bool &a_value, std::string_view a_tooltip) {
 void DetailModal(const char *a_title, const std::function<void()> &a_body) {
   ImGui::SetNextWindowSizeConstraints(ImVec2{480.0f, 0.0f},
                                       ImVec2{960.0f, 800.0f});
-  if (!ImGui::BeginPopupModal(Literal(a_title), nullptr,
+  if (!ImGui::BeginPopupModal(NonNull(a_title), nullptr,
                               ImGuiMCP::ImGuiWindowFlags_AlwaysAutoResize)) {
     return;
   }
@@ -855,7 +856,7 @@ void Disabled(bool a_disabled, const std::function<void()> &a_draw) {
 
 void HeldLabel(const char *a_text) {
   ImGui::BeginDisabled();
-  ImGui::Button(Literal(a_text));
+  ImGui::Button(NonNull(a_text));
   ImGui::EndDisabled();
 }
 
@@ -888,7 +889,7 @@ bool DragHandle(const char *a_type, std::size_t a_index, const char *a_noun) {
   const bool clicked = ImGui::Button("::", ImVec2{side, side});
   if (ImGui::BeginDragDropSource()) {
     ImGui::SetDragDropPayload(a_type, &a_index, sizeof(a_index));
-    ImGui::Text("%s %zu", Literal(a_noun), a_index);
+    ImGui::Text("%s %zu", NonNull(a_noun), a_index);
     ImGui::EndDragDropSource();
   }
   return clicked;
@@ -920,6 +921,28 @@ void Warn(std::string_view a_text) { Colored(kWarn, a_text); }
 void Ok(std::string_view a_text) { Colored(kOk, a_text); }
 
 void Dim(std::string_view a_text) { Colored(kDim, a_text); }
+
+void DrawDiagnostics(std::span<const Diagnostic> a_problems, bool a_heldBack) {
+  if (a_problems.empty()) {
+    return;
+  }
+  static_cast<void>(
+      Rule(Studio::RuleSpec{.text = "Rows with problems"}, 0.0f, {},
+           [&]() { Warn(std::format("{}", a_problems.size())); }));
+  if (a_heldBack) {
+    Problem("Held back: recipe-level errors keep it out of the applied set "
+            "until they are fixed");
+  }
+  for (const Diagnostic &diagnostic : a_problems) {
+    const std::string line =
+        std::format("{}: {}", diagnostic.where, diagnostic.message);
+    if (diagnostic.severity == Severity::kError) {
+      Problem(line);
+    } else {
+      Warn(line);
+    }
+  }
+}
 
 void HelpMarker(const char *a_text) {
   if (!a_text || !*a_text) {

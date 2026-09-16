@@ -35,11 +35,6 @@ bool g_autoReapply = true;
 Settings g_savedSettings{};
 bool g_savedKnown = false;
 
-constexpr Studio::TableStyle kGridStyle{.borders = Studio::TableBorders::kAll,
-                                        .stretch = true,
-                                        .headers = true,
-                                        .rowBackground = true};
-
 constexpr const char *kSetupSections[]{"General"};
 constexpr const char *kVerboseKey = "VerboseLogging";
 
@@ -183,7 +178,7 @@ void DrawValueTable(Settings &a_settings) {
   auto table = Table::Begin(
       "values",
       {{"setting", Studio::Width::Fit()}, {"value", Studio::Width::Fill()}},
-      kGridStyle);
+      Studio::kGridTable);
   if (!table.Open()) {
     return;
   }

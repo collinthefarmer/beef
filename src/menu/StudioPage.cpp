@@ -1,7 +1,6 @@
 #include "menu/StudioPage.h"
 #include "diagnostics/Trace.h"
 
-#include "menu/BoardPage.h"
 #include "menu/ContextRows.h"
 #include "menu/FormDraw.h"
 #include "menu/Frame.h"
@@ -15,11 +14,12 @@
 #include "menu/Workspace.h"
 
 #include "engine/Manager.h"
-#include "studio/Board.h"
+#include "studio/EditResult.h"
 #include "studio/Forms.h"
 #include "studio/Intent.h"
 #include "studio/MenuState.h"
 #include "studio/Names.h"
+#include "studio/Navigation.h"
 #include "studio/PaintSession.h"
 #include "studio/Panels.h"
 #include "studio/Selection.h"
@@ -45,10 +45,6 @@ using ImGuiMCP::ImVec2;
 
 namespace BetterEnchantmentEffects::Menu {
 namespace {
-constexpr Studio::TableStyle kFooterStyle{.borders = Studio::TableBorders::kAll,
-                                          .stretch = true,
-                                          .headers = true,
-                                          .rowBackground = false};
 
 void DrawApplication(const Frame &a_frame) {
   const auto &selection = SelectionOf(a_frame);
@@ -120,43 +116,130 @@ void ReturnToLive() {
   }
   manager->Editor().UpdateView([](Studio::View &a_live) {
     a_live.isolation = {};
+    a_live.soloPiece.reset();
     a_live.muted.clear();
     a_live.freeze = false;
     a_live.speed = 1.0f;
   });
 }
 
-void IsolateCheckbox(const Studio::RecipeRow &a_recipe,
-                     const Studio::View &a_view, const char *a_label,
-                     Studio::Intents &a_out) {
-  bool isolating = a_view.Isolating();
-  std::string text;
-  if (isolating) {
-    text = "isolating " + a_view.isolation.recipeID;
-    if (a_view.isolation.output.has_value()) {
-      text += std::format(" output {}", *a_view.isolation.output);
-    }
-    if (a_view.isolation.layer.has_value()) {
-      text += std::format(" layer {}", *a_view.isolation.layer);
-    }
+void SoloPieceCheckbox(const Frame &a_frame) {
+  const Studio::PieceRow *piece = a_frame.piece;
+  if (!piece) {
+    return;
   }
-  if (Toggle(a_label, isolating, text)) {
-    Studio::Post(a_out, Studio::SoloRecipe{a_recipe.id, isolating});
+  const Studio::View &view = ViewOf(a_frame);
+  bool solo = view.soloPiece && view.soloPiece->actorID == piece->ref.actorID &&
+              view.soloPiece->armorID == piece->ref.armorID;
+  std::string text;
+  if (solo) {
+    text =
+        std::format("showing only {} / {}", piece->actorName, piece->armorName);
+  }
+  if (Toggle("Solo piece", solo, text)) {
+    Studio::Post(*a_frame.intents, Studio::SoloPiece{piece->ref, solo});
   }
 }
 
-void DrawAuditionBar(const Frame &a_frame) {
+constexpr float kPieceComboWidth = 480.0f;
+
+void DrawPieceCombo(const Frame &a_frame) {
+  const Studio::PieceRow *piece = a_frame.piece;
+  const std::string preview =
+      piece ? std::format("{} / {} ({})", piece->actorName, piece->armorName,
+                          piece->ref.firstPerson ? "1st" : "3rd")
+            : std::string{"nothing applied"};
+  NextItemWidth(Studio::Width::Px(kPieceComboWidth));
+  if (!ImGui::BeginCombo("##piece", preview.c_str())) {
+    return;
+  }
+  std::size_t i = 0;
+  for (const Studio::PieceRow &row : a_frame.snapshot->pieces) {
+    const std::string label =
+        std::format("{} / {} ({})##piece{}", row.actorName, row.armorName,
+                    row.ref.firstPerson ? "1st" : "3rd", i++);
+    if (ImGui::Selectable(label.c_str(),
+                          row.ref == SelectionOf(a_frame).piece)) {
+      Studio::Post(*a_frame.intents, Studio::PickPiece{row.ref});
+    }
+  }
+  ImGui::EndCombo();
+}
+
+void NavButton(const char *a_label, bool a_active,
+               const std::function<void()> &a_step) {
+  const float width = ButtonWidth(a_label);
+  if (!a_active) {
+    Disabled(true, [&] { ImGui::Button(a_label, ImVec2{width, 0.0f}); });
+    return;
+  }
+  const auto *fill = ImGui::GetStyleColorVec4(ImGuiMCP::ImGuiCol_Text);
+  const auto *ink = ImGui::GetStyleColorVec4(ImGuiMCP::ImGuiCol_WindowBg);
+  ImGui::PushStyleColor(ImGuiMCP::ImGuiCol_Button, *fill);
+  ImGui::PushStyleColor(ImGuiMCP::ImGuiCol_ButtonHovered, *fill);
+  ImGui::PushStyleColor(ImGuiMCP::ImGuiCol_ButtonActive, *fill);
+  ImGui::PushStyleColor(ImGuiMCP::ImGuiCol_Text, *ink);
+  if (ImGui::Button(a_label, ImVec2{width, 0.0f})) {
+    a_step();
+  }
+  ImGui::PopStyleColor(4);
+}
+
+void DrawInspectorNav(const Frame &a_frame) {
+  Studio::Navigation &nav = a_frame.state->navigation;
+  const bool pending = a_frame.recipe && Studio::IndexedEditPendingFor(
+                                             a_frame.state->pendingIndexedEdit,
+                                             a_frame.recipe->id);
+  const auto step = [&](bool a_forward) {
+    if (!a_frame.recipe) {
+      return;
+    }
+    [[maybe_unused]] const bool changed =
+        a_forward
+            ? Studio::GoForward(nav, a_frame.state->selection, *a_frame.recipe)
+            : Studio::GoBack(nav, a_frame.state->selection, *a_frame.recipe);
+    if (a_frame.state->paint) {
+      Studio::Reduce(*a_frame.state, Studio::SetMode{Studio::Mode::kCompose});
+    }
+  };
+  const bool ready = a_frame.recipe && !pending;
+  NavButton("<<<", ready && !nav.back.empty(), [&] { step(false); });
+  ImGui::SameLine();
+  RightAligned(ButtonWidth(">>>"), [&] {
+    NavButton(">>>", ready && !nav.forward.empty(), [&] { step(true); });
+  });
+}
+
+void DrawPieceBar(const Frame &a_frame) {
   const Studio::View &view = ViewOf(a_frame);
-  static_cast<void>(Rule(Studio::RuleSpec{.text = "Audition", .buttons = {}}));
-  if (a_frame.recipe) {
-    IsolateCheckbox(*a_frame.recipe, view, "Solo recipe", *a_frame.intents);
+  float trailing = kPieceComboWidth;
+  if (a_frame.piece) {
+    trailing += ItemSpacingX() + RowButtonWidth() + ItemSpacingX() +
+                TextWidth("Solo piece");
   }
-  if (view.Isolating()) {
-    Warn(std::format("Solo: {}", view.isolation.recipeID));
-  }
-  if (!view.muted.empty()) {
-    Warn(std::format("{} muted layer(s)", view.muted.size()));
-  }
+  const auto indicators = [&]() {
+    bool first = true;
+    if (view.Isolating()) {
+      Warn(std::format("Solo: {}", view.isolation.recipeID));
+      first = false;
+    }
+    if (!view.muted.empty()) {
+      if (!first) {
+        ImGui::SameLine();
+      }
+      Warn(std::format("{} muted layer(s)", view.muted.size()));
+    }
+  };
+  static_cast<void>(Rule(
+      Studio::RuleSpec{.text = "Piece", .leadingSpace = false}, trailing,
+      [&]() {
+        DrawPieceCombo(a_frame);
+        if (a_frame.piece) {
+          ImGui::SameLine();
+          SoloPieceCheckbox(a_frame);
+        }
+      },
+      indicators));
 }
 
 void DrawClock(const Frame &a_frame) {
@@ -169,7 +252,7 @@ void DrawClock(const Frame &a_frame) {
                               {"step", Studio::Width::Fit()},
                               {"speed", Studio::Width::Fit()},
                               {"t (s)", Studio::Width::Fill()}},
-                             kFooterStyle);
+                             Studio::kFooterTable);
   if (!table.Open()) {
     return;
   }
@@ -212,18 +295,31 @@ void DrawClock(const Frame &a_frame) {
 
 void DrawFooter(const Frame &a_frame) {
   const Studio::View &view = ViewOf(a_frame);
-  DrawAuditionBar(a_frame);
-  static_cast<void>(Rule(Studio::RuleSpec{.text = "Session", .buttons = {}}));
-  Disabled(Studio::MaskTaskActive(*a_frame.state), [&] {
-    if (ImGui::SmallButton("Return to live")) {
-      ReturnToLive();
-    }
-  });
-  Tooltip("clear solo and mute, resume the global clock at normal speed");
-  if (view.freeze || view.speed != 1.0f) {
-    Dim(std::format("Clock: {} at {:.2f}x", view.freeze ? "held" : "running",
-                    view.speed));
-  }
+  DrawInspectorNav(a_frame);
+  DrawPieceBar(a_frame);
+  static_cast<void>(Rule(
+      Studio::RuleSpec{.text = "Session"}, ButtonWidth("Return to live"),
+      [&]() {
+        Disabled(Studio::MaskTaskActive(*a_frame.state), [&] {
+          if (ImGui::Button("Return to live")) {
+            ReturnToLive();
+          }
+        });
+        Tooltip("clear solo and mute, resume the global clock at normal speed");
+      },
+      [&]() {
+        if (!view.freeze && view.speed == 1.0f) {
+          return;
+        }
+        const std::string clock =
+            std::format("Clock: {} at {:.2f}x",
+                        view.freeze ? "held" : "running", view.speed);
+        if (view.freeze) {
+          Warn(clock);
+        } else {
+          Dim(clock);
+        }
+      }));
   DrawClock(a_frame);
 }
 
@@ -267,7 +363,6 @@ void TraceStudioSelection(const Studio::Selection &a_selection) {
 
 void DrawStudioFrame(const Frame &frame) {
   Studio::MenuState &state = *frame.state;
-  const Studio::Snapshot &snapshot = *frame.snapshot;
   const bool editPending = state.pendingIndexedEdit.has_value() ||
                            state.pendingRecipeFile.has_value() ||
                            RecipeFilePending(frame);
@@ -278,10 +373,7 @@ void DrawStudioFrame(const Frame &frame) {
   if (editPending) {
     Dim("Waiting for the recipe change.");
   }
-  const Studio::View &view = snapshot.view;
-  const float footerRows = 4.0f + (view.Isolating() ? 1.0f : 0.0f) +
-                           (!view.muted.empty() ? 1.0f : 0.0f) +
-                           ((view.freeze || view.speed != 1.0f) ? 1.0f : 0.0f);
+  const float footerRows = 2.0f;
   const float footer = RuleHeight() * 2.0f +
                        ImGui::GetFrameHeightWithSpacing() * footerRows + 8.0f;
   if (ImGui::BeginChild("studio-body", ImVec2{0.0f, -footer}, 0, 0)) {
@@ -356,45 +448,4 @@ void __stdcall RenderStudio() {
   Dispatch(intents, state, snapshot);
 }
 
-void __stdcall RenderBoard() {
-  Manager *manager = Manager::GetSingleton();
-  if (!manager) {
-    return;
-  }
-  Studio::MenuState &state = Studio::State();
-  manager->Watch(Studio::RequestOf(state.selection),
-                 state.selection.document ? state.selection.recipeID : "");
-  const std::shared_ptr<const Manager::Snapshot> held =
-      manager->LatestSnapshot();
-  if (!held) {
-    return;
-  }
-  const Studio::Snapshot &snapshot = *held;
-  Studio::Intents intents;
-  const Studio::PieceRow *piece =
-      Studio::SelectedPiece(snapshot, state.selection);
-  const Studio::RecipeRow *recipe =
-      Studio::SelectedRecipe(snapshot, state.selection);
-  const Studio::GeometryRow *geometry =
-      Studio::SelectedGeometry(recipe, state.selection);
-  const Studio::Names names =
-      recipe ? Studio::NamesOf(*recipe,
-                               geometry ? *geometry : Studio::GeometryRow{})
-             : Studio::Names{};
-  const Frame frame{
-      .snapshot = &snapshot,
-      .piece = piece,
-      .recipe = recipe,
-      .geometry = geometry,
-      .names = &names,
-      .state = &state,
-      .intents = &intents,
-  };
-  if (recipe) {
-    DrawBoardPage(frame);
-  } else {
-    Dim("Select a recipe in Studio to see its composition.");
-  }
-  Dispatch(intents, state, snapshot);
-}
 }

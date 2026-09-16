@@ -115,8 +115,9 @@ private:
   void TickInstance(LiveInstance &a_instance, float a_time, float a_delta);
   void DropLostGeometries(LiveActor &a_state);
   void RenderGeometry(LiveActor &a_state, LivePiece &a_piece,
-                      LiveGeometry &a_bound);
-  void UpdateLights(LiveActor &a_state);
+                      LiveGeometry &a_bound, bool a_hidden);
+  void UpdateLights(LiveActor &a_state,
+                    const std::vector<bool> &a_instanceHidden);
   void FireDueFinalizes();
   [[nodiscard]] static bool Alive(const LiveActor &a_state) noexcept;
 

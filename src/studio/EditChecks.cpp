@@ -42,7 +42,7 @@ std::optional<Diagnostic> CheckCurveText(const std::string &a_where,
   return std::nullopt;
 }
 
-std::optional<Diagnostic> CheckScalarRef(const CheckCtx &a_ctx,
+std::optional<Diagnostic> CheckScalarRef(const CheckContext &a_ctx,
                                          std::string_view a_field,
                                          const Param &a_param) {
   const auto *ref = Get<Ref>(a_param);
@@ -64,8 +64,8 @@ std::optional<Diagnostic> CheckScalarRef(const CheckCtx &a_ctx,
 }
 
 namespace {
-Refusal CheckVectorRefSignal(const CheckCtx &a_ctx, std::string_view a_field,
-                             const Ref &a_ref) {
+Refusal CheckVectorRefSignal(const CheckContext &a_ctx,
+                             std::string_view a_field, const Ref &a_ref) {
   const auto type = SignalTypeOf(a_ctx.rows, a_ref.name);
   if (!type) {
     return Refuse(
@@ -80,7 +80,7 @@ Refusal CheckVectorRefSignal(const CheckCtx &a_ctx, std::string_view a_field,
   return std::nullopt;
 }
 
-Refusal CheckVectorRefParts(const CheckCtx &a_ctx, std::string_view a_field,
+Refusal CheckVectorRefParts(const CheckContext &a_ctx, std::string_view a_field,
                             const std::array<Param, 3> &a_parts, bool a_color) {
   for (const auto &part : a_parts) {
     if (auto problem = CheckScalarRef(a_ctx, a_field, part)) {
@@ -96,7 +96,7 @@ Refusal CheckVectorRefParts(const CheckCtx &a_ctx, std::string_view a_field,
 }
 }
 
-std::optional<Diagnostic> CheckVectorRef(const CheckCtx &a_ctx,
+std::optional<Diagnostic> CheckVectorRef(const CheckContext &a_ctx,
                                          std::string_view a_field,
                                          const Vec3Param &a_param,
                                          bool a_color) {
