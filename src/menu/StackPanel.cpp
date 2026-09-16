@@ -34,13 +34,6 @@ using Studio::LayerStackRow;
 using Studio::Layout;
 using Studio::PictureRow;
 
-void DrawScalars(const LayerStack &a_stack, const Frame &a_frame) {
-  if (a_stack.scalars.empty()) {
-    return;
-  }
-  DrawFormWithSignals("scalars", Studio::ScalarForm(a_stack), a_frame);
-}
-
 void DrawDetailImage(const PictureRow &a_image, bool a_editable,
                      const Frame &a_frame) {
   const Layout &layout = LayoutOf(a_frame);
@@ -62,8 +55,9 @@ void DrawDetailImage(const PictureRow &a_image, bool a_editable,
   }
 }
 
-void DrawDetailModal(FieldDetail a_detail, const Inspector &a_inspector,
-                     const Frame &a_frame) {
+[[maybe_unused]] void DrawDetailModal(FieldDetail a_detail,
+                                      const Inspector &a_inspector,
+                                      const Frame &a_frame) {
 
   switch (a_detail) {
   case FieldDetail::kSource:
@@ -108,31 +102,11 @@ void DrawDetailModal(FieldDetail a_detail, const Inspector &a_inspector,
   }
 }
 
-void DrawInspectorFields(const Inspector &a_inspector, const Frame &a_frame) {
-  const auto form = Studio::InspectorForm(a_inspector);
-  const std::optional<std::size_t> opened = DrawForm("fields", form, a_frame);
-  const std::optional<FieldDetail> open =
-      opened && *opened < form.size() ? form[*opened].detail : std::nullopt;
-  for (const auto detail :
-       {FieldDetail::kSource, FieldDetail::kCurve, FieldDetail::kOpacity,
-        FieldDetail::kColor, FieldDetail::kMask}) {
-    const auto title = std::format("{} of layer {}###detail{}",
-                                   Studio::FieldDetailName(detail),
-                                   a_inspector.layer, static_cast<int>(detail));
-    if (open == detail) {
-      ImGui::OpenPopup(title.c_str());
-    }
-    DetailModal(title.c_str(),
-                [&]() { DrawDetailModal(detail, a_inspector, a_frame); });
-  }
-}
-
 void DrawInspector(const LayerStack &a_stack,
                    const std::optional<Inspector> &a_inspector,
                    const Frame &a_frame) {
   const Layout &layout = LayoutOf(a_frame);
   if (!layout.inspector || !a_inspector) {
-    Dim("click a layer to inspect it");
     return;
   }
   const auto row = std::ranges::find(a_stack.rows, a_inspector->layer,
@@ -167,7 +141,6 @@ void DrawStack(const std::optional<Studio::LayerStack> &a_stack,
   }
   Dim(std::format("composite {} px, {}", stack.size,
                   stack.animated ? "animated" : "static"));
-  DrawScalars(stack, a_frame);
   DrawInspector(stack, a_inspector, a_frame);
   ImGui::PopID();
 }

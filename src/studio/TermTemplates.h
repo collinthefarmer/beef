@@ -95,9 +95,4 @@ OffersOfRecipe(const MaskPresets &a_presets, const RecipeRow &a_recipe,
                std::string_view a_editing);
 [[nodiscard]] std::string TermDetailOf(const Term &a_term,
                                        std::span<const TermOffer> a_offers);
-
-[[nodiscard]] std::vector<RecipeEdit>
-ScratchEdits(std::span<const Term> a_terms, std::optional<std::size_t> a_solo,
-             const std::set<std::size_t> &a_muted,
-             const std::optional<std::string> &a_scratch);
 }

@@ -126,6 +126,12 @@ in the plugin.
   refused.
 - **`UniqueMaterial`** is live and does change material sharing, but its
   own ini text says "Turn off only to test that behaviour."
+- **`SerializePresets` has no caller (2026-09-15).** Its partner
+  `ParsePresets` is wired — `RecipeStore::LoadPresets` reads the presets file
+  at startup — so mask presets load but never save. The serializer and its
+  `tests/studio/presets_tests.cpp` coverage are the built half of a
+  persistence path with no `SavePresets` call site. Either wire the save or
+  cut both; kept for now because deleting it forecloses preset saving.
 
 ## Looked dead, keep
 

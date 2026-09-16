@@ -68,18 +68,6 @@ void TestSignalNames() {
         "SignalNamesOf collects triggers");
 }
 
-void TestSignalList() {
-  const RecipeRow recipe = SampleRecipe();
-  const SignalList shown = BuildSignalList(recipe, LayoutFor(Mode::kCompose));
-  Check(shown.tunable.size() + shown.developer.size() == recipe.signals.size(),
-        "BuildSignalList partitions every signal when developer signals show");
-  Layout hidden = LayoutFor(Mode::kCompose);
-  hidden.developerSignals = false;
-  const SignalList tunableOnly = BuildSignalList(recipe, hidden);
-  Check(tunableOnly.developer.empty(),
-        "BuildSignalList drops developer signals when hidden");
-}
-
 void TestSignalFormConstant() {
   const RecipeRow recipe = SampleRecipe();
   const SignalNames names = SignalNamesOf(recipe);
@@ -228,7 +216,7 @@ void TestInspectorForm() {
   inspector.row.opacityText = "1";
   inspector.sources = {"base"};
   const std::vector<FormField> form = InspectorForm(inspector);
-  Check(form.size() == 6, "InspectorForm builds the six layer fields");
+  Check(form.size() == 7, "InspectorForm builds the seven layer fields");
   const FormField *source = Field(form, "source");
   Check(source != nullptr && source->kind == FieldKind::kLayerSource &&
             !source->creators.empty(),
@@ -247,8 +235,8 @@ void TestScalarForm() {
   Check(form.size() == 1 && form.front().name == "strength" &&
             form.front().kind == FieldKind::kScalar,
         "ScalarForm builds a field per slot scalar");
-  Check(form.front().value.has_value(),
-        "ScalarForm carries the live scalar value for the swatch");
+  Check(!form.front().value.has_value(),
+        "ScalarForm omits the value so its rows match other field rows");
 }
 
 void TestStackAndInspectorViews() {
@@ -339,9 +327,6 @@ void TestIntegerSignalFields() {
 }
 
 void TestHelpers() {
-  Check(FieldDetailName(FieldDetail::kSource) == "source" &&
-            FieldDetailName(FieldDetail::kMask) == "mask",
-        "FieldDetailName names each detail");
   const auto colour = LiteralColor("1, 0.5, 0.25");
   Check(colour.has_value() && test::Near(colour->y, 0.5f),
         "LiteralColor parses a three-part literal");
@@ -355,7 +340,6 @@ void TestHelpers() {
 
 int main() {
   TestSignalNames();
-  TestSignalList();
   TestSignalFormConstant();
   TestSignalFormPulse();
   TestSourceRoundTrip();

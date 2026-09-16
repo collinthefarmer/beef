@@ -42,8 +42,6 @@ struct PaintSession {
 [[nodiscard]] std::expected<EditBatch, Diagnostic>
 PreparePaintUpdate(const Recipe *a_paint, const PaintUpdateRequest &a_request);
 
-[[nodiscard]] std::optional<std::string> ScratchOf(const RecipeRow &a_recipe);
-
 [[nodiscard]] SurfaceOutput PaintOutput(Surface a_surface);
 [[nodiscard]] std::vector<RecipeEdit> PaintSurfaceEdits(Surface a_surface);
 [[nodiscard]] Recipe PaintRecipe(const Recipe &a_active, RecipeKey a_key,

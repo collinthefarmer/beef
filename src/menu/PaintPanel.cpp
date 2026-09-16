@@ -495,7 +495,7 @@ void DrawMaskRule(std::string_view a_title, const Frame &a_frame) {
        painting && !state.paint->pendingCommit},
   };
   const Studio::RuleSpec spec{a_title, buttons};
-  const Studio::RuleClick click = Rule(spec);
+  const Studio::RuleClick click = Rule(spec).click;
   if (click.clicked && click.index < std::size(buttons)) {
     switch (buttons[click.index].action) {
     case Studio::RuleAction::kUndo:

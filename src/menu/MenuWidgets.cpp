@@ -291,16 +291,8 @@ bool SquareToggle(const char *a_label, bool &a_value,
 }
 
 [[nodiscard]] Studio::RuleClick
-DrawRuleLine(std::string_view a_text,
-             std::span<const Studio::RuleButton> a_buttons, float a_trailWidth,
-             const std::function<void()> &a_trail) {
-  if (a_text.empty()) {
-    ImGui::Dummy(ImVec2{0.0f, ImGui::GetFrameHeight()});
-  } else {
-    ImGui::AlignTextToFramePadding();
-    ImGui::TextUnformatted(a_text.data(), a_text.data() + a_text.size());
-  }
-
+DrawRuleControls(std::span<const Studio::RuleButton> a_buttons,
+                 float a_trailWidth, const std::function<void()> &a_trail) {
   const std::size_t items = a_buttons.size() + (a_trail ? 1u : 0u);
   if (items == 0) {
     return {};
@@ -449,14 +441,6 @@ float FitWidth(std::string_view a_text) {
   return text.x + ImGui::GetFrameHeight() * 2.0f + 8.0f;
 }
 
-float BlendWidth(std::span<const Blend> a_allowed) {
-  float width = 0.0f;
-  for (const Blend blend : a_allowed) {
-    width = (std::max)(width, FitWidth(BlendName(blend)));
-  }
-  return width;
-}
-
 float WidestOf(std::span<const std::string> a_names) {
   float width = 0.0f;
   for (const auto &name : a_names) {
@@ -474,14 +458,6 @@ float ButtonWidth(std::string_view a_text) {
 
 float TextWidth(std::string_view a_text) {
   return ImGui::CalcTextSize(a_text.data(), a_text.data() + a_text.size()).x;
-}
-
-float CheckboxWidth(std::string_view a_text) {
-  const auto *style = ImGui::GetStyle();
-  const auto text =
-      ImGui::CalcTextSize(a_text.data(), a_text.data() + a_text.size());
-  return ImGui::GetFrameHeight() + (style ? style->ItemInnerSpacing.x : 4.0f) +
-         text.x;
 }
 
 float ItemSpacingX() {
@@ -579,26 +555,6 @@ bool ThumbnailButton(const char *a_key, const Studio::ThumbnailSpec &a_spec) {
   return clicked;
 }
 
-std::optional<Blend> BlendCombo(const char *a_key, std::string_view a_current,
-                                std::span<const Blend> a_allowed,
-                                const WidgetSize &a_size) {
-  std::optional<Blend> chosen;
-  const std::string current{a_current};
-  ImGui::PushID(Literal(a_key));
-  NextItemWidth(a_size.width, a_size.scale);
-  if (ImGui::BeginCombo("##blend", current.c_str())) {
-    for (const Blend blend : a_allowed) {
-      const std::string name{BlendName(blend)};
-      if (ImGui::Selectable(name.c_str(), name == current)) {
-        chosen = blend;
-      }
-    }
-    ImGui::EndCombo();
-  }
-  ImGui::PopID();
-  return chosen;
-}
-
 std::optional<std::string> ChoiceCombo(const char *a_key,
                                        const std::string &a_current,
                                        std::span<const std::string> a_names,
@@ -664,10 +620,9 @@ const char *BlendGlyph(Blend a_blend) {
 }
 
 std::optional<Blend> BlendBadge(Blend a_current, Slot a_slot) {
-  static constexpr Blend order[]{Blend::kReplace, Blend::kNormal,
-                                 Blend::kMultiply, Blend::kScreen,
-                                 Blend::kAdd,     Blend::kSubtract,
-                                 Blend::kLerp};
+  static constexpr Blend order[]{
+      Blend::kReplace, Blend::kNormal,   Blend::kMultiply, Blend::kScreen,
+      Blend::kAdd,     Blend::kSubtract, Blend::kLerp};
   const float side = ImGui::GetFrameHeight();
   std::optional<Blend> chosen;
   ImGui::PushID("blend");
@@ -759,35 +714,37 @@ void ValueSwatch(const Value &a_value) {
   ImGui::TextUnformatted(ValueText(a_value).c_str());
 }
 
-bool ModeBar(Studio::Mode &a_mode, Studio::Mode &a_drawn) {
-  const Studio::Mode before = a_mode;
-  const bool setByState = a_mode != a_drawn;
-  if (!ImGui::BeginTabBar("modes")) {
-    a_drawn = a_mode;
-    return false;
+void ResourceTable(const char *a_id, std::span<const ResourceCells> a_rows) {
+  Table table =
+      Table::Begin(a_id,
+                   {{"name", Studio::Width::Fill()},
+                    {"type", Studio::Width::Fit()},
+                    {"value", Studio::Width::Fit()},
+                    {"usage", Studio::Width::Fit()}},
+                   Studio::TableStyle{.borders = Studio::TableBorders::kNone,
+                                      .stretch = true,
+                                      .headers = false});
+  if (!table.Open()) {
+    return;
   }
-  for (const Studio::Mode mode : Studio::kModes) {
-    const std::string name{Studio::ModeName(mode)};
-    const auto flags = setByState && mode == before
-                           ? ImGuiMCP::ImGuiTabItemFlags_SetSelected
-                           : ImGuiMCP::ImGuiTabItemFlags_None;
-    if (!ImGui::BeginTabItem(name.c_str(), nullptr, flags)) {
-      continue;
+  for (const ResourceCells &row : a_rows) {
+    table.Cell();
+    ImGui::AlignTextToFramePadding();
+    ImGui::TextUnformatted(row.name.data(), row.name.data() + row.name.size());
+    table.Cell();
+    if (!row.type.empty()) {
+      ImGui::AlignTextToFramePadding();
+      Dim(row.type);
     }
-    if (!setByState) {
-      a_mode = mode;
+    table.Cell();
+    if (row.value) {
+      ValueSwatch(*row.value);
     }
-    ImGui::EndTabItem();
+    table.Cell();
+    ImGui::AlignTextToFramePadding();
+    Dim(std::format("used {}", row.references));
   }
-  ImGui::EndTabBar();
-  a_drawn = a_mode;
-  return a_mode != before;
-}
-
-bool Section(const char *a_title, bool a_openByDefault) {
-  return ImGui::CollapsingHeader(
-      Literal(a_title),
-      a_openByDefault ? ImGuiMCP::ImGuiTreeNodeFlags_DefaultOpen : 0);
+  table.End();
 }
 
 std::optional<float> Split(const char *a_id, float a_ratio,
@@ -825,54 +782,38 @@ std::optional<float> Split(const char *a_id, float a_ratio,
 
 void Rule() { ImGui::Separator(); }
 
-Studio::RuleClick Rule(const Studio::RuleSpec &a_spec) {
+RuleResult Rule(const Studio::RuleSpec &a_spec, float a_trailingWidth,
+                const std::function<void()> &a_trailing) {
   ImGui::Dummy(ImVec2{0.0f, ImGui::GetFrameHeight()});
   ImGui::Separator();
-  return DrawRuleLine(a_spec.text, a_spec.buttons, 0.0f, {});
+  bool open = true;
+  if (a_spec.collapsible) {
+    const std::string title{a_spec.text};
+    open = ImGui::CollapsingHeader(
+        title.c_str(),
+        a_spec.openByDefault ? ImGuiMCP::ImGuiTreeNodeFlags_DefaultOpen : 0);
+  } else if (a_spec.text.empty()) {
+    ImGui::Dummy(ImVec2{0.0f, ImGui::GetFrameHeight()});
+  } else {
+    ImGui::AlignTextToFramePadding();
+    ImGui::TextUnformatted(a_spec.text.data(),
+                           a_spec.text.data() + a_spec.text.size());
+  }
+  const Studio::RuleClick click =
+      DrawRuleControls(a_spec.buttons, a_trailingWidth, a_trailing);
+  return RuleResult{click, open};
 }
 
 RuleFilter RuleWithFilter(const Studio::RuleSpec &a_spec,
                           const FilterSpec &a_filter) {
-  ImGui::Dummy(ImVec2{0.0f, ImGui::GetFrameHeight()});
-  ImGui::Separator();
   std::string_view filter;
-  const Studio::RuleClick click = DrawRuleLine(
-      a_spec.text, a_spec.buttons, a_filter.width * a_filter.scale, [&]() {
+  const RuleResult result =
+      Rule(a_spec, a_filter.width * a_filter.scale, [&]() {
         filter =
             LiveTextField(a_filter.key, a_filter.hint,
                           Studio::Width::Px(a_filter.width), a_filter.scale);
       });
-  return RuleFilter{click, filter};
-}
-
-ChooserPick ChooserRow(Table &a_table, const ChooserRowSpec &a_row) {
-  const bool disabled = a_row.unavailable.has_value();
-  if (disabled) {
-    ImGui::BeginDisabled();
-  }
-  for (const auto text : a_row.leading) {
-    a_table.Cell();
-    Dim(text);
-  }
-  a_table.Cell();
-  const std::string name{a_row.name};
-  const bool clicked = ImGui::Selectable(
-      name.c_str(), false, ImGuiMCP::ImGuiSelectableFlags_SpanAllColumns);
-  if (disabled) {
-    ImGui::EndDisabled();
-    Tooltip(*a_row.unavailable);
-  }
-  a_table.Cell();
-  Dim(a_row.detail);
-  a_table.Cell();
-  if (a_row.share) {
-    ImGui::Text("%.0f%%", *a_row.share * 100.0f);
-  }
-  a_table.Cell();
-  if (a_row.action && ImGui::SmallButton(a_row.action)) {
-    return ChooserPick::kAction;
-  }
-  return clicked && !disabled ? ChooserPick::kChosen : ChooserPick::kNone;
+  return RuleFilter{result.click, filter};
 }
 
 bool Toggle(const char *a_label, bool &a_value, std::string_view a_tooltip) {
@@ -918,20 +859,6 @@ void HeldLabel(const char *a_text) {
   ImGui::EndDisabled();
 }
 
-bool LitButton(const char *a_label, bool a_lit) {
-  if (a_lit) {
-    const auto *pressed =
-        ImGui::GetStyleColorVec4(ImGuiMCP::ImGuiCol_ButtonActive);
-    ImGui::PushStyleColor(ImGuiMCP::ImGuiCol_Button,
-                          pressed ? *pressed : ImVec4{0.3f, 0.5f, 0.8f, 1.0f});
-  }
-  const bool clicked = ImGui::Button(Literal(a_label));
-  if (a_lit) {
-    ImGui::PopStyleColor();
-  }
-  return clicked;
-}
-
 bool RemoveButton(std::size_t a_references) {
   const float side = RowButtonWidth();
   if (a_references > 0) {
@@ -954,16 +881,6 @@ bool SoloButton(bool &a_solo) {
 
 bool MuteButton(bool &a_mute) {
   return SquareToggle("M", a_mute, "mute: hide this");
-}
-
-SoloMuteChange SoloMute(bool &a_solo, bool &a_mute) {
-  SoloMuteChange changed =
-      SoloButton(a_solo) ? SoloMuteChange::kSolo : SoloMuteChange::kNone;
-  ImGui::SameLine();
-  if (MuteButton(a_mute)) {
-    changed = SoloMuteChange::kMute;
-  }
-  return changed;
 }
 
 bool DragHandle(const char *a_type, std::size_t a_index, const char *a_noun) {

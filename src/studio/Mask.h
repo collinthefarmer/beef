@@ -60,8 +60,6 @@ using TermKind = std::variant<RawTerm, ReferenceTerm, ThresholdTerm, PresetTerm,
 inline constexpr std::size_t kTermKindCount = 8;
 static_assert(std::variant_size_v<TermKind> == kTermKindCount);
 
-[[nodiscard]] std::string_view TermKindName(const TermKind &a_kind) noexcept;
-
 enum class TermOp {
   kSet,
   kAnd,

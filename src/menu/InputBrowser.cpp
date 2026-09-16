@@ -356,7 +356,7 @@ void DrawConfirmStep(WizardState &a_state, bool a_bind) {
 
 void DrawGuided(const Frame &a_frame, WizardState &a_state,
                 const Studio::FormField *a_field) {
-  ImGui::SeparatorText(StepTitle(a_state.step));
+  static_cast<void>(Rule(Studio::RuleSpec{.text = StepTitle(a_state.step)}));
   switch (a_state.step) {
   case WizardStep::kDriver:
     DrawDriverStep(a_state);

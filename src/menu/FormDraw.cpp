@@ -183,13 +183,9 @@ void DrawSignalEditorInline(const SignalRow &a_signal, const Frame &a_frame) {
                        a_signal.kind == SignalKindId::kExpr;
   const auto value =
       tunable ? std::ranges::find(form, "value", &FormField::name) : form.end();
-  const auto title = std::format("signal {}###signal-settings", a_signal.name);
   if (DetailButton()) {
-    ImGui::OpenPopup(title.c_str());
+    logger::warn("TODO");
   }
-  DetailModal(title.c_str(), [&]() {
-    [[maybe_unused]] const auto detail = DrawForm("form", form, a_frame);
-  });
   ImGui::SameLine();
   if (value != form.end()) {
     DrawRowField("value", *value, a_frame);
@@ -427,18 +423,16 @@ void DrawFormWithSignals(const char *a_id, std::span<const FormField> a_form,
     return;
   }
   const auto open = DrawForm(a_id, a_form, a_frame, a_columns);
-  for (std::size_t i = 0; i < a_form.size(); ++i) {
-    if (a_form[i].detail != FieldDetail::kSignal) {
-      continue;
+  if (open && *open < a_form.size() &&
+      a_form[*open].detail == FieldDetail::kSignal &&
+      IsWholeReference(a_form[*open].text)) {
+    a_frame.state->navigation.scroll = ImGui::GetScrollY();
+    [[maybe_unused]] const bool changed = Navigate(
+        a_frame.state->navigation, a_frame.state->selection,
+        SignalSubject{ReferenceName(a_form[*open].text)}, *a_frame.recipe);
+    if (changed) {
+      ImGui::SetScrollY(a_frame.state->navigation.scroll);
     }
-    ImGui::PushID(static_cast<int>(i));
-    const auto title = std::format("{}###signal-modal-0", a_form[i].text);
-    if (open == i) {
-      ImGui::OpenPopup(title.c_str());
-    }
-    DetailModal(title.c_str(),
-                [&]() { DrawSignalDetail(a_form[i].text, a_frame, 0); });
-    ImGui::PopID();
   }
 }
 
@@ -514,20 +508,15 @@ void DrawSignalDetail(const std::string &a_text, const Frame &a_frame,
   ImGui::PopID();
 }
 
-void DrawSignalModal(const std::string &a_name, const Frame &a_frame,
-                     int a_depth) {
+void DrawSignalModal(const std::string &a_name,
+                     [[maybe_unused]] const Frame &a_frame, int a_depth) {
   if (a_depth > kMaxSignalModalDepth) {
     return;
   }
   ImGui::PushID(a_name.c_str());
-  const auto title =
-      std::format("{}###signal-modal-{}", ReferenceText(a_name), a_depth);
   if (ImGui::SmallButton(ReferenceText(a_name).c_str())) {
-    ImGui::OpenPopup(title.c_str());
+    logger::warn("TODO");
   }
-  DetailModal(title.c_str(), [&]() {
-    DrawSignalDetail(ReferenceText(a_name), a_frame, a_depth);
-  });
   ImGui::PopID();
 }
 
@@ -550,5 +539,59 @@ void DrawSelector(const SelectorView &a_selector, std::size_t a_output,
   Tooltip("restrict the output to geometries whose addon, name or texture "
           "matches; with no match it applies to every geometry");
   ImGui::PopID();
+}
+
+void DrawInspectorFields(const Studio::Inspector &a_inspector,
+                         const Frame &a_frame) {
+  const std::vector<FormField> form = InspectorForm(a_inspector);
+  const auto opened = DrawForm("fields", form, a_frame);
+  if (!opened || *opened >= form.size() || !form[*opened].detail) {
+    return;
+  }
+  std::optional<InspectorSubject> destination;
+  switch (*form[*opened].detail) {
+  case FieldDetail::kSource:
+    if (IsWholeReference(form[*opened].text)) {
+      const std::string name = ReferenceName(form[*opened].text);
+      if (std::ranges::find(a_frame.recipe->masks, name) !=
+          a_frame.recipe->masks.end()) {
+        destination = MaskSubject{name};
+      } else if (InspectorSubjectExists(SourceSubject{name}, *a_frame.recipe)) {
+        destination = SourceSubject{name};
+      } else {
+        destination = SignalSubject{name};
+      }
+    }
+    break;
+  case FieldDetail::kMask:
+    if (IsWholeReference(form[*opened].text)) {
+      const std::string name = ReferenceName(form[*opened].text);
+      destination = InspectorSubjectExists(MaskSubject{name}, *a_frame.recipe)
+                        ? InspectorSubject{MaskSubject{name}}
+                        : InspectorSubject{SourceSubject{name}};
+    }
+    break;
+  case FieldDetail::kCurve:
+    if (a_inspector.curve) {
+      destination = CurveSubject{a_inspector.curve->name};
+    }
+    break;
+  case FieldDetail::kOpacity:
+  case FieldDetail::kColor:
+  case FieldDetail::kSignal:
+    if (IsWholeReference(form[*opened].text)) {
+      destination = SignalSubject{ReferenceName(form[*opened].text)};
+    }
+    break;
+  }
+  if (destination) {
+    a_frame.state->navigation.scroll = ImGui::GetScrollY();
+    [[maybe_unused]] const bool changed =
+        Navigate(a_frame.state->navigation, a_frame.state->selection,
+                 std::move(*destination), *a_frame.recipe);
+    if (changed) {
+      ImGui::SetScrollY(a_frame.state->navigation.scroll);
+    }
+  }
 }
 }

@@ -218,7 +218,6 @@ enum class FieldDetail {
   kMask,
   kSignal,
 };
-[[nodiscard]] std::string_view FieldDetailName(FieldDetail a_detail) noexcept;
 
 using FieldBinding =
     std::function<std::optional<RecipeEdit>(const std::string &)>;
@@ -243,8 +242,6 @@ struct FormField {
   std::optional<std::uint64_t> expectedRevision = std::nullopt;
 };
 
-[[nodiscard]] FormField RowNameField(RowKind a_kind, const std::string &a_name,
-                                     std::vector<std::string> a_taken);
 [[nodiscard]] FormField CurveTextField(const std::string &a_curve,
                                        const std::string &a_text);
 [[nodiscard]] FormField MaskTextField(const std::string &a_mask,

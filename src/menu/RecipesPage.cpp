@@ -141,16 +141,16 @@ void DrawStoreActions(Manager &a_manager, Studio::MenuState &a_state) {
 }
 
 void DrawRecipeFile(const Studio::RecipeRow &a_recipe, const Frame &a_frame) {
-  ImGui::SeparatorText(
-      a_recipe.dirty
-          ? std::format("{} (edited, not saved)", a_recipe.id).c_str()
-          : a_recipe.id.c_str());
+  static_cast<void>(Rule(Studio::RuleSpec{
+      .text = a_recipe.dirty
+                  ? std::format("{} (edited, not saved)", a_recipe.id).c_str()
+                  : a_recipe.id.c_str()}));
   DrawRecipeFileActions(a_frame);
   HelpMarker("Save writes the recipe to its file. An imported recipe is saved "
              "to user/<id>.json with its imported line dropped, and loads from "
              "there afterwards.");
   if (!a_recipe.problems.empty()) {
-    ImGui::SeparatorText("Rows with problems");
+    static_cast<void>(Rule(Studio::RuleSpec{.text = "Rows with problems"}));
     if (a_recipe.heldBack) {
       Problem("Held back: recipe-level errors keep it out of the applied "
               "set until they are fixed");
@@ -171,14 +171,16 @@ void DrawSelection(const Studio::Snapshot &a_snapshot,
                    Studio::MenuState &a_state) {
   const Studio::PieceRow *piece =
       Studio::SelectedPiece(a_snapshot, a_state.selection);
-  ImGui::SeparatorText("Resolved for the selection (merge order)");
+  static_cast<void>(Rule(
+      Studio::RuleSpec{.text = "Resolved for the selection (merge order)"}));
   if (!piece) {
     ImGui::TextDisabled(
         "nothing applied; equip enchanted PBR armor or press Re-apply all");
     return;
   }
   DrawResolved(*piece);
-  ImGui::SeparatorText("Board: what the selected recipe writes");
+  static_cast<void>(
+      Rule(Studio::RuleSpec{.text = "Board: what the selected recipe writes"}));
   const Studio::RecipeRow *selected =
       Studio::SelectedRecipe(piece, a_state.selection);
   const Studio::GeometryRow *geometry =
@@ -234,7 +236,7 @@ void __stdcall RenderRecipes() {
   Disabled(state.pendingIndexedEdit.has_value() ||
                state.pendingRecipeFile.has_value(),
            [&] { DrawStoreActions(*manager, state); });
-  ImGui::SeparatorText("Loaded");
+  static_cast<void>(Rule(Studio::RuleSpec{.text = "Loaded"}));
   DrawLoadedTable(*held);
   DrawSelection(*held, state);
 }

@@ -6,18 +6,6 @@
 #include <format>
 
 namespace BetterEnchantmentEffects::Studio {
-std::string_view TermKindName(const TermKind &a_kind) noexcept {
-  return Match(
-      a_kind, [](const RawTerm &) { return "raw"; },
-      [](const ReferenceTerm &) { return "reference"; },
-      [](const ThresholdTerm &) { return "threshold"; },
-      [](const PresetTerm &) { return "preset"; },
-      [](const PartitionTerm &) { return "partition"; },
-      [](const BoneTerm &) { return "bones"; },
-      [](const IslandTerm &) { return "component"; },
-      [](const ClusterTerm &) { return "cluster"; });
-}
-
 std::string_view TermOpName(TermOp a_op) noexcept {
   switch (a_op) {
   case TermOp::kSet:

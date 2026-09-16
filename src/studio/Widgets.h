@@ -101,7 +101,9 @@ struct RuleButton {
 
 struct RuleSpec {
   std::string_view text;
-  std::span<const RuleButton> buttons;
+  std::span<const RuleButton> buttons = {};
+  bool collapsible = false;
+  bool openByDefault = true;
 };
 
 struct RuleClick {

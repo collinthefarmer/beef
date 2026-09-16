@@ -106,12 +106,6 @@ PreparePaintUpdate(const Recipe *a_paint, const PaintUpdateRequest &a_request) {
   return batch;
 }
 
-std::optional<std::string> ScratchOf(const RecipeRow &a_recipe) {
-  const auto it =
-      std::ranges::find(a_recipe.maskRows, kScratchMask, &TextRow::name);
-  return it != a_recipe.maskRows.end() ? std::optional{it->text} : std::nullopt;
-}
-
 SurfaceOutput PaintOutput(Surface a_surface) {
   SurfaceOutput output = DefaultOutput(a_surface, Slot::kEmissive);
   Layer layer = DefaultLayer();

@@ -10,13 +10,6 @@ using namespace BetterEnchantmentEffects::Studio;
 using test::Check;
 
 int main() {
-  RecipeRow row;
-  row.maskRows.push_back(TextRow{std::string{kScratchMask}, "@x", 0});
-  Check(ScratchOf(row) == std::optional<std::string>{"@x"},
-        "ScratchOf reads the scratch mask text");
-  Check(ScratchOf(RecipeRow{}) == std::nullopt,
-        "ScratchOf is empty when there is no scratch mask");
-
   const SurfaceOutput output = PaintOutput(Surface::kShell);
   Check(output.surface == Surface::kShell && output.stack.size() == 1 &&
             output.stack[0].mask ==

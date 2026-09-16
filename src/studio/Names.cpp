@@ -1,16 +1,12 @@
 #include "studio/Names.h"
 
 #include <algorithm>
-#include <array>
 #include <format>
 #include <optional>
 #include <utility>
 
 namespace BetterEnchantmentEffects::Studio {
 namespace {
-constexpr std::array<std::string_view, kRowKindCount> kRowKindNames{
-    "signal", "curve", "source", "mask"};
-
 [[nodiscard]] char Lower(char a_ch) noexcept {
   return (a_ch >= 'A' && a_ch <= 'Z') ? static_cast<char>(a_ch - 'A' + 'a')
                                       : a_ch;
@@ -43,14 +39,6 @@ NumberField(std::string_view a_text, std::size_t a_at, char a_close) noexcept {
   return std::pair<std::string_view, std::size_t>{
       a_text.substr(a_at, end - a_at), end + 1};
 }
-}
-
-std::string_view RowKindName(RowKind a_kind) noexcept {
-  const std::size_t index = static_cast<std::size_t>(a_kind);
-  if (index >= kRowKindNames.size()) {
-    return "?";
-  }
-  return kRowKindNames[index];
 }
 
 Names NamesOf(const RecipeRow &a_recipe) {

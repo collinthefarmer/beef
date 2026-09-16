@@ -31,16 +31,9 @@ private:
   std::string previous;
 };
 
-enum class ChooserPick {
-  kNone,
-  kChosen,
-  kAction,
-};
-
-enum class SoloMuteChange {
-  kNone,
-  kSolo,
-  kMute,
+struct RuleResult {
+  Studio::RuleClick click;
+  bool open = true;
 };
 
 struct RuleFilter {
@@ -58,15 +51,6 @@ struct FilterSpec {
   const char *hint;
   float width;
   float scale = 1.0f;
-};
-
-struct ChooserRowSpec {
-  std::span<const std::string_view> leading;
-  std::string_view name;
-  std::string_view detail;
-  std::optional<float> share;
-  std::optional<std::string> unavailable;
-  const char *action = nullptr;
 };
 
 class Table {
@@ -91,11 +75,9 @@ private:
                                  float a_scale) noexcept;
 void NextItemWidth(const Studio::Width &a_width, float a_scale = 1.0f);
 [[nodiscard]] float FitWidth(std::string_view a_text);
-[[nodiscard]] float BlendWidth(std::span<const Blend> a_allowed);
 [[nodiscard]] float WidestOf(std::span<const std::string> a_names);
 [[nodiscard]] float ButtonWidth(std::string_view a_text);
 [[nodiscard]] float TextWidth(std::string_view a_text);
-[[nodiscard]] float CheckboxWidth(std::string_view a_text);
 [[nodiscard]] float ItemSpacingX();
 [[nodiscard]] float RowButtonWidth();
 [[nodiscard]] float RuleHeight();
@@ -112,10 +94,6 @@ void Thumbnail(const Studio::ThumbnailSpec &a_spec);
 [[nodiscard]] bool ThumbnailButton(const char *a_key,
                                    const Studio::ThumbnailSpec &a_spec);
 
-[[nodiscard]] std::optional<Blend> BlendCombo(const char *a_key,
-                                              std::string_view a_current,
-                                              std::span<const Blend> a_allowed,
-                                              const WidgetSize &a_size);
 [[nodiscard]] std::optional<std::string>
 ChoiceCombo(const char *a_key, const std::string &a_current,
             std::span<const std::string> a_names, const WidgetSize &a_size);
@@ -134,30 +112,34 @@ ValueWidget(const char *a_key, const Studio::FormField &a_field, float a_scale,
 [[nodiscard]] std::string ValueText(const Value &a_value);
 void ValueSwatch(const Value &a_value);
 
-bool ModeBar(Studio::Mode &a_mode, Studio::Mode &a_drawn);
-[[nodiscard]] bool Section(const char *a_title, bool a_openByDefault);
+struct ResourceCells {
+  std::string_view name;
+  std::string_view type;
+  std::optional<Value> value;
+  std::size_t references = 0;
+};
+void ResourceTable(const char *a_id, std::span<const ResourceCells> a_rows);
+
 [[nodiscard]] std::optional<float> Split(const char *a_id, float a_ratio,
                                          const std::function<void()> &a_left,
                                          const std::function<void()> &a_right);
 
 void Rule();
-[[nodiscard]] Studio::RuleClick Rule(const Studio::RuleSpec &a_spec);
+[[nodiscard]] RuleResult Rule(const Studio::RuleSpec &a_spec,
+                              float a_trailingWidth = 0.0f,
+                              const std::function<void()> &a_trailing = {});
 [[nodiscard]] RuleFilter RuleWithFilter(const Studio::RuleSpec &a_spec,
                                         const FilterSpec &a_filter);
 
-[[nodiscard]] ChooserPick ChooserRow(Table &a_table,
-                                     const ChooserRowSpec &a_row);
 bool Toggle(const char *a_label, bool &a_value, std::string_view a_tooltip);
 void DetailModal(const char *a_title, const std::function<void()> &a_body);
 void RightAligned(float a_width, const std::function<void()> &a_draw);
 void Disabled(bool a_disabled, const std::function<void()> &a_draw);
 void HeldLabel(const char *a_text);
-[[nodiscard]] bool LitButton(const char *a_label, bool a_lit);
 
 [[nodiscard]] bool RemoveButton(std::size_t a_references);
 bool SoloButton(bool &a_solo);
 bool MuteButton(bool &a_mute);
-SoloMuteChange SoloMute(bool &a_solo, bool &a_mute);
 [[nodiscard]] bool DragHandle(const char *a_type, std::size_t a_index,
                               const char *a_noun);
 [[nodiscard]] std::optional<Studio::RowMove> DropTarget(const char *a_type,

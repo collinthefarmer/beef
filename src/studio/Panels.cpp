@@ -268,16 +268,4 @@ SignalNames SignalNamesOf(const RecipeRow &a_recipe) {
   return names;
 }
 
-SignalList BuildSignalList(const RecipeRow &a_recipe, const Layout &a_layout) {
-  SignalList list;
-  for (const auto &signal : a_recipe.signals) {
-    if (SignalKindTunable(signal.kind)) {
-      list.tunable.push_back(signal);
-    } else if (a_layout.developerSignals) {
-      list.developer.push_back(signal);
-    }
-  }
-  return list;
-}
-
 }

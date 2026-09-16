@@ -10,16 +10,6 @@ using namespace BetterEnchantmentEffects::Studio;
 using test::Check;
 
 namespace {
-void RowKindNames() {
-  Check(RowKindName(RowKind::kSignal) == "signal" &&
-            RowKindName(RowKind::kCurve) == "curve" &&
-            RowKindName(RowKind::kSource) == "source" &&
-            RowKindName(RowKind::kMask) == "mask",
-        "each row kind names its domain word");
-  Check(RowKindName(static_cast<RowKind>(kRowKindCount)) == "?",
-        "an out-of-range kind names '?'");
-}
-
 [[nodiscard]] SignalRow Signal(std::string a_name, ValueType a_type) {
   SignalRow row;
   row.name = std::move(a_name);
@@ -136,7 +126,6 @@ void GeometryLabels() {
 }
 
 int main() {
-  RowKindNames();
   Collects();
   UniqueNames();
   References();

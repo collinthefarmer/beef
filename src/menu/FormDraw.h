@@ -12,6 +12,10 @@
 #include <span>
 #include <string>
 
+namespace BetterEnchantmentEffects::Studio {
+struct Inspector;
+}
+
 namespace BetterEnchantmentEffects::Menu {
 inline constexpr int kMaxSignalModalDepth = 6;
 
@@ -32,6 +36,8 @@ DrawForm(const char *a_id, std::span<const Studio::FormField> a_form,
 void DrawFormWithSignals(const char *a_id,
                          std::span<const Studio::FormField> a_form,
                          const Frame &a_frame, std::size_t a_columns = 1);
+void DrawInspectorFields(const Studio::Inspector &a_inspector,
+                         const Frame &a_frame);
 
 void FirePopup(const Studio::SignalRow &a_signal, const Frame &a_frame);
 void DrawSignalDetail(const std::string &a_text, const Frame &a_frame,

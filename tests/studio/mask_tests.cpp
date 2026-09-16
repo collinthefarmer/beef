@@ -15,11 +15,6 @@ Term Termed(TermOp a_op, std::string a_text) {
 }
 
 int main() {
-  Check(TermKindName(TermKind{RawTerm{}}) == "raw" &&
-            TermKindName(TermKind{PresetTerm{"x"}}) == "preset" &&
-            TermKindName(TermKind{ClusterTerm{}}) == "cluster",
-        "TermKindName names each alternative");
-
   Check(TermOpName(TermOp::kOr) == "or" && ParseTermOp("and") == TermOp::kAnd &&
             ParseTermOp("nope") == std::nullopt,
         "TermOpName and ParseTermOp round-trip");

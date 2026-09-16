@@ -18,7 +18,6 @@ enum class RowKind {
   kMask,
 };
 inline constexpr std::size_t kRowKindCount = 4;
-[[nodiscard]] std::string_view RowKindName(RowKind a_kind) noexcept;
 
 struct Names {
   std::vector<std::pair<std::string, ValueType>> signals;

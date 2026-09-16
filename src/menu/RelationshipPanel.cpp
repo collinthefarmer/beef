@@ -99,7 +99,9 @@ void DrawDrivenBy(const Frame &a_frame,
   if (std::ranges::none_of(a_frame.recipe->relationships, driven)) {
     return;
   }
-  Dim("Driven by");
+  if (!Rule(Studio::RuleSpec{.text = "Driven by", .collapsible = true}).open) {
+    return;
+  }
   Table table = Table::Begin(
       "driven-by",
       {{"Property", Studio::Width::Fill()}, {"Driver", Studio::Width::Fill()}},
@@ -130,7 +132,9 @@ void DrawUsedBy(const Frame &a_frame,
   if (std::ranges::none_of(a_frame.recipe->relationships, uses)) {
     return;
   }
-  Dim("Used by");
+  if (!Rule(Studio::RuleSpec{.text = "Used by", .collapsible = true}).open) {
+    return;
+  }
   Table table = Table::Begin("used-by",
                              {{"Consumer", Studio::Width::Fill()},
                               {"Property", Studio::Width::Fill()},

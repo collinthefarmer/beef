@@ -476,51 +476,6 @@ BindImageMirror(std::string a_name, SourceKind a_record, std::size_t a_axis) {
 }
 }
 
-std::string_view FieldDetailName(FieldDetail a_detail) noexcept {
-  switch (a_detail) {
-  case FieldDetail::kSource:
-    return "source";
-  case FieldDetail::kCurve:
-    return "curve";
-  case FieldDetail::kOpacity:
-    return "opacity";
-  case FieldDetail::kColor:
-    return "colour";
-  case FieldDetail::kMask:
-    return "mask";
-  case FieldDetail::kSignal:
-    return "signal";
-  }
-  return "?";
-}
-
-FormField RowNameField(RowKind a_kind, const std::string &a_name,
-                       std::vector<std::string> a_taken) {
-  FieldBinding bind =
-      [a_kind,
-       from = a_name](const std::string &a_text) -> std::optional<RecipeEdit> {
-    if (!IsName(a_text)) {
-      return std::nullopt;
-    }
-    switch (a_kind) {
-    case RowKind::kSignal:
-      return RenameSignal{from, a_text};
-    case RowKind::kCurve:
-      return RenameCurve{from, a_text};
-    case RowKind::kSource:
-      return RenameSource{from, a_text};
-    case RowKind::kMask:
-      return RenameMask{from, a_text};
-    }
-    return std::nullopt;
-  };
-  return ValueField({.name = a_name,
-                     .kind = FieldKind::kName,
-                     .text = a_name,
-                     .names = std::move(a_taken),
-                     .bind = std::move(bind)});
-}
-
 FormField CurveTextField(const std::string &a_curve,
                          const std::string &a_text) {
   return TextedField({.name = a_curve,
@@ -659,9 +614,8 @@ std::vector<FormField> InspectorForm(const Inspector &a_inspector) {
   std::vector<FormField> form;
   form.push_back(SourceFieldOf(in, sourceNames));
   form.push_back(CurveFieldOf(in));
-  form.push_back(
-      BlendField("blend", in.row.blend, in.blends,
-                 BindLayerBlend(in.output, in.layer)));
+  form.push_back(BlendField("blend", in.row.blend, in.blends,
+                            BindLayerBlend(in.output, in.layer)));
   form.push_back(OpacityFieldOf(in, signalNames));
   form.push_back(ColourFieldOf(in, signalNames));
   form.push_back(MaskFieldOf(in, sourceNames));
@@ -690,7 +644,6 @@ std::vector<FormField> ScalarForm(const LayerStack &a_stack) {
                     .text = scalar.text,
                     .names = names,
                     .bind = BindScalar(a_stack.output, field),
-                    .value = scalar.value,
                     .detail = signal ? std::optional{FieldDetail::kSignal}
                                      : std::nullopt});
     if (field == ScalarField::kWeight || field == ScalarField::kRoughness ||

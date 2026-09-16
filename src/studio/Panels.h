@@ -90,10 +90,4 @@ struct SignalNames {
 };
 [[nodiscard]] SignalNames SignalNamesOf(const RecipeRow &a_recipe);
 
-struct SignalList {
-  std::vector<SignalRow> tunable;
-  std::vector<SignalRow> developer;
-};
-[[nodiscard]] SignalList BuildSignalList(const RecipeRow &a_recipe,
-                                         const Layout &a_layout);
 }

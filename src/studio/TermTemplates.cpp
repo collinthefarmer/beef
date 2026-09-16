@@ -16,24 +16,6 @@
 #include <utility>
 
 namespace BetterEnchantmentEffects::Studio {
-std::vector<RecipeEdit>
-ScratchEdits(std::span<const Term> a_terms, std::optional<std::size_t> a_solo,
-             const std::set<std::size_t> &a_muted,
-             const std::optional<std::string> &a_scratch) {
-  std::vector<RecipeEdit> edits;
-  std::string text = BuildMask(a_terms, a_solo, a_muted);
-  if (text.empty()) {
-    text = "0";
-  }
-  if (!a_scratch) {
-    edits.emplace_back(AddMask{std::string{kScratchMask}});
-  }
-  if (!a_scratch || *a_scratch != text) {
-    edits.emplace_back(SetMask{std::string{kScratchMask}, std::move(text)});
-  }
-  return edits;
-}
-
 BuiltTerm MaterialiseTerm(const MaskPreset &a_preset,
                           const SourceCatalog &a_existing) {
   SourcePlanBuilder sources(a_existing);

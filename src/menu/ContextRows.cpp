@@ -3,7 +3,6 @@
 #include "menu/FormDraw.h"
 #include "menu/MenuWidgets.h"
 #include "recipe/Recipe.h"
-#include "studio/Board.h"
 #include "studio/Edits.h"
 #include "studio/Forms.h"
 #include "studio/Intent.h"
@@ -16,7 +15,6 @@
 #include <algorithm>
 #include <cstddef>
 #include <format>
-#include <functional>
 #include <optional>
 #include <span>
 #include <string>
@@ -166,89 +164,6 @@ void UndoRedoButtons(const Studio::RecipeRow &a_recipe,
   Tooltip(std::format("{} edit(s) to redo (Ctrl+Y)", a_recipe.redoDepth));
 }
 
-void ClearButton(const Studio::RecipeRow &a_recipe,
-                 std::optional<std::size_t> a_output, Studio::Intents &a_out) {
-  Disabled(!a_output, [&]() {
-    if (ImGui::Button("Clear", ImVec2{ButtonWidth("Clear"), 0.0f}) &&
-        a_output) {
-      Studio::Post(a_out, a_recipe.id, Studio::RemoveOutput{*a_output});
-    }
-  });
-  Tooltip("remove the picked slot's output and every layer in it");
-}
-
-[[nodiscard]] std::string SlotLabel(const Studio::Cell &a_cell) {
-  std::string name{SlotName(a_cell.slot)};
-  switch (a_cell.state) {
-  case Studio::CellState::kWritten:
-    return std::format("{} ({} layer{})", name, a_cell.layers,
-                       a_cell.layers == 1 ? "" : "s");
-  case Studio::CellState::kRefused:
-    return name + " (refused)";
-  case Studio::CellState::kExcluded:
-    return name + " (excluded)";
-  case Studio::CellState::kEmpty:
-    return name + " (empty)";
-  case Studio::CellState::kAbsent:
-    return name;
-  }
-  return name;
-}
-
-void TargetChoice(const Studio::Selection &a_selection,
-                  Studio::Intents &a_out) {
-  constexpr Target targets[]{Target::kMaterial, Target::kShell, Target::kLight};
-  if (!ImGui::BeginCombo("##target",
-                         std::string{TargetName(a_selection.target)}.c_str())) {
-    return;
-  }
-  for (const Target target : targets) {
-    if (ImGui::Selectable(std::string{TargetName(target)}.c_str(),
-                          target == a_selection.target)) {
-      Studio::Post(a_out, Studio::PickTarget{target});
-    }
-  }
-  ImGui::EndCombo();
-}
-
-void DrawSlotPick(const Studio::Cell &a_cell, bool a_selected,
-                  Studio::Intents &a_out) {
-  if (!ImGui::Selectable(SlotLabel(a_cell).c_str(), a_selected)) {
-    return;
-  }
-  if (a_cell.output) {
-    Studio::Post(a_out, Studio::PickCell{a_cell.surface, a_cell.slot,
-                                         a_cell.layers > 0
-                                             ? std::optional{a_cell.layers - 1}
-                                             : std::nullopt});
-  } else {
-    Studio::Post(a_out, Studio::PickSlot{a_cell.slot});
-  }
-}
-
-void SlotChoice(const Studio::Board &a_board, Surface a_surface,
-                const Studio::Cell *a_picked, Studio::Intents &a_out) {
-  if (!ImGui::BeginCombo("##slot", a_picked ? SlotLabel(*a_picked).c_str()
-                                            : "choose a slot")) {
-    return;
-  }
-  for (std::size_t i = 0; i < kSlotCount; ++i) {
-    const Studio::Cell *cell =
-        Studio::CellAt(a_board, a_surface, static_cast<Slot>(i));
-    if (!cell || cell->state == Studio::CellState::kAbsent) {
-      continue;
-    }
-    ImGui::PushID(static_cast<int>(i));
-    const bool excluded = cell->state == Studio::CellState::kExcluded;
-    Disabled(excluded, [&]() { DrawSlotPick(*cell, cell == a_picked, a_out); });
-    if (!cell->reason.empty()) {
-      Tooltip(cell->reason);
-    }
-    ImGui::PopID();
-  }
-  ImGui::EndCombo();
-}
-
 void DrawRecipeContext(const Frame &a_frame) {
   auto table = Table::Begin(
       "recipe-context",
@@ -267,80 +182,6 @@ void DrawRecipeContext(const Frame &a_frame) {
   table.End();
 }
 
-void DrawEditContext(const Studio::Board &a_board, const Studio::Cell *a_picked,
-                     const Frame &a_frame) {
-  const Studio::RecipeRow &a_recipe = *a_frame.recipe;
-  const Studio::Selection &a_selection = SelectionOf(a_frame);
-  Studio::Intents &a_out = *a_frame.intents;
-
-  const bool light = a_selection.target == Target::kLight;
-  auto table = Table::Begin("context",
-                            {{"S", Studio::Width::Px(RowButtonWidth())},
-                             {"target", Studio::Width::Fit()},
-                             {"slot", Studio::Width::Fit()}},
-                            kContextStyle);
-  if (!table.Open()) {
-    return;
-  }
-  table.Cell();
-  {
-    const std::optional<std::size_t> output =
-        light ? a_board.light.output
-              : (a_picked ? a_picked->output : std::nullopt);
-    bool solo =
-        light ? a_board.light.isolated : (a_picked && a_picked->isolated);
-    Disabled(!output, [&]() {
-      if (SoloButton(solo) && output) {
-        Studio::Post(a_out, Studio::SoloOutput{a_recipe.id, *output, solo});
-      }
-    });
-  }
-  table.Cell();
-  NextItemWidth(Studio::Width::Fit("material"));
-  TargetChoice(a_selection, a_out);
-  table.Cell();
-  if (light) {
-    Dim("the recipe's light");
-  } else {
-    NextItemWidth(Studio::Width::Fit(a_picked ? SlotLabel(*a_picked)
-                                              : std::string{"choose a slot"}));
-    SlotChoice(a_board, SurfaceOf(a_selection.target), a_picked, a_out);
-  }
-  table.End();
-}
-
-void DrawRuleTitle(std::string_view a_title, float a_rightWidth,
-                   const std::function<void()> &a_right) {
-  ImGui::Dummy(ImVec2{0.0f, ImGui::GetFrameHeight()});
-  ImGui::Separator();
-  ImGui::AlignTextToFramePadding();
-  ImGui::TextUnformatted(a_title.data(), a_title.data() + a_title.size());
-  if (a_rightWidth <= 0.0f) {
-    return;
-  }
-  ImGui::SameLine();
-  ImGui::PushID(a_title.data(), a_title.data() + a_title.size());
-  RightAligned(a_rightWidth, a_right);
-  ImGui::PopID();
-}
-}
-
-PaneChoice ChoosePane(Target a_target, bool a_settingsWanted) noexcept {
-  PaneChoice choice;
-  choice.hasSettings = a_target != Target::kMaterial;
-  choice.hasStack = a_target != Target::kLight;
-  choice.settings =
-      choice.hasStack ? (a_settingsWanted && choice.hasSettings) : true;
-  return choice;
-}
-
-const Studio::Cell *PickedCell(const Studio::Board &a_board,
-                               const Studio::Selection &a_selection) noexcept {
-  if (a_selection.target == Target::kLight || !a_selection.slot) {
-    return nullptr;
-  }
-  return Studio::CellAt(a_board, SurfaceOf(a_selection.target),
-                        *a_selection.slot);
 }
 
 std::optional<RecipeKey> DefaultKeyOf(const Studio::PieceRow &a_piece) {
@@ -453,110 +294,6 @@ void RenameRecipeButton(const Frame &a_frame) {
   Tooltip("rename the recipe; its file follows when it is the user's");
 }
 
-void DrawRecipeHeader(const Frame &a_frame) {
-  const Studio::PieceRow &piece = *a_frame.piece;
-  const Studio::RecipeRow &recipe = *a_frame.recipe;
-  Studio::Intents &out = *a_frame.intents;
-  const float newWidth = ButtonWidth("New");
-  const float renameWidth = ButtonWidth("Rename");
-  const float clearWidth = ButtonWidth("Clear");
-  const float keysWidth = ButtonWidth("keys");
-  const float undoWidth = ButtonWidth("Undo");
-  const float redoWidth = ButtonWidth("Redo");
-  const float recipeRight = newWidth + renameWidth + clearWidth + keysWidth +
-                            undoWidth + redoWidth + 5.0f * ItemSpacingX();
-  DrawRuleTitle("Recipe", recipeRight, [&]() {
-    NewRecipeButton(a_frame);
-    ImGui::SameLine();
-    RenameRecipeButton(a_frame);
-    ImGui::SameLine();
-    if (ImGui::Button("Clear", ImVec2{clearWidth, 0.0f})) {
-      Studio::Post(out, recipe.id, Studio::ClearRecipe{});
-    }
-    Tooltip("empty the recipe: every output, the shell settings, and every "
-            "signal, curve, source, mask and variant go; its name and keys "
-            "stay");
-    ImGui::SameLine();
-    if (ImGui::Button("keys", ImVec2{keysWidth, 0.0f})) {
-      ImGui::OpenPopup("recipe-keys");
-    }
-    KeysPopup(piece, recipe, out);
-    Tooltip("which pieces the recipe applies to");
-    ImGui::SameLine();
-    UndoRedoButtons(recipe, out);
-  });
-  DrawRecipeContext(a_frame);
-
-  DrawRecipeSettings(a_frame);
-}
-
-void DrawLightContext(const Studio::Board &a_board, const Frame &a_frame) {
-  const Studio::RecipeRow &recipe = *a_frame.recipe;
-  if (!recipe.lightRow.present) {
-    if (ImGui::Button("Add light")) {
-      Studio::Post(*a_frame.intents, recipe.id, Studio::AddLight{});
-    }
-    return;
-  }
-  ImGui::TextUnformatted(a_board.light.description.c_str());
-  if (recipe.lightRow.present) {
-    DrawSelector(Studio::SelectorViewOf(recipe.lightRow.selection),
-                 recipe.lightRow.output, true, a_frame);
-  }
-}
-
-void DrawSurfaceContext(const Studio::Cell &a_picked, const Frame &a_frame) {
-  if (a_picked.state == Studio::CellState::kEmpty) {
-    if (ImGui::Button("Add output")) {
-      Studio::Post(*a_frame.intents, a_frame.recipe->id,
-                   Studio::AddOutput{a_picked.surface, a_picked.slot, {}});
-    }
-    Tooltip(std::format("add an empty stack on {} of the {}",
-                        SlotName(a_picked.slot),
-                        SurfaceName(a_picked.surface)));
-    return;
-  }
-  if (!a_picked.reason.empty()) {
-    Warn(a_picked.reason);
-  }
-  if (!a_picked.output) {
-    return;
-  }
-  const auto &outputs = a_frame.geometry->outputs;
-  const auto output =
-      std::ranges::find(outputs, *a_picked.output, &Studio::OutputRow::index);
-  if (output != outputs.end()) {
-    DrawOutputHeader(output->index, output->replace, output->selection,
-                     a_frame);
-  }
-}
-}
-
-const Studio::Cell *DrawContext(const Studio::Board &a_board,
-                                const Frame &a_frame) {
-  if (!a_frame.snapshot || !a_frame.piece || !a_frame.recipe ||
-      !a_frame.geometry || !a_frame.state || !a_frame.intents) {
-    return nullptr;
-  }
-  const Studio::Selection &selection = SelectionOf(a_frame);
-  const Studio::Cell *picked = PickedCell(a_board, selection);
-  DrawRecipeHeader(a_frame);
-  const std::optional<std::size_t> output =
-      selection.target == Target::kLight
-          ? a_board.light.output
-          : (picked ? picked->output : std::nullopt);
-  DrawRuleTitle("Output", ButtonWidth("Clear"), [&]() {
-    ClearButton(*a_frame.recipe, output, *a_frame.intents);
-  });
-  DrawEditContext(a_board, picked, a_frame);
-  if (selection.target == Target::kLight) {
-    DrawLightContext(a_board, a_frame);
-    return nullptr;
-  }
-  if (picked) {
-    DrawSurfaceContext(*picked, a_frame);
-  }
-  return picked;
 }
 
 void DrawStudioContext(const Frame &a_frame) {
@@ -590,7 +327,7 @@ void DrawRecipeSettings(const Frame &a_frame) {
   [[maybe_unused]] const std::optional<std::size_t> detail =
       DrawForm("recipe-header", Studio::RecipeHeaderForm(recipe), a_frame);
   if (!recipe.problems.empty()) {
-    ImGui::SeparatorText("Rows with problems");
+    static_cast<void>(Rule(Studio::RuleSpec{.text = "Rows with problems"}));
     if (recipe.heldBack) {
       Problem("Held back: recipe-level errors keep it out of the applied "
               "set until they are fixed");
@@ -607,65 +344,24 @@ void DrawRecipeSettings(const Frame &a_frame) {
   }
 }
 
-namespace {
-void ApplyDefaultsButton(const Studio::Board &a_board, const Frame &a_frame) {
-  const bool light = SelectionOf(a_frame).target == Target::kLight;
-  const bool present =
-      !light || (a_board.light.present && a_board.light.output.has_value());
-  Disabled(!present, [&]() {
-    if (!ImGui::Button("Apply Defaults",
-                       ImVec2{ButtonWidth("Apply Defaults"), 0.0f}) ||
-        !present) {
-      return;
-    }
-    if (light) {
-      Studio::Post(*a_frame.intents, a_frame.recipe->id,
-                   Studio::ResetLight{*a_board.light.output});
-    } else {
-      Studio::Post(*a_frame.intents, a_frame.recipe->id, Studio::ResetShell{});
-    }
-  });
-}
-}
-
-void DrawPaneRule(std::string_view a_title, const PaneChoice &a_pane,
-                  const Studio::Board &a_board, const Frame &a_frame) {
-  if (!a_frame.recipe || !a_frame.state || !a_frame.intents) {
-    return;
-  }
-  const float switchWidth =
-      (std::max)(ButtonWidth("settings"), ButtonWidth("stack"));
-  const float rightWidth =
-      switchWidth +
-      (a_pane.settings ? ButtonWidth("Apply Defaults") + ItemSpacingX() : 0.0f);
-  DrawRuleTitle(a_title, rightWidth, [&]() {
-    if (a_pane.settings) {
-      ApplyDefaultsButton(a_board, a_frame);
-      ImGui::SameLine();
-    }
-    const bool enabled = a_pane.settings ? a_pane.hasStack : a_pane.hasSettings;
-    Disabled(!enabled, [&]() {
-      if (ImGui::Button(a_pane.settings ? "stack" : "settings",
-                        ImVec2{switchWidth, 0.0f}) &&
-          enabled) {
-        Studio::Post(*a_frame.intents, Studio::ShowSettings{!a_pane.settings});
-      }
-    });
-  });
-}
-
-void DrawOutputHeader(std::size_t a_output, bool a_replace,
-                      const Selector &a_selector, const Frame &a_frame) {
-  const Studio::OutputHeader header =
-      Studio::OutputHeaderForm(a_output, a_replace, a_selector);
-  [[maybe_unused]] const std::optional<std::size_t> detail =
-      DrawForm("output-header", header.fields, a_frame);
-  DrawSelector(header.selector, a_output, false, a_frame);
-  ImGui::Separator();
-  if (a_frame.recipe && a_frame.intents &&
-      ImGui::Button("Remove output")) {
-    Studio::Post(*a_frame.intents, a_frame.recipe->id,
-                 Studio::RemoveOutput{a_output});
-  }
+void DrawOutputHeader(const Studio::OutputRow &a_output,
+                      std::span<const Studio::FormField> a_scalars,
+                      const Frame &a_frame) {
+  const Studio::OutputHeader header = Studio::OutputHeaderForm(
+      a_output.index, a_output.replace, a_output.selection);
+  static_cast<void>(
+      Rule(Studio::RuleSpec{.text = "Inspector"}, RowButtonWidth(), [&]() {
+        if (a_frame.recipe && a_frame.intents && RemoveButton(0)) {
+          Studio::Post(*a_frame.intents, a_frame.recipe->id,
+                       Studio::RemoveOutput{a_output.index});
+        }
+      }));
+  Dim(std::format("{} / {}", SurfaceName(a_output.surface),
+                  SlotName(a_output.slot)));
+  std::vector<Studio::FormField> settings(a_scalars.begin(), a_scalars.end());
+  settings.insert(settings.end(), header.fields.begin(), header.fields.end());
+  DrawFormWithSignals("settings", settings, a_frame);
+  static_cast<void>(Rule(Studio::RuleSpec{.text = "Applies to"}));
+  DrawSelector(header.selector, a_output.index, false, a_frame);
 }
 }
