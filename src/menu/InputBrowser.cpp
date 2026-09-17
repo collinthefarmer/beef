@@ -425,18 +425,4 @@ void DrawInputWizard(const Frame &a_frame, const Studio::FormField &a_field) {
   DrawWizardPopup(a_frame, "input-wizard", title.c_str(), &a_field);
 }
 
-void DrawSignalWizardButton(const Frame &a_frame) {
-  if (!a_frame.snapshot || !a_frame.recipe || !a_frame.names ||
-      !a_frame.intents) {
-    return;
-  }
-  ImGui::PushID("signal-wizard");
-  if (ImGui::Button("New input")) {
-    ResetWizard();
-    ImGui::OpenPopup("signal-wizard-popup");
-  }
-  DrawWizardPopup(a_frame, "signal-wizard-popup", "Create an input signal",
-                  nullptr);
-  ImGui::PopID();
-}
 }

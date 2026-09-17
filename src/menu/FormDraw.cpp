@@ -528,17 +528,23 @@ void DrawSelector(const SelectorView &a_selector, std::size_t a_output,
   }
   const Selector current = SelectorOf(a_selector);
   ImGui::PushID(a_light ? "light-selector" : "output-selector");
-  if (a_selector.matchAll && a_selector.clauses.empty()) {
-    Dim("applies to every geometry of the piece");
-  } else {
+  const bool everyGeometry = a_selector.matchAll && a_selector.clauses.empty();
+  static_cast<void>(Rule(
+      Studio::RuleSpec{.text = "Applies to"}, ButtonWidth("Add match"),
+      [&]() {
+        if (ImGui::Button("Add match")) {
+          PostSelector(a_frame, a_output, a_light,
+                       SelectorWithClause(current, SelectorKind::kGeometry));
+        }
+        Tooltip("restrict the output to geometries whose addon, name or "
+                "texture matches; with no match it applies to every geometry");
+      },
+      everyGeometry
+          ? std::function<void()>{[]() { Dim("every geometry of the piece"); }}
+          : std::function<void()>{}));
+  if (!everyGeometry) {
     DrawSelectorClauses(a_selector, {current, a_output, a_light}, a_frame);
   }
-  if (ImGui::SmallButton("Add match")) {
-    PostSelector(a_frame, a_output, a_light,
-                 SelectorWithClause(current, SelectorKind::kGeometry));
-  }
-  Tooltip("restrict the output to geometries whose addon, name or texture "
-          "matches; with no match it applies to every geometry");
   ImGui::PopID();
 }
 

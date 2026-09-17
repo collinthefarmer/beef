@@ -7,7 +7,6 @@
 
 #include <algorithm>
 #include <cstddef>
-#include <format>
 #include <functional>
 #include <optional>
 #include <span>
@@ -64,8 +63,6 @@ void DrawStack(const std::optional<Studio::LayerStack> &a_stack,
   if (!stack.problem.empty()) {
     Problem(stack.problem);
   }
-  Dim(std::format("composite {} px, {}", stack.size,
-                  stack.animated ? "animated" : "static"));
   DrawInspector(stack, a_inspector, a_frame);
   ImGui::PopID();
 }

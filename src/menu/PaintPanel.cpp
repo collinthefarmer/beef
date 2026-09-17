@@ -465,12 +465,7 @@ void DiscardMaskDraft(const Frame &a_frame) {
   const Studio::MenuState &state = *a_frame.state;
   if (state.paint && state.paint->createdMask) {
     std::vector<Studio::RecipeEdit> edits;
-    if (state.paint->assignment) {
-      edits.emplace_back(Studio::SetLayerMask{state.paint->assignment->output,
-                                              state.paint->assignment->layer,
-                                              std::nullopt});
-    }
-    edits.emplace_back(Studio::RemoveMask{*state.paint->createdMask});
+    edits.emplace_back(Studio::RemoveMask{*state.paint->createdMask, true});
     Studio::Post(*a_frame.intents,
                  Studio::EditRecipe{state.paint->recipeID, std::move(edits)});
   }
@@ -560,7 +555,13 @@ void DrawMaskStack(const Frame &a_frame) {
 
   DrawMaskPicture(a_frame);
 
-  if (ImGui::BeginChild("mask-scroll", ImGuiMCP::ImVec2{0.0f, 0.0f}, 0, 0)) {
+  const ImGuiMCP::ImVec2 avail = ImGui::GetContentRegionAvail();
+  const float termsCap =
+      (std::min)(avail.y * 0.45f, ImGui::GetFrameHeightWithSpacing() * 7.0f);
+  ImGui::SetNextWindowSizeConstraints(ImGuiMCP::ImVec2{0.0f, 0.0f},
+                                      ImGuiMCP::ImVec2{avail.x, termsCap});
+  if (ImGui::BeginChild("mask-terms", ImGuiMCP::ImVec2{0.0f, 0.0f},
+                        ImGuiMCP::ImGuiChildFlags_AutoResizeY, 0)) {
     auto table = BeginTermTable();
     if (table.Open()) {
       for (std::size_t i = 0; i < mask.terms.size(); ++i) {
@@ -571,22 +572,26 @@ void DrawMaskStack(const Frame &a_frame) {
     if (mask.terms.empty()) {
       Dim("no selection yet: choose a term below");
     }
-    HelpMarker(
-        "A mask is terms combined in order: the first sets it, each next one "
-        "is "
-        "and (product), or (max) or not (times the complement). Drag the :: "
-        "grip to reorder; S shows one term alone, M leaves one out; ... opens "
-        "a "
-        "term's settings; Keep writes every term.");
+  }
+  ImGui::EndChild();
 
-    const char *hint = "filter by kind, name or measurement";
-    const Studio::RuleSpec termsSpec{"Terms", {}};
-    const RuleFilter rule = RuleWithFilter(
-        termsSpec, {"offer-filter", hint, FitWidth(hint), a_frame.scale});
-    if (offers.empty()) {
-      Dim(geometry.meshRead ? "nothing to offer on this geometry"
-                            : "reading the mesh");
-    }
+  HelpMarker(
+      "A mask is terms combined in order: the first sets it, each next one "
+      "is "
+      "and (product), or (max) or not (times the complement). Drag the :: "
+      "grip to reorder; S shows one term alone, M leaves one out; ... opens "
+      "a "
+      "term's settings; Keep writes every term.");
+
+  const char *hint = "filter by kind, name or measurement";
+  const Studio::RuleSpec termsSpec{"Terms", {}};
+  const RuleFilter rule = RuleWithFilter(
+      termsSpec, {"offer-filter", hint, FitWidth(hint), a_frame.scale});
+  if (offers.empty()) {
+    Dim(geometry.meshRead ? "nothing to offer on this geometry"
+                          : "reading the mesh");
+  }
+  if (ImGui::BeginChild("mask-offers", ImGuiMCP::ImVec2{0.0f, 0.0f}, 0, 0)) {
     DrawPatternChooser(offers, rule.filter,
                        mask.terms.size() >= Studio::kMaxTerms, a_frame);
   }
@@ -790,7 +795,7 @@ void DrawTermParameter(std::size_t a_index, const Studio::TermField &a_field,
                      a_field.field.integral
                          ? std::to_string(
                                static_cast<long long>(std::llround(a_value)))
-                         : std::format("{:.9g}", a_value);
+                         : ParamText(Param{a_value});
                  CommitTermField(a_index, a_field, text, a_preview);
                }});
   } else if (const auto text =

@@ -76,7 +76,7 @@ pure core has no logger. Turning a scale into pixels and clamping the result to
 in-memory spdlog ring the menu reads to show recent log lines; it is attached
 to the logger alongside the file sink at plugin load.
 
-## The recipe model (`recipe/Recipe.h`, `recipe/Words.h`, `recipe/Efsh.h`, `recipe/Merge.h`, `recipe/Signals.h`, `recipe/Importer.h`)
+## The recipe model (`recipe/Recipe.h`, `recipe/Words.h`, `recipe/Efsh.h`, `recipe/Merge.h`, `recipe/Signals.h`, `recipe/Importer.h`, `recipe/Visit.h`)
 
 - `Words.h` is the frozen `Vocabulary.h`: one `inline constexpr` spec table
   per enum, in enum order, with a `static_assert` on row count. It is the
@@ -136,6 +136,41 @@ to the logger alongside the file sink at plugin load.
   non-scalar signal is an error `SignalGraph::Compile` reports as a
   diagnostic, closing the frozen code's empty `if (n.curve && n.type !=
   kScalar) {}`.
+- `Visit.h` is the published recipe traversal: reach for a walker here before
+  hand-rolling a loop over `outputs`/`stack`/params. Each walker takes
+  `Recipe &` and a callback and hands back the typed node with its
+  `PropertyLocation` (owner + property), so `SurfaceOutput`-vs-`LightOutput`
+  variant skipping and the `Get<SurfaceOutput>` descent are handled once, not at
+  each call site (a light output has no layer stack). The location vocabulary
+  (`ResourceKind`, `ResourceRef`, the `*Owner` records, `PropertyLocation`) is
+  shared; `docs/conventions.md`'s glossary carries the "extend this, do not grow
+  a private walker" policy. Which walker:
+  - `ForEachMaterialLayer(recipe, Fn(Layer &, LayerOwner))` — every material
+    layer; the light outputs are skipped for you.
+  - `ForEachImageRef(recipe, Fn(Ref &, PropertyLocation))` — each layer's
+    `source` and `mask` reference (mutable, so rename and force-clear go through
+    it).
+  - `ForEachCurveRef(recipe, Fn(CurveRef &, PropertyLocation))` — named curves on
+    signals and layers.
+  - `ForEachText(recipe, Fn(std::string &, bool isMask, PropertyLocation))` —
+    every editable expression string: signal expressions, inline signal/layer
+    curve text, curve text, mask text; the bool marks a mask expression.
+  - `ForEachSignalRef(recipe, Fn(Ref &, PropertyLocation))` — every param that is
+    a signal reference, across signal/source/output/shell params.
+  - `ForEachParam(recipe, Visitor &)` — the master numeric/vector/ref walk the
+    ref walkers are built on; use it directly for a visitor that reads scalars
+    and vectors (literal folding does).
+  - `ForEachOverrideName(recipe, Fn(const std::string &, PropertyLocation))` —
+    variant override names.
+  A visitor for `ForEachParam` implements `Owner`/`Property`/`Reference`/
+  `Scalar`/`Vector` (plus the `Optional*` forms); `LocatedVisitor` supplies the
+  first two and `RefVisitor<Fn>` adapts a `Fn(Ref &, PropertyLocation)` into the
+  protocol. The `Visit*Params` dispatchers (`VisitSignalParams`,
+  `VisitSourceParams`, `VisitSurfaceParams`, `VisitLightParams`,
+  `VisitOutputParams`, `VisitShellParams`) walk one node kind when a whole-recipe
+  pass is too much. `studio/Edits.cpp` drives the whole family — rename, its
+  `CountReferences`, literal folding, and the forced mask removal
+  (`ForEachMaterialLayer`) — so a new traversal has a pattern to copy.
 
 ## The recipe language (`Expression.h`, `Expression.cpp`)
 

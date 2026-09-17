@@ -84,7 +84,12 @@ std::optional<ApplicationStatus> ResolveApplication(const Frame &a_frame) {
   return status;
 }
 
-void DrawApplicationStatus(const ApplicationStatus &a_status) {
+void DrawApplicationStatus(const ApplicationStatus &a_status,
+                           bool a_noOutputs) {
+  if (a_status.phase == ApplicationPhase::kUnmatched && a_noOutputs) {
+    Dim("Application: no outputs");
+    return;
+  }
   const std::string text =
       std::format("Application: {}", ApplicationPhaseName(a_status.phase));
   switch (a_status.phase) {
@@ -163,21 +168,29 @@ void DrawPieceCombo(const Frame &a_frame) {
       piece ? std::format("{} / {} ({})", piece->actorName, piece->armorName,
                           piece->ref.firstPerson ? "1st" : "3rd")
             : std::string{"nothing applied"};
-  NextItemWidth(Studio::Width::Px(kPieceComboWidth));
-  if (!ImGui::BeginCombo("##piece", preview.c_str())) {
-    return;
-  }
-  std::size_t i = 0;
-  for (const Studio::PieceRow &row : a_frame.snapshot->pieces) {
-    const std::string label =
-        std::format("{} / {} ({})##piece{}", row.actorName, row.armorName,
-                    row.ref.firstPerson ? "1st" : "3rd", i++);
-    if (ImGui::Selectable(label.c_str(),
-                          row.ref == SelectionOf(a_frame).piece)) {
-      Studio::Post(*a_frame.intents, Studio::PickPiece{row.ref});
+  const auto &pieces = a_frame.snapshot->pieces;
+  std::vector<std::string> labels;
+  std::optional<std::size_t> selected;
+  labels.reserve(pieces.size());
+  for (std::size_t i = 0; i < pieces.size(); ++i) {
+    const Studio::PieceRow &row = pieces[i];
+    labels.push_back(std::format("{} / {} ({})", row.actorName, row.armorName,
+                                 row.ref.firstPerson ? "1st" : "3rd"));
+    if (row.ref == SelectionOf(a_frame).piece) {
+      selected = i;
     }
   }
-  ImGui::EndCombo();
+  const auto picked =
+      SearchCombo({.id = "##piece",
+                   .preview = preview.c_str(),
+                   .hint = "Search pieces",
+                   .width = Studio::Width::Px(kPieceComboWidth)},
+                  labels, selected);
+  if (picked) {
+    if (const auto *index = Get<std::size_t>(*picked)) {
+      Studio::Post(*a_frame.intents, Studio::PickPiece{pieces[*index].ref});
+    }
+  }
 }
 
 void NavButton(const char *a_label, bool a_active,
@@ -238,6 +251,12 @@ void DrawPieceBar(const Frame &a_frame) {
       }
       shown = true;
     };
+    if (const auto status = ResolveApplication(a_frame)) {
+      sep();
+      const bool noOutputs = !Studio::MaskTaskActive(*a_frame.state) &&
+                             a_frame.recipe && a_frame.recipe->outputs.empty();
+      DrawApplicationStatus(*status, noOutputs);
+    }
     if (view.Isolating()) {
       sep();
       Warn(std::format("Solo: {}", view.isolation.recipeID));
@@ -245,10 +264,6 @@ void DrawPieceBar(const Frame &a_frame) {
     if (!view.muted.empty()) {
       sep();
       Warn(std::format("{} muted layer(s)", view.muted.size()));
-    }
-    if (const auto status = ResolveApplication(a_frame)) {
-      sep();
-      DrawApplicationStatus(*status);
     }
   };
   static_cast<void>(Rule(

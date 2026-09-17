@@ -99,7 +99,7 @@ void DrawExpressionNumbers(const Studio::FormField &a_expression,
     Studio::FormField field;
     field.name = "number";
     field.kind = Studio::FieldKind::kScalar;
-    field.text = std::format("{:.9g}", literal.value);
+    field.text = ParamText(Param{literal.value});
     field.bind = LiteralBinding(a_expression, index);
     field.expectedRevision = a_expression.expectedRevision;
     DrawRowField("operand", field, a_frame);

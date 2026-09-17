@@ -100,10 +100,11 @@ void ReduceEdit(Selection &a_selection, const RecipeEdit &a_edit) {
       [](const SetLightVector &) {}, [](const SetLightShadow &) {},
       [](const SetLightBones &) {}, [](const SetLightReplace &) {},
       [](const SetLightSelector &) {}, [](const ResetLight &) {},
-      [](const SetShellParam &) {}, [](const SetShellVector &) {},
-      [](const SetShellPoint &) {}, [](const SetShellMaterial &) {},
-      [](const SetShellBlend &) {}, [](const SetShellDepthBias &) {},
-      [](const SetShellAlphaTest &) {}, [](const ResetShell &) {});
+      [](const ResetOutput &) {}, [](const SetShellParam &) {},
+      [](const SetShellVector &) {}, [](const SetShellPoint &) {},
+      [](const SetShellMaterial &) {}, [](const SetShellBlend &) {},
+      [](const SetShellDepthBias &) {}, [](const SetShellAlphaTest &) {},
+      [](const ResetShell &) {});
 }
 
 template <class Map> void RemapMask(MaskStack &a_mask, const Map &a_map) {

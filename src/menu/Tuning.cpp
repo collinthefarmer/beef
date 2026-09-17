@@ -58,9 +58,24 @@ TuneRange ResolveTuningRange(const Studio::FormField &a_field,
 
 void DrawAdjustRange(Studio::MenuState &a_state, Studio::FieldKey a_key,
                      std::pair<float, float> a_span) {
-  if (ImGui::SmallButton("Range")) {
-    a_state.numberBuffers[a_key] = {a_span.first, a_span.second, 0.0f};
-    ImGui::OpenPopup("tuning-range");
+  const bool custom = a_state.tuningRanges.contains(a_key);
+  if (custom) {
+    const ImGui::ImVec4 *active =
+        ImGui::GetStyleColorVec4(ImGui::ImGuiCol_ButtonActive);
+    ImGui::PushStyleColor(ImGui::ImGuiCol_Button,
+                          active ? *active
+                                 : ImGui::ImVec4{0.35f, 0.35f, 0.35f, 1.0f});
+  }
+  if (ImGui::Button("Range")) {
+    if (custom) {
+      a_state.tuningRanges.erase(a_key);
+    } else {
+      a_state.numberBuffers[a_key] = {a_span.first, a_span.second, 0.0f};
+      ImGui::OpenPopup("tuning-range");
+    }
+  }
+  if (custom) {
+    ImGui::PopStyleColor();
   }
   Tooltip("The slider spans a range around the current value. Set exact "
           "limits; exact input stays unrestricted.");
@@ -98,7 +113,7 @@ void DrawRangeSlider(const SliderScope &a_scope, float a_value,
     NextItemWidth(Studio::Width::Px(slider));
     if (ImGui::SliderFloat("##tune", &a_value, a_scope.range.span.first,
                            a_scope.range.span.second,
-                           a_scope.field.integral ? "%.0f" : "%.3g")) {
+                           a_scope.field.integral ? "%.0f" : "%.3f")) {
       if (a_scope.field.integral) {
         a_value = std::round(a_value);
       }
@@ -142,7 +157,7 @@ void UpdateTuning(const Studio::FormField &a_field, const Frame &a_frame,
     return;
   }
   gesture.value = a_value;
-  const std::string text = std::format("{:.9g}", a_value);
+  const std::string text = ParamText(Param{a_value});
   if (Studio::CheckField(a_field, text, *a_frame.names)) {
     return;
   }
@@ -214,7 +229,7 @@ void DrawRecipeTuning(const Studio::FormField &a_field, const Frame &a_frame) {
   const bool owned = state.tuning && state.tuning->field == key &&
                      state.tuning->recipeID == a_frame.recipe->id;
   float value = owned ? state.tuning->value : *initial;
-  const TuneRange range = ResolveTuningRange(a_field, state, key, value);
+  const TuneRange range = ResolveTuningRange(a_field, state, key, *initial);
   const bool disabled = state.tuning && (!owned || state.tuning->finishing);
   DrawRangeSlider(
       SliderScope{a_field, state, key, range, disabled}, value,

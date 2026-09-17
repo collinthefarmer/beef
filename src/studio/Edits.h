@@ -66,6 +66,9 @@ struct MoveLayer {
 struct ClearLayers {
   std::size_t output = 0;
 };
+struct ResetOutput {
+  std::size_t output = 0;
+};
 
 struct AddOutput {
   Surface surface = Surface::kMaterial;
@@ -162,6 +165,7 @@ struct RenameMask {
 };
 struct RemoveMask {
   std::string name;
+  bool force = false;
 };
 struct AddSource {
   std::string name;
@@ -274,13 +278,13 @@ using RecipeEdit = std::variant<
     SetLayerSource, SetLayerCurve, SetLayerBlend, SetLayerOpacity,
     SetLayerColor, SetLayerMask, SetLayerChannels, AddLayer, RemoveLayer,
     MoveLayer, ClearLayers, AddOutput, RemoveOutput, SetScalar, SetColorScalar,
-    SetOutputReplace, SetOutputSelector, AddKey, RemoveKey, ClearOutputs,
-    ClearResources, ClearRecipe, SetPriority, SetClockSpeed, SetConstant,
-    SetExpression, SetSignal, SetSignalCurve, SetCurve, SetMask, AddSignal,
-    AddCurve, RenameSignal, RenameCurve, RemoveSignal, RemoveCurve, AddMask,
-    RenameMask, RemoveMask, AddSource, SetSource, RenameSource, RemoveSource,
-    AddLight, SetLightParam, SetLightVector, SetLightShadow, SetLightBones,
-    SetLightReplace, SetLightSelector, ResetLight, SetShellParam,
+    SetOutputReplace, SetOutputSelector, ResetOutput, AddKey, RemoveKey,
+    ClearOutputs, ClearResources, ClearRecipe, SetPriority, SetClockSpeed,
+    SetConstant, SetExpression, SetSignal, SetSignalCurve, SetCurve, SetMask,
+    AddSignal, AddCurve, RenameSignal, RenameCurve, RemoveSignal, RemoveCurve,
+    AddMask, RenameMask, RemoveMask, AddSource, SetSource, RenameSource,
+    RemoveSource, AddLight, SetLightParam, SetLightVector, SetLightShadow,
+    SetLightBones, SetLightReplace, SetLightSelector, ResetLight, SetShellParam,
     SetShellVector, SetShellPoint, SetShellMaterial, SetShellBlend,
     SetShellDepthBias, SetShellAlphaTest, ResetShell>;
 

@@ -293,9 +293,9 @@ bool ShouldInvalidateIndexedSubjects(std::span<const RecipeEdit> a_edits) {
   return std::ranges::any_of(a_edits, [](const RecipeEdit &a_edit) {
     return Is<AddLayer>(a_edit) || Is<RemoveLayer>(a_edit) ||
            Is<MoveLayer>(a_edit) || Is<ClearLayers>(a_edit) ||
-           Is<AddOutput>(a_edit) || Is<RemoveOutput>(a_edit) ||
-           Is<ClearOutputs>(a_edit) || Is<ClearRecipe>(a_edit) ||
-           Is<AddLight>(a_edit);
+           Is<ResetOutput>(a_edit) || Is<AddOutput>(a_edit) ||
+           Is<RemoveOutput>(a_edit) || Is<ClearOutputs>(a_edit) ||
+           Is<ClearRecipe>(a_edit) || Is<AddLight>(a_edit);
   });
 }
 

@@ -17,5 +17,5 @@ void DrawRecipeSettings(const Frame &a_frame);
 void DrawStudioContext(const Frame &a_frame);
 void DrawOutputHeader(const Studio::OutputRow &a_output,
                       std::span<const Studio::FormField> a_scalars,
-                      const Frame &a_frame);
+                      const Frame &a_frame, std::string_view a_note = {});
 }

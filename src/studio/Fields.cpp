@@ -54,9 +54,11 @@ namespace {
 }
 
 std::pair<float, float> ValueRelativeRange(float a_value) {
-  constexpr float kZeroTuningSpan = 1.0f;
-  const float span = std::max(std::fabs(a_value), kZeroTuningSpan);
-  return {a_value - span, a_value + span};
+  constexpr float kMinTuningSpan = 1.0f;
+  constexpr float kMaxTuningSpan = 100.0f;
+  const float span = std::clamp(std::round(std::sqrt(std::fabs(a_value))),
+                                kMinTuningSpan, kMaxTuningSpan);
+  return {std::round(a_value - span), std::round(a_value + span)};
 }
 
 FieldBinding BindLayerSource(std::size_t a_output, std::size_t a_layer) {

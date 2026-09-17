@@ -429,6 +429,9 @@ void Table::End() {
 float ResolveWidth(const Studio::Width &a_width, float a_scale) noexcept {
   switch (a_width.mode) {
   case Studio::WidthMode::kFill:
+    if (a_width.ratio < 1.0f) {
+      return ImGui::GetContentRegionAvail().x * a_width.ratio;
+    }
     return kFillWidth;
   case Studio::WidthMode::kFit:
     return FitWidth(a_width.text) * a_scale;
@@ -534,6 +537,50 @@ std::string_view LiveTextField(const char *a_key, const char *a_hint,
   ImGui::InputTextWithHint("##live", a_hint, buffer.data(), buffer.size());
   ImGui::PopID();
   return std::string_view{buffer.data()};
+}
+
+std::optional<SearchPick> SearchCombo(const SearchComboSpec &a_spec,
+                                      std::span<const std::string> a_labels,
+                                      std::optional<std::size_t> a_selected) {
+  std::optional<SearchPick> picked;
+  NextItemWidth(a_spec.width);
+  if (!ImGui::BeginCombo(NonNull(a_spec.id), a_spec.preview)) {
+    return picked;
+  }
+  const std::string filterKey = std::string{NonNull(a_spec.id)} + "-filter";
+  const std::string_view filter =
+      LiveTextField(filterKey.c_str(), a_spec.hint, a_spec.width, 1.0f);
+  bool any = false;
+  for (std::size_t i = 0; i < a_labels.size(); ++i) {
+    if (!Studio::NameMatches(a_labels[i], filter)) {
+      continue;
+    }
+    any = true;
+    ImGui::PushID(static_cast<int>(i));
+    if (ImGui::Selectable(a_labels[i].c_str(), a_selected == i)) {
+      picked = i;
+      ImGui::CloseCurrentPopup();
+    }
+    ImGui::PopID();
+  }
+  if (!a_spec.customVerb.empty() && !filter.empty()) {
+    if (any) {
+      ImGui::Separator();
+    }
+    const std::string label =
+        std::format("{} \"{}\"", a_spec.customVerb, filter);
+    if (ImGui::Selectable(label.c_str(), false)) {
+      picked = std::string{filter};
+      ImGui::CloseCurrentPopup();
+    }
+    if (!a_spec.customTip.empty()) {
+      Tooltip(a_spec.customTip);
+    }
+  } else if (!any && !a_spec.emptyHint.empty()) {
+    Dim(a_spec.emptyHint);
+  }
+  ImGui::EndCombo();
+  return picked;
 }
 
 void Thumbnail(const Studio::ThumbnailSpec &a_spec) {

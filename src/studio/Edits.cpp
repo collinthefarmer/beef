@@ -326,6 +326,18 @@ Refusal Edit(Recipe &a_recipe, const ClearLayers &a_edit) {
   return std::nullopt;
 }
 
+Refusal Edit(Recipe &a_recipe, const ResetOutput &a_edit) {
+  auto found = FindSurfaceOutput(a_recipe, a_edit.output);
+  if (found.problem)
+    return found.problem;
+  SurfaceOutput reset;
+  reset.surface = found.output->surface;
+  reset.slot = found.output->slot;
+  reset.selector = found.output->selector;
+  *found.output = reset;
+  return std::nullopt;
+}
+
 std::optional<std::size_t> ExcludingOutput(const Recipe &a_recipe,
                                            Surface a_surface, Slot a_slot) {
   for (std::size_t i = 0; i < a_recipe.outputs.size(); ++i) {
@@ -804,6 +816,13 @@ Refusal Edit(Recipe &a_recipe, const RemoveMask &a_edit) {
   const auto it = std::ranges::find(a_recipe.masks, a_edit.name, &Mask::name);
   if (it == a_recipe.masks.end()) {
     return Refuse(MaskWhere(a_edit.name), "no such mask");
+  }
+  if (a_edit.force) {
+    ForEachMaterialLayer(a_recipe, [&](Layer &a_layer, LayerOwner) {
+      if (a_layer.mask && a_layer.mask->name == a_edit.name) {
+        a_layer.mask.reset();
+      }
+    });
   }
   const auto counts = CountReferences(a_recipe);
   if (const auto found = counts.images.find(a_edit.name);
@@ -1362,6 +1381,9 @@ struct DescribeVisitor {
   }
   std::string operator()(const ResetLight &e) const {
     return std::format("{}: reset light", OutputWhere(e.output));
+  }
+  std::string operator()(const ResetOutput &e) const {
+    return std::format("{}: reset", OutputWhere(e.output));
   }
   std::string operator()(const SetShellParam &e) const {
     return std::format("shell: {} {}", ShellParamName(e.field),

@@ -270,3 +270,99 @@ version of this (removes the not-yet-referenced mask it created,
 `DiscardMaskDraft`); this generalises it to referenced resources and to every
 resource kind. Consider whether "replace with" (repoint uses at another
 resource) is worth offering alongside "delete uses".
+
+## 10. Declare true ranges for fields whose bounds are known
+
+**Ask.** A tunable scalar with a real, known range should carry that range
+instead of falling back to the value-relative auto-range. The auto-range is a
+guess (an eased span around the current value); a field with a genuine domain
+should slide within it directly.
+
+**Where.** `FormField` carries `range` (a hard limit) and `workingRange` (a
+suggested tuning span) — `studio/Forms.h:239`. `ResolveTuningRange`
+(`menu/Tuning.cpp`) prefers `workingRange`, then `range`, then a stored custom
+range, and only then `ValueRelativeRange` (`studio/Fields.cpp`, the eased
+whole-number span). Some fields already declare one: layer opacity `{0,1}`
+(`Forms.cpp:558`), a few `{0,1}` factors (`:662,:758`), skinned-bone `max`
+`{1,64}` (`:916`), material clusters/iterations (`:1256,:1279`). Many others
+fall through to the auto-range.
+
+**Direction.** Set `workingRange` (or `range` where the limit is hard) on the
+fields whose bounds are known: shell `alpha`/`emissive`/`alphaTest`,
+`rimPower`, light `intensity`/`size`/`cutoff`, and the surface scalars with
+slot-defined limits (`ScalarDefault`/`ScalarRequired` already know a slot's
+fallback, so the range often lives near there). Audit the `*Form` builders
+(`studio/Forms.cpp`) field by field; where a real range exists, declare it, and
+leave `ValueRelativeRange` only for the genuinely open-ended values.
+
+## 11. Migrate the signal-creation wizard into the Signal inspector
+
+**Ask.** The "New input" button that opened the signal-creation wizard was
+removed from the Signals resource tab. Re-home that flow — creating an input
+signal through the guided/advanced wizard — inside the Signal inspector, where
+the resource it produces is edited.
+
+**Where.** The wizard machinery stays: `DrawWizardPopup` (`menu/InputBrowser.cpp`)
+with a null `FormField` is the signal-creation path (guided `DrawGuided` /
+advanced `DrawAdvanced`, `WizardState`, `ResetWizard`, the "Create an input
+signal" title). Only the entry point (`DrawSignalWizardButton`, the "New input"
+button) was dropped. The Signal inspector is `DrawSignalInspector`
+(`menu/Workspace.cpp`), and the plain add-a-signal path is the `+ signal`
+row now living at the bottom of the Signals resource table (`DrawResourceRows`).
+
+**Direction.** Give the Signal inspector an affordance that launches the
+signal-creation wizard (an opener on its Rule, or a mode on the `+ signal`
+add-row), invoking `DrawWizardPopup(..., nullptr)` so a guided connection builds
+the signal in place. Decide whether the wizard supersedes or complements the
+bare `+ signal` add (guided vs. blank). Ties to item 4 (the game-object service
+feeds the wizard's discovery steps).
+
+## 12. Revisit the new-recipe modal
+
+**Ask.** The "New recipe" modal predates the UI-standardization pass and the new
+key-authoring components; bring it in line.
+
+**Where.** `NewRecipeButton` (`menu/ContextRows.cpp:241`) opens the `new-recipe`
+popup: a name field, a fixed `Key type` combo over the key kinds, a raw operand
+text field ("form editor ID or plugin form key" / "texture path or pattern" —
+the blind-typing path), a "Create document" button (`CreateRecipe`), and
+`CreateForSelectedArmor`. It does not use the `Rule`/`DetailModal` chrome, and
+its key entry duplicates — more crudely — what the keys table now does.
+
+**Direction.** Rework the modal onto the standard components: a titled `Rule`
+header with the close/confirm controls, and reuse the key-authoring flow the
+keys table established — `SearchCombo` for kind/value with discovery (item 4)
+and the same `RecipeKey` build path — instead of the bespoke kind combo + raw
+operand field. Fold `CreateForSelectedArmor` in as a first-class option. Ties to
+items 1 (DetailModal chrome), 4 (game-object discovery), and 8 (the keys table).
+
+## 13. Break out values for sources, masks, and curves in the resource table
+
+**Ask.** The resource table's `value` column is only populated for signals
+(constant / live value, or "(inactive)"). Sources, masks, and curves pass no
+value and render "-". Give each a meaningful value so the column earns its place
+for every resource kind.
+
+**Where.** `DrawResourceRows` (`menu/Workspace.cpp`): the signals case computes a
+value + placeholder; the `kSources` / `kMasks` / `kCurves` cases pass
+`std::nullopt`, so `ResourceRow` shows its "-" placeholder. The rows carry more
+than is surfaced — `SourceRow` (its kind is already the `type` column; a
+representative parameter could be the value), `TextRow` for masks/curves (the
+expression `text`).
+
+**Direction.** Decide a representative value per kind and pass it through: for
+masks/curves the expression, shortened; a source's key parameter (mip, distance,
+cluster count) beside its kind. Keep the `type` column as the kind and the
+`value` column as the distinguishing datum, mirroring the signal split. Where a
+kind has no natural scalar value, "-" stays correct.
+
+**Shared piece — an expression display string.** The shortened-expression form
+should be a reusable function of an expression, not ad-hoc truncation at the
+call site: `ExpressionSummary(std::string_view) -> std::string` (name TBD) that
+turns a possibly-long expression into a compact display string — collapsing
+whitespace, eliding the middle of long text, and ideally aware of the expression
+grammar (`recipe/Expression.h`) so it shortens by structure (top-level operator,
+operand count) rather than blind character truncation. Engine-free and
+native-testable. Reused anywhere an expression shows compactly (the value
+column, inline signal/curve/mask references, row summaries), so it lives beside
+the expression parser, not in `menu/`.

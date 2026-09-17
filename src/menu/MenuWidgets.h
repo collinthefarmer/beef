@@ -13,6 +13,7 @@
 #include <span>
 #include <string>
 #include <string_view>
+#include <variant>
 
 namespace BetterEnchantmentEffects::Menu {
 using TextCheck =
@@ -100,6 +101,21 @@ ChoiceCombo(const char *a_key, const std::string &a_current,
 [[nodiscard]] std::optional<std::string>
 ReferenceCombo(const char *a_key, const Studio::FormField &a_field,
                const WidgetSize &a_size);
+
+using SearchPick = std::variant<std::size_t, std::string>;
+struct SearchComboSpec {
+  const char *id = nullptr;
+  const char *preview = nullptr;
+  const char *hint = nullptr;
+  Studio::Width width = Studio::Width::Fill();
+  std::string_view customVerb = {};
+  std::string_view customTip = {};
+  std::string_view emptyHint = {};
+};
+[[nodiscard]] std::optional<SearchPick>
+SearchCombo(const SearchComboSpec &a_spec,
+            std::span<const std::string> a_labels,
+            std::optional<std::size_t> a_selected = {});
 
 void Badge(Studio::FieldKind a_kind);
 [[nodiscard]] const char *BlendGlyph(Blend a_blend);

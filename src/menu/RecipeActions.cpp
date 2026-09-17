@@ -29,6 +29,12 @@ FileResult(const Studio::Snapshot &a_snapshot, const std::string &a_recipeID) {
   return found == a_snapshot.fileOperations.end() ? nullptr : &*found;
 }
 
+std::string SourcedProblem(const Diagnostic &a_diagnostic) {
+  return a_diagnostic.where.empty()
+             ? a_diagnostic.message
+             : std::format("{}: {}", a_diagnostic.where, a_diagnostic.message);
+}
+
 void DrawFileResult(const Studio::FileOperationResult &a_result) {
   const std::string_view action =
       a_result.action == Studio::FileAction::kSave ? "Save" : "Revert";
@@ -52,7 +58,7 @@ RecipeOperationErrors(const Studio::Snapshot &a_snapshot,
   const auto edit = std::ranges::find(a_snapshot.editResults, a_recipeID,
                                       &Studio::RecipeEditResult::recipeID);
   if (edit != a_snapshot.editResults.end() && edit->error) {
-    out.emplace_back(ProblemText(edit->error));
+    out.emplace_back(SourcedProblem(*edit->error));
   }
   return out;
 }
@@ -97,7 +103,7 @@ void CollectRecipeProblems(const Frame &a_frame, RecipeStatus &a_status) {
   for (const Diagnostic &diagnostic : recipe.problems) {
     AppendLine(diagnostic.severity == Severity::kError ? a_status.errors
                                                        : a_status.warnings,
-               std::format("{}: {}", diagnostic.where, diagnostic.message));
+               SourcedProblem(diagnostic));
   }
   if (!a_frame.geometry) {
     AppendLine(a_status.warnings,

@@ -53,21 +53,38 @@ void RecipeCombo(const Frame &a_frame, const char *a_label) {
   ImGui::EndCombo();
 }
 
-void DrawKeysTable(const Studio::RecipeRow &a_recipe, Studio::Intents &a_out) {
-  auto table = Table::Begin("keys",
-                            {{"key", Studio::Width::Fit()},
-                             {"", Studio::Width::Px(RowButtonWidth())}},
-                            Studio::kFormTable);
-  if (!table.Open()) {
-    return;
+std::string KeyValueText(const RecipeKey &a_key) {
+  if (const FormRef *form = a_key.Form()) {
+    return form->text;
   }
+  return std::string{a_key.Glob()};
+}
+
+std::string KeyDescription([[maybe_unused]] const RecipeKey &a_key) {
+  return std::string{};
+}
+
+void TextOrDash(std::string_view a_text) {
+  ImGui::AlignTextToFramePadding();
+  if (a_text.empty()) {
+    Dim("—");
+  } else {
+    ImGui::TextUnformatted(a_text.data(), a_text.data() + a_text.size());
+  }
+}
+
+void DrawKeyRows(const Studio::RecipeRow &a_recipe, Studio::Intents &a_out,
+                 Table &a_table) {
   for (std::size_t i = 0; i < a_recipe.keys.size(); ++i) {
     const auto &key = a_recipe.keys[i];
     ImGui::PushID(static_cast<int>(i));
-    table.Cell();
-    ImGui::AlignTextToFramePadding();
-    ImGui::TextUnformatted(key.ToString().c_str());
-    table.Cell();
+    a_table.Cell();
+    TextOrDash(KeyKindName(key.kind));
+    a_table.Cell();
+    TextOrDash(KeyValueText(key));
+    a_table.Cell();
+    TextOrDash(KeyDescription(key));
+    a_table.Cell();
     Disabled(a_recipe.keys.size() == 1, [&]() {
       if (RemoveButton(0)) {
         Studio::Post(a_out, a_recipe.id, Studio::RemoveKey{key});
@@ -75,44 +92,92 @@ void DrawKeysTable(const Studio::RecipeRow &a_recipe, Studio::Intents &a_out) {
     });
     ImGui::PopID();
   }
-  table.End();
 }
 
-void KeysPopup(const Studio::PieceRow &a_piece,
-               const Studio::RecipeRow &a_recipe, Studio::Intents &a_out) {
-  if (!ImGui::BeginPopup("recipe-keys")) {
+struct KeyCandidate {
+  RecipeKey key;
+  std::string label;
+};
+
+std::vector<KeyCandidate>
+CollectKeyCandidates(const Studio::PieceRow &a_piece,
+                     const Studio::RecipeRow &a_recipe) {
+  std::vector<KeyCandidate> candidates;
+  const auto offer = [&](const RecipeKey &a_key, std::string a_label) {
+    if (std::ranges::find(a_recipe.keys, a_key) != a_recipe.keys.end()) {
+      return;
+    }
+    if (std::ranges::any_of(candidates, [&](const KeyCandidate &a_have) {
+          return a_have.key == a_key;
+        })) {
+      return;
+    }
+    candidates.push_back({a_key, std::move(a_label)});
+  };
+  for (const auto &choice : a_piece.keys) {
+    offer(RecipeKeyOf(choice.key, choice.text),
+          std::format("{}: {}", KeyKindName(choice.key.kind), choice.text));
+  }
+  return candidates;
+}
+
+void DrawKeyAdd(const Studio::PieceRow &a_piece,
+                const Studio::RecipeRow &a_recipe, Studio::Intents &a_out) {
+  const std::vector<KeyCandidate> candidates =
+      CollectKeyCandidates(a_piece, a_recipe);
+  std::vector<std::string> labels;
+  labels.reserve(candidates.size());
+  for (const KeyCandidate &candidate : candidates) {
+    labels.push_back(candidate.label);
+  }
+  const auto picked = SearchCombo(
+      {.id = "##add-key",
+       .preview = "add a key",
+       .hint = "filter, or type a keyword editor id",
+       .width = Studio::Width::Fill(),
+       .customVerb = "Add keyword",
+       .customTip = "a keyword by editor id, resolved against the loaded "
+                    "plugins; the recipe then applies to every piece carrying "
+                    "it",
+       .emptyHint =
+           "the piece carries no other keys — type a keyword editor id"},
+      labels);
+  if (!picked) {
     return;
   }
-  DrawKeysTable(a_recipe, a_out);
-  NextItemWidth(Studio::Width::Px(240.0f));
-  if (ImGui::BeginCombo("##add-key", "add a key the piece carries")) {
-    for (const auto &choice : a_piece.keys) {
-      const RecipeKey key = RecipeKeyOf(choice.key, choice.text);
-      if (std::ranges::find(a_recipe.keys, key) != a_recipe.keys.end()) {
-        continue;
-      }
-      const std::string label =
-          std::format("{}: {}", KeyKindName(choice.key.kind), choice.text);
-      if (ImGui::Selectable(label.c_str(), false)) {
-        Studio::Post(a_out, a_recipe.id, Studio::AddKey{key});
-      }
-    }
-    ImGui::EndCombo();
+  if (const auto *index = Get<std::size_t>(*picked)) {
+    Studio::Post(a_out, a_recipe.id, Studio::AddKey{candidates[*index].key});
+  } else if (const auto *custom = Get<std::string>(*picked)) {
+    RecipeKey key;
+    key.kind = KeyKind::kKeyword;
+    key.operand = FormRef::From(*custom);
+    Studio::Post(a_out, a_recipe.id, Studio::AddKey{key});
   }
-  const std::string_view keyword = LiveTextField(
-      "keyword", "keyword editor id", Studio::Width::Px(240.0f), 1.0f);
-  ImGui::SameLine();
-  Disabled(keyword.empty(), [&]() {
-    if (ImGui::SmallButton("Add keyword")) {
-      RecipeKey key;
-      key.kind = KeyKind::kKeyword;
-      key.operand = FormRef::From(keyword);
-      Studio::Post(a_out, a_recipe.id, Studio::AddKey{key});
-    }
-  });
-  Tooltip("a keyword by editor id, resolved against the loaded plugins; the "
-          "recipe then applies to every piece carrying it");
-  ImGui::EndPopup();
+}
+
+void DrawKeys(const Studio::PieceRow &a_piece,
+              const Studio::RecipeRow &a_recipe, Studio::Intents &a_out) {
+  if (!Rule(Studio::RuleSpec{
+                .text = "Keys", .collapsible = true, .leadingSpace = false})
+           .open) {
+    return;
+  }
+  auto table = Table::Begin("keys",
+                            {{"Kind", Studio::Width::Fit()},
+                             {"Value", Studio::Width::Fill()},
+                             {"Description", Studio::Width::Fill()},
+                             {"", Studio::Width::Px(RowButtonWidth())}},
+                            Studio::kRelationTable);
+  if (!table.Open()) {
+    return;
+  }
+  DrawKeyRows(a_recipe, a_out, table);
+  table.Cell();
+  table.Cell();
+  DrawKeyAdd(a_piece, a_recipe, a_out);
+  table.Cell();
+  table.Cell();
+  table.End();
 }
 
 void UndoRedoButtons(const Studio::RecipeRow &a_recipe,
@@ -306,38 +371,48 @@ void DrawRecipeSettings(const Frame &a_frame) {
     return;
   }
   const Studio::RecipeRow &recipe = *a_frame.recipe;
+  static_cast<void>(Rule(
+      Studio::RuleSpec{.text = "Recipe"}, ButtonWidth("Rename"),
+      [&]() { RenameRecipeButton(a_frame); }, [&]() { Dim(recipe.id); }));
   [[maybe_unused]] const std::optional<std::size_t> detail =
       DrawForm("recipe-header", Studio::RecipeHeaderForm(recipe), a_frame);
-  RenameRecipeButton(a_frame);
-  ImGui::SameLine();
-  if (ImGui::Button("Recipe keys")) {
-    ImGui::OpenPopup("recipe-keys");
-  }
-  KeysPopup(a_frame.piece ? *a_frame.piece : Studio::PieceRow{}, recipe,
-            *a_frame.intents);
+  DrawKeys(a_frame.piece ? *a_frame.piece : Studio::PieceRow{}, recipe,
+           *a_frame.intents);
   DrawDiagnostics(recipe.problems, recipe.heldBack);
 }
 
 void DrawOutputHeader(const Studio::OutputRow &a_output,
                       std::span<const Studio::FormField> a_scalars,
-                      const Frame &a_frame) {
+                      const Frame &a_frame, std::string_view a_note) {
   const Studio::OutputHeader header = Studio::OutputHeaderForm(
       a_output.index, a_output.replace, a_output.selection);
   const std::string label = std::format(
       "{} / {}", SurfaceName(a_output.surface), SlotName(a_output.slot));
   static_cast<void>(Rule(
-      Studio::RuleSpec{.text = "Inspector"}, RowButtonWidth(),
+      Studio::RuleSpec{.text = "Inspector"},
+      ButtonWidth("Reset") + ItemSpacingX() + RowButtonWidth(),
       [&]() {
-        if (a_frame.recipe && a_frame.intents && RemoveButton(0)) {
+        const bool canEdit = a_frame.recipe && a_frame.intents;
+        if (ImGui::Button("Reset") && canEdit) {
+          Studio::Post(*a_frame.intents, a_frame.recipe->id,
+                       Studio::ResetOutput{a_output.index});
+        }
+        ImGui::SameLine();
+        if (canEdit && RemoveButton(0)) {
           Studio::Post(*a_frame.intents, a_frame.recipe->id,
                        Studio::RemoveOutput{a_output.index});
         }
       },
-      [&]() { Dim(label); }));
+      [&]() {
+        Dim(label);
+        if (!a_note.empty()) {
+          ImGui::SameLine();
+          Dim(a_note);
+        }
+      }));
   std::vector<Studio::FormField> settings(a_scalars.begin(), a_scalars.end());
   settings.insert(settings.end(), header.fields.begin(), header.fields.end());
   DrawFormWithSignals("settings", settings, a_frame);
-  static_cast<void>(Rule(Studio::RuleSpec{.text = "Applies to"}));
   DrawSelector(header.selector, a_output.index, false, a_frame);
 }
 }
