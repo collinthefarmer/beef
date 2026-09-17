@@ -44,7 +44,6 @@ namespace ImGui = ImGuiMCP;
 namespace BetterEnchantmentEffects::Menu {
 namespace {
 constexpr const char *kTermPayload = "BEEF_TERM";
-constexpr float kMaskPreviewSize = 160.0f;
 
 const std::vector<std::string> kTermOps{
     std::string{Studio::TermOpName(Studio::TermOp::kAnd)},
@@ -76,20 +75,6 @@ void RecipeCombo(const Studio::PieceRow &a_piece,
     }
   }
   ImGui::EndCombo();
-}
-
-[[nodiscard]] std::optional<Studio::ViewGeometry>
-NextGeometry(const Studio::RecipeRow &a_recipe,
-             const Studio::GeometryRow &a_geometry) {
-  const auto &shapes = a_recipe.geometries;
-  if (shapes.empty()) {
-    return std::nullopt;
-  }
-  const auto it =
-      std::ranges::find(shapes, a_geometry.name, &Studio::GeometryRow::name);
-  const std::size_t at =
-      it == shapes.end() ? 0 : static_cast<std::size_t>(it - shapes.begin());
-  return Studio::ViewGeometry{shapes[(at + 1) % shapes.size()].name};
 }
 
 [[nodiscard]] Table BeginTermTable() {
@@ -336,48 +321,6 @@ void DrawTermRow(Table &a_table, std::size_t a_index,
   ImGui::PopID();
 }
 
-void DrawMaskPicture(const Frame &a_frame) {
-  const Studio::PieceRow &piece = *a_frame.piece;
-  const Studio::RecipeRow &recipe = *a_frame.recipe;
-  const Studio::GeometryRow &geometry = *a_frame.geometry;
-  const Studio::MaskStack &mask = a_frame.state->mask;
-  const auto scratch = std::ranges::find(geometry.masks, Studio::kScratchMask,
-                                         &Studio::PictureRow::name);
-  if (scratch == geometry.masks.end()) {
-    return;
-  }
-  if (!scratch->problem.empty()) {
-    Problem(scratch->problem);
-  }
-  const Studio::ThumbnailSpec spec{scratch->texture, scratch->channel,
-                                   scratch->animated,
-                                   kMaskPreviewSize * a_frame.scale};
-  if (recipe.geometries.size() < 2) {
-    Thumbnail(spec);
-  } else {
-    if (ThumbnailButton("mask", spec)) {
-      if (const auto next = NextGeometry(recipe, geometry)) {
-        Studio::Post(*a_frame.intents, *next);
-      }
-    }
-    Tooltip(std::format(
-        "viewed on {} (one of {} geometries; the mask applies to all)\nclick: "
-        "view the next geometry",
-        Studio::GeometryLabel(geometry.name, piece.armorName),
-        recipe.geometries.size()));
-  }
-  ImGui::SameLine();
-  ImGui::BeginGroup();
-  const std::size_t shown = mask.solo
-                                ? std::size_t{1}
-                                : (mask.terms.size() >= mask.muted.size()
-                                       ? mask.terms.size() - mask.muted.size()
-                                       : std::size_t{0});
-  Dim(std::format("mask of {} term{}, {} shown, {}", mask.terms.size(),
-                  mask.terms.size() == 1 ? "" : "s", shown,
-                  scratch->animated ? "animated" : "static"));
-  ImGui::EndGroup();
-}
 }
 
 namespace {
@@ -552,8 +495,6 @@ void DrawMaskStack(const Frame &a_frame) {
   const Studio::MaskStack &mask = a_frame.state->mask;
   const std::vector<Studio::TermOffer> offers =
       Studio::OffersOfRecipe(LoadedPresets(), recipe, mask.editing);
-
-  DrawMaskPicture(a_frame);
 
   const ImGuiMCP::ImVec2 avail = ImGui::GetContentRegionAvail();
   const float termsCap =

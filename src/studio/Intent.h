@@ -109,6 +109,9 @@ struct MuteTerm {
   std::size_t index = 0;
   bool on = false;
 };
+struct SetPeek {
+  std::optional<PaintPeek> target;
+};
 struct LoadMask {
   std::vector<Term> terms;
   std::string editing;
@@ -208,12 +211,12 @@ using Intent = std::variant<
     SetMode, PickPiece, PickRecipe, PinRecipe, PickTarget, PickSlot, PickCell,
     PickLayer, ViewGeometry, SetStackSplit, SetWorkspaceSplit, ShowSettings,
     ShowResource, ReadMesh, AddTerm, SetTermOp, SetTermText, SetTermKind,
-    RemoveTerm, MoveTerm, PickTerm, SoloTerm, MuteTerm, LoadMask, ClearMask,
-    UndoMask, RedoMask, BeginPaint, SetPaintSurface, KeepPaint, EndPaint,
-    UpdatePaint, EditRecipe, SoloRecipe, SoloPiece, SoloOutput, SoloLayer,
-    MuteLayer, SetFreeze, SetScrub, SetSpeed, StepClock, Undo, Redo,
+    RemoveTerm, MoveTerm, PickTerm, SoloTerm, MuteTerm, SetPeek, LoadMask,
+    ClearMask, UndoMask, RedoMask, BeginPaint, SetPaintSurface, KeepPaint,
+    EndPaint, UpdatePaint, EditRecipe, SoloRecipe, SoloPiece, SoloOutput,
+    SoloLayer, MuteLayer, SetFreeze, SetScrub, SetSpeed, StepClock, Undo, Redo,
     CreateRecipe, RenameRecipe, FireTrigger>;
-inline constexpr std::size_t kIntentCount = 47;
+inline constexpr std::size_t kIntentCount = 48;
 static_assert(std::variant_size_v<Intent> == kIntentCount);
 
 using Intents = std::vector<Intent>;

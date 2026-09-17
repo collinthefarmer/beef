@@ -28,6 +28,11 @@ OfferGeometry(const Studio::TermOffer &a_offer, const Frame &a_frame) {
   return found == a_frame.recipe->geometries.end() ? *a_frame.geometry : *found;
 }
 
+[[nodiscard]] std::string OfferKey(const Studio::TermOffer &a_offer) {
+  return std::format("{}:{}:{}", static_cast<int>(a_offer.group), a_offer.name,
+                     a_offer.geometry);
+}
+
 [[nodiscard]] bool OfferMatches(const Studio::TermOffer &a_offer,
                                 std::string_view a_filter) {
   const auto *group = RowOf(Studio::kOfferGroups, a_offer.group);
@@ -72,9 +77,34 @@ void DrawOfferRow(Table &a_table, const Studio::TermOffer &a_offer, bool a_full,
     Dim(a_offer.detail);
   }
   a_table.Cell();
+  const std::string key = OfferKey(a_offer);
+  const bool peeking = a_frame.state->paint && a_frame.state->paint->peek &&
+                       a_frame.state->paint->peek->offer == key;
+  bool peek = peeking;
+  Disabled(a_offer.unavailable.has_value(), [&] {
+    if (PeekButton(peek)) {
+      if (peeking) {
+        Studio::Post(*a_frame.intents, Studio::SetPeek{std::nullopt});
+      } else {
+        Studio::BuiltTerm built = Studio::BuildTerm(
+            a_offer.kind, LoadedPresets(),
+            Studio::PaintSources(*a_frame.state, *a_frame.recipe,
+                                 *a_frame.intents));
+        Studio::Post(*a_frame.intents,
+                     Studio::SetPeek{Studio::PaintPeek{
+                         .offer = key,
+                         .expression = std::move(built.expression),
+                         .sources = std::move(built.edits)}});
+      }
+    }
+  });
+  ImGui::SameLine();
   Disabled(a_full || a_offer.unavailable.has_value(), [&] {
     if (ImGui::SmallButton("Add")) {
       AddPattern(a_offer.kind, geometry, a_frame);
+      if (peeking) {
+        Studio::Post(*a_frame.intents, Studio::SetPeek{std::nullopt});
+      }
     }
   });
   Tooltip(a_offer.unavailable.value_or(
@@ -130,6 +160,13 @@ void DrawPatternChooser(std::span<const Studio::TermOffer> a_offers,
   if (!a_frame.state || !a_frame.state->paint || !a_frame.recipe ||
       !a_frame.geometry || !a_frame.names || !a_frame.intents) {
     return;
+  }
+  const std::optional<Studio::PaintPeek> &peek = a_frame.state->paint->peek;
+  if (peek && !peek->offer.empty() && !a_offers.empty() &&
+      std::ranges::none_of(a_offers, [&](const Studio::TermOffer &a_offer) {
+        return OfferKey(a_offer) == peek->offer;
+      })) {
+    Studio::Post(*a_frame.intents, Studio::SetPeek{std::nullopt});
   }
   ImGui::PushID("pattern-chooser");
   DrawOfferTable(a_offers, a_filter, a_full, a_frame);

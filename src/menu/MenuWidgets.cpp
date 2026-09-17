@@ -952,6 +952,10 @@ bool MuteButton(bool &a_mute) {
   return SquareToggle("M", a_mute, "mute: hide this");
 }
 
+bool PeekButton(bool &a_peek) {
+  return SquareToggle("P", a_peek, "peek: preview this coverage on the armor");
+}
+
 bool DragHandle(const char *a_type, std::size_t a_index, const char *a_noun) {
   const float side = RowButtonWidth();
   const bool clicked = ImGui::Button("::", ImVec2{side, side});

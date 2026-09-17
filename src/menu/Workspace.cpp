@@ -760,6 +760,33 @@ PreviewOutput(const Frame &a_frame, const Studio::Selection &a_selection) {
   return found == a_frame.geometry->outputs.end() ? nullptr : &*found;
 }
 
+const Studio::PictureRow *DraftMaskPicture(const Frame &a_frame,
+                                           std::string_view a_maskName) {
+  const Studio::MenuState &state = *a_frame.state;
+  if (!state.paint || state.mask.editing != a_maskName || !a_frame.snapshot) {
+    return nullptr;
+  }
+  const auto piece =
+      std::ranges::find(a_frame.snapshot->pieces, state.paint->origin.piece,
+                        &Studio::PieceRow::ref);
+  if (piece == a_frame.snapshot->pieces.end()) {
+    return nullptr;
+  }
+  const auto paint = std::ranges::find(piece->recipes, Studio::kPaintRecipe,
+                                       &Studio::RecipeRow::id);
+  if (paint == piece->recipes.end()) {
+    return nullptr;
+  }
+  const Studio::GeometryRow *geometry =
+      Studio::SelectedGeometry(&*paint, state.paint->origin);
+  if (!geometry) {
+    return nullptr;
+  }
+  const auto scratch = std::ranges::find(geometry->masks, Studio::kScratchMask,
+                                         &Studio::PictureRow::name);
+  return scratch == geometry->masks.end() ? nullptr : &*scratch;
+}
+
 void DrawPreview(const Frame &a_input) {
   Studio::MenuState &state = *a_input.state;
   DrawTermTuningPane(a_input);
@@ -829,24 +856,32 @@ void DrawPreview(const Frame &a_input) {
   }
   const Studio::InspectorSubject &subject = selection.subject;
   const Studio::PictureRow *picture = nullptr;
+  std::string_view label;
   if (const auto *source = Get<Studio::SourceSubject>(subject)) {
     const auto row = std::ranges::find(a_frame.geometry->sources, source->name,
                                        &Studio::PictureRow::name);
     if (row != a_frame.geometry->sources.end()) {
       picture = &*row;
+      label = source->name;
     }
   } else if (const auto *mask = Get<Studio::MaskSubject>(subject)) {
-    const auto row = std::ranges::find(a_frame.geometry->masks, mask->name,
-                                       &Studio::PictureRow::name);
-    if (row != a_frame.geometry->masks.end()) {
-      picture = &*row;
+    label = mask->name;
+    if (const Studio::PictureRow *draft =
+            DraftMaskPicture(a_frame, mask->name)) {
+      picture = draft;
+    } else {
+      const auto row = std::ranges::find(a_frame.geometry->masks, mask->name,
+                                         &Studio::PictureRow::name);
+      if (row != a_frame.geometry->masks.end()) {
+        picture = &*row;
+      }
     }
   }
   const float side =
       (std::max)(32.0f, (std::min)(ImGui::GetContentRegionAvail().x,
                                    320.0f * a_frame.scale));
   if (picture) {
-    Dim(picture->name);
+    Dim(label);
     Thumbnail({picture->texture, picture->channel, picture->animated, side});
     if (!picture->problem.empty()) {
       Problem(picture->problem);

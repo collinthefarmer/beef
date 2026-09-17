@@ -431,6 +431,14 @@ struct ReduceVisitor {
     mask.dirty = true;
   }
 
+  void operator()(const SetPeek &a_i) {
+    if (!state.paint) {
+      return;
+    }
+    state.paint->peek = a_i.target;
+    mask.dirty = true;
+  }
+
   void operator()(const MuteTerm &a_i) {
     if (a_i.index >= mask.terms.size()) {
       return;
@@ -610,18 +618,19 @@ SourceCatalog PaintSources(const MenuState &a_state, const RecipeRow &a_recipe,
         [](const SetTermOp &) {}, [](const SetTermText &) {},
         [](const RemoveTerm &) {}, [](const MoveTerm &) {},
         [](const PickTerm &) {}, [](const SoloTerm &) {},
-        [](const MuteTerm &) {}, [](const LoadMask &) {},
-        [](const ClearMask &) {}, [](const UndoMask &) {},
-        [](const RedoMask &) {}, [](const BeginPaint &) {},
-        [](const SetPaintSurface &) {}, [](const KeepPaint &) {},
-        [](const EndPaint &) {}, [](const UpdatePaint &) {},
-        [](const EditRecipe &) {}, [](const SoloRecipe &) {},
-        [](const SoloPiece &) {}, [](const SoloOutput &) {},
-        [](const SoloLayer &) {}, [](const MuteLayer &) {},
-        [](const SetFreeze &) {}, [](const SetScrub &) {},
-        [](const SetSpeed &) {}, [](const StepClock &) {}, [](const Undo &) {},
-        [](const Redo &) {}, [](const CreateRecipe &) {},
-        [](const RenameRecipe &) {}, [](const FireTrigger &) {});
+        [](const MuteTerm &) {}, [](const SetPeek &) {},
+        [](const LoadMask &) {}, [](const ClearMask &) {},
+        [](const UndoMask &) {}, [](const RedoMask &) {},
+        [](const BeginPaint &) {}, [](const SetPaintSurface &) {},
+        [](const KeepPaint &) {}, [](const EndPaint &) {},
+        [](const UpdatePaint &) {}, [](const EditRecipe &) {},
+        [](const SoloRecipe &) {}, [](const SoloPiece &) {},
+        [](const SoloOutput &) {}, [](const SoloLayer &) {},
+        [](const MuteLayer &) {}, [](const SetFreeze &) {},
+        [](const SetScrub &) {}, [](const SetSpeed &) {},
+        [](const StepClock &) {}, [](const Undo &) {}, [](const Redo &) {},
+        [](const CreateRecipe &) {}, [](const RenameRecipe &) {},
+        [](const FireTrigger &) {});
   }
   return catalog;
 }
@@ -637,6 +646,7 @@ namespace {
       [](const MoveTerm &) { return true; },
       [](const SoloTerm &) { return true; },
       [](const MuteTerm &) { return true; },
+      [](const SetPeek &) { return true; },
       [](const LoadMask &) { return true; },
       [](const ClearMask &) { return true; },
       [](const UndoMask &) { return true; },
@@ -742,6 +752,7 @@ bool AcceptIntent(const MenuState &a_state, const Intent &a_intent) {
       [](const PickTerm &) { return true; },
       [](const SoloTerm &) { return true; },
       [](const MuteTerm &) { return true; },
+      [](const SetPeek &) { return true; },
       [](const LoadMask &) { return true; },
       [](const ClearMask &) { return true; },
       [](const UndoMask &) { return true; },
@@ -843,6 +854,7 @@ void Reduce(MenuState &a_state, const Intent &a_intent) {
       [](const PickTerm &) { return false; },
       [](const SoloTerm &) { return false; },
       [](const MuteTerm &) { return false; },
+      [](const SetPeek &) { return false; },
       [](const ClearMask &) { return false; },
       [](const UndoMask &) { return false; },
       [](const RedoMask &) { return false; },
@@ -898,9 +910,19 @@ std::optional<UpdatePaint> PendingPaintUpdate(const MenuState &a_state) {
   if (expression.empty()) {
     expression = "0";
   }
-  return UpdatePaint{PaintUpdateRequest{paint.sessionID, paint.revision,
-                                        std::move(expression), paint.sources,
-                                        paint.surface}};
+  std::string peek;
+  std::vector<RecipeEdit> peekSources;
+  if (paint.peek) {
+    peek = paint.peek->expression;
+    peekSources = paint.peek->sources;
+  }
+  return UpdatePaint{PaintUpdateRequest{.sessionID = paint.sessionID,
+                                        .revision = paint.revision,
+                                        .expression = std::move(expression),
+                                        .sources = paint.sources,
+                                        .peek = std::move(peek),
+                                        .peekSources = std::move(peekSources),
+                                        .surface = paint.surface}};
 }
 
 bool MaskTaskActive(const MenuState &a_state) {

@@ -531,12 +531,15 @@ SaveRecipe(std::string_view a_id) {
     loaded->recipe.metadata.imported.clear();
   }
   Recipe written = loaded->recipe;
+  const auto isPaintMask = [](std::string_view a_name) {
+    return a_name == Studio::kScratchMask || a_name == Studio::kPeekMask;
+  };
   std::erase_if(written.masks,
-                [](const Mask &m) { return m.name == Studio::kScratchMask; });
+                [&](const Mask &m) { return isPaintMask(m.name); });
   for (auto &output : written.outputs) {
     if (auto *material = Get<SurfaceOutput>(output)) {
       for (auto &layer : material->stack) {
-        if (layer.mask && layer.mask->name == Studio::kScratchMask) {
+        if (layer.mask && isPaintMask(layer.mask->name)) {
           layer.mask.reset();
         }
       }

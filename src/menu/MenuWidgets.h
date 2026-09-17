@@ -159,6 +159,7 @@ void HeldLabel(const char *a_text);
 bool SoloButton(bool &a_solo);
 bool SoloButton(bool &a_solo, std::string_view a_tooltip);
 bool MuteButton(bool &a_mute);
+bool PeekButton(bool &a_peek);
 [[nodiscard]] bool DragHandle(const char *a_type, std::size_t a_index,
                               const char *a_noun);
 [[nodiscard]] std::optional<Studio::RowMove> DropTarget(const char *a_type,

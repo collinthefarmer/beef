@@ -62,6 +62,53 @@ PreparePaintCommit(const Recipe *a_paint, const Recipe *a_target,
   return edits;
 }
 
+namespace {
+std::optional<Diagnostic>
+AddPaintSources(EditBatch &a_batch, Recipe &a_available,
+                const std::vector<RecipeEdit> &a_sources) {
+  for (const RecipeEdit &edit : a_sources) {
+    const AddSource *source = Get<AddSource>(edit);
+    if (!source) {
+      return MakeDiagnostic(Severity::kError, "paint",
+                            "paint dependencies must be source additions");
+    }
+    if (const Source *existing = a_available.FindSource(source->name)) {
+      if (existing->kind != source->kind) {
+        return MakeDiagnostic(
+            Severity::kError, "paint",
+            "a paint source name has a conflicting definition");
+      }
+      continue;
+    }
+    if (a_available.sources.size() >= kMaxRecipeRows) {
+      return MakeDiagnostic(Severity::kError, "paint",
+                            "the recipe source limit was reached");
+    }
+    a_available.sources.push_back(Source{source->name, source->kind});
+    a_batch.edits.push_back(edit);
+  }
+  return std::nullopt;
+}
+
+void PruneUnusedSources(EditBatch &a_batch, const Recipe &a_prepared,
+                        const std::vector<RecipeEdit> &a_tracked) {
+  std::set<std::string> keep;
+  for (const RecipeEdit &edit : a_tracked) {
+    if (const AddSource *source = Get<AddSource>(edit)) {
+      keep.insert(source->name);
+    }
+  }
+  const ReferenceCounts counts = CountReferences(a_prepared);
+  for (const Source &source : a_prepared.sources) {
+    const auto found = counts.images.find(source.name);
+    const bool referenced = found != counts.images.end() && found->second > 0;
+    if (!referenced && !keep.contains(source.name)) {
+      a_batch.edits.emplace_back(RemoveSource{source.name});
+    }
+  }
+}
+}
+
 std::expected<EditBatch, Diagnostic>
 PreparePaintUpdate(const Recipe *a_paint, const PaintUpdateRequest &a_request) {
   const auto refuse =
@@ -72,30 +119,25 @@ PreparePaintUpdate(const Recipe *a_paint, const PaintUpdateRequest &a_request) {
   if (!a_paint || a_paint->id != kPaintRecipe) {
     return refuse("the paint recipe is not loaded");
   }
-  if (a_request.sources.size() > kMaxRecipeRows) {
+  if (a_request.sources.size() + a_request.peekSources.size() >
+      kMaxRecipeRows) {
     return refuse("the paint source limit was reached");
   }
   EditBatch batch;
   Recipe available = *a_paint;
-  for (const RecipeEdit &edit : a_request.sources) {
-    const AddSource *source = Get<AddSource>(edit);
-    if (!source) {
-      return refuse("paint dependencies must be source additions");
-    }
-    if (const Source *existing = available.FindSource(source->name)) {
-      if (existing->kind != source->kind) {
-        return refuse("a paint source name has a conflicting definition");
-      }
-      continue;
-    }
-    if (available.sources.size() >= kMaxRecipeRows) {
-      return refuse("the recipe source limit was reached");
-    }
-    available.sources.push_back(Source{source->name, source->kind});
-    batch.edits.push_back(edit);
+  if (const auto problem =
+          AddPaintSources(batch, available, a_request.sources)) {
+    return std::unexpected(*problem);
+  }
+  if (const auto problem =
+          AddPaintSources(batch, available, a_request.peekSources)) {
+    return std::unexpected(*problem);
   }
   batch.edits.emplace_back(
       SetMask{std::string{kScratchMask}, a_request.expression});
+  batch.edits.emplace_back(
+      SetMask{std::string{kPeekMask},
+              a_request.peek.empty() ? std::string{"0"} : a_request.peek});
   for (RecipeEdit &edit : PaintSurfaceEdits(a_request.surface)) {
     batch.edits.push_back(std::move(edit));
   }
@@ -103,22 +145,35 @@ PreparePaintUpdate(const Recipe *a_paint, const PaintUpdateRequest &a_request) {
   if (!prepared) {
     return std::unexpected(prepared.error());
   }
+  PruneUnusedSources(batch, *prepared, a_request.sources);
   return batch;
+}
+
+namespace {
+Layer ScratchLayer() {
+  Layer layer = DefaultLayer();
+  layer.mask = Ref{std::string{kScratchMask}};
+  return layer;
+}
+
+Layer PeekLayer() {
+  Layer layer = DefaultLayer();
+  layer.source = Vec3{1.0f, 0.0f, 1.0f};
+  layer.mask = Ref{std::string{kPeekMask}};
+  return layer;
+}
 }
 
 SurfaceOutput PaintOutput(Surface a_surface) {
   SurfaceOutput output = DefaultOutput(a_surface, Slot::kEmissive);
-  Layer layer = DefaultLayer();
-  layer.mask = Ref{std::string{kScratchMask}};
-  output.stack = {std::move(layer)};
+  output.stack = {ScratchLayer(), PeekLayer()};
   return output;
 }
 
 std::vector<RecipeEdit> PaintSurfaceEdits(Surface a_surface) {
-  Layer layer = DefaultLayer();
-  layer.mask = Ref{std::string{kScratchMask}};
   return {RemoveOutput{0}, AddOutput{a_surface, Slot::kEmissive, Selector{}},
-          AddLayer{0, std::move(layer), std::nullopt}};
+          AddLayer{0, ScratchLayer(), std::nullopt},
+          AddLayer{0, PeekLayer(), std::nullopt}};
 }
 
 Recipe PaintRecipe(const Recipe &a_active, RecipeKey a_key, Surface a_surface) {
@@ -130,9 +185,11 @@ Recipe PaintRecipe(const Recipe &a_active, RecipeKey a_key, Surface a_surface) {
   recipe.priority = kPaintPriority;
   recipe.variants.clear();
   recipe.outputs = {PaintOutput(a_surface)};
-  std::erase_if(recipe.masks,
-                [](const Mask &a_mask) { return a_mask.name == kScratchMask; });
+  std::erase_if(recipe.masks, [](const Mask &a_mask) {
+    return a_mask.name == kScratchMask || a_mask.name == kPeekMask;
+  });
   recipe.masks.push_back(Mask{std::string{kScratchMask}, "0"});
+  recipe.masks.push_back(Mask{std::string{kPeekMask}, "0"});
   return recipe;
 }
 

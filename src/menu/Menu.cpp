@@ -180,6 +180,7 @@ struct IntentPerformer {
   void operator()(const PickTerm &) const {}
   void operator()(const SoloTerm &) const {}
   void operator()(const MuteTerm &) const {}
+  void operator()(const SetPeek &) const {}
   void operator()(const LoadMask &) const {}
   void operator()(const ClearMask &) const {}
   void operator()(const UndoMask &) const {}

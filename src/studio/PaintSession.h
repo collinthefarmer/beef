@@ -16,6 +16,7 @@
 
 namespace BetterEnchantmentEffects::Studio {
 inline constexpr std::string_view kScratchMask = "scratch";
+inline constexpr std::string_view kPeekMask = "peek";
 inline constexpr std::string_view kPaintRecipe = "paint";
 inline constexpr int kPaintPriority = 1000;
 
@@ -38,6 +39,7 @@ struct PaintSession {
   std::optional<PaintAssignment> assignment;
   bool assignmentInvalid = false;
   std::optional<std::string> createdMask;
+  std::optional<PaintPeek> peek;
 };
 
 [[nodiscard]] std::expected<EditBatch, Diagnostic>

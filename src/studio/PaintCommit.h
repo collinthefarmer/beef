@@ -24,11 +24,20 @@ struct PaintCommitRequest {
   std::string replacingMask{};
 };
 
+struct PaintPeek {
+  std::string offer;
+  std::string expression;
+  std::vector<RecipeEdit> sources{};
+  [[nodiscard]] bool operator==(const PaintPeek &) const = default;
+};
+
 struct PaintUpdateRequest {
   std::uint64_t sessionID = 0;
   std::uint64_t revision = 0;
   std::string expression;
   std::vector<RecipeEdit> sources{};
+  std::string peek;
+  std::vector<RecipeEdit> peekSources{};
   Surface surface = Surface::kMaterial;
 };
 

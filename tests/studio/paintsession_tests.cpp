@@ -11,15 +11,18 @@ using test::Check;
 
 int main() {
   const SurfaceOutput output = PaintOutput(Surface::kShell);
-  Check(output.surface == Surface::kShell && output.stack.size() == 1 &&
+  Check(output.surface == Surface::kShell && output.stack.size() == 2 &&
             output.stack[0].mask ==
-                std::optional<Ref>{Ref{std::string{kScratchMask}}},
-        "PaintOutput lays one layer masked by the scratch mask");
+                std::optional<Ref>{Ref{std::string{kScratchMask}}} &&
+            output.stack[1].mask ==
+                std::optional<Ref>{Ref{std::string{kPeekMask}}},
+        "PaintOutput lays a scratch layer under a peek layer");
 
   const auto surfaceEdits = PaintSurfaceEdits(Surface::kMaterial);
-  Check(surfaceEdits.size() == 3 && Get<RemoveOutput>(surfaceEdits[0]) &&
-            Get<AddOutput>(surfaceEdits[1]) && Get<AddLayer>(surfaceEdits[2]),
-        "PaintSurfaceEdits replaces the output with one masked layer");
+  Check(surfaceEdits.size() == 4 && Get<RemoveOutput>(surfaceEdits[0]) &&
+            Get<AddOutput>(surfaceEdits[1]) && Get<AddLayer>(surfaceEdits[2]) &&
+            Get<AddLayer>(surfaceEdits[3]),
+        "PaintSurfaceEdits replaces the output with scratch and peek layers");
 
   Recipe active;
   active.id = "source";
@@ -28,9 +31,10 @@ int main() {
   const Recipe paint = PaintRecipe(active, RecipeKey{}, Surface::kMaterial);
   Check(paint.id == kPaintRecipe && paint.priority == kPaintPriority &&
             paint.outputs.size() == 1 &&
-            paint.FindMask(kScratchMask) != nullptr,
-        "PaintRecipe rebuilds the active recipe around one scratch-masked "
-        "output");
+            paint.FindMask(kScratchMask) != nullptr &&
+            paint.FindMask(kPeekMask) != nullptr,
+        "PaintRecipe rebuilds the active recipe around a scratch and peek "
+        "masked output");
 
   Recipe painted;
   painted.id = std::string{kPaintRecipe};
@@ -38,6 +42,7 @@ int main() {
   painted.sources.push_back(
       Source{"metallic", MaterialSource{MaterialChannel::kMetallic}});
   painted.masks.push_back(Mask{std::string{kScratchMask}, "@metallic"});
+  painted.masks.push_back(Mask{std::string{kPeekMask}, "0"});
   const auto keep = KeepEdits(painted, active, "engraving");
   Check(keep.size() == 3,
         "KeepEdits names the source, adds the mask and sets it");
@@ -104,6 +109,27 @@ int main() {
   Check(destination.sources.size() == 1 && shared &&
             shared->text == "@first + @first",
         "paint transfers reuse the staged source and retarget both references");
+
+  Recipe peekRecipe = PaintRecipe(active, RecipeKey{}, Surface::kMaterial);
+  peekRecipe.sources.push_back(
+      Source{"used", MaterialSource{MaterialChannel::kMetallic}});
+  peekRecipe.sources.push_back(
+      Source{"orphan", MaterialSource{MaterialChannel::kMetallic}});
+  peekRecipe.sources.push_back(
+      Source{"tracked", MaterialSource{MaterialChannel::kMetallic}});
+  PaintUpdateRequest peekReq;
+  peekReq.expression = "@used";
+  peekReq.peek = "0";
+  peekReq.sources.push_back(
+      AddSource{"tracked", MaterialSource{MaterialChannel::kMetallic}});
+  const auto peekBatch = PreparePaintUpdate(&peekRecipe, peekReq);
+  Check(peekBatch.has_value(), "the paint update prepares");
+  Recipe pruned = peekRecipe;
+  Check(peekBatch && !Apply(pruned, *peekBatch), "the paint update applies");
+  Check(pruned.FindSource("used") && pruned.FindSource("tracked") &&
+            !pruned.FindSource("orphan"),
+        "an unreferenced, untracked source (a cleared peek's) is pruned while "
+        "referenced and draft-tracked sources stay");
 
   return test::Finish("studio_paintsession");
 }
