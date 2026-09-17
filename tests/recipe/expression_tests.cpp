@@ -256,5 +256,19 @@ int main() {
     }
   }
 
+  {
+    Check(ExpressionSummary("@a + @b") == "@a + @b",
+          "a short expression is returned unchanged");
+    Check(ExpressionSummary("  @a\n +\t @b  ") == "@a + @b",
+          "runs of whitespace collapse to single spaces and trim");
+    const std::string summary =
+        ExpressionSummary("@source * 0.5 + @other * 0.25 + @third", 20);
+    Check(summary.find("\xe2\x80\xa6") != std::string::npos &&
+              summary.starts_with("@source") && summary.ends_with("@third"),
+          "a long expression elides its middle, keeping head and tail");
+    Check(ExpressionSummary("", 20).empty(),
+          "an empty expression summarises to empty");
+  }
+
   return test::Finish("expression");
 }

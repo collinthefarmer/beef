@@ -146,29 +146,46 @@ void DrawSelectorClauses(const SelectorView &a_view,
 
 }
 
+struct ChannelButton {
+  const char *label;
+  bool ChannelSet::*bit;
+  std::string_view help;
+};
+constexpr ChannelButton kChannelButtons[]{
+    {"r", &ChannelSet::r, {}},
+    {"g", &ChannelSet::g, {}},
+    {"b", &ChannelSet::b, {}},
+    {"a", &ChannelSet::a, {}},
+};
+
 std::optional<std::string> DrawChannels(const FormField &a_field) {
   Badge(a_field.kind);
   ImGui::SameLine();
   ChannelSet set = ChannelSet::Parse(a_field.text).value_or(ChannelSet{});
   const ChannelSet available = a_field.channelMask.value_or(ChannelSet{});
+  int checked = 0;
+  for (const ChannelButton &channel : kChannelButtons) {
+    if (available.*channel.bit && set.*channel.bit) {
+      ++checked;
+    }
+  }
   bool changed = false;
   bool first = true;
-  const auto box = [&](const char *a_label, bool a_available, bool &a_bit) {
-    if (!a_available) {
-      return;
+  for (const ChannelButton &channel : kChannelButtons) {
+    if (!(available.*channel.bit)) {
+      continue;
     }
     if (!first) {
       ImGui::SameLine();
     }
     first = false;
-    if (ImGui::Checkbox(a_label, &a_bit)) {
-      changed = true;
-    }
-  };
-  box("r", available.r, set.r);
-  box("g", available.g, set.g);
-  box("b", available.b, set.b);
-  box("a", available.a, set.a);
+    bool &bit = set.*channel.bit;
+    Disabled(bit && checked <= 1, [&] {
+      if (SquareToggle(channel.label, bit, channel.help)) {
+        changed = true;
+      }
+    });
+  }
   return changed ? std::optional<std::string>{set.ToString()} : std::nullopt;
 }
 

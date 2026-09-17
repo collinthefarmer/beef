@@ -1,10 +1,12 @@
 #include "menu/MenuWidgets.h"
 
+#include "recipe/Expression.h"
 #include "render/TextureLab.h"
 #include "studio/Forms.h"
 #include "studio/InputConnections.h"
 #include "studio/MenuState.h"
 #include "studio/Names.h"
+#include "studio/Rows.h"
 #include "studio/View.h"
 
 #include <algorithm>
@@ -262,26 +264,6 @@ void DrawValueBadge(const BadgeStyle &a_style, bool a_takesSignal,
     BadgeFrame(a_style.glyph, a_style.colour, false, ImVec2{side, side});
     Tooltip(a_style.help);
   }
-}
-
-bool SquareToggle(const char *a_label, bool &a_value,
-                  std::string_view a_tooltip) {
-  const float side = RowButtonWidth();
-  if (a_value) {
-    const auto *pressed =
-        ImGui::GetStyleColorVec4(ImGuiMCP::ImGuiCol_ButtonActive);
-    ImGui::PushStyleColor(ImGuiMCP::ImGuiCol_Button,
-                          pressed ? *pressed : ImVec4{0.3f, 0.5f, 0.8f, 1.0f});
-  }
-  const bool clicked = ImGui::Button(NonNull(a_label), ImVec2{side, side});
-  if (a_value) {
-    ImGui::PopStyleColor();
-  }
-  Tooltip(a_tooltip);
-  if (clicked) {
-    a_value = !a_value;
-  }
-  return clicked;
 }
 
 [[nodiscard]] float RuleButtonWidth(const Studio::RuleButton &a_button) {
@@ -768,6 +750,107 @@ void ValueSwatch(const Value &a_value) {
   ImGui::TextUnformatted(ValueText(a_value).c_str());
 }
 
+std::string SourceValueText(const SourceKind &a_kind) {
+  return Match(
+      a_kind,
+      [](const ImageSource &s) {
+        return std::format("{} ({})", s.path, ImageChannelName(s.channel));
+      },
+      [](const MaterialSource &s) {
+        return std::string{MaterialChannelName(s.channel)};
+      },
+      [](const BakeSource &s) {
+        return Match(
+            s.bake,
+            [](const PositionBake &) { return std::string{"position"}; },
+            [](const LocalPositionBake &) {
+              return std::string{"localPosition"};
+            },
+            [](const WorldUpBake &) { return std::string{"worldUp"}; },
+            [](const PartitionBake &p) {
+              return std::format("partition {}",
+                                 std::to_underlying(p.bipedSlot));
+            },
+            [](const BoneWeightBake &b) {
+              return std::format("{} bone(s)", b.bones.size());
+            },
+            [](const ComponentIdBake &) { return std::string{"componentId"}; },
+            [](const ChartIdBake &) { return std::string{"chartId"}; });
+      },
+      [](const UvSource &s) {
+        return std::string{s.axis == UvAxis::kU ? "u" : "v"};
+      },
+      [](const DistanceSource &s) {
+        return Match(
+            s.from, [](const std::string &n) { return n; },
+            [](const Vec3 &p) {
+              return std::format("({:.0f}, {:.0f}, {:.0f})", p.x, p.y, p.z);
+            });
+      },
+      [](const RippleSource &s) {
+        return std::format("{} from @{}",
+                           s.shape == RippleShape::kDisc ? "disc" : "ring",
+                           s.trigger.name);
+      },
+      [](const MaterialClustersSource &s) {
+        return std::format("{} clusters", s.clusters);
+      });
+}
+
+std::string ResourceValueText(const Studio::RecipeRow &a_recipe,
+                              const ResourceRef &a_ref) {
+  switch (a_ref.kind) {
+  case ResourceKind::kSignal: {
+    const auto row = std::ranges::find(a_recipe.signals, a_ref.name,
+                                       &Studio::SignalRow::name);
+    if (row == a_recipe.signals.end()) {
+      return {};
+    }
+    if (!row->text.empty()) {
+      return row->text;
+    }
+    if (row->constant) {
+      return ValueText(*row->constant);
+    }
+    return row->live && !row->inert ? ValueText(row->value) : std::string{};
+  }
+  case ResourceKind::kSource: {
+    const auto row = std::ranges::find(a_recipe.sourceRows, a_ref.name,
+                                       &Studio::SourceRow::name);
+    if (row == a_recipe.sourceRows.end()) {
+      return {};
+    }
+    return SourceValueText(
+        Studio::SourceKindOf(*row).value_or(SourceKind{MaterialSource{}}));
+  }
+  case ResourceKind::kMask: {
+    const auto row = std::ranges::find(a_recipe.maskRows, a_ref.name,
+                                       &Studio::TextRow::name);
+    return row == a_recipe.maskRows.end() ? std::string{} : row->text;
+  }
+  case ResourceKind::kCurve: {
+    const auto row =
+        std::ranges::find(a_recipe.curves, a_ref.name, &Studio::TextRow::name);
+    return row == a_recipe.curves.end() ? std::string{} : row->text;
+  }
+  case ResourceKind::kCount:
+    break;
+  }
+  return {};
+}
+
+void DimFitted(std::string_view a_text) {
+  const float avail = ImGui::GetContentRegionAvail().x;
+  const float width =
+      ImGui::CalcTextSize(a_text.data(), a_text.data() + a_text.size()).x;
+  const std::size_t cap =
+      width > avail && width > 0.0f
+          ? static_cast<std::size_t>(static_cast<float>(a_text.size()) * avail /
+                                     width)
+          : a_text.size();
+  Dim(ExpressionSummary(a_text, cap));
+}
+
 void ResourceTable(const char *a_id, std::span<const ResourceCells> a_rows) {
   Table table = Table::Begin(a_id,
                              {{"name", Studio::Width::Fill()},
@@ -957,6 +1040,26 @@ bool CloseButton() {
   const float side = RowButtonWidth();
   const bool clicked = ImGui::Button("X", ImVec2{side, side});
   Tooltip("close");
+  return clicked;
+}
+
+bool SquareToggle(const char *a_label, bool &a_value,
+                  std::string_view a_tooltip) {
+  const float side = RowButtonWidth();
+  if (a_value) {
+    const auto *pressed =
+        ImGui::GetStyleColorVec4(ImGuiMCP::ImGuiCol_ButtonActive);
+    ImGui::PushStyleColor(ImGuiMCP::ImGuiCol_Button,
+                          pressed ? *pressed : ImVec4{0.3f, 0.5f, 0.8f, 1.0f});
+  }
+  const bool clicked = ImGui::Button(NonNull(a_label), ImVec2{side, side});
+  if (a_value) {
+    ImGui::PopStyleColor();
+  }
+  Tooltip(a_tooltip);
+  if (clicked) {
+    a_value = !a_value;
+  }
   return clicked;
 }
 

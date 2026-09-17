@@ -935,4 +935,35 @@ std::string RenameInExpression(std::string_view a_text, std::string_view a_from,
   const ExpressionRename rename{std::string{a_from}, std::string{a_to}};
   return RenameInExpression(a_text, std::span{&rename, 1}, a_curve);
 }
+
+std::string ExpressionSummary(std::string_view a_text, std::size_t a_max) {
+  std::string collapsed;
+  bool pendingSpace = false;
+  for (const char c : a_text) {
+    if (static_cast<bool>(std::isspace(static_cast<unsigned char>(c)))) {
+      pendingSpace = !collapsed.empty();
+      continue;
+    }
+    if (pendingSpace) {
+      collapsed.push_back(' ');
+      pendingSpace = false;
+    }
+    collapsed.push_back(c);
+  }
+  if (a_max < 3 || collapsed.size() <= a_max) {
+    return collapsed;
+  }
+  const std::size_t budget = a_max - 1;
+  std::size_t head = (budget + 1) / 2;
+  std::size_t tailStart = collapsed.size() - (budget - head);
+  if (const std::size_t space = collapsed.rfind(' ', head);
+      space != std::string::npos && space > 0) {
+    head = space;
+  }
+  if (const std::size_t space = collapsed.find(' ', tailStart);
+      space != std::string::npos && space + 1 < collapsed.size()) {
+    tailStart = space + 1;
+  }
+  return collapsed.substr(0, head) + "…" + collapsed.substr(tailStart);
+}
 }

@@ -47,19 +47,41 @@ Studio::InspectorSubject SubjectOf(const RelationshipOwner &a_owner) {
       });
 }
 
-std::string OwnerName(const RelationshipOwner &a_owner) {
+std::string_view OwnerType(const RelationshipOwner &a_owner) {
   return Match(
       a_owner,
-      [](const ResourceRef &a_ref) {
-        return std::format(
-            "{} {}", kResourceKindNames[static_cast<std::size_t>(a_ref.kind)],
-            a_ref.name);
+      [](const ResourceRef &a_ref) -> std::string_view {
+        return kResourceKindNames[static_cast<std::size_t>(a_ref.kind)];
       },
-      [](const OutputOwner &a_output) {
-        return std::format("Output {}", a_output.output + 1);
+      [](const OutputOwner &) -> std::string_view { return "output"; },
+      [](const LayerOwner &) -> std::string_view { return "layer"; },
+      [](const ShellOwner &) -> std::string_view { return "shell"; },
+      [](const VariantOwner &) -> std::string_view { return "variant"; });
+}
+
+std::string OutputLabel(const Studio::RecipeRow &a_recipe,
+                        std::size_t a_output) {
+  if (a_output >= a_recipe.outputs.size()) {
+    return std::format("output {}", a_output + 1);
+  }
+  const Studio::OutputRow &output = a_recipe.outputs[a_output];
+  if (output.target == Target::kLight) {
+    return std::format("light {}", a_output + 1);
+  }
+  return std::format("{} {}", SurfaceName(output.surface),
+                     SlotName(output.slot));
+}
+
+std::string OwnerName(const RelationshipOwner &a_owner,
+                      const Studio::RecipeRow &a_recipe) {
+  return Match(
+      a_owner, [](const ResourceRef &a_ref) { return a_ref.name; },
+      [&](const OutputOwner &a_output) {
+        return OutputLabel(a_recipe, a_output.output);
       },
-      [](const LayerOwner &a_layer) {
-        return std::format("Output {} / layer {}", a_layer.output + 1,
+      [&](const LayerOwner &a_layer) {
+        return std::format("{} / layer {}",
+                           OutputLabel(a_recipe, a_layer.output),
                            a_layer.layer + 1);
       },
       [](const ShellOwner &) -> std::string { return "Shell"; },
@@ -91,10 +113,12 @@ void DrawDrivenBy(const Frame &a_frame,
            .open) {
     return;
   }
-  Table table = Table::Begin(
-      "driven-by",
-      {{"Property", Studio::Width::Fill()}, {"Driver", Studio::Width::Fill()}},
-      Studio::kRelationTable);
+  Table table = Table::Begin("driven-by",
+                             {{"Type", Studio::Width::Fit()},
+                              {"Driver", Studio::Width::Fit()},
+                              {"Property", Studio::Width::Fit()},
+                              {"Value", Studio::Width::Fill()}},
+                             Studio::kRelationTable);
   if (!table.Open()) {
     return;
   }
@@ -105,9 +129,13 @@ void DrawDrivenBy(const Frame &a_frame,
     }
     ImGui::PushID(static_cast<int>(index++));
     table.Cell();
+    Dim(kResourceKindNames[static_cast<std::size_t>(link.driver.kind)]);
+    table.Cell();
+    Follow(link.driver.name, SubjectOf(link.driver), a_frame);
+    table.Cell();
     Dim(link.consumer.property);
     table.Cell();
-    Follow("@" + link.driver.name, SubjectOf(link.driver), a_frame);
+    DimFitted(ResourceValueText(*a_frame.recipe, link.driver));
     ImGui::PopID();
   }
   table.End();
@@ -127,8 +155,9 @@ void DrawUsedBy(const Frame &a_frame,
     return;
   }
   Table table = Table::Begin("used-by",
-                             {{"Consumer", Studio::Width::Fill()},
-                              {"Property", Studio::Width::Fill()},
+                             {{"Type", Studio::Width::Fit()},
+                              {"Consumer", Studio::Width::Fit()},
+                              {"Property", Studio::Width::Fit()},
                               {"Component", Studio::Width::Fit()}},
                              Studio::kRelationTable);
   if (!table.Open()) {
@@ -141,8 +170,10 @@ void DrawUsedBy(const Frame &a_frame,
     }
     ImGui::PushID(static_cast<int>(index++));
     table.Cell();
-    Follow(OwnerName(link.consumer.owner), SubjectOf(link.consumer.owner),
-           a_frame, link.consumer);
+    Dim(OwnerType(link.consumer.owner));
+    table.Cell();
+    Follow(OwnerName(link.consumer.owner, *a_frame.recipe),
+           SubjectOf(link.consumer.owner), a_frame, link.consumer);
     table.Cell();
     Dim(link.consumer.property);
     table.Cell();

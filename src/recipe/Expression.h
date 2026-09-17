@@ -150,4 +150,7 @@ RenameInExpression(std::string_view a_text,
                                              std::string_view a_from,
                                              std::string_view a_to,
                                              bool a_curve);
+
+[[nodiscard]] std::string ExpressionSummary(std::string_view a_text,
+                                            std::size_t a_max = 48);
 }

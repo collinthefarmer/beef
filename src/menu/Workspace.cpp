@@ -203,8 +203,7 @@ void DrawOutputNode(const Frame &a_frame, const Studio::OutputRow &a_output,
 void ResourceRow(Table &a_table, const Frame &a_frame,
                  const std::string &a_name, Studio::InspectorSubject a_subject,
                  std::string_view a_type, const std::optional<Value> &a_value,
-                 std::size_t a_references,
-                 std::string_view a_placeholder = "-") {
+                 std::size_t a_references, std::string_view a_valueText = "-") {
   a_table.Cell();
   PickSubject(a_name.c_str(), std::move(a_subject), a_frame, true);
   a_table.Cell();
@@ -217,7 +216,7 @@ void ResourceRow(Table &a_table, const Frame &a_frame,
     ValueSwatch(*a_value);
   } else {
     ImGui::AlignTextToFramePadding();
-    Dim(a_placeholder);
+    DimFitted(a_valueText);
   }
   a_table.Cell();
   ImGui::AlignTextToFramePadding();
@@ -244,13 +243,55 @@ void DrawSignalRows(Table &a_table, const Frame &a_frame,
   }
 }
 
+void DrawCurveRows(Table &a_table, const Frame &a_frame,
+                   std::string_view a_filter) {
+  for (const Studio::TextRow &curve : a_frame.recipe->curves) {
+    if (!Studio::NameMatches(curve.name, a_filter)) {
+      continue;
+    }
+    ResourceRow(a_table, a_frame, curve.name, Studio::CurveSubject{curve.name},
+                {}, std::nullopt, curve.references,
+                curve.text.empty() ? std::string_view{"-"}
+                                   : std::string_view{curve.text});
+  }
+}
+
+void DrawSourceRows(Table &a_table, const Frame &a_frame,
+                    std::string_view a_filter) {
+  for (const Studio::SourceRow &source : a_frame.recipe->sourceRows) {
+    if (!Studio::NameMatches(source.name, a_filter)) {
+      continue;
+    }
+    const SourceKind kind =
+        Studio::SourceKindOf(source).value_or(SourceKind{MaterialSource{}});
+    const std::string value = SourceValueText(kind);
+    ResourceRow(
+        a_table, a_frame, source.name, Studio::SourceSubject{source.name},
+        SourceKindName(kind), std::nullopt, source.references,
+        value.empty() ? std::string_view{"-"} : std::string_view{value});
+  }
+}
+
+void DrawMaskRows(Table &a_table, const Frame &a_frame,
+                  std::string_view a_filter) {
+  for (const Studio::TextRow &mask : a_frame.recipe->maskRows) {
+    if (!Studio::NameMatches(mask.name, a_filter)) {
+      continue;
+    }
+    ResourceRow(a_table, a_frame, mask.name, Studio::MaskSubject{mask.name}, {},
+                std::nullopt, mask.references,
+                mask.text.empty() ? std::string_view{"-"}
+                                  : std::string_view{mask.text});
+  }
+}
+
 void DrawResourceRows(const Frame &a_frame, Studio::ResourceTab a_tab,
                       std::string_view a_filter) {
   ImGui::PushID(static_cast<int>(a_tab));
   Table table = Table::Begin("resource-list",
-                             {{"name", Studio::Width::Fill()},
+                             {{"name", Studio::Width::Fit()},
                               {"type", Studio::Width::Fit()},
-                              {"value", Studio::Width::Fit()},
+                              {"value", Studio::Width::Fill()},
                               {"used", Studio::Width::Fit()}},
                              Studio::kRelationTable);
   if (!table.Open()) {
@@ -262,34 +303,13 @@ void DrawResourceRows(const Frame &a_frame, Studio::ResourceTab a_tab,
     DrawSignalRows(table, a_frame, a_filter);
     break;
   case Studio::ResourceTab::kCurves:
-    for (const Studio::TextRow &curve : a_frame.recipe->curves) {
-      if (!Studio::NameMatches(curve.name, a_filter)) {
-        continue;
-      }
-      ResourceRow(table, a_frame, curve.name, Studio::CurveSubject{curve.name},
-                  {}, std::nullopt, curve.references);
-    }
+    DrawCurveRows(table, a_frame, a_filter);
     break;
   case Studio::ResourceTab::kSources:
-    for (const Studio::SourceRow &source : a_frame.recipe->sourceRows) {
-      if (!Studio::NameMatches(source.name, a_filter)) {
-        continue;
-      }
-      ResourceRow(table, a_frame, source.name,
-                  Studio::SourceSubject{source.name},
-                  DescribeSource(Studio::SourceKindOf(source).value_or(
-                      SourceKind{MaterialSource{}})),
-                  std::nullopt, source.references);
-    }
+    DrawSourceRows(table, a_frame, a_filter);
     break;
   case Studio::ResourceTab::kMasks:
-    for (const Studio::TextRow &mask : a_frame.recipe->maskRows) {
-      if (!Studio::NameMatches(mask.name, a_filter)) {
-        continue;
-      }
-      ResourceRow(table, a_frame, mask.name, Studio::MaskSubject{mask.name}, {},
-                  std::nullopt, mask.references);
-    }
+    DrawMaskRows(table, a_frame, a_filter);
     break;
   }
   table.Cell();

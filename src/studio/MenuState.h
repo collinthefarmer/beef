@@ -78,8 +78,8 @@ struct MenuState {
   std::uint64_t nextPaintSessionID = 1;
   std::uint64_t lastPaintReset = 0;
   ResourceTab resource = ResourceTab::kSignals;
-  float navigatorShare = 0.22f;
-  float inspectorShare = 0.68f;
+  float navigatorShare = 0.34f;
+  float inspectorShare = 0.71f;
   std::unordered_map<FieldKey, TextBuffer> textBuffers;
   std::unordered_map<FieldKey, NumberBuffer> numberBuffers;
   FieldKey activeField = kNoField;

@@ -2,6 +2,7 @@
 
 #include "Core.h"
 #include "recipe/Recipe.h"
+#include "recipe/Visit.h"
 #include "studio/Forms.h"
 #include "studio/Snapshot.h"
 #include "studio/View.h"
@@ -128,6 +129,10 @@ ValueWidget(const char *a_key, const Studio::FormField &a_field, float a_scale,
 
 [[nodiscard]] std::string ValueText(const Value &a_value);
 void ValueSwatch(const Value &a_value);
+[[nodiscard]] std::string SourceValueText(const SourceKind &a_kind);
+[[nodiscard]] std::string ResourceValueText(const Studio::RecipeRow &a_recipe,
+                                            const ResourceRef &a_ref);
+void DimFitted(std::string_view a_text);
 
 struct ResourceCells {
   std::string_view name;
@@ -159,6 +164,8 @@ void HeldLabel(const char *a_text);
 
 [[nodiscard]] bool RemoveButton(std::size_t a_references);
 [[nodiscard]] bool CloseButton();
+bool SquareToggle(const char *a_label, bool &a_value,
+                  std::string_view a_tooltip);
 bool SoloButton(bool &a_solo);
 bool SoloButton(bool &a_solo, std::string_view a_tooltip);
 bool MuteButton(bool &a_mute);
