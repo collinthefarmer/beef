@@ -1068,6 +1068,39 @@ Decompile provenance (`decompiled/WornEnchantmentFX/plugin.c` unless noted):
   `MaterialCluster.description`. The old friendly-name table is dropped, so bone
   labels are raw skeleton names.
 
+### Field ranges, cascade removal, channels (2026-09-17)
+
+- **Tuning-slider ranges are declared, and where the numbers came from.**
+  `FormField.range` is a hard limit (`FieldCheck` rejects out-of-range typed
+  input, "Allowed range"); `workingRange` is only the slider span (typed input
+  unrestricted). `ResolveTuningRange` (`menu/Tuning.cpp`) prefers
+  `workingRange`, then `range`, then a stored custom range, then the eased
+  `ValueRelativeRange`. Declaring either hides the "Range" adjust button. The
+  constants (`studio/Forms.cpp`), derived from where each value is consumed:
+  - light `intensity` `{0,16}` — `fade = intensity·share/4` (`render/Light.cpp`),
+    so `fade=1` at intensity 4 (one vanilla light); above ~16 only radius grows.
+  - light `size` `{0,8}` slider — the engine hard-clamps `[0.01,50]`
+    (`Light.cpp`); usable values sit near √2.
+  - light `cutoff` `{0.01,1}` — ISL attenuation cutoff; `≥1` is the "use the
+    engine default" sentinel, the override clamped to `[0.01,1]`.
+  - shell `emissive` `{0,10}` (1 = full, >1 bloom), `rimPower` `{0,8}` (Fresnel
+    exponent), pose `scale` `{0,3}` — no downstream clamp; pragmatic soft tops.
+  - `alphaTest` is a hard `range {0,1}` (the one field the engine clamps,
+    `RecipeRead.cpp`); `mip` is `{0,12}` integral (`SampleLevel` LOD index,
+    log2(4096)).
+- **Cascade resource removal.** `Remove{Signal,Curve,Mask,Source}{cascade}`
+  runs `PlanCascade` (a BFS over `RelationshipsOf`): a resource whose body
+  references a to-be-deleted name is deleted too, transitively; a layer that
+  references one is deleted; a shell/output param that references one is reset
+  to its default (`ResetRefVisitor` — a `ParamRefVisitor` sharing the
+  optional/vector/component traversal with `RefVisitor` and `LiteralVisitor`,
+  each differing only in an `OnRef(ref, replace)` hook). A variant override
+  that still references it refuses. The resource inspectors gate this behind a
+  `ConfirmModal`.
+- **Channels need at least one bit.** An empty `ChannelSet` serialises to `""`,
+  which `ChannelSet::Parse` rejects, so `DrawChannels` disables the sole
+  remaining channel toggle rather than letting a commit silently revert.
+
 ## Build and tools
 
 - Project targets bypass the compiler launcher; third-party targets still

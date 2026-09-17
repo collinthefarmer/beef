@@ -127,11 +127,31 @@ per-file `TableStyle` literal:
   span<ResourceCells>)` draws the name / type / value inspector header row
   (`ResourceCells{ name, type, value }`).
 - Buttons and layout: `RemoveButton(references) -> bool` (a trash control,
-  tooltip carries the reference count), `SoloButton`/`MuteButton`,
+  tooltip carries the reference count), `CloseButton() -> bool` (the modal
+  `[X]`), `SquareToggle(label, bool&, tooltip) -> bool` — the square,
+  label-inside toggle that fills with the active colour when on;
+  `SoloButton`/`MuteButton` and the channel toggles are `SquareToggle`s.
   `DetailButton() -> bool`, `Disabled(cond, fn)` (wraps a draw in
   begin/endDisabled), `RightAligned(width, fn)`, `Tooltip(text)`,
-  `HelpMarker(text)`. Prefer full-size `Button` over `SmallButton` for
-  add/settings controls so sizes match.
+  `HelpMarker(text)`, `LabelWithHelp(label, help)` (a label plus a `(?)`
+  marker, shown only when `help` is non-empty). Prefer full-size `Button` over
+  `SmallButton` for add/settings controls so sizes match.
+- Confirming and fitting: `ConfirmModal(title, message, affirm, onAffirm)` is
+  the destructive-confirm dialog — a `DetailModal` with a message and
+  right-aligned `[affirm]`/`Cancel`; reuse it rather than hand-rolling a
+  confirm. `DimFitted(text)` draws dimmed text truncated to the cell's
+  available width (via `ExpressionSummary`), so a value column shows as much as
+  fits and follows resize.
+- Resource display, one path each: `SourceKindName(kind)` (the canonical
+  `image`/`material`/… label) and `SourceValueText(kind)` (a per-kind `Match`,
+  one arm per source kind — edit an arm to change how that kind reads) resolve
+  a source's label and value; `ResourceValueText(recipe, ref)` resolves any
+  resource's display value; `ExpressionSummary(text, max)`
+  (`recipe/Expression.h`, engine-free) shortens an expression by
+  whitespace-collapse and word-boundary middle-elision. The resource tabs and
+  the Driven-by/Used-by tables use these for their value columns; Used-by also
+  shows a discrete Type column and descriptive owner names (`material emissive`,
+  `material emissive / layer 2`).
 
 ## Forms and fields
 

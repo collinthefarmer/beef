@@ -3,6 +3,34 @@
 Captured mid-flow, not yet scheduled. Each item: the ask, where it lives now,
 and the rough direction. Anchors are current as of this date.
 
+## Status — 2026-09-17
+
+Shipped since this list was written; the items below are kept for their
+history and anchors.
+
+- **1 (Revert modal).** `DetailModal` already had the `Rule` + `[X]`; the
+  revert/discard confirmations now share `ConfirmModal` (right-aligned
+  actions).
+- **2 (Channel inputs).** `FieldKind::kChannels` renders inline channel
+  toggles — `DrawChannels` drives one `SquareToggle` per channel, showing
+  only the slot's channels; the sole remaining channel locks (an empty set
+  is unserialisable). Overridable `xyz` labels are the remaining piece.
+- **3 (Label + info).** `LabelWithHelp` and a `FormField::help` slot; the
+  field-table label routes through it (help text lands with the tooltip pass).
+- **9 (Remove referenced resources).** Cascade delete: `RemoveX{cascade}`
+  deletes the dependent resources and layers and resets structural refs,
+  refusing only on variant overrides; the resource inspectors confirm via
+  `ConfirmModal`.
+- **10 (Field ranges).** Ranges declared on the bounded fields, derived from
+  where each value is consumed (rationale in `REFERENCE.md`); `alphaTest`
+  is a hard range, `mip` is integral.
+- **13 (Resource values).** Masks/curves show their expression, sources a
+  per-kind value (`SourceValueText`); `ExpressionSummary` (engine-free)
+  shortens; the reference tables gained a discrete Type column and a driver
+  value.
+
+Open: 4 (Game Object Service), 5, 6/7, 8, 11, 12, 14.
+
 ## 1. Clean up the Revert Recipe modal (and its action bar)
 
 **Ask.** The modal's close control sits as a plain button at the bottom. Give
