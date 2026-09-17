@@ -11,6 +11,38 @@ anchors. The mask editor draws through `menu/PaintPanel.cpp` and the inspector
 glue in `menu/Workspace.cpp`; its model is in `studio/PaintSession.*` and
 `studio/MenuState.*`.
 
+## Status — 2026-09-17
+
+Most of this pass has landed; the cases below are kept as the record of each
+decision and for the remaining work. Confirmed done:
+
+- **P1 + P2 (draft lifecycle + Banner).** `Banner` is a primitive
+  (`MenuWidgets.h:175`); `DrawPaintDraftBar` (`PaintPanel.cpp:589`) is the
+  State-C banner; the Suspend/Resume limbo is gone. Commit 9830dec.
+- **P3 (mask-rule status).** The build/paint errors fold into the mask rule,
+  with `Retry preview` kept as its action (`PaintPanel.cpp:462`). Commit 9830dec.
+- **P5 (terms-editor seam).** The terms editor is the inspector body when a
+  piece is present. Commit 9830dec.
+- **P8b (thumbnail migration).** `DrawMaskPicture` is gone; the preview pane
+  shows the live `kScratchMask` draft. Commit cae18ff.
+- **P9 (peek + palette).** `kPeekMask` + the magenta highlight layer; the offer
+  palette is grouped, coverage-sorted, coverage-% at the front, peek + Add at the
+  end; the offer detail modal and `DrawPatternPreview` are removed. Commit cae18ff.
+
+Remaining:
+
+- **P4 (collapse the waiting/hint lines)** — confirm in-game whether the stacked
+  waiting/unavailable lines were reduced by the overhaul; not verified here.
+- **P6 (terminology rename)** — deferred, its own pass.
+- **P7 (feather / invert filters)** — not started.
+- **P9 detail-string readability** — deferred; an engine-free content pass in
+  `studio/TermTemplates.cpp` (the `ExpressionSummary` helper in
+  `ui-backlog-2026-09-16.md` item 13 is the shared piece).
+
+The recipe-navigator surface-button work (aligned slots, X = delete, the
+`DrawSurfaceLine`/`DrawLightLine` refactor) is not part of this pass; it lives in
+commit 8b0ae5e only.
+
 ## Already done (do not redo)
 
 - The inspector pane no longer special-cases paint: `DrawInspectorPane`
