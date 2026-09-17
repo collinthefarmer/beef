@@ -100,7 +100,7 @@ void DrawOfferRow(Table &a_table, const Studio::TermOffer &a_offer, bool a_full,
   });
   ImGui::SameLine();
   Disabled(a_full || a_offer.unavailable.has_value(), [&] {
-    if (ImGui::SmallButton("Add")) {
+    if (ImGui::Button("Add")) {
       AddPattern(a_offer.kind, geometry, a_frame);
       if (peeking) {
         Studio::Post(*a_frame.intents, Studio::SetPeek{std::nullopt});

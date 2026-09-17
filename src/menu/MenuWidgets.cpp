@@ -953,7 +953,21 @@ bool MuteButton(bool &a_mute) {
 }
 
 bool PeekButton(bool &a_peek) {
-  return SquareToggle("P", a_peek, "peek: preview this coverage on the armor");
+  if (a_peek) {
+    const auto *active =
+        ImGui::GetStyleColorVec4(ImGuiMCP::ImGuiCol_ButtonActive);
+    ImGui::PushStyleColor(ImGuiMCP::ImGuiCol_Button,
+                          active ? *active : ImVec4{0.35f, 0.35f, 0.35f, 1.0f});
+  }
+  const bool clicked = ImGui::Button("Peek", ImVec2{ButtonWidth("Peek"), 0.0f});
+  if (a_peek) {
+    ImGui::PopStyleColor();
+  }
+  Tooltip("peek: preview this coverage on the armor");
+  if (clicked) {
+    a_peek = !a_peek;
+  }
+  return clicked;
 }
 
 bool DragHandle(const char *a_type, std::size_t a_index, const char *a_noun) {

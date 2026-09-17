@@ -86,7 +86,7 @@ void PickSubject(const char *a_label, Studio::InspectorSubject a_subject,
 
 void DrawSurfaceAdd(const Frame &a_frame, Surface a_surface) {
   ImGui::PushID(static_cast<int>(a_surface));
-  if (ImGui::Button("+ output")) {
+  if (ImGui::Button("+")) {
     ImGui::OpenPopup("add-output");
   }
   if (ImGui::BeginPopup("add-output")) {
@@ -348,11 +348,15 @@ void DrawResourceTabs(const Frame &a_frame, std::string_view a_filter) {
   ImGui::EndTabBar();
 }
 
+bool IsSurfaceOutput(const Studio::OutputRow &a_output, Surface a_surface) {
+  return a_output.target != Target::kLight && a_output.surface == a_surface;
+}
+
 void DrawSurfaceOutputs(const Frame &a_frame, Surface a_surface,
                         std::string_view a_filter) {
   ImGui::Indent();
   for (const Studio::OutputRow &output : a_frame.recipe->outputs) {
-    if (output.target != Target::kLight && output.surface == a_surface) {
+    if (IsSurfaceOutput(output, a_surface)) {
       DrawOutputNode(a_frame, output, a_filter);
     }
   }
@@ -362,8 +366,7 @@ void DrawSurfaceOutputs(const Frame &a_frame, Surface a_surface,
 bool SurfaceHasOutput(const Studio::RecipeRow &a_recipe, Surface a_surface) {
   return std::ranges::any_of(a_recipe.outputs,
                              [&](const Studio::OutputRow &a_output) {
-                               return a_output.target != Target::kLight &&
-                                      a_output.surface == a_surface;
+                               return IsSurfaceOutput(a_output, a_surface);
                              });
 }
 
@@ -376,81 +379,111 @@ void SurfaceLabel(std::string_view a_text, bool a_lit) {
   }
 }
 
-void DrawSurfaceReset(const Frame &a_frame, Surface a_surface) {
-  if (!ImGui::Button("Reset")) {
+void DrawSurfaceRemove(const Frame &a_frame, Surface a_surface) {
+  ImGui::PushID(static_cast<int>(a_surface));
+  const bool clicked = ImGui::Button("X");
+  ImGui::PopID();
+  if (!clicked) {
     return;
   }
-  const std::string &id = a_frame.recipe->id;
+  std::vector<Studio::RecipeEdit> edits;
   if (a_surface == Surface::kShell) {
-    Studio::Post(*a_frame.intents, id, Studio::ResetShell{});
+    edits.emplace_back(Studio::ResetShell{});
   }
+  std::vector<std::size_t> indices;
   for (const Studio::OutputRow &output : a_frame.recipe->outputs) {
-    if (output.target != Target::kLight && output.surface == a_surface) {
-      Studio::Post(*a_frame.intents, id, Studio::ResetOutput{output.index});
+    if (IsSurfaceOutput(output, a_surface)) {
+      indices.push_back(output.index);
     }
+  }
+  std::ranges::sort(indices, std::greater{});
+  for (const std::size_t index : indices) {
+    edits.emplace_back(Studio::RemoveOutput{index});
+  }
+  if (!edits.empty()) {
+    Studio::Post(*a_frame.intents,
+                 Studio::EditRecipe{a_frame.recipe->id, std::move(edits)});
   }
 }
 
-void DrawLightReset(const Frame &a_frame) {
-  if (!ImGui::Button("Reset")) {
+void DrawLightRemove(const Frame &a_frame) {
+  ImGui::PushID("light-remove");
+  const bool clicked = ImGui::Button("X");
+  ImGui::PopID();
+  if (!clicked || a_frame.recipe->lights.empty()) {
     return;
   }
-  const std::string &id = a_frame.recipe->id;
-  for (const Studio::LightRow &light : a_frame.recipe->lights) {
-    Studio::Post(*a_frame.intents, id, Studio::ResetLight{light.output});
+  Studio::Post(*a_frame.intents, a_frame.recipe->id,
+               Studio::RemoveOutput{a_frame.recipe->lights.front().output});
+}
+
+void DrawLightAdd(const Frame &a_frame) {
+  if (ImGui::Button("+")) {
+    Studio::Post(*a_frame.intents, a_frame.recipe->id, Studio::AddLight{});
+    a_frame.state->pendingSelection =
+        Studio::OutputSubject{a_frame.recipe->outputs.size()};
   }
+}
+
+void DrawSurfaceControls(const std::function<void()> &a_settings,
+                         const std::function<void()> &a_add,
+                         const std::function<void()> &a_remove) {
+  const float settingsW = ButtonWidth("settings");
+  const float addW = ButtonWidth("+");
+  const float removeW = ButtonWidth("X");
+  const auto slot = [](const std::function<void()> &a_draw, float a_width) {
+    if (a_draw) {
+      a_draw();
+    } else {
+      ImGui::Dummy(ImVec2{a_width, ImGui::GetFrameHeight()});
+    }
+  };
+  RightAligned(settingsW + addW + removeW + 2.0f * ItemSpacingX(), [&]() {
+    slot(a_settings, settingsW);
+    ImGui::SameLine();
+    slot(a_add, addW);
+    ImGui::SameLine();
+    slot(a_remove, removeW);
+  });
+}
+
+void DrawSurfaceLine(const Frame &a_frame, const char *a_label,
+                     Surface a_surface, std::string_view a_filter) {
+  const bool has = SurfaceHasOutput(*a_frame.recipe, a_surface);
+  SurfaceLabel(a_label, has);
+  ImGui::SameLine();
+  std::function<void()> settings;
+  if (a_surface == Surface::kShell) {
+    settings = [&] { DrawShellSettings(a_frame); };
+  }
+  std::function<void()> remove;
+  if (has) {
+    remove = [&] { DrawSurfaceRemove(a_frame, a_surface); };
+  }
+  DrawSurfaceControls(
+      settings, [&] { DrawSurfaceAdd(a_frame, a_surface); }, remove);
+  DrawSurfaceOutputs(a_frame, a_surface, a_filter);
+}
+
+void DrawLightLine(const Frame &a_frame) {
+  const bool has = !a_frame.recipe->lights.empty();
+  SurfaceLabel("Light", has);
+  ImGui::SameLine();
+  std::function<void()> settings, add, remove;
+  if (has) {
+    settings = [&] { DrawLightSettings(a_frame); };
+    remove = [&] { DrawLightRemove(a_frame); };
+  } else {
+    add = [&] { DrawLightAdd(a_frame); };
+  }
+  DrawSurfaceControls(settings, add, remove);
 }
 
 void DrawRecipeTree(const Frame &a_frame, std::string_view a_filter) {
   PickSubject("Recipe / overview", Studio::RecipeSubject{}, a_frame);
-
-  const bool hasMaterial =
-      SurfaceHasOutput(*a_frame.recipe, Surface::kMaterial);
-  SurfaceLabel("Material", hasMaterial);
-  ImGui::SameLine();
-  RightAligned((hasMaterial ? ButtonWidth("Reset") + ItemSpacingX() : 0.0f) +
-                   ButtonWidth("+ output"),
-               [&]() {
-                 if (hasMaterial) {
-                   DrawSurfaceReset(a_frame, Surface::kMaterial);
-                   ImGui::SameLine();
-                 }
-                 DrawSurfaceAdd(a_frame, Surface::kMaterial);
-               });
-  DrawSurfaceOutputs(a_frame, Surface::kMaterial, a_filter);
-
-  SurfaceLabel("Shell", SurfaceHasOutput(*a_frame.recipe, Surface::kShell));
-  ImGui::SameLine();
-  RightAligned(ButtonWidth("Reset") + ItemSpacingX() + ButtonWidth("settings") +
-                   ItemSpacingX() + ButtonWidth("+ output"),
-               [&]() {
-                 DrawSurfaceReset(a_frame, Surface::kShell);
-                 ImGui::SameLine();
-                 DrawShellSettings(a_frame);
-                 ImGui::SameLine();
-                 DrawSurfaceAdd(a_frame, Surface::kShell);
-               });
-  DrawSurfaceOutputs(a_frame, Surface::kShell, a_filter);
-
-  const bool hasLight = !a_frame.recipe->lights.empty();
-  SurfaceLabel("Light", hasLight);
-  ImGui::SameLine();
-  if (hasLight) {
-    RightAligned(
-        ButtonWidth("Reset") + ItemSpacingX() + ButtonWidth("settings"), [&]() {
-          DrawLightReset(a_frame);
-          ImGui::SameLine();
-          DrawLightSettings(a_frame);
-        });
-  } else {
-    RightAligned(ButtonWidth("+ output"), [&]() {
-      if (ImGui::Button("+ output")) {
-        Studio::Post(*a_frame.intents, a_frame.recipe->id, Studio::AddLight{});
-        a_frame.state->pendingSelection =
-            Studio::OutputSubject{a_frame.recipe->outputs.size()};
-      }
-    });
-  }
+  DrawSurfaceLine(a_frame, "Material", Surface::kMaterial, a_filter);
+  DrawSurfaceLine(a_frame, "Shell", Surface::kShell, a_filter);
+  DrawLightLine(a_frame);
 }
 
 void DrawNavigator(const Frame &a_frame) {
@@ -823,38 +856,54 @@ void DrawPreview(const Frame &a_input) {
       state.previewPin ? state.previewPin->selection : state.selection;
   Frame a_frame = a_input;
   a_frame.geometry = Studio::SelectedGeometry(a_frame.recipe, selection);
-  const auto &geoms = a_frame.recipe->geometries;
-  std::vector<std::string> geometries;
-  std::optional<std::size_t> selectedGeo;
-  geometries.reserve(geoms.size());
-  for (std::size_t i = 0; i < geoms.size(); ++i) {
-    geometries.push_back(geoms[i].name);
-    if (geoms[i].name == selection.geometry) {
-      selectedGeo = i;
+  if (!Studio::MaskTaskActive(state)) {
+    const auto &geoms = a_frame.recipe->geometries;
+    std::vector<std::string> geometries;
+    std::optional<std::size_t> selectedGeo;
+    geometries.reserve(geoms.size());
+    for (std::size_t i = 0; i < geoms.size(); ++i) {
+      geometries.push_back(geoms[i].name);
+      if (geoms[i].name == selection.geometry) {
+        selectedGeo = i;
+      }
+    }
+    const auto pickedGeo = SearchCombo(
+        {.id = "geometry",
+         .preview = selection.geometry.empty() ? "geometry"
+                                               : selection.geometry.c_str(),
+         .hint = "Search geometry",
+         .width = Studio::Width::Fill()},
+        geometries, selectedGeo);
+    if (pickedGeo) {
+      if (const auto *index = Get<std::size_t>(*pickedGeo)) {
+        const std::string &name = geometries[*index];
+        if (state.previewPin) {
+          state.previewPin->selection.geometry = name;
+        } else {
+          Studio::Post(*a_frame.intents, Studio::ViewGeometry{name});
+        }
+      }
     }
   }
-  const auto pickedGeo = SearchCombo(
-      {.id = "geometry",
-       .preview =
-           selection.geometry.empty() ? "geometry" : selection.geometry.c_str(),
-       .hint = "Search geometry",
-       .width = Studio::Width::Fill()},
-      geometries, selectedGeo);
-  if (pickedGeo) {
-    if (const auto *index = Get<std::size_t>(*pickedGeo)) {
-      const std::string &name = geometries[*index];
-      if (state.previewPin) {
-        state.previewPin->selection.geometry = name;
-      } else {
-        Studio::Post(*a_frame.intents, Studio::ViewGeometry{name});
+  const Studio::InspectorSubject &subject = selection.subject;
+  const float side =
+      (std::max)(32.0f, (std::min)(ImGui::GetContentRegionAvail().x,
+                                   320.0f * a_frame.scale));
+  if (const auto *drafted = Get<Studio::MaskSubject>(subject)) {
+    if (const Studio::PictureRow *draft =
+            DraftMaskPicture(a_frame, drafted->name)) {
+      Dim(drafted->name);
+      Thumbnail({draft->texture, draft->channel, draft->animated, side});
+      if (!draft->problem.empty()) {
+        Problem(draft->problem);
       }
+      return;
     }
   }
   if (!a_frame.geometry) {
     Dim("No applied geometry. No live preview.");
     return;
   }
-  const Studio::InspectorSubject &subject = selection.subject;
   const Studio::PictureRow *picture = nullptr;
   std::string_view label;
   if (const auto *source = Get<Studio::SourceSubject>(subject)) {
@@ -866,20 +915,12 @@ void DrawPreview(const Frame &a_input) {
     }
   } else if (const auto *mask = Get<Studio::MaskSubject>(subject)) {
     label = mask->name;
-    if (const Studio::PictureRow *draft =
-            DraftMaskPicture(a_frame, mask->name)) {
-      picture = draft;
-    } else {
-      const auto row = std::ranges::find(a_frame.geometry->masks, mask->name,
-                                         &Studio::PictureRow::name);
-      if (row != a_frame.geometry->masks.end()) {
-        picture = &*row;
-      }
+    const auto row = std::ranges::find(a_frame.geometry->masks, mask->name,
+                                       &Studio::PictureRow::name);
+    if (row != a_frame.geometry->masks.end()) {
+      picture = &*row;
     }
   }
-  const float side =
-      (std::max)(32.0f, (std::min)(ImGui::GetContentRegionAvail().x,
-                                   320.0f * a_frame.scale));
   if (picture) {
     Dim(label);
     Thumbnail({picture->texture, picture->channel, picture->animated, side});
