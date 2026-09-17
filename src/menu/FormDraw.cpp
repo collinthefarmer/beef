@@ -146,6 +146,32 @@ void DrawSelectorClauses(const SelectorView &a_view,
 
 }
 
+std::optional<std::string> DrawChannels(const FormField &a_field) {
+  Badge(a_field.kind);
+  ImGui::SameLine();
+  ChannelSet set = ChannelSet::Parse(a_field.text).value_or(ChannelSet{});
+  const ChannelSet available = a_field.channelMask.value_or(ChannelSet{});
+  bool changed = false;
+  bool first = true;
+  const auto box = [&](const char *a_label, bool a_available, bool &a_bit) {
+    if (!a_available) {
+      return;
+    }
+    if (!first) {
+      ImGui::SameLine();
+    }
+    first = false;
+    if (ImGui::Checkbox(a_label, &a_bit)) {
+      changed = true;
+    }
+  };
+  box("r", available.r, set.r);
+  box("g", available.g, set.g);
+  box("b", available.b, set.b);
+  box("a", available.a, set.a);
+  return changed ? std::optional<std::string>{set.ToString()} : std::nullopt;
+}
+
 std::optional<std::string> FieldInput(const FormField &a_field, float a_scale,
                                       const Names &a_names,
                                       const Studio::Width &a_width) {
@@ -184,6 +210,8 @@ std::optional<std::string> FieldInput(const FormField &a_field, float a_scale,
     return TextField("value", a_field.text, {a_width, a_scale}, displayCheck);
   case FieldInputKind::kValue:
     return ValueWidget("value", a_field, a_scale, displayCheck, a_width);
+  case FieldInputKind::kChannels:
+    return DrawChannels(a_field);
   }
   return std::nullopt;
 }
@@ -309,7 +337,7 @@ std::optional<std::size_t> DrawFieldTable(const char *a_id,
     ImGui::PushID(field.name.c_str());
     table.Cell();
     ImGui::AlignTextToFramePadding();
-    ImGui::TextUnformatted(field.name.c_str());
+    LabelWithHelp(field.name, field.help);
     if (!field.units.empty()) {
       ImGui::SameLine();
       Dim("(" + field.units + ")");

@@ -615,6 +615,31 @@ void DrawLayerInspector(const Studio::LayerSubject &a_layer,
   DrawInspectorFields(*inspector, a_frame);
 }
 
+void DrawResourceRemove(std::string_view a_name, std::size_t a_references,
+                        const std::function<void(bool)> &a_post) {
+  if (a_references == 0) {
+    if (RemoveButton(0)) {
+      a_post(false);
+    }
+    return;
+  }
+  const std::string title =
+      std::format("Remove resource?###cascade-{}", a_name);
+  if (ImGui::Button("X", ImVec2{RowButtonWidth(), RowButtonWidth()})) {
+    ImGui::OpenPopup(title.c_str());
+  }
+  Tooltip(std::format(
+      "used in {} place(s) — remove it and everything that depends on it",
+      a_references));
+  ConfirmModal(
+      title.c_str(),
+      std::format("Remove '{}'? It is used in {} place(s): rows that depend on "
+                  "it are removed too, and any other use is reset to its "
+                  "default.",
+                  a_name, a_references),
+      "Remove", [&] { a_post(true); });
+}
+
 void DrawSourceInspector(const Studio::SourceSubject &a_source,
                          const Frame &a_frame) {
   const Studio::RecipeRow &recipe = *a_frame.recipe;
@@ -625,10 +650,10 @@ void DrawSourceInspector(const Studio::SourceSubject &a_source,
   }
   static_cast<void>(
       Rule(Studio::RuleSpec{.text = "Inspector"}, RowButtonWidth(), [&]() {
-        if (RemoveButton(row->references)) {
+        DrawResourceRemove(row->name, row->references, [&](bool a_cascade) {
           Studio::Post(*a_frame.intents, recipe.id,
-                       Studio::RemoveSource{row->name});
-        }
+                       Studio::RemoveSource{row->name, a_cascade});
+        });
       }));
   const std::string type = DescribeSource(
       Studio::SourceKindOf(*row).value_or(SourceKind{MaterialSource{}}));
@@ -653,10 +678,10 @@ void DrawSignalInspector(const Studio::SignalSubject &a_signal,
       (canFire ? ItemSpacingX() + ButtonWidth("Fire") : 0.0f);
   static_cast<void>(
       Rule(Studio::RuleSpec{.text = "Inspector"}, actionsWidth, [&]() {
-        if (RemoveButton(row->references)) {
+        DrawResourceRemove(row->name, row->references, [&](bool a_cascade) {
           Studio::Post(*a_frame.intents, recipe.id,
-                       Studio::RemoveSignal{row->name});
-        }
+                       Studio::RemoveSignal{row->name, a_cascade});
+        });
         if (canFire) {
           ImGui::SameLine();
           FirePopup(*row, a_frame);
@@ -698,10 +723,11 @@ void DrawMaskInspector(const Studio::MaskSubject &a_mask,
                 : !a_frame.piece ? "Select a piece to edit terms."
                                  : "Open the terms editor for this mask.");
         ImGui::SameLine();
-        if (RemoveButton(row->references)) {
-          Studio::Post(*a_frame.intents, a_frame.recipe->id,
-                       Studio::RemoveMask{row->name});
-        }
+        DrawResourceRemove(row->name, row->references, [&](bool a_cascade) {
+          Studio::Post(
+              *a_frame.intents, a_frame.recipe->id,
+              Studio::RemoveMask{.name = row->name, .cascade = a_cascade});
+        });
       },
       [&]() { Dim(row->name); }));
 
@@ -724,10 +750,10 @@ void DrawCurveInspector(const Studio::CurveSubject &a_curve,
   }
   static_cast<void>(
       Rule(Studio::RuleSpec{.text = "Inspector"}, RowButtonWidth(), [&]() {
-        if (RemoveButton(row->references)) {
+        DrawResourceRemove(row->name, row->references, [&](bool a_cascade) {
           Studio::Post(*a_frame.intents, a_frame.recipe->id,
-                       Studio::RemoveCurve{row->name});
-        }
+                       Studio::RemoveCurve{row->name, a_cascade});
+        });
       }));
   const ResourceCells cells{.name = row->name};
   ResourceTable("curve-header", {&cells, 1});

@@ -152,9 +152,11 @@ struct RenameCurve {
 };
 struct RemoveSignal {
   std::string name;
+  bool cascade = false;
 };
 struct RemoveCurve {
   std::string name;
+  bool cascade = false;
 };
 struct AddMask {
   std::string name;
@@ -166,6 +168,7 @@ struct RenameMask {
 struct RemoveMask {
   std::string name;
   bool force = false;
+  bool cascade = false;
 };
 struct AddSource {
   std::string name;
@@ -181,6 +184,7 @@ struct RenameSource {
 };
 struct RemoveSource {
   std::string name;
+  bool cascade = false;
 };
 
 struct AddLight {};

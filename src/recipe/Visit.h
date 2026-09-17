@@ -289,29 +289,47 @@ struct LocatedVisitor {
   }
 };
 
-template <class Fn> struct RefVisitor : LocatedVisitor {
-  Fn &visit;
-  explicit RefVisitor(Fn &a_visit) : visit(a_visit) {}
-  void Reference(Ref &a_ref) { visit(a_ref, location); }
-  void Scalar(Param &a_param, std::optional<float>) {
-    if (auto *ref = Get<Ref>(a_param)) {
-      Reference(*ref);
+template <class Derived> struct ParamRefVisitor : LocatedVisitor {
+  Derived &Self() { return static_cast<Derived &>(*this); }
+  void Reference(Ref &a_ref) {
+    Self().OnRef(a_ref, [] {});
+  }
+  void Scalar(Param &a_param, std::optional<float> a_default) {
+    if (Ref *ref = Get<Ref>(a_param)) {
+      Self().OnRef(*ref, [&] { a_param = Param{a_default.value_or(0.0f)}; });
     }
   }
   void OptionalScalar(std::optional<Param> &a_param,
                       std::optional<float> a_default) {
-    Scalar(*a_param, a_default);
+    if (!a_param) {
+      return;
+    }
+    if (Ref *ref = Get<Ref>(*a_param)) {
+      Self().OnRef(*ref, [&] {
+        if (a_default) {
+          *a_param = Param{*a_default};
+        } else {
+          a_param.reset();
+        }
+      });
+    }
   }
   template <std::size_t N>
   void Vector(std::variant<std::array<Param, N>, Ref> &a_param,
-              std::optional<std::array<float, N>>) {
-    if (auto *ref = Get<Ref>(a_param)) {
-      Reference(*ref);
+              std::optional<std::array<float, N>> a_default) {
+    if (Ref *ref = Get<Ref>(a_param)) {
+      Self().OnRef(*ref, [&] {
+        std::array<Param, N> literal{};
+        for (std::size_t i = 0; i < N; ++i) {
+          literal[i] = Param{a_default ? (*a_default)[i] : 0.0f};
+        }
+        a_param = literal;
+      });
     } else if (auto *parts = Get<std::array<Param, N>>(a_param)) {
-      std::size_t component = 0;
-      for (auto &part : *parts) {
-        location.component = component++;
-        Scalar(part, std::nullopt);
+      for (std::size_t i = 0; i < parts->size(); ++i) {
+        location.component = i;
+        Scalar((*parts)[i], a_default ? std::optional<float>{(*a_default)[i]}
+                                      : std::nullopt);
       }
       location.component.reset();
     }
@@ -320,7 +338,51 @@ template <class Fn> struct RefVisitor : LocatedVisitor {
   void OptionalVector(
       std::optional<std::variant<std::array<Param, N>, Ref>> &a_param,
       std::optional<std::array<float, N>> a_default) {
-    Vector(*a_param, a_default);
+    if (!a_param) {
+      return;
+    }
+    if (Ref *ref = Get<Ref>(*a_param)) {
+      Self().OnRef(*ref, [&] {
+        if (!a_default) {
+          a_param.reset();
+          return;
+        }
+        std::array<Param, N> literal{};
+        for (std::size_t i = 0; i < N; ++i) {
+          literal[i] = Param{(*a_default)[i]};
+        }
+        *a_param = literal;
+      });
+      return;
+    }
+    auto *parts = Get<std::array<Param, N>>(*a_param);
+    if (!parts) {
+      return;
+    }
+    for (std::size_t i = 0; i < parts->size(); ++i) {
+      if (Ref *ref = Get<Ref>((*parts)[i])) {
+        location.component = i;
+        Self().OnRef(*ref, [&] {
+          if (a_default) {
+            (*parts)[i] = Param{(*a_default)[i]};
+          } else {
+            a_param.reset();
+          }
+        });
+        location.component.reset();
+        if (!a_param) {
+          return;
+        }
+      }
+    }
+  }
+};
+
+template <class Fn> struct RefVisitor : ParamRefVisitor<RefVisitor<Fn>> {
+  Fn &visit;
+  explicit RefVisitor(Fn &a_visit) : visit(a_visit) {}
+  template <class Replace> void OnRef(Ref &a_ref, Replace) {
+    visit(a_ref, this->location);
   }
 };
 

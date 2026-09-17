@@ -366,3 +366,30 @@ operand count) rather than blind character truncation. Engine-free and
 native-testable. Reused anywhere an expression shows compactly (the value
 column, inline signal/curve/mask references, row summaries), so it lives beside
 the expression parser, not in `menu/`.
+
+## 14. A helper for the "components' width, then the components" idiom
+
+**Ask.** Several widgets take a pre-computed total width *and* a draw callback
+for the same set of components, so the caller states the components twice — once
+as a summed width, once as the drawing — and the two can silently drift.
+
+**Where.** `RightAligned(width, draw)` (`menu/MenuWidgets.cpp`) is the base case;
+callers hand-sum `ButtonWidth(a) + ItemSpacingX() + ButtonWidth(b) + ...` and
+then draw those same buttons with `SameLine` between. Live instances:
+`DrawSurfaceControls` (`menu/Workspace.cpp`, three slot widths then three slot
+draws), `ConfirmModal` (`menu/MenuWidgets.cpp`, affirm + Cancel width then the
+two buttons), and `Rule(spec, trailingWidth, trailing)` (the trailing-slot width
+is passed beside the trailing draw). Any `RightAligned` caller that sums widths
+is a candidate.
+
+**Direction.** A helper that takes the components as a sequence and owns both the
+measurement and the layout — e.g. a right-aligned button/among row built from a
+list of `{width, draw}` items (or `{label, onClick}` for the button case), which
+sums the widths plus inter-item spacing, positions once, and draws each with the
+spacing between. The constraint that shapes it: `RightAligned` needs the total
+width *before* drawing (to place the cursor), so the components must expose their
+widths up front — hence a `{width, draw}` pair per item rather than a bare draw
+callback. Fold the common button-row case (`ButtonWidth(label)` per item) into a
+thin overload so the caller passes only labels and handlers. Ties to the slot
+layout in `DrawSurfaceControls` (which already reserves fixed slots) and the
+modal/rule action bars (items 1 and 6).

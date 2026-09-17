@@ -181,41 +181,36 @@ void DrawRecipeSaveRevert(const Frame &a_frame) {
   const Studio::RecipeRow &recipe = *a_frame.recipe;
   const bool transient = recipe.id == Studio::kPaintRecipe;
   ImGui::PushID(recipe.id.c_str());
-  Disabled(transient || RecipeFilePending(a_frame) ||
-               (a_frame.state->paint && a_frame.state->paint->pendingCommit),
-           [&] {
-             if (ImGui::Button("Save")) {
-               a_frame.state->pendingRecipeFile = Studio::PendingIndexedEdit{
-                   manager->Editor().SaveRecipe(recipe.id), recipe.id};
-             }
-             if (a_frame.state->paint &&
-                 a_frame.state->paint->recipeID == recipe.id) {
-               Tooltip("Save excludes the suspended mask draft.");
-             }
-             ImGui::SameLine();
-             Disabled(!recipe.dirty, [&] {
-               if (ImGui::Button("Revert")) {
-                 ImGui::OpenPopup("Revert to file###revert-file");
-               }
-             });
-             DetailModal("Revert to file###revert-file", [&] {
-               ImGui::TextWrapped(
-                   "Replace the current edits to %s with its saved file?",
-                   recipe.id.c_str());
-               if (ImGui::Button("Revert edits")) {
-                 Studio::InvalidateIndexedSubjects(a_frame.state->navigation,
-                                                   a_frame.state->selection,
-                                                   recipe.id);
-                 a_frame.state->pendingRecipeFile = Studio::PendingIndexedEdit{
-                     manager->Editor().RevertRecipe(recipe.id), recipe.id};
-                 ImGui::CloseCurrentPopup();
-               }
-               ImGui::SameLine();
-               if (ImGui::Button("Cancel")) {
-                 ImGui::CloseCurrentPopup();
-               }
-             });
-           });
+  Disabled(
+      transient || RecipeFilePending(a_frame) ||
+          (a_frame.state->paint && a_frame.state->paint->pendingCommit),
+      [&] {
+        if (ImGui::Button("Save")) {
+          a_frame.state->pendingRecipeFile = Studio::PendingIndexedEdit{
+              manager->Editor().SaveRecipe(recipe.id), recipe.id};
+        }
+        if (a_frame.state->paint &&
+            a_frame.state->paint->recipeID == recipe.id) {
+          Tooltip("Save excludes the suspended mask draft.");
+        }
+        ImGui::SameLine();
+        Disabled(!recipe.dirty, [&] {
+          if (ImGui::Button("Revert")) {
+            ImGui::OpenPopup("Revert to file###revert-file");
+          }
+        });
+        ConfirmModal(
+            "Revert to file###revert-file",
+            std::format("Replace the current edits to {} with its saved file?",
+                        recipe.id),
+            "Revert edits", [&] {
+              Studio::InvalidateIndexedSubjects(a_frame.state->navigation,
+                                                a_frame.state->selection,
+                                                recipe.id);
+              a_frame.state->pendingRecipeFile = Studio::PendingIndexedEdit{
+                  manager->Editor().RevertRecipe(recipe.id), recipe.id};
+            });
+      });
   ImGui::PopID();
 }
 

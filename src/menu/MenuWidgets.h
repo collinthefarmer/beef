@@ -150,6 +150,9 @@ void Rule();
 
 bool Toggle(const char *a_label, bool &a_value, std::string_view a_tooltip);
 void DetailModal(const char *a_title, const std::function<void()> &a_body);
+void ConfirmModal(const char *a_title, const std::string &a_message,
+                  const char *a_affirm,
+                  const std::function<void()> &a_onAffirm);
 void RightAligned(float a_width, const std::function<void()> &a_draw);
 void Disabled(bool a_disabled, const std::function<void()> &a_draw);
 void HeldLabel(const char *a_text);
@@ -177,5 +180,6 @@ void Banner(std::string_view a_label, float a_trailingWidth,
 void PlaceholderText(std::string_view a_text);
 void DrawDiagnostics(std::span<const Diagnostic> a_problems, bool a_heldBack);
 void HelpMarker(const char *a_text);
+void LabelWithHelp(std::string_view a_label, std::string_view a_help);
 void Tooltip(std::string_view a_text);
 }

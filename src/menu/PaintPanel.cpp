@@ -620,18 +620,10 @@ void DrawPaintDraftBar(const Frame &a_frame) {
       }
     });
   });
-  DetailModal("Discard mask draft?###discard-mask", [&] {
-    ImGui::TextWrapped("The %zu term(s) in this draft will be lost.",
-                       state.mask.terms.size());
-    if (ImGui::Button("Discard")) {
-      DiscardMaskDraft(a_frame);
-      ImGui::CloseCurrentPopup();
-    }
-    ImGui::SameLine();
-    if (ImGui::Button("Cancel")) {
-      ImGui::CloseCurrentPopup();
-    }
-  });
+  ConfirmModal("Discard mask draft?###discard-mask",
+               std::format("The {} term(s) in this draft will be lost.",
+                           state.mask.terms.size()),
+               "Discard", [&] { DiscardMaskDraft(a_frame); });
 }
 
 void DrawMaskTask(const Frame &a_frame) {

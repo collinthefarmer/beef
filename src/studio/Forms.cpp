@@ -25,6 +25,15 @@ namespace {
                            &SignalRow::name) != a_inspector.signals.end();
 }
 
+constexpr std::pair<float, float> kUnitRange{0.0f, 1.0f};
+constexpr std::pair<float, float> kLightIntensityRange{0.0f, 16.0f};
+constexpr std::pair<float, float> kLightSizeRange{0.0f, 8.0f};
+constexpr std::pair<float, float> kLightCutoffRange{0.01f, 1.0f};
+constexpr std::pair<float, float> kShellEmissiveRange{0.0f, 10.0f};
+constexpr std::pair<float, float> kShellRimPowerRange{0.0f, 8.0f};
+constexpr std::pair<float, float> kShellScaleRange{0.0f, 3.0f};
+constexpr std::pair<float, float> kImageMipRange{0.0f, 12.0f};
+
 [[nodiscard]] std::optional<FieldDetail> DetailWhen(bool a_present,
                                                     FieldDetail a_detail) {
   return a_present ? std::optional{a_detail} : std::nullopt;
@@ -555,7 +564,7 @@ OpacityFieldOf(const Inspector &a_inspector,
        .detail =
            DetailWhen(NamesSignal(a_inspector, a_inspector.row.opacityText),
                       FieldDetail::kOpacity)});
-  opacity.workingRange = std::pair{0.0f, 1.0f};
+  opacity.workingRange = kUnitRange;
   opacity.units = "fraction";
   opacity.creators = Creators(kValueCreators);
   opacity.create = [current = a_inspector.row.opacityText,
@@ -628,11 +637,14 @@ std::vector<FormField> InspectorForm(const Inspector &a_inspector) {
   form.push_back(OpacityFieldOf(in, signalNames));
   form.push_back(ColourFieldOf(in, signalNames));
   form.push_back(MaskFieldOf(in, sourceNames));
-  form.push_back(ValueField({.name = "channels",
-                             .kind = FieldKind::kChannels,
-                             .text = in.row.channels,
-                             .names = {},
-                             .bind = BindLayerChannels(in.output, in.layer)}));
+  FormField channels =
+      ValueField({.name = "channels",
+                  .kind = FieldKind::kChannels,
+                  .text = in.row.channels,
+                  .names = {},
+                  .bind = BindLayerChannels(in.output, in.layer)});
+  channels.channelMask = ChannelsOf(in.slot);
+  form.push_back(std::move(channels));
   return form;
 }
 
@@ -659,7 +671,7 @@ std::vector<FormField> ScalarForm(const LayerStack &a_stack) {
         field == ScalarField::kMicrofacetRoughness ||
         field == ScalarField::kDensityRandomization ||
         field == ScalarField::kLevel) {
-      row.workingRange = std::pair{0.0f, 1.0f};
+      row.workingRange = kUnitRange;
       row.units = "fraction";
     }
     row.creators = Creators(kValueCreators);
@@ -755,7 +767,7 @@ void PulseFields(std::vector<FormField> &a_form, const SignalContext &a_ctx,
                   .names = a_ctx.names.scalar,
                   .bind = BindSignalMember(a_ctx.name, a_ctx.record,
                                            &PulseSignal::phase, ParseParam),
-                  .workingRange = std::pair{0.0f, 1.0f},
+                  .workingRange = kUnitRange,
                   .units = "cycles"}));
   a_form.push_back(ChoiceField(
       "waveform", std::string{NameOf(kWaveforms, a_pulse.waveform)},
@@ -1017,7 +1029,8 @@ void GradientFields(std::vector<FormField> &a_form, const SignalContext &a_ctx,
                   .text = ParamText(a_gradient.t),
                   .names = a_ctx.names.scalar,
                   .bind = BindSignalMember(a_ctx.name, a_ctx.record,
-                                           &GradientSignal::t, ParseParam)}));
+                                           &GradientSignal::t, ParseParam),
+                  .workingRange = kUnitRange}));
 }
 
 void DeltaFields(std::vector<FormField> &a_form, const SignalContext &a_ctx,
@@ -1157,7 +1170,9 @@ void ImageFields(std::vector<FormField> &a_form, const SourceContext &a_ctx,
        .text = source.mip,
        .names = {},
        .bind = BindSourceMember(name, record, &ImageSource::mip, NumberOf),
-       .units = "mip level"}));
+       .workingRange = kImageMipRange,
+       .units = "mip level",
+       .integral = true}));
 }
 
 void MaterialFields(std::vector<FormField> &a_form, const SourceContext &a_ctx,
@@ -1354,19 +1369,22 @@ void LightColorFields(std::vector<FormField> &a_form, const LightRow &a_light,
                   .kind = FieldKind::kScalar,
                   .text = a_light.intensity,
                   .names = a_names.scalar,
-                  .bind = BindLightParam(output, LightParam::kIntensity)}));
+                  .bind = BindLightParam(output, LightParam::kIntensity),
+                  .workingRange = kLightIntensityRange}));
   a_form.push_back(
       ParamField({.name = "size",
                   .kind = FieldKind::kScalar,
                   .text = a_light.size,
                   .names = a_names.scalar,
-                  .bind = BindLightParam(output, LightParam::kSize)}));
+                  .bind = BindLightParam(output, LightParam::kSize),
+                  .workingRange = kLightSizeRange}));
   a_form.push_back(
       ParamField({.name = "cutoff",
                   .kind = FieldKind::kScalar,
                   .text = a_light.cutoff,
                   .names = a_names.scalar,
-                  .bind = BindLightParam(output, LightParam::kCutoff)}));
+                  .bind = BindLightParam(output, LightParam::kCutoff),
+                  .workingRange = kLightCutoffRange}));
   a_form.push_back(
       ParamField({.name = "offset",
                   .kind = FieldKind::kVector,
@@ -1402,7 +1420,7 @@ void LightShapeFields(std::vector<FormField> &a_form, const LightRow &a_light) {
          .text = a_light.bonesMinShare,
          .names = {},
          .bind = BindLightSkinnedMinShare(output, a_light.bonesMax)});
-    minShare.range = std::pair{0.0f, 1.0f};
+    minShare.range = kUnitRange;
     minShare.workingRange = minShare.range;
     minShare.units = "fraction";
     a_form.push_back(std::move(minShare));
@@ -1437,30 +1455,34 @@ void ShellMaterialFields(std::vector<FormField> &a_form,
                                WordsOf(kShellBlends), BindShellBlend()));
   a_form.push_back(
       ToggleField("depthBias", a_shell.depthBias, BindShellDepthBias()));
-  a_form.push_back(ValueField({.name = "alphaTest",
-                               .kind = FieldKind::kScalar,
-                               .text = ParamText(a_shell.alphaTest),
-                               .names = {},
-                               .bind = BindShellAlphaTest(),
-                               .workingRange = std::pair{0.0f, 1.0f},
-                               .units = "fraction"}));
+  FormField alphaTest = ValueField({.name = "alphaTest",
+                                    .kind = FieldKind::kScalar,
+                                    .text = ParamText(a_shell.alphaTest),
+                                    .names = {},
+                                    .bind = BindShellAlphaTest(),
+                                    .units = "fraction"});
+  alphaTest.range = kUnitRange;
+  alphaTest.workingRange = alphaTest.range;
+  a_form.push_back(std::move(alphaTest));
   a_form.push_back(ParamField({.name = "alpha",
                                .kind = FieldKind::kScalar,
                                .text = a_shell.alpha,
                                .names = a_names.scalar,
                                .bind = BindShellParam(ShellParam::kAlpha),
-                               .workingRange = std::pair{0.0f, 1.0f},
+                               .workingRange = kUnitRange,
                                .units = "fraction"}));
   a_form.push_back(ParamField({.name = "rimPower",
                                .kind = FieldKind::kScalar,
                                .text = a_shell.rimPower,
                                .names = a_names.scalar,
-                               .bind = BindShellParam(ShellParam::kRimPower)}));
+                               .bind = BindShellParam(ShellParam::kRimPower),
+                               .workingRange = kShellRimPowerRange}));
   a_form.push_back(ParamField({.name = "emissive",
                                .kind = FieldKind::kScalar,
                                .text = a_shell.emissive,
                                .names = a_names.scalar,
-                               .bind = BindShellParam(ShellParam::kEmissive)}));
+                               .bind = BindShellParam(ShellParam::kEmissive),
+                               .workingRange = kShellEmissiveRange}));
 }
 
 void ShellPoseFields(std::vector<FormField> &a_form, const ShellRow &a_shell,
@@ -1480,7 +1502,8 @@ void ShellPoseFields(std::vector<FormField> &a_form, const ShellRow &a_shell,
                                .kind = FieldKind::kScalar,
                                .text = a_shell.scale,
                                .names = a_names.scalar,
-                               .bind = BindShellParam(ShellParam::kScale)}));
+                               .bind = BindShellParam(ShellParam::kScale),
+                               .workingRange = kShellScaleRange}));
   a_form.push_back(
       ValueField({.name = "scalePoint",
                   .kind = FieldKind::kVector,

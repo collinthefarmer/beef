@@ -13,6 +13,7 @@
 #include <cctype>
 #include <format>
 #include <optional>
+#include <set>
 #include <string>
 #include <string_view>
 #include <type_traits>
@@ -781,11 +782,101 @@ Refusal Edit(Recipe &a_recipe, const RenameSource &a_edit) {
   return std::nullopt;
 }
 
+namespace {
+std::string CascadeWhere(const ResourceRef &a_ref) {
+  switch (a_ref.kind) {
+  case ResourceKind::kSignal:
+    return SignalWhere(a_ref.name);
+  case ResourceKind::kSource:
+    return SourceWhere(a_ref.name);
+  case ResourceKind::kMask:
+    return MaskWhere(a_ref.name);
+  case ResourceKind::kCurve:
+    return CurveWhere(a_ref.name);
+  case ResourceKind::kCount:
+    break;
+  }
+  return a_ref.name;
+}
+
+void EraseResource(Recipe &a_recipe, const ResourceRef &a_ref) {
+  switch (a_ref.kind) {
+  case ResourceKind::kSignal:
+    std::erase_if(a_recipe.signals,
+                  [&](const Signal &a_s) { return a_s.name == a_ref.name; });
+    break;
+  case ResourceKind::kSource:
+    std::erase_if(a_recipe.sources,
+                  [&](const Source &a_s) { return a_s.name == a_ref.name; });
+    break;
+  case ResourceKind::kMask:
+    std::erase_if(a_recipe.masks,
+                  [&](const Mask &a_m) { return a_m.name == a_ref.name; });
+    break;
+  case ResourceKind::kCurve:
+    std::erase_if(a_recipe.curves,
+                  [&](const Curve &a_c) { return a_c.name == a_ref.name; });
+    break;
+  case ResourceKind::kCount:
+    break;
+  }
+}
+
+struct ResetRefVisitor : ParamRefVisitor<ResetRefVisitor> {
+  const std::set<std::string> &deleted;
+  explicit ResetRefVisitor(const std::set<std::string> &a_deleted)
+      : deleted(a_deleted) {}
+  template <class Replace> void OnRef(Ref &a_ref, Replace a_replace) {
+    if (deleted.contains(a_ref.name)) {
+      a_replace();
+    }
+  }
+};
+
+void ResetDeletedRefs(Recipe &a_recipe,
+                      const std::set<std::string> &a_deleted) {
+  ResetRefVisitor visitor{a_deleted};
+  ForEachParam(a_recipe, visitor);
+}
+
+Refusal ApplyCascade(Recipe &a_recipe, const ResourceRef &a_seed) {
+  const CascadePlan plan = PlanCascade(a_recipe, a_seed);
+  for (const Relationship &relationship : plan.blocked) {
+    if (Is<VariantOwner>(relationship.consumer.owner)) {
+      return Refuse(CascadeWhere(a_seed),
+                    "still used by a variant override; clear it first");
+    }
+  }
+  std::vector<LayerOwner> layers = plan.layers;
+  std::ranges::sort(layers, [](const LayerOwner &a_a, const LayerOwner &a_b) {
+    return a_a.output != a_b.output ? a_a.output > a_b.output
+                                    : a_a.layer > a_b.layer;
+  });
+  for (const LayerOwner &owner : layers) {
+    if (const auto problem =
+            Edit(a_recipe,
+                 RemoveLayer{.output = owner.output, .layer = owner.layer})) {
+      return problem;
+    }
+  }
+  std::set<std::string> deleted;
+  for (const ResourceRef &ref : plan.resources) {
+    EraseResource(a_recipe, ref);
+    deleted.insert(ref.name);
+  }
+  ResetDeletedRefs(a_recipe, deleted);
+  return std::nullopt;
+}
+} // namespace
+
 Refusal Edit(Recipe &a_recipe, const RemoveSignal &a_edit) {
   const auto it =
       std::ranges::find(a_recipe.signals, a_edit.name, &Signal::name);
   if (it == a_recipe.signals.end()) {
     return Refuse(SignalWhere(a_edit.name), "no such signal");
+  }
+  if (a_edit.cascade) {
+    return ApplyCascade(a_recipe, {ResourceKind::kSignal, a_edit.name});
   }
   const auto counts = CountReferences(a_recipe);
   if (const auto found = counts.signals.find(a_edit.name);
@@ -802,6 +893,9 @@ Refusal Edit(Recipe &a_recipe, const RemoveCurve &a_edit) {
   if (it == a_recipe.curves.end()) {
     return Refuse(CurveWhere(a_edit.name), "no such curve");
   }
+  if (a_edit.cascade) {
+    return ApplyCascade(a_recipe, {ResourceKind::kCurve, a_edit.name});
+  }
   const auto counts = CountReferences(a_recipe);
   if (const auto found = counts.curves.find(a_edit.name);
       found != counts.curves.end() && found->second > 0) {
@@ -816,6 +910,9 @@ Refusal Edit(Recipe &a_recipe, const RemoveMask &a_edit) {
   const auto it = std::ranges::find(a_recipe.masks, a_edit.name, &Mask::name);
   if (it == a_recipe.masks.end()) {
     return Refuse(MaskWhere(a_edit.name), "no such mask");
+  }
+  if (a_edit.cascade) {
+    return ApplyCascade(a_recipe, {ResourceKind::kMask, a_edit.name});
   }
   if (a_edit.force) {
     ForEachMaterialLayer(a_recipe, [&](Layer &a_layer, LayerOwner) {
@@ -839,6 +936,9 @@ Refusal Edit(Recipe &a_recipe, const RemoveSource &a_edit) {
       std::ranges::find(a_recipe.sources, a_edit.name, &Source::name);
   if (it == a_recipe.sources.end()) {
     return Refuse(SourceWhere(a_edit.name), "no such source");
+  }
+  if (a_edit.cascade) {
+    return ApplyCascade(a_recipe, {ResourceKind::kSource, a_edit.name});
   }
   const auto counts = CountReferences(a_recipe);
   if (const auto found = counts.images.find(a_edit.name);
@@ -1064,61 +1164,8 @@ Refusal Edit(Recipe &a_recipe, const ClearOutputs &) {
 Refusal Edit(Recipe &a_recipe, const ClearResources &);
 Refusal Edit(Recipe &a_recipe, const ClearRecipe &);
 
-struct LiteralVisitor : LocatedVisitor {
-  void Reference(Ref &) {}
-  void Scalar(Param &a_param, std::optional<float> a_default) {
-    if (Is<Ref>(a_param)) {
-      a_param = a_default.value_or(0.0f);
-    }
-  }
-  void OptionalScalar(std::optional<Param> &a_param,
-                      std::optional<float> a_default) {
-    if (!Is<Ref>(*a_param)) {
-      return;
-    }
-    if (a_default) {
-      *a_param = *a_default;
-    } else {
-      a_param.reset();
-    }
-  }
-  template <std::size_t N>
-  void Vector(std::variant<std::array<Param, N>, Ref> &a_param,
-              std::optional<std::array<float, N>> a_default) {
-    std::array<Param, N> literal{};
-    const auto fallback = a_default.value_or(std::array<float, N>{});
-    for (std::size_t i = 0; i < N; ++i) {
-      literal[i] = fallback[i];
-    }
-    if (Is<Ref>(a_param)) {
-      a_param = literal;
-      return;
-    }
-    auto &parts = *Get<std::array<Param, N>>(a_param);
-    for (std::size_t i = 0; i < N; ++i) {
-      if (Is<Ref>(parts[i])) {
-        parts[i] = fallback[i];
-      }
-    }
-  }
-  template <std::size_t N>
-  void OptionalVector(
-      std::optional<std::variant<std::array<Param, N>, Ref>> &a_param,
-      std::optional<std::array<float, N>> a_default) {
-    const auto *parts = Get<std::array<Param, N>>(*a_param);
-    const bool names =
-        Is<Ref>(*a_param) ||
-        (parts && std::ranges::any_of(
-                      *parts, [](const Param &p) { return Is<Ref>(p); }));
-    if (!names) {
-      return;
-    }
-    if (a_default) {
-      Vector(*a_param, a_default);
-    } else {
-      a_param.reset();
-    }
-  }
+struct LiteralVisitor : ParamRefVisitor<LiteralVisitor> {
+  template <class Replace> void OnRef(Ref &, Replace a_replace) { a_replace(); }
 };
 
 void RenameOverrides(Recipe &a_recipe, const std::string &a_from,
@@ -1532,6 +1579,49 @@ std::vector<Relationship> RelationshipsOf(const Recipe &a_recipe) {
         relationships.push_back({location, {ResourceKind::kSignal, name}});
       });
   return relationships;
+}
+
+namespace {
+void CollectDependents(const std::vector<Relationship> &a_relationships,
+                       const ResourceRef &a_driver, CascadePlan &a_plan,
+                       std::vector<ResourceRef> &a_pending) {
+  for (const Relationship &relationship : a_relationships) {
+    if (!(relationship.driver == a_driver)) {
+      continue;
+    }
+    Match(
+        relationship.consumer.owner,
+        [&](const ResourceRef &a_owner) {
+          if (std::ranges::find(a_plan.resources, a_owner) ==
+              a_plan.resources.end()) {
+            a_plan.resources.push_back(a_owner);
+            a_pending.push_back(a_owner);
+          }
+        },
+        [&](const LayerOwner &a_owner) {
+          if (std::ranges::find(a_plan.layers, a_owner) ==
+              a_plan.layers.end()) {
+            a_plan.layers.push_back(a_owner);
+          }
+        },
+        [&](const OutputOwner &) { a_plan.blocked.push_back(relationship); },
+        [&](const ShellOwner &) { a_plan.blocked.push_back(relationship); },
+        [&](const VariantOwner &) { a_plan.blocked.push_back(relationship); });
+  }
+}
+} // namespace
+
+CascadePlan PlanCascade(const Recipe &a_recipe, const ResourceRef &a_seed) {
+  const std::vector<Relationship> relationships = RelationshipsOf(a_recipe);
+  CascadePlan plan;
+  plan.resources.push_back(a_seed);
+  std::vector<ResourceRef> pending{a_seed};
+  while (!pending.empty()) {
+    const ResourceRef driver = pending.back();
+    pending.pop_back();
+    CollectDependents(relationships, driver, plan, pending);
+  }
+  return plan;
 }
 
 ReferenceCounts CountReferences(const Recipe &a_recipe) {

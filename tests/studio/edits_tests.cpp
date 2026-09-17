@@ -379,5 +379,56 @@ int main() {
           "sources without parameters are visited and left unchanged");
   }
 
+  {
+    Recipe recipe;
+    recipe.id = "cascade";
+    recipe.sources.push_back(
+        Source{"src", MaterialSource{MaterialChannel::kMetallic}});
+    recipe.masks.push_back(Mask{"m", "@src"});
+    SurfaceOutput out = DefaultOutput(Surface::kMaterial, Slot::kEmissive);
+    Layer masked = DefaultLayer();
+    masked.mask = Ref{"m"};
+    out.stack.push_back(masked);
+    recipe.outputs.push_back(out);
+
+    Recipe refused = recipe;
+    Check(Apply(refused, RemoveSource{"src"}).has_value() && refused == recipe,
+          "removing a referenced source without cascade is refused, unchanged");
+
+    Recipe cascaded = recipe;
+    Check(!Apply(cascaded, RemoveSource{.name = "src", .cascade = true}),
+          "cascade remove of a referenced source applies");
+    const SurfaceOutput *material = Get<SurfaceOutput>(cascaded.outputs[0]);
+    Check(cascaded.sources.empty() && cascaded.masks.empty() && material &&
+              material->stack.empty(),
+          "cascade deletes the source, the mask that reads it, and the layer "
+          "that used the mask");
+  }
+
+  {
+    Recipe recipe;
+    recipe.id = "shell-reset";
+    recipe.signals.push_back(Signal{"drv", ConstantSignal{1.0f}, std::nullopt});
+    recipe.shell.alpha = Param{Ref{"drv"}};
+    const Param defaultAlpha = ShellSettings{}.alpha;
+    Check(!Apply(recipe, RemoveSignal{.name = "drv", .cascade = true}),
+          "cascade removing a signal used only by a shell param succeeds");
+    Check(recipe.signals.empty() && recipe.shell.alpha == defaultAlpha,
+          "a shell param reading the deleted signal is reset to its default, "
+          "not blocked");
+  }
+
+  {
+    Recipe recipe;
+    recipe.id = "flatten";
+    recipe.signals.push_back(Signal{"s", ConstantSignal{2.0f}, std::nullopt});
+    recipe.shell.emissive = Param{Ref{"s"}};
+    Check(!Apply(recipe, ClearResources{}), "ClearResources succeeds");
+    Check(recipe.signals.empty() &&
+              recipe.shell.emissive == ShellSettings{}.emissive,
+          "ClearResources literalizes a shell param reading a signal to its "
+          "default");
+  }
+
   return test::Finish("studio_edits");
 }

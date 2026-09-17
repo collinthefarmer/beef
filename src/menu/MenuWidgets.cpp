@@ -894,6 +894,26 @@ void DetailModal(const char *a_title, const std::function<void()> &a_body) {
   ImGui::EndPopup();
 }
 
+void ConfirmModal(const char *a_title, const std::string &a_message,
+                  const char *a_affirm,
+                  const std::function<void()> &a_onAffirm) {
+  DetailModal(a_title, [&] {
+    ImGui::TextWrapped("%s", a_message.c_str());
+    const float actions =
+        ButtonWidth(NonNull(a_affirm)) + ItemSpacingX() + ButtonWidth("Cancel");
+    RightAligned(actions, [&] {
+      if (ImGui::Button(NonNull(a_affirm))) {
+        a_onAffirm();
+        ImGui::CloseCurrentPopup();
+      }
+      ImGui::SameLine();
+      if (ImGui::Button("Cancel")) {
+        ImGui::CloseCurrentPopup();
+      }
+    });
+  });
+}
+
 void RightAligned(float a_width, const std::function<void()> &a_draw) {
   const float here = ImGui::GetCursorPosX();
   const float edge = here + ImGui::GetContentRegionAvail().x - a_width;
@@ -1086,6 +1106,13 @@ void HelpMarker(const char *a_text) {
   ImGui::TextDisabled("(?)");
   if (ImGui::IsItemHovered()) {
     ImGui::SetTooltip("%s", a_text);
+  }
+}
+
+void LabelWithHelp(std::string_view a_label, std::string_view a_help) {
+  ImGui::TextUnformatted(a_label.data(), a_label.data() + a_label.size());
+  if (!a_help.empty()) {
+    HelpMarker(std::string{a_help}.c_str());
   }
 }
 

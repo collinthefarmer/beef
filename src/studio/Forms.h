@@ -44,6 +44,7 @@ enum class FieldInputKind {
   kText,
   kPlain,
   kValue,
+  kChannels,
 };
 
 enum class FieldCheckKind {
@@ -145,7 +146,7 @@ inline constexpr FieldKindSpec kFieldKinds[]{
      "ch",
      false,
      "channels: any of r g b a, in any order",
-     FieldInputKind::kText,
+     FieldInputKind::kChannels,
      FieldCheckKind::kChannels,
      Swatch::kNone,
      {0.85f, 0.85f, 0.85f}},
@@ -240,6 +241,8 @@ struct FormField {
   std::optional<std::pair<float, float>> workingRange{};
   std::string units{};
   bool integral = false;
+  std::string help{};
+  std::optional<ChannelSet> channelMask{};
   std::optional<std::uint64_t> expectedRevision = std::nullopt;
 };
 
