@@ -8,13 +8,16 @@
 #include "studio/ApplicationRecord.h"
 #include "studio/EditResult.h"
 #include "studio/FileOperation.h"
+#include "studio/GameObjects.h"
 #include "studio/Gesture.h"
 #include "studio/InputCatalog.h"
 #include "studio/PaintCommit.h"
 #include "studio/Relationships.h"
 #include "studio/View.h"
 
+#include <array>
 #include <cstdint>
+#include <memory>
 #include <optional>
 #include <string>
 #include <type_traits>
@@ -313,7 +316,9 @@ struct Snapshot {
   std::vector<LoadedRecipeRow> loadedRecipes;
   std::vector<RecipeRow> documents;
   std::optional<GestureResult> gesture;
-  std::vector<ActorInputInfo> actorInputs;
-  FormID actorInputActorID = 0;
+  std::array<std::shared_ptr<const GameObjectCatalog>, kGameObjectKindCount>
+      catalogs{};
+  FormID catalogEventActor = 0;
+  std::vector<ActorValueSample> actorValueSamples;
 };
 }

@@ -169,12 +169,13 @@ int main() {
   Check(!ConnectInput(Opacity(), {},
                       {InputConnectionKind::kFraction, "", Measure::kCurrent}),
         "missing actor input is refused before creating any signals");
-  const ActorInputInfo stamina = DescribeActorInput("Stamina", "Stamina");
-  Check(stamina.units == "points" && !InputSample(stamina, Measure::kCurrent),
+  const ActorValueHelp stamina = ActorValueHelpOf("Stamina");
+  Check(stamina.units == "points", "known actor-value units are surfaced");
+  Check(stamina.description.find("sprinting") != std::string::npos,
+        "actor-value help carries meaning, not just identity");
+  Check(SampleAt(ActorValueSample{}, Measure::kCurrent) == std::nullopt,
         "missing actor samples remain unavailable rather than fabricated zero");
-  Check(InputMatches(stamina, "stam") && InputMatches(stamina, "sprinting"),
-        "input discovery searches both identity and meaning");
-  Check(DescribeActorInput("CustomUnknown", "").units.empty(),
+  Check(ActorValueHelpOf("CustomUnknown").units.empty(),
         "unknown actor-value units are not invented");
   return test::Finish("studio_inputconnections");
 }

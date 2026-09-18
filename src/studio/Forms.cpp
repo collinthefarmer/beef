@@ -820,12 +820,14 @@ void EfshFields(std::vector<FormField> &a_form, const SignalContext &a_ctx,
 void ActorValueFields(std::vector<FormField> &a_form,
                       const SignalContext &a_ctx,
                       const ActorValueSignal &a_actorValue) {
-  a_form.push_back(TextEntryField(
+  FormField actorValue = TextEntryField(
       {.name = "actorValue",
        .kind = FieldKind::kText,
        .text = a_actorValue.actorValue,
        .bind = BindSignalMember(a_ctx.name, a_ctx.record,
-                                &ActorValueSignal::actorValue, TextOf)}));
+                                &ActorValueSignal::actorValue, TextOf)});
+  actorValue.catalog = GameObjectKind::kActorValue;
+  a_form.push_back(std::move(actorValue));
   a_form.push_back(ChoiceField(
       "measure", std::string{NameOf(kMeasures, a_actorValue.measure)},
       WordsOf(kMeasures),
@@ -859,12 +861,16 @@ void TriggerOriginFields(std::vector<FormField> &a_form,
   Match(
       a_trigger.origin,
       [&](const EventOrigin &a_event) {
-        a_form.push_back(TextEntryField(
+        FormField event = TextEntryField(
             {.name = "event",
              .kind = FieldKind::kText,
              .text = a_event.event,
              .bind = BindTriggerMember(a_ctx.name, a_ctx.record,
-                                       &EventOrigin::event, TextOf)}));
+                                       &EventOrigin::event, TextOf)});
+        event.catalog = GameObjectKind::kAnimEvent;
+        event.names = {std::string{Studio::kHitReceivedEvent},
+                       std::string{Studio::kHitDealtEvent}};
+        a_form.push_back(std::move(event));
         a_form.push_back(TextEntryField(
             {.name = "at",
              .kind = FieldKind::kText,

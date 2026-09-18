@@ -621,6 +621,12 @@ struct SignalGraph::ReferenceTypeChecker {
     }
   }
 
+  void RequireReference(std::string_view reference, std::string message) const {
+    if (reference.empty()) {
+      Reject(std::move(message));
+    }
+  }
+
   void CheckColor(const Vec3Param &color) const {
     if (const auto *reference = Get<Ref>(color)) {
       if (const auto type = MismatchedType(*reference, ValueType::kVec3)) {
@@ -646,17 +652,29 @@ struct SignalGraph::ReferenceTypeChecker {
   void operator()(const TriggerSignal &k) const {
     CheckScalar(k.lifetime, "lifetime");
     if (const auto *when = Get<WhenOrigin>(k.origin)) {
+      RequireReference(when->when.name, "a when trigger names a signal");
       CheckScalarReference(when->when, "when");
     }
   }
 
+  void operator()(const ActorValueSignal &k) const {
+    RequireReference(k.actorValue,
+                     "an actor-value signal names an actor value");
+  }
+
+  void operator()(const DeltaSignal &k) const {
+    RequireReference(k.of.name, "a delta signal reads a signal");
+  }
+
   void operator()(const PayloadSignal &k) const {
+    RequireReference(k.trigger.name, "a payload signal names a trigger");
     CheckTrigger(k.trigger.name,
                  std::format("'trigger' must name a trigger; '@{}' is not one",
                              k.trigger.name));
   }
 
   void operator()(const CounterSignal &k) const {
+    RequireReference(k.trigger.name, "a counter signal names a trigger");
     CheckTrigger(k.trigger.name,
                  std::format("'@{}' must be a trigger", k.trigger.name));
     if (k.reset)
@@ -667,6 +685,7 @@ struct SignalGraph::ReferenceTypeChecker {
   }
 
   void operator()(const AccumulateSignal &k) const {
+    RequireReference(k.trigger.name, "an accumulate signal names a trigger");
     CheckTrigger(k.trigger.name,
                  std::format("'@{}' must be a trigger", k.trigger.name));
     CheckScalar(k.decay, "decay");
@@ -685,6 +704,7 @@ struct SignalGraph::ReferenceTypeChecker {
   }
 
   void operator()(const SmoothSignal &k) const {
+    RequireReference(k.of.name, "a smooth signal reads a signal");
     CheckScalar(k.seconds, "seconds");
   }
   template <class T> void operator()(const T &) const {}

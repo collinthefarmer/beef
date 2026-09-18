@@ -428,5 +428,38 @@ int main() {
           "firing an event over a graph with no trigger records nothing");
   }
 
+  {
+    const std::optional<SignalKind> av = DefaultSignalKind("av");
+    const ActorValueSignal *avSignal =
+        av ? Get<ActorValueSignal>(*av) : nullptr;
+    Check(avSignal != nullptr && avSignal->actorValue == "Health",
+          "a new actor-value signal defaults to a usable actor value");
+    const std::optional<SignalKind> expr = DefaultSignalKind("expr");
+    const ExprSignal *exprSignal = expr ? Get<ExprSignal>(*expr) : nullptr;
+    Check(exprSignal != nullptr && !exprSignal->text.empty(),
+          "a new expression signal defaults to a usable expression");
+  }
+
+  {
+    std::vector<Signal> signals{Signal{"a", ActorValueSignal{}, std::nullopt},
+                                Signal{"d", DeltaSignal{}, std::nullopt}};
+    const auto graph = SignalGraph::Compile(signals, {});
+    Check(HasMessage(graph.Diagnostics(), "names an actor value"),
+          "an incomplete actor-value signal is flagged, not silently accepted");
+    Check(HasMessage(graph.Diagnostics(), "reads a signal"),
+          "an incomplete delta signal is flagged");
+    Check(graph.Inert(0) && graph.Inert(1),
+          "incomplete signals are inert rather than a crash");
+  }
+
+  {
+    std::vector<Signal> signals{
+        Signal{"w", TriggerSignal{WhenOrigin{}}, std::nullopt}};
+    const auto graph = SignalGraph::Compile(signals, {});
+    Check(HasMessage(graph.Diagnostics(), "when trigger names a signal"),
+          "a when trigger with no signal is flagged");
+    Check(graph.Inert(0), "an incomplete when trigger is inert");
+  }
+
   return test::Finish("signals");
 }

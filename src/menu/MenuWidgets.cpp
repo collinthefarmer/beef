@@ -521,6 +521,33 @@ std::string_view LiveTextField(const char *a_key, const char *a_hint,
   return std::string_view{buffer.data()};
 }
 
+const Studio::GameObjectCandidate *
+DrawCandidateRows(const CandidateRowsSpec &a_spec, int &a_id,
+                  std::size_t &a_shown) {
+  const Studio::GameObjectCandidate *picked = nullptr;
+  if (a_spec.catalog == nullptr) {
+    return picked;
+  }
+  for (const Studio::GameObjectCandidate &candidate :
+       a_spec.catalog->candidates) {
+    if (!Studio::CandidateMatches(candidate, a_spec.filter)) {
+      continue;
+    }
+    if (a_spec.cap != 0 && a_shown >= a_spec.cap) {
+      break;
+    }
+    const std::string label =
+        std::string{a_spec.prefix} + Studio::CandidateLabel(candidate);
+    ImGui::PushID(a_id++);
+    if (ImGui::Selectable(label.c_str(), candidate.value == a_spec.current)) {
+      picked = &candidate;
+    }
+    ImGui::PopID();
+    ++a_shown;
+  }
+  return picked;
+}
+
 std::optional<SearchPick> SearchCombo(const SearchComboSpec &a_spec,
                                       std::span<const std::string> a_labels,
                                       std::optional<std::size_t> a_selected) {

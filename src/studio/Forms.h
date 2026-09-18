@@ -3,6 +3,7 @@
 #include "Core.h"
 #include "studio/Edits.h"
 #include "studio/FieldParsing.h"
+#include "studio/GameObjects.h"
 #include "studio/Names.h"
 #include "studio/Panels.h"
 #include "studio/SelectorEdit.h"
@@ -243,6 +244,7 @@ struct FormField {
   bool integral = false;
   std::string help{};
   std::optional<ChannelSet> channelMask{};
+  std::optional<GameObjectKind> catalog{};
   std::optional<std::uint64_t> expectedRevision = std::nullopt;
 };
 

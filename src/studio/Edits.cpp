@@ -531,17 +531,11 @@ Refusal Edit(Recipe &a_recipe, const SetExpression &a_edit) {
   return std::nullopt;
 }
 
-Refusal CheckSignalKind(const Recipe &a_recipe, const std::string &a_where,
-                        const SignalKind &a_kind);
-
 Refusal Edit(Recipe &a_recipe, const SetSignal &a_edit) {
   auto *signal = FindSignalRow(a_recipe, a_edit.signal);
   if (!signal) {
     return Refuse(SignalWhere(a_edit.signal), "no such signal");
   }
-  if (auto problem =
-          CheckSignalKind(a_recipe, SignalWhere(a_edit.signal), a_edit.kind))
-    return problem;
   signal->kind = a_edit.kind;
   return std::nullopt;
 }
@@ -1190,34 +1184,6 @@ void RenameImageRefs(Recipe &a_recipe, std::string_view a_from,
   for (auto &mask : a_recipe.masks) {
     mask.text = RenameInExpression(mask.text, a_from, a_to, false);
   }
-}
-
-Refusal CheckSignalKind(const Recipe &a_recipe, const std::string &a_where,
-                        const SignalKind &a_kind) {
-  SignalKind copy = a_kind;
-  std::vector<std::string> reads;
-  auto collect = [&](Ref &a_ref, const PropertyLocation &) {
-    reads.push_back(a_ref.name);
-  };
-  RefVisitor<decltype(collect)> visitor{collect};
-  VisitSignalParams(copy, visitor);
-  for (const auto &name : reads) {
-    if (!a_recipe.FindSignal(name)) {
-      return Refuse(a_where, std::format("reads unknown signal '@{}'", name));
-    }
-  }
-  if (const auto *expr = Get<ExprSignal>(a_kind)) {
-    return CheckText(a_where, expr->text);
-  }
-  if (const auto *efsh = Get<EfshSignal>(a_kind);
-      efsh && efsh->record.text.empty()) {
-    return Refuse(a_where, "an efsh signal names its effect shader");
-  }
-  if (const auto *av = Get<ActorValueSignal>(a_kind);
-      av && av->actorValue.empty()) {
-    return Refuse(a_where, "an av signal names an actor value");
-  }
-  return std::nullopt;
 }
 
 Refusal Edit(Recipe &a_recipe, const ClearResources &) {

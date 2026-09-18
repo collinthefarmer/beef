@@ -10,10 +10,6 @@
 namespace BetterEnchantmentEffects {
 [[nodiscard]] FormKey FormKeyFor(const RE::TESForm &a_form);
 
-[[nodiscard]] std::string EditorIdOf(const RE::TESForm &a_form);
-
-[[nodiscard]] bool TweaksEditorIdsAvailable();
-
 [[nodiscard]] RE::TESForm *LookupForm(const FormKey &a_key);
 
 template <class Form> [[nodiscard]] Form *LookupForm(const FormKey &a_key) {

@@ -3,6 +3,7 @@
 #include "Identity.h"
 #include "PCH.h"
 #include "engine/EngineForms.h"
+#include "engine/GameObjectService.h"
 #include "engine/TextFile.h"
 #include "recipe/Importer.h"
 #include "recipe/Recipe.h"
@@ -11,7 +12,6 @@
 #include "studio/Presets.h"
 
 #include <algorithm>
-#include <cctype>
 #include <type_traits>
 #include <unordered_map>
 #include <unordered_set>
@@ -110,54 +110,13 @@ bool IsUnder(const std::filesystem::path &a_path,
   return !rel.empty() && rel.native()[0] != '.';
 }
 
-std::string Lower(std::string_view a_text) {
-  std::string out{a_text};
-  for (auto &c : out) {
-    c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
-  }
-  return out;
-}
-
-std::unordered_map<std::string, FormKey> g_editorIds;
-
-template <class Form> void IndexEditorIds(RE::TESDataHandler &a_handler) {
-  for (auto *form : a_handler.GetFormArray<Form>()) {
-    if (!form) {
-      continue;
-    }
-    if (const auto id = EditorIdOf(*form); !id.empty()) {
-      g_editorIds.emplace(Lower(id), FormKeyFor(*form));
-    }
-  }
-}
-
-void IndexEditorIds() {
-  g_editorIds.clear();
-  auto *handler = RE::TESDataHandler::GetSingleton();
-  if (!handler) {
-    return;
-  }
-  IndexEditorIds<RE::TESEffectShader>(*handler);
-  IndexEditorIds<RE::EnchantmentItem>(*handler);
-  IndexEditorIds<RE::EffectSetting>(*handler);
-  IndexEditorIds<RE::BGSKeyword>(*handler);
-  IndexEditorIds<RE::TESObjectARMO>(*handler);
-  IndexEditorIds<RE::TESObjectARMA>(*handler);
-  IndexEditorIds<RE::TESObjectLIGH>(*handler);
-  logger::info("recipes: {} editor IDs indexed{}", g_editorIds.size(),
-               TweaksEditorIdsAvailable()
-                   ? " (po3's Tweaks answers the rest)"
-                   : " (po3's Tweaks not loaded: only the engine's own)");
-}
-
 void ResolveForm(FormRef &a_ref, const std::string &a_id,
                  const std::string &a_where, std::vector<Diagnostic> &a_out) {
   if (a_ref.Resolved() || a_ref.text.empty()) {
     return;
   }
-  if (const auto it = g_editorIds.find(Lower(a_ref.text));
-      it != g_editorIds.end()) {
-    a_ref.key = it->second;
+  if (const std::optional<FormKey> key = ResolveEditorId(a_ref.text)) {
+    a_ref.key = key;
     return;
   }
   if (auto *form = RE::TESForm::LookupByEditorID(a_ref.text)) {
@@ -389,7 +348,7 @@ RecipeStoreStatus LoadRecipes() {
     logger::error("recipes: cannot create {} ({})", root.string(),
                   ec.message());
   }
-  IndexEditorIds();
+  RebuildGameObjectCatalogs();
   std::vector<std::filesystem::path> shipped, saved;
   for (const auto &path : JsonFilesUnder(root)) {
     (IsUnder(path, user) ? saved : shipped).push_back(path);

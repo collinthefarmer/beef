@@ -118,6 +118,17 @@ SearchCombo(const SearchComboSpec &a_spec,
             std::span<const std::string> a_labels,
             std::optional<std::size_t> a_selected = {});
 
+struct CandidateRowsSpec {
+  std::string_view filter;
+  const Studio::GameObjectCatalog *catalog = nullptr;
+  std::string_view current = {};
+  std::string_view prefix = {};
+  std::size_t cap = 0;
+};
+[[nodiscard]] const Studio::GameObjectCandidate *
+DrawCandidateRows(const CandidateRowsSpec &a_spec, int &a_id,
+                  std::size_t &a_shown);
+
 void Badge(Studio::FieldKind a_kind);
 [[nodiscard]] const char *BlendGlyph(Blend a_blend);
 [[nodiscard]] std::optional<Blend> BlendBadge(Blend a_current, Slot a_slot);

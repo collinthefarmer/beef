@@ -1,6 +1,7 @@
 #include "engine/Events.h"
 #include "diagnostics/Trace.h"
 
+#include "engine/GameObjectService.h"
 #include "engine/Manager.h"
 
 namespace BetterEnchantmentEffects {
@@ -56,13 +57,13 @@ public:
       Manager *manager = Manager::GetSingleton();
       if (a_event->target && a_event->target->As<RE::Actor>()) {
         EventRecord record;
-        record.id = "hit.received";
+        record.id = std::string{Studio::kHitReceivedEvent};
         record.payload.value = 1.0f;
         manager->QueueEvent(a_event->target->GetFormID(), std::move(record));
       }
       if (a_event->cause && a_event->cause->As<RE::Actor>()) {
         EventRecord record;
-        record.id = "hit.dealt";
+        record.id = std::string{Studio::kHitDealtEvent};
         record.payload.value = 1.0f;
         manager->QueueEvent(a_event->cause->GetFormID(), std::move(record));
       }
@@ -94,12 +95,13 @@ public:
   ProcessEvent(const RE::BSAnimationGraphEvent *a_event,
                RE::BSTEventSource<RE::BSAnimationGraphEvent> *) override {
     if (a_event && a_event->holder && a_event->tag.c_str()) {
+      const RE::FormID actor = a_event->holder->GetFormID();
+      NoteAnimEvent(actor, a_event->tag.c_str());
       EventRecord record;
       record.id = std::string{"anim."} + a_event->tag.c_str();
       record.payload.arg =
           a_event->payload.c_str() ? a_event->payload.c_str() : "";
-      Manager::GetSingleton()->QueueEvent(a_event->holder->GetFormID(),
-                                          std::move(record));
+      Manager::GetSingleton()->QueueEvent(actor, std::move(record));
     }
     return RE::BSEventNotifyControl::kContinue;
   }

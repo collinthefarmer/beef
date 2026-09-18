@@ -222,8 +222,17 @@ bool SignalKindTunable(SignalKindId a_kind) noexcept {
 
 std::optional<SignalKind> DefaultSignalKind(std::string_view a_name) {
   const auto id = ParseSignalKind(a_name);
-  return id ? AlternativeAt<SignalKind>(static_cast<std::size_t>(*id))
-            : std::nullopt;
+  if (!id) {
+    return std::nullopt;
+  }
+  switch (*id) {
+  case SignalKindId::kActorValue:
+    return ActorValueSignal{"Health", Measure::kCurrent};
+  case SignalKindId::kExpr:
+    return ExprSignal{"1"};
+  default:
+    return AlternativeAt<SignalKind>(static_cast<std::size_t>(*id));
+  }
 }
 
 std::string_view SurfaceName(Surface a_surface) noexcept {

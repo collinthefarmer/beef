@@ -675,11 +675,34 @@ Decompile provenance (`decompiled/WornEnchantmentFX/plugin.c` unless noted):
   from the frozen `src/_old/Manager.cpp`; why one millisecond rather than a
   larger guard is not recorded.
 - Editor IDs: the engine keeps them for a few form types (keywords, magic
-  effects); po3's Tweaks export answers for every type (NOTES 41). At load
-  the store asks for every effect shader, enchantment, magic effect,
-  keyword, armor, addon and light and builds the reverse map. A form key is
-  written `0x92DED~Skyrim.esm` (po3's convention), file compared
-  case-insensitively.
+  effects); po3's Tweaks export answers for every type (NOTES 41), reached
+  through `engine/Tweaks.h` (`EditorIdOf`), which resolves po3's
+  `GetFormEditorID` once via `GetProcAddress` on the `po3_Tweaks` module and
+  falls back to the form's own id. A form key is written `0x92DED~Skyrim.esm`
+  (po3's convention), file compared case-insensitively.
+- The Game Object Service (`engine/GameObjectService.h`) owns the reverse
+  editor-id map and the discovery catalogs. At load `RebuildGameObjectCatalogs`
+  walks every keyword, enchantment, effect shader, magic effect, armor and
+  light into a candidate list per kind, and the same pass fills the
+  editor-id → form-key map the store resolves against (`ResolveEditorId`);
+  armor addons are indexed for resolution only, since they are resolvable but
+  not a pickable kind. Catalogs are immutable and cached behind `shared_ptr`,
+  keyed by kind (form kinds are session-stable, actor values rebuilt lazily);
+  the snapshot carries the pointer, not the strings. A candidate's committed
+  value is its editor id, else its form key; its display is the editor id,
+  else the full name (via `TESFullName`), else the form key. Without po3's
+  Tweaks, editor ids for shaders, enchantments, magic effects and armor are
+  mostly empty, so those catalogs read sparser and fall back to full names.
+- Anim-event discovery is by observation, not enumeration: `NoteAnimEvent`
+  records each `anim.<tag>` the animation sink sees per actor, so the
+  `kAnimEvent` catalog lists only events that have fired since watching began
+  (`AnimEventCatalogOf`, keyed by actor, rebuilt when a new tag appears).
+- `BuildActorValueSamples` emits one sample per `kActorValue` candidate in the
+  catalog's order (or none, when no wearer is loaded), so a reader index-aligns
+  `actorValueSamples[i]` with the catalog's candidate `i` rather than looking up
+  by name. The built-in trigger events `hit.received`/`hit.dealt` are defined
+  once in `studio/GameObjects.h` and referenced by the engine emitter, the
+  wizard, and the event picker.
 - Actor value names resolve through the engine's table once per name; the
   environment holds handles and form ids, never engine pointers across
   ticks, and answers zero for anything it cannot reach. `av` readings:

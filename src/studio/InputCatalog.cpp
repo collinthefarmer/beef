@@ -2,8 +2,6 @@
 
 #include "studio/Names.h"
 
-#include <utility>
-
 namespace BetterEnchantmentEffects::Studio {
 namespace {
 struct ResourceInfo {
@@ -17,36 +15,28 @@ inline constexpr ResourceInfo kResources[]{
 };
 }
 
-ActorInputInfo DescribeActorInput(std::string a_name, std::string a_label) {
-  ActorInputInfo result;
-  result.name = std::move(a_name);
-  result.label = a_label.empty() ? result.name : std::move(a_label);
-  result.description = "Actor value read from the wearer. Bounds depend on the "
-                       "value and installed mods.";
+ActorValueHelp ActorValueHelpOf(std::string_view a_name) {
+  ActorValueHelp help;
+  help.description = "Actor value read from the wearer. Bounds depend on the "
+                     "value and installed mods.";
   for (const ResourceInfo &resource : kResources) {
-    if (result.name.size() == resource.name.size() &&
-        NameMatches(result.name, resource.name)) {
-      result.description = resource.description;
-      result.units = "points";
+    if (a_name.size() == resource.name.size() &&
+        NameMatches(a_name, resource.name)) {
+      help.description = std::string{resource.description};
+      help.units = "points";
       break;
     }
   }
-  return result;
+  return help;
 }
 
-std::optional<float> InputSample(const ActorInputInfo &a_input,
-                                 Measure a_measure) {
+std::optional<float> SampleAt(const ActorValueSample &a_sample,
+                              Measure a_measure) {
   for (std::size_t i = 0; i < kInputMeasures.size(); ++i) {
     if (kInputMeasures[i].measure == a_measure) {
-      return a_input.samples[i];
+      return a_sample.samples[i];
     }
   }
   return std::nullopt;
-}
-
-bool InputMatches(const ActorInputInfo &a_input, std::string_view a_filter) {
-  return NameMatches(a_input.name, a_filter) ||
-         NameMatches(a_input.label, a_filter) ||
-         NameMatches(a_input.description, a_filter);
 }
 }

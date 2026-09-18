@@ -29,6 +29,10 @@ Current, and a new module is expected to follow them.
 
 Open work. Each carries its own status line.
 
+- [wip/game-object-service-2026-09-17.md](wip/game-object-service-2026-09-17.md)
+  — the design for the game-object discovery service (UI backlog item 4): the
+  eight kinds, the request-driven keyed cache of immutable catalogs, and the
+  fold-in of the editor-ID index and the actor-value path.
 - [ui-v2-proposal.md](ui-v2-proposal.md) — the frozen UI v2 design baseline.
 - [ui-v2-implementation-plan.md](ui-v2-implementation-plan.md) — the slices that
   implement that baseline, and which seam each slice owns.

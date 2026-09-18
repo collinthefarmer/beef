@@ -4,7 +4,6 @@
 
 #include <array>
 #include <optional>
-#include <span>
 #include <string>
 #include <string_view>
 
@@ -26,18 +25,17 @@ inline constexpr std::array<InputMeasureInfo, std::size(kMeasures)>
          "Permanent value plus temporary modifier, before damage."},
     }};
 
-struct ActorInputInfo {
+struct ActorValueSample {
   std::string name;
-  std::string label;
-  std::string description;
-  std::string units;
   std::array<std::optional<float>, kInputMeasures.size()> samples{};
 };
 
-[[nodiscard]] ActorInputInfo DescribeActorInput(std::string a_name,
-                                                std::string a_label);
-[[nodiscard]] std::optional<float> InputSample(const ActorInputInfo &a_input,
-                                               Measure a_measure);
-[[nodiscard]] bool InputMatches(const ActorInputInfo &a_input,
-                                std::string_view a_filter);
+struct ActorValueHelp {
+  std::string description;
+  std::string units;
+};
+
+[[nodiscard]] ActorValueHelp ActorValueHelpOf(std::string_view a_name);
+[[nodiscard]] std::optional<float> SampleAt(const ActorValueSample &a_sample,
+                                            Measure a_measure);
 }

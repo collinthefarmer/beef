@@ -6,6 +6,7 @@
 #include "recipe/Recipe.h"
 #include "studio/Edits.h"
 #include "studio/Forms.h"
+#include "studio/GameObjects.h"
 #include "studio/Intent.h"
 #include "studio/Names.h"
 #include "studio/Selection.h"
@@ -121,41 +122,94 @@ CollectKeyCandidates(const Studio::PieceRow &a_piece,
   return candidates;
 }
 
-void DrawKeyAdd(const Studio::PieceRow &a_piece,
-                const Studio::RecipeRow &a_recipe, Studio::Intents &a_out) {
-  const std::vector<KeyCandidate> candidates =
-      CollectKeyCandidates(a_piece, a_recipe);
-  std::vector<std::string> labels;
-  labels.reserve(candidates.size());
-  for (const KeyCandidate &candidate : candidates) {
-    labels.push_back(candidate.label);
+struct KeyCatalogKind {
+  KeyKind key;
+  Studio::GameObjectKind catalog;
+};
+constexpr KeyCatalogKind kKeyCatalogKinds[]{
+    {KeyKind::kKeyword, Studio::GameObjectKind::kKeyword},
+    {KeyKind::kEnchantment, Studio::GameObjectKind::kEnchantment},
+    {KeyKind::kMagicEffect, Studio::GameObjectKind::kMagicEffect},
+    {KeyKind::kEffectShader, Studio::GameObjectKind::kEffectShader},
+    {KeyKind::kArmor, Studio::GameObjectKind::kArmor},
+};
+constexpr std::size_t kKeyResultCap = 40;
+
+std::optional<RecipeKey> DrawKeyCatalogRows(const Frame &a_frame,
+                                            std::string_view a_filter,
+                                            int &a_id, std::size_t &a_shown) {
+  std::optional<RecipeKey> chosen;
+  if (a_filter.empty() || a_frame.snapshot == nullptr) {
+    return chosen;
   }
-  const auto picked = SearchCombo(
-      {.id = "##add-key",
-       .preview = "add a key",
-       .hint = "filter, or type a keyword editor id",
-       .width = Studio::Width::Fill(),
-       .customVerb = "Add keyword",
-       .customTip = "a keyword by editor id, resolved against the loaded "
-                    "plugins; the recipe then applies to every piece carrying "
-                    "it",
-       .emptyHint =
-           "the piece carries no other keys — type a keyword editor id"},
-      labels);
-  if (!picked) {
-    return;
+  for (const KeyCatalogKind &kind : kKeyCatalogKinds) {
+    const auto &catalog =
+        a_frame.snapshot->catalogs[static_cast<std::size_t>(kind.catalog)];
+    const std::string prefix = std::format("{}: ", KeyKindName(kind.key));
+    if (const Studio::GameObjectCandidate *picked =
+            DrawCandidateRows({.filter = a_filter,
+                               .catalog = catalog.get(),
+                               .prefix = prefix,
+                               .cap = kKeyResultCap},
+                              a_id, a_shown)) {
+      chosen = RecipeKey{kind.key, FormRef::From(picked->value)};
+    }
   }
-  if (const auto *index = Get<std::size_t>(*picked)) {
-    Studio::Post(a_out, a_recipe.id, Studio::AddKey{candidates[*index].key});
-  } else if (const auto *custom = Get<std::string>(*picked)) {
-    RecipeKey key;
-    key.kind = KeyKind::kKeyword;
-    key.operand = FormRef::From(*custom);
-    Studio::Post(a_out, a_recipe.id, Studio::AddKey{key});
-  }
+  return chosen;
 }
 
-void DrawKeys(const Studio::PieceRow &a_piece,
+void DrawKeyAdd(const Frame &a_frame, const Studio::PieceRow &a_piece,
+                const Studio::RecipeRow &a_recipe, Studio::Intents &a_out) {
+  NextItemWidth(Studio::Width::Fill());
+  if (!ImGui::BeginCombo("##add-key", "add a key")) {
+    return;
+  }
+  const std::vector<KeyCandidate> candidates =
+      CollectKeyCandidates(a_piece, a_recipe);
+  const std::string_view filter =
+      LiveTextField("add-key-filter", "filter, or type an editor id",
+                    Studio::Width::Fill(), 1.0f);
+  int id = 0;
+  bool any = false;
+  const auto add = [&](const RecipeKey &a_key, const std::string &a_label) {
+    ImGui::PushID(id++);
+    if (ImGui::Selectable(a_label.c_str(), false)) {
+      Studio::Post(a_out, a_recipe.id, Studio::AddKey{a_key});
+      ImGui::CloseCurrentPopup();
+    }
+    ImGui::PopID();
+    any = true;
+  };
+  for (const KeyCandidate &candidate : candidates) {
+    if (Studio::NameMatches(candidate.label, filter)) {
+      add(candidate.key, candidate.label);
+    }
+  }
+  std::size_t shown = 0;
+  if (const std::optional<RecipeKey> key =
+          DrawKeyCatalogRows(a_frame, filter, id, shown)) {
+    Studio::Post(a_out, a_recipe.id, Studio::AddKey{*key});
+    ImGui::CloseCurrentPopup();
+  }
+  any = any || shown > 0;
+  if (shown >= kKeyResultCap) {
+    Dim("refine your search for more");
+  }
+  if (!filter.empty()) {
+    if (any) {
+      ImGui::Separator();
+    }
+    RecipeKey key;
+    key.kind = KeyKind::kKeyword;
+    key.operand = FormRef::From(filter);
+    add(key, std::format("Add keyword \"{}\"", filter));
+  } else if (!any) {
+    Dim("type to search keywords, forms and enchantments");
+  }
+  ImGui::EndCombo();
+}
+
+void DrawKeys(const Frame &a_frame, const Studio::PieceRow &a_piece,
               const Studio::RecipeRow &a_recipe, Studio::Intents &a_out) {
   if (!Rule(Studio::RuleSpec{
                 .text = "Keys", .collapsible = true, .leadingSpace = false})
@@ -174,7 +228,7 @@ void DrawKeys(const Studio::PieceRow &a_piece,
   DrawKeyRows(a_recipe, a_out, table);
   table.Cell();
   table.Cell();
-  DrawKeyAdd(a_piece, a_recipe, a_out);
+  DrawKeyAdd(a_frame, a_piece, a_recipe, a_out);
   table.Cell();
   table.Cell();
   table.End();
@@ -376,7 +430,7 @@ void DrawRecipeSettings(const Frame &a_frame) {
       [&]() { RenameRecipeButton(a_frame); }, [&]() { Dim(recipe.id); }));
   [[maybe_unused]] const std::optional<std::size_t> detail =
       DrawForm("recipe-header", Studio::RecipeHeaderForm(recipe), a_frame);
-  DrawKeys(a_frame.piece ? *a_frame.piece : Studio::PieceRow{}, recipe,
+  DrawKeys(a_frame, a_frame.piece ? *a_frame.piece : Studio::PieceRow{}, recipe,
            *a_frame.intents);
   DrawDiagnostics(recipe.problems, recipe.heldBack);
 }

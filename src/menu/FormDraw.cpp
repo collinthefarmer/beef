@@ -10,6 +10,7 @@
 #include "recipe/Words.h"
 #include "studio/Edits.h"
 #include "studio/FieldCheck.h"
+#include "studio/GameObjects.h"
 #include "studio/Intent.h"
 #include "studio/MenuState.h"
 #include "studio/Names.h"
@@ -297,8 +298,77 @@ std::optional<std::string> TextInput(const FormField &a_field, float a_scale,
   return TextField("value", a_field.text, {Width::Fill(), a_scale}, check);
 }
 
+void DrawCatalogList(const FormField &a_field, const Frame &a_frame,
+                     std::string_view a_filter) {
+  for (const std::string &name : a_field.names) {
+    if (Studio::NameMatches(name, a_filter) &&
+        ImGui::Selectable(name.c_str(), name == a_field.text)) {
+      CommitField(a_field, name, a_frame);
+      ImGui::CloseCurrentPopup();
+    }
+  }
+  const auto &catalog =
+      a_frame.snapshot->catalogs[static_cast<std::size_t>(*a_field.catalog)];
+  int id = 0;
+  std::size_t shown = 0;
+  if (const Studio::GameObjectCandidate *picked =
+          DrawCandidateRows({.filter = a_filter,
+                             .catalog = catalog.get(),
+                             .current = a_field.text},
+                            id, shown)) {
+    CommitField(a_field, picked->value, a_frame);
+    ImGui::CloseCurrentPopup();
+  }
+  if (catalog && catalog->candidates.empty() && !catalog->sourceNote.empty()) {
+    Dim(catalog->sourceNote);
+  }
+}
+
+void DrawCatalogPopup(const FormField &a_field, const Frame &a_frame) {
+  if (!ImGui::BeginPopup("catalog")) {
+    return;
+  }
+  const std::string filter{LiveTextField(
+      "filter", "search", Studio::Width::Px(240.0f), a_frame.scale)};
+  if (ImGui::BeginChild(
+          "list", ImGui::ImVec2{260.0f * a_frame.scale, 240.0f * a_frame.scale},
+          0, 0)) {
+    DrawCatalogList(a_field, a_frame, filter);
+  }
+  ImGui::EndChild();
+  ImGui::EndPopup();
+}
+
+void DrawCatalogField(const FormField &a_field, const Frame &a_frame,
+                      const Studio::Width &a_width) {
+  const FieldScope fieldScope(a_field.name);
+  Badge(a_field.kind);
+  const float side = ImGui::GetFrameHeight();
+  if (ImGui::Button("v##catalog", ImGui::ImVec2{side, side})) {
+    ImGui::OpenPopup("catalog");
+  }
+  ImGui::SameLine(0.0f, 0.0f);
+  const auto check =
+      [&](const std::string &a_text) -> std::optional<std::string> {
+    const std::optional<Diagnostic> diagnostic =
+        CheckField(a_field, a_text, *a_frame.names);
+    return diagnostic ? std::optional<std::string>{ProblemText(diagnostic)}
+                      : std::nullopt;
+  };
+  if (const auto text =
+          TextField("value", a_field.text, {a_width, a_frame.scale}, check)) {
+    CommitField(a_field, *text, a_frame);
+  }
+  DrawCatalogPopup(a_field, a_frame);
+}
+
 void DrawFieldInput(const FormField &a_field, const Frame &a_frame,
                     const Studio::Width &a_width = Studio::Width::Fill()) {
+  if (a_field.catalog && a_frame.snapshot != nullptr &&
+      a_frame.names != nullptr) {
+    DrawCatalogField(a_field, a_frame, a_width);
+    return;
+  }
   if (FieldHasExpressionShelf(a_field)) {
     const FieldScope fieldScope(a_field.name);
     Badge(a_field.kind);

@@ -1,4 +1,4 @@
-# clang-tidy baseline, 113 sources, 67 findings
+# clang-tidy baseline, 116 sources, 67 findings
 # regenerate: tools/tidy.sh && tools/tidy-baseline.sh
 
 # readability-function-size                            57
@@ -12,17 +12,17 @@ src/engine/ManagerApply.cpp:388: [readability-function-size]
 src/engine/ManagerApply.cpp:467: [readability-function-size]
 src/engine/ManagerEvents.cpp:28: [readability-function-size]
 src/engine/ManagerInspection.cpp:8: [readability-function-size]
-src/engine/ManagerSnapshot.cpp:422: [readability-function-size]
+src/engine/ManagerSnapshot.cpp:438: [readability-function-size]
 src/engine/ManagerTick.cpp:104: [readability-function-size]
 src/engine/ManagerTick.cpp:213: [readability-function-size]
 src/engine/ManagerTick.cpp:231: [readability-function-size]
 src/engine/ManagerTick.cpp:274: [readability-function-cognitive-complexity]
 src/engine/ManagerTick.cpp:274: [readability-function-size]
 src/engine/RecipeEditor.cpp:751: [readability-function-size]
-src/engine/RecipeStore.cpp:519: [readability-function-size]
+src/engine/RecipeStore.cpp:478: [readability-function-size]
 src/engine/SessionQueue.cpp:54: [readability-function-size]
 src/menu/MenuWidgets.cpp:81: [performance-no-int-to-ptr]
-src/menu/MenuWidgets.cpp:686: [readability-function-size]
+src/menu/MenuWidgets.cpp:713: [readability-function-size]
 src/menu/PaintPanel.cpp:419: [readability-function-size]
 src/menu/PaintPanel.cpp:589: [readability-function-size]
 src/menu/PatternChooser.cpp:115: [readability-function-size]

@@ -1,9 +1,11 @@
 #include "menu/InputBrowser.h"
 
 #include "menu/MenuWidgets.h"
+#include "studio/GameObjects.h"
 #include "studio/InputCatalog.h"
 #include "studio/InputConnections.h"
 #include "studio/Intent.h"
+#include "studio/Names.h"
 
 #pragma clang diagnostic push
 #pragma clang diagnostic ignored "-Wmismatched-tags"
@@ -16,6 +18,7 @@
 #include <optional>
 #include <string>
 #include <string_view>
+#include <vector>
 
 namespace ImGui = ImGuiMCP;
 
@@ -98,22 +101,77 @@ BuildEdits(const Frame &a_frame, const Studio::FormField *a_field,
   return true;
 }
 
-[[nodiscard]] const Studio::ActorInputInfo *
-FindActorInput(const Frame &a_frame, std::string_view a_name) {
-  for (const Studio::ActorInputInfo &input : a_frame.snapshot->actorInputs) {
-    if (input.name == a_name) {
-      return &input;
+struct ActorValueView {
+  std::string name;
+  std::string label;
+  Studio::ActorValueHelp help;
+  const Studio::ActorValueSample *sample = nullptr;
+};
+
+[[nodiscard]] const Studio::GameObjectCatalog *
+ActorValueCatalog(const Frame &a_frame) {
+  return a_frame.snapshot
+      ->catalogs[static_cast<std::size_t>(Studio::GameObjectKind::kActorValue)]
+      .get();
+}
+
+[[nodiscard]] ActorValueView
+ViewOf(const Frame &a_frame, const Studio::GameObjectCandidate &a_candidate,
+       std::size_t a_index) {
+  const std::vector<Studio::ActorValueSample> &samples =
+      a_frame.snapshot->actorValueSamples;
+  const Studio::ActorValueSample *sample =
+      a_index < samples.size() ? &samples[a_index] : nullptr;
+  return {a_candidate.value, a_candidate.display,
+          Studio::ActorValueHelpOf(a_candidate.value), sample};
+}
+
+[[nodiscard]] std::vector<ActorValueView> ActorValues(const Frame &a_frame) {
+  std::vector<ActorValueView> views;
+  const Studio::GameObjectCatalog *catalog = ActorValueCatalog(a_frame);
+  if (!catalog) {
+    return views;
+  }
+  views.reserve(catalog->candidates.size());
+  for (std::size_t i = 0; i < catalog->candidates.size(); ++i) {
+    views.push_back(ViewOf(a_frame, catalog->candidates[i], i));
+  }
+  return views;
+}
+
+[[nodiscard]] std::optional<ActorValueView>
+FindActorValue(const Frame &a_frame, std::string_view a_name) {
+  const Studio::GameObjectCatalog *catalog = ActorValueCatalog(a_frame);
+  if (!catalog) {
+    return std::nullopt;
+  }
+  for (std::size_t i = 0; i < catalog->candidates.size(); ++i) {
+    if (catalog->candidates[i].value == a_name) {
+      return ViewOf(a_frame, catalog->candidates[i], i);
     }
   }
-  return nullptr;
+  return std::nullopt;
+}
+
+[[nodiscard]] bool MatchesActorValue(const ActorValueView &a_view,
+                                     std::string_view a_filter) {
+  return Studio::NameMatches(a_view.name, a_filter) ||
+         Studio::NameMatches(a_view.label, a_filter) ||
+         Studio::NameMatches(a_view.help.description, a_filter);
+}
+
+[[nodiscard]] std::optional<float> SampleFor(const ActorValueView &a_view,
+                                             Measure a_measure) {
+  return a_view.sample ? Studio::SampleAt(*a_view.sample, a_measure)
+                       : std::nullopt;
 }
 
 void DrawWearerHeader(const Frame &a_frame) {
-  if (a_frame.snapshot->actorInputActorID == 0) {
+  if (a_frame.snapshot->catalogEventActor == 0) {
     ImGui::TextWrapped("No wearer selected. Inputs can still be connected.");
   } else if (a_frame.piece != nullptr &&
              a_frame.piece->ref.actorID ==
-                 a_frame.snapshot->actorInputActorID) {
+                 a_frame.snapshot->catalogEventActor) {
     ImGui::Text("Live samples: %s", a_frame.piece->actorName.c_str());
   }
 }
@@ -132,7 +190,7 @@ void ConnectButton(const char *a_label, const Frame &a_frame,
   }
 }
 
-void DrawMeasures(const Studio::ActorInputInfo &a_input, const Frame &a_frame,
+void DrawMeasures(const ActorValueView &a_input, const Frame &a_frame,
                   const Studio::FormField *a_field) {
   for (const Studio::InputMeasureInfo &measure : Studio::kInputMeasures) {
     const std::string name{NameOf(kMeasures, measure.measure)};
@@ -141,23 +199,23 @@ void DrawMeasures(const Studio::ActorInputInfo &a_input, const Frame &a_frame,
         "Connect", a_frame, a_field,
         {Studio::InputConnectionKind::kMeasure, a_input.name, measure.measure});
     ImGui::SameLine();
-    const auto sample = Studio::InputSample(a_input, measure.measure);
+    const auto sample = SampleFor(a_input, measure.measure);
     const std::string value =
         sample ? std::format("{:.4g}", *sample) : "unavailable";
     ImGui::Text("%s: %s %s", name.c_str(), value.c_str(),
-                a_input.units.c_str());
+                a_input.help.units.c_str());
     ImGui::TextWrapped("%.*s", static_cast<int>(measure.description.size()),
                        measure.description.data());
     ImGui::PopID();
   }
 }
 
-void DrawActorInput(const Studio::ActorInputInfo &a_input, const Frame &a_frame,
+void DrawActorInput(const ActorValueView &a_input, const Frame &a_frame,
                     const Studio::FormField *a_field) {
   ImGui::PushID(a_input.name.c_str());
   const std::string label = std::format("{} ({})", a_input.label, a_input.name);
   if (ImGui::TreeNode(label.c_str())) {
-    ImGui::TextWrapped("%s", a_input.description.c_str());
+    ImGui::TextWrapped("%s", a_input.help.description.c_str());
     ImGui::TextWrapped("No fixed range is assumed. Live samples describe the "
                        "selected wearer.");
     DrawMeasures(a_input, a_frame, a_field);
@@ -179,12 +237,13 @@ void DrawActorInput(const Studio::ActorInputInfo &a_input, const Frame &a_frame,
 
 void DrawMatchingInputs(const Frame &a_frame, const Studio::FormField *a_field,
                         std::string_view a_filter) {
-  for (const Studio::ActorInputInfo &input : a_frame.snapshot->actorInputs) {
-    if (Studio::InputMatches(input, a_filter)) {
+  const std::vector<ActorValueView> values = ActorValues(a_frame);
+  for (const ActorValueView &input : values) {
+    if (MatchesActorValue(input, a_filter)) {
       DrawActorInput(input, a_frame, a_field);
     }
   }
-  if (a_frame.snapshot->actorInputs.empty()) {
+  if (values.empty()) {
     ImGui::TextWrapped("Actor-value catalog is not available yet.");
   }
 }
@@ -232,11 +291,12 @@ void DrawActorValueStep(const Frame &a_frame, WizardState &a_state) {
           "wizard-inputs",
           ImGui::ImVec2{520.0f * a_frame.scale, 240.0f * a_frame.scale}, 0,
           0)) {
-    if (a_frame.snapshot->actorInputs.empty()) {
+    const std::vector<ActorValueView> values = ActorValues(a_frame);
+    if (values.empty()) {
       ImGui::TextWrapped("Actor-value catalog is not available yet.");
     }
-    for (const Studio::ActorInputInfo &input : a_frame.snapshot->actorInputs) {
-      if (!Studio::InputMatches(input, filter)) {
+    for (const ActorValueView &input : values) {
+      if (!MatchesActorValue(input, filter)) {
         continue;
       }
       ImGui::PushID(input.name.c_str());
@@ -245,12 +305,12 @@ void DrawActorValueStep(const Frame &a_frame, WizardState &a_state) {
         a_state.actorValue = input.name;
         a_state.step = WizardStep::kMapping;
       }
-      const auto sample = Studio::InputSample(input, Measure::kCurrent);
+      const auto sample = SampleFor(input, Measure::kCurrent);
       if (sample) {
         ImGui::Text("Now: %s %s", std::format("{:.4g}", *sample).c_str(),
-                    input.units.c_str());
+                    input.help.units.c_str());
       }
-      ImGui::TextWrapped("%s", input.description.c_str());
+      ImGui::TextWrapped("%s", input.help.description.c_str());
       ImGui::PopID();
     }
   }
@@ -258,19 +318,19 @@ void DrawActorValueStep(const Frame &a_frame, WizardState &a_state) {
 }
 
 void DrawMeasurePicker(const Frame &a_frame, WizardState &a_state) {
-  const Studio::ActorInputInfo *input =
-      FindActorInput(a_frame, a_state.actorValue);
+  const std::optional<ActorValueView> input =
+      FindActorValue(a_frame, a_state.actorValue);
   for (const Studio::InputMeasureInfo &measure : Studio::kInputMeasures) {
     const std::string name{NameOf(kMeasures, measure.measure)};
     ImGui::PushID(name.c_str());
     if (ImGui::Selectable(name.c_str(), a_state.measure == measure.measure)) {
       a_state.measure = measure.measure;
     }
-    if (input != nullptr) {
-      const auto sample = Studio::InputSample(*input, measure.measure);
+    if (input) {
+      const auto sample = SampleFor(*input, measure.measure);
       const std::string value =
           sample ? std::format("{:.4g}", *sample) : "unavailable";
-      ImGui::Text("Now: %s %s", value.c_str(), input->units.c_str());
+      ImGui::Text("Now: %s %s", value.c_str(), input->help.units.c_str());
     }
     ImGui::TextWrapped("%.*s", static_cast<int>(measure.description.size()),
                        measure.description.data());

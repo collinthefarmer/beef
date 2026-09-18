@@ -4,7 +4,9 @@
 #include "SettingsFile.h"
 #include "engine/Clock.h"
 #include "engine/EngineForms.h"
+#include "engine/GameObjectService.h"
 #include "engine/RecipeStore.h"
+#include "engine/Tweaks.h"
 #include "render/Binding.h"
 #include "render/Compositor.h"
 #include "render/SourceSampling.h"
@@ -25,6 +27,20 @@
 
 namespace BetterEnchantmentEffects {
 namespace {
+void PublishCatalogs(Studio::Snapshot &a_out, std::uint32_t a_actor) {
+  a_out.catalogEventActor = a_actor;
+  for (std::size_t kind = 0; kind < Studio::kGameObjectKindCount; ++kind) {
+    const auto value = static_cast<Studio::GameObjectKind>(kind);
+    a_out.catalogs[kind] = value == Studio::GameObjectKind::kAnimEvent
+                               ? AnimEventCatalogOf(a_actor)
+                               : GameObjectCatalogOf(value);
+  }
+  a_out.actorValueSamples =
+      BuildActorValueSamples(*a_out.catalogs[static_cast<std::size_t>(
+                                 Studio::GameObjectKind::kActorValue)],
+                             a_actor);
+}
+
 Studio::TextureHandle TextureHandleOf(RE::NiSourceTexture *a_texture) {
   return static_cast<Studio::TextureHandle>(
       reinterpret_cast<std::uintptr_t>(a_texture));
@@ -465,8 +481,7 @@ Manager::BuildSnapshot(const std::optional<Studio::PieceRef> &a_request,
               .Build(matches));
     }
   }
-  out.actorInputActorID = a_request ? a_request->actorID : 0;
-  out.actorInputs = BuildActorInputCatalog(out.actorInputActorID);
+  PublishCatalogs(out, a_request ? a_request->actorID : 0);
   AppendLoadedRecipes(out);
   const auto document =
       std::ranges::find(LoadedRecipes(), a_document, &Recipe::id);
