@@ -381,6 +381,16 @@ int main() {
 
   {
     Recipe recipe;
+    recipe.id = "kindSwitch";
+    recipe.sources.push_back(Source{"src", MaterialSource{}});
+    Check(!Apply(recipe, SetSource{"src", ImageSource{}}),
+          "SetSource may switch to an incomplete image kind, filled in later");
+    Check(Is<ImageSource>(recipe.sources.front().kind),
+          "the source kind is now image");
+  }
+
+  {
+    Recipe recipe;
     recipe.id = "cascade";
     recipe.sources.push_back(
         Source{"src", MaterialSource{MaterialChannel::kMetallic}});

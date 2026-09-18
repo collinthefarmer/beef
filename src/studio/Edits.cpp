@@ -647,11 +647,6 @@ Refusal Edit(Recipe &a_recipe, const SetSource &a_edit) {
   if (!source) {
     return Refuse(SourceWhere(a_edit.name), "no such source");
   }
-  const SignalGraph graph = GraphOf(a_recipe);
-  const RowTypes rows{a_recipe, graph};
-  if (auto problem =
-          FirstError(CheckSource(rows, Source{a_edit.name, a_edit.kind})))
-    return problem;
   source->kind = a_edit.kind;
   return std::nullopt;
 }
