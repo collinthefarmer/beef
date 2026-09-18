@@ -287,6 +287,14 @@ private:
     std::optional<BakePipeline> bake;
   };
 
+  struct FullScreenDraw {
+    REX::W32::ID3D11PixelShader *shader = nullptr;
+    std::span<REX::W32::ID3D11ShaderResourceView *const> srvs;
+    std::span<REX::W32::ID3D11Buffer *const> constants;
+  };
+  void DrawFullScreen(const RenderPass &a_pass, RenderTarget &a_target,
+                      const FullScreenDraw &a_draw);
+
   bool CompileShaders(GpuResources &a_resources);
 
   std::optional<float> ReadBackMean(RenderTarget &a_target);
