@@ -44,14 +44,6 @@ void LogRecipeDiagnostics(std::string_view a_id,
   }
 }
 
-std::optional<Diagnostic>
-DiagnosticOf(const std::string &a_where,
-             const std::optional<std::string> &a_message) {
-  if (!a_message) {
-    return std::nullopt;
-  }
-  return MakeDiagnostic(Severity::kError, a_where, *a_message);
-}
 }
 
 struct RecipeEditor::FileOperationJournal {

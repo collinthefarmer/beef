@@ -871,6 +871,10 @@ struct Diagnostic {
 [[nodiscard]] Diagnostic
 MakeDiagnostic(Severity a_severity, std::string a_where, std::string a_message);
 
+[[nodiscard]] std::optional<Diagnostic>
+DiagnosticOf(std::string_view a_where,
+             const std::optional<std::string> &a_message);
+
 struct Reporter {
   std::vector<Diagnostic> &out;
   std::string where;

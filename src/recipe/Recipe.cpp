@@ -10,6 +10,15 @@ Diagnostic MakeDiagnostic(Severity a_severity, std::string a_where,
   return Diagnostic{a_severity, std::move(a_where), std::move(a_message)};
 }
 
+std::optional<Diagnostic>
+DiagnosticOf(std::string_view a_where,
+             const std::optional<std::string> &a_message) {
+  if (!a_message) {
+    return std::nullopt;
+  }
+  return MakeDiagnostic(Severity::kError, std::string{a_where}, *a_message);
+}
+
 const Signal *Recipe::FindSignal(std::string_view a_name) const noexcept {
   return FindByName(signals, a_name);
 }

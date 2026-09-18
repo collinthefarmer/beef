@@ -214,14 +214,6 @@ CheckChannels(std::string_view a_text) {
   return std::nullopt;
 }
 
-[[nodiscard]] std::optional<Diagnostic>
-DiagnosticOf(std::string_view a_where, std::optional<std::string> a_message) {
-  if (!a_message) {
-    return std::nullopt;
-  }
-  return MakeDiagnostic(Severity::kError, std::string{a_where},
-                        std::move(*a_message));
-}
 }
 
 std::optional<Diagnostic> CheckSignalValue(std::string_view a_text,
