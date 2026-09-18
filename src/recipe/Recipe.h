@@ -466,6 +466,19 @@ struct MaterialClustersSource {
   std::uint32_t iterations = 32;
   [[nodiscard]] bool operator==(const MaterialClustersSource &) const = default;
 };
+
+struct ClusterWeightField {
+  const char *name;
+  float MaterialClustersSource::*member;
+};
+inline constexpr ClusterWeightField kClusterWeightFields[]{
+    {"roughness", &MaterialClustersSource::roughness},
+    {"metallic", &MaterialClustersSource::metallic},
+    {"occlusion", &MaterialClustersSource::occlusion},
+    {"reflectance", &MaterialClustersSource::reflectance},
+    {"luma", &MaterialClustersSource::luma},
+};
+
 using SourceKind =
     std::variant<ImageSource, MaterialSource, BakeSource, UvSource,
                  DistanceSource, RippleSource, MaterialClustersSource>;

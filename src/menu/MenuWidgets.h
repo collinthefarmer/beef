@@ -173,6 +173,8 @@ void RightAligned(float a_width, const std::function<void()> &a_draw);
 void Disabled(bool a_disabled, const std::function<void()> &a_draw);
 void HeldLabel(const char *a_text);
 
+[[nodiscard]] std::string RecipeLabel(const Studio::RecipeRow &a_recipe);
+
 [[nodiscard]] bool RemoveButton(std::size_t a_references);
 [[nodiscard]] bool CloseButton();
 bool SquareToggle(const char *a_label, bool &a_value,

@@ -119,8 +119,13 @@ RE::MagicItem *EnchantmentForInstance(LiveActor &a_state,
   return nullptr;
 }
 
-std::pair<TextureSize, TextureSize>
-RuntimeSizes(const Settings &a_settings, const MaterialInputs &a_material) {
+struct RuntimeTextureSizes {
+  TextureSize requested;
+  TextureSize native;
+};
+
+RuntimeTextureSizes RuntimeSizes(const Settings &a_settings,
+                                 const MaterialInputs &a_material) {
   std::uint32_t native = 0;
   const auto consider = [&native](const TextureRef &a_texture) {
     if (const std::optional<TextureLab::Extent> extent =

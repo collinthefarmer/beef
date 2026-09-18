@@ -789,23 +789,27 @@ std::string CascadeWhere(const ResourceRef &a_ref) {
   return a_ref.name;
 }
 
+template <class Collection>
+void EraseByName(Collection &a_collection, std::string_view a_name) {
+  std::erase_if(a_collection,
+                [&](const std::ranges::range_value_t<Collection> &a_row) {
+                  return a_row.name == a_name;
+                });
+}
+
 void EraseResource(Recipe &a_recipe, const ResourceRef &a_ref) {
   switch (a_ref.kind) {
   case ResourceKind::kSignal:
-    std::erase_if(a_recipe.signals,
-                  [&](const Signal &a_s) { return a_s.name == a_ref.name; });
+    EraseByName(a_recipe.signals, a_ref.name);
     break;
   case ResourceKind::kSource:
-    std::erase_if(a_recipe.sources,
-                  [&](const Source &a_s) { return a_s.name == a_ref.name; });
+    EraseByName(a_recipe.sources, a_ref.name);
     break;
   case ResourceKind::kMask:
-    std::erase_if(a_recipe.masks,
-                  [&](const Mask &a_m) { return a_m.name == a_ref.name; });
+    EraseByName(a_recipe.masks, a_ref.name);
     break;
   case ResourceKind::kCurve:
-    std::erase_if(a_recipe.curves,
-                  [&](const Curve &a_c) { return a_c.name == a_ref.name; });
+    EraseByName(a_recipe.curves, a_ref.name);
     break;
   case ResourceKind::kCount:
     break;
@@ -857,43 +861,56 @@ Refusal ApplyCascade(Recipe &a_recipe, const ResourceRef &a_seed) {
   ResetDeletedRefs(a_recipe, deleted);
   return std::nullopt;
 }
+
+const std::map<std::string, std::size_t> &
+CountsFor(const ReferenceCounts &a_counts, ResourceKind a_kind) {
+  switch (a_kind) {
+  case ResourceKind::kSignal:
+    return a_counts.signals;
+  case ResourceKind::kCurve:
+    return a_counts.curves;
+  case ResourceKind::kSource:
+  case ResourceKind::kMask:
+  case ResourceKind::kCount:
+    break;
+  }
+  return a_counts.images;
+}
+
+template <class Collection>
+Refusal RemoveResource(Recipe &a_recipe, Collection &a_collection,
+                       const ResourceRef &a_ref, bool a_cascade) {
+  const auto it = std::ranges::find(
+      a_collection, a_ref.name, &std::ranges::range_value_t<Collection>::name);
+  if (it == a_collection.end()) {
+    return Refuse(
+        CascadeWhere(a_ref),
+        std::format("no such {}", kResourceKindNames[IndexOf(a_ref.kind)]));
+  }
+  if (a_cascade) {
+    return ApplyCascade(a_recipe, a_ref);
+  }
+  const ReferenceCounts counts = CountReferences(a_recipe);
+  const std::map<std::string, std::size_t> &refs =
+      CountsFor(counts, a_ref.kind);
+  if (const auto found = refs.find(a_ref.name);
+      found != refs.end() && found->second > 0) {
+    return Refuse(CascadeWhere(a_ref),
+                  std::format("referenced in {} place(s)", found->second));
+  }
+  a_collection.erase(it);
+  return std::nullopt;
+}
 } // namespace
 
 Refusal Edit(Recipe &a_recipe, const RemoveSignal &a_edit) {
-  const auto it =
-      std::ranges::find(a_recipe.signals, a_edit.name, &Signal::name);
-  if (it == a_recipe.signals.end()) {
-    return Refuse(SignalWhere(a_edit.name), "no such signal");
-  }
-  if (a_edit.cascade) {
-    return ApplyCascade(a_recipe, {ResourceKind::kSignal, a_edit.name});
-  }
-  const auto counts = CountReferences(a_recipe);
-  if (const auto found = counts.signals.find(a_edit.name);
-      found != counts.signals.end() && found->second > 0) {
-    return Refuse(SignalWhere(a_edit.name),
-                  std::format("referenced in {} place(s)", found->second));
-  }
-  a_recipe.signals.erase(it);
-  return std::nullopt;
+  return RemoveResource(a_recipe, a_recipe.signals,
+                        {ResourceKind::kSignal, a_edit.name}, a_edit.cascade);
 }
 
 Refusal Edit(Recipe &a_recipe, const RemoveCurve &a_edit) {
-  const auto it = std::ranges::find(a_recipe.curves, a_edit.name, &Curve::name);
-  if (it == a_recipe.curves.end()) {
-    return Refuse(CurveWhere(a_edit.name), "no such curve");
-  }
-  if (a_edit.cascade) {
-    return ApplyCascade(a_recipe, {ResourceKind::kCurve, a_edit.name});
-  }
-  const auto counts = CountReferences(a_recipe);
-  if (const auto found = counts.curves.find(a_edit.name);
-      found != counts.curves.end() && found->second > 0) {
-    return Refuse(CurveWhere(a_edit.name),
-                  std::format("referenced in {} place(s)", found->second));
-  }
-  a_recipe.curves.erase(it);
-  return std::nullopt;
+  return RemoveResource(a_recipe, a_recipe.curves,
+                        {ResourceKind::kCurve, a_edit.name}, a_edit.cascade);
 }
 
 Refusal Edit(Recipe &a_recipe, const RemoveMask &a_edit) {
@@ -922,22 +939,8 @@ Refusal Edit(Recipe &a_recipe, const RemoveMask &a_edit) {
 }
 
 Refusal Edit(Recipe &a_recipe, const RemoveSource &a_edit) {
-  const auto it =
-      std::ranges::find(a_recipe.sources, a_edit.name, &Source::name);
-  if (it == a_recipe.sources.end()) {
-    return Refuse(SourceWhere(a_edit.name), "no such source");
-  }
-  if (a_edit.cascade) {
-    return ApplyCascade(a_recipe, {ResourceKind::kSource, a_edit.name});
-  }
-  const auto counts = CountReferences(a_recipe);
-  if (const auto found = counts.images.find(a_edit.name);
-      found != counts.images.end() && found->second > 0) {
-    return Refuse(SourceWhere(a_edit.name),
-                  std::format("referenced in {} place(s)", found->second));
-  }
-  a_recipe.sources.erase(it);
-  return std::nullopt;
+  return RemoveResource(a_recipe, a_recipe.sources,
+                        {ResourceKind::kSource, a_edit.name}, a_edit.cascade);
 }
 
 Refusal Edit(Recipe &a_recipe, const AddLight &) {

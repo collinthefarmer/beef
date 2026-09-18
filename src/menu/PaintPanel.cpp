@@ -54,11 +54,6 @@ void Refuse(std::string_view a_field, const std::string &a_text) {
   logger::warn("{} not applied: '{}' does not parse", a_field, a_text);
 }
 
-[[nodiscard]] std::string RecipeLabel(const Studio::RecipeRow &a_recipe) {
-  return a_recipe.pinned ? std::format("{} (pinned here)", a_recipe.id)
-                         : a_recipe.id;
-}
-
 void RecipeCombo(const Studio::PieceRow &a_piece,
                  const Studio::RecipeRow &a_recipe, const Frame &a_frame) {
   if (!ImGui::BeginCombo("##recipe", RecipeLabel(a_recipe).c_str())) {

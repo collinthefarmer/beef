@@ -1,5 +1,6 @@
 #include "SettingsFile.h"
 
+#include "Core.h"
 #include "Identity.h"
 #include "SettingsPublication.h"
 #include "diagnostics/Trace.h"
@@ -12,39 +13,14 @@ namespace BetterEnchantmentEffects {
 namespace {
 SettingsPublication g_settings;
 
-std::string_view TrimIni(std::string_view a_text) {
-  while (!a_text.empty() &&
-         std::isspace(static_cast<unsigned char>(a_text.front()))) {
-    a_text.remove_prefix(1);
-  }
-  while (!a_text.empty() &&
-         std::isspace(static_cast<unsigned char>(a_text.back()))) {
-    a_text.remove_suffix(1);
-  }
-  return a_text;
-}
-
-bool EqualsIgnoreCase(std::string_view a_lhs, std::string_view a_rhs) {
-  if (a_lhs.size() != a_rhs.size()) {
-    return false;
-  }
-  for (std::size_t i = 0; i < a_lhs.size(); ++i) {
-    if (std::tolower(static_cast<unsigned char>(a_lhs[i])) !=
-        std::tolower(static_cast<unsigned char>(a_rhs[i]))) {
-      return false;
-    }
-  }
-  return true;
-}
-
 std::optional<std::string_view> IniValue(std::string_view a_text,
                                          std::string_view a_key) {
   std::size_t pos = 0;
   while (pos <= a_text.size()) {
     const auto newline = a_text.find('\n', pos);
-    const auto line = TrimIni(a_text.substr(
-        pos, newline == std::string_view::npos ? std::string_view::npos
-                                               : newline - pos));
+    const auto line = Trim(a_text.substr(pos, newline == std::string_view::npos
+                                                  ? std::string_view::npos
+                                                  : newline - pos));
     pos = newline == std::string_view::npos ? a_text.size() + 1 : newline + 1;
     if (line.empty() || line.front() == ';' || line.front() == '#' ||
         line.front() == '[') {
@@ -54,11 +30,11 @@ std::optional<std::string_view> IniValue(std::string_view a_text,
     if (eq == std::string_view::npos) {
       continue;
     }
-    if (EqualsIgnoreCase(TrimIni(line.substr(0, eq)), a_key)) {
-      auto value = TrimIni(line.substr(eq + 1));
+    if (EqualsIgnoreCase(Trim(line.substr(0, eq)), a_key)) {
+      auto value = Trim(line.substr(eq + 1));
       if (const auto comment = value.find(';');
           comment != std::string_view::npos) {
-        value = TrimIni(value.substr(0, comment));
+        value = Trim(value.substr(0, comment));
       }
       return value;
     }

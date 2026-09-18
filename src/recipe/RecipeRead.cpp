@@ -651,19 +651,14 @@ bool ClusterWeightsFrom(Reader &a_r, MaterialClustersSource &a_k,
   }
   bool ok = true;
   Reader wr(*w, a_ctx);
-  for (const auto &[field, weight] :
-       {std::pair{"roughness", &a_k.roughness},
-        std::pair{"metallic", &a_k.metallic},
-        std::pair{"occlusion", &a_k.occlusion},
-        std::pair{"reflectance", &a_k.reflectance},
-        std::pair{"luma", &a_k.luma}}) {
-    if (auto x = wr.Number(field)) {
+  for (const ClusterWeightField &field : kClusterWeightFields) {
+    if (auto x = wr.Number(field.name)) {
       if (*x < 0.0f || *x > kMaxChannelWeight) {
-        a_ctx.Error(
-            std::format("'weights.{}' is 0..{}", field, kMaxChannelWeight));
+        a_ctx.Error(std::format("'weights.{}' is 0..{}", field.name,
+                                kMaxChannelWeight));
         ok = false;
       } else {
-        *weight = *x;
+        a_k.*field.member = *x;
       }
     }
   }

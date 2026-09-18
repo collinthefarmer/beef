@@ -7,23 +7,6 @@
 #include <utility>
 
 namespace BetterEnchantmentEffects {
-namespace {
-float ClusterWeight(const MaterialClustersSource &a_source,
-                    std::string_view a_field) noexcept {
-  if (a_field == "roughness")
-    return a_source.roughness;
-  if (a_field == "metallic")
-    return a_source.metallic;
-  if (a_field == "occlusion")
-    return a_source.occlusion;
-  if (a_field == "reflectance")
-    return a_source.reflectance;
-  if (a_field == "luma")
-    return a_source.luma;
-  return 0.0f;
-}
-}
-
 std::string DescribeSource(const SourceKind &a_kind) {
   return Match(
       a_kind,
@@ -95,14 +78,10 @@ std::string DescribeSource(const SourceKind &a_kind) {
         const MaterialClustersSource defaults;
         std::string text =
             std::format("materialClusters, {} clusters", s.clusters);
-        for (const auto &[weight, field] :
-             {std::pair{s.roughness, "roughness"},
-              std::pair{s.metallic, "metallic"},
-              std::pair{s.occlusion, "occlusion"},
-              std::pair{s.reflectance, "reflectance"},
-              std::pair{s.luma, "luma"}}) {
-          if (weight != ClusterWeight(defaults, field)) {
-            text += std::format(", {} {}", field, weight);
+        for (const ClusterWeightField &field : kClusterWeightFields) {
+          const float weight = s.*field.member;
+          if (weight != defaults.*field.member) {
+            text += std::format(", {} {}", field.name, weight);
           }
         }
         if (s.seed != defaults.seed) {
@@ -330,11 +309,9 @@ json MaterialClustersToJson(const MaterialClustersSource &k) {
             static_cast<std::uint32_t>(defaults.clusters));
   json weights = json::object();
   Writer ww{weights};
-  ww.WriteNumberIf("roughness", k.roughness, defaults.roughness);
-  ww.WriteNumberIf("metallic", k.metallic, defaults.metallic);
-  ww.WriteNumberIf("occlusion", k.occlusion, defaults.occlusion);
-  ww.WriteNumberIf("reflectance", k.reflectance, defaults.reflectance);
-  ww.WriteNumberIf("luma", k.luma, defaults.luma);
+  for (const ClusterWeightField &field : kClusterWeightFields) {
+    ww.WriteNumberIf(field.name, k.*field.member, defaults.*field.member);
+  }
   if (!weights.empty())
     o["weights"] = std::move(weights);
   w.WriteIf("seed", k.seed, defaults.seed);

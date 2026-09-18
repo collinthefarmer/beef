@@ -1043,6 +1043,11 @@ void HeldLabel(const char *a_text) {
   ImGui::EndDisabled();
 }
 
+std::string RecipeLabel(const Studio::RecipeRow &a_recipe) {
+  return a_recipe.pinned ? std::format("{} (pinned here)", a_recipe.id)
+                         : a_recipe.id;
+}
+
 bool RemoveButton(std::size_t a_references) {
   const float side = RowButtonWidth();
   if (a_references > 0) {

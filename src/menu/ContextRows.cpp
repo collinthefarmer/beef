@@ -34,11 +34,6 @@ using ImGuiMCP::ImVec2;
 namespace BetterEnchantmentEffects::Menu {
 namespace {
 
-[[nodiscard]] std::string RecipeLabel(const Studio::RecipeRow &a_recipe) {
-  return a_recipe.pinned ? std::format("{} (pinned here)", a_recipe.id)
-                         : a_recipe.id;
-}
-
 void RecipeCombo(const Frame &a_frame, const char *a_label) {
   const std::string preview = a_frame.recipe ? RecipeLabel(*a_frame.recipe)
                                              : SelectionOf(a_frame).recipeID;

@@ -170,20 +170,16 @@ LightPlan PlanLights(std::span<const PlacedRecipe> a_placed,
 
 const SlotPlan *SlotPlanOf(const GeometryPlan &a_plan, Surface a_surface,
                            Slot a_slot) noexcept {
-  for (const SlotPlan &slot : a_plan.slots) {
-    if (slot.surface == a_surface && slot.slot == a_slot) {
-      return &slot;
-    }
-  }
-  return nullptr;
+  return FindIf(a_plan.slots, [&](const SlotPlan &a_candidate) {
+    return a_candidate.surface == a_surface && a_candidate.slot == a_slot;
+  });
 }
 
 std::optional<SlotContribution> ScalarOwnerOf(const SlotPlan &a_plan,
                                               ScalarField a_field) noexcept {
-  for (const ScalarOwner &owner : a_plan.scalars) {
-    if (owner.field == a_field) {
-      return owner.from;
-    }
+  if (const ScalarOwner *owner =
+          FindBy(a_plan.scalars, a_field, &ScalarOwner::field)) {
+    return owner->from;
   }
   return std::nullopt;
 }

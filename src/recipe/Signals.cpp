@@ -837,15 +837,11 @@ std::vector<Diagnostic> CheckSource(const RowTypes &a_rows,
           report.Error(
               std::format("'iterations' is 1..{}", kMaxClusterIterations));
         }
-        for (const auto &[weight, field] :
-             {std::pair{s.roughness, "roughness"},
-              std::pair{s.metallic, "metallic"},
-              std::pair{s.occlusion, "occlusion"},
-              std::pair{s.reflectance, "reflectance"},
-              std::pair{s.luma, "luma"}}) {
+        for (const ClusterWeightField &field : kClusterWeightFields) {
+          const float weight = s.*field.member;
           if (weight < 0.0f || weight > kMaxChannelWeight) {
-            report.Error(
-                std::format("'weights.{}' is 0..{}", field, kMaxChannelWeight));
+            report.Error(std::format("'weights.{}' is 0..{}", field.name,
+                                     kMaxChannelWeight));
           }
         }
       },
