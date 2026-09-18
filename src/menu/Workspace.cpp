@@ -94,6 +94,8 @@ void DrawSurfaceAdd(const Frame &a_frame, Surface a_surface) {
       if (ImGui::Selectable(std::string{SlotName(slot)}.c_str())) {
         Studio::Post(*a_frame.intents, a_frame.recipe->id,
                      Studio::AddOutput{a_surface, slot, {}});
+        a_frame.state->pendingSelection =
+            Studio::OutputSubject{a_frame.recipe->outputs.size()};
         ImGui::CloseCurrentPopup();
       }
     }
@@ -193,6 +195,8 @@ void DrawOutputNode(const Frame &a_frame, const Studio::OutputRow &a_output,
       Studio::Post(*a_frame.intents, a_frame.recipe->id,
                    Studio::AddLayer{a_output.index, Studio::DefaultLayer(),
                                     a_output.layers.size()});
+      a_frame.state->pendingSelection =
+          Studio::LayerSubject{a_output.index, a_output.layers.size()};
     }
     ImGui::PopID();
   }
