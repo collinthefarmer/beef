@@ -200,32 +200,6 @@ bool SlotWritable(Surface a_surface, ShellMaterial a_shell,
   return true;
 }
 
-bool BlendOnSlot(Slot a_slot, Blend a_blend) noexcept {
-  const auto *row = RowOf(kBlends, a_blend);
-  return row && (!row->normalStackOnly || a_slot == Slot::kNormal);
-}
-
-std::span<const ScalarField> ScalarsFor(Slot a_slot) noexcept {
-  const auto *row = RowOf(kSlots, a_slot);
-  return row ? row->scalars : std::span<const ScalarField>{};
-}
-
-bool ScalarNeeded(Slot a_slot, ScalarField a_field) noexcept {
-  const auto *row = RowOf(kSlots, a_slot);
-  return row && row->scalarsRequired &&
-         std::ranges::contains(row->scalars, a_field);
-}
-
-const std::optional<Param> *ScalarMemberOf(const SlotScalars &a_scalars,
-                                           ScalarField a_field) noexcept {
-  const auto *row = RowOf(kScalarFields, a_field);
-  if (!row) {
-    return nullptr;
-  }
-  const auto *member = Get<std::optional<Param> SlotScalars::*>(row->member);
-  return member ? &(a_scalars.**member) : nullptr;
-}
-
 void CheckScalar(const RowTypes &a_rows, const Reporter &a_report,
                  const Param &a_param, std::string_view a_field) {
   const auto *ref = Get<Ref>(a_param);
@@ -898,7 +872,7 @@ std::vector<Diagnostic> CheckLayer(const RowTypes &a_rows, const Layer &a_layer,
     report.Error(
         std::format("'mask' names unknown mask '@{}'", a_layer.mask->name));
   }
-  if (!BlendOnSlot(a_slot, a_layer.blend)) {
+  if (!BlendAllowed(a_slot, a_layer.blend)) {
     report.Error(std::format("blend '{}' is valid only on the normal stack",
                              NameOf(kBlends, a_layer.blend)));
   }
@@ -908,24 +882,24 @@ std::vector<Diagnostic> CheckLayer(const RowTypes &a_rows, const Layer &a_layer,
 namespace {
 void CheckSurfaceScalars(const RowTypes &a_rows, const SurfaceOutput &a_m,
                          const Reporter &a_report) {
-  for (const auto field : ScalarsFor(a_m.slot)) {
+  for (const auto field : ScalarsOf(a_m.slot)) {
     const auto name = NameOf(kScalarFields, field);
     if (field == ScalarField::kColor) {
       if (a_m.scalars.color) {
         CheckVector<3>(a_rows, a_report, *a_m.scalars.color, "color", true);
-      } else if (ScalarNeeded(a_m.slot, field)) {
+      } else if (ScalarRequired(a_m.slot, field)) {
         a_report.Error(std::format("slot '{}' needs '{}'",
                                    NameOf(kSlots, a_m.slot), name));
       }
       continue;
     }
-    const std::optional<Param> *param = ScalarMemberOf(a_m.scalars, field);
+    const std::optional<Param> *param = ScalarOf(a_m.scalars, field);
     if (!param) {
       continue;
     }
     if (*param) {
       CheckScalar(a_rows, a_report, **param, name);
-    } else if (ScalarNeeded(a_m.slot, field)) {
+    } else if (ScalarRequired(a_m.slot, field)) {
       a_report.Error(
           std::format("slot '{}' needs '{}'", NameOf(kSlots, a_m.slot), name));
     }
