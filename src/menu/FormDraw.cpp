@@ -93,10 +93,7 @@ void PostSelector(const Frame &a_frame, std::size_t a_output, bool a_light,
 
 [[nodiscard]] std::optional<SelectorKind> ClauseKindCombo(SelectorKind a_kind,
                                                           float a_scale) {
-  std::vector<std::string> names;
-  for (const Named<SelectorKind> &row : kSelectorKinds) {
-    names.emplace_back(row.name);
-  }
+  const std::vector<std::string> names = WordsOf(kSelectorKinds);
   const std::string current{NameOf(kSelectorKinds, a_kind)};
   if (const auto chosen = ChoiceCombo("kind", current, names,
                                       {Width::Px(WidestOf(names)), a_scale})) {

@@ -246,10 +246,10 @@ void InstallSurfaces(LiveActor &a_state, LiveGeometry &a_bound,
   if (a_bound.binding.shell) {
     std::optional<std::size_t> ownerInstance;
     if (a_bound.binding.shellOwner) {
-      if (const std::optional<InstanceId> owner = InstanceOfPlaced(
-              a_state.plan, a_bound.placements,
-              static_cast<std::size_t>(*a_bound.binding.shellOwner))) {
-        ownerInstance = static_cast<std::size_t>(*owner);
+      if (const std::optional<InstanceId> owner =
+              InstanceOfPlaced(a_state.plan, a_bound.placements,
+                               IndexOf(*a_bound.binding.shellOwner))) {
+        ownerInstance = IndexOf(*owner);
       }
     }
     if (ownerInstance && *ownerInstance < a_state.instances.size() &&
@@ -279,7 +279,7 @@ void MarkReplaced(LiveActor &a_state, LiveGeometry &a_bound) {
       if (const std::optional<std::size_t> replacer = ReplacerOf(slot, c)) {
         if (const std::optional<InstanceId> instance =
                 InstanceOfPlaced(a_state.plan, a_bound.placements, *replacer)) {
-          const std::size_t instanceIndex = static_cast<std::size_t>(*instance);
+          const std::size_t instanceIndex = IndexOf(*instance);
           if (instanceIndex < a_state.instances.size() &&
               a_state.instances[instanceIndex].recipe) {
             replacerId = a_state.instances[instanceIndex].recipe->id;

@@ -1,5 +1,7 @@
 #include "planners/ActorPlanning.h"
 
+#include "Core.h"
+
 #include <algorithm>
 #include <cstddef>
 #include <optional>
@@ -50,7 +52,7 @@ InstanceFor(ActorPlan &a_plan, RecipeId a_recipe,
             const std::optional<FormKey> &a_enchantment, int a_priority) {
   if (const std::optional<InstanceId> existing =
           FindInstance(a_plan, a_recipe, a_enchantment)) {
-    Instance &instance = a_plan.instances[static_cast<std::size_t>(*existing)];
+    Instance &instance = a_plan.instances[IndexOf(*existing)];
     instance.priority = std::max(instance.priority, a_priority);
     return *existing;
   }

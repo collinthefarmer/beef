@@ -1,15 +1,9 @@
 #include "planners/TextureIdentity.h"
 
-#include <cctype>
+#include "Core.h"
 
 namespace BetterEnchantmentEffects {
-std::string ImageCacheKey(std::string_view a_path) {
-  std::string out{a_path};
-  for (char &c : out) {
-    c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
-  }
-  return out;
-}
+std::string ImageCacheKey(std::string_view a_path) { return Lower(a_path); }
 
 bool IsPlaceholderExtent(std::uint32_t a_width,
                          std::uint32_t a_height) noexcept {

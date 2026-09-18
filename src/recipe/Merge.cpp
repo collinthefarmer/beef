@@ -4,11 +4,6 @@
 
 namespace BetterEnchantmentEffects {
 namespace {
-template <class Source>
-[[nodiscard]] Source SourceOf(std::size_t a_index) noexcept {
-  return static_cast<Source>(a_index);
-}
-
 std::vector<std::size_t> PriorityOrder(std::span<const PlacedRecipe> a_placed) {
   std::vector<std::size_t> order(a_placed.size());
   for (std::size_t i = 0; i < order.size(); ++i) {
@@ -132,7 +127,7 @@ GeometryPlan PlanGeometry(std::span<const PlacedRecipe> a_placed) {
       }
       SlotPlanFor(plan, *output)
           .chain.push_back(
-              SlotContribution{SourceOf<SlotContributor>(placed), index});
+              SlotContribution{FromIndex<SlotContributor>(placed), index});
     }
   }
   for (SlotPlan &slot : plan.slots) {
@@ -163,7 +158,7 @@ LightPlan PlanLights(std::span<const PlacedRecipe> a_placed,
     if (!light) {
       continue;
     }
-    const LightContribution contribution{SourceOf<LightContributor>(placed),
+    const LightContribution contribution{FromIndex<LightContributor>(placed),
                                          index};
     plan.shown.push_back(contribution);
     flagged.push_back(Flagged<LightContribution>{contribution, light->replace});

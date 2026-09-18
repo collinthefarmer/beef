@@ -482,7 +482,7 @@ inline constexpr std::size_t kSourceKindCount = 7;
 static_assert(kSourceKindCount == std::variant_size_v<SourceKind>);
 [[nodiscard]] inline SourceKindId
 SourceKindIdOf(const SourceKind &a_kind) noexcept {
-  return static_cast<SourceKindId>(a_kind.index());
+  return FromIndex<SourceKindId>(a_kind.index());
 }
 
 struct Source {

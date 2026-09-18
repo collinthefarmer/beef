@@ -4,7 +4,6 @@
 
 #include <algorithm>
 #include <array>
-#include <cctype>
 #include <cmath>
 #include <cstdlib>
 #include <format>
@@ -53,26 +52,6 @@ constexpr std::array kTable{
                 &Settings::textureScale, 0, 0, W::kCombo, true,
                 kTextureScaleNames},
 };
-
-std::string_view Trim(std::string_view a_text) {
-  while (!a_text.empty() &&
-         std::isspace(static_cast<unsigned char>(a_text.front()))) {
-    a_text.remove_prefix(1);
-  }
-  while (!a_text.empty() &&
-         std::isspace(static_cast<unsigned char>(a_text.back()))) {
-    a_text.remove_suffix(1);
-  }
-  return a_text;
-}
-
-std::string Lower(std::string_view a_text) {
-  std::string out{a_text};
-  for (auto &c : out) {
-    c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
-  }
-  return out;
-}
 
 std::optional<bool> ParseBool(std::string_view a_value) {
   const auto v = Lower(a_value);
@@ -152,7 +131,7 @@ std::optional<TextureScale> TextureScaleFromString(std::string_view a_text) {
   const auto text = Lower(Trim(a_text));
   for (std::size_t i = 0; i < std::size(kTextureScaleNames); ++i) {
     if (text == Lower(kTextureScaleNames[i])) {
-      return static_cast<TextureScale>(i);
+      return FromIndex<TextureScale>(i);
     }
   }
   return std::nullopt;

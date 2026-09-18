@@ -1,7 +1,8 @@
 #include "diagnostics/Trace.h"
 
+#include "Core.h"
+
 #include <algorithm>
-#include <array>
 #include <chrono>
 #include <format>
 #include <memory>
@@ -16,11 +17,23 @@ namespace {
 std::atomic<std::uint64_t> nextID{1};
 std::atomic<std::uint64_t> session{0};
 thread_local std::optional<Context> context;
-constexpr std::array<std::string_view, 16> names{
-    "startup", "settings", "recipe",      "command", "page",
-    "queue",   "load",     "application", "retire",  "binding",
-    "restore", "texture",  "shell",       "preview", "capture_failure",
-    "invalid"};
+constexpr Named<Event> kEventNames[]{
+    {Event::kStartup, "startup"},
+    {Event::kSettings, "settings"},
+    {Event::kRecipe, "recipe"},
+    {Event::kCommand, "command"},
+    {Event::kPage, "page"},
+    {Event::kQueue, "queue"},
+    {Event::kLoad, "load"},
+    {Event::kApplication, "application"},
+    {Event::kRetire, "retire"},
+    {Event::kBinding, "binding"},
+    {Event::kRestore, "restore"},
+    {Event::kTexture, "texture"},
+    {Event::kShell, "shell"},
+    {Event::kPreview, "preview"},
+    {Event::kCaptureFailure, "capture_failure"},
+};
 }
 
 Recorder::Recorder(std::uint64_t a_segmentBytes, std::uint64_t a_segmentsKept)
@@ -106,7 +119,6 @@ void Recorder::Record(Event a_event, Context a_context,
       ++status_.dropped;
       return;
     }
-    const auto index = static_cast<std::size_t>(a_event);
     const auto now = std::chrono::system_clock::now().time_since_epoch();
     std::ostringstream thread;
     thread << std::this_thread::get_id();
@@ -134,7 +146,7 @@ void Recorder::Record(Event a_event, Context a_context,
         {"thread", thread.str()},
         {"session", a_context.session},
         {"command", a_context.command},
-        {"event", index < names.size() ? names[index] : names.back()},
+        {"event", NameOf(kEventNames, a_event)},
         {"fields", std::move(fields)},
         {"truncated", truncated},
         {"dropped", status_.dropped}};

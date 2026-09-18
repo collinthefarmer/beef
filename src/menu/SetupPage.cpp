@@ -76,7 +76,7 @@ void MarkReapply(bool a_changed) {
     for (std::size_t i = 0; i < a_desc.items.size(); ++i) {
       const std::string item{a_desc.items[i]};
       if (ImGui::Selectable(item.c_str(), selected == i)) {
-        a_value = static_cast<TextureScale>(i);
+        a_value = FromIndex<TextureScale>(i);
         changed = true;
       }
     }

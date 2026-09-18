@@ -1,6 +1,7 @@
 #pragma once
 
 #include <algorithm>
+#include <cctype>
 #include <cmath>
 #include <cstddef>
 #include <cstdint>
@@ -96,6 +97,35 @@ enum class ShaderChannel : std::uint32_t {
   return a_x < 0.0f ? 0.0f : (a_x > 1.0f ? 1.0f : a_x);
 }
 
+[[nodiscard]] inline std::string_view Trim(std::string_view a_text) noexcept {
+  while (!a_text.empty() &&
+         std::isspace(static_cast<unsigned char>(a_text.front()))) {
+    a_text.remove_prefix(1);
+  }
+  while (!a_text.empty() &&
+         std::isspace(static_cast<unsigned char>(a_text.back()))) {
+    a_text.remove_suffix(1);
+  }
+  return a_text;
+}
+
+[[nodiscard]] inline std::string Lower(std::string_view a_text) {
+  std::string out{a_text};
+  for (char &c : out) {
+    c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
+  }
+  return out;
+}
+
+[[nodiscard]] inline bool EqualsIgnoreCase(std::string_view a_lhs,
+                                           std::string_view a_rhs) noexcept {
+  return a_lhs.size() == a_rhs.size() &&
+         std::ranges::equal(a_lhs, a_rhs, [](char a_x, char a_y) {
+           return std::tolower(static_cast<unsigned char>(a_x)) ==
+                  std::tolower(static_cast<unsigned char>(a_y));
+         });
+}
+
 struct Ref {
   std::string name;
   [[nodiscard]] bool operator==(const Ref &) const = default;
@@ -169,6 +199,12 @@ template <class Handle>
   requires std::is_enum_v<Handle>
 [[nodiscard]] constexpr std::size_t IndexOf(Handle a_handle) noexcept {
   return static_cast<std::size_t>(a_handle);
+}
+
+template <class Handle>
+  requires std::is_enum_v<Handle>
+[[nodiscard]] constexpr Handle FromIndex(std::size_t a_index) noexcept {
+  return static_cast<Handle>(a_index);
 }
 
 template <class Range, class It>

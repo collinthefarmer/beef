@@ -5,13 +5,9 @@
 
 namespace BetterEnchantmentEffects {
 namespace {
-std::size_t PlacedIndexOf(SlotContributor a_placed) noexcept {
-  return static_cast<std::size_t>(a_placed);
-}
-
 bool LinkSelfAnimated(std::span<const PlacedRecipe> a_placed,
                       SlotContribution a_contribution) {
-  const std::size_t placed = PlacedIndexOf(a_contribution.placed);
+  const std::size_t placed = IndexOf(a_contribution.placed);
   if (placed >= a_placed.size()) {
     return false;
   }

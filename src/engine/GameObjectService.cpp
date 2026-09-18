@@ -5,7 +5,6 @@
 #include "engine/Tweaks.h"
 
 #include <array>
-#include <cctype>
 #include <format>
 #include <mutex>
 #include <set>
@@ -30,16 +29,6 @@ std::unordered_map<RE::FormID, std::set<std::string, std::less<>>> g_animTags;
 std::unordered_map<RE::FormID, std::shared_ptr<const GameObjectCatalog>>
     g_animCatalogs;
 std::unordered_set<RE::FormID> g_animDirty;
-
-std::size_t Index(GameObjectKind a_kind) { return IndexOf(a_kind); }
-
-std::string Lower(std::string_view a_text) {
-  std::string out{a_text};
-  for (char &c : out) {
-    c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
-  }
-  return out;
-}
 
 std::shared_ptr<const GameObjectCatalog> EmptyCatalog(GameObjectKind a_kind) {
   auto catalog = std::make_shared<GameObjectCatalog>();
@@ -133,23 +122,23 @@ void RebuildLocked() {
   if (!handler) {
     return;
   }
-  g_catalogs[Index(GameObjectKind::kKeyword)] =
+  g_catalogs[IndexOf(GameObjectKind::kKeyword)] =
       BuildFormCatalog<RE::BGSKeyword>(GameObjectKind::kKeyword, *handler);
-  g_catalogs[Index(GameObjectKind::kEnchantment)] =
+  g_catalogs[IndexOf(GameObjectKind::kEnchantment)] =
       BuildFormCatalog<RE::EnchantmentItem>(GameObjectKind::kEnchantment,
                                             *handler);
-  g_catalogs[Index(GameObjectKind::kEffectShader)] =
+  g_catalogs[IndexOf(GameObjectKind::kEffectShader)] =
       BuildFormCatalog<RE::TESEffectShader>(GameObjectKind::kEffectShader,
                                             *handler);
-  g_catalogs[Index(GameObjectKind::kMagicEffect)] =
+  g_catalogs[IndexOf(GameObjectKind::kMagicEffect)] =
       BuildFormCatalog<RE::EffectSetting>(GameObjectKind::kMagicEffect,
                                           *handler);
-  g_catalogs[Index(GameObjectKind::kArmor)] =
+  g_catalogs[IndexOf(GameObjectKind::kArmor)] =
       BuildFormCatalog<RE::TESObjectARMO>(GameObjectKind::kArmor, *handler);
-  g_catalogs[Index(GameObjectKind::kLight)] =
+  g_catalogs[IndexOf(GameObjectKind::kLight)] =
       BuildFormCatalog<RE::TESObjectLIGH>(GameObjectKind::kLight, *handler);
   IndexFormEditorIds<RE::TESObjectARMA>(*handler);
-  g_catalogs[Index(GameObjectKind::kActorValue)] = BuildActorValueCatalog();
+  g_catalogs[IndexOf(GameObjectKind::kActorValue)] = BuildActorValueCatalog();
   logger::info("game objects: {} editor IDs indexed{}", g_editorIds.size(),
                TweaksEditorIdsAvailable()
                    ? " (po3's Tweaks answers the rest)"
@@ -168,7 +157,7 @@ GameObjectCatalogOf(GameObjectKind a_kind) {
     return EmptyCatalog(a_kind);
   }
   std::scoped_lock lock{g_mutex};
-  const std::size_t index = Index(a_kind);
+  const std::size_t index = IndexOf(a_kind);
   if (!g_catalogs[index]) {
     if (a_kind == GameObjectKind::kActorValue) {
       g_catalogs[index] = BuildActorValueCatalog();

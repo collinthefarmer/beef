@@ -13,25 +13,6 @@
 
 namespace BetterEnchantmentEffects {
 namespace {
-std::string_view Trim(std::string_view a_text) noexcept {
-  while (!a_text.empty() &&
-         std::isspace(static_cast<unsigned char>(a_text.front()))) {
-    a_text.remove_prefix(1);
-  }
-  while (!a_text.empty() &&
-         std::isspace(static_cast<unsigned char>(a_text.back()))) {
-    a_text.remove_suffix(1);
-  }
-  return a_text;
-}
-
-bool EqualsIgnoringCase(std::string_view a, std::string_view b) noexcept {
-  return a.size() == b.size() && std::ranges::equal(a, b, [](char x, char y) {
-           return std::tolower(static_cast<unsigned char>(x)) ==
-                  std::tolower(static_cast<unsigned char>(y));
-         });
-}
-
 std::string TrimCopy(std::string_view a_text) {
   const auto begin = a_text.find_first_not_of(" \t");
   const auto end = a_text.find_last_not_of(" \t");
@@ -113,7 +94,7 @@ std::string FormKey::ToString() const {
 }
 
 bool FormKey::operator==(const FormKey &a_other) const noexcept {
-  return localId == a_other.localId && EqualsIgnoringCase(file, a_other.file);
+  return localId == a_other.localId && EqualsIgnoreCase(file, a_other.file);
 }
 
 FormRef FormRef::From(std::string_view a_text) {
@@ -174,7 +155,7 @@ std::string_view SelectorClause::Glob() const noexcept {
 
 std::optional<BipedSlot> BipedSlotFromName(std::string_view a_name) noexcept {
   for (const auto &e : kBipedSlots) {
-    if (EqualsIgnoringCase(e.name, a_name)) {
+    if (EqualsIgnoreCase(e.name, a_name)) {
       return e.slot;
     }
   }
@@ -203,7 +184,7 @@ std::optional<std::string_view> BipedSlotName(BipedSlot a_slot) noexcept {
 SignalKindId SignalKindOf(const SignalKind &a_kind) noexcept {
   static_assert(std::variant_size_v<SignalKind> == kSignalKindCount);
   const std::size_t index = a_kind.index();
-  return index < kSignalKindCount ? static_cast<SignalKindId>(index)
+  return index < kSignalKindCount ? FromIndex<SignalKindId>(index)
                                   : SignalKindId::kConstant;
 }
 
