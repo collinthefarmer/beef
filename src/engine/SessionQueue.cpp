@@ -11,12 +11,10 @@ namespace BetterEnchantmentEffects {
 namespace {
 void TraceRefresh(std::string_view a_action, std::uint32_t a_actor,
                   std::uint64_t a_generation) {
-  Trace::Safely([&] {
-    Trace::Emit(Trace::Event::kQueue,
-                {{"action", std::string{a_action}},
-                 {"actor", std::to_string(a_actor)},
-                 {"queue_generation", std::to_string(a_generation)}});
-  });
+  Trace::EmitSafely(Trace::Event::kQueue,
+                    {{"action", std::string{a_action}},
+                     {"actor", std::to_string(a_actor)},
+                     {"queue_generation", std::to_string(a_generation)}});
 }
 }
 struct SessionQueue::State {
@@ -59,47 +57,38 @@ void SessionQueue::Post(Task a_task) {
   {
     std::scoped_lock lock{state_->lock};
     if (state_->loading) {
-      Trace::Safely([&] {
-        Trace::Emit(Trace::Event::kQueue, {{"action", "post_while_loading"}});
-      });
+      Trace::EmitSafely(Trace::Event::kQueue,
+                        {{"action", "post_while_loading"}});
       return;
     }
     generation = state_->generation;
   }
   const auto trace = Trace::Current();
-  Trace::Safely([&] {
-    Trace::Emit(
-        Trace::Event::kQueue,
-        {{"action", "post"}, {"queue_generation", std::to_string(generation)}});
-  });
-  const bool submitted =
-      state_->submit([weak = std::weak_ptr<State>{state_}, generation, trace,
-                      task = std::move(a_task)] {
-        const Trace::Scope scope{trace};
-        const std::shared_ptr<State> state = weak.lock();
-        if (!state) {
-          return;
-        }
-        {
-          std::scoped_lock lock{state->lock};
-          if (!state->Current(generation)) {
-            Trace::Safely([&] {
-              Trace::Emit(Trace::Event::kQueue,
+  Trace::EmitSafely(
+      Trace::Event::kQueue,
+      {{"action", "post"}, {"queue_generation", std::to_string(generation)}});
+  const bool submitted = state_->submit([weak = std::weak_ptr<State>{state_},
+                                         generation, trace,
+                                         task = std::move(a_task)] {
+    const Trace::Scope scope{trace};
+    const std::shared_ptr<State> state = weak.lock();
+    if (!state) {
+      return;
+    }
+    {
+      std::scoped_lock lock{state->lock};
+      if (!state->Current(generation)) {
+        Trace::EmitSafely(Trace::Event::kQueue,
                           {{"action", "stale_post"},
                            {"queue_generation", std::to_string(generation)}});
-            });
-            return;
-          }
-        }
-        Trace::Safely([&] {
-          Trace::Emit(Trace::Event::kQueue, {{"action", "execute_post"}});
-        });
-        task();
-      });
+        return;
+      }
+    }
+    Trace::EmitSafely(Trace::Event::kQueue, {{"action", "execute_post"}});
+    task();
+  });
   if (!submitted) {
-    Trace::Safely([&] {
-      Trace::Emit(Trace::Event::kQueue, {{"action", "post_rejected"}});
-    });
+    Trace::EmitSafely(Trace::Event::kQueue, {{"action", "post_rejected"}});
   }
 }
 
@@ -134,37 +123,35 @@ bool SessionQueue::SubmitRefresh(const std::shared_ptr<State> &a_state,
   }
   const auto trace = Trace::Current();
   TraceRefresh("refresh", a_actorID, a_generation);
-  const bool submitted = a_state->submit([weak = std::weak_ptr<State>{a_state},
-                                          a_generation, a_actorID, trace] {
-    const Trace::Scope scope{trace};
-    const std::shared_ptr<State> state = weak.lock();
-    if (!state) {
-      return;
-    }
-    bool rerun = false;
-    {
-      std::scoped_lock lock{state->lock};
-      if (!state->Current(a_generation)) {
-        TraceRefresh("stale_refresh", a_actorID, a_generation);
-        return;
-      }
-      state->pending.erase(a_actorID);
-      rerun = state->rerun.erase(a_actorID) > 0;
-    }
-    Trace::Safely([&] {
-      Trace::Emit(Trace::Event::kQueue, {{"action", "execute_refresh"},
-                                         {"actor", std::to_string(a_actorID)}});
-    });
-    state->refresh(a_actorID);
-    if (rerun) {
-      SubmitRefresh(state, a_generation, a_actorID);
-    }
-  });
+  const bool submitted = a_state->submit(
+      [weak = std::weak_ptr<State>{a_state}, a_generation, a_actorID, trace] {
+        const Trace::Scope scope{trace};
+        const std::shared_ptr<State> state = weak.lock();
+        if (!state) {
+          return;
+        }
+        bool rerun = false;
+        {
+          std::scoped_lock lock{state->lock};
+          if (!state->Current(a_generation)) {
+            TraceRefresh("stale_refresh", a_actorID, a_generation);
+            return;
+          }
+          state->pending.erase(a_actorID);
+          rerun = state->rerun.erase(a_actorID) > 0;
+        }
+        Trace::EmitSafely(Trace::Event::kQueue,
+                          {{"action", "execute_refresh"},
+                           {"actor", std::to_string(a_actorID)}});
+        state->refresh(a_actorID);
+        if (rerun) {
+          SubmitRefresh(state, a_generation, a_actorID);
+        }
+      });
   if (!submitted) {
-    Trace::Safely([&] {
-      Trace::Emit(Trace::Event::kQueue, {{"action", "refresh_rejected"},
-                                         {"actor", std::to_string(a_actorID)}});
-    });
+    Trace::EmitSafely(
+        Trace::Event::kQueue,
+        {{"action", "refresh_rejected"}, {"actor", std::to_string(a_actorID)}});
     std::scoped_lock lock{a_state->lock};
     if (a_state->Current(a_generation)) {
       a_state->pending.erase(a_actorID);
@@ -208,10 +195,8 @@ void SessionQueue::FinalizeDue(std::uint32_t a_nowMS) {
   }
   for (const auto &[id, trace] : due) {
     const Trace::Scope scope{trace};
-    Trace::Safely([&] {
-      Trace::Emit(Trace::Event::kQueue, {{"action", "equip_finalize"},
-                                         {"actor", std::to_string(id)}});
-    });
+    Trace::EmitSafely(Trace::Event::kQueue, {{"action", "equip_finalize"},
+                                             {"actor", std::to_string(id)}});
     SubmitRefresh(state_, generation, id);
   }
 }

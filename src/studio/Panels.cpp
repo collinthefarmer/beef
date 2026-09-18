@@ -22,29 +22,16 @@ namespace {
   return blends;
 }
 
-[[nodiscard]] const PictureRow *FindImage(const std::vector<PictureRow> &a_rows,
-                                          std::string_view a_name) noexcept {
-  const auto it = std::ranges::find(a_rows, a_name, &PictureRow::name);
-  return it == a_rows.end() ? nullptr : &*it;
-}
-
-[[nodiscard]] const SignalRow *FindSignalRow(const RecipeRow &a_recipe,
-                                             std::string_view a_name) noexcept {
-  const auto it = std::ranges::find(a_recipe.signals, a_name, &SignalRow::name);
-  return it == a_recipe.signals.end() ? nullptr : &*it;
-}
-
-[[nodiscard]] const TextRow *FindCurveRow(const RecipeRow &a_recipe,
-                                          std::string_view a_name) noexcept {
-  const auto it = std::ranges::find(a_recipe.curves, a_name, &TextRow::name);
-  return it == a_recipe.curves.end() ? nullptr : &*it;
-}
-
-[[nodiscard]] const GeometryRow *
-FindGeometry(const RecipeRow &a_recipe, std::string_view a_name) noexcept {
-  const auto it =
-      std::ranges::find(a_recipe.geometries, a_name, &GeometryRow::name);
-  return it == a_recipe.geometries.end() ? nullptr : &*it;
+void FillScalarAndColorSignals(const RecipeRow &a_recipe,
+                               std::vector<std::string> &a_scalar,
+                               std::vector<std::string> &a_color) {
+  for (const auto &signal : a_recipe.signals) {
+    if (signal.type == ValueType::kScalar) {
+      a_scalar.push_back(signal.name);
+    } else if (signal.type == ValueType::kVec3) {
+      a_color.push_back(signal.name);
+    }
+  }
 }
 
 [[nodiscard]] bool MergesBefore(const PieceRow &a_piece,
@@ -62,8 +49,7 @@ FindGeometry(const RecipeRow &a_recipe, std::string_view a_name) noexcept {
 
 void FillForeignRows(LayerStack &a_stack, const PieceRow &a_piece,
                      const RecipeRow &a_recipe, const GeometryRow &a_geometry) {
-  const bool known = std::ranges::find(a_piece.recipes, a_recipe.id,
-                                       &RecipeRow::id) != a_piece.recipes.end();
+  const bool known = FindById(a_piece.recipes, a_recipe.id) != nullptr;
   std::optional<std::size_t> mine;
   for (const auto &output : a_geometry.outputs) {
     if (known && output.merged &&
@@ -82,7 +68,7 @@ void FillForeignRows(LayerStack &a_stack, const PieceRow &a_piece,
     if (other.id == a_recipe.id) {
       continue;
     }
-    const auto *geometry = FindGeometry(other, a_geometry.name);
+    const auto *geometry = FindByName(other.geometries, a_geometry.name);
     if (geometry == nullptr) {
       continue;
     }
@@ -112,10 +98,8 @@ void AddSignalNamed(std::vector<SignalRow> &a_signals,
   if (!IsWholeReference(a_text)) {
     return;
   }
-  const auto *signal = FindSignalRow(a_recipe, ReferenceName(a_text));
-  if (signal != nullptr &&
-      std::ranges::find(a_signals, signal->name, &SignalRow::name) ==
-          a_signals.end()) {
+  const auto *signal = FindByName(a_recipe.signals, ReferenceName(a_text));
+  if (signal != nullptr && FindByName(a_signals, signal->name) == nullptr) {
     a_signals.push_back(*signal);
   }
 }
@@ -148,13 +132,7 @@ std::optional<LayerStack> BuildStack(const RecipeRow &a_recipe,
   stack.scalars = output->scalars;
   stack.blends = BlendsFor(output->slot);
   stack.masks = a_recipe.masks;
-  for (const auto &signal : a_recipe.signals) {
-    if (signal.type == ValueType::kScalar) {
-      stack.scalarSignals.push_back(signal.name);
-    } else if (signal.type == ValueType::kVec3) {
-      stack.colorSignals.push_back(signal.name);
-    }
-  }
+  FillScalarAndColorSignals(a_recipe, stack.scalarSignals, stack.colorSignals);
   stack.isolated = a_view.isolation.TargetsOutput(a_recipe.id, output->index);
   return stack;
 }
@@ -176,9 +154,9 @@ std::optional<Inspector> InspectOutput(const RecipeRow &a_recipe,
 
   if (a_geometry && IsWholeReference(row.source)) {
     const auto name = ReferenceName(row.source);
-    const PictureRow *image = FindImage(a_geometry->sources, name);
+    const PictureRow *image = FindByName(a_geometry->sources, name);
     if (image == nullptr) {
-      image = FindImage(a_geometry->masks, name);
+      image = FindByName(a_geometry->masks, name);
     }
     if (image != nullptr) {
       inspector.source = *image;
@@ -186,7 +164,7 @@ std::optional<Inspector> InspectOutput(const RecipeRow &a_recipe,
   }
   if (a_geometry && !row.mask.empty()) {
     if (const PictureRow *image =
-            FindImage(a_geometry->masks, ReferenceName(row.mask))) {
+            FindByName(a_geometry->masks, ReferenceName(row.mask))) {
       inspector.mask = *image;
     }
   }
@@ -194,7 +172,7 @@ std::optional<Inspector> InspectOutput(const RecipeRow &a_recipe,
   AddSignalNamed(inspector.signals, a_recipe, row.color);
   if (IsWholeReference(row.curve)) {
     if (const TextRow *curve =
-            FindCurveRow(a_recipe, ReferenceName(row.curve))) {
+            FindByName(a_recipe.curves, ReferenceName(row.curve))) {
       inspector.curve = *curve;
     }
   }
@@ -208,13 +186,8 @@ std::optional<Inspector> InspectOutput(const RecipeRow &a_recipe,
   for (const auto &curve : a_recipe.curves) {
     inspector.curves.push_back(curve.name);
   }
-  for (const auto &signal : a_recipe.signals) {
-    if (signal.type == ValueType::kScalar) {
-      inspector.scalarSignals.push_back(signal.name);
-    } else if (signal.type == ValueType::kVec3) {
-      inspector.colorSignals.push_back(signal.name);
-    }
-  }
+  FillScalarAndColorSignals(a_recipe, inspector.scalarSignals,
+                            inspector.colorSignals);
   return inspector;
 }
 

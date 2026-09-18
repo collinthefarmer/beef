@@ -173,9 +173,8 @@ void DrawTermReads(const Studio::Term &a_term, const Frame &a_frame) {
   for (const auto &name : program->References()) {
     const Studio::PictureRow *image = nullptr;
     for (const auto *list : {&geometry.sources, &geometry.masks}) {
-      const auto it = std::ranges::find(*list, name, &Studio::PictureRow::name);
-      if (it != list->end()) {
-        image = &*it;
+      if (const Studio::PictureRow *found = FindByName(*list, name)) {
+        image = found;
       }
     }
     ImGui::PushID(name.c_str());
@@ -644,23 +643,23 @@ void DrawMaskTask(const Frame &a_frame) {
     PlaceholderText("Waiting for the mask preview.");
     return;
   }
-  const auto piece =
-      std::ranges::find(a_frame.snapshot->pieces, state.paint->origin.piece,
-                        &Studio::PieceRow::ref);
-  if (piece == a_frame.snapshot->pieces.end()) {
+  const Studio::PieceRow *piece =
+      FindBy(a_frame.snapshot->pieces, state.paint->origin.piece,
+             &Studio::PieceRow::ref);
+  if (!piece) {
     PlaceholderText(
         "The original armor is unavailable. The draft is retained.");
     return;
   }
-  const auto paint = std::ranges::find(piece->recipes, Studio::kPaintRecipe,
-                                       &Studio::RecipeRow::id);
-  if (paint == piece->recipes.end()) {
+  const Studio::RecipeRow *paint =
+      FindById(piece->recipes, Studio::kPaintRecipe);
+  if (!paint) {
     PlaceholderText("Waiting for the mask preview geometry.");
     return;
   }
-  Studio::ObservePaintRecipe(state, &*paint);
+  Studio::ObservePaintRecipe(state, paint);
   const Studio::GeometryRow *geometry =
-      Studio::SelectedGeometry(&*paint, state.paint->origin);
+      Studio::SelectedGeometry(paint, state.paint->origin);
   if (!geometry) {
     PlaceholderText("No geometry is available for this mask preview.");
     return;
@@ -673,8 +672,8 @@ void DrawMaskTask(const Frame &a_frame) {
   }
   const Studio::Names names = Studio::NamesOf(*paint, *geometry);
   Frame preview = a_frame;
-  preview.piece = &*piece;
-  preview.recipe = &*paint;
+  preview.piece = piece;
+  preview.recipe = paint;
   preview.geometry = geometry;
   preview.names = &names;
   DrawMaskStack(preview);
@@ -687,26 +686,26 @@ std::optional<Frame> PaintPreviewFrame(const Frame &a_frame,
   if (!state.paint || !a_frame.snapshot) {
     return std::nullopt;
   }
-  const auto piece =
-      std::ranges::find(a_frame.snapshot->pieces, state.paint->origin.piece,
-                        &Studio::PieceRow::ref);
-  if (piece == a_frame.snapshot->pieces.end()) {
+  const Studio::PieceRow *piece =
+      FindBy(a_frame.snapshot->pieces, state.paint->origin.piece,
+             &Studio::PieceRow::ref);
+  if (!piece) {
     return std::nullopt;
   }
-  const auto paint = std::ranges::find(piece->recipes, Studio::kPaintRecipe,
-                                       &Studio::RecipeRow::id);
-  if (paint == piece->recipes.end()) {
+  const Studio::RecipeRow *paint =
+      FindById(piece->recipes, Studio::kPaintRecipe);
+  if (!paint) {
     return std::nullopt;
   }
   const Studio::GeometryRow *geometry =
-      Studio::SelectedGeometry(&*paint, state.paint->origin);
+      Studio::SelectedGeometry(paint, state.paint->origin);
   if (!geometry) {
     return std::nullopt;
   }
   a_names = Studio::NamesOf(*paint, *geometry);
   Frame preview = a_frame;
-  preview.piece = &*piece;
-  preview.recipe = &*paint;
+  preview.piece = piece;
+  preview.recipe = paint;
   preview.geometry = geometry;
   preview.names = &a_names;
   return preview;

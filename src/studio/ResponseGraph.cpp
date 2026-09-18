@@ -18,10 +18,8 @@ namespace {
   if (!ref) {
     return std::nullopt;
   }
-  const auto found =
-      std::ranges::find(a_recipe.signals, ref->name, &SignalRow::name);
-  if (found == a_recipe.signals.end() || found->inert ||
-      (!found->live && !found->constant)) {
+  const SignalRow *found = FindByName(a_recipe.signals, ref->name);
+  if (!found || found->inert || (!found->live && !found->constant)) {
     return std::nullopt;
   }
   const Value &value = found->live ? found->value : *found->constant;
@@ -68,9 +66,8 @@ SimpleCurve(const std::string &a_text, const RecipeRow &a_recipe) {
   }
   std::string expression = a_text;
   if (const auto name = CurveRef{a_text}.Named()) {
-    const auto found =
-        std::ranges::find(a_recipe.curves, *name, &TextRow::name);
-    if (found == a_recipe.curves.end()) {
+    const TextRow *found = FindByName(a_recipe.curves, *name);
+    if (!found) {
       return std::unexpected("The selected response curve is missing.");
     }
     expression = found->text;

@@ -1,4 +1,5 @@
 #include "engine/ApplicationService.h"
+#include "Core.h"
 #include "diagnostics/Trace.h"
 
 #include <algorithm>
@@ -46,9 +47,9 @@ void Aggregate(ApplicationRecord &a_record) {
       ApplicationPhase::kPrepared,  ApplicationPhase::kCancelled,
       ApplicationPhase::kUnmatched, ApplicationPhase::kRendered};
   for (const ApplicationPhase phase : priority) {
-    const auto actor =
-        std::ranges::find(a_record.actors, phase, &ApplicationActor::phase);
-    if (actor != a_record.actors.end()) {
+    const ApplicationActor *actor =
+        FindBy(a_record.actors, phase, &ApplicationActor::phase);
+    if (actor) {
       a_record.phase = phase;
       a_record.problem = actor->problem;
       return;
@@ -121,9 +122,9 @@ ApplicationToken ApplicationService::BeginActor(std::uint32_t a_actorID) {
 void ApplicationService::InvalidateActorScopes(std::uint32_t a_actorID,
                                                std::uint64_t a_attempt) {
   for (auto &[recipeID, scoped] : records_) {
-    const auto actor =
-        std::ranges::find(scoped.actors, a_actorID, &ApplicationActor::actorID);
-    if (actor != scoped.actors.end() && Pending(actor->phase)) {
+    ApplicationActor *actor =
+        FindBy(scoped.actors, a_actorID, &ApplicationActor::actorID);
+    if (actor && Pending(actor->phase)) {
       actor->attempt = a_attempt;
       actor->phase = ApplicationPhase::kQueued;
       actor->problem.clear();
@@ -220,9 +221,9 @@ std::vector<ApplicationToken>
 ApplicationService::PendingFor(std::uint32_t a_actorID) const {
   std::vector<ApplicationToken> tokens;
   for (const auto &[recipeID, record] : records_) {
-    const auto actor =
-        std::ranges::find(record.actors, a_actorID, &ApplicationActor::actorID);
-    if (actor != record.actors.end() && Pending(actor->phase)) {
+    const ApplicationActor *actor =
+        FindBy(record.actors, a_actorID, &ApplicationActor::actorID);
+    if (actor && Pending(actor->phase)) {
       ApplicationToken token = record.token;
       token.attempt = actor->attempt;
       tokens.push_back(std::move(token));
@@ -244,26 +245,23 @@ void ApplicationService::Report(const ApplicationToken &a_token,
       record->token.revision != a_token.revision ||
       record->token.actorID != a_token.actorID ||
       a_phase == ApplicationPhase::kQueued ||
-      static_cast<std::size_t>(a_phase) >= kApplicationPhaseCount) {
+      IndexOf(a_phase) >= kApplicationPhaseCount) {
     return;
   }
   auto &application = *record;
-  const auto actor = std::ranges::find(application.actors, a_actorID,
-                                       &ApplicationActor::actorID);
-  if (actor == application.actors.end() || !Pending(actor->phase) ||
-      actor->attempt != a_token.attempt) {
+  ApplicationActor *actor =
+      FindBy(application.actors, a_actorID, &ApplicationActor::actorID);
+  if (!actor || !Pending(actor->phase) || actor->attempt != a_token.attempt) {
     return;
   }
   if (actor->phase != a_phase || actor->problem != a_problem) {
-    Trace::Safely([&] {
-      Trace::Emit(Trace::Event::kApplication,
-                  {{"phase", std::string{ApplicationPhaseName(a_phase)}},
-                   {"actor", std::to_string(a_actorID)},
-                   {"recipe", a_token.recipeID},
-                   {"revision", std::to_string(a_token.revision)},
-                   {"attempt", std::to_string(a_token.attempt)},
-                   {"problem", a_problem}});
-    });
+    Trace::EmitSafely(Trace::Event::kApplication,
+                      {{"phase", std::string{ApplicationPhaseName(a_phase)}},
+                       {"actor", std::to_string(a_actorID)},
+                       {"recipe", a_token.recipeID},
+                       {"revision", std::to_string(a_token.revision)},
+                       {"attempt", std::to_string(a_token.attempt)},
+                       {"problem", a_problem}});
   }
   actor->phase = a_phase;
   actor->problem = std::move(a_problem);

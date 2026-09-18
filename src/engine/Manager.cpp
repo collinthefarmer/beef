@@ -4,6 +4,7 @@
 #include "SettingsFile.h"
 #include "engine/Clock.h"
 #include "engine/Events.h"
+#include "engine/GameObjectService.h"
 #include "engine/RecipeStore.h"
 #include "render/Compositor.h"
 #include "render/TextureLab.h"
@@ -75,8 +76,7 @@ void Manager::BeginLoad() { Clear(); }
 
 void Manager::FinishLoad() {
   const Trace::Scope trace{Trace::Command("load.finish")};
-  Trace::Safely(
-      [&] { Trace::Emit(Trace::Event::kLoad, {{"action", "resume"}}); });
+  Trace::EmitSafely(Trace::Event::kLoad, {{"action", "resume"}});
   applications_.Resume();
   QueueLoadedActorRefreshes();
 }
@@ -84,16 +84,15 @@ void Manager::FinishLoad() {
 void Manager::Clear() {
   const auto session = Trace::BeginSession();
   const Trace::Scope trace{Trace::Command("load.begin")};
-  Trace::Safely([&] {
-    Trace::Emit(Trace::Event::kLoad,
-                {{"action", "clear_begin"},
-                 {"generation", std::to_string(session)},
-                 {"actors", std::to_string(applied_.size())}});
-  });
+  Trace::EmitSafely(Trace::Event::kLoad,
+                    {{"action", "clear_begin"},
+                     {"generation", std::to_string(session)},
+                     {"actors", std::to_string(applied_.size())}});
   applications_.BeginLoad();
   const std::size_t count = applied_.size();
   for (const auto &[actorID, state] : applied_) {
     UnwatchAnimationEvents(RE::TESForm::LookupByID<RE::Actor>(actorID));
+    ForgetAnimEvents(actorID);
   }
   for (auto &[actorID, state] : applied_)
     RetireActorEffects(state);
@@ -121,10 +120,8 @@ void Manager::Clear() {
   }
   lastTickMS_ = 0;
   frozenLastTick_ = false;
-  Trace::Safely([&] {
-    Trace::Emit(Trace::Event::kLoad,
-                {{"action", "clear_end"}, {"actors", std::to_string(count)}});
-  });
+  Trace::EmitSafely(Trace::Event::kLoad, {{"action", "clear_end"},
+                                          {"actors", std::to_string(count)}});
   logger::info("cleared {} actor states", count);
 }
 

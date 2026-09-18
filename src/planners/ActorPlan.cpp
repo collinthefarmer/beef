@@ -4,16 +4,23 @@
 
 namespace BetterEnchantmentEffects {
 namespace {
-template <typename Handle>
-[[nodiscard]] std::size_t IndexOf(Handle a_handle) noexcept {
-  return static_cast<std::size_t>(a_handle);
-}
-
 template <typename Row, typename Handle>
 [[nodiscard]] const Row *RowAt(const std::vector<Row> &a_rows,
                                Handle a_handle) noexcept {
   const std::size_t index = IndexOf(a_handle);
   return index < a_rows.size() ? &a_rows[index] : nullptr;
+}
+
+template <typename Match>
+[[nodiscard]] std::vector<PlacementId>
+PlacementIdsWhere(const ActorPlan &a_plan, Match a_match) {
+  std::vector<PlacementId> found;
+  for (std::size_t i = 0; i < a_plan.placements.size(); ++i) {
+    if (a_match(a_plan.placements[i])) {
+      found.push_back(PlacementId{i});
+    }
+  }
+  return found;
 }
 }
 
@@ -52,37 +59,29 @@ FindInstance(const ActorPlan &a_plan, RecipeId a_recipe,
 
 std::vector<PlacementId> PlacementsOfGeometry(const ActorPlan &a_plan,
                                               GeometryId a_geometry) {
-  std::vector<PlacementId> found;
-  for (std::size_t i = 0; i < a_plan.placements.size(); ++i) {
-    if (a_plan.placements[i].geometry == a_geometry) {
-      found.push_back(PlacementId{i});
-    }
-  }
-  return found;
+  return PlacementIdsWhere(a_plan, [&](const Placement &a_placement) {
+    return a_placement.geometry == a_geometry;
+  });
 }
 
 std::vector<PlacementId> PlacementsOfInstance(const ActorPlan &a_plan,
                                               InstanceId a_instance) {
-  std::vector<PlacementId> found;
-  for (std::size_t i = 0; i < a_plan.placements.size(); ++i) {
-    if (a_plan.placements[i].instance == a_instance) {
-      found.push_back(PlacementId{i});
-    }
-  }
-  return found;
+  return PlacementIdsWhere(a_plan, [&](const Placement &a_placement) {
+    return a_placement.instance == a_instance;
+  });
 }
 
 std::vector<PieceMatch> MatchesForPiece(const ActorPlan &a_plan,
                                         GeometryId a_firstGeometry,
                                         std::size_t a_geomCount) {
-  const std::size_t first = static_cast<std::size_t>(a_firstGeometry);
+  const std::size_t first = IndexOf(a_firstGeometry);
   std::vector<PieceMatch> out;
   for (const Placement &placement : a_plan.placements) {
-    const std::size_t flat = static_cast<std::size_t>(placement.geometry);
+    const std::size_t flat = IndexOf(placement.geometry);
     if (flat < first || flat - first >= a_geomCount) {
       continue;
     }
-    const std::size_t instance = static_cast<std::size_t>(placement.instance);
+    const std::size_t instance = IndexOf(placement.instance);
     if (std::ranges::any_of(out, [&](const PieceMatch &a_match) {
           return a_match.instance == instance;
         })) {
@@ -101,7 +100,7 @@ PlacedIndexOf(const ActorPlan &a_plan,
               std::span<const PlacementId> a_placements,
               InstanceId a_instance) {
   for (std::size_t i = 0; i < a_placements.size(); ++i) {
-    const std::size_t k = static_cast<std::size_t>(a_placements[i]);
+    const std::size_t k = IndexOf(a_placements[i]);
     if (k < a_plan.placements.size() &&
         a_plan.placements[k].instance == a_instance) {
       return i;
@@ -129,7 +128,7 @@ std::vector<GeometryId> ThirdPersonGeometriesOfInstance(const ActorPlan &a_plan,
     if (placement.instance != a_instance) {
       continue;
     }
-    const std::size_t flat = static_cast<std::size_t>(placement.geometry);
+    const std::size_t flat = IndexOf(placement.geometry);
     if (flat >= a_plan.geometries.size() ||
         a_plan.geometries[flat].firstPerson) {
       continue;

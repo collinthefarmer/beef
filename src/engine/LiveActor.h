@@ -80,9 +80,19 @@ struct LiveActor {
   std::vector<ApplicationToken> applications;
 };
 
+struct ResolvedPlacement {
+  std::size_t placement = 0;
+  std::size_t instance = 0;
+};
+
 void RetireGeometry(LiveGeometry &a_geometry);
 void RetireActorEffects(LiveActor &a_actor);
 [[nodiscard]] SlotTarget *TargetFor(LiveGeometry &a_bound, Surface a_surface);
 [[nodiscard]] PlacedOutput *OutputAt(LivePlacement &a_placement,
                                      std::size_t a_index);
+[[nodiscard]] std::optional<ResolvedPlacement>
+ResolvePlacement(const LiveActor &a_state, PlacementId a_placement) noexcept;
+[[nodiscard]] std::optional<ResolvedPlacement>
+ResolvePlacement(const LiveActor &a_state, const LiveGeometry &a_bound,
+                 std::size_t a_placed) noexcept;
 }

@@ -21,8 +21,7 @@ namespace {
 [[nodiscard]] bool NamesSignal(const Inspector &a_inspector,
                                const std::string &a_text) {
   return a_text.starts_with('@') &&
-         std::ranges::find(a_inspector.signals, ReferenceName(a_text),
-                           &SignalRow::name) != a_inspector.signals.end();
+         FindByName(a_inspector.signals, ReferenceName(a_text)) != nullptr;
 }
 
 constexpr std::pair<float, float> kUnitRange{0.0f, 1.0f};
@@ -272,8 +271,7 @@ struct ParamFieldSpec {
       a_spec.kind == FieldKind::kVector || a_spec.kind == FieldKind::kVec2;
   const bool signal =
       valued && IsWholeReference(a_spec.text) &&
-      std::ranges::find(a_spec.names, ReferenceName(a_spec.text)) !=
-          a_spec.names.end();
+      std::ranges::contains(a_spec.names, ReferenceName(a_spec.text));
   const bool embedsReferences = valued && !IsWholeReference(a_spec.text) &&
                                 a_spec.text.find('@') != std::string::npos;
   const bool offers =
@@ -658,7 +656,7 @@ std::vector<FormField> ScalarForm(const LayerStack &a_stack) {
     const auto &names = colour ? a_stack.colorSignals : a_stack.scalarSignals;
     const bool signal =
         IsWholeReference(scalar.text) &&
-        std::ranges::find(names, ReferenceName(scalar.text)) != names.end();
+        std::ranges::contains(names, ReferenceName(scalar.text));
     FormField row =
         ValueField({.name = scalar.name,
                     .kind = colour ? FieldKind::kColor : FieldKind::kScalar,

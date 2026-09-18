@@ -6,6 +6,7 @@
 #include "engine/Clock.h"
 #include "engine/EngineForms.h"
 #include "engine/Events.h"
+#include "engine/GameObjectService.h"
 #include "engine/RecipeStore.h"
 #include "mesh/TextureSize.h"
 #include "render/Compositor.h"
@@ -107,7 +108,7 @@ LocateGeometry(LiveActor &a_state, GeometryId a_geometry) noexcept {
 RE::MagicItem *EnchantmentForInstance(LiveActor &a_state,
                                       std::size_t a_instance) {
   for (const Placement &placement : a_state.plan.placements) {
-    if (static_cast<std::size_t>(placement.instance) != a_instance) {
+    if (IndexOf(placement.instance) != a_instance) {
       continue;
     }
     if (const std::optional<LocatedGeometry> located =
@@ -216,14 +217,13 @@ void PreparePlacement(LiveActor &a_state,
                       const GeometryPlacementPlan &placement,
                       LivePieceId a_piece, std::size_t a_geometry,
                       GeometryId a_flat) {
-  LiveGeometry &bound =
-      a_state.pieces[static_cast<std::size_t>(a_piece)].geometries[a_geometry];
+  LiveGeometry &bound = a_state.pieces[IndexOf(a_piece)].geometries[a_geometry];
   bound.placements = placement.sources;
   bound.plan = placement.plan;
   bound.stackPlan = PlanStacks(placement.placed, placement.plan);
   bound.binding = PlanBinding(placement.placed, placement.plan);
   for (const PlacementId source : placement.sources) {
-    const std::size_t k = static_cast<std::size_t>(source);
+    const std::size_t k = IndexOf(source);
     if (k >= a_state.placements.size() || k >= a_state.plan.placements.size()) {
       continue;
     }
@@ -231,8 +231,8 @@ void PreparePlacement(LiveActor &a_state,
     live.geometry = a_flat;
     live.outputs.clear();
     for (const OutputPlacement &output : a_state.plan.placements[k].outputs) {
-      live.outputs.push_back(PlacedOutput{
-          static_cast<std::size_t>(output.output), nullptr, output.problem});
+      live.outputs.push_back(
+          PlacedOutput{IndexOf(output.output), nullptr, output.problem});
     }
   }
 }
@@ -265,17 +265,13 @@ void InstallSurfaces(LiveActor &a_state, LiveGeometry &a_bound,
 void MarkReplaced(LiveActor &a_state, LiveGeometry &a_bound) {
   for (const SlotPlan &slot : a_bound.plan.slots) {
     for (const SlotContribution &c : slot.replaced) {
-      const std::size_t placed = static_cast<std::size_t>(c.placed);
-      if (placed >= a_bound.placements.size()) {
-        continue;
-      }
-      const std::size_t placementIndex =
-          static_cast<std::size_t>(a_bound.placements[placed]);
-      if (placementIndex >= a_state.placements.size()) {
+      const std::optional<ResolvedPlacement> resolved =
+          ResolvePlacement(a_state, a_bound, IndexOf(c.placed));
+      if (!resolved) {
         continue;
       }
       PlacedOutput *output =
-          OutputAt(a_state.placements[placementIndex], c.output);
+          OutputAt(a_state.placements[resolved->placement], c.output);
       if (!output) {
         continue;
       }
@@ -304,29 +300,19 @@ struct LocatedStackOutput {
 std::optional<LocatedStackOutput>
 LocateStackOutput(LiveActor &a_state, const LiveGeometry &a_bound,
                   const SlotContribution &a_contribution) {
-  const std::size_t placed = static_cast<std::size_t>(a_contribution.placed);
-  if (placed >= a_bound.placements.size()) {
+  const std::optional<ResolvedPlacement> resolved =
+      ResolvePlacement(a_state, a_bound, IndexOf(a_contribution.placed));
+  if (!resolved) {
     return std::nullopt;
   }
-  const std::size_t placementIndex =
-      static_cast<std::size_t>(a_bound.placements[placed]);
-  if (placementIndex >= a_state.plan.placements.size() ||
-      placementIndex >= a_state.placements.size()) {
-    return std::nullopt;
-  }
-  const std::size_t instanceIndex = static_cast<std::size_t>(
-      a_state.plan.placements[placementIndex].instance);
-  if (instanceIndex >= a_state.instances.size()) {
-    return std::nullopt;
-  }
-  const Recipe *recipe = a_state.instances[instanceIndex].recipe;
+  const Recipe *recipe = a_state.instances[resolved->instance].recipe;
   if (!recipe || a_contribution.output >= recipe->outputs.size()) {
     return std::nullopt;
   }
   const auto *surface =
       Get<SurfaceOutput>(recipe->outputs[a_contribution.output]);
   auto *output =
-      OutputAt(a_state.placements[placementIndex], a_contribution.output);
+      OutputAt(a_state.placements[resolved->placement], a_contribution.output);
   if (!surface || !output) {
     return std::nullopt;
   }
@@ -388,12 +374,11 @@ void PrepareChainStacks(LiveActor &a_state, LiveGeometry &a_bound,
 void PlaceLight(LiveActor &a_state, const ActorLightPlan &a_plan,
                 const LightContribution &a_c, RE::Actor *a_actor,
                 bool a_verbose) {
-  const std::size_t sourceIndex = static_cast<std::size_t>(a_c.placed);
+  const std::size_t sourceIndex = IndexOf(a_c.placed);
   if (sourceIndex >= a_plan.sources.size()) {
     return;
   }
-  const std::size_t instanceIndex =
-      static_cast<std::size_t>(a_plan.sources[sourceIndex]);
+  const std::size_t instanceIndex = IndexOf(a_plan.sources[sourceIndex]);
   if (instanceIndex >= a_state.instances.size()) {
     return;
   }
@@ -470,11 +455,9 @@ void Manager::Refresh(RE::Actor *a_actor) {
   }
   const Settings settings = GetSettings();
   const RE::FormID actorID = a_actor->GetFormID();
-  Trace::Safely([&] {
-    Trace::Emit(
-        Trace::Event::kApplication,
-        {{"action", "refresh_begin"}, {"actor", std::to_string(actorID)}});
-  });
+  Trace::EmitSafely(
+      Trace::Event::kApplication,
+      {{"action", "refresh_begin"}, {"actor", std::to_string(actorID)}});
   Retire(actorID);
   if (!settings.enableShaders || !emissivePathEnabled_ ||
       a_actor->IsDeleted()) {
@@ -515,13 +498,11 @@ void Manager::Refresh(RE::Actor *a_actor) {
                  actorID, a_actor->GetName(), state.pieces.size(),
                  state.instances.size());
   }
-  Trace::Safely([&] {
-    Trace::Emit(Trace::Event::kApplication,
-                {{"action", "installed"},
-                 {"actor", std::to_string(actorID)},
-                 {"pieces", std::to_string(state.pieces.size())},
-                 {"recipes", std::to_string(state.instances.size())}});
-  });
+  Trace::EmitSafely(Trace::Event::kApplication,
+                    {{"action", "installed"},
+                     {"actor", std::to_string(actorID)},
+                     {"pieces", std::to_string(state.pieces.size())},
+                     {"recipes", std::to_string(state.instances.size())}});
   applied_[actorID] = std::move(state);
   WatchAnimationEvents(a_actor);
 
@@ -626,7 +607,7 @@ void Manager::MatchRecipes(RE::Actor *a_actor, LiveActor &a_state,
       built.geometries, loaded,
       [this, loaded, &refs](const Geometry &a_geometry,
                             GeometryId a_geometryID) {
-        const std::size_t index = static_cast<std::size_t>(a_geometryID);
+        const std::size_t index = IndexOf(a_geometryID);
         std::vector<ResolvedRecipe> resolved = Resolve(a_geometry.keys, loaded);
         const Studio::PieceRef ref =
             index < refs.size() ? refs[index] : Studio::PieceRef{};
@@ -650,7 +631,7 @@ std::optional<std::size_t> Manager::InstanceFor(LiveActor &a_state,
     return std::nullopt;
   }
   const std::span<const Recipe> loaded = LoadedRecipes();
-  const std::size_t recipeIndex = static_cast<std::size_t>(a_recipe);
+  const std::size_t recipeIndex = IndexOf(a_recipe);
   if (recipeIndex >= loaded.size()) {
     return std::nullopt;
   }
@@ -715,7 +696,7 @@ void Manager::PlaceInstances(LiveActor &a_state, const Settings &a_settings) {
 void Manager::PlaceOnGeometry(LiveActor &a_state, LivePieceId a_piece,
                               std::size_t a_geometry,
                               const Settings &a_settings) {
-  const std::size_t pieceIndex = static_cast<std::size_t>(a_piece);
+  const std::size_t pieceIndex = IndexOf(a_piece);
   if (pieceIndex >= a_state.pieces.size() ||
       a_geometry >= a_state.pieces[pieceIndex].geometries.size()) {
     return;
@@ -728,18 +709,16 @@ void Manager::PlaceOnGeometry(LiveActor &a_state, LivePieceId a_piece,
 
   const auto actor = a_state.actor.get();
   if (actor) {
-    Trace::Safely([&] {
-      Trace::Emit(
-          Trace::Event::kBinding,
-          {{"action", "geometry_scope"},
-           {"actor", std::to_string(actor->GetFormID())},
-           {"armor", std::to_string(a_state.pieces[pieceIndex].armor)},
-           {"geometry", Trace::Pointer(bound.geometry.get())},
-           {"property", Trace::Pointer(bound.property.get())},
-           {"name", bound.name},
-           {"shell",
-            Trace::Pointer(bound.shell ? bound.shell->Geometry() : nullptr)}});
-    });
+    Trace::EmitSafely(
+        Trace::Event::kBinding,
+        {{"action", "geometry_scope"},
+         {"actor", std::to_string(actor->GetFormID())},
+         {"armor", std::to_string(a_state.pieces[pieceIndex].armor)},
+         {"geometry", Trace::Pointer(bound.geometry.get())},
+         {"property", Trace::Pointer(bound.property.get())},
+         {"name", bound.name},
+         {"shell",
+          Trace::Pointer(bound.shell ? bound.shell->Geometry() : nullptr)}});
   }
   if (a_settings.verboseLogging && actor) {
     logger::info(
@@ -804,19 +783,17 @@ void Manager::Retire(RE::FormID a_actorID) {
           CarriedTime{instance.lastTime, now};
     }
   }
-  Trace::Safely([&] {
-    Trace::Emit(Trace::Event::kRetire, {{"action", "begin"},
-                                        {"actor", std::to_string(a_actorID)},
-                                        {"recipes", std::to_string(recipes)}});
-  });
+  Trace::EmitSafely(Trace::Event::kRetire,
+                    {{"action", "begin"},
+                     {"actor", std::to_string(a_actorID)},
+                     {"recipes", std::to_string(recipes)}});
   RetireActorEffects(it->second);
   applied_.erase(it);
-  Trace::Safely([&] {
-    Trace::Emit(Trace::Event::kRetire,
-                {{"action", "end"}, {"actor", std::to_string(a_actorID)}});
-  });
+  Trace::EmitSafely(Trace::Event::kRetire,
+                    {{"action", "end"}, {"actor", std::to_string(a_actorID)}});
   TextureLab::GetSingleton()->InvalidatePreviews();
   UnwatchAnimationEvents(RE::TESForm::LookupByID<RE::Actor>(a_actorID));
+  ForgetAnimEvents(a_actorID);
   if (GetSettings().verboseLogging) {
     logger::info("actor {:08X}: retired {} recipe(s)", a_actorID, recipes);
   }

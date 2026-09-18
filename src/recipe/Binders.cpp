@@ -100,7 +100,7 @@ OneKey(const json &a_j, const Reporter &a_ctx, std::string_view a_what,
   }
   std::optional<KindEntry> found;
   for (const auto &[key, value] : a_j.items()) {
-    if (std::ranges::find(a_common, key) != a_common.end()) {
+    if (std::ranges::contains(a_common, key)) {
       continue;
     }
     if (found) {

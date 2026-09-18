@@ -130,10 +130,8 @@ void TracePreservedPalette(const SkinPaletteState &a_lease,
 
 std::unique_ptr<SkinPaletteLease> RejectPalette(std::string_view a_reason) {
   logger::warn("shell: palette rejected: {}", a_reason);
-  Trace::Safely([&] {
-    Trace::Emit(Trace::Event::kShell, {{"action", "palette_rejected"},
-                                       {"reason", std::string{a_reason}}});
-  });
+  Trace::EmitSafely(Trace::Event::kShell, {{"action", "palette_rejected"},
+                                           {"reason", std::string{a_reason}}});
   return nullptr;
 }
 }

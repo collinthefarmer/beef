@@ -534,9 +534,9 @@ OutputGeometry(const Frame &a_frame, std::size_t a_output) {
   if (!a_frame.geometry) {
     return std::nullopt;
   }
-  const auto found = std::ranges::find(a_frame.geometry->outputs, a_output,
-                                       &Studio::OutputRow::index);
-  if (found == a_frame.geometry->outputs.end()) {
+  const Studio::OutputRow *found =
+      FindBy(a_frame.geometry->outputs, a_output, &Studio::OutputRow::index);
+  if (!found) {
     return std::nullopt;
   }
   Studio::GeometryRow geometry = *a_frame.geometry;
@@ -545,15 +545,15 @@ OutputGeometry(const Frame &a_frame, std::size_t a_output) {
 }
 
 void DrawOutput(const Studio::OutputSubject &a_subject, const Frame &a_frame) {
-  const auto output = std::ranges::find(
+  const Studio::OutputRow *output = FindBy(
       a_frame.recipe->outputs, a_subject.output, &Studio::OutputRow::index);
-  if (output == a_frame.recipe->outputs.end()) {
+  if (!output) {
     return;
   }
   if (output->target == Target::kLight) {
-    const auto light = std::ranges::find(
+    const Studio::LightRow *light = FindBy(
         a_frame.recipe->lights, a_subject.output, &Studio::LightRow::output);
-    if (light == a_frame.recipe->lights.end()) {
+    if (!light) {
       PlaceholderText("The light definition is unavailable.");
       return;
     }
@@ -608,13 +608,12 @@ void DrawOutput(const Studio::OutputSubject &a_subject, const Frame &a_frame) {
 
 void DrawLayerInspector(const Studio::LayerSubject &a_layer,
                         const Frame &a_frame) {
-  const auto owner = std::ranges::find(a_frame.recipe->outputs, a_layer.output,
-                                       &Studio::OutputRow::index);
+  const Studio::OutputRow *owner = FindBy(
+      a_frame.recipe->outputs, a_layer.output, &Studio::OutputRow::index);
   const std::string label =
-      owner != a_frame.recipe->outputs.end()
-          ? std::format("{} / {} / layer {}", SurfaceName(owner->surface),
-                        SlotName(owner->slot), a_layer.layer + 1)
-          : std::format("layer {}", a_layer.layer + 1);
+      owner ? std::format("{} / {} / layer {}", SurfaceName(owner->surface),
+                          SlotName(owner->slot), a_layer.layer + 1)
+            : std::format("layer {}", a_layer.layer + 1);
   static_cast<void>(Rule(
       Studio::RuleSpec{.text = "Inspector"}, RowButtonWidth(),
       [&]() {
@@ -663,9 +662,8 @@ void DrawResourceRemove(std::string_view a_name, std::size_t a_references,
 void DrawSourceInspector(const Studio::SourceSubject &a_source,
                          const Frame &a_frame) {
   const Studio::RecipeRow &recipe = *a_frame.recipe;
-  const auto row = std::ranges::find(recipe.sourceRows, a_source.name,
-                                     &Studio::SourceRow::name);
-  if (row == recipe.sourceRows.end()) {
+  const Studio::SourceRow *row = FindByName(recipe.sourceRows, a_source.name);
+  if (!row) {
     return;
   }
   static_cast<void>(
@@ -687,9 +685,8 @@ void DrawSourceInspector(const Studio::SourceSubject &a_source,
 void DrawSignalInspector(const Studio::SignalSubject &a_signal,
                          const Frame &a_frame) {
   const Studio::RecipeRow &recipe = *a_frame.recipe;
-  const auto row = std::ranges::find(recipe.signals, a_signal.name,
-                                     &Studio::SignalRow::name);
-  if (row == recipe.signals.end()) {
+  const Studio::SignalRow *row = FindByName(recipe.signals, a_signal.name);
+  if (!row) {
     return;
   }
   const bool canFire = !row->event.empty();
@@ -723,10 +720,9 @@ void DrawSignalInspector(const Studio::SignalSubject &a_signal,
 
 void DrawMaskInspector(const Studio::MaskSubject &a_mask,
                        const Frame &a_frame) {
-  const auto &masks = a_frame.recipe->maskRows;
-  const auto row =
-      std::ranges::find(masks, a_mask.name, &Studio::TextRow::name);
-  if (row == masks.end()) {
+  const Studio::TextRow *row =
+      FindByName(a_frame.recipe->maskRows, a_mask.name);
+  if (!row) {
     return;
   }
   const bool otherDraft = a_frame.state->paint.has_value();
@@ -762,10 +758,8 @@ void DrawMaskInspector(const Studio::MaskSubject &a_mask,
 
 void DrawCurveInspector(const Studio::CurveSubject &a_curve,
                         const Frame &a_frame) {
-  const auto &curves = a_frame.recipe->curves;
-  const auto row =
-      std::ranges::find(curves, a_curve.name, &Studio::TextRow::name);
-  if (row == curves.end()) {
+  const Studio::TextRow *row = FindByName(a_frame.recipe->curves, a_curve.name);
+  if (!row) {
     return;
   }
   static_cast<void>(
@@ -834,9 +828,7 @@ PreviewOutput(const Frame &a_frame, const Studio::Selection &a_selection) {
   if (!index) {
     return Studio::SelectedOutput(a_frame.geometry, a_selection);
   }
-  const auto found = std::ranges::find(a_frame.geometry->outputs, *index,
-                                       &Studio::OutputRow::index);
-  return found == a_frame.geometry->outputs.end() ? nullptr : &*found;
+  return FindBy(a_frame.geometry->outputs, *index, &Studio::OutputRow::index);
 }
 
 const Studio::PictureRow *DraftMaskPicture(const Frame &a_frame,
@@ -845,25 +837,23 @@ const Studio::PictureRow *DraftMaskPicture(const Frame &a_frame,
   if (!state.paint || state.mask.editing != a_maskName || !a_frame.snapshot) {
     return nullptr;
   }
-  const auto piece =
-      std::ranges::find(a_frame.snapshot->pieces, state.paint->origin.piece,
-                        &Studio::PieceRow::ref);
-  if (piece == a_frame.snapshot->pieces.end()) {
+  const Studio::PieceRow *piece =
+      FindBy(a_frame.snapshot->pieces, state.paint->origin.piece,
+             &Studio::PieceRow::ref);
+  if (!piece) {
     return nullptr;
   }
-  const auto paint = std::ranges::find(piece->recipes, Studio::kPaintRecipe,
-                                       &Studio::RecipeRow::id);
-  if (paint == piece->recipes.end()) {
+  const Studio::RecipeRow *paint =
+      FindById(piece->recipes, Studio::kPaintRecipe);
+  if (!paint) {
     return nullptr;
   }
   const Studio::GeometryRow *geometry =
-      Studio::SelectedGeometry(&*paint, state.paint->origin);
+      Studio::SelectedGeometry(paint, state.paint->origin);
   if (!geometry) {
     return nullptr;
   }
-  const auto scratch = std::ranges::find(geometry->masks, Studio::kScratchMask,
-                                         &Studio::PictureRow::name);
-  return scratch == geometry->masks.end() ? nullptr : &*scratch;
+  return FindByName(geometry->masks, Studio::kScratchMask);
 }
 
 void DrawPreview(const Frame &a_input) {
@@ -953,18 +943,16 @@ void DrawPreview(const Frame &a_input) {
   const Studio::PictureRow *picture = nullptr;
   std::string_view label;
   if (const auto *source = Get<Studio::SourceSubject>(subject)) {
-    const auto row = std::ranges::find(a_frame.geometry->sources, source->name,
-                                       &Studio::PictureRow::name);
-    if (row != a_frame.geometry->sources.end()) {
-      picture = &*row;
+    if (const Studio::PictureRow *row =
+            FindByName(a_frame.geometry->sources, source->name)) {
+      picture = row;
       label = source->name;
     }
   } else if (const auto *mask = Get<Studio::MaskSubject>(subject)) {
     label = mask->name;
-    const auto row = std::ranges::find(a_frame.geometry->masks, mask->name,
-                                       &Studio::PictureRow::name);
-    if (row != a_frame.geometry->masks.end()) {
-      picture = &*row;
+    if (const Studio::PictureRow *row =
+            FindByName(a_frame.geometry->masks, mask->name)) {
+      picture = row;
     }
   }
   if (picture) {

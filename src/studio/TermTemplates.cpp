@@ -153,9 +153,9 @@ namespace {
 
 [[nodiscard]] std::string PartitionName(const GeometryRow &a_geometry,
                                         BipedSlot a_slot) {
-  const auto it = std::ranges::find(
+  const SlotCoverage *it = FindBy(
       a_geometry.partitions, std::to_underlying(a_slot), &SlotCoverage::slot);
-  if (it != a_geometry.partitions.end() && !it->name.empty()) {
+  if (it && !it->name.empty()) {
     return it->name;
   }
   const auto name = BipedSlotName(a_slot);
@@ -229,9 +229,7 @@ namespace {
 
 [[nodiscard]] const MaskPreset *PresetNamed(const MaskPresets &a_presets,
                                             std::string_view a_name) {
-  const auto it =
-      std::ranges::find(a_presets.presets, a_name, &MaskPreset::name);
-  return it == a_presets.presets.end() ? nullptr : &*it;
+  return FindByName(a_presets.presets, a_name);
 }
 }
 
@@ -537,7 +535,7 @@ std::vector<TermField> ComponentForm(const IslandTerm &a_term,
           [labels, ids](IslandTerm &t, const std::string &a_text) {
             const auto it = std::ranges::find(labels, a_text);
             if (it != labels.end()) {
-              const auto index = static_cast<std::size_t>(it - labels.begin());
+              const auto index = IndexOf(labels, it);
               t.id = index < ids.size() ? ids[index] : t.id;
               return index < ids.size();
             }
@@ -579,7 +577,7 @@ std::vector<TermField> PartitionForm(const PartitionTerm &a_term,
           [names, slots](PartitionTerm &t, const std::string &a_text) {
             const auto it = std::ranges::find(names, a_text);
             if (it != names.end()) {
-              const auto index = static_cast<std::size_t>(it - names.begin());
+              const auto index = IndexOf(names, it);
               t.slot = index < slots.size() ? slots[index] : t.slot;
               return index < slots.size();
             }

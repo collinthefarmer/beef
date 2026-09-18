@@ -16,12 +16,12 @@ RecipeIdOf(std::span<const Recipe> a_store, const Recipe *a_recipe) noexcept {
   if (a_recipe < first || a_recipe >= first + a_store.size()) {
     return std::nullopt;
   }
-  return RecipeId{static_cast<std::size_t>(a_recipe - first)};
+  return RecipeId{IndexOf(a_store, a_recipe)};
 }
 
 [[nodiscard]] const Recipe *RecipeAt(std::span<const Recipe> a_store,
                                      RecipeId a_recipe) noexcept {
-  const std::size_t index = static_cast<std::size_t>(a_recipe);
+  const std::size_t index = IndexOf(a_recipe);
   if (index >= a_store.size()) {
     return nullptr;
   }
@@ -118,9 +118,8 @@ GeometryPlacementPlan PlanGeometryPlacement(const ActorPlan &a_plan,
     row.priority = instance->priority;
     for (const OutputPlacement &output : placement->outputs) {
       if (output.selected &&
-          (!a_filter ||
-           a_filter(*recipe, static_cast<std::size_t>(output.output)))) {
-        row.outputs.push_back(static_cast<std::size_t>(output.output));
+          (!a_filter || a_filter(*recipe, IndexOf(output.output)))) {
+        row.outputs.push_back(IndexOf(output.output));
       }
     }
     out.placed.push_back(std::move(row));

@@ -79,7 +79,7 @@ BuildResponseSignal(ConnectionBuilder &a_builder,
 
 [[nodiscard]] std::expected<std::pair<EditBatch, std::string>, std::string>
 BuildInput(const Names &a_names, const InputConnectionSpec &a_spec) {
-  if (static_cast<std::size_t>(a_spec.kind) >= kInputConnectionNames.size() ||
+  if (IndexOf(a_spec.kind) >= kInputConnectionNames.size() ||
       (a_spec.kind != InputConnectionKind::kHitResponse &&
        a_spec.actorValue.empty())) {
     return std::unexpected("Choose an actor value or a hit response.");

@@ -35,6 +35,10 @@ std::optional<float> TunableValue(const Studio::FormField &a_field) {
   return FieldValue(a_field);
 }
 
+Studio::FieldKey TuningKey(const Studio::FormField &a_field) {
+  return Studio::HashFieldKey(Studio::State().fieldScope, a_field.name, "tune");
+}
+
 struct TuneRange {
   std::pair<float, float> span;
   bool adjustable;
@@ -218,18 +222,16 @@ void ObserveTuningItem(Studio::MenuState &a_state, Studio::FieldKey a_key) {
 }
 
 void DrawRecipeTuning(const Studio::FormField &a_field, const Frame &a_frame) {
-  const auto initial = TunableValue(a_field);
-  if (!initial || !a_frame.state || !a_frame.recipe || !a_frame.names ||
-      (a_frame.state->paint && a_frame.state->mode == Studio::Mode::kPaint)) {
+  if (!FieldTunable(a_field, a_frame)) {
     return;
   }
+  const float initial = *TunableValue(a_field);
   Studio::MenuState &state = *a_frame.state;
-  const auto key =
-      Studio::HashFieldKey(Studio::State().fieldScope, a_field.name, "tune");
+  const auto key = TuningKey(a_field);
   const bool owned = state.tuning && state.tuning->field == key &&
                      state.tuning->recipeID == a_frame.recipe->id;
-  float value = owned ? state.tuning->value : *initial;
-  const TuneRange range = ResolveTuningRange(a_field, state, key, *initial);
+  float value = owned ? state.tuning->value : initial;
+  const TuneRange range = ResolveTuningRange(a_field, state, key, initial);
   const bool disabled = state.tuning && (!owned || state.tuning->finishing);
   DrawRangeSlider(
       SliderScope{a_field, state, key, range, disabled}, value,
@@ -247,8 +249,7 @@ void DrawSinkTuning(const Studio::FormField &a_field, const Frame &a_frame,
     return;
   }
   Studio::MenuState &state = *a_frame.state;
-  const auto key =
-      Studio::HashFieldKey(Studio::State().fieldScope, a_field.name, "tune");
+  const auto key = TuningKey(a_field);
   float value = *initial;
   const TuneRange range = ResolveTuningRange(a_field, state, key, value);
   DrawRangeSlider(

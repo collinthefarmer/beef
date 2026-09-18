@@ -109,6 +109,10 @@ template <class Capture> void Safely(Capture &&a_capture) noexcept {
     Emit(Event::kCaptureFailure, {});
   }
 }
+inline void EmitSafely(Event a_event,
+                       std::initializer_list<Field> a_fields) noexcept {
+  Safely([&] { Emit(a_event, a_fields); });
+}
 void Page(std::string_view a_page, std::string a_selection);
 [[nodiscard]] std::string Pointer(const void *a_pointer);
 [[nodiscard]] std::string Fingerprint(std::string_view a_text);

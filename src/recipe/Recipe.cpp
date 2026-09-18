@@ -11,23 +11,19 @@ Diagnostic MakeDiagnostic(Severity a_severity, std::string a_where,
 }
 
 const Signal *Recipe::FindSignal(std::string_view a_name) const noexcept {
-  const auto it = std::ranges::find(signals, a_name, &Signal::name);
-  return it == signals.end() ? nullptr : &*it;
+  return FindByName(signals, a_name);
 }
 
 const Curve *Recipe::FindCurve(std::string_view a_name) const noexcept {
-  const auto it = std::ranges::find(curves, a_name, &Curve::name);
-  return it == curves.end() ? nullptr : &*it;
+  return FindByName(curves, a_name);
 }
 
 const Source *Recipe::FindSource(std::string_view a_name) const noexcept {
-  const auto it = std::ranges::find(sources, a_name, &Source::name);
-  return it == sources.end() ? nullptr : &*it;
+  return FindByName(sources, a_name);
 }
 
 const Mask *Recipe::FindMask(std::string_view a_name) const noexcept {
-  const auto it = std::ranges::find(masks, a_name, &Mask::name);
-  return it == masks.end() ? nullptr : &*it;
+  return FindByName(masks, a_name);
 }
 
 std::string SignalWhere(std::string_view a_signal) {

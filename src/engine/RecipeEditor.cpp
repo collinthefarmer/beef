@@ -22,8 +22,7 @@ namespace BetterEnchantmentEffects {
 namespace {
 const Recipe *FindLoaded(std::span<const Recipe> a_loaded,
                          std::string_view a_id) {
-  const auto it = std::ranges::find(a_loaded, a_id, &Recipe::id);
-  return it == a_loaded.end() ? nullptr : &*it;
+  return FindById(a_loaded, a_id);
 }
 
 void PushHistory(
@@ -201,10 +200,9 @@ struct RecipeEditor::FileOperationJournal {
   void Finish(std::uint64_t a_id, std::string a_path,
               std::optional<Diagnostic> a_error) {
     std::scoped_lock guard{lock};
-    const auto found = std::ranges::find(
-        results, a_id, &Studio::FileOperationResult::requestID);
-    if (found == results.end() ||
-        found->state != Studio::FileOperationState::kPending) {
+    Studio::FileOperationResult *found =
+        FindBy(results, a_id, &Studio::FileOperationResult::requestID);
+    if (!found || found->state != Studio::FileOperationState::kPending) {
       return;
     }
     found->state = a_error ? Studio::FileOperationState::kFailed
@@ -926,7 +924,7 @@ void RecipeEditor::PinRecipe(Studio::PieceRef a_piece, std::string a_recipeID) {
     std::optional<Studio::Pin> pin;
     if (!id.empty()) {
       const std::span<const Recipe> loaded = LoadedRecipes();
-      if (std::ranges::find(loaded, id, &Recipe::id) == loaded.end()) {
+      if (!FindLoaded(loaded, id)) {
         logger::warn("pin: recipe {} is not loaded", id);
         return;
       }

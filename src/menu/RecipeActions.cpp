@@ -24,9 +24,8 @@ namespace BetterEnchantmentEffects::Menu {
 namespace {
 const Studio::FileOperationResult *
 FileResult(const Studio::Snapshot &a_snapshot, const std::string &a_recipeID) {
-  const auto found = std::ranges::find(a_snapshot.fileOperations, a_recipeID,
-                                       &Studio::FileOperationResult::recipeID);
-  return found == a_snapshot.fileOperations.end() ? nullptr : &*found;
+  return FindBy(a_snapshot.fileOperations, a_recipeID,
+                &Studio::FileOperationResult::recipeID);
 }
 
 std::string SourcedProblem(const Diagnostic &a_diagnostic) {
@@ -55,9 +54,9 @@ RecipeOperationErrors(const Studio::Snapshot &a_snapshot,
       a_snapshot.gesture->error) {
     out.push_back(*a_snapshot.gesture->error);
   }
-  const auto edit = std::ranges::find(a_snapshot.editResults, a_recipeID,
-                                      &Studio::RecipeEditResult::recipeID);
-  if (edit != a_snapshot.editResults.end() && edit->error) {
+  const Studio::RecipeEditResult *edit = FindBy(
+      a_snapshot.editResults, a_recipeID, &Studio::RecipeEditResult::recipeID);
+  if (edit && edit->error) {
     out.emplace_back(SourcedProblem(*edit->error));
   }
   return out;

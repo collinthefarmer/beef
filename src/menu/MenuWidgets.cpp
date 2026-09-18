@@ -828,9 +828,8 @@ std::string ResourceValueText(const Studio::RecipeRow &a_recipe,
                               const ResourceRef &a_ref) {
   switch (a_ref.kind) {
   case ResourceKind::kSignal: {
-    const auto row = std::ranges::find(a_recipe.signals, a_ref.name,
-                                       &Studio::SignalRow::name);
-    if (row == a_recipe.signals.end()) {
+    const Studio::SignalRow *row = FindByName(a_recipe.signals, a_ref.name);
+    if (!row) {
       return {};
     }
     if (!row->text.empty()) {
@@ -842,23 +841,20 @@ std::string ResourceValueText(const Studio::RecipeRow &a_recipe,
     return row->live && !row->inert ? ValueText(row->value) : std::string{};
   }
   case ResourceKind::kSource: {
-    const auto row = std::ranges::find(a_recipe.sourceRows, a_ref.name,
-                                       &Studio::SourceRow::name);
-    if (row == a_recipe.sourceRows.end()) {
+    const Studio::SourceRow *row = FindByName(a_recipe.sourceRows, a_ref.name);
+    if (!row) {
       return {};
     }
     return SourceValueText(
         Studio::SourceKindOf(*row).value_or(SourceKind{MaterialSource{}}));
   }
   case ResourceKind::kMask: {
-    const auto row = std::ranges::find(a_recipe.maskRows, a_ref.name,
-                                       &Studio::TextRow::name);
-    return row == a_recipe.maskRows.end() ? std::string{} : row->text;
+    const Studio::TextRow *row = FindByName(a_recipe.maskRows, a_ref.name);
+    return row ? row->text : std::string{};
   }
   case ResourceKind::kCurve: {
-    const auto row =
-        std::ranges::find(a_recipe.curves, a_ref.name, &Studio::TextRow::name);
-    return row == a_recipe.curves.end() ? std::string{} : row->text;
+    const Studio::TextRow *row = FindByName(a_recipe.curves, a_ref.name);
+    return row ? row->text : std::string{};
   }
   case ResourceKind::kCount:
     break;
@@ -1175,10 +1171,11 @@ void Banner(std::string_view a_label, float a_trailingWidth,
   const ImVec2 origin = ImGui::GetCursorScreenPos();
   const float width = ImGui::GetContentRegionAvail().x;
   const float height = ImGui::GetFrameHeight();
+  const auto *style = ImGui::GetStyle();
   ImGui::ImDrawListManager::AddRectFilled(
       ImGui::GetWindowDrawList(), origin,
       ImVec2{origin.x + width, origin.y + height}, ImGui::GetColorU32(kWarn),
-      ImGui::GetStyle()->FrameRounding, 0);
+      style ? style->FrameRounding : 0.0f, 0);
   ImGui::PushStyleColor(ImGuiMCP::ImGuiCol_Text, kBadgeFrame);
   ImGui::AlignTextToFramePadding();
   const std::string label{a_label};

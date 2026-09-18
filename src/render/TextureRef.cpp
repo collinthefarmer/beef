@@ -38,12 +38,10 @@ TextureRef::TextureRef(RE::NiSourceTexture *a_texture) {
   if (lease.generated &&
       (!lease.target || lease.target->Texture() != a_texture)) {
     valid_ = false;
-    Trace::Safely([&] {
-      Trace::Emit(Trace::Event::kTexture,
-                  {{"action", "lease_rejected"},
-                   {"presenter", Trace::Pointer(a_texture)},
-                   {"generation", std::to_string(lease.generation)}});
-    });
+    Trace::EmitSafely(Trace::Event::kTexture,
+                      {{"action", "lease_rejected"},
+                       {"presenter", Trace::Pointer(a_texture)},
+                       {"generation", std::to_string(lease.generation)}});
     return;
   }
   target_ = std::move(lease.target);

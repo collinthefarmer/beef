@@ -245,7 +245,7 @@ void FocusCreatedSubject(const InspectorSubject &a_subject,
 
 [[nodiscard]] bool PostCreate(const FormField &a_field,
                               const std::string &a_text, const Frame &a_frame) {
-  if (std::ranges::find(a_field.creators, a_text) == a_field.creators.end()) {
+  if (!std::ranges::contains(a_field.creators, a_text)) {
     return false;
   }
   std::vector<RecipeEdit> edits =
@@ -307,8 +307,7 @@ void DrawCatalogList(const FormField &a_field, const Frame &a_frame,
       ImGui::CloseCurrentPopup();
     }
   }
-  const auto &catalog =
-      a_frame.snapshot->catalogs[static_cast<std::size_t>(*a_field.catalog)];
+  const auto &catalog = a_frame.snapshot->catalogs[IndexOf(*a_field.catalog)];
   int id = 0;
   std::size_t shown = 0;
   if (const Studio::GameObjectCandidate *picked =
@@ -495,7 +494,7 @@ std::optional<std::size_t> DrawForm(const char *a_id,
 namespace {
 [[nodiscard]] std::optional<InspectorSubject>
 ResolveReference(const std::string &a_name, const RecipeRow &a_recipe) {
-  if (std::ranges::find(a_recipe.masks, a_name) != a_recipe.masks.end()) {
+  if (std::ranges::contains(a_recipe.masks, a_name)) {
     return MaskSubject{a_name};
   }
   if (InspectorSubjectExists(SourceSubject{a_name}, a_recipe)) {
@@ -679,8 +678,7 @@ void DrawInspectorFields(const Studio::Inspector &a_inspector,
   case FieldDetail::kSource:
     if (IsWholeReference(form[*opened].text)) {
       const std::string name = ReferenceName(form[*opened].text);
-      if (std::ranges::find(a_frame.recipe->masks, name) !=
-          a_frame.recipe->masks.end()) {
+      if (std::ranges::contains(a_frame.recipe->masks, name)) {
         destination = MaskSubject{name};
       } else if (InspectorSubjectExists(SourceSubject{name}, *a_frame.recipe)) {
         destination = SourceSubject{name};

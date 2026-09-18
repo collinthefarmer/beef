@@ -25,7 +25,7 @@ struct SlotWrite {
   Vec3 color{1.0f, 1.0f, 1.0f};
 
   [[nodiscard]] float Of(ScalarField a_field) const {
-    return scalars[static_cast<std::size_t>(a_field)];
+    return scalars[IndexOf(a_field)];
   }
   [[nodiscard]] float Shown(ScalarField a_field) const {
     return shown ? Of(a_field) : 0.0f;
@@ -36,7 +36,7 @@ SlotWrite EmptyWrite(Slot a_slot) {
   SlotWrite write;
   write.slot = a_slot;
   for (const ScalarField field : ScalarsOf(a_slot)) {
-    write.scalars[static_cast<std::size_t>(field)] = ScalarFallback(field);
+    write.scalars[IndexOf(field)] = ScalarFallback(field);
   }
   const float fallback = ScalarFallback(ScalarField::kColor);
   write.color = Vec3{fallback, fallback, fallback};
@@ -108,23 +108,12 @@ SlotChain RenderSlotChain(LiveActor &a_state, LiveGeometry &a_bound,
   StackBase base;
   for (const StackLink &link : a_slot.chain) {
     const SlotContribution c = link.contribution;
-    const std::size_t placed = static_cast<std::size_t>(c.placed);
-    if (placed >= a_bound.placements.size()) {
+    const std::optional<ResolvedPlacement> resolved =
+        ResolvePlacement(a_state, a_bound, IndexOf(c.placed));
+    if (!resolved) {
       continue;
     }
-    const std::size_t placementIndex =
-        static_cast<std::size_t>(a_bound.placements[placed]);
-    if (placementIndex >= a_state.plan.placements.size() ||
-        placementIndex >= a_state.placements.size()) {
-      continue;
-    }
-    const Placement &placement = a_state.plan.placements[placementIndex];
-    const std::size_t instanceIndex =
-        static_cast<std::size_t>(placement.instance);
-    if (instanceIndex >= a_state.instances.size()) {
-      continue;
-    }
-    LiveInstance &instance = a_state.instances[instanceIndex];
+    LiveInstance &instance = a_state.instances[resolved->instance];
     if (!instance.recipe || !instance.signals) {
       continue;
     }
@@ -133,7 +122,7 @@ SlotChain RenderSlotChain(LiveActor &a_state, LiveGeometry &a_bound,
             ? Get<SurfaceOutput>(instance.recipe->outputs[c.output])
             : nullptr;
     PlacedOutput *output =
-        OutputAt(a_state.placements[placementIndex], c.output);
+        OutputAt(a_state.placements[resolved->placement], c.output);
     if (!material || !output || !output->stack ||
         !a_view.OutputShown(instance.recipe->id, c.output)) {
       continue;
@@ -173,8 +162,7 @@ void ApplySlotScalars(SlotWrite &a_write, Slot a_slot,
     if (field == ScalarField::kColor) {
       a_write.color = a_chain.resolved[*at].color;
     } else {
-      a_write.scalars[static_cast<std::size_t>(field)] =
-          a_chain.resolved[*at].Scalar(field);
+      a_write.scalars[IndexOf(field)] = a_chain.resolved[*at].Scalar(field);
     }
   }
 }
@@ -247,6 +235,16 @@ void SweepBoundMeshes(
   }
   a_compositor.SweepMeshes(a_nowMS, bound);
 }
+
+void MarkReferencedInstances(LiveActor &a_state, const LiveGeometry &a_bound,
+                             std::vector<bool> &a_referenced) {
+  for (const PlacementId id : a_bound.placements) {
+    if (const std::optional<ResolvedPlacement> resolved =
+            ResolvePlacement(a_state, id)) {
+      a_referenced[resolved->instance] = true;
+    }
+  }
+}
 }
 
 void Manager::OnFrame() {
@@ -299,33 +297,7 @@ void Manager::Tick(std::uint32_t a_nowMS, const Settings &a_settings) {
       TickInstance(instance, timing.time, timing.delta);
       instance.lastTime = timing.time;
     }
-    const bool soloingPiece = view.soloPiece.has_value();
-    std::vector<bool> instanceHidden;
-    if (soloingPiece) {
-      instanceHidden.assign(state.instances.size(), false);
-    }
-    for (LivePiece &piece : state.pieces) {
-      const bool hidden =
-          soloingPiece && !view.PieceShown(it->first, piece.armor);
-      for (LiveGeometry &bound : piece.geometries) {
-        RenderGeometry(state, piece, bound, hidden);
-        if (!hidden) {
-          continue;
-        }
-        for (const PlacementId id : bound.placements) {
-          const auto placement = static_cast<std::size_t>(id);
-          if (placement >= state.plan.placements.size()) {
-            continue;
-          }
-          const auto instance = static_cast<std::size_t>(
-              state.plan.placements[placement].instance);
-          if (instance < instanceHidden.size()) {
-            instanceHidden[instance] = true;
-          }
-        }
-      }
-    }
-    UpdateLights(state, instanceHidden);
+    UpdateLights(state, RenderPieces(state, it->first));
     FinishApplications(it->first, state);
     if (Alive(state)) {
       ++it;
@@ -336,6 +308,35 @@ void Manager::Tick(std::uint32_t a_nowMS, const Settings &a_settings) {
     }
   }
   SweepBoundMeshes(*compositor, applied_, a_nowMS);
+}
+
+std::vector<bool> Manager::RenderPieces(LiveActor &a_state,
+                                        RE::FormID a_actorID) {
+  const Studio::View &view = editor_.CurrentView();
+  const bool soloingPiece = view.soloPiece.has_value();
+  std::vector<bool> hidden;
+  std::vector<bool> shown;
+  if (soloingPiece) {
+    hidden.assign(a_state.instances.size(), false);
+    shown.assign(a_state.instances.size(), false);
+  }
+  for (LivePiece &piece : a_state.pieces) {
+    const bool pieceHidden =
+        soloingPiece && !view.PieceShown(a_actorID, piece.armor);
+    std::vector<bool> &referenced = pieceHidden ? hidden : shown;
+    for (LiveGeometry &bound : piece.geometries) {
+      RenderGeometry(a_state, piece, bound, pieceHidden);
+      if (soloingPiece) {
+        MarkReferencedInstances(a_state, bound, referenced);
+      }
+    }
+  }
+  for (std::size_t i = 0; i < hidden.size(); ++i) {
+    if (shown[i]) {
+      hidden[i] = false;
+    }
+  }
+  return hidden;
 }
 
 void Manager::TickInstance(LiveInstance &a_instance, float a_time,
@@ -374,12 +375,12 @@ void Manager::RenderGeometry(LiveActor &a_state,
   const Studio::View &view = editor_.CurrentView();
   if (a_bound.lost) {
     for (const PlacementId id : a_bound.placements) {
-      const auto index = static_cast<std::size_t>(id);
-      if (index >= a_state.placements.size()) {
-        continue;
-      }
-      for (PlacedOutput &output : a_state.placements[index].outputs) {
-        output.renderFailed = true;
+      if (const std::optional<ResolvedPlacement> resolved =
+              ResolvePlacement(a_state, id)) {
+        for (PlacedOutput &output :
+             a_state.placements[resolved->placement].outputs) {
+          output.renderFailed = true;
+        }
       }
     }
     return;

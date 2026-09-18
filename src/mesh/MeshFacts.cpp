@@ -22,9 +22,8 @@ std::vector<SlotCoverage> SlotsOf(const MeshData &a_mesh) {
       continue;
     }
     const std::uint32_t slot = partition.slot;
-    const auto it = std::ranges::find(slots, slot, &SlotCoverage::slot);
-    if (it != slots.end()) {
-      it->triangles += partition.triangles.size();
+    if (SlotCoverage *existing = FindBy(slots, slot, &SlotCoverage::slot)) {
+      existing->triangles += partition.triangles.size();
       continue;
     }
     SlotCoverage coverage;

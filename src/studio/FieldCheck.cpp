@@ -17,7 +17,7 @@ namespace BetterEnchantmentEffects::Studio {
 namespace {
 [[nodiscard]] bool Listed(std::span<const std::string> a_names,
                           std::string_view a_name) {
-  return std::ranges::find(a_names, a_name) != a_names.end();
+  return std::ranges::contains(a_names, a_name);
 }
 
 [[nodiscard]] std::optional<ValueType> SignalType(const Names &a_names,

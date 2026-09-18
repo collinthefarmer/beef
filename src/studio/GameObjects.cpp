@@ -1,5 +1,6 @@
 #include "studio/GameObjects.h"
 
+#include "Core.h"
 #include "studio/Names.h"
 
 #include <array>
@@ -14,7 +15,7 @@ constexpr std::array<std::string_view, kGameObjectKindCount> kKindNames{
 }
 
 std::string_view GameObjectKindName(GameObjectKind a_kind) noexcept {
-  const auto index = static_cast<std::size_t>(a_kind);
+  const auto index = IndexOf(a_kind);
   return index < kKindNames.size() ? kKindNames[index] : std::string_view{};
 }
 

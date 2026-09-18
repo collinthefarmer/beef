@@ -94,7 +94,7 @@ void MeshCache::Sweep(std::uint32_t a_nowMS, std::uint32_t a_maxAgeMS,
     if (!entry) {
       return true;
     }
-    if (std::ranges::find(a_keep, geometry) != a_keep.end()) {
+    if (std::ranges::contains(a_keep, geometry)) {
       entry->lastUsedMS = a_nowMS;
       return false;
     }

@@ -8,7 +8,7 @@ namespace {
 [[nodiscard]] std::optional<int>
 PriorityOf(std::span<const PlacedRecipe> a_placed,
            SlotContributor a_source) noexcept {
-  const std::size_t index = static_cast<std::size_t>(a_source);
+  const std::size_t index = IndexOf(a_source);
   if (index >= a_placed.size()) {
     return std::nullopt;
   }

@@ -27,48 +27,43 @@ void TraceSkin(std::string_view a_role, const RE::NiSkinInstance *a_skin) {
   }
   const std::uint32_t total = a_skin->skinData ? a_skin->skinData->bones : 0;
   const auto count = std::min<std::uint32_t>(total, 256);
-  Trace::Safely([&] {
-    Trace::Emit(
-        Trace::Event::kShell,
-        {{"action", "skin"},
-         {"role", std::string{a_role}},
-         {"bone_count", std::to_string(total)},
-         {"sampled_bones",
-          std::to_string(a_skin->skinData && a_skin->skinData->boneData ? count
-                                                                        : 0)},
-         {"palette_limited", total > count ? "true" : "false"},
-         {"skin", Trace::Pointer(a_skin)},
-         {"data", Trace::Pointer(a_skin->skinData.get())},
-         {"partition", Trace::Pointer(a_skin->skinPartition.get())},
-         {"root", Trace::Pointer(a_skin->rootParent)},
-         {"bones", Trace::Pointer(static_cast<const void *>(a_skin->bones))},
-         {"world_transforms", Trace::Pointer(static_cast<const void *>(
-                                  a_skin->boneWorldTransforms))},
-         {"matrices", Trace::Pointer(a_skin->boneMatrices)},
-         {"previous_matrices", Trace::Pointer(a_skin->prevBoneMatrices)},
-         {"frame", std::to_string(a_skin->frameID)},
-         {"matrix_count", std::to_string(a_skin->numMatrices)}});
-  });
+  Trace::EmitSafely(
+      Trace::Event::kShell,
+      {{"action", "skin"},
+       {"role", std::string{a_role}},
+       {"bone_count", std::to_string(total)},
+       {"sampled_bones",
+        std::to_string(a_skin->skinData && a_skin->skinData->boneData ? count
+                                                                      : 0)},
+       {"palette_limited", total > count ? "true" : "false"},
+       {"skin", Trace::Pointer(a_skin)},
+       {"data", Trace::Pointer(a_skin->skinData.get())},
+       {"partition", Trace::Pointer(a_skin->skinPartition.get())},
+       {"root", Trace::Pointer(a_skin->rootParent)},
+       {"bones", Trace::Pointer(static_cast<const void *>(a_skin->bones))},
+       {"world_transforms",
+        Trace::Pointer(static_cast<const void *>(a_skin->boneWorldTransforms))},
+       {"matrices", Trace::Pointer(a_skin->boneMatrices)},
+       {"previous_matrices", Trace::Pointer(a_skin->prevBoneMatrices)},
+       {"frame", std::to_string(a_skin->frameID)},
+       {"matrix_count", std::to_string(a_skin->numMatrices)}});
   if (!a_skin->skinData || !a_skin->skinData->boneData) {
     return;
   }
   for (std::uint32_t i = 0; i < count; ++i) {
-    Trace::Safely([&] {
-      Trace::Emit(
-          Trace::Event::kShell,
-          {{"action", "bone"},
-           {"role", std::string{a_role}},
-           {"skin", Trace::Pointer(a_skin)},
-           {"index", std::to_string(i)},
-           {"total", std::to_string(a_skin->skinData->bones)},
-           {"node", Trace::Pointer(a_skin->bones ? a_skin->bones[i] : nullptr)},
-           {"world_transform",
-            Trace::Pointer(a_skin->boneWorldTransforms
-                               ? a_skin->boneWorldTransforms[i]
-                               : nullptr)},
-           {"bind_transform",
-            TransformText(a_skin->skinData->boneData[i].skinToBone)}});
-    });
+    Trace::EmitSafely(
+        Trace::Event::kShell,
+        {{"action", "bone"},
+         {"role", std::string{a_role}},
+         {"skin", Trace::Pointer(a_skin)},
+         {"index", std::to_string(i)},
+         {"total", std::to_string(a_skin->skinData->bones)},
+         {"node", Trace::Pointer(a_skin->bones ? a_skin->bones[i] : nullptr)},
+         {"world_transform", Trace::Pointer(a_skin->boneWorldTransforms
+                                                ? a_skin->boneWorldTransforms[i]
+                                                : nullptr)},
+         {"bind_transform",
+          TransformText(a_skin->skinData->boneData[i].skinToBone)}});
   }
 }
 
@@ -179,21 +174,20 @@ struct ShellBinding::Builder {
     auto *parent = original->parent;
     const auto &rt = clone->GetGeometryRuntimeData();
     const auto &originalRt = original->GetGeometryRuntimeData();
-    Trace::Safely([&] {
-      Trace::Emit(Trace::Event::kShell,
-                  {{"action", "cloned"},
-                   {"source", Trace::Pointer(original)},
-                   {"clone", Trace::Pointer(clone)},
-                   {"source_property", Trace::Pointer(sourceProperty)},
-                   {"clone_property", Trace::Pointer(property)},
-                   {"parent", Trace::Pointer(parent)},
-                   {"source_buffers", Trace::Pointer(originalRt.rendererData)},
-                   {"clone_buffers", Trace::Pointer(rt.rendererData)},
-                   {"source_local", TransformText(original->local)},
-                   {"clone_local", TransformText(clone->local)},
-                   {"source_world", TransformText(original->world)},
-                   {"clone_world", TransformText(clone->world)}});
-    });
+    Trace::EmitSafely(
+        Trace::Event::kShell,
+        {{"action", "cloned"},
+         {"source", Trace::Pointer(original)},
+         {"clone", Trace::Pointer(clone)},
+         {"source_property", Trace::Pointer(sourceProperty)},
+         {"clone_property", Trace::Pointer(property)},
+         {"parent", Trace::Pointer(parent)},
+         {"source_buffers", Trace::Pointer(originalRt.rendererData)},
+         {"clone_buffers", Trace::Pointer(rt.rendererData)},
+         {"source_local", TransformText(original->local)},
+         {"clone_local", TransformText(clone->local)},
+         {"source_world", TransformText(original->world)},
+         {"clone_world", TransformText(clone->world)}});
     TraceSkin("source", originalRt.skinInstance.get());
     TraceSkin("clone_before_copy", rt.skinInstance.get());
   }
@@ -430,12 +424,10 @@ ShellBinding::Create(RE::BSGeometry *a_original,
 ShellBinding::~ShellBinding() { Detach(); }
 
 void ShellBinding::Detach() {
-  Trace::Safely([&] {
-    Trace::Emit(Trace::Event::kShell,
-                {{"action", "detach"},
-                 {"clone", Trace::Pointer(clone_.get())},
-                 {"parent", Trace::Pointer(parent_.get())}});
-  });
+  Trace::EmitSafely(Trace::Event::kShell,
+                    {{"action", "detach"},
+                     {"clone", Trace::Pointer(clone_.get())},
+                     {"parent", Trace::Pointer(parent_.get())}});
   if (parent_ && clone_) {
     parent_->DetachChild(clone_.get());
   }
@@ -580,26 +572,23 @@ void ShellBinding::Pose(const ShellPoseValues &a_pose, float a_alpha,
   if (!tracedPose_) {
     TraceShellState("clone_before_first_pose", clone_.get());
     tracedPose_ = true;
-    Trace::Safely([&] {
-      Trace::Emit(
-          Trace::Event::kShell,
-          {{"action", "first_pose"},
-           {"clone", Trace::Pointer(clone_.get())},
-           {"skin_data", Trace::Pointer(skinData_.get())},
-           {"inflate", std::format("{},{},{}", a_pose.inflate.x,
-                                   a_pose.inflate.y, a_pose.inflate.z)},
-           {"offset", std::format("{},{},{}", a_pose.offset.x, a_pose.offset.y,
-                                  a_pose.offset.z)},
-           {"scale", std::to_string(a_pose.scale)},
-           {"scale_point",
-            std::format("{},{},{}", a_pose.scalePoint.x, a_pose.scalePoint.y,
-                        a_pose.scalePoint.z)},
-           {"spin_turns", std::to_string(a_pose.spin)},
-           {"spin_axis", std::format("{},{},{}", a_pose.spinAxis.x,
-                                     a_pose.spinAxis.y, a_pose.spinAxis.z)},
-           {"alpha", std::to_string(a_alpha)},
-           {"emissive", std::to_string(a_emissive)}});
-    });
+    Trace::EmitSafely(
+        Trace::Event::kShell,
+        {{"action", "first_pose"},
+         {"clone", Trace::Pointer(clone_.get())},
+         {"skin_data", Trace::Pointer(skinData_.get())},
+         {"inflate", std::format("{},{},{}", a_pose.inflate.x, a_pose.inflate.y,
+                                 a_pose.inflate.z)},
+         {"offset", std::format("{},{},{}", a_pose.offset.x, a_pose.offset.y,
+                                a_pose.offset.z)},
+         {"scale", std::to_string(a_pose.scale)},
+         {"scale_point", std::format("{},{},{}", a_pose.scalePoint.x,
+                                     a_pose.scalePoint.y, a_pose.scalePoint.z)},
+         {"spin_turns", std::to_string(a_pose.spin)},
+         {"spin_axis", std::format("{},{},{}", a_pose.spinAxis.x,
+                                   a_pose.spinAxis.y, a_pose.spinAxis.z)},
+         {"alpha", std::to_string(a_alpha)},
+         {"emissive", std::to_string(a_emissive)}});
   }
   property->SetMaterialAlpha(std::clamp(a_alpha, 0.0f, 1.0f));
   if (vanilla_) {

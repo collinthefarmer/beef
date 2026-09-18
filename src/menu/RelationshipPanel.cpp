@@ -51,7 +51,7 @@ std::string_view OwnerType(const RelationshipOwner &a_owner) {
   return Match(
       a_owner,
       [](const ResourceRef &a_ref) -> std::string_view {
-        return kResourceKindNames[static_cast<std::size_t>(a_ref.kind)];
+        return kResourceKindNames[IndexOf(a_ref.kind)];
       },
       [](const OutputOwner &) -> std::string_view { return "output"; },
       [](const LayerOwner &) -> std::string_view { return "layer"; },
@@ -129,7 +129,7 @@ void DrawDrivenBy(const Frame &a_frame,
     }
     ImGui::PushID(static_cast<int>(index++));
     table.Cell();
-    Dim(kResourceKindNames[static_cast<std::size_t>(link.driver.kind)]);
+    Dim(kResourceKindNames[IndexOf(link.driver.kind)]);
     table.Cell();
     Follow(link.driver.name, SubjectOf(link.driver), a_frame);
     table.Cell();

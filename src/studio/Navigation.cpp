@@ -55,9 +55,7 @@ bool PropertyExists(const PropertyLocation &a_property,
 
 [[nodiscard]] const OutputRow *OutputAt(const RecipeRow &a_recipe,
                                         std::size_t a_index) {
-  const auto found =
-      std::ranges::find(a_recipe.outputs, a_index, &OutputRow::index);
-  return found == a_recipe.outputs.end() ? nullptr : &*found;
+  return FindBy(a_recipe.outputs, a_index, &OutputRow::index);
 }
 
 void AlignOutputSelection(Selection &a_selection, const RecipeRow &a_recipe) {
@@ -99,6 +97,22 @@ bool InvalidateIndexedSelection(Selection &a_selection,
   a_selection.subject = RecipeSubject{};
   return true;
 }
+
+void PushVisit(std::vector<InspectorVisit> &a_stack, InspectorVisit a_visit) {
+  if (a_stack.size() >= kMaxInspectorHistory) {
+    a_stack.erase(a_stack.begin());
+  }
+  a_stack.push_back(std::move(a_visit));
+}
+
+bool CommitNavigation(Navigation &a_navigation, const Selection &a_previous,
+                      Selection &a_selection, const RecipeRow &a_recipe) {
+  PushVisit(a_navigation.back, {a_previous, a_navigation.scroll});
+  a_navigation.forward.clear();
+  AlignOutputSelection(a_selection, a_recipe);
+  a_navigation.scroll = 0.0f;
+  return true;
+}
 }
 
 bool InspectorSubjectExists(const InspectorSubject &a_subject,
@@ -115,20 +129,16 @@ bool InspectorSubjectExists(const InspectorSubject &a_subject,
                a_layer.layer < output->layers.size();
       },
       [&](const SignalSubject &a_signal) {
-        return std::ranges::find(a_recipe.signals, a_signal.name,
-                                 &SignalRow::name) != a_recipe.signals.end();
+        return FindByName(a_recipe.signals, a_signal.name) != nullptr;
       },
       [&](const SourceSubject &a_source) {
-        return std::ranges::find(a_recipe.sourceRows, a_source.name,
-                                 &SourceRow::name) != a_recipe.sourceRows.end();
+        return FindByName(a_recipe.sourceRows, a_source.name) != nullptr;
       },
       [&](const MaskSubject &a_mask) {
-        return std::ranges::find(a_recipe.maskRows, a_mask.name,
-                                 &TextRow::name) != a_recipe.maskRows.end();
+        return FindByName(a_recipe.maskRows, a_mask.name) != nullptr;
       },
       [&](const CurveSubject &a_curve) {
-        return std::ranges::find(a_recipe.curves, a_curve.name,
-                                 &TextRow::name) != a_recipe.curves.end();
+        return FindByName(a_recipe.curves, a_curve.name) != nullptr;
       });
 }
 
@@ -157,16 +167,10 @@ bool Navigate(Navigation &a_navigation, Selection &a_selection,
       (a_selection.subject == a_subject && !a_selection.property)) {
     return false;
   }
-  if (a_navigation.back.size() >= kMaxInspectorHistory) {
-    a_navigation.back.erase(a_navigation.back.begin());
-  }
-  a_navigation.back.push_back({a_selection, a_navigation.scroll});
-  a_navigation.forward.clear();
+  const Selection previous = a_selection;
   a_selection.subject = std::move(a_subject);
   a_selection.property.reset();
-  AlignOutputSelection(a_selection, a_recipe);
-  a_navigation.scroll = 0.0f;
-  return true;
+  return CommitNavigation(a_navigation, previous, a_selection, a_recipe);
 }
 
 std::optional<InspectorSubject>
@@ -221,16 +225,10 @@ bool NavigateProperty(Navigation &a_navigation, Selection &a_selection,
        a_selection.property == a_property)) {
     return false;
   }
-  if (a_navigation.back.size() >= kMaxInspectorHistory) {
-    a_navigation.back.erase(a_navigation.back.begin());
-  }
-  a_navigation.back.push_back({a_selection, a_navigation.scroll});
-  a_navigation.forward.clear();
+  const Selection previous = a_selection;
   a_selection.subject = std::move(a_subject);
   a_selection.property = std::move(a_property);
-  AlignOutputSelection(a_selection, a_recipe);
-  a_navigation.scroll = 0.0f;
-  return true;
+  return CommitNavigation(a_navigation, previous, a_selection, a_recipe);
 }
 
 namespace {
@@ -253,10 +251,7 @@ bool StepHistory(std::vector<InspectorVisit> &a_from,
     if (visit.selection == a_selection) {
       continue;
     }
-    if (a_to.size() >= kMaxInspectorHistory) {
-      a_to.erase(a_to.begin());
-    }
-    a_to.push_back({a_selection, a_scroll});
+    PushVisit(a_to, {a_selection, a_scroll});
     a_selection = std::move(visit.selection);
     a_scroll = visit.scroll;
     return true;
@@ -310,8 +305,7 @@ void ResolvePreviewPin(std::optional<PreviewPin> &a_pin,
       a_pin->selection.recipeID != a_recipe->id ||
       a_pin->resetID != a_resetID ||
       !InspectorSubjectExists(a_pin->selection.subject, *a_recipe) ||
-      std::ranges::find(a_recipe->geometries, a_pin->selection.geometry,
-                        &GeometryRow::name) == a_recipe->geometries.end()) {
+      FindByName(a_recipe->geometries, a_pin->selection.geometry) == nullptr) {
     a_pin.reset();
   }
 }

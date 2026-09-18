@@ -59,26 +59,23 @@ void MarkReapply(bool a_changed) {
 
 [[nodiscard]] const SettingDesc *FindSetting(std::string_view a_key) noexcept {
   const auto table = SettingTable();
-  const auto it = std::ranges::find_if(table, [&](const SettingDesc &a_desc) {
+  return FindIf(table, [&](const SettingDesc &a_desc) {
     return std::string_view{a_desc.key} == a_key;
   });
-  return it == table.end() ? nullptr : &*it;
 }
 
 [[nodiscard]] bool TextureScaleWidget(TextureScale &a_value,
                                       const SettingDesc &a_desc,
                                       const char *a_label) {
   bool changed = false;
-  const int current = static_cast<int>(a_value);
-  const std::string preview =
-      current >= 0 && static_cast<std::size_t>(current) < a_desc.items.size()
-          ? std::string{a_desc.items[static_cast<std::size_t>(current)]}
-          : std::string{};
+  const std::size_t selected = IndexOf(a_value);
+  const std::string preview = selected < a_desc.items.size()
+                                  ? std::string{a_desc.items[selected]}
+                                  : std::string{};
   if (ImGui::BeginCombo(a_label, preview.c_str())) {
     for (std::size_t i = 0; i < a_desc.items.size(); ++i) {
       const std::string item{a_desc.items[i]};
-      if (ImGui::Selectable(item.c_str(),
-                            static_cast<std::size_t>(current) == i)) {
+      if (ImGui::Selectable(item.c_str(), selected == i)) {
         a_value = static_cast<TextureScale>(i);
         changed = true;
       }

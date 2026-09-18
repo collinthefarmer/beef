@@ -148,8 +148,7 @@ void SoloPieceButton(const Frame &a_frame) {
     return;
   }
   const Studio::View &view = ViewOf(a_frame);
-  bool solo = view.soloPiece && view.soloPiece->actorID == piece->ref.actorID &&
-              view.soloPiece->armorID == piece->ref.armorID;
+  bool solo = view.soloPiece && view.soloPiece->SamePiece(piece->ref);
   std::string text = "solo: show only this piece";
   if (solo) {
     text =

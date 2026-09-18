@@ -5,11 +5,11 @@
 
 namespace BetterEnchantmentEffects::Studio {
 float ResolvedOutput::Scalar(ScalarField a_field) const noexcept {
-  return scalars[static_cast<std::size_t>(a_field)];
+  return scalars[IndexOf(a_field)];
 }
 
 bool ResolvedOutput::IsNamed(ScalarField a_field) const noexcept {
-  return named[static_cast<std::size_t>(a_field)];
+  return named[IndexOf(a_field)];
 }
 
 ResolvedOutput ResolveOutput(const SurfaceOutput &a_output,
@@ -21,7 +21,7 @@ ResolvedOutput ResolveOutput(const SurfaceOutput &a_output,
     resolved.scalars[i] = ScalarFallback(static_cast<ScalarField>(i));
   }
   for (const ScalarField field : ScalarsOf(a_output.slot)) {
-    const std::size_t index = static_cast<std::size_t>(field);
+    const std::size_t index = IndexOf(field);
     if (field == ScalarField::kColor) {
       if (a_output.scalars.color) {
         resolved.color = a_signals.Resolve(*a_output.scalars.color);

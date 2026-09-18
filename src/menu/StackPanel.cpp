@@ -33,15 +33,14 @@ void DrawInspector(const LayerStack &a_stack,
   if (!layout.inspector || !a_inspector) {
     return;
   }
-  const auto row = std::ranges::find(a_stack.rows, a_inspector->layer,
-                                     &LayerStackRow::index);
+  const auto *row =
+      FindBy(a_stack.rows, a_inspector->layer, &LayerStackRow::index);
   ImGui::PushID(static_cast<int>(a_inspector->layer));
   if (!a_inspector->row.problem.empty()) {
     Warn(a_inspector->row.problem);
   }
   DrawInspectorFields(*a_inspector, a_frame);
-  if (row != a_stack.rows.end() &&
-      row->layer.texture != Studio::TextureHandle{}) {
+  if (row && row->layer.texture != Studio::TextureHandle{}) {
     const Studio::ThumbnailSpec preview{
         row->layer.texture, ShaderChannel::kRgb, false,
         layout.inspectorThumbnail * a_frame.scale};

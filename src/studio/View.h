@@ -20,6 +20,9 @@ struct PieceRef {
   FormID armorID = 0;
   bool firstPerson = false;
   [[nodiscard]] bool operator==(const PieceRef &) const = default;
+  [[nodiscard]] bool SamePiece(const PieceRef &a_other) const noexcept {
+    return actorID == a_other.actorID && armorID == a_other.armorID;
+  }
 };
 
 struct Pin {
@@ -75,8 +78,7 @@ struct View {
   }
 
   [[nodiscard]] bool PieceShown(FormID a_actor, FormID a_armor) const noexcept {
-    return !soloPiece ||
-           (soloPiece->actorID == a_actor && soloPiece->armorID == a_armor);
+    return !soloPiece || soloPiece->SamePiece(PieceRef{a_actor, a_armor});
   }
 
   [[nodiscard]] std::vector<std::string> RecipeIDs() const;

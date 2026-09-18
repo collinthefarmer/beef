@@ -1,4 +1,5 @@
 #include "render/Binding.h"
+#include "Core.h"
 #include "diagnostics/Trace.h"
 
 #include <type_traits>
@@ -116,7 +117,7 @@ bool SlotWriter::MaterialAttached() const noexcept {
 }
 
 bool SlotWriter::HasGroup(Slot a_slot) const {
-  return groups_[static_cast<std::size_t>(a_slot)].has_value();
+  return groups_[IndexOf(a_slot)].has_value();
 }
 
 SlotWriter::GroupState SlotWriter::Capture(Slot a_slot) const {
@@ -169,7 +170,7 @@ SlotWriter::GroupState SlotWriter::Capture(Slot a_slot) const {
 SlotWriter::Group *SlotWriter::BeginWrite(Slot a_slot, bool a_enableFeature) {
   if (!MaterialAttached() || Problem(a_slot))
     return nullptr;
-  auto &group = groups_[static_cast<std::size_t>(a_slot)];
+  auto &group = groups_[IndexOf(a_slot)];
   const auto current = Capture(a_slot);
   if (group)
     return group->state.Owns(current) ? &*group : nullptr;
@@ -186,7 +187,7 @@ SlotWriter::Group *SlotWriter::BeginWrite(Slot a_slot, bool a_enableFeature) {
 }
 
 void SlotWriter::EndWrite(Slot a_slot) {
-  auto &group = groups_[static_cast<std::size_t>(a_slot)];
+  auto &group = groups_[IndexOf(a_slot)];
   if (group)
     group->state.Written(Capture(a_slot));
 }
@@ -197,7 +198,7 @@ void SlotWriter::SetFeature(Slot a_slot, bool a_on) {
   }
   auto &flags = material_.layout_->pbrFlags;
   const auto mask = FeatureMask(a_slot);
-  const auto &group = groups_[static_cast<std::size_t>(a_slot)];
+  const auto &group = groups_[IndexOf(a_slot)];
   if (group) {
     flags = (flags & ~mask) |
             (a_on ? mask : (group->state.Original().flags & mask));
@@ -377,24 +378,21 @@ void SlotWriter::Restore() {
       const auto slot = static_cast<Slot>(i);
       const auto current = Capture(slot);
       const auto original = group->state.Restore(current);
-      Trace::Safely([&] {
-        Trace::Emit(
-            Trace::Event::kRestore,
-            {{"binding", std::to_string(traceID_)},
-             {"slot", std::string{SlotName(slot)}},
-             {"material", Trace::Pointer(material_.layout_.get())},
-             {"original_texture",
-              std::to_string(group->state.Original().texture)},
-             {"written_texture",
-              std::to_string(group->state.LastWritten().texture)},
-             {"current_texture", std::to_string(current.texture)},
-             {"original_flags", std::to_string(group->state.Original().flags)},
-             {"written_flags",
-              std::to_string(group->state.LastWritten().flags)},
-             {"current_flags", std::to_string(current.flags)},
-             {"decision",
-              original ? "restore_group" : "preserve_external_group"}});
-      });
+      Trace::EmitSafely(
+          Trace::Event::kRestore,
+          {{"binding", std::to_string(traceID_)},
+           {"slot", std::string{SlotName(slot)}},
+           {"material", Trace::Pointer(material_.layout_.get())},
+           {"original_texture",
+            std::to_string(group->state.Original().texture)},
+           {"written_texture",
+            std::to_string(group->state.LastWritten().texture)},
+           {"current_texture", std::to_string(current.texture)},
+           {"original_flags", std::to_string(group->state.Original().flags)},
+           {"written_flags", std::to_string(group->state.LastWritten().flags)},
+           {"current_flags", std::to_string(current.flags)},
+           {"decision",
+            original ? "restore_group" : "preserve_external_group"}});
       if (original)
         RestoreGroup(slot, *original, group->original);
     }
@@ -407,7 +405,7 @@ void SlotWriter::RetainPublishedTextures() noexcept {
   if (published_.empty())
     return;
   for (auto it = published_.begin(); it != published_.end();) {
-    const auto &group = groups_[static_cast<std::size_t>(it->slot)];
+    const auto &group = groups_[IndexOf(it->slot)];
     const auto *field = TextureFieldOf(*material_.layout_, it->slot);
     const TextureRef *retained = nullptr;
     if (group && field) {
@@ -474,17 +472,15 @@ MaterialBinding::Install(RE::BSGeometry *a_geometry,
   }
   binding->slots_.emplace(*material);
   binding->privateMaterial_ = a_uniqueCopy;
-  Trace::Safely([&] {
-    Trace::Emit(
-        Trace::Event::kBinding,
-        {{"action", "install"},
-         {"geometry", Trace::Pointer(a_geometry)},
-         {"name", a_geometry->name.c_str() ? a_geometry->name.c_str() : ""},
-         {"property", Trace::Pointer(a_property)},
-         {"original_material", Trace::Pointer(original.get())},
-         {"installed_material", Trace::Pointer(a_property->material)},
-         {"emissive_storage", Trace::Pointer(a_property->emissiveColor)}});
-  });
+  Trace::EmitSafely(
+      Trace::Event::kBinding,
+      {{"action", "install"},
+       {"geometry", Trace::Pointer(a_geometry)},
+       {"name", a_geometry->name.c_str() ? a_geometry->name.c_str() : ""},
+       {"property", Trace::Pointer(a_property)},
+       {"original_material", Trace::Pointer(original.get())},
+       {"installed_material", Trace::Pointer(a_property->material)},
+       {"emissive_storage", Trace::Pointer(a_property->emissiveColor)}});
   return binding;
 }
 

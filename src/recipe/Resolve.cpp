@@ -107,7 +107,7 @@ std::vector<ResolvedRecipe> Resolve(const WornPiece &a_piece,
     const auto &recipe = a_loaded[i];
     std::optional<RecipeKey> best;
     for (const auto &key : recipe.keys) {
-      if (std::ranges::find(claimed, key) != claimed.end()) {
+      if (std::ranges::contains(claimed, key)) {
         continue;
       }
       claimed.push_back(key);
@@ -176,10 +176,9 @@ std::vector<PieceKey> KeyChoicesOf(const WornPiece &a_piece) {
 }
 
 const PieceKey *DefaultKeyChoice(std::span<const PieceKey> a_choices) noexcept {
-  const auto armor =
-      std::ranges::find(a_choices, KeyKind::kArmor, &PieceKey::kind);
-  if (armor != a_choices.end()) {
-    return &*armor;
+  if (const PieceKey *armor =
+          FindBy(a_choices, KeyKind::kArmor, &PieceKey::kind)) {
+    return armor;
   }
   return a_choices.empty() ? nullptr : &a_choices.front();
 }

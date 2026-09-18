@@ -109,10 +109,10 @@ void AddBoneInfluences(std::vector<BoneInfluence> &a_candidates,
       continue;
     }
     const auto &boneData = data->boneData[i];
-    auto it = std::ranges::find(a_candidates, bone, &BoneInfluence::bone);
-    if (it == a_candidates.end()) {
+    BoneInfluence *it = FindBy(a_candidates, bone, &BoneInfluence::bone);
+    if (!it) {
       a_candidates.push_back({bone, 0, 0, {}});
-      it = std::prev(a_candidates.end());
+      it = &a_candidates.back();
     }
     it->totalVertices += boneData.verts;
     if (boneData.verts > it->largestVertexCount) {

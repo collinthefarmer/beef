@@ -86,7 +86,7 @@ bool MatchesFilter(const EventFilter &a_filter,
 }
 
 void AddRef(std::vector<std::string> &a_out, std::string_view a_name) {
-  if (!a_name.empty() && std::ranges::find(a_out, a_name) == a_out.end()) {
+  if (!a_name.empty() && !std::ranges::contains(a_out, a_name)) {
     a_out.emplace_back(a_name);
   }
 }
@@ -213,7 +213,7 @@ std::span<const ScalarField> ScalarsFor(Slot a_slot) noexcept {
 bool ScalarNeeded(Slot a_slot, ScalarField a_field) noexcept {
   const auto *row = RowOf(kSlots, a_slot);
   return row && row->scalarsRequired &&
-         std::ranges::find(row->scalars, a_field) != row->scalars.end();
+         std::ranges::contains(row->scalars, a_field);
 }
 
 const std::optional<Param> *ScalarMemberOf(const SlotScalars &a_scalars,

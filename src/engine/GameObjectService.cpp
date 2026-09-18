@@ -1,5 +1,6 @@
 #include "engine/GameObjectService.h"
 
+#include "Core.h"
 #include "engine/EngineForms.h"
 #include "engine/Tweaks.h"
 
@@ -23,14 +24,14 @@ std::mutex g_mutex;
 std::array<std::shared_ptr<const GameObjectCatalog>, kGameObjectKindCount>
     g_catalogs;
 std::unordered_map<std::string, FormKey> g_editorIds;
-std::unordered_map<RE::FormID, std::set<std::string>> g_animTags;
+
+std::mutex g_animMutex;
+std::unordered_map<RE::FormID, std::set<std::string, std::less<>>> g_animTags;
 std::unordered_map<RE::FormID, std::shared_ptr<const GameObjectCatalog>>
     g_animCatalogs;
 std::unordered_set<RE::FormID> g_animDirty;
 
-std::size_t Index(GameObjectKind a_kind) {
-  return static_cast<std::size_t>(a_kind);
-}
+std::size_t Index(GameObjectKind a_kind) { return IndexOf(a_kind); }
 
 std::string Lower(std::string_view a_text) {
   std::string out{a_text};
@@ -180,7 +181,7 @@ GameObjectCatalogOf(GameObjectKind a_kind) {
 
 std::shared_ptr<const GameObjectCatalog>
 AnimEventCatalogOf(RE::FormID a_actor) {
-  std::scoped_lock lock{g_mutex};
+  std::scoped_lock lock{g_animMutex};
   std::shared_ptr<const GameObjectCatalog> &cached = g_animCatalogs[a_actor];
   if (cached && !g_animDirty.contains(a_actor)) {
     return cached;
@@ -206,10 +207,19 @@ void NoteAnimEvent(RE::FormID a_actor, std::string_view a_tag) {
   if (a_tag.empty()) {
     return;
   }
-  std::scoped_lock lock{g_mutex};
-  if (g_animTags[a_actor].insert(std::string{a_tag}).second) {
+  std::scoped_lock lock{g_animMutex};
+  std::set<std::string, std::less<>> &tags = g_animTags[a_actor];
+  if (!tags.contains(a_tag)) {
+    tags.emplace(a_tag);
     g_animDirty.insert(a_actor);
   }
+}
+
+void ForgetAnimEvents(RE::FormID a_actor) {
+  std::scoped_lock lock{g_animMutex};
+  g_animTags.erase(a_actor);
+  g_animCatalogs.erase(a_actor);
+  g_animDirty.erase(a_actor);
 }
 
 std::optional<FormKey> ResolveEditorId(std::string_view a_editorId) {

@@ -108,20 +108,18 @@ TexturePreviews::PrepareRequest(const PreviewKey &a_key, PreviewEntry &a_entry,
   if (!a_entry.target)
     return std::nullopt;
   if (a_entry.generation != a_generation) {
-    Trace::Safely([&] {
-      Trace::Emit(
-          Trace::Event::kPreview,
-          {{"action", "render_request"},
-           {"generation", std::to_string(a_generation)},
-           {"source", Trace::Pointer(a_entry.source.get())},
-           {"source_generation", std::to_string(a_entry.source.Generation())},
-           {"source_renderer",
-            Trace::Pointer(a_entry.source ? a_entry.source->rendererTexture
-                                          : nullptr)},
-           {"target", Trace::Pointer(a_entry.target.get())},
-           {"channel",
-            std::to_string(static_cast<unsigned>(std::get<1>(a_key)))}});
-    });
+    Trace::EmitSafely(
+        Trace::Event::kPreview,
+        {{"action", "render_request"},
+         {"generation", std::to_string(a_generation)},
+         {"source", Trace::Pointer(a_entry.source.get())},
+         {"source_generation", std::to_string(a_entry.source.Generation())},
+         {"source_renderer",
+          Trace::Pointer(a_entry.source ? a_entry.source->rendererTexture
+                                        : nullptr)},
+         {"target", Trace::Pointer(a_entry.target.get())},
+         {"channel",
+          std::to_string(static_cast<unsigned>(std::get<1>(a_key)))}});
   }
   a_entry.generation = a_generation;
   a_entry.dirty = false;

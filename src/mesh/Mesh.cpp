@@ -180,8 +180,7 @@ std::array<float, 3> ValueOf(const MeshVertex &a_vertex,
         for (std::size_t i = 0; i < 4; ++i) {
           const auto bone = a_vertex.bones[i];
           if (bone < a_partition.boneNames.size() &&
-              std::ranges::find(bake.bones, a_partition.boneNames[bone]) !=
-                  bake.bones.end()) {
+              std::ranges::contains(bake.bones, a_partition.boneNames[bone])) {
             sum += a_vertex.weights[i];
           }
         }

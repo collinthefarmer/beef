@@ -284,16 +284,15 @@ struct Compositor::StackRenderer {
 
   void TracePublish(TextureLab::RenderTarget *previous, const TextureRef &base,
                     std::size_t shown) const {
-    Trace::Safely([&] {
-      Trace::Emit(Trace::Event::kTexture,
-                  {{"action", "stack_publish"},
-                   {"stack", Trace::Pointer(&stack)},
-                   {"target_address", Trace::Pointer(previous)},
-                   {"presenter",
-                    Trace::Pointer(previous ? previous->Texture() : nullptr)},
-                   {"base", Trace::Pointer(base.get())},
-                   {"layers", std::to_string(shown)}});
-    });
+    Trace::EmitSafely(
+        Trace::Event::kTexture,
+        {{"action", "stack_publish"},
+         {"stack", Trace::Pointer(&stack)},
+         {"target_address", Trace::Pointer(previous)},
+         {"presenter",
+          Trace::Pointer(previous ? previous->Texture() : nullptr)},
+         {"base", Trace::Pointer(base.get())},
+         {"layers", std::to_string(shown)}});
   }
 
   void Publish(const TextureRef &texture, const TextureRef &base) {

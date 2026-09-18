@@ -411,7 +411,7 @@ std::optional<std::size_t> LoadedIndex(std::string_view a_id) noexcept {
   if (it == g_loaded.end()) {
     return std::nullopt;
   }
-  return static_cast<std::size_t>(it - g_loaded.begin());
+  return IndexOf(g_loaded, it);
 }
 
 LoadedRecipe *Loaded(std::string_view a_id) noexcept {

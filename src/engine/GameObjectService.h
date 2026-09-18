@@ -20,6 +20,8 @@ AnimEventCatalogOf(RE::FormID a_actor);
 
 void NoteAnimEvent(RE::FormID a_actor, std::string_view a_tag);
 
+void ForgetAnimEvents(RE::FormID a_actor);
+
 [[nodiscard]] std::optional<FormKey>
 ResolveEditorId(std::string_view a_editorId);
 }

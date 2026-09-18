@@ -77,7 +77,8 @@ bool ApplyViewCommand(View &a_view, const ViewCommand &a_command) {
     std::optional<PieceRef> next = a_view.soloPiece;
     if (a_command.on) {
       next = *a_command.piece;
-    } else if (a_view.soloPiece == *a_command.piece) {
+    } else if (a_view.soloPiece &&
+               a_view.soloPiece->SamePiece(*a_command.piece)) {
       next = std::nullopt;
     }
     if (next == a_view.soloPiece) {

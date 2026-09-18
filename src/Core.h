@@ -1,9 +1,11 @@
 #pragma once
 
+#include <algorithm>
 #include <cmath>
 #include <cstddef>
 #include <cstdint>
 #include <optional>
+#include <ranges>
 #include <string>
 #include <string_view>
 #include <type_traits>
@@ -161,6 +163,52 @@ template <class T, class Variant>
 template <class T, class Variant>
 [[nodiscard]] bool Is(const Variant &a_variant) noexcept {
   return std::holds_alternative<T>(a_variant);
+}
+
+template <class Handle>
+  requires std::is_enum_v<Handle>
+[[nodiscard]] constexpr std::size_t IndexOf(Handle a_handle) noexcept {
+  return static_cast<std::size_t>(a_handle);
+}
+
+template <class Range, class It>
+[[nodiscard]] constexpr auto IndexOf(Range &&a_range, It a_it)
+    -> decltype(static_cast<std::size_t>(a_it - std::ranges::begin(a_range))) {
+  return static_cast<std::size_t>(a_it - std::ranges::begin(a_range));
+}
+
+template <class Range, class T>
+[[nodiscard]] constexpr auto IndexOf(Range &&a_range, const T *a_pointer)
+    -> decltype(static_cast<std::size_t>(a_pointer -
+                                         std::ranges::data(a_range))) {
+  return static_cast<std::size_t>(a_pointer - std::ranges::data(a_range));
+}
+
+template <class Range, class Value, class Proj>
+[[nodiscard]] auto FindBy(Range &a_range, const Value &a_value,
+                          Proj a_projection)
+    -> decltype(&*std::ranges::begin(a_range)) {
+  const auto found = std::ranges::find(a_range, a_value, a_projection);
+  return found == std::ranges::end(a_range) ? nullptr : &*found;
+}
+
+template <class Range>
+[[nodiscard]] auto FindByName(Range &a_range, std::string_view a_name)
+    -> decltype(&*std::ranges::begin(a_range)) {
+  return FindBy(a_range, a_name, &std::ranges::range_value_t<Range>::name);
+}
+
+template <class Range, class Value>
+[[nodiscard]] auto FindById(Range &a_range, const Value &a_value)
+    -> decltype(&*std::ranges::begin(a_range)) {
+  return FindBy(a_range, a_value, &std::ranges::range_value_t<Range>::id);
+}
+
+template <class Range, class Pred>
+[[nodiscard]] auto FindIf(Range &a_range, Pred a_predicate)
+    -> decltype(&*std::ranges::begin(a_range)) {
+  const auto found = std::ranges::find_if(a_range, a_predicate);
+  return found == std::ranges::end(a_range) ? nullptr : &*found;
 }
 
 template <class E> struct Named {

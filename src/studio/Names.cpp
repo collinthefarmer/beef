@@ -87,7 +87,7 @@ std::vector<std::string> TakenNames(RowKind a_kind, const Names &a_names) {
 std::string UniqueName(std::string_view a_stem,
                        std::span<const std::string> a_taken) {
   const auto taken = [&](const std::string &a_name) {
-    return std::ranges::find(a_taken, a_name) != a_taken.end();
+    return std::ranges::contains(a_taken, a_name);
   };
   std::string name{a_stem};
   for (std::size_t n = 2; taken(name); ++n) {

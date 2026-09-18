@@ -15,9 +15,7 @@ namespace BetterEnchantmentEffects::Studio {
 namespace {
 [[nodiscard]] const GeometryRow *
 FindGeometry(const RecipeRow &a_recipe, std::string_view a_name) noexcept {
-  const auto it =
-      std::ranges::find(a_recipe.geometries, a_name, &GeometryRow::name);
-  return it == a_recipe.geometries.end() ? nullptr : &*it;
+  return FindByName(a_recipe.geometries, a_name);
 }
 
 void InjectPinnedRecipe(std::vector<ResolvedRecipe> &a_resolved,
@@ -27,17 +25,17 @@ void InjectPinnedRecipe(std::vector<ResolvedRecipe> &a_resolved,
     return;
   }
   const std::string &id = a_view.pin->recipeID;
-  const auto pinned = std::ranges::find(a_loaded, id, &Recipe::id);
+  const Recipe *pinned = FindById(a_loaded, id);
   const bool present =
       std::ranges::any_of(a_resolved, [&](const ResolvedRecipe &a_r) {
         return a_r.recipe && a_r.recipe->id == id;
       });
   const std::vector<PieceKey> choices = KeyChoicesOf(a_piece);
   const PieceKey *choice = DefaultKeyChoice(choices);
-  if (pinned != a_loaded.end() && !present && choice) {
+  if (pinned && !present && choice) {
     const RecipeKey key = RecipeKeyOf(*choice, choice->form.ToString());
     a_resolved.push_back(
-        {&*pinned, key, pinned->priority.value_or(DefaultPriority(key.kind))});
+        {pinned, key, pinned->priority.value_or(DefaultPriority(key.kind))});
   }
 }
 
@@ -95,9 +93,7 @@ const RecipeRow *SelectedRecipe(const Snapshot &a_snapshot,
   if (live || !a_selection.document) {
     return live;
   }
-  const auto document = std::ranges::find(a_snapshot.documents,
-                                          a_selection.recipeID, &RecipeRow::id);
-  return document == a_snapshot.documents.end() ? nullptr : &*document;
+  return FindById(a_snapshot.documents, a_selection.recipeID);
 }
 
 const GeometryRow *SelectedGeometry(const RecipeRow *a_recipe,
@@ -140,19 +136,15 @@ const OutputRow *SelectedAuthoredOutput(const RecipeRow &a_recipe,
   const auto *layer = Get<LayerSubject>(a_selection.subject);
   if (output || layer) {
     const std::size_t index = output ? output->output : layer->output;
-    const auto found =
-        std::ranges::find(a_recipe.outputs, index, &OutputRow::index);
-    return found == a_recipe.outputs.end() ? nullptr : &*found;
+    return FindBy(a_recipe.outputs, index, &OutputRow::index);
   }
   if (!a_selection.slot || a_selection.target == Target::kLight) {
     return nullptr;
   }
-  const auto found =
-      std::ranges::find_if(a_recipe.outputs, [&](const OutputRow &a_output) {
-        return WritesCell(a_output, SurfaceOf(a_selection.target),
-                          *a_selection.slot);
-      });
-  return found == a_recipe.outputs.end() ? nullptr : &*found;
+  return FindIf(a_recipe.outputs, [&](const OutputRow &a_output) {
+    return WritesCell(a_output, SurfaceOf(a_selection.target),
+                      *a_selection.slot);
+  });
 }
 
 void ResolveSelection(Selection &a_selection, const Snapshot &a_snapshot) {
@@ -199,13 +191,12 @@ void ResolveSelection(Selection &a_selection, const Snapshot &a_snapshot) {
 
 std::vector<ResolvedRecipe> ViewedRecipes(ViewedRecipesInput a_input) {
   if (a_input.view.Isolating()) {
-    const auto isolated = std::ranges::find(
-        a_input.loaded, a_input.view.isolation.recipeID, &Recipe::id);
+    const Recipe *isolated =
+        FindById(a_input.loaded, a_input.view.isolation.recipeID);
     a_input.resolved =
-        isolated == a_input.loaded.end()
-            ? std::vector<ResolvedRecipe>{}
-            : Resolve(a_input.piece,
-                      std::span<const Recipe>{&*isolated, std::size_t{1}});
+        !isolated ? std::vector<ResolvedRecipe>{}
+                  : Resolve(a_input.piece,
+                            std::span<const Recipe>{isolated, std::size_t{1}});
   }
   if (a_input.view.pin && a_input.view.pin->piece == a_input.ref) {
     InjectPinnedRecipe(a_input.resolved, a_input.piece, a_input.view,
@@ -223,11 +214,11 @@ std::vector<std::string> View::RecipeIDs() const {
     out.push_back(isolation.recipeID);
   }
   for (const auto &key : muted) {
-    if (std::ranges::find(out, key.recipeID) == out.end()) {
+    if (!std::ranges::contains(out, key.recipeID)) {
       out.push_back(key.recipeID);
     }
   }
-  if (pin && std::ranges::find(out, pin->recipeID) == out.end()) {
+  if (pin && !std::ranges::contains(out, pin->recipeID)) {
     out.push_back(pin->recipeID);
   }
   return out;

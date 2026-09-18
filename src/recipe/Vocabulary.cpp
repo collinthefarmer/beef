@@ -84,7 +84,7 @@ static_assert(std::size(kEverySlot) == kSlotCount);
 constexpr Slot kVanillaShellSlots[]{Slot::kEmissive};
 
 bool Contains(std::span<const Slot> a_slots, Slot a_slot) noexcept {
-  return std::ranges::find(a_slots, a_slot) != a_slots.end();
+  return std::ranges::contains(a_slots, a_slot);
 }
 }
 
@@ -231,7 +231,7 @@ std::optional<SignalKind> DefaultSignalKind(std::string_view a_name) {
   case SignalKindId::kExpr:
     return ExprSignal{"1"};
   default:
-    return AlternativeAt<SignalKind>(static_cast<std::size_t>(*id));
+    return AlternativeAt<SignalKind>(IndexOf(*id));
   }
 }
 
@@ -591,7 +591,7 @@ std::span<const ScalarField> ScalarsOf(Slot a_slot) noexcept {
 bool ScalarRequired(Slot a_slot, ScalarField a_field) noexcept {
   const auto *row = RowOf(kSlots, a_slot);
   return row && row->scalarsRequired &&
-         std::ranges::find(row->scalars, a_field) != row->scalars.end();
+         std::ranges::contains(row->scalars, a_field);
 }
 
 bool SlotsExclude(Slot a_first, Slot a_second) noexcept {
@@ -658,7 +658,7 @@ std::optional<SourceKind> DefaultSourceKind(std::string_view a_name) {
   if (!id) {
     return std::nullopt;
   }
-  return AlternativeAt<SourceKind>(static_cast<std::size_t>(*id));
+  return AlternativeAt<SourceKind>(IndexOf(*id));
 }
 
 std::optional<BakeKind> DefaultBakeKind(std::string_view a_name) {

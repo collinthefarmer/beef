@@ -116,6 +116,8 @@ private:
   void DropLostGeometries(LiveActor &a_state);
   void RenderGeometry(LiveActor &a_state, LivePiece &a_piece,
                       LiveGeometry &a_bound, bool a_hidden);
+  [[nodiscard]] std::vector<bool> RenderPieces(LiveActor &a_state,
+                                               RE::FormID a_actorID);
   void UpdateLights(LiveActor &a_state,
                     const std::vector<bool> &a_instanceHidden);
   void FireDueFinalizes();

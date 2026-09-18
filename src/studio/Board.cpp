@@ -16,7 +16,7 @@ BadgesOf(const std::vector<LayerRow> &a_layers) {
       continue;
     }
     const std::string name = ReferenceName(layer.mask);
-    if (std::ranges::find(badges, name) == badges.end()) {
+    if (!std::ranges::contains(badges, name)) {
       badges.push_back(name);
     }
   }
@@ -73,11 +73,10 @@ void FillCell(Cell &a_cell, const RecipeRow &a_recipe,
   LightCell light;
   light.output = a_recipe.lightOutput;
   if (!light.output) {
-    const auto it =
-        std::ranges::find_if(a_geometry.outputs, [](const OutputRow &a_output) {
-          return a_output.target == Target::kLight;
-        });
-    if (it != a_geometry.outputs.end()) {
+    if (const OutputRow *it =
+            FindIf(a_geometry.outputs, [](const OutputRow &a_output) {
+              return a_output.target == Target::kLight;
+            })) {
       light.output = it->index;
     }
   }

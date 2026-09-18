@@ -140,20 +140,16 @@ FoundLight FindLight(Recipe &a_recipe, std::size_t a_index) {
 }
 
 Signal *FindSignalRow(Recipe &a_recipe, std::string_view a_name) {
-  const auto it = std::ranges::find(a_recipe.signals, a_name, &Signal::name);
-  return it == a_recipe.signals.end() ? nullptr : &*it;
+  return FindByName(a_recipe.signals, a_name);
 }
 Curve *FindCurveRow(Recipe &a_recipe, std::string_view a_name) {
-  const auto it = std::ranges::find(a_recipe.curves, a_name, &Curve::name);
-  return it == a_recipe.curves.end() ? nullptr : &*it;
+  return FindByName(a_recipe.curves, a_name);
 }
 Mask *FindMaskRow(Recipe &a_recipe, std::string_view a_name) {
-  const auto it = std::ranges::find(a_recipe.masks, a_name, &Mask::name);
-  return it == a_recipe.masks.end() ? nullptr : &*it;
+  return FindByName(a_recipe.masks, a_name);
 }
 Source *FindSourceRow(Recipe &a_recipe, std::string_view a_name) {
-  const auto it = std::ranges::find(a_recipe.sources, a_name, &Source::name);
-  return it == a_recipe.sources.end() ? nullptr : &*it;
+  return FindByName(a_recipe.sources, a_name);
 }
 
 SignalGraph GraphOf(const Recipe &a_recipe) {
@@ -477,7 +473,7 @@ Refusal Edit(Recipe &a_recipe, const SetClockSpeed &a_edit) {
 
 Refusal Edit(Recipe &a_recipe, const AddKey &a_edit) {
   const auto where = KeyWhere(a_edit.key);
-  if (std::ranges::find(a_recipe.keys, a_edit.key) != a_recipe.keys.end()) {
+  if (std::ranges::contains(a_recipe.keys, a_edit.key)) {
     return Refuse(where, "the recipe has that key");
   }
   switch (KeyOperandOf(a_edit.key.kind)) {
@@ -1558,15 +1554,13 @@ void CollectDependents(const std::vector<Relationship> &a_relationships,
     Match(
         relationship.consumer.owner,
         [&](const ResourceRef &a_owner) {
-          if (std::ranges::find(a_plan.resources, a_owner) ==
-              a_plan.resources.end()) {
+          if (!std::ranges::contains(a_plan.resources, a_owner)) {
             a_plan.resources.push_back(a_owner);
             a_pending.push_back(a_owner);
           }
         },
         [&](const LayerOwner &a_owner) {
-          if (std::ranges::find(a_plan.layers, a_owner) ==
-              a_plan.layers.end()) {
+          if (!std::ranges::contains(a_plan.layers, a_owner)) {
             a_plan.layers.push_back(a_owner);
           }
         },

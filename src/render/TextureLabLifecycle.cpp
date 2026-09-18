@@ -16,13 +16,11 @@ using namespace REX::W32;
 extern const char *const kShaderSource;
 
 TextureLab::RenderTarget::~RenderTarget() {
-  Trace::Safely([&] {
-    Trace::Emit(Trace::Event::kTexture,
-                {{"action", "destroy"},
-                 {"target", std::to_string(traceID_)},
-                 {"generation", std::to_string(generation_)},
-                 {"presenter", Trace::Pointer(presenter.get())}});
-  });
+  Trace::EmitSafely(Trace::Event::kTexture,
+                    {{"action", "destroy"},
+                     {"target", std::to_string(traceID_)},
+                     {"generation", std::to_string(generation_)},
+                     {"presenter", Trace::Pointer(presenter.get())}});
   if (presenter && originalData &&
       presenter->rendererTexture ==
           reinterpret_cast<RE::BSGraphics::Texture *>(ourData.get())) {

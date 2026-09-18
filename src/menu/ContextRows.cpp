@@ -1,5 +1,6 @@
 #include "menu/ContextRows.h"
 
+#include "Core.h"
 #include "menu/FormDraw.h"
 #include "menu/MenuWidgets.h"
 #include "menu/RecipeActions.h"
@@ -105,7 +106,7 @@ CollectKeyCandidates(const Studio::PieceRow &a_piece,
                      const Studio::RecipeRow &a_recipe) {
   std::vector<KeyCandidate> candidates;
   const auto offer = [&](const RecipeKey &a_key, std::string a_label) {
-    if (std::ranges::find(a_recipe.keys, a_key) != a_recipe.keys.end()) {
+    if (std::ranges::contains(a_recipe.keys, a_key)) {
       return;
     }
     if (std::ranges::any_of(candidates, [&](const KeyCandidate &a_have) {
@@ -143,8 +144,7 @@ std::optional<RecipeKey> DrawKeyCatalogRows(const Frame &a_frame,
     return chosen;
   }
   for (const KeyCatalogKind &kind : kKeyCatalogKinds) {
-    const auto &catalog =
-        a_frame.snapshot->catalogs[static_cast<std::size_t>(kind.catalog)];
+    const auto &catalog = a_frame.snapshot->catalogs[IndexOf(kind.catalog)];
     const std::string prefix = std::format("{}: ", KeyKindName(kind.key));
     if (const Studio::GameObjectCandidate *picked =
             DrawCandidateRows({.filter = a_filter,
@@ -319,8 +319,7 @@ void NewRecipeButton(const Frame &a_frame) {
                                  : "form editor ID or plugin form key",
       Studio::Width::Px(320.0f), a_frame.scale);
   const bool nameValid =
-      IsName(name) && std::ranges::find(a_frame.snapshot->loaded, name) ==
-                          a_frame.snapshot->loaded.end();
+      IsName(name) && !std::ranges::contains(a_frame.snapshot->loaded, name);
   const bool ready = nameValid && !operand.empty();
   Dim("Creates an empty document with the chosen key. Add outputs to make an "
       "effect.");

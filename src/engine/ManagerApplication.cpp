@@ -72,19 +72,20 @@ ApplicationObservation ObserveApplication(const LiveActor &a_state,
                                           bool a_rendered) {
   ApplicationObservation result;
   for (std::size_t p = 0; p < a_state.placements.size(); ++p) {
-    if (p >= a_state.plan.placements.size()) {
+    const std::optional<ResolvedPlacement> resolved =
+        ResolvePlacement(a_state, PlacementId{p});
+    if (!resolved) {
       continue;
     }
-    const auto i =
-        static_cast<std::size_t>(a_state.plan.placements[p].instance);
-    if (i >= a_state.instances.size() ||
-        !Includes(a_token, a_state.instances[i])) {
+    const LiveInstance &instance = a_state.instances[resolved->instance];
+    if (!Includes(a_token, instance)) {
       continue;
     }
-    if (!a_state.instances[i].signals || !a_state.instances[i].environment) {
+    if (!instance.signals || !instance.environment) {
       result.problem = "recipe signals could not be prepared";
     }
-    for (const PlacedOutput &output : a_state.placements[p].outputs) {
+    for (const PlacedOutput &output :
+         a_state.placements[resolved->placement].outputs) {
       ObserveOutput(result, output, a_rendered);
     }
   }

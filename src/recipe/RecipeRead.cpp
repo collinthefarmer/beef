@@ -461,8 +461,7 @@ std::optional<Signal> SignalFrom(const std::string &a_name, const json &a_j,
                             Choices(kSignalKinds)));
     return std::nullopt;
   }
-  auto kind =
-      kSignalParsers[static_cast<std::size_t>(*kindId)](*entry->value, a_ctx);
+  auto kind = kSignalParsers[IndexOf(*kindId)](*entry->value, a_ctx);
   if (!kind) {
     return std::nullopt;
   }
@@ -752,8 +751,7 @@ std::optional<SourceKind> ParseSourceKind(Reader &a_reader) {
     return std::nullopt;
   }
   a_reader.Child(entry->key);
-  return kSourceParsers[static_cast<std::size_t>(SourceKindIdOf(*blank))](
-      *entry->value, ctx);
+  return kSourceParsers[IndexOf(SourceKindIdOf(*blank))](*entry->value, ctx);
 }
 
 namespace {

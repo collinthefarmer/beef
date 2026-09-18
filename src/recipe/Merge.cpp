@@ -9,11 +9,6 @@ template <class Source>
   return static_cast<Source>(a_index);
 }
 
-template <class Source>
-[[nodiscard]] std::size_t IndexOf(Source a_source) noexcept {
-  return static_cast<std::size_t>(a_source);
-}
-
 std::vector<std::size_t> PriorityOrder(std::span<const PlacedRecipe> a_placed) {
   std::vector<std::size_t> order(a_placed.size());
   for (std::size_t i = 0; i < order.size(); ++i) {
@@ -74,12 +69,10 @@ void CutAtReplace(std::span<const Flagged<Contribution>> a_flagged,
 }
 
 SlotPlan &SlotPlanFor(GeometryPlan &a_plan, const SurfaceOutput &a_output) {
-  const auto found =
-      std::ranges::find_if(a_plan.slots, [&](const SlotPlan &a_slot) {
+  if (SlotPlan *found = FindIf(a_plan.slots, [&](const SlotPlan &a_slot) {
         return a_slot.surface == a_output.surface &&
                a_slot.slot == a_output.slot;
-      });
-  if (found != a_plan.slots.end()) {
+      })) {
     return *found;
   }
   a_plan.slots.push_back(
@@ -118,7 +111,7 @@ std::optional<std::size_t>
 ScalarSource(Slot a_slot, ScalarField a_field,
              std::span<const SurfaceOutput *const> a_outputs) {
   const std::span<const ScalarField> fields = ScalarsOf(a_slot);
-  if (std::ranges::find(fields, a_field) == fields.end()) {
+  if (!std::ranges::contains(fields, a_field)) {
     return std::nullopt;
   }
   for (std::size_t i = a_outputs.size(); i-- > 0;) {
@@ -202,18 +195,18 @@ std::optional<SlotContribution> ScalarOwnerOf(const SlotPlan &a_plan,
 
 std::optional<std::size_t>
 ReplacerOf(const SlotPlan &a_plan, SlotContribution a_contribution) noexcept {
-  if (a_plan.replacer && std::ranges::find(a_plan.replaced, a_contribution) !=
-                             a_plan.replaced.end()) {
-    return static_cast<std::size_t>(a_plan.replacer->placed);
+  if (a_plan.replacer &&
+      std::ranges::contains(a_plan.replaced, a_contribution)) {
+    return IndexOf(a_plan.replacer->placed);
   }
   return std::nullopt;
 }
 
 std::optional<std::size_t>
 ReplacerOf(const LightPlan &a_plan, LightContribution a_contribution) noexcept {
-  if (a_plan.replacer && std::ranges::find(a_plan.replaced, a_contribution) !=
-                             a_plan.replaced.end()) {
-    return static_cast<std::size_t>(a_plan.replacer->placed);
+  if (a_plan.replacer &&
+      std::ranges::contains(a_plan.replaced, a_contribution)) {
+    return IndexOf(a_plan.replacer->placed);
   }
   return std::nullopt;
 }

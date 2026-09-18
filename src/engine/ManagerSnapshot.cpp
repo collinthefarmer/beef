@@ -247,12 +247,12 @@ struct PieceSnapshotBuilder {
       if (!placedIndex) {
         continue;
       }
-      const std::size_t placementIndex =
-          static_cast<std::size_t>(bound.placements[*placedIndex]);
-      if (placementIndex >= state.placements.size()) {
+      const std::optional<ResolvedPlacement> resolved =
+          ResolvePlacement(state, bound, *placedIndex);
+      if (!resolved) {
         continue;
       }
-      const LivePlacement &placement = state.placements[placementIndex];
+      const LivePlacement &placement = state.placements[resolved->placement];
       row.geometries.push_back(
           GeometrySnapshotBuilder{snapshot, *instance.recipe,
                                   instance.signals.get(), bound, *placedIndex}
@@ -483,9 +483,9 @@ Manager::BuildSnapshot(const std::optional<Studio::PieceRef> &a_request,
   }
   PublishCatalogs(out, a_request ? a_request->actorID : 0);
   AppendLoadedRecipes(out);
-  const auto document =
-      std::ranges::find(LoadedRecipes(), a_document, &Recipe::id);
-  if (!a_document.empty() && document != LoadedRecipes().end()) {
+  const std::span<const Recipe> loaded = LoadedRecipes();
+  const Recipe *document = FindById(loaded, a_document);
+  if (!a_document.empty() && document) {
     const Studio::ReferenceCounts *references = ReferencesOf(document->id);
     const Studio::ReferenceCounts emptyReferences;
     const std::shared_ptr<const SignalGraph> graph = GraphFor(*document);

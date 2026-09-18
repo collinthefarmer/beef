@@ -23,9 +23,9 @@ namespace {
 
 [[nodiscard]] const Studio::GeometryRow &
 OfferGeometry(const Studio::TermOffer &a_offer, const Frame &a_frame) {
-  const auto found = std::ranges::find(
-      a_frame.recipe->geometries, a_offer.geometry, &Studio::GeometryRow::name);
-  return found == a_frame.recipe->geometries.end() ? *a_frame.geometry : *found;
+  const Studio::GeometryRow *found =
+      FindByName(a_frame.recipe->geometries, a_offer.geometry);
+  return found ? *found : *a_frame.geometry;
 }
 
 [[nodiscard]] std::string OfferKey(const Studio::TermOffer &a_offer) {

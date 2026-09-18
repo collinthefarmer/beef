@@ -456,7 +456,7 @@ private:
     if (r.ec != std::errc{} || !std::isfinite(value)) {
       return std::format("bad number at {}", pos_);
     }
-    pos_ = static_cast<std::size_t>(r.ptr - text_.data());
+    pos_ = IndexOf(text_, r.ptr);
     out_.literals_.push_back(NumericLiteral{start, pos_ - start, value});
     return Emit(Op::kNumber, value);
   }
@@ -915,9 +915,9 @@ std::string RenameInExpression(std::string_view a_text,
     }
     const bool call = next < a_text.size() && a_text[next] == '(';
     if (!name.empty() && call == a_curve) {
-      const auto rename =
-          std::ranges::find(a_renames, name, &ExpressionRename::from);
-      if (rename != a_renames.end()) {
+      const ExpressionRename *rename =
+          FindBy(a_renames, name, &ExpressionRename::from);
+      if (rename) {
         out += '@';
         out += rename->to;
         at = end;
