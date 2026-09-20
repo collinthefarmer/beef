@@ -5,7 +5,9 @@ import pathlib
 import re
 
 
-SEGMENT_SUFFIX = re.compile(r"^(.*?)(?:-(\d+))?\.jsonl$")
+# A rotation segment is a short trailing index (-2, -3, ...); the 16-digit
+# run id in a trace file name is part of the base, never a segment.
+SEGMENT_SUFFIX = re.compile(r"^(.*?)(?:-(\d{1,4}))?\.jsonl$")
 
 
 def segments_of(paths):
