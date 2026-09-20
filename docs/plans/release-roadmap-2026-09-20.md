@@ -103,20 +103,24 @@ checkpoint discipline the old roadmap asked for exists. Missing:
 - The two long sessions. The crowd session doubles as gate 1's
   measurement run; schedule them as one piece of work.
 
-### Gate 5: the format is a contract someone can rely on — NOT STARTED, and now the critical path
+### Gate 5: the format is a contract someone can rely on — OPEN, and the critical path
 
-The product gate has not moved, but the drift shrank it: the record
-changes that blocked the freeze have landed, so freezing format 1 is now
-mostly writing, not building. The five parts:
+The record changes that blocked the freeze have landed, so freezing
+format 1 is now mostly writing, not building. The five parts:
 
-1. **Schema-parser agreement test.** Still absent. The schema was last
-   touched 2026-09-15 while the word tables kept moving; the drift risk the
-   old roadmap warned about is live. Compare the schema's kind lists
-   against `Vocabulary.h`, both ways, in `run-native.sh`. Small.
-2. **Validator CLI.** Still absent. The parser is engine-free and builds
-   natively; a tool that reads a recipe and prints its diagnostics with
-   their `where` is small and is the single most useful thing to hand an
-   author.
+1. **Schema-parser agreement test.** DONE. It already existed
+   (`tests/recipe/schema_tests.cpp`, suite `recipe_schema`, run by
+   `run-native.sh`): source and signal kinds both ways, every value enum.
+   Extended 2026-09-20 with key kinds, selector terms, trigger origins,
+   partition names and the output scalar fields.
+2. **Validator CLI.** DONE 2026-09-20. `tools/validate.sh <recipe.json>...`
+   builds `build/validator/beef-validate` from `src/validator/Main.cpp`
+   over the engine-free parser and prints each diagnostic with its `where`,
+   then the store's verdict (ok / loads-with-inert-rows / held back /
+   unreadable); exit 0 only when every file loads clean. Editor IDs still
+   resolve only in game, and the tool says so. The Release build also
+   links `beef-validate.exe` (CMake target `BeefValidate`), so packaging
+   only has to include it.
 3. **Freeze format 1, in writing.** The blocking record changes are in.
    Decide the per-row note field (still open; the examples and the studio
    both want it), then write the freeze: each remaining change made or
@@ -152,8 +156,8 @@ Size: S is hours, M is a day or two, L is a week or more.
 **Housekeeping, first because everything ships from `main`**
 
 1. **Merge `ui-standardization` into `main`.** S.
-2. **Decide strings stage 0.** S decision. Land the catalog now and wire
-   later, or delete the worktree; an uncommitted worktree is neither.
+2. **Decide strings stage 0.** DECIDED 2026-09-20: strings come later.
+   The worktree stays as it is; nothing about the release waits on it.
 
 **Gate 1, the alpha blocker**
 
@@ -168,13 +172,21 @@ Size: S is hours, M is a day or two, L is a week or more.
 
 **Gate 5's cheap half, in parallel with 3**
 
-7. **Schema-parser agreement test.** S.
-8. **Validator CLI.** S.
+7. ~~**Schema-parser agreement test.**~~ DONE: pre-existing suite
+   `recipe_schema`, extended 2026-09-20.
+8. ~~**Validator CLI.**~~ DONE 2026-09-20: `tools/validate.sh` /
+   `src/validator/Main.cpp`.
 
 **Gate 5's decisions, then the freeze**
 
-9. **Ecosystem policy.** M, mostly decision. May impose format
-   requirements, so it precedes the freeze.
+9. **Ecosystem policy.** M. Direction set 2026-09-20: the user-facing half
+   lives on the Recipes page — a user edits a recipe's priority and its
+   override mechanic there (replace, lerp, sampled one-of-n) instead of
+   the current silent first-loaded-owner-wins. An override mechanic is a
+   per-recipe record field, so this confirms the policy precedes the
+   freeze. Still open: the author-side half — where another mod's files
+   live, key ownership, whether load order means anything — and the
+   mechanic list itself, to be settled on the Recipes-page visit.
 10. **Per-row note field.** S decision, S to M to build.
 11. **Freeze format 1, in writing.** S now that the record changes are in.
     Settle `presets.json`'s status in the same writing.
@@ -212,8 +224,8 @@ Size: S is hours, M is a day or two, L is a week or more.
 ## 5. Order
 
 1. Merge to `main`; settle the strings worktree.
-2. Measure (gate 1), with the agreement test and validator built while it
-   runs.
+2. Measure (gate 1). The agreement test and the validator are already in
+   (2026-09-20).
 3. Decide: ecosystem, per-row note, presets.json. Freeze format 1 in
    writing.
 4. Examples in draft alongside the gate-1 fixes the numbers rank.

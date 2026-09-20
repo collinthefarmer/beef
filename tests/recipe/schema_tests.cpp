@@ -160,6 +160,39 @@ void SourceEnumsMatchTheTables(const json &a_schema) {
         "source alternatives sit at the table's index");
 }
 
+void RecipeShapeMatchesTheTables(const json &a_schema) {
+  std::vector<std::string> keys = KindWords(a_schema, "key");
+  keys.emplace_back("default");
+  Equal(Joined(Sorted(keys)), Joined(Sorted(WordsOf(kKeyKinds))), "key kinds");
+  Equal(Joined(KindWords(a_schema, "selectorTerm")),
+        Joined(WordsOf(kSelectorKinds)), "selector kinds");
+  Equal(Joined(KindWords(a_schema, "trigger")),
+        Joined(WordsOf(kTriggerOriginWords)), "trigger origins");
+  const std::vector<std::string> partitions = Words(
+      At(a_schema, "/$defs/source/oneOf/2/properties/bake/oneOf/1/properties/"
+                   "partition/oneOf/0/enum"));
+  Check(!partitions.empty(), "the partition name enum exists");
+  Equal(Joined(Sorted(partitions)), Joined(Sorted(WordsOf(kBipedSlots))),
+        "partition names");
+}
+
+void OutputScalarsMatchTheTable(const json &a_schema) {
+  const json *properties = At(a_schema, "/$defs/output/oneOf/0/properties");
+  Check(properties != nullptr && properties->is_object(),
+        "the material output's properties exist");
+  std::vector<std::string> scalars;
+  if (properties != nullptr && properties->is_object()) {
+    for (const auto &[name, value] : properties->items()) {
+      if (name != "target" && name != "slot" && name != "selector" &&
+          name != "replace" && name != "stack") {
+        scalars.push_back(name);
+      }
+    }
+  }
+  Equal(Joined(Sorted(scalars)), Joined(Sorted(WordsOf(kScalarFields))),
+        "output scalar fields");
+}
+
 void OutputEnumsMatchTheTables(const json &a_schema) {
   EnumMatches(a_schema, "/$defs/layer/properties/blend/enum", WordsOf(kBlends),
               "blend");
@@ -213,6 +246,8 @@ int main() {
   SourceKindsMatchTheTable(schema);
   SignalEnumsMatchTheTables(schema);
   SourceEnumsMatchTheTables(schema);
+  RecipeShapeMatchesTheTables(schema);
+  OutputScalarsMatchTheTable(schema);
   OutputEnumsMatchTheTables(schema);
   ExpressionFunctionsAreDescribed(schema);
   return test::Finish("recipe_schema");

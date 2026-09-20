@@ -98,6 +98,18 @@ target_include_directories(${PROJECT_NAME}Native PRIVATE src)
 target_include_directories(${PROJECT_NAME}Native SYSTEM PRIVATE src/extern)
 target_compile_options(${PROJECT_NAME}Native PRIVATE ${CLANG_CL_FLAGS} -Werror=switch)
 
+# The author-facing recipe validator: the engine-free parser behind a
+# command line, shipped beside the plugin. tools/validate.sh builds the
+# same tool for the dev shell.
+add_executable(BeefValidate src/validator/Main.cpp
+  $<TARGET_OBJECTS:${PROJECT_NAME}Native>)
+set_target_properties(BeefValidate PROPERTIES
+  OUTPUT_NAME "beef-validate"
+  CXX_COMPILER_LAUNCHER "")
+target_include_directories(BeefValidate PRIVATE src)
+target_include_directories(BeefValidate SYSTEM PRIVATE src/extern)
+target_compile_options(BeefValidate PRIVATE ${CLANG_CL_FLAGS} -Werror=switch)
+
 # The plugin DLL. Engine-facing sources: the wave-3 engine/, render/, and menu/
 # adapters plus the entrypoint and settings I/O.
 # The engine-free modules (recipe/mesh/studio/planners) and Settings.cpp come
