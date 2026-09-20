@@ -178,7 +178,7 @@ struct ReduceVisitor {
   explicit ReduceVisitor(MenuState &a_state)
       : state(a_state), selection(a_state.selection), mask(a_state.mask) {}
 
-  void endSession() {
+  void EndSession() {
     if (state.paint) {
       selection = state.paint->origin;
       state.navigation.scroll = state.paint->originScroll;
@@ -192,9 +192,9 @@ struct ReduceVisitor {
     state.maskHistory.Clear();
   }
 
-  void remember() { state.maskHistory.Push(mask); }
+  void Remember() { state.maskHistory.Push(mask); }
 
-  void invalidateAssignment(const std::string &a_recipeID) {
+  void InvalidateAssignment(const std::string &a_recipeID) {
     if (state.paint && state.paint->recipeID == a_recipeID &&
         state.paint->assignment) {
       state.paint->assignment.reset();
@@ -205,7 +205,7 @@ struct ReduceVisitor {
     }
   }
 
-  void pickRecipe(const std::string &a_id) {
+  void SelectRecipe(const std::string &a_id) {
     if (selection.recipeID != a_id) {
       state.previewPin.reset();
       if (!state.paint) {
@@ -222,7 +222,7 @@ struct ReduceVisitor {
     selection.layer.reset();
   }
 
-  void focusRecipe(const std::string &a_id) {
+  void FocusRecipe(const std::string &a_id) {
     state.previewPin.reset();
     if (state.paint) {
       operator()(SetMode{Mode::kCompose});
@@ -270,12 +270,12 @@ struct ReduceVisitor {
   }
 
   void operator()(const PickRecipe &a_i) {
-    pickRecipe(a_i.recipeID);
+    SelectRecipe(a_i.recipeID);
     selection.document = a_i.document;
   }
 
   void operator()(const PinRecipe &a_i) {
-    pickRecipe(a_i.recipeID);
+    SelectRecipe(a_i.recipeID);
     selection.document = false;
   }
 
@@ -331,7 +331,7 @@ struct ReduceVisitor {
     if (mask.terms.size() >= kMaxTerms) {
       return;
     }
-    remember();
+    Remember();
     Term term = a_i.term;
     if (mask.terms.empty()) {
       term.op = TermOp::kSet;
@@ -348,7 +348,7 @@ struct ReduceVisitor {
   }
 
   void operator()(const SetTermOp &a_i) {
-    remember();
+    Remember();
     if (a_i.index < mask.terms.size() && a_i.index > 0) {
       mask.terms[a_i.index].op = a_i.op == TermOp::kSet ? TermOp::kAnd : a_i.op;
       mask.dirty = true;
@@ -356,7 +356,7 @@ struct ReduceVisitor {
   }
 
   void operator()(const SetTermText &a_i) {
-    remember();
+    Remember();
     if (a_i.index < mask.terms.size()) {
       mask.terms[a_i.index].text = a_i.text;
       mask.terms[a_i.index].label = std::string{kExpressionLabel};
@@ -366,7 +366,7 @@ struct ReduceVisitor {
   }
 
   void operator()(const SetTermKind &a_i) {
-    remember();
+    Remember();
     if (a_i.index < mask.terms.size()) {
       if (state.paint) {
         state.paint->sources.insert(state.paint->sources.end(),
@@ -380,7 +380,7 @@ struct ReduceVisitor {
   }
 
   void operator()(const RemoveTerm &a_i) {
-    remember();
+    Remember();
     if (a_i.index >= mask.terms.size()) {
       return;
     }
@@ -399,7 +399,7 @@ struct ReduceVisitor {
   }
 
   void operator()(const MoveTerm &a_i) {
-    remember();
+    Remember();
     const std::size_t count = mask.terms.size();
     if (a_i.from >= count || a_i.to >= count || a_i.from == a_i.to) {
       return;
@@ -469,7 +469,7 @@ struct ReduceVisitor {
   }
 
   void operator()(const LoadMask &a_i) {
-    remember();
+    Remember();
     mask = MaskStack{};
     const std::size_t kept = std::min(a_i.terms.size(), kMaxTerms);
     mask.terms.assign(a_i.terms.begin(),
@@ -483,7 +483,7 @@ struct ReduceVisitor {
   }
 
   void operator()(const ClearMask &) {
-    remember();
+    Remember();
     const std::string editing = mask.editing;
     mask = MaskStack{};
     mask.editing = editing;
@@ -534,7 +534,7 @@ struct ReduceVisitor {
     }
   }
 
-  void operator()(const EndPaint &) { endSession(); }
+  void operator()(const EndPaint &) { EndSession(); }
 
   void operator()(const UpdatePaint &a_i) {
     if (state.paint) {
@@ -550,7 +550,7 @@ struct ReduceVisitor {
       }
     }
     if (ShouldInvalidateIndexedSubjects(a_i.edits)) {
-      invalidateAssignment(a_i.recipeID);
+      InvalidateAssignment(a_i.recipeID);
       InvalidateIndexedSubjects(state.navigation, selection, a_i.recipeID);
       InvalidatePreviewPin(state.previewPin, a_i.recipeID);
     }
@@ -567,9 +567,9 @@ struct ReduceVisitor {
     }
   }
 
-  void operator()(const CreateRecipe &a_i) { focusRecipe(a_i.recipeID); }
+  void operator()(const CreateRecipe &a_i) { FocusRecipe(a_i.recipeID); }
 
-  void operator()(const DuplicateRecipe &a_i) { focusRecipe(a_i.to); }
+  void operator()(const DuplicateRecipe &a_i) { FocusRecipe(a_i.to); }
 
   void operator()(const DeleteRecipe &a_i) {
     if (state.paint && state.paint->recipeID == a_i.recipeID) {
@@ -594,12 +594,12 @@ struct ReduceVisitor {
   void operator()(const SetSpeed &) {}
   void operator()(const StepClock &) {}
   void operator()(const Undo &a_i) {
-    invalidateAssignment(a_i.recipeID);
+    InvalidateAssignment(a_i.recipeID);
     InvalidateIndexedSubjects(state.navigation, selection, a_i.recipeID);
     InvalidatePreviewPin(state.previewPin, a_i.recipeID);
   }
   void operator()(const Redo &a_i) {
-    invalidateAssignment(a_i.recipeID);
+    InvalidateAssignment(a_i.recipeID);
     InvalidateIndexedSubjects(state.navigation, selection, a_i.recipeID);
     InvalidatePreviewPin(state.previewPin, a_i.recipeID);
   }

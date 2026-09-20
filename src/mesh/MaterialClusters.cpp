@@ -95,15 +95,15 @@ using Axes = std::array<float, kAxes>;
 
 class Lcg {
 public:
-  explicit Lcg(std::uint32_t a_seed) noexcept : _state(a_seed) {}
+  explicit Lcg(std::uint32_t a_seed) noexcept : state_(a_seed) {}
 
   [[nodiscard]] float Unit() noexcept {
-    _state = _state * 1664525u + 1013904223u;
-    return static_cast<float>(_state >> 8) / 16777216.0f;
+    state_ = state_ * 1664525u + 1013904223u;
+    return static_cast<float>(state_ >> 8) / 16777216.0f;
   }
 
 private:
-  std::uint32_t _state;
+  std::uint32_t state_;
 };
 
 [[nodiscard]] std::vector<Axes> SeedCentroids(const std::vector<Axes> &a_texels,

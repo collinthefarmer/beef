@@ -33,17 +33,17 @@ constexpr float kMaxWeldCell = 1099511627776.0f;
 class DisjointSets {
 public:
   explicit DisjointSets(std::size_t a_count)
-      : _parent(a_count), _size(a_count, 1) {
-    std::iota(_parent.begin(), _parent.end(), std::uint32_t{0});
+      : parent_(a_count), size_(a_count, 1) {
+    std::iota(parent_.begin(), parent_.end(), std::uint32_t{0});
   }
 
   [[nodiscard]] std::uint32_t Find(std::uint32_t a_index) noexcept {
-    if (a_index >= _parent.size()) {
+    if (a_index >= parent_.size()) {
       return a_index;
     }
-    while (_parent[a_index] != a_index) {
-      _parent[a_index] = _parent[_parent[a_index]];
-      a_index = _parent[a_index];
+    while (parent_[a_index] != a_index) {
+      parent_[a_index] = parent_[parent_[a_index]];
+      a_index = parent_[a_index];
     }
     return a_index;
   }
@@ -51,19 +51,19 @@ public:
   void Join(std::uint32_t a_left, std::uint32_t a_right) noexcept {
     std::uint32_t l = Find(a_left);
     std::uint32_t r = Find(a_right);
-    if (l == r || l >= _parent.size() || r >= _parent.size()) {
+    if (l == r || l >= parent_.size() || r >= parent_.size()) {
       return;
     }
-    if (_size[l] < _size[r]) {
+    if (size_[l] < size_[r]) {
       std::swap(l, r);
     }
-    _parent[r] = l;
-    _size[l] += _size[r];
+    parent_[r] = l;
+    size_[l] += size_[r];
   }
 
 private:
-  std::vector<std::uint32_t> _parent;
-  std::vector<std::uint32_t> _size;
+  std::vector<std::uint32_t> parent_;
+  std::vector<std::uint32_t> size_;
 };
 
 struct FlatVertex {
