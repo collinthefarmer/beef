@@ -52,6 +52,11 @@ def main():
     rejected_presenters = 0
     rejected_leases = 0
     rotations = 0
+    refresh_us = []
+    readbacks = collections.defaultdict(lambda: {"count": 0, "us": 0, "max_us": 0})
+    heartbeat = collections.Counter()
+    heartbeat_max = collections.Counter()
+    worst_second = {"refreshes": 0, "refresh_us": 0}
     for line in lines_in_order(segments):
             try:
                 event = json.loads(line)
@@ -86,6 +91,32 @@ def main():
                     rejected_leases += 1
                 elif action == "presenter_rejected":
                     rejected_presenters += 1
+            if kind == "metrics":
+                action = fields.get("action")
+
+                def number(name):
+                    try:
+                        return int(fields.get(name, 0))
+                    except (TypeError, ValueError):
+                        return 0
+
+                if action == "refresh":
+                    refresh_us.append(number("us"))
+                elif action == "readback":
+                    op = readbacks[str(fields.get("op", "unknown"))]
+                    op["count"] += 1
+                    op["us"] += number("us")
+                    op["max_us"] = max(op["max_us"], number("us"))
+                elif action == "heartbeat":
+                    for name in ("refreshes", "refresh_us", "sink_adds",
+                                 "sink_removes", "readbacks", "readback_us"):
+                        heartbeat[name] += number(name)
+                    for name in ("refresh_max_us", "readback_max_us",
+                                 "targets_peak", "target_bytes_peak"):
+                        heartbeat_max[name] = max(heartbeat_max[name], number(name))
+                    if number("refreshes") > worst_second["refreshes"]:
+                        worst_second = {"refreshes": number("refreshes"),
+                                        "refresh_us": number("refresh_us")}
             counts[str(kind)] += 1
             sessions.add(str(event.get("session", "unknown")))
             command = str(event.get("command", 0))
@@ -112,6 +143,25 @@ def main():
     print(f"Presenter rejections: {rejected_presenters}")
     print(f"Texture lease rejections: {rejected_leases}")
     print(f"Targets recycled: {len(recycled)}; total recycles: {sum(recycled.values())}")
+    if refresh_us or heartbeat or readbacks:
+        print("Measurement:")
+        if refresh_us:
+            ordered = sorted(refresh_us)
+            p50 = ordered[len(ordered) // 2]
+            p95 = ordered[min(len(ordered) - 1, int(len(ordered) * 0.95))]
+            print(f"  Refreshes: {len(ordered)}; p50 {p50 / 1000:.1f} ms, "
+                  f"p95 {p95 / 1000:.1f} ms, max {ordered[-1] / 1000:.1f} ms")
+        if heartbeat:
+            print(f"  Worst second: {worst_second['refreshes']} refreshes, "
+                  f"{worst_second['refresh_us'] / 1000:.1f} ms spent")
+            print(f"  Sink churn: {heartbeat['sink_adds']} adds, "
+                  f"{heartbeat['sink_removes']} removes")
+            print(f"  Targets peak: {heartbeat_max['targets_peak']} of 512 slots; "
+                  f"VRAM peak {heartbeat_max['target_bytes_peak'] / (1 << 20):.0f} MiB")
+        for op, stats in sorted(readbacks.items()):
+            mean = stats["us"] / stats["count"] / 1000 if stats["count"] else 0
+            print(f"  Readback {op}: {stats['count']}; mean {mean:.1f} ms, "
+                  f"max {stats['max_us'] / 1000:.1f} ms")
     print(f"Segments read: {len(segments)}; rotations seen: {rotations}")
     if rotations and len(segments) <= rotations:
         print("Earlier segments were deleted by rotation; the trace starts mid-run.")

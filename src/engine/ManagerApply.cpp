@@ -1,3 +1,4 @@
+#include "diagnostics/Metrics.h"
 #include "diagnostics/Trace.h"
 #include "engine/Manager.h"
 
@@ -27,6 +28,27 @@
 
 namespace BetterEnchantmentEffects {
 namespace {
+class RefreshMeter {
+public:
+  explicit RefreshMeter(RE::FormID a_actor) noexcept : actor_(a_actor) {}
+  ~RefreshMeter() {
+    const std::uint64_t micros = watch_.Micros();
+    Metrics::CountRefresh(micros);
+    Trace::EmitSafely(Trace::Event::kMetrics,
+                      {{"action", "refresh"},
+                       {"actor", std::to_string(actor_)},
+                       {"us", std::to_string(micros)}});
+  }
+  RefreshMeter(const RefreshMeter &) = delete;
+  RefreshMeter &operator=(const RefreshMeter &) = delete;
+  RefreshMeter(RefreshMeter &&) = delete;
+  RefreshMeter &operator=(RefreshMeter &&) = delete;
+
+private:
+  Metrics::Stopwatch watch_;
+  RE::FormID actor_;
+};
+
 RE::BSLightingShaderProperty *LightingPropertyOf(RE::BSGeometry *a_geometry) {
   RE::NiProperty *property = a_geometry->GetGeometryRuntimeData()
                                  .properties[RE::BSGeometry::States::kEffect]
@@ -460,6 +482,7 @@ void Manager::Refresh(RE::Actor *a_actor) {
   }
   const Settings settings = GetSettings();
   const RE::FormID actorID = a_actor->GetFormID();
+  const RefreshMeter meter{actorID};
   Trace::EmitSafely(
       Trace::Event::kApplication,
       {{"action", "refresh_begin"}, {"actor", std::to_string(actorID)}});

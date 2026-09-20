@@ -1,5 +1,6 @@
 #include "render/TextureLab.h"
 
+#include "diagnostics/Metrics.h"
 #include "render/D3DResult.h"
 
 #include <REX/W32/COMPTR.h>
@@ -11,6 +12,26 @@ namespace BetterEnchantmentEffects {
 using namespace REX::W32;
 
 namespace {
+class ReadbackMeter {
+public:
+  explicit ReadbackMeter(std::string_view a_op) noexcept : op_(a_op) {}
+  ~ReadbackMeter() {
+    const std::uint64_t micros = watch_.Micros();
+    Metrics::CountReadback(micros);
+    Trace::EmitSafely(Trace::Event::kMetrics, {{"action", "readback"},
+                                               {"op", std::string{op_}},
+                                               {"us", std::to_string(micros)}});
+  }
+  ReadbackMeter(const ReadbackMeter &) = delete;
+  ReadbackMeter &operator=(const ReadbackMeter &) = delete;
+  ReadbackMeter(ReadbackMeter &&) = delete;
+  ReadbackMeter &operator=(ReadbackMeter &&) = delete;
+
+private:
+  Metrics::Stopwatch watch_;
+  std::string_view op_;
+};
+
 class RendererLock {
 public:
   RendererLock() : renderer_(RE::BSGraphics::Renderer::GetSingleton()) {
@@ -87,6 +108,7 @@ private:
 std::vector<std::uint8_t>
 TextureLab::ReadBuffer(REX::W32::ID3D11Buffer *a_buffer,
                        std::uint32_t a_bytes) {
+  const ReadbackMeter meter{"buffer"};
   const RendererLock rendererLock;
   std::vector<std::uint8_t> out;
   if (!a_buffer || a_bytes == 0 || !Init()) {
@@ -120,6 +142,7 @@ TextureLab::ReadBuffer(REX::W32::ID3D11Buffer *a_buffer,
 }
 
 std::optional<float> TextureLab::ReadBackMean(RenderTarget &a_target) {
+  const ReadbackMeter meter{"mean"};
   const RendererLock rendererLock;
   std::optional<float> result;
   if (!a_target.texture.Get() || !available_) {
@@ -160,6 +183,7 @@ std::optional<float> TextureLab::ReadBackMean(RenderTarget &a_target) {
 }
 
 std::vector<std::uint8_t> TextureLab::ReadBackPixels(RenderTarget &a_target) {
+  const ReadbackMeter meter{"pixels"};
   const RendererLock rendererLock;
   std::vector<std::uint8_t> out;
   if (!a_target.texture.Get() || !available_) {

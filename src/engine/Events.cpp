@@ -1,4 +1,5 @@
 #include "engine/Events.h"
+#include "diagnostics/Metrics.h"
 #include "diagnostics/Trace.h"
 
 #include "engine/GameObjectService.h"
@@ -120,6 +121,7 @@ void WatchAnimationEvents(RE::Actor *a_actor) {
     if (graph) {
       graph->GetEventSource<RE::BSAnimationGraphEvent>()->AddEventSink(
           AnimationSink::GetSingleton());
+      Metrics::CountSinkAdd();
       return;
     }
   }
@@ -137,6 +139,7 @@ void UnwatchAnimationEvents(RE::Actor *a_actor) {
     if (graph) {
       graph->GetEventSource<RE::BSAnimationGraphEvent>()->RemoveEventSink(
           AnimationSink::GetSingleton());
+      Metrics::CountSinkRemove();
     }
   }
 }

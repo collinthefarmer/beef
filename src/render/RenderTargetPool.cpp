@@ -1,6 +1,7 @@
 #include "render/RenderTargetPool.h"
 
 #include "Identity.h"
+#include "diagnostics/Metrics.h"
 #include "render/D3DResult.h"
 #include "render/TextureRef.h"
 
@@ -138,6 +139,7 @@ bool RenderTargetPool::CreateTarget(ID3D11Device *a_device,
   a_target.presenter->rendererTexture =
       reinterpret_cast<RE::BSGraphics::Texture *>(a_target.ourData.get());
   a_target.size = pixels;
+  Metrics::CountTargetCreated(Metrics::MippedRgbaBytes(pixels));
   return true;
 }
 

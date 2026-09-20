@@ -28,6 +28,7 @@ enum class Event {
   kTexture,
   kShell,
   kPreview,
+  kMetrics,
   kCaptureFailure,
 };
 

@@ -1,6 +1,7 @@
 #include "render/TextureLab.h"
 
 #include "Identity.h"
+#include "diagnostics/Metrics.h"
 #include "render/D3DResult.h"
 #include "render/RenderTargetPool.h"
 #include "render/ShaderConstants.h"
@@ -16,6 +17,9 @@ using namespace REX::W32;
 extern const char *const kShaderSource;
 
 TextureLab::RenderTarget::~RenderTarget() {
+  if (size != 0) {
+    Metrics::CountTargetDestroyed(Metrics::MippedRgbaBytes(size));
+  }
   Trace::EmitSafely(Trace::Event::kTexture,
                     {{"action", "destroy"},
                      {"target", std::to_string(traceID_)},

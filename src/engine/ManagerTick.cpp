@@ -1,6 +1,8 @@
 #include "engine/Manager.h"
 
 #include "SettingsFile.h"
+#include "diagnostics/Metrics.h"
+#include "diagnostics/Trace.h"
 #include "engine/Clock.h"
 #include "render/Compositor.h"
 #include "render/TextureLab.h"
@@ -245,6 +247,25 @@ void MarkReferencedInstances(LiveActor &a_state, const LiveGeometry &a_bound,
     }
   }
 }
+
+void EmitMetricsHeartbeat() {
+  const Metrics::Snapshot measured = Metrics::Drain();
+  Trace::EmitSafely(
+      Trace::Event::kMetrics,
+      {{"action", "heartbeat"},
+       {"refreshes", std::to_string(measured.refreshes)},
+       {"refresh_us", std::to_string(measured.refreshMicros)},
+       {"refresh_max_us", std::to_string(measured.refreshMaxMicros)},
+       {"sink_adds", std::to_string(measured.sinkAdds)},
+       {"sink_removes", std::to_string(measured.sinkRemoves)},
+       {"readbacks", std::to_string(measured.readbacks)},
+       {"readback_us", std::to_string(measured.readbackMicros)},
+       {"readback_max_us", std::to_string(measured.readbackMaxMicros)},
+       {"targets", std::to_string(measured.targets)},
+       {"targets_peak", std::to_string(measured.targetsPeak)},
+       {"target_bytes", std::to_string(measured.targetBytes)},
+       {"target_bytes_peak", std::to_string(measured.targetBytesPeak)}});
+}
 }
 
 void Manager::OnFrame() {
@@ -256,6 +277,10 @@ void Manager::OnFrame() {
   FireDueFinalizes();
   editor_.TickGesture();
   const std::uint32_t now = NowMS();
+  if (now - lastMetricsMS_ >= 1000) {
+    lastMetricsMS_ = now;
+    EmitMetricsHeartbeat();
+  }
   const Settings settings = GetSettings();
   if (now - lastTickMS_ < settings.TickIntervalMS()) {
     return;

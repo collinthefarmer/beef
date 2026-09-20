@@ -18,21 +18,14 @@ std::atomic<std::uint64_t> nextID{1};
 std::atomic<std::uint64_t> session{0};
 thread_local std::optional<Context> context;
 constexpr Named<Event> kEventNames[]{
-    {Event::kStartup, "startup"},
-    {Event::kSettings, "settings"},
-    {Event::kRecipe, "recipe"},
-    {Event::kCommand, "command"},
-    {Event::kPage, "page"},
-    {Event::kQueue, "queue"},
-    {Event::kLoad, "load"},
-    {Event::kApplication, "application"},
-    {Event::kRetire, "retire"},
-    {Event::kBinding, "binding"},
-    {Event::kRestore, "restore"},
-    {Event::kTexture, "texture"},
-    {Event::kShell, "shell"},
-    {Event::kPreview, "preview"},
-    {Event::kCaptureFailure, "capture_failure"},
+    {Event::kStartup, "startup"}, {Event::kSettings, "settings"},
+    {Event::kRecipe, "recipe"},   {Event::kCommand, "command"},
+    {Event::kPage, "page"},       {Event::kQueue, "queue"},
+    {Event::kLoad, "load"},       {Event::kApplication, "application"},
+    {Event::kRetire, "retire"},   {Event::kBinding, "binding"},
+    {Event::kRestore, "restore"}, {Event::kTexture, "texture"},
+    {Event::kShell, "shell"},     {Event::kPreview, "preview"},
+    {Event::kMetrics, "metrics"}, {Event::kCaptureFailure, "capture_failure"},
 };
 }
 

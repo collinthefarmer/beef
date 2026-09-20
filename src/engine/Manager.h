@@ -142,6 +142,7 @@ private:
   static constexpr std::uint32_t kCarryWindowMS = 2000;
 
   std::uint32_t lastTickMS_ = 0;
+  std::uint32_t lastMetricsMS_ = 0;
   bool emissivePathEnabled_ = false;
   bool layoutVerified_ = false;
   bool frozenLastTick_ = false;
