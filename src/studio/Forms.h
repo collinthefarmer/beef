@@ -1,6 +1,7 @@
 #pragma once
 
 #include "Core.h"
+#include "studio/Create.h"
 #include "studio/Edits.h"
 #include "studio/FieldParsing.h"
 #include "studio/GameObjects.h"
@@ -224,8 +225,8 @@ enum class FieldDetail {
 
 using FieldBinding =
     std::function<std::optional<RecipeEdit>(const std::string &)>;
-using FieldCreator =
-    std::function<std::vector<RecipeEdit>(const std::string &)>;
+using FieldCreator = std::function<std::optional<Created>(const std::string &,
+                                                          const RecipeRow &)>;
 
 struct FormField {
   std::string name;

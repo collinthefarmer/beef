@@ -173,25 +173,6 @@ bool Navigate(Navigation &a_navigation, Selection &a_selection,
   return CommitNavigation(a_navigation, previous, a_selection, a_recipe);
 }
 
-std::optional<InspectorSubject>
-CreatedSubjectOf(std::span<const RecipeEdit> a_edits) {
-  for (const RecipeEdit &edit : a_edits) {
-    if (const auto *added = Get<AddSignal>(edit)) {
-      return SignalSubject{added->name};
-    }
-    if (const auto *added = Get<AddSource>(edit)) {
-      return SourceSubject{added->name};
-    }
-    if (const auto *added = Get<AddMask>(edit)) {
-      return MaskSubject{added->name};
-    }
-    if (const auto *added = Get<AddCurve>(edit)) {
-      return CurveSubject{added->name};
-    }
-  }
-  return std::nullopt;
-}
-
 bool ResolvePendingSubject(Navigation &a_navigation, Selection &a_selection,
                            std::optional<InspectorSubject> &a_pending,
                            const RecipeRow *a_recipe) {

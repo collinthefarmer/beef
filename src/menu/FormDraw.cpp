@@ -245,17 +245,15 @@ void FocusCreatedSubject(const InspectorSubject &a_subject,
   if (!std::ranges::contains(a_field.creators, a_text)) {
     return false;
   }
-  std::vector<RecipeEdit> edits =
-      a_field.create ? a_field.create(a_text) : std::vector<RecipeEdit>{};
-  if (edits.empty()) {
+  std::optional<Created> created =
+      a_field.create ? a_field.create(a_text, *a_frame.recipe) : std::nullopt;
+  if (!created) {
     RefuseCreate(a_field.name, a_text);
     return true;
   }
-  const std::optional<InspectorSubject> created = CreatedSubjectOf(edits);
-  Post(*a_frame.intents, EditRecipe{a_frame.recipe->id, std::move(edits)});
-  if (created) {
-    FocusCreatedSubject(*created, a_frame);
-  }
+  Post(*a_frame.intents,
+       EditRecipe{a_frame.recipe->id, std::move(created->edits)});
+  FocusCreatedSubject(created->subject, a_frame);
   return true;
 }
 

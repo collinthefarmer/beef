@@ -9,9 +9,11 @@
 #include "menu/ResourcePanels.h"
 #include "menu/ResponsePanel.h"
 #include "menu/StackPanel.h"
+#include "studio/Create.h"
 #include "studio/EditResult.h"
 #include "studio/FieldParsing.h"
 #include "studio/Forms.h"
+#include "studio/Intent.h"
 #include "studio/Names.h"
 #include "studio/Navigation.h"
 #include "studio/Panels.h"
@@ -92,10 +94,12 @@ void DrawSurfaceAdd(const Frame &a_frame, Surface a_surface) {
   if (ImGui::BeginPopup("add-output")) {
     for (const Slot slot : SlotsOf(a_surface, a_frame.recipe->shellMaterial)) {
       if (ImGui::Selectable(std::string{SlotName(slot)}.c_str())) {
-        Studio::Post(*a_frame.intents, a_frame.recipe->id,
-                     Studio::AddOutput{a_surface, slot, {}});
-        a_frame.state->pendingSelection =
-            Studio::OutputSubject{a_frame.recipe->outputs.size()};
+        Studio::Created made = Studio::Create(
+            Studio::NewOutput{a_surface, slot, {}}, *a_frame.recipe);
+        Studio::Post(
+            *a_frame.intents,
+            Studio::EditRecipe{a_frame.recipe->id, std::move(made.edits)});
+        a_frame.state->pendingSelection = made.subject;
         ImGui::CloseCurrentPopup();
       }
     }
@@ -192,11 +196,11 @@ void DrawOutputNode(const Frame &a_frame, const Studio::OutputRow &a_output,
   if (a_output.target != Target::kLight) {
     ImGui::PushID("add");
     if (ImGui::Button("+ layer")) {
-      Studio::Post(*a_frame.intents, a_frame.recipe->id,
-                   Studio::AddLayer{a_output.index, Studio::DefaultLayer(),
-                                    a_output.layers.size()});
-      a_frame.state->pendingSelection =
-          Studio::LayerSubject{a_output.index, a_output.layers.size()};
+      Studio::Created made =
+          Studio::Create(Studio::NewLayer{a_output.index}, *a_frame.recipe);
+      Studio::Post(*a_frame.intents, Studio::EditRecipe{a_frame.recipe->id,
+                                                        std::move(made.edits)});
+      a_frame.state->pendingSelection = made.subject;
     }
     ImGui::PopID();
   }
@@ -443,9 +447,10 @@ void DrawLightRemove(const Frame &a_frame) {
 
 void DrawLightAdd(const Frame &a_frame) {
   if (ImGui::Button("+")) {
-    Studio::Post(*a_frame.intents, a_frame.recipe->id, Studio::AddLight{});
-    a_frame.state->pendingSelection =
-        Studio::OutputSubject{a_frame.recipe->outputs.size()};
+    Studio::Created made = Studio::Create(Studio::NewLight{}, *a_frame.recipe);
+    Studio::Post(*a_frame.intents,
+                 Studio::EditRecipe{a_frame.recipe->id, std::move(made.edits)});
+    a_frame.state->pendingSelection = made.subject;
   }
 }
 

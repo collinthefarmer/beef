@@ -42,8 +42,6 @@ void InvalidatePreviewPin(std::optional<PreviewPin> &a_pin,
 [[nodiscard]] bool Navigate(Navigation &a_navigation, Selection &a_selection,
                             InspectorSubject a_subject,
                             const RecipeRow &a_recipe);
-[[nodiscard]] std::optional<InspectorSubject>
-CreatedSubjectOf(std::span<const RecipeEdit> a_edits);
 [[nodiscard]] bool
 ResolvePendingSubject(Navigation &a_navigation, Selection &a_selection,
                       std::optional<InspectorSubject> &a_pending,

@@ -171,29 +171,29 @@ Creators(std::span<const char *const> a_names) {
   return std::vector<std::string>(a_names.begin(), a_names.end());
 }
 
-[[nodiscard]] std::vector<RecipeEdit>
-CreateImage(const std::string &a_creator, std::span<const std::string> a_taken,
-            const FieldBinding &a_bind) {
-  std::vector<RecipeEdit> edits;
-  const auto make = [&](const std::string &a_name, RecipeEdit a_add) {
-    edits.push_back(std::move(a_add));
-    if (const auto bound = a_bind(ReferenceText(a_name))) {
-      edits.push_back(*bound);
+[[nodiscard]] Created WireInto(Created a_made, const FieldBinding &a_bind) {
+  if (const auto name = ResourceName(a_made.subject)) {
+    if (const auto bound = a_bind(ReferenceText(*name))) {
+      a_made.edits.push_back(*bound);
     }
-  };
+  }
+  return a_made;
+}
+
+[[nodiscard]] std::optional<Created> CreateImage(const std::string &a_creator,
+                                                 const RecipeRow &a_recipe,
+                                                 const FieldBinding &a_bind) {
   if (a_creator == "new mask") {
-    const auto name = UniqueName("mask", a_taken);
-    make(name, AddMask{name});
-    return edits;
+    return WireInto(Create(NewMask{}, a_recipe), a_bind);
   }
   const std::string_view word = a_creator.starts_with("new ")
                                     ? std::string_view{a_creator}.substr(4)
                                     : std::string_view{a_creator};
   if (const auto kind = DefaultSourceKind(word)) {
-    const auto name = UniqueName(word, a_taken);
-    make(name, AddSource{name, *kind});
+    return WireInto(Create(NewSource{std::string{word}, *kind}, a_recipe),
+                    a_bind);
   }
-  return edits;
+  return std::nullopt;
 }
 
 struct CreateValueSpec {
@@ -201,57 +201,51 @@ struct CreateValueSpec {
   std::string_view field;
   const std::string &current;
   bool colour;
-  std::span<const std::string> taken;
+  const RecipeRow &recipe;
   const FieldBinding &bind;
 };
 
-[[nodiscard]] std::vector<RecipeEdit>
+[[nodiscard]] std::optional<Value> LiteralValue(const std::string &a_text,
+                                                bool a_colour) {
+  if (a_colour) {
+    const auto colour = LiteralColor(a_text);
+    return colour ? std::optional<Value>{*colour} : std::nullopt;
+  }
+  const auto param = ParseParam(a_text);
+  const float *number = param ? Get<float>(*param) : nullptr;
+  return number ? std::optional<Value>{*number} : std::nullopt;
+}
+
+[[nodiscard]] std::optional<Created>
 CreateValue(const CreateValueSpec &a_spec) {
-  std::vector<RecipeEdit> edits;
-  const auto bindTo = [&](const std::string &a_name) {
-    if (const auto bound = a_spec.bind(ReferenceText(a_name))) {
-      edits.push_back(*bound);
-    }
-  };
   if (a_spec.creator == "promote to signal") {
-    const auto name = UniqueName(a_spec.field, a_spec.taken);
-    Value value = 0.0f;
-    if (a_spec.colour) {
-      const auto colour = LiteralColor(a_spec.current);
-      if (!colour) {
-        return edits;
-      }
-      value = *colour;
-    } else {
-      const auto param = ParseParam(a_spec.current);
-      const float *number = param ? Get<float>(*param) : nullptr;
-      if (number == nullptr) {
-        return edits;
-      }
-      value = *number;
+    const auto value = LiteralValue(a_spec.current, a_spec.colour);
+    if (!value) {
+      return std::nullopt;
     }
-    edits.emplace_back(AddSignal{name});
-    edits.emplace_back(SetConstant{name, value});
-    bindTo(name);
-    return edits;
+    Created made = Create(NewSignal{std::string{a_spec.field}}, a_spec.recipe);
+    if (const auto name = ResourceName(made.subject)) {
+      made.edits.emplace_back(SetConstant{*name, *value});
+    }
+    return WireInto(std::move(made), a_spec.bind);
   }
   if (a_spec.creator == "new constant") {
-    const auto name = UniqueName("signal", a_spec.taken);
-    edits.emplace_back(AddSignal{name});
-    if (a_spec.colour) {
-      edits.emplace_back(SetConstant{name, Vec3{1.0f, 1.0f, 1.0f}});
+    Created made = Create(NewSignal{}, a_spec.recipe);
+    const auto name = a_spec.colour ? ResourceName(made.subject) : std::nullopt;
+    if (name) {
+      made.edits.emplace_back(SetConstant{*name, Vec3{1.0f, 1.0f, 1.0f}});
     }
-    bindTo(name);
-    return edits;
+    return WireInto(std::move(made), a_spec.bind);
   }
   if (a_spec.creator == "new expression") {
-    const auto name = UniqueName("signal", a_spec.taken);
-    edits.emplace_back(AddSignal{name});
-    edits.emplace_back(SetExpression{name, a_spec.colour ? "[1, 1, 1]" : "1"});
-    bindTo(name);
-    return edits;
+    Created made = Create(NewSignal{}, a_spec.recipe);
+    if (const auto name = ResourceName(made.subject)) {
+      made.edits.emplace_back(
+          SetExpression{*name, a_spec.colour ? "[1, 1, 1]" : "1"});
+    }
+    return WireInto(std::move(made), a_spec.bind);
   }
-  return edits;
+  return std::nullopt;
 }
 
 struct ParamFieldSpec {
@@ -294,13 +288,13 @@ struct ParamFieldSpec {
     field.creators = Creators(kValueCreators);
     field.create = [name = a_spec.name, current = a_spec.text,
                     colour = a_spec.kind == FieldKind::kColor,
-                    taken = std::move(a_spec.names),
-                    bind = field.bind](const std::string &a_creator) {
+                    bind = field.bind](const std::string &a_creator,
+                                       const RecipeRow &a_recipe) {
       return CreateValue({.creator = a_creator,
                           .field = name,
                           .current = current,
                           .colour = colour,
-                          .taken = taken,
+                          .recipe = a_recipe,
                           .bind = bind});
     };
   }
@@ -518,9 +512,9 @@ SourceFieldOf(const Inspector &a_inspector,
        .detail =
            DetailWhen(a_inspector.source.has_value(), FieldDetail::kSource)});
   source.creators = Creators(kImageCreators);
-  source.create = [taken = a_sourceNames,
-                   bind = source.bind](const std::string &a_creator) {
-    return CreateImage(a_creator, taken, bind);
+  source.create = [bind = source.bind](const std::string &a_creator,
+                                       const RecipeRow &a_recipe) {
+    return CreateImage(a_creator, a_recipe, bind);
   };
   return source;
 }
@@ -536,22 +530,14 @@ SourceFieldOf(const Inspector &a_inspector,
        .detail = DetailWhen(a_inspector.curve.has_value(), FieldDetail::kCurve),
        .allowEmpty = true});
   curve.creators = {"new curve"};
-  curve.create = [curves = a_inspector.curves,
-                  bind = curve.bind](const std::string &) {
-    std::vector<RecipeEdit> edits;
-    const auto name = UniqueName("curve", curves);
-    edits.emplace_back(AddCurve{name});
-    if (const auto bound = bind(ReferenceText(name))) {
-      edits.push_back(*bound);
-    }
-    return edits;
+  curve.create = [bind = curve.bind](const std::string &,
+                                     const RecipeRow &a_recipe) {
+    return std::optional<Created>{WireInto(Create(NewCurve{}, a_recipe), bind)};
   };
   return curve;
 }
 
-[[nodiscard]] FormField
-OpacityFieldOf(const Inspector &a_inspector,
-               const std::vector<std::string> &a_signalNames) {
+[[nodiscard]] FormField OpacityFieldOf(const Inspector &a_inspector) {
   FormField opacity = ValueField(
       {.name = "opacity",
        .kind = FieldKind::kScalar,
@@ -566,21 +552,19 @@ OpacityFieldOf(const Inspector &a_inspector,
   opacity.units = "fraction";
   opacity.creators = Creators(kValueCreators);
   opacity.create = [current = a_inspector.row.opacityText,
-                    taken = a_signalNames,
-                    bind = opacity.bind](const std::string &a_creator) {
+                    bind = opacity.bind](const std::string &a_creator,
+                                         const RecipeRow &a_recipe) {
     return CreateValue({.creator = a_creator,
                         .field = "opacity",
                         .current = current,
                         .colour = false,
-                        .taken = taken,
+                        .recipe = a_recipe,
                         .bind = bind});
   };
   return opacity;
 }
 
-[[nodiscard]] FormField
-ColourFieldOf(const Inspector &a_inspector,
-              const std::vector<std::string> &a_signalNames) {
+[[nodiscard]] FormField ColourFieldOf(const Inspector &a_inspector) {
   FormField colour = ValueField(
       {.name = "colour",
        .kind = FieldKind::kColor,
@@ -592,21 +576,19 @@ ColourFieldOf(const Inspector &a_inspector,
                             FieldDetail::kColor),
        .allowEmpty = true});
   colour.creators = Creators(kValueCreators);
-  colour.create = [current = a_inspector.row.color, taken = a_signalNames,
-                   bind = colour.bind](const std::string &a_creator) {
+  colour.create = [current = a_inspector.row.color, bind = colour.bind](
+                      const std::string &a_creator, const RecipeRow &a_recipe) {
     return CreateValue({.creator = a_creator,
                         .field = "colour",
                         .current = current,
                         .colour = true,
-                        .taken = taken,
+                        .recipe = a_recipe,
                         .bind = bind});
   };
   return colour;
 }
 
-[[nodiscard]] FormField
-MaskFieldOf(const Inspector &a_inspector,
-            const std::vector<std::string> &a_sourceNames) {
+[[nodiscard]] FormField MaskFieldOf(const Inspector &a_inspector) {
   FormField mask = ReferenceField(
       {.name = "mask",
        .text = a_inspector.row.mask,
@@ -615,9 +597,9 @@ MaskFieldOf(const Inspector &a_inspector,
        .bind = BindLayerMask(a_inspector.output, a_inspector.layer),
        .detail = DetailWhen(a_inspector.mask.has_value(), FieldDetail::kMask),
        .creators = {"new mask"}});
-  mask.create = [taken = a_sourceNames,
-                 bind = mask.bind](const std::string &a_creator) {
-    return CreateImage(a_creator, taken, bind);
+  mask.create = [bind = mask.bind](const std::string &a_creator,
+                                   const RecipeRow &a_recipe) {
+    return CreateImage(a_creator, a_recipe, bind);
   };
   return mask;
 }
@@ -626,15 +608,14 @@ MaskFieldOf(const Inspector &a_inspector,
 std::vector<FormField> InspectorForm(const Inspector &a_inspector) {
   const Inspector &in = a_inspector;
   const auto sourceNames = Joined(in.sources, in.masks);
-  const auto signalNames = Joined(in.scalarSignals, in.colorSignals);
   std::vector<FormField> form;
   form.push_back(SourceFieldOf(in, sourceNames));
   form.push_back(CurveFieldOf(in));
   form.push_back(BlendField("blend", in.row.blend, in.blends,
                             BindLayerBlend(in.output, in.layer)));
-  form.push_back(OpacityFieldOf(in, signalNames));
-  form.push_back(ColourFieldOf(in, signalNames));
-  form.push_back(MaskFieldOf(in, sourceNames));
+  form.push_back(OpacityFieldOf(in));
+  form.push_back(ColourFieldOf(in));
+  form.push_back(MaskFieldOf(in));
   FormField channels =
       ValueField({.name = "channels",
                   .kind = FieldKind::kChannels,
@@ -649,7 +630,6 @@ std::vector<FormField> InspectorForm(const Inspector &a_inspector) {
 std::vector<FormField> ScalarForm(const LayerStack &a_stack) {
   std::vector<FormField> form;
   form.reserve(a_stack.scalars.size());
-  const auto signalNames = Joined(a_stack.scalarSignals, a_stack.colorSignals);
   for (const auto &scalar : a_stack.scalars) {
     const auto field = ParseScalarField(scalar.name);
     const bool colour = field == std::optional{ScalarField::kColor};
@@ -674,13 +654,13 @@ std::vector<FormField> ScalarForm(const LayerStack &a_stack) {
     }
     row.creators = Creators(kValueCreators);
     row.create = [name = scalar.name, current = scalar.text, colour,
-                  taken = signalNames,
-                  bind = row.bind](const std::string &a_creator) {
+                  bind = row.bind](const std::string &a_creator,
+                                   const RecipeRow &a_recipe) {
       return CreateValue({.creator = a_creator,
                           .field = name,
                           .current = current,
                           .colour = colour,
-                          .taken = taken,
+                          .recipe = a_recipe,
                           .bind = bind});
     };
     form.push_back(std::move(row));
@@ -1228,12 +1208,19 @@ void RippleFields(std::vector<FormField> &a_form, const SourceContext &a_ctx,
   const std::string &name = a_ctx.name;
   const SourceKind &record = a_ctx.record;
   const RippleSourceRow &source = a_source;
-  a_form.push_back(ReferenceField(
+  FormField trigger = ReferenceField(
       {.name = "trigger",
        .text = source.trigger,
        .names = a_ctx.names.triggers,
        .allowEmpty = false,
-       .bind = BindSourceMember(name, record, &RippleSource::trigger, RefOf)}));
+       .bind = BindSourceMember(name, record, &RippleSource::trigger, RefOf),
+       .creators = {"new trigger"}});
+  trigger.create = [bind = trigger.bind](const std::string &,
+                                         const RecipeRow &a_recipe) {
+    return std::optional<Created>{WireInto(
+        Create(NewSignal{"trigger", TriggerSignal{}}, a_recipe), bind)};
+  };
+  a_form.push_back(std::move(trigger));
   a_form.push_back(
       ParamField({.name = "speed",
                   .kind = FieldKind::kScalar,

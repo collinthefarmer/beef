@@ -200,28 +200,6 @@ int main() {
           "value edits and empty batches preserve positional subjects");
   }
   {
-    const std::vector<RecipeEdit> promote{AddSignal{"opacity"},
-                                          SetConstant{"opacity", 0.5f}};
-    const auto signal = CreatedSubjectOf(promote);
-    Check(signal && *signal == InspectorSubject{SignalSubject{"opacity"}},
-          "a create batch reports its added signal as the authored subject");
-    const std::vector<RecipeEdit> image{AddSource{"material"},
-                                        SetLayerSource{}};
-    const auto source = CreatedSubjectOf(image);
-    Check(source && *source == InspectorSubject{SourceSubject{"material"}},
-          "an image creator reports the added source");
-    const std::vector<RecipeEdit> painted{AddMask{"spine2"}, SetLayerMask{}};
-    const auto mask = CreatedSubjectOf(painted);
-    Check(mask && Is<MaskSubject>(*mask),
-          "a mask creator reports the added mask");
-    const std::vector<RecipeEdit> curved{AddCurve{"falloff"}};
-    const auto curve = CreatedSubjectOf(curved);
-    Check(curve && *curve == InspectorSubject{CurveSubject{"falloff"}},
-          "a curve creator reports the added curve");
-    Check(!CreatedSubjectOf(std::vector<RecipeEdit>{SetScalar{}}),
-          "a batch with no addition names no authored subject");
-  }
-  {
     Selection selection = Context();
     Navigation navigation;
     std::optional<InspectorSubject> pending = SignalSubject{"pending"};
