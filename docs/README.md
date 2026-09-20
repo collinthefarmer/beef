@@ -45,6 +45,10 @@ Open work.
   what must be true before the mod reaches another person: the five gates,
   their status against the current tree, and the ranked list. Supersedes the
   2026-09-09 roadmap in History.
+- [plans/texture-budget-2026-09-20.md](plans/texture-budget-2026-09-20.md) —
+  gate 1's texture fix, staged against the 2026-09-20 measurement: the
+  retention defect, in-play trimming, per-slot resolution factors, then
+  demotion and eviction only as the numbers demand.
 - [plans/ui-v2-proposal.md](plans/ui-v2-proposal.md) — the frozen UI v2 design
   baseline.
 - [plans/ui-v2-implementation-plan.md](plans/ui-v2-implementation-plan.md) —

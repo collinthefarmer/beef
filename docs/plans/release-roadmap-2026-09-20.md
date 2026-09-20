@@ -53,22 +53,30 @@ Two pieces of drift are unfinished business rather than progress:
 
 Nothing here has been measured. The state of the three suspects:
 
-- **Sink churn.** The animation-graph sink is still added at apply and
-  removed at retire (`engine/ManagerApply.cpp`), the exact churn
-  `REQUIREMENTS.md` defect 3 names as the crowd-freeze suspect. The rebuild
-  did not change the pattern.
-- **Texture slots.** The 512 placeholder presenter DDS files remain the
-  only way the engine sees a generated texture (`REFERENCE.md`, presenter
-  pool). Sizing now follows the target geometry, which answers the
-  absolute-size half of the old gate; the slot-count and VRAM half stands.
-- **Readbacks.** The synchronous readbacks named in 2026-09-09 (flat
-  displacement, material sample, streamed-mesh copy) have not been re-timed
-  in the new tree.
+First measurement 2026-09-20 (instrumented in 18e9b9a, stress scene,
+~3 minutes of unpaused play):
+
+- **Texture slots and VRAM: failing, now the ranked-first fix.** The
+  pool reached all 512 slots and 8,016 MiB of target VRAM in ~50 s;
+  nothing returns during play; ~487 targets survived a save-load
+  teardown. `docs/plans/texture-budget-2026-09-20.md` stages the fix
+  (retention defect, in-play trim, per-slot resolution factors, then
+  demotion and eviction on evidence).
+- **Sink churn: small at this scale.** 80 adds, 33 removes over the
+  measured play; churn tracks applies one-to-one as suspected but the
+  absolute rate is modest, and no freeze occurred. The crowd-hour
+  verdict is still owed.
+- **Readbacks: clean in this session.** All three kinds under 3 ms
+  worst-case; the paint-freeze case needs its specific repro before
+  they are condemned.
+- **Apply cost:** p50 2.6 ms, p95 48 ms, max 263 ms per actor; bursts
+  are dominated by cheap early-exits, cost concentrates in first-time
+  heavy applies.
 
 Done when (unchanged): a city with `PlayerOnly=false` runs an hour without
 a freeze; the apply burst for twenty actors is measured and bounded; a
 crowd's slot and VRAM consumption is measured and bounded well under the
-limit. The measurement session comes first and ranks the fixes.
+limit. The crowd-hour session remains to run.
 
 ### Gate 2: legal to distribute — SETTLED
 
@@ -161,14 +169,17 @@ Size: S is hours, M is a day or two, L is a week or more.
 
 **Gate 1, the alpha blocker**
 
-3. **Measure.** M. One session: time the apply burst, count the sink churn
-   per refresh, time the readbacks, count a crowd's presenter slots and
-   VRAM. Doubles as the first long play session and produces the cost
-   budget. Ranks 4 to 6.
-4. **Fix the crowd freeze.** L, unknowable until 3.
-5. **Replace how textures are held.** L. The slot count and VRAM half;
-   sizing is already relative.
-6. **Fix the readback stalls.** M, possibly the same work as 4.
+3. **Measure.** FIRST PASS DONE 2026-09-20 (instrumentation in 18e9b9a,
+   stress-scene numbers in gate 1 above); the crowd-hour session with
+   `PlayerOnly=false` remains, and re-measurement closes every
+   texture-budget stage.
+4. **Fix the crowd freeze.** No evidence yet against the sink; verdict
+   waits on the crowd hour.
+5. **Replace how textures are held.** L, ranked first by the numbers.
+   Staged in `docs/plans/texture-budget-2026-09-20.md`; the presenters
+   move into a BSA under packaging.
+6. **Fix the readback stalls.** All readbacks under 3 ms in the first
+   pass; open only until the paint-freeze repro is re-timed.
 
 **Gate 5's cheap half, in parallel with 3**
 
