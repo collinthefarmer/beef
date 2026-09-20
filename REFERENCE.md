@@ -35,7 +35,7 @@ citation into them names provenance, not a file a reader here can open.
   it excludes `_old`, tests, documents, generated build output, and external
   toolchain binaries. Effective recipe/settings fingerprints use FNV-1a 64 and
   are diagnostic comparisons, not security identities. Capture procedure and
-  current limits: `docs/wip/render-state-diagnostic-checkpoint-2026-09-12.md`.
+  current limits: `docs/checkpoints/render-state-diagnostic-checkpoint-2026-09-12.md`.
 
 The plugin name is spelled once, in `Identity.h`. `BEEF_PLUGIN_NAME` is
 defined by CMake from the project name (`target_compile_definitions … BEEF_PLUGIN_NAME="${PROJECT_NAME}"`);
@@ -221,14 +221,14 @@ atom   := number | "[" expr "," expr ("," expr)? "]" | "(" expr ")"
   on the map's average.
 - Inside a mask a name reads an image (source or mask) first and a signal
   after; a signal rename leaves a mask alone when an image shares the name.
-  In `RenameReferences`, a signal reference is `@name` followed by anything
+  In `RenameInExpression`, a signal reference is `@name` followed by anything
   but a name character or `(`; a curve reference is `@name(`.
 
 ## The lab's shaders (`render/TextureLab.h`, `TextureLabLifecycle.cpp`,
 `TextureLabPass.cpp`, `TextureLabReadback.cpp`, `ShaderSource.cpp`)
 
 One pixel shader over a full-screen triangle serves every mode of
-`ShaderMode`; the interpreter, bake, ripple and classify passes are
+`TextureLab::Mode`; the interpreter, bake, ripple and classify passes are
 separate shaders so a fault in one costs only its outputs. The shader's op
 numbers are `Program::Op`'s enum values and the shader's switch is written
 to them; its arrays are sized to `kMaxExpressionOps`, `kProgramRefs`,
@@ -299,7 +299,7 @@ Classify pass: `centroidRmaos[8]` per cluster in analysis order (roughness,
 metallic, occlusion, reflectance); `centroidLuma[8]` x luma, y id;
 `classifyWeights` the four RMAOS weights; `classifyMisc` x luma weight, y
 cluster count. The RMAOS and diffuse maps at the mesh UV go to the nearest
-centroid by the distance `NearestCluster` (Analysis.cpp) uses, the sum over
+centroid by the distance `NearestCluster` (`mesh/MaterialClusters.cpp`) uses, the sum over
 five axes of weight x (texel - centroid)^2, the first of equals winning;
 the CPU function is the reference and the shader must agree with it on a
 texel. The id is written as id / 255 grey. A weight that is not finite or
@@ -528,7 +528,7 @@ Lab mechanics:
   0.022 (`render/Light.cpp`). A recipe's own `cutoff` below 1 overrides them,
   clamped to 0.01..1. One light per recipe, third person only, at the skinned
   centre of the bones carrying the most vertices (NOTES 34).
-- Geometry names ending in `Identity::ShellSuffix()` are shells the plugin
+- Geometry names ending in `Identity::ShellNodeSuffix()` are shells the plugin
   attached; the apply traversal skips them, and shells are collected before
   applying because attaching one adds a sibling a live walk would visit.
 - `ShellPose` (Plan G, 2026-09-14): `PosedTransform` (`mesh/ShellPose.h`,
@@ -1155,7 +1155,7 @@ Decompile provenance (`decompiled/WornEnchantmentFX/plugin.c` unless noted):
   use ccache when available. A cached rebuild produced Ninja objects with
   zero header dependencies, allowing incompatible `TextureLab` layouts in
   one DLL. The binary evidence and dependency reproduction are recorded in
-  `docs/wip/crash-2026-09-11.md`. Do not restore caching for project targets
+  `docs/checkpoints/crash-2026-09-11.md`. Do not restore caching for project targets
   without verifying that cache hits preserve their header dependencies.
 - `CMakeLists.txt`: nothing is installed, which also keeps CommonLibSSE-NG
   from exporting a target set that would need spdlog exported too; spdlog is
@@ -1249,7 +1249,7 @@ tested; the wave-3 shell is a thin adapter that owns the real `RE::` handles and
 calls these with value records. The split's discipline: no planner takes or
 stores an `RE::` pointer.
 
-- **Opaque handle spaces.** `PieceId`, `InstanceId`, `PlacementId`, `RecipeId`,
+- **Opaque handle spaces.** `GeometryId`, `InstanceId`, `PlacementId`, `RecipeId`,
   `OutputId` are `enum class : std::size_t` typed index spaces (as
   `Merge.h`'s `SlotContributor`/`LightContributor` already are). They carry no
   enumerators, so the one-spec-table-per-enum rule does not apply to them — a
@@ -1261,19 +1261,19 @@ stores an `RE::` pointer.
   same transient-only rule.
 
 - **Three-table `ActorPlan`** (DECIDED 2026-09-09; `design-actor-state-tables`).
-  A `Piece` is one engine geometry, not an armor: it carries its own
+  A `Geometry` is one engine geometry, not an armor: it carries its own
   `GeometryIdentity` plus the armor's `WornPiece` match keys, denormalised onto
   each geometry so selector matching is per-geometry. `Instance` grain is per
   recipe per actor per enchantment form (`FindInstance` dedups by
   `RecipeId` + enchantment `FormKey`; unenchanted matches share one instance per
-  recipe). `Placement` joins an instance to a piece with the `RecipeKey` it
+  recipe). `Placement` joins an instance to a geometry with the `RecipeKey` it
   matched by and per-surface-output selection. The engine runtime that the
   frozen `Manager` nested under these — `MaterialBinding`/`ShellBinding`/
   `LightBinding`, `SignalState`/`ActorEnvironment`, `startMS`/`lastTime` — is
   shell-owned state keyed by the same handles, not fields of the pure tables.
-  `Piece::lost` is the one shell-maintained flag the pure `AnyLivePiece` reads
-  (a geometry whose material or shell another system replaced); light-liveness
-  stays a shell check because a light is a `RE::` binding.
+  `Geometry::lost` is the one shell-maintained flag the pure `AnyLiveGeometry`
+  reads (a geometry whose material or shell another system replaced);
+  light-liveness stays a shell check because a light is a `RE::` binding.
 
 - **Row projections belong to `studio/`, not here.** The frozen `BuildSnapshot`
   inlined its row builds. The recipe-definition → row projection is a view-model
@@ -1333,7 +1333,7 @@ separate contracts. The existing render/update synchronization policy is unchang
 
 ## Cleanup ownership contracts (2026-09-13)
 
-See [the cleanup checkpoint](docs/wip/cleanup-checkpoint-2026-09-13.md) for the
+See [the cleanup checkpoint](docs/checkpoints/cleanup-checkpoint-2026-09-13.md) for the
 material group journal, retained external textures, explicit actor retirement,
 presenter slot leases, skin palette ownership, and preview submission contract.
 `SourceSampling` centralizes compositor sampling policy. `ChangeAndRebuildActors`

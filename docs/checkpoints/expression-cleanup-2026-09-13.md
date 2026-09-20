@@ -1,6 +1,6 @@
 # Expression checking and evaluation cleanup
 
-Implementation checkpoint for [the expression handoff](expression-cleanup-implementation-handoff-2026-09-13.md).
+Implementation checkpoint for [the expression handoff](../plans/expression-cleanup-implementation-handoff-2026-09-13.md).
 
 ## Scope and review
 
@@ -61,7 +61,7 @@ Decision: preserve the existing runtime policy during this extraction and track 
 - The final full native run passed 15 suites / 829 checks, including both expression suites, before it was deliberately interrupted (exit 130). Concurrent header edits repeatedly rebuilt studio dependencies between suites. It did not reach schema/Python checks and is not counted as a full pass.
 - The full lint command exited 0 but reported only 12/90 files fresh, with 22 findings among those fresh files (19 size, two redundant-member-init, one cognitive-complexity). Concurrent edits invalidated the other results and added source files after selection. This is explicitly not the repository's final warning count, nor evidence of warning-count improvement.
 
-Logs and the reproducer are retained in [regression evidence](../regression-evidence/2026-09-13/expression-cleanup/). The native log named `native-interrupted.log` ends partway through the suite; it must not be interpreted as success. A stable-workspace full sanitizer run, unfiltered lint run, Release build, and matching source identity remain outstanding before whole-tree acceptance.
+Logs and the reproducer are retained in [regression evidence](regression-evidence/2026-09-13/expression-cleanup/). The native log named `native-interrupted.log` ends partway through the suite; it must not be interpreted as success. A stable-workspace full sanitizer run, unfiltered lint run, Release build, and matching source identity remain outstanding before whole-tree acceptance.
 
 The scoped source SHA-256 is `4b1874d0da765a7fac8504b29530717900158aff705167f79ff97d62cbe209c3` (`src/recipe/Expression.cpp`); the regression suite SHA-256 is `6c731c16bf023b7eeb11c9165388386178ff92689d2cfa01914436ae6bb65bbc`.
 

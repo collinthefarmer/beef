@@ -1,6 +1,6 @@
 # GPU ownership validation — 2026-09-12
 
-This implements section 2 of the [engine-facing survey](engine-types-survey-2026-09-12.md).
+This implements section 2 of the [engine-facing survey](../history/engine-types-survey-2026-09-12.md).
 
 ## Implemented contract
 

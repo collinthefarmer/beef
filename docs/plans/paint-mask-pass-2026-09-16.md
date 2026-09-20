@@ -170,7 +170,7 @@ concern. A rename toward that vocabulary (e.g. `DrawMaskTask` →
 
 ## Verify (not a UI case) — offer-visibility
 
-`docs/wip/paint-flow-review-2026-09-12.md` (history) reported: selecting an
+`docs/history/paint-flow-review-2026-09-12.md` (history) reported: selecting an
 offer adds its term but sometimes does not show the mask; Solo often restores
 it. Confirm whether this still reproduces after the later render-state fixes
 before assuming it is gone; it is a rendering-state defect, not part of this

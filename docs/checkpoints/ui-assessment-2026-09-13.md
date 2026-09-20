@@ -1,6 +1,6 @@
 # Existing UI assessment
 
-Source review on 2026-09-13 against the [design principles](ui-design-principles.md).
+Source review on 2026-09-13 against the [design principles](../ui-design-principles.md).
 The working tree includes an ongoing cleanup pass. Findings describe inspected
 code, not a fixed release or verified in-game appearance. No implementation was
 changed for this assessment. Historical regression reports are not treated as
@@ -29,9 +29,9 @@ overlays require support beyond rearranging controls.
   selected recipe's Save/Revert and problems.
 - **Setup:** preferences, persistence/reapply actions, and logs.
 
-Evidence: [StudioPage.cpp](../src/menu/StudioPage.cpp),
-[RecipesPage.cpp](../src/menu/RecipesPage.cpp),
-[SetupPage.cpp](../src/menu/SetupPage.cpp), [View.h](../src/studio/View.h).
+Evidence: [StudioPage.cpp](../../src/menu/StudioPage.cpp),
+[RecipesPage.cpp](../../src/menu/RecipesPage.cpp),
+[SetupPage.cpp](../../src/menu/SetupPage.cpp), [View.h](../../src/studio/View.h).
 
 ## Assessment by principle
 
@@ -50,27 +50,27 @@ Evidence: [StudioPage.cpp](../src/menu/StudioPage.cpp),
 
 ## Evidence anchors
 
-- [ContextRows.cpp](../src/menu/ContextRows.cpp): `DrawRecipeHeader`,
+- [ContextRows.cpp](../../src/menu/ContextRows.cpp): `DrawRecipeHeader`,
   `DrawRecipeContext`, `DrawEditContext`, `DrawRecipeSettings`, `KeysPopup`.
-- [FormDraw.cpp](../src/menu/FormDraw.cpp): `FieldInput`, `PostField`,
+- [FormDraw.cpp](../../src/menu/FormDraw.cpp): `FieldInput`, `PostField`,
   `DrawSignalReads`, `DrawSignalDetail`, `FirePopup`, `DrawSelector`.
-- [MenuWidgets.cpp](../src/menu/MenuWidgets.cpp): `ValueWidget`, `Badge`,
+- [MenuWidgets.cpp](../../src/menu/MenuWidgets.cpp): `ValueWidget`, `Badge`,
   `ReferenceCombo`, `DetailButton`. The value widget selects references or edits
   text/color; it does not read `FormField::range` to draw numeric sliders.
-- [Forms.h](../src/studio/Forms.h) and [Forms.cpp](../src/studio/Forms.cpp):
+- [Forms.h](../../src/studio/Forms.h) and [Forms.cpp](../../src/studio/Forms.cpp):
   typed field descriptions, bindings/creators, optional ranges, and
   `ActorValueFields` with a text name and measure choice.
-- [ResourcePanels.cpp](../src/menu/ResourcePanels.cpp): `DrawSignalRow`,
+- [ResourcePanels.cpp](../../src/menu/ResourcePanels.cpp): `DrawSignalRow`,
   `DrawSignalEditor`, `DrawSources`, `DrawMasks`, `DrawResourcesRule`.
-- [StackPanel.cpp](../src/menu/StackPanel.cpp): `DrawComposite`,
+- [StackPanel.cpp](../../src/menu/StackPanel.cpp): `DrawComposite`,
   `DrawForeignRow`, `DrawInspectorFields`, `DrawDetailModal`, `DrawStack`.
-- [PaintPanel.cpp](../src/menu/PaintPanel.cpp): `DrawOffers`, `DrawTermReads`,
+- [PaintPanel.cpp](../../src/menu/PaintPanel.cpp): `DrawOffers`, `DrawTermReads`,
   `DrawTermSettings`, `DrawMaskPicture`, `DrawMaskRule`, `KeepMaskPopup`.
-- [BoardPage.cpp](../src/menu/BoardPage.cpp): `CellTooltip` and cell actions expose
+- [BoardPage.cpp](../../src/menu/BoardPage.cpp): `CellTooltip` and cell actions expose
   original/written slot facts, scalar values, reasons, selection, and isolation.
-- [StudioPage.cpp](../src/menu/StudioPage.cpp): `DrawApplication`,
+- [StudioPage.cpp](../../src/menu/StudioPage.cpp): `DrawApplication`,
   `DrawGeometryBody`, `DrawFooter`, `HistoryKeys`.
-- [RecipesPage.cpp](../src/menu/RecipesPage.cpp): `DrawSelection`,
+- [RecipesPage.cpp](../../src/menu/RecipesPage.cpp): `DrawSelection`,
   `DrawRecipeFile`, `DrawLoadedTable`.
 
 ## Workflow walkthroughs

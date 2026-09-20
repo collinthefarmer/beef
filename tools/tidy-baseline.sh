@@ -5,7 +5,7 @@ python3 - "$@" <<'PY'
 import collections, pathlib, re, sys
 root = pathlib.Path('.').resolve()
 source = pathlib.Path('build/tidy')
-target = pathlib.Path('docs/wip/tidy-baseline.txt')
+target = pathlib.Path('tools/tidy-baseline.txt')
 
 WARNING = re.compile(r'^(/\S+?):(\d+):(\d+): warning: (.*) \[([a-z][a-z0-9.-]+)\]$')
 BASELINE_ROW = re.compile(r'^(\S+):(\d+): \[([a-z][a-z0-9.-]+)\]$')
@@ -86,7 +86,7 @@ out += ["%s:%d: [%s]" % r for r in rows]
 if "--check" in sys.argv:
     current = "\n".join(out) + "\n"
     if not target.exists() or target.read_text() != current:
-        print("clang-tidy findings differ from docs/wip/tidy-baseline.txt", file=sys.stderr)
+        print("clang-tidy findings differ from tools/tidy-baseline.txt", file=sys.stderr)
         sys.exit(1)
     print("clang-tidy findings match the baseline")
 else:

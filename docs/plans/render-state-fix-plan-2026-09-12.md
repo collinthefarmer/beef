@@ -5,7 +5,7 @@ implemented by writing this plan.
 
 Implementation progress: stage-0 captures confirmed zero-inflation stretching
 and exposed presenter aliasing across simultaneous targets. The
-[checkpoint record](render-state-diagnostic-checkpoint-2026-09-12.md) contains
+[checkpoint record](../checkpoints/render-state-diagnostic-checkpoint-2026-09-12.md) contains
 preserved evidence and the first targeted presenter repair: stage missing assets,
 reject fallback/duplicate identities, and check renderer ownership. This bounded
 part of stage 3 is moved ahead of the sequencer because the identity violation is
@@ -16,8 +16,8 @@ Full published leases, retirement ordering, the sequencer, remaining shell work,
 stages 4–7, remaining stage-0 coverage and shell visual validation remain
 outstanding.
 
-Basis: [source investigation](render-state-investigation-2026-09-12.md),
-[reported reproductions](../regression-feedback-2026-09-12.md), and
+Basis: [source investigation](../history/render-state-investigation-2026-09-12.md),
+[reported reproductions](../checkpoints/regression-feedback-2026-09-12.md), and
 [integration procedure](../in-game-regression.md). Preserve the existing working
 tree changes. Use `src/_old` to identify inherited behavior, not as a correctness
 oracle for the defects under investigation. Keep recipe format 1 unchanged.

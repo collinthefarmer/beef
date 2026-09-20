@@ -19,7 +19,7 @@ with file and line citations live in the six plan documents listed below.
 | File organisation | 6/10 | `studio/Edits.cpp` holds four concerns; GPU constant structs copied into three files |
 | Function design | 7/10 | Engine functions read a settings global and three singletons ambiently |
 | Type leverage | 7/10 | The studio snapshot re-stringifies typed data; checked and unchecked recipes share a type |
-| Onboarding and docs | 5/10 | No README; `REFERENCE.md` and `docs/wip/deletions.md` cite files that do not exist |
+| Onboarding and docs | 5/10 | No README; `REFERENCE.md` and `docs/plans/deletions.md` cite files that do not exist |
 | Consistency | 5/10 | Five error-reporting idioms; a second JSON parser grew in `studio/Presets.cpp` |
 | Tests | 6/10 | Failure output has no file, line or values; render, menu and most of engine untested |
 | Error handling | 8/10 | Boundary is exemplary; four unchecked index sites in otherwise checked files |
@@ -141,13 +141,13 @@ Tooling facts that cost time to rediscover:
 `src/studio/FileOperation.h`, `src/studio/Navigation.h`, and modified
 `Forms`, `Fields`, `FieldCheck`, `Intent.h`, `MenuState.cpp`, `Selection.h`,
 `Snapshot.h` and every menu page. Its early framework checkpoint
-(`docs/wip/ui-v2-framework-checkpoint-2026-09-13.md`) awaits the user's
+(`docs/checkpoints/ui-v2-framework-checkpoint-2026-09-13.md`) awaits the user's
 in-game run. Its later slices own, by name, the same seams several critique
 steps edit: `Forms`/`Fields`/`FieldCheck` (slice 2A), the reference
 traversal in `Edits.cpp` (2B), `Selection`/`Intent`/`MenuState` (1B),
 `FormDraw`/`MenuWidgets` value widgets (2D), the expression parser (3C), the
 Paint reducers (3E), and presets for the pattern chooser (3F). A separate
-expression cleanup (`docs/wip/expression-cleanup-implementation-handoff-2026-09-13.md`)
+expression cleanup (`docs/plans/expression-cleanup-implementation-handoff-2026-09-13.md`)
 is also editing `src/recipe/Expression.cpp`.
 
 The critique was taken on the tree with the UI wave present, so a few
@@ -196,7 +196,7 @@ optional.
 - The gate: `tools/gate.sh commit` and `tools/gate.sh push`. The git hooks and
   the Claude Code hook call the same script. `--no-verify` is defeated by
   the hook. The push gate checks formatting, the sanitized native suite, a
-  full tidy run, and that tidy findings match `docs/wip/tidy-baseline.txt`.
+  full tidy run, and that tidy findings match `tools/tidy-baseline.txt`.
   After an intended change to findings, regenerate with `tools/tidy.sh
   --force && tools/tidy-baseline.sh`.
 - After adding or removing a source file, run `tools/compile-db.sh` so tidy
@@ -351,7 +351,7 @@ These are settled. Do not re-open them; apply them where the plans say.
 - **`ShellPose` fields: implement them.** The shell honours `offset`,
   `scale`, `scalePoint`, `spin` and `spinAxis` alongside `inflate`. This is
   Plan G. The form controls in `src/studio/Forms.cpp:1495-1523` stay; the
-  reader, writer and schema stay. `docs/wip/deletions.md:37-40` is resolved
+  reader, writer and schema stay. `docs/plans/deletions.md:37-40` is resolved
   by implementation, not deletion.
 - **Presets file: rename to `presets.json`, no fallback.** `presets/regions.json`
   in the repo becomes `presets/presets.json`; `CMakeLists.txt:162` and
@@ -537,8 +537,8 @@ What Plan C left for the later plans and for the UI owner:
 - Plan E documents against those paths. `REFERENCE.md`'s shader section now
   names `render/ShaderConstants.h` and `render/D3DResult.h`;
   `docs/conventions.md` gained a Gates bullet for `tools/layers.sh`.
-  `docs/wip/render-ownership.md`, `docs/wip/engine-ownership.md`,
-  `docs/wip/engine-types-survey-2026-09-12.md` and `docs/buildup-plan.md`
+  `docs/history/render-ownership.md`, `docs/history/engine-ownership.md`,
+  `docs/history/engine-types-survey-2026-09-12.md` and `docs/history/buildup-plan.md`
   still cite `engine/MeshReader`; they are history, and Plan E decides
   whether to correct or mark them.
 - `src/studio/Edits.cpp` is 1652 lines, not the plan's target of 1200. The
@@ -595,7 +595,7 @@ What Plan D left for the later plans and for the UI owner:
 - Plan G reads the shell form in `studio/Forms.cpp`, which this pass touched
   in four lines (`BipedSlotNames` and the partition field's parse). Nothing
   in the shell form itself changed.
-- `docs/wip/cleanup-checkpoint-2026-09-13.md:36` still names `ResourceSlots`,
+- `docs/checkpoints/cleanup-checkpoint-2026-09-13.md:36` still names `ResourceSlots`,
   a symbol that no longer exists. It is a dated checkpoint record; Plan E
   decides whether to correct it or leave it as history.
 - Deferred to the UI complete-editor checkpoint: the `MenuState.h`

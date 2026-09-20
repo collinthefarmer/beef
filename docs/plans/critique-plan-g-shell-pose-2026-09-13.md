@@ -23,7 +23,7 @@ render work with its own in-game checkpoint.
   `Pose`; read it to find the call and how `inflate` is resolved from
   `Vec3Param` through the signal state.
 - `src/studio/Forms.cpp:1495-1523` already offers all six controls.
-  `src/_old/` never applied the five fields either (`docs/wip/deletions.md:37`),
+  `src/_old/` never applied the five fields either (`docs/plans/deletions.md:37`),
   so there is no previous behaviour to match; the format's schema
   descriptions in `schema/recipe.schema.json` define the intended meaning.
   Read them first; if a field's description is ambiguous, write down the
@@ -69,7 +69,7 @@ render work with its own in-game checkpoint.
 5. Verify `RecipeWrite.cpp` omits defaults for the five fields (the old
    writer at `src/_old/RecipeJson.cpp:1392` did) so unchanged recipes
    round-trip byte-identical; the existing round-trip test proves it.
-6. Update `docs/wip/deletions.md:37-40` to "implemented".
+6. Update `docs/plans/deletions.md:37-40` to "implemented".
 
 ## Acceptance
 

@@ -2,7 +2,7 @@
 
 Status: framework integrated; Release and automated checks passed. The user
 reported the in-game checkpoint looks good on 2026-09-13. This is the deliberately incomplete framework checkpoint from the
-[implementation plan](../ui-v2-implementation-plan.md), not the complete editor.
+[implementation plan](../plans/ui-v2-implementation-plan.md), not the complete editor.
 
 ## Ownership and baseline
 

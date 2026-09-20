@@ -11,7 +11,7 @@ uncommitted changes. This is a review and coverage plan, not a production fix.
 The reported symptom is that selecting an offer adds its term but sometimes
 does not show the mask; Solo often, but not always, restores visibility.
 
-Implementation follow-up: [first wave and validation](first-wave-2026-09-12.md).
+Implementation follow-up: [first wave and validation](../checkpoints/first-wave-2026-09-12.md).
 The findings and coverage matrix below preserve the diagnostic baseline;
 the follow-up records the fixes and remaining work.
 

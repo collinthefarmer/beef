@@ -1,7 +1,7 @@
 # Texture consumer lifetime checkpoint
 
 This is the first structural integration from the updated
-[rendering-state plan](render-state-fix-plan-2026-09-12.md). Presenter uniqueness
+[rendering-state plan](../plans/render-state-fix-plan-2026-09-12.md). Presenter uniqueness
 and shell palette repairs remain included.
 
 ## Change

@@ -27,7 +27,7 @@ Information gathering for a later developer handoff. Record user observations,
 reproduction details, relevant log evidence, and follow-up questions. Do not infer
 test success from logs alone. No implementation changes requested.
 
-Test procedure: [in-game-regression.md](in-game-regression.md).
+Test procedure: [in-game-regression.md](../in-game-regression.md).
 
 User-provided log: `A:\home\documents\My Games\Skyrim Special Edition\SKSE\BetterEnchantmentEffects.log`.
 Local access: `/mnt/a/home/documents/My Games/Skyrim Special Edition/SKSE/BetterEnchantmentEffects.log`.

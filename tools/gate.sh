@@ -119,7 +119,7 @@ fi
 if ! tools/tidy-baseline.sh --check; then
 	{
 		echo
-		echo "push blocked: clang-tidy findings differ from docs/wip/tidy-baseline.txt."
+		echo "push blocked: clang-tidy findings differ from tools/tidy-baseline.txt."
 		echo "review the difference; if it is intended, regenerate the baseline:"
 		echo "    tools/tidy.sh --force && tools/tidy-baseline.sh"
 	} >&2

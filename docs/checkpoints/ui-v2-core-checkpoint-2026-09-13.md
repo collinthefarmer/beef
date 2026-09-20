@@ -5,7 +5,7 @@ in-game pass claimed. The user accepted the earlier framework checkpoint.
 
 ## Scope
 
-This integration covers stages 1-3 of the [implementation plan](../ui-v2-implementation-plan.md).
+This integration covers stages 1-3 of the [implementation plan](../plans/ui-v2-implementation-plan.md).
 Three agents implemented preview/relationship/pattern work, gestures/input/graphs,
 and document/navigation/mask work. The coordinator integrated field controls,
 expression editing, status reporting, and validation.

@@ -1,6 +1,6 @@
 # Expression cleanup: implementation handoff
 
-Implementation results: [expression cleanup checkpoint](expression-cleanup-2026-09-13.md).
+Implementation results: [expression cleanup checkpoint](../checkpoints/expression-cleanup-2026-09-13.md).
 
 ## Objective and authorization
 
@@ -14,7 +14,7 @@ Repository: `/home/nixos/projects/skyrim-modding/plugins/WornEnchantmentPBR`. Ru
 
 The working tree contains extensive tracked and untracked work from earlier fixes and cleanup passes. Preserve it. Inspect the current diff and take a baseline of files being edited; do not restore files from HEAD or remove untracked files. Avoid `src/_old` and `tests/_old`.
 
-The most recent completed pass is [actor collection and reference validation](collection-validation-cleanup-2026-09-13.md). It separated armor traversal from geometry collection and consolidated signal-reference type checks without changing diagnostics or dependent inert-state propagation. Earlier context is linked through [source cleanup](source-cleanup-2026-09-13.md), [render cleanup](render-cleanup-2026-09-13.md), and [lint cleanup](lint-cleanup-2026-09-13.md).
+The most recent completed pass is [actor collection and reference validation](../checkpoints/collection-validation-cleanup-2026-09-13.md). It separated armor traversal from geometry collection and consolidated signal-reference type checks without changing diagnostics or dependent inert-state propagation. Earlier context is linked through [source cleanup](../checkpoints/source-cleanup-2026-09-13.md), [render cleanup](../checkpoints/render-cleanup-2026-09-13.md), and [lint cleanup](../checkpoints/lint-cleanup-2026-09-13.md).
 
 Recorded baseline, not a fresh validation run for this document:
 

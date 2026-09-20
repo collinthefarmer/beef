@@ -35,9 +35,9 @@ UI draw-resource lifetime, or recipe-specific texture-cache work.
   resources. Lookup ownership cannot be copied or moved; target GPU fields
   are private and UI preview access uses a read-only view accessor.
 
-See [Paint review and coverage matrix](paint-flow-review-2026-09-12.md),
+See [Paint review and coverage matrix](../history/paint-flow-review-2026-09-12.md),
 [settings publication contract](settings-publication-2026-09-12.md), and
-[engine-facing survey](engine-types-survey-2026-09-12.md) for the original
+[engine-facing survey](../history/engine-types-survey-2026-09-12.md) for the original
 findings, detailed boundaries, and deferred work. The
 [GPU validation checklist](gpu-ownership-validation-2026-09-12.md) records
 the D3D failure-injection and live-object checks still requiring runtime access.

@@ -52,7 +52,7 @@ has its own in-game checkpoint.
 
 ### 2. The eight UI findings
 
-All in `docs/wip/ui-v2-core-checkpoint-2026-09-13.md`, each with the file,
+All in `docs/checkpoints/ui-v2-core-checkpoint-2026-09-13.md`, each with the file,
 the cause and the intended fix. They belong to the UI owner, not the
 critique, but they came from the critique's checkpoint session and block
 some of the deferred items below. In short:

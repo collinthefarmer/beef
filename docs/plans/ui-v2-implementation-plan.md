@@ -1,10 +1,10 @@
 # UI v2 implementation plan
 
 Status: core editor integrated, validation in progress. The early framework
-checkpoint was accepted on 2026-09-13. See the [core checkpoint](wip/ui-v2-core-checkpoint-2026-09-13.md).
+checkpoint was accepted on 2026-09-13. See the [core checkpoint](../checkpoints/ui-v2-core-checkpoint-2026-09-13.md).
 
 Design baseline: [frozen UI v2 proposal](ui-v2-proposal.md).
-Evidence: [current UI assessment](ui-assessment-2026-09-13.md).
+Evidence: [current UI assessment](../checkpoints/ui-assessment-2026-09-13.md).
 
 ## 1. Scope and working rules
 
@@ -80,7 +80,7 @@ this checks framework assumptions before all inspectors depend on them.
 | 0A | Record source revision, outstanding cleanup changes, framework capabilities, and baseline checks. | Exact tested build identity and known failures recorded. |
 | 0B | Capture current Studio/Recipes/Paint flows at narrow and wide sizes. Record page changes, selection behavior, preview state, and save behavior. | User-run in-game baseline; no visual pass inferred from logs. |
 
-Read the [cleanup checkpoint](wip/cleanup-checkpoint-2026-09-13.md) before touching
+Read the [cleanup checkpoint](../checkpoints/cleanup-checkpoint-2026-09-13.md) before touching
 previews. Reuse its retained texture/submission contract; pinning a preview must
 not keep an unowned raw texture pointer after its snapshot expires.
 
@@ -108,16 +108,16 @@ field schema, recipe editor, history stack, Paint protocol, or rendering schedul
 | Preview and coverage | `Thumbnail/ThumbnailButton`, retained preview submission, board/composite images, and geometry bones/partitions/islands/clusters already exist. | Add pin ownership, linked legend/identity, and actual armor overlays. No new thumbnail pipeline or duplicate mesh analysis. |
 | Live inputs and Try | `ActorEnvironment::ActorValue` resolves names and supported measures; signals publish values. Fire and clock/isolation commands already work. | Add browsable descriptions/live samples for unconnected inputs and scoped general holds; retain existing evaluation rules. |
 
-Evidence: [Forms.cpp](../src/studio/Forms.cpp),
-[FormDraw.cpp](../src/menu/FormDraw.cpp), [Edits.cpp](../src/studio/Edits.cpp),
-[RecipeEditor.cpp](../src/engine/RecipeEditor.cpp),
-[RecipeSnapshot.cpp](../src/studio/RecipeSnapshot.cpp),
-[MenuState.cpp](../src/studio/MenuState.cpp),
-[Expression.h](../src/recipe/Expression.h),
-[TermTemplates.h](../src/studio/TermTemplates.h),
-[SourcePlan.h](../src/studio/SourcePlan.h),
-[MenuWidgets.h](../src/menu/MenuWidgets.h),
-[Environment.cpp](../src/engine/Environment.cpp).
+Evidence: [Forms.cpp](../../src/studio/Forms.cpp),
+[FormDraw.cpp](../../src/menu/FormDraw.cpp), [Edits.cpp](../../src/studio/Edits.cpp),
+[RecipeEditor.cpp](../../src/engine/RecipeEditor.cpp),
+[RecipeSnapshot.cpp](../../src/studio/RecipeSnapshot.cpp),
+[MenuState.cpp](../../src/studio/MenuState.cpp),
+[Expression.h](../../src/recipe/Expression.h),
+[TermTemplates.h](../../src/studio/TermTemplates.h),
+[SourcePlan.h](../../src/studio/SourcePlan.h),
+[MenuWidgets.h](../../src/menu/MenuWidgets.h),
+[Environment.cpp](../../src/engine/Environment.cpp).
 
 ## 4. Stage 1: connected workspace
 

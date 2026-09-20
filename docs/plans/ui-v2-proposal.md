@@ -6,8 +6,8 @@ Implementation is tracked in the [implementation plan](ui-v2-implementation-plan
 Keep this baseline fixed; record implementation decisions and proposed design
 departures in that plan. Enchantment appearance experiments remain deferred.
 
-References: [design principles](ui-design-principles.md) and
-[current UI assessment](ui-assessment-2026-09-13.md).
+References: [design principles](../ui-design-principles.md) and
+[current UI assessment](../checkpoints/ui-assessment-2026-09-13.md).
 
 ## 1. Direction
 

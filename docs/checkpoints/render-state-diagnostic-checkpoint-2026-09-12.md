@@ -1,7 +1,7 @@
 # First rendering-state diagnostic checkpoint
 
 This is the first stage-0 build from the
-[fix plan](render-state-fix-plan-2026-09-12.md). Rendering algorithms, shell
+[fix plan](../plans/render-state-fix-plan-2026-09-12.md). Rendering algorithms, shell
 construction, restoration policy and pool reuse policy are intentionally unchanged
 so this build can capture the existing failures before their mechanisms change.
 Diagnostic bookkeeping and queued context capture are new. The built-in sequencer
@@ -110,7 +110,7 @@ line, and identity generation preserves its output timestamp for unchanged sourc
 ## Startup capture: run 1789246943220302
 
 The user loaded the game with the installed build. Preserved events 1–297 in
-[the startup trace](../regression-evidence/2026-09-12/diagnostic-startup-1789246943220302.jsonl).
+[the startup trace](regression-evidence/2026-09-12/diagnostic-startup-1789246943220302.jsonl).
 Build identity matches. These records contain no malformed lines, dropped events,
 page observations or retirements; visual reproduction remains pending.
 
@@ -149,7 +149,7 @@ user confirmation of visible stretching and recorded zero inflation.
 ## Empty/default-shell reproduction
 
 The user reported completion of the requested visible-stretch reproduction.
-[Preserved capture through event 755](../regression-evidence/2026-09-12/diagnostic-empty-shell-1789246943220302.jsonl).
+[Preserved capture through event 755](regression-evidence/2026-09-12/diagnostic-empty-shell-1789246943220302.jsonl).
 Studio selection records Faendal (`FF00095A`), armor `000FE300`, recipe
 `Skyrim-92DEC`; its camera selector says `1st` (this is UI state, not proof of
 which actor geometry was visible). Editor command 37 rebuilds that recipe at
@@ -178,7 +178,7 @@ Recipes-page observations are present yet. Those remain separate reproductions.
 
 The user reports red emission visible on their armor after reloading. A newer
 process trace exists: `BetterEnchantmentEffects-trace-1789247531051909.jsonl`.
-[Preserved baseline through event 2931](../regression-evidence/2026-09-12/diagnostic-red-baseline-1789247531051909.jsonl).
+[Preserved baseline through event 2931](regression-evidence/2026-09-12/diagnostic-red-baseline-1789247531051909.jsonl).
 Continue subsequent comparisons against this run, not the previous process.
 Load session 2 resumes at event 2855; the player installs four pieces across
 three recipes at 2904 and reaches the runtime's rendered phase at 2928.
@@ -188,7 +188,7 @@ alone cannot establish the composited texture color. Solo comparison is pending.
 ## Eight Studio Recipe Solo toggles
 
 The user used the Solo button in Studio's Recipe section, on/off four times.
-[Preserved capture through event 3685](../regression-evidence/2026-09-12/diagnostic-recipe-solo-1789247531051909.jsonl).
+[Preserved capture through event 3685](regression-evidence/2026-09-12/diagnostic-recipe-solo-1789247531051909.jsonl).
 Commands 179/182, 187/190, 195/198 and 203/206 alternate isolation `recipe`
 and empty isolation. The selected recipe ID is literally `recipe`; the empty
 `recipe` field in rebuild events is the affected-recipe argument, not the selected
@@ -247,7 +247,7 @@ findings. Formatting and whitespace checks pass. In-game validation is pending.
 ## Presenter repair live verification
 
 The user reports helmet and armor now appear to show separate effects.
-[Run 1789248773552860, events 1–440](../regression-evidence/2026-09-12/presenter-fix-startup-1789248773552860.jsonl)
+[Run 1789248773552860, events 1–440](regression-evidence/2026-09-12/presenter-fix-startup-1789248773552860.jsonl)
 confirms the repair build is loaded. Eleven requested presenter assets load as
 eleven distinct engine texture objects. All acquisitions point to their own
 renderer data; the report finds zero concurrent presenter aliases, zero renderer
@@ -260,7 +260,7 @@ Recipes-page no-click and shell stretching checks remain outstanding.
 ## Recipes-page comparison after repair
 
 The user completed Recipes → Studio without reporting the visual result yet.
-[Preserved run through event 1240](../regression-evidence/2026-09-12/presenter-fix-pages-1789248773552860.jsonl).
+[Preserved run through event 1240](regression-evidence/2026-09-12/presenter-fix-pages-1789248773552860.jsonl).
 Recipes opens at 1210, allocates an independent 128px preview target at 1212,
 and requests preview rendering at 1213; Studio resumes at 1214. No application
 rebuild, retirement or material write is recorded from 1210 through 1240.
@@ -274,7 +274,7 @@ Visual stability of this page comparison remains to be confirmed by the user.
 
 The user confirmed Recipes → Studio leaves appearance unchanged, and separately
 reported mask painting now works correctly. Adding a shell still produces
-visible stretching. [Preserved events 1–2333](../regression-evidence/2026-09-12/shell-after-presenter-fix-1789248773552860-2333.jsonl)
+visible stretching. [Preserved events 1–2333](regression-evidence/2026-09-12/shell-after-presenter-fix-1789248773552860-2333.jsonl)
 include painting and the subsequent shell addition at editor event 2111.
 The body shell at clone `0000016FECFA5300` first poses with `0,0,0` inflation
 and alpha 1 at sequence 2324; the other body shell also has zero inflation at
@@ -318,7 +318,7 @@ findings. In-game shell-stage capture is pending.
 ## Shell palette results across pose calls
 
 The user loaded the diagnostic build and added the shell.
-[Run 1789249474196324 through event 1077](../regression-evidence/2026-09-12/shell-pose-1789249474196324-1077.jsonl)
+[Run 1789249474196324 through event 1077](regression-evidence/2026-09-12/shell-pose-1789249474196324-1077.jsonl)
 confirms the expected build, with no presenter aliases/mismatches/rejections.
 The complete 35-bone torso capture reveals eight lost world-transform entries:
 14, 15, 21, 22, 28, 29, 31 and 32. All source world-transform entries are
@@ -375,7 +375,7 @@ behavior remain pending in-game checks.
 ## Shell repair live result
 
 The user reports shell added with no stretching.
-[Run 1789250514170747 through event 1771](../regression-evidence/2026-09-12/shell-palette-repair-1789250514170747-1771.jsonl)
+[Run 1789250514170747 through event 1771](regression-evidence/2026-09-12/shell-palette-repair-1789250514170747-1771.jsonl)
 confirms the repair build. The torso repairs eight entries at events 412 and
 1242 across two applications. Both resolve to the same retained flattened tree
 `000001F5FFAB8400`, with 94 entries at `000001F67ACD22C0`. This validates the
@@ -396,7 +396,7 @@ load/equipment lifetime regressions remain distinct acceptance checks.
 ## Repeated shell recreation result
 
 The user reports repeated shell use and movement appear correct.
-[Run 1789250514170747 through event 36500](../regression-evidence/2026-09-12/shell-repeat-1789250514170747-36500.jsonl)
+[Run 1789250514170747 through event 36500](regression-evidence/2026-09-12/shell-repeat-1789250514170747-36500.jsonl)
 adds 157 clone/detach events of each kind beyond the initial checkpoint and 52
 additional eight-entry torso repairs. No palette rejections are recorded.
 The entire capture has zero presenter aliases, renderer mismatches, presenter
@@ -408,7 +408,7 @@ load/equipment transitions and broader fixtures remain unverified.
 ## Save/load and equipment result
 
 The user reports save/load and don/doff working as expected.
-[Run 1789250514170747 through event 41131](../regression-evidence/2026-09-12/load-equipment-1789250514170747-41131.jsonl)
+[Run 1789250514170747 through event 41131](regression-evidence/2026-09-12/load-equipment-1789250514170747-41131.jsonl)
 adds 4631 events, including 30 equip-event commands, a SaveRecipe command and a
 completed load transition into session 2. Clear begins at 39701, finishes at
 39756, and resumes at 39784. Subsequent player application reaches rendered at

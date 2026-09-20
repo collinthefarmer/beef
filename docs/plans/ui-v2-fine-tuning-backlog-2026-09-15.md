@@ -1,7 +1,7 @@
 # UI v2 fine-tuning backlog — 2026-09-15
 
 Handoff for the fine-tuning round after the in-game test. All 13 slices of the
-[wishlist implementation plan](ui-v2-wishlist-implementation-plan-2026-09-14.md)
+[wishlist implementation plan](../checkpoints/ui-v2-wishlist-implementation-plan-2026-09-14.md)
 are on branch `main` (off `cleanup/stage-0`), gated per commit, whole-plan
 native + DLL green, installed to MO2.
 
