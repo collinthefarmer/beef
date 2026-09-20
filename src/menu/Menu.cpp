@@ -132,6 +132,12 @@ struct IntentPerformer {
   void operator()(const Studio::RenameRecipe &a_intent) const {
     manager->Editor().RenameRecipe(a_intent.from, a_intent.to);
   }
+  void operator()(const Studio::DeleteRecipe &a_intent) const {
+    manager->Editor().DeleteRecipe(a_intent.recipeID);
+  }
+  void operator()(const Studio::DuplicateRecipe &a_intent) const {
+    manager->Editor().DuplicateRecipe(a_intent.from, a_intent.to);
+  }
   void operator()(const BeginPaint &a_intent) const {
     manager->Editor().BeginPaint(a_intent.recipeID, a_intent.key,
                                  a_intent.surface, a_intent.sessionID,

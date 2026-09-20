@@ -275,6 +275,22 @@ int main() {
   Refused(base, RemoveSignal{"glowHue"}, "RemoveSignal that is referenced");
 
   {
+    Recipe named;
+    named.id = "names";
+    Check(!Apply(named, AddSignal{"shared"}), "AddSignal shared");
+    Check(!Apply(named, AddCurve{"curvy"}), "AddCurve curvy");
+    Refused(named, AddSource{"shared", MaterialSource{}},
+            "AddSource onto a signal name");
+    Refused(named, AddMask{"shared"}, "AddMask onto a signal name");
+    Refused(named, AddCurve{"shared"}, "AddCurve onto a signal name");
+    Refused(named, AddSignal{"curvy"}, "AddSignal onto a curve name");
+    Refused(named, RenameSignal{"shared", "curvy"},
+            "RenameSignal onto a curve name");
+    Refused(named, RenameCurve{"curvy", "shared"},
+            "RenameCurve onto a signal name");
+  }
+
+  {
     const auto counts = CountReferences(base);
     const auto found = counts.signals.find("glowHue");
     Check(found != counts.signals.end() && found->second > 0,

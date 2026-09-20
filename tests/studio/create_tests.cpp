@@ -65,6 +65,15 @@ int main() {
           "a new signal uniquifies its stem against existing signals");
   }
   {
+    const Created signal = Create(NewSignal{"pattern"}, recipe);
+    const auto *sig = Get<AddSignal>(signal.edits.at(0));
+    const Created curve = Create(NewCurve{"pattern"}, recipe);
+    const auto *cur = Get<AddCurve>(curve.edits.at(0));
+    Check(sig && sig->name == "pattern2" && cur && cur->name == "pattern2",
+          "a new name avoids every other kind — signals, sources, masks, "
+          "curves share one namespace");
+  }
+  {
     const Created made = Create(NewSignal{"trigger", TriggerSignal{}}, recipe);
     const auto *added =
         made.edits.size() == 2 ? Get<AddSignal>(made.edits[0]) : nullptr;

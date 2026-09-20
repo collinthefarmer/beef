@@ -7,9 +7,9 @@
 
 namespace BetterEnchantmentEffects::Studio {
 namespace {
-[[nodiscard]] std::string UniqueOf(std::string_view a_stem, RowKind a_kind,
+[[nodiscard]] std::string UniqueOf(std::string_view a_stem,
                                    const RecipeRow &a_recipe) {
-  return UniqueName(a_stem, TakenNames(a_kind, NamesOf(a_recipe)));
+  return UniqueName(a_stem, ReservedNames(NamesOf(a_recipe)));
 }
 
 [[nodiscard]] const OutputRow *OutputAt(const RecipeRow &a_recipe,
@@ -36,8 +36,7 @@ Created Create(const Creation &a_request, const RecipeRow &a_recipe) {
                 .subject = LayerSubject{a_new.output, at}};
       },
       [&](const NewSignal &a_new) -> Created {
-        const std::string name =
-            UniqueOf(a_new.stem, RowKind::kSignal, a_recipe);
+        const std::string name = UniqueOf(a_new.stem, a_recipe);
         std::vector<RecipeEdit> edits{AddSignal{name}};
         if (!Is<ConstantSignal>(a_new.kind)) {
           edits.emplace_back(SetSignal{name, a_new.kind});
@@ -45,18 +44,16 @@ Created Create(const Creation &a_request, const RecipeRow &a_recipe) {
         return {.edits = std::move(edits), .subject = SignalSubject{name}};
       },
       [&](const NewSource &a_new) -> Created {
-        const std::string name =
-            UniqueOf(a_new.stem, RowKind::kSource, a_recipe);
+        const std::string name = UniqueOf(a_new.stem, a_recipe);
         return {.edits = {AddSource{name, a_new.kind}},
                 .subject = SourceSubject{name}};
       },
       [&](const NewMask &a_new) -> Created {
-        const std::string name = UniqueOf(a_new.stem, RowKind::kMask, a_recipe);
+        const std::string name = UniqueOf(a_new.stem, a_recipe);
         return {.edits = {AddMask{name}}, .subject = MaskSubject{name}};
       },
       [&](const NewCurve &a_new) -> Created {
-        const std::string name =
-            UniqueOf(a_new.stem, RowKind::kCurve, a_recipe);
+        const std::string name = UniqueOf(a_new.stem, a_recipe);
         return {.edits = {AddCurve{name}}, .subject = CurveSubject{name}};
       });
 }

@@ -11,14 +11,6 @@
 #include <vector>
 
 namespace BetterEnchantmentEffects::Studio {
-enum class RowKind {
-  kSignal,
-  kCurve,
-  kSource,
-  kMask,
-};
-inline constexpr std::size_t kRowKindCount = 4;
-
 struct Names {
   std::vector<std::pair<std::string, ValueType>> signals;
   std::vector<std::string> curves;
@@ -29,8 +21,7 @@ struct Names {
 [[nodiscard]] Names NamesOf(const RecipeRow &a_recipe,
                             const GeometryRow &a_geometry);
 [[nodiscard]] Names NamesOf(const RecipeRow &a_recipe);
-[[nodiscard]] std::vector<std::string> TakenNames(RowKind a_kind,
-                                                  const Names &a_names);
+[[nodiscard]] std::vector<std::string> ReservedNames(const Names &a_names);
 
 [[nodiscard]] std::string UniqueName(std::string_view a_stem,
                                      std::span<const std::string> a_taken);

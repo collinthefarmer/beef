@@ -17,16 +17,6 @@ namespace {
   return stem;
 }
 
-[[nodiscard]] std::vector<std::string> InputTakenNames(const Names &a_names) {
-  std::vector<std::string> taken = TakenNames(RowKind::kSignal, a_names);
-  for (const auto &[name, type] : a_names.sources) {
-    taken.push_back(name);
-  }
-  taken.insert(taken.end(), a_names.masks.begin(), a_names.masks.end());
-  taken.insert(taken.end(), a_names.curves.begin(), a_names.curves.end());
-  return taken;
-}
-
 struct ConnectionBuilder {
   EditBatch batch;
   std::vector<std::string> taken;
@@ -87,7 +77,7 @@ BuildInput(const Names &a_names, const InputConnectionSpec &a_spec) {
   if (RowOf(kMeasures, a_spec.measure) == nullptr) {
     return std::unexpected("Choose a supported actor-value measure.");
   }
-  ConnectionBuilder builder{{}, InputTakenNames(a_names)};
+  ConnectionBuilder builder{{}, ReservedNames(a_names)};
   std::string output = BuildResponseSignal(builder, a_spec);
   return std::pair{std::move(builder.batch), std::move(output)};
 }

@@ -29,6 +29,14 @@ Diagnostic Refuse(std::string a_where, std::string a_message) {
                         std::move(a_message));
 }
 
+[[nodiscard]] bool NameInUse(const Recipe &a_recipe, std::string_view a_name) {
+  return a_recipe.FindSignal(a_name) || a_recipe.FindSource(a_name) ||
+         a_recipe.FindMask(a_name) || a_recipe.FindCurve(a_name);
+}
+
+constexpr const char *kNameTaken =
+    "a signal, source, mask or curve already has that name";
+
 std::string SelectorText(const Selector &a_selector) {
   std::string text;
   for (const auto &clause : a_selector.anyOf) {
@@ -590,8 +598,8 @@ Refusal Edit(Recipe &a_recipe, const AddSignal &a_edit) {
                   "names are letters, digits and underscores, not starting "
                   "with a digit");
   }
-  if (a_recipe.FindSignal(a_edit.name)) {
-    return Refuse(SignalWhere(a_edit.name), "a signal has that name");
+  if (NameInUse(a_recipe, a_edit.name)) {
+    return Refuse(SignalWhere(a_edit.name), kNameTaken);
   }
   a_recipe.signals.push_back(
       Signal{a_edit.name, ConstantSignal{0.0f}, std::nullopt});
@@ -604,8 +612,8 @@ Refusal Edit(Recipe &a_recipe, const AddCurve &a_edit) {
                   "names are letters, digits and underscores, not starting "
                   "with a digit");
   }
-  if (a_recipe.FindCurve(a_edit.name)) {
-    return Refuse(CurveWhere(a_edit.name), "a curve has that name");
+  if (NameInUse(a_recipe, a_edit.name)) {
+    return Refuse(CurveWhere(a_edit.name), kNameTaken);
   }
   a_recipe.curves.push_back(Curve{a_edit.name, "x"});
   return std::nullopt;
@@ -617,8 +625,8 @@ Refusal Edit(Recipe &a_recipe, const AddMask &a_edit) {
                   "names are letters, digits and underscores, not starting "
                   "with a digit");
   }
-  if (a_recipe.FindMask(a_edit.name) || a_recipe.FindSource(a_edit.name)) {
-    return Refuse(MaskWhere(a_edit.name), "a mask or source has that name");
+  if (NameInUse(a_recipe, a_edit.name)) {
+    return Refuse(MaskWhere(a_edit.name), kNameTaken);
   }
   a_recipe.masks.push_back(Mask{a_edit.name, "1"});
   return std::nullopt;
@@ -630,8 +638,8 @@ Refusal Edit(Recipe &a_recipe, const AddSource &a_edit) {
                   "names are letters, digits and underscores, not starting "
                   "with a digit");
   }
-  if (a_recipe.FindSource(a_edit.name) || a_recipe.FindMask(a_edit.name)) {
-    return Refuse(SourceWhere(a_edit.name), "a source or mask has that name");
+  if (NameInUse(a_recipe, a_edit.name)) {
+    return Refuse(SourceWhere(a_edit.name), kNameTaken);
   }
   const SignalGraph graph = GraphOf(a_recipe);
   const RowTypes rows{a_recipe, graph};
@@ -669,24 +677,19 @@ Refusal Edit(Recipe &a_recipe, const RenameSignal &a_edit) {
   if (a_edit.to == a_edit.from) {
     return std::nullopt;
   }
-  if (a_recipe.FindSignal(a_edit.to)) {
-    return Refuse(SignalWhere(a_edit.from),
-                  std::format("a signal is already named '{}'", a_edit.to));
+  if (NameInUse(a_recipe, a_edit.to)) {
+    return Refuse(SignalWhere(a_edit.from), kNameTaken);
   }
-  const bool imageShares =
-      a_recipe.FindSource(a_edit.from) || a_recipe.FindMask(a_edit.from);
   signal->name = a_edit.to;
   ForEachSignalRef(a_recipe, [&](Ref &a_ref, const PropertyLocation &) {
     if (a_ref.name == a_edit.from) {
       a_ref.name = a_edit.to;
     }
   });
-  ForEachText(a_recipe, [&](std::string &a_text, bool a_mask,
-                            const PropertyLocation &) {
-    if (!(a_mask && imageShares)) {
-      a_text = RenameInExpression(a_text, a_edit.from, a_edit.to, false);
-    }
-  });
+  ForEachText(
+      a_recipe, [&](std::string &a_text, bool, const PropertyLocation &) {
+        a_text = RenameInExpression(a_text, a_edit.from, a_edit.to, false);
+      });
   RenameOverrides(a_recipe, a_edit.from, a_edit.to);
   return std::nullopt;
 }
@@ -704,9 +707,8 @@ Refusal Edit(Recipe &a_recipe, const RenameCurve &a_edit) {
   if (a_edit.to == a_edit.from) {
     return std::nullopt;
   }
-  if (a_recipe.FindCurve(a_edit.to)) {
-    return Refuse(CurveWhere(a_edit.from),
-                  std::format("a curve is already named '{}'", a_edit.to));
+  if (NameInUse(a_recipe, a_edit.to)) {
+    return Refuse(CurveWhere(a_edit.from), kNameTaken);
   }
   curve->name = a_edit.to;
   ForEachCurveRef(a_recipe, [&](CurveRef &a_ref, const PropertyLocation &) {
@@ -734,10 +736,8 @@ Refusal Edit(Recipe &a_recipe, const RenameMask &a_edit) {
   if (a_edit.to == a_edit.from) {
     return std::nullopt;
   }
-  if (a_recipe.FindMask(a_edit.to) || a_recipe.FindSource(a_edit.to)) {
-    return Refuse(
-        MaskWhere(a_edit.from),
-        std::format("a mask or source is already named '{}'", a_edit.to));
+  if (NameInUse(a_recipe, a_edit.to)) {
+    return Refuse(MaskWhere(a_edit.from), kNameTaken);
   }
   mask->name = a_edit.to;
   RenameImageRefs(a_recipe, a_edit.from, a_edit.to);
@@ -757,10 +757,8 @@ Refusal Edit(Recipe &a_recipe, const RenameSource &a_edit) {
   if (a_edit.to == a_edit.from) {
     return std::nullopt;
   }
-  if (a_recipe.FindSource(a_edit.to) || a_recipe.FindMask(a_edit.to)) {
-    return Refuse(
-        SourceWhere(a_edit.from),
-        std::format("a source or mask is already named '{}'", a_edit.to));
+  if (NameInUse(a_recipe, a_edit.to)) {
+    return Refuse(SourceWhere(a_edit.from), kNameTaken);
   }
   source->name = a_edit.to;
   RenameImageRefs(a_recipe, a_edit.from, a_edit.to);

@@ -1105,6 +1105,26 @@ void ReadVariants(Reader &a_r, const Reporter &a_ctx,
                  a_variant, a_ctx.At(VariantWhere(std::to_string(a_index))));
            });
 }
+
+void DropDuplicateNames(Recipe &a_recipe,
+                        std::vector<Diagnostic> &a_diagnostics) {
+  std::unordered_set<std::string> seen;
+  const auto prune = [&](auto &a_rows,
+                         std::string (*a_where)(std::string_view)) {
+    std::erase_if(a_rows, [&](const auto &a_row) {
+      if (seen.insert(a_row.name).second) {
+        return false;
+      }
+      Reporter{a_diagnostics, a_where(a_row.name)}.Error(
+          "a signal, source, mask or curve already has that name");
+      return true;
+    });
+  };
+  prune(a_recipe.signals, SignalWhere);
+  prune(a_recipe.curves, CurveWhere);
+  prune(a_recipe.sources, SourceWhere);
+  prune(a_recipe.masks, MaskWhere);
+}
 }
 
 LoadResult ParseRecipe(std::string_view a_json, std::string_view a_id) {
@@ -1143,6 +1163,7 @@ LoadResult ParseRecipe(std::string_view a_json, std::string_view a_id) {
   NamedRows(r, "curves", CurveWhere, recipe.curves, CurveFrom);
   NamedRows(r, "sources", SourceWhere, recipe.sources, SourceFrom);
   NamedRows(r, "masks", MaskWhere, recipe.masks, MaskFrom);
+  DropDuplicateNames(recipe, result.diagnostics);
 
   ReadOutputs(r, ctx, recipe.outputs);
   if (const auto *shell = r.Child("shell")) {

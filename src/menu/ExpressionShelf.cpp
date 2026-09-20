@@ -3,7 +3,9 @@
 #include "menu/FormDraw.h"
 #include "menu/MenuWidgets.h"
 #include "recipe/Expression.h"
+#include "studio/Create.h"
 #include "studio/FieldParsing.h"
+#include "studio/Names.h"
 
 #include <format>
 #include <string>
@@ -41,29 +43,23 @@ void PromoteLiteral(const Studio::FormField &a_field,
   if (!ImGui::SmallButton("Promote to signal")) {
     return;
   }
-  std::vector<std::string> names;
-  names.reserve(a_frame.recipe->signals.size() +
-                a_frame.recipe->sourceRows.size() +
-                a_frame.recipe->maskRows.size());
-  for (const auto &signal : a_frame.recipe->signals) {
-    names.push_back(signal.name);
+  Studio::Created made =
+      Studio::Create(Studio::NewSignal{"amount"}, *a_frame.recipe);
+  const auto name = Studio::ResourceName(made.subject);
+  if (!name) {
+    return;
   }
-  for (const auto &source : a_frame.recipe->sourceRows) {
-    names.push_back(source.name);
+  const auto edit =
+      LiteralBinding(a_field, a_index)(Studio::ReferenceText(*name));
+  if (!edit) {
+    return;
   }
-  for (const auto &mask : a_frame.recipe->maskRows) {
-    names.push_back(mask.name);
-  }
-  const std::string name = Studio::UniqueName("amount", names);
-  const auto edit = LiteralBinding(a_field, a_index)("@" + name);
-  if (edit) {
-    Studio::Post(
-        *a_frame.intents,
-        Studio::EditRecipe{a_frame.recipe->id,
-                           {Studio::AddSignal{name},
-                            Studio::SetConstant{name, a_literal.value}, *edit},
-                           a_field.expectedRevision});
-  }
+  made.edits.emplace_back(Studio::SetConstant{*name, a_literal.value});
+  made.edits.push_back(*edit);
+  Studio::Post(*a_frame.intents,
+               Studio::EditRecipe{a_frame.recipe->id, std::move(made.edits),
+                                  a_field.expectedRevision});
+  a_frame.state->pendingSelection = made.subject;
 }
 
 Studio::FormField ExpressionDraft(const Studio::FormField &a_field,

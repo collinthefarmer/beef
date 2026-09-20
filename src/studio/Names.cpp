@@ -62,25 +62,18 @@ Names NamesOf(const RecipeRow &a_recipe, const GeometryRow &) {
   return NamesOf(a_recipe);
 }
 
-std::vector<std::string> TakenNames(RowKind a_kind, const Names &a_names) {
+std::vector<std::string> ReservedNames(const Names &a_names) {
   std::vector<std::string> taken;
-  switch (a_kind) {
-  case RowKind::kSignal:
-    for (const std::pair<std::string, ValueType> &signal : a_names.signals) {
-      taken.push_back(signal.first);
-    }
-    break;
-  case RowKind::kCurve:
-    taken = a_names.curves;
-    break;
-  case RowKind::kSource:
-  case RowKind::kMask:
-    for (const std::pair<std::string, ValueType> &source : a_names.sources) {
-      taken.push_back(source.first);
-    }
-    taken.insert(taken.end(), a_names.masks.begin(), a_names.masks.end());
-    break;
+  taken.reserve(a_names.signals.size() + a_names.curves.size() +
+                a_names.sources.size() + a_names.masks.size());
+  for (const std::pair<std::string, ValueType> &signal : a_names.signals) {
+    taken.push_back(signal.first);
   }
+  taken.insert(taken.end(), a_names.curves.begin(), a_names.curves.end());
+  for (const std::pair<std::string, ValueType> &source : a_names.sources) {
+    taken.push_back(source.first);
+  }
+  taken.insert(taken.end(), a_names.masks.begin(), a_names.masks.end());
   return taken;
 }
 

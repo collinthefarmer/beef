@@ -13,11 +13,8 @@ SourceCatalog SourceCatalogOf(const RecipeRow &a_recipe) {
     if (const auto kind = SourceKindOf(source)) {
       existing.sources.push_back(Source{source.name, *kind});
     }
-    existing.reservedNames.push_back(source.name);
   }
-  for (const std::string &mask : a_recipe.masks) {
-    existing.reservedNames.push_back(mask);
-  }
+  existing.reservedNames = ReservedNames(NamesOf(a_recipe));
   return existing;
 }
 
@@ -29,6 +26,12 @@ SourceCatalog SourceCatalogOf(const Recipe &a_recipe) {
   }
   for (const Mask &mask : a_recipe.masks) {
     existing.reservedNames.push_back(mask.name);
+  }
+  for (const Signal &signal : a_recipe.signals) {
+    existing.reservedNames.push_back(signal.name);
+  }
+  for (const Curve &curve : a_recipe.curves) {
+    existing.reservedNames.push_back(curve.name);
   }
   return existing;
 }

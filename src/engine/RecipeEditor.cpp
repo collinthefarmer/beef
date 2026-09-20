@@ -738,6 +738,50 @@ std::uint64_t RecipeEditor::RenameRecipe(std::string a_from, std::string a_to) {
   return operation->id;
 }
 
+std::uint64_t RecipeEditor::DeleteRecipe(std::string a_id) {
+  const Trace::Scope trace{Trace::Command("editor.DeleteRecipe")};
+  const auto operation =
+      std::make_shared<PendingRecipeEdit>(fileOperations_, a_id);
+  runtime_.PostTask([this, id = std::move(a_id), operation] {
+    FinishActiveGesture(true);
+    runtime_.ChangeAndRebuildActors({}, [&] {
+      if (const std::optional<Diagnostic> refused =
+              BetterEnchantmentEffects::DeleteRecipe(id)) {
+        operation->Finish(refused);
+        return;
+      }
+      AdvanceDocumentRevision(id);
+      histories_.erase(id);
+      view_.ForgetRecipe(id);
+      if (paintReturn_.recipeID == id) {
+        paintReturn_ = {};
+      }
+      operation->Finish();
+    });
+  });
+  return operation->id;
+}
+
+std::uint64_t RecipeEditor::DuplicateRecipe(std::string a_from,
+                                            std::string a_to) {
+  const Trace::Scope trace{Trace::Command("editor.DuplicateRecipe")};
+  const auto operation =
+      std::make_shared<PendingRecipeEdit>(fileOperations_, a_to);
+  runtime_.PostTask(
+      [this, from = std::move(a_from), to = std::move(a_to), operation] {
+        FinishActiveGesture(true);
+        runtime_.ChangeAndRebuildActors({}, [&] {
+          const std::optional<Diagnostic> refused =
+              BetterEnchantmentEffects::DuplicateRecipe(from, to);
+          if (!refused) {
+            AdvanceDocumentRevision(to);
+          }
+          operation->Finish(refused);
+        });
+      });
+  return operation->id;
+}
+
 void RecipeEditor::BeginPaint(std::string a_active, RecipeKey a_key,
                               Surface a_surface, std::uint64_t a_sessionID,
                               std::uint64_t a_resetID) {

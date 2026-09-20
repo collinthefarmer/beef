@@ -60,15 +60,9 @@ void Collects() {
         "unmatched documents expose the same authored source types and mask "
         "names");
 
-  Check(TakenNames(RowKind::kSignal, names) ==
-            std::vector<std::string>{"glow", "tint"},
-        "signal taken names are the signals");
-  Check(TakenNames(RowKind::kCurve, names) == std::vector<std::string>{"ramp"},
-        "curve taken names are the curves");
-  const std::vector<std::string> texel{"metal", "edge"};
-  Check(TakenNames(RowKind::kSource, names) == texel &&
-            TakenNames(RowKind::kMask, names) == texel,
-        "source and mask share the sources-then-masks name space");
+  Check(ReservedNames(names) ==
+            std::vector<std::string>{"glow", "tint", "ramp", "metal", "edge"},
+        "every nameable row shares one reserved name space");
 }
 
 void UniqueNames() {

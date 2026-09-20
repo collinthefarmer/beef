@@ -198,6 +198,13 @@ struct RenameRecipe {
   std::string from;
   std::string to;
 };
+struct DeleteRecipe {
+  std::string recipeID;
+};
+struct DuplicateRecipe {
+  std::string from;
+  std::string to;
+};
 struct FireTrigger {
   FormID actorID = 0;
   std::string event;
@@ -215,8 +222,8 @@ using Intent = std::variant<
     ClearMask, UndoMask, RedoMask, BeginPaint, SetPaintSurface, KeepPaint,
     EndPaint, UpdatePaint, EditRecipe, SoloRecipe, SoloPiece, SoloOutput,
     SoloLayer, MuteLayer, SetFreeze, SetScrub, SetSpeed, StepClock, Undo, Redo,
-    CreateRecipe, RenameRecipe, FireTrigger>;
-inline constexpr std::size_t kIntentCount = 48;
+    CreateRecipe, RenameRecipe, DeleteRecipe, DuplicateRecipe, FireTrigger>;
+inline constexpr std::size_t kIntentCount = 50;
 static_assert(std::variant_size_v<Intent> == kIntentCount);
 
 using Intents = std::vector<Intent>;

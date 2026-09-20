@@ -222,6 +222,23 @@ struct ReduceVisitor {
     selection.layer.reset();
   }
 
+  void focusRecipe(const std::string &a_id) {
+    state.previewPin.reset();
+    if (state.paint) {
+      operator()(SetMode{Mode::kCompose});
+    }
+    state.navigation = Navigation{};
+    selection.subject = RecipeSubject{};
+    selection.property.reset();
+    state.revealedProperty.reset();
+    selection.recipeID = a_id;
+    selection.document = true;
+    selection.layer.reset();
+    if (!state.paint) {
+      mask = MaskStack{};
+    }
+  }
+
   void operator()(const SetMode &a_i) {
     if (state.mode != a_i.mode) {
       const float split = state.layout.stackSplit;
@@ -550,20 +567,20 @@ struct ReduceVisitor {
     }
   }
 
-  void operator()(const CreateRecipe &a_i) {
-    state.previewPin.reset();
-    if (state.paint) {
+  void operator()(const CreateRecipe &a_i) { focusRecipe(a_i.recipeID); }
+
+  void operator()(const DuplicateRecipe &a_i) { focusRecipe(a_i.to); }
+
+  void operator()(const DeleteRecipe &a_i) {
+    if (state.paint && state.paint->recipeID == a_i.recipeID) {
       operator()(SetMode{Mode::kCompose});
     }
-    state.navigation = Navigation{};
-    selection.subject = RecipeSubject{};
-    selection.property.reset();
-    state.revealedProperty.reset();
-    selection.recipeID = a_i.recipeID;
-    selection.document = true;
-    selection.layer.reset();
-    if (!state.paint) {
-      mask = MaskStack{};
+    if (selection.recipeID == a_i.recipeID) {
+      state.previewPin.reset();
+      state.navigation = Navigation{};
+      selection.subject = RecipeSubject{};
+      selection.property.reset();
+      state.revealedProperty.reset();
     }
   }
 
@@ -630,6 +647,7 @@ SourceCatalog PaintSources(const MenuState &a_state, const RecipeRow &a_recipe,
         [](const SetScrub &) {}, [](const SetSpeed &) {},
         [](const StepClock &) {}, [](const Undo &) {}, [](const Redo &) {},
         [](const CreateRecipe &) {}, [](const RenameRecipe &) {},
+        [](const DeleteRecipe &) {}, [](const DuplicateRecipe &) {},
         [](const FireTrigger &) {});
   }
   return catalog;
@@ -684,12 +702,15 @@ namespace {
       [](const Undo &) { return false; }, [](const Redo &) { return false; },
       [](const CreateRecipe &) { return false; },
       [](const RenameRecipe &) { return false; },
+      [](const DeleteRecipe &) { return false; },
+      [](const DuplicateRecipe &) { return false; },
       [](const FireTrigger &) { return false; });
 }
 
 [[nodiscard]] bool RequiresSettledEditor(const Intent &a_intent) {
   return Is<EditRecipe>(a_intent) || Is<Undo>(a_intent) || Is<Redo>(a_intent) ||
          Is<CreateRecipe>(a_intent) || Is<RenameRecipe>(a_intent) ||
+         Is<DeleteRecipe>(a_intent) || Is<DuplicateRecipe>(a_intent) ||
          Is<BeginPaint>(a_intent) || Is<KeepPaint>(a_intent) ||
          Is<UpdatePaint>(a_intent) || Is<SoloOutput>(a_intent) ||
          Is<SoloLayer>(a_intent) || Is<MuteLayer>(a_intent) ||
@@ -771,6 +792,8 @@ bool AcceptIntent(const MenuState &a_state, const Intent &a_intent) {
       [](const Redo &) { return true; },
       [](const CreateRecipe &) { return true; },
       [](const RenameRecipe &) { return true; },
+      [](const DeleteRecipe &) { return true; },
+      [](const DuplicateRecipe &) { return true; },
       [](const FireTrigger &) { return true; });
 }
 
@@ -876,6 +899,8 @@ void Reduce(MenuState &a_state, const Intent &a_intent) {
       [](const Undo &) { return false; }, [](const Redo &) { return false; },
       [](const CreateRecipe &) { return false; },
       [](const RenameRecipe &) { return false; },
+      [](const DeleteRecipe &) { return false; },
+      [](const DuplicateRecipe &) { return false; },
       [](const FireTrigger &) { return false; });
   if (exceeds) {
     if (a_state.paint) {

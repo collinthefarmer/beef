@@ -570,6 +570,74 @@ std::optional<Diagnostic> RenameRecipe(std::string_view a_from,
   return std::nullopt;
 }
 
+std::optional<Diagnostic> DeleteRecipe(std::string_view a_id) {
+  const auto refuse = [&](std::string a_message) {
+    logger::warn("delete {}: {}", a_id, a_message);
+    return Refusal(a_id, std::move(a_message));
+  };
+  const auto index = LoadedIndex(a_id);
+  if (!index) {
+    return refuse("not loaded");
+  }
+  const LoadedRecipe &loaded = g_loaded[*index];
+  if (loaded.transient) {
+    return refuse("the paint recipe is never deleted");
+  }
+  std::error_code ec;
+  if (IsUnder(loaded.path, Identity::UserRecipeFolder()) &&
+      std::filesystem::exists(loaded.path, ec)) {
+    std::filesystem::remove(loaded.path, ec);
+    if (ec) {
+      logger::warn("delete {}: {} could not be removed ({})", a_id,
+                   loaded.path.string(), ec.message());
+    }
+  } else if (std::filesystem::exists(loaded.path, ec)) {
+    logger::info("delete {}: {} is not the user's file and stays on disk; it "
+                 "loads again under its id at the next start",
+                 a_id, loaded.path.string());
+  }
+  logger::info("recipe {} deleted", a_id);
+  Unpublish(*index);
+  return std::nullopt;
+}
+
+std::optional<Diagnostic> DuplicateRecipe(std::string_view a_from,
+                                          std::string_view a_to) {
+  const auto refuse = [&](std::string a_message) {
+    logger::warn("duplicate {} -> {}: {}", a_from, a_to, a_message);
+    return Refusal(a_from, std::move(a_message));
+  };
+  if (!IsStem(a_to)) {
+    return refuse(std::format("'{}' is not an id; an id is a file stem "
+                              "(letters, digits, '-', '_', '.') and not the "
+                              "paint recipe's",
+                              a_to));
+  }
+  if (Loaded(a_to)) {
+    return refuse(std::format("a recipe named '{}' already exists", a_to));
+  }
+  const auto *source = Loaded(a_from);
+  if (!source || source->transient) {
+    return refuse(source ? "the paint recipe is not duplicated" : "not loaded");
+  }
+  Recipe copy = source->recipe;
+  copy.id = std::string{a_to};
+  copy.metadata.name = copy.id;
+  copy.metadata.imported.clear();
+  LoadedRecipe loaded{std::move(copy),
+                      Identity::UserRecipeFolder() /
+                          (std::string{a_to} + ".json"),
+                      {},
+                      nullptr,
+                      true};
+  loaded.diagnostics = Validate(loaded.recipe);
+  ResolveForms(loaded.recipe, loaded.diagnostics);
+  Publish(std::move(loaded));
+  logger::info("recipe {} duplicated to {}; saves to {}", a_from, a_to,
+               g_loaded.back().path.string());
+  return std::nullopt;
+}
+
 std::optional<Diagnostic> NewRecipe(std::string_view a_id, RecipeKey a_key,
                                     std::string_view a_geometry) {
   const auto refuse = [&](std::string a_message) {

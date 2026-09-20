@@ -46,6 +46,8 @@ public:
   std::uint64_t NewRecipe(std::string a_id, RecipeKey a_key,
                           std::string a_geometry);
   std::uint64_t RenameRecipe(std::string a_from, std::string a_to);
+  std::uint64_t DeleteRecipe(std::string a_id);
+  std::uint64_t DuplicateRecipe(std::string a_from, std::string a_to);
   void BeginPaint(std::string a_active, RecipeKey a_key, Surface a_surface,
                   std::uint64_t a_sessionID, std::uint64_t a_resetID);
   void UpdatePaint(Studio::PaintUpdateRequest a_request);

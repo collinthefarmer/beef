@@ -52,6 +52,9 @@ SaveRecipe(std::string_view a_id);
 NewRecipe(std::string_view a_id, RecipeKey a_key, std::string_view a_geometry);
 [[nodiscard]] std::optional<Diagnostic> RenameRecipe(std::string_view a_from,
                                                      std::string_view a_to);
+[[nodiscard]] std::optional<Diagnostic> DeleteRecipe(std::string_view a_id);
+[[nodiscard]] std::optional<Diagnostic> DuplicateRecipe(std::string_view a_from,
+                                                        std::string_view a_to);
 [[nodiscard]] std::optional<Diagnostic> AddTransientRecipe(Recipe a_recipe);
 [[nodiscard]] std::optional<Diagnostic>
 DropTransientRecipe(std::string_view a_id);

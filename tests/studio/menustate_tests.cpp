@@ -103,6 +103,28 @@ void RenameRecipeFollowsSelection() {
         "RenameRecipe retargets the selection");
 }
 
+void DuplicateRecipeFocusesTheCopy() {
+  MenuState state;
+  Reduce(state, PickRecipe{"orig"});
+  Reduce(state, DuplicateRecipe{"orig", "orig2"});
+  Check(state.selection.recipeID == "orig2" && state.selection.document,
+        "DuplicateRecipe focuses the new copy as a document");
+}
+
+void DeleteRecipeClearsSelectionWhenTargeted() {
+  MenuState state;
+  Reduce(state, PickRecipe{"doomed"});
+  Reduce(state, PickSlot{Slot::kNormal});
+  Reduce(state, DeleteRecipe{"doomed"});
+  Check(Is<RecipeSubject>(state.selection.subject) && !state.selection.property,
+        "DeleteRecipe clears the subject of the recipe it removes");
+  MenuState other;
+  Reduce(other, PickRecipe{"kept"});
+  Reduce(other, DeleteRecipe{"elsewhere"});
+  Check(other.selection.recipeID == "kept",
+        "deleting another recipe leaves the selection alone");
+}
+
 void PaintCommitWaitsForAcknowledgment() {
   MenuState state;
   Reduce(state, SetMode{Mode::kPaint});
@@ -181,6 +203,8 @@ int main() {
   MaskIntentsBuildAndUndo();
   EditRecipeRemapsSelectedLayer();
   RenameRecipeFollowsSelection();
+  DuplicateRecipeFocusesTheCopy();
+  DeleteRecipeClearsSelectionWhenTargeted();
   PaintCommitWaitsForAcknowledgment();
   return test::Finish("studio_menustate");
 }

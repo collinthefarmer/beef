@@ -100,6 +100,18 @@ int main() {
       [](const auto &) { return false; });
   Check(isConstant, "the signal holds a constant");
 
+  {
+    Recipe dup;
+    dup.id = "dup";
+    dup.signals.push_back(Signal{"shared", ConstantSignal{0.0f}, std::nullopt});
+    dup.sources.push_back(Source{"shared", MaterialSource{}});
+    const LoadResult loaded = ParseRecipe(SerializeRecipe(dup), "dup");
+    Check(loaded.recipe.has_value() && loaded.recipe->signals.size() == 1 &&
+              loaded.recipe->sources.empty(),
+          "load drops a row whose name a prior row already claimed");
+    Check(loaded.HasErrors(), "the dropped duplicate name is reported");
+  }
+
   Check(kKeyKindCount == std::size(kKeyKinds),
         "the key-kind table has a row per kind");
   Check(kSignalKindCount == std::size(kSignalKinds),

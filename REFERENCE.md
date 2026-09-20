@@ -951,6 +951,31 @@ Decompile provenance (`decompiled/WornEnchantmentFX/plugin.c` unless noted):
   compile when a new `Intent` or `RecipeEdit` alternative is added without
   updating every dispatch site.
 
+### Recipe CRUD travels one pipeline (`studio/Intent.h`, `engine/RecipeEditor.*`, `engine/RecipeStore.*`)
+
+- Every recipe change is an `Intent`; `menu/` never writes a `Recipe`. Path:
+  post `Intent` → applier in `menu/Menu.cpp` → `RecipeEditor` method (task queue,
+  revision-stamped, file ops journaled in `FileOperations`) → `RecipeStore` (the
+  only disk layer). Reads use the `RecipeSnapshot`/`Rows` projection. A new
+  operation adds one arm at each stage.
+- Row-level CRUD (signals, sources, masks, curves, outputs, layers):
+  - `EditRecipe{recipeID, edits, expectedRevision?}` — a `RecipeEdit`
+    (`studio/Edits.h`) batch through `Studio::Apply`; interactive creation via
+    the `studio/Create.h` seam; names unique across the four kinds via
+    `NameInUse` (apply) / `ReservedNames` (studio).
+  - `Undo{recipeID}` / `Redo{recipeID}` — step the recipe's edit history.
+- Recipe-file lifecycle (each: intent → `RecipeEditor` method → `RecipeStore` fn):
+  - `CreateRecipe{recipeID, key, geometry}` — new empty recipe, dirty until saved.
+  - `DuplicateRecipe{from, to}` — copy `from` as `to`, provenance cleared, dirty
+    until saved.
+  - `RenameRecipe{from, to}` — change id; moves the user file; retargets history,
+    view pin/isolation, paint.
+  - `DeleteRecipe{recipeID}` — delete the user file, unpublish, `View::ForgetRecipe`.
+- Guards: ids are file stems (`IsStem`) and unused; the paint recipe refuses
+  rename/duplicate/delete; imported/shipped files are unpublished, not deleted.
+- `SaveRecipe` / `RevertRecipe` are `RecipeEditor` methods called directly from
+  `menu/RecipeActions.cpp`, not intents — persistence, not CRUD.
+
 ## studio (`studio/Snapshot.h`, `View.h`, `Intent.h`, `MenuState.h`, `Forms.h`, `Edits.h`, `Mask.h`, `Presets.h`, `TermTemplates.h`, `PaintSession.h`, `Board.h`, `Panels.h`, `SelectorEdit.h`, `Selection.h`, `Names.h`, `Rows.h`, `FieldCheck.h`, `History.h`, `Widgets.h`, `Fields.h`)
 
 - `Snapshot::status` (engine scalars plus loaded-file and recipe-error counts) is filled
