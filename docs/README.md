@@ -41,6 +41,10 @@ Current. A new module is expected to follow them.
 
 Open work.
 
+- [plans/release-roadmap-2026-09-20.md](plans/release-roadmap-2026-09-20.md) —
+  what must be true before the mod reaches another person: the five gates,
+  their status against the current tree, and the ranked list. Supersedes the
+  2026-09-09 roadmap in History.
 - [plans/ui-v2-proposal.md](plans/ui-v2-proposal.md) — the frozen UI v2 design
   baseline.
 - [plans/ui-v2-implementation-plan.md](plans/ui-v2-implementation-plan.md) —
@@ -60,7 +64,8 @@ Open work.
   — where to pick up after Plans F to E: Plan G, the eight UI findings, the
   deferred items, the constants question, the closing critique re-run.
 - [plans/critique-plan-g-shell-pose-2026-09-13.md](plans/critique-plan-g-shell-pose-2026-09-13.md)
-  — the shell honours its whole pose, not `inflate` alone. Not started.
+  — the shell honours its whole pose, not `inflate` alone. Implemented
+  (161f6b2); its in-game checkpoint has not run.
 - [plans/expression-cleanup-implementation-handoff-2026-09-13.md](plans/expression-cleanup-implementation-handoff-2026-09-13.md)
   — the separate pass over `recipe/Expression.cpp`, and the bounds Plan F left
   to its owner.
@@ -154,6 +159,9 @@ a document.
 
 Superseded. Each names what replaced it in a status header at its top.
 
+- [history/release-roadmap-2026-09-09.md](history/release-roadmap-2026-09-09.md)
+  — the first release roadmap: the gates' reasoning and the 2026-09-09
+  decisions. The 2026-09-20 roadmap under `plans/` replaced it.
 - [history/buildup-plan.md](history/buildup-plan.md) — how the new tree was
   written by many agents at once: shape, fill, barrier, reduce.
 - [history/wave3-seam.md](history/wave3-seam.md) — the reconciled `engine` to
