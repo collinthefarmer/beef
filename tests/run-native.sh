@@ -18,7 +18,7 @@ fi
 OUT="${TEST_OUT_DIR:-build/native-tests-$(basename "$CXX")${BEEF_SANITIZE:+-sanitized}}"
 mkdir -p "$OUT"
 OUT_ABS="$(cd "$OUT" && pwd)"
-FLAGS=(-std=c++23 -O1 -Wall -Wextra -pthread -I src -I src/extern -I tests "-DBEEF_FIXTURES_DIR=\"$PWD/tests/fixtures\"" "-DBEEF_TEST_OUT_DIR=\"$OUT_ABS\"")
+FLAGS=(-std=c++23 -O1 -Wall -Wextra -pthread -I src -I src/extern -I tests "-DBEEF_FIXTURES_DIR=\"$PWD/tests/fixtures\"" "-DBEEF_TEMPLATES_DIR=\"$PWD/templates\"" "-DBEEF_TEST_OUT_DIR=\"$OUT_ABS\"")
 if [ -n "${BEEF_SANITIZE:-}" ]; then
 	FLAGS+=(-fsanitize=address,undefined -fno-sanitize=vptr -fno-omit-frame-pointer -fno-sanitize-recover=undefined -g)
 fi
@@ -127,7 +127,7 @@ fi
 
 if command -v check-jsonschema >/dev/null 2>&1; then
 	echo "== schema"
-	check-jsonschema --schemafile schema/recipe.schema.json schema/example-magicka.json || status=1
+	check-jsonschema --schemafile schema/recipe.schema.json schema/example-magicka.json templates/fill.json templates/bare.json || status=1
 else
 	echo "== schema (skipped: check-jsonschema not on PATH)"
 fi

@@ -268,7 +268,30 @@ bool HasEffectShaderKey(const FormKey &a_key) {
   });
 }
 
+std::unordered_map<std::string_view, Recipe> LoadImportTemplates() {
+  std::unordered_map<std::string_view, Recipe> templates;
+  for (const std::string_view id : kImportTemplateIds) {
+    const auto path = Identity::TemplateFolder() / std::format("{}.json", id);
+    const auto text = ReadText(path);
+    if (!text) {
+      logger::error("import template {}: {} {}", id, path.string(),
+                    text.error());
+      continue;
+    }
+    LoadResult parsed = ParseRecipe(*text, id);
+    for (const Diagnostic &d : parsed.diagnostics) {
+      logger::error("import template {}: {}: {}", id, d.where, d.message);
+    }
+    if (!parsed.recipe || parsed.HasErrors()) {
+      continue;
+    }
+    templates.emplace(id, std::move(*parsed.recipe));
+  }
+  return templates;
+}
+
 void ImportMissing(const std::filesystem::path &a_folder) {
+  const auto templates = LoadImportTemplates();
   for (auto *shader : ArmorEnchantmentShaders()) {
     if (!shader) {
       continue;
@@ -277,7 +300,16 @@ void ImportMissing(const std::filesystem::path &a_folder) {
     if (HasEffectShaderKey(record.key)) {
       continue;
     }
-    auto recipe = ImportEffectShader(record);
+    const std::string_view templateId = ImportTemplateId(record);
+    const auto found = templates.find(templateId);
+    if (found == templates.end()) {
+      logger::error(
+          "recipe {}: the {} import template did not load; efsh {:08X} "
+          "not imported",
+          RecipeIdFor(record), templateId, shader->GetFormID());
+      continue;
+    }
+    auto recipe = ImportEffectShader(record, found->second);
     const auto text = SerializeRecipe(recipe);
     const auto path = a_folder / (recipe.id + ".json");
     if (!WriteText(path, text)) {

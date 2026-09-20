@@ -98,15 +98,26 @@ to the logger alongside the file sink at plugin load.
   and `EvaluateAlpha` are `Evaluate`-internal, not public. The colour-seeding
   logic (`ResolveEmissiveColor`, `NormalizeHue`, `Chroma`, `ColorPolicy`) is
   now private to `Importer.cpp`, since only the importer reads it;
-  `BaselineAlpha` stays public because the importer seeds the `rest` and
-  `edgeRest` curves from it.
-- `Importer.h` imports from a vanilla effect shader with fixed defaults: the
-  frozen `ImportDefaults` struct is gone (both call sites passed nothing),
-  and `EffectShaderRecord::flags` with `kGreyscaleToColor`/`kGreyscaleToAlpha`
-  are dropped (declarations with no reader). The shipped default values that
-  were `ImportDefaults` fields are now `inline constexpr` in `Importer.cpp`;
-  the version string `BetterEnchantmentEffects 0.1.0` stamped into
-  `metadata.imported` lives there too. `ParseEffectShaderRecord` reads the
+  `BaselineAlpha` stays public because the importer fills the
+  `importFillBase` and `importEdgeBase` template rows from it.
+- `Importer.h` imports from a vanilla effect shader by patching a template
+  recipe: `ImportEffectShader(record, template)` copies the template, then
+  replaces the id, metadata and keys, retargets every `EfshSignal` to the
+  imported shader, overwrites the value of every `ConstantSignal` whose name
+  is in the `kImportFacts` table (`ImportSignalNames()` publishes the
+  vocabulary), and rewrites every `ImageSource` whose path is the
+  `$fillTexture` token to the shader's fill texture with its tiling clamped
+  to at least `0.01` (a zero tile would collapse the image). The two shipped
+  templates, `templates/fill.json` and `templates/bare.json`
+  (`ImportTemplateId` picks by fill-texture presence), declare their
+  reserved `import*` rows with placeholder values and name their EFSH rows
+  `ImportedEffectShader`, so a template file is itself a load-clean recipe
+  the validator and the schema accept. CMake stages them beside
+  `presets.json`'s folder under `Data/SKSE/Plugins/<plugin>/templates/`,
+  outside the recipe root, which loads every `.json` below it as a recipe.
+  The version string `BetterEnchantmentEffects 0.1.0` stamped into
+  `metadata.imported` lives in `Importer.cpp`; the generated description
+  names the template. `ParseEffectShaderRecord` reads the
   vanilla EFSH JSON: colour keys and `edgeColor` are 0..255 bytes divided by
   255 into `Vec3`, missing or non-numeric fields fall back (alpha ratios and
   colour scale to 1, texture scale to 1, times and speeds to 0), and the frozen
@@ -1182,14 +1193,16 @@ Decompile provenance (`decompiled/WornEnchantmentFX/plugin.c` unless noted):
   missing); the INI is copied only when the mod has none, since it holds
   the user's settings; a DLL locked by the running game fails on that one
   file while the rest transfer, and the exit status is kept.
-- `tests/run-native.sh [--update]` builds and runs every engine-free suite
+- `tests/run-native.sh` builds and runs every engine-free suite
   with `NATIVE_CXX`, else `CXX`, else clang++ on PATH, into `TEST_OUT_DIR`
   (default `build/native-tests-<compiler>`); the dev shell exports
   `NATIVE_CXX` because its `CXX` is g++, which cannot build this code under
   `BEEF_SANITIZE`, and the run stops rather than use it there. Each source
-  compiles once and a suite links the objects it names; `--update` rewrites
-  the importer's expected recipes; the checked-in recipes are validated
-  against the schema when `check-jsonschema` is on PATH.
+  compiles once and a suite links the objects it names; `BEEF_UPDATE=1`
+  makes the importer suite rewrite its expected recipes under
+  `tests/fixtures/recipes/`; the schema step validates
+  `schema/example-magicka.json` and the two import templates when
+  `check-jsonschema` is on PATH.
 - `tools/compile-db.sh` writes `build/clangd/compile_commands.json` from the
   Release configure, reduced to this repo's `src/` and `tests/` so clangd
   indexes our code and not CommonLibSSE's; rerun after adding a source.

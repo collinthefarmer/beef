@@ -20,7 +20,7 @@ Recipes and everything a recipe declares:
 
 It also owns the recipe language (the expression and curve grammar a `Ref`
 parses to) and the importer that turns a vanilla effect shader into a
-starting recipe.
+starting recipe by patching one of the shipped import templates.
 
 ## Data
 
@@ -202,7 +202,8 @@ Recipe  ──Resolve──▶  ResolvedRecipe         Resolve.cpp  (FormKeys ma
                        (one piece, every recipe on it)
 
 Recipe  ──Writer binders──▶  json (text)      RecipeWrite.cpp   (round-trip, key order kept)
-Vanilla EFSH ──ParseEffectShaderRecord ─▶ ImportEffectShader ─▶ Recipe   Importer.cpp
+Vanilla EFSH ──ParseEffectShaderRecord ─▶ EffectShaderRecord ─┐
+templates/{fill,bare}.json ──ParseRecipe─▶ template Recipe ───┴─ImportEffectShader─▶ Recipe   Importer.cpp
 ```
 
 ## The files
@@ -218,7 +219,7 @@ Vanilla EFSH ──ParseEffectShaderRecord ─▶ ImportEffectShader ─▶ Reci
 | `Signals.h` / `Signals.cpp` | `SignalGraph`, the per-tick evaluation, the `CheckSource`/`CheckLayer` validation. |
 | `Expression.h` / `Expression.cpp` | The `Ref` expression and curve language: `Program::Parse`/`Evaluate`. |
 | `Merge.h` / `Merge.cpp` | Compose the recipes on one piece into a slot, geometry, and light plan. |
-| `Importer.h` / `Importer.cpp` | Vanilla effect shader to starting `Recipe`. |
+| `Importer.h` / `Importer.cpp` | Vanilla effect shader to starting `Recipe`: the `EffectShaderRecord` reader, the reserved `import*` fact table, and the patcher over a template recipe. |
 | `Visit.h` | `LocatedVisitor`, `Visit*Params`: walk a recipe's refs and params in place. The editor uses it. |
 | `Words.h` | The enum-to-word tables and the `Complete()` static_asserts that keep them total. |
 | `Vocabulary.cpp` | The enum-to-word functions over those tables (`FormKey::Parse`, `SignalKindName`, and the rest). |

@@ -14,6 +14,9 @@
 #ifndef BEEF_FIXTURES_DIR
 #define BEEF_FIXTURES_DIR "tests/fixtures"
 #endif
+#ifndef BEEF_TEMPLATES_DIR
+#define BEEF_TEMPLATES_DIR "templates"
+#endif
 #ifndef BEEF_TEST_OUT_DIR
 #define BEEF_TEST_OUT_DIR "build/native-tests"
 #endif
@@ -85,6 +88,10 @@ Skip(std::string_view a_what,
 
 [[nodiscard]] inline std::filesystem::path Fixtures() {
   return std::filesystem::path{BEEF_FIXTURES_DIR};
+}
+
+[[nodiscard]] inline std::filesystem::path Templates() {
+  return std::filesystem::path{BEEF_TEMPLATES_DIR};
 }
 
 [[nodiscard]] inline std::filesystem::path

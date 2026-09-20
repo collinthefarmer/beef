@@ -1,22 +1,21 @@
 {
   "format": 1,
-  "name": "EnchArmorFireFXS",
-  "description": "Imported from effect shader EnchArmorFireFXS with the fill template.",
-  "imported": "BetterEnchantmentEffects 0.1.0",
+  "name": "Fill import template",
+  "description": "The default import template for an effect shader with a fill texture.",
   "keys": [
     {
-      "effectShader": "EnchArmorFireFXS"
+      "effectShader": "ImportedEffectShader"
     }
   ],
   "signals": {
     "fillRaw": {
       "efsh": {
         "field": "fillAlpha",
-        "record": "EnchArmorFireFXS"
+        "record": "ImportedEffectShader"
       }
     },
     "importFillBase": {
-      "constant": 0.05
+      "constant": 1.0
     },
     "fillLevel": {
       "expr": "@fillRaw / @importFillBase"
@@ -24,11 +23,11 @@
     "edgeRaw": {
       "efsh": {
         "field": "edgeAlpha",
-        "record": "EnchArmorFireFXS"
+        "record": "ImportedEffectShader"
       }
     },
     "importEdgeBase": {
-      "constant": 0.4
+      "constant": 1.0
     },
     "edgeLevel": {
       "expr": "@edgeRaw / @importEdgeBase"
@@ -36,13 +35,13 @@
     "edgeColor": {
       "efsh": {
         "field": "edgeColor",
-        "record": "EnchArmorFireFXS"
+        "record": "ImportedEffectShader"
       }
     },
     "scroll": {
       "efsh": {
         "field": "scroll",
-        "record": "EnchArmorFireFXS"
+        "record": "ImportedEffectShader"
       }
     },
     "importHue": {
@@ -114,22 +113,22 @@
   "sources": {
     "fill": {
       "image": {
-        "path": "Effects\\VaporTile01.dds",
+        "path": "$fillTexture",
         "scroll": "@scroll",
         "tile": [
-          2.0,
-          2.0
+          1.0,
+          1.0
         ]
       }
     },
     "sheenField": {
       "image": {
-        "path": "Effects\\VaporTile01.dds",
+        "path": "$fillTexture",
         "channel": "luma",
         "scroll": "@sheenScroll",
         "tile": [
-          2.0,
-          2.0
+          1.0,
+          1.0
         ],
         "mirror": [
           false,
@@ -139,12 +138,12 @@
     },
     "shimmerField": {
       "image": {
-        "path": "Effects\\VaporTile01.dds",
+        "path": "$fillTexture",
         "channel": "luma",
         "scroll": "@shimmerScroll",
         "tile": [
-          2.0,
-          2.0
+          1.0,
+          1.0
         ],
         "transpose": true,
         "mip": 2.0
@@ -152,12 +151,12 @@
     },
     "glossField": {
       "image": {
-        "path": "Effects\\VaporTile01.dds",
+        "path": "$fillTexture",
         "channel": "luma",
         "scroll": "@scroll",
         "tile": [
-          2.0,
-          2.0
+          1.0,
+          1.0
         ],
         "mip": 1.0
       }

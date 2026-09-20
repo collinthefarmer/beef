@@ -1,7 +1,7 @@
 {
   "format": 1,
   "name": "WaterBreathingFXS",
-  "description": "Imported from effect shader WaterBreathingFXS with the shipped defaults.",
+  "description": "Imported from effect shader WaterBreathingFXS with the bare template.",
   "imported": "BetterEnchantmentEffects 0.1.0",
   "keys": [
     {
@@ -9,19 +9,29 @@
     }
   ],
   "signals": {
-    "fillLevel": {
+    "fillRaw": {
       "efsh": {
         "field": "fillAlpha",
         "record": "WaterBreathingFXS"
-      },
-      "curve": "@rest"
+      }
     },
-    "edgeLevel": {
+    "importFillBase": {
+      "constant": 0.1
+    },
+    "fillLevel": {
+      "expr": "@fillRaw / @importFillBase"
+    },
+    "edgeRaw": {
       "efsh": {
         "field": "edgeAlpha",
         "record": "WaterBreathingFXS"
-      },
-      "curve": "@edgeRest"
+      }
+    },
+    "importEdgeBase": {
+      "constant": 1.0
+    },
+    "edgeLevel": {
+      "expr": "@edgeRaw / @importEdgeBase"
     },
     "edgeColor": {
       "efsh": {
@@ -35,7 +45,7 @@
         "record": "WaterBreathingFXS"
       }
     },
-    "glowHue": {
+    "importHue": {
       "constant": [
         0.5365854,
         0.86585367,
@@ -63,18 +73,24 @@
     "lightLevel": {
       "expr": "clamp(@fillLevel, 0, 2)"
     },
+    "shellAlpha": {
+      "constant": 0.5
+    },
     "shellOpacity": {
-      "expr": "saturate(0.5 * clamp(@fillLevel, 0, 2))"
+      "expr": "saturate(@shellAlpha * clamp(@fillLevel, 0, 2))"
+    },
+    "inflatePercent": {
+      "constant": 1.0
+    },
+    "inflatePulse": {
+      "constant": 1.0
     },
     "inflate": {
-      "expr": "(1 + 1 * clamp(@fillLevel, 0, 2)) * 0.01"
+      "expr": "(@inflatePercent + @inflatePulse * clamp(@fillLevel, 0, 2)) * 0.01"
     }
   },
   "curves": {
-    "rest": "x / 0.1",
-    "edgeRest": "x / 1",
-    "crisp": "(x - mean) * 3 + 0.5",
-    "punchy": "(x - mean) * 2 + 0.5"
+    "crisp": "(x - mean) * 3 + 0.5"
   },
   "sources": {
     "relief": {
@@ -100,7 +116,7 @@
             1.0
           ],
           "opacity": 1.0,
-          "color": "@glowHue",
+          "color": "@importHue",
           "mask": "@metal"
         }
       ]
@@ -140,7 +156,7 @@
           "max": 2
         }
       },
-      "color": "@glowHue",
+      "color": "@importHue",
       "intensity": "@lightLevel",
       "size": 1.4,
       "cutoff": 0.05

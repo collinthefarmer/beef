@@ -46,6 +46,10 @@ inline std::filesystem::path PresetsPath() {
   return PluginFolder() / "presets.json";
 }
 
+inline std::filesystem::path TemplateFolder() {
+  return PluginFolder() / "templates";
+}
+
 inline std::string PresenterTexturePath(std::uint32_t a_index) {
   return std::format("textures\\{}\\slots\\slot_{:02}.dds", kTextureFolder,
                      a_index);

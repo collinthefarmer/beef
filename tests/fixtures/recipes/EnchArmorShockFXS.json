@@ -1,7 +1,7 @@
 {
   "format": 1,
   "name": "EnchArmorShockFXS",
-  "description": "Imported from effect shader EnchArmorShockFXS with the shipped defaults.",
+  "description": "Imported from effect shader EnchArmorShockFXS with the fill template.",
   "imported": "BetterEnchantmentEffects 0.1.0",
   "keys": [
     {
@@ -9,19 +9,29 @@
     }
   ],
   "signals": {
-    "fillLevel": {
+    "fillRaw": {
       "efsh": {
         "field": "fillAlpha",
         "record": "EnchArmorShockFXS"
-      },
-      "curve": "@rest"
+      }
     },
-    "edgeLevel": {
+    "importFillBase": {
+      "constant": 0.05
+    },
+    "fillLevel": {
+      "expr": "@fillRaw / @importFillBase"
+    },
+    "edgeRaw": {
       "efsh": {
         "field": "edgeAlpha",
         "record": "EnchArmorShockFXS"
-      },
-      "curve": "@edgeRest"
+      }
+    },
+    "importEdgeBase": {
+      "constant": 0.9
+    },
+    "edgeLevel": {
+      "expr": "@edgeRaw / @importEdgeBase"
     },
     "edgeColor": {
       "efsh": {
@@ -35,7 +45,7 @@
         "record": "EnchArmorShockFXS"
       }
     },
-    "glowHue": {
+    "importHue": {
       "constant": [
         0.58878505,
         0.58878505,
@@ -54,8 +64,11 @@
     "sheenWeight": {
       "expr": "clamp(@edgeLevel * @sheenScale, 0, 1)"
     },
+    "sheenPhase": {
+      "constant": 0.5
+    },
     "sheenScroll": {
-      "expr": "@scroll + 0.5"
+      "expr": "@scroll + @sheenPhase"
     },
     "shimmerScale": {
       "constant": 0.1
@@ -63,8 +76,11 @@
     "heightScale": {
       "expr": "@shimmerScale * clamp(@fillLevel, 0, 2)"
     },
+    "shimmerPhase": {
+      "constant": 0.25
+    },
     "shimmerScroll": {
-      "expr": "@scroll + 0.25"
+      "expr": "@scroll + @shimmerPhase"
     },
     "glossBoost": {
       "constant": 0.25
@@ -75,16 +91,23 @@
     "lightLevel": {
       "expr": "clamp(@fillLevel, 0, 2)"
     },
+    "shellAlpha": {
+      "constant": 0.5
+    },
     "shellOpacity": {
-      "expr": "saturate(0.5 * clamp(@fillLevel, 0, 2))"
+      "expr": "saturate(@shellAlpha * clamp(@fillLevel, 0, 2))"
+    },
+    "inflatePercent": {
+      "constant": 1.0
+    },
+    "inflatePulse": {
+      "constant": 1.0
     },
     "inflate": {
-      "expr": "(1 + 1 * clamp(@fillLevel, 0, 2)) * 0.01"
+      "expr": "(@inflatePercent + @inflatePulse * clamp(@fillLevel, 0, 2)) * 0.01"
     }
   },
   "curves": {
-    "rest": "x / 0.05",
-    "edgeRest": "x / 0.9",
     "crisp": "(x - mean) * 3 + 0.5",
     "punchy": "(x - mean) * 2 + 0.5"
   },
@@ -158,7 +181,7 @@
         {
           "source": "@fill",
           "opacity": 1.0,
-          "color": "@glowHue",
+          "color": "@importHue",
           "mask": "@metal"
         }
       ]
@@ -221,7 +244,7 @@
           "max": 2
         }
       },
-      "color": "@glowHue",
+      "color": "@importHue",
       "intensity": "@lightLevel",
       "size": 1.4,
       "cutoff": 0.05

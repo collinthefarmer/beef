@@ -54,6 +54,7 @@ Data/SKSE/Plugins/BetterEnchantmentEffects.dll
 Data/SKSE/Plugins/BetterEnchantmentEffects.ini        preferences
 Data/SKSE/Plugins/BetterEnchantmentEffects/
     presets.json                                      mask-editor presets
+    templates/{fill,bare}.json                         import templates the importer patches
     recipes/<anything>/*.json                          shipped recipes
     recipes/imported/*.json                            written by the importer
     recipes/user/*.json                                written by the studio, loads last
@@ -61,8 +62,8 @@ textures/BetterEnchantmentEffects/slots/slot_*.dds     presenter textures
 ```
 
 - The loader reads every `.json` below `recipes/` recursively, as a recipe.
-  `presets.json` therefore sits outside `recipes/`, at the plugin folder's
-  root.
+  `presets.json` and `templates/` therefore sit outside `recipes/`, at the
+  plugin folder's root.
 - The installer stages no recipes.
 - `src/Identity.h` is the only place the plugin name is spelled.
 
