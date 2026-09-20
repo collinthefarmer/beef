@@ -197,7 +197,7 @@ DistanceKindOf(const DistanceSourceRow &a_row) {
 [[nodiscard]] std::optional<SourceKind>
 RippleKindOf(const RippleSourceRow &a_row) {
   RippleSource ripple;
-  if (!a_row.trigger.starts_with('@') || a_row.trigger.size() < 2) {
+  if (!a_row.trigger.starts_with('@')) {
     return std::nullopt;
   }
   ripple.trigger = Ref{a_row.trigger.substr(1)};

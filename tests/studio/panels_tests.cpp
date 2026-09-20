@@ -132,6 +132,21 @@ void TestSourceForm() {
         "editing an image field emits a source edit");
 }
 
+void TestIncompleteRippleForm() {
+  const Source source{"wave", RippleSource{}};
+  const SourceRow row = SourceRowOf(source, 0);
+  const std::optional<SourceKind> back = SourceKindOf(row);
+  const RippleSource *ripple = back ? Get<RippleSource>(*back) : nullptr;
+  Check(ripple != nullptr && ripple->trigger == Ref{},
+        "SourceKindOf reconstructs a ripple with no trigger yet");
+  const std::vector<FormField> form = SourceForm(row, SignalNames{});
+  const FormField *trigger = Field(form, "trigger");
+  Check(trigger != nullptr && trigger->kind == FieldKind::kReference,
+        "an incomplete ripple still exposes its trigger field");
+  Check(trigger != nullptr && trigger->bind && !trigger->bind("@"),
+        "the trigger binding refuses an empty reference");
+}
+
 void TestLightAndShellRows() {
   Recipe recipe;
   LightOutput light;
@@ -344,6 +359,7 @@ int main() {
   TestSignalFormPulse();
   TestSourceRoundTrip();
   TestSourceForm();
+  TestIncompleteRippleForm();
   TestLightAndShellRows();
   TestRecipeHeaderForm();
   TestOutputHeaderForm();
