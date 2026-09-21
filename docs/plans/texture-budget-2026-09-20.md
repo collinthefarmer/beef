@@ -103,6 +103,39 @@ only free the render-target view — the slot count, not the byte count,
 is what the 512 cap enforces. A demoted static texture needs its own
 lighter presenter path or must relinquish the slot to the pool.
 
+Decided 2026-09-21:
+- **Storage: BC7 immutable.** Compress the one-time result to a BC7
+  immutable texture (~5.3x smaller than RGBA8), releasing the
+  render-target view.
+- **Slot return: own lightweight presenter.** The demoted texture gets
+  its own plain loaded `NiSourceTexture` and hands the pooled presenter
+  slot back, so the 512 cap counts only live render targets.
+
+Feasibility scout 2026-09-21 — both decided options hit a wall:
+
+1. **No BC7 compressor exists.** `src/extern` carries only nlohmann and
+   the menu framework; no DirectXTex, D3DX11, or compute encoder. A BC7
+   encoder (CPU or compute) is a large, high-risk addition. BC1/BC3 are
+   simpler but still absent.
+2. **"Own presenter" is the deferred file-less-presenter spike.** Every
+   presenter gets its `NiSourceTexture` by loading a real DDS file
+   (`RenderTargetPool::LoadPresenter` → `GetTexture(path)`) and
+   hijacking its `rendererTexture`. There is no file-less path to an
+   `NiSourceTexture`. A demoted texture still needs an engine identity,
+   so it either consumes a presenter slot anyway (no slot saved) or
+   needs the file-less spike REQUIREMENTS defers.
+
+The clean demotion HOOK is confirmed and cheap: `StackRenderer::Run`
+(Compositor.cpp:316) already detects the static-and-stable moment (not
+animated, rendered once, base and filter unchanged) where the target
+holds a final image; that is exactly where a demotion would fire, and
+the material reads `stack->Texture()` each tick so swapping `latest_`
+to a demoted texture is transparent. The blocker is purely what the
+demoted texture becomes and how it presents without a slot.
+
+Revised options are a separate decision (see below); the hook and the
+static signal are ready for whichever wins.
+
 ## Stage 4: eviction by distance — for the crowd tail
 
 The stress scene held 28 actors at once; the ones not near the player
