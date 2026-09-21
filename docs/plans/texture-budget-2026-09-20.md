@@ -270,13 +270,19 @@ Later (optional): narrow the recipe-wide "no bake/distance" predicate to
 the per-output closure so a recipe mixing a bake output with a shareable
 glow output can still share the glow.
 
-## Stage 4: eviction by distance — for the crowd tail
+## Stage 4: eviction by distance — LANDED 2026-09-21 (efd2fb3), off by default
 
-The stress scene held 28 actors at once; the ones not near the player
-need not hold working targets. Retire the stacks of actors beyond a
-distance, restore the original material, and reapply on approach; the
-actor-state tables make reapply cheap. Size L; taken if stages 1 and 3
-leave a packed crowd over budget.
+Actors past `EvictDistance` game units drop their effects and restore
+them on approach, capping the working set to near actors — the VRAM
+control beneath the raised presenter cap. The decision is a pure,
+native-tested hysteresis (`planners/Eviction.h`): evict past the
+distance, restore only inside 80% of it, so a boundary actor cannot
+thrash; 0 disables it. A once-a-second `SweepEviction` retires far
+applied actors and re-queues evicted ones that have closed back in;
+`Refresh` skips a far actor outright. Off by default so nothing changes
+until an author sets `EvictDistance`; the measurement enables it and
+watches the peak-target count fall with a crowd that spreads past the
+radius.
 
 ## Stage 5: trim the free pool in play — dispersal aid
 
