@@ -13,13 +13,18 @@ def presenter_dds():
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument('--output', type=pathlib.Path, required=True)
+    parser.add_argument('--count', type=int, default=512)
     args = parser.parse_args()
     args.output.mkdir(parents=True, exist_ok=True)
     data = presenter_dds()
-    for index in range(512):
+    kept = {f'slot_{index:02}.dds' for index in range(args.count)}
+    for index in range(args.count):
         path = args.output / f'slot_{index:02}.dds'
         if not path.exists() or path.read_bytes() != data:
             path.write_bytes(data)
+    for stale in args.output.glob('slot_*.dds'):
+        if stale.name not in kept:
+            stale.unlink()
 
 
 if __name__ == '__main__':

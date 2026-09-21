@@ -40,7 +40,10 @@ private:
   static void Recycle(const std::weak_ptr<Pool> &a_pool,
                       RenderTarget *a_target) noexcept;
 
-  static constexpr std::size_t kPresenterCount = 512;
+#ifndef BEEF_PRESENTER_COUNT
+#define BEEF_PRESENTER_COUNT 512
+#endif
+  static constexpr std::size_t kPresenterCount = BEEF_PRESENTER_COUNT;
   struct Presenter {
     RE::NiPointer<RE::NiSourceTexture> texture;
     RE::NiTexture::RendererData *original = nullptr;

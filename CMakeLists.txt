@@ -143,7 +143,11 @@ add_dependencies(${PROJECT_NAME} BuildIdentity)
 
 target_include_directories(${PROJECT_NAME} PRIVATE src "${CMAKE_BINARY_DIR}/generated")
 target_include_directories(${PROJECT_NAME} SYSTEM PRIVATE src/extern)
+# The presenter-slot count is single-sourced here: the C++ pool reads it as a
+# compile definition and the generator stamps exactly that many slot DDS files.
+set(BEEF_PRESENTER_COUNT 1024)
 target_compile_definitions(${PROJECT_NAME} PRIVATE BEEF_PLUGIN_NAME="${PROJECT_NAME}")
+target_compile_definitions(${PROJECT_NAME} PRIVATE BEEF_PRESENTER_COUNT=${BEEF_PRESENTER_COUNT})
 target_precompile_headers(${PROJECT_NAME} PRIVATE src/PCH.h)
 
 target_sources(${PROJECT_NAME} PRIVATE $<TARGET_OBJECTS:${PROJECT_NAME}Native>)
@@ -161,6 +165,7 @@ set(DIST_DIR "${CMAKE_SOURCE_DIR}/dist/${PROJECT_NAME}")
 add_custom_target(PresenterTextures ALL
   COMMAND "${BEEF_PYTHON}" "${CMAKE_SOURCE_DIR}/tools/presenter-textures.py"
           --output "${DIST_DIR}/textures/${PROJECT_NAME}/slots"
+          --count ${BEEF_PRESENTER_COUNT}
   VERBATIM)
 add_dependencies(${PROJECT_NAME} PresenterTextures)
 add_custom_command(TARGET ${PROJECT_NAME} POST_BUILD

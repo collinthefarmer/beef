@@ -38,6 +38,18 @@ class PresenterTests(unittest.TestCase):
             self.assertEqual((output / 'slot_99.dds').read_bytes(), kept.read_bytes())
             self.assertEqual((output / 'slot_100.dds').read_bytes(), kept.read_bytes())
 
+    def test_count_stamps_that_many_and_removes_stale_slots(self):
+        with tempfile.TemporaryDirectory() as folder:
+            output = pathlib.Path(folder)
+            base = [sys.executable, str(ROOT / 'tools/presenter-textures.py'),
+                    '--output', folder]
+            subprocess.run(base + ['--count', '8'], check=True)
+            self.assertEqual({p.name for p in output.iterdir()},
+                             {f'slot_{i:02}.dds' for i in range(8)})
+            subprocess.run(base + ['--count', '4'], check=True)
+            self.assertEqual({p.name for p in output.iterdir()},
+                             {f'slot_{i:02}.dds' for i in range(4)})
+
     def test_report_detects_concurrent_alias_and_ignores_retired_target(self):
         with tempfile.TemporaryDirectory() as folder:
             path = pathlib.Path(folder) / 'trace.jsonl'

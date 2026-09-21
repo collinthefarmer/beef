@@ -318,12 +318,19 @@ not positive counts as zero on both sides.
 
 Lab mechanics:
 
-- Presenters are `slot_00.dds` .. `slot_99.dds`, then `slot_100.dds` ..
-  `slot_511.dds` (`kPresenterCount`, minimum two digits in `Identity.h`).
-  `tools/presenter-textures.py` stages 512 opaque-black, 1x1 RGBA8 DDS files
-  through an always-run CMake target. Each is a separate engine resource name.
-  The files let an `NiSourceTexture` present a generated target like a material
-  texture (NOTES 22). The generator is part of the build fingerprint.
+- Presenters are `slot_00.dds` .. `slot_99.dds`, then `slot_100.dds` up to
+  `slot_<kPresenterCount-1>.dds` (minimum two digits in `Identity.h`, so any
+  count fits the naming). The count is single-sourced in `CMakeLists.txt` as
+  `BEEF_PRESENTER_COUNT`: the pool reads it as a compile definition
+  (`RenderTargetPool.h`, `kPresenterCount`, default 512 when the definition is
+  absent) and the `tools/presenter-textures.py` CMake target stamps exactly
+  that many files and deletes any stale higher-numbered slots. It is 1024 as of
+  2026-09-21, raised because cross-actor sharing cut a crowd's target demand far
+  below the old 512 wall, so the wall could rise without the pool ever
+  approaching it for realistic content; distance eviction is the real VRAM
+  control beneath it. Each file is a separate engine resource name, opaque-black
+  1x1 RGBA8, and lets an `NiSourceTexture` present a generated target like a
+  material texture (NOTES 22). The generator is part of the build fingerprint.
 - Loading must find the requested resource through the engine resource system,
   return the requested texture name (case/slash normalization and optional
   `textures\` prefix), and return an unclaimed presenter object. Retained
