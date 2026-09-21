@@ -105,11 +105,26 @@ private materials; the private copy isolates only the output write. A
 shared read-only static result does not reintroduce the material fight.
 
 **Content key** for a shareable static stack result: the source-texture
-identities (rmaos, diffuse, normal, displacement pointers), the recipe
-id, the output index, the surface and slot, and the target size. Static
-means no animated signal and no per-actor signal (av, actorState), so
-the result depends on nothing else. Variant selection keys on the armor,
-which the source textures already distinguish.
+identities (rmaos, diffuse, normal, displacement pointers), the target
+size, and the recipe's contribution as its **exact serialized text**
+plus the output index. Decided 2026-09-21: key on the recipe *text*, not
+a 64-bit fingerprint — an FNV collision would wrong-share two different
+results (a rule-1 correctness defect), so the key holds the string and
+compares it exactly. Recipe text self-invalidates on a live studio edit,
+needing no generation counter.
+
+**Shareability predicate — increment 1, provably safe (landed):**
+`ShareableAcrossActors` (recipe/Vocabulary.cpp) returns true for a
+static surface output whose recipe contains no `bake` and no `distance`
+source anywhere. `IsAnimated` already treats `av`, `actorState`,
+`enchantment` and `ripple` as animated (so per-actor *signals* are
+excluded), but it treats `bake` and `distance` as static though both are
+per-actor (mesh, pose, world position). Rather than walk each output's
+reference closure and risk missing a path (which would wrong-share),
+increment 1 rejects any recipe that contains such a source at all.
+Ultra-conservative, but the dominant glow/tint-over-armor case has
+neither. A later increment narrows this to the per-output closure once
+measured. Unit-tested in `tests/planners/stackplan_tests.cpp`.
 
 **Cache and lifetime:** a Compositor-wide map from content key to a
 `shared_ptr` rendered static target. The first static stack with a key

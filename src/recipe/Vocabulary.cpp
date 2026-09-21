@@ -878,4 +878,16 @@ bool IsAnimated(const Recipe &a_recipe, const Output &a_output) {
         return false;
       });
 }
+
+bool ShareableAcrossActors(const Recipe &a_recipe, const Output &a_output) {
+  if (!Is<SurfaceOutput>(a_output) || IsAnimated(a_recipe, a_output)) {
+    return false;
+  }
+  for (const Source &source : a_recipe.sources) {
+    if (Is<BakeSource>(source.kind) || Is<DistanceSource>(source.kind)) {
+      return false;
+    }
+  }
+  return true;
+}
 }

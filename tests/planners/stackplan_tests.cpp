@@ -60,6 +60,30 @@ int main() {
   }
 
   {
+    const Recipe fixedStatic = StaticRecipe();
+    Check(ShareableAcrossActors(fixedStatic, fixedStatic.outputs.front()),
+          "a static surface output over shared inputs is shareable");
+    const Recipe animated = AnimatedRecipe();
+    Check(!ShareableAcrossActors(animated, animated.outputs.front()),
+          "an animated output is not shareable across actors");
+
+    Recipe withBake = StaticRecipe();
+    withBake.sources.push_back(Source{"pos", BakeSource{PositionBake{}}});
+    Check(!ShareableAcrossActors(withBake, withBake.outputs.front()),
+          "a recipe holding a bake source is not shareable (per-actor mesh)");
+
+    Recipe withDistance = StaticRecipe();
+    withDistance.sources.push_back(Source{"d", DistanceSource{}});
+    Check(!ShareableAcrossActors(withDistance, withDistance.outputs.front()),
+          "a recipe holding a distance source is not shareable (per-actor)");
+
+    Recipe light;
+    light.outputs = {Output{LightOutput{}}};
+    Check(!ShareableAcrossActors(light, light.outputs.front()),
+          "a light output is not a shareable surface stack");
+  }
+
+  {
     const Recipe lower = StaticRecipe();
     const Recipe upper = AnimatedRecipe();
     const std::vector<PlacedRecipe> placed{

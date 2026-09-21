@@ -983,4 +983,7 @@ DefaultKeyChoice(std::span<const PieceKey> a_choices) noexcept;
 [[nodiscard]] bool IsAnimated(const Recipe &a_recipe, const Source &a_source);
 [[nodiscard]] bool IsAnimated(const Recipe &a_recipe, const Mask &a_mask);
 [[nodiscard]] bool IsAnimated(const Recipe &a_recipe, const Output &a_output);
+
+[[nodiscard]] bool ShareableAcrossActors(const Recipe &a_recipe,
+                                         const Output &a_output);
 }
