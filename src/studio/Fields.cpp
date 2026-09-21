@@ -279,6 +279,13 @@ FieldBinding BindPriority() {
   };
 }
 
+FieldBinding BindOverride() {
+  return [](const std::string &a_text) -> std::optional<RecipeEdit> {
+    const auto mode = ParseOverrideMode(a_text);
+    return mode ? std::optional<RecipeEdit>{SetOverride{*mode}} : std::nullopt;
+  };
+}
+
 FieldBinding BindClockSpeed() {
   return [](const std::string &a_text) -> std::optional<RecipeEdit> {
     const auto value = ParseParam(a_text);

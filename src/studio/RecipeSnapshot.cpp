@@ -34,6 +34,7 @@ RecipeRow BuildRecipeRow(const RecipeRowInput &a_input) {
   r.matchedKey = a_input.key;
   r.keys = recipe.keys;
   r.priority = a_input.priority;
+  r.overrideMode = recipe.overrideMode;
   r.clockSpeed = recipe.clock.speed;
   r.time = a_input.time;
   r.dirty = a_input.dirty;

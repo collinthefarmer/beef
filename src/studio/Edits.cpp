@@ -474,6 +474,11 @@ Refusal Edit(Recipe &a_recipe, const SetPriority &a_edit) {
   return std::nullopt;
 }
 
+Refusal Edit(Recipe &a_recipe, const SetOverride &a_edit) {
+  a_recipe.overrideMode = a_edit.mode;
+  return std::nullopt;
+}
+
 Refusal Edit(Recipe &a_recipe, const SetClockSpeed &a_edit) {
   a_recipe.clock.speed = a_edit.speed;
   return std::nullopt;
@@ -1292,6 +1297,9 @@ struct DescribeVisitor {
   std::string operator()(const SetPriority &e) const {
     return e.priority ? std::format("priority: {}", *e.priority)
                       : std::string{"priority: none"};
+  }
+  std::string operator()(const SetOverride &e) const {
+    return std::format("override: {}", OverrideModeName(e.mode));
   }
   std::string operator()(const SetClockSpeed &e) const {
     return std::format("clock: speed {}", e.speed);

@@ -235,6 +235,7 @@ struct RecipeRow {
   RecipeKey matchedKey;
   std::vector<RecipeKey> keys;
   int priority = 0;
+  OverrideMode overrideMode = OverrideMode::kStack;
   float clockSpeed = 1.0f;
   float time = 0.0f;
   bool dirty = false;

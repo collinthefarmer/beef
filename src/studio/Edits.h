@@ -108,6 +108,9 @@ struct SetOutputSelector {
 struct SetPriority {
   std::optional<int> priority;
 };
+struct SetOverride {
+  OverrideMode mode = OverrideMode::kStack;
+};
 struct SetClockSpeed {
   float speed = 1.0f;
 };
@@ -283,14 +286,15 @@ using RecipeEdit = std::variant<
     SetLayerColor, SetLayerMask, SetLayerChannels, AddLayer, RemoveLayer,
     MoveLayer, ClearLayers, AddOutput, RemoveOutput, SetScalar, SetColorScalar,
     SetOutputReplace, SetOutputSelector, ResetOutput, AddKey, RemoveKey,
-    ClearOutputs, ClearResources, ClearRecipe, SetPriority, SetClockSpeed,
-    SetConstant, SetExpression, SetSignal, SetSignalCurve, SetCurve, SetMask,
-    AddSignal, AddCurve, RenameSignal, RenameCurve, RemoveSignal, RemoveCurve,
-    AddMask, RenameMask, RemoveMask, AddSource, SetSource, RenameSource,
-    RemoveSource, AddLight, SetLightParam, SetLightVector, SetLightShadow,
-    SetLightBones, SetLightReplace, SetLightSelector, ResetLight, SetShellParam,
-    SetShellVector, SetShellPoint, SetShellMaterial, SetShellBlend,
-    SetShellDepthBias, SetShellAlphaTest, ResetShell>;
+    ClearOutputs, ClearResources, ClearRecipe, SetPriority, SetOverride,
+    SetClockSpeed, SetConstant, SetExpression, SetSignal, SetSignalCurve,
+    SetCurve, SetMask, AddSignal, AddCurve, RenameSignal, RenameCurve,
+    RemoveSignal, RemoveCurve, AddMask, RenameMask, RemoveMask, AddSource,
+    SetSource, RenameSource, RemoveSource, AddLight, SetLightParam,
+    SetLightVector, SetLightShadow, SetLightBones, SetLightReplace,
+    SetLightSelector, ResetLight, SetShellParam, SetShellVector, SetShellPoint,
+    SetShellMaterial, SetShellBlend, SetShellDepthBias, SetShellAlphaTest,
+    ResetShell>;
 
 [[nodiscard]] std::optional<Diagnostic> Apply(Recipe &a_recipe,
                                               const RecipeEdit &a_edit);

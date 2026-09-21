@@ -1329,6 +1329,9 @@ std::vector<FormField> RecipeHeaderForm(const RecipeRow &a_recipe) {
                                  .text = std::to_string(a_recipe.priority),
                                  .bind = BindPriority(),
                                  .allowEmpty = true}));
+  form.push_back(ChoiceField(
+      "override", std::string{OverrideModeName(a_recipe.overrideMode)},
+      WordsOf(kOverrideModes), BindOverride()));
   form.push_back(TextEntryField({.name = "clockSpeed",
                                  .kind = FieldKind::kText,
                                  .text = ParamText(a_recipe.clockSpeed),
