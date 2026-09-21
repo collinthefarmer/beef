@@ -905,6 +905,8 @@ Output SurfaceOutputFrom(Reader &a_r, Surface a_surface,
   if (const auto *sel = a_r.Child("selector"))
     m.selector = SelectorFrom(*sel, a_ctx);
   a_r.Read("replace", m.replace);
+  if (a_r.Has("resolution"))
+    m.resolution = a_r.Enum("resolution", kResolutions);
   if (const auto *stack = a_r.Child("stack"))
     StackFrom(*stack, m.stack, a_ctx);
   a_r.Finish();

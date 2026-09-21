@@ -241,6 +241,44 @@ std::string_view SlotName(Slot a_slot) noexcept {
   return NameOf(kSlots, a_slot);
 }
 
+std::string_view ResolutionName(Resolution a_resolution) noexcept {
+  return NameOf(kResolutions, a_resolution);
+}
+
+std::optional<Resolution> ParseResolution(std::string_view a_name) noexcept {
+  return FromName(kResolutions, a_name);
+}
+
+Resolution DefaultSlotResolution(Slot a_slot) noexcept {
+  switch (a_slot) {
+  case Slot::kNormal:
+  case Slot::kHeight:
+    return Resolution::kFull;
+  case Slot::kDiffuse:
+  case Slot::kRmaos:
+    return Resolution::kHalf;
+  case Slot::kEmissive:
+  case Slot::kFuzz:
+  case Slot::kGlint:
+  case Slot::kCoat:
+  case Slot::kSubsurface:
+    return Resolution::kQuarter;
+  }
+  return Resolution::kFull;
+}
+
+std::uint32_t ResolutionDivisor(Resolution a_resolution) noexcept {
+  switch (a_resolution) {
+  case Resolution::kFull:
+    return 1;
+  case Resolution::kHalf:
+    return 2;
+  case Resolution::kQuarter:
+    return 4;
+  }
+  return 1;
+}
+
 ValueType SourceType(const Source &a_source) noexcept {
   return Match(
       a_source.kind,

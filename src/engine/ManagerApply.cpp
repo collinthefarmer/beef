@@ -174,6 +174,13 @@ RuntimeTextureSizes RuntimeSizes(const Settings &a_settings,
   return {TextureSize(requested), maxSize};
 }
 
+TextureSize SlotStackSize(TextureSize a_base, Slot a_slot,
+                          const std::optional<Resolution> &a_override) {
+  const Resolution resolution =
+      a_override.value_or(DefaultSlotResolution(a_slot));
+  return TextureSize(a_base.Pixels() / ResolutionDivisor(resolution));
+}
+
 EventRecord EquipEvent(const std::vector<LivePiece> &a_pieces) {
   EventRecord record;
   record.id = "equip";
@@ -387,8 +394,10 @@ void PrepareChainStacks(LiveActor &a_state, LiveGeometry &a_bound,
       if (!output.problem.empty()) {
         continue;
       }
+      const TextureSize slotSize =
+          SlotStackSize(size, slot.slot, located->surface.resolution);
       output.stack = Compositor::GetSingleton()->Prepare(
-          located->recipe, located->surface, a_bound.inputs, size, maxSize);
+          located->recipe, located->surface, a_bound.inputs, slotSize, maxSize);
       if (!output.stack) {
         output.problem = "the texture lab is unavailable";
       } else if (a_settings.verboseLogging) {

@@ -127,6 +127,40 @@ int main() {
 
   Check(Recipe{} == Recipe{}, "two empty recipes compare equal");
 
+  {
+    Check(DefaultSlotResolution(Slot::kNormal) == Resolution::kFull &&
+              DefaultSlotResolution(Slot::kHeight) == Resolution::kFull,
+          "normal and height default to full resolution");
+    Check(DefaultSlotResolution(Slot::kDiffuse) == Resolution::kHalf &&
+              DefaultSlotResolution(Slot::kRmaos) == Resolution::kHalf,
+          "diffuse and rmaos default to half resolution");
+    Check(DefaultSlotResolution(Slot::kEmissive) == Resolution::kQuarter &&
+              DefaultSlotResolution(Slot::kGlint) == Resolution::kQuarter,
+          "emissive and the response slots default to quarter resolution");
+    Check(ResolutionDivisor(Resolution::kFull) == 1 &&
+              ResolutionDivisor(Resolution::kHalf) == 2 &&
+              ResolutionDivisor(Resolution::kQuarter) == 4,
+          "the resolution divisors are 1, 2 and 4");
+    Check(ParseResolution("quarter") == Resolution::kQuarter &&
+              ResolutionName(Resolution::kQuarter) == "quarter",
+          "a resolution name round-trips");
+
+    Recipe withRes;
+    withRes.id = "res";
+    SurfaceOutput out;
+    out.slot = Slot::kEmissive;
+    out.resolution = Resolution::kHalf;
+    out.scalars.strength = 1.0f;
+    withRes.outputs.push_back(out);
+    const Recipe back = StableRoundTrip(SerializeRecipe(withRes), "res",
+                                        "an output resolution");
+    const SurfaceOutput *readback =
+        back.outputs.empty() ? nullptr
+                             : Get<SurfaceOutput>(back.outputs.front());
+    Check(readback != nullptr && readback->resolution == Resolution::kHalf,
+          "the per-output resolution survives the round trip");
+  }
+
   const std::vector<std::string> fixtures = FixtureRecipeNames();
   Check(fixtures.size() >= 7,
         std::format("the recipe fixture folder holds at least the seven "

@@ -226,6 +226,7 @@
             "thickness": { "$ref": "#/$defs/param", "description": "subsurface thickness." },
             "selector": { "$ref": "#/$defs/selector" },
             "replace": { "type": "boolean", "description": "Drop lower-priority recipes' stacks and scalars on this slot." },
+            "resolution": { "enum": ["full", "half", "quarter"], "description": "Override the slot's default target resolution: a fraction of the material's native map size. Default by slot: normal and height full, diffuse and rmaos half, emissive and the response slots quarter." },
             "stack": { "type": "array", "items": { "$ref": "#/$defs/layer" } }
           },
           "additionalProperties": false,

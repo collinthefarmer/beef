@@ -541,6 +541,18 @@ enum class Slot {
 inline constexpr std::size_t kSlotCount = 9;
 [[nodiscard]] std::string_view SlotName(Slot a_slot) noexcept;
 
+enum class Resolution {
+  kFull,
+  kHalf,
+  kQuarter,
+};
+inline constexpr std::size_t kResolutionCount = 3;
+[[nodiscard]] std::string_view ResolutionName(Resolution a_resolution) noexcept;
+[[nodiscard]] std::optional<Resolution>
+ParseResolution(std::string_view a_name) noexcept;
+[[nodiscard]] Resolution DefaultSlotResolution(Slot a_slot) noexcept;
+[[nodiscard]] std::uint32_t ResolutionDivisor(Resolution a_resolution) noexcept;
+
 [[nodiscard]] ValueType SourceType(const Source &a_source) noexcept;
 
 [[nodiscard]] bool IsName(std::string_view a_text) noexcept;
@@ -646,6 +658,7 @@ struct SurfaceOutput {
   SlotScalars scalars;
   Selector selector;
   bool replace = false;
+  std::optional<Resolution> resolution;
   std::vector<Layer> stack;
   [[nodiscard]] bool operator==(const SurfaceOutput &) const = default;
 };

@@ -175,6 +175,11 @@ static_assert(Complete(kSignalKinds, kSignalKindCount));
 inline constexpr Named<Surface> kSurfaces[]{{Surface::kMaterial, "material"},
                                             {Surface::kShell, "shell"}};
 static_assert(Complete(kSurfaces, kSurfaceCount));
+inline constexpr Named<Resolution> kResolutions[]{
+    {Resolution::kFull, "full"},
+    {Resolution::kHalf, "half"},
+    {Resolution::kQuarter, "quarter"}};
+static_assert(Complete(kResolutions, kResolutionCount));
 inline constexpr ScalarFieldSpec kScalarFields[]{
     {ScalarField::kStrength, "strength", &SlotScalars::strength, 1.0f},
     {ScalarField::kScale, "scale", &SlotScalars::scale, 1.0f},

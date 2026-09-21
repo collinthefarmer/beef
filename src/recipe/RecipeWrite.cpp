@@ -393,6 +393,8 @@ json SurfaceOutputToJson(const SurfaceOutput &m) {
   if (!m.selector.All())
     w.Set("selector", SelectorToJson(m.selector));
   w.WriteIf("replace", m.replace, false);
+  if (m.resolution)
+    w.Set("resolution", std::string{ResolutionName(*m.resolution)});
   json stack = json::array();
   for (const auto &l : m.stack) {
     stack.push_back(LayerToJson(l));

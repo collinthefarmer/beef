@@ -111,12 +111,21 @@ justifies. Belongs to the roadmap's packaging item. Size S.
 
 ## Decisions this plan asks for
 
-1. The budget number the gate holds (proposed: 1 GiB at full scale for
-   the stress scene).
-2. Default per-slot factors (proposed above).
-3. The per-output resolution override as a format-1 field — needed
-   before the gate-5 freeze either way, as a yes or a written no.
-4. The idle-trim threshold (proposed 30 s) — minor, settled with stage 5.
+Settled 2026-09-21:
+
+1. **Budget: 1 GiB** of target VRAM for the stress scene (28 actors) at
+   full texture scale, on 8-12 GiB cards beside a 2K pack.
+2. **Default per-slot factors:** normal and height full; diffuse and
+   rmaos half; emissive and the response slots (fuzz, glint, coat,
+   subsurface) quarter. Masks and intermediates follow their consumer.
+3. **Per-output resolution field: yes**, added to format 1 now as
+   `resolution: full|half|quarter` on an output, overriding the slot
+   default. Ships with stage 1 so the schema-agreement test and the
+   freeze see it together.
+
+Open, minor:
+
+4. The idle-trim threshold (proposed 30 s) — settled with stage 5.
 
 ## Order
 

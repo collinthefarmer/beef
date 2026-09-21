@@ -184,7 +184,7 @@ void OutputScalarsMatchTheTable(const json &a_schema) {
   if (properties != nullptr && properties->is_object()) {
     for (const auto &[name, value] : properties->items()) {
       if (name != "target" && name != "slot" && name != "selector" &&
-          name != "replace" && name != "stack") {
+          name != "replace" && name != "resolution" && name != "stack") {
         scalars.push_back(name);
       }
     }
@@ -200,6 +200,8 @@ void OutputEnumsMatchTheTables(const json &a_schema) {
               WordsOf(kSurfaces), "surface");
   EnumMatches(a_schema, "/$defs/output/oneOf/0/properties/slot/enum",
               WordsOf(kSlots), "slot");
+  EnumMatches(a_schema, "/$defs/output/oneOf/0/properties/resolution/enum",
+              WordsOf(kResolutions), "resolution");
   EnumMatches(a_schema, "/$defs/shell/properties/material/enum",
               WordsOf(kShellMaterials), "shell material");
   EnumMatches(a_schema, "/$defs/shell/properties/blend/enum",
