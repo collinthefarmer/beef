@@ -292,7 +292,7 @@ float TextureLab::MeanLuminance(RE::NiSourceTexture *a_source) {
     return it->second;
   }
   float result = 0.5f;
-  auto target = Acquire(TextureSize(64));
+  auto target = Acquire(TextureSize(64), "mean");
   if (target && Render(*target, a_source, LayerParams{})) {
     result = ReadBackMean(*target).value_or(0.5f);
   } else {
@@ -309,7 +309,7 @@ float TextureLab::MeanChannel(RE::NiSourceTexture *a_source,
     return it->second;
   }
   float result = 0.5f;
-  auto target = Acquire(TextureSize(64));
+  auto target = Acquire(TextureSize(64), "mean");
   if (target) {
     LayerParams p;
     p.mode = Mode::kChannel;

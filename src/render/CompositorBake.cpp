@@ -74,7 +74,7 @@ Compositor::BakeInto(MeshEntry &a_entry, const std::string &a_key,
   if (!buffers.problem.empty()) {
     return std::unexpected(buffers.problem);
   }
-  auto target = lab->Acquire(a_size);
+  auto target = lab->Acquire(a_size, "bake");
   if (!target) {
     return std::unexpected("no render target available");
   }

@@ -19,7 +19,8 @@ public:
   RenderTargetPool &operator=(const RenderTargetPool &) = delete;
 
   [[nodiscard]] std::shared_ptr<RenderTarget>
-  Acquire(REX::W32::ID3D11Device *a_device, TextureSize a_size);
+  Acquire(REX::W32::ID3D11Device *a_device, TextureSize a_size,
+          std::string_view a_owner);
   [[nodiscard]] RenderTarget *Scratch(REX::W32::ID3D11Device *a_device,
                                       TextureSize a_size);
   void ClearScratch();

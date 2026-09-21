@@ -59,6 +59,9 @@ def main():
     heartbeat = collections.Counter()
     heartbeat_max = collections.Counter()
     worst_second = {"refreshes": 0, "refresh_us": 0}
+    target_owners = {}
+    survivor_snapshots = []
+    last_session = None
     for line in lines_in_order(segments):
             try:
                 event = json.loads(line)
@@ -75,9 +78,24 @@ def main():
                 rotations += 1
                 if not startup:
                     startup = {k: v for k, v in fields.items() if k in ("build", "source_sha256")}
+            try:
+                session = int(event.get("session"))
+            except (TypeError, ValueError):
+                session = None
+            if session is not None and (last_session is None
+                                        or session > last_session):
+                if last_session is not None and target_owners:
+                    survivor_snapshots.append(
+                        (last_session, session,
+                         collections.Counter(target_owners.values())))
+                last_session = session
             if kind == "texture":
                 action = fields.get("action")
                 target = fields.get("target")
+                if action == "acquire":
+                    target_owners[target] = str(fields.get("owner", "untagged"))
+                elif action in ("recycle", "destroy"):
+                    target_owners.pop(target, None)
                 if action == "acquire":
                     presenter = fields.get("presenter")
                     if presenter and any(p == presenter and t != target
@@ -164,6 +182,18 @@ def main():
             mean = stats["us"] / stats["count"] / 1000 if stats["count"] else 0
             print(f"  Readback {op}: {stats['count']}; mean {mean:.1f} ms, "
                   f"max {stats['max_us'] / 1000:.1f} ms")
+    if survivor_snapshots or target_owners:
+        print("Live targets by owner (acquired, not yet recycled or destroyed):")
+        for before, after, owners in survivor_snapshots:
+            summary = ", ".join(f"{owner}: {count}"
+                                for owner, count in owners.most_common())
+            print(f"  crossing session {before} -> {after}: "
+                  f"{sum(owners.values())} ({summary})")
+        if target_owners:
+            owners = collections.Counter(target_owners.values())
+            summary = ", ".join(f"{owner}: {count}"
+                                for owner, count in owners.most_common())
+            print(f"  at end of trace: {sum(owners.values())} ({summary})")
     print(f"Segments read: {len(segments)}; rotations seen: {rotations}")
     if rotations and len(segments) <= rotations:
         print("Earlier segments were deleted by rotation; the trace starts mid-run.")

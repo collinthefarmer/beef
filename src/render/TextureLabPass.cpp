@@ -566,7 +566,7 @@ TextureLab::SampleMaterial(RE::NiSourceTexture *a_rmaos,
     return fail(a_diffuse,
                 "the diffuse map is null or not a resident 2D texture");
   }
-  auto target = Acquire(TextureSize(kSampleSide));
+  auto target = Acquire(TextureSize(kSampleSide), "sample");
   if (!target || target->size != kSampleSide) {
     return fail(a_rmaos, "no sample target");
   }

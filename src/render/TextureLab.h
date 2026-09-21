@@ -206,7 +206,8 @@ public:
   bool Init();
   [[nodiscard]] bool Available() const noexcept;
 
-  std::shared_ptr<RenderTarget> Acquire(TextureSize a_size);
+  std::shared_ptr<RenderTarget> Acquire(TextureSize a_size,
+                                        std::string_view a_owner);
 
   bool Render(RenderTarget &a_target, RE::NiSourceTexture *a_source,
               const LayerParams &a_params);

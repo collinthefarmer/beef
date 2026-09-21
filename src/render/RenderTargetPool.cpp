@@ -144,7 +144,8 @@ bool RenderTargetPool::CreateTarget(ID3D11Device *a_device,
 }
 
 std::shared_ptr<RenderTargetPool::RenderTarget>
-RenderTargetPool::Acquire(ID3D11Device *a_device, TextureSize a_size) {
+RenderTargetPool::Acquire(ID3D11Device *a_device, TextureSize a_size,
+                          std::string_view a_owner) {
   if (!a_device) {
     return nullptr;
   }
@@ -181,6 +182,7 @@ RenderTargetPool::Acquire(ID3D11Device *a_device, TextureSize a_size) {
       Trace::Event::kTexture,
       {{"action", "acquire"},
        {"target", std::to_string(target->traceID_)},
+       {"owner", std::string{a_owner}},
        {"generation", std::to_string(target->generation_)},
        {"address", Trace::Pointer(target.get())},
        {"presenter", Trace::Pointer(target->presenter.get())},
@@ -204,7 +206,7 @@ RenderTargetPool::RenderTarget *
 RenderTargetPool::Scratch(ID3D11Device *a_device, TextureSize a_size) {
   auto &target = scratch_[a_size.Pixels()];
   if (!target) {
-    target = Acquire(a_device, a_size);
+    target = Acquire(a_device, a_size, "scratch");
   }
   return target.get();
 }

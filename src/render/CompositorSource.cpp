@@ -63,7 +63,8 @@ RenderNormalSlope(const MaterialInputs &a_material, std::string &a_problem) {
   const auto extent = TextureLab::ExtentOf(a_material.normal.get());
   auto *lab = TextureLab::GetSingleton();
   auto target = lab->Acquire(
-      TextureSize(extent ? std::max(extent->width, extent->height) : 0));
+      TextureSize(extent ? std::max(extent->width, extent->height) : 0),
+      "normalSlope");
   if (!target) {
     a_problem = "no render target for the normal slope";
     return nullptr;
@@ -108,7 +109,8 @@ RenderClusterMap(const GeometryInputs &a_inputs,
   const auto extent = TextureLab::ExtentOf(material.rmaos.get());
   auto *lab = TextureLab::GetSingleton();
   auto target = lab->Acquire(
-      TextureSize(extent ? std::max(extent->width, extent->height) : 0));
+      TextureSize(extent ? std::max(extent->width, extent->height) : 0),
+      "clusters");
   if (!target) {
     derived.clustersProblem = "no render target for the cluster map";
     return nullptr;
@@ -769,7 +771,7 @@ Compositor::PrepareRenderedMask(const Recipe &a_recipe, std::string_view a_name,
     return fail(
         "the interpreter shader did not compile (see the log at start)");
   }
-  r.target_ = TextureLab::GetSingleton()->Acquire(a_size);
+  r.target_ = TextureLab::GetSingleton()->Acquire(a_size, "program");
   if (!r.target_) {
     return fail("no render target available");
   }
@@ -805,7 +807,7 @@ Compositor::PrepareRipple(const RecipeTextureKey &a_key,
     return std::unexpected(positions.error());
   }
   auto ripple = std::make_shared<RenderedRipple>();
-  ripple->target_ = lab->Acquire(size);
+  ripple->target_ = lab->Acquire(size, "ripple");
   if (!ripple->target_) {
     return std::unexpected("no render target available");
   }

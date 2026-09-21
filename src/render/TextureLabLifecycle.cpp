@@ -216,8 +216,8 @@ bool TextureLab::CompileShaders(GpuResources &a_resources) {
 }
 
 std::shared_ptr<TextureLab::RenderTarget>
-TextureLab::Acquire(TextureSize a_size) {
-  return Init() ? targets_->Acquire(borrowedDevice_, a_size) : nullptr;
+TextureLab::Acquire(TextureSize a_size, std::string_view a_owner) {
+  return Init() ? targets_->Acquire(borrowedDevice_, a_size, a_owner) : nullptr;
 }
 
 TextureLab::RenderTarget *TextureLab::Scratch(TextureSize a_size) {

@@ -104,7 +104,7 @@ TexturePreviews::PrepareRequest(const PreviewKey &a_key, PreviewEntry &a_entry,
       !a_entry.dynamic && !a_entry.dirty && a_entry.ready)
     return std::nullopt;
   if (!a_entry.target)
-    a_entry.target = renderer_.Acquire(TextureSize(128));
+    a_entry.target = renderer_.Acquire(TextureSize(128), "preview");
   if (!a_entry.target)
     return std::nullopt;
   if (a_entry.generation != a_generation) {

@@ -9,9 +9,9 @@ import unittest
 ROOT = pathlib.Path(__file__).resolve().parents[2]
 
 
-def event(seq, kind, **fields):
+def event(seq, kind, session=0, **fields):
     return json.dumps({"schema": 1, "run": "r", "seq": seq, "event": kind,
-                       "fields": fields, "session": 0, "command": 0}) + "\n"
+                       "fields": fields, "session": session, "command": 0}) + "\n"
 
 
 class TraceReportTests(unittest.TestCase):
@@ -57,6 +57,21 @@ class TraceReportTests(unittest.TestCase):
         self.assertIn("Sink churn: 3 adds, 1 removes", result.stdout)
         self.assertIn("Targets peak: 5 of 512 slots; VRAM peak 2 MiB", result.stdout)
         self.assertIn("Readback mean: 1; mean 1.5 ms, max 1.5 ms", result.stdout)
+
+    def test_survivors_are_grouped_by_owner_at_session_boundaries(self):
+        (self.root / "beef-trace-10.jsonl").write_text(
+            event(1, "startup", build="b4", source_sha256="s")
+            + event(2, "texture", action="acquire", target="1", owner="stack")
+            + event(3, "texture", action="acquire", target="2", owner="stack")
+            + event(4, "texture", action="acquire", target="3", owner="preview")
+            + event(5, "texture", action="recycle", target="2")
+            + event(6, "page", session=1, page="Recipes", selection="")
+            + event(7, "texture", session=1, action="destroy", target="3"))
+        result = self.report(self.root / "beef-trace-10.jsonl")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn("crossing session 0 -> 1: 2 (stack: 1, preview: 1)",
+                      result.stdout)
+        self.assertIn("at end of trace: 1 (stack: 1)", result.stdout)
 
     def test_single_unrotated_file_reports_no_rotation(self):
         (self.root / "beef-trace-8.jsonl").write_text(

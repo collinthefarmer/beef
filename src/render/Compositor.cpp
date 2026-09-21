@@ -87,7 +87,7 @@ std::shared_ptr<TextureLab::RenderTarget> Compositor::NeutralHeight() {
   }
   TextureLab *lab = TextureLab::GetSingleton();
   std::shared_ptr<TextureLab::RenderTarget> target =
-      lab->Acquire(TextureSize(64));
+      lab->Acquire(TextureSize(64), "neutralHeight");
   if (!target) {
     return nullptr;
   }
@@ -160,7 +160,7 @@ Compositor::Prepare(const Recipe &a_recipe, const SurfaceOutput &a_output,
     stack->layers_.push_back(std::move(prepared));
   }
   if (!stack->layers_.empty()) {
-    stack->target_ = lab->Acquire(size);
+    stack->target_ = lab->Acquire(size, "stack");
     if (!stack->target_ || !lab->Scratch(size)) {
       stack->diagnostics_.push_back(
           {Severity::kError, "stack", "no render targets available"});
