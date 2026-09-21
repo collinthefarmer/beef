@@ -284,14 +284,23 @@ until an author sets `EvictDistance`; the measurement enables it and
 watches the peak-target count fall with a crowd that spreads past the
 radius.
 
-Measured 2026-09-21 at `EvictDistance=4000` on a 39-actor crowd: **VRAM
-peak 989 MiB — under the 1 GiB budget** (from 8.0 GiB, an 8x cut), peak
-167 of 512 targets, 25 `evict_far` retires firing as NPCs crossed the
-radius and re-applying on approach, zero slot-exhaustion. With per-slot
-resolution, cross-actor sharing, the raised cap and eviction stacked,
-the gate-1 texture half is solved: a large crowd runs well under budget
-with no freeze or exhaustion. Remaining items (bakes, the free-pool
-trim, the per-output predicate) are optional tuning, not blockers.
+Measured 2026-09-21 at `EvictDistance=4000`:
+- **Static crowd, 39 actors: VRAM peak 989 MiB** (from 8.0 GiB, an 8x
+  cut), peak 167 of 512 targets, 25 `evict_far` retires, zero
+  exhaustion.
+- **Animation-heavy stress crowd, 39 actors: VRAM peak 1.07 GiB**, peak
+  392 of 512, 32 `evict_far`, zero exhaustion — the scenario that was
+  8 GiB, 512-pinned, with 531 exhaustion errors before this work. Just
+  over the 1 GiB budget on a load harsher than any real content.
+
+With per-slot resolution, cross-actor sharing, the raised cap and
+eviction stacked, the gate-1 texture half is solved: no freeze, no
+exhaustion, at or under budget. The animated worst case's live targets
+are stack 184 (animated, unshareable), **bake 77**, program 45,
+clusters 22 — so mesh-intrinsic bake sharing is the one lever that would
+take even that case comfortably under 1 GiB. Remaining items (bakes, the
+free-pool trim, the per-output predicate) are optional tuning, not
+blockers.
 
 ## Stage 5: trim the free pool in play — dispersal aid
 
