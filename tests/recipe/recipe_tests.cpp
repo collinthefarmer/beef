@@ -161,6 +161,26 @@ int main() {
           "the per-output resolution survives the round trip");
   }
 
+  {
+    Check(ParseOverrideMode("sampled") == OverrideMode::kSampled &&
+              OverrideModeName(OverrideMode::kSampled) == "sampled",
+          "an override mode name round-trips");
+    Recipe defaulted;
+    defaulted.id = "def";
+    Check(defaulted.overrideMode == OverrideMode::kStack,
+          "a recipe defaults to the stack override mode");
+    Check(!SerializeRecipe(defaulted).contains("override"),
+          "the default override mode is omitted from the file");
+
+    Recipe sampled;
+    sampled.id = "samp";
+    sampled.overrideMode = OverrideMode::kReplace;
+    const Recipe back =
+        StableRoundTrip(SerializeRecipe(sampled), "samp", "an override mode");
+    Check(back.overrideMode == OverrideMode::kReplace,
+          "the recipe override mode survives the round trip");
+  }
+
   const std::vector<std::string> fixtures = FixtureRecipeNames();
   Check(fixtures.size() >= 7,
         std::format("the recipe fixture folder holds at least the seven "

@@ -180,6 +180,12 @@ inline constexpr Named<Resolution> kResolutions[]{
     {Resolution::kHalf, "half"},
     {Resolution::kQuarter, "quarter"}};
 static_assert(Complete(kResolutions, kResolutionCount));
+inline constexpr Named<OverrideMode> kOverrideModes[]{
+    {OverrideMode::kStack, "stack"},
+    {OverrideMode::kReplace, "replace"},
+    {OverrideMode::kSampled, "sampled"},
+    {OverrideMode::kLerp, "lerp"}};
+static_assert(Complete(kOverrideModes, kOverrideModeCount));
 inline constexpr ScalarFieldSpec kScalarFields[]{
     {ScalarField::kStrength, "strength", &SlotScalars::strength, 1.0f},
     {ScalarField::kScale, "scale", &SlotScalars::scale, 1.0f},

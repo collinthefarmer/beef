@@ -16,6 +16,7 @@
     "meta": { "type": "object", "description": "Free-form, kept verbatim through load and save." },
     "keys": { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/key" } },
     "priority": { "type": "integer", "description": "Merge order among matching recipes, lower first. Default by the matched key's kind: default 0, material 10, keyword 20, armor 30, effectShader 40, enchantment 50, magicEffect 60." },
+    "override": { "enum": ["stack", "replace", "sampled", "lerp"], "description": "How this recipe combines with lower-priority recipes contesting the same piece. stack (default) merges outputs per slot; replace drops the lower-priority work on the slots this recipe writes; sampled joins a per-piece pool from which each actor gets exactly one member, chosen by its form id; lerp is reserved." },
     "clock": {
       "type": "object", "additionalProperties": false,
       "properties": { "speed": { "type": "number", "default": 1.0 } }

@@ -510,6 +510,8 @@ std::string SerializeRecipe(const Recipe &a_recipe) {
   root["keys"] = std::move(keys);
   if (a_recipe.priority)
     root["priority"] = *a_recipe.priority;
+  if (a_recipe.overrideMode != OverrideMode::kStack)
+    root["override"] = std::string{OverrideModeName(a_recipe.overrideMode)};
   if (a_recipe.clock != Clock{})
     root["clock"] = json::object({{"speed", Num(a_recipe.clock.speed)}});
 

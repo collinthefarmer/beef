@@ -174,6 +174,9 @@ void RecipeShapeMatchesTheTables(const json &a_schema) {
   Check(!partitions.empty(), "the partition name enum exists");
   Equal(Joined(Sorted(partitions)), Joined(Sorted(WordsOf(kBipedSlots))),
         "partition names");
+
+  EnumMatches(a_schema, "/properties/override/enum", WordsOf(kOverrideModes),
+              "override mode");
 }
 
 void OutputScalarsMatchTheTable(const json &a_schema) {

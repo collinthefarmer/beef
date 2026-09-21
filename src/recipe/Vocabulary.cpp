@@ -279,6 +279,15 @@ std::uint32_t ResolutionDivisor(Resolution a_resolution) noexcept {
   return 1;
 }
 
+std::string_view OverrideModeName(OverrideMode a_mode) noexcept {
+  return NameOf(kOverrideModes, a_mode);
+}
+
+std::optional<OverrideMode>
+ParseOverrideMode(std::string_view a_name) noexcept {
+  return FromName(kOverrideModes, a_name);
+}
+
 ValueType SourceType(const Source &a_source) noexcept {
   return Match(
       a_source.kind,

@@ -847,11 +847,23 @@ inline constexpr int kRecipeFormat = 1;
 inline constexpr std::size_t kMaxRecipeRows = 4096;
 inline constexpr std::size_t kMaxRecipeDepth = 32;
 
+enum class OverrideMode {
+  kStack,
+  kReplace,
+  kSampled,
+  kLerp,
+};
+inline constexpr std::size_t kOverrideModeCount = 4;
+[[nodiscard]] std::string_view OverrideModeName(OverrideMode a_mode) noexcept;
+[[nodiscard]] std::optional<OverrideMode>
+ParseOverrideMode(std::string_view a_name) noexcept;
+
 struct Recipe {
   std::string id;
   Metadata metadata;
   std::vector<RecipeKey> keys;
   std::optional<int> priority;
+  OverrideMode overrideMode = OverrideMode::kStack;
   Clock clock;
   std::vector<Signal> signals;
   std::vector<Curve> curves;

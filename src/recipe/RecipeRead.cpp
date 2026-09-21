@@ -1154,6 +1154,8 @@ LoadResult ParseRecipe(std::string_view a_json, std::string_view a_id) {
   ReadMetadata(r, ctx, recipe.metadata);
   ReadKeys(r, ctx, recipe.keys);
   recipe.priority = r.Integer("priority");
+  if (r.Has("override"))
+    r.Read("override", kOverrideModes, recipe.overrideMode);
   if (const auto *clock = r.Child("clock")) {
     Reader c(*clock, ctx.At("clock"));
     if (auto speed = c.Number("speed"))
