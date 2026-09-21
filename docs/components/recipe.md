@@ -116,13 +116,42 @@ into one material or shell **slot**, and a `LightOutput` describes one
 
 | Type | Description |
 |---|---|
-| `SurfaceOutput` | One slot write: a `Surface` (material or shell), a `Slot`, its `SlotScalars`, a `Selector`, a replace flag that drops lower-priority recipes' work on the slot, and the layer `stack`. |
+| `SurfaceOutput` | One slot write: a `Surface` (material or shell), a `Slot`, its `SlotScalars`, a `Selector`, a replace flag that drops lower-priority recipes' work on the slot, an optional `Resolution` that overrides the slot's default target size, and the layer `stack`. |
 | `Layer` | One entry in a `stack`: a `LayerSource`, an optional `CurveRef`, a `Blend`, an opacity `Param`, an optional color and mask, and the `ChannelSet` it writes. |
 | `LayerSource` | `Ref \| Vec3`: a source or mask by name, or a constant color. |
 | `Blend` | How a layer combines with the stack below: replace, multiply, add, subtract, screen, lerp, or normal; `BlendSpec` maps each to its shader mode and marks `normal` as normal-stack only. |
 | `SlotScalars` | The per-slot scalar `Param`s (strength, scale, color, weight, and the rest of `ScalarField`); `SlotSpec` says which fields a slot takes and which are required. |
 | `Slot` | The nine writable slots: diffuse, emissive, rmaos, normal, height, fuzz, glint, coat, subsurface. |
 | `LightOutput` | One light: `Bones` placement (skinned or named), offset, color, intensity, size, cutoff, a shadow flag, an optional bulb form, a `Selector`, and a replace flag. |
+
+### Texture size (`Recipe.h`)
+
+A **surface output**'s stack renders into a runtime **target** sized per
+**slot**. `Resolution` scales that size down to save texture memory.
+`DefaultSlotResolution` gives each slot its default; a `SurfaceOutput`'s
+optional `resolution` overrides that default for the one output. The render
+layer and `engine/` size the target from the choice; `ResolutionDivisor`
+turns it into the number the full size divides by.
+
+| Type | Description |
+|---|---|
+| `Resolution` | The three target sizes: `kFull`, `kHalf`, `kQuarter`. `ResolutionName`/`ParseResolution` map each to its wire word (`full`, `half`, `quarter`) through the `kResolutions` table in `Words.h`. |
+| `DefaultSlotResolution(Slot)` | The slot's default size: full for normal and height, half for diffuse and rmaos, quarter for emissive, fuzz, glint, coat, and subsurface. |
+| `ResolutionDivisor(Resolution)` | The divisor the resolution applies to the slot's full size: 1, 2, or 4. |
+
+### Cross-actor sharing (`Recipe.h`; `Vocabulary.cpp`)
+
+Two actors in the same armour can share one rendered **target** only when
+that target's inputs do not vary by actor. These predicates are the
+correctness gate for that reuse; the render **compositor** reads them to
+decide whether one actor's target can serve another. A shareable input is
+static (not `IsAnimated`) and reads no per-actor geometry.
+
+| Function | Description |
+|---|---|
+| `ShareableAcrossActors(const Recipe&, const Output&)` | True when the output is a `SurfaceOutput`, is not `IsAnimated`, and `RecipeInputsAreActorIndependent` holds. |
+| `ShareableAcrossActors(const Recipe&, const Mask&)` | True when the mask is not `IsAnimated` and `RecipeInputsAreActorIndependent` holds. |
+| `RecipeInputsAreActorIndependent(const Recipe&)` | True when no source in the recipe is a `BakeSource` or `DistanceSource`; those two read per-actor geometry. |
 
 ### Diagnostics (`Recipe.h`)
 

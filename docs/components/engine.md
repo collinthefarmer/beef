@@ -48,6 +48,24 @@ that owns every applied actor. `Manager` hands per-actor queueing to
 | `ApplicationToken` | The lookup handle `Find` takes. It names one change by recipe id, revision, actor id and attempt. | `studio/ApplicationRecord.h` |
 | `SessionQueue` | Serialises per-actor refresh tasks onto the SKSE task interface. It also holds the equip-finalize timers and the load gate (`BeginLoad`/`Resume`). | `SessionQueue.h` |
 
+### Texture-memory controls
+
+Two controls cap texture memory for large crowds. Distance eviction keeps
+the applied working set near the player. Per-slot sizing shrinks each
+stack's render target below the material's native size. The render
+`Compositor` also shares one target across actors, but that is render/'s
+concern.
+
+| Member | Description | Declared in |
+|---|---|---|
+| `Manager::SweepEviction` | Runs once a second from `OnFrame`. It retires each applied non-player actor past `Settings::evictDistance` into `evictedForDistance_`, and `QueueRefresh`es an evicted actor that has closed back inside the hysteresis band. | `Manager.h` |
+| `Manager::evictedForDistance_` | The set of actor ids held out for distance. `Manager::Refresh` skips a far actor into it and drops one when it applies. `Manager::Clear` empties it on save-load teardown. | `Manager.h` |
+| `EvictionFor` / `EvictionAction` | The pure decision. It returns `kEvict` past the distance, `kRestore` once the actor is back inside 80% of it (the hysteresis band), `kNone` otherwise. | `planners/Eviction.h` |
+| `Settings::evictDistance` | The eviction radius in game units. 0 disables eviction; `kMaxEvictDistance` (20000) caps it. | `Settings.h` |
+| `SlotStackSize` | Scales a stack's runtime target down per slot: `a_base` pixels divided by `ResolutionDivisor` of the slot's `Resolution`. `PrepareChainStacks` calls it before `Compositor::Prepare`. | `ManagerApply.cpp` |
+| `DefaultSlotResolution` / `ResolutionDivisor` | The per-slot default `Resolution` and its divisor (`kFull` 1, `kHalf` 2, `kQuarter` 4). | `recipe/Recipe.h` |
+| `SurfaceOutput::resolution` | A recipe output's optional `Resolution`. When set it overrides `DefaultSlotResolution` for that output's slot. | `recipe/Recipe.h` |
+
 ### Actor and worn-piece state
 
 All eight records are declared in `LiveActor.h`. `Manager::Refresh` fills
@@ -95,6 +113,12 @@ Manager::QueueRefresh ──▶ ApplicationService::Refresh   Manager.cpp / Appl
   ▼
 Manager::RunRefresh ──▶ Manager::Refresh                ManagerApply.cpp
   │   CollectPieces / MatchRecipes / PlaceInstances
+  │   (Refresh skips an actor past Settings::evictDistance into
+  │    evictedForDistance_, and drops one from the set when it applies)
+  ▼
+PlaceInstances ──▶ PlaceOnGeometry ──▶ PrepareChainStacks   ManagerApply.cpp
+  │   SlotStackSize scales each slot's runtime target down
+  │   (ResolutionDivisor of the slot's Resolution) before Compositor::Prepare
   ▼
 applied_[actorID] = LiveActor                           (held on Manager)
 
@@ -103,6 +127,11 @@ PlayerCharacter::Update hook (every frame)              Hooks.cpp
   ▼
 Manager::OnFrame ──▶ Manager::Tick                      ManagerTick.cpp
   │   TickInstance advances each LiveInstance's signals
+  │
+  ├─(once a second) Manager::SweepEviction              ManagerTick.cpp
+  │      retires an applied non-player actor past Settings::evictDistance
+  │      into evictedForDistance_ (evict_far retire trace), and
+  │      QueueRefreshes an evicted actor back inside the hysteresis band
   ▼
 RenderPieces ──▶ RenderGeometry ──▶ MaterialBinding/ShellBinding   ManagerTick.cpp, render/Binding.cpp
 
@@ -132,7 +161,7 @@ re-Manager::Refresh of the retired actors ── rejoins (a): MatchRecipes
 | Concern | Key files |
 |---|---|
 | Event sinks and hooks | `Events.h`/`.cpp` (equip, load, hit, node-update, animation sinks), `Hooks.h`/`.cpp` (the `PlayerCharacter::Update` vfunc hook) |
-| The manager | `Manager.h`, `Manager.cpp` (construction, load/clear), `ManagerApplication.cpp` (`ChangeAndRebuildActors`, application bookkeeping), `ManagerApply.cpp` (`Refresh`/`Retire`, `CollectPieces`, `MatchRecipes`, `PlaceInstances`), `ManagerEvents.cpp` (`Fire`/`FireAt`/`QueueEvent`), `ManagerInspection.cpp` (the `RequestMesh` debug probe), `ManagerSnapshot.cpp` (`GetStatus`, `BuildSnapshot`, `PublishSnapshot`, `Watch`), `ManagerTick.cpp` (`OnFrame`, `Tick`, `RenderPieces`, `RenderGeometry`, `UpdateLights`) |
+| The manager | `Manager.h`, `Manager.cpp` (construction, load/clear), `ManagerApplication.cpp` (`ChangeAndRebuildActors`, application bookkeeping), `ManagerApply.cpp` (`Refresh`/`Retire`, `CollectPieces`, `MatchRecipes`, `PlaceInstances`, `PrepareChainStacks`/`SlotStackSize`), `ManagerEvents.cpp` (`Fire`/`FireAt`/`QueueEvent`), `ManagerInspection.cpp` (the `RequestMesh` debug probe), `ManagerSnapshot.cpp` (`GetStatus`, `BuildSnapshot`, `PublishSnapshot`, `Watch`), `ManagerTick.cpp` (`OnFrame`, `SweepEviction`, `Tick`, `RenderPieces`, `RenderGeometry`, `UpdateLights`) |
 | Application and session bookkeeping | `ApplicationService.h`/`.cpp` (per-recipe `ApplicationToken` tracking, rejection handling), `SessionQueue.h`/`.cpp` (per-actor task serialisation onto the SKSE task interface) |
 | Actor and worn-piece state | `LiveActor.h`/`.cpp` (`LiveActor`, `LivePiece`, `LiveGeometry`, `RetireGeometry`, `ResolvePlacement`), `Environment.h`/`.cpp` (`ActorEnvironment`, the `SignalEnvironment` a `LiveInstance` ticks against) |
 | Recipe CRUD | `RecipeStore.h`/`.cpp` (load, save, mutate, `RefreshRecipeDerivedState`), `RecipeEditor.h`/`.cpp` (gestures, edits, undo/redo, paint sessions, view commands) |

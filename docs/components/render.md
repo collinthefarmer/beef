@@ -70,7 +70,34 @@ re-renders only what animates.
 | `LayerFilter` | The **layer** indices `Render` hides; `Hides` answers for one index. |
 | `StackBase` | The optional texture a **stack** renders on top of, with its animated flag. |
 | `RenderedStack` | The prepared **stack**: its `PreparedLayer`s, its base and result **target**s, its size and animated flag, and the `Diagnostic`s preparation produced. `Texture()` is what the **binding** writes. |
-| `Compositor` | The singleton that prepares and renders **stack**s. Beside them it owns the loaded-image cache, the `MeshCache`, and the per-material analysis records. |
+| `Compositor` | The singleton that prepares and renders **stack**s. Beside them it owns the loaded-image cache, the `MeshCache`, the per-material analysis records, and the cross-actor shared-target caches. |
+
+### Cross-actor sharing
+
+A composited result that is identical across actors is shared, not
+recomputed per geometry. Each shareable resource is keyed by its content,
+so a crowd of same-armor actors adopts one live **target** between them
+instead of baking N. `AdoptSharedTarget` is the one seam every share
+passes through. The caches hold their targets by `weak_ptr`, so the last
+sharer's drop frees the **target** and returns its **presenter** slot.
+
+| Symbol | Description | Declared in |
+|---|---|---|
+| `Shared` (enum) | Names the four shareable resource kinds: `kStack`, `kCluster`, `kMask`, `kBake`. | `Compositor.h` |
+| `AdoptSharedTarget(Shared, key, render)` | The one seam. It returns the kind's live **target** from its `ResourceCache` on a key hit, or runs `render` on a miss and enters the result. On an adopted hit it emits a `kTexture` trace event whose action is `<kind>_shared` (`stack_shared`, `cluster_shared`, `mask_shared`, `bake_shared`). | `Compositor.cpp` |
+| `sharedStacks_`, `sharedClusters_`, `sharedMasks_`, `sharedBakes_` | The four caches, each a `ResourceCache<TextureLab::RenderTarget>` (`planners/ResourceCache.h`) that keys targets by content and holds them by `weak_ptr`. | `Compositor.h` |
+| `SharedCache(Shared)` | Selects one of the four caches by kind. | `Compositor.h` |
+| `ClearSharedStatics()` | Clears all four caches. `Manager.cpp` calls it on the save-load teardown. | `Compositor.h` |
+| `StackShareInputs` | The bundle `StackTarget` keys a **stack** on: the recipe, the `SurfaceOutput`, its output index, and the `MaterialInputs`. | `Compositor.h` |
+| `SharedStaticKey`, `ClusterMapKey`, `MaskShareKey`, `BakeShareKey` | The anonymous key builders, one per kind. A stack key is recipe text \| output index \| size \| source-texture identities; a cluster key adds the cluster settings; a bake key is the mesh identity \| bake key. Each source-texture identity comes from `TextureRefIdentity`. | `Compositor.cpp`, `CompositorSource.cpp`, `CompositorBake.cpp` |
+
+A **stack** or **mask** shares only when `ShareableAcrossActors` (a
+predicate in `recipe/`) holds: the **output** or **mask** is static, with
+no per-actor **bake** or distance **source**. A cluster map or a
+mesh-intrinsic **bake** shares by content identity directly. A render into
+a shared **target** is identical by construction, so a hit is always
+correct. `Compositor::Prepare` now takes a `std::size_t a_outputIndex`,
+which the stack key uses to tell one output's **stack** from another's.
 
 ### Binding and PBR writes
 
@@ -118,9 +145,10 @@ never as a raw pointer, because a generated **target** and a static engine
 texture have different lifetimes. `RegisterTextureTarget` enters a **target**
 into the registry that lets it stand in for an engine texture name.
 
-| Type | Description |
+| Symbol | Description |
 |---|---|
 | `TextureRef` | The handle every consumer holds: a generated render **target** or a static engine texture, told apart without either side reinterpreting the other. `get()` yields the **presenter** or the engine texture, and `Generation()` and `Valid()` tell a live **target** from a stale one. |
+| `TextureRefIdentity` | Returns the underlying engine texture's pointer as a `std::uintptr_t`. The share-key builders use it as one texture's identity, so two materials that point at the same source texture key the same share. It is not `planners/TextureIdentity.h`'s `ImageCacheKey`, which identifies a texture by its load path. |
 
 ## How a stack flows
 
@@ -129,9 +157,15 @@ SlotPlan (recipe/Merge.h)             built by planners/ActorPlanning.cpp
   │                                   (MatchActor) over recipe/Merge.cpp;
   │                                   engine/ManagerApply.cpp carries it
   ▼
-Compositor::Prepare(recipe, surface, geometryInputs, size, maxSize)
+Compositor::Prepare(recipe, surface, outputIndex, geometryInputs, size, maxSize)
   │   CompositorSource.cpp: resolve each Layer's source + mask,
   │   normalise colour, flatten displacement, cap mask nesting (kMaxMaskDepth)
+  ▼
+Compositor::AdoptSharedTarget(kind, key, render)         Compositor.cpp
+  │   for a stack/mask/cluster/bake whose content is identical across
+  │   actors: return the live shared target from the kind's ResourceCache
+  │   on a key hit, else run `render` and enter the result
+  │   (StackTarget, CompositorSource.cpp, CompositorBake.cpp build the key)
   ▼
 RenderedStack                          Compositor.cpp / CompositorBake.cpp
   │  held on PlacedOutput::stack, re-baked once per tick:

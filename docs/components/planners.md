@@ -27,8 +27,11 @@ It also owns small engine-adjacent primitives with no `RE::` dependency: the
 **lease**-based `TargetPool` for render-target slots, `ConsumptionLeases`
 and `TextureLeases` for GPU resource lifetime, `OwnedState` for restorable
 field groups, `TransformStorage` for decoding an engine transform array
-index, and the texture-identity helpers (`ImageCacheKey`,
-`IsPlaceholderExtent`) that `render/SourceSampling` builds on.
+index, the texture-identity helpers (`ImageCacheKey`,
+`IsPlaceholderExtent`) that `render/SourceSampling` builds on, the
+cross-actor `ResourceCache` the render **Compositor** shares one rendered
+**target** through, and the pure `EvictionFor` distance decision the engine
+`Manager` sweeps far actors with.
 
 ## Data
 
@@ -96,6 +99,18 @@ to install and which **contributor**'s **shell** to keep.
 |---|---|
 | `BindingPlan` | Whether the geometry needs a material binding, whether it needs a shell binding, and the `SlotContributor` that owns the shell. `shellOwner` is the highest-priority contribution on `Surface::kShell`. |
 
+### Distance eviction
+
+The engine `Manager::SweepEviction` drops a far actor's effects and restores
+them as it comes back. `EvictionFor` is the pure decision that sweep runs per
+actor; it holds no state. A hysteresis band stops an actor at the boundary
+from thrashing between the two states.
+
+| Type | Description |
+|---|---|
+| `EvictionAction` | The decision for one actor: `kNone`, `kEvict`, or `kRestore`. |
+| `EvictionFor(distance, evictDistance, applied)` | A `constexpr` function. It evicts an applied actor past `evictDistance`, restores an evicted one only once it closes inside 80% of `evictDistance`, and returns `kNone` in the band between. An `evictDistance <= 0` disables eviction. |
+
 ### Resource lifetime
 
 These four types tie a GPU resource's release to an observed condition, not to
@@ -109,6 +124,21 @@ instantiate them with the real GPU types.
 | `ConsumptionLeases<Resource>`, `Ticket` | `ConsumptionLeases.h` | `Retain` holds a `shared_ptr` to the resource until the consumer calls `Ticket::Consumed`. It refuses new tickets when the pending list reaches the constructed limit. |
 | `TextureLeases<Target>`, `TextureLeaseLookup<Target>` | `TextureLeases.h` | `Register` files a generated texture under its **presenter** address and generation. `Retain` returns a `TextureLeaseLookup` carrying the generation and the target, if the target is still alive. |
 | `OwnedState<State>` | `OwnedState.h` | Remembers a field group's original value and the value last written. `Restore` returns the original only while the current value still equals the last write. |
+
+### Cross-actor resource cache
+
+The render **Compositor** shares one rendered **target** — a stack, cluster
+map, mask, or bake — across same-armor actors through this cache. The cache
+owns nothing: each entry is a `std::weak_ptr`, so a target frees when its last
+holder drops it, which returns the target's **presenter** slot. It keys by a
+caller string, unlike the `TextureLeases<Target>` above (an engine presenter
+address) and the owning `RecipeTextureCache<T>` below (per-geometry
+`shared_ptr`).
+
+| Type | Description |
+|---|---|
+| `SharedResource<T>` | The result of an `Adopt`: the `shared_ptr` `value` and an `adopted` flag, true when an existing live entry was reused. |
+| `ResourceCache<T>` | A `std::unordered_map<std::string, std::weak_ptr<T>>`. `Adopt(key, make)` returns a live entry, or runs `make`, publishes the result under the key, and returns it. `Clear` drops every entry; `LiveCount` counts the unexpired ones. |
 
 ### Texture keys and identity
 
@@ -168,6 +198,8 @@ to render and bind. No planner takes or stores an `RE::` pointer.
 | `ConsumptionLeases.h` | `ConsumptionLeases<Resource>`/`Ticket`: release on consumer acknowledgment, not on elapsed ticks. |
 | `TextureLeases.h` | `TextureLeases<Target>`: register and retain a generated texture by presenter address and generation. |
 | `OwnedState.h` | `OwnedState<State>`: restore a coupled field group only while every value still equals the last write. |
+| `ResourceCache.h` | `SharedResource<T>` and `ResourceCache<T>`: a weak-keyed cross-actor cache; `Adopt` reuses a live entry or makes and publishes one. |
+| `Eviction.h` | `EvictionAction` and `EvictionFor`: the pure distance-eviction decision with an 80% hysteresis band. |
 | `RecipeTextureCache.h` | `RecipeTextureKey`, `RecipeTextureCache<T>`, `FindRecipeTexture`, `LargestRecipeTexture`. |
 | `TextureIdentity.h` / `.cpp` | `ImageCacheKey`, `IsPlaceholderExtent`, `kPlaceholderTextureExtent`. |
 | `TransformStorage.h` / `.cpp` | The `TransformStorage` layout record and the `TransformStorageIndex` pointer-to-row decode. |
