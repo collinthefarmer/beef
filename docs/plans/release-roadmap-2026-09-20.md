@@ -69,7 +69,11 @@ First measurement 2026-09-20 (instrumented in 18e9b9a, stress scene,
   large a crowd, but the residue is distinct-armor variety; distance
   eviction and free-pool trim are now optional polish, not blockers. The
   animation-heavy crowd still needs eviction, and the freeze/leak
-  question is closed. See `docs/plans/texture-budget-2026-09-20.md`.
+  question is closed. Distance eviction landed and, with the presenter
+  cap raised to 1024, a 39-actor crowd measured **989 MiB — under the
+  1 GiB budget** (8x cut), 167 of 512 targets, zero exhaustion. The
+  gate-1 texture half is solved; only the deferred hour-long freeze soak
+  remains. See `docs/plans/texture-budget-2026-09-20.md`.
 - **Sink churn: small at this scale.** 80 adds, 33 removes over the
   measured play; churn tracks applies one-to-one as suspected but the
   absolute rate is modest, and no freeze occurred. The crowd-hour

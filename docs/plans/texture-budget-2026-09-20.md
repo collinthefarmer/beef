@@ -284,6 +284,15 @@ until an author sets `EvictDistance`; the measurement enables it and
 watches the peak-target count fall with a crowd that spreads past the
 radius.
 
+Measured 2026-09-21 at `EvictDistance=4000` on a 39-actor crowd: **VRAM
+peak 989 MiB — under the 1 GiB budget** (from 8.0 GiB, an 8x cut), peak
+167 of 512 targets, 25 `evict_far` retires firing as NPCs crossed the
+radius and re-applying on approach, zero slot-exhaustion. With per-slot
+resolution, cross-actor sharing, the raised cap and eviction stacked,
+the gate-1 texture half is solved: a large crowd runs well under budget
+with no freeze or exhaustion. Remaining items (bakes, the free-pool
+trim, the per-output predicate) are optional tuning, not blockers.
+
 ## Stage 5: trim the free pool in play — dispersal aid
 
 The pool records a recycle time per free target; a periodic tick sweep
