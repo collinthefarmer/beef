@@ -57,11 +57,14 @@ First measurement 2026-09-20 (instrumented in 18e9b9a, stress scene,
 ~3 minutes of unpaused play):
 
 - **Texture slots and VRAM: failing, now the ranked-first fix.** The
-  pool reached all 512 slots and 8,016 MiB of target VRAM in ~50 s;
-  nothing returns during play; ~487 targets survived a save-load
-  teardown. `docs/plans/texture-budget-2026-09-20.md` stages the fix
-  (retention defect, in-play trim, per-slot resolution factors, then
-  demotion and eviction on evidence).
+  pool reaches all 512 slots and multiple GiB of target VRAM in a
+  crowd; the census is a one-way ratchet during play. Ownership tagging
+  (5115a44) ruled out a leak: the demand is legitimate — 28 concurrent
+  actors held ~500 distinct targets, ~18 per actor, all full-resolution
+  RGBA8. The fix is working-set size.
+  `docs/plans/texture-budget-2026-09-20.md` ranks it: per-slot
+  resolution and formats first, static demotion expected primary, then
+  distance eviction and free-pool trim.
 - **Sink churn: small at this scale.** 80 adds, 33 removes over the
   measured play; churn tracks applies one-to-one as suspected but the
   absolute rate is modest, and no freeze occurred. The crowd-hour
