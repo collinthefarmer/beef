@@ -3,11 +3,27 @@
 
 #include <algorithm>
 #include <cctype>
+#include <cstdint>
+#include <format>
 
 namespace BetterEnchantmentEffects {
 namespace {
 TextureRef BaseMapFor(Slot a_slot, const MaterialInputs &a_material) {
   return MaterialTexture(BaseMapOf(a_slot), a_material);
+}
+
+[[nodiscard]] std::string SharedStaticKey(const Recipe &a_recipe,
+                                          std::size_t a_outputIndex,
+                                          const MaterialInputs &a_material,
+                                          TextureSize a_size) {
+  const auto identity = [](const TextureRef &a_texture) -> std::uintptr_t {
+    return reinterpret_cast<std::uintptr_t>(a_texture.get());
+  };
+  return std::format("{}\x1f{}\x1f{}\x1f{}\x1f{}\x1f{}\x1f{}",
+                     SerializeRecipe(a_recipe), a_outputIndex, a_size.Pixels(),
+                     identity(a_material.rmaos), identity(a_material.diffuse),
+                     identity(a_material.normal),
+                     identity(a_material.displacement));
 }
 
 TextureSize SizeOverBase(TextureSize a_size, TextureSize a_maxSize,
@@ -105,8 +121,8 @@ std::shared_ptr<TextureLab::RenderTarget> Compositor::NeutralHeight() {
 
 std::unique_ptr<RenderedStack>
 Compositor::Prepare(const Recipe &a_recipe, const SurfaceOutput &a_output,
-                    const GeometryInputs &a_inputs, TextureSize a_size,
-                    TextureSize a_maxSize) {
+                    std::size_t a_outputIndex, const GeometryInputs &a_inputs,
+                    TextureSize a_size, TextureSize a_maxSize) {
   const MaterialInputs &material = a_inputs.material;
   TextureLab *lab = TextureLab::GetSingleton();
   if (!lab->Init()) {
@@ -160,7 +176,8 @@ Compositor::Prepare(const Recipe &a_recipe, const SurfaceOutput &a_output,
     stack->layers_.push_back(std::move(prepared));
   }
   if (!stack->layers_.empty()) {
-    stack->target_ = lab->Acquire(size, "stack");
+    stack->target_ =
+        StackTarget({a_recipe, a_output, a_outputIndex, material}, size);
     if (!stack->target_ || !lab->Scratch(size)) {
       stack->diagnostics_.push_back(
           {Severity::kError, "stack", "no render targets available"});
@@ -171,6 +188,31 @@ Compositor::Prepare(const Recipe &a_recipe, const SurfaceOutput &a_output,
   }
   return stack;
 }
+
+std::shared_ptr<TextureLab::RenderTarget>
+Compositor::StackTarget(const StackShareInputs &a_share, TextureSize a_size) {
+  TextureLab *lab = TextureLab::GetSingleton();
+  if (!ShareableAcrossActors(a_share.recipe, Output{a_share.output})) {
+    return lab->Acquire(a_size, "stack");
+  }
+  const std::string key = SharedStaticKey(a_share.recipe, a_share.outputIndex,
+                                          a_share.material, a_size);
+  if (std::shared_ptr<TextureLab::RenderTarget> shared =
+          sharedStatics_[key].lock()) {
+    Trace::EmitSafely(Trace::Event::kTexture,
+                      {{"action", "stack_shared"},
+                       {"target", std::to_string(shared->Generation())}});
+    return shared;
+  }
+  std::shared_ptr<TextureLab::RenderTarget> fresh =
+      lab->Acquire(a_size, "stack");
+  if (fresh) {
+    sharedStatics_[key] = fresh;
+  }
+  return fresh;
+}
+
+void Compositor::ClearSharedStatics() noexcept { sharedStatics_.clear(); }
 
 struct Compositor::StackRenderer {
   Compositor &compositor;

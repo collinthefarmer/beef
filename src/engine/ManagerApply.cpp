@@ -397,7 +397,8 @@ void PrepareChainStacks(LiveActor &a_state, LiveGeometry &a_bound,
       const TextureSize slotSize =
           SlotStackSize(size, slot.slot, located->surface.resolution);
       output.stack = Compositor::GetSingleton()->Prepare(
-          located->recipe, located->surface, a_bound.inputs, slotSize, maxSize);
+          located->recipe, located->surface, contribution.output,
+          a_bound.inputs, slotSize, maxSize);
       if (!output.stack) {
         output.problem = "the texture lab is unavailable";
       } else if (a_settings.verboseLogging) {

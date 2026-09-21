@@ -180,8 +180,9 @@ public:
 
   [[nodiscard]] std::unique_ptr<RenderedStack>
   Prepare(const Recipe &a_recipe, const SurfaceOutput &a_output,
-          const GeometryInputs &a_inputs, TextureSize a_size,
-          TextureSize a_maxSize);
+          std::size_t a_outputIndex, const GeometryInputs &a_inputs,
+          TextureSize a_size, TextureSize a_maxSize);
+  void ClearSharedStatics() noexcept;
 
   bool Render(RenderedStack &a_stack, const SignalState &a_signals,
               float a_time, const LayerFilter &a_filter,
@@ -224,6 +225,14 @@ public:
 
 private:
   std::shared_ptr<TextureLab::RenderTarget> NeutralHeight();
+  struct StackShareInputs {
+    const Recipe &recipe;
+    const SurfaceOutput &output;
+    std::size_t outputIndex;
+    const MaterialInputs &material;
+  };
+  [[nodiscard]] std::shared_ptr<TextureLab::RenderTarget>
+  StackTarget(const StackShareInputs &a_share, TextureSize a_size);
   struct StackRenderer;
   struct MaskBuilder;
   struct SourcePreparer;
@@ -269,6 +278,8 @@ private:
   std::map<std::pair<RE::NiSourceTexture *, RE::NiSourceTexture *>,
            MaterialRecord>
       materials_;
+  std::unordered_map<std::string, std::weak_ptr<TextureLab::RenderTarget>>
+      sharedStatics_;
   std::uint64_t tick_ = 1;
   std::uint32_t nowMS_ = 0;
   std::uint32_t lastSweepMS_ = 0;

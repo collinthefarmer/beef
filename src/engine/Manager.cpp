@@ -104,6 +104,7 @@ void Manager::Clear() {
   carriedTimes_.clear();
   Compositor::GetSingleton()->ClearMeshes();
   Compositor::GetSingleton()->ClearMaterials();
+  Compositor::GetSingleton()->ClearSharedStatics();
   TextureLab::GetSingleton()->Clear();
   {
     std::scoped_lock lock{snapshotLock_};
