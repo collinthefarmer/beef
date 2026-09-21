@@ -60,7 +60,7 @@ them and is the module's only `render/` include.
 | `SearchCombo`, `SearchComboSpec`, `SearchPick` | The searchable combo. `SearchCombo` returns a `SearchPick`: the index of a listed label, or a custom string. |
 | `CandidateRowsSpec`, `DrawCandidateRows` | The filtered game-object candidate list. The spec carries the filter, the catalog, and the row cap. |
 | `ResourceCells`, `ResourceTable` | One resource row (name, type, optional `Value`) and the table that draws a span of them. |
-| `Badge`, `BlendBadge` | The **badge** glyphs. `Badge` draws a `FieldKind` glyph. `BlendBadge` draws a `Blend` glyph and returns a new `Blend` when clicked. |
+| `Badge`, `ModeBadge`, `BlendBadge` | The **badge** glyphs. `Badge` draws a `FieldKind` glyph. `ModeBadge` draws a clickable `FieldKind` glyph that toggles a **field**'s entry mode, its `EntryModeTips` naming the two states; the value and catalog **fields** use it to switch between a combo and typed entry. `BlendBadge` draws a `Blend` glyph and returns a new `Blend` when clicked. |
 | `DetailModal`, `ConfirmModal` | The modals. `DetailModal` draws a body callback. `ConfirmModal` runs its callback only on the affirm click. |
 | `Problem`, `Warn`, `Ok`, `Dim`, `DrawDiagnostics` | The status text family. `DrawDiagnostics` renders a span of `Diagnostic`s and marks held-back edits. |
 

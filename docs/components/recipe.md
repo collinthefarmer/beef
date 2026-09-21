@@ -39,10 +39,10 @@ a file survives a load and a save unchanged. Every consumer (the studio,
 | `Metadata` | The recipe's name, author, description, and version, the importer's `imported` stamp, and a free-form `meta` field kept verbatim. |
 | `RecipeKey` | Which worn **piece** the recipe applies to: a `KeyKind` (default, material, keyword, armor, effectShader, enchantment, magicEffect) with a form or glob operand. |
 | `Selector` | Which geometry an **output** or **variant** touches: any-of clauses over addon, geometry name, or texture path; empty matches every geometry. |
-| `Signal` | One named per-tick value: a name, a `SignalKind`, and an optional `CurveRef` that shapes the result. |
-| `Curve` | A named expression in the free variable `x`; a `CurveRef` applies it to a **signal** or a **layer**. |
-| `Source` | One named per-texel value: a name and a `SourceKind`. |
-| `Mask` | A named per-texel expression; **source** and **mask** names stand for images in it, signal names for the tick's scalars. |
+| `Signal` | One named per-tick value: a name, a `SignalKind`, an optional `CurveRef` that shapes the result, and an optional author `note`. |
+| `Curve` | A named expression in the free variable `x`, with an optional author `note`; a `CurveRef` applies it to a **signal** or a **layer**. In a file the value is a bare expression string, or `{ "expr", "note" }` when the author annotates it. |
+| `Source` | One named per-texel value: a name, a `SourceKind`, and an optional author `note`. |
+| `Mask` | A named per-texel expression, with an optional author `note`; **source** and **mask** names stand for images in it, signal names for the tick's scalars. In a file the value is a bare expression string, or `{ "expr", "note" }` when annotated. |
 | `Output` | `SurfaceOutput` or `LightOutput`; the Outputs group below details both. |
 | `ShellSettings` | The **shell**: its `ShellMaterial` (pbrCopy or vanilla), `ShellBlend` (additive or alpha), depth bias, alpha test, the alpha/rim/emissive `Param`s, and a `ShellPose` (inflate, offset, scale, spin). |
 | `Variant` | A named override set: a `VariantKey` (a form or a `Selector`) decides when it applies, and its `overrides` map sets row values by name; `ApplyVariant` folds the match in. |
@@ -116,13 +116,13 @@ into one material or shell **slot**, and a `LightOutput` describes one
 
 | Type | Description |
 |---|---|
-| `SurfaceOutput` | One slot write: a `Surface` (material or shell), a `Slot`, its `SlotScalars`, a `Selector`, a replace flag that drops lower-priority recipes' work on the slot, an optional `Resolution` that overrides the slot's default target size, and the layer `stack`. |
-| `Layer` | One entry in a `stack`: a `LayerSource`, an optional `CurveRef`, a `Blend`, an opacity `Param`, an optional color and mask, and the `ChannelSet` it writes. |
+| `SurfaceOutput` | One slot write: a `Surface` (material or shell), a `Slot`, its `SlotScalars`, a `Selector`, a replace flag that drops lower-priority recipes' work on the slot, an optional `Resolution` that overrides the slot's default target size, the layer `stack`, and an optional author `note`. |
+| `Layer` | One entry in a `stack`: a `LayerSource`, an optional `CurveRef`, a `Blend`, an opacity `Param`, an optional color and mask, the `ChannelSet` it writes, and an optional author `note`. |
 | `LayerSource` | `Ref \| Vec3`: a source or mask by name, or a constant color. |
 | `Blend` | How a layer combines with the stack below: replace, multiply, add, subtract, screen, lerp, or normal; `BlendSpec` maps each to its shader mode and marks `normal` as normal-stack only. |
 | `SlotScalars` | The per-slot scalar `Param`s (strength, scale, color, weight, and the rest of `ScalarField`); `SlotSpec` says which fields a slot takes and which are required. |
 | `Slot` | The nine writable slots: diffuse, emissive, rmaos, normal, height, fuzz, glint, coat, subsurface. |
-| `LightOutput` | One light: `Bones` placement (skinned or named), offset, color, intensity, size, cutoff, a shadow flag, an optional bulb form, a `Selector`, and a replace flag. |
+| `LightOutput` | One light: `Bones` placement (skinned or named), offset, color, intensity, size, cutoff, a shadow flag, an optional bulb form, a `Selector`, a replace flag, and an optional author `note`. |
 
 ### Texture size (`Recipe.h`)
 
