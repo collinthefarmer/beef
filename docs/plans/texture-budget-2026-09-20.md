@@ -220,10 +220,31 @@ the next increments:
    cannot share. A real town-crowd glow (static, no bake) shares far
    better than this worst case, so the field win is understated here.
 
-Increment 3: content-key the derived maps across actors, same machinery.
-Increment 4 (optional): narrow the predicate from "no bake/distance in
-the recipe" to the per-output closure so a recipe mixing a bake output
-with a shareable glow output can still share the glow.
+### The generic cache and the derived-map increments (2026-09-21)
+
+The bespoke `sharedStatics_` was generalized to
+`planners/ResourceCache<T>` (weak-ptr, `Adopt(key, make) -> {value,
+adopted}`, native-tested), and every shareable resource now routes
+through one `Compositor::AdoptSharedTarget(Shared, key, render)` seam
+(232ffc0). Adding a resource is a triple: a `Shared` enum value, a cache
+member, and a key builder ending in `TextureIdentity(TextureRef)`.
+
+- **Clusters** (3955992): pure material analysis, so they share even
+  under animation — the case stack sharing could not touch. Rendered
+  once in the miss supplier; no redundant re-render.
+- **Masks** (3e070ee): share when static and the recipe has no
+  bake/distance source (`ShareableAcrossActors(recipe, Mask)` over the
+  factored `RecipeInputsAreActorIndependent`). Same key shape as stacks.
+
+Remaining derived map: **bakes** (67 targets). They need per-kind
+reasoning — partition, boneWeight, uv, componentId, chartId are
+mesh-intrinsic and share by mesh identity; position, worldUp, distance
+are per-actor and must not. That is the next increment, after a
+checkpoint and re-measure with clusters and masks sharing.
+
+Later (optional): narrow the recipe-wide "no bake/distance" predicate to
+the per-output closure so a recipe mixing a bake output with a shareable
+glow output can still share the glow.
 
 ## Stage 4: eviction by distance — for the crowd tail
 
