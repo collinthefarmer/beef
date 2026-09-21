@@ -97,6 +97,7 @@ void Manager::Clear() {
   for (auto &[actorID, state] : applied_)
     RetireActorEffects(state);
   applied_.clear();
+  evictedForDistance_.clear();
   editor_.CancelFileOperationsForLoad();
   SweepRetiredMaterialTextures();
   editor_.CancelPaintForLoad();

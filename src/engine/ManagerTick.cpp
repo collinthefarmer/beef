@@ -4,6 +4,7 @@
 #include "diagnostics/Metrics.h"
 #include "diagnostics/Trace.h"
 #include "engine/Clock.h"
+#include "planners/Eviction.h"
 #include "render/Compositor.h"
 #include "render/TextureLab.h"
 #include "studio/ResolveOutput.h"
@@ -282,6 +283,10 @@ void Manager::OnFrame() {
     EmitMetricsHeartbeat();
   }
   const Settings settings = GetSettings();
+  if (now - lastEvictionMS_ >= 1000) {
+    lastEvictionMS_ = now;
+    SweepEviction(settings);
+  }
   if (now - lastTickMS_ < settings.TickIntervalMS()) {
     return;
   }
@@ -290,6 +295,52 @@ void Manager::OnFrame() {
     Tick(now, settings);
   }
   PublishSnapshot(now);
+}
+
+void Manager::SweepEviction(const Settings &a_settings) {
+  if (a_settings.evictDistance <= 0.0f || a_settings.playerOnly) {
+    evictedForDistance_.clear();
+    return;
+  }
+  const auto *player = RE::PlayerCharacter::GetSingleton();
+  if (!player) {
+    return;
+  }
+  const RE::NiPoint3 origin = player->GetPosition();
+  const auto distanceOf = [&origin](RE::Actor &a_actor) {
+    return origin.GetDistance(a_actor.GetPosition());
+  };
+  std::vector<RE::FormID> evict;
+  for (const auto &[id, state] : applied_) {
+    const RE::NiPointer<RE::Actor> actor = state.actor.get();
+    if (!actor || actor->IsPlayerRef()) {
+      continue;
+    }
+    if (EvictionFor(distanceOf(*actor), a_settings.evictDistance, true) ==
+        EvictionAction::kEvict) {
+      evict.push_back(id);
+    }
+  }
+  for (const RE::FormID id : evict) {
+    Retire(id);
+    evictedForDistance_.insert(id);
+    Trace::EmitSafely(Trace::Event::kRetire,
+                      {{"action", "evict_far"}, {"actor", std::to_string(id)}});
+  }
+  std::vector<RE::FormID> restore;
+  for (const RE::FormID id : evictedForDistance_) {
+    RE::Actor *actor = RE::TESForm::LookupByID<RE::Actor>(id);
+    if (!actor || EvictionFor(distanceOf(*actor), a_settings.evictDistance,
+                              false) == EvictionAction::kRestore) {
+      restore.push_back(id);
+    }
+  }
+  for (const RE::FormID id : restore) {
+    evictedForDistance_.erase(id);
+    if (RE::TESForm::LookupByID<RE::Actor>(id)) {
+      QueueRefresh(id);
+    }
+  }
 }
 
 void Manager::FireDueFinalizes() { applications_.FinalizeDue(NowMS()); }

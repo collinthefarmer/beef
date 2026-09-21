@@ -141,8 +141,11 @@ private:
   std::map<std::pair<RE::FormID, std::string>, CarriedTime> carriedTimes_;
   static constexpr std::uint32_t kCarryWindowMS = 2000;
 
+  std::unordered_set<RE::FormID> evictedForDistance_;
+  void SweepEviction(const Settings &a_settings);
   std::uint32_t lastTickMS_ = 0;
   std::uint32_t lastMetricsMS_ = 0;
+  std::uint32_t lastEvictionMS_ = 0;
   bool emissivePathEnabled_ = false;
   bool layoutVerified_ = false;
   bool frozenLastTick_ = false;

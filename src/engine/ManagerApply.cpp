@@ -10,6 +10,7 @@
 #include "engine/GameObjectService.h"
 #include "engine/RecipeStore.h"
 #include "mesh/TextureSize.h"
+#include "planners/Eviction.h"
 #include "render/Compositor.h"
 #include "render/PBRMaterial.h"
 #include "render/TextureLab.h"
@@ -512,6 +513,18 @@ void Manager::Refresh(RE::Actor *a_actor) {
     }
     return;
   }
+  if (!isPlayer && settings.evictDistance > 0.0f) {
+    if (const auto *player = RE::PlayerCharacter::GetSingleton()) {
+      const float distance =
+          player->GetPosition().GetDistance(a_actor->GetPosition());
+      if (EvictionFor(distance, settings.evictDistance, true) ==
+          EvictionAction::kEvict) {
+        evictedForDistance_.insert(actorID);
+        return;
+      }
+    }
+  }
+  evictedForDistance_.erase(actorID);
   LiveActor state;
   state.actor = a_actor->GetHandle();
   if (settings.thirdPerson) {

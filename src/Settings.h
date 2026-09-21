@@ -13,6 +13,7 @@ inline constexpr std::uint32_t kMinAnimationFPS = 15;
 inline constexpr std::uint32_t kMaxAnimationFPS = 60;
 inline constexpr float kMinAnimationSpeed = 0.05f;
 inline constexpr float kMaxAnimationSpeed = 4.0f;
+inline constexpr float kMaxEvictDistance = 20000.0f;
 
 enum class TextureScale {
   kQuarter,
@@ -35,6 +36,7 @@ struct Settings {
   bool diagnosticLogging = true;
   std::uint32_t animationFPS = 60;
   float animationSpeed = 1.0f;
+  float evictDistance = 0.0f;
   TextureScale textureScale = TextureScale::kFull;
 
   [[nodiscard]] std::uint32_t TickIntervalMS() const noexcept {

@@ -51,6 +51,11 @@ constexpr std::array kTable{
                 "Runtime texture resolution relative to the armor's own maps.",
                 &Settings::textureScale, 0, 0, W::kCombo, true,
                 kTextureScaleNames},
+    SettingDesc{"General", "EvictDistance", "Evict distance",
+                "Game units past which a non-player actor's effects are "
+                "dropped and restored on approach; 0 disables eviction.",
+                &Settings::evictDistance, 0.0f, kMaxEvictDistance, W::kSlider,
+                false},
 };
 
 std::optional<bool> ParseBool(std::string_view a_value) {
