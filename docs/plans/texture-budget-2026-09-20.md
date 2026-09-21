@@ -236,11 +236,35 @@ member, and a key builder ending in `TextureIdentity(TextureRef)`.
   bake/distance source (`ShareableAcrossActors(recipe, Mask)` over the
   factored `RecipeInputsAreActorIndependent`). Same key shape as stacks.
 
-Remaining derived map: **bakes** (67 targets). They need per-kind
-reasoning — partition, boneWeight, uv, componentId, chartId are
-mesh-intrinsic and share by mesh identity; position, worldUp, distance
-are per-actor and must not. That is the next increment, after a
-checkpoint and re-measure with clusters and masks sharing.
+### Measured decisively on a static crowd 2026-09-21 — the slot wall is broken
+
+The animation-heavy stress scene masked the win twice (pool saturated at
+512, animated stacks unshareable). A representative static-glow recipe
+(`static-crowd/static-glow.json`, keyed on a `material:*` glob so it
+walks every worn piece like the stress set) isolated it. On a **40-actor
+concurrent crowd, 61 distinct armors, every piece styled**:
+
+- **Peak targets 267 of 512** — off the cap for the first time, and
+  **zero** slot-exhaustion errors (was 531 on the animated run).
+- **1124 adoptions** (843 stack, 281 cluster): sharing eliminated 1124
+  target acquisitions. Unshared demand would have been ~1391 concurrent,
+  far over 512 — exactly the exhaustion seen before.
+- **VRAM peak 1.66 GiB** — from 8.0 GiB originally; per-actor ~41 MiB
+  versus ~285 MiB, a 7x cut.
+
+Conclusion: **sharing solves the slot wall outright** for a large static
+crowd, and it is heavier than a real deployment (this styles every piece,
+not only enchanted ones). VRAM at 1.66 GiB is above the 1 GiB target but
+for a 40-actor / 61-armor crowd; the residue is distinct-armor variety,
+which sharing cannot reduce further (each armor genuinely needs its own
+targets). Stages 4 (distance eviction) and 5 (free-pool trim) become
+optional polish to reach exactly 1 GiB, not blockers — the alpha-blocking
+freeze and exhaustion are gone.
+
+Remaining derived map: **bakes** (mesh-intrinsic kinds share by mesh
+identity; position/worldUp/distance do not). Now a smaller win, since the
+static recipe carries no bake and the slot wall is already broken; worth
+doing for bake-heavy recipes but not gating.
 
 Later (optional): narrow the recipe-wide "no bake/distance" predicate to
 the per-output closure so a recipe mixing a bake output with a shareable

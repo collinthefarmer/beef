@@ -60,14 +60,16 @@ First measurement 2026-09-20 (instrumented in 18e9b9a, stress scene,
   pool reaches all 512 slots and multiple GiB of target VRAM in a
   crowd; the census is a one-way ratchet during play. Ownership tagging
   (5115a44) ruled out a leak: the demand is legitimate — 28 concurrent
-  actors held ~500 distinct targets, ~18 per actor, all full-resolution
-  RGBA8. Per-slot resolution landed 2026-09-21 (4689920): VRAM 5.4 →
-  2.4 GiB. Cross-actor sharing of static stack targets landed (d56200c):
-  VRAM 2.4 → 1.9 GiB, but only a 15% stack share rate because the
-  derived maps (clusters, bakes, masks — ~215 targets) do not yet share
-  and the stress recipes are animation-heavy. Next: extend sharing to
-  the derived maps (the larger bite). Slots still wall at 512. See
-  `docs/plans/texture-budget-2026-09-20.md`.
+  actors held ~500 distinct targets, all full-resolution RGBA8.
+  Per-slot resolution + cross-actor sharing of stacks, clusters and
+  masks landed 2026-09-21. Measured on a 40-actor / 61-distinct-armor
+  static crowd: peak targets **267 of 512 with zero slot-exhaustion**
+  (the slot wall, the alpha blocker, is broken), 1124 shared adoptions,
+  VRAM 8.0 → 1.66 GiB (7x per-actor). Above the 1 GiB target for that
+  large a crowd, but the residue is distinct-armor variety; distance
+  eviction and free-pool trim are now optional polish, not blockers. The
+  animation-heavy crowd still needs eviction, and the freeze/leak
+  question is closed. See `docs/plans/texture-budget-2026-09-20.md`.
 - **Sink churn: small at this scale.** 80 adds, 33 removes over the
   measured play; churn tracks applies one-to-one as suspected but the
   absolute rate is modest, and no freeze occurred. The crowd-hour
