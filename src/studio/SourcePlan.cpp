@@ -41,14 +41,14 @@ SourcePlanBuilder::SourcePlanBuilder(const SourceCatalog &a_existing)
 
 std::string SourcePlanBuilder::ReuseOrAdd(const std::string &a_wanted,
                                           const SourceKind &a_kind) {
-  for (const auto &[name, kind] : available_.sources) {
-    if (name == a_wanted && kind == a_kind) {
-      return name;
+  for (const Source &source : available_.sources) {
+    if (source.name == a_wanted && source.kind == a_kind) {
+      return source.name;
     }
   }
-  for (const auto &[name, kind] : available_.sources) {
-    if (kind == a_kind) {
-      return name;
+  for (const Source &source : available_.sources) {
+    if (source.kind == a_kind) {
+      return source.name;
     }
   }
   const std::string name = UniqueName(a_wanted, available_.reservedNames);

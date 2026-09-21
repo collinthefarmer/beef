@@ -36,6 +36,7 @@
   "$defs": {
     "name": { "type": "string", "pattern": "^[A-Za-z_][A-Za-z0-9_]*$" },
     "ref": { "type": "string", "pattern": "^@[A-Za-z_][A-Za-z0-9_]*$", "description": "A reference to another row: @name." },
+    "note": { "type": "string", "description": "Author documentation for this row, free text, shown to a reader of the recipe; distinct from the plugin's tooltips." },
     "expression": { "type": "string", "minLength": 1, "description": "Numbers, [r, g, b] literals, @name, + - * /, parentheses, comparisons yielding 0 or 1, and/or/not, if(c, a, b), abs min max clamp saturate floor ceil frac sqrt pow sin cos step smoothstep lerp, time, pi. Component-wise on vectors; division by zero is 0; no ^." },
     "curveRef": { "$ref": "#/$defs/expression", "description": "@name of a declared curve, or an inline expression in x." },
     "form": { "type": "string", "minLength": 1, "pattern": "^(0[xX][0-9A-Fa-f]{1,8}~.+\\.(esm|esp|esl|ESM|ESP|ESL)|[A-Za-z_][A-Za-z0-9_]*)$", "description": "An editor ID, or 0x<local id>~<plugin file>." },
@@ -75,7 +76,7 @@
     "signal": {
       "type": "object",
       "description": "Exactly one kind key plus optional curve.",
-      "properties": { "curve": { "$ref": "#/$defs/curveRef" } },
+      "properties": { "curve": { "$ref": "#/$defs/curveRef" }, "note": { "$ref": "#/$defs/note" } },
       "oneOf": [
         { "$ref": "#/$defs/signalKind", "required": ["constant"], "properties": { "constant": { "$ref": "#/$defs/value" } } },
         { "$ref": "#/$defs/signalKind", "required": ["pulse"], "properties": { "pulse": {
@@ -125,8 +126,8 @@
     },
     "signalKind": {
       "type": "object",
-      "propertyNames": { "enum": ["curve", "constant", "pulse", "ramp", "efsh", "av", "actorState", "enchantment", "trigger", "payload", "counter", "accumulate", "noise", "gradient", "delta", "smooth", "expr"] },
-      "minProperties": 1, "maxProperties": 2
+      "propertyNames": { "enum": ["curve", "note", "constant", "pulse", "ramp", "efsh", "av", "actorState", "enchantment", "trigger", "payload", "counter", "accumulate", "noise", "gradient", "delta", "smooth", "expr"] },
+      "minProperties": 1, "maxProperties": 3
     },
 
     "trigger": {
@@ -156,7 +157,8 @@
     },
 
     "source": {
-      "type": "object", "minProperties": 1, "maxProperties": 1,
+      "type": "object", "minProperties": 1, "maxProperties": 2,
+      "properties": { "note": { "$ref": "#/$defs/note" } },
       "oneOf": [
         { "required": ["image"], "properties": { "image": {
             "type": "object", "additionalProperties": false, "required": ["path"],
@@ -207,7 +209,8 @@
         "opacity": { "$ref": "#/$defs/param" },
         "color": { "$ref": "#/$defs/color" },
         "mask": { "$ref": "#/$defs/ref" },
-        "channels": { "type": "string", "pattern": "^(?=.*[rgba])[rgba]{1,4}$" }
+        "channels": { "type": "string", "pattern": "^(?=.*[rgba])[rgba]{1,4}$" },
+        "note": { "$ref": "#/$defs/note" }
       }
     },
 
@@ -228,7 +231,8 @@
             "selector": { "$ref": "#/$defs/selector" },
             "replace": { "type": "boolean", "description": "Drop lower-priority recipes' stacks and scalars on this slot." },
             "resolution": { "enum": ["full", "half", "quarter"], "description": "Override the slot's default target resolution: a fraction of the material's native map size. Default by slot: normal and height full, diffuse and rmaos half, emissive and the response slots quarter." },
-            "stack": { "type": "array", "items": { "$ref": "#/$defs/layer" } }
+            "stack": { "type": "array", "items": { "$ref": "#/$defs/layer" } },
+            "note": { "$ref": "#/$defs/note" }
           },
           "additionalProperties": false,
           "allOf": [
@@ -254,7 +258,8 @@
             "shadow": { "type": "boolean", "default": false, "description": "Shadow-casting; fixed at creation, subject to the engine's shadow-light cap." },
             "bulb": { "$ref": "#/$defs/form", "description": "Optional LIGH form to create through the engine, inheriting its flags." },
             "selector": { "$ref": "#/$defs/selector" },
-            "replace": { "type": "boolean" }
+            "replace": { "type": "boolean" },
+            "note": { "$ref": "#/$defs/note" }
           } }
       ]
     },

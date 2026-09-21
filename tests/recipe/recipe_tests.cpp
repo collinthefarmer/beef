@@ -181,6 +181,56 @@ int main() {
           "the recipe override mode survives the round trip");
   }
 
+  {
+    Recipe noNotes;
+    noNotes.id = "plain";
+    Signal bare;
+    bare.name = "glow";
+    bare.kind = ConstantSignal{1.0f};
+    noNotes.signals.push_back(bare);
+    Check(!SerializeRecipe(noNotes).contains("note"),
+          "an empty note is omitted from the file");
+
+    Recipe noted;
+    noted.id = "noted";
+    Signal sig;
+    sig.name = "glow";
+    sig.kind = ConstantSignal{1.0f};
+    sig.note = "drives the emissive pulse";
+    noted.signals.push_back(sig);
+    Source src;
+    src.name = "tex";
+    src.kind = MaterialSource{MaterialChannel::kDiffuseRgb};
+    src.note = "base albedo";
+    noted.sources.push_back(src);
+    SurfaceOutput out;
+    out.slot = Slot::kEmissive;
+    out.scalars.strength = 1.0f;
+    out.note = "the enchant's visible glow";
+    Layer layer;
+    layer.source = Ref{"tex"};
+    layer.opacity = 1.0f;
+    layer.note = "albedo tint";
+    out.stack.push_back(layer);
+    noted.outputs.push_back(out);
+
+    const Recipe back =
+        StableRoundTrip(SerializeRecipe(noted), "noted", "row notes");
+    const SurfaceOutput *readOut =
+        back.outputs.empty() ? nullptr
+                             : Get<SurfaceOutput>(back.outputs.front());
+    Check(!back.signals.empty() &&
+              back.signals.front().note == "drives the emissive pulse",
+          "a signal note survives the round trip");
+    Check(!back.sources.empty() && back.sources.front().note == "base albedo",
+          "a source note survives the round trip");
+    Check(readOut != nullptr && readOut->note == "the enchant's visible glow",
+          "an output note survives the round trip");
+    Check(readOut != nullptr && !readOut->stack.empty() &&
+              readOut->stack.front().note == "albedo tint",
+          "a layer note survives the round trip");
+  }
+
   const std::vector<std::string> fixtures = FixtureRecipeNames();
   Check(fixtures.size() >= 7,
         std::format("the recipe fixture folder holds at least the seven "

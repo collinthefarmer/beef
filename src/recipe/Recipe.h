@@ -299,6 +299,7 @@ struct Signal {
   std::string name;
   SignalKind kind = ConstantSignal{};
   std::optional<CurveRef> curve;
+  std::string note;
   [[nodiscard]] bool operator==(const Signal &) const = default;
 };
 
@@ -501,6 +502,7 @@ SourceKindIdOf(const SourceKind &a_kind) noexcept {
 struct Source {
   std::string name;
   SourceKind kind = MaterialSource{};
+  std::string note;
   [[nodiscard]] bool operator==(const Source &) const = default;
 };
 
@@ -649,6 +651,7 @@ struct Layer {
   std::optional<Vec3Param> color;
   std::optional<Ref> mask;
   ChannelSet channels;
+  std::string note;
   [[nodiscard]] bool operator==(const Layer &) const = default;
 };
 
@@ -660,6 +663,7 @@ struct SurfaceOutput {
   bool replace = false;
   std::optional<Resolution> resolution;
   std::vector<Layer> stack;
+  std::string note;
   [[nodiscard]] bool operator==(const SurfaceOutput &) const = default;
 };
 
@@ -685,6 +689,7 @@ struct LightOutput {
   std::optional<FormRef> bulb;
   Selector selector;
   bool replace = false;
+  std::string note;
   [[nodiscard]] bool operator==(const LightOutput &) const = default;
 };
 

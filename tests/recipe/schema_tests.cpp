@@ -108,6 +108,7 @@ void SourceKindsMatchTheTable(const json &a_schema) {
   std::vector<std::string> propertyNames =
       Words(At(a_schema, "/$defs/signalKind/propertyNames/enum"));
   std::erase(propertyNames, "curve");
+  std::erase(propertyNames, "note");
   Equal(Joined(propertyNames), Joined(WordsOf(kSignalKinds)),
         "signal kinds by property name");
 }
@@ -187,7 +188,8 @@ void OutputScalarsMatchTheTable(const json &a_schema) {
   if (properties != nullptr && properties->is_object()) {
     for (const auto &[name, value] : properties->items()) {
       if (name != "target" && name != "slot" && name != "selector" &&
-          name != "replace" && name != "resolution" && name != "stack") {
+          name != "replace" && name != "resolution" && name != "stack" &&
+          name != "note") {
         scalars.push_back(name);
       }
     }

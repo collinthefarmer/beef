@@ -267,6 +267,9 @@ json SignalToJson(const Signal &a_signal) {
   if (a_signal.curve) {
     row["curve"] = CurveRefToJson(*a_signal.curve);
   }
+  if (!a_signal.note.empty()) {
+    row["note"] = a_signal.note;
+  }
   return row;
 }
 
@@ -372,6 +375,7 @@ json LayerToJson(const Layer &a_layer) {
   w.WriteRefIf("mask", a_layer.mask);
   if (a_layer.channels != ChannelSet{})
     w.WriteText("channels", a_layer.channels.ToString());
+  w.WriteTextIf("note", a_layer.note);
   return o;
 }
 
@@ -400,6 +404,7 @@ json SurfaceOutputToJson(const SurfaceOutput &m) {
     stack.push_back(LayerToJson(l));
   }
   w.Set("stack", std::move(stack));
+  w.WriteTextIf("note", m.note);
   return o;
 }
 
@@ -430,6 +435,7 @@ json LightOutputToJson(const LightOutput &l) {
   if (!l.selector.All())
     w.Set("selector", SelectorToJson(l.selector));
   w.WriteIf("replace", l.replace, false);
+  w.WriteTextIf("note", l.note);
   return o;
 }
 
@@ -529,8 +535,13 @@ std::string SerializeRecipe(const Recipe &a_recipe) {
   named("signals", a_recipe.signals,
         [](const Signal &s) { return SignalToJson(s); });
   named("curves", a_recipe.curves, [](const Curve &c) { return json(c.text); });
-  named("sources", a_recipe.sources,
-        [](const Source &s) { return SourceKindToJson(s.kind); });
+  named("sources", a_recipe.sources, [](const Source &s) {
+    json row = SourceKindToJson(s.kind);
+    if (!s.note.empty()) {
+      row["note"] = s.note;
+    }
+    return row;
+  });
   named("masks", a_recipe.masks, [](const Mask &m) { return json(m.text); });
 
   if (!a_recipe.outputs.empty()) {

@@ -451,7 +451,7 @@ static_assert(std::size(kSignalParsers) == kSignalKindCount);
 
 std::optional<Signal> SignalFrom(const std::string &a_name, const json &a_j,
                                  const Reporter &a_ctx) {
-  const auto entry = OneKey(a_j, a_ctx, "a signal", {"curve"});
+  const auto entry = OneKey(a_j, a_ctx, "a signal", {"curve", "note"});
   if (!entry) {
     return std::nullopt;
   }
@@ -471,6 +471,7 @@ std::optional<Signal> SignalFrom(const std::string &a_name, const json &a_j,
   Reader row(a_j, a_ctx);
   row.Child(entry->key);
   s.curve = CurveRefFrom(row);
+  s.note = row.String("note").value_or("");
   row.Finish();
   return s;
 }
@@ -730,13 +731,14 @@ std::optional<Source> SourceFrom(const std::string &a_name, const json &a_j,
   Source s;
   s.name = a_name;
   s.kind = std::move(*kind);
+  s.note = r.String("note").value_or("");
   return s;
 }
 }
 
 std::optional<SourceKind> ParseSourceKind(Reader &a_reader) {
   const Reporter &ctx = a_reader.Context();
-  const auto entry = OneKey(a_reader.Object(), ctx, "a source");
+  const auto entry = OneKey(a_reader.Object(), ctx, "a source", {"note"});
   if (!entry) {
     return std::nullopt;
   }
@@ -791,6 +793,7 @@ std::optional<Layer> LayerFrom(const json &a_j, const Reporter &a_ctx) {
       a_ctx.Error("'channels' is a subset of \"rgba\"");
     }
   }
+  l.note = r.String("note").value_or("");
   r.Finish();
   return l;
 }
@@ -881,6 +884,7 @@ Output LightOutputFrom(Reader &a_r, const Reporter &a_ctx) {
   if (const auto *sel = a_r.Child("selector"))
     l.selector = SelectorFrom(*sel, a_ctx);
   a_r.Read("replace", l.replace);
+  l.note = a_r.String("note").value_or("");
   a_r.Finish();
   return Output{l};
 }
@@ -909,6 +913,7 @@ Output SurfaceOutputFrom(Reader &a_r, Surface a_surface,
     m.resolution = a_r.Enum("resolution", kResolutions);
   if (const auto *stack = a_r.Child("stack"))
     StackFrom(*stack, m.stack, a_ctx);
+  m.note = a_r.String("note").value_or("");
   a_r.Finish();
   return Output{m};
 }
