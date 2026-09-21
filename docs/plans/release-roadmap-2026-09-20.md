@@ -141,10 +141,10 @@ format 1 is now mostly writing, not building. The five parts:
    resolve only in game, and the tool says so. The Release build also
    links `beef-validate.exe` (CMake target `BeefValidate`), so packaging
    only has to include it.
-3. **Freeze format 1, in writing.** The blocking record changes are in.
-   Decide the per-row note field (still open; the examples and the studio
-   both want it), then write the freeze: each remaining change made or
-   deferred to format 2, named.
+3. **Freeze format 1, in writing.** The blocking record changes are in,
+   and the per-row note field landed 2026-09-21 (the last open record
+   decision), so the freeze is now purely writing: each remaining change
+   made or deferred to format 2, named.
 4. **The nine examples and their walkthroughs.** Not started; no
    `recipes/` directory exists. The lesson plan from 2026-09-09 stands
    (glow, breathe, where, the wearer, events, the surface, cloth and
@@ -210,7 +210,12 @@ Size: S is hours, M is a day or two, L is a week or more.
    freeze. Still open: the author-side half — where another mod's files
    live, key ownership, whether load order means anything — and the
    mechanic list itself, to be settled on the Recipes-page visit.
-10. **Per-row note field.** S decision, S to M to build.
+10. **Per-row note field.** LANDED 2026-09-21 (format side). A `note` on
+    signals, sources, layers and outputs (an object key), and on masks and
+    curves (the dual `{ "expr", "note" }` form beside the bare string);
+    parse, serialize omit-when-empty, schema and round-trip tests are in.
+    The shared inspector field (UI backlog 16) is the remainder.
+    See `docs/plans/row-notes-2026-09-21.md`.
 11. **Freeze format 1, in writing.** S now that the record changes are in.
     Settle `presets.json`'s status in the same writing.
 12. **Imported-folder lifecycle.** S to M, falls out of 9.
