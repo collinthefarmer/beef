@@ -421,3 +421,58 @@ callback. Fold the common button-row case (`ButtonWidth(label)` per item) into a
 thin overload so the caller passes only labels and handlers. Ties to the slot
 layout in `DrawSurfaceControls` (which already reserves fixed slots) and the
 modal/rule action bars (items 1 and 6).
+
+## 15. Evict-distance slider on the Setup page
+
+**Ask.** The distance eviction radius (`Settings::evictDistance`, added
+2026-09-21) needs a Setup-page control. It already renders: `SetupPage.cpp`'s
+`Widget` draws a `SliderFloat` for any `float` `SettingDesc`, and the
+`EvictDistance` descriptor (`Settings.cpp`) is one, ranged `0..kMaxEvictDistance`
+(20000). So the core requirement is met by the descriptor.
+
+**Where.** `menu/SetupPage.cpp` `Widget` (`:88`), the generic settings loop
+(`:182`). The descriptor is in `src/Settings.cpp` beside `TextureScale`.
+
+**Direction.** Verify it reads well: the `0 = disabled` semantics are not
+obvious from a bare slider (consider a "0 = off" suffix or a checkbox +
+slider), and a `0..20000` range at `%.2f` is coarse for a distance a player
+tunes. Polish, not new structure.
+
+## 16. A consistent home for per-row notes across inspectors
+
+**Ask.** The per-row note field (a planned format-1 change: an author annotates
+one signal, source, mask, layer, or output with free text) needs a UI home that
+is the **same** across every inspector, so a note reads and edits identically
+whichever row it hangs on. This is the "consistent concept across inspectors"
+requirement, not a one-off text box per inspector.
+
+**Where.** The inspector forms are built in `studio/Forms.cpp` (`SignalForm`,
+`SourceForm`, `RecipeHeaderForm`, `OutputHeaderForm`, the layer forms) and
+rendered through `menu/FormDraw.cpp`. A note is a new `FormField` kind (or a
+shared trailing field) every form appends the same way.
+
+**Direction.** Design the note as one reusable field appended by every form,
+not duplicated per inspector — the same way `FieldKind` and the `Bind*`
+factories are shared. Depends on the format-1 decision (whether/where a note
+field exists); the UI follows that shape. Ties to the deferred tooltip pass
+(a note is author content, a tooltip is ours — keep them distinct).
+
+## 17. Recipe priority and override mechanics on the Recipes page
+
+**Ask.** A recipe needs author-set **priority** and an **override mechanic**
+(replace / lerp / sampled one-of-n) edited on the Recipes page, replacing
+today's silent first-loaded-owner-wins when two recipes key the same effect.
+The mechanic governs how a recipe's contribution combines with the
+lower-priority recipes matching the same piece.
+
+**Where.** The Recipes page is `menu/RecipesPage.cpp`; the recipe header form is
+`RecipeHeaderForm` (`studio/Forms.cpp`), which already exposes `priority`. The
+merge that consumes it is `recipe/Merge.cpp` / `planners/` and the store's
+key-ownership rule (`engine/RecipeStore.cpp`).
+
+**Direction.** This is a **format-1 change** (the override mechanic is a
+per-recipe field) and must land before the format freeze. The field's data
+model, the merge semantics (especially how "sampled one-of-n" resolves per
+actor), and whether it is per-recipe or per-output are the design decisions
+this item opens; the UI is a choice widget on the recipe header plus a clear
+readout of what wins on a contested slot. Tracked as roadmap gate-5 item 9.
