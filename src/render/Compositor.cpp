@@ -197,22 +197,17 @@ Compositor::StackTarget(const StackShareInputs &a_share, TextureSize a_size) {
   }
   const std::string key = SharedStaticKey(a_share.recipe, a_share.outputIndex,
                                           a_share.material, a_size);
-  if (std::shared_ptr<TextureLab::RenderTarget> shared =
-          sharedStatics_[key].lock()) {
+  const SharedResource<TextureLab::RenderTarget> shared =
+      sharedStacks_.Adopt(key, [&] { return lab->Acquire(a_size, "stack"); });
+  if (shared.adopted && shared.value) {
     Trace::EmitSafely(Trace::Event::kTexture,
                       {{"action", "stack_shared"},
-                       {"target", std::to_string(shared->Generation())}});
-    return shared;
+                       {"target", std::to_string(shared.value->Generation())}});
   }
-  std::shared_ptr<TextureLab::RenderTarget> fresh =
-      lab->Acquire(a_size, "stack");
-  if (fresh) {
-    sharedStatics_[key] = fresh;
-  }
-  return fresh;
+  return shared.value;
 }
 
-void Compositor::ClearSharedStatics() noexcept { sharedStatics_.clear(); }
+void Compositor::ClearSharedStatics() noexcept { sharedStacks_.Clear(); }
 
 struct Compositor::StackRenderer {
   Compositor &compositor;

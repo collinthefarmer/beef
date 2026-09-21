@@ -7,6 +7,7 @@
 #include "mesh/MeshFacts.h"
 #include "mesh/TextureSize.h"
 #include "planners/RecipeTextureCache.h"
+#include "planners/ResourceCache.h"
 #include "planners/StackPlan.h"
 #include "recipe/Expression.h"
 #include "recipe/Merge.h"
@@ -278,8 +279,7 @@ private:
   std::map<std::pair<RE::NiSourceTexture *, RE::NiSourceTexture *>,
            MaterialRecord>
       materials_;
-  std::unordered_map<std::string, std::weak_ptr<TextureLab::RenderTarget>>
-      sharedStatics_;
+  ResourceCache<TextureLab::RenderTarget> sharedStacks_;
   std::uint64_t tick_ = 1;
   std::uint32_t nowMS_ = 0;
   std::uint32_t lastSweepMS_ = 0;
