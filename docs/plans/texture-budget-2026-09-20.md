@@ -197,6 +197,34 @@ demoted texture becomes and how it presents without a slot.
 Revised options are a separate decision (see below); the hook and the
 static signal are ready for whichever wins.
 
+### Increment 2 measured 2026-09-21 (d56200c) — works, but the derived maps are the bigger lever
+
+Stack sharing is live and correct (no visual defect reported). On the
+same stress scene: VRAM peak 2.4 → 1.9 GiB, and 53 `stack_shared`
+adoptions against 303 fresh stack acquires — a **15% stack share rate**.
+The slot wall held at 512. Two reasons the win is modest, and they name
+the next increments:
+
+1. **The derived maps do not share.** Sharing covers only the `stack`
+   owner. The end-of-trace census still holds clusters 79, bake 67,
+   program (masks) 66 — ~215 targets that are equally actor-independent
+   for same-armor actors (cluster analysis and masks composited from the
+   shared source textures; mesh-intrinsic bakes) but are cached
+   per-geometry, not shared. Extending the same content-keyed cache to
+   `DerivedMaps` (clusters, normalSlope), the `MaskCache`, and
+   mesh-intrinsic bakes is **increment 3** and takes the larger bite.
+2. **The stress recipes are animation-heavy by design.** stress-heavy
+   drives rmaos from `av`; stress-default uses pulse/noise;
+   stress-armor-tex has a `bake` source (excluded whole by the
+   conservative predicate). Animated stacks are genuinely per-actor and
+   cannot share. A real town-crowd glow (static, no bake) shares far
+   better than this worst case, so the field win is understated here.
+
+Increment 3: content-key the derived maps across actors, same machinery.
+Increment 4 (optional): narrow the predicate from "no bake/distance in
+the recipe" to the per-output closure so a recipe mixing a bake output
+with a shareable glow output can still share the glow.
+
 ## Stage 4: eviction by distance — for the crowd tail
 
 The stress scene held 28 actors at once; the ones not near the player

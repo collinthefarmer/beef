@@ -61,11 +61,13 @@ First measurement 2026-09-20 (instrumented in 18e9b9a, stress scene,
   crowd; the census is a one-way ratchet during play. Ownership tagging
   (5115a44) ruled out a leak: the demand is legitimate — 28 concurrent
   actors held ~500 distinct targets, ~18 per actor, all full-resolution
-  RGBA8. Per-slot resolution landed 2026-09-21 (4689920) and cut VRAM
-  from 5.4 GiB to 2.4 GiB on a 30-actor crowd, but the pool still
-  reached 512 slots: VRAM and slot count are separate limits, and only
-  static demotion removes a target's slot. That stage is now confirmed
-  primary. See `docs/plans/texture-budget-2026-09-20.md`.
+  RGBA8. Per-slot resolution landed 2026-09-21 (4689920): VRAM 5.4 →
+  2.4 GiB. Cross-actor sharing of static stack targets landed (d56200c):
+  VRAM 2.4 → 1.9 GiB, but only a 15% stack share rate because the
+  derived maps (clusters, bakes, masks — ~215 targets) do not yet share
+  and the stress recipes are animation-heavy. Next: extend sharing to
+  the derived maps (the larger bite). Slots still wall at 512. See
+  `docs/plans/texture-budget-2026-09-20.md`.
 - **Sink churn: small at this scale.** 80 adds, 33 removes over the
   measured play; churn tracks applies one-to-one as suspected but the
   absolute rate is modest, and no freeze occurred. The crowd-hour
