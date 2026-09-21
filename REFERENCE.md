@@ -427,6 +427,14 @@ Lab mechanics:
   `~MaterialBinding` restores the fields the journal owns and leaves the private
   material attached, because replacing the whole material would discard external
   writes to fields the journal never touched.
+- The private material copy (`original->Create()` then `CopyMembers`) copies the
+  material's `NiPointer<NiSourceTexture>` fields as refcount bumps on the same
+  texture objects, not texture clones. Two actors wearing the same armor
+  therefore expose identical `rmaos/diffuse/normal/displacement` source-texture
+  pointers even after each gets a private material; the private copy isolates
+  only the slot the plugin writes. This is what lets a static composited result
+  be keyed by its source-texture identities and shared read-only across actors
+  (texture-budget plan, stage 3).
 - `CopySkinData` (`render/SkinData.h`) copies every owned bone-weight buffer and
   retains the source's shared skin partition; the copy owns its weights and
   shares nothing else.

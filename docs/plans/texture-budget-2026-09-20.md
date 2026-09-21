@@ -86,7 +86,53 @@ target and its slot outright, not just its bytes. Cluster maps
 (~0.66 GiB, native size, unchanged by stage 1) are now a larger share
 of the VRAM and a candidate for their own reduction.
 
-## Stage 3: static demotion — CONFIRMED PRIMARY by the stage-2 measurement
+## Stage 3: share static results across actors — DECIDED 2026-09-21
+
+The crowd trace showed heavy armor reuse (top armors applied 12x of 48
+distinct); the ~500-target working set is ~48 armors' worth of results
+shown on 500 geometries. A static stack's result is a pure function of
+its source textures and its recipe output, so identical actors render
+identical targets today. Share them and both the slot count and VRAM
+collapse for the repetitive crowds that break the budget, with no
+compressor and no file-less-presenter spike.
+
+**Key fact (confirmed 2026-09-21, now in REFERENCE):** the private
+material copy (`Binding.cpp`, `original->Create()` + `CopyMembers`)
+copies the material's `NiPointer<NiSourceTexture>` fields as refcount
+bumps on the *same* texture objects. Two same-armor actors therefore
+hold identical `rmaos/diffuse/normal/displacement` pointers even with
+private materials; the private copy isolates only the output write. A
+shared read-only static result does not reintroduce the material fight.
+
+**Content key** for a shareable static stack result: the source-texture
+identities (rmaos, diffuse, normal, displacement pointers), the recipe
+id, the output index, the surface and slot, and the target size. Static
+means no animated signal and no per-actor signal (av, actorState), so
+the result depends on nothing else. Variant selection keys on the armor,
+which the source textures already distinguish.
+
+**Cache and lifetime:** a Compositor-wide map from content key to a
+`shared_ptr` rendered static target. The first static stack with a key
+renders and publishes; later stacks with the same key skip rendering and
+point `latest_` at the shared target. Reference-counted, so the target
+(and its presenter slot) frees when the last user drops it. The shared
+result is immutable after its one render.
+
+**Hook:** `StackRenderer::Run` (Compositor.cpp:316) already finds the
+static-stable moment; publish-or-reuse happens there.
+
+**Risks (rule 1):** key correctness — a key missing an output-affecting
+input would share non-identical results (a visual bug, not a crash);
+the key is built from the resolved inputs, unit-tested. Lifetime is
+`shared_ptr`, so no dangling. No engine-ownership change, no new GPU
+code.
+
+Increment order: (1) the pure content key + its test; (2) the
+Compositor cache and the publish/reuse wiring behind the existing hook;
+(3) in-game checkpoint and re-measure. Stage 1's per-slot sizing
+composes — shared results are already the reduced size.
+
+## Superseded framing: static demotion (BC7) — CONFIRMED PRIMARY by the stage-2 measurement
 
 The working set is dominated by stacks, and in a town crowd most stacks
 are static (no animated signal). A static stack renders once; demote
