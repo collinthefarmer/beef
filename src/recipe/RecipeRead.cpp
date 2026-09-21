@@ -1031,22 +1031,60 @@ std::optional<Variant> VariantFrom(const json &a_j, const Reporter &a_ctx) {
   return v;
 }
 
+struct NotedExpression {
+  std::string text;
+  std::string note;
+};
+
+std::optional<NotedExpression> NotedExpressionFrom(const json &a_j,
+                                                   std::string_view a_what,
+                                                   const Reporter &a_ctx) {
+  if (a_j.is_string()) {
+    if (a_j.get<std::string>().empty()) {
+      a_ctx.Error(std::string{a_what});
+      return std::nullopt;
+    }
+    return NotedExpression{a_j.get<std::string>(), ""};
+  }
+  if (a_j.is_object()) {
+    Reader r(a_j, a_ctx);
+    const std::string text = r.String("expr").value_or("");
+    const std::string note = r.String("note").value_or("");
+    r.Finish();
+    if (text.empty()) {
+      a_ctx.Error(std::string{a_what});
+      return std::nullopt;
+    }
+    return NotedExpression{text, note};
+  }
+  a_ctx.Error(std::string{a_what});
+  return std::nullopt;
+}
+
 std::optional<Curve> CurveFrom(const std::string &a_name, const json &a_j,
                                const Reporter &a_ctx) {
-  if (!a_j.is_string() || a_j.get<std::string>().empty()) {
-    a_ctx.Error("a curve is an expression string in x");
+  const auto noted = NotedExpressionFrom(
+      a_j,
+      "a curve is an expression string in x, or {\"expr\": ..., "
+      "\"note\": ...}",
+      a_ctx);
+  if (!noted) {
     return std::nullopt;
   }
-  return Curve{a_name, a_j.get<std::string>()};
+  return Curve{a_name, noted->text, noted->note};
 }
 
 std::optional<Mask> MaskFrom(const std::string &a_name, const json &a_j,
                              const Reporter &a_ctx) {
-  if (!a_j.is_string() || a_j.get<std::string>().empty()) {
-    a_ctx.Error("a mask is an expression string over sources");
+  const auto noted = NotedExpressionFrom(
+      a_j,
+      "a mask is an expression string over sources, or {\"expr\": ..., "
+      "\"note\": ...}",
+      a_ctx);
+  if (!noted) {
     return std::nullopt;
   }
-  return Mask{a_name, a_j.get<std::string>()};
+  return Mask{a_name, noted->text, noted->note};
 }
 
 void ReadMetadata(Reader &a_r, const Reporter &a_ctx, Metadata &a_meta) {

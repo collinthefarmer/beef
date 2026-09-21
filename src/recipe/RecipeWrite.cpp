@@ -97,6 +97,14 @@ std::string DescribeSource(const SourceKind &a_kind) {
 namespace {
 json CurveRefToJson(const CurveRef &a_curve) { return json(a_curve.text); }
 
+json NotedExpressionToJson(const std::string &a_text,
+                           const std::string &a_note) {
+  if (a_note.empty()) {
+    return json(a_text);
+  }
+  return json::object({{"expr", a_text}, {"note", a_note}});
+}
+
 json KeyToJson(const RecipeKey &a_key) {
   const std::string word{NameOf(kKeyKinds, a_key.kind)};
   return Match(
@@ -534,7 +542,8 @@ std::string SerializeRecipe(const Recipe &a_recipe) {
   };
   named("signals", a_recipe.signals,
         [](const Signal &s) { return SignalToJson(s); });
-  named("curves", a_recipe.curves, [](const Curve &c) { return json(c.text); });
+  named("curves", a_recipe.curves,
+        [](const Curve &c) { return NotedExpressionToJson(c.text, c.note); });
   named("sources", a_recipe.sources, [](const Source &s) {
     json row = SourceKindToJson(s.kind);
     if (!s.note.empty()) {
@@ -542,7 +551,8 @@ std::string SerializeRecipe(const Recipe &a_recipe) {
     }
     return row;
   });
-  named("masks", a_recipe.masks, [](const Mask &m) { return json(m.text); });
+  named("masks", a_recipe.masks,
+        [](const Mask &m) { return NotedExpressionToJson(m.text, m.note); });
 
   if (!a_recipe.outputs.empty()) {
     json outputs = json::array();

@@ -213,6 +213,8 @@ int main() {
     layer.note = "albedo tint";
     out.stack.push_back(layer);
     noted.outputs.push_back(out);
+    noted.curves.push_back(Curve{"ease", "smoothstep(0, 1, x)", "soft ramp"});
+    noted.masks.push_back(Mask{"body", "@tex", "limits to the cuirass"});
 
     const Recipe back =
         StableRoundTrip(SerializeRecipe(noted), "noted", "row notes");
@@ -229,6 +231,23 @@ int main() {
     Check(readOut != nullptr && !readOut->stack.empty() &&
               readOut->stack.front().note == "albedo tint",
           "a layer note survives the round trip");
+    Check(!back.curves.empty() && back.curves.front().note == "soft ramp" &&
+              back.curves.front().text == "smoothstep(0, 1, x)",
+          "a curve note survives the round trip as the dual form");
+    Check(!back.masks.empty() &&
+              back.masks.front().note == "limits to the "
+                                         "cuirass" &&
+              back.masks.front().text == "@tex",
+          "a mask note survives the round trip as the dual form");
+
+    Recipe plainExpr;
+    plainExpr.id = "plainexpr";
+    plainExpr.curves.push_back(Curve{"ease", "x", ""});
+    plainExpr.masks.push_back(Mask{"body", "1", ""});
+    const std::string plainJson = SerializeRecipe(plainExpr);
+    Check(plainJson.contains("\"ease\": \"x\"") &&
+              plainJson.contains("\"body\": \"1\""),
+          "a curve and mask without a note stay bare expression strings");
   }
 
   const std::vector<std::string> fixtures = FixtureRecipeNames();

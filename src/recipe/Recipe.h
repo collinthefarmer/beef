@@ -340,6 +340,7 @@ DefaultSignalKind(std::string_view a_name);
 struct Curve {
   std::string name;
   std::string text;
+  std::string note;
   [[nodiscard]] bool operator==(const Curve &) const = default;
 };
 
@@ -509,6 +510,7 @@ struct Source {
 struct Mask {
   std::string name;
   std::string text;
+  std::string note;
   [[nodiscard]] bool operator==(const Mask &) const = default;
 };
 
