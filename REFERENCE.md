@@ -816,6 +816,22 @@ Decompile provenance (`decompiled/WornEnchantmentFX/plugin.c` unless noted):
 
 ## Compositor (`render/Compositor.cpp`, `CompositorSource.cpp`, `CompositorBake.cpp`)
 
+- A composited result that is identical across actors is shared, not
+  recomputed per geometry, through `AdoptSharedTarget(Shared, key, render)`
+  over a `planners/ResourceCache`. The result renders once inside the miss
+  supplier and every later geometry with the same key adopts the live
+  target; the target frees and returns its presenter slot when the last
+  holder retires. Each shareable kind contributes one cache member, one
+  `Shared` enum value, and one key builder that ends in
+  `TextureIdentity(TextureRef)` for the source identities. A stack shares
+  only when `ShareableAcrossActors` holds (static, no per-actor bake or
+  distance source); a cluster map shares unconditionally because it is
+  pure material analysis. This is distinct from `planners/TextureLeases`,
+  which is not a content cache: it keys a generated texture by its engine
+  presenter address so a consumer can re-`Retain` the same target by
+  identity. `ResourceCache` keys by content so different geometries reach
+  the same target; both hold the target by `weak_ptr` so the pool reclaims
+  it on the last drop.
 - Many PBR sets ship a displacement map that is a real texture and
   entirely black; a map is flat when its mean sits at either end (NOTES
   46) — at or below 0.02, or at or above 0.98 (`render/CompositorSource.cpp`)

@@ -18,15 +18,13 @@ namespace {
 [[nodiscard]] std::string ClusterMapKey(const MaterialInputs &a_material,
                                         const ClusterSettings &a_settings,
                                         TextureSize a_size) {
-  const auto identity = [](const TextureRef &a_texture) -> std::uintptr_t {
-    return reinterpret_cast<std::uintptr_t>(a_texture.get());
-  };
   const ChannelWeights &w = a_settings.weights;
   return std::format(
       "{}\x1f{}\x1f{}\x1f{}\x1f{}\x1f{}\x1f{}\x1f{}\x1f{}\x1f{}\x1f{}",
-      identity(a_material.rmaos), identity(a_material.diffuse), a_size.Pixels(),
-      a_settings.clusters, a_settings.seed, a_settings.iterations, w.roughness,
-      w.metallic, w.occlusion, w.reflectance, w.luma);
+      TextureIdentity(a_material.rmaos), TextureIdentity(a_material.diffuse),
+      a_size.Pixels(), a_settings.clusters, a_settings.seed,
+      a_settings.iterations, w.roughness, w.metallic, w.occlusion,
+      w.reflectance, w.luma);
 }
 
 std::shared_ptr<TextureLab::Lookup> CreateCurveLookup(const Program &program,
@@ -125,8 +123,9 @@ RenderClusterMap(const GeometryInputs &a_inputs,
   auto *lab = TextureLab::GetSingleton();
   const std::string key = ClusterMapKey(material, a_settings, size);
   std::shared_ptr<TextureLab::RenderTarget> target =
-      Compositor::GetSingleton()->SharedClusterMap(
-          key, [&]() -> std::shared_ptr<TextureLab::RenderTarget> {
+      Compositor::GetSingleton()->AdoptSharedTarget(
+          Compositor::Shared::kCluster, key,
+          [&]() -> std::shared_ptr<TextureLab::RenderTarget> {
             std::shared_ptr<TextureLab::RenderTarget> fresh =
                 lab->Acquire(size, "clusters");
             if (!fresh) {

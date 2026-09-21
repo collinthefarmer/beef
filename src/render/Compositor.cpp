@@ -16,14 +16,11 @@ TextureRef BaseMapFor(Slot a_slot, const MaterialInputs &a_material) {
                                           std::size_t a_outputIndex,
                                           const MaterialInputs &a_material,
                                           TextureSize a_size) {
-  const auto identity = [](const TextureRef &a_texture) -> std::uintptr_t {
-    return reinterpret_cast<std::uintptr_t>(a_texture.get());
-  };
-  return std::format("{}\x1f{}\x1f{}\x1f{}\x1f{}\x1f{}\x1f{}",
-                     SerializeRecipe(a_recipe), a_outputIndex, a_size.Pixels(),
-                     identity(a_material.rmaos), identity(a_material.diffuse),
-                     identity(a_material.normal),
-                     identity(a_material.displacement));
+  return std::format(
+      "{}\x1f{}\x1f{}\x1f{}\x1f{}\x1f{}\x1f{}", SerializeRecipe(a_recipe),
+      a_outputIndex, a_size.Pixels(), TextureIdentity(a_material.rmaos),
+      TextureIdentity(a_material.diffuse), TextureIdentity(a_material.normal),
+      TextureIdentity(a_material.displacement));
 }
 
 TextureSize SizeOverBase(TextureSize a_size, TextureSize a_maxSize,
@@ -197,14 +194,8 @@ Compositor::StackTarget(const StackShareInputs &a_share, TextureSize a_size) {
   }
   const std::string key = SharedStaticKey(a_share.recipe, a_share.outputIndex,
                                           a_share.material, a_size);
-  const SharedResource<TextureLab::RenderTarget> shared =
-      sharedStacks_.Adopt(key, [&] { return lab->Acquire(a_size, "stack"); });
-  if (shared.adopted && shared.value) {
-    Trace::EmitSafely(Trace::Event::kTexture,
-                      {{"action", "stack_shared"},
-                       {"target", std::to_string(shared.value->Generation())}});
-  }
-  return shared.value;
+  return AdoptSharedTarget(Shared::kStack, key,
+                           [&] { return lab->Acquire(a_size, "stack"); });
 }
 
 void Compositor::ClearSharedStatics() noexcept {
@@ -212,15 +203,27 @@ void Compositor::ClearSharedStatics() noexcept {
   sharedClusters_.Clear();
 }
 
-std::shared_ptr<TextureLab::RenderTarget> Compositor::SharedClusterMap(
-    const std::string &a_key,
+ResourceCache<TextureLab::RenderTarget> &
+Compositor::SharedCache(Shared a_kind) noexcept {
+  switch (a_kind) {
+  case Shared::kStack:
+    return sharedStacks_;
+  case Shared::kCluster:
+    return sharedClusters_;
+  }
+  return sharedStacks_;
+}
+
+std::shared_ptr<TextureLab::RenderTarget> Compositor::AdoptSharedTarget(
+    Shared a_kind, const std::string &a_key,
     const std::function<std::shared_ptr<TextureLab::RenderTarget>()>
         &a_render) {
   const SharedResource<TextureLab::RenderTarget> shared =
-      sharedClusters_.Adopt(a_key, a_render);
+      SharedCache(a_kind).Adopt(a_key, a_render);
   if (shared.adopted && shared.value) {
     Trace::EmitSafely(Trace::Event::kTexture,
-                      {{"action", "cluster_shared"},
+                      {{"action", a_kind == Shared::kStack ? "stack_shared"
+                                                           : "cluster_shared"},
                        {"target", std::to_string(shared.value->Generation())}});
   }
   return shared.value;

@@ -25,4 +25,7 @@ private:
 
 [[nodiscard]] bool RegisterTextureTarget(
     const std::shared_ptr<TextureLab::RenderTarget> &a_target);
+
+[[nodiscard]] std::uintptr_t
+TextureIdentity(const TextureRef &a_texture) noexcept;
 }
