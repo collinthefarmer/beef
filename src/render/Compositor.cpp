@@ -16,11 +16,12 @@ TextureRef BaseMapFor(Slot a_slot, const MaterialInputs &a_material) {
                                           std::size_t a_outputIndex,
                                           const MaterialInputs &a_material,
                                           TextureSize a_size) {
-  return std::format(
-      "{}\x1f{}\x1f{}\x1f{}\x1f{}\x1f{}\x1f{}", SerializeRecipe(a_recipe),
-      a_outputIndex, a_size.Pixels(), TextureIdentity(a_material.rmaos),
-      TextureIdentity(a_material.diffuse), TextureIdentity(a_material.normal),
-      TextureIdentity(a_material.displacement));
+  return std::format("{}\x1f{}\x1f{}\x1f{}\x1f{}\x1f{}\x1f{}",
+                     SerializeRecipe(a_recipe), a_outputIndex, a_size.Pixels(),
+                     TextureRefIdentity(a_material.rmaos),
+                     TextureRefIdentity(a_material.diffuse),
+                     TextureRefIdentity(a_material.normal),
+                     TextureRefIdentity(a_material.displacement));
 }
 
 TextureSize SizeOverBase(TextureSize a_size, TextureSize a_maxSize,

@@ -21,21 +21,22 @@ namespace {
   const ChannelWeights &w = a_settings.weights;
   return std::format(
       "{}\x1f{}\x1f{}\x1f{}\x1f{}\x1f{}\x1f{}\x1f{}\x1f{}\x1f{}\x1f{}",
-      TextureIdentity(a_material.rmaos), TextureIdentity(a_material.diffuse),
-      a_size.Pixels(), a_settings.clusters, a_settings.seed,
-      a_settings.iterations, w.roughness, w.metallic, w.occlusion,
-      w.reflectance, w.luma);
+      TextureRefIdentity(a_material.rmaos),
+      TextureRefIdentity(a_material.diffuse), a_size.Pixels(),
+      a_settings.clusters, a_settings.seed, a_settings.iterations, w.roughness,
+      w.metallic, w.occlusion, w.reflectance, w.luma);
 }
 
 [[nodiscard]] std::string MaskShareKey(const Recipe &a_recipe,
                                        std::string_view a_name,
                                        const MaterialInputs &a_material,
                                        TextureSize a_size) {
-  return std::format(
-      "{}\x1f{}\x1f{}\x1f{}\x1f{}\x1f{}\x1f{}", SerializeRecipe(a_recipe),
-      a_name, a_size.Pixels(), TextureIdentity(a_material.rmaos),
-      TextureIdentity(a_material.diffuse), TextureIdentity(a_material.normal),
-      TextureIdentity(a_material.displacement));
+  return std::format("{}\x1f{}\x1f{}\x1f{}\x1f{}\x1f{}\x1f{}",
+                     SerializeRecipe(a_recipe), a_name, a_size.Pixels(),
+                     TextureRefIdentity(a_material.rmaos),
+                     TextureRefIdentity(a_material.diffuse),
+                     TextureRefIdentity(a_material.normal),
+                     TextureRefIdentity(a_material.displacement));
 }
 
 std::shared_ptr<TextureLab::Lookup> CreateCurveLookup(const Program &program,

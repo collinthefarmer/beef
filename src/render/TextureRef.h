@@ -27,5 +27,5 @@ private:
     const std::shared_ptr<TextureLab::RenderTarget> &a_target);
 
 [[nodiscard]] std::uintptr_t
-TextureIdentity(const TextureRef &a_texture) noexcept;
+TextureRefIdentity(const TextureRef &a_texture) noexcept;
 }
