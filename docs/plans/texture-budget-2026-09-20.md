@@ -61,30 +61,47 @@ Open for the format freeze (gate 5): whether an author may override the
 factor per output (`resolution: full|half|quarter`) as a format-1
 field. Engine policy ships first; the field is decided at the freeze.
 
-Done when: the stress scene census drops accordingly and a 4K armor's
-normal and height detail is visually unchanged at the in-game
-checkpoint. Size M.
+Landed and measured 2026-09-21 (4689920). On a 30-actor crowd
+(`...-trace-1789953808540559.jsonl`) VRAM peak fell from 5.4 GiB to
+2.4 GiB, a 55% cut on a slightly larger scene; the acquire-size
+histogram shifted down as designed (512 and 256 now dominate, with
+1024/2048 only where normal and height stay full). Still open: the
+studio authoring control for the override field, and the in-game visual
+check that a 4K piece's normal and height detail is unchanged.
 
-## Stage 2: re-measure, then rank what remains
+## Stage 2: re-measure — DONE 2026-09-21, and it re-ranks the rest
 
-Re-run the stress scene, compare the Measurement section against the
-baseline, restate the budget numbers, and feed the author cost model
-(the studio knows each stack's size and whether it animates). The
-stage-0 measurement already says a demand of ~500 targets is the
-problem, so stage 3 is expected, not contingent; this stage confirms
-how much of the 500 the resolution factor alone removed and sizes what
-remains. Size S.
+The stage-1 trace answers the ranking question and exposes a split the
+byte census hid: **VRAM and slot count are separate limits, and
+resolution only touches VRAM.** VRAM more than halved (5.4 to 2.4 GiB),
+but the pool still reached all 512 slots with 509 distinct targets
+live — the same ~500-target working set, now cheaper each. Reducing a
+target's size does not reduce the number of targets or slots.
 
-## Stage 3: static demotion — likely primary, not contingent
+Consequence: the budget has two numbers, not one. VRAM at 2.4 GiB is
+above the 1 GiB target but within reach of stage 3; the 512-slot count
+is now the harder wall and resolution cannot move it. Both point to
+static demotion (stage 3), which is the only lever that removes a
+target and its slot outright, not just its bytes. Cluster maps
+(~0.66 GiB, native size, unchanged by stage 1) are now a larger share
+of the VRAM and a candidate for their own reduction.
+
+## Stage 3: static demotion — CONFIRMED PRIMARY by the stage-2 measurement
 
 The working set is dominated by stacks, and in a town crowd most stacks
 are static (no animated signal). A static stack renders once; demote
 its result to a BC7 immutable texture behind the same presenter (about
-5.3x smaller), release the render-target view so the slot returns, and
-let scalar single-channel stacks use R8. This is what turns "~500
-concurrent targets" into "only the animated stacks hold targets".
-Engine work under the renderer lock; M to L. Stage 2's numbers set its
-exact priority, but the stage-0 finding already points here.
+5.3x smaller), release the render-target view **and its presenter
+slot**, and let scalar single-channel stacks use R8. This is the only
+lever that reduces the target and slot COUNT, which stage 2 showed is
+the binding wall (512 slots exhausted regardless of size); it also
+takes the next VRAM bite (2.4 GiB toward the 1 GiB budget). Engine work
+under the renderer lock; M to L. Now the next stage.
+
+Design note from stage 2: demotion must return the presenter slot, not
+only free the render-target view — the slot count, not the byte count,
+is what the 512 cap enforces. A demoted static texture needs its own
+lighter presenter path or must relinquish the slot to the pool.
 
 ## Stage 4: eviction by distance — for the crowd tail
 
