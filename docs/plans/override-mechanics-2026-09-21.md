@@ -79,3 +79,30 @@ feature is for, so the seed stays the actor form id with no new field.
   piece's contest set (proposal: resolve the sample pool first, then the
   winner participates in the priority chain where `replace` cuts apply).
   Settle at increment 2.
+
+## Backlog: stable per-item ids for item-intrinsic sampling
+
+The `sampled` seed is the actor form id because Skyrim exposes no stable
+per-item id — two actors in the same armour share one base `armor` form,
+and an item's `ExtraDataList` (which distinguishes a physical instance)
+is not a persistent identifier across saves. That ruled out
+item-intrinsic sampling (a unique artifact whose look is stable across
+whoever wears it, chosen once for the item).
+
+Investigate whether a stable per-item id can be assigned and tracked, so
+the seed could optionally key on the item instead of the actor:
+
+- Where an id could live: a value written into the worn item's
+  `ExtraDataList` (a custom `BSExtraData`, or an existing unique field),
+  or an SKSE co-save map from an item handle to an assigned id.
+- Persistence: it must survive save/reload, cell changes, and the item
+  moving between inventories, or the "stable across wearers" promise
+  breaks — the exact property `ExtraDataList` pointers lack today.
+- Cost and safety: assigning on first sight, not leaking, and staying
+  inert when absent (fall back to the actor seed). Engine-facing and
+  memory-safety sensitive (rule 1), so it is a spike, not a quick add.
+
+Payoff if it works: `sample: actor|item` becomes a real author choice
+(the field explored 2026-09-21 and deferred), giving item-intrinsic
+looks without losing the actor-seed crowd-variety default. Until then
+the actor seed stands.
