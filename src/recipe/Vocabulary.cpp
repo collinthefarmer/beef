@@ -879,15 +879,22 @@ bool IsAnimated(const Recipe &a_recipe, const Output &a_output) {
       });
 }
 
-bool ShareableAcrossActors(const Recipe &a_recipe, const Output &a_output) {
-  if (!Is<SurfaceOutput>(a_output) || IsAnimated(a_recipe, a_output)) {
-    return false;
-  }
+bool RecipeInputsAreActorIndependent(const Recipe &a_recipe) noexcept {
   for (const Source &source : a_recipe.sources) {
     if (Is<BakeSource>(source.kind) || Is<DistanceSource>(source.kind)) {
       return false;
     }
   }
   return true;
+}
+
+bool ShareableAcrossActors(const Recipe &a_recipe, const Output &a_output) {
+  return Is<SurfaceOutput>(a_output) && !IsAnimated(a_recipe, a_output) &&
+         RecipeInputsAreActorIndependent(a_recipe);
+}
+
+bool ShareableAcrossActors(const Recipe &a_recipe, const Mask &a_mask) {
+  return !IsAnimated(a_recipe, a_mask) &&
+         RecipeInputsAreActorIndependent(a_recipe);
 }
 }

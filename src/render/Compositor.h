@@ -188,6 +188,7 @@ public:
   enum class Shared {
     kStack,
     kCluster,
+    kMask,
   };
   [[nodiscard]] std::shared_ptr<TextureLab::RenderTarget> AdoptSharedTarget(
       Shared a_kind, const std::string &a_key,
@@ -290,6 +291,7 @@ private:
       materials_;
   ResourceCache<TextureLab::RenderTarget> sharedStacks_;
   ResourceCache<TextureLab::RenderTarget> sharedClusters_;
+  ResourceCache<TextureLab::RenderTarget> sharedMasks_;
   [[nodiscard]] ResourceCache<TextureLab::RenderTarget> &
   SharedCache(Shared a_kind) noexcept;
   std::uint64_t tick_ = 1;

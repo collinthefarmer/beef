@@ -81,6 +81,18 @@ int main() {
     light.outputs = {Output{LightOutput{}}};
     Check(!ShareableAcrossActors(light, light.outputs.front()),
           "a light output is not a shareable surface stack");
+
+    Recipe masks;
+    masks.masks.push_back(Mask{"steady", "roughness"});
+    masks.masks.push_back(Mask{"moving", "time"});
+    Check(ShareableAcrossActors(masks, masks.masks.front()),
+          "a static mask over shared inputs is shareable");
+    Check(!ShareableAcrossActors(masks, masks.masks.back()),
+          "a mask that reads time is not shareable");
+    Recipe maskWithBake = masks;
+    maskWithBake.sources.push_back(Source{"pos", BakeSource{PositionBake{}}});
+    Check(!ShareableAcrossActors(maskWithBake, maskWithBake.masks.front()),
+          "a static mask is not shareable when the recipe holds a bake");
   }
 
   {

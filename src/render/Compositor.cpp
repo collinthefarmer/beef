@@ -201,6 +201,7 @@ Compositor::StackTarget(const StackShareInputs &a_share, TextureSize a_size) {
 void Compositor::ClearSharedStatics() noexcept {
   sharedStacks_.Clear();
   sharedClusters_.Clear();
+  sharedMasks_.Clear();
 }
 
 ResourceCache<TextureLab::RenderTarget> &
@@ -210,8 +211,22 @@ Compositor::SharedCache(Shared a_kind) noexcept {
     return sharedStacks_;
   case Shared::kCluster:
     return sharedClusters_;
+  case Shared::kMask:
+    return sharedMasks_;
   }
   return sharedStacks_;
+}
+
+[[nodiscard]] std::string_view SharedActionName(Compositor::Shared a_kind) {
+  switch (a_kind) {
+  case Compositor::Shared::kStack:
+    return "stack_shared";
+  case Compositor::Shared::kCluster:
+    return "cluster_shared";
+  case Compositor::Shared::kMask:
+    return "mask_shared";
+  }
+  return "stack_shared";
 }
 
 std::shared_ptr<TextureLab::RenderTarget> Compositor::AdoptSharedTarget(
@@ -222,8 +237,7 @@ std::shared_ptr<TextureLab::RenderTarget> Compositor::AdoptSharedTarget(
       SharedCache(a_kind).Adopt(a_key, a_render);
   if (shared.adopted && shared.value) {
     Trace::EmitSafely(Trace::Event::kTexture,
-                      {{"action", a_kind == Shared::kStack ? "stack_shared"
-                                                           : "cluster_shared"},
+                      {{"action", std::string{SharedActionName(a_kind)}},
                        {"target", std::to_string(shared.value->Generation())}});
   }
   return shared.value;

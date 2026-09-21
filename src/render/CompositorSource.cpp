@@ -27,6 +27,17 @@ namespace {
       w.reflectance, w.luma);
 }
 
+[[nodiscard]] std::string MaskShareKey(const Recipe &a_recipe,
+                                       std::string_view a_name,
+                                       const MaterialInputs &a_material,
+                                       TextureSize a_size) {
+  return std::format(
+      "{}\x1f{}\x1f{}\x1f{}\x1f{}\x1f{}\x1f{}", SerializeRecipe(a_recipe),
+      a_name, a_size.Pixels(), TextureIdentity(a_material.rmaos),
+      TextureIdentity(a_material.diffuse), TextureIdentity(a_material.normal),
+      TextureIdentity(a_material.displacement));
+}
+
 std::shared_ptr<TextureLab::Lookup> CreateCurveLookup(const Program &program,
                                                       float mean) {
   std::array<float, 256> values{};
@@ -793,7 +804,15 @@ Compositor::PrepareRenderedMask(const Recipe &a_recipe, std::string_view a_name,
     return fail(
         "the interpreter shader did not compile (see the log at start)");
   }
-  r.target_ = TextureLab::GetSingleton()->Acquire(a_size, "program");
+  const auto acquire = [&] {
+    return TextureLab::GetSingleton()->Acquire(a_size, "program");
+  };
+  r.target_ = ShareableAcrossActors(a_recipe, *mask)
+                  ? AdoptSharedTarget(Shared::kMask,
+                                      MaskShareKey(a_recipe, a_name,
+                                                   a_inputs.material, a_size),
+                                      acquire)
+                  : acquire();
   if (!r.target_) {
     return fail("no render target available");
   }
