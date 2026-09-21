@@ -656,10 +656,11 @@ void Manager::MatchRecipes(RE::Actor *a_actor, LiveActor &a_state,
   const std::vector<Studio::PieceRef> &refs = built.owners;
   a_state.plan = MatchActor(
       built.geometries, loaded,
-      [this, loaded, &refs](const Geometry &a_geometry,
-                            GeometryId a_geometryID) {
+      [this, loaded, &refs, actorID](const Geometry &a_geometry,
+                                     GeometryId a_geometryID) {
         const std::size_t index = IndexOf(a_geometryID);
-        std::vector<ResolvedRecipe> resolved = Resolve(a_geometry.keys, loaded);
+        std::vector<ResolvedRecipe> resolved =
+            Resolve(a_geometry.keys, loaded, actorID);
         const Studio::PieceRef ref =
             index < refs.size() ? refs[index] : Studio::PieceRef{};
         return Studio::ViewedRecipes({std::move(resolved), a_geometry.keys, ref,

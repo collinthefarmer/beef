@@ -134,8 +134,12 @@ GeometryPlan PlanGeometry(std::span<const PlacedRecipe> a_placed) {
     std::vector<Flagged<SlotContribution>> flagged;
     for (const SlotContribution &c : slot.chain) {
       const SurfaceOutput *output = SlotOutputAt(a_placed, c);
-      flagged.push_back(
-          Flagged<SlotContribution>{c, output && output->replace});
+      const std::size_t placed = IndexOf(c.placed);
+      const bool recipeReplaces =
+          placed < a_placed.size() && a_placed[placed].recipe &&
+          a_placed[placed].recipe->overrideMode == OverrideMode::kReplace;
+      flagged.push_back(Flagged<SlotContribution>{
+          c, (output && output->replace) || recipeReplaces});
     }
     CutAtReplace<SlotContribution>(flagged, slot.chain, slot.replaced,
                                    slot.replacer);

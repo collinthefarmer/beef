@@ -35,6 +35,15 @@ today's behaviour, so an un-annotated recipe is unchanged.
 Sampling decided: **deterministic by actor form id** (stable, no stored
 state). Scope decided: **per recipe**.
 
+Seeding the sample on the armour or item instead of the actor was
+explored 2026-09-21 and set aside: Skyrim has no stable per-item id (two
+actors in the same armour share one base `armor` form id), so the only
+stable seeds are base form ids, and seeding on the armour/enchantment
+form inverts the feature — a same-armour crowd becomes uniform, losing
+the variety `sampled` exists to give. Item-intrinsic looks would suit a
+unique artifact, but the actor seed is the crowd-variety case this
+feature is for, so the seed stays the actor form id with no new field.
+
 ## Data
 
 - `enum class OverrideMode { kStack, kReplace, kSampled, kLerp };` in
@@ -53,10 +62,13 @@ state). Scope decided: **per recipe**.
    schema-agreement test, and a round-trip test. No behaviour yet —
    `stack` is the only mechanic the merge honours, which is the current
    behaviour, so the plugin is unchanged. This unblocks the freeze.
-2. **Merge behaviour** (engine-free planners + resolve, native-tested):
-   `replace` promotes to a recipe-level chain cut; `sampled` builds the
-   per-piece pool and picks one member by the actor-id hash. Both are
-   pure over the placement inputs, so they test without the engine.
+2. **Merge behaviour** — LANDED 2026-09-21. `replace` promotes to a
+   recipe-level chain cut (`Merge.cpp`, the `Flagged` replace flag now
+   ORs `overrideMode == kReplace`); `sampled` collapses the per-piece
+   pool to one member in `Resolve` (`KeepOneSampled`, keyed by a seed
+   parameter that the engine threads as the actor form id). Both are
+   pure and native-tested (`tests/recipe/merge_tests.cpp`). The studio
+   preview and the convenience `MatchActor` overload pass seed 0.
 3. **The Recipes-page UI** (backlog 17): a choice widget on the recipe
    header (`RecipeHeaderForm`) and a readout of what wins on a contested
    slot. Follows the field's shape.

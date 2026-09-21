@@ -969,7 +969,8 @@ struct ResolvedRecipe {
 };
 
 [[nodiscard]] std::vector<ResolvedRecipe>
-Resolve(const WornPiece &a_piece, std::span<const Recipe> a_loaded);
+Resolve(const WornPiece &a_piece, std::span<const Recipe> a_loaded,
+        std::uint32_t a_seed = 0);
 
 [[nodiscard]] bool AnyUnenchantedKey(std::span<const Recipe> a_loaded) noexcept;
 

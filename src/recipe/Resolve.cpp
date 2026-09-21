@@ -94,8 +94,34 @@ bool KeyMatches(const RecipeKey &a_key, const WornPiece &a_piece) {
 }
 }
 
+namespace {
+void KeepOneSampled(std::vector<ResolvedRecipe> &a_matches,
+                    std::uint32_t a_seed) {
+  std::vector<std::size_t> pool;
+  for (std::size_t i = 0; i < a_matches.size(); ++i) {
+    if (a_matches[i].recipe &&
+        a_matches[i].recipe->overrideMode == OverrideMode::kSampled) {
+      pool.push_back(i);
+    }
+  }
+  if (pool.size() < 2) {
+    return;
+  }
+  const std::size_t keep = pool[a_seed % pool.size()];
+  std::vector<ResolvedRecipe> filtered;
+  filtered.reserve(a_matches.size());
+  for (std::size_t i = 0; i < a_matches.size(); ++i) {
+    if (!std::ranges::contains(pool, i) || i == keep) {
+      filtered.push_back(a_matches[i]);
+    }
+  }
+  a_matches = std::move(filtered);
+}
+}
+
 std::vector<ResolvedRecipe> Resolve(const WornPiece &a_piece,
-                                    std::span<const Recipe> a_loaded) {
+                                    std::span<const Recipe> a_loaded,
+                                    std::uint32_t a_seed) {
   struct Candidate {
     ResolvedRecipe resolved;
     std::size_t loadIndex;
@@ -142,6 +168,7 @@ std::vector<ResolvedRecipe> Resolve(const WornPiece &a_piece,
   for (const auto &m : matches) {
     out.push_back(m.resolved);
   }
+  KeepOneSampled(out, a_seed);
   return out;
 }
 

@@ -1,6 +1,8 @@
 #include "recipe/Merge.h"
 #include "test_support.h"
 
+#include <algorithm>
+#include <string>
 #include <utility>
 #include <vector>
 
@@ -131,6 +133,30 @@ int main() {
   }
 
   {
+    Recipe low = RecipeWith({Output{Emissive(false, false)}});
+    Recipe midReplaces = RecipeWith({Output{Emissive(false, false)}});
+    midReplaces.overrideMode = OverrideMode::kReplace;
+    Recipe high = RecipeWith({Output{Emissive(false, false)}});
+    const std::vector<PlacedRecipe> placed{
+        PlacedRecipe{&low, 1, {0}},
+        PlacedRecipe{&midReplaces, 2, {0}},
+        PlacedRecipe{&high, 3, {0}},
+    };
+    const GeometryPlan geometry = PlanGeometry(placed);
+    const SlotPlan *emissive =
+        SlotPlanOf(geometry, Surface::kMaterial, Slot::kEmissive);
+    Check(emissive != nullptr, "the recipe-level replace builds a slot plan");
+    if (emissive) {
+      Check(emissive->chain.size() == 2,
+            "an override:replace recipe cuts the chain like an output replace");
+      Check(emissive->replacer == SlotContribution{SlotContributor{1}, 0},
+            "the override:replace recipe is the replacer");
+      Check(emissive->replaced.size() == 1,
+            "the lower-priority contribution is replaced");
+    }
+  }
+
+  {
     const Recipe lower = RecipeWith({Output{Emissive(false, true)}});
     const Recipe upper = RecipeWith({Output{Emissive(false, true)}});
     const std::vector<PlacedRecipe> placed{
@@ -209,6 +235,49 @@ int main() {
     Check(restored.shown == normal.shown &&
               restored.replacer == normal.replacer,
           "unsolo restores the original first light output");
+  }
+
+  {
+    const auto glob = [](const char *a_pattern) {
+      return RecipeKey{KeyKind::kMaterial,
+                       KeyOperandValue{std::string{a_pattern}}};
+    };
+    const auto sampled = [&](std::string a_id, const char *a_pattern) {
+      Recipe recipe;
+      recipe.id = std::move(a_id);
+      recipe.overrideMode = OverrideMode::kSampled;
+      recipe.keys = {glob(a_pattern)};
+      return recipe;
+    };
+    WornPiece piece;
+    piece.diffusePaths = {"armor/iron.dds"};
+    const Recipe a = sampled("a", "*iron*");
+    const Recipe b = sampled("b", "armor/*");
+    const Recipe c = sampled("c", "*.dds");
+    const std::vector<Recipe> loaded{a, b, c};
+
+    const std::vector<ResolvedRecipe> seed0 = Resolve(piece, loaded, 0);
+    const std::vector<ResolvedRecipe> seed1 = Resolve(piece, loaded, 1);
+    Check(seed0.size() == 1 && seed1.size() == 1,
+          "a sampled pool of three collapses to one per actor");
+    Check(seed0.front().recipe->id != seed1.front().recipe->id,
+          "different actor seeds pick different pool members");
+    Check(Resolve(piece, loaded, 3).front().recipe->id ==
+              seed0.front().recipe->id,
+          "the pick wraps by the pool size, so it is stable per actor");
+
+    Recipe plain;
+    plain.id = "plain";
+    plain.keys = {glob("*")};
+    const std::vector<Recipe> mixed{a, b, plain};
+    const std::vector<ResolvedRecipe> withPlain = Resolve(piece, mixed, 0);
+    Check(withPlain.size() == 2,
+          "a non-sampled recipe survives beside the one sampled pick");
+    const bool keptPlain =
+        std::ranges::any_of(withPlain, [](const ResolvedRecipe &r) {
+          return r.recipe->id == "plain";
+        });
+    Check(keptPlain, "the surviving recipes include the non-sampled one");
   }
 
   return test::Finish("merge");
