@@ -48,6 +48,7 @@ public:
 
   void Fire(RE::FormID a_actorID, const EventRecord &a_event);
   void QueueEvent(RE::FormID a_actorID, EventRecord a_event);
+  void QueueBroadcast(EventRecord a_event);
 
   void SetEmissivePathEnabled(bool a_enabled);
 
@@ -100,8 +101,11 @@ private:
                               RE::NiAVObject *root, bool verbose);
   void MatchRecipes(RE::Actor *a_actor, LiveActor &a_state,
                     const Settings &a_settings);
+  void FireEquip(RE::FormID a_actorID);
+  void CarryInstanceTime(LiveInstance &a_instance, RE::FormID a_actor,
+                         const Recipe &a_recipe, const Settings &a_settings);
   [[nodiscard]] std::optional<std::size_t>
-  InstanceFor(LiveActor &a_state, RecipeId a_recipe,
+  InstanceFor(LiveActor &a_state, InstanceId a_planInstance,
               RE::MagicItem *a_enchantment, const Settings &a_settings);
   void PlaceInstances(LiveActor &a_state, const Settings &a_settings);
   void PlaceOnGeometry(LiveActor &a_state, LivePieceId a_piece,

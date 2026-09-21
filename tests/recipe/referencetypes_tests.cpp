@@ -39,9 +39,9 @@ void Rejects(SignalKind kind,
 }
 
 int main() {
-  PulseSignal pulse;
-  pulse.period = Ref{"vector"};
-  Rejects(pulse, {"'period' must be a scalar; '@vector' is a vec3"});
+  WaveSignal wave;
+  wave.period = Ref{"vector"};
+  Rejects(wave, {"'period' must be a scalar; '@vector' is a vec3"});
 
   TriggerSignal conditional;
   conditional.origin = WhenOrigin{Ref{"vector"}, std::nullopt};
@@ -54,24 +54,23 @@ int main() {
   Rejects(CounterSignal{Ref{"hit"}, Ref{"scalar"}, Param{Ref{"vector"}}},
           {"'@scalar' must be a trigger",
            "'cap' must be a scalar; '@vector' is a vec3"});
-  Rejects(PayloadSignal{Ref{"scalar"}, PayloadField::kValue},
+  Rejects(PayloadSignal{Ref{"scalar"}},
           {"'trigger' must name a trigger; '@scalar' is not one"});
   Rejects(AccumulateSignal{Ref{"hit"}, Ref{"vector"}},
           {"'decay' must be a scalar; '@vector' is a vec3"});
 
   // The same reference categories must remain valid with compatible targets.
   auto signals = Inputs();
-  pulse.period = Ref{"scalar"};
+  wave.period = Ref{"scalar"};
   conditional.origin = WhenOrigin{Ref{"scalar"}, std::nullopt};
   gradient.stops = {{0.0f, Ref{"vector"}}};
-  signals.push_back({"pulse", pulse, std::nullopt});
+  signals.push_back({"wave", wave, std::nullopt});
   signals.push_back({"conditional", conditional, std::nullopt});
   signals.push_back({"gradient", gradient, std::nullopt});
   signals.push_back(
       {"counter", CounterSignal{Ref{"hit"}, Ref{"hit"}, Param{Ref{"scalar"}}},
        std::nullopt});
-  signals.push_back({"payload", PayloadSignal{Ref{"hit"}, PayloadField::kValue},
-                     std::nullopt});
+  signals.push_back({"payload", PayloadSignal{Ref{"hit"}}, std::nullopt});
   signals.push_back({"accumulate", AccumulateSignal{Ref{"hit"}, Ref{"scalar"}},
                      std::nullopt});
   const auto graph = SignalGraph::Compile(signals, {});

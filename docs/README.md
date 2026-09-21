@@ -45,6 +45,10 @@ Open work.
   what must be true before the mod reaches another person: the five gates,
   their status against the current tree, and the ranked list. Supersedes the
   2026-09-09 roadmap in History.
+- [plans/format-row-reference-2026-09-21.md](plans/format-row-reference-2026-09-21.md)
+  — every authorable row of format 1, kind by kind: parameters, runtime
+  semantics, audited status, and the work items the gate-5 freeze must
+  settle. Working material for the freeze; the schema stays the contract.
 - [plans/texture-budget-2026-09-20.md](plans/texture-budget-2026-09-20.md) —
   gate 1's texture fix, staged against the 2026-09-20 measurement: the
   retention defect, in-play trimming, per-slot resolution factors, then

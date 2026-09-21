@@ -279,9 +279,9 @@ FieldBinding BindPriority() {
   };
 }
 
-FieldBinding BindOverride() {
+FieldBinding BindMerge() {
   return [](const std::string &a_text) -> std::optional<RecipeEdit> {
-    const auto mode = ParseOverrideMode(a_text);
+    const auto mode = ParseMergeMode(a_text);
     return mode ? std::optional<RecipeEdit>{SetOverride{*mode}} : std::nullopt;
   };
 }

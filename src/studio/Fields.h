@@ -79,7 +79,7 @@ struct TextEntryFieldSpec {
 [[nodiscard]] FieldBinding BindShellAlphaTest();
 
 [[nodiscard]] FieldBinding BindPriority();
-[[nodiscard]] FieldBinding BindOverride();
+[[nodiscard]] FieldBinding BindMerge();
 [[nodiscard]] FieldBinding BindClockSpeed();
 [[nodiscard]] FieldBinding BindOutputReplace(std::size_t a_output);
 

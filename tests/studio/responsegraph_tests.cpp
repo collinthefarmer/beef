@@ -34,14 +34,14 @@ int main() {
   Check(!BuildResponseGraph(signal, recipe),
         "dependent missing curve retains text-only editing");
   signal.curve.clear();
-  signal.kind = SignalKindId::kPulse;
-  signal.definition = PulseSignal{0.1f, 0.8f, 2.0f, 0.0f, Waveform::kSine};
-  const auto pulse = BuildResponseGraph(signal, recipe);
-  Check(pulse && Near(pulse->seconds, 2) && Near(pulse->values.front(), 0.1f) &&
-            Near(pulse->values[32], 0.9f),
-        "pulse plot samples the actual waveform over its authored period");
+  signal.kind = SignalKindId::kWave;
+  signal.definition = WaveSignal{0.1f, 0.8f, 2.0f, 0.0f, Waveform::kSine};
+  const auto wave = BuildResponseGraph(signal, recipe);
+  Check(wave && Near(wave->seconds, 2) && Near(wave->values.front(), 0.1f) &&
+            Near(wave->values[32], 0.9f),
+        "wave plot samples the actual waveform over its authored period");
   signal.definition =
-      PulseSignal{0.0f, 1.0f, Ref{"period"}, 0.0f, Waveform::kSine};
+      WaveSignal{0.0f, 1.0f, Ref{"period"}, 0.0f, Waveform::kSine};
   Check(!BuildResponseGraph(signal, recipe),
         "missing duration input produces no guessed graph");
   SignalRow period;

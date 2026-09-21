@@ -214,7 +214,7 @@ the next increments:
    `DerivedMaps` (clusters, normalSlope), the `MaskCache`, and
    mesh-intrinsic bakes is **increment 3** and takes the larger bite.
 2. **The stress recipes are animation-heavy by design.** stress-heavy
-   drives rmaos from `av`; stress-default uses pulse/noise;
+   drives rmaos from `av`; stress-default uses wave/noise;
    stress-armor-tex has a `bake` source (excluded whole by the
    conservative predicate). Animated stacks are genuinely per-actor and
    cannot share. A real town-crowd glow (static, no bake) shares far

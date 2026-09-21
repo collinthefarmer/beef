@@ -129,7 +129,7 @@ template <class Visitor>
 void VisitSignalParams(SignalKind &a_kind, Visitor &a_visit) {
   Match(
       a_kind,
-      [&](PulseSignal &s) {
+      [&](WaveSignal &s) {
         VisitParam(s.base, std::nullopt, a_visit, "base");
         VisitParam(s.amplitude, std::nullopt, a_visit, "amplitude");
         VisitParam(s.period, std::nullopt, a_visit, "period");
@@ -169,7 +169,7 @@ void VisitSignalParams(SignalKind &a_kind, Visitor &a_visit) {
                       std::format("stops[{}].color", stopIndex++));
         }
       },
-      [&](DeltaSignal &s) { VisitRef(s.of, a_visit, "of"); },
+      [&](RateSignal &s) { VisitRef(s.of, a_visit, "of"); },
       [&](SmoothSignal &s) {
         VisitRef(s.of, a_visit, "of");
         VisitParam(s.seconds, std::nullopt, a_visit, "seconds");
@@ -247,7 +247,8 @@ void VisitOutputParams(Output &a_output, Visitor &a_visit) {
 template <class Visitor>
 void VisitShellParams(ShellSettings &a_shell, Visitor &a_visit) {
   const ShellSettings shellDefaults{};
-  VisitParam(a_shell.alpha, LiteralOf(shellDefaults.alpha), a_visit, "alpha");
+  VisitParam(a_shell.opacity, LiteralOf(shellDefaults.opacity), a_visit,
+             "opacity");
   VisitParam(a_shell.rimPower, LiteralOf(shellDefaults.rimPower), a_visit,
              "rimPower");
   VisitParam(a_shell.emissive, LiteralOf(shellDefaults.emissive), a_visit,

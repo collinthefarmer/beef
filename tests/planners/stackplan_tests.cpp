@@ -24,7 +24,7 @@ SurfaceOutput EmissiveAnimated(bool a_replace) {
   output.slot = Slot::kEmissive;
   output.replace = a_replace;
   Layer layer;
-  layer.opacity = Param{Ref{"pulse"}};
+  layer.opacity = Param{Ref{"wave"}};
   output.stack.push_back(std::move(layer));
   return output;
 }
@@ -43,7 +43,7 @@ Recipe StaticReplaceRecipe() {
 
 Recipe AnimatedRecipe() {
   Recipe recipe;
-  recipe.signals.push_back(Signal{"pulse", PulseSignal{}, std::nullopt});
+  recipe.signals.push_back(Signal{"wave", WaveSignal{}, std::nullopt});
   recipe.outputs = {Output{EmissiveAnimated(false)}};
   return recipe;
 }

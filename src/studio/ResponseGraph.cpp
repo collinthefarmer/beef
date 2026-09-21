@@ -39,7 +39,7 @@ namespace {
 
 [[nodiscard]] std::optional<float> HoldDefinition(SignalKind &a_definition,
                                                   const RecipeRow &a_recipe) {
-  if (PulseSignal *pulse = Get<PulseSignal>(a_definition)) {
+  if (WaveSignal *pulse = Get<WaveSignal>(a_definition)) {
     if (Hold(pulse->base, a_recipe) && Hold(pulse->amplitude, a_recipe) &&
         Hold(pulse->phase, a_recipe) && Hold(pulse->period, a_recipe)) {
       return ResolveNumber(pulse->period, a_recipe);
@@ -50,7 +50,7 @@ namespace {
       return ResolveNumber(ramp->seconds, a_recipe);
     }
   } else if (TriggerSignal *trigger = Get<TriggerSignal>(a_definition)) {
-    trigger->origin = EventOrigin{"studio.response", {}, {}};
+    trigger->origin = EventOrigin{"studio.response", {}};
     trigger->max = 1;
     if (Hold(trigger->lifetime, a_recipe)) {
       return ResolveNumber(trigger->lifetime, a_recipe);

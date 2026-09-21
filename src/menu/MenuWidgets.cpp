@@ -685,18 +685,16 @@ const char *BlendGlyph(Blend a_blend) {
     return "-";
   case Blend::kScreen:
     return "s";
-  case Blend::kLerp:
-    return "~";
-  case Blend::kNormal:
+  case Blend::kReorient:
     return "o";
   }
   return "?";
 }
 
 std::optional<Blend> BlendBadge(Blend a_current, Slot a_slot) {
-  static constexpr Blend kBlendOrder[]{
-      Blend::kReplace, Blend::kNormal,   Blend::kMultiply, Blend::kScreen,
-      Blend::kAdd,     Blend::kSubtract, Blend::kLerp};
+  static constexpr Blend kBlendOrder[]{Blend::kReplace,  Blend::kReorient,
+                                       Blend::kMultiply, Blend::kScreen,
+                                       Blend::kAdd,      Blend::kSubtract};
   const float side = ImGui::GetFrameHeight();
   std::optional<Blend> chosen;
   ImGui::PushID("blend");

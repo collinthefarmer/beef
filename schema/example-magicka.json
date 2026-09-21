@@ -32,7 +32,7 @@
     "inflate":      { "expr": "(1 + clamp(@fillLevel, 0, 2)) * 0.01" },
 
     "struck": { "trigger": { "event": "hit.received", "lifetime": 1.5, "max": 3 }, "curve": "@flash" },
-    "step":   { "trigger": { "event": "anim.FootLeft", "at": "NPC L Foot [Lft ]", "lifetime": 0.6, "max": 2 }, "curve": "@flash" }
+    "step":   { "trigger": { "event": "anim.FootLeft", "anchor": { "node": "NPC L Foot [Lft ]" }, "lifetime": 0.6, "max": 2 }, "curve": "@flash" }
   },
 
   "curves": {
@@ -84,7 +84,7 @@
   ],
 
   "shell": {
-    "material": "pbrCopy", "blend": "additive", "depthBias": true, "alpha": "@shellOpacity",
+    "material": "pbrCopy", "blend": "additive", "depthBias": true, "opacity": "@shellOpacity",
     "pose": { "inflate": [0, "@inflate", "@inflate"] }
   },
 

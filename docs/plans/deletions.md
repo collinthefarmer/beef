@@ -60,13 +60,13 @@ critique Plan G on 2026-09-14). `offset`, `scale`, `scalePoint`, `spin` and
 skin-to-bone transform, so the schema, reader, writer and form stay as they
 are.
 
-**`variants`.** ~80 mentions across eight files, fully plumbed;
-`ApplyVariant` is called only from tests. `schema/example-magicka.json`
-uses it, so the canonical example demonstrates behaviour the plugin does
-not have.
+**`variants`.** RESOLVED 2026-09-21: wired. `InstanceVariant`
+(`planners/ActorPlan.cpp`) selects the first variant matching an
+instance's placements, and `Manager::InstanceFor` compiles the varied
+signal graph.
 
-**`LightOutput::bulb`.** Seven sites, never reaches `LightBinding::Create`.
-The schema documents behaviour that does not exist.
+**`LightOutput::bulb`.** RESOLVED 2026-09-21: cut from format 1. The
+freeze writing reserves the word for format 2.
 
 **`Timing`'s dead exports.** `FrameIndex` (a flipbook indexer; the word
 "flipbook" appears zero times in `src/`), `ClampAnimationSpeed`,
@@ -91,8 +91,8 @@ party's metadata across a save, which matters once recipes circulate).
 collapses `Layout::widgetScale`, `compositeSize` and `developerSignals`
 to constants.
 
-**`blend: "lerp"`** is byte-identical to `replace`; the shader falls
-through. `REFERENCE.md` says so under the lab's shaders.
+**`blend: "lerp"`** RESOLVED 2026-09-21: cut from format 1. `replace`
+remains; the shader's default arm is unchanged.
 
 **The `where` presets.** Resolved by critique Plan A: the shipped file is one
 top-level `presets` array, and the old `where`/`what` split with its thirteen
@@ -113,8 +113,9 @@ in the plugin.
   EFSH-import shaped, so this evidence is thin. Two entries are more than
   unexercised: `ShellMaterial::kVanilla` carries its own ~50-line
   material path and the `rimPower`/`emissive` scalars that exist only for
-  it; `Blend::kNormal` carries ~7 lines of reorientation maths and a
-  table column that exists for one row.
+  it; `Blend::kReorient` (the wire word `reorient`, renamed from `normal`
+  2026-09-21) carries ~7 lines of reorientation maths and a table column
+  that exists for one row.
 - **Functional with no editing path:** `priority`, `clock.speed`,
   `output.replace`, light `selector` and `replace`, and two of three
   selector kinds. The schema and the editor are two different products
@@ -137,6 +138,12 @@ in the plugin.
 
 Each survives a naive grep for the wrong reason.
 
+- **`ValueOf`'s `ComponentIdBake` and `ChartIdBake` arms**
+  (`mesh/Mesh.cpp`) are unreachable: `PrepareBake` routes both island
+  kinds to `BuildIslandBake` before `BuildBake` runs, and `NeedsAnalysis`
+  would error them out of `BuildBake` anyway. They exist because `Match`
+  over `BakeKind` must handle every alternative; deleting them breaks the
+  compile, not the behaviour.
 - **`TextureLab::kProgramStack = 32`** — the bound is real and enforced
   as a bare literal twice in the HLSL string (`float3 st[32]`,
   `if (sp < 32)`). Deleting the constant leaves it nameless. Fix runs the

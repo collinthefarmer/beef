@@ -9,6 +9,8 @@ namespace BetterEnchantmentEffects {
 inline constexpr KeyKindSpec kKeyKinds[]{
     {KeyKind::kDefault, "default", 0, KeyOperand::kNone, false, nullptr,
      nullptr},
+    {KeyKind::kEnchanted, "enchanted", 5, KeyOperand::kNone, true, nullptr,
+     nullptr},
     {KeyKind::kMaterial, "material", 10, KeyOperand::kGlob, false, nullptr,
      nullptr},
     {KeyKind::kKeyword, "keyword", 20, KeyOperand::kForm, false, nullptr,
@@ -59,11 +61,10 @@ inline constexpr Named<EnchantmentField> kEnchantmentFields[]{
     {EnchantmentField::kMagnitude, "magnitude"},
     {EnchantmentField::kCost, "cost"}};
 static_assert(Complete(kEnchantmentFields, kEnchantmentFieldCount));
-inline constexpr Named<PayloadField> kPayloadFields[]{
-    {PayloadField::kValue, "value"},
-    {PayloadField::kPosition, "position"},
-    {PayloadField::kNormal, "normal"}};
-static_assert(Complete(kPayloadFields, kPayloadFieldCount));
+inline constexpr Named<ValueType> kValueTypes[]{{ValueType::kScalar, "scalar"},
+                                                {ValueType::kVec2, "vec2"},
+                                                {ValueType::kVec3, "vec3"}};
+static_assert(Complete(kValueTypes, kValueTypeCount));
 
 inline constexpr ImageChannelSpec kImageChannels[]{
     {ImageChannel::kRgb, "rgb", ShaderChannel::kRgb},
@@ -154,7 +155,7 @@ inline constexpr BipedSlotSpec kBipedSlots[]{
 
 inline constexpr SignalKindSpec kSignalKinds[]{
     {SignalKindId::kConstant, "constant", true},
-    {SignalKindId::kPulse, "pulse", false},
+    {SignalKindId::kWave, "wave", false},
     {SignalKindId::kRamp, "ramp", false},
     {SignalKindId::kEfsh, "efsh", false},
     {SignalKindId::kActorValue, "av", false},
@@ -166,7 +167,7 @@ inline constexpr SignalKindSpec kSignalKinds[]{
     {SignalKindId::kAccumulate, "accumulate", false},
     {SignalKindId::kNoise, "noise", false},
     {SignalKindId::kGradient, "gradient", false},
-    {SignalKindId::kDelta, "delta", false},
+    {SignalKindId::kRate, "rate", false},
     {SignalKindId::kSmooth, "smooth", false},
     {SignalKindId::kExpr, "expr", true},
 };
@@ -180,12 +181,11 @@ inline constexpr Named<Resolution> kResolutions[]{
     {Resolution::kHalf, "half"},
     {Resolution::kQuarter, "quarter"}};
 static_assert(Complete(kResolutions, kResolutionCount));
-inline constexpr Named<OverrideMode> kOverrideModes[]{
-    {OverrideMode::kStack, "stack"},
-    {OverrideMode::kReplace, "replace"},
-    {OverrideMode::kSampled, "sampled"},
-    {OverrideMode::kLerp, "lerp"}};
-static_assert(Complete(kOverrideModes, kOverrideModeCount));
+inline constexpr Named<MergeMode> kMergeModes[]{
+    {MergeMode::kStack, "stack"},
+    {MergeMode::kReplace, "replace"},
+    {MergeMode::kSampled, "sampled"}};
+static_assert(Complete(kMergeModes, kMergeModeCount));
 inline constexpr ScalarFieldSpec kScalarFields[]{
     {ScalarField::kStrength, "strength", &SlotScalars::strength, 1.0f},
     {ScalarField::kScale, "scale", &SlotScalars::scale, 1.0f},
@@ -301,8 +301,7 @@ inline constexpr BlendSpec kBlends[]{
     {Blend::kAdd, "add", 2, false},
     {Blend::kSubtract, "subtract", 3, false},
     {Blend::kScreen, "screen", 4, false},
-    {Blend::kLerp, "lerp", 5, false},
-    {Blend::kNormal, "normal", 6, true},
+    {Blend::kReorient, "reorient", 6, true},
 };
 static_assert(Complete(kBlends, kBlendCount));
 

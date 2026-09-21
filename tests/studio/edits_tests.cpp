@@ -90,7 +90,7 @@ Recipe RelationshipRecipe() {
   layer.curve = CurveRef{"@tone"};
   output.stack = {layer};
   recipe.outputs = {output, output};
-  recipe.shell.alpha = Ref{"drive"};
+  recipe.shell.opacity = Ref{"drive"};
   Variant variant;
   variant.overrides.emplace("drive", 0.0f);
   recipe.variants.push_back(std::move(variant));
@@ -123,8 +123,9 @@ void CheckRelationships() {
   Check(
       contains({LayerOwner{0, 0}, "curve", {}}, {ResourceKind::kCurve, "tone"}),
       "named curve connections retain their layer owner");
-  Check(contains({ShellOwner{}, "alpha", {}}, {ResourceKind::kSignal, "drive"}),
-        "shell parameter connections retain their property");
+  Check(
+      contains({ShellOwner{}, "opacity", {}}, {ResourceKind::kSignal, "drive"}),
+      "shell parameter connections retain their property");
   Check(contains({VariantOwner{0}, "override", {}},
                  {ResourceKind::kSignal, "drive"}),
         "variant uses remain discoverable");
@@ -234,9 +235,9 @@ int main() {
     }
   }
 
-  Undoes(base, SetShellParam{ShellParam::kAlpha, Param{0.5f}},
-         SetShellParam{ShellParam::kAlpha, base.shell.alpha},
-         "SetShellParam alpha");
+  Undoes(base, SetShellParam{ShellParam::kOpacity, Param{0.5f}},
+         SetShellParam{ShellParam::kOpacity, base.shell.opacity},
+         "SetShellParam opacity");
   Undoes(base, SetShellBlend{ShellBlend::kAlpha},
          SetShellBlend{base.shell.blend}, "SetShellBlend");
   Undoes(base, SetShellAlphaTest{0.5f}, SetShellAlphaTest{base.shell.alphaTest},
@@ -435,11 +436,11 @@ int main() {
     Recipe recipe;
     recipe.id = "shell-reset";
     recipe.signals.push_back(Signal{"drv", ConstantSignal{1.0f}, std::nullopt});
-    recipe.shell.alpha = Param{Ref{"drv"}};
-    const Param defaultAlpha = ShellSettings{}.alpha;
+    recipe.shell.opacity = Param{Ref{"drv"}};
+    const Param defaultOpacity = ShellSettings{}.opacity;
     Check(!Apply(recipe, RemoveSignal{.name = "drv", .cascade = true}),
           "cascade removing a signal used only by a shell param succeeds");
-    Check(recipe.signals.empty() && recipe.shell.alpha == defaultAlpha,
+    Check(recipe.signals.empty() && recipe.shell.opacity == defaultOpacity,
           "a shell param reading the deleted signal is reset to its default, "
           "not blocked");
   }

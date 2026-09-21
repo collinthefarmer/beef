@@ -715,28 +715,28 @@ void ExprFields(std::vector<FormField> &a_form, const SignalContext &a_ctx,
 }
 
 void PulseFields(std::vector<FormField> &a_form, const SignalContext &a_ctx,
-                 const PulseSignal &a_pulse) {
+                 const WaveSignal &a_pulse) {
   a_form.push_back(
       ParamField({.name = "base",
                   .kind = FieldKind::kScalar,
                   .text = ParamText(a_pulse.base),
                   .names = a_ctx.names.scalar,
                   .bind = BindSignalMember(a_ctx.name, a_ctx.record,
-                                           &PulseSignal::base, ParseParam)}));
+                                           &WaveSignal::base, ParseParam)}));
   a_form.push_back(ParamField(
       {.name = "amplitude",
        .kind = FieldKind::kScalar,
        .text = ParamText(a_pulse.amplitude),
        .names = a_ctx.names.scalar,
        .bind = BindSignalMember(a_ctx.name, a_ctx.record,
-                                &PulseSignal::amplitude, ParseParam)}));
+                                &WaveSignal::amplitude, ParseParam)}));
   a_form.push_back(
       ParamField({.name = "period",
                   .kind = FieldKind::kScalar,
                   .text = ParamText(a_pulse.period),
                   .names = a_ctx.names.scalar,
                   .bind = BindSignalMember(a_ctx.name, a_ctx.record,
-                                           &PulseSignal::period, ParseParam),
+                                           &WaveSignal::period, ParseParam),
                   .units = "seconds"}));
   a_form.push_back(
       ParamField({.name = "phase",
@@ -744,14 +744,14 @@ void PulseFields(std::vector<FormField> &a_form, const SignalContext &a_ctx,
                   .text = ParamText(a_pulse.phase),
                   .names = a_ctx.names.scalar,
                   .bind = BindSignalMember(a_ctx.name, a_ctx.record,
-                                           &PulseSignal::phase, ParseParam),
+                                           &WaveSignal::phase, ParseParam),
                   .workingRange = kUnitRange,
                   .units = "cycles"}));
-  a_form.push_back(ChoiceField(
-      "waveform", std::string{NameOf(kWaveforms, a_pulse.waveform)},
-      WordsOf(kWaveforms),
-      BindSignalMember(a_ctx.name, a_ctx.record, &PulseSignal::waveform,
-                       WordOf(kWaveforms))));
+  a_form.push_back(
+      ChoiceField("waveform", std::string{NameOf(kWaveforms, a_pulse.waveform)},
+                  WordsOf(kWaveforms),
+                  BindSignalMember(a_ctx.name, a_ctx.record,
+                                   &WaveSignal::waveform, WordOf(kWaveforms))));
 }
 
 void RampFields(std::vector<FormField> &a_form, const SignalContext &a_ctx,
@@ -833,6 +833,32 @@ void EnchantmentFields(std::vector<FormField> &a_form,
                        WordOf(kEnchantmentFields))));
 }
 
+constexpr std::array<std::string, 3> kAnchorWords{"none", "world", "node"};
+
+std::string_view AnchorWord(const TriggerAnchor &a_anchor) {
+  return Match(
+      a_anchor, [](const std::monostate &) { return "none"; },
+      [](const WorldAnchor &) { return "world"; },
+      [](const NodeAnchor &) { return "node"; });
+}
+
+std::optional<TriggerAnchor> AnchorFromWord(const std::string &a_word) {
+  if (a_word == "none") {
+    return TriggerAnchor{};
+  }
+  if (a_word == "world") {
+    return TriggerAnchor{WorldAnchor{}};
+  }
+  if (a_word == "node") {
+    return TriggerAnchor{NodeAnchor{}};
+  }
+  return std::nullopt;
+}
+
+std::optional<TriggerAnchor> AnchorNodeFromText(const std::string &a_text) {
+  return TriggerAnchor{NodeAnchor{a_text}};
+}
+
 void TriggerOriginFields(std::vector<FormField> &a_form,
                          const SignalContext &a_ctx,
                          const TriggerSignal &a_trigger) {
@@ -849,13 +875,6 @@ void TriggerOriginFields(std::vector<FormField> &a_form,
         event.names = {std::string{Studio::kHitReceivedEvent},
                        std::string{Studio::kHitDealtEvent}};
         a_form.push_back(std::move(event));
-        a_form.push_back(TextEntryField(
-            {.name = "at",
-             .kind = FieldKind::kText,
-             .text = a_event.at,
-             .bind = BindTriggerMember(a_ctx.name, a_ctx.record,
-                                       &EventOrigin::at, AlwaysString),
-             .allowEmpty = true}));
       },
       [&](const PluginOrigin &a_plugin) {
         a_form.push_back(TextEntryField(
@@ -913,6 +932,25 @@ void TriggerFields(std::vector<FormField> &a_form, const SignalContext &a_ctx,
   max.workingRange = max.range;
   max.integral = true;
   a_form.push_back(std::move(max));
+  a_form.push_back(ChoiceField(
+      "payload", std::string{NameOf(kValueTypes, a_trigger.payload)},
+      WordsOf(kValueTypes),
+      BindSignalMember(a_ctx.name, a_ctx.record, &TriggerSignal::payload,
+                       WordOf(kValueTypes))));
+  a_form.push_back(
+      ChoiceField("anchor", std::string{AnchorWord(a_trigger.anchor)},
+                  {kAnchorWords.begin(), kAnchorWords.end()},
+                  BindSignalMember(a_ctx.name, a_ctx.record,
+                                   &TriggerSignal::anchor, AnchorFromWord)));
+  if (const auto *node = Get<NodeAnchor>(a_trigger.anchor)) {
+    a_form.push_back(TextEntryField(
+        {.name = "anchorNode",
+         .kind = FieldKind::kText,
+         .text = node->node,
+         .bind = BindSignalMember(a_ctx.name, a_ctx.record,
+                                  &TriggerSignal::anchor, AnchorNodeFromText),
+         .allowEmpty = true}));
+  }
 }
 
 void PayloadFields(std::vector<FormField> &a_form, const SignalContext &a_ctx,
@@ -924,11 +962,6 @@ void PayloadFields(std::vector<FormField> &a_form, const SignalContext &a_ctx,
        .allowEmpty = false,
        .bind = BindSignalMember(a_ctx.name, a_ctx.record,
                                 &PayloadSignal::trigger, RefOf)}));
-  a_form.push_back(ChoiceField(
-      "field", std::string{NameOf(kPayloadFields, a_payload.field)},
-      WordsOf(kPayloadFields),
-      BindSignalMember(a_ctx.name, a_ctx.record, &PayloadSignal::field,
-                       WordOf(kPayloadFields))));
 }
 
 void CounterFields(std::vector<FormField> &a_form, const SignalContext &a_ctx,
@@ -1018,14 +1051,14 @@ void GradientFields(std::vector<FormField> &a_form, const SignalContext &a_ctx,
 }
 
 void DeltaFields(std::vector<FormField> &a_form, const SignalContext &a_ctx,
-                 const DeltaSignal &a_delta) {
+                 const RateSignal &a_delta) {
   a_form.push_back(
       ReferenceField({.name = "of",
                       .text = RefText(a_delta.of),
                       .names = a_ctx.all,
                       .allowEmpty = false,
                       .bind = BindSignalMember(a_ctx.name, a_ctx.record,
-                                               &DeltaSignal::of, RefOf)}));
+                                               &RateSignal::of, RefOf)}));
 }
 
 void SmoothFields(std::vector<FormField> &a_form, const SignalContext &a_ctx,
@@ -1063,7 +1096,7 @@ std::vector<FormField> SignalForm(const SignalRow &a_signal,
         ConstantFields(form, ctx, a_constant);
       },
       [&](const ExprSignal &a_expr) { ExprFields(form, ctx, a_expr); },
-      [&](const PulseSignal &a_pulse) { PulseFields(form, ctx, a_pulse); },
+      [&](const WaveSignal &a_pulse) { PulseFields(form, ctx, a_pulse); },
       [&](const RampSignal &a_ramp) { RampFields(form, ctx, a_ramp); },
       [&](const EfshSignal &a_efsh) { EfshFields(form, ctx, a_efsh); },
       [&](const ActorValueSignal &a_actorValue) {
@@ -1091,7 +1124,7 @@ std::vector<FormField> SignalForm(const SignalRow &a_signal,
       [&](const GradientSignal &a_gradient) {
         GradientFields(form, ctx, a_gradient);
       },
-      [&](const DeltaSignal &a_delta) { DeltaFields(form, ctx, a_delta); },
+      [&](const RateSignal &a_delta) { DeltaFields(form, ctx, a_delta); },
       [&](const SmoothSignal &a_smooth) { SmoothFields(form, ctx, a_smooth); });
   return form;
 }
@@ -1329,9 +1362,9 @@ std::vector<FormField> RecipeHeaderForm(const RecipeRow &a_recipe) {
                                  .text = std::to_string(a_recipe.priority),
                                  .bind = BindPriority(),
                                  .allowEmpty = true}));
-  form.push_back(ChoiceField(
-      "override", std::string{OverrideModeName(a_recipe.overrideMode)},
-      WordsOf(kOverrideModes), BindOverride()));
+  form.push_back(ChoiceField("merge",
+                             std::string{MergeModeName(a_recipe.mergeMode)},
+                             WordsOf(kMergeModes), BindMerge()));
   form.push_back(TextEntryField({.name = "clockSpeed",
                                  .kind = FieldKind::kText,
                                  .text = ParamText(a_recipe.clockSpeed),
@@ -1458,11 +1491,11 @@ void ShellMaterialFields(std::vector<FormField> &a_form,
   alphaTest.range = kUnitRange;
   alphaTest.workingRange = alphaTest.range;
   a_form.push_back(std::move(alphaTest));
-  a_form.push_back(ParamField({.name = "alpha",
+  a_form.push_back(ParamField({.name = "opacity",
                                .kind = FieldKind::kScalar,
-                               .text = a_shell.alpha,
+                               .text = a_shell.opacity,
                                .names = a_names.scalar,
-                               .bind = BindShellParam(ShellParam::kAlpha),
+                               .bind = BindShellParam(ShellParam::kOpacity),
                                .workingRange = kUnitRange,
                                .units = "fraction"}));
   a_form.push_back(ParamField({.name = "rimPower",

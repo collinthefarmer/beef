@@ -36,12 +36,14 @@ std::optional<std::string> GlobFrom(const json &a_j, const Reporter &a_ctx,
 
 std::optional<RecipeKey> KeyFrom(const json &a_j, const Reporter &a_ctx) {
   if (a_j.is_string()) {
-    if (a_j.get<std::string>() == "default") {
-      return RecipeKey{KeyKind::kDefault};
+    const auto kind = FromName(kKeyKinds, a_j.get<std::string>());
+    const auto *row = kind ? RowOf(kKeyKinds, *kind) : nullptr;
+    if (row && row->operand == KeyOperand::kNone) {
+      return RecipeKey{row->value};
     }
-    a_ctx.Error(
-        std::format("a key is \"default\" or {{\"<kind>\": ...}}; got '{}'",
-                    a_j.get<std::string>()));
+    a_ctx.Error(std::format(
+        "a key is \"default\", \"enchanted\" or {{\"<kind>\": ...}}; got '{}'",
+        a_j.get<std::string>()));
     return std::nullopt;
   }
   const auto entry = OneKey(a_j, a_ctx, "a key");
@@ -134,9 +136,9 @@ std::optional<SignalKind> ParseConstant(const json &a_v,
   return ConstantSignal{*value};
 }
 
-std::optional<SignalKind> ParsePulse(const json &a_v, const Reporter &a_ctx) {
-  PulseSignal k;
-  if (!ReadObject(a_v, "pulse", a_ctx, [&](Reader &r) {
+std::optional<SignalKind> ParseWave(const json &a_v, const Reporter &a_ctx) {
+  WaveSignal k;
+  if (!ReadObject(a_v, "wave", a_ctx, [&](Reader &r) {
         r.Read("base", k.base);
         r.Read("amplitude", k.amplitude);
         r.Read("period", k.period);
@@ -243,8 +245,6 @@ std::optional<TriggerOrigin> EventOriginFrom(const json &a_source, Reader &a_r,
   }
   EventOrigin es;
   es.event = a_source.get<std::string>();
-  if (auto at = a_r.String("at"))
-    es.at = *at;
   if (const auto *f = a_r.Child("filter"))
     es.filter = FilterFrom(*f, a_ctx);
   if (a_r.Has("value"))
@@ -283,14 +283,27 @@ std::optional<SignalKind> ParseTrigger(const json &a_v, const Reporter &a_ctx) {
     a_ctx.Error("'trigger' takes an object");
     return std::nullopt;
   }
-  const auto source = OneKey(a_v, a_ctx, "a trigger",
-                             {"lifetime", "max", "filter", "at", "value"});
+  const auto source =
+      OneKey(a_v, a_ctx, "a trigger",
+             {"lifetime", "max", "payload", "anchor", "filter", "value"});
   if (!source) {
     return std::nullopt;
   }
   TriggerSignal k;
   Reader r(a_v, a_ctx);
   r.Read("lifetime", k.lifetime);
+  r.Read("payload", kValueTypes, k.payload);
+  if (const auto *anchor = r.Child("anchor")) {
+    if (anchor->is_string() && anchor->get<std::string>() == "world") {
+      k.anchor = WorldAnchor{};
+    } else if (anchor->is_object() && anchor->contains("node") &&
+               anchor->size() == 1 && (*anchor)["node"].is_string() &&
+               !(*anchor)["node"].get<std::string>().empty()) {
+      k.anchor = NodeAnchor{(*anchor)["node"].get<std::string>()};
+    } else {
+      a_ctx.Error("'anchor' is \"world\" or {\"node\": \"<skeleton node>\"}");
+    }
+  }
   if (auto m = r.Integer("max")) {
     if (*m < 1)
       a_ctx.Error("'max' must be at least 1");
@@ -320,18 +333,12 @@ std::optional<SignalKind> ParseTrigger(const json &a_v, const Reporter &a_ctx) {
 }
 
 std::optional<SignalKind> ParsePayload(const json &a_v, const Reporter &a_ctx) {
-  PayloadSignal k;
-  if (!ReadObject(a_v, "payload", a_ctx, [&](Reader &r) {
-        r.Read("trigger", k.trigger);
-        if (!r.Has("trigger"))
-          a_ctx.Error("'payload' needs 'trigger'");
-        r.Read("field", kPayloadFields, k.field);
-        if (!r.Has("field"))
-          a_ctx.Error("'payload' needs 'field'");
-      })) {
+  Reader r(a_v, a_ctx);
+  const auto trigger = r.RefFrom(a_v, "payload");
+  if (!trigger) {
     return std::nullopt;
   }
-  return k;
+  return PayloadSignal{*trigger};
 }
 
 std::optional<SignalKind> ParseCounter(const json &a_v, const Reporter &a_ctx) {
@@ -410,13 +417,13 @@ std::optional<SignalKind> ParseGradient(const json &a_v,
   return k;
 }
 
-std::optional<SignalKind> ParseDelta(const json &a_v, const Reporter &a_ctx) {
+std::optional<SignalKind> ParseRate(const json &a_v, const Reporter &a_ctx) {
   Reader r(a_v, a_ctx);
-  const auto of = r.RefFrom(a_v, "delta");
+  const auto of = r.RefFrom(a_v, "rate");
   if (!of) {
     return std::nullopt;
   }
-  return DeltaSignal{*of};
+  return RateSignal{*of};
 }
 
 std::optional<SignalKind> ParseSmooth(const json &a_v, const Reporter &a_ctx) {
@@ -443,10 +450,10 @@ std::optional<SignalKind> ParseExpr(const json &a_v, const Reporter &a_ctx) {
 using SignalParser = std::optional<SignalKind> (*)(const json &,
                                                    const Reporter &);
 constexpr SignalParser kSignalParsers[]{
-    &ParseConstant,   &ParsePulse,      &ParseRamp,        &ParseEfsh,
+    &ParseConstant,   &ParseWave,       &ParseRamp,        &ParseEfsh,
     &ParseActorValue, &ParseActorState, &ParseEnchantment, &ParseTrigger,
     &ParsePayload,    &ParseCounter,    &ParseAccumulate,  &ParseNoise,
-    &ParseGradient,   &ParseDelta,      &ParseSmooth,      &ParseExpr};
+    &ParseGradient,   &ParseRate,       &ParseSmooth,      &ParseExpr};
 static_assert(std::size(kSignalParsers) == kSignalKindCount);
 
 std::optional<Signal> SignalFrom(const std::string &a_name, const json &a_j,
@@ -879,8 +886,6 @@ Output LightOutputFrom(Reader &a_r, const Reporter &a_ctx) {
   a_r.Read("size", l.size);
   a_r.Read("cutoff", l.cutoff);
   a_r.Read("shadow", l.shadow);
-  if (const auto *bulb = a_r.Child("bulb"))
-    l.bulb = FormFrom(*bulb, a_ctx, "bulb");
   if (const auto *sel = a_r.Child("selector"))
     l.selector = SelectorFrom(*sel, a_ctx);
   a_r.Read("replace", l.replace);
@@ -966,7 +971,7 @@ ShellSettings ShellFrom(const json &a_j, const Reporter &a_ctx) {
   r.Read("depthBias", s.depthBias);
   if (auto t = r.Number("alphaTest"))
     s.alphaTest = std::clamp(*t, 0.0f, 1.0f);
-  r.Read("alpha", s.alpha);
+  r.Read("opacity", s.opacity);
   r.Read("rimPower", s.rimPower);
   r.Read("emissive", s.emissive);
   if (const auto *pose = r.Child("pose"))
@@ -1197,8 +1202,8 @@ LoadResult ParseRecipe(std::string_view a_json, std::string_view a_id) {
   ReadMetadata(r, ctx, recipe.metadata);
   ReadKeys(r, ctx, recipe.keys);
   recipe.priority = r.Integer("priority");
-  if (r.Has("override"))
-    r.Read("override", kOverrideModes, recipe.overrideMode);
+  if (r.Has("merge"))
+    r.Read("merge", kMergeModes, recipe.mergeMode);
   if (const auto *clock = r.Child("clock")) {
     Reader c(*clock, ctx.At("clock"));
     if (auto speed = c.Number("speed"))

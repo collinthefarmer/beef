@@ -219,7 +219,7 @@ struct ShellRow {
   ShellBlend blend = ShellBlend::kAdditive;
   bool depthBias = true;
   float alphaTest = 0.0f;
-  std::string alpha;
+  std::string opacity;
   std::string rimPower;
   std::string emissive;
   std::string inflate;
@@ -235,7 +235,7 @@ struct RecipeRow {
   RecipeKey matchedKey;
   std::vector<RecipeKey> keys;
   int priority = 0;
-  OverrideMode overrideMode = OverrideMode::kStack;
+  MergeMode mergeMode = MergeMode::kStack;
   float clockSpeed = 1.0f;
   float time = 0.0f;
   bool dirty = false;

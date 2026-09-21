@@ -42,7 +42,7 @@ BuildResponseSignal(ConnectionBuilder &a_builder,
                     const InputConnectionSpec &a_spec) {
   if (a_spec.kind == InputConnectionKind::kHitResponse) {
     TriggerSignal trigger;
-    trigger.origin = EventOrigin{std::string{kHitReceivedEvent}, {}, {}};
+    trigger.origin = EventOrigin{std::string{kHitReceivedEvent}, {}};
     trigger.lifetime = 1.0f;
     trigger.max = 1;
     const std::string name = a_builder.Add("hit", trigger);

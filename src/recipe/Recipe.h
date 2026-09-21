@@ -45,6 +45,7 @@ struct CurveRef {
 
 enum class KeyKind {
   kDefault,
+  kEnchanted,
   kMaterial,
   kKeyword,
   kArmor,
@@ -52,7 +53,7 @@ enum class KeyKind {
   kEnchantment,
   kMagicEffect,
 };
-inline constexpr std::size_t kKeyKindCount = 7;
+inline constexpr std::size_t kKeyKindCount = 8;
 
 enum class KeyOperand {
   kNone,
@@ -140,13 +141,13 @@ struct ConstantSignal {
   Value value = 0.0f;
   [[nodiscard]] bool operator==(const ConstantSignal &) const = default;
 };
-struct PulseSignal {
+struct WaveSignal {
   Param base = 0.0f;
   Param amplitude = 1.0f;
   Param period = 1.0f;
   Param phase = 0.0f;
   Waveform waveform = Waveform::kSine;
-  [[nodiscard]] bool operator==(const PulseSignal &) const = default;
+  [[nodiscard]] bool operator==(const WaveSignal &) const = default;
 };
 struct RampSignal {
   Param from = 0.0f;
@@ -216,7 +217,6 @@ struct EventFilter {
 struct EventOrigin {
   std::string event;
   EventFilter filter;
-  std::string at;
   [[nodiscard]] bool operator==(const EventOrigin &) const = default;
 };
 struct PluginOrigin {
@@ -230,21 +230,25 @@ struct WhenOrigin {
 };
 using TriggerOrigin = std::variant<EventOrigin, PluginOrigin, WhenOrigin>;
 
+struct WorldAnchor {
+  [[nodiscard]] bool operator==(const WorldAnchor &) const = default;
+};
+struct NodeAnchor {
+  std::string node;
+  [[nodiscard]] bool operator==(const NodeAnchor &) const = default;
+};
+using TriggerAnchor = std::variant<std::monostate, WorldAnchor, NodeAnchor>;
+
 struct TriggerSignal {
   TriggerOrigin origin = EventOrigin{};
   Param lifetime = 1.0f;
   std::uint32_t max = 4;
+  ValueType payload = ValueType::kScalar;
+  TriggerAnchor anchor;
   [[nodiscard]] bool operator==(const TriggerSignal &) const = default;
 };
-enum class PayloadField {
-  kValue,
-  kPosition,
-  kNormal,
-};
-inline constexpr std::size_t kPayloadFieldCount = 3;
 struct PayloadSignal {
   Ref trigger;
-  PayloadField field = PayloadField::kValue;
   [[nodiscard]] bool operator==(const PayloadSignal &) const = default;
 };
 struct CounterSignal {
@@ -274,9 +278,9 @@ struct GradientSignal {
   std::vector<GradientStop> stops;
   [[nodiscard]] bool operator==(const GradientSignal &) const = default;
 };
-struct DeltaSignal {
+struct RateSignal {
   Ref of;
-  [[nodiscard]] bool operator==(const DeltaSignal &) const = default;
+  [[nodiscard]] bool operator==(const RateSignal &) const = default;
 };
 struct SmoothSignal {
   Ref of;
@@ -289,10 +293,10 @@ struct ExprSignal {
 };
 
 using SignalKind =
-    std::variant<ConstantSignal, PulseSignal, RampSignal, EfshSignal,
+    std::variant<ConstantSignal, WaveSignal, RampSignal, EfshSignal,
                  ActorValueSignal, ActorStateSignal, EnchantmentSignal,
                  TriggerSignal, PayloadSignal, CounterSignal, AccumulateSignal,
-                 NoiseSignal, GradientSignal, DeltaSignal, SmoothSignal,
+                 NoiseSignal, GradientSignal, RateSignal, SmoothSignal,
                  ExprSignal>;
 
 struct Signal {
@@ -305,7 +309,7 @@ struct Signal {
 
 enum class SignalKindId {
   kConstant,
-  kPulse,
+  kWave,
   kRamp,
   kEfsh,
   kActorValue,
@@ -317,7 +321,7 @@ enum class SignalKindId {
   kAccumulate,
   kNoise,
   kGradient,
-  kDelta,
+  kRate,
   kSmooth,
   kExpr,
 };
@@ -591,10 +595,9 @@ enum class Blend {
   kAdd,
   kSubtract,
   kScreen,
-  kLerp,
-  kNormal,
+  kReorient,
 };
-inline constexpr std::size_t kBlendCount = 7;
+inline constexpr std::size_t kBlendCount = 6;
 
 struct ChannelSet {
   bool r = true;
@@ -688,7 +691,6 @@ struct LightOutput {
   Param size = 1.4142f;
   Param cutoff = 1.0f;
   bool shadow = false;
-  std::optional<FormRef> bulb;
   Selector selector;
   bool replace = false;
   std::string note;
@@ -723,7 +725,7 @@ struct ShellSettings {
   ShellBlend blend = ShellBlend::kAdditive;
   bool depthBias = true;
   float alphaTest = 0.0f;
-  Param alpha = 1.0f;
+  Param opacity = 1.0f;
   Param rimPower = 0.0f;
   Param emissive = 0.0f;
   ShellPose pose;
@@ -854,23 +856,22 @@ inline constexpr int kRecipeFormat = 1;
 inline constexpr std::size_t kMaxRecipeRows = 4096;
 inline constexpr std::size_t kMaxRecipeDepth = 32;
 
-enum class OverrideMode {
+enum class MergeMode {
   kStack,
   kReplace,
   kSampled,
-  kLerp,
 };
-inline constexpr std::size_t kOverrideModeCount = 4;
-[[nodiscard]] std::string_view OverrideModeName(OverrideMode a_mode) noexcept;
-[[nodiscard]] std::optional<OverrideMode>
-ParseOverrideMode(std::string_view a_name) noexcept;
+inline constexpr std::size_t kMergeModeCount = 3;
+[[nodiscard]] std::string_view MergeModeName(MergeMode a_mode) noexcept;
+[[nodiscard]] std::optional<MergeMode>
+ParseMergeMode(std::string_view a_name) noexcept;
 
 struct Recipe {
   std::string id;
   Metadata metadata;
   std::vector<RecipeKey> keys;
   std::optional<int> priority;
-  OverrideMode overrideMode = OverrideMode::kStack;
+  MergeMode mergeMode = MergeMode::kStack;
   Clock clock;
   std::vector<Signal> signals;
   std::vector<Curve> curves;

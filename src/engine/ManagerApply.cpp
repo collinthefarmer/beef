@@ -128,6 +128,29 @@ LocateGeometry(LiveActor &a_state, GeometryId a_geometry) noexcept {
   return std::nullopt;
 }
 
+std::optional<std::size_t> ExistingInstance(const LiveActor &a_state,
+                                            const Recipe &a_recipe,
+                                            RE::FormID a_enchantment) {
+  for (std::size_t i = 0; i < a_state.instances.size(); ++i) {
+    const LiveInstance &existing = a_state.instances[i];
+    if (existing.recipe && existing.recipe->id == a_recipe.id &&
+        existing.enchantment == a_enchantment) {
+      return i;
+    }
+  }
+  return std::nullopt;
+}
+
+std::shared_ptr<const SignalGraph> InstanceGraph(const Recipe &a_recipe,
+                                                 const Variant *a_variant) {
+  if (!a_variant) {
+    return GraphFor(a_recipe);
+  }
+  const Recipe varied = ApplyVariant(a_recipe, *a_variant);
+  return std::make_shared<const SignalGraph>(
+      SignalGraph::Compile(varied.signals, varied.curves));
+}
+
 RE::MagicItem *EnchantmentForInstance(LiveActor &a_state,
                                       std::size_t a_instance) {
   for (const Placement &placement : a_state.plan.placements) {
@@ -182,19 +205,27 @@ TextureSize SlotStackSize(TextureSize a_base, Slot a_slot,
   return TextureSize(a_base.Pixels() / ResolutionDivisor(resolution));
 }
 
-EventRecord EquipEvent(const std::vector<LivePiece> &a_pieces) {
+EventRecord EquipEvent() {
   EventRecord record;
   record.id = "equip";
+  record.payload.value = 1.0f;
+  return record;
+}
+
+std::optional<EventRecord>
+EquipPositionEvent(const std::vector<LivePiece> &a_pieces) {
   for (const LivePiece &piece : a_pieces) {
     for (const LiveGeometry &bound : piece.geometries) {
       if (bound.geometry) {
         const RE::NiPoint3 &c = bound.geometry->worldBound.center;
-        record.payload.position = Vec3{c.x, c.y, c.z};
+        EventRecord record;
+        record.id = "equip.position";
+        record.payload.value = Vec3{c.x, c.y, c.z};
         return record;
       }
     }
   }
-  return record;
+  return std::nullopt;
 }
 
 LiveGeometry MakeGeometry(RE::BSGeometry *a_geometry,
@@ -558,7 +589,14 @@ void Manager::Refresh(RE::Actor *a_actor) {
   WatchAnimationEvents(a_actor);
 
   if (applications_.TakeEquipped(actorID)) {
-    Fire(actorID, EquipEvent(applied_[actorID].pieces));
+    FireEquip(actorID);
+  }
+}
+
+void Manager::FireEquip(RE::FormID a_actorID) {
+  Fire(a_actorID, EquipEvent());
+  if (const auto carried = EquipPositionEvent(applied_[a_actorID].pieces)) {
+    Fire(a_actorID, *carried);
   }
 }
 
@@ -668,57 +706,61 @@ void Manager::MatchRecipes(RE::Actor *a_actor, LiveActor &a_state,
       });
   a_state.instances.clear();
   for (std::size_t i = 0; i < a_state.plan.instances.size(); ++i) {
-    const Instance &instance = a_state.plan.instances[i];
     RE::MagicItem *enchantment = EnchantmentForInstance(a_state, i);
-    (void)InstanceFor(a_state, instance.recipe, enchantment, a_settings);
+    (void)InstanceFor(a_state, InstanceId{i}, enchantment, a_settings);
   }
 }
 
 std::optional<std::size_t> Manager::InstanceFor(LiveActor &a_state,
-                                                RecipeId a_recipe,
+                                                InstanceId a_planInstance,
                                                 RE::MagicItem *a_enchantment,
                                                 const Settings &a_settings) {
   const auto actor = a_state.actor.get();
-  if (!actor) {
+  const Instance *planned = InstanceAt(a_state.plan, a_planInstance);
+  if (!actor || !planned) {
     return std::nullopt;
   }
   const std::span<const Recipe> loaded = LoadedRecipes();
-  const std::size_t recipeIndex = IndexOf(a_recipe);
+  const std::size_t recipeIndex = IndexOf(planned->recipe);
   if (recipeIndex >= loaded.size()) {
     return std::nullopt;
   }
   const Recipe *recipe = &loaded[recipeIndex];
   const RE::FormID enchantment = a_enchantment ? a_enchantment->GetFormID() : 0;
-  for (std::size_t i = 0; i < a_state.instances.size(); ++i) {
-    const LiveInstance &existing = a_state.instances[i];
-    if (existing.recipe && existing.recipe->id == recipe->id &&
-        existing.enchantment == enchantment) {
-      return i;
-    }
+  if (const auto existing = ExistingInstance(a_state, *recipe, enchantment)) {
+    return existing;
   }
   LiveInstance instance;
   instance.recipe = recipe;
   instance.enchantment = enchantment;
-  instance.graph = GraphFor(*recipe);
+  instance.graph = InstanceGraph(
+      *recipe, InstanceVariant(a_state.plan, a_planInstance, *recipe));
   if (instance.graph) {
     instance.signals = std::make_unique<SignalState>(*instance.graph);
   }
   instance.environment =
       std::make_unique<ActorEnvironment>(actor.get(), a_enchantment);
   instance.startMS = NowMS();
-  if (const auto carried = carriedTimes_.find({actor->GetFormID(), recipe->id});
-      carried != carriedTimes_.end()) {
-    const float speed = a_settings.animationSpeed * recipe->clock.speed;
-    if (instance.startMS - carried->second.retiredMS <= kCarryWindowMS &&
-        speed > 0.0f) {
-      instance.startMS -=
-          static_cast<std::uint32_t>(carried->second.seconds / speed * 1000.0f);
-      instance.lastTime = carried->second.seconds;
-    }
-    carriedTimes_.erase(carried);
-  }
+  CarryInstanceTime(instance, actor->GetFormID(), *recipe, a_settings);
   a_state.instances.push_back(std::move(instance));
   return a_state.instances.size() - 1;
+}
+
+void Manager::CarryInstanceTime(LiveInstance &a_instance, RE::FormID a_actor,
+                                const Recipe &a_recipe,
+                                const Settings &a_settings) {
+  const auto carried = carriedTimes_.find({a_actor, a_recipe.id});
+  if (carried == carriedTimes_.end()) {
+    return;
+  }
+  const float speed = a_settings.animationSpeed * a_recipe.clock.speed;
+  if (a_instance.startMS - carried->second.retiredMS <= kCarryWindowMS &&
+      speed > 0.0f) {
+    a_instance.startMS -=
+        static_cast<std::uint32_t>(carried->second.seconds / speed * 1000.0f);
+    a_instance.lastTime = carried->second.seconds;
+  }
+  carriedTimes_.erase(carried);
 }
 
 void Manager::PlaceInstances(LiveActor &a_state, const Settings &a_settings) {

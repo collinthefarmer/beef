@@ -227,6 +227,32 @@ int main() {
             Near(uvBake.vertices[1].value[0], 1.0f),
         "a uv bake reads the requested axis");
 
+  MeshData upMesh = TriangleMesh();
+  upMesh.partitions[0].vertices[1].normal = Vec3{1.0f, 0.0f, 0.0f};
+  upMesh.partitions[0].vertices[2].normal = Vec3{0.0f, 0.0f, -1.0f};
+  const auto upBake = BuildBake(upMesh, WorldUpBake{});
+  Check(Near(upBake.vertices[0].value[0], 1.0f) &&
+            Near(upBake.vertices[1].value[0], 0.5f) &&
+            Near(upBake.vertices[2].value[0], 0.0f),
+        "a worldUp bake maps normal z into 0..1");
+
+  MeshData weightedMesh = TriangleMesh();
+  auto &weighted = weightedMesh.partitions[0];
+  weighted.boneNames = {"NPC Head", "NPC Spine"};
+  weighted.vertices[0].bones = {0, 1, 0, 0};
+  weighted.vertices[0].weights = {0.25f, 0.5f, 0.0f, 0.0f};
+  weighted.vertices[1].bones = {1, 1, 1, 1};
+  weighted.vertices[1].weights = {0.4f, 0.4f, 0.4f, 0.4f};
+  const auto weightBake = BuildBake(weightedMesh, BoneWeightBake{{"NPC Head"}});
+  Check(Near(weightBake.vertices[0].value[0], 0.25f),
+        "a boneWeight bake sums the named bones' weights");
+  Check(Near(weightBake.vertices[1].value[0], 0.0f),
+        "a boneWeight bake ignores other bones");
+  const auto spineBake = BuildBake(weightedMesh, BoneWeightBake{{"NPC Spine"}});
+  Check(Near(spineBake.vertices[0].value[0], 0.5f) &&
+            Near(spineBake.vertices[1].value[0], 1.0f),
+        "a boneWeight bake clamps the sum at one");
+
   Check(DefinitionOf(BakeKind{PositionBake{}}) == "bake position",
         "a position bake names itself");
   Check(DefinitionOf(BakeKind{BoneWeightBake{{"b", "a"}}}) ==

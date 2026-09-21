@@ -35,16 +35,17 @@ a file survives a load and a save unchanged. Every consumer (the studio,
 
 | Type | Description |
 |---|---|
-| `Recipe` | The **recipe**: an id, `Metadata`, its `RecipeKey`s, an optional priority, a `Clock`, the **row** lists (`Signal`s, `Curve`s, `Source`s, `Mask`s, `Output`s, `Variant`s), and `ShellSettings`. `FindSignal`/`FindCurve`/`FindSource`/`FindMask` look a row up by name. |
+| `Recipe` | The **recipe**: an id, `Metadata`, its `RecipeKey`s, an optional priority, a `MergeMode`, a `Clock`, the **row** lists (`Signal`s, `Curve`s, `Source`s, `Mask`s, `Output`s, `Variant`s), and `ShellSettings`. `FindSignal`/`FindCurve`/`FindSource`/`FindMask` look a row up by name. |
 | `Metadata` | The recipe's name, author, description, and version, the importer's `imported` stamp, and a free-form `meta` field kept verbatim. |
-| `RecipeKey` | Which worn **piece** the recipe applies to: a `KeyKind` (default, material, keyword, armor, effectShader, enchantment, magicEffect) with a form or glob operand. |
+| `MergeMode` | How the recipe combines with lower-priority recipes contesting the same piece — the wire field `merge`: stack appends per slot, replace drops lower-priority work on its slots, sampled gives each actor one member of the pool by form id. |
+| `RecipeKey` | Which worn **piece** the recipe applies to: a `KeyKind` (default, enchanted, material, keyword, armor, effectShader, enchantment, magicEffect) with a form or glob operand; default and enchanted stand alone. |
 | `Selector` | Which geometry an **output** or **variant** touches: any-of clauses over addon, geometry name, or texture path; empty matches every geometry. |
 | `Signal` | One named per-tick value: a name, a `SignalKind`, an optional `CurveRef` that shapes the result, and an optional author `note`. |
 | `Curve` | A named expression in the free variable `x`, with an optional author `note`; a `CurveRef` applies it to a **signal** or a **layer**. In a file the value is a bare expression string, or `{ "expr", "note" }` when the author annotates it. |
 | `Source` | One named per-texel value: a name, a `SourceKind`, and an optional author `note`. |
 | `Mask` | A named per-texel expression, with an optional author `note`; **source** and **mask** names stand for images in it, signal names for the tick's scalars. In a file the value is a bare expression string, or `{ "expr", "note" }` when annotated. |
 | `Output` | `SurfaceOutput` or `LightOutput`; the Outputs group below details both. |
-| `ShellSettings` | The **shell**: its `ShellMaterial` (pbrCopy or vanilla), `ShellBlend` (additive or alpha), depth bias, alpha test, the alpha/rim/emissive `Param`s, and a `ShellPose` (inflate, offset, scale, spin). |
+| `ShellSettings` | The **shell**: its `ShellMaterial` (pbrCopy or vanilla), `ShellBlend` (additive or alpha), depth bias, alpha test, the opacity/rim/emissive `Param`s, and a `ShellPose` (inflate, offset, scale, spin). |
 | `Variant` | A named override set: a `VariantKey` (a form or a `Selector`) decides when it applies, and its `overrides` map sets row values by name; `ApplyVariant` folds the match in. |
 | `Clock` | The recipe's time scale: `speed` multiplies the tick clock. |
 
@@ -73,19 +74,19 @@ live; a `Complete` static_assert keeps the table total.
 | Alternative | Wire word | Produces |
 |---|---|---|
 | `ConstantSignal` | `constant` | A fixed `Value`; with `expr`, one of the two kinds the studio marks tunable. |
-| `PulseSignal` | `pulse` | `base` plus `amplitude` times a repeating waveform (sine, triangle, square, or saw) with `period` and `phase`. |
+| `WaveSignal` | `wave` | `base` plus `amplitude` times a repeating waveform (sine, triangle, square, or saw) with `period` and `phase`. |
 | `RampSignal` | `ramp` | A value that moves from `from` to `to` over the clock's first `seconds`, then holds `to`. |
 | `EfshSignal` | `efsh` | One field of a vanilla effect shader record (fillAlpha, fillColor, edgeAlpha, edgeColor, or scroll), read through `SignalEnvironment::EffectShader`. |
 | `ActorValueSignal` | `av` | The wearer's actor value under one `Measure`: current, base, permanent, temporaryModifier, damage, or max. |
 | `ActorStateSignal` | `actorState` | A scalar for one actor state: inCombat, sneaking, weaponDrawn, or hostileDistance. |
 | `EnchantmentSignal` | `enchantment` | The matched enchantment's magnitude or cost. |
-| `TriggerSignal` | `trigger` | The newest firing's age as a fraction of `lifetime`: 0 at the firing, 1 once it expires or when none is live. The `TriggerOrigin` is an event glob, another plugin's message id, or a `when` expression edge; at most `max` firings are kept. |
-| `PayloadSignal` | `payload` | One field of a named trigger's newest firing (value, position, or normal), held between firings. |
+| `TriggerSignal` | `trigger` | The newest firing's age as a fraction of `lifetime`: 0 at the firing, 1 once it expires or when none is live. The `TriggerOrigin` is an event glob, another plugin's message id, or a `when` expression edge; at most `max` firings are kept. The row declares its firings' `payload` type (scalar, vec2, or vec3; a firing of another type is dropped and counted) and its `TriggerAnchor` — the space a firing's location resolves in: the world-space payload, a named skeleton node, or none. |
+| `PayloadSignal` | `payload` | The named trigger's newest firing value, typed by the trigger's declared payload, held between firings. |
 | `CounterSignal` | `counter` | A count of a trigger's firings, cleared by an optional `reset` trigger and limited by an optional `cap`. |
 | `AccumulateSignal` | `accumulate` | A total that each firing raises by one and `decay` drains per second, floored at zero. |
 | `NoiseSignal` | `noise` | Value noise over time at `frequency`, scaled by `amplitude`, repeatable per `seed`. |
 | `GradientSignal` | `gradient` | A color: `t` sampled against the `GradientStop` list, interpolated between the two nearest stops. |
-| `DeltaSignal` | `delta` | The change in the named signal since the last tick. |
+| `RateSignal` | `rate` | The named signal's change per second. |
 | `SmoothSignal` | `smooth` | The named signal eased toward its current value by exponential smoothing with time constant `seconds`. |
 | `ExprSignal` | `expr` | The value of an expression over other rows; the graph parses it to a `Program`, and the studio tunes its numeric literals. |
 
@@ -104,7 +105,7 @@ validates a source's params against the graph.
 | `BakeSource` | `bake` | A value baked from the mesh once per geometry; the `BakeKind` is position, localPosition, worldUp, partition (one biped slot), boneWeight (named bones), componentId, or chartId (the mesh analysis' id map, each texel the region id / 255). |
 | `UvSource` | `uv` | The texel's u or v coordinate. |
 | `DistanceSource` | `distance` | The texel's distance from a named skeleton node or a fixed point. |
-| `RippleSource` | `ripple` | A ring or disc that spreads from a trigger's firing at `speed`, `width` wide, fading at `decay`. |
+| `RippleSource` | `ripple` | A ring or disc that spreads from a trigger firing's anchor at `speed`, `width` wide, fading at `decay`; an unanchored trigger's rings spread from the geometry's origin. |
 | `MaterialClustersSource` | `materialClusters` | The material's cluster map: each texel the id / 255 of its nearest k-means cluster under the channel weights, `seed`, and iteration cap, rendered once per geometry. |
 
 ### Outputs (`Recipe.h`)
@@ -119,10 +120,10 @@ into one material or shell **slot**, and a `LightOutput` describes one
 | `SurfaceOutput` | One slot write: a `Surface` (material or shell), a `Slot`, its `SlotScalars`, a `Selector`, a replace flag that drops lower-priority recipes' work on the slot, an optional `Resolution` that overrides the slot's default target size, the layer `stack`, and an optional author `note`. |
 | `Layer` | One entry in a `stack`: a `LayerSource`, an optional `CurveRef`, a `Blend`, an opacity `Param`, an optional color and mask, the `ChannelSet` it writes, and an optional author `note`. |
 | `LayerSource` | `Ref \| Vec3`: a source or mask by name, or a constant color. |
-| `Blend` | How a layer combines with the stack below: replace, multiply, add, subtract, screen, lerp, or normal; `BlendSpec` maps each to its shader mode and marks `normal` as normal-stack only. |
+| `Blend` | How a layer combines with the stack below: replace, multiply, add, subtract, screen, or reorient; `BlendSpec` maps each to its shader mode and marks `reorient` (normal-map reorientation) as normal-stack only. |
 | `SlotScalars` | The per-slot scalar `Param`s (strength, scale, color, weight, and the rest of `ScalarField`); `SlotSpec` says which fields a slot takes and which are required. |
 | `Slot` | The nine writable slots: diffuse, emissive, rmaos, normal, height, fuzz, glint, coat, subsurface. |
-| `LightOutput` | One light: `Bones` placement (skinned or named), offset, color, intensity, size, cutoff, a shadow flag, an optional bulb form, a `Selector`, a replace flag, and an optional author `note`. |
+| `LightOutput` | One light: `Bones` placement (skinned or named), offset, color, intensity, size, cutoff, a shadow flag, a `Selector`, a replace flag, and an optional author `note`. |
 
 ### Texture size (`Recipe.h`)
 

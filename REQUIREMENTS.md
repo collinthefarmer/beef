@@ -46,9 +46,11 @@ them:
   directory and replaces its frozen counterpart when it lands and passes.
   There is no in-place edit pass and no dead-code deletion pass: dead code
   is never written, and known defects are never reproduced.
-- **Format 1 is frozen.** The `recipe/` module is a faithful re-expression
-  of the format, checked by round-trip against the frozen fixtures. This
-  effort does not redesign the format.
+- **Format 1 is the contract.** The buildup re-expressed the format
+  faithfully in the `recipe/` module, checked by round-trip against the
+  frozen fixtures, and did not redesign it. Format changes since the
+  buildup are deliberate, decided ahead of the gate-5 freeze and recorded
+  in `docs/plans/format-row-reference-2026-09-21.md`.
 - **Native first.** Everything that can compile and be tested without the
   engine is native and tested. The engine-free surface is maximised.
 - **Functional core, thin adapter.** Every engine-facing responsibility
@@ -58,9 +60,9 @@ them:
 ## What the plugin must do
 
 1. **Match** recipes to a wearer's PBR **geometries** by key — magic
-   effect, enchantment, effect shader, keyword, armor, material, or default
-   — and order the matches by priority. A key held by several files belongs
-   to the last file loaded with it.
+   effect, enchantment, effect shader, keyword, armor, material, enchanted
+   (any enchanted piece), or default — and order the matches by priority.
+   A key held by several files belongs to the last file loaded with it.
 2. **Evaluate** each matched recipe's **signal** graph once per tick, in
    dependency order, against live actor state and an event bus. A cycle, an
    unknown reference, or a bad expression makes a node inert (0 or black),
@@ -96,13 +98,13 @@ The model:
 
 | Part | Definition |
 |---|---|
-| Recipe | `keys`, `priority`, `clock`, `signals`, `curves`, `sources`, `masks`, `outputs`, `shell`, `variants`, plus metadata. |
-| **Signals** | A value that varies per tick, evaluated once per tick in dependency order. Sixteen kinds: `constant`, `pulse`, `ramp`, `efsh`, `av`, `actorState`, `enchantment`, `trigger`, `payload`, `counter`, `accumulate`, `noise`, `gradient`, `delta`, `smooth`, `expr`. The wire word `av` is the modding community's abbreviation for actor value. |
+| Recipe | `keys`, `priority`, `merge`, `clock`, `signals`, `curves`, `sources`, `masks`, `outputs`, `shell`, `variants`, plus metadata. |
+| **Signals** | A value that varies per tick, evaluated once per tick in dependency order. Sixteen kinds: `constant`, `wave`, `ramp`, `efsh`, `av`, `actorState`, `enchantment`, `trigger`, `payload`, `counter`, `accumulate`, `noise`, `gradient`, `rate`, `smooth`, `expr`. The wire word `av` is the modding community's abbreviation for actor value. |
 | **Sources** | A value that varies per texel, in a geometry's UV space. Seven kinds: `image`, `material`, `bake`, `uv`, `distance`, `ripple`, `materialClusters`. |
 | **Masks** | A per-texel expression, interpreted on the GPU by one fixed shader from a constant buffer, with a capped op count reported per row. |
 | **Curves** | A one-argument expression in `x`. |
 | **Outputs** | A surface output (a slot, its scalars, a selector, a replace flag, an ordered layer stack) or a light output. |
-| **Shell** | A clone of the geometry the plugin owns, with a material kind, blend, pose, and alpha. |
+| **Shell** | A clone of the geometry the plugin owns, with a material kind, blend, pose, and opacity. |
 | **Variants** | Replace named signals with constants. A variant cannot change structure. |
 
 The expression language: one small language for every expression, mask, and

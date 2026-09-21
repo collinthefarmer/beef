@@ -137,7 +137,7 @@ GeometryPlan PlanGeometry(std::span<const PlacedRecipe> a_placed) {
       const std::size_t placed = IndexOf(c.placed);
       const bool recipeReplaces =
           placed < a_placed.size() && a_placed[placed].recipe &&
-          a_placed[placed].recipe->overrideMode == OverrideMode::kReplace;
+          a_placed[placed].recipe->mergeMode == MergeMode::kReplace;
       flagged.push_back(Flagged<SlotContribution>{
           c, (output && output->replace) || recipeReplaces});
     }

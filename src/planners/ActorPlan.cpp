@@ -160,4 +160,27 @@ std::vector<RecipeId> RecipesOfInactiveInstances(const ActorPlan &a_plan) {
   }
   return out;
 }
+
+const Variant *InstanceVariant(const ActorPlan &a_plan, InstanceId a_instance,
+                               const Recipe &a_recipe) {
+  for (const Variant &variant : a_recipe.variants) {
+    for (const Placement &placement : a_plan.placements) {
+      if (placement.instance != a_instance) {
+        continue;
+      }
+      const Geometry *geometry = GeometryAt(a_plan, placement.geometry);
+      if (!geometry) {
+        continue;
+      }
+      if (geometry->keys.armor &&
+          VariantApplies(variant, *geometry->keys.armor)) {
+        return &variant;
+      }
+      if (VariantApplies(variant, geometry->identity)) {
+        return &variant;
+      }
+    }
+  }
+  return nullptr;
+}
 }

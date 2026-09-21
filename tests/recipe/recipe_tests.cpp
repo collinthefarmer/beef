@@ -162,22 +162,22 @@ int main() {
   }
 
   {
-    Check(ParseOverrideMode("sampled") == OverrideMode::kSampled &&
-              OverrideModeName(OverrideMode::kSampled) == "sampled",
+    Check(ParseMergeMode("sampled") == MergeMode::kSampled &&
+              MergeModeName(MergeMode::kSampled) == "sampled",
           "an override mode name round-trips");
     Recipe defaulted;
     defaulted.id = "def";
-    Check(defaulted.overrideMode == OverrideMode::kStack,
+    Check(defaulted.mergeMode == MergeMode::kStack,
           "a recipe defaults to the stack override mode");
-    Check(!SerializeRecipe(defaulted).contains("override"),
+    Check(!SerializeRecipe(defaulted).contains("merge"),
           "the default override mode is omitted from the file");
 
     Recipe sampled;
     sampled.id = "samp";
-    sampled.overrideMode = OverrideMode::kReplace;
+    sampled.mergeMode = MergeMode::kReplace;
     const Recipe back =
         StableRoundTrip(SerializeRecipe(sampled), "samp", "an override mode");
-    Check(back.overrideMode == OverrideMode::kReplace,
+    Check(back.mergeMode == MergeMode::kReplace,
           "the recipe override mode survives the round trip");
   }
 
@@ -273,22 +273,24 @@ int main() {
   "signals": {
     "c":          { "constant": 0.5 },
     "vecConst":   { "constant": [0.1, 0.2, 0.3] },
-    "trig":       { "trigger": { "event": "hit.received", "lifetime": 1.0, "max": 2 } },
+    "trig":       { "trigger": { "event": "hit.received", "anchor": { "node": "NPC Head [Head]" }, "lifetime": 1.0, "max": 2 } },
+    "trigV":      { "trigger": { "event": "hit.received.position", "payload": "vec3", "anchor": "world", "lifetime": 1.0 } },
+    "payloadV":   { "payload": "@trigV" },
     "plug":       { "trigger": { "plugin": "MyMod|effect" } },
     "gate":       { "trigger": { "when": "@c", "value": "@c" } },
-    "pulseSig":   { "pulse": { "base": 0.0, "amplitude": 1.0, "period": 2.0, "phase": 0.25, "waveform": "square" } },
+    "waveSig":    { "wave": { "base": 0.0, "amplitude": 1.0, "period": 2.0, "phase": 0.25, "waveform": "square" } },
     "rampSig":    { "ramp": { "from": 0.0, "to": 1.0, "seconds": 3.0 } },
     "efshSig":    { "efsh": { "field": "fillAlpha", "record": "EnchArmorMagickaFXS" } },
     "avSig":      { "av": { "of": "Health", "measure": "max" } },
     "avCur":      { "av": "Magicka" },
     "stateSig":   { "actorState": "sneaking" },
     "enchSig":    { "enchantment": "magnitude" },
-    "payloadSig": { "payload": { "trigger": "@trig", "field": "position" } },
+    "payloadSig": { "payload": "@trig" },
     "counterSig": { "counter": { "trigger": "@trig", "reset": "@trig", "cap": 5.0 } },
     "accumSig":   { "accumulate": { "trigger": "@trig", "decay": 0.5 } },
     "noiseSig":   { "noise": { "frequency": 2.0, "amplitude": 0.5, "seed": 7 } },
     "gradSig":    { "gradient": { "t": "@c", "stops": [ { "at": 0.0, "color": [0.0, 0.0, 0.0] }, { "at": 1.0, "color": [1.0, 1.0, 1.0] } ] } },
-    "deltaSig":   { "delta": "@c" },
+    "rateSig":    { "rate": "@c" },
     "smoothSig":  { "smooth": { "of": "@c", "seconds": 0.5 } },
     "exprSig":    { "expr": "1 + 2" }
   },
@@ -332,7 +334,7 @@ int main() {
   {
     constexpr std::string_view withOutputs = R"({
   "format": 1,
-  "keys": [ { "effectShader": "EnchArmorMagickaFXS" }, "default", { "keyword": "MagicDisallowEnchanting" }, { "material": "*ebony*" } ],
+  "keys": [ { "effectShader": "EnchArmorMagickaFXS" }, "default", "enchanted", { "keyword": "MagicDisallowEnchanting" }, { "material": "*ebony*" } ],
   "priority": 5,
   "clock": { "speed": 2.0 },
   "author": "tester",

@@ -83,24 +83,24 @@ void TestSignalFormConstant() {
         "the value binding parses a constant");
 }
 
-void TestSignalFormPulse() {
-  SignalRow pulse;
-  pulse.name = "beat";
-  pulse.kind = SignalKindId::kPulse;
-  pulse.type = ValueType::kScalar;
-  pulse.definition = PulseSignal{};
-  const std::vector<FormField> form = SignalForm(pulse, SignalNames{});
+void TestSignalFormWave() {
+  SignalRow wave;
+  wave.name = "beat";
+  wave.kind = SignalKindId::kWave;
+  wave.type = ValueType::kScalar;
+  wave.definition = WaveSignal{};
+  const std::vector<FormField> form = SignalForm(wave, SignalNames{});
   const FormField *base = Field(form, "base");
   const FormField *waveform = Field(form, "waveform");
   Check(base != nullptr && base->kind == FieldKind::kScalar,
-        "pulse exposes a scalar base field");
+        "wave exposes a scalar base field");
   Check(waveform != nullptr && waveform->kind == FieldKind::kChoice,
-        "pulse exposes a waveform choice");
+        "wave exposes a waveform choice");
   Check(base != nullptr && base->bind &&
             std::holds_alternative<SetSignal>(*base->bind("2")),
-        "a pulse member binding edits the signal record");
+        "a wave member binding edits the signal record");
   Check(base != nullptr && base->bind && !base->bind("not a number"),
-        "a pulse member binding refuses unparsable text");
+        "a wave member binding refuses unparsable text");
 }
 
 void TestSourceRoundTrip() {
@@ -356,7 +356,7 @@ void TestHelpers() {
 int main() {
   TestSignalNames();
   TestSignalFormConstant();
-  TestSignalFormPulse();
+  TestSignalFormWave();
   TestSourceRoundTrip();
   TestSourceForm();
   TestIncompleteRippleForm();

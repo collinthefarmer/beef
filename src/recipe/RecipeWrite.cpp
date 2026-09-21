@@ -125,7 +125,7 @@ json SelectorToJson(const Selector &a_selector) {
   return out;
 }
 
-json PulseToJson(const PulseSignal &k) {
+json PulseToJson(const WaveSignal &k) {
   json o = json::object();
   Writer w{o};
   w.Write("base", k.base);
@@ -165,7 +165,6 @@ json TriggerToJson(const TriggerSignal &k) {
           }
           w.Set("filter", std::move(f));
         }
-        w.WriteTextIf("at", e.at);
       },
       [&](const PluginOrigin &p) { w.WriteText("plugin", p.id); },
       [&](const WhenOrigin &wo) {
@@ -174,6 +173,15 @@ json TriggerToJson(const TriggerSignal &k) {
       });
   w.Write("lifetime", k.lifetime);
   w.Set("max", k.max);
+  if (k.payload != ValueType::kScalar) {
+    w.WriteText("payload", Name(k.payload));
+  }
+  Match(
+      k.anchor, [](const std::monostate &) {},
+      [&](const WorldAnchor &) { o["anchor"] = "world"; },
+      [&](const NodeAnchor &n) {
+        o["anchor"] = json::object({{"node", n.node}});
+      });
   return o;
 }
 
@@ -218,8 +226,8 @@ json SignalToJson(const Signal &a_signal) {
       [&](const ConstantSignal &k) {
         row[key(SignalKindId::kConstant)] = ValueToJson(k.value);
       },
-      [&](const PulseSignal &k) {
-        row[key(SignalKindId::kPulse)] = PulseToJson(k);
+      [&](const WaveSignal &k) {
+        row[key(SignalKindId::kWave)] = PulseToJson(k);
       },
       [&](const RampSignal &k) {
         row[key(SignalKindId::kRamp)] =
@@ -246,9 +254,7 @@ json SignalToJson(const Signal &a_signal) {
         row[key(SignalKindId::kTrigger)] = TriggerToJson(k);
       },
       [&](const PayloadSignal &k) {
-        row[key(SignalKindId::kPayload)] =
-            json::object({{"trigger", "@" + k.trigger.name},
-                          {"field", NameOf(kPayloadFields, k.field)}});
+        row[key(SignalKindId::kPayload)] = "@" + k.trigger.name;
       },
       [&](const CounterSignal &k) {
         row[key(SignalKindId::kCounter)] = CounterToJson(k);
@@ -264,8 +270,8 @@ json SignalToJson(const Signal &a_signal) {
       [&](const GradientSignal &k) {
         row[key(SignalKindId::kGradient)] = GradientToJson(k);
       },
-      [&](const DeltaSignal &k) {
-        row[key(SignalKindId::kDelta)] = "@" + k.of.name;
+      [&](const RateSignal &k) {
+        row[key(SignalKindId::kRate)] = "@" + k.of.name;
       },
       [&](const SmoothSignal &k) {
         row[key(SignalKindId::kSmooth)] = json::object(
@@ -438,8 +444,6 @@ json LightOutputToJson(const LightOutput &l) {
   w.Write("size", l.size);
   w.Write("cutoff", l.cutoff);
   w.WriteIf("shadow", l.shadow, false);
-  if (l.bulb)
-    w.WriteText("bulb", l.bulb->text);
   if (!l.selector.All())
     w.Set("selector", SelectorToJson(l.selector));
   w.WriteIf("replace", l.replace, false);
@@ -462,7 +466,7 @@ json ShellToJson(const ShellSettings &a_shell) {
   w.WriteEnumIf("blend", kShellBlends, a_shell.blend, defaults.blend);
   w.WriteIf("depthBias", a_shell.depthBias, defaults.depthBias);
   w.WriteNumberIf("alphaTest", a_shell.alphaTest, defaults.alphaTest);
-  w.WriteIf("alpha", a_shell.alpha, defaults.alpha);
+  w.WriteIf("opacity", a_shell.opacity, defaults.opacity);
   w.WriteIf("rimPower", a_shell.rimPower, defaults.rimPower);
   w.WriteIf("emissive", a_shell.emissive, defaults.emissive);
   const ShellPose &p = a_shell.pose;
@@ -524,8 +528,8 @@ std::string SerializeRecipe(const Recipe &a_recipe) {
   root["keys"] = std::move(keys);
   if (a_recipe.priority)
     root["priority"] = *a_recipe.priority;
-  if (a_recipe.overrideMode != OverrideMode::kStack)
-    root["override"] = std::string{OverrideModeName(a_recipe.overrideMode)};
+  if (a_recipe.mergeMode != MergeMode::kStack)
+    root["merge"] = std::string{MergeModeName(a_recipe.mergeMode)};
   if (a_recipe.clock != Clock{})
     root["clock"] = json::object({{"speed", Num(a_recipe.clock.speed)}});
 

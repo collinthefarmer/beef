@@ -7,9 +7,12 @@
 #include "engine/Events.h"
 #include "engine/Hooks.h"
 #include "engine/Manager.h"
+#include "engine/PluginEvents.h"
 #include "engine/RecipeStore.h"
 #include "menu/Menu.h"
+#include <algorithm>
 #include <chrono>
+#include <cmath>
 
 namespace BetterEnchantmentEffects {
 std::shared_ptr<spdlog::sinks::ringbuffer_sink_mt> g_logRing;
@@ -58,6 +61,25 @@ void InitLog() {
 
 bool CommunityShadersLoaded() {
   return REX::W32::GetModuleHandleW(L"CommunityShaders.dll") != nullptr;
+}
+
+void OnPluginEvent(SKSE::MessagingInterface::Message *a_msg) {
+  using namespace BetterEnchantmentEffects;
+  if (!a_msg || a_msg->type != kPluginEventMessage) {
+    return;
+  }
+  auto event = ParsePluginEvent(a_msg->data, a_msg->dataLen);
+  if (!event) {
+    logger::warn("plugin event from '{}': not a valid PluginEventMessage",
+                 a_msg->sender ? a_msg->sender : "?");
+    return;
+  }
+  auto *manager = Manager::GetSingleton();
+  if (event->actor == 0) {
+    manager->QueueBroadcast(std::move(event->record));
+  } else {
+    manager->QueueEvent(event->actor, std::move(event->record));
+  }
 }
 
 void OnMessage(SKSE::MessagingInterface::Message *a_msg) {
@@ -141,6 +163,11 @@ SKSEPluginLoad(const SKSE::LoadInterface *skse) {
   if (!SKSE::GetMessagingInterface()->RegisterListener(OnMessage)) {
     logger::error("failed to register SKSE messaging listener");
     return false;
+  }
+  if (!SKSE::GetMessagingInterface()->RegisterListener(nullptr,
+                                                       OnPluginEvent)) {
+    logger::error("failed to register the plugin event listener; trigger "
+                  "signals with a plugin origin will not fire");
   }
   return true;
 }

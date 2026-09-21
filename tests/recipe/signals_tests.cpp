@@ -108,17 +108,17 @@ int main() {
     std::vector<Signal> signals{
         Signal{"rate", ActorValueSignal{"Rate", Measure::kCurrent},
                std::nullopt},
-        Signal{"p", PulseSignal{0.0f, 1.0f, Ref{"rate"}, 0.0f, Waveform::kSaw},
+        Signal{"p", WaveSignal{0.0f, 1.0f, Ref{"rate"}, 0.0f, Waveform::kSaw},
                std::nullopt}};
     const auto graph = SignalGraph::Compile(signals, {});
     Check(graph.Diagnostics().empty(),
-          "a pulse driven by a scalar signal compiles");
+          "a wave driven by a scalar signal compiles");
     SignalState state{graph};
     FakeEnvironment environment;
     environment.actorValues["Rate"] = 1.0f;
     state.Tick(environment, TickInputs{0.0f, 0.4f});
     Check(Near(state.Scalar("p"), 0.4f),
-          "the saw pulse integrates phase to 0.4 after dt=0.4 at period 1");
+          "the saw wave integrates phase to 0.4 after dt=0.4 at period 1");
     environment.actorValues["Rate"] = 10.0f;
     state.Tick(environment, TickInputs{0.4f, 0.4f});
     Check(
@@ -142,10 +142,9 @@ int main() {
 
   {
     std::vector<Signal> signals{
-        Signal{"hit", TriggerSignal{EventOrigin{"hit", {}, ""}, 1.0f, 4},
+        Signal{"hit", TriggerSignal{EventOrigin{"hit", {}}, 1.0f, 4},
                std::nullopt},
-        Signal{"val", PayloadSignal{Ref{"hit"}, PayloadField::kValue},
-               std::nullopt},
+        Signal{"val", PayloadSignal{Ref{"hit"}}, std::nullopt},
         Signal{"count", CounterSignal{Ref{"hit"}, std::nullopt, std::nullopt},
                std::nullopt},
         Signal{"acc", AccumulateSignal{Ref{"hit"}, 1.0f}, std::nullopt}};
@@ -170,10 +169,143 @@ int main() {
     Check(state.Firings("hit").size() == 2, "the trigger reports its firings");
   }
 
+  {
+    std::vector<Signal> signals{
+        Signal{"charge", TriggerSignal{PluginOrigin{"myMod.*"}, 1.0f, 4},
+               std::nullopt},
+        Signal{"hit", TriggerSignal{EventOrigin{"myMod.*", {}}, 1.0f, 4},
+               std::nullopt}};
+    const auto graph = SignalGraph::Compile(signals, {});
+    Check(graph.Diagnostics().empty(), "a plugin trigger compiles");
+    SignalState state{graph};
+    EventRecord fromPlugin;
+    fromPlugin.id = "myMod.charge";
+    fromPlugin.plugin = true;
+    fromPlugin.payload.value = 2.0f;
+    state.Fire(fromPlugin, 0.0f);
+    EventRecord fromEngine;
+    fromEngine.id = "myMod.charge";
+    state.Fire(fromEngine, 0.0f);
+    Check(state.Firings("charge").size() == 1,
+          "a plugin origin fires on the plugin channel only");
+    Check(state.Firings("hit").size() == 1,
+          "an event origin fires on the engine channel only");
+  }
+
+  {
+    std::vector<Signal> signals{
+        Signal{"combat", ActorStateSignal{ActorStateKind::kInCombat},
+               std::nullopt},
+        Signal{"power", EnchantmentSignal{EnchantmentField::kMagnitude},
+               std::nullopt}};
+    const auto graph = SignalGraph::Compile(signals, {});
+    SignalState state{graph};
+    FakeEnvironment environment;
+    environment.state = 1.0f;
+    environment.enchantment = 25.0f;
+    state.Tick(environment, TickInputs{0.0f, 0.0f});
+    Check(Near(state.Scalar("combat"), 1.0f),
+          "an actorState signal reads the environment");
+    Check(Near(state.Scalar("power"), 25.0f),
+          "an enchantment signal reads the environment");
+  }
+
+  {
+    std::vector<Signal> signals{
+        Signal{"impact",
+               TriggerSignal{EventOrigin{"hit.pos", {}}, 5.0f, 4,
+                             ValueType::kVec3},
+               std::nullopt},
+        Signal{"where", PayloadSignal{Ref{"impact"}}, std::nullopt}};
+    const auto graph = SignalGraph::Compile(signals, {});
+    Check(graph.Diagnostics().empty(), "a vec3-typed trigger compiles");
+    Check(graph.TypeOf("where") == std::optional{ValueType::kVec3},
+          "a payload signal takes the trigger's declared type");
+    SignalState state{graph};
+    NullEnvironment environment;
+    EventRecord scalarEvent;
+    scalarEvent.id = "hit.pos";
+    scalarEvent.payload.value = 1.0f;
+    state.Fire(scalarEvent, 0.0f);
+    Check(state.Firings("impact").empty() && state.Mismatched("impact") == 1,
+          "a scalar firing at a vec3 trigger is dropped and counted");
+    EventRecord vecEvent;
+    vecEvent.id = "hit.pos";
+    vecEvent.payload.value = Vec3{1.0f, 2.0f, 3.0f};
+    state.Fire(vecEvent, 0.0f);
+    state.Tick(environment, TickInputs{0.0f, 0.0f});
+    const Vec3 where = state.Vector("where");
+    Check(state.Firings("impact").size() == 1 && Near(where.y, 2.0f),
+          "a vec3 firing lands and the payload reads it as a vec3");
+  }
+
+  {
+    std::vector<Signal> signals{
+        Signal{"hue", ConstantSignal{Vec3{0.2f, 0.4f, 0.6f}}, std::nullopt},
+        Signal{"gate", ActorValueSignal{"Gate", Measure::kCurrent},
+               std::nullopt},
+        Signal{"snap",
+               TriggerSignal{WhenOrigin{Ref{"gate"}, Ref{"hue"}}, 5.0f, 4,
+                             ValueType::kVec3},
+               std::nullopt},
+        Signal{"held", PayloadSignal{Ref{"snap"}}, std::nullopt}};
+    const auto graph = SignalGraph::Compile(signals, {});
+    Check(graph.Diagnostics().empty(),
+          "a when trigger samples a vec3 into a vec3 payload");
+    SignalState state{graph};
+    FakeEnvironment environment;
+    state.Tick(environment, TickInputs{0.0f, 0.0f});
+    environment.actorValues["Gate"] = 1.0f;
+    state.Tick(environment, TickInputs{0.1f, 0.1f});
+    Check(Near(state.Vector("held").z, 0.6f),
+          "the sampled vec3 reaches the payload reader");
+  }
+
+  {
+    std::vector<Signal> signals{
+        Signal{"gate", ActorValueSignal{"Gate", Measure::kCurrent},
+               std::nullopt},
+        Signal{"snap",
+               TriggerSignal{WhenOrigin{Ref{"gate"}, Ref{"gate"}}, 5.0f, 4,
+                             ValueType::kVec3},
+               std::nullopt}};
+    const auto graph = SignalGraph::Compile(signals, {});
+    Check(HasMessage(graph.Diagnostics(), "payload is a vec3"),
+          "a when value of the wrong type is rejected at compile");
+  }
+
+  {
+    TriggerSignal world;
+    world.payload = ValueType::kVec3;
+    world.anchor = WorldAnchor{};
+    TriggerPayload carried;
+    carried.value = Vec3{1.0f, 2.0f, 3.0f};
+    const auto *point = Get<CarriedPoint>(AnchorOf(world, carried));
+    Check(point != nullptr && Near(point->position.y, 2.0f),
+          "a world anchor reads the payload as the point");
+
+    TriggerSignal declared;
+    declared.anchor = NodeAnchor{"NPC L Foot [Lft ]"};
+    TriggerPayload bare;
+    bare.value = 1.0f;
+    const auto *node = Get<AnchorNode>(AnchorOf(declared, bare));
+    Check(node != nullptr && node->node == "NPC L Foot [Lft ]",
+          "a node anchor locates at the declared node");
+    TriggerPayload withNode = bare;
+    withNode.node = "WEAPON";
+    const auto *carriedNode = Get<AnchorNode>(AnchorOf(declared, withNode));
+    Check(carriedNode != nullptr && carriedNode->node == "WEAPON",
+          "a firing's own node overrides the declared one");
+
+    TriggerSignal unanchored;
+    Check(Get<std::monostate>(AnchorOf(unanchored, carried)) != nullptr,
+          "an unanchored trigger's payload is just a value");
+  }
+
   for (const bool conditional : {false, true}) {
     const TriggerOrigin origin =
         conditional ? TriggerOrigin{WhenOrigin{Ref{"gate"}, Ref{"gate"}}}
-                    : TriggerOrigin{EventOrigin{"hit", {}, ""}};
+                    : TriggerOrigin{EventOrigin{"hit", {}}};
     const std::vector<Signal> signals{
         Signal{"gate", ActorValueSignal{"Gate", Measure::kCurrent},
                std::nullopt},
@@ -200,8 +332,9 @@ int main() {
     const auto retained = state.Firings("hit");
     Check(retained.size() == 2,
           "both trigger origins retain only their configured maximum");
-    Check(retained.size() == 2 && Near(retained.front().payload.value, 3.0f) &&
-              Near(retained.back().payload.value, 4.0f),
+    Check(retained.size() == 2 &&
+              Near(AsScalar(retained.front().payload.value), 3.0f) &&
+              Near(AsScalar(retained.back().payload.value), 4.0f),
           "retention discards oldest firings and preserves payload order");
     Check(Near(state.Scalar("count"), 4.0f),
           "discarding old payloads does not lose counter events");
@@ -243,20 +376,24 @@ int main() {
   {
     std::vector<Signal> signals{
         Signal{"v", ActorValueSignal{"V", Measure::kCurrent}, std::nullopt},
-        Signal{"d", DeltaSignal{Ref{"v"}}, std::nullopt},
+        Signal{"d", RateSignal{Ref{"v"}}, std::nullopt},
         Signal{"s", SmoothSignal{Ref{"v"}, 1.0f}, std::nullopt}};
     const auto graph = SignalGraph::Compile(signals, {});
     SignalState state{graph};
     FakeEnvironment environment;
     environment.actorValues["V"] = 0.0f;
     state.Tick(environment, TickInputs{0.0f, 0.0f});
-    Check(Near(state.Scalar("d"), 0.0f), "a delta is zero on the first tick");
+    Check(Near(state.Scalar("d"), 0.0f), "a rate is zero on the first tick");
     environment.actorValues["V"] = 8.0f;
     state.Tick(environment, TickInputs{1.0f, 1.0f});
     Check(Near(state.Scalar("d"), 8.0f),
-          "a delta reports the change since the last tick");
+          "a rate reports the change per second");
     Check(state.Scalar("s") > 4.0f && state.Scalar("s") < 8.0f,
           "a smooth signal approaches the target without reaching it");
+    environment.actorValues["V"] = 12.0f;
+    state.Tick(environment, TickInputs{1.5f, 0.5f});
+    Check(Near(state.Scalar("d"), 8.0f),
+          "a rate divides the change by the tick's seconds");
   }
 
   {
@@ -310,7 +447,7 @@ int main() {
     recipe.masks = {Mask{"tint", "@albedo"}};
     recipe.signals = {Const("glow", 1.0f),
                       Signal{"hit",
-                             TriggerSignal{EventOrigin{"hit", {}, ""}, 1.0f, 4},
+                             TriggerSignal{EventOrigin{"hit", {}}, 1.0f, 4},
                              std::nullopt}};
     const auto graph = SignalGraph::Compile(recipe.signals, recipe.curves);
     const RowTypes rows{recipe, graph};
@@ -358,7 +495,7 @@ int main() {
 
     Layer normalBlend;
     normalBlend.source = Ref{"albedo"};
-    normalBlend.blend = Blend::kNormal;
+    normalBlend.blend = Blend::kReorient;
     Check(HasMessage(CheckLayer(rows, normalBlend, Slot::kDiffuse, "w"),
                      "normal stack"),
           "CheckLayer rejects the normal blend off the normal slot");
@@ -442,12 +579,12 @@ int main() {
 
   {
     std::vector<Signal> signals{Signal{"a", ActorValueSignal{}, std::nullopt},
-                                Signal{"d", DeltaSignal{}, std::nullopt}};
+                                Signal{"d", RateSignal{}, std::nullopt}};
     const auto graph = SignalGraph::Compile(signals, {});
     Check(HasMessage(graph.Diagnostics(), "names an actor value"),
           "an incomplete actor-value signal is flagged, not silently accepted");
     Check(HasMessage(graph.Diagnostics(), "reads a signal"),
-          "an incomplete delta signal is flagged");
+          "an incomplete rate signal is flagged");
     Check(graph.Inert(0) && graph.Inert(1),
           "incomplete signals are inert rather than a crash");
   }

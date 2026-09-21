@@ -25,6 +25,14 @@ void Manager::QueueEvent(RE::FormID a_actorID, EventRecord a_event) {
   });
 }
 
+void Manager::QueueBroadcast(EventRecord a_event) {
+  PostTask([this, event = std::move(a_event)] {
+    for (const auto &entry : applied_) {
+      Fire(entry.first, event);
+    }
+  });
+}
+
 void Manager::FireAt(RE::FormID a_actorID, std::string a_event,
                      std::string a_node, Vec3 a_offset, float a_random,
                      float a_value) {
@@ -34,6 +42,7 @@ void Manager::FireAt(RE::FormID a_actorID, std::string a_event,
     record.id = event;
     record.payload.value = a_value;
     record.payload.node = node;
+    Fire(a_actorID, record);
     RE::Actor *actor = RE::TESForm::LookupByID<RE::Actor>(a_actorID);
     RE::NiAVObject *root = actor ? actor->Get3D(false) : nullptr;
     if (!node.empty() && root) {
@@ -48,12 +57,15 @@ void Manager::FireAt(RE::FormID a_actorID, std::string a_event,
           position.y += spread(gen);
           position.z += spread(gen);
         }
-        record.payload.position = position;
+        EventRecord carried;
+        carried.id = event + ".position";
+        carried.payload.value = position;
+        carried.payload.node = node;
+        Fire(a_actorID, carried);
       } else {
         logger::warn("fire {}: node '{}' is not on the actor", event, node);
       }
     }
-    Fire(a_actorID, record);
   });
 }
 

@@ -162,7 +162,7 @@
     }
   ],
   "shell": {
-    "alpha": "@shellOpacity",
+    "opacity": "@shellOpacity",
     "pose": {
       "inflate": [
         0.0,

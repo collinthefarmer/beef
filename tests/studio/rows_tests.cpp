@@ -16,7 +16,7 @@ Recipe MakeRecipe() {
       Signal{"glow", ConstantSignal{2.0f}, std::nullopt},
       Signal{"scaled", ExprSignal{"glow * 2"}, std::nullopt},
       Signal{"hit",
-             TriggerSignal{EventOrigin{"HitEvent", EventFilter{}, ""}, 1.0f, 4},
+             TriggerSignal{EventOrigin{"HitEvent", EventFilter{}}, 1.0f, 4},
              std::nullopt},
   };
   recipe.curves = {Curve{"ramp", "0,0 1,1"}};

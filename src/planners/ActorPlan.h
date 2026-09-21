@@ -86,4 +86,7 @@ InstanceOfPlaced(const ActorPlan &a_plan,
                  std::size_t a_placed);
 [[nodiscard]] std::vector<GeometryId>
 ThirdPersonGeometriesOfInstance(const ActorPlan &a_plan, InstanceId a_instance);
+[[nodiscard]] const Variant *InstanceVariant(const ActorPlan &a_plan,
+                                             InstanceId a_instance,
+                                             const Recipe &a_recipe);
 }

@@ -82,7 +82,7 @@ bool KeyMatches(const RecipeKey &a_key, const WornPiece &a_piece) {
   }
   switch (row->operand) {
   case KeyOperand::kNone:
-    return true;
+    return !row->enchantmentDerived || a_piece.enchantment.has_value();
   case KeyOperand::kGlob:
     return std::ranges::any_of(a_piece.diffusePaths, [&](const std::string &p) {
       return GlobMatch(a_key.Glob(), p);
@@ -100,7 +100,7 @@ void KeepOneSampled(std::vector<ResolvedRecipe> &a_matches,
   std::vector<std::size_t> pool;
   for (std::size_t i = 0; i < a_matches.size(); ++i) {
     if (a_matches[i].recipe &&
-        a_matches[i].recipe->overrideMode == OverrideMode::kSampled) {
+        a_matches[i].recipe->mergeMode == MergeMode::kSampled) {
       pool.push_back(i);
     }
   }
@@ -129,6 +129,7 @@ std::vector<ResolvedRecipe> Resolve(const WornPiece &a_piece,
   std::vector<RecipeKey> claimed;
   std::vector<Candidate> matches;
   bool enchantmentMatched = false;
+  bool specificEnchantmentMatched = false;
   for (std::size_t i = a_loaded.size(); i-- > 0;) {
     const auto &recipe = a_loaded[i];
     std::optional<RecipeKey> best;
@@ -148,6 +149,10 @@ std::vector<ResolvedRecipe> Resolve(const WornPiece &a_piece,
       continue;
     }
     enchantmentMatched = enchantmentMatched || EnchantmentDerived(best->kind);
+    specificEnchantmentMatched =
+        specificEnchantmentMatched ||
+        (EnchantmentDerived(best->kind) &&
+         KeyOperandOf(best->kind) == KeyOperand::kForm);
     matches.push_back({{&recipe, *best,
                         recipe.priority.value_or(DefaultPriority(best->kind))},
                        i});
@@ -155,6 +160,11 @@ std::vector<ResolvedRecipe> Resolve(const WornPiece &a_piece,
   if (enchantmentMatched) {
     std::erase_if(matches, [](const Candidate &m) {
       return m.resolved.key.kind == KeyKind::kDefault;
+    });
+  }
+  if (specificEnchantmentMatched) {
+    std::erase_if(matches, [](const Candidate &m) {
+      return m.resolved.key.kind == KeyKind::kEnchanted;
     });
   }
   std::ranges::stable_sort(matches, [](const Candidate &a, const Candidate &b) {

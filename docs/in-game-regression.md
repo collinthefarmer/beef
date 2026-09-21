@@ -82,7 +82,7 @@ Discipline:
 | --- | --- |
 | A: base | An enchantment key for the player item; a low-strength red emissive **output** on the material. No **shell** or **light** at first. |
 | B: overlay | A different matching key, such as that armor's key, with an explicitly higher priority; blue emissive added over A. Use unequal priorities and different keys, so both recipes survive key ownership. |
-| C: animation/events | A slow pulse driving emissive strength; an actor-state **signal** for sneaking; a trigger/counter for `hit.received`; a **ripple** using that trigger. Route each signal to a visible output in turn. |
+| C: animation/events | A slow wave driving emissive strength; an actor-state **signal** for sneaking; a trigger/counter for `hit.received`; a **ripple** using that trigger. Route each signal to a visible output in turn. |
 | D: sources | A small asymmetric image, a material channel, a UV expression, a **curve**, a mesh **bake**, a distance, a ripple, and a material-cluster **source**. Feed each separately into an emissive diagnostic output. |
 | E: shell/light | A visibly offset, translucent shell, and a modest colored point light on a known valid wearer bone. |
 
@@ -168,7 +168,7 @@ requires investigation.
 
 ### 4. Signals, clocks, and actual game events
 
-1. Apply C's pulse. Watch at least two full periods in the live signal
+1. Apply C's wave. Watch at least two full periods in the live signal
    value and on the armor. Freeze the clock footer, step with `>|`, scrub
    `t (s)` to two distinct times, then unfreeze. Hold is stable; step and
    scrub change it; motion resumes.

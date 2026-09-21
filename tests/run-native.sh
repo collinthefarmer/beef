@@ -35,6 +35,7 @@ declare -A SUITE_EXTRAS=(
 	[engine_applicator]="src/engine/ApplicationService.cpp src/engine/SessionQueue.cpp"
 	[engine_applicationservice]="src/engine/ApplicationService.cpp src/engine/SessionQueue.cpp"
 	[engine_textfile]="src/engine/TextFile.cpp"
+	[engine_pluginevents]="src/engine/PluginEvents.cpp"
 	[settingspublication]="src/Settings.cpp"
 )
 

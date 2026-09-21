@@ -135,7 +135,7 @@ int main() {
   {
     Recipe low = RecipeWith({Output{Emissive(false, false)}});
     Recipe midReplaces = RecipeWith({Output{Emissive(false, false)}});
-    midReplaces.overrideMode = OverrideMode::kReplace;
+    midReplaces.mergeMode = MergeMode::kReplace;
     Recipe high = RecipeWith({Output{Emissive(false, false)}});
     const std::vector<PlacedRecipe> placed{
         PlacedRecipe{&low, 1, {0}},
@@ -245,7 +245,7 @@ int main() {
     const auto sampled = [&](std::string a_id, const char *a_pattern) {
       Recipe recipe;
       recipe.id = std::move(a_id);
-      recipe.overrideMode = OverrideMode::kSampled;
+      recipe.mergeMode = MergeMode::kSampled;
       recipe.keys = {glob(a_pattern)};
       return recipe;
     };
@@ -278,6 +278,54 @@ int main() {
           return r.recipe->id == "plain";
         });
     Check(keptPlain, "the surviving recipes include the non-sampled one");
+  }
+
+  {
+    Recipe anyEnchanted;
+    anyEnchanted.id = "anyEnchanted";
+    anyEnchanted.keys = {RecipeKey{KeyKind::kEnchanted}};
+    Recipe fallback;
+    fallback.id = "fallback";
+    fallback.keys = {RecipeKey{KeyKind::kDefault}};
+    const std::vector<Recipe> loaded{anyEnchanted, fallback};
+
+    WornPiece bare;
+    const auto unenchanted = Resolve(bare, loaded, 0);
+    Check(unenchanted.size() == 1 &&
+              unenchanted.front().recipe->id == "fallback",
+          "an enchanted key skips a piece without an enchantment");
+
+    WornPiece enchanted;
+    enchanted.enchantment = FormKey{"Skyrim.esm", 0x123};
+    const auto generic = Resolve(enchanted, loaded, 0);
+    Check(generic.size() == 1 && generic.front().recipe->id == "anyEnchanted",
+          "an enchanted key matches an enchanted piece and suppresses default");
+
+    Recipe specific;
+    specific.id = "specific";
+    specific.keys = {
+        RecipeKey{KeyKind::kEnchantment,
+                  KeyOperandValue{FormRef::From("0x123~Skyrim.esm")}}};
+    enchanted.enchantment = *specific.keys.front().Form()->key;
+    const std::vector<Recipe> withSpecific{anyEnchanted, fallback, specific};
+    const auto resolved = Resolve(enchanted, withSpecific, 0);
+    Check(resolved.size() == 1 && resolved.front().recipe->id == "specific",
+          "a specific enchantment key suppresses the generic enchanted look");
+  }
+
+  {
+    Selector selector;
+    SelectorClause addon;
+    addon.kind = SelectorKind::kAddon;
+    addon.operand = FormRef::From("0x800~Test.esp");
+    selector.anyOf.push_back(addon);
+    GeometryIdentity geometry;
+    geometry.name = "body01";
+    Check(!Matches(selector, geometry),
+          "an addon term skips a geometry without an addon");
+    geometry.addon = FormKey{"Test.esp", 0x800};
+    Check(Matches(selector, geometry),
+          "an addon term matches the geometry's armor addon");
   }
 
   return test::Finish("merge");

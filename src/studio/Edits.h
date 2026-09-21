@@ -109,7 +109,7 @@ struct SetPriority {
   std::optional<int> priority;
 };
 struct SetOverride {
-  OverrideMode mode = OverrideMode::kStack;
+  MergeMode mode = MergeMode::kStack;
 };
 struct SetClockSpeed {
   float speed = 1.0f;
@@ -235,7 +235,7 @@ struct ResetLight {
 };
 
 enum class ShellParam {
-  kAlpha,
+  kOpacity,
   kRimPower,
   kEmissive,
   kScale,
@@ -256,7 +256,7 @@ inline constexpr std::size_t kShellPointCount = 2;
 [[nodiscard]] std::string_view ShellVectorName(ShellVector a_field) noexcept;
 [[nodiscard]] std::string_view ShellPointName(ShellPoint a_field) noexcept;
 struct SetShellParam {
-  ShellParam field = ShellParam::kAlpha;
+  ShellParam field = ShellParam::kOpacity;
   Param value = 1.0f;
 };
 struct SetShellVector {

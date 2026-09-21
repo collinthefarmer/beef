@@ -14,16 +14,25 @@
 
 namespace BetterEnchantmentEffects {
 struct TriggerPayload {
+  Value value = 0.0f;
   std::string node;
   std::string arg;
-  std::optional<Vec3> position;
-  std::optional<Vec3> normal;
-  float value = 0.0f;
 };
+
+struct CarriedPoint {
+  Vec3 position;
+};
+struct AnchorNode {
+  std::string_view node;
+};
+using FiringAnchor = std::variant<std::monostate, CarriedPoint, AnchorNode>;
+[[nodiscard]] FiringAnchor AnchorOf(const TriggerSignal &a_trigger,
+                                    const TriggerPayload &a_payload) noexcept;
 
 struct EventRecord {
   std::string id;
   TriggerPayload payload;
+  bool plugin = false;
 };
 
 struct TriggerFiring {
@@ -172,6 +181,11 @@ public:
 
   [[nodiscard]] std::span<const TriggerFiring>
   Firings(std::string_view a_trigger) const noexcept;
+  [[nodiscard]] std::uint64_t
+  Mismatched(std::string_view a_trigger) const noexcept;
+  [[nodiscard]] FiringAnchor
+  AnchorOf(std::string_view a_trigger,
+           const TriggerFiring &a_firing) const noexcept;
 
 private:
   struct Evaluator;
@@ -187,6 +201,7 @@ private:
     float accumulator = 0.0f;
     std::optional<Value> previous;
     Value held = 0.0f;
+    std::uint64_t mismatched = 0;
   };
 
   [[nodiscard]] float Scalar(std::size_t a_index) const noexcept;

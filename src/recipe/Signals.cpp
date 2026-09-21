@@ -76,10 +76,11 @@ bool MatchesFilter(const EventFilter &a_filter,
   if (!a_filter.arg.empty() && !GlobMatch(a_filter.arg, a_payload.arg)) {
     return false;
   }
-  if (a_filter.value.min && a_payload.value < *a_filter.value.min) {
+  const float value = AsScalar(a_payload.value);
+  if (a_filter.value.min && value < *a_filter.value.min) {
     return false;
   }
-  if (a_filter.value.max && a_payload.value > *a_filter.value.max) {
+  if (a_filter.value.max && value > *a_filter.value.max) {
     return false;
   }
   return true;
@@ -114,7 +115,7 @@ std::vector<std::string> Dependencies(const Signal &a_signal,
   std::vector<std::string> out;
   Match(
       a_signal.kind,
-      [&](const PulseSignal &k) {
+      [&](const WaveSignal &k) {
         AddRef(out, k.base);
         AddRef(out, k.amplitude);
         AddRef(out, k.period);
@@ -156,7 +157,7 @@ std::vector<std::string> Dependencies(const Signal &a_signal,
           AddRef(out, s.color);
         }
       },
-      [&](const DeltaSignal &k) { AddRef(out, k.of.name); },
+      [&](const RateSignal &k) { AddRef(out, k.of.name); },
       [&](const SmoothSignal &k) {
         AddRef(out, k.of.name);
         AddRef(out, k.seconds);
@@ -514,12 +515,15 @@ void SignalGraph::InferTypes(SignalGraph &a_graph) {
             return ValueType::kScalar;
           }
         },
-        [](const PayloadSignal &k) {
-          return k.field == PayloadField::kValue ? ValueType::kScalar
-                                                 : ValueType::kVec3;
+        [&](const PayloadSignal &k) {
+          const auto index = a_graph.Index(k.trigger.name);
+          const auto *trigger =
+              index ? Get<TriggerSignal>(a_graph.nodes_[*index].signal.kind)
+                    : nullptr;
+          return trigger ? trigger->payload : ValueType::kScalar;
         },
         [](const GradientSignal &) { return ValueType::kVec3; },
-        [&](const DeltaSignal &k) {
+        [&](const RateSignal &k) {
           return typeOf(k.of.name).value_or(ValueType::kScalar);
         },
         [&](const SmoothSignal &k) {
@@ -538,7 +542,7 @@ void SignalGraph::InferTypes(SignalGraph &a_graph) {
           }
           return *checked;
         },
-        [](const PulseSignal &) { return ValueType::kScalar; },
+        [](const WaveSignal &) { return ValueType::kScalar; },
         [](const RampSignal &) { return ValueType::kScalar; },
         [](const ActorValueSignal &) { return ValueType::kScalar; },
         [](const ActorStateSignal &) { return ValueType::kScalar; },
@@ -610,7 +614,7 @@ struct SignalGraph::ReferenceTypeChecker {
     }
   }
 
-  void operator()(const PulseSignal &k) const {
+  void operator()(const WaveSignal &k) const {
     CheckScalar(k.base, "base");
     CheckScalar(k.amplitude, "amplitude");
     CheckScalar(k.period, "period");
@@ -625,9 +629,22 @@ struct SignalGraph::ReferenceTypeChecker {
 
   void operator()(const TriggerSignal &k) const {
     CheckScalar(k.lifetime, "lifetime");
+    if (Get<WorldAnchor>(k.anchor) && k.payload != ValueType::kVec3) {
+      Reject(std::format(
+          "an anchor in world space needs a vec3 payload; this trigger "
+          "carries a {}",
+          Name(k.payload)));
+    }
     if (const auto *when = Get<WhenOrigin>(k.origin)) {
       RequireReference(when->when.name, "a when trigger names a signal");
       CheckScalarReference(when->when, "when");
+      if (when->value) {
+        if (const auto type = MismatchedType(*when->value, k.payload)) {
+          Reject(std::format(
+              "the trigger's payload is a {}; 'value' reads '@{}', a {}",
+              Name(k.payload), when->value->name, Name(*type)));
+        }
+      }
     }
   }
 
@@ -636,7 +653,7 @@ struct SignalGraph::ReferenceTypeChecker {
                      "an actor-value signal names an actor value");
   }
 
-  void operator()(const DeltaSignal &k) const {
+  void operator()(const RateSignal &k) const {
     RequireReference(k.of.name, "a delta signal reads a signal");
   }
 
@@ -996,7 +1013,7 @@ void CheckOutputs(const RowTypes &a_rows, std::vector<Diagnostic> &a_out) {
 void CheckShell(const RowTypes &a_rows, std::vector<Diagnostic> &a_out) {
   const ShellSettings &s = a_rows.recipe.shell;
   const Reporter shell{a_out, "shell"};
-  CheckScalar(a_rows, shell, s.alpha, "alpha");
+  CheckScalar(a_rows, shell, s.opacity, "alpha");
   CheckScalar(a_rows, shell, s.rimPower, "rimPower");
   CheckScalar(a_rows, shell, s.emissive, "emissive");
   const Reporter pose{a_out, "shell pose"};
@@ -1124,6 +1141,38 @@ SignalState::Firings(std::string_view a_trigger) const noexcept {
   return states_[*idx].firings;
 }
 
+std::uint64_t
+SignalState::Mismatched(std::string_view a_trigger) const noexcept {
+  const auto idx = graph_.Index(a_trigger);
+  return idx ? states_[*idx].mismatched : 0;
+}
+
+FiringAnchor AnchorOf(const TriggerSignal &a_trigger,
+                      const TriggerPayload &a_payload) noexcept {
+  return Match(
+      a_trigger.anchor, [](const std::monostate &) { return FiringAnchor{}; },
+      [&](const WorldAnchor &) {
+        const auto *carried = Get<Vec3>(a_payload.value);
+        return carried ? FiringAnchor{CarriedPoint{*carried}} : FiringAnchor{};
+      },
+      [&](const NodeAnchor &a_node) {
+        const std::string_view node =
+            a_payload.node.empty() ? a_node.node : a_payload.node;
+        return node.empty() ? FiringAnchor{} : FiringAnchor{AnchorNode{node}};
+      });
+}
+
+FiringAnchor
+SignalState::AnchorOf(std::string_view a_trigger,
+                      const TriggerFiring &a_firing) const noexcept {
+  const auto idx = graph_.Index(a_trigger);
+  const auto *trigger =
+      idx ? Get<TriggerSignal>(graph_.nodes_[*idx].signal.kind) : nullptr;
+  return trigger
+             ? BetterEnchantmentEffects::AnchorOf(*trigger, a_firing.payload)
+             : FiringAnchor{};
+}
+
 void SignalState::Accept(std::size_t a_index, const EventRecord &a_event,
                          float a_time) {
   if (a_index >= graph_.nodes_.size() || a_index >= states_.size()) {
@@ -1138,21 +1187,21 @@ void SignalState::Accept(std::size_t a_index, const EventRecord &a_event,
   const bool accepted = Match(
       trigger->origin,
       [&](const EventOrigin &s) {
-        if (!GlobMatch(s.event, a_event.id) ||
-            !MatchesFilter(s.filter, a_event.payload)) {
-          return false;
-        }
-        if (firing.payload.node.empty()) {
-          firing.payload.node = s.at;
-        }
-        return true;
+        return !a_event.plugin && GlobMatch(s.event, a_event.id) &&
+               MatchesFilter(s.filter, a_event.payload);
       },
-      [&](const PluginOrigin &s) { return GlobMatch(s.id, a_event.id); },
+      [&](const PluginOrigin &s) {
+        return a_event.plugin && GlobMatch(s.id, a_event.id);
+      },
       [](const WhenOrigin &) { return false; });
   if (!accepted) {
     return;
   }
   auto &st = states_[a_index];
+  if (TypeOf(firing.payload.value) != trigger->payload) {
+    ++st.mismatched;
+    return;
+  }
   st.RecordFiring(std::move(firing), trigger->max);
 }
 
@@ -1187,7 +1236,7 @@ struct SignalState::Evaluator {
 
   Value operator()(const ConstantSignal &k) const { return k.value; }
 
-  Value operator()(const PulseSignal &k) const {
+  Value operator()(const WaveSignal &k) const {
     const float period = state.Resolve(k.period);
     if (period > kEpsilon) {
       memory.phase += delta / period;
@@ -1246,9 +1295,8 @@ struct SignalState::Evaluator {
       memory.previous = now;
       if (before <= 0.0f && now > 0.0f) {
         TriggerFiring firing{time, {}};
-        if (when->value) {
-          firing.payload.value = state.Scalar(when->value->name);
-        }
+        firing.payload.value =
+            when->value ? state.ValueOf(when->value->name) : ZeroOf(k.payload);
         memory.RecordFiring(std::move(firing), k.max);
       }
     }
@@ -1265,20 +1313,9 @@ struct SignalState::Evaluator {
   Value operator()(const PayloadSignal &k) const {
     const auto *src = TriggerState(k.trigger);
     if (src && !src->firings.empty()) {
-      const auto &p = src->firings.back().payload;
-      switch (k.field) {
-      case PayloadField::kValue:
-        memory.held = p.value;
-        break;
-      case PayloadField::kPosition:
-        memory.held = p.position.value_or(AsVec3(memory.held));
-        break;
-      case PayloadField::kNormal:
-        memory.held = p.normal.value_or(AsVec3(memory.held));
-        break;
-      }
+      memory.held = src->firings.back().payload.value;
     }
-    return memory.held;
+    return TypeOf(memory.held) == node.type ? memory.held : ZeroOf(node.type);
   }
 
   Value operator()(const CounterSignal &k) const {
@@ -1340,19 +1377,23 @@ struct SignalState::Evaluator {
                 span <= kEpsilon ? 0.0f : (t - lo->at) / span);
   }
 
-  Value operator()(const DeltaSignal &k) const {
+  Value operator()(const RateSignal &k) const {
     const Value now = state.ValueOf(k.of.name);
     const Value before = memory.previous.value_or(now);
     memory.previous = now;
+    if (delta <= kEpsilon) {
+      return ZeroOf(node.type);
+    }
     return Match(
-        now, [&](float f) -> Value { return f - AsScalar(before); },
+        now, [&](float f) -> Value { return (f - AsScalar(before)) / delta; },
         [&](const Vec2 &v) -> Value {
           const auto b = AsVec2(before);
-          return Vec2{v.x - b.x, v.y - b.y};
+          return Vec2{(v.x - b.x) / delta, (v.y - b.y) / delta};
         },
         [&](const Vec3 &v) -> Value {
           const auto b = AsVec3(before);
-          return Vec3{v.x - b.x, v.y - b.y, v.z - b.z};
+          return Vec3{(v.x - b.x) / delta, (v.y - b.y) / delta,
+                      (v.z - b.z) / delta};
         });
   }
 

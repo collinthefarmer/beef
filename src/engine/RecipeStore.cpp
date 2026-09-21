@@ -164,9 +164,6 @@ void ResolveForms(Recipe &a_recipe, std::vector<Diagnostic> &a_out) {
         },
         [&](LightOutput &l) {
           ResolveSelector(l.selector, a_recipe.id, where, a_out);
-          if (l.bulb) {
-            ResolveForm(*l.bulb, a_recipe.id, where, a_out);
-          }
         });
   }
   for (auto &variant : a_recipe.variants) {

@@ -326,7 +326,7 @@ work, following the user's game check.
 | Relationships | Driver/consumer links derive from the existing reference traversal. |
 | Expressions | Parser-backed number occurrence editing/promotion; exact edits reject stale document revisions. |
 | Inputs | Searchable supported actor values with live measures; direct/fraction/exhaustion/hit connection batches. |
-| Responses | Graphs for recognized pulse/ramp/trigger definitions and simple curves; other formulas retain text editing. |
+| Responses | Graphs for recognized wave/ramp/trigger definitions and simple curves; other formulas retain text editing. |
 | Masks/patterns | Suspended draft, Resume/Keep/Discard, atomic layer assignment, supported pattern chooser using existing sources. |
 | Source previews | Image thumbnails apply scroll/tiling/orientation through the existing sampling/render path. |
 | Runtime additions | Scoped holds, armor overlays, new patterns, and coordinated peaks remain pending (stages 4-5). |

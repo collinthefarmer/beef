@@ -190,7 +190,7 @@ void PoseShell(LiveGeometry &a_bound, LiveActor &a_state,
       .spin = signals.Resolve(shell.pose.spin),
       .spinAxis = shell.pose.spinAxis,
   };
-  a_bound.shell->Pose(pose, signals.Resolve(shell.alpha),
+  a_bound.shell->Pose(pose, signals.Resolve(shell.opacity),
                       signals.Resolve(shell.rimPower),
                       signals.Resolve(shell.emissive));
   a_bound.shell->SetVisible(a_view.RecipeShown(instance.recipe->id));

@@ -63,7 +63,7 @@ ShellRow ShellRowOf(const Recipe &a_recipe) {
   row.blend = shell.blend;
   row.depthBias = shell.depthBias;
   row.alphaTest = shell.alphaTest;
-  row.alpha = ParamText(shell.alpha);
+  row.opacity = ParamText(shell.opacity);
   row.rimPower = ParamText(shell.rimPower);
   row.emissive = ParamText(shell.emissive);
   row.inflate = Vec3ParamText(shell.pose.inflate);

@@ -15,8 +15,8 @@
     "imported": { "type": "string", "description": "\"<plugin> <version>\": written by the importer; present means generated and not yet edited. Delete it on taking ownership; a menu save drops it." },
     "meta": { "type": "object", "description": "Free-form, kept verbatim through load and save." },
     "keys": { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/key" } },
-    "priority": { "type": "integer", "description": "Merge order among matching recipes, lower first. Default by the matched key's kind: default 0, material 10, keyword 20, armor 30, effectShader 40, enchantment 50, magicEffect 60." },
-    "override": { "enum": ["stack", "replace", "sampled", "lerp"], "description": "How this recipe combines with lower-priority recipes contesting the same piece. stack (default) merges outputs per slot; replace drops the lower-priority work on the slots this recipe writes; sampled joins a per-piece pool from which each actor gets exactly one member, chosen by its form id; lerp is reserved." },
+    "priority": { "type": "integer", "description": "Merge order among matching recipes, lower first. Default by the matched key's kind: default 0, enchanted 5, material 10, keyword 20, armor 30, effectShader 40, enchantment 50, magicEffect 60." },
+    "merge": { "enum": ["stack", "replace", "sampled"], "description": "How this recipe combines with lower-priority recipes contesting the same piece. stack (default) merges outputs per slot; replace drops the lower-priority work on the slots this recipe writes; sampled joins a per-piece pool from which each actor gets exactly one member, chosen by its form id." },
     "clock": {
       "type": "object", "additionalProperties": false,
       "properties": { "speed": { "type": "number", "default": 1.0 } }
@@ -55,11 +55,12 @@
     "key": {
       "oneOf": [
         { "const": "default" },
+        { "const": "enchanted", "description": "Any worn piece that carries an enchantment." },
         { "$ref": "#/$defs/oneKey", "properties": { "magicEffect": { "$ref": "#/$defs/form" } }, "required": ["magicEffect"] },
         { "$ref": "#/$defs/oneKey", "properties": { "enchantment": { "$ref": "#/$defs/form" } }, "required": ["enchantment"] },
         { "$ref": "#/$defs/oneKey", "properties": { "effectShader": { "$ref": "#/$defs/form" } }, "required": ["effectShader"] },
         { "$ref": "#/$defs/oneKey", "properties": { "keyword": { "$ref": "#/$defs/form" } }, "required": ["keyword"] },
-        { "$ref": "#/$defs/oneKey", "properties": { "material": { "$ref": "#/$defs/glob" } }, "required": ["material"] },
+        { "$ref": "#/$defs/oneKey", "properties": { "material": { "$ref": "#/$defs/glob", "description": "Matches the piece's diffuse texture paths." } }, "required": ["material"] },
         { "$ref": "#/$defs/oneKey", "properties": { "armor": { "$ref": "#/$defs/form" } }, "required": ["armor"] }
       ]
     },
@@ -80,7 +81,7 @@
       "properties": { "curve": { "$ref": "#/$defs/curveRef" }, "note": { "$ref": "#/$defs/note" } },
       "oneOf": [
         { "$ref": "#/$defs/signalKind", "required": ["constant"], "properties": { "constant": { "$ref": "#/$defs/value" } } },
-        { "$ref": "#/$defs/signalKind", "required": ["pulse"], "properties": { "pulse": {
+        { "$ref": "#/$defs/signalKind", "required": ["wave"], "properties": { "wave": {
             "type": "object", "additionalProperties": false,
             "properties": {
               "base": { "$ref": "#/$defs/param" }, "amplitude": { "$ref": "#/$defs/param" },
@@ -99,9 +100,7 @@
         { "$ref": "#/$defs/signalKind", "required": ["actorState"], "properties": { "actorState": { "enum": ["inCombat", "sneaking", "weaponDrawn", "hostileDistance"] } } },
         { "$ref": "#/$defs/signalKind", "required": ["enchantment"], "properties": { "enchantment": { "enum": ["magnitude", "cost"] } } },
         { "$ref": "#/$defs/signalKind", "required": ["trigger"], "properties": { "trigger": { "$ref": "#/$defs/trigger" } } },
-        { "$ref": "#/$defs/signalKind", "required": ["payload"], "properties": { "payload": {
-            "type": "object", "additionalProperties": false, "required": ["trigger", "field"],
-            "properties": { "trigger": { "$ref": "#/$defs/ref" }, "field": { "enum": ["value", "position", "normal"] } } } } },
+        { "$ref": "#/$defs/signalKind", "required": ["payload"], "properties": { "payload": { "$ref": "#/$defs/ref", "description": "Reads the named trigger's newest firing value, typed by the trigger's declared payload; holds between firings." } } },
         { "$ref": "#/$defs/signalKind", "required": ["counter"], "properties": { "counter": {
             "type": "object", "additionalProperties": false, "required": ["trigger"],
             "properties": { "trigger": { "$ref": "#/$defs/ref" }, "reset": { "$ref": "#/$defs/ref" }, "cap": { "$ref": "#/$defs/param" } } } } },
@@ -118,7 +117,7 @@
               "stops": { "type": "array", "minItems": 1, "items": {
                 "type": "object", "additionalProperties": false, "required": ["at", "color"],
                 "properties": { "at": { "type": "number" }, "color": { "$ref": "#/$defs/color" } } } } } } } },
-        { "$ref": "#/$defs/signalKind", "required": ["delta"], "properties": { "delta": { "$ref": "#/$defs/ref" } } },
+        { "$ref": "#/$defs/signalKind", "required": ["rate"], "properties": { "rate": { "$ref": "#/$defs/ref", "description": "The referenced signal's change per second." } } },
         { "$ref": "#/$defs/signalKind", "required": ["smooth"], "properties": { "smooth": {
             "type": "object", "additionalProperties": false, "required": ["of"],
             "properties": { "of": { "$ref": "#/$defs/ref" }, "seconds": { "$ref": "#/$defs/param" } } } } },
@@ -127,33 +126,34 @@
     },
     "signalKind": {
       "type": "object",
-      "propertyNames": { "enum": ["curve", "note", "constant", "pulse", "ramp", "efsh", "av", "actorState", "enchantment", "trigger", "payload", "counter", "accumulate", "noise", "gradient", "delta", "smooth", "expr"] },
+      "propertyNames": { "enum": ["curve", "note", "constant", "wave", "ramp", "efsh", "av", "actorState", "enchantment", "trigger", "payload", "counter", "accumulate", "noise", "gradient", "rate", "smooth", "expr"] },
       "minProperties": 1, "maxProperties": 3
     },
 
     "trigger": {
       "type": "object",
-      "description": "A firing source: exactly one of event, plugin, when; lifetime and max are common.",
+      "description": "A firing source: exactly one of event, plugin, when; lifetime, max and payload are common.",
       "properties": {
         "lifetime": { "$ref": "#/$defs/param", "description": "Seconds a firing lives." },
-        "max": { "type": "integer", "minimum": 1, "description": "Live firings kept; older ones are dropped." }
+        "max": { "type": "integer", "minimum": 1, "description": "Live firings kept; older ones are dropped." },
+        "payload": { "enum": ["scalar", "vec2", "vec3"], "default": "scalar", "description": "The type of the value a firing carries. A firing of another type is dropped and counted. Rich occurrences arrive as suffixed ids (equip.position, or a sender's precision.hit.position), one typed value each." },
+        "anchor": { "oneOf": [ { "const": "world", "description": "The vec3 payload is a world position; requires payload vec3." }, { "type": "object", "additionalProperties": false, "required": ["node"], "properties": { "node": { "$ref": "#/$defs/node" } }, "description": "Firings locate at this skeleton node, resolved per geometry; a firing carrying its own node overrides it." } ], "description": "The space a firing's location resolves in. Absent means the trigger is unlocated and its payload is just a value." }
       },
       "oneOf": [
         { "type": "object", "required": ["event"], "additionalProperties": false,
           "properties": {
-            "event": { "$ref": "#/$defs/eventId", "description": "Id glob on the bus: built-in anim.<graph event> and equip, or a provider's ids such as hit.received." },
+            "event": { "$ref": "#/$defs/eventId", "description": "Id glob on the bus: built-in anim.<graph event>, equip, equip.position, hit.received and hit.dealt, or a provider's ids." },
             "filter": { "type": "object", "additionalProperties": false,
               "properties": { "node": { "$ref": "#/$defs/glob" }, "arg": { "$ref": "#/$defs/glob" },
                 "value": { "type": "array", "minItems": 2, "maxItems": 2, "items": { "type": ["number", "null"] } } } },
-            "at": { "$ref": "#/$defs/node", "description": "Node to use when the firing carries none." },
-            "lifetime": {}, "max": {} } },
+            "lifetime": {}, "max": {}, "payload": {}, "anchor": {} } },
         { "type": "object", "required": ["plugin"], "additionalProperties": false,
-          "properties": { "plugin": { "$ref": "#/$defs/eventId", "description": "An id another SKSE plugin fires through the messaging channel." }, "lifetime": {}, "max": {} } },
+          "properties": { "plugin": { "$ref": "#/$defs/eventId", "description": "An id another SKSE plugin fires through the messaging channel." }, "lifetime": {}, "max": {}, "payload": {}, "anchor": {} } },
         { "type": "object", "required": ["when"], "additionalProperties": false,
           "properties": {
             "when": { "$ref": "#/$defs/ref", "description": "Fires on the tick this scalar goes from at most 0 to above 0." },
-            "value": { "$ref": "#/$defs/ref", "description": "Signal sampled into the firing's value." },
-            "lifetime": {}, "max": {} } }
+            "value": { "$ref": "#/$defs/ref", "description": "Signal sampled into the firing's value; its type must match the declared payload." },
+            "lifetime": {}, "max": {}, "payload": {}, "anchor": {} } }
       ]
     },
 
@@ -170,7 +170,7 @@
               "scroll": { "$ref": "#/$defs/vec2" }, "tile": { "$ref": "#/$defs/vec2" },
               "mirror": { "type": "array", "minItems": 2, "maxItems": 2, "items": { "type": "boolean" } },
               "transpose": { "type": "boolean" }, "mip": { "type": "number", "minimum": 0 } } } } },
-        { "required": ["material"], "properties": { "material": { "enum": ["diffuseRgb", "diffuseLuma", "normalSlope", "roughness", "metallic", "occlusion", "reflectance", "displacement", "relief"] } } },
+        { "required": ["material"], "properties": { "material": { "enum": ["diffuseRgb", "diffuseLuma", "normalSlope", "roughness", "metallic", "occlusion", "reflectance", "displacement", "relief"], "description": "relief is the best available relief detail, not a stored map: the displacement map when it is non-flat, else occlusion." } } },
         { "required": ["bake"], "properties": { "bake": { "oneOf": [
             { "enum": ["position", "localPosition", "worldUp", "componentId", "chartId"], "description": "componentId and chartId: the mesh analysis' id map for that source (connected pieces, UV charts), each texel the region id / 255, rasterised once per geometry." },
             { "$ref": "#/$defs/oneKey", "required": ["partition"], "properties": { "partition": { "oneOf": [
@@ -206,7 +206,7 @@
       "properties": {
         "source": { "oneOf": [ { "$ref": "#/$defs/ref" }, { "$ref": "#/$defs/numbers3" } ], "description": "@source, @mask, or a constant colour." },
         "curve": { "$ref": "#/$defs/curveRef" },
-        "blend": { "enum": ["replace", "multiply", "add", "subtract", "screen", "lerp", "normal"], "default": "replace" },
+        "blend": { "enum": ["replace", "multiply", "add", "subtract", "screen", "reorient"], "default": "replace", "description": "reorient is normal-map reorientation, allowed only on a normal stack." },
         "opacity": { "$ref": "#/$defs/param" },
         "color": { "$ref": "#/$defs/color" },
         "mask": { "$ref": "#/$defs/ref" },
@@ -249,7 +249,7 @@
             "bones": { "oneOf": [
               { "$ref": "#/$defs/oneKey", "required": ["skinned"], "properties": { "skinned": {
                   "type": "object", "additionalProperties": false,
-                  "properties": { "max": { "type": "integer", "minimum": 1 }, "minShare": { "type": "number", "minimum": 0, "maximum": 1 } } } } },
+                  "properties": { "max": { "type": "integer", "minimum": 1 }, "minShare": { "type": "number", "minimum": 0.3, "maximum": 1, "description": "The least skin-weight share a bone needs to receive an emitter. The renderer floors it at 0.3 to bound the light count." } } } } },
               { "$ref": "#/$defs/oneKey", "required": ["named"], "properties": { "named": { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/node" } } } } ] },
             "offset": { "$ref": "#/$defs/vec3", "description": "Bone space." },
             "color": { "$ref": "#/$defs/color" },
@@ -257,7 +257,6 @@
             "size": { "$ref": "#/$defs/param", "description": "ISL source size, 0.01..50." },
             "cutoff": { "$ref": "#/$defs/param", "description": "ISL cutoff override, 0.01..1; 1 = default." },
             "shadow": { "type": "boolean", "default": false, "description": "Shadow-casting; fixed at creation, subject to the engine's shadow-light cap." },
-            "bulb": { "$ref": "#/$defs/form", "description": "Optional LIGH form to create through the engine, inheriting its flags." },
             "selector": { "$ref": "#/$defs/selector" },
             "replace": { "type": "boolean" },
             "note": { "$ref": "#/$defs/note" }
@@ -272,7 +271,7 @@
         "blend": { "enum": ["additive", "alpha"], "default": "additive" },
         "depthBias": { "type": "boolean", "default": true },
         "alphaTest": { "type": "number", "minimum": 0, "maximum": 1, "default": 0 },
-        "alpha": { "$ref": "#/$defs/param" },
+        "opacity": { "$ref": "#/$defs/param" },
         "rimPower": { "$ref": "#/$defs/param", "description": "Vanilla material only." },
         "emissive": { "$ref": "#/$defs/param", "description": "Vanilla material only." },
         "pose": {

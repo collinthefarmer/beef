@@ -279,13 +279,12 @@ std::uint32_t ResolutionDivisor(Resolution a_resolution) noexcept {
   return 1;
 }
 
-std::string_view OverrideModeName(OverrideMode a_mode) noexcept {
-  return NameOf(kOverrideModes, a_mode);
+std::string_view MergeModeName(MergeMode a_mode) noexcept {
+  return NameOf(kMergeModes, a_mode);
 }
 
-std::optional<OverrideMode>
-ParseOverrideMode(std::string_view a_name) noexcept {
-  return FromName(kOverrideModes, a_name);
+std::optional<MergeMode> ParseMergeMode(std::string_view a_name) noexcept {
+  return FromName(kMergeModes, a_name);
 }
 
 ValueType SourceType(const Source &a_source) noexcept {
@@ -759,9 +758,9 @@ public:
             }
             return any;
           },
-          [&](const DeltaSignal &d) { return Signal(d.of.name); },
+          [&](const RateSignal &d) { return Signal(d.of.name); },
           [&](const SmoothSignal &s) { return Signal(s.of.name); },
-          [](const PulseSignal &) { return true; },
+          [](const WaveSignal &) { return true; },
           [](const RampSignal &) { return true; },
           [](const EfshSignal &) { return true; },
           [](const ActorValueSignal &) { return true; },

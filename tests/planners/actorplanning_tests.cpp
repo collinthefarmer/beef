@@ -57,6 +57,57 @@ std::vector<Geometry> RingBodyAmulet() {
 
 std::vector<Recipe> GlowAndRing() { return {GlowRecipe(), RingRecipe()}; }
 
+void VariantsFollowTheInstancePlacements() {
+  Recipe recipe;
+  recipe.id = "varied";
+  recipe.signals.push_back(
+      Signal{"hue", ConstantSignal{Vec3{1.0f, 0.0f, 0.0f}}, std::nullopt});
+  recipe.signals.push_back(Signal{"level", ConstantSignal{1.0f}, std::nullopt});
+  Variant ebony;
+  ebony.name = "ebony";
+  ebony.key = FormRef::From("0x456~Test.esp");
+  ebony.overrides.emplace("hue", Vec3{0.5f, 0.0f, 1.0f});
+  Variant golden;
+  golden.name = "golden";
+  Selector goldSelector;
+  goldSelector.anyOf.push_back(
+      SelectorClause{SelectorKind::kTexture, std::string{"*gold*"}});
+  golden.key = goldSelector;
+  golden.overrides.emplace("level", 2.0f);
+  recipe.variants = {ebony, golden};
+
+  ActorPlan plan;
+  plan.geometries.push_back(MakeGeometry("body01", "body.dds", std::nullopt));
+  plan.geometries.push_back(
+      MakeGeometry("ring01", "gold_ring.dds", std::nullopt));
+  plan.instances.push_back(Instance{RecipeId{0}, std::nullopt, 0});
+  plan.placements.push_back(Placement{InstanceId{0}, GeometryId{0}, {}, {}});
+
+  Check(InstanceVariant(plan, InstanceId{0}, recipe) == nullptr,
+        "no variant applies to an unmatched placement");
+
+  plan.geometries[0].keys.armor = FormKey{"Test.esp", 0x456};
+  const Variant *byArmor = InstanceVariant(plan, InstanceId{0}, recipe);
+  Check(byArmor != nullptr && byArmor->name == "ebony",
+        "an armor-keyed variant follows the placement's armor");
+
+  plan.geometries[0].keys.armor.reset();
+  plan.placements.push_back(Placement{InstanceId{0}, GeometryId{1}, {}, {}});
+  const Variant *bySelector = InstanceVariant(plan, InstanceId{0}, recipe);
+  Check(bySelector != nullptr && bySelector->name == "golden",
+        "a selector-keyed variant follows a placement's geometry");
+
+  const Recipe applied = ApplyVariant(recipe, *bySelector);
+  const auto *level = Get<ConstantSignal>(applied.signals[1].kind);
+  const auto *hue = Get<ConstantSignal>(applied.signals[0].kind);
+  Check(level != nullptr && Get<float>(level->value) != nullptr &&
+            *Get<float>(level->value) == 2.0f,
+        "an applied variant replaces the named signal with its constant");
+  Check(hue != nullptr && Get<Vec3>(hue->value) != nullptr &&
+            Get<Vec3>(hue->value)->x == 1.0f,
+        "an applied variant leaves unnamed signals alone");
+}
+
 std::size_t PlacementsForInstance(const ActorPlan &a_plan,
                                   InstanceId a_instance) {
   std::size_t count = 0;
@@ -364,5 +415,6 @@ int main() {
   EmptyGeometries();
   EmptyStore();
   DuplicatePlacementOfOneRecipe();
+  VariantsFollowTheInstancePlacements();
   return test::Finish("planners actorplanning");
 }

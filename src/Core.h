@@ -35,6 +35,7 @@ enum class ValueType {
   kVec2,
   kVec3,
 };
+inline constexpr std::size_t kValueTypeCount = 3;
 
 enum class ShaderChannel : std::uint32_t {
   kR = 0,

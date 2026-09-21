@@ -300,7 +300,7 @@ int main() {
               "the light intensity is lightLevel");
       }
 
-      Check(RefIs(r.shell.alpha, "shellOpacity"),
+      Check(RefIs(r.shell.opacity, "shellOpacity"),
             "the shell alpha is shellOpacity");
       const std::array<Param, 3> *inflate =
           Get<std::array<Param, 3>>(r.shell.pose.inflate);

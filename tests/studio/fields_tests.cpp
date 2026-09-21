@@ -101,21 +101,21 @@ int main() {
         "BindShellMaterial resolves a material word");
 
   const std::optional<RecipeEdit> signalKindEdit =
-      BindSignalKind("glow")("pulse");
+      BindSignalKind("glow")("wave");
   const SetSignal *signalKind =
       signalKindEdit ? Get<SetSignal>(*signalKindEdit) : nullptr;
   Check(signalKind != nullptr && signalKind->signal == "glow" &&
-            Get<PulseSignal>(signalKind->kind) != nullptr,
+            Get<WaveSignal>(signalKind->kind) != nullptr,
         "BindSignalKind swaps a signal to a default of the named kind");
 
-  const SignalKind record = PulseSignal{};
+  const SignalKind record = WaveSignal{};
   const FieldBinding base =
-      BindSignalMember("glow", record, &PulseSignal::base, ParseParam);
+      BindSignalMember("glow", record, &WaveSignal::base, ParseParam);
   const std::optional<RecipeEdit> memberEdit = base("3");
   const SetSignal *memberSet =
       memberEdit ? Get<SetSignal>(*memberEdit) : nullptr;
-  const PulseSignal *pulse =
-      memberSet ? Get<PulseSignal>(memberSet->kind) : nullptr;
+  const WaveSignal *pulse =
+      memberSet ? Get<WaveSignal>(memberSet->kind) : nullptr;
   Check(pulse != nullptr && Get<float>(pulse->base) != nullptr &&
             test::Near(*Get<float>(pulse->base), 3.0f),
         "BindSignalMember edits one member of the record, keeping the rest");

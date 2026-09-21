@@ -886,13 +886,17 @@ bool Compositor::RenderRipple(RenderedRipple &a_ripple,
     if (pass.firingCount >= pass.firings.size()) {
       break;
     }
-    std::optional<Vec3> origin;
-    if (firing.payload.position) {
-      origin = ToRootSpace(a_ripple.root_.get(), *firing.payload.position);
-    } else if (!firing.payload.node.empty()) {
-      origin = NodeBindPosition(a_ripple.geometry_.get(), a_ripple.root_.get(),
-                                firing.payload.node);
-    }
+    const std::optional<Vec3> origin = Match(
+        a_signals.AnchorOf(a_ripple.source_.trigger.name, firing),
+        [](const std::monostate &) { return std::optional<Vec3>{}; },
+        [&](const CarriedPoint &a_point) {
+          return std::optional{
+              ToRootSpace(a_ripple.root_.get(), a_point.position)};
+        },
+        [&](const AnchorNode &a_node) {
+          return NodeBindPosition(a_ripple.geometry_.get(),
+                                  a_ripple.root_.get(), a_node.node);
+        });
     pass.firings[pass.firingCount++] = {
         origin.value_or(a_ripple.fallbackOrigin_),
         std::max(0.0f, a_time - firing.startTime)};

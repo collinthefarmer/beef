@@ -115,7 +115,7 @@ void SourceKindsMatchTheTable(const json &a_schema) {
 
 void SignalEnumsMatchTheTables(const json &a_schema) {
   EnumMatches(a_schema,
-              "/$defs/signal/oneOf/1/properties/pulse/properties/waveform/enum",
+              "/$defs/signal/oneOf/1/properties/wave/properties/waveform/enum",
               WordsOf(kWaveforms), "waveform");
   EnumMatches(a_schema,
               "/$defs/signal/oneOf/3/properties/efsh/properties/field/enum",
@@ -128,10 +128,9 @@ void SignalEnumsMatchTheTables(const json &a_schema) {
               WordsOf(kActorStates), "actor state");
   EnumMatches(a_schema, "/$defs/signal/oneOf/6/properties/enchantment/enum",
               WordsOf(kEnchantmentFields), "enchantment field");
-  EnumMatches(a_schema,
-              "/$defs/signal/oneOf/8/properties/payload/properties/field/enum",
-              WordsOf(kPayloadFields), "payload field");
-  Check(KindEntry(a_schema, "signal", "pulse") ==
+  EnumMatches(a_schema, "/$defs/trigger/properties/payload/enum",
+              WordsOf(kValueTypes), "trigger payload type");
+  Check(KindEntry(a_schema, "signal", "wave") ==
             At(a_schema, "/$defs/signal/oneOf/1"),
         "signal alternatives sit at the table's index");
 }
@@ -164,6 +163,7 @@ void SourceEnumsMatchTheTables(const json &a_schema) {
 void RecipeShapeMatchesTheTables(const json &a_schema) {
   std::vector<std::string> keys = KindWords(a_schema, "key");
   keys.emplace_back("default");
+  keys.emplace_back("enchanted");
   Equal(Joined(Sorted(keys)), Joined(Sorted(WordsOf(kKeyKinds))), "key kinds");
   Equal(Joined(KindWords(a_schema, "selectorTerm")),
         Joined(WordsOf(kSelectorKinds)), "selector kinds");
@@ -176,8 +176,8 @@ void RecipeShapeMatchesTheTables(const json &a_schema) {
   Equal(Joined(Sorted(partitions)), Joined(Sorted(WordsOf(kBipedSlots))),
         "partition names");
 
-  EnumMatches(a_schema, "/properties/override/enum", WordsOf(kOverrideModes),
-              "override mode");
+  EnumMatches(a_schema, "/properties/merge/enum", WordsOf(kMergeModes),
+              "merge mode");
 }
 
 void OutputScalarsMatchTheTable(const json &a_schema) {

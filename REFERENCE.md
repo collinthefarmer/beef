@@ -586,6 +586,36 @@ Lab mechanics:
 
 ## Engine events, hooks and the manager
 
+- The plugin-event contract (`engine/PluginEvents.h`, parsed by
+  `ParsePluginEvent` in `engine/PluginEvents.cpp`, engine-free and fed
+  garbage by `tests/engine/pluginevents_tests.cpp`): another SKSE plugin
+  fires a trigger with a `plugin` origin by dispatching an SKSE message
+  of type `0x42454546` ("BEEF" in ASCII) to `BetterEnchantmentEffects`,
+  whose data is one `PluginEventMessage`: `version` (1), `actor` (the
+  wearer's form id, 0 to reach every tracked actor), `id` (a
+  null-terminated event id, at most 64 bytes, matched by the origin's
+  glob), `type` (1 scalar, 2 vec2, 3 vec3 — a closed tag), `value`
+  (three floats, of which `type` reads one, two or three; all read
+  components finite). One message carries one typed value; a sender
+  decomposes a rich occurrence into suffixed ids
+  (`precision.hit`, `precision.hit.position`), fired in the same tick
+  with the same lifetime, correlated by arrival only — beef ships no
+  mapping. The id is read with a bounded `strnlen` and every field is
+  checked before use, because the payload crosses a DLL boundary and
+  nothing about it can be trusted; a bad message logs a warning and
+  drops. Delivery is queued through the manager's task queue since SKSE
+  messages can arrive on any thread. `EventRecord.plugin` separates the
+  channels: an `event` origin never fires on a plugin message and a
+  `plugin` origin never fires on an engine event. The receiving trigger
+  row declares the type it expects (`"payload"`) and the space its
+  location resolves in (`"anchor"`: `world`, or a node); a firing of
+  another type is dropped and counted (`SignalState::Mismatched`). A
+  sender shipping positions tells its users to anchor the receiving
+  trigger in world space. The engine's
+  own bus follows the same one-typed-value model: `equip` is a scalar
+  and `equip.position` a vec3, and the menu's test-fire emits
+  `<id>.position` beside `<id>` when its node resolves.
+
 - `RetireActorEffects` (`engine/LiveActor.cpp`) clears in a fixed order:
   application tokens, then lights, then each geometry through
   `RetireGeometry`, and only then the placement, instance and piece tables.

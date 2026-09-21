@@ -475,7 +475,7 @@ Refusal Edit(Recipe &a_recipe, const SetPriority &a_edit) {
 }
 
 Refusal Edit(Recipe &a_recipe, const SetOverride &a_edit) {
-  a_recipe.overrideMode = a_edit.mode;
+  a_recipe.mergeMode = a_edit.mode;
   return std::nullopt;
 }
 
@@ -1046,7 +1046,6 @@ Refusal Edit(Recipe &a_recipe, const ResetLight &a_edit) {
   if (found.problem)
     return found.problem;
   LightOutput reset;
-  reset.bulb = found.light->bulb;
   reset.selector = found.light->selector;
   reset.replace = found.light->replace;
   *found.light = reset;
@@ -1061,8 +1060,8 @@ Refusal Edit(Recipe &a_recipe, const SetShellParam &a_edit) {
     return problem;
   auto &shell = a_recipe.shell;
   switch (a_edit.field) {
-  case ShellParam::kAlpha:
-    shell.alpha = a_edit.value;
+  case ShellParam::kOpacity:
+    shell.opacity = a_edit.value;
     break;
   case ShellParam::kRimPower:
     shell.rimPower = a_edit.value;
@@ -1299,7 +1298,7 @@ struct DescribeVisitor {
                       : std::string{"priority: none"};
   }
   std::string operator()(const SetOverride &e) const {
-    return std::format("override: {}", OverrideModeName(e.mode));
+    return std::format("override: {}", MergeModeName(e.mode));
   }
   std::string operator()(const SetClockSpeed &e) const {
     return std::format("clock: speed {}", e.speed);
@@ -1484,8 +1483,8 @@ std::string_view LightVectorName(LightVector a_field) noexcept {
 
 std::string_view ShellParamName(ShellParam a_field) noexcept {
   switch (a_field) {
-  case ShellParam::kAlpha:
-    return "alpha";
+  case ShellParam::kOpacity:
+    return "opacity";
   case ShellParam::kRimPower:
     return "rimPower";
   case ShellParam::kEmissive:

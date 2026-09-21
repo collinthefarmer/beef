@@ -39,6 +39,7 @@ that owns every applied actor. `Manager` hands per-actor queueing to
 | Member | Description | Declared in |
 |---|---|---|
 | `RegisterEventSinks` | A free function. Registers the equip, load, hit, node-update and animation sinks that call `Manager::QueueRefresh` and its siblings. | `Events.h` |
+| `ParsePluginEvent` | A free function, engine-free. Validates another plugin's `PluginEventMessage` (version, actor, bounded id, type tag, finite components) and converts it to a typed `EventRecord` on the plugin channel; `main.cpp`'s listener queues the result per actor or as a broadcast. | `PluginEvents.h` |
 | `InstallHooks` | A free function. Installs the `PlayerCharacter::Update` vfunc hook that calls `Manager::OnFrame` every frame. | `Hooks.h` |
 | `Manager` | The singleton. It queues refreshes and retirements per actor, holds one `LiveActor` per applied actor, and ticks them each frame. | `Manager.h` |
 | `Manager::Status` | The counts the debug overlay shows: actors, **pieces**, **recipes**, geometries, shells, lights, and the tick cost in ms. | `Manager.h` |
@@ -160,8 +161,8 @@ re-Manager::Refresh of the retired actors ── rejoins (a): MatchRecipes
 
 | Concern | Key files |
 |---|---|
-| Event sinks and hooks | `Events.h`/`.cpp` (equip, load, hit, node-update, animation sinks), `Hooks.h`/`.cpp` (the `PlayerCharacter::Update` vfunc hook) |
-| The manager | `Manager.h`, `Manager.cpp` (construction, load/clear), `ManagerApplication.cpp` (`ChangeAndRebuildActors`, application bookkeeping), `ManagerApply.cpp` (`Refresh`/`Retire`, `CollectPieces`, `MatchRecipes`, `PlaceInstances`, `PrepareChainStacks`/`SlotStackSize`), `ManagerEvents.cpp` (`Fire`/`FireAt`/`QueueEvent`), `ManagerInspection.cpp` (the `RequestMesh` debug probe), `ManagerSnapshot.cpp` (`GetStatus`, `BuildSnapshot`, `PublishSnapshot`, `Watch`), `ManagerTick.cpp` (`OnFrame`, `SweepEviction`, `Tick`, `RenderPieces`, `RenderGeometry`, `UpdateLights`) |
+| Event sinks and hooks | `Events.h`/`.cpp` (equip, load, hit, node-update, animation sinks), `PluginEvents.h`/`.cpp` (the inter-plugin message contract and its parser), `Hooks.h`/`.cpp` (the `PlayerCharacter::Update` vfunc hook) |
+| The manager | `Manager.h`, `Manager.cpp` (construction, load/clear), `ManagerApplication.cpp` (`ChangeAndRebuildActors`, application bookkeeping), `ManagerApply.cpp` (`Refresh`/`Retire`, `CollectPieces`, `MatchRecipes`, `PlaceInstances`, `PrepareChainStacks`/`SlotStackSize`), `ManagerEvents.cpp` (`Fire`/`FireAt`/`QueueEvent`/`QueueBroadcast`), `ManagerInspection.cpp` (the `RequestMesh` debug probe), `ManagerSnapshot.cpp` (`GetStatus`, `BuildSnapshot`, `PublishSnapshot`, `Watch`), `ManagerTick.cpp` (`OnFrame`, `SweepEviction`, `Tick`, `RenderPieces`, `RenderGeometry`, `UpdateLights`) |
 | Application and session bookkeeping | `ApplicationService.h`/`.cpp` (per-recipe `ApplicationToken` tracking, rejection handling), `SessionQueue.h`/`.cpp` (per-actor task serialisation onto the SKSE task interface) |
 | Actor and worn-piece state | `LiveActor.h`/`.cpp` (`LiveActor`, `LivePiece`, `LiveGeometry`, `RetireGeometry`, `ResolvePlacement`), `Environment.h`/`.cpp` (`ActorEnvironment`, the `SignalEnvironment` a `LiveInstance` ticks against) |
 | Recipe CRUD | `RecipeStore.h`/`.cpp` (load, save, mutate, `RefreshRecipeDerivedState`), `RecipeEditor.h`/`.cpp` (gestures, edits, undo/redo, paint sessions, view commands) |

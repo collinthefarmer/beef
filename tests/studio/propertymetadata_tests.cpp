@@ -36,20 +36,20 @@ int main() {
   Check(CheckField(field, "2", {}).has_value(),
         "hard range still rejects out-of-range literals");
 
-  SignalRow pulse;
-  pulse.name = "pulse";
-  pulse.kind = SignalKindId::kPulse;
-  pulse.definition = PulseSignal{};
-  const auto pulseFields = SignalForm(pulse, {});
-  const FormField *phase = Find(pulseFields, "phase");
+  SignalRow wave;
+  wave.name = "wave";
+  wave.kind = SignalKindId::kWave;
+  wave.definition = WaveSignal{};
+  const auto waveFields = SignalForm(wave, {});
+  const FormField *phase = Find(waveFields, "phase");
   Check(phase && phase->workingRange && !phase->range &&
             phase->units == "cycles" &&
             !CheckField(*phase, "2.5", {}).has_value(),
         "phase offers a cycle without rejecting additional cycles");
-  const FormField *period = Find(pulseFields, "period");
+  const FormField *period = Find(waveFields, "period");
   Check(period && period->units == "seconds" && !period->workingRange,
         "duration exposes units without inventing a maximum");
-  const FormField *amplitude = Find(pulseFields, "amplitude");
+  const FormField *amplitude = Find(waveFields, "amplitude");
   Check(amplitude && !amplitude->workingRange && !amplitude->range,
         "arbitrary signal amplitude retains an unknown range");
 
