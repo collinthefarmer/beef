@@ -62,6 +62,7 @@ def main():
     target_owners = {}
     survivor_snapshots = []
     last_session = None
+    shared_adoptions = collections.Counter()
     for line in lines_in_order(segments):
             try:
                 event = json.loads(line)
@@ -96,6 +97,8 @@ def main():
                     target_owners[target] = str(fields.get("owner", "untagged"))
                 elif action in ("recycle", "destroy"):
                     target_owners.pop(target, None)
+                elif action and action.endswith("_shared"):
+                    shared_adoptions[action[: -len("_shared")]] += 1
                 if action == "acquire":
                     presenter = fields.get("presenter")
                     if presenter and any(p == presenter and t != target
@@ -182,6 +185,11 @@ def main():
             mean = stats["us"] / stats["count"] / 1000 if stats["count"] else 0
             print(f"  Readback {op}: {stats['count']}; mean {mean:.1f} ms, "
                   f"max {stats['max_us'] / 1000:.1f} ms")
+    if shared_adoptions:
+        summary = ", ".join(f"{kind}: {count}"
+                            for kind, count in shared_adoptions.most_common())
+        print(f"Cross-actor adoptions (a shared target reused, no new one): "
+              f"{sum(shared_adoptions.values())} ({summary})")
     if survivor_snapshots or target_owners:
         print("Live targets by owner (acquired, not yet recycled or destroyed):")
         for before, after, owners in survivor_snapshots:

@@ -15,6 +15,20 @@
 
 namespace BetterEnchantmentEffects {
 namespace {
+[[nodiscard]] std::string ClusterMapKey(const MaterialInputs &a_material,
+                                        const ClusterSettings &a_settings,
+                                        TextureSize a_size) {
+  const auto identity = [](const TextureRef &a_texture) -> std::uintptr_t {
+    return reinterpret_cast<std::uintptr_t>(a_texture.get());
+  };
+  const ChannelWeights &w = a_settings.weights;
+  return std::format(
+      "{}\x1f{}\x1f{}\x1f{}\x1f{}\x1f{}\x1f{}\x1f{}\x1f{}\x1f{}\x1f{}",
+      identity(a_material.rmaos), identity(a_material.diffuse), a_size.Pixels(),
+      a_settings.clusters, a_settings.seed, a_settings.iterations, w.roughness,
+      w.metallic, w.occlusion, w.reflectance, w.luma);
+}
+
 std::shared_ptr<TextureLab::Lookup> CreateCurveLookup(const Program &program,
                                                       float mean) {
   std::array<float, 256> values{};
@@ -107,19 +121,28 @@ RenderClusterMap(const GeometryInputs &a_inputs,
     return nullptr;
   }
   const auto extent = TextureLab::ExtentOf(material.rmaos.get());
+  const TextureSize size(extent ? std::max(extent->width, extent->height) : 0);
   auto *lab = TextureLab::GetSingleton();
-  auto target = lab->Acquire(
-      TextureSize(extent ? std::max(extent->width, extent->height) : 0),
-      "clusters");
+  const std::string key = ClusterMapKey(material, a_settings, size);
+  std::shared_ptr<TextureLab::RenderTarget> target =
+      Compositor::GetSingleton()->SharedClusterMap(
+          key, [&]() -> std::shared_ptr<TextureLab::RenderTarget> {
+            std::shared_ptr<TextureLab::RenderTarget> fresh =
+                lab->Acquire(size, "clusters");
+            if (!fresh) {
+              derived.clustersProblem = "no render target for the cluster map";
+              return nullptr;
+            }
+            if (!lab->RenderClusters(*fresh, material.rmaos.get(),
+                                     material.diffuse.get(), analysis)) {
+              derived.clustersProblem =
+                  lab->ClassifyAvailable() ? "the classify pass failed"
+                                           : "the classify pass is unavailable";
+              return nullptr;
+            }
+            return fresh;
+          });
   if (!target) {
-    derived.clustersProblem = "no render target for the cluster map";
-    return nullptr;
-  }
-  if (!lab->RenderClusters(*target, material.rmaos.get(),
-                           material.diffuse.get(), analysis)) {
-    derived.clustersProblem = lab->ClassifyAvailable()
-                                  ? "the classify pass failed"
-                                  : "the classify pass is unavailable";
     return nullptr;
   }
   derived.clusters = target;

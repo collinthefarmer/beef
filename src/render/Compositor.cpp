@@ -207,7 +207,24 @@ Compositor::StackTarget(const StackShareInputs &a_share, TextureSize a_size) {
   return shared.value;
 }
 
-void Compositor::ClearSharedStatics() noexcept { sharedStacks_.Clear(); }
+void Compositor::ClearSharedStatics() noexcept {
+  sharedStacks_.Clear();
+  sharedClusters_.Clear();
+}
+
+std::shared_ptr<TextureLab::RenderTarget> Compositor::SharedClusterMap(
+    const std::string &a_key,
+    const std::function<std::shared_ptr<TextureLab::RenderTarget>()>
+        &a_render) {
+  const SharedResource<TextureLab::RenderTarget> shared =
+      sharedClusters_.Adopt(a_key, a_render);
+  if (shared.adopted && shared.value) {
+    Trace::EmitSafely(Trace::Event::kTexture,
+                      {{"action", "cluster_shared"},
+                       {"target", std::to_string(shared.value->Generation())}});
+  }
+  return shared.value;
+}
 
 struct Compositor::StackRenderer {
   Compositor &compositor;

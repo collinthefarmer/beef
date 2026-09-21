@@ -184,6 +184,10 @@ public:
           std::size_t a_outputIndex, const GeometryInputs &a_inputs,
           TextureSize a_size, TextureSize a_maxSize);
   void ClearSharedStatics() noexcept;
+  [[nodiscard]] std::shared_ptr<TextureLab::RenderTarget> SharedClusterMap(
+      const std::string &a_key,
+      const std::function<std::shared_ptr<TextureLab::RenderTarget>()>
+          &a_render);
 
   bool Render(RenderedStack &a_stack, const SignalState &a_signals,
               float a_time, const LayerFilter &a_filter,
@@ -280,6 +284,7 @@ private:
            MaterialRecord>
       materials_;
   ResourceCache<TextureLab::RenderTarget> sharedStacks_;
+  ResourceCache<TextureLab::RenderTarget> sharedClusters_;
   std::uint64_t tick_ = 1;
   std::uint32_t nowMS_ = 0;
   std::uint32_t lastSweepMS_ = 0;
