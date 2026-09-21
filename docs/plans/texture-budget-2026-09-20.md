@@ -297,10 +297,21 @@ With per-slot resolution, cross-actor sharing, the raised cap and
 eviction stacked, the gate-1 texture half is solved: no freeze, no
 exhaustion, at or under budget. The animated worst case's live targets
 are stack 184 (animated, unshareable), **bake 77**, program 45,
-clusters 22 — so mesh-intrinsic bake sharing is the one lever that would
-take even that case comfortably under 1 GiB. Remaining items (bakes, the
-free-pool trim, the per-output predicate) are optional tuning, not
-blockers.
+clusters 22.
+
+Bake sharing landed 2026-09-21 (9ccce69) and a follow-up animated run
+confirms it: 18% bake share rate (26 adoptions), which also settles that
+Skyrim shares vertex-buffer pointers across same-armor actors, so
+mesh-keyed sharing is real. But that run was a denser crowd (43 actors,
+245 live stacks) at 1.58 GiB — crowd variance swamps the bake win, and
+the deeper lesson is that **animated stacks are the residual wall**: in
+an animation-saturated crowd most stacks are per-actor and unshareable
+(245 of 415 live targets), so no derived-map sharing collapses that
+case. Sharing has done its job where it can (clusters/masks near-total,
+bakes 18%, stacks limited by animation); the eviction radius, not more
+sharing, is the lever that bounds an animated crowd's VRAM. Remaining
+items (free-pool trim, the per-output predicate) are optional tuning,
+not blockers.
 
 ## Stage 5: trim the free pool in play — dispersal aid
 
