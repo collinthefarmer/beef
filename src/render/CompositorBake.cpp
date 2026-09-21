@@ -1,14 +1,31 @@
 #include "render/Compositor.h"
 
 #include "SettingsFile.h"
+#include "render/MeshCache.h"
 
 #include <algorithm>
+#include <cstdint>
 #include <format>
 #include <ranges>
 #include <utility>
 
 namespace BetterEnchantmentEffects {
 namespace {
+// A bake is a pure function of the mesh data and its key (kind or distance
+// point, both content), so two actors sharing a mesh identity share the bake.
+[[nodiscard]] std::string BakeShareKey(const MeshIdentity &a_identity,
+                                       const std::string &a_key) {
+  std::string out = std::format(
+      "{}\x1f{}", reinterpret_cast<std::uintptr_t>(a_identity.skinPartition),
+      a_identity.vertices);
+  for (const void *buffer : a_identity.buffers) {
+    out += std::format("\x1f{}", reinterpret_cast<std::uintptr_t>(buffer));
+  }
+  out += '\x1f';
+  out += a_key;
+  return out;
+}
+
 bool RealTexture(const TextureRef &a_texture) {
   const auto extent = TextureLab::ExtentOf(a_texture.get());
   return extent && extent->width > 4 && extent->height > 4;
@@ -70,16 +87,29 @@ Compositor::BakeInto(MeshEntry &a_entry, const std::string &a_key,
     return std::unexpected(
         "the bake pass is unavailable (see the log at start)");
   }
-  const auto buffers = a_buffers();
-  if (!buffers.problem.empty()) {
-    return std::unexpected(buffers.problem);
-  }
-  auto target = lab->Acquire(a_size, "bake");
+  std::string problem;
+  std::shared_ptr<TextureLab::RenderTarget> target =
+      AdoptSharedTarget(Shared::kBake, BakeShareKey(a_entry.identity, a_key),
+                        [&]() -> std::shared_ptr<TextureLab::RenderTarget> {
+                          const auto buffers = a_buffers();
+                          if (!buffers.problem.empty()) {
+                            problem = buffers.problem;
+                            return nullptr;
+                          }
+                          std::shared_ptr<TextureLab::RenderTarget> fresh =
+                              lab->Acquire(a_size, "bake");
+                          if (!fresh) {
+                            problem = "no render target available";
+                            return nullptr;
+                          }
+                          if (!lab->BakeMesh(*fresh, buffers)) {
+                            problem = "the bake pass failed";
+                            return nullptr;
+                          }
+                          return fresh;
+                        });
   if (!target) {
-    return std::unexpected("no render target available");
-  }
-  if (!lab->BakeMesh(*target, buffers)) {
-    return std::unexpected("the bake pass failed");
+    return std::unexpected(problem.empty() ? "the bake pass failed" : problem);
   }
   if (GetSettings().verboseLogging) {
     logger::info("bake '{}' on '{}' at {} px", KeyDefinition(a_key),

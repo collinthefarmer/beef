@@ -202,6 +202,7 @@ void Compositor::ClearSharedStatics() noexcept {
   sharedStacks_.Clear();
   sharedClusters_.Clear();
   sharedMasks_.Clear();
+  sharedBakes_.Clear();
 }
 
 ResourceCache<TextureLab::RenderTarget> &
@@ -213,6 +214,8 @@ Compositor::SharedCache(Shared a_kind) noexcept {
     return sharedClusters_;
   case Shared::kMask:
     return sharedMasks_;
+  case Shared::kBake:
+    return sharedBakes_;
   }
   return sharedStacks_;
 }
@@ -225,6 +228,8 @@ Compositor::SharedCache(Shared a_kind) noexcept {
     return "cluster_shared";
   case Compositor::Shared::kMask:
     return "mask_shared";
+  case Compositor::Shared::kBake:
+    return "bake_shared";
   }
   return "stack_shared";
 }
