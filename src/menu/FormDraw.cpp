@@ -318,30 +318,41 @@ void DrawCatalogList(const FormField &a_field, const Frame &a_frame,
   }
 }
 
-void DrawCatalogPopup(const FormField &a_field, const Frame &a_frame) {
-  if (!ImGui::BeginPopup("catalog")) {
-    return;
+[[nodiscard]] bool KnownCatalogValue(const FormField &a_field,
+                                     const Frame &a_frame) {
+  if (std::ranges::contains(a_field.names, a_field.text)) {
+    return true;
   }
-  const std::string filter{LiveTextField(
-      "filter", "search", Studio::Width::Px(240.0f), a_frame.scale)};
-  if (ImGui::BeginChild(
-          "list", ImGui::ImVec2{260.0f * a_frame.scale, 240.0f * a_frame.scale},
-          0, 0)) {
-    DrawCatalogList(a_field, a_frame, filter);
+  if (!a_field.catalog || a_frame.snapshot == nullptr) {
+    return false;
   }
-  ImGui::EndChild();
-  ImGui::EndPopup();
+  const auto &catalog = a_frame.snapshot->catalogs[IndexOf(*a_field.catalog)];
+  return catalog && std::ranges::any_of(
+                        catalog->candidates,
+                        [&](const Studio::GameObjectCandidate &a_candidate) {
+                          return a_candidate.value == a_field.text;
+                        });
 }
 
 void DrawCatalogField(const FormField &a_field, const Frame &a_frame,
                       const Studio::Width &a_width) {
   const FieldScope fieldScope(a_field.name);
-  Badge(a_field.kind);
-  const float side = ImGui::GetFrameHeight();
-  if (ImGui::Button("v##catalog", ImGui::ImVec2{side, side})) {
-    ImGui::OpenPopup("catalog");
+  auto &state = Studio::State();
+  const Studio::FieldKey key = Studio::HashFieldKey(state.fieldScope, "value");
+  auto mode = state.comboMode.find(key);
+  if (mode == state.comboMode.end()) {
+    const bool known =
+        a_field.text.empty() || KnownCatalogValue(a_field, a_frame);
+    mode = state.comboMode.emplace(key, known).first;
   }
+  ModeBadge(a_field.kind, mode->second, key,
+            {.combo = "click: pick from the list",
+             .text = "click: type a custom value"});
   ImGui::SameLine(0.0f, 0.0f);
+  if (state.focusField == key) {
+    state.focusField = Studio::kNoField;
+    ImGui::SetKeyboardFocusHere();
+  }
   const auto check =
       [&](const std::string &a_text) -> std::optional<std::string> {
     const std::optional<Diagnostic> diagnostic =
@@ -349,11 +360,28 @@ void DrawCatalogField(const FormField &a_field, const Frame &a_frame,
     return diagnostic ? std::optional<std::string>{ProblemText(diagnostic)}
                       : std::nullopt;
   };
-  if (const auto text =
-          TextField("value", a_field.text, {a_width, a_frame.scale}, check)) {
-    CommitField(a_field, *text, a_frame);
+  if (mode->second) {
+    NextItemWidth(a_width, a_frame.scale);
+    const char *preview =
+        a_field.text.empty() ? "(choose)" : a_field.text.c_str();
+    if (ImGui::BeginCombo("##catalog", preview)) {
+      const std::string filter{LiveTextField(
+          "filter", "search", Studio::Width::Px(240.0f), a_frame.scale)};
+      if (ImGui::BeginChild(
+              "list",
+              ImGui::ImVec2{260.0f * a_frame.scale, 240.0f * a_frame.scale}, 0,
+              0)) {
+        DrawCatalogList(a_field, a_frame, filter);
+      }
+      ImGui::EndChild();
+      ImGui::EndCombo();
+    }
+  } else {
+    if (const auto text =
+            TextField("value", a_field.text, {a_width, a_frame.scale}, check)) {
+      CommitField(a_field, *text, a_frame);
+    }
   }
-  DrawCatalogPopup(a_field, a_frame);
 }
 
 void DrawFieldInput(const FormField &a_field, const Frame &a_frame,

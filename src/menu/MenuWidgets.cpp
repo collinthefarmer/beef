@@ -238,29 +238,35 @@ void BadgeFrame(const char *a_label, const ImVec4 &a_colour, bool a_filled,
   ImGui::PopStyleColor(4);
 }
 
+void ClickableBadge(const BadgeStyle &a_style, bool &a_combo,
+                    Studio::FieldKey a_key, const EntryModeTips &a_tips) {
+  const float side = ImGui::GetFrameHeight();
+  ImGui::PushStyleColor(ImGuiMCP::ImGuiCol_Button, a_style.colour);
+  ImGui::PushStyleColor(ImGuiMCP::ImGuiCol_ButtonHovered,
+                        ImVec4{a_style.colour.x * 0.85f,
+                               a_style.colour.y * 0.85f,
+                               a_style.colour.z * 0.85f, 1.0f});
+  ImGui::PushStyleColor(ImGuiMCP::ImGuiCol_ButtonActive,
+                        ImVec4{a_style.colour.x * 0.7f, a_style.colour.y * 0.7f,
+                               a_style.colour.z * 0.7f, 1.0f});
+  ImGui::PushStyleColor(ImGuiMCP::ImGuiCol_Text, kBadgeFrame);
+  if (ImGui::Button(a_style.glyph, ImVec2{side, side})) {
+    a_combo = !a_combo;
+    Studio::State().focusField = a_key;
+  }
+  ImGui::PopStyleColor(4);
+  Tooltip(std::string{a_style.help} + "\n" +
+          std::string{a_combo ? a_tips.text : a_tips.combo});
+}
+
 void DrawValueBadge(const BadgeStyle &a_style, bool a_takesSignal,
                     bool &a_combo, Studio::FieldKey a_key) {
-  const float side = ImGui::GetFrameHeight();
   if (a_takesSignal) {
-    ImGui::PushStyleColor(ImGuiMCP::ImGuiCol_Button, a_style.colour);
-    ImGui::PushStyleColor(ImGuiMCP::ImGuiCol_ButtonHovered,
-                          ImVec4{a_style.colour.x * 0.85f,
-                                 a_style.colour.y * 0.85f,
-                                 a_style.colour.z * 0.85f, 1.0f});
-    ImGui::PushStyleColor(ImGuiMCP::ImGuiCol_ButtonActive,
-                          ImVec4{a_style.colour.x * 0.7f,
-                                 a_style.colour.y * 0.7f,
-                                 a_style.colour.z * 0.7f, 1.0f});
-    ImGui::PushStyleColor(ImGuiMCP::ImGuiCol_Text, kBadgeFrame);
-    if (ImGui::Button(a_style.glyph, ImVec2{side, side})) {
-      a_combo = !a_combo;
-      Studio::State().focusField = a_key;
-    }
-    ImGui::PopStyleColor(4);
-    Tooltip(std::string{a_style.help} +
-            (a_combo ? "\nclick: type a value instead"
-                     : "\nclick: choose a signal instead"));
+    ClickableBadge(a_style, a_combo, a_key,
+                   {.combo = "click: choose a signal instead",
+                    .text = "click: type a value instead"});
   } else {
+    const float side = ImGui::GetFrameHeight();
     BadgeFrame(a_style.glyph, a_style.colour, false, ImVec2{side, side});
     Tooltip(a_style.help);
   }
@@ -660,6 +666,11 @@ void Badge(Studio::FieldKind a_kind) {
   BadgeFrame(style.glyph, style.colour, style.takesSignal, ImVec2{side, side});
   Tooltip(style.help);
   ImGui::SameLine(0.0f, 0.0f);
+}
+
+void ModeBadge(Studio::FieldKind a_kind, bool &a_combo, Studio::FieldKey a_key,
+               const EntryModeTips &a_tips) {
+  ClickableBadge(StyleOf(a_kind), a_combo, a_key, a_tips);
 }
 
 const char *BlendGlyph(Blend a_blend) {

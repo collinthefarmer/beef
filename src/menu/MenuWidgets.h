@@ -4,6 +4,7 @@
 #include "recipe/Recipe.h"
 #include "recipe/Visit.h"
 #include "studio/Forms.h"
+#include "studio/MenuState.h"
 #include "studio/Snapshot.h"
 #include "studio/View.h"
 #include "studio/Widgets.h"
@@ -130,6 +131,13 @@ DrawCandidateRows(const CandidateRowsSpec &a_spec, int &a_id,
                   std::size_t &a_shown);
 
 void Badge(Studio::FieldKind a_kind);
+
+struct EntryModeTips {
+  std::string_view combo;
+  std::string_view text;
+};
+void ModeBadge(Studio::FieldKind a_kind, bool &a_combo, Studio::FieldKey a_key,
+               const EntryModeTips &a_tips);
 [[nodiscard]] const char *BlendGlyph(Blend a_blend);
 [[nodiscard]] std::optional<Blend> BlendBadge(Blend a_current, Slot a_slot);
 [[nodiscard]] std::optional<std::string>
