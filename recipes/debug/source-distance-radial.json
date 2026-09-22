@@ -1,0 +1,49 @@
+{
+  "format": 1,
+  "name": "source-distance-radial",
+  "description": "Diagnostic: a radial distance field from a fixed point, built in-graph from a position bake and distance() — the derivation that replaced the distance source's point form. The mask's texel values equal the old source's exactly: raw position-bake texels are p/256 + 0.5, so distance() of them is world distance / 256. The distance source itself remains for skeleton nodes only.",
+  "keys": ["default"],
+  "priority": -77,
+  "sources": {
+    "pos": {
+      "bake": "position",
+      "note": "Bind-pose position, -128..128 as 0..1; [0.5, 0.5, 0.5] is the skeleton root"
+    }
+  },
+  "masks": {
+    "distanceField": {
+      "expr": "distance(@pos, [0.5, 0.5, 0.5])",
+      "note": "World distance from the skeleton root / 256, the same scale the old point-form source baked"
+    },
+    "falloff": {
+      "expr": "saturate(1 - @distanceField * 2)",
+      "note": "1 at the root fading to 0 at 128 units, so the gradient is visible across a standing body"
+    }
+  },
+  "outputs": [
+    {
+      "target": "material",
+      "slot": "emissive",
+      "strength": 0.8,
+      "stack": [
+        {
+          "source": "@falloff",
+          "opacity": 1.0
+        }
+      ],
+      "note": "Distance field visualized as emissive"
+    },
+    {
+      "target": "material",
+      "slot": "height",
+      "scale": 0.1,
+      "stack": [
+        {
+          "source": "@falloff",
+          "opacity": 1.0
+        }
+      ],
+      "note": "Same distance field as height displacement"
+    }
+  ]
+}

@@ -229,7 +229,7 @@ MaterialAnalysis ClusterMaterial(const MaterialSample &a_sample,
   }
   const Axes scales = ScalesOf(a_settings.weights);
   const std::size_t wanted = std::min<std::size_t>(
-      std::clamp<std::size_t>(a_settings.clusters, 1, kMaxClusters),
+      std::clamp<std::size_t>(a_settings.clusters, 1, kMaxMaterialClusters),
       texels.size());
   Lcg random(a_settings.seed);
   std::vector<Axes> centroids = SeedCentroids(texels, wanted, scales, random);
@@ -306,27 +306,4 @@ std::string DescribeTexel(const MaterialTexel &a_texel) {
   return out;
 }
 
-ClusterSettings SettingsOf(const MaterialClustersSource &a_source) noexcept {
-  ClusterSettings settings;
-  settings.clusters = a_source.clusters;
-  settings.weights =
-      ChannelWeights{a_source.roughness, a_source.metallic, a_source.occlusion,
-                     a_source.reflectance, a_source.luma};
-  settings.seed = a_source.seed;
-  settings.iterations = a_source.iterations;
-  return settings;
-}
-
-MaterialClustersSource SourceOf(const ClusterSettings &a_settings) noexcept {
-  MaterialClustersSource source;
-  source.clusters = a_settings.clusters;
-  source.roughness = a_settings.weights.roughness;
-  source.metallic = a_settings.weights.metallic;
-  source.occlusion = a_settings.weights.occlusion;
-  source.reflectance = a_settings.weights.reflectance;
-  source.luma = a_settings.weights.luma;
-  source.seed = a_settings.seed;
-  source.iterations = a_settings.iterations;
-  return source;
-}
 }

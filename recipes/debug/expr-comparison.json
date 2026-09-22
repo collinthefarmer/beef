@@ -1,0 +1,25 @@
+{
+  "format": 1,
+  "name": "Diagnostic: Expression comparison",
+  "description": "Test comparison in if(). if(0.5 > 0.3, 1.0, 0.2) should take bright branch and output near-white.",
+  "keys": ["default"],
+  "priority": -50,
+  "signals": {
+    "comparison": {
+      "expr": "if(0.5 > 0.3, 1.0, 0.2)"
+    }
+  },
+  "outputs": [
+    {
+      "target": "shell",
+      "slot": "emissive",
+      "strength": "@comparison",
+      "stack": [
+        {
+          "source": [1.0, 1.0, 1.0],
+          "opacity": 1.0
+        }
+      ]
+    }
+  ]
+}

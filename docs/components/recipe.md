@@ -78,7 +78,7 @@ live; a `Complete` static_assert keeps the table total.
 | `RampSignal` | `ramp` | A value that moves from `from` to `to` over the clock's first `seconds`, then holds `to`. |
 | `EfshSignal` | `efsh` | One field of a vanilla effect shader record (fillAlpha, fillColor, edgeAlpha, edgeColor, or scroll), read through `SignalEnvironment::EffectShader`. |
 | `ActorValueSignal` | `av` | The wearer's actor value under one `Measure`: current, base, permanent, temporaryModifier, damage, or max. |
-| `ActorStateSignal` | `actorState` | A scalar for one actor state: inCombat, sneaking, weaponDrawn, or hostileDistance. |
+| `ActorStateSignal` | `actorState` | One actor fact by selector: seven 0/1 flags (inCombat, sneaking, weaponDrawn, swimming, sprinting, mounted, hasTarget), the scalar movementSpeed, and the vec3 world positions position and target. |
 | `EnchantmentSignal` | `enchantment` | The matched enchantment's magnitude or cost. |
 | `TriggerSignal` | `trigger` | The newest firing's age as a fraction of `lifetime`: 0 at the firing, 1 once it expires or when none is live. The `TriggerOrigin` is an event glob, another plugin's message id, or a `when` expression edge; at most `max` firings are kept. The row declares its firings' `payload` type (scalar, vec2, or vec3; a firing of another type is dropped and counted) and its `TriggerAnchor` — the space a firing's location resolves in: the world-space payload, a named skeleton node, or none. |
 | `PayloadSignal` | `payload` | The named trigger's newest firing value, typed by the trigger's declared payload, held between firings. |
@@ -101,10 +101,9 @@ validates a source's params against the graph.
 | Alternative | Wire word | Produces |
 |---|---|---|
 | `ImageSource` | `image` | A texture under `Data/Textures` sampled per texel: one `ImageChannel` (rgb, r, g, b, a, or luma) in tiled or mesh `ImageSpace`, with optional scroll, tile, mirror, transpose, and mip. |
-| `MaterialSource` | `material` | One channel of the piece's own material: diffuseRgb, diffuseLuma, normalSlope, roughness, metallic, occlusion, reflectance, displacement, or relief. |
-| `BakeSource` | `bake` | A value baked from the mesh once per geometry; the `BakeKind` is position, localPosition, worldUp, partition (one biped slot), boneWeight (named bones), componentId, or chartId (the mesh analysis' id map, each texel the region id / 255). |
-| `UvSource` | `uv` | The texel's u or v coordinate. |
-| `DistanceSource` | `distance` | The texel's distance from a named skeleton node or a fixed point. |
+| `MaterialSource` | `material` | One read of the piece's own material: the raw vec3s diffuseRgb, normalRgb, rmaosRgb; the named scalars diffuseLuma, roughness, metallic, occlusion, reflectance, displacement; and the computed normalSlope and relief. |
+| `BakeSource` | `bake` | A value baked from the mesh once per geometry; the `BakeKind` is position, localPosition, normal (the bind-pose surface normal, each axis as 0..1), uv (the coordinates as a vec2), partition (one biped slot), boneWeight (named bones), componentId, or chartId (the mesh analysis' id map, each texel the region id / 255). |
+| `DistanceSource` | `distance` | The texel's distance from a named skeleton node. |
 | `RippleSource` | `ripple` | A ring or disc that spreads from a trigger firing's anchor at `speed`, `width` wide, fading at `decay`; an unanchored trigger's rings spread from the geometry's origin. |
 | `MaterialClustersSource` | `materialClusters` | The material's cluster map: each texel the id / 255 of its nearest k-means cluster under the channel weights, `seed`, and iteration cap, rendered once per geometry. |
 

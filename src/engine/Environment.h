@@ -17,6 +17,8 @@ public:
   [[nodiscard]] float ActorValue(std::string_view a_name,
                                  Measure a_measure) const override;
   [[nodiscard]] float ActorState(ActorStateKind a_kind) const override;
+  [[nodiscard]] Vec3 ActorVector(ActorStateKind a_kind) const override;
+  [[nodiscard]] Vec3 WorldToRoot(const Vec3 &a_world) const override;
   [[nodiscard]] float Enchantment(EnchantmentField a_field) const override;
   [[nodiscard]] std::optional<Efsh::EffectParams>
   EffectShader(const FormRef &a_record) const override;

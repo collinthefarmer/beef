@@ -207,9 +207,9 @@ constexpr const char *kShaderSourceMid = R"(];
 		int pops = 0;
 		switch (op) {
 		case 0: case 3: case 5: case 6: case 7: pops = 0; break;
-		case 4: case 8: case 9: case 23: case 27: case 28: case 29: case 30: case 31: case 33: case 34: pops = 1; break;
+		case 4: case 8: case 9: case 23: case 27: case 28: case 29: case 30: case 31: case 33: case 34: case 38: case 42: pops = 1; break;
 		case 1: case 10: case 11: case 12: case 13: case 14: case 15: case 16: case 17: case 18: case 19: case 20: case 21:
-		case 24: case 25: case 32: case 35: pops = 2; break;
+		case 24: case 25: case 32: case 35: case 39: case 40: case 41: pops = 2; break;
 		default: pops = 3; break;
 		}
 		if (pops >= 1) { if (sp > 0) { --sp; a = st[sp]; } }
@@ -254,7 +254,12 @@ constexpr const char *kShaderSourceMid = R"(];
 		case 34: r = cos(a); break;
 		case 35: r = float3(a.x < b.x ? 0 : 1, a.y < b.y ? 0 : 1, a.z < b.z ? 0 : 1); break;
 		case 36: r = smoothstep(d, b, a); break;
-		default: r = lerp(d, b, a); break;
+		case 37: r = lerp(d, b, a); break;
+		case 38: r = length(a); break;
+		case 39: r = length(b - a); break;
+		case 40: r = dot(b, a); break;
+		case 41: r = cross(b, a); break;
+		default: r = SafeDiv(a, length(a)); break;
 		}
 		if (sp < )";
 
@@ -280,11 +285,27 @@ float4 BakePS(BakeOut i) : SV_Target
 	return float4(i.value, 1);
 }
 
+float4 DilatePS(VSOut i) : SV_Target
+{
+	int3 at = int3(int2(i.pos.xy), 0);
+	float4 c = src.Load(at);
+	if (c.a > 0.5) return c;
+	float3 sum = 0;
+	float n = 0;
+	[unroll] for (int dy = -1; dy <= 1; ++dy)
+	[unroll] for (int dx = -1; dx <= 1; ++dx) {
+		float4 s = src.Load(at + int3(dx, dy, 0));
+		if (s.a > 0.5) { sum += s.rgb; n += 1; }
+	}
+	return n > 0 ? float4(sum / n, 1) : float4(0, 0, 0, 0);
+}
+
 cbuffer RippleParams : register(b2)
 {
 	float4 rippleFirings[8];
 	float4 rippleShape;
 	float4 rippleMisc;
+	float4 rippleDir;
 };
 
 float4 PSRipple(VSOut i) : SV_Target
@@ -293,35 +314,44 @@ float4 PSRipple(VSOut i) : SV_Target
 	float  v = 0;
 	int    n = (int)rippleMisc.x;
 	float  width = max(rippleShape.y, 0.01);
+	bool   directional = rippleDir.w > 0.5;
 	[loop] for (int k = 0; k < n && k < 8; ++k) {
-		float d = length(pos - rippleFirings[k].xyz);
-		float r = rippleFirings[k].w * rippleShape.x;
-		float f = rippleShape.w > 0.5 ? 1 - smoothstep(r - width, r, d) : exp(-pow((d - r) / width, 2) * 4);
+		float3 offset = pos - rippleFirings[k].xyz;
+		float  d = directional ? dot(offset, rippleDir.xyz) : length(offset);
+		float  r = rippleFirings[k].w * rippleShape.x;
+		float  f;
+		if (rippleShape.w > 0.5) {
+			float lead = 1 - smoothstep(r - width, r, d);
+			float trail = directional ? smoothstep(-width, 0, d) : 1;
+			f = lead * trail;
+		} else {
+			f = exp(-pow((d - r) / width, 2) * 4);
+		}
 		v = max(v, f * exp(-rippleShape.z * rippleFirings[k].w));
 	}
 	return float4(v, v, v, 1);
 }
 
-cbuffer ClassifyParams : register(b3)
+cbuffer ClusterParams : register(b3)
 {
 	float4 centroidRmaos[8];
 	float4 centroidLuma[8];
-	float4 classifyWeights;
-	float4 classifyMisc;
+	float4 clusterWeights;
+	float4 clusterMisc;
 };
 
-float4 PSClassify(VSOut i) : SV_Target
+float4 PSClusters(VSOut i) : SV_Target
 {
 	float4 m = saturate(armor.SampleLevel(samp, i.uv, 0));
 	float3 d = src.SampleLevel(samp, i.uv, 0).rgb;
 	float  luma = saturate(dot(d, float3(0.2126, 0.7152, 0.0722)));
-	int    n = clamp((int)classifyMisc.y, 0, 8);
+	int    n = clamp((int)clusterMisc.y, 0, 8);
 	float  id = 0;
 	float  best = 0;
 	[loop] for (int k = 0; k < n; ++k) {
 		float4 dm = m - centroidRmaos[k];
 		float  dl = luma - centroidLuma[k].x;
-		float  dist = dot(classifyWeights, dm * dm) + classifyMisc.x * dl * dl;
+		float  dist = dot(clusterWeights, dm * dm) + clusterMisc.x * dl * dl;
 		if (k == 0 || dist < best) {
 			best = dist;
 			id = centroidLuma[k].y;

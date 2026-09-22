@@ -1,0 +1,25 @@
+{
+  "format": 1,
+  "name": "Diagnostic: Expression branch",
+  "description": "Test if() selecting a vector on a scalar condition. if(@t > 0.5, [1, 0, 0], [0, 1, 0]) flips the emissive red/green as t crosses 0.5 (comparisons take scalars, not vectors).",
+  "keys": ["default"],
+  "priority": -53,
+  "signals": {
+    "t": { "wave": { "base": 0.5, "amplitude": 0.5, "period": 3 } },
+    "branch": { "expr": "if(@t > 0.5, [1, 0, 0], [0, 1, 0])" }
+  },
+  "outputs": [
+    {
+      "target": "shell",
+      "slot": "emissive",
+      "strength": 1.0,
+      "stack": [
+        {
+          "source": [1.0, 1.0, 1.0],
+          "opacity": 1.0,
+          "color": "@branch"
+        }
+      ]
+    }
+  ]
+}

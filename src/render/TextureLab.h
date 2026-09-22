@@ -101,6 +101,8 @@ public:
   inline static constexpr std::uint32_t kProgramRefs = 16;
   inline static constexpr std::uint32_t kProgramCurves = 4;
   inline static constexpr std::uint32_t kProgramStack = 32;
+  inline static constexpr std::uint32_t kPassSrvs =
+      kProgramTextures + kProgramCurves;
 
   struct ProgramTexture {
     RE::NiSourceTexture *texture = nullptr;
@@ -138,6 +140,8 @@ public:
     float width = 10.0f;
     float decay = 1.0f;
     bool disc = false;
+    Vec3 direction{};
+    bool directional = false;
   };
 
   struct LayerPass {
@@ -225,7 +229,7 @@ public:
   bool RenderClusters(RenderTarget &a_target, RE::NiSourceTexture *a_rmaos,
                       RE::NiSourceTexture *a_diffuse,
                       const MaterialAnalysis &a_analysis);
-  [[nodiscard]] bool ClassifyAvailable() const noexcept;
+  [[nodiscard]] bool ClustersAvailable() const noexcept;
   [[nodiscard]] bool BakingAvailable() const noexcept;
 
   [[nodiscard]] std::vector<std::uint8_t>
@@ -284,7 +288,8 @@ private:
     REX::W32::ComPtr<REX::W32::ID3D11RasterizerState> raster;
     std::optional<PixelPipeline> program;
     std::optional<PixelPipeline> ripple;
-    std::optional<PixelPipeline> classify;
+    std::optional<PixelPipeline> clusters;
+    std::optional<PixelPipeline> dilate;
     std::optional<BakePipeline> bake;
   };
 
@@ -295,6 +300,8 @@ private:
   };
   void DrawFullScreen(const RenderPass &a_pass, RenderTarget &a_target,
                       const FullScreenDraw &a_draw);
+  void BindTarget(const RenderPass &a_pass, RenderTarget &a_target);
+  void UnbindTarget(const RenderPass &a_pass, std::uint32_t a_srvCount);
 
   bool CompileShaders(GpuResources &a_resources);
 

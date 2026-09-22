@@ -1,0 +1,21 @@
+{
+  "format": 1,
+  "name": "output-material-emissive",
+  "description": "Diagnostic: solid emissive output, yellow glow",
+  "keys": ["default"],
+  "priority": -69,
+  "outputs": [
+    {
+      "target": "material",
+      "slot": "emissive",
+      "strength": 0.7,
+      "stack": [
+        {
+          "source": [1.0, 1.0, 0.0],
+          "opacity": 1.0
+        }
+      ],
+      "note": "Bright yellow emissive layer, tests emissive slot output"
+    }
+  ]
+}

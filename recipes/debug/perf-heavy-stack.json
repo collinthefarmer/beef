@@ -1,0 +1,114 @@
+{
+  "format": 1,
+  "name": "perf-heavy-stack",
+  "author": "collinthefarmer@gmail.com",
+  "description": "Performance: five layers with masks and complex expressions. Tests stress.",
+  "priority": -38,
+  "keys": ["default"],
+  "signals": {
+    "wave1": {
+      "wave": {
+        "base": 0.5,
+        "amplitude": 0.5,
+        "period": 2.0,
+        "waveform": "sine"
+      }
+    },
+    "wave2": {
+      "wave": {
+        "base": 0.5,
+        "amplitude": 0.5,
+        "period": 3.0,
+        "waveform": "triangle"
+      }
+    },
+    "wave_avg": {
+      "expr": "(@wave1 + @wave2) / 2"
+    }
+  },
+  "sources": {
+    "tex1": {
+      "image": {
+        "path": "skyrim/textures/effects/gradient.dds"
+      }
+    },
+    "tex2": {
+      "image": {
+        "path": "skyrim/textures/effects/noise.dds"
+      }
+    },
+    "tex3": {
+      "image": {
+        "path": "skyrim/textures/effects/perlin.dds"
+      }
+    },
+    "tex4": {
+      "image": {
+        "path": "skyrim/textures/effects/noise.dds",
+        "scroll": [0.1, 0.0]
+      }
+    },
+    "tex5": {
+      "image": {
+        "path": "skyrim/textures/effects/gradient.dds",
+        "scroll": [0.0, 0.1]
+      }
+    },
+    "material_metallic": {
+      "material": "metallic"
+    },
+    "material_roughness": {
+      "material": "roughness"
+    },
+    "material_occlusion": {
+      "material": "occlusion"
+    },
+    "material_reflectance": {
+      "material": "reflectance"
+    },
+    "material_diffuseLuma": {
+      "material": "diffuseLuma"
+    }
+  },
+  "masks": {
+    "mask1": "saturate(@material_metallic)",
+    "mask2": "saturate(@material_roughness)",
+    "mask3": "saturate(@material_occlusion)",
+    "mask5": "saturate(@material_diffuseLuma)",
+    "complex_mask": "saturate(@material_metallic * (@material_roughness + @material_occlusion) / (@material_reflectance + 0.1))"
+  },
+  "outputs": [
+    {
+      "target": "material",
+      "slot": "emissive",
+      "strength": 1.0,
+      "stack": [
+        {
+          "source": "@tex1",
+          "opacity": "@wave1",
+          "mask": "@mask1"
+        },
+        {
+          "source": "@tex2",
+          "opacity": 0.2,
+          "mask": "@mask2"
+        },
+        {
+          "source": "@tex3",
+          "opacity": "@wave2",
+          "mask": "@mask3"
+        },
+        {
+          "source": "@tex4",
+          "opacity": 0.15,
+          "mask": "@complex_mask"
+        },
+        {
+          "source": "@tex5",
+          "opacity": "@wave_avg",
+          "mask": "@mask5"
+        }
+      ]
+    }
+  ]
+}

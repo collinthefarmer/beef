@@ -1,0 +1,33 @@
+{
+  "format": 1,
+  "name": "signal-sine-wave",
+  "author": "Claude",
+  "description": "Sine wave pulsing brightness 0.5–1.0, 2s period. Tests: sine, time dependency.",
+  "priority": -96,
+  "keys": ["default"],
+  "signals": {
+    "brightness": {
+      "wave": {
+        "waveform": "sine",
+        "base": 0.75,
+        "amplitude": 0.25,
+        "period": 2.0
+      },
+      "note": "Sine wave: base 0.75, amplitude 0.25 gives 0.5–1.0 range"
+    }
+  },
+  "outputs": [
+    {
+      "target": "material",
+      "slot": "emissive",
+      "strength": "@brightness",
+      "stack": [
+        {
+          "source": [0.5, 0.5, 0],
+          "opacity": 1.0
+        }
+      ],
+      "note": "Pulsing yellow emissive via sine wave"
+    }
+  ]
+}

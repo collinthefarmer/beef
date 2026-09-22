@@ -30,19 +30,25 @@ static_assert(static_cast<int>(Program::Op::kNumber) == 0 &&
               static_cast<int>(Program::Op::kIf) == 22 &&
               static_cast<int>(Program::Op::kClamp) == 26 &&
               static_cast<int>(Program::Op::kStep) == 35 &&
-              static_cast<int>(Program::Op::kLerp) == 37);
+              static_cast<int>(Program::Op::kLerp) == 37 &&
+              static_cast<int>(Program::Op::kLength) == 38 &&
+              static_cast<int>(Program::Op::kDistance) == 39 &&
+              static_cast<int>(Program::Op::kDot) == 40 &&
+              static_cast<int>(Program::Op::kCross) == 41 &&
+              static_cast<int>(Program::Op::kNormalize) == 42);
 
 struct alignas(16) RippleConstants {
   float firings[8][4];
   float shape[4];
   float misc[4];
+  float direction[4];
 };
 
-struct alignas(16) ClassifyConstants {
-  float centroidRmaos[kMaxClusters][4];
-  float centroidLuma[kMaxClusters][4];
+struct alignas(16) ClusterConstants {
+  float centroidRmaos[kMaxMaterialClusters][4];
+  float centroidLuma[kMaxMaterialClusters][4];
   float weights[4];
   float misc[4];
 };
-static_assert(kMaxClusters == 8 && sizeof(ClassifyConstants) % 16 == 0);
+static_assert(kMaxMaterialClusters == 8 && sizeof(ClusterConstants) % 16 == 0);
 }

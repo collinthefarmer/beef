@@ -116,12 +116,9 @@ AlwaysString(const std::string &a_text) {
   return a_text.empty() ? std::nullopt : std::optional{FormRef::From(a_text)};
 }
 
-[[nodiscard]] std::optional<std::variant<std::string, Vec3>>
+[[nodiscard]] std::optional<std::string>
 DistanceFromOf(const std::string &a_text) {
-  if (const auto point = LiteralColor(a_text)) {
-    return std::variant<std::string, Vec3>{*point};
-  }
-  return std::variant<std::string, Vec3>{a_text};
+  return a_text.empty() ? std::nullopt : std::optional{a_text};
 }
 
 [[nodiscard]] std::optional<std::uint8_t>
@@ -422,11 +419,9 @@ BindImageMirror(std::string a_name, SourceKind a_record, std::size_t a_axis) {
     if (clusters == nullptr || !weights) {
       return std::nullopt;
     }
-    clusters->roughness = (*weights)[0];
-    clusters->metallic = (*weights)[1];
-    clusters->occlusion = (*weights)[2];
-    clusters->reflectance = (*weights)[3];
-    clusters->luma = (*weights)[4];
+    clusters->settings.weights =
+        ChannelWeights{(*weights)[0], (*weights)[1], (*weights)[2],
+                       (*weights)[3], (*weights)[4]};
     return SetSource{name, kind};
   };
 }
@@ -1061,6 +1056,17 @@ void DeltaFields(std::vector<FormField> &a_form, const SignalContext &a_ctx,
                                                &RateSignal::of, RefOf)}));
 }
 
+void ToRootFields(std::vector<FormField> &a_form, const SignalContext &a_ctx,
+                  const ToRootSignal &a_toRoot) {
+  a_form.push_back(
+      ReferenceField({.name = "of",
+                      .text = RefText(a_toRoot.of),
+                      .names = a_ctx.all,
+                      .allowEmpty = false,
+                      .bind = BindSignalMember(a_ctx.name, a_ctx.record,
+                                               &ToRootSignal::of, RefOf)}));
+}
+
 void SmoothFields(std::vector<FormField> &a_form, const SignalContext &a_ctx,
                   const SmoothSignal &a_smooth) {
   a_form.push_back(
@@ -1125,6 +1131,7 @@ std::vector<FormField> SignalForm(const SignalRow &a_signal,
         GradientFields(form, ctx, a_gradient);
       },
       [&](const RateSignal &a_delta) { DeltaFields(form, ctx, a_delta); },
+      [&](const ToRootSignal &a_toRoot) { ToRootFields(form, ctx, a_toRoot); },
       [&](const SmoothSignal &a_smooth) { SmoothFields(form, ctx, a_smooth); });
   return form;
 }
@@ -1219,13 +1226,6 @@ void BakeFields(std::vector<FormField> &a_form, const SourceContext &a_ctx,
   }
 }
 
-void UvFields(std::vector<FormField> &a_form, const SourceContext &a_ctx,
-              const UvSourceRow &a_source) {
-  a_form.push_back(ChoiceField("axis", a_source.axis, WordsOf(kUvAxes),
-                               BindSourceMember(a_ctx.name, a_ctx.record,
-                                                &UvSource::axis, ParseUvAxis)));
-}
-
 void DistanceFields(std::vector<FormField> &a_form, const SourceContext &a_ctx,
                     const DistanceSourceRow &a_source) {
   a_form.push_back(TextEntryField(
@@ -1290,8 +1290,8 @@ void ClustersFields(std::vector<FormField> &a_form, const SourceContext &a_ctx,
        .kind = FieldKind::kScalar,
        .text = source.clusters,
        .names = {},
-       .bind = BindSourceMember(name, record, &MaterialClustersSource::clusters,
-                                ClusterCountOf)});
+       .bind = BindSourceMember(name, record, &MaterialClustersSource::settings,
+                                &ClusterSettings::clusters, ClusterCountOf)});
   clusters.range = std::pair{1.0f, static_cast<float>(kMaxMaterialClusters)};
   clusters.workingRange = clusters.range;
   clusters.integral = true;
@@ -1300,21 +1300,21 @@ void ClustersFields(std::vector<FormField> &a_form, const SourceContext &a_ctx,
                                    .kind = FieldKind::kText,
                                    .text = source.weights,
                                    .bind = BindClusterWeights(name, record)}));
-  a_form.push_back(
-      ParamField({.name = "seed",
-                  .kind = FieldKind::kScalar,
-                  .text = source.seed,
-                  .names = {},
-                  .bind = BindSourceMember(
-                      name, record, &MaterialClustersSource::seed, SeedOf),
-                  .integral = true}));
+  a_form.push_back(ParamField(
+      {.name = "seed",
+       .kind = FieldKind::kScalar,
+       .text = source.seed,
+       .names = {},
+       .bind = BindSourceMember(name, record, &MaterialClustersSource::settings,
+                                &ClusterSettings::seed, SeedOf),
+       .integral = true}));
   FormField iterations = ParamField(
       {.name = "iterations",
        .kind = FieldKind::kScalar,
        .text = source.iterations,
        .names = {},
-       .bind = BindSourceMember(
-           name, record, &MaterialClustersSource::iterations, IterationsOf)});
+       .bind = BindSourceMember(name, record, &MaterialClustersSource::settings,
+                                &ClusterSettings::iterations, IterationsOf)});
   iterations.range = std::pair{1.0f, static_cast<float>(kMaxClusterIterations)};
   iterations.workingRange = iterations.range;
   iterations.integral = true;
@@ -1342,7 +1342,6 @@ std::vector<FormField> SourceForm(const SourceRow &a_source,
         MaterialFields(form, ctx, a_material);
       },
       [&](const BakeSourceRow &a_bake) { BakeFields(form, ctx, a_bake); },
-      [&](const UvSourceRow &a_uv) { UvFields(form, ctx, a_uv); },
       [&](const DistanceSourceRow &a_distance) {
         DistanceFields(form, ctx, a_distance);
       },

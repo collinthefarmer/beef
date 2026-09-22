@@ -62,8 +62,8 @@ bool TextureLab::RippleAvailable() const noexcept {
   return Available() && gpu_->ripple.has_value();
 }
 
-bool TextureLab::ClassifyAvailable() const noexcept {
-  return Available() && gpu_->classify.has_value();
+bool TextureLab::ClustersAvailable() const noexcept {
+  return Available() && gpu_->clusters.has_value();
 }
 
 bool TextureLab::BakingAvailable() const noexcept {
@@ -170,6 +170,15 @@ bool TextureLab::CompileShaders(GpuResources &a_resources) {
           std::uint32_t a_bytes) -> std::optional<PixelPipeline> {
     const auto code = compile(a_entry, "ps_5_0");
     PixelPipeline pipeline;
+    if (code.Get() && a_bytes == 0) {
+      if (Failed(borrowedDevice_->CreatePixelShader(
+              code->GetBufferPointer(), code->GetBufferSize(), nullptr,
+              pipeline.shader.GetAddressOf()))) {
+        logger::error("TextureLab: {} pipeline unavailable", a_entry);
+        return std::nullopt;
+      }
+      return pipeline;
+    }
     D3D11_BUFFER_DESC desc{};
     desc.byteWidth = a_bytes;
     desc.usage = D3D11_USAGE_DEFAULT;
@@ -187,7 +196,8 @@ bool TextureLab::CompileShaders(GpuResources &a_resources) {
   };
   a_resources.program = pixelPipeline("PSProgram", sizeof(ProgramConstants));
   a_resources.ripple = pixelPipeline("PSRipple", sizeof(RippleConstants));
-  a_resources.classify = pixelPipeline("PSClassify", sizeof(ClassifyConstants));
+  a_resources.clusters = pixelPipeline("PSClusters", sizeof(ClusterConstants));
+  a_resources.dilate = pixelPipeline("DilatePS", 0);
 
   const auto bakeVertex = compile("BakeVS", "vs_5_0");
   const auto bakePixel = compile("BakePS", "ps_5_0");

@@ -55,7 +55,13 @@ inline constexpr Named<ActorStateKind> kActorStates[]{
     {ActorStateKind::kInCombat, "inCombat"},
     {ActorStateKind::kSneaking, "sneaking"},
     {ActorStateKind::kWeaponDrawn, "weaponDrawn"},
-    {ActorStateKind::kHostileDistance, "hostileDistance"}};
+    {ActorStateKind::kSwimming, "swimming"},
+    {ActorStateKind::kSprinting, "sprinting"},
+    {ActorStateKind::kMounted, "mounted"},
+    {ActorStateKind::kMovementSpeed, "movementSpeed"},
+    {ActorStateKind::kPosition, "position"},
+    {ActorStateKind::kTarget, "target"},
+    {ActorStateKind::kHasTarget, "hasTarget"}};
 static_assert(Complete(kActorStates, kActorStateCount));
 inline constexpr Named<EnchantmentField> kEnchantmentFields[]{
     {EnchantmentField::kMagnitude, "magnitude"},
@@ -85,6 +91,8 @@ inline constexpr MaterialChannelSpec kMaterialChannels[]{
      ShaderChannel::kLuma, ValueType::kScalar},
     {MaterialChannel::kNormalSlope, "normalSlope", MaterialMap::kNone,
      ShaderChannel::kR, ValueType::kScalar},
+    {MaterialChannel::kNormalRgb, "normalRgb", MaterialMap::kNormal,
+     ShaderChannel::kRgb, ValueType::kVec3},
     {MaterialChannel::kRoughness, "roughness", MaterialMap::kRmaos,
      ShaderChannel::kR, ValueType::kScalar},
     {MaterialChannel::kMetallic, "metallic", MaterialMap::kRmaos,
@@ -93,14 +101,14 @@ inline constexpr MaterialChannelSpec kMaterialChannels[]{
      ShaderChannel::kB, ValueType::kScalar},
     {MaterialChannel::kReflectance, "reflectance", MaterialMap::kRmaos,
      ShaderChannel::kA, ValueType::kScalar},
+    {MaterialChannel::kRmaosRgb, "rmaosRgb", MaterialMap::kRmaos,
+     ShaderChannel::kRgb, ValueType::kVec3},
     {MaterialChannel::kDisplacement, "displacement", MaterialMap::kDisplacement,
      ShaderChannel::kR, ValueType::kScalar},
     {MaterialChannel::kRelief, "relief", MaterialMap::kNone, ShaderChannel::kR,
      ValueType::kScalar},
 };
 static_assert(Complete(kMaterialChannels, kMaterialChannelCount));
-inline constexpr Named<UvAxis> kUvAxes[]{{UvAxis::kU, "u"}, {UvAxis::kV, "v"}};
-static_assert(Complete(kUvAxes, kUvAxisCount));
 inline constexpr Named<RippleShape> kRippleShapes[]{
     {RippleShape::kRing, "ring"}, {RippleShape::kDisc, "disc"}};
 static_assert(Complete(kRippleShapes, kRippleShapeCount));
@@ -108,7 +116,6 @@ inline constexpr Named<SourceKindId> kSourceKindWords[]{
     {SourceKindId::kImage, "image"},
     {SourceKindId::kMaterial, "material"},
     {SourceKindId::kBake, "bake"},
-    {SourceKindId::kUv, "uv"},
     {SourceKindId::kDistance, "distance"},
     {SourceKindId::kRipple, "ripple"},
     {SourceKindId::kMaterialClusters, "materialClusters"}};
@@ -117,10 +124,9 @@ static_assert(
     std::is_same_v<std::variant_alternative_t<0, SourceKind>, ImageSource> &&
     std::is_same_v<std::variant_alternative_t<1, SourceKind>, MaterialSource> &&
     std::is_same_v<std::variant_alternative_t<2, SourceKind>, BakeSource> &&
-    std::is_same_v<std::variant_alternative_t<3, SourceKind>, UvSource> &&
-    std::is_same_v<std::variant_alternative_t<4, SourceKind>, DistanceSource> &&
-    std::is_same_v<std::variant_alternative_t<5, SourceKind>, RippleSource> &&
-    std::is_same_v<std::variant_alternative_t<6, SourceKind>,
+    std::is_same_v<std::variant_alternative_t<3, SourceKind>, DistanceSource> &&
+    std::is_same_v<std::variant_alternative_t<4, SourceKind>, RippleSource> &&
+    std::is_same_v<std::variant_alternative_t<5, SourceKind>,
                    MaterialClustersSource>);
 inline constexpr std::string_view kTriggerOriginWords[]{"event", "plugin",
                                                         "when"};
@@ -132,18 +138,19 @@ static_assert(
                    PluginOrigin> &&
     std::is_same_v<std::variant_alternative_t<2, TriggerOrigin>, WhenOrigin>);
 inline constexpr std::string_view kBakeKindWords[]{
-    "position",   "localPosition", "worldUp", "partition",
-    "boneWeight", "componentId",   "chartId"};
+    "position",  "localPosition", "normal",      "uv",
+    "partition", "boneWeight",    "componentId", "chartId"};
 static_assert(std::size(kBakeKindWords) == std::variant_size_v<BakeKind>);
 static_assert(
     std::is_same_v<std::variant_alternative_t<0, BakeKind>, PositionBake> &&
     std::is_same_v<std::variant_alternative_t<1, BakeKind>,
                    LocalPositionBake> &&
-    std::is_same_v<std::variant_alternative_t<2, BakeKind>, WorldUpBake> &&
-    std::is_same_v<std::variant_alternative_t<3, BakeKind>, PartitionBake> &&
-    std::is_same_v<std::variant_alternative_t<4, BakeKind>, BoneWeightBake> &&
-    std::is_same_v<std::variant_alternative_t<5, BakeKind>, ComponentIdBake> &&
-    std::is_same_v<std::variant_alternative_t<6, BakeKind>, ChartIdBake>);
+    std::is_same_v<std::variant_alternative_t<2, BakeKind>, NormalBake> &&
+    std::is_same_v<std::variant_alternative_t<3, BakeKind>, UvBake> &&
+    std::is_same_v<std::variant_alternative_t<4, BakeKind>, PartitionBake> &&
+    std::is_same_v<std::variant_alternative_t<5, BakeKind>, BoneWeightBake> &&
+    std::is_same_v<std::variant_alternative_t<6, BakeKind>, ComponentIdBake> &&
+    std::is_same_v<std::variant_alternative_t<7, BakeKind>, ChartIdBake>);
 
 inline constexpr BipedSlotSpec kBipedSlots[]{
     {BipedSlot{30}, "head"},     {BipedSlot{31}, "hair"},
@@ -169,6 +176,7 @@ inline constexpr SignalKindSpec kSignalKinds[]{
     {SignalKindId::kGradient, "gradient", false},
     {SignalKindId::kRate, "rate", false},
     {SignalKindId::kSmooth, "smooth", false},
+    {SignalKindId::kToRoot, "toRoot", false},
     {SignalKindId::kExpr, "expr", true},
 };
 static_assert(Complete(kSignalKinds, kSignalKindCount));

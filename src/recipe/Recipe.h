@@ -186,13 +186,23 @@ enum class ActorStateKind {
   kInCombat,
   kSneaking,
   kWeaponDrawn,
-  kHostileDistance,
+  kSwimming,
+  kSprinting,
+  kMounted,
+  kMovementSpeed,
+  kPosition,
+  kTarget,
+  kHasTarget,
 };
-inline constexpr std::size_t kActorStateCount = 4;
+inline constexpr std::size_t kActorStateCount = 10;
 struct ActorStateSignal {
   ActorStateKind kind = ActorStateKind::kInCombat;
   [[nodiscard]] bool operator==(const ActorStateSignal &) const = default;
 };
+[[nodiscard]] constexpr bool VectorValued(ActorStateKind a_kind) noexcept {
+  return a_kind == ActorStateKind::kPosition ||
+         a_kind == ActorStateKind::kTarget;
+}
 enum class EnchantmentField {
   kMagnitude,
   kCost,
@@ -287,6 +297,10 @@ struct SmoothSignal {
   Param seconds = 1.0f;
   [[nodiscard]] bool operator==(const SmoothSignal &) const = default;
 };
+struct ToRootSignal {
+  Ref of;
+  [[nodiscard]] bool operator==(const ToRootSignal &) const = default;
+};
 struct ExprSignal {
   std::string text;
   [[nodiscard]] bool operator==(const ExprSignal &) const = default;
@@ -297,7 +311,7 @@ using SignalKind =
                  ActorValueSignal, ActorStateSignal, EnchantmentSignal,
                  TriggerSignal, PayloadSignal, CounterSignal, AccumulateSignal,
                  NoiseSignal, GradientSignal, RateSignal, SmoothSignal,
-                 ExprSignal>;
+                 ToRootSignal, ExprSignal>;
 
 struct Signal {
   std::string name;
@@ -323,9 +337,10 @@ enum class SignalKindId {
   kGradient,
   kRate,
   kSmooth,
+  kToRoot,
   kExpr,
 };
-inline constexpr std::size_t kSignalKindCount = 16;
+inline constexpr std::size_t kSignalKindCount = 17;
 
 struct SignalKindSpec {
   SignalKindId value;
@@ -377,14 +392,16 @@ enum class MaterialChannel {
   kDiffuseRgb,
   kDiffuseLuma,
   kNormalSlope,
+  kNormalRgb,
   kRoughness,
   kMetallic,
   kOcclusion,
   kReflectance,
+  kRmaosRgb,
   kDisplacement,
   kRelief,
 };
-inline constexpr std::size_t kMaterialChannelCount = 9;
+inline constexpr std::size_t kMaterialChannelCount = 11;
 struct MaterialSource {
   MaterialChannel channel = MaterialChannel::kDiffuseLuma;
   [[nodiscard]] bool operator==(const MaterialSource &) const = default;
@@ -395,8 +412,11 @@ struct PositionBake {
 struct LocalPositionBake {
   [[nodiscard]] bool operator==(const LocalPositionBake &) const = default;
 };
-struct WorldUpBake {
-  [[nodiscard]] bool operator==(const WorldUpBake &) const = default;
+struct NormalBake {
+  [[nodiscard]] bool operator==(const NormalBake &) const = default;
+};
+struct UvBake {
+  [[nodiscard]] bool operator==(const UvBake &) const = default;
 };
 enum class BipedSlot : std::uint32_t {};
 struct BipedSlotSpec {
@@ -426,23 +446,14 @@ struct ChartIdBake {
   [[nodiscard]] bool operator==(const ChartIdBake &) const = default;
 };
 using BakeKind =
-    std::variant<PositionBake, LocalPositionBake, WorldUpBake, PartitionBake,
-                 BoneWeightBake, ComponentIdBake, ChartIdBake>;
+    std::variant<PositionBake, LocalPositionBake, NormalBake, UvBake,
+                 PartitionBake, BoneWeightBake, ComponentIdBake, ChartIdBake>;
 struct BakeSource {
   BakeKind bake = PositionBake{};
   [[nodiscard]] bool operator==(const BakeSource &) const = default;
 };
-enum class UvAxis {
-  kU,
-  kV,
-};
-inline constexpr std::size_t kUvAxisCount = 2;
-struct UvSource {
-  UvAxis axis = UvAxis::kU;
-  [[nodiscard]] bool operator==(const UvSource &) const = default;
-};
 struct DistanceSource {
-  std::variant<std::string, Vec3> from = std::string{};
+  std::string from;
   [[nodiscard]] bool operator==(const DistanceSource &) const = default;
 };
 enum class RippleShape {
@@ -456,48 +467,56 @@ struct RippleSource {
   Param width = 10.0f;
   Param decay = 1.0f;
   RippleShape shape = RippleShape::kRing;
+  Vec3Param direction = std::array<Param, 3>{0.0f, 0.0f, 0.0f};
   [[nodiscard]] bool operator==(const RippleSource &) const = default;
 };
 inline constexpr std::uint8_t kMaxMaterialClusters = 8;
 inline constexpr std::uint32_t kMaxClusterIterations = 256;
 inline constexpr float kMaxChannelWeight = 10.0f;
-struct MaterialClustersSource {
-  std::uint8_t clusters = 4;
+struct ChannelWeights {
   float roughness = 1.0f;
   float metallic = 1.0f;
   float occlusion = 0.5f;
   float reflectance = 0.5f;
   float luma = 1.0f;
+  [[nodiscard]] bool operator==(const ChannelWeights &) const = default;
+};
+struct ClusterSettings {
+  std::uint8_t clusters = 4;
+  ChannelWeights weights;
   std::uint32_t seed = 1;
   std::uint32_t iterations = 32;
+  [[nodiscard]] bool operator==(const ClusterSettings &) const = default;
+};
+struct MaterialClustersSource {
+  ClusterSettings settings;
   [[nodiscard]] bool operator==(const MaterialClustersSource &) const = default;
 };
 
 struct ClusterWeightField {
   const char *name;
-  float MaterialClustersSource::*member;
+  float ChannelWeights::*member;
 };
 inline constexpr ClusterWeightField kClusterWeightFields[]{
-    {"roughness", &MaterialClustersSource::roughness},
-    {"metallic", &MaterialClustersSource::metallic},
-    {"occlusion", &MaterialClustersSource::occlusion},
-    {"reflectance", &MaterialClustersSource::reflectance},
-    {"luma", &MaterialClustersSource::luma},
+    {"roughness", &ChannelWeights::roughness},
+    {"metallic", &ChannelWeights::metallic},
+    {"occlusion", &ChannelWeights::occlusion},
+    {"reflectance", &ChannelWeights::reflectance},
+    {"luma", &ChannelWeights::luma},
 };
 
 using SourceKind =
-    std::variant<ImageSource, MaterialSource, BakeSource, UvSource,
-                 DistanceSource, RippleSource, MaterialClustersSource>;
+    std::variant<ImageSource, MaterialSource, BakeSource, DistanceSource,
+                 RippleSource, MaterialClustersSource>;
 enum class SourceKindId {
   kImage,
   kMaterial,
   kBake,
-  kUv,
   kDistance,
   kRipple,
   kMaterialClusters,
 };
-inline constexpr std::size_t kSourceKindCount = 7;
+inline constexpr std::size_t kSourceKindCount = 6;
 static_assert(kSourceKindCount == std::variant_size_v<SourceKind>);
 [[nodiscard]] inline SourceKindId
 SourceKindIdOf(const SourceKind &a_kind) noexcept {
@@ -634,9 +653,6 @@ ParseImageChannel(std::string_view a_name) noexcept;
 [[nodiscard]] std::string_view ImageSpaceName(ImageSpace a_space) noexcept;
 [[nodiscard]] std::optional<ImageSpace>
 ParseImageSpace(std::string_view a_name) noexcept;
-[[nodiscard]] std::string_view UvAxisName(UvAxis a_axis) noexcept;
-[[nodiscard]] std::optional<UvAxis>
-ParseUvAxis(std::string_view a_name) noexcept;
 [[nodiscard]] std::string_view RippleShapeName(RippleShape a_shape) noexcept;
 [[nodiscard]] std::optional<RippleShape>
 ParseRippleShape(std::string_view a_name) noexcept;

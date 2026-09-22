@@ -127,6 +127,27 @@ template <class S, class M, class Parse>
   };
 }
 
+template <class S, class Outer, class M, class Parse>
+[[nodiscard]] FieldBinding
+BindSourceMember(std::string a_source, SourceKind a_record, Outer S::*a_outer,
+                 M Outer::*a_member, Parse a_parse) {
+  return [source = std::move(a_source), record = std::move(a_record), a_outer,
+          a_member,
+          a_parse](const std::string &a_text) -> std::optional<RecipeEdit> {
+    SourceKind kind = record;
+    S *active = Get<S>(kind);
+    if (active == nullptr) {
+      return std::nullopt;
+    }
+    const auto value = a_parse(a_text);
+    if (!value) {
+      return std::nullopt;
+    }
+    (active->*a_outer).*a_member = *value;
+    return SetSource{source, kind};
+  };
+}
+
 [[nodiscard]] std::pair<float, float> ValueRelativeRange(float a_value);
 
 [[nodiscard]] FormField ValueField(ValueFieldSpec a_spec);

@@ -1,0 +1,42 @@
+{
+  "format": 1,
+  "name": "signal-av-stamina",
+  "author": "Claude",
+  "description": "Stamina % → brightness (0 = dim, full = bright). Tests: av variant.",
+  "priority": -88,
+  "keys": ["default"],
+  "signals": {
+    "staminaCurrent": {
+      "av": {
+        "of": "Stamina",
+        "measure": "current"
+      },
+      "note": "Current stamina value"
+    },
+    "staminaMax": {
+      "av": {
+        "of": "Stamina",
+        "measure": "max"
+      },
+      "note": "Maximum stamina value"
+    },
+    "staminaPercent": {
+      "expr": "@staminaCurrent / @staminaMax",
+      "note": "Stamina as a 0–1 fraction"
+    }
+  },
+  "outputs": [
+    {
+      "target": "material",
+      "slot": "emissive",
+      "strength": "@staminaPercent",
+      "stack": [
+        {
+          "source": [0, 1, 0.5],
+          "opacity": 1.0
+        }
+      ],
+      "note": "Stamina status emissive: cyan to white"
+    }
+  ]
+}

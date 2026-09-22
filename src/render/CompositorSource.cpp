@@ -11,6 +11,7 @@
 #include <algorithm>
 #include <array>
 #include <cctype>
+#include <cmath>
 #include <format>
 
 namespace BetterEnchantmentEffects {
@@ -46,27 +47,6 @@ std::shared_ptr<TextureLab::Lookup> CreateCurveLookup(const Program &program,
     values[i] = ApplyCurve(program, static_cast<float>(i) / 255.0f, mean);
   }
   return TextureLab::GetSingleton()->CreateLookup(values);
-}
-
-std::string DescribeTexture(const TextureRef &a_texture) {
-  if (!a_texture) {
-    return "the material has no texture in this slot";
-  }
-  const auto *data = reinterpret_cast<const RE::NiTexture::RendererData *>(
-      a_texture->rendererTexture);
-  const char *name = a_texture->name.c_str() ? a_texture->name.c_str() : "";
-  if (!data) {
-    return std::format("'{}' is not resident (no renderer data)", name);
-  }
-  if (!data->resourceView) {
-    return std::format("'{}' has no shader resource view", name);
-  }
-  const auto extent = TextureLab::ExtentOf(a_texture.get());
-  if (!extent) {
-    return std::format("'{}' is not a 2D texture", name);
-  }
-  return std::format("'{}' is {}x{}, a placeholder", name, extent->width,
-                     extent->height);
 }
 
 bool MeasureFlatDisplacement(const TextureRef &a_displacement) {
@@ -146,9 +126,9 @@ RenderClusterMap(const GeometryInputs &a_inputs,
             }
             if (!lab->RenderClusters(*fresh, material.rmaos.get(),
                                      material.diffuse.get(), analysis)) {
-              derived.clustersProblem =
-                  lab->ClassifyAvailable() ? "the classify pass failed"
-                                           : "the classify pass is unavailable";
+              derived.clustersProblem = lab->ClustersAvailable()
+                                            ? "the cluster pass failed"
+                                            : "the cluster pass is unavailable";
               return nullptr;
             }
             return fresh;
@@ -244,7 +224,8 @@ void SetImageSource(PreparedSource &prepared, const ImageSource &image,
 }
 
 ShaderChannel BakeChannel(const BakeSource &bake) {
-  return Is<PositionBake>(bake.bake) || Is<LocalPositionBake>(bake.bake)
+  return Is<PositionBake>(bake.bake) || Is<LocalPositionBake>(bake.bake) ||
+                 Is<NormalBake>(bake.bake) || Is<UvBake>(bake.bake)
              ? ShaderChannel::kRgb
              : ShaderChannel::kR;
 }
@@ -290,18 +271,17 @@ std::optional<MaterialChannel> SingleChannelOf(const Recipe &a_recipe,
 
 template <class T>
 std::shared_ptr<T>
-LargestOf(const std::unordered_map<std::string, std::shared_ptr<T>> &a_cache,
+LargestOf(const std::map<BakeKey, std::shared_ptr<T>> &a_cache,
           std::string_view a_definition) {
   std::shared_ptr<T> best;
   std::uint32_t bestSize = 0;
   for (const auto &[key, value] : a_cache) {
-    if (KeyDefinition(key) != a_definition) {
+    if (key.definition != a_definition) {
       continue;
     }
-    const auto size = KeySize(key).value_or(0);
-    if (!best || size > bestSize) {
+    if (!best || key.pixels > bestSize) {
       best = value;
-      bestSize = size;
+      bestSize = key.pixels;
     }
   }
   return best;
@@ -395,21 +375,8 @@ struct Compositor::SourcePreparer {
     prepared.ripple = std::move(*rendered);
   }
 
-  void operator()(const UvSource &uv) const {
-    const auto entry = compositor.MeshOf(inputs.geometry.get());
-    if (!entry) {
-      prepared.problem = entry.error();
-      return;
-    }
-    auto target =
-        compositor.BakeInto(**entry, UvKeyOf(uv.axis, size), size, [&] {
-          return BuildUvBake(*(*entry)->mesh, uv.axis);
-        });
-    SetBakeResult(prepared, target, ShaderChannel::kR);
-  }
-
   void operator()(const MaterialClustersSource &clusters) const {
-    const auto target = RenderClusterMap(inputs, SettingsOf(clusters));
+    const auto target = RenderClusterMap(inputs, clusters.settings);
     if (!target) {
       prepared.problem = inputs.derived->clustersProblem;
       return;
@@ -571,10 +538,6 @@ struct Compositor::SourceInspector {
     InspectBake(DefinitionOf(distance), ShaderChannel::kR);
   }
 
-  void operator()(const UvSource &uv) const {
-    InspectBake(DefinitionOf(uv.axis), ShaderChannel::kR);
-  }
-
   void operator()(const RippleSource &) const {
     prepared.sampling.meshSpace = true;
     const auto rendered =
@@ -592,7 +555,7 @@ struct Compositor::SourceInspector {
   void operator()(const MaterialClustersSource &clusters) const {
     prepared.sampling.meshSpace = true;
     const DerivedMaps &derived = *inputs.derived;
-    if (derived.clusters && derived.clusterSettings == SettingsOf(clusters)) {
+    if (derived.clusters && derived.clusterSettings == clusters.settings) {
       prepared.texture = TextureRef{derived.clusters};
       return;
     }
@@ -842,9 +805,9 @@ Compositor::PrepareRipple(const RecipeTextureKey &a_key,
   if (!entry) {
     return std::unexpected(entry.error());
   }
-  auto positions =
-      BakeInto(**entry, BakeKeyOf(PositionBake{}, size), size,
-               [&] { return BuildBake(*(*entry)->mesh, PositionBake{}); });
+  auto positions = BakeInto(
+      **entry, KeyOf(DefinitionOf(BakeKind{PositionBake{}}), size), size,
+      [&] { return BuildBake(*(*entry)->mesh, PositionBake{}); });
   if (!positions) {
     return std::unexpected(positions.error());
   }
@@ -882,6 +845,16 @@ bool Compositor::RenderRipple(RenderedRipple &a_ripple,
   pass.width = a_signals.Resolve(a_ripple.source_.width);
   pass.decay = a_signals.Resolve(a_ripple.source_.decay);
   pass.disc = a_ripple.source_.shape == RippleShape::kDisc;
+  const Vec3 direction = a_signals.Resolve(a_ripple.source_.direction);
+  const float directionLength =
+      std::sqrt(direction.x * direction.x + direction.y * direction.y +
+                direction.z * direction.z);
+  if (directionLength > 1.0e-4f) {
+    pass.directional = true;
+    pass.direction =
+        Vec3{direction.x / directionLength, direction.y / directionLength,
+             direction.z / directionLength};
+  }
   for (const auto &firing : a_signals.Firings(a_ripple.source_.trigger.name)) {
     if (pass.firingCount >= pass.firings.size()) {
       break;

@@ -1,0 +1,21 @@
+{
+  "format": 1,
+  "name": "merge-stack-two-high (red, higher priority)",
+  "author": "collinthefarmer@gmail.com",
+  "description": "Merge test: higher priority red on emissive, merge=stack. Pairs with merge-stack-two.",
+  "priority": -48,
+  "keys": ["default"],
+  "outputs": [
+    {
+      "target": "material",
+      "slot": "emissive",
+      "strength": 1.0,
+      "stack": [
+        {
+          "source": [1.0, 0.1, 0.1],
+          "opacity": 1.0
+        }
+      ]
+    }
+  ]
+}

@@ -1,0 +1,23 @@
+{
+  "format": 1,
+  "name": "output-light-skinned",
+  "description": "Diagnostic: point light on up-to-2 skinned bones, white, intensity 1.0",
+  "keys": ["default"],
+  "priority": -64,
+  "outputs": [
+    {
+      "target": "light",
+      "bones": {
+        "skinned": {
+          "max": 2,
+          "minShare": 0.3
+        }
+      },
+      "color": [1.0, 1.0, 1.0],
+      "intensity": 1.0,
+      "size": 2.0,
+      "cutoff": 0.1,
+      "note": "Point light on most-influential 2 skinned bones, white, intensity 1.0, tests light output"
+    }
+  ]
+}

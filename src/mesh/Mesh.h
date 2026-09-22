@@ -42,6 +42,13 @@ struct MeshData {
   [[nodiscard]] bool operator==(const MeshData &) const = default;
 };
 
+struct MeshBound {
+  Vec3 center;
+  float radius = 0.0f;
+};
+[[nodiscard]] MeshBound
+MeasureBound(std::span<const MeshPartition> a_partitions) noexcept;
+
 inline constexpr std::uint64_t kHashBasis = 0xcbf29ce484222325ull;
 [[nodiscard]] std::uint64_t
 HashBytes(std::span<const std::uint8_t> a_bytes,
@@ -101,16 +108,16 @@ inline constexpr float kDistanceFrame = 256.0f;
 [[nodiscard]] BakeBuffers BuildDistanceBake(const MeshData &a_mesh,
                                             const Vec3 &a_from);
 
-[[nodiscard]] BakeBuffers BuildUvBake(const MeshData &a_mesh, UvAxis a_axis);
-
 [[nodiscard]] std::string DefinitionOf(const BakeKind &a_kind);
 [[nodiscard]] std::string DefinitionOf(const DistanceSource &a_distance);
-[[nodiscard]] std::string DefinitionOf(UvAxis a_axis);
-[[nodiscard]] std::string BakeKeyOf(const BakeKind &a_kind, TextureSize a_size);
-[[nodiscard]] std::string DistanceKeyOf(const DistanceSource &a_distance,
-                                        TextureSize a_size);
-[[nodiscard]] std::string UvKeyOf(UvAxis a_axis, TextureSize a_size);
-[[nodiscard]] std::string_view KeyDefinition(std::string_view a_key) noexcept;
-[[nodiscard]] std::optional<std::uint32_t>
-KeySize(std::string_view a_key) noexcept;
+
+struct BakeKey {
+  std::string definition;
+  std::uint32_t pixels = 0;
+  [[nodiscard]] auto operator<=>(const BakeKey &) const = default;
+};
+[[nodiscard]] inline BakeKey KeyOf(std::string a_definition,
+                                   TextureSize a_size) {
+  return BakeKey{std::move(a_definition), a_size.Pixels()};
+}
 }

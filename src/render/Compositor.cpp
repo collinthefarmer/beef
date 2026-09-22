@@ -422,4 +422,25 @@ bool Compositor::Render(RenderedStack &a_stack, const SignalState &a_signals,
   return StackRenderer{*this, a_stack, a_signals, a_time, a_filter, a_base}
       .Run();
 }
+
+std::string DescribeTexture(const TextureRef &a_texture) {
+  if (!a_texture) {
+    return "the material has no texture in this slot";
+  }
+  const auto *data = reinterpret_cast<const RE::NiTexture::RendererData *>(
+      a_texture->rendererTexture);
+  const char *name = a_texture->name.c_str() ? a_texture->name.c_str() : "";
+  if (!data) {
+    return std::format("'{}' is not resident (no renderer data)", name);
+  }
+  if (!data->resourceView) {
+    return std::format("'{}' has no shader resource view", name);
+  }
+  const auto extent = TextureLab::ExtentOf(a_texture.get());
+  if (!extent) {
+    return std::format("'{}' is not a 2D texture", name);
+  }
+  return std::format("'{}' is {}x{}, a placeholder", name, extent->width,
+                     extent->height);
+}
 }

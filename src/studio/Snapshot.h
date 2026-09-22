@@ -141,10 +141,6 @@ struct BakeSourceRow {
   std::string bones;
 };
 
-struct UvSourceRow {
-  std::string axis;
-};
-
 struct DistanceSourceRow {
   std::string from;
 };
@@ -165,7 +161,7 @@ struct MaterialClustersSourceRow {
 };
 
 using SourceRowKind =
-    std::variant<ImageSourceRow, MaterialSourceRow, BakeSourceRow, UvSourceRow,
+    std::variant<ImageSourceRow, MaterialSourceRow, BakeSourceRow,
                  DistanceSourceRow, RippleSourceRow, MaterialClustersSourceRow>;
 static_assert(std::variant_size_v<SourceRowKind> == kSourceKindCount);
 static_assert(std::is_same_v<std::variant_alternative_t<0, SourceRowKind>,
@@ -175,12 +171,10 @@ static_assert(std::is_same_v<std::variant_alternative_t<0, SourceRowKind>,
                   std::is_same_v<std::variant_alternative_t<2, SourceRowKind>,
                                  BakeSourceRow> &&
                   std::is_same_v<std::variant_alternative_t<3, SourceRowKind>,
-                                 UvSourceRow> &&
-                  std::is_same_v<std::variant_alternative_t<4, SourceRowKind>,
                                  DistanceSourceRow> &&
-                  std::is_same_v<std::variant_alternative_t<5, SourceRowKind>,
+                  std::is_same_v<std::variant_alternative_t<4, SourceRowKind>,
                                  RippleSourceRow> &&
-                  std::is_same_v<std::variant_alternative_t<6, SourceRowKind>,
+                  std::is_same_v<std::variant_alternative_t<5, SourceRowKind>,
                                  MaterialClustersSourceRow>,
               "SourceRowKind alternative order must match SourceKindId");
 
@@ -272,6 +266,7 @@ struct PieceRow {
   std::string actorName;
   std::string armorName;
   std::vector<KeyChoice> keys;
+  std::vector<std::string> diffusePaths;
   std::vector<RecipeRow> recipes;
 };
 

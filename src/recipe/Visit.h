@@ -170,6 +170,7 @@ void VisitSignalParams(SignalKind &a_kind, Visitor &a_visit) {
         }
       },
       [&](RateSignal &s) { VisitRef(s.of, a_visit, "of"); },
+      [&](ToRootSignal &s) { VisitRef(s.of, a_visit, "of"); },
       [&](SmoothSignal &s) {
         VisitRef(s.of, a_visit, "of");
         VisitParam(s.seconds, std::nullopt, a_visit, "seconds");
@@ -193,8 +194,8 @@ void VisitSourceParams(SourceKind &a_kind, Visitor &a_visit) {
         VisitParam(s.width, std::nullopt, a_visit, "width");
         VisitParam(s.decay, std::nullopt, a_visit, "decay");
       },
-      [](MaterialSource &) {}, [](BakeSource &) {}, [](UvSource &) {},
-      [](DistanceSource &) {}, [](MaterialClustersSource &) {});
+      [](MaterialSource &) {}, [](BakeSource &) {}, [](DistanceSource &) {},
+      [](MaterialClustersSource &) {});
 }
 
 template <class Visitor>

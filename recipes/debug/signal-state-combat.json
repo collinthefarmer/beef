@@ -1,0 +1,28 @@
+{
+  "format": 1,
+  "name": "signal-state-combat",
+  "author": "Claude",
+  "description": "InCombat → red overlay, else dim. Tests: actorState.",
+  "priority": -87,
+  "keys": ["default"],
+  "signals": {
+    "inCombat": {
+      "actorState": "inCombat",
+      "note": "1 when in combat, 0 otherwise"
+    }
+  },
+  "outputs": [
+    {
+      "target": "material",
+      "slot": "emissive",
+      "strength": "@inCombat",
+      "stack": [
+        {
+          "source": [0.5, 0.1, 0.1],
+          "opacity": 1.0
+        }
+      ],
+      "note": "Combat state indicator: red when in combat"
+    }
+  ]
+}

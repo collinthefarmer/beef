@@ -274,7 +274,7 @@ BuiltTerm BuildTerm(const TermKind &a_kind, const MaskPresets &a_presets,
       },
       [&](const ClusterTerm &t) {
         const std::string name =
-            sources.ReuseOrAdd("clusters", SourceOf(t.settings));
+            sources.ReuseOrAdd("clusters", MaterialClustersSource{t.settings});
         return IdMatchText(name, t.id);
       });
   return BuiltTerm{std::move(sources).TakeEdits(), std::move(text)};
@@ -472,9 +472,9 @@ std::vector<TermField> ClusterForm(const ClusterTerm &a_term) {
                             .kind = FieldKind::kScalar,
                             .text = std::to_string(a_term.settings.clusters),
                             .bind = {}}),
-            {1.0f, static_cast<float>(kMaxClusters)}, true),
+            {1.0f, static_cast<float>(kMaxMaterialClusters)}, true),
       Set{[](ClusterTerm &t, const std::string &a_text) {
-        const auto count = ReadWhole(a_text, kMaxClusters);
+        const auto count = ReadWhole(a_text, kMaxMaterialClusters);
         if (!count || *count < 1) {
           return false;
         }

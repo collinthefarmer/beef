@@ -46,6 +46,8 @@ public:
   [[nodiscard]] virtual float ActorValue(std::string_view a_name,
                                          Measure a_measure) const = 0;
   [[nodiscard]] virtual float ActorState(ActorStateKind a_kind) const = 0;
+  [[nodiscard]] virtual Vec3 ActorVector(ActorStateKind a_kind) const = 0;
+  [[nodiscard]] virtual Vec3 WorldToRoot(const Vec3 &a_world) const = 0;
   [[nodiscard]] virtual float Enchantment(EnchantmentField a_field) const = 0;
   [[nodiscard]] virtual std::optional<Efsh::EffectParams>
   EffectShader(const FormRef &a_record) const = 0;
@@ -55,6 +57,8 @@ class NullEnvironment final : public SignalEnvironment {
 public:
   float ActorValue(std::string_view, Measure) const override { return 0.0f; }
   float ActorState(ActorStateKind) const override { return 0.0f; }
+  Vec3 ActorVector(ActorStateKind) const override { return Vec3{}; }
+  Vec3 WorldToRoot(const Vec3 &a_world) const override { return a_world; }
   float Enchantment(EnchantmentField) const override { return 0.0f; }
   std::optional<Efsh::EffectParams>
   EffectShader(const FormRef &) const override {

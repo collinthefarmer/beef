@@ -1,0 +1,31 @@
+{
+  "format": 1,
+  "name": "Diagnostic: Expression chain refs",
+  "description": "Test signal dependency chain. Signal A → Signal B references A → Signal C references B. Each step halves the value to trace the chain.",
+  "keys": ["default"],
+  "priority": -52,
+  "signals": {
+    "signalA": {
+      "constant": 1.0
+    },
+    "signalB": {
+      "expr": "@signalA * 0.5"
+    },
+    "signalC": {
+      "expr": "@signalB * 0.5"
+    }
+  },
+  "outputs": [
+    {
+      "target": "shell",
+      "slot": "emissive",
+      "strength": "@signalC",
+      "stack": [
+        {
+          "source": [1.0, 1.0, 1.0],
+          "opacity": 1.0
+        }
+      ]
+    }
+  ]
+}

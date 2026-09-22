@@ -222,19 +222,33 @@ int main() {
             Near(distanceBake.vertices[1].value[0], 0.5f),
         "distance maps against the distance frame");
 
-  const auto uvBake = BuildUvBake(mesh, UvAxis::kU);
+  const auto uvBake = BuildBake(mesh, UvBake{});
+  Check(uvBake.vector, "a uv bake is vector-valued");
   Check(Near(uvBake.vertices[0].value[0], 0.0f) &&
-            Near(uvBake.vertices[1].value[0], 1.0f),
-        "a uv bake reads the requested axis");
+            Near(uvBake.vertices[1].value[0], 1.0f) &&
+            Near(uvBake.vertices[1].value[2], 0.0f),
+        "a uv bake carries u and v with a zero third component");
 
   MeshData upMesh = TriangleMesh();
   upMesh.partitions[0].vertices[1].normal = Vec3{1.0f, 0.0f, 0.0f};
   upMesh.partitions[0].vertices[2].normal = Vec3{0.0f, 0.0f, -1.0f};
-  const auto upBake = BuildBake(upMesh, WorldUpBake{});
-  Check(Near(upBake.vertices[0].value[0], 1.0f) &&
-            Near(upBake.vertices[1].value[0], 0.5f) &&
-            Near(upBake.vertices[2].value[0], 0.0f),
-        "a worldUp bake maps normal z into 0..1");
+  const auto normalBake = BuildBake(upMesh, NormalBake{});
+  Check(normalBake.vector, "a normal bake is vector-valued");
+  Check(Near(normalBake.vertices[1].value[0], 1.0f) &&
+            Near(normalBake.vertices[1].value[1], 0.5f) &&
+            Near(normalBake.vertices[1].value[2], 0.5f) &&
+            Near(normalBake.vertices[2].value[2], 0.0f),
+        "a normal bake maps each normal axis into 0..1");
+
+  MeshData boundMesh = TriangleMesh();
+  boundMesh.partitions[0].vertices[0].position = Vec3{-2.0f, 0.0f, 0.0f};
+  boundMesh.partitions[0].vertices[1].position = Vec3{6.0f, 0.0f, 0.0f};
+  boundMesh.partitions[0].vertices[2].position = Vec3{2.0f, 3.0f, 0.0f};
+  const MeshBound bound = MeasureBound(boundMesh.partitions);
+  Check(Near(bound.center.x, 2.0f) && Near(bound.center.y, 1.5f) &&
+            Near(bound.radius, std::sqrt(18.25f)),
+        "MeasureBound centres the box and encloses every vertex");
+  Check(MeasureBound({}).radius == 0.0f, "an empty mesh measures no bound");
 
   MeshData weightedMesh = TriangleMesh();
   auto &weighted = weightedMesh.partitions[0];
@@ -258,21 +272,19 @@ int main() {
   Check(DefinitionOf(BakeKind{BoneWeightBake{{"b", "a"}}}) ==
             "bake boneWeight [a, b]",
         "a bone-weight bake sorts its bones");
-  Check(DefinitionOf(DistanceSource{Vec3{1.0f, 2.0f, 3.0f}}) ==
-            "distance from (1.00, 2.00, 3.00)",
-        "a distance from a point names the point");
-  Check(DefinitionOf(UvAxis::kV) == "uv v", "a uv axis names itself");
+  Check(DefinitionOf(DistanceSource{"NPC Root"}) ==
+            "distance from node NPC Root",
+        "a distance names its node");
+  Check(DefinitionOf(BakeKind{UvBake{}}) == "bake uv",
+        "a uv bake names itself");
 
-  const std::string key = BakeKeyOf(BakeKind{PositionBake{}}, TextureSize{512});
-  Check(key == "bake position@512", "a bake key joins definition and size");
-  Check(KeyDefinition(key) == "bake position",
-        "a key splits back to its definition");
-  Check(KeySize(key) == std::optional<std::uint32_t>{512},
-        "a key splits back to its size");
-  Check(!KeySize("bake position").has_value(),
-        "a key without a size reports none");
-  Check(UvKeyOf(UvAxis::kU, TextureSize{256}) == "uv u@256",
-        "a uv key joins axis and size");
+  const BakeKey key =
+      KeyOf(DefinitionOf(BakeKind{PositionBake{}}), TextureSize{512});
+  Check(key.definition == "bake position" && key.pixels == 512,
+        "a bake key carries its definition and size as fields");
+  Check(key == KeyOf("bake position", TextureSize{512}) &&
+            key != KeyOf("bake position", TextureSize{256}),
+        "bake keys compare by both fields");
 
   return test::Finish("mesh");
 }

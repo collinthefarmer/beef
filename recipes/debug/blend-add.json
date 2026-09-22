@@ -1,0 +1,35 @@
+{
+  "format": 1,
+  "name": "Diagnostic: Blend add",
+  "description": "Test additive blend mode. White base layer plus red additive layer should appear bright red-pink.",
+  "keys": [
+    "default"
+  ],
+  "priority": -63,
+  "outputs": [
+    {
+      "target": "shell",
+      "slot": "emissive",
+      "strength": 1.0,
+      "stack": [
+        {
+          "source": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "opacity": 1.0
+        },
+        {
+          "source": [
+            1.0,
+            0.0,
+            0.0
+          ],
+          "blend": "add",
+          "opacity": 1.0
+        }
+      ]
+    }
+  ]
+}

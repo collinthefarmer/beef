@@ -1,0 +1,56 @@
+{
+  "format": 1,
+  "name": "perf-medium-stack",
+  "author": "collinthefarmer@gmail.com",
+  "description": "Performance: three image sources with different scrolls, one mask. Tests nominal cost.",
+  "priority": -39,
+  "keys": ["default"],
+  "sources": {
+    "scroll1": {
+      "image": {
+        "path": "skyrim/textures/effects/gradient.dds",
+        "scroll": [0.1, 0.0]
+      }
+    },
+    "scroll2": {
+      "image": {
+        "path": "skyrim/textures/effects/noise.dds",
+        "scroll": [0.0, 0.1]
+      }
+    },
+    "scroll3": {
+      "image": {
+        "path": "skyrim/textures/effects/perlin.dds",
+        "scroll": [-0.05, 0.05]
+      }
+    },
+    "material_metallic": {
+      "material": "metallic"
+    }
+  },
+  "masks": {
+    "metallic_mask": "saturate(@material_metallic)"
+  },
+  "outputs": [
+    {
+      "target": "material",
+      "slot": "emissive",
+      "strength": 0.5,
+      "stack": [
+        {
+          "source": "@scroll1",
+          "opacity": 0.3,
+          "mask": "@metallic_mask"
+        },
+        {
+          "source": "@scroll2",
+          "opacity": 0.3
+        },
+        {
+          "source": "@scroll3",
+          "opacity": 0.3
+        }
+      ]
+    }
+  ]
+}

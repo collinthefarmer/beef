@@ -66,13 +66,58 @@ float ActorEnvironment::ActorState(ActorStateKind a_kind) const {
     const auto *state = actor->AsActorState();
     return state && state->IsWeaponDrawn() ? 1.0f : 0.0f;
   }
-  case ActorStateKind::kHostileDistance: {
-    const auto target = actor->GetActorRuntimeData().currentCombatTarget.get();
-    return target ? actor->GetPosition().GetDistance(target->GetPosition())
-                  : 0.0f;
-  }
+  case ActorStateKind::kSwimming:
+    return actor->AsActorState() && actor->AsActorState()->IsSwimming() ? 1.0f
+                                                                        : 0.0f;
+  case ActorStateKind::kSprinting:
+    return actor->AsActorState() && actor->AsActorState()->IsSprinting() ? 1.0f
+                                                                         : 0.0f;
+  case ActorStateKind::kMounted:
+    return actor->IsOnMount() ? 1.0f : 0.0f;
+  case ActorStateKind::kMovementSpeed:
+    return actor->AsActorState() ? actor->AsActorState()->DoGetMovementSpeed()
+                                 : 0.0f;
+  case ActorStateKind::kHasTarget:
+    return actor->GetActorRuntimeData().currentCombatTarget.get() ? 1.0f : 0.0f;
+  case ActorStateKind::kPosition:
+  case ActorStateKind::kTarget:
+    return 0.0f;
   }
   return 0.0f;
+}
+
+Vec3 ActorEnvironment::ActorVector(ActorStateKind a_kind) const {
+  const auto actor = Actor();
+  if (!actor) {
+    return Vec3{};
+  }
+  switch (a_kind) {
+  case ActorStateKind::kPosition: {
+    const RE::NiPoint3 p = actor->GetPosition();
+    return Vec3{p.x, p.y, p.z};
+  }
+  case ActorStateKind::kTarget: {
+    const auto target = actor->GetActorRuntimeData().currentCombatTarget.get();
+    if (!target) {
+      return Vec3{};
+    }
+    const RE::NiPoint3 p = target->GetPosition();
+    return Vec3{p.x, p.y, p.z};
+  }
+  default:
+    return Vec3{};
+  }
+}
+
+Vec3 ActorEnvironment::WorldToRoot(const Vec3 &a_world) const {
+  const auto actor = Actor();
+  RE::NiAVObject *root = actor ? actor->Get3D(false) : nullptr;
+  if (!root) {
+    return a_world;
+  }
+  const RE::NiPoint3 local =
+      root->world.Invert() * RE::NiPoint3{a_world.x, a_world.y, a_world.z};
+  return Vec3{local.x, local.y, local.z};
 }
 
 float ActorEnvironment::Enchantment(EnchantmentField a_field) const {

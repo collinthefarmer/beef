@@ -1,0 +1,30 @@
+{
+  "format": 1,
+  "name": "debug-green-shell",
+  "author": "Claude",
+  "description": "Green shell on enchanted key with small inflate. Tests: shell output, pose.",
+  "priority": -99,
+  "keys": ["enchanted"],
+  "shell": {
+    "material": "pbrCopy",
+    "blend": "additive",
+    "opacity": 0.6,
+    "pose": {
+      "inflate": [0.1, 0.02, 0.1]
+    }
+  },
+  "outputs": [
+    {
+      "target": "shell",
+      "slot": "emissive",
+      "strength": 1.0,
+      "stack": [
+        {
+          "source": [0, 1, 0],
+          "opacity": 1.0
+        }
+      ],
+      "note": "Green shell with additive blend and small inflate on X and Z axes"
+    }
+  ]
+}

@@ -11,18 +11,15 @@
 
 namespace BetterEnchantmentEffects {
 namespace {
-// A bake is a pure function of the mesh data and its key (kind or distance
-// point, both content), so two actors sharing a mesh identity share the bake.
 [[nodiscard]] std::string BakeShareKey(const MeshIdentity &a_identity,
-                                       const std::string &a_key) {
+                                       const BakeKey &a_key) {
   std::string out = std::format(
       "{}\x1f{}", reinterpret_cast<std::uintptr_t>(a_identity.skinPartition),
       a_identity.vertices);
   for (const void *buffer : a_identity.buffers) {
     out += std::format("\x1f{}", reinterpret_cast<std::uintptr_t>(buffer));
   }
-  out += '\x1f';
-  out += a_key;
+  out += std::format("\x1f{}\x1f{}", a_key.definition, a_key.pixels);
   return out;
 }
 
@@ -31,26 +28,6 @@ bool RealTexture(const TextureRef &a_texture) {
   return extent && extent->width > 4 && extent->height > 4;
 }
 
-std::string DescribeTexture(const TextureRef &a_texture) {
-  if (!a_texture) {
-    return "the material has no texture in this slot";
-  }
-  const auto *data = reinterpret_cast<const RE::NiTexture::RendererData *>(
-      a_texture->rendererTexture);
-  const char *name = a_texture->name.c_str() ? a_texture->name.c_str() : "";
-  if (!data) {
-    return std::format("'{}' is not resident (no renderer data)", name);
-  }
-  if (!data->resourceView) {
-    return std::format("'{}' has no shader resource view", name);
-  }
-  const auto extent = TextureLab::ExtentOf(a_texture.get());
-  if (!extent) {
-    return std::format("'{}' is not a 2D texture", name);
-  }
-  return std::format("'{}' is {}x{}, a placeholder", name, extent->width,
-                     extent->height);
-}
 }
 
 std::expected<std::shared_ptr<MeshEntry>, std::string>
@@ -76,7 +53,7 @@ void Compositor::SweepMeshes(std::uint32_t a_nowMS,
 void Compositor::ClearMeshes() noexcept { meshes_.Clear(); }
 
 std::expected<std::shared_ptr<TextureLab::RenderTarget>, std::string>
-Compositor::BakeInto(MeshEntry &a_entry, const std::string &a_key,
+Compositor::BakeInto(MeshEntry &a_entry, const BakeKey &a_key,
                      TextureSize a_size,
                      const std::function<BakeBuffers()> &a_buffers) {
   if (const auto it = a_entry.bakes.find(a_key); it != a_entry.bakes.end()) {
@@ -112,7 +89,7 @@ Compositor::BakeInto(MeshEntry &a_entry, const std::string &a_key,
     return std::unexpected(problem.empty() ? "the bake pass failed" : problem);
   }
   if (GetSettings().verboseLogging) {
-    logger::info("bake '{}' on '{}' at {} px", KeyDefinition(a_key),
+    logger::info("bake '{}' on '{}' at {} px", a_key.definition,
                  a_entry.geometry && a_entry.geometry->name.c_str()
                      ? a_entry.geometry->name.c_str()
                      : "?",
@@ -129,17 +106,18 @@ Compositor::PrepareBake(const BakeSource &a_bake,
   if (!entry) {
     return std::unexpected(entry.error());
   }
-  return BakeInto(**entry, BakeKeyOf(a_bake.bake, a_size), a_size, [&] {
-    if (Is<ComponentIdBake>(a_bake.bake)) {
-      return BuildIslandBake(*(*entry)->mesh, (*entry)->analysis,
-                             IslandSource::kComponent);
-    }
-    if (Is<ChartIdBake>(a_bake.bake)) {
-      return BuildIslandBake(*(*entry)->mesh, (*entry)->analysis,
-                             IslandSource::kChart);
-    }
-    return BuildBake(*(*entry)->mesh, a_bake.bake);
-  });
+  return BakeInto(
+      **entry, KeyOf(DefinitionOf(a_bake.bake), a_size), a_size, [&] {
+        if (Is<ComponentIdBake>(a_bake.bake)) {
+          return BuildIslandBake(*(*entry)->mesh, (*entry)->analysis,
+                                 IslandSource::kComponent);
+        }
+        if (Is<ChartIdBake>(a_bake.bake)) {
+          return BuildIslandBake(*(*entry)->mesh, (*entry)->analysis,
+                                 IslandSource::kChart);
+        }
+        return BuildBake(*(*entry)->mesh, a_bake.bake);
+      });
 }
 
 std::expected<std::shared_ptr<TextureLab::RenderTarget>, std::string>
@@ -150,19 +128,13 @@ Compositor::PrepareDistance(const DistanceSource &a_distance,
   if (!entry) {
     return std::unexpected(entry.error());
   }
-  std::optional<Vec3> from = Match(
-      a_distance.from, [&](const Vec3 &point) { return std::optional{point}; },
-      [&](const std::string &node) {
-        return NodeBindPosition(a_inputs.geometry.get(), a_inputs.root.get(),
-                                node);
-      });
+  const std::optional<Vec3> from = NodeBindPosition(
+      a_inputs.geometry.get(), a_inputs.root.get(), a_distance.from);
   if (!from) {
-    return std::unexpected(std::format("node '{}' was not found on the wearer",
-                                       Get<std::string>(a_distance.from)
-                                           ? *Get<std::string>(a_distance.from)
-                                           : ""));
+    return std::unexpected(
+        std::format("node '{}' was not found on the wearer", a_distance.from));
   }
-  return BakeInto(**entry, DistanceKeyOf(a_distance, a_size), a_size,
+  return BakeInto(**entry, KeyOf(DefinitionOf(a_distance), a_size), a_size,
                   [&] { return BuildDistanceBake(*(*entry)->mesh, *from); });
 }
 

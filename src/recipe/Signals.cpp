@@ -158,6 +158,7 @@ std::vector<std::string> Dependencies(const Signal &a_signal,
         }
       },
       [&](const RateSignal &k) { AddRef(out, k.of.name); },
+      [&](const ToRootSignal &k) { AddRef(out, k.of.name); },
       [&](const SmoothSignal &k) {
         AddRef(out, k.of.name);
         AddRef(out, k.seconds);
@@ -526,6 +527,7 @@ void SignalGraph::InferTypes(SignalGraph &a_graph) {
         [&](const RateSignal &k) {
           return typeOf(k.of.name).value_or(ValueType::kScalar);
         },
+        [](const ToRootSignal &) { return ValueType::kVec3; },
         [&](const SmoothSignal &k) {
           return typeOf(k.of.name).value_or(ValueType::kScalar);
         },
@@ -545,7 +547,9 @@ void SignalGraph::InferTypes(SignalGraph &a_graph) {
         [](const WaveSignal &) { return ValueType::kScalar; },
         [](const RampSignal &) { return ValueType::kScalar; },
         [](const ActorValueSignal &) { return ValueType::kScalar; },
-        [](const ActorStateSignal &) { return ValueType::kScalar; },
+        [](const ActorStateSignal &k) {
+          return VectorValued(k.kind) ? ValueType::kVec3 : ValueType::kScalar;
+        },
         [](const EnchantmentSignal &) { return ValueType::kScalar; },
         [](const TriggerSignal &) { return ValueType::kScalar; },
         [](const CounterSignal &) { return ValueType::kScalar; },
@@ -808,9 +812,8 @@ std::vector<Diagnostic> CheckSource(const RowTypes &a_rows,
         }
       },
       [&](const DistanceSource &s) {
-        if (const auto *node = Get<std::string>(s.from);
-            node && node->empty()) {
-          report.Error("'distance' needs a node name or a point");
+        if (s.from.empty()) {
+          report.Error("'distance' names a skeleton node");
         }
       },
       [&](const RippleSource &s) {
@@ -818,25 +821,28 @@ std::vector<Diagnostic> CheckSource(const RowTypes &a_rows,
         CheckScalar(a_rows, report, s.speed, "speed");
         CheckScalar(a_rows, report, s.width, "width");
         CheckScalar(a_rows, report, s.decay, "decay");
+        CheckVector<3>(a_rows, report, s.direction, "direction", false);
       },
       [&](const MaterialClustersSource &s) {
-        if (s.clusters < 1 || s.clusters > kMaxMaterialClusters) {
+        if (s.settings.clusters < 1 ||
+            s.settings.clusters > kMaxMaterialClusters) {
           report.Error(
               std::format("'clusters' is 1..{}", kMaxMaterialClusters));
         }
-        if (s.iterations < 1 || s.iterations > kMaxClusterIterations) {
+        if (s.settings.iterations < 1 ||
+            s.settings.iterations > kMaxClusterIterations) {
           report.Error(
               std::format("'iterations' is 1..{}", kMaxClusterIterations));
         }
         for (const ClusterWeightField &field : kClusterWeightFields) {
-          const float weight = s.*field.member;
+          const float weight = s.settings.weights.*field.member;
           if (weight < 0.0f || weight > kMaxChannelWeight) {
             report.Error(std::format("'weights.{}' is 0..{}", field.name,
                                      kMaxChannelWeight));
           }
         }
       },
-      [](const MaterialSource &) {}, [](const UvSource &) {});
+      [](const MaterialSource &) {});
   return out;
 }
 
@@ -1281,7 +1287,14 @@ struct SignalState::Evaluator {
   }
 
   Value operator()(const ActorStateSignal &k) const {
+    if (VectorValued(k.kind)) {
+      return environment.ActorVector(k.kind);
+    }
     return environment.ActorState(k.kind);
+  }
+
+  Value operator()(const ToRootSignal &k) const {
+    return environment.WorldToRoot(state.Vector(k.of.name));
   }
 
   Value operator()(const EnchantmentSignal &k) const {

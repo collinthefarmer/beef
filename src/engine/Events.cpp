@@ -61,12 +61,26 @@ public:
         record.id = std::string{Studio::kHitReceivedEvent};
         record.payload.value = 1.0f;
         manager->QueueEvent(a_event->target->GetFormID(), std::move(record));
+        if (a_event->cause) {
+          const RE::NiPoint3 &at = a_event->cause->GetPosition();
+          EventRecord carried;
+          carried.id = std::string{Studio::kHitReceivedEvent} + ".position";
+          carried.payload.value = Vec3{at.x, at.y, at.z};
+          manager->QueueEvent(a_event->target->GetFormID(), std::move(carried));
+        }
       }
       if (a_event->cause && a_event->cause->As<RE::Actor>()) {
         EventRecord record;
         record.id = std::string{Studio::kHitDealtEvent};
         record.payload.value = 1.0f;
         manager->QueueEvent(a_event->cause->GetFormID(), std::move(record));
+        if (a_event->target) {
+          const RE::NiPoint3 &at = a_event->target->GetPosition();
+          EventRecord carried;
+          carried.id = std::string{Studio::kHitDealtEvent} + ".position";
+          carried.payload.value = Vec3{at.x, at.y, at.z};
+          manager->QueueEvent(a_event->cause->GetFormID(), std::move(carried));
+        }
       }
     }
     return RE::BSEventNotifyControl::kContinue;

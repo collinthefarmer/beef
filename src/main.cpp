@@ -48,11 +48,13 @@ void InitLog() {
                BetterEnchantmentEffects::BuildIdentity::build,
                BetterEnchantmentEffects::BuildIdentity::source_sha256);
   if (traceOpened) {
-    logger::info("diagnostic trace: {} ({} MiB segments, the last {} kept)",
-                 tracePath.string(),
-                 BetterEnchantmentEffects::Trace::kTraceSegmentBytes /
-                     (std::uint64_t{1024} * 1024),
-                 BetterEnchantmentEffects::Trace::kTraceSegmentsKept);
+    logger::info(
+        "diagnostic trace: {} ({} MiB segments, the first and the last {} "
+        "kept)",
+        tracePath.string(),
+        BetterEnchantmentEffects::Trace::kTraceSegmentBytes /
+            (std::uint64_t{1024} * 1024),
+        BetterEnchantmentEffects::Trace::kTraceSegmentsKept);
   } else {
     logger::warn("diagnostic trace could not be opened: {}",
                  tracePath.string());

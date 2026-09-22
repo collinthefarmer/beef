@@ -205,7 +205,16 @@ atom   := number | "[" expr "," expr ("," expr)? "]" | "(" expr ")"
 ```
 
 - Functions: `abs min max clamp saturate floor ceil frac sqrt pow sin cos
-  step smoothstep lerp if`. There is no `^`.
+  step smoothstep lerp if length distance dot cross normalize`. There is
+  no `^`.
+- The vector family (`length`, `distance`, `dot`, `cross`, `normalize`)
+  rejects scalar operands at check time: the shader represents a scalar
+  as a splatted float3, so a GPU `length` or `dot` of one would disagree
+  with the CPU, while a vec2 is `float3(x, y, 0)` and agrees. `length`,
+  `distance` and `dot` are the only functions that change a value's
+  type (vector in, scalar out); `cross` takes and yields vec3s;
+  `normalize` keeps its operand's size and maps a zero vector to zero
+  rather than NaN. Every other function preserves its operand's type.
 - Comparisons and logic yield 0 or 1. Arithmetic is component-wise on
   vectors and a scalar broadcasts; a vec2 and a vec3 never mix. Every
   operation is defined for scalar-scalar, scalar-vector and same-size
@@ -243,8 +252,24 @@ One pixel shader over a full-screen triangle serves every mode of
 separate shaders so a fault in one costs only its outputs. The shader's op
 numbers are `Program::Op`'s enum values and the shader's switch is written
 to them; its arrays are sized to `kMaxExpressionOps`, `kProgramRefs`,
-`kProgramCurves`, `kRippleFirings` and `kMaxClusters`, and every count is
+`kProgramCurves`, `kRippleFirings` and `kMaxMaterialClusters`, and every
+count is
 checked against the array before a pass runs.
+
+A bake clears its target to alpha 0 and `BakePS` writes alpha 1, so
+alpha marks coverage; after rasterization two `DilatePS` passes (ping-
+ponged through the scratch target) flood each uncovered texel with the
+average of its covered neighbours, growing a two-texel gutter, because
+bilinear sampling and mip generation otherwise pull the empty
+background into UV island borders — on a position bake that reads as a
+false position sweeping toward the frame origin at every seam. Mip
+levels deeper than the gutter still darken at borders; masks sample
+mip 0 unless a recipe asks otherwise. Adjacent islands with different
+values still blend where their borders touch, which for the id maps
+(`componentId`, `chartId`, and the `materialClusters` map — all three
+carry id / 255 texels through the same linear sampler) fabricates ids
+between the two — those want nearest sampling, recorded as a backlog
+item, not a dilation fix.
 
 The C++ side of every `cbuffer` below is declared once in
 `render/ShaderConstants.h` (`LayerConstants` for `Params`, plus
@@ -300,11 +325,17 @@ has `d`, `b`, `a` in order.
 
 Ripple pass: `rippleFirings[8]` xyz origin in bind-pose units, w age in
 seconds; `rippleShape` x speed, y width, z decay, w 1 = disc; `rippleMisc`
-x firing count, y frame. The source is the position bake, rgb = position /
+x firing count, y frame; `rippleDir` xyz a normalised worldspace direction,
+w 1 = directional. The source is the position bake, rgb = position /
 (2 frame) + 0.5. Each firing is a front at distance age x speed from its
-origin; a ring is a band of the given width, a disc everything inside;
-fronts fade by exp(-decay x age) and combine by max. A pooled target keeps
-its last content, so a pass with no firings paints it black.
+origin: radial (w 0) measures `length(pos - origin)`, directional (w 1)
+measures `dot(pos - origin, dir)` so the front is a plane sweeping along
+`dir`. A ring is a band of the given width, a disc everything inside (and,
+when directional, only ahead of the origin plane); fronts fade by
+exp(-decay x age) and combine by max. The direction is resolved once per
+tick and shared by that source's live firings; the recipe side normalises
+it and a zero vector falls back to radial. A pooled target keeps its last
+content, so a pass with no firings paints it black.
 
 Classify pass: `centroidRmaos[8]` per cluster in analysis order (roughness,
 metallic, occlusion, reflectance); `centroidLuma[8]` x luma, y id;
@@ -615,6 +646,63 @@ Lab mechanics:
   own bus follows the same one-typed-value model: `equip` is a scalar
   and `equip.position` a vec3, and the menu's test-fire emits
   `<id>.position` beside `<id>` when its node resolves.
+  `hit.received.position` carries the attacker's world position and
+  `hit.dealt.position` the struck actor's, because `TESHitEvent` has no
+  impact point; the other actor's centre is the best located fact the
+  event offers, and it is close enough to aim a world-anchored ripple.
+
+- `target` reads the wearer's current combat target, not a scan for the
+  nearest hostile, because the engine maintains the former for free and
+  a scan would run per tick per wearer. With no combat target it reads
+  zero, which is a real world position; `hasTarget` carries the
+  presence bit, so a recipe gates on `@hasTarget` instead of testing
+  the position against a sentinel. `distance(@target, @position)`
+  reproduces the removed `hostileDistance` selector, and
+  `toRoot(@target)` gives the direction to the hostile in root space.
+  Who counts as the target differs by wearer: an NPC's combat AI
+  maintains `currentCombatTarget` while fighting, but for the player
+  the engine sets it from the attack/crosshair focus, so a
+  player-worn recipe reads a target when an enemy is targeted, not
+  merely when one is hostile nearby (observed in play 2026-09-22 —
+  the same behaviour the removed selector had).
+
+- `actorState` splits its return by selector: the flags (`inCombat`,
+  `sneaking`, `weaponDrawn`, `swimming`, `sprinting`, `mounted`,
+  `hasTarget`) and the scalar `movementSpeed` go through `ActorState`,
+  while `position` and `target` go through a separate `ActorVector`
+  returning a vec3, because the interface is typed per method.
+  `VectorValued` (`Recipe.h`) names the vec3 selectors once; the signal
+  evaluator and type inference both read it. The pattern mirrors
+  `efsh`, whose field also decides scalar/vec2/vec3.
+
+- `toRoot` converts a world-space position into the wearer's root space
+  through `WorldToRoot` (`Environment.cpp`), which applies
+  `root->world.Invert()` — the same transform `ToRootSpace` uses render
+  side. It is a point transform (affine, with translation), so a
+  direction is built by subtracting two converted points, where the
+  translation cancels. `Signals` stays engine-free: `WorldToRoot` and
+  `ActorVector` are interface methods the null environment answers with
+  identity and zero, and only `ActorEnvironment` reads the actor. A
+  world-space direction conversion (for a facing vector) would need a
+  rotation-only method and is deferred with the `facing` selector.
+
+- A studio gesture (a slider drag) applies its edit and rebuilds the
+  world in one atomic step (`ChangeAndRebuildActors`), every frame.
+  Live instances point at the shared `Recipe`, so a mutation the render
+  path can observe before its rebuild null-derefs in the binding's
+  writes (crash 2026-09-22, a throttle that deferred only the rebuild;
+  reverted same day). A rebuild throttle must defer the mutation too,
+  or give live instances their own recipe snapshot. The cost that
+  motivated the attempt stands (measured 2026-09-21: a drag rebuilt
+  ~20 actors ~11 times a second, up to 18 ms each, ~320 texture
+  acquires per rebuild); the redesign is backlog item 49.
+
+- `LogStackDiagnostics` (`engine/ManagerApply.cpp`) logs each distinct
+  (recipe, output, geometry, where, message) once per game session,
+  marked "(repeats suppressed)", because a recipe that errors on a
+  crowd re-applies on every refresh and wrote 250 identical lines in
+  one session. The menu's in-place diagnostics are unaffected; only
+  the log line is deduplicated.
 
 - `RetireActorEffects` (`engine/LiveActor.cpp`) clears in a fixed order:
   application tokens, then lights, then each geometry through
@@ -814,18 +902,59 @@ Decompile provenance (`decompiled/WornEnchantmentFX/plugin.c` unless noted):
   space for a standing actor.
 - Bake frames: `position` maps -kPositionFrame..kPositionFrame per axis to
   0..1 in one frame shared by every geometry (the skeleton root is the
-  origin, z up, so a standing body spans about 0.5 to 1 in z);
-  `localPosition` maps into the geometry's own model bound; `distance` maps
-  0..kDistanceFrame to 0..1; `worldUp` is how far the bind-pose normal
-  points up; `partition` is 1 on the biped slot's triangles; `boneWeight`
+  origin, z up, so a standing body spans about 0.5 to 1 in z). The
+  identity `2 * kPositionFrame == kDistanceFrame` (256) is load-bearing:
+  it makes `distance()` of raw position-bake texels equal a `distance`
+  source's texel exactly, which is why the source's point-form could be
+  deleted; a change to either frame breaks that equivalence and every
+  recipe that hard-codes the decode.
+  `localPosition` maps into the geometry's own model bound
+  (`modelBound.radius`, `MeshReader.cpp`), which skinned armor usually
+  stores as zero, so `ReadMesh` falls back to a bound measured from the
+  vertices (`MeasureBound`, box centre and enclosing radius) and the
+  bake works on every mesh; `normal` is the bind-pose surface normal
+  with each axis mapped -1..1 to 0..1 (recover the vector as `v * 2 -
+  [1, 1, 1]`; `dot` of it against a direction is the centre-free way to
+  shade the side of a body facing something, where a positional split
+  needs a centre no recipe can measure; the old `worldUp` selector was
+  its z channel and was removed as derivable — the encoding is affine,
+  so `dot(@bake, [0, 0, 1])` reads it without a decode); `uv` carries
+  the texel's coordinates as `[u, v, 0]` (a vec2; `dot(@uv, [1, 0])`
+  extracts u — it is a bake because masks have no uv variable, so a
+  texture is the only channel per-texel uv can arrive by); `distance`
+  maps 0..kDistanceFrame to 0..1 from a named skeleton node (its
+  point-form was removed as derivable, see the frame identity above);
+  `partition` is 1 on the biped slot's triangles; `boneWeight`
   is the summed weight of the named bones (sorted, so two orders of one set
   share a key); `componentId` and `chartId` carry island id / 255 in x with
   `kNoIsland` vertices at 1 and need the analysis, not the mesh alone.
-- A bake is cached under `<definition>@<size>`, never under the source's
-  name, so a rename cannot serve the old picture and two names with one
-  definition share a target; names never contain `@`. A node key names the
-  node, not its position, so the snapshot can find the bake without looking
-  the node up.
+- Every source bakes into the geometry's UV space, so a bake
+  distinguishes exactly what the UVs distinguish — no more. Any texel
+  sharing collapses it: humanoid armor mirrors left onto right on one
+  island to halve texture use; symmetric or thin parts reuse front
+  texels for the back; straps and trim overlap the islands beneath
+  them; a double-sided sheet's two faces are the same texels with
+  opposite normals. Wherever surfaces share texels, rasterisation is
+  last-written-wins and every bake (position, normal, boneWeight — the
+  mesh reader resolves per vertex correctly, then collapses at
+  rasterisation) reads one surface's value for all of them. Which axes
+  survive is per-armor, not a rule (observed 2026-09-22: front/back
+  also collapses on some pieces, not only left/right). Two verbose
+  lines measure it per geometry (`render/MeshCache.cpp`): `side split
+  ... overlap N%` splits by L/R bone names, `facing split ... overlap
+  N%` by bind-pose y against the mesh centre; 100% means that axis
+  cannot be masked apart on that piece, and `inspect-bake-position`
+  (debug recipe) shows the same fact as colour in game. Region masking
+  survives because a `partition` bake keys on a biped slot, and slots
+  are region-level (forearms, calves), never side-specific. Lights are
+  the only per-half path, being placed in bone space, but a recipe
+  carries one light output with one intensity signal, so two
+  independently-gated halves are still not expressible.
+- A bake is cached under `BakeKey{definition, pixels}` (`mesh/Mesh.h`),
+  never under the source's name, so a rename cannot serve the old
+  picture and two names with one definition share a target. A node key
+  names the node, not its position, so the snapshot can find the bake
+  without looking the node up.
 - Welding: `kMaxWeldCell` is 2^40 so the float-to-integer cast of a cell
   index is defined for any finite coordinate; only triangle corners weld,
   so a vertex no triangle reaches stays alone whatever it coincides with;

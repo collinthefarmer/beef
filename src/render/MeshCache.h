@@ -9,6 +9,7 @@
 
 #include <cstdint>
 #include <expected>
+#include <map>
 #include <memory>
 #include <span>
 #include <string>
@@ -22,8 +23,7 @@ struct MeshEntry {
   std::string problem;
   MeshFacts facts;
   MeshAnalysis analysis;
-  std::unordered_map<std::string, std::shared_ptr<TextureLab::RenderTarget>>
-      bakes;
+  std::map<BakeKey, std::shared_ptr<TextureLab::RenderTarget>> bakes;
   std::uint32_t lastUsedMS = 0;
 };
 

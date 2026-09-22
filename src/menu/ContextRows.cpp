@@ -227,6 +227,12 @@ void DrawKeys(const Frame &a_frame, const Studio::PieceRow &a_piece,
   table.Cell();
   table.Cell();
   table.End();
+  if (!a_piece.diffusePaths.empty()) {
+    Dim("a material key matches this piece's texture paths:");
+    for (const std::string &path : a_piece.diffusePaths) {
+      Dim(path.c_str());
+    }
+  }
 }
 
 void UndoRedoButtons(const Studio::RecipeRow &a_recipe,

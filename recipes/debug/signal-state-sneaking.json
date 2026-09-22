@@ -1,0 +1,33 @@
+{
+  "format": 1,
+  "name": "signal-state-sneaking",
+  "author": "Claude",
+  "description": "Sneaking → invisible, else visible. Tests: actorState visibility.",
+  "priority": -86,
+  "keys": ["default"],
+  "signals": {
+    "isSneaking": {
+      "actorState": "sneaking",
+      "note": "1 when sneaking, 0 otherwise"
+    },
+    "visibility": {
+      "expr": "1 - @isSneaking",
+      "note": "Full visibility normally, 0 when sneaking"
+    }
+  },
+  "outputs": [
+    {
+      "target": "material",
+      "slot": "emissive",
+      "strength": 1.0,
+      "stack": [
+        {
+          "source": [0.2, 1, 0.2],
+          "opacity": "@visibility",
+          "note": "Green, fades when sneaking"
+        }
+      ],
+      "note": "Visibility toggled by sneaking state"
+    }
+  ]
+}

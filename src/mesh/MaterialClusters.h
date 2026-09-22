@@ -25,24 +25,6 @@ struct MaterialSample {
   [[nodiscard]] bool operator==(const MaterialSample &) const = default;
 };
 
-struct ChannelWeights {
-  float roughness = 1.0f;
-  float metallic = 1.0f;
-  float occlusion = 0.5f;
-  float reflectance = 0.5f;
-  float luma = 1.0f;
-  [[nodiscard]] bool operator==(const ChannelWeights &) const = default;
-};
-
-inline constexpr std::uint8_t kMaxClusters = 8;
-struct ClusterSettings {
-  std::uint8_t clusters = 4;
-  ChannelWeights weights;
-  std::uint32_t seed = 1;
-  std::uint32_t iterations = 32;
-  [[nodiscard]] bool operator==(const ClusterSettings &) const = default;
-};
-
 struct MaterialCluster {
   std::uint8_t id = 0;
   MaterialTexel centroid;
@@ -56,11 +38,6 @@ struct MaterialAnalysis {
   std::vector<MaterialCluster> clusters;
   [[nodiscard]] bool operator==(const MaterialAnalysis &) const = default;
 };
-
-[[nodiscard]] ClusterSettings
-SettingsOf(const MaterialClustersSource &a_source) noexcept;
-[[nodiscard]] MaterialClustersSource
-SourceOf(const ClusterSettings &a_settings) noexcept;
 
 [[nodiscard]] MaterialAnalysis
 ClusterMaterial(const MaterialSample &a_sample,

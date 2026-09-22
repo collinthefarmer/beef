@@ -1,0 +1,27 @@
+{
+  "format": 1,
+  "name": "output-material-height",
+  "description": "Diagnostic: material relief as height displacement with scale 0.05",
+  "keys": ["default"],
+  "priority": -68,
+  "sources": {
+    "relief": {
+      "material": "relief",
+      "note": "Material relief detail map"
+    }
+  },
+  "outputs": [
+    {
+      "target": "material",
+      "slot": "height",
+      "scale": 0.05,
+      "stack": [
+        {
+          "source": "@relief",
+          "opacity": 1.0
+        }
+      ],
+      "note": "Relief mapped as height displacement, scale 0.05 units"
+    }
+  ]
+}

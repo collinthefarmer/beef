@@ -17,7 +17,7 @@ struct Function {
   Program::Op op;
   int arity;
 };
-constexpr std::array<Function, 16> kFunctions{{
+constexpr std::array<Function, 21> kFunctions{{
     {"abs", Program::Op::kAbs, 1},
     {"min", Program::Op::kMin, 2},
     {"max", Program::Op::kMax, 2},
@@ -34,6 +34,11 @@ constexpr std::array<Function, 16> kFunctions{{
     {"smoothstep", Program::Op::kSmoothstep, 3},
     {"lerp", Program::Op::kLerp, 3},
     {"if", Program::Op::kIf, 3},
+    {"length", Program::Op::kLength, 1},
+    {"distance", Program::Op::kDistance, 2},
+    {"dot", Program::Op::kDot, 2},
+    {"cross", Program::Op::kCross, 2},
+    {"normalize", Program::Op::kNormalize, 1},
 }};
 
 template <class F> Value Unary(const Value &a, F a_f) noexcept {
@@ -85,6 +90,34 @@ Value Ternary(const Value &a, const Value &b, const Value &c, F a_f) noexcept {
   }
   const auto x = AsVec3(a), y = AsVec3(b), z = AsVec3(c);
   return Vec3{a_f(x.x, y.x, z.x), a_f(x.y, y.y, z.y), a_f(x.z, y.z, z.z)};
+}
+
+float Length(const Value &a) noexcept {
+  return Match(
+      a, [](float x) { return std::fabs(x); },
+      [](const Vec2 &v) { return std::sqrt(v.x * v.x + v.y * v.y); },
+      [](const Vec3 &v) {
+        return std::sqrt(v.x * v.x + v.y * v.y + v.z * v.z);
+      });
+}
+
+float Dot(const Value &a, const Value &b) noexcept {
+  const auto ta = TypeOf(a), tb = TypeOf(b);
+  if (ta != tb || ta == ValueType::kScalar) {
+    return 0.0f;
+  }
+  const Vec3 x = AsVec3(a), y = AsVec3(b);
+  return x.x * y.x + x.y * y.y + x.z * y.z;
+}
+
+Value Cross(const Value &a, const Value &b) noexcept {
+  const auto *x = Get<Vec3>(a);
+  const auto *y = Get<Vec3>(b);
+  if (!x || !y) {
+    return 0.0f;
+  }
+  return Vec3{x->y * y->z - x->z * y->y, x->z * y->x - x->x * y->z,
+              x->x * y->y - x->y * y->x};
 }
 
 float Smoothstep(float lo, float hi, float x) noexcept {
@@ -721,6 +754,44 @@ std::expected<ValueType, std::string> Program::Check(const RefTyper &a_types,
       stack.Push(*t);
       break;
     }
+    case Op::kLength:
+      if (stack.Pop() == ValueType::kScalar) {
+        return std::unexpected("length() takes a vector");
+      }
+      stack.Push(ValueType::kScalar);
+      break;
+    case Op::kDistance: {
+      const auto b = stack.Pop(), a = stack.Pop();
+      if (a == ValueType::kScalar || a != b) {
+        return std::unexpected("distance() takes two vectors of the same size");
+      }
+      stack.Push(ValueType::kScalar);
+      break;
+    }
+    case Op::kDot: {
+      const auto b = stack.Pop(), a = stack.Pop();
+      if (a == ValueType::kScalar || a != b) {
+        return std::unexpected("dot() takes two vectors of the same size");
+      }
+      stack.Push(ValueType::kScalar);
+      break;
+    }
+    case Op::kCross: {
+      const auto b = stack.Pop(), a = stack.Pop();
+      if (a != ValueType::kVec3 || b != ValueType::kVec3) {
+        return std::unexpected("cross() takes two vec3s");
+      }
+      stack.Push(ValueType::kVec3);
+      break;
+    }
+    case Op::kNormalize: {
+      const auto t = stack.Pop();
+      if (t == ValueType::kScalar) {
+        return std::unexpected("normalize() takes a vector");
+      }
+      stack.Push(t);
+      break;
+    }
     }
   }
   return stack.Pop();
@@ -877,6 +948,31 @@ Value Program::Evaluate(const Inputs &a_inputs) const noexcept {
       stack.ApplyTernary(
           [](float x, float y, float s) { return x + (y - x) * s; });
       break;
+    case Op::kLength:
+      stack.Push(Length(stack.Pop()));
+      break;
+    case Op::kDistance: {
+      const auto b = stack.Pop(), a = stack.Pop();
+      stack.Push(Length(Binary(a, b, [](float x, float y) { return x - y; })));
+      break;
+    }
+    case Op::kDot: {
+      const auto b = stack.Pop(), a = stack.Pop();
+      stack.Push(Dot(a, b));
+      break;
+    }
+    case Op::kCross: {
+      const auto b = stack.Pop(), a = stack.Pop();
+      stack.Push(Cross(a, b));
+      break;
+    }
+    case Op::kNormalize: {
+      const auto a = stack.Pop();
+      const float len = Length(a);
+      stack.Push(Unary(
+          a, [len](float x) { return len <= kEpsilon ? 0.0f : x / len; }));
+      break;
+    }
     }
   }
   return stack.Pop();

@@ -54,15 +54,9 @@ MaterialRowOf(const MaterialSource &a_material) {
   return bake;
 }
 
-[[nodiscard]] UvSourceRow UvRowOf(const UvSource &a_uv) {
-  return UvSourceRow{std::string{UvAxisName(a_uv.axis)}};
-}
-
 [[nodiscard]] DistanceSourceRow
 DistanceRowOf(const DistanceSource &a_distance) {
-  return DistanceSourceRow{Match(
-      a_distance.from, [](const std::string &a_node) { return a_node; },
-      [](const Vec3 &a_point) { return PointText(a_point); })};
+  return DistanceSourceRow{a_distance.from};
 }
 
 [[nodiscard]] RippleSourceRow RippleRowOf(const RippleSource &a_ripple) {
@@ -77,14 +71,15 @@ DistanceRowOf(const DistanceSource &a_distance) {
 
 [[nodiscard]] MaterialClustersSourceRow
 ClustersRowOf(const MaterialClustersSource &a_clusters) {
+  const ClusterSettings &s = a_clusters.settings;
   MaterialClustersSourceRow clusters;
-  clusters.clusters = std::to_string(a_clusters.clusters);
-  clusters.weights = std::format(
-      "{}, {}, {}, {}, {}", ParamText(a_clusters.roughness),
-      ParamText(a_clusters.metallic), ParamText(a_clusters.occlusion),
-      ParamText(a_clusters.reflectance), ParamText(a_clusters.luma));
-  clusters.seed = std::to_string(a_clusters.seed);
-  clusters.iterations = std::to_string(a_clusters.iterations);
+  clusters.clusters = std::to_string(s.clusters);
+  clusters.weights =
+      std::format("{}, {}, {}, {}, {}", ParamText(s.weights.roughness),
+                  ParamText(s.weights.metallic), ParamText(s.weights.occlusion),
+                  ParamText(s.weights.reflectance), ParamText(s.weights.luma));
+  clusters.seed = std::to_string(s.seed);
+  clusters.iterations = std::to_string(s.iterations);
   return clusters;
 }
 
@@ -106,7 +101,6 @@ SourceRow SourceRowOf(const Source &a_source, std::size_t a_references) {
       [](const BakeSource &a_bake) -> SourceRowKind {
         return BakeRowOf(a_bake);
       },
-      [](const UvSource &a_uv) -> SourceRowKind { return UvRowOf(a_uv); },
       [](const DistanceSource &a_distance) -> SourceRowKind {
         return DistanceRowOf(a_distance);
       },
@@ -178,20 +172,9 @@ MaterialKindOf(const MaterialSourceRow &a_row) {
   return SourceKind{BakeSource{*bake}};
 }
 
-[[nodiscard]] std::optional<SourceKind> UvKindOf(const UvSourceRow &a_row) {
-  const auto axis = ParseUvAxis(a_row.axis);
-  return axis ? std::optional<SourceKind>{UvSource{*axis}} : std::nullopt;
-}
-
 [[nodiscard]] std::optional<SourceKind>
 DistanceKindOf(const DistanceSourceRow &a_row) {
-  DistanceSource distance;
-  if (const auto point = LiteralColor(a_row.from)) {
-    distance.from = *point;
-  } else {
-    distance.from = a_row.from;
-  }
-  return SourceKind{distance};
+  return SourceKind{DistanceSource{a_row.from}};
 }
 
 [[nodiscard]] std::optional<SourceKind>
@@ -227,14 +210,12 @@ ClustersKindOf(const MaterialClustersSourceRow &a_row) {
       *iterations < 1) {
     return std::nullopt;
   }
-  clusters.clusters = static_cast<std::uint8_t>(*count);
-  clusters.roughness = (*weights)[0];
-  clusters.metallic = (*weights)[1];
-  clusters.occlusion = (*weights)[2];
-  clusters.reflectance = (*weights)[3];
-  clusters.luma = (*weights)[4];
-  clusters.seed = *seed;
-  clusters.iterations = *iterations;
+  clusters.settings.clusters = static_cast<std::uint8_t>(*count);
+  clusters.settings.weights =
+      ChannelWeights{(*weights)[0], (*weights)[1], (*weights)[2], (*weights)[3],
+                     (*weights)[4]};
+  clusters.settings.seed = *seed;
+  clusters.settings.iterations = *iterations;
   return SourceKind{clusters};
 }
 }
@@ -245,7 +226,6 @@ std::optional<SourceKind> SourceKindOf(const SourceRow &a_row) {
       [](const ImageSourceRow &a_row) { return ImageKindOf(a_row); },
       [](const MaterialSourceRow &a_row) { return MaterialKindOf(a_row); },
       [](const BakeSourceRow &a_row) { return BakeKindOf(a_row); },
-      [](const UvSourceRow &a_row) { return UvKindOf(a_row); },
       [](const DistanceSourceRow &a_row) { return DistanceKindOf(a_row); },
       [](const RippleSourceRow &a_row) { return RippleKindOf(a_row); },
       [](const MaterialClustersSourceRow &a_row) {

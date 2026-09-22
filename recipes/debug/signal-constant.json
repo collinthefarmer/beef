@@ -1,0 +1,22 @@
+{
+  "format": 1,
+  "name": "signal-constant",
+  "author": "Claude",
+  "description": "Constant signal [1, 0.5, 0] (orange) on emissive. Tests: constant signal.",
+  "priority": -97,
+  "keys": ["default"],
+  "outputs": [
+    {
+      "target": "material",
+      "slot": "emissive",
+      "strength": 1.0,
+      "stack": [
+        {
+          "source": [1, 0.5, 0],
+          "opacity": 1.0
+        }
+      ],
+      "note": "Static orange emissive"
+    }
+  ]
+}

@@ -1,0 +1,39 @@
+{
+  "format": 1,
+  "name": "signal-accumulate",
+  "author": "Claude",
+  "description": "Accumulate value over time when event fires. Tests: accumulate.",
+  "priority": -84,
+  "keys": ["default"],
+  "signals": {
+    "damageEvent": {
+      "trigger": {
+        "event": "hit.received",
+        "lifetime": 5,
+        "max": 10
+      },
+      "note": "Fires on incoming hit"
+    },
+    "damageAccum": {
+      "accumulate": {
+        "trigger": "@damageEvent",
+        "decay": 0.2
+      },
+      "note": "Accumulates on hit, decays at 0.2 per second"
+    }
+  },
+  "outputs": [
+    {
+      "target": "material",
+      "slot": "emissive",
+      "strength": "@damageAccum",
+      "stack": [
+        {
+          "source": [0, 0.5, 1],
+          "opacity": 1.0
+        }
+      ],
+      "note": "Accumulated damage indicator: cyan to blue"
+    }
+  ]
+}

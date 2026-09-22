@@ -1,0 +1,25 @@
+{
+  "format": 1,
+  "name": "Diagnostic: Expression division by zero",
+  "description": "Test division by zero safety. Expression 1.0 / 0.0 should evaluate to 0 and output black.",
+  "keys": ["default"],
+  "priority": -56,
+  "signals": {
+    "divByZero": {
+      "expr": "1.0 / 0.0"
+    }
+  },
+  "outputs": [
+    {
+      "target": "shell",
+      "slot": "emissive",
+      "strength": "@divByZero",
+      "stack": [
+        {
+          "source": [1.0, 1.0, 1.0],
+          "opacity": 1.0
+        }
+      ]
+    }
+  ]
+}

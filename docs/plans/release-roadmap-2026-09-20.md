@@ -142,9 +142,14 @@ format 1 is now mostly writing, not building. The five parts:
    links `beef-validate.exe` (CMake target `BeefValidate`), so packaging
    only has to include it.
 3. **Freeze format 1, in writing.** The blocking record changes are in,
-   and the per-row note field landed 2026-09-21 (the last open record
-   decision), so the freeze is now purely writing: each remaining change
-   made or deferred to format 2, named.
+   the per-row note field landed 2026-09-21 (the last open record
+   decision), and the composable-proximity bundle (row-reference items
+   54 to 57) landed 2026-09-22: `length`/`distance` in the expression
+   language, `target` and `hasTarget` on `actorState`, and the baked
+   `hostileDistance` deleted, so the enum and the expression function
+   set now freeze consistent with the format's expose-and-compose
+   contract. What remains is the writing: each remaining change made or
+   deferred to format 2, named.
 4. **The nine examples and their walkthroughs.** Not started; no
    `recipes/` directory exists. The lesson plan from 2026-09-09 stands
    (glow, breathe, where, the wearer, events, the surface, cloth and
@@ -163,6 +168,17 @@ folder's lifecycle, the format-2 promise, the Community Shaders pin loop,
 a channel to receive a bug, and the author cost model. The first two
 belong inside gate 5's freeze decision; the cost model falls out of gate
 1's measurement.
+
+Added 2026-09-21, deferred post-alpha: **per-side effects on mirror-UV
+armor.** The two mirror halves of a symmetric region (left boot from
+right, paired pauldrons) cannot be masked apart, because every per-texel
+source bakes into UV space and humanoid armor mirrors the halves onto the
+same texels. The alpha documents the limitation (`REFERENCE.md`, bake
+frames) rather than lifting it. The clean lift is per-half lights: allow
+more than one light output per recipe and store a list of lights per
+instance, so a foot-bone light per side can be gated independently. M for
+the runtime, and it spends against gate 1's light budget. Diagnosed at
+row-reference item 48.
 
 ## 3. Packaging — unchanged, all open
 

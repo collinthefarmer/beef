@@ -267,7 +267,7 @@ private:
   bool RenderMask(RenderedMask &a_mask, const SignalState &a_signals,
                   float a_time);
   std::expected<std::shared_ptr<TextureLab::RenderTarget>, std::string>
-  BakeInto(MeshEntry &a_entry, const std::string &a_key, TextureSize a_size,
+  BakeInto(MeshEntry &a_entry, const BakeKey &a_key, TextureSize a_size,
            const std::function<BakeBuffers()> &a_buffers);
   std::expected<std::shared_ptr<TextureLab::RenderTarget>, std::string>
   PrepareBake(const BakeSource &a_bake, const GeometryInputs &a_inputs,
@@ -300,4 +300,6 @@ private:
   std::uint32_t nowMS_ = 0;
   std::uint32_t lastSweepMS_ = 0;
 };
+
+[[nodiscard]] std::string DescribeTexture(const TextureRef &a_texture);
 }

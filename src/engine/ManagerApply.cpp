@@ -20,6 +20,7 @@
 #include <array>
 #include <cstddef>
 #include <format>
+#include <mutex>
 #include <ranges>
 #include <string>
 #include <string_view>
@@ -401,12 +402,24 @@ std::string SurfaceProblem(LiveGeometry &a_bound, const SlotPlan &a_slot,
                 : std::string{"the surface is not bound"};
 }
 
+bool FirstOccurrenceThisSession(std::string a_key) {
+  static std::mutex lock;
+  static std::unordered_set<std::string> seen;
+  const std::scoped_lock guard{lock};
+  return seen.insert(std::move(a_key)).second;
+}
+
 void LogStackDiagnostics(const LocatedStackOutput &a_output,
                          const std::string &a_geometry) {
   for (const Diagnostic &diagnostic : a_output.placed.stack->Diagnostics()) {
-    logger::warn("recipe {} output {} on '{}': {}: {}", a_output.recipe.id,
-                 a_output.placed.index, a_geometry, diagnostic.where,
-                 diagnostic.message);
+    if (!FirstOccurrenceThisSession(std::format(
+            "{}|{}|{}|{}|{}", a_output.recipe.id, a_output.placed.index,
+            a_geometry, diagnostic.where, diagnostic.message))) {
+      continue;
+    }
+    logger::warn("recipe {} output {} on '{}': {}: {} (repeats suppressed)",
+                 a_output.recipe.id, a_output.placed.index, a_geometry,
+                 diagnostic.where, diagnostic.message);
   }
 }
 

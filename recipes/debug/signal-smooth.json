@@ -1,0 +1,35 @@
+{
+  "format": 1,
+  "name": "signal-smooth",
+  "author": "Claude",
+  "description": "Smooth lerp of a stepped signal (combat on/off). Tests: smoothstep smoothing.",
+  "priority": -80,
+  "keys": ["default"],
+  "signals": {
+    "inCombat": {
+      "actorState": "inCombat",
+      "note": "1 when in combat, 0 otherwise"
+    },
+    "smoothCombat": {
+      "smooth": {
+        "of": "@inCombat",
+        "seconds": 0.5
+      },
+      "note": "Smoothly transitions over 0.5 seconds"
+    }
+  },
+  "outputs": [
+    {
+      "target": "material",
+      "slot": "emissive",
+      "strength": "@smoothCombat",
+      "stack": [
+        {
+          "source": [0.5, 0, 0.5],
+          "opacity": 1.0
+        }
+      ],
+      "note": "Smoothed combat state indicator: red to magenta"
+    }
+  ]
+}

@@ -1,0 +1,25 @@
+{
+  "format": 1,
+  "name": "Diagnostic: Expression nested functions",
+  "description": "Test nesting depth. clamp(saturate(abs(sin(time))), 0, 1) should oscillate visibility based on time.",
+  "keys": ["default"],
+  "priority": -51,
+  "signals": {
+    "animated": {
+      "expr": "clamp(saturate(abs(sin(time))), 0, 1)"
+    }
+  },
+  "outputs": [
+    {
+      "target": "shell",
+      "slot": "emissive",
+      "strength": "@animated",
+      "stack": [
+        {
+          "source": [1.0, 1.0, 1.0],
+          "opacity": 1.0
+        }
+      ]
+    }
+  ]
+}

@@ -105,9 +105,11 @@ int main() {
     Check(status.rotations >= 2 && status.segment == status.rotations + 1,
           "a full segment rotates into the next one");
     Check(status.dropped == 0, "rotation drops no events");
-    Check(!std::filesystem::exists(file) &&
-              !std::filesystem::exists(segment(status.segment - 2)),
-          "segments before the previous one are deleted");
+    Check(std::filesystem::exists(file),
+          "the first segment survives rotation; the session start is the "
+          "burst worth keeping");
+    Check(!std::filesystem::exists(segment(status.segment - 2)),
+          "segments between the first and the previous one are deleted");
     Check(std::filesystem::exists(segment(status.segment - 1)) &&
               std::filesystem::exists(segment(status.segment)),
           "the previous and current segments are kept");

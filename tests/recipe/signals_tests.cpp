@@ -18,12 +18,19 @@ public:
   float state = 0.0f;
   float enchantment = 0.0f;
   std::optional<Efsh::EffectParams> effect;
+  Vec3 vector{};
+  Vec3 rootOrigin{};
 
   float ActorValue(std::string_view a_name, Measure) const override {
     const auto it = actorValues.find(std::string{a_name});
     return it == actorValues.end() ? 0.0f : it->second;
   }
   float ActorState(ActorStateKind) const override { return state; }
+  Vec3 ActorVector(ActorStateKind) const override { return vector; }
+  Vec3 WorldToRoot(const Vec3 &a_world) const override {
+    return Vec3{a_world.x - rootOrigin.x, a_world.y - rootOrigin.y,
+                a_world.z - rootOrigin.z};
+  }
   float Enchantment(EnchantmentField) const override { return enchantment; }
   std::optional<Efsh::EffectParams>
   EffectShader(const FormRef &) const override {
@@ -470,7 +477,7 @@ int main() {
     const RowTypes rows{recipe, graph};
 
     Source bad{"k", MaterialClustersSource{}};
-    Get<MaterialClustersSource>(bad.kind)->clusters = 0;
+    Get<MaterialClustersSource>(bad.kind)->settings.clusters = 0;
     Check(HasMessage(CheckSource(rows, bad), "clusters"),
           "CheckSource rejects a zero cluster count");
 
@@ -596,6 +603,66 @@ int main() {
     Check(HasMessage(graph.Diagnostics(), "when trigger names a signal"),
           "a when trigger with no signal is flagged");
     Check(graph.Inert(0), "an incomplete when trigger is inert");
+  }
+
+  {
+    std::vector<Signal> signals{
+        Signal{"pos", ActorStateSignal{ActorStateKind::kPosition},
+               std::nullopt},
+        Signal{"root", ToRootSignal{Ref{"pos"}}, std::nullopt}};
+    const auto graph = SignalGraph::Compile(signals, {});
+    Check(graph.Diagnostics().empty(), "position and toRoot compile clean");
+    Check(graph.TypeOf("pos") == ValueType::kVec3,
+          "actorState position is a vec3");
+    Check(graph.TypeOf("root") == ValueType::kVec3, "toRoot is a vec3");
+
+    SignalState state{graph};
+    FakeEnvironment environment;
+    environment.vector = Vec3{100.0f, 200.0f, 300.0f};
+    environment.rootOrigin = Vec3{10.0f, 20.0f, 30.0f};
+    state.Tick(environment, TickInputs{0.0f, 0.0f});
+    const Vec3 pos = state.Vector("pos");
+    Check(Near(pos.x, 100.0f) && Near(pos.y, 200.0f) && Near(pos.z, 300.0f),
+          "position reads the wearer's world position");
+    const Vec3 root = state.Vector("root");
+    Check(Near(root.x, 90.0f) && Near(root.y, 180.0f) && Near(root.z, 270.0f),
+          "toRoot converts the world position into root space");
+  }
+
+  {
+    std::vector<Signal> signals{Signal{
+        "swim", ActorStateSignal{ActorStateKind::kSwimming}, std::nullopt}};
+    const auto graph = SignalGraph::Compile(signals, {});
+    Check(graph.TypeOf("swim") == ValueType::kScalar,
+          "a boolean actorState stays scalar");
+    SignalState state{graph};
+    FakeEnvironment environment;
+    environment.state = 1.0f;
+    state.Tick(environment, TickInputs{0.0f, 0.0f});
+    Check(Near(state.Scalar("swim"), 1.0f), "swimming reads the state flag");
+  }
+
+  {
+    std::vector<Signal> signals{
+        Signal{"target", ActorStateSignal{ActorStateKind::kTarget},
+               std::nullopt},
+        Signal{"has", ActorStateSignal{ActorStateKind::kHasTarget},
+               std::nullopt},
+        Expr("range", "@has * distance(@target, [0, 0, 0])")};
+    const auto graph = SignalGraph::Compile(signals, {});
+    Check(graph.Diagnostics().empty(),
+          "target, hasTarget and distance compile clean");
+    Check(graph.TypeOf("target") == ValueType::kVec3,
+          "actorState target is a vec3");
+    Check(graph.TypeOf("has") == ValueType::kScalar,
+          "actorState hasTarget is a scalar");
+    SignalState state{graph};
+    FakeEnvironment environment;
+    environment.vector = Vec3{30.0f, 40.0f, 0.0f};
+    environment.state = 1.0f;
+    state.Tick(environment, TickInputs{0.0f, 0.0f});
+    Check(Near(state.Scalar("range"), 50.0f),
+          "distance reduces the target position to a scalar range");
   }
 
   return test::Finish("signals");

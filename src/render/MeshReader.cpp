@@ -202,6 +202,11 @@ ReadMesh(RE::BSGeometry *a_geometry) {
   if (mesh->partitions.empty()) {
     return std::unexpected("no partitions");
   }
+  if (mesh->radius <= 0.0f) {
+    const MeshBound measured = MeasureBound(mesh->partitions);
+    mesh->center = measured.center;
+    mesh->radius = measured.radius;
+  }
   mesh->origin = anyGpu ? "gpu readback" : "cpu copy";
   mesh->hash = hash;
   return mesh;

@@ -1,0 +1,36 @@
+{
+  "format": 1,
+  "name": "debug-blue-light",
+  "author": "Claude",
+  "description": "Blue point light on skinned bone. Tests: light output, bone selection.",
+  "keys": [
+    "enchanted"
+  ],
+  "priority": -98,
+  "signals": {
+    "blueIntensity": {
+      "constant": 75.0,
+      "note": "Light intensity"
+    }
+  },
+  "outputs": [
+    {
+      "target": "light",
+      "bones": {
+        "skinned": {
+          "max": 2,
+          "minShare": 0.3
+        }
+      },
+      "color": [
+        0.0,
+        0.0,
+        1.0
+      ],
+      "intensity": "@blueIntensity",
+      "size": 5.0,
+      "cutoff": 1.0,
+      "note": "Blue point light on skinned bones"
+    }
+  ]
+}

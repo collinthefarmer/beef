@@ -1,0 +1,48 @@
+{
+  "format": 1,
+  "name": "source-materialclusters",
+  "description": "Diagnostic: each material cluster shown as a distinct bright colour. The raw source is id/255 (near-black for a few clusters), so it is multiplied back to the integer id and split into per-cluster bands, each tinted.",
+  "keys": ["default"],
+  "priority": -75,
+  "sources": {
+    "clusterMap": {
+      "materialClusters": {
+        "clusters": 4,
+        "weights": {
+          "roughness": 1.0,
+          "metallic": 1.0,
+          "occlusion": 0.5,
+          "reflectance": 0.5,
+          "luma": 1.0
+        },
+        "seed": 1,
+        "iterations": 32
+      },
+      "note": "K-means over roughness, metallic, occlusion, reflectance, luma into 4 clusters."
+    }
+  },
+  "masks": {
+    "id": {
+      "expr": "@clusterMap * 255",
+      "note": "Recovers the integer cluster id (0..3) from the stored id/255."
+    },
+    "c0": { "expr": "1 - step(0.5, @id)" },
+    "c1": { "expr": "step(0.5, @id) - step(1.5, @id)" },
+    "c2": { "expr": "step(1.5, @id) - step(2.5, @id)" },
+    "c3": { "expr": "step(2.5, @id)" }
+  },
+  "outputs": [
+    {
+      "target": "material",
+      "slot": "emissive",
+      "strength": 1.5,
+      "stack": [
+        { "source": "@c0", "opacity": 1.0, "color": [255, 40, 40], "note": "cluster 0: red" },
+        { "source": "@c1", "blend": "add", "opacity": 1.0, "color": [40, 255, 40], "note": "cluster 1: green" },
+        { "source": "@c2", "blend": "add", "opacity": 1.0, "color": [60, 120, 255], "note": "cluster 2: blue" },
+        { "source": "@c3", "blend": "add", "opacity": 1.0, "color": [255, 220, 40], "note": "cluster 3: yellow" }
+      ],
+      "note": "One bright colour per cluster, so the regions read at a glance."
+    }
+  ]
+}

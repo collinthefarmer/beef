@@ -802,7 +802,8 @@ std::string SourceValueText(const SourceKind &a_kind) {
             [](const LocalPositionBake &) {
               return std::string{"localPosition"};
             },
-            [](const WorldUpBake &) { return std::string{"worldUp"}; },
+            [](const NormalBake &) { return std::string{"normal"}; },
+            [](const UvBake &) { return std::string{"uv"}; },
             [](const PartitionBake &p) {
               return std::format("partition {}",
                                  std::to_underlying(p.bipedSlot));
@@ -813,23 +814,14 @@ std::string SourceValueText(const SourceKind &a_kind) {
             [](const ComponentIdBake &) { return std::string{"componentId"}; },
             [](const ChartIdBake &) { return std::string{"chartId"}; });
       },
-      [](const UvSource &s) {
-        return std::string{s.axis == UvAxis::kU ? "u" : "v"};
-      },
-      [](const DistanceSource &s) {
-        return Match(
-            s.from, [](const std::string &n) { return n; },
-            [](const Vec3 &p) {
-              return std::format("({:.0f}, {:.0f}, {:.0f})", p.x, p.y, p.z);
-            });
-      },
+      [](const DistanceSource &s) { return s.from; },
       [](const RippleSource &s) {
         return std::format("{} from @{}",
                            s.shape == RippleShape::kDisc ? "disc" : "ring",
                            s.trigger.name);
       },
       [](const MaterialClustersSource &s) {
-        return std::format("{} clusters", s.clusters);
+        return std::format("{} clusters", s.settings.clusters);
       });
 }
 

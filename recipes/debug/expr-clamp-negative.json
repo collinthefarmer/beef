@@ -1,0 +1,24 @@
+{
+  "format": 1,
+  "name": "Diagnostic: Expression clamp negative",
+  "description": "Test component clamp. clamp([-1, 2, 3], 0, 1) clamps to [0, 1, 1]: black in R, white in G/B, tinting the emissive.",
+  "keys": ["default"],
+  "priority": -55,
+  "signals": {
+    "clamped": { "expr": "clamp([-1, 2, 3], 0, 1)" }
+  },
+  "outputs": [
+    {
+      "target": "shell",
+      "slot": "emissive",
+      "strength": 1.0,
+      "stack": [
+        {
+          "source": [1.0, 1.0, 1.0],
+          "opacity": 1.0,
+          "color": "@clamped"
+        }
+      ]
+    }
+  ]
+}

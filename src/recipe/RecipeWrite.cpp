@@ -30,8 +30,12 @@ std::string DescribeSource(const SourceKind &a_kind) {
               return std::string{
                   "bake localPosition (this geometry's bound as 0..1)"};
             },
-            [](const WorldUpBake &) {
-              return std::string{"bake worldUp (bind-pose normal)"};
+            [](const NormalBake &) {
+              return std::string{
+                  "bake normal (bind-pose normal, each axis as 0..1)"};
+            },
+            [](const UvBake &) {
+              return std::string{"bake uv (the coordinates as a vec2)"};
             },
             [](const PartitionBake &p) {
               return std::format("bake partition {}",
@@ -50,23 +54,9 @@ std::string DescribeSource(const SourceKind &a_kind) {
                   "bake chartId (the mesh's UV charts, id / 255)"};
             });
       },
-      [](const UvSource &s) {
-        return std::format("uv {} (the coordinate as a ramp over the islands)",
-                           s.axis == UvAxis::kU ? "u" : "v");
-      },
       [](const DistanceSource &s) {
-        return Match(
-            s.from,
-            [](const std::string &node) {
-              return std::format(
-                  "distance from node {} (bind pose, 0..256 units as 0..1)",
-                  node);
-            },
-            [](const Vec3 &p) {
-              return std::format("distance from ({:.0f}, {:.0f}, {:.0f}) (bind "
-                                 "pose, 0..256 units as 0..1)",
-                                 p.x, p.y, p.z);
-            });
+        return std::format(
+            "distance from node {} (bind pose, 0..256 units as 0..1)", s.from);
       },
       [](const RippleSource &s) {
         return std::format("ripple {} from @{}, speed {}, width {}, decay {}",
@@ -75,20 +65,21 @@ std::string DescribeSource(const SourceKind &a_kind) {
                            ParamText(s.width), ParamText(s.decay));
       },
       [](const MaterialClustersSource &s) {
-        const MaterialClustersSource defaults;
+        const ClusterSettings defaults;
+        const ClusterSettings &settings = s.settings;
         std::string text =
-            std::format("materialClusters, {} clusters", s.clusters);
+            std::format("materialClusters, {} clusters", settings.clusters);
         for (const ClusterWeightField &field : kClusterWeightFields) {
-          const float weight = s.*field.member;
-          if (weight != defaults.*field.member) {
+          const float weight = settings.weights.*field.member;
+          if (weight != defaults.weights.*field.member) {
             text += std::format(", {} {}", field.name, weight);
           }
         }
-        if (s.seed != defaults.seed) {
-          text += std::format(", seed {}", s.seed);
+        if (settings.seed != defaults.seed) {
+          text += std::format(", seed {}", settings.seed);
         }
-        if (s.iterations != defaults.iterations) {
-          text += std::format(", {} iterations", s.iterations);
+        if (settings.iterations != defaults.iterations) {
+          text += std::format(", {} iterations", settings.iterations);
         }
         return text;
       });
@@ -277,6 +268,9 @@ json SignalToJson(const Signal &a_signal) {
         row[key(SignalKindId::kSmooth)] = json::object(
             {{"of", "@" + k.of.name}, {"seconds", ParamToJson(k.seconds)}});
       },
+      [&](const ToRootSignal &k) {
+        row[key(SignalKindId::kToRoot)] = "@" + k.of.name;
+      },
       [&](const ExprSignal &k) { row[key(SignalKindId::kExpr)] = k.text; });
   if (a_signal.curve) {
     row["curve"] = CurveRefToJson(*a_signal.curve);
@@ -313,26 +307,29 @@ json BakeToJson(const BakeSource &k) {
       },
       [&](const PositionBake &) { return json(BakeKindName(k.bake)); },
       [&](const LocalPositionBake &) { return json(BakeKindName(k.bake)); },
-      [&](const WorldUpBake &) { return json(BakeKindName(k.bake)); },
+      [&](const NormalBake &) { return json(BakeKindName(k.bake)); },
+      [&](const UvBake &) { return json(BakeKindName(k.bake)); },
       [&](const ComponentIdBake &) { return json(BakeKindName(k.bake)); },
       [&](const ChartIdBake &) { return json(BakeKindName(k.bake)); });
 }
 
 json MaterialClustersToJson(const MaterialClustersSource &k) {
-  const MaterialClustersSource defaults;
+  const ClusterSettings defaults;
+  const ClusterSettings &s = k.settings;
   json o = json::object();
   Writer w{o};
-  w.WriteIf("clusters", static_cast<std::uint32_t>(k.clusters),
+  w.WriteIf("clusters", static_cast<std::uint32_t>(s.clusters),
             static_cast<std::uint32_t>(defaults.clusters));
   json weights = json::object();
   Writer ww{weights};
   for (const ClusterWeightField &field : kClusterWeightFields) {
-    ww.WriteNumberIf(field.name, k.*field.member, defaults.*field.member);
+    ww.WriteNumberIf(field.name, s.weights.*field.member,
+                     defaults.weights.*field.member);
   }
   if (!weights.empty())
     o["weights"] = std::move(weights);
-  w.WriteIf("seed", k.seed, defaults.seed);
-  w.WriteIf("iterations", k.iterations, defaults.iterations);
+  w.WriteIf("seed", s.seed, defaults.seed);
+  w.WriteIf("iterations", s.iterations, defaults.iterations);
   return o;
 }
 
@@ -344,6 +341,8 @@ json RippleToJson(const RippleSource &k) {
   w.Write("width", k.width);
   w.Write("decay", k.decay);
   w.WriteEnumIf("shape", kRippleShapes, k.shape, RippleShape::kRing);
+  w.WriteIf("direction", k.direction,
+            Vec3Param{std::array<Param, 3>{0.0f, 0.0f, 0.0f}});
   return o;
 }
 
@@ -358,14 +357,7 @@ json SourceKindToJson(const SourceKind &a_kind) {
         row[word] = NameOf(kMaterialChannels, k.channel);
       },
       [&](const BakeSource &k) { row[word] = BakeToJson(k); },
-      [&](const UvSource &k) { row[word] = NameOf(kUvAxes, k.axis); },
-      [&](const DistanceSource &k) {
-        Match(
-            k.from, [&](const std::string &node) { row[word] = node; },
-            [&](const Vec3 &p) {
-              row[word] = json::object({{"from", PointToJson(p)}});
-            });
-      },
+      [&](const DistanceSource &k) { row[word] = k.from; },
       [&](const RippleSource &k) { row[word] = RippleToJson(k); },
       [&](const MaterialClustersSource &k) {
         row[word] = MaterialClustersToJson(k);

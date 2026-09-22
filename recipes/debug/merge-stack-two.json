@@ -1,0 +1,20 @@
+{
+  "format": 1,
+  "name": "merge-stack-two (blue, lower priority)",
+  "author": "collinthefarmer@gmail.com",
+  "description": "Merge test: lower priority blue on diffuse, merge=stack. Pairs with merge-stack-two-high.",
+  "priority": -49,
+  "keys": ["default"],
+  "outputs": [
+    {
+      "target": "material",
+      "slot": "diffuse",
+      "stack": [
+        {
+          "source": [0.2, 0.4, 1.0],
+          "opacity": 0.5
+        }
+      ]
+    }
+  ]
+}

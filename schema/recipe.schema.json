@@ -38,7 +38,7 @@
     "ref": { "type": "string", "pattern": "^@[A-Za-z_][A-Za-z0-9_]*$", "description": "A reference to another row: @name." },
     "note": { "type": "string", "description": "Author documentation for this row, free text, shown to a reader of the recipe; distinct from the plugin's tooltips." },
     "annotatedExpression": { "oneOf": [ { "$ref": "#/$defs/expression" }, { "type": "object", "additionalProperties": false, "required": ["expr"], "properties": { "expr": { "$ref": "#/$defs/expression" }, "note": { "$ref": "#/$defs/note" } } } ] },
-    "expression": { "type": "string", "minLength": 1, "description": "Numbers, [r, g, b] literals, @name, + - * /, parentheses, comparisons yielding 0 or 1, and/or/not, if(c, a, b), abs min max clamp saturate floor ceil frac sqrt pow sin cos step smoothstep lerp, time, pi. Component-wise on vectors; division by zero is 0; no ^." },
+    "expression": { "type": "string", "minLength": 1, "description": "Numbers, [r, g, b] literals, @name, + - * /, parentheses, comparisons yielding 0 or 1, and/or/not, if(c, a, b), abs min max clamp saturate floor ceil frac sqrt pow sin cos step smoothstep lerp length distance dot cross normalize, time, pi. Arithmetic and the math functions are component-wise on vectors; comparisons, and/or/not, and an if() condition take a scalar (if() branches may be vectors). The vector functions take vectors only: length(v), distance(a, b) and dot(a, b) yield a scalar, cross(a, b) takes and yields vec3s, normalize(v) keeps its operand's size (a zero vector stays zero). Division by zero is 0; no ^." },
     "curveRef": { "$ref": "#/$defs/expression", "description": "@name of a declared curve, or an inline expression in x." },
     "form": { "type": "string", "minLength": 1, "pattern": "^(0[xX][0-9A-Fa-f]{1,8}~.+\\.(esm|esp|esl|ESM|ESP|ESL)|[A-Za-z_][A-Za-z0-9_]*)$", "description": "An editor ID, or 0x<local id>~<plugin file>." },
     "glob": { "type": "string", "minLength": 1, "description": "* is the only wildcard; case-insensitive; / and \\ are equal." },
@@ -97,7 +97,7 @@
             { "$ref": "#/$defs/name" },
             { "type": "object", "additionalProperties": false, "required": ["of"],
               "properties": { "of": { "$ref": "#/$defs/name" }, "measure": { "enum": ["current", "base", "permanent", "temporaryModifier", "damage", "max"] } } } ] } } },
-        { "$ref": "#/$defs/signalKind", "required": ["actorState"], "properties": { "actorState": { "enum": ["inCombat", "sneaking", "weaponDrawn", "hostileDistance"] } } },
+        { "$ref": "#/$defs/signalKind", "required": ["actorState"], "properties": { "actorState": { "enum": ["inCombat", "sneaking", "weaponDrawn", "swimming", "sprinting", "mounted", "movementSpeed", "position", "target", "hasTarget"], "description": "inCombat, sneaking, weaponDrawn, swimming, sprinting, mounted, hasTarget (a combat target exists) are 0/1; movementSpeed is a scalar; position (the wearer) and target (the current combat target, zero when none — gate with hasTarget) are world positions (vec3). distance(@target, @position) gives the distance to the hostile. An NPC's combat AI maintains the target while fighting; on the player it follows the attack/crosshair focus." } } },
         { "$ref": "#/$defs/signalKind", "required": ["enchantment"], "properties": { "enchantment": { "enum": ["magnitude", "cost"] } } },
         { "$ref": "#/$defs/signalKind", "required": ["trigger"], "properties": { "trigger": { "$ref": "#/$defs/trigger" } } },
         { "$ref": "#/$defs/signalKind", "required": ["payload"], "properties": { "payload": { "$ref": "#/$defs/ref", "description": "Reads the named trigger's newest firing value, typed by the trigger's declared payload; holds between firings." } } },
@@ -121,12 +121,13 @@
         { "$ref": "#/$defs/signalKind", "required": ["smooth"], "properties": { "smooth": {
             "type": "object", "additionalProperties": false, "required": ["of"],
             "properties": { "of": { "$ref": "#/$defs/ref" }, "seconds": { "$ref": "#/$defs/param" } } } } },
+        { "$ref": "#/$defs/signalKind", "required": ["toRoot"], "properties": { "toRoot": { "$ref": "#/$defs/ref", "description": "The referenced world-space position (vec3) expressed in the wearer's root space. A point transform: build a direction by subtracting two converted points so the translation cancels." } } },
         { "$ref": "#/$defs/signalKind", "required": ["expr"], "properties": { "expr": { "$ref": "#/$defs/expression" } } }
       ]
     },
     "signalKind": {
       "type": "object",
-      "propertyNames": { "enum": ["curve", "note", "constant", "wave", "ramp", "efsh", "av", "actorState", "enchantment", "trigger", "payload", "counter", "accumulate", "noise", "gradient", "rate", "smooth", "expr"] },
+      "propertyNames": { "enum": ["curve", "note", "constant", "wave", "ramp", "efsh", "av", "actorState", "enchantment", "trigger", "payload", "counter", "accumulate", "noise", "gradient", "rate", "smooth", "toRoot", "expr"] },
       "minProperties": 1, "maxProperties": 3
     },
 
@@ -142,7 +143,7 @@
       "oneOf": [
         { "type": "object", "required": ["event"], "additionalProperties": false,
           "properties": {
-            "event": { "$ref": "#/$defs/eventId", "description": "Id glob on the bus: built-in anim.<graph event>, equip, equip.position, hit.received and hit.dealt, or a provider's ids." },
+            "event": { "$ref": "#/$defs/eventId", "description": "Id glob on the bus: built-in anim.<graph event>, equip, equip.position, hit.received, hit.received.position (the attacker's position), hit.dealt, hit.dealt.position (the struck actor's position), or a provider's ids." },
             "filter": { "type": "object", "additionalProperties": false,
               "properties": { "node": { "$ref": "#/$defs/glob" }, "arg": { "$ref": "#/$defs/glob" },
                 "value": { "type": "array", "minItems": 2, "maxItems": 2, "items": { "type": ["number", "null"] } } } },
@@ -170,22 +171,20 @@
               "scroll": { "$ref": "#/$defs/vec2" }, "tile": { "$ref": "#/$defs/vec2" },
               "mirror": { "type": "array", "minItems": 2, "maxItems": 2, "items": { "type": "boolean" } },
               "transpose": { "type": "boolean" }, "mip": { "type": "number", "minimum": 0 } } } } },
-        { "required": ["material"], "properties": { "material": { "enum": ["diffuseRgb", "diffuseLuma", "normalSlope", "roughness", "metallic", "occlusion", "reflectance", "displacement", "relief"], "description": "relief is the best available relief detail, not a stored map: the displacement map when it is non-flat, else occlusion." } } },
+        { "required": ["material"], "properties": { "material": { "enum": ["diffuseRgb", "diffuseLuma", "normalSlope", "normalRgb", "roughness", "metallic", "occlusion", "reflectance", "rmaosRgb", "displacement", "relief"], "description": "The worn piece's own maps. diffuseRgb, normalRgb and rmaosRgb are the raw vec3 reads; with dot() any single channel derives from them (roughness = dot(@rmaosRgb, [1, 0, 0])), and the named scalars remain as the PBR vocabulary. relief is the best available relief detail, not a stored map: the displacement map when it is non-flat, else occlusion." } } },
         { "required": ["bake"], "properties": { "bake": { "oneOf": [
-            { "enum": ["position", "localPosition", "worldUp", "componentId", "chartId"], "description": "componentId and chartId: the mesh analysis' id map for that source (connected pieces, UV charts), each texel the region id / 255, rasterised once per geometry." },
+            { "enum": ["position", "localPosition", "normal", "uv", "componentId", "chartId"], "description": "normal is the bind-pose surface normal, each axis mapped -1..1 to 0..1 (recover the vector as v * 2 - 1; dot(v, [0, 0, 1]) reads how far it points up). uv is the texel's coordinates as a vec2 (dot(v, [1, 0]) reads u, dot(v, [0, 1]) reads v). componentId and chartId: the mesh analysis' id map for that source (connected pieces, UV charts), each texel the region id / 255, rasterised once per geometry." },
             { "$ref": "#/$defs/oneKey", "required": ["partition"], "properties": { "partition": { "oneOf": [
                 { "enum": ["body", "hands", "forearms", "feet", "calves", "head", "hair", "amulet", "ring", "shield", "tail"] }, { "type": "integer", "minimum": 30, "maximum": 61 } ] } } },
             { "$ref": "#/$defs/oneKey", "required": ["boneWeight"], "properties": { "boneWeight": { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/node" } } } } ] } } },
-        { "required": ["uv"], "properties": { "uv": { "enum": ["u", "v"] } } },
-        { "required": ["distance"], "properties": { "distance": { "oneOf": [
-            { "$ref": "#/$defs/node" },
-            { "type": "object", "additionalProperties": false, "required": ["from"], "properties": { "from": { "oneOf": [ { "$ref": "#/$defs/node" }, { "$ref": "#/$defs/numbers3" } ] } } } ] } } },
+        { "required": ["distance"], "properties": { "distance": { "$ref": "#/$defs/node", "description": "Distance from this skeleton node, bind pose, 0..256 units as 0..1. A distance from a fixed point is distance() of a position bake in a mask." } } },
         { "required": ["ripple"], "properties": { "ripple": {
             "type": "object", "additionalProperties": false, "required": ["trigger"],
             "properties": {
               "trigger": { "$ref": "#/$defs/ref" }, "speed": { "$ref": "#/$defs/param" },
               "width": { "$ref": "#/$defs/param" }, "decay": { "$ref": "#/$defs/param" },
-              "shape": { "enum": ["ring", "disc"] } } } } },
+              "shape": { "enum": ["ring", "disc"] },
+              "direction": { "$ref": "#/$defs/vec3", "description": "A worldspace vector the wave travels along; the front is a plane sweeping from the anchor. Absent or zero radiates as a ring or disc from the anchor point. Animatable, so a signal (e.g. a payload carrying a hit direction) can steer it." } } } } },
         { "required": ["materialClusters"], "properties": { "materialClusters": {
             "type": "object", "additionalProperties": false,
             "description": "The material's cluster map: each texel the id / 255 of the nearest cluster under these settings, rendered once per geometry. Every field has a default.",

@@ -257,7 +257,7 @@ int main() {
   }
 
   MaterialClustersSource bad;
-  bad.clusters = 0;
+  bad.settings.clusters = 0;
   Refused(base, AddSource{"badClusters", bad},
           "AddSource with zero clusters (loader parity)");
 
@@ -371,7 +371,7 @@ int main() {
     recipe.sources.push_back(Source{"wave", ripple});
     recipe.sources.push_back(Source{"rough", MaterialSource{}});
     recipe.sources.push_back(Source{"pos", BakeSource{}});
-    recipe.sources.push_back(Source{"u", UvSource{}});
+    recipe.sources.push_back(Source{"u", BakeSource{UvBake{}}});
     recipe.sources.push_back(Source{"far", DistanceSource{}});
     recipe.sources.push_back(Source{"bands", MaterialClustersSource{}});
     Check(!Apply(recipe, RenameSignal{"drive", "energy"}),
@@ -390,7 +390,7 @@ int main() {
     Check(recipe.sources.size() == 7 &&
               Is<MaterialSource>(recipe.sources[2].kind) &&
               Is<BakeSource>(recipe.sources[3].kind) &&
-              Is<UvSource>(recipe.sources[4].kind) &&
+              Is<BakeSource>(recipe.sources[4].kind) &&
               Is<DistanceSource>(recipe.sources[5].kind) &&
               Is<MaterialClustersSource>(recipe.sources[6].kind),
           "sources without parameters are visited and left unchanged");

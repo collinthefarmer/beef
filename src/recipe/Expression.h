@@ -110,6 +110,11 @@ public:
     kStep,
     kSmoothstep,
     kLerp,
+    kLength,
+    kDistance,
+    kDot,
+    kCross,
+    kNormalize,
   };
   struct Node {
     Op op = Op::kNumber;

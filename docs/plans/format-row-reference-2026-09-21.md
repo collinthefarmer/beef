@@ -27,9 +27,56 @@ execution round closed items 1 to 11, 15, 17 to 21, 24, 25, 26, 28 and
 37; five decisions drove it: variants wired values-only, the dead records
 cut except the plugin origin (specified and wired instead), all five
 renames, a new enchanted key, and whole-bus typed payloads with the
-trigger declaring both its `payload` type and its `anchor` space. Still
-open: 12 to 14, 16, 22, 23, 27, and
-the optional adds 29 to 36 (additive, so format 1 freezes without them).
+trigger declaring both its `payload` type and its `anchor` space. State of the backlog, trimmed 2026-09-22. Closed: 1 to 11, 15, 17 to 21,
+24, 25, 26, 28, 31 (wearer half), 37, 39, 40, 44 (studio half), 50 (log
+half), 51, 54 to 57 (the composable-proximity bundle, landed
+2026-09-22), 59 (`dot`/`cross`/`normalize`, same day), 60 to 62 (the
+bake polish: `normal` bake with `worldUp` removed, measured bound for
+`localPosition`, gutter fill; same day). The rest bucket as:
+
+- **Today — code:** the small adjacent wins 14 (expose the event
+  `filter`), 46 (`alphaTest` → param), 16 (preview reads 0 silently).
+- **Freeze writing — prose, when the freeze is written:** 22, 23, 27, 42,
+  43, 44 (writing half), 52, 53 (writing half).
+- **Decisions the user owns — before their code:** 38 (key exclusivity vs
+  merge, the ecosystem policy, the big one), 45 (partition-bake:
+  0-where-absent vs error), 50 (should `default`/`enchanted` match
+  non-humanoids), 53a (lift comparisons to component-wise or keep scalar).
+- **Deferred / post-freeze:** 12 (render tests, L), 13 (gradient stop
+  editor, M), 41 (live signal readout, M), 49 (gesture-throttle redesign,
+  M), 48 (per-side on mirror UVs), 47 (in-game verifications), and the
+  optional adds 29, 30, 32 to 36 and 58 (additive, so format 1 freezes without
+  them).
+
+### Top priority — abstraction consistency before the freeze (2026-09-22)
+
+The format's contract is: expose primitives, compose in the graph.
+`hostileDistance` breaks it — it is a baked convenience that packages
+three things the primitives cannot yet express (the combat target's
+existence, its position, and the reduction of two positions to a scalar
+distance). With `actorState position` and `toRoot` now present, the
+inconsistency is visible: everything else is a primitive, this one is a
+shortcut. Decision 2026-09-22: replace it with the primitives before the
+format freezes the enum and the expression function set. Items 54 to 57
+are the bundle; they block the freeze because the function set and the
+`actorState` enum lock with it.
+
+| # | Item | Finding | Scope |
+|---|---|---|---|
+| 54 | DONE 2026-09-22: `length` and `distance` appended as ops 38/39, implemented in the CPU evaluator, the GPU mask interpreter, and `Program::Check` (vector in, scalar out; scalar operands rejected); GPU render verified in play same day (`expr-mask-length-distance` complement check — full brightness once the saturate clip ring moved off the body) | The 16 expression functions are all component-wise; none reduces a vector to a scalar, so a distance between two positions is inexpressible in-graph (this is the only reason `hostileDistance` has to be baked). Add `length(v)` (magnitude of a vec2/vec3) and `distance(a, b)` = `length(a - b)`. This is the first function whose result type differs from its input, so `Program::Check` in `Expression.cpp` gains a reduction case (vector in, scalar out) and the type tests grow. The keystone: without it items 55 to 57 cannot land, and the function set freezes with the format. | M |
+| 55 | DONE 2026-09-22: `target` and `hasTarget` landed, wired like `position`; `VectorValued` (`Recipe.h`) names the vec3 selectors once | `target` (vec3, the current combat target's world position, zero when none) and `hasTarget` (0/1). These are the facts `hostileDistance` hid. Wired like `position` (`ActorVector`/`ActorState` in `Environment.cpp`, type inference, schema enum, `Words.h`). With item 54, `distance(@target, @position)` gated by `@hasTarget` reproduces the old scalar, and `toRoot(@target)` now also gives direction-to-hostile. | S |
+| 56 | DONE 2026-09-22: selector and 1e6 sentinel deleted | Drop the selector once 54 and 55 land. Pre-freeze, no consumers, so no deprecation window. Resolves the mixed-enum wart (item 5) and the 1e6 sentinel (item 39) by deletion — `hasTarget` carries the presence bit a sentinel was faking. | S |
+| 59 | DONE 2026-09-22: `dot`, `cross`, `normalize` appended as ops 40 to 42 (same three sites and scalar-rejection rule as item 54); `dot` (GPU mask) and `normalize` (CPU signal) verified in play same day via the facing-half recipe — residual emissive misalignment is the armor-UV artifacts (item 48 mirroring, unpadded bake seams), not the ops | In-play authoring hit the missing dot product within hours of item 54 landing: the facing-half debug recipe had to build one from `length(o + d) - length(o - d)` and hand-normalize with `/(length(v) + eps)`. The vector family completes with `dot` (vectors of one size, scalar out), `cross` (vec3s, vec3 out, argument order preserved on the GPU) and `normalize` (size-preserving, zero vector to zero) before the function set freezes. | S |
+| 60 | DONE 2026-09-22: `normal` bake added, `worldUp` removed as derivable | The facing-half debug work needed a centre-free way to shade the side of a body facing a direction; a positional split needs a centre no recipe can measure (the bind-pose torso is not centred on the skeleton root). `normal` bakes the bind-pose surface normal, each axis -1..1 as 0..1; `dot(@bake, dir)` shades a facing. `worldUp` was its z channel — the encoding is affine, so `dot(@bake, [0, 0, 1])` reads it exactly, and the selector was removed with zero consumers, the item-56 precedent. | S |
+| 61 | DONE 2026-09-22: `localPosition` works on skinned armor | The bake refused on a zero NIF model bound, which skinned armor usually stores; `ReadMesh` now falls back to `MeasureBound` (box centre, enclosing radius, from the vertices), so the per-geometry frame exists everywhere. | S |
+| 62 | DONE 2026-09-22: bake gutter fill | Bakes cleared to black with no padding, so bilinear sampling and mips pulled the background into UV island borders — false positions at every seam. Alpha now marks coverage and two `DilatePS` passes flood a two-texel gutter from covered neighbours. | M |
+| 63 | Id maps want nearest sampling | Found auditing item 62, extended by the 2026-09-22 source sweep: `componentId`/`chartId` AND the `materialClusters` map (the same id/255 representation through the same linear sampler) are sampled bilinearly, so two adjacent islands blend into ids that exist on neither side, and dilation cannot help where real islands touch. A per-source nearest flag in the interpreter's `texFlags` is the fix. | S |
+| 68 | UV sharing generalised beyond mirroring (item 48 widened) | The normal-sweep recipes showed front/back also collapsing on some armor, not only left/right: any texel sharing (mirrors, front/back reuse, overlapping trim, double-sided sheets) makes every bake read one surface's value for all sharers, and which axes survive is per-armor. Made measurable 2026-09-22: the verbose `facing split ... overlap N%` log line joins `side split` (`MeshCache.cpp`), and `inspect-bake-position` shows it as colour in game. The freeze wording states the contract as "bakes distinguish what the UVs distinguish" with the measurement tools named; per-side/per-face effects need per-vertex evaluation at the final draw, which is post-freeze architecture. | S (done: measurement + wording) |
+| 64 | DONE 2026-09-22 (source sweep): `uv` folded into the bake family as one vec2 bake | `BuildUvBake` was structurally a bake on the same render path; per-texel uv cannot exist any other way (masks have no uv variable — `x` reads 0 per texel), and two scalar sources for one coordinate pair was inconsistent with position/normal shipping vec3s. One `bake: uv` (value `[u, v, 0]`, type vec2); components extract with `dot(@uv, [1, 0])`. `source-uv-tile.json` migrated. | M |
+| 65 | DONE 2026-09-22 (source sweep): `distance` point-form deleted, node-form kept | Exact derivability: `2 * kPositionFrame == kDistanceFrame` makes `distance()` of raw position-bake texels equal a distance texel bit-for-bit, so the point form was a baked convenience (the item-56 yardstick). The node form resolves a skeleton node per wearer, which no graph primitive expresses, and stays. `source-distance-radial.json` migrated to the in-graph derivation. | M |
+| 66 | DONE 2026-09-22 (source sweep): the material grid completed with `normalRgb` and `rmaosRgb`; the L restructure stood down | The audit proposed restructuring the 9-enum to map × channel for reachability, but `dot()` dissolved the motive: a vec3 raw read reaches every channel (`roughness = dot(@rmaosRgb, [1, 0, 0])`). Two raw-read rows complete the grid; the meaning-names stay as the PBR vocabulary. RESIDUAL DECISION: the naming convention still mixes map-prefixed raw reads, meaning-named scalars, and computed words — a rename-only restructure remains available pre-freeze if wanted. `diffuseLuma`/image `luma` were kept deliberately: their derivation hard-codes the Rec.709 weights into recipes, which leaks an implementation constant the word encapsulates. | S |
+| 67 | DONE 2026-09-22 (source sweep): pipeline code consolidation | `DescribeTexture` deduplicated; the SRV width named (`kPassSrvs`); the dilate pipeline through the shared builder (bytes 0 = no constants) with the classify dialect renamed to clusters end to end; `BindTarget`/`UnbindTarget` factored from `DrawFullScreen` and `BakeMesh`; the twin cluster caps merged into `kMaxMaterialClusters`; `BakeKey{definition, pixels}` replaced the encode-then-reparse string keys (`KeyDefinition`/`KeySize` deleted); `MaterialClustersSource` now holds `ClusterSettings` directly (`SettingsOf`/`SourceOf` bridges deleted, `ChannelWeights` moved to the recipe layer); ripple `direction` validated like every other vector Param. DECLINED after reading both bodies: the `SourcePreparer`/`SourceInspector` merge — the two state different policies (render vs const cache-read with miss diagnostics), a merged visitor interleaves rather than removes, and `Match` exhaustiveness already makes a forgotten arm a compile error. AUDIT CORRECTION: the actor-independence finding was wrong — `RecipeInputsAreActorIndependent` guards cross-actor texture sharing, and bake textures are per-mesh, so bakes correctly block it; the real omission (uv) dissolved with item 64. | M |
+| 57 | DONE 2026-09-22: both recipes rewritten to the primitives; schema, `REFERENCE.md`, and this row updated | The debug recipe `inspect-hostility.json` and the `actorstate-test/actorstate-scalars.json` fixture read it; rewrite both to `distance` + `hasTarget`. Update the `actorState` row here, the schema enum, `REFERENCE.md`, and close items 5 and 39. | S |
 
 ### Format decisions — block the freeze writing
 
@@ -39,7 +86,7 @@ the optional adds 29 to 36 (additive, so format 1 freezes without them).
 | 2 | DONE 2026-09-21: `lerp` dropped (and the field renamed `merge`, item 19) | No code path in `Merge.cpp` or `Resolve.cpp`; falls through to stack, so a validator accepting it lies. Reserve the word for format 2 in the freeze writing; the mechanic list is the ecosystem-policy decision (roadmap item 9). See [Recipe head](#recipe-head). | S |
 | 3 | DONE 2026-09-21: `bulb` cut | The LIGH form resolved for validation in `RecipeStore.cpp` (since removed with the field) but `render/Light.cpp` never created it or inherited its flags. See [Light output](#light-output). | S to cut, M to implement |
 | 4 | DONE 2026-09-21: kept — contract specified and delivery wired; the payload contract is superseded by item 37 | Parsed, evaluated, in the UI; at audit time there was no delivery path — `src/main.cpp`'s only listener handled SKSE lifecycle messages, and the payload another plugin would send was specified nowhere. Freezing it as-is freezes an inter-plugin ABI that has never carried a message. See [Trigger origins](#trigger-origins). | S to cut, M to specify and wire |
-| 5 | DECIDED 2026-09-21: frozen as-is | The enum mixes three flags with one continuous distance (`hostileDistance`); the one shape wart in the signal set. Freeze it as-is, or split the distance out before the freeze. See [actorState](#actorstate). | S, decision only |
+| 5 | SUPERSEDED 2026-09-22: resolved by deleting `hostileDistance` (item 56) | The enum mixes three flags with one continuous distance (`hostileDistance`); the one shape wart in the signal set. Freeze it as-is, or split the distance out before the freeze. See [actorState](#actorstate). | S, decision only |
 | 37 | DONE 2026-09-21, same day: typed values landed whole-bus; the location half became the trigger-declared `anchor` (`world` or a node; the event origin's `at` dissolved into it, and `uv` waits until the render honours it) | Supersedes the version-1 float contract item 4 landed, before anything ships. A plugin message carries one value of the existing shapes — scalar, vec2, or vec3 — under a closed three-way wire tag. A sender decomposes a rich occurrence into several ids (`precision.hit`, `precision.hit.position`, `precision.hit.normal`), so the one-to-many map lives in the sender, beef ships no mapping config, and suffixed ids compose with the existing globs. Three obligations join the freeze writing: the receiving row declares the type it expects, and a firing of another type is dropped with a diagnostic, so the graph still types at compile time; a ripple's trigger must be vec3-typed and its value is the ring's origin; same-occurrence ids correlate only by arrival, so senders fire them in the same tick with the same lifetime. Internally `TriggerPayload.value` widens from float to `Value` and the `payload` field enum collapses to a typed read. See [Trigger origins](#trigger-origins), [payload](#payload), [ripple](#ripple). | M |
 
 ### Contract alignments — block the freeze writing
@@ -120,12 +167,40 @@ will hit the gap.
 |---|---|---|---|
 | 29 | A `wearer` identity signal | Every wearer of a recipe pulses in phase; only application-time offsets desync a crowd, and `sampled` gives only file-grained variety. A constant hashed from the actor's form id (0..1) would desync phase and shift hue continuously and cheaply. The highest-value small add the walkthrough found. | S |
 | 30 | `image` flipbook and rotation | Frame-animated effects (the vanilla effect-shader staple, so also import fidelity) and spinning circles are inexpressible; `transpose` and `mirror` give only right-angle variety. | M |
-| 31 | More wearer state, and any world state | `actorState` lacks swimming (the shipped `WaterBreathingFXS` fixture's one natural trick), sprint or movement speed, mounted; no signal reads the world at all (time of day, weather, interior). | S to M per state |
+| 31 | PARTLY DONE 2026-09-21: wearer half landed | `actorState` gained `swimming`, `sprinting`, `mounted`, `movementSpeed`, and `position` (vec3), plus the `toRoot` kind to use position against the geometry's space. Still open: world state (time of day, weather, interior) belongs in a separate `world` kind, not `actorState`, and a `facing` vector waits on a rotation-only `toRootDir`. | S to M per remaining state |
 | 32 | A curvature or edge bake | Edge-glow and edge-wear rank among the most-asked armor looks; `occlusion` approximates cavities and `normalSlope` steepness, neither isolates edges. | M |
 | 33 | A second shell per recipe | A two-layer aura (tight sheen, wispy haze) needs two recipes and drags merge semantics into one authored idea. | M |
 | 34 | Fade-out on unapply | Unequipping pops the effect; state-driven fades already work through `smooth`, but a lifecycle release envelope needs engine support. | M |
 | 35 | Key conjunction | Keys are alternatives only; "fire enchantment on daedric armor" cannot be keyed as both. Priority plus `replace` fires for all daedric; variants only swap constants. | M |
 | 36 | Small reads | `enchantment` reads only the costliest effect, so a dual-effect enchant cannot drive two colors; a trigger has no firing rate limit (`max` caps concurrent lives, not frequency). | S each |
+| 58 | A `nearestHostile` selector | `target` reads `currentCombatTarget`, which the combat AI maintains for NPCs but the player only gets from the attack/crosshair focus (observed in play 2026-09-22), so "any hostile nearby" is inexpressible on the player. A nearest-hostile position would be a per-tick scan the engine does not maintain — the cost that kept `hostileDistance` off it — so it is a deliberate new selector beside `target`, not a fix to it. | M |
+
+### Stress-suite findings — 2026-09-21 evening
+
+An eight-recipe stress suite (`pre-freeze-stress/` in the MO2 mod, not
+in the repo) was authored against the audited tree and played the same
+evening. Items 38 to 47 record what authoring and play exposed. Item 38
+blocks the freeze; it belongs to the ecosystem-policy decision (roadmap
+item 9).
+
+| # | Item | Finding | Scope |
+|---|---|---|---|
+| 38 | Key exclusivity contradicts the merge mechanics | `Resolve.cpp` claims each distinct key value for one recipe, the last loaded, before the match test runs. N recipes sharing a key never coexist: a `sampled` pool cannot hold two same-key members, and `stack` across same-key recipes is unreachable, so merge engages only across different key values. A one-of-n color pool (three `enchanted` recipes, `merge: sampled`) is inexpressible, and ownership churns when a reload reorders files. Settle with roadmap item 9 before the freeze. | M, decision then code |
+| 39 | SUPERSEDED 2026-09-22: the selector and its sentinel were deleted (item 56); `hasTarget` carries the presence bit | The signal reads the current combat target, not the documented nearest hostile, and returned 0.0 with no target, indistinguishable from a hostile at zero range (`Environment.cpp`). Idle now reads `kNoCombatTargetDistance` (1.0e6), so proximity formulas read 0 unaided; the referent stays the combat target, documented in `REFERENCE.md`. | S |
+| 40 | DONE 2026-09-21: `hit.received.position` and `hit.dealt.position` | `hit.received` and `hit.dealt` publish scalar 1.0 with no node (`Events.cpp`); `equip.position` was the only located built-in id. The suffixed ids now carry the other actor's world position (the attacker's for received, the struck actor's for dealt), same tick, same lifetime, per item 37's contract; `TESHitEvent` offers no impact point. | S to M |
+| 41 | No live view of a signal's value | A threshold is authored blind: the suite's burst threshold never fired in play, and only the log explained why. Extends item 16 past the preview: the studio needs a live signal readout for a tracked actor. | M |
+| 42 | Contention precedence unstated | The loader drops the later output with a reason, so file order decides which of coat, fuzz, glint, and subsurface survives. The rule appears nowhere an author reads. Part of the freeze writing. | S, writing |
+| 43 | Curve-on-trigger semantics unstated | A curve on a trigger row shapes only the row's scalar; `counter`, `ripple`, and `payload` read the raw firings (`Signals.cpp`). Useful for flash shaping, and undocumented. Part of the freeze writing. | S, writing |
+| 44 | HALF DONE 2026-09-21: the Keys rule now lists the piece's texture paths | The operand is diffuse texture paths, invisible in game and unrelated to the display name: vanilla Leather Armor's textures live under `armor\studded\`, so a `*leather*` glob matches nothing, silently. The studio's Keys section now lists the selected piece's `diffusePaths` (deduplicated) under the key table (`ContextRows.cpp`). The freeze-writing warning beside item 28 remains. | S writing |
+| 45 | Partition-bake failure reach | A mask touching a `partition` bake makes every layer using it inert on pieces without the slot, one log line per geometry. The degradation is correct and noisy. Decide 0-where-absent against the current error, and teach the `selector` pattern either way. | S, decision |
+| 46 | `alphaTest` is a bare number | Nearly every sibling scalar is a param; the shell's discard threshold cannot animate. Decide with the freeze whether that is pipeline state or an oversight. | S, decision |
+| 47 | Verifications the suite still owes | Whether a shadow light that was created ever visibly lights; whether shell-target stacks write into a `vanilla` shell material; a visual confirmation of the ripple pass. Stormcharge v0.2 is staged for the next session. | S, author's time |
+| 48 | DIAGNOSED 2026-09-21: the two mirror halves of a region cannot be masked apart on mirror-UV armor | Stridemark's per-foot flash could not read as one-foot-at-a-time. Triggers, timing, and the bone read are all correct (`GlobMatch` backtracks; the 0.28 s lifetime clears a run stride; the mesh reader distinguishes L and R verts). The limit is narrow and architectural: region masking works (a `partition` bake keys on a biped slot, which is region-level, and regions hold distinct UVs), but telling the two mirror halves of one region apart does not, because humanoid armor mirrors left onto right on the same UVs and the last partition written wins. A verbose side-split diagnostic (`MeshCache.cpp`) measured it in play: TorsoLow, StormCloak, and cuirass all read 100% L/R UV overlap; one mesh at 0% splits the sides. Freeze finding, not a bug: name the limitation. Lights are the only per-half path (bone-space, not UV), but one light output per recipe with one shared intensity blocks two independently-gated feet. DEFERRED post-alpha 2026-09-21 (roadmap "outside the gates"); stridemark folded to a single-colour both-feet flash (v1.0). The lift is per-half lights (a list of light outputs per instance), M. | deferred |
+| 49 | REVERTED 2026-09-22: the throttle crashed; reopened | The first attempt made a gesture apply its edit to the shared recipe every frame but defer `ChangeAndRebuildActors` to every 300 ms. That split an invariant: live instances point at the shared recipe, so between deferred rebuilds the recipe described a new shape while the actors held bindings for the old one, and the per-tick render read the mismatch - a null `memcpy` CTD in the binding path (crash-2026-09-22-00-22-12, `MaterialBinding` + slot textures on the stack, hit while editing a debug recipe's setting). Reverted to the atomic always-rebuild. A correct throttle must defer the mutation too (not apply until it rebuilds) or give live instances their own recipe snapshot; both are more than the first cut. Still the felt hitching (measured ~11 rebuilds/s, ~66 ms each during a drag). | M, redesign |
+| 50 | HALF DONE 2026-09-21: repeats suppressed; the matching decision stays open | A highland cow's hide resolved forgeveins by the `default` key, then warned twice per re-apply that `NPC Spine1 [Spn1]` is missing - 250 log lines in one session. `LogStackDiagnostics` now logs each distinct diagnostic once per session, marked "(repeats suppressed)"; the menu's in-place diagnostics are untouched. Still open: whether `default` (and `enchanted`) should match non-humanoid wearers at all. | S, decision |
+| 51 | DONE 2026-09-21: the first segment survives rotation | The 2026-09-21 evening session's first ~11.5 minutes (96,288 records: the city onboarding burst, the window the perf question was about) were rotated away; only the last two 32 MiB segments survived. Rotation now always keeps segment 1 beside the rotating tail (`Trace.cpp`, `trace_tests.cpp`), so a session start is never lost. | S |
+| 52 | Verbose mode is expensive enough to distort a perf read | With `VerboseLogging` on, every first mesh read runs a synchronous GPU readback comparison (`MeshCache.cpp:27`, up to ~168 KB per geometry) and storms write ~10,000 log lines a minute. Correctly gated, but nothing tells the user the toggle changes what they are measuring. A sentence in the setup page (deferred to the tooltip pass) and a note beside gate 1's measurement protocol. | S, writing |
+| 53 | The expression contract mis-states comparisons and layer wiring | Two facts the schema/contract get wrong, found fixing the debug recipes 2026-09-22. (a) Comparisons and logic are scalar-only: `[1,0,1] > 0.5` is rejected ("comparisons and logic take scalars"), yet the `expression` description says "comparisons yielding 0 or 1" under a blanket "Component-wise on vectors". Only arithmetic and the math functions are component-wise; comparisons, `and`/`or`/`not`, and an `if` condition take a scalar (its branches may be vectors). Corrected the schema description 2026-09-22; decide at the freeze whether to also lift the restriction (component-wise compare) or keep it. (b) A layer `source` accepts only a per-texel source or mask, never a per-tick signal; a signal reaches a layer through `color`/`opacity`/`strength`. Neither the schema nor the reference says this at the layer, and it is the exact trap four debug recipes fell into. State both in the freeze writing. | S writing, decision on (a) |
 
 ## Row types
 
@@ -234,6 +309,7 @@ preview uses a null environment, so `efsh`, `av`, `actorState`, and
 | [`gradient`](#gradient) | A color read from stops at a scalar position. |
 | [`rate`](#rate) | Another signal's change per second. |
 | [`smooth`](#smooth) | Another signal, exponentially smoothed. |
+| [`toRoot`](#toroot) | A world-space position expressed in the wearer's root space. |
 | [`expr`](#expr) | An expression over signals. |
 
 ### `constant`
@@ -303,15 +379,15 @@ eval-tested · studio-editable.
 
 ### `actorState`
 
-A state of the wearer: three booleans (0 or 1) and one distance.
+A state of the wearer: seven flags, one scalar, two positions.
 
 | Parameter | Shape | Meaning |
 |---|---|---|
-| `actorState` | `inCombat` \| `sneaking` \| `weaponDrawn` \| `hostileDistance` | `hostileDistance` is the distance to the nearest hostile; the other three are flags. |
+| `actorState` | `inCombat` \| `sneaking` \| `weaponDrawn` \| `swimming` \| `sprinting` \| `mounted` \| `movementSpeed` \| `position` \| `target` \| `hasTarget` | The seven flags (including `hasTarget`, 1 while a combat target exists) read 0 or 1. `movementSpeed` is the current speed in raw game units per second, with no documented scale — normalize with a divisor you calibrate in game (item 41's missing signal readout makes that harder). `position` (the wearer, added 2026-09-21, item 31) and `target` (the current combat target, `[0, 0, 0]` when none — gate with `hasTarget`; added 2026-09-22, item 55) are world positions, vec3; pair them with [`toRoot`](#toroot) to use them against the geometry's own space. `distance(@target, @position)` gives the distance to the hostile; `hostileDistance` was removed in its favour (item 56). |
 
 Status: parsed · evaluated (`Environment.cpp:55`) · eval-tested ·
-studio-editable. The enum's mixed shape (three flags, one distance) is
-frozen as-is (decision, item 5).
+studio-editable. The enum's mixed shape resolved by deleting
+`hostileDistance` (item 56 supersedes the item-5 freeze-as-is decision).
 
 ### `enchantment`
 
@@ -352,9 +428,12 @@ channel separation both ways · studio-editable.
 | `when` | A rising edge of another signal. |
 
 **`event`** — matches an id glob against the bus. The engine publishes
-four id families: `equip`, `anim.<graph event>`, `hit.received`, and
-`hit.dealt` (`src/engine/Events.cpp`). Naming this list in the contract
-is work item 27.
+four id families: `equip` (with `equip.position`, vec3),
+`anim.<graph event>`, `hit.received` (with `hit.received.position`,
+the attacker's world position, since 2026-09-21), and `hit.dealt`
+(with `hit.dealt.position`, the struck actor's world position)
+(`src/engine/Events.cpp`). Naming this list in the contract is work
+item 27.
 
 | Parameter | Shape | Meaning |
 |---|---|---|
@@ -491,6 +570,34 @@ The referenced signal, exponentially smoothed:
 
 Status: parsed · evaluated · eval-tested · studio-editable.
 
+### `toRoot`
+
+The referenced world-space position, expressed in the wearer's root
+space (added 2026-09-21). A **point** transform, not a direction one: it
+applies the actor's full world-to-root inverse, including translation.
+Build a direction by subtracting two converted points so the translation
+cancels — and because a point in its own root space is the origin, the
+away-from-a-point direction reduces to negating one converted point
+(`sweepDir: -@attackerRoot`). Pairs with [`actorState`](#actorstate)
+`position` and the ripple's `direction`; it is the composable answer to
+"which way, relative to the wearer" that a fixed vector cannot give.
+
+Caution: `toRoot` of the wearer's own `position` is always `(0, 0, 0)` —
+a point in its own root space is the origin — so the one-signal reading
+`{ "toRoot": "@position" }` is a silently dead value. `toRoot` earns its
+keep only on a second world point (a hit payload, another actor),
+subtracted from the wearer's converted position or negated on its own.
+
+| Parameter | Shape | Meaning |
+|---|---|---|
+| `toRoot` | ref | The world-space vec3 to convert. |
+
+Status: parsed · evaluated · eval-tested (against a translating root) ·
+studio-editable. The engine read (the actor's root transform) is
+verified only in game. A world-space **direction** conversion (for
+`actorState` facing) is not this kind's job and waits on a future
+`toRootDir`.
+
 ### `expr`
 
 An expression over signals; the escape hatch the structured kinds sit
@@ -621,10 +728,11 @@ pass (`PSRipple`, `TextureLabPass.cpp:505`).
 | Parameter | Shape | Default | Meaning |
 |---|---|---|---|
 | `trigger` | ref | required | The firings that spawn rings. |
-| `speed` | param | — | Units per second outward. |
-| `width` | param | — | The ring's thickness. |
+| `speed` | param | — | Units per second outward (or along `direction`). |
+| `width` | param | — | The ring's (or wavefront's) thickness. |
 | `decay` | param | — | Fade per second. |
-| `shape` | `ring` \| `disc` | ring | Hollow or filled. |
+| `shape` | `ring` \| `disc` | ring | Hollow front or filled behind it. |
+| `direction` | vec3 | absent | A worldspace vector the wave travels along; the front becomes a plane sweeping from the anchor instead of a ring expanding from it. Absent or zero radiates. For an author-known fixed direction (a shock always sweeping up the body). A runtime-relative direction (away from whoever struck you) is not this field's job - anchor the trigger to the runtime point instead and let a radial front sweep outward from it, which stays correct under the wearer turning and under several sources. Added 2026-09-21. |
 
 Status: parsed · rendered · **untested** · studio-editable.
 The ring's origin is the firing's **anchor**, declared on the trigger

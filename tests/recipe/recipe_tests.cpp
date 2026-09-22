@@ -291,6 +291,8 @@ int main() {
     "noiseSig":   { "noise": { "frequency": 2.0, "amplitude": 0.5, "seed": 7 } },
     "gradSig":    { "gradient": { "t": "@c", "stops": [ { "at": 0.0, "color": [0.0, 0.0, 0.0] }, { "at": 1.0, "color": [1.0, 1.0, 1.0] } ] } },
     "rateSig":    { "rate": "@c" },
+    "toRootSig":  { "toRoot": "@posV" },
+    "posV":       { "actorState": "position" },
     "smoothSig":  { "smooth": { "of": "@c", "seconds": 0.5 } },
     "exprSig":    { "expr": "1 + 2" }
   },
@@ -300,9 +302,8 @@ int main() {
     "bakePos":  { "bake": "position" },
     "bakePart": { "bake": { "partition": "body" } },
     "bakeBone": { "bake": { "boneWeight": ["NPC Spine", "NPC Spine1"] } },
-    "uvSrc":    { "uv": "v" },
+    "uvSrc":    { "bake": "uv" },
     "distNode": { "distance": "NPC Root [Root]" },
-    "distPt":   { "distance": { "from": [1.0, 2.0, 3.0] } },
     "ripSrc":   { "ripple": { "trigger": "@trig", "speed": 90.0, "width": 8.0, "decay": 1.2, "shape": "disc" } },
     "clusters": { "materialClusters": { "clusters": 3, "weights": { "roughness": 2.0, "luma": 0.5 }, "seed": 9, "iterations": 64 } }
   }
@@ -318,7 +319,7 @@ int main() {
     for (const bool seen : signalSeen) {
       allSignals = allSignals && seen;
     }
-    Check(allSignals, "every one of the 16 signal kinds round-trips");
+    Check(allSignals, "every one of the 17 signal kinds round-trips");
 
     std::array<bool, std::variant_size_v<SourceKind>> sourceSeen{};
     for (const Source &s : r.sources) {

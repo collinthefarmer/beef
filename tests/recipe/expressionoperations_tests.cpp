@@ -37,6 +37,16 @@ void Arithmetic() {
   Result("lerp([2, 4], 10, 0.25)", Vec2{4, 5.5f});
   Result("smoothstep(2, 6, [2, 4, 6])", Vec3{0, 0.5f, 1});
   Result("smoothstep(3, 3, [2, 3])", Vec2{0, 1});
+  Result("length([3, 4])", 5.0f);
+  Result("length([1, 2, 2])", 3.0f);
+  Result("distance([1, 1], [4, 5])", 5.0f);
+  Result("distance([2, 3, 6], [0, 0, 0])", 7.0f);
+  Result("dot([1, 2], [3, 4])", 11.0f);
+  Result("dot([1, 2, 3], [4, 5, 6])", 32.0f);
+  Result("cross([1, 0, 0], [0, 1, 0])", Vec3{0, 0, 1});
+  Result("cross([0, 1, 0], [1, 0, 0])", Vec3{0, 0, -1});
+  Result("normalize([3, 4])", Vec2{0.6f, 0.8f});
+  Result("normalize([0, 0, 0])", Vec3{0, 0, 0});
   Result("sqrt([-1, 9])", Vec2{0, 3});
   Result("frac([-1.25, 2.25])", Vec2{0.75f, 0.25f});
   Result("1 / 0.0000001", 0.0f);
@@ -59,11 +69,22 @@ void Diagnostics() {
   Error("not [1, 2]", "comparisons and logic take scalars");
   Error("[1, 2] < 3", "comparisons and logic take scalars");
   Error("3 and [1, 2]", "comparisons and logic take scalars");
+  Error("length(2)", "length() takes a vector");
+  Error("distance([1, 2], 3)", "distance() takes two vectors of the same size");
+  Error("distance([1, 2], [3, 4, 5])",
+        "distance() takes two vectors of the same size");
+  Error("dot([1, 2], 3)", "dot() takes two vectors of the same size");
+  Error("dot([1, 2], [3, 4, 5])", "dot() takes two vectors of the same size");
+  Error("cross([1, 2], [3, 4])", "cross() takes two vec3s");
+  Error("cross([1, 2, 3], 4)", "cross() takes two vec3s");
+  Error("normalize(2)", "normalize() takes a vector");
   Error("@curve([1, 2])", "curve '@curve' takes a scalar");
   Error("[1, 2] + @missing", "unknown row '@missing'");
   Error("([1, 2] + [3, 4, 5]) + @missing", "'operator' mixes vec2 with vec3");
   test::Check(Parse("[1, 2] + [3, 4, 5]").Evaluate({}) == Value{0.0f},
               "unchecked dimension mismatch falls back to zero");
+  test::Check(Parse("distance([1, 2], [3, 4, 5])").Evaluate({}) == Value{0.0f},
+              "unchecked distance dimension mismatch falls back to zero");
 }
 // Compatibility coverage, not a claim that branch-dependent result types are
 // desirable. See docs/wip/expression-cleanup-2026-09-13.md.

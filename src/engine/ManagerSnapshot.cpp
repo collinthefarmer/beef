@@ -322,6 +322,10 @@ struct PieceSnapshotBuilder {
         key.text = editorID.empty() ? source.form.ToString() : editorID;
         row.keys.push_back(std::move(key));
       }
+      row.diffusePaths = state.plan.geometries[flatStart].keys.diffusePaths;
+      std::ranges::sort(row.diffusePaths);
+      const auto duplicates = std::ranges::unique(row.diffusePaths);
+      row.diffusePaths.erase(duplicates.begin(), duplicates.end());
     }
 
     for (const PieceMatch &match : matches) {

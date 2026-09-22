@@ -144,10 +144,8 @@ void SourceEnumsMatchTheTables(const json &a_schema) {
               WordsOf(kImageSpaces), "image space");
   EnumMatches(a_schema, "/$defs/source/oneOf/1/properties/material/enum",
               WordsOf(kMaterialChannels), "material channel");
-  EnumMatches(a_schema, "/$defs/source/oneOf/3/properties/uv/enum",
-              WordsOf(kUvAxes), "uv axis");
   EnumMatches(a_schema,
-              "/$defs/source/oneOf/5/properties/ripple/properties/shape/enum",
+              "/$defs/source/oneOf/4/properties/ripple/properties/shape/enum",
               WordsOf(kRippleShapes), "ripple shape");
   std::vector<std::string> bakes =
       Words(At(a_schema, "/$defs/source/oneOf/2/properties/bake/oneOf/0/enum"));
@@ -156,7 +154,7 @@ void SourceEnumsMatchTheTables(const json &a_schema) {
   Equal(Joined(Sorted(bakes)), Joined(Sorted(WordsOf(kBakeKindWords))),
         "bake kinds");
   Check(KindEntry(a_schema, "source", "ripple") ==
-            At(a_schema, "/$defs/source/oneOf/5"),
+            At(a_schema, "/$defs/source/oneOf/4"),
         "source alternatives sit at the table's index");
 }
 

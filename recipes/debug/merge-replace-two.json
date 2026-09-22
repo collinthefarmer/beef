@@ -1,0 +1,20 @@
+{
+  "format": 1,
+  "name": "merge-replace-two (lower priority, dropped)",
+  "author": "collinthefarmer@gmail.com",
+  "description": "Merge test: lower priority on diffuse. Replaced by merge-replace-two-high.",
+  "priority": -49,
+  "keys": ["default"],
+  "outputs": [
+    {
+      "target": "material",
+      "slot": "diffuse",
+      "stack": [
+        {
+          "source": [1.0, 0.8, 0.2],
+          "opacity": 1.0
+        }
+      ]
+    }
+  ]
+}

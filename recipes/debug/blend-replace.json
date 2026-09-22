@@ -1,0 +1,21 @@
+{
+  "format": 1,
+  "name": "Diagnostic: Blend replace",
+  "description": "Test replace merge. This higher-priority recipe replaces lower-priority work. Use alongside blend-add.json with higher priority to see replace suppress the lower one.",
+  "keys": ["default"],
+  "priority": -60,
+  "merge": "replace",
+  "outputs": [
+    {
+      "target": "shell",
+      "slot": "emissive",
+      "strength": 1.0,
+      "stack": [
+        {
+          "source": [0.0, 1.0, 0.0],
+          "opacity": 1.0
+        }
+      ]
+    }
+  ]
+}

@@ -1,0 +1,37 @@
+{
+  "format": 1,
+  "name": "inspect-hostility",
+  "author": "collinthefarmer@gmail.com",
+  "description": "Light brightens as the current combat target closes. distance(@target, @position) is in game units, so it is mapped to 0..1 over ~1500 units; beyond that, or with no target (hasTarget gates it), the light is off. Tests target, hasTarget and distance().",
+  "priority": -41,
+  "keys": ["default"],
+  "signals": {
+    "position": {
+      "actorState": "position"
+    },
+    "target": {
+      "actorState": "target"
+    },
+    "hasTarget": {
+      "actorState": "hasTarget"
+    },
+    "proximity": {
+      "expr": "@hasTarget * saturate(1 - distance(@target, @position) / 1500)",
+      "note": "1 at contact, fading to 0 by ~1500 units; @hasTarget zeroes it when there is no combat target, where @target reads [0, 0, 0]."
+    },
+    "light_intensity": {
+      "expr": "@proximity * 6"
+    }
+  },
+  "outputs": [
+    {
+      "target": "light",
+      "bones": {
+        "skinned": {}
+      },
+      "color": [1.0, 0.5, 0.2],
+      "intensity": "@light_intensity",
+      "size": 1.5
+    }
+  ]
+}

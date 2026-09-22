@@ -1,0 +1,32 @@
+{
+  "format": 1,
+  "name": "signal-ramp-up",
+  "author": "Claude",
+  "description": "Ramp 0→1 over 5s, brightness scales with it. Tests: ramp, completion.",
+  "priority": -92,
+  "keys": ["default"],
+  "signals": {
+    "rampSignal": {
+      "ramp": {
+        "from": 0,
+        "to": 1,
+        "seconds": 5.0
+      },
+      "note": "Linear ramp from 0 to 1 over 5 seconds"
+    }
+  },
+  "outputs": [
+    {
+      "target": "material",
+      "slot": "emissive",
+      "strength": "@rampSignal",
+      "stack": [
+        {
+          "source": [0, 0.5, 0.5],
+          "opacity": 1.0
+        }
+      ],
+      "note": "Fading-in emissive via ramp: cyan to white"
+    }
+  ]
+}

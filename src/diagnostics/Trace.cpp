@@ -74,9 +74,10 @@ void Recorder::Rotate() {
     return;
   }
   ++status_.rotations;
-  if (next > segmentsKept_) {
+  if (const std::uint64_t oldest = next - segmentsKept_;
+      next > segmentsKept_ && oldest > 1) {
     std::error_code ec;
-    std::filesystem::remove(SegmentPath(next - segmentsKept_), ec);
+    std::filesystem::remove(SegmentPath(oldest), ec);
   }
   nlohmann::json fields =
       identity_.empty() ? nlohmann::json::object()

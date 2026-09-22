@@ -1,0 +1,28 @@
+{
+  "format": 1,
+  "name": "output-material-rmaos",
+  "description": "Diagnostic: material metallic channel in RMAOS output",
+  "keys": ["default"],
+  "priority": -67,
+  "sources": {
+    "metallic": {
+      "material": "metallic",
+      "note": "Material metallic channel"
+    }
+  },
+  "outputs": [
+    {
+      "target": "material",
+      "slot": "rmaos",
+      "stack": [
+        {
+          "source": "@metallic",
+          "blend": "replace",
+          "opacity": 1.0,
+          "channels": "r"
+        }
+      ],
+      "note": "Metallic channel written to roughness (red) channel of RMAOS"
+    }
+  ]
+}

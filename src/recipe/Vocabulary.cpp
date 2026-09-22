@@ -297,11 +297,14 @@ ValueType SourceType(const Source &a_source) noexcept {
       },
       [](const MaterialSource &s) { return MaterialChannelType(s.channel); },
       [](const BakeSource &s) {
-        return Is<PositionBake>(s.bake) || Is<LocalPositionBake>(s.bake)
+        if (Is<UvBake>(s.bake)) {
+          return ValueType::kVec2;
+        }
+        return Is<PositionBake>(s.bake) || Is<LocalPositionBake>(s.bake) ||
+                       Is<NormalBake>(s.bake)
                    ? ValueType::kVec3
                    : ValueType::kScalar;
       },
-      [](const UvSource &) { return ValueType::kScalar; },
       [](const DistanceSource &) { return ValueType::kScalar; },
       [](const RippleSource &) { return ValueType::kScalar; },
       [](const MaterialClustersSource &) { return ValueType::kScalar; });
@@ -504,14 +507,6 @@ std::string_view ImageSpaceName(ImageSpace a_space) noexcept {
 
 std::optional<ImageSpace> ParseImageSpace(std::string_view a_name) noexcept {
   return FromName(kImageSpaces, a_name);
-}
-
-std::string_view UvAxisName(UvAxis a_axis) noexcept {
-  return NameOf(kUvAxes, a_axis);
-}
-
-std::optional<UvAxis> ParseUvAxis(std::string_view a_name) noexcept {
-  return FromName(kUvAxes, a_name);
 }
 
 std::string_view RippleShapeName(RippleShape a_shape) noexcept {
@@ -760,6 +755,7 @@ public:
           },
           [&](const RateSignal &d) { return Signal(d.of.name); },
           [&](const SmoothSignal &s) { return Signal(s.of.name); },
+          [](const ToRootSignal &) { return true; },
           [](const WaveSignal &) { return true; },
           [](const RampSignal &) { return true; },
           [](const EfshSignal &) { return true; },
@@ -803,7 +799,6 @@ public:
           [](const RippleSource &) { return true; },
           [](const MaterialSource &) { return false; },
           [](const BakeSource &) { return false; },
-          [](const UvSource &) { return false; },
           [](const DistanceSource &) { return false; },
           [](const MaterialClustersSource &) { return false; });
     });

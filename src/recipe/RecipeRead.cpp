@@ -426,6 +426,15 @@ std::optional<SignalKind> ParseRate(const json &a_v, const Reporter &a_ctx) {
   return RateSignal{*of};
 }
 
+std::optional<SignalKind> ParseToRoot(const json &a_v, const Reporter &a_ctx) {
+  Reader r(a_v, a_ctx);
+  const auto of = r.RefFrom(a_v, "toRoot");
+  if (!of) {
+    return std::nullopt;
+  }
+  return ToRootSignal{*of};
+}
+
 std::optional<SignalKind> ParseSmooth(const json &a_v, const Reporter &a_ctx) {
   SmoothSignal k;
   if (!ReadObject(a_v, "smooth", a_ctx, [&](Reader &r) {
@@ -453,7 +462,8 @@ constexpr SignalParser kSignalParsers[]{
     &ParseConstant,   &ParseWave,       &ParseRamp,        &ParseEfsh,
     &ParseActorValue, &ParseActorState, &ParseEnchantment, &ParseTrigger,
     &ParsePayload,    &ParseCounter,    &ParseAccumulate,  &ParseNoise,
-    &ParseGradient,   &ParseRate,       &ParseSmooth,      &ParseExpr};
+    &ParseGradient,   &ParseRate,       &ParseSmooth,      &ParseToRoot,
+    &ParseExpr};
 static_assert(std::size(kSignalParsers) == kSignalKindCount);
 
 std::optional<Signal> SignalFrom(const std::string &a_name, const json &a_j,
@@ -590,40 +600,13 @@ ParseSourceAlternative<BakeSource>(const json &a_v, const Reporter &a_ctx) {
 }
 
 template <>
-std::optional<UvSource>
-ParseSourceAlternative<UvSource>(const json &a_v, const Reporter &a_ctx) {
-  const auto axis = a_v.is_string() ? FromName(kUvAxes, a_v.get<std::string>())
-                                    : std::nullopt;
-  if (!axis) {
-    a_ctx.Error("'uv' is \"u\" or \"v\"");
-    return std::nullopt;
-  }
-  return UvSource{*axis};
-}
-
-template <>
 std::optional<DistanceSource>
 ParseSourceAlternative<DistanceSource>(const json &a_v, const Reporter &a_ctx) {
-  DistanceSource k;
-  if (a_v.is_string()) {
-    k.from = a_v.get<std::string>();
-  } else if (a_v.is_object()) {
-    Reader r(a_v, a_ctx);
-    if (const auto *from = r.Child("from")) {
-      if (from->is_string()) {
-        k.from = from->get<std::string>();
-      } else if (auto point = Reader::PointFrom(*from, "from", a_ctx)) {
-        k.from = *point;
-      }
-    } else {
-      a_ctx.Error("'distance' needs 'from'");
-    }
-    r.Finish();
-  } else {
-    a_ctx.Error("'distance' is a node name or {\"from\": ...}");
+  if (!a_v.is_string()) {
+    a_ctx.Error("'distance' names a skeleton node");
     return std::nullopt;
   }
-  return k;
+  return DistanceSource{a_v.get<std::string>()};
 }
 
 template <>
@@ -642,6 +625,7 @@ ParseSourceAlternative<RippleSource>(const json &a_v, const Reporter &a_ctx) {
   r.Read("width", k.width);
   r.Read("decay", k.decay);
   r.Read("shape", kRippleShapes, k.shape);
+  r.Read("direction", k.direction);
   r.Finish();
   return k;
 }
@@ -666,7 +650,7 @@ bool ClusterWeightsFrom(Reader &a_r, MaterialClustersSource &a_k,
                                 kMaxChannelWeight));
         ok = false;
       } else {
-        a_k.*field.member = *x;
+        a_k.settings.weights.*field.member = *x;
       }
     }
   }
@@ -686,18 +670,18 @@ ParseSourceAlternative<MaterialClustersSource>(const json &a_v,
   MaterialClustersSource k;
   Reader r(a_v, a_ctx);
   bool ok = true;
-  ok &= r.IntRange("clusters", 1, kMaxMaterialClusters, k.clusters);
+  ok &= r.IntRange("clusters", 1, kMaxMaterialClusters, k.settings.clusters);
   ok &= ClusterWeightsFrom(r, k, a_ctx);
   if (auto n = r.Integer("seed")) {
     if (*n < 0) {
       a_ctx.Error("'seed' is a whole number");
       ok = false;
     } else {
-      k.seed = static_cast<std::uint32_t>(*n);
+      k.settings.seed = static_cast<std::uint32_t>(*n);
     }
   }
   ok &= r.IntRange("iterations", 1, static_cast<int>(kMaxClusterIterations),
-                   k.iterations);
+                   k.settings.iterations);
   r.Finish();
   if (!ok) {
     return std::nullopt;

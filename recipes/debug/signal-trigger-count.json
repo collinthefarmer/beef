@@ -1,0 +1,42 @@
+{
+  "format": 1,
+  "name": "signal-trigger-count",
+  "author": "Claude",
+  "description": "Counter signal incremented by an event, drive intensity (saturate to avoid overflow). Tests: counter, event triggering.",
+  "priority": -85,
+  "keys": ["default"],
+  "signals": {
+    "hitEvent": {
+      "trigger": {
+        "event": "hit.received",
+        "lifetime": 10,
+        "max": 5
+      },
+      "note": "Fires on incoming hit"
+    },
+    "hitCount": {
+      "counter": {
+        "trigger": "@hitEvent",
+        "cap": 5
+      },
+      "note": "Counts hits, capped at 5"
+    },
+    "countNorm": {
+      "expr": "saturate(@hitCount / 5)"
+    }
+  },
+  "outputs": [
+    {
+      "target": "material",
+      "slot": "emissive",
+      "strength": "@countNorm",
+      "stack": [
+        {
+          "source": [0.5, 0, 0],
+          "opacity": 1.0
+        }
+      ],
+      "note": "Emissive driven by hit count: red intensity"
+    }
+  ]
+}

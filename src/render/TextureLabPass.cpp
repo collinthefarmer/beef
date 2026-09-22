@@ -256,9 +256,7 @@ private:
   }
 };
 
-void TextureLab::DrawFullScreen(const RenderPass &a_pass,
-                                RenderTarget &a_target,
-                                const FullScreenDraw &a_draw) {
+void TextureLab::BindTarget(const RenderPass &a_pass, RenderTarget &a_target) {
   REX::W32::ID3D11RenderTargetView *rtv = a_target.rtv.Get();
   a_pass.Context().OMSetRenderTargets(1, &rtv, nullptr);
   D3D11_VIEWPORT viewport{};
@@ -266,6 +264,25 @@ void TextureLab::DrawFullScreen(const RenderPass &a_pass,
   viewport.height = static_cast<float>(a_target.size);
   viewport.maxDepth = 1.0f;
   a_pass.Context().RSSetViewports(1, &viewport);
+  const float blendFactor[4]{};
+  a_pass.Context().OMSetBlendState(gpu_->blend.Get(), blendFactor, 0xFFFFFFFF);
+  a_pass.Context().OMSetDepthStencilState(gpu_->depth.Get(), 0);
+  a_pass.Context().RSSetState(gpu_->raster.Get());
+}
+
+void TextureLab::UnbindTarget(const RenderPass &a_pass,
+                              std::uint32_t a_srvCount) {
+  REX::W32::ID3D11RenderTargetView *none = nullptr;
+  a_pass.Context().OMSetRenderTargets(1, &none, nullptr);
+  REX::W32::ID3D11ShaderResourceView *noSrvs[kPassSrvs]{};
+  a_pass.Context().PSSetShaderResources(0, (std::min)(a_srvCount, kPassSrvs),
+                                        noSrvs);
+}
+
+void TextureLab::DrawFullScreen(const RenderPass &a_pass,
+                                RenderTarget &a_target,
+                                const FullScreenDraw &a_draw) {
+  BindTarget(a_pass, a_target);
   a_pass.Context().IASetInputLayout(nullptr);
   a_pass.Context().IASetPrimitiveTopology(
       D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
@@ -277,16 +294,8 @@ void TextureLab::DrawFullScreen(const RenderPass &a_pass,
   a_pass.Context().PSSetConstantBuffers(
       0, static_cast<std::uint32_t>(a_draw.constants.size()),
       a_draw.constants.data());
-  const float blendFactor[4]{};
-  a_pass.Context().OMSetBlendState(gpu_->blend.Get(), blendFactor, 0xFFFFFFFF);
-  a_pass.Context().OMSetDepthStencilState(gpu_->depth.Get(), 0);
-  a_pass.Context().RSSetState(gpu_->raster.Get());
   a_pass.Context().Draw(3, 0);
-  REX::W32::ID3D11RenderTargetView *none = nullptr;
-  a_pass.Context().OMSetRenderTargets(1, &none, nullptr);
-  REX::W32::ID3D11ShaderResourceView *noSrvs[12]{};
-  a_pass.Context().PSSetShaderResources(
-      0, static_cast<std::uint32_t>(a_draw.srvs.size()), noSrvs);
+  UnbindTarget(a_pass, static_cast<std::uint32_t>(a_draw.srvs.size()));
   a_pass.Context().GenerateMips(a_target.srv.Get());
 }
 
@@ -397,7 +406,7 @@ bool TextureLab::RenderProgram(RenderTarget &a_target,
     constants->refValues[r][1] = ref.value.y;
     constants->refValues[r][2] = ref.value.z;
   }
-  REX::W32::ID3D11ShaderResourceView *srvs[12]{};
+  REX::W32::ID3D11ShaderResourceView *srvs[kPassSrvs]{};
   for (std::size_t t = 0; t < a_pass.textureCount; ++t) {
     const auto &tex = a_pass.textures[t];
     const auto *data = DataOf(tex.texture);
@@ -472,14 +481,9 @@ bool TextureLab::BakeMesh(RenderTarget &a_target, const BakeBuffers &a_bake) {
   }
 
   REX::W32::ID3D11RenderTargetView *rtv = a_target.rtv.Get();
-  const float black[4]{0.0f, 0.0f, 0.0f, 1.0f};
-  pass.Context().ClearRenderTargetView(rtv, black);
-  pass.Context().OMSetRenderTargets(1, &rtv, nullptr);
-  D3D11_VIEWPORT viewport{};
-  viewport.width = static_cast<float>(a_target.size);
-  viewport.height = static_cast<float>(a_target.size);
-  viewport.maxDepth = 1.0f;
-  pass.Context().RSSetViewports(1, &viewport);
+  const float empty[4]{0.0f, 0.0f, 0.0f, 0.0f};
+  pass.Context().ClearRenderTargetView(rtv, empty);
+  BindTarget(pass, a_target);
   const std::uint32_t stride = sizeof(BakeVertex);
   const std::uint32_t offset = 0;
   pass.Context().IASetInputLayout(pipeline.layout.Get());
@@ -488,17 +492,22 @@ bool TextureLab::BakeMesh(RenderTarget &a_target, const BakeBuffers &a_bake) {
   pass.Context().IASetPrimitiveTopology(D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
   pass.Context().VSSetShader(pipeline.vertex.Get(), nullptr, 0);
   pass.Context().PSSetShader(pipeline.pixel.Get(), nullptr, 0);
-  REX::W32::ID3D11ShaderResourceView *noSrvs[12]{};
-  pass.Context().PSSetShaderResources(0, 12, noSrvs);
-  const float blendFactor[4]{};
-  pass.Context().OMSetBlendState(gpu_->blend.Get(), blendFactor, 0xFFFFFFFF);
-  pass.Context().OMSetDepthStencilState(gpu_->depth.Get(), 0);
-  pass.Context().RSSetState(gpu_->raster.Get());
+  REX::W32::ID3D11ShaderResourceView *noSrvs[kPassSrvs]{};
+  pass.Context().PSSetShaderResources(0, kPassSrvs, noSrvs);
   pass.Context().DrawIndexed(static_cast<std::uint32_t>(a_bake.indices.size()),
                              0, 0);
-  REX::W32::ID3D11RenderTargetView *none = nullptr;
-  pass.Context().OMSetRenderTargets(1, &none, nullptr);
-  pass.Context().GenerateMips(a_target.srv.Get());
+  UnbindTarget(pass, kPassSrvs);
+  const PixelPipeline *dilate =
+      gpu_->dilate.has_value() ? &gpu_->dilate.value() : nullptr;
+  RenderTarget *gutter = dilate ? Scratch(TextureSize{a_target.size}) : nullptr;
+  if (dilate && gutter && gutter->rtv.Get() && gutter->size == a_target.size) {
+    REX::W32::ID3D11ShaderResourceView *fromTarget[]{a_target.srv.Get()};
+    DrawFullScreen(pass, *gutter, {dilate->shader.Get(), fromTarget, {}});
+    REX::W32::ID3D11ShaderResourceView *fromGutter[]{gutter->srv.Get()};
+    DrawFullScreen(pass, a_target, {dilate->shader.Get(), fromGutter, {}});
+  } else {
+    pass.Context().GenerateMips(a_target.srv.Get());
+  }
   return true;
 }
 
@@ -530,10 +539,14 @@ bool TextureLab::RenderRipple(RenderTarget &a_target,
   constants.shape[3] = a_pass.disc ? 1.0f : 0.0f;
   constants.misc[0] = static_cast<float>(count);
   constants.misc[1] = a_pass.frame;
+  constants.direction[0] = a_pass.direction.x;
+  constants.direction[1] = a_pass.direction.y;
+  constants.direction[2] = a_pass.direction.z;
+  constants.direction[3] = a_pass.directional ? 1.0f : 0.0f;
 
   pass.Context().UpdateSubresource(pipeline.constants.Get(), 0, nullptr,
                                    &constants, 0, 0);
-  REX::W32::ID3D11ShaderResourceView *srvs[12]{
+  REX::W32::ID3D11ShaderResourceView *srvs[kPassSrvs]{
       reinterpret_cast<REX::W32::ID3D11ShaderResourceView *>(
           positions->resourceView)};
   REX::W32::ID3D11Buffer *cbs[3]{nullptr, nullptr, pipeline.constants.Get()};
@@ -616,21 +629,22 @@ bool TextureLab::RenderClusters(RenderTarget &a_target,
                                 const MaterialAnalysis &a_analysis) {
   auto *renderer = RE::BSGraphics::Renderer::GetSingleton();
   if (!available_ || !renderer || !borrowedContext_ || !a_target.rtv.Get() ||
-      !gpu_->classify.has_value()) {
+      !gpu_->clusters.has_value()) {
     return false;
   }
-  const PixelPipeline &pipeline = *gpu_->classify;
+  const PixelPipeline &pipeline = *gpu_->clusters;
   const RenderPass pass{*renderer, *borrowedContext_};
   const auto *rmaosData = DataOf(a_rmaos);
   const auto *diffuseData = DataOf(a_diffuse);
   if (!rmaosData || !rmaosData->resourceView || !diffuseData ||
-      !diffuseData->resourceView || a_analysis.clusters.size() > kMaxClusters) {
+      !diffuseData->resourceView ||
+      a_analysis.clusters.size() > kMaxMaterialClusters) {
     return false;
   }
   const auto scale = [](float a_weight) {
     return std::isfinite(a_weight) && a_weight > 0.0f ? a_weight : 0.0f;
   };
-  ClassifyConstants constants{};
+  ClusterConstants constants{};
   for (std::size_t k = 0; k < a_analysis.clusters.size(); ++k) {
     const auto &cluster = a_analysis.clusters[k];
     constants.centroidRmaos[k][0] = cluster.centroid.roughness;
@@ -650,7 +664,7 @@ bool TextureLab::RenderClusters(RenderTarget &a_target,
 
   pass.Context().UpdateSubresource(pipeline.constants.Get(), 0, nullptr,
                                    &constants, 0, 0);
-  REX::W32::ID3D11ShaderResourceView *srvs[12]{
+  REX::W32::ID3D11ShaderResourceView *srvs[kPassSrvs]{
       reinterpret_cast<REX::W32::ID3D11ShaderResourceView *>(
           diffuseData->resourceView),
       reinterpret_cast<REX::W32::ID3D11ShaderResourceView *>(

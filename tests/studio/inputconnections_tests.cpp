@@ -22,6 +22,8 @@ public:
     return a_measure == Measure::kMax ? maximum : current;
   }
   float ActorState(ActorStateKind) const override { return 0; }
+  Vec3 ActorVector(ActorStateKind) const override { return Vec3{}; }
+  Vec3 WorldToRoot(const Vec3 &a_world) const override { return a_world; }
   float Enchantment(EnchantmentField) const override { return 0; }
   std::optional<Efsh::EffectParams>
   EffectShader(const FormRef &) const override {

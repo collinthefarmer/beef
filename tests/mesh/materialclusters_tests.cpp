@@ -46,7 +46,7 @@ float ShareSum(const MaterialAnalysis &a_analysis) {
 }
 
 int main() {
-  Check(kMaxClusters == 8, "at most eight clusters");
+  Check(kMaxMaterialClusters == 8, "at most eight clusters");
   Check(kMaxSampleTexels == 64 * 64, "the sample caps at 64 by 64 texels");
 
   ClusterSettings settings;
@@ -92,7 +92,7 @@ int main() {
   ClusterSettings tooMany = settings;
   tooMany.clusters = 200;
   const MaterialAnalysis clampedHigh = ClusterMaterial(sample, tooMany);
-  Check(clampedHigh.clusters.size() <= kMaxClusters,
+  Check(clampedHigh.clusters.size() <= kMaxMaterialClusters,
         "a request beyond the cap is clamped down");
 
   MaterialSample empty;
@@ -133,23 +133,12 @@ int main() {
             "rough mid non-metal",
         "out-of-range channels are clamped to [0,1] before description");
 
-  MaterialClustersSource source;
-  source.clusters = 5;
-  source.roughness = 2.0f;
-  source.metallic = 0.25f;
-  source.occlusion = 0.75f;
-  source.reflectance = 0.5f;
-  source.luma = 1.5f;
-  source.seed = 7;
-  source.iterations = 64;
-  const ClusterSettings roundTrip = SettingsOf(source);
-  Check(roundTrip.clusters == 5 && roundTrip.seed == 7 &&
-            roundTrip.iterations == 64,
-        "SettingsOf carries the scalar fields across");
-  Check(Near(roundTrip.weights.roughness, 2.0f) &&
-            Near(roundTrip.weights.metallic, 0.25f),
-        "SettingsOf maps the channel weights");
-  Check(SourceOf(roundTrip) == source, "SourceOf inverts SettingsOf");
+  const MaterialClustersSource source{ClusterSettings{
+      5, ChannelWeights{2.0f, 0.25f, 0.75f, 0.5f, 1.5f}, 7, 64}};
+  Check(source.settings ==
+            ClusterSettings{5, ChannelWeights{2.0f, 0.25f, 0.75f, 0.5f, 1.5f},
+                            7, 64},
+        "the source carries its analysis settings directly");
 
   return test::Finish("materialclusters");
 }

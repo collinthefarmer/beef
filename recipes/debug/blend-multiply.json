@@ -1,0 +1,25 @@
+{
+  "format": 1,
+  "name": "Diagnostic: Blend multiply",
+  "description": "Test multiply blend mode. White base layer multiplied by red layer should darken to dark red [0.5, 0.5, 0.5] × [1, 0, 0] = [0.5, 0, 0].",
+  "keys": ["default"],
+  "priority": -61,
+  "outputs": [
+    {
+      "target": "shell",
+      "slot": "emissive",
+      "strength": 1.0,
+      "stack": [
+        {
+          "source": [1.0, 1.0, 1.0],
+          "opacity": 1.0
+        },
+        {
+          "source": [1.0, 0.0, 0.0],
+          "blend": "multiply",
+          "opacity": 0.5
+        }
+      ]
+    }
+  ]
+}
