@@ -65,7 +65,7 @@ A field a recipe can animate is a `Param`. A literal number stays fixed; a
 
 ### Signal kinds (`Recipe.h`)
 
-`SignalKind` is the variant over the sixteen kinds below; a signal produces
+`SignalKind` is the variant over the seventeen kinds below; a signal produces
 one `Value` per tick when `SignalState::Tick` evaluates its node.
 `SignalKindId` names each alternative, and `SignalKindSpec` (a table in
 `Words.h`) carries the wire word and whether the studio can tune the kind
@@ -88,11 +88,12 @@ live; a `Complete` static_assert keeps the table total.
 | `GradientSignal` | `gradient` | A color: `t` sampled against the `GradientStop` list, interpolated between the two nearest stops. |
 | `RateSignal` | `rate` | The named signal's change per second. |
 | `SmoothSignal` | `smooth` | The named signal eased toward its current value by exponential smoothing with time constant `seconds`. |
+| `ToRootSignal` | `toRoot` | The named vec3 signal, a world-space point, expressed in the wearer's root space through `SignalEnvironment::WorldToRoot`. |
 | `ExprSignal` | `expr` | The value of an expression over other rows; the graph parses it to a `Program`, and the studio tunes its numeric literals. |
 
 ### Source kinds (`Recipe.h`)
 
-`SourceKind` is the variant over the seven kinds below; a source produces one
+`SourceKind` is the variant over the six kinds below; a source produces one
 value per texel when the render layer rasterises it. `SourceKindId` mirrors
 the alternative order, and a static_assert in `Words.h` keeps the wire-word
 table aligned with the variant. `CheckSource` (declared in `Signals.h`)
@@ -104,7 +105,7 @@ validates a source's params against the graph.
 | `MaterialSource` | `material` | One read of the piece's own material: the raw vec3s diffuseRgb, normalRgb, rmaosRgb; the named scalars diffuseLuma, roughness, metallic, occlusion, reflectance, displacement; and the computed normalSlope and relief. |
 | `BakeSource` | `bake` | A value baked from the mesh once per geometry; the `BakeKind` is position, localPosition, normal (the bind-pose surface normal, each axis as 0..1), uv (the coordinates as a vec2), partition (one biped slot), boneWeight (named bones), componentId, or chartId (the mesh analysis' id map, each texel the region id / 255). |
 | `DistanceSource` | `distance` | The texel's distance from a named skeleton node. |
-| `RippleSource` | `ripple` | A ring or disc that spreads from a trigger firing's anchor at `speed`, `width` wide, fading at `decay`; an unanchored trigger's rings spread from the geometry's origin. |
+| `RippleSource` | `ripple` | A ring or disc that spreads from a trigger firing's anchor at `speed`, `width` wide, fading at `decay`; an unanchored trigger's rings spread from the geometry's origin. An optional `direction` vec3 turns the radial front into a plane sweeping along the vector, and is animatable like the other params. |
 | `MaterialClustersSource` | `materialClusters` | The material's cluster map: each texel the id / 255 of its nearest k-means cluster under the channel weights, `seed`, and iteration cap, rendered once per geometry. |
 
 ### Outputs (`Recipe.h`)
@@ -182,7 +183,7 @@ types.
 | `SignalGraph` | The compiled graph: nodes in dependency order, each with a type and an inert flag; a bad row goes inert and raises a diagnostic instead of failing the recipe. |
 | `SignalState` | The per-actor evaluation state: `Tick` computes every node's `Value`, `Fire` feeds an `EventRecord` to the triggers, and `Resolve` reads a `Param` against the current values. |
 | `TickInputs` | One tick's clock: the time and the delta. |
-| `SignalEnvironment` | The engine questions a tick asks: actor values, actor states, enchantment fields, effect-shader records. `NullEnvironment` answers zero for native tests. |
+| `SignalEnvironment` | The engine questions a tick asks: actor values, actor states (scalar `ActorState` and vec3 `ActorVector`), world-to-root conversion, enchantment fields, effect-shader records. `NullEnvironment` answers zero for native tests. |
 | `RowTypes` | A recipe paired with its graph; the `*TypeOf` and `Check*` functions take it. |
 
 ### The plan (`Merge.h`)

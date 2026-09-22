@@ -18,7 +18,7 @@ never reaches the rest of the plugin as undefined behaviour.
 From a decoded mesh it derives everything a compositor or the studio menu
 asks for:
 
-- per-texel bake buffers — `BuildBake`, `BuildDistanceBake`, `BuildUvBake`,
+- per-texel bake buffers — `BuildBake`, `BuildDistanceBake`,
   `BuildIslandBake`;
 - connected-component and UV-chart segmentation — `AnalyseMesh`;
 - material segmentation over a sampled texture — `ClusterMaterial`;
@@ -54,13 +54,17 @@ A **bake** carries one mesh-derived value per vertex, and the compositor
 rasterizes it into a per-texel texture (`render/CompositorBake.cpp`,
 `render/CompositorSource.cpp`). Every `Build*Bake` function returns a
 `BakeBuffers`, and a mesh that cannot be baked yields a `problem` string
-instead of an exception. `BakeKeyOf`, `DistanceKeyOf`, and `UvKeyOf` name a
-bake's cache key, and `KeyDefinition` and `KeySize` read one back.
+instead of an exception. `KeyOf` joins a bake's `DefinitionOf` text and
+its size into the `BakeKey` the compositor caches under. When a skinned
+mesh stores a zero model bound, `MeasureBound` derives one from the
+vertices so the `localPosition` frame exists on every mesh.
 
 | Type | Description |
 |---|---|
 | `BakeVertex` | One baked vertex: the uv it lands at and up to three float channels of value. |
 | `BakeBuffers` | A bake's geometry: vertices, indices, a `vector` flag marking a bake whose channels form one vector value, and the `problem` string. |
+| `BakeKey` | A bake's cache identity: the definition text and the pixel size, compared field by field. |
+| `MeshBound` | A measured bound: box centre and enclosing radius over a mesh's vertices. |
 
 ### Bake resolution (`TextureSize.h`)
 
@@ -102,16 +106,16 @@ charts, and returns both segmentations in one `MeshAnalysis`.
 
 `ClusterMaterial` groups a sampled texture's texels by material likeness
 with k-means++ over five channels. It reads at most `kMaxSampleTexels`
-(64 x 64) texels and clamps the cluster count to `kMaxClusters` (8). This
-header does not include `Mesh.h`, because clustering works on a
-`MaterialSample` and never on a mesh.
+(64 x 64) texels and clamps the cluster count to `kMaxMaterialClusters`
+(8, `recipe/Recipe.h`). This header does not include `Mesh.h`, because
+clustering works on a `MaterialSample` and never on a mesh. The settings
+types (`ClusterSettings`, `ChannelWeights`) live in `recipe/Recipe.h`,
+because the recipe's `MaterialClustersSource` carries them directly.
 
 | Type | Description |
 |---|---|
 | `MaterialTexel` | One texel's five channels: roughness, metallic, occlusion, reflectance, and luma. |
 | `MaterialSample` | The sampled texture: width, height, and the texels. |
-| `ChannelWeights` | One clustering-distance weight per channel. |
-| `ClusterSettings` | The run's knobs: cluster count, `ChannelWeights`, seed, and iteration cap. `SettingsOf` and `SourceOf` convert it to and from the recipe's `MaterialClustersSource`. |
 | `MaterialCluster` | One cluster: its id, its centroid texel, its share of the sample, and a text description. |
 | `MaterialAnalysis` | The result `ClusterMaterial` returns: the settings it ran under plus the clusters. |
 
@@ -142,9 +146,7 @@ MeshData                                      render/MeshCache.cpp caches by buf
   │
   ├── BuildBake / BuildDistanceBake ─▶ BakeBuffers                 Mesh.cpp
   ├── BuildIslandBake(analysis) ─▶ BakeBuffers                     Islands.cpp
-  │       consumed by render/CompositorBake.cpp, keyed by BakeKeyOf/...
-  ├── BuildUvBake ─▶ BakeBuffers                                   Mesh.cpp
-  │       consumed by render/CompositorSource.cpp, keyed by UvKeyOf
+  │       consumed by render/CompositorBake.cpp, keyed by BakeKey
   │
   └── (a sampled MaterialSample, not this MeshData) ──ClusterMaterial──▶
         MaterialAnalysis                                            MaterialClusters.cpp
@@ -171,5 +173,5 @@ RestSkinToBone + ShellPoseValues ──PosedTransform──▶ RestSkinToBone   
   the engine's vertex packing, bake-frame ranges, and the welding and
   clustering rules, none of which the types above can state.
 - `docs/conventions.md` → *Multi-phase algorithms* — the bounded-recursion,
-  capped-row discipline `kMaxIslands`, `kMaxClusters`, and
+  capped-row discipline `kMaxIslands`, `kMaxMaterialClusters`, and
   `kMaxClusterIterations` follow.

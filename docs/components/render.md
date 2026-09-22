@@ -13,8 +13,9 @@ Shaders' material layout directly — and is not native-tested.
 ## What it owns
 
 - The **TextureLab**: one pixel shader over the modes in `TextureLab::Mode`
-  that every **bake**, interpreter, **ripple**, and classify pass runs
-  through, plus the render-target pool and the readbacks a pass needs.
+  that every **bake**, interpreter, **ripple**, cluster, and dilate pass
+  runs through, plus the render-target pool and the readbacks a pass
+  needs.
 - The **Compositor**: it turns a `SurfaceOutput`'s layer stack into a
   `RenderedStack` by preparing each layer's **source** and **mask** and
   running the lab over them in order.
@@ -31,8 +32,11 @@ Shaders' material layout directly — and is not native-tested.
 ### TextureLab lifecycle and shaders
 
 `TextureLab` (`TextureLab.h`) is the one pixel-shader runner: every **bake**,
-interpreter, **ripple**, and classify pass fills one constant-buffer struct
-and draws a full-screen pass into a pooled **target**. The lab borrows the
+interpreter, **ripple**, and cluster pass fills one constant-buffer struct
+and draws a full-screen pass into a pooled **target** (the dilate pass
+carries no constants: after a bake rasterizes, two dilate draws flood a
+two-texel gutter from covered texels — alpha marks coverage — so
+bilinear sampling and mips stop pulling background into island borders). The lab borrows the
 engine's D3D11 device and context and compiles its own shaders in `Init`.
 It owns one `RenderTargetPool` for **target**s and one `TexturePreviews` for
 the studio's live previews.
@@ -44,7 +48,7 @@ the studio's live previews.
 | `LayerConstants` | The constant buffer of the four `Mode` passes: offset/scale, flags, and the **layer**'s color, mask, and curve parameters. | `ShaderConstants.h` |
 | `ProgramConstants` | The interpreter's constant buffer: 256 `Program::Node`s, 16 refs and their values, and 8 texture parameter sets. Its static asserts pin the `Program::Op` values the shader mirrors. | `ShaderConstants.h` |
 | `RippleConstants` | The **ripple** pass's constant buffer: 8 firings plus the wave's shape parameters. | `ShaderConstants.h` |
-| `ClassifyConstants` | The classify pass's constant buffer: RMAOS and luma centroids for `kMaxClusters` (8) clusters, plus weights. | `ShaderConstants.h` |
+| `ClusterConstants` | The cluster pass's constant buffer: RMAOS and luma centroids for `kMaxMaterialClusters` (8) clusters, plus weights. | `ShaderConstants.h` |
 | `RenderTargetPool` | Owns the pooled `RenderTarget`s and the 512 **presenter** slots. `Acquire` leases a shared **target**, `Scratch` reuses one per size, and a released **target** returns to the pool through `Recycle`. | `RenderTargetPool.h` |
 | `TexturePreviews` | Tracks the studio's live preview requests, keyed by source texture, channel, and context. Each generation it re-renders the dynamic entries and expires the unused ones. | `TexturePreviews.h` |
 
@@ -134,7 +138,7 @@ geometry's `NiSkinData` a clone needs).
 |---|---|---|
 | `MeshIdentity` | The key that names one GPU mesh: its skin partition, its vertex buffers, and its vertex count. `IdentityOf` reads it off a geometry. | `MeshReader.h` |
 | `GpuComparison` | The readback-driven check that a cached mesh still matches its source: how many compared values differ, out of how many. `CompareWithGpu` produces it. | `MeshReader.h` |
-| `MeshEntry` | One cached geometry: its `MeshIdentity`, the read mesh data, its derived facts and analysis, its named **bake** **target**s, and a last-used time for sweeping. | `MeshCache.h` |
+| `MeshEntry` | One cached geometry: its `MeshIdentity`, the read mesh data, its derived facts and analysis, its **bake** **target**s keyed by `BakeKey`, and a last-used time for sweeping. | `MeshCache.h` |
 | `MeshCache` | The per-geometry store: `Get` reads or reuses an entry, and `Sweep` drops aged entries not in the caller's keep list. | `MeshCache.h` |
 | `SkinPaletteLease` | Ownership of a **shell** clone's repaired bone-transform links. `Preserve` takes them from the source geometry, and `StillOwned` reports whether the clone still carries them. | `SkinPalette.h` |
 

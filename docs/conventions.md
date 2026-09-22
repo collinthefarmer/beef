@@ -287,9 +287,8 @@ Bound every recursion. Cap every list.
 | `kMaxRecipeRows` | `Recipe.h` | Every **row** list. `RowCapReached` checks it inside `ReadRows`/`NamedRows` and in the ad-hoc loops (`selector`, `stops`, `boneWeight`, `overrides`). |
 | `MaxNestingDepth` | `Binders.cpp` | JSON nesting, rejected before parsing. The `DuplicateFinder` parse callback (`Binders.cpp`) reports duplicate keys. |
 | `kMaxExpressionLength`, `kMaxExpressionDepth`, `kMaxExpressionOps` | `Expression.h` | Expression text, parse depth, and op count. |
-| `kMaxMaterialClusters`, `kMaxClusterIterations`, `kMaxChannelWeight` | `Recipe.h` | Material-cluster requests. |
+| `kMaxMaterialClusters`, `kMaxClusterIterations`, `kMaxChannelWeight` | `Recipe.h` | Material-cluster requests and the clustering itself. |
 | `kMaxIslands` | `Islands.h` | Island segmentation. |
-| `kMaxClusters` | `mesh/MaterialClusters.h` | The clustering itself. |
 
 ### Parse, don't validate
 
