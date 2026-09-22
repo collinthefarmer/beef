@@ -72,7 +72,10 @@ OptionalRefOf(const std::string &a_text) {
     return std::optional<Ref>{};
   }
   const auto ref = RefOf(a_text);
-  return ref ? std::optional{std::optional{*ref}} : std::nullopt;
+  if (!ref) {
+    return std::nullopt;
+  }
+  return std::optional<Ref>{*ref};
 }
 
 [[nodiscard]] std::optional<std::optional<Param>>
@@ -81,7 +84,10 @@ OptionalParamOf(const std::string &a_text) {
     return std::optional<Param>{};
   }
   const auto param = ParseParam(a_text);
-  return param ? std::optional{std::optional{*param}} : std::nullopt;
+  if (!param) {
+    return std::nullopt;
+  }
+  return std::optional<Param>{*param};
 }
 
 [[nodiscard]] std::optional<std::optional<Vec2Param>>
@@ -90,7 +96,10 @@ OptionalVec2Of(const std::string &a_text) {
     return std::optional<Vec2Param>{};
   }
   const auto pair = ParseVec2Param(a_text);
-  return pair ? std::optional{std::optional{*pair}} : std::nullopt;
+  if (!pair) {
+    return std::nullopt;
+  }
+  return std::optional<Vec2Param>{*pair};
 }
 
 [[nodiscard]] std::optional<std::string> TextOf(const std::string &a_text) {

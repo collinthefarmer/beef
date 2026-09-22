@@ -406,6 +406,58 @@ void TestEventFilterFields() {
   Check(!max->bind("wide"), "a bound refuses a word");
 }
 
+void TestOptionalFieldRefusals() {
+  SignalRow count;
+  count.name = "count";
+  count.kind = SignalKindId::kCounter;
+  count.definition = CounterSignal{Ref{"hit"}, Ref{"calm"}, 2.0f};
+  const auto form = SignalForm(count, SignalNames{});
+  const auto *cap = Field(form, "cap");
+  const auto *reset = Field(form, "reset");
+  Check(cap && cap->bind && reset && reset->bind,
+        "a counter exposes cap and reset bindings");
+  if (!cap || !reset)
+    return;
+  Check(!cap->bind("wide"), "an optional param refuses a word");
+  {
+    const auto edit = cap->bind("");
+    const auto *record = edit ? std::get_if<SetSignal>(&*edit) : nullptr;
+    const auto *value =
+        record ? std::get_if<CounterSignal>(&record->kind) : nullptr;
+    Check(value && !value->cap, "an empty cap commit clears the cap");
+  }
+  Check(!reset->bind("calm"), "an optional reference refuses a bare word");
+  {
+    const auto edit = reset->bind("");
+    const auto *record = edit ? std::get_if<SetSignal>(&*edit) : nullptr;
+    const auto *value =
+        record ? std::get_if<CounterSignal>(&record->kind) : nullptr;
+    Check(value && !value->reset, "an empty reset commit clears the reset");
+  }
+  const Source source{"tex", ImageSource{}};
+  const SourceRow row = SourceRowOf(source, 0);
+  const auto sourceForm = SourceForm(row, SignalNames{});
+  const auto *scroll = Field(sourceForm, "scroll");
+  Check(scroll && scroll->bind, "an image source exposes a scroll binding");
+  if (!scroll || !scroll->bind)
+    return;
+  Check(!scroll->bind("wide, open"), "an optional vec2 refuses words");
+  {
+    const auto edit = scroll->bind("0.25, 4");
+    const auto *record = edit ? std::get_if<SetSource>(&*edit) : nullptr;
+    const auto *image =
+        record ? std::get_if<ImageSource>(&record->kind) : nullptr;
+    Check(image && image->scroll, "a vec2 commit writes the scroll");
+  }
+  {
+    const auto edit = scroll->bind("");
+    const auto *record = edit ? std::get_if<SetSource>(&*edit) : nullptr;
+    const auto *image =
+        record ? std::get_if<ImageSource>(&record->kind) : nullptr;
+    Check(image && !image->scroll, "an empty scroll commit clears it");
+  }
+}
+
 void TestHelpers() {
   const auto colour = LiteralColor("1, 0.5, 0.25");
   Check(colour.has_value() && test::Near(colour->y, 0.5f),
@@ -433,6 +485,7 @@ int main() {
   TestStackAndInspectorViews();
   TestIntegerSignalFields();
   TestEventFilterFields();
+  TestOptionalFieldRefusals();
   TestHelpers();
   return test::Finish("studio_panels");
 }
