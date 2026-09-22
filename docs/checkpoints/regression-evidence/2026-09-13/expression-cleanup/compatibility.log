@@ -1,7 +1,0 @@
-warning: Git tree '/home/nixos/projects/skyrim-modding/plugins/WornEnchantmentPBR' is dirty
-all 107 expression operations checks passed
-if(1, 2, [3, 4]): check=vec2 runtime=scalar scalar=2
-if(0, 2, [3, 4]): check=vec2 runtime=vec2 scalar=3
-if(1, 2, [3, 4]) + [1, 2, 3]: check='operator' mixes vec2 with vec3 runtime=vec3 scalar=3.8596
-31 nested lerp(1,2,E), E=1+2*3: ops=98 peak=65 check=scalar result=4 expected=38
-all 2 files formatted
