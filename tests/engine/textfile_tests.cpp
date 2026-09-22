@@ -52,6 +52,24 @@ void WritingCreatesParentFolders(const std::filesystem::path &a_dir) {
   Equal(ReadText(path).value_or(""), std::string{"x"},
         "the nested file reads back");
 }
+
+void FailedWritePreservesTheFile(const std::filesystem::path &a_dir) {
+  const std::filesystem::path path = a_dir / "kept.json";
+  std::filesystem::path staged = path;
+  staged += ".writing";
+  Check(WriteText(path, "old"), "WriteText writes the file to keep");
+  Check(!std::filesystem::exists(staged),
+        "a completed write leaves no staging file");
+  std::filesystem::create_directory(staged);
+  Check(!WriteText(path, "new"), "a write that cannot stage reports failure");
+  Equal(ReadText(path).value_or(""), std::string{"old"},
+        "a failed write preserves the previous file");
+  std::error_code ec;
+  std::filesystem::remove_all(staged, ec);
+  Check(WriteText(path, "new"), "the next write succeeds");
+  Equal(ReadText(path).value_or(""), std::string{"new"},
+        "a completed write replaces the file");
+}
 }
 
 int main() {
@@ -61,5 +79,6 @@ int main() {
   MissingPathIsNamed(dir);
   OversizeFileIsRefused(dir);
   WritingCreatesParentFolders(dir);
+  FailedWritePreservesTheFile(dir);
   return test::Finish("engine textfile");
 }

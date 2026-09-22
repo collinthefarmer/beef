@@ -4,6 +4,7 @@
 #include "Identity.h"
 #include "SettingsPublication.h"
 #include "diagnostics/Trace.h"
+#include "engine/TextFile.h"
 
 #include <cctype>
 #include <fstream>
@@ -72,14 +73,13 @@ Settings LoadSettingsFromDisk() {
 }
 
 bool SaveSettingsToDisk(const Settings &a_settings) {
-  std::ofstream out{SettingsPath(), std::ios::trunc};
-  if (!out) {
-    logger::error("settings: cannot write {}", SettingsPath().string());
+  const auto path = SettingsPath();
+  if (!WriteText(path, a_settings.Serialize())) {
+    logger::error("settings: cannot write {}", path.string());
     return false;
   }
-  out << a_settings.Serialize();
-  logger::info("settings: saved {}", SettingsPath().string());
-  return static_cast<bool>(out);
+  logger::info("settings: saved {}", path.string());
+  return true;
 }
 
 std::string FormKeyOf(const RE::TESForm &a_form) {

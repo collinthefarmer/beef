@@ -36,10 +36,21 @@ ReadText(const std::filesystem::path &a_path) {
 bool WriteText(const std::filesystem::path &a_path, std::string_view a_text) {
   std::error_code ec;
   std::filesystem::create_directories(a_path.parent_path(), ec);
-  std::ofstream out(a_path, std::ios::binary | std::ios::trunc);
+  std::filesystem::path staged = a_path;
+  staged += ".writing";
+  std::ofstream out(staged, std::ios::binary | std::ios::trunc);
   out << a_text;
   out.flush();
   out.close();
-  return static_cast<bool>(out);
+  if (!out) {
+    std::filesystem::remove(staged, ec);
+    return false;
+  }
+  std::filesystem::rename(staged, a_path, ec);
+  if (ec) {
+    std::filesystem::remove(staged, ec);
+    return false;
+  }
+  return true;
 }
 }
