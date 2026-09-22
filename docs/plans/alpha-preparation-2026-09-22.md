@@ -84,15 +84,15 @@ for using this replacement. Broader benchmark comparisons remain open.
 Keep cleanup patches small and separate from behavior changes. Complete
 this pass before release-candidate validation.
 
-- [ ] Inventory `_old` source/tests, debug fixtures, generated artifacts,
+- [x] Inventory `_old` source/tests, debug fixtures, generated artifacts,
   captured logs, and developer-specific paths. Keep intentional test inputs
   clearly identified and remove accidental distribution/repository debris.
-- [ ] Identify unique behavior expectations and fixtures still held only in
+- [x] Identify unique behavior expectations and fixtures still held only in
   `_old`; preserve useful tests or documentation, then remove the frozen
   implementations from the active tree. Git history retains their context.
 - [ ] Require evidence before deleting apparently unused APIs: check build
   membership, references, callbacks, visitors, and integration entry points.
-- [ ] Reconcile the shipped INI with `SettingTable()`, parsing, serialization,
+- [x] Reconcile the shipped INI with `SettingTable()`, parsing, serialization,
   and actual runtime behavior. Remove obsolete controls and explanations.
 - [ ] Review `ManagerApply`, `ManagerTick`, and `RecipeEditor` for duplicated
   policy and unclear ownership. Extract testable decisions where useful;
@@ -157,7 +157,7 @@ failures, or destructive restoration. Logs alone do not prove rendered pixels.
 
 ## 5. Protect authored files and establish the recipe contract
 
-- [ ] Implement failure-safe recipe replacement: the current `WriteText`
+- [x] Implement failure-safe recipe replacement: the current `WriteText`
   truncates the destination. Failed writes must preserve the previous file
   and report failure accurately. Review settings persistence as well.
 - [ ] Test create/edit/undo/redo/save/restart/reload, stale revisions,
