@@ -1,4 +1,5 @@
 #include "SettingsPublication.h"
+#include "engine/TextFile.h"
 #include "test_support.h"
 
 #include <atomic>
@@ -74,6 +75,9 @@ int main() {
         "parser and publication share numeric bounds");
   Check(!SettingsDiffer(parsed, Settings::Parse(parsed.Serialize())),
         "checked settings round trip through INI");
+  Check(ReadText("BetterEnchantmentEffects.ini").value_or("") ==
+            Settings{}.Serialize(),
+        "the shipped INI is the serialized defaults, every row read");
 
   Settings first;
   first.animationFPS = 15;
