@@ -287,7 +287,8 @@ int main() {
     world.anchor = WorldAnchor{};
     TriggerPayload carried;
     carried.value = Vec3{1.0f, 2.0f, 3.0f};
-    const auto *point = Get<CarriedPoint>(AnchorOf(world, carried));
+    const auto worldAnchor = AnchorOf(world, carried);
+    const auto *point = Get<CarriedPoint>(worldAnchor);
     Check(point != nullptr && Near(point->position.y, 2.0f),
           "a world anchor reads the payload as the point");
 
@@ -295,12 +296,14 @@ int main() {
     declared.anchor = NodeAnchor{"NPC L Foot [Lft ]"};
     TriggerPayload bare;
     bare.value = 1.0f;
-    const auto *node = Get<AnchorNode>(AnchorOf(declared, bare));
+    const auto declaredAnchor = AnchorOf(declared, bare);
+    const auto *node = Get<AnchorNode>(declaredAnchor);
     Check(node != nullptr && node->node == "NPC L Foot [Lft ]",
           "a node anchor locates at the declared node");
     TriggerPayload withNode = bare;
     withNode.node = "WEAPON";
-    const auto *carriedNode = Get<AnchorNode>(AnchorOf(declared, withNode));
+    const auto carriedAnchor = AnchorOf(declared, withNode);
+    const auto *carriedNode = Get<AnchorNode>(carriedAnchor);
     Check(carriedNode != nullptr && carriedNode->node == "WEAPON",
           "a firing's own node overrides the declared one");
 

@@ -1,5 +1,7 @@
 # UI v2 implementation plan
 
+> Archived 2026-09-22. Superseded as a work plan by [Alpha preparation](../plans/alpha-preparation-2026-09-22.md). The tasks and status claims below are historical; unchecked items are not active commitments. Consult current code and component documentation for implemented behavior.
+
 Status: core editor integrated, validation in progress. The early framework
 checkpoint was accepted on 2026-09-13. See the [core checkpoint](../checkpoints/ui-v2-core-checkpoint-2026-09-13.md).
 

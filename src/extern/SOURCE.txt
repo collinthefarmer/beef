@@ -6,5 +6,5 @@ plugin has no link-time dependency and idles without the framework.
 
 nlohmann/json.hpp is the single-header release v3.12.0 from
 https://github.com/nlohmann/json/releases/download/v3.12.0/json.hpp (MIT).
-Vendored rather than fetched so the native test build (tests/run-native.sh)
+Vendored rather than fetched so the native test build (ctest --preset native)
 needs no CMake configure step.

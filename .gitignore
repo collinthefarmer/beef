@@ -5,3 +5,4 @@ native-last.log
 .cache/
 __pycache__/
 *Zone.Identifier*
+CMakeUserPresets.json

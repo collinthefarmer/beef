@@ -18,8 +18,8 @@ C++ carries almost no comments; facts the code cannot state live in
 |-----------|------:|-----:|------------|
 | `src` | 240 | 42,844 | The plugin. Symbol shape: 3,529 functions, 2,265 members, 548 structs — plain records and free functions, few classes |
 | `docs` | 73 | 13,539 | Plans, checkpoints, component sheets, conventions, UI design docs |
-| `tests` | 94 | 12,392 | C++ 9.8k mirroring the module layout, JSON fixtures 2.1k; run via `tests/run-native.sh` |
-| `tools` | 18 | 2,001 | Python/shell developer tooling: `rename.py`, `tidy.sh`, `gate.sh`, `compile-db.sh`, `names-audit.sh` |
+| `tests` | 94 | 12,392 | C++ 9.8k mirroring the module layout, JSON fixtures 2.1k; run via `ctest --preset native` |
+| `tools` | 18 | 2,001 | Python/shell developer tooling: `rename.py`, `tidy.py`, `gate.sh`, `compile-db.py`, `names-audit.sh` |
 | `schema` | 2 | 365 | JSON Schemas (recipe format) |
 | `presets`, `templates` | 3 | ~630 | Preset and template recipe JSON |
 | root | 16 | 2,687 | README/REFERENCE/CLAUDE docs, CMake, nix flake, build/install scripts |

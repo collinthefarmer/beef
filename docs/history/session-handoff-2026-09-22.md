@@ -1,5 +1,7 @@
 # Session handoff (2026-09-22, end of day)
 
+> Archived 2026-09-22. Superseded as a work plan by [Alpha preparation](../plans/alpha-preparation-2026-09-22.md). The tasks and status claims below are historical; unchecked items are not active commitments. Consult current code and component documentation for implemented behavior.
+
 Two sessions of work sit uncommitted in the working tree. The morning
 landed the composable-proximity bundle; the afternoon extended the
 vector ops, polished the bakes, and ran a four-agent source sweep whose
@@ -59,7 +61,7 @@ block cross-actor sharing.
 
 ## Pointers
 
-- Backlog: `docs/plans/format-row-reference-2026-09-21.md` (items 54
+- Backlog: `docs/history/format-row-reference-2026-09-21.md` (items 54
   to 67 all carry DONE/DECLINED records dated 2026-09-22).
 - The four audit reports live in this conversation only; their
   surviving content is in the backlog rows and REFERENCE.md.

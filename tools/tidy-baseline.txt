@@ -1,5 +1,5 @@
 # clang-tidy baseline, 116 sources, 67 findings
-# regenerate: tools/tidy.sh && tools/tidy-baseline.sh
+# regenerate: python3 tools/tidy.py && python3 tools/tidy-baseline.py
 
 # readability-function-size                            57
 # readability-function-cognitive-complexity            8

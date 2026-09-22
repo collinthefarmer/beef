@@ -3,7 +3,7 @@
 The pure UI-state layer beneath the ImGui renderer. Per `tools/layers.sh`,
 `studio` may include `Core.h recipe mesh planners diagnostics studio` and
 nothing else. It never includes `engine/` and never names `RE::`, so it
-compiles natively and is unit-tested through `tests/run-native.sh` alongside
+compiles natively and is unit-tested through `ctest --preset native` alongside
 `recipe/`. `menu/` is the thin renderer above it that calls ImGui.
 
 ## What it owns

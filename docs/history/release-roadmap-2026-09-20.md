@@ -1,5 +1,7 @@
 # BetterEnchantmentEffects release roadmap (2026-09-20)
 
+> Archived 2026-09-22. Superseded as a work plan by [Alpha preparation](../plans/alpha-preparation-2026-09-22.md). The tasks and status claims below are historical; unchecked items are not active commitments. Consult current code and component documentation for implemented behavior.
+
 Written against `ui-standardization` at 978a4c3. Supersedes the 2026-09-09
 roadmap, now at `docs/history/release-roadmap-2026-09-09.md`; that document
 holds the reasoning behind the gates and the decisions of 2026-09-09, and
@@ -73,7 +75,7 @@ First measurement 2026-09-20 (instrumented in 18e9b9a, stress scene,
   cap raised to 1024, a 39-actor crowd measured **989 MiB — under the
   1 GiB budget** (8x cut), 167 of 512 targets, zero exhaustion. The
   gate-1 texture half is solved; only the deferred hour-long freeze soak
-  remains. See `docs/plans/texture-budget-2026-09-20.md`.
+  remains. See `docs/history/texture-budget-2026-09-20.md`.
 - **Sink churn: small at this scale.** 80 adds, 33 removes over the
   measured play; churn tracks applies one-to-one as suspected but the
   absolute rate is modest, and no freeze occurred. The crowd-hour
@@ -204,7 +206,7 @@ Size: S is hours, M is a day or two, L is a week or more.
 4. **Fix the crowd freeze.** No evidence yet against the sink; verdict
    waits on the crowd hour.
 5. **Replace how textures are held.** L, ranked first by the numbers.
-   Staged in `docs/plans/texture-budget-2026-09-20.md`; the presenters
+   Staged in `docs/history/texture-budget-2026-09-20.md`; the presenters
    move into a BSA under packaging.
 6. **Fix the readback stalls.** All readbacks under 3 ms in the first
    pass; open only until the paint-freeze repro is re-timed.
@@ -231,7 +233,7 @@ Size: S is hours, M is a day or two, L is a week or more.
     curves (the dual `{ "expr", "note" }` form beside the bare string);
     parse, serialize omit-when-empty, schema and round-trip tests are in.
     The shared inspector field (UI backlog 16) is the remainder.
-    See `docs/plans/row-notes-2026-09-21.md`.
+    See `docs/history/row-notes-2026-09-21.md`.
 11. **Freeze format 1, in writing.** S now that the record changes are in.
     Settle `presets.json`'s status in the same writing.
 12. **Imported-folder lifecycle.** S to M, falls out of 9.

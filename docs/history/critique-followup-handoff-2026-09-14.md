@@ -1,5 +1,7 @@
 # Critique follow-up handoff — 2026-09-14
 
+> Archived 2026-09-22. Superseded as a work plan by [Alpha preparation](../plans/alpha-preparation-2026-09-22.md). The tasks and status claims below are historical; unchecked items are not active commitments. Consult current code and component documentation for implemented behavior.
+
 For the administering agent who picks up after the 2026-09-13 critique
 remediation. Read this, then `critique-handoff-2026-09-13.md` (the original
 plan of record; its "Repository state" section describes a fallback period

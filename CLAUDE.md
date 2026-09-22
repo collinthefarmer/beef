@@ -39,7 +39,7 @@ practicalities of working here.
 ## Practicalities
 
 - Engine-free modules (`Recipe`, `Expression`, `Signals`, `Importer`)
-  compile natively and are unit-tested through `tests/run-native.sh`;
+  compile natively and are unit-tested through `ctest --preset native`;
   engine-facing modules are thin adapters over them.
 - `src/Identity.h` is the only place the plugin name is spelled.
 - Errors carry a `where` naming the row (`signal glowLevel`, `output 2
@@ -50,8 +50,9 @@ practicalities of working here.
   (`/mnt/a/mods/SkyrimSE/mods/BetterEnchantmentEffects/SKSE/Plugins/BetterEnchantmentEffects/recipes/<folder>/`),
   and keep a copy under `recipes/` in the repo only when it should be an
   example the tests read.
-- Build with `./build.sh Release -j 4` (more jobs exhaust WSL's memory and
-  kill the instance), install with `./install.sh`, and stop at
+- Build with `cmake --preset windows-release` then `cmake --build --preset windows-release` (more jobs exhaust WSL's memory and
+  kill the instance), stage with `cmake --build --preset windows-release --target stage`,
+  install with `./install.sh`, and stop at
   each in-game checkpoint for the user to run the game; give the log lines
   to look for.
 - Work inside `nix develop`; every script calls its tools from `PATH` and
@@ -60,4 +61,4 @@ practicalities of working here.
   clangd; omit `--apply` to list the edits. It renames
   references, not comments or docs, and prints what it left for a hand
   pass. It reads `build/clangd/compile_commands.json`;
-  `tools/compile-db.sh` rewrites that after a source file is added.
+  `python3 tools/compile-db.py` rewrites that after a source file is added.

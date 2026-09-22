@@ -4,7 +4,7 @@ The pure core. It turns a **recipe** file into a checked `Recipe`, resolves
 the forms the recipe names, builds the per-tick `SignalGraph`, merges the
 recipes that land on one **piece** into a **plan**, and writes a `Recipe`
 back to JSON. It is engine-free: it compiles natively and is unit-tested
-through `tests/run-native.sh`. Every layer above depends on it; it depends
+through `ctest --preset native`. Every layer above depends on it; it depends
 only on `Core.h`.
 
 ## What it owns

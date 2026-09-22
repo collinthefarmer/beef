@@ -1358,44 +1358,46 @@ Decompile provenance (`decompiled/WornEnchantmentFX/plugin.c` unless noted):
   one DLL. The binary evidence and dependency reproduction are recorded in
   `docs/checkpoints/crash-2026-09-11.md`. Do not restore caching for project targets
   without verifying that cache hits preserve their header dependencies.
-- `CMakeLists.txt`: nothing is installed, which also keeps CommonLibSSE-NG
-  from exporting a target set that would need spdlog exported too; spdlog is
-  fetched with `OVERRIDE_FIND_PACKAGE` because CommonLibSSE-NG calls
-  `find_package(spdlog CONFIG REQUIRED)`; CommonLibSSE-NG is pinned to the
-  last commit on main as of 2026-09-03 since no release tag covers Skyrim
-  1.6.1170; the rapidcsv cache variable is seeded to short-circuit its
-  `find_path`; the xwin SDK layout is case-sensitive on Linux and ships
-  lowercase import libraries while CommonLibSSE-NG links mixed-case names;
-  clang defers template parsing the way MSVC does because CommonLibSSE-NG
-  uses dependent-base members without `this->`; a PDB is emitted in every
-  config because SKSE crash logs need one; the test sources also build as
-  Windows console executables; `dist/<mod>/SKSE/Plugins/` is staged and
-  recipes are never staged.
-- `cmake/clang-cl-xwin.toolchain.cmake`: cross-compiles an x64 MSVC-ABI
-  binary with clang-cl and lld-link against the CRT and SDK from `xwin
-  splat`; `XWIN_DIR` is the splat root (holding `crt/` and `sdk/`), default
-  `~/.xwin/splat`. xwin splats only the release CRT, so every config links
-  `/MD`.
-- `setup-xwin.sh` downloads the CRT and SDK (about 630 MB) into `XWIN_DIR`.
-  `build.sh [Release|Debug] [extra cmake --build args]` configures and
-  builds; use `-j 4` on WSL. `install.sh` copies the staged mod folder into
-  the MO2 mods directory in one transfer (rsync, or tar when rsync is
-  missing); the INI is copied only when the mod has none, since it holds
-  the user's settings; a DLL locked by the running game fails on that one
-  file while the rest transfer, and the exit status is kept.
-- `tests/run-native.sh` builds and runs every engine-free suite
-  with `NATIVE_CXX`, else `CXX`, else clang++ on PATH, into `TEST_OUT_DIR`
-  (default `build/native-tests-<compiler>`); the dev shell exports
-  `NATIVE_CXX` because its `CXX` is g++, which cannot build this code under
-  `BEEF_SANITIZE`, and the run stops rather than use it there. Each source
-  compiles once and a suite links the objects it names; `BEEF_UPDATE=1`
-  makes the importer suite rewrite its expected recipes under
-  `tests/fixtures/recipes/`; the schema step validates
-  `schema/example-magicka.json` and the two import templates when
-  `check-jsonschema` is on PATH.
-- `tools/compile-db.sh` writes `build/clangd/compile_commands.json` from the
-  Release configure, reduced to this repo's `src/` and `tests/` so clangd
-  indexes our code and not CommonLibSSE's; rerun after adding a source.
+- `CMakeLists.txt` defines the engine-free static library and validator for
+  both platforms. `cmake/Native.cmake` owns host tests and sanitizer flags;
+  `cmake/Windows.cmake` owns dependencies and the SKSE DLL. Native setup does
+  not require the Windows SDK. The native preset selects `NATIVE_CXX`, the
+  Nix host compiler wrapper; unwrapped clang++ cannot locate the host CRT.
+- Windows dependency details remain deliberate: spdlog uses
+  `OVERRIDE_FIND_PACKAGE` for CommonLib's `find_package`; rapidcsv's include
+  cache variable short-circuits `find_path`; the pinned CommonLib revision
+  supports the target runtime; import libraries are lowercased for xwin's
+  case-sensitive layout; delayed template parsing supports CommonLib code.
+  Third-party install rules stay disabled. FetchContent uses its standard
+  per-build source storage (unless explicitly overridden), and dependency
+  binary directories always belong to the current configuration.
+- `cmake/Plugin.cpp.in` reproduces the CommonLib helper's SKSE declaration
+  with `configure_file`, preserving its timestamp when metadata is unchanged.
+  The upstream helper unconditionally writes its generated source on every
+  configure, causing avoidable recompilation and relinking.
+- `cmake/clang-cl-xwin.toolchain.cmake` cross-compiles x64 MSVC ABI with
+  clang-cl and lld-link. `XWIN_DIR` defaults to `~/.xwin/splat`, populated by
+  `setup-xwin.sh`. Every configuration uses the release CRT (`/MD`).
+- `cmake/Generated.cmake` tracks identity inputs (including their file list
+  and Git revision) and presenter outputs. Generated headers are written
+  only when changed; completion stamps prevent repeated generation after
+  an input touch that does not change contents.
+- `cmake/Stage.cmake` defines explicit `stage`; compilation does not stage.
+  It copies the DLL/PDB, manifest, INI, templates, presets, presenter DDS
+  files, and Windows validator. Recipe files are not staged. Runtime asset
+  changes do not require relinking to reach the staged mod.
+- CMake presets delegate dependency tracking and linking to Ninja
+  and execution to CTest. Each test has separate scratch storage. Normal
+  and ASan/UBSan builds use separate directories; schema validation is
+  required. `BEEF_UPDATE=1` still enables intentional fixture updates.
+- `python3 tools/compile-db.py` configures Release and writes the first-party clangd
+  view only when changed. Tidy reads the original CMake database, runs
+  uncached, and expands header/deletion selections to all first-party
+  translation units. Successful invocation reports replace the old result
+  cache. Baselines deduplicate diagnostics and compare file/check counts,
+  including headers; line shifts and resolved findings do not fail checks.
+- `docs/build.md` owns commands and recovery. `install.sh` continues to copy
+  the staged mod while preserving an existing INI and reporting copy errors.
 - `tools/rename.py` drives the `clangd` on `PATH`, which the dev shell
   makes the unwrapped one: a wrapped clangd adds the host's glibc and
   libstdc++ include paths, which shadow the Windows SDK's. clangd starts
@@ -1420,6 +1422,10 @@ Decompile provenance (`decompiled/WornEnchantmentFX/plugin.c` unless noted):
   a recipe.
 
 ## planners (`planners/ActorPlan.h`, `planners/TargetPool.h`, `planners/StackPlan.h`, `planners/BindingPlan.h`, `planners/ActorPlanning.h`, `planners/TextureIdentity.h`)
+
+- `EvictionFor` restores an evicted actor only inside 80% of the eviction
+  radius. This hysteresis prevents repeated retire/reapply near the boundary;
+  a non-positive radius disables distance eviction.
 
 - `TargetPool` (`planners/TargetPool.h`) hands out an index as a
   `shared_ptr` lease. An index is free again only after its last owner

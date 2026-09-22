@@ -1,5 +1,7 @@
 # What to delete
 
+> Archived 2026-09-22. Superseded as a work plan by [Alpha preparation](../plans/alpha-preparation-2026-09-22.md). The tasks and status claims below are historical; unchecked items are not active commitments. Consult current code and component documentation for implemented behavior.
+
 Status, 2026-09-14 (critique Plan E). This checklist was written against the
 frozen tree and cited two root documents that no longer exist: the
 pre-`REQUIREMENTS` readme and the architecture document, both deleted by

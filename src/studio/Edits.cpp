@@ -899,7 +899,7 @@ Refusal RemoveResource(Recipe &a_recipe, Collection &a_collection,
   a_collection.erase(it);
   return std::nullopt;
 }
-} // namespace
+}
 
 Refusal Edit(Recipe &a_recipe, const RemoveSignal &a_edit) {
   return RemoveResource(a_recipe, a_recipe.signals,
@@ -1572,7 +1572,7 @@ void CollectDependents(const std::vector<Relationship> &a_relationships,
         [&](const VariantOwner &) { a_plan.blocked.push_back(relationship); });
   }
 }
-} // namespace
+}
 
 CascadePlan PlanCascade(const Recipe &a_recipe, const ResourceRef &a_seed) {
   const std::vector<Relationship> relationships = RelationshipsOf(a_recipe);

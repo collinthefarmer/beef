@@ -1,5 +1,7 @@
 # UI v2 fine-tuning backlog — 2026-09-15
 
+> Archived 2026-09-22. Superseded as a work plan by [Alpha preparation](../plans/alpha-preparation-2026-09-22.md). The tasks and status claims below are historical; unchecked items are not active commitments. Consult current code and component documentation for implemented behavior.
+
 Handoff for the fine-tuning round after the in-game test. All 13 slices of the
 [wishlist implementation plan](../checkpoints/ui-v2-wishlist-implementation-plan-2026-09-14.md)
 are on branch `main` (off `cleanup/stage-0`), gated per commit, whole-plan

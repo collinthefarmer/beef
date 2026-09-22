@@ -50,7 +50,7 @@ them:
   faithfully in the `recipe/` module, checked by round-trip against the
   frozen fixtures, and did not redesign it. Format changes since the
   buildup are deliberate, decided ahead of the gate-5 freeze and recorded
-  in `docs/plans/format-row-reference-2026-09-21.md`.
+  in `docs/history/format-row-reference-2026-09-21.md`.
 - **Native first.** Everything that can compile and be tested without the
   engine is native and tested. The engine-free surface is maximised.
 - **Functional core, thin adapter.** Every engine-facing responsibility
@@ -143,7 +143,7 @@ src/
   `engine/`, `render/`, and `menu/` are the adapters over them.
 - `src` is the only first-party include root, so every project include
   names its directory. `tools/layers.sh` enforces the graph.
-- The native object library builds the four pure directories, the
+- The native static library builds the four pure directories, the
   engine-free diagnostic recorder, and `Settings.cpp`. The recorder
   performs file I/O and is not part of the pure recipe or planning
   decisions.
@@ -286,11 +286,12 @@ tree must not reproduce them.
 
 ## Build and workflow
 
-- Build with `./build.sh Release -j 4`. More jobs exhaust WSL and kill the
-  instance. Install with `./install.sh`.
+- Build with `cmake --preset windows-release` then `cmake --build --preset windows-release`. More jobs exhaust WSL and kill the
+  instance. Stage with `cmake --build --preset windows-release --target stage`, then
+  install with `./install.sh`.
 - The language standard is C++23 (`CMAKE_CXX_STANDARD 23` in
-  `CMakeLists.txt`). `tests/run-native.sh` compiles the native suites with
-  the same `-std=c++23`. The two must not disagree.
+  `CMakeLists.txt`). Native tests use CMake presets and CTest; both
+  platforms inherit the same language standard. See `docs/build.md`.
 - Work inside `nix develop`. Every script names the tool it wants when you
   are outside the shell.
 - The game runs on the user's machine. Batch every change that needs the

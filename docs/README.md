@@ -24,6 +24,8 @@ Current. A new module is expected to follow them.
   request flows through it, and the file table. Read the sheet for a directory
   before changing it; it links out to `REFERENCE.md` for the facts the code
   cannot state and to `conventions.md` for the patterns it obeys.
+- [build.md](build.md) — native and Windows presets, incremental builds,
+  CTest, explicit staging, clang-tidy selection, and validation commands.
 - [conventions.md](conventions.md) — the patterns a new module is built on, the
   glossary of one-word-one-meaning names, and the gates (`tools/gate.sh`,
   `tools/layers.sh`, `tools/format.sh`, the native suite).
@@ -39,53 +41,21 @@ Current. A new module is expected to follow them.
 
 ## Active plans (`plans/`)
 
-Open work.
+One active plan, consolidated from the 2026-09-22 planning session:
 
-- [plans/release-roadmap-2026-09-20.md](plans/release-roadmap-2026-09-20.md) —
-  what must be true before the mod reaches another person: the five gates,
-  their status against the current tree, and the ranked list. Supersedes the
-  2026-09-09 roadmap in History.
-- [plans/format-row-reference-2026-09-21.md](plans/format-row-reference-2026-09-21.md)
-  — every authorable row of format 1, kind by kind: parameters, runtime
-  semantics, audited status, and the work items the gate-5 freeze must
-  settle. Working material for the freeze; the schema stays the contract.
-- [plans/texture-budget-2026-09-20.md](plans/texture-budget-2026-09-20.md) —
-  gate 1's texture fix, staged against the 2026-09-20 measurement: the
-  retention defect, in-play trimming, per-slot resolution factors, then
-  demotion and eviction only as the numbers demand.
-- [plans/ui-v2-proposal.md](plans/ui-v2-proposal.md) — the frozen UI v2 design
-  baseline.
-- [plans/ui-v2-implementation-plan.md](plans/ui-v2-implementation-plan.md) —
-  the slices that implement that baseline, and which seam each slice owns.
-- [plans/ui-backlog-2026-09-16.md](plans/ui-backlog-2026-09-16.md) — the UI
-  asks captured mid-flow: the ask, where it lives, the rough direction.
-  Several items have shipped; the rest remain open.
-- [plans/ui-v2-fine-tuning-backlog-2026-09-15.md](plans/ui-v2-fine-tuning-backlog-2026-09-15.md)
-  — the fine-tuning round after the in-game test of the 13 wishlist slices.
-- [plans/paint-mask-pass-2026-09-16.md](plans/paint-mask-pass-2026-09-16.md) —
-  the cases for the deferred pass over the mask-editing surface (the draft
-  bar, the mask inspector, the terms editor), grounded in the current headers.
-- [plans/critique-handoff-2026-09-13.md](plans/critique-handoff-2026-09-13.md)
-  — the 2026-09-13 critique's findings, the seven plans, their order, how each
-  is verified, and the decisions closed with the user.
-- [plans/critique-followup-handoff-2026-09-14.md](plans/critique-followup-handoff-2026-09-14.md)
-  — where to pick up after Plans F to E: Plan G, the eight UI findings, the
-  deferred items, the constants question, the closing critique re-run.
-- [plans/critique-plan-g-shell-pose-2026-09-13.md](plans/critique-plan-g-shell-pose-2026-09-13.md)
-  — the shell honours its whole pose, not `inflate` alone. Implemented
-  (161f6b2); its in-game checkpoint has not run.
-- [plans/expression-cleanup-implementation-handoff-2026-09-13.md](plans/expression-cleanup-implementation-handoff-2026-09-13.md)
-  — the separate pass over `recipe/Expression.cpp`, and the bounds Plan F left
-  to its owner.
-- [plans/render-state-fix-plan-2026-09-12.md](plans/render-state-fix-plan-2026-09-12.md)
-  — the staged plan for the rendering-state defects, with its progress notes.
-- [plans/deletions.md](plans/deletions.md) — the per-module checklist of
-  apparently dead code: what is certain, what needs a decision, and what only
-  looks dead.
+- [Alpha preparation](plans/alpha-preparation-2026-09-22.md) — replace the
+  build and tidy orchestration first, clean up the public source tree, then
+  validate and package a closed alpha. This is the sole active work list.
+  Previous plans were archived, not marked complete; their unchecked items
+  do not automatically carry forward.
 
 ## Checkpoints and evidence (`checkpoints/`)
 
 Dated records of one pass each. They describe the tree on their date.
+
+- [checkpoints/build-rewrite-2026-09-22.md](checkpoints/build-rewrite-2026-09-22.md)
+  — native/Windows CMake presets, CTest, explicit staging, fresh tidy reports,
+  dependency regression tests, measurements, and verification limits.
 
 - [checkpoints/crash-2026-09-11.md](checkpoints/crash-2026-09-11.md) — the
   mixed `TextureLab` layout crash and the compiler-launcher cache that caused
@@ -169,7 +139,7 @@ Superseded. Each names what replaced it in a status header at its top.
 
 - [history/release-roadmap-2026-09-09.md](history/release-roadmap-2026-09-09.md)
   — the first release roadmap: the gates' reasoning and the 2026-09-09
-  decisions. The 2026-09-20 roadmap under `plans/` replaced it.
+  decisions. The archived 2026-09-20 roadmap replaced it; the active alpha plan now owns release work.
 - [history/buildup-plan.md](history/buildup-plan.md) — how the new tree was
   written by many agents at once: shape, fill, barrier, reduce.
 - [history/wave3-seam.md](history/wave3-seam.md) — the reconciled `engine` to
@@ -201,3 +171,26 @@ Superseded. Each names what replaced it in a status header at its top.
   — the source investigation behind the rendering-state fix plan.
 - [history/paint-flow-review-2026-09-12.md](history/paint-flow-review-2026-09-12.md)
   — the review of the paint offer and term flow, and its coverage plan.
+
+### Plans archived on 2026-09-22
+
+Superseded by [Alpha preparation](plans/alpha-preparation-2026-09-22.md).
+These retain design context and dated evidence, not an additional backlog.
+
+- [critique-followup-handoff-2026-09-14](history/critique-followup-handoff-2026-09-14.md)
+- [critique-handoff-2026-09-13](history/critique-handoff-2026-09-13.md)
+- [critique-plan-g-shell-pose-2026-09-13](history/critique-plan-g-shell-pose-2026-09-13.md)
+- [deletions](history/deletions.md)
+- [expression-cleanup-implementation-handoff-2026-09-13](history/expression-cleanup-implementation-handoff-2026-09-13.md)
+- [format-row-reference-2026-09-21](history/format-row-reference-2026-09-21.md)
+- [override-mechanics-2026-09-21](history/override-mechanics-2026-09-21.md)
+- [paint-mask-pass-2026-09-16](history/paint-mask-pass-2026-09-16.md)
+- [release-roadmap-2026-09-20](history/release-roadmap-2026-09-20.md)
+- [render-state-fix-plan-2026-09-12](history/render-state-fix-plan-2026-09-12.md)
+- [row-notes-2026-09-21](history/row-notes-2026-09-21.md)
+- [session-handoff-2026-09-22](history/session-handoff-2026-09-22.md)
+- [texture-budget-2026-09-20](history/texture-budget-2026-09-20.md)
+- [ui-backlog-2026-09-16](history/ui-backlog-2026-09-16.md)
+- [ui-v2-fine-tuning-backlog-2026-09-15](history/ui-v2-fine-tuning-backlog-2026-09-15.md)
+- [ui-v2-implementation-plan](history/ui-v2-implementation-plan.md)
+- [ui-v2-proposal](history/ui-v2-proposal.md)

@@ -10,7 +10,7 @@ qualified name (Studio::SlotRow) or --kind to pick one. Renames go through
 textDocument/rename, so references in strings and comments are left
 alone and a file rename is applied when clangd asks for one.
 
-Needs build/clangd/compile_commands.json (tools/compile-db.sh writes it
+Needs build/clangd/compile_commands.json (python3 tools/compile-db.py writes it
 from a configure with -DCMAKE_EXPORT_COMPILE_COMMANDS=ON, keeping this
 repo's own sources) and clangd on PATH, so run it inside `nix develop`:
 

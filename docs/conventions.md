@@ -656,32 +656,26 @@ with these meanings and no other word for the same thing.
 
 ### The gate
 
-`tools/gate.sh {commit|push}` is one script. The git hooks
+`tools/gate.sh {commit|push|release}` enters Nix and launches the Python
+gate implementation in `tools/gate.py`. The git hooks
 (`.githooks/pre-commit`, `pre-push`) and the Claude Code hook call it. It
 re-execs into `nix develop` so the pinned clang tools always run.
 
-- `commit` blocks a commit whose staged sources are unformatted, or that
-  adds a clang-tidy finding above the baseline for a touched `.cpp`. The
-  comparison counts per `(file, check)`, so line shifts from an edit do not
-  false-trigger (`tools/tidy-baseline.sh --gate`).
-- `push` runs `tools/format.sh --check`, the sanitized native tests
-  (`BEEF_SANITIZE=1 tests/run-native.sh`), a full incremental
-  `tools/tidy.sh`, then `tools/tidy-baseline.sh --check`. The check fails
-  when the findings differ from `tools/tidy-baseline.txt`. A new module
-  should add only the findings it meant to.
-- Regenerate the baseline after an intended change:
-  `tools/tidy.sh --force && tools/tidy-baseline.sh` (no arguments writes the
-  file).
-- `tidy.sh` caches per-file results under `build/tidy`, named by source path
-  (`src_engine_X.txt`). It re-lints a file only when the file, the compile
-  database, `.clang-tidy`, or one of the headers its object included at the
-  last build (from ninja's dependency log in `build/Release`) is newer than
-  the cached result. A file that has never been built falls back to "any
-  header under `src` is newer". Run the build after adding an include so the
-  dependency log records it.
-- `tidy.sh` reads `build/clangd/compile_commands.json`.
-  `tools/compile-db.sh` rewrites that file after a source file is added or
-  removed.
+- `commit` runs cheap formatting and layer checks against the working tree.
+  Run targeted tidy explicitly while developing; full tidy runs at release validation.
+  Header selections expand to a full pass. Baseline checks include header
+  diagnostics, ignore line movement, and block increased file/check counts.
+- `push` checks formatting, layering, source conventions, and sanitized
+  CTest suites. `release` adds the Windows build and full normal clang-tidy,
+  allowing reductions in findings.
+- Regenerate the baseline only after review with
+  `python3 tools/tidy.py && python3 tools/tidy-baseline.py`.
+- Analysis has no result cache. Failed runs invalidate their report, and
+  full baseline checks require a full successful invocation. Static analyzer
+  checks run separately with `python3 tools/tidy.py --analyzer`.
+- `docs/build.md` owns commands, presets, report paths, and recovery. Tidy
+  reads the Windows CMake database directly; the clangd view is rewritten
+  only when its contents change.
 
 ### No comments
 
@@ -708,16 +702,15 @@ re-execs into `nix develop` so the pinned clang tools always run.
 
 ### Native build and tests
 
-- Engine-free modules compile natively and run through
-  `tests/run-native.sh`. The runner compiles the union of the selected
-  suites' sources in parallel (`NATIVE_JOBS`, default 4), then links and
-  runs the suites in order.
-- `SUITE=<substring>` selects suites. `BEEF_SANITIZE=1` builds under
-  ASan/UBSan into a separate object directory.
+- Configure with `cmake --preset native`, build with
+  `cmake --build --preset native`, and run with `ctest --preset native`.
+  Presets cap compilation and test concurrency at four.
+- Use `native-sanitized` for ASan/UBSan in a separate build directory.
+  CTest `-R <regex>` selects suites; CMake `--target <suite>` builds one.
 - A module is done when four things hold (`REQUIREMENTS.md`): the build has
   zero warnings, the native suite passes, the tidy baseline shows only what
   the module meant to add, and the frozen counterpart is gone from the
   build.
-- Build with `./build.sh Release -j 4`. More jobs exhaust WSL's memory and
+- Build with `cmake --preset windows-release` then `cmake --build --preset windows-release`. More jobs exhaust WSL's memory and
   kill the instance. Do not build and run clang-tidy at the same time. Work
   inside `nix develop`.

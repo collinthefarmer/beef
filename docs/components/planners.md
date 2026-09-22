@@ -5,7 +5,7 @@ recipes against an actor's **geometries**, merges the matches into
 per-geometry and per-light **plans**, and classifies those plans for
 rendering: animated or static, and which surfaces need a **binding**. It is
 engine-free: it compiles natively and is unit-tested through
-`tests/run-native.sh`. It depends on `recipe/` and `mesh/` and on nothing
+`ctest --preset native`. It depends on `recipe/` and `mesh/` and on nothing
 above. Every wave-3 shell (`engine/Manager`, `render/Compositor`,
 `render/Binding`) is a thin adapter that owns the real `RE::` handles and
 calls these functions with value records.

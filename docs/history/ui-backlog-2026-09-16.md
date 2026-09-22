@@ -1,5 +1,7 @@
 # UI backlog — 2026-09-16
 
+> Archived 2026-09-22. Superseded as a work plan by [Alpha preparation](../plans/alpha-preparation-2026-09-22.md). The tasks and status claims below are historical; unchecked items are not active commitments. Consult current code and component documentation for implemented behavior.
+
 Captured mid-flow, not yet scheduled. Each item: the ask, where it lives now,
 and the rough direction. Anchors are current as of this date.
 
@@ -211,7 +213,7 @@ Recipes, one `DrawDiagnostics` call), so they still carry page-specific idioms.
   `ImGui::Checkbox`; move to the standard toggle/field idioms, and give each
   setting a label + info (item 3) for what it does.
 - `Shown` (`:54`) still filters dead settings out of the table — the
-  "58 of 68 settings do nothing" pruning in `docs/plans/deletions.md` is the real
+  "58 of 68 settings do nothing" pruning in `docs/history/deletions.md` is the real
   fix and should land before or with this pass, not be papered over by the
   filter.
 

@@ -1,5 +1,7 @@
 # Critique remediation handoff — 2026-09-13
 
+> Archived 2026-09-22. Superseded as a work plan by [Alpha preparation](../plans/alpha-preparation-2026-09-22.md). The tasks and status claims below are historical; unchecked items are not active commitments. Consult current code and component documentation for implemented behavior.
+
 This document hands the remediation of the 2026-09-13 codebase critique to an
 administering agent. It states where the repository stands, how work is done
 here, which plans exist, in what order they run, what each must prove before it
@@ -19,7 +21,7 @@ with file and line citations live in the six plan documents listed below.
 | File organisation | 6/10 | `studio/Edits.cpp` holds four concerns; GPU constant structs copied into three files |
 | Function design | 7/10 | Engine functions read a settings global and three singletons ambiently |
 | Type leverage | 7/10 | The studio snapshot re-stringifies typed data; checked and unchecked recipes share a type |
-| Onboarding and docs | 5/10 | No README; `REFERENCE.md` and `docs/plans/deletions.md` cite files that do not exist |
+| Onboarding and docs | 5/10 | No README; `REFERENCE.md` and `docs/history/deletions.md` cite files that do not exist |
 | Consistency | 5/10 | Five error-reporting idioms; a second JSON parser grew in `studio/Presets.cpp` |
 | Tests | 6/10 | Failure output has no file, line or values; render, menu and most of engine untested |
 | Error handling | 8/10 | Boundary is exemplary; four unchecked index sites in otherwise checked files |
@@ -147,7 +149,7 @@ steps edit: `Forms`/`Fields`/`FieldCheck` (slice 2A), the reference
 traversal in `Edits.cpp` (2B), `Selection`/`Intent`/`MenuState` (1B),
 `FormDraw`/`MenuWidgets` value widgets (2D), the expression parser (3C), the
 Paint reducers (3E), and presets for the pattern chooser (3F). A separate
-expression cleanup (`docs/plans/expression-cleanup-implementation-handoff-2026-09-13.md`)
+expression cleanup (`docs/history/expression-cleanup-implementation-handoff-2026-09-13.md`)
 is also editing `src/recipe/Expression.cpp`.
 
 The critique was taken on the tree with the UI wave present, so a few
@@ -351,7 +353,7 @@ These are settled. Do not re-open them; apply them where the plans say.
 - **`ShellPose` fields: implement them.** The shell honours `offset`,
   `scale`, `scalePoint`, `spin` and `spinAxis` alongside `inflate`. This is
   Plan G. The form controls in `src/studio/Forms.cpp:1495-1523` stay; the
-  reader, writer and schema stay. `docs/plans/deletions.md:37-40` is resolved
+  reader, writer and schema stay. `docs/history/deletions.md:37-40` is resolved
   by implementation, not deletion.
 - **Presets file: rename to `presets.json`, no fallback.** `presets/regions.json`
   in the repo becomes `presets/presets.json`; `CMakeLists.txt:162` and

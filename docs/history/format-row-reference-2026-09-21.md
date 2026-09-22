@@ -1,9 +1,11 @@
 # Format 1 row reference (2026-09-21)
 
+> Archived 2026-09-22. Superseded as a work plan by [Alpha preparation](../plans/alpha-preparation-2026-09-22.md). The tasks and status claims below are historical; unchecked items are not active commitments. Consult current code and component documentation for implemented behavior.
+
 Every authorable row of recipe format 1: one section per row type, one
 subsection per kind, each with its parameters and its audited state.
 Working material for the gate-5 freeze
-(`docs/plans/release-roadmap-2026-09-20.md`, part 3): refine a kind here,
+(`docs/history/release-roadmap-2026-09-20.md`, part 3): refine a kind here,
 then carry the result into the freeze writing. The contract is
 `schema/recipe.schema.json`; this document adds what the schema cannot
 say — runtime semantics, implementation status, and the open questions.
@@ -117,7 +119,7 @@ are the bundle; they block the freeze because the function set and the
 
 | # | Item | Finding | Scope |
 |---|---|---|---|
-| 15 | DONE 2026-09-21: recorded in deletions.md, looked-dead-keep | `ValueOf` returns `{1,1,1}` for `ComponentIdBake` and `ChartIdBake` (`Mesh.cpp:190`), but `PrepareBake` routes both to `BuildIslandBake` first, so the arms never run. Candidates for `docs/plans/deletions.md`. | S |
+| 15 | DONE 2026-09-21: recorded in deletions.md, looked-dead-keep | `ValueOf` returns `{1,1,1}` for `ComponentIdBake` and `ChartIdBake` (`Mesh.cpp:190`), but `PrepareBake` routes both to `BuildIslandBake` first, so the arms never run. Candidates for `docs/history/deletions.md`. | S |
 | 16 | Preview reads 0 without saying so | The response-graph preview uses a null environment (`ResponseGraph.cpp:108`), so `efsh`, `av`, `actorState`, and `enchantment` preview as 0 with no hint. Correct behaviour, silent surface. | S, optional |
 
 ### Naming — decide with the freeze writing (audited 2026-09-21)

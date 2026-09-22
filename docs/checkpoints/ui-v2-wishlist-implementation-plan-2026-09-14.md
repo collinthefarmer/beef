@@ -6,7 +6,7 @@ the agreed scope and cites the seams; this plan verifies them against the tree,
 splits each item into reuse versus new, and orders the work so shared pieces land
 first. Design is settled: the workspace stays imperative, both wide and narrow
 paths stay, structural changes are section 3 amendments to
-[`../ui-v2-implementation-plan.md`](../plans/ui-v2-implementation-plan.md).
+[`../ui-v2-implementation-plan.md`](../history/ui-v2-implementation-plan.md).
 
 Reconciled against `cleanup/stage-0` @ `59d0924` on 2026-09-14: the intervening
 71 commits were deferred Plan B/D refactors (source-kinds, `MenuState.h`

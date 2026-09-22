@@ -1,5 +1,7 @@
 # Plan G: the shell honours its whole pose — 2026-09-13
 
+> Archived 2026-09-22. Superseded as a work plan by [Alpha preparation](../plans/alpha-preparation-2026-09-22.md). The tasks and status claims below are historical; unchecked items are not active commitments. Consult current code and component documentation for implemented behavior.
+
 Status: implemented (161f6b2; `render/Shell.cpp` applies offset, scale,
 scalePoint, spin and spinAxis through `PosedTransform` into the shell's
 skin transforms). The in-game checkpoint this plan defines has not run;
@@ -23,7 +25,7 @@ render work with its own in-game checkpoint.
   `Pose`; read it to find the call and how `inflate` is resolved from
   `Vec3Param` through the signal state.
 - `src/studio/Forms.cpp:1495-1523` already offers all six controls.
-  `src/_old/` never applied the five fields either (`docs/plans/deletions.md:37`),
+  `src/_old/` never applied the five fields either (`docs/history/deletions.md:37`),
   so there is no previous behaviour to match; the format's schema
   descriptions in `schema/recipe.schema.json` define the intended meaning.
   Read them first; if a field's description is ambiguous, write down the
@@ -69,7 +71,7 @@ render work with its own in-game checkpoint.
 5. Verify `RecipeWrite.cpp` omits defaults for the five fields (the old
    writer at `src/_old/RecipeJson.cpp:1392` did) so unchanged recipes
    round-trip byte-identical; the existing round-trip test proves it.
-6. Update `docs/plans/deletions.md:37-40` to "implemented".
+6. Update `docs/history/deletions.md:37-40` to "implemented".
 
 ## Acceptance
 

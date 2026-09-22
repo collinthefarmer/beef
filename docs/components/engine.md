@@ -6,7 +6,7 @@ those pieces, ticks their **signals**, and drives the render layer to paint
 the result. It also owns the `RecipeStore`/`RecipeEditor` pipeline the menu
 edits recipes through. Most of it is engine-facing and not native-tested.
 Three engine-free units are compiled into the native suite
-(`tests/run-native.sh`): `ApplicationService.cpp`, `SessionQueue.cpp`,
+(`ctest --preset native`): `ApplicationService.cpp`, `SessionQueue.cpp`,
 `TextFile.cpp`.
 
 ## What it owns

@@ -1,5 +1,7 @@
 # Texture budget plan (2026-09-20)
 
+> Archived 2026-09-22. Superseded as a work plan by [Alpha preparation](../plans/alpha-preparation-2026-09-22.md). The tasks and status claims below are historical; unchecked items are not active commitments. Consult current code and component documentation for implemented behavior.
+
 Gate 1's texture half, measured on 18e9b9a with the stress scene, fails
 three ways: the pool reaches all 512 presenter slots and 8,016 MiB of
 render-target VRAM within about 50 seconds of active play; nothing

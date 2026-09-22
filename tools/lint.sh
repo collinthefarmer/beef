@@ -32,5 +32,5 @@ printf '  default: labels in switches: '
 grep -c 'default:' src/*.cpp $(find src -name '*.h' -not -path 'src/_old/*' -not -path 'src/extern/*') 2>/dev/null | grep -v ':0$' | awk -F: '{ n += $2 } END { print n + 0 }'
 
 if [ "$TIDY" -eq 1 ]; then
-	if [ "$CHANGED" -eq 1 ]; then tools/tidy.sh --changed; else tools/tidy.sh; fi
+	if [ "$CHANGED" -eq 1 ]; then python3 tools/tidy.py --changed; else python3 tools/tidy.py; fi
 fi

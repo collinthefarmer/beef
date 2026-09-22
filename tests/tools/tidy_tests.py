@@ -1,111 +1,94 @@
-"""Exercise lint selection and cache validity without invoking clang-tidy."""
+"""Exercise analysis selection, failure handling and baseline gates with a fake tool."""
 import json
 import os
-import pathlib
+from pathlib import Path
 import shutil
 import subprocess
+import sys
 import tempfile
-import time
 import unittest
 
-ROOT = pathlib.Path(__file__).resolve().parents[2]
+ROOT = Path(__file__).resolve().parents[2]
 
 
 class TidyTests(unittest.TestCase):
     def setUp(self):
-        self.folder = tempfile.TemporaryDirectory()
-        self.addCleanup(self.folder.cleanup)
-        self.root = pathlib.Path(self.folder.name)
-        for directory in ('tools', 'src', 'build/clangd', 'build/tidy', 'bin'):
-            (self.root / directory).mkdir(parents=True)
-        shutil.copy2(ROOT / 'tools/tidy.sh', self.root / 'tools/tidy.sh')
-        self.old = time.time() - 100
-        for path in ('src/Selected.cpp', 'src/Shared.h', '.clang-tidy',
-                     'build/clangd/compile_commands.json'):
-            self.write(path, '', self.old)
-        self.write('build/tidy/src_Selected.txt', '')
-        self.write('build/tidy/src_Unrelated.txt',
-                   '/repo/src/Unrelated.cpp:1:1: warning: cached [bugprone-example]\n')
-        self.environment = dict(os.environ)
-        self.environment['PATH'] = str(self.root / 'bin') + os.pathsep + os.environ['PATH']
+        folder = tempfile.TemporaryDirectory()
+        self.addCleanup(folder.cleanup)
+        self.root = Path(folder.name)
+        for name in ('tools', 'src', 'build/Release'):
+            (self.root / name).mkdir(parents=True)
+        for name in ('tidy.py', 'tidy-baseline.py'):
+            shutil.copy2(ROOT / 'tools' / name, self.root / 'tools' / name)
+        entries = []
+        for name in ('One.cpp', 'Two.cpp'):
+            source = self.root / 'src' / name
+            source.write_text('')
+            entries.append({'file': str(source), 'directory': str(self.root),
+                            'command': 'clang++ -c ' + str(source)})
+        (self.root / 'src/Shared.h').write_text('')
+        (self.root / 'build/Release/compile_commands.json').write_text(json.dumps(entries))
+        self.fake = self.root / 'fake-tidy'
+        self.fake.write_text('#!/usr/bin/env bash\nexit 0\n')
+        self.fake.chmod(0o755)
+        self.env = dict(os.environ, CLANG_TIDY=str(self.fake))
+        subprocess.run(['git', 'init', '-q', str(self.root)], check=True)
+        subprocess.run(['git', '-C', str(self.root), 'add', '.'], check=True)
+        subprocess.run(['git', '-C', str(self.root), '-c', 'user.name=Test',
+                        '-c', 'user.email=test@example.invalid',
+                        'commit', '-qm', 'fixture'], check=True)
 
-    def write(self, path, text, timestamp=None):
-        target = self.root / path
-        target.write_text(text)
-        if timestamp is not None:
-            os.utime(target, (timestamp, timestamp))
-        return target
+    def invoke(self, script, *args):
+        return subprocess.run([sys.executable, 'tools/' + script, *args], cwd=self.root,
+                              env=self.env, text=True, capture_output=True)
 
-    def run_tidy(self, *arguments):
-        return subprocess.run(['bash', 'tools/tidy.sh', *arguments],
-                              cwd=self.root, env=self.environment,
-                              text=True, capture_output=True)
-
-    def test_targeted_summary_excludes_unrelated_and_deleted_sources(self):
-        result = self.run_tidy('--summary', 'src/Selected.cpp')
+    def tidy(self, *args):
+        result = self.invoke('tidy.py', *args)
         self.assertEqual(result.returncode, 0, result.stderr)
-        self.assertIn('1 of 1 files have fresh results, 0 findings', result.stdout)
-        result = self.run_tidy('--summary')
-        self.assertIn('1 of 1 files have fresh results, 0 findings', result.stdout)
+        return json.loads((self.root / 'build/tidy/latest.json').read_text())
 
-    def test_source_header_config_and_database_changes_invalidate_results(self):
-        for dependency in ('src/Selected.cpp', 'src/Shared.h', '.clang-tidy',
-                           'build/clangd/compile_commands.json'):
-            with self.subTest(dependency=dependency):
-                os.utime(self.root / dependency, (self.old + 50, self.old + 50))
-                os.utime(self.root / 'build/tidy/src_Selected.txt',
-                         (self.old + 25, self.old + 25))
-                result = self.run_tidy('--summary', 'src/Selected.cpp')
-                self.assertIn('0 of 1 files have fresh results', result.stdout)
-                os.utime(self.root / dependency, (self.old, self.old))
+    def test_source_selection_and_header_expansion(self):
+        self.assertEqual(self.tidy('src/One.cpp')['files'], ['src/One.cpp'])
+        result = self.tidy('src/Shared.h')
+        self.assertTrue(result['full'])
+        self.assertEqual(len(result['files']), 2)
 
-    def test_recorded_dependencies_narrow_header_invalidation(self):
-        (self.root / 'build/Release').mkdir(parents=True)
-        self.write('build/Release/.ninja_deps', '')
-        self.write('src/Other.h', '', self.old)
-        obj = 'CMakeFiles/Native.dir/src/Selected.cpp.obj'
-        self.write('build/clangd/compile_commands.json', json.dumps([{
-            'file': str(self.root / 'src/Selected.cpp'),
-            'output': str(self.root / 'build/Release' / obj),
-            'command': 'clang-cl src/Selected.cpp',
-        }]), self.old)
-        ninja = self.write('bin/ninja', '#!/usr/bin/env bash\n'
-                           f'printf "{obj}: #deps 2, deps mtime 1 (VALID)\\n'
-                           f'    {self.root}/src/Selected.cpp\\n'
-                           f'    {self.root}/src/Shared.h\\n"\n')
-        ninja.chmod(0o755)
-        os.utime(self.root / 'build/tidy/src_Selected.txt',
-                 (self.old + 25, self.old + 25))
-        os.utime(self.root / 'src/Other.h', (self.old + 50, self.old + 50))
-        result = self.run_tidy('--summary', 'src/Selected.cpp')
-        self.assertIn('1 of 1 files have fresh results', result.stdout,
-                      'a header the object never included does not invalidate it')
-        os.utime(self.root / 'src/Shared.h', (self.old + 50, self.old + 50))
-        result = self.run_tidy('--summary', 'src/Selected.cpp')
-        self.assertIn('0 of 1 files have fresh results', result.stdout,
-                      'a header the object included does invalidate it')
+    def test_empty_changed_selection_stays_empty_and_header_change_runs_all(self):
+        self.assertEqual(self.tidy('--changed')['files'], [])
+        (self.root / 'src/Shared.h').write_text('changed')
+        self.assertTrue(self.tidy('--changed')['full'])
 
-    def test_empty_changed_selection_does_not_fall_back_to_all_sources(self):
-        git = self.write('bin/git', '#!/usr/bin/env bash\nexit 0\n')
-        git.chmod(0o755)
-        result = self.run_tidy('--summary', '--changed')
-        self.assertIn('0 of 0 files have fresh results', result.stdout)
-
-    def test_failed_refresh_is_not_reported_or_reused_as_success(self):
-        fake = self.write('bin/fake-tidy',
-                          '#!/usr/bin/env bash\necho failed >&2\nexit 1\n')
-        fake.chmod(0o755)
-        self.environment['CLANG_TIDY'] = str(fake)
-        result = self.run_tidy('--force', 'src/Selected.cpp')
+    def test_missing_database_entry_fails_and_invalidates_previous_report(self):
+        self.tidy()
+        (self.root / 'src/New.cpp').write_text('')
+        result = self.invoke('tidy.py', 'src/New.cpp')
         self.assertNotEqual(result.returncode, 0)
-        result = self.run_tidy('--summary', 'src/Selected.cpp')
-        self.assertIn('0 of 1 files have fresh results', result.stdout)
-        fake.write_text('#!/usr/bin/env bash\necho refreshed\n')
-        result = self.run_tidy('src/Selected.cpp')
-        self.assertEqual(result.returncode, 0, result.stderr)
-        self.assertIn('tidy src/Selected.cpp', result.stderr)
-        self.assertIn('1 of 1 files have fresh results, 0 findings', result.stdout)
-        self.assertFalse((self.root / 'build/tidy/src_Selected.txt.part').exists())
+        self.assertFalse((self.root / 'build/tidy/latest.json').exists())
+        self.assertNotEqual(self.invoke('tidy.py').returncode, 0)
+
+    def test_failed_run_cannot_reuse_prior_success(self):
+        self.tidy()
+        self.fake.write_text('#!/usr/bin/env bash\necho interrupted\nexit 1\n')
+        self.assertNotEqual(self.invoke('tidy.py').returncode, 0)
+        self.assertNotEqual(self.invoke('tidy-baseline.py', '--check').returncode, 0)
+        self.fake.write_text('#!/usr/bin/env bash\nexit 0\n')
+        self.tidy()
+
+    def test_header_findings_are_deduplicated_and_gate_ignores_line_movement(self):
+        header = self.root / 'src/Shared.h'
+        self.fake.write_text(f'#!/usr/bin/env bash\necho "{header}:3:1: warning: problem [bugprone-example]"\n')
+        result = self.tidy()
+        self.assertEqual(len(result['diagnostics']), 1)
+        self.assertEqual(self.invoke('tidy-baseline.py').returncode, 0)
+        self.fake.write_text(f'#!/usr/bin/env bash\necho "{header}:9:1: warning: problem [bugprone-example]"\n')
+        self.tidy()
+        self.assertEqual(self.invoke('tidy-baseline.py', '--check').returncode, 0)
+        with self.fake.open('a') as out:
+            out.write(f'echo "{header}:10:1: warning: second [bugprone-example]"\n')
+        self.tidy('src/One.cpp')
+        self.assertNotEqual(self.invoke('tidy-baseline.py', '--gate', 'src/One.cpp').returncode, 0)
+        self.assertNotEqual(self.invoke('tidy-baseline.py', '--check').returncode, 0)
+        self.assertNotEqual(self.invoke('tidy-baseline.py').returncode, 0)
 
 
 if __name__ == '__main__':

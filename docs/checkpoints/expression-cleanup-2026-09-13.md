@@ -1,6 +1,6 @@
 # Expression checking and evaluation cleanup
 
-Implementation checkpoint for [the expression handoff](../plans/expression-cleanup-implementation-handoff-2026-09-13.md).
+Implementation checkpoint for [the expression handoff](../history/expression-cleanup-implementation-handoff-2026-09-13.md).
 
 ## Scope and review
 

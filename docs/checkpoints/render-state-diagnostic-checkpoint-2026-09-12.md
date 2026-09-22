@@ -1,7 +1,7 @@
 # First rendering-state diagnostic checkpoint
 
 This is the first stage-0 build from the
-[fix plan](../plans/render-state-fix-plan-2026-09-12.md). Rendering algorithms, shell
+[fix plan](../history/render-state-fix-plan-2026-09-12.md). Rendering algorithms, shell
 construction, restoration policy and pool reuse policy are intentionally unchanged
 so this build can capture the existing failures before their mechanisms change.
 Diagnostic bookkeeping and queued context capture are new. The built-in sequencer

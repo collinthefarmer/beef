@@ -5,7 +5,7 @@ over into a trusted `MeshData`, then answers questions about it: which texel
 a **bake** needs at each vertex, which islands and material clusters the
 mesh contains, which **slots** and bones it covers, and how a **shell**'s
 rest pose reposes under **paint**. It is engine-free: it compiles natively
-and is unit-tested through `tests/run-native.sh`. It depends on `recipe/`
+and is unit-tested through `ctest --preset native`. It depends on `recipe/`
 (for `BakeKind`, `SourceKind`, `DistanceSource`, `MaterialClustersSource`)
 and `Core.h`.
 
