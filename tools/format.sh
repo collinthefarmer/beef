@@ -17,7 +17,7 @@ done
 FMT_BIN="${CLANG_FORMAT:-clang-format}"
 command -v "$FMT_BIN" >/dev/null 2>&1 || { echo "$FMT_BIN is not on PATH; run 'nix develop' first" >&2; exit 1; }
 
-FROZEN='^(src/(_old|extern|cs)|tests/_old)/'
+FROZEN='^src/(extern|cs)/'
 if [ "$CHANGED" -eq 1 ]; then
 	mapfile -t FILES < <(git diff --name-only HEAD -- 'src/*.cpp' 'src/*.h' 'tests/*.cpp' 'tests/*.h' | grep -Ev "$FROZEN")
 fi

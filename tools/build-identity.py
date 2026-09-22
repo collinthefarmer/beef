@@ -21,7 +21,7 @@ def main():
     paths = []
     for folder in ("src", "cmake", "shaders"):
         paths.extend(p for p in (root / folder).rglob("*")
-                     if p.is_file() and "_old" not in p.relative_to(root).parts)
+                     if p.is_file())
     for name in ("CMakeLists.txt", "CMakePresets.json", "flake.nix", "flake.lock",
                  "tools/build-identity.py", "tools/presenter-textures.py"):
         if (root / name).is_file():

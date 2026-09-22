@@ -7,7 +7,7 @@ import subprocess
 import sys
 
 ROOT = Path(__file__).resolve().parents[1]
-FROZEN = re.compile(r'^(src/(_old|extern|cs)|tests/_old)/')
+FROZEN = re.compile(r'^src/(extern|cs)/')
 
 
 def run(*args):

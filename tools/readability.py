@@ -436,7 +436,6 @@ def main() -> int:
     parser = argparse.ArgumentParser(description="Readability metrics over C++ sources.")
     parser.add_argument("globs", nargs="*", default=["src/**/*.cpp", "src/**/*.h"])
     parser.add_argument("--exclude", action="append", default=["extern", "cs"])
-    parser.add_argument("--frozen", action="store_true", help="measure src/_old instead of new code")
     parser.add_argument("--metric", action="append", choices=sorted(METRICS), help="run only these")
     parser.add_argument("--top", type=int, default=15)
     parser.add_argument("--nesting", type=int, default=Thresholds.nesting)
@@ -446,10 +445,6 @@ def main() -> int:
     args = parser.parse_args()
 
     root = Path.cwd()
-    if args.frozen:
-        args.globs = ["src/_old/*.cpp", "src/_old/*.h"]
-    else:
-        args.exclude.append("_old")
     paths = sorted(
         {
             p

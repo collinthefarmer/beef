@@ -22,7 +22,6 @@ add_library(BeefEngineServices STATIC
   src/engine/TextFile.cpp src/engine/PluginEvents.cpp)
 target_link_libraries(BeefEngineServices PUBLIC ${PROJECT_NAME}Native)
 file(GLOB_RECURSE TEST_SOURCES CONFIGURE_DEPENDS tests/*_tests.cpp)
-list(FILTER TEST_SOURCES EXCLUDE REGEX "/_old/")
 foreach(source IN LISTS TEST_SOURCES)
   file(RELATIVE_PATH suite "${CMAKE_SOURCE_DIR}/tests" "${source}")
   string(REPLACE "/" "_" suite "${suite}")

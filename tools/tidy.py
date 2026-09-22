@@ -24,7 +24,7 @@ def own_source(path):
     except ValueError:
         return False
     return bool(rel.parts) and rel.parts[0] == 'src' and not any(
-        part in ('_old', 'extern', 'cs') for part in rel.parts)
+        part in ('extern', 'cs') for part in rel.parts)
 
 
 def changed_files():
