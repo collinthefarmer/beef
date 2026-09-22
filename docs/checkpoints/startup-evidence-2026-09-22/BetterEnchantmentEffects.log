@@ -1,0 +1,189 @@
+[17:45:24.219] [info] build: f800fd9f6f4a-757bb850eaf1a8ea-Release source SHA256 757bb850eaf1a8ea7117bf31b8e40bf77b5f56a15933de98fbeee5350902e32e
+[17:45:24.220] [info] diagnostic trace: A:\home\documents\My Games\Skyrim Special Edition\SKSE\BetterEnchantmentEffects-trace-1790113524218626.jsonl (32 MiB segments, the first and the last 2 kept)
+[17:45:24.220] [info] BetterEnchantmentEffects 0-1-0-0 loading on runtime 1-6-1170-0
+[17:45:45.592] [info] kDataLoaded
+[17:45:45.604] [info] settings loaded from A:\SteamLibrary\steamapps\common\Skyrim Special Edition\Data\SKSE\Plugins\BetterEnchantmentEffects.ini:
+[17:45:45.604] [info]   [General]
+[17:45:45.604] [info]   PlayerOnly=false
+[17:45:45.604] [info]   EnableShaders=true
+[17:45:45.604] [info]   ThirdPerson=true
+[17:45:45.604] [info]   FirstPerson=true
+[17:45:45.604] [info]   UniqueMaterial=true
+[17:45:45.604] [info]   VerboseLogging=true
+[17:45:45.604] [info]   DiagnosticLogging=true
+[17:45:45.604] [info]   AnimationFPS=60
+[17:45:45.604] [info]   AnimationSpeed=1
+[17:45:45.604] [info]   TextureScale=Full
+[17:45:45.604] [info]   EvictDistance=4000
+[17:45:45.617] [info] game objects: 9494 editor IDs indexed (po3's Tweaks answers the rest)
+[17:45:45.632] [info] recipe blend-add loaded from Data\SKSE\Plugins\BetterEnchantmentEffects\recipes\debug\blend-add.json (keys: default; 0 signals, 0 curves, 0 sources, 0 masks, 1 outputs)
+[17:45:45.640] [info] recipe blend-multiply loaded from Data\SKSE\Plugins\BetterEnchantmentEffects\recipes\debug\blend-multiply.json (keys: default; 0 signals, 0 curves, 0 sources, 0 masks, 1 outputs)
+[17:45:45.648] [info] recipe blend-replace loaded from Data\SKSE\Plugins\BetterEnchantmentEffects\recipes\debug\blend-replace.json (keys: default; 0 signals, 0 curves, 0 sources, 0 masks, 1 outputs)
+[17:45:45.656] [info] recipe blend-subtract loaded from Data\SKSE\Plugins\BetterEnchantmentEffects\recipes\debug\blend-subtract.json (keys: default; 0 signals, 0 curves, 0 sources, 0 masks, 1 outputs)
+[17:45:45.663] [info] recipe debug-blue-light loaded from Data\SKSE\Plugins\BetterEnchantmentEffects\recipes\debug\debug-blue-light.json (keys: enchanted; 1 signals, 0 curves, 0 sources, 0 masks, 1 outputs)
+[17:45:45.671] [info] recipe debug-green-shell loaded from Data\SKSE\Plugins\BetterEnchantmentEffects\recipes\debug\debug-green-shell.json (keys: enchanted; 0 signals, 0 curves, 0 sources, 0 masks, 1 outputs)
+[17:45:45.676] [info] recipe debug-red-glow loaded from Data\SKSE\Plugins\BetterEnchantmentEffects\recipes\debug\debug-red-glow.json (keys: default; 0 signals, 0 curves, 0 sources, 0 masks, 1 outputs)
+[17:45:45.683] [info] recipe expr-chain-refs loaded from Data\SKSE\Plugins\BetterEnchantmentEffects\recipes\debug\expr-chain-refs.json (keys: default; 3 signals, 0 curves, 0 sources, 0 masks, 1 outputs)
+[17:45:45.690] [info] recipe expr-clamp-negative loaded from Data\SKSE\Plugins\BetterEnchantmentEffects\recipes\debug\expr-clamp-negative.json (keys: default; 1 signals, 0 curves, 0 sources, 0 masks, 1 outputs)
+[17:45:45.697] [info] recipe expr-comparison loaded from Data\SKSE\Plugins\BetterEnchantmentEffects\recipes\debug\expr-comparison.json (keys: default; 1 signals, 0 curves, 0 sources, 0 masks, 1 outputs)
+[17:45:45.704] [info] recipe expr-component-branch loaded from Data\SKSE\Plugins\BetterEnchantmentEffects\recipes\debug\expr-component-branch.json (keys: default; 2 signals, 0 curves, 0 sources, 0 masks, 1 outputs)
+[17:45:45.712] [info] recipe expr-division-by-zero loaded from Data\SKSE\Plugins\BetterEnchantmentEffects\recipes\debug\expr-division-by-zero.json (keys: default; 1 signals, 0 curves, 0 sources, 0 masks, 1 outputs)
+[17:45:45.718] [info] recipe expr-mask-length-distance loaded from Data\SKSE\Plugins\BetterEnchantmentEffects\recipes\debug\expr-mask-length-distance.json (keys: default; 0 signals, 0 curves, 1 sources, 2 masks, 1 outputs)
+[17:45:45.726] [info] recipe expr-nested-funcs loaded from Data\SKSE\Plugins\BetterEnchantmentEffects\recipes\debug\expr-nested-funcs.json (keys: default; 1 signals, 0 curves, 0 sources, 0 masks, 1 outputs)
+[17:45:45.732] [info] recipe expr-vector-add loaded from Data\SKSE\Plugins\BetterEnchantmentEffects\recipes\debug\expr-vector-add.json (keys: default; 1 signals, 0 curves, 0 sources, 0 masks, 1 outputs)
+[17:45:45.739] [info] recipe inspect-bake-position loaded from Data\SKSE\Plugins\BetterEnchantmentEffects\recipes\debug\inspect-bake-position.json (keys: default; 0 signals, 0 curves, 1 sources, 1 masks, 1 outputs)
+[17:45:45.747] [info] recipe inspect-combat loaded from Data\SKSE\Plugins\BetterEnchantmentEffects\recipes\debug\inspect-combat.json (keys: default; 2 signals, 0 curves, 0 sources, 0 masks, 1 outputs)
+[17:45:45.754] [info] recipe inspect-health loaded from Data\SKSE\Plugins\BetterEnchantmentEffects\recipes\debug\inspect-health.json (keys: default; 3 signals, 0 curves, 0 sources, 0 masks, 1 outputs)
+[17:45:45.761] [info] recipe inspect-hostility loaded from Data\SKSE\Plugins\BetterEnchantmentEffects\recipes\debug\inspect-hostility.json (keys: default; 5 signals, 0 curves, 0 sources, 0 masks, 2 outputs)
+[17:45:45.768] [info] recipe inspect-sneaking loaded from Data\SKSE\Plugins\BetterEnchantmentEffects\recipes\debug\inspect-sneaking.json (keys: default; 2 signals, 0 curves, 0 sources, 0 masks, 1 outputs)
+[17:45:45.774] [info] recipe inspect-stamina loaded from Data\SKSE\Plugins\BetterEnchantmentEffects\recipes\debug\inspect-stamina.json (keys: default; 3 signals, 0 curves, 0 sources, 0 masks, 1 outputs)
+[17:45:45.783] [info] recipe inspect-target-direction loaded from Data\SKSE\Plugins\BetterEnchantmentEffects\recipes\debug\inspect-target-direction.json (keys: default; 7 signals, 0 curves, 1 sources, 1 masks, 1 outputs)
+[17:45:45.790] [info] recipe inspect-target-tint loaded from Data\SKSE\Plugins\BetterEnchantmentEffects\recipes\debug\inspect-target-tint.json (keys: default; 8 signals, 0 curves, 0 sources, 0 masks, 1 outputs)
+[17:45:45.798] [info] recipe merge-compose loaded from Data\SKSE\Plugins\BetterEnchantmentEffects\recipes\debug\merge-compose.json (keys: default; 0 signals, 0 curves, 0 sources, 0 masks, 1 outputs)
+[17:45:45.805] [info] recipe merge-replace-two-high loaded from Data\SKSE\Plugins\BetterEnchantmentEffects\recipes\debug\merge-replace-two-high.json (keys: default; 0 signals, 0 curves, 0 sources, 0 masks, 1 outputs)
+[17:45:45.813] [info] recipe merge-replace-two loaded from Data\SKSE\Plugins\BetterEnchantmentEffects\recipes\debug\merge-replace-two.json (keys: default; 0 signals, 0 curves, 0 sources, 0 masks, 1 outputs)
+[17:45:45.821] [info] recipe merge-sampled-two-high loaded from Data\SKSE\Plugins\BetterEnchantmentEffects\recipes\debug\merge-sampled-two-high.json (keys: default; 0 signals, 0 curves, 0 sources, 0 masks, 1 outputs)
+[17:45:45.827] [info] recipe merge-sampled-two loaded from Data\SKSE\Plugins\BetterEnchantmentEffects\recipes\debug\merge-sampled-two.json (keys: default; 0 signals, 0 curves, 0 sources, 0 masks, 1 outputs)
+[17:45:45.836] [info] recipe merge-stack-two-high loaded from Data\SKSE\Plugins\BetterEnchantmentEffects\recipes\debug\merge-stack-two-high.json (keys: default; 0 signals, 0 curves, 0 sources, 0 masks, 1 outputs)
+[17:45:45.843] [info] recipe merge-stack-two loaded from Data\SKSE\Plugins\BetterEnchantmentEffects\recipes\debug\merge-stack-two.json (keys: default; 0 signals, 0 curves, 0 sources, 0 masks, 1 outputs)
+[17:45:45.851] [info] recipe normal-sweep-x loaded from Data\SKSE\Plugins\BetterEnchantmentEffects\recipes\debug\normal-sweep-x.json (keys: default; 0 signals, 0 curves, 1 sources, 1 masks, 1 outputs)
+[17:45:45.861] [info] recipe normal-sweep-y loaded from Data\SKSE\Plugins\BetterEnchantmentEffects\recipes\debug\normal-sweep-y.json (keys: default; 0 signals, 0 curves, 1 sources, 1 masks, 1 outputs)
+[17:45:45.869] [info] recipe normal-sweep-z loaded from Data\SKSE\Plugins\BetterEnchantmentEffects\recipes\debug\normal-sweep-z.json (keys: default; 0 signals, 0 curves, 1 sources, 1 masks, 1 outputs)
+[17:45:45.877] [info] recipe output-light-skinned loaded from Data\SKSE\Plugins\BetterEnchantmentEffects\recipes\debug\output-light-skinned.json (keys: default; 0 signals, 0 curves, 0 sources, 0 masks, 1 outputs)
+[17:45:45.885] [info] recipe output-material-emissive loaded from Data\SKSE\Plugins\BetterEnchantmentEffects\recipes\debug\output-material-emissive.json (keys: default; 0 signals, 0 curves, 0 sources, 0 masks, 1 outputs)
+[17:45:45.892] [info] recipe output-material-height loaded from Data\SKSE\Plugins\BetterEnchantmentEffects\recipes\debug\output-material-height.json (keys: default; 0 signals, 0 curves, 1 sources, 0 masks, 1 outputs)
+[17:45:45.900] [info] recipe output-material-rmaos loaded from Data\SKSE\Plugins\BetterEnchantmentEffects\recipes\debug\output-material-rmaos.json (keys: default; 0 signals, 0 curves, 1 sources, 0 masks, 1 outputs)
+[17:45:45.907] [info] recipe output-shell-inflate loaded from Data\SKSE\Plugins\BetterEnchantmentEffects\recipes\debug\output-shell-inflate.json (keys: default; 0 signals, 0 curves, 0 sources, 0 masks, 1 outputs)
+[17:45:45.916] [info] recipe output-shell-spin loaded from Data\SKSE\Plugins\BetterEnchantmentEffects\recipes\debug\output-shell-spin.json (keys: default; 0 signals, 0 curves, 0 sources, 0 masks, 1 outputs)
+[17:45:45.923] [info] recipe perf-deep-expr loaded from Data\SKSE\Plugins\BetterEnchantmentEffects\recipes\debug\perf-deep-expr.json (keys: default; 1 signals, 0 curves, 0 sources, 0 masks, 1 outputs)
+[17:45:45.935] [info] recipe perf-heavy-stack loaded from Data\SKSE\Plugins\BetterEnchantmentEffects\recipes\debug\perf-heavy-stack.json (keys: default; 3 signals, 0 curves, 10 sources, 5 masks, 1 outputs)
+[17:45:45.942] [info] recipe perf-high-freq-anim loaded from Data\SKSE\Plugins\BetterEnchantmentEffects\recipes\debug\perf-high-freq-anim.json (keys: default; 1 signals, 0 curves, 0 sources, 0 masks, 1 outputs)
+[17:45:45.949] [info] recipe perf-medium-stack loaded from Data\SKSE\Plugins\BetterEnchantmentEffects\recipes\debug\perf-medium-stack.json (keys: default; 0 signals, 0 curves, 4 sources, 1 masks, 1 outputs)
+[17:45:45.957] [info] recipe perf-simple-stack loaded from Data\SKSE\Plugins\BetterEnchantmentEffects\recipes\debug\perf-simple-stack.json (keys: default; 0 signals, 0 curves, 0 sources, 0 masks, 1 outputs)
+[17:45:45.963] [info] recipe signal-accumulate loaded from Data\SKSE\Plugins\BetterEnchantmentEffects\recipes\debug\signal-accumulate.json (keys: default; 2 signals, 0 curves, 0 sources, 0 masks, 1 outputs)
+[17:45:45.972] [info] recipe signal-av-health loaded from Data\SKSE\Plugins\BetterEnchantmentEffects\recipes\debug\signal-av-health.json (keys: default; 3 signals, 0 curves, 0 sources, 0 masks, 1 outputs)
+[17:45:45.980] [info] recipe signal-av-stamina loaded from Data\SKSE\Plugins\BetterEnchantmentEffects\recipes\debug\signal-av-stamina.json (keys: default; 3 signals, 0 curves, 0 sources, 0 masks, 1 outputs)
+[17:45:45.986] [info] recipe signal-constant loaded from Data\SKSE\Plugins\BetterEnchantmentEffects\recipes\debug\signal-constant.json (keys: default; 0 signals, 0 curves, 0 sources, 0 masks, 1 outputs)
+[17:45:45.993] [warning] recipe signal-efsh-fill: signal fillAlphaValue: editor ID 'DefaultObjectReference' matched no loaded form
+[17:45:45.993] [warning] recipe signal-efsh-fill: signal fillAlphaValue: editor ID 'DefaultObjectReference' matched no loaded form (effect shaders, enchantments and armor need po3's Tweaks for editor IDs); this key never matches
+[17:45:45.993] [info] recipe signal-efsh-fill loaded from Data\SKSE\Plugins\BetterEnchantmentEffects\recipes\debug\signal-efsh-fill.json (keys: default; 1 signals, 0 curves, 0 sources, 0 masks, 1 outputs)
+[17:45:45.999] [info] recipe signal-gradient loaded from Data\SKSE\Plugins\BetterEnchantmentEffects\recipes\debug\signal-gradient.json (keys: default; 2 signals, 0 curves, 0 sources, 0 masks, 1 outputs)
+[17:45:46.006] [info] recipe signal-noise loaded from Data\SKSE\Plugins\BetterEnchantmentEffects\recipes\debug\signal-noise.json (keys: default; 2 signals, 0 curves, 0 sources, 0 masks, 1 outputs)
+[17:45:46.015] [info] recipe signal-ramp-loop loaded from Data\SKSE\Plugins\BetterEnchantmentEffects\recipes\debug\signal-ramp-loop.json (keys: default; 2 signals, 0 curves, 0 sources, 0 masks, 1 outputs)
+[17:45:46.022] [info] recipe signal-ramp-up loaded from Data\SKSE\Plugins\BetterEnchantmentEffects\recipes\debug\signal-ramp-up.json (keys: default; 1 signals, 0 curves, 0 sources, 0 masks, 1 outputs)
+[17:45:46.029] [info] recipe signal-rate loaded from Data\SKSE\Plugins\BetterEnchantmentEffects\recipes\debug\signal-rate.json (keys: default; 3 signals, 0 curves, 0 sources, 0 masks, 1 outputs)
+[17:45:46.036] [info] recipe signal-saw-wave loaded from Data\SKSE\Plugins\BetterEnchantmentEffects\recipes\debug\signal-saw-wave.json (keys: default; 1 signals, 0 curves, 0 sources, 0 masks, 1 outputs)
+[17:45:46.043] [info] recipe signal-sine-wave loaded from Data\SKSE\Plugins\BetterEnchantmentEffects\recipes\debug\signal-sine-wave.json (keys: default; 1 signals, 0 curves, 0 sources, 0 masks, 1 outputs)
+[17:45:46.051] [info] recipe signal-smooth loaded from Data\SKSE\Plugins\BetterEnchantmentEffects\recipes\debug\signal-smooth.json (keys: default; 2 signals, 0 curves, 0 sources, 0 masks, 1 outputs)
+[17:45:46.060] [info] recipe signal-square-wave loaded from Data\SKSE\Plugins\BetterEnchantmentEffects\recipes\debug\signal-square-wave.json (keys: default; 1 signals, 0 curves, 0 sources, 0 masks, 1 outputs)
+[17:45:46.066] [info] recipe signal-state-combat loaded from Data\SKSE\Plugins\BetterEnchantmentEffects\recipes\debug\signal-state-combat.json (keys: default; 1 signals, 0 curves, 0 sources, 0 masks, 1 outputs)
+[17:45:46.074] [info] recipe signal-state-sneaking loaded from Data\SKSE\Plugins\BetterEnchantmentEffects\recipes\debug\signal-state-sneaking.json (keys: default; 2 signals, 0 curves, 0 sources, 0 masks, 1 outputs)
+[17:45:46.083] [info] recipe signal-triangle-wave loaded from Data\SKSE\Plugins\BetterEnchantmentEffects\recipes\debug\signal-triangle-wave.json (keys: default; 1 signals, 0 curves, 0 sources, 0 masks, 1 outputs)
+[17:45:46.090] [info] recipe signal-trigger-count loaded from Data\SKSE\Plugins\BetterEnchantmentEffects\recipes\debug\signal-trigger-count.json (keys: default; 3 signals, 0 curves, 0 sources, 0 masks, 1 outputs)
+[17:45:46.098] [info] recipe source-distance-radial loaded from Data\SKSE\Plugins\BetterEnchantmentEffects\recipes\debug\source-distance-radial.json (keys: default; 0 signals, 0 curves, 1 sources, 2 masks, 2 outputs)
+[17:45:46.105] [info] recipe source-material-metallic loaded from Data\SKSE\Plugins\BetterEnchantmentEffects\recipes\debug\source-material-metallic.json (keys: default; 0 signals, 0 curves, 1 sources, 1 masks, 1 outputs)
+[17:45:46.113] [info] recipe source-material-relief loaded from Data\SKSE\Plugins\BetterEnchantmentEffects\recipes\debug\source-material-relief.json (keys: default; 0 signals, 0 curves, 1 sources, 0 masks, 1 outputs)
+[17:45:46.120] [info] recipe source-materialclusters loaded from Data\SKSE\Plugins\BetterEnchantmentEffects\recipes\debug\source-materialclusters.json (keys: default; 0 signals, 0 curves, 1 sources, 5 masks, 1 outputs)
+[17:45:46.128] [info] recipe source-ripple-interference loaded from Data\SKSE\Plugins\BetterEnchantmentEffects\recipes\debug\source-ripple-interference.json (keys: default; 1 signals, 0 curves, 1 sources, 0 masks, 2 outputs)
+[17:45:46.135] [info] recipe source-uv-tile loaded from Data\SKSE\Plugins\BetterEnchantmentEffects\recipes\debug\source-uv-tile.json (keys: default; 0 signals, 0 curves, 1 sources, 2 masks, 1 outputs)
+[17:45:46.142] [info] recipe EnchArmorFireFXS loaded from Data\SKSE\Plugins\BetterEnchantmentEffects\recipes\imported\EnchArmorFireFXS.json (keys: effectShader:EnchArmorFireFXS; 27 signals, 2 curves, 6 sources, 1 masks, 5 outputs; imported, not yet edited)
+[17:45:46.151] [info] recipe EnchArmorFrostFXS loaded from Data\SKSE\Plugins\BetterEnchantmentEffects\recipes\imported\EnchArmorFrostFXS.json (keys: effectShader:EnchArmorFrostFXS; 27 signals, 2 curves, 6 sources, 1 masks, 5 outputs; imported, not yet edited)
+[17:45:46.158] [info] recipe EnchArmorHealthFXS loaded from Data\SKSE\Plugins\BetterEnchantmentEffects\recipes\imported\EnchArmorHealthFXS.json (keys: effectShader:EnchArmorHealthFXS; 27 signals, 2 curves, 6 sources, 1 masks, 5 outputs; imported, not yet edited)
+[17:45:46.167] [info] recipe EnchArmorMagickaFXS loaded from Data\SKSE\Plugins\BetterEnchantmentEffects\recipes\imported\EnchArmorMagickaFXS.json (keys: effectShader:EnchArmorMagickaFXS; 27 signals, 2 curves, 6 sources, 1 masks, 5 outputs; imported, not yet edited)
+[17:45:46.177] [info] recipe EnchArmorShockFXS loaded from Data\SKSE\Plugins\BetterEnchantmentEffects\recipes\imported\EnchArmorShockFXS.json (keys: effectShader:EnchArmorShockFXS; 27 signals, 2 curves, 6 sources, 1 masks, 5 outputs; imported, not yet edited)
+[17:45:46.185] [info] recipe EnchArmorStaminaFXS loaded from Data\SKSE\Plugins\BetterEnchantmentEffects\recipes\imported\EnchArmorStaminaFXS.json (keys: effectShader:EnchArmorStaminaFXS; 27 signals, 2 curves, 6 sources, 1 masks, 5 outputs; imported, not yet edited)
+[17:45:46.193] [info] recipe EnchGreenFXShader loaded from Data\SKSE\Plugins\BetterEnchantmentEffects\recipes\imported\EnchGreenFXShader.json (keys: effectShader:EnchGreenFXShader; 27 signals, 2 curves, 6 sources, 1 masks, 5 outputs; imported, not yet edited)
+[17:45:46.203] [info] recipe FrostFXShader loaded from Data\SKSE\Plugins\BetterEnchantmentEffects\recipes\imported\FrostFXShader.json (keys: effectShader:FrostFXShader; 27 signals, 2 curves, 6 sources, 1 masks, 5 outputs; imported, not yet edited)
+[17:45:46.211] [info] recipe WaterBreathingFXS loaded from Data\SKSE\Plugins\BetterEnchantmentEffects\recipes\imported\WaterBreathingFXS.json (keys: effectShader:WaterBreathingFXS; 21 signals, 1 curves, 2 sources, 1 masks, 4 outputs; imported, not yet edited)
+[17:45:46.227] [warning] recipe blend-add: key default is owned by recipe source-uv-tile (loaded later); blend-add does not resolve by it
+[17:45:46.227] [warning] recipe blend-multiply: key default is owned by recipe source-uv-tile (loaded later); blend-multiply does not resolve by it
+[17:45:46.227] [warning] recipe blend-replace: key default is owned by recipe source-uv-tile (loaded later); blend-replace does not resolve by it
+[17:45:46.227] [warning] recipe blend-subtract: key default is owned by recipe source-uv-tile (loaded later); blend-subtract does not resolve by it
+[17:45:46.227] [warning] recipe debug-blue-light: key enchanted is owned by recipe debug-green-shell (loaded later); debug-blue-light does not resolve by it
+[17:45:46.227] [warning] recipe debug-red-glow: key default is owned by recipe source-uv-tile (loaded later); debug-red-glow does not resolve by it
+[17:45:46.227] [warning] recipe expr-chain-refs: key default is owned by recipe source-uv-tile (loaded later); expr-chain-refs does not resolve by it
+[17:45:46.227] [warning] recipe expr-clamp-negative: key default is owned by recipe source-uv-tile (loaded later); expr-clamp-negative does not resolve by it
+[17:45:46.227] [warning] recipe expr-comparison: key default is owned by recipe source-uv-tile (loaded later); expr-comparison does not resolve by it
+[17:45:46.227] [warning] recipe expr-component-branch: key default is owned by recipe source-uv-tile (loaded later); expr-component-branch does not resolve by it
+[17:45:46.227] [warning] recipe expr-division-by-zero: key default is owned by recipe source-uv-tile (loaded later); expr-division-by-zero does not resolve by it
+[17:45:46.227] [warning] recipe expr-mask-length-distance: key default is owned by recipe source-uv-tile (loaded later); expr-mask-length-distance does not resolve by it
+[17:45:46.227] [warning] recipe expr-nested-funcs: key default is owned by recipe source-uv-tile (loaded later); expr-nested-funcs does not resolve by it
+[17:45:46.227] [warning] recipe expr-vector-add: key default is owned by recipe source-uv-tile (loaded later); expr-vector-add does not resolve by it
+[17:45:46.227] [warning] recipe inspect-bake-position: key default is owned by recipe source-uv-tile (loaded later); inspect-bake-position does not resolve by it
+[17:45:46.227] [warning] recipe inspect-combat: key default is owned by recipe source-uv-tile (loaded later); inspect-combat does not resolve by it
+[17:45:46.227] [warning] recipe inspect-health: key default is owned by recipe source-uv-tile (loaded later); inspect-health does not resolve by it
+[17:45:46.227] [warning] recipe inspect-hostility: key default is owned by recipe source-uv-tile (loaded later); inspect-hostility does not resolve by it
+[17:45:46.227] [warning] recipe inspect-sneaking: key default is owned by recipe source-uv-tile (loaded later); inspect-sneaking does not resolve by it
+[17:45:46.227] [warning] recipe inspect-stamina: key default is owned by recipe source-uv-tile (loaded later); inspect-stamina does not resolve by it
+[17:45:46.227] [warning] recipe inspect-target-direction: key default is owned by recipe source-uv-tile (loaded later); inspect-target-direction does not resolve by it
+[17:45:46.227] [warning] recipe inspect-target-tint: key default is owned by recipe source-uv-tile (loaded later); inspect-target-tint does not resolve by it
+[17:45:46.227] [warning] recipe merge-compose: key default is owned by recipe source-uv-tile (loaded later); merge-compose does not resolve by it
+[17:45:46.227] [warning] recipe merge-replace-two-high: key default is owned by recipe source-uv-tile (loaded later); merge-replace-two-high does not resolve by it
+[17:45:46.227] [warning] recipe merge-replace-two: key default is owned by recipe source-uv-tile (loaded later); merge-replace-two does not resolve by it
+[17:45:46.227] [warning] recipe merge-sampled-two-high: key default is owned by recipe source-uv-tile (loaded later); merge-sampled-two-high does not resolve by it
+[17:45:46.227] [warning] recipe merge-sampled-two: key default is owned by recipe source-uv-tile (loaded later); merge-sampled-two does not resolve by it
+[17:45:46.227] [warning] recipe merge-stack-two-high: key default is owned by recipe source-uv-tile (loaded later); merge-stack-two-high does not resolve by it
+[17:45:46.227] [warning] recipe merge-stack-two: key default is owned by recipe source-uv-tile (loaded later); merge-stack-two does not resolve by it
+[17:45:46.227] [warning] recipe normal-sweep-x: key default is owned by recipe source-uv-tile (loaded later); normal-sweep-x does not resolve by it
+[17:45:46.227] [warning] recipe normal-sweep-y: key default is owned by recipe source-uv-tile (loaded later); normal-sweep-y does not resolve by it
+[17:45:46.227] [warning] recipe normal-sweep-z: key default is owned by recipe source-uv-tile (loaded later); normal-sweep-z does not resolve by it
+[17:45:46.227] [warning] recipe output-light-skinned: key default is owned by recipe source-uv-tile (loaded later); output-light-skinned does not resolve by it
+[17:45:46.227] [warning] recipe output-material-emissive: key default is owned by recipe source-uv-tile (loaded later); output-material-emissive does not resolve by it
+[17:45:46.227] [warning] recipe output-material-height: key default is owned by recipe source-uv-tile (loaded later); output-material-height does not resolve by it
+[17:45:46.227] [warning] recipe output-material-rmaos: key default is owned by recipe source-uv-tile (loaded later); output-material-rmaos does not resolve by it
+[17:45:46.227] [warning] recipe output-shell-inflate: key default is owned by recipe source-uv-tile (loaded later); output-shell-inflate does not resolve by it
+[17:45:46.227] [warning] recipe output-shell-spin: key default is owned by recipe source-uv-tile (loaded later); output-shell-spin does not resolve by it
+[17:45:46.227] [warning] recipe perf-deep-expr: key default is owned by recipe source-uv-tile (loaded later); perf-deep-expr does not resolve by it
+[17:45:46.227] [warning] recipe perf-heavy-stack: key default is owned by recipe source-uv-tile (loaded later); perf-heavy-stack does not resolve by it
+[17:45:46.227] [warning] recipe perf-high-freq-anim: key default is owned by recipe source-uv-tile (loaded later); perf-high-freq-anim does not resolve by it
+[17:45:46.227] [warning] recipe perf-medium-stack: key default is owned by recipe source-uv-tile (loaded later); perf-medium-stack does not resolve by it
+[17:45:46.227] [warning] recipe perf-simple-stack: key default is owned by recipe source-uv-tile (loaded later); perf-simple-stack does not resolve by it
+[17:45:46.227] [warning] recipe signal-accumulate: key default is owned by recipe source-uv-tile (loaded later); signal-accumulate does not resolve by it
+[17:45:46.227] [warning] recipe signal-av-health: key default is owned by recipe source-uv-tile (loaded later); signal-av-health does not resolve by it
+[17:45:46.227] [warning] recipe signal-av-stamina: key default is owned by recipe source-uv-tile (loaded later); signal-av-stamina does not resolve by it
+[17:45:46.227] [warning] recipe signal-constant: key default is owned by recipe source-uv-tile (loaded later); signal-constant does not resolve by it
+[17:45:46.227] [warning] recipe signal-efsh-fill: key default is owned by recipe source-uv-tile (loaded later); signal-efsh-fill does not resolve by it
+[17:45:46.227] [warning] recipe signal-gradient: key default is owned by recipe source-uv-tile (loaded later); signal-gradient does not resolve by it
+[17:45:46.227] [warning] recipe signal-noise: key default is owned by recipe source-uv-tile (loaded later); signal-noise does not resolve by it
+[17:45:46.227] [warning] recipe signal-ramp-loop: key default is owned by recipe source-uv-tile (loaded later); signal-ramp-loop does not resolve by it
+[17:45:46.227] [warning] recipe signal-ramp-up: key default is owned by recipe source-uv-tile (loaded later); signal-ramp-up does not resolve by it
+[17:45:46.227] [warning] recipe signal-rate: key default is owned by recipe source-uv-tile (loaded later); signal-rate does not resolve by it
+[17:45:46.227] [warning] recipe signal-saw-wave: key default is owned by recipe source-uv-tile (loaded later); signal-saw-wave does not resolve by it
+[17:45:46.227] [warning] recipe signal-sine-wave: key default is owned by recipe source-uv-tile (loaded later); signal-sine-wave does not resolve by it
+[17:45:46.227] [warning] recipe signal-smooth: key default is owned by recipe source-uv-tile (loaded later); signal-smooth does not resolve by it
+[17:45:46.227] [warning] recipe signal-square-wave: key default is owned by recipe source-uv-tile (loaded later); signal-square-wave does not resolve by it
+[17:45:46.227] [warning] recipe signal-state-combat: key default is owned by recipe source-uv-tile (loaded later); signal-state-combat does not resolve by it
+[17:45:46.227] [warning] recipe signal-state-sneaking: key default is owned by recipe source-uv-tile (loaded later); signal-state-sneaking does not resolve by it
+[17:45:46.227] [warning] recipe signal-triangle-wave: key default is owned by recipe source-uv-tile (loaded later); signal-triangle-wave does not resolve by it
+[17:45:46.227] [warning] recipe signal-trigger-count: key default is owned by recipe source-uv-tile (loaded later); signal-trigger-count does not resolve by it
+[17:45:46.227] [warning] recipe source-distance-radial: key default is owned by recipe source-uv-tile (loaded later); source-distance-radial does not resolve by it
+[17:45:46.227] [warning] recipe source-material-metallic: key default is owned by recipe source-uv-tile (loaded later); source-material-metallic does not resolve by it
+[17:45:46.227] [warning] recipe source-material-relief: key default is owned by recipe source-uv-tile (loaded later); source-material-relief does not resolve by it
+[17:45:46.227] [warning] recipe source-materialclusters: key default is owned by recipe source-uv-tile (loaded later); source-materialclusters does not resolve by it
+[17:45:46.227] [warning] recipe source-ripple-interference: key default is owned by recipe source-uv-tile (loaded later); source-ripple-interference does not resolve by it
+[17:45:46.233] [info] presets: 21 mask presets from Data\SKSE\Plugins\BetterEnchantmentEffects\presets.json
+[17:45:46.234] [info] recipes: 77 loaded, 0 with errors, 0 held back, 1 unresolved editor IDs, 0 imported this session, folder A:\SteamLibrary\steamapps\common\Skyrim Special Edition\Data\SKSE\Plugins\BetterEnchantmentEffects\recipes
+[17:45:46.239] [info] SKSE Menu Framework pages registered
+[17:45:46.240] [info] event sinks registered
+[17:45:46.240] [info] hooked PlayerCharacter::Update (vfunc 0xad)
+[17:45:50.072] [info] kPreLoadGame
+[17:45:50.072] [info] cleared 0 actor states
+[17:46:12.903] [info] kPostLoadGame
+[17:46:13.829] [info] PBR material layout check passed
+[17:46:14.206] [info] TextureLab: ready (runtime layer textures)
+[17:46:14.226] [info] apply armor 000FE2FF actor 00000014 geometry 'TorsoLow:0' material=private shell (PBR copy, additive, skin cloned, buffers shared, emissive storage cloned, inflation own skin data (copied))
+[17:46:14.236] [info] apply armor 000FE2FF actor 00000014 geometry ' (00098BB3)[0]/ (000FE2FF) [75%]' material=private shell (PBR copy, additive, skin cloned, buffers shared, emissive storage cloned, inflation own skin data (copied))
+[17:46:14.236] [info]   recipe EnchArmorHealthFXS: light on NPC Spine2 [Spn2] x1.00, NPC Pelvis [Pelv] x0.56
+[17:46:14.236] [info] actor 00000014 (123): 2 piece(s), 1 recipe(s) applied
+[17:46:15.511] [info] actor 00037056 (Whiterun Guard): 3D not loaded, skipped
+[17:46:15.512] [info] actor 00037056 (Whiterun Guard): 3D not loaded, skipped
+[17:46:18.859] [info] actor 0003707C (Whiterun Guard): 3D not loaded, skipped
+[17:46:18.859] [info] actor 0003707C (Whiterun Guard): 3D not loaded, skipped
+[17:46:18.957] [info] actor 0003707C (Whiterun Guard): 3D not loaded, skipped
+[17:46:19.497] [info] actor 0003704E (Whiterun Guard): 3D not loaded, skipped
+[17:46:19.498] [info] actor 0003704E (Whiterun Guard): 3D not loaded, skipped
+[17:46:24.262] [info] actor 0003707B (Whiterun Guard): 3D not loaded, skipped
+[17:46:24.262] [info] actor 0003707B (Whiterun Guard): 3D not loaded, skipped
+[17:46:24.363] [info] actor 0003707B (Whiterun Guard): 3D not loaded, skipped
+[17:46:25.492] [info] actor 001000F7 (Whiterun Guard): 3D not loaded, skipped
+[17:46:25.492] [info] actor 001000F7 (Whiterun Guard): 3D not loaded, skipped
