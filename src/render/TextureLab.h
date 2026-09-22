@@ -68,6 +68,7 @@ public:
   struct LayerInput {
     ShaderChannel channel = ShaderChannel::kRgb;
     bool meshSpace = false;
+    bool nearest = false;
     Scroll transform;
     [[nodiscard]] bool operator==(const LayerInput &) const = default;
   };

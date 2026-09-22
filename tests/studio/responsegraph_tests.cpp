@@ -74,5 +74,20 @@ int main() {
   signal.definition = ExprSignal{"time * 2"};
   Check(!BuildResponseGraph(signal, recipe),
         "arbitrary expressions keep their existing controls");
+  SignalRow mana;
+  mana.name = "mana";
+  mana.kind = SignalKindId::kActorValue;
+  mana.definition = ActorValueSignal{};
+  recipe.signals.push_back(mana);
+  signal.kind = SignalKindId::kRamp;
+  signal.definition = RampSignal{0.0f, Ref{"mana"}, 4.0f};
+  const auto gameInput = BuildResponseGraph(signal, recipe);
+  Check(!gameInput && gameInput.error().find("'@mana'") != std::string::npos &&
+            gameInput.error().find("in game") != std::string::npos,
+        "a game-reading input names itself and says it reads only in game");
+  signal.definition = RampSignal{0.0f, Ref{"absent"}, 4.0f};
+  const auto missing = BuildResponseGraph(signal, recipe);
+  Check(!missing && missing.error().find("'@absent'") != std::string::npos,
+        "a missing input is named in the refusal");
   return test::Finish("studio_responsegraph");
 }

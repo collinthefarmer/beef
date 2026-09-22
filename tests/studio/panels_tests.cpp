@@ -341,6 +341,71 @@ void TestIntegerSignalFields() {
   }
 }
 
+void TestEventFilterFields() {
+  SignalRow hit;
+  hit.name = "hit";
+  hit.kind = SignalKindId::kTrigger;
+  TriggerSignal trigger;
+  trigger.origin = EventOrigin{"hit.received", {"*Foot*", "", {0.5f, {}}}};
+  hit.definition = trigger;
+  const auto form = SignalForm(hit, SignalNames{});
+  const auto *node = Field(form, "filter node");
+  const auto *arg = Field(form, "filter arg");
+  const auto *min = Field(form, "filter min");
+  const auto *max = Field(form, "filter max");
+  Check(node && arg && min && max,
+        "an event trigger exposes all four filter fields");
+  if (!node || !arg || !min || !max)
+    return;
+  Check(node->text == "*Foot*" && min->text == "0.5" && max->text.empty(),
+        "filter fields show the authored globs and bounds");
+  {
+    const auto edit = arg->bind("Left*");
+    const auto *record = edit ? std::get_if<SetSignal>(&*edit) : nullptr;
+    const auto *value =
+        record ? std::get_if<TriggerSignal>(&record->kind) : nullptr;
+    const auto *origin =
+        value ? std::get_if<EventOrigin>(&value->origin) : nullptr;
+    Check(origin && origin->filter.arg == "Left*",
+          "the arg binding writes the filter's arg glob");
+  }
+  {
+    const auto edit = node->bind("");
+    const auto *record = edit ? std::get_if<SetSignal>(&*edit) : nullptr;
+    const auto *value =
+        record ? std::get_if<TriggerSignal>(&record->kind) : nullptr;
+    const auto *origin =
+        value ? std::get_if<EventOrigin>(&value->origin) : nullptr;
+    Check(origin && origin->filter.node.empty(),
+          "an empty node commit clears the glob");
+  }
+  {
+    const auto edit = max->bind("2.5");
+    const auto *record = edit ? std::get_if<SetSignal>(&*edit) : nullptr;
+    const auto *value =
+        record ? std::get_if<TriggerSignal>(&record->kind) : nullptr;
+    const auto *origin =
+        value ? std::get_if<EventOrigin>(&value->origin) : nullptr;
+    Check(origin && origin->filter.value.max &&
+              test::Near(*origin->filter.value.max, 2.5f) &&
+              origin->filter.value.min &&
+              test::Near(*origin->filter.value.min, 0.5f),
+          "a bound commit writes one bound and keeps the other");
+  }
+  {
+    const auto edit = min->bind("");
+    const auto *record = edit ? std::get_if<SetSignal>(&*edit) : nullptr;
+    const auto *value =
+        record ? std::get_if<TriggerSignal>(&record->kind) : nullptr;
+    const auto *origin =
+        value ? std::get_if<EventOrigin>(&value->origin) : nullptr;
+    Check(origin && !origin->filter.value.min,
+          "an empty bound commit clears the bound");
+  }
+  Check(!min->bind("@glow"), "a bound refuses a reference");
+  Check(!max->bind("wide"), "a bound refuses a word");
+}
+
 void TestHelpers() {
   const auto colour = LiteralColor("1, 0.5, 0.25");
   Check(colour.has_value() && test::Near(colour->y, 0.5f),
@@ -367,6 +432,7 @@ int main() {
   TestScalarForm();
   TestStackAndInspectorViews();
   TestIntegerSignalFields();
+  TestEventFilterFields();
   TestHelpers();
   return test::Finish("studio_panels");
 }

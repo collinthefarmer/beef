@@ -112,6 +112,22 @@ AlwaysString(const std::string &a_text) {
   return number != nullptr ? std::optional{*number} : std::nullopt;
 }
 
+[[nodiscard]] std::optional<std::optional<float>>
+OptionalNumberOf(const std::string &a_text) {
+  if (a_text.empty()) {
+    return std::optional<float>{};
+  }
+  const auto number = NumberOf(a_text);
+  if (!number) {
+    return std::nullopt;
+  }
+  return std::optional<float>{*number};
+}
+
+[[nodiscard]] std::string BoundText(const std::optional<float> &a_bound) {
+  return a_bound ? std::format("{:g}", *a_bound) : std::string{};
+}
+
 [[nodiscard]] std::optional<FormRef> FormOf(const std::string &a_text) {
   return a_text.empty() ? std::nullopt : std::optional{FormRef::From(a_text)};
 }
@@ -346,6 +362,49 @@ template <class O, class M, class Parse>
       return std::nullopt;
     }
     origin->*a_member = *value;
+    return SetSignal{signal, kind};
+  };
+}
+
+template <class M, class Parse>
+[[nodiscard]] FieldBinding
+BindEventFilter(std::string a_signal, SignalKind a_record,
+                M EventFilter::*a_member, Parse a_parse) {
+  return [signal = std::move(a_signal), record = std::move(a_record), a_member,
+          a_parse](const std::string &a_text) -> std::optional<RecipeEdit> {
+    SignalKind kind = record;
+    TriggerSignal *trigger = Get<TriggerSignal>(kind);
+    EventOrigin *origin =
+        trigger != nullptr ? Get<EventOrigin>(trigger->origin) : nullptr;
+    if (origin == nullptr) {
+      return std::nullopt;
+    }
+    const auto value = a_parse(a_text);
+    if (!value) {
+      return std::nullopt;
+    }
+    origin->filter.*a_member = *value;
+    return SetSignal{signal, kind};
+  };
+}
+
+[[nodiscard]] FieldBinding
+BindEventFilterBound(std::string a_signal, SignalKind a_record,
+                     std::optional<float> ValueRange::*a_member) {
+  return [signal = std::move(a_signal), record = std::move(a_record),
+          a_member](const std::string &a_text) -> std::optional<RecipeEdit> {
+    SignalKind kind = record;
+    TriggerSignal *trigger = Get<TriggerSignal>(kind);
+    EventOrigin *origin =
+        trigger != nullptr ? Get<EventOrigin>(trigger->origin) : nullptr;
+    if (origin == nullptr) {
+      return std::nullopt;
+    }
+    const auto bound = OptionalNumberOf(a_text);
+    if (!bound) {
+      return std::nullopt;
+    }
+    origin->filter.value.*a_member = *bound;
     return SetSignal{signal, kind};
   };
 }
@@ -854,6 +913,37 @@ std::optional<TriggerAnchor> AnchorNodeFromText(const std::string &a_text) {
   return TriggerAnchor{NodeAnchor{a_text}};
 }
 
+void EventFilterFields(std::vector<FormField> &a_form,
+                       const SignalContext &a_ctx,
+                       const EventFilter &a_filter) {
+  a_form.push_back(
+      TextEntryField({.name = "filter node",
+                      .kind = FieldKind::kText,
+                      .text = a_filter.node,
+                      .bind = BindEventFilter(a_ctx.name, a_ctx.record,
+                                              &EventFilter::node, AlwaysString),
+                      .allowEmpty = true}));
+  a_form.push_back(
+      TextEntryField({.name = "filter arg",
+                      .kind = FieldKind::kText,
+                      .text = a_filter.arg,
+                      .bind = BindEventFilter(a_ctx.name, a_ctx.record,
+                                              &EventFilter::arg, AlwaysString),
+                      .allowEmpty = true}));
+  a_form.push_back(TextEntryField(
+      {.name = "filter min",
+       .kind = FieldKind::kText,
+       .text = BoundText(a_filter.value.min),
+       .bind = BindEventFilterBound(a_ctx.name, a_ctx.record, &ValueRange::min),
+       .allowEmpty = true}));
+  a_form.push_back(TextEntryField(
+      {.name = "filter max",
+       .kind = FieldKind::kText,
+       .text = BoundText(a_filter.value.max),
+       .bind = BindEventFilterBound(a_ctx.name, a_ctx.record, &ValueRange::max),
+       .allowEmpty = true}));
+}
+
 void TriggerOriginFields(std::vector<FormField> &a_form,
                          const SignalContext &a_ctx,
                          const TriggerSignal &a_trigger) {
@@ -870,6 +960,7 @@ void TriggerOriginFields(std::vector<FormField> &a_form,
         event.names = {std::string{Studio::kHitReceivedEvent},
                        std::string{Studio::kHitDealtEvent}};
         a_form.push_back(std::move(event));
+        EventFilterFields(a_form, a_ctx, a_event.filter);
       },
       [&](const PluginOrigin &a_plugin) {
         a_form.push_back(TextEntryField(

@@ -174,10 +174,34 @@ float2 PlaceUv(float2 uv, float4 tr, float4 fl)
 	return uv * tr.zw + tr.xy;
 }
 
+float2 SlotSize(int slot)
+{
+	float w = 0, h = 0;
+	switch (slot) {
+	case 0: tex0.GetDimensions(w, h); break;
+	case 1: tex1.GetDimensions(w, h); break;
+	case 2: tex2.GetDimensions(w, h); break;
+	case 3: tex3.GetDimensions(w, h); break;
+	case 4: tex4.GetDimensions(w, h); break;
+	case 5: tex5.GetDimensions(w, h); break;
+	case 6: tex6.GetDimensions(w, h); break;
+	default: tex7.GetDimensions(w, h); break;
+	}
+	return float2(w, h);
+}
+
+float2 TexelCentre(int slot, float2 uv)
+{
+	float2 size = SlotSize(slot);
+	if (size.x < 1 || size.y < 1) return uv;
+	return (floor(uv * size) + 0.5) / size;
+}
+
 float3 ReadTexture(int slot, float2 rawUv)
 {
 	float4 p = texParams[slot];
 	float2 uv = p.y > 0.5 ? rawUv : PlaceUv(rawUv, texTransform[slot], texFlags[slot]);
+	if (texFlags[slot].w > 0.5) uv = TexelCentre(slot, uv);
 	return Pick(SampleSlot(slot, uv, p.w), (int)p.x) * p.z;
 }
 

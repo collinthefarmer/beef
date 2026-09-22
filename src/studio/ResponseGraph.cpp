@@ -5,58 +5,95 @@
 
 #include <algorithm>
 #include <cmath>
+#include <format>
 #include <vector>
 
 namespace BetterEnchantmentEffects::Studio {
 namespace {
-[[nodiscard]] std::optional<float> ResolveNumber(const Param &a_param,
-                                                 const RecipeRow &a_recipe) {
+[[nodiscard]] bool ReadsTheGame(SignalKindId a_kind) noexcept {
+  return a_kind == SignalKindId::kEfsh || a_kind == SignalKindId::kActorValue ||
+         a_kind == SignalKindId::kActorState ||
+         a_kind == SignalKindId::kEnchantment;
+}
+
+[[nodiscard]] std::expected<float, std::string>
+ResolveNumber(const Param &a_param, const RecipeRow &a_recipe) {
   if (const float *value = Get<float>(a_param)) {
-    return std::isfinite(*value) ? std::optional{*value} : std::nullopt;
+    if (std::isfinite(*value)) {
+      return *value;
+    }
+    return std::unexpected("an input is not a finite number");
   }
   const Ref *ref = Get<Ref>(a_param);
   if (!ref) {
-    return std::nullopt;
+    return std::unexpected("an input could not be read");
   }
   const SignalRow *found = FindByName(a_recipe.signals, ref->name);
-  if (!found || found->inert || (!found->live && !found->constant)) {
-    return std::nullopt;
+  if (!found) {
+    return std::unexpected(
+        std::format("'@{}' is not a signal of this recipe", ref->name));
+  }
+  if (found->inert) {
+    return std::unexpected(std::format("'@{}' is inert", ref->name));
+  }
+  if (!found->live && !found->constant) {
+    if (ReadsTheGame(found->kind)) {
+      return std::unexpected(std::format(
+          "'@{}' ({}) reads the game, so it has no value here; it reads a "
+          "live value in game on a tracked wearer",
+          ref->name, SignalKindName(found->kind)));
+    }
+    return std::unexpected(
+        std::format("'@{}' has no value to hold", ref->name));
   }
   const Value &value = found->live ? found->value : *found->constant;
   const float *number = Get<float>(value);
-  return number && std::isfinite(*number) ? std::optional{*number}
-                                          : std::nullopt;
+  if (number && std::isfinite(*number)) {
+    return *number;
+  }
+  return std::unexpected(
+      std::format("'@{}' does not hold a finite scalar", ref->name));
 }
 
-[[nodiscard]] bool Hold(Param &a_param, const RecipeRow &a_recipe) {
+[[nodiscard]] std::optional<std::string> Hold(Param &a_param,
+                                              const RecipeRow &a_recipe) {
   const auto number = ResolveNumber(a_param, a_recipe);
   if (!number) {
-    return false;
+    return number.error();
   }
   a_param = *number;
-  return true;
+  return std::nullopt;
 }
 
-[[nodiscard]] std::optional<float> HoldDefinition(SignalKind &a_definition,
-                                                  const RecipeRow &a_recipe) {
-  if (WaveSignal *pulse = Get<WaveSignal>(a_definition)) {
-    if (Hold(pulse->base, a_recipe) && Hold(pulse->amplitude, a_recipe) &&
-        Hold(pulse->phase, a_recipe) && Hold(pulse->period, a_recipe)) {
-      return ResolveNumber(pulse->period, a_recipe);
+[[nodiscard]] std::expected<float, std::string>
+HoldDefinition(SignalKind &a_definition, const RecipeRow &a_recipe) {
+  if (WaveSignal *wave = Get<WaveSignal>(a_definition)) {
+    for (Param *param :
+         {&wave->base, &wave->amplitude, &wave->phase, &wave->period}) {
+      if (const auto problem = Hold(*param, a_recipe)) {
+        return std::unexpected(*problem);
+      }
     }
-  } else if (RampSignal *ramp = Get<RampSignal>(a_definition)) {
-    if (Hold(ramp->from, a_recipe) && Hold(ramp->to, a_recipe) &&
-        Hold(ramp->seconds, a_recipe)) {
-      return ResolveNumber(ramp->seconds, a_recipe);
+    return ResolveNumber(wave->period, a_recipe);
+  }
+  if (RampSignal *ramp = Get<RampSignal>(a_definition)) {
+    for (Param *param : {&ramp->from, &ramp->to, &ramp->seconds}) {
+      if (const auto problem = Hold(*param, a_recipe)) {
+        return std::unexpected(*problem);
+      }
     }
-  } else if (TriggerSignal *trigger = Get<TriggerSignal>(a_definition)) {
+    return ResolveNumber(ramp->seconds, a_recipe);
+  }
+  if (TriggerSignal *trigger = Get<TriggerSignal>(a_definition)) {
     trigger->origin = EventOrigin{"studio.response", {}};
     trigger->max = 1;
-    if (Hold(trigger->lifetime, a_recipe)) {
-      return ResolveNumber(trigger->lifetime, a_recipe);
+    if (const auto problem = Hold(trigger->lifetime, a_recipe)) {
+      return std::unexpected(*problem);
     }
+    return ResolveNumber(trigger->lifetime, a_recipe);
   }
-  return std::nullopt;
+  return std::unexpected(
+      "A response graph is available for wave, ramp, and trigger signals.");
 }
 
 [[nodiscard]] std::expected<std::string, std::string>
@@ -87,10 +124,11 @@ std::expected<ResponseGraph, std::string>
 BuildResponseGraph(const SignalRow &a_signal, const RecipeRow &a_recipe) {
   Signal signal{a_signal.name, a_signal.definition, std::nullopt};
   const auto duration = HoldDefinition(signal.kind, a_recipe);
-  if (!duration || *duration <= 0.0f) {
-    return std::unexpected(
-        "A response graph is available for pulse, ramp, and trigger signals "
-        "with a positive duration and available inputs.");
+  if (!duration) {
+    return std::unexpected(duration.error());
+  }
+  if (*duration <= 0.0f) {
+    return std::unexpected("The response needs a positive duration.");
   }
   const auto curve = SimpleCurve(a_signal.curve, a_recipe);
   if (!curve) {

@@ -230,6 +230,10 @@ ShaderChannel BakeChannel(const BakeSource &bake) {
              : ShaderChannel::kR;
 }
 
+bool IdMapBake(const BakeSource &bake) {
+  return Is<ComponentIdBake>(bake.bake) || Is<ChartIdBake>(bake.bake);
+}
+
 void SetMeshTexture(PreparedSource &prepared, const TextureRef &texture,
                     ShaderChannel channel) {
   prepared.texture = texture;
@@ -354,6 +358,7 @@ struct Compositor::SourcePreparer {
   void operator()(const BakeSource &bake) const {
     auto target = compositor.PrepareBake(bake, inputs, size);
     SetBakeResult(prepared, target, BakeChannel(bake));
+    prepared.sampling.nearest = IdMapBake(bake);
   }
 
   void operator()(const DistanceSource &distance) const {
@@ -376,6 +381,7 @@ struct Compositor::SourcePreparer {
   }
 
   void operator()(const MaterialClustersSource &clusters) const {
+    prepared.sampling.nearest = true;
     const auto target = RenderClusterMap(inputs, clusters.settings);
     if (!target) {
       prepared.problem = inputs.derived->clustersProblem;
@@ -532,6 +538,7 @@ struct Compositor::SourceInspector {
 
   void operator()(const BakeSource &bake) const {
     InspectBake(DefinitionOf(bake.bake), BakeChannel(bake));
+    prepared.sampling.nearest = IdMapBake(bake);
   }
 
   void operator()(const DistanceSource &distance) const {
@@ -554,6 +561,7 @@ struct Compositor::SourceInspector {
 
   void operator()(const MaterialClustersSource &clusters) const {
     prepared.sampling.meshSpace = true;
+    prepared.sampling.nearest = true;
     const DerivedMaps &derived = *inputs.derived;
     if (derived.clusters && derived.clusterSettings == clusters.settings) {
       prepared.texture = TextureRef{derived.clusters};

@@ -426,6 +426,7 @@ bool TextureLab::RenderProgram(RenderTarget &a_target,
     constants->texFlags[t][0] = sc.mirrorU ? 1.0f : 0.0f;
     constants->texFlags[t][1] = sc.mirrorV ? 1.0f : 0.0f;
     constants->texFlags[t][2] = sc.transpose ? 1.0f : 0.0f;
+    constants->texFlags[t][3] = tex.sampling.nearest ? 1.0f : 0.0f;
   }
   for (std::size_t c = 0; c < a_pass.curveCount; ++c) {
     srvs[8 + c] = a_pass.curves[c] ? a_pass.curves[c]->srv.Get() : nullptr;

@@ -315,8 +315,12 @@ Interpreter constants (`cbuffer` of the interpreter pass): `code[256]` x
 op, y number, z index; `refs[16]` x 1 = texture read (y slot) or 0 =
 value; `refValues[16]` the value broadcast; `texParams[8]` x channel, y
 mesh space, z normalise, w mip; `texTransform[8]` xy uv offset, zw tile;
-`texFlags[8]` x mirror u, y mirror v, z transpose; `misc` x time, y op
-count, z vector result. Every stack value is a float3 with a scalar
+`texFlags[8]` x mirror u, y mirror v, z transpose, w nearest; `misc` x
+time, y op count, z vector result. The shared sampler is linear; w
+nearest snaps the uv to the texel centre before the read, so a texel is
+read whole. The id maps (componentId, chartId, materialClusters) set it:
+their texels are identifiers scaled by 1/255, and a linear blend across
+an island border fabricates ids that exist on neither side. Every stack value is a float3 with a scalar
 broadcast, so component-wise arithmetic matches the CPU's rule;
 comparisons and logic read `.x`. `x` evaluates to 0 (it is not per texel)
 and `mean` to 0.5. A pop from an empty stack reads 0. After the pops a
