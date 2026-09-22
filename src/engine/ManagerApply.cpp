@@ -766,7 +766,9 @@ void Manager::CarryInstanceTime(LiveInstance &a_instance, RE::FormID a_actor,
   if (carried == carriedTimes_.end()) {
     return;
   }
-  const float speed = a_settings.animationSpeed * a_recipe.clock.speed;
+  const float speed =
+      InstanceSpeed(a_settings.animationSpeed, editor_.CurrentView().speed,
+                    a_recipe.clock.speed);
   if (a_instance.startMS - carried->second.retiredMS <= kCarryWindowMS &&
       speed > 0.0f) {
     a_instance.startMS -=

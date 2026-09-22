@@ -205,8 +205,8 @@ InstanceTiming InstanceTimeFor(LiveInstance &a_instance,
                                const Settings &a_settings,
                                const Studio::View &a_view, bool a_resuming,
                                std::uint32_t a_nowMS) {
-  const float speed =
-      a_settings.animationSpeed * a_view.speed * a_instance.recipe->clock.speed;
+  const float speed = InstanceSpeed(a_settings.animationSpeed, a_view.speed,
+                                    a_instance.recipe->clock.speed);
   if (a_resuming && speed > 0.0f) {
     a_instance.startMS = a_nowMS - static_cast<std::uint32_t>(
                                        a_view.scrubSeconds / speed * 1000.0f);
