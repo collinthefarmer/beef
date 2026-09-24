@@ -47,16 +47,43 @@ SurfacePlacements(const Recipe &a_recipe, const GeometryIdentity &a_identity) {
   return out;
 }
 
+bool LightSelected(const Recipe &a_recipe, const Geometry &a_geometry,
+                   const OutputFilter &a_filter) {
+  for (std::size_t output = 0; output < a_recipe.outputs.size(); ++output) {
+    const LightOutput *light = Get<LightOutput>(a_recipe.outputs[output]);
+    if (light && LightEligible(a_geometry, *light) &&
+        (!a_filter || a_filter(a_recipe, output))) {
+      return true;
+    }
+  }
+  return false;
+}
+
+std::optional<int> EligibleLightPriority(const ActorPlan &a_plan,
+                                         InstanceId a_instance,
+                                         const Recipe &a_recipe,
+                                         const OutputFilter &a_filter) {
+  std::optional<int> priority;
+  for (const PlacementId id : PlacementsOfInstance(a_plan, a_instance)) {
+    const Placement *placement = PlacementAt(a_plan, id);
+    const Geometry *geometry =
+        placement ? GeometryAt(a_plan, placement->geometry) : nullptr;
+    if (geometry && LightSelected(a_recipe, *geometry, a_filter)) {
+      priority = priority ? std::max(*priority, placement->priority)
+                          : placement->priority;
+    }
+  }
+  return priority;
+}
+
 [[nodiscard]] InstanceId
 InstanceFor(ActorPlan &a_plan, RecipeId a_recipe,
-            const std::optional<FormKey> &a_enchantment, int a_priority) {
+            const std::optional<FormKey> &a_enchantment) {
   if (const std::optional<InstanceId> existing =
           FindInstance(a_plan, a_recipe, a_enchantment)) {
-    Instance &instance = a_plan.instances[IndexOf(*existing)];
-    instance.priority = std::max(instance.priority, a_priority);
     return *existing;
   }
-  a_plan.instances.push_back(Instance{a_recipe, a_enchantment, a_priority});
+  a_plan.instances.push_back(Instance{a_recipe, a_enchantment});
   return InstanceId{a_plan.instances.size() - 1};
 }
 }
@@ -74,12 +101,13 @@ ActorPlan MatchActor(std::span<const Geometry> a_geometries,
       if (!recipe) {
         continue;
       }
-      const InstanceId instance = InstanceFor(
-          plan, *recipe, geometry.keys.enchantment, resolved.priority);
+      const InstanceId instance =
+          InstanceFor(plan, *recipe, geometry.keys.enchantment);
       Placement placement;
       placement.instance = instance;
       placement.geometry = GeometryId{p};
       placement.key = resolved.key;
+      placement.priority = resolved.priority;
       placement.outputs =
           SurfacePlacements(*resolved.recipe, geometry.identity);
       plan.placements.push_back(std::move(placement));
@@ -117,7 +145,8 @@ GeometryPlacementPlan PlanGeometryPlacement(const ActorPlan &a_plan,
     }
     PlacedRecipe row;
     row.recipe = recipe;
-    row.priority = instance->priority;
+    row.priority = placement->priority;
+    row.loadOrder = IndexOf(instance->recipe);
     for (const OutputPlacement &output : placement->outputs) {
       if (output.selected &&
           (!a_filter || a_filter(*recipe, IndexOf(output.output)))) {
@@ -137,8 +166,14 @@ ActorLightPlan PlanActorLights(const ActorPlan &a_plan,
   ActorLightPlan out;
   for (std::size_t i = 0; i < a_plan.instances.size(); ++i) {
     const Instance &instance = a_plan.instances[i];
-    out.placed.push_back(PlacedRecipe{
-        RecipeAt(a_store, instance.recipe), instance.priority, {}});
+    const Recipe *recipe = RecipeAt(a_store, instance.recipe);
+    const std::optional<int> priority =
+        recipe ? EligibleLightPriority(a_plan, InstanceId{i}, *recipe, a_filter)
+               : std::nullopt;
+    out.placed.push_back(PlacedRecipe{priority ? recipe : nullptr,
+                                      priority.value_or(0),
+                                      {},
+                                      IndexOf(instance.recipe)});
     out.sources.push_back(InstanceId{i});
   }
   out.plan = PlanLights(out.placed, a_filter);

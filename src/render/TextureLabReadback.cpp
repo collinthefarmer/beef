@@ -18,30 +18,71 @@ public:
   ~ReadbackMeter() {
     const std::uint64_t micros = watch_.Micros();
     Metrics::CountReadback(micros);
-    Trace::EmitSafely(Trace::Event::kMetrics, {{"action", "readback"},
-                                               {"op", std::string{op_}},
-                                               {"us", std::to_string(micros)}});
+    Trace::EmitSafely(Trace::Event::kMetrics,
+                      {{"action", "readback"},
+                       {"op", std::string{op_}},
+                       {"us", std::to_string(micros)},
+                       {"lock_wait_us", std::to_string(lockWaitMicros_)},
+                       {"lock_held_us", std::to_string(lockHeldMicros_)},
+                       {"map_us", std::to_string(mapMicros_)},
+                       {"map_attempted", mapAttempted_ ? "true" : "false"},
+                       {"map_succeeded", mapSucceeded_ ? "true" : "false"},
+                       {"success", success_ ? "true" : "false"},
+                       {"bytes", std::to_string(bytes_)}});
   }
   ReadbackMeter(const ReadbackMeter &) = delete;
   ReadbackMeter &operator=(const ReadbackMeter &) = delete;
   ReadbackMeter(ReadbackMeter &&) = delete;
   ReadbackMeter &operator=(ReadbackMeter &&) = delete;
 
+  void Locked(std::uint64_t a_waitMicros) noexcept {
+    lockWaitMicros_ = a_waitMicros;
+  }
+  void Unlocked(std::uint64_t a_heldMicros) noexcept {
+    lockHeldMicros_ = a_heldMicros;
+  }
+  void Mapped(std::uint64_t a_micros, bool a_success) noexcept {
+    mapMicros_ = a_micros;
+    mapAttempted_ = true;
+    mapSucceeded_ = a_success;
+  }
+  void Succeeded(std::uint64_t a_bytes) noexcept {
+    bytes_ = a_bytes;
+    success_ = true;
+  }
+
 private:
+  std::uint64_t lockWaitMicros_ = 0;
+  std::uint64_t lockHeldMicros_ = 0;
+  std::uint64_t mapMicros_ = 0;
+  std::uint64_t bytes_ = 0;
+  bool mapAttempted_ = false;
+  bool mapSucceeded_ = false;
+  bool success_ = false;
   Metrics::Stopwatch watch_;
   std::string_view op_;
 };
 
 class RendererLock {
 public:
-  RendererLock() : renderer_(RE::BSGraphics::Renderer::GetSingleton()) {
+  explicit RendererLock(ReadbackMeter *a_meter = nullptr)
+      : renderer_(RE::BSGraphics::Renderer::GetSingleton()), meter_(a_meter) {
     if (renderer_) {
+      const Metrics::Stopwatch wait;
       renderer_->Lock();
+      lockedAtMicros_ = watch_.Micros();
+      if (meter_) {
+        meter_->Locked(wait.Micros());
+      }
     }
   }
   ~RendererLock() {
     if (renderer_) {
+      const std::uint64_t heldMicros = watch_.Micros() - lockedAtMicros_;
       renderer_->Unlock();
+      if (meter_) {
+        meter_->Unlocked(heldMicros);
+      }
     }
   }
   RendererLock(const RendererLock &) = delete;
@@ -51,6 +92,9 @@ public:
 
 private:
   RE::BSGraphics::Renderer *renderer_ = nullptr;
+  ReadbackMeter *meter_ = nullptr;
+  Metrics::Stopwatch watch_;
+  std::uint64_t lockedAtMicros_ = 0;
 };
 
 class UnconditionalReadback {
@@ -76,10 +120,14 @@ private:
 
 class ReadMapping {
 public:
-  ReadMapping(ID3D11DeviceContext *a_context, ID3D11Resource *a_resource)
-      : borrowedContext_(a_context), resource_(a_resource),
-        active_(!Failed(borrowedContext_->Map(resource_, 0, D3D11_MAP_READ, 0,
-                                              &mapped_))) {}
+  ReadMapping(ID3D11DeviceContext *a_context, ID3D11Resource *a_resource,
+              ReadbackMeter &a_meter)
+      : borrowedContext_(a_context), resource_(a_resource) {
+    const Metrics::Stopwatch watch;
+    active_ = !Failed(
+        borrowedContext_->Map(resource_, 0, D3D11_MAP_READ, 0, &mapped_));
+    a_meter.Mapped(watch.Micros(), active_);
+  }
   ~ReadMapping() {
     if (active_) {
       borrowedContext_->Unmap(resource_, 0);
@@ -108,8 +156,8 @@ private:
 std::vector<std::uint8_t>
 TextureLab::ReadBuffer(REX::W32::ID3D11Buffer *a_buffer,
                        std::uint32_t a_bytes) {
-  const ReadbackMeter meter{"buffer"};
-  const RendererLock rendererLock;
+  ReadbackMeter meter{"buffer"};
+  const RendererLock rendererLock{&meter};
   std::vector<std::uint8_t> out;
   if (!a_buffer || a_bytes == 0 || !Init()) {
     return out;
@@ -134,16 +182,18 @@ TextureLab::ReadBuffer(REX::W32::ID3D11Buffer *a_buffer,
       reinterpret_cast<REX::W32::ID3D11Resource *>(staging.Get()), 0, 0, 0, 0,
       reinterpret_cast<REX::W32::ID3D11Resource *>(a_buffer), 0, &box);
   const ReadMapping mapped{borrowedContext_,
-                           reinterpret_cast<ID3D11Resource *>(staging.Get())};
+                           reinterpret_cast<ID3D11Resource *>(staging.Get()),
+                           meter};
   if (const auto *data = mapped.Data()) {
     out.assign(data, data + a_bytes);
+    meter.Succeeded(out.size());
   }
   return out;
 }
 
 std::optional<float> TextureLab::ReadBackMean(RenderTarget &a_target) {
-  const ReadbackMeter meter{"mean"};
-  const RendererLock rendererLock;
+  ReadbackMeter meter{"mean"};
+  const RendererLock rendererLock{&meter};
   std::optional<float> result;
   if (!a_target.texture.Get() || !available_) {
     return result;
@@ -169,9 +219,10 @@ std::optional<float> TextureLab::ReadBackMean(RenderTarget &a_target) {
     const UnconditionalReadback unconditional{borrowedContext_};
     borrowedContext_->CopySubresourceRegion(
         staging.Get(), 0, 0, 0, 0, a_target.texture.Get(), lastMip, nullptr);
-    const ReadMapping mapped{borrowedContext_, staging.Get()};
+    const ReadMapping mapped{borrowedContext_, staging.Get(), meter};
     if (const auto *px = mapped.Data(); px && mapped.RowPitch() >= 4) {
       result = (0.299f * px[0] + 0.587f * px[1] + 0.114f * px[2]) / 255.0f;
+      meter.Succeeded(4);
     } else {
       logger::warn("TextureLab: staging map failed; mean readback unavailable");
     }
@@ -183,8 +234,8 @@ std::optional<float> TextureLab::ReadBackMean(RenderTarget &a_target) {
 }
 
 std::vector<std::uint8_t> TextureLab::ReadBackPixels(RenderTarget &a_target) {
-  const ReadbackMeter meter{"pixels"};
-  const RendererLock rendererLock;
+  ReadbackMeter meter{"pixels"};
+  const RendererLock rendererLock{&meter};
   std::vector<std::uint8_t> out;
   if (!a_target.texture.Get() || !available_) {
     return out;
@@ -218,7 +269,7 @@ std::vector<std::uint8_t> TextureLab::ReadBackPixels(RenderTarget &a_target) {
   const UnconditionalReadback unconditional{borrowedContext_};
   borrowedContext_->CopySubresourceRegion(staging.Get(), 0, 0, 0, 0,
                                           a_target.texture.Get(), 0, nullptr);
-  const ReadMapping mapped{borrowedContext_, staging.Get()};
+  const ReadMapping mapped{borrowedContext_, staging.Get(), meter};
   if (const auto *rows = mapped.Data()) {
     const std::size_t rowBytes = static_cast<std::size_t>(desc.width) * 4;
     if (mapped.RowPitch() >= rowBytes) {
@@ -228,6 +279,7 @@ std::vector<std::uint8_t> TextureLab::ReadBackPixels(RenderTarget &a_target) {
                     rows + static_cast<std::size_t>(y) * mapped.RowPitch(),
                     rowBytes);
       }
+      meter.Succeeded(out.size());
     }
   } else {
     logger::warn("TextureLab: staging map failed; pixel readback unavailable");

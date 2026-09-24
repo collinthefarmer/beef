@@ -311,6 +311,99 @@ void RejectedInternalScheduling() {
       "load discards an unprocessed scheduling rejection from the old session");
 }
 
+void RetirementBeforeRender() {
+  Flow flow;
+  (void)flow.service.Begin("saved", {42, 43});
+  flow.service.Refresh(42);
+  flow.service.Refresh(43);
+  flow.scheduler.Drain();
+  const Applied retired = flow.calls.front();
+  const auto held = flow.service.Snapshot();
+  flow.service.Retire(42, retired.tokens);
+  const auto actor = flow.ActorRecord(42);
+  Check(actor && actor->phase == ApplicationPhase::kUnmatched &&
+            actor->problem ==
+                "the actor was retired before rendering completed" &&
+            flow.service.PendingFor(42).empty(),
+        "eviction after preparation terminates the actor and recipe render "
+        "waits");
+  Check(!flow.service.PendingFor(43).empty() &&
+            flow.ActorRecord(43)->phase == ApplicationPhase::kPrepared,
+        "retiring one wearer preserves another wearer's pending application");
+  flow.Render(retired);
+  flow.service.Retire(42, retired.tokens);
+  Check(flow.ActorRecord(42)->phase == ApplicationPhase::kUnmatched,
+        "late render and duplicate retirement cannot revive a retired attempt");
+  flow.Render(flow.calls.back());
+  Check(flow.RecipeRecord("saved")->phase == ApplicationPhase::kUnmatched &&
+            flow.service.PendingFor(43).empty(),
+        "another wearer's success cannot hide the retired wearer's outcome");
+  Check(std::ranges::all_of(held,
+                            [](const ApplicationRecord &a_record) {
+                              return a_record.phase ==
+                                     ApplicationPhase::kPrepared;
+                            }),
+        "retirement leaves previously published snapshots intact");
+  flow.service.Refresh(42);
+  flow.scheduler.Drain();
+  flow.service.Retire(42, retired.tokens);
+  Check(flow.ActorRecord(42)->phase == ApplicationPhase::kPrepared,
+        "returning from eviction creates an attempt immune to old retirement");
+  flow.Render(flow.calls.back());
+  Check(flow.ActorRecord(42)->phase == ApplicationPhase::kRendered,
+        "an actor returning from eviction can render successfully");
+}
+
+void RetirementDuringReplacement() {
+  Flow flow;
+  (void)flow.service.Begin("saved", {42});
+  (void)flow.service.Begin("paint", {42});
+  flow.service.Refresh(42);
+  flow.scheduler.Drain();
+  const Applied retired = flow.calls.back();
+  const auto replacement = flow.service.Begin("saved", {42});
+  const auto pending = flow.service.PendingFor(42);
+  flow.service.Retire(42, retired.tokens);
+  Check(flow.service.PendingFor(42) == pending &&
+            flow.RecipeRecord("saved")->token == replacement &&
+            flow.RecipeRecord("paint")->phase == ApplicationPhase::kQueued,
+        "retiring old live state preserves replacement and overlapping recipe "
+        "work");
+  flow.service.Refresh(42);
+  flow.scheduler.Drain();
+  flow.service.Retire(42, retired.tokens);
+  Check(flow.RecipeRecord("saved")->phase == ApplicationPhase::kPrepared &&
+            flow.RecipeRecord("paint")->phase == ApplicationPhase::kPrepared,
+        "old retirement cannot terminate the replacement's prepared attempts");
+  flow.Render(flow.calls.back());
+  flow.service.Retire(42, flow.calls.back().tokens);
+  Check(
+      flow.RecipeRecord("saved")->phase == ApplicationPhase::kRendered &&
+          flow.RecipeRecord("paint")->phase == ApplicationPhase::kRendered,
+      "retiring successfully rendered state preserves its completed outcomes");
+}
+
+void RetirementAcrossLoad() {
+  Flow flow;
+  (void)flow.service.Begin("saved", {42});
+  flow.service.Refresh(42);
+  flow.scheduler.Drain();
+  const Applied retired = flow.calls.back();
+  flow.service.BeginLoad();
+  flow.service.Retire(42, retired.tokens);
+  Check(flow.RecipeRecord("saved")->phase == ApplicationPhase::kCancelled,
+        "retirement during load preserves cancellation");
+  flow.service.Resume();
+  (void)flow.service.Begin("saved", {42});
+  flow.service.Refresh(42);
+  flow.scheduler.Drain();
+  const auto pending = flow.service.PendingFor(42);
+  flow.service.Retire(42, retired.tokens);
+  Check(flow.service.PendingFor(42) == pending && !pending.empty(),
+        "old-session retirement cannot terminate reused actor and recipe "
+        "identities");
+}
+
 void SchedulingFailureAndRetry() {
   Flow flow;
   flow.scheduler.accept = false;
@@ -347,5 +440,8 @@ int main() {
   LoadCancellationAndLoadedRefresh();
   SchedulingFailureAndRetry();
   RejectedInternalScheduling();
+  RetirementBeforeRender();
+  RetirementDuringReplacement();
+  RetirementAcrossLoad();
   return test::Finish("engine_applicator");
 }

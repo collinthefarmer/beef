@@ -57,6 +57,13 @@ struct TuningGesture {
   bool finishing = false;
 };
 
+struct PendingEditorChange {
+  std::uint64_t requestID = 0;
+  std::string recipeID;
+  Intent intent;
+  Selection selection;
+};
+
 struct MenuState {
   Mode mode = Mode::kCompose;
   Layout layout;
@@ -68,6 +75,7 @@ struct MenuState {
   std::optional<PreviewPin> previewPin;
   std::optional<PendingIndexedEdit> pendingIndexedEdit;
   std::optional<PendingIndexedEdit> pendingRecipeFile;
+  std::optional<PendingEditorChange> pendingEditorChange;
   std::optional<TuningGesture> tuning;
   std::unordered_map<FieldKey, std::pair<float, float>> tuningRanges;
   std::unordered_map<FieldKey, ExpressionDraft> expressionDrafts;
@@ -108,6 +116,8 @@ void ReconcilePaintMode(MenuState &a_state);
 void ResolveEditorSelection(MenuState &a_state, const Snapshot &a_snapshot);
 void AcknowledgeEditorOperations(MenuState &a_state,
                                  const Snapshot &a_snapshot);
+void TrackEditorChange(MenuState &a_state, std::uint64_t a_request,
+                       const Intent &a_intent);
 void AcknowledgePaintUpdate(MenuState &a_state,
                             const PaintUpdateResult &a_result);
 [[nodiscard]] std::optional<UpdatePaint>

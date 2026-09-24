@@ -1,6 +1,15 @@
 #include "engine/LiveActor.h"
 
+#include <algorithm>
+
 namespace BetterEnchantmentEffects {
+std::size_t LiveInstanceCount(const LiveActor &a_actor) noexcept {
+  return static_cast<std::size_t>(std::ranges::count_if(
+      a_actor.instances, [](const LiveInstance &a_instance) {
+        return a_instance.recipe != nullptr;
+      }));
+}
+
 void RetireGeometry(LiveGeometry &a_geometry) {
   a_geometry.lost = true;
   a_geometry.shell.reset();
@@ -9,6 +18,33 @@ void RetireGeometry(LiveGeometry &a_geometry) {
   a_geometry.plan = {};
   a_geometry.stackPlan = {};
   a_geometry.binding = {};
+  a_geometry.inputs.masks.reset();
+  a_geometry.inputs.ripples.reset();
+  a_geometry.inputs.derived.reset();
+  a_geometry.inputs.material = {};
+  a_geometry.inputs.geometry.reset();
+  a_geometry.inputs.root.reset();
+  a_geometry.geometry.reset();
+  a_geometry.property.reset();
+}
+
+void RetireGeometry(LiveActor &a_actor, LiveGeometry &a_geometry) {
+  RetireGeometry(a_geometry);
+  for (const PlacementId id : a_geometry.placements) {
+    const auto resolved = ResolvePlacement(a_actor, id);
+    if (!resolved) {
+      continue;
+    }
+    for (PlacedOutput &output :
+         a_actor.placements[resolved->placement].outputs) {
+      output.stack.reset();
+      output.rendered = false;
+      output.renderFailed = true;
+      if (output.problem.empty()) {
+        output.problem = "the geometry was retired after ownership changed";
+      }
+    }
+  }
 }
 
 void RetireActorEffects(LiveActor &a_actor) {

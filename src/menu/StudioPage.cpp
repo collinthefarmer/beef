@@ -400,6 +400,7 @@ void DrawStudioFrame(const Frame &frame) {
   Studio::MenuState &state = *frame.state;
   const bool editPending = state.pendingIndexedEdit.has_value() ||
                            state.pendingRecipeFile.has_value() ||
+                           state.pendingEditorChange.has_value() ||
                            RecipeFilePending(frame);
   Disabled(editPending || (state.paint && state.paint->pendingCommit), [&] {
     DrawStudioContext(frame);
@@ -433,6 +434,7 @@ void __stdcall RenderStudio() {
   const std::shared_ptr<const Manager::Snapshot> held =
       manager->LatestSnapshot();
   if (!held) {
+    RenderPendingStatus();
     return;
   }
   const Studio::Snapshot &snapshot = *held;
@@ -442,8 +444,8 @@ void __stdcall RenderStudio() {
   if (snapshot.paintCommit) {
     Studio::AcknowledgePaintCommit(state, *snapshot.paintCommit);
   }
-  Studio::ResolveEditorSelection(state, snapshot);
   Studio::AcknowledgeEditorOperations(state, snapshot);
+  Studio::ResolveEditorSelection(state, snapshot);
   BeginTuningFrame(state, snapshot);
   Studio::Intents intents;
 

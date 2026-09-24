@@ -102,7 +102,8 @@ void Manager::Clear() {
   SweepRetiredMaterialTextures();
   editor_.CancelPaintForLoad();
   loggedNonPBRArmor_.clear();
-  carriedTimes_.clear();
+  stackWarnings_.Clear();
+  carriedTimes_.Clear();
   Compositor::GetSingleton()->ClearMeshes();
   Compositor::GetSingleton()->ClearMaterials();
   Compositor::GetSingleton()->ClearSharedStatics();

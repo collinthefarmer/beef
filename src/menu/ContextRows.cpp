@@ -349,7 +349,6 @@ void RenameRecipeButton(const Frame &a_frame) {
     const std::string_view typed = LiveTextField(
         "rename", a_frame.recipe->id.c_str(), Studio::Width::Px(240.0f), 1.0f);
     const bool ready = !typed.empty() && typed != a_frame.recipe->id;
-    ImGui::SameLine();
     Disabled(!ready, [&]() {
       if (ImGui::Button("Rename##do") && ready) {
         Studio::Post(

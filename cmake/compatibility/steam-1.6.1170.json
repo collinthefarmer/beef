@@ -1,0 +1,19 @@
+{
+  "schema": 1,
+  "id": "steam-1.6.1170",
+  "compiled": {"se": true, "ae": true, "vr": false},
+  "runtimes": [{"version": [1, 6, 1170, 0], "storefront": "steam"}],
+  "minimum_skse": [2, 2, 6, 0],
+  "struct_compatibility": "Independent",
+  "dependencies": {
+    "commonlib": "b93280e832f263dbef44e44cbe2936622a02f91a",
+    "spdlog": "v1.15.3",
+    "rapidcsv": "v8.99"
+  },
+  "address_library": {"required": true, "edition": "AE", "package_version": null},
+  "peers": {
+    "community_shaders": {"candidate_version": "1.8.3", "source_revision": "dd2677fc4020db1da91b39cebef3dbfbe8913983", "header": "src/cs/BSLightingShaderMaterialPBR.h", "sha256": "c0c6626020d52c4fa2c9b91bf80bb39fa8eb9849f32977a9685e8f1db1f1a6f4", "true_pbr_required": true},
+    "menu_framework": {"candidate_version": "3.13.0", "source_revision": "c97cdce6dd207c7cf1401611bc82bd7e8f97a814", "header": "src/extern/SKSEMenuFramework.h", "sha256": "8f5b8be01b60ee2c258a2b3c2c97ccc4118cf7ab9fe17775a8375bf69378683e", "editor_only": true}
+  },
+  "runtime_verified": false
+}

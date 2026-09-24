@@ -10,7 +10,8 @@ std::vector<std::size_t> PriorityOrder(std::span<const PlacedRecipe> a_placed) {
     order[i] = i;
   }
   std::ranges::stable_sort(order, [&](std::size_t a_lhs, std::size_t a_rhs) {
-    return a_placed[a_lhs].priority < a_placed[a_rhs].priority;
+    return Precedence{a_placed[a_lhs].priority, a_placed[a_lhs].loadOrder} <
+           Precedence{a_placed[a_rhs].priority, a_placed[a_rhs].loadOrder};
   });
   return order;
 }
@@ -43,6 +44,7 @@ bool NamesScalar(const SlotScalars &a_scalars, ScalarField a_field) noexcept {
 template <class Contribution> struct Flagged {
   Contribution contribution;
   bool replaces = false;
+  std::size_t groupStart = 0;
 };
 
 template <class Contribution>
@@ -53,7 +55,7 @@ void CutAtReplace(std::span<const Flagged<Contribution>> a_flagged,
   std::size_t start = 0;
   for (std::size_t i = 0; i < a_flagged.size(); ++i) {
     if (a_flagged[i].replaces) {
-      start = i;
+      start = a_flagged[i].groupStart;
       a_replacer = a_flagged[i].contribution;
     }
   }
@@ -132,14 +134,19 @@ GeometryPlan PlanGeometry(std::span<const PlacedRecipe> a_placed) {
   }
   for (SlotPlan &slot : plan.slots) {
     std::vector<Flagged<SlotContribution>> flagged;
-    for (const SlotContribution &c : slot.chain) {
+    std::size_t groupStart = 0;
+    for (std::size_t i = 0; i < slot.chain.size(); ++i) {
+      const SlotContribution &c = slot.chain[i];
+      if (i == 0 || c.placed != slot.chain[i - 1].placed) {
+        groupStart = i;
+      }
       const SurfaceOutput *output = SlotOutputAt(a_placed, c);
       const std::size_t placed = IndexOf(c.placed);
       const bool recipeReplaces =
           placed < a_placed.size() && a_placed[placed].recipe &&
           a_placed[placed].recipe->mergeMode == MergeMode::kReplace;
       flagged.push_back(Flagged<SlotContribution>{
-          c, (output && output->replace) || recipeReplaces});
+          c, (output && output->replace) || recipeReplaces, groupStart});
     }
     CutAtReplace<SlotContribution>(flagged, slot.chain, slot.replaced,
                                    slot.replacer);
@@ -150,22 +157,46 @@ GeometryPlan PlanGeometry(std::span<const PlacedRecipe> a_placed) {
 
 LightPlan PlanLights(std::span<const PlacedRecipe> a_placed,
                      const OutputFilter &a_filter) {
-  LightPlan plan;
-  std::vector<Flagged<LightContribution>> flagged;
-  for (const std::size_t placed : PriorityOrder(a_placed)) {
-    const Recipe *recipe = a_placed[placed].recipe;
-    if (!recipe) {
+  struct Group {
+    const Recipe *recipe = nullptr;
+    Precedence precedence;
+    std::vector<LightContribution> contributions;
+    bool replaces = false;
+  };
+  std::vector<Group> groups;
+  for (std::size_t placed = 0; placed < a_placed.size(); ++placed) {
+    const PlacedRecipe &row = a_placed[placed];
+    if (!row.recipe) {
       continue;
     }
     std::size_t index = 0;
-    const LightOutput *light = FirstLight(*recipe, index, a_filter);
+    const LightOutput *light = FirstLight(*row.recipe, index, a_filter);
     if (!light) {
       continue;
     }
-    const LightContribution contribution{FromIndex<LightContributor>(placed),
-                                         index};
-    plan.shown.push_back(contribution);
-    flagged.push_back(Flagged<LightContribution>{contribution, light->replace});
+    Group *group = FindIf(groups, [&](const Group &a_group) {
+      return a_group.recipe->id == row.recipe->id;
+    });
+    const Precedence precedence{row.priority, row.loadOrder};
+    if (!group) {
+      groups.push_back(Group{row.recipe, precedence, {}, false});
+      group = &groups.back();
+    }
+    group->precedence = std::max(group->precedence, precedence);
+    group->contributions.push_back(
+        {FromIndex<LightContributor>(placed), index});
+    group->replaces = group->replaces || light->replace ||
+                      row.recipe->mergeMode == MergeMode::kReplace;
+  }
+  std::ranges::stable_sort(groups, {}, &Group::precedence);
+  LightPlan plan;
+  std::vector<Flagged<LightContribution>> flagged;
+  for (const Group &group : groups) {
+    const std::size_t groupStart = plan.shown.size();
+    for (const LightContribution &contribution : group.contributions) {
+      plan.shown.push_back(contribution);
+      flagged.push_back({contribution, group.replaces, groupStart});
+    }
   }
   CutAtReplace<LightContribution>(flagged, plan.shown, plan.replaced,
                                   plan.replacer);

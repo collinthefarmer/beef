@@ -189,6 +189,12 @@ inline constexpr Named<Resolution> kResolutions[]{
     {Resolution::kHalf, "half"},
     {Resolution::kQuarter, "quarter"}};
 static_assert(Complete(kResolutions, kResolutionCount));
+inline constexpr Named<SelectionOutcome> kSelectionOutcomes[]{
+    {SelectionOutcome::kNonmatching, "not matching"},
+    {SelectionOutcome::kFallbackSuppressed, "fallback suppressed"},
+    {SelectionOutcome::kSampledOut, "sampled out"},
+    {SelectionOutcome::kSelected, "selected"}};
+static_assert(Complete(kSelectionOutcomes, kSelectionOutcomeCount));
 inline constexpr Named<MergeMode> kMergeModes[]{
     {MergeMode::kStack, "stack"},
     {MergeMode::kReplace, "replace"},

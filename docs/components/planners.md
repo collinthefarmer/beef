@@ -1,5 +1,9 @@
 # planners/
 
+The [recipe resolution contract](../recipe-resolution.md) defines placement
+priority, replacement groups, and shell/light precedence. Offline verification
+and deferred in-game acceptance are tracked in the alpha plan.
+
 The pure decision layer between a **recipe** and the engine. It matches
 recipes against an actor's **geometries**, merges the matches into
 per-geometry and per-light **plans**, and classifies those plans for
@@ -59,8 +63,8 @@ functions in `ActorPlan.cpp` read it.
 | Table / row | Description |
 |---|---|
 | `Geometry` | One mesh on the actor: its `GeometryIdentity`, the armor's `WornPiece` match keys, and the `firstPerson` and `lost` flags. |
-| `Instance` | One **recipe** applied to one enchantment: a `RecipeId`, an optional enchantment `FormKey`, and a `priority`. |
-| `Placement` | One match. It joins an `InstanceId` to a `GeometryId`, records the `RecipeKey` the match used, and lists an `OutputPlacement` (`OutputId`, `selected`, `problem`) per output. |
+| `Instance` | One **recipe** applied to one enchantment: a `RecipeId` and an optional enchantment `FormKey`; it shares evaluation state, never composition priority. |
+| `Placement` | One match. It joins an `InstanceId` to a `GeometryId`, records the `RecipeKey` and effective placement `priority`, and lists an `OutputPlacement` (`OutputId`, `selected`, `problem`) per output. |
 | `PieceMatch` | The match view for one armor **piece**: an instance index, the `RecipeKey`, and the `priority`. `MatchesForPiece` builds it, and `engine/ManagerSnapshot.cpp` turns it into snapshot rows. |
 
 ### Geometry and light plans
@@ -75,6 +79,14 @@ rows it was merged from, and its `sources` vector aligns row for row with
 | `GeometryPlacementPlan` | One **geometry**'s `PlacedRecipe` rows, the `PlacementId` each row came from, and the merged `GeometryPlan`. |
 | `ActorLightPlan` | The actor's `PlacedRecipe` rows, the `InstanceId` each row came from, and the merged `LightPlan`. |
 | `RecipeResolver` | The caller-supplied `(Geometry, GeometryId) -> std::vector<ResolvedRecipe>` function. `MatchActor` calls it once per geometry to find that geometry's recipes. |
+
+`PlanGeometryPlacement` reads priority from each placement and load order from
+its recipe-store index. `PlanActorLights` admits only live third-person
+placements whose light selector matches (`LightEligible`), after preview
+output filtering. Ineligible instances retain source indices but contribute
+no recipe to the light planner. Light groups aggregate eligible placement
+priority by recipe identity; that aggregate never alters surface priority.
+`Manager::PlaceLight` reuses `LightEligible` for the actual geometry inputs.
 
 ### Stack classification
 
@@ -97,7 +109,7 @@ to install and which **contributor**'s **shell** to keep.
 
 | Type | Description |
 |---|---|
-| `BindingPlan` | Whether the geometry needs a material binding, whether it needs a shell binding, and the `SlotContributor` that owns the shell. `shellOwner` is the highest-priority contribution on `Surface::kShell`. |
+| `BindingPlan` | Whether the geometry needs a material binding, whether it needs a shell binding, and the `SlotContributor` that owns the shell. `shellOwner` follows priority then definition load order among surviving shell contributions, independently of slot enumeration. |
 
 ### Distance eviction
 

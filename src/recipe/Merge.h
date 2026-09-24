@@ -1,5 +1,6 @@
 #pragma once
 
+#include "recipe/Precedence.h"
 #include "recipe/Recipe.h"
 
 #include <cstddef>
@@ -15,6 +16,7 @@ struct PlacedRecipe {
   const Recipe *recipe = nullptr;
   int priority = 0;
   std::vector<std::size_t> outputs;
+  std::size_t loadOrder = 0;
 };
 
 enum class SlotContributor : std::size_t {};

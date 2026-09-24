@@ -25,7 +25,6 @@ struct Geometry {
 struct Instance {
   RecipeId recipe{};
   std::optional<FormKey> enchantment;
-  int priority = 0;
   [[nodiscard]] bool operator==(const Instance &) const = default;
 };
 
@@ -41,6 +40,7 @@ struct Placement {
   GeometryId geometry{};
   RecipeKey key;
   std::vector<OutputPlacement> outputs;
+  int priority = 0;
   [[nodiscard]] bool operator==(const Placement &) const = default;
 };
 
@@ -56,6 +56,9 @@ struct ActorPlan {
                                          InstanceId a_instance) noexcept;
 [[nodiscard]] const Placement *PlacementAt(const ActorPlan &a_plan,
                                            PlacementId a_placement) noexcept;
+
+[[nodiscard]] bool LightEligible(const Geometry &a_geometry,
+                                 const LightOutput &a_light);
 
 [[nodiscard]] bool AnyLiveGeometry(const ActorPlan &a_plan) noexcept;
 [[nodiscard]] std::optional<InstanceId>

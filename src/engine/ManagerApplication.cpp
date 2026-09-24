@@ -194,9 +194,6 @@ void Manager::FinishApplications(RE::FormID a_actor, LiveActor &a_state) {
 }
 
 void Manager::AbandonApplications(RE::FormID a_actor) {
-  for (const auto &token : applications_.PendingFor(a_actor)) {
-    applications_.Report(token, a_actor, ApplicationPhase::kUnmatched,
-                         "the actor was retired before rendering completed");
-  }
+  applications_.Retire(a_actor, applications_.PendingFor(a_actor));
 }
 }

@@ -16,6 +16,7 @@ def main():
     parser.add_argument("--root", type=pathlib.Path, required=True)
     parser.add_argument("--output", type=pathlib.Path, required=True)
     parser.add_argument("--config", required=True)
+    parser.add_argument("--compatibility", type=pathlib.Path)
     args = parser.parse_args()
     root = args.root.resolve()
     paths = []
@@ -23,7 +24,7 @@ def main():
         paths.extend(p for p in (root / folder).rglob("*")
                      if p.is_file())
     for name in ("CMakeLists.txt", "CMakePresets.json", "flake.nix", "flake.lock",
-                 "tools/build-identity.py", "tools/presenter-textures.py"):
+                 "tools/build-identity.py", "tools/presenter-textures.py", "tools/compatibility.py"):
         if (root / name).is_file():
             paths.append(root / name)
     digest = hashlib.sha256()
@@ -37,10 +38,16 @@ def main():
     revision = subprocess.run(["git", "rev-parse", "HEAD"], cwd=root,
                               capture_output=True, text=True, check=True).stdout.strip()
     fingerprint = digest.hexdigest()
-    build_id = f"{revision[:12]}-{fingerprint[:16]}-{args.config}"
+    profile = json.loads(args.compatibility.read_text()) if args.compatibility else None
+    configuration_hash = hashlib.sha256(json.dumps(
+        {'configuration': args.config, 'compatibility': profile}, sort_keys=True).encode()).hexdigest()
+    build_id = f"{revision[:12]}-{fingerprint[:16]}-{args.config}-{configuration_hash[:8]}"
     manifest = {"schema": 1, "build": build_id, "revision": revision,
                 "source_sha256": fingerprint, "configuration": args.config,
-                "input_files": len(paths)}
+                "input_files": len(paths), "configuration_sha256": configuration_hash}
+    if profile is not None:
+        manifest["compatibility"] = profile
+        manifest["compatibility_profile"] = profile["id"]
     header = "#pragma once\nnamespace BetterEnchantmentEffects::BuildIdentity {\n"
     for key, value in manifest.items():
         if isinstance(value, str):

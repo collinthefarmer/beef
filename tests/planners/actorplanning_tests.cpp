@@ -80,7 +80,7 @@ void VariantsFollowTheInstancePlacements() {
   plan.geometries.push_back(MakeGeometry("body01", "body.dds", std::nullopt));
   plan.geometries.push_back(
       MakeGeometry("ring01", "gold_ring.dds", std::nullopt));
-  plan.instances.push_back(Instance{RecipeId{0}, std::nullopt, 0});
+  plan.instances.push_back(Instance{RecipeId{0}, std::nullopt});
   plan.placements.push_back(Placement{InstanceId{0}, GeometryId{0}, {}, {}});
 
   Check(InstanceVariant(plan, InstanceId{0}, recipe) == nullptr,
@@ -243,10 +243,10 @@ void ReplacementAndOutputFilters() {
   const GeometryPlacementPlan normal =
       PlanGeometryPlacement(actorPlan, store, GeometryId{0});
   Check(normal.plan.slots.size() == 1 &&
-            normal.plan.slots.front().chain.size() == 1 &&
-            normal.plan.slots.front().chain.front().output == 1 &&
-            normal.plan.slots.front().replaced.size() == 1,
-        "normal planning records the earlier output as replaced");
+            normal.plan.slots.front().chain.size() == 2 &&
+            normal.plan.slots.front().chain.front().output == 0 &&
+            normal.plan.slots.front().replaced.empty(),
+        "replacement retains sibling outputs in the same recipe group");
   const OutputFilter onlyEarlier = [](const Recipe &, std::size_t a_output) {
     return a_output == 0;
   };

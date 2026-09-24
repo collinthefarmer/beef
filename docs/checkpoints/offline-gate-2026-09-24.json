@@ -1,0 +1,133 @@
+{
+  "identity": {
+    "schema": 1,
+    "build": "6ed2f3a0692e-b44ee53a7a8c5482-Release-5306dbf4",
+    "revision": "6ed2f3a0692e0c0fc3b96e85d4644f38fe9bb98d",
+    "source_sha256": "b44ee53a7a8c548277f877539a297d21070ea9d3b9799433b513d123a540d237",
+    "configuration": "Release",
+    "input_files": 279,
+    "configuration_sha256": "5306dbf4babad362558bdeedd37785f10dd086c1529467a04fb03e95ea51dc11",
+    "compatibility": {
+      "address_library": {
+        "edition": "AE",
+        "package_version": null,
+        "required": true
+      },
+      "compiled": {
+        "ae": true,
+        "se": true,
+        "vr": false
+      },
+      "dependencies": {
+        "commonlib": "b93280e832f263dbef44e44cbe2936622a02f91a",
+        "rapidcsv": "v8.99",
+        "spdlog": "v1.15.3"
+      },
+      "id": "steam-1.6.1170",
+      "minimum_skse": [
+        2,
+        2,
+        6,
+        0
+      ],
+      "peers": {
+        "community_shaders": {
+          "candidate_version": "1.8.3",
+          "header": "src/cs/BSLightingShaderMaterialPBR.h",
+          "sha256": "c0c6626020d52c4fa2c9b91bf80bb39fa8eb9849f32977a9685e8f1db1f1a6f4",
+          "source_revision": "dd2677fc4020db1da91b39cebef3dbfbe8913983",
+          "true_pbr_required": true
+        },
+        "menu_framework": {
+          "candidate_version": "3.13.0",
+          "editor_only": true,
+          "header": "src/extern/SKSEMenuFramework.h",
+          "sha256": "8f5b8be01b60ee2c258a2b3c2c97ccc4118cf7ab9fe17775a8375bf69378683e",
+          "source_revision": "c97cdce6dd207c7cf1401611bc82bd7e8f97a814"
+        }
+      },
+      "runtime_verified": false,
+      "runtimes": [
+        {
+          "storefront": "steam",
+          "version": [
+            1,
+            6,
+            1170,
+            0
+          ]
+        }
+      ],
+      "schema": 1,
+      "struct_compatibility": "Independent"
+    },
+    "compatibility_profile": "steam-1.6.1170"
+  },
+  "tool_versions": {
+    "cmake": "cmake version 4.3.4",
+    "ninja": "1.13.2",
+    "clang++": "clang version 21.1.8",
+    "clang-cl": "clang version 21.1.8",
+    "clang-tidy": "LLVM (http://llvm.org/):\n  LLVM version 21.1.8\n  Optimized build.",
+    "python3": "Python 3.14.7",
+    "check-jsonschema": "check-jsonschema, version 0.38.0"
+  },
+  "archives": [
+    {
+      "name": "BetterEnchantmentEffects-0.1.0-steam-1.6.1170-6ed2f3a0692e-b44ee53a7a8c5482-Release-5306dbf4-symbols.zip",
+      "kind": "symbols",
+      "sha256": "8ec982e176c8c5284e6c824d7cc96d4d24103f252643ca53bedb8665c06ea6ce",
+      "bytes": 7670280,
+      "files": 16
+    },
+    {
+      "name": "BetterEnchantmentEffects-0.1.0-steam-1.6.1170-6ed2f3a0692e-b44ee53a7a8c5482-Release-5306dbf4.zip",
+      "kind": "mod",
+      "sha256": "e49faca88d4c8ba6798943766f0decd8c3c081aad14a4c5ba1618d55ac1ecf45",
+      "bytes": 2782172,
+      "files": 1048
+    }
+  ],
+  "analysis": {
+    "translation_units": 126,
+    "full": true,
+    "analyzer": false,
+    "categories": {
+      "readability-function-size": 54,
+      "performance-no-int-to-ptr": 1,
+      "readability-simplify-boolean-expr": 1,
+      "readability-function-cognitive-complexity": 7
+    },
+    "baseline_sha256": "97771a409f1b491a5cb8e2ea47f78b49f8815d49cc45bc785b73caa64381e61c",
+    "new_findings_by_file_check": 0
+  },
+  "recorded_utc": "2026-09-24T03:45:21.762514+00:00",
+  "working_tree": "dirty; revision is the base commit; source_sha256 identifies the candidate inputs",
+  "checks": {
+    "release_gate": "passed",
+    "native": {
+      "passed": 99,
+      "failed": 0,
+      "seconds": 65.87
+    },
+    "native_sanitized": {
+      "passed": 99,
+      "failed": 0,
+      "seconds": 74.14
+    },
+    "archive_integrity": "passed",
+    "archive_source_byte_comparison": "passed"
+  },
+  "commands": [
+    "nix develop -c python3 tools/gate.py release",
+    "nix develop -c cmake --preset native",
+    "nix develop -c cmake --build --preset native",
+    "nix develop -c ctest --preset native",
+    "nix develop -c cmake --build --preset windows-release --target package-candidate"
+  ],
+  "limitations": [
+    "Incremental builds in existing configured trees; no fresh dependency/bootstrap test.",
+    "Normal clang-tidy checks only; separate --analyzer mode was not run.",
+    "No in-game acceptance, installation, or publication."
+  ]
+}

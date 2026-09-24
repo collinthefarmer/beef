@@ -249,6 +249,7 @@ void __stdcall RenderSetup() {
   const std::shared_ptr<const Studio::Snapshot> held =
       manager->LatestSnapshot();
   if (!held) {
+    RenderPendingStatus();
     return;
   }
   RenderHeader(*held);

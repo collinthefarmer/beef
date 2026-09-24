@@ -70,6 +70,24 @@ void FailedWritePreservesTheFile(const std::filesystem::path &a_dir) {
   Equal(ReadText(path).value_or(""), std::string{"new"},
         "a completed write replaces the file");
 }
+
+void FailedReplacementCleansStaging(const std::filesystem::path &a_dir) {
+  const auto path = a_dir / "blocked.json";
+  const auto retained = path / "retained.json";
+  Check(WriteText(retained, "keep"),
+        "replacement obstruction contains data that must survive");
+  Check(!WriteText(path, "replacement"),
+        "replacement failure after staging reports failure");
+  Check(ReadText(retained).value_or("") == "keep",
+        "failed replacement preserves the obstructing directory and data");
+  const auto staged = std::filesystem::path{path.string() + ".writing"};
+  Check(!std::filesystem::exists(staged),
+        "failed replacement removes its staged candidate");
+  std::filesystem::remove(retained);
+  std::filesystem::remove(path);
+  Check(WriteText(path, "retry") && ReadText(path).value_or("") == "retry",
+        "replacement succeeds after the obstruction is resolved");
+}
 }
 
 int main() {
@@ -80,5 +98,6 @@ int main() {
   OversizeFileIsRefused(dir);
   WritingCreatesParentFolders(dir);
   FailedWritePreservesTheFile(dir);
+  FailedReplacementCleansStaging(dir);
   return test::Finish("engine textfile");
 }

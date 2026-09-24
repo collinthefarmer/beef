@@ -106,6 +106,17 @@ void DrawResolvedGeometry(const Studio::GeometryRow &a_geometry,
 }
 
 void DrawResolved(const Studio::PieceRow &a_piece) {
+  if (a_piece.previewOverride) {
+    ImGui::TextDisabled("Preview override active; selection outcomes below "
+                        "describe normal matching.");
+  }
+  for (const RecipeSelection &selection : a_piece.selections) {
+    if (selection.outcome != SelectionOutcome::kSelected) {
+      const std::string_view outcome = SelectionOutcomeName(selection.outcome);
+      ImGui::TextDisabled("%s: %.*s", selection.id.c_str(),
+                          static_cast<int>(outcome.size()), outcome.data());
+    }
+  }
   for (const Studio::RecipeRow &recipe : a_piece.recipes) {
     ImGui::BulletText("%s  by %s  priority %d  t %.1fs  %zu geometr%s%s%s",
                       recipe.id.c_str(), recipe.matchedKey.ToString().c_str(),
@@ -179,6 +190,7 @@ void DrawSelection(const Studio::Snapshot &a_snapshot,
                     .intents = &intents};
   const bool pending = a_state.pendingIndexedEdit.has_value() ||
                        a_state.pendingRecipeFile.has_value() ||
+                       a_state.pendingEditorChange.has_value() ||
                        RecipeFilePending(frame);
   Disabled(pending, [&] { DrawBoardPage(frame); });
   Dispatch(intents, a_state, a_snapshot);
@@ -206,16 +218,18 @@ void __stdcall RenderRecipes() {
   const std::shared_ptr<const Studio::Snapshot> held =
       manager->LatestSnapshot();
   if (!held) {
+    RenderPendingStatus();
     return;
   }
-  Studio::ResolveEditorSelection(state, *held);
   Studio::AcknowledgeEditorOperations(state, *held);
+  Studio::ResolveEditorSelection(state, *held);
   if (held->paintUpdate) {
     Studio::AcknowledgePaintUpdate(state, *held->paintUpdate);
   }
   RenderHeader(*held);
   Disabled(state.pendingIndexedEdit.has_value() ||
-               state.pendingRecipeFile.has_value(),
+               state.pendingRecipeFile.has_value() ||
+               state.pendingEditorChange.has_value(),
            [&] { DrawStoreActions(*manager, state); });
   static_cast<void>(Rule(Studio::RuleSpec{.text = "Loaded"}));
   DrawLoadedTable(*held);

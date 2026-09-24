@@ -14,26 +14,27 @@
     "version": { "type": "string" },
     "imported": { "type": "string", "description": "\"<plugin> <version>\": written by the importer; present means generated and not yet edited. Delete it on taking ownership; a menu save drops it." },
     "meta": { "type": "object", "description": "Free-form, kept verbatim through load and save." },
-    "keys": { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/key" } },
-    "priority": { "type": "integer", "description": "Merge order among matching recipes, lower first. Default by the matched key's kind: default 0, enchanted 5, material 10, keyword 20, armor 30, effectShader 40, enchantment 50, magicEffect 60." },
-    "merge": { "enum": ["stack", "replace", "sampled"], "description": "How this recipe combines with lower-priority recipes contesting the same piece. stack (default) merges outputs per slot; replace drops the lower-priority work on the slots this recipe writes; sampled joins a per-piece pool from which each actor gets exactly one member, chosen by its form id." },
+    "keys": { "type": "array", "maxItems": 4096, "minItems": 1, "items": { "$ref": "#/$defs/key" } },
+    "priority": { "type": "integer", "minimum": -2147483648, "maximum": 2147483647, "description": "Composition order per placement, lower first; ties use definition load order. Sampling is independent of priority. Default by the strongest matched key's kind: default 0, enchanted 5, material 10, keyword 20, armor 30, effectShader 40, enchantment 50, magicEffect 60." },
+    "merge": { "enum": ["stack", "replace", "sampled"], "description": "Different identities sharing keys participate independently. stack appends recipe groups; replace clears preceding groups on each selected geometry/surface/slot and on the actor-wide light target when an eligible light exists, preserving sibling outputs and enchantment instances. sampled selects one alternative per piece from canonically sorted recipe identities using a fixed actor-form-ID hash, independent of priority and file order. Same-identity later files replace definitions." },
     "clock": {
       "type": "object", "additionalProperties": false,
-      "properties": { "speed": { "type": "number", "default": 1.0 } }
+      "properties": { "speed": { "$ref": "#/$defs/number", "default": 1.0 } }
     },
-    "signals": { "type": "object", "propertyNames": { "$ref": "#/$defs/name" }, "additionalProperties": { "$ref": "#/$defs/signal" } },
-    "curves": { "type": "object", "propertyNames": { "$ref": "#/$defs/name" }, "additionalProperties": { "$ref": "#/$defs/annotatedExpression", "description": "An expression in the free variable x (and mean, the source's mean, where a source is being shaped); a bare string, or {\"expr\", \"note\"}." } },
-    "sources": { "type": "object", "propertyNames": { "$ref": "#/$defs/name" }, "additionalProperties": { "$ref": "#/$defs/source" } },
-    "masks": { "type": "object", "propertyNames": { "$ref": "#/$defs/name" }, "additionalProperties": { "$ref": "#/$defs/annotatedExpression", "description": "Evaluated per texel; source and mask names stand for images, signal names for the tick's scalars; a bare string, or {\"expr\", \"note\"}." } },
-    "outputs": { "type": "array", "items": { "$ref": "#/$defs/output" },
+    "signals": { "type": "object", "maxProperties": 4096, "propertyNames": { "$ref": "#/$defs/name" }, "additionalProperties": { "$ref": "#/$defs/signal" } },
+    "curves": { "type": "object", "maxProperties": 4096, "propertyNames": { "$ref": "#/$defs/name" }, "additionalProperties": { "$ref": "#/$defs/annotatedExpression", "description": "An expression in the free variable x (and mean, the source's mean, where a source is being shaped); a bare string, or {\"expr\", \"note\"}." } },
+    "sources": { "type": "object", "maxProperties": 4096, "propertyNames": { "$ref": "#/$defs/name" }, "additionalProperties": { "$ref": "#/$defs/source" } },
+    "masks": { "type": "object", "maxProperties": 4096, "propertyNames": { "$ref": "#/$defs/name" }, "additionalProperties": { "$ref": "#/$defs/annotatedExpression", "description": "Evaluated per texel; source and mask names stand for images, signal names for the tick's scalars; a bare string, or {\"expr\", \"note\"}." } },
+    "outputs": { "type": "array", "maxItems": 4096, "items": { "$ref": "#/$defs/output" },
       "contains": { "type": "object", "required": ["target"], "properties": { "target": { "const": "light" } } },
       "minContains": 0, "maxContains": 1,
       "description": "At most one light output; the studio refuses a second." },
     "shell": { "$ref": "#/$defs/shell" },
-    "variants": { "type": "array", "items": { "$ref": "#/$defs/variant" } }
+    "variants": { "type": "array", "maxItems": 4096, "items": { "$ref": "#/$defs/variant" } }
   },
 
   "$defs": {
+    "number": { "type": "number", "minimum": -3.4028234663852886e38, "maximum": 3.4028234663852886e38, "description": "A finite number representable within the float range used by the engine." },
     "name": { "type": "string", "pattern": "^[A-Za-z_][A-Za-z0-9_]*$" },
     "ref": { "type": "string", "pattern": "^@[A-Za-z_][A-Za-z0-9_]*$", "description": "A reference to another row: @name." },
     "note": { "type": "string", "description": "Author documentation for this row, free text, shown to a reader of the recipe; distinct from the plugin's tooltips." },
@@ -45,12 +46,12 @@
     "eventId": { "type": "string", "pattern": "^[A-Za-z_][A-Za-z0-9_.*]*$" },
     "node": { "type": "string", "minLength": 1, "description": "A skeleton node name, e.g. \"NPC L Foot [Lft ]\"." },
 
-    "param": { "oneOf": [ { "type": "number" }, { "$ref": "#/$defs/ref" } ], "description": "A number or @signal." },
+    "param": { "oneOf": [ { "$ref": "#/$defs/number" }, { "$ref": "#/$defs/ref" } ], "description": "A number or @signal." },
     "vec2": { "oneOf": [ { "type": "array", "minItems": 2, "maxItems": 2, "items": { "$ref": "#/$defs/param" } }, { "$ref": "#/$defs/ref" } ] },
     "vec3": { "oneOf": [ { "type": "array", "minItems": 3, "maxItems": 3, "items": { "$ref": "#/$defs/param" } }, { "$ref": "#/$defs/ref" } ] },
     "color": { "$ref": "#/$defs/vec3", "description": "[r, g, b]; components above 1 mean 0..255 on read, written back as 0..1." },
-    "numbers3": { "type": "array", "minItems": 3, "maxItems": 3, "items": { "type": "number" } },
-    "value": { "oneOf": [ { "type": "number" }, { "type": "array", "minItems": 2, "maxItems": 3, "items": { "type": "number" } } ] },
+    "numbers3": { "type": "array", "minItems": 3, "maxItems": 3, "items": { "$ref": "#/$defs/number" } },
+    "value": { "oneOf": [ { "$ref": "#/$defs/number" }, { "type": "array", "minItems": 2, "maxItems": 3, "items": { "$ref": "#/$defs/number" } } ] },
 
     "key": {
       "oneOf": [
@@ -73,7 +74,7 @@
         { "$ref": "#/$defs/oneKey", "properties": { "texture": { "$ref": "#/$defs/glob" } }, "required": ["texture"] }
       ]
     },
-    "selector": { "type": "array", "items": { "$ref": "#/$defs/selectorTerm" }, "description": "Any term may match; empty means every geometry." },
+    "selector": { "type": "array", "maxItems": 4096, "items": { "$ref": "#/$defs/selectorTerm" }, "description": "Any term may match; empty means every geometry." },
 
     "signal": {
       "type": "object",
@@ -109,14 +110,14 @@
             "properties": { "trigger": { "$ref": "#/$defs/ref" }, "decay": { "$ref": "#/$defs/param" } } } } },
         { "$ref": "#/$defs/signalKind", "required": ["noise"], "properties": { "noise": {
             "type": "object", "additionalProperties": false,
-            "properties": { "frequency": { "$ref": "#/$defs/param" }, "amplitude": { "$ref": "#/$defs/param" }, "seed": { "type": "integer", "minimum": 0 } } } } },
+            "properties": { "frequency": { "$ref": "#/$defs/param" }, "amplitude": { "$ref": "#/$defs/param" }, "seed": { "type": "integer", "minimum": 0, "maximum": 2147483647 } } } } },
         { "$ref": "#/$defs/signalKind", "required": ["gradient"], "properties": { "gradient": {
             "type": "object", "additionalProperties": false, "required": ["t", "stops"],
             "properties": {
               "t": { "$ref": "#/$defs/param" },
-              "stops": { "type": "array", "minItems": 1, "items": {
+              "stops": { "type": "array", "maxItems": 4096, "minItems": 1, "items": {
                 "type": "object", "additionalProperties": false, "required": ["at", "color"],
-                "properties": { "at": { "type": "number" }, "color": { "$ref": "#/$defs/color" } } } } } } } },
+                "properties": { "at": { "$ref": "#/$defs/number" }, "color": { "$ref": "#/$defs/color" } } } } } } } },
         { "$ref": "#/$defs/signalKind", "required": ["rate"], "properties": { "rate": { "$ref": "#/$defs/ref", "description": "The referenced signal's change per second." } } },
         { "$ref": "#/$defs/signalKind", "required": ["smooth"], "properties": { "smooth": {
             "type": "object", "additionalProperties": false, "required": ["of"],
@@ -136,7 +137,7 @@
       "description": "A firing source: exactly one of event, plugin, when; lifetime, max and payload are common.",
       "properties": {
         "lifetime": { "$ref": "#/$defs/param", "description": "Seconds a firing lives." },
-        "max": { "type": "integer", "minimum": 1, "description": "Live firings kept; older ones are dropped." },
+        "max": { "type": "integer", "minimum": 1, "maximum": 2147483647, "description": "Live firings kept; older ones are dropped." },
         "payload": { "enum": ["scalar", "vec2", "vec3"], "default": "scalar", "description": "The type of the value a firing carries. A firing of another type is dropped and counted. Rich occurrences arrive as suffixed ids (equip.position, or a sender's precision.hit.position), one typed value each." },
         "anchor": { "oneOf": [ { "const": "world", "description": "The vec3 payload is a world position; requires payload vec3." }, { "type": "object", "additionalProperties": false, "required": ["node"], "properties": { "node": { "$ref": "#/$defs/node" } }, "description": "Firings locate at this skeleton node, resolved per geometry; a firing carrying its own node overrides it." } ], "description": "The space a firing's location resolves in. Absent means the trigger is unlocated and its payload is just a value." }
       },
@@ -146,7 +147,7 @@
             "event": { "$ref": "#/$defs/eventId", "description": "Id glob on the bus: built-in anim.<graph event>, equip, equip.position, hit.received, hit.received.position (the attacker's position), hit.dealt, hit.dealt.position (the struck actor's position), or a provider's ids." },
             "filter": { "type": "object", "additionalProperties": false,
               "properties": { "node": { "$ref": "#/$defs/glob" }, "arg": { "$ref": "#/$defs/glob" },
-                "value": { "type": "array", "minItems": 2, "maxItems": 2, "items": { "type": ["number", "null"] } } } },
+                "value": { "type": "array", "minItems": 2, "maxItems": 2, "items": { "oneOf": [{ "$ref": "#/$defs/number" }, { "type": "null" }] } } } },
             "lifetime": {}, "max": {}, "payload": {}, "anchor": {} } },
         { "type": "object", "required": ["plugin"], "additionalProperties": false,
           "properties": { "plugin": { "$ref": "#/$defs/eventId", "description": "An id another SKSE plugin fires through the messaging channel." }, "lifetime": {}, "max": {}, "payload": {}, "anchor": {} } },
@@ -170,13 +171,13 @@
               "space": { "enum": ["tiled", "mesh"] },
               "scroll": { "$ref": "#/$defs/vec2" }, "tile": { "$ref": "#/$defs/vec2" },
               "mirror": { "type": "array", "minItems": 2, "maxItems": 2, "items": { "type": "boolean" } },
-              "transpose": { "type": "boolean" }, "mip": { "type": "number", "minimum": 0 } } } } },
+              "transpose": { "type": "boolean" }, "mip": { "$ref": "#/$defs/number", "minimum": 0 } } } } },
         { "required": ["material"], "properties": { "material": { "enum": ["diffuseRgb", "diffuseLuma", "normalSlope", "normalRgb", "roughness", "metallic", "occlusion", "reflectance", "rmaosRgb", "displacement", "relief"], "description": "The worn piece's own maps. diffuseRgb, normalRgb and rmaosRgb are the raw vec3 reads; with dot() any single channel derives from them (roughness = dot(@rmaosRgb, [1, 0, 0])), and the named scalars remain as the PBR vocabulary. relief is the best available relief detail, not a stored map: the displacement map when it is non-flat, else occlusion." } } },
         { "required": ["bake"], "properties": { "bake": { "oneOf": [
             { "enum": ["position", "localPosition", "normal", "uv", "componentId", "chartId"], "description": "normal is the bind-pose surface normal, each axis mapped -1..1 to 0..1 (recover the vector as v * 2 - 1; dot(v, [0, 0, 1]) reads how far it points up). uv is the texel's coordinates as a vec2 (dot(v, [1, 0]) reads u, dot(v, [0, 1]) reads v). componentId and chartId: the mesh analysis' id map for that source (connected pieces, UV charts), each texel the region id / 255, rasterised once per geometry." },
             { "$ref": "#/$defs/oneKey", "required": ["partition"], "properties": { "partition": { "oneOf": [
                 { "enum": ["body", "hands", "forearms", "feet", "calves", "head", "hair", "amulet", "ring", "shield", "tail"] }, { "type": "integer", "minimum": 30, "maximum": 61 } ] } } },
-            { "$ref": "#/$defs/oneKey", "required": ["boneWeight"], "properties": { "boneWeight": { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/node" } } } } ] } } },
+            { "$ref": "#/$defs/oneKey", "required": ["boneWeight"], "properties": { "boneWeight": { "type": "array", "maxItems": 4096, "minItems": 1, "items": { "$ref": "#/$defs/node" } } } } ] } } },
         { "required": ["distance"], "properties": { "distance": { "$ref": "#/$defs/node", "description": "Distance from this skeleton node, bind pose, 0..256 units as 0..1. A distance from a fixed point is distance() of a position bake in a mask." } } },
         { "required": ["ripple"], "properties": { "ripple": {
             "type": "object", "additionalProperties": false, "required": ["trigger"],
@@ -192,10 +193,10 @@
               "clusters": { "type": "integer", "minimum": 1, "maximum": 8, "default": 4 },
               "weights": { "type": "object", "additionalProperties": false, "description": "How much each channel counts in the distance between texels.",
                 "properties": {
-                  "roughness": { "type": "number", "minimum": 0, "maximum": 10, "default": 1 }, "metallic": { "type": "number", "minimum": 0, "maximum": 10, "default": 1 },
-                  "occlusion": { "type": "number", "minimum": 0, "maximum": 10, "default": 0.5 }, "reflectance": { "type": "number", "minimum": 0, "maximum": 10, "default": 0.5 },
-                  "luma": { "type": "number", "minimum": 0, "maximum": 10, "default": 1 } } },
-              "seed": { "type": "integer", "minimum": 0, "default": 1, "description": "The same seed and sample give the same clusters." },
+                  "roughness": { "$ref": "#/$defs/number", "minimum": 0, "maximum": 10, "default": 1 }, "metallic": { "$ref": "#/$defs/number", "minimum": 0, "maximum": 10, "default": 1 },
+                  "occlusion": { "$ref": "#/$defs/number", "minimum": 0, "maximum": 10, "default": 0.5 }, "reflectance": { "$ref": "#/$defs/number", "minimum": 0, "maximum": 10, "default": 0.5 },
+                  "luma": { "$ref": "#/$defs/number", "minimum": 0, "maximum": 10, "default": 1 } } },
+              "seed": { "type": "integer", "minimum": 0, "maximum": 2147483647, "default": 1, "description": "The same seed and sample give the same clusters." },
               "iterations": { "type": "integer", "minimum": 1, "maximum": 256, "default": 32, "description": "The k-means cap." } } } } }
       ]
     },
@@ -229,9 +230,9 @@
             "roughness": { "$ref": "#/$defs/param", "description": "coat roughness." }, "level": { "$ref": "#/$defs/param", "description": "coat level." },
             "thickness": { "$ref": "#/$defs/param", "description": "subsurface thickness." },
             "selector": { "$ref": "#/$defs/selector" },
-            "replace": { "type": "boolean", "description": "Drop lower-priority recipes' stacks and scalars on this slot." },
+            "replace": { "type": "boolean", "description": "Clear preceding recipe groups on this geometry/surface/slot, preserving all selected sibling outputs in this recipe. No matching output means no replacement." },
             "resolution": { "enum": ["full", "half", "quarter"], "description": "Override the slot's default target resolution: a fraction of the material's native map size. Default by slot: normal and height full, diffuse and rmaos half, emissive and the response slots quarter." },
-            "stack": { "type": "array", "items": { "$ref": "#/$defs/layer" } },
+            "stack": { "type": "array", "maxItems": 4096, "items": { "$ref": "#/$defs/layer" } },
             "note": { "$ref": "#/$defs/note" }
           },
           "additionalProperties": false,
@@ -248,8 +249,8 @@
             "bones": { "oneOf": [
               { "$ref": "#/$defs/oneKey", "required": ["skinned"], "properties": { "skinned": {
                   "type": "object", "additionalProperties": false,
-                  "properties": { "max": { "type": "integer", "minimum": 1 }, "minShare": { "type": "number", "minimum": 0.3, "maximum": 1, "description": "The least skin-weight share a bone needs to receive an emitter. The renderer floors it at 0.3 to bound the light count." } } } } },
-              { "$ref": "#/$defs/oneKey", "required": ["named"], "properties": { "named": { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/node" } } } } ] },
+                  "properties": { "max": { "type": "integer", "minimum": 1, "maximum": 2147483647 }, "minShare": { "$ref": "#/$defs/number", "minimum": 0.3, "maximum": 1, "description": "The least skin-weight share a bone needs to receive an emitter. The renderer floors it at 0.3 to bound the light count." } } } } },
+              { "$ref": "#/$defs/oneKey", "required": ["named"], "properties": { "named": { "type": "array", "maxItems": 4096, "minItems": 1, "items": { "$ref": "#/$defs/node" } } } } ] },
             "offset": { "$ref": "#/$defs/vec3", "description": "Bone space." },
             "color": { "$ref": "#/$defs/color" },
             "intensity": { "$ref": "#/$defs/param" },
@@ -257,7 +258,7 @@
             "cutoff": { "$ref": "#/$defs/param", "description": "ISL cutoff override, 0.01..1; 1 = default." },
             "shadow": { "type": "boolean", "default": false, "description": "Shadow-casting; fixed at creation, subject to the engine's shadow-light cap." },
             "selector": { "$ref": "#/$defs/selector" },
-            "replace": { "type": "boolean" },
+            "replace": { "type": "boolean", "description": "Clear preceding eligible actor-wide light recipe groups, including other pieces; retain this recipe group's separate enchantment instances. Only a selected live third-person placement can replace lights." },
             "note": { "$ref": "#/$defs/note" }
           } }
       ]
@@ -269,7 +270,7 @@
         "material": { "enum": ["pbrCopy", "vanilla"], "default": "pbrCopy" },
         "blend": { "enum": ["additive", "alpha"], "default": "additive" },
         "depthBias": { "type": "boolean", "default": true },
-        "alphaTest": { "type": "number", "minimum": 0, "maximum": 1, "default": 0 },
+        "alphaTest": { "$ref": "#/$defs/number", "minimum": 0, "maximum": 1, "default": 0 },
         "opacity": { "$ref": "#/$defs/param" },
         "rimPower": { "$ref": "#/$defs/param", "description": "Vanilla material only." },
         "emissive": { "$ref": "#/$defs/param", "description": "Vanilla material only." },
@@ -294,7 +295,7 @@
         "key": { "oneOf": [
           { "$ref": "#/$defs/oneKey", "required": ["armor"], "properties": { "armor": { "$ref": "#/$defs/form" } } },
           { "$ref": "#/$defs/oneKey", "required": ["selector"], "properties": { "selector": { "$ref": "#/$defs/selector" } } } ] },
-        "overrides": { "type": "object", "propertyNames": { "$ref": "#/$defs/name" }, "additionalProperties": { "$ref": "#/$defs/value" } }
+        "overrides": { "type": "object", "maxProperties": 4096, "propertyNames": { "$ref": "#/$defs/name" }, "additionalProperties": { "$ref": "#/$defs/value" } }
       }
     }
   }

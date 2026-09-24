@@ -20,8 +20,8 @@ ActorPlan MakePlan() {
   plan.geometries.push_back(first);
   plan.geometries.push_back(thirdB);
 
-  plan.instances.push_back(Instance{RecipeId{0}, std::nullopt, 0});
-  plan.instances.push_back(Instance{RecipeId{1}, std::nullopt, 0});
+  plan.instances.push_back(Instance{RecipeId{0}, std::nullopt});
+  plan.instances.push_back(Instance{RecipeId{1}, std::nullopt});
 
   const auto place = [&](InstanceId a_instance, GeometryId a_piece) {
     Placement p;

@@ -23,8 +23,9 @@ PreparePaintCommit(const Recipe *a_paint, const Recipe *a_target,
   if (a_target->id != a_request.recipeID || a_target->id == kPaintRecipe) {
     return refuse("the target recipe does not match the paint request");
   }
-  if (!IsName(a_request.maskName) || a_request.maskName == kScratchMask) {
-    return refuse("choose a mask name other than scratch");
+  if (!IsName(a_request.maskName) || a_request.maskName == kScratchMask ||
+      a_request.maskName == kPeekMask) {
+    return refuse("choose a valid mask name other than scratch or peek");
   }
   if (!a_request.replacingMask.empty() &&
       a_request.maskName == a_request.replacingMask &&

@@ -1,6 +1,7 @@
 #pragma once
 
 #include "recipe/Recipe.h"
+#include "studio/DocumentRevisions.h"
 #include "studio/Edits.h"
 #include "studio/Gesture.h"
 #include "studio/History.h"
@@ -17,6 +18,8 @@
 
 namespace BetterEnchantmentEffects {
 class Manager;
+struct FileOperationJournal;
+struct PendingFileOperation;
 
 class RecipeEditor {
 public:
@@ -72,10 +75,6 @@ public:
   [[nodiscard]] std::vector<Studio::RecipeEditResult> EditResults() const;
 
 private:
-  struct FileOperationJournal;
-  struct PendingFileOperation;
-  struct PendingRecipeEdit;
-  struct PendingGestureTask;
   void PostGesture(std::uint64_t a_id);
   void ProcessGesture(std::uint64_t a_id);
   void FinishActiveGesture(bool a_commit, bool a_rebuild = true);
@@ -85,9 +84,7 @@ private:
   void ResetDocumentRevisions();
   std::optional<Studio::RecipeGesture> gesture_;
   std::optional<Studio::GestureResult> gestureStatus_;
-  std::uint64_t documentClock_ = 1;
-  std::uint64_t documentEpoch_ = 1;
-  std::unordered_map<std::string, std::uint64_t> documentRevisions_;
+  Studio::DocumentRevisions revisions_;
   std::shared_ptr<FileOperationJournal> fileOperations_;
   [[nodiscard]] std::expected<void, Diagnostic>
   ApplyEdits(const std::string &a_id, const Studio::EditBatch &a_edits);

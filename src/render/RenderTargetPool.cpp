@@ -154,13 +154,9 @@ RenderTargetPool::Acquire(ID3D11Device *a_device, TextureSize a_size,
   std::unique_ptr<RenderTarget> target;
   {
     std::scoped_lock lock{pool_->lock};
-    for (auto it = pool_->targets.begin(); it != pool_->targets.end(); ++it) {
-      if ((*it)->size == a_size.Pixels()) {
-        target = std::move(*it);
-        pool_->targets.erase(it);
-        break;
-      }
-    }
+    target = pool_->targets.Take([&](const RenderTarget &a_target) {
+      return a_target.size == a_size.Pixels();
+    });
   }
   if (!target) {
     target = std::make_unique<RenderTarget>();
@@ -225,7 +221,8 @@ void RenderTargetPool::Recycle(const std::weak_ptr<Pool> &a_pool,
                        {"generation", std::to_string(target->generation_)},
                        {"presenter", Trace::Pointer(target->presenter.get())}});
     std::scoped_lock lock{pool->lock};
-    pool->targets.push_back(std::move(target));
+    const std::uint64_t bytes = Metrics::MippedRgbaBytes(target->size);
+    pool->targets.Retain(std::move(target), bytes);
   } catch (...) {
     target.reset();
   }
@@ -234,10 +231,10 @@ void RenderTargetPool::Recycle(const std::weak_ptr<Pool> &a_pool,
 void RenderTargetPool::ClearScratch() { scratch_.clear(); }
 
 void RenderTargetPool::ClearUnused() {
-  std::vector<std::unique_ptr<RenderTarget>> unused;
+  ResourcePool<RenderTarget> unused{kMaxIdleTargets, kMaxIdleBytes};
   {
     std::scoped_lock lock{pool_->lock};
-    unused.swap(pool_->targets);
+    std::swap(unused, pool_->targets);
   }
 }
 }

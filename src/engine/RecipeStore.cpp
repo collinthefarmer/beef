@@ -4,7 +4,9 @@
 #include "PCH.h"
 #include "engine/EngineForms.h"
 #include "engine/GameObjectService.h"
+#include "engine/RecipeFiles.h"
 #include "engine/TextFile.h"
+#include "recipe/DefinitionOrder.h"
 #include "recipe/Importer.h"
 #include "recipe/Recipe.h"
 #include "studio/Edits.h"
@@ -28,6 +30,7 @@ struct LoadedRecipe {
   bool transient = false;
   Studio::ReferenceCounts references{};
   Recipe saved{};
+  std::vector<Diagnostic> inputDiagnostics;
 };
 static_assert(std::is_nothrow_move_constructible_v<Studio::ReferenceCounts> ||
               !std::is_nothrow_move_constructible_v<LoadedRecipe>);
@@ -107,7 +110,7 @@ JsonFilesUnder(const std::filesystem::path &a_root) {
 bool IsUnder(const std::filesystem::path &a_path,
              const std::filesystem::path &a_folder) {
   const auto rel = a_path.lexically_relative(a_folder);
-  return !rel.empty() && rel.native()[0] != '.';
+  return !rel.empty() && rel != "." && *rel.begin() != "..";
 }
 
 void ResolveForm(FormRef &a_ref, const std::string &a_id,
@@ -222,17 +225,21 @@ void LoadFile(const std::filesystem::path &a_path) {
                id, a_path.string(), keys, r.signals.size(), r.curves.size(),
                r.sources.size(), r.masks.size(), r.outputs.size(),
                r.metadata.imported.empty() ? "" : "; imported, not yet edited");
+  LoadedRecipe loaded;
+  loaded.recipe = std::move(*result.recipe);
+  loaded.path = a_path;
+  loaded.diagnostics = std::move(result.diagnostics);
+  loaded.inputDiagnostics = std::move(result.inputDiagnostics);
   const auto existing = std::ranges::find(
       g_loaded, id, [](const LoadedRecipe &l) { return l.recipe.id; });
   if (existing != g_loaded.end()) {
     logger::info("recipe {}: {} replaces {}", id, a_path.string(),
                  existing->path.string());
-    *existing = {std::move(*result.recipe), a_path,
-                 std::move(result.diagnostics), nullptr, false};
-    return;
   }
-  g_loaded.push_back({std::move(*result.recipe), a_path,
-                      std::move(result.diagnostics), nullptr, false});
+  AppendDefinition(g_loaded, std::move(loaded),
+                   [](const LoadedRecipe &a_loaded) -> const std::string & {
+                     return a_loaded.recipe.id;
+                   });
 }
 
 std::vector<RE::TESEffectShader *> ArmorEnchantmentShaders() {
@@ -341,28 +348,13 @@ void ImportMissing(const std::filesystem::path &a_folder) {
     }
     ++g_status.imported;
     ++g_status.loaded;
-    g_loaded.push_back({std::move(recipe), path, {}, nullptr, false});
+    LoadedRecipe loaded;
+    loaded.recipe = std::move(recipe);
+    loaded.path = path;
+    g_loaded.push_back(std::move(loaded));
   }
 }
 
-void LogKeyOwnership() {
-  std::unordered_map<std::string, std::string> owner;
-  for (const auto &l : g_loaded) {
-    for (const auto &key : l.recipe.keys) {
-      owner[key.ToString()] = l.recipe.id;
-    }
-  }
-  for (const auto &l : g_loaded) {
-    for (const auto &key : l.recipe.keys) {
-      const auto &id = owner[key.ToString()];
-      if (id != l.recipe.id) {
-        logger::warn("recipe {}: key {} is owned by recipe {} (loaded later); "
-                     "{} does not resolve by it",
-                     l.recipe.id, key.ToString(), id, l.recipe.id);
-      }
-    }
-  }
-}
 }
 
 RecipeStoreStatus LoadRecipes() {
@@ -389,7 +381,6 @@ RecipeStoreStatus LoadRecipes() {
     LoadFile(path);
   }
   ImportMissing(Identity::ImportedRecipeFolder());
-  LogKeyOwnership();
   LoadPresets();
   for (auto &l : g_loaded) {
     l.references = Studio::CountReferences(l.recipe);
@@ -485,7 +476,7 @@ std::span<const Diagnostic> RefreshRecipeDerivedState(std::string_view a_id) {
     return {};
   }
   LoadedRecipe &loaded = g_loaded[*index];
-  loaded.diagnostics = Validate(loaded.recipe);
+  loaded.diagnostics = Validate(loaded.recipe, loaded.inputDiagnostics);
   ResolveForms(loaded.recipe, loaded.diagnostics);
   loaded.graph.reset();
   loaded.dirty = !loaded.transient && !(loaded.recipe == loaded.saved);
@@ -514,33 +505,20 @@ SaveRecipe(std::string_view a_id) {
     return std::unexpected(Refusal(a_id, "the paint recipe is never written"));
   }
   auto path = loaded->path;
-  if (IsUnder(path, Identity::ImportedRecipeFolder())) {
+  const bool promoteImported = IsUnder(path, Identity::ImportedRecipeFolder());
+  if (!IsUnder(path, Identity::UserRecipeFolder())) {
     path = Identity::UserRecipeFolder() / (loaded->recipe.id + ".json");
-    loaded->recipe.metadata.imported.clear();
   }
-  Recipe written = loaded->recipe;
-  const auto isPaintMask = [](std::string_view a_name) {
-    return a_name == Studio::kScratchMask || a_name == Studio::kPeekMask;
-  };
-  std::erase_if(written.masks,
-                [&](const Mask &m) { return isPaintMask(m.name); });
-  for (auto &output : written.outputs) {
-    if (auto *material = Get<SurfaceOutput>(output)) {
-      for (auto &layer : material->stack) {
-        if (layer.mask && isPaintMask(layer.mask->name)) {
-          layer.mask.reset();
-        }
-      }
-    }
+  auto written = WriteRecipeFile(path, loaded->recipe, promoteImported);
+  if (!written) {
+    return std::unexpected(written.error());
   }
-  if (!WriteText(path, SerializeRecipe(written))) {
-    return std::unexpected(
-        Refusal(a_id, std::format("could not write {}", path.string())));
-  }
+  loaded->recipe = std::move(*written);
   loaded->path = path;
   loaded->saved = loaded->recipe;
   loaded->dirty = false;
-  Republish(*index);
+  loaded->inputDiagnostics.clear();
+  RefreshRecipeDerivedState(a_id);
   logger::info("recipe {} saved to {}", loaded->recipe.id, path.string());
   return path;
 }
@@ -578,21 +556,19 @@ std::optional<Diagnostic> RenameRecipe(std::string_view a_from,
     return refuse(loaded ? "the paint recipe keeps its name" : "not loaded");
   }
   const auto to = Identity::UserRecipeFolder() / (std::string{a_to} + ".json");
-  std::error_code ec;
-  if (IsUnder(loaded->path, Identity::UserRecipeFolder()) &&
-      std::filesystem::exists(loaded->path, ec)) {
-    std::filesystem::rename(loaded->path, to, ec);
-    if (ec) {
-      logger::warn("rename {} -> {}: {} could not be moved ({}); the old file "
-                   "stays",
-                   a_from, a_to, loaded->path.string(), ec.message());
-    }
-  } else if (std::filesystem::exists(loaded->path, ec)) {
+  const bool owned = IsUnder(loaded->path, Identity::UserRecipeFolder());
+  if (const auto problem = RenameRecipeFile(loaded->path, to, a_from, owned)) {
+    return refuse(problem->message);
+  }
+  if (!owned) {
     logger::info("rename {} -> {}: {} is not the user's file and stays; it "
                  "loads again under its old id at the next start",
                  a_from, a_to, loaded->path.string());
   }
   loaded->recipe.id = std::string{a_to};
+  if (owned) {
+    loaded->saved.id = std::string{a_to};
+  }
   loaded->path = to;
   RefreshRecipeDerivedState(a_to);
   logger::info("recipe {} renamed {}; saves to {}", a_from, a_to, to.string());
@@ -612,15 +588,11 @@ std::optional<Diagnostic> DeleteRecipe(std::string_view a_id) {
   if (loaded.transient) {
     return refuse("the paint recipe is never deleted");
   }
-  std::error_code ec;
-  if (IsUnder(loaded.path, Identity::UserRecipeFolder()) &&
-      std::filesystem::exists(loaded.path, ec)) {
-    std::filesystem::remove(loaded.path, ec);
-    if (ec) {
-      logger::warn("delete {}: {} could not be removed ({})", a_id,
-                   loaded.path.string(), ec.message());
-    }
-  } else if (std::filesystem::exists(loaded.path, ec)) {
+  const bool owned = IsUnder(loaded.path, Identity::UserRecipeFolder());
+  if (const auto problem = DeleteRecipeFile(loaded.path, a_id, owned)) {
+    return refuse(problem->message);
+  }
+  if (!owned) {
     logger::info("delete {}: {} is not the user's file and stays on disk; it "
                  "loads again under its id at the next start",
                  a_id, loaded.path.string());
@@ -653,12 +625,10 @@ std::optional<Diagnostic> DuplicateRecipe(std::string_view a_from,
   copy.id = std::string{a_to};
   copy.metadata.name = copy.id;
   copy.metadata.imported.clear();
-  LoadedRecipe loaded{std::move(copy),
-                      Identity::UserRecipeFolder() /
-                          (std::string{a_to} + ".json"),
-                      {},
-                      nullptr,
-                      true};
+  LoadedRecipe loaded;
+  loaded.recipe = std::move(copy);
+  loaded.path = Identity::UserRecipeFolder() / (std::string{a_to} + ".json");
+  loaded.dirty = true;
   loaded.diagnostics = Validate(loaded.recipe);
   ResolveForms(loaded.recipe, loaded.diagnostics);
   Publish(std::move(loaded));
@@ -693,11 +663,10 @@ std::optional<Diagnostic> NewRecipe(std::string_view a_id, RecipeKey a_key,
         recipe, Studio::AddOutput{Surface::kMaterial, Slot::kEmissive,
                                   std::move(selector)});
   }
-  LoadedRecipe loaded{std::move(recipe),
-                      Identity::UserRecipeFolder() / (id + ".json"),
-                      {},
-                      nullptr,
-                      true};
+  LoadedRecipe loaded;
+  loaded.recipe = std::move(recipe);
+  loaded.path = Identity::UserRecipeFolder() / (id + ".json");
+  loaded.dirty = true;
   loaded.diagnostics = Validate(loaded.recipe);
   ResolveForms(loaded.recipe, loaded.diagnostics);
   Publish(std::move(loaded));
@@ -716,7 +685,9 @@ std::optional<Diagnostic> AddTransientRecipe(Recipe a_recipe) {
     logger::warn("transient recipe '{}': a recipe has that id", a_recipe.id);
     return Refusal(a_recipe.id, "a recipe has that id");
   }
-  LoadedRecipe loaded{std::move(a_recipe), {}, {}, nullptr, false, true};
+  LoadedRecipe loaded;
+  loaded.recipe = std::move(a_recipe);
+  loaded.transient = true;
   loaded.diagnostics = Validate(loaded.recipe);
   ResolveForms(loaded.recipe, loaded.diagnostics);
   for (const auto &d : loaded.diagnostics) {
@@ -755,23 +726,16 @@ std::optional<Diagnostic> RevertRecipe(std::string_view a_id) {
     return Refusal(a_id, "the paint recipe has no file to revert to");
   }
   LoadedRecipe &loaded = g_loaded[*index];
-  const auto refuse = [&](std::string a_message) {
-    logger::error("recipe {}: revert failed, {}", a_id, a_message);
-    return Refusal(a_id, std::move(a_message));
-  };
-  const auto text = ReadText(loaded.path);
-  if (!text) {
-    return refuse(std::format("{} {}", loaded.path.string(), text.error()));
+  auto read = ReadRecipeFile(loaded.path, loaded.recipe.id);
+  if (!read) {
+    logger::error("recipe {}: revert failed, {}", a_id, read.error().message);
+    return read.error();
   }
-  auto result = ParseRecipe(*text, loaded.recipe.id);
-  if (!result.recipe) {
-    return refuse(std::format(
-        "{} is unreadable ({})", loaded.path.string(),
-        result.diagnostics.empty() ? "" : result.diagnostics.front().message));
-  }
+  LoadResult result = std::move(*read);
   ResolveForms(*result.recipe, result.diagnostics);
   loaded.recipe = std::move(*result.recipe);
   loaded.diagnostics = std::move(result.diagnostics);
+  loaded.inputDiagnostics = std::move(result.inputDiagnostics);
   loaded.graph.reset();
   loaded.saved = loaded.recipe;
   loaded.dirty = false;

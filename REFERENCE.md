@@ -702,11 +702,20 @@ Lab mechanics:
   acquires per rebuild); the redesign is backlog item 49.
 
 - `LogStackDiagnostics` (`engine/ManagerApply.cpp`) logs each distinct
-  (recipe, output, geometry, where, message) once per game session,
+  (recipe, output, geometry, where, message) once per game session while
+  the warning-history budget permits,
   marked "(repeats suppressed)", because a recipe that errors on a
   crowd re-applies on every refresh and wrote 250 identical lines in
   one session. The menu's in-place diagnostics are unaffected; only
-  the log line is deduplicated.
+  the log line is deduplicated. `Manager` owns `WarningHistory` and clears
+  it in `Clear`, so a new save/game session can report the same warning again.
+  The history retains at most `kMaxWarningKeys` (1024) and
+  `kMaxWarningKeyBytes` (128 KiB of text). Both bounds matter because recipe
+  names, geometry names, and diagnostic messages vary in size. Container
+  overhead is separately bounded by the key count. A first over-budget
+  observation emits one notice per session; later over-budget observations
+  are omitted without retaining their keys. Shorter new keys may still fit.
+  Repeated keys do not consume capacity or trigger the budget notice.
 
 - `RetireActorEffects` (`engine/LiveActor.cpp`) clears in a fixed order:
   application tokens, then lights, then each geometry through
@@ -714,6 +723,40 @@ Lab mechanics:
   A texture producer must not release until the shells that read it have
   detached and the material journals have retired, so the tables that own
   the producers go last.
+  `Manager::Retire` first reports the live actor's captured application tokens
+  through `ApplicationService::Retire`. Distance eviction can happen between
+  preparation and first rendering; destroying the tokens without reporting them
+  would leave a permanent prepared result. Retirement must not report every
+  current pending token here: a store mutation or refresh has already invalidated
+  the old actor attempt and may have queued its replacement. Captured revision
+  and attempt checks keep retirement from terminating that replacement.
+  Partial `RetireGeometry(actor, geometry)` follows the same binding-before-
+  producer rule, resets the geometry's inputs and its placement stacks, and
+  keeps diagnostic rows and plan indices. Shared instance lights are independent
+  of the lost surface and remain until their instance retires.
+
+- Cache maintenance is driven by `Manager::OnFrame` every five seconds even
+  without applied actors. Material records protect active texture pairs, expire
+  unused entries after 30 seconds, and retain at most 64 unused pairs per pass.
+  These provisional retention values mirror the mesh grace period and preserve
+  short rebuild reuse; they are not measured alpha workload limits. Shared target
+  caches prune expired keys both on adoption and during maintenance.
+- The render-target idle pool retains at most 16 targets and 64 MiB, using the
+  same `Metrics::MippedRgbaBytes` accounting as allocation diagnostics. This
+  bounds reusable idle allocation while permitting short rebuild reuse. Targets
+  held by active consumers, previews, scratch buffers, or material journals are
+  outside this allowance. Destruction occurs only after the final target lease
+  returns; normal D3D resource ownership and presenter restoration still apply.
+
+- `kMaxTerminalApplicationRecipes` retains 256 recipe/whole-catalog results by
+  newest application revision, matching the independent 256 terminal actor
+  history allowance. A record is eligible only when none of its actors remain
+  queued/prepared; the aggregate failed phase does not establish completion.
+  Pending requests are never evicted to satisfy a history allowance. A retry
+  inherits pending/failed targets from retained records plus current manager
+  candidates, rather than every historical successful wearer. Supersession and
+  load release canceled actor vectors, and resume erases cancellation summaries.
+  The allowance bounds completed recipe identities, not active workload bytes.
 
 - Recipes with errors (decided 2026-09-13): a row error (`where` starts
   with `signal`, `curve`, `source`, `mask`, `output` or `variant`,
@@ -810,9 +853,26 @@ Decompile provenance (`decompiled/WornEnchantmentFX/plugin.c` unless noted):
   piece's centre.
 - A recipe's clock survives a retire followed by a re-apply within
   `kCarryWindowMS` (an edit, an isolate, re-apply all), keyed by actor and
-  recipe id, so a change never snaps the animation to zero; a piece put
-  back on later starts fresh. Leaving freeze resumes every clock from the
-  scrub, not from where the real clock ran on to.
+  recipe id and enchantment form id. The enchantment id comes from the
+  collected piece before engine lookup, so lookup failure does not merge it
+  with an unenchanted instance. A piece put back on later starts fresh.
+  `CarriedTimes` retains only owned keys and finite nonnegative seconds;
+  consuming an entry removes it. The two-second window uses unsigned
+  millisecond subtraction across clock wrap. The one-second manager heartbeat
+  expires unused entries even when no actors are applied, and save-load
+  clearing discards all entries.
+- `kMaxCarriedInstanceTimes` is 4096: a fixed ceiling for short-lived clock
+  continuity records, not a limit on live actors, recipes, or GPU resources.
+  At capacity, existing entries can update but new entries are omitted until
+  consumption or the expiry sweep makes room. The affected instance starts
+  fresh. This bounds retirement bursts without evicting another instance's
+  pending continuation or repeatedly scanning a full store on insertion.
+- Carry-over and leaving freeze use `ClockOffsetMS` to convert seconds at
+  the combined animation/view/recipe speed into a clock offset. It rejects
+  non-finite or negative seconds, non-finite/nonpositive speed, and offsets
+  beyond `uint32_t` milliseconds before casting; the calculation uses double
+  precision. Invalid carry-over starts fresh. Leaving freeze resumes from
+  the scrub when representable, otherwise from a fresh clock origin.
 - Signal state integrates forward (pulse phase, smoothing, trigger ages),
   so a scrub backwards or a jump rebuilds it from the start and advances it
   to the scrubbed moment in one step. While frozen, the rebuild triggers on
@@ -1585,3 +1645,48 @@ The frozen tree's shape. The live rules are under studio above
   the taken names, so a term never adds a row the recipe already has.
 - The scratch mask lives under a reserved name; Keep renames it, Discard
   removes it, a save drops it, and a layer still masked by it is unmasked.
+
+### Menu dependency preflight
+
+The vendored framework header's `IsInstalled` checks a disk path, whereas
+its wrappers resolve exports from the loaded module. Many ImGui wrappers
+call the resulting pointer without checking it. Registration therefore uses
+`MenuDependency` to require a loaded module and the current editor export
+inventory before publishing callbacks. The inventory includes every overload
+of each used wrapper name; `tests/tools/menu_exports_tests.py` checks it
+against first-party qualified calls and the vendored header. This conservative
+export check does not certify signatures or ImGui structure layouts.
+
+Without Community Shaders the runtime hooks are not installed, so the editor
+may never receive a snapshot. Missing-dependency messages must also be drawn
+on that path. An existing snapshot with the effects path disabled can instead
+reflect a failed PBR layout check and must not be labeled a missing DLL.
+
+## Armor-addon selector identity (2026-09-23)
+
+CommonLibSSE-NG's `RE/B/BipedAnim.h` declares `BIPOBJECT::addon` as
+`TESObjectARMA*` alongside `partClone`. `Manager::CollectPieces` preserves
+that entry's optional addon as a plugin/local-ID `FormKey` on `LivePiece`;
+`BuildPlannerGeometries` copies it to each geometry collected from the clone.
+Use this association rather than guessing from the armor's addon list or
+mesh name. A missing addon stays absent and cannot match an addon-only selector.
+`LightEligible` uses that same identity for planning and actual light placement.
+
+## Recipe sampling (2026-09-23)
+
+`recipe/Resolve.cpp` pins FNV-1a 32-bit: offset basis 2166136261, prime
+16777619, four actor form-ID bytes in little-endian order, unsigned wrapping.
+Candidate identities sort by case-sensitive UTF-8 bytes before modulo
+selection; composition priority and definition traversal order do not enter
+the hash. `tests/planners/resolution_tests.cpp` contains golden vectors.
+The approved behavior and compatibility change live in
+`docs/recipe-resolution.md`.
+
+## Compatibility profiles
+
+Target profiles in `cmake/compatibility` drive pins, loader declarations, startup
+checks, and package identity. CommonLib structure independence covers its Skyrim
+structure boundary, not the mirrored CS PBR ABI. Explicit runtime whitelists still
+require Address Library for relocations. See the
+[profile audit](docs/checkpoints/compatibility-profiles-2026-09-24.md) for the
+initial candidate and unverified assumptions.

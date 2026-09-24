@@ -3,4 +3,7 @@ https://github.com/doodlum/skyrim-community-shaders
 commit dd2677fc4020db1da91b39cebef3dbfbe8913983 (2026-08-25).
 The data-member block is byte-identical to the v1.8.3 release tag
 (2f2919a71bed6132b125e41781304c8f6f73d002), which is the installed version.
-Not compiled; src/PBRMaterial.h mirrors the layout and static_asserts it.
+Not compiled; src/render/PBRMaterial.h mirrors the layout and static_asserts it.
+The pinned upstream README specifies GPL-3.0-or-later with its Modding
+Exception and GPL-3.0 Linking Exception (with Corresponding Source).
+See ../../THIRD_PARTY_NOTICES.md and ../../licenses/CommunityShaders-*.

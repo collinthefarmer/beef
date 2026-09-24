@@ -1,5 +1,6 @@
 #include "PCH.h"
 
+#include "BuildCompatibility.h"
 #include "BuildIdentity.h"
 #include "Identity.h"
 #include "SettingsFile.h"
@@ -112,6 +113,8 @@ void OnMessage(SKSE::MessagingInterface::Message *a_msg) {
     if (!available) {
       logger::error("CommunityShaders.dll is not loaded; emissive path "
                     "disabled, plugin idle");
+      logger::error("Check the Community Shaders installation and SKSE loader "
+                    "log, then restart Skyrim; all effects require it.");
       break;
     }
     RegisterEventSinks();
@@ -143,6 +146,21 @@ void OnMessage(SKSE::MessagingInterface::Message *a_msg) {
 
 SKSEPluginLoad(const SKSE::LoadInterface *skse) {
   InitLog();
+  if (!skse || skse->IsEditor()) {
+    return false;
+  }
+  if (!BetterEnchantmentEffects::BuildCompatibility::SupportsRuntime(
+          skse->RuntimeVersion().pack()) ||
+      skse->SKSEVersion() <
+          BetterEnchantmentEffects::BuildCompatibility::minimumSKSE) {
+    logger::error("compatibility profile {} refuses runtime {} / SKSE {}; "
+                  "install the matching targeted build",
+                  BetterEnchantmentEffects::BuildCompatibility::profile,
+                  skse->RuntimeVersion().string(), skse->SKSEVersion());
+    return false;
+  }
+  logger::info("compatibility profile {} (runtime acceptance pending)",
+               BetterEnchantmentEffects::BuildCompatibility::profile);
   SKSE::Init(skse);
 
   const auto plugin = SKSE::PluginDeclaration::GetSingleton();
@@ -158,10 +176,6 @@ SKSEPluginLoad(const SKSE::LoadInterface *skse) {
        {"runtime", REL::Module::get().version().string()},
        {"skse_packed", std::to_string(skse->SKSEVersion())}});
 
-  if (skse->IsEditor()) {
-    logger::info("editor detected; doing nothing");
-    return false;
-  }
   if (!SKSE::GetMessagingInterface()->RegisterListener(OnMessage)) {
     logger::error("failed to register SKSE messaging listener");
     return false;

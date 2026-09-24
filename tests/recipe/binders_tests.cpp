@@ -2,6 +2,7 @@
 #include "test_support.h"
 
 #include <algorithm>
+#include <limits>
 #include <string>
 #include <string_view>
 #include <vector>
@@ -40,6 +41,28 @@ void DocumentParsingIsGuarded() {
   Check(ParseObjectDocument(R"({"a": 1, "a": 2})", ctx).has_value() &&
             Names(diagnostics, "duplicate key 'a'"),
         "a duplicate key is reported and the document still parses");
+}
+
+void FloatInputsStayFinite() {
+  for (const double value :
+       {std::numeric_limits<double>::infinity(),
+        -std::numeric_limits<double>::infinity(),
+        std::numeric_limits<double>::quiet_NaN(), 1e39, -1e39}) {
+    std::vector<Diagnostic> diagnostics;
+    Check(!FloatFrom(json(value), "value", Reporter{diagnostics, "row"}),
+          "non-finite or overflowing floats are refused before narrowing");
+    Check(diagnostics.size() == 1 && diagnostics.front().where == "row",
+          "numeric refusal retains its row location");
+  }
+  for (const double value :
+       {0.0, 0.5, static_cast<double>(std::numeric_limits<float>::max()),
+        -static_cast<double>(std::numeric_limits<float>::max())}) {
+    std::vector<Diagnostic> diagnostics;
+    const auto parsed =
+        FloatFrom(json(value), "value", Reporter{diagnostics, "row"});
+    Check(parsed && *parsed == value && diagnostics.empty(),
+          "finite float endpoints and ordinary values survive conversion");
+  }
 }
 
 void ReaderReportsUnknownKeys() {
@@ -101,6 +124,37 @@ void SourceKindsRoundTrip() {
         "an unknown kind is named");
 }
 
+void RejectedRowsCountTowardLimits() {
+  std::vector<Diagnostic> diagnostics;
+  std::vector<int> rows;
+  std::size_t attempts = 0;
+  const json array = json::array({0, 0, 0, 0, 0});
+  ReadRows(
+      array, "rows", Reporter{diagnostics, "row"}, rows,
+      [&](const json &, std::size_t) -> std::optional<int> {
+        ++attempts;
+        return std::nullopt;
+      },
+      3);
+  Check(attempts == 3 && rows.empty() && diagnostics.size() == 1,
+        "rejected array rows count toward the processing cap");
+  json object = json::object();
+  for (std::size_t i = 0; i <= kMaxRecipeRows; ++i) {
+    object["signals"][std::format("row{}", i)] = nullptr;
+  }
+  diagnostics.clear();
+  attempts = 0;
+  Reader reader{object, Reporter{diagnostics, "recipe"}};
+  NamedRows(reader, "signals", SignalWhere, rows,
+            [&](const std::string &, const json &,
+                const Reporter &) -> std::optional<int> {
+              ++attempts;
+              return std::nullopt;
+            });
+  Check(attempts == kMaxRecipeRows && rows.empty() && diagnostics.size() == 1,
+        "rejected named rows count toward the processing cap");
+}
+
 void SlotWordsRoundTrip() {
   Equal(BipedSlotToJson(BipedSlot{32}).dump(), std::string{"\"body\""},
         "a named slot writes its name");
@@ -111,9 +165,11 @@ void SlotWordsRoundTrip() {
 
 int main() {
   DocumentParsingIsGuarded();
+  FloatInputsStayFinite();
   ReaderReportsUnknownKeys();
   ReaderTypedGettersRefuseWrongTypes();
   SourceKindsRoundTrip();
+  RejectedRowsCountTowardLimits();
   SlotWordsRoundTrip();
   return test::Finish("recipe binders");
 }

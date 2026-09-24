@@ -228,14 +228,139 @@ void LifecycleRetention() {
                                 }),
         "load publishes bounded terminal cancellation records before resuming");
   service.Resume();
-  Check(service.Snapshot().size() == 1 &&
-            service.Snapshot().front().token.actorID == 0,
-        "resume releases cancelled lifecycle records from the previous load");
+  Check(service.Snapshot().empty(), "resume releases cancelled actor and "
+                                    "recipe records from the previous load");
   Check(cancelled.size() == kMaxTerminalApplicationActors + 1,
         "held cancellation snapshots survive lifecycle record pruning");
   (void)service.Refresh(700);
   Check(service.PendingFor(700).size() == 1 && service.PendingFor(1).empty(),
         "post-load refresh tracks only fresh pending lifecycle work");
+}
+
+void RecipeRetention() {
+  ApplicationService service;
+  const auto mixed = service.Begin("mixed", {1, 2});
+  service.Report(mixed, 1, ApplicationPhase::kFailed, "retry needed");
+  const auto waiting = service.Begin("waiting", {3});
+  service.Report(waiting, 3, ApplicationPhase::kPrepared);
+  const auto old = service.Begin("old", {});
+  const auto held = service.Snapshot();
+  for (std::size_t i = 0; i < kMaxTerminalApplicationRecipes + 50; ++i) {
+    (void)service.Begin("renamed-" + std::to_string(i), {});
+  }
+  Check(service.Snapshot().size() == kMaxTerminalApplicationRecipes + 2,
+        "terminal recipe history is bounded without evicting pending records");
+  Check(service.PendingFor(2) == std::vector<ApplicationToken>{mixed} &&
+            service.PendingFor(3) == std::vector<ApplicationToken>{waiting},
+        "failed aggregates retain unfinished actors through history pressure");
+  const auto current = service.Snapshot();
+  Check(std::ranges::none_of(current,
+                             [](const ApplicationRecord &a_record) {
+                               return a_record.token.recipeID == "old" ||
+                                      a_record.token.recipeID == "renamed-0";
+                             }),
+        "oldest completed recipe revisions are pruned first");
+  service.Report(old, 4, ApplicationPhase::kRendered);
+  Check(service.Snapshot().size() == current.size() && held.size() == 3,
+        "late reports cannot recreate pruned records or mutate held snapshots");
+  service.Report(mixed, 2, ApplicationPhase::kRendered);
+  Check(service.Snapshot().size() == kMaxTerminalApplicationRecipes + 1 &&
+            service.PendingFor(2).empty(),
+        "a formerly pending old recipe becomes eligible for pruning on "
+        "completion");
+  const auto reused = service.Begin("old", {4});
+  service.Report(old, 4, ApplicationPhase::kRendered);
+  Check(reused.revision > old.revision &&
+            service.PendingFor(4) == std::vector<ApplicationToken>{reused},
+        "reused pruned recipe IDs reject stale reports");
+  service.BeginLoad();
+  const auto cancelled = service.Snapshot();
+  Check(cancelled.size() == kMaxTerminalApplicationRecipes &&
+            std::ranges::all_of(cancelled,
+                                [](const ApplicationRecord &a_record) {
+                                  return a_record.phase ==
+                                             ApplicationPhase::kCancelled &&
+                                         a_record.actors.empty() &&
+                                         a_record.problem.empty();
+                                }),
+        "load retains bounded cancellation summaries without actor lists");
+  service.Resume();
+  Check(service.Snapshot().empty() && !cancelled.empty(),
+        "resume releases old recipe history while held cancellation snapshots "
+        "survive");
+}
+
+void PendingRecipeRetention() {
+  ApplicationService service;
+  std::vector<ApplicationToken> tokens;
+  const std::size_t count = kMaxTerminalApplicationRecipes + 20;
+  for (std::size_t i = 0; i < count; ++i) {
+    tokens.push_back(service.Begin("pending-" + std::to_string(i), {1, 2}));
+    service.Report(tokens.back(), 1, ApplicationPhase::kFailed, "retry needed");
+  }
+  Check(service.Snapshot().size() == count &&
+            service.PendingFor(2).size() == count,
+        "history cap never drops unfinished actors even when all aggregates "
+        "failed");
+  for (const auto &token : tokens) {
+    service.Report(token, 2, ApplicationPhase::kRendered);
+  }
+  Check(service.Snapshot().size() == kMaxTerminalApplicationRecipes &&
+            service.PendingFor(2).empty(),
+        "finishing an over-cap workload restores the terminal history bound");
+  const auto latest = service.Begin(tokens.back().recipeID, {});
+  Check(service.ActorsFor(latest.recipeID) == std::vector<std::uint32_t>{1},
+        "a retained failed result still supplies its retry target under "
+        "pressure");
+  for (std::uint32_t load = 0; load < 5; ++load) {
+    service.BeginLoad();
+    service.Resume();
+    Check(service.Snapshot().empty(),
+          "repeated load cycles release prior recipe history");
+    (void)service.Begin("reused", {load + 1});
+  }
+}
+
+void RetryTargetRetention() {
+  ApplicationService service;
+  const auto first = service.Begin("saved", {1, 2, 3, 4, 5});
+  service.Report(first, 1, ApplicationPhase::kRendered);
+  service.Report(first, 2, ApplicationPhase::kUnmatched);
+  service.Report(first, 3, ApplicationPhase::kFailed, "retry needed");
+  service.Report(first, 4, ApplicationPhase::kPrepared);
+  const auto retry = service.Begin("saved", {1, 6});
+  Check(service.ActorsFor("saved") == std::vector<std::uint32_t>{1, 3, 4, 5, 6},
+        "retry inherits failed and unfinished targets plus current manager "
+        "candidates");
+  service.Report(first, 4, ApplicationPhase::kRendered);
+  Check(service.PendingFor(4) == std::vector<ApplicationToken>{retry},
+        "target inheritance still rejects superseded completion");
+  for (const auto actor : service.ActorsFor("saved")) {
+    service.Report(retry, actor, ApplicationPhase::kRendered);
+  }
+  for (std::uint32_t actor = 10; actor < 610; ++actor) {
+    const auto next = service.Begin("saved", {actor});
+    Check(service.ActorsFor("saved") == std::vector<std::uint32_t>{actor},
+          "completed historical wearers do not accumulate through repeated "
+          "edits");
+    service.Report(next, actor, ApplicationPhase::kRendered);
+  }
+  const auto pending = service.Begin("pending", {7});
+  const auto all = service.Begin("", {8});
+  Check(service.ActorsFor("") == std::vector<std::uint32_t>{7, 8} &&
+            Record(service, "saved").actors.empty() &&
+            Record(service, "pending").actors.empty(),
+        "whole-catalog supersession transfers pending targets and releases "
+        "canceled lists");
+  service.Report(pending, 7, ApplicationPhase::kRendered);
+  Check(service.PendingFor(7) == std::vector<ApplicationToken>{all},
+        "cleared superseded records cannot finish whole-catalog work");
+  service.Report(all, 7, ApplicationPhase::kFailed, "retry needed");
+  service.Report(all, 8, ApplicationPhase::kRendered);
+  (void)service.Begin("saved", {9});
+  Check(service.ActorsFor("saved") == std::vector<std::uint32_t>{7, 9},
+        "returning to recipe scope retains only failed whole-catalog retry "
+        "targets");
 }
 
 void RapidRevisions() {
@@ -371,6 +496,9 @@ int main() {
   QueuedFailuresAndRetry();
   QueuedCancellationAndUnload();
   LifecycleRetention();
+  RecipeRetention();
+  PendingRecipeRetention();
+  RetryTargetRetention();
   Check(ApplicationPhaseName(ApplicationPhase::kRendered) == "rendered" &&
             ApplicationPhaseName(static_cast<ApplicationPhase>(99)) ==
                 "unknown",

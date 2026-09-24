@@ -1,5 +1,6 @@
 #include "studio/Selection.h"
 
+#include "recipe/Precedence.h"
 #include "recipe/Recipe.h"
 #include "studio/Rows.h"
 #include "studio/Snapshot.h"
@@ -34,8 +35,9 @@ void InjectPinnedRecipe(std::vector<ResolvedRecipe> &a_resolved,
   const PieceKey *choice = DefaultKeyChoice(choices);
   if (pinned && !present && choice) {
     const RecipeKey key = RecipeKeyOf(*choice, choice->form.ToString());
-    a_resolved.push_back(
-        {pinned, key, pinned->priority.value_or(DefaultPriority(key.kind))});
+    a_resolved.push_back({pinned, key,
+                          pinned->priority.value_or(DefaultPriority(key.kind)),
+                          IndexOf(a_loaded, pinned)});
   }
 }
 
@@ -197,6 +199,9 @@ std::vector<ResolvedRecipe> ViewedRecipes(ViewedRecipesInput a_input) {
         !isolated ? std::vector<ResolvedRecipe>{}
                   : Resolve(a_input.piece,
                             std::span<const Recipe>{isolated, std::size_t{1}});
+    if (!a_input.resolved.empty()) {
+      a_input.resolved.front().loadOrder = IndexOf(a_input.loaded, isolated);
+    }
   }
   if (a_input.view.pin && a_input.view.pin->piece == a_input.ref) {
     InjectPinnedRecipe(a_input.resolved, a_input.piece, a_input.view,
@@ -205,6 +210,11 @@ std::vector<ResolvedRecipe> ViewedRecipes(ViewedRecipesInput a_input) {
   if (a_input.view.Isolating()) {
     FilterIsolated(a_input.resolved, a_input.view);
   }
+  std::ranges::stable_sort(a_input.resolved, [](const ResolvedRecipe &a_left,
+                                                const ResolvedRecipe &a_right) {
+    return Precedence{a_left.priority, a_left.loadOrder} <
+           Precedence{a_right.priority, a_right.loadOrder};
+  });
   return std::move(a_input.resolved);
 }
 

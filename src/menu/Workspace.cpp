@@ -675,8 +675,13 @@ void DrawSourceInspector(const Studio::SourceSubject &a_source,
   if (!row) {
     return;
   }
-  static_cast<void>(
-      Rule(Studio::RuleSpec{.text = "Inspector"}, RowButtonWidth(), [&]() {
+  static_cast<void>(Rule(
+      Studio::RuleSpec{.text = "Inspector"},
+      RowButtonWidth() + ItemSpacingX() + ButtonWidth("Rename"), [&]() {
+        DrawResourceRename(a_frame, row->name, [&](std::string a_name) {
+          return Studio::RenameSource{row->name, std::move(a_name)};
+        });
+        ImGui::SameLine();
         DrawResourceRemove(row->name, row->references, [&](bool a_cascade) {
           Studio::Post(*a_frame.intents, recipe.id,
                        Studio::RemoveSource{row->name, a_cascade});
@@ -700,10 +705,14 @@ void DrawSignalInspector(const Studio::SignalSubject &a_signal,
   }
   const bool canFire = !row->event.empty();
   const float actionsWidth =
-      RowButtonWidth() +
+      RowButtonWidth() + ItemSpacingX() + ButtonWidth("Rename") +
       (canFire ? ItemSpacingX() + ButtonWidth("Fire") : 0.0f);
   static_cast<void>(
       Rule(Studio::RuleSpec{.text = "Inspector"}, actionsWidth, [&]() {
+        DrawResourceRename(a_frame, row->name, [&](std::string a_name) {
+          return Studio::RenameSignal{row->name, std::move(a_name)};
+        });
+        ImGui::SameLine();
         DrawResourceRemove(row->name, row->references, [&](bool a_cascade) {
           Studio::Post(*a_frame.intents, recipe.id,
                        Studio::RemoveSignal{row->name, a_cascade});
@@ -737,7 +746,8 @@ void DrawMaskInspector(const Studio::MaskSubject &a_mask,
   const bool otherDraft = a_frame.state->paint.has_value();
   static_cast<void>(Rule(
       Studio::RuleSpec{.text = "Inspector"},
-      ButtonWidth("Advanced Edit") + ItemSpacingX() + RowButtonWidth(),
+      ButtonWidth("Advanced Edit") + 2.0f * ItemSpacingX() + RowButtonWidth() +
+          ButtonWidth("Rename"),
       [&]() {
         Disabled(otherDraft || !a_frame.piece, [&] {
           if (ImGui::Button("Advanced Edit")) {
@@ -747,6 +757,10 @@ void DrawMaskInspector(const Studio::MaskSubject &a_mask,
         Tooltip(otherDraft       ? "Finish the current mask draft first."
                 : !a_frame.piece ? "Select a piece to edit terms."
                                  : "Open the terms editor for this mask.");
+        ImGui::SameLine();
+        DrawResourceRename(a_frame, row->name, [&](std::string a_name) {
+          return Studio::RenameMask{row->name, std::move(a_name)};
+        });
         ImGui::SameLine();
         DrawResourceRemove(row->name, row->references, [&](bool a_cascade) {
           Studio::Post(
@@ -771,8 +785,13 @@ void DrawCurveInspector(const Studio::CurveSubject &a_curve,
   if (!row) {
     return;
   }
-  static_cast<void>(
-      Rule(Studio::RuleSpec{.text = "Inspector"}, RowButtonWidth(), [&]() {
+  static_cast<void>(Rule(
+      Studio::RuleSpec{.text = "Inspector"},
+      RowButtonWidth() + ItemSpacingX() + ButtonWidth("Rename"), [&]() {
+        DrawResourceRename(a_frame, row->name, [&](std::string a_name) {
+          return Studio::RenameCurve{row->name, std::move(a_name)};
+        });
+        ImGui::SameLine();
         DrawResourceRemove(row->name, row->references, [&](bool a_cascade) {
           Studio::Post(*a_frame.intents, a_frame.recipe->id,
                        Studio::RemoveCurve{row->name, a_cascade});

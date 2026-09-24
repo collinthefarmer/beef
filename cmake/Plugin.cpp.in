@@ -6,7 +6,7 @@ SKSEPluginInfo(
     .Name = "@PROJECT_NAME@"sv,
     .Author = "collin"sv,
     .SupportEmail = ""sv,
-    .StructCompatibility = SKSE::StructCompatibility::Independent,
-    .RuntimeCompatibility = SKSE::VersionIndependence::AddressLibrary,
-    .MinimumSKSEVersion = REL::Version{ 0, 0, 0, 0 }
+    .StructCompatibility = SKSE::StructCompatibility::@BEEF_STRUCT_COMPATIBILITY@,
+    .RuntimeCompatibility = @BEEF_RUNTIME_DECLARATION@,
+    .MinimumSKSEVersion = @BEEF_MINIMUM_SKSE@
 )

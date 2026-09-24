@@ -1428,18 +1428,22 @@ struct DescribeVisitor {
 }
 
 std::optional<Diagnostic> Apply(Recipe &a_recipe, const RecipeEdit &a_edit) {
-  return Match(a_edit, [&](const auto &a_specific) {
-    return Edit(a_recipe, a_specific);
-  });
+  return Apply(a_recipe, EditBatch{{a_edit}});
 }
 
 std::expected<Recipe, Diagnostic> PrepareEdits(const Recipe &a_recipe,
                                                const EditBatch &a_batch) {
   Recipe copy = a_recipe;
   for (const auto &edit : a_batch.edits) {
-    if (auto problem = Apply(copy, edit)) {
+    if (auto problem = Match(edit, [&](const auto &a_specific) {
+          return Edit(copy, a_specific);
+        })) {
       return std::unexpected(*problem);
     }
+  }
+  if (auto problem =
+          NewError(CheckRecipeFields(a_recipe), CheckRecipeFields(copy))) {
+    return std::unexpected(*problem);
   }
   return copy;
 }

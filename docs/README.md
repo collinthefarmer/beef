@@ -16,6 +16,14 @@
 
 ## Canon
 
+- [recipe-resolution.md](recipe-resolution.md) — the implemented pre-alpha contract for
+  identity overrides, matching, sampling, precedence, and grouped composition;
+  acceptance examples and the pending rendered verification boundary.
+
+- [alpha-package.md](alpha-package.md) — instructions shipped in local candidate archives; runtime acceptance and source-publication review remain pending.
+- [bug-report.md](bug-report.md) — closed-alpha report template, evidence locations,
+  and diagnostic collection instructions; shipped as `BUG_REPORT.md`.
+
 Current. A new module is expected to follow them.
 
 - [components/](components) — one onboarding map per `src/` directory
@@ -51,7 +59,33 @@ One active plan, consolidated from the 2026-09-22 planning session:
 
 ## Checkpoints and evidence (`checkpoints/`)
 
+- [checkpoints/resource-retention-2026-09-24.md](checkpoints/resource-retention-2026-09-24.md) — lost-geometry resource release, idle maintenance, material/weak-cache retention, and bounded idle targets; runtime recovery remains pending.
+
+- [checkpoints/application-retention-2026-09-24.md](checkpoints/application-retention-2026-09-24.md) — bounded completed application history, retry target inheritance, and cancellation storage release; native/sanitized evidence and runtime limits.
+
+- [checkpoints/authoring-lifecycle-2026-09-23.md](checkpoints/authoring-lifecycle-2026-09-23.md) — offline edit/history/persistence, queue/journal and actual editor/store callback tests; platform doubles leave actor/render and in-game acceptance pending.
+
+- [checkpoints/recipe-resolution-2026-09-23.md](checkpoints/recipe-resolution-2026-09-23.md)
+  — implementation of identity overrides, deterministic sampling, placement
+  precedence and grouped replacement; offline evidence and pending visual acceptance.
+
+- [checkpoints/licenses-2026-09-23.md](checkpoints/licenses-2026-09-23.md) — pinned dependency notices, archive inclusion, and outstanding source-publication review.
+
+- [checkpoints/package-verification-2026-09-23.md](checkpoints/package-verification-2026-09-23.md) — local candidate archive inventory, checksums, tests, and SKSE compatibility findings; runtime acceptance remains open.
+
 Dated records of one pass each. They describe the tree on their date.
+
+- [checkpoints/recipe-contract-2026-09-23.md](checkpoints/recipe-contract-2026-09-23.md)
+  — first schema/parser contract pass: format and integer boundaries, clock
+  shape, default preservation, and remaining coverage.
+
+- [checkpoints/dependencies-preliminary-2026-09-23.md](checkpoints/dependencies-preliminary-2026-09-23.md)
+  — preliminary user dependency inventory, upstream references, and pending
+  version/compatibility validation; not an approved installation matrix.
+
+- [checkpoints/source-ownership-2026-09-23.md](checkpoints/source-ownership-2026-09-23.md)
+  — initial alpha source review: live instance indices, recipe publication,
+  queue cancellation, texture ownership, targeted checks, and remaining work.
 
 - [checkpoints/build-rewrite-2026-09-22.md](checkpoints/build-rewrite-2026-09-22.md)
   — native/Windows CMake presets, CTest, explicit staging, fresh tidy reports,
@@ -194,3 +228,7 @@ These retain design context and dated evidence, not an additional backlog.
 - [ui-v2-fine-tuning-backlog-2026-09-15](history/ui-v2-fine-tuning-backlog-2026-09-15.md)
 - [ui-v2-implementation-plan](history/ui-v2-implementation-plan.md)
 - [ui-v2-proposal](history/ui-v2-proposal.md)
+
+- [Compatibility profiles](checkpoints/compatibility-profiles-2026-09-24.md): target selection, ABI audit, and unverified candidate constraints.
+
+- [Offline candidate gate](checkpoints/offline-gate-2026-09-24.md): full native/sanitizer results, analysis review, and exact candidate archive checksums.

@@ -484,7 +484,7 @@ Compositor::BakeCurve(const Recipe &a_recipe, const CurveRef &a_curve,
     return nullptr;
   }
   float mean = 0.5f;
-  if (a_source && a_source->texture) {
+  if (program->UsesMean() && a_source && a_source->texture) {
     auto *lab = TextureLab::GetSingleton();
     const auto channel = a_source->sampling.channel;
     mean = channel == ShaderChannel::kRgb || channel == ShaderChannel::kLuma

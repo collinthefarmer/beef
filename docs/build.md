@@ -123,3 +123,107 @@ For fresh build trees use the presets; for existing trees Ninja automatically
 reconfigures when CMake files or source lists change. After changing compilers
 or SDK locations, use a separate directory or `cmake --fresh --preset ...`.
 After interrupted analysis, rerun tidy; old logs are never input to the gate.
+
+## Verified candidate archives
+
+Run `cmake --build --preset windows-release --target package-candidate` inside
+Nix. It builds required artifacts and writes a mod ZIP, a separate PDB ZIP,
+and SHA-256 checksums to `dist/archives/`. It uses the explicit inventory in
+`cmake/Stage.cmake`, not the contents of `dist/BetterEnchantmentEffects`.
+Obsolete staging files therefore cannot enter a candidate archive. The existing
+`stage` target also copies the notice bundle for the developer installer.
+
+Both archives carry `LICENSE`, `THIRD_PARTY_NOTICES.md`, and the explicit
+`licenses/inventory.json` file list. Update that inventory and provenance
+when dependencies change; `tools_licenses_tests` checks notice/header hashes
+and reviewed dependency pins. Packaging refuses absent notice inputs and
+destination collisions before replacing either archive.
+
+Each ZIP includes `manifest.json` with every payload file's size and SHA-256,
+source/build identity, compiled runtime families, CommonLib revision, and the
+actual generated SKSE plugin declaration. Archives are reopened and checked
+before replacing their output files. Missing inputs fail before publication.
+Run `python3 tools/package.py verify <archive.zip>` to repeat the integrity
+check; the adjacent `.sha256` file identifies the delivered archives. Hashes
+check integrity, not authenticity. Identical inputs produce identical ZIPs;
+this is not a claim that independently compiled binaries are reproducible.
+
+Archive filenames include the project version and build identity. Repackaging
+changed runtime assets at the same build identity can replace that filename;
+retain the archive checksum with test evidence. `runtime_verified: false`
+means packaging makes no game-compatibility claim. Matching-source delivery,
+the remaining publication review, the full release gate, and in-game testing
+remain outstanding; see the [license checkpoint](checkpoints/licenses-2026-09-23.md).
+
+### SKSE and targeted releases
+
+`cmake/compatibility/steam-1.6.1170.json` is the initial candidate profile:
+Steam Skyrim 1.6.1170, minimum SKSE 2.2.6, Address Library AE (package version
+still unverified), Community Shaders 1.8.3 / TruePBR source baseline, and
+SKSE Menu Framework 3.13.0 editor baseline. These are candidate constraints,
+not an in-game acceptance result.
+
+The profile owns CommonLib/spdlog/rapidcsv pins, compiled families, the explicit
+runtime whitelist, minimum SKSE, and peer-header fingerprints. CMake generates
+both the loader declaration and startup guard from it. SE/AE are compiled;
+only the listed runtime is accepted. Address Library remains required for
+relocations despite the explicit whitelist in the loader declaration.
+
+Select a reviewed profile in its own build directory:
+
+```sh
+nix develop -c cmake --preset windows-release -B build/steam-1.6.1170 -DBEEF_COMPATIBILITY_PROFILE=steam-1.6.1170
+nix develop -c cmake --build build/steam-1.6.1170 --parallel 4 --target package-candidate
+```
+
+Add a reviewed JSON file before selecting another target. Changing the installed
+SKSE alone cannot establish a new ABI's compatibility. New runtime families,
+CommonLib revisions, peer headers, and layout assumptions need source review
+and runtime acceptance. See the [profile audit](checkpoints/compatibility-profiles-2026-09-24.md).
+
+Effective profile contents enter configuration-sensitive build identity and
+`COMPATIBILITY.json` in both archives. Filenames include the profile name.
+Packaging rejects disagreement between the profile, build identity, and generated
+loader declaration; archive verification also checks their consistency.
+`runtime_verified` remains false: record actual candidate acceptance separately
+with archive checksums and the exact installed dependency versions.
+
+### Native authoring integration
+
+`ctest --preset native -R '^engine_editorintegration$'` runs the production
+`RecipeEditor.cpp` and `RecipeStore.cpp`, compiled directly into that test
+executable. The same suite is available under `native-sanitized`. Only this
+target adds `tests/engine/platform` ahead of the normal include directories.
+Those test doubles replace PCH logging, Skyrim form/catalog access, and the
+manager's two editor-facing operations. The manager double posts through the
+production `SessionQueue` and runs mutation callbacks synchronously, matching
+the manager's mutation contract without retiring or rebuilding actors.
+
+The test uses a disposable working directory and real recipe files under the
+normal `Identity` paths. Editor/store command bodies, validation, revisions,
+history, journals, file I/O and publication are production code. Form lookups
+return no matches and shader enumeration is empty; shader import generation,
+SKSE scheduling, actor/render integration and displayed UI remain game tests.
+The platform headers are not used by the DLL or other native test targets.
+
+`engine_liveretirement` similarly compiles the production `LiveActor.cpp` and
+real `LiveActor.h` against isolated doubles under `tests/engine/lifetime` for
+engine pointers, bindings, and compositor resources. It checks retirement order,
+resource release, sibling/instance preservation, invalid placement indices, and
+external leases. It does not emulate Skyrim ownership takeover or D3D execution.
+
+### Developer installer checks
+
+`install.sh` preserves an existing INI and excludes the authored `recipes/`
+directory from both rsync and tar copies, even if staging contains stale
+recipes. It requires a staged DLL and default INI before creating the target.
+Copy failures return nonzero and report an incomplete installation; they do
+not print success. Copies are not transactional: a failed install can leave
+some updated binaries/assets, so close the game and rerun after resolving the
+failure. Unknown destination files are retained; this is not obsolete-file
+cleanup or an uninstaller. Existing INI symlinks are preserved as well.
+
+`tests/tools/install_tests.py` runs the real script with disposable source and
+MO2 directories and controlled tool paths, exercising both copy backends.
+It never uses the configured real MO2 directory. These tests do not establish
+Windows file-lock behavior or mod-manager archive upgrade behavior.

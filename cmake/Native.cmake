@@ -19,7 +19,8 @@ endif()
 
 add_library(BeefEngineServices STATIC
   src/engine/SessionQueue.cpp src/engine/ApplicationService.cpp
-  src/engine/TextFile.cpp src/engine/PluginEvents.cpp)
+  src/engine/TextFile.cpp src/engine/PluginEvents.cpp src/engine/RecipeFiles.cpp
+  src/engine/InstanceTime.cpp src/engine/MenuDependency.cpp)
 target_link_libraries(BeefEngineServices PUBLIC ${PROJECT_NAME}Native)
 file(GLOB_RECURSE TEST_SOURCES CONFIGURE_DEPENDS tests/*_tests.cpp)
 foreach(source IN LISTS TEST_SOURCES)
@@ -28,6 +29,14 @@ foreach(source IN LISTS TEST_SOURCES)
   string(REGEX REPLACE "_tests\\.cpp$" "" suite "${suite}")
   add_executable(${suite} "${source}")
   target_link_libraries(${suite} PRIVATE BeefEngineServices)
+  if(suite STREQUAL "engine_editorintegration")
+    target_sources(${suite} PRIVATE src/engine/RecipeEditor.cpp src/engine/RecipeStore.cpp)
+    target_include_directories(${suite} BEFORE PRIVATE tests/engine/platform)
+  endif()
+  if(suite STREQUAL "engine_liveretirement")
+    target_sources(${suite} PRIVATE src/engine/LiveActor.cpp)
+    target_include_directories(${suite} BEFORE PRIVATE tests/engine/lifetime)
+  endif()
   target_include_directories(${suite} PRIVATE tests)
   target_compile_definitions(${suite} PRIVATE
     BEEF_FIXTURES_DIR="${CMAKE_SOURCE_DIR}/tests/fixtures"
@@ -39,7 +48,12 @@ endforeach()
 file(GLOB TOOL_TESTS CONFIGURE_DEPENDS tests/tools/*_tests.py)
 foreach(source IN LISTS TOOL_TESTS)
   get_filename_component(suite "${source}" NAME_WE)
-  add_test(NAME tools_${suite} COMMAND "${Python3_EXECUTABLE}" "${source}")
+  if(suite STREQUAL "recipe_contract_tests")
+    add_test(NAME tools_${suite} COMMAND "${Python3_EXECUTABLE}" "${source}"
+      --validator "$<TARGET_FILE:BeefValidate>")
+  else()
+    add_test(NAME tools_${suite} COMMAND "${Python3_EXECUTABLE}" "${source}")
+  endif()
 endforeach()
 find_program(CHECK_JSONSCHEMA check-jsonschema REQUIRED)
 add_test(NAME schema COMMAND "${CHECK_JSONSCHEMA}"

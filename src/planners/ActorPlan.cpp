@@ -39,6 +39,11 @@ const Placement *PlacementAt(const ActorPlan &a_plan,
   return RowAt(a_plan.placements, a_placement);
 }
 
+bool LightEligible(const Geometry &a_geometry, const LightOutput &a_light) {
+  return !a_geometry.firstPerson && !a_geometry.lost &&
+         Matches(a_light.selector, a_geometry.identity);
+}
+
 bool AnyLiveGeometry(const ActorPlan &a_plan) noexcept {
   return std::any_of(
       a_plan.geometries.begin(), a_plan.geometries.end(),
@@ -87,10 +92,7 @@ std::vector<PieceMatch> MatchesForPiece(const ActorPlan &a_plan,
         })) {
       continue;
     }
-    const int priority = instance < a_plan.instances.size()
-                             ? a_plan.instances[instance].priority
-                             : 0;
-    out.push_back(PieceMatch{instance, placement.key, priority});
+    out.push_back(PieceMatch{instance, placement.key, placement.priority});
   }
   return out;
 }

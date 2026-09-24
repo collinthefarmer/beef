@@ -1464,6 +1464,11 @@ std::vector<FormField> RecipeHeaderForm(const RecipeRow &a_recipe) {
   form.push_back(ChoiceField("merge",
                              std::string{MergeModeName(a_recipe.mergeMode)},
                              WordsOf(kMergeModes), BindMerge()));
+  form.back().help =
+      "Different recipe IDs compose independently. Replace clears earlier "
+      "recipe groups on each written surface slot and clears earlier "
+      "actor-wide light groups when this recipe has an eligible light. Sampled "
+      "selects one alternative per piece; priority does not change the pick.";
   form.push_back(TextEntryField({.name = "clockSpeed",
                                  .kind = FieldKind::kText,
                                  .text = ParamText(a_recipe.clockSpeed),
@@ -1476,6 +1481,8 @@ OutputHeader OutputHeaderForm(std::size_t a_output, bool a_replace,
   OutputHeader header;
   header.fields.push_back(
       ToggleField("replace", a_replace, BindOutputReplace(a_output)));
+  header.fields.back().help = "Clear earlier recipe groups on this target, "
+                              "preserving sibling outputs from this recipe.";
   header.selector = SelectorViewOf(a_selector);
   return header;
 }
@@ -1525,6 +1532,9 @@ void LightShapeFields(std::vector<FormField> &a_form, const LightRow &a_light) {
       ToggleField("shadow", a_light.shadow, BindLightShadow(output)));
   a_form.push_back(
       ToggleField("replace", a_light.replace, BindLightReplace(output)));
+  a_form.back().help =
+      "Replace earlier actor-wide light recipe groups, including lights from "
+      "other pieces; retain this recipe's enchantment instances.";
   const bool skinned = a_light.bones != "named";
   a_form.push_back(ChoiceField("bones", skinned ? "skinned" : "named",
                                {"skinned", "named"},

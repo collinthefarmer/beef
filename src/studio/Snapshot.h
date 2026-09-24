@@ -268,6 +268,8 @@ struct PieceRow {
   std::vector<KeyChoice> keys;
   std::vector<std::string> diffusePaths;
   std::vector<RecipeRow> recipes;
+  std::vector<RecipeSelection> selections;
+  bool previewOverride = false;
 };
 
 struct LoadedRecipeRow {

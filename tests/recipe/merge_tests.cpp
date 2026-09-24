@@ -36,6 +36,8 @@ LightOutput Light(bool a_replace) {
 
 Recipe RecipeWith(std::vector<Output> a_outputs) {
   Recipe recipe;
+  static unsigned identity = 0;
+  recipe.id = std::to_string(identity++);
   recipe.outputs = std::move(a_outputs);
   return recipe;
 }
@@ -262,9 +264,9 @@ int main() {
           "a sampled pool of three collapses to one per actor");
     Check(seed0.front().recipe->id != seed1.front().recipe->id,
           "different actor seeds pick different pool members");
-    Check(Resolve(piece, loaded, 3).front().recipe->id ==
+    Check(Resolve(piece, loaded, 0).front().recipe->id ==
               seed0.front().recipe->id,
-          "the pick wraps by the pool size, so it is stable per actor");
+          "the pick is stable per actor");
 
     Recipe plain;
     plain.id = "plain";

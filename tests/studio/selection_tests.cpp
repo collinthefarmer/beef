@@ -151,17 +151,19 @@ int main() {
     const PieceRef ref{1, 2, false};
     View view;
     const auto normal = Resolve(piece, loaded);
-    Check(normal.size() == 1 && normal.front().recipe == &loaded[1],
-          "duplicate-key fixture normally resolves only the later recipe");
+    Check(normal.size() == 2 && normal.front().recipe == &loaded[0] &&
+              normal.back().recipe == &loaded[1],
+          "same-key identities normally resolve in definition order");
     view.isolation = Isolation::ForRecipe("shadowed");
     const auto isolated = ViewedRecipes({normal, piece, ref, view, loaded});
     Check(isolated.size() == 1 && isolated.front().recipe == &loaded[0],
-          "recipe Solo resolves before duplicate-key exclusion and recovers "
-          "the shadowed recipe");
+          "recipe Solo selects its explicit recipe from independent same-key "
+          "candidates");
     view.isolation = {};
     const auto restored = ViewedRecipes({normal, piece, ref, view, loaded});
-    Check(restored.size() == 1 && restored.front().recipe == &loaded[1],
-          "ending recipe Solo restores the normal duplicate-key winner");
+    Check(restored.size() == 2 && restored.front().recipe == &loaded[0] &&
+              restored.back().recipe == &loaded[1],
+          "ending recipe Solo restores all normal same-key candidates");
     view.isolation = Isolation::ForRecipe("unmatched");
     Check(ViewedRecipes({normal, piece, ref, view, loaded}).empty(),
           "recipe Solo does not force an unmatched recipe onto the piece");

@@ -5,26 +5,27 @@
 
 namespace BetterEnchantmentEffects {
 namespace {
-[[nodiscard]] std::optional<int>
+[[nodiscard]] std::optional<Precedence>
 PriorityOf(std::span<const PlacedRecipe> a_placed,
            SlotContributor a_source) noexcept {
   const std::size_t index = IndexOf(a_source);
   if (index >= a_placed.size()) {
     return std::nullopt;
   }
-  return a_placed[index].priority;
+  return Precedence{a_placed[index].priority, a_placed[index].loadOrder};
 }
 
 [[nodiscard]] std::optional<SlotContribution>
 ShellTop(std::span<const PlacedRecipe> a_placed, const GeometryPlan &a_plan) {
   std::optional<SlotContribution> top;
-  std::optional<int> topPriority;
+  std::optional<Precedence> topPriority;
   for (const SlotPlan &slot : a_plan.slots) {
     if (slot.surface != Surface::kShell || slot.chain.empty()) {
       continue;
     }
     const SlotContribution candidate = slot.chain.back();
-    const std::optional<int> priority = PriorityOf(a_placed, candidate.placed);
+    const std::optional<Precedence> priority =
+        PriorityOf(a_placed, candidate.placed);
     if (!priority) {
       continue;
     }

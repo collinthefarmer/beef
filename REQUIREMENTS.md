@@ -62,7 +62,10 @@ them:
 1. **Match** recipes to a wearer's PBR **geometries** by key — magic
    effect, enchantment, effect shader, keyword, armor, material, enchanted
    (any enchanted piece), or default — and order the matches by priority.
-   A key held by several files belongs to the last file loaded with it.
+   The last-loaded definition of the same recipe identity replaces earlier
+   definitions. Different identities may share matching keys; selection and
+   composition follow `docs/recipe-resolution.md`. This intentional pre-alpha
+   contract change is implemented; rendered acceptance remains an in-game check.
 2. **Evaluate** each matched recipe's **signal** graph once per tick, in
    dependency order, against live actor state and an event bus. A cycle, an
    unknown reference, or a bad expression makes a node inert (0 or black),
@@ -76,7 +79,7 @@ them:
 5. **Isolate** per wearer: an effect on one actor never appears on another
    actor wearing the same item.
 6. **Produce** the full output set through recipes: the nine PBR surface
-   slots with their scalars, a cloned shell per geometry per recipe, and
+   slots with their scalars, a shared cloned shell per geometry, and
    point lights on the bones a piece is skinned to. Lights are
    inverse-square under Community Shaders' Inverse Square Lighting.
 7. **Import** a recipe from a vanilla armor-enchantment effect shader when

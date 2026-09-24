@@ -21,9 +21,8 @@ bool Pending(ApplicationPhase a_phase) {
 
 void CancelRecord(ApplicationRecord &a_record) {
   a_record.phase = ApplicationPhase::kCancelled;
-  for (ApplicationActor &actor : a_record.actors) {
-    actor.phase = ApplicationPhase::kCancelled;
-  }
+  a_record.actors = std::vector<ApplicationActor>{};
+  std::string{}.swap(a_record.problem);
 }
 
 void AppendActors(const ApplicationRecord &a_record,
@@ -33,6 +32,18 @@ void AppendActors(const ApplicationRecord &a_record,
   }
   for (const ApplicationActor &actor : a_record.actors) {
     a_actors.push_back(actor.actorID);
+  }
+}
+
+void AppendRetryActors(const ApplicationRecord &a_record,
+                       std::vector<std::uint32_t> &a_actors) {
+  if (a_record.phase == ApplicationPhase::kCancelled) {
+    return;
+  }
+  for (const ApplicationActor &actor : a_record.actors) {
+    if (Pending(actor.phase) || actor.phase == ApplicationPhase::kFailed) {
+      a_actors.push_back(actor.actorID);
+    }
   }
 }
 
@@ -100,6 +111,9 @@ void ApplicationService::BeginLoad() {
 }
 
 void ApplicationService::Resume() {
+  std::erase_if(records_, [](const auto &a_record) {
+    return a_record.second.phase == ApplicationPhase::kCancelled;
+  });
   std::erase_if(actors_, [](const auto &a_actor) {
     return a_actor.second.phase == ApplicationPhase::kCancelled;
   });
@@ -177,13 +191,13 @@ ApplicationService::Begin(std::string a_recipeID,
   DrainRejections();
   for (auto &[recipeID, record] : records_) {
     if (a_recipeID.empty() || recipeID.empty() || recipeID == a_recipeID) {
-      AppendActors(record, a_actors);
+      AppendRetryActors(record, a_actors);
       CancelRecord(record);
     }
   }
   if (a_recipeID.empty()) {
     for (const auto &[actorID, record] : actors_) {
-      AppendActors(record, a_actors);
+      AppendRetryActors(record, a_actors);
     }
   }
   std::erase(a_actors, 0u);
@@ -205,6 +219,7 @@ ApplicationService::Begin(std::string a_recipeID,
   const ApplicationToken token = record.token;
   records_.insert_or_assign(token.recipeID, std::move(record));
   PruneActors();
+  PruneRecipes();
   return token;
 }
 
@@ -266,8 +281,20 @@ void ApplicationService::Report(const ApplicationToken &a_token,
   actor->phase = a_phase;
   actor->problem = std::move(a_problem);
   Aggregate(application);
-  if (a_token.actorID != 0 && !Pending(a_phase)) {
-    PruneActors();
+  if (!Pending(a_phase)) {
+    if (a_token.actorID != 0) {
+      PruneActors();
+    } else {
+      PruneRecipes();
+    }
+  }
+}
+
+void ApplicationService::Retire(std::uint32_t a_actorID,
+                                std::span<const ApplicationToken> a_tokens) {
+  for (const ApplicationToken &token : a_tokens) {
+    Report(token, a_actorID, ApplicationPhase::kUnmatched,
+           "the actor was retired before rendering completed");
   }
 }
 
@@ -291,6 +318,29 @@ void ApplicationService::PruneActors() {
   }
 }
 
+void ApplicationService::PruneRecipes() {
+  if (records_.size() <= kMaxTerminalApplicationRecipes) {
+    return;
+  }
+  std::vector<std::pair<std::uint64_t, std::string>> terminal;
+  for (const auto &[recipeID, record] : records_) {
+    if (std::ranges::none_of(record.actors,
+                             [](const ApplicationActor &a_actor) {
+                               return Pending(a_actor.phase);
+                             })) {
+      terminal.emplace_back(record.token.revision, recipeID);
+    }
+  }
+  if (terminal.size() <= kMaxTerminalApplicationRecipes) {
+    return;
+  }
+  std::ranges::sort(terminal);
+  const std::size_t count = terminal.size() - kMaxTerminalApplicationRecipes;
+  for (std::size_t i = 0; i < count; ++i) {
+    records_.erase(terminal[i].second);
+  }
+}
+
 void ApplicationService::Cancel() {
   for (auto &[recipeID, record] : records_) {
     CancelRecord(record);
@@ -303,6 +353,7 @@ void ApplicationService::Cancel() {
     rejections_->actors.clear();
   }
   PruneActors();
+  PruneRecipes();
 }
 
 std::vector<ApplicationRecord> ApplicationService::Snapshot() const {

@@ -299,7 +299,8 @@ struct PieceSnapshotBuilder {
     }
 
     InspectGeometries(row, instance, match.instance);
-    row.light = instance.light ? instance.light->Describe() : "";
+    row.light =
+        instance.light ? instance.light->Describe() : instance.lightProblem;
     return row;
   }
 
@@ -322,6 +323,14 @@ struct PieceSnapshotBuilder {
         key.text = editorID.empty() ? source.form.ToString() : editorID;
         row.keys.push_back(std::move(key));
       }
+      if (full) {
+        static_cast<void>(Resolve(state.plan.geometries[flatStart].keys,
+                                  LoadedRecipes(), ref.actorID,
+                                  &row.selections));
+      }
+      const Studio::View &view = editor.CurrentView();
+      row.previewOverride =
+          view.Isolating() || (view.pin && view.pin->piece == ref);
       row.diffusePaths = state.plan.geometries[flatStart].keys.diffusePaths;
       std::ranges::sort(row.diffusePaths);
       const auto duplicates = std::ranges::unique(row.diffusePaths);
@@ -339,7 +348,7 @@ struct PieceSnapshotBuilder {
 
 void AccumulateStatus(Manager::Status &s, const LiveActor &state) {
   s.pieces += static_cast<std::uint32_t>(state.pieces.size());
-  s.recipes += static_cast<std::uint32_t>(state.instances.size());
+  s.recipes += static_cast<std::uint32_t>(LiveInstanceCount(state));
   for (const LivePiece &piece : state.pieces) {
     for (const LiveGeometry &bound : piece.geometries) {
       if (bound.lost) {

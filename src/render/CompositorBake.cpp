@@ -142,7 +142,7 @@ const Compositor::MaterialRecord &
 Compositor::AnalyseMaterial(const MaterialInputs &a_material) {
   const auto key =
       std::make_pair(a_material.rmaos.get(), a_material.diffuse.get());
-  auto &record = materials_[key];
+  auto &record = materials_.Get(key, nowMS_);
   if (record.sample || !record.problem.empty()) {
     return record;
   }
@@ -181,10 +181,14 @@ Compositor::AnalyseMaterial(const MaterialInputs &a_material) {
 
 const Compositor::MaterialRecord *
 Compositor::CachedMaterial(const MaterialInputs &a_material) const noexcept {
-  const auto it = materials_.find(
+  return materials_.Find(
       std::make_pair(a_material.rmaos.get(), a_material.diffuse.get()));
-  return it == materials_.end() ? nullptr : &it->second;
 }
 
-void Compositor::ClearMaterials() noexcept { materials_.clear(); }
+void Compositor::SweepMaterials(std::uint32_t a_nowMS,
+                                std::span<const MaterialKey> a_keep) {
+  materials_.Sweep(a_nowMS, kMaterialMaxAgeMS, kMaxUnusedMaterials, a_keep);
+}
+
+void Compositor::ClearMaterials() noexcept { materials_.Clear(); }
 }

@@ -557,8 +557,8 @@ struct ReduceVisitor {
   }
 
   void operator()(const RenameRecipe &a_i) {
-    state.navigation = Navigation{};
     if (selection.recipeID == a_i.from) {
+      state.navigation = Navigation{};
       selection.recipeID = a_i.to;
     }
     if (state.paint && state.paint->recipeID == a_i.from) {
@@ -720,7 +720,8 @@ namespace {
 }
 
 bool AcceptIntent(const MenuState &a_state, const Intent &a_intent) {
-  if ((a_state.pendingIndexedEdit || a_state.pendingRecipeFile) &&
+  if ((a_state.pendingIndexedEdit || a_state.pendingRecipeFile ||
+       a_state.pendingEditorChange) &&
       RequiresSettledEditor(a_intent)) {
     return false;
   }
@@ -818,10 +819,89 @@ void ResolveEditorSelection(MenuState &a_state, const Snapshot &a_snapshot) {
                     a_state.lastPaintReset);
 }
 
+namespace {
+std::optional<InspectorSubject>
+RenamedSubject(const RecipeEdit &a_edit, const InspectorSubject &a_subject) {
+  if (const auto *rename = Get<RenameSignal>(a_edit);
+      rename && a_subject == InspectorSubject{SignalSubject{rename->from}}) {
+    return SignalSubject{rename->to};
+  }
+  if (const auto *rename = Get<RenameSource>(a_edit);
+      rename && a_subject == InspectorSubject{SourceSubject{rename->from}}) {
+    return SourceSubject{rename->to};
+  }
+  if (const auto *rename = Get<RenameMask>(a_edit);
+      rename && a_subject == InspectorSubject{MaskSubject{rename->from}}) {
+    return MaskSubject{rename->to};
+  }
+  if (const auto *rename = Get<RenameCurve>(a_edit);
+      rename && a_subject == InspectorSubject{CurveSubject{rename->from}}) {
+    return CurveSubject{rename->to};
+  }
+  return std::nullopt;
+}
+}
+
+void TrackEditorChange(MenuState &a_state, std::uint64_t a_request,
+                       const Intent &a_intent) {
+  std::string recipe;
+  if (const auto *rename = Get<RenameRecipe>(a_intent)) {
+    recipe = rename->from;
+  } else if (const auto *remove = Get<DeleteRecipe>(a_intent)) {
+    recipe = remove->recipeID;
+  } else if (const auto *edit = Get<EditRecipe>(a_intent);
+             edit && std::ranges::any_of(edit->edits, [&](const RecipeEdit &e) {
+               return RenamedSubject(e, a_state.selection.subject).has_value();
+             })) {
+    recipe = edit->recipeID;
+  } else {
+    return;
+  }
+  a_state.pendingEditorChange =
+      PendingEditorChange{a_request, recipe, a_intent, a_state.selection};
+}
+
+namespace {
+void FollowEditorChange(MenuState &a_state,
+                        const PendingEditorChange &a_pending) {
+  const auto *edit = Get<EditRecipe>(a_pending.intent);
+  if (!edit) {
+    Reduce(a_state, a_pending.intent);
+    return;
+  }
+  if (a_state.selection.recipeID != a_pending.recipeID ||
+      a_state.selection.subject != a_pending.selection.subject) {
+    return;
+  }
+  InspectorSubject subject = a_pending.selection.subject;
+  for (const RecipeEdit &change : edit->edits) {
+    if (const auto renamed = RenamedSubject(change, subject)) {
+      subject = *renamed;
+    }
+  }
+  a_state.pendingSelection = std::move(subject);
+}
+
+void AcknowledgeEditorChange(MenuState &a_state,
+                             const RecipeEditResult &a_result) {
+  if (!a_state.pendingEditorChange ||
+      a_state.pendingEditorChange->requestID != a_result.requestID ||
+      a_state.pendingEditorChange->recipeID != a_result.recipeID) {
+    return;
+  }
+  const PendingEditorChange pending = std::move(*a_state.pendingEditorChange);
+  a_state.pendingEditorChange.reset();
+  if (!a_result.error) {
+    FollowEditorChange(a_state, pending);
+  }
+}
+}
+
 void AcknowledgeEditorOperations(MenuState &a_state,
                                  const Snapshot &a_snapshot) {
   for (const RecipeEditResult &result : a_snapshot.editResults) {
     (void)AcknowledgeIndexedEdit(a_state.pendingIndexedEdit, &result);
+    AcknowledgeEditorChange(a_state, result);
   }
   for (const FileOperationResult &result : a_snapshot.fileOperations) {
     if (result.state != FileOperationState::kPending &&

@@ -10,6 +10,7 @@
 #include <cstdint>
 #include <format>
 #include <initializer_list>
+#include <limits>
 #include <optional>
 #include <string>
 #include <string_view>
@@ -27,6 +28,9 @@ using json = nlohmann::ordered_json;
 [[nodiscard]] std::size_t MaxNestingDepth(std::string_view a_json) noexcept;
 [[nodiscard]] std::optional<json> ParseObjectDocument(std::string_view a_json,
                                                       const Reporter &a_ctx);
+
+[[nodiscard]] std::optional<float>
+FloatFrom(const json &a_value, std::string_view a_what, const Reporter &a_ctx);
 
 class Reader {
 public:
@@ -52,11 +56,7 @@ public:
     if (!j) {
       return std::nullopt;
     }
-    if (!j->is_number()) {
-      ctx_.Error(std::format("'{}' must be a number", a_key));
-      return std::nullopt;
-    }
-    return static_cast<float>(j->get<double>());
+    return FloatFrom(*j, a_key, ctx_);
   }
 
   std::optional<int> Integer(std::string_view a_key) {
@@ -66,6 +66,18 @@ public:
     }
     if (!j->is_number_integer()) {
       ctx_.Error(std::format("'{}' must be an integer", a_key));
+      return std::nullopt;
+    }
+    const bool outOfRange =
+        j->is_number_unsigned()
+            ? j->get<std::uint64_t>() >
+                  static_cast<std::uint64_t>(std::numeric_limits<int>::max())
+            : j->get<std::int64_t>() < std::numeric_limits<int>::min() ||
+                  j->get<std::int64_t>() > std::numeric_limits<int>::max();
+    if (outOfRange) {
+      ctx_.Error(std::format("'{}' must be an integer in {}..{}", a_key,
+                             std::numeric_limits<int>::min(),
+                             std::numeric_limits<int>::max()));
       return std::nullopt;
     }
     return j->get<int>();
@@ -178,7 +190,15 @@ public:
       a_ctx.Error(std::format("'{}' must be [x, y, z]", a_what));
       return std::nullopt;
     }
-    return Vec3{a_j[0].get<float>(), a_j[1].get<float>(), a_j[2].get<float>()};
+    std::array<float, 3> parts{};
+    for (std::size_t i = 0; i < parts.size(); ++i) {
+      const auto value = FloatFrom(a_j[i], a_what, a_ctx);
+      if (!value) {
+        return std::nullopt;
+      }
+      parts[i] = *value;
+    }
+    return Vec3{parts[0], parts[1], parts[2]};
   }
 
   std::optional<Vec3> Point(std::string_view a_key) {
@@ -264,7 +284,7 @@ public:
                                            std::string_view a_what) const {
     if (a_j.is_string()) {
       const auto text = a_j.get<std::string>();
-      if (text.size() > 1 && text[0] == '@') {
+      if (text.size() > 1 && text[0] == '@' && IsName(text.substr(1))) {
         return Ref{text.substr(1)};
       }
       ctx_.Error(std::format("'{}' names a row and must start with '@': '{}'",
@@ -278,7 +298,8 @@ public:
   [[nodiscard]] std::optional<Param> ParamFrom(const json &a_j,
                                                std::string_view a_what) const {
     if (a_j.is_number()) {
-      return Param{static_cast<float>(a_j.get<double>())};
+      const auto value = FloatFrom(a_j, a_what, ctx_);
+      return value ? std::optional<Param>{*value} : std::nullopt;
     }
     if (a_j.is_string()) {
       const auto ref = RefFrom(a_j, a_what);
@@ -321,15 +342,23 @@ public:
   static std::optional<Value>
   ValueFrom(const json &a_j, std::string_view a_what, const Reporter &a_ctx) {
     if (a_j.is_number()) {
-      return Value{static_cast<float>(a_j.get<double>())};
+      const auto value = FloatFrom(a_j, a_what, a_ctx);
+      return value ? std::optional<Value>{*value} : std::nullopt;
     }
     if (a_j.is_array() && (a_j.size() == 2 || a_j.size() == 3) &&
         std::ranges::all_of(a_j, [](const json &e) { return e.is_number(); })) {
-      if (a_j.size() == 2) {
-        return Value{Vec2{a_j[0].get<float>(), a_j[1].get<float>()}};
+      std::array<float, 3> parts{};
+      for (std::size_t i = 0; i < a_j.size(); ++i) {
+        const auto value = FloatFrom(a_j[i], a_what, a_ctx);
+        if (!value) {
+          return std::nullopt;
+        }
+        parts[i] = *value;
       }
-      return Value{
-          Vec3{a_j[0].get<float>(), a_j[1].get<float>(), a_j[2].get<float>()}};
+      if (a_j.size() == 2) {
+        return Value{Vec2{parts[0], parts[1]}};
+      }
+      return Value{Vec3{parts[0], parts[1], parts[2]}};
     }
     a_ctx.Error(
         std::format("'{}' must be a number, [x, y] or [r, g, b]", a_what));
@@ -348,8 +377,8 @@ public:
       return slot;
     }
     if (a_j.is_number_integer() &&
-        a_j.get<int>() >= static_cast<int>(kFirstBipedSlot) &&
-        a_j.get<int>() <= static_cast<int>(kLastBipedSlot)) {
+        a_j.get<double>() >= static_cast<int>(kFirstBipedSlot) &&
+        a_j.get<double>() <= static_cast<int>(kLastBipedSlot)) {
       return BetterEnchantmentEffects::BipedSlot{a_j.get<std::uint32_t>()};
     }
     a_ctx.Error(std::format("'{}' is a biped slot name or a number {}..{}",
@@ -395,7 +424,7 @@ void ReadRows(const json &a_array, const char *a_word, const Reporter &a_ctx,
               std::size_t a_cap = kMaxRecipeRows) {
   std::size_t index = 0;
   for (const auto &element : a_array) {
-    if (RowCapReached(a_out.size(), a_ctx, a_word, a_cap)) {
+    if (RowCapReached(index, a_ctx, a_word, a_cap)) {
       break;
     }
     if (auto row = a_parse(element, index)) {
@@ -426,8 +455,9 @@ void NamedRows(Reader &a_root, const char *a_section, Where a_where,
         std::format("'{}' must be an object keyed by name", a_section));
     return;
   }
+  std::size_t visited = 0;
   for (const auto &[name, value] : section->items()) {
-    if (RowCapReached(a_out.size(), a_root.Context(), a_section)) {
+    if (RowCapReached(visited++, a_root.Context(), a_section)) {
       break;
     }
     if (auto row = a_parse(name, value, a_root.Context().At(a_where(name)))) {

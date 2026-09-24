@@ -28,11 +28,25 @@ compiles natively and is unit-tested through `ctest --preset native` alongside
 - Edit-time validation: `FieldCheck.h` re-runs the loader's own validators
   at edit time, so a widget cannot commit a value the loader would reject.
 - `History.h` is the undo/redo stack.
+- `DocumentRevisions.h/.cpp` owns the editor's document clock and reset epoch.
+  Advancing one ID preserves other IDs; reset invalidates every captured
+  revision, including IDs that had never been edited, without resetting the clock.
 - The widget-spec data: `Widgets.h` and `Fields.h` are pure data; no ImGui
   type appears in `studio/`.
 - The creation seam: `Create.h`/`Create.cpp` is the single path that
   manufactures a new **signal**, **source**, mask, **curve**, output,
   **light**, or **layer**.
+
+`MenuState::pendingEditorChange` retains the request and original selection
+for recipe rename/delete and selected resource renames. Authoring waits for
+the matching edit result. Refusal keeps selection intact; acceptance follows
+the renamed resource only if the user has not navigated elsewhere. Recipe
+rename/delete selection changes also wait for acceptance. Resource edits
+reuse the existing reference rewrite and document undo/redo path.
+Acknowledging a recipe rename resets navigation only while that recipe is still
+selected; another document's inspector history and scroll survive a late result.
+Native integration feeds actual editor results into these acknowledgement
+handlers, including stale snapshots, refusal/retry, paint and load cancellation.
 
 ## Data
 
@@ -90,7 +104,7 @@ the document **edits** to the engine.
 |---|---|---|
 | `Intent` | The 50-alternative variant a widget posts: picks (`PickCell`), **mask**-term edits (`SetTermText`), **paint** (`BeginPaint`), document edits (`EditRecipe`), history (`Undo`), and **recipe** lifecycle (`CreateRecipe`). `Post` appends one to the frame's `Intents`. | `Intent.h` |
 | `RecipeEdit` | The variant `EditRecipe` carries: **layer** edits (`SetLayerSource`), resource edits (`AddSignal`), and **output**, light, and shell edits (`SetShellParam`). One **edit** folds into a `Recipe` through `Apply(Recipe&, const RecipeEdit&)`. | `Edits.h` |
-| `EditBatch` | An ordered group of **edits** applied as one unit through `Apply(Recipe&, const EditBatch&)`; `PrepareEdits` checks the whole batch against a copy of the **recipe** first. | `Edits.h` |
+| `EditBatch` | An ordered group of **edits** applied as one unit through `Apply(Recipe&, const EditBatch&)`; `PrepareEdits` applies the whole batch to a copy, then runs the typed field checks used by `Validate` when loading. New field-domain or collection-limit errors refuse the batch atomically; incomplete rows stay editable and receive semantic diagnostics on publication. Single edits and tuning gestures use this boundary too. | `Edits.h` |
 | `ReferenceCounts` | The per-name use counts (`signals`, `curves`, `images`) of one **recipe**; `CountReferences` computes it, and removal checks read it. | `Edits.h` |
 
 ### Fields and field keys
@@ -110,6 +124,12 @@ what it edits. Per-field UI state lives on `MenuState`, keyed by `FieldKey`.
 | `TuningGesture` | The in-flight drag: one `std::optional` on `MenuState`, naming its **field** by `FieldKey` and carrying the **recipe** id, subject, current value, and bind closure. | `MenuState.h` |
 
 ### Masks and paint
+
+Keep refuses the reserved names `scratch` and `peek`, which belong to temporary
+preview masks and are removed during save preparation. A refusal leaves the draft
+available for retry under a valid name. Commit preparation reuses equivalent
+destination sources and rewrites their references while adding missing sources;
+mask creation and optional layer assignment form one undoable edit batch.
 
 A **mask** is authored as a stack of terms that compile into one expression.
 **Paint** mode edits that stack against a temporary paint **recipe**, and the
@@ -245,3 +265,9 @@ engine's `RecipeEditor`/`RecipeStore` is `menu/`'s job, not `studio/`'s.
 - `docs/conventions.md` → *Runtime identities and editor commits* and
   *Variants and closed sets* — the patterns `Intent`, `RecipeEdit`, and the
   `*Kind` variants follow.
+
+Recipe merge/output help explains grouped replacement and actor-wide light
+scope. `PieceRow` retains normal actor-seeded selection outcomes separately
+from recipe rows affected by preview isolation or pinning. An unisolated
+`ViewedRecipes` preserves the supplied actor selection; isolation resolves
+only its explicit single recipe and is not a normal sampled-pool decision.

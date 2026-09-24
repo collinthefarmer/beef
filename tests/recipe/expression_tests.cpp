@@ -146,7 +146,11 @@ int main() {
   }
   {
     auto curve = ParseCurve("x * 2");
-    Check(curve.has_value(), "a well-formed curve parses");
+    Check(curve.has_value() && !curve->UsesMean(),
+          "an x-only curve needs no source mean");
+    Check(Near(ApplyCurve(curve.value(), 3.0f, 0.1f),
+               ApplyCurve(curve.value(), 3.0f, 0.9f)),
+          "an x-only curve is independent of the source mean");
     Check(Near(ApplyCurve(curve.value(), 3.0f), 6.0f),
           "ApplyCurve evaluates the curve at x");
     auto meanCurve = ParseCurve("mean * 2");

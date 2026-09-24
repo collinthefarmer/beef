@@ -1,21 +1,33 @@
 # diagnostics/
 
-The structured **trace** recorder. It depends only on `Core.h` and is
-engine-free. Every layer above it (`studio`, `render`, `engine`, `menu`) may
+The structured **trace** recorder and bounded warning history. It depends
+only on `Core.h` and is engine-free. Every layer above it (`studio`, `render`,
+`engine`, `menu`) may
 include it, per the `tools/layers.sh` row `[diagnostics]="Core.h
 diagnostics"`.
 
 ## What it owns
 
-One job: turn a named `Event` and its fields into a bounded, rotated JSONL
+The trace turns a named `Event` and its fields into a bounded, rotated JSONL
 record on disk, tagged with the command and session it happened under. It is
 the structured counterpart to the human `logger::` log; `docs/conventions.md`
 (*Diagnostics → Logging*) draws the line between the two. It does not own
 recipe `Diagnostic`s; those belong to `Reporter` in `recipe/Recipe.h`.
 
+`WarningHistory` (`WarningHistory.h`/`.cpp`) suppresses repeated human-log
+warnings within an owner's session. `Observe` returns first occurrence,
+repeat, a one-time budget notice, or an omitted over-budget warning.
+It retains at most 1024 keys and 128 KiB of key text; keys that do not fit
+are not retained. An oversized key does not
+prevent later smaller keys from fitting. `Inspect` exposes retained key and
+byte counts; `Clear` releases the keys and resets the notice. All operations
+share a mutex. The engine manager owns its stack-warning history and clears
+it on save loading/new game. The original recipe/stack diagnostics remain
+available to the editor even when their log entries are suppressed.
+
 ## Data
 
-All types are declared in `Trace.h`; `Trace.cpp` implements them.
+The trace types below are declared in `Trace.h`; `Trace.cpp` implements them.
 
 ### The events (`enum class Event`)
 
@@ -154,6 +166,7 @@ tools/trace-report.py            segments_of() finds a segment's siblings by
 |---|---|
 | `Trace.h` | `Event`, `Field`, `Context`, `Status`, `Recorder`, `Scope`, and the free-function API: `Get`, `Current`, `Command`, `NextID`, `BeginSession`, `Emit`, `EmitSafely`, `Safely`, `Page`, `Pointer`, `Fingerprint`. |
 | `Trace.cpp` | The event-name table, `Recorder`'s file and rotation logic, and the free functions. |
+| `WarningHistory.h`/`.cpp` | Mutex-protected, bounded warning deduplication with explicit owner-controlled session reset and a one-time budget notice. |
 
 ## See also
 

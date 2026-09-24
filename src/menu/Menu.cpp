@@ -9,6 +9,7 @@
 #include "SettingsFile.h"
 #include "diagnostics/Trace.h"
 #include "engine/Manager.h"
+#include "engine/MenuDependency.h"
 #include "studio/Board.h"
 #include "studio/Edits.h"
 
@@ -54,6 +55,7 @@ struct IntentPerformer {
     const std::uint64_t request = manager->Editor().EditRecipe(
         a_intent.recipeID, EditBatch{a_intent.edits},
         a_intent.expectedRevision);
+    TrackEditorChange(state, request, a_intent);
     if (ShouldInvalidateIndexedSubjects(a_intent.edits)) {
       state.pendingIndexedEdit = PendingIndexedEdit{request, a_intent.recipeID};
     }
@@ -130,10 +132,14 @@ struct IntentPerformer {
                                 a_intent.geometry);
   }
   void operator()(const Studio::RenameRecipe &a_intent) const {
-    manager->Editor().RenameRecipe(a_intent.from, a_intent.to);
+    const std::uint64_t request =
+        manager->Editor().RenameRecipe(a_intent.from, a_intent.to);
+    TrackEditorChange(state, request, a_intent);
   }
   void operator()(const Studio::DeleteRecipe &a_intent) const {
-    manager->Editor().DeleteRecipe(a_intent.recipeID);
+    const std::uint64_t request =
+        manager->Editor().DeleteRecipe(a_intent.recipeID);
+    TrackEditorChange(state, request, a_intent);
   }
   void operator()(const Studio::DuplicateRecipe &a_intent) const {
     manager->Editor().DuplicateRecipe(a_intent.from, a_intent.to);
@@ -293,12 +299,32 @@ void RenderStatus(const Studio::Snapshot &a_snapshot) {
 
 void RenderHeader(const Studio::Snapshot &a_snapshot) {
   RenderStatus(a_snapshot);
+  if (!a_snapshot.status.emissivePath) {
+    Problem("Effects are disabled.");
+    ImGui::TextWrapped("Check the plugin log for missing dependencies or a "
+                       "failed PBR material layout check.");
+  }
   ImGui::Separator();
 }
 
+void RenderPendingStatus() {
+  if (GetModuleHandleW(L"CommunityShaders.dll")) {
+    Warn("Waiting for game status.");
+    return;
+  }
+  Problem("Community Shaders is not loaded; effects are disabled.");
+  ImGui::TextWrapped("Check the Community Shaders installation and SKSE loader "
+                     "log, then restart Skyrim.");
+}
+
 void RegisterMenu() {
-  if (!SKSEMenuFramework::IsInstalled()) {
-    logger::info("SKSE Menu Framework not installed; no in-game menu");
+  const auto module = GetMenuFrameworkModule();
+  const auto problem =
+      CheckMenuFramework(module != nullptr, [&](const char *name) {
+        return GetProcAddress(module, name) != nullptr;
+      });
+  if (problem) {
+    logger::warn("{}", *problem);
     return;
   }
   SKSEMenuFramework::SetSection(std::string{Identity::kMenuTitle}.c_str());

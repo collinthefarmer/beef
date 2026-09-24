@@ -27,9 +27,10 @@ enchantment on the piece itself.
 | `docs/components/` | What is one `src/` directory, and how does a request flow through it? Read the map for a directory before you change it. |
 | `REFERENCE.md` | Why does this line look like that? The facts the code cannot state — engine layouts, Community Shaders rules, decompile lines, shader packings, constant reasons — by module. |
 | `schema/recipe.schema.json` | What is a legal recipe? The format's contract. `schema/example-magicka.json` is the annotated canonical file. |
+| `docs/recipe-resolution.md` | How do identity overrides, sampling, priority, and replacement work? The implemented pre-alpha contract and acceptance cases; rendered verification remains pending. |
 | `docs/README.md` | Which document under `docs/` is canon, which is an open plan, and which is history? The complete index; it owns each document's description and status. |
 | `docs/plans/alpha-preparation-2026-09-22.md` | What is the active work toward alpha and source publication? Older plans, including the deletion inventory, are archived under `docs/history/`. |
-| `src/_old/` | What did the previous implementation do? The frozen behaviour oracle each new module is diffed against. Excluded from the build. |
+| Git history | What did the previous implementation do? The frozen `src/_old/` tree was removed during alpha source cleanup; history retains it. |
 
 ## Working in the repository
 
@@ -99,3 +100,5 @@ src/
 - GPL-3.0. See `LICENSE`.
 - `src/cs/` and `src/extern/` are vendored third-party copies under their
   own terms, recorded beside them.
+- [Third-party notices](THIRD_PARTY_NOTICES.md) records dependency provenance,
+  bundled license texts, and remaining source-publication work.

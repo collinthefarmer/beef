@@ -7,12 +7,14 @@
 #include <cstdint>
 #include <map>
 #include <memory>
+#include <span>
 #include <string>
 #include <string_view>
 #include <vector>
 
 namespace BetterEnchantmentEffects {
 inline constexpr std::size_t kMaxTerminalApplicationActors = 256;
+inline constexpr std::size_t kMaxTerminalApplicationRecipes = 256;
 
 class ApplicationService {
 public:
@@ -42,6 +44,8 @@ public:
   PendingFor(std::uint32_t a_actorID) const;
   void Report(const ApplicationToken &a_token, std::uint32_t a_actorID,
               ApplicationPhase a_phase, std::string a_problem = {});
+  void Retire(std::uint32_t a_actorID,
+              std::span<const ApplicationToken> a_tokens);
   void Cancel();
   [[nodiscard]] std::vector<ApplicationRecord> Snapshot() const;
 
@@ -52,6 +56,7 @@ private:
   void RunActor(std::uint32_t a_actorID);
   void DrainRejections();
   void PruneActors();
+  void PruneRecipes();
   [[nodiscard]] ApplicationRecord *Find(const ApplicationToken &a_token);
 
   std::uint64_t nextRevision_ = 1;

@@ -693,6 +693,9 @@ struct SignalGraph::ReferenceTypeChecker {
 
   void operator()(const GradientSignal &k) const {
     CheckScalar(k.t, "t");
+    if (k.stops.empty()) {
+      Reject("gradient needs at least one stop");
+    }
     for (const auto &stop : k.stops) {
       CheckColor(stop.color);
     }
@@ -1048,15 +1051,29 @@ void CheckVariants(const RowTypes &a_rows, std::vector<Diagnostic> &a_out) {
 }
 }
 
-std::vector<Diagnostic> Validate(const Recipe &a_recipe) {
+std::vector<Diagnostic>
+Validate(const Recipe &a_recipe,
+         std::span<const Diagnostic> a_inputDiagnostics) {
   const SignalGraph graph =
       SignalGraph::Compile(a_recipe.signals, a_recipe.curves);
   const RowTypes rows{a_recipe, graph};
 
-  std::vector<Diagnostic> out;
+  std::vector<Diagnostic> out = CheckRecipeFields(a_recipe);
+  out.insert(out.begin(), a_inputDiagnostics.begin(), a_inputDiagnostics.end());
+  if (!a_inputDiagnostics.empty()) {
+    Reporter{out, "file"}.Warn(
+        "Loaded-file diagnostics remain until a successful save or reload.");
+  }
   const auto append = [&](std::vector<Diagnostic> a_more) {
     for (auto &d : a_more) {
-      out.push_back(std::move(d));
+      const bool reported =
+          std::ranges::any_of(out, [&](const Diagnostic &prior) {
+            return prior.severity == d.severity && prior.where == d.where &&
+                   prior.message == d.message;
+          });
+      if (!reported) {
+        out.push_back(std::move(d));
+      }
     }
   };
 

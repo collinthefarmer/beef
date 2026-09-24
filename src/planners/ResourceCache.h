@@ -1,5 +1,6 @@
 #pragma once
 
+#include <algorithm>
 #include <memory>
 #include <string>
 #include <unordered_map>
@@ -15,8 +16,11 @@ public:
   template <class Make>
   [[nodiscard]] SharedResource<T> Adopt(const std::string &a_key,
                                         Make &&a_make) {
-    if (std::shared_ptr<T> live = entries_[a_key].lock()) {
-      return {std::move(live), true};
+    Sweep();
+    if (const auto found = entries_.find(a_key); found != entries_.end()) {
+      if (std::shared_ptr<T> live = found->second.lock()) {
+        return {std::move(live), true};
+      }
     }
     std::shared_ptr<T> made = a_make();
     if (made) {
@@ -24,6 +28,13 @@ public:
     }
     return {std::move(made), false};
   }
+
+  void Sweep() {
+    std::erase_if(entries_,
+                  [](const auto &a_entry) { return a_entry.second.expired(); });
+  }
+
+  [[nodiscard]] std::size_t Size() const noexcept { return entries_.size(); }
 
   void Clear() noexcept { entries_.clear(); }
 

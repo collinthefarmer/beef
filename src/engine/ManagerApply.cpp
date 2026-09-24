@@ -20,7 +20,6 @@
 #include <array>
 #include <cstddef>
 #include <format>
-#include <mutex>
 #include <ranges>
 #include <string>
 #include <string_view>
@@ -129,19 +128,6 @@ LocateGeometry(LiveActor &a_state, GeometryId a_geometry) noexcept {
   return std::nullopt;
 }
 
-std::optional<std::size_t> ExistingInstance(const LiveActor &a_state,
-                                            const Recipe &a_recipe,
-                                            RE::FormID a_enchantment) {
-  for (std::size_t i = 0; i < a_state.instances.size(); ++i) {
-    const LiveInstance &existing = a_state.instances[i];
-    if (existing.recipe && existing.recipe->id == a_recipe.id &&
-        existing.enchantment == a_enchantment) {
-      return i;
-    }
-  }
-  return std::nullopt;
-}
-
 std::shared_ptr<const SignalGraph> InstanceGraph(const Recipe &a_recipe,
                                                  const Variant *a_variant) {
   if (!a_variant) {
@@ -152,18 +138,17 @@ std::shared_ptr<const SignalGraph> InstanceGraph(const Recipe &a_recipe,
       SignalGraph::Compile(varied.signals, varied.curves));
 }
 
-RE::MagicItem *EnchantmentForInstance(LiveActor &a_state,
-                                      std::size_t a_instance) {
+RE::FormID EnchantmentForInstance(LiveActor &a_state, std::size_t a_instance) {
   for (const Placement &placement : a_state.plan.placements) {
     if (IndexOf(placement.instance) != a_instance) {
       continue;
     }
     if (const std::optional<LocatedGeometry> located =
             LocateGeometry(a_state, placement.geometry)) {
-      return RE::TESForm::LookupByID<RE::MagicItem>(located->piece.enchantment);
+      return located->piece.enchantment;
     }
   }
-  return nullptr;
+  return 0;
 }
 
 struct RuntimeTextureSizes {
@@ -268,7 +253,7 @@ PlannerGeometries BuildPlannerGeometries(const LiveActor &a_state,
     for (const LiveGeometry &geometry : live.geometries) {
       Geometry planned;
       planned.identity =
-          GeometryIdentity{std::nullopt, geometry.name,
+          GeometryIdentity{live.addon, geometry.name,
                            TexturePath(geometry.inputs.material.diffuse)};
       planned.keys = keys;
       planned.firstPerson = firstPerson;
@@ -402,19 +387,19 @@ std::string SurfaceProblem(LiveGeometry &a_bound, const SlotPlan &a_slot,
                 : std::string{"the surface is not bound"};
 }
 
-bool FirstOccurrenceThisSession(std::string a_key) {
-  static std::mutex lock;
-  static std::unordered_set<std::string> seen;
-  const std::scoped_lock guard{lock};
-  return seen.insert(std::move(a_key)).second;
-}
-
 void LogStackDiagnostics(const LocatedStackOutput &a_output,
-                         const std::string &a_geometry) {
+                         const std::string &a_geometry,
+                         WarningHistory &a_warnings) {
   for (const Diagnostic &diagnostic : a_output.placed.stack->Diagnostics()) {
-    if (!FirstOccurrenceThisSession(std::format(
-            "{}|{}|{}|{}|{}", a_output.recipe.id, a_output.placed.index,
-            a_geometry, diagnostic.where, diagnostic.message))) {
+    const WarningDecision decision = a_warnings.Observe(
+        std::format("{}|{}|{}|{}|{}", a_output.recipe.id, a_output.placed.index,
+                    a_geometry, diagnostic.where, diagnostic.message));
+    if (decision == WarningDecision::kLimit) {
+      logger::warn("stack warning history reached its budget; warnings that "
+                   "exceed it are omitted from the log until the next load; "
+                   "diagnostics remain available in the editor");
+    }
+    if (decision != WarningDecision::kFirst) {
       continue;
     }
     logger::warn("recipe {} output {} on '{}': {}: {} (repeats suppressed)",
@@ -424,7 +409,8 @@ void LogStackDiagnostics(const LocatedStackOutput &a_output,
 }
 
 void PrepareChainStacks(LiveActor &a_state, LiveGeometry &a_bound,
-                        const Settings &a_settings) {
+                        const Settings &a_settings,
+                        WarningHistory &a_warnings) {
   const auto [size, maxSize] =
       RuntimeSizes(a_settings, a_bound.inputs.material);
   for (const SlotPlan &slot : a_bound.plan.slots) {
@@ -447,7 +433,7 @@ void PrepareChainStacks(LiveActor &a_state, LiveGeometry &a_bound,
       if (!output.stack) {
         output.problem = "the texture lab is unavailable";
       } else if (a_settings.verboseLogging) {
-        LogStackDiagnostics(*located, a_bound.name);
+        LogStackDiagnostics(*located, a_bound.name, a_warnings);
       }
     }
   }
@@ -468,9 +454,20 @@ void PlaceLight(LiveActor &a_state, const ActorLightPlan &a_plan,
   if (!instance.recipe || !instance.signals) {
     return;
   }
+  const LightOutput *light =
+      a_c.output < instance.recipe->outputs.size()
+          ? Get<LightOutput>(instance.recipe->outputs[a_c.output])
+          : nullptr;
+  if (!light) {
+    return;
+  }
   std::vector<RE::BSGeometry *> geometries;
   for (const GeometryId flat : ThirdPersonGeometriesOfInstance(
            a_state.plan, InstanceId{instanceIndex})) {
+    const Geometry *geometry = GeometryAt(a_state.plan, flat);
+    if (!geometry || !LightEligible(*geometry, *light)) {
+      continue;
+    }
     if (const std::optional<LocatedGeometry> located =
             LocateGeometry(a_state, flat);
         located && located->bound.geometry) {
@@ -480,18 +477,12 @@ void PlaceLight(LiveActor &a_state, const ActorLightPlan &a_plan,
   if (geometries.empty()) {
     return;
   }
-  const LightOutput *light =
-      a_c.output < instance.recipe->outputs.size()
-          ? Get<LightOutput>(instance.recipe->outputs[a_c.output])
-          : nullptr;
-  if (!light) {
-    return;
-  }
   const std::vector<LightPlacement> placements =
       PlaceLightNodes(light->bones, geometries, a_actor->Get3D(false),
                       instance.signals->Resolve(light->offset));
   instance.light = LightBinding::Create(placements, light->shadow);
   instance.lightOutput = a_c.output;
+  instance.lightProblem = instance.light ? "" : "light preparation failed";
   if (a_verbose) {
     logger::info("  recipe {}: {}", instance.recipe->id,
                  instance.light ? instance.light->Describe()
@@ -591,13 +582,13 @@ void Manager::Refresh(RE::Actor *a_actor) {
   if (settings.verboseLogging) {
     logger::info("actor {:08X} ({}): {} piece(s), {} recipe(s) applied",
                  actorID, a_actor->GetName(), state.pieces.size(),
-                 state.instances.size());
+                 LiveInstanceCount(state));
   }
   Trace::EmitSafely(Trace::Event::kApplication,
                     {{"action", "installed"},
                      {"actor", std::to_string(actorID)},
                      {"pieces", std::to_string(state.pieces.size())},
-                     {"recipes", std::to_string(state.instances.size())}});
+                     {"recipes", std::to_string(LiveInstanceCount(state))}});
   applied_[actorID] = std::move(state);
   WatchAnimationEvents(a_actor);
 
@@ -686,6 +677,9 @@ std::vector<LivePiece> Manager::CollectPieces(RE::Actor *a_actor,
     }
     LivePiece piece;
     piece.armor = armor->GetFormID();
+    if (object.addon) {
+      piece.addon = FormKeyFor(*object.addon);
+    }
     piece.armorName = armor->GetName() ? armor->GetName() : "";
     piece.enchantment = enchantment ? enchantment->GetFormID() : 0;
     if (!CollectPieceGeometries(piece, clone, root,
@@ -718,19 +712,21 @@ void Manager::MatchRecipes(RE::Actor *a_actor, LiveActor &a_state,
                                       editor_.CurrentView(), loaded});
       });
   a_state.instances.clear();
+  a_state.instances.resize(a_state.plan.instances.size());
   for (std::size_t i = 0; i < a_state.plan.instances.size(); ++i) {
-    RE::MagicItem *enchantment = EnchantmentForInstance(a_state, i);
+    const RE::FormID enchantment = EnchantmentForInstance(a_state, i);
     (void)InstanceFor(a_state, InstanceId{i}, enchantment, a_settings);
   }
 }
 
 std::optional<std::size_t> Manager::InstanceFor(LiveActor &a_state,
                                                 InstanceId a_planInstance,
-                                                RE::MagicItem *a_enchantment,
+                                                RE::FormID a_enchantment,
                                                 const Settings &a_settings) {
   const auto actor = a_state.actor.get();
   const Instance *planned = InstanceAt(a_state.plan, a_planInstance);
-  if (!actor || !planned) {
+  const std::size_t instanceIndex = IndexOf(a_planInstance);
+  if (!actor || !planned || instanceIndex >= a_state.instances.size()) {
     return std::nullopt;
   }
   const std::span<const Recipe> loaded = LoadedRecipes();
@@ -739,43 +735,37 @@ std::optional<std::size_t> Manager::InstanceFor(LiveActor &a_state,
     return std::nullopt;
   }
   const Recipe *recipe = &loaded[recipeIndex];
-  const RE::FormID enchantment = a_enchantment ? a_enchantment->GetFormID() : 0;
-  if (const auto existing = ExistingInstance(a_state, *recipe, enchantment)) {
-    return existing;
-  }
   LiveInstance instance;
   instance.recipe = recipe;
-  instance.enchantment = enchantment;
+  instance.enchantment = a_enchantment;
   instance.graph = InstanceGraph(
       *recipe, InstanceVariant(a_state.plan, a_planInstance, *recipe));
   if (instance.graph) {
     instance.signals = std::make_unique<SignalState>(*instance.graph);
   }
-  instance.environment =
-      std::make_unique<ActorEnvironment>(actor.get(), a_enchantment);
+  instance.environment = std::make_unique<ActorEnvironment>(
+      actor.get(), RE::TESForm::LookupByID<RE::MagicItem>(a_enchantment));
   instance.startMS = NowMS();
   CarryInstanceTime(instance, actor->GetFormID(), *recipe, a_settings);
-  a_state.instances.push_back(std::move(instance));
-  return a_state.instances.size() - 1;
+  a_state.instances[instanceIndex] = std::move(instance);
+  return instanceIndex;
 }
 
 void Manager::CarryInstanceTime(LiveInstance &a_instance, RE::FormID a_actor,
                                 const Recipe &a_recipe,
                                 const Settings &a_settings) {
-  const auto carried = carriedTimes_.find({a_actor, a_recipe.id});
-  if (carried == carriedTimes_.end()) {
+  const auto carried = carriedTimes_.Take(
+      {a_actor, a_recipe.id, a_instance.enchantment}, a_instance.startMS);
+  if (!carried) {
     return;
   }
   const float speed =
       InstanceSpeed(a_settings.animationSpeed, editor_.CurrentView().speed,
                     a_recipe.clock.speed);
-  if (a_instance.startMS - carried->second.retiredMS <= kCarryWindowMS &&
-      speed > 0.0f) {
-    a_instance.startMS -=
-        static_cast<std::uint32_t>(carried->second.seconds / speed * 1000.0f);
-    a_instance.lastTime = carried->second.seconds;
+  if (const auto offset = ClockOffsetMS(*carried, speed)) {
+    a_instance.startMS -= *offset;
+    a_instance.lastTime = *carried;
   }
-  carriedTimes_.erase(carried);
 }
 
 void Manager::PlaceInstances(LiveActor &a_state, const Settings &a_settings) {
@@ -814,7 +804,7 @@ void Manager::PlaceOnGeometry(LiveActor &a_state, LivePieceId a_piece,
 
   InstallSurfaces(a_state, bound, a_settings.uniqueMaterial);
   MarkReplaced(a_state, bound);
-  PrepareChainStacks(a_state, bound, a_settings);
+  PrepareChainStacks(a_state, bound, a_settings, stackWarnings_);
 
   const auto actor = a_state.actor.get();
   if (actor) {
@@ -846,6 +836,34 @@ void Manager::PlaceLightsOf(RE::Actor *a_actor, LiveActor &a_state,
       a_state.plan, loaded, [this](const Recipe &recipe, std::size_t output) {
         return editor_.CurrentView().OutputShown(recipe.id, output);
       });
+  for (std::size_t i = 0; i < plan.sources.size(); ++i) {
+    const std::size_t instance = IndexOf(plan.sources[i]);
+    if (instance < a_state.instances.size()) {
+      LiveInstance &live = a_state.instances[instance];
+      live.lightProblem =
+          live.recipe && std::ranges::any_of(live.recipe->outputs,
+                                             [](const Output &a_output) {
+                                               return Get<LightOutput>(
+                                                          a_output) != nullptr;
+                                             })
+              ? "no eligible light output"
+              : "";
+    }
+  }
+  for (const LightContribution &c : plan.plan.replaced) {
+    const std::size_t placed = IndexOf(c.placed);
+    const std::optional<std::size_t> replacer = ReplacerOf(plan.plan, c);
+    if (placed >= plan.sources.size() || !replacer ||
+        *replacer >= plan.placed.size() || !plan.placed[*replacer].recipe) {
+      continue;
+    }
+    const std::size_t instance = IndexOf(plan.sources[placed]);
+    if (instance < a_state.instances.size()) {
+      a_state.instances[instance].lightProblem =
+          std::format("actor-wide lights replaced by recipe {}",
+                      plan.placed[*replacer].recipe->id);
+    }
+  }
   for (const LightContribution &c : plan.plan.shown) {
     PlaceLight(a_state, plan, c, a_actor, a_settings.verboseLogging);
   }
@@ -884,12 +902,14 @@ void Manager::Retire(RE::FormID a_actorID) {
   if (it == applied_.end()) {
     return;
   }
-  const std::size_t recipes = it->second.instances.size();
+  applications_.Retire(a_actorID, it->second.applications);
+  const std::size_t recipes = LiveInstanceCount(it->second);
   const std::uint32_t now = NowMS();
   for (const LiveInstance &instance : it->second.instances) {
     if (instance.recipe) {
-      carriedTimes_[{a_actorID, instance.recipe->id}] =
-          CarriedTime{instance.lastTime, now};
+      carriedTimes_.Remember(
+          {a_actorID, instance.recipe->id, instance.enchantment},
+          instance.lastTime, now);
     }
   }
   Trace::EmitSafely(Trace::Event::kRetire,

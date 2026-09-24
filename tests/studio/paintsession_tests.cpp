@@ -81,6 +81,9 @@ int main() {
   request.maskName = "scratch";
   Check(!PreparePaintCommit(&painted, &active, request),
         "the scratch name cannot be used for a kept mask");
+  request.maskName = "peek";
+  Check(!PreparePaintCommit(&painted, &active, request),
+        "the temporary peek name cannot be used for a kept mask");
 
   Recipe conflict = beforeTarget;
   painted.signals.push_back(

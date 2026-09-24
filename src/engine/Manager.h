@@ -2,7 +2,9 @@
 
 #include "PCH.h"
 #include "Settings.h"
+#include "diagnostics/WarningHistory.h"
 #include "engine/ApplicationService.h"
+#include "engine/InstanceTime.h"
 #include "engine/LiveActor.h"
 #include "engine/RecipeEditor.h"
 #include "planners/ActorPlanning.h"
@@ -13,7 +15,6 @@
 #include <cstddef>
 #include <cstdint>
 #include <functional>
-#include <map>
 #include <memory>
 #include <mutex>
 #include <optional>
@@ -106,7 +107,7 @@ private:
                          const Recipe &a_recipe, const Settings &a_settings);
   [[nodiscard]] std::optional<std::size_t>
   InstanceFor(LiveActor &a_state, InstanceId a_planInstance,
-              RE::MagicItem *a_enchantment, const Settings &a_settings);
+              RE::FormID a_enchantment, const Settings &a_settings);
   void PlaceInstances(LiveActor &a_state, const Settings &a_settings);
   void PlaceOnGeometry(LiveActor &a_state, LivePieceId a_piece,
                        std::size_t a_geometry, const Settings &a_settings);
@@ -137,13 +138,9 @@ private:
   std::unordered_map<RE::FormID, LiveActor> applied_;
   RecipeEditor editor_{*this};
   std::unordered_set<RE::FormID> loggedNonPBRArmor_;
+  WarningHistory stackWarnings_;
 
-  struct CarriedTime {
-    float seconds = 0.0f;
-    std::uint32_t retiredMS = 0;
-  };
-  std::map<std::pair<RE::FormID, std::string>, CarriedTime> carriedTimes_;
-  static constexpr std::uint32_t kCarryWindowMS = 2000;
+  CarriedTimes carriedTimes_;
 
   std::unordered_set<RE::FormID> evictedForDistance_;
   void SweepEviction(const Settings &a_settings);

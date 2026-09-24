@@ -7,6 +7,9 @@ list(APPEND IDENTITY_INPUTS
   "${CMAKE_SOURCE_DIR}/flake.nix"
   "${CMAKE_SOURCE_DIR}/flake.lock" "${CMAKE_SOURCE_DIR}/tools/build-identity.py"
   "${CMAKE_SOURCE_DIR}/tools/presenter-textures.py")
+if(EXISTS "${CMAKE_SOURCE_DIR}/tools/compatibility.py")
+  list(APPEND IDENTITY_INPUTS "${CMAKE_SOURCE_DIR}/tools/compatibility.py")
+endif()
 find_package(Git REQUIRED)
 foreach(ref HEAD packed-refs)
   execute_process(COMMAND "${GIT_EXECUTABLE}" rev-parse --git-path "${ref}"
@@ -34,12 +37,17 @@ endif()
 file(GENERATE OUTPUT "${CMAKE_BINARY_DIR}/generated/identity-inputs.txt"
   CONTENT "${IDENTITY_INPUTS}\n")
 list(APPEND IDENTITY_INPUTS "${CMAKE_BINARY_DIR}/generated/identity-inputs.txt")
+set(compatibility_identity_args)
+if(BEEF_EFFECTIVE_PROFILE)
+  list(APPEND IDENTITY_INPUTS "${BEEF_EFFECTIVE_PROFILE}")
+  list(APPEND compatibility_identity_args --compatibility "${BEEF_EFFECTIVE_PROFILE}")
+endif()
 add_custom_command(OUTPUT "${CMAKE_BINARY_DIR}/generated/identity.stamp"
   BYPRODUCTS "${CMAKE_BINARY_DIR}/generated/BuildIdentity.h"
     "${CMAKE_BINARY_DIR}/generated/build-identity.json"
   COMMAND "${Python3_EXECUTABLE}" "${CMAKE_SOURCE_DIR}/tools/build-identity.py"
     --root "${CMAKE_SOURCE_DIR}" --output "${CMAKE_BINARY_DIR}/generated"
-    --config "${CMAKE_BUILD_TYPE}"
+    --config "${CMAKE_BUILD_TYPE}" ${compatibility_identity_args}
   COMMAND "${CMAKE_COMMAND}" -E touch "${CMAKE_BINARY_DIR}/generated/identity.stamp"
   DEPENDS ${IDENTITY_INPUTS} VERBATIM)
 add_custom_target(BuildIdentity DEPENDS "${CMAKE_BINARY_DIR}/generated/identity.stamp")

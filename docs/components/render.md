@@ -83,7 +83,11 @@ recomputed per geometry. Each shareable resource is keyed by its content,
 so a crowd of same-armor actors adopts one live **target** between them
 instead of baking N. `AdoptSharedTarget` is the one seam every share
 passes through. The caches hold their targets by `weak_ptr`, so the last
-sharer's drop frees the **target** and returns its **presenter** slot.
+sharer's drop returns the **target** to the bounded idle pool. Expired keys are
+removed on adoption and during maintenance; failed creation leaves no key.
+The idle pool retains at most 16 targets and 64 MiB of mipmapped RGBA allocation.
+Excess returns are destroyed and release their presenter slots. Active leases,
+including snapshot/draw and material-journal ownership, are never trimmed.
 
 | Symbol | Description | Declared in |
 |---|---|---|
@@ -92,6 +96,7 @@ sharer's drop frees the **target** and returns its **presenter** slot.
 | `sharedStacks_`, `sharedClusters_`, `sharedMasks_`, `sharedBakes_` | The four caches, each a `ResourceCache<TextureLab::RenderTarget>` (`planners/ResourceCache.h`) that keys targets by content and holds them by `weak_ptr`. | `Compositor.h` |
 | `SharedCache(Shared)` | Selects one of the four caches by kind. | `Compositor.h` |
 | `ClearSharedStatics()` | Clears all four caches. `Manager.cpp` calls it on the save-load teardown. | `Compositor.h` |
+| `SweepSharedStatics()` | Removes expired weak keys during maintenance, including when no actors remain applied. | `Compositor.h` |
 | `StackShareInputs` | The bundle `StackTarget` keys a **stack** on: the recipe, the `SurfaceOutput`, its output index, and the `MaterialInputs`. | `Compositor.h` |
 | `SharedStaticKey`, `ClusterMapKey`, `MaskShareKey`, `BakeShareKey` | The anonymous key builders, one per kind. A stack key is recipe text \| output index \| size \| source-texture identities; a cluster key adds the cluster settings; a bake key is the mesh identity \| bake key. Each source-texture identity comes from `TextureRefIdentity`. | `Compositor.cpp`, `CompositorSource.cpp`, `CompositorBake.cpp` |
 
@@ -102,6 +107,15 @@ mesh-intrinsic **bake** shares by content identity directly. A render into
 a shared **target** is identical by construction, so a hit is always
 correct. `Compositor::Prepare` now takes a `std::size_t a_outputIndex`,
 which the stack key uses to tell one output's **stack** from another's.
+
+Material analysis uses `RetainedCache<MaterialKey, MaterialRecord>`. The manager
+protects the texture pairs of non-lost applied geometries during each five-second
+maintenance pass. Unused entries expire after 30 seconds; at most 64 unused
+entries survive a pass, with oldest access times removed first under pressure.
+Active pairs are exempt. Samples and analysis are borrowed only within synchronous
+calls; snapshot rows copy their data. Mesh sweeping and weak-key pruning run on
+the same maintenance path even with no applied actors. These retention policies
+do not establish a total active-memory budget or GPU completion guarantee.
 
 ### Binding and PBR writes
 
@@ -215,3 +229,20 @@ and alpha.
 - `docs/conventions.md` → *Component ownership* — how `TextureLab` delegates
   to `RenderTargetPool`, and what `TextureLab::RenderPass` guarantees around
   the renderer lock and D3D state.
+
+## Readback measurements
+
+Each `metrics` trace event with `action=readback` retains total CPU wall time
+in `us` and identifies `buffer`, `mean`, or `pixels` in `op`. It also records
+`lock_wait_us`, `lock_held_us`, and `map_us`; map time is inside lock-held
+time, so these values must not be summed. These are CPU timings, not GPU
+timestamps. `map_attempted`, `map_succeeded`, and `success` distinguish
+validation/allocation failures, failed maps, and completed reads. `bytes`
+is the successfully consumed payload, excluding texture row padding (four
+bytes for a mean). Old traces without these fields cannot establish phases
+or successful completion. Trace emission happens after the renderer unlocks.
+
+Curve lookup preparation requests a source mean only when the parsed curve
+uses `mean`. Normalization and flat-displacement measurement still require
+their means. GPU mesh reads and material sampling remain synchronous, as do
+necessary mean reads; asynchronous readback remains outstanding.

@@ -109,6 +109,7 @@ composes them, and each panel reads the **snapshot** rows and posts
 | `DrawRelationships` | Draws the relationships panel; `HasRelationships` gates it. | `RelationshipPanel.h` |
 | `DrawRecipeSettings`, `DrawStudioContext`, `DrawOutputHeader` | The context rows: the **recipe** settings, the studio context line, and one output's header with its scalar **fields**. | `ContextRows.h` |
 | `PostResourceAdd` | Posts the add-resource **intent** for one `Studio::ResourceTab`. | `ResourcePanels.h` |
+| `DrawResourceRename` | Shared inspector rename popup for signals, sources, masks, and curves. Checks name syntax and collisions, then posts the existing reference-updating recipe edit. | `ResourcePanels.h` |
 | `DrawResponse` | Draws one `SignalRow`'s response panel. | `ResponsePanel.h` |
 | `DrawRecipeSaveRevert`, `DrawRecipeFileActions` | The **recipe** file controls: save and revert, and the file action row. | `RecipeActions.h` |
 
@@ -195,3 +196,14 @@ next tick: engine/Manager republishes a Snapshot; RenderStudio reads it again
   intent-posting rule, and navigation.
 - `docs/conventions.md` — the shared `Diagnostic`/`Reporter`, JSON-boundary,
   and variant-dispatch contracts this module reuses.
+
+Registration checks the loaded framework and the export inventory through
+`engine/MenuDependency`; an existing but unloaded DLL is unavailable. Failure
+logs recovery instructions and leaves playback independent of the editor.
+When Community Shaders is unavailable, the pages explain that
+effects are disabled and directs the user to installation/loader diagnostics.
+
+The Recipes page reports nonmatching, fallback-suppressed and sampled-out
+identities separately from selected recipe rows. A preview override banner
+distinguishes normal matching outcomes from isolation/pinning, and light
+replacement diagnostics identify their actor-wide target.

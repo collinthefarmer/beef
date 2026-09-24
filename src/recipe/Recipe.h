@@ -964,6 +964,7 @@ ProblemText(const std::optional<Diagnostic> &a_problem);
 struct LoadResult {
   std::optional<Recipe> recipe;
   std::vector<Diagnostic> diagnostics;
+  std::vector<Diagnostic> inputDiagnostics;
   [[nodiscard]] bool HasErrors() const noexcept;
   [[nodiscard]] bool HasRecipeErrors() const noexcept;
 };
@@ -972,7 +973,10 @@ struct LoadResult {
                                      std::string_view a_id);
 [[nodiscard]] std::string SerializeRecipe(const Recipe &a_recipe);
 
-[[nodiscard]] std::vector<Diagnostic> Validate(const Recipe &a_recipe);
+[[nodiscard]] std::vector<Diagnostic>
+Validate(const Recipe &a_recipe,
+         std::span<const Diagnostic> a_inputDiagnostics = {});
+[[nodiscard]] std::vector<Diagnostic> CheckRecipeFields(const Recipe &a_recipe);
 
 struct WornPiece {
   std::optional<FormKey> magicEffect;
@@ -986,15 +990,35 @@ struct WornPiece {
   }
 };
 
+[[nodiscard]] std::uint32_t SamplingHash(std::uint32_t a_actor) noexcept;
+
 struct ResolvedRecipe {
   const Recipe *recipe = nullptr;
   RecipeKey key;
   int priority = 0;
+  std::size_t loadOrder = 0;
 };
+
+enum class SelectionOutcome {
+  kNonmatching,
+  kFallbackSuppressed,
+  kSampledOut,
+  kSelected
+};
+inline constexpr std::size_t kSelectionOutcomeCount = 4;
+
+struct RecipeSelection {
+  std::string id;
+  SelectionOutcome outcome = SelectionOutcome::kNonmatching;
+};
+
+[[nodiscard]] std::string_view
+SelectionOutcomeName(SelectionOutcome a_outcome) noexcept;
 
 [[nodiscard]] std::vector<ResolvedRecipe>
 Resolve(const WornPiece &a_piece, std::span<const Recipe> a_loaded,
-        std::uint32_t a_seed = 0);
+        std::uint32_t a_seed = 0,
+        std::vector<RecipeSelection> *a_selections = nullptr);
 
 [[nodiscard]] bool AnyUnenchantedKey(std::span<const Recipe> a_loaded) noexcept;
 

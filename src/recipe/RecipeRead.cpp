@@ -7,6 +7,7 @@
 #include <format>
 #include <functional>
 #include <initializer_list>
+#include <limits>
 #include <string>
 #include <string_view>
 #include <unordered_set>
@@ -81,8 +82,9 @@ Selector SelectorFrom(const json &a_j, const Reporter &a_ctx) {
     a_ctx.Error("'selector' must be an array of {\"kind\": ...} terms");
     return s;
   }
+  std::size_t visited = 0;
   for (const auto &e : a_j) {
-    if (RowCapReached(s.anyOf.size(), a_ctx, "selector")) {
+    if (RowCapReached(visited++, a_ctx, "selector")) {
       break;
     }
     const auto entry = OneKey(e, a_ctx, "a selector term");
@@ -227,10 +229,10 @@ EventFilter FilterFrom(const json &a_f, const Reporter &a_ctx) {
     if (!range->is_array() || range->size() != 2) {
       a_ctx.Error("'filter.value' is [min, max], either may be null");
     } else {
-      if ((*range)[0].is_number())
-        filter.value.min = (*range)[0].get<float>();
-      if ((*range)[1].is_number())
-        filter.value.max = (*range)[1].get<float>();
+      if (!(*range)[0].is_null())
+        filter.value.min = FloatFrom((*range)[0], "value minimum", a_ctx);
+      if (!(*range)[1].is_null())
+        filter.value.max = FloatFrom((*range)[1], "value maximum", a_ctx);
     }
   }
   fr.Finish();
@@ -374,8 +376,7 @@ std::optional<SignalKind> ParseNoise(const json &a_v, const Reporter &a_ctx) {
   if (!ReadObject(a_v, "noise", a_ctx, [&](Reader &r) {
         r.Read("frequency", k.frequency);
         r.Read("amplitude", k.amplitude);
-        if (auto seed = r.Integer("seed"))
-          k.seed = static_cast<std::uint32_t>(std::max(0, *seed));
+        r.IntRange("seed", 0, std::numeric_limits<int>::max(), k.seed);
       })) {
     return std::nullopt;
   }
@@ -520,8 +521,12 @@ ParseSourceAlternative<ImageSource>(const json &a_v, const Reporter &a_ctx) {
     }
   }
   r.Read("transpose", k.transpose);
-  if (auto mip = r.Number("mip"))
-    k.mip = std::max(0.0f, *mip);
+  if (auto mip = r.Number("mip")) {
+    if (*mip < 0.0f)
+      a_ctx.Error("'mip' must be at least 0");
+    else
+      k.mip = *mip;
+  }
   r.Finish();
   return k;
 }
@@ -552,11 +557,12 @@ std::optional<BakeKind> BoneWeightBakeFrom(const json &a_v,
     return std::nullopt;
   }
   BoneWeightBake bw;
+  std::size_t visited = 0;
   for (const auto &b : a_v) {
-    if (RowCapReached(bw.bones.size(), a_ctx, "boneWeight")) {
+    if (RowCapReached(visited++, a_ctx, "boneWeight")) {
       break;
     }
-    if (b.is_string())
+    if (b.is_string() && !b.get<std::string>().empty())
       bw.bones.push_back(b.get<std::string>());
     else
       a_ctx.Error("'boneWeight' entries are bone names");
@@ -793,10 +799,13 @@ Bones SkinnedBonesFrom(const json &a_v, const Reporter &a_ctx) {
   SkinnedBones sb;
   if (a_v.is_object()) {
     Reader b(a_v, a_ctx);
-    if (auto m = b.Integer("max"))
-      sb.max = static_cast<std::uint32_t>(std::max(0, *m));
-    if (auto share = b.Number("minShare"))
-      sb.minShare = *share;
+    b.IntRange("max", 1, std::numeric_limits<int>::max(), sb.max);
+    if (auto share = b.Number("minShare")) {
+      if (*share < 0.3f || *share > 1.0f)
+        a_ctx.Error("'minShare' must be 0.3..1");
+      else
+        sb.minShare = *share;
+    }
     b.Finish();
   } else {
     a_ctx.Error("'skinned' takes {\"max\", \"minShare\"}");
@@ -807,11 +816,12 @@ Bones SkinnedBonesFrom(const json &a_v, const Reporter &a_ctx) {
 Bones NamedBonesFrom(const json &a_v, const Reporter &a_ctx) {
   NamedBones nb;
   if (a_v.is_array()) {
+    std::size_t visited = 0;
     for (const auto &b : a_v) {
-      if (RowCapReached(nb.bones.size(), a_ctx, "named")) {
+      if (RowCapReached(visited++, a_ctx, "named")) {
         break;
       }
-      if (b.is_string())
+      if (b.is_string() && !b.get<std::string>().empty())
         nb.bones.push_back(b.get<std::string>());
       else
         a_ctx.Error("'named' entries are bone names");
@@ -953,8 +963,12 @@ ShellSettings ShellFrom(const json &a_j, const Reporter &a_ctx) {
   r.Read("material", kShellMaterials, s.material);
   r.Read("blend", kShellBlends, s.blend);
   r.Read("depthBias", s.depthBias);
-  if (auto t = r.Number("alphaTest"))
-    s.alphaTest = std::clamp(*t, 0.0f, 1.0f);
+  if (auto t = r.Number("alphaTest")) {
+    if (*t < 0.0f || *t > 1.0f)
+      a_ctx.Error("'alphaTest' must be 0..1");
+    else
+      s.alphaTest = *t;
+  }
   r.Read("opacity", s.opacity);
   r.Read("rimPower", s.rimPower);
   r.Read("emissive", s.emissive);
@@ -970,8 +984,9 @@ void ReadOverrides(const json &a_overrides, std::map<std::string, Value> &a_out,
     a_ctx.Error("'overrides' is an object of signal name to value");
     return;
   }
+  std::size_t visited = 0;
   for (const auto &[name, value] : a_overrides.items()) {
-    if (RowCapReached(a_out.size(), a_ctx, "overrides")) {
+    if (RowCapReached(visited++, a_ctx, "overrides")) {
       break;
     }
     if (auto val = Reader::ValueFrom(value, name, a_ctx)) {
@@ -1008,6 +1023,9 @@ std::optional<Variant> VariantFrom(const json &a_j, const Reporter &a_ctx) {
   Reader r(a_j, a_ctx);
   v.name = r.Required("name");
   const auto ctx = a_ctx.At(VariantWhere(v.name));
+  if (v.name.empty()) {
+    ctx.Error("a variant needs a non-empty 'name'");
+  }
   if (const auto *key = r.Child("key")) {
     if (auto k = VariantKeyFrom(*key, ctx))
       v.key = *k;
@@ -1181,6 +1199,9 @@ LoadResult ParseRecipe(std::string_view a_json, std::string_view a_id) {
   } else if (format && *format > kRecipeFormat) {
     ctx.Error(std::format("format {} is newer than this loader's {}", *format,
                           kRecipeFormat));
+  } else if (format && *format != kRecipeFormat) {
+    ctx.Error(std::format("unsupported format {}; this loader reads format {}",
+                          *format, kRecipeFormat));
   }
 
   ReadMetadata(r, ctx, recipe.metadata);
@@ -1189,10 +1210,10 @@ LoadResult ParseRecipe(std::string_view a_json, std::string_view a_id) {
   if (r.Has("merge"))
     r.Read("merge", kMergeModes, recipe.mergeMode);
   if (const auto *clock = r.Child("clock")) {
-    Reader c(*clock, ctx.At("clock"));
-    if (auto speed = c.Number("speed"))
-      recipe.clock.speed = *speed;
-    c.Finish();
+    ReadObject(*clock, "clock", ctx.At("clock"), [&](Reader &c) {
+      if (auto speed = c.Number("speed"))
+        recipe.clock.speed = *speed;
+    });
   }
 
   NamedRows(r, "signals", SignalWhere, recipe.signals, SignalFrom);
@@ -1208,9 +1229,8 @@ LoadResult ParseRecipe(std::string_view a_json, std::string_view a_id) {
   ReadVariants(r, ctx, recipe.variants);
   r.Finish();
 
-  for (auto &d : Validate(recipe)) {
-    result.diagnostics.push_back(std::move(d));
-  }
+  result.inputDiagnostics = result.diagnostics;
+  result.diagnostics = Validate(recipe, result.inputDiagnostics);
   result.recipe = std::move(recipe);
   return result;
 }

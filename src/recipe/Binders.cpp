@@ -1,11 +1,29 @@
 #include "recipe/Binders.h"
 
 #include <charconv>
+#include <cmath>
 #include <cstdlib>
 #include <functional>
+#include <limits>
 #include <utility>
 
 namespace BetterEnchantmentEffects {
+std::optional<float> FloatFrom(const json &a_value, std::string_view a_what,
+                               const Reporter &a_ctx) {
+  if (!a_value.is_number()) {
+    a_ctx.Error(std::format("'{}' must be a number", a_what));
+    return std::nullopt;
+  }
+  const double value = a_value.get<double>();
+  const double limit = std::numeric_limits<float>::max();
+  if (!std::isfinite(value) || value < -limit || value > limit) {
+    a_ctx.Error(std::format("'{}' must be a finite float in {}..{}", a_what,
+                            -limit, limit));
+    return std::nullopt;
+  }
+  return static_cast<float>(value);
+}
+
 bool RowCapReached(std::size_t a_count, const Reporter &a_ctx,
                    std::string_view a_what, std::size_t a_cap) {
   if (a_count >= a_cap) {

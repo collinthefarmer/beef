@@ -89,6 +89,24 @@ std::vector<std::string> FixtureRecipeNames() {
 }
 
 int main() {
+  {
+    const LoadResult minimal =
+        ParseRecipe(R"({"format":1,"keys":["default"]})", "defaults");
+    Check(minimal.recipe.has_value() && !minimal.HasErrors(),
+          "required fields alone form a valid recipe");
+    if (minimal.recipe) {
+      const Recipe defaults;
+      Check(minimal.recipe->clock == defaults.clock &&
+                minimal.recipe->mergeMode == defaults.mergeMode &&
+                minimal.recipe->shell == defaults.shell &&
+                !minimal.recipe->priority && minimal.recipe->outputs.empty(),
+            "omitted optional settings retain recipe defaults");
+      const LoadResult restored =
+          ParseRecipe(SerializeRecipe(*minimal.recipe), "defaults");
+      Check(restored.recipe == minimal.recipe && !restored.HasErrors(),
+            "defaulted recipe survives serialization without semantic changes");
+    }
+  }
   Recipe recipe;
   recipe.id = "example";
   recipe.signals.push_back(Signal{"glow", ConstantSignal{1.0f}, std::nullopt});
@@ -369,6 +387,14 @@ int main() {
               "'keys' is required");
   ExpectError(R"({"format": 1, "keys": []})", "a recipe with empty keys",
               "non-empty array");
+  ExpectError(R"({"format": 0, "keys": ["default"]})",
+              "an unsupported older format", "unsupported format");
+  ExpectError(R"({"format": 4294967297, "keys": ["default"]})",
+              "a format that would wrap to one", "integer in");
+  ExpectError(R"({"format": 1, "keys": ["default"], "priority": 2147483648})",
+              "an overflowing priority", "integer in");
+  ExpectError(R"({"format": 1, "keys": ["default"], "priority": -2147483649})",
+              "an underflowing priority", "integer in");
   ExpectError(R"({"format": 9999, "keys": ["default"]})",
               "a future format version", "newer than this loader");
   ExpectError(R"({"keys": ["default"]})", "a recipe with no format",

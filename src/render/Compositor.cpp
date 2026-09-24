@@ -199,6 +199,13 @@ Compositor::StackTarget(const StackShareInputs &a_share, TextureSize a_size) {
                            [&] { return lab->Acquire(a_size, "stack"); });
 }
 
+void Compositor::SweepSharedStatics() {
+  sharedStacks_.Sweep();
+  sharedClusters_.Sweep();
+  sharedMasks_.Sweep();
+  sharedBakes_.Sweep();
+}
+
 void Compositor::ClearSharedStatics() noexcept {
   sharedStacks_.Clear();
   sharedClusters_.Clear();

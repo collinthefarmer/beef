@@ -8,6 +8,7 @@
 #include "mesh/TextureSize.h"
 #include "planners/RecipeTextureCache.h"
 #include "planners/ResourceCache.h"
+#include "planners/RetainedCache.h"
 #include "planners/StackPlan.h"
 #include "recipe/Expression.h"
 #include "recipe/Merge.h"
@@ -184,6 +185,7 @@ public:
           std::size_t a_outputIndex, const GeometryInputs &a_inputs,
           TextureSize a_size, TextureSize a_maxSize);
   void ClearSharedStatics() noexcept;
+  void SweepSharedStatics();
 
   enum class Shared {
     kStack,
@@ -222,6 +224,9 @@ public:
                    std::span<RE::BSGeometry *const> a_bound);
   void ClearMeshes() noexcept;
 
+  using MaterialKey = std::pair<RE::NiSourceTexture *, RE::NiSourceTexture *>;
+  static constexpr std::uint32_t kMaterialMaxAgeMS = 30000;
+  static constexpr std::size_t kMaxUnusedMaterials = 64;
   struct MaterialRecord {
     TextureRef rmaos;
     TextureRef diffuse;
@@ -234,6 +239,8 @@ public:
   [[nodiscard]] const MaterialRecord *
   CachedMaterial(const MaterialInputs &a_material) const noexcept;
   void ClearMaterials() noexcept;
+  void SweepMaterials(std::uint32_t a_nowMS,
+                      std::span<const MaterialKey> a_keep);
 
 private:
   std::shared_ptr<TextureLab::RenderTarget> NeutralHeight();
@@ -287,9 +294,7 @@ private:
 
   std::unordered_map<std::string, TextureRef> images_;
   MeshCache meshes_;
-  std::map<std::pair<RE::NiSourceTexture *, RE::NiSourceTexture *>,
-           MaterialRecord>
-      materials_;
+  RetainedCache<MaterialKey, MaterialRecord> materials_;
   ResourceCache<TextureLab::RenderTarget> sharedStacks_;
   ResourceCache<TextureLab::RenderTarget> sharedClusters_;
   ResourceCache<TextureLab::RenderTarget> sharedMasks_;

@@ -207,9 +207,9 @@ InstanceTiming InstanceTimeFor(LiveInstance &a_instance,
                                std::uint32_t a_nowMS) {
   const float speed = InstanceSpeed(a_settings.animationSpeed, a_view.speed,
                                     a_instance.recipe->clock.speed);
-  if (a_resuming && speed > 0.0f) {
-    a_instance.startMS = a_nowMS - static_cast<std::uint32_t>(
-                                       a_view.scrubSeconds / speed * 1000.0f);
+  if (a_resuming) {
+    a_instance.startMS =
+        a_nowMS - ClockOffsetMS(a_view.scrubSeconds, speed).value_or(0);
   }
   const float time =
       a_view.freeze
@@ -227,16 +227,21 @@ void SweepBoundMeshes(
     return;
   }
   std::vector<RE::BSGeometry *> bound;
+  std::vector<Compositor::MaterialKey> materials;
   for (const auto &[actorID, state] : a_applied) {
     for (const LivePiece &piece : state.pieces) {
       for (const LiveGeometry &g : piece.geometries) {
         if (!g.lost) {
           bound.push_back(g.geometry.get());
+          materials.emplace_back(g.inputs.material.rmaos.get(),
+                                 g.inputs.material.diffuse.get());
         }
       }
     }
   }
   a_compositor.SweepMeshes(a_nowMS, bound);
+  a_compositor.SweepMaterials(a_nowMS, materials);
+  a_compositor.SweepSharedStatics();
 }
 
 void MarkReferencedInstances(LiveActor &a_state, const LiveGeometry &a_bound,
@@ -280,6 +285,7 @@ void Manager::OnFrame() {
   const std::uint32_t now = NowMS();
   if (now - lastMetricsMS_ >= 1000) {
     lastMetricsMS_ = now;
+    carriedTimes_.Expire(now);
     EmitMetricsHeartbeat();
   }
   const Settings settings = GetSettings();
@@ -291,9 +297,11 @@ void Manager::OnFrame() {
     return;
   }
   lastTickMS_ = now;
+  Compositor::GetSingleton()->BeginTick(now);
   if (!applied_.empty()) {
     Tick(now, settings);
   }
+  SweepBoundMeshes(*Compositor::GetSingleton(), applied_, now);
   PublishSnapshot(now);
 }
 
@@ -347,8 +355,6 @@ void Manager::FireDueFinalizes() { applications_.FinalizeDue(NowMS()); }
 
 void Manager::Tick(std::uint32_t a_nowMS, const Settings &a_settings) {
   const Studio::View &view = editor_.CurrentView();
-  Compositor *compositor = Compositor::GetSingleton();
-  compositor->BeginTick(a_nowMS);
   TextureLab::GetSingleton()->RenderPreviews();
   const bool resuming = frozenLastTick_ && !view.freeze;
   frozenLastTick_ = view.freeze;
@@ -383,7 +389,6 @@ void Manager::Tick(std::uint32_t a_nowMS, const Settings &a_settings) {
       Retire(id);
     }
   }
-  SweepBoundMeshes(*compositor, applied_, a_nowMS);
 }
 
 std::vector<bool> Manager::RenderPieces(LiveActor &a_state,
@@ -439,7 +444,7 @@ void Manager::DropLostGeometries(LiveActor &a_state) {
             "dropping '{}': its material or shell was replaced by another "
             "system",
             bound.name);
-        RetireGeometry(bound);
+        RetireGeometry(a_state, bound);
       }
     }
   }

@@ -49,6 +49,20 @@ std::string Joined(const std::vector<std::string> &a_words) {
   return out;
 }
 
+void CollectionLimitsMatch(const json &a_schema) {
+  for (const std::string_view path :
+       {"/properties/keys/maxItems", "/properties/outputs/maxItems",
+        "/properties/variants/maxItems", "/properties/signals/maxProperties",
+        "/properties/sources/maxProperties", "/properties/curves/maxProperties",
+        "/properties/masks/maxProperties", "/$defs/selector/maxItems",
+        "/$defs/variant/properties/overrides/maxProperties"}) {
+    const json *limit = At(a_schema, path);
+    Check(limit && limit->is_number_unsigned() &&
+              limit->get<std::size_t>() == kMaxRecipeRows,
+          std::string{path} + " matches the parser's collection limit");
+  }
+}
+
 void EnumMatches(const json &a_schema, std::string_view a_pointer,
                  const std::vector<std::string> &a_table,
                  std::string_view a_what) {
@@ -248,6 +262,7 @@ int main() {
   if (!schema.is_object()) {
     return test::Finish("recipe_schema");
   }
+  CollectionLimitsMatch(schema);
   SourceKindsMatchTheTable(schema);
   SignalEnumsMatchTheTables(schema);
   SourceEnumsMatchTheTables(schema);

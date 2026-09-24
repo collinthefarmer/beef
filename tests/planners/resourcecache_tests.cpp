@@ -53,6 +53,15 @@ int main() {
   Equal(cache.LiveCount(), std::size_t{2},
         "a refused make does not add a live entry");
 
+  Check(cache.Size() == 2, "failed creation leaves no retained key");
+  for (int i = 0; i < 1000; ++i) {
+    auto transient = cache.Adopt(std::to_string(i), [] { return Make(5); });
+  }
+  Check(cache.Size() <= 3,
+        "authoring churn does not retain expired serialized keys");
+  cache.Sweep();
+  Check(cache.Size() == 2 && first.value == second.value,
+        "idle sweeping removes expired keys without disturbing active sharing");
   cache.Clear();
   Equal(cache.LiveCount(), std::size_t{0}, "Clear drops every entry");
 

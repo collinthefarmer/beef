@@ -17,9 +17,9 @@ ActorPlan MakePlan() {
   plan.geometries.push_back(live);
   plan.geometries.push_back(lost);
 
-  plan.instances.push_back(Instance{RecipeId{0}, std::nullopt, 0});
-  plan.instances.push_back(Instance{RecipeId{0}, Ench(0x100), 1});
-  plan.instances.push_back(Instance{RecipeId{1}, Ench(0x100), 2});
+  plan.instances.push_back(Instance{RecipeId{0}, std::nullopt});
+  plan.instances.push_back(Instance{RecipeId{0}, Ench(0x100)});
+  plan.instances.push_back(Instance{RecipeId{1}, Ench(0x100)});
 
   Placement p0;
   p0.instance = InstanceId{0};
@@ -27,6 +27,7 @@ ActorPlan MakePlan() {
   Placement p1;
   p1.instance = InstanceId{1};
   p1.geometry = GeometryId{0};
+  p1.priority = 1;
   Placement p2;
   p2.instance = InstanceId{0};
   p2.geometry = GeometryId{1};

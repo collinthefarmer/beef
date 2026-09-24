@@ -318,6 +318,29 @@ reason.
    while disabled.
 6. On a separate disposable new-game run, verify `kNewGame` and a
    successful first equip. Archive the prior session's log first.
+7. In a separate configuration with distance eviction enabled, move an NPC
+   wearer beyond the threshold between preparation and its first render.
+   Capture the application and `evict_far` trace ordering; if this timing cannot
+   be reproduced, record this case as blocked. Its pending application should
+   become unmatched with `the actor was retired before rendering completed`,
+   rather than remain prepared. Return inside the restore threshold and verify
+   a fresh attempt renders. Repeat a recipe edit/reapply to confirm retirement
+   of old state does not terminate the replacement. Restore packaged defaults
+   afterward; this case does not establish default-configuration performance.
+8. Create mesh bakes and material-cluster analyses, then retire every applied
+   actor and stop requesting previews. Wait at least 40 seconds without applying
+   another actor. Confirm mesh-cache cleanup still runs and target destruction
+   follows lease release; a zero allocation count is not required because idle
+   targets, scratch buffers, and external consumers can remain. Repeat with
+   varied armor and recipe edits: expired shared-cache keys and unused material
+   analyses should not accumulate across passes. The idle pool allowance is 16
+   targets / 64 MiB; active allocations are separate.
+9. During genuine material/shell takeover, keep another geometry on the same
+   actor active. Confirm the lost geometry stops rendering and its obsolete
+   stacks release, while the sibling effect and shared instance lights continue.
+   Keep a preview or external texture consumer alive through retirement, then
+   release it; resource destruction must wait for that consumer. Use the takeover
+   fixture requirements below rather than treating unequip as equivalent evidence.
 
 Pass: no crash, no hang, no stale application, no duplicate response, no
 visible resource accumulation. A quiet log alone is not sufficient evidence
@@ -346,8 +369,13 @@ of cleanup.
 - Missing dependencies: in separate launches of the disposable profile,
   disable Community Shaders and expect `CommunityShaders.dll is not loaded;
   emissive path disabled, plugin idle`. Disable only SKSE Menu Framework
-  and expect `SKSE Menu Framework not installed; no in-game menu`, while a
-  saved recipe still renders. Restore the dependencies; archive each log.
+  and expect `SKSE Menu Framework is not loaded; editor unavailable`, while a
+  saved recipe still renders. A DLL present on disk but rejected by SKSE must
+  follow the same branch and must not log successful page registration. A
+  loaded framework missing a required export must name it and log `editor
+  disabled`, with no page registration. Verify the missing-CS message in the
+  editor header when the framework remains available. Restore dependencies;
+  archive each log. Export availability does not prove ABI compatibility.
 
 ## Record and acceptance
 
@@ -383,3 +411,64 @@ The log vocabulary and controls above are grounded in `src/main.cpp`,
 `src/Settings.cpp`, `src/engine/{RecipeStore,RecipeEditor,ManagerApply,
 ManagerTick,Events}.cpp`, `src/render/{CompositorBake,Binding}.cpp`, and
 `src/menu/`.
+
+## Readback stall capture
+
+Capture a fresh trace with the candidate build identity and effective settings.
+Exercise first application with several armor meshes, material clustering,
+source normalization, and curves both with and without `mean`. Repeat the
+same operations with warm caches, then exercise source inspection and paint
+preview/commit. Keep the fixture recipes and note visible frame spikes.
+
+Run `python3 tools/trace-report.py <trace.jsonl>` for total readback counts
+and timings. Inspect `metrics` events with `action=readback` in the JSONL
+for `op`, `us`, `lock_wait_us`, `lock_held_us`, `map_us`, `success`, and
+`bytes`. Compare successful reads separately from failures and retain the
+slowest events with their session/command identifiers. Map time overlaps
+lock-held time; it is CPU time in Map, not a GPU timestamp. A curve without
+`mean` should not cause a mean read solely for its curve lookup; source
+normalization can independently require one.
+
+Record coverage of `buffer`, `mean`, and `pixels`; a missing kind is untested,
+not zero-cost. Establish supported-workload budgets before calling spikes
+acceptable. These measurements do not fulfill the outstanding requirement
+to copy now and poll readbacks later.
+
+## Recipe resolution acceptance (pending runtime access)
+
+Use the examples in [the resolution contract](recipe-resolution.md) with
+distinct filename identities and visible, distinguishable layers. Preserve
+the original authored files and record the candidate build identity.
+
+1. Load two same-key stack recipes and verify both appear in merge order.
+   Add a later user definition of the first identity and verify its new
+   precedence, including a held-back replacement and its load diagnostics.
+2. Use two same-key sampled alternatives plus an ordinary recipe. Record the
+   choice for two actors and two pieces sharing one pool. Edit priorities and
+   output values, reapply, save and reload; an unchanged actor ID and identity
+   set must retain its sampled choice. Isolation/pinning may override it only
+   while the preview is active. A selector-excluded winner must not reroll.
+3. Match one shared recipe at material priority on gloves and magic-effect
+   priority on boots, with another recipe at priority 30. Check opposite
+   local composition orders and the priorities shown for each piece.
+4. Replace one target using two sibling outputs. Verify both layer sequences
+   survive, including when only the second output has replace enabled. Other
+   targets survive, and an excluded replacing selector clears nothing.
+5. Give equal-priority recipes different shell slots. The later definition
+   owns shell settings regardless of slot ordering; retained layers from the
+   earlier definition remain visible.
+6. Replace actor-wide lights across two pieces, including two enchantment
+   instances of the replacing recipe. Both replacing instances survive. A
+   first-person-only, selector-excluded, muted, or absent light cannot clear
+   other groups. Check named and skinned bones against the selected third-
+   person geometry set, and verify the winning recipe in light diagnostics.
+   Include an addon-only selector with matching, different, and absent addon
+   identity; use two addons with identical mesh names/textures to ensure the
+   actual biped addon determines eligibility. A nonmatching replacing light
+   must leave the eligible base light intact.
+7. Trigger a controlled preparation failure and verify diagnostic separation
+   from matching and replacement; neither reroll nor revival occurs. Restore,
+   retire and reapply to verify the existing ownership and lifetime guarantees.
+
+These steps are not established by native plan tests or a successful DLL
+link. Visual acceptance remains pending until Skyrim can run.

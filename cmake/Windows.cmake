@@ -1,4 +1,5 @@
 set(CMAKE_SKIP_INSTALL_RULES ON)
+include("${CMAKE_CURRENT_LIST_DIR}/Compatibility.cmake")
 
 # Cache third-party object files across clean builds and branch switches.
 find_program(CCACHE_PROGRAM ccache)
@@ -14,7 +15,7 @@ FetchContent_Declare(spdlog
   BINARY_DIR "${CMAKE_BINARY_DIR}/_deps/spdlog-build"
   SUBBUILD_DIR "${CMAKE_BINARY_DIR}/_deps/spdlog-subbuild"
   GIT_REPOSITORY https://github.com/gabime/spdlog.git
-  GIT_TAG        v1.15.3
+  GIT_TAG        ${BEEF_SPDLOG_REVISION}
   GIT_SHALLOW    TRUE
   OVERRIDE_FIND_PACKAGE)
 set(SPDLOG_BUILD_EXAMPLE OFF CACHE BOOL "" FORCE)
@@ -25,7 +26,7 @@ FetchContent_Declare(rapidcsv
   BINARY_DIR "${CMAKE_BINARY_DIR}/_deps/rapidcsv-build"
   SUBBUILD_DIR "${CMAKE_BINARY_DIR}/_deps/rapidcsv-subbuild"
   GIT_REPOSITORY https://github.com/d99kris/rapidcsv.git
-  GIT_TAG        v8.99
+  GIT_TAG        ${BEEF_RAPIDCSV_REVISION}
   GIT_SHALLOW    TRUE
   SOURCE_SUBDIR  does-not-exist)
 
@@ -33,16 +34,16 @@ FetchContent_Declare(CommonLibSSE
   BINARY_DIR "${CMAKE_BINARY_DIR}/_deps/commonlibsse-build"
   SUBBUILD_DIR "${CMAKE_BINARY_DIR}/_deps/commonlibsse-subbuild"
   GIT_REPOSITORY https://github.com/CharmedBaryon/CommonLibSSE-NG.git
-  GIT_TAG        b93280e832f263dbef44e44cbe2936622a02f91a
+  GIT_TAG        ${BEEF_COMMONLIB_REVISION}
   SOURCE_SUBDIR  does-not-exist)
 
 FetchContent_MakeAvailable(spdlog rapidcsv CommonLibSSE)
 
 set(RAPIDCSV_INCLUDE_DIRS "${rapidcsv_SOURCE_DIR}/src" CACHE PATH "" FORCE)
 set(BUILD_TESTS OFF CACHE BOOL "" FORCE)
-set(ENABLE_SKYRIM_SE ON CACHE BOOL "" FORCE)
-set(ENABLE_SKYRIM_AE ON CACHE BOOL "" FORCE)
-set(ENABLE_SKYRIM_VR OFF CACHE BOOL "" FORCE)
+set(ENABLE_SKYRIM_SE ${BEEF_COMPILE_SE} CACHE BOOL "" FORCE)
+set(ENABLE_SKYRIM_AE ${BEEF_COMPILE_AE} CACHE BOOL "" FORCE)
+set(ENABLE_SKYRIM_VR ${BEEF_COMPILE_VR} CACHE BOOL "" FORCE)
 set(SKSE_SUPPORT_XBYAK OFF CACHE BOOL "" FORCE)
 add_subdirectory("${commonlibsse_SOURCE_DIR}" "${commonlibsse_BINARY_DIR}" EXCLUDE_FROM_ALL)
 

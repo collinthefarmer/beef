@@ -1,5 +1,9 @@
 # recipe/
 
+Resolution follows the [recipe resolution contract](../recipe-resolution.md).
+Its acceptance examples define the native regressions; the alpha plan tracks
+offline verification and deferred visual acceptance.
+
 The pure core. It turns a **recipe** file into a checked `Recipe`, resolves
 the forms the recipe names, builds the per-tick `SignalGraph`, merges the
 recipes that land on one **piece** into a **plan**, and writes a `Recipe`
@@ -37,7 +41,7 @@ a file survives a load and a save unchanged. Every consumer (the studio,
 |---|---|
 | `Recipe` | The **recipe**: an id, `Metadata`, its `RecipeKey`s, an optional priority, a `MergeMode`, a `Clock`, the **row** lists (`Signal`s, `Curve`s, `Source`s, `Mask`s, `Output`s, `Variant`s), and `ShellSettings`. `FindSignal`/`FindCurve`/`FindSource`/`FindMask` look a row up by name. |
 | `Metadata` | The recipe's name, author, description, and version, the importer's `imported` stamp, and a free-form `meta` field kept verbatim. |
-| `MergeMode` | How the recipe combines with lower-priority recipes contesting the same piece — the wire field `merge`: stack appends per slot, replace drops lower-priority work on its slots, sampled gives each actor one member of the pool by form id. |
+| `MergeMode` | How independent recipe identities compose: stack appends groups; replace clears earlier groups on selected surface targets and eligible actor-wide lights; sampled chooses one identity per piece independently of precedence. |
 | `RecipeKey` | Which worn **piece** the recipe applies to: a `KeyKind` (default, enchanted, material, keyword, armor, effectShader, enchantment, magicEffect) with a form or glob operand; default and enchanted stand alone. |
 | `Selector` | Which geometry an **output** or **variant** touches: any-of clauses over addon, geometry name, or texture path; empty matches every geometry. |
 | `Signal` | One named per-tick value: a name, a `SignalKind`, an optional `CurveRef` that shapes the result, and an optional author `note`. |
@@ -117,7 +121,7 @@ into one material or shell **slot**, and a `LightOutput` describes one
 
 | Type | Description |
 |---|---|
-| `SurfaceOutput` | One slot write: a `Surface` (material or shell), a `Slot`, its `SlotScalars`, a `Selector`, a replace flag that drops lower-priority recipes' work on the slot, an optional `Resolution` that overrides the slot's default target size, the layer `stack`, and an optional author `note`. |
+| `SurfaceOutput` | One slot write: a `Surface` (material or shell), a `Slot`, its `SlotScalars`, a `Selector`, a replace flag that clears preceding recipe groups on the target while retaining its own sibling outputs, an optional `Resolution` that overrides the slot's default target size, the layer `stack`, and an optional author `note`. |
 | `Layer` | One entry in a `stack`: a `LayerSource`, an optional `CurveRef`, a `Blend`, an opacity `Param`, an optional color and mask, the `ChannelSet` it writes, and an optional author `note`. |
 | `LayerSource` | `Ref \| Vec3`: a source or mask by name, or a constant color. |
 | `Blend` | How a layer combines with the stack below: replace, multiply, add, subtract, screen, or reorient; `BlendSpec` maps each to its shader mode and marks `reorient` (normal-map reorientation) as normal-stack only. |
@@ -165,8 +169,9 @@ diagnostic and an inert row, never a crash.
 |---|---|
 | `Diagnostic{Severity, where, message}` | One problem: warning or error, the row it names, and the message. `MakeDiagnostic` builds it; `RowLevel`/`HasErrors`/`ProblemText` read collections of it. |
 | `Reporter` | The shared sink a parse or check writes through; `At(where)` scopes a child reporter to one row. |
-| `LoadResult` | What `ParseRecipe` returns: an optional `Recipe` plus its diagnostics. |
-| `ResolvedRecipe` | One match from `Resolve`: the recipe, the `RecipeKey` that matched, and the effective priority. |
+| `LoadResult` | What `ParseRecipe` returns: an optional `Recipe`, combined diagnostics, and separate file-decoding diagnostics retained until save or reload. |
+| `ResolvedRecipe` | One match from `Resolve`: the recipe, the strongest matched `RecipeKey`, effective placement priority, and definition load order. |
+| `RecipeSelection` | Optional selection report: recipe identity plus nonmatching, fallback-suppressed, sampled-out, or selected outcome. |
 | `WornPiece` | What one worn piece looks like to resolution: its magic effect, enchantment, effect shader, armor, keywords, and diffuse paths. |
 | `PieceKey` | One key choice a piece offers (`KeyChoicesOf`); the studio turns the chosen one into a `RecipeKey`. |
 
@@ -191,11 +196,15 @@ types.
 Several recipes can land on one **piece**; the **plan** is the pure merge of
 their outputs. `PlanGeometry` and `PlanLights` take the `PlacedRecipe`s and
 return what to render, with replacement and scalar ownership already
-decided.
+decided. Surface replacement cuts at the start of a placement's group on
+each target, so sibling outputs remain in authored order. Light replacement
+cuts at the start of an actor-wide recipe-identity group, retaining separate
+enchantment instances. Sampling canonically sorts identities before indexing
+with `SamplingHash`; `REFERENCE.md` and the behavior contract pin the hash.
 
 | Type | Description |
 |---|---|
-| `PlacedRecipe` | One recipe on the piece: the recipe, its priority, and the indices of the outputs that apply. |
+| `PlacedRecipe` | One recipe on the piece: the recipe, its placement priority, definition load order, and selected output indices. |
 | `SlotContribution` / `LightContribution` | One output's claim: a placed-recipe index plus an output index. |
 | `SlotPlan` | One slot's outcome: the blend `chain`, the contributions a `replacer` displaced, and the `ScalarOwner` per scalar field. |
 | `GeometryPlan` | The `SlotPlan`s for one piece. |
@@ -244,8 +253,11 @@ templates/{fill,bare}.json ──ParseRecipe─▶ template Recipe ───┴�
 | `Recipe.cpp` | `MakeDiagnostic`/`DiagnosticOf`, the `*Where` row-name helpers, `RowLevel`/`HasErrors`, `ProblemText`, `Recipe::Find*`. |
 | `RecipeRead.cpp` / `RecipeWrite.cpp` | JSON to `Recipe` and back, one field at a time. |
 | `Binders.h` / `Binders.cpp` | `Reader`/`Writer` and `ParseObjectDocument`: the JSON binder vocabulary the recipe reader and writer build on. |
+| `DefinitionOrder.h` | `AppendDefinition` replaces an earlier same-ID definition at the new traversal position. |
+| `Precedence.h` | Shared priority-then-load-order comparison used by selection, composition and shell ownership. |
 | `Resolve.cpp` | `Recipe` to `ResolvedRecipe`: match the recipe's `FormKey`s against a `WornPiece`. |
 | `Variants.cpp` | `VariantApplies` and `ApplyVariant`: pick the matching **variant** and fold it in. |
+| `Validation.cpp` | Typed field checks shared by loading and live edits: finite values, numeric domains, collection limits, and bone/variant names. |
 | `Signals.h` / `Signals.cpp` | `SignalGraph`, the per-tick evaluation, the `CheckSource`/`CheckLayer` validation. |
 | `Expression.h` / `Expression.cpp` | The `Ref` expression and curve language: `Program::Parse`/`Evaluate`. |
 | `Merge.h` / `Merge.cpp` | Compose the recipes on one piece into a slot, geometry, and light plan. |
@@ -265,3 +277,33 @@ templates/{fill,bare}.json ──ParseRecipe─▶ template Recipe ───┴�
   layer reuses.
 - `schema/recipe.schema.json` and `schema/example-magicka.json` — the format
   contract these types parse.
+
+## Schema/parser contract checks
+
+`tools_recipe_contract_tests` runs a shared input matrix through JSON Schema
+and the native validator selected by CMake. It covers structural agreement
+and explicitly distinguishes semantic expression/reference refusals that the
+schema cannot enforce. `recipe_recipe` tests default preservation and model
+round trips. Integer reader fields reject values outside signed 32-bit range
+before conversion; format 1 is the supported format, and malformed clock
+objects report recipe-level errors. The dated contract checkpoint tracks
+remaining alternatives and numeric-policy review.
+
+FloatFrom checks finite float range before JSON numbers become engine floats;
+parameters, literal vectors, pose points, and event-filter endpoints share the
+same conversion. The schema's number definition matches the magnitude bounds.
+Noise seeds, mip levels, alpha thresholds, and explicit skinned-light bounds
+report invalid input instead of silently clamping it. These parsing guarantees
+do not cover arithmetic performed later by expressions or the renderer.
+
+Collection limits apply to attempted entries, including rejected rows, and are
+recorded in the schema as maxItems/maxProperties. They bound row processing
+after the JSON document has been parsed, not the size of the document itself.
+References use the same name grammar as row declarations; empty variant and
+bone names are invalid. Reference resolution, cycles, and variant override
+types remain native semantic checks beyond structural schema validation.
+
+`Validate` combines typed field checks and semantic checks. Its optional input
+diagnostics preserve failures that decoding replaced with defaults or dropped
+rows; rebuilding the typed model cannot reconstruct those file errors. JSON
+shape, format, and bounded decoding remain parser responsibilities.

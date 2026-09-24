@@ -1,0 +1,81 @@
+{
+  "files": [
+    {
+      "path": "CommonLibSSE-NG.txt",
+      "sha256": "f8f983d0d1e2bb361f117487465f21f5f4047acca3610f7aba3482d524c83ce4",
+      "origin": "https://github.com/CharmedBaryon/CommonLibSSE-NG/blob/b93280e832f263dbef44e44cbe2936622a02f91a/LICENSE"
+    },
+    {
+      "path": "spdlog.txt",
+      "sha256": "4ccecab18d1ff0b61174fe3d6c430541625d3ddb865b0d5887db296f883c76e7",
+      "origin": "https://github.com/gabime/spdlog/blob/6fa36017cfd5731d617e1a934f0e5ea9c4445b13/LICENSE"
+    },
+    {
+      "path": "rapidcsv.txt",
+      "sha256": "8e60b029b7a16c4087af1e8dc695e4412f36f46819aa2fe1ef445e7776e40594",
+      "origin": "https://github.com/d99kris/rapidcsv/blob/68f57cc6c83d5e0992904398822453489d8dfac1/LICENSE"
+    },
+    {
+      "path": "nlohmann-json.txt",
+      "sha256": "46a65cffd1ea955132d95a8dd921640714a8d6b537d2e4e482d31145ae95b603",
+      "origin": "https://github.com/nlohmann/json/blob/v3.12.0/LICENSE.MIT"
+    },
+    {
+      "path": "ImGui.txt",
+      "sha256": "0ebf8feb061536bdebd7c6a365b64808ae3479048b1c44113e19037680c5f2be",
+      "origin": "https://github.com/QTR-Modding/SKSE-Menu-Framework-3/blob/c97cdce6dd207c7cf1401611bc82bd7e8f97a814/imgui/LICENSE.txt"
+    },
+    {
+      "path": "cimgui.txt",
+      "sha256": "cf6a4390b1ae5b4dfbc79a4ab33c58852db4f17b3f5c6d9300f278050223884d",
+      "origin": "https://github.com/cimgui/cimgui/blob/bb4d4848b759e037a6cc26d23be0387a148ac39f/LICENSE"
+    },
+    {
+      "path": "CommunityShaders-COPYING.txt",
+      "sha256": "5546ad8e1dd114ed3772a1b530d530593ef3eea748f91837120767944e22259b",
+      "origin": "https://github.com/community-shaders/skyrim-community-shaders/blob/dd2677fc4020db1da91b39cebef3dbfbe8913983/COPYING"
+    },
+    {
+      "path": "CommunityShaders-EXCEPTIONS.md",
+      "sha256": "f836c5f1d2021ee0daa8c43c923a1e94cebeb25f53f8a94384c6e19bb40ba1da",
+      "origin": "https://github.com/community-shaders/skyrim-community-shaders/blob/dd2677fc4020db1da91b39cebef3dbfbe8913983/EXCEPTIONS.md"
+    },
+    {
+      "path": "Apache-2.0.txt",
+      "sha256": "074e6e32c86a4c0ef8b3ed25b721ca23aca83df277cd88106ef7177c354615ff",
+      "origin": "https://github.com/nlohmann/json/blob/v3.12.0/LICENSES/Apache-2.0.txt"
+    },
+    {
+      "path": "CC0-1.0.txt",
+      "sha256": "a2010f343487d3f7618affe54f789f5487602331c0a8d03f49e9a7c547cf0499",
+      "origin": "https://creativecommons.org/publicdomain/zero/1.0/legalcode.txt"
+    },
+    {
+      "path": "fmt.txt",
+      "sha256": "8c3e4e95f31180a161449d6cfef6a66628bcf5c32a04aba78fbd226c1aa6e099",
+      "origin": "https://github.com/gabime/spdlog/blob/6fa36017cfd5731d617e1a934f0e5ea9c4445b13/include/spdlog/fmt/bundled/format.h"
+    }
+  ],
+  "vendored": [
+    {
+      "path": "src/extern/SKSEMenuFramework.h",
+      "sha256": "8f5b8be01b60ee2c258a2b3c2c97ccc4118cf7ab9fe17775a8375bf69378683e",
+      "origin": "https://github.com/QTR-Modding/SKSE-Menu-Framework-3/blob/c97cdce6dd207c7cf1401611bc82bd7e8f97a814/resources/SKSEMenuFramework.h"
+    },
+    {
+      "path": "src/cs/BSLightingShaderMaterialPBR.h",
+      "sha256": "c0c6626020d52c4fa2c9b91bf80bb39fa8eb9849f32977a9685e8f1db1f1a6f4",
+      "origin": "https://github.com/community-shaders/skyrim-community-shaders/blob/dd2677fc4020db1da91b39cebef3dbfbe8913983/src/TruePBR/BSLightingShaderMaterialPBR.h"
+    },
+    {
+      "path": "src/extern/nlohmann/json.hpp",
+      "sha256": "aaf127c04cb31c406e5b04a63f1ae89369fccde6d8fa7cdda1ed4f32dfc5de63",
+      "origin": "https://github.com/nlohmann/json/blob/v3.12.0/single_include/nlohmann/json.hpp"
+    }
+  ],
+  "cmake_pins": [
+    "b93280e832f263dbef44e44cbe2936622a02f91a",
+    "v1.15.3",
+    "v8.99"
+  ]
+}

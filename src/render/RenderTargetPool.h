@@ -1,5 +1,6 @@
 #pragma once
 
+#include "planners/ResourcePool.h"
 #include "planners/TargetPool.h"
 #include "render/TextureLab.h"
 
@@ -27,9 +28,11 @@ public:
   void ClearUnused();
 
 private:
+  static constexpr std::size_t kMaxIdleTargets = 16;
+  static constexpr std::uint64_t kMaxIdleBytes = 64 * 1024 * 1024;
   struct Pool {
     std::mutex lock;
-    std::vector<std::unique_ptr<RenderTarget>> targets;
+    ResourcePool<RenderTarget> targets{kMaxIdleTargets, kMaxIdleBytes};
   };
 
   bool CreateTarget(REX::W32::ID3D11Device *a_device, RenderTarget &a_target,

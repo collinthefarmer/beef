@@ -13,6 +13,7 @@ void Dispatch(Studio::Intents &a_intents, Studio::MenuState &a_state,
 
 void RenderStatus(const Studio::Snapshot &a_snapshot);
 void RenderHeader(const Studio::Snapshot &a_snapshot);
+void RenderPendingStatus();
 
 void __stdcall RenderRecipes();
 void __stdcall RenderSetup();

@@ -1,10 +1,14 @@
 Verbatim copy of resources/SKSEMenuFramework.h from
-https://github.com/QTR-Modding/SKSE-Menu-Framework-3 commit c97cdce (2026-09-03).
+https://github.com/QTR-Modding/SKSE-Menu-Framework-3
+commit c97cdce6dd207c7cf1401611bc82bd7e8f97a814 (2026-09-03).
 That repository is licensed GPL-3.0; the installed framework is 3.13.0.
 The header resolves every function through GetProcAddress at runtime, so the
-plugin has no link-time dependency and idles without the framework.
+plugin has no link-time dependency; the editor requires the framework.
+The inline wrapper is compiled into the plugin. See ../../THIRD_PARTY_NOTICES.md
+for the pinned GPL license and ImGui/cimgui attribution.
 
 nlohmann/json.hpp is the single-header release v3.12.0 from
 https://github.com/nlohmann/json/releases/download/v3.12.0/json.hpp (MIT).
 Vendored rather than fetched so the native test build (ctest --preset native)
-needs no CMake configure step.
+needs no network fetch for JSON. Embedded component notices and license texts
+are recorded in ../../THIRD_PARTY_NOTICES.md and ../../licenses/.
