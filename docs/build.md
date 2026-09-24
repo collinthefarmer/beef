@@ -136,7 +136,7 @@ and SHA-256 checksums to `dist/archives/`. It uses the explicit inventory in
 Obsolete staging files therefore cannot enter a candidate archive. The existing
 `stage` target also copies the notice bundle for the developer installer.
 
-Both archives carry `LICENSE`, `THIRD_PARTY_NOTICES.md`, and the explicit
+Both archives carry `LICENSE`, `COPYING.md`, `THIRD_PARTY_NOTICES.md`, and the explicit
 `licenses/inventory.json` file list. Update that inventory and provenance
 when dependencies change; `tools_licenses_tests` checks notice/header hashes
 and reviewed dependency pins. Packaging refuses absent notice inputs and
@@ -230,3 +230,38 @@ cleanup or an uninstaller. Existing INI symlinks are preserved as well.
 MO2 directories and controlled tool paths, exercising both copy backends.
 It never uses the configured real MO2 directory. These tests do not establish
 Windows file-lock behavior or mod-manager archive upgrade behavior.
+
+## Source archives without Git metadata
+
+Before removing Git metadata from a source snapshot, configure its intended
+Windows compatibility profile and write the provenance record:
+
+```sh
+cmake --preset windows-release
+python3 tools/build-identity.py --root . --write-provenance \
+  --compatibility build/Release/generated/compatibility.json
+```
+
+Include the resulting `SOURCE_PROVENANCE.json` in the snapshot. It is ignored
+in Git because it describes one exported tree. It records the checkout's HEAD
+revision, the actual source fingerprint (including uncommitted build inputs),
+and a hash of the effective compatibility profile. It does not assert that a
+dirty snapshot equals its base commit or authenticate the producer. The source
+fingerprint covers the same inputs as ordinary build identity; it is not a
+checksum of the entire source distribution. Curated source inventory and exact
+dependency-source bundling remain separate publication work.
+
+The ordinary Windows preset then works without the project's `.git` directory.
+An unchanged extraction with the same profile and configuration produces the
+same identity manifest/header. Metadata from a parent checkout is never used.
+Missing/malformed provenance, changed source inputs, or a different effective
+profile fail the identity build. For intentional source edits, configure with
+`-DBEEF_ALLOW_MODIFIED_SOURCE=ON`: the build retains the base revision, computes
+a new source hash/build ID, and records `archive_source_sha256`. This option
+does not waive profile matching. Generate a separate provenance record from
+the producing checkout for each target profile. Native-only builds do not
+consume plugin build identity.
+
+The archive still needs compiler/SDK prerequisites and pinned dependency
+sources. This feature removes the identity generator's Git requirement; it
+does not bundle those dependencies or establish bit-for-bit reproducibility.

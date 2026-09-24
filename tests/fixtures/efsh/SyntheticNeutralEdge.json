@@ -1,0 +1,15 @@
+{
+  "editorId": "SyntheticNeutralEdge",
+  "fillTexture": "Synthetic\\Bands.dds",
+  "fillColorKey1": [
+    40,
+    120,
+    80
+  ],
+  "edgeColor": [
+    64,
+    64,
+    64
+  ],
+  "formKey": "0x803~SyntheticTests.esp"
+}

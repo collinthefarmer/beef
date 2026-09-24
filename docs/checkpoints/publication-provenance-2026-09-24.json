@@ -1,0 +1,103 @@
+{
+  "reviewed_revision": "1303a555e66b644368c440b92755d13cca62790a",
+  "first_party_ownership": "User confirmed sole copyright holder of original project code on 2026-09-24; third-party rights excluded.",
+  "cimgui": {
+    "revision": "7c16d31cdb9d2db3038b324fe967ffa76b02c8c4",
+    "tag": "1.90.8dock",
+    "framework_header_sha256": "935161c5727f883d25dd9d25be62cb1d136a581c7d9aaa187fc432259a6f2459",
+    "header_comparison": "byte-identical to framework include/cimgui.h at c97cdce6dd207c7cf1401611bc82bd7e8f97a814",
+    "implementation_comparison": "only two local include paths differ after newline normalization",
+    "historical_generator_invocation": "not independently established"
+  },
+  "api_alternative": {
+    "repository": "https://github.com/QTR-Modding/SKSE-Menu-Framework-3-API",
+    "revision": "1dcb70179076aae4ab626f43c5baab2735ca5877",
+    "license": "LGPL-2.1 text present",
+    "header_sha256": "48416e8220ca777e2fffc2ef2baf21f699ab2e6c409d437f44eec5e311c3524c",
+    "adopted": false,
+    "diff": "Vendored file adds cstdint, full-path/rename/delete section helpers, API-version helper, and a menu-path comment; no current project calls use added APIs."
+  },
+  "source_review_inputs": [
+    {
+      "path": "tests/fixtures/efsh/EnchArmorFireFXS.json",
+      "sha256": "3c08f2ddf04b5d420a22073da7b3cd0865885c0381bd6fa3567bf30653c4a620",
+      "bytes": 1122
+    },
+    {
+      "path": "tests/fixtures/efsh/EnchArmorFrostFXS.json",
+      "sha256": "f60796237bcfb1c1b4df79a6f254fc734c5f98c0ffc4f3adc9c5c76921864cb0",
+      "bytes": 1112
+    },
+    {
+      "path": "tests/fixtures/efsh/EnchArmorHealthFXS.json",
+      "sha256": "1a46c90c70f35837a31fe9d5b5bc5946a7cab908dd0d3d07e162785cc421c1af",
+      "bytes": 1120
+    },
+    {
+      "path": "tests/fixtures/efsh/EnchArmorMagickaFXS.json",
+      "sha256": "5c852d72c1e23050d16824549b341f388689834aa522315e6b8d7a9b870f79b3",
+      "bytes": 1122
+    },
+    {
+      "path": "tests/fixtures/efsh/EnchArmorShockFXS.json",
+      "sha256": "95c64da2b940621618639a4c30be0afcc75ab8026c71ea855f8899ec7c905ced",
+      "bytes": 1120
+    },
+    {
+      "path": "tests/fixtures/efsh/EnchArmorStaminaFXS.json",
+      "sha256": "14385e662e139825945f2960f7dcae716f29d83a44f94a6be853128cdeab0f5c",
+      "bytes": 1111
+    },
+    {
+      "path": "tests/fixtures/efsh/WaterBreathingFXS.json",
+      "sha256": "f284c5d6de39b2476151dba0e0980d8111598cdc5dc867b6e9e7e90453e7179d",
+      "bytes": 1081
+    },
+    {
+      "path": "tests/fixtures/recipes/EnchArmorFireFXS.json",
+      "sha256": "d55a8b46818f2e64ae43832633a38cfc482b1956983a59385bf1a81f0897e8ee",
+      "bytes": 5076
+    },
+    {
+      "path": "tests/fixtures/recipes/EnchArmorFrostFXS.json",
+      "sha256": "3bdd35606d512235fd38e47106aac5df6be45aecbaed2e2109d24c24f1a8c422",
+      "bytes": 5089
+    },
+    {
+      "path": "tests/fixtures/recipes/EnchArmorHealthFXS.json",
+      "sha256": "27e93bfed461d9dbf151334c6ff337fc5283d7b46ce4e3a0d780e671b64c2e6a",
+      "bytes": 5106
+    },
+    {
+      "path": "tests/fixtures/recipes/EnchArmorMagickaFXS.json",
+      "sha256": "5517b894f1255d20e57fef8ba1cff04107e0c0c2721b608dff9c0148f29a2836",
+      "bytes": 5106
+    },
+    {
+      "path": "tests/fixtures/recipes/EnchArmorShockFXS.json",
+      "sha256": "5fce96ff94b97ceb1fd0b522fab87c69e60ae63ebac04ef2245f339680199005",
+      "bytes": 5093
+    },
+    {
+      "path": "tests/fixtures/recipes/EnchArmorStaminaFXS.json",
+      "sha256": "1b08edcd2189b617438cb0476c1adb341091480d22086204d6157ddb57d9cec4",
+      "bytes": 5103
+    },
+    {
+      "path": "tests/fixtures/recipes/WaterBreathingFXS.json",
+      "sha256": "cc1f1b3c919d7f04f33429ac2e9528ec9a8ef93b1643836caf2710e31047059a",
+      "bytes": 3314
+    },
+    {
+      "path": "docs/checkpoints/startup-evidence-2026-09-22/BetterEnchantmentEffects-trace-1790113524218626.jsonl",
+      "sha256": "5f3ea9391d9b969e211b8321318365f72aa5152b5f5df69c0a38d0cfce7cebff",
+      "bytes": 453095
+    },
+    {
+      "path": "docs/checkpoints/startup-evidence-2026-09-22/BetterEnchantmentEffects.log",
+      "sha256": "eeb9f630d250fbc0fea4880879a338289354677c0b5e184a113879c25a958fd9",
+      "bytes": 30767
+    }
+  ],
+  "publication_status": "Not cleared; license policy, API/header provenance choice, game-derived fixture disposition, and exact source delivery remain open."
+}

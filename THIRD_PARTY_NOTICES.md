@@ -1,6 +1,7 @@
 # Third-party notices
 
-BetterEnchantmentEffects carries GNU GPL version 3 in [LICENSE](LICENSE).
+Original BetterEnchantmentEffects material is GPL-3.0-only with the additional
+permission in [COPYING.md](COPYING.md). The GPL text is in [LICENSE](LICENSE).
 Third-party material retains its own terms. This inventory covers the source
 and local candidate payload reviewed on 2026-09-23; it does not certify runtime
 compatibility or completion of source-publication requirements.
@@ -8,7 +9,7 @@ compatibility or completion of source-publication requirements.
 The [license inventory](licenses/inventory.json) records upstream locations,
 SHA-256 hashes of notice files and unchanged vendored headers, and reviewed
 CMake dependency pins. Both the mod and symbols archives include this file,
-`LICENSE`, and `licenses/`.
+`LICENSE`, `COPYING.md`, and `licenses/`.
 
 ## Linked and compiled dependencies
 
@@ -19,7 +20,7 @@ CMake dependency pins. Both the mod and symbols archives include this file,
 | fmt, bundled with spdlog | 11.2.0, from the spdlog revision above | [MIT with optional object-code exception](licenses/fmt.txt), Copyright (c) 2012 - present, Victor Zverovich |
 | rapidcsv | v8.99, `68f57cc6c83d5e0992904398822453489d8dfac1` | [BSD-3-Clause](licenses/rapidcsv.txt), Copyright (c) 2017 Kristofer Berggren |
 | nlohmann/json | v3.12.0 | [MIT](licenses/nlohmann-json.txt), Copyright (c) 2013-2025 Niels Lohmann; embedded components below |
-| SKSE Menu Framework wrapper | `c97cdce6dd207c7cf1401611bc82bd7e8f97a814` | GPL-3.0, QTR-Modding/SKSE-Menu-Framework-3 contributors; pinned upstream license is byte-identical to [LICENSE](LICENSE) |
+| SKSE Menu Framework API wrapper | `1dcb70179076aae4ab626f43c5baab2735ca5877` | [LGPL-2.1](licenses/SKSE-Menu-Framework-API.txt), QTR-Modding/SKSE-Menu-Framework-3-API |
 
 CommonLib, spdlog and their included code enter the plugin build. JSON also
 enters the standalone validator. The menu wrapper is compiled into the plugin
@@ -28,11 +29,17 @@ and resolves the separately installed framework through runtime exports.
 The wrapper includes generated Dear ImGui/cimgui declarations. Preserve
 [Dear ImGui's MIT notice](licenses/ImGui.txt), Copyright (c) 2014-2024 Omar
 Cornut, from the pinned framework tree, and [cimgui's MIT notice](licenses/cimgui.txt),
-Copyright (c) 2015 Stephan Dilly. The framework's cimgui header identifies
-Dear ImGui 1.90.8 docking, but does not record its generator revision. The
-cimgui notice is an attribution supplement fetched at
-`bb4d4848b759e037a6cc26d23be0387a148ac39f`; this is not a claim that the wrapper
-was generated from that revision.
+Copyright (c) 2015 Stephan Dilly. The framework's `include/cimgui.h` is byte-identical to cimgui
+`1.90.8dock`, revision `7c16d31cdb9d2db3038b324fe967ffa76b02c8c4`.
+Its `src/cimgui.cpp` differs only in two include paths after newline
+normalization. The retained cimgui notice matches that revision byte for byte.
+This identifies a matching source baseline, not the historical generator invocation.
+
+The pinned framework README directs header users to a separate
+[LGPL-2.1 API repository](https://github.com/QTR-Modding/SKSE-Menu-Framework-3-API/tree/1dcb70179076aae4ab626f43c5baab2735ca5877).
+The vendored wrapper now matches that API repository byte for byte. The
+separately installed framework DLL retains its own GPL terms; adopting the
+API header does not change the framework license or the first-party policy.
 
 ## Components embedded in JSON
 
@@ -92,15 +99,15 @@ texture files, peer-plugin DLLs, fonts, or Community Shaders logos. Peer
 plugins and the Microsoft runtime are separately installed dependencies;
 their installations are not redistributed by this package.
 
-The tracked EFSH fixtures contain game-record captures, including identifiers,
-parameters and texture paths. They are excluded from mod and symbols archives;
-their provenance and redistribution suitability still need review before
-publishing the source tree. Build tools and SDK inputs have their own terms
-and are not included as standalone tools in these archives.
+The current EFSH importer fixtures are authored synthetic records and generated
+recipe goldens; [fixture provenance](tests/fixtures/README.md) records their
+coverage and origin. Captured game records remain in Git history, which still
+needs a separate publication review. Build tools and SDK inputs have their own
+terms and are not included as standalone tools in these archives.
 
 Before distribution, provide the complete corresponding source for the exact
 binary candidate, including the needed dependency sources and build/install
 scripts, through a reviewed GPL-compliant delivery arrangement. A dirty build
 identifier or generic repository link is not evidence of matching published
-source. The first-party linking/exception policy and source-fixture review
-remain publication work; this notice bundle does not change the project license.
+source. The first-party permission is recorded in `COPYING.md`; it does not waive third-party
+terms. Source/history publication and retention arrangements remain open.

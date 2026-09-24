@@ -1,3 +1,4 @@
+// GPL-3.0-only with the additional permission in COPYING.md.
 #include "engine/Events.h"
 #include "diagnostics/Metrics.h"
 #include "diagnostics/Trace.h"

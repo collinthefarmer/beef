@@ -1,22 +1,22 @@
 {
   "format": 1,
-  "name": "EnchArmorMagickaFXS",
-  "description": "Imported from effect shader EnchArmorMagickaFXS with the fill template.",
+  "name": "SyntheticNeutralEdge",
+  "description": "Imported from effect shader SyntheticNeutralEdge with the fill template.",
   "imported": "BetterEnchantmentEffects 0.1.0",
   "keys": [
     {
-      "effectShader": "EnchArmorMagickaFXS"
+      "effectShader": "SyntheticNeutralEdge"
     }
   ],
   "signals": {
     "fillRaw": {
       "efsh": {
         "field": "fillAlpha",
-        "record": "EnchArmorMagickaFXS"
+        "record": "SyntheticNeutralEdge"
       }
     },
     "importFillBase": {
-      "constant": 0.05
+      "constant": 1.0
     },
     "fillLevel": {
       "expr": "@fillRaw / @importFillBase"
@@ -24,11 +24,11 @@
     "edgeRaw": {
       "efsh": {
         "field": "edgeAlpha",
-        "record": "EnchArmorMagickaFXS"
+        "record": "SyntheticNeutralEdge"
       }
     },
     "importEdgeBase": {
-      "constant": 0.9
+      "constant": 1.0
     },
     "edgeLevel": {
       "expr": "@edgeRaw / @importEdgeBase"
@@ -36,20 +36,20 @@
     "edgeColor": {
       "efsh": {
         "field": "edgeColor",
-        "record": "EnchArmorMagickaFXS"
+        "record": "SyntheticNeutralEdge"
       }
     },
     "scroll": {
       "efsh": {
         "field": "scroll",
-        "record": "EnchArmorMagickaFXS"
+        "record": "SyntheticNeutralEdge"
       }
     },
     "importHue": {
       "constant": [
-        0.15503876,
-        0.3875969,
-        1.0
+        0.33333334,
+        1.0,
+        0.6666667
       ]
     },
     "glowStrength": {
@@ -114,22 +114,22 @@
   "sources": {
     "fill": {
       "image": {
-        "path": "Effects\\DarkSwirls.dds",
+        "path": "Synthetic\\Bands.dds",
         "scroll": "@scroll",
         "tile": [
-          3.0,
-          3.0
+          1.0,
+          1.0
         ]
       }
     },
     "sheenField": {
       "image": {
-        "path": "Effects\\DarkSwirls.dds",
+        "path": "Synthetic\\Bands.dds",
         "channel": "luma",
         "scroll": "@sheenScroll",
         "tile": [
-          3.0,
-          3.0
+          1.0,
+          1.0
         ],
         "mirror": [
           false,
@@ -139,12 +139,12 @@
     },
     "shimmerField": {
       "image": {
-        "path": "Effects\\DarkSwirls.dds",
+        "path": "Synthetic\\Bands.dds",
         "channel": "luma",
         "scroll": "@shimmerScroll",
         "tile": [
-          3.0,
-          3.0
+          1.0,
+          1.0
         ],
         "transpose": true,
         "mip": 2.0
@@ -152,12 +152,12 @@
     },
     "glossField": {
       "image": {
-        "path": "Effects\\DarkSwirls.dds",
+        "path": "Synthetic\\Bands.dds",
         "channel": "luma",
         "scroll": "@scroll",
         "tile": [
-          3.0,
-          3.0
+          1.0,
+          1.0
         ],
         "mip": 1.0
       }

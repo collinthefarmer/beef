@@ -1,22 +1,22 @@
 {
   "format": 1,
-  "name": "EnchArmorHealthFXS",
-  "description": "Imported from effect shader EnchArmorHealthFXS with the fill template.",
+  "name": "SyntheticBare",
+  "description": "Imported from effect shader SyntheticBare with the bare template.",
   "imported": "BetterEnchantmentEffects 0.1.0",
   "keys": [
     {
-      "effectShader": "EnchArmorHealthFXS"
+      "effectShader": "SyntheticBare"
     }
   ],
   "signals": {
     "fillRaw": {
       "efsh": {
         "field": "fillAlpha",
-        "record": "EnchArmorHealthFXS"
+        "record": "SyntheticBare"
       }
     },
     "importFillBase": {
-      "constant": 0.05
+      "constant": 0.3
     },
     "fillLevel": {
       "expr": "@fillRaw / @importFillBase"
@@ -24,11 +24,11 @@
     "edgeRaw": {
       "efsh": {
         "field": "edgeAlpha",
-        "record": "EnchArmorHealthFXS"
+        "record": "SyntheticBare"
       }
     },
     "importEdgeBase": {
-      "constant": 0.8
+      "constant": 0.7
     },
     "edgeLevel": {
       "expr": "@edgeRaw / @importEdgeBase"
@@ -36,20 +36,20 @@
     "edgeColor": {
       "efsh": {
         "field": "edgeColor",
-        "record": "EnchArmorHealthFXS"
+        "record": "SyntheticBare"
       }
     },
     "scroll": {
       "efsh": {
         "field": "scroll",
-        "record": "EnchArmorHealthFXS"
+        "record": "SyntheticBare"
       }
     },
     "importHue": {
       "constant": [
         1.0,
-        0.028571429,
-        0.028571429
+        0.5,
+        0.25
       ]
     },
     "glowStrength": {
@@ -64,29 +64,11 @@
     "sheenWeight": {
       "expr": "clamp(@edgeLevel * @sheenScale, 0, 1)"
     },
-    "sheenPhase": {
-      "constant": 0.5
-    },
-    "sheenScroll": {
-      "expr": "@scroll + @sheenPhase"
-    },
     "shimmerScale": {
       "constant": 0.1
     },
     "heightScale": {
       "expr": "@shimmerScale * clamp(@fillLevel, 0, 2)"
-    },
-    "shimmerPhase": {
-      "constant": 0.25
-    },
-    "shimmerScroll": {
-      "expr": "@scroll + @shimmerPhase"
-    },
-    "glossBoost": {
-      "constant": 0.25
-    },
-    "glossAmount": {
-      "expr": "@glossBoost * saturate(@fillLevel)"
     },
     "lightLevel": {
       "expr": "clamp(@fillLevel, 0, 2)"
@@ -108,60 +90,9 @@
     }
   },
   "curves": {
-    "crisp": "(x - mean) * 3 + 0.5",
-    "punchy": "(x - mean) * 2 + 0.5"
+    "crisp": "(x - mean) * 3 + 0.5"
   },
   "sources": {
-    "fill": {
-      "image": {
-        "path": "Effects\\VaporTile01.dds",
-        "scroll": "@scroll",
-        "tile": [
-          2.0,
-          2.0
-        ]
-      }
-    },
-    "sheenField": {
-      "image": {
-        "path": "Effects\\VaporTile01.dds",
-        "channel": "luma",
-        "scroll": "@sheenScroll",
-        "tile": [
-          2.0,
-          2.0
-        ],
-        "mirror": [
-          false,
-          true
-        ]
-      }
-    },
-    "shimmerField": {
-      "image": {
-        "path": "Effects\\VaporTile01.dds",
-        "channel": "luma",
-        "scroll": "@shimmerScroll",
-        "tile": [
-          2.0,
-          2.0
-        ],
-        "transpose": true,
-        "mip": 2.0
-      }
-    },
-    "glossField": {
-      "image": {
-        "path": "Effects\\VaporTile01.dds",
-        "channel": "luma",
-        "scroll": "@scroll",
-        "tile": [
-          2.0,
-          2.0
-        ],
-        "mip": 1.0
-      }
-    },
     "relief": {
       "material": "relief"
     },
@@ -179,7 +110,11 @@
       "strength": "@glowLevel",
       "stack": [
         {
-          "source": "@fill",
+          "source": [
+            1.0,
+            1.0,
+            1.0
+          ],
           "opacity": 1.0,
           "color": "@importHue",
           "mask": "@metal"
@@ -199,11 +134,6 @@
             1.0
           ],
           "opacity": 1.0
-        },
-        {
-          "source": "@sheenField",
-          "opacity": 1.0,
-          "channels": "a"
         }
       ]
     },
@@ -216,24 +146,6 @@
           "source": "@relief",
           "curve": "@crisp",
           "opacity": 1.0
-        },
-        {
-          "source": "@shimmerField",
-          "blend": "add",
-          "opacity": 0.35
-        }
-      ]
-    },
-    {
-      "target": "material",
-      "slot": "rmaos",
-      "stack": [
-        {
-          "source": "@glossField",
-          "curve": "@punchy",
-          "blend": "subtract",
-          "opacity": "@glossAmount",
-          "channels": "r"
         }
       ]
     },

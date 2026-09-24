@@ -1,3 +1,4 @@
+// GPL-3.0-only with the additional permission in COPYING.md.
 #include "recipe/Importer.h"
 
 #include <nlohmann/json.hpp>

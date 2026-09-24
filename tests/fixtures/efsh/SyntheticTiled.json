@@ -1,0 +1,45 @@
+{
+  "editorId": "SyntheticTiled",
+  "fillTexture": "Synthetic\\Grid.dds",
+  "fillColorKey1": [
+    96,
+    96,
+    96
+  ],
+  "edgeColor": [
+    32,
+    64,
+    128
+  ],
+  "fillFullAlphaRatio": 0.4,
+  "fillPersistentAlphaRatio": 0.6,
+  "edgePersistentAlphaRatio": 0.8,
+  "fillTextureScaleU": 2,
+  "fillTextureScaleV": 4,
+  "fillTextureAnimationSpeedU": 0.125,
+  "fillTextureAnimationSpeedV": -0.25,
+  "fillColorKey2": [
+    64,
+    128,
+    32
+  ],
+  "fillColorKey3": [
+    128,
+    32,
+    64
+  ],
+  "fillColorKey1Time": 0,
+  "fillColorKey2Time": 1,
+  "fillColorKey3Time": 3,
+  "fillColorKey1Scale": 0.5,
+  "fillColorKey2Scale": 1.5,
+  "fillColorKey3Scale": 2,
+  "colorScale": 0.75,
+  "fillAlphaPulseAmplitude": 0.25,
+  "fillAlphaPulseFrequency": 2,
+  "fillAlphaFadeInTime": 0.5,
+  "edgeAlphaPulseAmplitude": 0.5,
+  "edgeAlphaPulseFrequency": 3,
+  "edgeAlphaFadeInTime": 0.25,
+  "formKey": "0x801~SyntheticTests.esp"
+}

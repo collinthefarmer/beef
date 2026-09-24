@@ -67,12 +67,16 @@ class CompatibilityTests(unittest.TestCase):
                 'project(Example VERSION 0.1.0 LANGUAGES NONE)\nfind_package(Python3 REQUIRED COMPONENTS Interpreter)\n'
                 'include(cmake/Compatibility.cmake)\nconfigure_file(cmake/Plugin.cpp.in Plugin.cpp @ONLY)\n')
             identities = []
+            subprocess.run(['git', 'init', '-q', str(root)], check=True)
+            subprocess.run(['git', '-C', str(root), 'add', '.'], check=True)
+            subprocess.run(['git', '-C', str(root), '-c', 'user.name=Test',
+                            '-c', 'user.email=test@example.invalid', 'commit', '-qm', 'fixture'], check=True)
             for item in (profile, alternate):
                 output = root / item['id']
                 subprocess.run(['cmake', '-S', str(root), '-B', str(output),
                                 '-DBEEF_COMPATIBILITY_PROFILE=' + item['id']], check=True, capture_output=True)
                 self.assertEqual((output / 'Plugin.cpp').read_text(), TOOL.declaration(item, 'Example', '0.1.0'))
-                subprocess.run(['python3', str(ROOT / 'tools/build-identity.py'), '--root', str(ROOT),
+                subprocess.run(['python3', str(ROOT / 'tools/build-identity.py'), '--root', str(root),
                                 '--output', str(output), '--config', 'Release', '--compatibility',
                                 str(output / 'generated/compatibility.json')], check=True)
                 identities.append(json.loads((output / 'build-identity.json').read_text()))

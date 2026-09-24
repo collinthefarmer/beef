@@ -1,22 +1,22 @@
 {
   "format": 1,
-  "name": "EnchArmorStaminaFXS",
-  "description": "Imported from effect shader EnchArmorStaminaFXS with the fill template.",
+  "name": "0x807~SyntheticTests.esp",
+  "description": "Imported from effect shader 0x807~SyntheticTests.esp with the fill template.",
   "imported": "BetterEnchantmentEffects 0.1.0",
   "keys": [
     {
-      "effectShader": "EnchArmorStaminaFXS"
+      "effectShader": "0x807~SyntheticTests.esp"
     }
   ],
   "signals": {
     "fillRaw": {
       "efsh": {
         "field": "fillAlpha",
-        "record": "EnchArmorStaminaFXS"
+        "record": "0x807~SyntheticTests.esp"
       }
     },
     "importFillBase": {
-      "constant": 0.1
+      "constant": 1.0
     },
     "fillLevel": {
       "expr": "@fillRaw / @importFillBase"
@@ -24,11 +24,11 @@
     "edgeRaw": {
       "efsh": {
         "field": "edgeAlpha",
-        "record": "EnchArmorStaminaFXS"
+        "record": "0x807~SyntheticTests.esp"
       }
     },
     "importEdgeBase": {
-      "constant": 0.52
+      "constant": 1.0
     },
     "edgeLevel": {
       "expr": "@edgeRaw / @importEdgeBase"
@@ -36,20 +36,20 @@
     "edgeColor": {
       "efsh": {
         "field": "edgeColor",
-        "record": "EnchArmorStaminaFXS"
+        "record": "0x807~SyntheticTests.esp"
       }
     },
     "scroll": {
       "efsh": {
         "field": "scroll",
-        "record": "EnchArmorStaminaFXS"
+        "record": "0x807~SyntheticTests.esp"
       }
     },
     "importHue": {
       "constant": [
-        0.37974682,
         1.0,
-        0.46835443
+        0.5,
+        0.25
       ]
     },
     "glowStrength": {
@@ -114,22 +114,22 @@
   "sources": {
     "fill": {
       "image": {
-        "path": "Effects\\CloudTile.dds",
+        "path": "Synthetic\\Fallback.dds",
         "scroll": "@scroll",
         "tile": [
-          2.0,
-          2.0
+          1.0,
+          1.0
         ]
       }
     },
     "sheenField": {
       "image": {
-        "path": "Effects\\CloudTile.dds",
+        "path": "Synthetic\\Fallback.dds",
         "channel": "luma",
         "scroll": "@sheenScroll",
         "tile": [
-          2.0,
-          2.0
+          1.0,
+          1.0
         ],
         "mirror": [
           false,
@@ -139,12 +139,12 @@
     },
     "shimmerField": {
       "image": {
-        "path": "Effects\\CloudTile.dds",
+        "path": "Synthetic\\Fallback.dds",
         "channel": "luma",
         "scroll": "@shimmerScroll",
         "tile": [
-          2.0,
-          2.0
+          1.0,
+          1.0
         ],
         "transpose": true,
         "mip": 2.0
@@ -152,12 +152,12 @@
     },
     "glossField": {
       "image": {
-        "path": "Effects\\CloudTile.dds",
+        "path": "Synthetic\\Fallback.dds",
         "channel": "luma",
         "scroll": "@scroll",
         "tile": [
-          2.0,
-          2.0
+          1.0,
+          1.0
         ],
         "mip": 1.0
       }

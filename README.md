@@ -97,7 +97,8 @@ src/
 
 ## Licence
 
-- GPL-3.0. See `LICENSE`.
+- GPL-3.0-only with the modding/linking permission in [COPYING.md](COPYING.md).
+  The GPL text is in `LICENSE`; third-party terms remain independent.
 - `src/cs/` and `src/extern/` are vendored third-party copies under their
   own terms, recorded beside them.
 - [Third-party notices](THIRD_PARTY_NOTICES.md) records dependency provenance,

@@ -1,3 +1,4 @@
+// GPL-3.0-only with the additional permission in COPYING.md.
 #include "engine/Clock.h"
 #include "engine/InstanceTime.h"
 #include "test_support.h"

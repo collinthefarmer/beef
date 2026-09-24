@@ -1,3 +1,4 @@
+// GPL-3.0-only with the additional permission in COPYING.md.
 #include "recipe/Importer.h"
 #include "test_support.h"
 
@@ -76,15 +77,15 @@ std::vector<std::string> EfshFixtureNames() {
 int main() {
   {
     EffectShaderRecord record;
-    record.editorId = "EnchArmorMagickaFXS";
-    record.fillTexture = "Effects\\DarkSwirls.dds";
-    record.params.fill.fullAlphaRatio = 0.05f;
+    record.editorId = "SyntheticTiled";
+    record.fillTexture = "Synthetic\\Grid.dds";
+    record.params.fill.fullAlphaRatio = 0.4f;
 
     Check(record.tileU == 1.0f && record.tileV == 1.0f,
           "an effect-shader record defaults its tiling");
-    Check(record.editorId == "EnchArmorMagickaFXS",
+    Check(record.editorId == "SyntheticTiled",
           "the record keeps its editor id");
-    Check(record.params.fill.fullAlphaRatio == 0.05f,
+    Check(record.params.fill.fullAlphaRatio == 0.4f,
           "the record carries effect params");
     Check(ImportTemplateId(record) == "fill",
           "a record with a fill texture selects the fill template");
@@ -108,7 +109,7 @@ int main() {
 
     const std::expected<EffectShaderRecord, std::string> badColor =
         ParseEffectShaderRecord(
-            R"({"formKey":"0x1~Skyrim.esm","fillColorKey1":["a","b","c"]})");
+            R"({"formKey":"0x1~SyntheticTests.esp","fillColorKey1":["a","b","c"]})");
     Check(badColor.has_value(),
           "a non-numeric colour is tolerated, not a crash");
     if (badColor) {
@@ -157,55 +158,54 @@ int main() {
 
   {
     const std::expected<EffectShaderRecord, std::string> parsed =
-        ParseEffectShaderRecord(ReadEfsh("EnchArmorMagickaFXS"));
-    Check(parsed.has_value(), "the magicka effect shader parses");
+        ParseEffectShaderRecord(ReadEfsh("SyntheticTiled"));
+    Check(parsed.has_value(), "the synthetic tiled effect shader parses");
     if (parsed) {
       const EffectShaderRecord &rec = *parsed;
-      Check(rec.editorId == "EnchArmorMagickaFXS", "editor id is read");
-      Check(rec.key.file == "Skyrim.esm" && rec.key.localId == 0x92DEDu,
+      Check(rec.editorId == "SyntheticTiled", "editor id is read");
+      Check(rec.key.file == "SyntheticTests.esp" && rec.key.localId == 0x801u,
             "the form key is read");
-      Check(rec.fillTexture == "Effects\\DarkSwirls.dds",
+      Check(rec.fillTexture == "Synthetic\\Grid.dds",
             "the fill texture is read");
-      Check(Near(rec.tileU, 3.0f) && Near(rec.tileV, 3.0f),
+      Check(Near(rec.tileU, 2.0f) && Near(rec.tileV, 4.0f),
             "the tiling is read");
-      Check(Near(rec.params.fill.fullAlphaRatio, 0.05f),
+      Check(Near(rec.params.fill.fullAlphaRatio, 0.4f),
             "the fill full-alpha ratio is read");
-      Check(Near(rec.params.fill.persistentAlphaRatio, 0.05f),
+      Check(Near(rec.params.fill.persistentAlphaRatio, 0.6f),
             "the fill persistent-alpha ratio is read");
-      Check(Near(rec.params.edge.persistentAlphaRatio, 0.9f),
+      Check(Near(rec.params.edge.persistentAlphaRatio, 0.8f),
             "the edge persistent-alpha ratio is read");
-      Check(Near(rec.params.animationSpeedV, 0.1f),
+      Check(Near(rec.params.animationSpeedV, -0.25f),
             "the v animation speed is read");
-      Check(Near(rec.params.edgeColor.x, 20.0f / 255.0f),
+      Check(Near(rec.params.edgeColor.x, 32.0f / 255.0f),
             "the edge colour is read and normalised to 0..1");
 
-      Check(RecipeIdFor(rec) == "EnchArmorMagickaFXS",
+      Check(RecipeIdFor(rec) == "SyntheticTiled",
             "the recipe id is the editor id");
 
       const Recipe r = ImportEffectShader(rec, fillTemplate);
-      Check(r.id == "EnchArmorMagickaFXS",
-            "the imported recipe carries the id");
-      Check(r.metadata.name == "EnchArmorMagickaFXS",
+      Check(r.id == "SyntheticTiled", "the imported recipe carries the id");
+      Check(r.metadata.name == "SyntheticTiled",
             "the metadata name is the editor id");
       Check(r.metadata.imported == "BetterEnchantmentEffects 0.1.0",
             "the importer stamps its version");
       Check(r.metadata.description ==
-                "Imported from effect shader EnchArmorMagickaFXS with the "
+                "Imported from effect shader SyntheticTiled with the "
                 "fill template.",
             "the description names the source shader and the template");
 
       Check(r.keys.size() == 1 && r.keys[0].kind == KeyKind::kEffectShader,
             "the recipe keys on the effect shader");
       const FormRef *keyForm = r.keys[0].Form();
-      Check(keyForm && keyForm->text == "EnchArmorMagickaFXS",
+      Check(keyForm && keyForm->text == "SyntheticTiled",
             "the key names the shader by editor id");
 
       const EfshSignal *fillRaw = EfshSig(r, "fillRaw");
       Check(fillRaw && fillRaw->field == EfshField::kFillAlpha &&
-                fillRaw->record.text == "EnchArmorMagickaFXS",
+                fillRaw->record.text == "SyntheticTiled",
             "fillRaw reads the fill alpha of the imported shader");
       Check(EfshSig(r, "edgeRaw") &&
-                EfshSig(r, "edgeRaw")->record.text == "EnchArmorMagickaFXS",
+                EfshSig(r, "edgeRaw")->record.text == "SyntheticTiled",
             "edgeRaw is retargeted to the imported shader");
       Check(EfshSig(r, "edgeColor") &&
                 EfshSig(r, "edgeColor")->field == EfshField::kEdgeColor,
@@ -214,9 +214,9 @@ int main() {
                 EfshSig(r, "scroll")->field == EfshField::kScroll,
             "scroll reads the scroll offset");
 
-      Check(ConstNear(r, "importFillBase", 0.05f),
+      Check(ConstNear(r, "importFillBase", 0.6f),
             "importFillBase is the fill baseline alpha");
-      Check(ConstNear(r, "importEdgeBase", 0.9f),
+      Check(ConstNear(r, "importEdgeBase", 0.8f),
             "importEdgeBase is the edge baseline alpha");
       Check(Expression(r, "fillLevel") && Expression(r, "fillLevel")->text ==
                                               "@fillRaw / @importFillBase",
@@ -226,8 +226,7 @@ int main() {
       Check(hue != nullptr, "importHue is a constant");
       if (hue) {
         const Vec3 *v = Get<Vec3>(hue->value);
-        Check(v && Near(v->x, 20.0f / 129.0f) && Near(v->y, 50.0f / 129.0f) &&
-                  Near(v->z, 1.0f),
+        Check(v && Near(v->x, 0.25f) && Near(v->y, 0.5f) && Near(v->z, 1.0f),
               "importHue is the edge-tinted, hue-normalised emissive colour");
       }
       Check(ConstNear(r, "glowStrength", 1.0f),
@@ -252,7 +251,7 @@ int main() {
       Check(fill != nullptr, "the fill source exists in the fill template");
       if (fill) {
         const ImageSource *img = Get<ImageSource>(fill->kind);
-        Check(img && img->path == "Effects\\DarkSwirls.dds",
+        Check(img && img->path == "Synthetic\\Grid.dds",
               "the fill source is patched to the fill texture");
         Check(img && img->channel == ImageChannel::kRgb,
               "the fill source samples rgb");
@@ -260,7 +259,7 @@ int main() {
           const std::array<Param, 2> *tile =
               Get<std::array<Param, 2>>(*img->tile);
           Check(tile && Get<float>((*tile)[0]) &&
-                    Near(*Get<float>((*tile)[0]), 3.0f),
+                    Near(*Get<float>((*tile)[0]), 2.0f),
                 "the fill source tiles by the shader scale");
         }
       }
@@ -268,7 +267,7 @@ int main() {
         const Source *s = r.FindSource(name);
         const ImageSource *img = s ? Get<ImageSource>(s->kind) : nullptr;
         Check(
-            img && img->path == "Effects\\DarkSwirls.dds",
+            img && img->path == "Synthetic\\Grid.dds",
             std::format("the {} source is patched to the fill texture", name));
       }
       const Mask *metal = r.FindMask("metal");
@@ -313,15 +312,15 @@ int main() {
 
   {
     const std::expected<EffectShaderRecord, std::string> parsed =
-        ParseEffectShaderRecord(ReadEfsh("WaterBreathingFXS"));
-    Check(parsed.has_value(), "the fill-less water-breathing shader parses");
+        ParseEffectShaderRecord(ReadEfsh("SyntheticBare"));
+    Check(parsed.has_value(), "the fill-less synthetic bare shader parses");
     if (parsed) {
       Check(parsed->fillTexture.empty(),
-            "the water-breathing shader has no fill texture");
+            "the synthetic bare shader has no fill texture");
       Check(ImportTemplateId(*parsed) == "bare",
             "the fill-less shader selects the bare template");
       const Recipe r = ImportEffectShader(*parsed, bareTemplate);
-      Check(r.id == "WaterBreathingFXS", "the fill-less recipe carries its id");
+      Check(r.id == "SyntheticBare", "the fill-less recipe carries its id");
       Check(r.FindSignal("sheenScroll") == nullptr,
             "the bare template has no sheenScroll signal");
       Check(r.FindSource("fill") == nullptr &&
@@ -329,9 +328,9 @@ int main() {
             "the bare template has no fill-derived sources");
       Check(r.FindSource("relief") && r.FindSource("metallic"),
             "the material sources are always present");
-      Check(ConstNear(r, "importFillBase", 0.1f),
+      Check(ConstNear(r, "importFillBase", 0.3f),
             "importFillBase is patched without a fill texture");
-      Check(ConstNear(r, "importEdgeBase", 1.0f),
+      Check(ConstNear(r, "importEdgeBase", 0.7f),
             "importEdgeBase is patched without a fill texture");
       Check(r.outputs.size() == 4,
             "the bare import drops the rmaos gloss output");
@@ -342,8 +341,48 @@ int main() {
       const ConstantSignal *hue = Const(r, "importHue");
       if (hue) {
         const Vec3 *v = Get<Vec3>(hue->value);
-        Check(v && Near(v->z, 1.0f) && Near(v->x, 0.5365854f, 1e-3f),
+        Check(v && Near(v->z, 0.25f) && Near(v->x, 1.0f),
               "importHue is still resolved without a fill texture");
+      }
+    }
+  }
+
+  {
+    for (const char *name :
+         {"SyntheticNeutralEdge", "SyntheticDark", "SyntheticAlphaFallback",
+          "SyntheticZeroAlpha", "SyntheticFormKey"}) {
+      const auto parsed = ParseEffectShaderRecord(ReadEfsh(name));
+      Check(parsed.has_value(), std::format("synthetic case {} parses", name));
+      if (!parsed) {
+        continue;
+      }
+      const Recipe r = ImportEffectShader(
+          *parsed,
+          ImportTemplateId(*parsed) == "fill" ? fillTemplate : bareTemplate);
+      const ConstantSignal *hue = Const(r, "importHue");
+      const Vec3 *color = hue ? Get<Vec3>(hue->value) : nullptr;
+      if (std::string_view{name} == "SyntheticNeutralEdge") {
+        Check(color && Near(color->x, 1.0f / 3.0f) && Near(color->y, 1.0f) &&
+                  Near(color->z, 2.0f / 3.0f),
+              "neutral edge preserves the fill hue");
+      } else if (std::string_view{name} == "SyntheticDark") {
+        Check(color && *color == Vec3{1.0f, 1.0f, 1.0f},
+              "dark fill and edge fall back to white");
+      } else if (std::string_view{name} == "SyntheticAlphaFallback") {
+        Check(ConstNear(r, "importFillBase", 0.25f) &&
+                  ConstNear(r, "importEdgeBase", 0.5f),
+              "zero persistent alpha falls back to full alpha");
+      } else if (std::string_view{name} == "SyntheticZeroAlpha") {
+        Check(ConstNear(r, "importFillBase", 1e-4f) &&
+                  ConstNear(r, "importEdgeBase", 1e-4f),
+              "zero alpha baselines retain safe divisors");
+      } else {
+        Check(r.id == "SyntheticTests-807" &&
+                  r.metadata.name == "0x807~SyntheticTests.esp",
+              "missing editor id uses the synthetic form key");
+        const EfshSignal *fill = EfshSig(r, "fillRaw");
+        Check(fill && fill->record.text == "0x807~SyntheticTests.esp",
+              "form-key fallback retargets effect signals");
       }
     }
   }

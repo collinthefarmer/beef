@@ -1,22 +1,22 @@
 {
   "format": 1,
-  "name": "EnchArmorFrostFXS",
-  "description": "Imported from effect shader EnchArmorFrostFXS with the fill template.",
+  "name": "SyntheticDark",
+  "description": "Imported from effect shader SyntheticDark with the fill template.",
   "imported": "BetterEnchantmentEffects 0.1.0",
   "keys": [
     {
-      "effectShader": "EnchArmorFrostFXS"
+      "effectShader": "SyntheticDark"
     }
   ],
   "signals": {
     "fillRaw": {
       "efsh": {
         "field": "fillAlpha",
-        "record": "EnchArmorFrostFXS"
+        "record": "SyntheticDark"
       }
     },
     "importFillBase": {
-      "constant": 0.1
+      "constant": 1.0
     },
     "fillLevel": {
       "expr": "@fillRaw / @importFillBase"
@@ -24,11 +24,11 @@
     "edgeRaw": {
       "efsh": {
         "field": "edgeAlpha",
-        "record": "EnchArmorFrostFXS"
+        "record": "SyntheticDark"
       }
     },
     "importEdgeBase": {
-      "constant": 0.52
+      "constant": 1.0
     },
     "edgeLevel": {
       "expr": "@edgeRaw / @importEdgeBase"
@@ -36,19 +36,19 @@
     "edgeColor": {
       "efsh": {
         "field": "edgeColor",
-        "record": "EnchArmorFrostFXS"
+        "record": "SyntheticDark"
       }
     },
     "scroll": {
       "efsh": {
         "field": "scroll",
-        "record": "EnchArmorFrostFXS"
+        "record": "SyntheticDark"
       }
     },
     "importHue": {
       "constant": [
-        0.77327937,
-        0.91902834,
+        1.0,
+        1.0,
         1.0
       ]
     },
@@ -114,22 +114,22 @@
   "sources": {
     "fill": {
       "image": {
-        "path": "Effects\\CloudTile.dds",
+        "path": "Synthetic\\Dots.dds",
         "scroll": "@scroll",
         "tile": [
-          2.0,
-          2.0
+          1.0,
+          1.0
         ]
       }
     },
     "sheenField": {
       "image": {
-        "path": "Effects\\CloudTile.dds",
+        "path": "Synthetic\\Dots.dds",
         "channel": "luma",
         "scroll": "@sheenScroll",
         "tile": [
-          2.0,
-          2.0
+          1.0,
+          1.0
         ],
         "mirror": [
           false,
@@ -139,12 +139,12 @@
     },
     "shimmerField": {
       "image": {
-        "path": "Effects\\CloudTile.dds",
+        "path": "Synthetic\\Dots.dds",
         "channel": "luma",
         "scroll": "@shimmerScroll",
         "tile": [
-          2.0,
-          2.0
+          1.0,
+          1.0
         ],
         "transpose": true,
         "mip": 2.0
@@ -152,12 +152,12 @@
     },
     "glossField": {
       "image": {
-        "path": "Effects\\CloudTile.dds",
+        "path": "Synthetic\\Dots.dds",
         "channel": "luma",
         "scroll": "@scroll",
         "tile": [
-          2.0,
-          2.0
+          1.0,
+          1.0
         ],
         "mip": 1.0
       }

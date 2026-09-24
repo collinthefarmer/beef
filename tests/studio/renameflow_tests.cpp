@@ -1,3 +1,4 @@
+// GPL-3.0-only with the additional permission in COPYING.md.
 #include "studio/MenuState.h"
 #include "studio/Relationships.h"
 #include "test_support.h"

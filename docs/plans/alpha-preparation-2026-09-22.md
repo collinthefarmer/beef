@@ -133,7 +133,17 @@ this pass before release-candidate validation.
   The [offline notice audit](../checkpoints/licenses-2026-09-23.md) records
   bundled texts and verified vendored headers. Matching-source delivery,
   first-party linking permissions, game-derived fixture provenance, and the
-  unrecorded cimgui generator revision remain publication review items.
+  unrecorded cimgui generator revision remained publication review items.
+  The [2026-09-24 review](../checkpoints/publication-provenance-2026-09-24.md)
+  identifies the matching cimgui 1.90.8dock source baseline and a separate LGPL
+  menu API source. That header is now adopted with its LGPL notice; the seven
+  captured fixture pairs are replaced by synthetic cases, and build identity
+  supports explicit archive provenance. The owner confirmed sole first-party
+  ownership. Curated source/dependency bundling and a full clean-extraction
+  build are now [validated](../checkpoints/source-delivery-2026-09-24.md).
+  First-party policy is now [adopted](../checkpoints/licensing-policy-2026-09-24.md).
+  History disposition and publication/retention remain open.
+  Follow the [ordered source-delivery plan](publication-source-delivery-2026-09-24.md).
 - [x] Inventory pinned third-party notices and ship the license bundle in
   staging, mod archives, and symbols archives, with integrity and omission tests.
 

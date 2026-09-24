@@ -10,34 +10,47 @@ list(APPEND IDENTITY_INPUTS
 if(EXISTS "${CMAKE_SOURCE_DIR}/tools/compatibility.py")
   list(APPEND IDENTITY_INPUTS "${CMAKE_SOURCE_DIR}/tools/compatibility.py")
 endif()
-find_package(Git REQUIRED)
-foreach(ref HEAD packed-refs)
-  execute_process(COMMAND "${GIT_EXECUTABLE}" rev-parse --git-path "${ref}"
-    WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}" OUTPUT_VARIABLE ref_path
-    OUTPUT_STRIP_TRAILING_WHITESPACE COMMAND_ERROR_IS_FATAL ANY)
-  cmake_path(ABSOLUTE_PATH ref_path BASE_DIRECTORY "${CMAKE_SOURCE_DIR}")
-  if(EXISTS "${ref_path}")
-    list(APPEND IDENTITY_INPUTS "${ref_path}")
-    set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS "${ref_path}")
+if(EXISTS "${CMAKE_SOURCE_DIR}/COPYING.md")
+  list(APPEND IDENTITY_INPUTS "${CMAKE_SOURCE_DIR}/COPYING.md")
+endif()
+option(BEEF_ALLOW_MODIFIED_SOURCE "Allow intentional edits to a source archive" OFF)
+if(EXISTS "${CMAKE_SOURCE_DIR}/.git")
+  find_package(Git REQUIRED)
+  foreach(ref HEAD packed-refs)
+    execute_process(COMMAND "${GIT_EXECUTABLE}" rev-parse --git-path "${ref}"
+      WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}" OUTPUT_VARIABLE ref_path
+      OUTPUT_STRIP_TRAILING_WHITESPACE COMMAND_ERROR_IS_FATAL ANY)
+    cmake_path(ABSOLUTE_PATH ref_path BASE_DIRECTORY "${CMAKE_SOURCE_DIR}")
+    if(EXISTS "${ref_path}")
+      list(APPEND IDENTITY_INPUTS "${ref_path}")
+      set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS "${ref_path}")
+    endif()
+  endforeach()
+  execute_process(COMMAND "${GIT_EXECUTABLE}" symbolic-ref -q HEAD
+    WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}" OUTPUT_VARIABLE branch
+    OUTPUT_STRIP_TRAILING_WHITESPACE)
+  if(branch)
+    execute_process(COMMAND "${GIT_EXECUTABLE}" rev-parse --git-path "${branch}"
+      WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}" OUTPUT_VARIABLE branch_path
+      OUTPUT_STRIP_TRAILING_WHITESPACE COMMAND_ERROR_IS_FATAL ANY)
+    cmake_path(ABSOLUTE_PATH branch_path BASE_DIRECTORY "${CMAKE_SOURCE_DIR}")
+    if(EXISTS "${branch_path}")
+      list(APPEND IDENTITY_INPUTS "${branch_path}")
+      set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS "${branch_path}")
+    endif()
   endif()
-endforeach()
-execute_process(COMMAND "${GIT_EXECUTABLE}" symbolic-ref -q HEAD
-  WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}" OUTPUT_VARIABLE branch
-  OUTPUT_STRIP_TRAILING_WHITESPACE)
-if(branch)
-  execute_process(COMMAND "${GIT_EXECUTABLE}" rev-parse --git-path "${branch}"
-    WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}" OUTPUT_VARIABLE branch_path
-    OUTPUT_STRIP_TRAILING_WHITESPACE COMMAND_ERROR_IS_FATAL ANY)
-  cmake_path(ABSOLUTE_PATH branch_path BASE_DIRECTORY "${CMAKE_SOURCE_DIR}")
-  if(EXISTS "${branch_path}")
-    list(APPEND IDENTITY_INPUTS "${branch_path}")
-    set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS "${branch_path}")
-  endif()
+elseif(EXISTS "${CMAKE_SOURCE_DIR}/SOURCE_PROVENANCE.json")
+  list(APPEND IDENTITY_INPUTS "${CMAKE_SOURCE_DIR}/SOURCE_PROVENANCE.json")
+else()
+  message(FATAL_ERROR "Source archive requires SOURCE_PROVENANCE.json from its producer")
 endif()
 file(GENERATE OUTPUT "${CMAKE_BINARY_DIR}/generated/identity-inputs.txt"
   CONTENT "${IDENTITY_INPUTS}\n")
 list(APPEND IDENTITY_INPUTS "${CMAKE_BINARY_DIR}/generated/identity-inputs.txt")
 set(compatibility_identity_args)
+if(BEEF_ALLOW_MODIFIED_SOURCE)
+  list(APPEND compatibility_identity_args --allow-modified-source)
+endif()
 if(BEEF_EFFECTIVE_PROFILE)
   list(APPEND IDENTITY_INPUTS "${BEEF_EFFECTIVE_PROFILE}")
   list(APPEND compatibility_identity_args --compatibility "${BEEF_EFFECTIVE_PROFILE}")

@@ -1,0 +1,16 @@
+{
+  "editorId": "SyntheticBare",
+  "fillColorKey1": [
+    80,
+    80,
+    80
+  ],
+  "edgeColor": [
+    128,
+    64,
+    32
+  ],
+  "fillPersistentAlphaRatio": 0.3,
+  "edgePersistentAlphaRatio": 0.7,
+  "formKey": "0x802~SyntheticTests.esp"
+}

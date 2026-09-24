@@ -28,7 +28,7 @@
     {
       "path": "cimgui.txt",
       "sha256": "cf6a4390b1ae5b4dfbc79a4ab33c58852db4f17b3f5c6d9300f278050223884d",
-      "origin": "https://github.com/cimgui/cimgui/blob/bb4d4848b759e037a6cc26d23be0387a148ac39f/LICENSE"
+      "origin": "https://github.com/cimgui/cimgui/blob/7c16d31cdb9d2db3038b324fe967ffa76b02c8c4/LICENSE"
     },
     {
       "path": "CommunityShaders-COPYING.txt",
@@ -54,13 +54,18 @@
       "path": "fmt.txt",
       "sha256": "8c3e4e95f31180a161449d6cfef6a66628bcf5c32a04aba78fbd226c1aa6e099",
       "origin": "https://github.com/gabime/spdlog/blob/6fa36017cfd5731d617e1a934f0e5ea9c4445b13/include/spdlog/fmt/bundled/format.h"
+    },
+    {
+      "path": "SKSE-Menu-Framework-API.txt",
+      "sha256": "20c17d8b8c48a600800dfd14f95d5cb9ff47066a9641ddeab48dc54aec96e331",
+      "origin": "https://github.com/QTR-Modding/SKSE-Menu-Framework-3-API/blob/1dcb70179076aae4ab626f43c5baab2735ca5877/LICENSE"
     }
   ],
   "vendored": [
     {
       "path": "src/extern/SKSEMenuFramework.h",
-      "sha256": "8f5b8be01b60ee2c258a2b3c2c97ccc4118cf7ab9fe17775a8375bf69378683e",
-      "origin": "https://github.com/QTR-Modding/SKSE-Menu-Framework-3/blob/c97cdce6dd207c7cf1401611bc82bd7e8f97a814/resources/SKSEMenuFramework.h"
+      "sha256": "48416e8220ca777e2fffc2ef2baf21f699ab2e6c409d437f44eec5e311c3524c",
+      "origin": "https://github.com/QTR-Modding/SKSE-Menu-Framework-3-API/blob/1dcb70179076aae4ab626f43c5baab2735ca5877/SKSEMenuFramework.h"
     },
     {
       "path": "src/cs/BSLightingShaderMaterialPBR.h",

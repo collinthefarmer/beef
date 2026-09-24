@@ -1,0 +1,18 @@
+{
+  "crt": {
+    "files": 361,
+    "sha256": "76940069564a860abcb8fd26b9b43dd7367a5787a2184dacc6d81312ba69551a"
+  },
+  "sdk": {
+    "files": 8150,
+    "sha256": "45f177178d926d4968fcd0c75c90fa7451a38f7dacedc4dd558a9a4713626067"
+  },
+  "compiler": "clang/LLVM/lld 21.1.8",
+  "cmake": "4.3.4",
+  "ninja": "1.13.2",
+  "python": "3.14.7",
+  "xwin": "0.9.0",
+  "crt_version": "14.44.35220.0",
+  "sdk_version": null,
+  "flake_lock_sha256": "c80b4476b6d99d27e08bba36d511d7a2f88d47f9a0d71234386f4f97539d4e39"
+}

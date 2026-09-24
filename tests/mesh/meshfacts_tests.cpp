@@ -1,3 +1,4 @@
+// GPL-3.0-only with the additional permission in COPYING.md.
 #include "mesh/Mesh.h"
 #include "mesh/MeshFacts.h"
 #include "recipe/Words.h"

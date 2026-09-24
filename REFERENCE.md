@@ -1446,6 +1446,15 @@ Decompile provenance (`decompiled/WornEnchantmentFX/plugin.c` unless noted):
   and Git revision) and presenter outputs. Generated headers are written
   only when changed; completion stamps prevent repeated generation after
   an input touch that does not change contents.
+- Without a root `.git` entry, build identity requires an explicit
+  `SOURCE_PROVENANCE.json`; it must not inherit a parent checkout's revision.
+  The producer records HEAD, the actual input fingerprint, and the effective
+  compatibility profile hash. The record is excluded from that fingerprint
+  to avoid self-reference. Matching archives retain checkout identity;
+  intentional source edits require `BEEF_ALLOW_MODIFIED_SOURCE` and retain
+  the original archive hash alongside the new fingerprint. Profile drift
+  remains an error. This verifies consistency, not producer authenticity or
+  the completeness of a corresponding-source distribution.
 - `cmake/Stage.cmake` defines explicit `stage`; compilation does not stage.
   It copies the DLL/PDB, manifest, INI, templates, presets, presenter DDS
   files, and Windows validator. Recipe files are not staged. Runtime asset
@@ -1707,3 +1716,14 @@ installation result; an atomic failure flag exposes an immutable message to
 the menu without requiring a frame snapshot. A nonzero address is not proof
 of mapping or slot validity. See the
 [startup safeguard](docs/checkpoints/hook-startup-2026-09-24.md).
+
+## First-party legal notices (2026-09-24)
+
+`COPYING.md` states GPL-3.0-only and the first-party modding/linking permission.
+GPL section 7 requires a statement or reference to additional terms in relevant
+source files. First-party C++ files and `cmake/Plugin.cpp.in` carry a short
+reference; required legal notices are excepted from the no-comments convention.
+Vendored files retain their exact upstream bytes. `render/PBRMaterial.h`
+separately references the Community Shaders-derived material's upstream terms.
+`COPYING.md` participates in build identity so a changed permission produces a
+new candidate identity, and is shipped in source, mod, symbols and staging.

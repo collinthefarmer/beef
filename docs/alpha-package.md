@@ -46,7 +46,7 @@ sharing them.
 Use [BUG_REPORT.md](BUG_REPORT.md) for the report template and collection
 instructions. Copy the plugin log before restarting Skyrim; startup replaces it.
 
-Both archives include `LICENSE`, `THIRD_PARTY_NOTICES.md`, and `licenses/`.
+Both archives include `LICENSE`, `COPYING.md`, `THIRD_PARTY_NOTICES.md`, and `licenses/`.
 Matching-source publication, the remaining provenance/licensing review,
 dependency compatibility checks, and in-game acceptance remain release
 prerequisites. This package is for local validation.

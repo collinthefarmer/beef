@@ -1,0 +1,19 @@
+{
+  "editorId": "SyntheticZeroAlpha",
+  "fillColorKey1": [
+    32,
+    64,
+    128
+  ],
+  "edgeColor": [
+    64,
+    32,
+    128
+  ],
+  "fillPersistentAlphaRatio": 0,
+  "fillFullAlphaRatio": 0,
+  "edgePersistentAlphaRatio": 0,
+  "edgeFullAlphaRatio": 0,
+  "flags": 0,
+  "formKey": "0x806~SyntheticTests.esp"
+}

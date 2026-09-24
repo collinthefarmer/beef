@@ -1,0 +1,15 @@
+{
+  "fillTexture": "Synthetic\\Fallback.dds",
+  "fillColorKey1": [
+    128,
+    64,
+    32
+  ],
+  "edgeColor": [
+    0,
+    0,
+    0
+  ],
+  "flags": 4294967295,
+  "formKey": "0x807~SyntheticTests.esp"
+}

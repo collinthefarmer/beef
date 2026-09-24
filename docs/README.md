@@ -32,6 +32,8 @@ Current. A new module is expected to follow them.
   request flows through it, and the file table. Read the sheet for a directory
   before changing it; it links out to `REFERENCE.md` for the facts the code
   cannot state and to `conventions.md` for the patterns it obeys.
+- [source-archive.md](source-archive.md) — curated source candidates, bundled dependency provenance, and fresh-extraction build instructions.
+
 - [build.md](build.md) — native and Windows presets, incremental builds,
   CTest, explicit staging, clang-tidy selection, and validation commands.
 - [conventions.md](conventions.md) — the patterns a new module is built on, the
@@ -58,6 +60,12 @@ One active plan, consolidated from the 2026-09-22 planning session:
   do not automatically carry forward.
 
 ## Checkpoints and evidence (`checkpoints/`)
+
+- [Licensing policy](checkpoints/licensing-policy-2026-09-24.md) — adopted first-party permission, source notice placement, package inclusion and third-party scope limits.
+
+- [Source delivery](checkpoints/source-delivery-2026-09-24.md) — curated dependency bundle, fresh-extraction validation and candidate checksums; [toolchain fingerprints](checkpoints/source-toolchain-2026-09-24.json) identify the external CRT/SDK inputs.
+
+- [Publication implementation](checkpoints/publication-implementation-2026-09-24.md) — adopted API header, synthetic importer fixtures, Gitless archive identity, validation, and remaining source-delivery work.
 
 - [checkpoints/resource-retention-2026-09-24.md](checkpoints/resource-retention-2026-09-24.md) — lost-geometry resource release, idle maintenance, material/weak-cache retention, and bounded idle targets; runtime recovery remains pending.
 
@@ -236,3 +244,6 @@ These retain design context and dated evidence, not an additional backlog.
 - [Static-analyzer review](checkpoints/static-analyzer-2026-09-24.md): tuning cleanup, diagnostic-report correction, and reviewed ownership/relocation warnings.
 
 - [Hook startup safeguard](checkpoints/hook-startup-2026-09-24.md): zero-address refusal, startup ordering, and snapshot-independent UI failure reporting.
+
+- [Publication/provenance review](checkpoints/publication-provenance-2026-09-24.md): menu API license alternative, cimgui baseline, source inputs, and remaining delivery work.
+- [Publication source-delivery plan](plans/publication-source-delivery-2026-09-24.md): ordered implementation and adopted first-party permission.

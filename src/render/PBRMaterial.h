@@ -1,3 +1,6 @@
+// Original portions: GPL-3.0-only with permission in COPYING.md.
+// Community Shaders-derived portions: see THIRD_PARTY_NOTICES.md and
+// licenses/CommunityShaders-EXCEPTIONS.md.
 #pragma once
 
 #include "PCH.h"

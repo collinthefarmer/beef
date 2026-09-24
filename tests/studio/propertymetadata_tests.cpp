@@ -1,3 +1,4 @@
+// GPL-3.0-only with the additional permission in COPYING.md.
 #include "studio/FieldCheck.h"
 #include "studio/Fields.h"
 #include "studio/Forms.h"

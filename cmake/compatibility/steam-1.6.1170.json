@@ -13,7 +13,7 @@
   "address_library": {"required": true, "edition": "AE", "package_version": null},
   "peers": {
     "community_shaders": {"candidate_version": "1.8.3", "source_revision": "dd2677fc4020db1da91b39cebef3dbfbe8913983", "header": "src/cs/BSLightingShaderMaterialPBR.h", "sha256": "c0c6626020d52c4fa2c9b91bf80bb39fa8eb9849f32977a9685e8f1db1f1a6f4", "true_pbr_required": true},
-    "menu_framework": {"candidate_version": "3.13.0", "source_revision": "c97cdce6dd207c7cf1401611bc82bd7e8f97a814", "header": "src/extern/SKSEMenuFramework.h", "sha256": "8f5b8be01b60ee2c258a2b3c2c97ccc4118cf7ab9fe17775a8375bf69378683e", "editor_only": true}
+    "menu_framework": {"candidate_version": "3.13.0", "source_revision": "1dcb70179076aae4ab626f43c5baab2735ca5877", "header": "src/extern/SKSEMenuFramework.h", "sha256": "48416e8220ca777e2fffc2ef2baf21f699ab2e6c409d437f44eec5e311c3524c", "editor_only": true}
   },
   "runtime_verified": false
 }

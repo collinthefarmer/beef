@@ -17,7 +17,8 @@ add_custom_target(stage
   COMMAND "${CMAKE_COMMAND}" -E copy_if_different
     "${BEEF_EFFECTIVE_PROFILE}" "${DIST_DIR}/COMPATIBILITY.json"
   COMMAND "${CMAKE_COMMAND}" -E copy_if_different
-    "${CMAKE_SOURCE_DIR}/LICENSE" "${CMAKE_SOURCE_DIR}/THIRD_PARTY_NOTICES.md" "${DIST_DIR}/"
+    "${CMAKE_SOURCE_DIR}/LICENSE" "${CMAKE_SOURCE_DIR}/COPYING.md"
+    "${CMAKE_SOURCE_DIR}/THIRD_PARTY_NOTICES.md" "${DIST_DIR}/"
   COMMAND "${CMAKE_COMMAND}" -E copy_if_different
     ${license_files} "${DIST_DIR}/licenses/"
   COMMAND "${CMAKE_COMMAND}" -E copy_if_different
@@ -60,6 +61,7 @@ package_file("${CMAKE_SOURCE_DIR}/docs/bug-report.md" "BUG_REPORT.md")
 list(JOIN package_files ",\n" package_entries)
 set(package_files)
 package_file("${CMAKE_SOURCE_DIR}/LICENSE" "LICENSE")
+package_file("${CMAKE_SOURCE_DIR}/COPYING.md" "COPYING.md")
 package_file("${CMAKE_SOURCE_DIR}/THIRD_PARTY_NOTICES.md" "THIRD_PARTY_NOTICES.md")
 foreach(license IN LISTS license_files)
   get_filename_component(filename "${license}" NAME)

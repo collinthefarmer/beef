@@ -24,7 +24,7 @@ practicalities of working here.
    header states its data types first, then the functions over them.
    Plain records and free functions; a class only where state and
    behaviour must change together. Complete type signatures; no `auto` in
-   a signature; no `Any`-like escape hatches. No comments, anywhere: not
+   a signature; no `Any`-like escape hatches. Except for required legal notices and license references, no comments: not
    a header banner, a section rule, a member note or a trailing aside.
    The code says it through a name, a type or a small named helper. A
    fact the code cannot state (an engine layout, a CS rule, a decompile
