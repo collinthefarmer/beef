@@ -27,7 +27,14 @@ std::optional<float> FieldValue(const Studio::FormField &a_field) {
                                           : std::nullopt;
 }
 
-std::optional<float> TunableValue(const Studio::FormField &a_field) {
+std::optional<float> TunableValue(const Studio::FormField &a_field,
+                                  const Frame &a_frame) {
+  if (!a_frame.state || !a_frame.recipe || !a_frame.names) {
+    return std::nullopt;
+  }
+  if (a_frame.state->paint && a_frame.state->mode == Studio::Mode::kPaint) {
+    return std::nullopt;
+  }
   if (!a_field.bind || (a_field.kind != Studio::FieldKind::kScalar &&
                         a_field.kind != Studio::FieldKind::kSignalValue)) {
     return std::nullopt;
@@ -222,22 +229,23 @@ void ObserveTuningItem(Studio::MenuState &a_state, Studio::FieldKey a_key) {
 }
 
 void DrawRecipeTuning(const Studio::FormField &a_field, const Frame &a_frame) {
-  if (!FieldTunable(a_field, a_frame)) {
+  const auto initial = TunableValue(a_field, a_frame);
+  if (!initial) {
     return;
   }
-  const float initial = *TunableValue(a_field);
   Studio::MenuState &state = *a_frame.state;
   const auto key = TuningKey(a_field);
   const bool owned = state.tuning && state.tuning->field == key &&
                      state.tuning->recipeID == a_frame.recipe->id;
-  float value = owned ? state.tuning->value : initial;
-  const TuneRange range = ResolveTuningRange(a_field, state, key, initial);
+  float value = owned ? state.tuning->value : *initial;
+  const TuneRange range = ResolveTuningRange(a_field, state, key, *initial);
   const bool disabled = state.tuning && (!owned || state.tuning->finishing);
   DrawRangeSlider(
       SliderScope{a_field, state, key, range, disabled}, value,
       [&](float a_value) { UpdateTuning(a_field, a_frame, key, a_value); },
       [&] { ObserveTuningItem(state, key); });
-  if (a_frame.snapshot->gesture && owned && a_frame.snapshot->gesture->error) {
+  if (a_frame.snapshot && a_frame.snapshot->gesture && owned &&
+      a_frame.snapshot->gesture->error) {
     Problem(*a_frame.snapshot->gesture->error);
   }
 }
@@ -268,8 +276,6 @@ void DrawTuning(const Studio::FormField &a_field, const Frame &a_frame,
 }
 
 bool FieldTunable(const Studio::FormField &a_field, const Frame &a_frame) {
-  return TunableValue(a_field).has_value() && a_frame.state && a_frame.recipe &&
-         a_frame.names &&
-         !(a_frame.state->paint && a_frame.state->mode == Studio::Mode::kPaint);
+  return TunableValue(a_field, a_frame).has_value();
 }
 }

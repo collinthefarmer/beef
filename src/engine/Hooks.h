@@ -3,5 +3,6 @@
 #include "PCH.h"
 
 namespace BetterEnchantmentEffects {
-void InstallHooks();
+[[nodiscard]] bool InstallHooks();
+[[nodiscard]] std::string_view HookProblem();
 }

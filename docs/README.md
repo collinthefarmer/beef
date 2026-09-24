@@ -232,3 +232,7 @@ These retain design context and dated evidence, not an additional backlog.
 - [Compatibility profiles](checkpoints/compatibility-profiles-2026-09-24.md): target selection, ABI audit, and unverified candidate constraints.
 
 - [Offline candidate gate](checkpoints/offline-gate-2026-09-24.md): full native/sanitizer results, analysis review, and exact candidate archive checksums.
+
+- [Static-analyzer review](checkpoints/static-analyzer-2026-09-24.md): tuning cleanup, diagnostic-report correction, and reviewed ownership/relocation warnings.
+
+- [Hook startup safeguard](checkpoints/hook-startup-2026-09-24.md): zero-address refusal, startup ordering, and snapshot-independent UI failure reporting.

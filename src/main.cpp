@@ -109,7 +109,7 @@ void OnMessage(SKSE::MessagingInterface::Message *a_msg) {
     }
     Menu::RegisterMenu();
     const bool available = CommunityShadersLoaded();
-    manager->SetEmissivePathEnabled(available);
+    manager->SetEmissivePathEnabled(false);
     if (!available) {
       logger::error("CommunityShaders.dll is not loaded; emissive path "
                     "disabled, plugin idle");
@@ -117,8 +117,11 @@ void OnMessage(SKSE::MessagingInterface::Message *a_msg) {
                     "log, then restart Skyrim; all effects require it.");
       break;
     }
+    if (!InstallHooks()) {
+      break;
+    }
+    manager->SetEmissivePathEnabled(true);
     RegisterEventSinks();
-    InstallHooks();
     break;
   }
   case SKSE::MessagingInterface::kPreLoadGame:

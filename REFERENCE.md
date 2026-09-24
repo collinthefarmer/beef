@@ -1690,3 +1690,20 @@ structure boundary, not the mirrored CS PBR ABI. Explicit runtime whitelists sti
 require Address Library for relocations. See the
 [profile audit](docs/checkpoints/compatibility-profiles-2026-09-24.md) for the
 initial candidate and unverified assumptions.
+
+## Static-analyzer ownership review
+
+Image-source form bindings are owned by `std::function` inside `FormField`, then
+by the returned form vector; retaining a binding copies its source record. The
+MSVC allocation trace is a reviewed analyzer modeling warning, corroborated by
+native lifetime/leak coverage. Relocation warnings still depend on valid runtime
+and Address Library inputs. See the
+[analyzer checkpoint](docs/checkpoints/static-analyzer-2026-09-24.md) for traces,
+dispositions, report-parser corrections, and validation limits.
+
+The hook installer checks the resolved PlayerCharacter vtable address before
+CommonLib performs slot arithmetic. `std::call_once` publishes the completed
+installation result; an atomic failure flag exposes an immutable message to
+the menu without requiring a frame snapshot. A nonzero address is not proof
+of mapping or slot validity. See the
+[startup safeguard](docs/checkpoints/hook-startup-2026-09-24.md).

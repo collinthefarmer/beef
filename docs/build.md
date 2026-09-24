@@ -90,7 +90,10 @@ pressure. `--build-dir` can select another configured database for targeted anal
 A full pass requires every active first-party source in the database; use
 the Windows database for that check. Normal runs
 exclude the Clang static analyzer as before; `--analyzer` enables it and
-writes a separate report.
+writes a separate report. Checker names preserve case (including analyzer
+names such as `NewDeleteLeaks`). JSON separates plugin `diagnostics` from
+`external_diagnostics`; review both lists for an analyzer run. The normal
+baseline compares only plugin diagnostics.
 
 Each successful invocation publishes `build/tidy/latest.json` (or
 `build/tidy-analyzer/latest.json`); logs remain under its `logs/` directory.

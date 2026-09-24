@@ -10,7 +10,7 @@ import sys
 import tempfile
 
 ROOT = Path(__file__).resolve().parents[1]
-WARNING = re.compile(r'^(.*?):(\d+):\d+: warning: .* \[([a-z][a-z0-9.,-]+)\]$')
+WARNING = re.compile(r'^(.*?):(\d+):\d+: warning: .* \[([A-Za-z][A-Za-z0-9_.,-]+)\]$')
 
 
 def source_path(entry):
@@ -66,6 +66,7 @@ def run(args):
             raise ValueError('Full analysis requires a current Windows database; missing: ' +
                              ', '.join(str(p.relative_to(ROOT)) for p in sorted(missing)))
     diagnostics = set()
+    external_diagnostics = set()
     failures = []
     binary = os.environ.get('CLANG_TIDY', 'clang-tidy')
     with tempfile.TemporaryDirectory(prefix='run-', dir=output) as temp:
@@ -94,6 +95,8 @@ def run(args):
                             path = Path(args.build_dir).resolve() / path
                         if own_source(path.resolve()):
                             diagnostics.add((str(path.resolve().relative_to(ROOT)), int(number), check))
+                        else:
+                            external_diagnostics.add((str(path.resolve()), int(number), check))
         # Keep logs for diagnosis even when a run fails, but publish no successful report.
         logs = output / 'logs'
         logs.mkdir(exist_ok=True)
@@ -103,11 +106,13 @@ def run(args):
         raise RuntimeError('clang-tidy failed: ' + ', '.join(failures))
     data = {'full': full, 'analyzer': args.analyzer,
             'files': [str(f.relative_to(ROOT)) for f in files],
-            'diagnostics': sorted(diagnostics)}
+            'diagnostics': sorted(diagnostics),
+            'external_diagnostics': sorted(external_diagnostics)}
     temporary = report.with_suffix('.part')
     temporary.write_text(json.dumps(data, indent=2) + '\n')
     temporary.replace(report)
-    print(f'clang-tidy: {len(files)} translation units, {len(diagnostics)} distinct findings')
+    print(f'clang-tidy: {len(files)} translation units, {len(diagnostics)} distinct first-party findings, '
+          f'{len(external_diagnostics)} external findings')
 
 
 def main():

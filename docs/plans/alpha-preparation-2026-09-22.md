@@ -120,6 +120,11 @@ this pass before release-candidate validation.
   the user with an actionable location/message.
 - [ ] Review clang-tidy findings by category; fix demonstrated problems and
   justify retained findings instead of bulk suppression or mechanical churn.
+  The [static-analyzer review](../checkpoints/static-analyzer-2026-09-24.md)
+  covers 126 translation units, documents retained warnings, fixes mixed-case
+  diagnostic reporting, and refreshes tuning after removing its duplicate parse.
+  The [hook safeguard](../checkpoints/hook-startup-2026-09-24.md) then removes
+  the zero-address relocation path and exposes its failure before a snapshot.
 - [ ] Refresh `MAP.md`, component sheets, build instructions, and current
   cross-references. Correct the edit-versus-save flow, variant behavior, and
   native service coverage. Historical documents remain historical.

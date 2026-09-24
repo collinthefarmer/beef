@@ -348,6 +348,15 @@ of cleanup.
 
 ## Additional negative and coexistence runs
 
+- Hook startup failure: with a controlled zero-relocation test fixture, expect
+  `Player update hook could not resolve its vtable` in the log and an
+  **Effects could not start.** menu warning with matching-target/restart guidance.
+  No hook or event sinks should be installed and effects must stay disabled.
+  Without that fixture, mark the visible failure case BLOCKED; native tests
+  cover the refusal and do not establish in-game UI behavior. A normal boot
+  must still emit `hooked PlayerCharacter::Update` once.
+
+
 - Bad file and recovery: add one malformed JSON in the isolated test recipe
   directory, reload, and record its filename and diagnostic. A separate
   valid recipe must still render. Repair or remove the bad fixture and

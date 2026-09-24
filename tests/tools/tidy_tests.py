@@ -74,6 +74,26 @@ class TidyTests(unittest.TestCase):
         self.fake.write_text('#!/usr/bin/env bash\nexit 0\n')
         self.tidy()
 
+    def test_analyzer_names_and_external_findings_are_retained(self):
+        header = self.root / 'src/Shared.h'
+        external = self.root / 'vendor/Library.h'
+        self.fake.write_text(
+            '#!/usr/bin/env bash\n' +
+            f'echo "{header}:3:1: warning: leak [clang-analyzer-cplusplus.NewDeleteLeaks]"\n' +
+            f'echo "{header}:4:1: warning: value [clang-analyzer-core.uninitialized.Assign]"\n' +
+            f'echo "{external}:9:1: warning: address [clang-analyzer-core.FixedAddressDereference]"\n')
+        result = self.invoke('tidy.py', '--analyzer')
+        self.assertEqual(result.returncode, 0, result.stderr)
+        report = json.loads((self.root / 'build/tidy-analyzer/latest.json').read_text())
+        self.assertEqual(report['diagnostics'], [
+            ['src/Shared.h', 3, 'clang-analyzer-cplusplus.NewDeleteLeaks'],
+            ['src/Shared.h', 4, 'clang-analyzer-core.uninitialized.Assign']])
+        self.assertEqual(report['external_diagnostics'], [
+            [str(external), 9, 'clang-analyzer-core.FixedAddressDereference']])
+        self.assertTrue(report['full'])
+        self.assertTrue(report['analyzer'])
+        self.assertFalse((self.root / 'build/tidy/latest.json').exists())
+
     def test_header_findings_are_deduplicated_and_gate_ignores_line_movement(self):
         header = self.root / 'src/Shared.h'
         self.fake.write_text(f'#!/usr/bin/env bash\necho "{header}:3:1: warning: problem [bugprone-example]"\n')

@@ -1,0 +1,179 @@
+{
+  "coverage": "126-TU full analyzer pass, followed by a targeted refresh of the only changed C++ translation unit, src/menu/Tuning.cpp",
+  "initial_identity": {
+    "schema": 1,
+    "build": "70f7f5bbcb7d-b44ee53a7a8c5482-Release-5306dbf4",
+    "revision": "70f7f5bbcb7d60bec3e82a6a6e30dbb457228ecf",
+    "source_sha256": "b44ee53a7a8c548277f877539a297d21070ea9d3b9799433b513d123a540d237",
+    "configuration": "Release",
+    "input_files": 279,
+    "configuration_sha256": "5306dbf4babad362558bdeedd37785f10dd086c1529467a04fb03e95ea51dc11",
+    "compatibility": {
+      "address_library": {
+        "edition": "AE",
+        "package_version": null,
+        "required": true
+      },
+      "compiled": {
+        "ae": true,
+        "se": true,
+        "vr": false
+      },
+      "dependencies": {
+        "commonlib": "b93280e832f263dbef44e44cbe2936622a02f91a",
+        "rapidcsv": "v8.99",
+        "spdlog": "v1.15.3"
+      },
+      "id": "steam-1.6.1170",
+      "minimum_skse": [
+        2,
+        2,
+        6,
+        0
+      ],
+      "peers": {
+        "community_shaders": {
+          "candidate_version": "1.8.3",
+          "header": "src/cs/BSLightingShaderMaterialPBR.h",
+          "sha256": "c0c6626020d52c4fa2c9b91bf80bb39fa8eb9849f32977a9685e8f1db1f1a6f4",
+          "source_revision": "dd2677fc4020db1da91b39cebef3dbfbe8913983",
+          "true_pbr_required": true
+        },
+        "menu_framework": {
+          "candidate_version": "3.13.0",
+          "editor_only": true,
+          "header": "src/extern/SKSEMenuFramework.h",
+          "sha256": "8f5b8be01b60ee2c258a2b3c2c97ccc4118cf7ab9fe17775a8375bf69378683e",
+          "source_revision": "c97cdce6dd207c7cf1401611bc82bd7e8f97a814"
+        }
+      },
+      "runtime_verified": false,
+      "runtimes": [
+        {
+          "storefront": "steam",
+          "version": [
+            1,
+            6,
+            1170,
+            0
+          ]
+        }
+      ],
+      "schema": 1,
+      "struct_compatibility": "Independent"
+    },
+    "compatibility_profile": "steam-1.6.1170"
+  },
+  "final_identity": {
+    "schema": 1,
+    "build": "70f7f5bbcb7d-4f5a0cbc058a6966-Release-5306dbf4",
+    "revision": "70f7f5bbcb7d60bec3e82a6a6e30dbb457228ecf",
+    "source_sha256": "4f5a0cbc058a6966f3864c666d1bbd4d8fd580d2d90f36f45aa22d9c3c6563e7",
+    "configuration": "Release",
+    "input_files": 279,
+    "configuration_sha256": "5306dbf4babad362558bdeedd37785f10dd086c1529467a04fb03e95ea51dc11",
+    "compatibility": {
+      "address_library": {
+        "edition": "AE",
+        "package_version": null,
+        "required": true
+      },
+      "compiled": {
+        "ae": true,
+        "se": true,
+        "vr": false
+      },
+      "dependencies": {
+        "commonlib": "b93280e832f263dbef44e44cbe2936622a02f91a",
+        "rapidcsv": "v8.99",
+        "spdlog": "v1.15.3"
+      },
+      "id": "steam-1.6.1170",
+      "minimum_skse": [
+        2,
+        2,
+        6,
+        0
+      ],
+      "peers": {
+        "community_shaders": {
+          "candidate_version": "1.8.3",
+          "header": "src/cs/BSLightingShaderMaterialPBR.h",
+          "sha256": "c0c6626020d52c4fa2c9b91bf80bb39fa8eb9849f32977a9685e8f1db1f1a6f4",
+          "source_revision": "dd2677fc4020db1da91b39cebef3dbfbe8913983",
+          "true_pbr_required": true
+        },
+        "menu_framework": {
+          "candidate_version": "3.13.0",
+          "editor_only": true,
+          "header": "src/extern/SKSEMenuFramework.h",
+          "sha256": "8f5b8be01b60ee2c258a2b3c2c97ccc4118cf7ab9fe17775a8375bf69378683e",
+          "source_revision": "c97cdce6dd207c7cf1401611bc82bd7e8f97a814"
+        }
+      },
+      "runtime_verified": false,
+      "runtimes": [
+        {
+          "storefront": "steam",
+          "version": [
+            1,
+            6,
+            1170,
+            0
+          ]
+        }
+      ],
+      "schema": 1,
+      "struct_compatibility": "Independent"
+    },
+    "compatibility_profile": "steam-1.6.1170"
+  },
+  "initial_first_party_findings": 65,
+  "initial_analyzer_findings": [
+    [
+      "src/menu/Tuning.cpp",
+      228,
+      "clang-analyzer-core.uninitialized.Assign"
+    ],
+    [
+      "src/studio/Forms.cpp",
+      1300,
+      "clang-analyzer-cplusplus.NewDeleteLeaks"
+    ]
+  ],
+  "final_first_party_findings": 63,
+  "final_analyzer_findings": [
+    [
+      "src/studio/Forms.cpp",
+      1300,
+      "clang-analyzer-cplusplus.NewDeleteLeaks"
+    ]
+  ],
+  "normal_findings": 62,
+  "external_analyzer_findings": [
+    {
+      "file": "CommonLibSSE-NG/include/REL/Relocation.h",
+      "line": 396,
+      "check": "clang-analyzer-core.FixedAddressDereference",
+      "disposition": "Runtime relocation boundary; selected-target defect not established; runtime acceptance remains open."
+    },
+    {
+      "file": "MSVC CRT/include/xfilesystem_abi.h",
+      "line": 132,
+      "check": "clang-analyzer-optin.core.EnumCastOutOfRange",
+      "disposition": "Intentional unsigned enum bitmask combination 0x01 | 0x08; reviewed false positive."
+    }
+  ],
+  "form_leak_disposition": "std::function ownership moves into FormField and the returned vector; reviewed modeling false positive, corroborated by native lifecycle test with leak detection.",
+  "reporter_fix": "Mixed-case checker names were absent from the original JSON; initial findings were recovered from the complete raw logs with the corrected parser.",
+  "validation": {
+    "windows_release": "passed",
+    "tuning_analyzer_findings": 0,
+    "reporter_tests_passed": 6,
+    "studio_panels_native": "passed",
+    "studio_panels_asan_ubsan_leaks": "passed (ASAN_OPTIONS=detect_leaks=1)"
+  },
+  "baseline_changed": false,
+  "suppressions_added": false,
+  "archives_repackaged": false
+}

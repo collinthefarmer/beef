@@ -8,6 +8,7 @@
 #include "Identity.h"
 #include "SettingsFile.h"
 #include "diagnostics/Trace.h"
+#include "engine/Hooks.h"
 #include "engine/Manager.h"
 #include "engine/MenuDependency.h"
 #include "studio/Board.h"
@@ -308,6 +309,12 @@ void RenderHeader(const Studio::Snapshot &a_snapshot) {
 }
 
 void RenderPendingStatus() {
+  if (const auto problem = HookProblem(); !problem.empty()) {
+    Problem("Effects could not start.");
+    ImGui::TextWrapped("%.*s", static_cast<int>(problem.size()),
+                       problem.data());
+    return;
+  }
   if (GetModuleHandleW(L"CommunityShaders.dll")) {
     Warn("Waiting for game status.");
     return;

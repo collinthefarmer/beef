@@ -41,8 +41,12 @@ not simulate actor rebuilds or Skyrim form discovery; see
 
 ### Event and hook wiring, the manager
 
-`RegisterEventSinks` and `InstallHooks` run once at plugin load. The sinks
-and the hook they install forward game events into `Manager`, the singleton
+`InstallHooks` runs once at `kDataLoaded`, after dependency checks. A zero
+resolved vtable address returns failure before reading or replacing a slot.
+Effects remain disabled and event sinks are registered only after the hook
+succeeds. `HookProblem` exposes the same actionable error to the log and the
+menu, including before the first runtime snapshot. Failure persists until
+restart. The sinks and hook forward game events into `Manager`, the singleton
 that owns every applied actor. `Manager` hands per-actor queueing to
 `ApplicationService` and publishes the **snapshot** the menu reads.
 

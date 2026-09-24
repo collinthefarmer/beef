@@ -132,6 +132,39 @@ void TestSourceForm() {
         "editing an image field emits a source edit");
 }
 
+void TestSourceFormLifetime() {
+  for (int iteration = 0; iteration < 64; ++iteration) {
+    FieldBinding retained;
+    const std::string name(128, 's');
+    {
+      ImageSource image;
+      image.path = std::string(2048, 'p');
+      image.mirror[0] = true;
+      std::vector<FormField> copied;
+      {
+        const auto original = SourceForm(
+            SourceRowOf(Source{.name = name, .kind = image, .note = {}}, 0),
+            SignalNames{});
+        copied = original;
+      }
+      auto moved = std::move(copied);
+      const auto *path = Field(moved, "path");
+      Check(path && path->bind,
+            "copied and moved image forms own their bindings");
+      if (!path || !path->bind)
+        return;
+      retained = path->bind;
+    }
+    const auto edit = retained("textures/retained.dds");
+    const auto *set = edit ? Get<SetSource>(*edit) : nullptr;
+    const auto *image = set ? Get<ImageSource>(set->kind) : nullptr;
+    Check(set && set->name == name && image && image->mirror[0] &&
+              image->path == "textures/retained.dds",
+          "image binding owns its source record after rows and forms are "
+          "destroyed");
+  }
+}
+
 void TestIncompleteRippleForm() {
   const Source source{"wave", RippleSource{}};
   const SourceRow row = SourceRowOf(source, 0);
@@ -476,6 +509,7 @@ int main() {
   TestSignalFormWave();
   TestSourceRoundTrip();
   TestSourceForm();
+  TestSourceFormLifetime();
   TestIncompleteRippleForm();
   TestLightAndShellRows();
   TestRecipeHeaderForm();
