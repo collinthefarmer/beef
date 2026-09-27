@@ -9,6 +9,14 @@ code on 2026-09-24.
   instrumented DLL.
 - This is a test procedure, not a record of a completed run.
 
+## Scripted lifecycle smoke test
+
+The optional [console-driven quest runner](../tests/in-game/README.md) drives
+apply, retire, and reapply with separate machine and visual verdicts. Its
+compiled scripts and generated quest have offline checks; in-game startup
+and operation are not yet accepted. Use it for the first lifecycle case, not
+as evidence that the full procedure below has passed.
+
 ## Prepare a repeatable scene
 
 Profile and records:

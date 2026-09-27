@@ -11,6 +11,7 @@
 #include "engine/Manager.h"
 #include "engine/PluginEvents.h"
 #include "engine/RecipeStore.h"
+#include "engine/Regression.h"
 #include "menu/Menu.h"
 #include <algorithm>
 #include <chrono>
@@ -127,6 +128,7 @@ void OnMessage(SKSE::MessagingInterface::Message *a_msg) {
   }
   case SKSE::MessagingInterface::kPreLoadGame:
     logger::info("kPreLoadGame");
+    CancelRegression();
     manager->BeginLoad();
     break;
   case SKSE::MessagingInterface::kPostLoadGame:
@@ -139,6 +141,7 @@ void OnMessage(SKSE::MessagingInterface::Message *a_msg) {
     break;
   case SKSE::MessagingInterface::kNewGame:
     logger::info("kNewGame");
+    CancelRegression();
     manager->BeginLoad();
     manager->FinishLoad();
     break;
@@ -166,6 +169,9 @@ SKSEPluginLoad(const SKSE::LoadInterface *skse) {
   logger::info("compatibility profile {} (runtime acceptance pending)",
                BetterEnchantmentEffects::BuildCompatibility::profile);
   SKSE::Init(skse);
+  if (!BetterEnchantmentEffects::RegisterRegression()) {
+    logger::warn("regression Papyrus bridge unavailable");
+  }
 
   const auto plugin = SKSE::PluginDeclaration::GetSingleton();
   logger::info("{} {} loading on runtime {}", plugin->GetName(),

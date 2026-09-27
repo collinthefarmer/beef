@@ -1839,3 +1839,19 @@ indices are reused. Global static-target sharing additionally requires that
 the compiled signals equal the authored signals used in the existing cache
 key; variant overrides conservatively disable that sharing until effective
 computation identities replace recipe-based keys.
+
+## Console-driven regression fixture
+
+`engine/Regression.cpp` registers the optional quest's Papyrus bridge. Calls
+store scalar request data and queue mutations through Manager's session task
+queue. Application completion must belong to a newer actor attempt, with a
+rendered surface output on demo armor; retirement checks actor-state removal.
+The bridge exposes strings and identifiers rather than renderer pointers.
+Save/new-game messages invalidate the request and the process/session token.
+
+The runner and packaging contract are in `tests/in-game/README.md`. Caprica
+v0.3.0 in Skyrim mode compiles the scripts against narrow API declarations;
+only the two fixture scripts enter the package. The quest is manually started,
+with no aliases or fragments. QUST and VMAD layouts follow the TES5Edit
+`dev-4.1.5` definitions in `Core/wbDefinitionsTES5.pas`. These offline checks do
+not establish game execution or rendered acceptance.

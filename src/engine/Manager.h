@@ -48,6 +48,8 @@ public:
   void RequestMesh(RE::FormID a_actorID, std::string a_geometry);
 
   void OnFrame();
+  void QueueRegression(std::int32_t a_request);
+  void ObserveRegression();
 
   void Fire(RE::FormID a_actorID, const EventRecord &a_event);
   void QueueEvent(RE::FormID a_actorID, EventRecord a_event);

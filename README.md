@@ -33,6 +33,7 @@ enchantment on the piece itself.
 | `docs/source-archive.md` | How is the corresponding-source archive produced, and how is a fresh extraction built? |
 | `docs/ui-api.md` | How is a studio surface built: the `menu/` widget vocabulary, the `Frame`, forms and fields, intents, and navigation? |
 | `docs/ui-design-principles.md` | Which direction does the editor's surface follow? |
+| `tests/in-game/README.md` | How do I build and run the optional console-driven lifecycle regression quest? |
 | `docs/in-game-regression.md` | What is the repeatable manual run in the game, and which log line does each step print? |
 | `docs/alpha-package.md` | What does a tester of a local candidate archive need to know? Shipped in the archive as `README.md`. |
 | `docs/bug-report.md` | How is a closed-alpha problem reported, with which evidence? Shipped as `BUG_REPORT.md`. |

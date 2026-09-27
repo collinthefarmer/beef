@@ -316,6 +316,7 @@ void Manager::OnFrame() {
   }
   SweepBoundMeshes(*Compositor::GetSingleton(), applied_, now);
   PublishSnapshot(now);
+  ObserveRegression();
 }
 
 void Manager::SweepEviction(const Settings &a_settings) {
