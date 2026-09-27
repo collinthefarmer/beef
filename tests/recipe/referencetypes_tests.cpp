@@ -60,7 +60,6 @@ int main() {
   Rejects(AccumulateSignal{Ref{"hit"}, Ref{"vector"}},
           {"'decay' must be a scalar; '@vector' is a vec3"});
 
-  // The same reference categories must remain valid with compatible targets.
   auto signals = Inputs();
   wave.period = Ref{"scalar"};
   conditional.origin = WhenOrigin{Ref{"scalar"}, std::nullopt};

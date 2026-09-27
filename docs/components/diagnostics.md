@@ -3,8 +3,8 @@
 The structured **trace** recorder and bounded warning history. It depends
 only on `Core.h` and is engine-free. Every layer above it (`studio`, `render`,
 `engine`, `menu`) may
-include it, per the `tools/layers.sh` row `[diagnostics]="Core.h
-diagnostics"`.
+include it, per its `ALLOWS` row in `tools/gate.py`, `'diagnostics':
+('Core.h', 'diagnostics')`.
 
 ## What it owns
 
@@ -39,7 +39,7 @@ event its wire name.
 
 | Event | Records | Example emitter |
 |---|---|---|
-| `kStartup` | The run identity: build, source SHA, fingerprints. Once per launch. | `main.cpp` at plugin load. |
+| `kStartup` | The run identity: build, source state, fingerprints. Once per launch. | `main.cpp` at plugin load. |
 | `kSettings` | The effective settings value and its fingerprint. | `SettingsFile.cpp` after a settings load or save. |
 | `kRecipe` | One loaded **recipe**: its id and content fingerprint. | `main.cpp` at data load. |
 | `kCommand` | A new command id and its parent, with the reason. | `Trace::Command` itself (`Trace.cpp`). |

@@ -77,8 +77,6 @@ set(PLUGIN_SOURCES
   src/SettingsFile.cpp
   ${ENGINE_RENDER_SOURCES})
 
-configure_file("${CMAKE_CURRENT_LIST_DIR}/Plugin.cpp.in"
-  "${CMAKE_BINARY_DIR}/generated/Plugin.cpp" @ONLY)
 add_library(${PROJECT_NAME} SHARED ${PLUGIN_SOURCES}
   "${CMAKE_BINARY_DIR}/generated/Plugin.cpp")
 target_compile_definitions(${PROJECT_NAME} PRIVATE __CMAKE_COMMONLIBSSE_PLUGIN=1)

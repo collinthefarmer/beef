@@ -11,8 +11,8 @@ textDocument/rename, so references in strings and comments are left
 alone and a file rename is applied when clangd asks for one.
 
 Needs build/clangd/compile_commands.json (python3 tools/compile-db.py writes it
-from a configure with -DCMAKE_EXPORT_COMPILE_COMMANDS=ON, keeping this
-repo's own sources) and clangd on PATH, so run it inside `nix develop`:
+from the Windows database's src/ entries and the native database's tests/
+entries) and clangd on PATH, so run it inside `nix develop`:
 
     tools/rename.py Old New --apply
 
@@ -226,8 +226,8 @@ def apply_edit(workspace_edit, apply: bool):
 
 def report_leftovers(old: str):
     """Comments, strings and documents still spelling the old name, for a hand pass."""
-    targets = [str(p) for p in [ROOT / "src", ROOT / "tests"]] + [str(ROOT / f) for f in ("README.md", "ARCHITECTURE.md", "NOTES.md", "CLAUDE.md")]
-    result = subprocess.run(["grep", "-rnw", "--include=*.h", "--include=*.cpp", "--include=*.md", old] + targets, capture_output=True, text=True)
+    targets = [str(ROOT / f) for f in ("src", "tests", "docs", "README.md", "REFERENCE.md", "REQUIREMENTS.md", "CLAUDE.md")]
+    result = subprocess.run(["grep", "-rnw", "--include=*.h", "--include=*.cpp", "--include=*.md", "--exclude-dir=history", "--exclude-dir=checkpoints", old] + targets, capture_output=True, text=True)
     lines = [line.replace(str(ROOT) + "/", "") for line in result.stdout.splitlines()]
     if lines:
         print(f"still spelled in {len(lines)} place(s) clangd does not rename (comments, strings, docs):")
@@ -243,7 +243,7 @@ def main():
     args = parser.parse_args()
 
     if not (COMPILE_DB_DIR / "compile_commands.json").exists():
-        sys.exit(f"no compile database at {COMPILE_DB_DIR}; configure with -DCMAKE_EXPORT_COMPILE_COMMANDS=ON")
+        sys.exit(f"no compile database at {COMPILE_DB_DIR}; run python3 tools/compile-db.py")
 
     client = Clangd()
     try:

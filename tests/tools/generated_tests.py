@@ -1,10 +1,8 @@
-"""Verify generated build identity and presenter dependencies with the real rules."""
+"""Build the identity and presenter rules of cmake/Generated.cmake in a small Git project."""
 import json
-import os
 from pathlib import Path
 import shutil
 import subprocess
-import sys
 import tempfile
 import unittest
 
@@ -12,124 +10,83 @@ ROOT = Path(__file__).resolve().parents[2]
 
 
 class GeneratedTests(unittest.TestCase):
-    def test_identity_and_presenter_outputs_are_incremental(self):
-        with tempfile.TemporaryDirectory() as folder:
-            root = Path(folder)
-            for name in ('src', 'cmake', 'tools'):
-                (root / name).mkdir()
-            shutil.copy2(ROOT / 'cmake/Generated.cmake', root / 'cmake/Generated.cmake')
-            for name in ('build-identity.py', 'presenter-textures.py'):
-                shutil.copy2(ROOT / 'tools' / name, root / 'tools' / name)
-            for name in ('CMakePresets.json', 'flake.nix', 'flake.lock', 'COPYING.md'):
-                (root / name).write_text('')
-            source = root / 'src/Example.cpp'
-            source.write_text('int example;\n')
-            (root / 'CMakeLists.txt').write_text('''cmake_minimum_required(VERSION 3.24)
-project(Fixture NONE)
-find_package(Python3 REQUIRED COMPONENTS Interpreter)
-add_custom_target(Fixture ALL)
-include(cmake/Generated.cmake)
-''')
-            def call(*args):
-                result = subprocess.run(args, cwd=root, text=True, capture_output=True)
-                self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
-                return result.stdout
-            call('git', 'init', '-q')
-            call('git', 'add', '.')
-            call('git', '-c', 'user.name=Test', '-c', 'user.email=test@example.invalid',
-                 'commit', '-qm', 'fixture')
-            build = root / 'out'
-            call('cmake', '-S', str(root), '-B', str(build), '-G', 'Ninja')
-            def compile():
-                return call('cmake', '--build', str(build), '--target', 'Fixture', 'PresenterTextures')
-            compile()
-            manifest = build / 'generated/build-identity.json'
-            header = build / 'generated/BuildIdentity.h'
-            stamp = build / 'generated/identity.stamp'
-            original = manifest.read_text()
-            header_time = header.stat().st_mtime_ns
-            stamp_time = stamp.stat().st_mtime_ns
-            compile()
-            self.assertEqual(stamp.stat().st_mtime_ns, stamp_time)
-            os.utime(source, None)
-            compile()
-            self.assertEqual(header.stat().st_mtime_ns, header_time)
-            stamp_time = stamp.stat().st_mtime_ns
-            compile()
-            self.assertEqual(stamp.stat().st_mtime_ns, stamp_time)
-            (root / 'COPYING.md').write_text('updated permission\n')
-            compile()
-            self.assertNotEqual(manifest.read_text(), original)
-            original = manifest.read_text()
-            source.write_text('int different;\n')
-            compile()
-            self.assertNotEqual(manifest.read_text(), original)
-            changed = manifest.read_text()
-            source.unlink()
-            compile()
-            self.assertNotEqual(manifest.read_text(), changed)
-            old_revision = json.loads(manifest.read_text())['revision']
-            call('git', '-c', 'user.name=Test', '-c', 'user.email=test@example.invalid',
-                 'commit', '--allow-empty', '-qm', 'next revision')
-            compile()
-            self.assertNotEqual(json.loads(manifest.read_text())['revision'], old_revision)
-            presenter = build / 'presenters/slot_00.dds'
-            presenter.unlink()
-            compile()
-            self.assertTrue(presenter.exists())
-            self.assertEqual(len(list((build / 'presenters').glob('slot_*.dds'))), 1024)
+    def setUp(self) -> None:
+        folder = tempfile.TemporaryDirectory()
+        self.addCleanup(folder.cleanup)
+        self.root = Path(folder.name) / 'project'
+        (self.root / 'cmake').mkdir(parents=True)
+        for name in ('Generated.cmake', 'BuildIdentity.cmake', 'presenter-slot.dds', 'source-revision.txt'):
+            shutil.copy2(ROOT / 'cmake' / name, self.root / 'cmake' / name)
+        shutil.copy2(ROOT / '.gitattributes', self.root / '.gitattributes')
+        (self.root / '.gitignore').write_text('out/\nignored.txt\n')
+        (self.root / 'src').mkdir()
+        (self.root / 'src/source.cpp').write_text('int source;\n')
+        (self.root / 'README.md').write_text('fixture\n')
+        (self.root / 'CMakeLists.txt').write_text(
+            'cmake_minimum_required(VERSION 3.24)\nproject(Fixture NONE)\n'
+            'add_custom_target(Fixture ALL)\ninclude(cmake/Generated.cmake)\n')
+        self.git('init', '-q')
+        self.git('add', '.')
+        self.git('commit', '-qm', 'fixture')
 
-            call(sys.executable, 'tools/build-identity.py', '--root', str(root), '--write-provenance')
-            archive = root / 'archive'
-            archive.mkdir()
-            for name in ('src', 'cmake', 'tools'):
-                shutil.copytree(root / name, archive / name)
-            for name in ('CMakeLists.txt', 'CMakePresets.json', 'flake.nix', 'flake.lock', 'COPYING.md',
-                         'SOURCE_PROVENANCE.json'):
-                shutil.copy2(root / name, archive / name)
-            archive_build = root / 'archive-out'
-            call('cmake', '-S', str(archive), '-B', str(archive_build), '-G', 'Ninja')
-            def archive_compile(success=True):
-                result = subprocess.run(['cmake', '--build', str(archive_build)],
-                                        text=True, capture_output=True)
-                self.assertEqual(result.returncode == 0, success, result.stdout + result.stderr)
-                return result.stdout + result.stderr
-            archive_compile()
-            archive_manifest = archive_build / 'generated/build-identity.json'
-            self.assertEqual(archive_manifest.read_text(), manifest.read_text())
-            self.assertEqual((archive_build / 'generated/BuildIdentity.h').read_bytes(), header.read_bytes())
-            archive_stamp = archive_build / 'generated/identity.stamp'
-            stamp_time = archive_stamp.stat().st_mtime_ns
-            archive_compile()
-            self.assertEqual(archive_stamp.stat().st_mtime_ns, stamp_time)
+    def git(self, *args: str) -> str:
+        return subprocess.run(['git', '-c', 'user.name=Test', '-c', 'user.email=test@example.invalid',
+                               *args], cwd=self.root, check=True, capture_output=True, text=True).stdout
 
-            (archive / 'src/IntentionalEdit.cpp').write_text('int edited;\n')
-            self.assertIn('archive source differs', archive_compile(False))
-            call('cmake', '-S', str(archive), '-B', str(archive_build),
-                 '-DBEEF_ALLOW_MODIFIED_SOURCE=ON')
-            archive_compile()
-            edited = json.loads(archive_manifest.read_text())
-            original = json.loads(manifest.read_text())
-            self.assertEqual(edited['revision'], original['revision'])
-            self.assertEqual(edited['archive_source_sha256'], original['source_sha256'])
-            self.assertNotEqual(edited['build'], original['build'])
-            self.assertNotEqual(edited['source_sha256'], original['source_sha256'])
+    def build(self, source: Path) -> dict[str, str]:
+        build = source / 'out'
+        for command in (['cmake', '-S', str(source), '-B', str(build), '-G', 'Ninja',
+                         '-DCMAKE_BUILD_TYPE=Release', '-DBEEF_COMPATIBILITY_PROFILE=test'],
+                        ['cmake', '--build', str(build)]):
+            result = subprocess.run(command, text=True, capture_output=True)
+            self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        return json.loads((build / 'generated/build-identity.json').read_text())
 
-            provenance = archive / 'SOURCE_PROVENANCE.json'
-            saved = provenance.read_text()
-            changed = json.loads(saved)
-            changed['compatibility_sha256'] = '0' * 64
-            provenance.write_text(json.dumps(changed))
-            self.assertIn('archive compatibility profile differs', archive_compile(False))
-            for invalid in ('{', '[]', '{}', saved.replace('"schema": 1', '"schema": true')):
-                provenance.write_text(invalid)
-                self.assertIn('invalid SOURCE_PROVENANCE.json', archive_compile(False))
-            provenance.unlink()
-            result = subprocess.run([sys.executable, str(archive / 'tools/build-identity.py'),
-                                     '--root', str(archive), '--output', str(archive_build),
-                                     '--config', 'Debug'], text=True, capture_output=True)
-            self.assertNotEqual(result.returncode, 0)
-            self.assertIn('requires SOURCE_PROVENANCE.json', result.stderr)
+    def test_identity_follows_git_state_and_rewrites_only_on_change(self) -> None:
+        revision = self.git('rev-parse', 'HEAD').strip()
+        clean = self.build(self.root)
+        self.assertEqual(clean['build'], f'{revision[:12]}-Release')
+        self.assertEqual((clean['source'], clean['compatibility_profile']), ('clean', 'test'))
+        header = self.root / 'out/generated/BuildIdentity.h'
+        written = header.stat().st_mtime_ns
+        (self.root / 'ignored.txt').write_text('ignored\n')
+        self.assertEqual(self.build(self.root), clean)
+        self.assertEqual(header.stat().st_mtime_ns, written)
+        (self.root / 'README.md').write_text('edited docs\n')
+        (self.root / 'notes.md').write_text('untracked docs\n')
+        self.assertEqual(self.build(self.root), clean)
+        self.assertEqual(header.stat().st_mtime_ns, written)
+        (self.root / 'src/source.cpp').write_text('int changed;\n')
+        edited = self.build(self.root)
+        self.assertRegex(edited['build'], rf'^{revision[:12]}-dirty-[0-9a-f]{{12}}-Release$')
+        (self.root / 'src/untracked.cpp').write_text('int added;\n')
+        self.assertNotEqual(self.build(self.root)['source'], edited['source'])
+        self.git('add', '.')
+        self.git('commit', '-qm', 'next')
+        committed = self.build(self.root)
+        self.assertEqual(committed['source'], 'clean')
+        self.assertNotEqual(committed['revision'], revision)
+
+    def test_git_archive_extraction_builds_as_archive_of_its_revision(self) -> None:
+        extracted = self.root.parent / 'extracted'
+        extracted.mkdir()
+        archive = subprocess.run(['git', 'archive', 'HEAD'], cwd=self.root, check=True,
+                                 capture_output=True).stdout
+        subprocess.run(['tar', '-x', '-C', str(extracted)], input=archive, check=True)
+        identity = self.build(extracted)
+        self.assertEqual(identity['revision'], self.git('rev-parse', 'HEAD').strip())
+        self.assertEqual(identity['source'], 'archive')
+        (extracted / 'cmake/source-revision.txt').write_text('$Format:%H$\n')
+        result = subprocess.run(['cmake', '--build', str(extracted / 'out')], text=True, capture_output=True)
+        self.assertIn('not stamped by git archive', result.stdout + result.stderr)
+
+    def test_presenter_slots_are_copies_of_the_checked_in_texture(self) -> None:
+        self.build(self.root)
+        slots = sorted((self.root / 'out/presenters').glob('slot_*.dds'))
+        self.assertEqual(len(slots), 1024)
+        self.assertEqual({path.read_bytes() for path in slots},
+                         {(ROOT / 'cmake/presenter-slot.dds').read_bytes()})
+        self.assertTrue((self.root / 'out/presenters/slot_00.dds').exists())
 
 
 if __name__ == '__main__':

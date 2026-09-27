@@ -1,8 +1,10 @@
 # BetterEnchantmentEffects alpha candidate
 
-This is a development candidate, not a runtime-validated release. The included
-manifest records build identity, declared compatibility, and file hashes.
-Compilation and archive verification do not establish in-game compatibility.
+This is a development candidate, not a runtime-validated release.
+`SKSE/Plugins/BetterEnchantmentEffects-build.json` records the build identity,
+and `COMPATIBILITY.json` the declared compatibility. The adjacent `.sha256`
+file holds the archive hashes. Compilation and archive checksums do not
+establish in-game compatibility.
 
 Install the mod archive through Mod Organizer 2 into a separate test profile.
 The archive contains the plugin, default INI, templates, presets, validator,
@@ -38,7 +40,7 @@ under `recipes/user/` keep their existing path when saved.
 The Windows validator is at
 `SKSE/Plugins/BetterEnchantmentEffects/beef-validate.exe`; run it without arguments
 for usage, or pass one or more recipe JSON paths. It checks recipe data, not rendered output or game ABI
-compatibility. Report problems with the manifest's build identity, Skyrim,
+compatibility. Report problems with the build identity, Skyrim,
 SKSE and Community Shaders versions, effective INI, recipe input, reproduction
 steps, and relevant plugin log/trace. Review logs for personal paths before
 sharing them.

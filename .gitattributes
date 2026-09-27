@@ -1,0 +1,8 @@
+cmake/source-revision.txt export-subst
+.claude export-ignore
+.githooks export-ignore
+MAP.md export-ignore
+docs/.obsidian export-ignore
+docs/checkpoints export-ignore
+docs/history export-ignore
+docs/plans export-ignore

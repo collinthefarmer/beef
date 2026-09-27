@@ -46,9 +46,9 @@ void InitLog() {
   log->flush_on(spdlog::level::info);
   spdlog::set_default_logger(std::move(log));
   spdlog::set_pattern("[%H:%M:%S.%e] [%l] %v");
-  logger::info("build: {} source SHA256 {}",
+  logger::info("build: {} source {}",
                BetterEnchantmentEffects::BuildIdentity::build,
-               BetterEnchantmentEffects::BuildIdentity::source_sha256);
+               BetterEnchantmentEffects::BuildIdentity::source);
   if (traceOpened) {
     logger::info(
         "diagnostic trace: {} ({} MiB segments, the first and the last {} "
@@ -175,8 +175,7 @@ SKSEPluginLoad(const SKSE::LoadInterface *skse) {
   BetterEnchantmentEffects::Trace::Emit(
       BetterEnchantmentEffects::Trace::Event::kStartup,
       {{"build", BetterEnchantmentEffects::BuildIdentity::build},
-       {"source_sha256",
-        BetterEnchantmentEffects::BuildIdentity::source_sha256},
+       {"source", BetterEnchantmentEffects::BuildIdentity::source},
        {"runtime", REL::Module::get().version().string()},
        {"skse_packed", std::to_string(skse->SKSEVersion())}});
 

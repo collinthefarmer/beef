@@ -2,7 +2,7 @@
 
 The ImGui renderer over the studio widget vocabulary. It draws the Studio,
 Recipes, and Setup pages, turns user clicks into `Studio::Intent`s, and
-applies those **intents** by calling `engine/Manager`. Per `tools/layers.sh`
+applies those **intents** by calling `engine/Manager`. Per `ALLOWS` in `tools/gate.py`
 it is the top layer: `menu` may include everything (`Core.h recipe mesh
 planners diagnostics studio render engine menu`, plus
 `PCH.h`/`Identity.h`/`Settings*.h`). It is engine-facing (Dear ImGui through

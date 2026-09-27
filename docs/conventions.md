@@ -642,7 +642,7 @@ with these meanings and no other word for the same thing.
 | **shader constants** | `render/ShaderConstants.h`, the one copy of the GPU constant-buffer structs the shaders and the passes share. |
 | **D3D result** | `render/D3DResult.h`: `Failed(hr)` and `DataOf(texture)`, the two D3D result checks. |
 | **mesh cache** | `render/MeshCache.h`, the per-geometry cache of mesh data, facts, analysis, and bakes. `MeshReader` fills it from the engine. |
-| **layers** | `tools/layers.sh`, the only copy of the include graph. A new directory or a widened edge is an edit to its `ALLOWS` table. |
+| **layers** | `ALLOWS` in `tools/gate.py`, the only copy of the include graph. A new directory, top-level file or widened edge is an edit to that table. |
 
 ## Gates
 
@@ -652,51 +652,55 @@ with these meanings and no other word for the same thing.
   false`.
 - The vendored and frozen trees (`src/extern`, `src/cs`, `src/_old`) opt out
   with their own `DisableFormat: true`.
-- `tools/format.sh` formats, or `--check`s, all of `src` except those trees.
+- `tools/gate.sh fix` formats all first-party C++ in `src` and `tests`
+  except those trees; the gate stages check it.
 
 ### The gate
 
-`tools/gate.sh {commit|push|release}` enters Nix and launches the Python
+`tools/gate.sh {commit|push|release|fix}` enters Nix and launches the Python
 gate implementation in `tools/gate.py`. The git hooks
 (`.githooks/pre-commit`, `pre-push`) and the Claude Code hook call it. It
 re-execs into `nix develop` so the pinned clang tools always run.
 
-- `commit` runs cheap formatting and layer checks against the working tree.
+- `commit` checks the staged content of staged first-party C++ files:
+  formatting, layers, and comments.
   Run targeted tidy explicitly while developing; full tidy runs at release validation.
-  Header selections expand to a full pass. Baseline checks include header
-  diagnostics, ignore line movement, and block increased file/check counts.
-- `push` checks formatting, layering, source conventions, and sanitized
-  CTest suites. `release` adds the Windows build and full normal clang-tidy,
-  allowing reductions in findings.
+  Baseline checks include header diagnostics, ignore line movement, and
+  block increased file/check counts.
+- `push` runs the same checks over every first-party file, then the
+  sanitized CTest suites. `release` adds the Windows build and full normal
+  clang-tidy, allowing reductions in findings.
 - Regenerate the baseline only after review with
-  `python3 tools/tidy.py && python3 tools/tidy-baseline.py`.
-- Analysis has no result cache. Failed runs invalidate their report, and
-  full baseline checks require a full successful invocation. Static analyzer
-  checks run separately with `python3 tools/tidy.py --analyzer`.
-- `docs/build.md` owns commands, presets, report paths, and recovery. Tidy
+  `python3 tools/tidy.py --update`.
+- Analysis has no result cache. A failed clang-tidy invocation fails the
+  run. Static analyzer checks run separately with
+  `python3 tools/tidy.py --analyzer`.
+- `docs/build.md` owns commands, presets, and recovery. Tidy
   reads the Windows CMake database directly; the clangd view is rewritten
   only when its contents change.
 
 ### No comments
 
-- The push gate greps `src/` for a `//` that begins a line or follows
-  whitespace after a `;` or `}`. Any hit fails the push.
+- The gate scans first-party C++ in `src/` and `tests/` for `//` and `/*`
+  comments outside string, character and raw-string literals. Any hit
+  fails the commit or push. The exact license notice at the top of a file
+  is exempt.
 - `src/_old`, `src/extern`, and `src/cs` are frozen or vendored and keep
   their comments.
 - A `NOLINT` marker is a tool directive, not text. The one in
   `src/engine/RecipeStore.cpp` is the only one in the tree; its reason is in
   `REFERENCE.md`.
-- `src/studio` and `src/menu` are excluded until the UI v2 plan's
-  complete-editor checkpoint, which owns those files.
 
 ### Layers
 
-- `tools/layers.sh` holds the only copy of the include graph: one row per
-  directory under `src/`, listing what that directory may include.
-- It reports every `#include "..."` outside its row, every include that
-  names no directory (`src` is the only first-party include root), and every
-  `RE::` symbol in an engine-free directory, each with file and line. The
-  push gate fails on any report.
+- `ALLOWS` in `tools/gate.py` holds the only copy of the include graph: one
+  row per directory and top-level file under `src/`, listing what it may
+  include.
+- The gate reports a file whose directory or name has no row, every
+  `#include "..."` outside its row (a root header name that is not listed is
+  also outside it), and every `RE::`, `REL::` or `SKSE::` outside literals and
+  comments in `Core.h` or an engine-free directory, each with file and line. The commit
+  and push stages fail on any report.
 - Adding a directory or widening an edge is an edit to the `ALLOWS` table.
   The graph changes in one place, and the change is visible in the diff.
 

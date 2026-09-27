@@ -1,85 +1,22 @@
 set(BEEF_PRESENTER_COUNT 1024)
-file(GLOB_RECURSE IDENTITY_INPUTS CONFIGURE_DEPENDS
-  "${CMAKE_SOURCE_DIR}/src/*" "${CMAKE_SOURCE_DIR}/cmake/*"
-  "${CMAKE_SOURCE_DIR}/shaders/*")
-list(APPEND IDENTITY_INPUTS
-  "${CMAKE_SOURCE_DIR}/CMakeLists.txt" "${CMAKE_SOURCE_DIR}/CMakePresets.json"
-  "${CMAKE_SOURCE_DIR}/flake.nix"
-  "${CMAKE_SOURCE_DIR}/flake.lock" "${CMAKE_SOURCE_DIR}/tools/build-identity.py"
-  "${CMAKE_SOURCE_DIR}/tools/presenter-textures.py")
-if(EXISTS "${CMAKE_SOURCE_DIR}/tools/compatibility.py")
-  list(APPEND IDENTITY_INPUTS "${CMAKE_SOURCE_DIR}/tools/compatibility.py")
-endif()
-if(EXISTS "${CMAKE_SOURCE_DIR}/COPYING.md")
-  list(APPEND IDENTITY_INPUTS "${CMAKE_SOURCE_DIR}/COPYING.md")
-endif()
-option(BEEF_ALLOW_MODIFIED_SOURCE "Allow intentional edits to a source archive" OFF)
-if(EXISTS "${CMAKE_SOURCE_DIR}/.git")
-  find_package(Git REQUIRED)
-  foreach(ref HEAD packed-refs)
-    execute_process(COMMAND "${GIT_EXECUTABLE}" rev-parse --git-path "${ref}"
-      WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}" OUTPUT_VARIABLE ref_path
-      OUTPUT_STRIP_TRAILING_WHITESPACE COMMAND_ERROR_IS_FATAL ANY)
-    cmake_path(ABSOLUTE_PATH ref_path BASE_DIRECTORY "${CMAKE_SOURCE_DIR}")
-    if(EXISTS "${ref_path}")
-      list(APPEND IDENTITY_INPUTS "${ref_path}")
-      set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS "${ref_path}")
-    endif()
-  endforeach()
-  execute_process(COMMAND "${GIT_EXECUTABLE}" symbolic-ref -q HEAD
-    WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}" OUTPUT_VARIABLE branch
-    OUTPUT_STRIP_TRAILING_WHITESPACE)
-  if(branch)
-    execute_process(COMMAND "${GIT_EXECUTABLE}" rev-parse --git-path "${branch}"
-      WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}" OUTPUT_VARIABLE branch_path
-      OUTPUT_STRIP_TRAILING_WHITESPACE COMMAND_ERROR_IS_FATAL ANY)
-    cmake_path(ABSOLUTE_PATH branch_path BASE_DIRECTORY "${CMAKE_SOURCE_DIR}")
-    if(EXISTS "${branch_path}")
-      list(APPEND IDENTITY_INPUTS "${branch_path}")
-      set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS "${branch_path}")
-    endif()
-  endif()
-elseif(EXISTS "${CMAKE_SOURCE_DIR}/SOURCE_PROVENANCE.json")
-  list(APPEND IDENTITY_INPUTS "${CMAKE_SOURCE_DIR}/SOURCE_PROVENANCE.json")
-else()
-  message(FATAL_ERROR "Source archive requires SOURCE_PROVENANCE.json from its producer")
-endif()
-file(GENERATE OUTPUT "${CMAKE_BINARY_DIR}/generated/identity-inputs.txt"
-  CONTENT "${IDENTITY_INPUTS}\n")
-list(APPEND IDENTITY_INPUTS "${CMAKE_BINARY_DIR}/generated/identity-inputs.txt")
-set(compatibility_identity_args)
-if(BEEF_ALLOW_MODIFIED_SOURCE)
-  list(APPEND compatibility_identity_args --allow-modified-source)
-endif()
-if(BEEF_EFFECTIVE_PROFILE)
-  list(APPEND IDENTITY_INPUTS "${BEEF_EFFECTIVE_PROFILE}")
-  list(APPEND compatibility_identity_args --compatibility "${BEEF_EFFECTIVE_PROFILE}")
-endif()
-add_custom_command(OUTPUT "${CMAKE_BINARY_DIR}/generated/identity.stamp"
+add_custom_target(BuildIdentity
+  COMMAND "${CMAKE_COMMAND}" "-DSOURCE_DIR=${CMAKE_SOURCE_DIR}"
+    "-DOUTPUT_DIR=${CMAKE_BINARY_DIR}/generated" "-DCONFIG=${CMAKE_BUILD_TYPE}"
+    "-DPROFILE=${BEEF_COMPATIBILITY_PROFILE}" -P "${CMAKE_CURRENT_LIST_DIR}/BuildIdentity.cmake"
   BYPRODUCTS "${CMAKE_BINARY_DIR}/generated/BuildIdentity.h"
     "${CMAKE_BINARY_DIR}/generated/build-identity.json"
-  COMMAND "${Python3_EXECUTABLE}" "${CMAKE_SOURCE_DIR}/tools/build-identity.py"
-    --root "${CMAKE_SOURCE_DIR}" --output "${CMAKE_BINARY_DIR}/generated"
-    --config "${CMAKE_BUILD_TYPE}" ${compatibility_identity_args}
-  COMMAND "${CMAKE_COMMAND}" -E touch "${CMAKE_BINARY_DIR}/generated/identity.stamp"
-  DEPENDS ${IDENTITY_INPUTS} VERBATIM)
-add_custom_target(BuildIdentity DEPENDS "${CMAKE_BINARY_DIR}/generated/identity.stamp")
+  VERBATIM)
 add_dependencies(${PROJECT_NAME} BuildIdentity)
 
 set(PRESENTER_DIR "${CMAKE_BINARY_DIR}/presenters")
-math(EXPR last_presenter "${BEEF_PRESENTER_COUNT} - 1")
+file(MAKE_DIRECTORY "${PRESENTER_DIR}")
 set(PRESENTER_FILES)
-foreach(index RANGE 0 ${last_presenter})
+math(EXPR last_presenter "${BEEF_PRESENTER_COUNT} - 1")
+foreach(index RANGE ${last_presenter})
   if(index LESS 10)
     set(index "0${index}")
   endif()
+  file(COPY_FILE "${CMAKE_CURRENT_LIST_DIR}/presenter-slot.dds" "${PRESENTER_DIR}/slot_${index}.dds"
+    ONLY_IF_DIFFERENT)
   list(APPEND PRESENTER_FILES "${PRESENTER_DIR}/slot_${index}.dds")
 endforeach()
-add_custom_command(OUTPUT "${PRESENTER_DIR}/presenters.stamp"
-  BYPRODUCTS ${PRESENTER_FILES}
-  COMMAND "${Python3_EXECUTABLE}" "${CMAKE_SOURCE_DIR}/tools/presenter-textures.py"
-    --output "${PRESENTER_DIR}" --count "${BEEF_PRESENTER_COUNT}"
-  COMMAND "${CMAKE_COMMAND}" -E touch "${PRESENTER_DIR}/presenters.stamp"
-  DEPENDS "${CMAKE_SOURCE_DIR}/tools/presenter-textures.py"
-  VERBATIM)
-add_custom_target(PresenterTextures DEPENDS "${PRESENTER_DIR}/presenters.stamp")

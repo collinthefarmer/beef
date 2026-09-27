@@ -6,4 +6,3 @@ native-last.log
 __pycache__/
 *Zone.Identifier*
 CMakeUserPresets.json
-SOURCE_PROVENANCE.json

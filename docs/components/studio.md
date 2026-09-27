@@ -1,6 +1,6 @@
 # studio/
 
-The pure UI-state layer beneath the ImGui renderer. Per `tools/layers.sh`,
+The pure UI-state layer beneath the ImGui renderer. Per `ALLOWS` in `tools/gate.py`,
 `studio` may include `Core.h recipe mesh planners diagnostics studio` and
 nothing else. It never includes `engine/` and never names `RE::`, so it
 compiles natively and is unit-tested through `ctest --preset native` alongside

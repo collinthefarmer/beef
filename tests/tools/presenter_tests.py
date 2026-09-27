@@ -1,3 +1,4 @@
+"""Check the checked-in presenter slot texture and the trace report's presenter counters."""
 import json
 import pathlib
 import struct
@@ -10,45 +11,15 @@ ROOT = pathlib.Path(__file__).resolve().parents[2]
 
 
 class PresenterTests(unittest.TestCase):
-    def test_staged_assets_and_repair(self):
-        with tempfile.TemporaryDirectory() as folder:
-            output = pathlib.Path(folder)
-            command = [sys.executable, str(ROOT / 'tools/presenter-textures.py'),
-                       '--output', folder]
-            subprocess.run(command, check=True)
-            self.assertEqual({p.name for p in output.iterdir()},
-                             {f'slot_{i:02}.dds' for i in range(512)})
-            for path in output.iterdir():
-                data = path.read_bytes()
-                self.assertEqual(len(data), 132)
-                self.assertEqual(data[:4], b'DDS ')
-                header = struct.unpack('<31I', data[4:128])
-                self.assertEqual(header[:7], (124, 0x100F, 1, 1, 4, 0, 0))
-                self.assertEqual(header[18:26],
-                                 (32, 0x41, 0, 32, 0xFF, 0xFF00,
-                                  0xFF0000, 0xFF000000))
-                self.assertEqual(header[26], 0x1000)
-                self.assertEqual(data[128:], bytes([0, 0, 0, 255]))
-            kept = output / 'slot_00.dds'
-            timestamp = kept.stat().st_mtime_ns
-            (output / 'slot_99.dds').unlink()
-            (output / 'slot_100.dds').write_bytes(b'broken')
-            subprocess.run(command, check=True)
-            self.assertEqual(kept.stat().st_mtime_ns, timestamp)
-            self.assertEqual((output / 'slot_99.dds').read_bytes(), kept.read_bytes())
-            self.assertEqual((output / 'slot_100.dds').read_bytes(), kept.read_bytes())
-
-    def test_count_stamps_that_many_and_removes_stale_slots(self):
-        with tempfile.TemporaryDirectory() as folder:
-            output = pathlib.Path(folder)
-            base = [sys.executable, str(ROOT / 'tools/presenter-textures.py'),
-                    '--output', folder]
-            subprocess.run(base + ['--count', '8'], check=True)
-            self.assertEqual({p.name for p in output.iterdir()},
-                             {f'slot_{i:02}.dds' for i in range(8)})
-            subprocess.run(base + ['--count', '4'], check=True)
-            self.assertEqual({p.name for p in output.iterdir()},
-                             {f'slot_{i:02}.dds' for i in range(4)})
+    def test_slot_texture_is_a_black_opaque_1x1_rgba_dds(self):
+        data = (ROOT / 'cmake/presenter-slot.dds').read_bytes()
+        self.assertEqual(len(data), 132)
+        self.assertEqual(data[:4], b'DDS ')
+        header = struct.unpack('<31I', data[4:128])
+        self.assertEqual(header[:7], (124, 0x100F, 1, 1, 4, 0, 0))
+        self.assertEqual(header[18:26], (32, 0x41, 0, 32, 0xFF, 0xFF00, 0xFF0000, 0xFF000000))
+        self.assertEqual(header[26], 0x1000)
+        self.assertEqual(data[128:], bytes([0, 0, 0, 255]))
 
     def test_report_detects_concurrent_alias_and_ignores_retired_target(self):
         with tempfile.TemporaryDirectory() as folder:

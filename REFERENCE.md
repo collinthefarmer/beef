@@ -29,11 +29,18 @@ citation into them names provenance, not a file a reader here can open.
   order. This diagnostic
   mutex is not a renderer synchronization mechanism. Logging instrumentation does
   not establish engine resource ownership or GPU completion.
-- `tools/build-identity.py` runs before plugin compilation, writes a header only
-  when identity changes, and stages the corresponding JSON manifest. The source
-  SHA256 includes active project and vendored source, shader and build inputs;
-  it excludes `_old`, tests, documents, generated build output, and external
-  toolchain binaries. Effective recipe/settings fingerprints use FNV-1a 64 and
+- `cmake/BuildIdentity.cmake` runs on every Windows build, before plugin
+  compilation, and writes `BuildIdentity.h` and `build-identity.json` only
+  when their content changes. The build ID is the first 12 characters of the
+  Git revision and the configuration, with a source marker between them:
+  none when the build inputs are clean, `dirty-<hash>` when they have changes,
+  and `archive` for a `git archive` extraction. The build inputs are `src`,
+  `cmake`, `CMakeLists.txt`, `CMakePresets.json`, `COPYING.md`, `flake.nix`
+  and `flake.lock`, listed in `cmake/BuildIdentity.cmake`; edits elsewhere,
+  such as docs, leave the build ID and the DLL unchanged. The dirty hash is the
+  first 12 hex characters of the SHA-256 of `git diff HEAD --binary` over the
+  build inputs and the names of their untracked, non-ignored files; it
+  identifies the change set, not file content outside the diff. Effective recipe/settings fingerprints use FNV-1a 64 and
   are diagnostic comparisons, not security identities. Capture procedure and
   current limits: `docs/checkpoints/render-state-diagnostic-checkpoint-2026-09-12.md`.
 
@@ -358,14 +365,14 @@ Lab mechanics:
   count fits the naming). The count is single-sourced in `CMakeLists.txt` as
   `BEEF_PRESENTER_COUNT`: the pool reads it as a compile definition
   (`RenderTargetPool.h`, `kPresenterCount`, default 512 when the definition is
-  absent) and the `tools/presenter-textures.py` CMake target stamps exactly
-  that many files and deletes any stale higher-numbered slots. It is 1024 as of
+  absent) and `cmake/Generated.cmake` copies the checked-in
+  `cmake/presenter-slot.dds` to exactly that many files at configure time. It is 1024 as of
   2026-09-21, raised because cross-actor sharing cut a crowd's target demand far
   below the old 512 wall, so the wall could rise without the pool ever
   approaching it for realistic content; distance eviction is the real VRAM
   control beneath it. Each file is a separate engine resource name, opaque-black
   1x1 RGBA8, and lets an `NiSourceTexture` present a generated target like a
-  material texture (NOTES 22). The generator is part of the build fingerprint.
+  material texture (NOTES 22).
 - Loading must find the requested resource through the engine resource system,
   return the requested texture name (case/slash normalization and optional
   `textures\` prefix), and return an unclaimed presenter object. Retained
@@ -1440,36 +1447,50 @@ Decompile provenance (`decompiled/WornEnchantmentFX/plugin.c` unless noted):
   The upstream helper unconditionally writes its generated source on every
   configure, causing avoidable recompilation and relinking.
 - `cmake/clang-cl-xwin.toolchain.cmake` cross-compiles x64 MSVC ABI with
-  clang-cl and lld-link. `XWIN_DIR` defaults to `~/.xwin/splat`, populated by
-  `setup-xwin.sh`. Every configuration uses the release CRT (`/MD`).
-- `cmake/Generated.cmake` tracks identity inputs (including their file list
-  and Git revision) and presenter outputs. Generated headers are written
-  only when changed; completion stamps prevent repeated generation after
-  an input touch that does not change contents.
-- Without a root `.git` entry, build identity requires an explicit
-  `SOURCE_PROVENANCE.json`; it must not inherit a parent checkout's revision.
-  The producer records HEAD, the actual input fingerprint, and the effective
-  compatibility profile hash. The record is excluded from that fingerprint
-  to avoid self-reference. Matching archives retain checkout identity;
-  intentional source edits require `BEEF_ALLOW_MODIFIED_SOURCE` and retain
-  the original archive hash alongside the new fingerprint. Profile drift
-  remains an error. This verifies consistency, not producer authenticity or
-  the completeness of a corresponding-source distribution.
-- `cmake/Stage.cmake` defines explicit `stage`; compilation does not stage.
-  It copies the DLL/PDB, manifest, INI, templates, presets, presenter DDS
+  clang-cl and lld-link against `XWIN_DIR`, which `nix develop` sets to the
+  `build/windows-sdk` link to the flake's `windows-sdk` package: an xwin
+  splat of SDK 10.0.26100 and CRT 14.44.17.14, pinned by its output hash.
+  The package is marked unfree, so building it needs `NIXPKGS_ALLOW_UNFREE=1`
+  and `--impure`; that explicit step is where a builder accepts Microsoft's
+  license, and the dev shell never fetches it. Two independent builds of it give
+  the same hash. If
+  Microsoft withdraws either version from the manifest, the build fails
+  instead of changing; raise the versions and the hash together. An exported
+  `XWIN_DIR` overrides it. Every configuration uses the release CRT (`/MD`).
+- `cmake/Generated.cmake` runs the identity script as an always-run target
+  whose outputs are byproducts; Ninja restats them, so an unchanged header
+  does not recompile the plugin. Presenter copies are refreshed when CMake
+  configures.
+- Without a root `.git` entry, build identity reads the revision from
+  `cmake/source-revision.txt`, which `.gitattributes` marks `export-subst`
+  so `git archive` stamps it with the commit hash. An unstamped file stops
+  the build; a parent checkout's revision is never used. An archive build
+  does not detect later edits to the extracted tree.
+- `cmake/Compatibility.cmake` reads the selected profile with
+  `string(JSON)`, stops configuration when a field it needs is missing, and
+  compares the SHA-256 of `src/cs/BSLightingShaderMaterialPBR.h` and
+  `src/extern/SKSEMenuFramework.h` with the profile, because those headers
+  fix engine and peer struct layouts. It writes `BuildCompatibility.h` and
+  `Plugin.cpp`; other profile fields are not validated.
+- `cmake/Stage.cmake` defines `stage`. Building the plugin target alone does
+  not stage; the `windows-release` build preset builds `stage`, and
+  `tools/gate.sh release` builds `all` so it never touches `dist/`.
+  It copies the DLL/PDB, build identity file, INI, templates, presets, presenter DDS
   files, and Windows validator. Recipe files are not staged. Runtime asset
-  changes do not require relinking to reach the staged mod.
+  changes do not require relinking to reach the staged mod. It also writes
+  `generated/package.json`, the explicit file list that
+  `cmake/Package.cmake` archives and `tools/demo-package.py` reads.
 - CMake presets delegate dependency tracking and linking to Ninja
   and execution to CTest. Each test has separate scratch storage. Normal
   and ASan/UBSan builds use separate directories; schema validation is
-  required. `BEEF_UPDATE=1` still enables intentional fixture updates.
+  required. `BEEF_UPDATE=1` enables intentional fixture updates.
 - `python3 tools/compile-db.py` configures Release and writes the first-party clangd
-  view only when changed. Tidy reads the original CMake database, runs
-  uncached, and expands header/deletion selections to all first-party
-  translation units. Successful invocation reports replace the old result
-  cache. Baselines deduplicate diagnostics and compare file/check counts,
-  including headers; line shifts and resolved findings do not fail checks.
-- `docs/build.md` owns commands and recovery. `install.sh` continues to copy
+  view only when changed: `src/` entries from the Windows database and, when
+  `build/native` is configured, `tests/` entries from the native database.
+  `tools/tidy.py` reads the Windows database and runs uncached. Baselines
+  deduplicate diagnostics and compare file/check counts, including headers;
+  line shifts and resolved findings do not fail checks.
+- `docs/build.md` owns commands and recovery. `install.sh` copies
   the staged mod while preserving an existing INI and reporting copy errors.
 - `tools/rename.py` drives the `clangd` on `PATH`, which the dev shell
   makes the unwrapped one: a wrapped clangd adds the host's glibc and
@@ -1478,15 +1499,6 @@ Decompile provenance (`decompiled/WornEnchantmentFX/plugin.c` unless noted):
   last run is re-indexed after the progress token ends, so a symbol it
   declares can be missing for a while; edits are applied from the end so
   earlier offsets stay valid.
-- `tools/efsh_dump.py` reads EFSH `DATA` by file offset: the 400-byte file
-  layout differs from CommonLibSSE-NG's `EffectShaderData` after 0xF4 (the
-  file stores the addon models and ambient sound form IDs in 4 bytes each,
-  the runtime in 8); older records ship a 308-byte `DATA` without flags or
-  texture scale, which default to 0 and 1.
-- `tools/make_flipbook.py` names its folders after CMake's `project()`,
-  bakes a frame exactly as the lab's shader tiles, mirrors, transposes and
-  scrolls, and records the mean luminance of frame 0 so the plugin can
-  divide texture brightness out.
 - `src/Identity.h` is the only place the plugin name is spelled; CMake's
   `project()` feeds it. Recipes load from `Data/<plugin>/<anything>/*.json`
   recursively; the importer writes under `imported/`, the menu saves under

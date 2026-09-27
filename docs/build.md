@@ -43,25 +43,35 @@ build/native/beef-validate file.json
 
 ## Windows plugin and staging
 
-Run `setup-xwin.sh` once to obtain the Windows CRT and SDK; `XWIN_DIR`
-defaults to `~/.xwin/splat`.
+Fetch the Windows CRT and SDK once, which accepts Microsoft's license for them:
+
+```
+NIXPKGS_ALLOW_UNFREE=1 nix build --impure .#windows-sdk -o build/windows-sdk
+```
+
+The flake's `windows-sdk` package is hash-pinned; `nix develop` sets
+`XWIN_DIR` to the `build/windows-sdk` link, which also keeps the SDK from
+Nix garbage collection. See `REFERENCE.md` for the pinned versions.
 
 ```
 cmake --preset windows-release
 cmake --build --preset windows-release
-cmake --build --preset windows-release --target stage
 ```
 
-`windows-debug` uses a separate directory. Compilation and staging are
-explicit commands. Stage copies the DLL,
-PDB, build manifest, INI, presets, templates, validator, and generated
+The `windows-release` build preset builds the `stage` target, which compiles
+the DLL and validator and then stages them. Compilation and staging stay
+separate targets: `--target all` compiles without touching `dist/`, which is
+what `tools/gate.sh release` runs. `windows-debug` uses a separate directory
+and does not stage. Stage copies the DLL,
+PDB, build identity file, INI, presets, templates, validator, and generated
 presenter textures to `dist/BetterEnchantmentEffects`. It does not ship
 recipes. Asset edits are picked up by stage independently of DLL relinking.
-`./install.sh` retains its existing behavior and operates on the staged mod.
+`./install.sh` copies the staged mod into the MO2 mods directory.
 
-Build identity tracks source contents, build inputs, and Git revision.
-Presenter textures are generated only when their inputs or outputs require
-it. First-party compiler caching stays disabled because a previous cache
+Build identity comes from Git: the revision, plus a hash of the uncommitted
+changes to the build inputs when they are dirty. Doc edits do not change it. It is computed on every build and rewrites
+its header only when it changes. Presenter textures are copies of the
+checked-in `cmake/presenter-slot.dds`, made when CMake configures. First-party compiler caching stays disabled because a previous cache
 hit lost header dependencies and mixed incompatible layouts in one DLL.
 Third-party caching remains enabled. See `REFERENCE.md`, Build and tools.
 
@@ -70,54 +80,47 @@ Third-party caching remains enabled. See `REFERENCE.md`, Build and tools.
 ```
 python3 tools/compile-db.py
 python3 tools/tidy.py src/recipe/Resolve.cpp
-python3 tools/tidy.py --changed
 python3 tools/tidy.py
-python3 tools/tidy-baseline.py --check
+python3 tools/tidy.py --check
+python3 tools/tidy.py --update
 ```
 
 CMake produces `build/Release/compile_commands.json`; tidy reads it directly.
 The compile-db script configures Release and writes a first-party view to
-`build/clangd/compile_commands.json` only when its content changes, preserving
-clangd and rename-tool integration. Build the Windows target before checking
-files that require generated headers.
+`build/clangd/compile_commands.json` only when its content changes. The view
+holds the `src/` entries of the Windows database and, when `build/native`
+exists, the `tests/` entries of the native database, so a rename also reaches
+the tests. Build the Windows target before checking files that require
+generated headers.
 
-Tidy does fresh analysis on every invocation; there is no result cache or
-second dependency graph. Source selections run just those translation
-units. A header change or deletion conservatively runs all first-party
-translation units. `--changed` includes tracked changes against HEAD and
-untracked source files. `--jobs=N` defaults to four; reduce it under memory
-pressure. `--build-dir` can select another configured database for targeted analysis.
-A full pass requires every active first-party source in the database; use
-the Windows database for that check. Normal runs
-exclude the Clang static analyzer as before; `--analyzer` enables it and
-writes a separate report. Checker names preserve case (including analyzer
-names such as `NewDeleteLeaks`). JSON separates plugin `diagnostics` from
-`external_diagnostics`; review both lists for an analyzer run. The normal
-baseline compares only plugin diagnostics.
+Tidy analyses the named translation units, or every first-party translation
+unit when no file is named. A full run fails when a first-party source is
+missing from the database. `--jobs N` sets the parallel analyses (default
+four; at most eight). Normal runs exclude the Clang static analyzer;
+`--analyzer` includes it. Tidy prints each distinct first-party finding once;
+findings in `src/extern`, `src/cs` and dependencies are dropped. A failed
+clang-tidy invocation fails the run.
 
-Each successful invocation publishes `build/tidy/latest.json` (or
-`build/tidy-analyzer/latest.json`); logs remain under its `logs/` directory.
-A failed invocation invalidates the report. Reports are evidence of that
-invocation, not freshness certificates for subsequent source edits.
-
-Baseline checks deduplicate diagnostics and compare counts by source/header
-path and check, ignoring line movement and allowing fixes. A full check or
-baseline regeneration requires a full successful run. Header findings are
-included in targeted gates. After reviewing all findings, run
-`python3 tools/tidy-baseline.py` to replace the baseline; never regenerate merely to
-make a gate pass. The baseline remains a count allowance, not a guarantee
-that every individual finding is unchanged.
+`--check` compares the findings with `tools/tidy-baseline.txt` by count per
+source or header path and check, so line movement and fixes pass. Header
+findings are included when a single source is checked. `--update` rewrites the
+baseline and requires a full run without `--analyzer`. Run it only after you
+review all findings, never to make a gate pass. The baseline is a count
+allowance, not a guarantee that every individual finding is unchanged.
 
 ## Validation and recovery
 
 `tools/gate.sh` only enters Nix and launches `tools/gate.py`; Git hooks
-use this entry point. `tools/gate.sh commit` runs cheap formatting and layer checks against the
-working tree; it does not claim to build an isolated copy of the Git index.
-Run targeted tidy explicitly during development; full analysis remains an
-explicit release check. `tools/gate.sh push` checks formatting,
-layering, source conventions, and sanitized native tests.
-`tools/gate.sh release` adds the Windows build and full normal tidy plus its
-baseline check.
+use this entry point. `tools/gate.sh commit` checks the staged content of
+each staged first-party C++ file in `src/` and `tests/` (not `src/extern` or
+`src/cs`): clang-format, the include layers in the `ALLOWS` table of
+`tools/gate.py`, and the comment rule. The comment rule skips string,
+character and raw-string literals, allows `NOLINT` lines, and exempts only
+the exact license notice at the top of a file. `tools/gate.sh push` runs the
+same checks over every first-party file in the working tree, then the
+sanitized native configure, build and tests. `tools/gate.sh release` adds the
+Windows build and `tools/tidy.py --check`. `tools/gate.sh fix` runs
+clang-format in place over every first-party file.
 Run `python3 tools/tidy.py --analyzer` separately for static-analyzer review and build
 and stage the Windows candidate before release. Neither gate proves in-game
 behavior.
@@ -125,33 +128,32 @@ behavior.
 For fresh build trees use the presets; for existing trees Ninja automatically
 reconfigures when CMake files or source lists change. After changing compilers
 or SDK locations, use a separate directory or `cmake --fresh --preset ...`.
-After interrupted analysis, rerun tidy; old logs are never input to the gate.
 
-## Verified candidate archives
+## Candidate archives
 
 Run `cmake --build --preset windows-release --target package-candidate` inside
-Nix. It builds required artifacts and writes a mod ZIP, a separate PDB ZIP,
-and SHA-256 checksums to `dist/archives/`. It uses the explicit inventory in
-`cmake/Stage.cmake`, not the contents of `dist/BetterEnchantmentEffects`.
-Obsolete staging files therefore cannot enter a candidate archive. The existing
+Nix. It builds required artifacts, and `cmake/Package.cmake` writes a mod ZIP,
+a separate PDB ZIP, and one `.sha256` file for both to `dist/archives/`. It uses
+the explicit inventory that `cmake/Stage.cmake` writes to
+`build/Release/generated/package.json`, not the contents of `dist/BetterEnchantmentEffects`.
+Obsolete staging files therefore cannot enter a candidate archive. The
 `stage` target also copies the notice bundle for the developer installer.
 
-Both archives carry `LICENSE`, `COPYING.md`, `THIRD_PARTY_NOTICES.md`, and the explicit
-`licenses/inventory.json` file list. Update that inventory and provenance
-when dependencies change; `tools_licenses_tests` checks notice/header hashes
-and reviewed dependency pins. Packaging refuses absent notice inputs and
-destination collisions before replacing either archive.
+Both archives carry `LICENSE`, `COPYING.md`, `THIRD_PARTY_NOTICES.md`, and every
+file in `licenses/`. When a dependency changes, update its row in
+`THIRD_PARTY_NOTICES.md` and its text in `licenses/`. Packaging stops on a
+missing input or two entries with the same destination, before it replaces
+either archive.
 
-Each ZIP includes `manifest.json` with every payload file's size and SHA-256,
-source/build identity, compiled runtime families, CommonLib revision, and the
-actual generated SKSE plugin declaration. Archives are reopened and checked
-before replacing their output files. Missing inputs fail before publication.
-Run `python3 tools/package.py verify <archive.zip>` to repeat the integrity
-check; the adjacent `.sha256` file identifies the delivered archives. Hashes
-check integrity, not authenticity. Identical inputs produce identical ZIPs;
-this is not a claim that independently compiled binaries are reproducible.
+The mod ZIP carries `COMPATIBILITY.json` (the selected profile) and
+`SKSE/Plugins/BetterEnchantmentEffects-build.json` (the build identity). The
+`.sha256` file identifies the delivered archives; `sha256sum -c` repeats the
+check. Hashes check integrity, not authenticity. Entries have a fixed
+timestamp and sorted order, so identical inputs produce identical ZIPs; this
+is not a claim that independently compiled binaries are reproducible.
 
-Archive filenames include the project version and build identity. Repackaging
+Archive filenames include the project version, the compatibility profile and
+the build ID. Repackaging
 changed runtime assets at the same build identity can replace that filename;
 retain the archive checksum with test evidence. `runtime_verified: false`
 means packaging makes no game-compatibility claim. Matching-source delivery,
@@ -184,11 +186,11 @@ SKSE alone cannot establish a new ABI's compatibility. New runtime families,
 CommonLib revisions, peer headers, and layout assumptions need source review
 and runtime acceptance. See the [profile audit](checkpoints/compatibility-profiles-2026-09-24.md).
 
-Effective profile contents enter configuration-sensitive build identity and
-`COMPATIBILITY.json` in both archives. Filenames include the profile name.
-Packaging rejects disagreement between the profile, build identity, and generated
-loader declaration; archive verification also checks their consistency.
-`runtime_verified` remains false: record actual candidate acceptance separately
+The selected profile is copied to `COMPATIBILITY.json` in the mod archive, and
+its name is part of the archive filenames and of `build-identity.json`.
+CMake stops configuration when the profile lacks a field it uses or when a
+vendored peer header differs from the profile's SHA-256; it does not validate
+other profile fields. `runtime_verified` remains false: record actual candidate acceptance separately
 with archive checksums and the exact installed dependency versions.
 
 ### Native authoring integration
@@ -233,35 +235,11 @@ Windows file-lock behavior or mod-manager archive upgrade behavior.
 
 ## Source archives without Git metadata
 
-Before removing Git metadata from a source snapshot, configure its intended
-Windows compatibility profile and write the provenance record:
-
-```sh
-cmake --preset windows-release
-python3 tools/build-identity.py --root . --write-provenance \
-  --compatibility build/Release/generated/compatibility.json
-```
-
-Include the resulting `SOURCE_PROVENANCE.json` in the snapshot. It is ignored
-in Git because it describes one exported tree. It records the checkout's HEAD
-revision, the actual source fingerprint (including uncommitted build inputs),
-and a hash of the effective compatibility profile. It does not assert that a
-dirty snapshot equals its base commit or authenticate the producer. The source
-fingerprint covers the same inputs as ordinary build identity; it is not a
-checksum of the entire source distribution. Curated source inventory and exact
-dependency-source bundling remain separate publication work.
-
-The ordinary Windows preset then works without the project's `.git` directory.
-An unchanged extraction with the same profile and configuration produces the
-same identity manifest/header. Metadata from a parent checkout is never used.
-Missing/malformed provenance, changed source inputs, or a different effective
-profile fail the identity build. For intentional source edits, configure with
-`-DBEEF_ALLOW_MODIFIED_SOURCE=ON`: the build retains the base revision, computes
-a new source hash/build ID, and records `archive_source_sha256`. This option
-does not waive profile matching. Generate a separate provenance record from
-the producing checkout for each target profile. Native-only builds do not
-consume plugin build identity.
-
-The archive still needs compiler/SDK prerequisites and pinned dependency
-sources. This feature removes the identity generator's Git requirement; it
-does not bundle those dependencies or establish bit-for-bit reproducibility.
+A `git archive` extraction builds without `.git`. `.gitattributes` marks
+`cmake/source-revision.txt` for `export-subst`, so the archive carries the
+commit hash there, and the build ID becomes `<revision>-archive-<config>`.
+The build stops when that file is not stamped. The identity does not detect
+edits made after extraction. `tools/source-archive.py` (see
+[source-archive.md](source-archive.md)) writes such an archive together with
+the pinned dependency sources. Native-only builds do not consume plugin build
+identity.

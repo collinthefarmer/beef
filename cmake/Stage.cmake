@@ -37,7 +37,7 @@ add_custom_target(stage
     "${DIST_DIR}/SKSE/Plugins/${PROJECT_NAME}/templates/"
   COMMAND "${CMAKE_COMMAND}" -E copy_if_different
     ${PRESENTER_FILES} "${DIST_DIR}/textures/${PROJECT_NAME}/slots/"
-  DEPENDS ${PROJECT_NAME} BeefValidate PresenterTextures VERBATIM)
+  DEPENDS ${PROJECT_NAME} BeefValidate VERBATIM)
 
 set(package_files)
 macro(package_file source destination)
@@ -70,16 +70,14 @@ endforeach()
 list(JOIN package_files ",\n" notice_entries)
 file(GENERATE OUTPUT "${CMAKE_BINARY_DIR}/generated/package.json" CONTENT
 "{
-  \"name\": \"${PROJECT_NAME}\",
-  \"version\": \"${PROJECT_VERSION}\",
+  \"name\": \"${PROJECT_NAME}-${PROJECT_VERSION}-${BEEF_COMPATIBILITY_PROFILE}\",
   \"identity\": \"${CMAKE_BINARY_DIR}/generated/build-identity.json\",
-  \"declaration\": \"${CMAKE_BINARY_DIR}/generated/Plugin.cpp\",
-  \"compatibility\": \"${BEEF_EFFECTIVE_PROFILE}\",
   \"files\": [${package_entries}],
   \"notices\": [${notice_entries}],
   \"symbols\": [{\"source\":\"$<TARGET_PDB_FILE:${PROJECT_NAME}>\",\"destination\":\"${PROJECT_NAME}.pdb\"}]
 }")
 add_custom_target(package-candidate
-  COMMAND "${Python3_EXECUTABLE}" "${CMAKE_SOURCE_DIR}/tools/package.py" create
-    "${CMAKE_BINARY_DIR}/generated/package.json" --output "${CMAKE_SOURCE_DIR}/dist/archives"
-  DEPENDS ${PROJECT_NAME} BeefValidate PresenterTextures VERBATIM)
+  COMMAND "${CMAKE_COMMAND}" "-DSPEC=${CMAKE_BINARY_DIR}/generated/package.json"
+    "-DWORK=${CMAKE_BINARY_DIR}/package" "-DOUTPUT=${CMAKE_SOURCE_DIR}/dist/archives"
+    -P "${CMAKE_CURRENT_LIST_DIR}/Package.cmake"
+  DEPENDS ${PROJECT_NAME} BeefValidate VERBATIM)

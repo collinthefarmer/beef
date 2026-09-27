@@ -145,7 +145,7 @@ src/
 - `recipe/`, `mesh/`, `planners/`, and `studio/` are engine-free.
   `engine/`, `render/`, and `menu/` are the adapters over them.
 - `src` is the only first-party include root, so every project include
-  names its directory. `tools/layers.sh` enforces the graph.
+  names its directory. `tools/gate.py` enforces the graph.
 - The native static library builds the four pure directories, the
   engine-free diagnostic recorder, and `Settings.cpp`. The recorder
   performs file I/O and is not part of the pure recipe or planning
@@ -289,9 +289,9 @@ tree must not reproduce them.
 
 ## Build and workflow
 
-- Build with `cmake --preset windows-release` then `cmake --build --preset windows-release`. More jobs exhaust WSL and kill the
-  instance. Stage with `cmake --build --preset windows-release --target stage`, then
-  install with `./install.sh`.
+- Build with `cmake --preset windows-release` then `cmake --build --preset windows-release`. The build preset also stages
+  the mod into `dist/`. More jobs exhaust WSL and kill the instance. Install
+  with `./install.sh`.
 - The language standard is C++23 (`CMAKE_CXX_STANDARD 23` in
   `CMakeLists.txt`). Native tests use CMake presets and CTest; both
   platforms inherit the same language standard. See `docs/build.md`.

@@ -7,8 +7,8 @@ SRC="dist/$NAME"
 DST="$MO2_MODS_DIR/$NAME"
 INI="SKSE/Plugins/$NAME.ini"
 RECIPES="SKSE/Plugins/$NAME/recipes"
-[ -f "$SRC/SKSE/Plugins/$NAME.dll" ] || { echo "no staged build in $SRC; run cmake --build --preset windows-release --target stage" >&2; exit 1; }
-[ -f "$SRC/$INI" ] || { echo "no staged default INI in $SRC; run cmake --build --preset windows-release --target stage" >&2; exit 1; }
+[ -f "$SRC/SKSE/Plugins/$NAME.dll" ] || { echo "no staged build in $SRC; run cmake --build --preset windows-release" >&2; exit 1; }
+[ -f "$SRC/$INI" ] || { echo "no staged default INI in $SRC; run cmake --build --preset windows-release" >&2; exit 1; }
 mkdir -p "$DST"
 status=0
 if command -v rsync >/dev/null 2>&1; then

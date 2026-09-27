@@ -12,10 +12,10 @@ compiled SE/AE families do not establish support for every Skyrim executable.
 
 ## Collect the evidence
 
-1. Keep the candidate ZIP name, its adjacent `.sha256` file, and its
-   `manifest.json`. The manifest identifies the packaged build. For an installed
-   copy, also attach `SKSE/Plugins/BetterEnchantmentEffects-build.json` from the
-   mod folder. The plugin log's `build:` line identifies the DLL actually loaded;
+1. Keep the candidate ZIP name and its adjacent `.sha256` file. The ZIP name
+   ends with the packaged build ID. Also attach
+   `SKSE/Plugins/BetterEnchantmentEffects-build.json` from the ZIP or the
+   installed mod folder. The plugin log's `build:` line identifies the DLL actually loaded;
    include it even if it differs from the archive or installed metadata.
 2. Copy `BetterEnchantmentEffects.log` from SKSE's log directory **before
    restarting the game**: the plugin replaces this log at startup. The
@@ -91,7 +91,7 @@ Actual result and exact error text:
 
 ### Attachments
 
-- Manifest/build metadata and checksum file:
+- Build identity (`SKSE/Plugins/BetterEnchantmentEffects-build.json`) and archive checksum file:
 - Plugin log; relevant SKSE logs if loading failed:
 - Active INI and effective-settings evidence:
 - Recipe JSON, relative paths, and required custom presets:

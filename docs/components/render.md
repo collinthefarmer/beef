@@ -5,7 +5,7 @@ The GPU layer. It takes a resolved **plan** (`recipe/Merge.h`'s `SlotPlan`,
 derived, and turns them into pixels and material writes: it bakes each
 **output**'s **layer** stack on the GPU, then writes the result into a worn
 actor's TruePBR material **slots** (Community Shaders'
-`BSLightingShaderMaterialPBR`) and **shell** geometry. Per `tools/layers.sh`
+`BSLightingShaderMaterialPBR`) and **shell** geometry. Per `ALLOWS` in `tools/gate.py`
 it sits beside `mesh`, `planners`, `studio`, and `diagnostics`, above
 `recipe`. It is engine-facing — it owns Direct3D 11 resources and Community
 Shaders' material layout directly — and is not native-tested.

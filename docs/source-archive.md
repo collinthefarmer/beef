@@ -6,47 +6,49 @@ logs, proprietary SDK, game files, or installed peer DLLs are included.
 
 ## Produce a snapshot
 
-Inside `nix develop`, build the selected Windows candidate, then run:
+Inside `nix develop`, configure the selected Windows profile so FetchContent
+has checked out its dependencies, commit everything, then run:
 
 ```sh
-cmake --build --preset windows-release --target package-candidate
-python3 tools/source-archive.py create \
-  --identity build/Release/generated/build-identity.json \
-  --dependencies build/Release/_deps --output dist/archives
+cmake --preset windows-release
+python3 tools/source-archive.py --profile steam-1.6.1170
 ```
 
-`tools/source-inventory.json` is the explicit first-party file list and
-dependency revision inventory. New files require review and an inventory edit.
-It includes the current synthetic fixtures, tests, templates, scripts, notices,
-and build documentation. Historical documents referenced by retained docs are
-not included; consult the original repository's reviewed documentation separately.
-The producer rejects missing inputs, links, destination collisions, omitted
-build-identity inputs, changed candidate source, and mismatched dependency pins.
+The script refuses a tree with uncommitted or untracked files, because the
+archive holds only HEAD. It writes
+`dist/archives/BetterEnchantmentEffects-<profile>-<revision>-source.tar.gz`
+and an adjacent `.sha256` file. `--dependencies` names another FetchContent
+`_deps` directory, and `--output` another destination.
 
-Dependencies are exported directly from pinned Git blobs, without repository
-metadata or untracked files. Tracked checkout edits are rejected. Submodules
-and special entries require a new review rather than being silently omitted;
-the current three dependency revisions have no submodules. CommonLib's unused
-Flash/Scaleform source and three Address Library test-data files are explicitly
-excluded. Its C++ sources, CMake files, source tests, and license remain intact;
-CommonLib tests requiring the excluded data are not part of this configuration.
-Bundled spdlog includes its generated fmt headers and their embedded notices.
-The menu API, JSON, and Community Shaders reference headers remain in the
-project source with the existing license inventory.
+The first-party part is `git archive HEAD`: the tracked files are the
+inventory. `.gitattributes` marks development-only paths `export-ignore`:
+`.claude`, `.githooks`, `MAP.md`, `docs/.obsidian`,
+`docs/checkpoints` (it holds captured runtime logs), `docs/history` and
+`docs/plans`. It also stamps `cmake/source-revision.txt` with the commit hash,
+which build identity reads when there is no `.git`.
 
-The archive includes `SOURCE_PROVENANCE.json`, `SOURCE_MANIFEST.json`, and a
-`bundled-dependencies.cmake` cache initializer. The manifest hashes every file
-and records executable permissions and dependency exclusions. The adjacent
-SHA-256 file identifies the whole archive, including tests/docs/tools outside
-the narrower plugin build fingerprint. Retain it with the binary checksums.
+Each dependency is `git archive` of its pinned revision from the profile, taken
+from its FetchContent checkout and placed under `dependencies/<name>/`. Untracked files
+and edits in the checkout do not enter the archive. `git archive` omits
+submodule contents; the current three dependency revisions have no
+submodules. CommonLib's unused `Flash/` Scaleform source and three Address
+Library test-data files under `tests/REL/` are excluded by `EXCLUDED` in the
+script. CommonLib tests that need the excluded data are not part of this
+configuration. Bundled spdlog includes its generated fmt headers and their
+embedded notices. The menu API, JSON, and Community Shaders reference headers
+remain in the project source with their notices in `THIRD_PARTY_NOTICES.md`.
 
-## Verify and build a fresh extraction
+The archive also holds `bundled-dependencies.cmake`, a cache initializer that
+selects the profile, points each `FETCHCONTENT_SOURCE_DIR_*` at
+`dependencies/<name>`, and sets `FETCHCONTENT_FULLY_DISCONNECTED`. The
+SHA-256 file identifies the whole archive; retain it with the binary checksums.
 
-Run verification before extraction, then use ordinary tar so script executable
-permissions are retained:
+## Build a fresh extraction
+
+Extract with ordinary tar so script executable permissions are retained:
 
 ```sh
-python3 tools/source-archive.py verify path/to/source.tar.gz
+sha256sum -c path/to/source.tar.gz.sha256
 mkdir /tmp/beef-source-check
 tar -xzf path/to/source.tar.gz -C /tmp/beef-source-check
 cd /tmp/beef-source-check
@@ -58,22 +60,20 @@ cmake --preset windows-release -C bundled-dependencies.cmake
 cmake --build --preset windows-release --target package-candidate
 ```
 
-The initializer selects the recorded profile, points FetchContent at bundled
-sources, and disables dependency downloads. Compiler/SDK and Nix dependencies
-must already be provisioned to build without network access. No pre-existing
-project build directory is needed. Compare the extracted build identity with
-`SOURCE_MANIFEST.json.identity`; unchanged sources must match. Binary byte
-equality is a separate property and is not promised, particularly for PDB paths.
+Compiler/SDK and Nix dependencies must already be provisioned to build without
+network access. No pre-existing project build directory is needed. The
+extracted build ID is `<revision>-archive-<config>`, with the same revision
+as the producing checkout. Binary byte equality is a separate property and is
+not promised, particularly for PDB paths.
 
 The external toolchain is pinned by `flake.lock`: Linux x86-64, clang/LLVM and
 lld, CMake, Ninja, Python, check-jsonschema, and the Nix host compiler wrapper.
 Windows compilation additionally requires the Microsoft CRT and Windows SDK
-under `XWIN_DIR` (default `~/.xwin/splat`), provisioned separately using
-`bash setup-xwin.sh`. These components retain Microsoft's terms and are not
-redistributed here. The dated source-delivery checkpoint records the versions
-actually exercised. Git is needed for the synthetic Git fixtures in tooling
+under `XWIN_DIR`, fetched once with the flake's hash-pinned, unfree
+`windows-sdk` package (SDK 10.0.26100, CRT 14.44.17.14). These components retain Microsoft's terms and are not
+redistributed here. Git is needed for the synthetic Git fixtures in tooling
 tests; it is not needed to derive the archive's plugin build identity.
 
-For intentional source modifications, see the archive identity options in
-[build.md](build.md#source-archives-without-git-metadata). A verifier establishes
-content consistency, not producer authenticity or a legal compliance conclusion.
+See [build.md](build.md#source-archives-without-git-metadata) for build identity
+without `.git`. The checksum establishes content integrity, not producer
+authenticity or a legal compliance conclusion.

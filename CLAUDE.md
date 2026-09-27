@@ -50,9 +50,9 @@ practicalities of working here.
   (`/mnt/a/mods/SkyrimSE/mods/BetterEnchantmentEffects/SKSE/Plugins/BetterEnchantmentEffects/recipes/<folder>/`),
   and keep a copy under `recipes/` in the repo only when it should be an
   example the tests read.
-- Build with `cmake --preset windows-release` then `cmake --build --preset windows-release` (more jobs exhaust WSL's memory and
-  kill the instance), stage with `cmake --build --preset windows-release --target stage`,
-  install with `./install.sh`, and stop at
+- Build and stage with `cmake --preset windows-release` then
+  `cmake --build --preset windows-release` (more jobs exhaust WSL's memory and
+  kill the instance), install with `./install.sh`, and stop at
   each in-game checkpoint for the user to run the game; give the log lines
   to look for.
 - Work inside `nix develop`; every script calls its tools from `PATH` and

@@ -1,8 +1,8 @@
-"""Exercise source inventory boundaries, pinned exports, and archive integrity."""
-import importlib.util
-import io
+"""Build a source archive from a temporary Git project and pinned dependency checkouts."""
+import hashlib
 import json
 from pathlib import Path
+import shutil
 import subprocess
 import sys
 import tarfile
@@ -10,97 +10,86 @@ import tempfile
 import unittest
 
 ROOT = Path(__file__).resolve().parents[2]
-sys.path.insert(0, str(ROOT / 'tools'))
-SPEC = importlib.util.spec_from_file_location('source_archive', ROOT / 'tools/source-archive.py')
-TOOL = importlib.util.module_from_spec(SPEC)
-SPEC.loader.exec_module(TOOL)
+
+
+def git(directory: Path, *args: str) -> str:
+    return subprocess.run(['git', '-C', str(directory), '-c', 'user.name=Test',
+                           '-c', 'user.email=test@example.invalid', *args],
+                          check=True, capture_output=True, text=True).stdout.strip()
+
+
+def repository(directory: Path, files: dict[str, str]) -> None:
+    for name, text in files.items():
+        (directory / name).parent.mkdir(parents=True, exist_ok=True)
+        (directory / name).write_text(text)
+    git(directory, 'init', '-q')
+    git(directory, 'add', '.')
+    git(directory, 'commit', '-qm', 'fixture')
 
 
 class SourceArchiveTests(unittest.TestCase):
-    def test_curated_inventory_has_inputs_and_no_capture_or_local_state(self):
-        inventory = json.loads((ROOT / 'tools/source-inventory.json').read_text())
-        files = TOOL.collect_project(ROOT, inventory['files'])
-        for name in files:
-            self.assertFalse(any(part in ('.git', '.agents', '.claude', '.codex', '__pycache__',
-                                          'build', 'dist', 'checkpoints', 'history')
-                                 for part in Path(name).parts), name)
-        for folder in ('src', 'cmake', 'templates', 'presets', 'schema', 'licenses'):
-            actual = {p.relative_to(ROOT).as_posix() for p in (ROOT / folder).rglob('*') if p.is_file()}
-            self.assertTrue(actual <= set(files), actual - set(files))
-        self.assertEqual(len([name for name in files if name.startswith('tests/fixtures/efsh/')]), 7)
-        self.assertTrue(all('Synthetic' in name for name in files if name.startswith('tests/fixtures/efsh/')))
-        self.assertEqual(files['install.sh'][1], 0o755)
+    def setUp(self) -> None:
+        folder = tempfile.TemporaryDirectory()
+        self.addCleanup(folder.cleanup)
+        self.root = Path(folder.name) / 'project'
+        self.deps = Path(folder.name) / 'deps'
+        pins = {}
+        for key, name in (('commonlib', 'commonlibsse'), ('spdlog', 'spdlog'), ('rapidcsv', 'rapidcsv')):
+            checkout = self.deps / f'{name}-src'
+            repository(checkout, {'LICENSE': name, 'Flash/CLIK.as': 'proprietary',
+                                  'tests/REL/version-1-5-97-0.bin': 'data'})
+            git(checkout, 'tag', 'v1.0')
+            (checkout / 'LICENSE').write_text('edited after the pin')
+            (checkout / 'untracked.txt').write_text('not source')
+            pins[key] = 'v1.0'
+        (self.root / 'tools').mkdir(parents=True)
+        shutil.copy2(ROOT / 'tools/source-archive.py', self.root / 'tools/source-archive.py')
+        repository(self.root, {
+            '.gitattributes': (ROOT / '.gitattributes').read_text(),
+            'cmake/source-revision.txt': '$Format:%H$\n',
+            'cmake/compatibility/test.json': json.dumps({'dependencies': pins}),
+            'docs/checkpoints/captured.log': 'runtime capture',
+            'src/main.cpp': 'int main() {}\n'})
 
-    def test_missing_unsafe_duplicate_and_symlink_inputs_fail(self):
-        with tempfile.TemporaryDirectory() as folder:
-            root = Path(folder)
-            (root / 'file').write_text('safe')
-            (root / 'link').symlink_to(root / 'file')
-            for names in (['missing'], ['../file'], ['/file'], ['a\\b'], ['.git/config'],
-                          ['file', 'file'], ['link']):
-                with self.subTest(names=names), self.assertRaises(ValueError):
-                    TOOL.collect_project(root, names)
-            (root / 'FILE').write_text('collision')
-            with self.assertRaises(ValueError):
-                TOOL.collect_project(root, ['file', 'FILE'])
+    def archive(self) -> subprocess.CompletedProcess[str]:
+        return subprocess.run([sys.executable, str(self.root / 'tools/source-archive.py'), '--profile', 'test',
+                               '--dependencies', str(self.deps), '--output', str(self.root.parent / 'out')],
+                              text=True, capture_output=True)
 
-    def test_pinned_dependency_export_excludes_only_reviewed_entries(self):
-        with tempfile.TemporaryDirectory() as folder:
-            root = Path(folder)
-            def git(*args):
-                return TOOL.git(root, *args)
-            git('init', '-q')
-            (root / 'LICENSE').write_text('notice')
-            (root / 'source.cpp').write_text('int example;')
-            (root / 'captured.bin').write_bytes(b'fixture')
-            git('add', '.')
-            git('-c', 'user.name=Test', '-c', 'user.email=test@example.invalid', 'commit', '-qm', 'fixture')
-            git('tag', 'v1')
-            revision = git('rev-parse', 'HEAD').decode().strip()
-            spec = dict(revision=revision, pin='v1', exclude=['captured.bin'])
-            (root / 'untracked-secret').write_text('must not ship')
-            files = TOOL.dependency_files(root, spec)
-            self.assertEqual(set(files), {'LICENSE', 'source.cpp'})
-            self.assertEqual(files['LICENSE'][0], b'notice')
-            with self.assertRaises(ValueError):
-                TOOL.dependency_files(root, dict(spec, revision='0' * 40))
-            with self.assertRaises(ValueError):
-                TOOL.dependency_files(root, dict(spec, exclude=['absent']))
-            (root / 'source.cpp').write_text('modified')
-            with self.assertRaisesRegex(ValueError, 'tracked modifications'):
-                TOOL.dependency_files(root, spec)
+    def test_archive_holds_head_and_pinned_dependencies(self) -> None:
+        result = self.archive()
+        self.assertEqual(result.returncode, 0, result.stderr)
+        path = Path(result.stdout.strip())
+        revision = git(self.root, 'rev-parse', 'HEAD')
+        self.assertEqual(path.name, f'BetterEnchantmentEffects-test-{revision[:12]}-source.tar.gz')
+        with tarfile.open(path) as archive:
+            names = {member.name for member in archive if member.isfile()}
+            read = lambda name: archive.extractfile(name).read().decode()
+            self.assertEqual(read('cmake/source-revision.txt'), revision + '\n')
+            self.assertEqual(read('dependencies/spdlog/LICENSE'), 'spdlog')
+            bundled = read('bundled-dependencies.cmake')
+        self.assertIn('src/main.cpp', names)
+        self.assertNotIn('docs/checkpoints/captured.log', names)
+        self.assertIn('dependencies/spdlog/Flash/CLIK.as', names)
+        self.assertFalse({'dependencies/commonlibsse/Flash/CLIK.as',
+                          'dependencies/commonlibsse/tests/REL/version-1-5-97-0.bin'} & names)
+        self.assertFalse(any(name.endswith('untracked.txt') for name in names))
+        self.assertIn('set(FETCHCONTENT_FULLY_DISCONNECTED ON', bundled)
+        self.assertIn('set(FETCHCONTENT_SOURCE_DIR_COMMONLIBSSE '
+                      '"${CMAKE_CURRENT_LIST_DIR}/dependencies/commonlibsse"', bundled)
+        checksum = path.with_name(path.name + '.sha256').read_text()
+        self.assertEqual(checksum, f'{hashlib.sha256(path.read_bytes()).hexdigest()}  {path.name}\n')
 
-    def test_archive_rejects_traversal_duplicates_and_links(self):
-        with tempfile.TemporaryDirectory() as folder:
-            path = Path(folder) / 'bad.tar.gz'
-            for names, kind in ((['../escape'], tarfile.REGTYPE),
-                                (['file', 'file'], tarfile.REGTYPE),
-                                (['file'], tarfile.SYMTYPE)):
-                with tarfile.open(path, 'w:gz') as archive:
-                    for name in names:
-                        entry = tarfile.TarInfo(name)
-                        entry.type, entry.mode = kind, 0o644
-                        archive.addfile(entry, io.BytesIO(b''))
-                with self.assertRaises(ValueError):
-                    TOOL.read_archive(path)
-
-    def test_manifest_detects_changed_omitted_and_extra_content(self):
-        provenance = dict(revision='a' * 40, source_sha256='b' * 64,
-                          compatibility_sha256=TOOL.IDENTITY.profile_hash(None))
-        files = {'SOURCE_PROVENANCE.json': (json.dumps(provenance).encode(), 0o644),
-                 'install.sh': (b'#!/bin/sh\n', 0o755)}
-        manifest = dict(schema=1, identity=dict(revision='a' * 40, source_sha256='b' * 64,
-                                              compatibility=None),
-                        files={name: dict(bytes=len(data), sha256=TOOL.digest(data), mode=mode)
-                               for name, (data, mode) in files.items()})
-        files['SOURCE_MANIFEST.json'] = (json.dumps(manifest).encode(), 0o644)
-        self.assertEqual(TOOL.verify_files(files), manifest)
-        for changed in (dict(files, **{'install.sh': (b'changed', 0o755)}),
-                        dict(files, **{'install.sh': (b'#!/bin/sh\n', 0o644)}),
-                        {k: v for k, v in files.items() if k != 'install.sh'},
-                        dict(files, extra=(b'extra', 0o644))):
-            with self.assertRaises(ValueError):
-                TOOL.verify_files(changed)
+    def test_dirty_tree_or_absent_pin_is_refused_with_a_message(self) -> None:
+        (self.root / 'src/extra.cpp').write_text('int extra;\n')
+        result = self.archive()
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn('uncommitted or untracked', result.stderr)
+        (self.root / 'src/extra.cpp').unlink()
+        git(self.deps / 'rapidcsv-src', 'tag', '-d', 'v1.0')
+        result = self.archive()
+        self.assertNotEqual(result.returncode, 0)
+        self.assertNotIn('Traceback', result.stderr)
 
 
 if __name__ == '__main__':

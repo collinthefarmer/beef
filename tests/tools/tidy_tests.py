@@ -1,4 +1,4 @@
-"""Exercise analysis selection, failure handling and baseline gates with a fake tool."""
+"""Exercise source selection, failure handling and the baseline comparison with a fake clang-tidy."""
 import json
 import os
 from pathlib import Path
@@ -12,103 +12,69 @@ ROOT = Path(__file__).resolve().parents[2]
 
 
 class TidyTests(unittest.TestCase):
-    def setUp(self):
+    def setUp(self) -> None:
         folder = tempfile.TemporaryDirectory()
         self.addCleanup(folder.cleanup)
         self.root = Path(folder.name)
-        for name in ('tools', 'src', 'build/Release'):
+        for name in ('tools', 'src/extern', 'build/Release'):
             (self.root / name).mkdir(parents=True)
-        for name in ('tidy.py', 'tidy-baseline.py'):
-            shutil.copy2(ROOT / 'tools' / name, self.root / 'tools' / name)
+        shutil.copy2(ROOT / 'tools/tidy.py', self.root / 'tools/tidy.py')
         entries = []
-        for name in ('One.cpp', 'Two.cpp'):
-            source = self.root / 'src' / name
-            source.write_text('')
-            entries.append({'file': str(source), 'directory': str(self.root),
-                            'command': 'clang++ -c ' + str(source)})
-        (self.root / 'src/Shared.h').write_text('')
+        for name in ('One.cpp', 'Two.cpp', 'extern/Vendor.cpp'):
+            (self.root / 'src' / name).write_text('')
+            entries.append({'file': f'src/{name}', 'directory': str(self.root), 'command': 'clang++'})
         (self.root / 'build/Release/compile_commands.json').write_text(json.dumps(entries))
         self.fake = self.root / 'fake-tidy'
-        self.fake.write_text('#!/usr/bin/env bash\nexit 0\n')
-        self.fake.chmod(0o755)
         self.env = dict(os.environ, CLANG_TIDY=str(self.fake))
-        subprocess.run(['git', 'init', '-q', str(self.root)], check=True)
-        subprocess.run(['git', '-C', str(self.root), 'add', '.'], check=True)
-        subprocess.run(['git', '-C', str(self.root), '-c', 'user.name=Test',
-                        '-c', 'user.email=test@example.invalid',
-                        'commit', '-qm', 'fixture'], check=True)
+        self.findings()
 
-    def invoke(self, script, *args):
-        return subprocess.run([sys.executable, 'tools/' + script, *args], cwd=self.root,
-                              env=self.env, text=True, capture_output=True)
+    def findings(self, *lines: str, status: int = 0) -> None:
+        echoes = ''.join(f'echo "{line}"\n' for line in lines)
+        self.fake.write_text(f'#!/usr/bin/env bash\n{echoes}exit {status}\n')
+        self.fake.chmod(0o755)
 
-    def tidy(self, *args):
-        result = self.invoke('tidy.py', *args)
-        self.assertEqual(result.returncode, 0, result.stderr)
-        return json.loads((self.root / 'build/tidy/latest.json').read_text())
+    def tidy(self, *args: str) -> subprocess.CompletedProcess[str]:
+        return subprocess.run([sys.executable, 'tools/tidy.py', *args], cwd=self.root, env=self.env,
+                              text=True, capture_output=True)
 
-    def test_source_selection_and_header_expansion(self):
-        self.assertEqual(self.tidy('src/One.cpp')['files'], ['src/One.cpp'])
-        result = self.tidy('src/Shared.h')
-        self.assertTrue(result['full'])
-        self.assertEqual(len(result['files']), 2)
-
-    def test_empty_changed_selection_stays_empty_and_header_change_runs_all(self):
-        self.assertEqual(self.tidy('--changed')['files'], [])
-        (self.root / 'src/Shared.h').write_text('changed')
-        self.assertTrue(self.tidy('--changed')['full'])
-
-    def test_missing_database_entry_fails_and_invalidates_previous_report(self):
-        self.tidy()
-        (self.root / 'src/New.cpp').write_text('')
-        result = self.invoke('tidy.py', 'src/New.cpp')
-        self.assertNotEqual(result.returncode, 0)
-        self.assertFalse((self.root / 'build/tidy/latest.json').exists())
-        self.assertNotEqual(self.invoke('tidy.py').returncode, 0)
-
-    def test_failed_run_cannot_reuse_prior_success(self):
-        self.tidy()
-        self.fake.write_text('#!/usr/bin/env bash\necho interrupted\nexit 1\n')
-        self.assertNotEqual(self.invoke('tidy.py').returncode, 0)
-        self.assertNotEqual(self.invoke('tidy-baseline.py', '--check').returncode, 0)
-        self.fake.write_text('#!/usr/bin/env bash\nexit 0\n')
-        self.tidy()
-
-    def test_analyzer_names_and_external_findings_are_retained(self):
+    def test_findings_are_deduplicated_and_limited_to_first_party_sources(self) -> None:
         header = self.root / 'src/Shared.h'
-        external = self.root / 'vendor/Library.h'
-        self.fake.write_text(
-            '#!/usr/bin/env bash\n' +
-            f'echo "{header}:3:1: warning: leak [clang-analyzer-cplusplus.NewDeleteLeaks]"\n' +
-            f'echo "{header}:4:1: warning: value [clang-analyzer-core.uninitialized.Assign]"\n' +
-            f'echo "{external}:9:1: warning: address [clang-analyzer-core.FixedAddressDereference]"\n')
-        result = self.invoke('tidy.py', '--analyzer')
-        self.assertEqual(result.returncode, 0, result.stderr)
-        report = json.loads((self.root / 'build/tidy-analyzer/latest.json').read_text())
-        self.assertEqual(report['diagnostics'], [
-            ['src/Shared.h', 3, 'clang-analyzer-cplusplus.NewDeleteLeaks'],
-            ['src/Shared.h', 4, 'clang-analyzer-core.uninitialized.Assign']])
-        self.assertEqual(report['external_diagnostics'], [
-            [str(external), 9, 'clang-analyzer-core.FixedAddressDereference']])
-        self.assertTrue(report['full'])
-        self.assertTrue(report['analyzer'])
-        self.assertFalse((self.root / 'build/tidy/latest.json').exists())
-
-    def test_header_findings_are_deduplicated_and_gate_ignores_line_movement(self):
-        header = self.root / 'src/Shared.h'
-        self.fake.write_text(f'#!/usr/bin/env bash\necho "{header}:3:1: warning: problem [bugprone-example]"\n')
+        self.findings(f'{header}:3:1: warning: problem [bugprone-example]',
+                      f'{self.root}/src/extern/Vendor.h:9:1: warning: vendor [bugprone-example]')
         result = self.tidy()
-        self.assertEqual(len(result['diagnostics']), 1)
-        self.assertEqual(self.invoke('tidy-baseline.py').returncode, 0)
-        self.fake.write_text(f'#!/usr/bin/env bash\necho "{header}:9:1: warning: problem [bugprone-example]"\n')
-        self.tidy()
-        self.assertEqual(self.invoke('tidy-baseline.py', '--check').returncode, 0)
-        with self.fake.open('a') as out:
-            out.write(f'echo "{header}:10:1: warning: second [bugprone-example]"\n')
-        self.tidy('src/One.cpp')
-        self.assertNotEqual(self.invoke('tidy-baseline.py', '--gate', 'src/One.cpp').returncode, 0)
-        self.assertNotEqual(self.invoke('tidy-baseline.py', '--check').returncode, 0)
-        self.assertNotEqual(self.invoke('tidy-baseline.py').returncode, 0)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(result.stdout.count('src/Shared.h:3: [bugprone-example]'), 1)
+        self.assertNotIn('Vendor', result.stdout)
+        self.assertIn('2 translation units, 1 distinct first-party findings', result.stdout)
+        self.assertIn('1 translation units', self.tidy('src/One.cpp').stdout)
+        self.assertNotEqual(self.tidy('src/Absent.cpp').returncode, 0)
+
+    def test_baseline_compares_counts_per_file_and_check(self) -> None:
+        header = self.root / 'src/Shared.h'
+        self.findings(f'{header}:3:1: warning: problem [bugprone-example]')
+        self.assertEqual(self.tidy('--update').returncode, 0)
+        baseline = (self.root / 'tools/tidy-baseline.txt').read_text()
+        self.assertTrue(baseline.startswith('# clang-tidy baseline, 2 sources, 1 findings\n'))
+        self.assertIn(f"{'# bugprone-example':<55}1\n", baseline)
+        self.assertTrue(baseline.endswith('\nsrc/Shared.h:3: [bugprone-example]\n'))
+        self.findings(f'{header}:9:1: warning: problem [bugprone-example]')
+        self.assertEqual(self.tidy('--check').returncode, 0)
+        self.findings(f'{header}:9:1: warning: problem [bugprone-example]',
+                      f'{header}:10:1: warning: second [bugprone-example]')
+        result = self.tidy('src/One.cpp', '--check')
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn('src/Shared.h: [bugprone-example] +1 beyond the baseline', result.stdout)
+        self.assertNotEqual(self.tidy('src/One.cpp', '--update').returncode, 0)
+        self.assertEqual((self.root / 'tools/tidy-baseline.txt').read_text(), baseline)
+
+    def test_failed_analysis_or_incomplete_database_fails(self) -> None:
+        self.findings('interrupted', status=1)
+        result = self.tidy('--check')
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn('clang-tidy failed on src/', result.stderr)
+        self.findings()
+        (self.root / 'src/New.cpp').write_text('')
+        self.assertIn('lacks src/New.cpp', self.tidy().stderr)
 
 
 if __name__ == '__main__':

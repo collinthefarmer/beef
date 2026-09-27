@@ -87,8 +87,6 @@ void Diagnostics() {
   test::Check(Parse("distance([1, 2], [3, 4, 5])").Evaluate({}) == Value{0.0f},
               "unchecked distance dimension mismatch falls back to zero");
 }
-// Compatibility coverage, not a claim that branch-dependent result types are
-// desirable. See docs/wip/expression-cleanup-2026-09-13.md.
 void ConditionalCompatibility() {
   for (const auto condition : {"0", "1"}) {
     const auto program = Parse(std::string{"if("} + condition + ", 2, [3, 4])");
@@ -105,7 +103,6 @@ void StackBoundary() {
   for (int i = 0; i < 31; ++i) {
     expression = "lerp(1,2," + expression + ")";
   }
-  // Two pending operands per lerp plus the two innermost literals: 64.
   Result(expression, 34.0f);
 }
 

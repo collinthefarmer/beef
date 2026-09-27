@@ -1,7 +1,8 @@
-"""Require a fresh attribution review when vendored bytes or dependency pins change."""
+"""Require the first-party permission, its per-file references, and its package and source entries."""
+from pathlib import Path
+import subprocess
 import hashlib
 import json
-from pathlib import Path
 import re
 import unittest
 
@@ -24,8 +25,12 @@ class LicenseTests(unittest.TestCase):
         self.assertIn('COPYING.md', (ROOT / 'cmake/Plugin.cpp.in').read_text().splitlines()[0])
         stage = (ROOT / 'cmake/Stage.cmake').read_text()
         self.assertIn('package_file("${CMAKE_SOURCE_DIR}/COPYING.md" "COPYING.md")', stage)
-        inventory = json.loads((ROOT / 'tools/source-inventory.json').read_text())
-        self.assertIn('COPYING.md', inventory['files'])
+        if not (ROOT / '.git').exists():
+            return
+        tracked = subprocess.run(['git', 'ls-files', '--error-unmatch', 'COPYING.md', 'LICENSE'],
+                                 cwd=ROOT, capture_output=True)
+        self.assertEqual(tracked.returncode, 0, 'the source archive holds tracked files only')
+        self.assertNotIn('COPYING.md export-ignore', (ROOT / '.gitattributes').read_text())
 
     def test_notice_inventory_and_vendored_provenance(self):
         inventory = json.loads((ROOT / 'licenses/inventory.json').read_text())

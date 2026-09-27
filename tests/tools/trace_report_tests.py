@@ -49,14 +49,43 @@ class TraceReportTests(unittest.TestCase):
                     sink_removes="1", readbacks="1", readback_us="1500",
                     readback_max_us="1500", targets="4", targets_peak="5",
                     target_bytes="1048576", target_bytes_peak="2097152"))
-        result = self.report(self.root / "beef-trace-9.jsonl")
+        result = self.report(self.root / "beef-trace-9.jsonl", "--slots", "1024")
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertIn("Refreshes: 2", result.stdout)
         self.assertIn("max 6.0 ms", result.stdout)
         self.assertIn("Worst second: 2 refreshes, 8.0 ms spent", result.stdout)
         self.assertIn("Sink churn: 3 adds, 1 removes", result.stdout)
-        self.assertIn("Targets peak: 5 of 512 slots; VRAM peak 2 MiB", result.stdout)
+        self.assertIn("Targets peak: 5 of 1024 slots; VRAM peak 2 MiB", result.stdout)
         self.assertIn("Readback mean: 1; mean 1.5 ms, max 1.5 ms", result.stdout)
+        unstated = self.report(self.root / "beef-trace-9.jsonl")
+        self.assertIn("Targets peak: 5; VRAM peak 2 MiB", unstated.stdout)
+
+    def test_malformed_lines_and_values_never_crash(self):
+        (self.root / "beef-trace-11.jsonl").write_text(
+            "not json\n" + "[" * 100000 + "\n" + "[]\n" + '{"fields": 3}\n' + "Infinity\n"
+            + json.dumps({"event": ["texture"], "fields": {}}) + "\n"
+            + event(1, "texture", action=7, target=[1, 2], owner={"a": 1})
+            + event(2, "texture", action=["acquire"], target={"t": 1})
+            + event(3, "texture", action="acquire", target=[1], presenter=[2])
+            + event(4, "metrics", action="heartbeat", refreshes=float("inf"), targets_peak=[1])
+            + event(5, "metrics", action="readback", op=[1], us={"x": 1})
+            + event(6, "page", session=[1], page={"p": 1}, selection=None)
+            + event(7, "startup", session="late", build=["b"]))
+        result = self.report(self.root / "beef-trace-11.jsonl")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn("Malformed/partial lines: 5", result.stdout)
+
+    def test_sessions_sort_as_numbers(self):
+        (self.root / "beef-trace-12.jsonl").write_text(
+            "".join(event(i, "page", session=s, page="p", selection="")
+                    for i, s in enumerate((10, 2, 1, "late"))))
+        result = self.report(self.root / "beef-trace-12.jsonl")
+        self.assertIn("Sessions: 1, 2, 10, late", result.stdout)
+
+    def test_missing_trace_is_a_message(self):
+        result = self.report(self.root / "absent.jsonl")
+        self.assertNotEqual(result.returncode, 0)
+        self.assertNotIn("Traceback", result.stderr)
 
     def test_survivors_are_grouped_by_owner_at_session_boundaries(self):
         (self.root / "beef-trace-10.jsonl").write_text(

@@ -20,8 +20,6 @@ int main() {
   Check(EvictionFor(3500.0f, 4000.0f, false) == EvictionAction::kNone,
         "an evicted actor within the hysteresis band waits, not restored");
 
-  // The band: evict at >4000, restore only below 3200 (80%). Between the two an
-  // actor keeps its current state, so it cannot thrash at the boundary.
   Check(EvictionFor(3600.0f, 4000.0f, true) == EvictionAction::kNone &&
             EvictionFor(3600.0f, 4000.0f, false) == EvictionAction::kNone,
         "the hysteresis band holds both an applied and an evicted actor");

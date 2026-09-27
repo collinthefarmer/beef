@@ -3,11 +3,11 @@ set(CMAKE_SYSTEM_PROCESSOR AMD64)
 
 if(DEFINED ENV{XWIN_DIR})
   set(XWIN_DIR "$ENV{XWIN_DIR}")
-elseif(NOT DEFINED XWIN_DIR)
-  set(XWIN_DIR "$ENV{HOME}/.xwin/splat")
 endif()
 if(NOT EXISTS "${XWIN_DIR}/crt/include" OR NOT EXISTS "${XWIN_DIR}/sdk/include")
-  message(FATAL_ERROR "XWIN_DIR=${XWIN_DIR} does not contain crt/ and sdk/; run setup-xwin.sh")
+  message(FATAL_ERROR "XWIN_DIR='${XWIN_DIR}' does not hold the Windows CRT and SDK. Inside nix develop, "
+    "run NIXPKGS_ALLOW_UNFREE=1 nix build --impure .#windows-sdk -o build/windows-sdk; "
+    "it downloads Microsoft's CRT and SDK and accepts Microsoft's license for them.")
 endif()
 
 set(CMAKE_C_COMPILER clang-cl)

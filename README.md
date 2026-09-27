@@ -35,16 +35,25 @@ enchantment on the piece itself.
 ## Working in the repository
 
 Run every command inside the development shell (`nix develop`). Outside the
-shell, a script stops with a message that names the missing tool.
+shell, a script stops with a message that names the missing tool. The Windows
+build also needs the Microsoft CRT and Windows SDK (about 80 MB, 630 MB
+unpacked). Fetch them once with
+`NIXPKGS_ALLOW_UNFREE=1 nix build --impure .#windows-sdk -o build/windows-sdk`;
+running that command accepts Microsoft's license for them. The flake pins
+their versions and content hash. Native tests and the commit and push gates
+do not need them. The SDK is not redistributable: do not copy its store path
+to a binary cache.
 
 | Command | What it does |
 |---|---|
-| `cmake --preset windows-release` then `cmake --build --preset windows-release` | Cross-compiles the DLL with clang-cl against the xwin CRT and SDK, using the Windows preset. Stage separately with `cmake --build --preset windows-release --target stage`. More than four jobs exhausts WSL's memory and kills the instance. |
+| `cmake --preset windows-release` then `cmake --build --preset windows-release` | Cross-compiles the DLL with clang-cl against the xwin CRT and SDK and stages the mod into `dist/`. `--target all` compiles without staging. More than four jobs exhausts WSL's memory and kills the instance. |
 | `cmake --preset native`, `cmake --build --preset native`, `ctest --preset native` | Configures, builds, and runs native tests. Use `native-sanitized` for ASan/UBSan; CTest `-R` selects suites. |
 | `./install.sh` | Copies the staged mod folder into the MO2 mods directory. It copies the INI only when the mod has none, because the INI holds the user's settings. |
-| `setup-xwin.sh` | Downloads the CRT and SDK (about 630 MB), once, before the first build. |
-| `tools/gate.sh {commit,push,release}` | Fast commit/push checks; explicit release validation adds the Windows build and full tidy. |
-| `tools/layers.sh` | Holds the only copy of the include graph, and reports violations. |
+| `tools/gate.sh {commit,push,release,fix}` | Checks formatting, include layers and comments (commit: staged content; push: the tree plus sanitized native tests; release: adds the Windows build and full tidy). `fix` formats the tree. `tools/gate.py` holds the only copy of the include graph. |
+| `python3 tools/tidy.py [--check\|--update]` | Runs clang-tidy over the Windows database and compares with `tools/tidy-baseline.txt`. |
+| `python3 tools/source-archive.py` | Writes the corresponding-source archive of HEAD with the pinned dependency sources. |
+| `tools/rename.py Old New [--apply]` | Renames a C++ symbol through clangd. Run `python3 tools/compile-db.py` first to write the database it reads. |
+| `python3 tools/trace-report.py <trace.jsonl>` | Summarizes an in-game diagnostic trace and its rotation segments. |
 
 ## Where things live at runtime
 
@@ -82,6 +91,7 @@ src/
   planners/    how recipes are placed, merged, and bound      (pure)
   studio/      the editor's model                             (pure)
   diagnostics/ bounded trace recording                        (engine-free)
+  validator/   the standalone recipe validator, beef-validate  (engine-free)
   engine/      how an effect reaches an actor
   render/      how an effect becomes pixels
   menu/        the editor's surface
@@ -92,7 +102,7 @@ src/
   thin adapters over them.
 - `src` is the only first-party include root, so every project include names
   its directory. Vendored code (`src/extern`) and generated headers are
-  separate system include roots. `tools/layers.sh` enforces the graph;
+  separate system include roots. `tools/gate.py` enforces the graph;
   `REQUIREMENTS.md` states the rule the graph serves.
 
 ## Licence

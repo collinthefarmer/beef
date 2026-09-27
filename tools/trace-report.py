@@ -1,218 +1,158 @@
+"""Summarize a diagnostic JSONL trace and its sibling rotation segments."""
 import argparse
-import collections
+from collections import Counter, defaultdict
 import json
-import pathlib
+from pathlib import Path
 import re
+import sys
+from typing import Iterator
+
+SEGMENT = re.compile(r'^(.*?)(?:-(\d{1,4}))?\.jsonl$')
+SESSION = re.compile(r'-?\d+')
+TALLIES = (('malformed', 'Malformed/partial lines'), ('skipped', 'Whole-binding restore skips'),
+           ('aliases', 'Acquisitions aliasing a live presenter'),
+           ('mismatches', 'Acquisitions with wrong renderer'),
+           ('presenter_rejected', 'Presenter rejections'), ('lease_rejected', 'Texture lease rejections'))
 
 
-# A rotation segment is a short trailing index (-2, -3, ...); the 16-digit
-# run id in a trace file name is part of the base, never a segment.
-SEGMENT_SUFFIX = re.compile(r"^(.*?)(?:-(\d{1,4}))?\.jsonl$")
-
-
-def segments_of(paths):
-    """The given segments plus their siblings, oldest first."""
-    found = {}
+def segments_of(paths: list[Path]) -> list[Path]:
+    found: dict[Path, tuple[int, Path]] = {}
     for path in paths:
-        match = SEGMENT_SUFFIX.match(path.name)
-        if not match:
-            found[path.resolve()] = (0, path)
-            continue
-        base = match.group(1)
-        for sibling in path.parent.glob(f"{base}*.jsonl"):
-            sibling_match = SEGMENT_SUFFIX.match(sibling.name)
-            if sibling_match and sibling_match.group(1) == base:
-                index = int(sibling_match.group(2) or 1)
-                found[sibling.resolve()] = (index, sibling)
-    return [path for _index, path in sorted(found.values(), key=lambda entry: entry[0])]
+        match = SEGMENT.match(path.name)
+        siblings = path.parent.glob(f'{match.group(1)}*.jsonl') if match else [path]
+        for sibling in siblings:
+            other = SEGMENT.match(sibling.name)
+            if not match or (other and other.group(1) == match.group(1)):
+                found[sibling.resolve()] = (int(other.group(2) or 1) if match else 0, sibling)
+    return [path for _, path in sorted(found.values(), key=lambda entry: entry[0])]
 
 
-def lines_in_order(segments):
+def events(segments: list[Path]) -> Iterator[dict | None]:
     for segment in segments:
-        with segment.open(encoding="utf-8", errors="replace") as stream:
-            yield from stream
+        with segment.open(encoding='utf-8', errors='replace') as stream:
+            for line in stream:
+                try:
+                    yield json.loads(line)
+                except (ValueError, RecursionError):
+                    yield None
 
 
-def main():
-    parser = argparse.ArgumentParser(description="Summarize a diagnostic JSONL run")
-    parser.add_argument("trace", type=pathlib.Path, nargs="+",
-                        help="a trace segment; its sibling segments are read too")
-    args = parser.parse_args()
-    segments = segments_of(args.trace)
-    counts = collections.Counter()
-    commands = {}
-    transitions = collections.Counter()
-    malformed = 0
-    skipped = 0
-    recycled = collections.Counter()
-    pages = []
-    startup = {}
-    sessions = set()
-    live_targets = {}
-    presenter_aliases = 0
-    renderer_mismatches = 0
-    rejected_presenters = 0
-    rejected_leases = 0
-    rotations = 0
-    refresh_us = []
-    readbacks = collections.defaultdict(lambda: {"count": 0, "us": 0, "max_us": 0})
-    heartbeat = collections.Counter()
-    heartbeat_max = collections.Counter()
-    worst_second = {"refreshes": 0, "refresh_us": 0}
-    target_owners = {}
-    survivor_snapshots = []
-    last_session = None
-    shared_adoptions = collections.Counter()
-    for line in lines_in_order(segments):
-            try:
-                event = json.loads(line)
-                if not isinstance(event, dict):
-                    raise ValueError("event is not an object")
-                fields = event.get("fields", {})
-                if not isinstance(fields, dict):
-                    raise ValueError("fields is not an object")
-            except (ValueError, TypeError):
-                malformed += 1
-                continue
-            kind = event.get("event", "unknown")
-            if kind == "rotated":
-                rotations += 1
-                if not startup:
-                    startup = {k: v for k, v in fields.items() if k in ("build", "source_sha256")}
-            try:
-                session = int(event.get("session"))
-            except (TypeError, ValueError):
-                session = None
-            if session is not None and (last_session is None
-                                        or session > last_session):
-                if last_session is not None and target_owners:
-                    survivor_snapshots.append(
-                        (last_session, session,
-                         collections.Counter(target_owners.values())))
-                last_session = session
-            if kind == "texture":
-                action = fields.get("action")
-                target = fields.get("target")
-                if action == "acquire":
-                    target_owners[target] = str(fields.get("owner", "untagged"))
-                elif action in ("recycle", "destroy"):
-                    target_owners.pop(target, None)
-                elif action and action.endswith("_shared"):
-                    shared_adoptions[action[: -len("_shared")]] += 1
-                if action == "acquire":
-                    presenter = fields.get("presenter")
-                    if presenter and any(p == presenter and t != target
-                                         for t, p in live_targets.items()):
-                        presenter_aliases += 1
-                    live_targets[target] = presenter
-                    if ("renderer" in fields and "current_renderer" in fields
-                            and fields["renderer"] != fields["current_renderer"]):
-                        renderer_mismatches += 1
-                elif action in ("recycle", "destroy"):
-                    live_targets.pop(target, None)
-                elif action == "lease_rejected":
-                    rejected_leases += 1
-                elif action == "presenter_rejected":
-                    rejected_presenters += 1
-            if kind == "metrics":
-                action = fields.get("action")
+def number(fields: dict, name: str) -> int:
+    try:
+        return int(fields.get(name, 0))
+    except (TypeError, ValueError, OverflowError):
+        return 0
 
-                def number(name):
-                    try:
-                        return int(fields.get(name, 0))
-                    except (TypeError, ValueError):
-                        return 0
 
-                if action == "refresh":
-                    refresh_us.append(number("us"))
-                elif action == "readback":
-                    op = readbacks[str(fields.get("op", "unknown"))]
-                    op["count"] += 1
-                    op["us"] += number("us")
-                    op["max_us"] = max(op["max_us"], number("us"))
-                elif action == "heartbeat":
-                    for name in ("refreshes", "refresh_us", "sink_adds",
-                                 "sink_removes", "readbacks", "readback_us"):
-                        heartbeat[name] += number(name)
-                    for name in ("refresh_max_us", "readback_max_us",
-                                 "targets_peak", "target_bytes_peak"):
-                        heartbeat_max[name] = max(heartbeat_max[name], number(name))
-                    if number("refreshes") > worst_second["refreshes"]:
-                        worst_second = {"refreshes": number("refreshes"),
-                                        "refresh_us": number("refresh_us")}
-            counts[str(kind)] += 1
-            sessions.add(str(event.get("session", "unknown")))
-            command = str(event.get("command", 0))
-            if kind == "startup":
-                startup = fields
-            elif kind == "command":
-                commands[command] = fields.get("reason", "unknown")
-            elif kind == "retire" and fields.get("action") == "begin":
-                transitions[command] += 1
-            elif kind == "restore" and fields.get("decision") == "skip_all":
-                skipped += 1
-            elif kind == "texture" and fields.get("action") == "recycle":
-                recycled[str(fields.get("target"))] += 1
-            elif kind == "page":
-                pages.append((event.get("seq"), fields.get("page"), fields.get("selection")))
+def listing(owners: Counter[str]) -> str:
+    return f"{sum(owners.values())} ({', '.join(f'{o}: {c}' for o, c in owners.most_common())})"
+
+
+def report(segments: list[Path], slots: int | None) -> None:
+    counts, tally, recycled, heartbeat, peaks, shared, transitions = (Counter() for _ in range(7))
+    commands, readbacks, refreshes, pages, survivors = {}, defaultdict(lambda: [0, 0, 0]), [], [], []
+    startup, sessions, live, owners, worst, last_session = {}, set(), {}, {}, (0, 0), None
+    for event in events(segments):
+        fields = event.get('fields', {}) if isinstance(event, dict) else None
+        if not isinstance(fields, dict):
+            tally['malformed'] += 1
+            continue
+        kind, action = str(event.get('event', 'unknown')), fields.get('action')
+        action = action if isinstance(action, str) else ''
+        session, command = str(event.get('session', 'unknown')), str(event.get('command', 0))
+        target = str(fields.get('target'))
+        if kind == 'rotated':
+            tally['rotations'] += 1
+            startup = startup or {k: v for k, v in fields.items() if k in ('build', 'source', 'source_sha256')}
+        if SESSION.fullmatch(session) and (last_session is None or int(session) > last_session):
+            if last_session is not None and owners:
+                survivors.append((last_session, int(session), Counter(owners.values())))
+            last_session = int(session)
+        if kind == 'texture' and action == 'acquire':
+            owners[target] = str(fields.get('owner', 'untagged'))
+            presenter = fields.get('presenter')
+            tally['aliases'] += bool(presenter) and any(p == presenter and t != target for t, p in live.items())
+            live[target] = presenter
+            tally['mismatches'] += ('renderer' in fields and 'current_renderer' in fields
+                                    and fields['renderer'] != fields['current_renderer'])
+        elif kind == 'texture' and action in ('recycle', 'destroy'):
+            owners.pop(target, None)
+            live.pop(target, None)
+            recycled[target] += action == 'recycle'
+        elif kind == 'texture':
+            shared[action.removesuffix('_shared')] += action.endswith('_shared')
+            tally[action] += action in ('lease_rejected', 'presenter_rejected')
+        elif kind == 'metrics' and action == 'refresh':
+            refreshes.append(number(fields, 'us'))
+        elif kind == 'metrics' and action == 'readback':
+            op, us = readbacks[str(fields.get('op', 'unknown'))], number(fields, 'us')
+            op[:] = op[0] + 1, op[1] + us, max(op[2], us)
+        elif kind == 'metrics' and action == 'heartbeat':
+            heartbeat.update({name: number(fields, name) for name in ('sink_adds', 'sink_removes')})
+            for name in ('targets_peak', 'target_bytes_peak'):
+                peaks[name] = max(peaks[name], number(fields, name))
+            worst = max(worst, (number(fields, 'refreshes'), number(fields, 'refresh_us')), key=lambda w: w[0])
+        counts[kind] += 1
+        sessions.add(session)
+        startup = fields if kind == 'startup' else startup
+        if kind == 'command':
+            commands[command] = fields.get('reason', 'unknown')
+        if kind == 'retire' and action == 'begin':
+            transitions[command] += 1
+        tally['skipped'] += kind == 'restore' and fields.get('decision') == 'skip_all'
+        if kind == 'page':
+            pages.append((event.get('seq'), fields.get('page'), fields.get('selection')))
     print(f"Build: {startup.get('build', 'not recorded')}")
-    print(f"Source SHA256: {startup.get('source_sha256', 'not recorded')}")
-    print(f"Sessions: {', '.join(sorted(sessions))}")
-    print(f"Events: {dict(sorted(counts.items()))}")
-    print(f"Malformed/partial lines: {malformed}")
-    print(f"Whole-binding restore skips: {skipped}")
-    print(f"Acquisitions aliasing a live presenter: {presenter_aliases}")
-    print(f"Acquisitions with wrong renderer: {renderer_mismatches}")
-    print(f"Presenter rejections: {rejected_presenters}")
-    print(f"Texture lease rejections: {rejected_leases}")
-    print(f"Targets recycled: {len(recycled)}; total recycles: {sum(recycled.values())}")
-    if refresh_us or heartbeat or readbacks:
-        print("Measurement:")
-        if refresh_us:
-            ordered = sorted(refresh_us)
-            p50 = ordered[len(ordered) // 2]
-            p95 = ordered[min(len(ordered) - 1, int(len(ordered) * 0.95))]
-            print(f"  Refreshes: {len(ordered)}; p50 {p50 / 1000:.1f} ms, "
-                  f"p95 {p95 / 1000:.1f} ms, max {ordered[-1] / 1000:.1f} ms")
-        if heartbeat:
-            print(f"  Worst second: {worst_second['refreshes']} refreshes, "
-                  f"{worst_second['refresh_us'] / 1000:.1f} ms spent")
-            print(f"  Sink churn: {heartbeat['sink_adds']} adds, "
-                  f"{heartbeat['sink_removes']} removes")
-            print(f"  Targets peak: {heartbeat_max['targets_peak']} of 512 slots; "
-                  f"VRAM peak {heartbeat_max['target_bytes_peak'] / (1 << 20):.0f} MiB")
-        for op, stats in sorted(readbacks.items()):
-            mean = stats["us"] / stats["count"] / 1000 if stats["count"] else 0
-            print(f"  Readback {op}: {stats['count']}; mean {mean:.1f} ms, "
-                  f"max {stats['max_us'] / 1000:.1f} ms")
-    if shared_adoptions:
-        summary = ", ".join(f"{kind}: {count}"
-                            for kind, count in shared_adoptions.most_common())
-        print(f"Cross-actor adoptions (a shared target reused, no new one): "
-              f"{sum(shared_adoptions.values())} ({summary})")
-    if survivor_snapshots or target_owners:
-        print("Live targets by owner (acquired, not yet recycled or destroyed):")
-        for before, after, owners in survivor_snapshots:
-            summary = ", ".join(f"{owner}: {count}"
-                                for owner, count in owners.most_common())
-            print(f"  crossing session {before} -> {after}: "
-                  f"{sum(owners.values())} ({summary})")
-        if target_owners:
-            owners = collections.Counter(target_owners.values())
-            summary = ", ".join(f"{owner}: {count}"
-                                for owner, count in owners.most_common())
-            print(f"  at end of trace: {sum(owners.values())} ({summary})")
-    print(f"Segments read: {len(segments)}; rotations seen: {rotations}")
-    if rotations and len(segments) <= rotations:
-        print("Earlier segments were deleted by rotation; the trace starts mid-run.")
-    print("Retirements by originating command:")
+    print(f"Source: {startup.get('source', startup.get('source_sha256', 'not recorded'))}")
+    ordered_sessions = sorted(sessions, key=lambda s: (0, int(s), '') if SESSION.fullmatch(s) else (1, 0, s))
+    print(f"Sessions: {', '.join(ordered_sessions)}")
+    print(f'Events: {dict(sorted(counts.items()))}')
+    for key, label in TALLIES:
+        print(f'{label}: {tally[key]}')
+    print(f'Targets recycled: {len(+recycled)}; total recycles: {recycled.total()}')
+    if refreshes or heartbeat or readbacks:
+        print('Measurement:')
+    if refreshes:
+        ordered = sorted(refreshes)
+        p50, p95 = ordered[len(ordered) // 2], ordered[min(len(ordered) - 1, int(len(ordered) * 0.95))]
+        print(f'  Refreshes: {len(ordered)}; p50 {p50 / 1000:.1f} ms, p95 {p95 / 1000:.1f} ms, '
+              f'max {ordered[-1] / 1000:.1f} ms')
+    if heartbeat:
+        print(f'  Worst second: {worst[0]} refreshes, {worst[1] / 1000:.1f} ms spent')
+        print(f"  Sink churn: {heartbeat['sink_adds']} adds, {heartbeat['sink_removes']} removes")
+        print(f"  Targets peak: {peaks['targets_peak']}{f' of {slots} slots' if slots else ''}; "
+              f"VRAM peak {peaks['target_bytes_peak'] / (1 << 20):.0f} MiB")
+    for op, (count, total, peak) in sorted(readbacks.items()):
+        print(f'  Readback {op}: {count}; mean {total / count / 1000:.1f} ms, max {peak / 1000:.1f} ms')
+    if +shared:
+        print(f'Cross-actor adoptions (a shared target reused, no new one): {listing(+shared)}')
+    if survivors or owners:
+        print('Live targets by owner (acquired, not yet recycled or destroyed):')
+        for before, after, crossing in survivors:
+            print(f'  crossing session {before} -> {after}: {listing(crossing)}')
+        if owners:
+            print(f'  at end of trace: {listing(Counter(owners.values()))}')
+    print(f"Segments read: {len(segments)}; rotations seen: {tally['rotations']}")
+    if tally['rotations'] and len(segments) <= tally['rotations']:
+        print('Earlier segments were deleted by rotation; the trace starts mid-run.')
+    print('Retirements by originating command:')
     for command, count in transitions.items():
         print(f"  {command}: {commands.get(command, 'unscoped/incomplete trace')}: {count}")
-    print("Page/selection observations:")
+    print('Page/selection observations:')
     for seq, page, selection in pages:
-        print(f"  {seq}: {page}: {selection}")
-    print("These are recorded transitions, not visual pass/fail results.")
+        print(f'  {seq}: {page}: {selection}')
+    print('These are recorded transitions, not visual pass/fail results.')
 
 
-if __name__ == "__main__":
-    main()
+if __name__ == '__main__':
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument('trace', type=Path, nargs='+', help='a segment; its siblings are read too')
+    parser.add_argument('--slots', type=int, help='presenter slot count, to show the peak against')
+    arguments = parser.parse_args()
+    try:
+        segments = segments_of(arguments.trace)
+        if not segments:
+            raise OSError(f"no trace segment matches {', '.join(map(str, arguments.trace))}")
+        report(segments, arguments.slots)
+    except OSError as error:
+        sys.exit(f'trace-report: {error}')
