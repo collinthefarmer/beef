@@ -1,0 +1,85 @@
+{
+  "format": 1,
+  "name": "Arcane Circuit",
+  "description": "Arcane Circuit demo: moving traces on Dwarven armor respond to available magicka and the secondary enchantment effect. Requires BetterEnchantmentEffectsDemo.esp.",
+  "keys": [
+    {
+      "keyword": "0x800~BetterEnchantmentEffectsDemo.esp"
+    },
+    {
+      "magicEffect": "0x801~BetterEnchantmentEffectsDemo.esp"
+    }
+  ],
+  "signals": {
+    "magicka": {
+      "av": "Magicka"
+    },
+    "magickaMax": {
+      "av": {
+        "of": "Magicka",
+        "measure": "max"
+      }
+    },
+    "charge": {
+      "expr": "saturate(@magicka / max(@magickaMax, 1))"
+    },
+    "magnitude": {
+      "enchantment": "magnitude"
+    },
+    "power": {
+      "expr": "clamp(@magnitude / 25, 0, 2)"
+    },
+    "strength": {
+      "expr": "@power * (0.15 + 1.85 * @charge)"
+    },
+    "hue": {
+      "expr": "lerp([0.35, 0.08, 0.8], [0.05, 0.65, 1], @charge)"
+    },
+    "travel": {
+      "expr": "time * 0.25"
+    }
+  },
+  "sources": {
+    "uv": {
+      "bake": "uv"
+    },
+    "metallic": {
+      "material": "metallic"
+    }
+  },
+  "masks": {
+    "u": "dot(@uv, [1, 0])",
+    "v": "dot(@uv, [0, 1])",
+    "rails": "1 - smoothstep(0.08, 0.18, min(abs(sin(@u * 8 * pi)), abs(sin(@v * 12 * pi))))",
+    "traces": "@rails * smoothstep(0.25, 0.75, @metallic)",
+    "packet": "pow(0.5 + 0.5 * cos((@v - @travel) * 2 * pi), 12)"
+  },
+  "outputs": [
+    {
+      "target": "material",
+      "slot": "emissive",
+      "resolution": "half",
+      "strength": "@strength",
+      "stack": [
+        {
+          "source": [
+            1,
+            1,
+            1
+          ],
+          "blend": "replace",
+          "opacity": 0.18,
+          "color": "@hue",
+          "mask": "@traces"
+        },
+        {
+          "source": "@packet",
+          "blend": "add",
+          "opacity": 0.82,
+          "color": "@hue",
+          "mask": "@traces"
+        }
+      ]
+    }
+  ]
+}

@@ -71,8 +71,17 @@ foreach(source IN LISTS TOOL_TESTS)
   endif()
 endforeach()
 find_program(CHECK_JSONSCHEMA check-jsonschema REQUIRED)
+add_test(NAME example_arcane_circuit COMMAND "$<TARGET_FILE:BeefValidate>"
+  "${CMAKE_SOURCE_DIR}/recipes/examples/arcane-circuit.json")
+add_test(NAME example_resonant_ward COMMAND "$<TARGET_FILE:BeefValidate>"
+  "${CMAKE_SOURCE_DIR}/recipes/examples/resonant-ward.json")
+add_test(NAME example_winterglass COMMAND "$<TARGET_FILE:BeefValidate>"
+  "${CMAKE_SOURCE_DIR}/recipes/examples/winterglass.json")
 add_test(NAME schema COMMAND "${CHECK_JSONSCHEMA}"
   --schemafile "${CMAKE_SOURCE_DIR}/schema/recipe.schema.json"
   "${CMAKE_SOURCE_DIR}/schema/example-magicka.json"
+  "${CMAKE_SOURCE_DIR}/recipes/examples/winterglass.json"
+  "${CMAKE_SOURCE_DIR}/recipes/examples/resonant-ward.json"
+  "${CMAKE_SOURCE_DIR}/recipes/examples/arcane-circuit.json"
   "${CMAKE_SOURCE_DIR}/templates/fill.json"
   "${CMAKE_SOURCE_DIR}/templates/bare.json")

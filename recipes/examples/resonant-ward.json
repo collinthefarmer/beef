@@ -1,0 +1,67 @@
+{
+  "format": 1,
+  "name": "Resonant Ward",
+  "description": "Stacks a chest-centered hit ripple, shell flare and light over Arcane Circuit on the same demo cuirass. Both the demo collection and heavy-armor keywords are required.",
+  "keys": [
+    { "keyword": "0x800~BetterEnchantmentEffectsDemo.esp" },
+    { "keyword": "0x6BBD2~Skyrim.esm" }
+  ],
+  "merge": "stack",
+  "signals": {
+    "struck": {
+      "trigger": {
+        "event": "hit.received",
+        "anchor": { "node": "NPC Spine2 [Spn2]" },
+        "lifetime": 1.2,
+        "max": 3
+      },
+      "curve": "@release"
+    },
+    "impact": { "expr": "saturate(@struck)" },
+    "wardHue": { "constant": [1.0, 0.65, 0.15] },
+    "shellAlpha": { "expr": "0.55 * @impact" },
+    "flare": { "expr": "0.15 * @impact" },
+    "lightLevel": { "expr": "1.2 * @impact" }
+  },
+  "curves": {
+    "release": "pow(1 - x, 2)"
+  },
+  "sources": {
+    "ring": {
+      "ripple": {
+        "trigger": "@struck",
+        "speed": 90,
+        "width": 6,
+        "decay": 1.0
+      }
+    }
+  },
+  "outputs": [
+    {
+      "target": "shell",
+      "slot": "emissive",
+      "strength": 2.0,
+      "resolution": "half",
+      "stack": [
+        { "source": [1, 1, 1], "blend": "add", "opacity": "@flare", "color": "@wardHue" },
+        { "source": "@ring", "blend": "add", "opacity": 1.0, "color": "@wardHue" }
+      ]
+    },
+    {
+      "target": "light",
+      "bones": { "named": ["NPC Spine2 [Spn2]"] },
+      "color": "@wardHue",
+      "intensity": "@lightLevel",
+      "size": 1.2,
+      "cutoff": 0.05,
+      "shadow": false
+    }
+  ],
+  "shell": {
+    "material": "pbrCopy",
+    "blend": "additive",
+    "depthBias": true,
+    "opacity": "@shellAlpha",
+    "pose": { "inflate": [0.0, 0.015, 0.015] }
+  }
+}
