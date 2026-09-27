@@ -826,7 +826,10 @@ Value Program::Evaluate(const Inputs &a_inputs) const noexcept {
       const Program *curve = node.index < a_inputs.curves.size()
                                  ? a_inputs.curves[node.index]
                                  : nullptr;
-      stack.Push(curve ? ApplyCurve(*curve, x, a_inputs.mean) : x);
+      stack.Push(a_inputs.callFunction
+                     ? a_inputs.callFunction(node.index, x, a_inputs.mean)
+                 : curve ? ApplyCurve(*curve, x, a_inputs.mean)
+                         : x);
       break;
     }
     case Op::kX:
@@ -1062,5 +1065,32 @@ std::string ExpressionSummary(std::string_view a_text, std::size_t a_max) {
     tailStart = space + 1;
   }
   return collapsed.substr(0, head) + "…" + collapsed.substr(tailStart);
+}
+}
+
+namespace BetterEnchantmentEffects {
+Program Program::BindContext(std::optional<std::uint32_t> time,
+                             std::optional<std::uint32_t> x,
+                             std::optional<std::uint32_t> mean) const {
+  Program bound = *this;
+  for (auto &op : bound.code_) {
+    const auto binding = op.op == Op::kTime   ? time
+                         : op.op == Op::kX    ? x
+                         : op.op == Op::kMean ? mean
+                                              : std::nullopt;
+    if (!binding)
+      continue;
+    op.op = Op::kRef;
+    op.index = *binding;
+    if (bound.refs_.size() <= *binding)
+      bound.refs_.resize(static_cast<std::size_t>(*binding) + 1);
+  }
+  if (time)
+    bound.usesTime_ = false;
+  if (x)
+    bound.usesX_ = false;
+  if (mean)
+    bound.usesMean_ = false;
+  return bound;
 }
 }

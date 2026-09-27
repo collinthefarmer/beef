@@ -26,7 +26,7 @@ struct LoadedRecipe {
   Recipe recipe;
   std::filesystem::path path;
   std::vector<Diagnostic> diagnostics;
-  std::shared_ptr<const SignalGraph> graph;
+  std::shared_ptr<const RecipeGraph> graph;
   bool dirty = false;
   bool transient = false;
   Studio::ReferenceCounts references{};
@@ -411,12 +411,12 @@ std::optional<RecipeOrigin> OriginOf(const Recipe &a_recipe) noexcept {
   return std::nullopt;
 }
 
-std::shared_ptr<const SignalGraph> GraphFor(const Recipe &a_recipe) {
+std::shared_ptr<const RecipeGraph> GraphFor(const Recipe &a_recipe) {
   for (auto &l : g_loaded) {
     if (l.recipe.id == a_recipe.id) {
       if (!l.graph) {
-        l.graph = std::make_shared<const SignalGraph>(
-            SignalGraph::Compile(a_recipe.signals, a_recipe.curves));
+        l.graph =
+            std::make_shared<const RecipeGraph>(RecipeGraph::Compile(a_recipe));
       }
       return l.graph;
     }

@@ -154,5 +154,25 @@ int main() {
   Check(seed && !seed->field.range && !seed->field.workingRange,
         "the seed has no tuning range and stays a plain entry");
 
+  RecipeRow repeated;
+  repeated.geometries = {geometry, geometry};
+  repeated.geometries.back().name = "Other";
+  const auto combined = OffersOfRecipe(presets, repeated, "");
+  Check(std::ranges::count_if(combined,
+                              [](const TermOffer &offer) {
+                                return offer.group == OfferGroup::kMaterials;
+                              }) == 1,
+        "identical material terms are offered once across geometries");
+  repeated.geometries.back().clusters.front().description = "rough cloth";
+  const auto varied = OffersOfRecipe(presets, repeated, "");
+  const auto materialOffer =
+      std::ranges::find_if(varied, [](const TermOffer &offer) {
+        return offer.group == OfferGroup::kMaterials;
+      });
+  Check(materialOffer != varied.end() && materialOffer->geometry.empty() &&
+            materialOffer->detail == "appearance varies by geometry",
+        "a shared cluster operation does not claim one geometry's material "
+        "label");
+
   return test::Finish("studio_termtemplates");
 }

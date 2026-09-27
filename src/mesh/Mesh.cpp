@@ -384,6 +384,10 @@ std::string DefinitionOf(const BakeKind &a_kind) {
   return std::format("bake {}", Definition(a_kind));
 }
 
+std::string DistanceBakeIdentity(const Vec3 &origin) {
+  return std::format("distance {} {} {}", origin.x, origin.y, origin.z);
+}
+
 std::string DefinitionOf(const DistanceSource &a_distance) {
   return std::format("distance from node {}", a_distance.from);
 }

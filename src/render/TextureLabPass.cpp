@@ -381,31 +381,36 @@ bool TextureLab::Render(RenderTarget &a_target, RE::NiSourceTexture *a_source,
 }
 
 bool TextureLab::RenderProgram(RenderTarget &a_target,
-                               const ProgramPass &a_pass) {
+                               const InterpreterProgram &a_program,
+                               const InterpreterBindings &a_pass) {
   auto *renderer = RE::BSGraphics::Renderer::GetSingleton();
   if (!available_ || !renderer || !borrowedContext_ || !a_target.rtv.Get() ||
-      !gpu_->program.has_value() || a_pass.code.size() > 256 ||
-      a_pass.refCount > a_pass.refs.size() ||
-      a_pass.textureCount > a_pass.textures.size() ||
-      a_pass.curveCount > a_pass.curves.size()) {
+      !gpu_->program.has_value() ||
+      a_pass.inputCount != a_program.Inputs().size() ||
+      a_pass.textureCount != a_program.TextureCount() ||
+      a_pass.lookupCount != a_program.FunctionLookups().size()) {
     return false;
   }
   const PixelPipeline &pipeline = *gpu_->program;
   const RenderPass pass{*renderer, *borrowedContext_};
   auto constants = std::make_unique<ProgramConstants>();
   std::memset(constants.get(), 0, sizeof(ProgramConstants));
-  for (std::size_t k = 0; k < a_pass.code.size(); ++k) {
-    constants->code[k][0] = static_cast<float>(a_pass.code[k].op);
-    constants->code[k][1] = a_pass.code[k].number;
-    constants->code[k][2] = static_cast<float>(a_pass.code[k].index);
+  for (std::size_t k = 0; k < a_program.Instructions().size(); ++k) {
+    constants->code[k][0] =
+        static_cast<float>(a_program.Instructions()[k].opcode);
+    constants->code[k][1] = a_program.Instructions()[k].number;
+    constants->code[k][2] =
+        static_cast<float>(a_program.Instructions()[k].index);
+    constants->code[k][3] =
+        static_cast<float>(a_program.Instructions()[k].components);
   }
-  for (std::size_t r = 0; r < a_pass.refCount; ++r) {
-    const auto &ref = a_pass.refs[r];
-    constants->refs[r][0] = ref.isTexture ? 1.0f : 0.0f;
-    constants->refs[r][1] = static_cast<float>(ref.texture);
-    constants->refValues[r][0] = ref.value.x;
-    constants->refValues[r][1] = ref.value.y;
-    constants->refValues[r][2] = ref.value.z;
+  for (std::size_t r = 0; r < a_program.Inputs().size(); ++r) {
+    const auto *texture = Get<InterpreterTextureInput>(a_program.Inputs()[r]);
+    constants->refs[r][0] = texture ? 1.0f : 0.0f;
+    constants->refs[r][1] = texture ? static_cast<float>(texture->slot) : 0.0f;
+    constants->refValues[r][0] = a_pass.values[r].x;
+    constants->refValues[r][1] = a_pass.values[r].y;
+    constants->refValues[r][2] = a_pass.values[r].z;
   }
   REX::W32::ID3D11ShaderResourceView *srvs[kPassSrvs]{};
   for (std::size_t t = 0; t < a_pass.textureCount; ++t) {
@@ -429,12 +434,13 @@ bool TextureLab::RenderProgram(RenderTarget &a_target,
     constants->texFlags[t][2] = sc.transpose ? 1.0f : 0.0f;
     constants->texFlags[t][3] = tex.sampling.nearest ? 1.0f : 0.0f;
   }
-  for (std::size_t c = 0; c < a_pass.curveCount; ++c) {
-    srvs[8 + c] = a_pass.curves[c] ? a_pass.curves[c]->srv.Get() : nullptr;
+  for (std::size_t c = 0; c < a_pass.lookupCount; ++c) {
+    srvs[kProgramTextures + c] =
+        a_pass.lookups[c] ? a_pass.lookups[c]->srv.Get() : nullptr;
   }
-  constants->misc[0] = a_pass.time;
-  constants->misc[1] = static_cast<float>(a_pass.code.size());
-  constants->misc[2] = a_pass.vectorResult ? 1.0f : 0.0f;
+  constants->misc[1] = static_cast<float>(a_program.Instructions().size());
+  constants->misc[2] =
+      a_program.ResultType() != ValueType::kScalar ? 1.0f : 0.0f;
 
   pass.Context().UpdateSubresource(pipeline.constants.Get(), 0, nullptr,
                                    constants.get(), 0, 0);
@@ -501,7 +507,8 @@ bool TextureLab::BakeMesh(RenderTarget &a_target, const BakeBuffers &a_bake) {
   UnbindTarget(pass, kPassSrvs);
   const PixelPipeline *dilate =
       gpu_->dilate.has_value() ? &gpu_->dilate.value() : nullptr;
-  RenderTarget *gutter = dilate ? Scratch(TextureSize{a_target.size}) : nullptr;
+  RenderTarget *gutter =
+      dilate ? Scratch(TextureSize{a_target.size}, a_target.format) : nullptr;
   if (dilate && gutter && gutter->rtv.Get() && gutter->size == a_target.size) {
     REX::W32::ID3D11ShaderResourceView *fromTarget[]{a_target.srv.Get()};
     DrawFullScreen(pass, *gutter, {dilate->shader.Get(), fromTarget, {}});
@@ -620,6 +627,7 @@ TextureLab::SampleMaterial(RE::NiSourceTexture *a_rmaos,
     texel.occlusion = m[2] * scale;
     texel.reflectance = m[3] * scale;
     texel.luma = (0.2126f * d[0] + 0.7152f * d[1] + 0.0722f * d[2]) * scale;
+    texel.diffuse = Vec3{d[0] * scale, d[1] * scale, d[2] * scale};
     sample.texels.push_back(texel);
   }
   return sample;
@@ -653,6 +661,9 @@ bool TextureLab::RenderClusters(RenderTarget &a_target,
     constants.centroidRmaos[k][1] = cluster.centroid.metallic;
     constants.centroidRmaos[k][2] = cluster.centroid.occlusion;
     constants.centroidRmaos[k][3] = cluster.centroid.reflectance;
+    constants.centroidDiffuse[k][0] = cluster.centroid.diffuse.x;
+    constants.centroidDiffuse[k][1] = cluster.centroid.diffuse.y;
+    constants.centroidDiffuse[k][2] = cluster.centroid.diffuse.z;
     constants.centroidLuma[k][0] = cluster.centroid.luma;
     constants.centroidLuma[k][1] = static_cast<float>(cluster.id);
   }
@@ -662,6 +673,7 @@ bool TextureLab::RenderClusters(RenderTarget &a_target,
   constants.weights[2] = scale(w.occlusion);
   constants.weights[3] = scale(w.reflectance);
   constants.misc[0] = scale(w.luma);
+  constants.misc[2] = scale(w.color) / 3.0f;
   constants.misc[1] = static_cast<float>(a_analysis.clusters.size());
 
   pass.Context().UpdateSubresource(pipeline.constants.Get(), 0, nullptr,

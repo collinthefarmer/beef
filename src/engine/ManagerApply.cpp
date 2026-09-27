@@ -7,13 +7,14 @@
 #include "SettingsFile.h"
 #include "engine/Clock.h"
 #include "engine/EngineForms.h"
-#include "engine/Events.h"
 #include "engine/GameObjectService.h"
 #include "engine/RecipeStore.h"
+#include "engine/WornKeys.h"
 #include "mesh/TextureSize.h"
 #include "planners/Eviction.h"
 #include "render/Compositor.h"
 #include "render/PBRMaterial.h"
+#include "render/RenderInstance.h"
 #include "render/TextureLab.h"
 #include "studio/Selection.h"
 
@@ -85,31 +86,6 @@ std::string TexturePath(const TextureRef &a_texture) {
   return a_texture && a_texture->name.c_str() ? a_texture->name.c_str() : "";
 }
 
-WornPiece WornKeysOf(RE::TESObjectARMO *a_armor, RE::MagicItem *a_magic) {
-  WornPiece keys;
-  if (a_armor) {
-    keys.armor = FormKeyFor(*a_armor);
-  }
-  if (a_magic) {
-    keys.enchantment = FormKeyFor(*a_magic);
-    if (const RE::Effect *costliest = a_magic->GetCostliestEffectItem();
-        costliest && costliest->baseEffect) {
-      keys.magicEffect = FormKeyFor(*costliest->baseEffect);
-    }
-    if (RE::TESEffectShader *shader = ShaderFor(a_magic)) {
-      keys.effectShader = FormKeyFor(*shader);
-    }
-  }
-  if (a_armor) {
-    for (std::uint32_t i = 0; i < a_armor->GetNumKeywords(); ++i) {
-      if (const auto keyword = a_armor->GetKeywordAt(i); keyword && *keyword) {
-        keys.keywords.push_back(FormKeyFor(**keyword));
-      }
-    }
-  }
-  return keys;
-}
-
 struct LocatedGeometry {
   LivePiece &piece;
   LiveGeometry &bound;
@@ -129,14 +105,13 @@ LocateGeometry(LiveActor &a_state, GeometryId a_geometry) noexcept {
   return std::nullopt;
 }
 
-std::shared_ptr<const SignalGraph> InstanceGraph(const Recipe &a_recipe,
+std::shared_ptr<const RecipeGraph> InstanceGraph(const Recipe &a_recipe,
                                                  const Variant *a_variant) {
   if (!a_variant) {
     return GraphFor(a_recipe);
   }
   const Recipe varied = ApplyVariant(a_recipe, *a_variant);
-  return std::make_shared<const SignalGraph>(
-      SignalGraph::Compile(varied.signals, varied.curves));
+  return std::make_shared<const RecipeGraph>(RecipeGraph::Compile(varied));
 }
 
 RE::FormID EnchantmentForInstance(LiveActor &a_state, std::size_t a_instance) {
@@ -345,7 +320,10 @@ void MarkReplaced(LiveActor &a_state, LiveGeometry &a_bound) {
 }
 
 struct LocatedStackOutput {
+  PlacementId placement;
   const Recipe &recipe;
+  const RecipeGraph &graph;
+  std::size_t applicationContext;
   const SurfaceOutput &surface;
   PlacedOutput &placed;
 };
@@ -366,10 +344,13 @@ LocateStackOutput(LiveActor &a_state, const LiveGeometry &a_bound,
       Get<SurfaceOutput>(recipe->outputs[a_contribution.output]);
   auto *output =
       OutputAt(a_state.placements[resolved->placement], a_contribution.output);
-  if (!surface || !output) {
+  const auto &graph = a_state.instances[resolved->instance].graph;
+  if (!surface || !output || !graph) {
     return std::nullopt;
   }
-  return LocatedStackOutput{*recipe, *surface, *output};
+  return LocatedStackOutput{
+      PlacementId{resolved->placement}, *recipe,  *graph,
+      resolved->instance + 1,           *surface, *output};
 }
 
 std::string SurfaceProblem(LiveGeometry &a_bound, const SlotPlan &a_slot,
@@ -414,6 +395,9 @@ void PrepareChainStacks(LiveActor &a_state, LiveGeometry &a_bound,
                         WarningHistory &a_warnings) {
   const auto [size, maxSize] =
       RuntimeSizes(a_settings, a_bound.inputs.material);
+  std::vector<StackTextureRequest> requests;
+  std::vector<LocatedStackOutput> outputs;
+  auto *compositor = Compositor::GetSingleton();
   for (const SlotPlan &slot : a_bound.plan.slots) {
     for (const SlotContribution &contribution : slot.chain) {
       const auto located = LocateStackOutput(a_state, a_bound, contribution);
@@ -428,15 +412,82 @@ void PrepareChainStacks(LiveActor &a_state, LiveGeometry &a_bound,
       }
       const TextureSize slotSize =
           SlotStackSize(size, slot.slot, located->surface.resolution);
-      output.stack = Compositor::GetSingleton()->Prepare(
-          located->recipe, located->surface, contribution.output,
-          a_bound.inputs, slotSize, maxSize);
-      if (!output.stack) {
-        output.problem = "the texture lab is unavailable";
-      } else if (a_settings.verboseLogging) {
-        LogStackDiagnostics(*located, a_bound.name, a_warnings);
+      GeometryInputs inputs = a_bound.inputs;
+      inputs.applicationContext = located->applicationContext;
+      requests.push_back(
+          {&located->recipe, &located->graph, &located->surface,
+           contribution.output, located->placement, inputs,
+           compositor->StackSize(located->surface, inputs, slotSize, maxSize)});
+      outputs.push_back(*located);
+    }
+  }
+  std::vector<RenderStackRequest> stacks;
+  std::vector<std::shared_ptr<const RecipeGraph>> graphs;
+  for (const auto &instance : a_state.instances)
+    if (instance.graph)
+      graphs.push_back(instance.graph);
+  for (const auto &request : requests)
+    stacks.push_back({request.graph,
+                      request.output,
+                      request.inputs.applicationContext,
+                      request.placement,
+                      request.outputIndex,
+                      {request.size}});
+  const auto bindings = [&](const TextureValue &value) {
+    for (const auto &request : requests)
+      if (request.graph == value.graph &&
+          request.inputs.applicationContext == value.instance)
+        return TextureValueBindings(*value.graph, request.inputs);
+    return ValueBindings{};
+  };
+  std::vector<TextureDemand> demands;
+  for (const auto &request : requests) {
+    for (std::size_t layer = 0; layer < request.output->stack.size(); ++layer) {
+      for (const auto role :
+           {TextureUseInput::kSource, TextureUseInput::kMask}) {
+        const auto property =
+            LayerWhere(request.outputIndex, layer) +
+            (role == TextureUseInput::kSource ? " source" : " mask");
+        for (const auto &binding : request.graph->OutputBindings()) {
+          if (binding.property != property ||
+              !request.graph->SampleDependent(binding.value))
+            continue;
+          const auto collected = CollectTextureDemand(
+              demands,
+              {request.graph, binding.value, request.inputs.applicationContext},
+              {request.size},
+              {request.placement, request.outputIndex, layer, role},
+              TextureValueBindings(*request.graph, request.inputs));
+          if (!collected && a_settings.verboseLogging)
+            logger::warn("{}: {}", property, collected.error());
+        }
       }
     }
+  }
+  auto plan = BuildRenderPlan(demands, stacks, bindings);
+  if (!plan) {
+    for (auto &located : outputs)
+      located.placed.problem = plan.error();
+    return;
+  }
+  a_bound.inputs.render = std::make_shared<RenderInstance>(
+      std::move(*plan), a_bound.inputs, std::move(graphs));
+  for (std::size_t i = 0; i < requests.size(); ++i) {
+    const auto &request = requests[i];
+    auto &located = outputs[i];
+    for (const auto &binding : a_bound.inputs.render->Plan().stackOutputs) {
+      if (binding.placement != request.placement ||
+          binding.output != request.outputIndex)
+        continue;
+      located.placed.stack = std::make_unique<RenderOutput>(
+          a_bound.inputs.render, binding.result, request.size,
+          IsAnimated(*request.graph, Output{*request.output}));
+      break;
+    }
+    if (!located.placed.stack)
+      located.placed.problem = "stack was not lowered";
+    else if (a_settings.verboseLogging)
+      LogStackDiagnostics(located, a_bound.name, a_warnings);
   }
 }
 
@@ -497,20 +548,6 @@ void Manager::ReapplyAll() {
   PostTask([this] { ChangeAndRebuildActors({}, [] {}); });
 }
 
-void Manager::RetireAll() {
-  const Trace::Scope trace{Trace::Command("manager.RetireAll")};
-  PostTask([this] {
-    std::vector<RE::FormID> ids;
-    ids.reserve(applied_.size());
-    for (const auto &[id, state] : applied_) {
-      ids.push_back(id);
-    }
-    for (const RE::FormID id : ids) {
-      QueueRetire(id);
-    }
-  });
-}
-
 void Manager::RunRefresh(RE::FormID a_actorID,
                          const std::vector<ApplicationToken> &a_tokens) {
   const RE::NiPointer<RE::Actor> actor{
@@ -520,6 +557,7 @@ void Manager::RunRefresh(RE::FormID a_actorID,
   } else {
     Refresh(actor.get());
   }
+  ReconcileAnimationEvents(a_actorID);
   PrepareApplications(a_actorID, a_tokens);
 }
 
@@ -533,7 +571,7 @@ void Manager::Refresh(RE::Actor *a_actor) {
   Trace::EmitSafely(
       Trace::Event::kApplication,
       {{"action", "refresh_begin"}, {"actor", std::to_string(actorID)}});
-  Retire(actorID);
+  RetireEffects(actorID);
   if (!settings.enableShaders || !emissivePathEnabled_ ||
       a_actor->IsDeleted()) {
     return;
@@ -591,7 +629,6 @@ void Manager::Refresh(RE::Actor *a_actor) {
                      {"pieces", std::to_string(state.pieces.size())},
                      {"recipes", std::to_string(LiveInstanceCount(state))}});
   applied_[actorID] = std::move(state);
-  WatchAnimationEvents(a_actor);
 
   if (applications_.TakeEquipped(actorID)) {
     FireEquip(actorID);
@@ -739,13 +776,16 @@ std::optional<std::size_t> Manager::InstanceFor(LiveActor &a_state,
   LiveInstance instance;
   instance.recipe = recipe;
   instance.enchantment = a_enchantment;
+  instance.effectScope =
+      planned->effectKey ? planned->effectKey->ToString() : "";
   instance.graph = InstanceGraph(
       *recipe, InstanceVariant(a_state.plan, a_planInstance, *recipe));
   if (instance.graph) {
     instance.signals = std::make_unique<SignalState>(*instance.graph);
   }
   instance.environment = std::make_unique<ActorEnvironment>(
-      actor.get(), RE::TESForm::LookupByID<RE::MagicItem>(a_enchantment));
+      actor.get(), RE::TESForm::LookupByID<RE::MagicItem>(a_enchantment),
+      planned->effectKey);
   instance.startMS = NowMS();
   CarryInstanceTime(instance, actor->GetFormID(), *recipe, a_settings);
   a_state.instances[instanceIndex] = std::move(instance);
@@ -756,7 +796,8 @@ void Manager::CarryInstanceTime(LiveInstance &a_instance, RE::FormID a_actor,
                                 const Recipe &a_recipe,
                                 const Settings &a_settings) {
   const auto carried = carriedTimes_.Take(
-      {a_actor, a_recipe.id, a_instance.enchantment}, a_instance.startMS);
+      {a_actor, a_recipe.id, a_instance.enchantment, a_instance.effectScope},
+      a_instance.startMS);
   if (!carried) {
     return;
   }
@@ -899,6 +940,12 @@ void Manager::RetireEveryActor() {
 }
 
 void Manager::Retire(RE::FormID a_actorID) {
+  animations_.Stop(a_actorID);
+  ForgetAnimEvents(a_actorID);
+  RetireEffects(a_actorID);
+}
+
+void Manager::RetireEffects(RE::FormID a_actorID) {
   const auto it = applied_.find(a_actorID);
   if (it == applied_.end()) {
     return;
@@ -908,9 +955,9 @@ void Manager::Retire(RE::FormID a_actorID) {
   const std::uint32_t now = NowMS();
   for (const LiveInstance &instance : it->second.instances) {
     if (instance.recipe) {
-      carriedTimes_.Remember(
-          {a_actorID, instance.recipe->id, instance.enchantment},
-          instance.lastTime, now);
+      carriedTimes_.Remember({a_actorID, instance.recipe->id,
+                              instance.enchantment, instance.effectScope},
+                             instance.lastTime, now);
     }
   }
   Trace::EmitSafely(Trace::Event::kRetire,
@@ -922,8 +969,6 @@ void Manager::Retire(RE::FormID a_actorID) {
   Trace::EmitSafely(Trace::Event::kRetire,
                     {{"action", "end"}, {"actor", std::to_string(a_actorID)}});
   TextureLab::GetSingleton()->InvalidatePreviews();
-  UnwatchAnimationEvents(RE::TESForm::LookupByID<RE::Actor>(a_actorID));
-  ForgetAnimEvents(a_actorID);
   if (GetSettings().verboseLogging) {
     logger::info("actor {:08X}: retired {} recipe(s)", a_actorID, recipes);
   }

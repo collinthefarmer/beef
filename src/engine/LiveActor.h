@@ -23,7 +23,7 @@
 namespace BetterEnchantmentEffects {
 struct PlacedOutput {
   std::size_t index = 0;
-  std::unique_ptr<RenderedStack> stack;
+  std::unique_ptr<RenderOutput> stack;
   std::string problem;
   bool active = false;
   bool rendered = false;
@@ -58,7 +58,8 @@ struct LivePiece {
 struct LiveInstance {
   const Recipe *recipe = nullptr;
   RE::FormID enchantment = 0;
-  std::shared_ptr<const SignalGraph> graph;
+  std::string effectScope;
+  std::shared_ptr<const RecipeGraph> graph;
   std::unique_ptr<SignalState> signals;
   std::unique_ptr<ActorEnvironment> environment;
   std::unique_ptr<LightBinding> light;

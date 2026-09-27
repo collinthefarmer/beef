@@ -86,8 +86,8 @@ SignalRow SignalRowOf(const Signal &a_signal, const RowTypes &a_rows,
     row.type = *type;
   }
   if (const std::optional<std::size_t> index =
-          a_rows.graph.Index(a_signal.name)) {
-    row.inert = a_rows.graph.Inert(*index);
+          a_rows.graph.FindNodeIndex(a_signal.name)) {
+    row.inert = a_rows.graph.IsDisabled(*index);
   }
   row.definition = a_signal.kind;
   if (const ConstantSignal *constant = Get<ConstantSignal>(a_signal.kind)) {

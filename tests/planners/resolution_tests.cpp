@@ -60,6 +60,147 @@ void DefinitionPrecedence() {
         "editing a definition leaves its precedence position intact");
 }
 
+void KeywordRequirements() {
+  const RecipeKey heavy{KeyKind::kKeyword,
+                        FormRef{"heavy", FormKey{"test.esp", 10}}};
+  const RecipeKey cuirass{KeyKind::kKeyword,
+                          FormRef{"cuirass", FormKey{"test.esp", 11}}};
+  Recipe recipe = MakeRecipe("filtered");
+  recipe.keys = {heavy, cuirass};
+  std::array<Recipe, 1> recipes{recipe};
+  WornPiece piece;
+  Check(Resolve(piece, recipes).empty(),
+        "keyword-only recipes reject no keywords");
+  piece.keywords = {FormKey{"test.esp", 10}};
+  Check(Resolve(piece, recipes).empty(),
+        "one of two required keywords is insufficient");
+  piece.keywords.push_back(FormKey{"test.esp", 11});
+  auto selected = Resolve(piece, recipes);
+  Check(selected.size() == 1 && selected[0].priority == 20 &&
+            selected[0].key == heavy,
+        "all required keywords select once with keyword priority and first-key "
+        "identity");
+  recipes[0].keys.push_back(heavy);
+  Check(Resolve(piece, recipes).size() == 1,
+        "repeated keyword requirements do not require duplicate keywords on "
+        "the item");
+  recipes[0].keys.push_back(
+      {KeyKind::kArmor, FormRef{"armor", FormKey{"test.esp", 12}}});
+  Check(Resolve(piece, recipes).empty(),
+        "keywords alone cannot satisfy a recipe that also has selection keys");
+  piece.armor = FormKey{"test.esp", 12};
+  selected = Resolve(piece, recipes);
+  Check(
+      selected.size() == 1 && selected[0].priority == 30 &&
+          selected[0].key.kind == KeyKind::kArmor,
+      "a matching armor key selects after every keyword requirement succeeds");
+  piece.keywords.pop_back();
+  Check(Resolve(piece, recipes).empty(),
+        "an explicit armor match cannot bypass a missing keyword");
+  piece.keywords.push_back(FormKey{"test.esp", 11});
+  recipes[0].keys.push_back(
+      {KeyKind::kEnchantment, FormRef{"enchantment", FormKey{"test.esp", 13}}});
+  piece.armor.reset();
+  piece.enchantment = FormKey{"test.esp", 13};
+  Check(Resolve(piece, recipes).size() == 1,
+        "non-keyword selection keys remain alternatives after the keyword "
+        "filter");
+  recipes[0].keys = {heavy, {KeyKind::kMaterial, std::string{"*"}}, cuirass};
+  piece.diffusePaths = {"armor.dds"};
+  selected = Resolve(piece, recipes);
+  Check(selected.size() == 1 && selected[0].priority == 10 &&
+            selected[0].key.kind == KeyKind::kMaterial,
+        "required keywords do not promote a material selector's priority");
+  recipes[0].priority = 100;
+  selected = Resolve(piece, recipes);
+  Check(selected.size() == 1 && selected[0].priority == 100,
+        "explicit recipe priority still overrides the matched selector's "
+        "default");
+  recipes[0].keys.push_back({KeyKind::kKeyword, FormRef{"unresolved", {}}});
+  Check(Resolve(piece, recipes).empty(),
+        "an unresolved required keyword fails closed");
+  recipes[0].keys.clear();
+  Check(Resolve(piece, recipes).empty(),
+        "an empty key list never becomes a vacuous match");
+}
+
+void MagicEffectMatching() {
+  WornPiece piece;
+  piece.enchantment = FormKey{"test.esp", 1};
+  piece.magicEffects = {{"test.esp", 2}, {"test.esp", 3}};
+  Recipe secondary = MakeRecipe("secondary");
+  secondary.keys = {{KeyKind::kMagicEffect,
+                     FormRef{"secondary effect", FormKey{"test.esp", 3}}}};
+  Recipe fallback = MakeRecipe("default");
+  fallback.keys = {RecipeKey{}};
+  Recipe enchanted = MakeRecipe("enchanted");
+  enchanted.keys = {{KeyKind::kEnchanted, {}}};
+  std::array recipes{fallback, enchanted, secondary};
+  std::vector<RecipeSelection> outcomes;
+  auto selected = Resolve(piece, recipes, 0, &outcomes);
+  Check(selected.size() == 1 && selected[0].recipe->id == "secondary" &&
+            outcomes[0].outcome == SelectionOutcome::kFallbackSuppressed &&
+            outcomes[1].outcome == SelectionOutcome::kFallbackSuppressed,
+        "a secondary magic effect matches and suppresses generic fallbacks");
+  recipes[2].keys.push_back(
+      {KeyKind::kMagicEffect, FormRef{"first effect", FormKey{"test.esp", 2}}});
+  Check(Resolve(piece, recipes).size() == 1,
+        "multiple matching effects select the recipe once");
+  recipes[2].keys.push_back(
+      {KeyKind::kKeyword, FormRef{"required", FormKey{"test.esp", 4}}});
+  selected = Resolve(piece, recipes, 0, &outcomes);
+  Check(selected.size() == 1 && selected[0].recipe->id == "enchanted" &&
+            outcomes[2].outcome == SelectionOutcome::kNonmatching,
+        "a magic-effect match with missing keywords cannot suppress a valid "
+        "fallback");
+  piece.keywords = {{"test.esp", 4}};
+  selected = Resolve(piece, recipes);
+  Check(selected.size() == 1 && selected[0].recipe->id == "secondary",
+        "the keyword-filtered magic-effect recipe becomes eligible when all "
+        "keywords exist");
+  piece.magicEffects.clear();
+  selected = Resolve(piece, recipes);
+  Check(selected.size() == 1 && selected[0].recipe->id == "enchanted",
+        "an enchantment with no matching effects keeps its generic fallback");
+}
+
+void KeyContractRoundTrip() {
+  const auto parsed = ParseRecipe(R"({"format":1,"keys":[
+    {"keyword":"0xA~test.esp"},{"keyword":"0xB~test.esp"},
+    {"magicEffect":"0xC~test.esp"},{"armor":"0xD~test.esp"}
+  ]})",
+                                  "mixed");
+  Check(parsed.recipe.has_value(),
+        "mixed keyword requirements use the existing wire format");
+  if (!parsed.recipe)
+    return;
+  const auto restored = ParseRecipe(SerializeRecipe(*parsed.recipe), "mixed");
+  Check(restored.recipe.has_value(),
+        "mixed requirements survive serialization");
+  if (!restored.recipe)
+    return;
+  const std::array recipes{*restored.recipe};
+  WornPiece piece;
+  piece.magicEffects = {{"test.esp", 99}, {"test.esp", 12}};
+  piece.keywords = {{"test.esp", 10}, {"test.esp", 11}};
+  const auto selected = Resolve(piece, recipes);
+  Check(selected.size() == 1 && selected[0].key.kind == KeyKind::kMagicEffect,
+        "a round-tripped recipe requires both keywords and accepts a secondary "
+        "effect");
+  piece.keywords.pop_back();
+  Check(Resolve(piece, recipes).empty(),
+        "round-trip does not weaken keyword requirements");
+  Recipe eligible = MakeRecipe("eligible", MergeMode::kSampled);
+  eligible.keys = {{KeyKind::kKeyword, FormRef::From("0xA~test.esp")}};
+  Recipe ineligible = eligible;
+  ineligible.id = "ineligible";
+  ineligible.keys.push_back({KeyKind::kKeyword, FormRef::From("0xB~test.esp")});
+  const std::array pool{eligible, ineligible};
+  Check(SampledChoice(piece, pool, 0x14) == "eligible" &&
+            SampledChoice(piece, pool, 0x12345678) == "eligible",
+        "missing keyword requirements exclude a candidate before sampling");
+}
+
 void SamplingAndFallback() {
   Check(SamplingHash(0) == 0x4b95f515u && SamplingHash(1) == 0xfb69b604u &&
             SamplingHash(0x14) == 0x0da8e9e1u &&
@@ -125,7 +266,7 @@ void SamplingAndFallback() {
   specific.keys.push_back(RecipeKey{KeyKind::kMagicEffect,
                                     FormRef{"effect", FormKey{"test.esp", 2}}});
   specific.priority = -100;
-  worn.magicEffect = FormKey{"test.esp", 2};
+  worn.magicEffects = {FormKey{"test.esp", 2}};
   const std::array<Recipe, 1> one{specific};
   const auto resolved = Resolve(worn, one);
   Check(resolved.size() == 1 && resolved[0].key.kind == KeyKind::kMagicEffect &&
@@ -146,11 +287,11 @@ void PlacementPriorityAndLights() {
   std::vector<Recipe> recipes{a, b};
   Geometry gloves = MakeGeometry("gloves");
   Geometry boots = MakeGeometry("boots");
-  boots.keys.magicEffect = FormKey{"test.esp", 2};
+  boots.keys.magicEffects = {FormKey{"test.esp", 2}};
   const std::array geometries{gloves, boots};
   ActorPlan actor = MatchActor(geometries, recipes);
-  Check(actor.instances.size() == 2,
-        "different pieces share recipe/enchantment evaluation instances");
+  Check(actor.instances.size() == 3,
+        "effect-selected placements have independent evaluation instances");
   const auto glovePlan = PlanGeometryPlacement(actor, recipes, GeometryId{0});
   const auto bootPlan = PlanGeometryPlacement(actor, recipes, GeometryId{1});
   Check(glovePlan.placed.size() == 2 && glovePlan.placed[0].priority == 10 &&
@@ -162,7 +303,7 @@ void PlacementPriorityAndLights() {
         "piece diagnostics carry placement priority");
   auto lights = PlanActorLights(actor, recipes);
   Check(
-      lights.plan.shown.size() == 1 && lights.plan.replaced.size() == 1 &&
+      lights.plan.shown.size() == 2 && lights.plan.replaced.size() == 1 &&
           lights.placed[IndexOf(lights.plan.shown[0].placed)].recipe->id == "A",
       "light groups aggregate priority independently and honor recipe replace");
   Get<LightOutput>(recipes[0].outputs[1])->selector.anyOf = {
@@ -181,6 +322,34 @@ void PlacementPriorityAndLights() {
   Check(
       PlanActorLights(actor, recipes).plan.shown.empty(),
       "lost or first-person placements cannot enter actor-wide light planning");
+}
+
+void EffectInstanceIdentity() {
+  const RecipeKey first{KeyKind::kMagicEffect,
+                        FormRef{"first", FormKey{"test.esp", 1}}};
+  const RecipeKey second{KeyKind::kMagicEffect,
+                         FormRef{"second", FormKey{"test.esp", 2}}};
+  Recipe recipe = MakeRecipe("scoped");
+  recipe.keys = {first, second};
+  const std::array recipes{recipe};
+  Geometry a = MakeGeometry("first");
+  a.keys.enchantment = FormKey{"test.esp", 3};
+  a.keys.magicEffects = {FormKey{"test.esp", 1}};
+  Geometry b = a;
+  b.keys.magicEffects = {FormKey{"test.esp", 2}};
+  const std::array geometries{a, b, a};
+  const auto plan = MatchActor(geometries, recipes);
+  Check(plan.instances.size() == 2 && plan.placements.size() == 3,
+        "one enchantment can have distinct selected-effect instances");
+  if (plan.instances.size() != 2 || plan.placements.size() != 3)
+    return;
+  Check(plan.instances[0].effectKey == first &&
+            plan.instances[1].effectKey == second,
+        "winning effect keys reach the evaluation plan");
+  Check(plan.placements[0].instance == plan.placements[2].instance &&
+            plan.placements[0].instance != plan.placements[1].instance,
+        "matching effect contexts share state while different contexts remain "
+        "isolated");
 }
 
 void AddonSelectedLights() {
@@ -378,8 +547,12 @@ void ShellOrderAndPreview() {
 
 int main() {
   DefinitionPrecedence();
+  KeywordRequirements();
+  MagicEffectMatching();
+  KeyContractRoundTrip();
   SamplingAndFallback();
   PlacementPriorityAndLights();
+  EffectInstanceIdentity();
   AddonSelectedLights();
   GroupedReplacement();
   ShellOrderAndPreview();

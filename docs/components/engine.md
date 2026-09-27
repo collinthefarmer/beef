@@ -17,12 +17,25 @@ history, dirty state, load cancellation and import-promotion routing. It does
 not simulate actor rebuilds or Skyrim form discovery; see
 [the harness boundary](../build.md#native-authoring-integration).
 
+The `engine_animationsubscriptions` target compiles the actual subscription owner
+and `ManagerAnimation.cpp` against fake actors and event sources, with the real
+`ApplicationService`/`SessionQueue`. It covers ownership, stale events, rebuild
+gaps, load cancellation and missing-graph recovery. It does not verify Skyrim's
+graph-array synchronization or actual replacement timing.
+
+The `engine_wornkeys` target compiles `WornKeys.cpp` and
+`EnchantmentEffects.cpp` against small form doubles and feeds collected keys to
+the real resolver. It checks secondary and duplicate effects and shaders, null
+entries, editor key choices, selected-effect magnitude/cost, stable cost ties,
+and missing-effect behavior. `ActorEnvironment` uses the winning effect key
+carried by the planner; other selectors retain generic costliest-effect inputs.
+
 ## What it owns
 
 - Event and hook wiring: `RegisterEventSinks` and `InstallHooks` register
   the sinks and the per-frame hook that feed the manager.
-  `WatchAnimationEvents` attaches and detaches the per-actor animation
-  sink.
+  The manager owns `AnimationSubscriptions`, which retains each observed actor's
+  exact animation graph independently of recipe bindings.
 - The manager: `Manager` is the singleton. It queues refreshes and
   retirements per actor, ticks every applied actor each frame, and
   publishes the **snapshot** the menu reads.
@@ -52,7 +65,7 @@ that owns every applied actor. `Manager` hands per-actor queueing to
 
 | Member | Description | Declared in |
 |---|---|---|
-| `RegisterEventSinks` | A free function. Registers the equip, load, hit, node-update and animation sinks that call `Manager::QueueRefresh` and its siblings. | `Events.h` |
+| `RegisterEventSinks` | A free function. Registers the equip, load, hit and node-update sinks that call `Manager::QueueRefresh` and its siblings. | `Events.h` |
 | `ParsePluginEvent` | A free function, engine-free. Validates another plugin's `PluginEventMessage` (version, actor, bounded id, type tag, finite components) and converts it to a typed `EventRecord` on the plugin channel; `main.cpp`'s listener queues the result per actor or as a broadcast. | `PluginEvents.h` |
 | `InstallHooks` | A free function. Installs the `PlayerCharacter::Update` vfunc hook that calls `Manager::OnFrame` every frame. | `Hooks.h` |
 | `Manager` | The singleton. It queues refreshes and retirements per actor, holds one `LiveActor` per applied actor, and ticks them each frame. | `Manager.h` |
@@ -61,6 +74,7 @@ that owns every applied actor. `Manager` hands per-actor queueing to
 | `ApplicationService` | Tracks one `ApplicationRecord` per in-flight, recipe-affecting change. It keys its `ApplicationRecord` stores by recipe id and by actor id. | `ApplicationService.h` |
 | `ApplicationRecord` | One tracked change: its `ApplicationToken`, its phase, and the per-actor phases and problems. | `studio/ApplicationRecord.h` |
 | `ApplicationToken` | The lookup handle `Find` takes. It names one change by recipe id, revision, actor id and attempt. | `studio/ApplicationRecord.h` |
+| `AnimationSubscriptions` | Owns actor handles, graph references and invalidatable registrations; reconciles graph replacement and detaches from the original source. `ManagerAnimation.cpp` routes accepted events through the existing queue to discovery and signals. | `AnimationSubscriptions.h` |
 | `SessionQueue` | Serialises per-actor refresh tasks onto the SKSE task interface. It also holds the equip-finalize timers and the load gate (`BeginLoad`/`Resume`). | `SessionQueue.h` |
 
 ### Texture-memory controls
@@ -95,7 +109,7 @@ matched **recipes**. Each frame the tick advances each **instance**'s
 | `LivePiece` | One collected worn armor clone: the armor form id and name, optional addon `FormKey`, enchantment form id, and its `LiveGeometry`s. The addon comes from the biped entry owning that clone and is copied to each planner geometry for surface and light selectors. |
 | `LiveGeometry` | One bound **geometry** of a piece: the engine geometry and shader-property pointers, its `GeometryInputs`, its `MaterialBinding` and `ShellBinding`, the plans that placed it, and its `PlacementId`s. Its `lost` flag marks it for `DropLostGeometries`. |
 | `LivePieceId` | A typed index (`enum class`, `std::size_t`). Other code uses it to reference one piece inside its `LiveActor`. |
-| `LiveInstance` | One **recipe** matched onto the actor: the `Recipe` pointer, the enchantment, and its `SignalGraph`, `SignalState` and `ActorEnvironment`. It also holds the optional `LightBinding`, light eligibility/replacement/preparation diagnostics, and the timing (`startMS`, `lastTime`) the tick advances. |
+| `LiveInstance` | One **recipe** matched onto the actor: the `Recipe` pointer, the enchantment, selected effect scope, and its `RecipeGraph`, `SignalState` and `ActorEnvironment`. It also holds the optional `LightBinding`, light eligibility/replacement/preparation diagnostics, and the timing (`startMS`, `lastTime`) the tick advances. |
 | `LivePlacement` | The **outputs** bound onto one geometry: a `GeometryId` and one `PlacedOutput` per placed output. |
 | `PlacedOutput` | One placed **output**: its index in the recipe, its `RenderedStack`, and its `active`, `rendered` and `renderFailed` flags. Its `problem` string carries the failure text. |
 | `ResolvedPlacement` | The placement-index and instance-index pair `ResolvePlacement` returns for a `PlacementId`. |
@@ -111,7 +125,7 @@ reads back.
 |---|---|---|
 | `RecipeStoreStatus` | The load counts: loaded, with errors, held back, unresolved, imported. `LoadRecipes` and `GetRecipeStoreStatus` return it. | `RecipeStore.h` |
 | `RecipeOrigin` | One recipe's source: its file path and its load `Diagnostic`s. `OriginOf` returns it. | `RecipeStore.h` |
-| `CarriedTimes`, `CarriedTimeKey` | Bounded continuation store keyed by actor, recipe name, and enchantment form ID. Holds only phase and retirement time; consumed entries, expired entries, and old sessions release their state. | `InstanceTime.h` |
+| `CarriedTimes`, `CarriedTimeKey` | Bounded continuation store keyed by actor, recipe name, enchantment form ID, and selected effect key. Holds only phase and retirement time; consumed entries, expired entries, and old sessions release their state. | `InstanceTime.h` |
 | `RecipeEditor` | Drives gestures, **edits**, undo/redo, save/reload, paint sessions and view commands. An edit result acknowledges the document change; separate application records track queued actor rebuilds through preparation and rendering. | `RecipeEditor.h` |
 | `Studio::FileOperationResult` | The outcome of one save or revert: the request id, the recipe, the `FileAction`, the `FileOperationState`, the written path, and the error `Diagnostic` if it failed. | `studio/FileOperation.h` |
 | `Studio::RecipeEditResult` | The outcome of one edit request: the request id, the recipe, and the error `Diagnostic` if it failed. | `studio/EditResult.h` |
@@ -270,7 +284,7 @@ Manager::ChangeAndRebuildActors                          ManagerApplication.cpp
   │   into place, RecipeEditor.cpp), then re-refreshes those actors
   ▼
 RefreshRecipeDerivedState(id)                            RecipeStore.cpp
-  │        (invalidates the cached SignalGraph for lazy rebuild,
+  │        (invalidates the cached RecipeGraph for lazy rebuild,
   │         re-validates, re-resolves forms)
   ▼
 re-Manager::Refresh of the retired actors ── rejoins (a): MatchRecipes
@@ -284,7 +298,7 @@ re-Manager::Refresh of the retired actors ── rejoins (a): MatchRecipes
 | Event sinks and hooks | `Events.h`/`.cpp` (equip, load, hit, node-update, animation sinks), `PluginEvents.h`/`.cpp` (the inter-plugin message contract and its parser), `Hooks.h`/`.cpp` (the `PlayerCharacter::Update` vfunc hook) |
 | The manager | `Manager.h`, `Manager.cpp` (construction, load/clear), `ManagerApplication.cpp` (`ChangeAndRebuildActors`, application bookkeeping), `ManagerApply.cpp` (`Refresh`/`Retire`, `CollectPieces`, `MatchRecipes`, `PlaceInstances`, `PrepareChainStacks`/`SlotStackSize`), `ManagerEvents.cpp` (`Fire`/`FireAt`/`QueueEvent`/`QueueBroadcast`), `ManagerInspection.cpp` (the `RequestMesh` debug probe), `ManagerSnapshot.cpp` (`GetStatus`, `BuildSnapshot`, `PublishSnapshot`, `Watch`), `ManagerTick.cpp` (`OnFrame`, `SweepEviction`, `Tick`, `RenderPieces`, `RenderGeometry`, `UpdateLights`) |
 | Application and session bookkeeping | `ApplicationService.h`/`.cpp` (per-recipe `ApplicationToken` tracking, rejection handling), `SessionQueue.h`/`.cpp` (per-actor task serialisation onto the SKSE task interface) |
-| Actor and worn-piece state | `LiveActor.h`/`.cpp` (`LiveActor`, `LivePiece`, `LiveGeometry`, `RetireGeometry`, `ResolvePlacement`), `Environment.h`/`.cpp` (`ActorEnvironment`, the `SignalEnvironment` a `LiveInstance` ticks against) |
+| Actor and worn-piece state | `LiveActor.h`/`.cpp` (`LiveActor`, `LivePiece`, `LiveGeometry`, `RetireGeometry`, `ResolvePlacement`), `Environment.h`/`.cpp` (`ActorEnvironment`, the `SignalEnvironment` a `LiveInstance` ticks against), `WornKeys.h`/`.cpp` (all-effect matching inputs), `EnchantmentEffects.h`/`.cpp` (selected-effect magnitude and cost) |
 | Recipe CRUD | `RecipeStore.h`/`.cpp` (load, save, mutate, `RefreshRecipeDerivedState`), `RecipeFiles.h`/`.cpp` (save preparation/write and checked rename/delete filesystem operations), `RecipeEditor.h`/`.cpp` (gestures, edits, undo/redo, paint sessions, view commands) |
 | Engine form and game-object lookups | `EngineForms.h`/`.cpp` (`FormKeyFor`/`LookupForm`, effect-shader records), `GameObjectService.h`/`.cpp` (game-object and anim-event catalogs), `InputCatalog.h`/`.cpp` (actor-value samples for the studio input pickers), `Tweaks.h`/`.cpp` (`EditorIdOf`, xEdit-tweaks availability) |
 | Small utilities | `Clock.h`/`.cpp` (`NowMS`), `InstanceTime.h`/`.cpp` (bounded carry-over and checked clock offsets), `TextFile.h`/`.cpp` (bounded file read and write) |
@@ -319,3 +333,14 @@ The selected-piece snapshot reports placement priority. Normal matching
 outcomes use the actual actor form ID, with preview isolation/pinning labeled
 as overrides. Surface replacement problems retain target rows; actor-wide
 light replacement names the winning recipe in the light summary.
+
+### Animation observation across rebuilds
+
+`ChangeAndRebuildActors` releases every affected `LiveActor` through
+`RetireEffects` before publishing recipe changes. Observation survives that gap;
+`RunRefresh` reconciles it against the resulting applied state. `Retire` ends
+observation and discovery even if the actor no longer has a `LiveActor`. Clear
+ends all registrations and clears discovery globally. Once-per-second maintenance
+repairs changed or missing graphs and retires abandoned observation after pending
+application work ends. The observed set follows effective applied state, so
+settings edited with automatic re-apply disabled take effect when applied.

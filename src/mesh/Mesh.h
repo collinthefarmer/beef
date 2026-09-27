@@ -111,6 +111,7 @@ inline constexpr float kDistanceFrame = 256.0f;
 
 [[nodiscard]] std::string DefinitionOf(const BakeKind &a_kind);
 [[nodiscard]] std::string DefinitionOf(const DistanceSource &a_distance);
+[[nodiscard]] std::string DistanceBakeIdentity(const Vec3 &origin);
 
 struct BakeKey {
   std::string definition;

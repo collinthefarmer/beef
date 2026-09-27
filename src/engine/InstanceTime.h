@@ -16,6 +16,7 @@ struct CarriedTimeKey {
   std::uint32_t actorID = 0;
   std::string recipeID;
   std::uint32_t enchantmentID = 0;
+  std::string effectScope{};
   [[nodiscard]] std::strong_ordering
   operator<=>(const CarriedTimeKey &) const = default;
 };

@@ -17,7 +17,7 @@ int main() {
     PlacedOutput output;
     output.active = true;
     output.rendered = true;
-    output.stack = std::make_unique<RenderedStack>();
+    output.stack = std::make_unique<RenderOutput>();
     output.stack->target = std::make_shared<int>(42);
     placement.outputs.push_back(std::move(output));
   }
@@ -33,21 +33,17 @@ int main() {
   lost.inputs.geometry = lost.geometry;
   lost.inputs.root = std::make_shared<RE::NiAVObject>();
   lost.inputs.material = std::make_shared<int>(1);
-  lost.inputs.masks = std::make_shared<int>(2);
-  lost.inputs.ripples = std::make_shared<int>(3);
-  lost.inputs.derived = std::make_shared<int>(4);
+  lost.inputs.render = std::make_shared<int>(9);
   const std::weak_ptr geometry = lost.geometry;
   const std::weak_ptr root = lost.inputs.root;
   const std::weak_ptr material = lost.inputs.material;
-  const std::weak_ptr masks = lost.inputs.masks;
-  const std::weak_ptr ripple = lost.inputs.ripples;
-  const std::weak_ptr derived = lost.inputs.derived;
+  const std::weak_ptr render = lost.inputs.render;
   const std::weak_ptr stack = actor.placements[0].outputs[0].stack->target;
   const auto external = actor.placements[0].outputs[0].stack->target;
   const std::weak_ptr otherStack = actor.placements[1].outputs[0].stack->target;
   int detached = 0;
   const auto detach = [&] {
-    Check(!stack.expired() && !masks.expired() && !geometry.expired(),
+    Check(!stack.expired() && !render.expired() && !geometry.expired(),
           "bindings retire before their resource producers and geometry");
     ++detached;
   };
@@ -57,8 +53,7 @@ int main() {
   lost.material->onDestroy = detach;
   RetireGeometry(actor, lost);
   Check(detached == 2 && lost.lost && geometry.expired() && root.expired() &&
-            material.expired() && masks.expired() && ripple.expired() &&
-            derived.expired(),
+            material.expired() && render.expired(),
         "lost geometry drops its bindings, inputs, and cached resources");
   const auto &output = actor.placements[0].outputs[0];
   Check(!output.stack && !output.rendered && output.renderFailed &&

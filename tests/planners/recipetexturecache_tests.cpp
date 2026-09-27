@@ -76,6 +76,15 @@ int main() {
   masks.emplace(RecipeTextureKey{"scratch", "mask", large}, nullptr);
   Check(LargestRecipeTexture(masks, "scratch", "mask") == scratch,
         "an incomplete larger entry does not hide a usable smaller target");
+  masks.emplace(RecipeTextureKey{"normal", "mask", large, 1}, scratch);
+  masks.emplace(RecipeTextureKey{"normal", "mask", small, 2}, normal);
+  Check(FindRecipeTexture(masks, "normal", "mask", large, 1) == scratch &&
+            !FindRecipeTexture(masks, "normal", "mask", large, 2),
+        "prepared masks stay isolated by application context");
+  Check(LargestRecipeTexture(masks, "normal", "mask", 1) == scratch &&
+            LargestRecipeTexture(masks, "normal", "mask", 2) == normal &&
+            LargestRecipeTexture(masks, "normal", "mask") == largeNormal,
+        "inspection selects only the requested application's cached result");
   masks.clear();
   Check(!FindRecipeTexture(masks, "normal", "mask", small) &&
             !LargestRecipeTexture(masks, "scratch", "mask"),

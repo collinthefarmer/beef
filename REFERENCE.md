@@ -5,7 +5,7 @@ otherwise have needed one for: engine and Community Shaders (CS) behaviour
 the bindings rely on, the decompile lines a port follows, binary layouts and
 constant-buffer packings, and the reasons behind constants. It is organised
 by module. The recipe format is `schema/recipe.schema.json`; `README.md` gives
-the reading order and `docs/README.md` indexes the rest. Third-party copies
+the reading order and lists every canon document. Third-party copies
 (`src/extern/`, `src/cs/BSLightingShaderMaterialPBR.h`) keep their own comments.
 
 Four sources cited below are not in the repository and never were: `NOTES.md`
@@ -146,12 +146,12 @@ to the logger alongside the file sink at plugin load.
   recipe instances under `PlanLights`; the two index spaces are now two
   types the compiler keeps apart.
 - `RowTypes` (in `Signals.h`, bundling the `Recipe` and its compiled
-  `SignalGraph`) carries the per-row type resolution and reference checks —
+  `RecipeGraph`) carries the per-row type resolution and reference checks —
   `TexelTypeOf`, `SignalTypeOf`, `NamesTrigger`, and the per-row `Check*`
   functions — as free functions. Validation and the studio's edit-time check
   both call them, so the three diverging copies the frozen tree carried
   (`Validator`, `CheckSourceKind`, `EditCheck`) become one. A curve on a
-  non-scalar signal is an error `SignalGraph::Compile` reports as a
+  non-scalar signal is an error `RecipeGraph::Compile` reports as a
   diagnostic, closing the frozen code's empty `if (n.curve && n.type !=
   kScalar) {}`.
 - `Visit.h` is the published recipe traversal: reach for a walker here before
@@ -350,10 +350,10 @@ content, so a pass with no firings paints it black.
 
 Classify pass: `centroidRmaos[8]` per cluster in analysis order (roughness,
 metallic, occlusion, reflectance); `centroidLuma[8]` x luma, y id;
-`classifyWeights` the four RMAOS weights; `classifyMisc` x luma weight, y
-cluster count. The RMAOS and diffuse maps at the mesh UV go to the nearest
+`centroidDiffuse[8]` RGB diffuse color; `clusterWeights` the four RMAOS
+weights; `clusterMisc` x luma weight, y cluster count, z color weight / 3. The RMAOS and diffuse maps at the mesh UV go to the nearest
 centroid by the distance `NearestCluster` (`mesh/MaterialClusters.cpp`) uses, the sum over
-five axes of weight x (texel - centroid)^2, the first of equals winning;
+eight axes of weight x (texel - centroid)^2, the first of equals winning;
 the CPU function is the reference and the shader must agree with it on a
 texel. The id is written as id / 255 grey. A weight that is not finite or
 not positive counts as zero on both sides.
@@ -818,11 +818,34 @@ Lab mechanics:
   `kPostLoadGame` resumes it. `kNewGame` clears then resumes. Tasks queued before
   clearing fail their generation check; ticks and new tasks are suppressed
   while loading. The player hook calls the prior update function first.
+- `WornKeysOf` collects every distinct valid `baseEffect` from the effective
+  worn-item enchantment's `effects` array. Null effect entries and null base
+  effects are skipped. This expands `magicEffect` matching and the editor's
+  available keys beyond the costliest effect. The adapter also collects each
+  effect's shader, preserving `ShaderFor(EffectSetting*)` precedence (enchant
+  visuals, then enchant shader). It does not inspect the wearer's active spells.
+- `EnchantmentValueFor` resolves the winning magic-effect or effect-shader key
+  against the enchantment's effect entries. Highest matching cost wins, with
+  first-entry ties; absent selected effects return zero. Non-effect selectors
+  keep the generic costliest-effect fallback. Planner instances and carried
+  clocks include the selected effect key to prevent sharing unrelated signals.
+- Recipe keyword entries are conjunctive requirements. Other key kinds remain
+  alternative selectors and determine the matched key's priority and fallback
+  classification; all-keyword recipes use their first keyword at priority 20.
+  Required keywords must resolve and match before a candidate can suppress a
+  fallback or enter sampling. Duplicate requirements do not require duplicate
+  keyword records on the armor.
 - CommonLib's `Actor::AddAnimationGraphEventSink` indexes `graphs.front()`
   without checking emptiness and both actor helpers scan the sink array without
   taking the event-source lock. This adapter instead checks graph pointers and
   calls the source's `AddEventSink`/`RemoveEventSink`, which lock and deduplicate
-  registrations. An empty graph list leaves the actor unwatched safely.
+  registrations. `AnimationSubscriptions` retains the first nonnull graph
+  until it removes its sink from that exact source. An empty graph list keeps
+  the participating actor tracked without attaching; once-per-second maintenance
+  retries graph discovery. Graph enumeration remains on the game thread, following
+  the existing adapter convention. The source lock protects registration and
+  callbacks, not the manager graph array; actual graph replacement timing still
+  requires in-game acceptance.
 - `ActorHandle::get()` returns an owning `NiPointer<Actor>`. The signal
   environment keeps that owner through each actor query; returning its raw
   pointer from a helper would release the reference before the query.
@@ -854,13 +877,42 @@ Decompile provenance (`decompiled/WornEnchantmentFX/plugin.c` unless noted):
   `OnFrame`.
 - Animation graph events arrive on the animation thread and reach the bus
   as `anim.<tag>` with the event's payload string as the trigger's arg;
-  watching is per actor and renewed on every apply, since a reloaded 3D
-  brings a new graph (NOTES 44). The vanilla hit event carries no position,
+  observation belongs to the actor rather than its current recipe bindings.
+  `RetireEffects` releases all recipe references before store publication while
+  retaining observation across the queued rebuild. `RunRefresh` reconciles the
+  final applied state; final retirement, failed rebuilds, unload and clear also
+  end observation and forget discovery. The maintenance pass cleans abandoned
+  rebuild gaps, including actors temporarily lacking a graph.
+- The animation sink copies tag and payload with a shared registration token.
+  Detach invalidates that token before removing the sink. Both the source lookup
+  mutex and the source's own lock can be used from animation callbacks; the owner
+  never holds its lookup mutex across `AddEventSink` or `RemoveEventSink`.
+  Subscription reconciliation and destruction belong to the game thread.
+  `ManagerAnimation` uses the existing session queue and validates actor identity,
+  registration and current graph before updating discovery and firing signals.
+  Session generation rejects queued work from old loads; registration validity
+  also rejects callbacks captured before detach but posted after resume.
+  Events delivered while effect state is absent are discarded, not replayed.
+  Discovery survives an ordinary rebuild and graph replacement; signal state
+  continues to rebuild normally.
+- `RetireAll` retains the existing two-stage queue ordering: it first collects
+  applied and observed actor IDs, then queues their retirements behind refreshes
+  posted by earlier edits. Retiring immediately in the collection task would
+  let those already queued refreshes recreate effects after retirement.
+- The destructor's `NOLINTNEXTLINE(bugprone-exception-escape)` is limited to
+  `AnimationSubscriptions`. The diagnostic follows CommonLib's
+  `RemoveEventSink` pending-removal allocation into Address Library's fatal
+  missing-relocation reporting, where formatting the fatal report can throw.
+  Swallowing a failed detach would leave an engine source pointing at a destroyed
+  sink. Teardown therefore keeps the normal nonthrowing destructor contract
+  and does not catch and continue after that unrecoverable dependency failure.
+  Ordinary detach is serialized by the source lock; callbacks only enqueue work.
+- The vanilla hit event carries no position,
   so `hit.received` and `hit.dealt` have none and a ripple starts at the
   piece's centre.
 - A recipe's clock survives a retire followed by a re-apply within
   `kCarryWindowMS` (an edit, an isolate, re-apply all), keyed by actor and
-  recipe id and enchantment form id. The enchantment id comes from the
+  recipe id, enchantment form id, and selected effect key. The enchantment id comes from the
   collected piece before engine lookup, so lookup failure does not merge it
   with an unenchanted instance. A piece put back on later starts fresh.
   `CarriedTimes` retains only owned keys and finite nonnegative seconds;
@@ -1053,22 +1105,12 @@ Decompile provenance (`decompiled/WornEnchantmentFX/plugin.c` unless noted):
 
 ## Compositor (`render/Compositor.cpp`, `CompositorSource.cpp`, `CompositorBake.cpp`)
 
-- A composited result that is identical across actors is shared, not
-  recomputed per geometry, through `AdoptSharedTarget(Shared, key, render)`
-  over a `planners/ResourceCache`. The result renders once inside the miss
-  supplier and every later geometry with the same key adopts the live
-  target; the target frees and returns its presenter slot when the last
-  holder retires. Each shareable kind contributes one cache member, one
-  `Shared` enum value, and one key builder that ends in
-  `TextureIdentity(TextureRef)` for the source identities. A stack shares
-  only when `ShareableAcrossActors` holds (static, no per-actor bake or
-  distance source); a cluster map shares unconditionally because it is
-  pure material analysis. This is distinct from `planners/TextureLeases`,
-  which is not a content cache: it keys a generated texture by its engine
-  presenter address so a consumer can re-`Retain` the same target by
-  identity. `ResourceCache` keys by content so different geometries reach
-  the same target; both hold the target by `weak_ptr` so the pool reclaims
-  it on the last drop.
+- Render scheduling is a validated `RenderPlan` with one `RenderInstance` per
+  geometry. Produced targets are retained by typed step results; `RenderScratch`
+  has a weak reuse hint, never a second owning allocation table. Texture leases
+  retain storage for publication and previews after execution ownership ends.
+  Shared plan dependencies replace recursive mask/ripple preparation and the
+  compositor's cross-actor target caches.
 - Many PBR sets ship a displacement map that is a real texture and
   entirely black; a map is flat when its mean sits at either end (NOTES
   46) — at or below 0.02, or at or above 0.98 (`render/CompositorSource.cpp`)
@@ -1078,35 +1120,25 @@ Decompile provenance (`decompiled/WornEnchantmentFX/plugin.c` unless noted):
   neutral 0.5 target because CS offsets parallax by (height - 0.5) x scale
   (NOTES 50); the `relief` channel reads displacement when it is real and
   occlusion otherwise.
-- A colour field is normalised by 0.5 / its mean luminance, so a map of any
-  brightness arrives at mid grey; mask data is not. The mean is floored at 0.05
-  (`render/CompositorSource.cpp`), which caps the factor at ten and keeps a
-  near-black map from dividing by nothing. The floor is carried unchanged from
-  the frozen `src/_old/Compositor.cpp`; why 0.05 rather than another floor is
-  not recorded. A mask that is exactly one material channel reads the map
-  directly; any other expression renders through the interpreter.
-- A stack on a slot that edits an existing map renders at that map's own
-  resolution, clamped between the requested size and the maximum; other
-  slots start from black at the requested size. Writes alternate between
-  the stack's target and the lab's scratch, and the last layer must land in
-  the stack's own target: the first write is chosen by the parity of the
-  shown layer count for that reason. Chaining depends on it. A stack given
-  another stack's texture as its base reads that stack's own target while
-  ping-ponging through the shared scratch, so the two never collide.
-- A rendered mask is entered in the cache before its dependencies recurse,
-  so a cycle finds an unfinished mask and stops. Depth is bounded at
-  preparation by `kMaxMaskDepth` (8, `render/CompositorSource.cpp`), which
-  reports "masks nest deeper than 8" and leaves the mask inert; the interpreter
-  refuses a mask that reads more names, images or curves than the pass holds.
-  The bound is carried unchanged from the frozen `src/_old/Compositor.cpp`; no
-  source records why 8.
-- The cluster map is rendered under a source's settings and replaced when
-  another source asks for other settings, so a source that reads it must
-  hold the returned target for as long as it samples it.
-- Known debt: `PreparedSource` (`Compositor.h`) is texture-shaped, with one
-  `shared_ptr` per non-texture kind (`rendered`, `ripple`). A procedural
-  source kind would add a third. Reshaping it is render work with its own
-  in-game checkpoint and is deferred (critique Plan B, out of scope).
+- An RGB image field is normalized by `0.5 / max(mean(luminance), 0.05)`.
+  The projection uses the compatibility weights 0.299, 0.587 and 0.114. The graph
+  now carries this measurement and expression explicitly. The original 0.05
+  floor caps gain at ten; the historical reason for that threshold is unknown.
+- Stack composition alternates between its retained target and the lab's shared
+  scratch. Initial parity ensures the final layer lands in the retained target;
+  a preceding stack remains separate from both destinations.
+- Reductions measure all requested texel centers, including uncovered texels,
+  using float intermediates and synchronous base-level readback. Double-precision
+  row-major accumulation defines sum and mean. Missing/non-finite measurements
+  fail instead of using a fallback. Float scratch prevents bake dilation from
+  introducing an extra RGBA8 quantization into the measurement path.
+- Imported inputs remain stable during one synchronous execution request. A
+  per-request refresh set bounds shared DAG traversal by its edges, avoiding
+  repeated descent through already-validated dependencies.
+- A changed field may have an unchanged reduction result. Its lookup then remains
+  cached while mapping consumes the new field. Revisions describe observed input
+  changes rather than frame counts. Visibility selects dependencies before they
+  are evaluated; all-hidden success is distinct from an unavailable result.
 
 ## Recipe format details beyond the schema (`Recipe.h`, `RecipeRead.cpp`, `RecipeWrite.cpp`)
 
@@ -1367,7 +1399,7 @@ Decompile provenance (`decompiled/WornEnchantmentFX/plugin.c` unless noted):
 - Edit-time validation (`Edits.cpp`) reuses the `recipe/Signals.h` `RowTypes`
   checks (`CheckLayer`/`CheckSource`/`CheckMask`/`CheckCurve`/`CheckOutput`); an
   edit is refused only when it introduces a new diagnostic, so the editor cannot
-  accept a value the loader rejects. `Apply` compiles a `SignalGraph` for edits
+  accept a value the loader rejects. `Apply` compiles a `RecipeGraph` for edits
   that need typed-row checks: an interactive edit-time path, not per-tick. No
   public shell row-check exists, so shell scalar/vector reference type-checks
   compose the public `SignalTypeOf` query directly; route them through a
@@ -1739,3 +1771,71 @@ Vendored files retain their exact upstream bytes. `render/PBRMaterial.h`
 separately references the Community Shaders-derived material's upstream terms.
 `COPYING.md` participates in build identity so a changed permission produces a
 new candidate identity, and is shipped in source, mod, symbols and staging.
+
+## Paint source retention (2026-09-25)
+
+A paint session retains generated definitions so mask undo can reconstruct old
+terms. `PaintDependencies` selects only definitions referenced by current term
+expressions for preview and Keep requests, including muted and non-solo terms and the current peek.
+Historical definitions are not live recipe dependencies. A malformed term keeps
+the catalog conservatively until expression validation reports the problem.
+
+When Keep replaces a mask, `KeepEdits` checks the prepared recipe's reference
+counts and removes direct source dependencies abandoned by that mask only when
+no other recipe row references them. Unrelated unused author-created sources
+are preserved. The removals share the mask edit's document undo transaction.
+Existing unrelated orphan rows are not swept retroactively.
+
+## Material terms and diffuse color (2026-09-25)
+
+Cluster IDs are local ranks within each geometry's independently sampled
+material; a `ClusterTerm` contains settings and an ID, not a geometry selector.
+Identical material terms therefore produce identical recipe expressions even
+when offered by different geometries. `OffersOfRecipe` consolidates these
+operations, retains a common description/coverage when equal, and explicitly
+reports varying appearance otherwise. Parts, charts and other geometry offers
+retain their existing behavior.
+
+Diffuse color adds three axes to the existing four RMAOS axes and diffuse luma.
+`weights.color` defaults to 1 and weights the mean squared RGB distance, so RGB
+as a group has the same maximum contribution as one scalar channel. Luma remains
+independently adjustable. Color 0 restores the prior distance metric. CPU sample
+readback, centroids, GPU constant layout, nearest-cluster shader and cluster-map
+cache identity all carry color. Existing recipes that omit color now use it and
+may receive different cluster IDs; this is an intentional pre-alpha behavior
+change. The five-value source weights field retains its order, with a separate
+color field, while term tuning exposes all six weights individually.
+
+## Unified recipe graph and signal execution
+
+`RecipeGraph` owns copied authored rows and compiled programs. Named curves and
+anonymous inline curves are function-domain nodes in the same graph as value
+expressions. Dependencies and function calls use indices into that graph, so
+copying a compiled graph does not retain pointers into the original.
+
+`SignalState` borrows an immutable graph that must remain at the same address
+and outlive it. Construction binds signal parameter references and function
+program pointers into that graph and allocates expression scratch. A graph
+may be copied or moved before constructing its state; existing states must be
+rebuilt after graph replacement. The engine instance holds shared ownership
+of its graph alongside its state. Renderer signal handles belong to that same
+instance graph.
+
+`CheckSourceInputs` performs typed source checks without compiling a candidate.
+The graph compiler uses it during analysis. Editor-facing `CheckSource` also
+compiles changed candidate rows, so using it inside compilation would recurse
+for duplicate authored source names with different definitions.
+
+Function nodes currently implement the scalar curve contract: scalar `x` and
+`mean`, a scalar result, no row reads or nested function calls. `time` has no
+binding at this execution site and is rejected instead of silently reading
+zero. These are validation rules on the common program representation, not a
+second compiled expression payload.
+
+Prepared mask and ripple cache keys include the application context (instance
+index plus one) within one geometry's cache. Preparation and inspection supply
+the same context. Geometry retirement clears these caches before instance
+indices are reused. Global static-target sharing additionally requires that
+the compiled signals equal the authored signals used in the existing cache
+key; variant overrides conservatively disable that sharing until effective
+computation identities replace recipe-based keys.

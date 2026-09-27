@@ -137,13 +137,25 @@ namespace {
 std::optional<RecipeKey> StrongestMatchingKey(const Recipe &a_recipe,
                                               const WornPiece &a_piece) {
   std::optional<RecipeKey> best;
+  std::optional<RecipeKey> keyword;
+  bool hasSelectionKey = false;
   for (const RecipeKey &key : a_recipe.keys) {
+    if (key.kind == KeyKind::kKeyword) {
+      if (!KeyMatches(key, a_piece)) {
+        return std::nullopt;
+      }
+      if (!keyword) {
+        keyword = key;
+      }
+      continue;
+    }
+    hasSelectionKey = true;
     if (KeyMatches(key, a_piece) &&
         (!best || DefaultPriority(key.kind) > DefaultPriority(best->kind))) {
       best = key;
     }
   }
-  return best;
+  return hasSelectionKey ? best : keyword;
 }
 
 std::vector<ResolvedRecipe> MatchingRecipes(const WornPiece &a_piece,

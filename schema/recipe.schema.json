@@ -14,8 +14,8 @@
     "version": { "type": "string" },
     "imported": { "type": "string", "description": "\"<plugin> <version>\": written by the importer; present means generated and not yet edited. Delete it on taking ownership; a menu save drops it." },
     "meta": { "type": "object", "description": "Free-form, kept verbatim through load and save." },
-    "keys": { "type": "array", "maxItems": 4096, "minItems": 1, "items": { "$ref": "#/$defs/key" } },
-    "priority": { "type": "integer", "minimum": -2147483648, "maximum": 2147483647, "description": "Composition order per placement, lower first; ties use definition load order. Sampling is independent of priority. Default by the strongest matched key's kind: default 0, enchanted 5, material 10, keyword 20, armor 30, effectShader 40, enchantment 50, magicEffect 60." },
+    "keys": { "type": "array", "maxItems": 4096, "minItems": 1, "items": { "$ref": "#/$defs/key" }, "description": "Every keyword entry is required. If non-keyword entries exist, at least one must also match; otherwise all keywords alone select the recipe. magicEffect matches any base effect on the worn item's enchantment, not active spells on the wearer. effectShader matches any enchantment effect's shader. Winning effect keys scope enchantment magnitude/cost to their matching effect. Non-keyword matches determine priority; keyword-only recipes default to 20." },
+    "priority": { "type": "integer", "minimum": -2147483648, "maximum": 2147483647, "description": "Composition order per placement, lower first; ties use definition load order. Sampling is independent of priority. Default by the strongest matched non-keyword selector, or keyword for a keyword-only recipe: default 0, enchanted 5, material 10, keyword 20, armor 30, effectShader 40, enchantment 50, magicEffect 60." },
     "merge": { "enum": ["stack", "replace", "sampled"], "description": "Different identities sharing keys participate independently. stack appends recipe groups; replace clears preceding groups on each selected geometry/surface/slot and on the actor-wide light target when an eligible light exists, preserving sibling outputs and enchantment instances. sampled selects one alternative per piece from canonically sorted recipe identities using a fixed actor-form-ID hash, independent of priority and file order. Same-identity later files replace definitions." },
     "clock": {
       "type": "object", "additionalProperties": false,
@@ -195,7 +195,8 @@
                 "properties": {
                   "roughness": { "$ref": "#/$defs/number", "minimum": 0, "maximum": 10, "default": 1 }, "metallic": { "$ref": "#/$defs/number", "minimum": 0, "maximum": 10, "default": 1 },
                   "occlusion": { "$ref": "#/$defs/number", "minimum": 0, "maximum": 10, "default": 0.5 }, "reflectance": { "$ref": "#/$defs/number", "minimum": 0, "maximum": 10, "default": 0.5 },
-                  "luma": { "$ref": "#/$defs/number", "minimum": 0, "maximum": 10, "default": 1 } } },
+                  "luma": { "$ref": "#/$defs/number", "minimum": 0, "maximum": 10, "default": 1 },
+                  "color": { "$ref": "#/$defs/number", "minimum": 0, "maximum": 10, "default": 1, "description": "Diffuse RGB distance, averaged over three channels." } } },
               "seed": { "type": "integer", "minimum": 0, "maximum": 2147483647, "default": 1, "description": "The same seed and sample give the same clusters." },
               "iterations": { "type": "integer", "minimum": 1, "maximum": 256, "default": 32, "description": "The k-means cap." } } } } }
       ]

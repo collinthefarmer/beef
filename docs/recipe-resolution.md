@@ -43,8 +43,33 @@ piece. Several matching keys on one recipe still select that recipe once.
 Two different recipe identities may both match an identical key, regardless
 of merge mode. Do not emit an ownership warning for that overlap.
 
-Choose the recipe's strongest matching key by the default priorities below;
-ties retain its first matching key in recipe order. An explicit recipe
+Every `keyword` entry is a required condition: the worn armor must contain all
+listed keywords. A missing or unresolved keyword excludes the recipe even when
+an armor, enchantment, or magic-effect key matches. Repeated keyword entries do
+not require repeated keywords on the armor.
+
+When non-keyword entries exist, at least one of them must also match. They remain
+alternatives. When only keyword entries exist, satisfying all of them selects the
+recipe. An empty key list never selects a recipe.
+
+`magicEffect` matches any valid base effect in the worn item's effective
+enchantment, including secondary effects. Duplicate base effects are collected
+once. `effectShader` matches the shader of any valid enchantment effect, using
+that effect's enchant visuals shader, then its enchant shader. Neither key
+inspects active spells on the wearer.
+
+When the winning key is `magicEffect` or `effectShader`, the `enchantment`
+signal's magnitude and cost come from that matching effect. If several effect
+entries match the winning key, use the highest-cost matching entry, retaining
+the first on a tie. A missing selected effect produces zero. Other winning key
+kinds identify no particular effect and use the enchantment's costliest effect.
+Evaluation state and carried clocks distinguish selected effect keys, so one
+recipe can safely select different effects on different placements.
+
+Choose the strongest matching non-keyword entry by the default priorities below;
+ties retain the first matching entry in recipe order. Keyword-only recipes report
+their first keyword and default to priority 20. Keywords used as conditions do not
+raise a material or default selector's priority. An explicit recipe
 priority changes composition precedence, not which key is reported.
 
 Preserve fallback behavior before sampling:
@@ -172,7 +197,7 @@ scope of the existing light planner; it is not a per-material-slot operation.
 The existing one-light-output-per-recipe restriction remains in force.
 
 Group eligible light contributions by recipe identity, retaining the separate
-recipe/enchantment instances needed for their signal inputs and placements.
+recipe/enchantment/effect-context instances needed for their signal inputs and placements.
 For ordering this actor-wide group, use the maximum effective priority among
 its contributing placements, followed by definition load order. This aggregate
 is local to the light plan and never changes a surface placement's priority.
@@ -216,7 +241,13 @@ same piece, and have eligible outputs. Listed precedence runs low to high.
 | A and B share that key, both sampled | Both enter the pool; exactly one participates. |
 | Sampled A/B plus ordinary C sharing that key | One of A/B plus C participates. C does not own the key exclusively. |
 | Reorder A/B files or change their priorities | Sampling choice stays fixed for the same actor and pool. Composition order may change. |
-| Same recipe matches several keys | One candidate, strongest matching key, no extra sampling weight. |
+| Keywords A and B, armor X; piece has X and only A | Nonmatching: armor identity cannot bypass B. |
+| Keywords A and B, armor X; piece has A and B but not X | Nonmatching: keyword conditions do not replace the armor selector. |
+| Keywords A and B only; piece has both | Select once at keyword priority 20. |
+| Keyword A plus material selector; both match | Select at material priority 10; A is a condition. |
+| Magic effect M appears as a secondary enchantment effect | Select the recipe; a valid specific match suppresses generic fallbacks. |
+| Specific effect matches but a required keyword is missing | Nonmatching; does not suppress fallbacks or enter the sampled pool. |
+| Same recipe matches several non-keyword entries | One candidate, strongest matching entry, no extra sampling weight. |
 | A resolves at 10 on gloves and 60 on boots; B is 30 | Gloves compose A then B; boots compose B then A. Shared evaluation state does not alter this. |
 | A/B/C target emissive; B replaces | B and C survive; A is displaced. |
 | B replaces emissive while A also writes diffuse | A's diffuse survives. |
@@ -233,7 +264,14 @@ same piece, and have eligible outputs. Listed precedence runs low to high.
 ## Compatibility and verification boundary
 
 This is an intentional pre-alpha behavior change within recipe format 1;
-the wire fields do not change. A differently named recipe sharing a key no
+the wire fields do not change. Keyword entries now form required conditions,
+so recipes previously using keywords as alternatives become more restrictive;
+use separate recipe identities for those alternatives. Magic-effect and
+effect-shader keys now also match secondary enchantment effects, so existing
+recipes may apply to more items. Their magnitude/cost signals follow the winning
+effect key, which can change output values and split previously shared state. Mixed keyword/selector recipes derive priority and fallback classification
+from their matching non-keyword selector. Review existing mixed-key examples
+before accepting the release candidate. A differently named recipe sharing a key no
 longer silently overrides another. To replace a definition, keep its identity.
 To replace earlier contributions on selected targets, use merge/output replace.
 To provide alternatives, give them distinct identities and sampled mode.

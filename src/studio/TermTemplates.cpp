@@ -502,6 +502,7 @@ std::vector<TermField> ClusterForm(const ClusterTerm &a_term) {
   weight("occlusion", &ChannelWeights::occlusion);
   weight("reflectance", &ChannelWeights::reflectance);
   weight("luma", &ChannelWeights::luma);
+  weight("color", &ChannelWeights::color);
   form.push_back(Setting<ClusterTerm>(
       a_term,
       TextEntryField({.name = "seed",
@@ -781,6 +782,27 @@ std::vector<TermOffer> OffersOfRecipe(const MaskPresets &a_presets,
     for (TermOffer &offer :
          OffersOf(a_presets, a_recipe, geometry, a_editing)) {
       const OfferGroupSpec *row = RowOf(kOfferGroups, offer.group);
+      if (offer.group == OfferGroup::kMaterials) {
+        auto existing =
+            std::ranges::find_if(all, [&](const TermOffer &a_offer) {
+              return a_offer.group == OfferGroup::kMaterials &&
+                     a_offer.kind == offer.kind;
+            });
+        if (existing != all.end()) {
+          if (existing->unavailable && !offer.unavailable) {
+            *existing = std::move(offer);
+          } else if (!existing->unavailable && !offer.unavailable) {
+            existing->geometry.clear();
+            if (existing->detail != offer.detail) {
+              existing->detail = "appearance varies by geometry";
+            }
+            if (existing->coverage != offer.coverage) {
+              existing->coverage.reset();
+            }
+          }
+          continue;
+        }
+      }
       if (first || (row && row->ofGeometry)) {
         all.push_back(std::move(offer));
       }

@@ -38,7 +38,7 @@ struct RecipeOrigin {
 [[nodiscard]] std::optional<RecipeOrigin>
 OriginOf(const Recipe &a_recipe) noexcept;
 
-[[nodiscard]] std::shared_ptr<const SignalGraph>
+[[nodiscard]] std::shared_ptr<const RecipeGraph>
 GraphFor(const Recipe &a_recipe);
 [[nodiscard]] const Studio::ReferenceCounts *
 ReferencesOf(std::string_view a_id) noexcept;

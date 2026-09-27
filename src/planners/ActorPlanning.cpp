@@ -79,12 +79,18 @@ std::optional<int> EligibleLightPriority(const ActorPlan &a_plan,
 
 [[nodiscard]] InstanceId
 InstanceFor(ActorPlan &a_plan, RecipeId a_recipe,
-            const std::optional<FormKey> &a_enchantment) {
+            const std::optional<FormKey> &a_enchantment,
+            const RecipeKey &a_key) {
+  const std::optional<RecipeKey> effectKey =
+      a_key.kind == KeyKind::kMagicEffect ||
+              a_key.kind == KeyKind::kEffectShader
+          ? std::optional<RecipeKey>{a_key}
+          : std::nullopt;
   if (const std::optional<InstanceId> existing =
-          FindInstance(a_plan, a_recipe, a_enchantment)) {
+          FindInstance(a_plan, a_recipe, a_enchantment, effectKey)) {
     return *existing;
   }
-  a_plan.instances.push_back(Instance{a_recipe, a_enchantment});
+  a_plan.instances.push_back(Instance{a_recipe, a_enchantment, effectKey});
   return InstanceId{a_plan.instances.size() - 1};
 }
 }
@@ -103,7 +109,7 @@ ActorPlan MatchActor(std::span<const Geometry> a_geometries,
         continue;
       }
       const InstanceId instance =
-          InstanceFor(plan, *recipe, geometry.keys.enchantment);
+          InstanceFor(plan, *recipe, geometry.keys.enchantment, resolved.key);
       Placement placement;
       placement.instance = instance;
       placement.geometry = GeometryId{p};

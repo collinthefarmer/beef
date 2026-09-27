@@ -480,6 +480,7 @@ struct ChannelWeights {
   float occlusion = 0.5f;
   float reflectance = 0.5f;
   float luma = 1.0f;
+  float color = 1.0f;
   [[nodiscard]] bool operator==(const ChannelWeights &) const = default;
 };
 struct ClusterSettings {
@@ -504,6 +505,7 @@ inline constexpr ClusterWeightField kClusterWeightFields[]{
     {"occlusion", &ChannelWeights::occlusion},
     {"reflectance", &ChannelWeights::reflectance},
     {"luma", &ChannelWeights::luma},
+    {"color", &ChannelWeights::color},
 };
 
 using SourceKind =
@@ -980,14 +982,14 @@ Validate(const Recipe &a_recipe,
 [[nodiscard]] std::vector<Diagnostic> CheckRecipeFields(const Recipe &a_recipe);
 
 struct WornPiece {
-  std::optional<FormKey> magicEffect;
+  std::vector<FormKey> magicEffects;
   std::optional<FormKey> enchantment;
-  std::optional<FormKey> effectShader;
+  std::vector<FormKey> effectShaders;
   std::optional<FormKey> armor;
   std::vector<FormKey> keywords;
   std::vector<std::string> diffusePaths;
   [[nodiscard]] bool Enchanted() const noexcept {
-    return magicEffect || enchantment || effectShader;
+    return !magicEffects.empty() || enchantment || !effectShaders.empty();
   }
 };
 

@@ -23,7 +23,7 @@ struct RecipeRowInput {
   std::size_t undoDepth = 0;
   std::size_t redoDepth = 0;
   const ReferenceCounts &references;
-  const SignalGraph *graph = nullptr;
+  const RecipeGraph *graph = nullptr;
   const SignalState *signals = nullptr;
   std::span<const Diagnostic> problems;
 };

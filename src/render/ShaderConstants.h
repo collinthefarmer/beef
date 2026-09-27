@@ -2,7 +2,7 @@
 #pragma once
 
 #include "mesh/MaterialClusters.h"
-#include "recipe/Expression.h"
+#include "planners/InterpreterProgram.h"
 
 namespace BetterEnchantmentEffects {
 struct alignas(16) LayerConstants {
@@ -26,17 +26,17 @@ struct alignas(16) ProgramConstants {
   float misc[4];
 };
 static_assert(sizeof(ProgramConstants) % 16 == 0);
-static_assert(static_cast<int>(Program::Op::kNumber) == 0 &&
-              static_cast<int>(Program::Op::kRef) == 3 &&
-              static_cast<int>(Program::Op::kIf) == 22 &&
-              static_cast<int>(Program::Op::kClamp) == 26 &&
-              static_cast<int>(Program::Op::kStep) == 35 &&
-              static_cast<int>(Program::Op::kLerp) == 37 &&
-              static_cast<int>(Program::Op::kLength) == 38 &&
-              static_cast<int>(Program::Op::kDistance) == 39 &&
-              static_cast<int>(Program::Op::kDot) == 40 &&
-              static_cast<int>(Program::Op::kCross) == 41 &&
-              static_cast<int>(Program::Op::kNormalize) == 42);
+static_assert(static_cast<int>(InterpreterOpcode::kNumber) == 0 &&
+              static_cast<int>(InterpreterOpcode::kInput) == 3 &&
+              static_cast<int>(InterpreterOpcode::kIf) == 22 &&
+              static_cast<int>(InterpreterOpcode::kClamp) == 26 &&
+              static_cast<int>(InterpreterOpcode::kStep) == 35 &&
+              static_cast<int>(InterpreterOpcode::kLerp) == 37 &&
+              static_cast<int>(InterpreterOpcode::kLength) == 38 &&
+              static_cast<int>(InterpreterOpcode::kDistance) == 39 &&
+              static_cast<int>(InterpreterOpcode::kDot) == 40 &&
+              static_cast<int>(InterpreterOpcode::kCross) == 41 &&
+              static_cast<int>(InterpreterOpcode::kNormalize) == 42);
 
 struct alignas(16) RippleConstants {
   float firings[8][4];
@@ -48,6 +48,7 @@ struct alignas(16) RippleConstants {
 struct alignas(16) ClusterConstants {
   float centroidRmaos[kMaxMaterialClusters][4];
   float centroidLuma[kMaxMaterialClusters][4];
+  float centroidDiffuse[kMaxMaterialClusters][4];
   float weights[4];
   float misc[4];
 };

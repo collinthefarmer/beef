@@ -645,7 +645,7 @@ bool ClusterWeightsFrom(Reader &a_r, MaterialClustersSource &a_k,
   }
   if (!w->is_object()) {
     a_ctx.Error("'weights' is an object of roughness, metallic, occlusion, "
-                "reflectance and luma");
+                "reflectance, luma and color");
     return false;
   }
   bool ok = true;

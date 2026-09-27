@@ -324,7 +324,7 @@ int main() {
     "uvSrc":    { "bake": "uv" },
     "distNode": { "distance": "NPC Root [Root]" },
     "ripSrc":   { "ripple": { "trigger": "@trig", "speed": 90.0, "width": 8.0, "decay": 1.2, "shape": "disc" } },
-    "clusters": { "materialClusters": { "clusters": 3, "weights": { "roughness": 2.0, "luma": 0.5 }, "seed": 9, "iterations": 64 } }
+    "clusters": { "materialClusters": { "clusters": 3, "weights": { "roughness": 2.0, "luma": 0.5, "color": 2.5 }, "seed": 9, "iterations": 64 } }
   }
 })";
     const Recipe r =

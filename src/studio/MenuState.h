@@ -105,6 +105,8 @@ struct MenuState {
   return state;
 }
 
+[[nodiscard]] std::vector<RecipeEdit>
+PaintDependencies(const MenuState &a_state);
 [[nodiscard]] SourceCatalog PaintSources(const MenuState &a_state,
                                          const RecipeRow &a_recipe,
                                          const Intents &a_pending);

@@ -192,6 +192,58 @@ TextureLab::ReadBuffer(REX::W32::ID3D11Buffer *a_buffer,
   return out;
 }
 
+std::expected<Value, std::string> TextureLab::ReduceField(RenderTarget &target,
+                                                          ReductionKind kind,
+                                                          ValueType type) {
+  ReadbackMeter meter{"reduction"};
+  const RendererLock rendererLock{&meter};
+  if (!available_ || !borrowedDevice_ || !borrowedContext_ ||
+      !target.texture.Get())
+    return std::unexpected("reduction texture is unavailable");
+  D3D11_TEXTURE2D_DESC desc{};
+  target.texture->GetDesc(&desc);
+  if (desc.format != DXGI_FORMAT_R32G32B32A32_FLOAT || !desc.width ||
+      !desc.height || desc.width > 4096 || desc.height > 4096)
+    return std::unexpected("reduction requires a bounded float field");
+  auto stagingDesc = desc;
+  stagingDesc.mipLevels = 1;
+  stagingDesc.arraySize = 1;
+  stagingDesc.usage = D3D11_USAGE_STAGING;
+  stagingDesc.bindFlags = 0;
+  stagingDesc.miscFlags = 0;
+  stagingDesc.cpuAccessFlags = D3D11_CPU_ACCESS_READ;
+  ComPtr<REX::W32::ID3D11Texture2D> staging;
+  if (Failed(borrowedDevice_->CreateTexture2D(&stagingDesc, nullptr,
+                                              staging.GetAddressOf())))
+    return std::unexpected("reduction staging allocation failed");
+  const UnconditionalReadback unconditional{borrowedContext_};
+  borrowedContext_->CopySubresourceRegion(staging.Get(), 0, 0, 0, 0,
+                                          target.texture.Get(), 0, nullptr);
+  const ReadMapping mapped{borrowedContext_, staging.Get(), meter};
+  const auto *rows = mapped.Data();
+  if (!rows || mapped.RowPitch() < static_cast<std::size_t>(desc.width) * 16)
+    return std::unexpected("reduction readback failed");
+  FieldReduction reduction{kind, type};
+  for (std::uint32_t y = 0; y < desc.height; ++y) {
+    for (std::uint32_t x = 0; x < desc.width; ++x) {
+      std::array<float, 4> pixel{};
+      std::memcpy(pixel.data(),
+                  rows + static_cast<std::size_t>(y) * mapped.RowPitch() +
+                      static_cast<std::size_t>(x) * sizeof(pixel),
+                  sizeof(pixel));
+      Value value = pixel[0];
+      if (type == ValueType::kVec2)
+        value = Vec2{pixel[0], pixel[1]};
+      if (type == ValueType::kVec3)
+        value = Vec3{pixel[0], pixel[1], pixel[2]};
+      if (auto added = reduction.Add(value); !added)
+        return std::unexpected(added.error());
+    }
+  }
+  meter.Succeeded(static_cast<std::size_t>(desc.width) * desc.height * 16);
+  return reduction.Result();
+}
+
 std::optional<float> TextureLab::ReadBackMean(RenderTarget &a_target) {
   ReadbackMeter meter{"mean"};
   const RendererLock rendererLock{&meter};

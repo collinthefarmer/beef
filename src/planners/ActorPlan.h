@@ -26,6 +26,7 @@ struct Geometry {
 struct Instance {
   RecipeId recipe{};
   std::optional<FormKey> enchantment;
+  std::optional<RecipeKey> effectKey{};
   [[nodiscard]] bool operator==(const Instance &) const = default;
 };
 
@@ -64,7 +65,8 @@ struct ActorPlan {
 [[nodiscard]] bool AnyLiveGeometry(const ActorPlan &a_plan) noexcept;
 [[nodiscard]] std::optional<InstanceId>
 FindInstance(const ActorPlan &a_plan, RecipeId a_recipe,
-             const std::optional<FormKey> &a_enchantment) noexcept;
+             const std::optional<FormKey> &a_enchantment,
+             const std::optional<RecipeKey> &a_effectKey = {}) noexcept;
 [[nodiscard]] std::vector<RecipeId>
 RecipesOfInactiveInstances(const ActorPlan &a_plan);
 [[nodiscard]] std::vector<PlacementId>

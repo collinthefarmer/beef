@@ -26,19 +26,4 @@ TextureRef MaterialTexture(MaterialMap a_map,
   return nullptr;
 }
 
-TextureLab::LayerInput ResolveSampling(const PreparedSource &a_source,
-                                       const SignalState &a_signals) {
-  TextureLab::LayerInput input = a_source.sampling;
-  if (a_source.scroll) {
-    const Vec2 scroll = a_signals.Resolve(*a_source.scroll);
-    input.transform.uOffset = scroll.x;
-    input.transform.vOffset = scroll.y;
-  }
-  if (a_source.tile) {
-    const Vec2 tile = a_signals.Resolve(*a_source.tile);
-    input.transform.tileU = std::max(tile.x, 0.01f);
-    input.transform.tileV = std::max(tile.y, 0.01f);
-  }
-  return input;
-}
 }

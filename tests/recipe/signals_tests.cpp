@@ -13,6 +13,12 @@ using test::Check;
 using test::Near;
 
 namespace {
+RecipeGraph CompileSignals(std::span<const Signal> signals) {
+  Recipe recipe;
+  recipe.signals.assign(signals.begin(), signals.end());
+  return RecipeGraph::Compile(recipe);
+}
+
 class FakeEnvironment final : public SignalEnvironment {
 public:
   std::unordered_map<std::string, float> actorValues;
@@ -59,9 +65,9 @@ bool HasMessage(const std::vector<Diagnostic> &a_diagnostics,
   return HasMessage(std::span<const Diagnostic>{a_diagnostics}, a_needle);
 }
 
-std::size_t OrderPosition(const SignalGraph &a_graph, std::string_view a_name) {
-  const auto idx = a_graph.Index(a_name);
-  const auto order = a_graph.Order();
+std::size_t OrderPosition(const RecipeGraph &a_graph, std::string_view a_name) {
+  const auto idx = a_graph.FindNodeIndex(a_name);
+  const auto order = a_graph.DependencyOrder();
   for (std::size_t p = 0; p < order.size(); ++p) {
     if (idx && order[p] == *idx) {
       return p;
@@ -75,7 +81,7 @@ int main() {
   {
     std::vector<Signal> signals{Const("a", 5.0f), Expr("b", "@a + 1"),
                                 Expr("c", "@b + 1")};
-    const auto graph = SignalGraph::Compile(signals, {});
+    const auto graph = CompileSignals(signals);
     Check(graph.Diagnostics().empty(),
           "a clean chain compiles without diagnostics");
     Check(OrderPosition(graph, "a") < OrderPosition(graph, "b"),
@@ -92,10 +98,10 @@ int main() {
 
   {
     std::vector<Signal> signals{Expr("a", "@b"), Expr("b", "@a")};
-    const auto graph = SignalGraph::Compile(signals, {});
+    const auto graph = CompileSignals(signals);
     Check(HasMessage(graph.Diagnostics(), "cycle"),
           "a two-signal cycle is reported");
-    Check(graph.Inert(0) && graph.Inert(1),
+    Check(graph.IsDisabled(0) && graph.IsDisabled(1),
           "both signals in the cycle are inert");
   }
 
@@ -107,7 +113,7 @@ int main() {
           Expr("s" + std::to_string(i), "@s" + std::to_string(i + 1)));
     }
     signals.push_back(Const("s39", 1.0f));
-    const auto graph = SignalGraph::Compile(signals, {});
+    const auto graph = CompileSignals(signals);
     Check(HasMessage(graph.Diagnostics(), "deeper than"),
           "a chain past the depth bound is rejected, not overflowed");
   }
@@ -118,7 +124,7 @@ int main() {
                std::nullopt},
         Signal{"p", WaveSignal{0.0f, 1.0f, Ref{"rate"}, 0.0f, Waveform::kSaw},
                std::nullopt}};
-    const auto graph = SignalGraph::Compile(signals, {});
+    const auto graph = CompileSignals(signals);
     Check(graph.Diagnostics().empty(),
           "a wave driven by a scalar signal compiles");
     SignalState state{graph};
@@ -137,7 +143,7 @@ int main() {
   {
     std::vector<Signal> signals{
         Signal{"r", RampSignal{0.0f, 10.0f, 2.0f}, std::nullopt}};
-    const auto graph = SignalGraph::Compile(signals, {});
+    const auto graph = CompileSignals(signals);
     SignalState state{graph};
     NullEnvironment environment;
     state.Tick(environment, TickInputs{1.0f, 0.0f});
@@ -156,7 +162,7 @@ int main() {
         Signal{"count", CounterSignal{Ref{"hit"}, std::nullopt, std::nullopt},
                std::nullopt},
         Signal{"acc", AccumulateSignal{Ref{"hit"}, 1.0f}, std::nullopt}};
-    const auto graph = SignalGraph::Compile(signals, {});
+    const auto graph = CompileSignals(signals);
     Check(graph.Diagnostics().empty(), "triggers and their readers compile");
     SignalState state{graph};
     NullEnvironment environment;
@@ -183,7 +189,7 @@ int main() {
                std::nullopt},
         Signal{"hit", TriggerSignal{EventOrigin{"myMod.*", {}}, 1.0f, 4},
                std::nullopt}};
-    const auto graph = SignalGraph::Compile(signals, {});
+    const auto graph = CompileSignals(signals);
     Check(graph.Diagnostics().empty(), "a plugin trigger compiles");
     SignalState state{graph};
     EventRecord fromPlugin;
@@ -206,7 +212,7 @@ int main() {
                std::nullopt},
         Signal{"power", EnchantmentSignal{EnchantmentField::kMagnitude},
                std::nullopt}};
-    const auto graph = SignalGraph::Compile(signals, {});
+    const auto graph = CompileSignals(signals);
     SignalState state{graph};
     FakeEnvironment environment;
     environment.state = 1.0f;
@@ -225,7 +231,7 @@ int main() {
                              ValueType::kVec3},
                std::nullopt},
         Signal{"where", PayloadSignal{Ref{"impact"}}, std::nullopt}};
-    const auto graph = SignalGraph::Compile(signals, {});
+    const auto graph = CompileSignals(signals);
     Check(graph.Diagnostics().empty(), "a vec3-typed trigger compiles");
     Check(graph.TypeOf("where") == std::optional{ValueType::kVec3},
           "a payload signal takes the trigger's declared type");
@@ -257,7 +263,7 @@ int main() {
                              ValueType::kVec3},
                std::nullopt},
         Signal{"held", PayloadSignal{Ref{"snap"}}, std::nullopt}};
-    const auto graph = SignalGraph::Compile(signals, {});
+    const auto graph = CompileSignals(signals);
     Check(graph.Diagnostics().empty(),
           "a when trigger samples a vec3 into a vec3 payload");
     SignalState state{graph};
@@ -277,7 +283,7 @@ int main() {
                TriggerSignal{WhenOrigin{Ref{"gate"}, Ref{"gate"}}, 5.0f, 4,
                              ValueType::kVec3},
                std::nullopt}};
-    const auto graph = SignalGraph::Compile(signals, {});
+    const auto graph = CompileSignals(signals);
     Check(HasMessage(graph.Diagnostics(), "payload is a vec3"),
           "a when value of the wrong type is rejected at compile");
   }
@@ -323,7 +329,7 @@ int main() {
         Signal{"hit", TriggerSignal{origin, 10.0f, 2}, std::nullopt},
         Signal{"count", CounterSignal{Ref{"hit"}, std::nullopt, std::nullopt},
                std::nullopt}};
-    const auto graph = SignalGraph::Compile(signals, {});
+    const auto graph = CompileSignals(signals);
     Check(graph.Diagnostics().empty(),
           "bounded event and conditional triggers compile");
     SignalState state{graph};
@@ -357,7 +363,7 @@ int main() {
   {
     std::vector<Signal> signals{
         Signal{"n", NoiseSignal{1.0f, 2.0f, 7}, std::nullopt}};
-    const auto graph = SignalGraph::Compile(signals, {});
+    const auto graph = CompileSignals(signals);
     SignalState a{graph};
     SignalState b{graph};
     NullEnvironment environment;
@@ -374,7 +380,7 @@ int main() {
         GradientStop{0.0f, std::array<Param, 3>{0.0f, 0.0f, 0.0f}},
         GradientStop{1.0f, std::array<Param, 3>{1.0f, 0.0f, 0.0f}}};
     std::vector<Signal> signals{Signal{"g", gradient, std::nullopt}};
-    const auto graph = SignalGraph::Compile(signals, {});
+    const auto graph = CompileSignals(signals);
     Check(graph.TypeOf(0) == ValueType::kVec3, "a gradient is a vec3");
     SignalState state{graph};
     NullEnvironment environment;
@@ -389,7 +395,7 @@ int main() {
         Signal{"v", ActorValueSignal{"V", Measure::kCurrent}, std::nullopt},
         Signal{"d", RateSignal{Ref{"v"}}, std::nullopt},
         Signal{"s", SmoothSignal{Ref{"v"}, 1.0f}, std::nullopt}};
-    const auto graph = SignalGraph::Compile(signals, {});
+    const auto graph = CompileSignals(signals);
     SignalState state{graph};
     FakeEnvironment environment;
     environment.actorValues["V"] = 0.0f;
@@ -422,7 +428,7 @@ int main() {
                std::nullopt},
         Signal{"scroll", EfshSignal{EfshField::kScroll, FormRef{}},
                std::nullopt}};
-    const auto graph = SignalGraph::Compile(signals, {});
+    const auto graph = CompileSignals(signals);
     SignalState state{graph};
     FakeEnvironment environment;
     environment.effect = params;
@@ -444,10 +450,10 @@ int main() {
     Signal signal = Const("g", Vec3{1.0f, 1.0f, 1.0f});
     signal.curve = CurveRef{"x"};
     std::vector<Signal> signals{signal};
-    const auto graph = SignalGraph::Compile(signals, {});
+    const auto graph = CompileSignals(signals);
     Check(HasMessage(graph.Diagnostics(), "curve applies only to a scalar"),
           "a curve on a non-scalar signal is an error");
-    Check(graph.Inert(0), "the curved non-scalar signal is inert");
+    Check(graph.IsDisabled(0), "the curved non-scalar signal is inert");
   }
 
   {
@@ -460,7 +466,7 @@ int main() {
                       Signal{"hit",
                              TriggerSignal{EventOrigin{"hit", {}}, 1.0f, 4},
                              std::nullopt}};
-    const auto graph = SignalGraph::Compile(recipe.signals, recipe.curves);
+    const auto graph = RecipeGraph::Compile(recipe);
     const RowTypes rows{recipe, graph};
 
     Check(SignalTypeOf(rows, "glow") == ValueType::kScalar,
@@ -477,7 +483,7 @@ int main() {
 
   {
     Recipe recipe;
-    const auto graph = SignalGraph::Compile(recipe.signals, recipe.curves);
+    const auto graph = RecipeGraph::Compile(recipe);
     const RowTypes rows{recipe, graph};
 
     Source bad{"k", MaterialClustersSource{}};
@@ -494,7 +500,7 @@ int main() {
     Recipe recipe;
     recipe.sources = {
         Source{"albedo", MaterialSource{MaterialChannel::kDiffuseRgb}}};
-    const auto graph = SignalGraph::Compile(recipe.signals, recipe.curves);
+    const auto graph = RecipeGraph::Compile(recipe);
     const RowTypes rows{recipe, graph};
 
     Layer unknown;
@@ -516,7 +522,7 @@ int main() {
 
   {
     Recipe recipe;
-    const auto graph = SignalGraph::Compile(recipe.signals, recipe.curves);
+    const auto graph = RecipeGraph::Compile(recipe);
     const RowTypes rows{recipe, graph};
 
     SurfaceOutput emissive;
@@ -534,9 +540,9 @@ int main() {
   {
     Recipe recipe;
     recipe.masks = {Mask{"self", "@self"}};
-    const auto graph = SignalGraph::Compile(recipe.signals, recipe.curves);
+    const auto graph = RecipeGraph::Compile(recipe);
     const RowTypes rows{recipe, graph};
-    Check(HasMessage(CheckMask(rows, recipe.masks[0]), "reads itself"),
+    Check(HasMessage(CheckMask(rows, recipe.masks[0]), "cycle"),
           "CheckMask catches a self-referential mask");
     Check(!MaskTypeOf(rows, recipe.masks[0]).has_value(),
           "a self-referential mask resolves to no type, bounded");
@@ -549,7 +555,7 @@ int main() {
           Mask{"m" + std::to_string(i), "@m" + std::to_string(i + 1)});
     }
     recipe.masks.push_back(Mask{"m39", "1.0"});
-    const auto graph = SignalGraph::Compile(recipe.signals, recipe.curves);
+    const auto graph = RecipeGraph::Compile(recipe);
     const RowTypes rows{recipe, graph};
     Check(!MaskTypeOf(rows, recipe.masks[0]).has_value(),
           "a mask chain past the depth bound resolves to no type, never "
@@ -559,17 +565,20 @@ int main() {
   {
     Recipe recipe;
     recipe.signals = {Const("only", 1.0f)};
-    const auto graph = SignalGraph::Compile(recipe.signals, recipe.curves);
-    Check(graph.At(0) != nullptr && graph.At(0)->name == "only",
-          "At returns the signal at a valid index");
-    Check(graph.At(1) == nullptr, "At past the end is null, not a read");
-    Check(graph.At(std::numeric_limits<std::size_t>::max()) == nullptr,
-          "At at the largest index is null");
+    const auto graph = RecipeGraph::Compile(recipe);
+    Check(graph.SignalAt(0) != nullptr && graph.SignalAt(0)->name == "only",
+          "SignalAt returns the signal at a valid index");
+    Check(graph.SignalAt(1) == nullptr,
+          "SignalAt past the end is null, not a read");
+    Check(graph.SignalAt(std::numeric_limits<std::size_t>::max()) == nullptr,
+          "SignalAt at the largest index is null");
     Check(graph.TypeOf(0) == ValueType::kScalar,
           "TypeOf by index reports the inferred type");
-    Check(!graph.TypeOf(1).has_value(), "TypeOf past the end has no value");
-    Check(!graph.Inert(0), "a healthy signal is live");
-    Check(graph.Inert(1), "an index past the end reads as inert");
+    Check(!graph.TypeOf(graph.Size()).has_value(),
+          "TypeOf past the end has no value");
+    Check(!graph.IsDisabled(0), "a healthy signal is live");
+    Check(graph.IsDisabled(graph.Size()),
+          "an index past the end reads as inert");
     SignalState state{graph};
     state.Fire(EventRecord{"hit.received", {}}, 0.0f);
     Check(state.Firings("only").empty(),
@@ -591,22 +600,22 @@ int main() {
   {
     std::vector<Signal> signals{Signal{"a", ActorValueSignal{}, std::nullopt},
                                 Signal{"d", RateSignal{}, std::nullopt}};
-    const auto graph = SignalGraph::Compile(signals, {});
+    const auto graph = CompileSignals(signals);
     Check(HasMessage(graph.Diagnostics(), "names an actor value"),
           "an incomplete actor-value signal is flagged, not silently accepted");
     Check(HasMessage(graph.Diagnostics(), "reads a signal"),
           "an incomplete rate signal is flagged");
-    Check(graph.Inert(0) && graph.Inert(1),
+    Check(graph.IsDisabled(0) && graph.IsDisabled(1),
           "incomplete signals are inert rather than a crash");
   }
 
   {
     std::vector<Signal> signals{
         Signal{"w", TriggerSignal{WhenOrigin{}}, std::nullopt}};
-    const auto graph = SignalGraph::Compile(signals, {});
+    const auto graph = CompileSignals(signals);
     Check(HasMessage(graph.Diagnostics(), "when trigger names a signal"),
           "a when trigger with no signal is flagged");
-    Check(graph.Inert(0), "an incomplete when trigger is inert");
+    Check(graph.IsDisabled(0), "an incomplete when trigger is inert");
   }
 
   {
@@ -614,7 +623,7 @@ int main() {
         Signal{"pos", ActorStateSignal{ActorStateKind::kPosition},
                std::nullopt},
         Signal{"root", ToRootSignal{Ref{"pos"}}, std::nullopt}};
-    const auto graph = SignalGraph::Compile(signals, {});
+    const auto graph = CompileSignals(signals);
     Check(graph.Diagnostics().empty(), "position and toRoot compile clean");
     Check(graph.TypeOf("pos") == ValueType::kVec3,
           "actorState position is a vec3");
@@ -636,7 +645,7 @@ int main() {
   {
     std::vector<Signal> signals{Signal{
         "swim", ActorStateSignal{ActorStateKind::kSwimming}, std::nullopt}};
-    const auto graph = SignalGraph::Compile(signals, {});
+    const auto graph = CompileSignals(signals);
     Check(graph.TypeOf("swim") == ValueType::kScalar,
           "a boolean actorState stays scalar");
     SignalState state{graph};
@@ -653,7 +662,7 @@ int main() {
         Signal{"has", ActorStateSignal{ActorStateKind::kHasTarget},
                std::nullopt},
         Expr("range", "@has * distance(@target, [0, 0, 0])")};
-    const auto graph = SignalGraph::Compile(signals, {});
+    const auto graph = CompileSignals(signals);
     Check(graph.Diagnostics().empty(),
           "target, hasTarget and distance compile clean");
     Check(graph.TypeOf("target") == ValueType::kVec3,
@@ -667,6 +676,221 @@ int main() {
     state.Tick(environment, TickInputs{0.0f, 0.0f});
     Check(Near(state.Scalar("range"), 50.0f),
           "distance reduces the target position to a scalar range");
+  }
+
+  {
+    Recipe recipe;
+    recipe.signals = {Const("input", 0.25f), Expr("result", "@square(@input)")};
+    recipe.curves = {Curve{"square", "x * x"}};
+    recipe.sources = {
+        Source{"field", MaterialSource{MaterialChannel::kRoughness}}};
+    recipe.masks = {Mask{"mask", "@field"}};
+    RecipeGraph copied;
+    {
+      const auto original = RecipeGraph::Compile(recipe);
+      copied = original;
+    }
+    const RowTypes rows{recipe, copied};
+    Check(!SignalTypeOf(rows, "field"), "field rows are not signal parameters");
+    Check(!SignalTypeOf(rows, "square"),
+          "curve rows are not signal parameters");
+    Check(copied.SignalEvaluationOrder().size() == recipe.signals.size(),
+          "signal execution order excludes fields and functions");
+    SignalState state{copied};
+    state.Tick(NullEnvironment{}, TickInputs{});
+    Check(Near(state.Scalar("result"), 0.0625f),
+          "copied graphs bind expression curves within their own storage");
+    Check(Near(state.Scalar("field"), 0.0f),
+          "signal runtime cannot read a field as a tick value");
+  }
+
+  {
+    Recipe recipe;
+    recipe.sources = {
+        Source{"field", MaterialSource{MaterialChannel::kRoughness}}};
+    recipe.signals = {
+        Signal{"bad",
+               WaveSignal{0.0f, 1.0f, Ref{"field"}, 0.0f, Waveform::kSaw},
+               std::nullopt},
+        Expr("dependent", "@bad + 1")};
+    const auto graph = RecipeGraph::Compile(recipe);
+    Check(graph.IsDisabled(*graph.FindSignalIndex("bad")) &&
+              graph.IsDisabled(*graph.FindSignalIndex("dependent")),
+          "field references cannot enter signal execution through scalar "
+          "parameters");
+    SignalState state{graph};
+    state.Tick(NullEnvironment{}, TickInputs{1.0f, 1.0f});
+    Check(Near(state.Scalar("bad"), 0.0f) &&
+              Near(state.Scalar("dependent"), 0.0f),
+          "inert signal subgraphs retain safe defaults");
+  }
+
+  {
+    Recipe recipe;
+    recipe.curves = {Curve{"shape", "x"}};
+    recipe.masks = {Mask{"field", "1"}};
+    SurfaceOutput output;
+    output.stack.push_back(Layer{});
+    recipe.outputs.push_back(output);
+    const auto graph = RecipeGraph::Compile(recipe);
+    const RowTypes rows{recipe, graph};
+    Check(!CheckCurve(rows, Curve{"shape", "("}).empty(),
+          "candidate curve checks compile edited text instead of reading stale "
+          "diagnostics");
+    Check(!CheckMask(rows, Mask{"field", "@missing"}).empty(),
+          "candidate mask checks compile edited dependencies");
+    Layer layer = output.stack.front();
+    layer.curve = CurveRef{"("};
+    Check(!CheckLayer(rows, layer, Slot::kEmissive, LayerWhere(0, 0)).empty(),
+          "candidate layer checks compile edited inline functions");
+    layer.curve = CurveRef{"@missing"};
+    Check(!CheckLayer(rows, layer, Slot::kEmissive, LayerWhere(0, 1)).empty(),
+          "new layer checks compile named function dependencies");
+    ImageSource source;
+    source.path = "textures/test.dds";
+    source.scroll = Ref{"missing"};
+    Check(!CheckSource(rows, Source{"image", source}).empty(),
+          "candidate sources check newly introduced signal dependencies");
+  }
+
+  {
+    Recipe recipe;
+    recipe.signals = {Const("uv", Vec2{1.0f, 1.0f}), Const("scalar", 1.0f)};
+    ImageSource valid;
+    valid.path = "textures/test.dds";
+    valid.tile = Ref{"uv"};
+    ImageSource malformed = valid;
+    malformed.tile = Ref{"scalar"};
+    recipe.sources = {Source{"duplicate", valid},
+                      Source{"duplicate", malformed}};
+    const auto graph = RecipeGraph::Compile(recipe);
+    Check(HasMessage(graph.Diagnostics(), "duplicate name"),
+          "different source definitions with duplicate names compile without "
+          "recursion");
+    Check(HasMessage(graph.Diagnostics(), "must be a vec2"),
+          "duplicate source definitions still receive their own typed-input "
+          "checks");
+    const RowTypes rows{recipe, graph};
+    Check(HasMessage(CheckSource(rows, Source{"duplicate", malformed}),
+                     "must be a vec2"),
+          "malformed source candidates cannot re-enter compiler candidate "
+          "validation");
+  }
+
+  {
+    Recipe recipe;
+    recipe.signals = {
+        Const("period", 1.0f),
+        Signal{"phase",
+               WaveSignal{0.0f, 1.0f, Ref{"period"}, 0.0f, Waveform::kSaw},
+               std::nullopt},
+        Expr("sum", "@phase + @phase + @phase"), Expr("pure", "@period * 4")};
+    const auto graph = RecipeGraph::Compile(recipe);
+    SignalState first{graph};
+    SignalState second{graph};
+    first.Tick(NullEnvironment{}, TickInputs{0.25f, 0.25f});
+    second.Tick(NullEnvironment{}, TickInputs{0.1f, 0.1f});
+    for (std::size_t i = 0; i < 32; ++i) {
+      Check(Near(first.Scalar("sum"), 0.75f) &&
+                Near(first.Scalar("pure"), 4.0f),
+            "repeated pure reads neither advance nor duplicate oscillator "
+            "execution");
+    }
+    Check(Near(second.Scalar("phase"), 0.1f),
+          "execution instances sharing a graph retain independent state");
+    first.Tick(NullEnvironment{}, TickInputs{0.5f, 0.25f});
+    Check(Near(first.Scalar("phase"), 0.5f) &&
+              Near(second.Scalar("phase"), 0.1f),
+          "advancing one execution instance leaves another unchanged");
+  }
+
+  {
+    Recipe recipe;
+    TriggerSignal trigger;
+    trigger.origin = EventOrigin{"counted", {}};
+    trigger.max = 2;
+    recipe.signals = {
+        Signal{"hit", trigger, CurveRef{"1 - x"}},
+        Signal{"count", CounterSignal{Ref{"hit"}, std::nullopt, std::nullopt},
+               std::nullopt}};
+    const auto graph = RecipeGraph::Compile(recipe);
+    SignalState state{graph};
+    const auto triggerNode = graph.FindTrigger("hit");
+    Check(triggerNode.has_value(),
+          "a transformed trigger retains its resource-producing operation");
+    if (triggerNode) {
+      const OutputRef firings{*triggerNode, 1};
+      const OutputRef count{*triggerNode, 2};
+      for (std::size_t i = 0; i < 300; ++i)
+        state.Fire(EventRecord{"counted", {}}, 0.0f);
+      Check(state.AcceptedCount(count) == 300 &&
+                state.Firings(firings).size() == 2,
+            "accepted count preserves every event despite firing retention "
+            "limits");
+      Check(state.AcceptedCount(firings) == 0 && state.Firings(count).empty(),
+            "resource reads reject the wrong output-port type");
+      state.Tick(NullEnvironment{}, TickInputs{0.0f, 0.0f});
+      Check(
+          Near(state.Scalar("count"), 300.0f) &&
+              Near(state.Scalar("hit"), 1.0f),
+          "counter reads trigger count independently of transformed progress");
+      state.Tick(NullEnvironment{}, TickInputs{2.0f, 2.0f});
+      Check(state.AcceptedCount(count) == 300 && state.Firings(firings).empty(),
+            "expiration clears active firings without losing accepted count");
+    }
+  }
+
+  {
+    Recipe recipe;
+    recipe.curves = {Curve{"offset", "x + mean"}};
+    recipe.signals = {
+        Signal{"mapped", ConstantSignal{2.0f}, CurveRef{"@offset"}},
+        Expr("called", "@offset(5)")};
+    const auto graph = RecipeGraph::Compile(recipe);
+    const auto function = graph.TransformFor(SignalWhere("mapped"));
+    Check(function.has_value(),
+          "applied curves resolve to scoped function identifiers");
+    if (function) {
+      const std::array<Value, 2> first{Value{3.0f}, Value{7.0f}};
+      const std::array<Value, 2> second{Value{1.0f}, Value{4.0f}};
+      Check(
+          Near(AsScalar(EvaluateFunction(graph, *function, first)), 10.0f) &&
+              Near(AsScalar(EvaluateFunction(graph, *function, second)), 5.0f),
+          "function parameters are scoped to each invocation");
+      Check(Near(AsScalar(EvaluateFunction(graph, *function, {})), 0.0f),
+            "missing function parameters return a safe default");
+    }
+    SignalState state{graph};
+    state.Tick(NullEnvironment{}, TickInputs{});
+    Check(Near(state.Scalar("mapped"), 2.5f) &&
+              Near(state.Scalar("called"), 5.5f),
+          "explicit call nodes and expression calls use the same scoped "
+          "function evaluator");
+  }
+
+  {
+    Recipe recipe;
+    SurfaceOutput output;
+    Layer layer;
+    layer.source = Vec3{0.2f, 0.4f, 0.6f};
+    layer.curve = CurveRef{"x * x + mean"};
+    output.stack.push_back(layer);
+    recipe.outputs.push_back(output);
+    const auto graph = RecipeGraph::Compile(recipe);
+    const auto bindings = graph.OutputBindings();
+    const auto source = std::ranges::find(bindings, "output 0 layer 0 source",
+                                          &OutputBinding::property);
+    Check(source != bindings.end(),
+          "layer source has an explicit output binding");
+    if (source != bindings.end()) {
+      SignalState state{graph};
+      state.Tick(NullEnvironment{}, TickInputs{});
+      const auto mapped = AsVec3(state.ValueOf(source->value));
+      Check(Near(mapped.x, 0.54f) && Near(mapped.y, 0.66f) &&
+                Near(mapped.z, 0.86f),
+            "pure layer function mapping evaluates every component with the "
+            "same scoped mean");
+    }
   }
 
   return test::Finish("signals");

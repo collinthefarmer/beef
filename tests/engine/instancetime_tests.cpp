@@ -19,13 +19,15 @@ void IndependentInstances() {
   const CarriedTimeKey unenchanted{1, "glow", 0};
   const CarriedTimeKey otherActor{2, "glow", 100};
   const CarriedTimeKey otherRecipe{1, "pulse", 100};
+  const CarriedTimeKey otherEffect{1, "glow", 100, "magicEffect:secondary"};
+  times.Remember(otherEffect, 6.0f, 1000);
   times.Remember(first, 1.0f, 1000);
   times.Remember(second, 2.0f, 1000);
   times.Remember(unenchanted, 3.0f, 1000);
   times.Remember(otherActor, 4.0f, 1000);
   times.Remember(otherRecipe, 5.0f, 1000);
-  Equal(times.Size(), std::size_t{5},
-        "each actor/recipe/enchantment has a slot");
+  Equal(times.Size(), std::size_t{6},
+        "each actor/recipe/enchantment/effect context has a slot");
   Equal(times.Take(second, 1500).value_or(-1), 2.0f,
         "reordered rebuild retains the second enchantment's phase");
   Equal(times.Take(first, 1500).value_or(-1), 1.0f,
@@ -36,6 +38,8 @@ void IndependentInstances() {
         "actors remain isolated");
   Equal(times.Take(otherRecipe, 1500).value_or(-1), 5.0f,
         "recipes remain isolated");
+  Equal(times.Take(otherEffect, 1500).value_or(-1), 6.0f,
+        "different selected effects retain independent phases");
   Check(!times.Take(first, 1500), "carried time is consumed only once");
   Equal(times.Size(), std::size_t{0}, "consumed entries release their storage");
 }

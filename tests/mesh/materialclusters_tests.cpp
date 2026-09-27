@@ -141,5 +141,22 @@ int main() {
                             7, 64},
         "the source carries its analysis settings directly");
 
+  MaterialTexel red = low;
+  MaterialTexel green = low;
+  red.diffuse = Vec3{1, 0, 0};
+  green.diffuse = Vec3{0, 0.2126f / 0.7152f, 0};
+  red.luma = green.luma = 0.2126f;
+  MaterialSample colors;
+  colors.texels = {red, green, red, green};
+  const auto colored = ClusterMaterial(colors, settings);
+  Check(colored.clusters.size() == 2 &&
+            NearestCluster(red, colored) != NearestCluster(green, colored),
+        "equal-brightness diffuse colors separate in analysis and nearest "
+        "lookup");
+  ClusterSettings noColor = settings;
+  noColor.weights.color = 0;
+  Check(ClusterMaterial(colors, noColor).clusters.size() == 1,
+        "zero color weight restores brightness-only clustering");
+
   return test::Finish("materialclusters");
 }

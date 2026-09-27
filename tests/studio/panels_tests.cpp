@@ -492,6 +492,34 @@ void TestOptionalFieldRefusals() {
   }
 }
 
+void TestClusterColor() {
+  MaterialClustersSource clusters;
+  clusters.settings.weights.color = 2.5f;
+  const SourceRow row = SourceRowOf(Source{"clusters", clusters}, 0);
+  const auto restored = SourceKindOf(row);
+  Check(restored && *restored == SourceKind{clusters},
+        "cluster source rows preserve diffuse color weight");
+  const auto form = SourceForm(row, SignalNames{});
+  const auto *color = Field(form, "color");
+  Check(color && color->bind, "cluster sources expose color weighting");
+  if (color && color->bind) {
+    const auto edit = color->bind("0");
+    const auto *set = edit ? Get<SetSource>(*edit) : nullptr;
+    const auto *value = set ? Get<MaterialClustersSource>(set->kind) : nullptr;
+    Check(value && value->settings.weights.color == 0,
+          "color weighting can be disabled independently");
+    Check(!color->bind("11"), "color weight refuses out-of-range values");
+  }
+  const auto *weights = Field(form, "weights");
+  if (weights && weights->bind) {
+    const auto edit = weights->bind("1, 1, 1, 1, 1");
+    const auto *set = edit ? Get<SetSource>(*edit) : nullptr;
+    const auto *value = set ? Get<MaterialClustersSource>(set->kind) : nullptr;
+    Check(value && value->settings.weights.color == 2.5f,
+          "editing existing channel weights preserves color weight");
+  }
+}
+
 void TestHelpers() {
   const auto colour = LiteralColor("1, 0.5, 0.25");
   Check(colour.has_value() && test::Near(colour->y, 0.5f),
@@ -521,6 +549,7 @@ int main() {
   TestIntegerSignalFields();
   TestEventFilterFields();
   TestOptionalFieldRefusals();
+  TestClusterColor();
   TestHelpers();
   return test::Finish("studio_panels");
 }

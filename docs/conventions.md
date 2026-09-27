@@ -48,9 +48,9 @@ Rules:
   `MakeDiagnostic(severity, where, message)` (`recipe/Recipe.h`).
   `Reporter::Error` and `Warn` use the same factory. Do not fill a vector to
   return its first element.
-- `SignalGraph` reports through `ReportSignal` (`Signals.cpp`), a static
-  helper that wraps `Reporter{diagnostics_, "signal <name>"}`. Graph phases
-  call it; they do not touch `diagnostics_` directly.
+- `RecipeGraph` reports through `Reject` and `ReportSignal` (`RecipeGraph.cpp`),
+  which wrap a `Reporter` at the affected row. Source input validation returns
+  diagnostics that the compiler merges without duplicating existing entries.
 
 ### The `where` words
 
@@ -270,12 +270,11 @@ at both sites instead of a silently ignored row.
 
 ### Named phases
 
-Write a multi-step algorithm as a sequence of named private static phases
-over the object, not as one long function. Example: `SignalGraph::Compile`
-(`Signals.cpp`) runs `ParseCurves`, `RegisterNodes`, `ResolveRefs`,
-`OrderNodes`, `InferTypes`, `CheckReferenceTypes`, `PropagateInert`, each
-taking `SignalGraph &`. The topological sort in `OrderNodes` is a C++23
-deducing-this recursive lambda (`[&](this auto &&a_self, …)`).
+Write a multi-step algorithm as a sequence of named phases, not as one long
+function. `RecipeGraph::Compile` (`RecipeGraph.cpp`) uses a builder to register
+rows and applied functions, parse programs, bind dependencies, order nodes,
+and analyze their properties. The dependency traversal uses an explicit stack
+and enforces the recipe depth bound without recursive C++ calls.
 
 ### Bounds
 
@@ -283,8 +282,9 @@ Bound every recursion. Cap every list.
 
 | Bound | Declared in | What it caps |
 |---|---|---|
-| `kMaxRecipeDepth` | `Recipe.h` | Recursion depth. `OrderNodes` marks a node inert past it; `TexelTypeOf`/`MaskTypeOf` (`Signals.cpp`) thread `a_depth` and stop at it. |
+| `kMaxRecipeDepth` | `Recipe.h` | Parsing depth and compiled dependency-path depth. `RecipeGraphBuilder::Order` uses an explicit stack and marks the offending row inert. |
 | `kMaxRecipeRows` | `Recipe.h` | Every **row** list. `RowCapReached` checks it inside `ReadRows`/`NamedRows` and in the ad-hoc loops (`selector`, `stops`, `boneWeight`, `overrides`). |
+| `4 * kMaxRecipeRows` | `RecipeGraph.cpp` | Total compiled named rows and anonymous inline functions; checked before graph allocation. |
 | `MaxNestingDepth` | `Binders.cpp` | JSON nesting, rejected before parsing. The `DuplicateFinder` parse callback (`Binders.cpp`) reports duplicate keys. |
 | `kMaxExpressionLength`, `kMaxExpressionDepth`, `kMaxExpressionOps` | `Expression.h` | Expression text, parse depth, and op count. |
 | `kMaxMaterialClusters`, `kMaxClusterIterations`, `kMaxChannelWeight` | `Recipe.h` | Material-cluster requests and the clustering itself. |
@@ -348,7 +348,7 @@ the type.
   `Resolve`, `Recipe::Find*`, `Reporter`, and `Reader`/`Writer` behind the
   JSON boundary.
 - Validation composes once. `Validate` (`Signals.cpp`) builds the
-  `SignalGraph`, wraps it and the recipe in a `RowTypes`, and runs the
+  `RecipeGraph`, wraps it and the recipe in a `RowTypes`, and runs the
   public `Check*` functions (`CheckCurve`, `CheckSource`, `CheckMask`,
   `CheckLayer`, `CheckOutput`) over `RowTypes`.
 - A consumer that validates an **edit** calls those `Check*` functions over
@@ -687,9 +687,9 @@ re-execs into `nix develop` so the pinned clang tools always run.
   is exempt.
 - `src/_old`, `src/extern`, and `src/cs` are frozen or vendored and keep
   their comments.
-- A `NOLINT` marker is a tool directive, not text. The one in
-  `src/engine/RecipeStore.cpp` is the only one in the tree; its reason is in
-  `REFERENCE.md`.
+- A `NOLINT` marker is a tool directive, not text. The directives in
+  `src/engine/RecipeStore.cpp` and the destructor directive in
+  `src/engine/AnimationSubscriptions.cpp` have their reasons in `REFERENCE.md`.
 
 ### Layers
 

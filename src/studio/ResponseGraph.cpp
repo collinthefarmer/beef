@@ -136,9 +136,11 @@ BuildResponseGraph(const SignalRow &a_signal, const RecipeRow &a_recipe) {
     return std::unexpected(curve.error());
   }
   signal.curve = CurveRef{*curve};
-  const SignalGraph graph = SignalGraph::Compile(std::span{&signal, 1}, {});
-  const auto index = graph.Index(signal.name);
-  if (!index || graph.Inert(*index) ||
+  Recipe responseRecipe;
+  responseRecipe.signals.push_back(signal);
+  const RecipeGraph graph = RecipeGraph::Compile(responseRecipe);
+  const auto index = graph.FindNodeIndex(signal.name);
+  if (!index || graph.IsDisabled(*index) ||
       graph.TypeOf(*index) != ValueType::kScalar) {
     return std::unexpected(
         "This signal cannot provide a scalar response graph.");

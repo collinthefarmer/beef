@@ -1,9 +1,7 @@
 // GPL-3.0-only with the additional permission in COPYING.md.
 #include "engine/Events.h"
-#include "diagnostics/Metrics.h"
 #include "diagnostics/Trace.h"
 
-#include "engine/GameObjectService.h"
 #include "engine/Manager.h"
 
 namespace BetterEnchantmentEffects {
@@ -100,63 +98,6 @@ public:
   }
 };
 
-class AnimationSink final : public RE::BSTEventSink<RE::BSAnimationGraphEvent> {
-public:
-  static AnimationSink *GetSingleton() {
-    static AnimationSink sink;
-    return &sink;
-  }
-
-  RE::BSEventNotifyControl
-  ProcessEvent(const RE::BSAnimationGraphEvent *a_event,
-               RE::BSTEventSource<RE::BSAnimationGraphEvent> *) override {
-    if (a_event && a_event->holder && a_event->tag.c_str()) {
-      const RE::FormID actor = a_event->holder->GetFormID();
-      NoteAnimEvent(actor, a_event->tag.c_str());
-      EventRecord record;
-      record.id = std::string{"anim."} + a_event->tag.c_str();
-      record.payload.arg =
-          a_event->payload.c_str() ? a_event->payload.c_str() : "";
-      Manager::GetSingleton()->QueueEvent(actor, std::move(record));
-    }
-    return RE::BSEventNotifyControl::kContinue;
-  }
-};
-}
-
-void WatchAnimationEvents(RE::Actor *a_actor) {
-  if (!a_actor) {
-    return;
-  }
-  RE::BSAnimationGraphManagerPtr manager;
-  if (!a_actor->GetAnimationGraphManager(manager) || !manager) {
-    return;
-  }
-  for (const auto &graph : manager->graphs) {
-    if (graph) {
-      graph->GetEventSource<RE::BSAnimationGraphEvent>()->AddEventSink(
-          AnimationSink::GetSingleton());
-      Metrics::CountSinkAdd();
-      return;
-    }
-  }
-}
-
-void UnwatchAnimationEvents(RE::Actor *a_actor) {
-  if (!a_actor) {
-    return;
-  }
-  RE::BSAnimationGraphManagerPtr manager;
-  if (!a_actor->GetAnimationGraphManager(manager) || !manager) {
-    return;
-  }
-  for (const auto &graph : manager->graphs) {
-    if (graph) {
-      graph->GetEventSource<RE::BSAnimationGraphEvent>()->RemoveEventSink(
-          AnimationSink::GetSingleton());
-      Metrics::CountSinkRemove();
-    }
-  }
 }
 
 void RegisterEventSinks() {

@@ -226,6 +226,21 @@ std::vector<RecipeEdit> KeepEdits(const Recipe &a_paint, const Recipe &a_active,
     edits.emplace_back(AddMask{std::string{a_name}});
   }
   edits.emplace_back(SetMask{std::string{a_name}, std::move(text)});
+  const Mask *previous = a_active.FindMask(a_name);
+  const auto prepared = PrepareEdits(a_active, EditBatch{edits});
+  if (previous && prepared) {
+    const auto oldProgram = Program::Parse(previous->text);
+    if (oldProgram) {
+      const ReferenceCounts counts = CountReferences(*prepared);
+      for (const std::string &name : oldProgram->References()) {
+        const auto found = counts.images.find(name);
+        if (a_active.FindSource(name) &&
+            (found == counts.images.end() || found->second == 0)) {
+          edits.emplace_back(RemoveSource{name});
+        }
+      }
+    }
+  }
   return edits;
 }
 }

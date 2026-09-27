@@ -19,7 +19,9 @@ extern const char *const kShaderSource;
 
 TextureLab::RenderTarget::~RenderTarget() {
   if (size != 0) {
-    Metrics::CountTargetDestroyed(Metrics::MippedRgbaBytes(size));
+    Metrics::CountTargetDestroyed(
+        Metrics::MippedRgbaBytes(size) *
+        (format == TextureFormat::kRgba32Float ? 4 : 1));
   }
   Trace::EmitSafely(Trace::Event::kTexture,
                     {{"action", "destroy"},
@@ -227,12 +229,15 @@ bool TextureLab::CompileShaders(GpuResources &a_resources) {
 }
 
 std::shared_ptr<TextureLab::RenderTarget>
-TextureLab::Acquire(TextureSize a_size, std::string_view a_owner) {
-  return Init() ? targets_->Acquire(borrowedDevice_, a_size, a_owner) : nullptr;
+TextureLab::Acquire(TextureSize a_size, std::string_view a_owner,
+                    TextureFormat format) {
+  return Init() ? targets_->Acquire(borrowedDevice_, a_size, a_owner, format)
+                : nullptr;
 }
 
-TextureLab::RenderTarget *TextureLab::Scratch(TextureSize a_size) {
-  return Init() ? targets_->Scratch(borrowedDevice_, a_size) : nullptr;
+TextureLab::RenderTarget *TextureLab::Scratch(TextureSize a_size,
+                                              TextureFormat format) {
+  return Init() ? targets_->Scratch(borrowedDevice_, a_size, format) : nullptr;
 }
 
 std::shared_ptr<TextureLab::RenderTarget>

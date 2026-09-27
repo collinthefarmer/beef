@@ -52,16 +52,19 @@ constexpr TexelBand kTexelBands[]{
   return a_band.words.back();
 }
 
-constexpr std::size_t kAxes = 5;
+constexpr std::size_t kAxes = 8;
 using Axes = std::array<float, kAxes>;
 
 [[nodiscard]] Axes AxesOf(const MaterialTexel &a_texel) noexcept {
-  return Axes{a_texel.roughness, a_texel.metallic, a_texel.occlusion,
-              a_texel.reflectance, a_texel.luma};
+  return Axes{a_texel.roughness,   a_texel.metallic, a_texel.occlusion,
+              a_texel.reflectance, a_texel.luma,     a_texel.diffuse.x,
+              a_texel.diffuse.y,   a_texel.diffuse.z};
 }
 
 [[nodiscard]] MaterialTexel TexelOf(const Axes &a_axes) noexcept {
-  return MaterialTexel{a_axes[0], a_axes[1], a_axes[2], a_axes[3], a_axes[4]};
+  return MaterialTexel{a_axes[0], a_axes[1],
+                       a_axes[2], a_axes[3],
+                       a_axes[4], Vec3{a_axes[5], a_axes[6], a_axes[7]}};
 }
 
 [[nodiscard]] float Finite01(float a_value) noexcept {
@@ -69,14 +72,21 @@ using Axes = std::array<float, kAxes>;
 }
 
 [[nodiscard]] MaterialTexel Sanitised(const MaterialTexel &a_texel) noexcept {
-  return MaterialTexel{Finite01(a_texel.roughness), Finite01(a_texel.metallic),
+  return MaterialTexel{Finite01(a_texel.roughness),
+                       Finite01(a_texel.metallic),
                        Finite01(a_texel.occlusion),
-                       Finite01(a_texel.reflectance), Finite01(a_texel.luma)};
+                       Finite01(a_texel.reflectance),
+                       Finite01(a_texel.luma),
+                       Vec3{Finite01(a_texel.diffuse.x),
+                            Finite01(a_texel.diffuse.y),
+                            Finite01(a_texel.diffuse.z)}};
 }
 
 [[nodiscard]] Axes ScalesOf(const ChannelWeights &a_weights) noexcept {
-  const Axes raw{a_weights.roughness, a_weights.metallic, a_weights.occlusion,
-                 a_weights.reflectance, a_weights.luma};
+  const Axes raw{a_weights.roughness,    a_weights.metallic,
+                 a_weights.occlusion,    a_weights.reflectance,
+                 a_weights.luma,         a_weights.color / 3.0f,
+                 a_weights.color / 3.0f, a_weights.color / 3.0f};
   Axes scales{};
   for (std::size_t i = 0; i < kAxes; ++i) {
     scales[i] = std::isfinite(raw[i]) && raw[i] > 0.0f ? raw[i] : 0.0f;

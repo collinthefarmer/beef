@@ -19,11 +19,11 @@ inline constexpr KeyKindSpec kKeyKinds[]{
     {KeyKind::kArmor, "armor", 30, KeyOperand::kForm, false, &WornPiece::armor,
      nullptr},
     {KeyKind::kEffectShader, "effectShader", 40, KeyOperand::kForm, true,
-     &WornPiece::effectShader, nullptr},
+     nullptr, &WornPiece::effectShaders},
     {KeyKind::kEnchantment, "enchantment", 50, KeyOperand::kForm, true,
      &WornPiece::enchantment, nullptr},
-    {KeyKind::kMagicEffect, "magicEffect", 60, KeyOperand::kForm, true,
-     &WornPiece::magicEffect, nullptr},
+    {KeyKind::kMagicEffect, "magicEffect", 60, KeyOperand::kForm, true, nullptr,
+     &WornPiece::magicEffects},
 };
 static_assert(Complete(kKeyKinds, kKeyKindCount));
 inline constexpr Named<SelectorKind> kSelectorKinds[]{

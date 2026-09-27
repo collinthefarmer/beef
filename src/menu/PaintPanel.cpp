@@ -386,12 +386,12 @@ void KeepMaskPopup(const Frame &a_frame) {
                                     ? std::format("Keep and assign as {}", name)
                                     : std::format("Keep as {}", name);
       if (ImGui::Button(label.c_str()) && ready) {
-        Studio::Post(
-            *a_frame.intents,
-            Studio::KeepPaint{Studio::PaintCommitRequest{
-                state.nextPaintCommitID++, state.paint->recipeID, name,
-                *expression, state.paint->sessionID, state.paint->sources,
-                state.paint->assignment, state.mask.editing}});
+        Studio::Post(*a_frame.intents,
+                     Studio::KeepPaint{Studio::PaintCommitRequest{
+                         state.nextPaintCommitID++, state.paint->recipeID, name,
+                         *expression, state.paint->sessionID,
+                         Studio::PaintDependencies(state),
+                         state.paint->assignment, state.mask.editing}});
         ImGui::CloseCurrentPopup();
       }
     });

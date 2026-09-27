@@ -5,7 +5,7 @@ Its acceptance examples define the native regressions; the alpha plan tracks
 offline verification and deferred visual acceptance.
 
 The pure core. It turns a **recipe** file into a checked `Recipe`, resolves
-the forms the recipe names, builds the per-tick `SignalGraph`, merges the
+the forms the recipe names, compiles the unified `RecipeGraph`, merges the
 recipes that land on one **piece** into a **plan**, and writes a `Recipe`
 back to JSON. It is engine-free: it compiles natively and is unit-tested
 through `ctest --preset native`. Every layer above depends on it; it depends
@@ -35,14 +35,14 @@ Each header declares its data first.
 `Recipe` is the whole file in memory. `RecipeRead.cpp` fills it one checked
 field at a time, and `RecipeWrite.cpp` writes it back with key order kept, so
 a file survives a load and a save unchanged. Every consumer (the studio,
-`Resolve`, `SignalGraph::Compile`, `Merge.cpp`) reads this one struct.
+`Resolve`, `RecipeGraph::Compile`, `Merge.cpp`) reads this one struct.
 
 | Type | Description |
 |---|---|
 | `Recipe` | The **recipe**: an id, `Metadata`, its `RecipeKey`s, an optional priority, a `MergeMode`, a `Clock`, the **row** lists (`Signal`s, `Curve`s, `Source`s, `Mask`s, `Output`s, `Variant`s), and `ShellSettings`. `FindSignal`/`FindCurve`/`FindSource`/`FindMask` look a row up by name. |
 | `Metadata` | The recipe's name, author, description, and version, the importer's `imported` stamp, and a free-form `meta` field kept verbatim. |
 | `MergeMode` | How independent recipe identities compose: stack appends groups; replace clears earlier groups on selected surface targets and eligible actor-wide lights; sampled chooses one identity per piece independently of precedence. |
-| `RecipeKey` | Which worn **piece** the recipe applies to: a `KeyKind` (default, enchanted, material, keyword, armor, effectShader, enchantment, magicEffect) with a form or glob operand; default and enchanted stand alone. |
+| `RecipeKey` | Which worn **piece** the recipe applies to: a `KeyKind` (default, enchanted, material, keyword, armor, effectShader, enchantment, magicEffect) with a form or glob operand; default and enchanted have no operand. Every keyword is required; other entries remain alternative selectors. Keyword-only recipes require all listed keywords. |
 | `Selector` | Which geometry an **output** or **variant** touches: any-of clauses over addon, geometry name, or texture path; empty matches every geometry. |
 | `Signal` | One named per-tick value: a name, a `SignalKind`, an optional `CurveRef` that shapes the result, and an optional author `note`. |
 | `Curve` | A named expression in the free variable `x`, with an optional author `note`; a `CurveRef` applies it to a **signal** or a **layer**. In a file the value is a bare expression string, or `{ "expr", "note" }` when the author annotates it. |
@@ -110,7 +110,7 @@ validates a source's params against the graph.
 | `BakeSource` | `bake` | A value baked from the mesh once per geometry; the `BakeKind` is position, localPosition, normal (the bind-pose surface normal, each axis as 0..1), uv (the coordinates as a vec2), partition (one biped slot), boneWeight (named bones), componentId, or chartId (the mesh analysis' id map, each texel the region id / 255). |
 | `DistanceSource` | `distance` | The texel's distance from a named skeleton node. |
 | `RippleSource` | `ripple` | A ring or disc that spreads from a trigger firing's anchor at `speed`, `width` wide, fading at `decay`; an unanchored trigger's rings spread from the geometry's origin. An optional `direction` vec3 turns the radial front into a plane sweeping along the vector, and is animatable like the other params. |
-| `MaterialClustersSource` | `materialClusters` | The material's cluster map: each texel the id / 255 of its nearest k-means cluster under the channel weights, `seed`, and iteration cap, rendered once per geometry. |
+| `MaterialClustersSource` | `materialClusters` | The material's cluster map: each texel the id / 255 of its nearest k-means cluster under the RMAOS, diffuse luma and diffuse color weights, `seed`, and iteration cap, rendered once per geometry. |
 
 ### Outputs (`Recipe.h`)
 
@@ -172,21 +172,41 @@ diagnostic and an inert row, never a crash.
 | `LoadResult` | What `ParseRecipe` returns: an optional `Recipe`, combined diagnostics, and separate file-decoding diagnostics retained until save or reload. |
 | `ResolvedRecipe` | One match from `Resolve`: the recipe, the strongest matched `RecipeKey`, effective placement priority, and definition load order. |
 | `RecipeSelection` | Optional selection report: recipe identity plus nonmatching, fallback-suppressed, sampled-out, or selected outcome. |
-| `WornPiece` | What one worn piece looks like to resolution: its magic effect, enchantment, effect shader, armor, keywords, and diffuse paths. |
+| `WornPiece` | What one worn piece looks like to resolution: all distinct enchantment magic effects, its enchantment, all distinct effect shaders, armor, keywords, and diffuse paths. |
 | `PieceKey` | One key choice a piece offers (`KeyChoicesOf`); the studio turns the chosen one into a `RecipeKey`. |
 
 ### Runtime (`Signals.h`)
 
-`SignalGraph::Compile` turns a recipe's signals and curves into an ordered
-node list once, at load. `SignalState` holds the per-actor values and
-evaluates the graph each tick against a `SignalEnvironment`. The `Check*`
+`RecipeGraph::Compile` validates authored definitions and lowers them into
+operation nodes with typed output ports. Each operation owns its explicit input
+references; dependency order, sample dependence, variability and disabled status
+are derived from these connections. Time, coordinates, resources and environment
+inputs enter through external-input nodes. Authoring restrictions remain checked
+before lowering; executable nodes have no evaluation-domain classification.
+
+Named and inline curves become scoped function definitions with local parameter
+nodes. Signal applications use call operations; layer applications map the
+function over components. `MapFunctionOperation` supplies arguments in parameter order. Component-wise
+vector application lowers into scalar maps and vector reconstruction.
+`ReductionOperation` supports mean, sum, minimum and maximum over numeric fields.
+`BoundFunction` carries the sampled parameter and explicit graph bindings for
+uniform arguments, including the authoring compatibility default. Graph-bound
+programs read x, mean and time through ordinary reference slots. The authored scalar curve syntax remains unchanged.
+See the [operation graph checkpoint](../checkpoints/operation-graph-2026-09-26.md)
+for the initial lowering and state ownership. The
+[render-plan model](../plans/render-plan-model.md) defines current-result
+reductions and the renderer boundary.
+
+`SignalState` holds the per-actor values and evaluates the graph each tick against a `SignalEnvironment`. The `Check*`
 functions validate curves, sources, masks, and outputs against the graph's
 types.
 
 | Type | Description |
 |---|---|
-| `SignalGraph` | The compiled graph: nodes in dependency order, each with a type and an inert flag; a bad row goes inert and raises a diagnostic instead of failing the recipe. |
-| `SignalState` | The per-actor evaluation state: `Tick` computes every node's `Value`, `Fire` feeds an `EventRecord` to the triggers, and `Resolve` reads a `Param` against the current values. |
+| `RecipeGraph` | Operation nodes, scoped functions, authored-name mappings, output bindings and derived dependency/execution analysis. |
+| `RecipeNode` | A `displayName`, operation-specific `kind`, and named typed `outputs`. Input references belong to the operation. |
+| `BoundExpression` | An expression operation’s `Program`, ordered `valueBindings` to typed output ports, and `functionBindings` to scoped function definitions. |
+| `SignalState` | The per-actor evaluation state: `Tick` executes the derived tick order with state allocated only for history-dependent operations, `Fire` feeds an `EventRecord` to the triggers, and `Resolve` reads a `Param` against the current values. |
 | `TickInputs` | One tick's clock: the time and the delta. |
 | `SignalEnvironment` | The engine questions a tick asks: actor values, actor states (scalar `ActorState` and vec3 `ActorVector`), world-to-root conversion, enchantment fields, effect-shader records. `NullEnvironment` answers zero for native tests. |
 | `RowTypes` | A recipe paired with its graph; the `*TypeOf` and `Check*` functions take it. |
@@ -234,7 +254,7 @@ recipe.json (text)
   ▼
 Recipe  ──Resolve──▶  ResolvedRecipe         Resolve.cpp  (FormKeys matched to the piece)
   │
-  ├── SignalGraph::Compile ─▶ evaluate per tick   Signals.cpp
+  ├── RecipeGraph::Compile ─▶ SignalState evaluates per tick   RecipeGraph.cpp / Signals.cpp
   │       Ref ─▶ Program::Parse / Evaluate      Expression.cpp
   │
   └── PlacedRecipe ─▶ SlotPlan/GeometryPlan/LightPlan   Merge.cpp
@@ -258,7 +278,8 @@ templates/{fill,bare}.json ──ParseRecipe─▶ template Recipe ───┴�
 | `Resolve.cpp` | `Recipe` to `ResolvedRecipe`: match the recipe's `FormKey`s against a `WornPiece`. |
 | `Variants.cpp` | `VariantApplies` and `ApplyVariant`: pick the matching **variant** and fold it in. |
 | `Validation.cpp` | Typed field checks shared by loading and live edits: finite values, numeric domains, collection limits, and bone/variant names. |
-| `Signals.h` / `Signals.cpp` | `SignalGraph`, the per-tick evaluation, the `CheckSource`/`CheckLayer` validation. |
+| `RecipeGraph.h` / `RecipeGraph.cpp` | Unified row compilation, function bindings, dependency analysis, and diagnostics. |
+| `Signals.h` / `Signals.cpp` | Per-tick evaluation and typed validation consumers. Candidate editor checks compile a modified recipe before comparing diagnostics. |
 | `Expression.h` / `Expression.cpp` | The `Ref` expression and curve language: `Program::Parse`/`Evaluate`. |
 | `Merge.h` / `Merge.cpp` | Compose the recipes on one piece into a slot, geometry, and light plan. |
 | `Importer.h` / `Importer.cpp` | Vanilla effect shader to starting `Recipe`: the `EffectShaderRecord` reader, the reserved `import*` fact table, and the patcher over a template recipe. |

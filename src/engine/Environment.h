@@ -13,7 +13,8 @@
 namespace BetterEnchantmentEffects {
 class ActorEnvironment final : public SignalEnvironment {
 public:
-  ActorEnvironment(RE::Actor *a_actor, RE::MagicItem *a_enchantment);
+  ActorEnvironment(RE::Actor *a_actor, RE::MagicItem *a_enchantment,
+                   std::optional<RecipeKey> a_effectKey = {});
 
   [[nodiscard]] float ActorValue(std::string_view a_name,
                                  Measure a_measure) const override;
@@ -29,6 +30,7 @@ private:
 
   RE::ActorHandle actor_;
   RE::FormID enchantment_ = 0;
+  std::optional<RecipeKey> effectKey_;
   mutable std::unordered_map<std::string, RE::ActorValue> actorValues_;
   mutable std::unordered_map<std::string, std::optional<Efsh::EffectParams>>
       shaders_;

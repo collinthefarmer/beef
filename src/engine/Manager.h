@@ -4,6 +4,7 @@
 #include "PCH.h"
 #include "Settings.h"
 #include "diagnostics/WarningHistory.h"
+#include "engine/AnimationSubscriptions.h"
 #include "engine/ApplicationService.h"
 #include "engine/InstanceTime.h"
 #include "engine/LiveActor.h"
@@ -86,6 +87,7 @@ private:
   void RunRefresh(RE::FormID a_actorID,
                   const std::vector<ApplicationToken> &a_tokens);
   void Refresh(RE::Actor *a_actor);
+  void RetireEffects(RE::FormID a_actorID);
   void Retire(RE::FormID a_actorID);
   void RetireEveryActor();
   void ChangeAndRebuildActors(std::string a_reportRecipe,
@@ -96,6 +98,9 @@ private:
                            const std::vector<ApplicationToken> &a_tokens);
   void FinishApplications(RE::FormID a_actor, LiveActor &a_state);
   void AbandonApplications(RE::FormID a_actor);
+  void QueueAnimationEvent(AnimationEvent a_event);
+  void ReconcileAnimationEvents(RE::FormID a_actor);
+  void SweepAnimationEvents();
   [[nodiscard]] std::vector<LivePiece>
   CollectPieces(RE::Actor *a_actor, bool a_firstPerson,
                 const Settings &a_settings);
@@ -135,6 +140,7 @@ private:
   void PublishSnapshot(std::uint32_t a_nowMS);
 
   ApplicationService applications_;
+  AnimationSubscriptions animations_;
 
   std::unordered_map<RE::FormID, LiveActor> applied_;
   RecipeEditor editor_{*this};

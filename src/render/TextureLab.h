@@ -8,7 +8,8 @@
 #include "mesh/Mesh.h"
 #include "mesh/TextureSize.h"
 #include "planners/ConsumptionLeases.h"
-#include "recipe/Expression.h"
+#include "planners/InterpreterProgram.h"
+#include "planners/TextureDemand.h"
 
 #include <REX/W32/COMPTR.h>
 
@@ -99,10 +100,10 @@ public:
   static_assert(!std::is_move_constructible_v<Lookup>);
   static_assert(!std::is_move_assignable_v<Lookup>);
 
-  inline static constexpr std::uint32_t kProgramTextures = 8;
-  inline static constexpr std::uint32_t kProgramRefs = 16;
-  inline static constexpr std::uint32_t kProgramCurves = 4;
-  inline static constexpr std::uint32_t kProgramStack = 32;
+  inline static constexpr std::uint32_t kProgramTextures = kInterpreterTextures;
+  inline static constexpr std::uint32_t kProgramRefs = kInterpreterInputs;
+  inline static constexpr std::uint32_t kProgramCurves = kInterpreterLookups;
+  inline static constexpr std::uint32_t kProgramStack = kInterpreterStack;
   inline static constexpr std::uint32_t kPassSrvs =
       kProgramTextures + kProgramCurves;
 
@@ -111,21 +112,13 @@ public:
     LayerInput sampling;
     float normalize = 1.0f;
   };
-  struct ProgramRef {
-    bool isTexture = false;
-    std::uint32_t texture = 0;
-    Vec3 value{};
-  };
-  struct ProgramPass {
-    std::span<const Program::Node> code;
-    std::array<ProgramRef, kProgramRefs> refs{};
-    std::uint32_t refCount = 0;
+  struct InterpreterBindings {
+    std::array<Vec3, kProgramRefs> values{};
+    std::uint32_t inputCount = 0;
     std::array<ProgramTexture, kProgramTextures> textures{};
     std::uint32_t textureCount = 0;
-    std::array<const Lookup *, kProgramCurves> curves{};
-    std::uint32_t curveCount = 0;
-    float time = 0.0f;
-    bool vectorResult = false;
+    std::array<const Lookup *, kProgramCurves> lookups{};
+    std::uint32_t lookupCount = 0;
   };
 
   inline static constexpr std::uint32_t kRippleFirings = 8;
@@ -197,6 +190,7 @@ public:
     REX::W32::ComPtr<REX::W32::ID3D11ShaderResourceView> srv;
     REX::W32::ComPtr<REX::W32::ID3D11RenderTargetView> rtv;
     std::uint32_t size = 0;
+    TextureFormat format = TextureFormat::kRgba8;
   };
 
   static_assert(!std::is_copy_constructible_v<RenderTarget>);
@@ -212,12 +206,15 @@ public:
   bool Init();
   [[nodiscard]] bool Available() const noexcept;
 
-  std::shared_ptr<RenderTarget> Acquire(TextureSize a_size,
-                                        std::string_view a_owner);
+  std::shared_ptr<RenderTarget>
+  Acquire(TextureSize a_size, std::string_view a_owner,
+          TextureFormat format = TextureFormat::kRgba8);
 
   bool Render(RenderTarget &a_target, RE::NiSourceTexture *a_source,
               const LayerParams &a_params);
-  bool RenderProgram(RenderTarget &a_target, const ProgramPass &a_pass);
+  bool RenderProgram(RenderTarget &a_target,
+                     const InterpreterProgram &a_program,
+                     const InterpreterBindings &a_bindings);
   [[nodiscard]] bool InterpreterAvailable() const noexcept;
 
   bool BakeMesh(RenderTarget &a_target, const BakeBuffers &a_bake);
@@ -246,6 +243,9 @@ public:
   [[nodiscard]] static std::optional<Extent>
   ExtentOf(RE::NiSourceTexture *a_source);
 
+  [[nodiscard]] std::expected<Value, std::string>
+  ReduceField(RenderTarget &target, ReductionKind kind, ValueType type);
+
   float MeanLuminance(RE::NiSourceTexture *a_source);
   float MeanChannel(RE::NiSourceTexture *a_source, ShaderChannel a_channel);
 
@@ -264,7 +264,8 @@ public:
   void ClearPreviews();
   void InvalidatePreviews() noexcept;
 
-  [[nodiscard]] RenderTarget *Scratch(TextureSize a_size);
+  [[nodiscard]] RenderTarget *
+  Scratch(TextureSize a_size, TextureFormat format = TextureFormat::kRgba8);
 
   void Clear();
 

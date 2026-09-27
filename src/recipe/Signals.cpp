@@ -6,10 +6,9 @@
 #include "recipe/Words.h"
 
 #include <algorithm>
-#include <cctype>
+#include <array>
 #include <cmath>
 #include <format>
-#include <functional>
 #include <map>
 #include <numbers>
 #include <unordered_set>
@@ -87,114 +86,6 @@ bool MatchesFilter(const EventFilter &a_filter,
   return true;
 }
 
-void AddRef(std::vector<std::string> &a_out, std::string_view a_name) {
-  if (!a_name.empty() && !std::ranges::contains(a_out, a_name)) {
-    a_out.emplace_back(a_name);
-  }
-}
-
-void AddRef(std::vector<std::string> &a_out, const Param &a_param) {
-  if (const auto *ref = Get<Ref>(a_param)) {
-    AddRef(a_out, ref->name);
-  }
-}
-
-template <std::size_t N>
-void AddRef(std::vector<std::string> &a_out,
-            const std::variant<std::array<Param, N>, Ref> &a_param) {
-  Match(
-      a_param, [&](const Ref &r) { AddRef(a_out, r.name); },
-      [&](const std::array<Param, N> &parts) {
-        for (const auto &p : parts) {
-          AddRef(a_out, p);
-        }
-      });
-}
-
-std::vector<std::string> Dependencies(const Signal &a_signal,
-                                      const Program *a_expression) {
-  std::vector<std::string> out;
-  Match(
-      a_signal.kind,
-      [&](const WaveSignal &k) {
-        AddRef(out, k.base);
-        AddRef(out, k.amplitude);
-        AddRef(out, k.period);
-        AddRef(out, k.phase);
-      },
-      [&](const RampSignal &k) {
-        AddRef(out, k.from);
-        AddRef(out, k.to);
-        AddRef(out, k.seconds);
-      },
-      [&](const TriggerSignal &k) {
-        AddRef(out, k.lifetime);
-        if (const auto *when = Get<WhenOrigin>(k.origin)) {
-          AddRef(out, when->when.name);
-          if (when->value) {
-            AddRef(out, when->value->name);
-          }
-        }
-      },
-      [&](const PayloadSignal &k) { AddRef(out, k.trigger.name); },
-      [&](const CounterSignal &k) {
-        AddRef(out, k.trigger.name);
-        if (k.reset)
-          AddRef(out, k.reset->name);
-        if (k.cap)
-          AddRef(out, *k.cap);
-      },
-      [&](const AccumulateSignal &k) {
-        AddRef(out, k.trigger.name);
-        AddRef(out, k.decay);
-      },
-      [&](const NoiseSignal &k) {
-        AddRef(out, k.frequency);
-        AddRef(out, k.amplitude);
-      },
-      [&](const GradientSignal &k) {
-        AddRef(out, k.t);
-        for (const auto &s : k.stops) {
-          AddRef(out, s.color);
-        }
-      },
-      [&](const RateSignal &k) { AddRef(out, k.of.name); },
-      [&](const ToRootSignal &k) { AddRef(out, k.of.name); },
-      [&](const SmoothSignal &k) {
-        AddRef(out, k.of.name);
-        AddRef(out, k.seconds);
-      },
-      [&](const ExprSignal &) {
-        if (a_expression) {
-          for (const auto &r : a_expression->References()) {
-            AddRef(out, r);
-          }
-        }
-      },
-      [](const ConstantSignal &) {}, [](const EfshSignal &) {},
-      [](const ActorValueSignal &) {}, [](const ActorStateSignal &) {},
-      [](const EnchantmentSignal &) {});
-  return out;
-}
-
-bool IsIdentifier(std::string_view a_text) noexcept {
-  if (a_text.empty() || (!std::isalpha(static_cast<unsigned char>(a_text[0])) &&
-                         a_text[0] != '_')) {
-    return false;
-  }
-  return std::ranges::all_of(a_text, [](char c) {
-    return std::isalnum(static_cast<unsigned char>(c)) || c == '_';
-  });
-}
-
-std::optional<std::string_view> NamedCurve(const CurveRef &a_curve) noexcept {
-  const std::string_view text = a_curve.text;
-  if (text.size() > 1 && text.front() == '@' && IsIdentifier(text.substr(1))) {
-    return text.substr(1);
-  }
-  return std::nullopt;
-}
-
 bool SlotWritable(Surface a_surface, ShellMaterial a_shell,
                   Slot a_slot) noexcept {
   if (a_surface == Surface::kShell && a_shell == ShellMaterial::kVanilla) {
@@ -209,7 +100,7 @@ void CheckScalar(const RowTypes &a_rows, const Reporter &a_report,
   if (!ref) {
     return;
   }
-  const auto type = a_rows.graph.TypeOf(ref->name);
+  const auto type = SignalTypeOf(a_rows, ref->name);
   if (!type) {
     a_report.Error(
         std::format("'{}' reads unknown signal '@{}'", a_field, ref->name));
@@ -227,7 +118,7 @@ void CheckVector(const RowTypes &a_rows, const Reporter &a_report,
   Match(
       a_param,
       [&](const Ref &r) {
-        const auto type = a_rows.graph.TypeOf(r.name);
+        const auto type = SignalTypeOf(a_rows, r.name);
         if (!type) {
           a_report.Error(
               std::format("'{}' reads unknown signal '@{}'", a_field, r.name));
@@ -249,7 +140,8 @@ void CheckVector(const RowTypes &a_rows, const Reporter &a_report,
 
 void CheckTrigger(const RowTypes &a_rows, const Reporter &a_report,
                   const Ref &a_ref, std::string_view a_field) {
-  const auto *signal = a_rows.recipe.FindSignal(a_ref.name);
+  const auto index = a_rows.graph.FindSignalIndex(a_ref.name);
+  const auto *signal = index ? a_rows.graph.SignalAt(*index) : nullptr;
   if (!signal) {
     a_report.Error(
         std::format("'{}' names unknown signal '@{}'", a_field, a_ref.name));
@@ -259,542 +151,134 @@ void CheckTrigger(const RowTypes &a_rows, const Reporter &a_report,
   }
 }
 
-void CheckCurveRef(const RowTypes &a_rows, const Reporter &a_report,
-                   const std::optional<CurveRef> &a_curve) {
-  if (!a_curve) {
-    return;
-  }
-  if (const auto name = NamedCurve(*a_curve)) {
-    if (!a_rows.recipe.FindCurve(*name)) {
-      a_report.Error(std::format("'curve' names unknown curve '@{}'", *name));
-    }
-    return;
-  }
-  if (const auto program = ParseCurve(a_curve->text); !program) {
-    a_report.Error(std::format("curve: {}", program.error()));
-  }
-}
-
-void CheckUniqueNames(const Recipe &a_recipe, std::vector<Diagnostic> &a_out) {
-  const auto error = [&](const std::string &a_where, std::string a_message) {
-    Reporter{a_out, a_where}.Error(std::move(a_message));
-  };
-  const auto warn = [&](const std::string &a_where, std::string a_message) {
-    Reporter{a_out, a_where}.Warn(std::move(a_message));
-  };
-  const auto unique = [&]<class Row>(const std::vector<Row> &a_rows,
-                                     const char *a_what) {
-    std::unordered_set<std::string> seen;
-    for (const auto &row : a_rows) {
-      if (!IsName(row.name)) {
-        error(std::format("{} '{}'", a_what, row.name),
-              "names are letters, digits and underscores, not starting with a "
-              "digit");
-      } else if (!seen.insert(row.name).second) {
-        error(std::format("{} {}", a_what, row.name), "duplicate name");
-      }
-    }
-  };
-  unique(a_recipe.signals, "signal");
-  unique(a_recipe.curves, "curve");
-  unique(a_recipe.sources, "source");
-  unique(a_recipe.masks, "mask");
-  std::unordered_set<std::string> images;
-  for (const auto &s : a_recipe.sources) {
-    images.insert(s.name);
-  }
-  for (const auto &m : a_recipe.masks) {
-    if (!images.insert(m.name).second) {
-      error(MaskWhere(m.name),
-            "a source has the same name; per-texel expressions read both by "
-            "name");
-    }
-  }
-  for (const auto &s : a_recipe.signals) {
-    if (images.contains(s.name)) {
-      warn(SignalWhere(s.name),
-           "a source or mask has the same name; inside masks the image wins");
-    }
-  }
-  std::unordered_set<std::string> variants;
-  for (const auto &v : a_recipe.variants) {
-    if (v.name.empty()) {
-      error("variant", "has no name");
-    } else if (!variants.insert(v.name).second) {
-      error(VariantWhere(v.name), "duplicate name");
-    }
-  }
-}
-}
-
-std::optional<std::size_t>
-SignalGraph::Index(std::string_view a_name) const noexcept {
-  const auto it = byName_.find(std::string{a_name});
-  return it == byName_.end() ? std::nullopt : std::optional{it->second};
-}
-
-std::optional<ValueType>
-SignalGraph::TypeOf(std::string_view a_name) const noexcept {
-  const auto idx = Index(a_name);
-  return idx ? std::optional{nodes_[*idx].type} : std::nullopt;
-}
-
-const Program *
-SignalGraph::CurveProgram(std::string_view a_name) const noexcept {
-  const auto it = curves_.find(std::string{a_name});
-  return it == curves_.end() ? nullptr : &it->second;
-}
-
-void SignalGraph::ReportSignal(SignalGraph &a_graph, std::string_view a_name,
-                               std::string a_message) {
-  Reporter{a_graph.diagnostics_, SignalWhere(a_name)}.Error(
-      std::move(a_message));
-}
-
-void SignalGraph::ParseCurves(SignalGraph &a_graph,
-                              std::span<const Curve> a_curves) {
-  for (const auto &c : a_curves) {
-    if (auto program = ParseCurve(c.text)) {
-      a_graph.curves_.emplace(c.name, std::move(*program));
-    }
-  }
-}
-
-void SignalGraph::RegisterNodes(SignalGraph &a_graph,
-                                std::span<const Signal> a_signals) {
-  a_graph.nodes_.reserve(a_signals.size());
-  for (const auto &s : a_signals) {
-    Node n;
-    n.signal = s;
-    if (!a_graph.byName_.emplace(s.name, a_graph.nodes_.size()).second) {
-      n.inert = true;
-      ReportSignal(a_graph, s.name, "duplicate name; this row is inert");
-    }
-    a_graph.nodes_.push_back(std::move(n));
-  }
-}
-
-void SignalGraph::ResolveDependencies(SignalGraph &a_graph, Node &a_node) {
-  for (const auto &dep : Dependencies(
-           a_node.signal, a_node.expression ? &*a_node.expression : nullptr)) {
-    const auto idx = a_graph.Index(dep);
-    if (!idx) {
-      a_node.inert = true;
-      ReportSignal(a_graph, a_node.signal.name,
-                   std::format("reads unknown signal '@{}'", dep));
-      continue;
-    }
-    a_node.deps.push_back(*idx);
-  }
-}
-
-void SignalGraph::ResolveNodeCurve(SignalGraph &a_graph, Node &a_node) {
-  if (!a_node.signal.curve) {
-    return;
-  }
-  const CurveRef &curveRef = *a_node.signal.curve;
-  if (const auto name = NamedCurve(curveRef)) {
-    if (const auto *program = a_graph.CurveProgram(*name)) {
-      a_node.curve = *program;
-    } else {
-      a_node.inert = true;
-      ReportSignal(a_graph, a_node.signal.name,
-                   std::format("curve names unknown curve '@{}'", *name));
-    }
-  } else if (auto program = ParseCurve(curveRef.text)) {
-    a_node.curve = std::move(*program);
-  } else {
-    a_node.inert = true;
-    ReportSignal(a_graph, a_node.signal.name,
-                 std::format("curve: {}", program.error()));
-  }
-}
-
-void SignalGraph::ResolveRefs(SignalGraph &a_graph) {
-  for (auto &n : a_graph.nodes_) {
-    if (const auto *expr = Get<ExprSignal>(n.signal.kind)) {
-      auto parsed = Program::Parse(expr->text);
-      if (!parsed) {
-        n.inert = true;
-        ReportSignal(a_graph, n.signal.name,
-                     std::format("expr: {}", parsed.error()));
-      } else {
-        n.expression = std::move(*parsed);
-      }
-    }
-    ResolveDependencies(a_graph, n);
-    ResolveNodeCurve(a_graph, n);
-  }
-}
-
-void SignalGraph::OrderNodes(SignalGraph &a_graph) {
-  enum class Mark : std::uint8_t { kNone, kOpen, kDone };
-  std::vector<Mark> marks(a_graph.nodes_.size(), Mark::kNone);
-  std::vector<std::size_t> path;
-  const auto visit = [&](this auto &&a_self, std::size_t a_i,
-                         std::size_t a_depth) -> void {
-    if (marks[a_i] == Mark::kDone) {
-      return;
-    }
-    if (marks[a_i] == Mark::kOpen) {
-      std::string cycle;
-      bool on = false;
-      for (const auto p : path) {
-        on = on || p == a_i;
-        if (on) {
-          a_graph.nodes_[p].inert = true;
-          cycle += a_graph.nodes_[p].signal.name + " -> ";
-        }
-      }
-      ReportSignal(
-          a_graph, a_graph.nodes_[a_i].signal.name,
-          std::format("cycle: {}{}", cycle, a_graph.nodes_[a_i].signal.name));
-      return;
-    }
-    if (a_depth >= kMaxRecipeDepth) {
-      a_graph.nodes_[a_i].inert = true;
-      ReportSignal(
-          a_graph, a_graph.nodes_[a_i].signal.name,
-          std::format(
-              "dependency chain is deeper than {} signals; this row is inert",
-              kMaxRecipeDepth));
-      marks[a_i] = Mark::kDone;
-      a_graph.order_.push_back(a_i);
-      return;
-    }
-    marks[a_i] = Mark::kOpen;
-    path.push_back(a_i);
-    for (const auto d : a_graph.nodes_[a_i].deps) {
-      a_self(d, a_depth + 1);
-    }
-    path.pop_back();
-    marks[a_i] = Mark::kDone;
-    a_graph.order_.push_back(a_i);
-  };
-  for (std::size_t i = 0; i < a_graph.nodes_.size(); ++i) {
-    visit(i, 0);
-  }
-}
-
-void SignalGraph::LinkExpr(SignalGraph &a_graph, Node &a_node) {
-  if (!a_node.expression) {
-    return;
-  }
-  for (const auto &r : a_node.expression->References()) {
-    a_node.exprRefs.push_back(
-        static_cast<std::uint32_t>(a_graph.Index(r).value_or(0)));
-  }
-  for (const auto &c : a_node.expression->Curves()) {
-    const auto *program = a_graph.CurveProgram(c);
-    if (!program) {
-      a_node.inert = true;
-      ReportSignal(a_graph, a_node.signal.name,
-                   std::format("expr calls unknown curve '@{}'", c));
-    }
-    a_node.exprCurves.push_back(program);
-  }
-}
-
-void SignalGraph::InferTypes(SignalGraph &a_graph) {
-  for (const auto i : a_graph.order_) {
-    auto &n = a_graph.nodes_[i];
-    const auto typeOf = [&](std::string_view name) -> std::optional<ValueType> {
-      return a_graph.TypeOf(name);
-    };
-    n.type = Match(
-        n.signal.kind,
-        [](const ConstantSignal &k) {
-          return BetterEnchantmentEffects::TypeOf(k.value);
-        },
-        [](const EfshSignal &k) {
-          switch (k.field) {
-          case EfshField::kFillColor:
-          case EfshField::kEdgeColor:
-            return ValueType::kVec3;
-          case EfshField::kScroll:
-            return ValueType::kVec2;
-          default:
-            return ValueType::kScalar;
-          }
-        },
-        [&](const PayloadSignal &k) {
-          const auto index = a_graph.Index(k.trigger.name);
-          const auto *trigger =
-              index ? Get<TriggerSignal>(a_graph.nodes_[*index].signal.kind)
-                    : nullptr;
-          return trigger ? trigger->payload : ValueType::kScalar;
-        },
-        [](const GradientSignal &) { return ValueType::kVec3; },
-        [&](const RateSignal &k) {
-          return typeOf(k.of.name).value_or(ValueType::kScalar);
-        },
-        [](const ToRootSignal &) { return ValueType::kVec3; },
-        [&](const SmoothSignal &k) {
-          return typeOf(k.of.name).value_or(ValueType::kScalar);
-        },
-        [&](const ExprSignal &) {
-          if (!n.expression) {
-            return ValueType::kScalar;
-          }
-          auto checked = n.expression->Check(typeOf);
-          if (!checked) {
-            n.inert = true;
-            ReportSignal(a_graph, n.signal.name,
-                         std::format("expr: {}", checked.error()));
-            return ValueType::kScalar;
-          }
-          return *checked;
-        },
-        [](const WaveSignal &) { return ValueType::kScalar; },
-        [](const RampSignal &) { return ValueType::kScalar; },
-        [](const ActorValueSignal &) { return ValueType::kScalar; },
-        [](const ActorStateSignal &k) {
-          return VectorValued(k.kind) ? ValueType::kVec3 : ValueType::kScalar;
-        },
-        [](const EnchantmentSignal &) { return ValueType::kScalar; },
-        [](const TriggerSignal &) { return ValueType::kScalar; },
-        [](const CounterSignal &) { return ValueType::kScalar; },
-        [](const AccumulateSignal &) { return ValueType::kScalar; },
-        [](const NoiseSignal &) { return ValueType::kScalar; });
-    if (n.curve && n.type != ValueType::kScalar) {
-      n.inert = true;
-      ReportSignal(
-          a_graph, n.signal.name,
-          std::format(
-              "a curve applies only to a scalar signal; this one is a {}",
-              Name(n.type)));
-    }
-    LinkExpr(a_graph, n);
-  }
-}
-
-struct SignalGraph::ReferenceTypeChecker {
-  SignalGraph &graph;
-  Node &node;
-
-  void Reject(std::string message) const {
-    node.inert = true;
-    ReportSignal(graph, node.signal.name, std::move(message));
-  }
-
-  [[nodiscard]] std::optional<ValueType>
-  MismatchedType(const Ref &reference, ValueType expected) const {
-    const auto type = graph.TypeOf(reference.name);
-    return type && *type != expected ? type : std::nullopt;
-  }
-
-  void CheckScalarReference(const Ref &reference,
-                            std::string_view field) const {
-    if (const auto type = MismatchedType(reference, ValueType::kScalar)) {
-      Reject(std::format("'{}' must be a scalar; '@{}' is a {}", field,
-                         reference.name, Name(*type)));
-    }
-  }
-
-  void CheckScalar(const Param &parameter, std::string_view field) const {
-    if (const auto *reference = Get<Ref>(parameter)) {
-      CheckScalarReference(*reference, field);
-    }
-  }
-
-  void CheckTrigger(std::string_view reference, std::string message) const {
-    const auto index = graph.Index(reference);
-    if (index && !Is<TriggerSignal>(graph.nodes_[*index].signal.kind)) {
-      Reject(std::move(message));
-    }
-  }
-
-  void RequireReference(std::string_view reference, std::string message) const {
-    if (reference.empty()) {
-      Reject(std::move(message));
-    }
-  }
-
-  void CheckColor(const Vec3Param &color) const {
-    if (const auto *reference = Get<Ref>(color)) {
-      if (const auto type = MismatchedType(*reference, ValueType::kVec3)) {
-        Reject(std::format("a stop colour must be a vec3; '@{}' is a {}",
-                           reference->name, Name(*type)));
-      }
-    }
-  }
-
-  void operator()(const WaveSignal &k) const {
-    CheckScalar(k.base, "base");
-    CheckScalar(k.amplitude, "amplitude");
-    CheckScalar(k.period, "period");
-    CheckScalar(k.phase, "phase");
-  }
-
-  void operator()(const RampSignal &k) const {
-    CheckScalar(k.from, "from");
-    CheckScalar(k.to, "to");
-    CheckScalar(k.seconds, "seconds");
-  }
-
-  void operator()(const TriggerSignal &k) const {
-    CheckScalar(k.lifetime, "lifetime");
-    if (Get<WorldAnchor>(k.anchor) && k.payload != ValueType::kVec3) {
-      Reject(std::format(
-          "an anchor in world space needs a vec3 payload; this trigger "
-          "carries a {}",
-          Name(k.payload)));
-    }
-    if (const auto *when = Get<WhenOrigin>(k.origin)) {
-      RequireReference(when->when.name, "a when trigger names a signal");
-      CheckScalarReference(when->when, "when");
-      if (when->value) {
-        if (const auto type = MismatchedType(*when->value, k.payload)) {
-          Reject(std::format(
-              "the trigger's payload is a {}; 'value' reads '@{}', a {}",
-              Name(k.payload), when->value->name, Name(*type)));
-        }
-      }
-    }
-  }
-
-  void operator()(const ActorValueSignal &k) const {
-    RequireReference(k.actorValue,
-                     "an actor-value signal names an actor value");
-  }
-
-  void operator()(const RateSignal &k) const {
-    RequireReference(k.of.name, "a delta signal reads a signal");
-  }
-
-  void operator()(const PayloadSignal &k) const {
-    RequireReference(k.trigger.name, "a payload signal names a trigger");
-    CheckTrigger(k.trigger.name,
-                 std::format("'trigger' must name a trigger; '@{}' is not one",
-                             k.trigger.name));
-  }
-
-  void operator()(const CounterSignal &k) const {
-    RequireReference(k.trigger.name, "a counter signal names a trigger");
-    CheckTrigger(k.trigger.name,
-                 std::format("'@{}' must be a trigger", k.trigger.name));
-    if (k.reset)
-      CheckTrigger(k.reset->name,
-                   std::format("'@{}' must be a trigger", k.reset->name));
-    if (k.cap)
-      CheckScalar(*k.cap, "cap");
-  }
-
-  void operator()(const AccumulateSignal &k) const {
-    RequireReference(k.trigger.name, "an accumulate signal names a trigger");
-    CheckTrigger(k.trigger.name,
-                 std::format("'@{}' must be a trigger", k.trigger.name));
-    CheckScalar(k.decay, "decay");
-  }
-
-  void operator()(const NoiseSignal &k) const {
-    CheckScalar(k.frequency, "frequency");
-    CheckScalar(k.amplitude, "amplitude");
-  }
-
-  void operator()(const GradientSignal &k) const {
-    CheckScalar(k.t, "t");
-    if (k.stops.empty()) {
-      Reject("gradient needs at least one stop");
-    }
-    for (const auto &stop : k.stops) {
-      CheckColor(stop.color);
-    }
-  }
-
-  void operator()(const SmoothSignal &k) const {
-    RequireReference(k.of.name, "a smooth signal reads a signal");
-    CheckScalar(k.seconds, "seconds");
-  }
-  template <class T> void operator()(const T &) const {}
-};
-
-void SignalGraph::CheckReferenceTypes(SignalGraph &a_graph) {
-  for (auto &node : a_graph.nodes_) {
-    Match(node.signal.kind, ReferenceTypeChecker{a_graph, node});
-  }
-}
-
-void SignalGraph::PropagateInert(SignalGraph &a_graph) {
-  for (const auto i : a_graph.order_) {
-    for (const auto d : a_graph.nodes_[i].deps) {
-      if (a_graph.nodes_[d].inert && !a_graph.nodes_[i].inert) {
-        a_graph.nodes_[i].inert = true;
-        Reporter{a_graph.diagnostics_,
-                 SignalWhere(a_graph.nodes_[i].signal.name)}
-            .Warn(std::format("inert because '@{}' is",
-                              a_graph.nodes_[d].signal.name));
-      }
-    }
-  }
-}
-
-SignalGraph SignalGraph::Compile(std::span<const Signal> a_signals,
-                                 std::span<const Curve> a_curves) {
-  SignalGraph g;
-  ParseCurves(g, a_curves);
-  RegisterNodes(g, a_signals);
-  ResolveRefs(g);
-  OrderNodes(g);
-  InferTypes(g);
-  CheckReferenceTypes(g);
-  PropagateInert(g);
-  return g;
 }
 
 std::optional<ValueType> SignalTypeOf(const RowTypes &a_rows,
                                       std::string_view a_name) noexcept {
-  return a_rows.graph.TypeOf(a_name);
+  const auto index = a_rows.graph.FindSignalIndex(a_name);
+  return index ? a_rows.graph.TypeOf(*index) : std::nullopt;
 }
 
 std::optional<ValueType> TexelTypeOf(const RowTypes &a_rows,
-                                     std::string_view a_name,
-                                     std::size_t a_depth) {
-  if (a_depth >= kMaxRecipeDepth) {
+                                     std::string_view a_name) {
+  const auto index = a_rows.graph.FindNodeIndex(a_name);
+  if (!index || a_rows.graph.IsDisabled(*index))
     return std::nullopt;
-  }
-  if (const auto *source = a_rows.recipe.FindSource(a_name)) {
-    return SourceType(*source);
-  }
-  if (const auto *mask = a_rows.recipe.FindMask(a_name)) {
-    return MaskTypeOf(a_rows, *mask, a_depth + 1);
-  }
-  return a_rows.graph.TypeOf(a_name);
+  return a_rows.graph.SignalAt(*index) || a_rows.graph.SourceAt(*index) ||
+                 a_rows.graph.IsMask(*index)
+             ? a_rows.graph.TypeOf(*index)
+             : std::nullopt;
 }
 
-std::optional<ValueType> MaskTypeOf(const RowTypes &a_rows, const Mask &a_mask,
-                                    std::size_t a_depth) {
-  if (a_depth >= kMaxRecipeDepth) {
-    return std::nullopt;
-  }
-  const auto program = Program::Parse(a_mask.text);
-  if (!program) {
-    return std::nullopt;
-  }
-  const auto type = program->Check([&](std::string_view name) {
-    return TexelTypeOf(a_rows, name, a_depth + 1);
-  });
-  return type ? std::optional{*type} : std::nullopt;
+std::optional<ValueType> MaskTypeOf(const RowTypes &a_rows,
+                                    const Mask &a_mask) {
+  const auto index = a_rows.graph.FindNodeIndex(a_mask.name);
+  return index && !a_rows.graph.IsDisabled(*index) &&
+                 a_rows.graph.IsMask(*index)
+             ? a_rows.graph.TypeOf(*index)
+             : std::nullopt;
 }
 
 bool NamesTrigger(const RowTypes &a_rows, std::string_view a_name) noexcept {
-  const auto *signal = a_rows.recipe.FindSignal(a_name);
+  const auto index = a_rows.graph.FindSignalIndex(a_name);
+  const auto *signal = index ? a_rows.graph.SignalAt(*index) : nullptr;
   return signal && Is<TriggerSignal>(signal->kind);
 }
 
-std::vector<Diagnostic> CheckCurve(const RowTypes &, const Curve &a_curve) {
+namespace {
+std::vector<Diagnostic> RowDiagnostics(const RowTypes &a_rows,
+                                       std::string_view a_where) {
   std::vector<Diagnostic> out;
-  const Reporter report{out, CurveWhere(a_curve.name)};
-  if (const auto program = ParseCurve(a_curve.text); !program) {
-    report.Error(program.error());
+  for (const auto &diagnostic : a_rows.graph.Diagnostics()) {
+    if (diagnostic.where == a_where)
+      out.push_back(diagnostic);
   }
   return out;
 }
 
+template <class Row>
+std::vector<Diagnostic> CandidateDiagnostics(const RowTypes &a_rows,
+                                             const Row &a_candidate,
+                                             std::vector<Row> Recipe::*a_member,
+                                             std::string_view a_where) {
+  const auto &original = a_rows.recipe.*a_member;
+  const auto found = std::ranges::find(original, a_candidate.name, &Row::name);
+  if (found != original.end() && *found == a_candidate) {
+    return RowDiagnostics(a_rows, a_where);
+  }
+  Recipe candidate = a_rows.recipe;
+  auto &rows = candidate.*a_member;
+  if (found == original.end()) {
+    rows.push_back(a_candidate);
+  } else {
+    rows[static_cast<std::size_t>(found - original.begin())] = a_candidate;
+  }
+  const auto graph = RecipeGraph::Compile(candidate);
+  return RowDiagnostics(RowTypes{candidate, graph}, a_where);
+}
+
+std::vector<Diagnostic> LayerDiagnostics(const RowTypes &a_rows,
+                                         const Layer &a_candidate,
+                                         std::string_view a_where) {
+  for (std::size_t i = 0; i < a_rows.recipe.outputs.size(); ++i) {
+    const auto *original = Get<SurfaceOutput>(a_rows.recipe.outputs[i]);
+    if (!original)
+      continue;
+    for (std::size_t j = 0; j <= original->stack.size(); ++j) {
+      if (LayerWhere(i, j) != a_where)
+        continue;
+      if (j < original->stack.size() && original->stack[j] == a_candidate) {
+        return RowDiagnostics(a_rows, a_where);
+      }
+      Recipe candidate = a_rows.recipe;
+      auto &stack = Get<SurfaceOutput>(candidate.outputs[i])->stack;
+      if (j < stack.size())
+        stack[j] = a_candidate;
+      else
+        stack.push_back(a_candidate);
+      const auto graph = RecipeGraph::Compile(candidate);
+      return RowDiagnostics(RowTypes{candidate, graph}, a_where);
+    }
+  }
+  Recipe candidate = a_rows.recipe;
+  const auto where = LayerWhere(candidate.outputs.size(), 0);
+  SurfaceOutput surface;
+  surface.stack.push_back(a_candidate);
+  candidate.outputs.push_back(std::move(surface));
+  const auto graph = RecipeGraph::Compile(candidate);
+  auto diagnostics = RowDiagnostics(RowTypes{candidate, graph}, where);
+  for (auto &diagnostic : diagnostics)
+    diagnostic.where = a_where;
+  return diagnostics;
+}
+}
+
+std::vector<Diagnostic> CheckCurve(const RowTypes &a_rows,
+                                   const Curve &a_curve) {
+  return CandidateDiagnostics(a_rows, a_curve, &Recipe::curves,
+                              CurveWhere(a_curve.name));
+}
+
 std::vector<Diagnostic> CheckSource(const RowTypes &a_rows,
                                     const Source &a_source) {
-  std::vector<Diagnostic> out;
+  auto out = CandidateDiagnostics(a_rows, a_source, &Recipe::sources,
+                                  SourceWhere(a_source.name));
+  for (auto &diagnostic : CheckSourceInputs(a_rows, a_source)) {
+    const bool present = std::ranges::any_of(out, [&](const Diagnostic &prior) {
+      return prior.severity == diagnostic.severity &&
+             prior.where == diagnostic.where &&
+             prior.message == diagnostic.message;
+    });
+    if (!present)
+      out.push_back(std::move(diagnostic));
+  }
+  return out;
+}
+
+std::vector<Diagnostic> CheckSourceInputs(const RowTypes &a_rows,
+                                          const Source &a_source) {
   const auto where = SourceWhere(a_source.name);
+  std::vector<Diagnostic> out;
   const Reporter report{out, where};
   Match(
       a_source.kind,
@@ -851,37 +335,13 @@ std::vector<Diagnostic> CheckSource(const RowTypes &a_rows,
 }
 
 std::vector<Diagnostic> CheckMask(const RowTypes &a_rows, const Mask &a_mask) {
-  std::vector<Diagnostic> out;
-  const Reporter report{out, MaskWhere(a_mask.name)};
-  const auto program = Program::Parse(a_mask.text);
-  if (!program) {
-    report.Error(program.error());
-    return out;
-  }
-  if (program->UsesX()) {
-    report.Error("'x' is only defined inside a curve");
-  }
-  if (std::ranges::find(program->References(), a_mask.name) !=
-      program->References().end()) {
-    report.Error("reads itself");
-    return out;
-  }
-  const auto type = program->Check(
-      [&](std::string_view name) { return TexelTypeOf(a_rows, name, 1); });
-  if (!type) {
-    report.Error(type.error());
-  }
-  for (const auto &curve : program->Curves()) {
-    if (!a_rows.recipe.FindCurve(curve)) {
-      report.Error(std::format("calls unknown curve '@{}'", curve));
-    }
-  }
-  return out;
+  return CandidateDiagnostics(a_rows, a_mask, &Recipe::masks,
+                              MaskWhere(a_mask.name));
 }
 
 std::vector<Diagnostic> CheckLayer(const RowTypes &a_rows, const Layer &a_layer,
                                    Slot a_slot, std::string_view a_where) {
-  std::vector<Diagnostic> out;
+  std::vector<Diagnostic> out = LayerDiagnostics(a_rows, a_layer, a_where);
   const Reporter report{out, a_where};
   if (const auto *ref = Get<Ref>(a_layer.source)) {
     if (!a_rows.recipe.FindSource(ref->name) &&
@@ -890,7 +350,6 @@ std::vector<Diagnostic> CheckLayer(const RowTypes &a_rows, const Layer &a_layer,
                                ref->name));
     }
   }
-  CheckCurveRef(a_rows, report, a_layer.curve);
   CheckScalar(a_rows, report, a_layer.opacity, "opacity");
   if (a_layer.color) {
     CheckVector<3>(a_rows, report, *a_layer.color, "color", true);
@@ -1040,7 +499,7 @@ void CheckVariants(const RowTypes &a_rows, std::vector<Diagnostic> &a_out) {
   for (const auto &v : a_rows.recipe.variants) {
     const Reporter report{a_out, VariantWhere(v.name)};
     for (const auto &[name, value] : v.overrides) {
-      const auto type = a_rows.graph.TypeOf(name);
+      const auto type = SignalTypeOf(a_rows, name);
       if (!type) {
         report.Error(std::format("overrides unknown signal '{}'", name));
       } else if (*type != TypeOf(value)) {
@@ -1055,8 +514,7 @@ void CheckVariants(const RowTypes &a_rows, std::vector<Diagnostic> &a_out) {
 std::vector<Diagnostic>
 Validate(const Recipe &a_recipe,
          std::span<const Diagnostic> a_inputDiagnostics) {
-  const SignalGraph graph =
-      SignalGraph::Compile(a_recipe.signals, a_recipe.curves);
+  const RecipeGraph graph = RecipeGraph::Compile(a_recipe);
   const RowTypes rows{a_recipe, graph};
 
   std::vector<Diagnostic> out = CheckRecipeFields(a_recipe);
@@ -1081,7 +539,14 @@ Validate(const Recipe &a_recipe,
   for (const auto &d : graph.Diagnostics()) {
     out.push_back(d);
   }
-  CheckUniqueNames(a_recipe, out);
+  std::unordered_set<std::string> variants;
+  for (const auto &variant : a_recipe.variants) {
+    if (variant.name.empty()) {
+      Reporter{out, "variant"}.Error("has no name");
+    } else if (!variants.insert(variant.name).second) {
+      Reporter{out, VariantWhere(variant.name)}.Error("duplicate name");
+    }
+  }
   for (const auto &c : a_recipe.curves) {
     append(CheckCurve(rows, c));
   }
@@ -1091,39 +556,101 @@ Validate(const Recipe &a_recipe,
   for (const auto &m : a_recipe.masks) {
     append(CheckMask(rows, m));
   }
-  CheckOutputs(rows, out);
+  std::vector<Diagnostic> outputDiagnostics;
+  CheckOutputs(rows, outputDiagnostics);
+  append(std::move(outputDiagnostics));
   CheckShell(rows, out);
   CheckVariants(rows, out);
   return out;
 }
 
-SignalState::SignalState(const SignalGraph &a_graph)
-    : graph_(a_graph), values_(a_graph.Size(), Value{0.0f}),
-      states_(a_graph.Size()) {
-  for (std::size_t i = 0; i < graph_.Size(); ++i) {
-    const auto &n = graph_.nodes_[i];
-    values_[i] = ZeroOf(n.type);
-    if (const auto *c = Get<ConstantSignal>(n.signal.kind)) {
-      values_[i] = c->value;
+template <class State> State *SignalState::Memory(NodeId a_node) noexcept {
+  if (a_node >= stateSlots_.size() || !stateSlots_[a_node])
+    return nullptr;
+  const auto slot = *stateSlots_[a_node];
+  return slot < states_.size() ? Get<State>(states_[slot]) : nullptr;
+}
+
+template <class State>
+const State *SignalState::Memory(NodeId a_node) const noexcept {
+  if (a_node >= stateSlots_.size() || !stateSlots_[a_node])
+    return nullptr;
+  const auto slot = *stateSlots_[a_node];
+  return slot < states_.size() ? Get<State>(states_[slot]) : nullptr;
+}
+
+SignalState::SignalState(const RecipeGraph &a_graph)
+    : graph_(a_graph), stateSlots_(a_graph.Size()) {
+  outputOffsets_.reserve(a_graph.Size());
+  for (NodeId id = 0; id < graph_.Size(); ++id) {
+    const auto *node = graph_.NodeAt(id);
+    outputOffsets_.push_back(values_.size());
+    if (!node)
+      continue;
+    for (const auto &output : node->outputs) {
+      const auto *type = Get<ValueType>(output.type);
+      values_.push_back(type ? ZeroOf(*type) : Value{0.0f});
     }
+    if (graph_.IsDisabled(id))
+      continue;
+    const auto add = [&](OperationState state) {
+      stateSlots_[id] = states_.size();
+      states_.push_back(std::move(state));
+    };
+    Match(
+        node->kind, [&](const WaveOperation &) { add(WaveState{}); },
+        [&](const TriggerOperation &) {
+          add(TriggerState{});
+          triggers_.push_back(id);
+        },
+        [&](const HoldOperation &) { add(HoldState{DefaultValue(id)}); },
+        [&](const CounterOperation &) { add(CounterState{}); },
+        [&](const AccumulateOperation &) { add(AccumulateState{}); },
+        [&](const RateOperation &) { add(RateState{}); },
+        [&](const SmoothOperation &) { add(SmoothState{}); },
+        [&](const ConstantOperation &constant) {
+          Store({id, 0}, constant.value);
+        },
+        [](const auto &) {});
   }
 }
 
+Value SignalState::DefaultValue(NodeId a_node) const noexcept {
+  const auto type = graph_.OutputType({a_node, 0});
+  const auto *numeric = type ? Get<ValueType>(*type) : nullptr;
+  return numeric ? ZeroOf(*numeric) : Value{0.0f};
+}
+
+Value SignalState::ValueOf(OutputRef a_output) const noexcept {
+  const auto *node = graph_.NodeAt(a_output.node);
+  if (!node || a_output.node >= outputOffsets_.size() ||
+      a_output.output >= node->outputs.size() ||
+      !Is<ValueType>(node->outputs[a_output.output].type))
+    return 0.0f;
+  const auto slot = outputOffsets_[a_output.node] + a_output.output;
+  return slot < values_.size() ? values_[slot] : Value{0.0f};
+}
+
+void SignalState::Store(OutputRef a_output, Value a_value) {
+  const auto *node = graph_.NodeAt(a_output.node);
+  if (!node || a_output.node >= outputOffsets_.size() ||
+      a_output.output >= node->outputs.size())
+    return;
+  const auto *type = Get<ValueType>(node->outputs[a_output.output].type);
+  if (!type)
+    return;
+  const auto slot = outputOffsets_[a_output.node] + a_output.output;
+  if (slot < values_.size())
+    values_[slot] = TypeOf(a_value) == *type ? a_value : ZeroOf(*type);
+}
+
 Value SignalState::ValueOf(std::size_t a_index) const noexcept {
-  return a_index < values_.size() ? values_[a_index] : Value{0.0f};
+  return ValueOf(OutputRef{a_index, 0});
 }
 
 Value SignalState::ValueOf(std::string_view a_name) const noexcept {
-  const auto idx = graph_.Index(a_name);
-  return idx ? values_[*idx] : Value{0.0f};
-}
-
-float SignalState::Scalar(std::size_t a_index) const noexcept {
-  return AsScalar(ValueOf(a_index));
-}
-
-Vec3 SignalState::Vector(std::size_t a_index) const noexcept {
-  return AsVec3(ValueOf(a_index));
+  const auto output = graph_.FindSignalOutput(a_name);
+  return output ? ValueOf(*output) : Value{0.0f};
 }
 
 float SignalState::Scalar(std::string_view a_name) const noexcept {
@@ -1136,13 +663,14 @@ Vec3 SignalState::Vector(std::string_view a_name) const noexcept {
 
 float SignalState::Resolve(const Param &a_param) const noexcept {
   return Match(
-      a_param, [](float f) { return f; },
-      [&](const Ref &r) { return Scalar(r.name); });
+      a_param, [](float value) { return value; },
+      [&](const Ref &reference) { return Scalar(reference.name); });
 }
 
 Vec2 SignalState::Resolve(const Vec2Param &a_param) const noexcept {
   return Match(
-      a_param, [&](const Ref &r) { return AsVec2(ValueOf(r.name)); },
+      a_param,
+      [&](const Ref &reference) { return AsVec2(ValueOf(reference.name)); },
       [&](const std::array<Param, 2> &parts) {
         return Vec2{Resolve(parts[0]), Resolve(parts[1])};
       });
@@ -1150,141 +678,245 @@ Vec2 SignalState::Resolve(const Vec2Param &a_param) const noexcept {
 
 Vec3 SignalState::Resolve(const Vec3Param &a_param) const noexcept {
   return Match(
-      a_param, [&](const Ref &r) { return Vector(r.name); },
+      a_param, [&](const Ref &reference) { return Vector(reference.name); },
       [&](const std::array<Param, 3> &parts) {
         return Vec3{Resolve(parts[0]), Resolve(parts[1]), Resolve(parts[2])};
       });
 }
 
 std::span<const TriggerFiring>
+SignalState::Firings(OutputRef a_output) const noexcept {
+  const auto type = graph_.OutputType(a_output);
+  const auto *resource = type ? Get<ResourceType>(*type) : nullptr;
+  const auto *memory = resource && *resource == ResourceType::kFirings
+                           ? Memory<TriggerState>(a_output.node)
+                           : nullptr;
+  return memory ? std::span<const TriggerFiring>{memory->firings}
+                : std::span<const TriggerFiring>{};
+}
+
+std::uint64_t SignalState::AcceptedCount(OutputRef a_output) const noexcept {
+  const auto type = graph_.OutputType(a_output);
+  const auto *resource = type ? Get<ResourceType>(*type) : nullptr;
+  const auto *memory = resource && *resource == ResourceType::kCount
+                           ? Memory<TriggerState>(a_output.node)
+                           : nullptr;
+  return memory ? memory->accepted : 0;
+}
+
+std::span<const TriggerFiring>
 SignalState::Firings(std::string_view a_trigger) const noexcept {
-  const auto idx = graph_.Index(a_trigger);
-  if (!idx) {
-    return {};
-  }
-  return states_[*idx].firings;
+  const auto id = graph_.FindTrigger(a_trigger);
+  const auto *memory = id ? Memory<TriggerState>(*id) : nullptr;
+  return memory ? std::span<const TriggerFiring>{memory->firings}
+                : std::span<const TriggerFiring>{};
 }
 
 std::uint64_t
 SignalState::Mismatched(std::string_view a_trigger) const noexcept {
-  const auto idx = graph_.Index(a_trigger);
-  return idx ? states_[*idx].mismatched : 0;
+  const auto id = graph_.FindTrigger(a_trigger);
+  const auto *memory = id ? Memory<TriggerState>(*id) : nullptr;
+  return memory ? memory->mismatched : 0;
+}
+
+namespace {
+FiringAnchor ResolveAnchor(const TriggerAnchor &a_anchor,
+                           const TriggerPayload &a_payload) noexcept {
+  return Match(
+      a_anchor, [](const std::monostate &) { return FiringAnchor{}; },
+      [&](const WorldAnchor &) {
+        const auto *position = Get<Vec3>(a_payload.value);
+        return position ? FiringAnchor{CarriedPoint{*position}}
+                        : FiringAnchor{};
+      },
+      [&](const NodeAnchor &anchor) {
+        const std::string_view node =
+            a_payload.node.empty() ? anchor.node : a_payload.node;
+        return node.empty() ? FiringAnchor{} : FiringAnchor{AnchorNode{node}};
+      });
+}
 }
 
 FiringAnchor AnchorOf(const TriggerSignal &a_trigger,
                       const TriggerPayload &a_payload) noexcept {
-  return Match(
-      a_trigger.anchor, [](const std::monostate &) { return FiringAnchor{}; },
-      [&](const WorldAnchor &) {
-        const auto *carried = Get<Vec3>(a_payload.value);
-        return carried ? FiringAnchor{CarriedPoint{*carried}} : FiringAnchor{};
-      },
-      [&](const NodeAnchor &a_node) {
-        const std::string_view node =
-            a_payload.node.empty() ? a_node.node : a_payload.node;
-        return node.empty() ? FiringAnchor{} : FiringAnchor{AnchorNode{node}};
-      });
+  return ResolveAnchor(a_trigger.anchor, a_payload);
 }
 
 FiringAnchor
 SignalState::AnchorOf(std::string_view a_trigger,
                       const TriggerFiring &a_firing) const noexcept {
-  const auto idx = graph_.Index(a_trigger);
-  const auto *trigger =
-      idx ? Get<TriggerSignal>(graph_.nodes_[*idx].signal.kind) : nullptr;
-  return trigger
-             ? BetterEnchantmentEffects::AnchorOf(*trigger, a_firing.payload)
-             : FiringAnchor{};
+  const auto id = graph_.FindTrigger(a_trigger);
+  const auto *node = id ? graph_.NodeAt(*id) : nullptr;
+  const auto *trigger = node ? Get<TriggerOperation>(node->kind) : nullptr;
+  return trigger ? ResolveAnchor(trigger->anchor, a_firing.payload)
+                 : FiringAnchor{};
 }
 
-void SignalState::Accept(std::size_t a_index, const EventRecord &a_event,
-                         float a_time) {
-  if (a_index >= graph_.nodes_.size() || a_index >= states_.size()) {
-    return;
-  }
-  const auto &node = graph_.nodes_[a_index];
-  const auto *trigger = Get<TriggerSignal>(node.signal.kind);
-  if (!trigger || node.inert) {
-    return;
-  }
-  TriggerFiring firing{a_time, a_event.payload};
-  const bool accepted = Match(
-      trigger->origin,
-      [&](const EventOrigin &s) {
-        return !a_event.plugin && GlobMatch(s.event, a_event.id) &&
-               MatchesFilter(s.filter, a_event.payload);
-      },
-      [&](const PluginOrigin &s) {
-        return a_event.plugin && GlobMatch(s.id, a_event.id);
-      },
-      [](const WhenOrigin &) { return false; });
-  if (!accepted) {
-    return;
-  }
-  auto &st = states_[a_index];
-  if (TypeOf(firing.payload.value) != trigger->payload) {
-    ++st.mismatched;
-    return;
-  }
-  st.RecordFiring(std::move(firing), trigger->max);
-}
-
-void SignalState::NodeState::RecordFiring(TriggerFiring a_firing,
-                                          std::uint32_t a_limit) {
+void SignalState::TriggerState::RecordFiring(TriggerFiring a_firing,
+                                             std::uint32_t a_limit) {
   firings.push_back(std::move(a_firing));
-  ++fired;
+  ++accepted;
   const std::size_t keep = std::max<std::uint32_t>(1, a_limit);
-  if (firings.size() > keep) {
+  if (firings.size() > keep)
     firings.erase(firings.begin(), firings.end() - keep);
+}
+
+void SignalState::Accept(NodeId a_node, const EventRecord &a_event,
+                         float a_time) {
+  const auto *node = graph_.NodeAt(a_node);
+  const auto *trigger = node ? Get<TriggerOperation>(node->kind) : nullptr;
+  auto *memory = Memory<TriggerState>(a_node);
+  if (!trigger || !memory || graph_.IsDisabled(a_node))
+    return;
+  const auto *input = Get<EventTriggerInput>(trigger->origin);
+  const auto *eventNode = input ? graph_.NodeAt(input->events.node) : nullptr;
+  const auto *external =
+      eventNode ? Get<ExternalInput>(eventNode->kind) : nullptr;
+  const auto *events = external ? Get<EventInput>(external->source) : nullptr;
+  if (!events || graph_.IsDisabled(input->events.node))
+    return;
+  const bool accepted = Match(
+      events->origin,
+      [&](const EventOrigin &origin) {
+        return !a_event.plugin && GlobMatch(origin.event, a_event.id) &&
+               MatchesFilter(origin.filter, a_event.payload);
+      },
+      [&](const PluginOrigin &origin) {
+        return a_event.plugin && GlobMatch(origin.id, a_event.id);
+      });
+  if (!accepted)
+    return;
+  if (TypeOf(a_event.payload.value) != trigger->payloadType) {
+    ++memory->mismatched;
+    return;
   }
+  memory->RecordFiring({a_time, a_event.payload}, trigger->max);
 }
 
 void SignalState::Fire(const EventRecord &a_event, float a_time) {
-  for (std::size_t i = 0; i < graph_.Size(); ++i) {
-    Accept(i, a_event, a_time);
-  }
+  for (const auto trigger : triggers_)
+    Accept(trigger, a_event, a_time);
 }
 
 struct SignalState::Evaluator {
   SignalState &state;
-  const SignalGraph::Node &node;
-  NodeState &memory;
+  NodeId index;
   const SignalEnvironment &environment;
-  float time;
-  float delta;
+  const TickInputs &inputs;
 
-  [[nodiscard]] const NodeState *TriggerState(const Ref &a_ref) const {
-    const auto index = state.graph_.Index(a_ref.name);
-    return index ? &state.states_[*index] : nullptr;
+  Value Read(OutputRef output) const { return state.ValueOf(output); }
+  float Scalar(OutputRef output) const { return AsScalar(Read(output)); }
+  Value Default() const { return state.DefaultValue(index); }
+
+  Value operator()(const ConstantOperation &operation) const {
+    return operation.value;
+  }
+  Value operator()(const ExternalInput &operation) const {
+    return Match(
+        operation.source,
+        [&](const TimeInput &) -> Value { return inputs.time; },
+        [&](const DeltaTimeInput &) -> Value {
+          return std::max(0.0f, inputs.delta);
+        },
+        [&](const ActorValueSignal &input) -> Value {
+          return environment.ActorValue(input.actorValue, input.measure);
+        },
+        [&](const ActorStateSignal &input) -> Value {
+          return VectorValued(input.kind)
+                     ? Value{environment.ActorVector(input.kind)}
+                     : Value{environment.ActorState(input.kind)};
+        },
+        [&](const EnchantmentSignal &input) -> Value {
+          return environment.Enchantment(input.field);
+        },
+        [&](const auto &) { return Default(); });
+  }
+  Value operator()(const VectorOperation &operation) const {
+    if (operation.components.size() == 2)
+      return Vec2{Scalar(operation.components[0]),
+                  Scalar(operation.components[1])};
+    if (operation.components.size() == 3)
+      return Vec3{Scalar(operation.components[0]),
+                  Scalar(operation.components[1]),
+                  Scalar(operation.components[2])};
+    return Default();
+  }
+  Value operator()(const ExpressionOperation &operation) const {
+    const auto &expression = operation.expression;
+    if (expression.valueBindings.size() > kMaxExpressionOps)
+      return Default();
+    std::array<Value, kMaxExpressionOps> values;
+    for (std::size_t i = 0; i < expression.valueBindings.size(); ++i)
+      values[i] = Read(expression.valueBindings[i]);
+    Program::Inputs arguments;
+    arguments.refs = std::span{values.data(), expression.valueBindings.size()};
+    arguments.callFunction = [&](std::size_t binding, float x, float) {
+      if (binding >= expression.functionBindings.size())
+        return 0.0f;
+      const auto &call = expression.functionBindings[binding];
+      const auto *function = state.graph_.FunctionAt(call.function);
+      if (!function || function->parameters.size() > kMaxExpressionOps ||
+          call.sampledParameter >= function->parameters.size())
+        return 0.0f;
+      std::vector<Value> parameters(function->parameters.size(), Value{0.0f});
+      parameters[call.sampledParameter] = x;
+      for (const auto &argument : call.arguments) {
+        if (argument.parameter >= parameters.size())
+          return 0.0f;
+        parameters[argument.parameter] = Read(argument.value);
+      }
+      return AsScalar(
+          EvaluateFunction(state.graph_, call.function, parameters));
+    };
+    return expression.program.Evaluate(arguments);
+  }
+  Value operator()(const CallOperation &operation) const {
+    if (operation.arguments.size() > kMaxExpressionOps)
+      return Default();
+    std::array<Value, kMaxExpressionOps> arguments;
+    for (std::size_t i = 0; i < operation.arguments.size(); ++i)
+      arguments[i] = Read(operation.arguments[i]);
+    return EvaluateFunction(
+        state.graph_, operation.function,
+        std::span{arguments.data(), operation.arguments.size()});
+  }
+  Value operator()(const MapFunctionOperation &operation) const {
+    return (*this)(CallOperation{operation.function, operation.arguments});
   }
 
-  Value operator()(const ConstantSignal &k) const { return k.value; }
-
-  Value operator()(const WaveSignal &k) const {
-    const float period = state.Resolve(k.period);
+  Value operator()(const WaveOperation &operation) const {
+    auto *memory = state.Memory<WaveState>(index);
+    if (!memory)
+      return Default();
+    const float period = Scalar(operation.period);
     if (period > kEpsilon) {
-      memory.phase += delta / period;
-      memory.phase -= std::floor(memory.phase);
+      memory->phase += Scalar(operation.deltaTime) / period;
+      memory->phase -= std::floor(memory->phase);
     }
-    return state.Resolve(k.base) +
-           state.Resolve(k.amplitude) *
-               Wave(k.waveform, memory.phase + state.Resolve(k.phase));
+    return Scalar(operation.base) +
+           Scalar(operation.amplitude) *
+               Wave(operation.waveform,
+                    memory->phase + Scalar(operation.phase));
   }
-
-  Value operator()(const RampSignal &k) const {
-    const float seconds = state.Resolve(k.seconds);
-    const float t = seconds <= kEpsilon ? 1.0f : Clamp01(time / seconds);
-    return state.Resolve(k.from) +
-           (state.Resolve(k.to) - state.Resolve(k.from)) * t;
+  Value operator()(const RampOperation &operation) const {
+    const float seconds = Scalar(operation.seconds);
+    const float progress =
+        seconds <= kEpsilon ? 1.0f : Clamp01(Scalar(operation.time) / seconds);
+    const float from = Scalar(operation.from);
+    return from + (Scalar(operation.to) - from) * progress;
   }
-
-  Value operator()(const EfshSignal &k) const {
-    const auto params = environment.EffectShader(k.record);
-    if (!params) {
-      return ZeroOf(node.type);
-    }
-    const auto fill = Efsh::Evaluate(*params, time, 1.0f, 1.0f);
-    switch (k.field) {
+  Value operator()(const EffectShaderOperation &operation) const {
+    const auto *node = state.graph_.NodeAt(operation.record.node);
+    const auto *external = node ? Get<ExternalInput>(node->kind) : nullptr;
+    const auto *record =
+        external ? Get<EffectShaderInput>(external->source) : nullptr;
+    const auto params =
+        record ? environment.EffectShader(record->record) : std::nullopt;
+    if (!params)
+      return Default();
+    const auto fill =
+        Efsh::Evaluate(*params, Scalar(operation.time), 1.0f, 1.0f);
+    switch (operation.field) {
     case EfshField::kFillAlpha:
       return fill.alpha;
     case EfshField::kFillColor:
@@ -1297,212 +929,184 @@ struct SignalState::Evaluator {
     case EfshField::kScroll:
       return Vec2{fill.uOffset, fill.vOffset};
     }
-    return 0.0f;
+    return Default();
   }
-
-  Value operator()(const ActorValueSignal &k) const {
-    return environment.ActorValue(k.actorValue, k.measure);
+  Value operator()(const NoiseOperation &operation) const {
+    return Scalar(operation.amplitude) *
+           ValueNoise(Scalar(operation.time) * Scalar(operation.frequency),
+                      operation.seed);
   }
-
-  Value operator()(const ActorStateSignal &k) const {
-    if (VectorValued(k.kind)) {
-      return environment.ActorVector(k.kind);
+  Value operator()(const GradientOperation &operation) const {
+    if (operation.stops.empty())
+      return Vec3{};
+    const float position = Scalar(operation.position);
+    const auto *lo = &operation.stops.front();
+    const auto *hi = &operation.stops.back();
+    for (const auto &stop : operation.stops) {
+      if (stop.at <= position && stop.at >= lo->at)
+        lo = &stop;
+      if (stop.at >= position && stop.at <= hi->at)
+        hi = &stop;
     }
-    return environment.ActorState(k.kind);
+    if (position <= operation.stops.front().at)
+      return Read(operation.stops.front().color);
+    if (position >= operation.stops.back().at)
+      return Read(operation.stops.back().color);
+    const float span = hi->at - lo->at;
+    return Lerp(AsVec3(Read(lo->color)), AsVec3(Read(hi->color)),
+                span <= kEpsilon ? 0.0f : (position - lo->at) / span);
   }
-
-  Value operator()(const ToRootSignal &k) const {
-    return environment.WorldToRoot(state.Vector(k.of.name));
+  Value operator()(const ToRootOperation &operation) const {
+    const auto type = state.graph_.OutputType(operation.transform);
+    const auto *resource = type ? Get<ResourceType>(*type) : nullptr;
+    return resource && *resource == ResourceType::kTransform
+               ? Value{environment.WorldToRoot(AsVec3(Read(operation.value)))}
+               : Default();
   }
-
-  Value operator()(const EnchantmentSignal &k) const {
-    return environment.Enchantment(k.field);
-  }
-
-  Value operator()(const TriggerSignal &k) const {
-    if (const auto *when = Get<WhenOrigin>(k.origin)) {
-      const float now = state.Scalar(when->when.name);
-      const float before = memory.previous ? AsScalar(*memory.previous) : 0.0f;
-      memory.previous = now;
+  Value operator()(const TriggerOperation &operation) const {
+    auto *memory = state.Memory<TriggerState>(index);
+    if (!memory)
+      return Default();
+    const float time = Scalar(operation.time);
+    if (const auto *condition = Get<ConditionTriggerInput>(operation.origin)) {
+      const float now = Scalar(condition->condition);
+      const float before = memory->previousCondition;
+      memory->previousCondition = now;
       if (before <= 0.0f && now > 0.0f) {
         TriggerFiring firing{time, {}};
-        firing.payload.value =
-            when->value ? state.ValueOf(when->value->name) : ZeroOf(k.payload);
-        memory.RecordFiring(std::move(firing), k.max);
+        firing.payload.value = condition->payload
+                                   ? Read(*condition->payload)
+                                   : ZeroOf(operation.payloadType);
+        if (TypeOf(firing.payload.value) == operation.payloadType)
+          memory->RecordFiring(std::move(firing), operation.max);
+        else
+          ++memory->mismatched;
       }
     }
-    const float lifetime = std::max(kEpsilon, state.Resolve(k.lifetime));
-    std::erase_if(memory.firings, [&](const TriggerFiring &f) {
-      return time - f.startTime >= lifetime;
+    const float lifetime = std::max(kEpsilon, Scalar(operation.lifetime));
+    std::erase_if(memory->firings, [&](const TriggerFiring &firing) {
+      return time - firing.startTime >= lifetime;
     });
-    if (memory.firings.empty()) {
-      return 1.0f;
-    }
-    return Clamp01((time - memory.firings.back().startTime) / lifetime);
+    return memory->firings.empty()
+               ? 1.0f
+               : Clamp01((time - memory->firings.back().startTime) / lifetime);
   }
-
-  Value operator()(const PayloadSignal &k) const {
-    const auto *src = TriggerState(k.trigger);
-    if (src && !src->firings.empty()) {
-      memory.held = src->firings.back().payload.value;
-    }
-    return TypeOf(memory.held) == node.type ? memory.held : ZeroOf(node.type);
+  Value operator()(const HoldOperation &operation) const {
+    auto *memory = state.Memory<HoldState>(index);
+    if (!memory)
+      return Default();
+    const auto firings = state.Firings(operation.firings);
+    if (!firings.empty())
+      memory->held = firings.back().payload.value;
+    return memory->held;
   }
-
-  Value operator()(const CounterSignal &k) const {
-    const auto *src = TriggerState(k.trigger);
-    const auto *reset = k.reset ? TriggerState(*k.reset) : nullptr;
-    if (reset && reset->fired > memory.seenReset) {
-      memory.seenReset = reset->fired;
-      memory.accumulator = 0.0f;
+  Value operator()(const CounterOperation &operation) const {
+    auto *memory = state.Memory<CounterState>(index);
+    if (!memory)
+      return Default();
+    const auto reset =
+        operation.reset ? state.AcceptedCount(*operation.reset) : 0;
+    if (reset > memory->seenReset) {
+      memory->seenReset = reset;
+      memory->value = 0.0f;
     }
-    if (src) {
-      memory.accumulator += static_cast<float>(src->fired - memory.seen);
-      memory.seen = src->fired;
-    }
-    if (k.cap) {
-      const float cap = state.Resolve(*k.cap);
-      if (cap > 0.0f) {
-        memory.accumulator = std::min(memory.accumulator, cap);
-      }
-    }
-    return memory.accumulator;
+    const auto count = state.AcceptedCount(operation.count);
+    if (count >= memory->seen)
+      memory->value += static_cast<float>(count - memory->seen);
+    memory->seen = count;
+    const float cap = operation.cap ? Scalar(*operation.cap) : 0.0f;
+    if (cap > 0.0f)
+      memory->value = std::min(memory->value, cap);
+    return memory->value;
   }
-
-  Value operator()(const AccumulateSignal &k) const {
-    memory.accumulator =
-        std::max(0.0f, memory.accumulator - state.Resolve(k.decay) * delta);
-    if (const auto *src = TriggerState(k.trigger)) {
-      memory.accumulator += static_cast<float>(src->fired - memory.seen);
-      memory.seen = src->fired;
-    }
-    return memory.accumulator;
+  Value operator()(const AccumulateOperation &operation) const {
+    auto *memory = state.Memory<AccumulateState>(index);
+    if (!memory)
+      return Default();
+    memory->value =
+        std::max(0.0f, memory->value - Scalar(operation.decay) *
+                                           Scalar(operation.deltaTime));
+    const auto count = state.AcceptedCount(operation.count);
+    if (count >= memory->seen)
+      memory->value += static_cast<float>(count - memory->seen);
+    memory->seen = count;
+    return memory->value;
   }
-
-  Value operator()(const NoiseSignal &k) const {
-    return state.Resolve(k.amplitude) *
-           ValueNoise(time * state.Resolve(k.frequency), k.seed);
-  }
-
-  Value operator()(const GradientSignal &k) const {
-    if (k.stops.empty()) {
-      return Vec3{};
-    }
-    const float t = state.Resolve(k.t);
-    const auto *lo = &k.stops.front();
-    const auto *hi = &k.stops.back();
-    for (const auto &s : k.stops) {
-      if (s.at <= t && s.at >= lo->at)
-        lo = &s;
-      if (s.at >= t && s.at <= hi->at)
-        hi = &s;
-    }
-    if (t <= k.stops.front().at) {
-      return state.Resolve(k.stops.front().color);
-    }
-    if (t >= k.stops.back().at) {
-      return state.Resolve(k.stops.back().color);
-    }
-    const float span = hi->at - lo->at;
-    return Lerp(state.Resolve(lo->color), state.Resolve(hi->color),
-                span <= kEpsilon ? 0.0f : (t - lo->at) / span);
-  }
-
-  Value operator()(const RateSignal &k) const {
-    const Value now = state.ValueOf(k.of.name);
-    const Value before = memory.previous.value_or(now);
-    memory.previous = now;
-    if (delta <= kEpsilon) {
-      return ZeroOf(node.type);
-    }
+  Value operator()(const RateOperation &operation) const {
+    auto *memory = state.Memory<RateState>(index);
+    if (!memory)
+      return Default();
+    const Value now = Read(operation.value);
+    const Value before = memory->previous.value_or(now);
+    memory->previous = now;
+    const float delta = Scalar(operation.deltaTime);
+    if (delta <= kEpsilon)
+      return Default();
     return Match(
-        now, [&](float f) -> Value { return (f - AsScalar(before)) / delta; },
-        [&](const Vec2 &v) -> Value {
-          const auto b = AsVec2(before);
-          return Vec2{(v.x - b.x) / delta, (v.y - b.y) / delta};
+        now,
+        [&](float value) -> Value {
+          return (value - AsScalar(before)) / delta;
         },
-        [&](const Vec3 &v) -> Value {
-          const auto b = AsVec3(before);
-          return Vec3{(v.x - b.x) / delta, (v.y - b.y) / delta,
-                      (v.z - b.z) / delta};
+        [&](const Vec2 &value) -> Value {
+          const auto prior = AsVec2(before);
+          return Vec2{(value.x - prior.x) / delta, (value.y - prior.y) / delta};
+        },
+        [&](const Vec3 &value) -> Value {
+          const auto prior = AsVec3(before);
+          return Vec3{(value.x - prior.x) / delta, (value.y - prior.y) / delta,
+                      (value.z - prior.z) / delta};
         });
   }
-
-  Value operator()(const SmoothSignal &k) const {
-    const Value target = state.ValueOf(k.of.name);
-    if (!memory.previous) {
-      memory.previous = target;
+  Value operator()(const SmoothOperation &operation) const {
+    auto *memory = state.Memory<SmoothState>(index);
+    if (!memory)
+      return Default();
+    const Value target = Read(operation.value);
+    if (!memory->previous) {
+      memory->previous = target;
       return target;
     }
-    const float seconds = state.Resolve(k.seconds);
-    const float a =
-        seconds <= kEpsilon ? 1.0f : 1.0f - std::exp(-delta / seconds);
+    const float seconds = Scalar(operation.seconds);
+    const float factor =
+        seconds <= kEpsilon
+            ? 1.0f
+            : 1.0f - std::exp(-Scalar(operation.deltaTime) / seconds);
     const Value next = Match(
         target,
-        [&](float f) -> Value {
-          return AsScalar(*memory.previous) +
-                 (f - AsScalar(*memory.previous)) * a;
+        [&](float value) -> Value {
+          return AsScalar(*memory->previous) +
+                 (value - AsScalar(*memory->previous)) * factor;
         },
-        [&](const Vec2 &v) -> Value {
-          const auto p = AsVec2(*memory.previous);
-          return Vec2{p.x + (v.x - p.x) * a, p.y + (v.y - p.y) * a};
+        [&](const Vec2 &value) -> Value {
+          const auto prior = AsVec2(*memory->previous);
+          return Vec2{prior.x + (value.x - prior.x) * factor,
+                      prior.y + (value.y - prior.y) * factor};
         },
-        [&](const Vec3 &v) -> Value {
-          return Lerp(AsVec3(*memory.previous), v, a);
+        [&](const Vec3 &value) -> Value {
+          return Lerp(AsVec3(*memory->previous), value, factor);
         });
-    memory.previous = next;
+    memory->previous = next;
     return next;
   }
-
-  Value operator()(const ExprSignal &) const {
-    if (!node.expression) {
-      return ZeroOf(node.type);
-    }
-    Value refs[64];
-    std::size_t count = 0;
-    for (const auto r : node.exprRefs) {
-      if (count < std::size(refs)) {
-        refs[count++] = state.ValueOf(r);
-      }
-    }
-    Program::Inputs in;
-    in.refs = std::span{refs, count};
-    in.curves = node.exprCurves;
-    in.time = time;
-    return node.expression->Evaluate(in);
+  template <class Operation> Value operator()(const Operation &) const {
+    return Default();
   }
 };
 
-Value SignalState::Evaluate(std::size_t a_index,
+Value SignalState::Evaluate(NodeId a_node,
                             const SignalEnvironment &a_environment,
                             const TickInputs &a_inputs) {
-  const auto &node = graph_.nodes_[a_index];
-  return Match(node.signal.kind,
-               Evaluator{*this, node, states_[a_index], a_environment,
-                         a_inputs.time, std::max(0.0f, a_inputs.delta)});
+  const auto *node = graph_.NodeAt(a_node);
+  return node ? Match(node->kind,
+                      Evaluator{*this, a_node, a_environment, a_inputs})
+              : Value{0.0f};
 }
 
 void SignalState::Tick(const SignalEnvironment &a_environment,
                        const TickInputs &a_inputs) {
-  for (const auto i : graph_.Order()) {
-    const auto &node = graph_.nodes_[i];
-    if (node.inert) {
-      continue;
-    }
-    Value value = Evaluate(i, a_environment, a_inputs);
-    if (node.curve) {
-      const auto &curve = *node.curve;
-      value = Match(
-          value, [&](float f) -> Value { return ApplyCurve(curve, f); },
-          [&](const Vec2 &v) -> Value {
-            return Vec2{ApplyCurve(curve, v.x), ApplyCurve(curve, v.y)};
-          },
-          [&](const Vec3 &v) -> Value {
-            return Vec3{ApplyCurve(curve, v.x), ApplyCurve(curve, v.y),
-                        ApplyCurve(curve, v.z)};
-          });
-    }
-    values_[i] = value;
+  for (const auto id : graph_.TickOrder()) {
+    if (!graph_.IsDisabled(id))
+      Store({id, 0}, Evaluate(id, a_environment, a_inputs));
   }
 }
 }

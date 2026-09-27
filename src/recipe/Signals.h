@@ -4,13 +4,13 @@
 #include "recipe/Efsh.h"
 #include "recipe/Expression.h"
 #include "recipe/Recipe.h"
+#include "recipe/RecipeGraph.h"
 
 #include <cstdint>
 #include <optional>
 #include <span>
 #include <string>
 #include <string_view>
-#include <unordered_map>
 #include <vector>
 
 namespace BetterEnchantmentEffects {
@@ -72,91 +72,24 @@ struct TickInputs {
   float delta = 0.0f;
 };
 
-class SignalGraph {
-public:
-  [[nodiscard]] static SignalGraph Compile(std::span<const Signal> a_signals,
-                                           std::span<const Curve> a_curves);
-
-  [[nodiscard]] std::span<const Diagnostic> Diagnostics() const noexcept {
-    return diagnostics_;
-  }
-  [[nodiscard]] std::size_t Size() const noexcept { return nodes_.size(); }
-  [[nodiscard]] std::optional<std::size_t>
-  Index(std::string_view a_name) const noexcept;
-  [[nodiscard]] const Signal *At(std::size_t a_index) const noexcept {
-    return a_index < nodes_.size() ? &nodes_[a_index].signal : nullptr;
-  }
-  [[nodiscard]] std::optional<ValueType>
-  TypeOf(std::size_t a_index) const noexcept {
-    if (a_index >= nodes_.size()) {
-      return std::nullopt;
-    }
-    return nodes_[a_index].type;
-  }
-  [[nodiscard]] std::optional<ValueType>
-  TypeOf(std::string_view a_name) const noexcept;
-  [[nodiscard]] bool Inert(std::size_t a_index) const noexcept {
-    return a_index >= nodes_.size() || nodes_[a_index].inert;
-  }
-  [[nodiscard]] std::span<const std::size_t> Order() const noexcept {
-    return order_;
-  }
-  [[nodiscard]] const Program *
-  CurveProgram(std::string_view a_name) const noexcept;
-
-private:
-  struct Node {
-    Signal signal;
-    ValueType type = ValueType::kScalar;
-    std::vector<std::size_t> deps;
-    std::optional<Program> expression;
-    std::vector<std::uint32_t> exprRefs;
-    std::vector<const Program *> exprCurves;
-    std::optional<Program> curve;
-    bool inert = false;
-  };
-  std::vector<Node> nodes_;
-  std::vector<std::size_t> order_;
-  std::unordered_map<std::string, std::size_t> byName_;
-  std::unordered_map<std::string, Program> curves_;
-  std::vector<Diagnostic> diagnostics_;
-
-  static void ReportSignal(SignalGraph &a_graph, std::string_view a_name,
-                           std::string a_message);
-  static void ParseCurves(SignalGraph &a_graph,
-                          std::span<const Curve> a_curves);
-  static void RegisterNodes(SignalGraph &a_graph,
-                            std::span<const Signal> a_signals);
-  static void ResolveDependencies(SignalGraph &a_graph, Node &a_node);
-  static void ResolveNodeCurve(SignalGraph &a_graph, Node &a_node);
-  static void ResolveRefs(SignalGraph &a_graph);
-  static void OrderNodes(SignalGraph &a_graph);
-  static void LinkExpr(SignalGraph &a_graph, Node &a_node);
-  static void InferTypes(SignalGraph &a_graph);
-  struct ReferenceTypeChecker;
-  static void CheckReferenceTypes(SignalGraph &a_graph);
-  static void PropagateInert(SignalGraph &a_graph);
-
-  friend class SignalState;
-};
-
 struct RowTypes {
   const Recipe &recipe;
-  const SignalGraph &graph;
+  const RecipeGraph &graph;
 };
 
 [[nodiscard]] std::optional<ValueType>
 SignalTypeOf(const RowTypes &a_rows, std::string_view a_name) noexcept;
 [[nodiscard]] std::optional<ValueType> TexelTypeOf(const RowTypes &a_rows,
-                                                   std::string_view a_name,
-                                                   std::size_t a_depth = 0);
-[[nodiscard]] std::optional<ValueType>
-MaskTypeOf(const RowTypes &a_rows, const Mask &a_mask, std::size_t a_depth = 0);
+                                                   std::string_view a_name);
+[[nodiscard]] std::optional<ValueType> MaskTypeOf(const RowTypes &a_rows,
+                                                  const Mask &a_mask);
 [[nodiscard]] bool NamesTrigger(const RowTypes &a_rows,
                                 std::string_view a_name) noexcept;
 
 [[nodiscard]] std::vector<Diagnostic> CheckCurve(const RowTypes &a_rows,
                                                  const Curve &a_curve);
+[[nodiscard]] std::vector<Diagnostic> CheckSourceInputs(const RowTypes &a_rows,
+                                                        const Source &a_source);
 [[nodiscard]] std::vector<Diagnostic> CheckSource(const RowTypes &a_rows,
                                                   const Source &a_source);
 [[nodiscard]] std::vector<Diagnostic> CheckMask(const RowTypes &a_rows,
@@ -171,11 +104,12 @@ MaskTypeOf(const RowTypes &a_rows, const Mask &a_mask, std::size_t a_depth = 0);
 
 class SignalState {
 public:
-  explicit SignalState(const SignalGraph &a_graph);
+  explicit SignalState(const RecipeGraph &a_graph);
 
   void Tick(const SignalEnvironment &a_environment, const TickInputs &a_inputs);
   void Fire(const EventRecord &a_event, float a_time);
 
+  [[nodiscard]] Value ValueOf(OutputRef a_output) const noexcept;
   [[nodiscard]] Value ValueOf(std::size_t a_index) const noexcept;
   [[nodiscard]] Value ValueOf(std::string_view a_name) const noexcept;
   [[nodiscard]] float Scalar(std::string_view a_name) const noexcept;
@@ -186,6 +120,9 @@ public:
 
   [[nodiscard]] std::span<const TriggerFiring>
   Firings(std::string_view a_trigger) const noexcept;
+  [[nodiscard]] std::span<const TriggerFiring>
+  Firings(OutputRef a_output) const noexcept;
+  [[nodiscard]] std::uint64_t AcceptedCount(OutputRef a_output) const noexcept;
   [[nodiscard]] std::uint64_t
   Mismatched(std::string_view a_trigger) const noexcept;
   [[nodiscard]] FiringAnchor
@@ -194,30 +131,54 @@ public:
 
 private:
   struct Evaluator;
-
-  struct NodeState {
-    void RecordFiring(TriggerFiring a_firing, std::uint32_t a_limit);
-
+  struct WaveState {
     float phase = 0.0f;
+  };
+  struct TriggerState {
+    void RecordFiring(TriggerFiring a_firing, std::uint32_t a_limit);
     std::vector<TriggerFiring> firings;
-    std::uint64_t fired = 0;
+    std::uint64_t accepted = 0;
+    std::uint64_t mismatched = 0;
+    float previousCondition = 0.0f;
+  };
+  struct HoldState {
+    Value held = 0.0f;
+  };
+  struct CounterState {
     std::uint64_t seen = 0;
     std::uint64_t seenReset = 0;
-    float accumulator = 0.0f;
-    std::optional<Value> previous;
-    Value held = 0.0f;
-    std::uint64_t mismatched = 0;
+    float value = 0.0f;
   };
+  struct AccumulateState {
+    std::uint64_t seen = 0;
+    float value = 0.0f;
+  };
+  struct RateState {
+    std::optional<Value> previous;
+  };
+  struct SmoothState {
+    std::optional<Value> previous;
+  };
+  using OperationState =
+      std::variant<WaveState, TriggerState, HoldState, CounterState,
+                   AccumulateState, RateState, SmoothState>;
 
-  [[nodiscard]] float Scalar(std::size_t a_index) const noexcept;
-  [[nodiscard]] Vec3 Vector(std::size_t a_index) const noexcept;
-  [[nodiscard]] Value Evaluate(std::size_t a_index,
+  template <class State> [[nodiscard]] State *Memory(NodeId a_node) noexcept;
+  template <class State>
+  [[nodiscard]] const State *Memory(NodeId a_node) const noexcept;
+
+  [[nodiscard]] Value Evaluate(NodeId a_node,
                                const SignalEnvironment &a_environment,
                                const TickInputs &a_inputs);
-  void Accept(std::size_t a_index, const EventRecord &a_event, float a_time);
+  [[nodiscard]] Value DefaultValue(NodeId a_node) const noexcept;
+  void Accept(NodeId a_node, const EventRecord &a_event, float a_time);
+  void Store(OutputRef a_output, Value a_value);
 
-  const SignalGraph &graph_;
+  const RecipeGraph &graph_;
+  std::vector<std::size_t> outputOffsets_;
   std::vector<Value> values_;
-  std::vector<NodeState> states_;
+  std::vector<std::optional<std::size_t>> stateSlots_;
+  std::vector<OperationState> states_;
+  std::vector<NodeId> triggers_;
 };
 }

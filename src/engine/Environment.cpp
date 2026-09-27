@@ -1,13 +1,18 @@
 // GPL-3.0-only with the additional permission in COPYING.md.
 #include "engine/Environment.h"
 
+#include "engine/EnchantmentEffects.h"
 #include "engine/EngineForms.h"
+
+#include <utility>
 
 namespace BetterEnchantmentEffects {
 ActorEnvironment::ActorEnvironment(RE::Actor *a_actor,
-                                   RE::MagicItem *a_enchantment)
+                                   RE::MagicItem *a_enchantment,
+                                   std::optional<RecipeKey> a_effectKey)
     : actor_(a_actor ? a_actor->GetHandle() : RE::ActorHandle{}),
-      enchantment_(a_enchantment ? a_enchantment->GetFormID() : 0) {}
+      enchantment_(a_enchantment ? a_enchantment->GetFormID() : 0),
+      effectKey_(std::move(a_effectKey)) {}
 
 RE::NiPointer<RE::Actor> ActorEnvironment::Actor() const noexcept {
   return actor_.get();
@@ -125,17 +130,7 @@ float ActorEnvironment::Enchantment(EnchantmentField a_field) const {
   const auto *item = enchantment_
                          ? RE::TESForm::LookupByID<RE::MagicItem>(enchantment_)
                          : nullptr;
-  const auto *effect = item ? item->GetCostliestEffectItem() : nullptr;
-  if (!effect) {
-    return 0.0f;
-  }
-  switch (a_field) {
-  case EnchantmentField::kMagnitude:
-    return effect->GetMagnitude();
-  case EnchantmentField::kCost:
-    return effect->cost;
-  }
-  return 0.0f;
+  return EnchantmentValueFor(item, effectKey_, a_field);
 }
 
 std::optional<Efsh::EffectParams>

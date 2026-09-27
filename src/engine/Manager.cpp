@@ -4,7 +4,6 @@
 
 #include "SettingsFile.h"
 #include "engine/Clock.h"
-#include "engine/Events.h"
 #include "engine/GameObjectService.h"
 #include "engine/RecipeStore.h"
 #include "render/Compositor.h"
@@ -31,7 +30,10 @@ Manager::Manager()
                     [this](std::uint32_t a_id,
                            const std::vector<ApplicationToken> &a_tokens) {
                       RunRefresh(a_id, a_tokens);
-                    }) {}
+                    }),
+      animations_([this](AnimationEvent a_event) {
+        QueueAnimationEvent(std::move(a_event));
+      }) {}
 
 Manager *Manager::GetSingleton() {
   static Manager singleton;
@@ -90,11 +92,9 @@ void Manager::Clear() {
                      {"generation", std::to_string(session)},
                      {"actors", std::to_string(applied_.size())}});
   applications_.BeginLoad();
+  animations_.Clear();
+  ClearAnimEvents();
   const std::size_t count = applied_.size();
-  for (const auto &[actorID, state] : applied_) {
-    UnwatchAnimationEvents(RE::TESForm::LookupByID<RE::Actor>(actorID));
-    ForgetAnimEvents(actorID);
-  }
   for (auto &[actorID, state] : applied_)
     RetireActorEffects(state);
   applied_.clear();
@@ -107,7 +107,6 @@ void Manager::Clear() {
   carriedTimes_.Clear();
   Compositor::GetSingleton()->ClearMeshes();
   Compositor::GetSingleton()->ClearMaterials();
-  Compositor::GetSingleton()->ClearSharedStatics();
   TextureLab::GetSingleton()->Clear();
   {
     std::scoped_lock lock{snapshotLock_};

@@ -17,7 +17,7 @@ std::size_t RefCount(const std::map<std::string, std::size_t> &a_counts,
 }
 
 std::unordered_map<std::string, std::string>
-InertReasons(const SignalGraph &a_graph) {
+InertReasons(const RecipeGraph &a_graph) {
   std::unordered_map<std::string, std::string> reasons;
   for (const Diagnostic &d : a_graph.Diagnostics()) {
     if (d.where.starts_with("signal ")) {
@@ -71,11 +71,11 @@ RecipeRow BuildRecipeRow(const RecipeRowInput &a_input) {
   r.problems.assign(a_input.problems.begin(), a_input.problems.end());
   r.heldBack = HasRecipeErrors(a_input.problems);
   {
-    const std::optional<SignalGraph> compiled =
-        a_input.graph ? std::nullopt
-                      : std::optional<SignalGraph>{SignalGraph::Compile(
-                            recipe.signals, recipe.curves)};
-    const SignalGraph &graph = a_input.graph ? *a_input.graph : *compiled;
+    const std::optional<RecipeGraph> compiled =
+        a_input.graph
+            ? std::nullopt
+            : std::optional<RecipeGraph>{RecipeGraph::Compile(recipe)};
+    const RecipeGraph &graph = a_input.graph ? *a_input.graph : *compiled;
     const RowTypes rows{recipe, graph};
     const std::unordered_map<std::string, std::string> reasons =
         InertReasons(graph);

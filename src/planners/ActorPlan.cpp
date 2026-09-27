@@ -53,10 +53,12 @@ bool AnyLiveGeometry(const ActorPlan &a_plan) noexcept {
 
 std::optional<InstanceId>
 FindInstance(const ActorPlan &a_plan, RecipeId a_recipe,
-             const std::optional<FormKey> &a_enchantment) noexcept {
+             const std::optional<FormKey> &a_enchantment,
+             const std::optional<RecipeKey> &a_effectKey) noexcept {
   for (std::size_t i = 0; i < a_plan.instances.size(); ++i) {
     const Instance &instance = a_plan.instances[i];
-    if (instance.recipe == a_recipe && instance.enchantment == a_enchantment) {
+    if (instance.recipe == a_recipe && instance.enchantment == a_enchantment &&
+        instance.effectKey == a_effectKey) {
       return InstanceId{i};
     }
   }

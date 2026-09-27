@@ -161,8 +161,8 @@ Source *FindSourceRow(Recipe &a_recipe, std::string_view a_name) {
   return FindByName(a_recipe.sources, a_name);
 }
 
-SignalGraph GraphOf(const Recipe &a_recipe) {
-  return SignalGraph::Compile(a_recipe.signals, a_recipe.curves);
+RecipeGraph GraphOf(const Recipe &a_recipe) {
+  return RecipeGraph::Compile(a_recipe);
 }
 
 Refusal Edit(Recipe &a_recipe, const SetLayerSource &a_edit) {
@@ -173,7 +173,7 @@ Refusal Edit(Recipe &a_recipe, const SetLayerSource &a_edit) {
   const auto slot = found.output->slot;
   Layer candidate = *found.layer;
   candidate.source = a_edit.source;
-  const SignalGraph graph = GraphOf(a_recipe);
+  const RecipeGraph graph = GraphOf(a_recipe);
   const RowTypes rows{a_recipe, graph};
   if (auto problem = NewError(CheckLayer(rows, *found.layer, slot, where),
                               CheckLayer(rows, candidate, slot, where)))
@@ -190,7 +190,7 @@ Refusal Edit(Recipe &a_recipe, const SetLayerCurve &a_edit) {
   const auto slot = found.output->slot;
   Layer candidate = *found.layer;
   candidate.curve = a_edit.curve;
-  const SignalGraph graph = GraphOf(a_recipe);
+  const RecipeGraph graph = GraphOf(a_recipe);
   const RowTypes rows{a_recipe, graph};
   if (auto problem = NewError(CheckLayer(rows, *found.layer, slot, where),
                               CheckLayer(rows, candidate, slot, where)))
@@ -207,7 +207,7 @@ Refusal Edit(Recipe &a_recipe, const SetLayerBlend &a_edit) {
   const auto slot = found.output->slot;
   Layer candidate = *found.layer;
   candidate.blend = a_edit.blend;
-  const SignalGraph graph = GraphOf(a_recipe);
+  const RecipeGraph graph = GraphOf(a_recipe);
   const RowTypes rows{a_recipe, graph};
   if (auto problem = NewError(CheckLayer(rows, *found.layer, slot, where),
                               CheckLayer(rows, candidate, slot, where)))
@@ -224,7 +224,7 @@ Refusal Edit(Recipe &a_recipe, const SetLayerOpacity &a_edit) {
   const auto slot = found.output->slot;
   Layer candidate = *found.layer;
   candidate.opacity = a_edit.opacity;
-  const SignalGraph graph = GraphOf(a_recipe);
+  const RecipeGraph graph = GraphOf(a_recipe);
   const RowTypes rows{a_recipe, graph};
   if (auto problem = NewError(CheckLayer(rows, *found.layer, slot, where),
                               CheckLayer(rows, candidate, slot, where)))
@@ -241,7 +241,7 @@ Refusal Edit(Recipe &a_recipe, const SetLayerColor &a_edit) {
   const auto slot = found.output->slot;
   Layer candidate = *found.layer;
   candidate.color = a_edit.color;
-  const SignalGraph graph = GraphOf(a_recipe);
+  const RecipeGraph graph = GraphOf(a_recipe);
   const RowTypes rows{a_recipe, graph};
   if (auto problem = NewError(CheckLayer(rows, *found.layer, slot, where),
                               CheckLayer(rows, candidate, slot, where)))
@@ -258,7 +258,7 @@ Refusal Edit(Recipe &a_recipe, const SetLayerMask &a_edit) {
   const auto slot = found.output->slot;
   Layer candidate = *found.layer;
   candidate.mask = a_edit.mask;
-  const SignalGraph graph = GraphOf(a_recipe);
+  const RecipeGraph graph = GraphOf(a_recipe);
   const RowTypes rows{a_recipe, graph};
   if (auto problem = NewError(CheckLayer(rows, *found.layer, slot, where),
                               CheckLayer(rows, candidate, slot, where)))
@@ -285,7 +285,7 @@ Refusal Edit(Recipe &a_recipe, const AddLayer &a_edit) {
     return Refuse(LayerWhere(a_edit.output, at),
                   std::format("the stack has {} layers", stack.size()));
   }
-  const SignalGraph graph = GraphOf(a_recipe);
+  const RecipeGraph graph = GraphOf(a_recipe);
   const RowTypes rows{a_recipe, graph};
   if (auto problem =
           FirstError(CheckLayer(rows, a_edit.layer, found.output->slot,
@@ -422,7 +422,7 @@ Refusal Edit(Recipe &a_recipe, const SetScalar &a_edit) {
   }
   SurfaceOutput candidate = *found.output;
   *ScalarOf(candidate.scalars, a_edit.field) = a_edit.value;
-  const SignalGraph graph = GraphOf(a_recipe);
+  const RecipeGraph graph = GraphOf(a_recipe);
   const RowTypes rows{a_recipe, graph};
   if (auto problem =
           NewError(CheckOutput(rows, a_recipe.outputs[a_edit.output], where),
@@ -444,7 +444,7 @@ Refusal Edit(Recipe &a_recipe, const SetColorScalar &a_edit) {
   }
   SurfaceOutput candidate = *found.output;
   candidate.scalars.color = a_edit.color;
-  const SignalGraph graph = GraphOf(a_recipe);
+  const RecipeGraph graph = GraphOf(a_recipe);
   const RowTypes rows{a_recipe, graph};
   if (auto problem =
           NewError(CheckOutput(rows, a_recipe.outputs[a_edit.output], where),
@@ -575,7 +575,7 @@ Refusal Edit(Recipe &a_recipe, const SetCurve &a_edit) {
   if (!curve) {
     return Refuse(CurveWhere(a_edit.curve), "no such curve");
   }
-  const SignalGraph graph = GraphOf(a_recipe);
+  const RecipeGraph graph = GraphOf(a_recipe);
   const RowTypes rows{a_recipe, graph};
   if (auto problem =
           FirstError(CheckCurve(rows, Curve{a_edit.curve, a_edit.text})))
@@ -589,7 +589,7 @@ Refusal Edit(Recipe &a_recipe, const SetMask &a_edit) {
   if (!mask) {
     return Refuse(MaskWhere(a_edit.mask), "no such mask");
   }
-  const SignalGraph graph = GraphOf(a_recipe);
+  const RecipeGraph graph = GraphOf(a_recipe);
   const RowTypes rows{a_recipe, graph};
   if (auto problem =
           FirstError(CheckMask(rows, Mask{a_edit.mask, a_edit.text})))
@@ -647,7 +647,7 @@ Refusal Edit(Recipe &a_recipe, const AddSource &a_edit) {
   if (NameInUse(a_recipe, a_edit.name)) {
     return Refuse(SourceWhere(a_edit.name), kNameTaken);
   }
-  const SignalGraph graph = GraphOf(a_recipe);
+  const RecipeGraph graph = GraphOf(a_recipe);
   const RowTypes rows{a_recipe, graph};
   if (auto problem =
           FirstError(CheckSource(rows, Source{a_edit.name, a_edit.kind})))
@@ -970,7 +970,7 @@ Refusal Edit(Recipe &a_recipe, const SetLightParam &a_edit) {
     break;
   }
   const auto where = OutputWhere(a_edit.output);
-  const SignalGraph graph = GraphOf(a_recipe);
+  const RecipeGraph graph = GraphOf(a_recipe);
   const RowTypes rows{a_recipe, graph};
   if (auto problem =
           NewError(CheckOutput(rows, a_recipe.outputs[a_edit.output], where),
@@ -991,7 +991,7 @@ Refusal Edit(Recipe &a_recipe, const SetLightVector &a_edit) {
     candidate.offset = a_edit.value;
   }
   const auto where = OutputWhere(a_edit.output);
-  const SignalGraph graph = GraphOf(a_recipe);
+  const RecipeGraph graph = GraphOf(a_recipe);
   const RowTypes rows{a_recipe, graph};
   if (auto problem =
           NewError(CheckOutput(rows, a_recipe.outputs[a_edit.output], where),
@@ -1016,7 +1016,7 @@ Refusal Edit(Recipe &a_recipe, const SetLightBones &a_edit) {
   LightOutput candidate = *found.light;
   candidate.bones = a_edit.bones;
   const auto where = OutputWhere(a_edit.output);
-  const SignalGraph graph = GraphOf(a_recipe);
+  const RecipeGraph graph = GraphOf(a_recipe);
   const RowTypes rows{a_recipe, graph};
   if (auto problem =
           NewError(CheckOutput(rows, a_recipe.outputs[a_edit.output], where),
@@ -1054,7 +1054,7 @@ Refusal Edit(Recipe &a_recipe, const ResetLight &a_edit) {
 }
 
 Refusal Edit(Recipe &a_recipe, const SetShellParam &a_edit) {
-  const SignalGraph graph = GraphOf(a_recipe);
+  const RecipeGraph graph = GraphOf(a_recipe);
   const RowTypes rows{a_recipe, graph};
   if (auto problem = CheckScalarRef(CheckContext{rows, "shell"},
                                     ShellParamName(a_edit.field), a_edit.value))
@@ -1081,7 +1081,7 @@ Refusal Edit(Recipe &a_recipe, const SetShellParam &a_edit) {
 }
 
 Refusal Edit(Recipe &a_recipe, const SetShellVector &a_edit) {
-  const SignalGraph graph = GraphOf(a_recipe);
+  const RecipeGraph graph = GraphOf(a_recipe);
   const RowTypes rows{a_recipe, graph};
   if (auto problem =
           CheckVectorRef(CheckContext{rows, "shell"},

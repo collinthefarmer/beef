@@ -19,9 +19,7 @@ void RetireGeometry(LiveGeometry &a_geometry) {
   a_geometry.plan = {};
   a_geometry.stackPlan = {};
   a_geometry.binding = {};
-  a_geometry.inputs.masks.reset();
-  a_geometry.inputs.ripples.reset();
-  a_geometry.inputs.derived.reset();
+  a_geometry.inputs.render.reset();
   a_geometry.inputs.material = {};
   a_geometry.inputs.geometry.reset();
   a_geometry.inputs.root.reset();

@@ -16,9 +16,9 @@ Shaders' material layout directly — and is not native-tested.
   that every **bake**, interpreter, **ripple**, cluster, and dilate pass
   runs through, plus the render-target pool and the readbacks a pass
   needs.
-- The **Compositor**: it turns a `SurfaceOutput`'s layer stack into a
-  `RenderedStack` by preparing each layer's **source** and **mask** and
-  running the lab over them in order.
+- The **RenderInstance**: it owns one geometry's immutable render plan, imported
+  values, cached step results, and retained recipe graphs. The **Compositor**
+  supplies imported images, mesh access, inspection, and output handles.
 - The **Binding**: it owns the checked cast from an engine material to the
   pinned PBR layout (`PbrMaterial::Bind`) and writes textures, scalars, and
   colors into a worn actor's material and shell.
@@ -49,73 +49,71 @@ the studio's live previews.
 | `ProgramConstants` | The interpreter's constant buffer: 256 `Program::Node`s, 16 refs and their values, and 8 texture parameter sets. Its static asserts pin the `Program::Op` values the shader mirrors. | `ShaderConstants.h` |
 | `RippleConstants` | The **ripple** pass's constant buffer: 8 firings plus the wave's shape parameters. | `ShaderConstants.h` |
 | `ClusterConstants` | The cluster pass's constant buffer: RMAOS and luma centroids for `kMaxMaterialClusters` (8) clusters, plus weights. | `ShaderConstants.h` |
-| `RenderTargetPool` | Owns the pooled `RenderTarget`s and the 512 **presenter** slots. `Acquire` leases a shared **target**, `Scratch` reuses one per size, and a released **target** returns to the pool through `Recycle`. | `RenderTargetPool.h` |
+| `RenderTargetPool` | Owns the pooled `RenderTarget`s and the configured **presenter** slots. `Acquire` leases a shared **target**, `Scratch` reuses one per size and format, and a released **target** returns to the pool through `Recycle`. | `RenderTargetPool.h` |
 | `TexturePreviews` | Tracks the studio's live preview requests, keyed by source texture, channel, and context. Each generation it re-renders the dynamic entries and expires the unused ones. | `TexturePreviews.h` |
 
-### Compositor, sources, bake
+### Plan execution and ownership
 
-All these types are declared in `Compositor.h`. `Compositor::Prepare`
-resolves a `SurfaceOutput`'s **layer** **stack** into prepared records once,
-and `Compositor::Render` replays them through the lab each tick, so per-tick
-work never resolves a name again. The prepared records hold `TextureRef`s
-and shared lab **target**s, which keeps a **stack** alive across ticks and
-re-renders only what animates.
+`ManagerApply` collects texture demands and lowers the requested stacks into a
+`RenderPlan`. Each geometry owns one `RenderInstance`. `ManagerTick` updates its
+imported values and retains the existing cross-stack fallback selection: a failed
+contribution is skipped, and the next contribution receives the last successful
+base. A failed visible layer prevents publication of a partial stack. An
+all-hidden stack succeeds with an empty `StackResult`.
 
 | Type | Description |
 |---|---|
-| `MaterialInputs` | The diffuse/normal/RMAOS/displacement `TextureRef` set a **bake** reads; `From` lifts it off a `PbrMaterial`. |
-| `GeometryInputs` | Everything `Prepare` needs from one geometry: its `MaterialInputs`, the geometry and root pointers, and the shared **mask**, **ripple**, and derived-map caches. |
-| `DerivedMaps` | The normal-slope and cluster **target**s derived from one geometry's material, each with a problem string and a tried flag so a failure is not retried. |
-| `PreparedSource` | One resolved **source**: its `TextureRef`, sampling, optional scroll and tile parameters, a normalize factor, and the `RenderedMask` or `RenderedRipple` it stands on. |
-| `PreparedMask` | One resolved **mask**: its `TextureRef`, the channel to read, and the `RenderedMask` behind a computed mask. |
-| `RenderedMask` | A cached, recursively prepared expression **mask**: its `Program`, ref bindings, prepared textures, dependency masks, and curve lookups, rendered into its own **target** at most once per tick. |
-| `RenderedRipple` | A cached **ripple**: its positions **bake**, its firing state, and its **target**, re-rendered each tick from the signal state. |
-| `PreparedLayer` | One **layer** of a **stack**: the `Layer` it came from, its index, its optional `PreparedSource` and `PreparedMask`, and its curve lookup. |
-| `LayerFilter` | The **layer** indices `Render` hides; `Hides` answers for one index. |
-| `StackBase` | The optional texture a **stack** renders on top of, with its animated flag. |
-| `RenderedStack` | The prepared **stack**: its `PreparedLayer`s, its base and result **target**s, its size and animated flag, and the `Diagnostic`s preparation produced. `Texture()` is what the **binding** writes. |
-| `Compositor` | The singleton that prepares and renders **stack**s. Beside them it owns the loaded-image cache, the `MeshCache`, the per-material analysis records, and the cross-actor shared-target caches. |
+| `MaterialInputs` | Retained diffuse, normal, RMAOS and displacement textures, with the material's flat-displacement classification. |
+| `GeometryInputs` | The material, geometry and root handles, application context, and geometry-owned render instance. |
+| `RenderInstance` | Owns the plan, retained graphs, typed imported values and `RenderExecution<RenderValue, RenderScratch>`. |
+| `RenderValue` | Typed numeric values, texture views, meshes, materials, firings, transforms, bake buffers, material samples/analysis, lookups, visibility or stack results. |
+| `TextureView` | A retained texture plus its resolved sampling and optional produced target. |
+| `RenderOutput` | A placed stack's output reference, weak instance reference, latest retained texture, size, animation classification and diagnostics. It does not schedule dependencies. |
+| `PreparedSource`, `PreparedMask` | Inspection records over current instance results. They own no scheduling state. |
+| `LayerFilter`, `StackBase` | Visibility and the engine-selected preceding stack texture. |
 
-### Cross-actor sharing
+A step records the reference and change version of each input it successfully
+read. Unchanged observations reuse the output. Numeric recomputation that gives
+the same value keeps its version; a successful GPU write advances its version.
+Measurement failure makes the current result unavailable and blocks its
+consumers. Stack visibility is resolved before its selected data dependencies.
+Imported resource owners can report replacement or in-place mutation through
+`RenderInstance::UpdateInput`; geometry/material rebinding creates a new instance.
 
-A composited result that is identical across actors is shared, not
-recomputed per geometry. Each shareable resource is keyed by its content,
-so a crowd of same-armor actors adopts one live **target** between them
-instead of baking N. `AdoptSharedTarget` is the one seam every share
-passes through. The caches hold their targets by `weak_ptr`, so the last
-sharer's drop returns the **target** to the bounded idle pool. Expired keys are
-removed on adoption and during maintenance; failed creation leaves no key.
-The idle pool retains at most 16 targets and 64 MiB of mipmapped RGBA allocation.
-Excess returns are destroyed and release their presenter slots. Active leases,
-including snapshot/draw and material-journal ownership, are never trimmed.
+The plan explicitly includes source sampling, mesh buffers and bakes, normal
+slope, material sampling and clustering, ripples, interpreter draws, reductions,
+lookup construction, component mapping and stack composition. Uniform masks are
+materialized when a texture consumer needs them. A failed lowering branch becomes
+a typed unavailable producer, so hiding it can still render the remaining stack.
 
-| Symbol | Description | Declared in |
-|---|---|---|
-| `Shared` (enum) | Names the four shareable resource kinds: `kStack`, `kCluster`, `kMask`, `kBake`. | `Compositor.h` |
-| `AdoptSharedTarget(Shared, key, render)` | The one seam. It returns the kind's live **target** from its `ResourceCache` on a key hit, or runs `render` on a miss and enters the result. On an adopted hit it emits a `kTexture` trace event whose action is `<kind>_shared` (`stack_shared`, `cluster_shared`, `mask_shared`, `bake_shared`). | `Compositor.cpp` |
-| `sharedStacks_`, `sharedClusters_`, `sharedMasks_`, `sharedBakes_` | The four caches, each a `ResourceCache<TextureLab::RenderTarget>` (`planners/ResourceCache.h`) that keys targets by content and holds them by `weak_ptr`. | `Compositor.h` |
-| `SharedCache(Shared)` | Selects one of the four caches by kind. | `Compositor.h` |
-| `ClearSharedStatics()` | Clears all four caches. `Manager.cpp` calls it on the save-load teardown. | `Compositor.h` |
-| `SweepSharedStatics()` | Removes expired weak keys during maintenance, including when no actors remain applied. | `Compositor.h` |
-| `StackShareInputs` | The bundle `StackTarget` keys a **stack** on: the recipe, the `SurfaceOutput`, its output index, and the `MaterialInputs`. | `Compositor.h` |
-| `SharedStaticKey`, `ClusterMapKey`, `MaskShareKey`, `BakeShareKey` | The anonymous key builders, one per kind. A stack key is recipe text \| output index \| size \| source-texture identities; a cluster key adds the cluster settings; a bake key is the mesh identity \| bake key. Each source-texture identity comes from `TextureRefIdentity`. | `Compositor.cpp`, `CompositorSource.cpp`, `CompositorBake.cpp` |
+Produced storage is retained by step outputs and consumer `TextureRef`s.
+`RenderScratch` holds only a weak reuse hint for the produced target. A stack
+alternates between that target and the lab's shared scratch; parity makes the
+last write land in its own target. Bake dilation uses scratch of the same format.
+The bounded idle target pool distinguishes size and format and accounts for the
+larger float allocations. Geometry retirement drops execution ownership while
+published or preview handles can retain their storage.
 
-A **stack** or **mask** shares only when `ShareableAcrossActors` (a
-predicate in `recipe/`) holds: the **output** or **mask** is static, with
-no per-actor **bake** or distance **source**. A cluster map or a
-mesh-intrinsic **bake** shares by content identity directly. A render into
-a shared **target** is identical by construction, so a hit is always
-correct. `Compositor::Prepare` now takes a `std::size_t a_outputIndex`,
-which the stack key uses to tell one output's **stack** from another's.
+Sharing of produced results is scoped to one plan and its bound identities.
+Mesh imports and inspection material analyses keep their existing retained
+caches. Plan step observations replace the old cross-actor compositor target
+caches and recursive mask/ripple scheduling flags.
 
-Material analysis uses `RetainedCache<MaterialKey, MaterialRecord>`. The manager
-protects the texture pairs of non-lost applied geometries during each five-second
-maintenance pass. Unused entries expire after 30 seconds; at most 64 unused
-entries survive a pass, with oldest access times removed first under pressure.
-Active pairs are exempt. Samples and analysis are borrowed only within synchronous
-calls; snapshot rows copy their data. Mesh sweeping and weak-key pruning run on
-the same maintenance path even with no applied actors. These retention policies
-do not establish a total active-memory budget or GPU completion guarantee.
+### Measurements
+
+`TextureLab::ReduceField` reads the base level of an RGBA32-float measurement
+field in row-major order. The pure `FieldReduction` implements component-wise
+mean, sum, minimum and maximum; sum and mean accumulate in double precision and
+round once to the output float. Every texel counts, including uncovered texels.
+Non-finite samples, invalid domains and failed readbacks are errors. Published
+textures retain their existing RGBA8 format.
+
+Layer curves use explicit measured arguments. RGB image normalization is also
+lowered into graph expressions and a reduction, retaining its 0.5 target and
+0.05 denominator floor. The existing material flat-displacement classifier is a
+separate import-time policy and still uses the legacy small-image measurement.
+Full-resolution synchronous reductions and the new GPU path require the in-game
+acceptance cases recorded in the render-plan checkpoint.
 
 ### Binding and PBR writes
 
@@ -175,7 +173,7 @@ SlotPlan (recipe/Merge.h)             built by planners/ActorPlanning.cpp
   │                                   (MatchActor) over recipe/Merge.cpp;
   │                                   engine/ManagerApply.cpp carries it
   ▼
-Compositor::Prepare(recipe, surface, outputIndex, geometryInputs, size, maxSize)
+Compositor::Prepare(recipe, graph, surface, outputIndex, geometryInputs, size, maxSize)
   │   CompositorSource.cpp: resolve each Layer's source + mask,
   │   normalise colour, flatten displacement, cap mask nesting (kMaxMaskDepth)
   ▼
@@ -246,3 +244,35 @@ Curve lookup preparation requests a source mean only when the parsed curve
 uses `mean`. Normalization and flat-displacement measurement still require
 their means. GPU mesh reads and material sampling remain synchronous, as do
 necessary mean reads; asynchronous readback remains outstanding.
+
+### Compiled recipe inputs
+
+Preparation and inspection receive the instance's immutable `RecipeGraph`,
+including variant overrides. Mask programs, types, function handles, and
+animation flags come from that graph. Signal bindings retain graph indices;
+rendering reads those indices from the matching `SignalState`. The single-map
+mask shortcut inspects compiled operations instead of parsing expression text.
+Layer curves use compiled function bindings by their output/layer location.
+Prepared mask/ripple caches are scoped by application; graphs with overridden
+signals cannot share targets keyed by the original recipe. Allocation and pass
+scheduling remain unchanged.
+
+### Interpreter execution
+
+The compositor stores a validated `InterpreterProgram` from `planners/` and
+prepares its requested textures and function lookups. `TextureLab::InterpreterBindings`
+supplies current values and GPU resources separately. TextureLab checks binding
+counts and packs interpreter-owned instructions into shader constants; recipe
+opcode numbering is not part of that ABI. Component-width metadata preserves
+vec2 behavior through arithmetic and reductions. Pass scheduling and resource
+ownership remain in the compositor.
+
+## Texture demand acquisition
+
+`CompositorDemand.cpp` binds graph identities to geometry/material/runtime inputs
+and collects all eligible stack requests for one geometry before acquisition.
+The geometry's prepared texture registry uses `TextureKey`; source preparation
+binds existing results. Static shared results capture constant graph bindings,
+and dynamic results retain instance identity. Existing source operations own
+their internal bake/readback passes. See the
+[texture-demand checkpoint](../checkpoints/texture-demand-2026-09-27.md).

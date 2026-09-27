@@ -151,12 +151,13 @@ void Manager::ChangeAndRebuildActors(std::string a_reportRecipe,
       applications_.Begin(std::move(a_reportRecipe), ApplicationActors());
   const auto actors = applications_.ActorsFor(token.recipeID);
   for (const RE::FormID actor : actors) {
-    Retire(actor);
+    RetireEffects(actor);
   }
   a_action();
   TraceRebuildState(token, editor_.CurrentView());
   for (const RE::FormID actor : actors) {
     if (!applications_.Refresh(actor)) {
+      Retire(actor);
       applications_.Report(token, actor, ApplicationPhase::kFailed,
                            "actor refresh could not be queued");
     }

@@ -67,19 +67,24 @@ std::vector<Studio::SlotRow> SlotRows(const SlotTarget &a_target) {
 struct GeometrySnapshotBuilder {
   Manager::Snapshot &snapshot;
   const Recipe &recipe;
+  const RecipeGraph &graph;
+  std::size_t applicationContext;
   const SignalState *signals;
   const LiveGeometry &bound;
   std::size_t placedIndex;
 
   void InspectSources(Studio::GeometryRow &row) const {
     auto *compositor = Compositor::GetSingleton();
+    GeometryInputs inputs = bound.inputs;
+    inputs.applicationContext = applicationContext;
     for (const Source &source : recipe.sources) {
       Studio::PictureRow picture;
       picture.name = source.name;
       picture.description = DescribeSource(source.kind);
       picture.type = SourceType(source);
       if (const std::optional<PreparedSource> prepared =
-              compositor->InspectSource(recipe, source.name, bound.inputs)) {
+              compositor->InspectSource(recipe, graph, source.name,
+                                        bound.inputs)) {
         picture.channel = prepared->sampling.channel;
         picture.animated = prepared->animated;
         picture.problem = prepared->problem;
@@ -89,9 +94,8 @@ struct GeometrySnapshotBuilder {
               reinterpret_cast<std::uintptr_t>(bound.geometry.get()),
               source.name);
           const auto preview = TextureLab::GetSingleton()->SampledPreview(
-              context, prepared->texture.get(),
-              ResolveSampling(*prepared, *signals), prepared->normalize,
-              prepared->animated);
+              context, prepared->texture.get(), prepared->sampling,
+              prepared->normalize, prepared->animated);
           picture.texture = RetainTexture(snapshot, TextureRef{preview});
           picture.channel = ShaderChannel::kRgb;
         } else {
@@ -104,12 +108,14 @@ struct GeometrySnapshotBuilder {
 
   void InspectMasks(Studio::GeometryRow &row) const {
     auto *compositor = Compositor::GetSingleton();
+    GeometryInputs inputs = bound.inputs;
+    inputs.applicationContext = applicationContext;
     for (const Mask &mask : recipe.masks) {
       Studio::PictureRow picture;
       picture.name = mask.name;
       picture.description = mask.text;
       if (const std::optional<PreparedMask> prepared =
-              compositor->InspectMask(recipe, mask.name, bound.inputs)) {
+              compositor->InspectMask(recipe, graph, mask.name, inputs)) {
         picture.texture = RetainTexture(snapshot, prepared->texture);
         picture.channel = prepared->channel;
         picture.animated = prepared->animated;
@@ -153,12 +159,9 @@ struct GeometrySnapshotBuilder {
     if (!output.stack) {
       return;
     }
-    for (const PreparedLayer &prepared : output.stack->Layers()) {
-      if (prepared.index < row.layers.size() && prepared.source) {
-        row.layers[prepared.index].texture =
-            RetainTexture(snapshot, prepared.source->texture);
-      }
-    }
+    for (std::size_t i = 0; i < row.layers.size(); ++i)
+      row.layers[i].texture =
+          RetainTexture(snapshot, output.stack->LayerTexture(i));
     for (const Diagnostic &diagnostic : output.stack->Diagnostics()) {
       if (diagnostic.where.starts_with("layer ")) {
         const unsigned long at =
@@ -250,14 +253,14 @@ struct PieceSnapshotBuilder {
       }
       const std::optional<ResolvedPlacement> resolved =
           ResolvePlacement(state, bound, *placedIndex);
-      if (!resolved) {
+      if (!resolved || !instance.graph) {
         continue;
       }
       const LivePlacement &placement = state.placements[resolved->placement];
-      row.geometries.push_back(
-          GeometrySnapshotBuilder{snapshot, *instance.recipe,
-                                  instance.signals.get(), bound, *placedIndex}
-              .Build(placement));
+      row.geometries.push_back(GeometrySnapshotBuilder{
+          snapshot, *instance.recipe, *instance.graph, instanceIndex + 1,
+          instance.signals.get(), bound, *placedIndex}
+                                   .Build(placement));
     }
   }
 
@@ -502,7 +505,7 @@ Manager::BuildSnapshot(const std::optional<Studio::PieceRef> &a_request,
   if (!a_document.empty() && document) {
     const Studio::ReferenceCounts *references = ReferencesOf(document->id);
     const Studio::ReferenceCounts emptyReferences;
-    const std::shared_ptr<const SignalGraph> graph = GraphFor(*document);
+    const std::shared_ptr<const RecipeGraph> graph = GraphFor(*document);
     const std::optional<RecipeOrigin> origin = OriginOf(*document);
     const Studio::History<Recipe> *history = editor_.HistoryOf(document->id);
     const RecipeKey key =

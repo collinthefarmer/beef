@@ -1,6 +1,7 @@
 // GPL-3.0-only with the additional permission in COPYING.md.
 #include "studio/MenuState.h"
 
+#include "recipe/Expression.h"
 #include "studio/Intent.h"
 #include "studio/View.h"
 
@@ -1000,6 +1001,39 @@ void Reduce(MenuState &a_state, const Intent &a_intent) {
   }
 }
 
+std::vector<RecipeEdit> PaintDependencies(const MenuState &a_state) {
+  if (!a_state.paint) {
+    return {};
+  }
+  std::set<std::string> reads;
+  for (const Term &term : a_state.mask.terms) {
+    const auto program = Program::Parse(term.text);
+    if (!program) {
+      return a_state.paint->sources;
+    }
+    for (const std::string &name : program->References()) {
+      reads.insert(name);
+    }
+  }
+  if (a_state.paint->peek) {
+    const auto program = Program::Parse(a_state.paint->peek->expression);
+    if (!program) {
+      return a_state.paint->sources;
+    }
+    for (const std::string &name : program->References()) {
+      reads.insert(name);
+    }
+  }
+  std::vector<RecipeEdit> sources;
+  for (const RecipeEdit &edit : a_state.paint->sources) {
+    if (const auto *source = Get<AddSource>(edit);
+        source && reads.contains(source->name)) {
+      sources.push_back(edit);
+    }
+  }
+  return sources;
+}
+
 std::optional<UpdatePaint> PendingPaintUpdate(const MenuState &a_state) {
   if (!a_state.paint || !a_state.paint->ready || !a_state.mask.dirty ||
       a_state.paint->pendingRevision || a_state.paint->pendingCommit ||
@@ -1025,7 +1059,7 @@ std::optional<UpdatePaint> PendingPaintUpdate(const MenuState &a_state) {
   return UpdatePaint{PaintUpdateRequest{.sessionID = paint.sessionID,
                                         .revision = paint.revision,
                                         .expression = std::move(expression),
-                                        .sources = paint.sources,
+                                        .sources = PaintDependencies(a_state),
                                         .peek = std::move(peek),
                                         .peekSources = std::move(peekSources),
                                         .surface = paint.surface}};

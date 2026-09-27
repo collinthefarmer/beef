@@ -195,7 +195,7 @@ project a `Recipe` into the rows above.
 | Type | Description | Declared in |
 |---|---|---|
 | `Names` | The combo-box word pools: **signals** and **sources** with their `ValueType`s, **curves**, and **masks**; `NamesOf` gathers them from a `RecipeRow` and optionally its `GeometryRow`. | `Names.h` |
-| `RecipeRowInput` | The inputs `BuildRecipeRow` needs: the `Recipe`, its matched key, priority, clock time, dirty and pinned flags, undo and redo depths, its `ReferenceCounts`, and the live `SignalGraph` and `SignalState`. | `RecipeSnapshot.h` |
+| `RecipeRowInput` | The inputs `BuildRecipeRow` needs: the `Recipe`, its matched key, priority, clock time, dirty and pinned flags, undo and redo depths, its `ReferenceCounts`, and the live `RecipeGraph` and `SignalState`. | `RecipeSnapshot.h` |
 | `BuildRecipeRow` | Builds one `RecipeRow`, and every row under it, from a `RecipeRowInput`. | `RecipeSnapshot.h` |
 | The row builders | The per-row projections (`OutputRowOf`, `SignalRowOf`, `LayerRowOf`, …) that `BuildRecipeRow` composes. | `Rows.h` |
 
@@ -271,3 +271,9 @@ scope. `PieceRow` retains normal actor-seeded selection outcomes separately
 from recipe rows affected by preview isolation or pinning. An unisolated
 `ViewedRecipes` preserves the supplied actor selection; isolation resolves
 only its explicit single recipe and is not a normal sampled-pool decision.
+
+Paint preview and Keep requests select current term dependencies through
+`PaintDependencies`; the session's historical generated definitions remain
+available for mask undo without becoming live preview sources. Replacing a
+saved mask removes its abandoned source references only when the prepared
+recipe has no remaining users, in the same edit batch.

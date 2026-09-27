@@ -135,5 +135,25 @@ int main() {
         "an unreferenced, untracked source (a cleared peek's) is pruned while "
         "referenced and draft-tracked sources stay");
 
+  Recipe replacement;
+  replacement.id = "replacement";
+  replacement.sources = {
+      Source{"old", MaterialSource{MaterialChannel::kMetallic}},
+      Source{"shared", MaterialSource{MaterialChannel::kRoughness}},
+      Source{"spare", MaterialSource{MaterialChannel::kOcclusion}}};
+  replacement.masks = {Mask{"edited", "@old * @shared"},
+                       Mask{"other", "@shared"}};
+  Recipe replacementPaint =
+      PaintRecipe(replacement, RecipeKey{}, Surface::kMaterial);
+  Check(!Apply(replacementPaint, SetMask{std::string{kScratchMask}, "1"}),
+        "replacement scratch mask is prepared");
+  const EditBatch cleanup{KeepEdits(replacementPaint, replacement, "edited")};
+  Check(!Apply(replacement, cleanup),
+        "keeping a replacement mask applies cleanup");
+  Check(!replacement.FindSource("old") && replacement.FindSource("shared") &&
+            replacement.FindSource("spare"),
+        "keep removes superseded sources while preserving shared and unrelated "
+        "sources");
+
   return test::Finish("studio_paintsession");
 }

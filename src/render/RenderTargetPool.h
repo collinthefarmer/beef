@@ -22,9 +22,11 @@ public:
 
   [[nodiscard]] std::shared_ptr<RenderTarget>
   Acquire(REX::W32::ID3D11Device *a_device, TextureSize a_size,
-          std::string_view a_owner);
-  [[nodiscard]] RenderTarget *Scratch(REX::W32::ID3D11Device *a_device,
-                                      TextureSize a_size);
+          std::string_view a_owner,
+          TextureFormat format = TextureFormat::kRgba8);
+  [[nodiscard]] RenderTarget *
+  Scratch(REX::W32::ID3D11Device *a_device, TextureSize a_size,
+          TextureFormat format = TextureFormat::kRgba8);
   void ClearScratch();
   void ClearUnused();
 
@@ -37,7 +39,7 @@ private:
   };
 
   bool CreateTarget(REX::W32::ID3D11Device *a_device, RenderTarget &a_target,
-                    TextureSize a_size);
+                    TextureSize a_size, TextureFormat format);
   RE::NiPointer<RE::NiSourceTexture> LoadPresenter(std::size_t a_slot);
   bool ValidatePresenter(std::size_t a_slot, RE::NiSourceTexture *a_source,
                          const std::string &a_path) const;
@@ -56,6 +58,8 @@ private:
   std::array<Presenter, kPresenterCount> presenters_{};
   std::uint64_t nextGeneration_ = 0;
   std::shared_ptr<Pool> pool_ = std::make_shared<Pool>();
-  std::map<std::uint32_t, std::shared_ptr<RenderTarget>> scratch_;
+  std::map<std::pair<std::uint32_t, TextureFormat>,
+           std::shared_ptr<RenderTarget>>
+      scratch_;
 };
 }

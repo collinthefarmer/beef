@@ -7,6 +7,7 @@
 #include "engine/Clock.h"
 #include "planners/Eviction.h"
 #include "render/Compositor.h"
+#include "render/RenderInstance.h"
 #include "render/TextureLab.h"
 #include "studio/ResolveOutput.h"
 
@@ -108,6 +109,17 @@ struct SlotChain {
 SlotChain RenderSlotChain(LiveActor &a_state, LiveGeometry &a_bound,
                           const Studio::View &a_view,
                           const SlotStackPlan &a_slot, bool a_anyLayerHidden) {
+  if (a_bound.inputs.render) {
+    for (std::size_t i = 0; i < a_state.instances.size(); ++i) {
+      const auto &instance = a_state.instances[i];
+      if (!instance.graph || !instance.signals)
+        continue;
+      if (auto updated = a_bound.inputs.render->Update(*instance.graph, i + 1,
+                                                       *instance.signals);
+          !updated)
+        logger::error("render inputs: {}", updated.error());
+    }
+  }
   SlotChain chain;
   StackBase base;
   for (const StackLink &link : a_slot.chain) {
@@ -136,8 +148,8 @@ SlotChain RenderSlotChain(LiveActor &a_state, LiveGeometry &a_bound,
       filter = HiddenLayers(a_view, instance.recipe->id, c.output,
                             material->stack.size());
     }
-    const bool rendered = Compositor::GetSingleton()->Render(
-        *output->stack, *instance.signals, instance.lastTime, filter, base);
+    const bool rendered =
+        Compositor::GetSingleton()->Render(*output->stack, filter, base);
     output->rendered = rendered;
     output->renderFailed = !rendered;
     if (!rendered) {
@@ -242,7 +254,6 @@ void SweepBoundMeshes(
   }
   a_compositor.SweepMeshes(a_nowMS, bound);
   a_compositor.SweepMaterials(a_nowMS, materials);
-  a_compositor.SweepSharedStatics();
 }
 
 void MarkReferencedInstances(LiveActor &a_state, const LiveGeometry &a_bound,
@@ -287,6 +298,7 @@ void Manager::OnFrame() {
   if (now - lastMetricsMS_ >= 1000) {
     lastMetricsMS_ = now;
     carriedTimes_.Expire(now);
+    SweepAnimationEvents();
     EmitMetricsHeartbeat();
   }
   const Settings settings = GetSettings();

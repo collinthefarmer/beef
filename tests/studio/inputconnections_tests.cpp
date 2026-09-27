@@ -70,8 +70,7 @@ void CheckConnections(const Recipe &a_base) {
     if (!ref) {
       continue;
     }
-    const SignalGraph graph =
-        SignalGraph::Compile(prepared->signals, prepared->curves);
+    const RecipeGraph graph = RecipeGraph::Compile(*prepared);
     SignalState state{graph};
     Resources resources;
     state.Tick(resources, {0, 0});

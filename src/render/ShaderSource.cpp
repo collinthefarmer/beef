@@ -228,10 +228,11 @@ constexpr const char *kShaderSourceMid = R"(];
 		float4 c = code[k];
 		int    op = (int)c.x;
 		int    idx = (int)c.z;
+		int    components = (int)c.w;
 		float3 a = 0, b = 0, d = 0;
 		int pops = 0;
 		switch (op) {
-		case 0: case 3: case 5: case 6: case 7: pops = 0; break;
+		case 0: case 3: pops = 0; break;
 		case 4: case 8: case 9: case 23: case 27: case 28: case 29: case 30: case 31: case 33: case 34: case 38: case 42: pops = 1; break;
 		case 1: case 10: case 11: case 12: case 13: case 14: case 15: case 16: case 17: case 18: case 19: case 20: case 21:
 		case 24: case 25: case 32: case 35: case 39: case 40: case 41: pops = 2; break;
@@ -247,9 +248,6 @@ constexpr const char *kShaderSourceMid = R"(];
 		case 2:  r = float3(d.x, b.x, a.x); break;
 		case 3:  r = refs[idx].x > 0.5 ? ReadTexture((int)refs[idx].y, i.uv) : refValues[idx].xyz; break;
 		case 4:  r = LutAt(idx, a.x); break;
-		case 5:  r = 0; break;
-		case 6:  r = 0.5; break;
-		case 7:  r = misc.x; break;
 		case 8:  r = -a; break;
 		case 9:  r = a.x > 0 ? 0 : 1; break;
 		case 10: r = b + a; break;
@@ -280,12 +278,13 @@ constexpr const char *kShaderSourceMid = R"(];
 		case 35: r = float3(a.x < b.x ? 0 : 1, a.y < b.y ? 0 : 1, a.z < b.z ? 0 : 1); break;
 		case 36: r = smoothstep(d, b, a); break;
 		case 37: r = lerp(d, b, a); break;
-		case 38: r = length(a); break;
-		case 39: r = length(b - a); break;
-		case 40: r = dot(b, a); break;
+		case 38: r = components == 2 ? length(a.xy) : length(a); break;
+		case 39: r = components == 2 ? length(b.xy - a.xy) : length(b - a); break;
+		case 40: r = components == 2 ? dot(b.xy, a.xy) : dot(b, a); break;
 		case 41: r = cross(b, a); break;
-		default: r = SafeDiv(a, length(a)); break;
+		default: r = SafeDiv(a, components == 2 ? length(a.xy) : length(a)); break;
 		}
+		if (components == 2 && op != 38 && op != 39 && op != 40) r.z = 0;
 		if (sp < )";
 
 constexpr const char *kShaderSourceTail = R"() { st[sp] = r; ++sp; }
@@ -361,6 +360,7 @@ cbuffer ClusterParams : register(b3)
 {
 	float4 centroidRmaos[8];
 	float4 centroidLuma[8];
+	float4 centroidDiffuse[8];
 	float4 clusterWeights;
 	float4 clusterMisc;
 };
@@ -368,7 +368,7 @@ cbuffer ClusterParams : register(b3)
 float4 PSClusters(VSOut i) : SV_Target
 {
 	float4 m = saturate(armor.SampleLevel(samp, i.uv, 0));
-	float3 d = src.SampleLevel(samp, i.uv, 0).rgb;
+	float3 d = saturate(src.SampleLevel(samp, i.uv, 0).rgb);
 	float  luma = saturate(dot(d, float3(0.2126, 0.7152, 0.0722)));
 	int    n = clamp((int)clusterMisc.y, 0, 8);
 	float  id = 0;
@@ -376,7 +376,9 @@ float4 PSClusters(VSOut i) : SV_Target
 	[loop] for (int k = 0; k < n; ++k) {
 		float4 dm = m - centroidRmaos[k];
 		float  dl = luma - centroidLuma[k].x;
-		float  dist = dot(clusterWeights, dm * dm) + clusterMisc.x * dl * dl;
+		float3 dc = d - centroidDiffuse[k].rgb;
+		float  dist = dot(clusterWeights, dm * dm) + clusterMisc.x * dl * dl
+		              + clusterMisc.z * dot(dc, dc);
 		if (k == 0 || dist < best) {
 			best = dist;
 			id = centroidLuma[k].y;

@@ -15,6 +15,7 @@ struct MaterialTexel {
   float occlusion = 0.0f;
   float reflectance = 0.0f;
   float luma = 0.0f;
+  Vec3 diffuse{};
   [[nodiscard]] bool operator==(const MaterialTexel &) const = default;
 };
 

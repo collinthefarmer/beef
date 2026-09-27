@@ -62,9 +62,14 @@ public:
   [[nodiscard]] std::expected<ValueType, std::string>
   Check(const RefTyper &a_types, ValueType a_xType = ValueType::kScalar) const;
 
+  [[nodiscard]] Program BindContext(std::optional<std::uint32_t> a_time,
+                                    std::optional<std::uint32_t> a_x,
+                                    std::optional<std::uint32_t> a_mean) const;
+
   struct Inputs {
     std::span<const Value> refs;
     std::span<const Program *const> curves;
+    std::function<float(std::size_t, float, float)> callFunction;
     float time = 0.0f;
     Value x = 0.0f;
     float mean = 0.5f;

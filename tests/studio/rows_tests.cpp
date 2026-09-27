@@ -57,7 +57,7 @@ Recipe MakeRecipe() {
 
 int main() {
   const Recipe recipe = MakeRecipe();
-  const SignalGraph graph = SignalGraph::Compile(recipe.signals, recipe.curves);
+  const RecipeGraph graph = RecipeGraph::Compile(recipe);
   const RowTypes rows{recipe, graph};
 
   const SignalRow constant = SignalRowOf(recipe.signals[0], rows, 3);

@@ -212,6 +212,13 @@ void ForgetAnimEvents(RE::FormID a_actor) {
   g_animDirty.erase(a_actor);
 }
 
+void ClearAnimEvents() {
+  std::scoped_lock lock{g_animMutex};
+  g_animTags.clear();
+  g_animCatalogs.clear();
+  g_animDirty.clear();
+}
+
 std::optional<FormKey> ResolveEditorId(std::string_view a_editorId) {
   std::scoped_lock lock{g_mutex};
   if (g_editorIds.empty()) {

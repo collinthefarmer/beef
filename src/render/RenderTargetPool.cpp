@@ -95,15 +95,17 @@ bool RenderTargetPool::ValidatePresenter(std::size_t a_slot,
 }
 
 bool RenderTargetPool::CreateTarget(ID3D11Device *a_device,
-                                    RenderTarget &a_target,
-                                    TextureSize a_size) {
+                                    RenderTarget &a_target, TextureSize a_size,
+                                    TextureFormat format) {
   const std::uint32_t pixels = a_size.Pixels();
   D3D11_TEXTURE2D_DESC desc{};
   desc.width = pixels;
   desc.height = pixels;
   desc.mipLevels = 0;
   desc.arraySize = 1;
-  desc.format = DXGI_FORMAT_R8G8B8A8_UNORM;
+  desc.format = format == TextureFormat::kRgba32Float
+                    ? DXGI_FORMAT_R32G32B32A32_FLOAT
+                    : DXGI_FORMAT_R8G8B8A8_UNORM;
   desc.sampleDesc.count = 1;
   desc.usage = D3D11_USAGE_DEFAULT;
   desc.bindFlags = D3D11_BIND_RENDER_TARGET | D3D11_BIND_SHADER_RESOURCE;
@@ -140,13 +142,15 @@ bool RenderTargetPool::CreateTarget(ID3D11Device *a_device,
   a_target.presenter->rendererTexture =
       reinterpret_cast<RE::BSGraphics::Texture *>(a_target.ourData.get());
   a_target.size = pixels;
-  Metrics::CountTargetCreated(Metrics::MippedRgbaBytes(pixels));
+  a_target.format = format;
+  Metrics::CountTargetCreated(Metrics::MippedRgbaBytes(pixels) *
+                              (format == TextureFormat::kRgba32Float ? 4 : 1));
   return true;
 }
 
 std::shared_ptr<RenderTargetPool::RenderTarget>
 RenderTargetPool::Acquire(ID3D11Device *a_device, TextureSize a_size,
-                          std::string_view a_owner) {
+                          std::string_view a_owner, TextureFormat format) {
   if (!a_device) {
     return nullptr;
   }
@@ -156,12 +160,12 @@ RenderTargetPool::Acquire(ID3D11Device *a_device, TextureSize a_size,
   {
     std::scoped_lock lock{pool_->lock};
     target = pool_->targets.Take([&](const RenderTarget &a_target) {
-      return a_target.size == a_size.Pixels();
+      return a_target.size == a_size.Pixels() && a_target.format == format;
     });
   }
   if (!target) {
     target = std::make_unique<RenderTarget>();
-    if (!CreateTarget(a_device, *target, a_size)) {
+    if (!CreateTarget(a_device, *target, a_size, format)) {
       return nullptr;
     }
   }
@@ -200,10 +204,11 @@ RenderTargetPool::Acquire(ID3D11Device *a_device, TextureSize a_size,
 }
 
 RenderTargetPool::RenderTarget *
-RenderTargetPool::Scratch(ID3D11Device *a_device, TextureSize a_size) {
-  auto &target = scratch_[a_size.Pixels()];
+RenderTargetPool::Scratch(ID3D11Device *a_device, TextureSize a_size,
+                          TextureFormat format) {
+  auto &target = scratch_[{a_size.Pixels(), format}];
   if (!target) {
-    target = Acquire(a_device, a_size, "scratch");
+    target = Acquire(a_device, a_size, "scratch", format);
   }
   return target.get();
 }
@@ -222,7 +227,9 @@ void RenderTargetPool::Recycle(const std::weak_ptr<Pool> &a_pool,
                        {"generation", std::to_string(target->generation_)},
                        {"presenter", Trace::Pointer(target->presenter.get())}});
     std::scoped_lock lock{pool->lock};
-    const std::uint64_t bytes = Metrics::MippedRgbaBytes(target->size);
+    const std::uint64_t bytes =
+        Metrics::MippedRgbaBytes(target->size) *
+        (target->format == TextureFormat::kRgba32Float ? 4 : 1);
     pool->targets.Retain(std::move(target), bytes);
   } catch (...) {
     target.reset();

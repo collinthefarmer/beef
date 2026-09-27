@@ -105,7 +105,7 @@ charts, and returns both segmentations in one `MeshAnalysis`.
 ### Material analysis (`MaterialClusters.h`)
 
 `ClusterMaterial` groups a sampled texture's texels by material likeness
-with k-means++ over five channels. It reads at most `kMaxSampleTexels`
+with k-means++ over four RMAOS channels, diffuse luma and diffuse RGB. It reads at most `kMaxSampleTexels`
 (64 x 64) texels and clamps the cluster count to `kMaxMaterialClusters`
 (8, `recipe/Recipe.h`). This header does not include `Mesh.h`, because
 clustering works on a `MaterialSample` and never on a mesh. The settings
@@ -114,7 +114,7 @@ because the recipe's `MaterialClustersSource` carries them directly.
 
 | Type | Description |
 |---|---|
-| `MaterialTexel` | One texel's five channels: roughness, metallic, occlusion, reflectance, and luma. |
+| `MaterialTexel` | One texel's roughness, metallic, occlusion, reflectance, diffuse luma and RGB. |
 | `MaterialSample` | The sampled texture: width, height, and the texels. |
 | `MaterialCluster` | One cluster: its id, its centroid texel, its share of the sample, and a text description. |
 | `MaterialAnalysis` | The result `ClusterMaterial` returns: the settings it ran under plus the clusters. |

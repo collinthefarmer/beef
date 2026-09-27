@@ -47,7 +47,7 @@ RecipeRowInput BaseInput(const Recipe &a_recipe,
 
 int main() {
   const Recipe recipe = MakeRecipe();
-  const SignalGraph graph = SignalGraph::Compile(recipe.signals, recipe.curves);
+  const RecipeGraph graph = RecipeGraph::Compile(recipe);
   SignalState state{graph};
   NullEnvironment environment;
   state.Tick(environment, TickInputs{0.0f, 0.0f});

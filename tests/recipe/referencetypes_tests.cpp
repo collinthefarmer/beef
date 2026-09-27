@@ -11,6 +11,12 @@ using namespace BetterEnchantmentEffects;
 using test::Check;
 
 namespace {
+RecipeGraph CompileSignals(std::span<const Signal> signals) {
+  Recipe recipe;
+  recipe.signals.assign(signals.begin(), signals.end());
+  return RecipeGraph::Compile(recipe);
+}
+
 std::vector<Signal> Inputs() {
   return {{"scalar", ConstantSignal{1.0f}, std::nullopt},
           {"vector", ConstantSignal{Vec3{1.0f, 0.5f, 0.0f}}, std::nullopt},
@@ -22,10 +28,10 @@ void Rejects(SignalKind kind,
   auto signals = Inputs();
   signals.push_back({"bad", std::move(kind), std::nullopt});
   signals.push_back({"dependent", ExprSignal{"@bad + 1"}, std::nullopt});
-  const auto graph = SignalGraph::Compile(signals, {});
-  Check(graph.Inert(3),
+  const auto graph = CompileSignals(signals);
+  Check(graph.IsDisabled(3),
         "a signal with an incompatible reference becomes inert");
-  Check(graph.Inert(4), "inert reference state propagates to dependents");
+  Check(graph.IsDisabled(4), "inert reference state propagates to dependents");
   for (const auto message : messages) {
     Check(std::ranges::any_of(graph.Diagnostics(),
                               [&](const Diagnostic &diagnostic) {
@@ -73,11 +79,11 @@ int main() {
   signals.push_back({"payload", PayloadSignal{Ref{"hit"}}, std::nullopt});
   signals.push_back({"accumulate", AccumulateSignal{Ref{"hit"}, Ref{"scalar"}},
                      std::nullopt});
-  const auto graph = SignalGraph::Compile(signals, {});
+  const auto graph = CompileSignals(signals);
   Check(graph.Diagnostics().empty(),
         "compatible references produce no diagnostics");
   for (std::size_t i = 0; i < signals.size(); ++i) {
-    Check(!graph.Inert(i),
+    Check(!graph.IsDisabled(i),
           "compatible signal remains active: " + signals[i].name);
   }
   return test::Finish("reference types");

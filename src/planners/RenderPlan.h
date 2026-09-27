@@ -1,0 +1,189 @@
+// GPL-3.0-only with the additional permission in COPYING.md.
+#pragma once
+
+#include "planners/TextureDemand.h"
+
+namespace BetterEnchantmentEffects {
+using RenderInputId = std::size_t;
+using RenderStepId = std::size_t;
+struct RenderInputRef {
+  RenderInputId input = 0;
+  [[nodiscard]] bool operator==(const RenderInputRef &) const = default;
+};
+struct StepOutputRef {
+  RenderStepId step = 0;
+  std::size_t output = 0;
+  [[nodiscard]] bool operator==(const StepOutputRef &) const = default;
+};
+using RenderValueRef = std::variant<RenderInputRef, StepOutputRef>;
+enum class RenderResourceType {
+  kTexture,
+  kMesh,
+  kMaterial,
+  kTransform,
+  kFirings,
+  kBakeBuffers,
+  kMaterialSample,
+  kMaterialAnalysis,
+  kLookup,
+  kVisibility,
+  kStack
+};
+using RenderValueType = std::variant<ValueType, RenderResourceType>;
+struct ReductionDomain {
+  std::uint32_t width = 0;
+  std::uint32_t height = 0;
+  [[nodiscard]] bool operator==(const ReductionDomain &) const = default;
+};
+struct StackInputBinding {
+  PlacementId placement{};
+  std::size_t output = 0;
+  [[nodiscard]] bool operator==(const StackInputBinding &) const = default;
+};
+struct RenderInput {
+  RenderValueType type;
+  std::variant<TextureValue, StackInputBinding> binding;
+};
+struct UnavailableStep {
+  RenderValueType type;
+  std::string problem;
+};
+struct ConstantRenderStep {
+  Value value;
+};
+struct BuildBakeBuffersStep {
+  RenderValueRef mesh;
+  std::variant<BakeKind, RenderValueRef> operation;
+};
+struct BakeMeshStep {
+  RenderValueRef buffers;
+  TextureRequirements requirements;
+  bool nearest = false;
+};
+struct NormalSlopeStep {
+  RenderValueRef material;
+  TextureRequirements requirements;
+};
+struct SampleMaterialStep {
+  RenderValueRef material;
+};
+struct ClusterMaterialStep {
+  RenderValueRef sample;
+  ClusterSettings settings;
+};
+struct DrawClustersStep {
+  RenderValueRef material, analysis;
+  TextureRequirements requirements;
+};
+struct SampleFieldStep {
+  RenderValueRef texture;
+  TextureValue field;
+  std::vector<RenderValueRef> coordinates;
+  TextureRequirements requirements;
+};
+struct ReduceFieldStep {
+  ReductionKind kind;
+  RenderValueRef value;
+  ValueType type;
+  ReductionDomain domain;
+};
+struct LookupArgument {
+  std::size_t parameter = 0;
+  RenderValueRef value;
+};
+struct BuildLookupStep {
+  const RecipeGraph *graph = nullptr;
+  FunctionId function = 0;
+  std::size_t sampledParameter = 0;
+  std::vector<LookupArgument> boundArguments;
+  std::size_t samples = 256;
+};
+struct EvaluateValueStep {
+  TextureValue value;
+  std::vector<RenderValueRef> inputs;
+  ValueType type;
+};
+struct EvaluateProgramStep {
+  InterpreterProgram program;
+  std::vector<RenderValueRef> inputs;
+  std::vector<RenderValueRef> lookups;
+  TextureRequirements requirements;
+};
+struct MapFieldStep {
+  RenderValueRef value, lookup;
+  TextureRequirements requirements;
+};
+struct ComposeVectorStep {
+  std::vector<RenderValueRef> components;
+  TextureRequirements requirements;
+};
+struct DrawRippleStep {
+  RenderValueRef positions;
+  TextureValue field;
+  std::vector<RenderValueRef> inputs;
+  TextureRequirements requirements;
+};
+struct PlannedLayer {
+  RenderValueRef source, opacity;
+  std::optional<RenderValueRef> mask, color;
+  Blend blend;
+  ChannelSet channels;
+};
+struct CompositeStackStep {
+  RenderValueRef base, visibility;
+  std::vector<PlannedLayer> layers;
+  TextureRequirements requirements;
+  Slot slot;
+};
+using RenderStepKind =
+    std::variant<UnavailableStep, ConstantRenderStep, BuildBakeBuffersStep,
+                 BakeMeshStep, NormalSlopeStep, SampleMaterialStep,
+                 ClusterMaterialStep, DrawClustersStep, SampleFieldStep,
+                 ReduceFieldStep, BuildLookupStep, EvaluateValueStep,
+                 EvaluateProgramStep, MapFieldStep, ComposeVectorStep,
+                 DrawRippleStep, CompositeStackStep>;
+struct RenderStep {
+  RenderStepKind kind;
+  std::string displayName;
+};
+struct TextureUseBinding {
+  TextureUse use;
+  RenderValueRef texture;
+};
+struct StackOutputBinding {
+  PlacementId placement{};
+  std::size_t output = 0;
+  StepOutputRef result;
+};
+struct RenderValueBinding {
+  TextureValue value;
+  RenderValueRef result;
+};
+struct RenderPlan {
+  std::vector<RenderValueBinding> values;
+  std::vector<RenderInput> inputs;
+  std::vector<RenderStep> steps;
+  std::vector<TextureUseBinding> textureUses;
+  std::vector<StackOutputBinding> stackOutputs;
+};
+struct RenderStackRequest {
+  const RecipeGraph *graph = nullptr;
+  const SurfaceOutput *surface = nullptr;
+  std::size_t instance = 0;
+  PlacementId placement{};
+  std::size_t output = 0;
+  TextureRequirements requirements;
+};
+using RenderBindingResolver =
+    std::function<ValueBindings(const TextureValue &)>;
+[[nodiscard]] std::vector<RenderValueRef> InputsOf(const RenderStepKind &step);
+[[nodiscard]] RenderValueType OutputType(const RenderStepKind &step);
+[[nodiscard]] std::optional<RenderValueType> TypeOf(const RenderPlan &plan,
+                                                    RenderValueRef value);
+[[nodiscard]] std::expected<void, std::string>
+ValidateRenderPlan(const RenderPlan &plan);
+[[nodiscard]] std::expected<RenderPlan, std::string>
+BuildRenderPlan(std::span<const TextureDemand> demands,
+                std::span<const RenderStackRequest> stacks,
+                const RenderBindingResolver &bindings);
+}

@@ -1,5 +1,6 @@
 // GPL-3.0-only with the additional permission in COPYING.md.
 #include "recipe/Recipe.h"
+#include "recipe/RecipeGraph.h"
 
 #include "recipe/Expression.h"
 #include "recipe/Words.h"
@@ -725,144 +726,58 @@ void CollectRefs(const std::variant<std::array<Param, N>, Ref> &a_param,
 
 class AnimationQuery {
 public:
-  explicit AnimationQuery(const Recipe &a_recipe) : recipe_(a_recipe) {}
+  explicit AnimationQuery(const RecipeGraph &a_graph) : graph_(a_graph) {}
 
-  bool Signal(std::string_view a_name) {
-    const auto *signal = recipe_.FindSignal(a_name);
-    if (!signal) {
-      return false;
-    }
-    return Guarded("s:" + std::string{a_name}, [&] {
-      return Match(
-          signal->kind, [](const ConstantSignal &) { return false; },
-          [&](const ExprSignal &e) {
-            const auto program = Program::Parse(e.text);
-            if (!program) {
-              return false;
-            }
-            if (program->UsesTime()) {
-              return true;
-            }
-            return std::ranges::any_of(
-                program->References(),
-                [&](const std::string &r) { return Signal(r); });
-          },
-          [&](const GradientSignal &g) {
-            bool any = Param(g.t);
-            for (const auto &stop : g.stops) {
-              any = any || Vector(stop.color);
-            }
-            return any;
-          },
-          [&](const RateSignal &d) { return Signal(d.of.name); },
-          [&](const SmoothSignal &s) { return Signal(s.of.name); },
-          [](const ToRootSignal &) { return true; },
-          [](const WaveSignal &) { return true; },
-          [](const RampSignal &) { return true; },
-          [](const EfshSignal &) { return true; },
-          [](const ActorValueSignal &) { return true; },
-          [](const ActorStateSignal &) { return true; },
-          [](const EnchantmentSignal &) { return true; },
-          [](const TriggerSignal &) { return true; },
-          [](const PayloadSignal &) { return true; },
-          [](const CounterSignal &) { return true; },
-          [](const AccumulateSignal &) { return true; },
-          [](const NoiseSignal &) { return true; });
-    });
+  bool Signal(std::string_view name) const {
+    return graph_.FindSignalIndex(name) && graph_.MayChangeOverTime(name);
   }
 
-  bool Param(const BetterEnchantmentEffects::Param &a_param) {
-    const auto name = RefOf(a_param);
+  bool Param(const BetterEnchantmentEffects::Param &param) const {
+    const auto name = RefOf(param);
     return name && Signal(*name);
   }
 
   template <std::size_t N>
   bool Vector(const std::variant<std::array<BetterEnchantmentEffects::Param, N>,
-                                 Ref> &a_param) {
+                                 Ref> &param) const {
     std::vector<std::string_view> refs;
-    CollectRefs(a_param, refs);
-    return std::ranges::any_of(refs,
-                               [&](std::string_view r) { return Signal(r); });
+    CollectRefs(param, refs);
+    return std::ranges::any_of(
+        refs, [&](std::string_view name) { return Signal(name); });
   }
 
-  bool Source(std::string_view a_name) {
-    const auto *source = recipe_.FindSource(a_name);
-    if (!source) {
-      return false;
-    }
-    return Guarded("r:" + std::string{a_name}, [&] {
-      return Match(
-          source->kind,
-          [&](const ImageSource &s) {
-            return (s.scroll && Vector(*s.scroll)) ||
-                   (s.tile && Vector(*s.tile));
-          },
-          [](const RippleSource &) { return true; },
-          [](const MaterialSource &) { return false; },
-          [](const BakeSource &) { return false; },
-          [](const DistanceSource &) { return false; },
-          [](const MaterialClustersSource &) { return false; });
-    });
+  bool Image(std::string_view name) const {
+    return graph_.MayChangeOverTime(name);
   }
-
-  bool Mask(std::string_view a_name) {
-    const auto *mask = recipe_.FindMask(a_name);
-    if (!mask) {
-      return false;
-    }
-    return Guarded("m:" + std::string{a_name}, [&] {
-      const auto program = Program::Parse(mask->text);
-      if (!program) {
-        return false;
-      }
-      if (program->UsesTime()) {
-        return true;
-      }
-      return std::ranges::any_of(
-          program->References(),
-          [&](const std::string &r) { return Image(r); });
-    });
-  }
-
-  bool Image(std::string_view a_name) {
-    if (recipe_.FindSource(a_name)) {
-      return Source(a_name);
-    }
-    if (recipe_.FindMask(a_name)) {
-      return Mask(a_name);
-    }
-    return Signal(a_name);
+  bool Mask(std::string_view name) const {
+    return graph_.MayChangeOverTime(name);
   }
 
 private:
-  template <class F> bool Guarded(const std::string &a_key, F a_f) {
-    if (!visiting_.insert(a_key).second) {
-      return false;
-    }
-    const bool result = a_f();
-    visiting_.erase(a_key);
-    return result;
-  }
-
-  const Recipe &recipe_;
-  std::unordered_set<std::string> visiting_;
+  const RecipeGraph &graph_;
 };
 }
 
 bool IsAnimated(const Recipe &a_recipe, std::string_view a_signal) {
-  return AnimationQuery{a_recipe}.Signal(a_signal);
+  const auto graph = RecipeGraph::Compile(a_recipe);
+  return AnimationQuery{graph}.Signal(a_signal);
 }
 
 bool IsAnimated(const Recipe &a_recipe, const Source &a_source) {
-  return AnimationQuery{a_recipe}.Source(a_source.name);
+  return RecipeGraph::Compile(a_recipe).MayChangeOverTime(a_source.name);
 }
 
 bool IsAnimated(const Recipe &a_recipe, const Mask &a_mask) {
-  return AnimationQuery{a_recipe}.Mask(a_mask.name);
+  return RecipeGraph::Compile(a_recipe).MayChangeOverTime(a_mask.name);
 }
 
 bool IsAnimated(const Recipe &a_recipe, const Output &a_output) {
-  AnimationQuery q{a_recipe};
+  const auto graph = RecipeGraph::Compile(a_recipe);
+  return IsAnimated(graph, a_output);
+}
+
+bool IsAnimated(const RecipeGraph &a_graph, const Output &a_output) {
+  AnimationQuery q{a_graph};
   return Match(
       a_output,
       [&](const LightOutput &l) {
@@ -892,13 +807,38 @@ bool RecipeInputsAreActorIndependent(const Recipe &a_recipe) noexcept {
   return true;
 }
 
-bool ShareableAcrossActors(const Recipe &a_recipe, const Output &a_output) {
-  return Is<SurfaceOutput>(a_output) && !IsAnimated(a_recipe, a_output) &&
-         RecipeInputsAreActorIndependent(a_recipe);
+namespace {
+bool AuthoredSignalsMatch(const Recipe &recipe, const RecipeGraph &graph) {
+  if (recipe.signals.size() != graph.SignalEvaluationOrder().size())
+    return false;
+  for (const auto &signal : recipe.signals) {
+    const auto index = graph.FindSignalIndex(signal.name);
+    const auto *compiled = index ? graph.SignalAt(*index) : nullptr;
+    if (!compiled || *compiled != signal)
+      return false;
+  }
+  return true;
+}
 }
 
-bool ShareableAcrossActors(const Recipe &a_recipe, const Mask &a_mask) {
-  return !IsAnimated(a_recipe, a_mask) &&
-         RecipeInputsAreActorIndependent(a_recipe);
+bool ShareableAcrossActors(const Recipe &recipe, const RecipeGraph &graph,
+                           const Output &output) {
+  return Is<SurfaceOutput>(output) && !IsAnimated(graph, output) &&
+         RecipeInputsAreActorIndependent(recipe) &&
+         AuthoredSignalsMatch(recipe, graph);
+}
+bool ShareableAcrossActors(const Recipe &recipe, const RecipeGraph &graph,
+                           const Mask &mask) {
+  const auto index = graph.FindNodeIndex(mask.name);
+  return index && !graph.IsDisabled(*index) &&
+         !graph.MayChangeOverTime(mask.name) &&
+         RecipeInputsAreActorIndependent(recipe) &&
+         AuthoredSignalsMatch(recipe, graph);
+}
+bool ShareableAcrossActors(const Recipe &recipe, const Output &output) {
+  return ShareableAcrossActors(recipe, RecipeGraph::Compile(recipe), output);
+}
+bool ShareableAcrossActors(const Recipe &recipe, const Mask &mask) {
+  return ShareableAcrossActors(recipe, RecipeGraph::Compile(recipe), mask);
 }
 }

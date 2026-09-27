@@ -76,6 +76,67 @@ struct Flow {
   }
 };
 
+void RetunedSources() {
+  Flow flow;
+  flow.Ready();
+  flow.Offer(ClusterTerm{});
+  flow.DispatchFrame();
+  for (std::uint32_t seed = 1; seed <= 8; ++seed) {
+    ClusterTerm term;
+    term.settings.seed = seed;
+    const auto built = BuildTerm(term, MaskPresets{},
+                                 PaintSources(flow.state, flow.published, {}));
+    Reduce(flow.state,
+           SetTermKind{0, term, built.expression, "cluster", built.edits});
+    flow.Submit();
+    flow.Drain();
+    flow.Publish();
+    Check(!flow.state.paint->problem && flow.paint.sources.size() == 1,
+          "retuning clusters publishes only the current source");
+  }
+  const auto *original = Get<AddSource>(flow.state.paint->sources.front());
+  Check(original != nullptr, "the undo catalog retains source definitions");
+  if (original) {
+    Reduce(flow.state,
+           SetPeek{PaintPeek{"old cluster", "@" + original->name, {}}});
+    flow.Submit();
+    flow.Drain();
+    flow.Publish();
+    Check(!flow.state.paint->problem && flow.paint.sources.size() == 2,
+          "peek can reuse a historical source removed from the live preview");
+    Reduce(flow.state, SetPeek{std::nullopt});
+    flow.Submit();
+    flow.Drain();
+    flow.Publish();
+    Check(flow.paint.sources.size() == 1,
+          "clearing peek releases its historical source again");
+  }
+  Reduce(flow.state, UndoMask{});
+  flow.Submit();
+  flow.Drain();
+  flow.Publish();
+  const auto *restored =
+      flow.paint.sources.empty()
+          ? nullptr
+          : Get<MaterialClustersSource>(flow.paint.sources.front().kind);
+  Check(flow.paint.sources.size() == 1 && restored &&
+            restored->settings.seed == 7,
+        "undo restores the prior generated source without retaining the "
+        "replaced one");
+  Reduce(flow.state, MuteTerm{0, true});
+  flow.Submit();
+  flow.Drain();
+  flow.Publish();
+  Check(flow.paint.sources.size() == 1,
+        "muted terms retain their source for unmuting");
+  Reduce(flow.state, RemoveTerm{0});
+  flow.Submit();
+  flow.Drain();
+  flow.Publish();
+  Check(flow.paint.sources.empty(),
+        "removing the last term releases its source");
+}
+
 void DelayedUndo() {
   Flow flow;
   flow.Submit();
@@ -372,6 +433,7 @@ void CommonMaskOperations() {
 }
 
 int main() {
+  RetunedSources();
   DelayedUndo();
   RapidOffersAndKeep();
   RefusalAndRetry();

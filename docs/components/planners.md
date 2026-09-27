@@ -17,7 +17,7 @@ calls these functions with value records.
 ## What it owns
 
 The **actor plan**: which geometries an actor has, which recipes matched
-each one, and which **instance** (one recipe, one enchantment) backs each
+each one, and which **instance** (one recipe, one enchantment, one selected effect context) backs each
 match. From the plan it derives:
 
 - a **geometry placement** — the **slot** stacks and **light** contributions
@@ -63,7 +63,7 @@ functions in `ActorPlan.cpp` read it.
 | Table / row | Description |
 |---|---|
 | `Geometry` | One mesh on the actor: its `GeometryIdentity`, the armor's `WornPiece` match keys, and the `firstPerson` and `lost` flags. |
-| `Instance` | One **recipe** applied to one enchantment: a `RecipeId` and an optional enchantment `FormKey`; it shares evaluation state, never composition priority. |
+| `Instance` | One **recipe** applied to one enchantment and selected effect context: a `RecipeId`, an optional enchantment `FormKey`, and an optional winning effect `RecipeKey`; it shares evaluation state, never composition priority. |
 | `Placement` | One match. It joins an `InstanceId` to a `GeometryId`, records the `RecipeKey` and effective placement `priority`, and lists an `OutputPlacement` (`OutputId`, `selected`, `problem`) per output. |
 | `PieceMatch` | The match view for one armor **piece**: an instance index, the `RecipeKey`, and the `priority`. `MatchesForPiece` builds it, and `engine/ManagerSnapshot.cpp` turns it into snapshot rows. |
 
@@ -172,7 +172,7 @@ Recipe[] (the store)
   ▼
 MatchActor(geometries, store[, resolver])              ActorPlanning.cpp
   │  resolver: (Geometry, GeometryId) -> ResolvedRecipe[]  (default: Resolve on the piece's keys, recipe/Resolve.cpp)
-  │  per match: InstanceFor dedups by RecipeId + enchantment FormKey
+  │  per match: InstanceFor dedups by RecipeId + enchantment FormKey + selected effect key
   ▼
 ActorPlan{ geometries, instances, placements }         ActorPlan.h
   │  queries: PlacementsOfGeometry, PlacementsOfInstance,
@@ -212,7 +212,7 @@ to render and bind. No planner takes or stores an `RE::` pointer.
 | `OwnedState.h` | `OwnedState<State>`: restore a coupled field group only while every value still equals the last write. |
 | `ResourceCache.h` | `SharedResource<T>` and `ResourceCache<T>`: a weak-keyed cross-actor cache; `Adopt` reuses a live entry or makes and publishes one. |
 | `Eviction.h` | `EvictionAction` and `EvictionFor`: the pure distance-eviction decision with an 80% hysteresis band. |
-| `RecipeTextureCache.h` | `RecipeTextureKey`, `RecipeTextureCache<T>`, `FindRecipeTexture`, `LargestRecipeTexture`. |
+| `RecipeTextureCache.h` | `RecipeTextureKey` (recipe, row, size, application context), `RecipeTextureCache<T>`, `FindRecipeTexture`, `LargestRecipeTexture`. |
 | `TextureIdentity.h` / `.cpp` | `ImageCacheKey`, `IsPlaceholderExtent`, `kPlaceholderTextureExtent`. |
 | `TransformStorage.h` / `.cpp` | The `TransformStorage` layout record and the `TransformStorageIndex` pointer-to-row decode. |
 
@@ -229,3 +229,43 @@ to render and bind. No planner takes or stores an `RE::` pointer.
 - `docs/conventions.md` → *Component ownership* — where the engine shells
   wrap these plans (`Manager`, `TextureLab`/`RenderTargetPool`,
   `PbrMaterial`).
+
+### Interpreter compilation
+
+`InterpreterProgram.h/.cpp` compiles a requested expression output from the
+operation graph into an immutable GPU interpreter program. It assigns logical
+value/texture slots and function lookup requests, translates to backend-owned
+opcodes, preserves vector widths, and validates instruction, input, texture,
+lookup and stack limits before resource preparation. It owns no GPU handles.
+See the [interpreter checkpoint](../checkpoints/interpreter-program-2026-09-27.md).
+
+## Texture demands
+
+`ValueIdentity.h/.cpp` identifies a graph value structurally with its external
+bindings and state ownership. `TextureDemand.h/.cpp` adds exact texture
+requirements, dependency order, dependents and validated interpreter programs.
+`CollectTextureDemand` appends to a temporary vector, coalesces equal keys, and
+rolls back a failed request. Names remain diagnostic/output aliases. The
+[implementation checkpoint](../checkpoints/texture-demand-2026-09-27.md)
+describes bounds and the acquisition boundary.
+
+## Render plans and execution
+
+`RenderPlan.h/.cpp` declares typed imported inputs, operation records, references
+and output bindings. Validation checks operand types, producer order, reduction
+domains and lookup signatures. `RenderPlanLowering.cpp` lowers demands and stacks,
+coalesces bound identities and shares prerequisites such as position bakes and
+lookups. It materializes uniform fields for texture consumers and preserves
+invalid branches as unavailable producers so visibility can exclude them.
+
+`RenderExecution.h` is the engine-free cache executor. `StepInput` pairs each
+observed reference with its change version; `StepOutput` carries an optional
+result and its version. Only successful executions commit observations. Numeric
+results can preserve their versions when recomputed unchanged. The renderer
+supplies typed backend callbacks and reports GPU writes conservatively as changed.
+The executor resolves visibility before selecting stack dependencies.
+
+`RenderPlan.values` retains graph-output aliases for inspection;
+`textureUses` and `stackOutputs` bind consumer uses and placed outputs to results.
+These tables describe immutable connections. Runtime results and their ownership
+belong to `render/RenderInstance`.

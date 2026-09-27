@@ -81,6 +81,7 @@ ClustersRowOf(const MaterialClustersSource &a_clusters) {
                   ParamText(s.weights.reflectance), ParamText(s.weights.luma));
   clusters.seed = std::to_string(s.seed);
   clusters.iterations = std::to_string(s.iterations);
+  clusters.colorWeight = ParamText(s.weights.color);
   return clusters;
 }
 
@@ -204,17 +205,20 @@ ClustersKindOf(const MaterialClustersSourceRow &a_row) {
   MaterialClustersSource clusters;
   const auto count = WholeNumber(a_row.clusters, kMaxMaterialClusters);
   const auto weights = FiveNumbers(a_row.weights);
+  const auto color = ParseParam(a_row.colorWeight);
+  const auto *colorValue = color ? Get<float>(*color) : nullptr;
   const auto seed =
       WholeNumber(a_row.seed, std::numeric_limits<std::uint32_t>::max());
   const auto iterations = WholeNumber(a_row.iterations, kMaxClusterIterations);
-  if (!count || *count < 1 || !weights || !seed || !iterations ||
+  if (!count || *count < 1 || !weights || !colorValue || *colorValue < 0 ||
+      *colorValue > kMaxChannelWeight || !seed || !iterations ||
       *iterations < 1) {
     return std::nullopt;
   }
   clusters.settings.clusters = static_cast<std::uint8_t>(*count);
   clusters.settings.weights =
-      ChannelWeights{(*weights)[0], (*weights)[1], (*weights)[2], (*weights)[3],
-                     (*weights)[4]};
+      ChannelWeights{(*weights)[0], (*weights)[1], (*weights)[2],
+                     (*weights)[3], (*weights)[4], *colorValue};
   clusters.settings.seed = *seed;
   clusters.settings.iterations = *iterations;
   return SourceKind{clusters};

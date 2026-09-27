@@ -24,7 +24,6 @@ struct MeshEntry {
   std::string problem;
   MeshFacts facts;
   MeshAnalysis analysis;
-  std::map<BakeKey, std::shared_ptr<TextureLab::RenderTarget>> bakes;
   std::uint32_t lastUsedMS = 0;
 };
 

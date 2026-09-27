@@ -1,5 +1,6 @@
 // GPL-3.0-only with the additional permission in COPYING.md.
 #include "render/Compositor.h"
+#include "render/RenderInstance.h"
 #include "render/SourceSampling.h"
 
 #include <algorithm>
@@ -13,28 +14,11 @@ TextureRef BaseMapFor(Slot a_slot, const MaterialInputs &a_material) {
   return MaterialTexture(BaseMapOf(a_slot), a_material);
 }
 
-[[nodiscard]] std::string SharedStaticKey(const Recipe &a_recipe,
-                                          std::size_t a_outputIndex,
-                                          const MaterialInputs &a_material,
-                                          TextureSize a_size) {
-  return std::format("{}\x1f{}\x1f{}\x1f{}\x1f{}\x1f{}\x1f{}",
-                     SerializeRecipe(a_recipe), a_outputIndex, a_size.Pixels(),
-                     TextureRefIdentity(a_material.rmaos),
-                     TextureRefIdentity(a_material.diffuse),
-                     TextureRefIdentity(a_material.normal),
-                     TextureRefIdentity(a_material.displacement));
-}
-
 TextureSize SizeOverBase(TextureSize a_size, TextureSize a_maxSize,
                          std::uint32_t a_largestSide) {
   const std::uint32_t floor = a_size.Pixels();
   const std::uint32_t ceiling = std::max(a_maxSize.Pixels(), floor);
   return TextureSize(std::clamp(a_largestSide, floor, ceiling));
-}
-
-std::uint32_t ChannelBits(const ChannelSet &a_set) {
-  return (a_set.r ? 1u : 0u) | (a_set.g ? 2u : 0u) | (a_set.b ? 4u : 0u) |
-         (a_set.a ? 8u : 0u);
 }
 
 }
@@ -48,17 +32,31 @@ bool LayerFilter::Hides(std::size_t a_index) const noexcept {
   return false;
 }
 
-TextureRef RenderedStack::Texture() const noexcept { return latest_; }
+RenderOutput::RenderOutput(std::shared_ptr<RenderInstance> render,
+                           StepOutputRef result, TextureSize size,
+                           bool animated)
+    : render_(std::move(render)), result_(result), size_(size),
+      animated_(animated) {}
 
-bool RenderedStack::Animated() const noexcept { return animated_; }
+TextureRef RenderOutput::Texture() const noexcept { return latest_; }
 
-TextureSize RenderedStack::Size() const noexcept { return size_; }
+bool RenderOutput::Animated() const noexcept { return animated_; }
 
-std::span<const PreparedLayer> RenderedStack::Layers() const noexcept {
-  return layers_;
+TextureSize RenderOutput::Size() const noexcept { return size_; }
+
+TextureRef RenderOutput::LayerTexture(std::size_t layer) const {
+  const auto render = render_.lock();
+  if (!render || result_.step >= render->Plan().steps.size())
+    return {};
+  const auto *stack =
+      Get<CompositeStackStep>(render->Plan().steps[result_.step].kind);
+  if (!stack || layer >= stack->layers.size())
+    return {};
+  const auto texture = render->Texture(stack->layers[layer].source);
+  return texture ? texture->texture : TextureRef{};
 }
 
-std::span<const Diagnostic> RenderedStack::Diagnostics() const noexcept {
+std::span<const Diagnostic> RenderOutput::Diagnostics() const noexcept {
   return diagnostics_;
 }
 
@@ -67,10 +65,7 @@ Compositor *Compositor::GetSingleton() {
   return &compositor;
 }
 
-void Compositor::BeginTick(std::uint32_t a_nowMS) noexcept {
-  ++tick_;
-  nowMS_ = a_nowMS;
-}
+void Compositor::BeginTick(std::uint32_t a_nowMS) noexcept { nowMS_ = a_nowMS; }
 
 TextureRef Compositor::LoadImage(std::string_view a_path) {
   if (a_path.empty()) {
@@ -118,317 +113,36 @@ std::shared_ptr<TextureLab::RenderTarget> Compositor::NeutralHeight() {
   return neutralHeight_;
 }
 
-std::unique_ptr<RenderedStack>
-Compositor::Prepare(const Recipe &a_recipe, const SurfaceOutput &a_output,
-                    std::size_t a_outputIndex, const GeometryInputs &a_inputs,
-                    TextureSize a_size, TextureSize a_maxSize) {
-  const MaterialInputs &material = a_inputs.material;
-  TextureLab *lab = TextureLab::GetSingleton();
-  if (!lab->Init()) {
-    return nullptr;
-  }
-  auto stack = std::make_unique<RenderedStack>();
-  stack->size_ = a_size;
-  if (a_output.slot == Slot::kHeight && material.flatDisplacement) {
-    stack->neutral_ = NeutralHeight();
-    if (stack->neutral_ && stack->neutral_->Texture()) {
-      stack->base_ = TextureRef{stack->neutral_};
-    } else {
-      stack->diagnostics_.push_back(
-          {Severity::kWarning, "stack",
-           "the neutral height base could not be rendered; the stack starts "
-           "from black"});
-    }
-  } else if (const TextureRef base = BaseMapFor(a_output.slot, material);
-             IsNonPlaceholderTexture(base)) {
-    stack->base_ = base;
-    const std::optional<TextureLab::Extent> extent =
-        TextureLab::ExtentOf(base.get());
-    const std::uint32_t largest =
-        extent ? std::max(extent->width, extent->height) : 0u;
-    stack->size_ = SizeOverBase(a_size, a_maxSize, largest);
-  }
-  stack->animated_ = IsAnimated(a_recipe, Output{a_output});
-  const TextureSize size = stack->size_;
-  std::size_t index = 0;
-  for (const Layer &layer : a_output.stack) {
-    const std::string where = std::format("layer {}", index);
-    PreparedLayer prepared;
-    prepared.layer = &layer;
-    prepared.index = index++;
-    if (const Ref *ref = Get<Ref>(layer.source)) {
-      prepared.source = PrepareSource(a_recipe, *ref, a_inputs, size,
-                                      stack->diagnostics_, where);
-      if (!prepared.source || !prepared.source->problem.empty()) {
-        stack->layers_.push_back(std::move(prepared));
-        continue;
-      }
-    }
-    if (layer.curve) {
-      prepared.curve = BakeCurve(a_recipe, *layer.curve, prepared.source,
-                                 stack->diagnostics_, where);
-    }
-    if (layer.mask) {
-      prepared.mask = PrepareMask(a_recipe, *layer.mask, a_inputs, size,
-                                  stack->diagnostics_, where);
-    }
-    stack->layers_.push_back(std::move(prepared));
-  }
-  if (!stack->layers_.empty()) {
-    stack->target_ =
-        StackTarget({a_recipe, a_output, a_outputIndex, material}, size);
-    if (!stack->target_ || !lab->Scratch(size)) {
-      stack->diagnostics_.push_back(
-          {Severity::kError, "stack", "no render targets available"});
-      stack->preparationFailed_ = true;
-      stack->layers_.clear();
-      stack->target_.reset();
-    }
-  }
-  return stack;
+TextureSize Compositor::StackSize(const SurfaceOutput &output,
+                                  const GeometryInputs &inputs,
+                                  TextureSize requested,
+                                  TextureSize maximum) const {
+  if (output.slot == Slot::kHeight && inputs.material.flatDisplacement)
+    return requested;
+  const TextureRef base = BaseMapFor(output.slot, inputs.material);
+  if (!IsNonPlaceholderTexture(base))
+    return requested;
+  const auto extent = TextureLab::ExtentOf(base.get());
+  return SizeOverBase(requested, maximum,
+                      extent ? std::max(extent->width, extent->height) : 0u);
 }
 
-std::shared_ptr<TextureLab::RenderTarget>
-Compositor::StackTarget(const StackShareInputs &a_share, TextureSize a_size) {
-  TextureLab *lab = TextureLab::GetSingleton();
-  if (!ShareableAcrossActors(a_share.recipe, Output{a_share.output})) {
-    return lab->Acquire(a_size, "stack");
+bool Compositor::Render(RenderOutput &stack, const LayerFilter &filter,
+                        const StackBase &base) {
+  const auto render = stack.render_.lock();
+  if (!render) {
+    stack.latest_ = {};
+    return false;
   }
-  const std::string key = SharedStaticKey(a_share.recipe, a_share.outputIndex,
-                                          a_share.material, a_size);
-  return AdoptSharedTarget(Shared::kStack, key,
-                           [&] { return lab->Acquire(a_size, "stack"); });
-}
-
-void Compositor::SweepSharedStatics() {
-  sharedStacks_.Sweep();
-  sharedClusters_.Sweep();
-  sharedMasks_.Sweep();
-  sharedBakes_.Sweep();
-}
-
-void Compositor::ClearSharedStatics() noexcept {
-  sharedStacks_.Clear();
-  sharedClusters_.Clear();
-  sharedMasks_.Clear();
-  sharedBakes_.Clear();
-}
-
-ResourceCache<TextureLab::RenderTarget> &
-Compositor::SharedCache(Shared a_kind) noexcept {
-  switch (a_kind) {
-  case Shared::kStack:
-    return sharedStacks_;
-  case Shared::kCluster:
-    return sharedClusters_;
-  case Shared::kMask:
-    return sharedMasks_;
-  case Shared::kBake:
-    return sharedBakes_;
+  const auto result = render->Render(stack.result_, filter, base);
+  stack.diagnostics_.clear();
+  if (!result) {
+    stack.latest_ = {};
+    stack.diagnostics_.push_back({Severity::kError, "stack", result.error()});
+    return false;
   }
-  return sharedStacks_;
-}
-
-[[nodiscard]] std::string_view SharedActionName(Compositor::Shared a_kind) {
-  switch (a_kind) {
-  case Compositor::Shared::kStack:
-    return "stack_shared";
-  case Compositor::Shared::kCluster:
-    return "cluster_shared";
-  case Compositor::Shared::kMask:
-    return "mask_shared";
-  case Compositor::Shared::kBake:
-    return "bake_shared";
-  }
-  return "stack_shared";
-}
-
-std::shared_ptr<TextureLab::RenderTarget> Compositor::AdoptSharedTarget(
-    Shared a_kind, const std::string &a_key,
-    const std::function<std::shared_ptr<TextureLab::RenderTarget>()>
-        &a_render) {
-  const SharedResource<TextureLab::RenderTarget> shared =
-      SharedCache(a_kind).Adopt(a_key, a_render);
-  if (shared.adopted && shared.value) {
-    Trace::EmitSafely(Trace::Event::kTexture,
-                      {{"action", std::string{SharedActionName(a_kind)}},
-                       {"target", std::to_string(shared.value->Generation())}});
-  }
-  return shared.value;
-}
-
-struct Compositor::StackRenderer {
-  Compositor &compositor;
-  RenderedStack &stack;
-  const SignalState &signals;
-  float time;
-  const LayerFilter &filter;
-  const StackBase &overrideBase;
-
-  bool RenderInputs(const PreparedLayer &prepared) {
-    if (!prepared.layer ||
-        (Is<Ref>(prepared.layer->source) &&
-         (!prepared.source || !prepared.source->problem.empty() ||
-          !prepared.source->texture)) ||
-        (prepared.layer->mask &&
-         (!prepared.mask || !prepared.mask->problem.empty() ||
-          !prepared.mask->texture))) {
-      return false;
-    }
-    if (prepared.source && prepared.source->ripple) {
-      if (!compositor.RenderRipple(*prepared.source->ripple, signals, time)) {
-        return false;
-      }
-    }
-    if (prepared.source && prepared.source->rendered) {
-      if (!compositor.RenderMask(*prepared.source->rendered, signals, time)) {
-        return false;
-      }
-    }
-    if (prepared.mask && prepared.mask->rendered) {
-      if (!compositor.RenderMask(*prepared.mask->rendered, signals, time)) {
-        return false;
-      }
-    }
-    return true;
-  }
-
-  [[nodiscard]] std::optional<std::size_t> RenderShownInputs() {
-    std::size_t shown = 0;
-    for (const PreparedLayer &prepared : stack.layers_) {
-      if (filter.Hides(prepared.index)) {
-        continue;
-      }
-      ++shown;
-      if (!RenderInputs(prepared)) {
-        return std::nullopt;
-      }
-    }
-    return shown;
-  }
-
-  [[nodiscard]] TextureLab::LayerParams
-  LayerParams(const PreparedLayer &prepared,
-              RE::NiSourceTexture *previous) const {
-    const Layer &layer = *prepared.layer;
-    TextureLab::LayerParams params;
-    params.mode = TextureLab::Mode::kLayer;
-    TextureLab::LayerPass &pass = params.layer;
-    pass.previous = previous;
-    if (prepared.source) {
-      pass.source = prepared.source->texture.get();
-      pass.input = ResolveSampling(*prepared.source, signals);
-      pass.normalize = prepared.source->normalize;
-    } else if (const Vec3 *constant = Get<Vec3>(layer.source)) {
-      pass.color[0] = constant->x;
-      pass.color[1] = constant->y;
-      pass.color[2] = constant->z;
-    }
-    if (layer.color) {
-      const Vec3 colour = signals.Resolve(*layer.color);
-      pass.color[0] *= colour.x;
-      pass.color[1] *= colour.y;
-      pass.color[2] *= colour.z;
-    }
-    pass.opacity = signals.Resolve(layer.opacity);
-    pass.blend = BlendShaderMode(layer.blend);
-    pass.channels = ChannelBits(layer.channels);
-    if (prepared.mask && prepared.mask->texture) {
-      pass.mask = prepared.mask->texture.get();
-      pass.maskChannel = prepared.mask->channel;
-    }
-    pass.curve = prepared.curve.get();
-    return params;
-  }
-
-  [[nodiscard]] TextureLab::RenderTarget *RenderLayers(std::size_t shown,
-                                                       const TextureRef &base) {
-    TextureLab *lab = TextureLab::GetSingleton();
-    TextureLab::RenderTarget *own = stack.target_.get();
-    TextureLab::RenderTarget *scratch = lab->Scratch(stack.size_);
-    if (!own || !scratch) {
-      return nullptr;
-    }
-    TextureLab::RenderTarget *previous = nullptr;
-    TextureLab::RenderTarget *write = shown % 2 == 1 ? own : scratch;
-    TextureLab::RenderTarget *other = write == own ? scratch : own;
-    for (const PreparedLayer &prepared : stack.layers_) {
-      if (filter.Hides(prepared.index)) {
-        continue;
-      }
-      const auto params =
-          LayerParams(prepared, previous ? previous->Texture() : base.get());
-      if (!lab->Render(*write, nullptr, params)) {
-        return nullptr;
-      }
-      previous = write;
-      std::swap(write, other);
-    }
-    return previous;
-  }
-
-  void TracePublish(TextureLab::RenderTarget *previous, const TextureRef &base,
-                    std::size_t shown) const {
-    Trace::EmitSafely(
-        Trace::Event::kTexture,
-        {{"action", "stack_publish"},
-         {"stack", Trace::Pointer(&stack)},
-         {"target_address", Trace::Pointer(previous)},
-         {"presenter",
-          Trace::Pointer(previous ? previous->Texture() : nullptr)},
-         {"base", Trace::Pointer(base.get())},
-         {"layers", std::to_string(shown)}});
-  }
-
-  void Publish(const TextureRef &texture, const TextureRef &base) {
-    stack.latest_ = texture;
-    stack.renderedOnce_ = true;
-    stack.filter_ = filter;
-    stack.renderedBase_ = base;
-  }
-
-  bool Run() {
-    if (stack.preparationFailed_) {
-      return false;
-    }
-    if (stack.layers_.empty()) {
-      return true;
-    }
-    const TextureRef &base =
-        overrideBase.texture ? overrideBase.texture : stack.base_;
-    const bool filterChanged = stack.filter_ != filter;
-    const bool baseChanged = stack.renderedBase_.get() != base.get();
-    if (!stack.animated_ && !overrideBase.animated && stack.renderedOnce_ &&
-        !filterChanged && !baseChanged) {
-      return true;
-    }
-    const bool firstRender = !stack.renderedOnce_;
-    stack.renderedOnce_ = false;
-    const auto shown = RenderShownInputs();
-    if (!shown.has_value()) {
-      return false;
-    }
-    if (*shown == 0) {
-      Publish(nullptr, base);
-      return true;
-    }
-    auto *previous = RenderLayers(*shown, base);
-    if (!previous) {
-      return false;
-    }
-    if (firstRender || filterChanged || baseChanged) {
-      TracePublish(previous, base, *shown);
-    }
-    Publish(TextureRef{stack.target_}, base);
-    return true;
-  }
-};
-
-bool Compositor::Render(RenderedStack &a_stack, const SignalState &a_signals,
-                        float a_time, const LayerFilter &a_filter,
-                        const StackBase &a_base) {
-  return StackRenderer{*this, a_stack, a_signals, a_time, a_filter, a_base}
-      .Run();
+  stack.latest_ = result->texture;
+  return true;
 }
 
 std::string DescribeTexture(const TextureRef &a_texture) {

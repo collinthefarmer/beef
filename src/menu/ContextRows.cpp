@@ -228,6 +228,9 @@ void DrawKeys(const Frame &a_frame, const Studio::PieceRow &a_piece,
   table.Cell();
   table.Cell();
   table.End();
+  Dim("Every keyword is required. If other keys are listed, at least one must "
+      "also match.");
+  Dim("magicEffect and effectShader keys consider every enchantment effect.");
   if (!a_piece.diffusePaths.empty()) {
     Dim("a material key matches this piece's texture paths:");
     for (const std::string &path : a_piece.diffusePaths) {
