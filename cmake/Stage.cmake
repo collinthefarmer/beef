@@ -1,14 +1,5 @@
 set(DIST_DIR "${CMAKE_SOURCE_DIR}/dist/${PROJECT_NAME}" CACHE PATH "Staged mod directory")
-set(license_inventory "${CMAKE_SOURCE_DIR}/licenses/inventory.json")
-set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS "${license_inventory}")
-file(READ "${license_inventory}" license_json)
-string(JSON license_count LENGTH "${license_json}" files)
-math(EXPR license_last "${license_count} - 1")
-set(license_files "${license_inventory}")
-foreach(index RANGE ${license_last})
-  string(JSON filename GET "${license_json}" files ${index} path)
-  list(APPEND license_files "${CMAKE_SOURCE_DIR}/licenses/${filename}")
-endforeach()
+file(GLOB license_files CONFIGURE_DEPENDS "${CMAKE_SOURCE_DIR}/licenses/*")
 add_custom_target(stage
   COMMAND "${CMAKE_COMMAND}" -E make_directory
     "${DIST_DIR}/SKSE/Plugins/${PROJECT_NAME}/templates"
