@@ -1,3 +1,6 @@
+Status: record. The stage-0 diagnostic build and the capture procedure for its
+traces.
+
 # First rendering-state diagnostic checkpoint
 
 This is the first stage-0 build from the
@@ -144,7 +147,6 @@ Application/cloning executes on thread 393028; first pose executes on thread
 execution ownership, but thread differences alone do not establish overlap or a
 race. Next capture: cleared/default shell, diffuse selected, no layers, with
 user confirmation of visible stretching and recorded zero inflation.
-
 
 ## Empty/default-shell reproduction
 

@@ -1,3 +1,6 @@
+Status: record. Target selection, ABI audit, and unverified candidate
+constraints.
+
 # Compatibility profiles — 2026-09-24
 
 The initial candidate targets Steam Skyrim 1.6.1170 with minimum SKSE 2.2.6.

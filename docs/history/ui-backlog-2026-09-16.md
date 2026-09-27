@@ -1,6 +1,7 @@
+Status: Archived 2026-09-22. Superseded as a work plan by [Alpha preparation](../plans/alpha-preparation-2026-09-22.md). The tasks and status claims below are historical; unchecked items are not active commitments. Consult current code and component documentation for implemented behavior.
+
 # UI backlog — 2026-09-16
 
-> Archived 2026-09-22. Superseded as a work plan by [Alpha preparation](../plans/alpha-preparation-2026-09-22.md). The tasks and status claims below are historical; unchecked items are not active commitments. Consult current code and component documentation for implemented behavior.
 
 Captured mid-flow, not yet scheduled. Each item: the ask, where it lives now,
 and the rough direction. Anchors are current as of this date.

@@ -1,6 +1,7 @@
+Status: Archived 2026-09-22. Superseded as a work plan by [Alpha preparation](../plans/alpha-preparation-2026-09-22.md). The tasks and status claims below are historical; unchecked items are not active commitments. Consult current code and component documentation for implemented behavior.
+
 # Expression cleanup: implementation handoff
 
-> Archived 2026-09-22. Superseded as a work plan by [Alpha preparation](../plans/alpha-preparation-2026-09-22.md). The tasks and status claims below are historical; unchecked items are not active commitments. Consult current code and component documentation for implemented behavior.
 
 Implementation results: [expression cleanup checkpoint](../checkpoints/expression-cleanup-2026-09-13.md).
 

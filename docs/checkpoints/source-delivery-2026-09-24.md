@@ -1,3 +1,8 @@
+Status: record. Curated dependency bundle, fresh-extraction validation and
+candidate checksums; [toolchain
+fingerprints](source-toolchain-2026-09-24.json) identify the external CRT/SDK
+inputs.
+
 # Source candidate delivery checkpoint
 
 Local source-delivery validation following the

@@ -1,9 +1,9 @@
+Status: proposed implementation plan, 2026-09-12. No fixes or sequencer have been
+implemented by writing this plan.
+
 # Rendering state fixes and diagnostic iteration plan
 
 > Archived 2026-09-22. Superseded as a work plan by [Alpha preparation](../plans/alpha-preparation-2026-09-22.md). The tasks and status claims below are historical; unchecked items are not active commitments. Consult current code and component documentation for implemented behavior.
-
-Status: proposed implementation plan, 2026-09-12. No fixes or sequencer have been
-implemented by writing this plan.
 
 Implementation progress: stage-0 captures confirmed zero-inflation stretching
 and exposed presenter aliasing across simultaneous targets. The

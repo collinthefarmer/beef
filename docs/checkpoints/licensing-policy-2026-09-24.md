@@ -1,3 +1,6 @@
+Status: record. Adopted first-party permission, source notice placement,
+package inclusion and third-party scope limits.
+
 # First-party licensing policy adoption
 
 The owner confirmed sole copyright ownership of original project code and

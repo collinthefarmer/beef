@@ -1,3 +1,6 @@
+Status: record. The source review of the then-current UI against the design
+principles.
+
 # Existing UI assessment
 
 Source review on 2026-09-13 against the [design principles](../ui-design-principles.md).

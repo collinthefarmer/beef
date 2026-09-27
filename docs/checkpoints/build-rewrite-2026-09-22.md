@@ -1,3 +1,7 @@
+Status: record. Native/Windows CMake presets, CTest, explicit staging, fresh
+tidy reports, dependency regression tests, measurements, and verification
+limits.
+
 # Build and tidy rewrite — 2026-09-22
 
 Implementation checkpoint for [Alpha preparation](../plans/alpha-preparation-2026-09-22.md).

@@ -1,3 +1,5 @@
+Status: record. Publishing a complete settings value under a mutex.
+
 # Settings publication — 2026-09-12
 
 `SettingsPublication` copies a complete settings value under a mutex. `Read`

@@ -1,11 +1,11 @@
-# Plan G: the shell honours its whole pose — 2026-09-13
-
-> Archived 2026-09-22. Superseded as a work plan by [Alpha preparation](../plans/alpha-preparation-2026-09-22.md). The tasks and status claims below are historical; unchecked items are not active commitments. Consult current code and component documentation for implemented behavior.
-
 Status: implemented (161f6b2; `render/Shell.cpp` applies offset, scale,
 scalePoint, spin and spinAxis through `PosedTransform` into the shell's
 skin transforms). The in-game checkpoint this plan defines has not run;
 the plan stays open until it does.
+
+# Plan G: the shell honours its whole pose — 2026-09-13
+
+> Archived 2026-09-22. Superseded as a work plan by [Alpha preparation](../plans/alpha-preparation-2026-09-22.md). The tasks and status claims below are historical; unchecked items are not active commitments. Consult current code and component documentation for implemented behavior.
 
 The user decided on 2026-09-13 that the five `ShellPose` fields the format
 already carries are to be implemented rather than removed. This plan is

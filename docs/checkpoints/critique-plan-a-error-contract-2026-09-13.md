@@ -1,5 +1,3 @@
-# Plan A: one error contract and a published Reader — 2026-09-13
-
 Status: done. In-game checkpoint passed 2026-09-14 on build `dff63dd0817a-f192084d1834f565-Release`
 (with `dff63dd`): a recipe with `format 9999` loads for the menu, logs
 `held back from the applied set`, and the summary counts `1 held back`; a
@@ -14,6 +12,8 @@ handled by the store (log: `a recipe named 'abc' already exists`) but the
 popup shows stale text and hides the refusal; that is UI finding 6 in
 `ui-v2-core-checkpoint-2026-09-13.md`. Save, revert and create work; the
 presets line reports 21 presets.
+
+# Plan A: one error contract and a published Reader — 2026-09-13
 
 Implemented 2026-09-14 on branch `critique/a-error-contract`
 (branched from Plan F's tip); awaiting the in-game checkpoint, which needs

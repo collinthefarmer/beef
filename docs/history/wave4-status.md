@@ -1,8 +1,8 @@
-# Wave 4 integration status
-
 Status: history. Wave 4 landed; the menu surface is now the UI v2 plan's. Names
 and paths here predate the critique remediation of 2026-09-14 (Plan C's file
-moves and Plan D's renames); `docs/README.md` indexes the current set.
+moves and Plan D's renames); the root `README.md` lists the current set.
+
+# Wave 4 integration status
 
 Recovery checkpoints on `cleanup/stage-0`:
 

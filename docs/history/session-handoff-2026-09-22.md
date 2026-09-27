@@ -1,6 +1,7 @@
+Status: Archived 2026-09-22. Superseded as a work plan by [Alpha preparation](../plans/alpha-preparation-2026-09-22.md). The tasks and status claims below are historical; unchecked items are not active commitments. Consult current code and component documentation for implemented behavior.
+
 # Session handoff (2026-09-22, end of day)
 
-> Archived 2026-09-22. Superseded as a work plan by [Alpha preparation](../plans/alpha-preparation-2026-09-22.md). The tasks and status claims below are historical; unchecked items are not active commitments. Consult current code and component documentation for implemented behavior.
 
 Two sessions of work sit uncommitted in the working tree. The morning
 landed the composable-proximity bundle; the afternoon extended the

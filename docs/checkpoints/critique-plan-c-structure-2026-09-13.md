@@ -1,9 +1,9 @@
-# Plan C: layering and file structure — 2026-09-13
-
 Status: done. In-game checkpoint passed 2026-09-14 on build `dff63dd0817a-f192084d1834f565-Release`:
 stacks with animated, ripple and material-clusters sources rendered as
 before; no `TextureLab` or `RenderTargetPool` failure in the log or the
 trace (0 presenter rejections, 0 lease rejections).
+
+# Plan C: layering and file structure — 2026-09-13
 
 Implemented and verified natively 2026-09-14 on
 `critique/c-structure`, branched from `cleanup/stage-0` at `4d2dc16`.

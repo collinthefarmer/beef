@@ -1,3 +1,6 @@
+Status: record. The studio creation-flow findings and the case for the
+`studio/Create` seam that now exists.
+
 # Studio creation flow: findings and the case for a seam — 2026-09-19
 
 For a fresh context. This separates **objective findings** (what the code does,

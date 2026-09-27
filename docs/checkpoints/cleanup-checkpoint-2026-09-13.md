@@ -1,3 +1,6 @@
+Status: record. The ownership contracts that pass settled, which
+`REFERENCE.md` cites.
+
 # Cleanup checkpoint — 2026-09-13
 
 ## Baseline and scope

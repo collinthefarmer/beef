@@ -1,3 +1,7 @@
+Status: record. Initial alpha source review: live instance indices, recipe
+publication, queue cancellation, texture ownership, targeted checks, and
+remaining work.
+
 # Source ownership review, 2026-09-23
 
 Initial pass against `6ed2f3a`, with the uncommitted live-instance correction

@@ -1,9 +1,9 @@
-# Engine-facing type survey — 2026-09-12
-
 Status: history. The follow-ups it proposed were taken up by the 2026-09-12 and
 2026-09-13 checkpoints listed in `docs/README.md`. Names and paths here predate
 the critique remediation of 2026-09-14 (Plan C's file moves and Plan D's
-renames); `docs/README.md` indexes the current set.
+renames); the root `README.md` lists the current set.
+
+# Engine-facing type survey — 2026-09-12
 
 This surveys the active adapters after the `PbrMaterial`, `RenderPass`, and
 `SessionQueue` changes. It proposes follow-up work; no runtime code changed during

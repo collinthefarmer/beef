@@ -1,3 +1,5 @@
+Status: record. The clang-tidy inventory at that build.
+
 # Lint cleanup checkpoint — 2026-09-13
 
 Fresh results cover all 89 current source translation units: **62 findings**, consisting of 49 function-size warnings and 13 cognitive-complexity warnings. No remaining bugprone, performance, or other enabled-check findings. The earlier 75-finding figure came from mixed cached reports and is not a clean before/after baseline.

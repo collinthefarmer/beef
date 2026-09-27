@@ -1,5 +1,3 @@
-# Plan F: test harness and bounds checks — 2026-09-13
-
 Status: done. Implemented 2026-09-13 on branch `critique/f-tests-and-bounds`,
 merged in `303d352`; in-game checkpoint passed 2026-09-14 on build
 `dff63dd0817a-f192084d1834f565-Release`: recipes loaded with the previous
@@ -9,6 +7,8 @@ non-JSON file `unreadable (not a JSON object ...)`. The removed-file case
 system while the game runs (the store enumerates the folder before reading,
 so a file removed before a reload is never asked for); it is covered by
 `tests/engine/textfile_tests.cpp` and the store's revert path.
+
+# Plan F: test harness and bounds checks — 2026-09-13
 
 - Base: `505f24c` on `cleanup/stage-0`. That commit includes
   `studio/Snapshot.h` with an `#include "studio/Gesture.h"`, but

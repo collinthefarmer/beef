@@ -1,3 +1,7 @@
+Status: record. Offline edit/history/persistence, queue/journal and actual
+editor/store callback tests; platform doubles leave actor/render and in-game
+acceptance pending.
+
 # Offline authoring lifecycle coverage — 2026-09-23
 
 This pass adds cross-component regression sequences using production

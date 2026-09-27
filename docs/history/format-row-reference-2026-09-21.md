@@ -1,3 +1,8 @@
+Status: parsed · honoured · merge suite covers priority, replace, sampled ·
+studio-editable.
+Open: the mechanic list itself is roadmap item 9's decision; `lerp` is
+reserved for format 2 in the freeze writing.
+
 # Format 1 row reference (2026-09-21)
 
 > Archived 2026-09-22. Superseded as a work plan by [Alpha preparation](../plans/alpha-preparation-2026-09-22.md). The tasks and status claims below are historical; unchecked items are not active commitments. Consult current code and component documentation for implemented behavior.
@@ -252,11 +257,6 @@ recipe combines with others contesting the same piece.
 | `priority` | integer | by key kind | Merge order among matching recipes, lower first. Defaults: default 0, enchanted 5, material 10, keyword 20, armor 30, effectShader 40, enchantment 50, magicEffect 60. |
 | `merge` | `stack` \| `replace` \| `sampled` | `stack` | How this recipe combines with lower-priority recipes: stack appends outputs per slot; replace drops lower-priority work on this recipe's slots (`Merge.cpp` `CutAtReplace`); sampled joins a per-piece pool from which each actor draws one member by form id (`Resolve.cpp` `KeepOneSampled`). The field was `override`, with a reserved `lerp` value, until 2026-09-21. |
 | `clock.speed` | number | 1.0 | Multiplies the recipe clock (`ManagerTick.cpp:209`). |
-
-Status: parsed · honoured · merge suite covers priority, replace, sampled ·
-studio-editable.
-Open: the mechanic list itself is roadmap item 9's decision; `lerp` is
-reserved for format 2 in the freeze writing.
 
 ## Keys
 

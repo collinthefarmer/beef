@@ -1,5 +1,3 @@
-# UI-primitive layer `.cpp` ownership map
-
 Status: history. This map predates the 2026-09-14 critique remediation (Plan C
 file moves, Plan D renames) and the 2026-09-16 UI standardization pass, and no
 longer matches the tree: `Page.h` and the `Page` accessors (`ActorOf` moved to
@@ -9,6 +7,8 @@ whole-row form builders moved from `Panels.cpp`/`Fields.cpp` to a new
 and six shared `k*Table` styles were added to `studio/Widgets.h`. Read it for
 the ownership *intent* it recorded, not for current names or paths — the live
 headers win. `docs/ui-api.md` is the current UI API reference.
+
+# UI-primitive layer `.cpp` ownership map
 
 Wave-2 extension of the frozen studio shape. Every function declared in the
 new UI-primitive headers maps to exactly one owning `.cpp`. Two headers are

@@ -1,6 +1,7 @@
+Status: Archived 2026-09-22. Superseded as a work plan by [Alpha preparation](../plans/alpha-preparation-2026-09-22.md). The tasks and status claims below are historical; unchecked items are not active commitments. Consult current code and component documentation for implemented behavior.
+
 # Recipe override mechanics (2026-09-21)
 
-> Archived 2026-09-22. Superseded as a work plan by [Alpha preparation](../plans/alpha-preparation-2026-09-22.md). The tasks and status claims below are historical; unchecked items are not active commitments. Consult current code and component documentation for implemented behavior.
 
 Gate-5 item 9 and UI backlog item 17. A recipe gains author-set control
 over how it combines with other recipes that contest the same worn

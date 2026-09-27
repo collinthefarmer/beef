@@ -1,3 +1,6 @@
+Status: record. Local candidate archive inventory, checksums, tests, and SKSE
+compatibility findings; runtime acceptance remains open.
+
 # Candidate package verification — 2026-09-23
 
 Local artifact verification only; no installation or game execution. The full

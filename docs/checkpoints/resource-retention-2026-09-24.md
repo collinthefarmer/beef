@@ -1,3 +1,7 @@
+Status: record. Lost-geometry resource release, idle maintenance,
+material/weak-cache retention, and bounded idle targets; runtime recovery
+remains pending.
+
 # Resource retention follow-up
 
 The source review found five retained-resource paths that outlived their useful

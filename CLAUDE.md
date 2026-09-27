@@ -1,7 +1,9 @@
 # BetterEnchantmentEffects: how the code is written
 
 `README.md` holds the reading order — one line per document saying what
-question it answers — and `docs/README.md` indexes everything under `docs/`.
+question it answers, including every canon document under `docs/`. Every
+document under `docs/plans/`, `docs/checkpoints/` and `docs/history/` begins
+with a status line: its state, and what replaced it if superseded.
 Read them first; this file states only the rules the code obeys and the
 practicalities of working here.
 

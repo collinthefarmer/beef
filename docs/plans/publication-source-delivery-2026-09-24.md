@@ -1,9 +1,9 @@
-# Publication source delivery — implementation and decision draft
-
 Status: first-party permission adopted; publication and runtime acceptance remain open. Basis:
 [publication review](../checkpoints/publication-provenance-2026-09-24.md).
 The owner confirmed sole ownership of original project code; that does not
 include third-party code incorporated in or referenced by the project.
+
+# Publication source delivery — implementation and decision draft
 
 Validation for completed steps is recorded in the
 [implementation checkpoint](../checkpoints/publication-implementation-2026-09-24.md).

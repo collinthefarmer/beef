@@ -1,6 +1,7 @@
+Status: Archived 2026-09-22. Superseded as a work plan by [Alpha preparation](../plans/alpha-preparation-2026-09-22.md). The tasks and status claims below are historical; unchecked items are not active commitments. Consult current code and component documentation for implemented behavior.
+
 # Critique remediation handoff — 2026-09-13
 
-> Archived 2026-09-22. Superseded as a work plan by [Alpha preparation](../plans/alpha-preparation-2026-09-22.md). The tasks and status claims below are historical; unchecked items are not active commitments. Consult current code and component documentation for implemented behavior.
 
 This document hands the remediation of the 2026-09-13 codebase critique to an
 administering agent. It states where the repository stands, how work is done

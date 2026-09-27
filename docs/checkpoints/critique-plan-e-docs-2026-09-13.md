@@ -1,3 +1,7 @@
+Status: record. Documentation that matches the tree (8): this index, the
+README, the stale claims, the constants, and the comments out of the source.
+Done.
+
 # Plan E: documentation that matches the tree — 2026-09-13
 
 ## Status

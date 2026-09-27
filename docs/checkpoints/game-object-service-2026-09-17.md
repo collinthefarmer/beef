@@ -1,3 +1,8 @@
+Status: record. The design and landed implementation of the game-object
+discovery service: the eight kinds, the request-driven keyed cache of
+immutable catalogs, and the fold-in of the editor-ID index and the actor-value
+path.
+
 # Game Object Service — design, 2026-09-17
 
 ## Status — increment 1 landed (2026-09-17)

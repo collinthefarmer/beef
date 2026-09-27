@@ -1,3 +1,6 @@
+Status: record. The user's in-game findings from the 2026-09-12 run, with the
+follow-up analysis.
+
 # In-game regression feedback — 2026-09-12
 
 ## Investigation follow-up — empty default shell stretches

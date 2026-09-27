@@ -1,3 +1,5 @@
+Status: record. The first paint and resource-ownership wave.
+
 # First implementation wave — Paint and resource ownership
 
 This wave implements the first three workstreams from the Paint flow review

@@ -1,3 +1,5 @@
+Status: record. The source preparation and inspection pass.
+
 # Source preparation and inspection cleanup — 2026-09-13
 
 This pass follows the user-reported successful smoke test of the shell/compositor cleanup. That smoke test predates these source changes.

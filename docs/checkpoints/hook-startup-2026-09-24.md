@@ -1,3 +1,6 @@
+Status: record. Zero-address refusal, startup ordering, and
+snapshot-independent UI failure reporting.
+
 # Hook startup safeguard — 2026-09-24
 
 A zero resolved PlayerCharacter vtable address now refuses hook installation

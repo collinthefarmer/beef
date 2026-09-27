@@ -1,3 +1,5 @@
+Status: record. One name per concept (6). Done.
+
 # Plan D: one name per concept — 2026-09-13
 
 ## Status

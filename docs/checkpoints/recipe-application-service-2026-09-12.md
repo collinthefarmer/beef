@@ -1,3 +1,6 @@
+Status: record. The shared service that coordinates accepted changes and actor
+rebuilds.
+
 # Shared recipe application service
 
 This follows the in-game failure of the first Paint implementation wave.

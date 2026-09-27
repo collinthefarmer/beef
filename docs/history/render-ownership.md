@@ -1,8 +1,8 @@
-# render: `.cpp` ownership map
-
 Status: history. Names and paths here predate the critique remediation of
-2026-09-14 (Plan C's file moves and Plan D's renames); `docs/README.md` indexes
+2026-09-14 (Plan C's file moves and Plan D's renames); the root `README.md` lists
 the current set.
+
+# render: `.cpp` ownership map
 
 The function→`.cpp` maps below are authoritative and reflect the barrier
 decisions. The "Seam with engine/" and "Gap notes" sections at the end are the

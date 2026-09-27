@@ -1,3 +1,7 @@
+Status: record. Bounded completed application history, retry target
+inheritance, and cancellation storage release; native/sanitized evidence and
+runtime limits.
+
 # Application history retention
 
 The ownership review found that recipe-scoped application records retained

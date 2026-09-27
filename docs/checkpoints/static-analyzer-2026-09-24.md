@@ -1,3 +1,6 @@
+Status: record. Tuning cleanup, diagnostic-report correction, and reviewed
+ownership/relocation warnings.
+
 # Static-analyzer review — 2026-09-24
 
 The full analyzer pass covered 126 translation units on commit `70f7f5b`.

@@ -1,3 +1,5 @@
+Status: record. The shell and compositor pass.
+
 # Shell and compositor cleanup — 2026-09-13
 
 This pass follows the user-reported successful in-game smoke test of the previous lint cleanup. That run predates these changes.

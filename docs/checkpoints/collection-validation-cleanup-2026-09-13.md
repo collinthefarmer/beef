@@ -1,3 +1,5 @@
+Status: record. Actor collection and reference validation.
+
 # Actor collection and reference validation cleanup — 2026-09-13
 
 The user chose to skip the preceding source-preparation smoke test and continue cleanup. No in-game pass is claimed for that revision or this pass.

@@ -1,3 +1,5 @@
+Status: record. The implementation checkpoint for the expression handoff.
+
 # Expression checking and evaluation cleanup
 
 Implementation checkpoint for [the expression handoff](../history/expression-cleanup-implementation-handoff-2026-09-13.md).

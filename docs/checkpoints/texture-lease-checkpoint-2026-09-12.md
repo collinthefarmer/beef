@@ -1,3 +1,6 @@
+Status: record. Generated texture consumers retain the target, not only a
+presenter.
+
 # Texture consumer lifetime checkpoint
 
 This is the first structural integration from the updated

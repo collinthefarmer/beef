@@ -1,10 +1,10 @@
-# BetterEnchantmentEffects release roadmap (2026-09-09)
-
 Status: history. Superseded by `docs/history/release-roadmap-2026-09-20.md`,
 which keeps the gates and decisions and refits their statuses to the tree
 after the rebuild, the critique remediation and UI v2. This file holds the
 reasoning behind the gates and the 2026-09-09 decisions; it previously
 lived outside the repository under `plans/`.
+
+# BetterEnchantmentEffects release roadmap (2026-09-09)
 
 The other plans say what to build next. This one says what has to be true
 before any of it goes to another person, and in what order to make it true.

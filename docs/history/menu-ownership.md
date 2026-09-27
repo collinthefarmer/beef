@@ -1,9 +1,9 @@
-# menu: `.cpp` ownership map
-
 Status: history. `docs/ui-v2-implementation-plan.md` owns the menu surface; its
 slices name the seams they take over. Names and paths here predate the critique
 remediation of 2026-09-14 (Plan C's file moves and Plan D's renames);
-`docs/README.md` indexes the current set.
+the root `README.md` lists the current set.
+
+# menu: `.cpp` ownership map
 
 Wave-4 shape output. Every function declared in `src/menu/*.h` maps to exactly
 one owning `.cpp`. No declared function is unowned. Fill agents implement one

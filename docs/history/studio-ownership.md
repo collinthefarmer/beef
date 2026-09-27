@@ -1,9 +1,9 @@
-# studio/ `.cpp` ownership map
-
 Status: history. `docs/wip/ui-primitives-ownership.md` carries the UI-primitive
 half, which is still open. Names and paths here predate the critique
 remediation of 2026-09-14 (Plan C's file moves and Plan D's renames);
-`docs/README.md` indexes the current set.
+the root `README.md` lists the current set.
+
+# studio/ `.cpp` ownership map
 
 Every function declared in a `src/studio/*.h` header maps to exactly one owning
 `.cpp` file. Frozen at the shape step; fill agents own disjoint files. Two

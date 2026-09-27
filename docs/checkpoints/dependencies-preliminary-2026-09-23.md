@@ -1,10 +1,10 @@
-# Preliminary user dependency findings — 2026-09-23
-
 Status: preliminary. These findings come from repository inspection and
 upstream documentation reviewed on this date. No peer plugins were installed,
 no supported version matrix was selected, and no in-game compatibility or
 missing-dependency behavior was tested. Upstream requirements can change;
 recheck the specific versions selected for each alpha compatibility profile.
+
+# Preliminary user dependency findings — 2026-09-23
 
 ## Candidate dependency inventory
 

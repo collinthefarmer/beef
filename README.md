@@ -27,9 +27,18 @@ enchantment on the piece itself.
 | `docs/components/` | What is one `src/` directory, and how does a request flow through it? Read the map for a directory before you change it. |
 | `REFERENCE.md` | Why does this line look like that? The facts the code cannot state — engine layouts, Community Shaders rules, decompile lines, shader packings, constant reasons — by module. |
 | `schema/recipe.schema.json` | What is a legal recipe? The format's contract. `schema/example-magicka.json` is the annotated canonical file. |
+| `docs/procedural-pattern-cookbook.md` | How can procedural markings and animation be built from copyable recipe expressions and fitted to armor? |
+| `docs/recipe-fragments-cookbook.md` | How can material selectors, spatial fields, resource signals and event responses be combined into reusable recipe fragments? |
 | `docs/recipe-resolution.md` | How do identity overrides, sampling, priority, and replacement work? The implemented pre-alpha contract and acceptance cases; rendered verification remains pending. |
-| `docs/README.md` | Which document under `docs/` is canon, which is an open plan, and which is history? The complete index; it owns each document's description and status. |
+| `docs/source-archive.md` | How is the corresponding-source archive produced, and how is a fresh extraction built? |
+| `docs/ui-api.md` | How is a studio surface built: the `menu/` widget vocabulary, the `Frame`, forms and fields, intents, and navigation? |
+| `docs/ui-design-principles.md` | Which direction does the editor's surface follow? |
+| `docs/in-game-regression.md` | What is the repeatable manual run in the game, and which log line does each step print? |
+| `docs/alpha-package.md` | What does a tester of a local candidate archive need to know? Shipped in the archive as `README.md`. |
+| `docs/bug-report.md` | How is a closed-alpha problem reported, with which evidence? Shipped as `BUG_REPORT.md`. |
+| `docs/plans/`, `docs/checkpoints/`, `docs/history/` | Open work, dated records, and superseded documents. Each document begins with a status line; the folder and the dated filename give its kind and age. Source archives leave these folders out. |
 | `docs/plans/alpha-preparation-2026-09-22.md` | What is the active work toward alpha and source publication? Older plans, including the deletion inventory, are archived under `docs/history/`. |
+| `docs/plans/recipe-program-pipeline-2026-09-25.md` | How do recipe rows become evaluated programs, and which format decisions must be made before the format contract closes? Raised by authoring the cookbooks against the current language. |
 | Git history | What did the previous implementation do? The frozen `src/_old/` tree was removed during alpha source cleanup; history retains it. |
 
 ## Working in the repository
@@ -111,5 +120,5 @@ src/
   The GPL text is in `LICENSE`; third-party terms remain independent.
 - `src/cs/` and `src/extern/` are vendored third-party copies under their
   own terms, recorded beside them.
-- [Third-party notices](THIRD_PARTY_NOTICES.md) records dependency provenance,
-  bundled license texts, and remaining source-publication work.
+- [Third-party notices](THIRD_PARTY_NOTICES.md) lists each dependency's
+  version, license, and copyright holder.

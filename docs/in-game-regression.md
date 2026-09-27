@@ -1,7 +1,7 @@
 # Better Enchantment Effects: in-game regression flow
 
 A manual integration run for the active source tree, checked against the
-code on 2026-09-20.
+code on 2026-09-24.
 
 - The order: startup → matching → actor state → GPU output → studio edits →
   persistence → teardown.
@@ -69,6 +69,53 @@ Discipline:
   queued/prepared state is a failure to investigate, not a successful
   application.
 - A log line that says "applied" does not prove that pixels rendered.
+
+### Animation subscription acceptance
+
+Run these cases with one isolated actor and a recipe whose trigger responds to
+an observed `anim.<tag>`. Record the action and tag; animation mods can change
+the events available. Collect the JSONL trace's `metrics` / `heartbeat` fields
+`sink_adds` and `sink_removes`, summed across each case. These count actual
+registration operations, not events. Other participating actors can add noise.
+
+| Case | Expected result |
+| --- | --- |
+| Repeated recipe edits, undo/redo and re-apply with the same actor graph | After initial attachment, zero additional sink adds/removes. Discovered tags remain available and triggering the action still drives the rebuilt recipe. |
+| First/third-person transitions, equipment or race transformations that replace the graph | Events resume on the new graph; each observed replacement gives one removal and one addition. A transition that does not replace the selected graph needs neither. |
+| Temporarily unavailable graph, then recovery | No crash or duplicate delivery. Observation recovers on refresh or within the one-second maintenance interval once the graph becomes available. |
+| Remove the last matching effect, apply disabled rendering, retire, unload or distance-evict the actor | Its registration ends and discovery clears. Reapplying or returning creates one fresh registration. |
+| Change settings with automatic re-apply disabled | Existing applied effects keep observation until the settings are applied. |
+| Save-load/new-game teardown while animations are running | No old tags or triggers leak into the next session. Fresh events can populate discovery after effects reapply. |
+
+Native tests cover controlled graph replacement and callbacks crossing teardown;
+these cases remain required to validate Skyrim's real graph lifetime and timing.
+Record PASS/FAIL/BLOCKED and the candidate identity for each case.
+
+### Keyword and enchantment-effect matching acceptance
+
+- Give a demo recipe two keyword entries. Armor with either one alone must not
+  match; armor with both must match. Add an explicit armor selector: even that
+  exact armor must retain both keywords, and the keyword pair alone must not
+  select another armor. A keyword-only recipe needs no additional selector.
+- Give an enchantment two distinct effects and key a recipe to the secondary,
+  lower-cost effect. It must match and appear among the piece's offered keys.
+  Reversing effect order or changing which effect is costliest must not remove
+  that magic-effect match. Repeat using the secondary effect's shader key.
+  Casting the same magic effect as a spell is not a matching input.
+- Drive visible outputs with enchantment magnitude and cost. A winning secondary
+  magic-effect or shader key must read that effect's values. Multiple matching
+  entries use the highest matching cost (first entry on ties); removing the
+  selected effect must not supply unrelated values. Armor-, keyword-, and
+  enchantment-selected recipes still use the generic costliest effect.
+- Select different effect keys for placements sharing a recipe and enchantment.
+  Their signal values and phases must stay independent through an edit/reapply;
+  placements with the same selected effect should share evaluation state.
+- Combine the secondary-effect key with the two required keywords. Missing one
+  keyword must exclude the recipe without suppressing an eligible fallback;
+  adding the missing keyword must allow the specific effect recipe to select.
+- Save/reload the recipes and repeat. Verify the reported selection key and
+  default priority come from the non-keyword selector (or priority 20 for a
+  keyword-only recipe), and explicit priority still takes precedence.
 
 ## Fixture contract
 
@@ -442,6 +489,38 @@ Record coverage of `buffer`, `mean`, and `pixels`; a missing kind is untested,
 not zero-cost. Establish supported-workload budgets before calling spikes
 acceptable. These measurements do not fulfill the outstanding requirement
 to copy now and poll readbacks later.
+
+## Long-session follow-up
+
+Track completion in the [active alpha plan](plans/alpha-preparation-2026-09-22.md#long-session-follow-up-2026-09-25).
+Use copies of the user recipes from `build/evidence/session-20260925T022309Z`,
+preserving the original capture. Record DLL/build identity, package checksum,
+settings, recipe changes and PASS/FAIL/BLOCKED for each case. The captured run
+predates the material-editor fixes; do not use it to accept the newer bundle.
+
+1. With multiple loaded actors and PlayerOnly=false, edit one wearer's paint
+   terms repeatedly. Compare affected actor/geometry refreshes before and after
+   the invalidation fix. Exercise Keep, cancel, undo/redo and a matching-key edit;
+   unrelated effects must remain intact, while matching changes still propagate.
+2. Repeat cluster seed/weight edits, peek changes, mute/unmute and undo/redo;
+   Keep over an existing mask, save and reload. Live source rows should follow
+   current dependencies, shared sources must survive, and old unrelated orphans
+   must not be mistaken for newly generated accumulation. Check one material
+   offer per operation across geometries and compare RGB clustering at color
+   weights 0 and 1 on similarly bright, differently colored material regions.
+3. Record target ownership/count/byte summaries at a fixed equipped baseline,
+   while editing, after closing the editor, after unequip and after cache aging.
+   Repeat the same cycle and compare recovery. Distinguish active/held targets
+   from idle-pool targets and estimated texture bytes from measured GPU memory.
+   If ownership diagnostics are unavailable, mark that measurement BLOCKED.
+4. Try an absent partition, a world anchor with scalar hit payload, a curve
+   referencing a recipe row and an empty image path. Verify clear field guidance,
+   safe refusal/inert output and recovery after correction; save/reload the
+   corrected recipe. Do not overwrite the captured reproduction fixtures.
+5. Retain startup through final teardown in the next long run. Check trace
+   rotation/drop counters and that repeated shell detail does not crowd out
+   lifecycle evidence. Compare timings with diagnostic logging and packaged
+   defaults separately; operation timing alone is not frame-time acceptance.
 
 ## Recipe resolution acceptance (pending runtime access)
 

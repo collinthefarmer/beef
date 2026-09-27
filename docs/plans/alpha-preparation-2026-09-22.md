@@ -1,9 +1,9 @@
-# Alpha preparation and source publication
-
 Status: active. Consolidated from the 2026-09-22 planning session. This is
 the sole active work plan. All previous plans, backlogs, and handoffs from
 `docs/plans/` are archived under `docs/history/`; their remaining tasks are
 not automatically carried forward. Checkpoints remain dated evidence.
+
+# Alpha preparation and source publication
 
 Use active source and `docs/components/` to establish what exists.
 Requirements and the recipe schema define the intended contract;
@@ -173,6 +173,18 @@ and in-game lifetime checks remain open.
 
 ## 4. Validate runtime lifetime, isolation, and performance
 
+- [x] Give animation observation explicit graph ownership independent of recipe
+  bindings. `AnimationSubscriptions` detaches the exact retained graph;
+  `ManagerAnimation` validates queued events before discovery and delivery.
+  Native adapter tests cover rebuild gaps, stale callbacks, load cancellation,
+  graph replacement and missing-graph recovery. See the
+  [implementation checkpoint](../checkpoints/animation-observation-2026-09-24.md).
+- [ ] Accept animation observation in game: unchanged-graph edits have no sink
+  churn, replacement recovers, and retirement/load clear discovery without late
+  delivery. Follow [the animation cases](../in-game-regression.md#animation-subscription-acceptance)
+  and retain metrics plus exact candidate identity. Native graph doubles do not
+  establish Skyrim graph-array synchronization or replacement timing.
+
 Investigate `Manager`, `SessionQueue`, `ApplicationService`, `LiveActor`,
 bindings, shells, compositor/mesh caches, `TextureRef`, render-target pools,
 previews, readbacks, and eviction.
@@ -207,6 +219,60 @@ failures, or destructive restoration. Logs alone do not prove rendered pixels.
 
 ## 5. Protect authored files and establish the recipe contract
 
+### Long-session follow-up (2026-09-25)
+
+This is the active to-do for the [preserved testing session](../checkpoints/testing-session-analysis-2026-09-25.md).
+It also supplies the next performance work under section 4. Work in this order;
+the captured build predates the material-editor fixes, and the incomplete trace
+does not prove a leak or complete runtime acceptance.
+
+- [ ] **Narrow paint invalidation.** Investigate `UpdatePaint` → `ApplyEdits` →
+  `ChangeAndRebuildActors`: 249 paint updates refreshed 22 actors each (5,478
+  refreshes). Limit paint-only changes to affected wearers, then preserve
+  unaffected geometry/output state where possible. Keep broad invalidation for
+  edits that change matching. Add coverage for preview, Keep, cancel, undo/redo
+  and matching changes; compare refresh counts and timings with the same fixture.
+- [ ] **Account for target ownership and reduce measured churn.** Add bytes/counts
+  by recipe, geometry and owner, distinguishing active targets from the idle pool.
+  Measure a repeatable baseline after closing the editor, unequipping and cache
+  aging. The captured peak was 3.66 GiB estimated target storage and the final
+  sample 2.24 GiB; neither is total VRAM nor proof of a leak. Use ownership
+  evidence to address expression/stack intermediate allocation and invalidation;
+  verify repeated cycles return to a stable baseline before closing this item.
+- [ ] **Preserve useful long-run diagnostics.** Reduce repeated shell bone dumps
+  through change-based detail and periodic ownership summaries. Ensure the next
+  capture retains startup, editing and teardown within a bounded trace budget;
+  the previous run lost segments 1–12 to rotation. Compare diagnostic overhead
+  with packaged defaults and record dropped/rotated evidence explicitly.
+- [ ] **Improve authoring guidance at the field.** Explain or disable unavailable
+  partitions; constrain/explain world anchors requiring vec3 payloads; show that
+  curves accept `x`, not recipe-row references; identify empty image paths as
+  incomplete drafts. Preserve parser validation and recovery after correction.
+  Verify each refusal and corrected preview in the editor.
+- [ ] **Recheck material editing on the rebuilt bundle.** Preserve the captured
+  user recipes as fixtures; test repeated cluster tuning, current peek, muted
+  terms, undo/redo and Keep without accumulating abandoned generated sources.
+  Check consolidated material offers and equal-luma color separation with
+  `weights.color` 0 versus 1. Older unrelated orphan sources are not swept.
+  Record candidate identity and visual results using the
+  [follow-up run](../in-game-regression.md#long-session-follow-up).
+
+### Implementation and documentation status
+
+- [x] Implement generated-source dependency cleanup, consolidated material offers
+  and diffuse-RGB clustering. The [material-editor checkpoint](../checkpoints/material-term-editing-2026-09-25.md)
+  records 111 sanitizer/tool suites, the historical-peek regression and Windows
+  builds. Runtime acceptance is the separate unchecked follow-up above.
+- [x] Write and index the [procedural pattern cookbook](../procedural-pattern-cookbook.md)
+  and [reusable fragment companion](../recipe-fragments-cookbook.md); include both
+  in source distributions. The pattern cookbook's 17 assembled examples and the
+  companion's 18 fragments plus combined example passed parser/schema checks;
+  source archive checks passed. These are authoring documentation, not installed
+  or visually accepted recipes.
+- [ ] Visually tune representative cookbook combinations against the actual PBR
+  armor materials; record mesh, texture, skeleton/event prerequisites and tested
+  build. Keep this distinct from syntax/type validation.
+
 - [x] Implement the approved [recipe resolution contract](../recipe-resolution.md):
   identity-based overrides, independent same-key candidates, deterministic
   sampling, placement-local precedence, grouped replacement, and consistent
@@ -225,6 +291,17 @@ failures, or destructive restoration. Logs alone do not prove rendered pixels.
   4. Add boundary regressions, run native/sanitized suites, Windows compilation
      and targeted analysis, then update current documentation. Rendered output
      and save/reload acceptance stay on the deferred in-game list.
+
+- [x] Validate the approved key-matching change: all keyword entries are required
+  filters; non-keyword keys remain alternative selectors, and keyword-only
+  recipes require every keyword. Match any distinct base effect on the worn
+  item's enchantment, including secondary effects and their shaders. Scope
+  magnitude/cost to the winning effect key and isolate evaluation/clock state
+  by effect context. Cover mixed keys, priority, fallback, sampling,
+  serialization and the actual engine adapters. Full offline release gate passed:
+  105 sanitizer suites, Windows build, and 130 translation units with no new
+  static-analysis findings. In-game acceptance remains separate; see
+  [the checkpoint](../checkpoints/key-matching-2026-09-24.md).
 
 - [x] Implement failure-safe recipe replacement: the current `WriteText`
   truncates the destination. Failed writes must preserve the previous file
@@ -291,6 +368,12 @@ failures, or destructive restoration. Logs alone do not prove rendered pixels.
 - [ ] Provide validated, round-tripped, visibly tested examples for constant
   glow, animation/actor state, material masks, shell/light, and two merging
   recipes, with short walkthroughs.
+  Three same-cuirass demonstrations now exist: Arcane Circuit (effect/keyword),
+  Resonant Ward (required keywords), and Winterglass (exact armor). See their
+  checkpoints in the documentation index. User testing reported the first two
+  working; the long run also preserved edited variants. Complete per-case
+  acceptance, save/reload and solo/stacked checks remain open; cookbook validation
+  does not close these rendered checks.
 - [ ] Document key ownership, priority versus merge, load order, import and
   save locations, preset status, known limitations, and alpha format-change
   expectations. State the supported format and migration policy explicitly.

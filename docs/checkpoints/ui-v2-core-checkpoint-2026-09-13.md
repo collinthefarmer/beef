@@ -1,7 +1,7 @@
-# UI v2: core editor checkpoint
-
 Status: implementation integrated; automated validation in progress. No new
 in-game pass claimed. The user accepted the earlier framework checkpoint.
+
+# UI v2: core editor checkpoint
 
 ## Scope
 

@@ -1,3 +1,6 @@
+Status: record. Adopted API header, synthetic importer fixtures, Gitless
+archive identity, validation, and remaining source-delivery work.
+
 # Publication preparation — implementation checkpoint
 
 Follow-up to the [provenance review](publication-provenance-2026-09-24.md).

@@ -1,8 +1,8 @@
+Status: frozen design baseline, 2026-09-13. No implementation changes.
+
 # UI v2 proposal
 
 > Archived 2026-09-22. Superseded as a work plan by [Alpha preparation](../plans/alpha-preparation-2026-09-22.md). The tasks and status claims below are historical; unchecked items are not active commitments. Consult current code and component documentation for implemented behavior.
-
-Status: frozen design baseline, 2026-09-13. No implementation changes.
 
 Implementation is tracked in the [implementation plan](ui-v2-implementation-plan.md).
 Keep this baseline fixed; record implementation decisions and proposed design

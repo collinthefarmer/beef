@@ -1,9 +1,9 @@
-# Recipe resolution implementation checkpoint
-
 Status: implementation, native/sanitizer/Windows checks and targeted analysis
 complete. In-game acceptance remains pending.
 This records the dirty working tree, not a published release or source tag.
 The [alpha plan](../plans/alpha-preparation-2026-09-22.md) owns remaining work.
+
+# Recipe resolution implementation checkpoint
 
 ## Behavior and structure
 

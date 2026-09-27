@@ -1,3 +1,5 @@
+Status: record. The 13 slices that implemented the wishlist. All landed.
+
 # UI v2 wishlist — implementation plan, 2026-09-14
 
 Turns [`ui-v2-layout-wishlist-2026-09-14.md`](ui-v2-layout-wishlist-2026-09-14.md)

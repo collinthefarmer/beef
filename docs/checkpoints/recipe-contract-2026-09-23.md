@@ -1,3 +1,6 @@
+Status: record. First schema/parser contract pass: format and integer
+boundaries, clock shape, default preservation, and remaining coverage.
+
 # Recipe contract review — 2026-09-23
 
 First pass: format tags, integer representation limits, optional clock objects,

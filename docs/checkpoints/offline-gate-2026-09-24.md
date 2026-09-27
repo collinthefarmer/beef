@@ -1,3 +1,6 @@
+Status: record. Full native/sanitizer results, analysis review, and exact
+candidate archive checksums.
+
 # Offline candidate gate — 2026-09-24
 
 The complete offline gate passed without source fixes or baseline changes.

@@ -1,3 +1,6 @@
+Status: record. Menu API license alternative, cimgui baseline, source inputs,
+and remaining delivery work.
+
 # Publication and provenance review — 2026-09-24
 
 Review base: `1303a55`. The owner confirmed sole copyright ownership of the

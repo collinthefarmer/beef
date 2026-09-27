@@ -1,3 +1,6 @@
+Status: record. The in-game feedback wishlist from the complete-editor build;
+the implementation plan below sequenced it.
+
 # UI v2 layout wishlist — 2026-09-14
 
 In-game feedback from the complete-editor build, captured as it stands. This is a

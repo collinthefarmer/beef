@@ -1,3 +1,6 @@
+Status: record. The studio UI inconsistency cases and what each changed. All
+cases closed.
+
 # UI standardization cases
 
 A working list of studio UI inconsistencies to resolve, each phrased as a
