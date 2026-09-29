@@ -18,7 +18,7 @@ def quest_plugin() -> bytes:
     script = b'BEEFRegressionRunner'
     vmad = struct.pack('<HHHH', 5, 2, 1, len(script)) + script + struct.pack('<BH', 0, 0)
     quest = demo.record(b'QUST', 0x01000800, [
-        (b'EDID', demo.text('BEEFRegression')),
+        (b'EDID', demo.text('beef_regression')),
         (b'VMAD', vmad),
         (b'FULL', demo.text('BEEF regression driver')),
         (b'DNAM', struct.pack('<HBB4sI', 0, 0, 0, bytes(4), 0)),
@@ -34,7 +34,9 @@ def quest_plugin() -> bytes:
 
 
 def payload(scripts: Path) -> dict[str, bytes]:
-    files = {PLUGIN: quest_plugin(), 'README.md': (ROOT / 'tests/in-game/README.md').read_bytes()}
+    files = {PLUGIN: quest_plugin(),
+             'README.md': (ROOT / 'tests/in-game/README.md').read_bytes(),
+             'QUICK_REFERENCE.md': (ROOT / 'tests/in-game/QUICK_REFERENCE.md').read_bytes()}
     for name in ('BEEFRegressionNative', 'BEEFRegressionRunner'):
         source = ROOT / 'tests/in-game/Scripts/Source' / (name + '.psc')
         binary = scripts / (name + '.pex')

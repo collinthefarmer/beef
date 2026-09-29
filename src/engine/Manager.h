@@ -49,6 +49,8 @@ public:
 
   void OnFrame();
   void QueueRegression(std::int32_t a_request);
+  void SoloRegressionRecipe(std::string a_recipe);
+  void RestoreRegressionView();
   void ObserveRegression();
 
   void Fire(RE::FormID a_actorID, const EventRecord &a_event);

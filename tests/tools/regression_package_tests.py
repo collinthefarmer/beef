@@ -17,7 +17,7 @@ class RegressionPackageTests(unittest.TestCase):
         self.assertEqual([r[0] for r in records], [b'TES4', b'QUST'])
         self.assertEqual(records[1][1], 0x01000800)
         fields = dict(package.demo.subrecords(records[1][3]))
-        self.assertEqual(fields[b'EDID'], b'BEEFRegression\0')
+        self.assertEqual(fields[b'EDID'], b'beef_regression\0')
         self.assertEqual(struct.unpack_from('<H', fields[b'DNAM'])[0] & 1, 0)
         vmad = fields[b'VMAD']
         self.assertEqual(struct.unpack_from('<HHH', vmad), (5, 2, 1))

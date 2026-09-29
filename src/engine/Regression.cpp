@@ -8,6 +8,7 @@
 #include <algorithm>
 #include <chrono>
 #include <mutex>
+#include <optional>
 
 namespace BetterEnchantmentEffects {
 namespace {
@@ -16,6 +17,8 @@ RegressionRequest request;
 const std::string processSession =
     std::to_string(std::chrono::system_clock::now().time_since_epoch().count());
 std::uint64_t sessionGeneration = 0;
+std::string recipeUnderTest;
+std::optional<Studio::Isolation> isolationBeforeRun;
 
 std::string Session(RE::StaticFunctionTag *) {
   const std::lock_guard lock{requestLock};
@@ -70,6 +73,22 @@ void Mark(RE::StaticFunctionTag *, std::int32_t a_request,
                      {"result", a_pass ? "PASS" : "FAIL"}});
 }
 
+void Solo(RE::StaticFunctionTag *, std::string a_recipe) {
+  {
+    const std::lock_guard lock{requestLock};
+    recipeUnderTest = a_recipe;
+  }
+  Manager::GetSingleton()->SoloRegressionRecipe(std::move(a_recipe));
+}
+
+void RestoreView(RE::StaticFunctionTag *) {
+  {
+    const std::lock_guard lock{requestLock};
+    recipeUnderTest.clear();
+  }
+  Manager::GetSingleton()->RestoreRegressionView();
+}
+
 bool Bind(RE::BSScript::IVirtualMachine *a_vm) {
   if (!a_vm)
     return false;
@@ -78,6 +97,8 @@ bool Bind(RE::BSScript::IVirtualMachine *a_vm) {
   a_vm->RegisterFunction("Result", "BEEFRegressionNative", Result);
   a_vm->RegisterFunction("Abort", "BEEFRegressionNative", Abort);
   a_vm->RegisterFunction("Mark", "BEEFRegressionNative", Mark);
+  a_vm->RegisterFunction("Solo", "BEEFRegressionNative", Solo);
+  a_vm->RegisterFunction("RestoreView", "BEEFRegressionNative", RestoreView);
   return true;
 }
 }
@@ -125,6 +146,23 @@ void Manager::QueueRegression(std::int32_t a_request) {
   });
 }
 
+void Manager::SoloRegressionRecipe(std::string a_recipe) {
+  PostTask([this, recipe = std::move(a_recipe)] {
+    if (!isolationBeforeRun)
+      isolationBeforeRun = editor_.CurrentView().isolation;
+    editor_.Isolate(Studio::Isolation::ForRecipe(recipe));
+  });
+}
+
+void Manager::RestoreRegressionView() {
+  PostTask([this] {
+    if (!isolationBeforeRun)
+      return;
+    editor_.Isolate(*isolationBeforeRun);
+    isolationBeforeRun.reset();
+  });
+}
+
 void Manager::ObserveRegression() {
   const std::lock_guard lock{requestLock};
   if (!request.Pending(request.id) || !request.dispatched || request.retire)
@@ -150,6 +188,12 @@ void Manager::ObserveRegression() {
             for (const PlacementId placement : geometry.placements) {
               const auto resolved = ResolvePlacement(state, placement);
               if (!resolved)
+                continue;
+              if (!recipeUnderTest.empty() &&
+                  (resolved->instance >= state.instances.size() ||
+                   !state.instances[resolved->instance].recipe ||
+                   state.instances[resolved->instance].recipe->id !=
+                       recipeUnderTest))
                 continue;
               for (const PlacedOutput &output :
                    state.placements[resolved->placement].outputs)
