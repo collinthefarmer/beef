@@ -7,13 +7,12 @@
       "armor": "0x803~BetterEnchantmentEffectsDemo.esp"
     }
   ],
-  "merge": "stack",
   "signals": {
     "growth": {
       "ramp": {
-        "from": 0,
-        "to": 1,
-        "seconds": 5
+        "from": 0.0,
+        "to": 1.0,
+        "seconds": 5.0
       }
     }
   },
@@ -48,8 +47,7 @@
             0.78,
             0.88
           ],
-          "blend": "replace",
-          "opacity": 0.65,
+          "opacity": 1.0,
           "mask": "@frost",
           "channels": "rgb"
         }
@@ -66,23 +64,8 @@
             0.82,
             0.82
           ],
-          "blend": "replace",
-          "opacity": 0.8,
+          "opacity": 0.303,
           "mask": "@frost",
-          "channels": "r"
-        }
-      ]
-    },
-    {
-      "target": "material",
-      "slot": "height",
-      "scale": 0.015,
-      "resolution": "full",
-      "stack": [
-        {
-          "source": "@ridge",
-          "blend": "add",
-          "opacity": 0.12,
           "channels": "r"
         }
       ]

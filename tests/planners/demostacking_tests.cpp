@@ -44,11 +44,16 @@ int main() {
         "Arcane Circuit retains its material contribution");
   Check(shell && shell->chain.size() == 1 && shell->replaced.empty(),
         "Resonant Ward adds its shell contribution");
-  for (const auto slot : {Slot::kDiffuse, Slot::kRmaos, Slot::kHeight}) {
+  for (const auto slot : {Slot::kDiffuse, Slot::kRmaos}) {
     const auto *frost = SlotPlanOf(plan.plan, Surface::kMaterial, slot);
     Check(
         frost && frost->chain.size() == 1 && frost->replaced.empty(),
         "Winterglass contributes distinct material slots without replacement");
+  }
+  for (const auto slot : {Slot::kHeight, Slot::kFuzz}) {
+    const auto *detail = SlotPlanOf(plan.plan, Surface::kMaterial, slot);
+    Check(detail && detail->chain.size() == 1 && detail->replaced.empty(),
+          "configured Arcane Circuit contributes height and fuzz");
   }
   const auto lights = PlanActorLights(actor, recipes);
   Check(lights.plan.shown.size() == 1 && lights.plan.replaced.empty(),

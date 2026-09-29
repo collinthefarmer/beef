@@ -58,24 +58,28 @@ player.additem XX000803 1
 Replace `XX` with this ESP's load-order prefix from the ARMO result. Equip
 **Arcane Circuit - Dwarven Armor** from inventory.
 
-Expected behavior:
+The stock JSON files are the user's configured versions promoted from
+`SKSE Output/.../recipes/user/` on 2026-09-27. They retain the saved values
+and definitions exactly, including currently unused sources and signals.
 
-1. At full magicka, cyan traces glow on metallic plates and a bright band moves
-   through them every four seconds.
-2. Spend magicka by casting. The traces dim toward violet; regeneration restores
-   cyan brightness. Empty magicka retains a faint glow.
-3. The selected effect's magnitude is 25, despite the larger Health effect.
-4. Ordinary Dwarven armor does not select this recipe.
-5. Check male/female armor and seams. The procedural lattice is an initial
-   pattern; UV layout can mirror or interrupt the moving highlight.
+Expected behavior from the configured Arcane Circuit:
 
-In the editor, the recipe should resolve through magicEffect at priority 60,
-with one emissive output. If absent, confirm the demo ESP, recipe file and current
-framework DLL are loaded. If selected but dark, inspect the metallic source and
-emissive preview before changing the pattern.
+1. At full magicka, a red packet travels over the luminance/roughness-selected
+   material regions. Its travel period is ten seconds.
+2. Spending magicka reduces the red packet and increases a blue occlusion-based
+   layer. The emissive strength multiplier itself is independent of charge.
+3. Height and fuzz outputs accompany the material emissive layers. Inspect them
+   under grazing light; the recipe uses height scale 1.
+4. The selected effect's magnitude is 25, despite the larger Health effect.
+5. Ordinary Dwarven armor does not select this recipe. Check both armor models
+   and seams; these configured values are the visual baseline for new tests.
 
-Remove the demo armor before disabling the optional demo mod. No game test is
-claimed by the offline validation.
+The recipe resolves through magicEffect at priority 60. If selected but dark,
+inspect the diffuse-luminance and roughness masks and emissive preview. The
+configured file contains three material outputs, not the old emissive-only demo.
+
+Remove the demo armor before disabling the optional demo mod. Promotion and
+offline validation do not establish in-game behavior on the current pipeline.
 
 ## Build the complete local test archive
 
@@ -96,63 +100,47 @@ assets. A new Skyrim run remains necessary to verify rendered output.
 
 Use the same **Arcane Circuit - Dwarven Armor** (`XX000803`). The ESP and
 existing FormIDs are unchanged. Resonant Ward requires both the demo collection
-keyword and Skyrim's `ArmorHeavy` keyword. It uses `merge: stack`, with the
+keyword and Skyrim's `ArmorHeavy` keyword. It uses the default stack merge behavior, with the
 keyword-only default priority 20. Arcane Circuit still selects its effect at
 priority 60.
 
-Ward owns a shell emissive output and one chest light. Its warm gold ripple and
-flare overlay the existing cyan/violet material pattern. It does not write the
-material emissive multiplier, so the magicka response remains controlled by
-Arcane Circuit. The ripple starts at the chest skeleton node; it is not a
-measurement of the weapon's impact point. The recipe adds a visual response,
-not damage reduction or a gameplay ward spell.
+The configured ward combines shell emissive, alpha, and height outputs with
+one chest light. A bone-weight/metallic/luminance mask restricts the response.
+The shell uses alpha blending, an inflate vector of `[0.3, 0.3, 0.3]`, and an
+offset of `[0, -0.1, 0]`. The ripple starts at the chest skeleton node, not a
+measured weapon impact point.
 
-1. Equip the demo cuirass with both recipes active. At rest, Arcane Circuit
-   continues normally; the ward shell and light are dark.
-2. Receive an actual attack hit. Expect a gold ripple spreading from the chest,
-   a brief shell flare, and a synchronized chest light. These fade over 1.2 s.
-3. Spend magicka and receive another hit: the ward should still flash while the
-   underlying Arcane Circuit changes color and brightness normally.
-4. Take several hits close together. At most three live ripple firings are kept;
-   the shell/light envelope is clamped. After hits stop, the ward should settle
-   back to dark rather than remain latched on.
-5. Solo Resonant Ward and repeat a hit to inspect its shell/ripple/light alone.
-   Solo Arcane Circuit to inspect the original pattern, then restore both.
-6. Unequip the demo cuirass: its shell and light should disappear. Ordinary
-   Dwarven armor lacks the demo keyword and should select neither recipe.
+1. Equip the demo cuirass. Receive an actual attack hit and inspect the gold
+   ripple, shaped shell, and chest light over the material effects.
+2. Spend magicka and repeat: Arcane Circuit's red/blue balance should change
+   independently of the ward's hit response.
+3. Take several hits close together. At most three firings are retained, each
+   with a 1.2-second lifetime. After hits stop, check that the shell and light
+   settle rather than remain latched on.
+4. Solo the ward to inspect its mask, alpha, height, and light; then restore
+   the full stack. Unequip to confirm the shell and light disappear.
 
-The user reported Arcane Circuit working after the complete-bundle correction,
-with visual tuning still desired, and subsequently reported Resonant Ward working.
-Winterglass and the three-way combination still need in-game validation.
+The configured light multiplier is 10.2, shell emissive strength is 12, and
+ripple speed/width/decay are 80/15/0.001. These saved values are intentional
+fixture inputs; their visual acceptance on the current pipeline remains open.
 
 ## Winterglass: exact armor and material stacking
 
 Winterglass keys directly to `0x803~BetterEnchantmentEffectsDemo.esp`, with
-`merge: stack` and default armor priority 30. It needs no additional item or
+default stack merge behavior and armor priority 30. It needs no additional item or
 ESP change. Its matching is independent of the enchantment and keywords.
 
 A five-second ramp grows a procedural frost mask over metallic surfaces. UV
-crystals and the original material's relief vary where the frost appears.
-The mask cools and pales diffuse RGB, raises only the roughness channel of
-RMAOS, and adds subtle height. Metallic, occlusion and reflectance channels
-remain unchanged. Height uses scale 0.015, including any existing displacement;
-check its appearance on both armor models. The original base maps seed the
-stacks; frost contributions begin at zero. Height scale is applied immediately.
-Arcane Circuit continues to own material emissive, and Ward owns its shell and
-light. These are visual frost effects; no frost resistance is granted.
+crystals and original material relief vary where frost appears. The configured
+recipe changes diffuse RGB at opacity 1 and roughness at opacity 0.303; it no
+longer has a height output. Arcane Circuit owns material height and fuzz.
 
-1. Replace the previous test bundle with `ThreeRecipes-complete-test.zip` in
-   MO2, retaining a customized INI. Keep the same demo ESP enabled and equip
-   the existing **Arcane Circuit - Dwarven Armor** (`XX000803`).
-2. Watch for five seconds: frost should spread over the metal, cooling its
-   color and softening reflections, with fine relief under grazing light.
-3. Spend magicka and take a hit. Cyan/violet traces and the gold ward response
-   should remain visible over the frosted cuirass.
-4. Solo Winterglass to inspect frost, roughness and relief. Compare all three
-   slots in the editor, then restore all recipes. Check seams and both models.
-5. Fully unequip, allow the effect to retire, and re-equip: inspect growth again.
-   Ordinary Dwarven armor should select none of these recipes. Unequipping
-   should remove the frost along with the glow, shell and light.
+1. Equip the demo cuirass and watch the five-second frost growth.
+2. Compare diffuse color and roughness with Winterglass soloed, then restore
+   all recipes and verify Arcane Circuit's red/blue response and the gold ward.
+3. Inspect seams and both armor models. Unequip, allow retirement, and re-equip
+   to check growth again. Ordinary Dwarven armor should select none of the
+   three recipes.
 
 The native demo regression reads and round-trips all three actual recipes,
 checks that they select the same piece and occupy separate output slots, and

@@ -30,14 +30,27 @@
       "expr": "clamp(@magnitude / 25, 0, 2)"
     },
     "strength": {
-      "expr": "@power * (0.15 + 1.85 * @charge)"
+      "expr": "@power * (0.15 + 1.85)"
     },
     "hue": {
-      "expr": "lerp([0.35, 0.08, 0.8], [0.05, 0.65, 1], @charge)"
+      "wave": {
+        "base": 0.0,
+        "amplitude": 1.0,
+        "period": "@blinkLength"
+      }
     },
     "travel": {
-      "expr": "time * 0.25"
+      "expr": "time * .1"
+    },
+    "consumed": {
+      "expr": "1 - @charge"
+    },
+    "blinkLength": {
+      "expr": "pow(2, @charge)"
     }
+  },
+  "curves": {
+    "curve": "pow(x, 8)"
   },
   "sources": {
     "uv": {
@@ -45,39 +58,106 @@
     },
     "metallic": {
       "material": "metallic"
+    },
+    "occlusion": {
+      "material": "occlusion"
+    },
+    "roughness": {
+      "material": "roughness"
+    },
+    "charts": {
+      "bake": "chartId"
+    },
+    "bake": {
+      "bake": "normal"
+    },
+    "components": {
+      "bake": "componentId"
+    },
+    "luma": {
+      "material": "diffuseLuma"
     }
   },
   "masks": {
     "u": "dot(@uv, [1, 0])",
     "v": "dot(@uv, [0, 1])",
-    "rails": "1 - smoothstep(0.08, 0.18, min(abs(sin(@u * 8 * pi)), abs(sin(@v * 12 * pi))))",
-    "traces": "@rails * smoothstep(0.25, 0.75, @metallic)",
-    "packet": "pow(0.5 + 0.5 * cos((@v - @travel) * 2 * pi), 12)"
+    "rails": "0.305 - smoothstep(0.097, 2, min(abs(sin(@u * 11 * pi)), abs(sin(@v * 9 * pi))))",
+    "traces": "(smoothstep(0.271, 0.716, @luma)) * (smoothstep(0.001 - 0, 0.001 + 0, @roughness) * (1 - smoothstep(0.501 - 0, 0.501 + 0, @roughness)))",
+    "packet": "pow(0.5 + 0.5 * cos((@v - @travel) * 2 * pi), 12)",
+    "tracePacket": "(1) * (@packet) * (@traces)"
   },
   "outputs": [
     {
       "target": "material",
       "slot": "emissive",
-      "resolution": "half",
       "strength": "@strength",
+      "resolution": "half",
       "stack": [
         {
-          "source": [
-            1,
-            1,
-            1
+          "source": "@occlusion",
+          "opacity": "@consumed",
+          "color": [
+            0.0,
+            0.1161,
+            0.6
           ],
-          "blend": "replace",
-          "opacity": 0.18,
-          "color": "@hue",
           "mask": "@traces"
         },
         {
-          "source": "@packet",
+          "source": [
+            0.6,
+            0.0,
+            0.0
+          ],
+          "opacity": "@charge",
+          "mask": "@tracePacket"
+        }
+      ]
+    },
+    {
+      "target": "material",
+      "slot": "height",
+      "scale": 1.0,
+      "stack": [
+        {
+          "source": "@bake",
+          "curve": "lerp(0, -1, x)",
           "blend": "add",
-          "opacity": 0.82,
-          "color": "@hue",
+          "opacity": "@charge",
+          "color": [
+            1.0,
+            1.0,
+            1.0
+          ],
+          "mask": "@tracePacket"
+        },
+        {
+          "source": "@uv",
+          "curve": "pow(x, 2)",
+          "blend": "add",
+          "opacity": "@consumed",
           "mask": "@traces"
+        }
+      ]
+    },
+    {
+      "target": "material",
+      "slot": "fuzz",
+      "color": [
+        1.0,
+        1.0,
+        1.0
+      ],
+      "weight": 1.0,
+      "stack": [
+        {
+          "source": [
+            1.0,
+            1.0,
+            1.0
+          ],
+          "opacity": 1.0,
+          "mask": "@tracePacket"
         }
       ]
     }

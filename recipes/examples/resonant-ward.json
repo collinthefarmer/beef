@@ -3,25 +3,44 @@
   "name": "Resonant Ward",
   "description": "Stacks a chest-centered hit ripple, shell flare and light over Arcane Circuit on the same demo cuirass. Both the demo collection and heavy-armor keywords are required.",
   "keys": [
-    { "keyword": "0x800~BetterEnchantmentEffectsDemo.esp" },
-    { "keyword": "0x6BBD2~Skyrim.esm" }
+    {
+      "keyword": "0x800~BetterEnchantmentEffectsDemo.esp"
+    },
+    {
+      "keyword": "0x6BBD2~Skyrim.esm"
+    }
   ],
-  "merge": "stack",
   "signals": {
     "struck": {
       "trigger": {
         "event": "hit.received",
-        "anchor": { "node": "NPC Spine2 [Spn2]" },
         "lifetime": 1.2,
-        "max": 3
+        "max": 3,
+        "anchor": {
+          "node": "NPC Spine2 [Spn2]"
+        }
       },
       "curve": "@release"
     },
-    "impact": { "expr": "saturate(@struck)" },
-    "wardHue": { "constant": [1.0, 0.65, 0.15] },
-    "shellAlpha": { "expr": "0.55 * @impact" },
-    "flare": { "expr": "0.15 * @impact" },
-    "lightLevel": { "expr": "1.2 * @impact" }
+    "impact": {
+      "expr": "saturate(@struck)"
+    },
+    "wardHue": {
+      "constant": [
+        1.0,
+        0.65,
+        0.15
+      ]
+    },
+    "shellAlpha": {
+      "expr": "0.55 * @impact"
+    },
+    "flare": {
+      "expr": "0.15 * @impact"
+    },
+    "lightLevel": {
+      "expr": "10.2 * @impact"
+    }
   },
   "curves": {
     "release": "pow(1 - x, 2)"
@@ -30,38 +49,138 @@
     "ring": {
       "ripple": {
         "trigger": "@struck",
-        "speed": 90,
-        "width": 6,
-        "decay": 1.0
+        "speed": 80.0,
+        "width": 15.0,
+        "decay": 0.001
       }
+    },
+    "bake": {
+      "bake": "normal"
+    },
+    "metallic": {
+      "material": "metallic"
+    },
+    "bones": {
+      "bake": {
+        "boneWeight": [
+          "NPC Spine2 [Spn2]"
+        ]
+      }
+    },
+    "bones2": {
+      "bake": {
+        "boneWeight": [
+          "NPC R Clavicle [RClv]"
+        ]
+      }
+    },
+    "diffuseLuma": {
+      "material": "diffuseLuma"
     }
+  },
+  "masks": {
+    "mask": "1",
+    "metal": "(max((@bones), (@bones2)) * (@metallic)) * (1 - (smoothstep(0.003 - 0.156, 0.003 + 0.156, @diffuseLuma) * (1 - smoothstep(0.806 - 0.156, 0.806 + 0.156, @diffuseLuma))))"
   },
   "outputs": [
     {
       "target": "shell",
       "slot": "emissive",
-      "strength": 2.0,
+      "strength": 12.0,
       "resolution": "half",
       "stack": [
-        { "source": [1, 1, 1], "blend": "add", "opacity": "@flare", "color": "@wardHue" },
-        { "source": "@ring", "blend": "add", "opacity": 1.0, "color": "@wardHue" }
+        {
+          "source": "@ring",
+          "blend": "add",
+          "opacity": "@struck",
+          "color": "@wardHue",
+          "mask": "@metal"
+        }
       ]
     },
     {
       "target": "light",
-      "bones": { "named": ["NPC Spine2 [Spn2]"] },
+      "bones": {
+        "named": [
+          "NPC Spine2 [Spn2]"
+        ]
+      },
       "color": "@wardHue",
       "intensity": "@lightLevel",
-      "size": 1.2,
-      "cutoff": 0.05,
-      "shadow": false
+      "size": 2.0,
+      "cutoff": 0.355
+    },
+    {
+      "target": "shell",
+      "slot": "diffuse",
+      "stack": [
+        {
+          "source": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "opacity": 1.0,
+          "mask": "@metal",
+          "channels": "a"
+        },
+        {
+          "source": "@ring",
+          "opacity": 1.0,
+          "color": [
+            1.0,
+            1.0,
+            1.0
+          ],
+          "mask": "@metal",
+          "channels": "a"
+        }
+      ]
+    },
+    {
+      "target": "shell",
+      "slot": "height",
+      "scale": 1.0,
+      "stack": [
+        {
+          "source": [
+            0.5,
+            0.5,
+            0.5
+          ],
+          "opacity": 1.0,
+          "mask": "@metal"
+        },
+        {
+          "source": "@bake",
+          "blend": "add",
+          "opacity": 1.0,
+          "mask": "@metal"
+        },
+        {
+          "source": "@ring",
+          "blend": "multiply",
+          "opacity": 1.0,
+          "mask": "@metal"
+        }
+      ]
     }
   ],
   "shell": {
-    "material": "pbrCopy",
-    "blend": "additive",
-    "depthBias": true,
+    "blend": "alpha",
     "opacity": "@shellAlpha",
-    "pose": { "inflate": [0.0, 0.015, 0.015] }
+    "emissive": "@struck",
+    "pose": {
+      "inflate": [
+        0.3,
+        0.3,
+        0.3
+      ],
+      "offset": [
+        0.0,
+        -0.1,
+        0.0
+      ]
+    }
   }
 }
