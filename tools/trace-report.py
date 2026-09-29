@@ -96,8 +96,10 @@ def report(segments: list[Path], slots: int | None) -> None:
                 latest[name] = number(fields, name)
             worst = max(worst, (number(fields, 'refreshes'), number(fields, 'refresh_us')), key=lambda w: w[0])
             for name in ('frames', 'render_evaluations', 'step_executions', 'step_releases',
-                         'step_restores'):
+                         'step_restores', 'frame_us', 'tick_us', 'snapshot_us'):
                 rendering[name] += number(fields, name)
+            for name in ('frame_max_us', 'tick_max_us', 'snapshot_max_us'):
+                peaks[name] = max(peaks[name], number(fields, name))
         counts[kind] += 1
         sessions.add(session)
         startup = fields if kind == 'startup' else startup
@@ -132,6 +134,11 @@ def report(segments: list[Path], slots: int | None) -> None:
                   f"{rendering['render_evaluations'] / frames:.2f} stack evaluations per frame "
                   f"over {frames} frames; {rendering['step_releases']} releases, "
                   f"{rendering['step_restores']} restores")
+            print(f"  Plugin CPU per frame: {rendering['frame_us'] / frames / 1000:.2f} ms "
+                  f"(max {peaks['frame_max_us'] / 1000:.1f}); tick "
+                  f"{rendering['tick_us'] / frames / 1000:.2f} ms (max {peaks['tick_max_us'] / 1000:.1f}); "
+                  f"snapshot {rendering['snapshot_us'] / frames / 1000:.2f} ms "
+                  f"(max {peaks['snapshot_max_us'] / 1000:.1f})")
         print(f"  Targets peak: {peaks['targets_peak']}{f' of {slots} slots' if slots else ''}; "
               f"VRAM peak {peaks['target_bytes_peak'] / (1 << 20):.0f} MiB")
         print(f"  Targets at the last heartbeat: {latest['targets']}; "

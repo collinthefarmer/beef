@@ -270,6 +270,20 @@ void MarkReferencedInstances(LiveActor &a_state, const LiveGeometry &a_bound,
   }
 }
 
+class PhaseTimer {
+public:
+  explicit PhaseTimer(Metrics::Phase a_phase) noexcept : phase_(a_phase) {}
+  ~PhaseTimer() { Metrics::CountPhase(phase_, watch_.Micros()); }
+  PhaseTimer(const PhaseTimer &) = delete;
+  PhaseTimer &operator=(const PhaseTimer &) = delete;
+  PhaseTimer(PhaseTimer &&) = delete;
+  PhaseTimer &operator=(PhaseTimer &&) = delete;
+
+private:
+  Metrics::Phase phase_;
+  Metrics::Stopwatch watch_;
+};
+
 void EmitMetricsHeartbeat() {
   const Metrics::Snapshot measured = Metrics::Drain();
   Trace::EmitSafely(
@@ -291,7 +305,13 @@ void EmitMetricsHeartbeat() {
        {"render_evaluations", std::to_string(measured.renderEvaluations)},
        {"step_executions", std::to_string(measured.stepExecutions)},
        {"step_releases", std::to_string(measured.stepReleases)},
-       {"step_restores", std::to_string(measured.stepRestores)}});
+       {"step_restores", std::to_string(measured.stepRestores)},
+       {"frame_us", std::to_string(measured.frame.micros)},
+       {"frame_max_us", std::to_string(measured.frame.maxMicros)},
+       {"tick_us", std::to_string(measured.tick.micros)},
+       {"tick_max_us", std::to_string(measured.tick.maxMicros)},
+       {"snapshot_us", std::to_string(measured.snapshot.micros)},
+       {"snapshot_max_us", std::to_string(measured.snapshot.maxMicros)}});
 }
 }
 
@@ -299,6 +319,7 @@ void Manager::OnFrame() {
   if (applications_.Loading()) {
     return;
   }
+  const PhaseTimer frameTimer{Metrics::Phase::kFrame};
   SweepRetiredMaterialTextures();
   TextureLab::GetSingleton()->CollectPreviewDraws();
   FireDueFinalizes();
@@ -323,10 +344,14 @@ void Manager::OnFrame() {
   lastTickMS_ = now;
   Compositor::GetSingleton()->BeginTick(now);
   if (!applied_.empty()) {
+    const PhaseTimer tickTimer{Metrics::Phase::kTick};
     Tick(now, settings);
   }
   SweepBoundMeshes(*Compositor::GetSingleton(), applied_, now);
-  PublishSnapshot(now);
+  {
+    const PhaseTimer snapshotTimer{Metrics::Phase::kSnapshot};
+    PublishSnapshot(now);
+  }
   ObserveRegression();
 }
 

@@ -23,6 +23,8 @@ struct Counters {
   std::atomic<std::uint64_t> stepExecutions{0};
   std::atomic<std::uint64_t> stepReleases{0};
   std::atomic<std::uint64_t> stepRestores{0};
+  std::atomic<std::uint64_t> phaseMicros[3]{};
+  std::atomic<std::uint64_t> phaseMaxMicros[3]{};
 };
 
 Counters &State() noexcept {
@@ -92,6 +94,14 @@ void CountStepReleases(std::uint64_t a_count) noexcept {
 void CountStepRestores(std::uint64_t a_count) noexcept {
   State().stepRestores.fetch_add(a_count, std::memory_order_relaxed);
 }
+void CountPhase(Phase a_phase, std::uint64_t a_micros) noexcept {
+  const auto index = static_cast<std::size_t>(a_phase);
+  if (index >= 3)
+    return;
+  Counters &state = State();
+  state.phaseMicros[index].fetch_add(a_micros, std::memory_order_relaxed);
+  RaiseTo(state.phaseMaxMicros[index], a_micros);
+}
 Snapshot Drain() noexcept {
   Counters &state = State();
   Snapshot out;
@@ -118,6 +128,13 @@ Snapshot Drain() noexcept {
       state.stepExecutions.exchange(0, std::memory_order_relaxed);
   out.stepReleases = state.stepReleases.exchange(0, std::memory_order_relaxed);
   out.stepRestores = state.stepRestores.exchange(0, std::memory_order_relaxed);
+  PhaseTime *phases[3]{&out.frame, &out.tick, &out.snapshot};
+  for (std::size_t i = 0; i < 3; ++i) {
+    phases[i]->micros =
+        state.phaseMicros[i].exchange(0, std::memory_order_relaxed);
+    phases[i]->maxMicros =
+        state.phaseMaxMicros[i].exchange(0, std::memory_order_relaxed);
+  }
   return out;
 }
 }

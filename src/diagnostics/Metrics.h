@@ -5,6 +5,11 @@
 #include <cstdint>
 
 namespace BetterEnchantmentEffects::Metrics {
+enum class Phase { kFrame, kTick, kSnapshot };
+struct PhaseTime {
+  std::uint64_t micros = 0;
+  std::uint64_t maxMicros = 0;
+};
 struct Snapshot {
   std::uint64_t refreshes = 0;
   std::uint64_t refreshMicros = 0;
@@ -23,6 +28,9 @@ struct Snapshot {
   std::uint64_t stepExecutions = 0;
   std::uint64_t stepReleases = 0;
   std::uint64_t stepRestores = 0;
+  PhaseTime frame;
+  PhaseTime tick;
+  PhaseTime snapshot;
   [[nodiscard]] bool Quiet() const noexcept {
     return refreshes == 0 && sinkAdds == 0 && sinkRemoves == 0 &&
            readbacks == 0 && renderEvaluations == 0;
@@ -40,6 +48,7 @@ void CountRenderEvaluation() noexcept;
 void CountStepExecution() noexcept;
 void CountStepReleases(std::uint64_t a_count) noexcept;
 void CountStepRestores(std::uint64_t a_count) noexcept;
+void CountPhase(Phase a_phase, std::uint64_t a_micros) noexcept;
 [[nodiscard]] Snapshot Drain() noexcept;
 
 [[nodiscard]] constexpr std::uint64_t
