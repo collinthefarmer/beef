@@ -2,6 +2,7 @@
 #pragma once
 
 #include "planners/RenderExecution.h"
+#include "planners/RenderFirings.h"
 #include "render/Compositor.h"
 
 namespace BetterEnchantmentEffects {
@@ -11,19 +12,15 @@ struct TextureView {
   float normalize = 1;
   std::shared_ptr<TextureLab::RenderTarget> target;
 };
-struct RenderFiring {
-  std::optional<Vec3> origin;
-  float startTime = 0;
-};
-struct RenderFirings {
-  std::vector<RenderFiring> firings;
-};
 struct RenderTransform {
   RE::NiPointer<RE::NiAVObject> root;
 };
 struct StackResult {
   TextureRef texture;
+  ChangeVersion contentVersion = 0;
 };
+struct StackPending {};
+using StackOutcome = std::variant<StackResult, StackPending>;
 using RenderValue =
     std::variant<Value, TextureView, std::shared_ptr<MeshEntry>, MaterialInputs,
                  RenderTransform, RenderFirings,
@@ -33,18 +30,21 @@ using RenderValue =
                  std::shared_ptr<TextureLab::Lookup>, LayerFilter, StackResult>;
 struct RenderScratch {
   std::weak_ptr<TextureLab::RenderTarget> target;
+  TextureLab::ReductionReadback reduction;
+  TextureLab::MaterialReadback material;
 };
 class RenderInstance {
 public:
   RenderInstance(RenderPlan plan, GeometryInputs inputs,
                  std::vector<std::shared_ptr<const RecipeGraph>> graphs);
   [[nodiscard]] std::expected<void, std::string>
-  UpdateInput(RenderInputId input, RenderValue value, bool mutated = false);
+  UpdateInput(RenderInputId input, RenderValue value);
   [[nodiscard]] const RenderPlan &Plan() const noexcept;
+  void CollectReadbacks();
   [[nodiscard]] std::expected<void, std::string>
   Update(const RecipeGraph &graph, std::size_t instance,
          const SignalState &signals);
-  [[nodiscard]] std::expected<StackResult, std::string>
+  [[nodiscard]] std::expected<StackOutcome, std::string>
   Render(StepOutputRef output, const LayerFilter &filter,
          const StackBase &base);
   [[nodiscard]] std::optional<TextureView> Texture(RenderValueRef output) const;
@@ -53,10 +53,8 @@ public:
                                                    std::size_t instance) const;
 
 private:
-  [[nodiscard]] std::expected<RenderValue, std::string>
-  Execute(const RenderStep &step,
-          std::span<const ResolvedRenderInput<RenderValue>> inputs,
-          RenderScratch &scratch);
+  void CollectReadback(RenderInputId input);
+  [[nodiscard]] bool AwaitingFirstReadback() const;
 
   std::vector<std::shared_ptr<const RecipeGraph>> graphs_;
   GeometryInputs geometry_;

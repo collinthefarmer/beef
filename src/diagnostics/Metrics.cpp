@@ -18,6 +18,9 @@ struct Counters {
   std::atomic<std::uint64_t> targetsPeak{0};
   std::atomic<std::uint64_t> targetBytes{0};
   std::atomic<std::uint64_t> targetBytesPeak{0};
+  std::atomic<std::uint64_t> frames{0};
+  std::atomic<std::uint64_t> renderEvaluations{0};
+  std::atomic<std::uint64_t> stepExecutions{0};
 };
 
 Counters &State() noexcept {
@@ -72,6 +75,15 @@ void CountTargetDestroyed(std::uint64_t a_bytes) noexcept {
   state.targetBytes.fetch_sub(a_bytes, std::memory_order_relaxed);
 }
 
+void CountFrame() noexcept {
+  State().frames.fetch_add(1, std::memory_order_relaxed);
+}
+void CountRenderEvaluation() noexcept {
+  State().renderEvaluations.fetch_add(1, std::memory_order_relaxed);
+}
+void CountStepExecution() noexcept {
+  State().stepExecutions.fetch_add(1, std::memory_order_relaxed);
+}
 Snapshot Drain() noexcept {
   Counters &state = State();
   Snapshot out;
@@ -91,6 +103,11 @@ Snapshot Drain() noexcept {
   out.targetsPeak = state.targetsPeak.load(std::memory_order_relaxed);
   out.targetBytes = state.targetBytes.load(std::memory_order_relaxed);
   out.targetBytesPeak = state.targetBytesPeak.load(std::memory_order_relaxed);
+  out.frames = state.frames.exchange(0, std::memory_order_relaxed);
+  out.renderEvaluations =
+      state.renderEvaluations.exchange(0, std::memory_order_relaxed);
+  out.stepExecutions =
+      state.stepExecutions.exchange(0, std::memory_order_relaxed);
   return out;
 }
 }

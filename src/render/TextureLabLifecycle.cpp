@@ -201,6 +201,7 @@ bool TextureLab::CompileShaders(GpuResources &a_resources) {
   a_resources.ripple = pixelPipeline("PSRipple", sizeof(RippleConstants));
   a_resources.clusters = pixelPipeline("PSClusters", sizeof(ClusterConstants));
   a_resources.dilate = pixelPipeline("DilatePS", 0);
+  a_resources.reduce = pixelPipeline("PSReduce", sizeof(ReductionConstants));
 
   const auto bakeVertex = compile("BakeVS", "vs_5_0");
   const auto bakePixel = compile("BakePS", "ps_5_0");
@@ -272,6 +273,7 @@ void TextureLab::Clear() {
   targets_->ClearUnused();
   luminance_.clear();
   channelMeans_.clear();
+  reductionLevels_.clear();
   sampleWarned_.clear();
 }
 }

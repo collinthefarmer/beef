@@ -6,10 +6,10 @@ using test::Check;
 int main() {
   RenderPlan plan;
   plan.inputs.push_back({RenderResourceType::kTexture, TextureValue{}});
-  plan.steps.push_back({ReduceFieldStep{ReductionKind::kMean,
-                                        RenderInputRef{0},
-                                        ValueType::kScalar,
-                                        {64, 64}},
+  plan.steps.push_back({SubmitReductionStep{ReductionKind::kMean,
+                                            RenderInputRef{0},
+                                            ValueType::kScalar,
+                                            {64, 64}},
                         "mean"});
   plan.steps.push_back({ConstantRenderStep{1.0f}, "independent"});
   RenderExecution<int> execution{plan};
@@ -76,10 +76,10 @@ int main() {
   Check(!execution.Evaluate(StepOutputRef{0, 1}, execute, same, select),
         "invalid output handle is rejected");
   RenderPlan cycle;
-  cycle.steps.push_back({ReduceFieldStep{ReductionKind::kMean,
-                                         StepOutputRef{0, 0},
-                                         ValueType::kScalar,
-                                         {64, 64}},
+  cycle.steps.push_back({SubmitReductionStep{ReductionKind::kMean,
+                                             StepOutputRef{0, 0},
+                                             ValueType::kScalar,
+                                             {64, 64}},
                          "cycle"});
   Check(!ValidateRenderPlan(cycle), "cyclic producer reference is rejected");
   RenderPlan hidden;

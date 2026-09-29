@@ -1124,14 +1124,46 @@ Decompile provenance (`decompiled/WornEnchantmentFX/plugin.c` unless noted):
   The projection uses the compatibility weights 0.299, 0.587 and 0.114. The graph
   now carries this measurement and expression explicitly. The original 0.05
   floor caps gain at ten; the historical reason for that threshold is unknown.
+- The mean measures the image at the mesh's unscrolled coordinates. Tile,
+  mirror and transpose apply; scroll does not. A time-driven scroll would
+  otherwise draw the measured field and reduce it again on every tick. The
+  import templates scroll every fill layer. The result equals the scrolled
+  mean when scroll is zero. For a tiling scrolled image it is the mean at
+  scroll zero.
+- A curve's `mean` over a scrolled image source measures the same source at
+  unscrolled coordinates, for the same reason. The template `glossField` layer
+  uses such a curve. A source with its own result transform keeps measuring
+  its shown value.
 - Stack composition alternates between its retained target and the lab's shared
   scratch. Initial parity ensures the final layer lands in the retained target;
   a preceding stack remains separate from both destinations.
-- Reductions measure all requested texel centers, including uncovered texels,
-  using float intermediates and synchronous base-level readback. Double-precision
-  row-major accumulation defines sum and mean. Missing/non-finite measurements
-  fail instead of using a fallback. Float scratch prevents bake dilation from
-  introducing an extra RGBA8 quantization into the measurement path.
+- Reductions measure all requested texel centers, including uncovered texels.
+  The GPU reduces the float field in `PSReduce` passes. Each pass reduces a 4x4
+  block to one texel until one texel remains (`planners/GpuReduction`). The
+  passes accumulate sum and mean in float32. The CPU divides the sum by the
+  texel count for the mean. A sum of float32 values can lose a small term next
+  to a large one. The first pass writes 1 to alpha for a texel with a
+  non-finite used component, and later passes keep the maximum. A flagged or
+  non-finite result fails instead of using a fallback. Float scratch prevents
+  bake dilation from introducing an extra RGBA8 quantization into the
+  measurement path.
+- A reduction lowers to a `SubmitReductionStep` and a readback input
+  (`ReadbackBinding`). The submission copies the one-texel result to one of
+  three staging textures and returns a constant, so its version never
+  advances. `RenderInstance::CollectReadbacks` runs once per frame and maps
+  each pending copy with `D3D11_MAP_FLAG_DO_NOT_WAIT`. A completed copy imports
+  its value into the readback input, and a consumer recomputes only when that
+  value changes. A result is one to three frames late. No readback waits,
+  because a blocking map waits for all GPU work queued in the frame; a test run
+  measured 942 ms for one such wait at apply.
+- Material sampling follows the same shape: `SubmitMaterialSampleStep` copies
+  the RMAOS and diffuse maps to two staging textures, and a readback input of
+  type material sample receives the decoded sample. The studio's
+  `TextureLab::SampleMaterial` uses the same copies and waits for them.
+- Before a readback input receives its first value, a stack that reads it
+  fails. `RenderInstance::Render` reports such a stack as `StackPending` while
+  its submission is in flight. A pending output is neither rendered nor
+  failed, so its application stays prepared and the slot keeps its base.
 - Imported inputs remain stable during one synchronous execution request. A
   per-request refresh set bounds shared DAG traversal by its edges, avoiding
   repeated descent through already-validated dependencies.

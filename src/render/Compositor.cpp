@@ -40,6 +40,10 @@ RenderOutput::RenderOutput(std::shared_ptr<RenderInstance> render,
 
 TextureRef RenderOutput::Texture() const noexcept { return latest_; }
 
+std::uint64_t RenderOutput::ContentVersion() const noexcept {
+  return latestVersion_;
+}
+
 bool RenderOutput::Animated() const noexcept { return animated_; }
 
 TextureSize RenderOutput::Size() const noexcept { return size_; }
@@ -127,22 +131,26 @@ TextureSize Compositor::StackSize(const SurfaceOutput &output,
                       extent ? std::max(extent->width, extent->height) : 0u);
 }
 
-bool Compositor::Render(RenderOutput &stack, const LayerFilter &filter,
-                        const StackBase &base) {
+StackRender Compositor::Render(RenderOutput &stack, const LayerFilter &filter,
+                               const StackBase &base) {
   const auto render = stack.render_.lock();
   if (!render) {
     stack.latest_ = {};
-    return false;
+    return StackRender::kFailed;
   }
   const auto result = render->Render(stack.result_, filter, base);
   stack.diagnostics_.clear();
   if (!result) {
     stack.latest_ = {};
     stack.diagnostics_.push_back({Severity::kError, "stack", result.error()});
-    return false;
+    return StackRender::kFailed;
   }
-  stack.latest_ = result->texture;
-  return true;
+  const auto *rendered = Get<StackResult>(*result);
+  if (!rendered)
+    return StackRender::kPending;
+  stack.latest_ = rendered->texture;
+  stack.latestVersion_ = rendered->contentVersion;
+  return StackRender::kRendered;
 }
 
 std::string DescribeTexture(const TextureRef &a_texture) {

@@ -53,6 +53,9 @@ public:
   [[nodiscard]] std::span<const RenderInputState<T>> Inputs() const noexcept {
     return inputs_;
   }
+  [[nodiscard]] Scratch *ScratchOf(RenderStepId step) noexcept {
+    return step < steps_.size() ? &steps_[step].scratch : nullptr;
+  }
   [[nodiscard]] std::expected<void, std::string>
   SetInput(RenderInputId id, T value, bool changed) {
     if (id >= inputs_.size())
@@ -96,7 +99,17 @@ private:
     if (depth > 64 || ++visits > 65536)
       return std::unexpected("render execution exceeds traversal limit");
     if (const auto *input = Get<RenderInputRef>(result)) {
-      if (input->input >= inputs_.size() || !inputs_[input->input].value)
+      if (input->input >= inputs_.size())
+        return std::unexpected("render input is unavailable");
+      if (const auto *readback =
+              Get<ReadbackBinding>(plan_.inputs[input->input].binding)) {
+        auto submitted =
+            EvaluateValue(StepOutputRef{readback->submission, 0}, execute, same,
+                          select, depth + 1, visits, refreshed);
+        if (!submitted)
+          return std::unexpected(submitted.error());
+      }
+      if (!inputs_[input->input].value)
         return std::unexpected("render input is unavailable");
       const auto &value = inputs_[input->input];
       return ResolvedRenderInput<T>{result, *value.value, value.changeVersion};

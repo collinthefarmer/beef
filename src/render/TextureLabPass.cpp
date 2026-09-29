@@ -563,18 +563,17 @@ bool TextureLab::RenderRipple(RenderTarget &a_target,
   return true;
 }
 
-std::optional<MaterialSample>
-TextureLab::SampleMaterial(RE::NiSourceTexture *a_rmaos,
-                           RE::NiSourceTexture *a_diffuse) {
+bool TextureLab::SubmitMaterialSample(RE::NiSourceTexture *a_rmaos,
+                                      RE::NiSourceTexture *a_diffuse,
+                                      MaterialReadback &a_readback) {
   static_assert(static_cast<std::size_t>(kSampleSide) * kSampleSide <=
                 kMaxSampleTexels);
-  const auto fail =
-      [&](RE::NiSourceTexture *a_texture,
-          std::string_view a_why) -> std::optional<MaterialSample> {
+  const auto fail = [&](RE::NiSourceTexture *a_texture,
+                        std::string_view a_why) {
     if (sampleWarned_.insert(a_texture).second) {
       logger::warn("TextureLab: material sample: {}", a_why);
     }
-    return std::nullopt;
+    return false;
   };
   if (!Init()) {
     return fail(nullptr, "the lab is unavailable");
@@ -592,45 +591,45 @@ TextureLab::SampleMaterial(RE::NiSourceTexture *a_rmaos,
   if (!target || target->size != kSampleSide) {
     return fail(a_rmaos, "no sample target");
   }
-  const auto copyBack =
-      [&](RE::NiSourceTexture *a_map,
-          const Extent &a_extent) -> std::vector<std::uint8_t> {
+  if (!EnsureSampleStaging(a_readback)) {
+    return fail(a_rmaos, "no sample staging textures");
+  }
+  const auto copy = [&](RE::NiSourceTexture *a_map, const Extent &a_extent,
+                        REX::W32::ID3D11Texture2D &a_staging) {
     LayerParams params;
     params.mode = Mode::kCopy;
     params.scroll.sourceMip = MipThatFits(a_extent, kSampleSide);
-    if (!Render(*target, a_map, params)) {
-      return {};
-    }
-    return ReadBackPixels(*target);
+    return Render(*target, a_map, params) && CopyToStaging(*target, a_staging);
   };
-  const std::size_t texelCount =
-      static_cast<std::size_t>(kSampleSide) * kSampleSide;
-  const auto rmaos = copyBack(a_rmaos, *rmaosExtent);
-  if (rmaos.size() != texelCount * 4) {
-    return fail(a_rmaos, "the RMAOS map could not be read back");
+  if (!copy(a_rmaos, *rmaosExtent, *a_readback.rmaos.Get())) {
+    return fail(a_rmaos, "the RMAOS map could not be copied");
   }
-  const auto diffuse = copyBack(a_diffuse, *diffuseExtent);
-  if (diffuse.size() != texelCount * 4) {
-    return fail(a_diffuse, "the diffuse map could not be read back");
+  if (!copy(a_diffuse, *diffuseExtent, *a_readback.diffuse.Get())) {
+    return fail(a_diffuse, "the diffuse map could not be copied");
   }
-  MaterialSample sample;
-  sample.width = kSampleSide;
-  sample.height = kSampleSide;
-  sample.texels.reserve(texelCount);
-  constexpr float scale = 1.0f / 255.0f;
-  for (std::size_t i = 0; i < texelCount; ++i) {
-    const std::uint8_t *m = rmaos.data() + i * 4;
-    const std::uint8_t *d = diffuse.data() + i * 4;
-    MaterialTexel texel;
-    texel.roughness = m[0] * scale;
-    texel.metallic = m[1] * scale;
-    texel.occlusion = m[2] * scale;
-    texel.reflectance = m[3] * scale;
-    texel.luma = (0.2126f * d[0] + 0.7152f * d[1] + 0.0722f * d[2]) * scale;
-    texel.diffuse = Vec3{d[0] * scale, d[1] * scale, d[2] * scale};
-    sample.texels.push_back(texel);
+  a_readback.pending = true;
+  return true;
+}
+
+std::optional<TextureLab::MaterialSampleResult>
+TextureLab::CollectMaterialSample(MaterialReadback &a_readback) {
+  return ReadMaterialSample(a_readback, false);
+}
+
+std::optional<MaterialSample>
+TextureLab::SampleMaterial(RE::NiSourceTexture *a_rmaos,
+                           RE::NiSourceTexture *a_diffuse) {
+  MaterialReadback readback;
+  if (!SubmitMaterialSample(a_rmaos, a_diffuse, readback)) {
+    return std::nullopt;
   }
-  return sample;
+  auto sample = ReadMaterialSample(readback, true);
+  if (!sample || !*sample) {
+    logger::warn("TextureLab: material sample: {}",
+                 sample ? sample->error() : "no readback was pending");
+    return std::nullopt;
+  }
+  return std::move(**sample);
 }
 
 bool TextureLab::RenderClusters(RenderTarget &a_target,
@@ -686,6 +685,94 @@ bool TextureLab::RenderClusters(RenderTarget &a_target,
   REX::W32::ID3D11Buffer *cbs[4]{nullptr, nullptr, nullptr,
                                  pipeline.constants.Get()};
   DrawFullScreen(pass, a_target, {pipeline.shader.Get(), srvs, cbs});
+  return true;
+}
+
+TextureLab::ReductionLevel *
+TextureLab::ReductionLevelFor(ReductionExtent a_extent) {
+  const auto key = std::make_pair(a_extent.width, a_extent.height);
+  if (const auto found = reductionLevels_.find(key);
+      found != reductionLevels_.end())
+    return &found->second;
+  D3D11_TEXTURE2D_DESC desc{};
+  desc.width = a_extent.width;
+  desc.height = a_extent.height;
+  desc.mipLevels = 1;
+  desc.arraySize = 1;
+  desc.format = DXGI_FORMAT_R32G32B32A32_FLOAT;
+  desc.sampleDesc.count = 1;
+  desc.usage = D3D11_USAGE_DEFAULT;
+  desc.bindFlags = D3D11_BIND_RENDER_TARGET | D3D11_BIND_SHADER_RESOURCE;
+  ReductionLevel level;
+  if (Failed(borrowedDevice_->CreateTexture2D(&desc, nullptr,
+                                              level.texture.GetAddressOf())) ||
+      Failed(borrowedDevice_->CreateShaderResourceView(
+          level.texture.Get(), nullptr, level.srv.GetAddressOf())) ||
+      Failed(borrowedDevice_->CreateRenderTargetView(
+          level.texture.Get(), nullptr, level.rtv.GetAddressOf()))) {
+    logger::error("TextureLab: reduction level {}x{} unavailable",
+                  a_extent.width, a_extent.height);
+    return nullptr;
+  }
+  return &reductionLevels_.emplace(key, std::move(level)).first->second;
+}
+
+bool TextureLab::DrawReduction(RenderTarget &a_field, ReductionKind a_kind,
+                               ValueType a_type,
+                               REX::W32::ID3D11Texture2D &a_staging) {
+  auto *renderer = RE::BSGraphics::Renderer::GetSingleton();
+  if (!available_ || !renderer || !borrowedContext_ ||
+      !gpu_->reduce.has_value() || !a_field.texture.Get() || !a_field.srv.Get())
+    return false;
+  D3D11_TEXTURE2D_DESC desc{};
+  a_field.texture->GetDesc(&desc);
+  const ReductionExtent field{desc.width, desc.height};
+  const auto extents = ReductionLevels(field);
+  if (desc.format != DXGI_FORMAT_R32G32B32A32_FLOAT || extents.empty())
+    return false;
+  std::vector<ReductionLevel *> levels;
+  for (const auto &extent : extents) {
+    auto *level = ReductionLevelFor(extent);
+    if (!level)
+      return false;
+    levels.push_back(level);
+  }
+  const PixelPipeline &pipeline = *gpu_->reduce;
+  const RenderPass pass{*renderer, *borrowedContext_};
+  auto &context = pass.Context();
+  context.IASetInputLayout(nullptr);
+  context.IASetPrimitiveTopology(D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
+  context.VSSetShader(gpu_->vertex.Get(), nullptr, 0);
+  context.PSSetShader(pipeline.shader.Get(), nullptr, 0);
+  const float blendFactor[4]{};
+  context.OMSetBlendState(gpu_->blend.Get(), blendFactor, 0xFFFFFFFF);
+  context.OMSetDepthStencilState(gpu_->depth.Get(), 0);
+  context.RSSetState(gpu_->raster.Get());
+  REX::W32::ID3D11ShaderResourceView *source = a_field.srv.Get();
+  ReductionExtent sourceExtent = field;
+  for (std::size_t i = 0; i < levels.size(); ++i) {
+    const ReductionConstants constants{
+        {static_cast<std::uint32_t>(a_kind), ReductionComponents(a_type),
+         sourceExtent.width, sourceExtent.height},
+        {i == 0 ? 1u : 0u, 0u, 0u, 0u}};
+    context.UpdateSubresource(pipeline.constants.Get(), 0, nullptr, &constants,
+                              0, 0);
+    REX::W32::ID3D11RenderTargetView *rtv = levels[i]->rtv.Get();
+    context.OMSetRenderTargets(1, &rtv, nullptr);
+    D3D11_VIEWPORT viewport{};
+    viewport.width = static_cast<float>(extents[i].width);
+    viewport.height = static_cast<float>(extents[i].height);
+    viewport.maxDepth = 1.0f;
+    context.RSSetViewports(1, &viewport);
+    context.PSSetShaderResources(0, 1, &source);
+    REX::W32::ID3D11Buffer *buffers[]{pipeline.constants.Get()};
+    context.PSSetConstantBuffers(4, 1, buffers);
+    context.Draw(3, 0);
+    UnbindTarget(pass, 1);
+    source = levels[i]->srv.Get();
+    sourceExtent = extents[i];
+  }
+  context.CopyResource(&a_staging, levels.back()->texture.Get());
   return true;
 }
 }

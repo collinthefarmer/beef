@@ -26,27 +26,9 @@ struct PlanBuilder {
     plan.values.push_back({value, result});
   }
   RenderValueRef Step(RenderStepKind kind, std::string label) {
-    for (std::size_t i = 0; i < plan.steps.size(); ++i) {
-      const bool equal = Match(
-          kind,
-          [&](const BuildBakeBuffersStep &k) {
-            const auto *other = Get<BuildBakeBuffersStep>(plan.steps[i].kind);
-            return other && other->mesh == k.mesh &&
-                   other->operation == k.operation;
-          },
-          [&](const SampleMaterialStep &k) {
-            const auto *other = Get<SampleMaterialStep>(plan.steps[i].kind);
-            return other && other->material == k.material;
-          },
-          [&](const ClusterMaterialStep &k) {
-            const auto *other = Get<ClusterMaterialStep>(plan.steps[i].kind);
-            return other && other->sample == k.sample &&
-                   other->settings == k.settings;
-          },
-          [](const auto &) { return false; });
-      if (equal)
+    for (std::size_t i = 0; i < plan.steps.size(); ++i)
+      if (plan.steps[i].kind == kind)
         return StepOutputRef{i, 0};
-    }
     if (plan.steps.size() >= 4096) {
       problem = "render plan exceeds step limit";
       return StepOutputRef{4096, 0};
@@ -64,27 +46,22 @@ struct PlanBuilder {
     plan.inputs.push_back({type, value});
     return RenderInputRef{id};
   }
+  RenderValueRef Readback(StepOutputRef submission, RenderValueType type) {
+    const ReadbackBinding binding{submission.step};
+    for (std::size_t i = 0; i < plan.inputs.size(); ++i)
+      if (const auto *existing = Get<ReadbackBinding>(plan.inputs[i].binding);
+          existing && *existing == binding)
+        return RenderInputRef{i};
+    plan.inputs.push_back({type, binding});
+    return RenderInputRef{plan.inputs.size() - 1};
+  }
   RenderValueRef Lookup(const RecipeGraph &graph, FunctionId function,
-                        const std::vector<LookupArgument> &arguments,
+                        std::vector<LookupArgument> arguments,
                         const std::string &name,
                         std::size_t sampledParameter = 0) {
-    for (std::size_t i = 0; i < plan.steps.size(); ++i) {
-      const auto *lookup = Get<BuildLookupStep>(plan.steps[i].kind);
-      if (!lookup || lookup->graph != &graph || lookup->function != function ||
-          lookup->sampledParameter != sampledParameter ||
-          lookup->boundArguments.size() != arguments.size())
-        continue;
-      bool equal = true;
-      for (std::size_t j = 0; j < arguments.size(); ++j)
-        equal = equal &&
-                lookup->boundArguments[j].parameter == arguments[j].parameter &&
-                lookup->boundArguments[j].value == arguments[j].value;
-      if (equal)
-        return StepOutputRef{i, 0};
-    }
-    return Step(
-        BuildLookupStep{&graph, function, sampledParameter, arguments, 256},
-        name);
+    return Step(BuildLookupStep{&graph, function, sampledParameter,
+                                std::move(arguments), 256},
+                name);
   }
   RenderValueRef Field(RenderValueRef value, TextureRequirements requirements,
                        const std::string &label) {
@@ -201,12 +178,17 @@ struct PlanBuilder {
             problem = label + ": reduction requires a numeric field";
             return RenderInputRef{0};
           }
-          return Step(ReduceFieldStep{k.kind,
-                                      field,
-                                      *sampleType,
-                                      {requirements.size.Pixels(),
-                                       requirements.size.Pixels()}},
-                      label);
+          const auto submission =
+              Step(SubmitReductionStep{k.kind,
+                                       field,
+                                       *sampleType,
+                                       {requirements.size.Pixels(),
+                                        requirements.size.Pixels()}},
+                   label + " submission");
+          const auto *submitted = Get<StepOutputRef>(submission);
+          if (!submitted)
+            return submission;
+          return Readback(*submitted, *sampleType);
         },
         [&](const MapFunctionOperation &k) -> RenderValueRef {
           if (k.arguments.empty()) {
@@ -232,8 +214,8 @@ struct PlanBuilder {
             if (i != *sampled)
               arguments.push_back({i, build(k.arguments[i])});
           const auto source = build(k.arguments[*sampled]);
-          const auto lookup =
-              Lookup(graph, k.function, arguments, label + " lookup", *sampled);
+          const auto lookup = Lookup(graph, k.function, std::move(arguments),
+                                     label + " lookup", *sampled);
           return Step(MapFieldStep{source, lookup, requirements}, label);
         },
         [&](const ExpressionOperation &k) -> RenderValueRef {
@@ -249,8 +231,8 @@ struct PlanBuilder {
             std::vector<LookupArgument> arguments;
             for (const auto &argument : lookup.arguments)
               arguments.push_back({argument.parameter, build(argument.value)});
-            lookups.push_back(Lookup(graph, lookup.function, arguments,
-                                     label + " lookup",
+            lookups.push_back(Lookup(graph, lookup.function,
+                                     std::move(arguments), label + " lookup",
                                      lookup.sampledParameter));
           }
           return Step(EvaluateProgramStep{std::move(*program),
@@ -304,8 +286,13 @@ struct PlanBuilder {
         },
         [&](const MaterialClustersOperation &k) -> RenderValueRef {
           const auto material = build(k.material);
+          const auto submission =
+              Step(SubmitMaterialSampleStep{material}, label + " samples");
+          const auto *submitted = Get<StepOutputRef>(submission);
+          if (!submitted)
+            return submission;
           const auto sample =
-              Step(SampleMaterialStep{material}, label + " samples");
+              Readback(*submitted, RenderResourceType::kMaterialSample);
           const auto analysis = Step(ClusterMaterialStep{sample, k.settings},
                                      label + " analysis");
           return Step(DrawClustersStep{material, analysis, requirements},
@@ -313,32 +300,11 @@ struct PlanBuilder {
         },
         [&](const RippleOperation &k) -> RenderValueRef {
           const auto mesh = build(k.geometry);
-          RenderValueRef positions = RenderInputRef{0};
-          bool found = false;
-          for (std::size_t i = 0; i < plan.steps.size(); ++i) {
-            const auto *bake = Get<BakeMeshStep>(plan.steps[i].kind);
-            const auto *producer =
-                bake ? Get<StepOutputRef>(bake->buffers) : nullptr;
-            const auto *buffers =
-                producer && producer->step < plan.steps.size()
-                    ? Get<BuildBakeBuffersStep>(plan.steps[producer->step].kind)
-                    : nullptr;
-            const auto *kind =
-                buffers ? Get<BakeKind>(buffers->operation) : nullptr;
-            if (kind && Is<PositionBake>(*kind) && buffers->mesh == mesh &&
-                bake->requirements == requirements) {
-              positions = StepOutputRef{i, 0};
-              found = true;
-              break;
-            }
-          }
-          if (!found) {
-            const auto buffers =
-                Step(BuildBakeBuffersStep{mesh, BakeKind{PositionBake{}}},
-                     label + " position buffers");
-            positions =
-                Step(BakeMeshStep{buffers, requirements}, label + " positions");
-          }
+          const auto buffers =
+              Step(BuildBakeBuffersStep{mesh, BakeKind{PositionBake{}}},
+                   label + " position buffers");
+          const auto positions =
+              Step(BakeMeshStep{buffers, requirements}, label + " positions");
           std::vector<RenderValueRef> inputs;
           for (auto ref : InputsOf(node->kind)) {
             if (ref == k.coordinates)

@@ -122,11 +122,11 @@ private:
 class ReadMapping {
 public:
   ReadMapping(ID3D11DeviceContext *a_context, ID3D11Resource *a_resource,
-              ReadbackMeter &a_meter)
+              ReadbackMeter &a_meter, std::uint32_t a_flags = 0)
       : borrowedContext_(a_context), resource_(a_resource) {
     const Metrics::Stopwatch watch;
     active_ = !Failed(
-        borrowedContext_->Map(resource_, 0, D3D11_MAP_READ, 0, &mapped_));
+        borrowedContext_->Map(resource_, 0, D3D11_MAP_READ, a_flags, &mapped_));
     a_meter.Mapped(watch.Micros(), active_);
   }
   ~ReadMapping() {
@@ -192,56 +192,67 @@ TextureLab::ReadBuffer(REX::W32::ID3D11Buffer *a_buffer,
   return out;
 }
 
-std::expected<Value, std::string> TextureLab::ReduceField(RenderTarget &target,
-                                                          ReductionKind kind,
-                                                          ValueType type) {
+bool TextureLab::EnsureReductionStaging(ReductionReadback &a_readback) {
+  D3D11_TEXTURE2D_DESC desc{};
+  desc.width = 1;
+  desc.height = 1;
+  desc.mipLevels = 1;
+  desc.arraySize = 1;
+  desc.format = DXGI_FORMAT_R32G32B32A32_FLOAT;
+  desc.sampleDesc.count = 1;
+  desc.usage = D3D11_USAGE_STAGING;
+  desc.cpuAccessFlags = D3D11_CPU_ACCESS_READ;
+  for (auto &staging : a_readback.staging)
+    if (!staging.Get() && Failed(borrowedDevice_->CreateTexture2D(
+                              &desc, nullptr, staging.GetAddressOf())))
+      return false;
+  return true;
+}
+
+bool TextureLab::SubmitReduction(RenderTarget &a_field, ReductionKind a_kind,
+                                 ValueType a_type,
+                                 ReductionReadback &a_readback) {
+  if (!EnsureReductionStaging(a_readback))
+    return false;
+  const std::size_t slot = ReserveReadback(a_readback.ring);
+  if (DrawReduction(a_field, a_kind, a_type, *a_readback.staging[slot].Get()))
+    return true;
+  DropReadback(a_readback.ring, slot);
+  return false;
+}
+
+std::optional<ReductionResult>
+TextureLab::CollectReduction(ReductionKind a_kind, ValueType a_type,
+                             ReductionExtent a_extent,
+                             ReductionReadback &a_readback) {
+  const auto pending = PendingNewestFirst(a_readback.ring);
+  if (pending.empty())
+    return std::nullopt;
   ReadbackMeter meter{"reduction"};
   const RendererLock rendererLock{&meter};
-  if (!available_ || !borrowedDevice_ || !borrowedContext_ ||
-      !target.texture.Get())
-    return std::unexpected("reduction texture is unavailable");
-  D3D11_TEXTURE2D_DESC desc{};
-  target.texture->GetDesc(&desc);
-  if (desc.format != DXGI_FORMAT_R32G32B32A32_FLOAT || !desc.width ||
-      !desc.height || desc.width > 4096 || desc.height > 4096)
-    return std::unexpected("reduction requires a bounded float field");
-  auto stagingDesc = desc;
-  stagingDesc.mipLevels = 1;
-  stagingDesc.arraySize = 1;
-  stagingDesc.usage = D3D11_USAGE_STAGING;
-  stagingDesc.bindFlags = 0;
-  stagingDesc.miscFlags = 0;
-  stagingDesc.cpuAccessFlags = D3D11_CPU_ACCESS_READ;
-  ComPtr<REX::W32::ID3D11Texture2D> staging;
-  if (Failed(borrowedDevice_->CreateTexture2D(&stagingDesc, nullptr,
-                                              staging.GetAddressOf())))
-    return std::unexpected("reduction staging allocation failed");
-  const UnconditionalReadback unconditional{borrowedContext_};
-  borrowedContext_->CopySubresourceRegion(staging.Get(), 0, 0, 0, 0,
-                                          target.texture.Get(), 0, nullptr);
-  const ReadMapping mapped{borrowedContext_, staging.Get(), meter};
-  const auto *rows = mapped.Data();
-  if (!rows || mapped.RowPitch() < static_cast<std::size_t>(desc.width) * 16)
-    return std::unexpected("reduction readback failed");
-  FieldReduction reduction{kind, type};
-  for (std::uint32_t y = 0; y < desc.height; ++y) {
-    for (std::uint32_t x = 0; x < desc.width; ++x) {
-      std::array<float, 4> pixel{};
-      std::memcpy(pixel.data(),
-                  rows + static_cast<std::size_t>(y) * mapped.RowPitch() +
-                      static_cast<std::size_t>(x) * sizeof(pixel),
-                  sizeof(pixel));
-      Value value = pixel[0];
-      if (type == ValueType::kVec2)
-        value = Vec2{pixel[0], pixel[1]};
-      if (type == ValueType::kVec3)
-        value = Vec3{pixel[0], pixel[1], pixel[2]};
-      if (auto added = reduction.Add(value); !added)
-        return std::unexpected(added.error());
+  if (!available_ || !borrowedContext_)
+    return ReductionResult{
+        std::unexpected("reduction readback is unavailable")};
+  for (const std::size_t slot : pending) {
+    if (!a_readback.staging[slot].Get()) {
+      DropReadback(a_readback.ring, slot);
+      continue;
     }
+    const ReadMapping mapped{
+        borrowedContext_,
+        reinterpret_cast<ID3D11Resource *>(a_readback.staging[slot].Get()),
+        meter, static_cast<std::uint32_t>(D3D11_MAP_FLAG_DO_NOT_WAIT)};
+    const auto *data = mapped.Data();
+    if (!data)
+      continue;
+    ReducedTexel texel{};
+    std::memcpy(texel.data(), data, sizeof(texel));
+    meter.Succeeded(sizeof(texel));
+    if (!AcceptReadback(a_readback.ring, slot))
+      return std::nullopt;
+    return DecodeReduction(a_kind, a_type, texel, a_extent);
   }
-  meter.Succeeded(static_cast<std::size_t>(desc.width) * desc.height * 16);
-  return reduction.Result();
+  return std::nullopt;
 }
 
 std::optional<float> TextureLab::ReadBackMean(RenderTarget &a_target) {
@@ -286,58 +297,88 @@ std::optional<float> TextureLab::ReadBackMean(RenderTarget &a_target) {
   return result;
 }
 
-std::vector<std::uint8_t> TextureLab::ReadBackPixels(RenderTarget &a_target) {
+bool TextureLab::EnsureSampleStaging(MaterialReadback &a_readback) {
+  D3D11_TEXTURE2D_DESC desc{};
+  desc.width = kSampleSide;
+  desc.height = kSampleSide;
+  desc.mipLevels = 1;
+  desc.arraySize = 1;
+  desc.format = DXGI_FORMAT_R8G8B8A8_UNORM;
+  desc.sampleDesc.count = 1;
+  desc.usage = D3D11_USAGE_STAGING;
+  desc.cpuAccessFlags = D3D11_CPU_ACCESS_READ;
+  for (auto *staging : {&a_readback.rmaos, &a_readback.diffuse})
+    if (!staging->Get() && Failed(borrowedDevice_->CreateTexture2D(
+                               &desc, nullptr, staging->GetAddressOf())))
+      return false;
+  return true;
+}
+
+bool TextureLab::CopyToStaging(RenderTarget &a_target,
+                               REX::W32::ID3D11Texture2D &a_staging) {
+  const RendererLock rendererLock;
+  if (!available_ || !borrowedContext_ || !a_target.texture.Get())
+    return false;
+  const UnconditionalReadback unconditional{borrowedContext_};
+  borrowedContext_->CopySubresourceRegion(&a_staging, 0, 0, 0, 0,
+                                          a_target.texture.Get(), 0, nullptr);
+  return true;
+}
+
+std::optional<TextureLab::MaterialSampleResult>
+TextureLab::ReadMaterialSample(MaterialReadback &a_readback, bool a_wait) {
+  if (!a_readback.pending)
+    return std::nullopt;
   ReadbackMeter meter{"pixels"};
   const RendererLock rendererLock{&meter};
-  std::vector<std::uint8_t> out;
-  if (!a_target.texture.Get() || !available_) {
-    return out;
+  if (!available_ || !borrowedContext_ || !a_readback.rmaos.Get() ||
+      !a_readback.diffuse.Get()) {
+    a_readback.pending = false;
+    return MaterialSampleResult{
+        std::unexpected("material sample readback is unavailable")};
   }
-  D3D11_TEXTURE2D_DESC desc{};
-  a_target.texture->GetDesc(&desc);
-  if (desc.format != DXGI_FORMAT_R8G8B8A8_UNORM || desc.width == 0 ||
-      desc.height == 0 || desc.width != a_target.size ||
-      desc.height != a_target.size) {
-    logger::warn("TextureLab: pixel readback refused: target {}x{} format {}",
-                 desc.width, desc.height,
-                 static_cast<std::uint32_t>(desc.format));
-    return out;
+  const std::uint32_t flags =
+      a_wait ? 0u : static_cast<std::uint32_t>(D3D11_MAP_FLAG_DO_NOT_WAIT);
+  const ReadMapping rmaos{
+      borrowedContext_,
+      reinterpret_cast<ID3D11Resource *>(a_readback.rmaos.Get()), meter, flags};
+  const ReadMapping diffuse{
+      borrowedContext_,
+      reinterpret_cast<ID3D11Resource *>(a_readback.diffuse.Get()), meter,
+      flags};
+  const std::size_t rowBytes = static_cast<std::size_t>(kSampleSide) * 4;
+  if (!rmaos.Data() || !diffuse.Data() || rmaos.RowPitch() < rowBytes ||
+      diffuse.RowPitch() < rowBytes) {
+    if (!a_wait)
+      return std::nullopt;
+    a_readback.pending = false;
+    return MaterialSampleResult{
+        std::unexpected("the material maps could not be read back")};
   }
-  D3D11_TEXTURE2D_DESC stagingDesc{};
-  stagingDesc.width = desc.width;
-  stagingDesc.height = desc.height;
-  stagingDesc.mipLevels = 1;
-  stagingDesc.arraySize = 1;
-  stagingDesc.format = desc.format;
-  stagingDesc.sampleDesc.count = 1;
-  stagingDesc.usage = D3D11_USAGE_STAGING;
-  stagingDesc.cpuAccessFlags = D3D11_CPU_ACCESS_READ;
-  ComPtr<REX::W32::ID3D11Texture2D> staging;
-  if (Failed(borrowedDevice_->CreateTexture2D(&stagingDesc, nullptr,
-                                              staging.GetAddressOf()))) {
-    logger::warn("TextureLab: staging texture creation failed; pixel readback "
-                 "unavailable");
-    return out;
-  }
-  const UnconditionalReadback unconditional{borrowedContext_};
-  borrowedContext_->CopySubresourceRegion(staging.Get(), 0, 0, 0, 0,
-                                          a_target.texture.Get(), 0, nullptr);
-  const ReadMapping mapped{borrowedContext_, staging.Get(), meter};
-  if (const auto *rows = mapped.Data()) {
-    const std::size_t rowBytes = static_cast<std::size_t>(desc.width) * 4;
-    if (mapped.RowPitch() >= rowBytes) {
-      out.resize(rowBytes * desc.height);
-      for (std::uint32_t y = 0; y < desc.height; ++y) {
-        std::memcpy(out.data() + y * rowBytes,
-                    rows + static_cast<std::size_t>(y) * mapped.RowPitch(),
-                    rowBytes);
-      }
-      meter.Succeeded(out.size());
+  MaterialSample sample;
+  sample.width = kSampleSide;
+  sample.height = kSampleSide;
+  sample.texels.reserve(static_cast<std::size_t>(kSampleSide) * kSampleSide);
+  constexpr float scale = 1.0f / 255.0f;
+  for (std::uint32_t y = 0; y < kSampleSide; ++y) {
+    const std::uint8_t *mrow = rmaos.Data() + y * rmaos.RowPitch();
+    const std::uint8_t *drow = diffuse.Data() + y * diffuse.RowPitch();
+    for (std::uint32_t x = 0; x < kSampleSide; ++x) {
+      const std::uint8_t *m = mrow + x * 4;
+      const std::uint8_t *d = drow + x * 4;
+      MaterialTexel texel;
+      texel.roughness = m[0] * scale;
+      texel.metallic = m[1] * scale;
+      texel.occlusion = m[2] * scale;
+      texel.reflectance = m[3] * scale;
+      texel.luma = (0.2126f * d[0] + 0.7152f * d[1] + 0.0722f * d[2]) * scale;
+      texel.diffuse = Vec3{d[0] * scale, d[1] * scale, d[2] * scale};
+      sample.texels.push_back(texel);
     }
-  } else {
-    logger::warn("TextureLab: staging map failed; pixel readback unavailable");
   }
-  return out;
+  meter.Succeeded(rowBytes * kSampleSide * 2);
+  a_readback.pending = false;
+  return MaterialSampleResult{std::move(sample)};
 }
 
 std::shared_ptr<TextureLab::Lookup>

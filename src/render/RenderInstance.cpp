@@ -1,6 +1,8 @@
 // GPL-3.0-only with the additional permission in COPYING.md.
 #include "render/RenderInstance.h"
 
+#include "diagnostics/Metrics.h"
+
 #include "render/MeshReader.h"
 #include "render/SourceSampling.h"
 #include <algorithm>
@@ -19,22 +21,45 @@ bool SameRenderValue(const RenderValue &a, const RenderValue &b) {
     return !stack->texture && !Get<StackResult>(b)->texture;
   return false;
 }
+bool SameTexture(const TextureRef &a, const TextureRef &b) {
+  return a.get() == b.get() && a.Generation() == b.Generation();
+}
+bool SameImport(const Value &a, const Value &b) { return a == b; }
+bool SameImport(const TextureView &a, const TextureView &b) {
+  return SameTexture(a.texture, b.texture) && a.sampling == b.sampling &&
+         a.normalize == b.normalize;
+}
+bool SameImport(const MaterialInputs &a, const MaterialInputs &b) {
+  return SameTexture(a.diffuse, b.diffuse) && SameTexture(a.normal, b.normal) &&
+         SameTexture(a.rmaos, b.rmaos) &&
+         SameTexture(a.displacement, b.displacement) &&
+         a.flatDisplacement == b.flatDisplacement;
+}
+bool SameImport(const RenderTransform &a, const RenderTransform &b) {
+  return a.root.get() == b.root.get();
+}
+bool SameImport(const RenderFirings &a, const RenderFirings &b) {
+  return a == b;
+}
+bool SameImport(const LayerFilter &a, const LayerFilter &b) { return a == b; }
+bool SameImport(const StackResult &a, const StackResult &b) {
+  return SameTexture(a.texture, b.texture) &&
+         a.contentVersion == b.contentVersion;
+}
+bool SameImport(const std::shared_ptr<const MaterialSample> &a,
+                const std::shared_ptr<const MaterialSample> &b) {
+  return a == b || (a && b && *a == *b);
+}
+template <class T>
+bool SameImport(const std::shared_ptr<T> &a, const std::shared_ptr<T> &b) {
+  return a == b;
+}
 bool SameImportedValue(const RenderValue &a, const RenderValue &b) {
   if (a.index() != b.index())
     return false;
-  if (const auto *texture = Get<TextureView>(a)) {
-    const auto &other = *Get<TextureView>(b);
-    return texture->texture.get() == other.texture.get() &&
-           texture->texture.Generation() == other.texture.Generation() &&
-           texture->sampling == other.sampling &&
-           texture->normalize == other.normalize;
-  }
-  if (const auto *stack = Get<StackResult>(a)) {
-    const auto &other = *Get<StackResult>(b);
-    return stack->texture.get() == other.texture.get() &&
-           stack->texture.Generation() == other.texture.Generation();
-  }
-  return SameRenderValue(a, b);
+  return Match(a, [&](const auto &value) {
+    return SameImport(value, *Get<std::decay_t<decltype(value)>>(b));
+  });
 }
 std::expected<std::vector<RenderValueRef>, std::string>
 SelectStackInputs(const CompositeStackStep &step, const RenderValue &control) {
@@ -130,223 +155,10 @@ DrawProgram(const InterpreterProgram &program,
     return std::unexpected("interpreter draw failed");
   return RenderValue{View(target, program.ResultType())};
 }
-}
-RenderInstance::RenderInstance(
-    RenderPlan plan, GeometryInputs inputs,
-    std::vector<std::shared_ptr<const RecipeGraph>> graphs)
-    : graphs_(std::move(graphs)), geometry_(std::move(inputs)),
-      execution_(std::move(plan)) {
-  geometry_.render.reset();
-}
-const RenderPlan &RenderInstance::Plan() const noexcept {
-  return execution_.Plan();
-}
-std::expected<void, std::string>
-RenderInstance::UpdateInput(RenderInputId input, RenderValue value,
-                            bool mutated) {
-  if (input >= execution_.Inputs().size())
-    return std::unexpected("invalid imported render value");
-  const auto actual = Match(
-      value, [](const Value &v) -> RenderValueType { return TypeOf(v); },
-      [](const TextureView &) -> RenderValueType {
-        return RenderResourceType::kTexture;
-      },
-      [](const std::shared_ptr<MeshEntry> &) -> RenderValueType {
-        return RenderResourceType::kMesh;
-      },
-      [](const MaterialInputs &) -> RenderValueType {
-        return RenderResourceType::kMaterial;
-      },
-      [](const RenderTransform &) -> RenderValueType {
-        return RenderResourceType::kTransform;
-      },
-      [](const RenderFirings &) -> RenderValueType {
-        return RenderResourceType::kFirings;
-      },
-      [](const std::shared_ptr<const BakeBuffers> &) -> RenderValueType {
-        return RenderResourceType::kBakeBuffers;
-      },
-      [](const std::shared_ptr<const MaterialSample> &) -> RenderValueType {
-        return RenderResourceType::kMaterialSample;
-      },
-      [](const std::shared_ptr<const MaterialAnalysis> &) -> RenderValueType {
-        return RenderResourceType::kMaterialAnalysis;
-      },
-      [](const std::shared_ptr<TextureLab::Lookup> &) -> RenderValueType {
-        return RenderResourceType::kLookup;
-      },
-      [](const LayerFilter &) -> RenderValueType {
-        return RenderResourceType::kVisibility;
-      },
-      [](const StackResult &) -> RenderValueType {
-        return RenderResourceType::kStack;
-      });
-  if (actual != Plan().inputs[input].type) {
-    execution_.UnsetInput(input);
-    return std::unexpected("imported render value has an incompatible type");
-  }
-  if (const auto *numeric = Get<Value>(value)) {
-    const auto number = AsVec3(*numeric);
-    if (!std::isfinite(number.x) || !std::isfinite(number.y) ||
-        !std::isfinite(number.z)) {
-      execution_.UnsetInput(input);
-      return std::unexpected("imported numeric value is not finite");
-    }
-  }
-  const auto &current = execution_.Inputs()[input].value;
-  return execution_.SetInput(
-      input, value, mutated || !current || !SameImportedValue(*current, value));
-}
-std::expected<void, std::string>
-RenderInstance::Update(const RecipeGraph &graph, std::size_t instance,
-                       const SignalState &signals) {
-  for (std::size_t i = 0; i < Plan().inputs.size(); ++i) {
-    const auto &input = Plan().inputs[i];
-    const auto *binding = Get<TextureValue>(input.binding);
-    if (!binding || binding->graph != &graph || binding->instance != instance)
-      continue;
-    const auto *node = graph.NodeAt(binding->output.node);
-    if (!node) {
-      execution_.UnsetInput(i);
-      continue;
-    }
-    const auto *external = Get<ExternalInput>(node->kind);
-    std::optional<RenderValue> value;
-    bool stableResource = false;
-    if (const auto *numberType = Get<ValueType>(input.type)) {
-      const auto *position =
-          external ? Get<NodePositionInput>(external->source) : nullptr;
-      if (position) {
-        if (const auto origin = NodeBindPosition(
-                geometry_.geometry.get(), geometry_.root.get(), position->name))
-          value = Value{*origin};
-      } else {
-        const auto number = signals.ValueOf(binding->output);
-        const auto v = AsVec3(number);
-        if (TypeOf(number) == *numberType && std::isfinite(v.x) &&
-            std::isfinite(v.y) && std::isfinite(v.z))
-          value = number;
-      }
-    } else if (input.type == RenderValueType{RenderResourceType::kFirings}) {
-      RenderFirings firings;
-      const auto name = graph.NameOf(binding->output.node);
-      for (const auto &firing : signals.Firings(binding->output)) {
-        if (firings.firings.size() >= TextureLab::kRippleFirings)
-          break;
-        auto origin = Match(
-            signals.AnchorOf(name, firing),
-            [](const std::monostate &) { return std::optional<Vec3>{}; },
-            [&](const CarriedPoint &point) {
-              return std::optional{
-                  ToRootSpace(geometry_.root.get(), point.position)};
-            },
-            [&](const AnchorNode &anchor) {
-              return NodeBindPosition(geometry_.geometry.get(),
-                                      geometry_.root.get(), anchor.node);
-            });
-        firings.firings.push_back({origin, firing.startTime});
-      }
-      value = std::move(firings);
-    } else if (external) {
-      if (Is<GeometryInput>(external->source)) {
-        stableResource = true;
-        if (execution_.Inputs()[i].value)
-          continue;
-        const auto mesh =
-            Compositor::GetSingleton()->MeshOf(geometry_.geometry.get());
-        if (mesh)
-          value = *mesh;
-      } else if (Is<MaterialInput>(external->source)) {
-        stableResource = true;
-        value = geometry_.material;
-      } else if (const auto *texture = Get<TextureInput>(external->source)) {
-        stableResource = true;
-        if (execution_.Inputs()[i].value)
-          continue;
-        const auto loaded =
-            Compositor::GetSingleton()->LoadImage(texture->path);
-        if (loaded)
-          value = TextureView{loaded};
-      } else if (Is<RootTransformInput>(external->source))
-        value = RenderTransform{geometry_.root};
-    }
-    if (!value) {
-      execution_.UnsetInput(i);
-      continue;
-    }
-    if (stableResource && execution_.Inputs()[i].value)
-      continue;
-    if (auto set = UpdateInput(i, std::move(*value)); !set)
-      return set;
-  }
-  return {};
-}
-std::expected<StackResult, std::string>
-RenderInstance::Render(StepOutputRef output, const LayerFilter &filter,
-                       const StackBase &base) {
-  if (output.step >= Plan().steps.size())
-    return std::unexpected("invalid stack output");
-  const auto *stack = Get<CompositeStackStep>(Plan().steps[output.step].kind);
-  if (!stack)
-    return std::unexpected("output is not a stack");
-  const auto *baseInput = Get<RenderInputRef>(stack->base);
-  const auto *visibility = Get<RenderInputRef>(stack->visibility);
-  if (!baseInput || !visibility)
-    return std::unexpected("stack controls must be imported");
-  TextureRef texture = base.texture;
-  if (!texture &&
-      !(stack->slot == Slot::kHeight && geometry_.material.flatDisplacement)) {
-    const auto material =
-        MaterialTexture(BaseMapOf(stack->slot), geometry_.material);
-    if (IsNonPlaceholderTexture(material))
-      texture = material;
-  }
-  if (auto set =
-          UpdateInput(baseInput->input, StackResult{texture}, base.animated);
-      !set)
-    return std::unexpected(set.error());
-  if (auto set = UpdateInput(visibility->input, filter); !set)
-    return std::unexpected(set.error());
-  auto result = execution_.Evaluate(
-      output,
-      [&](const RenderStep &step, auto inputs, RenderScratch &scratch) {
-        return Execute(step, inputs, scratch);
-      },
-      SameRenderValue, SelectStackInputs);
-  if (!result)
-    return std::unexpected(result.error());
-  const auto *value = Get<StackResult>(result->value);
-  if (!value)
-    return std::unexpected("stack returned the wrong type");
-  return *value;
-}
-std::optional<TextureView>
-RenderInstance::Texture(RenderValueRef output) const {
-  const std::optional<RenderValue> *value = nullptr;
-  if (const auto *ref = Get<StepOutputRef>(output);
-      ref && ref->output == 0 && ref->step < execution_.Steps().size())
-    value = &execution_.Steps()[ref->step].outputs.front().value;
-  if (const auto *ref = Get<RenderInputRef>(output);
-      ref && ref->input < execution_.Inputs().size())
-    value = &execution_.Inputs()[ref->input].value;
-  if (value && *value)
-    if (const auto *texture = Get<TextureView>(**value))
-      return *texture;
-  return std::nullopt;
-}
-std::optional<TextureView> RenderInstance::Inspect(const RecipeGraph &graph,
-                                                   OutputRef output,
-                                                   std::size_t instance) const {
-  for (const auto &binding : Plan().values)
-    if (binding.value == TextureValue{&graph, output, instance})
-      if (const auto texture = Texture(binding.result))
-        return texture;
-  return std::nullopt;
-}
-std::expected<RenderValue, std::string> RenderInstance::Execute(
-    const RenderStep &step,
-    std::span<const ResolvedRenderInput<RenderValue>> inputs,
-    RenderScratch &scratch) {
+std::expected<RenderValue, std::string>
+ExecuteStep(const RenderStep &step,
+            std::span<const ResolvedRenderInput<RenderValue>> inputs,
+            RenderScratch &scratch) {
   const Arguments args{inputs};
   auto *lab = TextureLab::GetSingleton();
   return Match(
@@ -409,16 +221,16 @@ std::expected<RenderValue, std::string> RenderInstance::Execute(
           return std::unexpected("normal slope draw failed");
         return View(target);
       },
-      [&](const SampleMaterialStep &k)
+      [&](const SubmitMaterialSampleStep &k)
           -> std::expected<RenderValue, std::string> {
         const auto *material = args.Find<MaterialInputs>(k.material);
         if (!material)
           return std::unexpected("material is unavailable");
-        auto sample =
-            lab->SampleMaterial(material->rmaos.get(), material->diffuse.get());
-        if (!sample)
+        if (!lab->SubmitMaterialSample(material->rmaos.get(),
+                                       material->diffuse.get(),
+                                       scratch.material))
           return std::unexpected("material sampling failed");
-        return std::make_shared<const MaterialSample>(std::move(*sample));
+        return RenderValue{Value{0.0f}};
       },
       [&](const ClusterMaterialStep &k)
           -> std::expected<RenderValue, std::string> {
@@ -521,7 +333,8 @@ std::expected<RenderValue, std::string> RenderInstance::Execute(
         return DrawProgram(InterpreterProgram::Sample(*numeric), refs, {},
                            Arguments{bound}, k.requirements, scratch);
       },
-      [&](const ReduceFieldStep &k) -> std::expected<RenderValue, std::string> {
+      [&](const SubmitReductionStep &k)
+          -> std::expected<RenderValue, std::string> {
         const auto *view = args.Find<TextureView>(k.value);
         if (!view || !view->target)
           return std::unexpected("reduction field is unavailable");
@@ -530,10 +343,10 @@ std::expected<RenderValue, std::string> RenderInstance::Execute(
             extent->height != k.domain.height)
           return std::unexpected(
               "reduction field extent does not match its domain");
-        const auto result = lab->ReduceField(*view->target, k.kind, k.type);
-        if (!result)
-          return std::unexpected(result.error());
-        return *result;
+        if (!lab->SubmitReduction(*view->target, k.kind, k.type,
+                                  scratch.reduction))
+          return std::unexpected("reduction could not be drawn");
+        return RenderValue{Value{0.0f}};
       },
       [&](const BuildLookupStep &k) -> std::expected<RenderValue, std::string> {
         const auto *function =
@@ -763,13 +576,6 @@ std::expected<RenderValue, std::string> RenderInstance::Execute(
         if (layers.size() > 1 && !alternate)
           return std::unexpected("stack alternate target is unavailable");
         TextureRef previous = base->texture;
-        if (!previous && k.slot == Slot::kHeight &&
-            geometry_.material.flatDisplacement) {
-          const auto neutral = Compositor::GetSingleton()->NeutralHeight();
-          if (!neutral)
-            return std::unexpected("neutral height base is unavailable");
-          previous = TextureRef{neutral};
-        }
         auto *write = layers.size() % 2 ? target.get() : alternate;
         auto *other = layers.size() % 2 ? alternate : target.get();
         for (const auto *layer : layers) {
@@ -821,5 +627,286 @@ std::expected<RenderValue, std::string> RenderInstance::Execute(
         }
         return StackResult{previous};
       });
+}
+}
+RenderInstance::RenderInstance(
+    RenderPlan plan, GeometryInputs inputs,
+    std::vector<std::shared_ptr<const RecipeGraph>> graphs)
+    : graphs_(std::move(graphs)), geometry_(std::move(inputs)),
+      execution_(std::move(plan)) {
+  geometry_.render.reset();
+}
+const RenderPlan &RenderInstance::Plan() const noexcept {
+  return execution_.Plan();
+}
+std::expected<void, std::string>
+RenderInstance::UpdateInput(RenderInputId input, RenderValue value) {
+  if (input >= execution_.Inputs().size())
+    return std::unexpected("invalid imported render value");
+  const auto actual = Match(
+      value, [](const Value &v) -> RenderValueType { return TypeOf(v); },
+      [](const TextureView &) -> RenderValueType {
+        return RenderResourceType::kTexture;
+      },
+      [](const std::shared_ptr<MeshEntry> &) -> RenderValueType {
+        return RenderResourceType::kMesh;
+      },
+      [](const MaterialInputs &) -> RenderValueType {
+        return RenderResourceType::kMaterial;
+      },
+      [](const RenderTransform &) -> RenderValueType {
+        return RenderResourceType::kTransform;
+      },
+      [](const RenderFirings &) -> RenderValueType {
+        return RenderResourceType::kFirings;
+      },
+      [](const std::shared_ptr<const BakeBuffers> &) -> RenderValueType {
+        return RenderResourceType::kBakeBuffers;
+      },
+      [](const std::shared_ptr<const MaterialSample> &) -> RenderValueType {
+        return RenderResourceType::kMaterialSample;
+      },
+      [](const std::shared_ptr<const MaterialAnalysis> &) -> RenderValueType {
+        return RenderResourceType::kMaterialAnalysis;
+      },
+      [](const std::shared_ptr<TextureLab::Lookup> &) -> RenderValueType {
+        return RenderResourceType::kLookup;
+      },
+      [](const LayerFilter &) -> RenderValueType {
+        return RenderResourceType::kVisibility;
+      },
+      [](const StackResult &) -> RenderValueType {
+        return RenderResourceType::kStack;
+      });
+  if (actual != Plan().inputs[input].type) {
+    execution_.UnsetInput(input);
+    return std::unexpected("imported render value has an incompatible type");
+  }
+  if (const auto *numeric = Get<Value>(value)) {
+    const auto number = AsVec3(*numeric);
+    if (!std::isfinite(number.x) || !std::isfinite(number.y) ||
+        !std::isfinite(number.z)) {
+      execution_.UnsetInput(input);
+      return std::unexpected("imported numeric value is not finite");
+    }
+  }
+  const auto &current = execution_.Inputs()[input].value;
+  return execution_.SetInput(input, value,
+                             !current || !SameImportedValue(*current, value));
+}
+std::expected<void, std::string>
+RenderInstance::Update(const RecipeGraph &graph, std::size_t instance,
+                       const SignalState &signals) {
+  for (std::size_t i = 0; i < Plan().inputs.size(); ++i) {
+    const auto &input = Plan().inputs[i];
+    const auto *binding = Get<TextureValue>(input.binding);
+    if (!binding || binding->graph != &graph || binding->instance != instance)
+      continue;
+    const auto *node = graph.NodeAt(binding->output.node);
+    if (!node) {
+      execution_.UnsetInput(i);
+      continue;
+    }
+    const auto *external = Get<ExternalInput>(node->kind);
+    std::optional<RenderValue> value;
+    bool stableResource = false;
+    if (const auto *numberType = Get<ValueType>(input.type)) {
+      const auto *position =
+          external ? Get<NodePositionInput>(external->source) : nullptr;
+      if (position) {
+        if (const auto origin = NodeBindPosition(
+                geometry_.geometry.get(), geometry_.root.get(), position->name))
+          value = Value{*origin};
+      } else {
+        const auto number = signals.ValueOf(binding->output);
+        const auto v = AsVec3(number);
+        if (TypeOf(number) == *numberType && std::isfinite(v.x) &&
+            std::isfinite(v.y) && std::isfinite(v.z))
+          value = number;
+      }
+    } else if (input.type == RenderValueType{RenderResourceType::kFirings}) {
+      RenderFirings firings;
+      const auto name = graph.NameOf(binding->output.node);
+      for (const auto &firing : signals.Firings(binding->output)) {
+        if (firings.firings.size() >= TextureLab::kRippleFirings)
+          break;
+        auto origin = Match(
+            signals.AnchorOf(name, firing),
+            [](const std::monostate &) { return std::optional<Vec3>{}; },
+            [&](const CarriedPoint &point) {
+              return std::optional{
+                  ToRootSpace(geometry_.root.get(), point.position)};
+            },
+            [&](const AnchorNode &anchor) {
+              return NodeBindPosition(geometry_.geometry.get(),
+                                      geometry_.root.get(), anchor.node);
+            });
+        firings.firings.push_back({origin, firing.startTime});
+      }
+      value = std::move(firings);
+    } else if (external) {
+      if (Is<GeometryInput>(external->source)) {
+        stableResource = true;
+        if (execution_.Inputs()[i].value)
+          continue;
+        const auto mesh =
+            Compositor::GetSingleton()->MeshOf(geometry_.geometry.get());
+        if (mesh)
+          value = *mesh;
+      } else if (Is<MaterialInput>(external->source)) {
+        stableResource = true;
+        value = geometry_.material;
+      } else if (const auto *texture = Get<TextureInput>(external->source)) {
+        stableResource = true;
+        if (execution_.Inputs()[i].value)
+          continue;
+        const auto loaded =
+            Compositor::GetSingleton()->LoadImage(texture->path);
+        if (loaded)
+          value = TextureView{loaded};
+      } else if (Is<RootTransformInput>(external->source))
+        value = RenderTransform{geometry_.root};
+    }
+    if (!value) {
+      execution_.UnsetInput(i);
+      continue;
+    }
+    if (stableResource && execution_.Inputs()[i].value)
+      continue;
+    if (auto set = UpdateInput(i, std::move(*value)); !set)
+      return set;
+  }
+  return {};
+}
+std::expected<StackOutcome, std::string>
+RenderInstance::Render(StepOutputRef output, const LayerFilter &filter,
+                       const StackBase &base) {
+  if (output.step >= Plan().steps.size())
+    return std::unexpected("invalid stack output");
+  const auto *stack = Get<CompositeStackStep>(Plan().steps[output.step].kind);
+  if (!stack)
+    return std::unexpected("output is not a stack");
+  const auto *baseInput = Get<RenderInputRef>(stack->base);
+  const auto *visibility = Get<RenderInputRef>(stack->visibility);
+  if (!baseInput || !visibility)
+    return std::unexpected("stack controls must be imported");
+  TextureRef texture = base.texture;
+  const bool neutralHeight =
+      stack->slot == Slot::kHeight && geometry_.material.flatDisplacement;
+  if (!texture && !neutralHeight) {
+    const auto material =
+        MaterialTexture(BaseMapOf(stack->slot), geometry_.material);
+    if (IsNonPlaceholderTexture(material))
+      texture = material;
+  }
+  if (!texture && neutralHeight) {
+    const auto neutral = Compositor::GetSingleton()->NeutralHeight();
+    if (!neutral)
+      return std::unexpected("neutral height base is unavailable");
+    texture = TextureRef{neutral};
+  }
+  if (auto set =
+          UpdateInput(baseInput->input,
+                      StackResult{texture, base.texture ? base.contentVersion
+                                                        : ChangeVersion{0}});
+      !set)
+    return std::unexpected(set.error());
+  if (auto set = UpdateInput(visibility->input, filter); !set)
+    return std::unexpected(set.error());
+  const auto evaluate = [&] {
+    Metrics::CountRenderEvaluation();
+    return execution_.Evaluate(
+        output,
+        [](const RenderStep &step,
+           std::span<const ResolvedRenderInput<RenderValue>> inputs,
+           RenderScratch &scratch) {
+          Metrics::CountStepExecution();
+          return ExecuteStep(step, inputs, scratch);
+        },
+        SameRenderValue, SelectStackInputs);
+  };
+  const auto result = evaluate();
+  if (!result && AwaitingFirstReadback())
+    return StackOutcome{StackPending{}};
+  if (!result)
+    return std::unexpected(result.error());
+  const auto *value = Get<StackResult>(result->value);
+  if (!value)
+    return std::unexpected("stack returned the wrong type");
+  return StackOutcome{StackResult{value->texture, result->changeVersion}};
+}
+void RenderInstance::CollectReadback(RenderInputId input) {
+  if (input >= Plan().inputs.size())
+    return;
+  const auto *binding = Get<ReadbackBinding>(Plan().inputs[input].binding);
+  if (!binding || binding->submission >= Plan().steps.size())
+    return;
+  auto *scratch = execution_.ScratchOf(binding->submission);
+  if (!scratch)
+    return;
+  auto *lab = TextureLab::GetSingleton();
+  const auto &kind = Plan().steps[binding->submission].kind;
+  const auto import = [&](auto &&collected, auto &&toValue) {
+    if (!collected)
+      return;
+    if (!*collected) {
+      execution_.UnsetInput(input);
+      return;
+    }
+    static_cast<void>(UpdateInput(input, toValue(std::move(**collected))));
+  };
+  if (const auto *reduction = Get<SubmitReductionStep>(kind))
+    import(lab->CollectReduction(
+               reduction->kind, reduction->type,
+               {reduction->domain.width, reduction->domain.height},
+               scratch->reduction),
+           [](Value value) { return RenderValue{value}; });
+  else if (Is<SubmitMaterialSampleStep>(kind))
+    import(lab->CollectMaterialSample(scratch->material),
+           [](MaterialSample sample) {
+             return RenderValue{
+                 std::make_shared<const MaterialSample>(std::move(sample))};
+           });
+}
+void RenderInstance::CollectReadbacks() {
+  for (RenderInputId input = 0; input < Plan().inputs.size(); ++input)
+    if (Is<ReadbackBinding>(Plan().inputs[input].binding))
+      CollectReadback(input);
+}
+bool RenderInstance::AwaitingFirstReadback() const {
+  for (RenderInputId input = 0; input < Plan().inputs.size(); ++input) {
+    const auto *binding = Get<ReadbackBinding>(Plan().inputs[input].binding);
+    if (!binding || execution_.Inputs()[input].value ||
+        binding->submission >= execution_.Steps().size())
+      continue;
+    const auto &scratch = execution_.Steps()[binding->submission].scratch;
+    if (!PendingNewestFirst(scratch.reduction.ring).empty() ||
+        scratch.material.pending)
+      return true;
+  }
+  return false;
+}
+std::optional<TextureView>
+RenderInstance::Texture(RenderValueRef output) const {
+  const std::optional<RenderValue> *value = nullptr;
+  if (const auto *ref = Get<StepOutputRef>(output);
+      ref && ref->output == 0 && ref->step < execution_.Steps().size())
+    value = &execution_.Steps()[ref->step].outputs.front().value;
+  if (const auto *ref = Get<RenderInputRef>(output);
+      ref && ref->input < execution_.Inputs().size())
+    value = &execution_.Inputs()[ref->input].value;
+  if (value && *value)
+    if (const auto *texture = Get<TextureView>(**value))
+      return *texture;
+  return std::nullopt;
+}
+std::optional<TextureView> RenderInstance::Inspect(const RecipeGraph &graph,
+                                                   OutputRef output,
+                                                   std::size_t instance) const {
+  for (const auto &binding : Plan().values)
+    if (binding.value == TextureValue{&graph, output, instance})
+      if (const auto texture = Texture(binding.result))
+        return texture;
+  return std::nullopt;
 }
 }

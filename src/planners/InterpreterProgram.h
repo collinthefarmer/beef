@@ -57,13 +57,17 @@ struct InterpreterInstruction {
   float number = 0;
   std::uint32_t index = 0;
   std::uint32_t components = 1;
+  [[nodiscard]] bool operator==(const InterpreterInstruction &) const = default;
 };
 struct InterpreterValueInput {
   OutputRef output;
+  [[nodiscard]] bool operator==(const InterpreterValueInput &) const = default;
 };
 struct InterpreterTextureInput {
   OutputRef output;
   std::uint32_t slot = 0;
+  [[nodiscard]] bool
+  operator==(const InterpreterTextureInput &) const = default;
 };
 using InterpreterInput =
     std::variant<InterpreterValueInput, InterpreterTextureInput>;
@@ -71,6 +75,7 @@ struct FunctionLookup {
   FunctionId function = 0;
   std::size_t sampledParameter = 0;
   std::vector<BoundFunctionArgument> arguments;
+  [[nodiscard]] bool operator==(const FunctionLookup &) const = default;
 };
 struct InterpreterLimits {
   std::size_t instructions = kInterpreterInstructions;
@@ -97,6 +102,7 @@ public:
   [[nodiscard]] std::size_t TextureCount() const noexcept;
   [[nodiscard]] ValueType ResultType() const noexcept;
   [[nodiscard]] std::size_t StackSize() const noexcept;
+  [[nodiscard]] bool operator==(const InterpreterProgram &) const = default;
 
 private:
   InterpreterProgram() = default;

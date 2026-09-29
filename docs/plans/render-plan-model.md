@@ -41,9 +41,9 @@ argument in the graph does not imply every backend can lower that mapping.
 
 A changing mask makes its mean and mapped result dependent on that change.
 There is no animated-mean kind, hidden context value, or implicit capture.
-Mean refers to the current input result. A previous-frame value or frozen
-measurement would require an explicit delay or capture operation with its own
-initialization contract; neither is introduced in this slice.
+A render backend delivers the mean as a **delayed measurement**: the most
+recent completed measurement of the field. The section "Reduction lowering and
+timing" states the delay and its initialization contract.
 
 ## Demand naming
 
@@ -97,6 +97,12 @@ is sampled into this domain using its graph-declared coordinates, filtering,
 mip selection and decoding; its native image dimensions do not silently choose
 a different reduction grid. An already materialized matching field can be read
 directly at its base level.
+
+The mean of an image source is defined at zero scroll. Its measured field
+samples the image with the source's tile, mirror, transpose and mip, and
+without its scroll. A scroll change therefore does not change the measurement
+or rerun the reduction, and a tile change does. This definition was decided
+in the [render graph correctness plan](render-graph-correctness-2026-09-29.md).
 
 Every grid sample participates. Alpha is an ordinary channel, not an implicit
 coverage mask. Mesh padding, cleared regions and dilation affect the input field
@@ -368,8 +374,9 @@ GPU equality test. An updated mask therefore needs a new mean measurement, but
 an unchanged measured scalar preserves its change version and allows the cached
 lookup to remain usable. Mapping still reruns because its texture input changed.
 
-Failure to produce a current input blocks its consumer; an old measurement
-cannot silently satisfy a current-result mean. Failed or incomplete writes
+Failure to produce a current input blocks its consumer. A delayed
+measurement is an imported input with its own version, so a consumer observes
+exactly which measurement it used. Failed or incomplete writes
 cannot be advertised as valid results. Change versions track cache validity,
 not immutable historical snapshots of reused GPU allocations.
 
@@ -427,11 +434,32 @@ bindings. A function that takes no mean argument needs no measurement merely
 because the backend uses a lookup. Existing implicit x/mean authoring is lowered
 to explicit argument connections without introducing new recipe syntax here.
 
-For a requested output, the mask producer completes before its mean is consumed.
-The baseline backend may synchronously read back the measurement, then build the
-lookup and execute the mapping. This synchronization cost is explicit; there is
-no implicit previous-frame fallback. Another backend could keep the reduction on
-the GPU while preserving the same current-result semantics.
+A reduction lowers to two parts. A `SubmitReductionStep` consumes the field
+and queues its GPU reduction and copy. Its result is a constant
+acknowledgement, so its change version never advances. A measurement input
+(`ReadbackBinding`) names that submission. The executor evaluates the
+submission whenever a consumer reads the input, which keeps the submission
+current with its field. The backend imports each completed readback into the
+input, and the input's version advances only when the measured value changes.
+
+The measurement lags its field by the readback latency, typically one to three
+frames. A consumer recomputes when a new measurement arrives, not when its
+field is submitted. A failed submission blocks the consumers of its
+measurement. A failed readback removes the measurement, which also blocks them.
+
+Material sampling uses the same shape. A `SubmitMaterialSampleStep` copies the
+RMAOS and diffuse maps into staging textures, and a readback input of type
+material sample receives the decoded sample. Cluster analysis reads that
+input. A sample equal to the previous one does not advance its version.
+
+Before the first readback arrives, the input has no value and its consumers
+are unavailable. A stack that fails while a measurement of its geometry is
+unset and has a submission in flight is **pending**, not failed: it publishes
+nothing, reports no diagnostic, and the slot keeps its base. An application
+stays prepared, not rendered, while any of its outputs is pending. The backend
+collects measurements without waiting, once per frame. This was decided in
+the [render graph correctness plan](render-graph-correctness-2026-09-29.md),
+decision D2.
 
 Current BakeCurve can measure a prepared mask texture before its first render.
 The new ordering fixes that invalid read and replaces the implicit one-time

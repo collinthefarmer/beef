@@ -101,11 +101,19 @@ caches and recursive mask/ripple scheduling flags.
 
 ### Measurements
 
-`TextureLab::ReduceField` reads the base level of an RGBA32-float measurement
-field in row-major order. The pure `FieldReduction` implements component-wise
-mean, sum, minimum and maximum; sum and mean accumulate in double precision and
-round once to the output float. Every texel counts, including uncovered texels.
-Non-finite samples, invalid domains and failed readbacks are errors. Published
+`TextureLab::SubmitReduction` reduces an RGBA32-float measurement field on the
+GPU. Each `PSReduce` pass reduces a 4x4 block to one texel until one texel
+remains. The pass supports component-wise mean, sum, minimum and maximum. Sum
+and mean accumulate in float32. Every texel counts, including uncovered texels.
+`TextureLab::CollectReduction` reads the one-texel result without waiting. The
+pure `planners/GpuReduction` module holds the pass extents, the **readback
+ring** (three staging slots per submission) and the decoding.
+`RenderInstance::CollectReadbacks` imports each completed result into the
+reduction's readback input once per frame; the measurement is one to three
+frames late. Material samples use the same submission and readback input.
+A stack whose readback input has no value yet while its submission is in
+flight is pending, not failed. Non-finite samples, invalid domains and failed
+readbacks are errors. Published
 textures retain their existing RGBA8 format.
 
 Layer curves use explicit measured arguments. RGB image normalization is also

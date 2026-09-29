@@ -27,7 +27,8 @@ enum class RenderResourceType {
   kMaterialAnalysis,
   kLookup,
   kVisibility,
-  kStack
+  kStack,
+  kSubmission
 };
 using RenderValueType = std::variant<ValueType, RenderResourceType>;
 struct ReductionDomain {
@@ -40,56 +41,72 @@ struct StackInputBinding {
   std::size_t output = 0;
   [[nodiscard]] bool operator==(const StackInputBinding &) const = default;
 };
+struct ReadbackBinding {
+  RenderStepId submission = 0;
+  [[nodiscard]] bool operator==(const ReadbackBinding &) const = default;
+};
 struct RenderInput {
   RenderValueType type;
-  std::variant<TextureValue, StackInputBinding> binding;
+  std::variant<TextureValue, StackInputBinding, ReadbackBinding> binding;
 };
 struct UnavailableStep {
   RenderValueType type;
   std::string problem;
+  [[nodiscard]] bool operator==(const UnavailableStep &) const = default;
 };
 struct ConstantRenderStep {
   Value value;
+  [[nodiscard]] bool operator==(const ConstantRenderStep &) const = default;
 };
 struct BuildBakeBuffersStep {
   RenderValueRef mesh;
   std::variant<BakeKind, RenderValueRef> operation;
+  [[nodiscard]] bool operator==(const BuildBakeBuffersStep &) const = default;
 };
 struct BakeMeshStep {
   RenderValueRef buffers;
   TextureRequirements requirements;
   bool nearest = false;
+  [[nodiscard]] bool operator==(const BakeMeshStep &) const = default;
 };
 struct NormalSlopeStep {
   RenderValueRef material;
   TextureRequirements requirements;
+  [[nodiscard]] bool operator==(const NormalSlopeStep &) const = default;
 };
-struct SampleMaterialStep {
+struct SubmitMaterialSampleStep {
   RenderValueRef material;
+  [[nodiscard]] bool
+  operator==(const SubmitMaterialSampleStep &) const = default;
 };
 struct ClusterMaterialStep {
   RenderValueRef sample;
   ClusterSettings settings;
+  [[nodiscard]] bool operator==(const ClusterMaterialStep &) const = default;
 };
 struct DrawClustersStep {
   RenderValueRef material, analysis;
   TextureRequirements requirements;
+  [[nodiscard]] bool operator==(const DrawClustersStep &) const = default;
 };
 struct SampleFieldStep {
   RenderValueRef texture;
   TextureValue field;
   std::vector<RenderValueRef> coordinates;
   TextureRequirements requirements;
+  [[nodiscard]] bool operator==(const SampleFieldStep &) const = default;
 };
-struct ReduceFieldStep {
+struct SubmitReductionStep {
   ReductionKind kind;
   RenderValueRef value;
   ValueType type;
   ReductionDomain domain;
+  [[nodiscard]] bool operator==(const SubmitReductionStep &) const = default;
 };
 struct LookupArgument {
   std::size_t parameter = 0;
   RenderValueRef value;
+  [[nodiscard]] bool operator==(const LookupArgument &) const = default;
 };
 struct BuildLookupStep {
   const RecipeGraph *graph = nullptr;
@@ -97,49 +114,57 @@ struct BuildLookupStep {
   std::size_t sampledParameter = 0;
   std::vector<LookupArgument> boundArguments;
   std::size_t samples = 256;
+  [[nodiscard]] bool operator==(const BuildLookupStep &) const = default;
 };
 struct EvaluateValueStep {
   TextureValue value;
   std::vector<RenderValueRef> inputs;
   ValueType type;
+  [[nodiscard]] bool operator==(const EvaluateValueStep &) const = default;
 };
 struct EvaluateProgramStep {
   InterpreterProgram program;
   std::vector<RenderValueRef> inputs;
   std::vector<RenderValueRef> lookups;
   TextureRequirements requirements;
+  [[nodiscard]] bool operator==(const EvaluateProgramStep &) const = default;
 };
 struct MapFieldStep {
   RenderValueRef value, lookup;
   TextureRequirements requirements;
+  [[nodiscard]] bool operator==(const MapFieldStep &) const = default;
 };
 struct ComposeVectorStep {
   std::vector<RenderValueRef> components;
   TextureRequirements requirements;
+  [[nodiscard]] bool operator==(const ComposeVectorStep &) const = default;
 };
 struct DrawRippleStep {
   RenderValueRef positions;
   TextureValue field;
   std::vector<RenderValueRef> inputs;
   TextureRequirements requirements;
+  [[nodiscard]] bool operator==(const DrawRippleStep &) const = default;
 };
 struct PlannedLayer {
   RenderValueRef source, opacity;
   std::optional<RenderValueRef> mask, color;
   Blend blend;
   ChannelSet channels;
+  [[nodiscard]] bool operator==(const PlannedLayer &) const = default;
 };
 struct CompositeStackStep {
   RenderValueRef base, visibility;
   std::vector<PlannedLayer> layers;
   TextureRequirements requirements;
   Slot slot;
+  [[nodiscard]] bool operator==(const CompositeStackStep &) const = default;
 };
 using RenderStepKind =
     std::variant<UnavailableStep, ConstantRenderStep, BuildBakeBuffersStep,
-                 BakeMeshStep, NormalSlopeStep, SampleMaterialStep,
+                 BakeMeshStep, NormalSlopeStep, SubmitMaterialSampleStep,
                  ClusterMaterialStep, DrawClustersStep, SampleFieldStep,
-                 ReduceFieldStep, BuildLookupStep, EvaluateValueStep,
+                 SubmitReductionStep, BuildLookupStep, EvaluateValueStep,
                  EvaluateProgramStep, MapFieldStep, ComposeVectorStep,
                  DrawRippleStep, CompositeStackStep>;
 struct RenderStep {

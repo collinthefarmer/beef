@@ -3,6 +3,7 @@
 
 #include "mesh/MaterialClusters.h"
 #include "planners/InterpreterProgram.h"
+#include "recipe/Reduction.h"
 
 namespace BetterEnchantmentEffects {
 struct alignas(16) LayerConstants {
@@ -53,4 +54,14 @@ struct alignas(16) ClusterConstants {
   float misc[4];
 };
 static_assert(kMaxMaterialClusters == 8 && sizeof(ClusterConstants) % 16 == 0);
+
+struct alignas(16) ReductionConstants {
+  std::uint32_t shape[4];
+  std::uint32_t flags[4];
+};
+static_assert(sizeof(ReductionConstants) == 32 &&
+              static_cast<int>(ReductionKind::kMean) == 0 &&
+              static_cast<int>(ReductionKind::kSum) == 1 &&
+              static_cast<int>(ReductionKind::kMinimum) == 2 &&
+              static_cast<int>(ReductionKind::kMaximum) == 3);
 }

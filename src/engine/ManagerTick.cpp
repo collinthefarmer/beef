@@ -106,20 +106,25 @@ struct SlotChain {
   bool shown = false;
 };
 
+void UpdateRenderInputs(LiveActor &a_state, LiveGeometry &a_bound) {
+  if (!a_bound.inputs.render) {
+    return;
+  }
+  a_bound.inputs.render->CollectReadbacks();
+  for (std::size_t i = 0; i < a_state.instances.size(); ++i) {
+    const auto &instance = a_state.instances[i];
+    if (!instance.graph || !instance.signals)
+      continue;
+    if (auto updated = a_bound.inputs.render->Update(*instance.graph, i + 1,
+                                                     *instance.signals);
+        !updated)
+      logger::error("render inputs: {}", updated.error());
+  }
+}
+
 SlotChain RenderSlotChain(LiveActor &a_state, LiveGeometry &a_bound,
                           const Studio::View &a_view,
                           const SlotStackPlan &a_slot, bool a_anyLayerHidden) {
-  if (a_bound.inputs.render) {
-    for (std::size_t i = 0; i < a_state.instances.size(); ++i) {
-      const auto &instance = a_state.instances[i];
-      if (!instance.graph || !instance.signals)
-        continue;
-      if (auto updated = a_bound.inputs.render->Update(*instance.graph, i + 1,
-                                                       *instance.signals);
-          !updated)
-        logger::error("render inputs: {}", updated.error());
-    }
-  }
   SlotChain chain;
   StackBase base;
   for (const StackLink &link : a_slot.chain) {
@@ -148,16 +153,16 @@ SlotChain RenderSlotChain(LiveActor &a_state, LiveGeometry &a_bound,
       filter = HiddenLayers(a_view, instance.recipe->id, c.output,
                             material->stack.size());
     }
-    const bool rendered =
+    const StackRender outcome =
         Compositor::GetSingleton()->Render(*output->stack, filter, base);
-    output->rendered = rendered;
-    output->renderFailed = !rendered;
-    if (!rendered) {
+    output->rendered = outcome == StackRender::kRendered;
+    output->renderFailed = outcome == StackRender::kFailed;
+    if (outcome != StackRender::kRendered) {
       continue;
     }
     chain.shown = true;
     if (TextureRef texture = output->stack->Texture()) {
-      base = StackBase{texture, base.animated || output->stack->Animated()};
+      base = StackBase{texture, output->stack->ContentVersion()};
       chain.texture = texture;
     }
     chain.outputs.push_back(material);
@@ -282,7 +287,10 @@ void EmitMetricsHeartbeat() {
        {"targets", std::to_string(measured.targets)},
        {"targets_peak", std::to_string(measured.targetsPeak)},
        {"target_bytes", std::to_string(measured.targetBytes)},
-       {"target_bytes_peak", std::to_string(measured.targetBytesPeak)}});
+       {"target_bytes_peak", std::to_string(measured.targetBytesPeak)},
+       {"frames", std::to_string(measured.frames)},
+       {"render_evaluations", std::to_string(measured.renderEvaluations)},
+       {"step_executions", std::to_string(measured.stepExecutions)}});
 }
 }
 
@@ -294,6 +302,7 @@ void Manager::OnFrame() {
   TextureLab::GetSingleton()->CollectPreviewDraws();
   FireDueFinalizes();
   editor_.TickGesture();
+  Metrics::CountFrame();
   const std::uint32_t now = NowMS();
   if (now - lastMetricsMS_ >= 1000) {
     lastMetricsMS_ = now;
@@ -482,6 +491,9 @@ void Manager::RenderGeometry(LiveActor &a_state,
   }
   const bool anyLayerHidden =
       view.isolation.layer.has_value() || !view.muted.empty();
+  if (!a_hidden) {
+    UpdateRenderInputs(a_state, a_bound);
+  }
   for (const SlotStackPlan &slot : a_bound.stackPlan.slots) {
     SlotTarget *target = TargetFor(a_bound, slot.surface);
     if (!target) {

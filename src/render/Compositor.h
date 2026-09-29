@@ -85,14 +85,17 @@ struct LayerFilter {
 
 struct StackBase {
   TextureRef texture;
-  bool animated = false;
+  std::uint64_t contentVersion = 0;
 };
+
+enum class StackRender { kRendered, kPending, kFailed };
 
 class RenderOutput {
 public:
   RenderOutput(std::shared_ptr<RenderInstance> render, StepOutputRef result,
                TextureSize size, bool animated);
   [[nodiscard]] TextureRef Texture() const noexcept;
+  [[nodiscard]] std::uint64_t ContentVersion() const noexcept;
   [[nodiscard]] TextureRef LayerTexture(std::size_t layer) const;
   [[nodiscard]] bool Animated() const noexcept;
   [[nodiscard]] TextureSize Size() const noexcept;
@@ -103,6 +106,7 @@ private:
   std::weak_ptr<RenderInstance> render_;
   StepOutputRef result_;
   TextureRef latest_;
+  std::uint64_t latestVersion_ = 0;
   TextureSize size_;
   bool animated_ = false;
   std::vector<Diagnostic> diagnostics_;
@@ -118,8 +122,8 @@ public:
                                       const GeometryInputs &inputs,
                                       TextureSize requested,
                                       TextureSize maximum) const;
-  bool Render(RenderOutput &a_stack, const LayerFilter &a_filter,
-              const StackBase &a_base = {});
+  StackRender Render(RenderOutput &a_stack, const LayerFilter &a_filter,
+                     const StackBase &a_base = {});
 
   [[nodiscard]] TextureRef LoadImage(std::string_view a_path);
 

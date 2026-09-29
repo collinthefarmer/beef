@@ -8,6 +8,7 @@
 #include "mesh/Mesh.h"
 #include "mesh/TextureSize.h"
 #include "planners/ConsumptionLeases.h"
+#include "planners/GpuReduction.h"
 #include "planners/InterpreterProgram.h"
 #include "planners/TextureDemand.h"
 
@@ -222,6 +223,17 @@ public:
   [[nodiscard]] bool RippleAvailable() const noexcept;
 
   inline static constexpr std::uint32_t kSampleSide = 64;
+  struct MaterialReadback {
+    REX::W32::ComPtr<REX::W32::ID3D11Texture2D> rmaos;
+    REX::W32::ComPtr<REX::W32::ID3D11Texture2D> diffuse;
+    bool pending = false;
+  };
+  using MaterialSampleResult = std::expected<MaterialSample, std::string>;
+  [[nodiscard]] bool SubmitMaterialSample(RE::NiSourceTexture *a_rmaos,
+                                          RE::NiSourceTexture *a_diffuse,
+                                          MaterialReadback &a_readback);
+  [[nodiscard]] std::optional<MaterialSampleResult>
+  CollectMaterialSample(MaterialReadback &a_readback);
   [[nodiscard]] std::optional<MaterialSample>
   SampleMaterial(RE::NiSourceTexture *a_rmaos, RE::NiSourceTexture *a_diffuse);
 
@@ -243,8 +255,17 @@ public:
   [[nodiscard]] static std::optional<Extent>
   ExtentOf(RE::NiSourceTexture *a_source);
 
-  [[nodiscard]] std::expected<Value, std::string>
-  ReduceField(RenderTarget &target, ReductionKind kind, ValueType type);
+  struct ReductionReadback {
+    ReadbackRing ring;
+    std::array<REX::W32::ComPtr<REX::W32::ID3D11Texture2D>, kReadbackSlots>
+        staging;
+  };
+  [[nodiscard]] bool SubmitReduction(RenderTarget &a_field,
+                                     ReductionKind a_kind, ValueType a_type,
+                                     ReductionReadback &a_readback);
+  [[nodiscard]] std::optional<ReductionResult>
+  CollectReduction(ReductionKind a_kind, ValueType a_type,
+                   ReductionExtent a_extent, ReductionReadback &a_readback);
 
   float MeanLuminance(RE::NiSourceTexture *a_source);
   float MeanChannel(RE::NiSourceTexture *a_source, ShaderChannel a_channel);
@@ -276,6 +297,11 @@ private:
     REX::W32::ComPtr<REX::W32::ID3D11PixelShader> shader;
     REX::W32::ComPtr<REX::W32::ID3D11Buffer> constants;
   };
+  struct ReductionLevel {
+    REX::W32::ComPtr<REX::W32::ID3D11Texture2D> texture;
+    REX::W32::ComPtr<REX::W32::ID3D11ShaderResourceView> srv;
+    REX::W32::ComPtr<REX::W32::ID3D11RenderTargetView> rtv;
+  };
   struct BakePipeline {
     REX::W32::ComPtr<REX::W32::ID3D11VertexShader> vertex;
     REX::W32::ComPtr<REX::W32::ID3D11PixelShader> pixel;
@@ -293,6 +319,7 @@ private:
     std::optional<PixelPipeline> ripple;
     std::optional<PixelPipeline> clusters;
     std::optional<PixelPipeline> dilate;
+    std::optional<PixelPipeline> reduce;
     std::optional<BakePipeline> bake;
   };
 
@@ -308,8 +335,18 @@ private:
 
   bool CompileShaders(GpuResources &a_resources);
 
+  ReductionLevel *ReductionLevelFor(ReductionExtent a_extent);
+  bool EnsureReductionStaging(ReductionReadback &a_readback);
+  bool EnsureSampleStaging(MaterialReadback &a_readback);
+  [[nodiscard]] bool CopyToStaging(RenderTarget &a_target,
+                                   REX::W32::ID3D11Texture2D &a_staging);
+  [[nodiscard]] std::optional<MaterialSampleResult>
+  ReadMaterialSample(MaterialReadback &a_readback, bool a_wait);
+  [[nodiscard]] bool DrawReduction(RenderTarget &a_field, ReductionKind a_kind,
+                                   ValueType a_type,
+                                   REX::W32::ID3D11Texture2D &a_staging);
+
   std::optional<float> ReadBackMean(RenderTarget &a_target);
-  std::vector<std::uint8_t> ReadBackPixels(RenderTarget &a_target);
 
   std::atomic<bool> available_{false};
   bool initTried_ = false;
@@ -320,6 +357,8 @@ private:
   std::map<std::pair<RE::NiSourceTexture *, ShaderChannel>, float>
       channelMeans_;
   std::unordered_set<RE::NiSourceTexture *> sampleWarned_;
+  std::map<std::pair<std::uint32_t, std::uint32_t>, ReductionLevel>
+      reductionLevels_;
 
   std::unique_ptr<RenderTargetPool> targets_;
   std::unique_ptr<TexturePreviews> previews_;

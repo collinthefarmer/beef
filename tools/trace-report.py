@@ -49,7 +49,7 @@ def listing(owners: Counter[str]) -> str:
 
 
 def report(segments: list[Path], slots: int | None) -> None:
-    counts, tally, recycled, heartbeat, peaks, shared, transitions = (Counter() for _ in range(7))
+    counts, tally, recycled, heartbeat, peaks, shared, transitions, rendering = (Counter() for _ in range(8))
     commands, readbacks, refreshes, pages, survivors = {}, defaultdict(lambda: [0, 0, 0]), [], [], []
     startup, sessions, live, owners, worst, last_session = {}, set(), {}, {}, (0, 0), None
     for event in events(segments):
@@ -92,6 +92,8 @@ def report(segments: list[Path], slots: int | None) -> None:
             for name in ('targets_peak', 'target_bytes_peak'):
                 peaks[name] = max(peaks[name], number(fields, name))
             worst = max(worst, (number(fields, 'refreshes'), number(fields, 'refresh_us')), key=lambda w: w[0])
+            for name in ('frames', 'render_evaluations', 'step_executions'):
+                rendering[name] += number(fields, name)
         counts[kind] += 1
         sessions.add(session)
         startup = fields if kind == 'startup' else startup
@@ -120,6 +122,11 @@ def report(segments: list[Path], slots: int | None) -> None:
     if heartbeat:
         print(f'  Worst second: {worst[0]} refreshes, {worst[1] / 1000:.1f} ms spent')
         print(f"  Sink churn: {heartbeat['sink_adds']} adds, {heartbeat['sink_removes']} removes")
+        if rendering['frames']:
+            frames = rendering['frames']
+            print(f"  Render steps: {rendering['step_executions'] / frames:.2f} executions and "
+                  f"{rendering['render_evaluations'] / frames:.2f} stack evaluations per frame "
+                  f"over {frames} frames")
         print(f"  Targets peak: {peaks['targets_peak']}{f' of {slots} slots' if slots else ''}; "
               f"VRAM peak {peaks['target_bytes_peak'] / (1 << 20):.0f} MiB")
     for op, (count, total, peak) in sorted(readbacks.items()):

@@ -17,7 +17,7 @@ std::vector<RenderValueRef> InputsOf(const RenderStepKind &step) {
       },
       [](const BakeMeshStep &k) { return std::vector{k.buffers}; },
       [](const NormalSlopeStep &k) { return std::vector{k.material}; },
-      [](const SampleMaterialStep &k) { return std::vector{k.material}; },
+      [](const SubmitMaterialSampleStep &k) { return std::vector{k.material}; },
       [](const ClusterMaterialStep &k) { return std::vector{k.sample}; },
       [](const DrawClustersStep &k) {
         return std::vector{k.material, k.analysis};
@@ -27,7 +27,7 @@ std::vector<RenderValueRef> InputsOf(const RenderStepKind &step) {
         inputs.insert(inputs.begin(), k.texture);
         return inputs;
       },
-      [](const ReduceFieldStep &k) { return std::vector{k.value}; },
+      [](const SubmitReductionStep &k) { return std::vector{k.value}; },
       [](const BuildLookupStep &k) {
         std::vector<RenderValueRef> inputs;
         for (const auto &a : k.boundArguments)
@@ -70,13 +70,15 @@ RenderValueType OutputType(const RenderStepKind &step) {
       [](const BuildBakeBuffersStep &) -> RenderValueType {
         return RenderResourceType::kBakeBuffers;
       },
-      [](const SampleMaterialStep &) -> RenderValueType {
-        return RenderResourceType::kMaterialSample;
+      [](const SubmitMaterialSampleStep &) -> RenderValueType {
+        return RenderResourceType::kSubmission;
       },
       [](const ClusterMaterialStep &) -> RenderValueType {
         return RenderResourceType::kMaterialAnalysis;
       },
-      [](const ReduceFieldStep &k) -> RenderValueType { return k.type; },
+      [](const SubmitReductionStep &) -> RenderValueType {
+        return RenderResourceType::kSubmission;
+      },
       [](const BuildLookupStep &) -> RenderValueType {
         return RenderResourceType::kLookup;
       },
@@ -155,7 +157,7 @@ std::expected<void, std::string> ValidateRenderPlan(const RenderPlan &plan) {
         [&](const NormalSlopeStep &k) {
           require(k.material, RenderResourceType::kMaterial);
         },
-        [&](const SampleMaterialStep &k) {
+        [&](const SubmitMaterialSampleStep &k) {
           require(k.material, RenderResourceType::kMaterial);
         },
         [&](const ClusterMaterialStep &k) {
@@ -176,7 +178,7 @@ std::expected<void, std::string> ValidateRenderPlan(const RenderPlan &plan) {
           if (!k.field.graph || !k.field.graph->NodeAt(k.field.output.node))
             problem = "sample field has no valid graph output";
         },
-        [&](const ReduceFieldStep &k) {
+        [&](const SubmitReductionStep &k) {
           require(k.value, RenderResourceType::kTexture);
           if (static_cast<unsigned>(k.kind) >
                   static_cast<unsigned>(ReductionKind::kMaximum) ||
@@ -295,6 +297,22 @@ std::expected<void, std::string> ValidateRenderPlan(const RenderPlan &plan) {
         });
     if (!problem.empty())
       return std::unexpected(step.displayName + ": " + problem);
+  }
+  for (const auto &input : plan.inputs) {
+    const auto *readback = Get<ReadbackBinding>(input.binding);
+    if (!readback)
+      continue;
+    const auto *submission = readback->submission < plan.steps.size()
+                                 ? &plan.steps[readback->submission].kind
+                                 : nullptr;
+    const auto *reduction =
+        submission ? Get<SubmitReductionStep>(*submission) : nullptr;
+    const bool valid =
+        (reduction && input.type == RenderValueType{reduction->type}) ||
+        (submission && Is<SubmitMaterialSampleStep>(*submission) &&
+         input.type == RenderValueType{RenderResourceType::kMaterialSample});
+    if (!valid)
+      return std::unexpected("invalid readback input");
   }
   for (const auto &output : plan.stackOutputs)
     if (TypeOf(plan, output.result) !=

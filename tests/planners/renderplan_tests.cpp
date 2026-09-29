@@ -43,7 +43,7 @@ int main() {
   std::size_t reductions = 0, lookups = 0, maps = 0;
   for (std::size_t i = 0; i < plan->steps.size(); ++i) {
     const auto &kind = plan->steps[i].kind;
-    if (const auto *reduction = Get<ReduceFieldStep>(kind)) {
+    if (const auto *reduction = Get<SubmitReductionStep>(kind)) {
       ++reductions;
       const auto *producer = Get<StepOutputRef>(reduction->value);
       Check(producer && producer->step < i,
@@ -62,10 +62,15 @@ int main() {
             "lookup has an explicit bound argument");
       if (!lookup->boundArguments.empty()) {
         const auto *ref =
-            Get<StepOutputRef>(lookup->boundArguments.front().value);
-        Check(ref && ref->step < i &&
-                  Is<ReduceFieldStep>(plan->steps[ref->step].kind),
-              "lookup observes reduction output");
+            Get<RenderInputRef>(lookup->boundArguments.front().value);
+        const auto *measurement =
+            ref && ref->input < plan->inputs.size()
+                ? Get<ReadbackBinding>(plan->inputs[ref->input].binding)
+                : nullptr;
+        Check(measurement && measurement->submission < i &&
+                  Is<SubmitReductionStep>(
+                      plan->steps[measurement->submission].kind),
+              "lookup reads the measurement of a reduction submission");
       }
     }
     maps += Is<MapFieldStep>(kind);
@@ -91,28 +96,32 @@ int main() {
           "vector components share the same measured lookup");
   }
   RenderExecution<int> execution{*plan};
-  for (std::size_t i = 0; i < plan->inputs.size(); ++i)
-    Check(execution.SetInput(i, 8, true).has_value(),
-          "bind fake backend inputs");
   std::optional<StepOutputRef> mapped;
-  std::optional<RenderInputId> material;
+  std::optional<RenderInputId> material, measured;
   for (std::size_t i = 0; i < plan->steps.size(); ++i)
     if (Is<MapFieldStep>(plan->steps[i].kind))
       mapped = StepOutputRef{i, 0};
-  for (std::size_t i = 0; i < plan->inputs.size(); ++i)
+  for (std::size_t i = 0; i < plan->inputs.size(); ++i) {
     if (plan->inputs[i].type == RenderValueType{RenderResourceType::kMaterial})
       material = i;
-  int measurements = 0, builtLookups = 0, mappings = 0;
-  bool failMeasurement = false;
+    if (Is<ReadbackBinding>(plan->inputs[i].binding))
+      measured = i;
+    else
+      Check(execution.SetInput(i, 8, true).has_value(),
+            "bind fake backend inputs");
+  }
+  int submissions = 0, builtLookups = 0, mappings = 0, submittedField = 0;
+  bool failSubmission = false;
   const auto backend =
       [&](const RenderStep &step,
           std::span<const ResolvedRenderInput<int>> inputs,
           std::monostate &) -> std::expected<int, std::string> {
-    if (Is<ReduceFieldStep>(step.kind)) {
-      ++measurements;
-      if (failMeasurement)
-        return std::unexpected("readback failed");
-      return inputs.front().value / 2;
+    if (Is<SubmitReductionStep>(step.kind)) {
+      ++submissions;
+      if (failSubmission)
+        return std::unexpected("reduction could not be drawn");
+      submittedField = inputs.front().value;
+      return 0;
     }
     if (Is<BuildLookupStep>(step.kind))
       ++builtLookups;
@@ -120,32 +129,79 @@ int main() {
       ++mappings;
     return inputs.empty() ? 8 : inputs.front().value;
   };
+  const auto deliver = [&] {
+    const int value = submittedField / 2;
+    const auto &current = execution.Inputs()[*measured].value;
+    return execution.SetInput(*measured, value, !current || *current != value)
+        .has_value();
+  };
   const auto equal = [](int a, int b) { return a == b; };
   const auto select = [](const CompositeStackStep &step, const int &)
       -> std::expected<std::vector<RenderValueRef>, std::string> {
     return InputsOf(RenderStepKind{step});
   };
-  Check(mapped && material,
-        "measured mapping exposes its imported material and output");
-  if (mapped && material) {
-    Check(execution.Evaluate(*mapped, backend, equal, select).has_value(),
-          "producer precedes measurement and lookup");
+  Check(mapped && material && measured,
+        "measured mapping exposes its material, measurement and output");
+  if (mapped && material && measured) {
+    Check(!execution.Evaluate(*mapped, backend, equal, select) &&
+              submissions == 1 && builtLookups == 0,
+          "reading the measurement submits the field; consumers wait for the "
+          "first measurement");
+    Check(deliver() &&
+              execution.Evaluate(*mapped, backend, equal, select).has_value() &&
+              builtLookups == 1 && mappings == 1,
+          "the first delivered measurement builds the lookup and maps");
     Check(execution.SetInput(*material, 9, true).has_value(),
           "replace material contents");
     Check(execution.Evaluate(*mapped, backend, equal, select).has_value() &&
-              measurements == 2 && builtLookups == 1 && mappings == 2,
-          "same mean reuses lookup while changed field remaps");
-    Check(execution.SetInput(*material, 10, true).has_value(),
-          "change measured mean");
-    Check(execution.Evaluate(*mapped, backend, equal, select).has_value() &&
-              builtLookups == 2 && mappings == 3,
-          "changed mean rebuilds lookup before mapping");
+              submissions == 2 && builtLookups == 1 && mappings == 2,
+          "a changed field is submitted and remapped with the last "
+          "measurement");
+    Check(deliver() &&
+              execution.Evaluate(*mapped, backend, equal, select).has_value() &&
+              builtLookups == 1 && mappings == 2,
+          "an unchanged measurement leaves the lookup and mapping cached");
+    Check(execution.SetInput(*material, 10, true).has_value() &&
+              execution.Evaluate(*mapped, backend, equal, select).has_value() &&
+              deliver() &&
+              execution.Evaluate(*mapped, backend, equal, select).has_value() &&
+              builtLookups == 2 && mappings == 4,
+          "a changed measurement rebuilds the lookup before mapping");
     Check(execution.SetInput(*material, 12, true).has_value(),
-          "invalidate field before failed measurement");
-    failMeasurement = true;
+          "invalidate field before a failed submission");
+    failSubmission = true;
     Check(!execution.Evaluate(*mapped, backend, equal, select) &&
-              builtLookups == 2 && mappings == 3,
-          "failed current measurement blocks consumers");
+              builtLookups == 2 && mappings == 4,
+          "a failed submission blocks consumers");
+  }
+  Recipe clusterRecipe;
+  clusterRecipe.sources = {{"zones", MaterialClustersSource{}}};
+  SurfaceOutput clusterSurface;
+  Layer clusterLayer;
+  clusterLayer.source = Ref{"zones"};
+  clusterSurface.stack.push_back(clusterLayer);
+  clusterRecipe.outputs.push_back(clusterSurface);
+  const auto clusterGraph = RecipeGraph::Compile(clusterRecipe);
+  const std::array clusterRequests{RenderStackRequest{
+      &clusterGraph, &clusterSurface, 1, PlacementId{0}, 0, {TextureSize{64}}}};
+  const auto clusterPlan = BuildRenderPlan({}, clusterRequests, Bindings());
+  Check(clusterPlan.has_value(), "material clusters lower into a plan");
+  if (clusterPlan) {
+    bool readsSample = false;
+    for (const auto &step : clusterPlan->steps)
+      if (const auto *analysis = Get<ClusterMaterialStep>(step.kind)) {
+        const auto *ref = Get<RenderInputRef>(analysis->sample);
+        const auto *readback =
+            ref && ref->input < clusterPlan->inputs.size()
+                ? Get<ReadbackBinding>(clusterPlan->inputs[ref->input].binding)
+                : nullptr;
+        readsSample = readback &&
+                      readback->submission < clusterPlan->steps.size() &&
+                      Is<SubmitMaterialSampleStep>(
+                          clusterPlan->steps[readback->submission].kind);
+      }
+    Check(readsSample, "cluster analysis reads its material sample through a "
+                       "readback of a sample submission");
   }
   Recipe hiddenRecipe;
   hiddenRecipe.masks = {{"bad", "@missing"}};
