@@ -69,8 +69,11 @@
     "heightScale": {
       "expr": "@shimmerScale * clamp(@fillLevel, 0, 2)"
     },
+    "lightScale": {
+      "constant": 0.125
+    },
     "lightLevel": {
-      "expr": "clamp(@fillLevel, 0, 2)"
+      "expr": "@lightScale * clamp(@fillLevel, 0, 2)"
     },
     "shellAlpha": {
       "constant": 0.5
