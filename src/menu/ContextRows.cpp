@@ -368,7 +368,8 @@ void RenameRecipeButton(const Frame &a_frame) {
 
 void SoloRecipeButton(const Studio::RecipeRow &a_recipe,
                       const Studio::View &a_view, Studio::Intents &a_out) {
-  bool isolating = a_view.Isolating();
+  const bool isolating = a_view.Isolating();
+  bool soloed = isolating && a_view.isolation.recipeID == a_recipe.id;
   std::string text = "solo: show only this recipe";
   if (isolating) {
     text = "isolating " + a_view.isolation.recipeID;
@@ -379,8 +380,8 @@ void SoloRecipeButton(const Studio::RecipeRow &a_recipe,
       text += std::format(" layer {}", *a_view.isolation.layer);
     }
   }
-  if (SoloButton(isolating, text)) {
-    Studio::Post(a_out, Studio::SoloRecipe{a_recipe.id, isolating});
+  if (SoloButton(soloed, text)) {
+    Studio::Post(a_out, Studio::SoloRecipe{a_recipe.id, soloed});
   }
 }
 
