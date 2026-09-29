@@ -110,7 +110,6 @@ void UpdateRenderInputs(LiveActor &a_state, LiveGeometry &a_bound) {
   if (!a_bound.inputs.render) {
     return;
   }
-  a_bound.inputs.render->CollectReadbacks();
   for (std::size_t i = 0; i < a_state.instances.size(); ++i) {
     const auto &instance = a_state.instances[i];
     if (!instance.graph || !instance.signals)
@@ -290,7 +289,9 @@ void EmitMetricsHeartbeat() {
        {"target_bytes_peak", std::to_string(measured.targetBytesPeak)},
        {"frames", std::to_string(measured.frames)},
        {"render_evaluations", std::to_string(measured.renderEvaluations)},
-       {"step_executions", std::to_string(measured.stepExecutions)}});
+       {"step_executions", std::to_string(measured.stepExecutions)},
+       {"step_releases", std::to_string(measured.stepReleases)},
+       {"step_restores", std::to_string(measured.stepRestores)}});
 }
 }
 
@@ -303,6 +304,7 @@ void Manager::OnFrame() {
   FireDueFinalizes();
   editor_.TickGesture();
   Metrics::CountFrame();
+  ++renderFrame_;
   const std::uint32_t now = NowMS();
   if (now - lastMetricsMS_ >= 1000) {
     lastMetricsMS_ = now;
@@ -477,6 +479,10 @@ void Manager::RenderGeometry(LiveActor &a_state,
                              [[maybe_unused]] LivePiece &a_piece,
                              LiveGeometry &a_bound, bool a_hidden) {
   const Studio::View &view = editor_.CurrentView();
+  if (a_bound.inputs.render &&
+      a_bound.inputs.render->BeginFrame(renderFrame_)) {
+    UpdateRenderInputs(a_state, a_bound);
+  }
   if (a_bound.lost) {
     for (const PlacementId id : a_bound.placements) {
       if (const std::optional<ResolvedPlacement> resolved =
@@ -491,9 +497,6 @@ void Manager::RenderGeometry(LiveActor &a_state,
   }
   const bool anyLayerHidden =
       view.isolation.layer.has_value() || !view.muted.empty();
-  if (!a_hidden) {
-    UpdateRenderInputs(a_state, a_bound);
-  }
   for (const SlotStackPlan &slot : a_bound.stackPlan.slots) {
     SlotTarget *target = TargetFor(a_bound, slot.surface);
     if (!target) {

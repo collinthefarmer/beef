@@ -263,7 +263,11 @@ GeneratedPlan Generate(Random &random) {
 struct Totals {
   std::size_t evaluations = 0, revisited = 0, redundant = 0, repeated = 0,
               unrequired = 0, unsound = 0, inexactOutputs = 0,
-              inexactInputs = 0;
+              inexactInputs = 0, releases = 0, restores = 0;
+};
+struct ReleasedOutput {
+  Fake value = 0;
+  ChangeVersion changeVersion = 0;
 };
 
 struct Harness {
@@ -275,6 +279,7 @@ struct Harness {
   std::vector<std::optional<Observed>> lastObserved;
   std::vector<ObservedVersions> lastVersions;
   std::map<RenderStepId, std::vector<Fake>> submitted;
+  std::map<RenderStepId, ReleasedOutput> released;
   Totals totals;
   Fake nextFresh = 1;
 
@@ -346,6 +351,20 @@ struct Harness {
     if (actual.has_value() != expected.has_value() ||
         (actual && actual->value != *expected))
       ++totals.unsound;
+    for (auto it = released.begin(); it != released.end();) {
+      const auto &output = execution.Steps()[it->first].outputs.front();
+      if (!output.value) {
+        ++it;
+        continue;
+      }
+      if (*output.value == it->second.value &&
+          output.changeVersion != it->second.changeVersion)
+        ++totals.inexactOutputs;
+      if (*output.value != it->second.value &&
+          output.changeVersion == it->second.changeVersion)
+        ++totals.unsound;
+      it = released.erase(it);
+    }
     for (std::size_t i = 0; i < executions.size(); ++i) {
       if (executions[i] > 1)
         ++totals.repeated;
@@ -380,7 +399,8 @@ struct Harness {
   }
   void Act(Random &random) {
     const auto &g = generated;
-    const auto roll = Pick(random, 12);
+    execution.AdvanceEpoch();
+    const auto roll = Pick(random, 13);
     if (roll < 3) {
       const auto id = g.scalars[Pick(random, g.scalars.size())];
       Set(id, nextFresh++);
@@ -398,11 +418,30 @@ struct Harness {
       const auto stack = Pick(random, g.stacks.size());
       if (!g.upstream[stack])
         Set(g.bases[stack], nextFresh++);
-    } else if (roll < 9 && !g.measurements.empty()) {
+    } else if (roll < 8) {
+      Release(Pick(random, 3));
+    } else if (roll < 10 && !g.measurements.empty()) {
       Deliver(random, g.measurements[Pick(random, g.measurements.size())]);
     } else {
       EvaluateChain(Pick(random, g.stacks.size()));
     }
+  }
+  void Release(std::uint64_t idleEpochs) {
+    std::vector<std::optional<ReleasedOutput>> before;
+    for (const auto &state : execution.Steps())
+      before.push_back(state.outputs.front().value
+                           ? std::optional{ReleasedOutput{
+                                 *state.outputs.front().value,
+                                 state.outputs.front().changeVersion}}
+                           : std::nullopt);
+    totals.releases += execution.ReleaseIdle(
+        idleEpochs, [](const RenderStep &step, const Fake &) {
+          return !Is<CompositeStackStep>(step.kind) &&
+                 !Is<SubmitReductionStep>(step.kind);
+        });
+    for (std::size_t i = 0; i < before.size(); ++i)
+      if (before[i] && !execution.Steps()[i].outputs.front().value)
+        released[i] = *before[i];
   }
   void Deliver(Random &random, RenderInputId measurement) {
     const auto &binding =
@@ -435,7 +474,8 @@ Totals Run(BaseImport baseImport) {
     harness.Bind();
     for (int action = 0; action < 400; ++action)
       harness.Act(random);
-    const auto &t = harness.totals;
+    auto &t = harness.totals;
+    t.restores = harness.execution.Restores();
     sum.evaluations += t.evaluations;
     sum.redundant += t.redundant;
     sum.revisited += t.revisited;
@@ -444,6 +484,8 @@ Totals Run(BaseImport baseImport) {
     sum.unsound += t.unsound;
     sum.inexactOutputs += t.inexactOutputs;
     sum.inexactInputs += t.inexactInputs;
+    sum.releases += t.releases;
+    sum.restores += t.restores;
   }
   return sum;
 }
@@ -468,13 +510,16 @@ int main() {
   test::Equal(totals.redundant, std::size_t{0},
               "minimality: a cached step reruns only when an observed value "
               "changed");
+  Check(totals.releases > 1000 && totals.restores > 100,
+        "the generator releases idle steps and restores them on demand");
   const auto handleOnly = Run(BaseImport::kHandleOnly);
   Check(handleOnly.unsound > 0,
         "the soundness check detects a chained base imported without its "
         "upstream content version");
   std::printf("render execution properties: %zu reruns after a value "
               "returned to its observed value; %zu stale results without "
-              "the base content version\n",
-              totals.revisited, handleOnly.unsound);
+              "the base content version; %zu releases, %zu restores\n",
+              totals.revisited, handleOnly.unsound, totals.releases,
+              totals.restores);
   return test::Finish("render execution properties");
 }

@@ -42,9 +42,10 @@ struct TextureDemand {
   std::vector<TextureDemandId> dependencies;
   std::vector<TextureUse> dependents;
   std::optional<InterpreterProgram> program;
+  GeometryId geometry{};
 };
 [[nodiscard]] std::expected<TextureDemandId, std::string>
 CollectTextureDemand(std::vector<TextureDemand> &demands, TextureValue value,
                      TextureRequirements requirements, const TextureUse &use,
-                     const ValueBindings &bindings);
+                     const ValueBindings &bindings, GeometryId geometry = {});
 }

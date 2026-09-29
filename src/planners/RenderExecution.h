@@ -24,6 +24,8 @@ template <class T, class Scratch> struct StepExecutionState {
   std::vector<StepOutput<T>> outputs{1};
   Scratch scratch;
   std::string diagnostic;
+  bool released = false;
+  std::uint64_t lastUsed = 0;
 };
 template <class T> struct ResolvedRenderInput {
   RenderValueRef input;
@@ -80,105 +82,176 @@ public:
       return std::unexpected(problem_);
     if (!execute || !same || !select)
       return std::unexpected("render execution callbacks are incomplete");
-    std::size_t visits = 0;
-    std::vector<bool> refreshed(steps_.size(), false);
-    return EvaluateValue(result, execute, same, select, 0, visits, refreshed);
+    Walk walk{execute, same, select, 0, std::vector<bool>(steps_.size())};
+    return Materialize(result, walk, 0);
+  }
+  void AdvanceEpoch() noexcept { ++epoch_; }
+  void Touch(RenderStepId step) noexcept {
+    if (step < steps_.size())
+      steps_[step].lastUsed = epoch_;
+  }
+  [[nodiscard]] std::uint64_t Restores() const noexcept { return restores_; }
+  template <class Releasable>
+  std::size_t ReleaseIdle(std::uint64_t idleEpochs,
+                          const Releasable &releasable) {
+    std::size_t released = 0;
+    for (std::size_t i = 0; i < steps_.size(); ++i) {
+      auto &state = steps_[i];
+      auto &output = state.outputs.front();
+      if (!output.value || epoch_ - state.lastUsed <= idleEpochs ||
+          !releasable(plan_.steps[i], *output.value))
+        continue;
+      output.value.reset();
+      state.released = true;
+      ++released;
+    }
+    return released;
   }
 
 private:
+  struct Walk {
+    const ExecuteStep &execute;
+    const SameValue &same;
+    const SelectInputs &select;
+    std::size_t visits = 0;
+    std::vector<bool> refreshed;
+  };
+  using Version = std::expected<ChangeVersion, std::string>;
+  using Resolved = std::expected<ResolvedRenderInput<T>, std::string>;
+
   RenderPlan plan_;
   std::vector<RenderInputState<T>> inputs_;
   std::vector<StepExecutionState<T, Scratch>> steps_;
   std::string problem_;
+  std::uint64_t epoch_ = 1;
+  std::uint64_t restores_ = 0;
 
-  [[nodiscard]] std::expected<ResolvedRenderInput<T>, std::string>
-  EvaluateValue(RenderValueRef result, const ExecuteStep &execute,
-                const SameValue &same, const SelectInputs &select,
-                std::size_t depth, std::size_t &visits,
-                std::vector<bool> &refreshed) {
-    if (depth > 64 || ++visits > 65536)
+  [[nodiscard]] static bool Within(Walk &walk, std::size_t depth) {
+    return depth <= 64 && ++walk.visits <= 65536;
+  }
+  [[nodiscard]] std::unexpected<std::string> Fail(RenderStepId id,
+                                                  std::string message) {
+    auto &state = steps_[id];
+    state.diagnostic = plan_.steps[id].displayName + ": " + message;
+    state.outputs.front().value.reset();
+    state.released = false;
+    return std::unexpected(state.diagnostic);
+  }
+  [[nodiscard]] std::expected<std::vector<RenderValueRef>, std::string>
+  Required(RenderStepId id, Walk &walk, std::size_t depth) {
+    const auto &step = plan_.steps[id];
+    auto required = InputsOf(step.kind);
+    if (const auto *stack = Get<CompositeStackStep>(step.kind)) {
+      auto control = Materialize(stack->visibility, walk, depth + 1);
+      if (!control)
+        return std::unexpected(control.error());
+      auto selected = walk.select(*stack, control->value);
+      if (!selected)
+        return std::unexpected(selected.error());
+      for (const auto &ref : *selected)
+        if (std::ranges::find(required, ref) == required.end())
+          return std::unexpected("selected input is not an operation operand");
+      required = std::move(*selected);
+      if (std::ranges::find(required, stack->visibility) == required.end())
+        required.insert(required.begin(), stack->visibility);
+    }
+    std::vector<RenderValueRef> unique;
+    for (const auto &ref : required)
+      if (std::ranges::find(unique, ref) == unique.end())
+        unique.push_back(ref);
+    return unique;
+  }
+  [[nodiscard]] Version Refresh(RenderValueRef ref, Walk &walk,
+                                std::size_t depth) {
+    if (!Within(walk, depth))
       return std::unexpected("render execution exceeds traversal limit");
-    if (const auto *input = Get<RenderInputRef>(result)) {
+    if (const auto *input = Get<RenderInputRef>(ref)) {
       if (input->input >= inputs_.size())
         return std::unexpected("render input is unavailable");
       if (const auto *readback =
               Get<ReadbackBinding>(plan_.inputs[input->input].binding)) {
         auto submitted =
-            EvaluateValue(StepOutputRef{readback->submission, 0}, execute, same,
-                          select, depth + 1, visits, refreshed);
+            Refresh(StepOutputRef{readback->submission, 0}, walk, depth + 1);
         if (!submitted)
           return std::unexpected(submitted.error());
       }
       if (!inputs_[input->input].value)
         return std::unexpected("render input is unavailable");
-      const auto &value = inputs_[input->input];
-      return ResolvedRenderInput<T>{result, *value.value, value.changeVersion};
+      return inputs_[input->input].changeVersion;
     }
-    const auto *reference = Get<StepOutputRef>(result);
+    const auto *reference = Get<StepOutputRef>(ref);
     if (!reference || reference->step >= steps_.size() ||
         reference->output != 0)
       return std::unexpected("invalid step output");
-    const auto &step = plan_.steps[reference->step];
-    auto &state = steps_[reference->step];
+    const auto id = reference->step;
+    auto &state = steps_[id];
     auto &output = state.outputs.front();
-    if (refreshed[reference->step] && output.value)
-      return ResolvedRenderInput<T>{result, *output.value,
-                                    output.changeVersion};
-    const auto fail = [&](std::string message)
-        -> std::expected<ResolvedRenderInput<T>, std::string> {
-      state.diagnostic = step.displayName + ": " + message;
-      output.value.reset();
-      return std::unexpected(state.diagnostic);
-    };
-    auto required = InputsOf(step.kind);
-    if (const auto *stack = Get<CompositeStackStep>(step.kind)) {
-      auto control = EvaluateValue(stack->visibility, execute, same, select,
-                                   depth + 1, visits, refreshed);
-      if (!control)
-        return fail(control.error());
-      auto selected = select(*stack, control->value);
-      if (!selected)
-        return fail(selected.error());
-      for (const auto &ref : *selected)
-        if (std::ranges::find(required, ref) == required.end())
-          return fail("selected input is not an operation operand");
-      required = std::move(*selected);
-      if (std::ranges::find(required, stack->visibility) == required.end())
-        required.insert(required.begin(), stack->visibility);
+    const bool current = output.value.has_value() || state.released;
+    if (walk.refreshed[id] && current)
+      return output.changeVersion;
+    auto required = Required(id, walk, depth);
+    if (!required)
+      return Fail(id, required.error());
+    bool observed = current && required->size() == state.inputs.size();
+    for (const auto &input : *required) {
+      auto version = Refresh(input, walk, depth + 1);
+      if (!version)
+        return Fail(id, version.error());
+      const auto seen =
+          std::ranges::find_if(state.inputs, [&](const StepInput &step) {
+            return step.input == input;
+          });
+      observed = observed && seen != state.inputs.end() &&
+                 seen->changeVersion == *version;
     }
+    if (observed) {
+      walk.refreshed[id] = true;
+      return output.changeVersion;
+    }
+    return Execute(id, *required, walk, depth, false);
+  }
+  [[nodiscard]] Resolved Materialize(RenderValueRef ref, Walk &walk,
+                                     std::size_t depth) {
+    auto version = Refresh(ref, walk, depth);
+    if (!version)
+      return std::unexpected(version.error());
+    if (const auto *input = Get<RenderInputRef>(ref))
+      return ResolvedRenderInput<T>{ref, *inputs_[input->input].value,
+                                    *version};
+    const auto id = Get<StepOutputRef>(ref)->step;
+    auto &state = steps_[id];
+    state.lastUsed = epoch_;
+    if (!state.outputs.front().value) {
+      auto required = Required(id, walk, depth);
+      if (!required)
+        return Fail(id, required.error());
+      auto restored = Execute(id, *required, walk, depth, true);
+      if (!restored)
+        return std::unexpected(restored.error());
+    }
+    const auto &output = state.outputs.front();
+    return ResolvedRenderInput<T>{ref, *output.value, output.changeVersion};
+  }
+  [[nodiscard]] Version Execute(RenderStepId id,
+                                std::span<const RenderValueRef> required,
+                                Walk &walk, std::size_t depth, bool restoring) {
     std::vector<ResolvedRenderInput<T>> values;
     for (const auto &input : required) {
-      if (std::ranges::find_if(values, [&](const ResolvedRenderInput<T> &v) {
-            return v.input == input;
-          }) != values.end())
-        continue;
-      auto resolved = EvaluateValue(input, execute, same, select, depth + 1,
-                                    visits, refreshed);
+      auto resolved = Materialize(input, walk, depth + 1);
       if (!resolved)
-        return fail(resolved.error());
+        return Fail(id, resolved.error());
       values.push_back(std::move(*resolved));
     }
-    bool reusable =
-        output.value.has_value() && values.size() == state.inputs.size();
-    for (const auto &value : values) {
-      const auto observed =
-          std::ranges::find_if(state.inputs, [&](const StepInput &input) {
-            return input.input == value.input;
-          });
-      reusable = reusable && observed != state.inputs.end() &&
-                 observed->changeVersion == value.changeVersion;
-    }
-    if (reusable) {
-      refreshed[reference->step] = true;
-      return ResolvedRenderInput<T>{result, *output.value,
-                                    output.changeVersion};
-    }
-    auto produced = execute(step, values, state.scratch);
+    auto &state = steps_[id];
+    auto &output = state.outputs.front();
+    auto produced = walk.execute(plan_.steps[id], values, state.scratch);
     if (!produced)
-      return fail(produced.error());
-    if (!output.value || !same(*output.value, *produced)) {
+      return Fail(id, produced.error());
+    if (restoring)
+      ++restores_;
+    else if (!output.value || !walk.same(*output.value, *produced)) {
       if (output.changeVersion == std::numeric_limits<ChangeVersion>::max())
-        return fail("output change version exhausted");
+        return Fail(id, "output change version exhausted");
       ++output.changeVersion;
     }
     output.value = std::move(*produced);
@@ -186,8 +259,10 @@ private:
     for (const auto &value : values)
       state.inputs.push_back({value.input, value.changeVersion});
     state.diagnostic.clear();
-    refreshed[reference->step] = true;
-    return ResolvedRenderInput<T>{result, *output.value, output.changeVersion};
+    state.released = false;
+    state.lastUsed = epoch_;
+    walk.refreshed[id] = true;
+    return output.changeVersion;
   }
 };
 }

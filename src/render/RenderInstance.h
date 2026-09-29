@@ -35,29 +35,36 @@ struct RenderScratch {
 };
 class RenderInstance {
 public:
-  RenderInstance(RenderPlan plan, GeometryInputs inputs,
+  RenderInstance(RenderPlan plan, std::vector<GeometryInputs> geometries,
                  std::vector<std::shared_ptr<const RecipeGraph>> graphs);
   [[nodiscard]] std::expected<void, std::string>
   UpdateInput(RenderInputId input, RenderValue value);
   [[nodiscard]] const RenderPlan &Plan() const noexcept;
-  void CollectReadbacks();
+  bool BeginFrame(std::uint64_t frame);
   [[nodiscard]] std::expected<void, std::string>
   Update(const RecipeGraph &graph, std::size_t instance,
          const SignalState &signals);
   [[nodiscard]] std::expected<StackOutcome, std::string>
   Render(StepOutputRef output, const LayerFilter &filter,
          const StackBase &base);
-  [[nodiscard]] std::optional<TextureView> Texture(RenderValueRef output) const;
-  [[nodiscard]] std::optional<TextureView> Inspect(const RecipeGraph &graph,
-                                                   OutputRef output,
-                                                   std::size_t instance) const;
+  [[nodiscard]] std::optional<TextureView> Texture(RenderValueRef output);
+  [[nodiscard]] std::optional<TextureView>
+  Inspect(const RecipeGraph &graph, OutputRef output, std::size_t instance,
+          const RE::BSGeometry *geometry);
 
 private:
+  [[nodiscard]] std::expected<ResolvedRenderInput<RenderValue>, std::string>
+  Demand(RenderValueRef output);
+  void CollectReadbacks();
   void CollectReadback(RenderInputId input);
   [[nodiscard]] bool AwaitingFirstReadback() const;
 
   std::vector<std::shared_ptr<const RecipeGraph>> graphs_;
-  GeometryInputs geometry_;
+  [[nodiscard]] const GeometryInputs *GeometryOf(GeometryId id) const noexcept;
+
+  std::vector<GeometryInputs> geometries_;
+  std::optional<std::uint64_t> frame_;
   RenderExecution<RenderValue, RenderScratch> execution_;
+  std::uint64_t restoresReported_ = 0;
 };
 }

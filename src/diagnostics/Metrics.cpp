@@ -21,6 +21,8 @@ struct Counters {
   std::atomic<std::uint64_t> frames{0};
   std::atomic<std::uint64_t> renderEvaluations{0};
   std::atomic<std::uint64_t> stepExecutions{0};
+  std::atomic<std::uint64_t> stepReleases{0};
+  std::atomic<std::uint64_t> stepRestores{0};
 };
 
 Counters &State() noexcept {
@@ -84,6 +86,12 @@ void CountRenderEvaluation() noexcept {
 void CountStepExecution() noexcept {
   State().stepExecutions.fetch_add(1, std::memory_order_relaxed);
 }
+void CountStepReleases(std::uint64_t a_count) noexcept {
+  State().stepReleases.fetch_add(a_count, std::memory_order_relaxed);
+}
+void CountStepRestores(std::uint64_t a_count) noexcept {
+  State().stepRestores.fetch_add(a_count, std::memory_order_relaxed);
+}
 Snapshot Drain() noexcept {
   Counters &state = State();
   Snapshot out;
@@ -108,6 +116,8 @@ Snapshot Drain() noexcept {
       state.renderEvaluations.exchange(0, std::memory_order_relaxed);
   out.stepExecutions =
       state.stepExecutions.exchange(0, std::memory_order_relaxed);
+  out.stepReleases = state.stepReleases.exchange(0, std::memory_order_relaxed);
+  out.stepRestores = state.stepRestores.exchange(0, std::memory_order_relaxed);
   return out;
 }
 }

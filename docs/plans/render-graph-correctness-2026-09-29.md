@@ -1,4 +1,4 @@
-Status: in progress. Stages 0 to 3 and 5 to 7 are implemented; stage 4 is closed by decision D1. Stages 2 and 5 to 7 passed their in-game checkpoints; the revised stage 6 passed its checkpoint on 2026-09-29. The in-plan chain step of stage 5 is deferred. This plan follows the
+Status: in progress. Stages 0 to 3 and 5 to 7 are implemented; stage 4 is closed by decision D1. Stages 2 and 5 to 7 passed their in-game checkpoints; the revised stage 6 passed its checkpoint on 2026-09-29. Stage 8 (release idle intermediates) passed its checkpoint. Stage 9 (one render plan per actor) waits for its checkpoint. The in-plan chain step of stage 5 is deferred. This plan follows the
 [render-plan model](render-plan-model.md) and the
 [render-plan checkpoint](../checkpoints/render-plan-2026-09-27.md). It does not
 change their numerical, sampling or timing contracts, except where a decision
@@ -251,6 +251,62 @@ to 7 checkpoint measured stalls of up to 216 ms, so decision D2 was revised.
     The line reports step executions and stack evaluations per frame.
   - The game log holds no `render inputs:`, stack or
     `reduction readback failed` errors.
+
+### Stage 8: release idle intermediates
+
+Added after the checkpoint findings below measured about 400 live targets.
+
+- `RenderExecution` separates **refresh** from **materialize**. Refresh
+  brings a value's version up to date and executes a step only when its
+  observed inputs changed. Materialize returns the value and re-executes a
+  released step. A consumer refreshes its inputs, decides on reuse, and
+  materializes them only when it executes.
+- Reads are tracked from execution: an executing consumer marks each step it
+  materializes as used in the current epoch, and `RenderInstance::Texture` and
+  `Inspect` mark the steps they read. Nothing lists consumers by hand.
+- `ReleaseIdle` drops the value of a step unused for more than a given number
+  of epochs when a policy allows it. `RenderInstance::BeginFrame` advances the
+  epoch once per render tick and releases texture and bake-buffer steps idle
+  for 30 ticks. Stack results are never released.
+- A released step that is needed again re-executes and keeps its change
+  version. Steps are pure (stage 2), so the same observed inputs give the same
+  value.
+- The harness releases idle steps at random and checks that a restored step
+  keeps its version exactly when its value is unchanged. The first run made
+  7867 releases and 3104 restores with every result sound.
+- The heartbeat records `step_releases` and `step_restores`, and
+  `trace-report.py` prints them with the per-frame step counts.
+- Checkpoint, 2026-09-29: the regression runner passed and the log holds no
+  errors. Live targets after release: Arcane Circuit soloed, 156 targets and
+  2054 MiB at equip, 85 and 844 MiB after release; all three recipes, 408 and
+  5601 MiB at equip, 275 and 2912 MiB after release. The run made 352
+  releases and no restores.
+- The same trace measured the frame rate. With nothing equipped the game ran
+  at 52 to 56 frames per second. With Arcane Circuit soloed it ran at 17 to
+  19, with about 36 step executions per frame; with all three recipes, 14 to
+  20, with about 170. Each execution of an animated chain is a full-size draw,
+  and every geometry of a piece runs its own copy. This is outside the plan.
+
+### Stage 9: one render plan per actor
+
+Added after the stage 8 checkpoint measured about 170 step executions per frame.
+
+- `PlaceInstances` collects the stack requests of every geometry of an actor
+  and builds one plan and one `RenderInstance`, shared by the geometries.
+  Plan records carry the actor-wide `GeometryId`: stack requests, plan inputs,
+  stack and value bindings, and texture demands.
+- The existing value identities decide sharing. A step that does not depend on
+  a mesh gets the same key on every geometry and is built once. Mesh and
+  firings inputs stay per geometry.
+- `renderplan_sharing_tests.cpp` lowers one recipe onto one and two
+  geometries: image samples, programs and measurements do not grow with the
+  geometry count, and meshes, bakes and stacks double.
+- A shared value is lowered once. Its subtree's value bindings are replayed
+  for every later geometry, so studio inspection finds shared intermediates on
+  every geometry; the sharing suite fails without the replay.
+- `RenderInstance` imports each input from its geometry, takes a stack's base
+  map from the stack's geometry, and inspects values by geometry.
+  `BeginFrame` runs once per frame for the shared instance.
 
 ## Checkpoint findings, 2026-09-29
 

@@ -481,6 +481,11 @@ needs the object:
   handles. StepOutputRef resolves through stepStates[step].outputs[output].
 - StepExecutionState owns only operation-specific scratch that is not a produced
   result, such as temporary readback storage or an intermediate stack target.
+- A step output that no executing consumer or inspection read for a bounded
+  number of frames is **released**: the value is dropped, and the step keeps
+  its observations and change version. When a value is needed again, the step
+  re-executes with the same observed inputs and keeps its version. Stack
+  results are never released.
 - Published outputs and previews retain their own resource handles. Retiring the
   render instance releases its references without invalidating those retained
   handles. Change versions are not an immutable-history guarantee.

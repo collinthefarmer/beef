@@ -1164,6 +1164,42 @@ Decompile provenance (`decompiled/WornEnchantmentFX/plugin.c` unless noted):
   fails. `RenderInstance::Render` reports such a stack as `StackPending` while
   its submission is in flight. A pending output is neither rendered nor
   failed, so its application stays prepared and the slot keeps its base.
+- `RenderInstance::BeginFrame` runs once per render tick and releases a
+  texture or bake-buffer step whose value no executing consumer and no
+  inspection read for 30 ticks (`kReleaseAfterIdleTicks`). A render tick runs
+  at most at `animationFPS` (60 by default) and at most once per game frame.
+  Stack results are never released, because they are the published textures.
+  Thirty ticks is half a second at 60 ticks per second: long enough that a
+  chain animated by a signal keeps its static inputs, short enough that a
+  static chain returns its targets soon after equip. The three
+  demo recipes produce 45 texture steps per geometry at 2048, about 960 MiB
+  with mips, and each geometry of a piece holds its own copy.
+- One render plan covers every geometry of an actor. `PlaceInstances`
+  collects the stack requests of all geometries, keyed by the actor-wide
+  `GeometryId`, and builds one `RenderInstance` that every geometry shares.
+  Steps whose value identity does not involve a mesh (images, material fields,
+  signals, programs over them) get equal keys and are built once for the
+  actor. Plan inputs are deduplicated by value identity; mesh and firings
+  inputs stay per geometry (`GeometryBound`), because a mesh is the geometry
+  and firing origins are resolved against the geometry's skin. The binding
+  resolver takes the geometry, so mesh identities come from the right
+  geometry.
+- A shared input is imported through the first geometry that requested it.
+  When one geometry retires, its inputs stay in the shared instance until the
+  actor is reapplied; detaching them could leave another geometry's shared
+  inputs without a source. `BeginFrame` takes the frame number and does its
+  work once per frame, whichever geometry reaches it first.
+- A value shared across geometries is built once, under the first geometry
+  that reaches it. The lowering keeps the value bindings of each built
+  subtree and replays them for every later geometry that reaches the same key,
+  so studio inspection finds shared intermediates on every geometry. At most
+  2^18 value bindings are recorded (`kMaxValueBindings`).
+- The executor refreshes a consumer's inputs by version before it decides to
+  execute, and materializes their values only when it executes. A released
+  step whose observed inputs are unchanged therefore stays released while its
+  cached consumers are reused. When a value is needed again, the step
+  re-executes and keeps its change version: steps are pure, so the same
+  observed inputs produce the same value.
 - Imported inputs remain stable during one synchronous execution request. A
   per-request refresh set bounds shared DAG traversal by its edges, avoiding
   repeated descent through already-validated dependencies.

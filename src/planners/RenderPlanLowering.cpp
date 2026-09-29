@@ -7,23 +7,35 @@
 
 namespace BetterEnchantmentEffects {
 namespace {
+constexpr std::size_t kMaxValueBindings = 1 << 18;
+bool GeometryBound(RenderValueType type) {
+  return type == RenderValueType{RenderResourceType::kMesh} ||
+         type == RenderValueType{RenderResourceType::kFirings};
+}
 struct PlanBuilder {
   const RenderBindingResolver &bindings;
   RenderPlan plan;
   std::map<TextureKey, RenderValueRef> values;
+  std::map<TextureKey, std::vector<RenderValueBinding>> subtrees;
   std::string problem;
   std::size_t visits = 0;
   std::size_t identityBytes = 0;
+  std::vector<std::string> inputIdentities;
 
   void Remember(const TextureKey &key, RenderValueRef result,
-                TextureValue value) {
+                TextureValue value, GeometryId geometry,
+                std::size_t subtreeStart) {
+    subtrees[key].assign(plan.values.begin() +
+                             static_cast<std::ptrdiff_t>(
+                                 std::min(subtreeStart, plan.values.size())),
+                         plan.values.end());
     if (identityBytes + key.identity.canonical.size() > 8 * 1024 * 1024) {
       problem = "render identities exceed their size limit";
       return;
     }
     if (values.emplace(key, result).second)
       identityBytes += key.identity.canonical.size();
-    plan.values.push_back({value, result});
+    plan.values.push_back({value, result, geometry});
   }
   RenderValueRef Step(RenderStepKind kind, std::string label) {
     for (std::size_t i = 0; i < plan.steps.size(); ++i)
@@ -37,14 +49,19 @@ struct PlanBuilder {
     plan.steps.push_back({std::move(kind), std::move(label)});
     return StepOutputRef{id, 0};
   }
-  RenderValueRef Input(TextureValue value, RenderValueType type) {
+  RenderValueRef Input(const TextureKey &key, TextureValue value,
+                       RenderValueType type, GeometryId geometry) {
+    const bool bound = GeometryBound(type);
+    inputIdentities.resize(plan.inputs.size());
     for (std::size_t i = 0; i < plan.inputs.size(); ++i)
-      if (const auto *existing = Get<TextureValue>(plan.inputs[i].binding);
-          existing && *existing == value && plan.inputs[i].type == type)
+      if (Is<TextureValue>(plan.inputs[i].binding) &&
+          plan.inputs[i].type == type &&
+          inputIdentities[i] == key.identity.canonical &&
+          (!bound || plan.inputs[i].geometry == geometry))
         return RenderInputRef{i};
-    const auto id = plan.inputs.size();
-    plan.inputs.push_back({type, value});
-    return RenderInputRef{id};
+    plan.inputs.push_back({type, value, geometry});
+    inputIdentities.push_back(key.identity.canonical);
+    return RenderInputRef{plan.inputs.size() - 1};
   }
   RenderValueRef Readback(StepOutputRef submission, RenderValueType type) {
     const ReadbackBinding binding{submission.step};
@@ -53,6 +70,7 @@ struct PlanBuilder {
           existing && *existing == binding)
         return RenderInputRef{i};
     plan.inputs.push_back({type, binding});
+    inputIdentities.resize(plan.inputs.size());
     return RenderInputRef{plan.inputs.size() - 1};
   }
   RenderValueRef Lookup(const RecipeGraph &graph, FunctionId function,
@@ -76,25 +94,29 @@ struct PlanBuilder {
                    : value;
   }
   RenderValueRef TryBuild(TextureValue value, TextureRequirements requirements,
-                          RenderValueType fallback, const std::string &label) {
+                          GeometryId geometry, RenderValueType fallback,
+                          const std::string &label) {
     const auto oldSteps = plan.steps.size(), oldInputs = plan.inputs.size(),
                oldBindings = plan.values.size();
     const auto oldValues = values;
+    const auto oldSubtrees = subtrees;
     const auto oldBytes = identityBytes;
-    const auto result = Build(value, requirements);
+    const auto result = Build(value, requirements, geometry);
     if (problem.empty())
       return result;
     auto failure = std::move(problem);
     problem.clear();
     plan.steps.resize(oldSteps);
     plan.inputs.resize(oldInputs);
+    inputIdentities.resize(std::min(inputIdentities.size(), oldInputs));
     plan.values.resize(oldBindings);
     values = oldValues;
+    subtrees = oldSubtrees;
     identityBytes = oldBytes;
     return Step(UnavailableStep{fallback, std::move(failure)}, label);
   }
   RenderValueRef Build(TextureValue value, TextureRequirements requirements,
-                       std::size_t depth = 0) {
+                       GeometryId geometry, std::size_t depth = 0) {
     if (!problem.empty())
       return RenderInputRef{0};
     if (++visits > 65536 || depth > 64 || !value.graph) {
@@ -108,7 +130,8 @@ struct PlanBuilder {
       problem = "render lowering encountered an invalid graph output";
       return RenderInputRef{0};
     }
-    auto identity = IdentifyValue(graph, value.output, bindings(value));
+    auto identity =
+        IdentifyValue(graph, value.output, bindings(value, geometry));
     if (!identity) {
       problem = identity.error();
       return RenderInputRef{0};
@@ -118,18 +141,29 @@ struct PlanBuilder {
       keyRequirements.format = TextureFormat::kRgba8;
     const TextureKey key{std::move(*identity), keyRequirements};
     if (const auto found = values.find(key); found != values.end()) {
-      plan.values.push_back({value, found->second});
+      plan.values.push_back({value, found->second, geometry});
+      if (const auto subtree = subtrees.find(key); subtree != subtrees.end()) {
+        if (plan.values.size() + subtree->second.size() > kMaxValueBindings) {
+          problem = "render value bindings exceed their limit";
+          return RenderInputRef{0};
+        }
+        for (const auto &binding : subtree->second)
+          if (binding.geometry != geometry)
+            plan.values.push_back({binding.value, binding.result, geometry});
+      }
       return found->second;
     }
+    const auto subtreeStart = plan.values.size();
     const auto build = [&](OutputRef ref) {
-      return Build({&graph, ref, value.instance}, requirements, depth + 1);
+      return Build({&graph, ref, value.instance}, requirements, geometry,
+                   depth + 1);
     };
     const auto numeric = Get<ValueType>(*type);
     if (numeric && !graph.SampleDependent(value.output) &&
         std::ranges::find(graph.TickOrder(), value.output.node) !=
             graph.TickOrder().end()) {
-      const auto input = Input(value, *numeric);
-      Remember(key, input, value);
+      const auto input = Input(key, value, *numeric, geometry);
+      Remember(key, input, value, geometry, subtreeStart);
       return input;
     }
     if (numeric && !graph.SampleDependent(value.output) &&
@@ -142,7 +176,7 @@ struct PlanBuilder {
       const auto result =
           Step(EvaluateValueStep{value, std::move(inputs), *numeric},
                node->displayName);
-      Remember(key, result, value);
+      Remember(key, result, value, geometry, subtreeStart);
       return result;
     }
     const auto label = node->displayName;
@@ -153,24 +187,24 @@ struct PlanBuilder {
         },
         [&](const ExternalInput &k) -> RenderValueRef {
           if (numeric)
-            return Input(value, *numeric);
+            return Input(key, value, *numeric, geometry);
           if (Is<GeometryInput>(k.source))
-            return Input(value, RenderResourceType::kMesh);
+            return Input(key, value, RenderResourceType::kMesh, geometry);
           if (Is<MaterialInput>(k.source))
-            return Input(value, RenderResourceType::kMaterial);
+            return Input(key, value, RenderResourceType::kMaterial, geometry);
           if (Is<TextureInput>(k.source))
-            return Input(value, RenderResourceType::kTexture);
+            return Input(key, value, RenderResourceType::kTexture, geometry);
           if (Is<RootTransformInput>(k.source))
-            return Input(value, RenderResourceType::kTransform);
+            return Input(key, value, RenderResourceType::kTransform, geometry);
           problem = label + ": unsupported render input";
           return RenderInputRef{0};
         },
         [&](const ReductionOperation &k) -> RenderValueRef {
           auto measured = requirements;
           measured.format = TextureFormat::kRgba32Float;
-          const auto field = Field(
-              Build({&graph, k.value, value.instance}, measured, depth + 1),
-              measured, label + " field");
+          const auto field = Field(Build({&graph, k.value, value.instance},
+                                         measured, geometry, depth + 1),
+                                   measured, label + " field");
           const auto fieldType = graph.OutputType(k.value);
           const auto *sampleType =
               fieldType ? Get<ValueType>(*fieldType) : nullptr;
@@ -318,11 +352,11 @@ struct PlanBuilder {
         [&](const auto &) -> RenderValueRef {
           if (const auto *resource = Get<ResourceType>(*type);
               resource && *resource == ResourceType::kFirings)
-            return Input(value, RenderResourceType::kFirings);
+            return Input(key, value, RenderResourceType::kFirings, geometry);
           problem = label + ": no render lowering for operation";
           return RenderInputRef{0};
         });
-    Remember(key, result, value);
+    Remember(key, result, value, geometry, subtreeStart);
     return result;
   }
   std::optional<OutputRef> Bound(const RecipeGraph &graph,
@@ -337,11 +371,14 @@ struct PlanBuilder {
       problem = "stack request is incomplete";
       return;
     }
-    const StackInputBinding binding{request.placement, request.output};
+    const StackInputBinding binding{request.placement, request.output,
+                                    request.geometry};
     const RenderInputRef base{plan.inputs.size()};
-    plan.inputs.push_back({RenderResourceType::kStack, binding});
+    plan.inputs.push_back(
+        {RenderResourceType::kStack, binding, request.geometry});
     const RenderInputRef visibility{plan.inputs.size()};
-    plan.inputs.push_back({RenderResourceType::kVisibility, binding});
+    plan.inputs.push_back(
+        {RenderResourceType::kVisibility, binding, request.geometry});
     CompositeStackStep stack{
         base, visibility, {}, request.requirements, request.surface->slot};
     for (std::size_t i = 0; i < request.surface->stack.size(); ++i) {
@@ -358,9 +395,9 @@ struct PlanBuilder {
             : property == " color"
                 ? RenderValueType{ValueType::kVec3}
                 : RenderValueType{RenderResourceType::kTexture};
-        auto value =
-            TryBuild({request.graph, *ref, request.instance},
-                     request.requirements, expected, location + property);
+        auto value = TryBuild({request.graph, *ref, request.instance},
+                              request.requirements, request.geometry, expected,
+                              location + property);
         const auto type = TypeOf(plan, value);
         if (property == " mask" ||
             (property == " source" &&
@@ -378,7 +415,8 @@ struct PlanBuilder {
     }
     const auto result = Step(std::move(stack), OutputWhere(request.output));
     if (const auto *ref = Get<StepOutputRef>(result))
-      plan.stackOutputs.push_back({request.placement, request.output, *ref});
+      plan.stackOutputs.push_back(
+          {request.placement, request.output, request.geometry, *ref});
   }
 };
 }
@@ -391,7 +429,7 @@ BuildRenderPlan(std::span<const TextureDemand> demands,
   PlanBuilder builder{bindings, {}, {}, {}};
   for (const auto &demand : demands) {
     const auto value = builder.Field(
-        builder.TryBuild(demand.value, demand.key.requirements,
+        builder.TryBuild(demand.value, demand.key.requirements, demand.geometry,
                          RenderResourceType::kTexture, "texture demand"),
         demand.key.requirements, "uniform field");
     const auto id = static_cast<TextureDemandId>(&demand - demands.data());

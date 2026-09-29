@@ -7,7 +7,7 @@ using namespace BetterEnchantmentEffects;
 using test::Check;
 namespace {
 RenderBindingResolver Bindings() {
-  return [](const TextureValue &value) {
+  return [](const TextureValue &value, GeometryId) {
     return ValueBindings{
         [instance = value.instance](
             const ExternalSource &) -> std::expected<std::string, std::string> {
@@ -286,7 +286,7 @@ int main() {
     if (binding.property == LayerWhere(0, 0) + " source") {
       const TextureValue value{&graph, binding.value, 1};
       Check(CollectTextureDemand(demands, value, {TextureSize{64}}, use,
-                                 Bindings()(value))
+                                 Bindings()(value, GeometryId{}))
                 .has_value(),
             "collect mapped arguments and measured field prerequisites");
     }

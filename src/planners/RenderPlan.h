@@ -39,6 +39,7 @@ struct ReductionDomain {
 struct StackInputBinding {
   PlacementId placement{};
   std::size_t output = 0;
+  GeometryId geometry{};
   [[nodiscard]] bool operator==(const StackInputBinding &) const = default;
 };
 struct ReadbackBinding {
@@ -48,6 +49,7 @@ struct ReadbackBinding {
 struct RenderInput {
   RenderValueType type;
   std::variant<TextureValue, StackInputBinding, ReadbackBinding> binding;
+  GeometryId geometry{};
 };
 struct UnavailableStep {
   RenderValueType type;
@@ -178,11 +180,13 @@ struct TextureUseBinding {
 struct StackOutputBinding {
   PlacementId placement{};
   std::size_t output = 0;
+  GeometryId geometry{};
   StepOutputRef result;
 };
 struct RenderValueBinding {
   TextureValue value;
   RenderValueRef result;
+  GeometryId geometry{};
 };
 struct RenderPlan {
   std::vector<RenderValueBinding> values;
@@ -198,9 +202,10 @@ struct RenderStackRequest {
   PlacementId placement{};
   std::size_t output = 0;
   TextureRequirements requirements;
+  GeometryId geometry{};
 };
 using RenderBindingResolver =
-    std::function<ValueBindings(const TextureValue &)>;
+    std::function<ValueBindings(const TextureValue &, GeometryId geometry)>;
 [[nodiscard]] std::vector<RenderValueRef> InputsOf(const RenderStepKind &step);
 [[nodiscard]] RenderValueType OutputType(const RenderStepKind &step);
 [[nodiscard]] std::optional<RenderValueType> TypeOf(const RenderPlan &plan,

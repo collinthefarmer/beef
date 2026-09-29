@@ -319,6 +319,7 @@ void MarkReplaced(LiveActor &a_state, LiveGeometry &a_bound) {
   }
 }
 
+}
 struct LocatedStackOutput {
   PlacementId placement;
   const Recipe &recipe;
@@ -327,6 +328,14 @@ struct LocatedStackOutput {
   const SurfaceOutput &surface;
   PlacedOutput &placed;
 };
+struct ActorStacks {
+  std::vector<StackTextureRequest> requests;
+  std::vector<GeometryId> requestGeometries;
+  std::vector<LocatedStackOutput> outputs;
+  std::vector<GeometryInputs> geometries;
+  std::vector<LiveGeometry *> bound;
+};
+namespace {
 
 std::optional<LocatedStackOutput>
 LocateStackOutput(LiveActor &a_state, const LiveGeometry &a_bound,
@@ -390,13 +399,18 @@ void LogStackDiagnostics(const LocatedStackOutput &a_output,
   }
 }
 
-void PrepareChainStacks(LiveActor &a_state, LiveGeometry &a_bound,
-                        const Settings &a_settings,
-                        WarningHistory &a_warnings) {
+void CollectChainStacks(LiveActor &a_state, LiveGeometry &a_bound,
+                        GeometryId a_geometry, const Settings &a_settings,
+                        ActorStacks &a_stacks) {
+  const std::size_t index = IndexOf(a_geometry);
+  if (a_stacks.geometries.size() <= index) {
+    a_stacks.geometries.resize(index + 1);
+    a_stacks.bound.resize(index + 1, nullptr);
+  }
+  a_stacks.geometries[index] = a_bound.inputs;
+  a_stacks.bound[index] = &a_bound;
   const auto [size, maxSize] =
       RuntimeSizes(a_settings, a_bound.inputs.material);
-  std::vector<StackTextureRequest> requests;
-  std::vector<LocatedStackOutput> outputs;
   auto *compositor = Compositor::GetSingleton();
   for (const SlotPlan &slot : a_bound.plan.slots) {
     for (const SlotContribution &contribution : slot.chain) {
@@ -414,34 +428,48 @@ void PrepareChainStacks(LiveActor &a_state, LiveGeometry &a_bound,
           SlotStackSize(size, slot.slot, located->surface.resolution);
       GeometryInputs inputs = a_bound.inputs;
       inputs.applicationContext = located->applicationContext;
-      requests.push_back(
+      a_stacks.requests.push_back(
           {&located->recipe, &located->graph, &located->surface,
            contribution.output, located->placement, inputs,
            compositor->StackSize(located->surface, inputs, slotSize, maxSize)});
-      outputs.push_back(*located);
+      a_stacks.requestGeometries.push_back(a_geometry);
+      a_stacks.outputs.push_back(*located);
     }
   }
+}
+
+void BuildActorRender(LiveActor &a_state, ActorStacks &a_stacks,
+                      const Settings &a_settings, WarningHistory &a_warnings) {
+  for (LiveGeometry *bound : a_stacks.bound)
+    if (bound)
+      bound->inputs.render.reset();
+  if (a_stacks.requests.empty())
+    return;
+  const auto &requests = a_stacks.requests;
   std::vector<RenderStackRequest> stacks;
   std::vector<std::shared_ptr<const RecipeGraph>> graphs;
   for (const auto &instance : a_state.instances)
     if (instance.graph)
       graphs.push_back(instance.graph);
-  for (const auto &request : requests)
-    stacks.push_back({request.graph,
-                      request.output,
-                      request.inputs.applicationContext,
-                      request.placement,
-                      request.outputIndex,
-                      {request.size}});
-  const auto bindings = [&](const TextureValue &value) {
-    for (const auto &request : requests)
-      if (request.graph == value.graph &&
-          request.inputs.applicationContext == value.instance)
-        return TextureValueBindings(*value.graph, request.inputs);
+  for (std::size_t i = 0; i < requests.size(); ++i)
+    stacks.push_back({requests[i].graph,
+                      requests[i].output,
+                      requests[i].inputs.applicationContext,
+                      requests[i].placement,
+                      requests[i].outputIndex,
+                      {requests[i].size},
+                      a_stacks.requestGeometries[i]});
+  const auto bindings = [&](const TextureValue &value, GeometryId geometry) {
+    for (std::size_t i = 0; i < requests.size(); ++i)
+      if (requests[i].graph == value.graph &&
+          requests[i].inputs.applicationContext == value.instance &&
+          a_stacks.requestGeometries[i] == geometry)
+        return TextureValueBindings(*value.graph, requests[i].inputs);
     return ValueBindings{};
   };
   std::vector<TextureDemand> demands;
-  for (const auto &request : requests) {
+  for (std::size_t i = 0; i < requests.size(); ++i) {
+    const auto &request = requests[i];
     for (std::size_t layer = 0; layer < request.output->stack.size(); ++layer) {
       for (const auto role :
            {TextureUseInput::kSource, TextureUseInput::kMask}) {
@@ -457,7 +485,8 @@ void PrepareChainStacks(LiveActor &a_state, LiveGeometry &a_bound,
               {request.graph, binding.value, request.inputs.applicationContext},
               {request.size},
               {request.placement, request.outputIndex, layer, role},
-              TextureValueBindings(*request.graph, request.inputs));
+              TextureValueBindings(*request.graph, request.inputs),
+              a_stacks.requestGeometries[i]);
           if (!collected && a_settings.verboseLogging)
             logger::warn("{}: {}", property, collected.error());
         }
@@ -466,28 +495,35 @@ void PrepareChainStacks(LiveActor &a_state, LiveGeometry &a_bound,
   }
   auto plan = BuildRenderPlan(demands, stacks, bindings);
   if (!plan) {
-    for (auto &located : outputs)
+    for (auto &located : a_stacks.outputs)
       located.placed.problem = plan.error();
     return;
   }
-  a_bound.inputs.render = std::make_shared<RenderInstance>(
-      std::move(*plan), a_bound.inputs, std::move(graphs));
+  const auto render = std::make_shared<RenderInstance>(
+      std::move(*plan), a_stacks.geometries, std::move(graphs));
+  for (LiveGeometry *bound : a_stacks.bound)
+    if (bound)
+      bound->inputs.render = render;
   for (std::size_t i = 0; i < requests.size(); ++i) {
     const auto &request = requests[i];
-    auto &located = outputs[i];
-    for (const auto &binding : a_bound.inputs.render->Plan().stackOutputs) {
+    const GeometryId geometry = a_stacks.requestGeometries[i];
+    auto &located = a_stacks.outputs[i];
+    for (const auto &binding : render->Plan().stackOutputs) {
       if (binding.placement != request.placement ||
-          binding.output != request.outputIndex)
+          binding.output != request.outputIndex || binding.geometry != geometry)
         continue;
       located.placed.stack = std::make_unique<RenderOutput>(
-          a_bound.inputs.render, binding.result, request.size,
+          render, binding.result, request.size,
           IsAnimated(*request.graph, Output{*request.output}));
       break;
     }
+    const LiveGeometry *bound = IndexOf(geometry) < a_stacks.bound.size()
+                                    ? a_stacks.bound[IndexOf(geometry)]
+                                    : nullptr;
     if (!located.placed.stack)
       located.placed.problem = "stack was not lowered";
-    else if (a_settings.verboseLogging)
-      LogStackDiagnostics(located, a_bound.name, a_warnings);
+    else if (a_settings.verboseLogging && bound)
+      LogStackDiagnostics(located, bound->name, a_warnings);
   }
 }
 
@@ -820,6 +856,7 @@ void Manager::PlaceInstances(LiveActor &a_state, const Settings &a_settings) {
   a_state.placements.clear();
   a_state.placements.resize(a_state.plan.placements.size());
   std::size_t flat = 0;
+  ActorStacks stacks;
   for (std::size_t p = 0; p < a_state.pieces.size(); ++p) {
     for (std::size_t g = 0; g < a_state.pieces[p].geometries.size(); ++g) {
       const auto placement = PlanGeometryPlacement(
@@ -828,15 +865,18 @@ void Manager::PlaceInstances(LiveActor &a_state, const Settings &a_settings) {
             return editor_.CurrentView().OutputShown(recipe.id, output);
           });
       PreparePlacement(a_state, placement, LivePieceId{p}, g, GeometryId{flat});
-      PlaceOnGeometry(a_state, LivePieceId{p}, g, a_settings);
+      PlaceOnGeometry(a_state, LivePieceId{p}, g, GeometryId{flat}, a_settings,
+                      stacks);
       ++flat;
     }
   }
+  BuildActorRender(a_state, stacks, a_settings, stackWarnings_);
 }
 
 void Manager::PlaceOnGeometry(LiveActor &a_state, LivePieceId a_piece,
-                              std::size_t a_geometry,
-                              const Settings &a_settings) {
+                              std::size_t a_geometry, GeometryId a_flat,
+                              const Settings &a_settings,
+                              ActorStacks &a_stacks) {
   const std::size_t pieceIndex = IndexOf(a_piece);
   if (pieceIndex >= a_state.pieces.size() ||
       a_geometry >= a_state.pieces[pieceIndex].geometries.size()) {
@@ -846,7 +886,7 @@ void Manager::PlaceOnGeometry(LiveActor &a_state, LivePieceId a_piece,
 
   InstallSurfaces(a_state, bound, a_settings.uniqueMaterial);
   MarkReplaced(a_state, bound);
-  PrepareChainStacks(a_state, bound, a_settings, stackWarnings_);
+  CollectChainStacks(a_state, bound, a_flat, a_settings, a_stacks);
 
   const auto actor = a_state.actor.get();
   if (actor) {

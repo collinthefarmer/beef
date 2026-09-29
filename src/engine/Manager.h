@@ -27,6 +27,7 @@
 #include <vector>
 
 namespace BetterEnchantmentEffects {
+struct ActorStacks;
 class Manager {
 public:
   [[nodiscard]] static Manager *GetSingleton();
@@ -83,6 +84,7 @@ public:
   [[nodiscard]] std::shared_ptr<const Snapshot> LatestSnapshot() const;
 
 private:
+  std::uint64_t renderFrame_ = 0;
   friend class RecipeEditor;
 
   Manager();
@@ -120,7 +122,8 @@ private:
               RE::FormID a_enchantment, const Settings &a_settings);
   void PlaceInstances(LiveActor &a_state, const Settings &a_settings);
   void PlaceOnGeometry(LiveActor &a_state, LivePieceId a_piece,
-                       std::size_t a_geometry, const Settings &a_settings);
+                       std::size_t a_geometry, GeometryId a_flat,
+                       const Settings &a_settings, ActorStacks &a_stacks);
   void PlaceLightsOf(RE::Actor *a_actor, LiveActor &a_state,
                      const Settings &a_settings);
   bool LayoutSanityCheck(const PbrMaterial &a_material,

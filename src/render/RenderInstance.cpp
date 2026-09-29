@@ -155,6 +155,12 @@ DrawProgram(const InterpreterProgram &program,
     return std::unexpected("interpreter draw failed");
   return RenderValue{View(target, program.ResultType())};
 }
+constexpr std::uint64_t kReleaseAfterIdleTicks = 30;
+bool Releasable(const RenderStep &step, const RenderValue &value) {
+  return !Is<CompositeStackStep>(step.kind) &&
+         (Is<TextureView>(value) ||
+          Is<std::shared_ptr<const BakeBuffers>>(value));
+}
 std::expected<RenderValue, std::string>
 ExecuteStep(const RenderStep &step,
             std::span<const ResolvedRenderInput<RenderValue>> inputs,
@@ -630,11 +636,12 @@ ExecuteStep(const RenderStep &step,
 }
 }
 RenderInstance::RenderInstance(
-    RenderPlan plan, GeometryInputs inputs,
+    RenderPlan plan, std::vector<GeometryInputs> inputs,
     std::vector<std::shared_ptr<const RecipeGraph>> graphs)
-    : graphs_(std::move(graphs)), geometry_(std::move(inputs)),
+    : graphs_(std::move(graphs)), geometries_(std::move(inputs)),
       execution_(std::move(plan)) {
-  geometry_.render.reset();
+  for (auto &geometry : geometries_)
+    geometry.render.reset();
 }
 const RenderPlan &RenderInstance::Plan() const noexcept {
   return execution_.Plan();
@@ -703,7 +710,8 @@ RenderInstance::Update(const RecipeGraph &graph, std::size_t instance,
     if (!binding || binding->graph != &graph || binding->instance != instance)
       continue;
     const auto *node = graph.NodeAt(binding->output.node);
-    if (!node) {
+    const GeometryInputs *geometry = GeometryOf(input.geometry);
+    if (!node || !geometry) {
       execution_.UnsetInput(i);
       continue;
     }
@@ -715,7 +723,7 @@ RenderInstance::Update(const RecipeGraph &graph, std::size_t instance,
           external ? Get<NodePositionInput>(external->source) : nullptr;
       if (position) {
         if (const auto origin = NodeBindPosition(
-                geometry_.geometry.get(), geometry_.root.get(), position->name))
+                geometry->geometry.get(), geometry->root.get(), position->name))
           value = Value{*origin};
       } else {
         const auto number = signals.ValueOf(binding->output);
@@ -735,11 +743,11 @@ RenderInstance::Update(const RecipeGraph &graph, std::size_t instance,
             [](const std::monostate &) { return std::optional<Vec3>{}; },
             [&](const CarriedPoint &point) {
               return std::optional{
-                  ToRootSpace(geometry_.root.get(), point.position)};
+                  ToRootSpace(geometry->root.get(), point.position)};
             },
             [&](const AnchorNode &anchor) {
-              return NodeBindPosition(geometry_.geometry.get(),
-                                      geometry_.root.get(), anchor.node);
+              return NodeBindPosition(geometry->geometry.get(),
+                                      geometry->root.get(), anchor.node);
             });
         firings.firings.push_back({origin, firing.startTime});
       }
@@ -750,12 +758,12 @@ RenderInstance::Update(const RecipeGraph &graph, std::size_t instance,
         if (execution_.Inputs()[i].value)
           continue;
         const auto mesh =
-            Compositor::GetSingleton()->MeshOf(geometry_.geometry.get());
+            Compositor::GetSingleton()->MeshOf(geometry->geometry.get());
         if (mesh)
           value = *mesh;
       } else if (Is<MaterialInput>(external->source)) {
         stableResource = true;
-        value = geometry_.material;
+        value = geometry->material;
       } else if (const auto *texture = Get<TextureInput>(external->source)) {
         stableResource = true;
         if (execution_.Inputs()[i].value)
@@ -765,7 +773,7 @@ RenderInstance::Update(const RecipeGraph &graph, std::size_t instance,
         if (loaded)
           value = TextureView{loaded};
       } else if (Is<RootTransformInput>(external->source))
-        value = RenderTransform{geometry_.root};
+        value = RenderTransform{geometry->root};
     }
     if (!value) {
       execution_.UnsetInput(i);
@@ -788,14 +796,18 @@ RenderInstance::Render(StepOutputRef output, const LayerFilter &filter,
     return std::unexpected("output is not a stack");
   const auto *baseInput = Get<RenderInputRef>(stack->base);
   const auto *visibility = Get<RenderInputRef>(stack->visibility);
-  if (!baseInput || !visibility)
+  if (!baseInput || !visibility || baseInput->input >= Plan().inputs.size())
     return std::unexpected("stack controls must be imported");
+  const GeometryInputs *geometry =
+      GeometryOf(Plan().inputs[baseInput->input].geometry);
+  if (!geometry)
+    return std::unexpected("stack geometry is unavailable");
   TextureRef texture = base.texture;
   const bool neutralHeight =
-      stack->slot == Slot::kHeight && geometry_.material.flatDisplacement;
+      stack->slot == Slot::kHeight && geometry->material.flatDisplacement;
   if (!texture && !neutralHeight) {
     const auto material =
-        MaterialTexture(BaseMapOf(stack->slot), geometry_.material);
+        MaterialTexture(BaseMapOf(stack->slot), geometry->material);
     if (IsNonPlaceholderTexture(material))
       texture = material;
   }
@@ -813,19 +825,8 @@ RenderInstance::Render(StepOutputRef output, const LayerFilter &filter,
     return std::unexpected(set.error());
   if (auto set = UpdateInput(visibility->input, filter); !set)
     return std::unexpected(set.error());
-  const auto evaluate = [&] {
-    Metrics::CountRenderEvaluation();
-    return execution_.Evaluate(
-        output,
-        [](const RenderStep &step,
-           std::span<const ResolvedRenderInput<RenderValue>> inputs,
-           RenderScratch &scratch) {
-          Metrics::CountStepExecution();
-          return ExecuteStep(step, inputs, scratch);
-        },
-        SameRenderValue, SelectStackInputs);
-  };
-  const auto result = evaluate();
+  Metrics::CountRenderEvaluation();
+  const auto result = Demand(output);
   if (!result && AwaitingFirstReadback())
     return StackOutcome{StackPending{}};
   if (!result)
@@ -886,12 +887,42 @@ bool RenderInstance::AwaitingFirstReadback() const {
   }
   return false;
 }
-std::optional<TextureView>
-RenderInstance::Texture(RenderValueRef output) const {
+std::expected<ResolvedRenderInput<RenderValue>, std::string>
+RenderInstance::Demand(RenderValueRef output) {
+  return execution_.Evaluate(
+      output,
+      [](const RenderStep &step,
+         std::span<const ResolvedRenderInput<RenderValue>> inputs,
+         RenderScratch &scratch) {
+        Metrics::CountStepExecution();
+        return ExecuteStep(step, inputs, scratch);
+      },
+      SameRenderValue, SelectStackInputs);
+}
+const GeometryInputs *RenderInstance::GeometryOf(GeometryId id) const noexcept {
+  return IndexOf(id) < geometries_.size() ? &geometries_[IndexOf(id)] : nullptr;
+}
+bool RenderInstance::BeginFrame(std::uint64_t frame) {
+  if (frame_ == frame)
+    return false;
+  frame_ = frame;
+  execution_.AdvanceEpoch();
+  Metrics::CountStepReleases(
+      execution_.ReleaseIdle(kReleaseAfterIdleTicks, Releasable));
+  Metrics::CountStepRestores(execution_.Restores() - restoresReported_);
+  restoresReported_ = execution_.Restores();
+  CollectReadbacks();
+  return true;
+}
+std::optional<TextureView> RenderInstance::Texture(RenderValueRef output) {
   const std::optional<RenderValue> *value = nullptr;
   if (const auto *ref = Get<StepOutputRef>(output);
-      ref && ref->output == 0 && ref->step < execution_.Steps().size())
+      ref && ref->output == 0 && ref->step < execution_.Steps().size()) {
+    if (execution_.Steps()[ref->step].released)
+      static_cast<void>(Demand(output));
+    execution_.Touch(ref->step);
     value = &execution_.Steps()[ref->step].outputs.front().value;
+  }
   if (const auto *ref = Get<RenderInputRef>(output);
       ref && ref->input < execution_.Inputs().size())
     value = &execution_.Inputs()[ref->input].value;
@@ -900,11 +931,13 @@ RenderInstance::Texture(RenderValueRef output) const {
       return *texture;
   return std::nullopt;
 }
-std::optional<TextureView> RenderInstance::Inspect(const RecipeGraph &graph,
-                                                   OutputRef output,
-                                                   std::size_t instance) const {
+std::optional<TextureView>
+RenderInstance::Inspect(const RecipeGraph &graph, OutputRef output,
+                        std::size_t instance, const RE::BSGeometry *geometry) {
   for (const auto &binding : Plan().values)
-    if (binding.value == TextureValue{&graph, output, instance})
+    if (binding.value == TextureValue{&graph, output, instance} &&
+        GeometryOf(binding.geometry) &&
+        GeometryOf(binding.geometry)->geometry.get() == geometry)
       if (const auto texture = Texture(binding.result))
         return texture;
   return std::nullopt;

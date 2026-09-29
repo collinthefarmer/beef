@@ -17,6 +17,7 @@ namespace {
 struct Collector {
   std::vector<TextureDemand> &demands;
   const ValueBindings &bindings;
+  GeometryId geometry{};
   std::size_t visits = 0;
 
   std::expected<TextureDemandId, std::string>
@@ -50,7 +51,7 @@ struct Collector {
     if (identityBytes > 8 * 1024 * 1024)
       return std::unexpected(
           "texture identities exceed the collection size limit");
-    TextureDemand demand{std::move(key), value, {}, {}, {}};
+    TextureDemand demand{std::move(key), value, {}, {}, {}, geometry};
     if (Is<ExpressionOperation>(node->kind) &&
         graph.SampleDependent(value.output)) {
       auto program = InterpreterProgram::Compile(graph, value.output);
@@ -109,9 +110,9 @@ struct Collector {
 std::expected<TextureDemandId, std::string>
 CollectTextureDemand(std::vector<TextureDemand> &demands, TextureValue value,
                      TextureRequirements requirements, const TextureUse &use,
-                     const ValueBindings &bindings) {
+                     const ValueBindings &bindings, GeometryId geometry) {
   const auto originalSize = demands.size();
-  Collector collector{demands, bindings};
+  Collector collector{demands, bindings, geometry};
   auto result = collector.Add(value, requirements, 0);
   if (!result) {
     demands.erase(demands.begin() + originalSize, demands.end());
