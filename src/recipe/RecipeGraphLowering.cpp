@@ -16,6 +16,7 @@ struct RecipeGraphLowering {
   std::vector<std::optional<FunctionId>> functions;
   std::vector<bool> rejected;
   std::unordered_map<std::string, OutputRef> sharedInputs;
+  std::unordered_map<std::string, OutputRef> unscrolledSources;
   static constexpr std::size_t kNodeLimit = 16 * kMaxRecipeRows;
 
   OutputRef Add(NodeKind kind, GraphValueType type, std::string label) {
@@ -215,40 +216,84 @@ struct RecipeGraphLowering {
                                      Parameter(k.decay), Delta()};
         });
   }
-  NodeKind SourceKindOf(const Source &source) {
+  ImageOperation ImageAt(const ImageSource &image, OutputRef texture,
+                         bool scrolled) {
+    TextureCoordinatesOperation coordinates;
+    coordinates.uv = Uv();
+    coordinates.mirror = image.mirror;
+    coordinates.transpose = image.transpose;
+    if (image.tile)
+      coordinates.tile = Parameter(*image.tile);
+    if (scrolled && image.scroll)
+      coordinates.scroll = Parameter(*image.scroll);
+    const auto uv =
+        Add(coordinates, ValueType::kVec2,
+            scrolled ? "image coordinates" : "unscrolled image coordinates");
+    return ImageOperation{texture, uv, image.channel, image.space, image.mip};
+  }
+  std::optional<ExpressionOperation> Normalized(OutputRef sample,
+                                                OutputRef mean) {
+    auto program = Program::Parse("@sample * (0.5 / max(@center,0.05))");
+    if (!program)
+      return std::nullopt;
+    return ExpressionOperation{
+        BoundExpression{std::move(*program), {sample, mean}, {}}};
+  }
+  NodeKind ImageKindOf(const ImageSource &image, const std::string &name,
+                       ValueType type) {
+    const auto texture = Input(TextureInput{image.path}, ResourceType::kTexture,
+                               "texture " + image.path);
+    const auto shown = ImageAt(image, texture, true);
+    if (image.channel != ImageChannel::kRgb) {
+      if (image.scroll)
+        unscrolledSources.emplace(name, Add(ImageAt(image, texture, false),
+                                            type, name + " unscrolled image"));
+      return shown;
+    }
+    const auto sampled = Add(shown, ValueType::kVec3, name + " sampled image");
+    const auto still = image.scroll
+                           ? Add(ImageAt(image, texture, false),
+                                 ValueType::kVec3, name + " unscrolled image")
+                           : sampled;
+    const auto luma =
+        Project(still, ValueType::kScalar, "dot(@value,[0.299,0.587,0.114])",
+                name + " image luminance");
+    const auto mean = Add(ReductionOperation{ReductionKind::kMean, luma},
+                          ValueType::kScalar, name + " image mean");
+    auto normalized = Normalized(sampled, mean);
+    if (!normalized)
+      return shown;
+    if (image.scroll)
+      if (auto coverage = Normalized(still, mean))
+        unscrolledSources.emplace(name,
+                                  Add(std::move(*coverage), ValueType::kVec3,
+                                      name + " unscrolled coverage"));
+    return std::move(*normalized);
+  }
+  OutputRef SourceMean(const Layer &layer, OutputRef source,
+                       GraphValueType type, const std::string &location) {
+    const auto *ref = Get<Ref>(layer.source);
+    if (!ref || ref->name.empty())
+      return Constant(0.5f);
+    auto measured = source;
+    if (const auto still = unscrolledSources.find(ref->name);
+        still != unscrolledSources.end())
+      measured = still->second;
+    if (const auto *numeric = Get<ValueType>(type);
+        numeric && *numeric != ValueType::kScalar)
+      measured = Project(measured, ValueType::kScalar,
+                         *numeric == ValueType::kVec3
+                             ? "dot(@value,[0.299,0.587,0.114])"
+                             : "dot(@value,[1,0])",
+                         location + " mean projection");
+    return Add(ReductionOperation{ReductionKind::kMean, measured},
+               ValueType::kScalar, location + " source mean");
+  }
+  NodeKind SourceKindOf(const Source &source, ValueType type) {
     return Match(
         source.kind,
         [&](const ImageSource &k) -> NodeKind {
-          TextureCoordinatesOperation coordinates;
-          coordinates.uv = Uv();
-          coordinates.mirror = k.mirror;
-          coordinates.transpose = k.transpose;
-          if (k.scroll) {
-            coordinates.scroll = Parameter(*k.scroll);
-          }
-          if (k.tile)
-            coordinates.tile = Parameter(*k.tile);
-          const auto uv = Add(std::move(coordinates), ValueType::kVec2,
-                              "image coordinates");
-          ImageOperation image{Input(TextureInput{k.path},
-                                     ResourceType::kTexture,
-                                     "texture " + k.path),
-                               uv, k.channel, k.space, k.mip};
-          if (k.channel != ImageChannel::kRgb)
-            return image;
-          const auto sampled =
-              Add(image, ValueType::kVec3, source.name + " sampled image");
-          const auto luma = Project(sampled, ValueType::kScalar,
-                                    "dot(@value,[0.299,0.587,0.114])",
-                                    source.name + " image luminance");
-          const auto mean =
-              Add(ReductionOperation{ReductionKind::kMean, luma},
-                  ValueType::kScalar, source.name + " image mean");
-          auto program = Program::Parse("@sample * (0.5 / max(@center,0.05))");
-          if (!program)
-            return image;
-          return ExpressionOperation{
-              BoundExpression{std::move(*program), {sampled, mean}, {}}};
+          return ImageKindOf(k, source.name, type);
         },
         [&](const MaterialSource &k) -> NodeKind {
           return MaterialOperation{Material(), Uv(), k.channel};
@@ -266,7 +311,6 @@ struct RecipeGraphLowering {
           return RippleOperation{TriggerPort(k.trigger, 1),
                                  Geometry(),
                                  Uv(),
-                                 Transform(),
                                  Time(),
                                  Parameter(k.speed),
                                  Parameter(k.width),
@@ -349,7 +393,12 @@ struct RecipeGraphLowering {
       NodeKind kind = Match(
           declaration.definition,
           [&](const Signal &s) { return SignalKindOf(s, declaration); },
-          [&](const Source &s) { return SourceKindOf(s); },
+          [&](const Source &s) {
+            auto kind = SourceKindOf(s, declaration.valueType);
+            if (declaration.resultTransform)
+              unscrolledSources.erase(s.name);
+            return kind;
+          },
           [&](const Mask &) -> NodeKind {
             return ExpressionOperation{Expression(declaration)};
           },
@@ -444,26 +493,12 @@ struct RecipeGraphLowering {
                         ? &graph.declarations_[original->second]
                                .expression->program
                         : nullptr;
-                const bool textureSource =
-                    Get<Ref>(layer.source) &&
-                    !Get<Ref>(layer.source)->name.empty();
                 auto type = source.node < graph.nodes_.size()
                                 ? graph.nodes_[source.node].outputs.front().type
                                 : GraphValueType{ValueType::kScalar};
-                auto measured = source;
-                if (const auto *numeric = Get<ValueType>(type);
-                    numeric && *numeric != ValueType::kScalar) {
-                  measured = Project(source, ValueType::kScalar,
-                                     *numeric == ValueType::kVec3
-                                         ? "dot(@value,[0.299,0.587,0.114])"
-                                         : "dot(@value,[1,0])",
-                                     location + " mean projection");
-                }
                 const auto mean =
-                    program && program->UsesMean() && textureSource
-                        ? Add(ReductionOperation{ReductionKind::kMean,
-                                                 measured},
-                              ValueType::kScalar, location + " source mean")
+                    program && program->UsesMean()
+                        ? SourceMean(layer, source, type, location)
                         : Constant(0.5f);
                 if (layer.color) {
                   auto tint = Program::Parse("@value * @color");
@@ -670,8 +705,11 @@ struct RecipeGraphLowering {
         graph.changing_[id] = changing;
         graph.sampleDependent_[id] = sample && !Is<ReductionOperation>(kind);
         graph.dependencyOrder_.push_back(id);
-        if (!graph.sampleDependent_[id] && !backendRequired[id])
+        if (!graph.sampleDependent_[id] && !backendRequired[id]) {
           graph.tickOrder_.push_back(id);
+          if (changing)
+            graph.changingTickOrder_.push_back(id);
+        }
         marks[id] = Mark::kDone;
         stack.pop_back();
       }
@@ -689,6 +727,6 @@ struct RecipeGraphLowering {
   }
 };
 void LowerRecipeGraph(RecipeGraph &graph, const Recipe &recipe) {
-  RecipeGraphLowering{graph, recipe, {}, {}, {}, {}}.Run();
+  RecipeGraphLowering{graph, recipe, {}, {}, {}, {}, {}}.Run();
 }
 }

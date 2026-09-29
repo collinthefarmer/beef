@@ -30,6 +30,7 @@ public:
   FunctionAt(FunctionId a_function) const noexcept;
   [[nodiscard]] std::span<const FunctionDefinition> Functions() const noexcept;
   [[nodiscard]] std::span<const NodeId> TickOrder() const noexcept;
+  [[nodiscard]] std::span<const NodeId> ChangingTickOrder() const noexcept;
   [[nodiscard]] bool SampleDependent(OutputRef a_output) const noexcept;
   [[nodiscard]] std::optional<GraphValueType>
   OutputType(OutputRef a_output) const noexcept;
@@ -69,7 +70,7 @@ private:
   std::vector<detail::RecipeDeclaration> declarations_;
   std::vector<FunctionDefinition> functions_;
   std::unordered_map<std::string, FunctionId> functionIndicesByName_;
-  std::vector<NodeId> tickOrder_;
+  std::vector<NodeId> tickOrder_, changingTickOrder_;
   std::vector<bool> disabled_, sampleDependent_, changing_;
   std::unordered_map<NodeId, std::size_t> signalDeclarations_,
       sourceDeclarations_, maskDeclarations_;

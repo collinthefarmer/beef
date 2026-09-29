@@ -180,5 +180,6 @@ private:
   std::vector<std::optional<std::size_t>> stateSlots_;
   std::vector<OperationState> states_;
   std::vector<NodeId> triggers_;
+  bool ticked_ = false;
 };
 }

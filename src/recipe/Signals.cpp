@@ -1104,9 +1104,11 @@ Value SignalState::Evaluate(NodeId a_node,
 
 void SignalState::Tick(const SignalEnvironment &a_environment,
                        const TickInputs &a_inputs) {
-  for (const auto id : graph_.TickOrder()) {
+  for (const auto id :
+       ticked_ ? graph_.ChangingTickOrder() : graph_.TickOrder()) {
     if (!graph_.IsDisabled(id))
       Store({id, 0}, Evaluate(id, a_environment, a_inputs));
   }
+  ticked_ = true;
 }
 }

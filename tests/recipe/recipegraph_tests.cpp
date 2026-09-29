@@ -238,6 +238,86 @@ int main() {
   }
   {
     Recipe recipe;
+    recipe.signals = {{"drift", ExprSignal{"time * 0.1"}}};
+    ImageSource image;
+    image.path = "test.dds";
+    image.scroll = std::array<Param, 2>{Ref{"drift"}, 0.0f};
+    image.tile = std::array<Param, 2>{2.0f, 2.0f};
+    recipe.sources = {{"drifting", image}};
+    const auto graph = RecipeGraph::Compile(recipe);
+    const auto *normalized =
+        Get<ExpressionOperation>(Node(graph, "drifting")->kind);
+    const auto bindings = normalized ? normalized->expression.valueBindings
+                                     : std::vector<OutputRef>{};
+    const auto *sampleNode =
+        bindings.size() == 2 ? graph.NodeAt(bindings[0].node) : nullptr;
+    const auto *meanNode =
+        bindings.size() == 2 ? graph.NodeAt(bindings[1].node) : nullptr;
+    const auto *mean =
+        meanNode ? Get<ReductionOperation>(meanNode->kind) : nullptr;
+    const auto *lumaNode = mean ? graph.NodeAt(mean->value.node) : nullptr;
+    const auto *luma =
+        lumaNode ? Get<ExpressionOperation>(lumaNode->kind) : nullptr;
+    const auto *measuredNode =
+        luma && !luma->expression.valueBindings.empty()
+            ? graph.NodeAt(luma->expression.valueBindings.front().node)
+            : nullptr;
+    const auto *sampled =
+        sampleNode ? Get<ImageOperation>(sampleNode->kind) : nullptr;
+    const auto *measured =
+        measuredNode ? Get<ImageOperation>(measuredNode->kind) : nullptr;
+    const auto CoordinatesOf =
+        [&](const ImageOperation *op) -> const TextureCoordinatesOperation * {
+      const auto *node = op ? graph.NodeAt(op->coordinates.node) : nullptr;
+      return node ? Get<TextureCoordinatesOperation>(node->kind) : nullptr;
+    };
+    const auto *shown = CoordinatesOf(sampled);
+    const auto *covered = CoordinatesOf(measured);
+    Check(graph.MayChangeOverTime("drifting") && shown && shown->scroll &&
+              covered && !covered->scroll && covered->tile &&
+              measured->texture == sampled->texture,
+          "the image mean measures the unscrolled coverage of the same "
+          "texture, so a moving scroll does not refresh it");
+  }
+  {
+    Recipe recipe;
+    recipe.signals = {{"drift", ExprSignal{"time * 0.1"}}};
+    ImageSource image;
+    image.path = "test.dds";
+    image.channel = ImageChannel::kLuma;
+    image.scroll = std::array<Param, 2>{Ref{"drift"}, 0.0f};
+    recipe.sources = {{"gloss", image}};
+    recipe.curves = {{"punchy", "(x - mean) * 2 + 0.5"}};
+    SurfaceOutput output;
+    Layer layer;
+    layer.source = Ref{"gloss"};
+    layer.curve = CurveRef{"@punchy"};
+    output.stack.push_back(layer);
+    recipe.outputs.push_back(output);
+    const auto graph = RecipeGraph::Compile(recipe);
+    std::size_t reductions = 0;
+    bool unscrolled = true;
+    for (std::size_t i = 0; i < graph.Size(); ++i) {
+      const auto *reduction = Get<ReductionOperation>(graph.NodeAt(i)->kind);
+      if (!reduction)
+        continue;
+      ++reductions;
+      const auto *measured = graph.NodeAt(reduction->value.node);
+      const auto *sample =
+          measured ? Get<ImageOperation>(measured->kind) : nullptr;
+      const auto *coordinates =
+          sample ? graph.NodeAt(sample->coordinates.node) : nullptr;
+      const auto *uv = coordinates
+                           ? Get<TextureCoordinatesOperation>(coordinates->kind)
+                           : nullptr;
+      unscrolled = unscrolled && uv && !uv->scroll;
+    }
+    Check(graph.Diagnostics().empty() && reductions == 1 && unscrolled,
+          "a curve mean over a scrolled image measures its unscrolled "
+          "coverage");
+  }
+  {
+    Recipe recipe;
     recipe.signals = {{"unbound", ExprSignal{"x"}}};
     recipe.masks = {{"unboundMean", "mean"}};
     SurfaceOutput output;

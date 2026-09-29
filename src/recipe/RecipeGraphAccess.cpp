@@ -92,6 +92,9 @@ RecipeGraph::SignalEvaluationOrder() const noexcept {
 std::span<const NodeId> RecipeGraph::TickOrder() const noexcept {
   return tickOrder_;
 }
+std::span<const NodeId> RecipeGraph::ChangingTickOrder() const noexcept {
+  return changingTickOrder_;
+}
 std::span<const Diagnostic> RecipeGraph::Diagnostics() const noexcept {
   return diagnostics_;
 }

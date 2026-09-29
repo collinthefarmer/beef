@@ -65,6 +65,7 @@ struct VectorOperation {
 struct BoundFunctionArgument {
   std::size_t parameter = 0;
   OutputRef value;
+  [[nodiscard]] bool operator==(const BoundFunctionArgument &) const = default;
 };
 struct BoundFunction {
   FunctionId function = 0;
@@ -170,8 +171,8 @@ struct DistanceOperation {
   OutputRef geometry, coordinates, origin;
 };
 struct RippleOperation {
-  OutputRef firings, geometry, coordinates, transform, time, speed, width,
-      decay, direction;
+  OutputRef firings, geometry, coordinates, time, speed, width, decay,
+      direction;
   RippleShape shape;
 };
 struct MaterialClustersOperation {

@@ -71,7 +71,7 @@ std::vector<OutputRef> InputsOf(const NodeKind &kind) {
         inputs = {k.geometry, k.coordinates, k.origin};
       },
       [&](const RippleOperation &k) {
-        inputs = {k.firings, k.geometry, k.coordinates, k.transform, k.time,
+        inputs = {k.firings, k.geometry, k.coordinates, k.time,
                   k.speed,   k.width,    k.decay,       k.direction};
       },
       [&](const MaterialClustersOperation &k) {
