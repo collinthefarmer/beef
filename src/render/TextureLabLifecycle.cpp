@@ -231,14 +231,22 @@ bool TextureLab::CompileShaders(GpuResources &a_resources) {
 
 std::shared_ptr<TextureLab::RenderTarget>
 TextureLab::Acquire(TextureSize a_size, std::string_view a_owner,
-                    TextureFormat format) {
-  return Init() ? targets_->Acquire(borrowedDevice_, a_size, a_owner, format)
-                : nullptr;
+                    TextureFormat format, MipPolicy mips) {
+  auto target =
+      Init() ? targets_->Acquire(borrowedDevice_, a_size, a_owner, format)
+             : nullptr;
+  if (target)
+    target->mips = mips;
+  return target;
 }
 
-TextureLab::RenderTarget *TextureLab::Scratch(TextureSize a_size,
-                                              TextureFormat format) {
-  return Init() ? targets_->Scratch(borrowedDevice_, a_size, format) : nullptr;
+TextureLab::RenderTarget *
+TextureLab::Scratch(TextureSize a_size, TextureFormat format, MipPolicy mips) {
+  auto *target =
+      Init() ? targets_->Scratch(borrowedDevice_, a_size, format) : nullptr;
+  if (target)
+    target->mips = mips;
+  return target;
 }
 
 std::shared_ptr<TextureLab::RenderTarget>

@@ -119,6 +119,7 @@ struct PlanBuilder {
                        GeometryId geometry, std::size_t depth = 0) {
     if (!problem.empty())
       return RenderInputRef{0};
+    requirements.mipPolicy = MipPolicy::kNone;
     if (++visits > 65536 || depth > 64 || !value.graph) {
       problem = "render lowering exceeds its traversal limit or has no graph";
       return RenderInputRef{0};

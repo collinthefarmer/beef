@@ -8,7 +8,7 @@
 
 namespace BetterEnchantmentEffects {
 enum class TextureFormat { kRgba8, kRgba32Float };
-enum class MipPolicy { kGenerate };
+enum class MipPolicy { kGenerate, kNone };
 struct TextureRequirements {
   TextureSize size{TextureSize::kMin};
   TextureFormat format = TextureFormat::kRgba8;

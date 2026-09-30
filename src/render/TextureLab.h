@@ -178,6 +178,7 @@ public:
     [[nodiscard]] std::uint64_t Generation() const noexcept {
       return generation_;
     }
+    [[nodiscard]] MipPolicy Mips() const noexcept { return mips; }
 
   private:
     friend class TextureLab;
@@ -193,6 +194,7 @@ public:
     REX::W32::ComPtr<REX::W32::ID3D11RenderTargetView> rtv;
     std::uint32_t size = 0;
     TextureFormat format = TextureFormat::kRgba8;
+    MipPolicy mips = MipPolicy::kGenerate;
   };
 
   static_assert(!std::is_copy_constructible_v<RenderTarget>);
@@ -210,7 +212,9 @@ public:
 
   std::shared_ptr<RenderTarget>
   Acquire(TextureSize a_size, std::string_view a_owner,
-          TextureFormat format = TextureFormat::kRgba8);
+          TextureFormat format = TextureFormat::kRgba8,
+          MipPolicy mips = MipPolicy::kGenerate);
+  void GenerateMipsFor(RenderTarget &a_target);
 
   bool Render(RenderTarget &a_target, RE::NiSourceTexture *a_source,
               const LayerParams &a_params);
@@ -306,7 +310,8 @@ public:
   void InvalidatePreviews() noexcept;
 
   [[nodiscard]] RenderTarget *
-  Scratch(TextureSize a_size, TextureFormat format = TextureFormat::kRgba8);
+  Scratch(TextureSize a_size, TextureFormat format = TextureFormat::kRgba8,
+          MipPolicy mips = MipPolicy::kGenerate);
 
   void Clear();
 
@@ -350,6 +355,7 @@ private:
   };
   void DrawFullScreen(const RenderPass &a_pass, RenderTarget &a_target,
                       const FullScreenDraw &a_draw);
+  void GenerateMips(const RenderPass &a_pass, RenderTarget &a_target);
   void BindTarget(const RenderPass &a_pass, RenderTarget &a_target);
   void UnbindTarget(const RenderPass &a_pass, std::uint32_t a_srvCount);
 

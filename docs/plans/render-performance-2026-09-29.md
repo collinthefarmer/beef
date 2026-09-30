@@ -125,12 +125,25 @@ uses the steady values.
 - Every tick was timed; none were dropped or discarded. Apply ticks exceed
   256 spans and leave the excess untimed.
 
+## Stage 2: mips only where they are read
+
+- `MipPolicy` has `kGenerate` and `kNone`. The lowering sets `kNone` on every
+  value it builds; stack steps keep `kGenerate`. The sharing suite checks that
+  only stack results generate mips.
+- A render target carries the policy it was acquired with, and the full-screen
+  draw and the mesh bake generate mips only under `kGenerate`.
+- A stack draws its layers without mips and calls `GenerateMipsFor` once on
+  its final result. The bake's dilation gutter no longer gets mips.
+- Inspection generates mips on an inspected intermediate, because a studio
+  thumbnail minifies it.
+- The image does not change: intermediates are read at their own size, where
+  sampling uses mip 0, and the published results keep their mips.
+- Waits for its measurement run.
+
 ## Later stages
 
 Stage 1 decides the order. The candidates known now:
 
-- Generate mips only for targets that are sampled below their base level: the
-  published stacks and fields read at a lower mip.
 - Lower the animation rate for chains whose output changes slowly.
 - Draw animated intermediates at a lower resolution. This changes the image,
   so it is a model decision.

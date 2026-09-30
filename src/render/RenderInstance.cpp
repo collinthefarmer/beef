@@ -105,7 +105,8 @@ AcquireStepTarget(RenderScratch &scratch, TextureRequirements requirements) {
   if (const auto target = scratch.target.lock())
     return target;
   const auto target = TextureLab::GetSingleton()->Acquire(
-      requirements.size, "render step", requirements.format);
+      requirements.size, "render step", requirements.format,
+      requirements.mipPolicy);
   scratch.target = target;
   return target;
 }
@@ -580,12 +581,15 @@ ExecuteStep(const RenderStep &step,
         const auto *base = args.Find<StackResult>(k.base);
         if (!base)
           return std::unexpected("stack base is unavailable");
-        const auto target = AcquireStepTarget(scratch, k.requirements);
+        auto layerRequirements = k.requirements;
+        layerRequirements.mipPolicy = MipPolicy::kNone;
+        const auto target = AcquireStepTarget(scratch, layerRequirements);
         if (!target)
           return std::unexpected("stack target is unavailable");
         auto *alternate =
             layers.size() > 1
-                ? lab->Scratch(k.requirements.size, k.requirements.format)
+                ? lab->Scratch(k.requirements.size, k.requirements.format,
+                               MipPolicy::kNone)
                 : nullptr;
         if (layers.size() > 1 && !alternate)
           return std::unexpected("stack alternate target is unavailable");
@@ -639,6 +643,8 @@ ExecuteStep(const RenderStep &step,
           previous = TextureRef{write->Texture()};
           std::swap(write, other);
         }
+        if (k.requirements.mipPolicy == MipPolicy::kGenerate)
+          lab->GenerateMipsFor(*target);
         return StackResult{previous};
       });
 }
@@ -939,8 +945,11 @@ std::optional<TextureView> RenderInstance::Texture(RenderValueRef output) {
       ref && ref->input < execution_.Inputs().size())
     value = &execution_.Inputs()[ref->input].value;
   if (value && *value)
-    if (const auto *texture = Get<TextureView>(**value))
+    if (const auto *texture = Get<TextureView>(**value)) {
+      if (texture->target && texture->target->Mips() == MipPolicy::kNone)
+        TextureLab::GetSingleton()->GenerateMipsFor(*texture->target);
       return *texture;
+    }
   return std::nullopt;
 }
 std::optional<TextureView>

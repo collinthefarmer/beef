@@ -1204,6 +1204,13 @@ Decompile provenance (`decompiled/WornEnchantmentFX/plugin.c` unless noted):
   spans are recorded per tick. `CollectTimings` polls with
   `D3D11_ASYNC_GETDATA_DONOTFLUSH` once per frame and never waits, because a
   wait would add the GPU backlog to the frame being measured.
+- Only stack results generate mips. The lowering sets `MipPolicy::kNone` on
+  every value it builds, because every intermediate is read at its own size,
+  where sampling uses mip 0. A stack draws its layers into targets without
+  mips and generates mips once on its final result, which the game samples.
+  An inspected intermediate gets mips when inspected, because a studio
+  thumbnail minifies it. The first timing run measured mip generation at
+  about a third of the plugin's GPU time, from about 144 calls per tick.
 - `PublishEffects` off keeps the render plan running but writes every slot as
   not shown and hides the shell, so the draws are measured without the cost
   of presenting their results.

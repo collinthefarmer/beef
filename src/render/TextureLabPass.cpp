@@ -297,10 +297,24 @@ void TextureLab::DrawFullScreen(const RenderPass &a_pass,
       a_draw.constants.data());
   a_pass.Context().Draw(3, 0);
   UnbindTarget(a_pass, static_cast<std::uint32_t>(a_draw.srvs.size()));
+  if (a_target.mips == MipPolicy::kGenerate)
+    GenerateMips(a_pass, a_target);
+}
+
+void TextureLab::GenerateMips(const RenderPass &a_pass,
+                              RenderTarget &a_target) {
   std::optional<TimedSpan> mips;
   if (Timing())
     mips.emplace(*this, std::format("GenerateMips {}", a_target.size));
   a_pass.Context().GenerateMips(a_target.srv.Get());
+}
+
+void TextureLab::GenerateMipsFor(RenderTarget &a_target) {
+  auto *renderer = RE::BSGraphics::Renderer::GetSingleton();
+  if (!available_ || !renderer || !borrowedContext_ || !a_target.srv.Get())
+    return;
+  const RenderPass pass{*renderer, *borrowedContext_};
+  GenerateMips(pass, a_target);
 }
 
 bool TextureLab::Render(RenderTarget &a_target, RE::NiSourceTexture *a_source,
@@ -510,18 +524,16 @@ bool TextureLab::BakeMesh(RenderTarget &a_target, const BakeBuffers &a_bake) {
   UnbindTarget(pass, kPassSrvs);
   const PixelPipeline *dilate =
       gpu_->dilate.has_value() ? &gpu_->dilate.value() : nullptr;
-  RenderTarget *gutter =
-      dilate ? Scratch(TextureSize{a_target.size}, a_target.format) : nullptr;
+  RenderTarget *gutter = dilate ? Scratch(TextureSize{a_target.size},
+                                          a_target.format, MipPolicy::kNone)
+                                : nullptr;
   if (dilate && gutter && gutter->rtv.Get() && gutter->size == a_target.size) {
     REX::W32::ID3D11ShaderResourceView *fromTarget[]{a_target.srv.Get()};
     DrawFullScreen(pass, *gutter, {dilate->shader.Get(), fromTarget, {}});
     REX::W32::ID3D11ShaderResourceView *fromGutter[]{gutter->srv.Get()};
     DrawFullScreen(pass, a_target, {dilate->shader.Get(), fromGutter, {}});
-  } else {
-    std::optional<TimedSpan> mips;
-    if (Timing())
-      mips.emplace(*this, std::format("GenerateMips {}", a_target.size));
-    pass.Context().GenerateMips(a_target.srv.Get());
+  } else if (a_target.mips == MipPolicy::kGenerate) {
+    GenerateMips(pass, a_target);
   }
   return true;
 }

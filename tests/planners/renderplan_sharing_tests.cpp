@@ -170,6 +170,14 @@ int main() {
   Check(mixed.has_value(), "the demo recipes lower at two stack sizes");
   if (!single || !mixed)
     return test::Finish("render plan sharing");
+  bool mipsOnlyForStacks = true;
+  for (const auto &step : single->steps)
+    if (const auto requirements = RequirementsOf(step.kind))
+      mipsOnlyForStacks = mipsOnlyForStacks &&
+                          (requirements->mipPolicy == MipPolicy::kGenerate) ==
+                              Is<CompositeStackStep>(step.kind);
+  Check(mipsOnlyForStacks, "only stack results generate mips; every "
+                           "intermediate is read at its own size");
   test::Equal(Report("one size", *single), std::size_t{0},
               "complete sharing: no two steps have equal kinds at one size");
   test::Equal(Report("two sizes", *mixed), std::size_t{0},
