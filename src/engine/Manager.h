@@ -12,6 +12,7 @@
 #include "planners/ActorPlanning.h"
 #include "recipe/Recipe.h"
 #include "render/TextureRef.h"
+#include "studio/Intent.h"
 #include "studio/Snapshot.h"
 
 #include <cstddef>
@@ -44,8 +45,7 @@ public:
   void ReapplyAll();
   void RetireAll();
 
-  void FireAt(RE::FormID a_actorID, std::string a_event, std::string a_node,
-              Vec3 a_offset, float a_random, float a_value);
+  void FireAt(Studio::FireTrigger a_trigger);
   void RequestMesh(RE::FormID a_actorID, std::string a_geometry);
 
   void OnFrame();
@@ -93,6 +93,10 @@ private:
   void RunRefresh(RE::FormID a_actorID,
                   const std::vector<ApplicationToken> &a_tokens);
   void Refresh(RE::Actor *a_actor);
+  [[nodiscard]] bool EligibleForRefresh(RE::Actor &a_actor,
+                                        const Settings &a_settings);
+  [[nodiscard]] LiveActor LiveActorFor(RE::Actor &a_actor,
+                                       const Settings &a_settings);
   void RetireEffects(RE::FormID a_actorID);
   void Retire(RE::FormID a_actorID);
   void RetireEveryActor();
@@ -131,8 +135,7 @@ private:
   void Tick(std::uint32_t a_nowMS, const Settings &a_settings);
   void TickInstance(LiveInstance &a_instance, float a_time, float a_delta);
   void DropLostGeometries(LiveActor &a_state);
-  void RenderGeometry(LiveActor &a_state, LivePiece &a_piece,
-                      LiveGeometry &a_bound, bool a_hidden);
+  void RenderGeometry(LiveActor &a_state, LiveGeometry &a_bound, bool a_hidden);
   [[nodiscard]] std::vector<bool> RenderPieces(LiveActor &a_state,
                                                RE::FormID a_actorID);
   void UpdateLights(LiveActor &a_state,
@@ -143,6 +146,12 @@ private:
   [[nodiscard]] Snapshot
   BuildSnapshot(const std::optional<Studio::PieceRef> &a_request,
                 std::string_view a_document) const;
+  void PublishStatus(Snapshot &a_out) const;
+  void PublishPieces(Snapshot &a_out,
+                     const std::optional<Studio::PieceRef> &a_request) const;
+  void PublishDocument(Snapshot &a_out, std::string_view a_document) const;
+  [[nodiscard]] Studio::RecipeRow
+  DocumentRowFor(const Recipe &a_document) const;
   void PublishSnapshot(std::uint32_t a_nowMS);
 
   ApplicationService applications_;

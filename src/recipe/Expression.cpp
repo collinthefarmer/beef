@@ -653,147 +653,179 @@ std::expected<Program, std::string> ParseCurve(std::string_view a_text) {
   return program;
 }
 
+namespace {
+struct ExpressionTyping {
+  std::span<const std::string> references;
+  std::span<const std::string> curves;
+  const RefTyper &types;
+  ValueType xType = ValueType::kScalar;
+};
+
+std::expected<ValueType, std::string> CheckVectorFunction(Program::Op a_op,
+                                                          TypeStack &a_stack) {
+  using Op = Program::Op;
+  switch (a_op) {
+  case Op::kLength:
+    if (a_stack.Pop() == ValueType::kScalar) {
+      return std::unexpected("length() takes a vector");
+    }
+    return ValueType::kScalar;
+  case Op::kDistance: {
+    const auto b = a_stack.Pop(), a = a_stack.Pop();
+    if (a == ValueType::kScalar || a != b) {
+      return std::unexpected("distance() takes two vectors of the same size");
+    }
+    return ValueType::kScalar;
+  }
+  case Op::kDot: {
+    const auto b = a_stack.Pop(), a = a_stack.Pop();
+    if (a == ValueType::kScalar || a != b) {
+      return std::unexpected("dot() takes two vectors of the same size");
+    }
+    return ValueType::kScalar;
+  }
+  case Op::kCross: {
+    const auto b = a_stack.Pop(), a = a_stack.Pop();
+    if (a != ValueType::kVec3 || b != ValueType::kVec3) {
+      return std::unexpected("cross() takes two vec3s");
+    }
+    return ValueType::kVec3;
+  }
+  case Op::kNormalize: {
+    const auto t = a_stack.Pop();
+    if (t == ValueType::kScalar) {
+      return std::unexpected("normalize() takes a vector");
+    }
+    return t;
+  }
+  default:
+    return std::unexpected("unknown vector function");
+  }
+}
+
+std::expected<ValueType, std::string> CheckIf(TypeStack &a_stack) {
+  const auto b = a_stack.Pop(), a = a_stack.Pop(), c = a_stack.Pop();
+  if (c != ValueType::kScalar) {
+    return std::unexpected("if() takes a scalar condition");
+  }
+  return Join(a, b, "if");
+}
+
+std::expected<ValueType, std::string>
+CheckReference(std::uint32_t a_index, const ExpressionTyping &a_typing) {
+  if (a_index >= a_typing.references.size()) {
+    return std::unexpected("unknown row");
+  }
+  const auto &name = a_typing.references[a_index];
+  const auto t = a_typing.types(name);
+  if (!t) {
+    return std::unexpected(std::format("unknown row '@{}'", name));
+  }
+  return *t;
+}
+
+std::expected<ValueType, std::string>
+CheckCurveCall(std::uint32_t a_index, TypeStack &a_stack,
+               const ExpressionTyping &a_typing) {
+  if (a_stack.Pop() != ValueType::kScalar) {
+    const std::string_view name =
+        a_index < a_typing.curves.size()
+            ? std::string_view{a_typing.curves[a_index]}
+            : std::string_view{};
+    return std::unexpected(std::format("curve '@{}' takes a scalar", name));
+  }
+  return ValueType::kScalar;
+}
+
+std::expected<ValueType, std::string>
+CheckNode(const Program::Node &a_node, TypeStack &a_stack,
+          const ExpressionTyping &a_typing) {
+  using Op = Program::Op;
+  switch (a_node.op) {
+  case Op::kNumber:
+  case Op::kTime:
+  case Op::kMean:
+    return ValueType::kScalar;
+  case Op::kX:
+    return a_typing.xType;
+  case Op::kMakeVec2:
+    if (!a_stack.TakeScalars(2)) {
+      return std::unexpected("vector components must be scalars");
+    }
+    return ValueType::kVec2;
+  case Op::kMakeVec3:
+    if (!a_stack.TakeScalars(3)) {
+      return std::unexpected("vector components must be scalars");
+    }
+    return ValueType::kVec3;
+  case Op::kRef:
+    return CheckReference(a_node.index, a_typing);
+  case Op::kCurve:
+    return CheckCurveCall(a_node.index, a_stack, a_typing);
+  case Op::kNeg:
+  case Op::kAbs:
+  case Op::kSaturate:
+  case Op::kFloor:
+  case Op::kCeil:
+  case Op::kFrac:
+  case Op::kSqrt:
+  case Op::kSin:
+  case Op::kCos:
+    return a_stack.Pop();
+  case Op::kNot:
+    if (!a_stack.TakeScalars(1)) {
+      return std::unexpected("comparisons and logic take scalars");
+    }
+    return ValueType::kScalar;
+  case Op::kLt:
+  case Op::kGt:
+  case Op::kLe:
+  case Op::kGe:
+  case Op::kEq:
+  case Op::kNe:
+  case Op::kAnd:
+  case Op::kOr:
+    if (!a_stack.TakeScalars(2)) {
+      return std::unexpected("comparisons and logic take scalars");
+    }
+    return ValueType::kScalar;
+  case Op::kAdd:
+  case Op::kSub:
+  case Op::kMul:
+  case Op::kDiv:
+  case Op::kMin:
+  case Op::kMax:
+  case Op::kPow:
+  case Op::kStep:
+    return a_stack.JoinOperands(2, "operator");
+  case Op::kClamp:
+  case Op::kSmoothstep:
+  case Op::kLerp:
+    return a_stack.JoinOperands(3, "function");
+  case Op::kIf:
+    return CheckIf(a_stack);
+  case Op::kLength:
+  case Op::kDistance:
+  case Op::kDot:
+  case Op::kCross:
+  case Op::kNormalize:
+    return CheckVectorFunction(a_node.op, a_stack);
+  }
+  return std::unexpected("unknown operation");
+}
+}
+
 std::expected<ValueType, std::string> Program::Check(const RefTyper &a_types,
                                                      ValueType a_xType) const {
+  const ExpressionTyping typing{refs_, curves_, a_types, a_xType};
   TypeStack stack;
-  for (const auto &node : code_) {
-    switch (node.op) {
-    case Op::kNumber:
-    case Op::kTime:
-    case Op::kMean:
-      stack.Push(ValueType::kScalar);
-      break;
-    case Op::kX:
-      stack.Push(a_xType);
-      break;
-    case Op::kMakeVec2:
-    case Op::kMakeVec3: {
-      const int n = node.op == Op::kMakeVec2 ? 2 : 3;
-      if (!stack.TakeScalars(n)) {
-        return std::unexpected("vector components must be scalars");
-      }
-      stack.Push(n == 2 ? ValueType::kVec2 : ValueType::kVec3);
-      break;
+  for (const Node &node : code_) {
+    const std::expected<ValueType, std::string> type =
+        CheckNode(node, stack, typing);
+    if (!type) {
+      return std::unexpected(type.error());
     }
-    case Op::kRef: {
-      const auto &name = refs_[node.index];
-      const auto t = a_types(name);
-      if (!t) {
-        return std::unexpected(std::format("unknown row '@{}'", name));
-      }
-      stack.Push(*t);
-      break;
-    }
-    case Op::kCurve:
-      if (stack.Pop() != ValueType::kScalar) {
-        return std::unexpected(
-            std::format("curve '@{}' takes a scalar", curves_[node.index]));
-      }
-      stack.Push(ValueType::kScalar);
-      break;
-    case Op::kNeg:
-    case Op::kAbs:
-    case Op::kSaturate:
-    case Op::kFloor:
-    case Op::kCeil:
-    case Op::kFrac:
-    case Op::kSqrt:
-    case Op::kSin:
-    case Op::kCos:
-      stack.Push(stack.Pop());
-      break;
-    case Op::kNot:
-    case Op::kLt:
-    case Op::kGt:
-    case Op::kLe:
-    case Op::kGe:
-    case Op::kEq:
-    case Op::kNe:
-    case Op::kAnd:
-    case Op::kOr: {
-      const int n = node.op == Op::kNot ? 1 : 2;
-      if (!stack.TakeScalars(n)) {
-        return std::unexpected("comparisons and logic take scalars");
-      }
-      stack.Push(ValueType::kScalar);
-      break;
-    }
-    case Op::kAdd:
-    case Op::kSub:
-    case Op::kMul:
-    case Op::kDiv:
-    case Op::kMin:
-    case Op::kMax:
-    case Op::kPow:
-    case Op::kStep: {
-      auto t = stack.JoinOperands(2, "operator");
-      if (!t) {
-        return std::unexpected(t.error());
-      }
-      stack.Push(*t);
-      break;
-    }
-    case Op::kClamp:
-    case Op::kSmoothstep:
-    case Op::kLerp: {
-      auto t = stack.JoinOperands(3, "function");
-      if (!t) {
-        return std::unexpected(t.error());
-      }
-      stack.Push(*t);
-      break;
-    }
-    case Op::kIf: {
-      const auto b = stack.Pop(), a = stack.Pop(), c = stack.Pop();
-      if (c != ValueType::kScalar) {
-        return std::unexpected("if() takes a scalar condition");
-      }
-      auto t = Join(a, b, "if");
-      if (!t) {
-        return std::unexpected(t.error());
-      }
-      stack.Push(*t);
-      break;
-    }
-    case Op::kLength:
-      if (stack.Pop() == ValueType::kScalar) {
-        return std::unexpected("length() takes a vector");
-      }
-      stack.Push(ValueType::kScalar);
-      break;
-    case Op::kDistance: {
-      const auto b = stack.Pop(), a = stack.Pop();
-      if (a == ValueType::kScalar || a != b) {
-        return std::unexpected("distance() takes two vectors of the same size");
-      }
-      stack.Push(ValueType::kScalar);
-      break;
-    }
-    case Op::kDot: {
-      const auto b = stack.Pop(), a = stack.Pop();
-      if (a == ValueType::kScalar || a != b) {
-        return std::unexpected("dot() takes two vectors of the same size");
-      }
-      stack.Push(ValueType::kScalar);
-      break;
-    }
-    case Op::kCross: {
-      const auto b = stack.Pop(), a = stack.Pop();
-      if (a != ValueType::kVec3 || b != ValueType::kVec3) {
-        return std::unexpected("cross() takes two vec3s");
-      }
-      stack.Push(ValueType::kVec3);
-      break;
-    }
-    case Op::kNormalize: {
-      const auto t = stack.Pop();
-      if (t == ValueType::kScalar) {
-        return std::unexpected("normalize() takes a vector");
-      }
-      stack.Push(t);
-      break;
-    }
-    }
+    stack.Push(*type);
   }
   return stack.Pop();
 }

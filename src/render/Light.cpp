@@ -258,21 +258,22 @@ LightBinding::~LightBinding() {
   entries_.clear();
 }
 
-void LightBinding::Update(const Vec3 &a_color, float a_intensity, float a_size,
-                          float a_cutoff, bool a_visible) {
-  const float size = std::clamp(a_size, 0.01f, 50.0f);
+void LightBinding::Update(const LightValues &a_light, bool a_visible) {
+  const float size = std::clamp(a_light.size, 0.01f, 50.0f);
   for (auto &entry : entries_) {
     if (!entry.light) {
       continue;
     }
     auto &ld = entry.light->GetLightRuntimeData();
     const float fade =
-        a_visible ? std::max(0.0f, a_intensity) * entry.share / 4.0f : 0.0f;
-    ld.diffuse = a_visible ? ToNi(a_color) : RE::NiColor{0.0f, 0.0f, 0.0f};
+        a_visible ? std::max(0.0f, a_light.intensity) * entry.share / 4.0f
+                  : 0.0f;
+    ld.diffuse =
+        a_visible ? ToNi(a_light.color) : RE::NiColor{0.0f, 0.0f, 0.0f};
     ld.fade = fade;
-    ld.ambient.green = a_cutoff;
+    ld.ambient.green = a_light.cutoff;
     ld.radius.z = size;
-    const float radius = IslRadius(fade, size, a_cutoff, shadow_);
+    const float radius = IslRadius(fade, size, a_light.cutoff, shadow_);
     if (std::fabs(ld.radius.x - radius) > 1.0f) {
       ld.radius.x = radius;
       ld.radius.y = radius;

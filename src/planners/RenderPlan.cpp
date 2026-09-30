@@ -266,198 +266,310 @@ std::optional<RenderValueType> TypeOf(const RenderPlan &plan,
                    : std::nullopt;
       });
 }
-std::expected<void, std::string> ValidateRenderPlan(const RenderPlan &plan) {
-  if (plan.steps.size() > 4096 || plan.inputs.size() > 8192)
-    return std::unexpected("render plan exceeds its size limit");
-  for (std::size_t i = 0; i < plan.steps.size(); ++i) {
-    const auto &step = plan.steps[i];
-    std::string problem;
-    const auto require = [&](RenderValueRef ref, RenderValueType type) {
-      const auto actual = TypeOf(plan, ref);
-      if (!actual || *actual != type)
-        problem = "incompatible operand type";
-    };
-    for (const auto &input : InputsOf(step.kind)) {
-      if (!TypeOf(plan, input))
-        problem = "invalid input reference";
-      if (const auto *producer = Get<StepOutputRef>(input);
-          producer && producer->step >= i)
-        problem = "step dependencies are not in acyclic producer order";
-    }
-    Match(
-        step.kind, [](const UnavailableStep &) {},
-        [](const ConstantRenderStep &) {},
-        [&](const BuildBakeBuffersStep &k) {
-          require(k.mesh, RenderResourceType::kMesh);
-          if (const auto *origin = Get<RenderValueRef>(k.operation))
-            require(*origin, ValueType::kVec3);
-        },
-        [&](const BakeMeshStep &k) {
-          require(k.buffers, RenderResourceType::kBakeBuffers);
-        },
-        [&](const NormalSlopeStep &k) {
-          require(k.material, RenderResourceType::kMaterial);
-        },
-        [&](const SubmitMaterialSampleStep &k) {
-          require(k.material, RenderResourceType::kMaterial);
-        },
-        [&](const ClusterMaterialStep &k) {
-          require(k.sample, RenderResourceType::kMaterialSample);
-        },
-        [&](const DrawClustersStep &k) {
-          require(k.material, RenderResourceType::kMaterial);
-          require(k.analysis, RenderResourceType::kMaterialAnalysis);
-        },
-        [&](const SampleFieldStep &k) {
-          const auto type = TypeOf(plan, k.texture);
-          if (!type ||
-              (*type != RenderValueType{RenderResourceType::kTexture} &&
-               *type != RenderValueType{RenderResourceType::kMaterial}))
-            problem = "field sampling requires a texture or material";
-          for (auto coordinate : k.coordinates)
-            require(coordinate, ValueType::kVec2);
-          if (!k.field.graph || !k.field.graph->NodeAt(k.field.output.node))
-            problem = "sample field has no valid graph output";
-        },
-        [&](const SubmitReductionStep &k) {
-          require(k.value, RenderResourceType::kTexture);
-          if (static_cast<unsigned>(k.kind) >
-                  static_cast<unsigned>(ReductionKind::kMaximum) ||
-              static_cast<unsigned>(k.type) >
-                  static_cast<unsigned>(ValueType::kVec3))
-            problem = "invalid reduction operation";
-          if (!k.domain.width || !k.domain.height || k.domain.width > 4096 ||
-              k.domain.height > 4096)
-            problem = "invalid reduction domain";
-        },
-        [&](const BuildLookupStep &k) {
-          const auto *function =
-              k.graph ? k.graph->FunctionAt(k.function) : nullptr;
-          if (!function || function->isDisabled || k.samples != 256 ||
-              k.sampledParameter >= function->parameters.size()) {
-            problem = "invalid lookup function or domain";
-            return;
-          }
-          if (function->parameters[k.sampledParameter].type !=
-              ValueType::kScalar)
-            problem = "lookup sampled parameter must be scalar";
-          if (function->result.node >= function->nodes.size() ||
-              function->result.output >=
-                  function->nodes[function->result.node].outputs.size() ||
-              function->nodes[function->result.node]
-                      .outputs[function->result.output]
-                      .type != GraphValueType{ValueType::kScalar})
-            problem = "lookup result must be scalar";
-          std::vector<bool> bound(function->parameters.size());
-          bound[k.sampledParameter] = true;
-          for (const auto &arg : k.boundArguments) {
-            if (arg.parameter >= bound.size() || bound[arg.parameter]) {
-              problem = "duplicate or invalid lookup argument";
-              continue;
-            }
-            bound[arg.parameter] = true;
-            require(arg.value, function->parameters[arg.parameter].type);
-          }
-          if (std::ranges::find(bound, false) != bound.end())
-            problem = "lookup argument is missing";
-        },
-        [&](const EvaluateValueStep &k) {
-          const auto *node = k.value.graph
-                                 ? k.value.graph->NodeAt(k.value.output.node)
-                                 : nullptr;
-          if (!node || k.value.graph->SampleDependent(k.value.output)) {
-            problem = "invalid uniform operation";
-            return;
-          }
-          const auto refs = InputsOf(node->kind);
-          if (refs.size() != k.inputs.size()) {
-            problem = "uniform bindings do not match";
-            return;
-          }
-          for (std::size_t n = 0; n < refs.size(); ++n) {
-            const auto type = k.value.graph->OutputType(refs[n]);
-            const auto *numeric = type ? Get<ValueType>(*type) : nullptr;
-            if (!numeric)
-              problem = "uniform operand is not numeric";
-            else
-              require(k.inputs[n], *numeric);
-          }
-        },
-        [&](const EvaluateProgramStep &k) {
-          if (k.inputs.size() != k.program.Inputs().size() ||
-              k.lookups.size() != k.program.FunctionLookups().size()) {
-            problem = "program bindings do not match";
-            return;
-          }
-          for (std::size_t n = 0; n < k.inputs.size(); ++n) {
-            const auto actual = TypeOf(plan, k.inputs[n]);
-            if (Is<ProgramTextureInput>(k.program.Inputs()[n]))
-              require(k.inputs[n], RenderResourceType::kTexture);
-            else if (!actual || !Is<ValueType>(*actual))
-              problem = "program value input is not numeric";
-          }
-          for (auto lookup : k.lookups)
-            require(lookup, RenderResourceType::kLookup);
-        },
-        [&](const MapFieldStep &k) {
-          require(k.value, RenderResourceType::kTexture);
-          require(k.lookup, RenderResourceType::kLookup);
-        },
-        [&](const ComposeVectorStep &k) {
-          if (k.components.size() < 2 || k.components.size() > 3)
-            problem = "invalid vector component count";
-          for (auto component : k.components) {
-            const auto type = TypeOf(plan, component);
-            if (!type ||
-                (*type != RenderValueType{RenderResourceType::kTexture} &&
-                 *type != RenderValueType{ValueType::kScalar}))
-              problem =
-                  "vector component must be a scalar field or scalar value";
-          }
-        },
-        [&](const DrawRippleStep &k) {
-          require(k.positions, RenderResourceType::kTexture);
-          if (!k.field.graph || !k.field.graph->NodeAt(k.field.output.node))
-            problem = "invalid ripple field";
-        },
-        [&](const CompositeStackStep &k) {
-          require(k.base, RenderResourceType::kStack);
-          require(k.visibility, RenderResourceType::kVisibility);
-          for (const auto &field : k.fields)
-            if (field.inputs.size() != field.program.Inputs().size() ||
-                field.lookups.size() != field.program.FunctionLookups().size())
-              problem = "layer field binding count mismatch";
-          for (const auto &layer : k.layers) {
-            const auto source = ReadValue(k, layer.source);
-            const auto type = source ? TypeOf(plan, *source)
-                                     : std::optional<RenderValueType>{};
-            if (!type ||
-                (*type != RenderValueType{RenderResourceType::kTexture} &&
-                 *type != RenderValueType{ValueType::kVec3}))
-              problem = "invalid stack source";
-            require(layer.opacity, ValueType::kScalar);
-            if (layer.mask) {
-              const auto mask = ReadValue(k, *layer.mask);
-              if (!mask)
-                problem = "invalid stack mask";
-              else
-                require(*mask, RenderResourceType::kTexture);
-            }
-            if (layer.color)
-              require(*layer.color, ValueType::kVec3);
-          }
-        });
-    if (!problem.empty())
-      return std::unexpected(step.displayName + ": " + problem);
+namespace {
+std::expected<void, std::string> RequireType(const RenderPlan &plan,
+                                             RenderValueRef value,
+                                             RenderValueType type) {
+  const std::optional<RenderValueType> actual = TypeOf(plan, value);
+  if (!actual || *actual != type)
+    return std::unexpected("incompatible operand type");
+  return {};
+}
+bool HasEitherType(const RenderPlan &plan, RenderValueRef value,
+                   RenderValueType first, RenderValueType second) {
+  const std::optional<RenderValueType> actual = TypeOf(plan, value);
+  return actual && (*actual == first || *actual == second);
+}
+bool BindingsMatch(const FieldProgram &program,
+                   std::span<const RenderValueRef> inputs,
+                   std::span<const RenderValueRef> lookups) {
+  return inputs.size() == program.Inputs().size() &&
+         lookups.size() == program.FunctionLookups().size();
+}
+std::expected<void, std::string>
+ValidateBuildBakeBuffers(const RenderPlan &plan,
+                         const BuildBakeBuffersStep &step) {
+  if (std::expected<void, std::string> mesh =
+          RequireType(plan, step.mesh, RenderResourceType::kMesh);
+      !mesh)
+    return mesh;
+  if (const RenderValueRef *origin = Get<RenderValueRef>(step.operation))
+    return RequireType(plan, *origin, ValueType::kVec3);
+  return {};
+}
+std::expected<void, std::string>
+ValidateSampleField(const RenderPlan &plan, const SampleFieldStep &step) {
+  if (!HasEitherType(plan, step.texture, RenderResourceType::kTexture,
+                     RenderResourceType::kMaterial))
+    return std::unexpected("field sampling requires a texture or material");
+  for (const RenderValueRef coordinate : step.coordinates)
+    if (std::expected<void, std::string> typed =
+            RequireType(plan, coordinate, ValueType::kVec2);
+        !typed)
+      return typed;
+  if (!step.field.graph || !step.field.graph->NodeAt(step.field.output.node))
+    return std::unexpected("sample field has no valid graph output");
+  return {};
+}
+std::expected<void, std::string>
+ValidateSubmitReduction(const RenderPlan &plan,
+                        const SubmitReductionStep &step) {
+  if (std::expected<void, std::string> value =
+          RequireType(plan, step.value, RenderResourceType::kTexture);
+      !value)
+    return value;
+  if (static_cast<unsigned>(step.kind) >
+          static_cast<unsigned>(ReductionKind::kMaximum) ||
+      static_cast<unsigned>(step.type) >
+          static_cast<unsigned>(ValueType::kVec3))
+    return std::unexpected("invalid reduction operation");
+  if (!step.domain.width || !step.domain.height || step.domain.width > 4096 ||
+      step.domain.height > 4096)
+    return std::unexpected("invalid reduction domain");
+  return {};
+}
+std::expected<void, std::string>
+ValidateLookupArguments(const RenderPlan &plan, const BuildLookupStep &step,
+                        const FunctionDefinition &function) {
+  std::vector<bool> bound(function.parameters.size());
+  if (step.sampledParameter >= bound.size())
+    return std::unexpected("invalid lookup function or domain");
+  bound[step.sampledParameter] = true;
+  for (const LookupArgument &argument : step.boundArguments) {
+    if (argument.parameter >= bound.size() || bound[argument.parameter])
+      return std::unexpected("duplicate or invalid lookup argument");
+    bound[argument.parameter] = true;
+    if (std::expected<void, std::string> typed = RequireType(
+            plan, argument.value, function.parameters[argument.parameter].type);
+        !typed)
+      return typed;
   }
-  for (const auto &input : plan.inputs) {
-    const auto *readback = Get<ReadbackBinding>(input.binding);
+  if (std::ranges::find(bound, false) != bound.end())
+    return std::unexpected("lookup argument is missing");
+  return {};
+}
+std::expected<void, std::string>
+ValidateBuildLookup(const RenderPlan &plan, const BuildLookupStep &step) {
+  const FunctionDefinition *function =
+      step.graph ? step.graph->FunctionAt(step.function) : nullptr;
+  if (!function || function->isDisabled || step.samples != 256 ||
+      step.sampledParameter >= function->parameters.size())
+    return std::unexpected("invalid lookup function or domain");
+  if (SamplesAsLookup(*function, step.sampledParameter))
+    return ValidateLookupArguments(plan, step, *function);
+  if (FunctionResultTypeOf(*function) !=
+      std::optional<GraphValueType>{ValueType::kScalar})
+    return std::unexpected("lookup result must be scalar");
+  return std::unexpected("lookup sampled parameter must be scalar");
+}
+std::expected<void, std::string>
+ValidateEvaluateValue(const RenderPlan &plan, const EvaluateValueStep &step) {
+  const RecipeGraph *graph = step.value.graph;
+  const RecipeNode *node =
+      graph ? graph->NodeAt(step.value.output.node) : nullptr;
+  if (!node || graph->SampleDependent(step.value.output))
+    return std::unexpected("invalid uniform operation");
+  const std::vector<OutputRef> operands = InputsOf(node->kind);
+  if (operands.size() != step.inputs.size())
+    return std::unexpected("uniform bindings do not match");
+  for (std::size_t n = 0; n < operands.size(); ++n) {
+    const std::optional<GraphValueType> type = graph->OutputType(operands[n]);
+    const ValueType *numeric = type ? Get<ValueType>(*type) : nullptr;
+    if (!numeric)
+      return std::unexpected("uniform operand is not numeric");
+    if (std::expected<void, std::string> typed =
+            RequireType(plan, step.inputs[n], *numeric);
+        !typed)
+      return typed;
+  }
+  return {};
+}
+std::expected<void, std::string>
+ValidateEvaluateProgram(const RenderPlan &plan,
+                        const EvaluateProgramStep &step) {
+  if (!BindingsMatch(step.program, step.inputs, step.lookups))
+    return std::unexpected("program bindings do not match");
+  const std::span<const ProgramInput> programInputs = step.program.Inputs();
+  for (std::size_t n = 0; n < step.inputs.size(); ++n) {
+    if (Is<ProgramTextureInput>(programInputs[n])) {
+      if (std::expected<void, std::string> typed =
+              RequireType(plan, step.inputs[n], RenderResourceType::kTexture);
+          !typed)
+        return typed;
+      continue;
+    }
+    const std::optional<RenderValueType> actual = TypeOf(plan, step.inputs[n]);
+    if (!actual || !Is<ValueType>(*actual))
+      return std::unexpected("program value input is not numeric");
+  }
+  for (const RenderValueRef lookup : step.lookups)
+    if (std::expected<void, std::string> typed =
+            RequireType(plan, lookup, RenderResourceType::kLookup);
+        !typed)
+      return typed;
+  return {};
+}
+std::expected<void, std::string>
+ValidateComposeVector(const RenderPlan &plan, const ComposeVectorStep &step) {
+  if (step.components.size() < 2 || step.components.size() > 3)
+    return std::unexpected("invalid vector component count");
+  for (const RenderValueRef component : step.components)
+    if (!HasEitherType(plan, component, RenderResourceType::kTexture,
+                       ValueType::kScalar))
+      return std::unexpected(
+          "vector component must be a scalar field or scalar value");
+  return {};
+}
+std::expected<void, std::string>
+ValidateDrawRipple(const RenderPlan &plan, const DrawRippleStep &step) {
+  if (std::expected<void, std::string> positions =
+          RequireType(plan, step.positions, RenderResourceType::kTexture);
+      !positions)
+    return positions;
+  if (!step.field.graph || !step.field.graph->NodeAt(step.field.output.node))
+    return std::unexpected("invalid ripple field");
+  return {};
+}
+std::expected<void, std::string>
+ValidateStackLayer(const RenderPlan &plan, const CompositeStackStep &stack,
+                   const PlannedLayer &layer) {
+  const std::optional<RenderValueRef> source = ReadValue(stack, layer.source);
+  if (!source || !HasEitherType(plan, *source, RenderResourceType::kTexture,
+                                ValueType::kVec3))
+    return std::unexpected("invalid stack source");
+  if (std::expected<void, std::string> opacity =
+          RequireType(plan, layer.opacity, ValueType::kScalar);
+      !opacity)
+    return opacity;
+  if (layer.mask) {
+    const std::optional<RenderValueRef> mask = ReadValue(stack, *layer.mask);
+    if (!mask)
+      return std::unexpected("invalid stack mask");
+    if (std::expected<void, std::string> typed =
+            RequireType(plan, *mask, RenderResourceType::kTexture);
+        !typed)
+      return typed;
+  }
+  if (layer.color)
+    return RequireType(plan, *layer.color, ValueType::kVec3);
+  return {};
+}
+std::expected<void, std::string>
+ValidateCompositeStack(const RenderPlan &plan, const CompositeStackStep &step) {
+  if (std::expected<void, std::string> base =
+          RequireType(plan, step.base, RenderResourceType::kStack);
+      !base)
+    return base;
+  if (std::expected<void, std::string> visibility =
+          RequireType(plan, step.visibility, RenderResourceType::kVisibility);
+      !visibility)
+    return visibility;
+  for (const LayerField &field : step.fields)
+    if (!BindingsMatch(field.program, field.inputs, field.lookups))
+      return std::unexpected("layer field binding count mismatch");
+  for (const PlannedLayer &layer : step.layers)
+    if (std::expected<void, std::string> valid =
+            ValidateStackLayer(plan, step, layer);
+        !valid)
+      return valid;
+  return {};
+}
+std::expected<void, std::string> ValidateStepKind(const RenderPlan &plan,
+                                                  const RenderStepKind &kind) {
+  using Validation = std::expected<void, std::string>;
+  return Match(
+      kind, [](const UnavailableStep &) -> Validation { return {}; },
+      [](const ConstantRenderStep &) -> Validation { return {}; },
+      [&](const BuildBakeBuffersStep &k) -> Validation {
+        return ValidateBuildBakeBuffers(plan, k);
+      },
+      [&](const BakeMeshStep &k) -> Validation {
+        return RequireType(plan, k.buffers, RenderResourceType::kBakeBuffers);
+      },
+      [&](const NormalSlopeStep &k) -> Validation {
+        return RequireType(plan, k.material, RenderResourceType::kMaterial);
+      },
+      [&](const SubmitMaterialSampleStep &k) -> Validation {
+        return RequireType(plan, k.material, RenderResourceType::kMaterial);
+      },
+      [&](const ClusterMaterialStep &k) -> Validation {
+        return RequireType(plan, k.sample, RenderResourceType::kMaterialSample);
+      },
+      [&](const DrawClustersStep &k) -> Validation {
+        return RequireType(plan, k.material, RenderResourceType::kMaterial)
+            .and_then([&] {
+              return RequireType(plan, k.analysis,
+                                 RenderResourceType::kMaterialAnalysis);
+            });
+      },
+      [&](const SampleFieldStep &k) -> Validation {
+        return ValidateSampleField(plan, k);
+      },
+      [&](const SubmitReductionStep &k) -> Validation {
+        return ValidateSubmitReduction(plan, k);
+      },
+      [&](const BuildLookupStep &k) -> Validation {
+        return ValidateBuildLookup(plan, k);
+      },
+      [&](const EvaluateValueStep &k) -> Validation {
+        return ValidateEvaluateValue(plan, k);
+      },
+      [&](const EvaluateProgramStep &k) -> Validation {
+        return ValidateEvaluateProgram(plan, k);
+      },
+      [&](const MapFieldStep &k) -> Validation {
+        return RequireType(plan, k.value, RenderResourceType::kTexture)
+            .and_then([&] {
+              return RequireType(plan, k.lookup, RenderResourceType::kLookup);
+            });
+      },
+      [&](const ComposeVectorStep &k) -> Validation {
+        return ValidateComposeVector(plan, k);
+      },
+      [&](const DrawRippleStep &k) -> Validation {
+        return ValidateDrawRipple(plan, k);
+      },
+      [&](const CompositeStackStep &k) -> Validation {
+        return ValidateCompositeStack(plan, k);
+      });
+}
+std::expected<void, std::string> ValidateStepInputs(const RenderPlan &plan,
+                                                    RenderStepId step) {
+  if (step >= plan.steps.size())
+    return std::unexpected("render step is missing");
+  for (const RenderValueRef input : InputsOf(plan.steps[step].kind)) {
+    if (!TypeOf(plan, input))
+      return std::unexpected("invalid input reference");
+    if (const StepOutputRef *producer = Get<StepOutputRef>(input);
+        producer && producer->step >= step)
+      return std::unexpected(
+          "step dependencies are not in acyclic producer order");
+  }
+  return {};
+}
+std::expected<void, std::string> ValidateStep(const RenderPlan &plan,
+                                              RenderStepId step) {
+  if (step >= plan.steps.size())
+    return std::unexpected("render step is missing");
+  const RenderStep &validated = plan.steps[step];
+  std::expected<void, std::string> valid = ValidateStepInputs(plan, step);
+  if (valid)
+    valid = ValidateStepKind(plan, validated.kind);
+  if (!valid)
+    return std::unexpected(validated.displayName + ": " + valid.error());
+  return {};
+}
+std::expected<void, std::string>
+ValidateReadbackInputs(const RenderPlan &plan) {
+  for (const RenderInput &input : plan.inputs) {
+    const ReadbackBinding *readback = Get<ReadbackBinding>(input.binding);
     if (!readback)
       continue;
-    const auto *submission = readback->submission < plan.steps.size()
-                                 ? &plan.steps[readback->submission].kind
-                                 : nullptr;
-    const auto *reduction =
+    const RenderStepKind *submission =
+        readback->submission < plan.steps.size()
+            ? &plan.steps[readback->submission].kind
+            : nullptr;
+    const SubmitReductionStep *reduction =
         submission ? Get<SubmitReductionStep>(*submission) : nullptr;
     const bool valid =
         (reduction && input.type == RenderValueType{reduction->type}) ||
@@ -466,15 +578,32 @@ std::expected<void, std::string> ValidateRenderPlan(const RenderPlan &plan) {
     if (!valid)
       return std::unexpected("invalid readback input");
   }
-  for (const auto &output : plan.stackOutputs)
+  return {};
+}
+std::expected<void, std::string>
+ValidateOutputBindings(const RenderPlan &plan) {
+  for (const StackOutputBinding &output : plan.stackOutputs)
     if (TypeOf(plan, output.result) !=
         std::optional<RenderValueType>{RenderResourceType::kStack})
       return std::unexpected("invalid stack output binding");
-  for (const auto &use : plan.textureUses)
+  for (const TextureUseBinding &use : plan.textureUses)
     if (TypeOf(plan, use.texture) !=
         std::optional<RenderValueType>{RenderResourceType::kTexture})
       return std::unexpected("invalid texture use binding");
   return {};
+}
+}
+std::expected<void, std::string> ValidateRenderPlan(const RenderPlan &plan) {
+  if (plan.steps.size() > 4096 || plan.inputs.size() > 8192)
+    return std::unexpected("render plan exceeds its size limit");
+  for (RenderStepId step = 0; step < plan.steps.size(); ++step)
+    if (std::expected<void, std::string> valid = ValidateStep(plan, step);
+        !valid)
+      return valid;
+  if (std::expected<void, std::string> readback = ValidateReadbackInputs(plan);
+      !readback)
+    return readback;
+  return ValidateOutputBindings(plan);
 }
 std::vector<RenderValueRef> StepDependencies(const RenderPlan &plan,
                                              RenderStepId step) {

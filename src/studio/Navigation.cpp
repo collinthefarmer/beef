@@ -2,9 +2,12 @@
 #include "studio/Navigation.h"
 
 #include <algorithm>
+#include <cstddef>
+#include <cstdint>
 #include <optional>
 #include <span>
 #include <utility>
+#include <vector>
 
 namespace BetterEnchantmentEffects::Studio {
 namespace {
@@ -197,61 +200,73 @@ bool ResolvePendingSubject(Navigation &a_navigation, Selection &a_selection,
 }
 
 bool NavigateProperty(Navigation &a_navigation, Selection &a_selection,
-                      InspectorSubject a_subject, PropertyLocation a_property,
-                      const RecipeRow &a_recipe) {
+                      PropertyTarget a_target, const RecipeRow &a_recipe) {
   if (a_selection.recipeID != a_recipe.id ||
-      !InspectorSubjectExists(a_subject, a_recipe) ||
-      !PropertyMatches(a_subject, a_property) ||
-      !PropertyExists(a_property, a_recipe) ||
-      (a_selection.subject == a_subject &&
-       a_selection.property == a_property)) {
+      !InspectorSubjectExists(a_target.subject, a_recipe) ||
+      !PropertyMatches(a_target.subject, a_target.property) ||
+      !PropertyExists(a_target.property, a_recipe) ||
+      (a_selection.subject == a_target.subject &&
+       a_selection.property == a_target.property)) {
     return false;
   }
   const Selection previous = a_selection;
-  a_selection.subject = std::move(a_subject);
-  a_selection.property = std::move(a_property);
+  a_selection.subject = std::move(a_target.subject);
+  a_selection.property = std::move(a_target.property);
   return CommitNavigation(a_navigation, previous, a_selection, a_recipe);
 }
 
-namespace {
-bool StepHistory(std::vector<InspectorVisit> &a_from,
-                 std::vector<InspectorVisit> &a_to, float &a_scroll,
+std::optional<InspectorVisit> ReachableVisit(InspectorVisit a_visit,
+                                             const Selection &a_current,
+                                             const RecipeRow &a_recipe) {
+  if (a_visit.selection.recipeID != a_recipe.id ||
+      a_visit.selection.piece != a_current.piece ||
+      !InspectorSubjectExists(a_visit.selection.subject, a_recipe)) {
+    return std::nullopt;
+  }
+  AlignOutputSelection(a_visit.selection, a_recipe);
+  if (a_visit.selection.property &&
+      !PropertyExists(*a_visit.selection.property, a_recipe)) {
+    a_visit.selection.property.reset();
+  }
+  if (a_visit.selection == a_current) {
+    return std::nullopt;
+  }
+  return a_visit;
+}
+
+bool StepHistory(Navigation &a_navigation, HistoryDirection a_direction,
                  Selection &a_selection, const RecipeRow &a_recipe) {
-  while (!a_from.empty()) {
-    InspectorVisit visit = std::move(a_from.back());
-    a_from.pop_back();
-    if (visit.selection.recipeID != a_recipe.id ||
-        visit.selection.piece != a_selection.piece ||
-        !InspectorSubjectExists(visit.selection.subject, a_recipe)) {
+  const bool back = a_direction == HistoryDirection::kBack;
+  std::vector<InspectorVisit> &from =
+      back ? a_navigation.back : a_navigation.forward;
+  std::vector<InspectorVisit> &to =
+      back ? a_navigation.forward : a_navigation.back;
+  while (!from.empty()) {
+    InspectorVisit candidate = std::move(from.back());
+    from.pop_back();
+    std::optional<InspectorVisit> visit =
+        ReachableVisit(std::move(candidate), a_selection, a_recipe);
+    if (!visit) {
       continue;
     }
-    AlignOutputSelection(visit.selection, a_recipe);
-    if (visit.selection.property &&
-        !PropertyExists(*visit.selection.property, a_recipe)) {
-      visit.selection.property.reset();
-    }
-    if (visit.selection == a_selection) {
-      continue;
-    }
-    PushVisit(a_to, {a_selection, a_scroll});
-    a_selection = std::move(visit.selection);
-    a_scroll = visit.scroll;
+    PushVisit(to, {a_selection, a_navigation.scroll});
+    a_selection = std::move(visit->selection);
+    a_navigation.scroll = visit->scroll;
     return true;
   }
   return false;
 }
-}
 
 bool GoBack(Navigation &a_navigation, Selection &a_selection,
             const RecipeRow &a_recipe) {
-  return StepHistory(a_navigation.back, a_navigation.forward,
-                     a_navigation.scroll, a_selection, a_recipe);
+  return StepHistory(a_navigation, HistoryDirection::kBack, a_selection,
+                     a_recipe);
 }
 
 bool GoForward(Navigation &a_navigation, Selection &a_selection,
                const RecipeRow &a_recipe) {
-  return StepHistory(a_navigation.forward, a_navigation.back,
-                     a_navigation.scroll, a_selection, a_recipe);
+  return StepHistory(a_navigation, HistoryDirection::kForward, a_selection,
+                     a_recipe);
 }
 
 void InvalidateIndexedSubjects(Navigation &a_navigation, Selection &a_selection,
@@ -290,6 +305,43 @@ void ResolvePreviewPin(std::optional<PreviewPin> &a_pin,
       FindByName(a_recipe->geometries, a_pin->selection.geometry) == nullptr) {
     a_pin.reset();
   }
+}
+
+const OutputRow *PreviewOutputOf(const GeometryRow *a_geometry,
+                                 const Selection &a_selection) {
+  const InspectorSubject &subject = a_selection.subject;
+  std::optional<std::size_t> index;
+  if (const auto *output = Get<OutputSubject>(subject)) {
+    index = output->output;
+  } else if (const auto *layer = Get<LayerSubject>(subject)) {
+    index = layer->output;
+  }
+  if (!index) {
+    return SelectedOutput(a_geometry, a_selection);
+  }
+  if (!a_geometry) {
+    return nullptr;
+  }
+  return FindBy(a_geometry->outputs, *index, &OutputRow::index);
+}
+
+std::optional<PreviewPin> PreviewPinFor(const Selection &a_selection,
+                                        const GeometryRow *a_geometry,
+                                        std::uint64_t a_resetID) {
+  Selection pinned = a_selection;
+  if (!Is<SourceSubject>(pinned.subject) && !Is<MaskSubject>(pinned.subject)) {
+    const OutputRow *output = PreviewOutputOf(a_geometry, pinned);
+    if (!output) {
+      return std::nullopt;
+    }
+    pinned.subject = OutputSubject{output->index};
+  }
+  return PreviewPin{std::move(pinned), a_resetID};
+}
+
+Selection PreviewSelectionOf(const std::optional<PreviewPin> &a_pin,
+                             const Selection &a_current) {
+  return a_pin ? a_pin->selection : a_current;
 }
 
 void InvalidatePreviewPin(std::optional<PreviewPin> &a_pin,

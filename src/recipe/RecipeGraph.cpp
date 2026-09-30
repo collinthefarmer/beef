@@ -102,6 +102,24 @@ std::vector<std::string> Dependencies(const Signal &a_signal,
   return out;
 }
 
+std::vector<std::string> Dependencies(const Source &a_source) {
+  std::vector<std::string> out;
+  if (const auto *image = Get<ImageSource>(a_source.kind)) {
+    if (image->scroll)
+      AddRef(out, *image->scroll);
+    if (image->tile)
+      AddRef(out, *image->tile);
+  }
+  if (const auto *ripple = Get<RippleSource>(a_source.kind)) {
+    AddRef(out, ripple->trigger.name);
+    AddRef(out, ripple->speed);
+    AddRef(out, ripple->width);
+    AddRef(out, ripple->decay);
+    AddRef(out, ripple->direction);
+  }
+  return out;
+}
+
 bool SignalAnimated(const SignalKind &kind) {
   return !Is<ConstantSignal>(kind) && !Is<ExprSignal>(kind) &&
          !Is<GradientSignal>(kind) && !Is<RateSignal>(kind) &&
@@ -260,85 +278,88 @@ struct RecipeGraphBuilder {
     return index;
   }
 
-  void BindDependencies() {
-    for (auto &node : graph.declarations_) {
-      if (const auto *signal = Get<Signal>(node.definition)) {
-        for (const auto &name :
-             Dependencies(*signal, node.expression ? &node.expression->program
-                                                   : nullptr)) {
-          (void)Bind(node, name, DeclarationCategory::kSignal);
-        }
-      }
-      if (const auto *source = Get<Source>(node.definition)) {
-        std::vector<std::string> refs;
-        if (const auto *image = Get<ImageSource>(source->kind)) {
-          if (image->scroll)
-            AddRef(refs, *image->scroll);
-          if (image->tile)
-            AddRef(refs, *image->tile);
-        }
-        if (const auto *ripple = Get<RippleSource>(source->kind)) {
-          AddRef(refs, ripple->trigger.name);
-          AddRef(refs, ripple->speed);
-          AddRef(refs, ripple->width);
-          AddRef(refs, ripple->decay);
-          AddRef(refs, ripple->direction);
-        }
-        for (const auto &name : refs)
-          (void)Bind(node, name, DeclarationCategory::kSignal);
-      }
-      auto *expression = node.expression ? &*node.expression : nullptr;
-      if (!expression)
-        continue;
-      for (const auto &name : expression->program.References()) {
-        const auto index = Bind(node, name, node.category,
-                                node.category == DeclarationCategory::kSpatial);
-        expression->valueBindings.push_back(
-            index.value_or(std::numeric_limits<std::size_t>::max()));
-      }
-      for (const auto &name : expression->program.Curves()) {
-        const auto index = Bind(node, name, DeclarationCategory::kFunction);
-        expression->functionBindings.push_back(
-            index.value_or(std::numeric_limits<std::size_t>::max()));
-      }
+  void BindSignals(RecipeDeclaration &node,
+                   std::span<const std::string> names) {
+    for (const std::string &name : names)
+      (void)Bind(node, name, DeclarationCategory::kSignal);
+  }
+
+  void BindExpression(RecipeDeclaration &node) {
+    if (!node.expression)
+      return;
+    DeclarationExpression &expression = *node.expression;
+    for (const std::string &name : expression.program.References()) {
+      const auto index = Bind(node, name, node.category,
+                              node.category == DeclarationCategory::kSpatial);
+      expression.valueBindings.push_back(
+          index.value_or(std::numeric_limits<std::size_t>::max()));
+    }
+    for (const std::string &name : expression.program.Curves()) {
+      const auto index = Bind(node, name, DeclarationCategory::kFunction);
+      expression.functionBindings.push_back(
+          index.value_or(std::numeric_limits<std::size_t>::max()));
     }
   }
 
+  void BindDependencies() {
+    for (RecipeDeclaration &node : graph.declarations_) {
+      if (const auto *signal = Get<Signal>(node.definition)) {
+        BindSignals(node, Dependencies(*signal, node.expression
+                                                    ? &node.expression->program
+                                                    : nullptr));
+      }
+      if (const auto *source = Get<Source>(node.definition))
+        BindSignals(node, Dependencies(*source));
+      BindExpression(node);
+    }
+  }
+
+  enum class OrderMark : std::uint8_t { kNone, kOpen, kDone };
+
+  struct OrderFrame {
+    std::size_t node;
+    std::size_t next = 0;
+  };
+
+  void RejectCycle(std::span<const OrderFrame> path, std::size_t dependency) {
+    const auto begin = std::ranges::find(path, dependency, &OrderFrame::node);
+    const std::ranges::subrange cyclePath{begin, path.end()};
+    std::string cycle;
+    for (const OrderFrame &frame : cyclePath)
+      cycle += graph.declarations_[frame.node].name + " -> ";
+    cycle += graph.declarations_[dependency].name;
+    for (const OrderFrame &frame : cyclePath)
+      Reject(graph.declarations_[frame.node], "cycle: " + cycle);
+  }
+
+  void AppendToOrders(std::size_t node) {
+    graph.dependencyOrder_.push_back(node);
+    if (graph.declarations_[node].category == DeclarationCategory::kSignal)
+      graph.signalEvaluationOrder_.push_back(node);
+  }
+
   void Order() {
-    enum class Mark : std::uint8_t { kNone, kOpen, kDone };
-    struct Frame {
-      std::size_t node;
-      std::size_t next = 0;
-    };
-    std::vector<Mark> marks(graph.Size(), Mark::kNone);
-    std::vector<Frame> path;
+    std::vector<OrderMark> marks(graph.Size(), OrderMark::kNone);
+    std::vector<OrderFrame> path;
     for (std::size_t start = 0; start < graph.Size(); ++start) {
-      if (marks[start] != Mark::kNone)
+      if (marks[start] != OrderMark::kNone)
         continue;
-      marks[start] = Mark::kOpen;
+      marks[start] = OrderMark::kOpen;
       path.push_back({start});
       while (!path.empty()) {
-        auto &frame = path.back();
-        auto &node = graph.declarations_[frame.node];
+        OrderFrame &frame = path.back();
+        RecipeDeclaration &node = graph.declarations_[frame.node];
         if (frame.next == node.dependencies.size()) {
-          marks[frame.node] = Mark::kDone;
-          graph.dependencyOrder_.push_back(frame.node);
-          if (node.category == DeclarationCategory::kSignal)
-            graph.signalEvaluationOrder_.push_back(frame.node);
+          marks[frame.node] = OrderMark::kDone;
+          AppendToOrders(frame.node);
           path.pop_back();
           continue;
         }
-        const auto dependency = node.dependencies[frame.next++];
-        if (marks[dependency] == Mark::kDone)
+        const std::size_t dependency = node.dependencies[frame.next++];
+        if (marks[dependency] == OrderMark::kDone)
           continue;
-        if (marks[dependency] == Mark::kOpen) {
-          const auto begin = std::ranges::find(path, dependency, &Frame::node);
-          std::string cycle;
-          for (auto it = begin; it != path.end(); ++it)
-            cycle += graph.declarations_[it->node].name + " -> ";
-          cycle += graph.declarations_[dependency].name;
-          for (auto it = begin; it != path.end(); ++it)
-            Reject(graph.declarations_[it->node], "cycle: " + cycle);
+        if (marks[dependency] == OrderMark::kOpen) {
+          RejectCycle(path, dependency);
           continue;
         }
         if (path.size() >= kMaxRecipeDepth) {
@@ -349,7 +370,7 @@ struct RecipeGraphBuilder {
                   kMaxRecipeDepth));
           continue;
         }
-        marks[dependency] = Mark::kOpen;
+        marks[dependency] = OrderMark::kOpen;
         path.push_back({dependency});
       }
     }
@@ -499,55 +520,70 @@ struct RecipeGraphBuilder {
     template <class T> void operator()(const T &) const {}
   };
 
-  static void InferSignal(RecipeGraph &a_graph, RecipeDeclaration &n) {
-    const auto typeOf = [&](std::string_view name) -> std::optional<ValueType> {
-      const auto index = a_graph.FindSignalIndex(name);
-      return index ? a_graph.TypeOf(*index) : std::nullopt;
-    };
-    n.valueType = Match(
-        Get<Signal>(n.definition)->kind,
+  static std::optional<ValueType> NamedSignalType(const RecipeGraph &graph,
+                                                  std::string_view name) {
+    const auto index = graph.FindSignalIndex(name);
+    return index ? graph.TypeOf(*index) : std::nullopt;
+  }
+
+  static ValueType TypeOf(EfshField field) {
+    switch (field) {
+    case EfshField::kFillColor:
+    case EfshField::kEdgeColor:
+      return ValueType::kVec3;
+    case EfshField::kScroll:
+      return ValueType::kVec2;
+    default:
+      return ValueType::kScalar;
+    }
+  }
+
+  static ValueType PayloadTypeOf(const RecipeGraph &graph,
+                                 const PayloadSignal &signal) {
+    const auto index = graph.FindSignalIndex(signal.trigger.name);
+    const Signal *triggerSignal = index ? graph.SignalAt(*index) : nullptr;
+    const auto *trigger =
+        triggerSignal ? Get<TriggerSignal>(triggerSignal->kind) : nullptr;
+    return trigger ? trigger->payload : ValueType::kScalar;
+  }
+
+  static ValueType InferExpressionSignal(RecipeGraph &graph,
+                                         RecipeDeclaration &node) {
+    if (!node.expression) {
+      return ValueType::kScalar;
+    }
+    auto checked =
+        node.expression->program.Check([&graph](std::string_view name) {
+          return NamedSignalType(graph, name);
+        });
+    if (!checked) {
+      node.isDisabled = true;
+      ReportSignal(graph, node.name, std::format("expr: {}", checked.error()));
+      return ValueType::kScalar;
+    }
+    return *checked;
+  }
+
+  static ValueType SignalTypeOf(RecipeGraph &graph, RecipeDeclaration &node) {
+    const Signal *signal = Get<Signal>(node.definition);
+    if (!signal)
+      return ValueType::kScalar;
+    return Match(
+        signal->kind,
         [](const ConstantSignal &k) {
           return BetterEnchantmentEffects::TypeOf(k.value);
         },
-        [](const EfshSignal &k) {
-          switch (k.field) {
-          case EfshField::kFillColor:
-          case EfshField::kEdgeColor:
-            return ValueType::kVec3;
-          case EfshField::kScroll:
-            return ValueType::kVec2;
-          default:
-            return ValueType::kScalar;
-          }
-        },
-        [&](const PayloadSignal &k) {
-          const auto index = a_graph.FindSignalIndex(k.trigger.name);
-          const auto *trigger =
-              index ? Get<TriggerSignal>(a_graph.SignalAt(*index)->kind)
-                    : nullptr;
-          return trigger ? trigger->payload : ValueType::kScalar;
-        },
+        [](const EfshSignal &k) { return TypeOf(k.field); },
+        [&](const PayloadSignal &k) { return PayloadTypeOf(graph, k); },
         [](const GradientSignal &) { return ValueType::kVec3; },
         [&](const RateSignal &k) {
-          return typeOf(k.of.name).value_or(ValueType::kScalar);
+          return NamedSignalType(graph, k.of.name).value_or(ValueType::kScalar);
         },
         [](const ToRootSignal &) { return ValueType::kVec3; },
         [&](const SmoothSignal &k) {
-          return typeOf(k.of.name).value_or(ValueType::kScalar);
+          return NamedSignalType(graph, k.of.name).value_or(ValueType::kScalar);
         },
-        [&](const ExprSignal &) {
-          if (!n.expression) {
-            return ValueType::kScalar;
-          }
-          auto checked = n.expression->program.Check(typeOf);
-          if (!checked) {
-            n.isDisabled = true;
-            ReportSignal(a_graph, n.name,
-                         std::format("expr: {}", checked.error()));
-            return ValueType::kScalar;
-          }
-          return *checked;
-        },
+        [&](const ExprSignal &) { return InferExpressionSignal(graph, node); },
         [](const WaveSignal &) { return ValueType::kScalar; },
         [](const RampSignal &) { return ValueType::kScalar; },
         [](const ActorValueSignal &) { return ValueType::kScalar; },
@@ -559,120 +595,163 @@ struct RecipeGraphBuilder {
         [](const CounterSignal &) { return ValueType::kScalar; },
         [](const AccumulateSignal &) { return ValueType::kScalar; },
         [](const NoiseSignal &) { return ValueType::kScalar; });
-    if (n.resultTransform && n.valueType != ValueType::kScalar) {
-      n.isDisabled = true;
+  }
+
+  static void CheckAppliedCurve(RecipeGraph &graph, RecipeDeclaration &node) {
+    if (node.resultTransform && node.valueType != ValueType::kScalar) {
+      node.isDisabled = true;
       ReportSignal(
-          a_graph, n.name,
+          graph, node.name,
           std::format(
               "a curve applies only to a scalar signal; this one is a {}",
-              Name(n.valueType)));
+              Name(node.valueType)));
     }
+  }
 
-    Match(Get<Signal>(n.definition)->kind, ReferenceTypeChecker{a_graph, n});
+  static void InferSignal(RecipeGraph &a_graph, RecipeDeclaration &n) {
+    const Signal *signal = Get<Signal>(n.definition);
+    if (!signal)
+      return;
+    n.valueType = SignalTypeOf(a_graph, n);
+    CheckAppliedCurve(a_graph, n);
+    Match(signal->kind, ReferenceTypeChecker{a_graph, n});
+  }
+
+  void AnalyzeCurve(RecipeDeclaration &node) {
+    if (node.category != DeclarationCategory::kFunction || !node.expression)
+      return;
+    const auto checked = node.expression->program.Check(
+        [](std::string_view) -> std::optional<ValueType> {
+          return std::nullopt;
+        });
+    if (!checked)
+      Reject(node, checked.error());
+    else if (*checked != ValueType::kScalar)
+      Reject(node, "a curve function must return a scalar");
+    if (node.expression->program.UsesTime())
+      Reject(node, "'time' is not bound inside a curve function");
+  }
+
+  void ReportOnce(const Diagnostic &diagnostic) {
+    const bool reported =
+        std::ranges::any_of(graph.diagnostics_, [&](const Diagnostic &prior) {
+          return prior.where == diagnostic.where &&
+                 prior.message == diagnostic.message &&
+                 prior.severity == diagnostic.severity;
+        });
+    if (!reported)
+      graph.diagnostics_.push_back(diagnostic);
+  }
+
+  void AnalyzeSource(RecipeDeclaration &node, const Source &source,
+                     const Recipe &recipe) {
+    for (const Diagnostic &diagnostic :
+         CheckSourceInputs(RowTypes{recipe, graph}, source)) {
+      if (diagnostic.severity == Severity::kError)
+        node.isDisabled = true;
+      ReportOnce(diagnostic);
+    }
+  }
+
+  void AnalyzeSpatial(RecipeDeclaration &node) {
+    if (node.category != DeclarationCategory::kSpatial || !node.expression ||
+        node.isDisabled)
+      return;
+    const auto checked = node.expression->program.Check(
+        [&](std::string_view name) { return graph.TypeOf(name); });
+    if (checked)
+      node.valueType = *checked;
+    else
+      Reject(node, checked.error());
+  }
+
+  void InheritDependencyState(RecipeDeclaration &node) {
+    for (const std::size_t dependency : node.dependencies) {
+      const RecipeDeclaration &input = graph.declarations_[dependency];
+      node.mayChangeOverTime =
+          node.mayChangeOverTime || input.mayChangeOverTime;
+      if (input.isDisabled && !node.isDisabled) {
+        node.isDisabled = true;
+        Reporter{graph.diagnostics_, node.displayName}.Warn(
+            std::format("inert because '@{}' is", input.name));
+      }
+    }
   }
 
   void Analyze(const Recipe &recipe) {
-    for (const auto index : graph.dependencyOrder_) {
-      auto &node = graph.declarations_[index];
-      if (Get<Signal>(node.definition))
-        InferSignal(graph, node);
-      if (node.category == DeclarationCategory::kFunction && node.expression) {
-        const auto checked = node.expression->program.Check(
-            [](std::string_view) -> std::optional<ValueType> {
-              return std::nullopt;
-            });
-        if (!checked)
-          Reject(node, checked.error());
-        else if (*checked != ValueType::kScalar)
-          Reject(node, "a curve function must return a scalar");
-        if (node.expression->program.UsesTime())
-          Reject(node, "'time' is not bound inside a curve function");
-      }
-      if (const auto *source = Get<Source>(node.definition)) {
-        for (const auto &diagnostic :
-             CheckSourceInputs(RowTypes{recipe, graph}, *source)) {
-          if (diagnostic.severity == Severity::kError)
-            node.isDisabled = true;
-          if (!std::ranges::any_of(
-                  graph.diagnostics_, [&](const Diagnostic &prior) {
-                    return prior.where == diagnostic.where &&
-                           prior.message == diagnostic.message &&
-                           prior.severity == diagnostic.severity;
-                  }))
-            graph.diagnostics_.push_back(diagnostic);
-        }
-      }
-      if (node.category == DeclarationCategory::kSpatial && node.expression &&
-          !node.isDisabled) {
-        const auto checked = node.expression->program.Check(
-            [&](std::string_view name) { return graph.TypeOf(name); });
-        if (checked)
-          node.valueType = *checked;
-        else
-          Reject(node, checked.error());
-      }
-      for (const auto dependency : node.dependencies) {
-        const auto &input = graph.declarations_[dependency];
-        node.mayChangeOverTime =
-            node.mayChangeOverTime || input.mayChangeOverTime;
-        if (input.isDisabled && !node.isDisabled) {
-          node.isDisabled = true;
-          Reporter{graph.diagnostics_, node.displayName}.Warn(
-              std::format("inert because '@{}' is", input.name));
-        }
-      }
+    for (const std::size_t index : graph.dependencyOrder_) {
+      RecipeDeclaration &node = graph.declarations_[index];
+      InferSignal(graph, node);
+      AnalyzeCurve(node);
+      if (const auto *source = Get<Source>(node.definition))
+        AnalyzeSource(node, *source, recipe);
+      AnalyzeSpatial(node);
+      InheritDependencyState(node);
     }
+  }
+
+  static bool RowsFit(const Recipe &recipe) {
+    return recipe.signals.size() <= kMaxRecipeRows &&
+           recipe.sources.size() <= kMaxRecipeRows &&
+           recipe.masks.size() <= kMaxRecipeRows &&
+           recipe.curves.size() <= kMaxRecipeRows &&
+           recipe.outputs.size() <= kMaxRecipeRows &&
+           std::ranges::none_of(recipe.outputs, [](const Output &output) {
+             const auto *surface = Get<SurfaceOutput>(output);
+             return surface && surface->stack.size() > kMaxRecipeRows;
+           });
+  }
+
+  static bool OutputBindingsFit(const Recipe &recipe) {
+    std::size_t bindingBudget = 7;
+    for (const Output &output : recipe.outputs) {
+      const auto *surface = Get<SurfaceOutput>(output);
+      bindingBudget += surface ? 12 + 4 * surface->stack.size() : 5;
+      if (bindingBudget > 16 * kMaxRecipeRows)
+        return false;
+    }
+    return true;
+  }
+
+  static bool CompiledRowsFit(const Recipe &recipe) {
+    std::size_t compiledNodes = recipe.signals.size() + recipe.sources.size() +
+                                recipe.masks.size() + recipe.curves.size();
+    const auto countFunction = [&](const std::optional<CurveRef> &function) {
+      if (function && !function->Named())
+        ++compiledNodes;
+      return compiledNodes <= 4 * kMaxRecipeRows;
+    };
+    const bool signalsFit =
+        std::ranges::all_of(recipe.signals, [&](const Signal &signal) {
+          return countFunction(signal.curve);
+        });
+    return signalsFit &&
+           std::ranges::all_of(recipe.outputs, [&](const Output &output) {
+             const auto *surface = Get<SurfaceOutput>(output);
+             return !surface || std::ranges::all_of(
+                                    surface->stack, [&](const Layer &layer) {
+                                      return countFunction(layer.curve);
+                                    });
+           });
+  }
+
+  static std::optional<std::string>
+  CompilationLimitProblem(const Recipe &recipe) {
+    if (!RowsFit(recipe))
+      return "row count exceeds compilation limit";
+    if (!OutputBindingsFit(recipe))
+      return "output bindings exceed compilation budget";
+    if (!CompiledRowsFit(recipe))
+      return "compiled rows and inline functions exceed the graph budget";
+    return std::nullopt;
   }
 };
 
 RecipeGraph RecipeGraph::Compile(const Recipe &recipe) {
   RecipeGraphBuilder builder;
-  if (recipe.signals.size() > kMaxRecipeRows ||
-      recipe.sources.size() > kMaxRecipeRows ||
-      recipe.masks.size() > kMaxRecipeRows ||
-      recipe.curves.size() > kMaxRecipeRows ||
-      recipe.outputs.size() > kMaxRecipeRows ||
-      std::ranges::any_of(recipe.outputs, [](const Output &output) {
-        const auto *surface = Get<SurfaceOutput>(output);
-        return surface && surface->stack.size() > kMaxRecipeRows;
-      })) {
-    Reporter{builder.graph.diagnostics_, "recipe"}.Error(
-        "row count exceeds compilation limit");
-    return std::move(builder.graph);
-  }
-  std::size_t bindingBudget = 7;
-  for (const auto &output : recipe.outputs) {
-    const auto *surface = Get<SurfaceOutput>(output);
-    bindingBudget += surface ? 12 + 4 * surface->stack.size() : 5;
-    if (bindingBudget > 16 * kMaxRecipeRows) {
-      Reporter{builder.graph.diagnostics_, "recipe"}.Error(
-          "output bindings exceed compilation budget");
-      return std::move(builder.graph);
-    }
-  }
-  std::size_t compiledNodes = recipe.signals.size() + recipe.sources.size() +
-                              recipe.masks.size() + recipe.curves.size();
-  const auto countFunction = [&](const std::optional<CurveRef> &function) {
-    if (function && !function->Named())
-      ++compiledNodes;
-    return compiledNodes <= 4 * kMaxRecipeRows;
-  };
-  const bool signalsFit =
-      std::ranges::all_of(recipe.signals, [&](const Signal &signal) {
-        return countFunction(signal.curve);
-      });
-  const bool outputsFit =
-      signalsFit &&
-      std::ranges::all_of(recipe.outputs, [&](const Output &output) {
-        const auto *surface = Get<SurfaceOutput>(output);
-        return !surface ||
-               std::ranges::all_of(surface->stack, [&](const Layer &layer) {
-                 return countFunction(layer.curve);
-               });
-      });
-  if (!outputsFit) {
-    Reporter{builder.graph.diagnostics_, "recipe"}.Error(
-        "compiled rows and inline functions exceed the graph budget");
+  if (const std::optional<std::string> problem =
+          RecipeGraphBuilder::CompilationLimitProblem(recipe)) {
+    Reporter{builder.graph.diagnostics_, "recipe"}.Error(*problem);
     return std::move(builder.graph);
   }
   builder.Register(std::span{recipe.signals}, DeclarationCategory::kSignal);

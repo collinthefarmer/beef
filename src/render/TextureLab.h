@@ -34,6 +34,7 @@
 
 namespace BetterEnchantmentEffects {
 struct ProgramConstants;
+struct UploadedBakeBuffers;
 class RenderTargetPool;
 class TexturePreviews;
 
@@ -324,10 +325,14 @@ public:
   std::shared_ptr<RenderTarget> Preview(RE::NiSourceTexture *a_source,
                                         ShaderChannel a_channel,
                                         bool a_dynamic);
+  struct PreviewSampling {
+    LayerInput input;
+    float normalize = 1.0f;
+    [[nodiscard]] bool operator==(const PreviewSampling &) const = default;
+  };
   [[nodiscard]] std::shared_ptr<RenderTarget>
   SampledPreview(std::string a_context, RE::NiSourceTexture *a_source,
-                 const LayerInput &a_sampling, float a_normalize,
-                 bool a_dynamic);
+                 const PreviewSampling &a_sampling, bool a_dynamic);
   using PreviewDraw = ConsumptionLeases<RenderTarget>::Ticket;
   [[nodiscard]] PreviewDraw *
   RetainPreviewDraw(std::shared_ptr<RenderTarget> a_target);
@@ -386,8 +391,15 @@ private:
   void GenerateMips(const RenderPass &a_pass, RenderTarget &a_target);
   void BindTarget(const RenderPass &a_pass, RenderTarget &a_target);
   void UnbindTarget(const RenderPass &a_pass, std::uint32_t a_srvCount);
+  void DrawBakeTriangles(const RenderPass &a_pass, RenderTarget &a_target,
+                         const UploadedBakeBuffers &a_buffers);
+  bool DrawDilation(const RenderPass &a_pass, RenderTarget &a_target);
 
   bool CompileShaders(GpuResources &a_resources);
+  bool CreateFullScreenShaders(GpuResources &a_resources);
+  [[nodiscard]] std::optional<PixelPipeline>
+  CreatePixelPipeline(const char *a_entry, std::uint32_t a_constantBytes);
+  [[nodiscard]] std::optional<BakePipeline> CreateBakePipeline();
 
   ReductionLevel *ReductionLevelFor(ReductionExtent a_extent);
   bool EnsureReductionStaging(ReductionReadback &a_readback);

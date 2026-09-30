@@ -285,7 +285,7 @@ int main() {
   for (const auto &binding : graph.OutputBindings())
     if (binding.property == LayerWhere(0, 0) + " source") {
       const TextureValue value{&graph, binding.value, 1};
-      Check(CollectTextureDemand(demands, value, {TextureSize{64}}, use,
+      Check(CollectTextureDemand(demands, {value, {TextureSize{64}}, use},
                                  Bindings()(value, GeometryId{}))
                 .has_value(),
             "collect mapped arguments and measured field prerequisites");

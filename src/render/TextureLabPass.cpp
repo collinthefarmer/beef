@@ -551,6 +551,97 @@ void TextureLab::GenerateMipsFor(RenderTarget &a_target) {
   GenerateMips(pass, a_target);
 }
 
+namespace {
+struct LayerViews {
+  REX::W32::ID3D11ShaderResourceView *source = nullptr;
+  REX::W32::ID3D11ShaderResourceView *map = nullptr;
+  REX::W32::ID3D11ShaderResourceView *previous = nullptr;
+  REX::W32::ID3D11ShaderResourceView *curve = nullptr;
+};
+
+std::optional<LayerViews>
+LayerViewsFor(const TextureLab::LayerParams &a_params,
+              RE::NiSourceTexture *a_source,
+              REX::W32::ID3D11ShaderResourceView *a_curve) {
+  const bool layerPass = a_params.mode == TextureLab::Mode::kLayer;
+  LayerViews views;
+  views.source = ViewOf(layerPass ? a_params.layer.source : a_source);
+  if (!layerPass && !views.source) {
+    views.source = ViewOf(a_params.map.texture);
+    if (!views.source) {
+      return std::nullopt;
+    }
+  }
+  if (layerPass || a_params.map.reading != TextureLab::MapReading::kNone) {
+    views.map = ViewOf(layerPass ? a_params.layer.mask : a_params.map.texture);
+  }
+  views.previous = layerPass ? ViewOf(a_params.layer.previous) : nullptr;
+  views.curve = layerPass ? a_curve : nullptr;
+  return views;
+}
+
+void FillSourceConstants(LayerConstants &a_constants,
+                         const TextureLab::LayerParams &a_params,
+                         const LayerViews &a_views) {
+  const bool layerPass = a_params.mode == TextureLab::Mode::kLayer;
+  const TextureLab::Scroll &sc =
+      layerPass ? a_params.layer.input.transform : a_params.scroll;
+  a_constants.offsetScale[0] = sc.uOffset;
+  a_constants.offsetScale[1] = sc.vOffset;
+  a_constants.offsetScale[2] = sc.tileU;
+  a_constants.offsetScale[3] = sc.tileV;
+  a_constants.flags[0] = sc.mirrorU ? 1.0f : 0.0f;
+  a_constants.flags[1] = sc.mirrorV ? 1.0f : 0.0f;
+  a_constants.flags[2] = sc.transpose ? 1.0f : 0.0f;
+  a_constants.flags[3] = static_cast<float>(a_params.mode);
+  a_constants.extra[0] = sc.sourceMip;
+  a_constants.extra[1] = a_views.map && !layerPass
+                             ? static_cast<float>(a_params.map.reading)
+                             : 0.0f;
+}
+
+void FillLayerPassConstants(LayerConstants &a_constants,
+                            const TextureLab::LayerPass &a_layer,
+                            const LayerViews &a_views) {
+  a_constants.layer[0] =
+      static_cast<float>(std::to_underlying(a_layer.input.channel));
+  a_constants.layer[1] = a_layer.input.meshSpace ? 1.0f : 0.0f;
+  a_constants.layer[2] = static_cast<float>(a_layer.blend);
+  a_constants.layer[3] = a_layer.opacity;
+  a_constants.layerColor[0] = a_layer.color[0];
+  a_constants.layerColor[1] = a_layer.color[1];
+  a_constants.layerColor[2] = a_layer.color[2];
+  a_constants.layerColor[3] = a_layer.normalize;
+  a_constants.layerMask[0] =
+      a_views.map ? static_cast<float>(std::to_underlying(a_layer.maskChannel))
+                  : -1.0f;
+  a_constants.layerMask[1] = static_cast<float>(a_layer.channels);
+  a_constants.layerMask[2] = a_views.previous ? 1.0f : 0.0f;
+  a_constants.layerMask[3] = a_views.source ? 1.0f : 0.0f;
+  a_constants.layerCurve[0] = a_views.curve ? 1.0f : 0.0f;
+}
+
+void FillChannelConstants(LayerConstants &a_constants,
+                          const TextureLab::ChannelParams &a_channel) {
+  a_constants.extra[2] =
+      static_cast<float>(std::to_underlying(a_channel.channel));
+  a_constants.extra[3] = a_channel.slope ? 1.0f : 0.0f;
+}
+
+LayerConstants LayerConstantsFor(const TextureLab::LayerParams &a_params,
+                                 const LayerViews &a_views) {
+  LayerConstants constants{};
+  FillSourceConstants(constants, a_params, a_views);
+  if (a_params.mode == TextureLab::Mode::kLayer) {
+    FillLayerPassConstants(constants, a_params.layer, a_views);
+  }
+  if (a_params.mode == TextureLab::Mode::kChannel) {
+    FillChannelConstants(constants, a_params.channel);
+  }
+  return constants;
+}
+}
+
 bool TextureLab::Render(RenderTarget &a_target, RE::NiSourceTexture *a_source,
                         const LayerParams &a_params) {
   auto *renderer = RE::BSGraphics::Renderer::GetSingleton();
@@ -558,74 +649,18 @@ bool TextureLab::Render(RenderTarget &a_target, RE::NiSourceTexture *a_source,
     return false;
   }
   const RenderPass pass{*renderer, *borrowedContext_};
-  const bool layerPass = a_params.mode == Mode::kLayer;
-  auto *sourceData = DataOf(layerPass ? a_params.layer.source : a_source);
-  if (!layerPass && (!sourceData || !sourceData->resourceView)) {
-    sourceData = DataOf(a_params.map.texture);
-    if (!sourceData || !sourceData->resourceView) {
-      return false;
-    }
+  REX::W32::ID3D11ShaderResourceView *const curve =
+      a_params.layer.curve ? a_params.layer.curve->srv.Get() : nullptr;
+  const std::optional<LayerViews> views =
+      LayerViewsFor(a_params, a_source, curve);
+  if (!views) {
+    return false;
   }
-  const bool haveSource = sourceData && sourceData->resourceView;
-
-  const auto &sc = layerPass ? a_params.layer.input.transform : a_params.scroll;
-  LayerConstants constants{};
-  constants.offsetScale[0] = sc.uOffset;
-  constants.offsetScale[1] = sc.vOffset;
-  constants.offsetScale[2] = sc.tileU;
-  constants.offsetScale[3] = sc.tileV;
-  constants.flags[0] = sc.mirrorU ? 1.0f : 0.0f;
-  constants.flags[1] = sc.mirrorV ? 1.0f : 0.0f;
-  constants.flags[2] = sc.transpose ? 1.0f : 0.0f;
-  constants.flags[3] = static_cast<float>(a_params.mode);
-  constants.extra[0] = sc.sourceMip;
-  auto *mapData =
-      DataOf(layerPass ? a_params.layer.mask : a_params.map.texture);
-  const bool haveMap = mapData && mapData->resourceView &&
-                       (layerPass || a_params.map.reading != MapReading::kNone);
-  constants.extra[1] =
-      haveMap && !layerPass ? static_cast<float>(a_params.map.reading) : 0.0f;
-  auto *prevData = layerPass ? DataOf(a_params.layer.previous) : nullptr;
-  const bool havePrev = prevData && prevData->resourceView;
-  if (layerPass) {
-    const auto &lp = a_params.layer;
-    constants.layer[0] =
-        static_cast<float>(std::to_underlying(lp.input.channel));
-    constants.layer[1] = lp.input.meshSpace ? 1.0f : 0.0f;
-    constants.layer[2] = static_cast<float>(lp.blend);
-    constants.layer[3] = lp.opacity;
-    constants.layerColor[0] = lp.color[0];
-    constants.layerColor[1] = lp.color[1];
-    constants.layerColor[2] = lp.color[2];
-    constants.layerColor[3] = lp.normalize;
-    constants.layerMask[0] =
-        haveMap ? static_cast<float>(std::to_underlying(lp.maskChannel))
-                : -1.0f;
-    constants.layerMask[1] = static_cast<float>(lp.channels);
-    constants.layerMask[2] = havePrev ? 1.0f : 0.0f;
-    constants.layerMask[3] = haveSource ? 1.0f : 0.0f;
-    constants.layerCurve[0] = lp.curve && lp.curve->srv.Get() ? 1.0f : 0.0f;
-  }
-  if (a_params.mode == Mode::kChannel) {
-    constants.extra[2] =
-        static_cast<float>(std::to_underlying(a_params.channel.channel));
-    constants.extra[3] = a_params.channel.slope ? 1.0f : 0.0f;
-  }
-
+  const LayerConstants constants = LayerConstantsFor(a_params, *views);
   pass.Context().UpdateSubresource(gpu_->constants.Get(), 0, nullptr,
                                    &constants, 0, 0);
-  REX::W32::ID3D11ShaderResourceView *srvs[4]{
-      haveSource ? reinterpret_cast<REX::W32::ID3D11ShaderResourceView *>(
-                       sourceData->resourceView)
-                 : nullptr,
-      haveMap ? reinterpret_cast<REX::W32::ID3D11ShaderResourceView *>(
-                    mapData->resourceView)
-              : nullptr,
-      havePrev ? reinterpret_cast<REX::W32::ID3D11ShaderResourceView *>(
-                     prevData->resourceView)
-               : nullptr,
-      layerPass && a_params.layer.curve ? a_params.layer.curve->srv.Get()
-                                        : nullptr};
+  REX::W32::ID3D11ShaderResourceView *srvs[4]{views->source, views->map,
+                                              views->previous, views->curve};
   REX::W32::ID3D11Buffer *cbs[1]{gpu_->constants.Get()};
   DrawFullScreen(pass, a_target, {gpu_->pixel.Get(), srvs, cbs});
   return true;
@@ -899,22 +934,25 @@ bool TextureLab::DrawProgramPass(RenderTarget &a_target,
   return true;
 }
 
-bool TextureLab::BakeMesh(RenderTarget &a_target, const BakeBuffers &a_bake) {
-  auto *renderer = RE::BSGraphics::Renderer::GetSingleton();
-  if (!available_ || !renderer || !borrowedContext_ || !borrowedDevice_ ||
-      !a_target.rtv.Get() || !gpu_->bake.has_value() ||
-      a_bake.vertices.empty() || a_bake.indices.empty()) {
-    return false;
+struct UploadedBakeBuffers {
+  ComPtr<ID3D11Buffer> vertices;
+  ComPtr<ID3D11Buffer> indices;
+  std::uint32_t indexCount = 0;
+};
+
+namespace {
+bool BakeBuffersFit(const BakeBuffers &a_bake) {
+  return a_bake.vertices.size() <=
+             std::numeric_limits<std::uint32_t>::max() / sizeof(BakeVertex) &&
+         a_bake.indices.size() <=
+             std::numeric_limits<std::uint32_t>::max() / sizeof(std::uint32_t);
+}
+
+std::optional<UploadedBakeBuffers>
+UploadBakeBuffers(ID3D11Device &a_device, const BakeBuffers &a_bake) {
+  if (!BakeBuffersFit(a_bake)) {
+    return std::nullopt;
   }
-  const BakePipeline &pipeline = *gpu_->bake;
-  if (a_bake.vertices.size() >
-          std::numeric_limits<std::uint32_t>::max() / sizeof(BakeVertex) ||
-      a_bake.indices.size() >
-          std::numeric_limits<std::uint32_t>::max() / sizeof(std::uint32_t)) {
-    logger::error("TextureLab: bake buffers exceed the D3D11 byte range");
-    return false;
-  }
-  const RenderPass pass{*renderer, *borrowedContext_};
   D3D11_BUFFER_DESC vbDesc{};
   vbDesc.byteWidth =
       static_cast<std::uint32_t>(a_bake.vertices.size() * sizeof(BakeVertex));
@@ -927,46 +965,86 @@ bool TextureLab::BakeMesh(RenderTarget &a_target, const BakeBuffers &a_bake) {
   ibDesc.bindFlags = D3D11_BIND_INDEX_BUFFER;
   D3D11_SUBRESOURCE_DATA vbData{a_bake.vertices.data(), 0, 0};
   D3D11_SUBRESOURCE_DATA ibData{a_bake.indices.data(), 0, 0};
-  ComPtr<ID3D11Buffer> vb;
-  ComPtr<ID3D11Buffer> ib;
-  if (Failed(
-          borrowedDevice_->CreateBuffer(&vbDesc, &vbData, vb.GetAddressOf())) ||
-      Failed(
-          borrowedDevice_->CreateBuffer(&ibDesc, &ibData, ib.GetAddressOf()))) {
+  UploadedBakeBuffers buffers;
+  if (Failed(a_device.CreateBuffer(&vbDesc, &vbData,
+                                   buffers.vertices.GetAddressOf())) ||
+      Failed(a_device.CreateBuffer(&ibDesc, &ibData,
+                                   buffers.indices.GetAddressOf()))) {
     logger::error("TextureLab: bake buffers could not be created");
+    return std::nullopt;
+  }
+  buffers.indexCount = static_cast<std::uint32_t>(a_bake.indices.size());
+  return buffers;
+}
+}
+
+bool TextureLab::BakeMesh(RenderTarget &a_target, const BakeBuffers &a_bake) {
+  auto *renderer = RE::BSGraphics::Renderer::GetSingleton();
+  if (!available_ || !renderer || !borrowedContext_ || !borrowedDevice_ ||
+      !a_target.rtv.Get() || !gpu_->bake.has_value() ||
+      a_bake.vertices.empty() || a_bake.indices.empty()) {
     return false;
   }
+  if (!BakeBuffersFit(a_bake)) {
+    logger::error("TextureLab: bake buffers exceed the D3D11 byte range");
+    return false;
+  }
+  const RenderPass pass{*renderer, *borrowedContext_};
+  const std::optional<UploadedBakeBuffers> buffers =
+      UploadBakeBuffers(*borrowedDevice_, a_bake);
+  if (!buffers) {
+    return false;
+  }
+  DrawBakeTriangles(pass, a_target, *buffers);
+  if (!DrawDilation(pass, a_target) && a_target.mips == MipPolicy::kGenerate) {
+    GenerateMips(pass, a_target);
+  }
+  return true;
+}
 
+void TextureLab::DrawBakeTriangles(const RenderPass &a_pass,
+                                   RenderTarget &a_target,
+                                   const UploadedBakeBuffers &a_buffers) {
+  if (!gpu_ || !gpu_->bake.has_value()) {
+    return;
+  }
+  const BakePipeline &pipeline = *gpu_->bake;
   REX::W32::ID3D11RenderTargetView *rtv = a_target.rtv.Get();
   const float empty[4]{0.0f, 0.0f, 0.0f, 0.0f};
-  pass.Context().ClearRenderTargetView(rtv, empty);
-  BindTarget(pass, a_target);
+  a_pass.Context().ClearRenderTargetView(rtv, empty);
+  BindTarget(a_pass, a_target);
   const std::uint32_t stride = sizeof(BakeVertex);
   const std::uint32_t offset = 0;
-  pass.Context().IASetInputLayout(pipeline.layout.Get());
-  pass.Context().IASetVertexBuffers(0, 1, vb.GetAddressOf(), &stride, &offset);
-  pass.Context().IASetIndexBuffer(ib.Get(), DXGI_FORMAT_R32_UINT, 0);
-  pass.Context().IASetPrimitiveTopology(D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
-  pass.Context().VSSetShader(pipeline.vertex.Get(), nullptr, 0);
-  pass.Context().PSSetShader(pipeline.pixel.Get(), nullptr, 0);
+  a_pass.Context().IASetInputLayout(pipeline.layout.Get());
+  a_pass.Context().IASetVertexBuffers(0, 1, a_buffers.vertices.GetAddressOf(),
+                                      &stride, &offset);
+  a_pass.Context().IASetIndexBuffer(a_buffers.indices.Get(),
+                                    DXGI_FORMAT_R32_UINT, 0);
+  a_pass.Context().IASetPrimitiveTopology(
+      D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
+  a_pass.Context().VSSetShader(pipeline.vertex.Get(), nullptr, 0);
+  a_pass.Context().PSSetShader(pipeline.pixel.Get(), nullptr, 0);
   REX::W32::ID3D11ShaderResourceView *noSrvs[kPassSrvs]{};
-  pass.Context().PSSetShaderResources(0, kPassSrvs, noSrvs);
-  pass.Context().DrawIndexed(static_cast<std::uint32_t>(a_bake.indices.size()),
-                             0, 0);
-  UnbindTarget(pass, kPassSrvs);
+  a_pass.Context().PSSetShaderResources(0, kPassSrvs, noSrvs);
+  a_pass.Context().DrawIndexed(a_buffers.indexCount, 0, 0);
+  UnbindTarget(a_pass, kPassSrvs);
+}
+
+bool TextureLab::DrawDilation(const RenderPass &a_pass,
+                              RenderTarget &a_target) {
   const PixelPipeline *dilate =
-      gpu_->dilate.has_value() ? &gpu_->dilate.value() : nullptr;
+      gpu_ && gpu_->dilate.has_value() ? &gpu_->dilate.value() : nullptr;
   RenderTarget *gutter = dilate ? Scratch(TextureSize{a_target.size},
                                           a_target.format, MipPolicy::kNone)
                                 : nullptr;
-  if (dilate && gutter && gutter->rtv.Get() && gutter->size == a_target.size) {
-    REX::W32::ID3D11ShaderResourceView *fromTarget[]{a_target.srv.Get()};
-    DrawFullScreen(pass, *gutter, {dilate->shader.Get(), fromTarget, {}});
-    REX::W32::ID3D11ShaderResourceView *fromGutter[]{gutter->srv.Get()};
-    DrawFullScreen(pass, a_target, {dilate->shader.Get(), fromGutter, {}});
-  } else if (a_target.mips == MipPolicy::kGenerate) {
-    GenerateMips(pass, a_target);
+  if (!dilate || !gutter || !gutter->rtv.Get() ||
+      gutter->size != a_target.size) {
+    return false;
   }
+  REX::W32::ID3D11ShaderResourceView *fromTarget[]{a_target.srv.Get()};
+  DrawFullScreen(a_pass, *gutter, {dilate->shader.Get(), fromTarget, {}});
+  REX::W32::ID3D11ShaderResourceView *fromGutter[]{gutter->srv.Get()};
+  DrawFullScreen(a_pass, a_target, {dilate->shader.Get(), fromGutter, {}});
   return true;
 }
 

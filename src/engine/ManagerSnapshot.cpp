@@ -93,9 +93,14 @@ struct GeometrySnapshotBuilder {
               "{}:{}:{}", recipe.id,
               reinterpret_cast<std::uintptr_t>(bound.geometry.get()),
               source.name);
-          const auto preview = TextureLab::GetSingleton()->SampledPreview(
-              context, prepared->texture.get(), prepared->sampling,
-              prepared->normalize, prepared->animated);
+          auto *lab = TextureLab::GetSingleton();
+          const auto preview =
+              lab ? lab->SampledPreview(
+                        context, prepared->texture.get(),
+                        TextureLab::PreviewSampling{prepared->sampling,
+                                                    prepared->normalize},
+                        prepared->animated)
+                  : nullptr;
           picture.texture = RetainTexture(snapshot, TextureRef{preview});
           picture.channel = ShaderChannel::kRgb;
         } else {
@@ -187,10 +192,7 @@ struct GeometrySnapshotBuilder {
       row.merged = true;
       row.merge = *merge;
     }
-    const SurfaceOutput *material =
-        output.index < recipe.outputs.size()
-            ? Get<SurfaceOutput>(recipe.outputs[output.index])
-            : nullptr;
+    const SurfaceOutput *material = SurfaceOutputOf(recipe, output.index);
     if (material && signals) {
       ResolveScalars(row, *material);
       InspectLayers(row, *material, output);
@@ -455,20 +457,32 @@ Manager::Snapshot
 Manager::BuildSnapshot(const std::optional<Studio::PieceRef> &a_request,
                        std::string_view a_document) const {
   Snapshot out;
-  out.applications = applications_.Snapshot();
-  out.fileOperations = editor_.FileOperations();
-  out.editResults = editor_.EditResults();
-  out.gesture = editor_.LastGesture();
-  out.paintCommit = editor_.LastPaintCommit();
-  out.paintUpdate = editor_.LastPaintUpdate();
+  PublishStatus(out);
+  PublishPieces(out, a_request);
+  PublishCatalogs(out, a_request ? a_request->actorID : 0);
+  AppendLoadedRecipes(out);
+  PublishDocument(out, a_document);
+  return out;
+}
+
+void Manager::PublishStatus(Snapshot &a_out) const {
+  a_out.applications = applications_.Snapshot();
+  a_out.fileOperations = editor_.FileOperations();
+  a_out.editResults = editor_.EditResults();
+  a_out.gesture = editor_.LastGesture();
+  a_out.paintCommit = editor_.LastPaintCommit();
+  a_out.paintUpdate = editor_.LastPaintUpdate();
   const Status status = GetStatus();
   const RecipeStoreStatus store = GetRecipeStoreStatus();
-  out.tickMS = status.tickMS;
-  out.status = {status.emissivePath, status.layoutVerified, status.textureLab,
-                status.actors,       status.pieces,         status.recipes,
-                status.geometries,   status.shells,         status.lights,
-                store.loaded,        store.withErrors};
+  a_out.tickMS = status.tickMS;
+  a_out.status = {status.emissivePath, status.layoutVerified, status.textureLab,
+                  status.actors,       status.pieces,         status.recipes,
+                  status.geometries,   status.shells,         status.lights,
+                  store.loaded,        store.withErrors};
+}
 
+void Manager::PublishPieces(
+    Snapshot &a_out, const std::optional<Studio::PieceRef> &a_request) const {
   const bool anyMatch =
       a_request && std::ranges::any_of(applied_, [&](const auto &entry) {
         return ContainsPiece(entry.second, entry.first, *a_request);
@@ -493,39 +507,46 @@ Manager::BuildSnapshot(const std::optional<Studio::PieceRef> &a_request,
       const bool full = anyMatch ? (a_request && *a_request == ref) : first;
       first = false;
 
-      out.pieces.push_back(
-          PieceSnapshotBuilder{out, editor_, state, piece, ref, flatStart, full}
-              .Build(matches));
+      a_out.pieces.push_back(PieceSnapshotBuilder{a_out, editor_, state, piece,
+                                                  ref, flatStart, full}
+                                 .Build(matches));
     }
   }
-  PublishCatalogs(out, a_request ? a_request->actorID : 0);
-  AppendLoadedRecipes(out);
-  const std::span<const Recipe> loaded = LoadedRecipes();
-  const Recipe *document = FindById(loaded, a_document);
-  if (!a_document.empty() && document) {
-    const Studio::ReferenceCounts *references = ReferencesOf(document->id);
-    const Studio::ReferenceCounts emptyReferences;
-    const std::shared_ptr<const RecipeGraph> graph = GraphFor(*document);
-    const std::optional<RecipeOrigin> origin = OriginOf(*document);
-    const Studio::History<Recipe> *history = editor_.HistoryOf(document->id);
-    const RecipeKey key =
-        document->keys.empty() ? RecipeKey{} : document->keys.front();
-    Studio::RecipeRow row = Studio::BuildRecipeRow(
-        {.recipe = *document,
-         .key = key,
-         .priority = document->priority.value_or(DefaultPriority(key.kind)),
-         .lightOutput = std::nullopt,
-         .dirty = IsDirty(document->id),
-         .full = true,
-         .undoDepth = history ? history->UndoDepth() : 0,
-         .redoDepth = history ? history->RedoDepth() : 0,
-         .references = references ? *references : emptyReferences,
-         .graph = graph.get(),
-         .problems =
-             origin ? origin->diagnostics : std::span<const Diagnostic>{}});
-    row.documentRevision = editor_.DocumentRevisionOf(document->id);
-    out.documents.push_back(std::move(row));
+}
+
+void Manager::PublishDocument(Snapshot &a_out,
+                              std::string_view a_document) const {
+  if (a_document.empty()) {
+    return;
   }
-  return out;
+  const std::span<const Recipe> loaded = LoadedRecipes();
+  if (const Recipe *document = FindById(loaded, a_document)) {
+    a_out.documents.push_back(DocumentRowFor(*document));
+  }
+}
+
+Studio::RecipeRow Manager::DocumentRowFor(const Recipe &a_document) const {
+  const Studio::ReferenceCounts *references = ReferencesOf(a_document.id);
+  const Studio::ReferenceCounts emptyReferences;
+  const std::shared_ptr<const RecipeGraph> graph = GraphFor(a_document);
+  const std::optional<RecipeOrigin> origin = OriginOf(a_document);
+  const Studio::History<Recipe> *history = editor_.HistoryOf(a_document.id);
+  const RecipeKey key =
+      a_document.keys.empty() ? RecipeKey{} : a_document.keys.front();
+  Studio::RecipeRow row = Studio::BuildRecipeRow(
+      {.recipe = a_document,
+       .key = key,
+       .priority = a_document.priority.value_or(DefaultPriority(key.kind)),
+       .lightOutput = std::nullopt,
+       .dirty = IsDirty(a_document.id),
+       .full = true,
+       .undoDepth = history ? history->UndoDepth() : 0,
+       .redoDepth = history ? history->RedoDepth() : 0,
+       .references = references ? *references : emptyReferences,
+       .graph = graph.get(),
+       .problems =
+           origin ? origin->diagnostics : std::span<const Diagnostic>{}});
+  row.documentRevision = editor_.DocumentRevisionOf(a_document.id);
+  return row;
 }
 }

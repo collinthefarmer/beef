@@ -225,7 +225,7 @@ std::optional<std::string> FieldInput(const FormField &a_field, float a_scale,
   case FieldInputKind::kPlain:
     return TextField("value", a_field.text, {a_width, a_scale}, displayCheck);
   case FieldInputKind::kValue:
-    return ValueWidget("value", a_field, a_scale, displayCheck, a_width);
+    return ValueWidget("value", a_field, {a_width, a_scale}, displayCheck);
   case FieldInputKind::kChannels:
     return DrawChannels(a_field);
   }
@@ -591,7 +591,7 @@ void NavigateFromInspector(const Frame &a_frame,
       a_property
           ? Studio::NavigateProperty(
                 a_frame.state->navigation, a_frame.state->selection,
-                std::move(a_subject), std::move(*a_property), *a_frame.recipe)
+                {std::move(a_subject), std::move(*a_property)}, *a_frame.recipe)
           : Studio::Navigate(a_frame.state->navigation,
                              a_frame.state->selection, std::move(a_subject),
                              *a_frame.recipe);

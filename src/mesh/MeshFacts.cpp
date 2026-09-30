@@ -42,13 +42,7 @@ std::vector<BoneCoverage> BonesOf(const MeshData &a_mesh) {
   for (const MeshPartition &partition : a_mesh.partitions) {
     for (const MeshVertex &vertex : partition.vertices) {
       ++vertices;
-      for (std::size_t i = 0; i < 4; ++i) {
-        if (vertex.weights[i] <= 0.0f ||
-            vertex.bones[i] >= partition.boneNames.size()) {
-          continue;
-        }
-        weight[partition.boneNames[vertex.bones[i]]] += vertex.weights[i];
-      }
+      AddBoneWeights(weight, vertex, partition);
     }
   }
   std::vector<BoneCoverage> bones;

@@ -94,6 +94,11 @@ struct TermOffer {
 [[nodiscard]] std::vector<TermOffer>
 OffersOfRecipe(const MaskPresets &a_presets, const RecipeRow &a_recipe,
                std::string_view a_editing);
+[[nodiscard]] bool OfferMatches(const TermOffer &a_offer,
+                                std::string_view a_filter);
+[[nodiscard]] std::vector<const TermOffer *>
+OffersInGroup(std::span<const TermOffer> a_offers, OfferGroup a_group,
+              std::string_view a_filter);
 [[nodiscard]] std::string TermDetailOf(const Term &a_term,
                                        std::span<const TermOffer> a_offers);
 }

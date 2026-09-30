@@ -65,6 +65,12 @@ PreparePaintCommit(const Recipe *a_paint, const Recipe *a_target,
 }
 
 namespace {
+bool ImageReferenced(const ReferenceCounts &a_counts,
+                     const std::string &a_name) {
+  const auto found = a_counts.images.find(a_name);
+  return found != a_counts.images.end() && found->second > 0;
+}
+
 std::optional<Diagnostic>
 AddPaintSources(EditBatch &a_batch, Recipe &a_available,
                 const std::vector<RecipeEdit> &a_sources) {
@@ -102,9 +108,7 @@ void PruneUnusedSources(EditBatch &a_batch, const Recipe &a_prepared,
   }
   const ReferenceCounts counts = CountReferences(a_prepared);
   for (const Source &source : a_prepared.sources) {
-    const auto found = counts.images.find(source.name);
-    const bool referenced = found != counts.images.end() && found->second > 0;
-    if (!referenced && !keep.contains(source.name)) {
+    if (!ImageReferenced(counts, source.name) && !keep.contains(source.name)) {
       a_batch.edits.emplace_back(RemoveSource{source.name});
     }
   }
@@ -195,17 +199,21 @@ Recipe PaintRecipe(const Recipe &a_active, RecipeKey a_key, Surface a_surface) {
   return recipe;
 }
 
-std::vector<RecipeEdit> KeepEdits(const Recipe &a_paint, const Recipe &a_active,
-                                  std::string_view a_name) {
+namespace {
+struct CarriedMask {
   std::vector<RecipeEdit> edits;
+  std::string text;
+};
+
+std::optional<CarriedMask> CarriedMaskFor(const Recipe &a_paint,
+                                          const Recipe &a_active) {
   const Mask *scratch = a_paint.FindMask(kScratchMask);
   if (!scratch) {
-    return edits;
+    return std::nullopt;
   }
-  std::string text = scratch->text;
-  const auto program = Program::Parse(text);
+  const auto program = Program::Parse(scratch->text);
   if (!program) {
-    return edits;
+    return std::nullopt;
   }
   const SourceCatalog existing = SourceCatalogOf(a_active);
   SourcePlanBuilder sources(existing);
@@ -220,25 +228,46 @@ std::vector<RecipeEdit> KeepEdits(const Recipe &a_paint, const Recipe &a_active,
       renames.push_back({read, to});
     }
   }
-  text = RenameInExpression(text, renames, false);
-  edits = std::move(sources).TakeEdits();
+  return CarriedMask{std::move(sources).TakeEdits(),
+                     RenameInExpression(scratch->text, renames, false)};
+}
+
+std::vector<RecipeEdit>
+ReleasedSourceEdits(const Recipe &a_active, const Mask &a_previous,
+                    const std::vector<RecipeEdit> &a_edits) {
+  std::vector<RecipeEdit> released;
+  const auto prepared = PrepareEdits(a_active, EditBatch{a_edits});
+  if (!prepared) {
+    return released;
+  }
+  const auto oldProgram = Program::Parse(a_previous.text);
+  if (!oldProgram) {
+    return released;
+  }
+  const ReferenceCounts counts = CountReferences(*prepared);
+  for (const std::string &name : oldProgram->References()) {
+    if (a_active.FindSource(name) && !ImageReferenced(counts, name)) {
+      released.emplace_back(RemoveSource{name});
+    }
+  }
+  return released;
+}
+}
+
+std::vector<RecipeEdit> KeepEdits(const Recipe &a_paint, const Recipe &a_active,
+                                  std::string_view a_name) {
+  std::optional<CarriedMask> carried = CarriedMaskFor(a_paint, a_active);
+  if (!carried) {
+    return {};
+  }
+  std::vector<RecipeEdit> edits = std::move(carried->edits);
   if (!a_active.FindMask(a_name)) {
     edits.emplace_back(AddMask{std::string{a_name}});
   }
-  edits.emplace_back(SetMask{std::string{a_name}, std::move(text)});
-  const Mask *previous = a_active.FindMask(a_name);
-  const auto prepared = PrepareEdits(a_active, EditBatch{edits});
-  if (previous && prepared) {
-    const auto oldProgram = Program::Parse(previous->text);
-    if (oldProgram) {
-      const ReferenceCounts counts = CountReferences(*prepared);
-      for (const std::string &name : oldProgram->References()) {
-        const auto found = counts.images.find(name);
-        if (a_active.FindSource(name) &&
-            (found == counts.images.end() || found->second == 0)) {
-          edits.emplace_back(RemoveSource{name});
-        }
-      }
+  edits.emplace_back(SetMask{std::string{a_name}, std::move(carried->text)});
+  if (const Mask *previous = a_active.FindMask(a_name)) {
+    for (RecipeEdit &edit : ReleasedSourceEdits(a_active, *previous, edits)) {
+      edits.push_back(std::move(edit));
     }
   }
   return edits;

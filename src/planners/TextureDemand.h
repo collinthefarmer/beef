@@ -45,8 +45,14 @@ struct TextureDemand {
   std::optional<FieldProgram> program;
   GeometryId geometry{};
 };
+struct TextureDemandRequest {
+  TextureValue value;
+  TextureRequirements requirements;
+  TextureUse use;
+  GeometryId geometry{};
+};
 [[nodiscard]] std::expected<TextureDemandId, std::string>
-CollectTextureDemand(std::vector<TextureDemand> &demands, TextureValue value,
-                     TextureRequirements requirements, const TextureUse &use,
-                     const ValueBindings &bindings, GeometryId geometry = {});
+CollectTextureDemand(std::vector<TextureDemand> &demands,
+                     const TextureDemandRequest &request,
+                     const ValueBindings &bindings);
 }

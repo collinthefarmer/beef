@@ -221,6 +221,66 @@ struct ClusterCount {
   std::size_t centroid = 0;
   std::size_t members = 0;
 };
+
+struct Clustering {
+  std::vector<Axes> centroids;
+  std::vector<std::size_t> owner;
+};
+
+[[nodiscard]] std::vector<Axes> TexelAxesOf(const MaterialSample &a_sample) {
+  std::vector<Axes> texels;
+  texels.reserve(std::min(a_sample.texels.size(), kMaxSampleTexels));
+  for (const MaterialTexel &texel : a_sample.texels) {
+    if (texels.size() >= kMaxSampleTexels) {
+      break;
+    }
+    texels.push_back(AxesOf(Sanitised(texel)));
+  }
+  return texels;
+}
+
+[[nodiscard]] Clustering ClusterTexels(const std::vector<Axes> &a_texels,
+                                       const ClusterSettings &a_settings) {
+  const Axes scales = ScalesOf(a_settings.weights);
+  const std::size_t wanted = std::min<std::size_t>(
+      std::clamp<std::size_t>(a_settings.clusters, 1, kMaxMaterialClusters),
+      a_texels.size());
+  Lcg random(a_settings.seed);
+  Clustering out;
+  out.centroids = SeedCentroids(a_texels, wanted, scales, random);
+  if (out.centroids.empty()) {
+    return out;
+  }
+  out.owner.assign(a_texels.size(), 0);
+  Assign(a_texels, out.centroids, scales, out.owner);
+  const std::uint32_t passes =
+      std::min(a_settings.iterations, kMaxClusterIterations);
+  for (std::uint32_t pass = 0; pass < passes; ++pass) {
+    Recentre(a_texels, out.owner, out.centroids);
+    if (!Assign(a_texels, out.centroids, scales, out.owner)) {
+      break;
+    }
+  }
+  return out;
+}
+
+[[nodiscard]] std::vector<ClusterCount>
+RankedClusters(const Clustering &a_clustering) {
+  std::vector<ClusterCount> counts(a_clustering.centroids.size());
+  for (std::size_t c = 0; c < counts.size(); ++c) {
+    counts[c].centroid = c;
+  }
+  for (const std::size_t c : a_clustering.owner) {
+    if (c < counts.size()) {
+      ++counts[c].members;
+    }
+  }
+  std::stable_sort(counts.begin(), counts.end(),
+                   [](const ClusterCount &a, const ClusterCount &b) {
+                     return a.members > b.members;
+                   });
+  return counts;
+}
 }
 
 MaterialAnalysis ClusterMaterial(const MaterialSample &a_sample,
@@ -230,55 +290,15 @@ MaterialAnalysis ClusterMaterial(const MaterialSample &a_sample,
   if (a_sample.texels.empty()) {
     return out;
   }
-  std::vector<Axes> texels;
-  texels.reserve(std::min(a_sample.texels.size(), kMaxSampleTexels));
-  for (const MaterialTexel &texel : a_sample.texels) {
-    if (texels.size() >= kMaxSampleTexels) {
-      break;
-    }
-    texels.push_back(AxesOf(Sanitised(texel)));
-  }
-  const Axes scales = ScalesOf(a_settings.weights);
-  const std::size_t wanted = std::min<std::size_t>(
-      std::clamp<std::size_t>(a_settings.clusters, 1, kMaxMaterialClusters),
-      texels.size());
-  Lcg random(a_settings.seed);
-  std::vector<Axes> centroids = SeedCentroids(texels, wanted, scales, random);
-  if (centroids.empty()) {
-    return out;
-  }
-
-  std::vector<std::size_t> owner(texels.size(), 0);
-  Assign(texels, centroids, scales, owner);
-  const std::uint32_t passes =
-      std::min(a_settings.iterations, kMaxClusterIterations);
-  for (std::uint32_t pass = 0; pass < passes; ++pass) {
-    Recentre(texels, owner, centroids);
-    if (!Assign(texels, centroids, scales, owner)) {
-      break;
-    }
-  }
-
-  std::vector<ClusterCount> counts(centroids.size());
-  for (std::size_t c = 0; c < centroids.size(); ++c) {
-    counts[c].centroid = c;
-  }
-  for (const std::size_t c : owner) {
-    if (c < counts.size()) {
-      ++counts[c].members;
-    }
-  }
-  std::stable_sort(counts.begin(), counts.end(),
-                   [](const ClusterCount &a, const ClusterCount &b) {
-                     return a.members > b.members;
-                   });
-  for (const ClusterCount &count : counts) {
-    if (count.members == 0) {
+  const std::vector<Axes> texels = TexelAxesOf(a_sample);
+  const Clustering clustering = ClusterTexels(texels, a_settings);
+  for (const ClusterCount &count : RankedClusters(clustering)) {
+    if (count.members == 0 || count.centroid >= clustering.centroids.size()) {
       continue;
     }
     MaterialCluster cluster;
     cluster.id = static_cast<std::uint8_t>(out.clusters.size());
-    cluster.centroid = TexelOf(centroids[count.centroid]);
+    cluster.centroid = TexelOf(clustering.centroids[count.centroid]);
     cluster.share =
         static_cast<float>(count.members) / static_cast<float>(texels.size());
     cluster.description = DescribeTexel(cluster.centroid);

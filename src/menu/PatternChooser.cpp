@@ -11,6 +11,7 @@
 #include <cstddef>
 #include <format>
 #include <string>
+#include <vector>
 
 #pragma clang diagnostic push
 #pragma clang diagnostic ignored "-Wmismatched-tags"
@@ -32,15 +33,6 @@ OfferGeometry(const Studio::TermOffer &a_offer, const Frame &a_frame) {
 [[nodiscard]] std::string OfferKey(const Studio::TermOffer &a_offer) {
   return std::format("{}:{}:{}", static_cast<int>(a_offer.group), a_offer.name,
                      a_offer.geometry);
-}
-
-[[nodiscard]] bool OfferMatches(const Studio::TermOffer &a_offer,
-                                std::string_view a_filter) {
-  const auto *group = RowOf(Studio::kOfferGroups, a_offer.group);
-  const std::string_view groupName = group ? group->name : std::string_view{};
-  return Studio::NameMatches(a_offer.name, a_filter) ||
-         Studio::NameMatches(a_offer.detail, a_filter) ||
-         Studio::NameMatches(groupName, a_filter);
 }
 
 void AddPattern(const Studio::TermKind &a_kind,
@@ -113,44 +105,45 @@ void DrawOfferRow(Table &a_table, const Studio::TermOffer &a_offer, bool a_full,
       "the preview."));
 }
 
+Table BeginOfferTable() {
+  return Table::Begin("offers",
+                      {{"", Studio::Width::Fit()},
+                       {"pattern", Studio::Width::Fit()},
+                       {"detail", Studio::Width::Fill()},
+                       {"", Studio::Width::Fit()}},
+                      Studio::kFormTable);
+}
+
+void DrawOfferGroup(const Studio::OfferGroupSpec &a_spec,
+                    std::span<const Studio::TermOffer *const> a_rows,
+                    bool a_full, const Frame &a_frame) {
+  ImGui::PushID(static_cast<int>(a_spec.value));
+  const auto section = Rule(Studio::RuleSpec{
+      .text = a_spec.name, .collapsible = true, .leadingSpace = false});
+  if (section.open) {
+    Table table = BeginOfferTable();
+    if (table.Open()) {
+      std::size_t index = 0;
+      for (const Studio::TermOffer *offer : a_rows) {
+        ImGui::PushID(static_cast<int>(index++));
+        DrawOfferRow(table, *offer, a_full, a_frame);
+        ImGui::PopID();
+      }
+      table.End();
+    }
+  }
+  ImGui::PopID();
+}
+
 void DrawOfferTable(std::span<const Studio::TermOffer> a_offers,
                     std::string_view a_filter, bool a_full,
                     const Frame &a_frame) {
   for (const Studio::OfferGroupSpec &spec : Studio::kOfferGroups) {
-    std::vector<const Studio::TermOffer *> rows;
-    for (const Studio::TermOffer &offer : a_offers) {
-      if (offer.group == spec.value && OfferMatches(offer, a_filter)) {
-        rows.push_back(&offer);
-      }
+    const std::vector<const Studio::TermOffer *> rows =
+        Studio::OffersInGroup(a_offers, spec.value, a_filter);
+    if (!rows.empty()) {
+      DrawOfferGroup(spec, rows, a_full, a_frame);
     }
-    if (rows.empty()) {
-      continue;
-    }
-    std::ranges::sort(
-        rows, [](const Studio::TermOffer *a, const Studio::TermOffer *b) {
-          return a->coverage.value_or(0.0f) > b->coverage.value_or(0.0f);
-        });
-    ImGui::PushID(static_cast<int>(spec.value));
-    const auto section = Rule(Studio::RuleSpec{
-        .text = spec.name, .collapsible = true, .leadingSpace = false});
-    if (section.open) {
-      auto table = Table::Begin("offers",
-                                {{"", Studio::Width::Fit()},
-                                 {"pattern", Studio::Width::Fit()},
-                                 {"detail", Studio::Width::Fill()},
-                                 {"", Studio::Width::Fit()}},
-                                Studio::kFormTable);
-      if (table.Open()) {
-        std::size_t index = 0;
-        for (const Studio::TermOffer *offer : rows) {
-          ImGui::PushID(static_cast<int>(index++));
-          DrawOfferRow(table, *offer, a_full, a_frame);
-          ImGui::PopID();
-        }
-        table.End();
-      }
-    }
-    ImGui::PopID();
   }
 }
 }

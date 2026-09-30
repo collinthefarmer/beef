@@ -30,9 +30,24 @@ struct PreviewPin {
   std::uint64_t resetID = 0;
 };
 
+struct PropertyTarget {
+  InspectorSubject subject;
+  PropertyLocation property;
+};
+
+enum class HistoryDirection : std::uint8_t { kBack, kForward };
+
 void ResolvePreviewPin(std::optional<PreviewPin> &a_pin,
                        const Selection &a_selection, const RecipeRow *a_recipe,
                        std::uint64_t a_resetID);
+[[nodiscard]] const OutputRow *PreviewOutputOf(const GeometryRow *a_geometry,
+                                               const Selection &a_selection);
+[[nodiscard]] std::optional<PreviewPin>
+PreviewPinFor(const Selection &a_selection, const GeometryRow *a_geometry,
+              std::uint64_t a_resetID);
+[[nodiscard]] Selection
+PreviewSelectionOf(const std::optional<PreviewPin> &a_pin,
+                   const Selection &a_current);
 void InvalidatePreviewPin(std::optional<PreviewPin> &a_pin,
                           std::string_view a_recipeID);
 
@@ -49,9 +64,15 @@ ResolvePendingSubject(Navigation &a_navigation, Selection &a_selection,
                       const RecipeRow *a_recipe);
 [[nodiscard]] bool NavigateProperty(Navigation &a_navigation,
                                     Selection &a_selection,
-                                    InspectorSubject a_subject,
-                                    PropertyLocation a_property,
+                                    PropertyTarget a_target,
                                     const RecipeRow &a_recipe);
+[[nodiscard]] std::optional<InspectorVisit>
+ReachableVisit(InspectorVisit a_visit, const Selection &a_current,
+               const RecipeRow &a_recipe);
+[[nodiscard]] bool StepHistory(Navigation &a_navigation,
+                               HistoryDirection a_direction,
+                               Selection &a_selection,
+                               const RecipeRow &a_recipe);
 [[nodiscard]] bool GoBack(Navigation &a_navigation, Selection &a_selection,
                           const RecipeRow &a_recipe);
 [[nodiscard]] bool GoForward(Navigation &a_navigation, Selection &a_selection,

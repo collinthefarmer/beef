@@ -46,11 +46,9 @@ TexturePreviews::Preview(RE::NiSourceTexture *a_source, ShaderChannel a_channel,
   return entry.ready ? entry.target : nullptr;
 }
 
-std::shared_ptr<TextureLab::RenderTarget>
-TexturePreviews::SampledPreview(std::string a_context,
-                                RE::NiSourceTexture *a_source,
-                                const TextureLab::LayerInput &a_sampling,
-                                float a_normalize, bool a_dynamic) {
+std::shared_ptr<TextureLab::RenderTarget> TexturePreviews::SampledPreview(
+    std::string a_context, RE::NiSourceTexture *a_source,
+    const TextureLab::PreviewSampling &a_sampling, bool a_dynamic) {
   if (!a_source || a_context.empty() || !renderer_.Available()) {
     return nullptr;
   }
@@ -60,14 +58,13 @@ TexturePreviews::SampledPreview(std::string a_context,
   }
   std::scoped_lock lock{previewLock_};
   PreviewEntry *found =
-      FindOrAdd({a_source, a_sampling.channel, std::move(a_context)});
+      FindOrAdd({a_source, a_sampling.input.channel, std::move(a_context)});
   if (!found) {
     return nullptr;
   }
   PreviewEntry &entry = *found;
-  const Sampling sampling{a_sampling, a_normalize};
-  entry.dirty = entry.dirty || entry.sampling != sampling;
-  entry.sampling = sampling;
+  entry.dirty = entry.dirty || entry.sampling != a_sampling;
+  entry.sampling = a_sampling;
   entry.source = std::move(retained);
   entry.dynamic = a_dynamic;
   entry.wanted = true;

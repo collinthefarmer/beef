@@ -147,9 +147,9 @@ struct IntentPerformer {
     manager->Editor().DuplicateRecipe(a_intent.from, a_intent.to);
   }
   void operator()(const BeginPaint &a_intent) const {
-    manager->Editor().BeginPaint(a_intent.recipeID, a_intent.key,
-                                 a_intent.surface, a_intent.sessionID,
-                                 a_intent.resetID);
+    manager->Editor().BeginPaint({a_intent.recipeID, a_intent.key,
+                                  a_intent.surface, a_intent.sessionID,
+                                  a_intent.resetID});
   }
   void operator()(const SetPaintSurface &a_intent) const { (void)a_intent; }
   void operator()(const KeepPaint &a_intent) const {
@@ -162,8 +162,7 @@ struct IntentPerformer {
     manager->RequestMesh(a_intent.actorID, a_intent.geometry);
   }
   void operator()(const FireTrigger &a_intent) const {
-    manager->FireAt(a_intent.actorID, a_intent.event, a_intent.node,
-                    a_intent.offset, a_intent.random, a_intent.value);
+    manager->FireAt(a_intent);
   }
   void operator()(const PickPiece &) const {}
   void operator()(const PickRecipe &a_intent) const {

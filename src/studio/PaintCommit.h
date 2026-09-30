@@ -32,6 +32,14 @@ struct PaintPeek {
   [[nodiscard]] bool operator==(const PaintPeek &) const = default;
 };
 
+struct PaintStartRequest {
+  std::string recipeID;
+  RecipeKey key;
+  Surface surface = Surface::kMaterial;
+  std::uint64_t sessionID = 0;
+  std::uint64_t resetID = 0;
+};
+
 struct PaintUpdateRequest {
   std::uint64_t sessionID = 0;
   std::uint64_t revision = 0;

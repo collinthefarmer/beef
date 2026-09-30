@@ -49,24 +49,24 @@ int main() {
                             {second, {ResourceKind::kSignal, "strength"}}};
     Selection selection = Context();
     Navigation navigation;
-    Check(NavigateProperty(navigation, selection, LayerSubject{3, 1}, first,
+    Check(NavigateProperty(navigation, selection, {LayerSubject{3, 1}, first},
                            linked),
           "a consumer link selects its owning layer and exact property");
     navigation.scroll = 42.0f;
-    Check(NavigateProperty(navigation, selection, LayerSubject{3, 1}, second,
+    Check(NavigateProperty(navigation, selection, {LayerSubject{3, 1}, second},
                            linked) &&
               selection.property == second && navigation.back.size() == 2,
           "different properties on one owner retain separate Back entries");
     Check(GoBack(navigation, selection, linked) &&
               selection.property == first && navigation.scroll == 42.0f,
           "Back restores the property and scroll position");
-    Check(!NavigateProperty(navigation, selection, OutputSubject{3}, second,
+    Check(!NavigateProperty(navigation, selection, {OutputSubject{3}, second},
                             linked),
           "a property cannot be paired with a different owner");
     InvalidateIndexedSubjects(navigation, selection, "glow");
     Check(!selection.property && Is<RecipeSubject>(selection.subject),
           "structural changes clear positional property focus");
-    Check(NavigateProperty(navigation, selection, LayerSubject{3, 1}, second,
+    Check(NavigateProperty(navigation, selection, {LayerSubject{3, 1}, second},
                            linked),
           "a surviving consumer can be selected again");
     linked.relationships.clear();

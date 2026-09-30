@@ -203,6 +203,13 @@ PlaceLightNodes(const Bones &a_bones,
                 std::span<RE::BSGeometry *const> a_geometries,
                 RE::NiAVObject *a_root, const Vec3 &a_offset);
 
+struct LightValues {
+  Vec3 color;
+  float intensity = 0.0f;
+  float size = 0.0f;
+  float cutoff = 0.0f;
+};
+
 class LightBinding {
 public:
   [[nodiscard]] static std::unique_ptr<LightBinding>
@@ -211,8 +218,7 @@ public:
   LightBinding(const LightBinding &) = delete;
   LightBinding &operator=(const LightBinding &) = delete;
 
-  void Update(const Vec3 &a_color, float a_intensity, float a_size,
-              float a_cutoff, bool a_visible);
+  void Update(const LightValues &a_light, bool a_visible);
   [[nodiscard]] std::string Describe() const;
 
 private:

@@ -4,10 +4,67 @@
 #include "recipe/Words.h"
 
 #include <format>
+#include <span>
 #include <string>
 #include <utility>
 
 namespace BetterEnchantmentEffects {
+namespace {
+std::string DescribeBakeSource(const BakeSource &a_source) {
+  return Match(
+      a_source.bake,
+      [](const PositionBake &) {
+        return std::string{"bake position (bind pose, -128..128 units "
+                           "per axis as 0..1)"};
+      },
+      [](const LocalPositionBake &) {
+        return std::string{
+            "bake localPosition (this geometry's bound as 0..1)"};
+      },
+      [](const NormalBake &) {
+        return std::string{"bake normal (bind-pose normal, each axis as 0..1)"};
+      },
+      [](const UvBake &) {
+        return std::string{"bake uv (the coordinates as a vec2)"};
+      },
+      [](const PartitionBake &p) {
+        return std::format("bake partition {}",
+                           std::to_underlying(p.bipedSlot));
+      },
+      [](const BoneWeightBake &b) {
+        return std::format("bake boneWeight of {} bone(s)", b.bones.size());
+      },
+      [](const ComponentIdBake &) {
+        return std::string{
+            "bake componentId (the mesh's connected pieces, id / 255)"};
+      },
+      [](const ChartIdBake &) {
+        return std::string{"bake chartId (the mesh's UV charts, id / 255)"};
+      });
+}
+
+std::string
+DescribeMaterialClustersSource(const MaterialClustersSource &a_source) {
+  const ClusterSettings defaults;
+  const ClusterSettings &settings = a_source.settings;
+  std::string text =
+      std::format("materialClusters, {} clusters", settings.clusters);
+  for (const ClusterWeightField &field : kClusterWeightFields) {
+    const float weight = settings.weights.*field.member;
+    if (weight != defaults.weights.*field.member) {
+      text += std::format(", {} {}", field.name, weight);
+    }
+  }
+  if (settings.seed != defaults.seed) {
+    text += std::format(", seed {}", settings.seed);
+  }
+  if (settings.iterations != defaults.iterations) {
+    text += std::format(", {} iterations", settings.iterations);
+  }
+  return text;
+}
+}
+
 std::string DescribeSource(const SourceKind &a_kind) {
   return Match(
       a_kind,
@@ -20,41 +77,7 @@ std::string DescribeSource(const SourceKind &a_kind) {
       [](const MaterialSource &s) {
         return std::format("material {}", MaterialChannelName(s.channel));
       },
-      [](const BakeSource &s) {
-        return Match(
-            s.bake,
-            [](const PositionBake &) {
-              return std::string{"bake position (bind pose, -128..128 units "
-                                 "per axis as 0..1)"};
-            },
-            [](const LocalPositionBake &) {
-              return std::string{
-                  "bake localPosition (this geometry's bound as 0..1)"};
-            },
-            [](const NormalBake &) {
-              return std::string{
-                  "bake normal (bind-pose normal, each axis as 0..1)"};
-            },
-            [](const UvBake &) {
-              return std::string{"bake uv (the coordinates as a vec2)"};
-            },
-            [](const PartitionBake &p) {
-              return std::format("bake partition {}",
-                                 std::to_underlying(p.bipedSlot));
-            },
-            [](const BoneWeightBake &b) {
-              return std::format("bake boneWeight of {} bone(s)",
-                                 b.bones.size());
-            },
-            [](const ComponentIdBake &) {
-              return std::string{
-                  "bake componentId (the mesh's connected pieces, id / 255)"};
-            },
-            [](const ChartIdBake &) {
-              return std::string{
-                  "bake chartId (the mesh's UV charts, id / 255)"};
-            });
-      },
+      [](const BakeSource &s) { return DescribeBakeSource(s); },
       [](const DistanceSource &s) {
         return std::format(
             "distance from node {} (bind pose, 0..256 units as 0..1)", s.from);
@@ -66,23 +89,7 @@ std::string DescribeSource(const SourceKind &a_kind) {
                            ParamText(s.width), ParamText(s.decay));
       },
       [](const MaterialClustersSource &s) {
-        const ClusterSettings defaults;
-        const ClusterSettings &settings = s.settings;
-        std::string text =
-            std::format("materialClusters, {} clusters", settings.clusters);
-        for (const ClusterWeightField &field : kClusterWeightFields) {
-          const float weight = settings.weights.*field.member;
-          if (weight != defaults.weights.*field.member) {
-            text += std::format(", {} {}", field.name, weight);
-          }
-        }
-        if (settings.seed != defaults.seed) {
-          text += std::format(", seed {}", settings.seed);
-        }
-        if (settings.iterations != defaults.iterations) {
-          text += std::format(", {} iterations", settings.iterations);
-        }
-        return text;
+        return DescribeMaterialClustersSource(s);
       });
 }
 
@@ -208,71 +215,58 @@ json GradientToJson(const GradientSignal &k) {
   return o;
 }
 
-json SignalToJson(const Signal &a_signal) {
+json RampToJson(const RampSignal &k) {
+  return json::object({{"from", ParamToJson(k.from)},
+                       {"to", ParamToJson(k.to)},
+                       {"seconds", ParamToJson(k.seconds)}});
+}
+
+json EfshToJson(const EfshSignal &k) {
+  return json::object(
+      {{"field", NameOf(kEfshFields, k.field)}, {"record", k.record.text}});
+}
+
+json AccumulateToJson(const AccumulateSignal &k) {
+  return json::object(
+      {{"trigger", "@" + k.trigger.name}, {"decay", ParamToJson(k.decay)}});
+}
+
+json SmoothToJson(const SmoothSignal &k) {
+  return json::object(
+      {{"of", "@" + k.of.name}, {"seconds", ParamToJson(k.seconds)}});
+}
+
+json SignalKindToJson(const SignalKind &a_kind) {
+  const std::string word{SignalKindName(SignalKindOf(a_kind))};
   json row = json::object();
-  const auto key = [](SignalKindId a_id) {
-    return std::string{SignalKindName(a_id)};
-  };
   Match(
-      a_signal.kind,
-      [&](const ConstantSignal &k) {
-        row[key(SignalKindId::kConstant)] = ValueToJson(k.value);
-      },
-      [&](const WaveSignal &k) {
-        row[key(SignalKindId::kWave)] = PulseToJson(k);
-      },
-      [&](const RampSignal &k) {
-        row[key(SignalKindId::kRamp)] =
-            json::object({{"from", ParamToJson(k.from)},
-                          {"to", ParamToJson(k.to)},
-                          {"seconds", ParamToJson(k.seconds)}});
-      },
-      [&](const EfshSignal &k) {
-        row[key(SignalKindId::kEfsh)] =
-            json::object({{"field", NameOf(kEfshFields, k.field)},
-                          {"record", k.record.text}});
-      },
-      [&](const ActorValueSignal &k) {
-        row[key(SignalKindId::kActorValue)] = ActorValueToJson(k);
-      },
+      a_kind,
+      [&](const ConstantSignal &k) { row[word] = ValueToJson(k.value); },
+      [&](const WaveSignal &k) { row[word] = PulseToJson(k); },
+      [&](const RampSignal &k) { row[word] = RampToJson(k); },
+      [&](const EfshSignal &k) { row[word] = EfshToJson(k); },
+      [&](const ActorValueSignal &k) { row[word] = ActorValueToJson(k); },
       [&](const ActorStateSignal &k) {
-        row[key(SignalKindId::kActorState)] = NameOf(kActorStates, k.kind);
+        row[word] = NameOf(kActorStates, k.kind);
       },
       [&](const EnchantmentSignal &k) {
-        row[key(SignalKindId::kEnchantment)] =
-            NameOf(kEnchantmentFields, k.field);
+        row[word] = NameOf(kEnchantmentFields, k.field);
       },
-      [&](const TriggerSignal &k) {
-        row[key(SignalKindId::kTrigger)] = TriggerToJson(k);
-      },
-      [&](const PayloadSignal &k) {
-        row[key(SignalKindId::kPayload)] = "@" + k.trigger.name;
-      },
-      [&](const CounterSignal &k) {
-        row[key(SignalKindId::kCounter)] = CounterToJson(k);
-      },
-      [&](const AccumulateSignal &k) {
-        row[key(SignalKindId::kAccumulate)] =
-            json::object({{"trigger", "@" + k.trigger.name},
-                          {"decay", ParamToJson(k.decay)}});
-      },
-      [&](const NoiseSignal &k) {
-        row[key(SignalKindId::kNoise)] = NoiseToJson(k);
-      },
-      [&](const GradientSignal &k) {
-        row[key(SignalKindId::kGradient)] = GradientToJson(k);
-      },
-      [&](const RateSignal &k) {
-        row[key(SignalKindId::kRate)] = "@" + k.of.name;
-      },
-      [&](const SmoothSignal &k) {
-        row[key(SignalKindId::kSmooth)] = json::object(
-            {{"of", "@" + k.of.name}, {"seconds", ParamToJson(k.seconds)}});
-      },
-      [&](const ToRootSignal &k) {
-        row[key(SignalKindId::kToRoot)] = "@" + k.of.name;
-      },
-      [&](const ExprSignal &k) { row[key(SignalKindId::kExpr)] = k.text; });
+      [&](const TriggerSignal &k) { row[word] = TriggerToJson(k); },
+      [&](const PayloadSignal &k) { row[word] = "@" + k.trigger.name; },
+      [&](const CounterSignal &k) { row[word] = CounterToJson(k); },
+      [&](const AccumulateSignal &k) { row[word] = AccumulateToJson(k); },
+      [&](const NoiseSignal &k) { row[word] = NoiseToJson(k); },
+      [&](const GradientSignal &k) { row[word] = GradientToJson(k); },
+      [&](const RateSignal &k) { row[word] = "@" + k.of.name; },
+      [&](const SmoothSignal &k) { row[word] = SmoothToJson(k); },
+      [&](const ToRootSignal &k) { row[word] = "@" + k.of.name; },
+      [&](const ExprSignal &k) { row[word] = k.text; });
+  return row;
+}
+
+json SignalToJson(const Signal &a_signal) {
+  json row = SignalKindToJson(a_signal.kind);
   if (a_signal.curve) {
     row["curve"] = CurveRefToJson(*a_signal.curve);
   }
@@ -496,77 +490,102 @@ json VariantToJson(const Variant &a_variant) {
 }
 }
 
+namespace {
+json CurveToJson(const Curve &a_curve) {
+  return NotedExpressionToJson(a_curve.text, a_curve.note);
+}
+
+json MaskToJson(const Mask &a_mask) {
+  return NotedExpressionToJson(a_mask.text, a_mask.note);
+}
+
+json SourceToJson(const Source &a_source) {
+  json row = SourceKindToJson(a_source.kind);
+  if (!a_source.note.empty()) {
+    row["note"] = a_source.note;
+  }
+  return row;
+}
+
+json OutputsToJson(std::span<const Output> a_outputs) {
+  json outputs = json::array();
+  for (const Output &output : a_outputs) {
+    outputs.push_back(OutputToJson(output));
+  }
+  return outputs;
+}
+
+json VariantsToJson(std::span<const Variant> a_variants) {
+  json variants = json::array();
+  for (const Variant &variant : a_variants) {
+    variants.push_back(VariantToJson(variant));
+  }
+  return variants;
+}
+
+void WriteMetadata(json &a_root, const Metadata &a_metadata) {
+  if (!a_metadata.name.empty())
+    a_root["name"] = a_metadata.name;
+  if (!a_metadata.author.empty())
+    a_root["author"] = a_metadata.author;
+  if (!a_metadata.description.empty())
+    a_root["description"] = a_metadata.description;
+  if (!a_metadata.version.empty())
+    a_root["version"] = a_metadata.version;
+  if (!a_metadata.imported.empty())
+    a_root["imported"] = a_metadata.imported;
+  if (!a_metadata.meta.empty()) {
+    json m = json::parse(a_metadata.meta, nullptr, false);
+    a_root["meta"] = m.is_discarded() ? json::object() : m;
+  }
+}
+
+void WriteSelection(json &a_root, const Recipe &a_recipe) {
+  json keys = json::array();
+  for (const RecipeKey &key : a_recipe.keys) {
+    keys.push_back(KeyToJson(key));
+  }
+  a_root["keys"] = std::move(keys);
+  if (a_recipe.priority)
+    a_root["priority"] = *a_recipe.priority;
+  if (a_recipe.mergeMode != MergeMode::kStack)
+    a_root["merge"] = std::string{MergeModeName(a_recipe.mergeMode)};
+  if (a_recipe.clock != Clock{})
+    a_root["clock"] = json::object({{"speed", Num(a_recipe.clock.speed)}});
+}
+
+template <typename Row>
+void WriteNamedSection(json &a_root, const char *a_section,
+                       std::span<const Row> a_rows,
+                       json (*a_toJson)(const Row &)) {
+  if (a_rows.empty()) {
+    return;
+  }
+  json section = json::object();
+  for (const Row &row : a_rows) {
+    section[row.name] = a_toJson(row);
+  }
+  a_root[a_section] = std::move(section);
+}
+}
+
 std::string SerializeRecipe(const Recipe &a_recipe) {
   json root = json::object();
   root["format"] = kRecipeFormat;
-  const auto &meta = a_recipe.metadata;
-  if (!meta.name.empty())
-    root["name"] = meta.name;
-  if (!meta.author.empty())
-    root["author"] = meta.author;
-  if (!meta.description.empty())
-    root["description"] = meta.description;
-  if (!meta.version.empty())
-    root["version"] = meta.version;
-  if (!meta.imported.empty())
-    root["imported"] = meta.imported;
-  if (!meta.meta.empty()) {
-    json m = json::parse(meta.meta, nullptr, false);
-    root["meta"] = m.is_discarded() ? json::object() : m;
-  }
-  json keys = json::array();
-  for (const auto &k : a_recipe.keys) {
-    keys.push_back(KeyToJson(k));
-  }
-  root["keys"] = std::move(keys);
-  if (a_recipe.priority)
-    root["priority"] = *a_recipe.priority;
-  if (a_recipe.mergeMode != MergeMode::kStack)
-    root["merge"] = std::string{MergeModeName(a_recipe.mergeMode)};
-  if (a_recipe.clock != Clock{})
-    root["clock"] = json::object({{"speed", Num(a_recipe.clock.speed)}});
-
-  const auto named = [&](const char *a_section, const auto &a_rows,
-                         auto a_toJson) {
-    if (a_rows.empty()) {
-      return;
-    }
-    json section = json::object();
-    for (const auto &row : a_rows) {
-      section[row.name] = a_toJson(row);
-    }
-    root[a_section] = std::move(section);
-  };
-  named("signals", a_recipe.signals,
-        [](const Signal &s) { return SignalToJson(s); });
-  named("curves", a_recipe.curves,
-        [](const Curve &c) { return NotedExpressionToJson(c.text, c.note); });
-  named("sources", a_recipe.sources, [](const Source &s) {
-    json row = SourceKindToJson(s.kind);
-    if (!s.note.empty()) {
-      row["note"] = s.note;
-    }
-    return row;
-  });
-  named("masks", a_recipe.masks,
-        [](const Mask &m) { return NotedExpressionToJson(m.text, m.note); });
-
+  WriteMetadata(root, a_recipe.metadata);
+  WriteSelection(root, a_recipe);
+  WriteNamedSection<Signal>(root, "signals", a_recipe.signals, SignalToJson);
+  WriteNamedSection<Curve>(root, "curves", a_recipe.curves, CurveToJson);
+  WriteNamedSection<Source>(root, "sources", a_recipe.sources, SourceToJson);
+  WriteNamedSection<Mask>(root, "masks", a_recipe.masks, MaskToJson);
   if (!a_recipe.outputs.empty()) {
-    json outputs = json::array();
-    for (const auto &o : a_recipe.outputs) {
-      outputs.push_back(OutputToJson(o));
-    }
-    root["outputs"] = std::move(outputs);
+    root["outputs"] = OutputsToJson(a_recipe.outputs);
   }
   if (json shell = ShellToJson(a_recipe.shell); !shell.empty()) {
     root["shell"] = std::move(shell);
   }
   if (!a_recipe.variants.empty()) {
-    json variants = json::array();
-    for (const auto &v : a_recipe.variants) {
-      variants.push_back(VariantToJson(v));
-    }
-    root["variants"] = std::move(variants);
+    root["variants"] = VariantsToJson(a_recipe.variants);
   }
   return DumpDocument(root);
 }

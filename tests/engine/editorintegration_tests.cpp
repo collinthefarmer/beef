@@ -584,7 +584,7 @@ void PaintCommitLifecycle(const std::filesystem::path &root,
   RecipeEditor editor{manager};
   const Isolation isolation = Isolation::ForLayer(kID, 0, 0);
   editor.Isolate(isolation);
-  editor.BeginPaint(kID, RecipeKey{}, Surface::kMaterial, 10, 0);
+  editor.BeginPaint({kID, RecipeKey{}, Surface::kMaterial, 10, 0});
   manager.Drain();
   const auto started = editor.LastPaintUpdate();
   Check(started && started->sessionID == 10 && !started->problem &&
@@ -663,7 +663,7 @@ void PaintDiscardAndStaleWork(const std::filesystem::path &root,
   RecipeEditor editor{manager};
   const Isolation isolation = Isolation::ForRecipe(kID);
   editor.Isolate(isolation);
-  editor.BeginPaint(kID, RecipeKey{}, Surface::kMaterial, 20, 0);
+  editor.BeginPaint({kID, RecipeKey{}, Surface::kMaterial, 20, 0});
   editor.UpdatePaint({20, 1, "0.25", {}, {}});
   manager.Drain();
   const Recipe before = Current(std::string{kPaintRecipe});
@@ -684,7 +684,7 @@ void PaintDiscardAndStaleWork(const std::filesystem::path &root,
             !editor.LastPaintUpdate()->problem,
         "newer preview update recovers from refusal and older delivery cannot "
         "overwrite it");
-  editor.BeginPaint(kID, RecipeKey{}, Surface::kShell, 21, 0);
+  editor.BeginPaint({kID, RecipeKey{}, Surface::kShell, 21, 0});
   editor.UpdatePaint({21, 1, "0.6", {}, {}});
   manager.Drain();
   const Recipe replacement = Current(std::string{kPaintRecipe});
@@ -712,7 +712,7 @@ void PaintDiscardAndStaleWork(const std::filesystem::path &root,
   Check(!MutableRecipe(kPaintRecipe) && !Current().FindMask("late") &&
             !editor.LastPaintCommit(),
         "ended session cannot be revived by late work");
-  editor.BeginPaint("missing", RecipeKey{}, Surface::kMaterial, 22, 0);
+  editor.BeginPaint({"missing", RecipeKey{}, Surface::kMaterial, 22, 0});
   manager.Drain();
   Check(editor.LastPaintUpdate() && editor.LastPaintUpdate()->problem &&
             !MutableRecipe(kPaintRecipe) && Current() == fixture,
@@ -726,7 +726,7 @@ void PaintDestinationChanges(const std::filesystem::path &root,
   Manager manager;
   RecipeEditor editor{manager};
   editor.Isolate(Isolation::ForRecipe(kID));
-  editor.BeginPaint(kID, RecipeKey{}, Surface::kMaterial, 30, 0);
+  editor.BeginPaint({kID, RecipeKey{}, Surface::kMaterial, 30, 0});
   editor.UpdatePaint({30, 1, "0.25", {}, {}});
   manager.Drain();
   PaintCommitRequest keep{301, kID, "painted", "0.25", 30};
@@ -752,7 +752,7 @@ void PaintDestinationChanges(const std::filesystem::path &root,
             !MutableRecipe(kPaintRecipe),
         "reselected assignment retries as one edit without discarding "
         "unrelated changes");
-  editor.BeginPaint(kID, RecipeKey{}, Surface::kMaterial, 31, 0);
+  editor.BeginPaint({kID, RecipeKey{}, Surface::kMaterial, 31, 0});
   editor.UpdatePaint({31, 1, "0.75", {}, {}});
   manager.Drain();
   editor.RenameRecipe(kID, "renamed-paint");
@@ -770,7 +770,7 @@ void PaintDestinationChanges(const std::filesystem::path &root,
             editor.CurrentView().isolation.recipeID == "renamed-paint",
         "Keep can follow the renamed destination and restore its renamed "
         "isolation");
-  editor.BeginPaint("renamed-paint", RecipeKey{}, Surface::kMaterial, 32, 0);
+  editor.BeginPaint({"renamed-paint", RecipeKey{}, Surface::kMaterial, 32, 0});
   editor.DeleteRecipe("renamed-paint");
   editor.KeepPaint({305, "renamed-paint", "deletedmask", "1", 32});
   manager.Drain();
@@ -791,7 +791,7 @@ void PaintReservedNames(const std::filesystem::path &root,
     Start(root, "paint_reserved_" + name, fixture);
     Manager manager;
     RecipeEditor editor{manager};
-    editor.BeginPaint(kID, RecipeKey{}, Surface::kMaterial, 50, 0);
+    editor.BeginPaint({kID, RecipeKey{}, Surface::kMaterial, 50, 0});
     editor.UpdatePaint({50, 1, "0.5", {}, {}});
     editor.KeepPaint({501, kID, name, "0.5", 50});
     manager.Drain();
@@ -814,7 +814,7 @@ void PaintLoadCancellation(const std::filesystem::path &root,
   Manager manager;
   RecipeEditor editor{manager};
   editor.Isolate(Isolation::ForRecipe(kID));
-  editor.BeginPaint(kID, RecipeKey{}, Surface::kMaterial, 40, 0);
+  editor.BeginPaint({kID, RecipeKey{}, Surface::kMaterial, 40, 0});
   editor.UpdatePaint({40, 1, "0.25", {}, {}});
   manager.Drain();
   editor.UpdatePaint({40, 2, "0.75", {}, {}});
@@ -831,14 +831,14 @@ void PaintLoadCancellation(const std::filesystem::path &root,
         "immediately");
   manager.queue.Resume();
   manager.Drain();
-  editor.BeginPaint(kID, RecipeKey{}, Surface::kMaterial, 41, 0);
+  editor.BeginPaint({kID, RecipeKey{}, Surface::kMaterial, 41, 0});
   manager.Drain();
   Check(!MutableRecipe(kPaintRecipe) && Current() == fixture &&
             editor.LastPaintUpdate() && editor.LastPaintUpdate()->ended,
         "old queued work and a begin with an old reset token cannot revive "
         "painting");
-  editor.BeginPaint(kID, RecipeKey{}, Surface::kMaterial, 42,
-                    reset ? reset->revision : 0);
+  editor.BeginPaint(
+      {kID, RecipeKey{}, Surface::kMaterial, 42, reset ? reset->revision : 0});
   editor.UpdatePaint({42, 1, "0.5", {}, {}});
   manager.Drain();
   Check(IsTransient(kPaintRecipe) && PaintText() == "0.5" &&
@@ -1340,7 +1340,7 @@ void PaintAcknowledgements(const std::filesystem::path &root,
       kID, {}, Surface::kMaterial,
       60,  0,  PaintAssignment{0, 0, editor.DocumentRevisionOf(kID)}};
   Reduce(state, begin);
-  editor.BeginPaint(kID, {}, Surface::kMaterial, 60, 0);
+  editor.BeginPaint({kID, {}, Surface::kMaterial, 60, 0});
   Check(state.paint && !state.paint->ready,
         "UI draft waits for the actual begin acknowledgement");
   manager.Drain();
@@ -1395,7 +1395,7 @@ void PaintAcknowledgements(const std::filesystem::path &root,
         "and scroll");
   Reduce(state, SetMode{Mode::kPaint});
   Reduce(state, Studio::BeginPaint{kID, {}, Surface::kMaterial, 61, 0});
-  editor.BeginPaint(kID, {}, Surface::kMaterial, 61, 0);
+  editor.BeginPaint({kID, {}, Surface::kMaterial, 61, 0});
   manager.Drain();
   AcknowledgeResults(state, EditorResults(editor));
   keep.id = 603;

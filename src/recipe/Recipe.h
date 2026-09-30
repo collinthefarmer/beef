@@ -1054,4 +1054,8 @@ RecipeInputsAreActorIndependent(const Recipe &a_recipe) noexcept;
                                          const Output &a_output);
 [[nodiscard]] bool ShareableAcrossActors(const Recipe &a_recipe,
                                          const Mask &a_mask);
+[[nodiscard]] const SurfaceOutput *SurfaceOutputOf(const Recipe &a_recipe,
+                                                   std::size_t a_output);
+[[nodiscard]] const LightOutput *LightOutputOf(const Recipe &a_recipe,
+                                               std::size_t a_output);
 }

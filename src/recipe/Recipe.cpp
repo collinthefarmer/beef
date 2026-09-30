@@ -95,4 +95,15 @@ bool LoadResult::HasErrors() const noexcept {
 bool LoadResult::HasRecipeErrors() const noexcept {
   return !recipe || BetterEnchantmentEffects::HasRecipeErrors(diagnostics);
 }
+const SurfaceOutput *SurfaceOutputOf(const Recipe &a_recipe,
+                                     std::size_t a_output) {
+  return a_output < a_recipe.outputs.size()
+             ? Get<SurfaceOutput>(a_recipe.outputs[a_output])
+             : nullptr;
+}
+const LightOutput *LightOutputOf(const Recipe &a_recipe, std::size_t a_output) {
+  return a_output < a_recipe.outputs.size()
+             ? Get<LightOutput>(a_recipe.outputs[a_output])
+             : nullptr;
+}
 }

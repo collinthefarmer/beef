@@ -84,15 +84,34 @@ void WriteSlot(SlotTarget &a_target, const SlotWrite &a_write) {
   }
 }
 
-LayerFilter HiddenLayers(const Studio::View &a_view,
+struct TickFrame {
+  const Settings &settings;
+  const Studio::View &view;
+  std::uint32_t nowMS;
+  bool resuming;
+};
+
+struct SlotRenderView {
+  const Studio::View &view;
+  bool anyLayerHidden = false;
+  bool publish = false;
+};
+
+struct BoundMeshes {
+  std::vector<RE::BSGeometry *> geometries;
+  std::vector<Compositor::MaterialKey> materials;
+};
+
+LayerFilter HiddenLayers(const SlotRenderView &a_view,
                          const std::string &a_recipe, std::size_t a_output,
                          std::size_t a_layerCount) {
   LayerFilter filter;
-  if (!a_view.FiltersLayers(a_recipe, a_output)) {
+  if (!a_view.anyLayerHidden ||
+      !a_view.view.FiltersLayers(a_recipe, a_output)) {
     return filter;
   }
   for (std::size_t i = 0; i < a_layerCount; ++i) {
-    if (!a_view.LayerShown(a_recipe, a_output, i)) {
+    if (!a_view.view.LayerShown(a_recipe, a_output, i)) {
       filter.hidden.push_back(i);
     }
   }
@@ -121,9 +140,22 @@ void UpdateRenderInputs(LiveActor &a_state, LiveGeometry &a_bound) {
   }
 }
 
+StackRender RenderStackOutput(PlacedOutput &a_output,
+                              const LayerFilter &a_filter,
+                              const StackBase &a_base) {
+  if (!a_output.stack) {
+    return StackRender::kFailed;
+  }
+  const StackRender outcome =
+      Compositor::GetSingleton()->Render(*a_output.stack, a_filter, a_base);
+  a_output.rendered = outcome == StackRender::kRendered;
+  a_output.renderFailed = outcome == StackRender::kFailed;
+  return outcome;
+}
+
 SlotChain RenderSlotChain(LiveActor &a_state, LiveGeometry &a_bound,
-                          const Studio::View &a_view,
-                          const SlotStackPlan &a_slot, bool a_anyLayerHidden) {
+                          const SlotRenderView &a_view,
+                          const SlotStackPlan &a_slot) {
   SlotChain chain;
   StackBase base;
   for (const StackLink &link : a_slot.chain) {
@@ -137,26 +169,16 @@ SlotChain RenderSlotChain(LiveActor &a_state, LiveGeometry &a_bound,
     if (!instance.recipe || !instance.signals) {
       continue;
     }
-    const SurfaceOutput *material =
-        c.output < instance.recipe->outputs.size()
-            ? Get<SurfaceOutput>(instance.recipe->outputs[c.output])
-            : nullptr;
+    const SurfaceOutput *material = SurfaceOutputOf(*instance.recipe, c.output);
     PlacedOutput *output =
         OutputAt(a_state.placements[resolved->placement], c.output);
     if (!material || !output || !output->stack ||
-        !a_view.OutputShown(instance.recipe->id, c.output)) {
+        !a_view.view.OutputShown(instance.recipe->id, c.output)) {
       continue;
     }
-    LayerFilter filter;
-    if (a_anyLayerHidden) {
-      filter = HiddenLayers(a_view, instance.recipe->id, c.output,
-                            material->stack.size());
-    }
-    const StackRender outcome =
-        Compositor::GetSingleton()->Render(*output->stack, filter, base);
-    output->rendered = outcome == StackRender::kRendered;
-    output->renderFailed = outcome == StackRender::kFailed;
-    if (outcome != StackRender::kRendered) {
+    const LayerFilter filter = HiddenLayers(a_view, instance.recipe->id,
+                                            c.output, material->stack.size());
+    if (RenderStackOutput(*output, filter, base) != StackRender::kRendered) {
       continue;
     }
     chain.shown = true;
@@ -219,21 +241,44 @@ struct InstanceTiming {
 };
 
 InstanceTiming InstanceTimeFor(LiveInstance &a_instance,
-                               const Settings &a_settings,
-                               const Studio::View &a_view, bool a_resuming,
-                               std::uint32_t a_nowMS) {
-  const float speed = InstanceSpeed(a_settings.animationSpeed, a_view.speed,
+                               const TickFrame &a_frame) {
+  if (!a_instance.recipe) {
+    return InstanceTiming{a_instance.lastTime, 0.0f};
+  }
+  const Studio::View &view = a_frame.view;
+  const float speed = InstanceSpeed(a_frame.settings.animationSpeed, view.speed,
                                     a_instance.recipe->clock.speed);
-  if (a_resuming) {
+  if (a_frame.resuming) {
     a_instance.startMS =
-        a_nowMS - ClockOffsetMS(a_view.scrubSeconds, speed).value_or(0);
+        a_frame.nowMS - ClockOffsetMS(view.scrubSeconds, speed).value_or(0);
   }
   const float time =
-      a_view.freeze
-          ? a_view.scrubSeconds
-          : static_cast<float>(a_nowMS - a_instance.startMS) * 0.001f * speed;
+      view.freeze ? view.scrubSeconds
+                  : static_cast<float>(a_frame.nowMS - a_instance.startMS) *
+                        0.001f * speed;
   const float delta = std::max(0.0f, time - a_instance.lastTime);
   return InstanceTiming{time, delta};
+}
+
+void AddBoundMeshes(BoundMeshes &a_meshes, const LivePiece &a_piece) {
+  for (const LiveGeometry &g : a_piece.geometries) {
+    if (!g.lost) {
+      a_meshes.geometries.push_back(g.geometry.get());
+      a_meshes.materials.emplace_back(g.inputs.material.rmaos.get(),
+                                      g.inputs.material.diffuse.get());
+    }
+  }
+}
+
+BoundMeshes
+BoundMeshesOf(const std::unordered_map<RE::FormID, LiveActor> &a_applied) {
+  BoundMeshes meshes;
+  for (const auto &[actorID, state] : a_applied) {
+    for (const LivePiece &piece : state.pieces) {
+      AddBoundMeshes(meshes, piece);
+    }
+  }
+  return meshes;
 }
 
 void SweepBoundMeshes(
@@ -243,21 +288,39 @@ void SweepBoundMeshes(
   if (!a_compositor.MeshSweepDue(a_nowMS)) {
     return;
   }
-  std::vector<RE::BSGeometry *> bound;
-  std::vector<Compositor::MaterialKey> materials;
-  for (const auto &[actorID, state] : a_applied) {
-    for (const LivePiece &piece : state.pieces) {
-      for (const LiveGeometry &g : piece.geometries) {
-        if (!g.lost) {
-          bound.push_back(g.geometry.get());
-          materials.emplace_back(g.inputs.material.rmaos.get(),
-                                 g.inputs.material.diffuse.get());
-        }
+  const BoundMeshes meshes = BoundMeshesOf(a_applied);
+  a_compositor.SweepMeshes(a_nowMS, meshes.geometries);
+  a_compositor.SweepMaterials(a_nowMS, meshes.materials);
+}
+
+void FailGeometryOutputs(LiveActor &a_state, const LiveGeometry &a_bound) {
+  for (const PlacementId id : a_bound.placements) {
+    if (const std::optional<ResolvedPlacement> resolved =
+            ResolvePlacement(a_state, id)) {
+      for (PlacedOutput &output :
+           a_state.placements[resolved->placement].outputs) {
+        output.renderFailed = true;
       }
     }
   }
-  a_compositor.SweepMeshes(a_nowMS, bound);
-  a_compositor.SweepMaterials(a_nowMS, materials);
+}
+
+void WriteSlots(LiveActor &a_state, LiveGeometry &a_bound,
+                const SlotRenderView &a_view, bool a_hidden) {
+  for (const SlotStackPlan &slot : a_bound.stackPlan.slots) {
+    SlotTarget *target = TargetFor(a_bound, slot.surface);
+    if (!target) {
+      continue;
+    }
+    SlotWrite write = EmptyWrite(slot.slot);
+    if (!a_hidden) {
+      const SlotChain chain = RenderSlotChain(a_state, a_bound, a_view, slot);
+      write.shown = chain.shown && a_view.publish;
+      write.texture = chain.texture;
+      ApplySlotScalars(write, slot.slot, chain);
+    }
+    WriteSlot(*target, write);
+  }
 }
 
 void MarkReferencedInstances(LiveActor &a_state, const LiveGeometry &a_bound,
@@ -451,7 +514,8 @@ void Manager::FireDueFinalizes() { applications_.FinalizeDue(NowMS()); }
 void Manager::Tick(std::uint32_t a_nowMS, const Settings &a_settings) {
   const Studio::View &view = editor_.CurrentView();
   TextureLab::GetSingleton()->RenderPreviews();
-  const bool resuming = frozenLastTick_ && !view.freeze;
+  const TickFrame frame{a_settings, view, a_nowMS,
+                        frozenLastTick_ && !view.freeze};
   frozenLastTick_ = view.freeze;
   for (auto it = applied_.begin(); it != applied_.end();) {
     LiveActor &state = it->second;
@@ -469,8 +533,7 @@ void Manager::Tick(std::uint32_t a_nowMS, const Settings &a_settings) {
           !instance.environment) {
         continue;
       }
-      const InstanceTiming timing =
-          InstanceTimeFor(instance, a_settings, view, resuming, a_nowMS);
+      const InstanceTiming timing = InstanceTimeFor(instance, frame);
       TickInstance(instance, timing.time, timing.delta);
       instance.lastTime = timing.time;
     }
@@ -501,7 +564,7 @@ std::vector<bool> Manager::RenderPieces(LiveActor &a_state,
         soloingPiece && !view.PieceShown(a_actorID, piece.armor);
     std::vector<bool> &referenced = pieceHidden ? hidden : shown;
     for (LiveGeometry &bound : piece.geometries) {
-      RenderGeometry(a_state, piece, bound, pieceHidden);
+      RenderGeometry(a_state, bound, pieceHidden);
       if (soloingPiece) {
         MarkReferencedInstances(a_state, bound, referenced);
       }
@@ -545,45 +608,22 @@ void Manager::DropLostGeometries(LiveActor &a_state) {
   }
 }
 
-void Manager::RenderGeometry(LiveActor &a_state,
-                             [[maybe_unused]] LivePiece &a_piece,
-                             LiveGeometry &a_bound, bool a_hidden) {
+void Manager::RenderGeometry(LiveActor &a_state, LiveGeometry &a_bound,
+                             bool a_hidden) {
   const Studio::View &view = editor_.CurrentView();
   if (a_bound.inputs.render &&
       a_bound.inputs.render->BeginFrame(renderFrame_)) {
     UpdateRenderInputs(a_state, a_bound);
   }
   if (a_bound.lost) {
-    for (const PlacementId id : a_bound.placements) {
-      if (const std::optional<ResolvedPlacement> resolved =
-              ResolvePlacement(a_state, id)) {
-        for (PlacedOutput &output :
-             a_state.placements[resolved->placement].outputs) {
-          output.renderFailed = true;
-        }
-      }
-    }
+    FailGeometryOutputs(a_state, a_bound);
     return;
   }
-  const bool anyLayerHidden =
-      view.isolation.layer.has_value() || !view.muted.empty();
-  const bool publish = GetSettings().publishEffects;
-  for (const SlotStackPlan &slot : a_bound.stackPlan.slots) {
-    SlotTarget *target = TargetFor(a_bound, slot.surface);
-    if (!target) {
-      continue;
-    }
-    SlotWrite write = EmptyWrite(slot.slot);
-    if (!a_hidden) {
-      const SlotChain chain =
-          RenderSlotChain(a_state, a_bound, view, slot, anyLayerHidden);
-      write.shown = chain.shown && publish;
-      write.texture = chain.texture;
-      ApplySlotScalars(write, slot.slot, chain);
-    }
-    WriteSlot(*target, write);
-  }
-  if (a_hidden || !publish) {
+  const SlotRenderView slotView{
+      view, view.isolation.layer.has_value() || !view.muted.empty(),
+      GetSettings().publishEffects};
+  WriteSlots(a_state, a_bound, slotView, a_hidden);
+  if (a_hidden || !slotView.publish) {
     if (a_bound.shell) {
       a_bound.shell->SetVisible(false);
     }
@@ -602,19 +642,17 @@ void Manager::UpdateLights(LiveActor &a_state,
       continue;
     }
     const LightOutput *light =
-        *instance.lightOutput < instance.recipe->outputs.size()
-            ? Get<LightOutput>(instance.recipe->outputs[*instance.lightOutput])
-            : nullptr;
+        LightOutputOf(*instance.recipe, *instance.lightOutput);
     if (!light) {
       continue;
     }
     const Studio::ResolvedLight resolved =
         Studio::ResolveLight(*light, *instance.signals);
     const bool hidden = i < a_instanceHidden.size() && a_instanceHidden[i];
-    instance.light->Update(resolved.color, resolved.intensity, resolved.size,
-                           resolved.cutoff,
-                           !hidden && view.OutputShown(instance.recipe->id,
-                                                       *instance.lightOutput));
+    instance.light->Update(
+        {resolved.color, resolved.intensity, resolved.size, resolved.cutoff},
+        !hidden &&
+            view.OutputShown(instance.recipe->id, *instance.lightOutput));
   }
 }
 

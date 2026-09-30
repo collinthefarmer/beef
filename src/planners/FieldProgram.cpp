@@ -105,6 +105,83 @@ std::optional<Encoding> Encode(Program::Op op) {
 std::uint32_t Components(ValueType type) {
   return type == ValueType::kScalar ? 1 : type == ValueType::kVec2 ? 2 : 3;
 }
+ProgramLimits ClampedLimits(const ProgramLimits &limits) {
+  return {std::min(limits.instructions, kProgramInstructions),
+          std::min(limits.inputs, kProgramInputs),
+          std::min(limits.textures, kProgramTextures),
+          std::min(limits.lookups, kProgramLookups),
+          std::min(limits.stack, kProgramStack)};
+}
+std::expected<void, std::string>
+ValidateExpressionLimits(const BoundExpression &expression,
+                         const ProgramLimits &limits) {
+  const std::span<const Program::Node> code = expression.program.Code();
+  if (code.empty() || code.size() > limits.instructions)
+    return std::unexpected(std::format("instruction limit exceeded (limit {})",
+                                       limits.instructions));
+  if (expression.valueBindings.size() > limits.inputs)
+    return std::unexpected(
+        std::format("input slot limit exceeded (limit {})", limits.inputs));
+  if (expression.functionBindings.size() > limits.lookups)
+    return std::unexpected(std::format(
+        "function lookup limit exceeded (limit {})", limits.lookups));
+  return {};
+}
+std::expected<ValueType, std::string>
+OperandTypeOf(std::span<const ValueType> operands) {
+  ValueType type = ValueType::kScalar;
+  for (const ValueType operand : operands) {
+    if (operand == ValueType::kScalar)
+      continue;
+    if (type != ValueType::kScalar && type != operand)
+      return std::unexpected("instruction mixes incompatible vector widths");
+    type = operand;
+  }
+  return type;
+}
+std::expected<ValueType, std::string>
+ResultTypeOf(const Program::Node &node, ValueType operandType,
+             std::span<const ValueType> inputTypes, std::size_t lookupCount) {
+  using Op = Program::Op;
+  switch (node.op) {
+  case Op::kRef:
+    if (node.index >= inputTypes.size())
+      return std::unexpected("input slot is out of range");
+    return inputTypes[node.index];
+  case Op::kCurve:
+    if (node.index >= lookupCount || operandType != ValueType::kScalar)
+      return std::unexpected("invalid scalar function lookup");
+    return operandType;
+  case Op::kMakeVec2:
+    return ValueType::kVec2;
+  case Op::kMakeVec3:
+    return ValueType::kVec3;
+  case Op::kLength:
+  case Op::kDistance:
+  case Op::kDot:
+  case Op::kNot:
+  case Op::kLt:
+  case Op::kGt:
+  case Op::kLe:
+  case Op::kGe:
+  case Op::kEq:
+  case Op::kNe:
+  case Op::kAnd:
+  case Op::kOr:
+    return ValueType::kScalar;
+  default:
+    return operandType;
+  }
+}
+ProgramInstruction InstructionFor(const Program::Node &node,
+                                  const Encoding &encoding,
+                                  ValueType operandType, ValueType resultType) {
+  const bool reduction = node.op == Program::Op::kLength ||
+                         node.op == Program::Op::kDistance ||
+                         node.op == Program::Op::kDot;
+  return {encoding.opcode, node.number, node.index,
+          Components(reduction ? operandType : resultType)};
+}
 ProgramInstruction RenumberInput(ProgramInstruction instruction,
                                  std::span<const std::uint32_t> inputIndex) {
   if (instruction.opcode == ProgramOpcode::kInput &&
@@ -133,138 +210,117 @@ InlinedProducerCode(const FieldProgram &producer,
 std::expected<FieldProgram, std::string>
 FieldProgram::Compile(const RecipeGraph &graph, OutputRef result,
                       const ProgramLimits &limits) {
-  const auto *node = graph.NodeAt(result.node);
-  const auto fail =
-      [&](std::string message) -> std::expected<FieldProgram, std::string> {
-    return std::unexpected(std::format(
-        "{}: {}", node ? node->displayName : "interpreter", message));
+  const RecipeNode *node = graph.NodeAt(result.node);
+  const auto fail = [&](const std::string &message)
+      -> std::expected<FieldProgram, std::string> {
+    return std::unexpected(
+        std::format("{}: {}", node ? node->displayName : "program", message));
   };
-  const auto *expression = graph.ExpressionAt(result.node);
-  const auto outputType = graph.OutputType(result);
-  const auto *numeric = outputType ? Get<ValueType>(*outputType) : nullptr;
+  const BoundExpression *expression = graph.ExpressionAt(result.node);
+  const std::optional<GraphValueType> outputType = graph.OutputType(result);
+  const ValueType *numeric = outputType ? Get<ValueType>(*outputType) : nullptr;
   if (!node || graph.IsDisabled(result.node) || result.output != 0 ||
       !expression || !numeric)
     return fail("requires an enabled numeric expression output");
-  const auto code = expression->program.Code();
-  if (code.empty() ||
-      code.size() > std::min(limits.instructions, kProgramInstructions))
-    return fail(
-        std::format("instruction limit exceeded (limit {})",
-                    std::min(limits.instructions, kProgramInstructions)));
-  if (expression->valueBindings.size() >
-      std::min(limits.inputs, kProgramInputs))
-    return fail(std::format("input slot limit exceeded (limit {})",
-                            std::min(limits.inputs, kProgramInputs)));
-  if (expression->functionBindings.size() >
-      std::min(limits.lookups, kProgramLookups))
-    return fail(std::format("function lookup limit exceeded (limit {})",
-                            std::min(limits.lookups, kProgramLookups)));
+  const ProgramLimits clamped = ClampedLimits(limits);
+  if (const auto fits = ValidateExpressionLimits(*expression, clamped); !fits)
+    return fail(fits.error());
   FieldProgram compiled;
   compiled.resultType_ = *numeric;
+  const auto inputTypes = compiled.AppendExpressionInputs(
+      graph, expression->valueBindings, clamped.textures);
+  if (!inputTypes)
+    return fail(inputTypes.error());
+  if (const auto lookups =
+          compiled.AppendFunctionLookups(graph, expression->functionBindings);
+      !lookups)
+    return fail(lookups.error());
+  if (const auto appended = compiled.AppendInstructions(
+          expression->program.Code(), *inputTypes, clamped.stack);
+      !appended)
+    return fail(appended.error());
+  return compiled;
+}
+std::expected<std::vector<ValueType>, std::string>
+FieldProgram::AppendExpressionInputs(const RecipeGraph &graph,
+                                     std::span<const OutputRef> bindings,
+                                     std::size_t textureLimit) {
   std::vector<ValueType> inputTypes;
-  for (const auto input : expression->valueBindings) {
-    const auto type = graph.OutputType(input);
-    const auto *valueType = type ? Get<ValueType>(*type) : nullptr;
+  for (const OutputRef input : bindings) {
+    const std::optional<GraphValueType> type = graph.OutputType(input);
+    const ValueType *valueType = type ? Get<ValueType>(*type) : nullptr;
     if (!valueType || graph.IsDisabled(input.node))
-      return fail("input has no executable numeric value");
+      return std::unexpected("input has no executable numeric value");
     inputTypes.push_back(*valueType);
     if (graph.SampleDependent(input)) {
-      if (compiled.textureCount_ >= std::min(limits.textures, kProgramTextures))
-        return fail(std::format("texture slot limit exceeded (limit {})",
-                                std::min(limits.textures, kProgramTextures)));
-      compiled.inputs_.emplace_back(ProgramTextureInput{
-          input, static_cast<std::uint32_t>(compiled.textureCount_++)});
+      if (textureCount_ >= textureLimit)
+        return std::unexpected(std::format(
+            "texture slot limit exceeded (limit {})", textureLimit));
+      inputs_.emplace_back(ProgramTextureInput{
+          input, static_cast<std::uint32_t>(textureCount_++)});
     } else {
-      compiled.inputs_.emplace_back(ProgramValueInput{input});
+      inputs_.emplace_back(ProgramValueInput{input});
     }
   }
-  for (const auto &binding : expression->functionBindings) {
-    const auto *function = graph.FunctionAt(binding.function);
+  return inputTypes;
+}
+std::expected<void, std::string>
+FieldProgram::AppendFunctionLookups(const RecipeGraph &graph,
+                                    std::span<const BoundFunction> bindings) {
+  for (const BoundFunction &binding : bindings) {
+    const FunctionDefinition *function = graph.FunctionAt(binding.function);
     if (!function || function->isDisabled ||
-        binding.sampledParameter >= function->parameters.size() ||
-        function->parameters[binding.sampledParameter].type !=
-            ValueType::kScalar ||
-        function->result.node >= function->nodes.size() ||
-        function->result.output >=
-            function->nodes[function->result.node].outputs.size() ||
-        function->nodes[function->result.node]
-                .outputs[function->result.output]
-                .type != GraphValueType{ValueType::kScalar})
-      return fail("function cannot be represented by a scalar lookup");
-    for (const auto &argument : binding.arguments)
+        !SamplesAsLookup(*function, binding.sampledParameter))
+      return std::unexpected(
+          "function cannot be represented by a scalar lookup");
+    for (const BoundFunctionArgument &argument : binding.arguments)
       if (graph.SampleDependent(argument.value))
-        return fail("lookup bound argument must be uniform");
-    compiled.lookups_.push_back(
+        return std::unexpected("lookup bound argument must be uniform");
+    lookups_.push_back(
         {binding.function, binding.sampledParameter, binding.arguments});
   }
+  return {};
+}
+std::expected<void, std::string>
+FieldProgram::AppendInstructions(std::span<const Program::Node> code,
+                                 std::span<const ValueType> inputTypes,
+                                 std::size_t stackLimit) {
   std::vector<ValueType> stack;
-  for (const auto &operation : code) {
-    const auto encoding = Encode(operation.op);
+  for (const Program::Node &node : code) {
+    const std::optional<Encoding> encoding = Encode(node.op);
     if (!encoding)
-      return fail("unsupported operation or unbound context input");
+      return std::unexpected("unsupported operation or unbound context input");
     if (stack.size() < encoding->operands)
-      return fail("instruction stack underflow");
-    const auto start = stack.size() - encoding->operands;
-    ValueType type = ValueType::kScalar;
-    for (std::size_t i = start; i < stack.size(); ++i) {
-      if (stack[i] == ValueType::kScalar)
-        continue;
-      if (type != ValueType::kScalar && type != stack[i])
-        return fail("instruction mixes incompatible vector widths");
-      type = stack[i];
-    }
-    const auto operandType = type;
-    using Op = Program::Op;
-    switch (operation.op) {
-    case Op::kRef:
-      if (operation.index >= inputTypes.size())
-        return fail("input slot is out of range");
-      type = inputTypes[operation.index];
-      break;
-    case Op::kCurve:
-      if (operation.index >= compiled.lookups_.size() ||
-          type != ValueType::kScalar)
-        return fail("invalid scalar function lookup");
-      break;
-    case Op::kMakeVec2:
-      type = ValueType::kVec2;
-      break;
-    case Op::kMakeVec3:
-      type = ValueType::kVec3;
-      break;
-    case Op::kLength:
-    case Op::kDistance:
-    case Op::kDot:
-    case Op::kNot:
-    case Op::kLt:
-    case Op::kGt:
-    case Op::kLe:
-    case Op::kGe:
-    case Op::kEq:
-    case Op::kNe:
-    case Op::kAnd:
-    case Op::kOr:
-      type = ValueType::kScalar;
-      break;
-    default:
-      break;
-    }
+      return std::unexpected("instruction stack underflow");
+    const std::size_t start = stack.size() - encoding->operands;
+    const std::expected<ValueType, std::string> operandType =
+        OperandTypeOf(std::span<const ValueType>{stack}.subspan(start));
+    if (!operandType)
+      return std::unexpected(operandType.error());
+    const std::expected<ValueType, std::string> resultType =
+        ResultTypeOf(node, *operandType, inputTypes, lookups_.size());
+    if (!resultType)
+      return std::unexpected(resultType.error());
     stack.resize(start);
-    stack.push_back(type);
-    compiled.stackSize_ = std::max(compiled.stackSize_, stack.size());
-    if (compiled.stackSize_ > std::min(limits.stack, kProgramStack))
-      return fail(std::format("stack depth limit exceeded (limit {})",
-                              std::min(limits.stack, kProgramStack)));
-    const bool reduction = operation.op == Op::kLength ||
-                           operation.op == Op::kDistance ||
-                           operation.op == Op::kDot;
-    compiled.instructions_.push_back(
-        {encoding->opcode, operation.number, operation.index,
-         Components(reduction ? operandType : type)});
+    stack.push_back(*resultType);
+    stackSize_ = std::max(stackSize_, stack.size());
+    if (stackSize_ > stackLimit)
+      return std::unexpected(
+          std::format("stack depth limit exceeded (limit {})", stackLimit));
+    instructions_.push_back(
+        InstructionFor(node, *encoding, *operandType, *resultType));
   }
-  if (stack.size() != 1 || stack.front() != compiled.resultType_)
-    return fail("instruction result type does not match graph output");
-  return compiled;
+  if (stack.size() != 1 || stack.front() != resultType_)
+    return std::unexpected(
+        "instruction result type does not match graph output");
+  return {};
+}
+bool SamplesAsLookup(const FunctionDefinition &function,
+                     std::size_t sampledParameter) {
+  return sampledParameter < function.parameters.size() &&
+         function.parameters[sampledParameter].type == ValueType::kScalar &&
+         FunctionResultTypeOf(function) ==
+             std::optional<GraphValueType>{ValueType::kScalar};
 }
 std::size_t OpcodePops(ProgramOpcode opcode) noexcept {
   using Op = ProgramOpcode;
@@ -351,12 +407,11 @@ InputRenumbering FieldProgram::MergeInputs(const FieldProgram &consumer,
   return renumbering;
 }
 bool FieldProgram::FitsLimits(const ProgramLimits &limits) const {
-  return instructions_.size() <=
-             std::min(limits.instructions, kProgramInstructions) &&
-         inputs_.size() <= std::min(limits.inputs, kProgramInputs) &&
-         textureCount_ <= std::min(limits.textures, kProgramTextures) &&
-         lookups_.size() <= std::min(limits.lookups, kProgramLookups) &&
-         stackSize_ <= std::min(limits.stack, kProgramStack);
+  const ProgramLimits clamped = ClampedLimits(limits);
+  return instructions_.size() <= clamped.instructions &&
+         inputs_.size() <= clamped.inputs &&
+         textureCount_ <= clamped.textures &&
+         lookups_.size() <= clamped.lookups && stackSize_ <= clamped.stack;
 }
 std::expected<FieldProgram, std::string>
 FieldProgram::Inline(const FieldProgram &a_consumer, std::size_t a_input,
@@ -388,7 +443,7 @@ FieldProgram::Inline(const FieldProgram &a_consumer, std::size_t a_input,
   }
   inlined.stackSize_ = StackDepthOf(inlined.instructions_);
   if (!inlined.FitsLimits(a_limits))
-    return std::unexpected("inlined program exceeds interpreter limits");
+    return std::unexpected("inlined program exceeds program limits");
   return inlined;
 }
 FieldProgram FieldProgram::Sample(ValueType type, bool texture) {
@@ -484,6 +539,7 @@ SegmentAt(std::span<const ProgramSegment> segments, std::size_t codeSize,
 std::expected<ProgramPack, std::string>
 PackPrograms(std::span<const FieldProgram *const> programs,
              const ProgramLimits &limits) {
+  const ProgramLimits clamped = ClampedLimits(limits);
   ProgramPack pack;
   for (const auto *program : programs) {
     if (!program)
@@ -511,14 +567,14 @@ PackPrograms(std::span<const FieldProgram *const> programs,
       pack.code.push_back(instruction);
     }
     pack.segments.push_back(segment);
-    if (program->StackSize() > std::min(limits.stack, kProgramStack))
-      return std::unexpected("packed program exceeds the interpreter stack");
+    if (program->StackSize() > clamped.stack)
+      return std::unexpected("packed program exceeds the program stack");
   }
-  if (pack.code.size() > std::min(limits.instructions, kProgramInstructions) ||
-      pack.inputs.size() > std::min(limits.inputs, kProgramInputs) ||
-      pack.textureCount > std::min(limits.textures, kProgramTextures) ||
-      pack.lookupCount > std::min(limits.lookups, kProgramLookups))
-    return std::unexpected("packed programs exceed interpreter limits");
+  if (pack.code.size() > clamped.instructions ||
+      pack.inputs.size() > clamped.inputs ||
+      pack.textureCount > clamped.textures ||
+      pack.lookupCount > clamped.lookups)
+    return std::unexpected("packed programs exceed program limits");
   return pack;
 }
 }

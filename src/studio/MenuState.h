@@ -12,6 +12,7 @@
 #include "studio/Snapshot.h"
 #include "studio/SourcePlan.h"
 #include "studio/View.h"
+#include "studio/Widgets.h"
 
 #include <array>
 #include <cstdint>
@@ -115,6 +116,10 @@ PaintDependencies(const MenuState &a_state);
 void Reduce(MenuState &a_state, const Intent &a_intent);
 void ObservePaintRecipe(MenuState &a_state, const RecipeRow *a_recipe);
 [[nodiscard]] bool MaskTaskActive(const MenuState &a_state);
+[[nodiscard]] bool CanKeepMask(const MenuState &a_state);
+[[nodiscard]] std::array<RuleButton, 4>
+MaskRuleButtonsOf(const MenuState &a_state);
+[[nodiscard]] std::string MaskProblemsOf(const MenuState &a_state);
 void ReconcilePaintMode(MenuState &a_state);
 void ResolveEditorSelection(MenuState &a_state, const Snapshot &a_snapshot);
 void AcknowledgeEditorOperations(MenuState &a_state,

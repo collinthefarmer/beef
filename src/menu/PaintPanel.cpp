@@ -23,6 +23,7 @@
 #include "studio/TermTemplates.h"
 
 #include <algorithm>
+#include <array>
 #include <cmath>
 #include <cstddef>
 #include <format>
@@ -409,73 +410,90 @@ void DiscardMaskDraft(const Frame &a_frame) {
   }
   Studio::Post(*a_frame.intents, Studio::EndPaint{});
 }
+
+void DrawMaskProblems(const Frame &a_frame) {
+  const Studio::MenuState &state = *a_frame.state;
+  const std::string problems = Studio::MaskProblemsOf(state);
+  if (!problems.empty()) {
+    ProblemBadge("!!!");
+    Tooltip(problems);
+  }
+  if (state.paint && state.paint->problem && state.paint->ready) {
+    ImGui::SameLine();
+    if (ImGui::Button("Retry preview")) {
+      a_frame.state->paint->problem.reset();
+    }
+  }
+}
+
+void PostMaskRuleAction(Studio::RuleAction a_action, const Frame &a_frame) {
+  switch (a_action) {
+  case Studio::RuleAction::kUndo:
+    Studio::Post(*a_frame.intents, Studio::UndoMask{});
+    break;
+  case Studio::RuleAction::kRedo:
+    Studio::Post(*a_frame.intents, Studio::RedoMask{});
+    break;
+  case Studio::RuleAction::kClear:
+    Studio::Post(*a_frame.intents, Studio::ClearMask{});
+    break;
+  case Studio::RuleAction::kAdd:
+    ImGui::OpenPopup("keep-mask");
+    break;
+  default:
+    break;
+  }
+}
+
+[[nodiscard]] std::string DraftBarLabel(const Studio::MenuState &a_state) {
+  const std::string &editing = a_state.mask.editing;
+  std::string label =
+      std::format("Mask draft: {}", editing.empty() ? "unsaved mask" : editing);
+  if (a_state.paint && a_state.paint->assignmentInvalid) {
+    label += " (destination changed)";
+  }
+  return label;
+}
+
+[[nodiscard]] float DraftBarTrailingWidth(bool a_active) {
+  return a_active
+             ? ButtonWidth("Discard")
+             : ButtonWidth("Resume") + ItemSpacingX() + ButtonWidth("Discard");
+}
+
+void DrawResumeDraftButton(const Frame &a_frame) {
+  Studio::MenuState &state = *a_frame.state;
+  const std::string &editing = state.mask.editing;
+  if (ImGui::Button("Resume") && !editing.empty()) {
+    state.pendingSelection = Studio::MaskSubject{editing};
+  }
+  ImGui::SameLine();
+}
+
+void DrawDiscardDraftButton(const Frame &a_frame) {
+  const Studio::MenuState &state = *a_frame.state;
+  const bool pending = state.paint && state.paint->pendingCommit.has_value();
+  const bool hasTerms = !state.mask.terms.empty();
+  Disabled(pending, [&] {
+    if (ImGui::Button("Discard")) {
+      if (hasTerms) {
+        ImGui::OpenPopup("Discard mask draft?###discard-mask");
+      } else {
+        DiscardMaskDraft(a_frame);
+      }
+    }
+  });
+}
 }
 
 void DrawMaskRule(std::string_view a_title, const Frame &a_frame) {
-  const Studio::MenuState &state = *a_frame.state;
-  const Studio::MaskStack &mask = state.mask;
-  const bool painting = state.paint.has_value();
-  const auto expression = Studio::CheckedBuildMask(mask.terms);
-  const bool canKeep = painting && state.paint->ready &&
-                       !state.paint->pendingCommit && expression &&
-                       !expression->empty();
-
-  const Studio::RuleButton buttons[]{
-      {Studio::RuleAction::kUndo,
-       {},
-       Studio::Width::Fit(),
-       state.maskHistory.UndoDepth() > 0},
-      {Studio::RuleAction::kRedo,
-       {},
-       Studio::Width::Fit(),
-       state.maskHistory.RedoDepth() > 0},
-      {Studio::RuleAction::kClear,
-       {},
-       Studio::Width::Fit(),
-       !mask.terms.empty()},
-      {Studio::RuleAction::kAdd, "Keep", Studio::Width::Fit(), canKeep},
-  };
+  const std::array<Studio::RuleButton, 4> buttons =
+      Studio::MaskRuleButtonsOf(*a_frame.state);
   const Studio::RuleSpec spec{a_title, buttons};
   const Studio::RuleClick click =
-      Rule(spec, 0.0f, {}, [&]() {
-        std::string errors;
-        if (!expression) {
-          errors = expression.error().message;
-        }
-        if (state.paint && state.paint->problem) {
-          if (!errors.empty()) {
-            errors += '\n';
-          }
-          errors += state.paint->problem->message;
-        }
-        if (!errors.empty()) {
-          ProblemBadge("!!!");
-          Tooltip(errors);
-        }
-        if (state.paint && state.paint->problem && state.paint->ready) {
-          ImGui::SameLine();
-          if (ImGui::Button("Retry preview")) {
-            a_frame.state->paint->problem.reset();
-          }
-        }
-      }).click;
-  if (click.clicked && click.index < std::size(buttons)) {
-    switch (buttons[click.index].action) {
-    case Studio::RuleAction::kUndo:
-      Studio::Post(*a_frame.intents, Studio::UndoMask{});
-      break;
-    case Studio::RuleAction::kRedo:
-      Studio::Post(*a_frame.intents, Studio::RedoMask{});
-      break;
-    case Studio::RuleAction::kClear:
-      Studio::Post(*a_frame.intents, Studio::ClearMask{});
-      break;
-    case Studio::RuleAction::kAdd:
-      ImGui::OpenPopup("keep-mask");
-      break;
-    default:
-      break;
-    }
+      Rule(spec, 0.0f, {}, [&]() { DrawMaskProblems(a_frame); }).click;
+  if (click.clicked && click.index < buttons.size()) {
+    PostMaskRuleAction(buttons[click.index].action, a_frame);
   }
 
   KeepMaskPopup(a_frame);
@@ -587,33 +605,11 @@ void DrawPaintDraftBar(const Frame &a_frame) {
     return;
   }
   const bool active = Studio::MaskTaskActive(state);
-  const std::string &editing = state.mask.editing;
-  std::string label =
-      std::format("Mask draft: {}", editing.empty() ? "unsaved mask" : editing);
-  if (state.paint->assignmentInvalid) {
-    label += " (destination changed)";
-  }
-  const bool pending = state.paint->pendingCommit.has_value();
-  const bool hasTerms = !state.mask.terms.empty();
-  const float trailingWidth =
-      active ? ButtonWidth("Discard")
-             : ButtonWidth("Resume") + ItemSpacingX() + ButtonWidth("Discard");
-  Banner(label, trailingWidth, [&] {
+  Banner(DraftBarLabel(state), DraftBarTrailingWidth(active), [&] {
     if (!active) {
-      if (ImGui::Button("Resume") && !editing.empty()) {
-        state.pendingSelection = Studio::MaskSubject{editing};
-      }
-      ImGui::SameLine();
+      DrawResumeDraftButton(a_frame);
     }
-    Disabled(pending, [&] {
-      if (ImGui::Button("Discard")) {
-        if (hasTerms) {
-          ImGui::OpenPopup("Discard mask draft?###discard-mask");
-        } else {
-          DiscardMaskDraft(a_frame);
-        }
-      }
-    });
+    DrawDiscardDraftButton(a_frame);
   });
   ConfirmModal("Discard mask draft?###discard-mask",
                std::format("The {} term(s) in this draft will be lost.",

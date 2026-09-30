@@ -130,6 +130,96 @@ std::string BoneName(const RE::NiSkinInstance &a_skin, std::uint32_t a_index) {
   const RE::NiAVObject *bone = a_skin.bones[a_index];
   return bone && bone->name.c_str() ? bone->name.c_str() : "";
 }
+
+struct SkinSlots {
+  const RE::NiSkinInstance *skin = nullptr;
+  const RE::NiSkinPartition *partition = nullptr;
+  const RE::BSDismemberSkinInstance::Data *slots = nullptr;
+  std::int32_t slotCount = 0;
+};
+
+SkinSlots SkinSlotsOf(RE::BSGeometry *a_geometry) {
+  SkinSlots skin;
+  skin.skin = a_geometry->GetGeometryRuntimeData().skinInstance.get();
+  skin.partition = SkinPartitionOf(a_geometry);
+  const RE::BSDismemberSkinInstance *dismember =
+      skin.partition
+          ? netimmerse_cast<const RE::BSDismemberSkinInstance *>(skin.skin)
+          : nullptr;
+  skin.slots = dismember ? dismember->GetRuntimeData().partitions : nullptr;
+  skin.slotCount = dismember ? dismember->GetRuntimeData().numPartitions : 0;
+  return skin;
+}
+
+RawPartition RawPartitionOf(const BufferSet &a_set, const RawBytes &a_bytes,
+                            const SkinSlots &a_skin, std::size_t a_index) {
+  RawPartition raw;
+  raw.vertexBytes = a_bytes.vertices;
+  raw.indexBytes = a_bytes.indices;
+  raw.layout = a_set.layout;
+  raw.vertexCount = a_set.vertices;
+  raw.triangleCount = a_set.triangles;
+  if (a_skin.partition && a_index < a_skin.partition->numPartitions) {
+    const RE::NiSkinPartition::Partition &source =
+        a_skin.partition->partitions[a_index];
+    if (a_skin.slots && static_cast<std::int32_t>(a_index) < a_skin.slotCount) {
+      raw.slot = a_skin.slots[a_index].slot;
+    }
+    if (source.bones && a_skin.skin) {
+      for (std::uint16_t b = 0; b < source.numBones; ++b) {
+        raw.boneNames.push_back(BoneName(*a_skin.skin, source.bones[b]));
+      }
+    }
+  }
+  return raw;
+}
+
+std::string PartitionError(const SkinSlots &a_skin, std::size_t a_index,
+                           std::string_view a_problem) {
+  return a_skin.partition ? std::format("partition {}: {}", a_index, a_problem)
+                          : std::string{a_problem};
+}
+
+void MeasureIfUnbounded(MeshData &a_mesh) {
+  if (a_mesh.radius <= 0.0f) {
+    const MeshBound measured = MeasureBound(a_mesh.partitions);
+    a_mesh.center = measured.center;
+    a_mesh.radius = measured.radius;
+  }
+}
+
+std::optional<Vec3> SkinBindPosition(const RE::NiSkinInstance *a_skin,
+                                     std::string_view a_node) {
+  if (!a_skin || !a_skin->bones || !a_skin->skinData ||
+      !a_skin->skinData->boneData) {
+    return std::nullopt;
+  }
+  for (std::uint32_t i = 0; i < a_skin->skinData->bones; ++i) {
+    const RE::NiAVObject *bone = a_skin->bones[i];
+    if (bone && bone->name.c_str() && a_node == bone->name.c_str()) {
+      const RE::NiPoint3 origin =
+          a_skin->skinData->boneData[i].skinToBone.Invert() *
+          RE::NiPoint3{0.0f, 0.0f, 0.0f};
+      return Vec3{origin.x, origin.y, origin.z};
+    }
+  }
+  return std::nullopt;
+}
+
+std::optional<Vec3> RootNodePosition(RE::NiAVObject *a_root,
+                                     std::string_view a_node) {
+  if (!a_root) {
+    return std::nullopt;
+  }
+  RE::NiAVObject *node =
+      a_root->GetObjectByName(RE::BSFixedString{std::string{a_node}});
+  if (!node) {
+    return std::nullopt;
+  }
+  return ToRootSpace(a_root,
+                     Vec3{node->world.translate.x, node->world.translate.y,
+                          node->world.translate.z});
+}
 }
 
 std::expected<std::shared_ptr<const MeshData>, std::string>
@@ -144,56 +234,22 @@ ReadMesh(RE::BSGeometry *a_geometry) {
   mesh->center = Vec3{bound.center.x, bound.center.y, bound.center.z};
   mesh->radius = bound.radius;
 
-  const RE::NiSkinInstance *skin =
-      a_geometry->GetGeometryRuntimeData().skinInstance.get();
-  const RE::NiSkinPartition *skinPartition = SkinPartitionOf(a_geometry);
-  const RE::BSDismemberSkinInstance *dismember =
-      skinPartition ? netimmerse_cast<const RE::BSDismemberSkinInstance *>(skin)
-                    : nullptr;
-  const RE::BSDismemberSkinInstance::Data *slots =
-      dismember ? dismember->GetRuntimeData().partitions : nullptr;
-  const std::int32_t slotCount =
-      dismember ? dismember->GetRuntimeData().numPartitions : 0;
-
+  const SkinSlots skin = SkinSlotsOf(a_geometry);
   bool anyGpu = false;
   std::uint64_t hash = kHashBasis;
   for (std::size_t p = 0; p < sets->size(); ++p) {
     const BufferSet &set = (*sets)[p];
     const std::expected<RawBytes, std::string> bytes = ReadBuffers(set, false);
     if (!bytes) {
-      return std::unexpected(
-          skinPartition ? std::format("partition {}: {}", p, bytes.error())
-                        : bytes.error());
+      return std::unexpected(PartitionError(skin, p, bytes.error()));
     }
-    RawPartition raw;
-    raw.vertexBytes = bytes->vertices;
-    raw.indexBytes = bytes->indices;
-    raw.layout = set.layout;
-    raw.vertexCount = set.vertices;
-    raw.triangleCount = set.triangles;
-    if (skinPartition && p < skinPartition->numPartitions) {
-      const RE::NiSkinPartition::Partition &source =
-          skinPartition->partitions[p];
-      if (slots && static_cast<std::int32_t>(p) < slotCount) {
-        raw.slot = slots[p].slot;
-      }
-      if (source.bones && skin) {
-        for (std::uint16_t b = 0; b < source.numBones; ++b) {
-          raw.boneNames.push_back(BoneName(*skin, source.bones[b]));
-        }
-      }
-    }
-    const std::optional<MeshPartition> partition = DecodePartition(raw);
+    const std::optional<MeshPartition> partition =
+        DecodePartition(RawPartitionOf(set, *bytes, skin, p));
     if (!partition) {
-      return std::unexpected(
-          skinPartition
-              ? std::format(
-                    "partition {}: the buffers do not fit the vertex layout "
-                    "(stride {})",
-                    p, set.layout.stride)
-              : std::format(
-                    "the buffers do not fit the vertex layout (stride {})",
-                    set.layout.stride));
+      return std::unexpected(PartitionError(
+          skin, p,
+          std::format("the buffers do not fit the vertex layout (stride {})",
+                      set.layout.stride)));
     }
     anyGpu = anyGpu || bytes->fromGpu;
     hash = HashBytes(bytes->vertices, hash);
@@ -203,11 +259,7 @@ ReadMesh(RE::BSGeometry *a_geometry) {
   if (mesh->partitions.empty()) {
     return std::unexpected("no partitions");
   }
-  if (mesh->radius <= 0.0f) {
-    const MeshBound measured = MeasureBound(mesh->partitions);
-    mesh->center = measured.center;
-    mesh->radius = measured.radius;
-  }
+  MeasureIfUnbounded(*mesh);
   mesh->origin = anyGpu ? "gpu readback" : "cpu copy";
   mesh->hash = hash;
   return mesh;
@@ -272,29 +324,12 @@ Vec3 ToRootSpace(RE::NiAVObject *a_root, const Vec3 &a_world) {
 std::optional<Vec3> NodeBindPosition(RE::BSGeometry *a_geometry,
                                      RE::NiAVObject *a_root,
                                      std::string_view a_node) {
-  if (a_geometry) {
-    const RE::NiSkinInstance *skin =
-        a_geometry->GetGeometryRuntimeData().skinInstance.get();
-    if (skin && skin->bones && skin->skinData && skin->skinData->boneData) {
-      for (std::uint32_t i = 0; i < skin->skinData->bones; ++i) {
-        const RE::NiAVObject *bone = skin->bones[i];
-        if (bone && bone->name.c_str() && a_node == bone->name.c_str()) {
-          const RE::NiPoint3 origin =
-              skin->skinData->boneData[i].skinToBone.Invert() *
-              RE::NiPoint3{0.0f, 0.0f, 0.0f};
-          return Vec3{origin.x, origin.y, origin.z};
-        }
-      }
-    }
+  const RE::NiSkinInstance *skin =
+      a_geometry ? a_geometry->GetGeometryRuntimeData().skinInstance.get()
+                 : nullptr;
+  if (const std::optional<Vec3> bind = SkinBindPosition(skin, a_node)) {
+    return bind;
   }
-  if (a_root) {
-    if (RE::NiAVObject *node =
-            a_root->GetObjectByName(RE::BSFixedString{std::string{a_node}})) {
-      return ToRootSpace(a_root,
-                         Vec3{node->world.translate.x, node->world.translate.y,
-                              node->world.translate.z});
-    }
-  }
-  return std::nullopt;
+  return RootNodePosition(a_root, a_node);
 }
 }

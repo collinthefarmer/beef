@@ -87,49 +87,67 @@ void OnPluginEvent(SKSE::MessagingInterface::Message *a_msg) {
   }
 }
 
-void OnMessage(SKSE::MessagingInterface::Message *a_msg) {
+void TraceLoadedRecipes() {
   using namespace BetterEnchantmentEffects;
-  if (!a_msg) {
+  for (const Recipe &recipe : LoadedRecipes()) {
+    Trace::Emit(
+        Trace::Event::kRecipe,
+        {{"id", recipe.id},
+         {"fingerprint_fnv1a64", Trace::Fingerprint(SerializeRecipe(recipe))}});
+  }
+}
+
+bool EnableEmissivePath(BetterEnchantmentEffects::Manager &a_manager) {
+  a_manager.SetEmissivePathEnabled(false);
+  if (!CommunityShadersLoaded()) {
+    logger::error("CommunityShaders.dll is not loaded; emissive path "
+                  "disabled, plugin idle");
+    logger::error("Check the Community Shaders installation and SKSE loader "
+                  "log, then restart Skyrim; all effects require it.");
+    return false;
+  }
+  if (!BetterEnchantmentEffects::InstallHooks()) {
+    return false;
+  }
+  a_manager.SetEmissivePathEnabled(true);
+  return true;
+}
+
+void OnDataLoaded(BetterEnchantmentEffects::Manager &a_manager) {
+  using namespace BetterEnchantmentEffects;
+  static bool initialized = false;
+  if (initialized) {
     return;
   }
-  auto *manager = Manager::GetSingleton();
-  switch (a_msg->type) {
-  case SKSE::MessagingInterface::kDataLoaded: {
-    static bool initialized = false;
-    if (initialized) {
-      return;
-    }
-    initialized = true;
-    logger::info("kDataLoaded");
-    SetSettings(LoadSettingsFromDisk());
-    LoadRecipes();
-    for (const Recipe &recipe : LoadedRecipes()) {
-      Trace::Emit(Trace::Event::kRecipe,
-                  {{"id", recipe.id},
-                   {"fingerprint_fnv1a64",
-                    Trace::Fingerprint(SerializeRecipe(recipe))}});
-    }
-    Menu::RegisterMenu();
-    const bool available = CommunityShadersLoaded();
-    manager->SetEmissivePathEnabled(false);
-    if (!available) {
-      logger::error("CommunityShaders.dll is not loaded; emissive path "
-                    "disabled, plugin idle");
-      logger::error("Check the Community Shaders installation and SKSE loader "
-                    "log, then restart Skyrim; all effects require it.");
-      break;
-    }
-    if (!InstallHooks()) {
-      break;
-    }
-    manager->SetEmissivePathEnabled(true);
+  initialized = true;
+  logger::info("kDataLoaded");
+  SetSettings(LoadSettingsFromDisk());
+  LoadRecipes();
+  TraceLoadedRecipes();
+  Menu::RegisterMenu();
+  if (EnableEmissivePath(a_manager)) {
     RegisterEventSinks();
-    break;
   }
+}
+
+void BeginGameLoad(BetterEnchantmentEffects::Manager &a_manager) {
+  BetterEnchantmentEffects::CancelRegression();
+  a_manager.BeginLoad();
+}
+
+void OnMessage(SKSE::MessagingInterface::Message *a_msg) {
+  using namespace BetterEnchantmentEffects;
+  Manager *manager = Manager::GetSingleton();
+  if (!a_msg || !manager) {
+    return;
+  }
+  switch (a_msg->type) {
+  case SKSE::MessagingInterface::kDataLoaded:
+    OnDataLoaded(*manager);
+    break;
   case SKSE::MessagingInterface::kPreLoadGame:
     logger::info("kPreLoadGame");
-    CancelRegression();
-    manager->BeginLoad();
+    BeginGameLoad(*manager);
     break;
   case SKSE::MessagingInterface::kPostLoadGame:
     logger::info("kPostLoadGame");
@@ -141,8 +159,7 @@ void OnMessage(SKSE::MessagingInterface::Message *a_msg) {
     break;
   case SKSE::MessagingInterface::kNewGame:
     logger::info("kNewGame");
-    CancelRegression();
-    manager->BeginLoad();
+    BeginGameLoad(*manager);
     manager->FinishLoad();
     break;
   default:

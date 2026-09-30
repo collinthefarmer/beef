@@ -546,56 +546,75 @@ std::uint64_t RecipeEditor::DuplicateRecipe(std::string a_from,
   return operation->id;
 }
 
-void RecipeEditor::BeginPaint(std::string a_active, RecipeKey a_key,
-                              Surface a_surface, std::uint64_t a_sessionID,
-                              std::uint64_t a_resetID) {
+void RecipeEditor::BeginPaint(Studio::PaintStartRequest a_request) {
   const Trace::Scope trace{Trace::Command("editor.BeginPaint")};
-  runtime_.PostTask([this, active = std::move(a_active), key = std::move(a_key),
-                     a_surface, a_sessionID, a_resetID] {
-    if (a_resetID != paintResetID_) {
+  runtime_.PostTask([this, request = std::move(a_request)] {
+    if (request.resetID != paintResetID_) {
       return;
     }
-    paintSessionID_ = a_sessionID;
+    paintSessionID_ = request.sessionID;
     paintRevision_ = 0;
-    paintUpdate_ = Studio::PaintUpdateResult{a_sessionID, 0, {}};
+    paintUpdate_ = Studio::PaintUpdateResult{request.sessionID, 0, {}};
     const std::span<const Recipe> loaded = LoadedRecipes();
-    const Recipe *source = FindLoaded(loaded, active);
-    if (!source || active == Studio::kPaintRecipe) {
+    const Recipe *source = FindLoaded(loaded, request.recipeID);
+    if (!source || request.recipeID == Studio::kPaintRecipe) {
       paintUpdate_->problem = MakeDiagnostic(Severity::kError, "paint",
                                              "the target recipe is not loaded");
-      logger::warn("paint: recipe {} is not loaded", active);
+      logger::warn("paint: recipe {} is not loaded", request.recipeID);
       return;
     }
-    Recipe paint = Studio::PaintRecipe(*source, key, a_surface);
+    Recipe paint = Studio::PaintRecipe(*source, request.key, request.surface);
     FinishActiveGesture(true);
-    runtime_.ChangeAndRebuildActors({}, [&] {
-      if (IsTransient(Studio::kPaintRecipe)) {
-        [[maybe_unused]] const std::optional<Diagnostic> dropped =
-            DropTransientRecipe(Studio::kPaintRecipe);
-      }
-      if (const std::optional<Diagnostic> refused =
-              AddTransientRecipe(std::move(paint))) {
-        paintUpdate_->problem = MakeDiagnostic(
-            Severity::kError, "paint",
-            std::format("the paint recipe could not be started: {}",
-                        refused->message));
-        if (view_.isolation.recipeID == Studio::kPaintRecipe) {
-          view_.isolation = paintReturn_;
-          paintReturn_ = {};
-        }
-        return;
-      }
-      histories_.erase(std::string{Studio::kPaintRecipe});
-      logger::info("paint: previewing {} on the {} through the paint recipe, "
-                   "keyed by {}",
-                   active, SurfaceName(a_surface), key.ToString());
-      if (view_.isolation.recipeID != Studio::kPaintRecipe) {
-        paintReturn_ = view_.isolation;
-      }
-      view_.isolation =
-          Studio::Isolation::ForRecipe(std::string{Studio::kPaintRecipe});
-    });
+    runtime_.ChangeAndRebuildActors(
+        {}, [&] { InstallPaintRecipe(std::move(paint), request); });
   });
+}
+
+void RecipeEditor::InstallPaintRecipe(
+    Recipe a_paint, const Studio::PaintStartRequest &a_request) {
+  if (IsTransient(Studio::kPaintRecipe)) {
+    [[maybe_unused]] const std::optional<Diagnostic> dropped =
+        DropTransientRecipe(Studio::kPaintRecipe);
+  }
+  if (const std::optional<Diagnostic> refused =
+          AddTransientRecipe(std::move(a_paint))) {
+    if (paintUpdate_) {
+      paintUpdate_->problem = MakeDiagnostic(
+          Severity::kError, "paint",
+          std::format("the paint recipe could not be started: {}",
+                      refused->message));
+    }
+    LeavePaintIsolation();
+    return;
+  }
+  histories_.erase(std::string{Studio::kPaintRecipe});
+  logger::info("paint: previewing {} on the {} through the paint recipe, "
+               "keyed by {}",
+               a_request.recipeID, SurfaceName(a_request.surface),
+               a_request.key.ToString());
+  EnterPaintIsolation();
+}
+
+void RecipeEditor::EnterPaintIsolation() {
+  if (view_.isolation.recipeID != Studio::kPaintRecipe) {
+    paintReturn_ = view_.isolation;
+  }
+  view_.isolation =
+      Studio::Isolation::ForRecipe(std::string{Studio::kPaintRecipe});
+}
+
+void RecipeEditor::LeavePaintIsolation() {
+  if (view_.isolation.recipeID == Studio::kPaintRecipe) {
+    view_.isolation = paintReturn_;
+    paintReturn_ = {};
+  }
+}
+
+void RecipeEditor::DropPaintRecipe() {
+  view_.ForgetRecipe(Studio::kPaintRecipe);
+  [[maybe_unused]] const std::optional<Diagnostic> dropped =
+      DropTransientRecipe(Studio::kPaintRecipe);
+  histories_.erase(std::string{Studio::kPaintRecipe});
 }
 
 void RecipeEditor::UpdatePaint(Studio::PaintUpdateRequest a_request) {
@@ -668,14 +687,9 @@ void RecipeEditor::CancelFileOperationsForLoad() {
 }
 
 void RecipeEditor::CancelPaintForLoad() {
-  if (view_.isolation.recipeID == Studio::kPaintRecipe) {
-    view_.isolation = paintReturn_;
-  }
+  LeavePaintIsolation();
   paintReturn_ = {};
-  view_.ForgetRecipe(Studio::kPaintRecipe);
-  [[maybe_unused]] const std::optional<Diagnostic> dropped =
-      DropTransientRecipe(Studio::kPaintRecipe);
-  histories_.erase(std::string{Studio::kPaintRecipe});
+  DropPaintRecipe();
   paintSessionID_ = 0;
   paintRevision_ = 0;
   paintCommit_.reset();
@@ -686,14 +700,8 @@ void RecipeEditor::FinishPaint() {
   paintSessionID_ = 0;
   paintRevision_ = 0;
   runtime_.ChangeAndRebuildActors({}, [&] {
-    if (view_.isolation.recipeID == Studio::kPaintRecipe) {
-      view_.isolation = paintReturn_;
-      paintReturn_ = {};
-    }
-    view_.ForgetRecipe(Studio::kPaintRecipe);
-    [[maybe_unused]] const std::optional<Diagnostic> dropped =
-        DropTransientRecipe(Studio::kPaintRecipe);
-    histories_.erase(std::string{Studio::kPaintRecipe});
+    LeavePaintIsolation();
+    DropPaintRecipe();
   });
 }
 

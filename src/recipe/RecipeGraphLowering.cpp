@@ -4,10 +4,32 @@
 #include <algorithm>
 #include <format>
 #include <limits>
+#include <span>
 
 namespace BetterEnchantmentEffects {
 using detail::RecipeDeclaration;
 struct RecipeGraphLowering {
+  enum class VisitMark : std::uint8_t { kNew, kOpen, kDone };
+  struct PostOrderFrame {
+    NodeId node;
+    std::vector<OutputRef> inputs;
+    std::size_t next = 0;
+  };
+  struct AnalysisWalk {
+    std::vector<VisitMark> marks;
+    std::vector<PostOrderFrame> stack;
+    std::vector<bool> backendRequired;
+  };
+  struct NodeTraits {
+    bool changing = false;
+    bool sampleDependent = false;
+    bool backendRequired = false;
+  };
+  struct AppliedCurve {
+    FunctionId function = 0;
+    OutputRef mean;
+  };
+
   RecipeGraph &graph;
   const Recipe &recipe;
   std::vector<OutputRef> results;
@@ -120,6 +142,33 @@ struct RecipeGraphLowering {
         original.program.BindContext(time, std::nullopt, std::nullopt);
     return bound;
   }
+  TriggerOperation TriggerOperationFor(const TriggerSignal &signal) {
+    TriggerOperation op;
+    op.time = Time();
+    op.lifetime = Parameter(signal.lifetime);
+    op.max = signal.max;
+    op.payloadType = signal.payload;
+    op.anchor = signal.anchor;
+    op.origin = Match(
+        signal.origin,
+        [&](const WhenOrigin &origin) -> decltype(op.origin) {
+          return ConditionTriggerInput{
+              Reference(origin.when),
+              origin.value ? std::optional{Reference(*origin.value)}
+                           : std::nullopt};
+        },
+        [&](const EventOrigin &origin) -> decltype(op.origin) {
+          return EventTriggerInput{Input(EventInput{origin},
+                                         ResourceType::kEvents,
+                                         "events " + origin.event)};
+        },
+        [&](const PluginOrigin &origin) -> decltype(op.origin) {
+          return EventTriggerInput{Input(EventInput{origin},
+                                         ResourceType::kEvents,
+                                         "plugin events " + origin.id)};
+        });
+    return op;
+  }
   NodeKind SignalKindOf(const Signal &signal,
                         const RecipeDeclaration &declaration) {
     return Match(
@@ -174,31 +223,7 @@ struct RecipeGraphLowering {
           return ExpressionOperation{Expression(declaration)};
         },
         [&](const TriggerSignal &k) -> NodeKind {
-          TriggerOperation op;
-          op.time = Time();
-          op.lifetime = Parameter(k.lifetime);
-          op.max = k.max;
-          op.payloadType = k.payload;
-          op.anchor = k.anchor;
-          op.origin = Match(
-              k.origin,
-              [&](const WhenOrigin &origin) -> decltype(op.origin) {
-                return ConditionTriggerInput{
-                    Reference(origin.when),
-                    origin.value ? std::optional{Reference(*origin.value)}
-                                 : std::nullopt};
-              },
-              [&](const EventOrigin &origin) -> decltype(op.origin) {
-                return EventTriggerInput{Input(EventInput{origin},
-                                               ResourceType::kEvents,
-                                               "events " + origin.event)};
-              },
-              [&](const PluginOrigin &origin) -> decltype(op.origin) {
-                return EventTriggerInput{Input(EventInput{origin},
-                                               ResourceType::kEvents,
-                                               "plugin events " + origin.id)};
-              });
-          return op;
+          return TriggerOperationFor(k);
         },
         [&](const PayloadSignal &k) -> NodeKind {
           return HoldOperation{TriggerPort(k.trigger, 1)};
@@ -355,84 +380,122 @@ struct RecipeGraphLowering {
       if (index < functions.size() && functions[index])
         graph.transformsByLocation_[location] = *functions[index];
   }
-  void Nodes() {
+  OutputRef AddDeclarationNode(std::size_t declaration) {
+    if (declaration >= graph.declarations_.size() ||
+        declaration >= results.size())
+      return {};
+    const RecipeDeclaration &definition = graph.declarations_[declaration];
+    if (Is<Curve>(definition.definition))
+      return {};
+    results[declaration] =
+        Add(ConstantOperation{}, definition.valueType, definition.displayName);
+    OutputRef base = results[declaration];
+    if (definition.resultTransform)
+      base = Add(ConstantOperation{}, definition.valueType,
+                 definition.displayName + " before transform");
+    if (results[declaration].node < graph.nodes_.size() &&
+        base.node < graph.nodes_.size())
+      IndexDeclaration(declaration, base);
+    return base;
+  }
+  void IndexDeclaration(std::size_t declaration, OutputRef base) {
+    if (declaration >= graph.declarations_.size() ||
+        declaration >= results.size())
+      return;
+    const RecipeDeclaration &definition = graph.declarations_[declaration];
+    const NodeId result = results[declaration].node;
+    if (result >= rejected.size() || base.node >= rejected.size())
+      return;
+    rejected[result] = rejected[base.node] = definition.isDisabled;
+    if (const auto *signal = Get<Signal>(definition.definition)) {
+      graph.signalDeclarations_[result] = declaration;
+      graph.signalDeclarations_[base.node] = declaration;
+      if (Is<TriggerSignal>(signal->kind))
+        graph.triggersByName_[signal->name] = base.node;
+    } else if (Is<Source>(definition.definition))
+      graph.sourceDeclarations_[result] = declaration;
+    else
+      graph.maskDeclarations_[result] = declaration;
+  }
+  std::vector<OutputRef> AddDeclarationNodes() {
     results.resize(graph.declarations_.size());
     std::vector<OutputRef> bases(results.size());
-    for (std::size_t i = 0; i < results.size(); ++i) {
-      const auto &declaration = graph.declarations_[i];
-      if (Is<Curve>(declaration.definition))
-        continue;
-      results[i] = Add(ConstantOperation{}, declaration.valueType,
-                       declaration.displayName);
-      bases[i] = results[i];
-      if (declaration.resultTransform)
-        bases[i] = Add(ConstantOperation{}, declaration.valueType,
-                       declaration.displayName + " before transform");
-      if (results[i].node >= graph.nodes_.size() ||
-          bases[i].node >= graph.nodes_.size())
-        continue;
-      rejected[results[i].node] = rejected[bases[i].node] =
-          declaration.isDisabled;
-      if (const auto *signal = Get<Signal>(declaration.definition)) {
-        graph.signalDeclarations_[results[i].node] = i;
-        graph.signalDeclarations_[bases[i].node] = i;
-        if (Is<TriggerSignal>(signal->kind))
-          graph.triggersByName_[signal->name] = bases[i].node;
-      } else if (Is<Source>(declaration.definition))
-        graph.sourceDeclarations_[results[i].node] = i;
-      else
-        graph.maskDeclarations_[results[i].node] = i;
+    for (std::size_t i = 0; i < bases.size(); ++i)
+      bases[i] = AddDeclarationNode(i);
+    return bases;
+  }
+  NodeKind DeclarationKindOf(const RecipeDeclaration &declaration) {
+    return Match(
+        declaration.definition,
+        [&](const Signal &s) { return SignalKindOf(s, declaration); },
+        [&](const Source &s) {
+          NodeKind kind = SourceKindOf(s, declaration.valueType);
+          if (declaration.resultTransform)
+            unscrolledSources.erase(s.name);
+          return kind;
+        },
+        [&](const Mask &) -> NodeKind {
+          return ExpressionOperation{Expression(declaration)};
+        },
+        [](const Curve &) -> NodeKind { return ConstantOperation{}; });
+  }
+  void DeclareTriggerOutputs(NodeId node) {
+    if (node >= graph.nodes_.size())
+      return;
+    graph.nodes_[node].outputs = {{"progress", ValueType::kScalar},
+                                  {"activeFirings", ResourceType::kFirings},
+                                  {"acceptedCount", ResourceType::kCount}};
+  }
+  void ApplyResultTransform(const RecipeDeclaration &declaration,
+                            OutputRef result, OutputRef base) {
+    if (!declaration.resultTransform || result.node >= graph.nodes_.size() ||
+        result.node >= rejected.size())
+      return;
+    const std::size_t function = *declaration.resultTransform;
+    const OutputRef mean = Constant(0.5f);
+    if (function >= functions.size() || !functions[function]) {
+      rejected[result.node] = true;
+      return;
     }
-    for (std::size_t i = 0; i < results.size(); ++i) {
-      const auto &declaration = graph.declarations_[i];
-      const auto node = bases[i].node;
-      if (node >= graph.nodes_.size())
-        continue;
-      NodeKind kind = Match(
-          declaration.definition,
-          [&](const Signal &s) { return SignalKindOf(s, declaration); },
-          [&](const Source &s) {
-            auto kind = SourceKindOf(s, declaration.valueType);
-            if (declaration.resultTransform)
-              unscrolledSources.erase(s.name);
-            return kind;
-          },
-          [&](const Mask &) -> NodeKind {
-            return ExpressionOperation{Expression(declaration)};
-          },
-          [](const Curve &) -> NodeKind { return ConstantOperation{}; });
-      graph.nodes_[node].kind = std::move(kind);
-      if (Is<TriggerOperation>(graph.nodes_[node].kind))
-        graph.nodes_[node].outputs = {{"progress", ValueType::kScalar},
-                                      {"activeFirings", ResourceType::kFirings},
-                                      {"acceptedCount", ResourceType::kCount}};
-      if (declaration.resultTransform) {
-        const auto f = *declaration.resultTransform;
-        const auto mean = Constant(0.5f);
-        if (f < functions.size() && functions[f]) {
-          if (declaration.valueType == ValueType::kScalar)
-            graph.nodes_[results[i].node].kind =
-                CallOperation{*functions[f], {bases[i], mean}};
-          else {
-            const auto mapped = MapComponents(
-                *functions[f], bases[i], mean, declaration.valueType,
-                declaration.displayName + " transformed value");
-            if (mapped.node < graph.nodes_.size())
-              graph.nodes_[results[i].node].kind =
-                  graph.nodes_[mapped.node].kind;
-            else
-              rejected[results[i].node] = true;
-          }
-        } else
-          rejected[results[i].node] = true;
-      }
+    const AppliedCurve curve{*functions[function], mean};
+    if (declaration.valueType == ValueType::kScalar) {
+      graph.nodes_[result.node].kind =
+          CallOperation{curve.function, {base, curve.mean}};
+      return;
     }
-    BindOutputs();
+    const OutputRef mapped =
+        MapComponents(curve, base, declaration.valueType,
+                      declaration.displayName + " transformed value");
+    if (mapped.node < graph.nodes_.size())
+      graph.nodes_[result.node].kind = graph.nodes_[mapped.node].kind;
+    else
+      rejected[result.node] = true;
+  }
+  void LowerDeclaration(std::size_t declaration, OutputRef base) {
+    if (declaration >= graph.declarations_.size() ||
+        declaration >= results.size() || base.node >= graph.nodes_.size())
+      return;
+    const RecipeDeclaration &definition = graph.declarations_[declaration];
+    NodeKind kind = DeclarationKindOf(definition);
+    graph.nodes_[base.node].kind = std::move(kind);
+    if (Is<TriggerOperation>(graph.nodes_[base.node].kind))
+      DeclareTriggerOutputs(base.node);
+    if (definition.resultTransform)
+      ApplyResultTransform(definition, results[declaration], base);
+  }
+  void IndexNamesByResult() {
     auto names = std::move(graph.nodeIndicesByName_);
     graph.nodeIndicesByName_.clear();
     for (const auto &[name, index] : names)
       if (index < results.size() && results[index].node < graph.nodes_.size())
         graph.nodeIndicesByName_[name] = results[index].node;
+  }
+  void Nodes() {
+    const std::vector<OutputRef> bases = AddDeclarationNodes();
+    for (std::size_t i = 0; i < bases.size(); ++i)
+      LowerDeclaration(i, bases[i]);
+    BindOutputs();
+    IndexNamesByResult();
   }
   OutputRef Project(OutputRef value, ValueType type,
                     const std::string &expression, const std::string &label) {
@@ -443,11 +506,12 @@ struct RecipeGraphLowering {
         ExpressionOperation{BoundExpression{std::move(*program), {value}, {}}},
         type, label);
   }
-  OutputRef MapComponents(FunctionId function, OutputRef source, OutputRef mean,
+  OutputRef MapComponents(const AppliedCurve &curve, OutputRef source,
                           GraphValueType type, const std::string &label) {
     const auto *numeric = Get<ValueType>(type);
     if (!numeric || *numeric == ValueType::kScalar)
-      return Add(MapFunctionOperation{function, {source, mean}}, type, label);
+      return Add(MapFunctionOperation{curve.function, {source, curve.mean}},
+                 type, label);
     VectorOperation result;
     const std::array<std::string, 3> axes =
         *numeric == ValueType::kVec2
@@ -461,7 +525,7 @@ struct RecipeGraphLowering {
       const auto component =
           Project(source, ValueType::kScalar, axes[i], label + " component");
       result.components.push_back(
-          Add(MapFunctionOperation{function, {component, mean}},
+          Add(MapFunctionOperation{curve.function, {component, curve.mean}},
               ValueType::kScalar, label + " mapped component"));
     }
     return Add(std::move(result), type, label);
@@ -469,86 +533,97 @@ struct RecipeGraphLowering {
   void BindOutput(std::string property, OutputRef value) {
     graph.outputBindings_.push_back({std::move(property), value});
   }
-  void BindOutputs() {
-    for (std::size_t i = 0; i < recipe.outputs.size(); ++i) {
-      const auto label = OutputWhere(i);
-      Match(
-          recipe.outputs[i],
-          [&](const SurfaceOutput &surface) {
-            for (std::size_t j = 0; j < surface.stack.size(); ++j) {
-              const auto &layer = surface.stack[j];
-              const auto location = LayerWhere(i, j);
-              auto source = Match(
-                  layer.source, [&](const Ref &ref) { return Reference(ref); },
-                  [&](const Vec3 &value) { return Constant(value); });
-              if (const auto f = graph.transformsByLocation_.find(location);
-                  f != graph.transformsByLocation_.end()) {
-                const auto original =
-                    graph.resultTransformsByLocation_.find(location);
-                const auto *program =
-                    original != graph.resultTransformsByLocation_.end() &&
-                            graph.declarations_[original->second].expression
-                        ? &graph.declarations_[original->second]
-                               .expression->program
-                        : nullptr;
-                auto type = source.node < graph.nodes_.size()
-                                ? graph.nodes_[source.node].outputs.front().type
-                                : GraphValueType{ValueType::kScalar};
-                const auto mean =
-                    program && program->UsesMean()
-                        ? SourceMean(layer, source, type, location)
-                        : Constant(0.5f);
-                if (layer.color) {
-                  auto tint = Program::Parse("@value * @color");
-                  if (tint)
-                    source = Add(ExpressionOperation{BoundExpression{
-                                     std::move(*tint),
-                                     {source, Parameter(*layer.color)},
-                                     {}}},
-                                 ValueType::kVec3, location + " tinted source");
-                  type = ValueType::kVec3;
-                }
-                source = MapComponents(f->second, source, mean, type,
-                                       location + " transformed source");
-              }
-              BindOutput(location + " source", source);
-              BindOutput(location + " opacity", Parameter(layer.opacity));
-              if (layer.color)
-                BindOutput(location + " color", layer.curve
-                                                    ? Constant(Vec3{1, 1, 1})
-                                                    : Parameter(*layer.color));
-              if (layer.mask)
-                BindOutput(location + " mask", Reference(*layer.mask));
-            }
-            const auto scalar = [&](const std::string &name,
-                                    const std::optional<Param> &value) {
-              if (value)
-                BindOutput(std::format("{} {}", label, name),
-                           Parameter(*value));
-            };
-            scalar("strength", surface.scalars.strength);
-            scalar("scale", surface.scalars.scale);
-            scalar("weight", surface.scalars.weight);
-            scalar("screenSpaceScale", surface.scalars.screenSpaceScale);
-            scalar("logMicrofacetDensity",
-                   surface.scalars.logMicrofacetDensity);
-            scalar("microfacetRoughness", surface.scalars.microfacetRoughness);
-            scalar("densityRandomization",
-                   surface.scalars.densityRandomization);
-            scalar("roughness", surface.scalars.roughness);
-            scalar("level", surface.scalars.level);
-            scalar("thickness", surface.scalars.thickness);
-            if (surface.scalars.color)
-              BindOutput(label + " color", Parameter(*surface.scalars.color));
-          },
-          [&](const LightOutput &light) {
-            BindOutput(label + " offset", Parameter(light.offset));
-            BindOutput(label + " color", Parameter(light.color));
-            BindOutput(label + " intensity", Parameter(light.intensity));
-            BindOutput(label + " size", Parameter(light.size));
-            BindOutput(label + " cutoff", Parameter(light.cutoff));
-          });
+  [[nodiscard]] const Program *
+  CurveProgramAt(const std::string &location) const {
+    const auto original = graph.resultTransformsByLocation_.find(location);
+    if (original == graph.resultTransformsByLocation_.end() ||
+        original->second >= graph.declarations_.size())
+      return nullptr;
+    const RecipeDeclaration &declaration =
+        graph.declarations_[original->second];
+    return declaration.expression ? &declaration.expression->program : nullptr;
+  }
+  [[nodiscard]] GraphValueType NodeTypeOf(OutputRef value) const {
+    if (value.node >= graph.nodes_.size() ||
+        graph.nodes_[value.node].outputs.empty())
+      return ValueType::kScalar;
+    return graph.nodes_[value.node].outputs.front().type;
+  }
+  OutputRef Tinted(OutputRef source, const Vec3Param &color,
+                   const std::string &location) {
+    auto tint = Program::Parse("@value * @color");
+    if (!tint)
+      return source;
+    return Add(ExpressionOperation{BoundExpression{
+                   std::move(*tint), {source, Parameter(color)}, {}}},
+               ValueType::kVec3, location + " tinted source");
+  }
+  OutputRef TransformedSource(const Layer &layer, OutputRef source,
+                              FunctionId curve, const std::string &location) {
+    const Program *program = CurveProgramAt(location);
+    GraphValueType type = NodeTypeOf(source);
+    const OutputRef mean = program && program->UsesMean()
+                               ? SourceMean(layer, source, type, location)
+                               : Constant(0.5f);
+    if (layer.color) {
+      source = Tinted(source, *layer.color, location);
+      type = ValueType::kVec3;
     }
+    return MapComponents(AppliedCurve{curve, mean}, source, type,
+                         location + " transformed source");
+  }
+  void BindLayer(std::size_t output, std::size_t layer,
+                 const Layer &definition) {
+    const std::string location = LayerWhere(output, layer);
+    OutputRef source = Match(
+        definition.source, [&](const Ref &ref) { return Reference(ref); },
+        [&](const Vec3 &value) { return Constant(value); });
+    if (const auto curve = graph.transformsByLocation_.find(location);
+        curve != graph.transformsByLocation_.end())
+      source = TransformedSource(definition, source, curve->second, location);
+    BindOutput(location + " source", source);
+    BindOutput(location + " opacity", Parameter(definition.opacity));
+    if (definition.color)
+      BindOutput(location + " color", definition.curve
+                                          ? Constant(Vec3{1, 1, 1})
+                                          : Parameter(*definition.color));
+    if (definition.mask)
+      BindOutput(location + " mask", Reference(*definition.mask));
+  }
+  void BindOptional(const std::string &property,
+                    const std::optional<Param> &value) {
+    if (value)
+      BindOutput(property, Parameter(*value));
+  }
+  void BindSurfaceScalars(const std::string &label,
+                          const SlotScalars &scalars) {
+    BindOptional(label + " strength", scalars.strength);
+    BindOptional(label + " scale", scalars.scale);
+    BindOptional(label + " weight", scalars.weight);
+    BindOptional(label + " screenSpaceScale", scalars.screenSpaceScale);
+    BindOptional(label + " logMicrofacetDensity", scalars.logMicrofacetDensity);
+    BindOptional(label + " microfacetRoughness", scalars.microfacetRoughness);
+    BindOptional(label + " densityRandomization", scalars.densityRandomization);
+    BindOptional(label + " roughness", scalars.roughness);
+    BindOptional(label + " level", scalars.level);
+    BindOptional(label + " thickness", scalars.thickness);
+    if (scalars.color)
+      BindOutput(label + " color", Parameter(*scalars.color));
+  }
+  void BindSurfaceOutput(std::size_t output, const SurfaceOutput &surface) {
+    for (std::size_t layer = 0; layer < surface.stack.size(); ++layer)
+      BindLayer(output, layer, surface.stack[layer]);
+    BindSurfaceScalars(OutputWhere(output), surface.scalars);
+  }
+  void BindLightOutput(std::size_t output, const LightOutput &light) {
+    const std::string label = OutputWhere(output);
+    BindOutput(label + " offset", Parameter(light.offset));
+    BindOutput(label + " color", Parameter(light.color));
+    BindOutput(label + " intensity", Parameter(light.intensity));
+    BindOutput(label + " size", Parameter(light.size));
+    BindOutput(label + " cutoff", Parameter(light.cutoff));
+  }
+  void BindShellOutputs() {
     BindOutput("shell opacity", Parameter(recipe.shell.opacity));
     BindOutput("shell rimPower", Parameter(recipe.shell.rimPower));
     BindOutput("shell emissive", Parameter(recipe.shell.emissive));
@@ -557,167 +632,220 @@ struct RecipeGraphLowering {
     BindOutput("shell scale", Parameter(recipe.shell.pose.scale));
     BindOutput("shell spin", Parameter(recipe.shell.pose.spin));
   }
-  void Analyze() {
-    const auto count = graph.nodes_.size();
-    graph.disabled_.assign(rejected.begin(), rejected.begin() + count);
+  void BindOutputs() {
+    for (std::size_t i = 0; i < recipe.outputs.size(); ++i) {
+      if (const SurfaceOutput *surface = SurfaceOutputOf(recipe, i))
+        BindSurfaceOutput(i, *surface);
+      else if (const LightOutput *light = LightOutputOf(recipe, i))
+        BindLightOutput(i, *light);
+    }
+    BindShellOutputs();
+  }
+  void ResetDerivedState() {
+    const std::size_t count = graph.nodes_.size();
+    graph.disabled_.assign(
+        rejected.begin(),
+        rejected.begin() +
+            static_cast<std::ptrdiff_t>(std::min(count, rejected.size())));
+    graph.disabled_.resize(count, false);
     graph.sampleDependent_.assign(count, false);
     graph.changing_.assign(count, false);
     graph.dependencyOrder_.clear();
     graph.signalEvaluationOrder_.clear();
-    enum class Mark : std::uint8_t { kNew, kOpen, kDone };
-    std::vector<Mark> marks(count, Mark::kNew);
-    std::vector<bool> backendRequired(count, false);
-    struct Frame {
-      NodeId node;
-      std::vector<OutputRef> inputs;
-      std::size_t next = 0;
-    };
-    std::vector<Frame> stack;
-    for (NodeId root = 0; root < count; ++root) {
-      if (marks[root] != Mark::kNew)
-        continue;
-      marks[root] = Mark::kOpen;
-      stack.push_back({root, InputsOf(graph.nodes_[root].kind)});
-      while (!stack.empty()) {
-        auto &frame = stack.back();
-        if (frame.next < frame.inputs.size()) {
-          const auto input = frame.inputs[frame.next++];
-          if (input.node >= count ||
-              input.output >= graph.nodes_[input.node].outputs.size()) {
-            graph.disabled_[frame.node] = true;
-            continue;
-          }
-          if (marks[input.node] == Mark::kOpen) {
-            graph.disabled_[frame.node] = true;
-            graph.disabled_[input.node] = true;
-            continue;
-          }
-          if (marks[input.node] == Mark::kNew) {
-            marks[input.node] = Mark::kOpen;
-            stack.push_back(
-                {input.node, InputsOf(graph.nodes_[input.node].kind)});
-          }
-          continue;
-        }
-        const auto id = frame.node;
-        const auto &kind = graph.nodes_[id].kind;
-        bool changing = Stateful(kind), sample = false;
-        backendRequired[id] = Is<ReductionOperation>(kind);
-        if (const auto *external = Get<ExternalInput>(kind)) {
-          sample = Is<SampleUvInput>(external->source);
-          backendRequired[id] = Is<NodePositionInput>(external->source);
-          changing = Is<TimeInput>(external->source) ||
-                     Is<DeltaTimeInput>(external->source) ||
-                     Is<ActorValueSignal>(external->source) ||
-                     Is<ActorStateSignal>(external->source) ||
-                     Is<EnchantmentSignal>(external->source) ||
-                     Is<RootTransformInput>(external->source) ||
-                     Is<EventInput>(external->source);
-        }
-        for (const auto input : frame.inputs) {
-          if (input.node >= count)
-            continue;
-          backendRequired[id] =
-              backendRequired[id] || backendRequired[input.node];
-          changing = changing || graph.changing_[input.node];
-          sample = sample || graph.sampleDependent_[input.node];
-          graph.disabled_[id] =
-              graph.disabled_[id] || graph.disabled_[input.node];
-        }
-        const auto invalidFunction = [&](FunctionId function) {
-          return function >= graph.functions_.size() ||
-                 graph.functions_[function].isDisabled;
-        };
-        const auto invalidCall = [&](FunctionId function,
-                                     std::span<const OutputRef> arguments) {
-          if (invalidFunction(function))
-            return true;
-          const auto &definition = graph.functions_[function];
-          if (arguments.size() != definition.parameters.size())
-            return true;
-          for (std::size_t i = 0; i < arguments.size(); ++i)
-            if (graph.OutputType(arguments[i]) !=
-                std::optional<GraphValueType>{definition.parameters[i].type})
-              return true;
-          if (definition.result.node >= definition.nodes.size())
-            return true;
-          const auto &outputs =
-              definition.nodes[definition.result.node].outputs;
-          return definition.result.output >= outputs.size() ||
-                 graph.nodes_[id].outputs.empty() ||
-                 graph.nodes_[id].outputs.front().type !=
-                     outputs[definition.result.output].type;
-        };
-        if (const auto *call = Get<CallOperation>(kind))
-          graph.disabled_[id] = graph.disabled_[id] ||
-                                invalidCall(call->function, call->arguments);
-        if (const auto *map = Get<MapFunctionOperation>(kind))
-          graph.disabled_[id] =
-              graph.disabled_[id] || invalidCall(map->function, map->arguments);
-        if (const auto *expression = Get<ExpressionOperation>(kind)) {
-          for (const auto &binding : expression->expression.functionBindings) {
-            if (invalidFunction(binding.function)) {
-              graph.disabled_[id] = true;
-              continue;
-            }
-            const auto &function = graph.functions_[binding.function];
-            std::vector<bool> bound(function.parameters.size());
-            if (binding.sampledParameter >= bound.size() ||
-                function.parameters[binding.sampledParameter].type !=
-                    ValueType::kScalar) {
-              graph.disabled_[id] = true;
-              continue;
-            }
-            bound[binding.sampledParameter] = true;
-            for (const auto &argument : binding.arguments) {
-              if (argument.parameter >= bound.size() ||
-                  bound[argument.parameter]) {
-                graph.disabled_[id] = true;
-                continue;
-              }
-              bound[argument.parameter] = true;
-              if (graph.OutputType(argument.value) !=
-                  std::optional<GraphValueType>{
-                      function.parameters[argument.parameter].type})
-                graph.disabled_[id] = true;
-            }
-            if (std::ranges::find(bound, false) != bound.end())
-              graph.disabled_[id] = true;
-          }
-        }
-        if (const auto *reduction = Get<ReductionOperation>(kind)) {
-          const auto inputType = graph.OutputType(reduction->value);
-          if (!inputType || !Is<ValueType>(*inputType) ||
-              graph.nodes_[id].outputs.empty() ||
-              graph.nodes_[id].outputs.front().type != *inputType)
-            graph.disabled_[id] = true;
-          if (static_cast<unsigned>(reduction->kind) >
-              static_cast<unsigned>(ReductionKind::kMaximum))
-            graph.disabled_[id] = true;
-        }
-        if (Stateful(kind) && backendRequired[id]) {
-          graph.disabled_[id] = true;
-          graph.diagnostics_.push_back(
-              {Severity::kError, graph.nodes_[id].displayName,
-               "render results cannot feed tick signal state"});
-        }
-        graph.changing_[id] = changing;
-        graph.sampleDependent_[id] = sample && !Is<ReductionOperation>(kind);
-        graph.dependencyOrder_.push_back(id);
-        if (!graph.sampleDependent_[id] && !backendRequired[id]) {
-          graph.tickOrder_.push_back(id);
-          if (changing)
-            graph.changingTickOrder_.push_back(id);
-        }
-        marks[id] = Mark::kDone;
-        stack.pop_back();
-      }
+  }
+  [[nodiscard]] static NodeTraits TraitsOf(const NodeKind &kind) {
+    NodeTraits traits{Stateful(kind), false, Is<ReductionOperation>(kind)};
+    if (const auto *external = Get<ExternalInput>(kind)) {
+      traits.sampleDependent = Is<SampleUvInput>(external->source);
+      traits.backendRequired = Is<NodePositionInput>(external->source);
+      traits.changing = Is<TimeInput>(external->source) ||
+                        Is<DeltaTimeInput>(external->source) ||
+                        Is<ActorValueSignal>(external->source) ||
+                        Is<ActorStateSignal>(external->source) ||
+                        Is<EnchantmentSignal>(external->source) ||
+                        Is<RootTransformInput>(external->source) ||
+                        Is<EventInput>(external->source);
     }
+    return traits;
+  }
+  [[nodiscard]] NodeTraits WithInputTraits(NodeTraits own,
+                                           std::span<const OutputRef> inputs,
+                                           const AnalysisWalk &walk) const {
+    for (const OutputRef input : inputs) {
+      if (input.node >= graph.nodes_.size() ||
+          input.node >= walk.backendRequired.size())
+        continue;
+      own.backendRequired =
+          own.backendRequired || walk.backendRequired[input.node];
+      own.changing = own.changing || graph.changing_[input.node];
+      own.sampleDependent =
+          own.sampleDependent || graph.sampleDependent_[input.node];
+    }
+    return own;
+  }
+  void InheritDisabled(NodeId node, std::span<const OutputRef> inputs) {
+    for (const OutputRef input : inputs)
+      if (input.node < graph.nodes_.size())
+        graph.disabled_[node] =
+            graph.disabled_[node] || graph.disabled_[input.node];
+  }
+  [[nodiscard]] bool IsValidFunction(FunctionId function) const {
+    return function < graph.functions_.size() &&
+           !graph.functions_[function].isDisabled;
+  }
+  [[nodiscard]] bool IsValidCall(NodeId node, FunctionId function,
+                                 std::span<const OutputRef> arguments) const {
+    if (!IsValidFunction(function))
+      return false;
+    const FunctionDefinition &definition = graph.functions_[function];
+    if (arguments.size() != definition.parameters.size())
+      return false;
+    for (std::size_t i = 0; i < arguments.size(); ++i)
+      if (graph.OutputType(arguments[i]) !=
+          std::optional<GraphValueType>{definition.parameters[i].type})
+        return false;
+    const std::optional<GraphValueType> result =
+        FunctionResultTypeOf(definition);
+    return result && !graph.nodes_[node].outputs.empty() &&
+           graph.nodes_[node].outputs.front().type == *result;
+  }
+  [[nodiscard]] bool
+  IsValidFunctionBinding(const BoundFunction &binding) const {
+    if (!IsValidFunction(binding.function))
+      return false;
+    const FunctionDefinition &function = graph.functions_[binding.function];
+    std::vector<bool> bound(function.parameters.size());
+    if (binding.sampledParameter >= bound.size() ||
+        function.parameters[binding.sampledParameter].type !=
+            ValueType::kScalar)
+      return false;
+    bound[binding.sampledParameter] = true;
+    for (const BoundFunctionArgument &argument : binding.arguments) {
+      if (argument.parameter >= bound.size() || bound[argument.parameter])
+        return false;
+      bound[argument.parameter] = true;
+      if (graph.OutputType(argument.value) !=
+          std::optional<GraphValueType>{
+              function.parameters[argument.parameter].type})
+        return false;
+    }
+    return std::ranges::find(bound, false) == bound.end();
+  }
+  [[nodiscard]] bool
+  IsValidReduction(NodeId node, const ReductionOperation &reduction) const {
+    const std::optional<GraphValueType> inputType =
+        graph.OutputType(reduction.value);
+    if (!inputType || !Is<ValueType>(*inputType) ||
+        graph.nodes_[node].outputs.empty() ||
+        graph.nodes_[node].outputs.front().type != *inputType)
+      return false;
+    return static_cast<unsigned>(reduction.kind) <=
+           static_cast<unsigned>(ReductionKind::kMaximum);
+  }
+  [[nodiscard]] bool IsValidOperation(NodeId node) const {
+    const NodeKind &kind = graph.nodes_[node].kind;
+    if (const auto *call = Get<CallOperation>(kind))
+      return IsValidCall(node, call->function, call->arguments);
+    if (const auto *map = Get<MapFunctionOperation>(kind))
+      return IsValidCall(node, map->function, map->arguments);
+    if (const auto *expression = Get<ExpressionOperation>(kind))
+      return std::ranges::all_of(expression->expression.functionBindings,
+                                 [&](const BoundFunction &binding) {
+                                   return IsValidFunctionBinding(binding);
+                                 });
+    if (const auto *reduction = Get<ReductionOperation>(kind))
+      return IsValidReduction(node, *reduction);
+    return true;
+  }
+  void RejectBackendState(NodeId node) {
+    graph.disabled_[node] = true;
+    graph.diagnostics_.push_back(
+        {Severity::kError, graph.nodes_[node].displayName,
+         "render results cannot feed tick signal state"});
+  }
+  void AppendToOrders(NodeId node, NodeTraits traits) {
+    const bool reduction = Is<ReductionOperation>(graph.nodes_[node].kind);
+    graph.changing_[node] = traits.changing;
+    graph.sampleDependent_[node] = traits.sampleDependent && !reduction;
+    graph.dependencyOrder_.push_back(node);
+    if (graph.sampleDependent_[node] || traits.backendRequired)
+      return;
+    graph.tickOrder_.push_back(node);
+    if (traits.changing)
+      graph.changingTickOrder_.push_back(node);
+  }
+  void SettleNode(const PostOrderFrame &frame, AnalysisWalk &walk) {
+    const NodeId node = frame.node;
+    if (node >= graph.nodes_.size() || node >= walk.marks.size())
+      return;
+    const NodeKind &kind = graph.nodes_[node].kind;
+    const NodeTraits traits =
+        WithInputTraits(TraitsOf(kind), frame.inputs, walk);
+    walk.backendRequired[node] = traits.backendRequired;
+    InheritDisabled(node, frame.inputs);
+    if (!IsValidOperation(node))
+      graph.disabled_[node] = true;
+    if (Stateful(kind) && traits.backendRequired)
+      RejectBackendState(node);
+    AppendToOrders(node, traits);
+    walk.marks[node] = VisitMark::kDone;
+  }
+  void OpenNextInput(AnalysisWalk &walk) {
+    if (walk.stack.empty())
+      return;
+    PostOrderFrame &frame = walk.stack.back();
+    if (frame.next >= frame.inputs.size())
+      return;
+    const OutputRef input = frame.inputs[frame.next++];
+    const NodeId waiting = frame.node;
+    if (input.node >= graph.nodes_.size() || input.node >= walk.marks.size() ||
+        input.output >= graph.nodes_[input.node].outputs.size()) {
+      graph.disabled_[waiting] = true;
+      return;
+    }
+    if (walk.marks[input.node] == VisitMark::kOpen) {
+      graph.disabled_[waiting] = true;
+      graph.disabled_[input.node] = true;
+      return;
+    }
+    if (walk.marks[input.node] == VisitMark::kNew) {
+      walk.marks[input.node] = VisitMark::kOpen;
+      walk.stack.push_back(
+          {input.node, InputsOf(graph.nodes_[input.node].kind), 0});
+    }
+  }
+  void AnalyzeFrom(NodeId root, AnalysisWalk &walk) {
+    if (root >= graph.nodes_.size() || root >= walk.marks.size())
+      return;
+    walk.marks[root] = VisitMark::kOpen;
+    walk.stack.push_back({root, InputsOf(graph.nodes_[root].kind), 0});
+    while (!walk.stack.empty()) {
+      if (walk.stack.back().next < walk.stack.back().inputs.size()) {
+        OpenNextInput(walk);
+        continue;
+      }
+      const PostOrderFrame settled = std::move(walk.stack.back());
+      walk.stack.pop_back();
+      SettleNode(settled, walk);
+    }
+  }
+  void OrderSignalEvaluation() {
+    for (const NodeId node : graph.tickOrder_)
+      if (const auto *signal = graph.SignalAt(node);
+          signal && graph.FindSignalIndex(signal->name) == node)
+        graph.signalEvaluationOrder_.push_back(node);
+  }
+  void Analyze() {
+    ResetDerivedState();
+    const std::size_t count = graph.nodes_.size();
+    AnalysisWalk walk{std::vector<VisitMark>(count, VisitMark::kNew),
+                      {},
+                      std::vector<bool>(count, false)};
+    for (NodeId root = 0; root < count; ++root)
+      if (walk.marks[root] == VisitMark::kNew)
+        AnalyzeFrom(root, walk);
     graph.lowered_ = true;
-    for (const auto id : graph.tickOrder_)
-      if (const auto *signal = graph.SignalAt(id);
-          signal && graph.FindSignalIndex(signal->name) == id)
-        graph.signalEvaluationOrder_.push_back(id);
+    OrderSignalEvaluation();
   }
   void Run() {
     Functions();

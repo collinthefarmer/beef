@@ -92,6 +92,8 @@ struct InputRenumbering {
 [[nodiscard]] std::size_t OpcodePops(ProgramOpcode opcode) noexcept;
 [[nodiscard]] std::size_t
 StackDepthOf(std::span<const ProgramInstruction> code) noexcept;
+[[nodiscard]] bool SamplesAsLookup(const FunctionDefinition &function,
+                                   std::size_t sampledParameter);
 class FieldProgram {
 public:
   [[nodiscard]] static FieldProgram Sample(ValueType type, bool texture = true);
@@ -122,6 +124,17 @@ private:
                                std::size_t inlinedInput,
                                const FieldProgram &producer);
   [[nodiscard]] bool FitsLimits(const ProgramLimits &limits) const;
+  [[nodiscard]] std::expected<std::vector<ValueType>, std::string>
+  AppendExpressionInputs(const RecipeGraph &graph,
+                         std::span<const OutputRef> bindings,
+                         std::size_t textureLimit);
+  [[nodiscard]] std::expected<void, std::string>
+  AppendFunctionLookups(const RecipeGraph &graph,
+                        std::span<const BoundFunction> bindings);
+  [[nodiscard]] std::expected<void, std::string>
+  AppendInstructions(std::span<const Program::Node> code,
+                     std::span<const ValueType> inputTypes,
+                     std::size_t stackLimit);
   std::vector<ProgramInstruction> instructions_;
   std::vector<ProgramInput> inputs_;
   std::vector<FunctionLookup> lookups_;

@@ -5,6 +5,7 @@
 #include "recipe/Expression.h"
 #include "recipe/Words.h"
 #include "studio/Fields.h"
+#include "studio/Names.h"
 #include "studio/PaintSession.h"
 #include "studio/Rows.h"
 
@@ -773,6 +774,46 @@ std::vector<TermOffer> OffersOf(const MaskPresets &a_presets,
   return offers;
 }
 
+namespace {
+TermOffer *FindMaterialOffer(std::vector<TermOffer> &a_all,
+                             const TermKind &a_kind) {
+  const auto existing =
+      std::ranges::find_if(a_all, [&](const TermOffer &a_offer) {
+        return a_offer.group == OfferGroup::kMaterials &&
+               a_offer.kind == a_kind;
+      });
+  return existing != a_all.end() ? &*existing : nullptr;
+}
+
+void MergeMaterialOffer(TermOffer &a_existing, TermOffer a_incoming) {
+  if (a_existing.unavailable && !a_incoming.unavailable) {
+    a_existing = std::move(a_incoming);
+  } else if (!a_existing.unavailable && !a_incoming.unavailable) {
+    a_existing.geometry.clear();
+    if (a_existing.detail != a_incoming.detail) {
+      a_existing.detail = "appearance varies by geometry";
+    }
+    if (a_existing.coverage != a_incoming.coverage) {
+      a_existing.coverage.reset();
+    }
+  }
+}
+
+void CollectOffer(std::vector<TermOffer> &a_all, TermOffer a_offer,
+                  bool a_firstGeometry) {
+  if (a_offer.group == OfferGroup::kMaterials) {
+    if (TermOffer *existing = FindMaterialOffer(a_all, a_offer.kind)) {
+      MergeMaterialOffer(*existing, std::move(a_offer));
+      return;
+    }
+  }
+  const OfferGroupSpec *row = RowOf(kOfferGroups, a_offer.group);
+  if (a_firstGeometry || (row && row->ofGeometry)) {
+    a_all.push_back(std::move(a_offer));
+  }
+}
+}
+
 std::vector<TermOffer> OffersOfRecipe(const MaskPresets &a_presets,
                                       const RecipeRow &a_recipe,
                                       std::string_view a_editing) {
@@ -781,35 +822,35 @@ std::vector<TermOffer> OffersOfRecipe(const MaskPresets &a_presets,
   for (const GeometryRow &geometry : a_recipe.geometries) {
     for (TermOffer &offer :
          OffersOf(a_presets, a_recipe, geometry, a_editing)) {
-      const OfferGroupSpec *row = RowOf(kOfferGroups, offer.group);
-      if (offer.group == OfferGroup::kMaterials) {
-        auto existing =
-            std::ranges::find_if(all, [&](const TermOffer &a_offer) {
-              return a_offer.group == OfferGroup::kMaterials &&
-                     a_offer.kind == offer.kind;
-            });
-        if (existing != all.end()) {
-          if (existing->unavailable && !offer.unavailable) {
-            *existing = std::move(offer);
-          } else if (!existing->unavailable && !offer.unavailable) {
-            existing->geometry.clear();
-            if (existing->detail != offer.detail) {
-              existing->detail = "appearance varies by geometry";
-            }
-            if (existing->coverage != offer.coverage) {
-              existing->coverage.reset();
-            }
-          }
-          continue;
-        }
-      }
-      if (first || (row && row->ofGeometry)) {
-        all.push_back(std::move(offer));
-      }
+      CollectOffer(all, std::move(offer), first);
     }
     first = false;
   }
   return all;
+}
+
+bool OfferMatches(const TermOffer &a_offer, std::string_view a_filter) {
+  const OfferGroupSpec *group = RowOf(kOfferGroups, a_offer.group);
+  const std::string_view groupName = group ? group->name : std::string_view{};
+  return NameMatches(a_offer.name, a_filter) ||
+         NameMatches(a_offer.detail, a_filter) ||
+         NameMatches(groupName, a_filter);
+}
+
+std::vector<const TermOffer *>
+OffersInGroup(std::span<const TermOffer> a_offers, OfferGroup a_group,
+              std::string_view a_filter) {
+  std::vector<const TermOffer *> rows;
+  for (const TermOffer &offer : a_offers) {
+    if (offer.group == a_group && OfferMatches(offer, a_filter)) {
+      rows.push_back(&offer);
+    }
+  }
+  std::ranges::sort(rows, [](const TermOffer *a_left,
+                             const TermOffer *a_right) {
+    return a_left->coverage.value_or(0.0f) > a_right->coverage.value_or(0.0f);
+  });
+  return rows;
 }
 
 std::string TermDetailOf(const Term &a_term,

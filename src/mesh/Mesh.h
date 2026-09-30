@@ -6,8 +6,10 @@
 #include "recipe/Recipe.h"
 
 #include <array>
+#include <cmath>
 #include <cstddef>
 #include <cstdint>
+#include <map>
 #include <optional>
 #include <span>
 #include <string>
@@ -33,6 +35,19 @@ struct MeshPartition {
   std::vector<std::array<std::uint32_t, 3>> triangles;
   [[nodiscard]] bool operator==(const MeshPartition &) const = default;
 };
+
+inline void AddBoneWeights(std::map<std::string, float> &a_weights,
+                           const MeshVertex &a_vertex,
+                           const MeshPartition &a_partition) {
+  for (std::size_t slot = 0; slot < a_vertex.bones.size(); ++slot) {
+    const std::uint16_t bone = a_vertex.bones[slot];
+    const float weight = a_vertex.weights[slot];
+    if (bone < a_partition.boneNames.size() && std::isfinite(weight) &&
+        weight > 0.0f) {
+      a_weights[a_partition.boneNames[bone]] += weight;
+    }
+  }
+}
 
 struct MeshData {
   Vec3 center;

@@ -24,8 +24,7 @@ public:
           bool a_dynamic);
   [[nodiscard]] std::shared_ptr<RenderTarget>
   SampledPreview(std::string a_context, RE::NiSourceTexture *a_source,
-                 const TextureLab::LayerInput &a_sampling, float a_normalize,
-                 bool a_dynamic);
+                 const TextureLab::PreviewSampling &a_sampling, bool a_dynamic);
   [[nodiscard]] TextureLab::PreviewDraw *
   RetainDraw(std::shared_ptr<RenderTarget> a_target);
   void CollectDraws();
@@ -37,11 +36,6 @@ private:
   TextureLab &renderer_;
   using PreviewKey =
       std::tuple<RE::NiSourceTexture *, ShaderChannel, std::string>;
-  struct Sampling {
-    TextureLab::LayerInput input;
-    float normalize = 1.0f;
-    [[nodiscard]] bool operator==(const Sampling &) const = default;
-  };
   struct PreviewEntry {
     TextureRef source;
     std::shared_ptr<RenderTarget> target;
@@ -50,14 +44,14 @@ private:
     bool wanted = false;
     bool ready = false;
     bool dirty = false;
-    std::optional<Sampling> sampling;
+    std::optional<TextureLab::PreviewSampling> sampling;
   };
   struct PreviewWork {
     PreviewKey key;
     TextureRef source;
     ShaderChannel channel;
     std::shared_ptr<RenderTarget> target;
-    std::optional<Sampling> sampling;
+    std::optional<TextureLab::PreviewSampling> sampling;
   };
   [[nodiscard]] PreviewEntry *FindOrAdd(const PreviewKey &a_key);
   void ExpireUnused(std::uint64_t a_generation);

@@ -18,6 +18,26 @@ using namespace REX::W32;
 
 extern const char *const kShaderSource;
 
+namespace {
+ComPtr<ID3DBlob> CompileEntry(const char *a_entry, const char *a_target) {
+  const std::string sourceName{Identity::kName};
+  ComPtr<ID3DBlob> out;
+  ComPtr<ID3DBlob> errors;
+  const HRESULT hr = D3DCompile(kShaderSource, std::strlen(kShaderSource),
+                                sourceName.c_str(), nullptr, nullptr, a_entry,
+                                a_target, D3DCOMPILE_OPTIMIZATION_LEVEL3, 0,
+                                out.GetAddressOf(), errors.GetAddressOf());
+  if (Failed(hr)) {
+    logger::error("TextureLab: {} compile failed: {}", a_entry,
+                  errors.Get()
+                      ? static_cast<const char *>(errors->GetBufferPointer())
+                      : "no message");
+    return {};
+  }
+  return out;
+}
+}
+
 TextureLab::RenderTarget::~RenderTarget() {
   if (size != 0) {
     Metrics::CountTargetDestroyed(
@@ -138,26 +158,25 @@ bool TextureLab::Init() {
 }
 
 bool TextureLab::CompileShaders(GpuResources &a_resources) {
-  const std::string sourceName{Identity::kName};
-  const auto compile = [&](const char *a_entry,
-                           const char *a_target) -> ComPtr<ID3DBlob> {
-    ComPtr<ID3DBlob> out;
-    ComPtr<ID3DBlob> errors;
-    const auto hr = D3DCompile(kShaderSource, std::strlen(kShaderSource),
-                               sourceName.c_str(), nullptr, nullptr, a_entry,
-                               a_target, D3DCOMPILE_OPTIMIZATION_LEVEL3, 0,
-                               out.GetAddressOf(), errors.GetAddressOf());
-    if (Failed(hr)) {
-      logger::error("TextureLab: {} compile failed: {}", a_entry,
-                    errors.Get()
-                        ? static_cast<const char *>(errors->GetBufferPointer())
-                        : "no message");
-      return {};
-    }
-    return out;
-  };
-  const auto vertex = compile("VSMain", "vs_5_0");
-  const auto pixel = compile("PSMain", "ps_5_0");
+  if (!CreateFullScreenShaders(a_resources)) {
+    return false;
+  }
+  a_resources.program =
+      CreatePixelPipeline("PSProgram", sizeof(ProgramConstants));
+  a_resources.ripple = CreatePixelPipeline("PSRipple", sizeof(RippleConstants));
+  a_resources.clusters =
+      CreatePixelPipeline("PSClusters", sizeof(ClusterConstants));
+  a_resources.dilate = CreatePixelPipeline("DilatePS", 0);
+  a_resources.reduce =
+      CreatePixelPipeline("PSReduce", sizeof(ReductionConstants));
+  a_resources.stack = CreatePixelPipeline("PSStack", sizeof(StackConstants));
+  a_resources.bake = CreateBakePipeline();
+  return true;
+}
+
+bool TextureLab::CreateFullScreenShaders(GpuResources &a_resources) {
+  const ComPtr<ID3DBlob> vertex = CompileEntry("VSMain", "vs_5_0");
+  const ComPtr<ID3DBlob> pixel = CompileEntry("PSMain", "ps_5_0");
   if (!vertex.Get() || !pixel.Get() ||
       Failed(borrowedDevice_->CreateVertexShader(
           vertex->GetBufferPointer(), vertex->GetBufferSize(), nullptr,
@@ -168,45 +187,37 @@ bool TextureLab::CompileShaders(GpuResources &a_resources) {
     logger::error("TextureLab: required shader creation failed");
     return false;
   }
+  return true;
+}
 
-  const auto pixelPipeline =
-      [&](const char *a_entry,
-          std::uint32_t a_bytes) -> std::optional<PixelPipeline> {
-    const auto code = compile(a_entry, "ps_5_0");
-    PixelPipeline pipeline;
-    if (code.Get() && a_bytes == 0) {
-      if (Failed(borrowedDevice_->CreatePixelShader(
-              code->GetBufferPointer(), code->GetBufferSize(), nullptr,
-              pipeline.shader.GetAddressOf()))) {
-        logger::error("TextureLab: {} pipeline unavailable", a_entry);
-        return std::nullopt;
-      }
-      return pipeline;
-    }
+std::optional<TextureLab::PixelPipeline>
+TextureLab::CreatePixelPipeline(const char *a_entry,
+                                std::uint32_t a_constantBytes) {
+  const ComPtr<ID3DBlob> code = CompileEntry(a_entry, "ps_5_0");
+  PixelPipeline pipeline;
+  if (!code.Get() || Failed(borrowedDevice_->CreatePixelShader(
+                         code->GetBufferPointer(), code->GetBufferSize(),
+                         nullptr, pipeline.shader.GetAddressOf()))) {
+    logger::error("TextureLab: {} pipeline unavailable", a_entry);
+    return std::nullopt;
+  }
+  if (a_constantBytes > 0) {
     D3D11_BUFFER_DESC desc{};
-    desc.byteWidth = a_bytes;
+    desc.byteWidth = a_constantBytes;
     desc.usage = D3D11_USAGE_DEFAULT;
     desc.bindFlags = D3D11_BIND_CONSTANT_BUFFER;
-    if (!code.Get() ||
-        Failed(borrowedDevice_->CreatePixelShader(
-            code->GetBufferPointer(), code->GetBufferSize(), nullptr,
-            pipeline.shader.GetAddressOf())) ||
-        Failed(borrowedDevice_->CreateBuffer(
+    if (Failed(borrowedDevice_->CreateBuffer(
             &desc, nullptr, pipeline.constants.GetAddressOf()))) {
       logger::error("TextureLab: {} pipeline unavailable", a_entry);
       return std::nullopt;
     }
-    return pipeline;
-  };
-  a_resources.program = pixelPipeline("PSProgram", sizeof(ProgramConstants));
-  a_resources.ripple = pixelPipeline("PSRipple", sizeof(RippleConstants));
-  a_resources.clusters = pixelPipeline("PSClusters", sizeof(ClusterConstants));
-  a_resources.dilate = pixelPipeline("DilatePS", 0);
-  a_resources.reduce = pixelPipeline("PSReduce", sizeof(ReductionConstants));
-  a_resources.stack = pixelPipeline("PSStack", sizeof(StackConstants));
+  }
+  return pipeline;
+}
 
-  const auto bakeVertex = compile("BakeVS", "vs_5_0");
-  const auto bakePixel = compile("BakePS", "ps_5_0");
+std::optional<TextureLab::BakePipeline> TextureLab::CreateBakePipeline() {
+  const ComPtr<ID3DBlob> bakeVertex = CompileEntry("BakeVS", "vs_5_0");
+  const ComPtr<ID3DBlob> bakePixel = CompileEntry("BakePS", "ps_5_0");
   BakePipeline bake;
   const D3D11_INPUT_ELEMENT_DESC elements[2]{
       {"TEXCOORD", 0, DXGI_FORMAT_R32G32_FLOAT, 0, 0,
@@ -214,21 +225,20 @@ bool TextureLab::CompileShaders(GpuResources &a_resources) {
       {"COLOR", 0, DXGI_FORMAT_R32G32B32_FLOAT, 0, 8,
        D3D11_INPUT_PER_VERTEX_DATA, 0},
   };
-  if (bakeVertex.Get() && bakePixel.Get() &&
-      !Failed(borrowedDevice_->CreateVertexShader(
+  if (!bakeVertex.Get() || !bakePixel.Get() ||
+      Failed(borrowedDevice_->CreateVertexShader(
           bakeVertex->GetBufferPointer(), bakeVertex->GetBufferSize(), nullptr,
-          bake.vertex.GetAddressOf())) &&
-      !Failed(borrowedDevice_->CreatePixelShader(
+          bake.vertex.GetAddressOf())) ||
+      Failed(borrowedDevice_->CreatePixelShader(
           bakePixel->GetBufferPointer(), bakePixel->GetBufferSize(), nullptr,
-          bake.pixel.GetAddressOf())) &&
-      !Failed(borrowedDevice_->CreateInputLayout(
+          bake.pixel.GetAddressOf())) ||
+      Failed(borrowedDevice_->CreateInputLayout(
           elements, 2, bakeVertex->GetBufferPointer(),
           bakeVertex->GetBufferSize(), bake.layout.GetAddressOf()))) {
-    a_resources.bake = std::move(bake);
-  } else {
     logger::error("TextureLab: bake pipeline unavailable");
+    return std::nullopt;
   }
-  return true;
+  return bake;
 }
 
 std::shared_ptr<TextureLab::RenderTarget>
@@ -259,10 +269,9 @@ TextureLab::Preview(RE::NiSourceTexture *a_source, ShaderChannel a_channel,
 
 std::shared_ptr<TextureLab::RenderTarget>
 TextureLab::SampledPreview(std::string a_context, RE::NiSourceTexture *a_source,
-                           const LayerInput &a_sampling, float a_normalize,
-                           bool a_dynamic) {
+                           const PreviewSampling &a_sampling, bool a_dynamic) {
   return previews_->SampledPreview(std::move(a_context), a_source, a_sampling,
-                                   a_normalize, a_dynamic);
+                                   a_dynamic);
 }
 
 TextureLab::PreviewDraw *

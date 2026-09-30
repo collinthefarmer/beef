@@ -142,9 +142,8 @@ void ModeBadge(Studio::FieldKind a_kind, bool &a_combo, Studio::FieldKey a_key,
 [[nodiscard]] const char *BlendGlyph(Blend a_blend);
 [[nodiscard]] std::optional<Blend> BlendBadge(Blend a_current, Slot a_slot);
 [[nodiscard]] std::optional<std::string>
-ValueWidget(const char *a_key, const Studio::FormField &a_field, float a_scale,
-            const TextCheck &a_check = {},
-            const Studio::Width &a_width = Studio::Width::Fill());
+ValueWidget(const char *a_key, const Studio::FormField &a_field,
+            const WidgetSize &a_size, const TextCheck &a_check = {});
 [[nodiscard]] bool DetailButton();
 
 [[nodiscard]] std::string ValueText(const Value &a_value);

@@ -69,10 +69,11 @@ int main() {
   const TextureRequirements large{TextureSize{1024}};
   const TextureUse use{PlacementId{1}, 0, 0, TextureUseInput::kSource};
   const TextureUse secondUse{PlacementId{2}, 3, 1, TextureUseInput::kMask};
-  auto a = CollectTextureDemand(demands, TextureValueOf(graph, "mask"), small,
-                                use, Bindings());
-  auto b = CollectTextureDemand(demands, TextureValueOf(other, "result", 1),
-                                small, secondUse, Bindings());
+  auto a = CollectTextureDemand(
+      demands, {TextureValueOf(graph, "mask"), small, use}, Bindings());
+  auto b = CollectTextureDemand(
+      demands, {TextureValueOf(other, "result", 1), small, secondUse},
+      Bindings());
   Check(a && b && *a == *b && demands.size() == 2,
         "equivalent requests across recipes coalesce with their dependencies");
   if (a) {
@@ -85,22 +86,22 @@ int main() {
           "shared prerequisite retains every affected consumer for failure "
           "reporting");
   }
-  auto bigger = CollectTextureDemand(demands, TextureValueOf(graph, "mask"),
-                                     large, use, Bindings());
+  auto bigger = CollectTextureDemand(
+      demands, {TextureValueOf(graph, "mask"), large, use}, Bindings());
   Check(a && bigger && *a != *bigger && demands.size() == 4,
         "different sizes never silently share textures or prerequisites");
-  auto nested = CollectTextureDemand(demands, TextureValueOf(graph, "outer"),
-                                     small, use, Bindings());
+  auto nested = CollectTextureDemand(
+      demands, {TextureValueOf(graph, "outer"), small, use}, Bindings());
   Check(nested && a && demands[*nested].dependencies.front() == *a,
         "nested mask reuses collected intermediate");
   const auto before = demands.size();
-  auto invalid = CollectTextureDemand(demands, {&graph, {graph.Size(), 0}, 0},
-                                      small, use, Bindings());
+  auto invalid = CollectTextureDemand(
+      demands, {{&graph, {graph.Size(), 0}, 0}, small, use}, Bindings());
   Check(!invalid && demands.size() == before,
         "invalid handles do not mutate accepted demands");
   auto port = TextureValueOf(graph, "mask");
   port.output.output = 1;
-  Check(!CollectTextureDemand(demands, port, small, use, Bindings()),
+  Check(!CollectTextureDemand(demands, {port, small, use}, Bindings()),
         "invalid output port is rejected");
   Recipe dynamic;
   dynamic.signals = {{"wave", WaveSignal{}}, {"otherWave", WaveSignal{}}};
@@ -128,8 +129,9 @@ int main() {
   Recipe bad;
   bad.masks = {{"broken", "@missing"}};
   const auto disabled = RecipeGraph::Compile(bad);
-  Check(!CollectTextureDemand(demands, TextureValueOf(disabled, "broken"),
-                              small, use, Bindings()),
+  Check(!CollectTextureDemand(demands,
+                              {TextureValueOf(disabled, "broken"), small, use},
+                              Bindings()),
         "disabled producers fail before acquisition");
   Recipe excessive;
   std::string expression;
@@ -145,7 +147,7 @@ int main() {
   excessive.masks = {{"tooMany", expression}};
   const auto limits = RecipeGraph::Compile(excessive);
   const auto failed = CollectTextureDemand(
-      demands, TextureValueOf(limits, "tooMany"), small, use, Bindings());
+      demands, {TextureValueOf(limits, "tooMany"), small, use}, Bindings());
   Check(!failed && demands.size() == before,
         "backend limit failure leaves no partially collected request");
   return test::Finish("texture demand");

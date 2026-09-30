@@ -297,6 +297,27 @@ void InstallSurfaces(LiveActor &a_state, LiveGeometry &a_bound,
   }
 }
 
+std::string ReplacerRecipeId(const LiveActor &a_state,
+                             const LiveGeometry &a_bound,
+                             const SlotPlan &a_slot,
+                             const SlotContribution &a_c) {
+  const std::optional<std::size_t> replacer = ReplacerOf(a_slot, a_c);
+  if (!replacer) {
+    return {};
+  }
+  const std::optional<InstanceId> instance =
+      InstanceOfPlaced(a_state.plan, a_bound.placements, *replacer);
+  if (!instance) {
+    return {};
+  }
+  const std::size_t instanceIndex = IndexOf(*instance);
+  if (instanceIndex >= a_state.instances.size() ||
+      !a_state.instances[instanceIndex].recipe) {
+    return {};
+  }
+  return a_state.instances[instanceIndex].recipe->id;
+}
+
 void MarkReplaced(LiveActor &a_state, LiveGeometry &a_bound) {
   for (const SlotPlan &slot : a_bound.plan.slots) {
     for (const SlotContribution &c : slot.replaced) {
@@ -310,18 +331,8 @@ void MarkReplaced(LiveActor &a_state, LiveGeometry &a_bound) {
       if (!output) {
         continue;
       }
-      std::string replacerId;
-      if (const std::optional<std::size_t> replacer = ReplacerOf(slot, c)) {
-        if (const std::optional<InstanceId> instance =
-                InstanceOfPlaced(a_state.plan, a_bound.placements, *replacer)) {
-          const std::size_t instanceIndex = IndexOf(*instance);
-          if (instanceIndex < a_state.instances.size() &&
-              a_state.instances[instanceIndex].recipe) {
-            replacerId = a_state.instances[instanceIndex].recipe->id;
-          }
-        }
-      }
-      output->problem = std::format("replaced by recipe {}", replacerId);
+      output->problem = std::format(
+          "replaced by recipe {}", ReplacerRecipeId(a_state, a_bound, slot, c));
     }
   }
 }
@@ -356,11 +367,11 @@ LocateStackOutput(LiveActor &a_state, const LiveGeometry &a_bound,
     return std::nullopt;
   }
   const Recipe *recipe = a_state.instances[resolved->instance].recipe;
-  if (!recipe || a_contribution.output >= recipe->outputs.size()) {
+  if (!recipe) {
     return std::nullopt;
   }
-  const auto *surface =
-      Get<SurfaceOutput>(recipe->outputs[a_contribution.output]);
+  const SurfaceOutput *surface =
+      SurfaceOutputOf(*recipe, a_contribution.output);
   auto *output =
       OutputAt(a_state.placements[resolved->placement], a_contribution.output);
   const auto &graph = a_state.instances[resolved->instance].graph;
@@ -533,11 +544,11 @@ void CollectLayerRoleDemands(std::vector<TextureDemand> &a_demands,
     }
     const auto collected = CollectTextureDemand(
         a_demands,
-        {texture.graph, binding.value, texture.inputs.applicationContext},
-        {texture.size},
-        {texture.placement, texture.outputIndex, a_role.layer, a_role.role},
-        TextureValueBindings(*texture.graph, texture.inputs),
-        a_request.geometry);
+        {{texture.graph, binding.value, texture.inputs.applicationContext},
+         {texture.size},
+         {texture.placement, texture.outputIndex, a_role.layer, a_role.role},
+         a_request.geometry},
+        TextureValueBindings(*texture.graph, texture.inputs));
     if (!collected && a_verbose) {
       logger::warn("{}: {}", property, collected.error());
     }
@@ -634,33 +645,37 @@ void BuildActorRender(const LiveActor &a_state, ActorStacks &a_stacks,
   AttachStackOutputs(a_stacks, render, a_settings, a_warnings);
 }
 
-void PlaceLight(LiveActor &a_state, const ActorLightPlan &a_plan,
-                const LightContribution &a_c, RE::Actor *a_actor,
-                bool a_verbose) {
+std::optional<std::size_t> LightSourceInstance(const ActorLightPlan &a_plan,
+                                               const LightContribution &a_c) {
   const std::size_t sourceIndex = IndexOf(a_c.placed);
   if (sourceIndex >= a_plan.sources.size()) {
-    return;
+    return std::nullopt;
   }
-  const std::size_t instanceIndex = IndexOf(a_plan.sources[sourceIndex]);
-  if (instanceIndex >= a_state.instances.size()) {
-    return;
+  return IndexOf(a_plan.sources[sourceIndex]);
+}
+
+LiveInstance *LightInstanceOf(LiveActor &a_state, const ActorLightPlan &a_plan,
+                              const LightContribution &a_c) {
+  const std::optional<std::size_t> instanceIndex =
+      LightSourceInstance(a_plan, a_c);
+  if (!instanceIndex || *instanceIndex >= a_state.instances.size()) {
+    return nullptr;
   }
-  LiveInstance &instance = a_state.instances[instanceIndex];
+  LiveInstance &instance = a_state.instances[*instanceIndex];
   if (!instance.recipe || !instance.signals) {
-    return;
+    return nullptr;
   }
-  const LightOutput *light =
-      a_c.output < instance.recipe->outputs.size()
-          ? Get<LightOutput>(instance.recipe->outputs[a_c.output])
-          : nullptr;
-  if (!light) {
-    return;
-  }
+  return &instance;
+}
+
+std::vector<RE::BSGeometry *> LightGeometriesOf(LiveActor &a_state,
+                                                std::size_t a_instance,
+                                                const LightOutput &a_light) {
   std::vector<RE::BSGeometry *> geometries;
-  for (const GeometryId flat : ThirdPersonGeometriesOfInstance(
-           a_state.plan, InstanceId{instanceIndex})) {
+  for (const GeometryId flat :
+       ThirdPersonGeometriesOfInstance(a_state.plan, InstanceId{a_instance})) {
     const Geometry *geometry = GeometryAt(a_state.plan, flat);
-    if (!geometry || !LightEligible(*geometry, *light)) {
+    if (!geometry || !LightEligible(*geometry, a_light)) {
       continue;
     }
     if (const std::optional<LocatedGeometry> located =
@@ -669,20 +684,48 @@ void PlaceLight(LiveActor &a_state, const ActorLightPlan &a_plan,
       geometries.push_back(located->bound.geometry.get());
     }
   }
+  return geometries;
+}
+
+LiveInstance *PlaceLight(LiveActor &a_state, const ActorLightPlan &a_plan,
+                         const LightContribution &a_c, RE::NiAVObject *a_root) {
+  const std::optional<std::size_t> instanceIndex =
+      LightSourceInstance(a_plan, a_c);
+  LiveInstance *instance = LightInstanceOf(a_state, a_plan, a_c);
+  if (!instanceIndex || !instance) {
+    return nullptr;
+  }
+  const LightOutput *light = LightOutputOf(*instance->recipe, a_c.output);
+  if (!light) {
+    return nullptr;
+  }
+  const std::vector<RE::BSGeometry *> geometries =
+      LightGeometriesOf(a_state, *instanceIndex, *light);
   if (geometries.empty()) {
-    return;
+    return nullptr;
   }
   const std::vector<LightPlacement> placements =
-      PlaceLightNodes(light->bones, geometries, a_actor->Get3D(false),
-                      instance.signals->Resolve(light->offset));
-  instance.light = LightBinding::Create(placements, light->shadow);
-  instance.lightOutput = a_c.output;
-  instance.lightProblem = instance.light ? "" : "light preparation failed";
-  if (a_verbose) {
-    logger::info("  recipe {}: {}", instance.recipe->id,
-                 instance.light ? instance.light->Describe()
-                                : "light not created");
+      PlaceLightNodes(light->bones, geometries, a_root,
+                      instance->signals->Resolve(light->offset));
+  instance->light = LightBinding::Create(placements, light->shadow);
+  instance->lightOutput = a_c.output;
+  instance->lightProblem = instance->light ? "" : "light preparation failed";
+  return instance;
+}
+
+void ReportApplied(RE::Actor &a_actor, const LiveActor &a_state,
+                   const Settings &a_settings) {
+  const RE::FormID actorID = a_actor.GetFormID();
+  if (a_settings.verboseLogging) {
+    logger::info("actor {:08X} ({}): {} piece(s), {} recipe(s) applied",
+                 actorID, a_actor.GetName(), a_state.pieces.size(),
+                 LiveInstanceCount(a_state));
   }
+  Trace::EmitSafely(Trace::Event::kApplication,
+                    {{"action", "installed"},
+                     {"actor", std::to_string(actorID)},
+                     {"pieces", std::to_string(a_state.pieces.size())},
+                     {"recipes", std::to_string(LiveInstanceCount(a_state))}});
 }
 }
 
@@ -715,67 +758,73 @@ void Manager::Refresh(RE::Actor *a_actor) {
       Trace::Event::kApplication,
       {{"action", "refresh_begin"}, {"actor", std::to_string(actorID)}});
   RetireEffects(actorID);
-  if (!settings.enableShaders || !emissivePathEnabled_ ||
-      a_actor->IsDeleted()) {
+  if (!EligibleForRefresh(*a_actor, settings)) {
     return;
   }
-  const bool isPlayer = a_actor->IsPlayerRef();
-  if (settings.playerOnly && !isPlayer) {
-    return;
-  }
-  if (!a_actor->Is3DLoaded()) {
-    if (settings.verboseLogging) {
-      logger::info("actor {:08X} ({}): 3D not loaded, skipped", actorID,
-                   a_actor->GetName());
-    }
-    return;
-  }
-  if (!isPlayer && settings.evictDistance > 0.0f) {
-    if (const auto *player = RE::PlayerCharacter::GetSingleton()) {
-      const float distance =
-          player->GetPosition().GetDistance(a_actor->GetPosition());
-      if (EvictionFor(distance, settings.evictDistance, true) ==
-          EvictionAction::kEvict) {
-        evictedForDistance_.insert(actorID);
-        return;
-      }
-    }
-  }
-  evictedForDistance_.erase(actorID);
-  LiveActor state;
-  state.actor = a_actor->GetHandle();
-  if (settings.thirdPerson) {
-    for (LivePiece &piece : CollectPieces(a_actor, false, settings)) {
-      state.pieces.push_back(std::move(piece));
-    }
-  }
-  if (settings.firstPerson && isPlayer) {
-    for (LivePiece &piece : CollectPieces(a_actor, true, settings)) {
-      state.pieces.push_back(std::move(piece));
-    }
-  }
-  MatchRecipes(a_actor, state, settings);
+  LiveActor state = LiveActorFor(*a_actor, settings);
   TextureLab::GetSingleton()->InvalidatePreviews();
   if (state.plan.placements.empty()) {
     return;
   }
   PlaceInstances(state, settings);
   PlaceLightsOf(a_actor, state, settings);
-  if (settings.verboseLogging) {
-    logger::info("actor {:08X} ({}): {} piece(s), {} recipe(s) applied",
-                 actorID, a_actor->GetName(), state.pieces.size(),
-                 LiveInstanceCount(state));
-  }
-  Trace::EmitSafely(Trace::Event::kApplication,
-                    {{"action", "installed"},
-                     {"actor", std::to_string(actorID)},
-                     {"pieces", std::to_string(state.pieces.size())},
-                     {"recipes", std::to_string(LiveInstanceCount(state))}});
+  ReportApplied(*a_actor, state, settings);
   applied_[actorID] = std::move(state);
 
   if (applications_.TakeEquipped(actorID)) {
     FireEquip(actorID);
   }
+}
+
+bool Manager::EligibleForRefresh(RE::Actor &a_actor,
+                                 const Settings &a_settings) {
+  const RE::FormID actorID = a_actor.GetFormID();
+  if (!a_settings.enableShaders || !emissivePathEnabled_ ||
+      a_actor.IsDeleted()) {
+    return false;
+  }
+  const bool isPlayer = a_actor.IsPlayerRef();
+  if (a_settings.playerOnly && !isPlayer) {
+    return false;
+  }
+  if (!a_actor.Is3DLoaded()) {
+    if (a_settings.verboseLogging) {
+      logger::info("actor {:08X} ({}): 3D not loaded, skipped", actorID,
+                   a_actor.GetName());
+    }
+    return false;
+  }
+  if (!isPlayer && a_settings.evictDistance > 0.0f) {
+    if (const auto *player = RE::PlayerCharacter::GetSingleton()) {
+      const float distance =
+          player->GetPosition().GetDistance(a_actor.GetPosition());
+      if (EvictionFor(distance, a_settings.evictDistance, true) ==
+          EvictionAction::kEvict) {
+        evictedForDistance_.insert(actorID);
+        return false;
+      }
+    }
+  }
+  evictedForDistance_.erase(actorID);
+  return true;
+}
+
+LiveActor Manager::LiveActorFor(RE::Actor &a_actor,
+                                const Settings &a_settings) {
+  LiveActor state;
+  state.actor = a_actor.GetHandle();
+  if (a_settings.thirdPerson) {
+    for (LivePiece &piece : CollectPieces(&a_actor, false, a_settings)) {
+      state.pieces.push_back(std::move(piece));
+    }
+  }
+  if (a_settings.firstPerson && a_actor.IsPlayerRef()) {
+    for (LivePiece &piece : CollectPieces(&a_actor, true, a_settings)) {
+      state.pieces.push_back(std::move(piece));
+    }
+  }
+  MatchRecipes(&a_actor, state, a_settings);
+  return state;
 }
 
 void Manager::FireEquip(RE::FormID a_actorID) {
@@ -1051,8 +1100,14 @@ void Manager::PlaceLightsOf(RE::Actor *a_actor, LiveActor &a_state,
                       plan.placed[*replacer].recipe->id);
     }
   }
+  RE::NiAVObject *root = a_actor ? a_actor->Get3D(false) : nullptr;
   for (const LightContribution &c : plan.plan.shown) {
-    PlaceLight(a_state, plan, c, a_actor, a_settings.verboseLogging);
+    const LiveInstance *placed = PlaceLight(a_state, plan, c, root);
+    if (placed && placed->recipe && a_settings.verboseLogging) {
+      logger::info("  recipe {}: {}", placed->recipe->id,
+                   placed->light ? placed->light->Describe()
+                                 : "light not created");
+    }
   }
 }
 

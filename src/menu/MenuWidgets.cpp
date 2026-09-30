@@ -260,6 +260,15 @@ void ClickableBadge(const BadgeStyle &a_style, bool &a_combo,
           std::string{a_combo ? a_tips.text : a_tips.combo});
 }
 
+bool &ComboModeFor(Studio::MenuState &a_state, Studio::FieldKey a_key,
+                   bool a_reference) {
+  auto mode = a_state.comboMode.find(a_key);
+  if (mode == a_state.comboMode.end()) {
+    mode = a_state.comboMode.emplace(a_key, a_reference).first;
+  }
+  return mode->second;
+}
+
 void DrawValueBadge(const BadgeStyle &a_style, bool a_takesSignal,
                     bool &a_combo, Studio::FieldKey a_key) {
   if (a_takesSignal) {
@@ -722,20 +731,16 @@ std::optional<Blend> BlendBadge(Blend a_current, Slot a_slot) {
 
 std::optional<std::string> ValueWidget(const char *a_key,
                                        const Studio::FormField &a_field,
-                                       float a_scale, const TextCheck &a_check,
-                                       const Studio::Width &a_width) {
+                                       const WidgetSize &a_size,
+                                       const TextCheck &a_check) {
   auto &state = Studio::State();
   const auto style = StyleOf(a_field.kind);
   const bool takesSignal = style.takesSignal && (!a_field.names.empty() ||
                                                  !a_field.creators.empty());
-  const bool reference = a_field.text.starts_with('@');
   const Studio::FieldKey key = KeyOf(a_key);
-  auto mode = state.comboMode.find(key);
-  if (mode == state.comboMode.end()) {
-    mode = state.comboMode.emplace(key, reference).first;
-  }
+  bool &comboMode = ComboModeFor(state, key, a_field.text.starts_with('@'));
   ImGui::PushID(NonNull(a_key));
-  DrawValueBadge(style, takesSignal, mode->second, key);
+  DrawValueBadge(style, takesSignal, comboMode, key);
   ImGui::SameLine(0.0f, 0.0f);
 
   std::optional<std::string> chosen;
@@ -743,7 +748,7 @@ std::optional<std::string> ValueWidget(const char *a_key,
     state.focusField = Studio::kNoField;
     ImGui::SetKeyboardFocusHere();
   }
-  if (mode->second && takesSignal) {
+  if (comboMode && takesSignal) {
     chosen = SignalCombo(a_field);
   } else {
     if (style.swatch == Studio::Swatch::kAlways ||
@@ -752,8 +757,7 @@ std::optional<std::string> ValueWidget(const char *a_key,
       chosen = ColorSwatchPicker(key, a_field.text);
       ImGui::SameLine(0.0f, 0.0f);
     }
-    if (const auto typed =
-            TextField("text", a_field.text, {a_width, a_scale}, a_check)) {
+    if (const auto typed = TextField("text", a_field.text, a_size, a_check)) {
       chosen = typed;
     }
   }

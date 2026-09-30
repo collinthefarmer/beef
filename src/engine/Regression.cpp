@@ -9,6 +9,7 @@
 #include <chrono>
 #include <mutex>
 #include <optional>
+#include <string>
 
 namespace BetterEnchantmentEffects {
 namespace {
@@ -87,6 +88,66 @@ void RestoreView(RE::StaticFunctionTag *) {
     recipeUnderTest.clear();
   }
   Manager::GetSingleton()->RestoreRegressionView();
+}
+
+const RE::TESObjectARMO *DemoArmor() {
+  RE::TESDataHandler *data = RE::TESDataHandler::GetSingleton();
+  return data ? data->LookupForm<RE::TESObjectARMO>(
+                    0x803, "BetterEnchantmentEffectsDemo.esp")
+              : nullptr;
+}
+
+bool InstanceUnderTest(const LiveActor &a_state, std::size_t a_instance) {
+  if (recipeUnderTest.empty()) {
+    return true;
+  }
+  return a_instance < a_state.instances.size() &&
+         a_state.instances[a_instance].recipe &&
+         a_state.instances[a_instance].recipe->id == recipeUnderTest;
+}
+
+bool PlacementRendered(const LiveActor &a_state, PlacementId a_placement) {
+  const std::optional<ResolvedPlacement> resolved =
+      ResolvePlacement(a_state, a_placement);
+  if (!resolved || !InstanceUnderTest(a_state, resolved->instance) ||
+      resolved->placement >= a_state.placements.size()) {
+    return false;
+  }
+  return std::ranges::any_of(a_state.placements[resolved->placement].outputs,
+                             [](const PlacedOutput &a_output) {
+                               return a_output.stack && a_output.rendered &&
+                                      !a_output.renderFailed;
+                             });
+}
+
+bool GeometryRendered(const LiveActor &a_state,
+                      const LiveGeometry &a_geometry) {
+  return std::ranges::any_of(a_geometry.placements,
+                             [&](PlacementId a_placement) {
+                               return PlacementRendered(a_state, a_placement);
+                             });
+}
+
+bool DemoArmorRendered(const LiveActor &a_state, RE::FormID a_armor) {
+  for (const LivePiece &piece : a_state.pieces) {
+    if (piece.armor != a_armor) {
+      continue;
+    }
+    for (const LiveGeometry &geometry : piece.geometries) {
+      if (GeometryRendered(a_state, geometry)) {
+        return true;
+      }
+    }
+  }
+  return false;
+}
+
+std::string RenderedVerdict(const LiveActor *a_state) {
+  const RE::TESObjectARMO *armor = DemoArmor();
+  if (!a_state || !armor) {
+    return "BLOCKED";
+  }
+  return DemoArmorRendered(*a_state, armor->GetFormID()) ? "PASS" : "BLOCKED";
 }
 
 bool Bind(RE::BSScript::IVirtualMachine *a_vm) {
@@ -174,36 +235,8 @@ void Manager::ObserveRegression() {
     switch (record.phase) {
     case ApplicationPhase::kRendered: {
       const auto found = applied_.find(request.actor);
-      auto *data = RE::TESDataHandler::GetSingleton();
-      const auto *armor = data ? data->LookupForm<RE::TESObjectARMO>(
-                                     0x803, "BetterEnchantmentEffectsDemo.esp")
-                               : nullptr;
-      bool rendered = false;
-      if (found != applied_.end() && armor) {
-        const LiveActor &state = found->second;
-        for (const LivePiece &piece : state.pieces) {
-          if (piece.armor != armor->GetFormID())
-            continue;
-          for (const LiveGeometry &geometry : piece.geometries) {
-            for (const PlacementId placement : geometry.placements) {
-              const auto resolved = ResolvePlacement(state, placement);
-              if (!resolved)
-                continue;
-              if (!recipeUnderTest.empty() &&
-                  (resolved->instance >= state.instances.size() ||
-                   !state.instances[resolved->instance].recipe ||
-                   state.instances[resolved->instance].recipe->id !=
-                       recipeUnderTest))
-                continue;
-              for (const PlacedOutput &output :
-                   state.placements[resolved->placement].outputs)
-                rendered |=
-                    output.stack && output.rendered && !output.renderFailed;
-            }
-          }
-        }
-      }
-      Finish(rendered ? "PASS" : "BLOCKED");
+      Finish(
+          RenderedVerdict(found != applied_.end() ? &found->second : nullptr));
       return;
     }
     case ApplicationPhase::kFailed:

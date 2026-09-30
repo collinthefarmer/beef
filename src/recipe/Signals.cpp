@@ -113,7 +113,7 @@ void CheckScalar(const RowTypes &a_rows, const Reporter &a_report,
 template <std::size_t N>
 void CheckVector(const RowTypes &a_rows, const Reporter &a_report,
                  const std::variant<std::array<Param, N>, Ref> &a_param,
-                 std::string_view a_field, bool a_color) {
+                 std::string_view a_field) {
   const ValueType want = N == 2 ? ValueType::kVec2 : ValueType::kVec3;
   Match(
       a_param,
@@ -130,12 +130,28 @@ void CheckVector(const RowTypes &a_rows, const Reporter &a_report,
       [&](const std::array<Param, N> &parts) {
         for (const auto &p : parts) {
           CheckScalar(a_rows, a_report, p, a_field);
-          if (const auto *number = Get<float>(p);
-              a_color && number && (*number < 0.0f || *number > 1.0f)) {
-            a_report.Error(std::format("'{}' components are 0..1", a_field));
-          }
         }
       });
+}
+
+void CheckColorRange(const Reporter &a_report, const Vec3Param &a_color,
+                     std::string_view a_field) {
+  const auto *parts = Get<std::array<Param, 3>>(a_color);
+  if (!parts) {
+    return;
+  }
+  for (const auto &p : *parts) {
+    if (const auto *number = Get<float>(p);
+        number && (*number < 0.0f || *number > 1.0f)) {
+      a_report.Error(std::format("'{}' components are 0..1", a_field));
+    }
+  }
+}
+
+void CheckColor(const RowTypes &a_rows, const Reporter &a_report,
+                const Vec3Param &a_color, std::string_view a_field) {
+  CheckVector<3>(a_rows, a_report, a_color, a_field);
+  CheckColorRange(a_report, a_color, a_field);
 }
 
 void CheckTrigger(const RowTypes &a_rows, const Reporter &a_report,
@@ -287,10 +303,10 @@ std::vector<Diagnostic> CheckSourceInputs(const RowTypes &a_rows,
           report.Error("'path' is empty");
         }
         if (s.scroll) {
-          CheckVector<2>(a_rows, report, *s.scroll, "scroll", false);
+          CheckVector<2>(a_rows, report, *s.scroll, "scroll");
         }
         if (s.tile) {
-          CheckVector<2>(a_rows, report, *s.tile, "tile", false);
+          CheckVector<2>(a_rows, report, *s.tile, "tile");
         }
       },
       [&](const BakeSource &s) {
@@ -309,7 +325,7 @@ std::vector<Diagnostic> CheckSourceInputs(const RowTypes &a_rows,
         CheckScalar(a_rows, report, s.speed, "speed");
         CheckScalar(a_rows, report, s.width, "width");
         CheckScalar(a_rows, report, s.decay, "decay");
-        CheckVector<3>(a_rows, report, s.direction, "direction", false);
+        CheckVector<3>(a_rows, report, s.direction, "direction");
       },
       [&](const MaterialClustersSource &s) {
         if (s.settings.clusters < 1 ||
@@ -352,7 +368,7 @@ std::vector<Diagnostic> CheckLayer(const RowTypes &a_rows, const Layer &a_layer,
   }
   CheckScalar(a_rows, report, a_layer.opacity, "opacity");
   if (a_layer.color) {
-    CheckVector<3>(a_rows, report, *a_layer.color, "color", true);
+    CheckColor(a_rows, report, *a_layer.color, "color");
   }
   if (a_layer.mask && !a_rows.recipe.FindMask(a_layer.mask->name)) {
     report.Error(
@@ -372,7 +388,7 @@ void CheckSurfaceScalars(const RowTypes &a_rows, const SurfaceOutput &a_m,
     const auto name = NameOf(kScalarFields, field);
     if (field == ScalarField::kColor) {
       if (a_m.scalars.color) {
-        CheckVector<3>(a_rows, a_report, *a_m.scalars.color, "color", true);
+        CheckColor(a_rows, a_report, *a_m.scalars.color, "color");
       } else if (ScalarRequired(a_m.slot, field)) {
         a_report.Error(std::format("slot '{}' needs '{}'",
                                    NameOf(kSlots, a_m.slot), name));
@@ -418,8 +434,8 @@ std::vector<Diagnostic> CheckLightOutput(const RowTypes &a_rows,
                                          std::string_view a_where) {
   std::vector<Diagnostic> out;
   const Reporter report{out, a_where};
-  CheckVector<3>(a_rows, report, a_l.offset, "offset", false);
-  CheckVector<3>(a_rows, report, a_l.color, "color", true);
+  CheckVector<3>(a_rows, report, a_l.offset, "offset");
+  CheckColor(a_rows, report, a_l.color, "color");
   CheckScalar(a_rows, report, a_l.intensity, "intensity");
   CheckScalar(a_rows, report, a_l.size, "size");
   CheckScalar(a_rows, report, a_l.cutoff, "cutoff");
@@ -486,8 +502,8 @@ void CheckShell(const RowTypes &a_rows, std::vector<Diagnostic> &a_out) {
   CheckScalar(a_rows, shell, s.rimPower, "rimPower");
   CheckScalar(a_rows, shell, s.emissive, "emissive");
   const Reporter pose{a_out, "shell pose"};
-  CheckVector<3>(a_rows, pose, s.pose.inflate, "inflate", false);
-  CheckVector<3>(a_rows, pose, s.pose.offset, "offset", false);
+  CheckVector<3>(a_rows, pose, s.pose.inflate, "inflate");
+  CheckVector<3>(a_rows, pose, s.pose.offset, "offset");
   CheckScalar(a_rows, pose, s.pose.scale, "scale");
   CheckScalar(a_rows, pose, s.pose.spin, "spin");
   if (s.pose.spinAxis == Vec3{0.0f, 0.0f, 0.0f}) {

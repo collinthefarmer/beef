@@ -8,6 +8,7 @@
 #include <map>
 #include <numeric>
 #include <optional>
+#include <span>
 #include <string>
 #include <tuple>
 
@@ -176,8 +177,19 @@ struct RootCount {
   std::size_t triangles = 0;
 };
 
-[[nodiscard]] Labelling Label(const FlatMesh &a_flat, DisjointSets &a_sets,
-                              IslandSource a_source) {
+struct IslandTally {
+  std::size_t members = 0;
+  Vec3 positionSum{};
+  std::map<std::string, float> boneWeight;
+};
+
+struct DominantBone {
+  std::string name;
+  float share = 0.0f;
+};
+
+[[nodiscard]] std::vector<RootCount> RankedRoots(const FlatMesh &a_flat,
+                                                 DisjointSets &a_sets) {
   const std::size_t vertexCount = a_flat.vertices.size();
   std::vector<std::size_t> trianglesOfRoot(vertexCount, 0);
   for (const std::array<std::uint32_t, 3> &triangle : a_flat.triangles) {
@@ -197,66 +209,99 @@ struct RootCount {
         return a.triangles != b.triangles ? a.triangles > b.triangles
                                           : a.root < b.root;
       });
-  const std::size_t listed = std::min<std::size_t>(ranked.size(), kMaxIslands);
+  return ranked;
+}
 
-  std::vector<std::uint16_t> idOfRoot(vertexCount, kNoIsland);
-  for (std::size_t i = 0; i < listed; ++i) {
-    idOfRoot[ranked[i].root] = static_cast<std::uint16_t>(i);
+[[nodiscard]] std::vector<std::uint16_t>
+LabelVertices(std::size_t a_vertexCount, std::span<const RootCount> a_listed,
+              DisjointSets &a_sets) {
+  std::vector<std::uint16_t> idOfRoot(a_vertexCount, kNoIsland);
+  for (std::size_t i = 0; i < a_listed.size(); ++i) {
+    if (a_listed[i].root < a_vertexCount) {
+      idOfRoot[a_listed[i].root] = static_cast<std::uint16_t>(i);
+    }
   }
-  Labelling out;
-  out.ofVertex.resize(vertexCount, kNoIsland);
-  for (std::uint32_t v = 0; v < vertexCount; ++v) {
+  std::vector<std::uint16_t> ofVertex(a_vertexCount, kNoIsland);
+  for (std::uint32_t v = 0; v < a_vertexCount; ++v) {
     const std::uint32_t root = a_sets.Find(v);
-    out.ofVertex[v] = root < vertexCount ? idOfRoot[root] : kNoIsland;
+    ofVertex[v] = root < a_vertexCount ? idOfRoot[root] : kNoIsland;
   }
+  return ofVertex;
+}
 
-  const std::size_t totalTriangles = a_flat.triangles.size();
-  std::vector<std::size_t> members(listed, 0);
-  std::vector<Vec3> positionSum(listed);
-  std::vector<std::map<std::string, float>> boneWeight(listed);
-  for (std::uint32_t v = 0; v < vertexCount; ++v) {
-    const std::uint16_t id = out.ofVertex[v];
+[[nodiscard]] std::vector<IslandTally>
+TallyIslands(const FlatMesh &a_flat, std::span<const std::uint16_t> a_ofVertex,
+             std::size_t a_listed) {
+  std::vector<IslandTally> tallies(a_listed);
+  const std::size_t vertexCount =
+      (std::min)(a_flat.vertices.size(), a_ofVertex.size());
+  for (std::size_t v = 0; v < vertexCount; ++v) {
+    const std::uint16_t id = a_ofVertex[v];
     const FlatVertex &flat = a_flat.vertices[v];
-    if (id >= listed || !flat.vertex || !flat.partition) {
+    if (id >= tallies.size() || !flat.vertex || !flat.partition) {
       continue;
     }
-    ++members[id];
-    positionSum[id].x += flat.vertex->position.x;
-    positionSum[id].y += flat.vertex->position.y;
-    positionSum[id].z += flat.vertex->position.z;
-    for (std::size_t slot = 0; slot < flat.vertex->bones.size(); ++slot) {
-      const std::uint16_t bone = flat.vertex->bones[slot];
-      const float weight = flat.vertex->weights[slot];
-      if (bone < flat.partition->boneNames.size() && std::isfinite(weight) &&
-          weight > 0.0f) {
-        boneWeight[id][flat.partition->boneNames[bone]] += weight;
-      }
+    IslandTally &tally = tallies[id];
+    ++tally.members;
+    tally.positionSum.x += flat.vertex->position.x;
+    tally.positionSum.y += flat.vertex->position.y;
+    tally.positionSum.z += flat.vertex->position.z;
+    AddBoneWeights(tally.boneWeight, *flat.vertex, *flat.partition);
+  }
+  return tallies;
+}
+
+[[nodiscard]] DominantBone
+DominantBoneOf(const std::map<std::string, float> &a_weights) {
+  DominantBone dominant;
+  float total = 0.0f;
+  float best = 0.0f;
+  for (const auto &[name, weight] : a_weights) {
+    total += weight;
+    if (weight > best) {
+      best = weight;
+      dominant.name = name;
     }
   }
-  for (std::size_t i = 0; i < listed; ++i) {
-    MeshIsland island;
+  dominant.share = total > 0.0f ? best / total : 0.0f;
+  return dominant;
+}
+
+[[nodiscard]] MeshIsland IslandFrom(const IslandTally &a_tally,
+                                    const RootCount &a_rank,
+                                    std::size_t a_totalTriangles) {
+  MeshIsland island;
+  island.triangles = a_rank.triangles;
+  island.share = a_totalTriangles > 0 ? static_cast<float>(a_rank.triangles) /
+                                            static_cast<float>(a_totalTriangles)
+                                      : 0.0f;
+  if (a_tally.members > 0) {
+    const float count = static_cast<float>(a_tally.members);
+    island.centroid =
+        Vec3{a_tally.positionSum.x / count, a_tally.positionSum.y / count,
+             a_tally.positionSum.z / count};
+  }
+  DominantBone dominant = DominantBoneOf(a_tally.boneWeight);
+  island.dominantBone = std::move(dominant.name);
+  island.dominantShare = dominant.share;
+  return island;
+}
+
+[[nodiscard]] Labelling Label(const FlatMesh &a_flat, DisjointSets &a_sets,
+                              IslandSource a_source) {
+  const std::vector<RootCount> ranked = RankedRoots(a_flat, a_sets);
+  const std::span<const RootCount> listed =
+      std::span<const RootCount>{ranked}.first(
+          std::min<std::size_t>(ranked.size(), kMaxIslands));
+  Labelling out;
+  out.ofVertex = LabelVertices(a_flat.vertices.size(), listed, a_sets);
+  const std::vector<IslandTally> tallies =
+      TallyIslands(a_flat, out.ofVertex, listed.size());
+  for (std::size_t i = 0; i < listed.size() && i < tallies.size(); ++i) {
+    MeshIsland island =
+        IslandFrom(tallies[i], listed[i], a_flat.triangles.size());
     island.source = a_source;
     island.id = static_cast<std::uint16_t>(i);
-    island.triangles = ranked[i].triangles;
-    island.share = totalTriangles > 0
-                       ? static_cast<float>(ranked[i].triangles) /
-                             static_cast<float>(totalTriangles)
-                       : 0.0f;
-    if (members[i] > 0) {
-      const float count = static_cast<float>(members[i]);
-      island.centroid = Vec3{positionSum[i].x / count, positionSum[i].y / count,
-                             positionSum[i].z / count};
-    }
-    float total = 0.0f;
-    float best = 0.0f;
-    for (const auto &[name, weight] : boneWeight[i]) {
-      total += weight;
-      if (weight > best) {
-        best = weight;
-        island.dominantBone = name;
-      }
-    }
-    island.dominantShare = total > 0.0f ? best / total : 0.0f;
     out.islands.push_back(std::move(island));
   }
   return out;
@@ -274,44 +319,76 @@ TableOf(const MeshAnalysis &a_analysis, IslandSource a_source) noexcept {
                                               : a_analysis.chartOf;
 }
 
-void PairTwins(MeshAnalysis &a_analysis) {
-  constexpr std::uint16_t kConflict = 0xFFFF;
-  std::vector<std::uint16_t> chartOfComponent(a_analysis.components, kNoIsland);
-  std::vector<std::size_t> componentSize(a_analysis.components, 0);
-  std::vector<std::size_t> chartSize(a_analysis.charts, 0);
+constexpr std::uint16_t kConflictingChart = 0xFFFF;
+
+struct TwinCandidates {
+  std::vector<std::uint16_t> chartOfComponent;
+  std::vector<std::size_t> componentSize;
+  std::vector<std::size_t> chartSize;
+};
+
+[[nodiscard]] TwinCandidates TwinCandidatesOf(const MeshAnalysis &a_analysis) {
+  TwinCandidates out{
+      std::vector<std::uint16_t>(a_analysis.components, kNoIsland),
+      std::vector<std::size_t>(a_analysis.components, 0),
+      std::vector<std::size_t>(a_analysis.charts, 0)};
   const std::size_t vertices =
       (std::min)(a_analysis.componentOf.size(), a_analysis.chartOf.size());
   for (std::size_t v = 0; v < vertices; ++v) {
     const std::uint16_t c = a_analysis.componentOf[v];
     const std::uint16_t k = a_analysis.chartOf[v];
-    if (c < componentSize.size()) {
-      ++componentSize[c];
+    if (c < out.componentSize.size()) {
+      ++out.componentSize[c];
     }
-    if (k < chartSize.size()) {
-      ++chartSize[k];
+    if (k < out.chartSize.size()) {
+      ++out.chartSize[k];
     }
-    if (c >= chartOfComponent.size() || k == kNoIsland) {
+    if (c >= out.chartOfComponent.size() || k == kNoIsland) {
       continue;
     }
-    std::uint16_t &seen = chartOfComponent[c];
-    seen = seen == kNoIsland ? k : (seen == k ? k : kConflict);
+    std::uint16_t &seen = out.chartOfComponent[c];
+    seen = seen == kNoIsland ? k : (seen == k ? k : kConflictingChart);
   }
+  return out;
+}
+
+[[nodiscard]] std::optional<std::uint16_t>
+TwinChartOf(const TwinCandidates &a_candidates, std::uint16_t a_component) {
+  if (a_component >= a_candidates.chartOfComponent.size() ||
+      a_component >= a_candidates.componentSize.size()) {
+    return std::nullopt;
+  }
+  const std::uint16_t k = a_candidates.chartOfComponent[a_component];
+  if (k == kNoIsland || k == kConflictingChart ||
+      k >= a_candidates.chartSize.size() ||
+      a_candidates.chartSize[k] != a_candidates.componentSize[a_component]) {
+    return std::nullopt;
+  }
+  return k;
+}
+
+void LinkChartTwin(std::vector<MeshIsland> &a_islands, std::uint16_t a_chart,
+                   std::uint16_t a_component) {
+  for (MeshIsland &chart : a_islands) {
+    if (chart.source == IslandSource::kChart && chart.id == a_chart) {
+      chart.twin = a_component;
+    }
+  }
+}
+
+void PairTwins(MeshAnalysis &a_analysis) {
+  const TwinCandidates candidates = TwinCandidatesOf(a_analysis);
   for (MeshIsland &island : a_analysis.islands) {
-    if (island.source != IslandSource::kComponent ||
-        island.id >= chartOfComponent.size()) {
+    if (island.source != IslandSource::kComponent) {
       continue;
     }
-    const std::uint16_t k = chartOfComponent[island.id];
-    if (k == kNoIsland || k == kConflict || k >= chartSize.size() ||
-        chartSize[k] != componentSize[island.id]) {
+    const std::optional<std::uint16_t> chart =
+        TwinChartOf(candidates, island.id);
+    if (!chart) {
       continue;
     }
-    island.twin = k;
-    for (MeshIsland &chart : a_analysis.islands) {
-      if (chart.source == IslandSource::kChart && chart.id == k) {
-        chart.twin = island.id;
-      }
-    }
+    island.twin = *chart;
+    LinkChartTwin(a_analysis.islands, *chart, island.id);
   }
 }
 }

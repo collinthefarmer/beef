@@ -86,4 +86,13 @@ bool Stateful(const NodeKind &kind) {
          Is<AccumulateOperation>(kind) || Is<RateOperation>(kind) ||
          Is<SmoothOperation>(kind);
 }
+std::optional<GraphValueType>
+FunctionResultTypeOf(const FunctionDefinition &a_function) {
+  if (a_function.result.node >= a_function.nodes.size())
+    return std::nullopt;
+  const auto &outputs = a_function.nodes[a_function.result.node].outputs;
+  if (a_function.result.output >= outputs.size())
+    return std::nullopt;
+  return outputs[a_function.result.output].type;
+}
 }

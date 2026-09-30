@@ -209,5 +209,7 @@ struct FunctionDefinition {
   bool isDisabled = false;
 };
 [[nodiscard]] std::vector<OutputRef> InputsOf(const NodeKind &a_kind);
+[[nodiscard]] std::optional<GraphValueType>
+FunctionResultTypeOf(const FunctionDefinition &a_function);
 [[nodiscard]] bool Stateful(const NodeKind &a_kind);
 }

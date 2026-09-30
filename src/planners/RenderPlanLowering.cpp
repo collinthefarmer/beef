@@ -144,14 +144,6 @@ struct PlanBuilder {
     inputIdentities.resize(plan.inputs.size());
     return RenderInputRef{plan.inputs.size() - 1};
   }
-  RenderValueRef Lookup(const RecipeGraph &graph, FunctionId function,
-                        std::vector<LookupArgument> arguments,
-                        const std::string &name,
-                        std::size_t sampledParameter = 0) {
-    return Step(BuildLookupStep{&graph, function, sampledParameter,
-                                std::move(arguments), 256},
-                name);
-  }
   RenderValueRef Field(RenderValueRef value, TextureRequirements requirements,
                        const std::string &label) {
     const auto type = TypeOf(plan, value);
@@ -391,8 +383,9 @@ struct PlanBuilder {
     const RenderValueRef source =
         BuildOperand(operation.arguments[*sampled], request, depth);
     const RenderValueRef lookup =
-        Lookup(site.graph, operation.function, std::move(arguments),
-               label + " lookup", *sampled);
+        Step(BuildLookupStep{&site.graph, operation.function, *sampled,
+                             std::move(arguments), 256},
+             label + " lookup");
     return Step(MapFieldStep{source, lookup, request.requirements}, label);
   }
   RenderValueRef LowerExpressionOperation(const ExpressionOperation &operation,
@@ -414,9 +407,10 @@ struct PlanBuilder {
       for (const BoundFunctionArgument &argument : lookup.arguments)
         arguments.push_back(
             {argument.parameter, BuildOperand(argument.value, request, depth)});
-      lookups.push_back(Lookup(site.graph, lookup.function,
-                               std::move(arguments), label + " lookup",
-                               lookup.sampledParameter));
+      lookups.push_back(Step(BuildLookupStep{&site.graph, lookup.function,
+                                             lookup.sampledParameter,
+                                             std::move(arguments), 256},
+                             label + " lookup"));
     }
     return Step(EvaluateProgramStep{std::move(*program), std::move(inputs),
                                     std::move(lookups), request.requirements},

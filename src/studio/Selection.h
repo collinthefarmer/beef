@@ -10,6 +10,7 @@
 #include <optional>
 #include <span>
 #include <string>
+#include <string_view>
 #include <variant>
 #include <vector>
 
@@ -62,6 +63,11 @@ struct Selection {
   [[nodiscard]] bool operator==(const Selection &) const = default;
 };
 
+struct GeometryChoice {
+  std::vector<std::string> names;
+  std::optional<std::size_t> selected;
+};
+
 [[nodiscard]] const PieceRow *
 SelectedPiece(const Snapshot &a_snapshot,
               const Selection &a_selection) noexcept;
@@ -79,6 +85,11 @@ SelectedOutput(const GeometryRow *a_geometry,
 [[nodiscard]] const OutputRow *
 SelectedAuthoredOutput(const RecipeRow &a_recipe,
                        const Selection &a_selection) noexcept;
+[[nodiscard]] GeometryChoice GeometryChoiceOf(const RecipeRow &a_recipe,
+                                              std::string_view a_selected);
+[[nodiscard]] const PictureRow *
+ResourcePictureOf(const GeometryRow &a_geometry,
+                  const InspectorSubject &a_subject);
 [[nodiscard]] std::optional<PieceRef>
 RequestOf(const Selection &a_selection) noexcept;
 void ResolveSelection(Selection &a_selection, const Snapshot &a_snapshot);

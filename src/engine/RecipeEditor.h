@@ -52,8 +52,7 @@ public:
   std::uint64_t RenameRecipe(std::string a_from, std::string a_to);
   std::uint64_t DeleteRecipe(std::string a_id);
   std::uint64_t DuplicateRecipe(std::string a_from, std::string a_to);
-  void BeginPaint(std::string a_active, RecipeKey a_key, Surface a_surface,
-                  std::uint64_t a_sessionID, std::uint64_t a_resetID);
+  void BeginPaint(Studio::PaintStartRequest a_request);
   void UpdatePaint(Studio::PaintUpdateRequest a_request);
   void KeepPaint(Studio::PaintCommitRequest a_request);
   void EndPaint(std::uint64_t a_sessionID = 0);
@@ -90,6 +89,11 @@ private:
   [[nodiscard]] std::expected<void, Diagnostic>
   ApplyEdits(const std::string &a_id, const Studio::EditBatch &a_edits);
   void FinishPaint();
+  void InstallPaintRecipe(Recipe a_paint,
+                          const Studio::PaintStartRequest &a_request);
+  void EnterPaintIsolation();
+  void LeavePaintIsolation();
+  void DropPaintRecipe();
   void SaveRecipeNow(const std::string &a_id,
                      const PendingFileOperation &a_operation);
   void ReloadRecipesNow();

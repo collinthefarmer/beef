@@ -81,7 +81,7 @@ std::expected<void, std::string> CheckStackShape(const StackShape &shape) {
   if (shape.layers.empty() || shape.layers.size() > kMaxStackLayers)
     return std::unexpected("stack shape has no layers or too many");
   if (shape.code.size() > kProgramInstructions)
-    return std::unexpected("stack shape code exceeds the interpreter limit");
+    return std::unexpected("stack shape code exceeds the program limit");
   for (const auto &layer : shape.layers)
     for (const auto segment : {FieldOf(layer.source), FieldOf(layer.mask)})
       if (segment && !SegmentAt(shape.segments, shape.code.size(), *segment))

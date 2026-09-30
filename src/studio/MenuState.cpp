@@ -6,9 +6,11 @@
 #include "studio/View.h"
 
 #include <algorithm>
+#include <array>
 #include <cstddef>
 #include <optional>
 #include <set>
+#include <string>
 #include <utility>
 
 namespace BetterEnchantmentEffects::Studio {
@@ -42,44 +44,61 @@ FieldKey HashFieldKey(std::string_view a_scope, std::string_view a_field,
 }
 
 namespace {
+[[nodiscard]] std::optional<std::size_t>
+IndexAfterRemoval(std::size_t a_at, std::size_t a_removed) {
+  if (a_at == a_removed) {
+    return std::nullopt;
+  }
+  return a_at > a_removed ? a_at - 1 : a_at;
+}
+
+[[nodiscard]] std::size_t IndexAfterMove(std::size_t a_at, std::size_t a_from,
+                                         std::size_t a_to) {
+  if (a_at == a_from) {
+    return a_to;
+  }
+  if (a_from < a_at && a_at <= a_to) {
+    return a_at - 1;
+  }
+  if (a_to <= a_at && a_at < a_from) {
+    return a_at + 1;
+  }
+  return a_at;
+}
+
+void ReduceAddLayer(Selection &a_selection, const AddLayer &a_edit) {
+  if (a_edit.at) {
+    a_selection.layer = *a_edit.at;
+  }
+}
+
+void ReduceRemoveLayer(Selection &a_selection, const RemoveLayer &a_edit) {
+  if (a_selection.layer) {
+    a_selection.layer = IndexAfterRemoval(*a_selection.layer, a_edit.layer);
+  }
+}
+
+void ReduceMoveLayer(Selection &a_selection, const MoveLayer &a_edit) {
+  if (a_selection.layer) {
+    a_selection.layer =
+        IndexAfterMove(*a_selection.layer, a_edit.from, a_edit.to);
+  }
+}
+
+void ReduceAddOutput(Selection &a_selection, const AddOutput &a_edit) {
+  a_selection.target = TargetOf(a_edit.surface);
+  a_selection.slot = a_edit.slot;
+  a_selection.layer.reset();
+}
+
 void ReduceEdit(Selection &a_selection, const RecipeEdit &a_edit) {
   Match(
-      a_edit,
-      [&](const AddLayer &a_e) {
-        if (a_e.at) {
-          a_selection.layer = *a_e.at;
-        }
-      },
-      [&](const RemoveLayer &a_e) {
-        if (!a_selection.layer) {
-          return;
-        }
-        if (*a_selection.layer == a_e.layer) {
-          a_selection.layer.reset();
-        } else if (*a_selection.layer > a_e.layer) {
-          --*a_selection.layer;
-        }
-      },
-      [&](const MoveLayer &a_e) {
-        if (!a_selection.layer) {
-          return;
-        }
-        const std::size_t at = *a_selection.layer;
-        if (at == a_e.from) {
-          a_selection.layer = a_e.to;
-        } else if (a_e.from < at && at <= a_e.to) {
-          --*a_selection.layer;
-        } else if (a_e.to <= at && at < a_e.from) {
-          ++*a_selection.layer;
-        }
-      },
+      a_edit, [&](const AddLayer &a_e) { ReduceAddLayer(a_selection, a_e); },
+      [&](const RemoveLayer &a_e) { ReduceRemoveLayer(a_selection, a_e); },
+      [&](const MoveLayer &a_e) { ReduceMoveLayer(a_selection, a_e); },
       [&](const ClearLayers &) { a_selection.layer.reset(); },
       [&](const RemoveOutput &) { a_selection.layer.reset(); },
-      [&](const AddOutput &a_e) {
-        a_selection.target = TargetOf(a_e.surface);
-        a_selection.slot = a_e.slot;
-        a_selection.layer.reset();
-      },
+      [&](const AddOutput &a_e) { ReduceAddOutput(a_selection, a_e); },
       [](const SetLayerSource &) {}, [](const SetLayerCurve &) {},
       [](const SetLayerBlend &) {}, [](const SetLayerOpacity &) {},
       [](const SetLayerColor &) {}, [](const SetLayerMask &) {},
@@ -392,10 +411,7 @@ struct ReduceVisitor {
       mask.terms.front().op = TermOp::kSet;
     }
     RemapMask(mask, [&](std::size_t a_at) -> std::optional<std::size_t> {
-      if (a_at == a_i.index) {
-        return std::nullopt;
-      }
-      return a_at > a_i.index ? a_at - 1 : a_at;
+      return IndexAfterRemoval(a_at, a_i.index);
     });
     mask.dirty = true;
   }
@@ -418,16 +434,7 @@ struct ReduceVisitor {
     }
     mask.terms.front().op = TermOp::kSet;
     RemapMask(mask, [&](std::size_t a_at) -> std::optional<std::size_t> {
-      if (a_at == a_i.from) {
-        return a_i.to;
-      }
-      if (a_i.from < a_at && a_at <= a_i.to) {
-        return a_at - 1;
-      }
-      if (a_i.to <= a_at && a_at < a_i.from) {
-        return a_at + 1;
-      }
-      return a_at;
+      return IndexAfterMove(a_at, a_i.from, a_i.to);
     });
     mask.dirty = true;
   }
@@ -719,85 +726,201 @@ namespace {
          Is<PickCell>(a_intent) || Is<PickLayer>(a_intent) ||
          ChangesPaint(a_intent);
 }
+
+[[nodiscard]] bool EditorSettled(const MenuState &a_state) {
+  const bool editorPending = a_state.pendingIndexedEdit ||
+                             a_state.pendingRecipeFile ||
+                             a_state.pendingEditorChange;
+  const bool commitPending = a_state.paint && a_state.paint->pendingCommit;
+  return !editorPending && !commitPending;
+}
+
+[[nodiscard]] bool AcceptBeginPaint(const MenuState &a_state,
+                                    const BeginPaint &a_begin) {
+  return a_state.mode == Mode::kPaint && !a_state.paint &&
+         a_begin.recipeID != kPaintRecipe &&
+         a_begin.resetID == a_state.lastPaintReset;
+}
+
+[[nodiscard]] bool AcceptKeepPaint(const MenuState &a_state,
+                                   const KeepPaint &a_keep) {
+  return a_state.paint && a_state.paint->ready &&
+         !a_state.paint->pendingCommit &&
+         a_state.paint->sessionID == a_keep.request.sessionID &&
+         a_state.paint->recipeID == a_keep.request.recipeID;
+}
+
+[[nodiscard]] bool AcceptUpdatePaint(const MenuState &a_state,
+                                     const UpdatePaint &a_update) {
+  return a_state.paint && a_state.paint->ready &&
+         !a_state.paint->pendingRevision && !a_state.paint->pendingCommit &&
+         a_state.paint->sessionID == a_update.request.sessionID;
+}
+
+[[nodiscard]] bool AcceptEndPaint(const MenuState &a_state) {
+  return !a_state.paint || !a_state.paint->pendingCommit;
+}
+
+struct AcceptVisitor {
+  const MenuState &state;
+
+  [[nodiscard]] bool operator()(const BeginPaint &a_begin) const {
+    return AcceptBeginPaint(state, a_begin);
+  }
+  [[nodiscard]] bool operator()(const KeepPaint &a_keep) const {
+    return AcceptKeepPaint(state, a_keep);
+  }
+  [[nodiscard]] bool operator()(const UpdatePaint &a_update) const {
+    return AcceptUpdatePaint(state, a_update);
+  }
+  [[nodiscard]] bool operator()(const EndPaint &) const {
+    return AcceptEndPaint(state);
+  }
+  [[nodiscard]] bool operator()(const SetMode &) const { return true; }
+  [[nodiscard]] bool operator()(const PickPiece &) const { return true; }
+  [[nodiscard]] bool operator()(const PickRecipe &) const { return true; }
+  [[nodiscard]] bool operator()(const PinRecipe &) const { return true; }
+  [[nodiscard]] bool operator()(const PickTarget &) const { return true; }
+  [[nodiscard]] bool operator()(const PickSlot &) const { return true; }
+  [[nodiscard]] bool operator()(const PickCell &) const { return true; }
+  [[nodiscard]] bool operator()(const PickLayer &) const { return true; }
+  [[nodiscard]] bool operator()(const ViewGeometry &) const { return true; }
+  [[nodiscard]] bool operator()(const SetStackSplit &) const { return true; }
+  [[nodiscard]] bool operator()(const SetWorkspaceSplit &) const {
+    return true;
+  }
+  [[nodiscard]] bool operator()(const ShowSettings &) const { return true; }
+  [[nodiscard]] bool operator()(const ShowResource &) const { return true; }
+  [[nodiscard]] bool operator()(const ReadMesh &) const { return true; }
+  [[nodiscard]] bool operator()(const AddTerm &) const { return true; }
+  [[nodiscard]] bool operator()(const SetTermOp &) const { return true; }
+  [[nodiscard]] bool operator()(const SetTermText &) const { return true; }
+  [[nodiscard]] bool operator()(const SetTermKind &) const { return true; }
+  [[nodiscard]] bool operator()(const RemoveTerm &) const { return true; }
+  [[nodiscard]] bool operator()(const MoveTerm &) const { return true; }
+  [[nodiscard]] bool operator()(const PickTerm &) const { return true; }
+  [[nodiscard]] bool operator()(const SoloTerm &) const { return true; }
+  [[nodiscard]] bool operator()(const MuteTerm &) const { return true; }
+  [[nodiscard]] bool operator()(const SetPeek &) const { return true; }
+  [[nodiscard]] bool operator()(const LoadMask &) const { return true; }
+  [[nodiscard]] bool operator()(const ClearMask &) const { return true; }
+  [[nodiscard]] bool operator()(const UndoMask &) const { return true; }
+  [[nodiscard]] bool operator()(const RedoMask &) const { return true; }
+  [[nodiscard]] bool operator()(const SetPaintSurface &) const { return true; }
+  [[nodiscard]] bool operator()(const EditRecipe &) const { return true; }
+  [[nodiscard]] bool operator()(const SoloRecipe &) const { return true; }
+  [[nodiscard]] bool operator()(const SoloPiece &) const { return true; }
+  [[nodiscard]] bool operator()(const SoloOutput &) const { return true; }
+  [[nodiscard]] bool operator()(const SoloLayer &) const { return true; }
+  [[nodiscard]] bool operator()(const MuteLayer &) const { return true; }
+  [[nodiscard]] bool operator()(const SetFreeze &) const { return true; }
+  [[nodiscard]] bool operator()(const SetScrub &) const { return true; }
+  [[nodiscard]] bool operator()(const SetSpeed &) const { return true; }
+  [[nodiscard]] bool operator()(const StepClock &) const { return true; }
+  [[nodiscard]] bool operator()(const Undo &) const { return true; }
+  [[nodiscard]] bool operator()(const Redo &) const { return true; }
+  [[nodiscard]] bool operator()(const CreateRecipe &) const { return true; }
+  [[nodiscard]] bool operator()(const RenameRecipe &) const { return true; }
+  [[nodiscard]] bool operator()(const DeleteRecipe &) const { return true; }
+  [[nodiscard]] bool operator()(const DuplicateRecipe &) const { return true; }
+  [[nodiscard]] bool operator()(const FireTrigger &) const { return true; }
+};
+
+[[nodiscard]] std::size_t SourceRoom(const MenuState &a_state) {
+  const std::size_t used = a_state.paint ? a_state.paint->sources.size() : 0;
+  return kMaxRecipeRows - std::min(kMaxRecipeRows, used);
+}
+
+struct MaskLimitVisitor {
+  const MenuState &state;
+
+  [[nodiscard]] bool operator()(const AddTerm &a_add) const {
+    return state.mask.terms.size() >= kMaxTerms ||
+           (state.paint && a_add.sources.size() > SourceRoom(state));
+  }
+  [[nodiscard]] bool operator()(const SetTermKind &a_set) const {
+    return state.paint && a_set.sources.size() > SourceRoom(state);
+  }
+  [[nodiscard]] bool operator()(const LoadMask &a_load) const {
+    return a_load.terms.size() > kMaxTerms;
+  }
+  [[nodiscard]] bool operator()(const SetMode &) const { return false; }
+  [[nodiscard]] bool operator()(const PickPiece &) const { return false; }
+  [[nodiscard]] bool operator()(const PickRecipe &) const { return false; }
+  [[nodiscard]] bool operator()(const PinRecipe &) const { return false; }
+  [[nodiscard]] bool operator()(const PickTarget &) const { return false; }
+  [[nodiscard]] bool operator()(const PickSlot &) const { return false; }
+  [[nodiscard]] bool operator()(const PickCell &) const { return false; }
+  [[nodiscard]] bool operator()(const PickLayer &) const { return false; }
+  [[nodiscard]] bool operator()(const ViewGeometry &) const { return false; }
+  [[nodiscard]] bool operator()(const SetStackSplit &) const { return false; }
+  [[nodiscard]] bool operator()(const SetWorkspaceSplit &) const {
+    return false;
+  }
+  [[nodiscard]] bool operator()(const ShowSettings &) const { return false; }
+  [[nodiscard]] bool operator()(const ShowResource &) const { return false; }
+  [[nodiscard]] bool operator()(const ReadMesh &) const { return false; }
+  [[nodiscard]] bool operator()(const SetTermOp &) const { return false; }
+  [[nodiscard]] bool operator()(const SetTermText &) const { return false; }
+  [[nodiscard]] bool operator()(const RemoveTerm &) const { return false; }
+  [[nodiscard]] bool operator()(const MoveTerm &) const { return false; }
+  [[nodiscard]] bool operator()(const PickTerm &) const { return false; }
+  [[nodiscard]] bool operator()(const SoloTerm &) const { return false; }
+  [[nodiscard]] bool operator()(const MuteTerm &) const { return false; }
+  [[nodiscard]] bool operator()(const SetPeek &) const { return false; }
+  [[nodiscard]] bool operator()(const ClearMask &) const { return false; }
+  [[nodiscard]] bool operator()(const UndoMask &) const { return false; }
+  [[nodiscard]] bool operator()(const RedoMask &) const { return false; }
+  [[nodiscard]] bool operator()(const BeginPaint &) const { return false; }
+  [[nodiscard]] bool operator()(const SetPaintSurface &) const { return false; }
+  [[nodiscard]] bool operator()(const KeepPaint &) const { return false; }
+  [[nodiscard]] bool operator()(const EndPaint &) const { return false; }
+  [[nodiscard]] bool operator()(const UpdatePaint &) const { return false; }
+  [[nodiscard]] bool operator()(const EditRecipe &) const { return false; }
+  [[nodiscard]] bool operator()(const SoloRecipe &) const { return false; }
+  [[nodiscard]] bool operator()(const SoloPiece &) const { return false; }
+  [[nodiscard]] bool operator()(const SoloOutput &) const { return false; }
+  [[nodiscard]] bool operator()(const SoloLayer &) const { return false; }
+  [[nodiscard]] bool operator()(const MuteLayer &) const { return false; }
+  [[nodiscard]] bool operator()(const SetFreeze &) const { return false; }
+  [[nodiscard]] bool operator()(const SetScrub &) const { return false; }
+  [[nodiscard]] bool operator()(const SetSpeed &) const { return false; }
+  [[nodiscard]] bool operator()(const StepClock &) const { return false; }
+  [[nodiscard]] bool operator()(const Undo &) const { return false; }
+  [[nodiscard]] bool operator()(const Redo &) const { return false; }
+  [[nodiscard]] bool operator()(const CreateRecipe &) const { return false; }
+  [[nodiscard]] bool operator()(const RenameRecipe &) const { return false; }
+  [[nodiscard]] bool operator()(const DeleteRecipe &) const { return false; }
+  [[nodiscard]] bool operator()(const DuplicateRecipe &) const { return false; }
+  [[nodiscard]] bool operator()(const FireTrigger &) const { return false; }
+};
+
+[[nodiscard]] bool ExceedsMaskLimits(const MenuState &a_state,
+                                     const Intent &a_intent) {
+  return Match(a_intent, MaskLimitVisitor{a_state});
+}
+
+void ReportMaskLimit(MenuState &a_state) {
+  if (a_state.paint) {
+    a_state.paint->problem = MakeDiagnostic(
+        Severity::kError, "paint", "the mask term or source limit was reached");
+  }
+}
+
+void MarkPaintChanged(MenuState &a_state) {
+  if (a_state.paint) {
+    ++a_state.paint->revision;
+    a_state.mask.dirty = true;
+    a_state.paint->problem.reset();
+  }
+}
 }
 
 bool AcceptIntent(const MenuState &a_state, const Intent &a_intent) {
-  if ((a_state.pendingIndexedEdit || a_state.pendingRecipeFile ||
-       a_state.pendingEditorChange) &&
-      RequiresSettledEditor(a_intent)) {
+  if (!EditorSettled(a_state) && RequiresSettledEditor(a_intent)) {
     return false;
   }
-  if (a_state.paint && a_state.paint->pendingCommit &&
-      RequiresSettledEditor(a_intent)) {
-    return false;
-  }
-  return Match(
-      a_intent,
-      [&](const BeginPaint &a_begin) {
-        return a_state.mode == Mode::kPaint && !a_state.paint &&
-               a_begin.recipeID != kPaintRecipe &&
-               a_begin.resetID == a_state.lastPaintReset;
-      },
-      [&](const KeepPaint &a_keep) {
-        return a_state.paint && a_state.paint->ready &&
-               !a_state.paint->pendingCommit &&
-               a_state.paint->sessionID == a_keep.request.sessionID &&
-               a_state.paint->recipeID == a_keep.request.recipeID;
-      },
-      [&](const UpdatePaint &a_update) {
-        return a_state.paint && a_state.paint->ready &&
-               !a_state.paint->pendingRevision &&
-               !a_state.paint->pendingCommit &&
-               a_state.paint->sessionID == a_update.request.sessionID;
-      },
-      [&](const EndPaint &) {
-        return !a_state.paint || !a_state.paint->pendingCommit;
-      },
-      [](const SetMode &) { return true; },
-      [](const PickPiece &) { return true; },
-      [](const PickRecipe &) { return true; },
-      [](const PinRecipe &) { return true; },
-      [](const PickTarget &) { return true; },
-      [](const PickSlot &) { return true; },
-      [](const PickCell &) { return true; },
-      [](const PickLayer &) { return true; },
-      [](const ViewGeometry &) { return true; },
-      [](const SetStackSplit &) { return true; },
-      [](const SetWorkspaceSplit &) { return true; },
-      [](const ShowSettings &) { return true; },
-      [](const ShowResource &) { return true; },
-      [](const ReadMesh &) { return true; },
-      [](const AddTerm &) { return true; },
-      [](const SetTermOp &) { return true; },
-      [](const SetTermText &) { return true; },
-      [](const SetTermKind &) { return true; },
-      [](const RemoveTerm &) { return true; },
-      [](const MoveTerm &) { return true; },
-      [](const PickTerm &) { return true; },
-      [](const SoloTerm &) { return true; },
-      [](const MuteTerm &) { return true; },
-      [](const SetPeek &) { return true; },
-      [](const LoadMask &) { return true; },
-      [](const ClearMask &) { return true; },
-      [](const UndoMask &) { return true; },
-      [](const RedoMask &) { return true; },
-      [](const SetPaintSurface &) { return true; },
-      [](const EditRecipe &) { return true; },
-      [](const SoloRecipe &) { return true; },
-      [](const SoloPiece &) { return true; },
-      [](const SoloOutput &) { return true; },
-      [](const SoloLayer &) { return true; },
-      [](const MuteLayer &) { return true; },
-      [](const SetFreeze &) { return true; },
-      [](const SetScrub &) { return true; },
-      [](const SetSpeed &) { return true; },
-      [](const StepClock &) { return true; }, [](const Undo &) { return true; },
-      [](const Redo &) { return true; },
-      [](const CreateRecipe &) { return true; },
-      [](const RenameRecipe &) { return true; },
-      [](const DeleteRecipe &) { return true; },
-      [](const DuplicateRecipe &) { return true; },
-      [](const FireTrigger &) { return true; });
+  return Match(a_intent, AcceptVisitor{a_state});
 }
 
 void ResolveEditorSelection(MenuState &a_state, const Snapshot &a_snapshot) {
@@ -922,82 +1045,13 @@ void Reduce(MenuState &a_state, const Intent &a_intent) {
   if (!AcceptIntent(a_state, a_intent)) {
     return;
   }
-  const bool exceeds = Match(
-      a_intent,
-      [&](const AddTerm &a_add) {
-        return a_state.mask.terms.size() >= kMaxTerms ||
-               (a_state.paint &&
-                a_add.sources.size() >
-                    kMaxRecipeRows - std::min(kMaxRecipeRows,
-                                              a_state.paint->sources.size()));
-      },
-      [&](const SetTermKind &a_set) {
-        return a_state.paint &&
-               a_set.sources.size() >
-                   kMaxRecipeRows -
-                       std::min(kMaxRecipeRows, a_state.paint->sources.size());
-      },
-      [&](const LoadMask &a_load) { return a_load.terms.size() > kMaxTerms; },
-      [](const SetMode &) { return false; },
-      [](const PickPiece &) { return false; },
-      [](const PickRecipe &) { return false; },
-      [](const PinRecipe &) { return false; },
-      [](const PickTarget &) { return false; },
-      [](const PickSlot &) { return false; },
-      [](const PickCell &) { return false; },
-      [](const PickLayer &) { return false; },
-      [](const ViewGeometry &) { return false; },
-      [](const SetStackSplit &) { return false; },
-      [](const SetWorkspaceSplit &) { return false; },
-      [](const ShowSettings &) { return false; },
-      [](const ShowResource &) { return false; },
-      [](const ReadMesh &) { return false; },
-      [](const SetTermOp &) { return false; },
-      [](const SetTermText &) { return false; },
-      [](const RemoveTerm &) { return false; },
-      [](const MoveTerm &) { return false; },
-      [](const PickTerm &) { return false; },
-      [](const SoloTerm &) { return false; },
-      [](const MuteTerm &) { return false; },
-      [](const SetPeek &) { return false; },
-      [](const ClearMask &) { return false; },
-      [](const UndoMask &) { return false; },
-      [](const RedoMask &) { return false; },
-      [](const BeginPaint &) { return false; },
-      [](const SetPaintSurface &) { return false; },
-      [](const KeepPaint &) { return false; },
-      [](const EndPaint &) { return false; },
-      [](const UpdatePaint &) { return false; },
-      [](const EditRecipe &) { return false; },
-      [](const SoloRecipe &) { return false; },
-      [](const SoloPiece &) { return false; },
-      [](const SoloOutput &) { return false; },
-      [](const SoloLayer &) { return false; },
-      [](const MuteLayer &) { return false; },
-      [](const SetFreeze &) { return false; },
-      [](const SetScrub &) { return false; },
-      [](const SetSpeed &) { return false; },
-      [](const StepClock &) { return false; },
-      [](const Undo &) { return false; }, [](const Redo &) { return false; },
-      [](const CreateRecipe &) { return false; },
-      [](const RenameRecipe &) { return false; },
-      [](const DeleteRecipe &) { return false; },
-      [](const DuplicateRecipe &) { return false; },
-      [](const FireTrigger &) { return false; });
-  if (exceeds) {
-    if (a_state.paint) {
-      a_state.paint->problem =
-          MakeDiagnostic(Severity::kError, "paint",
-                         "the mask term or source limit was reached");
-    }
+  if (ExceedsMaskLimits(a_state, a_intent)) {
+    ReportMaskLimit(a_state);
     return;
   }
   Match(a_intent, ReduceVisitor{a_state});
-  const bool changed = ChangesPaint(a_intent);
-  if (a_state.paint && changed) {
-    ++a_state.paint->revision;
-    a_state.mask.dirty = true;
-    a_state.paint->problem.reset();
+  if (ChangesPaint(a_intent)) {
+    MarkPaintChanged(a_state);
   }
 }
 
@@ -1067,6 +1121,42 @@ std::optional<UpdatePaint> PendingPaintUpdate(const MenuState &a_state) {
 
 bool MaskTaskActive(const MenuState &a_state) {
   return a_state.paint.has_value() && a_state.mode == Mode::kPaint;
+}
+
+bool CanKeepMask(const MenuState &a_state) {
+  const auto expression = CheckedBuildMask(a_state.mask.terms);
+  return a_state.paint && a_state.paint->ready &&
+         !a_state.paint->pendingCommit && expression && !expression->empty();
+}
+
+std::array<RuleButton, 4> MaskRuleButtonsOf(const MenuState &a_state) {
+  return {{
+      {RuleAction::kUndo,
+       {},
+       Width::Fit(),
+       a_state.maskHistory.UndoDepth() > 0},
+      {RuleAction::kRedo,
+       {},
+       Width::Fit(),
+       a_state.maskHistory.RedoDepth() > 0},
+      {RuleAction::kClear, {}, Width::Fit(), !a_state.mask.terms.empty()},
+      {RuleAction::kAdd, "Keep", Width::Fit(), CanKeepMask(a_state)},
+  }};
+}
+
+std::string MaskProblemsOf(const MenuState &a_state) {
+  std::string problems;
+  if (const auto expression = CheckedBuildMask(a_state.mask.terms);
+      !expression) {
+    problems = expression.error().message;
+  }
+  if (a_state.paint && a_state.paint->problem) {
+    if (!problems.empty()) {
+      problems += '\n';
+    }
+    problems += a_state.paint->problem->message;
+  }
+  return problems;
 }
 
 void ReconcilePaintMode(MenuState &a_state) {

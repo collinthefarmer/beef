@@ -952,6 +952,92 @@ StepResult ExecuteStep(const RenderStep &step,
         return ExecuteCompositeStackStep(k, execution);
       });
 }
+struct BoundTextureValue {
+  const RecipeGraph &graph;
+  const TextureValue &binding;
+  const GeometryInputs &geometry;
+  const SignalState &signals;
+  const ExternalInput *external;
+};
+bool ImportsResource(const RenderValueType &type) {
+  return !Get<ValueType>(type) &&
+         type != RenderValueType{RenderResourceType::kFirings};
+}
+bool StableResource(const ExternalInput *external) {
+  return external && (Is<GeometryInput>(external->source) ||
+                      Is<MaterialInput>(external->source) ||
+                      Is<TextureInput>(external->source));
+}
+std::optional<RenderValue> NumberValueOf(const BoundTextureValue &bound,
+                                         ValueType type) {
+  const auto *position =
+      bound.external ? Get<NodePositionInput>(bound.external->source) : nullptr;
+  if (position) {
+    if (const auto origin =
+            NodeBindPosition(bound.geometry.geometry.get(),
+                             bound.geometry.root.get(), position->name))
+      return Value{*origin};
+    return std::nullopt;
+  }
+  const auto number = bound.signals.ValueOf(bound.binding.output);
+  const auto v = AsVec3(number);
+  if (TypeOf(number) == type && std::isfinite(v.x) && std::isfinite(v.y) &&
+      std::isfinite(v.z))
+    return number;
+  return std::nullopt;
+}
+RenderFirings FiringsOf(const BoundTextureValue &bound) {
+  RenderFirings firings;
+  const auto name = bound.graph.NameOf(bound.binding.output.node);
+  for (const auto &firing : bound.signals.Firings(bound.binding.output)) {
+    if (firings.firings.size() >= TextureLab::kRippleFirings)
+      break;
+    auto origin = Match(
+        bound.signals.AnchorOf(name, firing),
+        [](const std::monostate &) { return std::optional<Vec3>{}; },
+        [&](const CarriedPoint &point) {
+          return std::optional{
+              ToRootSpace(bound.geometry.root.get(), point.position)};
+        },
+        [&](const AnchorNode &anchor) {
+          return NodeBindPosition(bound.geometry.geometry.get(),
+                                  bound.geometry.root.get(), anchor.node);
+        });
+    firings.firings.push_back({origin, firing.startTime});
+  }
+  return firings;
+}
+std::optional<RenderValue> ExternalResourceOf(const BoundTextureValue &bound) {
+  if (!bound.external)
+    return std::nullopt;
+  const ExternalSource &source = bound.external->source;
+  if (Is<GeometryInput>(source)) {
+    const auto mesh =
+        Compositor::GetSingleton()->MeshOf(bound.geometry.geometry.get());
+    if (mesh)
+      return *mesh;
+    return std::nullopt;
+  }
+  if (Is<MaterialInput>(source))
+    return bound.geometry.material;
+  if (const auto *texture = Get<TextureInput>(source)) {
+    const auto loaded = Compositor::GetSingleton()->LoadImage(texture->path);
+    if (loaded)
+      return TextureView{loaded};
+    return std::nullopt;
+  }
+  if (Is<RootTransformInput>(source))
+    return RenderTransform{bound.geometry.root};
+  return std::nullopt;
+}
+std::optional<RenderValue> ImportedValueOf(const BoundTextureValue &bound,
+                                           const RenderValueType &type) {
+  if (const auto *numberType = Get<ValueType>(type))
+    return NumberValueOf(bound, *numberType);
+  if (type == RenderValueType{RenderResourceType::kFirings})
+    return FiringsOf(bound);
+  return ExternalResourceOf(bound);
+}
 }
 RenderInstance::RenderInstance(
     RenderPlan plan, std::vector<GeometryInputs> geometries,
@@ -1034,71 +1120,16 @@ RenderInstance::Update(const RecipeGraph &graph, std::size_t instance,
       continue;
     }
     const auto *external = Get<ExternalInput>(node->kind);
-    std::optional<RenderValue> value;
-    bool stableResource = false;
-    if (const auto *numberType = Get<ValueType>(input.type)) {
-      const auto *position =
-          external ? Get<NodePositionInput>(external->source) : nullptr;
-      if (position) {
-        if (const auto origin = NodeBindPosition(
-                geometry->geometry.get(), geometry->root.get(), position->name))
-          value = Value{*origin};
-      } else {
-        const auto number = signals.ValueOf(binding->output);
-        const auto v = AsVec3(number);
-        if (TypeOf(number) == *numberType && std::isfinite(v.x) &&
-            std::isfinite(v.y) && std::isfinite(v.z))
-          value = number;
-      }
-    } else if (input.type == RenderValueType{RenderResourceType::kFirings}) {
-      RenderFirings firings;
-      const auto name = graph.NameOf(binding->output.node);
-      for (const auto &firing : signals.Firings(binding->output)) {
-        if (firings.firings.size() >= TextureLab::kRippleFirings)
-          break;
-        auto origin = Match(
-            signals.AnchorOf(name, firing),
-            [](const std::monostate &) { return std::optional<Vec3>{}; },
-            [&](const CarriedPoint &point) {
-              return std::optional{
-                  ToRootSpace(geometry->root.get(), point.position)};
-            },
-            [&](const AnchorNode &anchor) {
-              return NodeBindPosition(geometry->geometry.get(),
-                                      geometry->root.get(), anchor.node);
-            });
-        firings.firings.push_back({origin, firing.startTime});
-      }
-      value = std::move(firings);
-    } else if (external) {
-      if (Is<GeometryInput>(external->source)) {
-        stableResource = true;
-        if (execution_.Inputs()[i].value)
-          continue;
-        const auto mesh =
-            Compositor::GetSingleton()->MeshOf(geometry->geometry.get());
-        if (mesh)
-          value = *mesh;
-      } else if (Is<MaterialInput>(external->source)) {
-        stableResource = true;
-        value = geometry->material;
-      } else if (const auto *texture = Get<TextureInput>(external->source)) {
-        stableResource = true;
-        if (execution_.Inputs()[i].value)
-          continue;
-        const auto loaded =
-            Compositor::GetSingleton()->LoadImage(texture->path);
-        if (loaded)
-          value = TextureView{loaded};
-      } else if (Is<RootTransformInput>(external->source))
-        value = RenderTransform{geometry->root};
-    }
+    if (ImportsResource(input.type) && StableResource(external) &&
+        execution_.Inputs()[i].value)
+      continue;
+    const BoundTextureValue bound{graph, *binding, *geometry, signals,
+                                  external};
+    std::optional<RenderValue> value = ImportedValueOf(bound, input.type);
     if (!value) {
       execution_.UnsetInput(i);
       continue;
     }
-    if (stableResource && execution_.Inputs()[i].value)
-      continue;
     if (auto set = UpdateInput(i, std::move(*value)); !set)
       return set;
   }

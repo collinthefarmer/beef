@@ -123,6 +123,30 @@ const OutputRow *SelectedOutput(const GeometryRow *a_geometry,
   return nullptr;
 }
 
+GeometryChoice GeometryChoiceOf(const RecipeRow &a_recipe,
+                                std::string_view a_selected) {
+  GeometryChoice choice;
+  choice.names.reserve(a_recipe.geometries.size());
+  for (const GeometryRow &geometry : a_recipe.geometries) {
+    if (geometry.name == a_selected) {
+      choice.selected = choice.names.size();
+    }
+    choice.names.push_back(geometry.name);
+  }
+  return choice;
+}
+
+const PictureRow *ResourcePictureOf(const GeometryRow &a_geometry,
+                                    const InspectorSubject &a_subject) {
+  if (const auto *source = Get<SourceSubject>(a_subject)) {
+    return FindByName(a_geometry.sources, source->name);
+  }
+  if (const auto *mask = Get<MaskSubject>(a_subject)) {
+    return FindByName(a_geometry.masks, mask->name);
+  }
+  return nullptr;
+}
+
 std::optional<PieceRef> RequestOf(const Selection &a_selection) noexcept {
   if (a_selection.piece.actorID == 0) {
     return std::nullopt;
