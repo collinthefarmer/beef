@@ -49,11 +49,6 @@ constexpr std::array kTable{
                 "Show the rendered effects on materials and shells. When off, "
                 "effects still render but the original materials stay.",
                 &Settings::publishEffects, 0, 1, W::kCheckbox, false},
-    SettingDesc{"General", "FusionCheck", "Fusion check",
-                "Also render each fused stack layer by layer, and each "
-                "generated program with the interpreter, and record the "
-                "largest differences in the diagnostic trace. Slow.",
-                &Settings::fusionCheck, 0, 1, W::kCheckbox, false},
     SettingDesc{"General", "GeneratedShaders", "Generated shaders",
                 "Draw recipe programs and stacks with shaders compiled for "
                 "each one instead of the shared interpreter.",

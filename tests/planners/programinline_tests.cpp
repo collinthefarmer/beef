@@ -164,7 +164,7 @@ int main() {
       if (two)
         stored.z = 0.0f;
       consumerInputs[*producerInput] = stored;
-      const auto unfused =
+      const auto separate =
           EvaluateProgramOnCpu(*consumer, {consumerInputs, {}});
       std::vector<Vec3> inlinedInputs;
       for (std::size_t i = 0; i < consumerInputs.size(); ++i)
@@ -174,7 +174,7 @@ int main() {
                            producerInputs.end());
       const auto together = EvaluateProgramOnCpu(*inlined, {inlinedInputs, {}});
       ++evaluated;
-      if (!SameBits(unfused, together) && ++differing <= 5)
+      if (!SameBits(separate, together) && ++differing <= 5)
         std::printf("differs: p=%s c=%s\n", c.producer.c_str(),
                     c.consumer.c_str());
     }

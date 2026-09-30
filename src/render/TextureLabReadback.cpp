@@ -475,49 +475,6 @@ float TextureLab::MeanChannel(RE::NiSourceTexture *a_source,
   return result;
 }
 
-std::optional<float> TextureLab::MaxDifference(RenderTarget &a_first,
-                                               RenderTarget &a_second,
-                                               ShaderChannel a_channel) {
-  const TextureSize size{a_first.size};
-  const auto field = Acquire(size, "fusion difference",
-                             TextureFormat::kRgba32Float, MipPolicy::kNone);
-  if (!field)
-    return std::nullopt;
-  ProgramBindings bindings;
-  bindings.inputCount = 2;
-  bindings.textureCount = 2;
-  LayerInput sampling;
-  sampling.channel = a_channel;
-  sampling.meshSpace = true;
-  bindings.textures[0] = {a_first.Texture(), sampling, 1.0f};
-  bindings.textures[1] = {a_second.Texture(), sampling, 1.0f};
-  const auto difference = FieldProgram::AbsoluteDifference();
-  if (!DrawProgramPass(*field, CodeOf(difference), bindings))
-    return std::nullopt;
-  ReductionReadback readback;
-  if (!EnsureReductionStaging(readback) ||
-      !DrawReduction(*field, ReductionKind::kMaximum, ValueType::kVec3,
-                     *readback.staging[0].Get()))
-    return std::nullopt;
-  ReadbackMeter meter{"fusion check"};
-  const RendererLock rendererLock{&meter};
-  const ReadMapping mapped{
-      borrowedContext_,
-      reinterpret_cast<ID3D11Resource *>(readback.staging[0].Get()), meter};
-  const auto *data = mapped.Data();
-  if (!data)
-    return std::nullopt;
-  ReducedTexel texel{};
-  std::memcpy(texel.data(), data, sizeof(texel));
-  const auto decoded =
-      DecodeReduction(ReductionKind::kMaximum, ValueType::kVec3, texel,
-                      {size.Pixels(), size.Pixels()});
-  if (!decoded)
-    return std::nullopt;
-  const auto v = AsVec3(*decoded);
-  return std::max({v.x, v.y, v.z});
-}
-
 namespace {
 bool Ready(HRESULT a_result) { return a_result == 0; }
 }

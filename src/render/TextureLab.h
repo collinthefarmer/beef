@@ -226,14 +226,6 @@ public:
 
   bool Render(RenderTarget &a_target, RE::NiSourceTexture *a_source,
               const LayerParams &a_params);
-  struct EquivalenceCheckTotals {
-    std::uint64_t checks = 0;
-    std::uint64_t overOneStep = 0;
-    float maxDifference = 0.0f;
-  };
-  void SetFusionCheck(bool a_enabled) noexcept;
-  [[nodiscard]] EquivalenceCheckTotals DrainFusionChecks();
-  [[nodiscard]] EquivalenceCheckTotals DrainGeneratedProgramChecks();
   void SetGeneratedShaders(bool a_enabled) noexcept;
   bool RenderLayersOneByOne(RenderTarget &a_target, RE::NiSourceTexture *a_base,
                             std::span<const LayerPass> a_layers);
@@ -427,9 +419,6 @@ private:
   bool DrawProgramPass(RenderTarget &a_target, const ProgramCode &a_code,
                        const ProgramBindings &a_bindings,
                        REX::W32::ID3D11PixelShader *a_shader = nullptr);
-  void CheckGeneratedProgram(RenderTarget &a_generated,
-                             const FieldProgram &a_program,
-                             const ProgramBindings &a_bindings);
   bool DrawStackPass(RenderTarget &a_target, RE::NiSourceTexture *a_base,
                      std::span<const LayerPass> a_layers,
                      const BoundLayerFields &a_fields);
@@ -441,12 +430,6 @@ private:
   [[nodiscard]] bool CanRenderStack(const StackShape &a_shape,
                                     std::span<const LayerPass> a_layers,
                                     const BoundLayerFields &a_fields) const;
-  void CheckStack(RenderTarget &a_fused, RE::NiSourceTexture *a_base,
-                  std::span<const LayerPass> a_layers,
-                  const BoundLayerFields &a_fields);
-  [[nodiscard]] std::optional<float> MaxDifference(RenderTarget &a_first,
-                                                   RenderTarget &a_second,
-                                                   ShaderChannel a_channel);
 
   std::atomic<bool> available_{false};
   bool initTried_ = false;
@@ -464,9 +447,6 @@ private:
   GpuTiming::Ring timingRing_;
   GpuTiming::Totals timingTotals_;
   std::optional<std::size_t> tickSpan_;
-  bool fusionCheck_ = false;
-  EquivalenceCheckTotals fusionChecks_;
-  EquivalenceCheckTotals programChecks_;
   bool generatedShaders_ = true;
   GeneratedShaders generated_;
 

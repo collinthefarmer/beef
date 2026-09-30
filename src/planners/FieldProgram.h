@@ -98,7 +98,6 @@ class FieldProgram {
 public:
   [[nodiscard]] static FieldProgram Sample(ValueType type, bool texture = true);
   [[nodiscard]] static FieldProgram Map();
-  [[nodiscard]] static FieldProgram AbsoluteDifference();
   [[nodiscard]] static std::expected<FieldProgram, std::string>
   Compose(std::span<const bool> textures);
   [[nodiscard]] static std::expected<FieldProgram, std::string>

@@ -356,10 +356,7 @@ Mode formulas:
   (`GeneratedShaders::kMaxPerCache`). When a cache is full, the least recently used
   finished entry is evicted, and the first eviction writes one log line. A
   cache full of pending compiles starts no new compile until one finishes.
-- The fusion check's difference program and layer fields drawn to targets
-  always use the interpreter.
-- With `FusionCheck` on, each generated program draw is repeated with the
-  interpreter and the largest difference is traced as `program_check`.
+- Layer fields drawn to targets always use the interpreter.
 - `planners/StackShader` generates one pixel shader per **stack shape**:
   whether the stack has a base, and per layer whether the source is absent,
   a texture (in mesh space or placed) or a layer field, whether the mask is
@@ -378,14 +375,13 @@ Mode formulas:
   `CheckStackShape` decides whether a shape fits one pass (at most 8
   layers, every field read inside the packed code); `DrawStackPass` returns
   false when it does not, or when a legacy curve or a pipeline is missing,
-  and `RenderStack` then falls back to the per-layer chain. `FusionCheck`
-  compares whichever shader drew a stack with the per-layer chain, so it proves
-  generated stacks too.
+  and `RenderStack` then falls back to the per-layer chain.
 - The shaders compile with `D3DCOMPILE_OPTIMIZATION_LEVEL3`. The compiler
   may reorder float arithmetic at any level, so an inlined or one-pass draw
   and the separate draws it replaces can
-  differ by one 8-bit step at a rounding boundary; `FusionCheck` measures
-  that bound.
+  differ by one 8-bit step at a rounding boundary. An in-game equivalence
+  check measured that bound for one-pass stacks, layer fields and generated
+  shaders before it was removed (docs/plans/render-performance-2026-09-29.md).
 - A stack without a base starts transparent black: alpha is the fuzz
   weight, the coat strength or the subsurface thickness.
 
@@ -1326,14 +1322,9 @@ Decompile provenance (`decompiled/WornEnchantmentFX/plugin.c` unless noted):
 - A stack that cannot draw in one pass (more than 8 layers, or a legacy
   curve) draws its layer fields into RGBA8 targets first
   (`RenderFieldsToTargets`) and then runs the per-layer chain
-  (`RenderLayersOneByOne`). `FusionCheck` runs the same two functions. Drawing a field
+  (`RenderLayersOneByOne`). Drawing a field
   needs the program pipeline; without it, a stack with layer fields fails
   with a diagnostic, and a stack without them draws as before.
-- `FusionCheck` (off by default) renders each stacked draw's per-layer chain
-  too and reduces the largest RGB and alpha difference; it waits on
-  readbacks, so it is a diagnostic mode. The chain draws each layer field
-  into its own target first, so the check compares a field evaluated in the
-  stack with the field's program pass followed by the layer pass.
 - Only stack results generate mips. The lowering sets `MipPolicy::kNone` on
   every value it builds, because every intermediate is read at its own size,
   where sampling uses mip 0. A stack draws its layers into targets without

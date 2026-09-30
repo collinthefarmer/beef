@@ -97,10 +97,5 @@ int main() {
         "quantize rounds to the nearest 8-bit step, ties to even");
   Check(QuantizeUnorm8({-1.0f, 2.0f, std::nanf("")}) == Vec3{0.0f, 1.0f, 0.0f},
         "quantize clamps and maps NaN to zero, like UNORM8 storage");
-  const std::array<Vec3, 2> pair{Vec3{0.25f, 1.0f, 0.5f},
-                                 Vec3{0.75f, 0.5f, 0.5f}};
-  Check(EvaluateProgramOnCpu(FieldProgram::AbsoluteDifference(), {pair, {}}) ==
-            Vec3{0.5f, 0.5f, 0.0f},
-        "the fusion check's difference program computes |a - b|");
   return test::Finish("program reference");
 }

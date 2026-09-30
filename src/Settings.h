@@ -37,7 +37,6 @@ struct Settings {
   bool diagnosticLogging = true;
   bool gpuTiming = false;
   bool publishEffects = true;
-  bool fusionCheck = false;
   bool generatedShaders = true;
   std::uint32_t animationFPS = 60;
   float animationSpeed = 1.0f;

@@ -459,18 +459,6 @@ FieldProgram FieldProgram::Sample(ValueType type, bool texture) {
       {ProgramOpcode::kInput, 0, 0, Components(type)});
   return result;
 }
-FieldProgram FieldProgram::AbsoluteDifference() {
-  FieldProgram result;
-  result.inputs_ = {ProgramTextureInput{{}, 0}, ProgramTextureInput{{}, 1}};
-  result.textureCount_ = 2;
-  result.stackSize_ = 2;
-  result.resultType_ = ValueType::kVec3;
-  result.instructions_ = {{ProgramOpcode::kInput, 0, 0, 3},
-                          {ProgramOpcode::kInput, 0, 1, 3},
-                          {ProgramOpcode::kSub, 0, 0, 3},
-                          {ProgramOpcode::kAbs, 0, 0, 3}};
-  return result;
-}
 FieldProgram FieldProgram::Map() {
   auto result = Sample(ValueType::kScalar);
   result.lookups_.push_back({});

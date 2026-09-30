@@ -53,8 +53,6 @@ def report(segments: list[Path], slots: int | None) -> None:
         Counter() for _ in range(9))
     commands, readbacks, refreshes, pages, survivors = {}, defaultdict(lambda: [0, 0, 0]), [], [], []
     gpu_spans, gpu_ticks = defaultdict(lambda: [0, 0, 0]), Counter()
-    fusion = {'checks': 0, 'over': 0, 'max': 0.0}
-    program = {'checks': 0, 'over': 0, 'max': 0.0}
     startup, sessions, live, owners, worst, last_session = {}, set(), {}, {}, (0, 0), None
     for event in events(segments):
         fields = event.get('fields', {}) if isinstance(event, dict) else None
@@ -91,11 +89,6 @@ def report(segments: list[Path], slots: int | None) -> None:
         elif kind == 'metrics' and action == 'readback':
             op, us = readbacks[str(fields.get('op', 'unknown'))], number(fields, 'us')
             op[:] = op[0] + 1, op[1] + us, max(op[2], us)
-        elif kind == 'metrics' and action in ('fusion_check', 'program_check'):
-            check = fusion if action == 'fusion_check' else program
-            check['checks'] += number(fields, 'checks')
-            check['over'] += number(fields, 'over_one_step')
-            check['max'] = max(check['max'], float(fields.get('max_difference', 0) or 0))
         elif kind == 'metrics' and action == 'gpu_ticks':
             for name in ('timed', 'dropped', 'discarded', 'untimed_spans'):
                 gpu_ticks[name] += number(fields, name)
@@ -158,12 +151,6 @@ def report(segments: list[Path], slots: int | None) -> None:
               f"VRAM peak {peaks['target_bytes_peak'] / (1 << 20):.0f} MiB")
         print(f"  Targets at the last heartbeat: {latest['targets']}; "
               f"{latest['target_bytes'] / (1 << 20):.0f} MiB")
-    if fusion['checks']:
-        print(f"Fusion check: {fusion['checks']} stacks compared; largest difference "
-              f"{fusion['max']:.2f} of 255; {fusion['over']} over one 8-bit step")
-    if program['checks']:
-        print(f"Program check: {program['checks']} generated programs compared; largest "
-              f"difference {program['max']:.2f} of 255; {program['over']} over one 8-bit step")
     if gpu_ticks['timed']:
         timed = gpu_ticks['timed']
         print(f"GPU time per timed tick ({timed} timed, {gpu_ticks['dropped']} dropped, "

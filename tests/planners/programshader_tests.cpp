@@ -100,8 +100,6 @@ int main() {
   MatchGolden("interpreter-switch", InterpreterSwitch());
   MatchGolden("sample-scalar",
               GenerateProgramShader(FieldProgram::Sample(ValueType::kScalar)));
-  MatchGolden("absolute-difference",
-              GenerateProgramShader(FieldProgram::AbsoluteDifference()));
   MatchGolden("map", GenerateProgramShader(FieldProgram::Map()));
   if (const auto program = CompileMask(expressions[0], 0.25f))
     MatchGolden("expression", GenerateProgramShader(*program));

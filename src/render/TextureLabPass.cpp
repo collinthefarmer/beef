@@ -747,8 +747,6 @@ bool TextureLab::DrawStackPass(RenderTarget &a_target,
   if (!shader)
     return false;
   DrawFullScreen(pass, a_target, {shader, srvs, cbs});
-  if (fusionCheck_)
-    CheckStack(a_target, a_base, a_layers, a_fields);
   return true;
 }
 
@@ -818,37 +816,6 @@ TextureLab::RenderFieldsToTargets(std::span<const LayerPass> a_layers,
   return result;
 }
 
-void TextureLab::SetFusionCheck(bool a_enabled) noexcept {
-  fusionCheck_ = a_enabled;
-}
-
-TextureLab::EquivalenceCheckTotals TextureLab::DrainFusionChecks() {
-  return std::exchange(fusionChecks_, {});
-}
-
-void TextureLab::CheckStack(RenderTarget &a_fused, RE::NiSourceTexture *a_base,
-                            std::span<const LayerPass> a_layers,
-                            const BoundLayerFields &a_fields) {
-  const TextureSize size{a_fused.size};
-  const auto drawn = RenderFieldsToTargets(a_layers, a_fields, size);
-  if (!drawn)
-    return;
-  const auto chain =
-      Acquire(size, "fusion check", a_fused.format, MipPolicy::kNone);
-  if (!chain || !RenderLayersOneByOne(*chain, a_base, drawn->passes))
-    return;
-  const auto rgb = MaxDifference(a_fused, *chain, ShaderChannel::kRgb);
-  const auto alpha = MaxDifference(a_fused, *chain, ShaderChannel::kA);
-  if (!rgb || !alpha)
-    return;
-  const float difference = std::max(*rgb, *alpha);
-  ++fusionChecks_.checks;
-  fusionChecks_.maxDifference =
-      std::max(fusionChecks_.maxDifference, difference);
-  if (difference > 1.5f / 255.0f)
-    ++fusionChecks_.overOneStep;
-}
-
 bool TextureLab::RenderProgram(RenderTarget &a_target,
                                const FieldProgram &a_program,
                                const ProgramBindings &a_bindings) {
@@ -860,38 +827,9 @@ bool TextureLab::RenderProgram(RenderTarget &a_target,
     if (auto *shader = generated_.ProgramFor(borrowedDevice_, a_program)) {
       if (!DrawProgramPass(a_target, CodeOf(a_program), a_bindings, shader))
         return false;
-      if (fusionCheck_)
-        CheckGeneratedProgram(a_target, a_program, a_bindings);
       return true;
     }
   return DrawProgramPass(a_target, CodeOf(a_program), a_bindings);
-}
-
-void TextureLab::CheckGeneratedProgram(RenderTarget &a_generated,
-                                       const FieldProgram &a_program,
-                                       const ProgramBindings &a_bindings) {
-  const TextureSize size{a_generated.size};
-  const auto interpreted =
-      Acquire(size, "program check", a_generated.format, MipPolicy::kNone);
-  if (!interpreted ||
-      !DrawProgramPass(*interpreted, CodeOf(a_program), a_bindings))
-    return;
-  const auto rgb =
-      MaxDifference(a_generated, *interpreted, ShaderChannel::kRgb);
-  const auto alpha =
-      MaxDifference(a_generated, *interpreted, ShaderChannel::kA);
-  if (!rgb || !alpha)
-    return;
-  const float difference = std::max(*rgb, *alpha);
-  ++programChecks_.checks;
-  programChecks_.maxDifference =
-      std::max(programChecks_.maxDifference, difference);
-  if (difference > 1.5f / 255.0f)
-    ++programChecks_.overOneStep;
-}
-
-TextureLab::EquivalenceCheckTotals TextureLab::DrainGeneratedProgramChecks() {
-  return std::exchange(programChecks_, {});
 }
 
 void TextureLab::SetGeneratedShaders(bool a_enabled) noexcept {

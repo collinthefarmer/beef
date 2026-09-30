@@ -305,6 +305,9 @@ stack depth at each instruction, so all of this can be decided once.
   of 69 fps against 43. Per stack draw: 2048, 52 us against 254 us; 512,
   41 us against 106 us; 1024, 82 us against 108 us. The off half is short
   (12 heartbeats against 41).
+- After the review fixes and the function splits passed it in game, the
+  `FusionCheck` setting and its program check were removed; the progress
+  lines above record what it measured.
 
 ## Later stages
 

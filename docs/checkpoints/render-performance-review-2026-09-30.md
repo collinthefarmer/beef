@@ -1,6 +1,7 @@
-Status: fixes implemented, in-game check pending. Review of commits 9007382
-(layer fields, exact lookups and pow) and ba39d70 (generated shaders). The
-Resolution section records what each finding became.
+Status: closed. Review of commits 9007382 (layer fields, exact lookups and
+pow) and ba39d70 (generated shaders). The fixes passed the in-game
+equivalence check on 2026-09-30; the Resolution section records what each
+finding became.
 
 # Render performance review, 2026-09-30
 
