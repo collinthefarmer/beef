@@ -1,75 +1,15 @@
-# clang-tidy baseline, 116 sources, 67 findings
+# clang-tidy baseline, 150 sources, 9 findings
 # regenerate: python3 tools/tidy.py --update
 
-# readability-function-size                            57
-# readability-function-cognitive-complexity            8
-# performance-no-int-to-ptr                            1
-# readability-simplify-boolean-expr                    1
+# readability-function-size                            8
+# readability-function-cognitive-complexity            1
 
-src/engine/ManagerApply.cpp:215: [readability-function-size]
-src/engine/ManagerApply.cpp:265: [readability-function-size]
-src/engine/ManagerApply.cpp:388: [readability-function-size]
-src/engine/ManagerApply.cpp:467: [readability-function-size]
-src/engine/ManagerEvents.cpp:28: [readability-function-size]
-src/engine/ManagerInspection.cpp:8: [readability-function-size]
-src/engine/ManagerSnapshot.cpp:438: [readability-function-size]
-src/engine/ManagerTick.cpp:104: [readability-function-size]
-src/engine/ManagerTick.cpp:213: [readability-function-size]
-src/engine/ManagerTick.cpp:231: [readability-function-size]
-src/engine/ManagerTick.cpp:274: [readability-function-cognitive-complexity]
-src/engine/ManagerTick.cpp:274: [readability-function-size]
-src/engine/RecipeEditor.cpp:751: [readability-function-size]
-src/engine/RecipeStore.cpp:478: [readability-function-size]
-src/engine/SessionQueue.cpp:54: [readability-function-size]
-src/menu/MenuWidgets.cpp:81: [performance-no-int-to-ptr]
-src/menu/MenuWidgets.cpp:713: [readability-function-size]
-src/menu/PaintPanel.cpp:419: [readability-function-size]
-src/menu/PaintPanel.cpp:589: [readability-function-size]
-src/menu/PatternChooser.cpp:115: [readability-function-size]
-src/menu/Tuning.cpp:272: [readability-simplify-boolean-expr]
-src/menu/Workspace.cpp:203: [readability-function-size]
-src/menu/Workspace.cpp:869: [readability-function-cognitive-complexity]
-src/menu/Workspace.cpp:869: [readability-function-size]
-src/menu/Workspace.cpp:992: [readability-function-size]
-src/mesh/Islands.cpp:178: [readability-function-cognitive-complexity]
-src/mesh/Islands.cpp:178: [readability-function-size]
-src/mesh/Islands.cpp:276: [readability-function-cognitive-complexity]
-src/mesh/MaterialClusters.cpp:215: [readability-function-size]
-src/mesh/MeshFacts.cpp:39: [readability-function-size]
-src/recipe/Expression.cpp:622: [readability-function-cognitive-complexity]
-src/recipe/Expression.cpp:622: [readability-function-size]
-src/recipe/Expression.cpp:729: [readability-function-cognitive-complexity]
-src/recipe/Expression.cpp:729: [readability-function-size]
-src/recipe/RecipeWrite.cpp:27: [readability-function-size]
-src/recipe/RecipeWrite.cpp:224: [readability-function-size]
-src/recipe/RecipeWrite.cpp:509: [readability-function-size]
-src/recipe/Signals.cpp:112: [readability-function-size]
-src/recipe/Signals.cpp:246: [readability-function-size]
-src/recipe/Signals.cpp:453: [readability-function-size]
-src/recipe/Signals.cpp:521: [readability-function-size]
-src/render/Compositor.cpp:107: [readability-function-size]
-src/render/Compositor.cpp:343: [readability-function-size]
-src/render/CompositorSource.cpp:386: [readability-function-size]
-src/render/CompositorSource.cpp:422: [readability-function-size]
-src/render/CompositorSource.cpp:458: [readability-function-size]
-src/render/CompositorSource.cpp:734: [readability-function-size]
-src/render/Light.cpp:260: [readability-function-size]
-src/render/MeshReader.cpp:135: [readability-function-cognitive-complexity]
-src/render/MeshReader.cpp:135: [readability-function-size]
-src/render/MeshReader.cpp:266: [readability-function-size]
-src/render/TextureLabLifecycle.cpp:71: [readability-function-size]
-src/render/TextureLabLifecycle.cpp:134: [readability-function-size]
-src/render/TextureLabLifecycle.cpp:232: [readability-function-size]
-src/render/TextureLabPass.cpp:259: [readability-function-cognitive-complexity]
-src/render/TextureLabPass.cpp:259: [readability-function-size]
-src/render/TextureLabPass.cpp:363: [readability-function-size]
-src/render/TextureLabPass.cpp:449: [readability-function-size]
-src/render/TextureLabPass.cpp:581: [readability-function-size]
-src/render/TextureLabPass.cpp:649: [readability-function-size]
-src/render/TexturePreviews.cpp:49: [readability-function-size]
-src/studio/MenuState.cpp:43: [readability-function-size]
-src/studio/MenuState.cpp:701: [readability-function-size]
-src/studio/MenuState.cpp:816: [readability-function-size]
-src/studio/Navigation.cpp:213: [readability-function-size]
-src/studio/Navigation.cpp:237: [readability-function-size]
-src/studio/RecipeSnapshot.cpp:30: [readability-function-size]
+src/planners/FieldProgram.cpp:14: [readability-function-size] function 'Encode' exceeds recommended size/complexity thresholds
+src/planners/ProgramReference.cpp:82: [readability-function-size] function 'ApplyOpcode' exceeds recommended size/complexity thresholds
+src/recipe/Expression.cpp:741: [readability-function-size] function 'CheckNode' exceeds recommended size/complexity thresholds
+src/recipe/Expression.cpp:833: [readability-function-cognitive-complexity] function 'Evaluate' has cognitive complexity of 59 (threshold 25)
+src/recipe/Expression.cpp:833: [readability-function-size] function 'Evaluate' exceeds recommended size/complexity thresholds
+src/recipe/GraphOperations.cpp:5: [readability-function-size] function 'InputsOf' exceeds recommended size/complexity thresholds
+src/recipe/RecipeGraph.cpp:39: [readability-function-size] function 'Dependencies' exceeds recommended size/complexity thresholds
+src/recipe/RecipeGraphLowering.cpp:172: [readability-function-size] function 'SignalKindOf' exceeds recommended size/complexity thresholds
+src/render/TextureLabLifecycle.cpp:97: [readability-function-size] function 'Init' exceeds recommended size/complexity thresholds

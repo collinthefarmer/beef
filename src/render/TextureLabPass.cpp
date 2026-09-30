@@ -823,13 +823,10 @@ bool TextureLab::RenderProgram(RenderTarget &a_target,
       a_bindings.textureCount != a_program.TextureCount() ||
       a_bindings.lookupCount != a_program.FunctionLookups().size())
     return false;
-  if (generatedShaders_)
-    if (auto *shader = generated_.ProgramFor(borrowedDevice_, a_program)) {
-      if (!DrawProgramPass(a_target, CodeOf(a_program), a_bindings, shader))
-        return false;
-      return true;
-    }
-  return DrawProgramPass(a_target, CodeOf(a_program), a_bindings);
+  auto *shader = generatedShaders_
+                     ? generated_.ProgramFor(borrowedDevice_, a_program)
+                     : nullptr;
+  return DrawProgramPass(a_target, CodeOf(a_program), a_bindings, shader);
 }
 
 void TextureLab::SetGeneratedShaders(bool a_enabled) noexcept {
