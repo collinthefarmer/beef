@@ -1,5 +1,5 @@
-Status: in progress. Stage 1 (the timing harness) is implemented and
-measured; later stages are open. This plan follows the
+Status: in progress. Stages 1 to 3 are implemented and measured; stage 4
+(generated shaders) is in progress; later stages are open. This plan follows the
 [render graph correctness plan](render-graph-correctness-2026-09-29.md), whose
 checkpoint findings are its starting point.
 
@@ -242,6 +242,67 @@ plan for inspection and are released when idle.
   instead of 8-bit filter weights), guarded the normal blend against a zero
   vector, packed the pop count into the instruction constants, and raised
   the shader optimization level to 3.
+
+## Stage 4: generated shaders
+
+The interpreter runs a bytecode loop per pixel: a constant read per
+instruction, a switch over the opcodes, and a stack held in a local array
+that the shader indexes at run time, which drivers place in scratch memory.
+Every pixel of a draw runs the same program, and the planner knows the
+stack depth at each instruction, so all of this can be decided once.
+
+### Design
+
+- One table gives each opcode its HLSL statement. The interpreter's switch
+  and the generated code are both built from it, so an opcode has one
+  textual definition.
+- The generator turns an `InterpreterProgram` into straight-line HLSL: each
+  stack position is a named local, each instruction is one block using its
+  table statement, and an input reads its texture or value directly.
+  Numbers stay in the instruction constants, so programs that differ only
+  in numbers share one shader.
+- The engine compiles a generated shader once per distinct text, on a
+  worker thread, and draws with the interpreter until the shader is ready
+  or when its compile fails.
+- A check mode draws each program both ways and reduces the largest
+  difference; the bound is one 8-bit step from compiler reordering.
+
+### Sub-stages
+
+- 4a. The opcode table and the generator, engine-free, with golden texts.
+- 4b. The shader cache and worker compile; single programs draw with
+  generated shaders.
+- 4c. In-game check and timing.
+- 4d. Generated stacks: one shader per stack with its layers and fields
+  compiled in, proven against `PSStack` by `FusionCheck`.
+
+### Progress
+
+- 4a done: `planners/ProgramShader` holds the opcode table and generates a
+  program's HLSL. The interpreter switch built from the table matches the
+  previous hand-written switch line for line. Goldens pin the switch and
+  four programs; generated programs declare one local per stack slot and
+  share text across numbers.
+- 4b implemented: `GeneratedShaders` (on by default) draws single programs
+  with generated shaders compiled on a worker thread; `FusionCheck` also
+  compares each generated draw with the interpreter.
+- 4c, check: in game, with studio edits, 4,364 generated program draws
+  matched the interpreter with a largest difference of 0 (RGBA8 and f32
+  targets), no generated compile failed, and the stack check still held at
+  1/255 over 15,798 stacks. Single program passes are about 0.1 per tick, so
+  this stage has no measurable frame cost to change; 4d carries the timing.
+- 4d implemented: `planners/StackShader` generates a stack shader per stack
+  shape, keyed without numbers; goldens pin a texture stack and a field
+  stack. `RenderStack` draws with it once compiled.
+- 4d, check: `FusionCheck` compared 5,664 stacks with a largest difference
+  of 1/255 and none over one step; the program check held at 1/255 over 743
+  draws; no generated shader failed to compile.
+- 4d, timing: in one scene at the same per-tick workload (30 stacks at 2048,
+  20 at 512 and 8 at 1024 per timed tick), `GeneratedShaders` on against off
+  measured plugin GPU time per tick of 3.3 ms against 10.4 ms and a median
+  of 69 fps against 43. Per stack draw: 2048, 52 us against 254 us; 512,
+  41 us against 106 us; 1024, 82 us against 108 us. The off half is short
+  (12 heartbeats against 41).
 
 ## Later stages
 

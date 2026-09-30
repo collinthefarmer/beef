@@ -11,6 +11,7 @@
 #include "planners/ConsumptionLeases.h"
 #include "planners/GpuReduction.h"
 #include "planners/InterpreterProgram.h"
+#include "planners/StackShader.h"
 #include "planners/TextureDemand.h"
 
 #include <REX/W32/COMPTR.h>
@@ -18,10 +19,12 @@
 #include <array>
 #include <atomic>
 #include <cstdint>
+#include <future>
 #include <map>
 #include <memory>
 #include <optional>
 #include <span>
+#include <string>
 #include <type_traits>
 #include <unordered_map>
 #include <unordered_set>
@@ -234,6 +237,9 @@ public:
   };
   void SetFusionCheck(bool a_enabled) noexcept;
   [[nodiscard]] FusionCheckTotals DrainFusionChecks();
+  [[nodiscard]] FusionCheckTotals DrainProgramChecks();
+  void SetGeneratedShaders(bool a_enabled) noexcept;
+  inline static constexpr std::size_t kMaxGeneratedShaders = 256;
   bool RenderStack(RenderTarget &a_target, RE::NiSourceTexture *a_base,
                    std::span<const LayerPass> a_layers,
                    const StackFields &a_fields);
@@ -415,7 +421,16 @@ private:
                        std::span<const InterpreterInstruction> a_code,
                        std::span<const InterpreterInput> a_inputs,
                        ValueType a_result,
-                       const InterpreterBindings &a_bindings);
+                       const InterpreterBindings &a_bindings,
+                       REX::W32::ID3D11PixelShader *a_shader = nullptr);
+  using CompiledShader = REX::W32::ComPtr<REX::W32::ID3D11PixelShader>;
+  [[nodiscard]] REX::W32::ID3D11PixelShader *
+  GeneratedShaderFor(const InterpreterProgram &a_program);
+  [[nodiscard]] REX::W32::ID3D11PixelShader *
+  GeneratedStackFor(const StackShape &a_shape);
+  void CheckProgram(RenderTarget &a_generated,
+                    const InterpreterProgram &a_program,
+                    const InterpreterBindings &a_bindings);
   void CheckStack(RenderTarget &a_fused, RE::NiSourceTexture *a_base,
                   std::span<const LayerPass> a_layers,
                   const StackFields &a_fields);
@@ -441,6 +456,11 @@ private:
   std::optional<std::size_t> tickSpan_;
   bool fusionCheck_ = false;
   FusionCheckTotals fusionChecks_;
+  FusionCheckTotals programChecks_;
+  bool generatedShaders_ = true;
+  std::unordered_map<std::string, std::shared_future<CompiledShader>>
+      generated_;
+  std::map<StackShape, std::shared_future<CompiledShader>> generatedStacks_;
 
   std::unique_ptr<RenderTargetPool> targets_;
   std::unique_ptr<TexturePreviews> previews_;

@@ -408,7 +408,7 @@ struct PlanBuilder {
         return value;
       };
       PlannedLayer planned{get(" source"), get(" opacity"), {}, {},
-                           layer.blend,    layer.channels};
+                           layer.blend,    layer.channels,  {}, {}};
       if (layer.mask)
         planned.mask = get(" mask");
       if (layer.color)

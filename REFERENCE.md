@@ -326,6 +326,40 @@ Mode formulas:
   tangent-space encodings (NOTES 58). `lerp` is replace under the opacity
   mix, so it shares replace's arithmetic. A reoriented normal of zero
   length becomes the flat normal (0, 0, 1) instead of a NaN.
+- `planners/ProgramShader` holds one HLSL statement per interpreter opcode.
+  `RunProgram`'s switch and the generated programs are both built from that
+  table; the table's `kNormalize` statement is the switch's `default`, as
+  in the CPU reference. A generated program declares one `float3` local per
+  stack slot and runs one block per instruction, with `c`, `idx` and
+  `components` declared as literals so the table statement reads them as the
+  interpreter does. A pop from an empty stack reads `float3(0, 0, 0)` and a
+  push past 32 slots is dropped, as in the interpreter. Numbers and value
+  inputs stay in the program constants (`code[k].y`, `refValues`), so
+  programs that differ only in numbers share one shader.
+- `GeneratedShaderFor` keys compiled programs by their generated text and
+  holds at most 256 (`kMaxGeneratedShaders`). The first draw of a text
+  starts a compile of the shared shader source plus that text on a
+  `std::async` thread and draws with the interpreter; later draws use the
+  shader once the compile has finished, or the interpreter if it failed.
+  `ID3D11Device` and `D3DCompile` are free-threaded, so the worker creates
+  the shader itself. The fusion check's difference program and the
+  materialized layer fields always use the interpreter.
+- With `FusionCheck` on, each generated program draw is repeated with the
+  interpreter and the largest difference is traced as `program_check`.
+- `planners/StackShader` generates one pixel shader per **stack shape**:
+  whether the stack has a base, and per layer whether the source is absent,
+  a texture (in mesh space or placed) or a layer field, whether the mask is
+  absent, a texture or a layer field, the source channel, blend, channel
+  bits and mask channel, plus the fields' code without numbers. The shader
+  repeats `PSStack`'s statements with those values as literals, and each
+  layer field is a straight-line function built by `ProgramFunction` with
+  code indices offset to the packed block. Constants and textures are bound
+  exactly as for `PSStack`, so `RenderStack` changes only the pixel shader.
+  A texture read counts only when its view exists, as in `PSStack`.
+- `GeneratedStackFor` keys compiled stack shaders by shape (at most 256),
+  compiles on the same worker path and draws with `PSStack` until ready.
+  `FusionCheck` compares whichever shader drew a stack with the per-layer
+  chain, so it proves generated stacks too.
 - The shaders compile with `D3DCOMPILE_OPTIMIZATION_LEVEL3`. The compiler
   may reorder float arithmetic at any level, so fused and unfused passes can
   differ by one 8-bit step at a rounding boundary; `FusionCheck` measures

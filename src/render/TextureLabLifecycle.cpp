@@ -3,6 +3,7 @@
 
 #include "Identity.h"
 #include "diagnostics/Metrics.h"
+#include "planners/ProgramShader.h"
 #include "render/D3DResult.h"
 #include "render/RenderTargetPool.h"
 #include "render/ShaderConstants.h"
@@ -11,6 +12,7 @@
 #include <REX/W32/D3DCOMPILER.h>
 
 #include <cstring>
+#include <system_error>
 
 namespace BetterEnchantmentEffects {
 using namespace REX::W32;
@@ -134,6 +136,89 @@ bool TextureLab::Init() {
   available_ = true;
   logger::info("TextureLab: ready (runtime layer textures)");
   return true;
+}
+
+namespace {
+ComPtr<ID3D11PixelShader> CompileGeneratedShader(ID3D11Device *a_device,
+                                                 const std::string &a_source,
+                                                 const std::string &a_entry) {
+  const std::string sourceName{Identity::kName};
+  ComPtr<ID3DBlob> out;
+  ComPtr<ID3DBlob> errors;
+  ComPtr<ID3D11PixelShader> shader;
+  if (Failed(D3DCompile(a_source.data(), a_source.size(), sourceName.c_str(),
+                        nullptr, nullptr, a_entry.c_str(), "ps_5_0",
+                        D3DCOMPILE_OPTIMIZATION_LEVEL3, 0, out.GetAddressOf(),
+                        errors.GetAddressOf()))) {
+    logger::error("TextureLab: generated {} compile failed: {}", a_entry,
+                  errors.Get()
+                      ? static_cast<const char *>(errors->GetBufferPointer())
+                      : "no message");
+    return shader;
+  }
+  if (Failed(a_device->CreatePixelShader(out->GetBufferPointer(),
+                                         out->GetBufferSize(), nullptr,
+                                         shader.GetAddressOf())))
+    logger::error("TextureLab: generated {} shader creation failed", a_entry);
+  return shader;
+}
+
+std::optional<std::shared_future<ComPtr<ID3D11PixelShader>>>
+StartCompile(ID3D11Device *a_device, std::string a_text,
+             std::string_view a_entry) {
+  try {
+    return std::async(
+               std::launch::async,
+               [device = a_device,
+                source = std::string{kShaderSource} + "\n" + std::move(a_text),
+                entry = std::string{a_entry}] {
+                 return CompileGeneratedShader(device, source, entry);
+               })
+        .share();
+  } catch (const std::system_error &error) {
+    logger::error("TextureLab: generated {} compile not started: {}", a_entry,
+                  error.what());
+    return std::nullopt;
+  }
+}
+
+ID3D11PixelShader *
+Ready(const std::shared_future<ComPtr<ID3D11PixelShader>> &a_compile) {
+  if (a_compile.wait_for(std::chrono::seconds{0}) != std::future_status::ready)
+    return nullptr;
+  return a_compile.get().Get();
+}
+}
+
+ID3D11PixelShader *
+TextureLab::GeneratedShaderFor(const InterpreterProgram &a_program) {
+  if (!borrowedDevice_)
+    return nullptr;
+  auto text = GenerateProgramShader(a_program);
+  if (const auto found = generated_.find(text); found != generated_.end())
+    return Ready(found->second);
+  if (generated_.size() >= kMaxGeneratedShaders)
+    return nullptr;
+  if (auto compile =
+          StartCompile(borrowedDevice_, text, kGeneratedProgramEntry))
+    generated_.emplace(std::move(text), std::move(*compile));
+  return nullptr;
+}
+
+ID3D11PixelShader *TextureLab::GeneratedStackFor(const StackShape &a_shape) {
+  if (!borrowedDevice_)
+    return nullptr;
+  if (const auto found = generatedStacks_.find(a_shape);
+      found != generatedStacks_.end())
+    return Ready(found->second);
+  if (generatedStacks_.size() >= kMaxGeneratedShaders)
+    return nullptr;
+  const auto text = GenerateStackShader(a_shape);
+  if (!text)
+    return nullptr;
+  if (auto compile = StartCompile(borrowedDevice_, *text, kGeneratedStackEntry))
+    generatedStacks_.emplace(a_shape, std::move(*compile));
+  return nullptr;
 }
 
 bool TextureLab::CompileShaders(GpuResources &a_resources) {

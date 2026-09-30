@@ -105,6 +105,33 @@ bool FieldsBound(const TextureLab::StackFields &a_fields) {
          });
 }
 
+StackShape StackShapeOf(bool a_base,
+                        std::span<const TextureLab::LayerPass> a_layers,
+                        const TextureLab::StackFields &a_fields) {
+  StackShape shape;
+  shape.base = a_base;
+  shape.code = CodeShape(a_fields.pack.code);
+  shape.slots = TextureSlots(a_fields.pack.inputs);
+  shape.segments = a_fields.pack.segments;
+  for (const auto &layer : a_layers) {
+    LayerShape out;
+    if (layer.sourceField)
+      out.source = FieldRead{*layer.sourceField};
+    else if (ViewOf(layer.source))
+      out.source = TextureSourceRead{layer.input.meshSpace};
+    if (layer.maskField)
+      out.mask = FieldRead{*layer.maskField};
+    else if (ViewOf(layer.mask))
+      out.mask = TextureMaskRead{};
+    out.channel = std::to_underlying(layer.input.channel);
+    out.blend = layer.blend;
+    out.channels = layer.channels;
+    out.maskChannel = std::to_underlying(layer.maskChannel);
+    shape.layers.push_back(std::move(out));
+  }
+  return shape;
+}
+
 bool SegmentExists(const TextureLab::StackFields &a_fields,
                    std::optional<std::uint32_t> a_field) {
   return !a_field || *a_field < a_fields.pack.segments.size();
@@ -560,7 +587,12 @@ bool TextureLab::RenderStack(RenderTarget &a_target,
       nullptr, program ? gpu_->program->constants.Get() : nullptr,
       nullptr, nullptr,
       nullptr, pipeline.constants.Get()};
-  DrawFullScreen(pass, a_target, {pipeline.shader.Get(), srvs, cbs});
+  auto *shader = pipeline.shader.Get();
+  if (generatedShaders_)
+    if (auto *generated = GeneratedStackFor(
+            StackShapeOf(srvs[kBaseSlot] != nullptr, a_layers, a_fields)))
+      shader = generated;
+  DrawFullScreen(pass, a_target, {shader, srvs, cbs});
   if (fusionCheck_)
     CheckStack(a_target, a_base, a_layers, a_fields);
   return true;
@@ -664,8 +696,50 @@ bool TextureLab::RenderProgram(RenderTarget &a_target,
       a_pass.textureCount != a_program.TextureCount() ||
       a_pass.lookupCount != a_program.FunctionLookups().size())
     return false;
+  if (generatedShaders_)
+    if (auto *shader = GeneratedShaderFor(a_program)) {
+      if (!DrawInterpreter(a_target, a_program.Instructions(),
+                           a_program.Inputs(), a_program.ResultType(), a_pass,
+                           shader))
+        return false;
+      if (fusionCheck_)
+        CheckProgram(a_target, a_program, a_pass);
+      return true;
+    }
   return DrawInterpreter(a_target, a_program.Instructions(), a_program.Inputs(),
                          a_program.ResultType(), a_pass);
+}
+
+void TextureLab::CheckProgram(RenderTarget &a_generated,
+                              const InterpreterProgram &a_program,
+                              const InterpreterBindings &a_bindings) {
+  const TextureSize size{a_generated.size};
+  const auto interpreted =
+      Acquire(size, "program check", a_generated.format, MipPolicy::kNone);
+  if (!interpreted ||
+      !DrawInterpreter(*interpreted, a_program.Instructions(),
+                       a_program.Inputs(), a_program.ResultType(), a_bindings))
+    return;
+  const auto rgb =
+      MaxDifference(a_generated, *interpreted, ShaderChannel::kRgb);
+  const auto alpha =
+      MaxDifference(a_generated, *interpreted, ShaderChannel::kA);
+  if (!rgb || !alpha)
+    return;
+  const float difference = std::max(*rgb, *alpha);
+  ++programChecks_.checks;
+  programChecks_.maxDifference =
+      std::max(programChecks_.maxDifference, difference);
+  if (difference > 1.5f / 255.0f)
+    ++programChecks_.overOneStep;
+}
+
+TextureLab::FusionCheckTotals TextureLab::DrainProgramChecks() {
+  return std::exchange(programChecks_, {});
+}
+
+void TextureLab::SetGeneratedShaders(bool a_enabled) noexcept {
+  generatedShaders_ = a_enabled;
 }
 
 void TextureLab::FillLookups(
@@ -685,7 +759,8 @@ bool TextureLab::DrawInterpreter(RenderTarget &a_target,
                                  std::span<const InterpreterInstruction> a_code,
                                  std::span<const InterpreterInput> a_inputs,
                                  ValueType a_result,
-                                 const InterpreterBindings &a_bindings) {
+                                 const InterpreterBindings &a_bindings,
+                                 REX::W32::ID3D11PixelShader *a_shader) {
   auto *renderer = RE::BSGraphics::Renderer::GetSingleton();
   if (!available_ || !renderer || !borrowedContext_ || !a_target.rtv.Get() ||
       !gpu_->program.has_value() || a_code.size() > kInterpreterInstructions ||
@@ -705,7 +780,8 @@ bool TextureLab::DrawInterpreter(RenderTarget &a_target,
                                    constants.get(), 0, 0);
   REX::W32::ID3D11Buffer *cbs[2]{gpu_->constants.Get(),
                                  pipeline.constants.Get()};
-  DrawFullScreen(pass, a_target, {pipeline.shader.Get(), srvs, cbs});
+  DrawFullScreen(pass, a_target,
+                 {a_shader ? a_shader : pipeline.shader.Get(), srvs, cbs});
   return true;
 }
 

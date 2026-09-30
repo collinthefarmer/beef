@@ -53,6 +53,10 @@ constexpr std::array kTable{
                 "Also render each fused stack layer by layer and record the "
                 "largest difference in the diagnostic trace. Slow.",
                 &Settings::fusionCheck, 0, 1, W::kCheckbox, false},
+    SettingDesc{"General", "GeneratedShaders", "Generated shaders",
+                "Draw recipe programs with a shader compiled for each "
+                "program instead of the shared interpreter.",
+                &Settings::generatedShaders, 0, 1, W::kCheckbox, false},
     SettingDesc{"General", "AnimationFPS", "Animation FPS",
                 "Animation update rate.", &Settings::animationFPS,
                 kMinAnimationFPS, kMaxAnimationFPS, W::kIntSlider, false},

@@ -284,16 +284,21 @@ private:
   Metrics::Stopwatch watch_;
 };
 
-void EmitFusionChecks() {
-  const auto checks = TextureLab::GetSingleton()->DrainFusionChecks();
-  if (checks.checks == 0)
+void EmitCheck(std::string_view a_action,
+               const TextureLab::FusionCheckTotals &a_checks) {
+  if (a_checks.checks == 0)
     return;
   Trace::EmitSafely(
       Trace::Event::kMetrics,
-      {{"action", "fusion_check"},
-       {"checks", std::to_string(checks.checks)},
-       {"over_one_step", std::to_string(checks.overOneStep)},
-       {"max_difference", std::to_string(checks.maxDifference * 255.0f)}});
+      {{"action", std::string{a_action}},
+       {"checks", std::to_string(a_checks.checks)},
+       {"over_one_step", std::to_string(a_checks.overOneStep)},
+       {"max_difference", std::to_string(a_checks.maxDifference * 255.0f)}});
+}
+
+void EmitFusionChecks() {
+  EmitCheck("fusion_check", TextureLab::GetSingleton()->DrainFusionChecks());
+  EmitCheck("program_check", TextureLab::GetSingleton()->DrainProgramChecks());
 }
 
 void EmitGpuTimings() {
@@ -381,6 +386,7 @@ void Manager::OnFrame() {
   if (!applied_.empty()) {
     const PhaseTimer tickTimer{Metrics::Phase::kTick};
     TextureLab::GetSingleton()->SetFusionCheck(settings.fusionCheck);
+    TextureLab::GetSingleton()->SetGeneratedShaders(settings.generatedShaders);
     TextureLab::GetSingleton()->BeginTimedTick(settings.gpuTiming);
     Tick(now, settings);
     TextureLab::GetSingleton()->EndTimedTick();

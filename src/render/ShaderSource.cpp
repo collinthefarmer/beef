@@ -1,6 +1,8 @@
 // GPL-3.0-only with the additional permission in COPYING.md.
 #include "render/TextureLab.h"
 
+#include "planners/ProgramShader.h"
+
 #include <string>
 
 namespace BetterEnchantmentEffects {
@@ -272,50 +274,9 @@ constexpr const char *kShaderSourceMid = R"(];
 		if (pops >= 2) { if (sp > 0) { --sp; b = st[sp]; } }
 		if (pops >= 3) { if (sp > 0) { --sp; d = st[sp]; } }
 		float3 r = 0;
-		switch (op) {
-		case 0:  r = c.y; break;
-		case 1:  r = float3(b.x, a.x, 0); break;
-		case 2:  r = float3(d.x, b.x, a.x); break;
-		case 3:  r = refs[idx].x > 0.5 ? ReadTexture((int)refs[idx].y, uv) : refValues[idx].xyz; break;
-		case 4:  r = LutAt(idx, a.x); break;
-		case 8:  r = -a; break;
-		case 9:  r = a.x > 0 ? 0 : 1; break;
-		case 10: r = b + a; break;
-		case 11: r = b - a; break;
-		case 12: r = b * a; break;
-		case 13: r = SafeDiv(b, a); break;
-		case 14: r = b.x < a.x ? 1 : 0; break;
-		case 15: r = b.x > a.x ? 1 : 0; break;
-		case 16: r = b.x <= a.x ? 1 : 0; break;
-		case 17: r = b.x >= a.x ? 1 : 0; break;
-		case 18: r = b.x == a.x ? 1 : 0; break;
-		case 19: r = b.x != a.x ? 1 : 0; break;
-		case 20: r = (b.x > 0 ? 1 : 0) * (a.x > 0 ? 1 : 0); break;
-		case 21: r = max(b.x > 0 ? 1 : 0, a.x > 0 ? 1 : 0); break;
-		case 22: r = d.x > 0 ? b : a; break;
-		case 23: r = abs(a); break;
-		case 24: r = min(b, a); break;
-		case 25: r = max(b, a); break;
-		case 26: r = clamp(d, b, a); break;
-		case 27: r = saturate(a); break;
-		case 28: r = floor(a); break;
-		case 29: r = ceil(a); break;
-		case 30: r = frac(a); break;
-		case 31: r = sqrt(max(0, a)); break;
-		case 32: r = SafePow(b, a); break;
-		case 33: r = sin(a); break;
-		case 34: r = cos(a); break;
-		case 35: r = float3(a.x < b.x ? 0 : 1, a.y < b.y ? 0 : 1, a.z < b.z ? 0 : 1); break;
-		case 36: r = smoothstep(d, b, a); break;
-		case 37: r = lerp(d, b, a); break;
-		case 38: r = components == 2 ? length(a.xy) : length(a); break;
-		case 39: r = components == 2 ? length(b.xy - a.xy) : length(b - a); break;
-		case 40: r = components == 2 ? dot(b.xy, a.xy) : dot(b, a); break;
-		case 41: r = cross(b, a); break;
-		case 43: r = round(saturate(a) * 255) / 255; break;
-		case 44: r = a.xxx; break;
-		default: r = SafeDiv(a, components == 2 ? length(a.xy) : length(a)); break;
-		}
+)";
+
+constexpr const char *kShaderSourceAfterSwitch = R"(
 		if (components == 2 && op != 38 && op != 39 && op != 40) r.z = 0;
 		if (sp < )";
 
@@ -554,8 +515,8 @@ float4 PSClusters(VSOut i) : SV_Target
 
 const std::string kShaderSourceStorage =
     std::string(kShaderSourceHead) + std::to_string(TextureLab::kProgramStack) +
-    kShaderSourceMid + std::to_string(TextureLab::kProgramStack) +
-    kShaderSourceTail;
+    kShaderSourceMid + InterpreterSwitch() + kShaderSourceAfterSwitch +
+    std::to_string(TextureLab::kProgramStack) + kShaderSourceTail;
 }
 
 extern const char *const kShaderSource = kShaderSourceStorage.c_str();

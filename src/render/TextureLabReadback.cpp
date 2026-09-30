@@ -489,8 +489,9 @@ std::optional<float> TextureLab::MaxDifference(RenderTarget &a_first,
   sampling.meshSpace = true;
   bindings.textures[0] = {a_first.Texture(), sampling, 1.0f};
   bindings.textures[1] = {a_second.Texture(), sampling, 1.0f};
-  if (!RenderProgram(*field, InterpreterProgram::AbsoluteDifference(),
-                     bindings))
+  const auto difference = InterpreterProgram::AbsoluteDifference();
+  if (!DrawInterpreter(*field, difference.Instructions(), difference.Inputs(),
+                       difference.ResultType(), bindings))
     return std::nullopt;
   ReductionReadback readback;
   if (!EnsureReductionStaging(readback) ||

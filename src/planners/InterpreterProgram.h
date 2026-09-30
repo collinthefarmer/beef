@@ -60,6 +60,8 @@ struct InterpreterInstruction {
   std::uint32_t index = 0;
   std::uint32_t components = 1;
   [[nodiscard]] bool operator==(const InterpreterInstruction &) const = default;
+  [[nodiscard]] auto
+  operator<=>(const InterpreterInstruction &) const = default;
 };
 struct InterpreterValueInput {
   OutputRef output;
@@ -125,6 +127,7 @@ struct InterpreterSegment {
   std::uint32_t first = 0;
   std::uint32_t count = 0;
   [[nodiscard]] bool operator==(const InterpreterSegment &) const = default;
+  [[nodiscard]] auto operator<=>(const InterpreterSegment &) const = default;
 };
 struct InterpreterPack {
   std::vector<InterpreterInstruction> code;
