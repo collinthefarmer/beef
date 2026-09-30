@@ -35,6 +35,8 @@ struct Settings {
   bool uniqueMaterial = true;
   bool verboseLogging = true;
   bool diagnosticLogging = true;
+  bool gpuTiming = false;
+  bool publishEffects = true;
   std::uint32_t animationFPS = 60;
   float animationSpeed = 1.0f;
   float evictDistance = 0.0f;

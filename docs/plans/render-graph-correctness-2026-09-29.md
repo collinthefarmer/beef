@@ -1,4 +1,4 @@
-Status: in progress. Stages 0 to 3 and 5 to 7 are implemented; stage 4 is closed by decision D1. Stages 2 and 5 to 7 passed their in-game checkpoints; the revised stage 6 passed its checkpoint on 2026-09-29. Stage 8 (release idle intermediates) passed its checkpoint. Stage 9 (one render plan per actor) waits for its checkpoint. The in-plan chain step of stage 5 is deferred. This plan follows the
+Status: implemented. Stages 0 to 3 and 5 to 9 are implemented and passed their in-game checkpoints; stage 4 is closed by decision D1; the in-plan chain step of stage 5 is deferred. Performance work continues in the [render performance plan](render-performance-2026-09-29.md). This plan follows the
 [render-plan model](render-plan-model.md) and the
 [render-plan checkpoint](../checkpoints/render-plan-2026-09-27.md). It does not
 change their numerical, sampling or timing contracts, except where a decision

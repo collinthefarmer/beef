@@ -1194,6 +1194,19 @@ Decompile provenance (`decompiled/WornEnchantmentFX/plugin.c` unless noted):
   subtree and replays them for every later geometry that reaches the same key,
   so studio inspection finds shared intermediates on every geometry. At most
   2^18 value bindings are recorded (`kMaxValueBindings`).
+- GPU timing (`GpuTiming` setting, off by default) brackets each render tick
+  with a `D3D11_QUERY_TIMESTAMP_DISJOINT` query and records timestamp pairs
+  around the tick (`RenderTick`), each step execution (`<kind> <side>
+  <format>`) and each `GenerateMips` (`GenerateMips <side>`). Spans nest: a
+  step's time includes its mip generation, and `RenderTick` includes every
+  step. The engine-free `diagnostics/GpuTiming` ring holds four ticks; a tick
+  with no free slot goes untimed, a disjoint tick is discarded, and at most 256
+  spans are recorded per tick. `CollectTimings` polls with
+  `D3D11_ASYNC_GETDATA_DONOTFLUSH` once per frame and never waits, because a
+  wait would add the GPU backlog to the frame being measured.
+- `PublishEffects` off keeps the render plan running but writes every slot as
+  not shown and hides the shell, so the draws are measured without the cost
+  of presenting their results.
 - The executor refreshes a consumer's inputs by version before it decides to
   execute, and materializes their values only when it executes. A released
   step whose observed inputs are unchanged therefore stays released while its

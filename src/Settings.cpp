@@ -41,6 +41,14 @@ constexpr std::array kTable{
         "General", "DiagnosticLogging", "Diagnostic trace",
         "Write bounded transition and resource events to a unique JSONL log.",
         &Settings::diagnosticLogging, 0, 1, W::kCheckbox, false},
+    SettingDesc{"General", "GpuTiming", "GPU timing",
+                "Time the plugin's GPU work per render tick and write the "
+                "totals to the diagnostic trace.",
+                &Settings::gpuTiming, 0, 1, W::kCheckbox, false},
+    SettingDesc{"General", "PublishEffects", "Publish effects",
+                "Show the rendered effects on materials and shells. When off, "
+                "effects still render but the original materials stay.",
+                &Settings::publishEffects, 0, 1, W::kCheckbox, false},
     SettingDesc{"General", "AnimationFPS", "Animation FPS",
                 "Animation update rate.", &Settings::animationFPS,
                 kMinAnimationFPS, kMaxAnimationFPS, W::kIntSlider, false},

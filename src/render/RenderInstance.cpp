@@ -156,6 +156,14 @@ DrawProgram(const InterpreterProgram &program,
   return RenderValue{View(target, program.ResultType())};
 }
 constexpr std::uint64_t kReleaseAfterIdleTicks = 30;
+std::string StepSpanKey(const RenderStep &step) {
+  const auto requirements = RequirementsOf(step.kind);
+  if (!requirements)
+    return std::string{StepKindName(step.kind)};
+  return std::format(
+      "{} {} {}", StepKindName(step.kind), requirements->size.Pixels(),
+      requirements->format == TextureFormat::kRgba32Float ? "f32" : "rgba8");
+}
 bool Releasable(const RenderStep &step, const RenderValue &value) {
   return !Is<CompositeStackStep>(step.kind) &&
          (Is<TextureView>(value) ||
@@ -895,6 +903,10 @@ RenderInstance::Demand(RenderValueRef output) {
          std::span<const ResolvedRenderInput<RenderValue>> inputs,
          RenderScratch &scratch) {
         Metrics::CountStepExecution();
+        auto *lab = TextureLab::GetSingleton();
+        std::optional<TextureLab::TimedSpan> span;
+        if (lab->Timing())
+          span.emplace(*lab, StepSpanKey(step));
         return ExecuteStep(step, inputs, scratch);
       },
       SameRenderValue, SelectStackInputs);

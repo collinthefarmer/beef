@@ -208,6 +208,9 @@ using RenderBindingResolver =
     std::function<ValueBindings(const TextureValue &, GeometryId geometry)>;
 [[nodiscard]] std::vector<RenderValueRef> InputsOf(const RenderStepKind &step);
 [[nodiscard]] RenderValueType OutputType(const RenderStepKind &step);
+[[nodiscard]] std::string_view StepKindName(const RenderStepKind &step);
+[[nodiscard]] std::optional<TextureRequirements>
+RequirementsOf(const RenderStepKind &step);
 [[nodiscard]] std::optional<RenderValueType> TypeOf(const RenderPlan &plan,
                                                     RenderValueRef value);
 [[nodiscard]] std::expected<void, std::string>

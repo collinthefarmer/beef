@@ -284,7 +284,28 @@ private:
   Metrics::Stopwatch watch_;
 };
 
+void EmitGpuTimings() {
+  const GpuTiming::Totals gpu = TextureLab::GetSingleton()->DrainTimings();
+  if (gpu.timedTicks == 0 && gpu.droppedTicks == 0 && gpu.discardedTicks == 0)
+    return;
+  Trace::EmitSafely(Trace::Event::kMetrics,
+                    {{"action", "gpu_ticks"},
+                     {"timed", std::to_string(gpu.timedTicks)},
+                     {"dropped", std::to_string(gpu.droppedTicks)},
+                     {"discarded", std::to_string(gpu.discardedTicks)},
+                     {"untimed_spans", std::to_string(gpu.untimedSpans)}});
+  for (const auto &[span, total] : gpu.spans)
+    Trace::EmitSafely(
+        Trace::Event::kMetrics,
+        {{"action", "gpu_span"},
+         {"span", span},
+         {"count", std::to_string(total.count)},
+         {"total_us", std::to_string(total.nanoseconds / 1000)},
+         {"max_us", std::to_string(total.maxNanoseconds / 1000)}});
+}
+
 void EmitMetricsHeartbeat() {
+  EmitGpuTimings();
   const Metrics::Snapshot measured = Metrics::Drain();
   Trace::EmitSafely(
       Trace::Event::kMetrics,
@@ -320,6 +341,7 @@ void Manager::OnFrame() {
     return;
   }
   const PhaseTimer frameTimer{Metrics::Phase::kFrame};
+  TextureLab::GetSingleton()->CollectTimings();
   SweepRetiredMaterialTextures();
   TextureLab::GetSingleton()->CollectPreviewDraws();
   FireDueFinalizes();
@@ -345,7 +367,9 @@ void Manager::OnFrame() {
   Compositor::GetSingleton()->BeginTick(now);
   if (!applied_.empty()) {
     const PhaseTimer tickTimer{Metrics::Phase::kTick};
+    TextureLab::GetSingleton()->BeginTimedTick(settings.gpuTiming);
     Tick(now, settings);
+    TextureLab::GetSingleton()->EndTimedTick();
   }
   SweepBoundMeshes(*Compositor::GetSingleton(), applied_, now);
   {
@@ -522,6 +546,7 @@ void Manager::RenderGeometry(LiveActor &a_state,
   }
   const bool anyLayerHidden =
       view.isolation.layer.has_value() || !view.muted.empty();
+  const bool publish = GetSettings().publishEffects;
   for (const SlotStackPlan &slot : a_bound.stackPlan.slots) {
     SlotTarget *target = TargetFor(a_bound, slot.surface);
     if (!target) {
@@ -531,13 +556,13 @@ void Manager::RenderGeometry(LiveActor &a_state,
     if (!a_hidden) {
       const SlotChain chain =
           RenderSlotChain(a_state, a_bound, view, slot, anyLayerHidden);
-      write.shown = chain.shown;
+      write.shown = chain.shown && publish;
       write.texture = chain.texture;
       ApplySlotScalars(write, slot.slot, chain);
     }
     WriteSlot(*target, write);
   }
-  if (a_hidden) {
+  if (a_hidden || !publish) {
     if (a_bound.shell) {
       a_bound.shell->SetVisible(false);
     }

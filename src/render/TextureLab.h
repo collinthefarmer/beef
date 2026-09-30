@@ -3,6 +3,7 @@
 
 #include "Core.h"
 #include "PCH.h"
+#include "diagnostics/GpuTiming.h"
 #include "diagnostics/Trace.h"
 #include "mesh/MaterialClusters.h"
 #include "mesh/Mesh.h"
@@ -222,6 +223,25 @@ public:
   bool RenderRipple(RenderTarget &a_target, const RipplePass &a_pass);
   [[nodiscard]] bool RippleAvailable() const noexcept;
 
+  class TimedSpan {
+  public:
+    TimedSpan(TextureLab &a_lab, std::string a_key);
+    ~TimedSpan();
+    TimedSpan(const TimedSpan &) = delete;
+    TimedSpan &operator=(const TimedSpan &) = delete;
+    TimedSpan(TimedSpan &&) = delete;
+    TimedSpan &operator=(TimedSpan &&) = delete;
+
+  private:
+    TextureLab *lab_;
+    std::optional<std::size_t> span_;
+  };
+  void BeginTimedTick(bool a_enabled);
+  void EndTimedTick();
+  void CollectTimings();
+  [[nodiscard]] bool Timing() const noexcept;
+  [[nodiscard]] GpuTiming::Totals DrainTimings();
+
   inline static constexpr std::uint32_t kSampleSide = 64;
   struct MaterialReadback {
     REX::W32::ComPtr<REX::W32::ID3D11Texture2D> rmaos;
@@ -348,6 +368,14 @@ private:
 
   std::optional<float> ReadBackMean(RenderTarget &a_target);
 
+  struct TimingQueries {
+    REX::W32::ComPtr<REX::W32::ID3D11Query> disjoint;
+    std::vector<REX::W32::ComPtr<REX::W32::ID3D11Query>> stamps;
+  };
+  [[nodiscard]] REX::W32::ID3D11Query *TimestampQuery(std::size_t a_slot,
+                                                      std::size_t a_index);
+  void Stamp(std::size_t a_span, bool a_end);
+
   std::atomic<bool> available_{false};
   bool initTried_ = false;
   REX::W32::ID3D11Device *borrowedDevice_ = nullptr;
@@ -359,6 +387,11 @@ private:
   std::unordered_set<RE::NiSourceTexture *> sampleWarned_;
   std::map<std::pair<std::uint32_t, std::uint32_t>, ReductionLevel>
       reductionLevels_;
+
+  std::array<TimingQueries, GpuTiming::kFrameSlots> timingQueries_;
+  GpuTiming::Ring timingRing_;
+  GpuTiming::Totals timingTotals_;
+  std::optional<std::size_t> tickSpan_;
 
   std::unique_ptr<RenderTargetPool> targets_;
   std::unique_ptr<TexturePreviews> previews_;

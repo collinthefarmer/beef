@@ -38,6 +38,21 @@ class TraceReportTests(unittest.TestCase):
         self.assertIn("starts mid-run", result.stdout)
         self.assertLess(result.stdout.index("Recipes: a"), result.stdout.index("Studio: b"))
 
+    def test_gpu_spans_report_per_timed_tick(self):
+        (self.root / "beef-trace-11.jsonl").write_text(
+            event(1, "metrics", action="gpu_ticks", timed="2", dropped="1",
+                  discarded="0", untimed_spans="0")
+            + event(2, "metrics", action="gpu_span", span="RenderTick", count="2",
+                    total_us="20000", max_us="12000")
+            + event(3, "metrics", action="gpu_span", span="GenerateMips 2048",
+                    count="10", total_us="8000", max_us="900"))
+        result = self.report(self.root / "beef-trace-11.jsonl")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn("GPU time per timed tick (2 timed, 1 dropped", result.stdout)
+        self.assertIn("RenderTick: 10.00 ms over 1.0 spans; max 12.00 ms", result.stdout)
+        self.assertIn("GenerateMips 2048: 4.00 ms over 5.0 spans", result.stdout)
+        self.assertLess(result.stdout.index("RenderTick"), result.stdout.index("GenerateMips"))
+
     def test_metrics_events_summarize(self):
         (self.root / "beef-trace-9.jsonl").write_text(
             event(1, "startup", build="b3", source_sha256="s")

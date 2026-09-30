@@ -297,6 +297,9 @@ void TextureLab::DrawFullScreen(const RenderPass &a_pass,
       a_draw.constants.data());
   a_pass.Context().Draw(3, 0);
   UnbindTarget(a_pass, static_cast<std::uint32_t>(a_draw.srvs.size()));
+  std::optional<TimedSpan> mips;
+  if (Timing())
+    mips.emplace(*this, std::format("GenerateMips {}", a_target.size));
   a_pass.Context().GenerateMips(a_target.srv.Get());
 }
 
@@ -515,6 +518,9 @@ bool TextureLab::BakeMesh(RenderTarget &a_target, const BakeBuffers &a_bake) {
     REX::W32::ID3D11ShaderResourceView *fromGutter[]{gutter->srv.Get()};
     DrawFullScreen(pass, a_target, {dilate->shader.Get(), fromGutter, {}});
   } else {
+    std::optional<TimedSpan> mips;
+    if (Timing())
+      mips.emplace(*this, std::format("GenerateMips {}", a_target.size));
     pass.Context().GenerateMips(a_target.srv.Get());
   }
   return true;

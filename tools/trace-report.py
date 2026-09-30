@@ -52,6 +52,7 @@ def report(segments: list[Path], slots: int | None) -> None:
     counts, tally, recycled, heartbeat, peaks, shared, transitions, rendering, latest = (
         Counter() for _ in range(9))
     commands, readbacks, refreshes, pages, survivors = {}, defaultdict(lambda: [0, 0, 0]), [], [], []
+    gpu_spans, gpu_ticks = defaultdict(lambda: [0, 0, 0]), Counter()
     startup, sessions, live, owners, worst, last_session = {}, set(), {}, {}, (0, 0), None
     for event in events(segments):
         fields = event.get('fields', {}) if isinstance(event, dict) else None
@@ -88,6 +89,13 @@ def report(segments: list[Path], slots: int | None) -> None:
         elif kind == 'metrics' and action == 'readback':
             op, us = readbacks[str(fields.get('op', 'unknown'))], number(fields, 'us')
             op[:] = op[0] + 1, op[1] + us, max(op[2], us)
+        elif kind == 'metrics' and action == 'gpu_ticks':
+            for name in ('timed', 'dropped', 'discarded', 'untimed_spans'):
+                gpu_ticks[name] += number(fields, name)
+        elif kind == 'metrics' and action == 'gpu_span':
+            span = gpu_spans[str(fields.get('span', 'unknown'))]
+            span[:] = (span[0] + number(fields, 'count'), span[1] + number(fields, 'total_us'),
+                       max(span[2], number(fields, 'max_us')))
         elif kind == 'metrics' and action == 'heartbeat':
             heartbeat.update({name: number(fields, name) for name in ('sink_adds', 'sink_removes')})
             for name in ('targets_peak', 'target_bytes_peak'):
@@ -143,6 +151,13 @@ def report(segments: list[Path], slots: int | None) -> None:
               f"VRAM peak {peaks['target_bytes_peak'] / (1 << 20):.0f} MiB")
         print(f"  Targets at the last heartbeat: {latest['targets']}; "
               f"{latest['target_bytes'] / (1 << 20):.0f} MiB")
+    if gpu_ticks['timed']:
+        timed = gpu_ticks['timed']
+        print(f"GPU time per timed tick ({timed} timed, {gpu_ticks['dropped']} dropped, "
+              f"{gpu_ticks['discarded']} discarded, {gpu_ticks['untimed_spans']} untimed spans):")
+        for name, (count, total, peak) in sorted(gpu_spans.items(), key=lambda item: -item[1][1]):
+            print(f'  {name}: {total / timed / 1000:.2f} ms over {count / timed:.1f} spans; '
+                  f'max {peak / 1000:.2f} ms')
     for op, (count, total, peak) in sorted(readbacks.items()):
         print(f'  Readback {op}: {count}; mean {total / count / 1000:.1f} ms, max {peak / 1000:.1f} ms')
     if +shared:

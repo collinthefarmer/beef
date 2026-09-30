@@ -472,4 +472,127 @@ float TextureLab::MeanChannel(RE::NiSourceTexture *a_source,
   channelMeans_[key] = result;
   return result;
 }
+
+namespace {
+bool Ready(HRESULT a_result) { return a_result == 0; }
+}
+
+TextureLab::TimedSpan::TimedSpan(TextureLab &a_lab, std::string a_key)
+    : lab_(&a_lab) {
+  span_ = GpuTiming::OpenSpan(lab_->timingRing_, lab_->timingTotals_,
+                              std::move(a_key));
+  if (span_)
+    lab_->Stamp(*span_, false);
+}
+
+TextureLab::TimedSpan::~TimedSpan() {
+  if (span_ && lab_->timingRing_.recording)
+    lab_->Stamp(*span_, true);
+}
+
+bool TextureLab::Timing() const noexcept {
+  return timingRing_.recording.has_value();
+}
+
+ID3D11Query *TextureLab::TimestampQuery(std::size_t a_slot,
+                                        std::size_t a_index) {
+  if (a_slot >= timingQueries_.size() || !borrowedDevice_)
+    return nullptr;
+  auto &stamps = timingQueries_[a_slot].stamps;
+  if (stamps.size() <= a_index)
+    stamps.resize(a_index + 1);
+  if (!stamps[a_index].Get()) {
+    const D3D11_QUERY_DESC desc{D3D11_QUERY_TIMESTAMP, 0};
+    if (Failed(borrowedDevice_->CreateQuery(&desc,
+                                            stamps[a_index].GetAddressOf())))
+      return nullptr;
+  }
+  return stamps[a_index].Get();
+}
+
+void TextureLab::Stamp(std::size_t a_span, bool a_end) {
+  if (!timingRing_.recording || !borrowedContext_)
+    return;
+  auto *query = TimestampQuery(*timingRing_.recording, a_span * 2 + a_end);
+  if (!query)
+    return;
+  const RendererLock rendererLock;
+  borrowedContext_->End(query);
+}
+
+void TextureLab::BeginTimedTick(bool a_enabled) {
+  if (!a_enabled || !available_ || !borrowedDevice_ || !borrowedContext_)
+    return;
+  const auto slot = GpuTiming::BeginTick(timingRing_, timingTotals_);
+  if (!slot)
+    return;
+  auto &disjoint = timingQueries_[*slot].disjoint;
+  const D3D11_QUERY_DESC desc{D3D11_QUERY_TIMESTAMP_DISJOINT, 0};
+  if (!disjoint.Get() &&
+      Failed(borrowedDevice_->CreateQuery(&desc, disjoint.GetAddressOf()))) {
+    GpuTiming::EndTick(timingRing_);
+    GpuTiming::Resolve(timingRing_, timingTotals_, *slot, {true, 0, {}});
+    return;
+  }
+  {
+    const RendererLock rendererLock;
+    borrowedContext_->Begin(disjoint.Get());
+  }
+  tickSpan_ = GpuTiming::OpenSpan(timingRing_, timingTotals_, "RenderTick");
+  if (tickSpan_)
+    Stamp(*tickSpan_, false);
+}
+
+void TextureLab::EndTimedTick() {
+  if (!timingRing_.recording || !borrowedContext_)
+    return;
+  if (tickSpan_)
+    Stamp(*tickSpan_, true);
+  tickSpan_.reset();
+  if (auto *disjoint = timingQueries_[*timingRing_.recording].disjoint.Get()) {
+    const RendererLock rendererLock;
+    borrowedContext_->End(disjoint);
+  }
+  GpuTiming::EndTick(timingRing_);
+}
+
+void TextureLab::CollectTimings() {
+  if (!borrowedContext_)
+    return;
+  const RendererLock rendererLock;
+  for (const std::size_t slot : GpuTiming::PendingOldestFirst(timingRing_)) {
+    auto &queries = timingQueries_[slot];
+    D3D11_QUERY_DATA_TIMESTAMP_DISJOINT data{};
+    if (!queries.disjoint.Get() ||
+        !Ready(borrowedContext_->GetData(queries.disjoint.Get(), &data,
+                                         sizeof(data),
+                                         D3D11_ASYNC_GETDATA_DONOTFLUSH)))
+      break;
+    GpuTiming::ResolvedTick tick{data.disjoint != 0, data.frequency, {}};
+    const std::size_t spans = timingRing_.slots[slot].spans.size();
+    bool complete = true;
+    for (std::size_t i = 0; i < spans && complete; ++i) {
+      GpuTiming::Stamps stamps{};
+      for (const bool end : {false, true}) {
+        auto *query = i * 2 + end < queries.stamps.size()
+                          ? queries.stamps[i * 2 + end].Get()
+                          : nullptr;
+        std::uint64_t value = 0;
+        complete =
+            complete && query &&
+            Ready(borrowedContext_->GetData(query, &value, sizeof(value),
+                                            D3D11_ASYNC_GETDATA_DONOTFLUSH));
+        (end ? stamps.end : stamps.begin) = value;
+      }
+      tick.spans.push_back(stamps);
+    }
+    if (!complete)
+      tick = {true, 0, {}};
+    GpuTiming::Resolve(timingRing_, timingTotals_, slot, tick);
+  }
+}
+
+GpuTiming::Totals TextureLab::DrainTimings() {
+  return GpuTiming::Drain(timingTotals_);
+}
 }

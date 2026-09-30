@@ -110,6 +110,52 @@ RenderValueType OutputType(const RenderStepKind &step) {
         return RenderResourceType::kTexture;
       });
 }
+std::string_view StepKindName(const RenderStepKind &step) {
+  return Match(
+      step,
+      [](const UnavailableStep &) { return std::string_view{"Unavailable"}; },
+      [](const ConstantRenderStep &) { return std::string_view{"Constant"}; },
+      [](const BuildBakeBuffersStep &) {
+        return std::string_view{"BuildBakeBuffers"};
+      },
+      [](const BakeMeshStep &) { return std::string_view{"BakeMesh"}; },
+      [](const NormalSlopeStep &) { return std::string_view{"NormalSlope"}; },
+      [](const SubmitMaterialSampleStep &) {
+        return std::string_view{"SubmitMaterialSample"};
+      },
+      [](const ClusterMaterialStep &) {
+        return std::string_view{"ClusterMaterial"};
+      },
+      [](const DrawClustersStep &) { return std::string_view{"DrawClusters"}; },
+      [](const SampleFieldStep &) { return std::string_view{"SampleField"}; },
+      [](const SubmitReductionStep &) {
+        return std::string_view{"SubmitReduction"};
+      },
+      [](const BuildLookupStep &) { return std::string_view{"BuildLookup"}; },
+      [](const EvaluateValueStep &) {
+        return std::string_view{"EvaluateValue"};
+      },
+      [](const EvaluateProgramStep &) {
+        return std::string_view{"EvaluateProgram"};
+      },
+      [](const MapFieldStep &) { return std::string_view{"MapField"}; },
+      [](const ComposeVectorStep &) {
+        return std::string_view{"ComposeVector"};
+      },
+      [](const DrawRippleStep &) { return std::string_view{"DrawRipple"}; },
+      [](const CompositeStackStep &) {
+        return std::string_view{"CompositeStack"};
+      });
+}
+std::optional<TextureRequirements> RequirementsOf(const RenderStepKind &step) {
+  return Match(step,
+               [](const auto &kind) -> std::optional<TextureRequirements> {
+                 if constexpr (requires { kind.requirements; })
+                   return kind.requirements;
+                 else
+                   return std::nullopt;
+               });
+}
 std::optional<RenderValueType> TypeOf(const RenderPlan &plan,
                                       RenderValueRef value) {
   return Match(
