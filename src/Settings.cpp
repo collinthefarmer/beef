@@ -50,12 +50,13 @@ constexpr std::array kTable{
                 "effects still render but the original materials stay.",
                 &Settings::publishEffects, 0, 1, W::kCheckbox, false},
     SettingDesc{"General", "FusionCheck", "Fusion check",
-                "Also render each fused stack layer by layer and record the "
-                "largest difference in the diagnostic trace. Slow.",
+                "Also render each fused stack layer by layer, and each "
+                "generated program with the interpreter, and record the "
+                "largest differences in the diagnostic trace. Slow.",
                 &Settings::fusionCheck, 0, 1, W::kCheckbox, false},
     SettingDesc{"General", "GeneratedShaders", "Generated shaders",
-                "Draw recipe programs with a shader compiled for each "
-                "program instead of the shared interpreter.",
+                "Draw recipe programs and stacks with shaders compiled for "
+                "each one instead of the shared interpreter.",
                 &Settings::generatedShaders, 0, 1, W::kCheckbox, false},
     SettingDesc{"General", "AnimationFPS", "Animation FPS",
                 "Animation update rate.", &Settings::animationFPS,

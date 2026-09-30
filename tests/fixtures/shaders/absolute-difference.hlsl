@@ -9,7 +9,7 @@ float3 GeneratedProgram(float2 uv)
 	return s0;
 }
 
-float4 PSGenerated(VSOut i) : SV_Target
+float4 PSGeneratedProgram(VSOut i) : SV_Target
 {
 	float3 result = GeneratedProgram(i.uv);
 	return float4(result, 1);

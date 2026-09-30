@@ -54,7 +54,7 @@ struct Collector {
     TextureDemand demand{std::move(key), value, {}, {}, {}, geometry};
     if (Is<ExpressionOperation>(node->kind) &&
         graph.SampleDependent(value.output)) {
-      auto program = InterpreterProgram::Compile(graph, value.output);
+      auto program = FieldProgram::Compile(graph, value.output);
       if (!program)
         return std::unexpected(program.error());
       demand.program = std::move(*program);

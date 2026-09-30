@@ -1,5 +1,5 @@
 // GPL-3.0-only with the additional permission in COPYING.md.
-#include "planners/InterpreterReference.h"
+#include "planners/ProgramReference.h"
 #include "recipe/RecipeGraph.h"
 #include "test_support.h"
 
@@ -53,18 +53,18 @@ int main() {
     const auto graph = RecipeGraph::Compile(recipe);
     const auto node = graph.FindNodeIndex("m");
     const auto *expression = node ? graph.ExpressionAt(*node) : nullptr;
-    const auto program = node ? InterpreterProgram::Compile(graph, {*node, 0})
-                              : std::expected<InterpreterProgram, std::string>{
+    const auto program = node ? FieldProgram::Compile(graph, {*node, 0})
+                              : std::expected<FieldProgram, std::string>{
                                     std::unexpected("missing")};
     Check(expression && program.has_value(),
-          std::string{"compiles for the interpreter: "} + text);
+          std::string{"compiles to a field program: "} + text);
     if (!expression || !program)
       continue;
     for (int trial = 0; trial < 200; ++trial) {
       std::vector<Value> refs;
       std::vector<Vec3> inputs;
       for (const auto &input : program->Inputs()) {
-        const auto *bound = Get<InterpreterValueInput>(input);
+        const auto *bound = Get<ProgramValueInput>(input);
         const float v = value(random);
         refs.push_back(v);
         inputs.push_back({v, v, v});
@@ -73,7 +73,7 @@ int main() {
       Program::Inputs cpu;
       cpu.refs = refs;
       const auto expected = AsVec3(expression->program.Evaluate(cpu));
-      const auto actual = EvaluateInterpreter(*program, {inputs, {}});
+      const auto actual = EvaluateProgramOnCpu(*program, {inputs, {}});
       const auto components = TypeOf(expression->program.Evaluate(cpu));
       const bool same =
           Close(actual.x, expected.x) &&
@@ -99,8 +99,8 @@ int main() {
         "quantize clamps and maps NaN to zero, like UNORM8 storage");
   const std::array<Vec3, 2> pair{Vec3{0.25f, 1.0f, 0.5f},
                                  Vec3{0.75f, 0.5f, 0.5f}};
-  Check(EvaluateInterpreter(InterpreterProgram::AbsoluteDifference(),
-                            {pair, {}}) == Vec3{0.5f, 0.5f, 0.0f},
+  Check(EvaluateProgramOnCpu(FieldProgram::AbsoluteDifference(), {pair, {}}) ==
+            Vec3{0.5f, 0.5f, 0.0f},
         "the fusion check's difference program computes |a - b|");
-  return test::Finish("interpreter reference");
+  return test::Finish("program reference");
 }

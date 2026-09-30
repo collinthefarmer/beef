@@ -2,8 +2,8 @@ switch (op) {
 case 0: r = c.y; break;
 case 1: r = float3(b.x, a.x, 0); break;
 case 2: r = float3(d.x, b.x, a.x); break;
-case 3: r = refs[idx].x > 0.5 ? ReadTexture((int)refs[idx].y, uv) : refValues[idx].xyz; break;
-case 4: r = LutAt(idx, a.x); break;
+case 3: r = inputs[idx].x > 0.5 ? ReadTexture((int)inputs[idx].y, uv) : inputValues[idx].xyz; break;
+case 4: r = LookupAt(idx, a.x); break;
 case 8: r = -a; break;
 case 9: r = a.x > 0 ? 0 : 1; break;
 case 10: r = b + a; break;

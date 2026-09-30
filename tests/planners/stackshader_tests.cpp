@@ -9,8 +9,8 @@ using namespace BetterEnchantmentEffects;
 using test::Check;
 
 namespace {
-std::optional<InterpreterProgram> StoredField(std::string_view expression,
-                                              float constant) {
+std::optional<FieldProgram> StoredField(std::string_view expression,
+                                        float constant) {
   Recipe recipe;
   recipe.signals = {{"a", ConstantSignal{constant}}};
   recipe.sources = {{"s", MaterialSource{MaterialChannel::kRoughness}}};
@@ -19,11 +19,11 @@ std::optional<InterpreterProgram> StoredField(std::string_view expression,
   const auto node = graph.FindNodeIndex("m");
   if (!node)
     return std::nullopt;
-  const auto program = InterpreterProgram::Compile(graph, {*node, 0});
+  const auto program = FieldProgram::Compile(graph, {*node, 0});
   if (!program)
     return std::nullopt;
-  auto stored = InterpreterProgram::Inline(
-      InterpreterProgram::Sample(ValueType::kVec3), 0, *program);
+  auto stored =
+      FieldProgram::Inline(FieldProgram::Sample(ValueType::kVec3), 0, *program);
   if (!stored)
     return std::nullopt;
   return *stored;
@@ -34,20 +34,20 @@ std::optional<StackShape> FieldStack(float constant) {
   const auto mask = StoredField("saturate(@s - @a * 2)", constant);
   if (!source || !mask)
     return std::nullopt;
-  const std::array<const InterpreterProgram *, 2> programs{&*source, &*mask};
-  const auto pack = PackInterpreters(programs);
+  const std::array<const FieldProgram *, 2> programs{&*source, &*mask};
+  const auto pack = PackPrograms(programs);
   if (!pack)
     return std::nullopt;
   StackShape shape;
   shape.base = true;
-  shape.code = CodeShape(pack->code);
-  shape.slots = TextureSlots(pack->inputs);
+  shape.code = CodeWithoutNumbers(pack->code);
+  shape.slots = InputTextureSlots(pack->inputs);
   shape.segments = pack->segments;
   LayerShape layer;
-  layer.source = FieldRead{0};
+  layer.source = SegmentRead{0};
   layer.channel = 4;
   layer.blend = 2;
-  layer.mask = FieldRead{1};
+  layer.mask = SegmentRead{1};
   layer.maskChannel = 4;
   shape.layers = {layer};
   return shape;
@@ -67,16 +67,16 @@ void MatchGolden(const std::string &name, const std::string &text) {
 int main() {
   StackShape textures;
   LayerShape placed;
-  placed.source = TextureSourceRead{false};
+  placed.source = SourceTexture{false};
   placed.channel = 4;
   placed.blend = 1;
-  placed.mask = TextureMaskRead{};
+  placed.mask = MaskTexture{};
   placed.maskChannel = 0;
   LayerShape tint;
   tint.blend = 4;
   tint.channels = 7;
   LayerShape meshSpace;
-  meshSpace.source = TextureSourceRead{true};
+  meshSpace.source = SourceTexture{true};
   textures.layers = {placed, tint, meshSpace};
   const auto texturesText = GenerateStackShader(textures);
   Check(texturesText.has_value(), "a texture stack generates");
@@ -93,16 +93,26 @@ int main() {
     Check(text.has_value(), "a field stack generates");
     if (text)
       MatchGolden("stack-fields", *text);
+    const auto &layer = fields->layers[0];
+    Check(HasSource(layer) && HasMask(layer),
+          "a field layer has a source and a mask");
+    Check(SourceSegment(*fields, layer) == fields->segments[0] &&
+              MaskSegment(*fields, layer) == fields->segments[1],
+          "field reads resolve to their packed segments");
+    Check(CheckStackShape(*fields).has_value(), "the field shape is valid");
     auto missing = *fields;
-    missing.layers[0].mask = FieldRead{7};
+    missing.layers[0].mask = SegmentRead{7};
     Check(!GenerateStackShader(missing).has_value(),
           "a shape reading a missing field is refused");
   }
 
+  Check(!HasSource(tint) && !HasMask(tint) &&
+            SourceSegment(textures, tint) == ProgramSegment{},
+        "a colour layer reads no source, mask or field");
   Check(!GenerateStackShader(StackShape{}).has_value(),
         "a shape without layers is refused");
   StackShape tooMany;
-  tooMany.layers.resize(kMaxGeneratedStackLayers + 1);
+  tooMany.layers.resize(kMaxStackLayers + 1);
   Check(!GenerateStackShader(tooMany).has_value(),
         "a shape over the layer limit is refused");
   return test::Finish("stack shader");

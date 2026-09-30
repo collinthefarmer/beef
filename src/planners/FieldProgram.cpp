@@ -1,5 +1,5 @@
 // GPL-3.0-only with the additional permission in COPYING.md.
-#include "planners/InterpreterProgram.h"
+#include "planners/FieldProgram.h"
 
 #include <algorithm>
 #include <array>
@@ -8,21 +8,21 @@
 namespace BetterEnchantmentEffects {
 namespace {
 struct Encoding {
-  InterpreterOpcode opcode;
+  ProgramOpcode opcode;
   std::size_t operands;
 };
 std::optional<Encoding> Encode(Program::Op op) {
   switch (op) {
   case Program::Op::kNumber:
-    return Encoding{InterpreterOpcode::kNumber, 0};
+    return Encoding{ProgramOpcode::kNumber, 0};
   case Program::Op::kMakeVec2:
-    return Encoding{InterpreterOpcode::kMakeVec2, 2};
+    return Encoding{ProgramOpcode::kMakeVec2, 2};
   case Program::Op::kMakeVec3:
-    return Encoding{InterpreterOpcode::kMakeVec3, 3};
+    return Encoding{ProgramOpcode::kMakeVec3, 3};
   case Program::Op::kRef:
-    return Encoding{InterpreterOpcode::kInput, 0};
+    return Encoding{ProgramOpcode::kInput, 0};
   case Program::Op::kCurve:
-    return Encoding{InterpreterOpcode::kLookup, 1};
+    return Encoding{ProgramOpcode::kLookup, 1};
   case Program::Op::kX:
     return std::nullopt;
   case Program::Op::kMean:
@@ -30,75 +30,75 @@ std::optional<Encoding> Encode(Program::Op op) {
   case Program::Op::kTime:
     return std::nullopt;
   case Program::Op::kNeg:
-    return Encoding{InterpreterOpcode::kNeg, 1};
+    return Encoding{ProgramOpcode::kNeg, 1};
   case Program::Op::kNot:
-    return Encoding{InterpreterOpcode::kNot, 1};
+    return Encoding{ProgramOpcode::kNot, 1};
   case Program::Op::kAdd:
-    return Encoding{InterpreterOpcode::kAdd, 2};
+    return Encoding{ProgramOpcode::kAdd, 2};
   case Program::Op::kSub:
-    return Encoding{InterpreterOpcode::kSub, 2};
+    return Encoding{ProgramOpcode::kSub, 2};
   case Program::Op::kMul:
-    return Encoding{InterpreterOpcode::kMul, 2};
+    return Encoding{ProgramOpcode::kMul, 2};
   case Program::Op::kDiv:
-    return Encoding{InterpreterOpcode::kDiv, 2};
+    return Encoding{ProgramOpcode::kDiv, 2};
   case Program::Op::kLt:
-    return Encoding{InterpreterOpcode::kLt, 2};
+    return Encoding{ProgramOpcode::kLt, 2};
   case Program::Op::kGt:
-    return Encoding{InterpreterOpcode::kGt, 2};
+    return Encoding{ProgramOpcode::kGt, 2};
   case Program::Op::kLe:
-    return Encoding{InterpreterOpcode::kLe, 2};
+    return Encoding{ProgramOpcode::kLe, 2};
   case Program::Op::kGe:
-    return Encoding{InterpreterOpcode::kGe, 2};
+    return Encoding{ProgramOpcode::kGe, 2};
   case Program::Op::kEq:
-    return Encoding{InterpreterOpcode::kEq, 2};
+    return Encoding{ProgramOpcode::kEq, 2};
   case Program::Op::kNe:
-    return Encoding{InterpreterOpcode::kNe, 2};
+    return Encoding{ProgramOpcode::kNe, 2};
   case Program::Op::kAnd:
-    return Encoding{InterpreterOpcode::kAnd, 2};
+    return Encoding{ProgramOpcode::kAnd, 2};
   case Program::Op::kOr:
-    return Encoding{InterpreterOpcode::kOr, 2};
+    return Encoding{ProgramOpcode::kOr, 2};
   case Program::Op::kIf:
-    return Encoding{InterpreterOpcode::kIf, 3};
+    return Encoding{ProgramOpcode::kIf, 3};
   case Program::Op::kAbs:
-    return Encoding{InterpreterOpcode::kAbs, 1};
+    return Encoding{ProgramOpcode::kAbs, 1};
   case Program::Op::kMin:
-    return Encoding{InterpreterOpcode::kMin, 2};
+    return Encoding{ProgramOpcode::kMin, 2};
   case Program::Op::kMax:
-    return Encoding{InterpreterOpcode::kMax, 2};
+    return Encoding{ProgramOpcode::kMax, 2};
   case Program::Op::kClamp:
-    return Encoding{InterpreterOpcode::kClamp, 3};
+    return Encoding{ProgramOpcode::kClamp, 3};
   case Program::Op::kSaturate:
-    return Encoding{InterpreterOpcode::kSaturate, 1};
+    return Encoding{ProgramOpcode::kSaturate, 1};
   case Program::Op::kFloor:
-    return Encoding{InterpreterOpcode::kFloor, 1};
+    return Encoding{ProgramOpcode::kFloor, 1};
   case Program::Op::kCeil:
-    return Encoding{InterpreterOpcode::kCeil, 1};
+    return Encoding{ProgramOpcode::kCeil, 1};
   case Program::Op::kFrac:
-    return Encoding{InterpreterOpcode::kFrac, 1};
+    return Encoding{ProgramOpcode::kFrac, 1};
   case Program::Op::kSqrt:
-    return Encoding{InterpreterOpcode::kSqrt, 1};
+    return Encoding{ProgramOpcode::kSqrt, 1};
   case Program::Op::kPow:
-    return Encoding{InterpreterOpcode::kPow, 2};
+    return Encoding{ProgramOpcode::kPow, 2};
   case Program::Op::kSin:
-    return Encoding{InterpreterOpcode::kSin, 1};
+    return Encoding{ProgramOpcode::kSin, 1};
   case Program::Op::kCos:
-    return Encoding{InterpreterOpcode::kCos, 1};
+    return Encoding{ProgramOpcode::kCos, 1};
   case Program::Op::kStep:
-    return Encoding{InterpreterOpcode::kStep, 2};
+    return Encoding{ProgramOpcode::kStep, 2};
   case Program::Op::kSmoothstep:
-    return Encoding{InterpreterOpcode::kSmoothstep, 3};
+    return Encoding{ProgramOpcode::kSmoothstep, 3};
   case Program::Op::kLerp:
-    return Encoding{InterpreterOpcode::kLerp, 3};
+    return Encoding{ProgramOpcode::kLerp, 3};
   case Program::Op::kLength:
-    return Encoding{InterpreterOpcode::kLength, 1};
+    return Encoding{ProgramOpcode::kLength, 1};
   case Program::Op::kDistance:
-    return Encoding{InterpreterOpcode::kDistance, 2};
+    return Encoding{ProgramOpcode::kDistance, 2};
   case Program::Op::kDot:
-    return Encoding{InterpreterOpcode::kDot, 2};
+    return Encoding{ProgramOpcode::kDot, 2};
   case Program::Op::kCross:
-    return Encoding{InterpreterOpcode::kCross, 2};
+    return Encoding{ProgramOpcode::kCross, 2};
   case Program::Op::kNormalize:
-    return Encoding{InterpreterOpcode::kNormalize, 1};
+    return Encoding{ProgramOpcode::kNormalize, 1};
   }
   return std::nullopt;
 }
@@ -106,12 +106,12 @@ std::uint32_t Components(ValueType type) {
   return type == ValueType::kScalar ? 1 : type == ValueType::kVec2 ? 2 : 3;
 }
 }
-std::expected<InterpreterProgram, std::string>
-InterpreterProgram::Compile(const RecipeGraph &graph, OutputRef result,
-                            const InterpreterLimits &limits) {
+std::expected<FieldProgram, std::string>
+FieldProgram::Compile(const RecipeGraph &graph, OutputRef result,
+                      const ProgramLimits &limits) {
   const auto *node = graph.NodeAt(result.node);
-  const auto fail = [&](std::string message)
-      -> std::expected<InterpreterProgram, std::string> {
+  const auto fail =
+      [&](std::string message) -> std::expected<FieldProgram, std::string> {
     return std::unexpected(std::format(
         "{}: {}", node ? node->displayName : "interpreter", message));
   };
@@ -123,19 +123,19 @@ InterpreterProgram::Compile(const RecipeGraph &graph, OutputRef result,
     return fail("requires an enabled numeric expression output");
   const auto code = expression->program.Code();
   if (code.empty() ||
-      code.size() > std::min(limits.instructions, kInterpreterInstructions))
+      code.size() > std::min(limits.instructions, kProgramInstructions))
     return fail(
         std::format("instruction limit exceeded (limit {})",
-                    std::min(limits.instructions, kInterpreterInstructions)));
+                    std::min(limits.instructions, kProgramInstructions)));
   if (expression->valueBindings.size() >
-      std::min(limits.inputs, kInterpreterInputs))
+      std::min(limits.inputs, kProgramInputs))
     return fail(std::format("input slot limit exceeded (limit {})",
-                            std::min(limits.inputs, kInterpreterInputs)));
+                            std::min(limits.inputs, kProgramInputs)));
   if (expression->functionBindings.size() >
-      std::min(limits.lookups, kInterpreterLookups))
+      std::min(limits.lookups, kProgramLookups))
     return fail(std::format("function lookup limit exceeded (limit {})",
-                            std::min(limits.lookups, kInterpreterLookups)));
-  InterpreterProgram compiled;
+                            std::min(limits.lookups, kProgramLookups)));
+  FieldProgram compiled;
   compiled.resultType_ = *numeric;
   std::vector<ValueType> inputTypes;
   for (const auto input : expression->valueBindings) {
@@ -145,15 +145,13 @@ InterpreterProgram::Compile(const RecipeGraph &graph, OutputRef result,
       return fail("input has no executable numeric value");
     inputTypes.push_back(*valueType);
     if (graph.SampleDependent(input)) {
-      if (compiled.textureCount_ >=
-          std::min(limits.textures, kInterpreterTextures))
-        return fail(
-            std::format("texture slot limit exceeded (limit {})",
-                        std::min(limits.textures, kInterpreterTextures)));
-      compiled.inputs_.push_back(InterpreterTextureInput{
+      if (compiled.textureCount_ >= std::min(limits.textures, kProgramTextures))
+        return fail(std::format("texture slot limit exceeded (limit {})",
+                                std::min(limits.textures, kProgramTextures)));
+      compiled.inputs_.push_back(ProgramTextureInput{
           input, static_cast<std::uint32_t>(compiled.textureCount_++)});
     } else {
-      compiled.inputs_.push_back(InterpreterValueInput{input});
+      compiled.inputs_.push_back(ProgramValueInput{input});
     }
   }
   for (const auto &binding : expression->functionBindings) {
@@ -230,9 +228,9 @@ InterpreterProgram::Compile(const RecipeGraph &graph, OutputRef result,
     stack.resize(start);
     stack.push_back(type);
     compiled.stackSize_ = std::max(compiled.stackSize_, stack.size());
-    if (compiled.stackSize_ > std::min(limits.stack, kInterpreterStack))
+    if (compiled.stackSize_ > std::min(limits.stack, kProgramStack))
       return fail(std::format("stack depth limit exceeded (limit {})",
-                              std::min(limits.stack, kInterpreterStack)));
+                              std::min(limits.stack, kProgramStack)));
     const bool reduction = operation.op == Op::kLength ||
                            operation.op == Op::kDistance ||
                            operation.op == Op::kDot;
@@ -244,8 +242,8 @@ InterpreterProgram::Compile(const RecipeGraph &graph, OutputRef result,
     return fail("instruction result type does not match graph output");
   return compiled;
 }
-std::size_t InterpreterPops(InterpreterOpcode opcode) noexcept {
-  using Op = InterpreterOpcode;
+std::size_t OpcodePops(ProgramOpcode opcode) noexcept {
+  using Op = ProgramOpcode;
   switch (opcode) {
   case Op::kNumber:
   case Op::kInput:
@@ -296,23 +294,25 @@ std::size_t InterpreterPops(InterpreterOpcode opcode) noexcept {
   }
   return 3;
 }
-std::expected<InterpreterProgram, std::string> InterpreterProgram::Inline(
-    const InterpreterProgram &a_consumer, std::size_t a_input,
-    const InterpreterProgram &a_producer, const InterpreterLimits &a_limits) {
+std::expected<FieldProgram, std::string>
+FieldProgram::Inline(const FieldProgram &a_consumer, std::size_t a_input,
+                     const FieldProgram &a_producer,
+                     const ProgramLimits &a_limits) {
   if (a_input >= a_consumer.inputs_.size() ||
-      !Is<InterpreterTextureInput>(a_consumer.inputs_[a_input]))
+      !Is<ProgramTextureInput>(a_consumer.inputs_[a_input]))
     return std::unexpected("inlined input is not a texture input");
-  InterpreterProgram fused;
-  fused.resultType_ = a_consumer.resultType_;
+  FieldProgram inlined;
+  inlined.resultType_ = a_consumer.resultType_;
   std::vector<std::uint32_t> consumerIndex(a_consumer.inputs_.size());
   std::vector<std::uint32_t> producerIndex(a_producer.inputs_.size());
-  const auto append = [&](const InterpreterInput &input) {
-    const auto index = static_cast<std::uint32_t>(fused.inputs_.size());
-    if (const auto *texture = Get<InterpreterTextureInput>(input))
-      fused.inputs_.push_back(InterpreterTextureInput{
-          texture->output, static_cast<std::uint32_t>(fused.textureCount_++)});
+  const auto append = [&](const ProgramInput &input) {
+    const auto index = static_cast<std::uint32_t>(inlined.inputs_.size());
+    if (const auto *texture = Get<ProgramTextureInput>(input))
+      inlined.inputs_.push_back(ProgramTextureInput{
+          texture->output,
+          static_cast<std::uint32_t>(inlined.textureCount_++)});
     else
-      fused.inputs_.push_back(input);
+      inlined.inputs_.push_back(input);
     return index;
   };
   for (std::size_t i = 0; i < a_consumer.inputs_.size(); ++i)
@@ -320,130 +320,134 @@ std::expected<InterpreterProgram, std::string> InterpreterProgram::Inline(
       consumerIndex[i] = append(a_consumer.inputs_[i]);
   for (std::size_t i = 0; i < a_producer.inputs_.size(); ++i)
     producerIndex[i] = append(a_producer.inputs_[i]);
-  fused.lookups_ = a_consumer.lookups_;
-  const auto lookupOffset = static_cast<std::uint32_t>(fused.lookups_.size());
-  fused.lookups_.insert(fused.lookups_.end(), a_producer.lookups_.begin(),
-                        a_producer.lookups_.end());
+  inlined.lookups_ = a_consumer.lookups_;
+  const auto lookupOffset = static_cast<std::uint32_t>(inlined.lookups_.size());
+  inlined.lookups_.insert(inlined.lookups_.end(), a_producer.lookups_.begin(),
+                          a_producer.lookups_.end());
   const bool scalarProducer = a_producer.resultType_ == ValueType::kScalar;
   for (const auto &instruction : a_consumer.instructions_) {
-    if (instruction.opcode == InterpreterOpcode::kInput &&
+    if (instruction.opcode == ProgramOpcode::kInput &&
         instruction.index == a_input) {
       for (auto produced : a_producer.instructions_) {
-        if (produced.opcode == InterpreterOpcode::kInput)
+        if (produced.opcode == ProgramOpcode::kInput)
           produced.index = produced.index < producerIndex.size()
                                ? producerIndex[produced.index]
                                : produced.index;
-        else if (produced.opcode == InterpreterOpcode::kLookup)
+        else if (produced.opcode == ProgramOpcode::kLookup)
           produced.index += lookupOffset;
-        fused.instructions_.push_back(produced);
+        inlined.instructions_.push_back(produced);
       }
       if (scalarProducer)
-        fused.instructions_.push_back(
-            {InterpreterOpcode::kSplat, 0, 0, instruction.components});
-      fused.instructions_.push_back(
-          {InterpreterOpcode::kQuantize, 0, 0, instruction.components});
+        inlined.instructions_.push_back(
+            {ProgramOpcode::kSplat, 0, 0, instruction.components});
+      inlined.instructions_.push_back(
+          {ProgramOpcode::kQuantize, 0, 0, instruction.components});
       continue;
     }
     auto kept = instruction;
-    if (kept.opcode == InterpreterOpcode::kInput &&
+    if (kept.opcode == ProgramOpcode::kInput &&
         kept.index < consumerIndex.size())
       kept.index = consumerIndex[kept.index];
-    fused.instructions_.push_back(kept);
+    inlined.instructions_.push_back(kept);
   }
   std::size_t depth = 0;
-  for (const auto &instruction : fused.instructions_) {
-    const auto pops = InterpreterPops(instruction.opcode);
+  for (const auto &instruction : inlined.instructions_) {
+    const auto pops = OpcodePops(instruction.opcode);
     depth = (depth > pops ? depth - pops : 0) + 1;
-    fused.stackSize_ = std::max(fused.stackSize_, depth);
+    inlined.stackSize_ = std::max(inlined.stackSize_, depth);
   }
-  if (fused.instructions_.size() >
-          std::min(a_limits.instructions, kInterpreterInstructions) ||
-      fused.inputs_.size() > std::min(a_limits.inputs, kInterpreterInputs) ||
-      fused.textureCount_ > std::min(a_limits.textures, kInterpreterTextures) ||
-      fused.lookups_.size() > std::min(a_limits.lookups, kInterpreterLookups) ||
-      fused.stackSize_ > std::min(a_limits.stack, kInterpreterStack))
+  if (inlined.instructions_.size() >
+          std::min(a_limits.instructions, kProgramInstructions) ||
+      inlined.inputs_.size() > std::min(a_limits.inputs, kProgramInputs) ||
+      inlined.textureCount_ > std::min(a_limits.textures, kProgramTextures) ||
+      inlined.lookups_.size() > std::min(a_limits.lookups, kProgramLookups) ||
+      inlined.stackSize_ > std::min(a_limits.stack, kProgramStack))
     return std::unexpected("inlined program exceeds interpreter limits");
-  return fused;
+  return inlined;
 }
-InterpreterProgram InterpreterProgram::Sample(ValueType type, bool texture) {
-  InterpreterProgram result;
+FieldProgram FieldProgram::Sample(ValueType type, bool texture) {
+  FieldProgram result;
   if (texture)
-    result.inputs_.push_back(InterpreterTextureInput{{}, 0});
+    result.inputs_.push_back(ProgramTextureInput{{}, 0});
   else
-    result.inputs_.push_back(InterpreterValueInput{});
+    result.inputs_.push_back(ProgramValueInput{});
   result.textureCount_ = texture ? 1 : 0;
   result.stackSize_ = 1;
   result.resultType_ = type;
   result.instructions_.push_back(
-      {InterpreterOpcode::kInput, 0, 0, Components(type)});
+      {ProgramOpcode::kInput, 0, 0, Components(type)});
   return result;
 }
-InterpreterProgram InterpreterProgram::AbsoluteDifference() {
-  InterpreterProgram result;
-  result.inputs_ = {InterpreterTextureInput{{}, 0},
-                    InterpreterTextureInput{{}, 1}};
+FieldProgram FieldProgram::AbsoluteDifference() {
+  FieldProgram result;
+  result.inputs_ = {ProgramTextureInput{{}, 0}, ProgramTextureInput{{}, 1}};
   result.textureCount_ = 2;
   result.stackSize_ = 2;
   result.resultType_ = ValueType::kVec3;
-  result.instructions_ = {{InterpreterOpcode::kInput, 0, 0, 3},
-                          {InterpreterOpcode::kInput, 0, 1, 3},
-                          {InterpreterOpcode::kSub, 0, 0, 3},
-                          {InterpreterOpcode::kAbs, 0, 0, 3}};
+  result.instructions_ = {{ProgramOpcode::kInput, 0, 0, 3},
+                          {ProgramOpcode::kInput, 0, 1, 3},
+                          {ProgramOpcode::kSub, 0, 0, 3},
+                          {ProgramOpcode::kAbs, 0, 0, 3}};
   return result;
 }
-InterpreterProgram InterpreterProgram::Map() {
+FieldProgram FieldProgram::Map() {
   auto result = Sample(ValueType::kScalar);
   result.lookups_.push_back({});
-  result.instructions_.push_back({InterpreterOpcode::kLookup, 0, 0, 1});
+  result.instructions_.push_back({ProgramOpcode::kLookup, 0, 0, 1});
   return result;
 }
-std::expected<InterpreterProgram, std::string>
-InterpreterProgram::Compose(std::span<const bool> textures) {
+std::expected<FieldProgram, std::string>
+FieldProgram::Compose(std::span<const bool> textures) {
   if (textures.size() < 2 || textures.size() > 3)
     return std::unexpected("invalid vector width");
-  InterpreterProgram result;
+  FieldProgram result;
   for (std::size_t i = 0; i < textures.size(); ++i) {
     if (textures[i])
-      result.inputs_.push_back(InterpreterTextureInput{
+      result.inputs_.push_back(ProgramTextureInput{
           {}, static_cast<std::uint32_t>(result.textureCount_++)});
     else
-      result.inputs_.push_back(InterpreterValueInput{});
+      result.inputs_.push_back(ProgramValueInput{});
     result.instructions_.push_back(
-        {InterpreterOpcode::kInput, 0, static_cast<std::uint32_t>(i), 1});
+        {ProgramOpcode::kInput, 0, static_cast<std::uint32_t>(i), 1});
   }
   result.instructions_.push_back(
-      {textures.size() == 2 ? InterpreterOpcode::kMakeVec2
-                            : InterpreterOpcode::kMakeVec3,
+      {textures.size() == 2 ? ProgramOpcode::kMakeVec2
+                            : ProgramOpcode::kMakeVec3,
        0, 0, static_cast<std::uint32_t>(textures.size())});
   result.stackSize_ = textures.size();
   result.resultType_ =
       textures.size() == 2 ? ValueType::kVec2 : ValueType::kVec3;
   return result;
 }
-std::span<const InterpreterInstruction>
-InterpreterProgram::Instructions() const noexcept {
+std::span<const ProgramInstruction>
+FieldProgram::Instructions() const noexcept {
   return instructions_;
 }
-std::span<const InterpreterInput> InterpreterProgram::Inputs() const noexcept {
+std::span<const ProgramInput> FieldProgram::Inputs() const noexcept {
   return inputs_;
 }
-std::span<const FunctionLookup>
-InterpreterProgram::FunctionLookups() const noexcept {
+std::span<const FunctionLookup> FieldProgram::FunctionLookups() const noexcept {
   return lookups_;
 }
-std::size_t InterpreterProgram::TextureCount() const noexcept {
+std::size_t FieldProgram::TextureCount() const noexcept {
   return textureCount_;
 }
-ValueType InterpreterProgram::ResultType() const noexcept {
-  return resultType_;
+ValueType FieldProgram::ResultType() const noexcept { return resultType_; }
+std::size_t FieldProgram::StackSize() const noexcept { return stackSize_; }
+std::optional<ProgramSegment>
+SegmentAt(std::span<const ProgramSegment> segments, std::size_t codeSize,
+          std::uint32_t segment) {
+  if (segment >= segments.size())
+    return std::nullopt;
+  const auto found = segments[segment];
+  if (found.first > codeSize || found.count > codeSize - found.first)
+    return std::nullopt;
+  return found;
 }
-std::size_t InterpreterProgram::StackSize() const noexcept {
-  return stackSize_;
-}
-std::expected<InterpreterPack, std::string>
-PackInterpreters(std::span<const InterpreterProgram *const> programs,
-                 const InterpreterLimits &limits) {
-  InterpreterPack pack;
+std::expected<ProgramPack, std::string>
+PackPrograms(std::span<const FieldProgram *const> programs,
+             const ProgramLimits &limits) {
+  ProgramPack pack;
   for (const auto *program : programs) {
     if (!program)
       return std::unexpected("packed program is missing");
@@ -451,33 +455,32 @@ PackInterpreters(std::span<const InterpreterProgram *const> programs,
     const auto lookupOffset = static_cast<std::uint32_t>(pack.lookupCount);
     const auto textureOffset = static_cast<std::uint32_t>(pack.textureCount);
     for (const auto &input : program->Inputs()) {
-      if (const auto *texture = Get<InterpreterTextureInput>(input))
-        pack.inputs.push_back(InterpreterTextureInput{
+      if (const auto *texture = Get<ProgramTextureInput>(input))
+        pack.inputs.push_back(ProgramTextureInput{
             texture->output, texture->slot + textureOffset});
       else
         pack.inputs.push_back(input);
     }
     pack.textureCount += program->TextureCount();
     pack.lookupCount += program->FunctionLookups().size();
-    const InterpreterSegment segment{
+    const ProgramSegment segment{
         static_cast<std::uint32_t>(pack.code.size()),
         static_cast<std::uint32_t>(program->Instructions().size())};
     for (auto instruction : program->Instructions()) {
-      if (instruction.opcode == InterpreterOpcode::kInput)
+      if (instruction.opcode == ProgramOpcode::kInput)
         instruction.index += inputOffset;
-      else if (instruction.opcode == InterpreterOpcode::kLookup)
+      else if (instruction.opcode == ProgramOpcode::kLookup)
         instruction.index += lookupOffset;
       pack.code.push_back(instruction);
     }
     pack.segments.push_back(segment);
-    if (program->StackSize() > std::min(limits.stack, kInterpreterStack))
+    if (program->StackSize() > std::min(limits.stack, kProgramStack))
       return std::unexpected("packed program exceeds the interpreter stack");
   }
-  if (pack.code.size() >
-          std::min(limits.instructions, kInterpreterInstructions) ||
-      pack.inputs.size() > std::min(limits.inputs, kInterpreterInputs) ||
-      pack.textureCount > std::min(limits.textures, kInterpreterTextures) ||
-      pack.lookupCount > std::min(limits.lookups, kInterpreterLookups))
+  if (pack.code.size() > std::min(limits.instructions, kProgramInstructions) ||
+      pack.inputs.size() > std::min(limits.inputs, kProgramInputs) ||
+      pack.textureCount > std::min(limits.textures, kProgramTextures) ||
+      pack.lookupCount > std::min(limits.lookups, kProgramLookups))
     return std::unexpected("packed programs exceed interpreter limits");
   return pack;
 }

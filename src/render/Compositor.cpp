@@ -56,7 +56,10 @@ TextureRef RenderOutput::LayerTexture(std::size_t layer) const {
       Get<CompositeStackStep>(render->Plan().steps[result_.step].kind);
   if (!stack || layer >= stack->layers.size())
     return {};
-  const auto texture = render->Texture(stack->layers[layer].source);
+  const auto source = ReadValue(*stack, stack->layers[layer].source);
+  if (!source)
+    return {};
+  const auto texture = render->Texture(*source);
   return texture ? texture->texture : TextureRef{};
 }
 

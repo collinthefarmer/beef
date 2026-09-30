@@ -11,8 +11,8 @@ using namespace BetterEnchantmentEffects;
 using test::Check;
 
 namespace {
-std::optional<InterpreterProgram> CompileMask(std::string_view expression,
-                                              float constant) {
+std::optional<FieldProgram> CompileMask(std::string_view expression,
+                                        float constant) {
   Recipe recipe;
   recipe.signals = {{"a", ConstantSignal{constant}}};
   recipe.sources = {{"s", MaterialSource{MaterialChannel::kRoughness}}};
@@ -21,7 +21,7 @@ std::optional<InterpreterProgram> CompileMask(std::string_view expression,
   const auto node = graph.FindNodeIndex("m");
   if (!node)
     return std::nullopt;
-  auto program = InterpreterProgram::Compile(graph, {*node, 0});
+  auto program = FieldProgram::Compile(graph, {*node, 0});
   if (!program)
     return std::nullopt;
   return *program;
@@ -47,15 +47,31 @@ void MatchGolden(const std::string &name, const std::string &text) {
 }
 
 int main() {
-  std::set<InterpreterOpcode> opcodes;
+  using Op = ProgramOpcode;
+  const std::set<ProgramOpcode> every{
+      Op::kNumber,   Op::kMakeVec2,   Op::kMakeVec3, Op::kInput,
+      Op::kLookup,   Op::kNeg,        Op::kNot,      Op::kAdd,
+      Op::kSub,      Op::kMul,        Op::kDiv,      Op::kLt,
+      Op::kGt,       Op::kLe,         Op::kGe,       Op::kEq,
+      Op::kNe,       Op::kAnd,        Op::kOr,       Op::kIf,
+      Op::kAbs,      Op::kMin,        Op::kMax,      Op::kClamp,
+      Op::kSaturate, Op::kFloor,      Op::kCeil,     Op::kFrac,
+      Op::kSqrt,     Op::kPow,        Op::kSin,      Op::kCos,
+      Op::kStep,     Op::kSmoothstep, Op::kLerp,     Op::kLength,
+      Op::kDistance, Op::kDot,        Op::kCross,    Op::kNormalize,
+      Op::kQuantize, Op::kSplat};
+  std::set<ProgramOpcode> tabled;
   for (const auto &entry : OpcodeStatements()) {
     Check(!entry.statement.empty(), "every opcode has a statement");
-    opcodes.insert(entry.opcode);
+    tabled.insert(entry.opcode);
   }
-  test::Equal(opcodes.size(), OpcodeStatements().size(),
+  test::Equal(tabled.size(), OpcodeStatements().size(),
               "each opcode appears once in the table");
-  test::Equal(opcodes.size(), std::size_t{42},
-              "the table covers every interpreter opcode");
+  Check(tabled == every, "the table covers every interpreter opcode");
+  test::Equal(InterpreterZRule(),
+              std::string{"if (components == 2 && op != 38 && op != 39 && "
+                          "op != 40) r.z = 0;\n"},
+              "length, distance and dot keep z for two components");
 
   const std::array expressions{
       "saturate(pow(@s, 2) * @a + lerp(@s, 1, @a))",
@@ -82,11 +98,11 @@ int main() {
   }
 
   MatchGolden("interpreter-switch", InterpreterSwitch());
-  MatchGolden("sample-scalar", GenerateProgramShader(InterpreterProgram::Sample(
-                                   ValueType::kScalar)));
+  MatchGolden("sample-scalar",
+              GenerateProgramShader(FieldProgram::Sample(ValueType::kScalar)));
   MatchGolden("absolute-difference",
-              GenerateProgramShader(InterpreterProgram::AbsoluteDifference()));
-  MatchGolden("map", GenerateProgramShader(InterpreterProgram::Map()));
+              GenerateProgramShader(FieldProgram::AbsoluteDifference()));
+  MatchGolden("map", GenerateProgramShader(FieldProgram::Map()));
   if (const auto program = CompileMask(expressions[0], 0.25f))
     MatchGolden("expression", GenerateProgramShader(*program));
   return test::Finish("program shader");

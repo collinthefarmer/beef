@@ -5,24 +5,103 @@
 #include <iterator>
 
 namespace BetterEnchantmentEffects {
-std::vector<RenderValueRef> LayerOperands(const PlannedLayer &layer) {
+const LayerField *ReadField(const CompositeStackStep &stack,
+                            const LayerRead &read) {
+  const auto *ref = Get<LayerFieldRef>(read);
+  return ref && ref->field < stack.fields.size() ? &stack.fields[ref->field]
+                                                 : nullptr;
+}
+std::optional<RenderValueRef> ReadValue(const CompositeStackStep &stack,
+                                        const LayerRead &read) {
+  if (const auto *value = Get<RenderValueRef>(read))
+    return *value;
+  if (const auto *field = ReadField(stack, read))
+    return field->value;
+  return std::nullopt;
+}
+std::vector<RenderValueRef> LayerOperands(const CompositeStackStep &stack,
+                                          const PlannedLayer &layer) {
   std::vector<RenderValueRef> operands;
-  const auto field = [&](const LayerField &f) {
-    operands.insert(operands.end(), f.inputs.begin(), f.inputs.end());
-    operands.insert(operands.end(), f.lookups.begin(), f.lookups.end());
+  const auto read = [&](const LayerRead &r) {
+    if (const auto *value = Get<RenderValueRef>(r))
+      operands.push_back(*value);
+    else if (const auto *field = ReadField(stack, r)) {
+      operands.insert(operands.end(), field->inputs.begin(),
+                      field->inputs.end());
+      operands.insert(operands.end(), field->lookups.begin(),
+                      field->lookups.end());
+    }
   };
-  if (layer.sourceField)
-    field(*layer.sourceField);
-  else
-    operands.push_back(layer.source);
+  read(layer.source);
   operands.push_back(layer.opacity);
-  if (layer.maskField)
-    field(*layer.maskField);
-  else if (layer.mask)
-    operands.push_back(*layer.mask);
+  if (layer.mask)
+    read(*layer.mask);
   if (layer.color)
     operands.push_back(*layer.color);
   return operands;
+}
+std::expected<PackedLayerFields, std::string>
+PackLayerFields(std::span<const LayerField *const> fields) {
+  std::vector<const FieldProgram *> programs;
+  PackedLayerFields packed;
+  for (const auto *field : fields) {
+    if (!field)
+      return std::unexpected("packed layer field is missing");
+    programs.push_back(&field->program);
+    packed.inputs.insert(packed.inputs.end(), field->inputs.begin(),
+                         field->inputs.end());
+    packed.lookups.insert(packed.lookups.end(), field->lookups.begin(),
+                          field->lookups.end());
+  }
+  auto pack = PackPrograms(programs);
+  if (!pack)
+    return std::unexpected(pack.error());
+  packed.pack = std::move(*pack);
+  return packed;
+}
+std::vector<std::size_t>
+VisibleLayerFields(std::span<const PlannedLayer *const> layers) {
+  std::vector<std::size_t> fields;
+  const auto note = [&](const LayerRead &read) {
+    if (const auto *ref = Get<LayerFieldRef>(read);
+        ref && std::ranges::find(fields, ref->field) == fields.end())
+      fields.push_back(ref->field);
+  };
+  for (const auto *layer : layers) {
+    if (!layer)
+      continue;
+    note(layer->source);
+    if (layer->mask)
+      note(*layer->mask);
+  }
+  return fields;
+}
+std::optional<std::uint32_t> SegmentIndexOf(std::span<const std::size_t> fields,
+                                            const LayerRead &read) {
+  const auto *ref = Get<LayerFieldRef>(read);
+  if (!ref)
+    return std::nullopt;
+  const auto found = std::ranges::find(fields, ref->field);
+  if (found == fields.end())
+    return std::nullopt;
+  return static_cast<std::uint32_t>(found - fields.begin());
+}
+namespace {
+bool InputChanging(const RenderPlan &plan, RenderInputId id,
+                   const std::vector<bool> &steps) {
+  const auto &input = plan.inputs[id];
+  return Match(
+      input.binding,
+      [&](const TextureValue &value) {
+        return input.type == RenderValueType{RenderResourceType::kFirings} ||
+               (value.graph && value.graph->Changing(value.output.node));
+      },
+      [](const StackInputBinding &) { return true; },
+      [&](const ReadbackBinding &readback) {
+        return readback.submission < steps.size() && steps[readback.submission];
+      });
+}
+
 }
 std::vector<RenderValueRef> InputsOf(const RenderStepKind &step) {
   return Match(
@@ -70,7 +149,8 @@ std::vector<RenderValueRef> InputsOf(const RenderStepKind &step) {
       [](const CompositeStackStep &k) {
         std::vector<RenderValueRef> inputs{k.base, k.visibility};
         for (const auto &layer : k.layers)
-          std::ranges::copy(LayerOperands(layer), std::back_inserter(inputs));
+          std::ranges::copy(LayerOperands(k, layer),
+                            std::back_inserter(inputs));
         return inputs;
       });
 }
@@ -310,7 +390,7 @@ std::expected<void, std::string> ValidateRenderPlan(const RenderPlan &plan) {
           }
           for (std::size_t n = 0; n < k.inputs.size(); ++n) {
             const auto actual = TypeOf(plan, k.inputs[n]);
-            if (Is<InterpreterTextureInput>(k.program.Inputs()[n]))
+            if (Is<ProgramTextureInput>(k.program.Inputs()[n]))
               require(k.inputs[n], RenderResourceType::kTexture);
             else if (!actual || !Is<ValueType>(*actual))
               problem = "program value input is not numeric";
@@ -342,25 +422,28 @@ std::expected<void, std::string> ValidateRenderPlan(const RenderPlan &plan) {
         [&](const CompositeStackStep &k) {
           require(k.base, RenderResourceType::kStack);
           require(k.visibility, RenderResourceType::kVisibility);
+          for (const auto &field : k.fields)
+            if (field.inputs.size() != field.program.Inputs().size() ||
+                field.lookups.size() != field.program.FunctionLookups().size())
+              problem = "layer field binding count mismatch";
           for (const auto &layer : k.layers) {
-            const auto type = TypeOf(plan, layer.source);
+            const auto source = ReadValue(k, layer.source);
+            const auto type = source ? TypeOf(plan, *source)
+                                     : std::optional<RenderValueType>{};
             if (!type ||
                 (*type != RenderValueType{RenderResourceType::kTexture} &&
                  *type != RenderValueType{ValueType::kVec3}))
               problem = "invalid stack source";
             require(layer.opacity, ValueType::kScalar);
-            if (layer.mask)
-              require(*layer.mask, RenderResourceType::kTexture);
+            if (layer.mask) {
+              const auto mask = ReadValue(k, *layer.mask);
+              if (!mask)
+                problem = "invalid stack mask";
+              else
+                require(*mask, RenderResourceType::kTexture);
+            }
             if (layer.color)
               require(*layer.color, ValueType::kVec3);
-            for (const auto *field : {&layer.sourceField, &layer.maskField})
-              if (*field && ((*field)->inputs.size() !=
-                                 (*field)->program.Inputs().size() ||
-                             (*field)->lookups.size() !=
-                                 (*field)->program.FunctionLookups().size()))
-                problem = "layer field binding count mismatch";
-            if (layer.maskField && !layer.mask)
-              problem = "layer mask field without a mask";
           }
         });
     if (!problem.empty())
@@ -392,4 +475,62 @@ std::expected<void, std::string> ValidateRenderPlan(const RenderPlan &plan) {
       return std::unexpected("invalid texture use binding");
   return {};
 }
+std::vector<RenderValueRef> StepDependencies(const RenderPlan &plan,
+                                             RenderStepId step) {
+  auto operands = InputsOf(plan.steps[step].kind);
+  for (const auto &operand : std::vector(operands))
+    if (const auto *input = Get<RenderInputRef>(operand);
+        input && input->input < plan.inputs.size())
+      if (const auto *readback =
+              Get<ReadbackBinding>(plan.inputs[input->input].binding))
+        operands.push_back(StepOutputRef{readback->submission, 0});
+  return operands;
+}
+
+std::vector<bool> ChangingSteps(const RenderPlan &plan) {
+  std::vector<bool> changing(plan.steps.size(), false);
+  for (std::size_t step = 0; step < plan.steps.size(); ++step)
+    for (const auto &operand : StepDependencies(plan, step))
+      changing[step] = changing[step] ||
+                       Match(
+                           operand,
+                           [&](RenderInputRef input) {
+                             return input.input < plan.inputs.size() &&
+                                    InputChanging(plan, input.input, changing);
+                           },
+                           [&](StepOutputRef output) {
+                             return output.step < step && changing[output.step];
+                           });
+  return changing;
+}
+
+std::vector<std::size_t> LiveConsumers(const RenderPlan &plan) {
+  std::vector<std::size_t> consumers(plan.steps.size(), 0);
+  std::vector<bool> live(plan.steps.size(), false);
+  std::vector<RenderStepId> pending;
+  for (const auto &output : plan.stackOutputs)
+    if (output.result.step < plan.steps.size() && !live[output.result.step]) {
+      live[output.result.step] = true;
+      pending.push_back(output.result.step);
+    }
+  while (!pending.empty()) {
+    const auto step = pending.back();
+    pending.pop_back();
+    std::vector<RenderStepId> seen;
+    for (const auto &operand : StepDependencies(plan, step)) {
+      const auto *output = Get<StepOutputRef>(operand);
+      if (!output || output->step >= plan.steps.size() ||
+          std::ranges::find(seen, output->step) != seen.end())
+        continue;
+      seen.push_back(output->step);
+      ++consumers[output->step];
+      if (!live[output->step]) {
+        live[output->step] = true;
+        pending.push_back(output->step);
+      }
+    }
+  }
+  return consumers;
+}
+
 }

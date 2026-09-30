@@ -2,7 +2,8 @@
 #pragma once
 
 #include "mesh/MaterialClusters.h"
-#include "planners/InterpreterProgram.h"
+#include "planners/FieldProgram.h"
+#include "planners/StackShader.h"
 #include "recipe/Reduction.h"
 
 namespace BetterEnchantmentEffects {
@@ -19,27 +20,27 @@ struct alignas(16) LayerConstants {
 
 struct alignas(16) ProgramConstants {
   float code[256][4];
-  float refs[16][4];
-  float refValues[16][4];
+  float inputs[16][4];
+  float inputValues[16][4];
   float texParams[8][4];
   float texTransform[8][4];
   float texFlags[8][4];
   float misc[4];
 };
 static_assert(sizeof(ProgramConstants) % 16 == 0);
-static_assert(static_cast<int>(InterpreterOpcode::kNumber) == 0 &&
-              static_cast<int>(InterpreterOpcode::kInput) == 3 &&
-              static_cast<int>(InterpreterOpcode::kIf) == 22 &&
-              static_cast<int>(InterpreterOpcode::kClamp) == 26 &&
-              static_cast<int>(InterpreterOpcode::kStep) == 35 &&
-              static_cast<int>(InterpreterOpcode::kLerp) == 37 &&
-              static_cast<int>(InterpreterOpcode::kLength) == 38 &&
-              static_cast<int>(InterpreterOpcode::kDistance) == 39 &&
-              static_cast<int>(InterpreterOpcode::kDot) == 40 &&
-              static_cast<int>(InterpreterOpcode::kCross) == 41 &&
-              static_cast<int>(InterpreterOpcode::kNormalize) == 42 &&
-              static_cast<int>(InterpreterOpcode::kQuantize) == 43 &&
-              static_cast<int>(InterpreterOpcode::kSplat) == 44);
+static_assert(static_cast<int>(ProgramOpcode::kNumber) == 0 &&
+              static_cast<int>(ProgramOpcode::kInput) == 3 &&
+              static_cast<int>(ProgramOpcode::kIf) == 22 &&
+              static_cast<int>(ProgramOpcode::kClamp) == 26 &&
+              static_cast<int>(ProgramOpcode::kStep) == 35 &&
+              static_cast<int>(ProgramOpcode::kLerp) == 37 &&
+              static_cast<int>(ProgramOpcode::kLength) == 38 &&
+              static_cast<int>(ProgramOpcode::kDistance) == 39 &&
+              static_cast<int>(ProgramOpcode::kDot) == 40 &&
+              static_cast<int>(ProgramOpcode::kCross) == 41 &&
+              static_cast<int>(ProgramOpcode::kNormalize) == 42 &&
+              static_cast<int>(ProgramOpcode::kQuantize) == 43 &&
+              static_cast<int>(ProgramOpcode::kSplat) == 44);
 
 struct alignas(16) StackConstants {
   float offsetScale[8][4];
@@ -50,7 +51,9 @@ struct alignas(16) StackConstants {
   float field[8][4];
   float misc[4];
 };
-static_assert(sizeof(StackConstants) % 16 == 0);
+static_assert(sizeof(StackConstants) % 16 == 0 &&
+              std::extent_v<decltype(StackConstants::layer)> ==
+                  kMaxStackLayers);
 
 struct alignas(16) RippleConstants {
   float firings[8][4];

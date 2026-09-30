@@ -1,5 +1,5 @@
 // GPL-3.0-only with the additional permission in COPYING.md.
-#include "planners/InterpreterReference.h"
+#include "planners/ProgramReference.h"
 #include "recipe/RecipeGraph.h"
 #include "test_support.h"
 
@@ -121,25 +121,22 @@ int main() {
     const auto consumerNode = graph.FindNodeIndex("c");
     if (!producerNode || !consumerNode)
       continue;
-    const auto producer =
-        InterpreterProgram::Compile(graph, {*producerNode, 0});
-    const auto consumer =
-        InterpreterProgram::Compile(graph, {*consumerNode, 0});
+    const auto producer = FieldProgram::Compile(graph, {*producerNode, 0});
+    const auto consumer = FieldProgram::Compile(graph, {*consumerNode, 0});
     if (!producer || !consumer) {
       ++rejected;
       continue;
     }
     std::optional<std::size_t> producerInput;
     for (std::size_t i = 0; i < consumer->Inputs().size(); ++i)
-      if (const auto *texture =
-              Get<InterpreterTextureInput>(consumer->Inputs()[i]);
+      if (const auto *texture = Get<ProgramTextureInput>(consumer->Inputs()[i]);
           texture && texture->output.node == *producerNode)
         producerInput = i;
     if (!producerInput)
       continue;
-    const auto fused =
-        InterpreterProgram::Inline(*consumer, *producerInput, *producer);
-    if (!fused) {
+    const auto inlined =
+        FieldProgram::Inline(*consumer, *producerInput, *producer);
+    if (!inlined) {
       ++rejected;
       continue;
     }
@@ -155,33 +152,34 @@ int main() {
       std::vector<Vec3> consumerInputs;
       for (std::size_t i = 0; i < consumer->Inputs().size(); ++i)
         consumerInputs.push_back(random3());
-      auto stored = EvaluateInterpreter(*producer, {producerInputs, {}});
+      auto stored = EvaluateProgramOnCpu(*producer, {producerInputs, {}});
       if (producer->ResultType() == ValueType::kScalar)
         stored = {stored.x, stored.x, stored.x};
       stored = QuantizeUnorm8(stored);
       const auto &read = consumer->Instructions();
       const bool two = std::ranges::any_of(read, [&](const auto &i) {
-        return i.opcode == InterpreterOpcode::kInput &&
-               i.index == *producerInput && i.components == 2;
+        return i.opcode == ProgramOpcode::kInput && i.index == *producerInput &&
+               i.components == 2;
       });
       if (two)
         stored.z = 0.0f;
       consumerInputs[*producerInput] = stored;
-      const auto unfused = EvaluateInterpreter(*consumer, {consumerInputs, {}});
-      std::vector<Vec3> fusedInputs;
+      const auto unfused =
+          EvaluateProgramOnCpu(*consumer, {consumerInputs, {}});
+      std::vector<Vec3> inlinedInputs;
       for (std::size_t i = 0; i < consumerInputs.size(); ++i)
         if (i != *producerInput)
-          fusedInputs.push_back(consumerInputs[i]);
-      fusedInputs.insert(fusedInputs.end(), producerInputs.begin(),
-                         producerInputs.end());
-      const auto together = EvaluateInterpreter(*fused, {fusedInputs, {}});
+          inlinedInputs.push_back(consumerInputs[i]);
+      inlinedInputs.insert(inlinedInputs.end(), producerInputs.begin(),
+                           producerInputs.end());
+      const auto together = EvaluateProgramOnCpu(*inlined, {inlinedInputs, {}});
       ++evaluated;
       if (!SameBits(unfused, together) && ++differing <= 5)
         std::printf("differs: p=%s c=%s\n", c.producer.c_str(),
                     c.consumer.c_str());
     }
   }
-  std::printf("interpreter inline: %zu programs fused, %zu rejected, %zu "
+  std::printf("program inline: %zu programs inlined, %zu rejected, %zu "
               "evaluations\n",
               compiled, rejected, evaluated);
   Check(compiled > 200 && evaluated > 5000,
@@ -194,21 +192,19 @@ int main() {
   limited.sources = {{"s", MaterialSource{MaterialChannel::kRoughness}}};
   limited.masks = {{"p", "@s * 2"}, {"c", "@p + @s"}};
   const auto graph = RecipeGraph::Compile(limited);
-  const auto p =
-      InterpreterProgram::Compile(graph, {*graph.FindNodeIndex("p"), 0});
-  const auto c =
-      InterpreterProgram::Compile(graph, {*graph.FindNodeIndex("c"), 0});
+  const auto p = FieldProgram::Compile(graph, {*graph.FindNodeIndex("p"), 0});
+  const auto c = FieldProgram::Compile(graph, {*graph.FindNodeIndex("c"), 0});
   Check(p && c, "the limit case compiles");
   if (p && c) {
-    InterpreterLimits tight;
+    ProgramLimits tight;
     tight.instructions = c->Instructions().size();
-    Check(!InterpreterProgram::Inline(*c, 0, *p, tight).has_value(),
+    Check(!FieldProgram::Inline(*c, 0, *p, tight).has_value(),
           "an inlined program over the instruction limit is refused");
-    Check(!InterpreterProgram::Inline(*c, 1, *p).has_value() ||
-              Is<InterpreterTextureInput>(c->Inputs()[1]),
+    Check(!FieldProgram::Inline(*c, 1, *p).has_value() ||
+              Is<ProgramTextureInput>(c->Inputs()[1]),
           "only a texture input can be inlined");
-    Check(!InterpreterProgram::Inline(*c, 9, *p).has_value(),
+    Check(!FieldProgram::Inline(*c, 9, *p).has_value(),
           "an out-of-range input is refused");
   }
-  return test::Finish("interpreter inline");
+  return test::Finish("program inline");
 }

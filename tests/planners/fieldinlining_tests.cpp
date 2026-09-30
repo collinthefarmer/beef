@@ -1,6 +1,6 @@
 // GPL-3.0-only with the additional permission in COPYING.md.
-#include "planners/InterpreterReference.h"
-#include "planners/RenderFusion.h"
+#include "planners/FieldInlining.h"
+#include "planners/ProgramReference.h"
 #include "test_support.h"
 
 #include <bit>
@@ -69,17 +69,16 @@ struct Evaluator {
     if (const auto found = memo.find(step); found != memo.end())
       return found->second;
     Vec3 value = texel.external.at(step);
-    if (const auto program = AsProgram(plan, plan.steps[step].kind)) {
+    if (const auto program = AsProgramLike(plan, plan.steps[step].kind)) {
       std::vector<Vec3> inputs;
       for (std::size_t k = 0; k < program->inputs.size(); ++k)
-        inputs.push_back(
-            Is<InterpreterTextureInput>(program->program.Inputs()[k])
-                ? Stored(program->inputs[k])
-                : Raw(program->inputs[k]));
+        inputs.push_back(Is<ProgramTextureInput>(program->program.Inputs()[k])
+                             ? Stored(program->inputs[k])
+                             : Raw(program->inputs[k]));
       std::vector<LookupTable> lookups;
       for (const auto &lookup : program->lookups)
         lookups.push_back(texel.lookups.at(Get<StepOutputRef>(lookup)->step));
-      value = EvaluateInterpreter(program->program, {inputs, lookups});
+      value = EvaluateProgramOnCpu(program->program, {inputs, lookups});
       if (program->program.ResultType() == ValueType::kScalar)
         value = {value.x, value.x, value.x};
     }
@@ -102,18 +101,18 @@ bool SameBits(Vec3 a, Vec3 b) {
 }
 
 std::vector<Vec3> FieldValues(Evaluator &evaluator,
-                              const CompositeStackStep &stack) {
+                              const CompositeStackStep &stack,
+                              std::span<const std::size_t> read) {
   std::vector<const LayerField *> fields;
-  for (const auto &layer : stack.layers)
-    for (const auto *field : {&layer.sourceField, &layer.maskField})
-      if (*field)
-        fields.push_back(&**field);
-  const auto packed = PackFields(fields);
+  for (const auto field : read)
+    if (field < stack.fields.size())
+      fields.push_back(&stack.fields[field]);
+  const auto packed = PackLayerFields(fields);
   if (!packed)
     return {};
   std::vector<Vec3> inputs;
   for (std::size_t k = 0; k < packed->inputs.size(); ++k)
-    inputs.push_back(Is<InterpreterTextureInput>(packed->pack.inputs[k])
+    inputs.push_back(Is<ProgramTextureInput>(packed->pack.inputs[k])
                          ? evaluator.Stored(packed->inputs[k])
                          : evaluator.Raw(packed->inputs[k]));
   std::vector<LookupTable> lookups;
@@ -122,47 +121,59 @@ std::vector<Vec3> FieldValues(Evaluator &evaluator,
         evaluator.texel.lookups.at(Get<StepOutputRef>(lookup)->step));
   std::vector<Vec3> values;
   for (const auto &segment : packed->pack.segments)
-    values.push_back(EvaluateInterpreter(
+    values.push_back(EvaluateProgramOnCpu(
         std::span{packed->pack.code}.subspan(segment.first, segment.count),
         {inputs, lookups}));
   return values;
 }
 
-std::size_t CompareStacks(const RenderPlan &original, const RenderPlan &fused,
+RenderValueRef LoweredRead(const LayerRead &read) {
+  const auto *value = Get<RenderValueRef>(read);
+  return value ? *value : RenderValueRef{RenderInputRef{0}};
+}
+
+std::size_t CompareStacks(const RenderPlan &original, const RenderPlan &inlined,
                           Random &random, int texels) {
   std::size_t differing = 0;
   for (int t = 0; t < texels; ++t) {
     const auto texel = RandomTexel(original, random);
     Evaluator before{original, texel, {}};
-    Evaluator after{fused, texel, {}};
+    Evaluator after{inlined, texel, {}};
     for (std::size_t s = 0; s < original.steps.size(); ++s) {
       const auto *stack = Get<CompositeStackStep>(original.steps[s].kind);
-      const auto *fusedStack = Get<CompositeStackStep>(fused.steps[s].kind);
-      if (!stack || !fusedStack ||
-          stack->layers.size() != fusedStack->layers.size()) {
+      const auto *inlinedStack = Get<CompositeStackStep>(inlined.steps[s].kind);
+      if (!stack || !inlinedStack ||
+          stack->layers.size() != inlinedStack->layers.size()) {
         differing += stack ? 1 : 0;
         continue;
       }
-      const auto fields = FieldValues(after, *fusedStack);
-      std::size_t field = 0;
-      const auto fusedOperand =
-          [&](const std::optional<LayerField> &inlined,
-              RenderValueRef operand) -> std::optional<Vec3> {
-        if (!inlined)
-          return after.Stored(operand);
-        if (field >= fields.size())
+      std::vector<std::size_t> visible;
+      std::vector<const PlannedLayer *> shown;
+      for (std::size_t l = 0; l < inlinedStack->layers.size(); ++l)
+        if (std::bernoulli_distribution{0.7}(random)) {
+          visible.push_back(l);
+          shown.push_back(&inlinedStack->layers[l]);
+        }
+      const auto read = VisibleLayerFields(shown);
+      const auto fields = FieldValues(after, *inlinedStack, read);
+      const auto inlinedOperand =
+          [&](const LayerRead &layerRead) -> std::optional<Vec3> {
+        if (const auto *value = Get<RenderValueRef>(layerRead))
+          return after.Stored(*value);
+        const auto segment = SegmentIndexOf(read, layerRead);
+        if (!segment || *segment >= fields.size())
           return std::nullopt;
-        return fields[field++];
+        return fields[*segment];
       };
-      for (std::size_t l = 0; l < stack->layers.size(); ++l) {
+      for (const auto l : visible) {
         const auto &layer = stack->layers[l];
-        const auto &fusedLayer = fusedStack->layers[l];
+        const auto &inlinedLayer = inlinedStack->layers[l];
         std::vector<std::pair<RenderValueRef, std::optional<Vec3>>> operands{
-            {layer.source, fusedOperand(fusedLayer.sourceField, layer.source)},
+            {LoweredRead(layer.source), inlinedOperand(inlinedLayer.source)},
             {layer.opacity, after.Stored(layer.opacity)}};
-        if (layer.mask)
-          operands.emplace_back(
-              *layer.mask, fusedOperand(fusedLayer.maskField, *layer.mask));
+        if (layer.mask && inlinedLayer.mask)
+          operands.emplace_back(LoweredRead(*layer.mask),
+                                inlinedOperand(*inlinedLayer.mask));
         if (layer.color)
           operands.emplace_back(*layer.color, after.Stored(*layer.color));
         for (const auto &[operand, value] : operands)
@@ -206,7 +217,8 @@ std::string Expression(Random &random, std::span<const std::string> leaves,
 
 int main() {
   Random random{5};
-  std::size_t chains = 0, inlined = 0, layerFields = 0, differing = 0;
+  std::size_t chains = 0, programsInlined = 0, layerFieldReads = 0,
+              differing = 0;
   for (int trial = 0; trial < 150; ++trial) {
     Recipe recipe;
     recipe.signals = {{"t", ExprSignal{"time * 0.37 + 0.1"}},
@@ -235,19 +247,20 @@ int main() {
     if (!plan)
       continue;
     ++chains;
-    const auto fused = FusePrograms(*plan);
-    inlined += fused.inlined;
-    layerFields += fused.layerFields;
-    Check(ValidateRenderPlan(fused.plan).has_value(), "a fused plan is valid");
-    differing += CompareStacks(*plan, fused.plan, random, 10);
+    const auto inlined = InlineFields(*plan);
+    programsInlined += inlined.programsInlined;
+    layerFieldReads += inlined.layerFieldReads;
+    Check(ValidateRenderPlan(inlined.plan).has_value(),
+          "a inlined plan is valid");
+    differing += CompareStacks(*plan, inlined.plan, random, 10);
   }
-  std::printf("render fusion: %zu chains, %zu producers inlined, %zu layer "
-              "fields inlined\n",
-              chains, inlined, layerFields);
-  Check(chains > 100 && inlined > 100 && layerFields > 100,
+  std::printf("field inlining: %zu chains, %zu producers inlined, %zu layer "
+              "field reads inlined\n",
+              chains, programsInlined, layerFieldReads);
+  Check(chains > 100 && programsInlined > 100 && layerFieldReads > 100,
         "the generator fuses many animated chains into their stacks");
   test::Equal(differing, std::size_t{0},
-              "every stack operand of a fused plan equals the unfused one, "
+              "every stack operand of an inlined plan equals the lowered one, "
               "bit for bit");
 
   Recipe shared;
@@ -266,16 +279,64 @@ int main() {
       &sharedGraph, &twoLayers, 1, PlacementId{0}, 0, {TextureSize{64}}}};
   if (const auto plan =
           LowerRenderPlan({}, sharedRequests, PerGeometryMesh())) {
-    const auto fused = FusePrograms(*plan);
-    const auto consumers = LiveConsumers(fused.plan);
+    const auto inlined = InlineFields(*plan);
+    const auto consumers = LiveConsumers(inlined.plan);
     std::size_t liveM1 = 0;
-    for (std::size_t s = 0; s < fused.plan.steps.size(); ++s)
-      if (fused.plan.steps[s].displayName == "mask m1" && consumers[s] >= 1)
+    for (std::size_t s = 0; s < inlined.plan.steps.size(); ++s)
+      if (inlined.plan.steps[s].displayName == "mask m1" && consumers[s] >= 1)
         ++liveM1;
     Check(liveM1 == 1,
           "a producer read by two programs stays materialized once");
-    test::Equal(CompareStacks(*plan, fused.plan, random, 20), std::size_t{0},
+    test::Equal(CompareStacks(*plan, inlined.plan, random, 20), std::size_t{0},
                 "the shared producer plan stays equivalent");
+  }
+
+  Recipe twice;
+  twice.signals = {{"t", ExprSignal{"time"}}};
+  twice.sources = {{"s", MaterialSource{MaterialChannel::kRoughness}}};
+  twice.masks = {{"m1", "sin(@s * 3 + @t) * 0.5 + 0.5"}};
+  SurfaceOutput twiceSurface;
+  Layer firstRead;
+  firstRead.source = Ref{"m1"};
+  Layer secondRead;
+  secondRead.source = Ref{"m1"};
+  secondRead.mask = Ref{"m1"};
+  twiceSurface.stack = {firstRead, secondRead};
+  twice.outputs.push_back(twiceSurface);
+  const auto twiceGraph = RecipeGraph::Compile(twice);
+  const std::array twiceRequests{RenderStackRequest{
+      &twiceGraph, &twiceSurface, 1, PlacementId{0}, 0, {TextureSize{64}}}};
+  if (const auto plan = LowerRenderPlan({}, twiceRequests, PerGeometryMesh())) {
+    const auto inlined = InlineFields(*plan);
+    std::size_t stackFields = 0;
+    for (const auto &step : inlined.plan.steps)
+      if (const auto *stack = Get<CompositeStackStep>(step.kind))
+        stackFields += stack->fields.size();
+    test::Equal(inlined.layerFieldReads, std::size_t{3},
+                "three layer reads take the shared field");
+    test::Equal(stackFields, std::size_t{1},
+                "a field read by several layers is stored once per stack");
+    test::Equal(CompareStacks(*plan, inlined.plan, random, 20), std::size_t{0},
+                "the shared layer field plan stays equivalent");
+  }
+
+  {
+    CompositeStackStep stack;
+    PlannedLayer hidden{LayerFieldRef{0}, RenderInputRef{0}, {}, {},
+                        Blend::kReplace,  ChannelSet{}};
+    PlannedLayer shown{
+        RenderInputRef{0}, RenderInputRef{0}, LayerRead{LayerFieldRef{1}}, {},
+        Blend::kReplace,   ChannelSet{}};
+    stack.layers = {hidden, shown};
+    const std::array<const PlannedLayer *, 1> visible{&stack.layers[1]};
+    const auto read = VisibleLayerFields(visible);
+    Check(read == std::vector<std::size_t>{1},
+          "only the fields of visible layers are read");
+    Check(SegmentIndexOf(read, LayerFieldRef{1}) ==
+              std::optional<std::uint32_t>{0},
+          "a visible field takes the first segment of its pack");
+    Check(!SegmentIndexOf(read, LayerFieldRef{0}).has_value(),
+          "a hidden layer's field has no segment");
   }
 
   Recipe still;
@@ -291,8 +352,9 @@ int main() {
   const std::array stillRequests{RenderStackRequest{
       &stillGraph, &stillSurface, 1, PlacementId{0}, 0, {TextureSize{64}}}};
   if (const auto plan = LowerRenderPlan({}, stillRequests, PerGeometryMesh())) {
-    const auto fused = FusePrograms(*plan);
-    test::Equal(fused.inlined + fused.layerFields, std::size_t{0},
+    const auto inlined = InlineFields(*plan);
+    test::Equal(inlined.programsInlined + inlined.layerFieldReads,
+                std::size_t{0},
                 "a static producer stays materialized and cached");
   }
 
@@ -322,16 +384,17 @@ int main() {
                           {TextureSize{512}},
                           GeometryId{g}});
   if (const auto plan = LowerRenderPlan({}, demo, PerGeometryMesh())) {
-    const auto fused = FusePrograms(*plan);
-    std::printf("render fusion: demo plan %zu steps, %zu producers inlined, "
-                "%zu layer fields inlined\n",
-                plan->steps.size(), fused.inlined, fused.layerFields);
-    Check(ValidateRenderPlan(fused.plan).has_value(),
-          "the fused demo plan is valid");
-    Check(fused.layerFields > 0,
+    const auto inlined = InlineFields(*plan);
+    std::printf("field inlining: demo plan %zu steps, %zu producers inlined, "
+                "%zu layer field reads inlined\n",
+                plan->steps.size(), inlined.programsInlined,
+                inlined.layerFieldReads);
+    Check(ValidateRenderPlan(inlined.plan).has_value(),
+          "the inlined demo plan is valid");
+    Check(inlined.layerFieldReads > 0,
           "animated demo fields read by several stacks inline into each");
-    test::Equal(CompareStacks(*plan, fused.plan, random, 20), std::size_t{0},
-                "the fused demo plan is equivalent");
+    test::Equal(CompareStacks(*plan, inlined.plan, random, 20), std::size_t{0},
+                "the inlined demo plan is equivalent");
   }
-  return test::Finish("render fusion");
+  return test::Finish("field inlining");
 }

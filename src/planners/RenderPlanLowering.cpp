@@ -1,5 +1,5 @@
 // GPL-3.0-only with the additional permission in COPYING.md.
-#include "planners/RenderFusion.h"
+#include "planners/FieldInlining.h"
 #include "planners/RenderPlan.h"
 
 #include <algorithm>
@@ -86,13 +86,13 @@ struct PlanBuilder {
                        const std::string &label) {
     const auto type = TypeOf(plan, value);
     const auto *numeric = type ? Get<ValueType>(*type) : nullptr;
-    return numeric ? Step(EvaluateProgramStep{InterpreterProgram::Sample(
-                                                  *numeric, false),
-                                              {value},
-                                              {},
-                                              requirements},
-                          label)
-                   : value;
+    return numeric
+               ? Step(EvaluateProgramStep{FieldProgram::Sample(*numeric, false),
+                                          {value},
+                                          {},
+                                          requirements},
+                      label)
+               : value;
   }
   RenderValueRef TryBuild(TextureValue value, TextureRequirements requirements,
                           GeometryId geometry, RenderValueType fallback,
@@ -255,7 +255,7 @@ struct PlanBuilder {
           return Step(MapFieldStep{source, lookup, requirements}, label);
         },
         [&](const ExpressionOperation &k) -> RenderValueRef {
-          auto program = InterpreterProgram::Compile(graph, value.output);
+          auto program = FieldProgram::Compile(graph, value.output);
           if (!program) {
             problem = program.error();
             return RenderInputRef{0};
@@ -408,7 +408,7 @@ struct PlanBuilder {
         return value;
       };
       PlannedLayer planned{get(" source"), get(" opacity"), {}, {},
-                           layer.blend,    layer.channels,  {}, {}};
+                           layer.blend,    layer.channels};
       if (layer.mask)
         planned.mask = get(" mask");
       if (layer.color)
@@ -465,9 +465,9 @@ BuildRenderPlan(std::span<const TextureDemand> demands,
   auto lowered = LowerRenderPlan(demands, stacks, bindings);
   if (!lowered)
     return lowered;
-  auto fused = FusePrograms(std::move(*lowered)).plan;
-  if (auto valid = ValidateRenderPlan(fused); !valid)
+  auto inlined = InlineFields(std::move(*lowered)).plan;
+  if (auto valid = ValidateRenderPlan(inlined); !valid)
     return std::unexpected(valid.error());
-  return fused;
+  return inlined;
 }
 }

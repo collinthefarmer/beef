@@ -8,15 +8,15 @@
 
 namespace BetterEnchantmentEffects {
 namespace {
-using Op = InterpreterOpcode;
+using Op = ProgramOpcode;
 
 constexpr std::array<OpcodeStatement, 42> kStatements{{
     {Op::kNumber, R"(r = c.y;)"},
     {Op::kMakeVec2, R"(r = float3(b.x, a.x, 0);)"},
     {Op::kMakeVec3, R"(r = float3(d.x, b.x, a.x);)"},
     {Op::kInput,
-     R"(r = refs[idx].x > 0.5 ? ReadTexture((int)refs[idx].y, uv) : refValues[idx].xyz;)"},
-    {Op::kLookup, R"(r = LutAt(idx, a.x);)"},
+     R"(r = inputs[idx].x > 0.5 ? ReadTexture((int)inputs[idx].y, uv) : inputValues[idx].xyz;)"},
+    {Op::kLookup, R"(r = LookupAt(idx, a.x);)"},
     {Op::kNeg, R"(r = -a;)"},
     {Op::kNot, R"(r = a.x > 0 ? 0 : 1;)"},
     {Op::kAdd, R"(r = b + a;)"},
@@ -48,10 +48,10 @@ constexpr std::array<OpcodeStatement, 42> kStatements{{
      R"(r = float3(a.x < b.x ? 0 : 1, a.y < b.y ? 0 : 1, a.z < b.z ? 0 : 1);)"},
     {Op::kSmoothstep, R"(r = smoothstep(d, b, a);)"},
     {Op::kLerp, R"(r = lerp(d, b, a);)"},
-    {Op::kLength, R"(r = components == 2 ? length(a.xy) : length(a);)"},
+    {Op::kLength, R"(r = components == 2 ? length(a.xy) : length(a);)", true},
     {Op::kDistance,
-     R"(r = components == 2 ? length(b.xy - a.xy) : length(b - a);)"},
-    {Op::kDot, R"(r = components == 2 ? dot(b.xy, a.xy) : dot(b, a);)"},
+     R"(r = components == 2 ? length(b.xy - a.xy) : length(b - a);)", true},
+    {Op::kDot, R"(r = components == 2 ? dot(b.xy, a.xy) : dot(b, a);)", true},
     {Op::kCross, R"(r = cross(b, a);)"},
     {Op::kNormalize,
      R"(r = SafeDiv(a, components == 2 ? length(a.xy) : length(a));)"},
@@ -59,25 +59,35 @@ constexpr std::array<OpcodeStatement, 42> kStatements{{
     {Op::kSplat, R"(r = a.xxx;)"},
 }};
 
-std::string_view StatementOf(InterpreterOpcode opcode) {
+static_assert(std::ranges::any_of(kStatements,
+                                  [](const OpcodeStatement &entry) {
+                                    return entry.opcode == Op::kNormalize;
+                                  }));
+
+const OpcodeStatement *EntryOf(ProgramOpcode opcode) {
   const auto found =
       std::ranges::find(kStatements, opcode, &OpcodeStatement::opcode);
-  if (found != kStatements.end())
-    return found->statement;
-  return std::ranges::find(kStatements, Op::kNormalize,
-                           &OpcodeStatement::opcode)
-      ->statement;
+  return found == kStatements.end() ? nullptr : &*found;
 }
 
-bool KeepsZ(InterpreterOpcode opcode) {
-  return opcode == Op::kLength || opcode == Op::kDistance || opcode == Op::kDot;
+std::string_view StatementOf(ProgramOpcode opcode) {
+  if (const auto *entry = EntryOf(opcode))
+    return entry->statement;
+  if (const auto *fallback = EntryOf(Op::kNormalize))
+    return fallback->statement;
+  return "r = 0;";
 }
 
-std::string InputStatement(std::span<const TextureSlot> slots,
+bool KeepsZ(ProgramOpcode opcode) {
+  const auto *entry = EntryOf(opcode);
+  return entry && entry->keepsZ;
+}
+
+std::string InputStatement(std::span<const InputTextureSlot> slots,
                            std::uint32_t index) {
   if (index < slots.size() && slots[index])
     return std::format("r = ReadTexture({}, uv);", *slots[index]);
-  return "r = refValues[idx].xyz;";
+  return "r = inputValues[idx].xyz;";
 }
 
 std::string StackLocal(std::optional<std::size_t> depth) {
@@ -91,34 +101,34 @@ std::span<const OpcodeStatement> OpcodeStatements() noexcept {
 
 std::string InterpreterSwitch() {
   std::string text = "switch (op) {\n";
-  for (const auto &[opcode, statement] : kStatements)
-    if (opcode != Op::kNormalize)
-      text += std::format("case {}: {} break;\n", static_cast<int>(opcode),
-                          statement);
+  for (const auto &entry : kStatements)
+    if (entry.opcode != Op::kNormalize)
+      text += std::format("case {}: {} break;\n",
+                          static_cast<int>(entry.opcode), entry.statement);
   text += std::format("default: {} break;\n}}\n", StatementOf(Op::kNormalize));
   return text;
 }
 
-std::vector<TextureSlot>
-TextureSlots(std::span<const InterpreterInput> inputs) {
-  std::vector<TextureSlot> slots;
+std::vector<InputTextureSlot>
+InputTextureSlots(std::span<const ProgramInput> inputs) {
+  std::vector<InputTextureSlot> slots;
   for (const auto &input : inputs) {
-    const auto *texture = Get<InterpreterTextureInput>(input);
-    slots.push_back(texture ? TextureSlot{texture->slot} : std::nullopt);
+    const auto *texture = Get<ProgramTextureInput>(input);
+    slots.push_back(texture ? InputTextureSlot{texture->slot} : std::nullopt);
   }
   return slots;
 }
 
 std::string ProgramFunction(std::string_view name,
-                            std::span<const InterpreterInstruction> code,
+                            std::span<const ProgramInstruction> code,
                             std::size_t first,
-                            std::span<const TextureSlot> slots) {
+                            std::span<const InputTextureSlot> slots) {
   std::string body;
   std::size_t depth = 0;
   std::size_t locals = 0;
   for (std::size_t k = 0; k < code.size(); ++k) {
     const auto &instruction = code[k];
-    const auto pops = InterpreterPops(instruction.opcode);
+    const auto pops = OpcodePops(instruction.opcode);
     const auto pop = [&]() -> std::optional<std::size_t> {
       if (depth == 0)
         return std::nullopt;
@@ -132,7 +142,7 @@ std::string ProgramFunction(std::string_view name,
                                : std::string{StatementOf(instruction.opcode)};
     const bool zeroZ =
         instruction.components == 2 && !KeepsZ(instruction.opcode);
-    const bool pushes = depth < kInterpreterStack;
+    const bool pushes = depth < kProgramStack;
     body += std::format(
         "\t{{ float4 c = code[{}]; int idx = {}; int components = {}; "
         "float3 a = {}, b = {}, d = {}; float3 r = 0; {}{}{} }}\n",
@@ -154,9 +164,17 @@ std::string ProgramFunction(std::string_view name,
   return text;
 }
 
-std::string GenerateProgramShader(const InterpreterProgram &program) {
+std::string InterpreterZRule() {
+  std::string text = "if (components == 2";
+  for (const auto &entry : kStatements)
+    if (entry.keepsZ)
+      text += std::format(" && op != {}", static_cast<int>(entry.opcode));
+  return text + ") r.z = 0;\n";
+}
+
+std::string GenerateProgramShader(const FieldProgram &program) {
   std::string text = ProgramFunction("GeneratedProgram", program.Instructions(),
-                                     0, TextureSlots(program.Inputs()));
+                                     0, InputTextureSlots(program.Inputs()));
   text += std::format("float4 {}(VSOut i) : SV_Target\n{{\n\tfloat3 result = "
                       "GeneratedProgram(i.uv);\n\treturn {};\n}}\n",
                       kGeneratedProgramEntry,

@@ -125,7 +125,7 @@ struct EvaluateValueStep {
   [[nodiscard]] bool operator==(const EvaluateValueStep &) const = default;
 };
 struct EvaluateProgramStep {
-  InterpreterProgram program;
+  FieldProgram program;
   std::vector<RenderValueRef> inputs;
   std::vector<RenderValueRef> lookups;
   TextureRequirements requirements;
@@ -149,17 +149,24 @@ struct DrawRippleStep {
   [[nodiscard]] bool operator==(const DrawRippleStep &) const = default;
 };
 struct LayerField {
-  InterpreterProgram program;
+  RenderValueRef value;
+  FieldProgram program;
   std::vector<RenderValueRef> inputs;
   std::vector<RenderValueRef> lookups;
   [[nodiscard]] bool operator==(const LayerField &) const = default;
 };
+struct LayerFieldRef {
+  std::size_t field = 0;
+  [[nodiscard]] bool operator==(const LayerFieldRef &) const = default;
+};
+using LayerRead = std::variant<RenderValueRef, LayerFieldRef>;
 struct PlannedLayer {
-  RenderValueRef source, opacity;
-  std::optional<RenderValueRef> mask, color;
+  LayerRead source;
+  RenderValueRef opacity;
+  std::optional<LayerRead> mask;
+  std::optional<RenderValueRef> color;
   Blend blend;
   ChannelSet channels;
-  std::optional<LayerField> sourceField, maskField;
   [[nodiscard]] bool operator==(const PlannedLayer &) const = default;
 };
 struct CompositeStackStep {
@@ -167,6 +174,7 @@ struct CompositeStackStep {
   std::vector<PlannedLayer> layers;
   TextureRequirements requirements;
   Slot slot;
+  std::vector<LayerField> fields;
   [[nodiscard]] bool operator==(const CompositeStackStep &) const = default;
 };
 using RenderStepKind =
@@ -213,9 +221,28 @@ struct RenderStackRequest {
 };
 using RenderBindingResolver =
     std::function<ValueBindings(const TextureValue &, GeometryId geometry)>;
+struct PackedLayerFields {
+  ProgramPack pack;
+  std::vector<RenderValueRef> inputs;
+  std::vector<RenderValueRef> lookups;
+};
+[[nodiscard]] const LayerField *ReadField(const CompositeStackStep &stack,
+                                          const LayerRead &read);
+[[nodiscard]] std::optional<RenderValueRef>
+ReadValue(const CompositeStackStep &stack, const LayerRead &read);
 [[nodiscard]] std::vector<RenderValueRef>
-LayerOperands(const PlannedLayer &layer);
+LayerOperands(const CompositeStackStep &stack, const PlannedLayer &layer);
+[[nodiscard]] std::expected<PackedLayerFields, std::string>
+PackLayerFields(std::span<const LayerField *const> fields);
+[[nodiscard]] std::vector<std::size_t>
+VisibleLayerFields(std::span<const PlannedLayer *const> layers);
+[[nodiscard]] std::optional<std::uint32_t>
+SegmentIndexOf(std::span<const std::size_t> fields, const LayerRead &read);
 [[nodiscard]] std::vector<RenderValueRef> InputsOf(const RenderStepKind &step);
+[[nodiscard]] std::vector<RenderValueRef>
+StepDependencies(const RenderPlan &plan, RenderStepId step);
+[[nodiscard]] std::vector<bool> ChangingSteps(const RenderPlan &plan);
+[[nodiscard]] std::vector<std::size_t> LiveConsumers(const RenderPlan &plan);
 [[nodiscard]] RenderValueType OutputType(const RenderStepKind &step);
 [[nodiscard]] std::string_view StepKindName(const RenderStepKind &step);
 [[nodiscard]] std::optional<TextureRequirements>

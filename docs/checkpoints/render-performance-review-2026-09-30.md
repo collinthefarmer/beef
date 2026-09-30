@@ -1,6 +1,6 @@
-Status: open. Review of commits 9007382 (layer fields, exact lookups and
-pow) and ba39d70 (generated shaders). Findings are being fixed in the order
-C, D, then R and N; each fix records its finding id in its commit message.
+Status: fixes implemented, in-game check pending. Review of commits 9007382
+(layer fields, exact lookups and pow) and ba39d70 (generated shaders). The
+Resolution section records what each finding became.
 
 # Render performance review, 2026-09-30
 
@@ -62,3 +62,23 @@ reasoned but not verified.
 | D4 | `REFERENCE.md`, shader cache | The free-threaded device claim has no provenance; it holds only if Skyrim creates the device without `D3D11_CREATE_DEVICE_SINGLETHREADED`. |
 | D5 | `Settings.cpp`, `BetterEnchantmentEffects.ini` | The `GeneratedShaders` description names only programs; the `FusionCheck` description does not name the program check. |
 | D6 | `docs/plans/render-performance-2026-09-29.md` | The status line says stage 4 is in progress; 4b is not marked done. |
+
+## Resolution
+
+| Id | Outcome |
+|---|---|
+| C1 | Fixed. A stack step stores each layer field once (`fields`) and layers refer to it by `LayerFieldRef`; the executor packs each visible field once. The fusion test checks three reads of one field store one field. |
+| C2 | Fixed. Compiles run on detached threads that hold a device reference and fulfil a promise; `Ready` catches a broken promise. The device threading assumption is recorded in `REFERENCE.md` as unverified (D4). |
+| C3 | Fixed. Each cache evicts its least recently used finished entry when full and logs once. |
+| C4 | Fixed where it mattered. The executor keeps the field pack per step while the visible fields stay the same. The rest was measured natively on the demo recipes (-O2, Linux): building and looking up a stack shape costs 0.18 us, about 0.011 ms per tick at 58 stacks, and generating a program's text costs 7.9 us at about 0.1 program draws per tick. Both stay per draw; the plugin's whole CPU tick is 1.07 ms per frame. |
+| C5 | Fixed. The opcode table holds `keepsZ`; `InterpreterZRule` generates the interpreter's line, and a test pins it. |
+| C6 | Fixed. `StatementOf` checks its lookups under a `static_assert` that the table holds `kNormalize`; segments go through the checked `SegmentAt`. |
+| C7 | Fixed. A stack counts as taking a field only when at least one read attaches. |
+| R1 | Fixed. `LayerRead` is a variant of a value reference and a `LayerFieldRef`; the "mask field without a mask" state cannot be built. |
+| R2 | Fixed. `PackLayerFields` and `PackedLayerFields` are in `RenderPlan`. |
+| R3 | Fixed. One `SegmentAt`; one `FieldOf` body; one `kMaxStackLayers`, pinned against `StackConstants`. |
+| R4 | Fixed. The stack step uses `LayerPassFor`, `FieldsRead`, `FieldPackFor`, `BindLayerFields` and `TextureLab::DrawLayersOneByOne`; `PSStack` reads its two fields in two statements. `FieldsRead` and `PackedSegment` are pure plan functions; the fusion test evaluates layer fields through them under random visibility. |
+| R5 | Fixed. `CompiledShader` is used throughout; `DrawFieldsToTargets` checks before it copies; the opcode test compares against the full enum. |
+| N1–N10 | Applied as proposed, except `N3` also renames `MaterializedLayers` to `LayersWithDrawnFields`, and `TextureSlots` became `InputTextureSlots`. |
+| D1–D6 | Fixed in `REFERENCE.md`, `Settings.cpp`, the shipped INI and the plan. |
+

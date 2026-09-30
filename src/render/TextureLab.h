@@ -9,10 +9,11 @@
 #include "mesh/Mesh.h"
 #include "mesh/TextureSize.h"
 #include "planners/ConsumptionLeases.h"
+#include "planners/FieldProgram.h"
 #include "planners/GpuReduction.h"
-#include "planners/InterpreterProgram.h"
 #include "planners/StackShader.h"
 #include "planners/TextureDemand.h"
+#include "render/GeneratedShaders.h"
 
 #include <REX/W32/COMPTR.h>
 
@@ -105,30 +106,26 @@ public:
   static_assert(!std::is_move_constructible_v<Lookup>);
   static_assert(!std::is_move_assignable_v<Lookup>);
 
-  inline static constexpr std::uint32_t kProgramTextures = kInterpreterTextures;
-  inline static constexpr std::uint32_t kProgramRefs = kInterpreterInputs;
-  inline static constexpr std::uint32_t kProgramCurves = kInterpreterLookups;
-  inline static constexpr std::uint32_t kProgramStack = kInterpreterStack;
   inline static constexpr std::uint32_t kPassSrvs =
-      kProgramTextures + kProgramCurves;
+      kProgramTextures + kProgramLookups;
 
   struct ProgramTexture {
     RE::NiSourceTexture *texture = nullptr;
     LayerInput sampling;
     float normalize = 1.0f;
   };
-  struct InterpreterBindings {
-    std::array<Vec3, kProgramRefs> values{};
+  struct ProgramBindings {
+    std::array<Vec3, kProgramInputs> values{};
     std::uint32_t inputCount = 0;
     std::array<ProgramTexture, kProgramTextures> textures{};
     std::uint32_t textureCount = 0;
-    std::array<const Lookup *, kProgramCurves> lookups{};
+    std::array<const Lookup *, kProgramLookups> lookups{};
     std::uint32_t lookupCount = 0;
   };
 
-  struct StackFields {
-    InterpreterPack pack;
-    InterpreterBindings bindings;
+  struct BoundLayerFields {
+    ProgramPack pack;
+    ProgramBindings bindings;
   };
 
   inline static constexpr std::uint32_t kRippleFirings = 8;
@@ -161,7 +158,7 @@ public:
     RE::NiSourceTexture *mask = nullptr;
     ShaderChannel maskChannel = ShaderChannel::kR;
     const Lookup *curve = nullptr;
-    std::optional<std::uint32_t> sourceField, maskField;
+    std::optional<std::uint32_t> sourceSegment, maskSegment;
   };
 
   struct LayerParams {
@@ -227,33 +224,30 @@ public:
 
   bool Render(RenderTarget &a_target, RE::NiSourceTexture *a_source,
               const LayerParams &a_params);
-  inline static constexpr std::size_t kMaxStackLayers = 8;
-  [[nodiscard]] bool CanRenderStack(std::span<const LayerPass> a_layers,
-                                    const StackFields &a_fields) const;
-  struct FusionCheckTotals {
+  struct EquivalenceCheckTotals {
     std::uint64_t checks = 0;
     std::uint64_t overOneStep = 0;
     float maxDifference = 0.0f;
   };
   void SetFusionCheck(bool a_enabled) noexcept;
-  [[nodiscard]] FusionCheckTotals DrainFusionChecks();
-  [[nodiscard]] FusionCheckTotals DrainProgramChecks();
+  [[nodiscard]] EquivalenceCheckTotals DrainFusionChecks();
+  [[nodiscard]] EquivalenceCheckTotals DrainGeneratedProgramChecks();
   void SetGeneratedShaders(bool a_enabled) noexcept;
-  inline static constexpr std::size_t kMaxGeneratedShaders = 256;
+  bool RenderLayersOneByOne(RenderTarget &a_target, RE::NiSourceTexture *a_base,
+                            std::span<const LayerPass> a_layers);
   bool RenderStack(RenderTarget &a_target, RE::NiSourceTexture *a_base,
                    std::span<const LayerPass> a_layers,
-                   const StackFields &a_fields);
-  struct MaterializedLayers {
+                   const BoundLayerFields &a_fields);
+  struct LayersWithRenderedFields {
     std::vector<LayerPass> passes;
     std::vector<std::shared_ptr<RenderTarget>> targets;
   };
-  [[nodiscard]] std::optional<MaterializedLayers>
-  MaterializeFields(std::span<const LayerPass> a_layers,
-                    const StackFields &a_fields, TextureSize a_size);
-  bool RenderProgram(RenderTarget &a_target,
-                     const InterpreterProgram &a_program,
-                     const InterpreterBindings &a_bindings);
-  [[nodiscard]] bool InterpreterAvailable() const noexcept;
+  [[nodiscard]] std::optional<LayersWithRenderedFields>
+  RenderFieldsToTargets(std::span<const LayerPass> a_layers,
+                        const BoundLayerFields &a_fields, TextureSize a_size);
+  bool RenderProgram(RenderTarget &a_target, const FieldProgram &a_program,
+                     const ProgramBindings &a_bindings);
+  [[nodiscard]] bool ProgramPassAvailable() const noexcept;
 
   bool BakeMesh(RenderTarget &a_target, const BakeBuffers &a_bake);
   bool RenderRipple(RenderTarget &a_target, const RipplePass &a_pass);
@@ -416,24 +410,21 @@ private:
   void Stamp(std::size_t a_span, bool a_end);
   static void
   FillLookups(std::span<REX::W32::ID3D11ShaderResourceView *> a_srvs,
-              const InterpreterBindings &a_bindings);
-  bool DrawInterpreter(RenderTarget &a_target,
-                       std::span<const InterpreterInstruction> a_code,
-                       std::span<const InterpreterInput> a_inputs,
-                       ValueType a_result,
-                       const InterpreterBindings &a_bindings,
+              const ProgramBindings &a_bindings);
+  bool DrawProgramPass(RenderTarget &a_target,
+                       std::span<const ProgramInstruction> a_code,
+                       std::span<const ProgramInput> a_inputs,
+                       ValueType a_result, const ProgramBindings &a_bindings,
                        REX::W32::ID3D11PixelShader *a_shader = nullptr);
-  using CompiledShader = REX::W32::ComPtr<REX::W32::ID3D11PixelShader>;
-  [[nodiscard]] REX::W32::ID3D11PixelShader *
-  GeneratedShaderFor(const InterpreterProgram &a_program);
-  [[nodiscard]] REX::W32::ID3D11PixelShader *
-  GeneratedStackFor(const StackShape &a_shape);
-  void CheckProgram(RenderTarget &a_generated,
-                    const InterpreterProgram &a_program,
-                    const InterpreterBindings &a_bindings);
+  void CheckGeneratedProgram(RenderTarget &a_generated,
+                             const FieldProgram &a_program,
+                             const ProgramBindings &a_bindings);
+  [[nodiscard]] bool CanRenderStack(const StackShape &a_shape,
+                                    std::span<const LayerPass> a_layers,
+                                    const BoundLayerFields &a_fields) const;
   void CheckStack(RenderTarget &a_fused, RE::NiSourceTexture *a_base,
                   std::span<const LayerPass> a_layers,
-                  const StackFields &a_fields);
+                  const BoundLayerFields &a_fields);
   [[nodiscard]] std::optional<float> MaxDifference(RenderTarget &a_first,
                                                    RenderTarget &a_second,
                                                    ShaderChannel a_channel);
@@ -455,12 +446,10 @@ private:
   GpuTiming::Totals timingTotals_;
   std::optional<std::size_t> tickSpan_;
   bool fusionCheck_ = false;
-  FusionCheckTotals fusionChecks_;
-  FusionCheckTotals programChecks_;
+  EquivalenceCheckTotals fusionChecks_;
+  EquivalenceCheckTotals programChecks_;
   bool generatedShaders_ = true;
-  std::unordered_map<std::string, std::shared_future<CompiledShader>>
-      generated_;
-  std::map<StackShape, std::shared_future<CompiledShader>> generatedStacks_;
+  GeneratedShaders generated_;
 
   std::unique_ptr<RenderTargetPool> targets_;
   std::unique_ptr<TexturePreviews> previews_;

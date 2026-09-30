@@ -28,10 +28,15 @@ using RenderValue =
                  std::shared_ptr<const MaterialSample>,
                  std::shared_ptr<const MaterialAnalysis>,
                  std::shared_ptr<TextureLab::Lookup>, LayerFilter, StackResult>;
+struct LayerFieldPack {
+  std::vector<std::size_t> fields;
+  PackedLayerFields packed;
+};
 struct RenderScratch {
   std::weak_ptr<TextureLab::RenderTarget> target;
   TextureLab::ReductionReadback reduction;
   TextureLab::MaterialReadback material;
+  std::optional<LayerFieldPack> layerFieldPack;
 };
 class RenderInstance {
 public:

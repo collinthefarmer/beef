@@ -3,7 +3,7 @@
 
 #include "mesh/TextureSize.h"
 #include "planners/ActorPlan.h"
-#include "planners/InterpreterProgram.h"
+#include "planners/FieldProgram.h"
 #include "planners/ValueIdentity.h"
 
 namespace BetterEnchantmentEffects {
@@ -41,7 +41,7 @@ struct TextureDemand {
   TextureValue value;
   std::vector<TextureDemandId> dependencies;
   std::vector<TextureUse> dependents;
-  std::optional<InterpreterProgram> program;
+  std::optional<FieldProgram> program;
   GeometryId geometry{};
 };
 [[nodiscard]] std::expected<TextureDemandId, std::string>

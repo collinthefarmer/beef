@@ -230,9 +230,9 @@ to render and bind. No planner takes or stores an `RE::` pointer.
   wrap these plans (`Manager`, `TextureLab`/`RenderTargetPool`,
   `PbrMaterial`).
 
-### Interpreter compilation
+### Field program compilation
 
-`InterpreterProgram.h/.cpp` compiles a requested expression output from the
+`FieldProgram.h/.cpp` compiles a requested expression output from the
 operation graph into an immutable GPU interpreter program. It assigns logical
 value/texture slots and function lookup requests, translates to backend-owned
 opcodes, preserves vector widths, and validates instruction, input, texture,

@@ -267,8 +267,8 @@ scheduling remain unchanged.
 
 ### Interpreter execution
 
-The compositor stores a validated `InterpreterProgram` from `planners/` and
-prepares its requested textures and function lookups. `TextureLab::InterpreterBindings`
+The compositor stores a validated `FieldProgram` from `planners/` and
+prepares its requested textures and function lookups. `TextureLab::ProgramBindings`
 supplies current values and GPU resources separately. TextureLab checks binding
 counts and packs interpreter-owned instructions into shader constants; recipe
 opcode numbering is not part of that ABI. Component-width metadata preserves

@@ -123,14 +123,14 @@ int main() {
   for (std::size_t i = 0; i < 24; ++i) {
     const StepOutputRef left{diamond.steps.size(), 0};
     diamond.steps.push_back(
-        {EvaluateProgramStep{InterpreterProgram::Sample(ValueType::kScalar),
+        {EvaluateProgramStep{FieldProgram::Sample(ValueType::kScalar),
                              {previous},
                              {},
                              {TextureSize{64}}},
          "left"});
     const StepOutputRef right{diamond.steps.size(), 0};
     diamond.steps.push_back(
-        {EvaluateProgramStep{InterpreterProgram::Sample(ValueType::kScalar),
+        {EvaluateProgramStep{FieldProgram::Sample(ValueType::kScalar),
                              {previous},
                              {},
                              {TextureSize{64}}},

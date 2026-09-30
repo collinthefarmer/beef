@@ -25,7 +25,7 @@ Texture2D    prev  : register(t2);
 Texture2D    curve : register(t3);
 SamplerState samp  : register(s0);
 
-float LerpCurve(float low, float high, float position)
+float LerpEntries(float low, float high, float position)
 {
 	return low + (high - low) * (position - floor(position));
 }
@@ -35,7 +35,7 @@ float Curve(float v)
 	float p = saturate(v) * 255;
 	int lo = (int)p;
 	int hi = min(lo + 1, 255);
-	return LerpCurve(curve.Load(int3(lo, 0, 0)).x, curve.Load(int3(hi, 0, 0)).x, p);
+	return LerpEntries(curve.Load(int3(lo, 0, 0)).x, curve.Load(int3(hi, 0, 0)).x, p);
 }
 
 struct VSOut { float4 pos : SV_Position; float2 uv : TEXCOORD0; };
@@ -142,8 +142,8 @@ float4 PSMain(VSOut i) : SV_Target
 cbuffer ProgramParams : register(b1)
 {
 	float4 code[256];
-	float4 refs[16];
-	float4 refValues[16];
+	float4 inputs[16];
+	float4 inputValues[16];
 	float4 texParams[8];
 	float4 texTransform[8];
 	float4 texFlags[8];
@@ -157,10 +157,10 @@ Texture2D tex4 : register(t4);
 Texture2D tex5 : register(t5);
 Texture2D tex6 : register(t6);
 Texture2D tex7 : register(t7);
-Texture2D lut0 : register(t8);
-Texture2D lut1 : register(t9);
-Texture2D lut2 : register(t10);
-Texture2D lut3 : register(t11);
+Texture2D lookup0 : register(t8);
+Texture2D lookup1 : register(t9);
+Texture2D lookup2 : register(t10);
+Texture2D lookup3 : register(t11);
 
 float4 SampleSlot(int slot, float2 uv, float mip)
 {
@@ -176,23 +176,23 @@ float4 SampleSlot(int slot, float2 uv, float mip)
 	}
 }
 
-float LutLoad(int slot, int at)
+float LookupLoad(int slot, int at)
 {
 	int3 texel = int3(at, 0, 0);
 	switch (slot) {
-	case 0: return lut0.Load(texel).x;
-	case 1: return lut1.Load(texel).x;
-	case 2: return lut2.Load(texel).x;
-	default: return lut3.Load(texel).x;
+	case 0: return lookup0.Load(texel).x;
+	case 1: return lookup1.Load(texel).x;
+	case 2: return lookup2.Load(texel).x;
+	default: return lookup3.Load(texel).x;
 	}
 }
 
-float LutAt(int slot, float v)
+float LookupAt(int slot, float v)
 {
 	float p = saturate(v) * 255;
 	int lo = (int)p;
 	int hi = min(lo + 1, 255);
-	return LerpCurve(LutLoad(slot, lo), LutLoad(slot, hi), p);
+	return LerpEntries(LookupLoad(slot, lo), LookupLoad(slot, hi), p);
 }
 
 float2 PlaceUv(float2 uv, float4 tr, float4 fl)
@@ -276,8 +276,7 @@ constexpr const char *kShaderSourceMid = R"(];
 		float3 r = 0;
 )";
 
-constexpr const char *kShaderSourceAfterSwitch = R"(
-		if (components == 2 && op != 38 && op != 39 && op != 40) r.z = 0;
+constexpr const char *kShaderSourceAfterZRule = R"(
 		if (sp < )";
 
 constexpr const char *kShaderSourceTail = R"() { st[sp] = r; ++sp; }
@@ -401,48 +400,48 @@ cbuffer StackParams : register(b5)
 	float4 stackMisc;
 };
 Texture2D stackBase : register(t12);
-Texture2D stackSrc0 : register(t13);
-Texture2D stackSrc1 : register(t14);
-Texture2D stackSrc2 : register(t15);
-Texture2D stackSrc3 : register(t16);
-Texture2D stackSrc4 : register(t17);
-Texture2D stackSrc5 : register(t18);
-Texture2D stackSrc6 : register(t19);
-Texture2D stackSrc7 : register(t20);
-Texture2D stackMap0 : register(t21);
-Texture2D stackMap1 : register(t22);
-Texture2D stackMap2 : register(t23);
-Texture2D stackMap3 : register(t24);
-Texture2D stackMap4 : register(t25);
-Texture2D stackMap5 : register(t26);
-Texture2D stackMap6 : register(t27);
-Texture2D stackMap7 : register(t28);
+Texture2D stackSourceTexture0 : register(t13);
+Texture2D stackSourceTexture1 : register(t14);
+Texture2D stackSourceTexture2 : register(t15);
+Texture2D stackSourceTexture3 : register(t16);
+Texture2D stackSourceTexture4 : register(t17);
+Texture2D stackSourceTexture5 : register(t18);
+Texture2D stackSourceTexture6 : register(t19);
+Texture2D stackSourceTexture7 : register(t20);
+Texture2D stackMaskTexture0 : register(t21);
+Texture2D stackMaskTexture1 : register(t22);
+Texture2D stackMaskTexture2 : register(t23);
+Texture2D stackMaskTexture3 : register(t24);
+Texture2D stackMaskTexture4 : register(t25);
+Texture2D stackMaskTexture5 : register(t26);
+Texture2D stackMaskTexture6 : register(t27);
+Texture2D stackMaskTexture7 : register(t28);
 
-float4 StackSource(int k, float2 uv, float mip)
+float4 SampleStackSource(int k, float2 uv, float mip)
 {
 	switch (k) {
-	case 0: return stackSrc0.SampleLevel(samp, uv, mip);
-	case 1: return stackSrc1.SampleLevel(samp, uv, mip);
-	case 2: return stackSrc2.SampleLevel(samp, uv, mip);
-	case 3: return stackSrc3.SampleLevel(samp, uv, mip);
-	case 4: return stackSrc4.SampleLevel(samp, uv, mip);
-	case 5: return stackSrc5.SampleLevel(samp, uv, mip);
-	case 6: return stackSrc6.SampleLevel(samp, uv, mip);
-	default: return stackSrc7.SampleLevel(samp, uv, mip);
+	case 0: return stackSourceTexture0.SampleLevel(samp, uv, mip);
+	case 1: return stackSourceTexture1.SampleLevel(samp, uv, mip);
+	case 2: return stackSourceTexture2.SampleLevel(samp, uv, mip);
+	case 3: return stackSourceTexture3.SampleLevel(samp, uv, mip);
+	case 4: return stackSourceTexture4.SampleLevel(samp, uv, mip);
+	case 5: return stackSourceTexture5.SampleLevel(samp, uv, mip);
+	case 6: return stackSourceTexture6.SampleLevel(samp, uv, mip);
+	default: return stackSourceTexture7.SampleLevel(samp, uv, mip);
 	}
 }
 
-float4 StackMap(int k, float2 uv)
+float4 SampleStackMask(int k, float2 uv)
 {
 	switch (k) {
-	case 0: return stackMap0.SampleLevel(samp, uv, 0);
-	case 1: return stackMap1.SampleLevel(samp, uv, 0);
-	case 2: return stackMap2.SampleLevel(samp, uv, 0);
-	case 3: return stackMap3.SampleLevel(samp, uv, 0);
-	case 4: return stackMap4.SampleLevel(samp, uv, 0);
-	case 5: return stackMap5.SampleLevel(samp, uv, 0);
-	case 6: return stackMap6.SampleLevel(samp, uv, 0);
-	default: return stackMap7.SampleLevel(samp, uv, 0);
+	case 0: return stackMaskTexture0.SampleLevel(samp, uv, 0);
+	case 1: return stackMaskTexture1.SampleLevel(samp, uv, 0);
+	case 2: return stackMaskTexture2.SampleLevel(samp, uv, 0);
+	case 3: return stackMaskTexture3.SampleLevel(samp, uv, 0);
+	case 4: return stackMaskTexture4.SampleLevel(samp, uv, 0);
+	case 5: return stackMaskTexture5.SampleLevel(samp, uv, 0);
+	case 6: return stackMaskTexture6.SampleLevel(samp, uv, 0);
+	default: return stackMaskTexture7.SampleLevel(samp, uv, 0);
 	}
 }
 
@@ -461,19 +460,14 @@ float4 PSStack(VSOut i) : SV_Target
 		bool hasMask = stackMask[k].x >= 0;
 		float4 s = 0;
 		float4 m = 0;
-		[loop] for (int f = 0; f < 2; ++f) {
-			int count = (int)(f == 0 ? stackField[k].y : stackField[k].w);
-			if (count > 0) {
-				float4 v = float4(RunProgram((int)(f == 0 ? stackField[k].x : stackField[k].z), count, rawUv), 1);
-				if (f == 0) s = v; else m = v;
-			}
-		}
+		if (stackField[k].y > 0.5) s = float4(RunProgram((int)stackField[k].x, (int)stackField[k].y, rawUv), 1);
+		if (stackField[k].w > 0.5) m = float4(RunProgram((int)stackField[k].z, (int)stackField[k].w, rawUv), 1);
 		if (hasSource && stackField[k].y < 0.5) {
 			float2 uv = stackLayer[k].y > 0.5 ? rawUv : PlaceUv(rawUv, stackOffsetScale[k], stackFlags[k]);
-			s = StackSource(k, uv, stackFlags[k].w);
+			s = SampleStackSource(k, uv, stackFlags[k].w);
 		}
 		float3 value = LayerValue(stackColor[k], hasSource, s, (int)stackLayer[k].x);
-		if (hasMask && stackField[k].w < 0.5) m = StackMap(k, rawUv);
+		if (hasMask && stackField[k].w < 0.5) m = SampleStackMask(k, rawUv);
 		float4 result = ComposeLayer(below, value, stackLayer[k].w, hasMask, m, (int)stackMask[k].x, (int)stackLayer[k].z, (int)stackMask[k].y);
 		below = k + 1 < n ? Unorm8(result) : result;
 	}
@@ -514,9 +508,9 @@ float4 PSClusters(VSOut i) : SV_Target
 )";
 
 const std::string kShaderSourceStorage =
-    std::string(kShaderSourceHead) + std::to_string(TextureLab::kProgramStack) +
-    kShaderSourceMid + InterpreterSwitch() + kShaderSourceAfterSwitch +
-    std::to_string(TextureLab::kProgramStack) + kShaderSourceTail;
+    std::string(kShaderSourceHead) + std::to_string(kProgramStack) +
+    kShaderSourceMid + InterpreterSwitch() + InterpreterZRule() +
+    kShaderSourceAfterZRule + std::to_string(kProgramStack) + kShaderSourceTail;
 }
 
 extern const char *const kShaderSource = kShaderSourceStorage.c_str();

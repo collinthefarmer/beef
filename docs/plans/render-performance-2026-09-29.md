@@ -1,5 +1,7 @@
-Status: in progress. Stages 1 to 3 are implemented and measured; stage 4
-(generated shaders) is in progress; later stages are open. This plan follows the
+Status: in progress. Stages 1 to 4 are implemented and measured; review
+findings for stages 3 and 4 are in
+[the review record](../checkpoints/render-performance-review-2026-09-30.md);
+later stages are open. This plan follows the
 [render graph correctness plan](render-graph-correctness-2026-09-29.md), whose
 checkpoint findings are its starting point.
 
@@ -140,25 +142,25 @@ uses the steady values.
   sampling uses mip 0, and the published results keep their mips.
 - Waits for its measurement run.
 
-## Stage 3: fused passes
+## Stage 3: inlined fields and one-pass stacks
 
 Goal: draw as few passes as possible without changing any result, provably.
 
-### Why a fused result can equal the unfused one
+### Why an inlined result can equal the separate draws
 
-- An unfused chain evaluates a field F at the texel centres of its target,
+- A chain of separate draws evaluates a field F at the texel centres of its target,
   stores `Q(F)` in an RGBA8 target, and the consumer reads it at the same
   texel centres. `Q` is the float-to-UNORM8 conversion.
 - D3D11 snaps sampling coordinates to at least 8 bits of sub-texel precision,
   so a texel-centre read returns the stored texel exactly.
-- A fused pass evaluates F at the same texel centre and applies `Q` in the
-  shader. Under a reference model with exact rounding, the fused result equals
-  the unfused one.
+- An inlined pass evaluates F at the same texel centre and applies `Q` in the
+  shader. Under a reference model with exact rounding, the inlined result
+  equals the result of the separate draws.
 - D3D11 allows its own float-to-UNORM conversion a tolerance of 0.6 ULP. On
   values within that tolerance of a rounding tie, hardware and exact rounding
-  can differ by 1/255. The unfused path already carries that tolerance.
+  can differ by 1/255. The separate draws already carry that tolerance.
 
-### Fusion rules
+### Inlining rules
 
 A producer step is inlined into its consumer's pass when all hold:
 
@@ -170,43 +172,43 @@ A producer step is inlined into its consumer's pass when all hold:
    is cheaper drawn once.
 3. It animates. A static field is cached, so inlining would re-evaluate it
    every tick.
-4. The fused program fits the interpreter limits. Otherwise inlining stops
+4. The inlined program fits the interpreter limits. Otherwise inlining stops
    greedily in operand order and the rest stays materialized.
 
-Stacks always fuse their layers into one pass. The original steps stay in the
+Stacks draw their layers in one pass. The original steps stay in the
 plan for inspection and are released when idle.
 
 ### Sub-stages
 
-- 3a. A CPU reference interpreter for `InterpreterProgram` that mirrors
+- 3a. A CPU reference interpreter for `FieldProgram` that mirrors
   `PSProgram`, with a quantize operation. Tested against the recipe
   expression evaluator.
 - 3b. Program inlining: splice a producer into a consumer at one texture input,
   followed by quantize. Property test: the inlined program equals the
   consumer evaluated with that input set to the quantized producer.
-- 3c. Plan fusion: a pure pass over the lowered plan that applies 3b under the
+- 3c. Plan inlining: a pure pass over the lowered plan that applies 3b under the
   rules above.
-- 3d. Stack fusion: one pass per stack, quantizing after each layer, proven
+- 3d. One-pass stacks: one pass per stack, quantizing after each layer, proven
   against a CPU model of the layer pass.
-- 3e. In-game validation: a setting that renders a fused stack and its
-  unfused chain and reduces their largest difference.
+- 3e. In-game validation: a setting that renders a one-pass stack and its
+  per-layer chain and reduces their largest difference.
 
 ### Progress
 
-- 3a done: `planners/InterpreterReference` evaluates interpreter programs on
+- 3a done: `planners/ProgramReference` evaluates interpreter programs on
   the CPU, mirroring `PSProgram`, including `pow` as `exp2(log2(a) * b)` and
   HLSL `clamp`. It matches the recipe expression evaluator on about 3,400
   random evaluations of 17 expressions. `kQuantize` rounds to an RGBA8 step
   (ties to even, NaN to 0) and `kSplat` broadcasts `.x`.
-- 3b done: `InterpreterProgram::Inline` splices a producer into a consumer's
+- 3b done: `FieldProgram::Inline` splices a producer into a consumer's
   texture input, followed by `kSplat` for a scalar producer and `kQuantize`.
   Over 221 random program pairs and 5,525 evaluations the inlined program
   equals the consumer reading the stored value bit for bit; without the
   quantize step 4,482 evaluations differ.
-- 3c done: `planners/RenderFusion` inlines eligible producers to a fixpoint;
-  `BuildRenderPlan` lowers with `LowerRenderPlan` and then fuses. Over 150
+- 3c done: `planners/FieldInlining` inlines eligible producers to a fixpoint;
+  `BuildRenderPlan` lowers with `LowerRenderPlan` and then inlines. Over 150
   random animated chains (167 producers inlined) and the demo recipes on two
-  geometries, every stack operand equals the unfused plan's bit for bit;
+  geometries, every stack operand equals the lowered plan's bit for bit;
   without quantize 109 operands differ. The demo plan inlines 2 of 86 steps,
   because most animated fields feed stack layers directly, which is 3d.
 - 3d, layers: a stack of up to 8 layers without a legacy curve draws in one
@@ -219,7 +221,7 @@ plan for inspection and are released when idle.
   field feeds two or three stacks and its program is 13 to 20 instructions.
   Over 150 random chains (209 layer fields) and the demo plan (10 layer
   fields: frost into two stacks and tracePacket into three, on two
-  geometries), every layer operand equals the unfused stored value bit for
+  geometries), every layer operand equals the separately drawn stored value bit for
   bit. In game, `FusionCheck` compared 18,908 stacks with layer fields, with
   a largest difference of 1/255 and none over one step. With the check off,
   a run with all three recipes held a median of 44 fps at 64 stack
@@ -256,7 +258,7 @@ stack depth at each instruction, so all of this can be decided once.
 - One table gives each opcode its HLSL statement. The interpreter's switch
   and the generated code are both built from it, so an opcode has one
   textual definition.
-- The generator turns an `InterpreterProgram` into straight-line HLSL: each
+- The generator turns an `FieldProgram` into straight-line HLSL: each
   stack position is a named local, each instruction is one block using its
   table statement, and an input reads its texture or value directly.
   Numbers stay in the instruction constants, so programs that differ only
@@ -283,7 +285,7 @@ stack depth at each instruction, so all of this can be decided once.
   previous hand-written switch line for line. Goldens pin the switch and
   four programs; generated programs declare one local per stack slot and
   share text across numbers.
-- 4b implemented: `GeneratedShaders` (on by default) draws single programs
+- 4b done: `GeneratedShaders` (on by default) draws single programs
   with generated shaders compiled on a worker thread; `FusionCheck` also
   compares each generated draw with the interpreter.
 - 4c, check: in game, with studio edits, 4,364 generated program draws

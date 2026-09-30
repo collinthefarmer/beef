@@ -285,7 +285,7 @@ private:
 };
 
 void EmitCheck(std::string_view a_action,
-               const TextureLab::FusionCheckTotals &a_checks) {
+               const TextureLab::EquivalenceCheckTotals &a_checks) {
   if (a_checks.checks == 0)
     return;
   Trace::EmitSafely(
@@ -296,9 +296,10 @@ void EmitCheck(std::string_view a_action,
        {"max_difference", std::to_string(a_checks.maxDifference * 255.0f)}});
 }
 
-void EmitFusionChecks() {
+void EmitEquivalenceChecks() {
   EmitCheck("fusion_check", TextureLab::GetSingleton()->DrainFusionChecks());
-  EmitCheck("program_check", TextureLab::GetSingleton()->DrainProgramChecks());
+  EmitCheck("program_check",
+            TextureLab::GetSingleton()->DrainGeneratedProgramChecks());
 }
 
 void EmitGpuTimings() {
@@ -323,7 +324,7 @@ void EmitGpuTimings() {
 
 void EmitMetricsHeartbeat() {
   EmitGpuTimings();
-  EmitFusionChecks();
+  EmitEquivalenceChecks();
   const Metrics::Snapshot measured = Metrics::Drain();
   Trace::EmitSafely(
       Trace::Event::kMetrics,

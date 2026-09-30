@@ -268,8 +268,8 @@ One pixel shader over a full-screen triangle serves every mode of
 `TextureLab::Mode`; the interpreter, bake, ripple and classify passes are
 separate shaders so a fault in one costs only its outputs. The shader's op
 numbers are `Program::Op`'s enum values and the shader's switch is written
-to them; its arrays are sized to `kMaxExpressionOps`, `kProgramRefs`,
-`kProgramCurves`, `kRippleFirings` and `kMaxMaterialClusters`, and every
+to them; its arrays are sized to `kMaxExpressionOps`, `kProgramInputs`,
+`kProgramLookups`, `kRippleFirings` and `kMaxMaterialClusters`, and every
 count is
 checked against the array before a pass runs.
 
@@ -326,24 +326,38 @@ Mode formulas:
   tangent-space encodings (NOTES 58). `lerp` is replace under the opacity
   mix, so it shares replace's arithmetic. A reoriented normal of zero
   length becomes the flat normal (0, 0, 1) instead of a NaN.
-- `planners/ProgramShader` holds one HLSL statement per interpreter opcode.
-  `RunProgram`'s switch and the generated programs are both built from that
-  table; the table's `kNormalize` statement is the switch's `default`, as
-  in the CPU reference. A generated program declares one `float3` local per
-  stack slot and runs one block per instruction, with `c`, `idx` and
-  `components` declared as literals so the table statement reads them as the
-  interpreter does. A pop from an empty stack reads `float3(0, 0, 0)` and a
-  push past 32 slots is dropped, as in the interpreter. Numbers and value
-  inputs stay in the program constants (`code[k].y`, `refValues`), so
-  programs that differ only in numbers share one shader.
-- `GeneratedShaderFor` keys compiled programs by their generated text and
-  holds at most 256 (`kMaxGeneratedShaders`). The first draw of a text
-  starts a compile of the shared shader source plus that text on a
-  `std::async` thread and draws with the interpreter; later draws use the
-  shader once the compile has finished, or the interpreter if it failed.
-  `ID3D11Device` and `D3DCompile` are free-threaded, so the worker creates
-  the shader itself. The fusion check's difference program and the
-  materialized layer fields always use the interpreter.
+- `planners/ProgramShader` holds one row per interpreter opcode: the HLSL
+  statement and whether the opcode keeps z for two components (`length`,
+  `distance`, `dot`). `RunProgram`'s switch, its z rule
+  (`InterpreterZRule`) and the generated programs are all built from that
+  table. The table's `kNormalize` statement is the switch's `default`, as in
+  the CPU reference.
+- A generated program declares one `float3` local per stack slot and runs
+  one block per instruction. Each block reads `c` from `code[k]` with `k` a
+  literal, and declares `idx` and `components` as literals, so the table
+  statement reads them as the interpreter does. A pop from an empty stack
+  reads `float3(0, 0, 0)` and a push past 32 slots is dropped, as in the
+  interpreter. Numbers and value inputs stay in the program constants
+  (`code[k].y`, `inputValues`), so programs that differ only in numbers share
+  one shader.
+- `render/GeneratedShaders` owns the compiled shaders; `TextureLab` asks
+  it for one per draw. `ProgramFor` keys compiled programs by their
+  generated text.
+  The first draw of a text starts a compile on a detached thread and draws
+  with the interpreter; later draws use the shader once the compile has
+  finished, or the interpreter if it failed. The thread holds its own
+  reference to the device and delivers its result through a promise, so a
+  pending compile never blocks shutdown and a failure never throws on the
+  render thread. The worker creates the shader on the game's device. This
+  relies on the device being created without
+  `D3D11_CREATE_DEVICE_SINGLETHREADED`, which has not been verified against
+  the game.
+- Each cache (programs and stack shapes) holds at most 256 entries
+  (`GeneratedShaders::kMaxPerCache`). When a cache is full, the least recently used
+  finished entry is evicted, and the first eviction writes one log line. A
+  cache full of pending compiles starts no new compile until one finishes.
+- The fusion check's difference program and layer fields drawn to targets
+  always use the interpreter.
 - With `FusionCheck` on, each generated program draw is repeated with the
   interpreter and the largest difference is traced as `program_check`.
 - `planners/StackShader` generates one pixel shader per **stack shape**:
@@ -356,12 +370,20 @@ Mode formulas:
   code indices offset to the packed block. Constants and textures are bound
   exactly as for `PSStack`, so `RenderStack` changes only the pixel shader.
   A texture read counts only when its view exists, as in `PSStack`.
-- `GeneratedStackFor` keys compiled stack shaders by shape (at most 256),
-  compiles on the same worker path and draws with `PSStack` until ready.
-  `FusionCheck` compares whichever shader drew a stack with the per-layer
-  chain, so it proves generated stacks too.
+- `StackFor` keys compiled stack shaders by shape, compiles on the same
+  path and draws with `PSStack` until ready. `RenderStack` builds the shape
+  once per draw from the layer passes and fills the `PSStack` constants from
+  it (`HasSource`, `HasMask`, `SourceSegment`, `MaskSegment`), so the
+  generated shader and `PSStack` read the same per-layer facts.
+  `CheckStackShape` decides whether a shape fits one pass (at most 8
+  layers, every field read inside the packed code); `RenderStack` returns
+  false when it does not, or when a legacy curve or a pipeline is missing,
+  and the caller falls back to the per-layer chain. `FusionCheck` compares
+  whichever shader drew a stack with the per-layer chain, so it proves
+  generated stacks too.
 - The shaders compile with `D3DCOMPILE_OPTIMIZATION_LEVEL3`. The compiler
-  may reorder float arithmetic at any level, so fused and unfused passes can
+  may reorder float arithmetic at any level, so an inlined or one-pass draw
+  and the separate draws it replaces can
   differ by one 8-bit step at a rounding boundary; `FusionCheck` measures
   that bound.
 - A stack without a base starts transparent black: alpha is the fuzz
@@ -369,8 +391,8 @@ Mode formulas:
 
 Interpreter constants (`cbuffer` of the interpreter pass): `code[256]` x
 op, y number, z index, w the component count (1 to 3) plus 4 times the pop
-count, so the shader does not decode the pop count per instruction; `refs[16]` x 1 = texture read (y slot) or 0 =
-value; `refValues[16]` the value broadcast; `texParams[8]` x channel, y
+count, so the shader does not decode the pop count per instruction; `inputs[16]` x 1 = texture read (y slot) or 0 =
+value; `inputValues[16]` the value broadcast; `texParams[8]` x channel, y
 mesh space, z normalise, w mip; `texTransform[8]` xy uv offset, zw tile;
 `texFlags[8]` x mirror u, y mirror v, z transpose, w nearest; `misc` x
 time, y op count, z vector result. The shared sampler is linear; w
@@ -1254,7 +1276,8 @@ Decompile provenance (`decompiled/WornEnchantmentFX/plugin.c` unless noted):
   spans are recorded per tick. `CollectTimings` polls with
   `D3D11_ASYNC_GETDATA_DONOTFLUSH` once per frame and never waits, because a
   wait would add the GPU backlog to the frame being measured.
-- Program fusion inlines a producer program into its consumer's texture input
+- `InlineFields` (`planners/FieldInlining`) inlines a producer program into
+  its consumer's texture input
   when the producer is program-like (`EvaluateProgram`, `MapField`,
   `ComposeVector`), shares the consumer's size and RGBA8 format, has exactly
   one live consumer (counted from the stack outputs; preview demands do not
@@ -1262,37 +1285,50 @@ Decompile provenance (`decompiled/WornEnchantmentFX/plugin.c` unless noted):
   readback). The inlined code is followed by `kSplat` for a scalar producer,
   because a scalar field is stored as `xxx`, and by `kQuantize`, because the
   stored field was RGBA8. A texel-centre read returns the stored texel
-  exactly, so the fused program computes the same value.
-- A stack of up to 8 layers (`TextureLab::kMaxStackLayers`) without a legacy
+  exactly, so the inlined program computes the same value.
+- A stack of up to 8 layers (`kMaxStackLayers`) without a legacy
   curve draws in one `PSStack` pass. The per-layer `LayerPass` and `PSStack`
   both call `ComposeLayer`, so they compute the same value per layer.
   `PSStack` rounds to RGBA8 between layers (`Unorm8`), because the per-layer
   path stores each layer in an RGBA8 target, and leaves the last layer to the
   hardware store. `PSStack` binds its base at t12, its layer sources at t13 to
   t20 and its masks at t21 to t28, clear of the program pass's t0 to t11.
-- A stack layer evaluates its source or mask program inside `PSStack` (a
-  **layer field**) when the field is program-like, animates, is stored RGBA8
-  at the stack's size, and every live consumer of it is a stack reading it as
-  a layer source or mask. The field then inlines into every such stack or
-  into none, so its own draw stops; each stack runs its program once. A
-  layer field is the field's program followed by `kSplat` for a scalar field
-  and `kQuantize`, so it yields the stored RGB. The stack reads it with the
-  `kRgb` channel, which equals the stored `kR` read because the value is
-  splatted. A program field is drawn in mesh space and read by the stack at
-  the same texel centre, so no placement applies.
-- `PackInterpreters` concatenates a stack's layer fields into one program
-  constant block: inputs, texture slots and lookups are renumbered by offset,
-  and each field keeps a code segment. `RunProgram(first, count, uv)` runs
-  one segment with an empty stack; `PSProgram` runs segment 0 to the code
-  length. A stack's fields share the interpreter limits (256 instructions, 16
-  inputs, 8 textures, 4 lookups); a field that does not fit stays
-  materialized. `PSStack` binds the program constants at b1 and the program
-  textures and lookups at t0 to t11. `StackConstants::field` holds each
-  layer's source and mask segment as first and count; a count of 0 samples
-  the bound texture.
-- A stack that cannot draw in one pass (more than 8 layers, a legacy curve,
-  or no program pipeline) draws its layer fields into RGBA8 targets first
-  (`MaterializeFields`) and then runs the per-layer chain.
+- A stack layer evaluates its source or mask program inside the stack pass
+  (a **layer field**) when the field is program-like, animates, is stored
+  RGBA8 at the stack's size, and every live consumer of it is a stack
+  reading it as a layer source or mask. The field then inlines into every
+  such stack or into none, so its own draw stops. A stack whose only path to
+  the field is a readback does not count as taking it.
+- A stack step stores each layer field once in `fields`; a layer's source
+  or mask is a `LayerRead`, either a value reference or a `LayerFieldRef`
+  into `fields`. Layers that read the same field share it, so the stack
+  runs its program once per pixel. Each field records the value it stands
+  for, so inspection still reads the original field step.
+- A layer field is the field's program followed by `kSplat` for a scalar
+  field and `kQuantize`, so it yields the stored RGB. The stack reads it
+  with the `kRgb` channel, which equals the stored `kR` read because the
+  value is splatted. A program field is drawn in mesh space and read by the
+  stack at the same texel centre, so no placement applies.
+- `PackLayerFields` concatenates the fields of a stack's visible layers into
+  one program constant block with `PackPrograms`: inputs, texture slots
+  and lookups are renumbered by offset, and each field keeps a code segment.
+  `VisibleLayerFields` lists the distinct fields the visible layers read, in first
+  read order, and `SegmentIndexOf` gives a layer read's segment in the pack
+  built from that list; a hidden layer's field is not packed.
+  The executor keeps the pack per step while the set of visible fields stays
+  the same. `RunProgram(first, count, uv)` runs one segment with an empty
+  stack; `PSProgram` runs segment 0 to the code length. A stack's fields
+  share the interpreter limits (256 instructions, 16 inputs, 8 textures, 4
+  lookups); a field that does not fit stays a separate draw. `PSStack` binds
+  the program constants at b1 and the program textures and lookups at t0 to
+  t11. `StackConstants::field` holds each layer's source and mask segment as
+  first and count; a count of 0 samples the bound texture.
+- A stack that cannot draw in one pass (more than 8 layers, or a legacy
+  curve) draws its layer fields into RGBA8 targets first
+  (`RenderFieldsToTargets`) and then runs the per-layer chain
+  (`RenderLayersOneByOne`). `FusionCheck` runs the same two functions. Drawing a field
+  needs the program pipeline; without it, a stack with layer fields fails
+  with a diagnostic, and a stack without them draws as before.
 - `FusionCheck` (off by default) renders each stacked draw's per-layer chain
   too and reduces the largest RGB and alpha difference; it waits on
   readbacks, so it is a diagnostic mode. The chain draws each layer field

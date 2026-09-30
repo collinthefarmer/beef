@@ -1,5 +1,5 @@
 // GPL-3.0-only with the additional permission in COPYING.md.
-#include "planners/InterpreterProgram.h"
+#include "planners/FieldProgram.h"
 #include "test_support.h"
 
 #include <algorithm>
@@ -9,14 +9,14 @@ using namespace BetterEnchantmentEffects;
 using test::Check;
 
 namespace {
-std::expected<InterpreterProgram, std::string>
-Compile(const RecipeGraph &graph, std::string_view name,
-        InterpreterLimits limits = {}) {
+std::expected<FieldProgram, std::string> Compile(const RecipeGraph &graph,
+                                                 std::string_view name,
+                                                 ProgramLimits limits = {}) {
   const auto index = graph.FindNodeIndex(name);
-  return InterpreterProgram::Compile(graph, {index.value_or(graph.Size()), 0},
-                                     limits);
+  return FieldProgram::Compile(graph, {index.value_or(graph.Size()), 0},
+                               limits);
 }
-bool Error(const std::expected<InterpreterProgram, std::string> &result,
+bool Error(const std::expected<FieldProgram, std::string> &result,
            std::string_view message) {
   return !result && result.error().contains(message);
 }
@@ -36,9 +36,9 @@ int main() {
       Check(program->Inputs().size() == 3 && program->TextureCount() == 1 &&
                 program->FunctionLookups().size() == 1,
             "input and lookup requests describe the complete resource demand");
-      const auto *texture = Get<InterpreterTextureInput>(program->Inputs()[0]);
-      const auto *gain = Get<InterpreterValueInput>(program->Inputs()[1]);
-      const auto *time = Get<InterpreterValueInput>(program->Inputs()[2]);
+      const auto *texture = Get<ProgramTextureInput>(program->Inputs()[0]);
+      const auto *gain = Get<ProgramValueInput>(program->Inputs()[1]);
+      const auto *time = Get<ProgramValueInput>(program->Inputs()[2]);
       Check(
           texture && texture->output.node == *graph.FindNodeIndex("image") &&
               texture->slot == 0 && gain &&
@@ -63,7 +63,7 @@ int main() {
             static_cast<int>(program->Instructions()[i].opcode) == expected[i];
       Check(encoding, "instruction numbers match the shader ABI independently "
                       "of recipe opcodes");
-      InterpreterLimits limits;
+      ProgramLimits limits;
       limits.instructions = expected.size();
       limits.inputs = 3;
       limits.textures = 1;
@@ -99,13 +99,13 @@ int main() {
           "vector reduction retains operand width after scalar broadcasting");
     if (program) {
       const auto add = std::ranges::find_if(
-          program->Instructions(), [](const InterpreterInstruction &i) {
-            return i.opcode == InterpreterOpcode::kAdd;
+          program->Instructions(), [](const ProgramInstruction &i) {
+            return i.opcode == ProgramOpcode::kAdd;
           });
       Check(add != program->Instructions().end() && add->components == 2,
             "vec2 arithmetic requests clearing the unused shader lane");
     }
-    InterpreterLimits limits;
+    ProgramLimits limits;
     limits.stack = 2;
     Check(Error(Compile(graph, "stack", limits), "stack depth limit"),
           "temporary stack demand is bounded even for a single vector result");
@@ -125,7 +125,7 @@ int main() {
     }
     recipe.masks = {{"tooManyTextures", expression}};
     const auto graph = RecipeGraph::Compile(recipe);
-    InterpreterLimits limits;
+    ProgramLimits limits;
     limits.textures = 100;
     Check(Error(Compile(graph, "tooManyTextures", limits),
                 "texture slot limit exceeded (limit 8)"),
@@ -141,11 +141,10 @@ int main() {
           "unsupported operation nodes are rejected explicitly");
     Check(Error(Compile(graph, "disabled"), "mask disabled"),
           "disabled graphs retain diagnostic origin");
-    Check(!InterpreterProgram::Compile(graph, {graph.Size(), 0}),
+    Check(!FieldProgram::Compile(graph, {graph.Size(), 0}),
           "invalid node handles fail safely");
-    Check(!InterpreterProgram::Compile(graph,
-                                       {*graph.FindNodeIndex("constant"), 1}),
+    Check(!FieldProgram::Compile(graph, {*graph.FindNodeIndex("constant"), 1}),
           "invalid output ports fail safely");
   }
-  return test::Finish("interpreterprogram");
+  return test::Finish("field program");
 }

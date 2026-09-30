@@ -2,6 +2,8 @@
 #include "planners/RenderExecution.h"
 #include "test_support.h"
 
+#include <algorithm>
+#include <iterator>
 #include <map>
 #include <random>
 #include <set>
@@ -79,10 +81,7 @@ std::vector<RenderValueRef> VisibleOperands(const CompositeStackStep &stack,
     if (Hidden(visibility, i))
       continue;
     const auto &layer = stack.layers[i];
-    refs.push_back(layer.source);
-    refs.push_back(layer.opacity);
-    if (layer.mask)
-      refs.push_back(*layer.mask);
+    std::ranges::copy(LayerOperands(stack, layer), std::back_inserter(refs));
   }
   if (!refs.empty())
     refs.push_back(stack.base);

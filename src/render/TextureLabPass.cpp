@@ -8,6 +8,7 @@
 #include <cmath>
 #include <cstring>
 #include <limits>
+#include <ranges>
 #include <string_view>
 
 namespace BetterEnchantmentEffects {
@@ -47,9 +48,9 @@ REX::W32::ID3D11ShaderResourceView *ViewOf(RE::NiSourceTexture *a_texture) {
 
 void FillInterpreter(ProgramConstants &a_constants,
                      std::span<REX::W32::ID3D11ShaderResourceView *> a_srvs,
-                     std::span<const InterpreterInstruction> a_code,
-                     std::span<const InterpreterInput> a_inputs,
-                     const TextureLab::InterpreterBindings &a_bindings) {
+                     std::span<const ProgramInstruction> a_code,
+                     std::span<const ProgramInput> a_inputs,
+                     const TextureLab::ProgramBindings &a_bindings) {
   const auto code = std::min<std::size_t>(a_code.size(), 256);
   for (std::size_t k = 0; k < code; ++k) {
     a_constants.code[k][0] = static_cast<float>(a_code[k].opcode);
@@ -57,20 +58,20 @@ void FillInterpreter(ProgramConstants &a_constants,
     a_constants.code[k][2] = static_cast<float>(a_code[k].index);
     a_constants.code[k][3] =
         static_cast<float>(std::min<std::uint32_t>(a_code[k].components, 3) +
-                           4 * InterpreterPops(a_code[k].opcode));
+                           4 * OpcodePops(a_code[k].opcode));
   }
-  const auto inputs =
-      std::min<std::size_t>(a_inputs.size(), TextureLab::kProgramRefs);
+  const auto inputs = std::min<std::size_t>(a_inputs.size(), kProgramInputs);
   for (std::size_t r = 0; r < inputs; ++r) {
-    const auto *texture = Get<InterpreterTextureInput>(a_inputs[r]);
-    a_constants.refs[r][0] = texture ? 1.0f : 0.0f;
-    a_constants.refs[r][1] = texture ? static_cast<float>(texture->slot) : 0.0f;
-    a_constants.refValues[r][0] = a_bindings.values[r].x;
-    a_constants.refValues[r][1] = a_bindings.values[r].y;
-    a_constants.refValues[r][2] = a_bindings.values[r].z;
+    const auto *texture = Get<ProgramTextureInput>(a_inputs[r]);
+    a_constants.inputs[r][0] = texture ? 1.0f : 0.0f;
+    a_constants.inputs[r][1] =
+        texture ? static_cast<float>(texture->slot) : 0.0f;
+    a_constants.inputValues[r][0] = a_bindings.values[r].x;
+    a_constants.inputValues[r][1] = a_bindings.values[r].y;
+    a_constants.inputValues[r][2] = a_bindings.values[r].z;
   }
-  const auto textures = std::min<std::size_t>(a_bindings.textureCount,
-                                              TextureLab::kProgramTextures);
+  const auto textures =
+      std::min<std::size_t>(a_bindings.textureCount, kProgramTextures);
   for (std::size_t t = 0; t < textures && t < a_srvs.size(); ++t) {
     const auto &tex = a_bindings.textures[t];
     a_srvs[t] = ViewOf(tex.texture);
@@ -92,37 +93,49 @@ void FillInterpreter(ProgramConstants &a_constants,
   a_constants.misc[1] = static_cast<float>(code);
 }
 
-bool FieldsBound(const TextureLab::StackFields &a_fields) {
+bool FieldsBound(const TextureLab::BoundLayerFields &a_fields) {
   const auto &pack = a_fields.pack;
   const auto &bindings = a_fields.bindings;
   return pack.inputs.size() == bindings.inputCount &&
          pack.textureCount == bindings.textureCount &&
          pack.lookupCount == bindings.lookupCount &&
-         pack.code.size() <= kInterpreterInstructions &&
-         std::ranges::all_of(pack.segments, [&](InterpreterSegment segment) {
-           return segment.first <= pack.code.size() &&
-                  segment.count <= pack.code.size() - segment.first;
-         });
+         pack.code.size() <= kProgramInstructions &&
+         std::ranges::all_of(
+             std::views::iota(std::uint32_t{0},
+                              static_cast<std::uint32_t>(pack.segments.size())),
+             [&](std::uint32_t segment) {
+               return SegmentAt(pack.segments, pack.code.size(), segment)
+                   .has_value();
+             });
+}
+
+std::optional<ProgramSegment>
+PassSegment(const TextureLab::BoundLayerFields &a_fields,
+            std::optional<std::uint32_t> a_segment) {
+  if (!a_segment)
+    return std::nullopt;
+  return SegmentAt(a_fields.pack.segments, a_fields.pack.code.size(),
+                   *a_segment);
 }
 
 StackShape StackShapeOf(bool a_base,
                         std::span<const TextureLab::LayerPass> a_layers,
-                        const TextureLab::StackFields &a_fields) {
+                        const TextureLab::BoundLayerFields &a_fields) {
   StackShape shape;
   shape.base = a_base;
-  shape.code = CodeShape(a_fields.pack.code);
-  shape.slots = TextureSlots(a_fields.pack.inputs);
+  shape.code = CodeWithoutNumbers(a_fields.pack.code);
+  shape.slots = InputTextureSlots(a_fields.pack.inputs);
   shape.segments = a_fields.pack.segments;
   for (const auto &layer : a_layers) {
     LayerShape out;
-    if (layer.sourceField)
-      out.source = FieldRead{*layer.sourceField};
+    if (layer.sourceSegment)
+      out.source = SegmentRead{*layer.sourceSegment};
     else if (ViewOf(layer.source))
-      out.source = TextureSourceRead{layer.input.meshSpace};
-    if (layer.maskField)
-      out.mask = FieldRead{*layer.maskField};
+      out.source = SourceTexture{layer.input.meshSpace};
+    if (layer.maskSegment)
+      out.mask = SegmentRead{*layer.maskSegment};
     else if (ViewOf(layer.mask))
-      out.mask = TextureMaskRead{};
+      out.mask = MaskTexture{};
     out.channel = std::to_underlying(layer.input.channel);
     out.blend = layer.blend;
     out.channels = layer.channels;
@@ -130,11 +143,6 @@ StackShape StackShapeOf(bool a_base,
     shape.layers.push_back(std::move(out));
   }
   return shape;
-}
-
-bool SegmentExists(const TextureLab::StackFields &a_fields,
-                   std::optional<std::uint32_t> a_field) {
-  return !a_field || *a_field < a_fields.pack.segments.size();
 }
 
 float MipThatFits(const TextureLab::Extent &a_extent,
@@ -497,26 +505,27 @@ bool TextureLab::Render(RenderTarget &a_target, RE::NiSourceTexture *a_source,
   return true;
 }
 
-bool TextureLab::CanRenderStack(std::span<const LayerPass> a_layers,
-                                const StackFields &a_fields) const {
+bool TextureLab::CanRenderStack(const StackShape &a_shape,
+                                std::span<const LayerPass> a_layers,
+                                const BoundLayerFields &a_fields) const {
   const bool fields = !a_fields.pack.segments.empty();
-  return gpu_ && gpu_->stack.has_value() && !a_layers.empty() &&
-         a_layers.size() <= kMaxStackLayers &&
+  return gpu_ && gpu_->stack.has_value() &&
          (!fields || gpu_->program.has_value()) && FieldsBound(a_fields) &&
-         std::ranges::all_of(a_layers, [&](const LayerPass &layer) {
-           return layer.curve == nullptr &&
-                  SegmentExists(a_fields, layer.sourceField) &&
-                  SegmentExists(a_fields, layer.maskField);
+         CheckStackShape(a_shape).has_value() &&
+         std::ranges::none_of(a_layers, [](const LayerPass &layer) {
+           return layer.curve != nullptr;
          });
 }
 
 bool TextureLab::RenderStack(RenderTarget &a_target,
                              RE::NiSourceTexture *a_base,
                              std::span<const LayerPass> a_layers,
-                             const StackFields &a_fields) {
+                             const BoundLayerFields &a_fields) {
   auto *renderer = RE::BSGraphics::Renderer::GetSingleton();
+  const auto shape =
+      StackShapeOf(ViewOf(a_base) != nullptr, a_layers, a_fields);
   if (!available_ || !renderer || !borrowedContext_ || !a_target.rtv.Get() ||
-      !CanRenderStack(a_layers, a_fields))
+      !CanRenderStack(shape, a_layers, a_fields))
     return false;
   const RenderPass pass{*renderer, *borrowedContext_};
   const PixelPipeline &pipeline = *gpu_->stack;
@@ -535,19 +544,15 @@ bool TextureLab::RenderStack(RenderTarget &a_target,
                     a_fields.bindings);
     FillLookups(std::span{srvs}.first(kPassSrvs), a_fields.bindings);
   }
-  const auto segment = [&](std::optional<std::uint32_t> a_field) {
-    return a_field ? a_fields.pack.segments[*a_field] : InterpreterSegment{};
-  };
   srvs[kBaseSlot] = ViewOf(a_base);
   constants.misc[0] = static_cast<float>(a_layers.size());
   constants.misc[1] = srvs[kBaseSlot] ? 1.0f : 0.0f;
   for (std::size_t k = 0; k < a_layers.size(); ++k) {
     const auto &layer = a_layers[k];
+    const auto &drawn = shape.layers[k];
     const auto &sc = layer.input.transform;
-    auto *source = ViewOf(layer.source);
-    auto *mask = ViewOf(layer.mask);
-    srvs[kBaseSlot + 1 + k] = source;
-    srvs[kBaseSlot + 1 + kMaxStackLayers + k] = mask;
+    srvs[kBaseSlot + 1 + k] = ViewOf(layer.source);
+    srvs[kBaseSlot + 1 + kMaxStackLayers + k] = ViewOf(layer.mask);
     constants.offsetScale[k][0] = sc.uOffset;
     constants.offsetScale[k][1] = sc.vOffset;
     constants.offsetScale[k][2] = sc.tileU;
@@ -556,23 +561,20 @@ bool TextureLab::RenderStack(RenderTarget &a_target,
     constants.flags[k][1] = sc.mirrorV ? 1.0f : 0.0f;
     constants.flags[k][2] = sc.transpose ? 1.0f : 0.0f;
     constants.flags[k][3] = sc.sourceMip;
-    constants.layer[k][0] =
-        static_cast<float>(std::to_underlying(layer.input.channel));
+    constants.layer[k][0] = static_cast<float>(drawn.channel);
     constants.layer[k][1] = layer.input.meshSpace ? 1.0f : 0.0f;
-    constants.layer[k][2] = static_cast<float>(layer.blend);
+    constants.layer[k][2] = static_cast<float>(drawn.blend);
     constants.layer[k][3] = layer.opacity;
     constants.color[k][0] = layer.color[0];
     constants.color[k][1] = layer.color[1];
     constants.color[k][2] = layer.color[2];
     constants.color[k][3] = layer.normalize;
-    const bool hasMask = mask || layer.maskField;
     constants.mask[k][0] =
-        hasMask ? static_cast<float>(std::to_underlying(layer.maskChannel))
-                : -1.0f;
-    constants.mask[k][1] = static_cast<float>(layer.channels);
-    constants.mask[k][3] = source || layer.sourceField ? 1.0f : 0.0f;
-    const auto sourceSegment = segment(layer.sourceField);
-    const auto maskSegment = segment(layer.maskField);
+        HasMask(drawn) ? static_cast<float>(drawn.maskChannel) : -1.0f;
+    constants.mask[k][1] = static_cast<float>(drawn.channels);
+    constants.mask[k][3] = HasSource(drawn) ? 1.0f : 0.0f;
+    const auto sourceSegment = SourceSegment(shape, drawn);
+    const auto maskSegment = MaskSegment(shape, drawn);
     constants.field[k][0] = static_cast<float>(sourceSegment.first);
     constants.field[k][1] = static_cast<float>(sourceSegment.count);
     constants.field[k][2] = static_cast<float>(maskSegment.first);
@@ -589,8 +591,7 @@ bool TextureLab::RenderStack(RenderTarget &a_target,
       nullptr, pipeline.constants.Get()};
   auto *shader = pipeline.shader.Get();
   if (generatedShaders_)
-    if (auto *generated = GeneratedStackFor(
-            StackShapeOf(srvs[kBaseSlot] != nullptr, a_layers, a_fields)))
+    if (auto *generated = generated_.StackFor(borrowedDevice_, shape))
       shader = generated;
   DrawFullScreen(pass, a_target, {shader, srvs, cbs});
   if (fusionCheck_)
@@ -598,44 +599,70 @@ bool TextureLab::RenderStack(RenderTarget &a_target,
   return true;
 }
 
-std::optional<TextureLab::MaterializedLayers>
-TextureLab::MaterializeFields(std::span<const LayerPass> a_layers,
-                              const StackFields &a_fields, TextureSize a_size) {
-  MaterializedLayers result;
-  result.passes.assign(a_layers.begin(), a_layers.end());
+bool TextureLab::RenderLayersOneByOne(RenderTarget &a_target,
+                                      RE::NiSourceTexture *a_base,
+                                      std::span<const LayerPass> a_layers) {
+  auto *alternate = a_layers.size() > 1
+                        ? Scratch(TextureSize{a_target.size}, a_target.format,
+                                  MipPolicy::kNone)
+                        : nullptr;
+  if (a_layers.size() > 1 && !alternate)
+    return false;
+  auto *write = a_layers.size() % 2 ? &a_target : alternate;
+  auto *other = a_layers.size() % 2 ? alternate : &a_target;
+  RE::NiSourceTexture *previous = a_base;
+  for (auto layer : a_layers) {
+    LayerParams params;
+    params.mode = Mode::kLayer;
+    layer.previous = previous;
+    params.layer = layer;
+    if (!write || !Render(*write, nullptr, params))
+      return false;
+    previous = write->Texture();
+    std::swap(write, other);
+  }
+  return true;
+}
+
+std::optional<TextureLab::LayersWithRenderedFields>
+TextureLab::RenderFieldsToTargets(std::span<const LayerPass> a_layers,
+                                  const BoundLayerFields &a_fields,
+                                  TextureSize a_size) {
   if (!FieldsBound(a_fields))
     return std::nullopt;
+  LayersWithRenderedFields result;
+  result.passes.assign(a_layers.begin(), a_layers.end());
   const auto draw =
-      [&](std::uint32_t a_field) -> std::optional<RE::NiSourceTexture *> {
-    if (a_field >= a_fields.pack.segments.size())
+      [&](std::uint32_t a_segment) -> std::optional<RE::NiSourceTexture *> {
+    const auto segment = PassSegment(a_fields, a_segment);
+    if (!segment)
       return std::nullopt;
-    const auto segment = a_fields.pack.segments[a_field];
     auto target =
         Acquire(a_size, "stack field", TextureFormat::kRgba8, MipPolicy::kNone);
-    if (!target ||
-        !DrawInterpreter(
-            *target,
-            std::span{a_fields.pack.code}.subspan(segment.first, segment.count),
-            a_fields.pack.inputs, ValueType::kVec3, a_fields.bindings))
+    if (!target || !DrawProgramPass(*target,
+                                    std::span{a_fields.pack.code}.subspan(
+                                        segment->first, segment->count),
+                                    a_fields.pack.inputs, ValueType::kVec3,
+                                    a_fields.bindings))
       return std::nullopt;
     auto *texture = target->Texture();
     result.targets.push_back(std::move(target));
     return texture;
   };
   for (auto &pass : result.passes) {
-    if (pass.sourceField) {
-      const auto texture = draw(*pass.sourceField);
+    if (pass.sourceSegment) {
+      const auto texture = draw(*pass.sourceSegment);
       if (!texture)
         return std::nullopt;
       pass.source = *texture;
-      pass.sourceField.reset();
+      pass.sourceSegment.reset();
     }
-    if (pass.maskField) {
-      const auto texture = draw(*pass.maskField);
+    if (pass.maskSegment) {
+      const auto texture = draw(*pass.maskSegment);
       if (!texture)
         return std::nullopt;
       pass.mask = *texture;
-      pass.maskField.reset();
+      pass.maskSegment.reset();
     }
   }
   return result;
@@ -645,38 +672,21 @@ void TextureLab::SetFusionCheck(bool a_enabled) noexcept {
   fusionCheck_ = a_enabled;
 }
 
-TextureLab::FusionCheckTotals TextureLab::DrainFusionChecks() {
+TextureLab::EquivalenceCheckTotals TextureLab::DrainFusionChecks() {
   return std::exchange(fusionChecks_, {});
 }
 
 void TextureLab::CheckStack(RenderTarget &a_fused, RE::NiSourceTexture *a_base,
                             std::span<const LayerPass> a_layers,
-                            const StackFields &a_fields) {
+                            const BoundLayerFields &a_fields) {
   const TextureSize size{a_fused.size};
-  const auto materialized = MaterializeFields(a_layers, a_fields, size);
-  if (!materialized)
+  const auto drawn = RenderFieldsToTargets(a_layers, a_fields, size);
+  if (!drawn)
     return;
-  const auto &layers = materialized->passes;
   const auto chain =
       Acquire(size, "fusion check", a_fused.format, MipPolicy::kNone);
-  auto *alternate = layers.size() > 1
-                        ? Scratch(size, a_fused.format, MipPolicy::kNone)
-                        : nullptr;
-  if (!chain || (layers.size() > 1 && !alternate))
+  if (!chain || !RenderLayersOneByOne(*chain, a_base, drawn->passes))
     return;
-  auto *write = layers.size() % 2 ? chain.get() : alternate;
-  auto *other = layers.size() % 2 ? alternate : chain.get();
-  RE::NiSourceTexture *previous = a_base;
-  for (auto layer : layers) {
-    LayerParams params;
-    params.mode = Mode::kLayer;
-    layer.previous = previous;
-    params.layer = layer;
-    if (!Render(*write, nullptr, params))
-      return;
-    previous = write->Texture();
-    std::swap(write, other);
-  }
   const auto rgb = MaxDifference(a_fused, *chain, ShaderChannel::kRgb);
   const auto alpha = MaxDifference(a_fused, *chain, ShaderChannel::kA);
   if (!rgb || !alpha)
@@ -690,34 +700,34 @@ void TextureLab::CheckStack(RenderTarget &a_fused, RE::NiSourceTexture *a_base,
 }
 
 bool TextureLab::RenderProgram(RenderTarget &a_target,
-                               const InterpreterProgram &a_program,
-                               const InterpreterBindings &a_pass) {
+                               const FieldProgram &a_program,
+                               const ProgramBindings &a_pass) {
   if (a_pass.inputCount != a_program.Inputs().size() ||
       a_pass.textureCount != a_program.TextureCount() ||
       a_pass.lookupCount != a_program.FunctionLookups().size())
     return false;
   if (generatedShaders_)
-    if (auto *shader = GeneratedShaderFor(a_program)) {
-      if (!DrawInterpreter(a_target, a_program.Instructions(),
+    if (auto *shader = generated_.ProgramFor(borrowedDevice_, a_program)) {
+      if (!DrawProgramPass(a_target, a_program.Instructions(),
                            a_program.Inputs(), a_program.ResultType(), a_pass,
                            shader))
         return false;
       if (fusionCheck_)
-        CheckProgram(a_target, a_program, a_pass);
+        CheckGeneratedProgram(a_target, a_program, a_pass);
       return true;
     }
-  return DrawInterpreter(a_target, a_program.Instructions(), a_program.Inputs(),
+  return DrawProgramPass(a_target, a_program.Instructions(), a_program.Inputs(),
                          a_program.ResultType(), a_pass);
 }
 
-void TextureLab::CheckProgram(RenderTarget &a_generated,
-                              const InterpreterProgram &a_program,
-                              const InterpreterBindings &a_bindings) {
+void TextureLab::CheckGeneratedProgram(RenderTarget &a_generated,
+                                       const FieldProgram &a_program,
+                                       const ProgramBindings &a_bindings) {
   const TextureSize size{a_generated.size};
   const auto interpreted =
       Acquire(size, "program check", a_generated.format, MipPolicy::kNone);
   if (!interpreted ||
-      !DrawInterpreter(*interpreted, a_program.Instructions(),
+      !DrawProgramPass(*interpreted, a_program.Instructions(),
                        a_program.Inputs(), a_program.ResultType(), a_bindings))
     return;
   const auto rgb =
@@ -734,7 +744,7 @@ void TextureLab::CheckProgram(RenderTarget &a_generated,
     ++programChecks_.overOneStep;
 }
 
-TextureLab::FusionCheckTotals TextureLab::DrainProgramChecks() {
+TextureLab::EquivalenceCheckTotals TextureLab::DrainGeneratedProgramChecks() {
   return std::exchange(programChecks_, {});
 }
 
@@ -744,9 +754,9 @@ void TextureLab::SetGeneratedShaders(bool a_enabled) noexcept {
 
 void TextureLab::FillLookups(
     std::span<REX::W32::ID3D11ShaderResourceView *> a_srvs,
-    const InterpreterBindings &a_bindings) {
+    const ProgramBindings &a_bindings) {
   const auto lookups =
-      std::min<std::size_t>(a_bindings.lookupCount, kProgramCurves);
+      std::min<std::size_t>(a_bindings.lookupCount, kProgramLookups);
   for (std::size_t c = 0; c < lookups; ++c) {
     const auto slot = kProgramTextures + c;
     if (slot < a_srvs.size())
@@ -755,18 +765,18 @@ void TextureLab::FillLookups(
   }
 }
 
-bool TextureLab::DrawInterpreter(RenderTarget &a_target,
-                                 std::span<const InterpreterInstruction> a_code,
-                                 std::span<const InterpreterInput> a_inputs,
+bool TextureLab::DrawProgramPass(RenderTarget &a_target,
+                                 std::span<const ProgramInstruction> a_code,
+                                 std::span<const ProgramInput> a_inputs,
                                  ValueType a_result,
-                                 const InterpreterBindings &a_bindings,
+                                 const ProgramBindings &a_bindings,
                                  REX::W32::ID3D11PixelShader *a_shader) {
   auto *renderer = RE::BSGraphics::Renderer::GetSingleton();
   if (!available_ || !renderer || !borrowedContext_ || !a_target.rtv.Get() ||
-      !gpu_->program.has_value() || a_code.size() > kInterpreterInstructions ||
-      a_inputs.size() > kProgramRefs ||
+      !gpu_->program.has_value() || a_code.size() > kProgramInstructions ||
+      a_inputs.size() > kProgramInputs ||
       a_bindings.textureCount > kProgramTextures ||
-      a_bindings.lookupCount > kProgramCurves)
+      a_bindings.lookupCount > kProgramLookups)
     return false;
   const PixelPipeline &pipeline = *gpu_->program;
   const RenderPass pass{*renderer, *borrowedContext_};

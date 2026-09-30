@@ -5,7 +5,7 @@ float3 StackField0(float2 uv)
 	{ float4 c = code[0]; int idx = 0; int components = 1; float3 a = float3(0, 0, 0), b = float3(0, 0, 0), d = float3(0, 0, 0); float3 r = 0; r = ReadTexture(0, uv); s0 = r; }
 	{ float4 c = code[1]; int idx = 0; int components = 1; float3 a = float3(0, 0, 0), b = float3(0, 0, 0), d = float3(0, 0, 0); float3 r = 0; r = c.y; s1 = r; }
 	{ float4 c = code[2]; int idx = 0; int components = 1; float3 a = s1, b = s0, d = float3(0, 0, 0); float3 r = 0; r = b * a; s0 = r; }
-	{ float4 c = code[3]; int idx = 1; int components = 1; float3 a = float3(0, 0, 0), b = float3(0, 0, 0), d = float3(0, 0, 0); float3 r = 0; r = refValues[idx].xyz; s1 = r; }
+	{ float4 c = code[3]; int idx = 1; int components = 1; float3 a = float3(0, 0, 0), b = float3(0, 0, 0), d = float3(0, 0, 0); float3 r = 0; r = inputValues[idx].xyz; s1 = r; }
 	{ float4 c = code[4]; int idx = 0; int components = 1; float3 a = s1, b = s0, d = float3(0, 0, 0); float3 r = 0; r = b + a; s0 = r; }
 	{ float4 c = code[5]; int idx = 0; int components = 1; float3 a = s0, b = float3(0, 0, 0), d = float3(0, 0, 0); float3 r = 0; r = sin(a); s0 = r; }
 	{ float4 c = code[6]; int idx = 0; int components = 1; float3 a = float3(0, 0, 0), b = float3(0, 0, 0), d = float3(0, 0, 0); float3 r = 0; r = c.y; s1 = r; }
@@ -23,7 +23,7 @@ float3 StackField1(float2 uv)
 	float3 s1 = 0;
 	float3 s2 = 0;
 	{ float4 c = code[12]; int idx = 2; int components = 1; float3 a = float3(0, 0, 0), b = float3(0, 0, 0), d = float3(0, 0, 0); float3 r = 0; r = ReadTexture(1, uv); s0 = r; }
-	{ float4 c = code[13]; int idx = 3; int components = 1; float3 a = float3(0, 0, 0), b = float3(0, 0, 0), d = float3(0, 0, 0); float3 r = 0; r = refValues[idx].xyz; s1 = r; }
+	{ float4 c = code[13]; int idx = 3; int components = 1; float3 a = float3(0, 0, 0), b = float3(0, 0, 0), d = float3(0, 0, 0); float3 r = 0; r = inputValues[idx].xyz; s1 = r; }
 	{ float4 c = code[14]; int idx = 0; int components = 1; float3 a = float3(0, 0, 0), b = float3(0, 0, 0), d = float3(0, 0, 0); float3 r = 0; r = c.y; s2 = r; }
 	{ float4 c = code[15]; int idx = 0; int components = 1; float3 a = s2, b = s1, d = float3(0, 0, 0); float3 r = 0; r = b * a; s1 = r; }
 	{ float4 c = code[16]; int idx = 0; int components = 1; float3 a = s1, b = s0, d = float3(0, 0, 0); float3 r = 0; r = b - a; s0 = r; }

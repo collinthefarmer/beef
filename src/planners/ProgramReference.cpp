@@ -1,12 +1,12 @@
 // GPL-3.0-only with the additional permission in COPYING.md.
-#include "planners/InterpreterReference.h"
+#include "planners/ProgramReference.h"
 
 #include <algorithm>
 #include <cmath>
 
 namespace BetterEnchantmentEffects {
 namespace {
-using Op = InterpreterOpcode;
+using Op = ProgramOpcode;
 
 Vec3 Splat(float v) { return {v, v, v}; }
 Vec3 Map(Vec3 a, float (*f)(float)) { return {f(a.x), f(a.y), f(a.z)}; }
@@ -52,17 +52,17 @@ Vec3 QuantizeUnorm8(Vec3 value) {
   };
   return {channel(value.x), channel(value.y), channel(value.z)};
 }
-Vec3 EvaluateInterpreter(const InterpreterProgram &program,
-                         const InterpreterTexel &texel) {
-  return EvaluateInterpreter(program.Instructions(), texel);
+Vec3 EvaluateProgramOnCpu(const FieldProgram &program,
+                          const ProgramTexel &texel) {
+  return EvaluateProgramOnCpu(program.Instructions(), texel);
 }
-Vec3 EvaluateInterpreter(std::span<const InterpreterInstruction> code,
-                         const InterpreterTexel &texel) {
-  std::array<Vec3, kInterpreterStack> stack{};
+Vec3 EvaluateProgramOnCpu(std::span<const ProgramInstruction> code,
+                          const ProgramTexel &texel) {
+  std::array<Vec3, kProgramStack> stack{};
   std::size_t sp = 0;
   for (const auto &c : code) {
     Vec3 a{}, b{}, d{};
-    const auto pops = InterpreterPops(c.opcode);
+    const auto pops = OpcodePops(c.opcode);
     if (pops >= 1 && sp > 0)
       a = stack[--sp];
     if (pops >= 2 && sp > 0)
