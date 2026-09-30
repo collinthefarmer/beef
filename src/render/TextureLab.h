@@ -218,6 +218,17 @@ public:
 
   bool Render(RenderTarget &a_target, RE::NiSourceTexture *a_source,
               const LayerParams &a_params);
+  inline static constexpr std::size_t kMaxStackLayers = 8;
+  [[nodiscard]] bool CanRenderStack(std::span<const LayerPass> a_layers) const;
+  struct FusionCheckTotals {
+    std::uint64_t checks = 0;
+    std::uint64_t overOneStep = 0;
+    float maxDifference = 0.0f;
+  };
+  void SetFusionCheck(bool a_enabled) noexcept;
+  [[nodiscard]] FusionCheckTotals DrainFusionChecks();
+  bool RenderStack(RenderTarget &a_target, RE::NiSourceTexture *a_base,
+                   std::span<const LayerPass> a_layers);
   bool RenderProgram(RenderTarget &a_target,
                      const InterpreterProgram &a_program,
                      const InterpreterBindings &a_bindings);
@@ -345,6 +356,7 @@ private:
     std::optional<PixelPipeline> clusters;
     std::optional<PixelPipeline> dilate;
     std::optional<PixelPipeline> reduce;
+    std::optional<PixelPipeline> stack;
     std::optional<BakePipeline> bake;
   };
 
@@ -381,6 +393,11 @@ private:
   [[nodiscard]] REX::W32::ID3D11Query *TimestampQuery(std::size_t a_slot,
                                                       std::size_t a_index);
   void Stamp(std::size_t a_span, bool a_end);
+  void CheckStack(RenderTarget &a_fused, RE::NiSourceTexture *a_base,
+                  std::span<const LayerPass> a_layers);
+  [[nodiscard]] std::optional<float> MaxDifference(RenderTarget &a_first,
+                                                   RenderTarget &a_second,
+                                                   ShaderChannel a_channel);
 
   std::atomic<bool> available_{false};
   bool initTried_ = false;
@@ -398,6 +415,8 @@ private:
   GpuTiming::Ring timingRing_;
   GpuTiming::Totals timingTotals_;
   std::optional<std::size_t> tickSpan_;
+  bool fusionCheck_ = false;
+  FusionCheckTotals fusionChecks_;
 
   std::unique_ptr<RenderTargetPool> targets_;
   std::unique_ptr<TexturePreviews> previews_;

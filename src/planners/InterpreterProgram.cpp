@@ -378,6 +378,19 @@ InterpreterProgram InterpreterProgram::Sample(ValueType type, bool texture) {
       {InterpreterOpcode::kInput, 0, 0, Components(type)});
   return result;
 }
+InterpreterProgram InterpreterProgram::AbsoluteDifference() {
+  InterpreterProgram result;
+  result.inputs_ = {InterpreterTextureInput{{}, 0},
+                    InterpreterTextureInput{{}, 1}};
+  result.textureCount_ = 2;
+  result.stackSize_ = 2;
+  result.resultType_ = ValueType::kVec3;
+  result.instructions_ = {{InterpreterOpcode::kInput, 0, 0, 3},
+                          {InterpreterOpcode::kInput, 0, 1, 3},
+                          {InterpreterOpcode::kSub, 0, 0, 3},
+                          {InterpreterOpcode::kAbs, 0, 0, 3}};
+  return result;
+}
 InterpreterProgram InterpreterProgram::Map() {
   auto result = Sample(ValueType::kScalar);
   result.lookups_.push_back({});

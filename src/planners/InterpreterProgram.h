@@ -92,6 +92,7 @@ public:
   [[nodiscard]] static InterpreterProgram Sample(ValueType type,
                                                  bool texture = true);
   [[nodiscard]] static InterpreterProgram Map();
+  [[nodiscard]] static InterpreterProgram AbsoluteDifference();
   [[nodiscard]] static std::expected<InterpreterProgram, std::string>
   Compose(std::span<const bool> textures);
   [[nodiscard]] static std::expected<InterpreterProgram, std::string>

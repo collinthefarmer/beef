@@ -49,6 +49,10 @@ constexpr std::array kTable{
                 "Show the rendered effects on materials and shells. When off, "
                 "effects still render but the original materials stay.",
                 &Settings::publishEffects, 0, 1, W::kCheckbox, false},
+    SettingDesc{"General", "FusionCheck", "Fusion check",
+                "Also render each fused stack layer by layer and record the "
+                "largest difference in the diagnostic trace. Slow.",
+                &Settings::fusionCheck, 0, 1, W::kCheckbox, false},
     SettingDesc{"General", "AnimationFPS", "Animation FPS",
                 "Animation update rate.", &Settings::animationFPS,
                 kMinAnimationFPS, kMaxAnimationFPS, W::kIntSlider, false},

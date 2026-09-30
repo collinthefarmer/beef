@@ -209,6 +209,20 @@ plan for inspection and are released when idle.
   geometries, every stack operand equals the unfused plan's bit for bit;
   without quantize 109 operands differ. The demo plan inlines 2 of 86 steps,
   because most animated fields feed stack layers directly, which is 3d.
+- 3d, layers: a stack of up to 8 layers without a legacy curve draws in one
+  `PSStack` pass. The per-layer pass and `PSStack` share `ComposeLayer`;
+  `PSStack` rounds to RGBA8 between layers and leaves the last layer to the
+  hardware store. Other stacks keep the per-layer path. Inlining program
+  fields into stack layers is not done yet.
+- 3e done: `FusionCheck` renders the per-layer chain after each stacked draw
+  and reduces the largest RGB and alpha difference. In game, 13,028 stacks
+  compared with a largest difference of 1/255 and none over one step, the
+  bound predicted from the hardware conversion tolerance.
+- After 3d, a run with all three recipes held 39 to 45 fps (median 43),
+  against 24 to 31 in the previous run, with plugin GPU time per tick
+  unchanged at about 10.5 ms and plugin CPU at about 3 ms. The run has no
+  nothing-equipped baseline and evaluates 72 stacks per frame against 64, so
+  the gain is not yet attributed; a same-scene A/B would settle it.
 - Finding, not fixed: the recipe CPU evaluator and the GPU interpreter
   disagree on `pow` with a negative base or `pow(0, 0)` (CPU 4 and 1, GPU 0 and
   0), so the same expression can differ between a signal and a field.

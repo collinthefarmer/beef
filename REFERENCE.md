@@ -1213,6 +1213,16 @@ Decompile provenance (`decompiled/WornEnchantmentFX/plugin.c` unless noted):
   because a scalar field is stored as `xxx`, and by `kQuantize`, because the
   stored field was RGBA8. A texel-centre read returns the stored texel
   exactly, so the fused program computes the same value.
+- A stack of up to 8 layers (`TextureLab::kMaxStackLayers`) without a legacy
+  curve draws in one `PSStack` pass. The per-layer `LayerPass` and `PSStack`
+  both call `ComposeLayer`, so they compute the same value per layer.
+  `PSStack` rounds to RGBA8 between layers (`Unorm8`), because the per-layer
+  path stores each layer in an RGBA8 target, and leaves the last layer to the
+  hardware store. `PSStack` binds its base at t12, its layer sources at t13 to
+  t20 and its masks at t21 to t28, clear of the program pass's t0 to t11.
+- `FusionCheck` (off by default) renders each stacked draw's per-layer chain
+  too and reduces the largest RGB and alpha difference; it waits on
+  readbacks, so it is a diagnostic mode.
 - Only stack results generate mips. The lowering sets `MipPolicy::kNone` on
   every value it builds, because every intermediate is read at its own size,
   where sampling uses mip 0. A stack draws its layers into targets without

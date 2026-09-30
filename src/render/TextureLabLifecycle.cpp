@@ -202,6 +202,7 @@ bool TextureLab::CompileShaders(GpuResources &a_resources) {
   a_resources.clusters = pixelPipeline("PSClusters", sizeof(ClusterConstants));
   a_resources.dilate = pixelPipeline("DilatePS", 0);
   a_resources.reduce = pixelPipeline("PSReduce", sizeof(ReductionConstants));
+  a_resources.stack = pixelPipeline("PSStack", sizeof(StackConstants));
 
   const auto bakeVertex = compile("BakeVS", "vs_5_0");
   const auto bakePixel = compile("BakePS", "ps_5_0");

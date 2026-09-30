@@ -581,26 +581,9 @@ ExecuteStep(const RenderStep &step,
         const auto *base = args.Find<StackResult>(k.base);
         if (!base)
           return std::unexpected("stack base is unavailable");
-        auto layerRequirements = k.requirements;
-        layerRequirements.mipPolicy = MipPolicy::kNone;
-        const auto target = AcquireStepTarget(scratch, layerRequirements);
-        if (!target)
-          return std::unexpected("stack target is unavailable");
-        auto *alternate =
-            layers.size() > 1
-                ? lab->Scratch(k.requirements.size, k.requirements.format,
-                               MipPolicy::kNone)
-                : nullptr;
-        if (layers.size() > 1 && !alternate)
-          return std::unexpected("stack alternate target is unavailable");
-        TextureRef previous = base->texture;
-        auto *write = layers.size() % 2 ? target.get() : alternate;
-        auto *other = layers.size() % 2 ? alternate : target.get();
+        std::vector<TextureLab::LayerPass> passes;
         for (const auto *layer : layers) {
-          TextureLab::LayerParams params;
-          params.mode = TextureLab::Mode::kLayer;
-          auto &pass = params.layer;
-          pass.previous = previous.get();
+          TextureLab::LayerPass pass;
           const auto *source = args.Find<TextureView>(layer->source);
           const auto *value = args.Find<Value>(layer->source);
           const auto *opacity = args.Find<Value>(layer->opacity);
@@ -638,10 +621,38 @@ ExecuteStep(const RenderStep &step,
             pass.mask = mask->texture.get();
             pass.maskChannel = mask->sampling.channel;
           }
-          if (!write || !lab->Render(*write, nullptr, params))
+          passes.push_back(pass);
+        }
+        auto layerRequirements = k.requirements;
+        layerRequirements.mipPolicy = MipPolicy::kNone;
+        const auto target = AcquireStepTarget(scratch, layerRequirements);
+        if (!target)
+          return std::unexpected("stack target is unavailable");
+        TextureRef previous = base->texture;
+        if (lab->CanRenderStack(passes)) {
+          if (!lab->RenderStack(*target, previous.get(), passes))
             return std::unexpected("stack draw failed");
-          previous = TextureRef{write->Texture()};
-          std::swap(write, other);
+          previous = TextureRef{target->Texture()};
+        } else {
+          auto *alternate =
+              passes.size() > 1
+                  ? lab->Scratch(k.requirements.size, k.requirements.format,
+                                 MipPolicy::kNone)
+                  : nullptr;
+          if (passes.size() > 1 && !alternate)
+            return std::unexpected("stack alternate target is unavailable");
+          auto *write = passes.size() % 2 ? target.get() : alternate;
+          auto *other = passes.size() % 2 ? alternate : target.get();
+          for (auto pass : passes) {
+            TextureLab::LayerParams params;
+            params.mode = TextureLab::Mode::kLayer;
+            pass.previous = previous.get();
+            params.layer = pass;
+            if (!write || !lab->Render(*write, nullptr, params))
+              return std::unexpected("stack draw failed");
+            previous = TextureRef{write->Texture()};
+            std::swap(write, other);
+          }
         }
         if (k.requirements.mipPolicy == MipPolicy::kGenerate)
           lab->GenerateMipsFor(*target);

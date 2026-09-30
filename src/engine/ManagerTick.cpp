@@ -284,6 +284,18 @@ private:
   Metrics::Stopwatch watch_;
 };
 
+void EmitFusionChecks() {
+  const auto checks = TextureLab::GetSingleton()->DrainFusionChecks();
+  if (checks.checks == 0)
+    return;
+  Trace::EmitSafely(
+      Trace::Event::kMetrics,
+      {{"action", "fusion_check"},
+       {"checks", std::to_string(checks.checks)},
+       {"over_one_step", std::to_string(checks.overOneStep)},
+       {"max_difference", std::to_string(checks.maxDifference * 255.0f)}});
+}
+
 void EmitGpuTimings() {
   const GpuTiming::Totals gpu = TextureLab::GetSingleton()->DrainTimings();
   if (gpu.timedTicks == 0 && gpu.droppedTicks == 0 && gpu.discardedTicks == 0)
@@ -306,6 +318,7 @@ void EmitGpuTimings() {
 
 void EmitMetricsHeartbeat() {
   EmitGpuTimings();
+  EmitFusionChecks();
   const Metrics::Snapshot measured = Metrics::Drain();
   Trace::EmitSafely(
       Trace::Event::kMetrics,
@@ -367,6 +380,7 @@ void Manager::OnFrame() {
   Compositor::GetSingleton()->BeginTick(now);
   if (!applied_.empty()) {
     const PhaseTimer tickTimer{Metrics::Phase::kTick};
+    TextureLab::GetSingleton()->SetFusionCheck(settings.fusionCheck);
     TextureLab::GetSingleton()->BeginTimedTick(settings.gpuTiming);
     Tick(now, settings);
     TextureLab::GetSingleton()->EndTimedTick();

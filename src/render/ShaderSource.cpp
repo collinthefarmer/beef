@@ -74,31 +74,40 @@ float3 Blend(int mode, float3 below, float3 value)
 	return value;
 }
 
-float4 LayerPass(float2 rawUv, float2 placedUv)
+float3 LayerValue(float4 color, bool hasSource, float4 s, int channel)
 {
-	float4 below = layerMask.z > 0.5 ? prev.SampleLevel(samp, rawUv, 0) : float4(0, 0, 0, 0);
-	float3 value = layerColor.rgb;
-	if (layerMask.w > 0.5) {
-		float2 uv = layer.y > 0.5 ? rawUv : placedUv;
-		float4 s = src.SampleLevel(samp, uv, extra.x);
-		value *= Pick(s, (int)layer.x) * layerColor.w;
-	}
-	if (layerCurve.x > 0.5) {
-		value = float3(Curve(value.r), Curve(value.g), Curve(value.b));
-	}
-	float alpha = layer.w;
-	if (layerMask.x >= 0) {
-		float4 m = armor.SampleLevel(samp, rawUv, 0);
-		alpha *= Pick(m, (int)layerMask.x).x;
-	}
-	float3 mixed = lerp(below.rgb, Blend((int)layer.z, below.rgb, value), saturate(alpha));
-	int bits = (int)layerMask.y;
+	float3 value = color.rgb;
+	if (hasSource) value *= Pick(s, channel) * color.w;
+	return value;
+}
+
+float4 ComposeLayer(float4 below, float3 value, float opacity, bool hasMask, float4 m, int maskChannel, int blend, int bits)
+{
+	float alpha = opacity;
+	if (hasMask) alpha *= Pick(m, maskChannel).x;
+	float3 mixed = lerp(below.rgb, Blend(blend, below.rgb, value), saturate(alpha));
 	float4 result = below;
 	if (bits & 1) result.r = mixed.r;
 	if (bits & 2) result.g = mixed.g;
 	if (bits & 4) result.b = mixed.b;
 	if (bits & 8) result.a = lerp(below.a, dot(value, float3(0.2126, 0.7152, 0.0722)), saturate(alpha));
 	return result;
+}
+
+float4 LayerPass(float2 rawUv, float2 placedUv)
+{
+	float4 below = layerMask.z > 0.5 ? prev.SampleLevel(samp, rawUv, 0) : float4(0, 0, 0, 0);
+	float4 s = 0;
+	if (layerMask.w > 0.5) {
+		float2 uv = layer.y > 0.5 ? rawUv : placedUv;
+		s = src.SampleLevel(samp, uv, extra.x);
+	}
+	float3 value = LayerValue(layerColor, layerMask.w > 0.5, s, (int)layer.x);
+	if (layerCurve.x > 0.5) {
+		value = float3(Curve(value.r), Curve(value.g), Curve(value.b));
+	}
+	float4 m = layerMask.x >= 0 ? armor.SampleLevel(samp, rawUv, 0) : float4(0, 0, 0, 0);
+	return ComposeLayer(below, value, layer.w, layerMask.x >= 0, m, (int)layerMask.x, (int)layer.z, (int)layerMask.y);
 }
 
 float4 PSMain(VSOut i) : SV_Target
@@ -391,6 +400,87 @@ float4 PSRipple(VSOut i) : SV_Target
 		v = max(v, f * exp(-rippleShape.z * rippleFirings[k].w));
 	}
 	return float4(v, v, v, 1);
+}
+
+cbuffer StackParams : register(b5)
+{
+	float4 stackOffsetScale[8];
+	float4 stackFlags[8];
+	float4 stackLayer[8];
+	float4 stackColor[8];
+	float4 stackMask[8];
+	float4 stackMisc;
+};
+Texture2D stackBase : register(t12);
+Texture2D stackSrc0 : register(t13);
+Texture2D stackSrc1 : register(t14);
+Texture2D stackSrc2 : register(t15);
+Texture2D stackSrc3 : register(t16);
+Texture2D stackSrc4 : register(t17);
+Texture2D stackSrc5 : register(t18);
+Texture2D stackSrc6 : register(t19);
+Texture2D stackSrc7 : register(t20);
+Texture2D stackMap0 : register(t21);
+Texture2D stackMap1 : register(t22);
+Texture2D stackMap2 : register(t23);
+Texture2D stackMap3 : register(t24);
+Texture2D stackMap4 : register(t25);
+Texture2D stackMap5 : register(t26);
+Texture2D stackMap6 : register(t27);
+Texture2D stackMap7 : register(t28);
+
+float4 StackSource(int k, float2 uv, float mip)
+{
+	switch (k) {
+	case 0: return stackSrc0.SampleLevel(samp, uv, mip);
+	case 1: return stackSrc1.SampleLevel(samp, uv, mip);
+	case 2: return stackSrc2.SampleLevel(samp, uv, mip);
+	case 3: return stackSrc3.SampleLevel(samp, uv, mip);
+	case 4: return stackSrc4.SampleLevel(samp, uv, mip);
+	case 5: return stackSrc5.SampleLevel(samp, uv, mip);
+	case 6: return stackSrc6.SampleLevel(samp, uv, mip);
+	default: return stackSrc7.SampleLevel(samp, uv, mip);
+	}
+}
+
+float4 StackMap(int k, float2 uv)
+{
+	switch (k) {
+	case 0: return stackMap0.SampleLevel(samp, uv, 0);
+	case 1: return stackMap1.SampleLevel(samp, uv, 0);
+	case 2: return stackMap2.SampleLevel(samp, uv, 0);
+	case 3: return stackMap3.SampleLevel(samp, uv, 0);
+	case 4: return stackMap4.SampleLevel(samp, uv, 0);
+	case 5: return stackMap5.SampleLevel(samp, uv, 0);
+	case 6: return stackMap6.SampleLevel(samp, uv, 0);
+	default: return stackMap7.SampleLevel(samp, uv, 0);
+	}
+}
+
+float4 Unorm8(float4 v)
+{
+	return round(saturate(v) * 255) / 255;
+}
+
+float4 PSStack(VSOut i) : SV_Target
+{
+	float2 rawUv = i.uv;
+	float4 below = stackMisc.y > 0.5 ? stackBase.SampleLevel(samp, rawUv, 0) : float4(0, 0, 0, 0);
+	int n = (int)stackMisc.x;
+	[loop] for (int k = 0; k < n && k < 8; ++k) {
+		bool hasSource = stackMask[k].w > 0.5;
+		float4 s = 0;
+		if (hasSource) {
+			float2 uv = stackLayer[k].y > 0.5 ? rawUv : PlaceUv(rawUv, stackOffsetScale[k], stackFlags[k]);
+			s = StackSource(k, uv, stackFlags[k].w);
+		}
+		float3 value = LayerValue(stackColor[k], hasSource, s, (int)stackLayer[k].x);
+		bool hasMask = stackMask[k].x >= 0;
+		float4 m = hasMask ? StackMap(k, rawUv) : float4(0, 0, 0, 0);
+		float4 result = ComposeLayer(below, value, stackLayer[k].w, hasMask, m, (int)stackMask[k].x, (int)stackLayer[k].z, (int)stackMask[k].y);
+		below = k + 1 < n ? Unorm8(result) : result;
+	}
+	return below;
 }
 
 cbuffer ClusterParams : register(b3)

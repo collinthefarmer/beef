@@ -397,6 +397,121 @@ bool TextureLab::Render(RenderTarget &a_target, RE::NiSourceTexture *a_source,
   return true;
 }
 
+bool TextureLab::CanRenderStack(std::span<const LayerPass> a_layers) const {
+  return gpu_ && gpu_->stack.has_value() && !a_layers.empty() &&
+         a_layers.size() <= kMaxStackLayers &&
+         std::ranges::none_of(a_layers, [](const LayerPass &layer) {
+           return layer.curve != nullptr;
+         });
+}
+
+bool TextureLab::RenderStack(RenderTarget &a_target,
+                             RE::NiSourceTexture *a_base,
+                             std::span<const LayerPass> a_layers) {
+  auto *renderer = RE::BSGraphics::Renderer::GetSingleton();
+  if (!available_ || !renderer || !borrowedContext_ || !a_target.rtv.Get() ||
+      !CanRenderStack(a_layers))
+    return false;
+  const RenderPass pass{*renderer, *borrowedContext_};
+  const PixelPipeline &pipeline = *gpu_->stack;
+  StackConstants constants{};
+  constexpr std::size_t kBaseSlot = 12;
+  REX::W32::ID3D11ShaderResourceView
+      *srvs[kBaseSlot + 1 + 2 * kMaxStackLayers]{};
+  const auto view = [&](RE::NiSourceTexture *a_texture)
+      -> REX::W32::ID3D11ShaderResourceView * {
+    auto *data = DataOf(a_texture);
+    return data && data->resourceView
+               ? reinterpret_cast<REX::W32::ID3D11ShaderResourceView *>(
+                     data->resourceView)
+               : nullptr;
+  };
+  srvs[kBaseSlot] = view(a_base);
+  constants.misc[0] = static_cast<float>(a_layers.size());
+  constants.misc[1] = srvs[kBaseSlot] ? 1.0f : 0.0f;
+  for (std::size_t k = 0; k < a_layers.size(); ++k) {
+    const auto &layer = a_layers[k];
+    const auto &sc = layer.input.transform;
+    auto *source = view(layer.source);
+    auto *mask = view(layer.mask);
+    srvs[kBaseSlot + 1 + k] = source;
+    srvs[kBaseSlot + 1 + kMaxStackLayers + k] = mask;
+    constants.offsetScale[k][0] = sc.uOffset;
+    constants.offsetScale[k][1] = sc.vOffset;
+    constants.offsetScale[k][2] = sc.tileU;
+    constants.offsetScale[k][3] = sc.tileV;
+    constants.flags[k][0] = sc.mirrorU ? 1.0f : 0.0f;
+    constants.flags[k][1] = sc.mirrorV ? 1.0f : 0.0f;
+    constants.flags[k][2] = sc.transpose ? 1.0f : 0.0f;
+    constants.flags[k][3] = sc.sourceMip;
+    constants.layer[k][0] =
+        static_cast<float>(std::to_underlying(layer.input.channel));
+    constants.layer[k][1] = layer.input.meshSpace ? 1.0f : 0.0f;
+    constants.layer[k][2] = static_cast<float>(layer.blend);
+    constants.layer[k][3] = layer.opacity;
+    constants.color[k][0] = layer.color[0];
+    constants.color[k][1] = layer.color[1];
+    constants.color[k][2] = layer.color[2];
+    constants.color[k][3] = layer.normalize;
+    constants.mask[k][0] =
+        mask ? static_cast<float>(std::to_underlying(layer.maskChannel))
+             : -1.0f;
+    constants.mask[k][1] = static_cast<float>(layer.channels);
+    constants.mask[k][3] = source ? 1.0f : 0.0f;
+  }
+  pass.Context().UpdateSubresource(pipeline.constants.Get(), 0, nullptr,
+                                   &constants, 0, 0);
+  REX::W32::ID3D11Buffer *cbs[6]{nullptr, nullptr, nullptr,
+                                 nullptr, nullptr, pipeline.constants.Get()};
+  DrawFullScreen(pass, a_target, {pipeline.shader.Get(), srvs, cbs});
+  if (fusionCheck_)
+    CheckStack(a_target, a_base, a_layers);
+  return true;
+}
+
+void TextureLab::SetFusionCheck(bool a_enabled) noexcept {
+  fusionCheck_ = a_enabled;
+}
+
+TextureLab::FusionCheckTotals TextureLab::DrainFusionChecks() {
+  return std::exchange(fusionChecks_, {});
+}
+
+void TextureLab::CheckStack(RenderTarget &a_fused, RE::NiSourceTexture *a_base,
+                            std::span<const LayerPass> a_layers) {
+  const TextureSize size{a_fused.size};
+  const auto chain =
+      Acquire(size, "fusion check", a_fused.format, MipPolicy::kNone);
+  auto *alternate = a_layers.size() > 1
+                        ? Scratch(size, a_fused.format, MipPolicy::kNone)
+                        : nullptr;
+  if (!chain || (a_layers.size() > 1 && !alternate))
+    return;
+  auto *write = a_layers.size() % 2 ? chain.get() : alternate;
+  auto *other = a_layers.size() % 2 ? alternate : chain.get();
+  RE::NiSourceTexture *previous = a_base;
+  for (auto layer : a_layers) {
+    LayerParams params;
+    params.mode = Mode::kLayer;
+    layer.previous = previous;
+    params.layer = layer;
+    if (!Render(*write, nullptr, params))
+      return;
+    previous = write->Texture();
+    std::swap(write, other);
+  }
+  const auto rgb = MaxDifference(a_fused, *chain, ShaderChannel::kRgb);
+  const auto alpha = MaxDifference(a_fused, *chain, ShaderChannel::kA);
+  if (!rgb || !alpha)
+    return;
+  const float difference = std::max(*rgb, *alpha);
+  ++fusionChecks_.checks;
+  fusionChecks_.maxDifference =
+      std::max(fusionChecks_.maxDifference, difference);
+  if (difference > 1.5f / 255.0f)
+    ++fusionChecks_.overOneStep;
+}
+
 bool TextureLab::RenderProgram(RenderTarget &a_target,
                                const InterpreterProgram &a_program,
                                const InterpreterBindings &a_pass) {

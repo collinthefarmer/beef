@@ -37,7 +37,19 @@ static_assert(static_cast<int>(InterpreterOpcode::kNumber) == 0 &&
               static_cast<int>(InterpreterOpcode::kDistance) == 39 &&
               static_cast<int>(InterpreterOpcode::kDot) == 40 &&
               static_cast<int>(InterpreterOpcode::kCross) == 41 &&
-              static_cast<int>(InterpreterOpcode::kNormalize) == 42);
+              static_cast<int>(InterpreterOpcode::kNormalize) == 42 &&
+              static_cast<int>(InterpreterOpcode::kQuantize) == 43 &&
+              static_cast<int>(InterpreterOpcode::kSplat) == 44);
+
+struct alignas(16) StackConstants {
+  float offsetScale[8][4];
+  float flags[8][4];
+  float layer[8][4];
+  float color[8][4];
+  float mask[8][4];
+  float misc[4];
+};
+static_assert(sizeof(StackConstants) % 16 == 0);
 
 struct alignas(16) RippleConstants {
   float firings[8][4];
