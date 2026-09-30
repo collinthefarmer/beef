@@ -221,6 +221,13 @@ Do not write a hand-maintained switch for a spec lookup.
 - Do not write a `[](const auto &)` arm. A catch-all arm absorbs a new
   alternative silently. Without one, overload resolution fails at every site
   that must handle the new kind.
+- A predicate that holds for a few alternatives and has one answer for all
+  the others uses `Get<T>` and `Is<T>` checks with a final default, not an
+  exhaustive visitor. Examples: `RequiresSettledEditor`, `AcceptIntent` and
+  `ExceedsMaskLimits` (`studio/MenuState.cpp`). A new alternative takes the
+  default, so a check that bounds input must also be enforced where the
+  input is applied. Example: the `AddTerm` and `LoadMask` reducers clamp to
+  `kMaxTerms` themselves.
 
 ### Adding a source kind
 

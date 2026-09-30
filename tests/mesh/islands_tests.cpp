@@ -54,6 +54,32 @@ MeshData Seam() {
   return mesh;
 }
 
+MeshData ThreeChartSeam() {
+  MeshPartition partition;
+  partition.vertices = {
+      Vert(0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0, 0.0f),
+      Vert(1.0f, 0.0f, 0.0f, 0.1f, 0.0f, 0, 0.0f),
+      Vert(0.0f, 1.0f, 0.0f, 0.0f, 0.1f, 0, 0.0f),
+      Vert(1.0f, 0.0f, 0.0f, 0.3f, 0.0f, 0, 0.0f),
+      Vert(0.0f, 1.0f, 0.0f, 0.3f, 0.1f, 0, 0.0f),
+      Vert(1.0f, 1.0f, 0.0f, 0.4f, 0.0f, 0, 0.0f),
+      Vert(1.0f, 1.0f, 0.0f, 0.7f, 0.0f, 0, 0.0f),
+      Vert(0.0f, 1.0f, 0.0f, 0.7f, 0.1f, 0, 0.0f),
+      Vert(0.0f, 2.0f, 0.0f, 0.8f, 0.0f, 0, 0.0f),
+      Vert(50.0f, 0.0f, 0.0f, 0.7f, 0.0f, 0, 0.0f),
+      Vert(51.0f, 0.0f, 0.0f, 0.9f, 0.0f, 0, 0.0f),
+      Vert(50.0f, 1.0f, 0.0f, 0.9f, 0.1f, 0, 0.0f),
+      Vert(51.0f, 0.0f, 0.0f, 0.9f, 0.0f, 0, 0.0f),
+      Vert(50.0f, 1.0f, 0.0f, 0.9f, 0.1f, 0, 0.0f),
+      Vert(51.0f, 1.0f, 0.0f, 0.95f, 0.1f, 0, 0.0f),
+  };
+  partition.triangles = {
+      {0, 1, 2}, {3, 4, 5}, {6, 7, 8}, {9, 10, 11}, {12, 13, 14}};
+  MeshData mesh;
+  mesh.partitions = {partition};
+  return mesh;
+}
+
 const MeshIsland *ComponentWithBone(const MeshAnalysis &a_analysis,
                                     std::string_view a_bone) {
   for (const MeshIsland &island : a_analysis.islands) {
@@ -135,6 +161,20 @@ int main() {
   }
   Check(seamComponentUntwinned,
         "a component spanning two charts is twinned to neither");
+
+  const MeshData threeCharts = ThreeChartSeam();
+  const MeshAnalysis threeAnalysis = AnalyseMesh(threeCharts);
+  Check(threeAnalysis.components == 2 && threeAnalysis.charts == 3,
+        "the seam fixture holds two components over three charts");
+  bool spanningComponentUntwinned = true;
+  for (const MeshIsland &island : threeAnalysis.islands) {
+    if (island.source == IslandSource::kComponent && island.twin.has_value()) {
+      spanningComponentUntwinned = false;
+    }
+  }
+  Check(spanningComponentUntwinned,
+        "a component spanning three charts is twinned to none, even when "
+        "its last chart has the same vertex count");
 
   const BakeBuffers componentBakeBuffers =
       BuildIslandBake(twoParts, twoAnalysis, IslandSource::kComponent);

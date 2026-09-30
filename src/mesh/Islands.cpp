@@ -319,19 +319,21 @@ TableOf(const MeshAnalysis &a_analysis, IslandSource a_source) noexcept {
                                               : a_analysis.chartOf;
 }
 
-constexpr std::uint16_t kConflictingChart = 0xFFFF;
+struct ComponentChart {
+  std::optional<std::uint16_t> only;
+  bool several = false;
+};
 
 struct TwinCandidates {
-  std::vector<std::uint16_t> chartOfComponent;
+  std::vector<ComponentChart> chartOfComponent;
   std::vector<std::size_t> componentSize;
   std::vector<std::size_t> chartSize;
 };
 
 [[nodiscard]] TwinCandidates TwinCandidatesOf(const MeshAnalysis &a_analysis) {
-  TwinCandidates out{
-      std::vector<std::uint16_t>(a_analysis.components, kNoIsland),
-      std::vector<std::size_t>(a_analysis.components, 0),
-      std::vector<std::size_t>(a_analysis.charts, 0)};
+  TwinCandidates out{std::vector<ComponentChart>(a_analysis.components),
+                     std::vector<std::size_t>(a_analysis.components, 0),
+                     std::vector<std::size_t>(a_analysis.charts, 0)};
   const std::size_t vertices =
       (std::min)(a_analysis.componentOf.size(), a_analysis.chartOf.size());
   for (std::size_t v = 0; v < vertices; ++v) {
@@ -346,8 +348,12 @@ struct TwinCandidates {
     if (c >= out.chartOfComponent.size() || k == kNoIsland) {
       continue;
     }
-    std::uint16_t &seen = out.chartOfComponent[c];
-    seen = seen == kNoIsland ? k : (seen == k ? k : kConflictingChart);
+    ComponentChart &seen = out.chartOfComponent[c];
+    if (!seen.only) {
+      seen.only = k;
+    } else if (*seen.only != k) {
+      seen.several = true;
+    }
   }
   return out;
 }
@@ -358,9 +364,12 @@ TwinChartOf(const TwinCandidates &a_candidates, std::uint16_t a_component) {
       a_component >= a_candidates.componentSize.size()) {
     return std::nullopt;
   }
-  const std::uint16_t k = a_candidates.chartOfComponent[a_component];
-  if (k == kNoIsland || k == kConflictingChart ||
-      k >= a_candidates.chartSize.size() ||
+  const ComponentChart &seen = a_candidates.chartOfComponent[a_component];
+  if (seen.several || !seen.only) {
+    return std::nullopt;
+  }
+  const std::uint16_t k = *seen.only;
+  if (k >= a_candidates.chartSize.size() ||
       a_candidates.chartSize[k] != a_candidates.componentSize[a_component]) {
     return std::nullopt;
   }

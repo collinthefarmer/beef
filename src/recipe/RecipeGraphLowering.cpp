@@ -652,6 +652,8 @@ struct RecipeGraphLowering {
     graph.changing_.assign(count, false);
     graph.dependencyOrder_.clear();
     graph.signalEvaluationOrder_.clear();
+    graph.tickOrder_.clear();
+    graph.changingTickOrder_.clear();
   }
   [[nodiscard]] static NodeTraits TraitsOf(const NodeKind &kind) {
     NodeTraits traits{Stateful(kind), false, Is<ReductionOperation>(kind)};

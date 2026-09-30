@@ -761,143 +761,25 @@ namespace {
   return !a_state.paint || !a_state.paint->pendingCommit;
 }
 
-struct AcceptVisitor {
-  const MenuState &state;
-
-  [[nodiscard]] bool operator()(const BeginPaint &a_begin) const {
-    return AcceptBeginPaint(state, a_begin);
-  }
-  [[nodiscard]] bool operator()(const KeepPaint &a_keep) const {
-    return AcceptKeepPaint(state, a_keep);
-  }
-  [[nodiscard]] bool operator()(const UpdatePaint &a_update) const {
-    return AcceptUpdatePaint(state, a_update);
-  }
-  [[nodiscard]] bool operator()(const EndPaint &) const {
-    return AcceptEndPaint(state);
-  }
-  [[nodiscard]] bool operator()(const SetMode &) const { return true; }
-  [[nodiscard]] bool operator()(const PickPiece &) const { return true; }
-  [[nodiscard]] bool operator()(const PickRecipe &) const { return true; }
-  [[nodiscard]] bool operator()(const PinRecipe &) const { return true; }
-  [[nodiscard]] bool operator()(const PickTarget &) const { return true; }
-  [[nodiscard]] bool operator()(const PickSlot &) const { return true; }
-  [[nodiscard]] bool operator()(const PickCell &) const { return true; }
-  [[nodiscard]] bool operator()(const PickLayer &) const { return true; }
-  [[nodiscard]] bool operator()(const ViewGeometry &) const { return true; }
-  [[nodiscard]] bool operator()(const SetStackSplit &) const { return true; }
-  [[nodiscard]] bool operator()(const SetWorkspaceSplit &) const {
-    return true;
-  }
-  [[nodiscard]] bool operator()(const ShowSettings &) const { return true; }
-  [[nodiscard]] bool operator()(const ShowResource &) const { return true; }
-  [[nodiscard]] bool operator()(const ReadMesh &) const { return true; }
-  [[nodiscard]] bool operator()(const AddTerm &) const { return true; }
-  [[nodiscard]] bool operator()(const SetTermOp &) const { return true; }
-  [[nodiscard]] bool operator()(const SetTermText &) const { return true; }
-  [[nodiscard]] bool operator()(const SetTermKind &) const { return true; }
-  [[nodiscard]] bool operator()(const RemoveTerm &) const { return true; }
-  [[nodiscard]] bool operator()(const MoveTerm &) const { return true; }
-  [[nodiscard]] bool operator()(const PickTerm &) const { return true; }
-  [[nodiscard]] bool operator()(const SoloTerm &) const { return true; }
-  [[nodiscard]] bool operator()(const MuteTerm &) const { return true; }
-  [[nodiscard]] bool operator()(const SetPeek &) const { return true; }
-  [[nodiscard]] bool operator()(const LoadMask &) const { return true; }
-  [[nodiscard]] bool operator()(const ClearMask &) const { return true; }
-  [[nodiscard]] bool operator()(const UndoMask &) const { return true; }
-  [[nodiscard]] bool operator()(const RedoMask &) const { return true; }
-  [[nodiscard]] bool operator()(const SetPaintSurface &) const { return true; }
-  [[nodiscard]] bool operator()(const EditRecipe &) const { return true; }
-  [[nodiscard]] bool operator()(const SoloRecipe &) const { return true; }
-  [[nodiscard]] bool operator()(const SoloPiece &) const { return true; }
-  [[nodiscard]] bool operator()(const SoloOutput &) const { return true; }
-  [[nodiscard]] bool operator()(const SoloLayer &) const { return true; }
-  [[nodiscard]] bool operator()(const MuteLayer &) const { return true; }
-  [[nodiscard]] bool operator()(const SetFreeze &) const { return true; }
-  [[nodiscard]] bool operator()(const SetScrub &) const { return true; }
-  [[nodiscard]] bool operator()(const SetSpeed &) const { return true; }
-  [[nodiscard]] bool operator()(const StepClock &) const { return true; }
-  [[nodiscard]] bool operator()(const Undo &) const { return true; }
-  [[nodiscard]] bool operator()(const Redo &) const { return true; }
-  [[nodiscard]] bool operator()(const CreateRecipe &) const { return true; }
-  [[nodiscard]] bool operator()(const RenameRecipe &) const { return true; }
-  [[nodiscard]] bool operator()(const DeleteRecipe &) const { return true; }
-  [[nodiscard]] bool operator()(const DuplicateRecipe &) const { return true; }
-  [[nodiscard]] bool operator()(const FireTrigger &) const { return true; }
-};
-
 [[nodiscard]] std::size_t SourceRoom(const MenuState &a_state) {
   const std::size_t used = a_state.paint ? a_state.paint->sources.size() : 0;
   return kMaxRecipeRows - std::min(kMaxRecipeRows, used);
 }
 
-struct MaskLimitVisitor {
-  const MenuState &state;
-
-  [[nodiscard]] bool operator()(const AddTerm &a_add) const {
-    return state.mask.terms.size() >= kMaxTerms ||
-           (state.paint && a_add.sources.size() > SourceRoom(state));
-  }
-  [[nodiscard]] bool operator()(const SetTermKind &a_set) const {
-    return state.paint && a_set.sources.size() > SourceRoom(state);
-  }
-  [[nodiscard]] bool operator()(const LoadMask &a_load) const {
-    return a_load.terms.size() > kMaxTerms;
-  }
-  [[nodiscard]] bool operator()(const SetMode &) const { return false; }
-  [[nodiscard]] bool operator()(const PickPiece &) const { return false; }
-  [[nodiscard]] bool operator()(const PickRecipe &) const { return false; }
-  [[nodiscard]] bool operator()(const PinRecipe &) const { return false; }
-  [[nodiscard]] bool operator()(const PickTarget &) const { return false; }
-  [[nodiscard]] bool operator()(const PickSlot &) const { return false; }
-  [[nodiscard]] bool operator()(const PickCell &) const { return false; }
-  [[nodiscard]] bool operator()(const PickLayer &) const { return false; }
-  [[nodiscard]] bool operator()(const ViewGeometry &) const { return false; }
-  [[nodiscard]] bool operator()(const SetStackSplit &) const { return false; }
-  [[nodiscard]] bool operator()(const SetWorkspaceSplit &) const {
-    return false;
-  }
-  [[nodiscard]] bool operator()(const ShowSettings &) const { return false; }
-  [[nodiscard]] bool operator()(const ShowResource &) const { return false; }
-  [[nodiscard]] bool operator()(const ReadMesh &) const { return false; }
-  [[nodiscard]] bool operator()(const SetTermOp &) const { return false; }
-  [[nodiscard]] bool operator()(const SetTermText &) const { return false; }
-  [[nodiscard]] bool operator()(const RemoveTerm &) const { return false; }
-  [[nodiscard]] bool operator()(const MoveTerm &) const { return false; }
-  [[nodiscard]] bool operator()(const PickTerm &) const { return false; }
-  [[nodiscard]] bool operator()(const SoloTerm &) const { return false; }
-  [[nodiscard]] bool operator()(const MuteTerm &) const { return false; }
-  [[nodiscard]] bool operator()(const SetPeek &) const { return false; }
-  [[nodiscard]] bool operator()(const ClearMask &) const { return false; }
-  [[nodiscard]] bool operator()(const UndoMask &) const { return false; }
-  [[nodiscard]] bool operator()(const RedoMask &) const { return false; }
-  [[nodiscard]] bool operator()(const BeginPaint &) const { return false; }
-  [[nodiscard]] bool operator()(const SetPaintSurface &) const { return false; }
-  [[nodiscard]] bool operator()(const KeepPaint &) const { return false; }
-  [[nodiscard]] bool operator()(const EndPaint &) const { return false; }
-  [[nodiscard]] bool operator()(const UpdatePaint &) const { return false; }
-  [[nodiscard]] bool operator()(const EditRecipe &) const { return false; }
-  [[nodiscard]] bool operator()(const SoloRecipe &) const { return false; }
-  [[nodiscard]] bool operator()(const SoloPiece &) const { return false; }
-  [[nodiscard]] bool operator()(const SoloOutput &) const { return false; }
-  [[nodiscard]] bool operator()(const SoloLayer &) const { return false; }
-  [[nodiscard]] bool operator()(const MuteLayer &) const { return false; }
-  [[nodiscard]] bool operator()(const SetFreeze &) const { return false; }
-  [[nodiscard]] bool operator()(const SetScrub &) const { return false; }
-  [[nodiscard]] bool operator()(const SetSpeed &) const { return false; }
-  [[nodiscard]] bool operator()(const StepClock &) const { return false; }
-  [[nodiscard]] bool operator()(const Undo &) const { return false; }
-  [[nodiscard]] bool operator()(const Redo &) const { return false; }
-  [[nodiscard]] bool operator()(const CreateRecipe &) const { return false; }
-  [[nodiscard]] bool operator()(const RenameRecipe &) const { return false; }
-  [[nodiscard]] bool operator()(const DeleteRecipe &) const { return false; }
-  [[nodiscard]] bool operator()(const DuplicateRecipe &) const { return false; }
-  [[nodiscard]] bool operator()(const FireTrigger &) const { return false; }
-};
-
 [[nodiscard]] bool ExceedsMaskLimits(const MenuState &a_state,
                                      const Intent &a_intent) {
-  return Match(a_intent, MaskLimitVisitor{a_state});
+  const bool paint = a_state.paint.has_value();
+  if (const auto *add = Get<AddTerm>(a_intent)) {
+    return a_state.mask.terms.size() >= kMaxTerms ||
+           (paint && add->sources.size() > SourceRoom(a_state));
+  }
+  if (const auto *set = Get<SetTermKind>(a_intent)) {
+    return paint && set->sources.size() > SourceRoom(a_state);
+  }
+  if (const auto *load = Get<LoadMask>(a_intent)) {
+    return load->terms.size() > kMaxTerms;
+  }
+  return false;
 }
 
 void ReportMaskLimit(MenuState &a_state) {
@@ -920,7 +802,19 @@ bool AcceptIntent(const MenuState &a_state, const Intent &a_intent) {
   if (!EditorSettled(a_state) && RequiresSettledEditor(a_intent)) {
     return false;
   }
-  return Match(a_intent, AcceptVisitor{a_state});
+  if (const auto *begin = Get<BeginPaint>(a_intent)) {
+    return AcceptBeginPaint(a_state, *begin);
+  }
+  if (const auto *keep = Get<KeepPaint>(a_intent)) {
+    return AcceptKeepPaint(a_state, *keep);
+  }
+  if (const auto *update = Get<UpdatePaint>(a_intent)) {
+    return AcceptUpdatePaint(a_state, *update);
+  }
+  if (Is<EndPaint>(a_intent)) {
+    return AcceptEndPaint(a_state);
+  }
+  return true;
 }
 
 void ResolveEditorSelection(MenuState &a_state, const Snapshot &a_snapshot) {
