@@ -2,8 +2,28 @@
 #include "planners/RenderPlan.h"
 
 #include <algorithm>
+#include <iterator>
 
 namespace BetterEnchantmentEffects {
+std::vector<RenderValueRef> LayerOperands(const PlannedLayer &layer) {
+  std::vector<RenderValueRef> operands;
+  const auto field = [&](const LayerField &f) {
+    operands.insert(operands.end(), f.inputs.begin(), f.inputs.end());
+    operands.insert(operands.end(), f.lookups.begin(), f.lookups.end());
+  };
+  if (layer.sourceField)
+    field(*layer.sourceField);
+  else
+    operands.push_back(layer.source);
+  operands.push_back(layer.opacity);
+  if (layer.maskField)
+    field(*layer.maskField);
+  else if (layer.mask)
+    operands.push_back(*layer.mask);
+  if (layer.color)
+    operands.push_back(*layer.color);
+  return operands;
+}
 std::vector<RenderValueRef> InputsOf(const RenderStepKind &step) {
   return Match(
       step,
@@ -49,14 +69,8 @@ std::vector<RenderValueRef> InputsOf(const RenderStepKind &step) {
       },
       [](const CompositeStackStep &k) {
         std::vector<RenderValueRef> inputs{k.base, k.visibility};
-        for (const auto &layer : k.layers) {
-          inputs.push_back(layer.source);
-          inputs.push_back(layer.opacity);
-          if (layer.mask)
-            inputs.push_back(*layer.mask);
-          if (layer.color)
-            inputs.push_back(*layer.color);
-        }
+        for (const auto &layer : k.layers)
+          std::ranges::copy(LayerOperands(layer), std::back_inserter(inputs));
         return inputs;
       });
 }
@@ -339,6 +353,14 @@ std::expected<void, std::string> ValidateRenderPlan(const RenderPlan &plan) {
               require(*layer.mask, RenderResourceType::kTexture);
             if (layer.color)
               require(*layer.color, ValueType::kVec3);
+            for (const auto *field : {&layer.sourceField, &layer.maskField})
+              if (*field && ((*field)->inputs.size() !=
+                                 (*field)->program.Inputs().size() ||
+                             (*field)->lookups.size() !=
+                                 (*field)->program.FunctionLookups().size()))
+                problem = "layer field binding count mismatch";
+            if (layer.maskField && !layer.mask)
+              problem = "layer mask field without a mask";
           }
         });
     if (!problem.empty())

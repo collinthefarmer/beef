@@ -101,6 +101,33 @@ bool SameBits(Vec3 a, Vec3 b) {
   return same(a.x, b.x) && same(a.y, b.y) && same(a.z, b.z);
 }
 
+std::vector<Vec3> FieldValues(Evaluator &evaluator,
+                              const CompositeStackStep &stack) {
+  std::vector<const LayerField *> fields;
+  for (const auto &layer : stack.layers)
+    for (const auto *field : {&layer.sourceField, &layer.maskField})
+      if (*field)
+        fields.push_back(&**field);
+  const auto packed = PackFields(fields);
+  if (!packed)
+    return {};
+  std::vector<Vec3> inputs;
+  for (std::size_t k = 0; k < packed->inputs.size(); ++k)
+    inputs.push_back(Is<InterpreterTextureInput>(packed->pack.inputs[k])
+                         ? evaluator.Stored(packed->inputs[k])
+                         : evaluator.Raw(packed->inputs[k]));
+  std::vector<LookupTable> lookups;
+  for (const auto &lookup : packed->lookups)
+    lookups.push_back(
+        evaluator.texel.lookups.at(Get<StepOutputRef>(lookup)->step));
+  std::vector<Vec3> values;
+  for (const auto &segment : packed->pack.segments)
+    values.push_back(EvaluateInterpreter(
+        std::span{packed->pack.code}.subspan(segment.first, segment.count),
+        {inputs, lookups}));
+  return values;
+}
+
 std::size_t CompareStacks(const RenderPlan &original, const RenderPlan &fused,
                           Random &random, int texels) {
   std::size_t differing = 0;
@@ -110,16 +137,36 @@ std::size_t CompareStacks(const RenderPlan &original, const RenderPlan &fused,
     Evaluator after{fused, texel, {}};
     for (std::size_t s = 0; s < original.steps.size(); ++s) {
       const auto *stack = Get<CompositeStackStep>(original.steps[s].kind);
-      if (!stack)
+      const auto *fusedStack = Get<CompositeStackStep>(fused.steps[s].kind);
+      if (!stack || !fusedStack ||
+          stack->layers.size() != fusedStack->layers.size()) {
+        differing += stack ? 1 : 0;
         continue;
-      for (const auto &layer : stack->layers) {
-        std::vector<RenderValueRef> operands{layer.source, layer.opacity};
+      }
+      const auto fields = FieldValues(after, *fusedStack);
+      std::size_t field = 0;
+      const auto fusedOperand =
+          [&](const std::optional<LayerField> &inlined,
+              RenderValueRef operand) -> std::optional<Vec3> {
+        if (!inlined)
+          return after.Stored(operand);
+        if (field >= fields.size())
+          return std::nullopt;
+        return fields[field++];
+      };
+      for (std::size_t l = 0; l < stack->layers.size(); ++l) {
+        const auto &layer = stack->layers[l];
+        const auto &fusedLayer = fusedStack->layers[l];
+        std::vector<std::pair<RenderValueRef, std::optional<Vec3>>> operands{
+            {layer.source, fusedOperand(fusedLayer.sourceField, layer.source)},
+            {layer.opacity, after.Stored(layer.opacity)}};
         if (layer.mask)
-          operands.push_back(*layer.mask);
+          operands.emplace_back(
+              *layer.mask, fusedOperand(fusedLayer.maskField, *layer.mask));
         if (layer.color)
-          operands.push_back(*layer.color);
-        for (const auto &operand : operands)
-          if (!SameBits(before.Stored(operand), after.Stored(operand)))
+          operands.emplace_back(*layer.color, after.Stored(*layer.color));
+        for (const auto &[operand, value] : operands)
+          if (!value || !SameBits(before.Stored(operand), *value))
             ++differing;
       }
     }
@@ -159,7 +206,7 @@ std::string Expression(Random &random, std::span<const std::string> leaves,
 
 int main() {
   Random random{5};
-  std::size_t chains = 0, inlined = 0, differing = 0;
+  std::size_t chains = 0, inlined = 0, layerFields = 0, differing = 0;
   for (int trial = 0; trial < 150; ++trial) {
     Recipe recipe;
     recipe.signals = {{"t", ExprSignal{"time * 0.37 + 0.1"}},
@@ -170,12 +217,15 @@ int main() {
     const std::array<std::string, 3> third{"@m2", "@t", "@m1"};
     recipe.masks = {{"m1", Expression(random, base, 3)},
                     {"m2", "(" + Expression(random, second, 3) + ") + @m1 * 0"},
-                    {"m3", "(" + Expression(random, third, 2) + ") + @m2 * 0"}};
+                    {"m3", "(" + Expression(random, third, 2) + ") + @m2 * 0"},
+                    {"m4", "(" + Expression(random, base, 2) + ") + @t * 0"}};
     SurfaceOutput surface;
     Layer layer;
     layer.source = Ref{"m3"};
     if (trial % 3 == 0)
       layer.mask = Ref{"m1"};
+    else if (trial % 3 == 1)
+      layer.mask = Ref{"m4"};
     surface.stack.push_back(layer);
     recipe.outputs.push_back(surface);
     const auto graph = RecipeGraph::Compile(recipe);
@@ -187,13 +237,15 @@ int main() {
     ++chains;
     const auto fused = FusePrograms(*plan);
     inlined += fused.inlined;
+    layerFields += fused.layerFields;
     Check(ValidateRenderPlan(fused.plan).has_value(), "a fused plan is valid");
     differing += CompareStacks(*plan, fused.plan, random, 10);
   }
-  std::printf("render fusion: %zu chains, %zu producers inlined\n", chains,
-              inlined);
-  Check(chains > 100 && inlined > 100,
-        "the generator fuses many animated chains");
+  std::printf("render fusion: %zu chains, %zu producers inlined, %zu layer "
+              "fields inlined\n",
+              chains, inlined, layerFields);
+  Check(chains > 100 && inlined > 100 && layerFields > 100,
+        "the generator fuses many animated chains into their stacks");
   test::Equal(differing, std::size_t{0},
               "every stack operand of a fused plan equals the unfused one, "
               "bit for bit");
@@ -218,9 +270,10 @@ int main() {
     const auto consumers = LiveConsumers(fused.plan);
     std::size_t liveM1 = 0;
     for (std::size_t s = 0; s < fused.plan.steps.size(); ++s)
-      if (fused.plan.steps[s].displayName == "mask m1" && consumers[s] == 2)
+      if (fused.plan.steps[s].displayName == "mask m1" && consumers[s] >= 1)
         ++liveM1;
-    Check(liveM1 == 1, "a producer with two consumers stays materialized");
+    Check(liveM1 == 1,
+          "a producer read by two programs stays materialized once");
     test::Equal(CompareStacks(*plan, fused.plan, random, 20), std::size_t{0},
                 "the shared producer plan stays equivalent");
   }
@@ -237,9 +290,11 @@ int main() {
   const auto stillGraph = RecipeGraph::Compile(still);
   const std::array stillRequests{RenderStackRequest{
       &stillGraph, &stillSurface, 1, PlacementId{0}, 0, {TextureSize{64}}}};
-  if (const auto plan = LowerRenderPlan({}, stillRequests, PerGeometryMesh()))
-    test::Equal(FusePrograms(*plan).inlined, std::size_t{0},
+  if (const auto plan = LowerRenderPlan({}, stillRequests, PerGeometryMesh())) {
+    const auto fused = FusePrograms(*plan);
+    test::Equal(fused.inlined + fused.layerFields, std::size_t{0},
                 "a static producer stays materialized and cached");
+  }
 
   const auto folder =
       test::Fixtures().parent_path().parent_path() / "recipes/examples";
@@ -268,10 +323,13 @@ int main() {
                           GeometryId{g}});
   if (const auto plan = LowerRenderPlan({}, demo, PerGeometryMesh())) {
     const auto fused = FusePrograms(*plan);
-    std::printf("render fusion: demo plan %zu steps, %zu producers inlined\n",
-                plan->steps.size(), fused.inlined);
+    std::printf("render fusion: demo plan %zu steps, %zu producers inlined, "
+                "%zu layer fields inlined\n",
+                plan->steps.size(), fused.inlined, fused.layerFields);
     Check(ValidateRenderPlan(fused.plan).has_value(),
           "the fused demo plan is valid");
+    Check(fused.layerFields > 0,
+          "animated demo fields read by several stacks inline into each");
     test::Equal(CompareStacks(*plan, fused.plan, random, 20), std::size_t{0},
                 "the fused demo plan is equivalent");
   }

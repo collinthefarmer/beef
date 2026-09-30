@@ -12,6 +12,9 @@ struct InterpreterTexel {
   std::span<const Vec3> inputs;
   std::span<const LookupTable> lookups;
 };
+[[nodiscard]] Vec3
+EvaluateInterpreter(std::span<const InterpreterInstruction> code,
+                    const InterpreterTexel &texel);
 [[nodiscard]] Vec3 EvaluateInterpreter(const InterpreterProgram &program,
                                        const InterpreterTexel &texel);
 [[nodiscard]] Vec3 QuantizeUnorm8(Vec3 value);

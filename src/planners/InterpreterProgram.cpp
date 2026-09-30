@@ -440,4 +440,45 @@ ValueType InterpreterProgram::ResultType() const noexcept {
 std::size_t InterpreterProgram::StackSize() const noexcept {
   return stackSize_;
 }
+std::expected<InterpreterPack, std::string>
+PackInterpreters(std::span<const InterpreterProgram *const> programs,
+                 const InterpreterLimits &limits) {
+  InterpreterPack pack;
+  for (const auto *program : programs) {
+    if (!program)
+      return std::unexpected("packed program is missing");
+    const auto inputOffset = static_cast<std::uint32_t>(pack.inputs.size());
+    const auto lookupOffset = static_cast<std::uint32_t>(pack.lookupCount);
+    const auto textureOffset = static_cast<std::uint32_t>(pack.textureCount);
+    for (const auto &input : program->Inputs()) {
+      if (const auto *texture = Get<InterpreterTextureInput>(input))
+        pack.inputs.push_back(InterpreterTextureInput{
+            texture->output, texture->slot + textureOffset});
+      else
+        pack.inputs.push_back(input);
+    }
+    pack.textureCount += program->TextureCount();
+    pack.lookupCount += program->FunctionLookups().size();
+    const InterpreterSegment segment{
+        static_cast<std::uint32_t>(pack.code.size()),
+        static_cast<std::uint32_t>(program->Instructions().size())};
+    for (auto instruction : program->Instructions()) {
+      if (instruction.opcode == InterpreterOpcode::kInput)
+        instruction.index += inputOffset;
+      else if (instruction.opcode == InterpreterOpcode::kLookup)
+        instruction.index += lookupOffset;
+      pack.code.push_back(instruction);
+    }
+    pack.segments.push_back(segment);
+    if (program->StackSize() > std::min(limits.stack, kInterpreterStack))
+      return std::unexpected("packed program exceeds the interpreter stack");
+  }
+  if (pack.code.size() >
+          std::min(limits.instructions, kInterpreterInstructions) ||
+      pack.inputs.size() > std::min(limits.inputs, kInterpreterInputs) ||
+      pack.textureCount > std::min(limits.textures, kInterpreterTextures) ||
+      pack.lookupCount > std::min(limits.lookups, kInterpreterLookups))
+    return std::unexpected("packed programs exceed interpreter limits");
+  return pack;
+}
 }

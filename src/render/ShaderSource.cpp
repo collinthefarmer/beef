@@ -23,9 +23,17 @@ Texture2D    prev  : register(t2);
 Texture2D    curve : register(t3);
 SamplerState samp  : register(s0);
 
+float LerpCurve(float low, float high, float position)
+{
+	return low + (high - low) * (position - floor(position));
+}
+
 float Curve(float v)
 {
-	return curve.SampleLevel(samp, float2(saturate(v) * (255.0 / 256.0) + 0.5 / 256.0, 0.5), 0).x;
+	float p = saturate(v) * 255;
+	int lo = (int)p;
+	int hi = min(lo + 1, 255);
+	return LerpCurve(curve.Load(int3(lo, 0, 0)).x, curve.Load(int3(hi, 0, 0)).x, p);
 }
 
 struct VSOut { float4 pos : SV_Position; float2 uv : TEXCOORD0; };
@@ -69,7 +77,8 @@ float3 Blend(int mode, float3 below, float3 value)
 		float3 t = below * 2 - float3(1, 1, 0);
 		float3 u = value * float3(-2, -2, 2) + float3(1, 1, -1);
 		float3 r = t * (dot(t, u) / max(t.z, 0.001)) - u;
-		return normalize(r) * 0.5 + 0.5;
+		float len = length(r);
+		return (len > 0 ? r / len : float3(0, 0, 1)) * 0.5 + 0.5;
 	}
 	return value;
 }
@@ -165,15 +174,23 @@ float4 SampleSlot(int slot, float2 uv, float mip)
 	}
 }
 
+float LutLoad(int slot, int at)
+{
+	int3 texel = int3(at, 0, 0);
+	switch (slot) {
+	case 0: return lut0.Load(texel).x;
+	case 1: return lut1.Load(texel).x;
+	case 2: return lut2.Load(texel).x;
+	default: return lut3.Load(texel).x;
+	}
+}
+
 float LutAt(int slot, float v)
 {
-	float2 uv = float2(saturate(v) * (255.0 / 256.0) + 0.5 / 256.0, 0.5);
-	switch (slot) {
-	case 0: return lut0.SampleLevel(samp, uv, 0).x;
-	case 1: return lut1.SampleLevel(samp, uv, 0).x;
-	case 2: return lut2.SampleLevel(samp, uv, 0).x;
-	default: return lut3.SampleLevel(samp, uv, 0).x;
-	}
+	float p = saturate(v) * 255;
+	int lo = (int)p;
+	int hi = min(lo + 1, 255);
+	return LerpCurve(LutLoad(slot, lo), LutLoad(slot, hi), p);
 }
 
 float2 PlaceUv(float2 uv, float4 tr, float4 fl)
@@ -220,33 +237,37 @@ float3 SafeDiv(float3 a, float3 b)
 	return float3(b.x == 0 ? 0 : a.x / b.x, b.y == 0 ? 0 : a.y / b.y, b.z == 0 ? 0 : a.z / b.z);
 }
 
-float3 SafePow(float3 a, float3 b)
+float PowOne(float a, float b)
 {
-	float3 r = pow(a, b);
-	return float3(isfinite(r.x) ? r.x : 0, isfinite(r.y) ? r.y : 0, isfinite(r.z) ? r.z : 0);
+	if (b == 0 || a == 1) return 1;
+	float r = exp2(log2(abs(a)) * b);
+	if (a < 0) {
+		if (b != floor(b)) return 0;
+		if (frac(b * 0.5) != 0) r = -r;
+	}
+	return isfinite(r) ? r : 0;
 }
 
-float4 PSProgram(VSOut i) : SV_Target
+float3 SafePow(float3 a, float3 b)
+{
+	return float3(PowOne(a.x, b.x), PowOne(a.y, b.y), PowOne(a.z, b.z));
+}
+
+float3 RunProgram(int first, int count, float2 uv)
 {
 	float3 st[)";
 
 constexpr const char *kShaderSourceMid = R"(];
 	int    sp = 0;
-	int    n = (int)misc.y;
-	[loop] for (int k = 0; k < n; ++k) {
+	int    end = min(first + count, 256);
+	[loop] for (int k = max(first, 0); k < end; ++k) {
 		float4 c = code[k];
 		int    op = (int)c.x;
 		int    idx = (int)c.z;
-		int    components = (int)c.w;
+		int    packed = (int)c.w;
+		int    components = packed & 3;
+		int    pops = packed >> 2;
 		float3 a = 0, b = 0, d = 0;
-		int pops = 0;
-		switch (op) {
-		case 0: case 3: pops = 0; break;
-		case 4: case 8: case 9: case 23: case 27: case 28: case 29: case 30: case 31: case 33: case 34: case 38: case 42: case 43: case 44: pops = 1; break;
-		case 1: case 10: case 11: case 12: case 13: case 14: case 15: case 16: case 17: case 18: case 19: case 20: case 21:
-		case 24: case 25: case 32: case 35: case 39: case 40: case 41: pops = 2; break;
-		default: pops = 3; break;
-		}
 		if (pops >= 1) { if (sp > 0) { --sp; a = st[sp]; } }
 		if (pops >= 2) { if (sp > 0) { --sp; b = st[sp]; } }
 		if (pops >= 3) { if (sp > 0) { --sp; d = st[sp]; } }
@@ -255,7 +276,7 @@ constexpr const char *kShaderSourceMid = R"(];
 		case 0:  r = c.y; break;
 		case 1:  r = float3(b.x, a.x, 0); break;
 		case 2:  r = float3(d.x, b.x, a.x); break;
-		case 3:  r = refs[idx].x > 0.5 ? ReadTexture((int)refs[idx].y, i.uv) : refValues[idx].xyz; break;
+		case 3:  r = refs[idx].x > 0.5 ? ReadTexture((int)refs[idx].y, uv) : refValues[idx].xyz; break;
 		case 4:  r = LutAt(idx, a.x); break;
 		case 8:  r = -a; break;
 		case 9:  r = a.x > 0 ? 0 : 1; break;
@@ -300,7 +321,12 @@ constexpr const char *kShaderSourceMid = R"(];
 
 constexpr const char *kShaderSourceTail = R"() { st[sp] = r; ++sp; }
 	}
-	float3 result = sp > 0 ? st[sp - 1] : 0;
+	return sp > 0 ? st[sp - 1] : float3(0, 0, 0);
+}
+
+float4 PSProgram(VSOut i) : SV_Target
+{
+	float3 result = RunProgram(0, (int)misc.y, i.uv);
 	return misc.z > 0.5 ? float4(result, 1) : float4(result.xxx, 1);
 }
 
@@ -395,7 +421,8 @@ float4 PSRipple(VSOut i) : SV_Target
 			float trail = directional ? smoothstep(-width, 0, d) : 1;
 			f = lead * trail;
 		} else {
-			f = exp(-pow((d - r) / width, 2) * 4);
+			float x = (d - r) / width;
+			f = exp(-x * x * 4);
 		}
 		v = max(v, f * exp(-rippleShape.z * rippleFirings[k].w));
 	}
@@ -409,6 +436,7 @@ cbuffer StackParams : register(b5)
 	float4 stackLayer[8];
 	float4 stackColor[8];
 	float4 stackMask[8];
+	float4 stackField[8];
 	float4 stackMisc;
 };
 Texture2D stackBase : register(t12);
@@ -469,14 +497,22 @@ float4 PSStack(VSOut i) : SV_Target
 	int n = (int)stackMisc.x;
 	[loop] for (int k = 0; k < n && k < 8; ++k) {
 		bool hasSource = stackMask[k].w > 0.5;
+		bool hasMask = stackMask[k].x >= 0;
 		float4 s = 0;
-		if (hasSource) {
+		float4 m = 0;
+		[loop] for (int f = 0; f < 2; ++f) {
+			int count = (int)(f == 0 ? stackField[k].y : stackField[k].w);
+			if (count > 0) {
+				float4 v = float4(RunProgram((int)(f == 0 ? stackField[k].x : stackField[k].z), count, rawUv), 1);
+				if (f == 0) s = v; else m = v;
+			}
+		}
+		if (hasSource && stackField[k].y < 0.5) {
 			float2 uv = stackLayer[k].y > 0.5 ? rawUv : PlaceUv(rawUv, stackOffsetScale[k], stackFlags[k]);
 			s = StackSource(k, uv, stackFlags[k].w);
 		}
 		float3 value = LayerValue(stackColor[k], hasSource, s, (int)stackLayer[k].x);
-		bool hasMask = stackMask[k].x >= 0;
-		float4 m = hasMask ? StackMap(k, rawUv) : float4(0, 0, 0, 0);
+		if (hasMask && stackField[k].w < 0.5) m = StackMap(k, rawUv);
 		float4 result = ComposeLayer(below, value, stackLayer[k].w, hasMask, m, (int)stackMask[k].x, (int)stackLayer[k].z, (int)stackMask[k].y);
 		below = k + 1 < n ? Unorm8(result) : result;
 	}

@@ -22,6 +22,8 @@ constexpr std::array kExpressions{
     "sqrt(abs(@a)) * @b",
     "sin(@a) + cos(@b)",
     "pow(abs(@a) + 0.25, @b)",
+    "pow(@a, 2) + pow(@a, 3) + pow(@a, -1)",
+    "pow(@a, @b) + pow(@a * 0, @b * 0) + pow(1, @b / 0)",
     "lerp(@a, @b, 0.3) + step(@a, @b)",
     "smoothstep(-1, 1, @a) * @b",
     "if(@a > @b, @a, @b) + if(@a <= @b, 1, 0)",

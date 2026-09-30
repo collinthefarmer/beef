@@ -47,6 +47,7 @@ struct alignas(16) StackConstants {
   float layer[8][4];
   float color[8][4];
   float mask[8][4];
+  float field[8][4];
   float misc[4];
 };
 static_assert(sizeof(StackConstants) % 16 == 0);

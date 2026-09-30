@@ -121,4 +121,19 @@ private:
   std::size_t stackSize_ = 0;
   ValueType resultType_ = ValueType::kScalar;
 };
+struct InterpreterSegment {
+  std::uint32_t first = 0;
+  std::uint32_t count = 0;
+  [[nodiscard]] bool operator==(const InterpreterSegment &) const = default;
+};
+struct InterpreterPack {
+  std::vector<InterpreterInstruction> code;
+  std::vector<InterpreterInput> inputs;
+  std::size_t textureCount = 0;
+  std::size_t lookupCount = 0;
+  std::vector<InterpreterSegment> segments;
+};
+[[nodiscard]] std::expected<InterpreterPack, std::string>
+PackInterpreters(std::span<const InterpreterProgram *const> programs,
+                 const InterpreterLimits &limits = {});
 }

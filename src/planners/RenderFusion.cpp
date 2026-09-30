@@ -43,6 +43,126 @@ bool Eligible(const RenderPlan &plan, RenderStepId producer,
          consumer.format == TextureFormat::kRgba8 && consumers[producer] == 1 &&
          changing[producer];
 }
+
+struct StoredField {
+  LayerField field;
+  TextureSize size;
+};
+
+std::optional<StoredField> AsStoredField(const RenderPlan &plan,
+                                         RenderStepId producer) {
+  const auto program = AsProgram(plan, plan.steps[producer].kind);
+  if (!program || program->requirements.format != TextureFormat::kRgba8)
+    return std::nullopt;
+  auto stored = InterpreterProgram::Inline(
+      InterpreterProgram::Sample(ValueType::kVec3), 0, program->program);
+  if (!stored)
+    return std::nullopt;
+  return StoredField{
+      LayerField{std::move(*stored), program->inputs, program->lookups},
+      program->requirements.size};
+}
+
+bool Reads(RenderValueRef operand, RenderStepId producer) {
+  const auto *output = Get<StepOutputRef>(operand);
+  return output && output->step == producer;
+}
+
+bool FieldsFit(const CompositeStackStep &stack) {
+  std::vector<const LayerField *> fields;
+  for (const auto &layer : stack.layers)
+    for (const auto *field : {&layer.sourceField, &layer.maskField})
+      if (*field)
+        fields.push_back(&**field);
+  return PackFields(fields).has_value();
+}
+
+std::size_t AttachField(CompositeStackStep &stack, RenderStepId producer,
+                        const LayerField &field) {
+  std::size_t attached = 0;
+  for (auto &layer : stack.layers) {
+    if (!layer.sourceField && Reads(layer.source, producer)) {
+      layer.sourceField = field;
+      ++attached;
+    }
+    if (!layer.maskField && layer.mask && Reads(*layer.mask, producer)) {
+      layer.maskField = field;
+      ++attached;
+    }
+  }
+  return attached;
+}
+
+bool Live(const RenderPlan &plan, RenderStepId step,
+          const std::vector<std::size_t> &consumers) {
+  return consumers[step] > 0 ||
+         std::ranges::any_of(plan.stackOutputs, [&](const auto &output) {
+           return output.result.step == step;
+         });
+}
+
+std::size_t InlineField(RenderPlan &plan, RenderStepId producer,
+                        const std::vector<std::size_t> &consumers) {
+  const auto stored = AsStoredField(plan, producer);
+  if (!stored)
+    return 0;
+  std::vector<std::pair<RenderStepId, CompositeStackStep>> updated;
+  std::size_t attached = 0;
+  for (std::size_t step = producer + 1; step < plan.steps.size(); ++step) {
+    if (!Live(plan, step, consumers) ||
+        std::ranges::none_of(Operands(plan, step), [&](RenderValueRef operand) {
+          return Reads(operand, producer);
+        }))
+      continue;
+    const auto *stack = Get<CompositeStackStep>(plan.steps[step].kind);
+    if (!stack || stack->requirements.size != stored->size)
+      return 0;
+    auto candidate = *stack;
+    attached += AttachField(candidate, producer, stored->field);
+    if (!FieldsFit(candidate) ||
+        std::ranges::any_of(InputsOf(candidate), [&](RenderValueRef operand) {
+          return Reads(operand, producer);
+        }))
+      return 0;
+    updated.emplace_back(step, std::move(candidate));
+  }
+  if (updated.size() != consumers[producer])
+    return 0;
+  for (auto &[step, stack] : updated)
+    plan.steps[step].kind = std::move(stack);
+  return attached;
+}
+
+std::size_t InlineLayerFields(RenderPlan &plan) {
+  const auto changing = ChangingSteps(plan);
+  std::size_t inlined = 0;
+  for (std::size_t producer = 0; producer < plan.steps.size(); ++producer) {
+    const auto consumers = LiveConsumers(plan);
+    if (changing[producer] && consumers[producer] > 0)
+      inlined += InlineField(plan, producer, consumers);
+  }
+  return inlined;
+}
+}
+
+std::expected<PackedFields, std::string>
+PackFields(std::span<const LayerField *const> fields) {
+  std::vector<const InterpreterProgram *> programs;
+  PackedFields packed;
+  for (const auto *field : fields) {
+    if (!field)
+      return std::unexpected("packed layer field is missing");
+    programs.push_back(&field->program);
+    packed.inputs.insert(packed.inputs.end(), field->inputs.begin(),
+                         field->inputs.end());
+    packed.lookups.insert(packed.lookups.end(), field->lookups.begin(),
+                          field->lookups.end());
+  }
+  auto pack = PackInterpreters(programs);
+  if (!pack)
+    return std::unexpected(pack.error());
+  packed.pack = std::move(*pack);
+  return packed;
 }
 
 std::optional<ProgramStep> AsProgram(const RenderPlan &plan,
@@ -163,6 +283,7 @@ FusedPlan FusePrograms(RenderPlan plan) {
     if (!progressed)
       break;
   }
+  fused.layerFields = InlineLayerFields(fused.plan);
   return fused;
 }
 }

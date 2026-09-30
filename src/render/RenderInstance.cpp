@@ -2,11 +2,13 @@
 #include "render/RenderInstance.h"
 
 #include "diagnostics/Metrics.h"
+#include "planners/RenderFusion.h"
 
 #include "render/MeshReader.h"
 #include "render/SourceSampling.h"
 #include <algorithm>
 #include <cmath>
+#include <iterator>
 
 namespace BetterEnchantmentEffects {
 namespace {
@@ -70,13 +72,8 @@ SelectStackInputs(const CompositeStackStep &step, const RenderValue &control) {
   for (std::size_t i = 0; i < step.layers.size(); ++i) {
     if (filter->Hides(i))
       continue;
-    const auto &layer = step.layers[i];
-    inputs.push_back(layer.source);
-    inputs.push_back(layer.opacity);
-    if (layer.mask)
-      inputs.push_back(*layer.mask);
-    if (layer.color)
-      inputs.push_back(*layer.color);
+    std::ranges::copy(LayerOperands(step.layers[i]),
+                      std::back_inserter(inputs));
   }
   if (!inputs.empty())
     inputs.push_back(step.base);
@@ -90,6 +87,12 @@ struct Arguments {
     return found == values.end() ? nullptr : Get<T>(found->value);
   }
 };
+TextureLab::LayerInput FieldSampling() {
+  TextureLab::LayerInput input;
+  input.meshSpace = true;
+  input.channel = ShaderChannel::kRgb;
+  return input;
+}
 TextureView View(std::shared_ptr<TextureLab::RenderTarget> target,
                  ValueType type = ValueType::kScalar) {
   TextureView view;
@@ -110,25 +113,20 @@ AcquireStepTarget(RenderScratch &scratch, TextureRequirements requirements) {
   scratch.target = target;
   return target;
 }
-std::expected<RenderValue, std::string>
-DrawProgram(const InterpreterProgram &program,
-            std::span<const RenderValueRef> inputs,
-            std::span<const RenderValueRef> lookups, const Arguments &arguments,
-            TextureRequirements requirements, RenderScratch &scratch) {
-  if (inputs.size() != program.Inputs().size() ||
-      lookups.size() != program.FunctionLookups().size())
-    return std::unexpected("interpreter binding count mismatch");
+std::expected<TextureLab::InterpreterBindings, std::string> BindInterpreter(
+    std::span<const InterpreterInput> slots, std::size_t textureCount,
+    std::span<const RenderValueRef> inputs,
+    std::span<const RenderValueRef> lookups, const Arguments &arguments) {
   TextureLab::InterpreterBindings bindings;
-  bindings.inputCount = static_cast<std::uint32_t>(inputs.size());
-  bindings.textureCount = static_cast<std::uint32_t>(program.TextureCount());
-  bindings.lookupCount = static_cast<std::uint32_t>(lookups.size());
-  if (inputs.size() > bindings.values.size() ||
+  if (inputs.size() != slots.size() || inputs.size() > bindings.values.size() ||
       lookups.size() > bindings.lookups.size() ||
-      bindings.textureCount > bindings.textures.size())
+      textureCount > bindings.textures.size())
     return std::unexpected("interpreter binding limit exceeded");
+  bindings.inputCount = static_cast<std::uint32_t>(inputs.size());
+  bindings.textureCount = static_cast<std::uint32_t>(textureCount);
+  bindings.lookupCount = static_cast<std::uint32_t>(lookups.size());
   for (std::size_t i = 0; i < inputs.size(); ++i) {
-    if (const auto *texture =
-            Get<InterpreterTextureInput>(program.Inputs()[i])) {
+    if (const auto *texture = Get<InterpreterTextureInput>(slots[i])) {
       const auto *view = arguments.Find<TextureView>(inputs[i]);
       if (!view || !view->texture || texture->slot >= bindings.textures.size())
         return std::unexpected("interpreter texture is unavailable");
@@ -150,11 +148,37 @@ DrawProgram(const InterpreterProgram &program,
       return std::unexpected("interpreter lookup is unavailable");
     bindings.lookups[i] = lookup->get();
   }
+  return bindings;
+}
+std::expected<RenderValue, std::string>
+DrawProgram(const InterpreterProgram &program,
+            std::span<const RenderValueRef> inputs,
+            std::span<const RenderValueRef> lookups, const Arguments &arguments,
+            TextureRequirements requirements, RenderScratch &scratch) {
+  if (lookups.size() != program.FunctionLookups().size())
+    return std::unexpected("interpreter binding count mismatch");
+  const auto bindings = BindInterpreter(
+      program.Inputs(), program.TextureCount(), inputs, lookups, arguments);
+  if (!bindings)
+    return std::unexpected(bindings.error());
   const auto target = AcquireStepTarget(scratch, requirements);
   if (!target ||
-      !TextureLab::GetSingleton()->RenderProgram(*target, program, bindings))
+      !TextureLab::GetSingleton()->RenderProgram(*target, program, *bindings))
     return std::unexpected("interpreter draw failed");
   return RenderValue{View(target, program.ResultType())};
+}
+std::expected<TextureLab::StackFields, std::string>
+BindStackFields(std::span<const LayerField *const> fields,
+                const Arguments &arguments) {
+  auto packed = PackFields(fields);
+  if (!packed)
+    return std::unexpected(packed.error());
+  auto bindings =
+      BindInterpreter(packed->pack.inputs, packed->pack.textureCount,
+                      packed->inputs, packed->lookups, arguments);
+  if (!bindings)
+    return std::unexpected(bindings.error());
+  return TextureLab::StackFields{std::move(packed->pack), *bindings};
 }
 constexpr std::uint64_t kReleaseAfterIdleTicks = 30;
 std::string StepSpanKey(const RenderStep &step) {
@@ -582,16 +606,27 @@ ExecuteStep(const RenderStep &step,
         if (!base)
           return std::unexpected("stack base is unavailable");
         std::vector<TextureLab::LayerPass> passes;
+        std::vector<const LayerField *> fields;
+        const auto field = [&](const LayerField &f) {
+          fields.push_back(&f);
+          return static_cast<std::uint32_t>(fields.size() - 1);
+        };
         for (const auto *layer : layers) {
           TextureLab::LayerPass pass;
-          const auto *source = args.Find<TextureView>(layer->source);
-          const auto *value = args.Find<Value>(layer->source);
+          const auto *source = layer->sourceField
+                                   ? nullptr
+                                   : args.Find<TextureView>(layer->source);
+          const auto *value =
+              layer->sourceField ? nullptr : args.Find<Value>(layer->source);
           const auto *opacity = args.Find<Value>(layer->opacity);
-          if (!opacity || (!source && !value))
+          if (!opacity || (!source && !value && !layer->sourceField))
             return std::unexpected(
                 "visible layer source or opacity is unavailable");
           Vec3 color{1, 1, 1};
-          if (source) {
+          if (layer->sourceField) {
+            pass.sourceField = field(*layer->sourceField);
+            pass.input = FieldSampling();
+          } else if (source) {
             if (!source->texture)
               return std::unexpected("visible layer texture is unavailable");
             pass.source = source->texture.get();
@@ -614,7 +649,10 @@ ExecuteStep(const RenderStep &step,
           pass.channels =
               (layer->channels.r ? 1u : 0u) | (layer->channels.g ? 2u : 0u) |
               (layer->channels.b ? 4u : 0u) | (layer->channels.a ? 8u : 0u);
-          if (layer->mask) {
+          if (layer->maskField) {
+            pass.maskField = field(*layer->maskField);
+            pass.maskChannel = ShaderChannel::kRgb;
+          } else if (layer->mask) {
             const auto *mask = args.Find<TextureView>(*layer->mask);
             if (!mask || !mask->texture)
               return std::unexpected("visible layer mask is unavailable");
@@ -623,17 +661,25 @@ ExecuteStep(const RenderStep &step,
           }
           passes.push_back(pass);
         }
+        const auto stackFields = BindStackFields(fields, args);
+        if (!stackFields)
+          return std::unexpected(stackFields.error());
         auto layerRequirements = k.requirements;
         layerRequirements.mipPolicy = MipPolicy::kNone;
         const auto target = AcquireStepTarget(scratch, layerRequirements);
         if (!target)
           return std::unexpected("stack target is unavailable");
         TextureRef previous = base->texture;
-        if (lab->CanRenderStack(passes)) {
-          if (!lab->RenderStack(*target, previous.get(), passes))
+        if (lab->CanRenderStack(passes, *stackFields)) {
+          if (!lab->RenderStack(*target, previous.get(), passes, *stackFields))
             return std::unexpected("stack draw failed");
           previous = TextureRef{target->Texture()};
         } else {
+          const auto materialized =
+              lab->MaterializeFields(passes, *stackFields, k.requirements.size);
+          if (!materialized)
+            return std::unexpected("stack fields could not be drawn");
+          passes = materialized->passes;
           auto *alternate =
               passes.size() > 1
                   ? lab->Scratch(k.requirements.size, k.requirements.format,

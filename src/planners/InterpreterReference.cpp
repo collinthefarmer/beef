@@ -18,7 +18,16 @@ float Saturate(float v) {
 }
 float SafeDiv(float a, float b) { return b == 0.0f ? 0.0f : a / b; }
 float SafePow(float a, float b) {
-  const float r = std::exp2(std::log2(a) * b);
+  if (b == 0.0f || a == 1.0f)
+    return 1.0f;
+  float r = std::exp2(std::log2(std::fabs(a)) * b);
+  if (a < 0.0f) {
+    if (b != std::floor(b))
+      return 0.0f;
+    const float half = b * 0.5f;
+    if (half != std::floor(half))
+      r = -r;
+  }
   return std::isfinite(r) ? r : 0.0f;
 }
 float Lerp(float a, float b, float t) { return a + (b - a) * t; }
@@ -45,9 +54,13 @@ Vec3 QuantizeUnorm8(Vec3 value) {
 }
 Vec3 EvaluateInterpreter(const InterpreterProgram &program,
                          const InterpreterTexel &texel) {
+  return EvaluateInterpreter(program.Instructions(), texel);
+}
+Vec3 EvaluateInterpreter(std::span<const InterpreterInstruction> code,
+                         const InterpreterTexel &texel) {
   std::array<Vec3, kInterpreterStack> stack{};
   std::size_t sp = 0;
-  for (const auto &c : program.Instructions()) {
+  for (const auto &c : code) {
     Vec3 a{}, b{}, d{};
     const auto pops = InterpreterPops(c.opcode);
     if (pops >= 1 && sp > 0)

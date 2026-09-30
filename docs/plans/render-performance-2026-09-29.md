@@ -212,8 +212,21 @@ plan for inspection and are released when idle.
 - 3d, layers: a stack of up to 8 layers without a legacy curve draws in one
   `PSStack` pass. The per-layer pass and `PSStack` share `ComposeLayer`;
   `PSStack` rounds to RGBA8 between layers and leaves the last layer to the
-  hardware store. Other stacks keep the per-layer path. Inlining program
-  fields into stack layers is not done yet.
+  hardware store. Other stacks keep the per-layer path.
+- 3d, layer fields: an animated program field whose every live consumer is a
+  stack layer is evaluated inside `PSStack` in each of those stacks, and its
+  own draw stops. This relaxes rule 2 for stack consumers, because a demo
+  field feeds two or three stacks and its program is 13 to 20 instructions.
+  Over 150 random chains (209 layer fields) and the demo plan (10 layer
+  fields: frost into two stacks and tracePacket into three, on two
+  geometries), every layer operand equals the unfused stored value bit for
+  bit. In game, `FusionCheck` compared 18,908 stacks with layer fields, with
+  a largest difference of 1/255 and none over one step. With the check off,
+  a run with all three recipes held a median of 44 fps at 64 stack
+  evaluations per frame. Plugin GPU time per timed tick was 10.9 ms and
+  plugin CPU tick time was 2.0 ms per frame. Program draws fell to about
+  0.1 per tick and the stack passes took on their work, so GPU time per tick
+  did not fall measurably against the 10.5 ms of the stacked-pass run.
 - 3e done: `FusionCheck` renders the per-layer chain after each stacked draw
   and reduces the largest RGB and alpha difference. In game, 13,028 stacks
   compared with a largest difference of 1/255 and none over one step, the
@@ -223,9 +236,12 @@ plan for inspection and are released when idle.
   unchanged at about 10.5 ms and plugin CPU at about 3 ms. The run has no
   nothing-equipped baseline and evaluates 72 stacks per frame against 64, so
   the gain is not yet attributed; a same-scene A/B would settle it.
-- Finding, not fixed: the recipe CPU evaluator and the GPU interpreter
-  disagree on `pow` with a negative base or `pow(0, 0)` (CPU 4 and 1, GPU 0 and
-  0), so the same expression can differ between a signal and a field.
+- Fixed after 3d: `pow` now follows `std::pow` on the GPU and in the CPU
+  reference (`pow(-2, 2)` is 4, `pow(0, 0)` is 1), so a signal and a field
+  agree. The same pass made lookups exact (two `Load`s and a shader lerp
+  instead of 8-bit filter weights), guarded the normal blend against a zero
+  vector, packed the pop count into the instruction constants, and raised
+  the shader optimization level to 3.
 
 ## Later stages
 

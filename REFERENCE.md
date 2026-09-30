@@ -214,6 +214,16 @@ atom   := number | "[" expr "," expr ("," expr)? "]" | "(" expr ")"
 - Functions: `abs min max clamp saturate floor ceil frac sqrt pow sin cos
   step smoothstep lerp if length distance dot cross normalize`. There is
   no `^`.
+- `pow(a, b)` follows `std::pow` and maps a non-finite result to 0:
+  `pow(-2, 2)` is 4, `pow(-2, 3)` is -8, `pow(0, 0)` is 1, a negative base
+  with a fractional exponent is 0. The GPU interpreter and the CPU reference
+  compute the magnitude as `exp2(log2(|a|) * b)`, because HLSL `pow` is
+  that expansion and is undefined for a negative base; the recipe
+  evaluator uses `std::pow`, which agrees to rounding.
+- A lookup (a curve) is a 256-entry R32_FLOAT texture. The shader reads the
+  two neighbouring entries with `Load` and interpolates in the shader,
+  exactly as the CPU reference does. The sampler's linear filter is not
+  used, because D3D11 guarantees only 8 bits of filter-weight precision.
 - The vector family (`length`, `distance`, `dot`, `cross`, `normalize`)
   rejects scalar operands at check time: the shader represents a scalar
   as a splatted float3, so a GPU `length` or `dot` of one would disagree
@@ -314,12 +324,18 @@ Mode formulas:
 - The `normal` blend is reoriented normal mapping: the value's normal
   rotated so its up follows the normal below; both maps are 0..1
   tangent-space encodings (NOTES 58). `lerp` is replace under the opacity
-  mix, so it shares replace's arithmetic.
+  mix, so it shares replace's arithmetic. A reoriented normal of zero
+  length becomes the flat normal (0, 0, 1) instead of a NaN.
+- The shaders compile with `D3DCOMPILE_OPTIMIZATION_LEVEL3`. The compiler
+  may reorder float arithmetic at any level, so fused and unfused passes can
+  differ by one 8-bit step at a rounding boundary; `FusionCheck` measures
+  that bound.
 - A stack without a base starts transparent black: alpha is the fuzz
   weight, the coat strength or the subsurface thickness.
 
 Interpreter constants (`cbuffer` of the interpreter pass): `code[256]` x
-op, y number, z index; `refs[16]` x 1 = texture read (y slot) or 0 =
+op, y number, z index, w the component count (1 to 3) plus 4 times the pop
+count, so the shader does not decode the pop count per instruction; `refs[16]` x 1 = texture read (y slot) or 0 =
 value; `refValues[16]` the value broadcast; `texParams[8]` x channel, y
 mesh space, z normalise, w mip; `texTransform[8]` xy uv offset, zw tile;
 `texFlags[8]` x mirror u, y mirror v, z transpose, w nearest; `misc` x
@@ -1220,9 +1236,34 @@ Decompile provenance (`decompiled/WornEnchantmentFX/plugin.c` unless noted):
   path stores each layer in an RGBA8 target, and leaves the last layer to the
   hardware store. `PSStack` binds its base at t12, its layer sources at t13 to
   t20 and its masks at t21 to t28, clear of the program pass's t0 to t11.
+- A stack layer evaluates its source or mask program inside `PSStack` (a
+  **layer field**) when the field is program-like, animates, is stored RGBA8
+  at the stack's size, and every live consumer of it is a stack reading it as
+  a layer source or mask. The field then inlines into every such stack or
+  into none, so its own draw stops; each stack runs its program once. A
+  layer field is the field's program followed by `kSplat` for a scalar field
+  and `kQuantize`, so it yields the stored RGB. The stack reads it with the
+  `kRgb` channel, which equals the stored `kR` read because the value is
+  splatted. A program field is drawn in mesh space and read by the stack at
+  the same texel centre, so no placement applies.
+- `PackInterpreters` concatenates a stack's layer fields into one program
+  constant block: inputs, texture slots and lookups are renumbered by offset,
+  and each field keeps a code segment. `RunProgram(first, count, uv)` runs
+  one segment with an empty stack; `PSProgram` runs segment 0 to the code
+  length. A stack's fields share the interpreter limits (256 instructions, 16
+  inputs, 8 textures, 4 lookups); a field that does not fit stays
+  materialized. `PSStack` binds the program constants at b1 and the program
+  textures and lookups at t0 to t11. `StackConstants::field` holds each
+  layer's source and mask segment as first and count; a count of 0 samples
+  the bound texture.
+- A stack that cannot draw in one pass (more than 8 layers, a legacy curve,
+  or no program pipeline) draws its layer fields into RGBA8 targets first
+  (`MaterializeFields`) and then runs the per-layer chain.
 - `FusionCheck` (off by default) renders each stacked draw's per-layer chain
   too and reduces the largest RGB and alpha difference; it waits on
-  readbacks, so it is a diagnostic mode.
+  readbacks, so it is a diagnostic mode. The chain draws each layer field
+  into its own target first, so the check compares a field evaluated in the
+  stack with the field's program pass followed by the layer pass.
 - Only stack results generate mips. The lowering sets `MipPolicy::kNone` on
   every value it builds, because every intermediate is read at its own size,
   where sampling uses mip 0. A stack draws its layers into targets without

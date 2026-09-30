@@ -148,11 +148,18 @@ struct DrawRippleStep {
   TextureRequirements requirements;
   [[nodiscard]] bool operator==(const DrawRippleStep &) const = default;
 };
+struct LayerField {
+  InterpreterProgram program;
+  std::vector<RenderValueRef> inputs;
+  std::vector<RenderValueRef> lookups;
+  [[nodiscard]] bool operator==(const LayerField &) const = default;
+};
 struct PlannedLayer {
   RenderValueRef source, opacity;
   std::optional<RenderValueRef> mask, color;
   Blend blend;
   ChannelSet channels;
+  std::optional<LayerField> sourceField, maskField;
   [[nodiscard]] bool operator==(const PlannedLayer &) const = default;
 };
 struct CompositeStackStep {
@@ -206,6 +213,8 @@ struct RenderStackRequest {
 };
 using RenderBindingResolver =
     std::function<ValueBindings(const TextureValue &, GeometryId geometry)>;
+[[nodiscard]] std::vector<RenderValueRef>
+LayerOperands(const PlannedLayer &layer);
 [[nodiscard]] std::vector<RenderValueRef> InputsOf(const RenderStepKind &step);
 [[nodiscard]] RenderValueType OutputType(const RenderStepKind &step);
 [[nodiscard]] std::string_view StepKindName(const RenderStepKind &step);

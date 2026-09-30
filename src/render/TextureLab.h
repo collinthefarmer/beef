@@ -123,6 +123,11 @@ public:
     std::uint32_t lookupCount = 0;
   };
 
+  struct StackFields {
+    InterpreterPack pack;
+    InterpreterBindings bindings;
+  };
+
   inline static constexpr std::uint32_t kRippleFirings = 8;
   struct RippleFiring {
     Vec3 origin;
@@ -153,6 +158,7 @@ public:
     RE::NiSourceTexture *mask = nullptr;
     ShaderChannel maskChannel = ShaderChannel::kR;
     const Lookup *curve = nullptr;
+    std::optional<std::uint32_t> sourceField, maskField;
   };
 
   struct LayerParams {
@@ -219,7 +225,8 @@ public:
   bool Render(RenderTarget &a_target, RE::NiSourceTexture *a_source,
               const LayerParams &a_params);
   inline static constexpr std::size_t kMaxStackLayers = 8;
-  [[nodiscard]] bool CanRenderStack(std::span<const LayerPass> a_layers) const;
+  [[nodiscard]] bool CanRenderStack(std::span<const LayerPass> a_layers,
+                                    const StackFields &a_fields) const;
   struct FusionCheckTotals {
     std::uint64_t checks = 0;
     std::uint64_t overOneStep = 0;
@@ -228,7 +235,15 @@ public:
   void SetFusionCheck(bool a_enabled) noexcept;
   [[nodiscard]] FusionCheckTotals DrainFusionChecks();
   bool RenderStack(RenderTarget &a_target, RE::NiSourceTexture *a_base,
-                   std::span<const LayerPass> a_layers);
+                   std::span<const LayerPass> a_layers,
+                   const StackFields &a_fields);
+  struct MaterializedLayers {
+    std::vector<LayerPass> passes;
+    std::vector<std::shared_ptr<RenderTarget>> targets;
+  };
+  [[nodiscard]] std::optional<MaterializedLayers>
+  MaterializeFields(std::span<const LayerPass> a_layers,
+                    const StackFields &a_fields, TextureSize a_size);
   bool RenderProgram(RenderTarget &a_target,
                      const InterpreterProgram &a_program,
                      const InterpreterBindings &a_bindings);
@@ -393,8 +408,17 @@ private:
   [[nodiscard]] REX::W32::ID3D11Query *TimestampQuery(std::size_t a_slot,
                                                       std::size_t a_index);
   void Stamp(std::size_t a_span, bool a_end);
+  static void
+  FillLookups(std::span<REX::W32::ID3D11ShaderResourceView *> a_srvs,
+              const InterpreterBindings &a_bindings);
+  bool DrawInterpreter(RenderTarget &a_target,
+                       std::span<const InterpreterInstruction> a_code,
+                       std::span<const InterpreterInput> a_inputs,
+                       ValueType a_result,
+                       const InterpreterBindings &a_bindings);
   void CheckStack(RenderTarget &a_fused, RE::NiSourceTexture *a_base,
-                  std::span<const LayerPass> a_layers);
+                  std::span<const LayerPass> a_layers,
+                  const StackFields &a_fields);
   [[nodiscard]] std::optional<float> MaxDifference(RenderTarget &a_first,
                                                    RenderTarget &a_second,
                                                    ShaderChannel a_channel);

@@ -142,10 +142,10 @@ bool TextureLab::CompileShaders(GpuResources &a_resources) {
                            const char *a_target) -> ComPtr<ID3DBlob> {
     ComPtr<ID3DBlob> out;
     ComPtr<ID3DBlob> errors;
-    const auto hr =
-        D3DCompile(kShaderSource, std::strlen(kShaderSource),
-                   sourceName.c_str(), nullptr, nullptr, a_entry, a_target, 0,
-                   0, out.GetAddressOf(), errors.GetAddressOf());
+    const auto hr = D3DCompile(kShaderSource, std::strlen(kShaderSource),
+                               sourceName.c_str(), nullptr, nullptr, a_entry,
+                               a_target, D3DCOMPILE_OPTIMIZATION_LEVEL3, 0,
+                               out.GetAddressOf(), errors.GetAddressOf());
     if (Failed(hr)) {
       logger::error("TextureLab: {} compile failed: {}", a_entry,
                     errors.Get()
