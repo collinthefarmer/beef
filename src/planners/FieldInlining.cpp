@@ -7,14 +7,91 @@ namespace BetterEnchantmentEffects {
 namespace {
 constexpr std::size_t kMaxInliningRounds = 4096;
 
-bool Eligible(const RenderPlan &plan, RenderStepId producer,
-              const TextureRequirements &consumer,
-              const std::vector<bool> &changing,
-              const std::vector<std::size_t> &consumers) {
-  const auto program = AsProgramLike(plan, plan.steps[producer].kind);
+struct StepUses {
+  std::vector<bool> changing;
+  std::vector<std::size_t> consumers;
+};
+
+StepUses StepUsesOf(const RenderPlan &plan) {
+  return StepUses{ChangingSteps(plan), LiveConsumers(plan)};
+}
+
+bool CanInlineProducer(const RenderPlan &plan, RenderStepId producer,
+                       const TextureRequirements &consumer,
+                       const StepUses &uses) {
+  if (producer >= plan.steps.size() || producer >= uses.changing.size() ||
+      producer >= uses.consumers.size())
+    return false;
+  const std::optional<ProgramLikeStep> program =
+      AsProgramLike(plan, plan.steps[producer].kind);
   return program && program->requirements == consumer &&
-         consumer.format == TextureFormat::kRgba8 && consumers[producer] == 1 &&
-         changing[producer];
+         consumer.format == TextureFormat::kRgba8 &&
+         uses.consumers[producer] == 1 && uses.changing[producer];
+}
+
+bool ReadsTexture(const FieldProgram &program, std::size_t input) {
+  const std::span<const ProgramInput> inputs = program.Inputs();
+  return input < inputs.size() && Is<ProgramTextureInput>(inputs[input]);
+}
+
+std::vector<RenderValueRef>
+InputsWithout(std::span<const RenderValueRef> inputs, std::size_t removed) {
+  std::vector<RenderValueRef> kept;
+  for (std::size_t i = 0; i < inputs.size(); ++i)
+    if (i != removed)
+      kept.push_back(inputs[i]);
+  return kept;
+}
+
+std::optional<EvaluateProgramStep>
+InlinedStep(const ProgramLikeStep &consumer, std::size_t input,
+            const ProgramLikeStep &producer) {
+  auto program =
+      FieldProgram::Inline(consumer.program, input, producer.program);
+  if (!program)
+    return std::nullopt;
+  std::vector<RenderValueRef> inputs = InputsWithout(consumer.inputs, input);
+  inputs.insert(inputs.end(), producer.inputs.begin(), producer.inputs.end());
+  std::vector<RenderValueRef> lookups = consumer.lookups;
+  lookups.insert(lookups.end(), producer.lookups.begin(),
+                 producer.lookups.end());
+  return EvaluateProgramStep{std::move(*program), std::move(inputs),
+                             std::move(lookups), consumer.requirements};
+}
+
+bool InlineIntoStep(RenderPlan &plan, RenderStepId step, const StepUses &uses) {
+  if (step >= plan.steps.size() || step >= uses.consumers.size())
+    return false;
+  const std::optional<ProgramLikeStep> consumer =
+      AsProgramLike(plan, plan.steps[step].kind);
+  if (!consumer || uses.consumers[step] == 0)
+    return false;
+  for (std::size_t input = 0; input < consumer->inputs.size(); ++input) {
+    const auto *producer = Get<StepOutputRef>(consumer->inputs[input]);
+    if (!producer || producer->step >= step ||
+        !ReadsTexture(consumer->program, input) ||
+        !CanInlineProducer(plan, producer->step, consumer->requirements, uses))
+      continue;
+    const std::optional<ProgramLikeStep> produced =
+        AsProgramLike(plan, plan.steps[producer->step].kind);
+    if (!produced)
+      continue;
+    std::optional<EvaluateProgramStep> inlined =
+        InlinedStep(*consumer, input, *produced);
+    if (!inlined)
+      continue;
+    plan.steps[step].kind = std::move(*inlined);
+    return true;
+  }
+  return false;
+}
+
+bool InlineOneProgram(RenderPlan &plan) {
+  const StepUses uses = StepUsesOf(plan);
+  for (RenderStepId step = 0; step < plan.steps.size(); ++step)
+    if (InlineIntoStep(plan, step, uses))
+      return true;
+  return false;
 }
 
 struct StoredField {
@@ -48,6 +125,7 @@ bool ReadsProducer(const LayerRead &read, RenderStepId producer) {
 
 bool FieldsFit(const CompositeStackStep &stack) {
   std::vector<const LayerField *> fields;
+  fields.reserve(stack.fields.size());
   for (const auto &field : stack.fields)
     fields.push_back(&field);
   return PackLayerFields(fields).has_value();
@@ -72,23 +150,22 @@ std::size_t AttachField(CompositeStackStep &stack, RenderStepId producer,
   return attached;
 }
 
-bool Live(const RenderPlan &plan, RenderStepId step,
-          const std::vector<std::size_t> &consumers) {
-  return consumers[step] > 0 ||
+bool Live(const RenderPlan &plan, RenderStepId step, const StepUses &uses) {
+  return (step < uses.consumers.size() && uses.consumers[step] > 0) ||
          std::ranges::any_of(plan.stackOutputs, [&](const auto &output) {
            return output.result.step == step;
          });
 }
 
 std::size_t InlineField(RenderPlan &plan, RenderStepId producer,
-                        const std::vector<std::size_t> &consumers) {
+                        const StepUses &uses) {
   const auto stored = AsStoredField(plan, producer);
   if (!stored)
     return 0;
   std::vector<std::pair<RenderStepId, CompositeStackStep>> updated;
   std::size_t attached = 0;
   for (std::size_t step = producer + 1; step < plan.steps.size(); ++step) {
-    if (!Live(plan, step, consumers) ||
+    if (!Live(plan, step, uses) ||
         std::ranges::none_of(
             StepDependencies(plan, step),
             [&](RenderValueRef operand) { return Reads(operand, producer); }))
@@ -106,7 +183,8 @@ std::size_t InlineField(RenderPlan &plan, RenderStepId producer,
       return 0;
     updated.emplace_back(step, std::move(candidate));
   }
-  if (updated.size() != consumers[producer])
+  if (producer >= uses.consumers.size() ||
+      updated.size() != uses.consumers[producer])
     return 0;
   for (auto &[step, stack] : updated)
     plan.steps[step].kind = std::move(stack);
@@ -114,12 +192,13 @@ std::size_t InlineField(RenderPlan &plan, RenderStepId producer,
 }
 
 std::size_t InlineLayerFields(RenderPlan &plan) {
-  const auto changing = ChangingSteps(plan);
+  StepUses uses = StepUsesOf(plan);
   std::size_t reads = 0;
-  for (std::size_t producer = 0; producer < plan.steps.size(); ++producer) {
-    const auto consumers = LiveConsumers(plan);
-    if (changing[producer] && consumers[producer] > 0)
-      reads += InlineField(plan, producer, consumers);
+  for (RenderStepId producer = 0; producer < plan.steps.size(); ++producer) {
+    uses.consumers = LiveConsumers(plan);
+    if (producer < uses.changing.size() && producer < uses.consumers.size() &&
+        uses.changing[producer] && uses.consumers[producer] > 0)
+      reads += InlineField(plan, producer, uses);
   }
   return reads;
 }
@@ -158,47 +237,10 @@ std::optional<ProgramLikeStep> AsProgramLike(const RenderPlan &plan,
 
 InlinedPlan InlineFields(RenderPlan plan) {
   InlinedPlan inlined{std::move(plan), 0};
-  auto &steps = inlined.plan.steps;
   for (std::size_t round = 0; round < kMaxInliningRounds; ++round) {
-    const auto changing = ChangingSteps(inlined.plan);
-    const auto consumers = LiveConsumers(inlined.plan);
-    bool progressed = false;
-    for (std::size_t step = 0; step < steps.size() && !progressed; ++step) {
-      auto consumer = AsProgramLike(inlined.plan, steps[step].kind);
-      if (!consumer || consumers[step] == 0)
-        continue;
-      for (std::size_t k = 0; k < consumer->inputs.size(); ++k) {
-        const auto *producer = Get<StepOutputRef>(consumer->inputs[k]);
-        if (!producer || producer->step >= step ||
-            !Is<ProgramTextureInput>(consumer->program.Inputs()[k]) ||
-            !Eligible(inlined.plan, producer->step, consumer->requirements,
-                      changing, consumers))
-          continue;
-        const auto produced =
-            AsProgramLike(inlined.plan, steps[producer->step].kind);
-        auto program =
-            FieldProgram::Inline(consumer->program, k, produced->program);
-        if (!program)
-          continue;
-        std::vector<RenderValueRef> inputs;
-        for (std::size_t i = 0; i < consumer->inputs.size(); ++i)
-          if (i != k)
-            inputs.push_back(consumer->inputs[i]);
-        inputs.insert(inputs.end(), produced->inputs.begin(),
-                      produced->inputs.end());
-        auto lookups = consumer->lookups;
-        lookups.insert(lookups.end(), produced->lookups.begin(),
-                       produced->lookups.end());
-        steps[step].kind =
-            EvaluateProgramStep{std::move(*program), std::move(inputs),
-                                std::move(lookups), consumer->requirements};
-        ++inlined.programsInlined;
-        progressed = true;
-        break;
-      }
-    }
-    if (!progressed)
+    if (!InlineOneProgram(inlined.plan))
       break;
+    ++inlined.programsInlined;
   }
   inlined.layerFieldReads = InlineLayerFields(inlined.plan);
   return inlined;

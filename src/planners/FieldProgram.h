@@ -85,7 +85,13 @@ struct ProgramLimits {
   std::size_t lookups = kProgramLookups;
   std::size_t stack = kProgramStack;
 };
+struct InputRenumbering {
+  std::vector<std::uint32_t> consumer;
+  std::vector<std::uint32_t> producer;
+};
 [[nodiscard]] std::size_t OpcodePops(ProgramOpcode opcode) noexcept;
+[[nodiscard]] std::size_t
+StackDepthOf(std::span<const ProgramInstruction> code) noexcept;
 class FieldProgram {
 public:
   [[nodiscard]] static FieldProgram Sample(ValueType type, bool texture = true);
@@ -111,6 +117,11 @@ public:
 
 private:
   FieldProgram() = default;
+  std::uint32_t AppendInput(const ProgramInput &input);
+  InputRenumbering MergeInputs(const FieldProgram &consumer,
+                               std::size_t inlinedInput,
+                               const FieldProgram &producer);
+  [[nodiscard]] bool FitsLimits(const ProgramLimits &limits) const;
   std::vector<ProgramInstruction> instructions_;
   std::vector<ProgramInput> inputs_;
   std::vector<FunctionLookup> lookups_;
@@ -131,6 +142,14 @@ struct ProgramPack {
   std::size_t lookupCount = 0;
   std::vector<ProgramSegment> segments;
 };
+struct ProgramCode {
+  std::span<const ProgramInstruction> instructions;
+  std::span<const ProgramInput> inputs;
+  ValueType result = ValueType::kScalar;
+};
+[[nodiscard]] ProgramCode CodeOf(const FieldProgram &program);
+[[nodiscard]] std::optional<ProgramCode> SegmentCode(const ProgramPack &pack,
+                                                     std::uint32_t segment);
 [[nodiscard]] std::optional<ProgramSegment>
 SegmentAt(std::span<const ProgramSegment> segments, std::size_t codeSize,
           std::uint32_t segment);

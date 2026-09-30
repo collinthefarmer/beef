@@ -32,11 +32,10 @@ bool LayerFilter::Hides(std::size_t a_index) const noexcept {
   return false;
 }
 
-RenderOutput::RenderOutput(std::shared_ptr<RenderInstance> render,
+RenderOutput::RenderOutput(const std::shared_ptr<RenderInstance> &render,
                            StepOutputRef result, TextureSize size,
                            bool animated)
-    : render_(std::move(render)), result_(result), size_(size),
-      animated_(animated) {}
+    : render_(render), result_(result), size_(size), animated_(animated) {}
 
 TextureRef RenderOutput::Texture() const noexcept { return latest_; }
 

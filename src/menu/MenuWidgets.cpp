@@ -11,6 +11,7 @@
 #include "studio/View.h"
 
 #include <algorithm>
+#include <bit>
 #include <cmath>
 #include <cstring>
 #include <format>
@@ -79,8 +80,7 @@ struct PreviewImage {
 };
 
 [[nodiscard]] RE::NiSourceTexture *TextureOf(Studio::TextureHandle a_handle) {
-  return reinterpret_cast<RE::NiSourceTexture *>(
-      static_cast<std::uintptr_t>(a_handle));
+  return std::bit_cast<RE::NiSourceTexture *>(std::to_underlying(a_handle));
 }
 
 [[nodiscard]] PreviewImage PreviewOf(Studio::TextureHandle a_texture,

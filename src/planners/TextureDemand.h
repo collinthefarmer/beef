@@ -9,6 +9,7 @@
 namespace BetterEnchantmentEffects {
 enum class TextureFormat { kRgba8, kRgba32Float };
 enum class MipPolicy { kGenerate, kNone };
+inline constexpr std::size_t kMaxIdentityBytes = std::size_t{8} * 1024 * 1024;
 struct TextureRequirements {
   TextureSize size{TextureSize::kMin};
   TextureFormat format = TextureFormat::kRgba8;

@@ -2,9 +2,6 @@
 #include "recipe/RecipeGraph.h"
 
 namespace BetterEnchantmentEffects {
-using detail::DeclarationCategory;
-using detail::DeclarationExpression;
-using detail::RecipeDeclaration;
 std::span<const OutputBinding> RecipeGraph::OutputBindings() const noexcept {
   return outputBindings_;
 }
@@ -119,43 +116,44 @@ RecipeGraph::FindFunction(std::string_view name) const {
                                             : std::optional{it->second};
 }
 std::optional<FunctionId>
-RecipeGraph::TransformFor(std::string_view location) const {
-  const auto it = transformsByLocation_.find(std::string{location});
+RecipeGraph::TransformFor(std::string_view a_location) const {
+  const auto it = transformsByLocation_.find(std::string{a_location});
   return it == transformsByLocation_.end() ? std::nullopt
                                            : std::optional{it->second};
 }
 const FunctionDefinition *
-RecipeGraph::FunctionAt(FunctionId id) const noexcept {
-  return id < functions_.size() ? &functions_[id] : nullptr;
+RecipeGraph::FunctionAt(FunctionId a_function) const noexcept {
+  return a_function < functions_.size() ? &functions_[a_function] : nullptr;
 }
 std::span<const FunctionDefinition> RecipeGraph::Functions() const noexcept {
   return functions_;
 }
-const Source *RecipeGraph::SourceAt(NodeId id) const noexcept {
+const Source *RecipeGraph::SourceAt(NodeId a_node) const noexcept {
   if (!lowered_)
-    return id < declarations_.size() ? Get<Source>(declarations_[id].definition)
-                                     : nullptr;
-  const auto it = sourceDeclarations_.find(id);
+    return a_node < declarations_.size()
+               ? Get<Source>(declarations_[a_node].definition)
+               : nullptr;
+  const auto it = sourceDeclarations_.find(a_node);
   return it == sourceDeclarations_.end()
              ? nullptr
              : Get<Source>(declarations_[it->second].definition);
 }
-bool RecipeGraph::IsMask(NodeId id) const noexcept {
-  return lowered_ ? maskDeclarations_.contains(id)
-                  : id < declarations_.size() &&
-                        Is<Mask>(declarations_[id].definition);
+bool RecipeGraph::IsMask(NodeId a_node) const noexcept {
+  return lowered_ ? maskDeclarations_.contains(a_node)
+                  : a_node < declarations_.size() &&
+                        Is<Mask>(declarations_[a_node].definition);
 }
-std::string_view RecipeGraph::NameOf(NodeId id) const noexcept {
-  if (const auto *signal = SignalAt(id))
+std::string_view RecipeGraph::NameOf(NodeId a_node) const noexcept {
+  if (const auto *signal = SignalAt(a_node))
     return signal->name;
-  if (const auto *source = SourceAt(id))
+  if (const auto *source = SourceAt(a_node))
     return source->name;
-  const auto it = maskDeclarations_.find(id);
+  const auto it = maskDeclarations_.find(a_node);
   return it == maskDeclarations_.end() ? std::string_view{}
                                        : declarations_[it->second].name;
 }
-const BoundExpression *RecipeGraph::ExpressionAt(NodeId id) const noexcept {
-  const auto *node = NodeAt(id);
+const BoundExpression *RecipeGraph::ExpressionAt(NodeId a_node) const noexcept {
+  const auto *node = NodeAt(a_node);
   const auto *expression =
       node ? Get<ExpressionOperation>(node->kind) : nullptr;
   return expression ? &expression->expression : nullptr;

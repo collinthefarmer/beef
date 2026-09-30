@@ -36,7 +36,7 @@ struct FunctionExecutor {
   std::span<const Value> evaluated;
   std::size_t depth;
 
-  Value Read(OutputRef reference) const {
+  [[nodiscard]] Value Read(OutputRef reference) const {
     return reference.output == 0 && reference.node < evaluated.size()
                ? evaluated[reference.node]
                : Value{0.0f};

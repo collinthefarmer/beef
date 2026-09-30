@@ -250,8 +250,8 @@ struct RecipeGraphBuilder {
     }
     const auto &dependency = graph.declarations_[*index];
     if (dependency.category != domain &&
-        !(fieldReadsTick &&
-          dependency.category == DeclarationCategory::kSignal)) {
+        (!fieldReadsTick ||
+         dependency.category != DeclarationCategory::kSignal)) {
       Reject(node, std::format("'@{}' has the wrong evaluation domain", name));
       return std::nullopt;
     }
@@ -287,24 +287,25 @@ struct RecipeGraphBuilder {
         for (const auto &name : refs)
           (void)Bind(node, name, DeclarationCategory::kSignal);
       }
-      if (!node.expression)
+      auto *expression = node.expression ? &*node.expression : nullptr;
+      if (!expression)
         continue;
-      for (const auto &name : node.expression->program.References()) {
+      for (const auto &name : expression->program.References()) {
         const auto index = Bind(node, name, node.category,
                                 node.category == DeclarationCategory::kSpatial);
-        node.expression->valueBindings.push_back(
+        expression->valueBindings.push_back(
             index.value_or(std::numeric_limits<std::size_t>::max()));
       }
-      for (const auto &name : node.expression->program.Curves()) {
+      for (const auto &name : expression->program.Curves()) {
         const auto index = Bind(node, name, DeclarationCategory::kFunction);
-        node.expression->functionBindings.push_back(
+        expression->functionBindings.push_back(
             index.value_or(std::numeric_limits<std::size_t>::max()));
       }
     }
   }
 
   void Order() {
-    enum class Mark { kNone, kOpen, kDone };
+    enum class Mark : std::uint8_t { kNone, kOpen, kDone };
     struct Frame {
       std::size_t node;
       std::size_t next = 0;

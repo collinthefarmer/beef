@@ -129,6 +129,7 @@ std::vector<RenderValueRef> InputsOf(const RenderStepKind &step) {
       [](const SubmitReductionStep &k) { return std::vector{k.value}; },
       [](const BuildLookupStep &k) {
         std::vector<RenderValueRef> inputs;
+        inputs.reserve(k.boundArguments.size());
         for (const auto &a : k.boundArguments)
           inputs.push_back(a.value);
         return inputs;
@@ -483,7 +484,7 @@ std::vector<RenderValueRef> StepDependencies(const RenderPlan &plan,
         input && input->input < plan.inputs.size())
       if (const auto *readback =
               Get<ReadbackBinding>(plan.inputs[input->input].binding))
-        operands.push_back(StepOutputRef{readback->submission, 0});
+        operands.emplace_back(StepOutputRef{readback->submission, 0});
   return operands;
 }
 

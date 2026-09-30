@@ -728,28 +728,29 @@ class AnimationQuery {
 public:
   explicit AnimationQuery(const RecipeGraph &a_graph) : graph_(a_graph) {}
 
-  bool Signal(std::string_view name) const {
+  [[nodiscard]] bool Signal(std::string_view name) const {
     return graph_.FindSignalIndex(name) && graph_.MayChangeOverTime(name);
   }
 
-  bool Param(const BetterEnchantmentEffects::Param &param) const {
+  [[nodiscard]] bool Param(const BetterEnchantmentEffects::Param &param) const {
     const auto name = RefOf(param);
     return name && Signal(*name);
   }
 
   template <std::size_t N>
-  bool Vector(const std::variant<std::array<BetterEnchantmentEffects::Param, N>,
-                                 Ref> &param) const {
+  [[nodiscard]] bool
+  Vector(const std::variant<std::array<BetterEnchantmentEffects::Param, N>, Ref>
+             &param) const {
     std::vector<std::string_view> refs;
     CollectRefs(param, refs);
     return std::ranges::any_of(
         refs, [&](std::string_view name) { return Signal(name); });
   }
 
-  bool Image(std::string_view name) const {
+  [[nodiscard]] bool Image(std::string_view name) const {
     return graph_.MayChangeOverTime(name);
   }
-  bool Mask(std::string_view name) const {
+  [[nodiscard]] bool Mask(std::string_view name) const {
     return graph_.MayChangeOverTime(name);
   }
 

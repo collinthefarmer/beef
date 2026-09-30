@@ -6,8 +6,6 @@
 #include <limits>
 
 namespace BetterEnchantmentEffects {
-using detail::DeclarationCategory;
-using detail::DeclarationExpression;
 using detail::RecipeDeclaration;
 struct RecipeGraphLowering {
   RecipeGraph &graph;
@@ -36,7 +34,7 @@ struct RecipeGraphLowering {
   }
   OutputRef Constant(Value value) {
     const auto type = BetterEnchantmentEffects::TypeOf(value);
-    return Add(ConstantOperation{std::move(value)}, type, "constant");
+    return Add(ConstantOperation{value}, type, "constant");
   }
   OutputRef Input(ExternalSource source, GraphValueType type,
                   std::string label) {
@@ -67,7 +65,7 @@ struct RecipeGraphLowering {
     return Shared(RootTransformInput{}, ResourceType::kTransform,
                   "world to root");
   }
-  OutputRef Reference(const Ref &ref) const {
+  [[nodiscard]] OutputRef Reference(const Ref &ref) const {
     const auto it = graph.nodeIndicesByName_.find(ref.name);
     return it != graph.nodeIndicesByName_.end() && it->second < results.size()
                ? results[it->second]
@@ -90,7 +88,7 @@ struct RecipeGraphLowering {
                      N == 2 ? ValueType::kVec2 : ValueType::kVec3, "vector");
         });
   }
-  OutputRef TriggerPort(const Ref &ref, std::size_t port) const {
+  [[nodiscard]] OutputRef TriggerPort(const Ref &ref, std::size_t port) const {
     const auto it = graph.triggersByName_.find(ref.name);
     return it == graph.triggersByName_.end() ? OutputRef{}
                                              : OutputRef{it->second, port};
@@ -436,8 +434,8 @@ struct RecipeGraphLowering {
       if (index < results.size() && results[index].node < graph.nodes_.size())
         graph.nodeIndicesByName_[name] = results[index].node;
   }
-  OutputRef Project(OutputRef value, ValueType type, std::string expression,
-                    const std::string &label) {
+  OutputRef Project(OutputRef value, ValueType type,
+                    const std::string &expression, const std::string &label) {
     auto program = Program::Parse(expression);
     if (!program)
       return {};
@@ -522,10 +520,11 @@ struct RecipeGraphLowering {
               if (layer.mask)
                 BindOutput(location + " mask", Reference(*layer.mask));
             }
-            const auto scalar = [&](std::string name,
+            const auto scalar = [&](const std::string &name,
                                     const std::optional<Param> &value) {
               if (value)
-                BindOutput(label + " " + name, Parameter(*value));
+                BindOutput(std::format("{} {}", label, name),
+                           Parameter(*value));
             };
             scalar("strength", surface.scalars.strength);
             scalar("scale", surface.scalars.scale);
@@ -565,7 +564,7 @@ struct RecipeGraphLowering {
     graph.changing_.assign(count, false);
     graph.dependencyOrder_.clear();
     graph.signalEvaluationOrder_.clear();
-    enum class Mark { kNew, kOpen, kDone };
+    enum class Mark : std::uint8_t { kNew, kOpen, kDone };
     std::vector<Mark> marks(count, Mark::kNew);
     std::vector<bool> backendRequired(count, false);
     struct Frame {

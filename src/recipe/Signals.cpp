@@ -244,7 +244,7 @@ std::vector<Diagnostic> LayerDiagnostics(const RowTypes &a_rows,
   const auto where = LayerWhere(candidate.outputs.size(), 0);
   SurfaceOutput surface;
   surface.stack.push_back(a_candidate);
-  candidate.outputs.push_back(std::move(surface));
+  candidate.outputs.emplace_back(std::move(surface));
   const auto graph = RecipeGraph::Compile(candidate);
   auto diagnostics = RowDiagnostics(RowTypes{candidate, graph}, where);
   for (auto &diagnostic : diagnostics)
@@ -804,9 +804,13 @@ struct SignalState::Evaluator {
   const SignalEnvironment &environment;
   const TickInputs &inputs;
 
-  Value Read(OutputRef output) const { return state.ValueOf(output); }
-  float Scalar(OutputRef output) const { return AsScalar(Read(output)); }
-  Value Default() const { return state.DefaultValue(index); }
+  [[nodiscard]] Value Read(OutputRef output) const {
+    return state.ValueOf(output);
+  }
+  [[nodiscard]] float Scalar(OutputRef output) const {
+    return AsScalar(Read(output));
+  }
+  [[nodiscard]] Value Default() const { return state.DefaultValue(index); }
 
   Value operator()(const ConstantOperation &operation) const {
     return operation.value;

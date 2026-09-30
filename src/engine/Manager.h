@@ -121,8 +121,7 @@ private:
   InstanceFor(LiveActor &a_state, InstanceId a_planInstance,
               RE::FormID a_enchantment, const Settings &a_settings);
   void PlaceInstances(LiveActor &a_state, const Settings &a_settings);
-  void PlaceOnGeometry(LiveActor &a_state, LivePieceId a_piece,
-                       std::size_t a_geometry, GeometryId a_flat,
+  void PlaceOnGeometry(LiveActor &a_state, GeometryId a_geometry,
                        const Settings &a_settings, ActorStacks &a_stacks);
   void PlaceLightsOf(RE::Actor *a_actor, LiveActor &a_state,
                      const Settings &a_settings);

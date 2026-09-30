@@ -92,8 +92,8 @@ enum class StackRender { kRendered, kPending, kFailed };
 
 class RenderOutput {
 public:
-  RenderOutput(std::shared_ptr<RenderInstance> render, StepOutputRef result,
-               TextureSize size, bool animated);
+  RenderOutput(const std::shared_ptr<RenderInstance> &render,
+               StepOutputRef result, TextureSize size, bool animated);
   [[nodiscard]] TextureRef Texture() const noexcept;
   [[nodiscard]] std::uint64_t ContentVersion() const noexcept;
   [[nodiscard]] TextureRef LayerTexture(std::size_t layer) const;

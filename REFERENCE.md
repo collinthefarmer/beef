@@ -368,18 +368,18 @@ Mode formulas:
   repeats `PSStack`'s statements with those values as literals, and each
   layer field is a straight-line function built by `ProgramFunction` with
   code indices offset to the packed block. Constants and textures are bound
-  exactly as for `PSStack`, so `RenderStack` changes only the pixel shader.
+  exactly as for `PSStack`, so `DrawStackPass` changes only the pixel shader.
   A texture read counts only when its view exists, as in `PSStack`.
 - `StackFor` keys compiled stack shaders by shape, compiles on the same
-  path and draws with `PSStack` until ready. `RenderStack` builds the shape
+  path and draws with `PSStack` until ready. `DrawStackPass` builds the shape
   once per draw from the layer passes and fills the `PSStack` constants from
   it (`HasSource`, `HasMask`, `SourceSegment`, `MaskSegment`), so the
   generated shader and `PSStack` read the same per-layer facts.
   `CheckStackShape` decides whether a shape fits one pass (at most 8
-  layers, every field read inside the packed code); `RenderStack` returns
+  layers, every field read inside the packed code); `DrawStackPass` returns
   false when it does not, or when a legacy curve or a pipeline is missing,
-  and the caller falls back to the per-layer chain. `FusionCheck` compares
-  whichever shader drew a stack with the per-layer chain, so it proves
+  and `RenderStack` then falls back to the per-layer chain. `FusionCheck`
+  compares whichever shader drew a stack with the per-layer chain, so it proves
   generated stacks too.
 - The shaders compile with `D3DCOMPILE_OPTIMIZATION_LEVEL3`. The compiler
   may reorder float arithmetic at any level, so an inlined or one-pass draw

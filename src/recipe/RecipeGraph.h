@@ -42,7 +42,7 @@ public:
   [[nodiscard]] std::optional<FunctionId>
   FindFunction(std::string_view a_name) const;
   [[nodiscard]] std::optional<FunctionId>
-  TransformFor(std::string_view a_displayName) const;
+  TransformFor(std::string_view a_location) const;
   [[nodiscard]] static RecipeGraph Compile(const Recipe &a_recipe);
   [[nodiscard]] std::span<const RecipeNode> Nodes() const noexcept;
   [[nodiscard]] const RecipeNode *NodeAt(std::size_t a_index) const noexcept;

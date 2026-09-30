@@ -105,6 +105,30 @@ std::optional<Encoding> Encode(Program::Op op) {
 std::uint32_t Components(ValueType type) {
   return type == ValueType::kScalar ? 1 : type == ValueType::kVec2 ? 2 : 3;
 }
+ProgramInstruction RenumberInput(ProgramInstruction instruction,
+                                 std::span<const std::uint32_t> inputIndex) {
+  if (instruction.opcode == ProgramOpcode::kInput &&
+      instruction.index < inputIndex.size())
+    instruction.index = inputIndex[instruction.index];
+  return instruction;
+}
+std::vector<ProgramInstruction>
+InlinedProducerCode(const FieldProgram &producer,
+                    std::span<const std::uint32_t> inputIndex,
+                    std::uint32_t lookupOffset, std::uint32_t components) {
+  std::vector<ProgramInstruction> code;
+  code.reserve(producer.Instructions().size() + 2);
+  for (const ProgramInstruction &instruction : producer.Instructions()) {
+    ProgramInstruction renumbered = RenumberInput(instruction, inputIndex);
+    if (renumbered.opcode == ProgramOpcode::kLookup)
+      renumbered.index += lookupOffset;
+    code.push_back(renumbered);
+  }
+  if (producer.ResultType() == ValueType::kScalar)
+    code.push_back({ProgramOpcode::kSplat, 0, 0, components});
+  code.push_back({ProgramOpcode::kQuantize, 0, 0, components});
+  return code;
+}
 }
 std::expected<FieldProgram, std::string>
 FieldProgram::Compile(const RecipeGraph &graph, OutputRef result,
@@ -148,10 +172,10 @@ FieldProgram::Compile(const RecipeGraph &graph, OutputRef result,
       if (compiled.textureCount_ >= std::min(limits.textures, kProgramTextures))
         return fail(std::format("texture slot limit exceeded (limit {})",
                                 std::min(limits.textures, kProgramTextures)));
-      compiled.inputs_.push_back(ProgramTextureInput{
+      compiled.inputs_.emplace_back(ProgramTextureInput{
           input, static_cast<std::uint32_t>(compiled.textureCount_++)});
     } else {
-      compiled.inputs_.push_back(ProgramValueInput{input});
+      compiled.inputs_.emplace_back(ProgramValueInput{input});
     }
   }
   for (const auto &binding : expression->functionBindings) {
@@ -294,6 +318,46 @@ std::size_t OpcodePops(ProgramOpcode opcode) noexcept {
   }
   return 3;
 }
+std::size_t StackDepthOf(std::span<const ProgramInstruction> code) noexcept {
+  std::size_t depth = 0;
+  std::size_t deepest = 0;
+  for (const ProgramInstruction &instruction : code) {
+    const std::size_t pops = OpcodePops(instruction.opcode);
+    depth = (depth > pops ? depth - pops : 0) + 1;
+    deepest = std::max(deepest, depth);
+  }
+  return deepest;
+}
+std::uint32_t FieldProgram::AppendInput(const ProgramInput &input) {
+  const auto index = static_cast<std::uint32_t>(inputs_.size());
+  if (const auto *texture = Get<ProgramTextureInput>(input))
+    inputs_.emplace_back(ProgramTextureInput{
+        texture->output, static_cast<std::uint32_t>(textureCount_++)});
+  else
+    inputs_.push_back(input);
+  return index;
+}
+InputRenumbering FieldProgram::MergeInputs(const FieldProgram &consumer,
+                                           std::size_t inlinedInput,
+                                           const FieldProgram &producer) {
+  InputRenumbering renumbering{
+      std::vector<std::uint32_t>(consumer.inputs_.size()),
+      std::vector<std::uint32_t>(producer.inputs_.size())};
+  for (std::size_t i = 0; i < consumer.inputs_.size(); ++i)
+    if (i != inlinedInput)
+      renumbering.consumer[i] = AppendInput(consumer.inputs_[i]);
+  for (std::size_t i = 0; i < producer.inputs_.size(); ++i)
+    renumbering.producer[i] = AppendInput(producer.inputs_[i]);
+  return renumbering;
+}
+bool FieldProgram::FitsLimits(const ProgramLimits &limits) const {
+  return instructions_.size() <=
+             std::min(limits.instructions, kProgramInstructions) &&
+         inputs_.size() <= std::min(limits.inputs, kProgramInputs) &&
+         textureCount_ <= std::min(limits.textures, kProgramTextures) &&
+         lookups_.size() <= std::min(limits.lookups, kProgramLookups) &&
+         stackSize_ <= std::min(limits.stack, kProgramStack);
+}
 std::expected<FieldProgram, std::string>
 FieldProgram::Inline(const FieldProgram &a_consumer, std::size_t a_input,
                      const FieldProgram &a_producer,
@@ -303,74 +367,36 @@ FieldProgram::Inline(const FieldProgram &a_consumer, std::size_t a_input,
     return std::unexpected("inlined input is not a texture input");
   FieldProgram inlined;
   inlined.resultType_ = a_consumer.resultType_;
-  std::vector<std::uint32_t> consumerIndex(a_consumer.inputs_.size());
-  std::vector<std::uint32_t> producerIndex(a_producer.inputs_.size());
-  const auto append = [&](const ProgramInput &input) {
-    const auto index = static_cast<std::uint32_t>(inlined.inputs_.size());
-    if (const auto *texture = Get<ProgramTextureInput>(input))
-      inlined.inputs_.push_back(ProgramTextureInput{
-          texture->output,
-          static_cast<std::uint32_t>(inlined.textureCount_++)});
-    else
-      inlined.inputs_.push_back(input);
-    return index;
-  };
-  for (std::size_t i = 0; i < a_consumer.inputs_.size(); ++i)
-    if (i != a_input)
-      consumerIndex[i] = append(a_consumer.inputs_[i]);
-  for (std::size_t i = 0; i < a_producer.inputs_.size(); ++i)
-    producerIndex[i] = append(a_producer.inputs_[i]);
+  const InputRenumbering renumbering =
+      inlined.MergeInputs(a_consumer, a_input, a_producer);
   inlined.lookups_ = a_consumer.lookups_;
   const auto lookupOffset = static_cast<std::uint32_t>(inlined.lookups_.size());
   inlined.lookups_.insert(inlined.lookups_.end(), a_producer.lookups_.begin(),
                           a_producer.lookups_.end());
-  const bool scalarProducer = a_producer.resultType_ == ValueType::kScalar;
-  for (const auto &instruction : a_consumer.instructions_) {
+  for (const ProgramInstruction &instruction : a_consumer.instructions_) {
     if (instruction.opcode == ProgramOpcode::kInput &&
         instruction.index == a_input) {
-      for (auto produced : a_producer.instructions_) {
-        if (produced.opcode == ProgramOpcode::kInput)
-          produced.index = produced.index < producerIndex.size()
-                               ? producerIndex[produced.index]
-                               : produced.index;
-        else if (produced.opcode == ProgramOpcode::kLookup)
-          produced.index += lookupOffset;
-        inlined.instructions_.push_back(produced);
-      }
-      if (scalarProducer)
-        inlined.instructions_.push_back(
-            {ProgramOpcode::kSplat, 0, 0, instruction.components});
+      const std::vector<ProgramInstruction> produced =
+          InlinedProducerCode(a_producer, renumbering.producer, lookupOffset,
+                              instruction.components);
+      inlined.instructions_.insert(inlined.instructions_.end(),
+                                   produced.begin(), produced.end());
+    } else {
       inlined.instructions_.push_back(
-          {ProgramOpcode::kQuantize, 0, 0, instruction.components});
-      continue;
+          RenumberInput(instruction, renumbering.consumer));
     }
-    auto kept = instruction;
-    if (kept.opcode == ProgramOpcode::kInput &&
-        kept.index < consumerIndex.size())
-      kept.index = consumerIndex[kept.index];
-    inlined.instructions_.push_back(kept);
   }
-  std::size_t depth = 0;
-  for (const auto &instruction : inlined.instructions_) {
-    const auto pops = OpcodePops(instruction.opcode);
-    depth = (depth > pops ? depth - pops : 0) + 1;
-    inlined.stackSize_ = std::max(inlined.stackSize_, depth);
-  }
-  if (inlined.instructions_.size() >
-          std::min(a_limits.instructions, kProgramInstructions) ||
-      inlined.inputs_.size() > std::min(a_limits.inputs, kProgramInputs) ||
-      inlined.textureCount_ > std::min(a_limits.textures, kProgramTextures) ||
-      inlined.lookups_.size() > std::min(a_limits.lookups, kProgramLookups) ||
-      inlined.stackSize_ > std::min(a_limits.stack, kProgramStack))
+  inlined.stackSize_ = StackDepthOf(inlined.instructions_);
+  if (!inlined.FitsLimits(a_limits))
     return std::unexpected("inlined program exceeds interpreter limits");
   return inlined;
 }
 FieldProgram FieldProgram::Sample(ValueType type, bool texture) {
   FieldProgram result;
   if (texture)
-    result.inputs_.push_back(ProgramTextureInput{{}, 0});
+    result.inputs_.emplace_back(ProgramTextureInput{{}, 0});
   else
-    result.inputs_.push_back(ProgramValueInput{});
+    result.inputs_.emplace_back(ProgramValueInput{});
   result.textureCount_ = texture ? 1 : 0;
   result.stackSize_ = 1;
   result.resultType_ = type;
@@ -403,10 +429,10 @@ FieldProgram::Compose(std::span<const bool> textures) {
   FieldProgram result;
   for (std::size_t i = 0; i < textures.size(); ++i) {
     if (textures[i])
-      result.inputs_.push_back(ProgramTextureInput{
+      result.inputs_.emplace_back(ProgramTextureInput{
           {}, static_cast<std::uint32_t>(result.textureCount_++)});
     else
-      result.inputs_.push_back(ProgramValueInput{});
+      result.inputs_.emplace_back(ProgramValueInput{});
     result.instructions_.push_back(
         {ProgramOpcode::kInput, 0, static_cast<std::uint32_t>(i), 1});
   }
@@ -434,6 +460,17 @@ std::size_t FieldProgram::TextureCount() const noexcept {
 }
 ValueType FieldProgram::ResultType() const noexcept { return resultType_; }
 std::size_t FieldProgram::StackSize() const noexcept { return stackSize_; }
+ProgramCode CodeOf(const FieldProgram &program) {
+  return {program.Instructions(), program.Inputs(), program.ResultType()};
+}
+std::optional<ProgramCode> SegmentCode(const ProgramPack &pack,
+                                       std::uint32_t segment) {
+  const auto found = SegmentAt(pack.segments, pack.code.size(), segment);
+  if (!found)
+    return std::nullopt;
+  return ProgramCode{std::span{pack.code}.subspan(found->first, found->count),
+                     pack.inputs, ValueType::kVec3};
+}
 std::optional<ProgramSegment>
 SegmentAt(std::span<const ProgramSegment> segments, std::size_t codeSize,
           std::uint32_t segment) {
@@ -456,7 +493,7 @@ PackPrograms(std::span<const FieldProgram *const> programs,
     const auto textureOffset = static_cast<std::uint32_t>(pack.textureCount);
     for (const auto &input : program->Inputs()) {
       if (const auto *texture = Get<ProgramTextureInput>(input))
-        pack.inputs.push_back(ProgramTextureInput{
+        pack.inputs.emplace_back(ProgramTextureInput{
             texture->output, texture->slot + textureOffset});
       else
         pack.inputs.push_back(input);

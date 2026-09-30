@@ -48,7 +48,7 @@ struct Collector {
     std::size_t identityBytes = key.identity.canonical.size();
     for (const auto &existing : demands)
       identityBytes += existing.key.identity.canonical.size();
-    if (identityBytes > 8 * 1024 * 1024)
+    if (identityBytes > kMaxIdentityBytes)
       return std::unexpected(
           "texture identities exceed the collection size limit");
     TextureDemand demand{std::move(key), value, {}, {}, {}, geometry};
@@ -99,7 +99,7 @@ struct Collector {
     identityBytes = demand.key.identity.canonical.size();
     for (const auto &existing : demands)
       identityBytes += existing.key.identity.canonical.size();
-    if (demands.size() >= 4096 || identityBytes > 8 * 1024 * 1024)
+    if (demands.size() >= 4096 || identityBytes > kMaxIdentityBytes)
       return std::unexpected(
           "texture demand collection exceeds its size limit");
     demands.push_back(std::move(demand));

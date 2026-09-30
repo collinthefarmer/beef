@@ -33,6 +33,7 @@
 #include <vector>
 
 namespace BetterEnchantmentEffects {
+struct ProgramConstants;
 class RenderTargetPool;
 class TexturePreviews;
 
@@ -411,14 +412,20 @@ private:
   static void
   FillLookups(std::span<REX::W32::ID3D11ShaderResourceView *> a_srvs,
               const ProgramBindings &a_bindings);
-  bool DrawProgramPass(RenderTarget &a_target,
-                       std::span<const ProgramInstruction> a_code,
-                       std::span<const ProgramInput> a_inputs,
-                       ValueType a_result, const ProgramBindings &a_bindings,
+  bool DrawProgramPass(RenderTarget &a_target, const ProgramCode &a_code,
+                       const ProgramBindings &a_bindings,
                        REX::W32::ID3D11PixelShader *a_shader = nullptr);
   void CheckGeneratedProgram(RenderTarget &a_generated,
                              const FieldProgram &a_program,
                              const ProgramBindings &a_bindings);
+  bool DrawStackPass(RenderTarget &a_target, RE::NiSourceTexture *a_base,
+                     std::span<const LayerPass> a_layers,
+                     const BoundLayerFields &a_fields);
+  [[nodiscard]] std::unique_ptr<ProgramConstants>
+  StackProgramConstants(std::span<REX::W32::ID3D11ShaderResourceView *> a_srvs,
+                        const BoundLayerFields &a_fields);
+  [[nodiscard]] REX::W32::ID3D11PixelShader *
+  StackShaderFor(const StackShape &a_shape);
   [[nodiscard]] bool CanRenderStack(const StackShape &a_shape,
                                     std::span<const LayerPass> a_layers,
                                     const BoundLayerFields &a_fields) const;

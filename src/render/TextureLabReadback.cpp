@@ -361,11 +361,13 @@ TextureLab::ReadMaterialSample(MaterialReadback &a_readback, bool a_wait) {
   sample.texels.reserve(static_cast<std::size_t>(kSampleSide) * kSampleSide);
   constexpr float scale = 1.0f / 255.0f;
   for (std::uint32_t y = 0; y < kSampleSide; ++y) {
-    const std::uint8_t *mrow = rmaos.Data() + y * rmaos.RowPitch();
-    const std::uint8_t *drow = diffuse.Data() + y * diffuse.RowPitch();
+    const std::uint8_t *mrow =
+        rmaos.Data() + static_cast<std::size_t>(y) * rmaos.RowPitch();
+    const std::uint8_t *drow =
+        diffuse.Data() + static_cast<std::size_t>(y) * diffuse.RowPitch();
     for (std::uint32_t x = 0; x < kSampleSide; ++x) {
-      const std::uint8_t *m = mrow + x * 4;
-      const std::uint8_t *d = drow + x * 4;
+      const std::uint8_t *m = mrow + std::size_t{x} * 4;
+      const std::uint8_t *d = drow + std::size_t{x} * 4;
       MaterialTexel texel;
       texel.roughness = m[0] * scale;
       texel.metallic = m[1] * scale;
@@ -490,8 +492,7 @@ std::optional<float> TextureLab::MaxDifference(RenderTarget &a_first,
   bindings.textures[0] = {a_first.Texture(), sampling, 1.0f};
   bindings.textures[1] = {a_second.Texture(), sampling, 1.0f};
   const auto difference = FieldProgram::AbsoluteDifference();
-  if (!DrawProgramPass(*field, difference.Instructions(), difference.Inputs(),
-                       difference.ResultType(), bindings))
+  if (!DrawProgramPass(*field, CodeOf(difference), bindings))
     return std::nullopt;
   ReductionReadback readback;
   if (!EnsureReductionStaging(readback) ||
@@ -530,8 +531,13 @@ TextureLab::TimedSpan::TimedSpan(TextureLab &a_lab, std::string a_key)
 }
 
 TextureLab::TimedSpan::~TimedSpan() {
-  if (span_ && lab_->timingRing_.recording)
+  if (!span_ || !lab_->timingRing_.recording)
+    return;
+  try {
     lab_->Stamp(*span_, true);
+  } catch (const std::exception &error) {
+    logger::error("TextureLab: timing stamp failed: {}", error.what());
+  }
 }
 
 bool TextureLab::Timing() const noexcept {

@@ -5,6 +5,7 @@
 
 namespace BetterEnchantmentEffects {
 namespace {
+constexpr std::size_t kMaxIdentityTextBytes = std::size_t{1024} * 1024;
 struct Encoding {
   std::string text;
   void Add(std::string_view value) {
@@ -185,7 +186,7 @@ struct IdentityBuilder {
         return std::unexpected("state owner has no bound identity");
       out.Add(bindings.state(ref.node));
     }
-    if (out.text.size() > 1024 * 1024)
+    if (out.text.size() > kMaxIdentityTextBytes)
       return std::unexpected("value identity exceeds its size limit");
     const auto inputs = InputsOf(node.kind);
     out.Number(inputs.size());
@@ -193,7 +194,7 @@ struct IdentityBuilder {
       auto identity = Node(nodes, input, depth + 1, global);
       if (!identity)
         return identity;
-      if (out.text.size() + identity->size() > 1024 * 1024)
+      if (out.text.size() + identity->size() > kMaxIdentityTextBytes)
         return std::unexpected("value identity exceeds its size limit");
       out.Add(*identity);
     }

@@ -7,16 +7,17 @@
 
 #include <bit>
 #include <format>
+#include <memory>
 
 namespace BetterEnchantmentEffects {
 ValueBindings TextureValueBindings(const RecipeGraph &graph,
                                    const GeometryInputs &inputs) {
-  const std::string instance =
+  const auto instance = std::make_shared<const std::string>(
       std::format("{}:{}", reinterpret_cast<std::uintptr_t>(&graph),
-                  inputs.applicationContext);
+                  inputs.applicationContext));
   ValueBindings bindings;
   bindings.state = [instance](NodeId node) {
-    return std::format("{}:{}", instance, node);
+    return std::format("{}:{}", *instance, node);
   };
   bindings.external = [&inputs, instance](const ExternalSource &source)
       -> std::expected<std::string, std::string> {
@@ -47,20 +48,20 @@ ValueBindings TextureValueBindings(const RecipeGraph &graph,
         },
         [&](const ActorValueSignal &k)
             -> std::expected<std::string, std::string> {
-          return std::format("{}:{}:{}", instance, static_cast<int>(k.measure),
+          return std::format("{}:{}:{}", *instance, static_cast<int>(k.measure),
                              k.actorValue);
         },
         [&](const ActorStateSignal &k)
             -> std::expected<std::string, std::string> {
-          return std::format("{}:{}", instance, static_cast<int>(k.kind));
+          return std::format("{}:{}", *instance, static_cast<int>(k.kind));
         },
         [&](const EnchantmentSignal &k)
             -> std::expected<std::string, std::string> {
-          return std::format("{}:{}", instance, static_cast<int>(k.field));
+          return std::format("{}:{}", *instance, static_cast<int>(k.field));
         },
         [&](const EffectShaderInput &k)
             -> std::expected<std::string, std::string> {
-          return instance + ":" + k.record.text;
+          return *instance + ":" + k.record.text;
         },
         [&](const EventInput &k) -> std::expected<std::string, std::string> {
           return Match(
@@ -72,23 +73,23 @@ ValueBindings TextureValueBindings(const RecipeGraph &graph,
                            : std::string{"none"};
                 };
                 return std::format(
-                    "{}:event:{}:{}:{}:{}:{}:{}:{}:{}", instance,
+                    "{}:event:{}:{}:{}:{}:{}:{}:{}:{}", *instance,
                     e.event.size(), e.event, e.filter.node.size(),
                     e.filter.node, e.filter.arg.size(), e.filter.arg,
                     number(e.filter.value.min), number(e.filter.value.max));
               },
               [&](const PluginOrigin &e)
                   -> std::expected<std::string, std::string> {
-                return instance + ":plugin:" + e.id;
+                return *instance + ":plugin:" + e.id;
               });
         },
         [&](const RootTransformInput &)
-            -> std::expected<std::string, std::string> { return instance; },
+            -> std::expected<std::string, std::string> { return *instance; },
         [&](const TimeInput &) -> std::expected<std::string, std::string> {
-          return instance;
+          return *instance;
         },
         [&](const DeltaTimeInput &) -> std::expected<std::string, std::string> {
-          return instance;
+          return *instance;
         },
         [](const SampleUvInput &) -> std::expected<std::string, std::string> {
           return "uv";
