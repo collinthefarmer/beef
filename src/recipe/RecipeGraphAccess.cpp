@@ -66,6 +66,9 @@ bool RecipeGraph::IsDisabled(std::size_t index) const noexcept {
              ? index >= disabled_.size() || disabled_[index]
              : index >= declarations_.size() || declarations_[index].isDisabled;
 }
+bool RecipeGraph::Changing(NodeId a_node) const noexcept {
+  return a_node < changing_.size() && changing_[a_node];
+}
 bool RecipeGraph::MayChangeOverTime(std::string_view name) const {
   const auto index = FindNodeIndex(name);
   if (!index || IsDisabled(*index))

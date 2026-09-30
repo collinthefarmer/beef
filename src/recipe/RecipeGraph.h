@@ -57,6 +57,7 @@ public:
   TypeOf(std::size_t a_index) const noexcept;
   [[nodiscard]] bool IsDisabled(std::size_t a_index) const noexcept;
   [[nodiscard]] bool MayChangeOverTime(std::string_view a_name) const;
+  [[nodiscard]] bool Changing(NodeId a_node) const noexcept;
   [[nodiscard]] std::span<const std::size_t> DependencyOrder() const noexcept;
   [[nodiscard]] std::span<const std::size_t>
   SignalEvaluationOrder() const noexcept;

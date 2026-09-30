@@ -50,7 +50,9 @@ enum class InterpreterOpcode : std::uint8_t {
   kDistance = 39,
   kDot = 40,
   kCross = 41,
-  kNormalize = 42
+  kNormalize = 42,
+  kQuantize = 43,
+  kSplat = 44
 };
 struct InterpreterInstruction {
   InterpreterOpcode opcode;
@@ -84,6 +86,7 @@ struct InterpreterLimits {
   std::size_t lookups = kInterpreterLookups;
   std::size_t stack = kInterpreterStack;
 };
+[[nodiscard]] std::size_t InterpreterPops(InterpreterOpcode opcode) noexcept;
 class InterpreterProgram {
 public:
   [[nodiscard]] static InterpreterProgram Sample(ValueType type,
@@ -94,6 +97,10 @@ public:
   [[nodiscard]] static std::expected<InterpreterProgram, std::string>
   Compile(const RecipeGraph &a_graph, OutputRef a_result,
           const InterpreterLimits &a_limits = {});
+  [[nodiscard]] static std::expected<InterpreterProgram, std::string>
+  Inline(const InterpreterProgram &a_consumer, std::size_t a_input,
+         const InterpreterProgram &a_producer,
+         const InterpreterLimits &a_limits = {});
   [[nodiscard]] std::span<const InterpreterInstruction>
   Instructions() const noexcept;
   [[nodiscard]] std::span<const InterpreterInput> Inputs() const noexcept;

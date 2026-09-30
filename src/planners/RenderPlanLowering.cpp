@@ -1,4 +1,5 @@
 // GPL-3.0-only with the additional permission in COPYING.md.
+#include "planners/RenderFusion.h"
 #include "planners/RenderPlan.h"
 
 #include <algorithm>
@@ -422,7 +423,7 @@ struct PlanBuilder {
 };
 }
 std::expected<RenderPlan, std::string>
-BuildRenderPlan(std::span<const TextureDemand> demands,
+LowerRenderPlan(std::span<const TextureDemand> demands,
                 std::span<const RenderStackRequest> stacks,
                 const RenderBindingResolver &bindings) {
   if (!bindings)
@@ -456,5 +457,17 @@ BuildRenderPlan(std::span<const TextureDemand> demands,
   if (auto valid = ValidateRenderPlan(builder.plan); !valid)
     return std::unexpected(valid.error());
   return std::move(builder.plan);
+}
+std::expected<RenderPlan, std::string>
+BuildRenderPlan(std::span<const TextureDemand> demands,
+                std::span<const RenderStackRequest> stacks,
+                const RenderBindingResolver &bindings) {
+  auto lowered = LowerRenderPlan(demands, stacks, bindings);
+  if (!lowered)
+    return lowered;
+  auto fused = FusePrograms(std::move(*lowered)).plan;
+  if (auto valid = ValidateRenderPlan(fused); !valid)
+    return std::unexpected(valid.error());
+  return fused;
 }
 }

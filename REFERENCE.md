@@ -1204,6 +1204,15 @@ Decompile provenance (`decompiled/WornEnchantmentFX/plugin.c` unless noted):
   spans are recorded per tick. `CollectTimings` polls with
   `D3D11_ASYNC_GETDATA_DONOTFLUSH` once per frame and never waits, because a
   wait would add the GPU backlog to the frame being measured.
+- Program fusion inlines a producer program into its consumer's texture input
+  when the producer is program-like (`EvaluateProgram`, `MapField`,
+  `ComposeVector`), shares the consumer's size and RGBA8 format, has exactly
+  one live consumer (counted from the stack outputs; preview demands do not
+  count), and animates (depends on a changing graph input or a changing
+  readback). The inlined code is followed by `kSplat` for a scalar producer,
+  because a scalar field is stored as `xxx`, and by `kQuantize`, because the
+  stored field was RGBA8. A texel-centre read returns the stored texel
+  exactly, so the fused program computes the same value.
 - Only stack results generate mips. The lowering sets `MipPolicy::kNone` on
   every value it builds, because every intermediate is read at its own size,
   where sampling uses mip 0. A stack draws its layers into targets without

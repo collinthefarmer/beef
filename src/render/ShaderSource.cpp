@@ -233,7 +233,7 @@ constexpr const char *kShaderSourceMid = R"(];
 		int pops = 0;
 		switch (op) {
 		case 0: case 3: pops = 0; break;
-		case 4: case 8: case 9: case 23: case 27: case 28: case 29: case 30: case 31: case 33: case 34: case 38: case 42: pops = 1; break;
+		case 4: case 8: case 9: case 23: case 27: case 28: case 29: case 30: case 31: case 33: case 34: case 38: case 42: case 43: case 44: pops = 1; break;
 		case 1: case 10: case 11: case 12: case 13: case 14: case 15: case 16: case 17: case 18: case 19: case 20: case 21:
 		case 24: case 25: case 32: case 35: case 39: case 40: case 41: pops = 2; break;
 		default: pops = 3; break;
@@ -282,6 +282,8 @@ constexpr const char *kShaderSourceMid = R"(];
 		case 39: r = components == 2 ? length(b.xy - a.xy) : length(b - a); break;
 		case 40: r = components == 2 ? dot(b.xy, a.xy) : dot(b, a); break;
 		case 41: r = cross(b, a); break;
+		case 43: r = round(saturate(a) * 255) / 255; break;
+		case 44: r = a.xxx; break;
 		default: r = SafeDiv(a, components == 2 ? length(a.xy) : length(a)); break;
 		}
 		if (components == 2 && op != 38 && op != 39 && op != 40) r.z = 0;

@@ -140,6 +140,79 @@ uses the steady values.
   sampling uses mip 0, and the published results keep their mips.
 - Waits for its measurement run.
 
+## Stage 3: fused passes
+
+Goal: draw as few passes as possible without changing any result, provably.
+
+### Why a fused result can equal the unfused one
+
+- An unfused chain evaluates a field F at the texel centres of its target,
+  stores `Q(F)` in an RGBA8 target, and the consumer reads it at the same
+  texel centres. `Q` is the float-to-UNORM8 conversion.
+- D3D11 snaps sampling coordinates to at least 8 bits of sub-texel precision,
+  so a texel-centre read returns the stored texel exactly.
+- A fused pass evaluates F at the same texel centre and applies `Q` in the
+  shader. Under a reference model with exact rounding, the fused result equals
+  the unfused one.
+- D3D11 allows its own float-to-UNORM conversion a tolerance of 0.6 ULP. On
+  values within that tolerance of a rounding tie, hardware and exact rounding
+  can differ by 1/255. The unfused path already carries that tolerance.
+
+### Fusion rules
+
+A producer step is inlined into its consumer's pass when all hold:
+
+1. It is pointwise: program fields, mapped fields and composed vectors.
+   Bakes, dilation, reductions, lookups, cluster draws, readback submissions
+   and ripples stay materialized. Image samples with animated scroll are
+   deferred, because their sampling is computed during execution.
+2. It has exactly one consumer. A field read by several steps or geometries
+   is cheaper drawn once.
+3. It animates. A static field is cached, so inlining would re-evaluate it
+   every tick.
+4. The fused program fits the interpreter limits. Otherwise inlining stops
+   greedily in operand order and the rest stays materialized.
+
+Stacks always fuse their layers into one pass. The original steps stay in the
+plan for inspection and are released when idle.
+
+### Sub-stages
+
+- 3a. A CPU reference interpreter for `InterpreterProgram` that mirrors
+  `PSProgram`, with a quantize operation. Tested against the recipe
+  expression evaluator.
+- 3b. Program inlining: splice a producer into a consumer at one texture input,
+  followed by quantize. Property test: the inlined program equals the
+  consumer evaluated with that input set to the quantized producer.
+- 3c. Plan fusion: a pure pass over the lowered plan that applies 3b under the
+  rules above.
+- 3d. Stack fusion: one pass per stack, quantizing after each layer, proven
+  against a CPU model of the layer pass.
+- 3e. In-game validation: a setting that renders a fused stack and its
+  unfused chain and reduces their largest difference.
+
+### Progress
+
+- 3a done: `planners/InterpreterReference` evaluates interpreter programs on
+  the CPU, mirroring `PSProgram`, including `pow` as `exp2(log2(a) * b)` and
+  HLSL `clamp`. It matches the recipe expression evaluator on about 3,400
+  random evaluations of 17 expressions. `kQuantize` rounds to an RGBA8 step
+  (ties to even, NaN to 0) and `kSplat` broadcasts `.x`.
+- 3b done: `InterpreterProgram::Inline` splices a producer into a consumer's
+  texture input, followed by `kSplat` for a scalar producer and `kQuantize`.
+  Over 221 random program pairs and 5,525 evaluations the inlined program
+  equals the consumer reading the stored value bit for bit; without the
+  quantize step 4,482 evaluations differ.
+- 3c done: `planners/RenderFusion` inlines eligible producers to a fixpoint;
+  `BuildRenderPlan` lowers with `LowerRenderPlan` and then fuses. Over 150
+  random animated chains (167 producers inlined) and the demo recipes on two
+  geometries, every stack operand equals the unfused plan's bit for bit;
+  without quantize 109 operands differ. The demo plan inlines 2 of 86 steps,
+  because most animated fields feed stack layers directly, which is 3d.
+- Finding, not fixed: the recipe CPU evaluator and the GPU interpreter
+  disagree on `pow` with a negative base or `pow(0, 0)` (CPU 4 and 1, GPU 0 and
+  0), so the same expression can differ between a signal and a field.
+
 ## Later stages
 
 Stage 1 decides the order. The candidates known now:

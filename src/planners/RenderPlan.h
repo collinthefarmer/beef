@@ -216,6 +216,10 @@ RequirementsOf(const RenderStepKind &step);
 [[nodiscard]] std::expected<void, std::string>
 ValidateRenderPlan(const RenderPlan &plan);
 [[nodiscard]] std::expected<RenderPlan, std::string>
+LowerRenderPlan(std::span<const TextureDemand> demands,
+                std::span<const RenderStackRequest> stacks,
+                const RenderBindingResolver &bindings);
+[[nodiscard]] std::expected<RenderPlan, std::string>
 BuildRenderPlan(std::span<const TextureDemand> demands,
                 std::span<const RenderStackRequest> stacks,
                 const RenderBindingResolver &bindings);

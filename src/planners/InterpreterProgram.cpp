@@ -244,6 +244,127 @@ InterpreterProgram::Compile(const RecipeGraph &graph, OutputRef result,
     return fail("instruction result type does not match graph output");
   return compiled;
 }
+std::size_t InterpreterPops(InterpreterOpcode opcode) noexcept {
+  using Op = InterpreterOpcode;
+  switch (opcode) {
+  case Op::kNumber:
+  case Op::kInput:
+    return 0;
+  case Op::kLookup:
+  case Op::kNeg:
+  case Op::kNot:
+  case Op::kAbs:
+  case Op::kSaturate:
+  case Op::kFloor:
+  case Op::kCeil:
+  case Op::kFrac:
+  case Op::kSqrt:
+  case Op::kSin:
+  case Op::kCos:
+  case Op::kLength:
+  case Op::kNormalize:
+  case Op::kQuantize:
+  case Op::kSplat:
+    return 1;
+  case Op::kMakeVec2:
+  case Op::kAdd:
+  case Op::kSub:
+  case Op::kMul:
+  case Op::kDiv:
+  case Op::kLt:
+  case Op::kGt:
+  case Op::kLe:
+  case Op::kGe:
+  case Op::kEq:
+  case Op::kNe:
+  case Op::kAnd:
+  case Op::kOr:
+  case Op::kMin:
+  case Op::kMax:
+  case Op::kPow:
+  case Op::kStep:
+  case Op::kDistance:
+  case Op::kDot:
+  case Op::kCross:
+    return 2;
+  case Op::kMakeVec3:
+  case Op::kIf:
+  case Op::kClamp:
+  case Op::kSmoothstep:
+  case Op::kLerp:
+    return 3;
+  }
+  return 3;
+}
+std::expected<InterpreterProgram, std::string> InterpreterProgram::Inline(
+    const InterpreterProgram &a_consumer, std::size_t a_input,
+    const InterpreterProgram &a_producer, const InterpreterLimits &a_limits) {
+  if (a_input >= a_consumer.inputs_.size() ||
+      !Is<InterpreterTextureInput>(a_consumer.inputs_[a_input]))
+    return std::unexpected("inlined input is not a texture input");
+  InterpreterProgram fused;
+  fused.resultType_ = a_consumer.resultType_;
+  std::vector<std::uint32_t> consumerIndex(a_consumer.inputs_.size());
+  std::vector<std::uint32_t> producerIndex(a_producer.inputs_.size());
+  const auto append = [&](const InterpreterInput &input) {
+    const auto index = static_cast<std::uint32_t>(fused.inputs_.size());
+    if (const auto *texture = Get<InterpreterTextureInput>(input))
+      fused.inputs_.push_back(InterpreterTextureInput{
+          texture->output, static_cast<std::uint32_t>(fused.textureCount_++)});
+    else
+      fused.inputs_.push_back(input);
+    return index;
+  };
+  for (std::size_t i = 0; i < a_consumer.inputs_.size(); ++i)
+    if (i != a_input)
+      consumerIndex[i] = append(a_consumer.inputs_[i]);
+  for (std::size_t i = 0; i < a_producer.inputs_.size(); ++i)
+    producerIndex[i] = append(a_producer.inputs_[i]);
+  fused.lookups_ = a_consumer.lookups_;
+  const auto lookupOffset = static_cast<std::uint32_t>(fused.lookups_.size());
+  fused.lookups_.insert(fused.lookups_.end(), a_producer.lookups_.begin(),
+                        a_producer.lookups_.end());
+  const bool scalarProducer = a_producer.resultType_ == ValueType::kScalar;
+  for (const auto &instruction : a_consumer.instructions_) {
+    if (instruction.opcode == InterpreterOpcode::kInput &&
+        instruction.index == a_input) {
+      for (auto produced : a_producer.instructions_) {
+        if (produced.opcode == InterpreterOpcode::kInput)
+          produced.index = produced.index < producerIndex.size()
+                               ? producerIndex[produced.index]
+                               : produced.index;
+        else if (produced.opcode == InterpreterOpcode::kLookup)
+          produced.index += lookupOffset;
+        fused.instructions_.push_back(produced);
+      }
+      if (scalarProducer)
+        fused.instructions_.push_back(
+            {InterpreterOpcode::kSplat, 0, 0, instruction.components});
+      fused.instructions_.push_back(
+          {InterpreterOpcode::kQuantize, 0, 0, instruction.components});
+      continue;
+    }
+    auto kept = instruction;
+    if (kept.opcode == InterpreterOpcode::kInput &&
+        kept.index < consumerIndex.size())
+      kept.index = consumerIndex[kept.index];
+    fused.instructions_.push_back(kept);
+  }
+  std::size_t depth = 0;
+  for (const auto &instruction : fused.instructions_) {
+    const auto pops = InterpreterPops(instruction.opcode);
+    depth = (depth > pops ? depth - pops : 0) + 1;
+    fused.stackSize_ = std::max(fused.stackSize_, depth);
+  }
+  if (fused.instructions_.size() >
+          std::min(a_limits.instructions, kInterpreterInstructions) ||
+      fused.inputs_.size() > std::min(a_limits.inputs, kInterpreterInputs) ||
+      fused.textureCount_ > std::min(a_limits.textures, kInterpreterTextures) ||
+      fused.lookups_.size() > std::min(a_limits.lookups, kInterpreterLookups) ||
+      fused.stackSize_ > std::min(a_limits.stack, kInterpreterStack))
+    return std::unexpected("inlined program exceeds interpreter limits");
+  return fused;
+}
 InterpreterProgram InterpreterProgram::Sample(ValueType type, bool texture) {
   InterpreterProgram result;
   if (texture)
