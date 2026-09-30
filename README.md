@@ -42,6 +42,7 @@ enchantment on the piece itself.
 | `docs/plans/recipe-program-pipeline-2026-09-25.md` | How do recipe rows become evaluated programs, and which format decisions must be made before the format contract closes? Raised by authoring the cookbooks against the current language. |
 | `docs/plans/render-graph-correctness-2026-09-29.md` | Which invariants make the render graph's caching correct and minimal, where does the code break them, and in which order are they fixed? |
 | `docs/plans/render-performance-2026-09-29.md` | What costs frame time and memory when effects render, how is it measured, and in which order is it reduced? |
+| `docs/checkpoints/render-performance-review-2026-09-30.md` | What did the review of the layer-field and generated-shader commits find, and which findings are fixed? |
 | Git history | What did the previous implementation do? The frozen `src/_old/` tree was removed during alpha source cleanup; history retains it. |
 
 ## Working in the repository
