@@ -1,177 +1,226 @@
 # mesh/
 
-The mesh layer. It turns the raw vertex and index bytes a renderer hands
-over into a trusted `MeshData`, then answers questions about it: which texel
-a **bake** needs at each vertex, which islands and material clusters the
-mesh contains, which **slots** and bones it covers, and how a **shell**'s
-rest pose reposes under **paint**. It is engine-free: it compiles natively
-and is unit-tested through `ctest --preset native`. It depends on `recipe/`
-(for `BakeKind`, `SourceKind`, `DistanceSource`, `MaterialClustersSource`)
-and `Core.h`.
+The mesh layer. It turns the vertex and index bytes that the renderer reads
+into a trusted `MeshData`. It then derives per-vertex **bake** values,
+**island** segmentations, **slot** and bone coverage, material clusters, and
+the posed transform of a **shell**. It is engine-free and compiles natively.
+Its tests live in `tests/mesh/` and run through `ctest --preset native`. Its
+`ALLOWS` row in `tools/gate.py` is `'mesh': ('Core.h', 'recipe', 'mesh')`.
+The `planners`, `studio`, `render`, `engine` and `menu` layers may include it.
 
 ## What it owns
 
-Decode is the boundary. The engine reader fetches raw bytes only; this
-module turns them into `MeshData` or rejects them, so a malformed buffer
-never reaches the rest of the plugin as undefined behaviour.
+`DecodePartition` is the boundary. `render/MeshReader.cpp` reads raw bytes
+only. This module turns those bytes into a `MeshPartition` or rejects them
+with `std::nullopt`. A malformed buffer therefore never reaches the rest of
+the plugin.
 
-From a decoded mesh it derives everything a compositor or the studio menu
-asks for:
+From a decoded `MeshData`, the module computes these results:
 
-- per-texel bake buffers — `BuildBake`, `BuildDistanceBake`,
-  `BuildIslandBake`;
-- connected-component and UV-chart segmentation — `AnalyseMesh`;
-- material segmentation over a sampled texture — `ClusterMaterial`;
-- slot and bone coverage — `FactsOf`;
-- the rest-pose transform a shell repose applies — `PosedTransform`.
+| Result | Function | File |
+|---|---|---|
+| Per-vertex bake geometry | `BuildBake`, `BuildDistanceBake`, `BuildIslandBake` | `Mesh.cpp`, `Islands.cpp` |
+| Connected-component and UV-chart segmentation | `AnalyseMesh` | `Islands.cpp` |
+| Slot and bone coverage | `FactsOf`, `SlotsOf`, `BonesOf` | `MeshFacts.cpp` |
+| Material clusters over a sampled texture | `ClusterMaterial`, `NearestCluster`, `DescribeTexel` | `MaterialClusters.cpp` |
+| The posed skin-to-bone transform of a shell | `PosedTransform` | `ShellPose.cpp` |
 
-It also owns `TextureSize`, the clamped bake-resolution type every bake
-**target** carries.
+The module also owns `TextureSize`, the clamped texture edge length that
+every `TextureRequirements` record carries.
 
 ## Data
 
-Each group below lives in one header under `src/mesh/`, named in the heading.
+Each group below lives in the header that its heading names.
 
 ### The mesh (`Mesh.h`)
 
-The engine reader (`render/MeshReader.cpp`) hands this module one
-`RawPartition` per geometry **partition**, and `DecodePartition` bounds both
-counts before it builds a typed `MeshPartition`. A malformed partition
-decodes to `std::nullopt`, never to an overread. Every other function in the
-module works on the assembled `MeshData`.
+`render/MeshReader.cpp` builds one `RawPartition` per geometry
+**partition** and passes it to `DecodePartition`. `DecodePartition` decodes
+each vertex through `DecodeVertex` and rejects the partition when the index
+bytes are shorter than the triangle count needs. `TrianglesWithin` then
+drops every triangle whose corner index is outside the vertex list. Every
+other function in the module reads the assembled `MeshData`.
 
 | Type | Description |
 |---|---|
-| `MeshVertex` | One vertex: position, normal, uv, and up to four bone/weight pairs. |
-| `MeshPartition` | One biped **slot**'s geometry: the slot number, its bone names, its vertices, and its triangles. |
-| `MeshData` | The whole mesh: its partitions, the bounding center and radius, an `origin` label, and a content `hash`. |
-| `VertexLayout` | Where each attribute sits in a raw vertex: the stride and one optional byte offset per attribute (position, uv, normal, skinning). |
-| `RawPartition` | The undecoded input: vertex and index byte spans, their `VertexLayout`, both counts, the slot, and the bone names. |
+| `MeshVertex` | One vertex: position, normal, uv, and four bone index and weight pairs. |
+| `MeshPartition` | One partition's geometry: the raw slot number, the bone names, the vertices and the triangles. `MeshPartition::kNoSlot` (0xFFFF) marks a partition with no slot. |
+| `MeshData` | The whole mesh: the partitions, the bound center and radius, an `origin` label, and a content `hash`. |
+| `VertexLayout` | The byte layout of one raw vertex: the stride and an optional byte offset for position, uv, normal and skinning. |
+| `RawPartition` | The undecoded input: vertex and index byte spans, the `VertexLayout`, the vertex and triangle counts, the slot, and the bone names. |
+| `MeshBound` | A measured bound: the box center and the enclosing radius. `MeasureBound` computes it from the vertices. `render/MeshReader.cpp` calls it when the engine bound is zero. |
+
+`HashBytes` computes an FNV-1a hash from `kHashBasis`.
+`render/MeshReader.cpp` folds the vertex and index bytes into
+`MeshData::hash` with it. `AddBoneWeights` adds one vertex's positive, finite
+bone weights to a map by bone name. `BonesOf` and the island tally in
+`Islands.cpp` both use it.
 
 ### Bakes (`Mesh.h`)
 
-A **bake** carries one mesh-derived value per vertex, and the compositor
-rasterizes it into a per-texel texture (`render/CompositorBake.cpp`,
-`render/CompositorSource.cpp`). Every `Build*Bake` function returns a
-`BakeBuffers`, and a mesh that cannot be baked yields a `problem` string
-instead of an exception. `KeyOf` joins a bake's `DefinitionOf` text and
-its size into the `BakeKey` the compositor caches under. When a skinned
-mesh stores a zero model bound, `MeasureBound` derives one from the
-vertices so the `localPosition` frame exists on every mesh.
+A **bake** holds one value per vertex at that vertex's uv.
+`ExecuteBuildBakeBuffersStep` in `render/RenderInstance.cpp` builds the
+buffers, and `TextureLab::BakeMesh` (`render/TextureLabPass.cpp`) rasterizes
+them into a texture. A bake that cannot be built returns an empty
+`BakeBuffers` with a `problem` string.
 
 | Type | Description |
 |---|---|
-| `BakeVertex` | One baked vertex: the uv it lands at and up to three float channels of value. |
-| `BakeBuffers` | A bake's geometry: vertices, indices, a `vector` flag marking a bake whose channels form one vector value, and the `problem` string. |
-| `BakeKey` | A bake's cache identity: the definition text and the pixel size, compared field by field. |
-| `MeshBound` | A measured bound: box centre and enclosing radius over a mesh's vertices. |
+| `BakeVertex` | One baked vertex: its `u` and `v`, and three float channels of value. |
+| `BakeBuffers` | The bake geometry: vertices, indices, a `vector` flag, and the `problem` string. The `vector` flag marks a bake whose three channels form one vector value. |
+| `BakeKey` | A bake identity: the definition text and the pixel size, ordered field by field. `KeyOf` builds it from a definition and a `TextureSize`. |
 
-### Bake resolution (`TextureSize.h`)
+| Symbol | Description |
+|---|---|
+| `BuildBake` | Bakes one `BakeKind` from `recipe/Recipe.h`. It returns a `problem` for `ComponentIdBake` and `ChartIdBake`, because those kinds need `BuildIslandBake`. A `PartitionBake` keeps only the partitions in its biped slot. |
+| `kPositionFrame` | 128 units. `PositionBake` maps each position axis from -128..128 into 0..1. |
+| `LocalPositionBake` | Maps each position axis into 0..1 about `MeshData::center` and `MeshData::radius`. `BuildBake` returns a `problem` when the radius is zero. |
+| `BuildDistanceBake` | Bakes the distance from one point, divided by `kDistanceFrame`, as a scalar. |
+| `kDistanceFrame` | 256 units. The distance that maps to 1. |
+| `DefinitionOf` | Names a `BakeKind` or a `DistanceSource` as text, for example `bake boneWeight [a, b]`. `BoneWeightBake` names are sorted first. |
+| `DistanceBakeIdentity` | Names a distance bake by its origin, for example `distance 0 0 0`. |
 
-Every bake **target** carries a `TextureSize`. The constructor clamps its
-one argument into `kMin`..`kMax` (64..4096), so every size downstream is in
-range by construction.
+In `src/`, only `mesh/` refers to `BakeKey`, `KeyOf` and `DefinitionOf`.
+The tests in `tests/mesh/mesh_tests.cpp` cover them.
 
-| Type | Description |
+### Texture size (`TextureSize.h`)
+
+`TextureRequirements` (`planners/TextureDemand.h`) carries a `TextureSize`,
+and `TextureLab::Acquire` takes one. The constructor clamps its argument
+into `kMin`..`kMax`, so every size downstream is in range.
+
+| Symbol | Description |
 |---|---|
 | `TextureSize` | A texture edge length in pixels. `Pixels()` reads the clamped value. |
+| `TextureSize::kMin` | 64 pixels. |
+| `TextureSize::kMax` | 4096 pixels. |
 
 ### Coverage (`MeshFacts.h`)
 
-Coverage answers which **slots** and bones a mesh touches. `FactsOf`
-computes both lists in one `MeshFacts`, and `SlotsOf` and `BonesOf` compute
-each list alone.
+Coverage tells which slots and bones a mesh touches. `render/MeshCache.cpp`
+calls `FactsOf` once per mesh read and stores the result in
+`MeshEntry::facts`.
 
 | Type | Description |
 |---|---|
-| `SlotCoverage` | One biped **slot**: its number, its name, and its triangle count. |
-| `BoneCoverage` | One bone: its name and its share of the mesh's skin weight. |
-| `MeshFacts` | The pair of vectors: all covered slots and all weighted bones. |
+| `SlotCoverage` | One slot: the raw number, a name, and the triangle count. |
+| `BoneCoverage` | One bone: its name and its share of the mesh's total skin weight. |
+| `MeshFacts` | Both lists: every covered slot and every weighted bone. `FactsOf` fills it from `SlotsOf` and `BonesOf`. |
 
-### Island analysis (`Islands.h`)
+### Islands (`Islands.h`)
 
-`AnalyseMesh` segments a mesh twice, into connected components and into UV
-charts, and returns both segmentations in one `MeshAnalysis`.
-`BuildIslandBake` rasterizes either segmentation's island ids into a
-`BakeBuffers`. `kMaxIslands` (255) caps each segmentation.
+An **island** is one group of connected triangles. `AnalyseMesh` segments a
+mesh twice: into **components**, which join vertices at the same position,
+and into **charts**, which join vertices at the same uv.
+`render/MeshCache.cpp` stores the result in `MeshEntry::analysis`, and
+`BuildIslandBake` bakes each vertex's island id.
 
-| Type | Description |
+| Symbol | Description |
 |---|---|
-| `IslandSource` | Selects a segmentation: `kComponent` or `kChart`. |
-| `IslandSourceSpec` | One row of the `kIslandSources` naming table: a segmentation's wire name, its plain name, and the `BakeKind` that bakes its ids. |
-| `MeshIsland` | One island: its `IslandSource`, its id, its triangle count and share, its dominant bone and that bone's share, and its centroid. `twin` names the other segmentation's island when both cover exactly the same vertices. |
-| `MeshAnalysis` | The full result: the island list, the per-vertex `componentOf` and `chartOf` id tables, and the component and chart counts. |
+| `IslandSource` | The segmentation: `kComponent` or `kChart`. |
+| `IslandSourceSpec` | One row of `kIslandSources`: the wire name, the plain name, and the `BakeKind` that bakes the ids. `IslandSourceName`, `PlainIslandSourceName` and `IslandBakeOf` read it. |
+| `MeshIsland` | One island: the source, the id, the triangle count and share, the dominant bone and its share, and the centroid. `twin` holds the id of the island in the other segmentation that covers exactly the same vertices. |
+| `MeshAnalysis` | The result: the island list, the per-vertex `componentOf` and `chartOf` id tables, and the component and chart counts. |
+| `kMaxIslands` | 255. The largest number of islands kept per segmentation. The largest islands by triangle count are kept. |
+| `kNoIsland` | 0xFFFF. The id of a vertex outside every kept island. |
+| `kChartWeldUv` | 1/4096. The uv cell size inside which chart vertices join. |
 
-### Material analysis (`MaterialClusters.h`)
+### Material clusters (`MaterialClusters.h`)
 
-`ClusterMaterial` groups a sampled texture's texels by material likeness
-with k-means++ over four RMAOS channels, diffuse luma and diffuse RGB. It reads at most `kMaxSampleTexels`
-(64 x 64) texels and clamps the cluster count to `kMaxMaterialClusters`
-(8, `recipe/Recipe.h`). This header does not include `Mesh.h`, because
-clustering works on a `MaterialSample` and never on a mesh. The settings
-types (`ClusterSettings`, `ChannelWeights`) live in `recipe/Recipe.h`,
-because the recipe's `MaterialClustersSource` carries them directly.
+`ClusterMaterial` groups the texels of a sampled texture by material
+likeness with k-means++. It reads at most `kMaxSampleTexels` texels and
+clamps the cluster count to `kMaxMaterialClusters` (`recipe/Recipe.h`).
+`ClusterTexels` runs at most `kMaxClusterIterations` passes (`recipe/Recipe.h`). This
+header does not include `Mesh.h`, because clustering reads a
+`MaterialSample` and never a mesh. `ClusterSettings` and `ChannelWeights`
+live in `recipe/Recipe.h`, because `MaterialClustersSource` carries them.
 
-| Type | Description |
+| Symbol | Description |
 |---|---|
-| `MaterialTexel` | One texel's roughness, metallic, occlusion, reflectance, diffuse luma and RGB. |
-| `MaterialSample` | The sampled texture: width, height, and the texels. |
-| `MaterialCluster` | One cluster: its id, its centroid texel, its share of the sample, and a text description. |
-| `MaterialAnalysis` | The result `ClusterMaterial` returns: the settings it ran under plus the clusters. |
+| `MaterialTexel` | One texel: roughness, metallic, occlusion, reflectance, diffuse luma, and diffuse RGB. |
+| `MaterialSample` | The sampled texture: width, height and texels. `TextureLab::ReadMaterialSample` (`render/TextureLabReadback.cpp`) produces it. |
+| `MaterialCluster` | One cluster: the id, the centroid texel, the share of the sample, and a text description from `DescribeTexel`. |
+| `MaterialAnalysis` | The result: the `ClusterSettings` it ran with and the clusters, largest first. |
+| `kMaxSampleTexels` | 64 x 64. The largest number of texels that `ClusterMaterial` reads. |
+
+`NearestCluster` returns the id of the cluster nearest to one texel under the
+analysis weights. `DescribeTexel` names a texel with one word per band, for
+example `polished bright metal`.
 
 ### Shell pose (`ShellPose.h`)
 
-**Paint** poses a **shell** through its skin-to-bone bind transform.
-`PosedTransform` applies a `ShellPoseValues` to a `RestSkinToBone` and
-returns the reposed transform. `render/Shell.cpp` consumes the result.
+A shell is posed through its skin-to-bone transforms. `engine/ManagerTick.cpp`
+resolves the recipe's `ShellSettings` pose through the signals into a
+`ShellPoseValues`. `ShellBinding::Pose` (`render/Shell.cpp`) then calls
+`PosedTransform` once per bone.
 
 | Type | Description |
 |---|---|
-| `RestSkinToBone` | A bind-pose transform: a 3 x 3 rotation, a translation, and a uniform scale. |
-| `ShellPoseValues` | The pose values: inflate, offset, a scale about `scalePoint`, and a spin about `spinAxis`. |
+| `RestSkinToBone` | A rest transform: a 3 x 3 rotation, a translation and a uniform scale. |
+| `ShellPoseValues` | The pose: a per-axis inflate, an offset, a scale about `scalePoint`, and a spin in turns about `spinAxis`. |
 
 ## How a mesh flows
 
 ```
 RE::BSGeometry (engine buffers)
-  │  ReadBuffers, BoneName                    render/MeshReader.cpp
+  │  ReadBuffers, BoneName, RawPartitionOf       render/MeshReader.cpp
   ▼
-RawPartition (sized spans + VertexLayout)
-  │  DecodePartition                          Mesh.cpp   (bounds both counts, never overreads)
+RawPartition (byte spans + VertexLayout)
+  │  DecodePartition                             Mesh.cpp
+  │    DecodeVertex per vertex, index bytes checked,
+  │    TrianglesWithin drops out-of-range triangles
   ▼
-MeshData                                      render/MeshCache.cpp caches by buffer identity
+MeshData (MeasureBound, HashBytes)               render/MeshReader.cpp
+  │  MeshCache::Get stores one MeshEntry          render/MeshCache.cpp
+  ├── FactsOf ─▶ MeshEntry::facts                MeshFacts.cpp
+  └── AnalyseMesh ─▶ MeshEntry::analysis          Islands.cpp
+        Flatten → Connect(PositionCell) → Label   (components)
+                → Connect(UvCell)       → Label   (charts)
+                → PairTwins
   │
-  ├── FactsOf ─▶ MeshFacts (slots, bones)      MeshFacts.cpp
-  ├── AnalyseMesh ─▶ MeshAnalysis (islands)    Islands.cpp
-  │
-  ├── BuildBake / BuildDistanceBake ─▶ BakeBuffers                 Mesh.cpp
-  ├── BuildIslandBake(analysis) ─▶ BakeBuffers                     Islands.cpp
-  │       consumed by render/CompositorBake.cpp, keyed by BakeKey
-  │
-  └── (a sampled MaterialSample, not this MeshData) ──ClusterMaterial──▶
-        MaterialAnalysis                                            MaterialClusters.cpp
-        consumed by render/CompositorSource.cpp
+  ▼
+BuildBakeBuffersStep                             planners/RenderPlan.h
+  │  ExecuteBuildBakeBuffersStep                 render/RenderInstance.cpp
+  │    BakeBuffersFor ─▶ BuildIslandBake          Islands.cpp
+  │                   └▶ BuildBake                Mesh.cpp
+  │    or BuildDistanceBake                       Mesh.cpp
+  ▼
+BakeBuffers
+  │  ExecuteBakeMeshStep → TextureLab::BakeMesh   render/RenderInstance.cpp,
+  ▼                                               render/TextureLabPass.cpp
+baked texture
 
-RestSkinToBone + ShellPoseValues ──PosedTransform──▶ RestSkinToBone   ShellPose.cpp
-  consumed by render/Shell.cpp to pose a shell's skin-to-bone transform
+MaterialSample                                   render/TextureLabReadback.cpp
+  │  ClusterMaterial                             MaterialClusters.cpp
+  │    TexelAxesOf → ClusterTexels → RankedClusters
+  ▼
+MaterialAnalysis    ExecuteClusterMaterialStep   render/RenderInstance.cpp
+                    Compositor::MaterialRecord   render/CompositorBake.cpp
+
+ShellPoseValues + RestSkinToBone
+  │  PosedTransform                              ShellPose.cpp
+  ▼
+posed skin-to-bone  ShellBinding::Pose           render/Shell.cpp
 ```
 
 ## The files
 
 | File | What it owns |
 |---|---|
-| `Mesh.h` / `Mesh.cpp` | `MeshData` and its parts, `DecodePartition`, `HashBytes`, the position/distance/uv bake builders, bake key naming. |
-| `TextureSize.h` | The clamped bake-resolution type. |
-| `MeshFacts.h` / `MeshFacts.cpp` | Slot and bone coverage over a `MeshData`: `SlotsOf`, `BonesOf`, `FactsOf`. |
-| `Islands.h` / `Islands.cpp` | Connected-component and UV-chart segmentation: `AnalyseMesh`, `BuildIslandBake`. |
-| `MaterialClusters.h` / `MaterialClusters.cpp` | K-means++ material segmentation over a sampled texture: `ClusterMaterial`, `NearestCluster`, `DescribeTexel`. |
-| `ShellPose.h` / `ShellPose.cpp` | The shell repose transform: `PosedTransform`. |
+| `Mesh.h` / `Mesh.cpp` | `MeshData` and its parts, `DecodeVertex`, `DecodePartition`, `TrianglesWithin`, `HalfToFloat`, `MeasureBound`, `HashBytes`, `AddBoneWeights`, `BuildBake`, `BuildDistanceBake`, and the bake names `DefinitionOf`, `DistanceBakeIdentity` and `KeyOf`. |
+| `TextureSize.h` | The clamped `TextureSize`. |
+| `MeshFacts.h` / `MeshFacts.cpp` | Slot and bone coverage: `SlotsOf`, `BonesOf`, `FactsOf`. |
+| `Islands.h` / `Islands.cpp` | Component and chart segmentation and island bakes. `AnalyseMesh` runs the named phases `Flatten`, `Connect`, `Label` and `PairTwins`. `Label` runs `RankedRoots`, `LabelVertices`, `TallyIslands` and `IslandFrom`. `PairTwins` runs `TwinCandidatesOf`, `TwinChartOf` and `LinkChartTwin`. `DisjointSets` holds the union-find state. |
+| `MaterialClusters.h` / `MaterialClusters.cpp` | K-means++ material clustering. `ClusterMaterial` runs `TexelAxesOf`, `ClusterTexels` and `RankedClusters`. `ClusterTexels` runs `SeedCentroids`, then alternates `Recentre` and `Assign`. `NearestCluster` and `DescribeTexel` read a finished analysis. |
+| `ShellPose.h` / `ShellPose.cpp` | `PosedTransform` and its 3 x 3 matrix helpers. |
 
 ## See also
 
-- `REFERENCE.md` → *Meshes, bakes and analysis* — the biped-slot type split,
-  the engine's vertex packing, bake-frame ranges, and the welding and
-  clustering rules, none of which the types above can state.
-- `docs/conventions.md` → *Multi-phase algorithms* — the bounded-recursion,
-  capped-row discipline `kMaxIslands`, `kMaxMaterialClusters`, and
-  `kMaxClusterIterations` follow.
+- `REFERENCE.md` → *Meshes, bakes and analysis*: the two biped-slot
+  representations, the renderer byte-count limits, the bake frames, and the
+  weld and clustering rules.
+- `docs/conventions.md` → *Multi-phase algorithms* → *Named phases* and
+  *Bounds*: the rules that `AnalyseMesh`, `ClusterMaterial`, `kMaxIslands`
+  and `kMaxMaterialClusters` follow.
+- `docs/conventions.md` → *Multi-phase algorithms* → *Parse, don't
+  validate*: the rule that `DecodePartition` follows.

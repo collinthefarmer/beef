@@ -287,8 +287,8 @@ bool BindingsMatch(const FieldProgram &program,
          lookups.size() == program.FunctionLookups().size();
 }
 std::expected<void, std::string>
-ValidateBuildBakeBuffers(const RenderPlan &plan,
-                         const BuildBakeBuffersStep &step) {
+ValidateBuildBakeBuffersStep(const RenderPlan &plan,
+                             const BuildBakeBuffersStep &step) {
   if (std::expected<void, std::string> mesh =
           RequireType(plan, step.mesh, RenderResourceType::kMesh);
       !mesh)
@@ -298,7 +298,7 @@ ValidateBuildBakeBuffers(const RenderPlan &plan,
   return {};
 }
 std::expected<void, std::string>
-ValidateSampleField(const RenderPlan &plan, const SampleFieldStep &step) {
+ValidateSampleFieldStep(const RenderPlan &plan, const SampleFieldStep &step) {
   if (!HasEitherType(plan, step.texture, RenderResourceType::kTexture,
                      RenderResourceType::kMaterial))
     return std::unexpected("field sampling requires a texture or material");
@@ -312,8 +312,8 @@ ValidateSampleField(const RenderPlan &plan, const SampleFieldStep &step) {
   return {};
 }
 std::expected<void, std::string>
-ValidateSubmitReduction(const RenderPlan &plan,
-                        const SubmitReductionStep &step) {
+ValidateSubmitReductionStep(const RenderPlan &plan,
+                            const SubmitReductionStep &step) {
   if (std::expected<void, std::string> value =
           RequireType(plan, step.value, RenderResourceType::kTexture);
       !value)
@@ -349,7 +349,7 @@ ValidateLookupArguments(const RenderPlan &plan, const BuildLookupStep &step,
   return {};
 }
 std::expected<void, std::string>
-ValidateBuildLookup(const RenderPlan &plan, const BuildLookupStep &step) {
+ValidateBuildLookupStep(const RenderPlan &plan, const BuildLookupStep &step) {
   const FunctionDefinition *function =
       step.graph ? step.graph->FunctionAt(step.function) : nullptr;
   if (!function || function->isDisabled || step.samples != 256 ||
@@ -363,7 +363,8 @@ ValidateBuildLookup(const RenderPlan &plan, const BuildLookupStep &step) {
   return std::unexpected("lookup sampled parameter must be scalar");
 }
 std::expected<void, std::string>
-ValidateEvaluateValue(const RenderPlan &plan, const EvaluateValueStep &step) {
+ValidateEvaluateValueStep(const RenderPlan &plan,
+                          const EvaluateValueStep &step) {
   const RecipeGraph *graph = step.value.graph;
   const RecipeNode *node =
       graph ? graph->NodeAt(step.value.output.node) : nullptr;
@@ -385,8 +386,8 @@ ValidateEvaluateValue(const RenderPlan &plan, const EvaluateValueStep &step) {
   return {};
 }
 std::expected<void, std::string>
-ValidateEvaluateProgram(const RenderPlan &plan,
-                        const EvaluateProgramStep &step) {
+ValidateEvaluateProgramStep(const RenderPlan &plan,
+                            const EvaluateProgramStep &step) {
   if (!BindingsMatch(step.program, step.inputs, step.lookups))
     return std::unexpected("program bindings do not match");
   const std::span<const ProgramInput> programInputs = step.program.Inputs();
@@ -410,7 +411,8 @@ ValidateEvaluateProgram(const RenderPlan &plan,
   return {};
 }
 std::expected<void, std::string>
-ValidateComposeVector(const RenderPlan &plan, const ComposeVectorStep &step) {
+ValidateComposeVectorStep(const RenderPlan &plan,
+                          const ComposeVectorStep &step) {
   if (step.components.size() < 2 || step.components.size() > 3)
     return std::unexpected("invalid vector component count");
   for (const RenderValueRef component : step.components)
@@ -421,7 +423,7 @@ ValidateComposeVector(const RenderPlan &plan, const ComposeVectorStep &step) {
   return {};
 }
 std::expected<void, std::string>
-ValidateDrawRipple(const RenderPlan &plan, const DrawRippleStep &step) {
+ValidateDrawRippleStep(const RenderPlan &plan, const DrawRippleStep &step) {
   if (std::expected<void, std::string> positions =
           RequireType(plan, step.positions, RenderResourceType::kTexture);
       !positions)
@@ -455,7 +457,8 @@ ValidateStackLayer(const RenderPlan &plan, const CompositeStackStep &stack,
   return {};
 }
 std::expected<void, std::string>
-ValidateCompositeStack(const RenderPlan &plan, const CompositeStackStep &step) {
+ValidateCompositeStackStep(const RenderPlan &plan,
+                           const CompositeStackStep &step) {
   if (std::expected<void, std::string> base =
           RequireType(plan, step.base, RenderResourceType::kStack);
       !base)
@@ -481,7 +484,7 @@ std::expected<void, std::string> ValidateStepKind(const RenderPlan &plan,
       kind, [](const UnavailableStep &) -> Validation { return {}; },
       [](const ConstantRenderStep &) -> Validation { return {}; },
       [&](const BuildBakeBuffersStep &k) -> Validation {
-        return ValidateBuildBakeBuffers(plan, k);
+        return ValidateBuildBakeBuffersStep(plan, k);
       },
       [&](const BakeMeshStep &k) -> Validation {
         return RequireType(plan, k.buffers, RenderResourceType::kBakeBuffers);
@@ -503,19 +506,19 @@ std::expected<void, std::string> ValidateStepKind(const RenderPlan &plan,
             });
       },
       [&](const SampleFieldStep &k) -> Validation {
-        return ValidateSampleField(plan, k);
+        return ValidateSampleFieldStep(plan, k);
       },
       [&](const SubmitReductionStep &k) -> Validation {
-        return ValidateSubmitReduction(plan, k);
+        return ValidateSubmitReductionStep(plan, k);
       },
       [&](const BuildLookupStep &k) -> Validation {
-        return ValidateBuildLookup(plan, k);
+        return ValidateBuildLookupStep(plan, k);
       },
       [&](const EvaluateValueStep &k) -> Validation {
-        return ValidateEvaluateValue(plan, k);
+        return ValidateEvaluateValueStep(plan, k);
       },
       [&](const EvaluateProgramStep &k) -> Validation {
-        return ValidateEvaluateProgram(plan, k);
+        return ValidateEvaluateProgramStep(plan, k);
       },
       [&](const MapFieldStep &k) -> Validation {
         return RequireType(plan, k.value, RenderResourceType::kTexture)
@@ -524,13 +527,13 @@ std::expected<void, std::string> ValidateStepKind(const RenderPlan &plan,
             });
       },
       [&](const ComposeVectorStep &k) -> Validation {
-        return ValidateComposeVector(plan, k);
+        return ValidateComposeVectorStep(plan, k);
       },
       [&](const DrawRippleStep &k) -> Validation {
-        return ValidateDrawRipple(plan, k);
+        return ValidateDrawRippleStep(plan, k);
       },
       [&](const CompositeStackStep &k) -> Validation {
-        return ValidateCompositeStack(plan, k);
+        return ValidateCompositeStackStep(plan, k);
       });
 }
 std::expected<void, std::string> ValidateStepInputs(const RenderPlan &plan,

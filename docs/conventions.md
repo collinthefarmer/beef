@@ -238,7 +238,6 @@ The compiler reports these sites when `SourceKind` gains an alternative
 | `recipe/Visit.h` | `VisitSourceParams`. |
 | `studio/SourceRows.cpp` | `SourceRowOf` and `SourceKindOf`. |
 | `studio/Forms.cpp` | `SourceForm`. |
-| `render/CompositorSource.cpp` | `SourcePreparer` and `SourceInspector`. |
 | `tests/recipe/schema_tests.cpp` | Fails until `schema/recipe.schema.json` lists the new word. |
 
 `SourceRow` holds a `SourceRowKind` variant with one per-kind row struct per
@@ -615,6 +614,31 @@ results.
   `tools/rename.py Old New --apply`.
 - Name code for what it is now, never for the change that produced it.
 
+### Naming patterns
+
+A name says what the function does to its argument. Use these forms for new
+code.
+
+| Form | Meaning | Example |
+|---|---|---|
+| `…Of(x)` | A pure projection of `x`. It reads and returns; it changes nothing. | `InputsOf`, `StepUsesOf`, `SurfaceOutputOf` |
+| `…For(x)` | Builds a pass, a record or a resource for `x`. | `LayerPassFor`, `BindingResolverFor`, `StackShaderFor` |
+| `<Verb><Type>` | One handler per alternative of a variant, named after the exact alternative type. | `ExecuteCompositeStackStep`, `LowerExpressionOperation`, `ValidateSampleFieldStep` |
+| `Fill…` | Writes rows of a GPU constant buffer. | `FillProgramConstants`, `FillLayerConstants` |
+| `Bind…` | Binds textures or program inputs for a draw. | `BindProgram`, `BindLayerTextures` |
+| `Attach…` | Hands a render or its outputs to engine geometries. | `AttachRender`, `AttachStackOutputs` |
+| `Render…` | A public `TextureLab` operation that draws. | `RenderStack`, `RenderProgram` |
+| `Draw…` | A private `TextureLab` helper that issues a draw. | `DrawStackPass`, `DrawProgramPass` |
+
+- Bundle parameters that travel together into a record named for the
+  domain. Do not pass five loose values. Example: `LoweringRequest` in
+  `planners/RenderPlanLowering.cpp`, `ProgramOperands` in
+  `render/RenderInstance.cpp`.
+- Keep a switch whole when it has one case per alternative and each case
+  is short. Example: `ApplyOpcode` in `planners/ProgramReference.cpp`
+  mirrors the HLSL statement table case for case. The tidy baseline
+  (`tools/tidy-baseline.txt`) lists each switch kept whole.
+
 ### Glossary
 
 One word, one meaning, for the whole codebase. New code uses these words
@@ -643,6 +667,14 @@ with these meanings and no other word for the same thing.
 | **D3D result** | `render/D3DResult.h`: `Failed(hr)` and `DataOf(texture)`, the two D3D result checks. |
 | **mesh cache** | `render/MeshCache.h`, the per-geometry cache of mesh data, facts, analysis, and bakes. `MeshReader` fills it from the engine. |
 | **layers** | `ALLOWS` in `tools/gate.py`, the only copy of the include graph. A new directory, top-level file or widened edge is an edit to that table. |
+| **program** | A compiled field expression and everything that holds or runs it: `FieldProgram`, `ProgramInstruction`, `ProgramPack`, `ProgramSegment`, `ProgramCode`, the `kProgram*` limits (`planners/FieldProgram.h`). |
+| **interpreter** | Only the bytecode loop that runs a program on the GPU (`RunProgram`, `PSProgram` in `render/ShaderSource.cpp`) and its CPU model (`EvaluateProgramOnCpu` in `planners/ProgramReference.h`). A type that holds a program is not an interpreter type. |
+| **lookup** | A program's sampled function table (`FunctionLookup`, `LookupAt`). Recipe code keeps the recipe word **curve**; the legacy per-layer curve in `TextureLab::Render` also keeps it. Never LUT. |
+| **input** | A program input (`ProgramInput`, `ProgramBindings::values`, HLSL `inputs`). Never ref. |
+| **inline** | To compute a field inside the pass that reads it, instead of drawing it on its own (`InlineFields` in `planners/FieldInlining.h`). Never fuse. |
+| **layer field** | A field that a stack evaluates inside its own pass (`LayerField`, `LayerFieldRef` in `planners/RenderPlan.h`). In a stack shape it is a **segment** read (`SegmentRead`). |
+| **stack shape** | The record a generated stack shader is compiled for: the layer reads, channels, blends and field code without numbers (`StackShape` in `planners/StackShader.h`). |
+| **generated shader** | A pixel shader compiled for one program text or one stack shape (`render/GeneratedShaders.h`). A **compiled shader** is the D3D object it produces (`CompiledShader`). |
 
 ## Gates
 

@@ -1,346 +1,391 @@
 # engine/
 
-The game-facing layer. It hooks CommonLibSSE/SKSE events and a per-frame
-vfunc, tracks which actors wear which **pieces**, matches **recipes** to
-those pieces, ticks their **signals**, and drives the render layer to paint
-the result. It also owns the `RecipeStore`/`RecipeEditor` pipeline the menu
-edits recipes through. Most of it is engine-facing and not native-tested.
-Seven engine-free units are compiled into the native suite
-(`ctest --preset native`): `ApplicationService.cpp`, `SessionQueue.cpp`,
-`TextFile.cpp`, `PluginEvents.cpp`, `RecipeFiles.cpp`, `InstanceTime.cpp`,
-`MenuDependency.cpp`.
-
-The `engine_editorintegration` native target also compiles the actual
-`RecipeEditor.cpp` and `RecipeStore.cpp` with isolated platform test doubles.
-It executes their queued callbacks and real filesystem operations, including
-history, dirty state, load cancellation and import-promotion routing. It does
-not simulate actor rebuilds or Skyrim form discovery; see
-[the harness boundary](../build.md#native-authoring-integration).
-
-The `engine_animationsubscriptions` target compiles the actual subscription owner
-and `ManagerAnimation.cpp` against fake actors and event sources, with the real
-`ApplicationService`/`SessionQueue`. It covers ownership, stale events, rebuild
-gaps, load cancellation and missing-graph recovery. It does not verify Skyrim's
-graph-array synchronization or actual replacement timing.
-
-The `engine_wornkeys` target compiles `WornKeys.cpp` and
-`EnchantmentEffects.cpp` against small form doubles and feeds collected keys to
-the real resolver. It checks secondary and duplicate effects and shaders, null
-entries, editor key choices, selected-effect magnitude/cost, stable cost ties,
-and missing-effect behavior. `ActorEnvironment` uses the winning effect key
-carried by the planner; other selectors retain generic costliest-effect inputs.
+The game-facing adapter layer. It hooks CommonLibSSE and SKSE events and a
+per-frame vfunc. It tracks which actors wear which **pieces**, matches
+**recipes** to those pieces, ticks their **signals**, and drives `render/` to
+draw the result. It also owns the `RecipeStore` and `RecipeEditor` pipeline
+that the menu edits recipes through. Its `ALLOWS` row in `tools/gate.py` is
+`'engine': ADAPTER + ('engine',)`. The row lets it include every engine-free
+directory, `render/`, `PCH.h`, `Identity.h`, `Settings.h` and `SettingsFile.h`.
+Only `menu/`, `main.cpp` and `SettingsFile.cpp` may include it.
 
 ## What it owns
 
-- Event and hook wiring: `RegisterEventSinks` and `InstallHooks` register
-  the sinks and the per-frame hook that feed the manager.
-  The manager owns `AnimationSubscriptions`, which retains each observed actor's
-  exact animation graph independently of recipe bindings.
-- The manager: `Manager` is the singleton. It queues refreshes and
-  retirements per actor, ticks every applied actor each frame, and
-  publishes the **snapshot** the menu reads.
-  Its stack-warning history has fixed key/text budgets and resets with
-  `Clear`; logging suppression never removes the underlying diagnostics.
-- Actor and worn-piece tracking: for each actor with rendering enabled, the
-  manager collects the equipped pieces, matches recipes against them, and
-  keeps the result — signals, **bindings**, **placements** — in a
-  `LiveActor`.
-- The CRUD pipeline: `RecipeStore` holds the loaded `Recipe` list and does
-  the file I/O. `RecipeEditor` is the gesture/edit/undo layer the studio
-  **intents** call through; it accepts document changes and queues actor
-  rebuilds. Application records separately report preparation and rendering.
+**Event and hook wiring.** `main.cpp` calls `InstallHooks` once at data load.
+`InstallHooks` returns failure when the resolved `PlayerCharacter` vtable
+address is zero, before it writes a slot. `main.cpp` enables effects through
+`Manager::SetEmissivePathEnabled` and calls `RegisterEventSinks` only after the
+hook succeeds. `HookProblem` gives the log and the menu the same actionable
+text. The failure lasts until restart.
+
+**The manager.** `Manager` is the singleton that owns every applied actor. It
+queues refreshes and retirements per actor through `ApplicationService`. It
+ticks every applied actor each frame and publishes the **snapshot** the menu
+reads. It owns `AnimationSubscriptions`, which keeps each observed actor's
+animation graph apart from the recipe **bindings**. Its stack-warning
+`WarningHistory` resets in `Manager::Clear`. Log suppression never removes the
+underlying diagnostics.
+
+**Per-actor render assembly.** `Manager::Refresh` builds one `LiveActor` per
+actor. `PlaceInstances` collects every **stack** request of the actor into one
+`ActorStacks`. `BuildActorRender` turns those requests into one `RenderPlan`
+(`BuildRenderPlan`, `planners/RenderPlan.h`) and one `RenderInstance`. Every
+bound geometry of the actor shares that `RenderInstance` through
+`GeometryInputs::render`. Each placed **output** receives a `RenderOutput` for
+its step of the plan. A plan failure writes its text into every request's
+`PlacedOutput::problem` through `FailStackOutputs`. A request that the plan
+does not lower gets the problem `stack was not lowered`.
+
+**The frame.** `Manager::OnFrame` runs from the hook. It returns at once while
+`ApplicationService::Loading` is true. Once a second it expires `CarriedTimes`,
+sweeps animation observation and runs `SweepEviction`. At the tick interval
+(`Settings::TickIntervalMS`) it calls `Manager::Tick` for a nonempty actor
+set. Cache maintenance (`SweepBoundMeshes`) and `PublishSnapshot` run outside
+that nonempty guard. The retirement of the last actor therefore cannot stop
+mesh and material expiration. `ObserveRegression` runs last.
+
+**Recipe CRUD.** `RecipeStore` holds the loaded `Recipe` list and does the
+file I/O. `RecipeEditor` is the gesture, **edit** and undo layer that the
+studio **intents** call through. It accepts document changes and queues actor
+rebuilds. Application records report preparation and rendering separately.
+
+**Republication.** `RecipeStore` keeps mutable documents apart from the
+published `LoadedRecipes()` vector. Republication rebuilds that whole vector,
+also on save. `LiveInstance::recipe` and prepared stack pointers borrow from
+it. `Manager::ChangeAndRebuildActors` therefore retires the affected actors
+through `RetireEffects` before it runs its synchronous mutation callback. It
+then queues their refreshes. The report recipe id scopes diagnostics. It does
+not select the retired actors. A recipe pointer, span or planner recipe index
+must not survive republication. Deferred editor requests capture owned ids and
+edits and look documents up when they run.
+
+**Instance slots.** `ActorPlan` owns instance identity and deduplication.
+`LiveActor::instances` has one slot per planned instance. A slot stays empty
+when preparation fails, so placements use the same indices in both tables.
+
+**Load teardown.** `Manager::Clear` invalidates the `SessionQueue` generation
+and retires actor effects. `main.cpp` calls `CancelRegression` before
+`Manager::BeginLoad`. Posted callbacks borrow the singleton manager and
+editor. Pending result objects keep their journal and report cancellation when
+the queue discards their work. This relies on game-thread serialisation. The
+generation check does not interrupt a callback that already runs.
+
+**Operation journal.** `RecipeOperations.h` holds the engine-free
+`FileOperationJournal` and the pending task guards that `RecipeEditor` uses.
+Its readers hide pending edits and expose the pending state of file
+operations. A late completion cannot overwrite a completed or canceled result.
+Each file and edit list keeps at most 64 results and only the latest request
+per recipe. Gesture publication requires an active matching request, so a
+late publication cannot undo a cancellation.
+
+**Application results.** An accepted edit is not a saved file or a rendered
+result. File-operation results report persistence. Application records report
+queued, prepared, rendered, unmatched, failed or canceled actor work. A
+rendered record is adapter evidence. It does not prove the pixels shown in
+game. Actor retirement reports the unfinished tokens of that `LiveActor` as
+unmatched before it destroys the effects. This includes distance eviction
+before the first render. `ApplicationService` checks both revision and actor
+attempt, so newer rebuild attempts keep their state. Retirement does not
+rewrite completed render or failure results.
+
+**Application history.** `ApplicationService` keeps the newest
+`kMaxTerminalApplicationRecipes` terminal recipe revisions and every record
+with unfinished actors. `kMaxTerminalApplicationActors` caps the terminal
+actor history. Recipe pruning checks each actor phase, because an aggregate
+failure can still hold queued or prepared work. Supersession carries pending
+and failed actors into the replacement, together with the manager's current
+loaded and applied actors. Cancellation releases actor lists and old problem
+text and keeps the token and canceled phase. `ApplicationService::Resume`
+removes canceled history. These limits bound history, not the active workload.
+
+**Geometry loss.** `RetireGeometry` retires a geometry's bindings before it
+releases the geometry's inputs and prepared placement stacks. Placement
+indices and output diagnostics stay. Sibling geometry resources and shared
+instance lights stay. `Manager::DropLostGeometries` retires a geometry whose
+material or shell another system replaced.
+
+**Save.** `SaveRecipe` calls engine-free `WriteRecipeFile` with the
+destination and an explicit import-promotion flag. An existing file under
+`Identity::UserRecipeFolder()` keeps its destination, including nested paths.
+Every other source saves to `<id>.json` in the user folder, so shipped and
+imported source files stay. Only an imported-folder source has its import
+metadata cleared. The store adopts the user destination only after a
+successful write. Save writes a prepared copy without temporary paint masks
+and returns the saved document only after the write succeeds. A refusal
+leaves the working recipe and import metadata unchanged.
+
+**Diagnostics across edits.** `RecipeStore` keeps file-decoding diagnostics
+apart from model checks. Edits and undo refresh model diagnostics and keep the
+file problems. A successful save clears the old decoding diagnostics and
+revalidates. A failed save keeps them. Reload replaces them with the new file
+result. Invalid batches and no-op edits leave history and revisions unchanged.
+
+**Revert, rename and delete.** Revert calls engine-free `ReadRecipeFile`
+before it changes store state. Rename and delete call `RenameRecipeFile` and
+`DeleteRecipeFile` before they change or unpublish a document. A failure
+returns a recipe diagnostic that names the path. Rename refuses an existing
+destination. Files outside the user folder stay on disk. `RecipeEditor`
+advances history, view and revision only after the store accepts the
+operation. `studio/DocumentRevisions` owns revision lookup, advance and reset.
+Reload and game-load cancellation advance the shared epoch, so old indexed
+edits, gestures and paint assignments cannot target a reused recipe id.
+
+**Duplicate definitions.** `LoadFile` uses `AppendDefinition`. A later
+decoded file with the same id replaces the earlier record and moves to the
+later traversal position. This holds also when recipe-level validation holds
+the record back. Unreadable files are skipped.
+
+**Menu preflight.** `CheckMenuFramework` checks loaded-module presence and the
+`MenuFrameworkExports` inventory before menu callbacks register. It reports
+missing exports by name. It does not check ABI or version compatibility.
+
+**Animation observation across rebuilds.** Observation survives the
+retirement gap in `ChangeAndRebuildActors`. `Manager::RunRefresh` reconciles
+it against the new applied state through `ReconcileAnimationEvents`.
+`Manager::Retire` ends observation and discovery even when the actor has no
+`LiveActor`. `Manager::Clear` ends all registrations. `SweepAnimationEvents`
+repairs changed or missing graphs once a second and retires abandoned
+observation after pending application work ends.
+
+**Native coverage.** Most of `engine/` is engine-facing and not
+native-tested. `cmake/Native.cmake` compiles seven engine-free units into the
+`BeefEngineServices` library for `ctest --preset native`:
+`SessionQueue.cpp`, `ApplicationService.cpp`, `TextFile.cpp`,
+`PluginEvents.cpp`, `RecipeFiles.cpp`, `InstanceTime.cpp` and
+`MenuDependency.cpp`. Five suites add engine sources against test doubles:
+`engine_wornkeys` (`WornKeys.cpp`, `EnchantmentEffects.cpp`),
+`engine_animationsubscriptions` (`AnimationSubscriptions.cpp`,
+`ManagerAnimation.cpp`), `engine_editorintegration` (`RecipeEditor.cpp`,
+`RecipeStore.cpp`), `engine_hooks` (`Hooks.cpp`) and `engine_liveretirement`
+(`LiveActor.cpp`). `engine_editorintegration` does not simulate actor
+rebuilds or Skyrim form discovery; see
+[the harness boundary](../build.md#native-authoring-integration).
 
 ## Data
 
-### Event and hook wiring, the manager
+### Event and hook wiring
 
-`InstallHooks` runs once at `kDataLoaded`, after dependency checks. A zero
-resolved vtable address returns failure before reading or replacing a slot.
-Effects remain disabled and event sinks are registered only after the hook
-succeeds. `HookProblem` exposes the same actionable error to the log and the
-menu, including before the first runtime snapshot. Failure persists until
-restart. The sinks and hook forward game events into `Manager`, the singleton
-that owns every applied actor. `Manager` hands per-actor queueing to
-`ApplicationService` and publishes the **snapshot** the menu reads.
+These declarations bring game and plugin events into the manager. The sinks
+and the hook forward each event to a `Manager` queue call. The plugin-event
+parser is engine-free, so the native suite feeds it malformed messages.
 
 | Member | Description | Declared in |
 |---|---|---|
-| `RegisterEventSinks` | A free function. Registers the equip, load, hit and node-update sinks that call `Manager::QueueRefresh` and its siblings. | `Events.h` |
-| `ParsePluginEvent` | A free function, engine-free. Validates another plugin's `PluginEventMessage` (version, actor, bounded id, type tag, finite components) and converts it to a typed `EventRecord` on the plugin channel; `main.cpp`'s listener queues the result per actor or as a broadcast. | `PluginEvents.h` |
-| `InstallHooks` | A free function. Installs the `PlayerCharacter::Update` vfunc hook that calls `Manager::OnFrame` every frame. | `Hooks.h` |
-| `Manager` | The singleton. It queues refreshes and retirements per actor, holds one `LiveActor` per applied actor, and ticks them each frame. | `Manager.h` |
-| `Manager::Status` | The counts the debug overlay shows: actors, **pieces**, **recipes**, geometries, shells, lights, and the tick cost in ms. | `Manager.h` |
-| `Manager::Snapshot` | A `Studio::Snapshot` plus a vector of `TextureRef`s. | `Manager.h` |
-| `ApplicationService` | Tracks one `ApplicationRecord` per in-flight, recipe-affecting change. It keys its `ApplicationRecord` stores by recipe id and by actor id. | `ApplicationService.h` |
-| `ApplicationRecord` | One tracked change: its `ApplicationToken`, its phase, and the per-actor phases and problems. | `studio/ApplicationRecord.h` |
-| `ApplicationToken` | The lookup handle `Find` takes. It names one change by recipe id, revision, actor id and attempt. | `studio/ApplicationRecord.h` |
-| `AnimationSubscriptions` | Owns actor handles, graph references and invalidatable registrations; reconciles graph replacement and detaches from the original source. `ManagerAnimation.cpp` routes accepted events through the existing queue to discovery and signals. | `AnimationSubscriptions.h` |
-| `SessionQueue` | Serialises per-actor refresh tasks onto the SKSE task interface. It also holds the equip-finalize timers and the load gate (`BeginLoad`/`Resume`). | `SessionQueue.h` |
+| `RegisterEventSinks` | Registers the equip, object-loaded, hit and node-update sinks. Each sink calls `Manager::QueueRefresh`, `Manager::QueueEquipFinalize` or `Manager::QueueEvent`. | `Events.h` |
+| `InstallHooks` | Installs the `PlayerCharacter::Update` vfunc hook that calls `Manager::OnFrame` every frame. | `Hooks.h` |
+| `HookProblem` | Returns the hook failure text, or an empty view when the hook succeeded. | `Hooks.h` |
+| `PluginEventMessage` | The raw message another SKSE plugin sends: `version`, `actor`, `id`, `type` and three `value` floats. | `PluginEvents.h` |
+| `PluginEventType` | The closed payload tag: `kScalar`, `kVec2`, `kVec3`. | `PluginEvents.h` |
+| `PluginEvent` | A parsed message: the target actor (0 for a broadcast) and its `EventRecord`. | `PluginEvents.h` |
+| `ParsePluginEvent` | Checks version, bounded id (`kPluginEventIdMax`), type tag and finite components, then returns a `PluginEvent`. `main.cpp` queues the result per actor or as a broadcast. | `PluginEvents.h` |
+| `AnimationSubscriptions` | Owns actor handles, graph references and registrations for animation-graph events. `Reconcile` follows a replaced graph; `Stop` and `Clear` detach. | `AnimationSubscriptions.h` |
+| `AnimationRegistration` | One observed actor id and an atomic `active` flag that detaching clears. | `AnimationSubscriptions.h` |
+| `AnimationEvent` | One animation tag and payload with its registration. `Current` is false after the registration detaches. | `AnimationSubscriptions.h` |
+
+### The manager and application bookkeeping
+
+`Manager` holds one `LiveActor` per applied actor and hands per-actor queueing
+to `ApplicationService`. `ApplicationService` owns the only runtime
+`SessionQueue`. The menu reads the manager's state through `Manager::Snapshot`
+and `Manager::Status`.
+
+| Member | Description | Declared in |
+|---|---|---|
+| `Manager` | The singleton. It queues refreshes and retirements, holds `applied_`, ticks each actor and owns the `RecipeEditor`. | `Manager.h` |
+| `Manager::Status` | The debug overlay counts: actors, **pieces**, recipes, geometries, shells, lights and tick cost in ms. It also carries the `emissivePath`, `layoutVerified` and `textureLab` flags. | `Manager.h` |
+| `Manager::Snapshot` | A `Studio::Snapshot` plus the `TextureRef`s that keep its texture handles alive. | `Manager.h` |
+| `ApplicationService` | Tracks one `ApplicationRecord` per recipe-affecting change, keyed by recipe id and by actor id. | `ApplicationService.h` |
+| `kMaxTerminalApplicationRecipes`, `kMaxTerminalApplicationActors` | The terminal history caps, 256 each. | `ApplicationService.h` |
+| `ApplicationToken` | Names one change by recipe id, revision, actor id and attempt. | `studio/ApplicationRecord.h` |
+| `ApplicationRecord` | One tracked change: its token, its phase, and the per-actor phases and problems. | `studio/ApplicationRecord.h` |
+| `ApplicationPhase` | `kQueued`, `kPrepared`, `kRendered`, `kFailed`, `kUnmatched`, `kCancelled`. | `studio/ApplicationRecord.h` |
+| `SessionQueue` | Serialises per-actor refresh tasks onto the SKSE task interface. It holds the equip-finalize deadlines and the load gate (`BeginLoad`, `Resume`). | `SessionQueue.h` |
 
 ### Texture-memory controls
 
-Two controls cap texture memory for large crowds. Distance eviction keeps
-the applied working set near the player. Per-slot sizing shrinks each
-stack's render target below the material's native size. The render
-`Compositor` also shares one target across actors, but that is render/'s
-concern.
+Two controls cap texture memory for large crowds. Distance eviction keeps the
+applied set near the player. Per-slot sizing shrinks each stack's render size
+below the material's native size.
 
 | Member | Description | Declared in |
 |---|---|---|
-| `Manager::SweepEviction` | Runs once a second from `OnFrame`. It retires each applied non-player actor past `Settings::evictDistance` into `evictedForDistance_`, and `QueueRefresh`es an evicted actor that has closed back inside the hysteresis band. | `Manager.h` |
-| `Manager::evictedForDistance_` | The set of actor ids held out for distance. `Manager::Refresh` skips a far actor into it and drops one when it applies. `Manager::Clear` empties it on save-load teardown. | `Manager.h` |
-| `EvictionFor` / `EvictionAction` | The pure decision. It returns `kEvict` past the distance, `kRestore` once the actor is back inside 80% of it (the hysteresis band), `kNone` otherwise. | `planners/Eviction.h` |
-| `Settings::evictDistance` | The eviction radius in game units. 0 disables eviction; `kMaxEvictDistance` (20000) caps it. | `Settings.h` |
-| `SlotStackSize` | Scales a stack's runtime target down per slot: `a_base` pixels divided by `ResolutionDivisor` of the slot's `Resolution`. `PrepareChainStacks` calls it before `Compositor::Prepare`. | `ManagerApply.cpp` |
-| `DefaultSlotResolution` / `ResolutionDivisor` | The per-slot default `Resolution` and its divisor (`kFull` 1, `kHalf` 2, `kQuarter` 4). | `recipe/Recipe.h` |
-| `SurfaceOutput::resolution` | A recipe output's optional `Resolution`. When set it overrides `DefaultSlotResolution` for that output's slot. | `recipe/Recipe.h` |
+| `Manager::SweepEviction` | Runs once a second from `OnFrame`. It retires each applied non-player actor past `Settings::evictDistance` into `evictedForDistance_`. It calls `QueueRefresh` for an evicted actor back inside the hysteresis band. | `Manager.h` |
+| `Manager::evictedForDistance_` | The actor ids held out for distance. `EligibleForRefresh` adds a far actor and removes an actor that applies. `Manager::Clear` empties it. | `Manager.h` |
+| `EvictionFor`, `EvictionAction` | The pure decision: `kEvict` past the distance, `kRestore` inside 80% of it, `kNone` otherwise. | `planners/Eviction.h` |
+| `Settings::evictDistance` | The eviction radius in game units. 0 disables eviction. `kMaxEvictDistance` (20000) caps it. | `Settings.h` |
+| `RuntimeSizes` | Derives the base and maximum stack size from the material's largest native texture and `Settings::textureScale`. | `ManagerApply.cpp` |
+| `SlotStackSize` | Divides the base size by `ResolutionDivisor` of the slot's `Resolution`. `CollectChainStacks` calls it before `Compositor::StackSize`. | `ManagerApply.cpp` |
+| `DefaultSlotResolution`, `ResolutionDivisor` | The per-slot default `Resolution` and its divisor (`kFull` 1, `kHalf` 2, `kQuarter` 4). | `recipe/Recipe.h` |
+| `SurfaceOutput::resolution` | An optional `Resolution` that overrides `DefaultSlotResolution` for that output's slot. | `recipe/Recipe.h` |
 
 ### Actor and worn-piece state
 
-All eight records are declared in `LiveActor.h`. `Manager::Refresh` fills
-one `LiveActor` per applied actor from the equipped **pieces** and the
-matched **recipes**. Each frame the tick advances each **instance**'s
-**signals** in place and renders each bound **geometry** through its
-**bindings**.
+`Manager::Refresh` fills one `LiveActor` per applied actor from the equipped
+pieces and the matched recipes. Each frame the tick advances each
+**instance**'s signals in place and renders each bound geometry through its
+bindings. Free functions in `LiveActor.h` resolve and retire these records
+without the manager.
 
 | Record | Description |
 |---|---|
-| `LiveActor` | One applied actor: its handle, its `ActorPlan`, its **pieces**, **instances** and **placements**, and the `ApplicationToken`s of its in-flight applications. |
-| `LivePiece` | One collected worn armor clone: the armor form id and name, optional addon `FormKey`, enchantment form id, and its `LiveGeometry`s. The addon comes from the biped entry owning that clone and is copied to each planner geometry for surface and light selectors. |
-| `LiveGeometry` | One bound **geometry** of a piece: the engine geometry and shader-property pointers, its `GeometryInputs`, its `MaterialBinding` and `ShellBinding`, the plans that placed it, and its `PlacementId`s. Its `lost` flag marks it for `DropLostGeometries`. |
-| `LivePieceId` | A typed index (`enum class`, `std::size_t`). Other code uses it to reference one piece inside its `LiveActor`. |
-| `LiveInstance` | One **recipe** matched onto the actor: the `Recipe` pointer, the enchantment, selected effect scope, and its `RecipeGraph`, `SignalState` and `ActorEnvironment`. It also holds the optional `LightBinding`, light eligibility/replacement/preparation diagnostics, and the timing (`startMS`, `lastTime`) the tick advances. |
-| `LivePlacement` | The **outputs** bound onto one geometry: a `GeometryId` and one `PlacedOutput` per placed output. |
-| `PlacedOutput` | One placed **output**: its index in the recipe, its `RenderedStack`, and its `active`, `rendered` and `renderFailed` flags. Its `problem` string carries the failure text. |
-| `ResolvedPlacement` | The placement-index and instance-index pair `ResolvePlacement` returns for a `PlacementId`. |
+| `LiveActor` | One applied actor: its handle, its `ActorPlan`, its pieces, instances and **placements**, and the `ApplicationToken`s of its in-flight applications. |
+| `LivePiece` | One worn armor clone: the armor form id and name, the optional addon `FormKey`, the enchantment form id and its `LiveGeometry`s. |
+| `LivePieceId` | A typed piece index (`enum class`, `std::size_t`). |
+| `LiveGeometry` | One bound geometry: engine geometry and shader-property pointers, `GeometryInputs`, `MaterialBinding`, `ShellBinding`, its `GeometryPlan`, `GeometryStackPlan` and `BindingPlan`, and its `PlacementId`s. Its `lost` flag marks it retired. |
+| `LiveInstance` | One recipe matched onto the actor: the `Recipe` pointer, enchantment, effect scope, `RecipeGraph`, `SignalState` and `ActorEnvironment`. It also holds the optional `LightBinding`, the light problem text, and the timing (`startMS`, `lastTime`). |
+| `LivePlacement` | The outputs bound onto one geometry: a `GeometryId` and one `PlacedOutput` per placed output. |
+| `PlacedOutput` | One placed output: its recipe output index, its `RenderOutput` (`stack`), its `problem` text and its `active`, `rendered` and `renderFailed` flags. |
+| `ResolvedPlacement` | The placement index and instance index that `ResolvePlacement` returns. |
+| `ActorEnvironment` | The `SignalEnvironment` a `LiveInstance` ticks against. It reads actor values, actor state, the enchantment and effect shaders from the game. |
+
+### Per-actor render assembly
+
+These records live in the anonymous namespaces of `ManagerApply.cpp` and
+`ManagerTick.cpp`. Refresh uses the first group to build one render plan per
+actor. The tick uses the second group to render each **slot**'s chain and
+write it to the material.
+
+| Record | Description | Declared in |
+|---|---|---|
+| `LocatedGeometry` | A geometry found by `GeometryId`: its piece, its `LiveGeometry` and the id. | `ManagerApply.cpp` |
+| `LocatedStackOutput` | One slot contribution resolved to its placement, recipe, `RecipeGraph`, `SurfaceOutput` and `PlacedOutput`. | `ManagerApply.cpp` |
+| `ActorStackRequest` | One `StackTextureRequest` with its geometry and located output. | `ManagerApply.cpp` |
+| `ActorStacks` | Every stack request of one actor, with the per-geometry `GeometryInputs` and bound geometries. `BuildActorRender` reads it. | `ManagerApply.cpp` |
+| `TickFrame` | The settings, view, time and resume flag of one tick. | `ManagerTick.cpp` |
+| `SlotRenderView` | The view, whether any **layer** is hidden, and `Settings::publishEffects`. | `ManagerTick.cpp` |
+| `SlotChain` | The rendered outputs of one slot: their `SurfaceOutput`s, resolved values, the final texture and a shown flag. | `ManagerTick.cpp` |
+| `SlotWrite` | The texture, scalars and colour that `WriteSlot` writes to one `SlotTarget`. | `ManagerTick.cpp` |
+
+### Instance time
+
+These declarations keep an instance's clock across a rebuild. `Manager` stores
+the time of a retired instance and gives it to the matching new instance.
+
+| Member | Description | Declared in |
+|---|---|---|
+| `CarriedTimes` | A bounded store keyed by `CarriedTimeKey`. It holds a phase and a retirement time per entry. `Take` consumes an entry; `Expire` drops old entries. | `InstanceTime.h` |
+| `CarriedTimeKey` | Actor id, recipe id, enchantment form id and effect scope. | `InstanceTime.h` |
+| `kCarryWindowMS`, `kMaxCarriedInstanceTimes` | The carry window (2000 ms) and the entry cap (4096). | `InstanceTime.h` |
+| `ClockOffsetMS` | Converts carried seconds at a speed into a checked millisecond offset. | `InstanceTime.h` |
+| `InstanceSpeed` | Multiplies the animation, view and recipe clock speeds. | `Clock.h` |
 
 ### CRUD and results
 
 The free functions in `RecipeStore.h` own the loaded `Recipe` list and its
-file I/O. `RecipeEditor` is the layer the studio **intents** call through
-for every **edit**. Both report through small result records the menu
-reads back.
+file I/O. `RecipeEditor` is the layer that studio intents call for every
+edit. Both report through small result records that the menu reads back.
 
 | Member | Description | Declared in |
 |---|---|---|
 | `RecipeStoreStatus` | The load counts: loaded, with errors, held back, unresolved, imported. `LoadRecipes` and `GetRecipeStoreStatus` return it. | `RecipeStore.h` |
-| `RecipeOrigin` | One recipe's source: its file path and its load `Diagnostic`s. `OriginOf` returns it. | `RecipeStore.h` |
-| `CarriedTimes`, `CarriedTimeKey` | Bounded continuation store keyed by actor, recipe name, enchantment form ID, and selected effect key. Holds only phase and retirement time; consumed entries, expired entries, and old sessions release their state. | `InstanceTime.h` |
-| `RecipeEditor` | Drives gestures, **edits**, undo/redo, save/reload, paint sessions and view commands. An edit result acknowledges the document change; separate application records track queued actor rebuilds through preparation and rendering. | `RecipeEditor.h` |
-| `Studio::FileOperationResult` | The outcome of one save or revert: the request id, the recipe, the `FileAction`, the `FileOperationState`, the written path, and the error `Diagnostic` if it failed. | `studio/FileOperation.h` |
-| `Studio::RecipeEditResult` | The outcome of one edit request: the request id, the recipe, and the error `Diagnostic` if it failed. | `studio/EditResult.h` |
+| `RecipeOrigin` | One recipe's file path and its load `Diagnostic`s. `OriginOf` returns it. | `RecipeStore.h` |
+| `RecipeEditor` | Drives gestures, edits, undo and redo, save and reload, paint sessions and view commands. | `RecipeEditor.h` |
+| `FileOperationJournal` | The mutex-guarded journal of file results, edit results and the active gesture. | `RecipeOperations.h` |
+| `PendingFileOperation`, `PendingRecipeEdit`, `PendingGestureTask` | Guards that report cancellation from their destructor when their task never runs. | `RecipeOperations.h` |
+| `Studio::FileOperationResult` | The outcome of one save or revert: request id, recipe, `FileAction`, `FileOperationState`, written path and error. | `studio/FileOperation.h` |
+| `Studio::RecipeEditResult` | The outcome of one edit request: request id, recipe and error. | `studio/EditResult.h` |
+
+### Regression fixture
+
+These declarations back the console-driven in-game regression. A Papyrus
+bridge submits a request, and the manager reports a verdict string when the
+actor's application finishes.
+
+| Member | Description | Declared in |
+|---|---|---|
+| `RegressionRequest` | One request: id, actor, previous attempt, retire flag, dispatched flag and a `result` string (`IDLE`, `WAITING`, `ABORTED` and the verdicts). | `RegressionRequest.h` |
+| `RegisterRegression` | Registers the `BEEFRegressionNative` Papyrus functions. | `Regression.h` |
+| `CancelRegression` | Aborts the current request and advances the session generation on game load. | `Regression.h` |
+| `Manager::QueueRegression` | Retires or refreshes the request's actor on the session queue. | `Manager.h` |
+| `Manager::ObserveRegression` | Reads a newer application record for the actor and finishes the request as `PASS`, `FAIL`, `BLOCKED` or `ABORTED`. | `Manager.h` |
+| `Manager::SoloRegressionRecipe`, `Manager::RestoreRegressionView` | Isolate the recipe under test and restore the earlier isolation. | `Manager.h` |
 
 ## How an actor and a recipe edit flow
-
-`RecipeStore` keeps mutable documents separately from the published
-`LoadedRecipes()` vector. Republication rebuilds that whole vector, including
-when saving. `LiveInstance::recipe` and prepared stack layer pointers borrow
-from it. `ChangeAndRebuildActors` therefore retires all applied actors before
-running its synchronous mutation callback, then queues refreshes. The report
-recipe ID scopes diagnostics, not the set of actors retired. A recipe pointer,
-span, or planner recipe index must not survive republication; deferred editor
-requests capture owned IDs and edits and look documents up when executed.
-
-`ActorPlan` owns instance identity and deduplication. The live instance vector
-has one slot per planned instance and retains empty slots if preparation
-fails, so placements always use the same indices in both tables.
-
-Save-load teardown invalidates the `SessionQueue` generation and retires
-actor effects before canceling gestures or removing the transient paint
-recipe. Posted callbacks borrow the singleton manager/editor; pending result
-objects retain their journal and report cancellation if queued work is
-discarded. This relies on game-thread serialization; the generation check
-does not interrupt a callback already running.
-
-`RecipeOperations.h` holds the engine-free operation journal and the pending
-file/edit/gesture task guards used by `RecipeEditor`. Its snapshot readers are
-also the editor's readers: pending edits are hidden, file operations expose
-their pending state, and completed or canceled results cannot be overwritten
-by late completion. Each file/edit list retains at most 64 results and only
-the latest request per recipe. Gesture publication also requires an active
-matching request, so cancellation cannot be undone by a late publication.
-Native tests combine these production guards with `SessionQueue` to exercise
-load, rejected submission, dropped callbacks, and queue destruction.
-
-An accepted edit is not a saved file or a rendered result. File-operation
-results report persistence, while application records report queued,
-prepared, rendered, unmatched, failed, or canceled actor work. Even a rendered
-record is adapter evidence, not proof of the pixels displayed in game.
-
-Actor retirement reports unfinished tokens retained by that live actor as
-unmatched before destroying its effects. This includes distance eviction before
-the first render. Reporting captured tokens preserves newer rebuild attempts:
-the application service checks both revision and actor attempt. Explicit unload
-also finishes currently pending work when no live actor exists; load cancellation
-remains canceled. Completed render/failure results are not rewritten by retirement.
-
-Ownership loss retires a geometry's bindings before releasing its inputs and
-prepared placement stacks. Placement indices and output diagnostics remain,
-while sibling geometry resources and shared instance lights are preserved.
-External texture leases remain valid until their consumers release them. Cache
-maintenance runs from `OnFrame` outside the nonempty actor tick guard, so the
-last actor's retirement cannot stop mesh/material expiration or weak-key pruning.
-
-Application history retains the newest 256 terminal recipe revisions alongside
-all records with unfinished actors. The existing independent terminal actor
-history cap is also 256. Recipe pruning checks individual actor phases: an
-aggregate failure can still contain queued/prepared work. Supersession carries
-pending and failed actors into the replacement, together with the manager's
-current loaded/applied actors; successful or unmatched historical wearers do
-not accumulate across edits. Retry targets in pruned terminal records are no
-longer retained, but current manager candidates are still discovered normally.
-Cancellation releases actor lists and old problem text, preserving the token
-and canceled phase for publication. Resume removes canceled history; held
-snapshots remain independent values. These are history limits, not a cap on the
-active workload or the size of one current request's actor list.
-
-Recipe save calls engine-free `WriteRecipeFile` with the selected destination
-and explicit import-promotion flag. Existing files under `recipes/user/` retain
-their destination, including nested paths. Every source outside that folder saves
-to `recipes/user/<id>.json`, preserving shipped and imported source files. Only
-an imported-folder source has its import metadata cleared. The store adopts the
-user destination only after a successful write; later revert/delete use that
-adopted destination. An existing user destination is replaced by the requested
-save using the failure-safe writer.
-
-Save prepares a copy, removes temporary paint
-masks/references, and returns the exact saved document only after writing
-succeeds. The store then publishes that document, destination, and saved
-baseline together. A refusal leaves the working recipe and import metadata
-unchanged. Save normalization is visible to the editor's existing history and
-revision handling, so undo can make the document dirty again without rewriting
-the saved file.
-
-File-decoding diagnostics survive live edits and refused saves. Successful save
-replaces the file bytes and clears those decoding diagnostics; semantic errors
-are recomputed from the document and remain until repaired. Undo/redo restores
-semantic errors with document contents but does not resurrect old decoding errors
-after a successful save. Once any active gesture has been finished, invalid
-batches and no-op edits leave history and revisions unchanged. Operation errors
-are published separately from document diagnostics.
-
-Revert calls engine-free `ReadRecipeFile` before changing store state. Missing,
-empty or undecodable files return a diagnostic; decodable recipes retain both
-semantic and original input diagnostics for normal store publication. The
-editor delegates revision lookup/advance/reset to `studio/DocumentRevisions`;
-reload and game-load cancellation advance the shared epoch, so old indexed
-edits, gestures and paint assignments cannot target a reused recipe ID.
-
-Recipe rename/delete calls the engine-free `RecipeFiles` operations before
-changing or unpublishing a document. Inspection, move, and removal failures
-return a recipe diagnostic naming the path; rename refuses an existing
-destination. Missing files allow operations on unsaved documents. Files
-outside the user folder stay on disk. The editor advances history, view,
-and revision only after the store accepts the operation.
-After an accepted rename of a user-owned file, the saved baseline adopts the
-new ID along with the working document. A clean rename stays clean, and undo
-can still reach the contents of the moved file. Renaming a shipped document
-retains its source file and leaves the renamed user document unsaved.
 
 ```
 (a) a game event reaches render
 
-RE::TESEquipEvent ──▶ EventSink::ProcessEvent          Events.cpp
+RE::TESEquipEvent ──▶ EventSink::ProcessEvent                  Events.cpp
   │
   ▼
-Manager::QueueRefresh ──▶ ApplicationService::Refresh   Manager.cpp / ApplicationService.cpp
-  │        (queues a SessionQueue task onto the SKSE task interface)
+Manager::QueueRefresh ──▶ ApplicationService::Refresh           Manager.cpp, ApplicationService.cpp
+  │   SessionQueue posts a task onto the SKSE task interface     SessionQueue.cpp
   ▼
-Manager::RunRefresh ──▶ Manager::Refresh                ManagerApply.cpp
-  │   CollectPieces / MatchRecipes / PlaceInstances
-  │   (Refresh skips an actor past Settings::evictDistance into
-  │    evictedForDistance_, and drops one from the set when it applies)
+ApplicationService::RunActor ──▶ Manager::RunRefresh            ApplicationService.cpp, ManagerApply.cpp
+  │
   ▼
-PlaceInstances ──▶ PlaceOnGeometry ──▶ PrepareChainStacks   ManagerApply.cpp
-  │   SlotStackSize scales each slot's runtime target down
-  │   (ResolutionDivisor of the slot's Resolution) before Compositor::Prepare
+Manager::Refresh                                                ManagerApply.cpp
+  │   RetireEffects, then EligibleForRefresh (eviction check)
+  │   LiveActorFor: CollectPieces, MatchRecipes, InstanceFor
   ▼
-applied_[actorID] = LiveActor                           (held on Manager)
+Manager::PlaceInstances                                         ManagerApply.cpp
+  │   per geometry: PreparePlacement, PlaceOnGeometry
+  │     InstallSurfaces, MarkReplaced, CollectChainStacks
+  │     (SlotStackSize, Compositor::StackSize) into ActorStacks
+  ▼
+BuildActorRender                                                ManagerApply.cpp
+  │   CollectLayerDemands ──▶ BuildRenderPlan                     planners/RenderPlan.h
+  │   one RenderInstance per actor, AttachRender, AttachStackOutputs
+  ▼
+PlaceLightsOf, then applied_[actorID] = LiveActor              ManagerApply.cpp
 
-PlayerCharacter::Update hook (every frame)              Hooks.cpp
+PlayerCharacter::Update hook (every frame)                      Hooks.cpp
   │
   ▼
-Manager::OnFrame ──▶ Manager::Tick                      ManagerTick.cpp
-  │   TickInstance advances each LiveInstance's signals
-  │
-  ├─(once a second) Manager::SweepEviction              ManagerTick.cpp
-  │      retires an applied non-player actor past Settings::evictDistance
-  │      into evictedForDistance_ (evict_far retire trace), and
-  │      QueueRefreshes an evicted actor back inside the hysteresis band
+Manager::OnFrame                                                ManagerTick.cpp
+  │   once a second: CarriedTimes::Expire, SweepAnimationEvents,
+  │                  SweepEviction
   ▼
-RenderPieces ──▶ RenderGeometry ──▶ MaterialBinding/ShellBinding   ManagerTick.cpp, render/Binding.cpp
+Manager::Tick                                                   ManagerTick.cpp
+  │   DropLostGeometries; TickInstance per LiveInstance
+  ▼
+RenderPieces ──▶ RenderGeometry                                 ManagerTick.cpp
+  │   RenderInstance::BeginFrame, UpdateRenderInputs
+  │   WriteSlots ──▶ RenderSlotChain ──▶ Compositor::Render        render/Compositor.cpp
+  │   WriteSlot into the SlotTarget; PoseShell                    render/Binding.cpp
+  ▼
+UpdateLights, FinishApplications                                ManagerTick.cpp, ManagerApplication.cpp
 
 (b) a menu edit reaches an applied recipe
 
-studio Intent ──▶ applier in menu/Menu.cpp ──▶ RecipeEditor::EditRecipe   Menu.cpp, RecipeEditor.cpp
-  │   (IntentPerformer calls Manager::Editor().EditRecipe; ApplyEdits runs on the posted task)
+studio EditRecipe intent ──▶ IntentPerformer                    menu/Menu.cpp
+  │   Manager::Editor().EditRecipe posts a task
   ▼
-MutableRecipe(id) ──▶ Studio::PrepareEdits              RecipeStore.cpp, studio/Edits.cpp
-  │        (look up the loaded Recipe; build the proposed one)
+RecipeEditor::ApplyEdits                                        RecipeEditor.cpp
+  │   MutableRecipe(id) ──▶ Studio::PrepareEdits                  RecipeStore.cpp, studio/Edits.cpp
   ▼
-Manager::ChangeAndRebuildActors                          ManagerApplication.cpp
-  │   retires every actor the recipe could affect, then runs the injected
-  │   action (RecipeEditor::ApplyEdits' lambda moves the prepared Recipe
-  │   into place, RecipeEditor.cpp), then re-refreshes those actors
+Manager::ChangeAndRebuildActors                                 ManagerApplication.cpp
+  │   ApplicationService::Begin, RetireEffects per actor
+  │   callback: history push, move the prepared Recipe in,
+  │             RefreshRecipeDerivedState(id)                     RecipeStore.cpp
+  │             (revalidates, resolves forms, drops the cached
+  │              RecipeGraph, republishes)
+  │   ApplicationService::Refresh per actor
   ▼
-RefreshRecipeDerivedState(id)                            RecipeStore.cpp
-  │        (invalidates the cached RecipeGraph for lazy rebuild,
-  │         re-validates, re-resolves forms)
-  ▼
-re-Manager::Refresh of the retired actors ── rejoins (a): MatchRecipes
-         reads the edited Recipe back out of LoadedRecipes()
+rejoins (a) at Manager::RunRefresh; MatchRecipes reads the edited
+Recipe from LoadedRecipes()
 ```
 
 ## The files
 
 | Concern | Key files |
 |---|---|
-| Event sinks and hooks | `Events.h`/`.cpp` (equip, load, hit, node-update, animation sinks), `PluginEvents.h`/`.cpp` (the inter-plugin message contract and its parser), `Hooks.h`/`.cpp` (the `PlayerCharacter::Update` vfunc hook) |
-| The manager | `Manager.h`, `Manager.cpp` (construction, load/clear), `ManagerApplication.cpp` (`ChangeAndRebuildActors`, application bookkeeping), `ManagerApply.cpp` (`Refresh`/`Retire`, `CollectPieces`, `MatchRecipes`, `PlaceInstances`, `PrepareChainStacks`/`SlotStackSize`), `ManagerEvents.cpp` (`Fire`/`FireAt`/`QueueEvent`/`QueueBroadcast`), `ManagerInspection.cpp` (the `RequestMesh` debug probe), `ManagerSnapshot.cpp` (`GetStatus`, `BuildSnapshot`, `PublishSnapshot`, `Watch`), `ManagerTick.cpp` (`OnFrame`, `SweepEviction`, `Tick`, `RenderPieces`, `RenderGeometry`, `UpdateLights`) |
-| Application and session bookkeeping | `ApplicationService.h`/`.cpp` (per-recipe `ApplicationToken` tracking, rejection handling), `SessionQueue.h`/`.cpp` (per-actor task serialisation onto the SKSE task interface) |
-| Actor and worn-piece state | `LiveActor.h`/`.cpp` (`LiveActor`, `LivePiece`, `LiveGeometry`, `RetireGeometry`, `ResolvePlacement`), `Environment.h`/`.cpp` (`ActorEnvironment`, the `SignalEnvironment` a `LiveInstance` ticks against), `WornKeys.h`/`.cpp` (all-effect matching inputs), `EnchantmentEffects.h`/`.cpp` (selected-effect magnitude and cost) |
-| Recipe CRUD | `RecipeStore.h`/`.cpp` (load, save, mutate, `RefreshRecipeDerivedState`), `RecipeFiles.h`/`.cpp` (save preparation/write and checked rename/delete filesystem operations), `RecipeEditor.h`/`.cpp` (gestures, edits, undo/redo, paint sessions, view commands) |
-| Engine form and game-object lookups | `EngineForms.h`/`.cpp` (`FormKeyFor`/`LookupForm`, effect-shader records), `GameObjectService.h`/`.cpp` (game-object and anim-event catalogs), `InputCatalog.h`/`.cpp` (actor-value samples for the studio input pickers), `Tweaks.h`/`.cpp` (`EditorIdOf`, xEdit-tweaks availability) |
-| Small utilities | `Clock.h`/`.cpp` (`NowMS`), `InstanceTime.h`/`.cpp` (bounded carry-over and checked clock offsets), `TextFile.h`/`.cpp` (bounded file read and write) |
+| Event sinks and hooks | `Events.h`/`.cpp` (equip, object-loaded, hit and node-update sinks), `PluginEvents.h`/`.cpp` (the inter-plugin message contract and parser), `Hooks.h`/`.cpp` (the `PlayerCharacter::Update` hook), `AnimationSubscriptions.h`/`.cpp` (animation-graph observation) |
+| The manager | `Manager.h`, `Manager.cpp` (construction, queue calls, `Clear`, load), `ManagerApply.cpp` (`Refresh`, `Retire`, piece collection, matching, placement, `BuildActorRender`, lights), `ManagerApplication.cpp` (`ChangeAndRebuildActors`, application bookkeeping), `ManagerTick.cpp` (`OnFrame`, `SweepEviction`, `Tick`, `RenderGeometry`, slot writes, `UpdateLights`), `ManagerAnimation.cpp` (animation events), `ManagerEvents.cpp` (`Fire`, `FireAt`, `QueueEvent`, `QueueBroadcast`), `ManagerInspection.cpp` (`RequestMesh`), `ManagerSnapshot.cpp` (`GetStatus`, `BuildSnapshot`, `PublishSnapshot`, `Watch`) |
+| Application and session bookkeeping | `ApplicationService.h`/`.cpp` (token tracking, rejection handling, history pruning), `SessionQueue.h`/`.cpp` (per-actor task serialisation) |
+| Actor and worn-piece state | `LiveActor.h`/`.cpp` (live records, `RetireGeometry`, `ResolvePlacement`), `Environment.h`/`.cpp` (`ActorEnvironment`), `WornKeys.h`/`.cpp` (`WornKeysOf`), `EnchantmentEffects.h`/`.cpp` (`EnchantmentValueFor`), `InstanceTime.h`/`.cpp` (`CarriedTimes`) |
+| Recipe CRUD | `RecipeStore.h`/`.cpp` (load, publish, mutate, save, `RefreshRecipeDerivedState`), `RecipeFiles.h`/`.cpp` (checked read, write, rename and delete), `RecipeOperations.h` (the operation journal and task guards), `RecipeEditor.h`/`.cpp` (gestures, edits, undo, paint, view) |
+| Form and game-object lookups | `EngineForms.h`/`.cpp` (`FormKeyFor`, `LookupForm`, `ShaderFor`, `RecordFrom`), `GameObjectService.h`/`.cpp` (game-object and animation-event catalogs), `InputCatalog.h`/`.cpp` (`BuildActorValueSamples`), `Tweaks.h`/`.cpp` (`EditorIdOf`, `TweaksEditorIdsAvailable`) |
+| Regression fixture | `Regression.h`/`.cpp` (the Papyrus bridge and the manager's regression calls), `RegressionRequest.h` (`RegressionRequest`) |
+| Small utilities | `Clock.h`/`.cpp` (`NowMS`, `InstanceSpeed`), `TextFile.h`/`.cpp` (`ReadText`, `WriteText`, bounded by `kMaxTextFileBytes`), `MenuDependency.h`/`.cpp` (`CheckMenuFramework`) |
 
 ## See also
 
 - `REFERENCE.md` → *Engine events, hooks and the manager*, *Bindings*,
-  *Recipe CRUD travels one pipeline* — the engine-layout facts and CS
-  decompile notes these files cannot state.
-- `docs/conventions.md` — the `Reporter`/`Diagnostic` and JSON-boundary
-  contracts `RecipeStore` and `RecipeEditor` reuse from `recipe/`.
-
-`RecipeStore` retains file-decoding diagnostics separately from model checks.
-Editing and undo/redo refresh model diagnostics without erasing file problems.
-A successful explicit save clears the old decoding diagnostics and revalidates;
-a failed save preserves them, and reload replaces them with the new file result.
-Edit refusals travel through the existing edit/gesture result and diagnostic UI.
-
-`MenuDependency` checks loaded-module presence and the editor export inventory
-before menu callbacks are registered. It reports missing exports by name and
-does not claim ABI/version compatibility. Its native tests cover missing
-modules and individual missing exports; a tool test tracks wrapper coverage.
-
-`LoadFile` uses `AppendDefinition`: a successfully decoded later same-ID file
-replaces the earlier record and moves to the later traversal position, even
-when recipe-level validation holds it back. Unreadable files are skipped.
-Overrides and held-back definitions are logged separately; shared matching
-keys no longer produce ownership warnings. Generated imports still check
-authored key coverage before insertion.
-
-The selected-piece snapshot reports placement priority. Normal matching
-outcomes use the actual actor form ID, with preview isolation/pinning labeled
-as overrides. Surface replacement problems retain target rows; actor-wide
-light replacement names the winning recipe in the light summary.
-
-### Animation observation across rebuilds
-
-`ChangeAndRebuildActors` releases every affected `LiveActor` through
-`RetireEffects` before publishing recipe changes. Observation survives that gap;
-`RunRefresh` reconciles it against the resulting applied state. `Retire` ends
-observation and discovery even if the actor no longer has a `LiveActor`. Clear
-ends all registrations and clears discovery globally. Once-per-second maintenance
-repairs changed or missing graphs and retires abandoned observation after pending
-application work ends. The observed set follows effective applied state, so
-settings edited with automatic re-apply disabled take effect when applied.
+  *Recipe CRUD travels one pipeline*, *Menu dependency preflight* and
+  *Console-driven regression fixture*.
+- `docs/conventions.md` → *Component ownership* (`Manager`, `RecipeEditor`,
+  *Load lifecycle*) and *Runtime identities and editor commits* (*Edit
+  commits*, *Application results*).
+- `docs/conventions.md` → *Diagnostics* and *The JSON boundary*, which
+  `RecipeStore` and `RecipeEditor` reuse from `recipe/`.

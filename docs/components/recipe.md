@@ -1,330 +1,341 @@
 # recipe/
 
-Resolution follows the [recipe resolution contract](../recipe-resolution.md).
-Its acceptance examples define the native regressions; the alpha plan tracks
-offline verification and deferred visual acceptance.
-
-The pure core. It turns a **recipe** file into a checked `Recipe`, resolves
-the forms the recipe names, compiles the unified `RecipeGraph`, merges the
-recipes that land on one **piece** into a **plan**, and writes a `Recipe`
-back to JSON. It is engine-free: it compiles natively and is unit-tested
-through `ctest --preset native`. Every layer above depends on it; it depends
-only on `Core.h`.
+`recipe/` is the pure core of the plugin. It reads a **recipe** file into a checked
+`Recipe`, resolves the forms that the recipe names, and compiles the recipe
+into a **recipe graph**. It evaluates the graph per tick, merges the recipes on
+one **piece** into a **plan**, and writes a `Recipe` back to JSON. It is
+engine-free and depends only on `Core.h`, per its `ALLOWS` row in
+`tools/gate.py`, `'recipe': ('Core.h', 'recipe')`. The `mesh`, `planners`,
+`studio`, `validator`, `render`, `engine`, and `menu` layers may include it.
+It compiles natively and is unit-tested through `ctest --preset native`.
 
 ## What it owns
 
-Recipes and everything a recipe declares:
+A recipe declares **rows**. A **signal** is a row whose value changes per tick.
+A **source** is a row whose value changes per texel. A **mask** is a per-texel
+expression row. A **curve** is a named expression in `x`. An **output** writes
+a **layer** stack into a material or shell **slot**, or describes one
+**light**. A **variant** is a named override set. The **shell** is a second,
+posed copy of the armor geometry that the recipe can draw on.
 
-- **signals** — values that vary per tick;
-- **sources** — values that vary per texel;
-- **masks**;
-- the **layer** stacks written into material **slots**;
-- the **shell** and **light** outputs;
-- the **diagnostics** raised against any of them.
+The directory owns these parts:
 
-It also owns the recipe language (the expression and curve grammar a `Ref`
-parses to) and the importer that turns a vanilla effect shader into a
-starting recipe by patching one of the shipped import templates.
+- the recipe model and its word tables (`Recipe.h`, `Words.h`);
+- the JSON boundary that every module uses to read and write JSON
+  (`Binders.h`);
+- the **diagnostic** record and the `Reporter` sink that every load, check,
+  and edit writes through (`Recipe.h`);
+- resolution of recipes against a worn piece (`Resolve.cpp`);
+- the recipe graph compiler and the per-tick evaluator (`RecipeGraph.cpp`,
+  `RecipeGraphLowering.cpp`, `Signals.cpp`);
+- the expression language that signals, masks, and curves share
+  (`Expression.h`);
+- the merge of several recipes on one piece (`Merge.h`);
+- the importer that turns a vanilla effect shader into a starting recipe
+  (`Importer.h`, `Efsh.h`).
+
+The JSON boundary checks input before the model trusts it.
+`ParseObjectDocument` refuses text nested deeper than `kMaxRecipeDepth` and
+reports duplicate keys. `FloatFrom` refuses a JSON number outside the finite
+float range. `RowCapReached` stops a row list at `kMaxRecipeRows` entries,
+rejected rows included. `LoadResult::inputDiagnostics` keeps the file errors
+that decoding replaced with a default or a dropped row. `Validate` accepts
+those diagnostics, because the typed model cannot show them again.
 
 ## Data
 
-Each header declares its data first.
+Each header declares its data types first, then the functions over them.
 
 ### The model (`Recipe.h`)
 
 `Recipe` is the whole file in memory. `RecipeRead.cpp` fills it one checked
-field at a time, and `RecipeWrite.cpp` writes it back with key order kept, so
-a file survives a load and a save unchanged. Every consumer (the studio,
-`Resolve`, `RecipeGraph::Compile`, `Merge.cpp`) reads this one struct.
+field at a time. `RecipeWrite.cpp` writes it back with the key order kept. The
+studio, `Resolve`, `RecipeGraph::Compile`, and `Merge.cpp` all read this one
+struct.
 
 | Type | Description |
 |---|---|
-| `Recipe` | The **recipe**: an id, `Metadata`, its `RecipeKey`s, an optional priority, a `MergeMode`, a `Clock`, the **row** lists (`Signal`s, `Curve`s, `Source`s, `Mask`s, `Output`s, `Variant`s), and `ShellSettings`. `FindSignal`/`FindCurve`/`FindSource`/`FindMask` look a row up by name. |
-| `Metadata` | The recipe's name, author, description, and version, the importer's `imported` stamp, and a free-form `meta` field kept verbatim. |
-| `MergeMode` | How independent recipe identities compose: stack appends groups; replace clears earlier groups on selected surface targets and eligible actor-wide lights; sampled chooses one identity per piece independently of precedence. |
-| `RecipeKey` | Which worn **piece** the recipe applies to: a `KeyKind` (default, enchanted, material, keyword, armor, effectShader, enchantment, magicEffect) with a form or glob operand; default and enchanted have no operand. Every keyword is required; other entries remain alternative selectors. Keyword-only recipes require all listed keywords. |
-| `Selector` | Which geometry an **output** or **variant** touches: any-of clauses over addon, geometry name, or texture path; empty matches every geometry. |
-| `Signal` | One named per-tick value: a name, a `SignalKind`, an optional `CurveRef` that shapes the result, and an optional author `note`. |
-| `Curve` | A named expression in the free variable `x`, with an optional author `note`; a `CurveRef` applies it to a **signal** or a **layer**. In a file the value is a bare expression string, or `{ "expr", "note" }` when the author annotates it. |
-| `Source` | One named per-texel value: a name, a `SourceKind`, and an optional author `note`. |
-| `Mask` | A named per-texel expression, with an optional author `note`; **source** and **mask** names stand for images in it, signal names for the tick's scalars. In a file the value is a bare expression string, or `{ "expr", "note" }` when annotated. |
-| `Output` | `SurfaceOutput` or `LightOutput`; the Outputs group below details both. |
-| `ShellSettings` | The **shell**: its `ShellMaterial` (pbrCopy or vanilla), `ShellBlend` (additive or alpha), depth bias, alpha test, the opacity/rim/emissive `Param`s, and a `ShellPose` (inflate, offset, scale, spin). |
-| `Variant` | A named override set: a `VariantKey` (a form or a `Selector`) decides when it applies, and its `overrides` map sets row values by name; `ApplyVariant` folds the match in. |
-| `Clock` | The recipe's time scale: `speed` multiplies the tick clock. |
+| `Recipe` | The recipe: an id, `Metadata`, its `RecipeKey`s, an optional priority, a `MergeMode`, a `Clock`, the row lists (`Signal`s, `Curve`s, `Source`s, `Mask`s, `Output`s, `Variant`s), and `ShellSettings`. `FindSignal`, `FindCurve`, `FindSource`, and `FindMask` look up a row by name. |
+| `Metadata` | The name, author, description, version, the importer's `imported` stamp, and a free-form `meta` field that the writer keeps verbatim. |
+| `MergeMode` | How recipes on one piece compose: `kStack` appends, `kReplace` clears earlier groups on the selected targets, and `kSampled` chooses one recipe per piece. `SamplingHash` seeds the choice. |
+| `RecipeKey` | The worn piece that the recipe applies to: a `KeyKind` (default, enchanted, material, keyword, armor, effectShader, enchantment, magicEffect) and a `KeyOperandValue` (none, a `FormRef`, or a glob). `KeyKindSpec` in `kKeyKinds` gives each kind its default priority and operand. |
+| `Selector` | The geometry that an output or variant touches: `SelectorClause`s over addon, geometry name, or texture path, matched any-of by `Matches`. An empty selector matches every geometry. |
+| `GeometryIdentity` | The addon, name, and diffuse path that `Matches` tests a `Selector` against. |
+| `Signal` | A name, a `SignalKind`, an optional `CurveRef` that shapes the result, and an author `note`. |
+| `Curve` | A name, an expression in `x`, and an author `note`. A `CurveRef` applies it to a signal or a layer. |
+| `Source` | A name, a `SourceKind`, and an author `note`. |
+| `Mask` | A name, a per-texel expression, and an author `note`. Source and mask names stand for images in the expression. Signal names stand for the tick's values. |
+| `Output` | `SurfaceOutput` or `LightOutput`. The Outputs group below describes both. |
+| `ShellSettings` | The shell: a `ShellMaterial` (pbrCopy or vanilla), a `ShellBlend` (additive or alpha), depth bias, alpha test, the opacity, rimPower, and emissive `Param`s, and a `ShellPose` (inflate, offset, scale, spin). |
+| `Variant` | A name, a `VariantKey` (a `FormRef` or a `Selector`), and an `overrides` map from row name to value. `VariantApplies` tests the key, and `ApplyVariant` returns the recipe with the overrides applied. |
+| `Clock` | The recipe's time scale. `speed` multiplies the tick clock. |
 
-### Values (`Recipe.h`; `Ref` in `Core.h`)
+### Values (`Recipe.h`; `Ref`, `Value`, `ValueType` in `Core.h`)
 
-A field a recipe can animate is a `Param`. A literal number stays fixed; a
-`Ref` reads a signal, and `SignalState::Resolve` makes that read each tick.
-`CurveRef` and `FormRef` are the other handle types a row stores as text.
+A field that a recipe can animate is a `Param`. A literal number stays fixed.
+A `Ref` reads a signal, and `SignalState::Resolve` makes that read each tick.
 
 | Type | Description |
 |---|---|
-| `Param` | `float \| Ref`: a fixed number or a signal reference (`@name` on the wire). |
-| `Vec2Param` / `Vec3Param` | An array of `Param`s, one per component, or one `Ref` to a vector signal. |
-| `Ref` | The `@name` handle, declared in `Core.h`: the name of another row. |
-| `CurveRef` | Text that names a declared **curve** or holds an inline expression in `x`; `Named()` tells the two apart. |
-| `FormRef` | A form named as text (an editor ID, or `0x<local id>~<plugin file>` parsed by `FormKey::Parse`); resolution fills its `FormKey`. |
+| `Param` | `float \| Ref`: a fixed number or a signal reference (`@name` in the file). `ParseParam` and `ParamText` convert it to and from text. |
+| `Vec2Param` / `Vec3Param` | One `Param` per component, or one `Ref` to a vector signal. |
+| `Ref` | The name of another row. |
+| `Value` / `ValueType` | A scalar, `Vec2`, or `Vec3` value, and the tag that names which one. |
+| `CurveRef` | Text that names a declared curve or holds an inline expression in `x`. `Named()` tells the two apart. |
+| `FormRef` | A form named as text: an editor ID, or `0x<local id>~<plugin file>` that `FormKey::Parse` reads. Resolution fills its `FormKey`. |
 
 ### Signal kinds (`Recipe.h`)
 
-`SignalKind` is the variant over the seventeen kinds below; a signal produces
-one `Value` per tick when `SignalState::Tick` evaluates its node.
-`SignalKindId` names each alternative, and `SignalKindSpec` (a table in
-`Words.h`) carries the wire word and whether the studio can tune the kind
-live; a `Complete` static_assert keeps the table total.
+`SignalKind` is the variant over the seventeen kinds below. A signal produces
+one `Value` per tick. `SignalKindId` names each alternative. `kSignalKinds` in
+`Words.h` gives each kind its file word and marks the kinds that the studio can
+tune.
 
-| Alternative | Wire word | Produces |
+| Alternative | File word | Produces |
 |---|---|---|
-| `ConstantSignal` | `constant` | A fixed `Value`; with `expr`, one of the two kinds the studio marks tunable. |
-| `WaveSignal` | `wave` | `base` plus `amplitude` times a repeating waveform (sine, triangle, square, or saw) with `period` and `phase`. |
-| `RampSignal` | `ramp` | A value that moves from `from` to `to` over the clock's first `seconds`, then holds `to`. |
-| `EfshSignal` | `efsh` | One field of a vanilla effect shader record (fillAlpha, fillColor, edgeAlpha, edgeColor, or scroll), read through `SignalEnvironment::EffectShader`. |
+| `ConstantSignal` | `constant` | A fixed `Value`. |
+| `WaveSignal` | `wave` | `base` plus `amplitude` times a sine, triangle, square, or saw `Waveform` with `period` and `phase`. |
+| `RampSignal` | `ramp` | A value that moves from `from` to `to` over `seconds`, then holds `to`. |
+| `EfshSignal` | `efsh` | One `EfshField` of a vanilla effect shader record: fillAlpha, fillColor, edgeAlpha, edgeColor, or scroll. |
 | `ActorValueSignal` | `av` | The wearer's actor value under one `Measure`: current, base, permanent, temporaryModifier, damage, or max. |
-| `ActorStateSignal` | `actorState` | One actor fact by selector: seven 0/1 flags (inCombat, sneaking, weaponDrawn, swimming, sprinting, mounted, hasTarget), the scalar movementSpeed, and the vec3 world positions position and target. |
+| `ActorStateSignal` | `actorState` | One `ActorStateKind`: seven 0/1 flags, the scalar movementSpeed, and the vec3 positions position and target. |
 | `EnchantmentSignal` | `enchantment` | The matched enchantment's magnitude or cost. |
-| `TriggerSignal` | `trigger` | The newest firing's age as a fraction of `lifetime`: 0 at the firing, 1 once it expires or when none is live. The `TriggerOrigin` is an event glob, another plugin's message id, or a `when` expression edge; at most `max` firings are kept. The row declares its firings' `payload` type (scalar, vec2, or vec3; a firing of another type is dropped and counted) and its `TriggerAnchor` — the space a firing's location resolves in: the world-space payload, a named skeleton node, or none. |
-| `PayloadSignal` | `payload` | The named trigger's newest firing value, typed by the trigger's declared payload, held between firings. |
-| `CounterSignal` | `counter` | A count of a trigger's firings, cleared by an optional `reset` trigger and limited by an optional `cap`. |
-| `AccumulateSignal` | `accumulate` | A total that each firing raises by one and `decay` drains per second, floored at zero. |
+| `TriggerSignal` | `trigger` | The age of the newest firing as a fraction of `lifetime`. The `TriggerOrigin` is an `EventOrigin`, a `PluginOrigin`, or a `WhenOrigin`. The row declares its `payload` type and a `TriggerAnchor`, and keeps at most `max` firings. |
+| `PayloadSignal` | `payload` | The value of the named trigger's newest firing, held between firings. |
+| `CounterSignal` | `counter` | A count of a trigger's firings, with an optional `reset` trigger and `cap`. |
+| `AccumulateSignal` | `accumulate` | A total that each firing raises by one and `decay` lowers per second. |
 | `NoiseSignal` | `noise` | Value noise over time at `frequency`, scaled by `amplitude`, repeatable per `seed`. |
-| `GradientSignal` | `gradient` | A color: `t` sampled against the `GradientStop` list, interpolated between the two nearest stops. |
+| `GradientSignal` | `gradient` | A color: `t` sampled against the `GradientStop` list. |
 | `RateSignal` | `rate` | The named signal's change per second. |
-| `SmoothSignal` | `smooth` | The named signal eased toward its current value by exponential smoothing with time constant `seconds`. |
-| `ToRootSignal` | `toRoot` | The named vec3 signal, a world-space point, expressed in the wearer's root space through `SignalEnvironment::WorldToRoot`. |
-| `ExprSignal` | `expr` | The value of an expression over other rows; the graph parses it to a `Program`, and the studio tunes its numeric literals. |
+| `SmoothSignal` | `smooth` | The named signal eased toward its current value with time constant `seconds`. |
+| `ToRootSignal` | `toRoot` | The named world-space vec3 signal, expressed in the wearer's root space. |
+| `ExprSignal` | `expr` | The value of an expression over other rows. |
 
 ### Source kinds (`Recipe.h`)
 
-`SourceKind` is the variant over the six kinds below; a source produces one
-value per texel when the render layer rasterises it. `SourceKindId` mirrors
-the alternative order, and a static_assert in `Words.h` keeps the wire-word
-table aligned with the variant. `CheckSource` (declared in `Signals.h`)
-validates a source's params against the graph.
+`SourceKind` is the variant over the six kinds below. The render layer
+computes a source once per texel. `SourceKindId` follows the alternative
+order, and the asserts in `Words.h` keep `kSourceKindWords` in the same order.
 
-| Alternative | Wire word | Produces |
+| Alternative | File word | Produces |
 |---|---|---|
-| `ImageSource` | `image` | A texture under `Data/Textures` sampled per texel: one `ImageChannel` (rgb, r, g, b, a, or luma) in tiled or mesh `ImageSpace`, with optional scroll, tile, mirror, transpose, and mip. |
-| `MaterialSource` | `material` | One read of the piece's own material: the raw vec3s diffuseRgb, normalRgb, rmaosRgb; the named scalars diffuseLuma, roughness, metallic, occlusion, reflectance, displacement; and the computed normalSlope and relief. |
-| `BakeSource` | `bake` | A value baked from the mesh once per geometry; the `BakeKind` is position, localPosition, normal (the bind-pose surface normal, each axis as 0..1), uv (the coordinates as a vec2), partition (one biped slot), boneWeight (named bones), componentId, or chartId (the mesh analysis' id map, each texel the region id / 255). |
+| `ImageSource` | `image` | A texture sampled per texel: one `ImageChannel` in tiled or mesh `ImageSpace`, with optional scroll, tile, mirror, transpose, and mip. |
+| `MaterialSource` | `material` | One `MaterialChannel` of the piece's own material, such as diffuseRgb, roughness, or relief. |
+| `BakeSource` | `bake` | One `BakeKind` computed from the mesh: position, localPosition, normal, uv, partition, boneWeight, componentId, or chartId. |
 | `DistanceSource` | `distance` | The texel's distance from a named skeleton node. |
-| `RippleSource` | `ripple` | A ring or disc that spreads from a trigger firing's anchor at `speed`, `width` wide, fading at `decay`; an unanchored trigger's rings spread from the geometry's origin. An optional `direction` vec3 turns the radial front into a plane sweeping along the vector, and is animatable like the other params. |
-| `MaterialClustersSource` | `materialClusters` | The material's cluster map: each texel the id / 255 of its nearest k-means cluster under the RMAOS, diffuse luma and diffuse color weights, `seed`, and iteration cap, rendered once per geometry. |
+| `RippleSource` | `ripple` | A ring or disc (`RippleShape`) that spreads from a trigger firing at `speed`, `width` wide, fading at `decay`. A nonzero `direction` turns it into a plane sweep. |
+| `MaterialClustersSource` | `materialClusters` | The id of each texel's nearest material cluster under `ClusterSettings` and its `ChannelWeights`. |
 
 ### Outputs (`Recipe.h`)
 
-An **output** is what a recipe writes: a `SurfaceOutput` stacks **layer**s
-into one material or shell **slot**, and a `LightOutput` describes one
-**light**. `Merge.cpp` composes the `LightOutput`s across recipes into a
-`LightPlan`; the schema allows at most one light output per recipe.
+An output is what a recipe writes. A `SurfaceOutput` stacks layers into one
+slot. A `LightOutput` describes one light. `SlotSpec` rows in `Words.h` state
+which scalars, channels, and blends each slot takes.
 
 | Type | Description |
 |---|---|
-| `SurfaceOutput` | One slot write: a `Surface` (material or shell), a `Slot`, its `SlotScalars`, a `Selector`, a replace flag that clears preceding recipe groups on the target while retaining its own sibling outputs, an optional `Resolution` that overrides the slot's default target size, the layer `stack`, and an optional author `note`. |
-| `Layer` | One entry in a `stack`: a `LayerSource`, an optional `CurveRef`, a `Blend`, an opacity `Param`, an optional color and mask, the `ChannelSet` it writes, and an optional author `note`. |
+| `SurfaceOutput` | A `Surface` (material or shell), a `Slot`, its `SlotScalars`, a `Selector`, a replace flag, an optional `Resolution`, the layer `stack`, and an author `note`. |
+| `Layer` | A `LayerSource`, an optional `CurveRef`, a `Blend`, an opacity `Param`, an optional color and mask, the `ChannelSet` it writes, and an author `note`. |
 | `LayerSource` | `Ref \| Vec3`: a source or mask by name, or a constant color. |
-| `Blend` | How a layer combines with the stack below: replace, multiply, add, subtract, screen, or reorient; `BlendSpec` maps each to its shader mode and marks `reorient` (normal-map reorientation) as normal-stack only. |
-| `SlotScalars` | The per-slot scalar `Param`s (strength, scale, color, weight, and the rest of `ScalarField`); `SlotSpec` says which fields a slot takes and which are required. |
+| `Blend` | How a layer combines with the layers below it: replace, multiply, add, subtract, screen, or reorient. `BlendSpec` gives each blend its shader mode and marks reorient as normal-slot only. |
+| `SlotScalars` | The per-slot scalar `Param`s, one per `ScalarField`. |
 | `Slot` | The nine writable slots: diffuse, emissive, rmaos, normal, height, fuzz, glint, coat, subsurface. |
-| `LightOutput` | One light: `Bones` placement (skinned or named), offset, color, intensity, size, cutoff, a shadow flag, a `Selector`, a replace flag, and an optional author `note`. |
+| `Target` | The three kinds of target an output writes: material, shell, or light. |
+| `LightOutput` | `Bones` placement (`SkinnedBones` or `NamedBones`), offset, color, intensity, size, cutoff, a shadow flag, a `Selector`, a replace flag, and an author `note`. |
 
 ### Texture size (`Recipe.h`)
 
-A **surface output**'s stack renders into a runtime **target** sized per
-**slot**. `Resolution` scales that size down to save texture memory.
-`DefaultSlotResolution` gives each slot its default; a `SurfaceOutput`'s
-optional `resolution` overrides that default for the one output. The render
-layer and `engine/` size the target from the choice; `ResolutionDivisor`
-turns it into the number the full size divides by.
+A surface output's stack renders into a runtime **target** texture that is
+sized per slot. `Resolution` scales that size down to save texture memory.
 
-| Type | Description |
+| Symbol | Description |
 |---|---|
-| `Resolution` | The three target sizes: `kFull`, `kHalf`, `kQuarter`. `ResolutionName`/`ParseResolution` map each to its wire word (`full`, `half`, `quarter`) through the `kResolutions` table in `Words.h`. |
-| `DefaultSlotResolution(Slot)` | The slot's default size: full for normal and height, half for diffuse and rmaos, quarter for emissive, fuzz, glint, coat, and subsurface. |
-| `ResolutionDivisor(Resolution)` | The divisor the resolution applies to the slot's full size: 1, 2, or 4. |
+| `Resolution` | `kFull`, `kHalf`, or `kQuarter`. `ResolutionName` and `ParseResolution` convert it through `kResolutions`. |
+| `DefaultSlotResolution` | Full for normal and height, half for diffuse and rmaos, quarter for the other slots. |
+| `ResolutionDivisor` | The number that divides the slot's full size: 1, 2, or 4. |
 
-### Cross-actor sharing (`Recipe.h`; `Vocabulary.cpp`)
+### Cross-actor sharing (`Recipe.h`, `RecipeGraph.h`; `Vocabulary.cpp`)
 
-Two actors in the same armour can share one rendered **target** only when
-that target's inputs do not vary by actor. These predicates are the
-correctness gate for that reuse; the render **compositor** reads them to
-decide whether one actor's target can serve another. A shareable input is
-static (not `IsAnimated`) and reads no per-actor geometry.
+Two actors in the same armor can share one rendered target only when the
+target's inputs do not change per actor. The compositor asks these predicates
+before it reuses a target. Each predicate has a form that takes a compiled
+`RecipeGraph` and a form that compiles one.
 
 | Function | Description |
 |---|---|
-| `ShareableAcrossActors(const Recipe&, const Output&)` | True when the output is a `SurfaceOutput`, is not `IsAnimated`, and `RecipeInputsAreActorIndependent` holds. |
-| `ShareableAcrossActors(const Recipe&, const Mask&)` | True when the mask is not `IsAnimated` and `RecipeInputsAreActorIndependent` holds. |
-| `RecipeInputsAreActorIndependent(const Recipe&)` | True when no source in the recipe is a `BakeSource` or `DistanceSource`; those two read per-actor geometry. |
+| `ShareableAcrossActors` (output) | True when the output is a `SurfaceOutput`, `IsAnimated` is false, `RecipeInputsAreActorIndependent` holds, and the graph's signals equal the authored signals. |
+| `ShareableAcrossActors` (mask) | True when the mask is enabled, does not change over time, and meets the same two recipe conditions. |
+| `RecipeInputsAreActorIndependent` | True when the recipe has no `BakeSource` and no `DistanceSource`, because those two read per-actor geometry. |
+| `IsAnimated` | True when a signal, source, mask, or output reads a value that `RecipeGraph::MayChangeOverTime` marks as changing. |
 
-### Diagnostics (`Recipe.h`)
+### Diagnostics and resolution (`Recipe.h`)
 
-Every load, validation, and resolution step reports through the same record.
-A `Diagnostic`'s `where` names the row (`signal glowLevel`, `output 2 layer
-0`), so the menu can show the problem in place. A malformed row becomes a
-diagnostic and an inert row, never a crash.
-
-| Type | Description |
-|---|---|
-| `Diagnostic{Severity, where, message}` | One problem: warning or error, the row it names, and the message. `MakeDiagnostic` builds it; `RowLevel`/`HasErrors`/`ProblemText` read collections of it. |
-| `Reporter` | The shared sink a parse or check writes through; `At(where)` scopes a child reporter to one row. |
-| `LoadResult` | What `ParseRecipe` returns: an optional `Recipe`, combined diagnostics, and separate file-decoding diagnostics retained until save or reload. |
-| `ResolvedRecipe` | One match from `Resolve`: the recipe, the strongest matched `RecipeKey`, effective placement priority, and definition load order. |
-| `RecipeSelection` | Optional selection report: recipe identity plus nonmatching, fallback-suppressed, sampled-out, or selected outcome. |
-| `WornPiece` | What one worn piece looks like to resolution: all distinct enchantment magic effects, its enchantment, all distinct effect shaders, armor, keywords, and diffuse paths. |
-| `PieceKey` | One key choice a piece offers (`KeyChoicesOf`); the studio turns the chosen one into a `RecipeKey`. |
-
-### Runtime (`Signals.h`)
-
-`RecipeGraph::Compile` validates authored definitions and lowers them into
-operation nodes with typed output ports. Each operation owns its explicit input
-references; dependency order, sample dependence, variability and disabled status
-are derived from these connections. Time, coordinates, resources and environment
-inputs enter through external-input nodes. Authoring restrictions remain checked
-before lowering; executable nodes have no evaluation-domain classification.
-
-Named and inline curves become scoped function definitions with local parameter
-nodes. Signal applications use call operations; layer applications map the
-function over components. `MapFunctionOperation` supplies arguments in parameter order. Component-wise
-vector application lowers into scalar maps and vector reconstruction.
-`ReductionOperation` supports mean, sum, minimum and maximum over numeric fields.
-`BoundFunction` carries the sampled parameter and explicit graph bindings for
-uniform arguments, including the authoring compatibility default. Graph-bound
-programs read x, mean and time through ordinary reference slots. The authored scalar curve syntax remains unchanged.
-See the [operation graph checkpoint](../checkpoints/operation-graph-2026-09-26.md)
-for the initial lowering and state ownership. The
-[render-plan model](../plans/render-plan-model.md) defines current-result
-reductions and the renderer boundary.
-
-`SignalState` holds the per-actor values and evaluates the graph each tick against a `SignalEnvironment`. The `Check*`
-functions validate curves, sources, masks, and outputs against the graph's
-types.
+Every load, check, and resolution step reports through one record. A
+`Diagnostic`'s `where` names the row, for example `signal glowLevel` or
+`output 2 layer 0`. A malformed row becomes a diagnostic and an inert row.
 
 | Type | Description |
 |---|---|
-| `RecipeGraph` | Operation nodes, scoped functions, authored-name mappings, output bindings and derived dependency/execution analysis. |
-| `RecipeNode` | A `displayName`, operation-specific `kind`, and named typed `outputs`. Input references belong to the operation. |
-| `BoundExpression` | An expression operation’s `Program`, ordered `valueBindings` to typed output ports, and `functionBindings` to scoped function definitions. |
-| `SignalState` | The per-actor evaluation state: `Tick` executes the derived tick order with state allocated only for history-dependent operations, `Fire` feeds an `EventRecord` to the triggers, and `Resolve` reads a `Param` against the current values. |
-| `TickInputs` | One tick's clock: the time and the delta. |
-| `SignalEnvironment` | The engine questions a tick asks: actor values, actor states (scalar `ActorState` and vec3 `ActorVector`), world-to-root conversion, enchantment fields, effect-shader records. `NullEnvironment` answers zero for native tests. |
-| `RowTypes` | A recipe paired with its graph; the `*TypeOf` and `Check*` functions take it. |
+| `Diagnostic` | A `Severity` (warning or error), the `where` row name, and the message. `MakeDiagnostic` builds one. `RowLevel`, `HasErrors`, `HasRecipeErrors`, and `ProblemText` read them. |
+| `Reporter` | The sink that a parse or check writes through. `At` returns a child reporter for one row. |
+| `LoadResult` | What `ParseRecipe` returns: an optional `Recipe`, all diagnostics, and the `inputDiagnostics` from decoding. |
+| `WornPiece` | What resolution sees of one worn piece: magic effects, enchantment, effect shaders, armor, keywords, and diffuse paths. |
+| `ResolvedRecipe` | One match from `Resolve`: the recipe, the strongest matching `RecipeKey`, the placement priority, and the load order. |
+| `SelectionOutcome` / `RecipeSelection` | The optional per-recipe report of `Resolve`: nonmatching, fallback-suppressed, sampled-out, or selected. |
+| `PieceKey` | One key choice that a piece offers (`KeyChoicesOf`). `RecipeKeyOf` turns the chosen one into a `RecipeKey`. |
+| `Precedence` | Priority, then load order, compared as one value (`Precedence.h`). `Merge.cpp`, `Resolve.cpp`, `planners/BindingPlan.cpp`, and `studio/Selection.cpp` order recipes by it. |
+
+### The recipe graph (`RecipeGraph.h`, `GraphOperations.h`, `RecipeCompilation.h`)
+
+`RecipeGraph::Compile` turns a recipe into a list of **operation nodes**. Each
+node holds its input references as `OutputRef`s and declares typed outputs.
+Curves become `FunctionDefinition`s with the parameters `x` and `mean`. The
+graph derives dependency order, per-tick order, change over time, and sample
+dependence from these connections.
+
+| Type | Description |
+|---|---|
+| `RecipeGraph` | The nodes, the function definitions, the `OutputBinding`s, the name indexes, the derived orders, and the diagnostics. `TickOrder`, `ChangingTickOrder`, `SampleDependent`, and `MayChangeOverTime` read the analysis. |
+| `NodeId` / `FunctionId` | Indexes into the graph's nodes and functions. |
+| `OutputRef` | One output port: a `NodeId` and an output index. |
+| `NodeOutput` | A port's name and its `GraphValueType`. |
+| `GraphValueType` | A `ValueType` or a `ResourceType` (firings, count, events, texture, material, geometry, transform, effectShader). |
+| `RecipeNode` | A `displayName`, a `NodeKind`, and the `outputs`. |
+| `OutputBinding` | A property name, such as `output 0 layer 1 opacity` or `shell spin`, and the `OutputRef` that feeds it. The render layer reads these. |
+| `ExternalInput` | A node that brings a value in from outside: time, delta time, sample UV, root transform, geometry, material, texture, effect shader, events, node position, actor value, actor state, or enchantment (`ExternalSource`). |
+| `ConstantOperation`, `VectorOperation`, `ParameterOperation` | A constant value, a vector built from components, and a function parameter. |
+| `ExpressionOperation` | A `BoundExpression`. |
+| `BoundExpression` | A compiled `Program`, its `valueBindings` to `OutputRef`s, and its `BoundFunction`s. |
+| `BoundFunction` / `BoundFunctionArgument` | A called `FunctionId`, the parameter it samples, and the other arguments bound to graph outputs. |
+| `CallOperation` / `MapFunctionOperation` | A function call on a signal value, and a function applied to each component of a layer value. |
+| `WaveOperation` … `SmoothOperation` | One operation per signal kind: wave, ramp, effect shader, noise, gradient, toRoot, trigger, hold (payload), counter, accumulate, rate, and smooth. |
+| `TextureCoordinatesOperation`, `ImageOperation`, `MaterialOperation`, `BakeOperation`, `DistanceOperation`, `RippleOperation`, `MaterialClustersOperation` | One operation per source kind, and the texture coordinates an image reads. |
+| `ReductionOperation` | A `ReductionKind` (mean, sum, minimum, maximum) over a numeric value. Lowering uses the mean for an image mean and for a layer curve's `mean`. |
+| `FunctionDefinition` / `FunctionParameter` | A curve as a small node list with typed parameters and a result port. |
+| `detail::RecipeDeclaration` | One authored row during compilation: its definition, `DeclarationCategory` (signal, spatial, function), dependencies, parsed expression, and disabled flag. |
+
+### Signal evaluation (`Signals.h`)
+
+`SignalState` holds one actor's values for one graph and runs the graph each
+tick. It reads the engine only through `SignalEnvironment`. `RowTypes` pairs a
+recipe with its graph for the `Check*` and `*TypeOf` functions.
+
+| Type | Description |
+|---|---|
+| `SignalState` | The per-actor values. `Tick` runs the tick order, `Fire` gives an `EventRecord` to the triggers, and `Resolve` reads a `Param` against the current values. It allocates state only for nodes that `Stateful` marks. |
+| `TickInputs` | One tick's time and delta. |
+| `SignalEnvironment` | The engine questions that a tick asks: `ActorValue`, `ActorState`, `ActorVector`, `WorldToRoot`, `Enchantment`, and `EffectShader`. `NullEnvironment` answers zero for native tests. |
+| `EventRecord` / `TriggerPayload` | An event id, its payload value, node, and argument, and whether a plugin sent it. |
+| `TriggerFiring` | One kept firing: its start time and payload. |
+| `FiringAnchor` | Where a firing's location resolves: nowhere, a `CarriedPoint`, or an `AnchorNode`. |
+| `RowTypes` | A recipe and its graph. |
 
 ### The plan (`Merge.h`)
 
-Several recipes can land on one **piece**; the **plan** is the pure merge of
-their outputs. `PlanGeometry` and `PlanLights` take the `PlacedRecipe`s and
-return what to render, with replacement and scalar ownership already
-decided. Surface replacement cuts at the start of a placement's group on
-each target, so sibling outputs remain in authored order. Light replacement
-cuts at the start of an actor-wide recipe-identity group, retaining separate
-enchantment instances. Sampling canonically sorts identities before indexing
-with `SamplingHash`; `REFERENCE.md` and the behavior contract pin the hash.
+Several recipes can land on one piece. The plan is the pure merge of their
+outputs. `PlanGeometry` and `PlanLights` take the `PlacedRecipe`s and decide
+replacement and scalar ownership.
 
 | Type | Description |
 |---|---|
-| `PlacedRecipe` | One recipe on the piece: the recipe, its placement priority, definition load order, and selected output indices. |
-| `SlotContribution` / `LightContribution` | One output's claim: a placed-recipe index plus an output index. |
-| `SlotPlan` | One slot's outcome: the blend `chain`, the contributions a `replacer` displaced, and the `ScalarOwner` per scalar field. |
+| `PlacedRecipe` | One recipe on the piece: the recipe, its priority, its load order, and the selected output indexes. |
+| `SlotContribution` / `LightContribution` | One output's claim: a `SlotContributor` or `LightContributor` index and an output index. |
+| `ScalarOwner` | The contribution that sets one `ScalarField`. |
+| `SlotPlan` | One slot's result: the `chain` of contributions, the ones `replaced`, the `replacer`, and the `ScalarOwner`s. |
 | `GeometryPlan` | The `SlotPlan`s for one piece. |
-| `LightPlan` | The lights to show, the ones replaced, and the replacer. |
+| `LightPlan` | The lights `shown`, the ones `replaced`, and the `replacer`. |
 
-### The language (`Expression.h`)
+### The expression language (`Expression.h`)
 
-An `ExprSignal`, a **mask**, and a **curve** share one grammar. `Program`
-compiles the text once and runs the compiled ops per tick or per texel,
-inside explicit bounds (`kMaxExpressionLength`, `kMaxExpressionDepth`,
-`kMaxExpressionOps`).
+An `ExprSignal`, a mask, and a curve share one grammar. `Program::Parse`
+compiles the text once. `Program::Evaluate` runs the compiled ops within
+`kMaxExpressionLength`, `kMaxExpressionDepth`, and `kMaxExpressionOps`.
 
 | Type | Description |
 |---|---|
-| `Program` | The compiled expression: `Parse` builds the op list, `Check` types it against a `RefTyper`, and `Evaluate` runs it over its `Inputs` (refs, curves, time, `x`, mean). |
-| `NumericLiteral` | One number's offset, length, and value in the source text; the studio's tuning edits it through `ReplaceNumericLiteral`. |
-| `ExpressionRename` | A from/to pair for `RenameInExpression`, which rewrites row names inside expression text. |
+| `Program` | A compiled expression: an op list (`Program::Op`, `Program::Node`), the row names it reads, the curves it calls, and its use of `time`, `x`, and `mean`. `Check` types it against a `RefTyper`. `BindContext` turns `time`, `x`, and `mean` into ordinary reference slots. |
+| `NumericLiteral` / `NumericLiteralSelection` | One number's position and value in the text. `ReplaceNumericLiteral` edits one for studio tuning. |
+| `ExpressionRename` | A from/to pair for `RenameInExpression`. |
+
+### Import (`Importer.h`, `Efsh.h`)
+
+The importer turns a vanilla effect shader into a starting recipe. It patches
+a template recipe from `templates/fill.json` or `templates/bare.json`, chosen
+by `ImportTemplateId`.
+
+| Symbol | Description |
+|---|---|
+| `EffectShaderRecord` | The form key, editor ID, fill texture, `Efsh::EffectParams`, and tiling that `ParseEffectShaderRecord` reads. |
+| `kFillTextureToken` | The `$fillTexture` text that the importer replaces with the record's texture. |
+| `kImportTemplateIds` | The template ids `fill` and `bare`. |
+| `Efsh::EffectParams` / `Efsh::AlphaParams` | The vanilla fill and edge colors, alpha timing, and scroll speeds. |
+| `Efsh::FillState` | The color, alpha, and scroll that `Efsh::Evaluate` computes for one moment. |
+
+### Bounds (`Recipe.h`, `Expression.h`)
+
+These constants cap every list and every nested walk.
+
+| Constant | Value | What it caps |
+|---|---|---|
+| `kRecipeFormat` | 1 | The one supported file format. |
+| `kMaxRecipeRows` | 4096 | Every row list. The graph compiler also caps named rows and inline curves at 4 times this value, and lowered nodes at 16 times. |
+| `kMaxRecipeDepth` | 32 | JSON nesting and the depth of a dependency path. |
+| `kMaxExpressionLength` / `kMaxExpressionDepth` / `kMaxExpressionOps` | 4096 / 32 / 256 | Expression text, parse depth, and op count. |
+| `kMaxMaterialClusters` / `kMaxClusterIterations` / `kMaxChannelWeight` | 8 / 256 / 10 | Material cluster requests. |
 
 ## How a recipe flows
 
 ```
 recipe.json (text)
-  │  ParseObjectDocument                     Binders.cpp  (depth-checked, dup-key)
+  │  ParseObjectDocument: depth check, duplicate keys        Binders.cpp
   ▼
-  json  ──Reader binders──▶  Recipe          RecipeRead.cpp  (each field checked)
-  │        raises Diagnostics through a Reporter, where = the row it names
+json ──Reader binders──▶ Recipe                              RecipeRead.cpp
+  │     Reporter raises Diagnostics, where = the row name
   ▼
-Recipe  ──Resolve──▶  ResolvedRecipe         Resolve.cpp  (FormKeys matched to the piece)
+Recipe ──Resolve(WornPiece)──▶ ResolvedRecipe                Resolve.cpp
   │
-  ├── RecipeGraph::Compile ─▶ SignalState evaluates per tick   RecipeGraph.cpp / Signals.cpp
-  │       Ref ─▶ Program::Parse / Evaluate      Expression.cpp
+  ├─ RecipeGraph::Compile                                     RecipeGraph.cpp
+  │    CompilationLimitProblem → Register → AppliedFunctions
+  │    → ParseDefinitions (Program::Parse)                    Expression.cpp
+  │    → BindDependencies → Order → Analyze
+  │    LowerRecipeGraph: Functions → Nodes → Analyze          RecipeGraphLowering.cpp
+  │  ▼
+  │  RecipeGraph ──SignalState::Tick──▶ values per tick       Signals.cpp
+  │    Program::Evaluate for ExpressionOperation              Expression.cpp
+  │    EvaluateFunction for a curve                           FunctionExecution.cpp
+  │  Validate: RowTypes → CheckCurve/CheckSource/CheckMask/CheckOutput  Signals.cpp
   │
-  └── PlacedRecipe ─▶ SlotPlan/GeometryPlan/LightPlan   Merge.cpp
-                       (one piece, every recipe on it)
+  └─ PlacedRecipe[] ──PlanGeometry/PlanLights──▶ GeometryPlan, LightPlan   Merge.cpp
 
-Recipe  ──Writer binders──▶  json (text)      RecipeWrite.cpp   (round-trip, key order kept)
-Vanilla EFSH ──ParseEffectShaderRecord ─▶ EffectShaderRecord ─┐
-templates/{fill,bare}.json ──ParseRecipe─▶ template Recipe ───┴─ImportEffectShader─▶ Recipe   Importer.cpp
+Recipe ──Writer binders──▶ json (text)                       RecipeWrite.cpp
+EffectShaderRecord + template Recipe ──ImportEffectShader──▶ Recipe   Importer.cpp
 ```
 
 ## The files
 
-| File | What it owns |
-|---|---|
-| `Recipe.h` | The whole model, its enums, the `Parse*` word-to-enum functions, the `Diagnostic`/`Reporter` declarations. |
-| `Recipe.cpp` | `MakeDiagnostic`/`DiagnosticOf`, the `*Where` row-name helpers, `RowLevel`/`HasErrors`, `ProblemText`, `Recipe::Find*`. |
-| `RecipeRead.cpp` / `RecipeWrite.cpp` | JSON to `Recipe` and back, one field at a time. |
-| `Binders.h` / `Binders.cpp` | `Reader`/`Writer` and `ParseObjectDocument`: the JSON binder vocabulary the recipe reader and writer build on. |
-| `DefinitionOrder.h` | `AppendDefinition` replaces an earlier same-ID definition at the new traversal position. |
-| `Precedence.h` | Shared priority-then-load-order comparison used by selection, composition and shell ownership. |
-| `Resolve.cpp` | `Recipe` to `ResolvedRecipe`: match the recipe's `FormKey`s against a `WornPiece`. |
-| `Variants.cpp` | `VariantApplies` and `ApplyVariant`: pick the matching **variant** and fold it in. |
-| `Validation.cpp` | Typed field checks shared by loading and live edits: finite values, numeric domains, collection limits, and bone/variant names. |
-| `RecipeGraph.h` / `RecipeGraph.cpp` | Unified row compilation, function bindings, dependency analysis, and diagnostics. |
-| `Signals.h` / `Signals.cpp` | Per-tick evaluation and typed validation consumers. Candidate editor checks compile a modified recipe before comparing diagnostics. |
-| `Expression.h` / `Expression.cpp` | The `Ref` expression and curve language: `Program::Parse`/`Evaluate`. |
-| `Merge.h` / `Merge.cpp` | Compose the recipes on one piece into a slot, geometry, and light plan. |
-| `Importer.h` / `Importer.cpp` | Vanilla effect shader to starting `Recipe`: the `EffectShaderRecord` reader, the reserved `import*` fact table, and the patcher over a template recipe. |
-| `Visit.h` | `LocatedVisitor`, `Visit*Params`: walk a recipe's refs and params in place. The editor uses it. |
-| `Words.h` | The enum-to-word tables and the `Complete()` static_asserts that keep them total. |
-| `Vocabulary.cpp` | The enum-to-word functions over those tables (`FormKey::Parse`, `SignalKindName`, and the rest). |
-| `Efsh.h` / `Efsh.cpp` | The vanilla effect-shader fill model an `EfshSignal` reads. |
+| Concern | Files | What they own |
+|---|---|---|
+| Model and words | `Recipe.h`, `Words.h`, `Vocabulary.cpp`, `Recipe.cpp` | The model, the enums and their spec tables with `Complete` asserts, the word-to-enum functions, `IsAnimated`, the sharing predicates, the `*Where` builders, and the diagnostic predicates. |
+| JSON boundary | `Binders.h`, `Binders.cpp`, `RecipeRead.cpp`, `RecipeWrite.cpp` | `Reader`, `Writer`, `ParseObjectDocument`, `FloatFrom`, `ParseRecipe`, and `SerializeRecipe`. |
+| Field checks | `Validation.cpp` | `CheckRecipeFields`: finite numbers, numeric domains, list sizes, selectors, bones, shell, and variant fields. |
+| Resolution | `Resolve.cpp`, `Variants.cpp`, `Precedence.h`, `DefinitionOrder.h` | `Resolve`, `GlobMatch`, `Matches`, `SamplingHash`, `KeyChoicesOf`, `VariantApplies`, `ApplyVariant`, `Precedence`, and `AppendDefinition`, which puts a redefined id at its new position. |
+| Graph compilation | `RecipeGraph.h`, `RecipeGraph.cpp`, `RecipeCompilation.h`, `RecipeGraphLowering.cpp`, `RecipeGraphAccess.cpp` | `RecipeGraph::Compile` and its `RecipeGraphBuilder` phases, `RecipeGraphLowering`, and the graph's read accessors. |
+| Graph operations | `GraphOperations.h`, `GraphOperations.cpp`, `Reduction.h`, `FunctionExecution.cpp` | The operation node types, `InputsOf`, `Stateful`, `FunctionResultTypeOf`, `ReductionKind`, and `EvaluateFunction`. |
+| Evaluation and checks | `Signals.h`, `Signals.cpp` | `SignalState`, `SignalEnvironment`, `Validate`, and the `Check*` and `*TypeOf` functions. `CheckSource` compiles a changed candidate row before it compares diagnostics. |
+| Expressions | `Expression.h`, `Expression.cpp` | `Program`, the parser, the type check, `ReplaceNumericLiteral`, `RenameInExpression`, and `ExpressionSummary`. |
+| Merge | `Merge.h`, `Merge.cpp` | `PlanGeometry`, `PlanLights`, and the plan lookups. |
+| Import | `Importer.h`, `Importer.cpp`, `Efsh.h`, `Efsh.cpp` | `ParseEffectShaderRecord`, `ImportEffectShader`, `ImportSignalNames`, and the vanilla fill model that an `EfshSignal` reads. |
+| Editor walks | `Visit.h` | `ForEachParam`, `Visit*Params`, `LocatedVisitor`, and `PropertyLocation`, which the studio and menu use to walk a recipe's refs and params. |
 
 ## See also
 
 - `REFERENCE.md` → *The recipe model*, *The recipe language*, *Recipe format
-  details beyond the schema* — the facts these types cannot state: packings,
-  format history, the reasons behind constants.
-- `docs/conventions.md` → *Diagnostics* and *The JSON boundary* — the
-  `Reporter` and `Reader`/`Writer` contracts this module defines and every
-  layer reuses.
-- `schema/recipe.schema.json` and `schema/example-magicka.json` — the format
-  contract these types parse.
-
-## Schema/parser contract checks
-
-`tools_recipe_contract_tests` runs a shared input matrix through JSON Schema
-and the native validator selected by CMake. It covers structural agreement
-and explicitly distinguishes semantic expression/reference refusals that the
-schema cannot enforce. `recipe_recipe` tests default preservation and model
-round trips. Integer reader fields reject values outside signed 32-bit range
-before conversion; format 1 is the supported format, and malformed clock
-objects report recipe-level errors. The dated contract checkpoint tracks
-remaining alternatives and numeric-policy review.
-
-FloatFrom checks finite float range before JSON numbers become engine floats;
-parameters, literal vectors, pose points, and event-filter endpoints share the
-same conversion. The schema's number definition matches the magnitude bounds.
-Noise seeds, mip levels, alpha thresholds, and explicit skinned-light bounds
-report invalid input instead of silently clamping it. These parsing guarantees
-do not cover arithmetic performed later by expressions or the renderer.
-
-Collection limits apply to attempted entries, including rejected rows, and are
-recorded in the schema as maxItems/maxProperties. They bound row processing
-after the JSON document has been parsed, not the size of the document itself.
-References use the same name grammar as row declarations; empty variant and
-bone names are invalid. Reference resolution, cycles, and variant override
-types remain native semantic checks beyond structural schema validation.
-
-`Validate` combines typed field checks and semantic checks. Its optional input
-diagnostics preserve failures that decoding replaced with defaults or dropped
-rows; rebuilding the typed model cannot reconstruct those file errors. JSON
-shape, format, and bounded decoding remain parser responsibilities.
+  details beyond the schema*, and *Unified recipe graph and signal execution*.
+- `docs/conventions.md` → *Diagnostics*, *The JSON boundary*, *Variants and
+  closed sets*, and *Multi-phase algorithms → Bounds*.
+- [The recipe resolution contract](../recipe-resolution.md) for identity
+  overrides, sampling, priority, and replacement.
+- [The operation graph checkpoint](../checkpoints/operation-graph-2026-09-26.md)
+  and [the render-plan model](../plans/render-plan-model.md).
+- `schema/recipe.schema.json` and `schema/example-magicka.json` for the file
+  format.
