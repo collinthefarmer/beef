@@ -80,6 +80,8 @@ Third-party caching remains enabled. See `REFERENCE.md`, Build and tools.
 ```
 python3 tools/compile-db.py
 python3 tools/tidy.py src/recipe/Resolve.cpp
+python3 tools/tidy.py --changed
+python3 tools/tidy.py --changed --base HEAD --only 'readability-*'
 python3 tools/tidy.py
 python3 tools/tidy.py --check
 python3 tools/tidy.py --update
@@ -97,16 +99,54 @@ Tidy analyses the named translation units, or every first-party translation
 unit when no file is named. A full run fails when a first-party source is
 missing from the database. `--jobs N` sets the parallel analyses (default
 four; at most eight). Normal runs exclude the Clang static analyzer;
-`--analyzer` includes it. Tidy prints each distinct first-party finding once;
-findings in `src/extern`, `src/cs` and dependencies are dropped. A failed
-clang-tidy invocation fails the run.
+`--analyzer` includes it. Tidy prints each distinct first-party finding once,
+as `file:line: [check] message`, sorted by file and line. Findings in
+`src/extern`, `src/cs` and dependencies are dropped. A failed clang-tidy
+invocation fails the run.
 
-`--check` compares the findings with `tools/tidy-baseline.txt` by count per
-source or header path and check, so line movement and fixes pass. Header
-findings are included when a single source is checked. `--update` rewrites the
-baseline and requires a full run without `--analyzer`. Run it only after you
-review all findings, never to make a gate pass. The baseline is a count
-allowance, not a guarantee that every individual finding is unchanged.
+`--changed` selects the translation units that changed since a base revision,
+and the translation units that include a changed header. The base is the merge
+base of `HEAD` and `main`; `--base REF` sets another one. The comparison
+includes staged, unstaged and untracked files. Includes are followed through
+`src/`, `src/extern/` and the force-included precompiled header. A change to
+`.clang-tidy` selects every translation unit. A changed source that is missing
+from the database fails the run. `--changed` does not take file names.
+
+`--only CHECK` runs only the checks that `.clang-tidy` enables and that match
+the name or glob. The option is repeatable. A pattern that matches no enabled
+check fails the run. Static-analyzer checks match only with `--analyzer`.
+
+`--check` compares the findings with `tools/tidy-baseline.txt`. A finding
+matches a baseline row with the same file, check and message. Digits in the
+message are ignored, so a changed complexity score does not count as new. The
+line number is ignored, so moved code does not count as new. Identical keys
+compare by count. A baseline row without a message allows one finding of its
+file and check, whatever the message. Each finding beyond the baseline prints
+as `file:line: [check] message`, grouped by file. When a key has more findings
+than rows, every finding of that key prints, because the baseline cannot tell
+which one is new. A summary with the excess count per check follows.
+Header findings are included when a single source is checked. Selected runs
+(`--changed`, named files, `--only`) compare with the full baseline and pass
+when the selection has no finding beyond it.
+
+| Exit code | Meaning |
+|---|---|
+| 0 | The run finished. With `--check`, no finding is beyond the baseline. |
+| 1 | `--check` found findings beyond the baseline. |
+| 2 | The run failed: a usage error, a missing source, or a failed clang-tidy invocation. |
+
+A pipe reports the exit code of its last command. Run `--check` without a pipe,
+or read `pipestatus`, when the exit code matters.
+
+`--update` rewrites the baseline and requires a full run without `--analyzer`,
+`--changed` or `--only`. Each row holds the file, line, check and message.
+Run it only after you review all findings, never to make a gate pass.
+
+Tidy has no result cache. A safe cache needs the complete include set of each
+translation unit. The Ninja dependency log is stale for a source that was
+edited after the last build, and the headers include CommonLibSSE, the
+Windows SDK and the force-included precompiled header. Use `--changed` for a
+fast focused pass.
 
 ## Validation and recovery
 

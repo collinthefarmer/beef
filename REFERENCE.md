@@ -1737,9 +1737,15 @@ Decompile provenance (`decompiled/WornEnchantmentFX/plugin.c` unless noted):
 - `python3 tools/compile-db.py` configures Release and writes the first-party clangd
   view only when changed: `src/` entries from the Windows database and, when
   `build/native` is configured, `tests/` entries from the native database.
-  `tools/tidy.py` reads the Windows database and runs uncached. Baselines
-  deduplicate diagnostics and compare file/check counts, including headers;
-  line shifts and resolved findings do not fail checks.
+  `tools/tidy.py` reads the Windows database and runs uncached: a safe cache
+  needs each translation unit's complete include set, and the Ninja
+  dependency log is stale for a source edited after the last build. Baselines
+  deduplicate diagnostics and match file, check and message with digits
+  ignored, including headers; line shifts, changed scores and resolved
+  findings do not fail checks. A baseline row without a message allows one
+  finding of its file and check. `--changed` follows `#include` lines through
+  `src/`, `src/extern/` and the `/FI` precompiled header to find the
+  translation units a changed header reaches.
 - `docs/build.md` owns commands and recovery. `install.sh` copies
   the staged mod while preserving an existing INI and reporting copy errors.
 - `tools/rename.py` drives the `clangd` on `PATH`, which the dev shell

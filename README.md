@@ -63,7 +63,7 @@ to a binary cache.
 | `cmake --preset native`, `cmake --build --preset native`, `ctest --preset native` | Configures, builds, and runs native tests. Use `native-sanitized` for ASan/UBSan; CTest `-R` selects suites. |
 | `./install.sh` | Copies the staged mod folder into the MO2 mods directory. It copies the INI only when the mod has none, because the INI holds the user's settings. |
 | `tools/gate.sh {commit,push,release,fix}` | Checks formatting, include layers and comments (commit: staged content; push: the tree plus sanitized native tests; release: adds the Windows build and full tidy). `fix` formats the tree. `tools/gate.py` holds the only copy of the include graph. |
-| `python3 tools/tidy.py [--check\|--update]` | Runs clang-tidy over the Windows database and compares with `tools/tidy-baseline.txt`. |
+| `python3 tools/tidy.py [--check\|--update] [--changed] [--only CHECK]` | Runs clang-tidy over the Windows database and compares with `tools/tidy-baseline.txt`. `--changed` limits the run to the sources changed on the branch and in the working tree. |
 | `python3 tools/source-archive.py` | Writes the corresponding-source archive of HEAD with the pinned dependency sources. |
 | `tools/rename.py Old New [--apply]` | Renames a C++ symbol through clangd. Run `python3 tools/compile-db.py` first to write the database it reads. |
 | `python3 tools/trace-report.py <trace.jsonl>` | Summarizes an in-game diagnostic trace and its rotation segments. |

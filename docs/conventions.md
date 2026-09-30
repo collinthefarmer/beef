@@ -664,16 +664,17 @@ re-execs into `nix develop` so the pinned clang tools always run.
 
 - `commit` checks the staged content of staged first-party C++ files:
   formatting, layers, and comments.
-  Run targeted tidy explicitly while developing; full tidy runs at release validation.
-  Baseline checks include header diagnostics, ignore line movement, and
-  block increased file/check counts.
+  Run targeted tidy explicitly while developing, for example
+  `python3 tools/tidy.py --changed`; full tidy runs at release validation.
+  Baseline checks include header diagnostics and match findings by file,
+  check and message, ignoring line numbers and digits.
 - `push` runs the same checks over every first-party file, then the
   sanitized CTest suites. `release` adds the Windows build and full normal
   clang-tidy, allowing reductions in findings.
 - Regenerate the baseline only after review with
   `python3 tools/tidy.py --update`.
 - Analysis has no result cache. A failed clang-tidy invocation fails the
-  run. Static analyzer checks run separately with
+  run with exit code 2; findings beyond the baseline exit with code 1. Static analyzer checks run separately with
   `python3 tools/tidy.py --analyzer`.
 - `docs/build.md` owns commands, presets, and recovery. Tidy
   reads the Windows CMake database directly; the clangd view is rewritten
