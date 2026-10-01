@@ -365,8 +365,8 @@ std::uint64_t HashValue(const T &a_value, std::uint64_t a_seed) noexcept {
 }
 }
 
-std::uint64_t HashLayout(const MeshData &a_mesh,
-                         std::uint64_t a_seed) noexcept {
+std::uint64_t HashPartitionsAndBound(const MeshData &a_mesh,
+                                     std::uint64_t a_seed) noexcept {
   std::uint64_t hash = a_seed;
   for (const MeshPartition &partition : a_mesh.partitions) {
     hash = HashValue(partition.slot, hash);

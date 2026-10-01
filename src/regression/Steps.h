@@ -20,19 +20,19 @@ using Verdict = std::variant<Pending, Completed>;
 struct StepContext {
   const Observation &seen;
   std::uint32_t frames = 0;
-  const Ownership &owned;
-  const std::array<std::uint64_t, kRoleCount> &renderMarks;
+  const RunChanges &changes;
+  const std::array<std::uint64_t, kRoleCount> &renderedBefore;
 };
 
 struct StepMove {
   Verdict verdict;
   std::optional<Command> command;
-  Ownership owned;
+  RunChanges changes;
 };
 
 [[nodiscard]] StepMove StartStep(const Step &a_step,
                                  const StepContext &a_context);
 [[nodiscard]] StepMove CheckStep(const Step &a_step,
                                  const StepContext &a_context);
-[[nodiscard]] std::array<bool, kRoleCount> RolesMoved(const Step &a_step);
+[[nodiscard]] std::array<bool, kRoleCount> RolesAffected(const Step &a_step);
 }

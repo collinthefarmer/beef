@@ -85,7 +85,7 @@ public:
     Walk walk{execute, same, select, 0, std::vector<bool>(steps_.size())};
     return Materialize(result, walk, 0);
   }
-  void AdvanceClock(std::uint64_t a_now) noexcept { clock_ = a_now; }
+  void SetClock(std::uint64_t a_now) noexcept { clock_ = a_now; }
   void Touch(RenderStepId step) noexcept {
     if (step < steps_.size())
       steps_[step].lastUsed = clock_;

@@ -11,7 +11,7 @@ namespace {
 inline constexpr std::uint32_t kActionDeadlineFrames = 600;
 inline constexpr std::uint32_t kRenderDeadlineFrames = 1800;
 inline constexpr std::uint32_t kCrowdDeadlineFrames = 3600;
-inline constexpr std::uint32_t kHoldFramesPerSecond = 600;
+inline constexpr std::uint32_t kMaxFramesPerSecond = 600;
 inline constexpr std::uint32_t kTravelDeadlineFrames = 3600;
 inline constexpr std::uint32_t kExpectDeadlineFrames = 600;
 
@@ -33,25 +33,26 @@ std::string_view ItemName(Item a_item) {
   return a_item == Item::kFixture ? "fixture" : "plain-cuirass";
 }
 
-const ActorView &ActorOf(const StepContext &a_context, Role a_role) {
+const ActorFacts &ActorOf(const StepContext &a_context, Role a_role) {
   return a_context.seen.actors[RoleIndex(a_role)];
 }
 
-const ArmorView &ArmorOf(const StepContext &a_context, Role a_role,
+const ItemFacts &ArmorOf(const StepContext &a_context, Role a_role,
                          Item a_item) {
   return ActorOf(a_context, a_role).armor[ItemIndex(a_item)];
 }
 
-bool Added(const Ownership &a_owned, Role a_role, Item a_item) {
+bool Added(const RunChanges &a_owned, Role a_role, Item a_item) {
   return a_owned.added[RoleIndex(a_role)][ItemIndex(a_item)];
 }
 
-Ownership WithAdded(Ownership a_owned, Role a_role, Item a_item, bool a_added) {
+RunChanges WithAdded(RunChanges a_owned, Role a_role, Item a_item,
+                     bool a_added) {
   a_owned.added[RoleIndex(a_role)][ItemIndex(a_item)] = a_added;
   return a_owned;
 }
 
-Ownership WithSpawned(Ownership a_owned, Role a_role, bool a_spawned) {
+RunChanges WithSpawned(RunChanges a_owned, Role a_role, bool a_spawned) {
   a_owned.spawned[RoleIndex(a_role)] = a_spawned;
   if (!a_spawned) {
     a_owned.added[RoleIndex(a_role)] = {};
@@ -59,32 +60,32 @@ Ownership WithSpawned(Ownership a_owned, Role a_role, bool a_spawned) {
   return a_owned;
 }
 
-Ownership WithAway(Ownership a_owned, bool a_away) {
+RunChanges WithAway(RunChanges a_owned, bool a_away) {
   a_owned.away = a_away;
   return a_owned;
 }
 
 StepMove Pass(const StepContext &a_context, std::string a_reason = {}) {
   return {Completed{Outcome::kPass, std::move(a_reason)}, std::nullopt,
-          a_context.owned};
+          a_context.changes};
 }
 
 StepMove Block(const StepContext &a_context, std::string a_reason) {
   return {Completed{Outcome::kBlocked, std::move(a_reason)}, std::nullopt,
-          a_context.owned};
+          a_context.changes};
 }
 
 StepMove Fail(const StepContext &a_context, std::string a_reason,
               std::optional<Command> a_command = std::nullopt) {
   return {Completed{Outcome::kFail, std::move(a_reason)}, a_command,
-          a_context.owned};
+          a_context.changes};
 }
 
 StepMove Wait(const StepContext &a_context) {
-  return {Pending{}, std::nullopt, a_context.owned};
+  return {Pending{}, std::nullopt, a_context.changes};
 }
 
-StepMove Issue(Command a_command, Ownership a_owned) {
+StepMove Issue(Command a_command, RunChanges a_owned) {
   return {Pending{}, a_command, a_owned};
 }
 
@@ -100,20 +101,20 @@ StepMove PassWhen(bool a_done, const StepContext &a_context,
   return Wait(a_context);
 }
 
-std::string StateOf(const ActorView &a_actor) {
+std::string Describe(const ActorFacts &a_actor) {
   return std::format(
-      "present {}, wears fixture {}, live {}, traces {}, "
+      "present {}, wears fixture {}, live {}, residue {}, "
       "latest application {}",
       a_actor.present ? "yes" : "no",
       a_actor.armor[ItemIndex(Item::kFixture)].equipped ? "yes" : "no",
-      a_actor.live ? "yes" : "no", a_actor.traces,
+      a_actor.live ? "yes" : "no", a_actor.residue,
       a_actor.application.empty() ? "none" : a_actor.application);
 }
 
-StepMove WithActorState(StepMove a_move, const ActorView &a_actor) {
+StepMove WithActorState(StepMove a_move, const ActorFacts &a_actor) {
   Completed *completed = std::get_if<Completed>(&a_move.verdict);
   if (completed && completed->outcome != Outcome::kPass) {
-    completed->reason += std::format(" ({})", StateOf(a_actor));
+    completed->reason += std::format(" ({})", Describe(a_actor));
   }
   return a_move;
 }
@@ -122,28 +123,28 @@ std::string Missing(Role a_role) {
   return std::format("the {} is not present", RoleName(a_role));
 }
 
-StepMove Start(const Settle &, const StepContext &a_context) {
+StepMove Start(const WaitFrames &, const StepContext &a_context) {
   return Wait(a_context);
 }
 
-StepMove Check(const Settle &a_settle, const StepContext &a_context) {
+StepMove Check(const WaitFrames &a_settle, const StepContext &a_context) {
   return a_context.frames >= a_settle.frames ? Pass(a_context)
                                              : Wait(a_context);
 }
 
 StepMove Start(const Solo &a_solo, const StepContext &a_context) {
-  return {Completed{}, SoloRecipe{a_solo.recipe}, a_context.owned};
+  return {Completed{}, SoloRecipe{a_solo.recipe}, a_context.changes};
 }
 
 StepMove Check(const Solo &, const StepContext &a_context) {
   return Pass(a_context);
 }
 
-StepMove Start(const RestoreView &, const StepContext &a_context) {
-  return {Completed{}, RestoreSolo{}, a_context.owned};
+StepMove Start(const RestoreSolo &, const StepContext &a_context) {
+  return {Completed{}, EndSolo{}, a_context.changes};
 }
 
-StepMove Check(const RestoreView &, const StepContext &a_context) {
+StepMove Check(const RestoreSolo &, const StepContext &a_context) {
   return Pass(a_context);
 }
 
@@ -155,11 +156,11 @@ StepMove Start(const Spawn &a_spawn, const StepContext &a_context) {
     return Block(a_context,
                  "effects are limited to the player in the settings");
   }
-  if (a_context.owned.spawned[RoleIndex(a_spawn.role)]) {
+  if (a_context.changes.spawned[RoleIndex(a_spawn.role)]) {
     return Pass(a_context, "already spawned");
   }
   return Issue(SpawnActor{a_spawn.role},
-               WithSpawned(a_context.owned, a_spawn.role, true));
+               WithSpawned(a_context.changes, a_spawn.role, true));
 }
 
 StepMove Check(const Spawn &a_spawn, const StepContext &a_context) {
@@ -168,11 +169,11 @@ StepMove Check(const Spawn &a_spawn, const StepContext &a_context) {
 }
 
 StepMove Start(const Despawn &a_despawn, const StepContext &a_context) {
-  if (!a_context.owned.spawned[RoleIndex(a_despawn.role)]) {
+  if (!a_context.changes.spawned[RoleIndex(a_despawn.role)]) {
     return Pass(a_context, "the run spawned no such actor");
   }
   return Issue(DespawnActor{a_despawn.role},
-               WithSpawned(a_context.owned, a_despawn.role, false));
+               WithSpawned(a_context.changes, a_despawn.role, false));
 }
 
 StepMove Check(const Despawn &a_despawn, const StepContext &a_context) {
@@ -181,10 +182,10 @@ StepMove Check(const Despawn &a_despawn, const StepContext &a_context) {
 }
 
 StepMove Start(const Disable &a_disable, const StepContext &a_context) {
-  if (!a_context.owned.spawned[RoleIndex(a_disable.role)]) {
+  if (!a_context.changes.spawned[RoleIndex(a_disable.role)]) {
     return Block(a_context, "only an actor the run spawned can be disabled");
   }
-  return Issue(DisableActor{a_disable.role}, a_context.owned);
+  return Issue(DisableActor{a_disable.role}, a_context.changes);
 }
 
 StepMove Check(const Disable &a_disable, const StepContext &a_context) {
@@ -193,10 +194,10 @@ StepMove Check(const Disable &a_disable, const StepContext &a_context) {
 }
 
 StepMove Start(const Enable &a_enable, const StepContext &a_context) {
-  if (!a_context.owned.spawned[RoleIndex(a_enable.role)]) {
+  if (!a_context.changes.spawned[RoleIndex(a_enable.role)]) {
     return Block(a_context, "only an actor the run spawned can be enabled");
   }
-  return Issue(EnableActor{a_enable.role}, a_context.owned);
+  return Issue(EnableActor{a_enable.role}, a_context.changes);
 }
 
 StepMove Check(const Enable &a_enable, const StepContext &a_context) {
@@ -205,8 +206,8 @@ StepMove Check(const Enable &a_enable, const StepContext &a_context) {
 }
 
 StepMove Start(const Equip &a_equip, const StepContext &a_context) {
-  const ActorView &actor = ActorOf(a_context, a_equip.role);
-  const ArmorView &armor = ArmorOf(a_context, a_equip.role, a_equip.item);
+  const ActorFacts &actor = ActorOf(a_context, a_equip.role);
+  const ItemFacts &armor = ArmorOf(a_context, a_equip.role, a_equip.item);
   if (!a_context.seen.itemsLoaded[ItemIndex(a_equip.item)]) {
     return Block(a_context,
                  std::format("the {} is not loaded", ItemName(a_equip.item)));
@@ -218,16 +219,16 @@ StepMove Start(const Equip &a_equip, const StepContext &a_context) {
     return Pass(a_context, "already equipped");
   }
   if (armor.carried) {
-    if (!Added(a_context.owned, a_equip.role, a_equip.item)) {
+    if (!Added(a_context.changes, a_equip.role, a_equip.item)) {
       return Block(a_context, "the actor carries a copy the run did not add");
     }
-    return Issue(EquipCarried{a_equip.role, a_equip.item}, a_context.owned);
+    return Issue(EquipCarried{a_equip.role, a_equip.item}, a_context.changes);
   }
   if (a_equip.role == Role::kPlayer && actor.bodyArmorWorn) {
     return Block(a_context, "the player wears body armor");
   }
   return Issue(AddAndEquip{a_equip.role, a_equip.item},
-               WithAdded(a_context.owned, a_equip.role, a_equip.item, true));
+               WithAdded(a_context.changes, a_equip.role, a_equip.item, true));
 }
 
 StepMove Check(const Equip &a_equip, const StepContext &a_context) {
@@ -239,7 +240,7 @@ StepMove Start(const Unequip &a_unequip, const StepContext &a_context) {
   if (!ArmorOf(a_context, a_unequip.role, a_unequip.item).equipped) {
     return Pass(a_context, "not equipped");
   }
-  return Issue(UnequipArmor{a_unequip.role, a_unequip.item}, a_context.owned);
+  return Issue(UnequipArmor{a_unequip.role, a_unequip.item}, a_context.changes);
 }
 
 StepMove Check(const Unequip &a_unequip, const StepContext &a_context) {
@@ -249,11 +250,12 @@ StepMove Check(const Unequip &a_unequip, const StepContext &a_context) {
 }
 
 StepMove Start(const Remove &a_remove, const StepContext &a_context) {
-  if (!Added(a_context.owned, a_remove.role, a_remove.item)) {
+  if (!Added(a_context.changes, a_remove.role, a_remove.item)) {
     return Pass(a_context, "the run added none");
   }
-  return Issue(RemoveArmor{a_remove.role, a_remove.item},
-               WithAdded(a_context.owned, a_remove.role, a_remove.item, false));
+  return Issue(
+      RemoveArmor{a_remove.role, a_remove.item},
+      WithAdded(a_context.changes, a_remove.role, a_remove.item, false));
 }
 
 StepMove Check(const Remove &a_remove, const StepContext &a_context) {
@@ -273,7 +275,7 @@ StepMove CheckOutcome(Outcome a_outcome, const StepContext &a_context) {
                             "actor was not ready");
   case Outcome::kAborted:
     return {Completed{Outcome::kAborted, "the plugin cancelled the request"},
-            std::nullopt, a_context.owned};
+            std::nullopt, a_context.changes};
   }
   return Fail(a_context, "unknown request outcome");
 }
@@ -299,7 +301,7 @@ StepMove CheckRequest(const StepContext &a_context) {
 }
 
 StepMove Start(const Apply &a_apply, const StepContext &a_context) {
-  return Issue(SubmitApply{a_apply.role}, a_context.owned);
+  return Issue(SubmitApply{a_apply.role}, a_context.changes);
 }
 
 StepMove Check(const Apply &, const StepContext &a_context) {
@@ -307,7 +309,7 @@ StepMove Check(const Apply &, const StepContext &a_context) {
 }
 
 StepMove Start(const Retire &a_retire, const StepContext &a_context) {
-  return Issue(SubmitRetire{a_retire.role}, a_context.owned);
+  return Issue(SubmitRetire{a_retire.role}, a_context.changes);
 }
 
 StepMove Check(const Retire &, const StepContext &a_context) {
@@ -319,11 +321,11 @@ StepMove Start(const AwaitRendered &, const StepContext &a_context) {
 }
 
 StepMove Check(const AwaitRendered &a_await, const StepContext &a_context) {
-  const ActorView &actor = ActorOf(a_context, a_await.role);
+  const ActorFacts &actor = ActorOf(a_context, a_await.role);
   const bool rendered =
       actor.present &&
-      actor.renderedAttempt > a_context.renderMarks[RoleIndex(a_await.role)];
-  if (rendered && actor.traces > 0) {
+      actor.renderedAttempt > a_context.renderedBefore[RoleIndex(a_await.role)];
+  if (rendered && actor.residue > 0) {
     return Pass(a_context);
   }
   if (a_context.frames < kRenderDeadlineFrames) {
@@ -337,7 +339,7 @@ StepMove Check(const AwaitRendered &a_await, const StepContext &a_context) {
                                    : std::format("no new application rendered "
                                                  "within {} frames",
                                                  kRenderDeadlineFrames),
-                          StateOf(actor)));
+                          Describe(actor)));
 }
 
 StepMove Start(const AwaitRetired &, const StepContext &a_context) {
@@ -345,7 +347,7 @@ StepMove Start(const AwaitRetired &, const StepContext &a_context) {
 }
 
 StepMove Check(const AwaitRetired &a_await, const StepContext &a_context) {
-  const ActorView &actor = ActorOf(a_context, a_await.role);
+  const ActorFacts &actor = ActorOf(a_context, a_await.role);
   return WithActorState(PassWhen(!actor.live, a_context, kRenderDeadlineFrames,
                                  "the plugin did not retire the actor"),
                         actor);
@@ -356,9 +358,9 @@ StepMove Start(const AwaitBaseline &, const StepContext &a_context) {
 }
 
 StepMove Check(const AwaitBaseline &a_await, const StepContext &a_context) {
-  const ActorView &actor = ActorOf(a_context, a_await.role);
+  const ActorFacts &actor = ActorOf(a_context, a_await.role);
   return WithActorState(
-      PassWhen(actor.present && actor.traces == 0, a_context,
+      PassWhen(actor.present && actor.residue == 0, a_context,
                kRenderDeadlineFrames,
                "plugin textures or shells stayed on the actor"),
       actor);
@@ -369,9 +371,9 @@ StepMove Start(const ExpectEffect &, const StepContext &a_context) {
 }
 
 StepMove Check(const ExpectEffect &a_expect, const StepContext &a_context) {
-  const ActorView &actor = ActorOf(a_context, a_expect.role);
+  const ActorFacts &actor = ActorOf(a_context, a_expect.role);
   return WithActorState(
-      PassWhen(actor.present && actor.live && actor.traces > 0, a_context,
+      PassWhen(actor.present && actor.live && actor.residue > 0, a_context,
                kExpectDeadlineFrames, "the effect was not on the actor"),
       actor);
 }
@@ -384,22 +386,22 @@ StepMove Start(const HoldUntouched &a_hold, const StepContext &a_context) {
 }
 
 StepMove Check(const HoldUntouched &a_hold, const StepContext &a_context) {
-  const ActorView &actor = ActorOf(a_context, a_hold.role);
-  if (actor.live || actor.traces > 0) {
+  const ActorFacts &actor = ActorOf(a_context, a_hold.role);
+  if (actor.live || actor.residue > 0) {
     return Fail(a_context, std::format("the {} gained plugin state",
                                        RoleName(a_hold.role)));
   }
   return a_context.frames >= a_hold.frames ? Pass(a_context) : Wait(a_context);
 }
 
-StepMove Start(const LeaveCell &, const StepContext &a_context) {
-  if (a_context.owned.away) {
+StepMove Start(const LeaveStart &, const StepContext &a_context) {
+  if (a_context.changes.away) {
     return Pass(a_context, "already away");
   }
-  return Issue(TravelAway{}, WithAway(a_context.owned, true));
+  return Issue(TravelFromStart{}, WithAway(a_context.changes, true));
 }
 
-StepMove Check(const LeaveCell &, const StepContext &a_context) {
+StepMove Check(const LeaveStart &, const StepContext &a_context) {
   return PassWhen(a_context.seen.awayFromStart &&
                       ActorOf(a_context, Role::kPlayer).present,
                   a_context, kTravelDeadlineFrames,
@@ -407,10 +409,10 @@ StepMove Check(const LeaveCell &, const StepContext &a_context) {
 }
 
 StepMove Start(const ReturnToStart &, const StepContext &a_context) {
-  if (!a_context.owned.away) {
+  if (!a_context.changes.away) {
     return Pass(a_context, "never left");
   }
-  return Issue(TravelBack{}, WithAway(a_context.owned, false));
+  return Issue(TravelToStart{}, WithAway(a_context.changes, false));
 }
 
 StepMove Check(const ReturnToStart &, const StepContext &a_context) {
@@ -420,18 +422,18 @@ StepMove Check(const ReturnToStart &, const StepContext &a_context) {
                   "the player did not return to the start");
 }
 
-bool InView(View a_view, const StepContext &a_context) {
-  return a_context.seen.firstPerson == (a_view == View::kFirstPerson);
+bool InView(Camera a_view, const StepContext &a_context) {
+  return a_context.seen.firstPerson == (a_view == Camera::kFirstPerson);
 }
 
-StepMove Start(const SetView &a_set, const StepContext &a_context) {
+StepMove Start(const SetCamera &a_set, const StepContext &a_context) {
   if (InView(a_set.view, a_context)) {
     return Pass(a_context, "already in that view");
   }
-  return Issue(SetCamera{a_set.view}, a_context.owned);
+  return Issue(SwitchCamera{a_set.view}, a_context.changes);
 }
 
-StepMove Check(const SetView &a_set, const StepContext &a_context) {
+StepMove Check(const SetCamera &a_set, const StepContext &a_context) {
   return PassWhen(InView(a_set.view, a_context), a_context,
                   kActionDeadlineFrames, "the camera did not switch");
 }
@@ -481,16 +483,16 @@ std::string Describe(const Activity &a_activity) {
 }
 
 StepMove Start(const LoadDuring &a_load, const StepContext &a_context) {
-  Ownership owned = a_context.owned;
-  owned.loadTarget = a_context.seen.loads + 1;
-  return Issue(ReloadDuring{a_load.work, a_load.recipe}, owned);
+  RunChanges changes = a_context.changes;
+  changes.loadTarget = a_context.seen.loads + 1;
+  return Issue(LoadSaveWith{a_load.work, a_load.recipe}, changes);
 }
 
 StepMove Check(const LoadDuring &, const StepContext &a_context) {
-  const bool loaded = a_context.seen.loads >= a_context.owned.loadTarget &&
+  const bool loaded = a_context.seen.loads >= a_context.changes.loadTarget &&
                       ActorOf(a_context, Role::kPlayer).present;
   if (loaded) {
-    return {Completed{}, std::nullopt, Ownership{}};
+    return {Completed{}, std::nullopt, RunChanges{}};
   }
   if (a_context.frames >= kTravelDeadlineFrames) {
     return Fail(a_context, std::format("the save did not load within {} frames",
@@ -517,7 +519,7 @@ WorkOutcome TrackedOutcomeOf(TrackedWork a_work, const Activity &a_activity) {
                                          : a_activity.editOutcome;
 }
 
-std::string_view OutcomeOf(WorkOutcome a_outcome) {
+std::string_view PhraseOf(WorkOutcome a_outcome) {
   switch (a_outcome) {
   case WorkOutcome::kNone:
     return "never recorded";
@@ -546,7 +548,7 @@ StepMove Check(const ExpectCancelled &a_expect, const StepContext &a_context) {
   const std::string &detail = a_context.seen.activity.detail;
   return Fail(a_context,
               std::format("the {} was {}{}", WorkName(a_expect.work),
-                          OutcomeOf(outcome),
+                          PhraseOf(outcome),
                           detail.empty() ? "" : std::format(" ({})", detail)));
 }
 
@@ -559,7 +561,7 @@ StepMove Check(const ExpectSettled &a_expect, const StepContext &a_context) {
       TrackedOutcomeOf(a_expect.work, a_context.seen.activity);
   if (outcome == WorkOutcome::kApplied ||
       outcome == WorkOutcome::kCancelledByLoad) {
-    return Pass(a_context, std::string{OutcomeOf(outcome)});
+    return Pass(a_context, std::string{PhraseOf(outcome)});
   }
   if (a_context.frames < kActionDeadlineFrames &&
       outcome == WorkOutcome::kPending) {
@@ -568,11 +570,11 @@ StepMove Check(const ExpectSettled &a_expect, const StepContext &a_context) {
   const std::string &detail = a_context.seen.activity.detail;
   return Fail(a_context,
               std::format("the {} was {}{}", WorkName(a_expect.work),
-                          OutcomeOf(outcome),
+                          PhraseOf(outcome),
                           detail.empty() ? "" : std::format(" ({})", detail)));
 }
 
-std::string DescribeScratch(const RecipeView &a_scratch) {
+std::string Describe(const RecipeFacts &a_scratch) {
   return std::format(
       "loaded {}, dirty {}, first opacity {}", a_scratch.loaded ? "yes" : "no",
       a_scratch.dirty ? "yes" : "no",
@@ -593,8 +595,7 @@ StepMove FinishWhen(bool a_done, WorkOutcome a_outcome,
   const std::string &detail = a_context.seen.activity.detail;
   return Fail(a_context,
               std::format("{} did not finish: {}; scratch {}{}", a_what,
-                          OutcomeOf(a_outcome),
-                          DescribeScratch(a_context.seen.scratch),
+                          PhraseOf(a_outcome), Describe(a_context.seen.scratch),
                           detail.empty() ? "" : std::format(" ({})", detail)));
 }
 
@@ -602,7 +603,7 @@ StepMove Start(const DeleteScratch &, const StepContext &a_context) {
   if (!a_context.seen.scratch.loaded) {
     return Pass(a_context, "no scratch recipe loaded");
   }
-  return Issue(RemoveRecipe{kScratchRecipe}, a_context.owned);
+  return Issue(StartDelete{kScratchRecipe}, a_context.changes);
 }
 
 StepMove Check(const DeleteScratch &, const StepContext &a_context) {
@@ -613,7 +614,7 @@ StepMove Check(const DeleteScratch &, const StepContext &a_context) {
 }
 
 StepMove Start(const DuplicateToScratch &a_copy, const StepContext &a_context) {
-  return Issue(CopyRecipe{a_copy.from, kScratchRecipe}, a_context.owned);
+  return Issue(StartDuplicate{a_copy.from, kScratchRecipe}, a_context.changes);
 }
 
 StepMove Check(const DuplicateToScratch &, const StepContext &a_context) {
@@ -624,7 +625,8 @@ StepMove Check(const DuplicateToScratch &, const StepContext &a_context) {
 }
 
 StepMove Start(const SetScratchOpacity &a_set, const StepContext &a_context) {
-  return Issue(EditOpacity{kScratchRecipe, a_set.value}, a_context.owned);
+  return Issue(StartOpacityEdit{kScratchRecipe, a_set.value},
+               a_context.changes);
 }
 
 StepMove Check(const SetScratchOpacity &a_set, const StepContext &a_context) {
@@ -635,7 +637,7 @@ StepMove Check(const SetScratchOpacity &a_set, const StepContext &a_context) {
 }
 
 StepMove Start(const SaveScratch &, const StepContext &a_context) {
-  return Issue(WriteRecipe{kScratchRecipe}, a_context.owned);
+  return Issue(StartSave{kScratchRecipe}, a_context.changes);
 }
 
 StepMove Check(const SaveScratch &, const StepContext &a_context) {
@@ -650,7 +652,7 @@ StepMove Start(const ExpectScratch &, const StepContext &a_context) {
 }
 
 StepMove Check(const ExpectScratch &a_expect, const StepContext &a_context) {
-  const RecipeView &scratch = a_context.seen.scratch;
+  const RecipeFacts &scratch = a_context.seen.scratch;
   if (scratch.loaded && !scratch.dirty &&
       scratch.firstOpacity == a_expect.opacity) {
     return Pass(a_context);
@@ -661,7 +663,7 @@ StepMove Check(const ExpectScratch &a_expect, const StepContext &a_context) {
   return Fail(a_context,
               std::format("the scratch recipe is not the saved one with "
                           "opacity {}: {}",
-                          a_expect.opacity, DescribeScratch(scratch)));
+                          a_expect.opacity, Describe(scratch)));
 }
 
 StepMove Start(const SpawnCrowd &a_spawn, const StepContext &a_context) {
@@ -673,44 +675,44 @@ StepMove Start(const SpawnCrowd &a_spawn, const StepContext &a_context) {
     return Block(a_context,
                  "effects are limited to the player in the settings");
   }
-  if (a_context.owned.crowd > 0) {
+  if (a_context.changes.crowd > 0) {
     return Pass(a_context, "already spawned");
   }
-  Ownership owned = a_context.owned;
-  owned.crowd = a_spawn.count;
-  return Issue(PlaceCrowd{a_spawn.count}, owned);
+  RunChanges changes = a_context.changes;
+  changes.crowd = a_spawn.count;
+  return Issue(SpawnCrowdActors{a_spawn.count}, changes);
 }
 
 StepMove Check(const SpawnCrowd &, const StepContext &a_context) {
-  const CrowdView &crowd = a_context.seen.crowd;
-  return PassWhen(crowd.present >= a_context.owned.crowd, a_context,
+  const CrowdFacts &crowd = a_context.seen.crowd;
+  return PassWhen(crowd.present >= a_context.changes.crowd, a_context,
                   kActionDeadlineFrames,
                   std::format("only {} of {} crowd actors appeared",
-                              crowd.present, a_context.owned.crowd));
+                              crowd.present, a_context.changes.crowd));
 }
 
 StepMove Start(const AwaitCrowdRendered &, const StepContext &a_context) {
-  if (a_context.owned.crowd == 0) {
+  if (a_context.changes.crowd == 0) {
     return Block(a_context, "no crowd was spawned");
   }
   return Wait(a_context);
 }
 
 StepMove Check(const AwaitCrowdRendered &, const StepContext &a_context) {
-  const CrowdView &crowd = a_context.seen.crowd;
-  return PassWhen(crowd.rendered >= a_context.owned.crowd, a_context,
+  const CrowdFacts &crowd = a_context.seen.crowd;
+  return PassWhen(crowd.rendered >= a_context.changes.crowd, a_context,
                   kCrowdDeadlineFrames,
                   std::format("only {} of {} crowd actors rendered",
-                              crowd.rendered, a_context.owned.crowd));
+                              crowd.rendered, a_context.changes.crowd));
 }
 
 StepMove Start(const DespawnCrowd &, const StepContext &a_context) {
-  if (a_context.owned.crowd == 0) {
+  if (a_context.changes.crowd == 0) {
     return Pass(a_context, "no crowd");
   }
-  Ownership owned = a_context.owned;
-  owned.crowd = 0;
-  return Issue(RemoveCrowd{}, owned);
+  RunChanges changes = a_context.changes;
+  changes.crowd = 0;
+  return Issue(DespawnCrowdActors{}, changes);
 }
 
 StepMove Check(const DespawnCrowd &, const StepContext &a_context) {
@@ -718,19 +720,19 @@ StepMove Check(const DespawnCrowd &, const StepContext &a_context) {
                   kActionDeadlineFrames, "the crowd did not disappear");
 }
 
-StepMove Start(const HoldFor &a_hold, const StepContext &a_context) {
-  Ownership owned = a_context.owned;
-  owned.holdUntilMs =
+StepMove Start(const HoldWindow &a_hold, const StepContext &a_context) {
+  RunChanges changes = a_context.changes;
+  changes.holdUntilMs =
       a_context.seen.nowMs + std::uint64_t{a_hold.seconds} * 1000;
-  return {Pending{}, std::nullopt, owned};
+  return {Pending{}, std::nullopt, changes};
 }
 
-StepMove Check(const HoldFor &a_hold, const StepContext &a_context) {
-  if (a_context.seen.nowMs >= a_context.owned.holdUntilMs) {
+StepMove Check(const HoldWindow &a_hold, const StepContext &a_context) {
+  if (a_context.seen.nowMs >= a_context.changes.holdUntilMs) {
     return Pass(a_context);
   }
   const std::uint64_t stalled =
-      (std::uint64_t{a_hold.seconds} + 1) * kHoldFramesPerSecond;
+      (std::uint64_t{a_hold.seconds} + 1) * kMaxFramesPerSecond;
   if (a_context.frames >= stalled) {
     return Fail(a_context, "the game clock did not advance");
   }
@@ -738,7 +740,7 @@ StepMove Check(const HoldFor &a_hold, const StepContext &a_context) {
 }
 
 StepMove Start(const BeginSession &a_begin, const StepContext &a_context) {
-  return Issue(OpenSession{a_begin.session, a_begin.recipe}, a_context.owned);
+  return Issue(OpenSession{a_begin.session, a_begin.recipe}, a_context.changes);
 }
 
 StepMove Check(const BeginSession &, const StepContext &a_context) {
@@ -808,7 +810,7 @@ std::string WithRole(std::string_view a_action, Role a_role) {
 std::string WithArmor(std::string_view a_action, Role a_role, Item a_item) {
   return std::format("{} {} {}", a_action, RoleName(a_role), ItemName(a_item));
 }
-std::string Label(const Settle &a_settle) {
+std::string Label(const WaitFrames &a_settle) {
   return std::format("settle {}", a_settle.frames);
 }
 
@@ -816,7 +818,7 @@ std::string Label(const Solo &a_solo) {
   return std::format("solo {}", a_solo.recipe);
 }
 
-std::string Label(const RestoreView &) { return std::string{"restore-view"}; }
+std::string Label(const RestoreSolo &) { return std::string{"restore-view"}; }
 
 std::string Label(const Spawn &a_s) { return WithRole("spawn", a_s.role); }
 
@@ -862,15 +864,16 @@ std::string Label(const HoldUntouched &a_s) {
   return std::format("hold-untouched {} {}", RoleName(a_s.role), a_s.frames);
 }
 
-std::string Label(const LeaveCell &) { return std::string{"leave-cell"}; }
+std::string Label(const LeaveStart &) { return std::string{"leave-cell"}; }
 
 std::string Label(const ReturnToStart &) {
   return std::string{"return-to-start"};
 }
 
-std::string Label(const SetView &a_s) {
-  return std::string{a_s.view == View::kFirstPerson ? "set-view first-person"
-                                                    : "set-view third-person"};
+std::string Label(const SetCamera &a_s) {
+  return std::string{a_s.view == Camera::kFirstPerson
+                         ? "set-view first-person"
+                         : "set-view third-person"};
 }
 
 std::string Label(const LoadDuring &a_s) {
@@ -917,7 +920,7 @@ std::string Label(const AwaitCrowdRendered &) {
 
 std::string Label(const DespawnCrowd &) { return std::string{"despawn-crowd"}; }
 
-std::string Label(const HoldFor &a_s) {
+std::string Label(const HoldWindow &a_s) {
   return std::format("hold {} {}s", a_s.window, a_s.seconds);
 }
 
@@ -962,7 +965,7 @@ StepMove CheckStep(const Step &a_step, const StepContext &a_context) {
       [&](const auto &a_kind) { return Check(a_kind, a_context); }, a_step);
 }
 
-std::array<bool, kRoleCount> RolesMoved(const Step &a_step) {
+std::array<bool, kRoleCount> RolesAffected(const Step &a_step) {
   const auto only = [](Role a_role) {
     std::array<bool, kRoleCount> moved{};
     moved[RoleIndex(a_role)] = true;
@@ -972,17 +975,17 @@ std::array<bool, kRoleCount> RolesMoved(const Step &a_step) {
   constexpr std::array<bool, kRoleCount> kAll{true, true, true};
   return std::visit(
       Overloaded{
-          [&](const Settle &) { return kNone; },
+          [&](const WaitFrames &) { return kNone; },
           [&](const AwaitRendered &) { return kNone; },
           [&](const AwaitRetired &) { return kNone; },
           [&](const AwaitBaseline &) { return kNone; },
           [&](const ExpectEffect &) { return kNone; },
           [&](const HoldUntouched &) { return kNone; },
           [&](const Solo &) { return kAll; },
-          [&](const RestoreView &) { return kAll; },
-          [&](const LeaveCell &) { return kAll; },
+          [&](const RestoreSolo &) { return kAll; },
+          [&](const LeaveStart &) { return kAll; },
           [&](const ReturnToStart &) { return kAll; },
-          [&](const SetView &) { return only(Role::kPlayer); },
+          [&](const SetCamera &) { return only(Role::kPlayer); },
           [&](const LoadDuring &) { return kAll; },
           [&](const ExpectAborted &) { return kNone; },
           [&](const ExpectCancelled &) { return kNone; },
@@ -995,7 +998,7 @@ std::array<bool, kRoleCount> RolesMoved(const Step &a_step) {
           [&](const SpawnCrowd &) { return kNone; },
           [&](const AwaitCrowdRendered &) { return kNone; },
           [&](const DespawnCrowd &) { return kNone; },
-          [&](const HoldFor &) { return kNone; },
+          [&](const HoldWindow &) { return kNone; },
           [&](const BeginSession &) { return only(Role::kPlayer); },
           [&](const AwaitSessionActive &) { return kNone; },
           [&](const BeginWindow &) { return kNone; },

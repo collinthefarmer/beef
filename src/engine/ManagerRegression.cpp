@@ -156,9 +156,9 @@ Regression::Activity Manager::RegressionActivity(std::uint64_t a_edit,
   return activity;
 }
 
-Regression::RecipeView
+Regression::RecipeFacts
 Manager::RegressionRecipe(std::string_view a_recipe) const {
-  Regression::RecipeView view;
+  Regression::RecipeFacts view;
   const std::span<const Recipe> loaded = LoadedRecipes();
   const Recipe *recipe = FindById(loaded, a_recipe);
   if (!recipe) {

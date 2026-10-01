@@ -86,9 +86,9 @@ commands, so `tools/trace-report.py` can split a trace by case.
 
 Data:
 
-- `RunRequest`: the parsed run file. `ParseRunRequest(text, now)` returns it
+- `RunFile`: the parsed run file. `ParseRunFile(text, now)` returns it
   or an error string.
-- `Step`: a variant of `Settle{frames}`, `Solo{recipe}`, `RestoreView`,
+- `Step`: a variant of `Settle{frames}`, `Solo{recipe}`, `RestoreSolo`,
   `EquipFixture`, `RemoveFixture`, `Apply` and `Retire`. A step that waits
   on the game has a frame deadline: 600 frames for the fixture, 1800 for an
   apply or retire request.

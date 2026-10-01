@@ -18,11 +18,11 @@ inline constexpr Equip kControlPlain{Role::kControl, Item::kPlainCuirass};
 inline constexpr std::array<Step, 7> kCleanup{
     DespawnCrowd{},
     ReturnToStart{},
-    SetView{View::kThirdPerson},
+    SetCamera{Camera::kThirdPerson},
     Despawn{Role::kWearer},
     Despawn{Role::kControl},
     Remove{Role::kPlayer, Item::kFixture},
-    RestoreView{}};
+    RestoreSolo{}};
 
 inline constexpr std::array<Step, 5> kLifecycle{
     Solo{kSoloRecipe}, kPlayerFixture, Apply{Role::kPlayer},
@@ -49,10 +49,10 @@ inline constexpr std::array<Step, 10> kCamera{
     Solo{kSoloRecipe},
     kPlayerFixture,
     AwaitRendered{Role::kPlayer},
-    SetView{View::kFirstPerson},
-    Settle{kViewSettleFrames},
-    SetView{View::kThirdPerson},
-    Settle{kViewSettleFrames},
+    SetCamera{Camera::kFirstPerson},
+    WaitFrames{kViewSettleFrames},
+    SetCamera{Camera::kThirdPerson},
+    WaitFrames{kViewSettleFrames},
     ExpectEffect{Role::kPlayer},
     Unequip{Role::kPlayer, Item::kFixture},
     AwaitBaseline{Role::kPlayer}};
@@ -87,7 +87,7 @@ inline constexpr std::array<Step, 17> kUnload{Solo{kSoloRecipe},
                                               Enable{Role::kWearer},
                                               kWearerFixture,
                                               AwaitRendered{Role::kWearer},
-                                              LeaveCell{},
+                                              LeaveStart{},
                                               AwaitRetired{Role::kWearer},
                                               ExpectEffect{Role::kPlayer},
                                               ReturnToStart{},
@@ -162,11 +162,11 @@ inline constexpr std::array<Step, 6> kStudioReload{
 inline constexpr std::array<Step, 8> kStudioCleanup{
     DespawnCrowd{},
     ReturnToStart{},
-    SetView{View::kThirdPerson},
+    SetCamera{Camera::kThirdPerson},
     Despawn{Role::kWearer},
     Despawn{Role::kControl},
     Remove{Role::kPlayer, Item::kFixture},
-    RestoreView{},
+    RestoreSolo{},
     DeleteScratch{}};
 
 inline constexpr std::uint32_t kCrowdSize = 12;
@@ -177,15 +177,15 @@ inline constexpr std::uint32_t kSettleSeconds = 30;
 
 consteval std::array<Step, 10> Soak(std::uint32_t a_steadySeconds) {
   return {Solo{kSoloRecipe},
-          HoldFor{"baseline", kBaselineSeconds},
+          HoldWindow{"baseline", kBaselineSeconds},
           BeginWindow{"burst"},
           SpawnCrowd{kCrowdSize},
           AwaitCrowdRendered{},
           EndWindow{"burst"},
-          HoldFor{"settle", kSettleSeconds},
-          HoldFor{"steady", a_steadySeconds},
+          HoldWindow{"settle", kSettleSeconds},
+          HoldWindow{"steady", a_steadySeconds},
           DespawnCrowd{},
-          HoldFor{"recovery", kRecoverySeconds}};
+          HoldWindow{"recovery", kRecoverySeconds}};
 }
 inline constexpr std::array<Step, 10> kSoak = Soak(120);
 inline constexpr std::array<Step, 10> kSoakHour = Soak(3600);

@@ -67,7 +67,7 @@ def read_settings(environ: dict[str, str], local: dict[str, str]) -> Settings | 
                     Path(values['SKSE_LOG_DIR']))
 
 
-def run_request(run: str, save: str, suite: list[str], now: float) -> dict:
+def run_file(run: str, save: str, suite: list[str], now: float) -> dict:
     return {'format': 1, 'run': run, 'save': save, 'suite': suite,
             'notAfter': int(now) + RUN_FILE_LIFETIME_SECONDS}
 
@@ -355,7 +355,7 @@ def start_game(settings: Settings) -> None:
 
 def launch(settings: Settings, run: str, cases: list[str], args: argparse.Namespace,
            tasklist: str) -> bool:
-    request = run_request(run, args.save, cases, time.time())
+    request = run_file(run, args.save, cases, time.time())
     (settings.log_dir / RUN_FILE).write_text(json.dumps(request) + '\n', encoding='utf-8')
     print(f'run {run}: {" ".join(cases)} from save {args.save}')
     start = (lambda: print('start the game through MO2 now')) if args.manual \

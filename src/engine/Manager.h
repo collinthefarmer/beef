@@ -59,15 +59,15 @@ public:
 
   void OnFrame();
   void QueueRegression(std::uint64_t a_request);
-  void SoloRegressionRecipe(std::string a_recipe);
-  void RestoreRegressionView();
+  void SoloInEditor(std::string a_recipe);
+  void EndSoloInEditor();
   void ObserveRegression();
   [[nodiscard]] std::vector<RegressionActorFacts>
   RegressionActors(std::span<const RE::FormID> a_actors) const;
   [[nodiscard]] Regression::Activity
   RegressionActivity(std::uint64_t a_edit, std::uint64_t a_gesture,
                      std::uint64_t a_file) const;
-  [[nodiscard]] Regression::RecipeView
+  [[nodiscard]] Regression::RecipeFacts
   RegressionRecipe(std::string_view a_recipe) const;
   [[nodiscard]] std::uint64_t StartRegressionEdit(const std::string &a_recipe,
                                                   float a_opacity);
@@ -194,9 +194,9 @@ private:
 
   std::unordered_set<RE::FormID> evictedForDistance_;
   void SweepEviction(const Settings &a_settings);
-  std::unordered_set<RE::FormID> awaitingModel_;
-  void SweepAwaitingModels(const Settings &a_settings);
-  std::uint32_t lastModelCheckMS_ = 0;
+  std::unordered_set<RE::FormID> awaitingArmorModel_;
+  void SweepAwaitingArmorModels(const Settings &a_settings);
+  std::uint32_t lastArmorModelCheckMS_ = 0;
   std::uint64_t regressionPaintSession_ = 0;
   std::uint32_t lastTickMS_ = 0;
   std::uint32_t lastMetricsMS_ = 0;

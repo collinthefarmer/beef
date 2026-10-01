@@ -400,7 +400,7 @@ struct Harness {
   void Act(Random &random) {
     const auto &g = generated;
     clock += Pick(random, 4) == 0 ? 0 : 1 + Pick(random, 40);
-    execution.AdvanceClock(clock);
+    execution.SetClock(clock);
     const auto roll = Pick(random, 13);
     if (roll < 3) {
       const auto id = g.scalars[Pick(random, g.scalars.size())];

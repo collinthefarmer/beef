@@ -9,13 +9,13 @@
 #include <string>
 
 namespace BetterEnchantmentEffects {
-void CancelRegression();
+void AbortWaitingRegressionRequest();
 [[nodiscard]] std::optional<std::uint64_t>
 SubmitRegressionRequest(RE::Actor *a_actor, RequestKind a_kind);
 [[nodiscard]] Regression::RequestState
 RegressionRequestState(std::optional<std::uint64_t> a_request);
 void AbortRegressionRequest(std::optional<std::uint64_t> a_request);
-void SoloRecipeUnderTest(std::string a_recipe);
-void RestoreRecipeView();
+void SoloRegressionRecipe(std::string a_recipe);
+void EndRegressionSolo();
 [[nodiscard]] RE::TESObjectARMO *RegressionFixture();
 }

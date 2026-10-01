@@ -1,6 +1,6 @@
 // GPL-3.0-only with the additional permission in COPYING.md.
 #include "render/RenderInstance.h"
-#include "render/SharedStepOutputs.h"
+#include "render/StepOutputCache.h"
 
 #include "diagnostics/Metrics.h"
 
@@ -1253,23 +1253,24 @@ ExecuteTimed(const RenderStep &step,
   return ExecuteStep(step, inputs, scratch);
 }
 StepResult
-ExecuteShared(const RenderStep &step,
+ExecuteCached(const RenderStep &step,
               std::span<const ResolvedRenderInput<RenderValue>> inputs,
               RenderScratch &scratch, std::uint64_t nowMS) {
-  if (step.shareKey.empty())
+  if (step.contentKey.empty())
     return ExecuteTimed(step, inputs, scratch);
   std::vector<Value> operands;
   for (const auto &input : inputs)
     if (const auto *value = Get<Value>(input.value))
       operands.push_back(*value);
-  const std::optional<std::string> found = ShareKeyFor(step.shareKey, operands);
+  const std::optional<std::string> found =
+      CacheKeyFor(step.contentKey, operands);
   if (!found)
     return ExecuteTimed(step, inputs, scratch);
   const std::string &key = *found;
-  SharedStepOutputs *shared = SharedStepOutputs::GetSingleton();
+  StepOutputCache *shared = StepOutputCache::GetSingleton();
   scratch.target.reset();
   if (std::optional<TextureView> hit = shared->Find(key, nowMS)) {
-    Metrics::CountSharedStepHit();
+    Metrics::CountStepCacheHit();
     return RenderValue{std::move(*hit)};
   }
   StepResult produced = ExecuteTimed(step, inputs, scratch);
@@ -1286,7 +1287,7 @@ RenderInstance::Demand(RenderValueRef output) {
       [nowMS = nowMS_](const RenderStep &step,
                        std::span<const ResolvedRenderInput<RenderValue>> inputs,
                        RenderScratch &scratch) {
-        return ExecuteShared(step, inputs, scratch, nowMS);
+        return ExecuteCached(step, inputs, scratch, nowMS);
       },
       SameRenderValue, SelectStackInputs);
 }
@@ -1298,7 +1299,7 @@ bool RenderInstance::BeginFrame(std::uint64_t frame, std::uint64_t nowMS) {
     return false;
   frame_ = frame;
   nowMS_ = nowMS;
-  execution_.AdvanceClock(nowMS);
+  execution_.SetClock(nowMS);
   Metrics::CountStepReleases(
       execution_.ReleaseIdle(kReleaseAfterIdleMS, Releasable));
   Metrics::CountStepRestores(execution_.Restores() - restoresReported_);

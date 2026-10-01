@@ -76,8 +76,8 @@ json OutcomeJson(Outcome a_outcome) {
 }
 }
 
-std::expected<RunRequest, std::string>
-ParseRunRequest(std::string_view a_text, std::int64_t a_nowSeconds) {
+std::expected<RunFile, std::string> ParseRunFile(std::string_view a_text,
+                                                 std::int64_t a_nowSeconds) {
   if (a_text.size() > kMaxRunFileBytes) {
     return std::unexpected(
         std::format("larger than {} bytes", kMaxRunFileBytes));
@@ -128,8 +128,8 @@ ParseRunRequest(std::string_view a_text, std::int64_t a_nowSeconds) {
   if (a_nowSeconds > *notAfter) {
     return std::unexpected("the run file has expired");
   }
-  return RunRequest{std::move(*checkedRun), std::move(*checkedSave),
-                    std::move(*suite)};
+  return RunFile{std::move(*checkedRun), std::move(*checkedSave),
+                 std::move(*suite)};
 }
 
 std::string StartLineJson(std::string_view a_run, std::string_view a_build,

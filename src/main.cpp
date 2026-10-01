@@ -135,7 +135,7 @@ void OnDataLoaded(BetterEnchantmentEffects::Manager &a_manager) {
 }
 
 void BeginGameLoad(BetterEnchantmentEffects::Manager &a_manager) {
-  BetterEnchantmentEffects::CancelRegression();
+  BetterEnchantmentEffects::AbortWaitingRegressionRequest();
   a_manager.BeginLoad();
 }
 

@@ -7,7 +7,7 @@
 #include "engine/GameObjectService.h"
 #include "engine/RecipeStore.h"
 #include "render/Compositor.h"
-#include "render/SharedStepOutputs.h"
+#include "render/StepOutputCache.h"
 #include "render/TextureLab.h"
 
 #include <utility>
@@ -100,14 +100,14 @@ void Manager::Clear() {
     RetireActorEffects(state);
   applied_.clear();
   evictedForDistance_.clear();
-  awaitingModel_.clear();
+  awaitingArmorModel_.clear();
   editor_.CancelFileOperationsForLoad();
   SweepRetiredMaterialTextures();
   editor_.CancelPaintForLoad();
   loggedNonPBRArmor_.clear();
   stackWarnings_.Clear();
   carriedTimes_.Clear();
-  SharedStepOutputs::GetSingleton()->Clear();
+  StepOutputCache::GetSingleton()->Clear();
   Compositor::GetSingleton()->ClearMeshes();
   Compositor::GetSingleton()->ClearMaterials();
   TextureLab::GetSingleton()->Clear();

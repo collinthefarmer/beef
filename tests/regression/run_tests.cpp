@@ -19,18 +19,18 @@ constexpr std::uint64_t kSimulatedFrameMs = 1000;
 std::size_t Index(Role a_role) { return static_cast<std::size_t>(a_role); }
 std::size_t Index(Item a_item) { return static_cast<std::size_t>(a_item); }
 
-std::string RunFile(std::string_view a_fields) {
+std::string RunFileText(std::string_view a_fields) {
   return std::string{R"({"format":1,"run":"r1","save":"BEEFRegression",)"} +
          std::string{a_fields} + "}";
 }
 
-std::string RunFileFor(std::string_view a_case) {
-  return RunFile(std::string{R"("suite":[")"} + std::string{a_case} +
-                 R"("],"notAfter":1800000600)");
+std::string RunFileTextFor(std::string_view a_case) {
+  return RunFileText(std::string{R"("suite":[")"} + std::string{a_case} +
+                     R"("],"notAfter":1800000600)");
 }
 
 void ParsesValidRunFile() {
-  const auto parsed = ParseRunRequest(RunFileFor("lifecycle"), kNow);
+  const auto parsed = ParseRunFile(RunFileTextFor("lifecycle"), kNow);
   test::Check(parsed.has_value(), "valid run file parses");
   if (!parsed) {
     return;
@@ -48,15 +48,18 @@ struct BadRunFile {
 
 void RefusesBadRunFiles() {
   const std::vector<BadRunFile> files{
-      {RunFileFor("lifecycle"), "expired", kNow + 601},
-      {RunFile(R"("suite":["nothing"],"notAfter":1800000600)"), "unknown case"},
-      {RunFile(R"("suite":[],"notAfter":1800000600)"), "empty suite"},
-      {RunFile(R"("suite":[1],"notAfter":1800000600)"), "case not a string"},
-      {RunFile(R"("suite":["lifecycle"],"notAfter":"soon")"),
+      {RunFileTextFor("lifecycle"), "expired", kNow + 601},
+      {RunFileText(R"("suite":["nothing"],"notAfter":1800000600)"),
+       "unknown case"},
+      {RunFileText(R"("suite":[],"notAfter":1800000600)"), "empty suite"},
+      {RunFileText(R"("suite":[1],"notAfter":1800000600)"),
+       "case not a string"},
+      {RunFileText(R"("suite":["lifecycle"],"notAfter":"soon")"),
        "notAfter not an integer"},
-      {RunFile(R"("suite":["lifecycle"],"notAfter":1800000600,"x":1)"),
+      {RunFileText(R"("suite":["lifecycle"],"notAfter":1800000600,"x":1)"),
        "unknown key"},
-      {RunFile(R"("suite":["lifecycle"],"notAfter":1,"notAfter":1800000600)"),
+      {RunFileText(
+           R"("suite":["lifecycle"],"notAfter":1,"notAfter":1800000600)"),
        "duplicate key"},
       {R"({"format":2,"run":"r1","save":"s","suite":["lifecycle"],"notAfter":1800000600})",
        "wrong format"},
@@ -74,7 +77,7 @@ void RefusesBadRunFiles() {
       {std::string(70000, ' '), "oversized"},
   };
   for (const BadRunFile &file : files) {
-    test::Check(!ParseRunRequest(file.text, file.now).has_value(), file.what);
+    test::Check(!ParseRunFile(file.text, file.now).has_value(), file.what);
   }
 }
 
@@ -90,7 +93,7 @@ struct Faults {
 };
 
 struct SimActor {
-  ActorView view;
+  ActorFacts view;
   bool spawned = false;
   bool disabled = false;
   int renderIn = -1;
@@ -107,9 +110,9 @@ struct World {
   Activity activity;
   std::uint32_t loads = 0;
   int loadIn = -1;
-  RecipeView scratch;
+  RecipeFacts scratch;
   std::optional<std::optional<float>> disk;
-  CrowdView crowd;
+  CrowdFacts crowd;
   int crowdIn = -1;
   std::uint32_t crowdSize = 0;
   std::uint64_t nowMs = 0;
@@ -152,7 +155,7 @@ struct World {
 
   void Clear(SimActor &a_actor) {
     a_actor.view.live = a_actor.view.live && faults.unloadKeepsState;
-    a_actor.view.traces = 0;
+    a_actor.view.residue = 0;
     a_actor.view.present = false;
     a_actor.renderIn = -1;
   }
@@ -160,7 +163,7 @@ struct World {
   void Render(SimActor &a_actor) {
     a_actor.view.live = true;
     a_actor.view.renderedAttempt = ++revision;
-    a_actor.view.traces = 2;
+    a_actor.view.residue = 2;
   }
 
   void Spawn(Role a_role) {
@@ -175,7 +178,7 @@ struct World {
   }
 
   void Equip(Role a_role, Item a_item, bool a_add) {
-    ArmorView &armor = ActorOf(a_role).view.armor[Index(a_item)];
+    ItemFacts &armor = ActorOf(a_role).view.armor[Index(a_item)];
     armor.equipped = true;
     armor.carried = armor.carried || a_add;
     if (a_item == Item::kFixture) {
@@ -209,7 +212,7 @@ struct World {
     std::visit(
         Overloaded{
             [&](const SoloRecipe &) { commands.emplace_back("solo"); },
-            [&](const RestoreSolo &) { commands.emplace_back("restore"); },
+            [&](const EndSolo &) { commands.emplace_back("restore"); },
             [&](const SpawnActor &a_c) {
               commands.emplace_back("spawn");
               Spawn(a_c.role);
@@ -241,12 +244,12 @@ struct World {
             [&](const UnequipArmor &a_c) {
               commands.emplace_back("unequip");
               ActorOf(a_c.role).view.armor[Index(a_c.item)].equipped = false;
-              ActorOf(a_c.role).view.traces = 0;
+              ActorOf(a_c.role).view.residue = 0;
             },
             [&](const RemoveArmor &a_c) {
               commands.emplace_back("remove");
               ActorOf(a_c.role).view.armor[Index(a_c.item)] = {};
-              ActorOf(a_c.role).view.traces = 0;
+              ActorOf(a_c.role).view.residue = 0;
             },
             [&](const SubmitApply &a_c) {
               commands.emplace_back("apply");
@@ -257,55 +260,55 @@ struct World {
               commands.emplace_back("retire");
               SimActor &actor = ActorOf(a_c.role);
               actor.view.live = false;
-              actor.view.traces = 0;
+              actor.view.residue = 0;
               Submit(faults.retireFails ? Outcome::kFail : Outcome::kPass, 1);
             },
             [&](const AbortRequest &) {
               commands.emplace_back("abort");
               request = Outcome::kAborted;
             },
-            [&](const TravelAway &) {
+            [&](const TravelFromStart &) {
               commands.emplace_back("leave");
               Travel(true);
             },
-            [&](const TravelBack &) {
+            [&](const TravelToStart &) {
               commands.emplace_back("return");
               Travel(false);
             },
-            [&](const SetCamera &a_c) {
+            [&](const SwitchCamera &a_c) {
               commands.emplace_back("camera");
-              firstPerson = a_c.view == View::kFirstPerson;
+              firstPerson = a_c.view == Camera::kFirstPerson;
             },
-            [&](const CopyRecipe &) {
+            [&](const StartDuplicate &) {
               commands.emplace_back("copy");
               scratch = {true, true, std::nullopt};
               activity.editOutcome = WorkOutcome::kApplied;
             },
-            [&](const EditOpacity &a_c) {
+            [&](const StartOpacityEdit &a_c) {
               commands.emplace_back("edit");
               scratch.firstOpacity = a_c.value;
               scratch.dirty = true;
               activity.editOutcome = WorkOutcome::kApplied;
             },
-            [&](const WriteRecipe &) {
+            [&](const StartSave &) {
               commands.emplace_back("save");
               disk = faults.saveDropsEdit ? std::nullopt : scratch.firstOpacity;
               scratch.dirty = false;
               activity.fileOutcome = WorkOutcome::kApplied;
             },
-            [&](const RemoveRecipe &) {
+            [&](const StartDelete &) {
               commands.emplace_back("delete");
               scratch = {};
               disk.reset();
               activity.editOutcome = WorkOutcome::kApplied;
             },
-            [&](const PlaceCrowd &a_c) {
+            [&](const SpawnCrowdActors &a_c) {
               commands.emplace_back("crowd");
               crowdSize = a_c.count;
               crowd.present = a_c.count;
               crowdIn = 5;
             },
-            [&](const RemoveCrowd &) {
+            [&](const DespawnCrowdActors &) {
               commands.emplace_back("uncrowd");
               crowd = {};
               crowdIn = -1;
@@ -314,7 +317,7 @@ struct World {
               commands.emplace_back("begin");
               OpenSessionFor(a_c.session);
             },
-            [&](const ReloadDuring &a_c) {
+            [&](const LoadSaveWith &a_c) {
               commands.emplace_back("reload");
               QueueWork(a_c.work);
               ActorOf(Role::kPlayer).view.present = false;
@@ -417,7 +420,7 @@ RunState Drive(World &a_world, RunState a_state, int a_frames) {
 }
 
 RunState RunOf(std::string_view a_case) {
-  const auto parsed = ParseRunRequest(RunFileFor(a_case), kNow);
+  const auto parsed = ParseRunFile(RunFileTextFor(a_case), kNow);
   return parsed ? BeginRun(*parsed) : RunState{};
 }
 
@@ -619,10 +622,10 @@ void EveryFixedObservationEndsTheRun() {
       for (const RequestState &request : kEveryRequestState) {
         Observation seen;
         for (std::size_t role = 0; role < kRoleCount; ++role) {
-          ActorView &actor = seen.actors[role];
+          ActorFacts &actor = seen.actors[role];
           actor.present = (bits & 1) != 0 || role == 0;
           actor.live = (bits & 2) != 0;
-          actor.traces = (bits & 4) != 0 ? 1 : 0;
+          actor.residue = (bits & 4) != 0 ? 1 : 0;
           actor.armor[0] = {(bits & 8) != 0, (bits & 8) != 0};
           actor.renderedAttempt = static_cast<std::uint64_t>(bits);
         }

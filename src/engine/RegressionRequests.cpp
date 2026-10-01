@@ -62,7 +62,7 @@ bool GeometryRendered(const LiveActor &a_state,
                              });
 }
 
-bool DemoArmorRendered(const LiveActor &a_state, RE::FormID a_armor) {
+bool FixtureRendered(const LiveActor &a_state, RE::FormID a_armor) {
   for (const LivePiece &piece : a_state.pieces) {
     if (piece.armor != a_armor) {
       continue;
@@ -78,7 +78,7 @@ bool DemoArmorRendered(const LiveActor &a_state, RE::FormID a_armor) {
 
 Regression::Outcome RenderedVerdict(const LiveActor *a_state) {
   const RE::TESObjectARMO *armor = RegressionFixture();
-  return a_state && armor && DemoArmorRendered(*a_state, armor->GetFormID())
+  return a_state && armor && FixtureRendered(*a_state, armor->GetFormID())
              ? Regression::Outcome::kPass
              : Regression::Outcome::kBlocked;
 }
@@ -113,20 +113,20 @@ void AbortRegressionRequest(std::optional<std::uint64_t> a_request) {
     Finish(Regression::Outcome::kAborted);
 }
 
-void SoloRecipeUnderTest(std::string a_recipe) {
+void SoloRegressionRecipe(std::string a_recipe) {
   {
     const std::lock_guard lock{requestLock};
     recipeUnderTest = a_recipe;
   }
-  Manager::GetSingleton()->SoloRegressionRecipe(std::move(a_recipe));
+  Manager::GetSingleton()->SoloInEditor(std::move(a_recipe));
 }
 
-void RestoreRecipeView() {
+void EndRegressionSolo() {
   {
     const std::lock_guard lock{requestLock};
     recipeUnderTest.clear();
   }
-  Manager::GetSingleton()->RestoreRegressionView();
+  Manager::GetSingleton()->EndSoloInEditor();
 }
 
 RE::TESObjectARMO *RegressionFixture() {
@@ -136,7 +136,7 @@ RE::TESObjectARMO *RegressionFixture() {
               : nullptr;
 }
 
-void CancelRegression() {
+void AbortWaitingRegressionRequest() {
   const std::lock_guard lock{requestLock};
   if (Pending(request))
     Finish(Regression::Outcome::kAborted);
@@ -174,7 +174,7 @@ void Manager::QueueRegression(std::uint64_t a_request) {
   });
 }
 
-void Manager::SoloRegressionRecipe(std::string a_recipe) {
+void Manager::SoloInEditor(std::string a_recipe) {
   PostTask([this, recipe = std::move(a_recipe)] {
     if (!isolationBeforeRun)
       isolationBeforeRun = editor_.CurrentView().isolation;
@@ -182,7 +182,7 @@ void Manager::SoloRegressionRecipe(std::string a_recipe) {
   });
 }
 
-void Manager::RestoreRegressionView() {
+void Manager::EndSoloInEditor() {
   PostTask([this] {
     if (!isolationBeforeRun)
       return;
@@ -202,7 +202,7 @@ Manager::RegressionActors(std::span<const RE::FormID> a_actors) const {
     facts[i].live = found != applied_.end();
     const bool rendersFixture =
         facts[i].live && armor &&
-        DemoArmorRendered(found->second, armor->GetFormID());
+        FixtureRendered(found->second, armor->GetFormID());
     const ApplicationRecord *latest = nullptr;
     for (const ApplicationRecord &record : records) {
       if (record.token.actorID == a_actors[i] &&

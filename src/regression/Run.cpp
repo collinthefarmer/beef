@@ -22,9 +22,9 @@ Outcome FirstFailure(Outcome a_kept, Outcome a_next) {
 }
 
 std::array<std::uint64_t, kRoleCount>
-MarkRenders(std::array<std::uint64_t, kRoleCount> a_marks, const Step &a_step,
-            const Observation &a_seen) {
-  const std::array<bool, kRoleCount> moved = RolesMoved(a_step);
+RememberRenders(std::array<std::uint64_t, kRoleCount> a_marks,
+                const Step &a_step, const Observation &a_seen) {
+  const std::array<bool, kRoleCount> moved = RolesAffected(a_step);
   for (std::size_t role = 0; role < kRoleCount; ++role) {
     if (moved[role]) {
       a_marks[role] = a_seen.actors[role].renderedAttempt;
@@ -54,7 +54,7 @@ Advanced FinishSection(RunState a_state, Running a_running) {
 }
 
 std::optional<std::string_view> WindowOpenedBy(const Step &a_step) {
-  if (const auto *hold = std::get_if<HoldFor>(&a_step))
+  if (const auto *hold = std::get_if<HoldWindow>(&a_step))
     return hold->window;
   if (const auto *begin = std::get_if<BeginWindow>(&a_step))
     return begin->window;
@@ -62,7 +62,7 @@ std::optional<std::string_view> WindowOpenedBy(const Step &a_step) {
 }
 
 std::optional<std::string_view> WindowClosedBy(const Step &a_step) {
-  if (const auto *hold = std::get_if<HoldFor>(&a_step))
+  if (const auto *hold = std::get_if<HoldWindow>(&a_step))
     return hold->window;
   if (const auto *end = std::get_if<EndWindow>(&a_step))
     return end->window;
@@ -99,8 +99,8 @@ Advanced AdvanceRunning(RunState a_state, Running a_running,
   if (a_running.started) {
     ++a_running.frames;
   }
-  const StepContext context{a_seen, a_running.frames, a_state.owned,
-                            a_state.renderMarks};
+  const StepContext context{a_seen, a_running.frames, a_state.changes,
+                            a_state.renderedBefore};
   StepMove move =
       a_running.started ? CheckStep(step, context) : StartStep(step, context);
   std::vector<ResultLine> lines;
@@ -108,10 +108,11 @@ Advanced AdvanceRunning(RunState a_state, Running a_running,
     if (const std::optional<std::string_view> window = WindowOpenedBy(step))
       lines.emplace_back(WindowBegins{*window});
   if (!a_running.started && move.command) {
-    a_state.renderMarks = MarkRenders(a_state.renderMarks, step, a_seen);
+    a_state.renderedBefore =
+        RememberRenders(a_state.renderedBefore, step, a_seen);
   }
   a_running.started = true;
-  a_state.owned = move.owned;
+  a_state.changes = move.changes;
   if (Completed *completed = std::get_if<Completed>(&move.verdict)) {
     lines.emplace_back(StepResult{
         current.name, ReportedIndex(current, a_running), StepLabel(step),
@@ -139,7 +140,7 @@ std::string_view OutcomeName(Outcome a_outcome) {
   return "FAIL";
 }
 
-RunState BeginRun(const RunRequest &a_request) {
+RunState BeginRun(const RunFile &a_request) {
   return RunState{.cases = a_request.suite};
 }
 

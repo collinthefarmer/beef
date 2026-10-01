@@ -28,7 +28,7 @@ struct RunningCases {
 using RunStage = std::variant<AwaitingMainMenu, LoadingSave, RunningCases>;
 
 struct ActiveRun {
-  Regression::RunRequest request;
+  Regression::RunFile request;
   std::filesystem::path results;
   RunStage stage = AwaitingMainMenu{};
 };
@@ -184,7 +184,7 @@ void ReadRegressionRun(const RunSetup &a_setup) {
                   text.error());
     return;
   }
-  auto request = Regression::ParseRunRequest(*text, UnixSeconds());
+  auto request = Regression::ParseRunFile(*text, UnixSeconds());
   if (!request) {
     logger::error("regression: run file refused: {}", request.error());
     return;

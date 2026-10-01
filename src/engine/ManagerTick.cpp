@@ -9,7 +9,7 @@
 #include "planners/Eviction.h"
 #include "render/Compositor.h"
 #include "render/RenderInstance.h"
-#include "render/SharedStepOutputs.h"
+#include "render/StepOutputCache.h"
 #include "render/TextureLab.h"
 #include "studio/ResolveOutput.h"
 
@@ -26,7 +26,7 @@ namespace {
 inline constexpr std::size_t kFirstRendersPerTick = 1;
 
 bool AwaitsFirstRender(const LiveActor &a_state) {
-  if (a_state.firstRenderStarted) {
+  if (a_state.firstRenderAdmitted) {
     return false;
   }
   return std::ranges::any_of(
@@ -404,7 +404,7 @@ void EmitMetricsHeartbeat() {
        {"frames", std::to_string(measured.frames)},
        {"render_evaluations", std::to_string(measured.renderEvaluations)},
        {"step_executions", std::to_string(measured.stepExecutions)},
-       {"shared_step_hits", std::to_string(measured.sharedStepHits)},
+       {"step_cache_hits", std::to_string(measured.stepCacheHits)},
        {"step_releases", std::to_string(measured.stepReleases)},
        {"step_restores", std::to_string(measured.stepRestores)},
        {"frame_us", std::to_string(measured.frame.micros)},
@@ -437,9 +437,9 @@ void Manager::OnFrame() {
     EmitMetricsHeartbeat();
   }
   const Settings settings = GetSettings();
-  if (now - lastModelCheckMS_ >= 100) {
-    lastModelCheckMS_ = now;
-    SweepAwaitingModels(settings);
+  if (now - lastArmorModelCheckMS_ >= 100) {
+    lastArmorModelCheckMS_ = now;
+    SweepAwaitingArmorModels(settings);
   }
   if (now - lastEvictionMS_ >= 1000) {
     lastEvictionMS_ = now;
@@ -450,7 +450,7 @@ void Manager::OnFrame() {
   }
   lastTickMS_ = now;
   Compositor::GetSingleton()->BeginTick(now);
-  SharedStepOutputs::GetSingleton()->Sweep(now);
+  StepOutputCache::GetSingleton()->Sweep(now);
   if (!applied_.empty()) {
     const PhaseTimer tickTimer{Metrics::Phase::kTick};
     TextureLab::GetSingleton()->SetGeneratedShaders(settings.generatedShaders);
@@ -466,8 +466,8 @@ void Manager::OnFrame() {
   ObserveRegression();
 }
 
-void Manager::SweepAwaitingModels(const Settings &a_settings) {
-  if (awaitingModel_.empty()) {
+void Manager::SweepAwaitingArmorModels(const Settings &a_settings) {
+  if (awaitingArmorModel_.empty()) {
     return;
   }
   const auto *player = RE::PlayerCharacter::GetSingleton();
@@ -479,7 +479,7 @@ void Manager::SweepAwaitingModels(const Settings &a_settings) {
                        true) == EvictionAction::kEvict;
   };
   std::vector<RE::FormID> attached;
-  std::erase_if(awaitingModel_, [&](RE::FormID a_id) {
+  std::erase_if(awaitingArmorModel_, [&](RE::FormID a_id) {
     RE::Actor *actor = RE::TESForm::LookupByID<RE::Actor>(a_id);
     if (!actor || actor->IsDeleted() || !actor->Is3DLoaded()) {
       return true;
@@ -582,7 +582,7 @@ void Manager::Tick(std::uint32_t a_nowMS, const Settings &a_settings) {
     }
     if (firstRender) {
       ++firstRenders;
-      state.firstRenderStarted = true;
+      state.firstRenderAdmitted = true;
     }
     UpdateLights(state, RenderPieces(state, it->first));
     FinishApplications(it->first, state);

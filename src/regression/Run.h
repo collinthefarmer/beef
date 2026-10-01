@@ -30,7 +30,7 @@ inline constexpr std::size_t kRoleCount = 3;
 enum class Item : std::uint8_t { kFixture, kPlainCuirass };
 inline constexpr std::size_t kItemCount = 2;
 
-enum class View : std::uint8_t { kFirstPerson, kThirdPerson };
+enum class Camera : std::uint8_t { kFirstPerson, kThirdPerson };
 
 enum class QueuedWork : std::uint8_t { kNothing, kApply, kEdit };
 enum class Session : std::uint8_t { kGesture, kPaint };
@@ -44,13 +44,13 @@ enum class WorkOutcome : std::uint8_t {
   kFailed
 };
 
-struct Settle {
+struct WaitFrames {
   std::uint32_t frames = 0;
 };
 struct Solo {
   std::string_view recipe;
 };
-struct RestoreView {};
+struct RestoreSolo {};
 struct Spawn {
   Role role = Role::kWearer;
 };
@@ -97,10 +97,10 @@ struct HoldUntouched {
   Role role = Role::kControl;
   std::uint32_t frames = 0;
 };
-struct LeaveCell {};
+struct LeaveStart {};
 struct ReturnToStart {};
-struct SetView {
-  View view = View::kThirdPerson;
+struct SetCamera {
+  Camera view = Camera::kThirdPerson;
 };
 struct LoadDuring {
   QueuedWork work = QueuedWork::kNothing;
@@ -129,7 +129,7 @@ struct SpawnCrowd {
 };
 struct AwaitCrowdRendered {};
 struct DespawnCrowd {};
-struct HoldFor {
+struct HoldWindow {
   std::string_view window;
   std::uint32_t seconds = 0;
 };
@@ -148,12 +148,12 @@ struct EndWindow {
 };
 struct AwaitIdle {};
 using Step = std::variant<
-    Settle, Solo, RestoreView, Spawn, Despawn, Disable, Enable, Equip, Unequip,
-    Remove, Apply, Retire, AwaitRendered, AwaitRetired, AwaitBaseline,
-    ExpectEffect, HoldUntouched, LeaveCell, ReturnToStart, SetView, LoadDuring,
-    ExpectAborted, ExpectCancelled, ExpectSettled, DeleteScratch,
+    WaitFrames, Solo, RestoreSolo, Spawn, Despawn, Disable, Enable, Equip,
+    Unequip, Remove, Apply, Retire, AwaitRendered, AwaitRetired, AwaitBaseline,
+    ExpectEffect, HoldUntouched, LeaveStart, ReturnToStart, SetCamera,
+    LoadDuring, ExpectAborted, ExpectCancelled, ExpectSettled, DeleteScratch,
     DuplicateToScratch, SetScratchOpacity, SaveScratch, ExpectScratch,
-    SpawnCrowd, AwaitCrowdRendered, DespawnCrowd, HoldFor, BeginWindow,
+    SpawnCrowd, AwaitCrowdRendered, DespawnCrowd, HoldWindow, BeginWindow,
     EndWindow, BeginSession, AwaitSessionActive, AwaitIdle>;
 
 struct Case {
@@ -163,24 +163,24 @@ struct Case {
 };
 using CaseList = std::vector<std::reference_wrapper<const Case>>;
 
-struct RunRequest {
+struct RunFile {
   std::string run;
   std::string save;
   CaseList suite;
 };
 
-struct ArmorView {
+struct ItemFacts {
   bool equipped = false;
   bool carried = false;
 };
 
-struct ActorView {
+struct ActorFacts {
   bool present = false;
   bool bodyArmorWorn = false;
-  std::array<ArmorView, kItemCount> armor{};
+  std::array<ItemFacts, kItemCount> armor{};
   bool live = false;
   std::uint64_t renderedAttempt = 0;
-  std::uint32_t traces = 0;
+  std::uint32_t residue = 0;
   std::string application;
 };
 
@@ -195,22 +195,22 @@ struct Activity {
   std::string detail;
 };
 
-struct CrowdView {
+struct CrowdFacts {
   std::uint32_t present = 0;
   std::uint32_t rendered = 0;
 };
 
-struct RecipeView {
+struct RecipeFacts {
   bool loaded = false;
   bool dirty = false;
   std::optional<float> firstOpacity;
 };
 
 struct Observation {
-  std::array<ActorView, kRoleCount> actors{};
+  std::array<ActorFacts, kRoleCount> actors{};
   Activity activity;
-  RecipeView scratch;
-  CrowdView crowd;
+  RecipeFacts scratch;
+  CrowdFacts crowd;
   std::uint64_t nowMs = 0;
   std::uint32_t loads = 0;
   std::array<bool, kItemCount> itemsLoaded{};
@@ -223,7 +223,7 @@ struct Observation {
 struct SoloRecipe {
   std::string_view recipe;
 };
-struct RestoreSolo {};
+struct EndSolo {};
 struct SpawnActor {
   Role role = Role::kWearer;
 };
@@ -259,45 +259,45 @@ struct SubmitRetire {
   Role role = Role::kPlayer;
 };
 struct AbortRequest {};
-struct TravelAway {};
-struct TravelBack {};
-struct SetCamera {
-  View view = View::kThirdPerson;
+struct TravelFromStart {};
+struct TravelToStart {};
+struct SwitchCamera {
+  Camera view = Camera::kThirdPerson;
 };
-struct CopyRecipe {
+struct StartDuplicate {
   std::string_view from;
   std::string_view to;
 };
-struct EditOpacity {
+struct StartOpacityEdit {
   std::string_view recipe;
   float value = 1.0f;
 };
-struct WriteRecipe {
+struct StartSave {
   std::string_view recipe;
 };
-struct RemoveRecipe {
+struct StartDelete {
   std::string_view recipe;
 };
-struct PlaceCrowd {
+struct SpawnCrowdActors {
   std::uint32_t count = 0;
 };
-struct RemoveCrowd {};
+struct DespawnCrowdActors {};
 struct OpenSession {
   Session session = Session::kPaint;
   std::string_view recipe;
 };
-struct ReloadDuring {
+struct LoadSaveWith {
   QueuedWork work = QueuedWork::kNothing;
   std::string_view recipe;
 };
 struct Quit {};
 using Command =
-    std::variant<SoloRecipe, RestoreSolo, SpawnActor, DespawnActor,
-                 DisableActor, EnableActor, AddAndEquip, EquipCarried,
-                 UnequipArmor, RemoveArmor, SubmitApply, SubmitRetire,
-                 AbortRequest, TravelAway, TravelBack, SetCamera, CopyRecipe,
-                 EditOpacity, WriteRecipe, RemoveRecipe, PlaceCrowd,
-                 RemoveCrowd, OpenSession, ReloadDuring, Quit>;
+    std::variant<SoloRecipe, EndSolo, SpawnActor, DespawnActor, DisableActor,
+                 EnableActor, AddAndEquip, EquipCarried, UnequipArmor,
+                 RemoveArmor, SubmitApply, SubmitRetire, AbortRequest,
+                 TravelFromStart, TravelToStart, SwitchCamera, StartDuplicate,
+                 StartOpacityEdit, StartSave, StartDelete, SpawnCrowdActors,
+                 DespawnCrowdActors, OpenSession, LoadSaveWith, Quit>;
 
 struct StepResult {
   std::string_view caseName;
@@ -324,7 +324,7 @@ struct WindowEnds {
 using ResultLine =
     std::variant<StepResult, CaseResult, RunEnd, WindowBegins, WindowEnds>;
 
-struct Ownership {
+struct RunChanges {
   std::array<std::array<bool, kItemCount>, kRoleCount> added{};
   std::array<bool, kRoleCount> spawned{};
   bool away = false;
@@ -356,8 +356,8 @@ struct RunState {
   CaseList cases;
   Phase phase = Settling{};
   Outcome runOutcome = Outcome::kPass;
-  Ownership owned;
-  std::array<std::uint64_t, kRoleCount> renderMarks{};
+  RunChanges changes;
+  std::array<std::uint64_t, kRoleCount> renderedBefore{};
 };
 
 struct Advanced {
@@ -377,9 +377,9 @@ inline constexpr std::size_t kMaxSuiteCases = 64;
 [[nodiscard]] std::string StepLabel(const Step &a_step);
 [[nodiscard]] std::span<const Case> Catalog();
 [[nodiscard]] const Case *FindCase(std::string_view a_name);
-[[nodiscard]] std::expected<RunRequest, std::string>
-ParseRunRequest(std::string_view a_text, std::int64_t a_nowSeconds);
-[[nodiscard]] RunState BeginRun(const RunRequest &a_request);
+[[nodiscard]] std::expected<RunFile, std::string>
+ParseRunFile(std::string_view a_text, std::int64_t a_nowSeconds);
+[[nodiscard]] RunState BeginRun(const RunFile &a_request);
 [[nodiscard]] Advanced Advance(RunState a_state, const Observation &a_seen);
 [[nodiscard]] bool Done(const RunState &a_state);
 [[nodiscard]] std::string StartLineJson(std::string_view a_run,

@@ -40,11 +40,11 @@ RenderBindingResolver ActorBindings(std::string a_actor) {
   };
 }
 
-std::vector<std::string> ShareKeys(const RenderPlan &plan) {
+std::vector<std::string> ContentKeys(const RenderPlan &plan) {
   std::vector<std::string> keys;
   for (const auto &step : plan.steps)
-    if (!step.shareKey.empty())
-      keys.push_back(step.shareKey);
+    if (!step.contentKey.empty())
+      keys.push_back(step.contentKey);
   std::ranges::sort(keys);
   return keys;
 }
@@ -86,12 +86,12 @@ StackRequests(const std::vector<LoadedRecipe> &recipes,
   return requests;
 }
 
-void ShareKeysMarkOnlyStaticTextureSteps(
+void ContentKeysMarkOnlyStaticTextureSteps(
     const std::vector<LoadedRecipe> &recipes) {
   const std::array size{TextureSize{512}};
   const auto plan =
       BuildRenderPlan({}, StackRequests(recipes, size), Bindings());
-  Check(plan.has_value(), "the demo recipes lower for share keys");
+  Check(plan.has_value(), "the demo recipes lower for content keys");
   if (!plan)
     return;
   const std::vector<bool> changing = ChangingSteps(*plan);
@@ -99,19 +99,19 @@ void ShareKeysMarkOnlyStaticTextureSteps(
   std::size_t shareable = 0;
   for (std::size_t i = 0; i < plan->steps.size(); ++i) {
     const auto &step = plan->steps[i];
-    if (step.shareKey.empty())
+    if (step.contentKey.empty())
       continue;
     ++shareable;
     onlyStatic = onlyStatic && i < changing.size() && !changing[i] &&
                  !Is<CompositeStackStep>(step.kind) &&
                  RequirementsOf(step.kind).has_value();
   }
-  Check(onlyStatic, "only static, non-stack texture steps carry share keys");
+  Check(onlyStatic, "only static, non-stack texture steps carry content keys");
   Check(shareable > 0, "the demo recipes have shareable steps");
   const auto again =
       BuildRenderPlan({}, StackRequests(recipes, size), Bindings());
-  Check(again && ShareKeys(*again) == ShareKeys(*plan),
-        "identical inputs give identical share keys");
+  Check(again && ContentKeys(*again) == ContentKeys(*plan),
+        "identical inputs give identical content keys");
   const auto first =
       BuildRenderPlan({}, StackRequests(recipes, size), ActorBindings("a"));
   const auto second =
@@ -119,27 +119,27 @@ void ShareKeysMarkOnlyStaticTextureSteps(
   Check(first && second, "per-actor bindings lower");
   if (first && second) {
     std::vector<std::string> common;
-    const auto a = ShareKeys(*first), b = ShareKeys(*second);
+    const auto a = ContentKeys(*first), b = ContentKeys(*second);
     std::ranges::set_intersection(a, b, std::back_inserter(common));
     Check(common.empty(), "inputs that differ per actor never share a key");
   }
 }
 
-void ShareKeysCarryOperandValues() {
+void CacheKeysCarryOperandValues() {
   const std::vector<Value> origin{Vec3{1.0f, 2.0f, 3.0f}};
   const std::vector<Value> moved{Vec3{1.0f, 2.0f, 3.5f}};
-  Check(ShareKeyFor("bake", origin) == ShareKeyFor("bake", origin),
-        "equal operands give an equal share key");
-  Check(ShareKeyFor("bake", origin) != ShareKeyFor("bake", moved),
-        "a moved node position gives a different share key");
-  Check(ShareKeyFor("bake", std::vector<Value>{0.0f}) !=
-            ShareKeyFor("bake", std::vector<Value>{Vec2{0.0f, 0.0f}}),
-        "operand shapes are part of the share key");
-  Check(ShareKeyFor("bake", {}) == std::optional<std::string>{"bake"},
-        "a step without numeric operands keeps its share key");
-  const std::vector<Value> many(kMaxShareKeyBytes / 8, Value{0.0f});
-  Check(!ShareKeyFor("bake", many).has_value(),
-        "a share key past its size limit is not shared");
+  Check(CacheKeyFor("bake", origin) == CacheKeyFor("bake", origin),
+        "equal operands give an equal cache key");
+  Check(CacheKeyFor("bake", origin) != CacheKeyFor("bake", moved),
+        "a moved node position gives a different cache key");
+  Check(CacheKeyFor("bake", std::vector<Value>{0.0f}) !=
+            CacheKeyFor("bake", std::vector<Value>{Vec2{0.0f, 0.0f}}),
+        "operand shapes are part of the cache key");
+  Check(CacheKeyFor("bake", {}) == std::optional<std::string>{"bake"},
+        "a step without numeric operands keeps its cache key");
+  const std::vector<Value> many(kMaxCacheKeyBytes / 8, Value{0.0f});
+  Check(!CacheKeyFor("bake", many).has_value(),
+        "a cache key past its size limit is not shared");
 }
 
 std::optional<RenderPlan> SingleStackPlan(const Recipe &recipe,
@@ -240,8 +240,8 @@ int main() {
         RecipeGraph::Compile(*loaded.recipe));
     recipes.push_back({*loaded.recipe, std::move(graph)});
   }
-  ShareKeysMarkOnlyStaticTextureSteps(recipes);
-  ShareKeysCarryOperandValues();
+  ContentKeysMarkOnlyStaticTextureSteps(recipes);
+  CacheKeysCarryOperandValues();
   const std::array oneSize{TextureSize{512}};
   const auto single =
       BuildRenderPlan({}, StackRequests(recipes, oneSize), Bindings());

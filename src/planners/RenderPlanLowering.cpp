@@ -113,9 +113,9 @@ struct PlanBuilder {
   void RecordValueKey(const TextureKey &key, RenderValueRef result) {
     const auto *output = Get<StepOutputRef>(result);
     if (!output || output->step >= plan.steps.size() ||
-        !plan.steps[output->step].valueKey.empty())
+        !plan.steps[output->step].producedKey.empty())
       return;
-    plan.steps[output->step].valueKey = std::format(
+    plan.steps[output->step].producedKey = std::format(
         "{}|{}|{}|{}", key.identity.canonical, key.requirements.size.Pixels(),
         static_cast<int>(key.requirements.format),
         static_cast<int>(key.requirements.mipPolicy));
@@ -652,7 +652,7 @@ BuildRenderPlan(std::span<const TextureDemand> demands,
   auto lowered = LowerRenderPlan(demands, stacks, bindings);
   if (!lowered)
     return lowered;
-  auto inlined = MarkShareableSteps(InlineFields(std::move(*lowered)).plan);
+  auto inlined = MarkContentKeyedSteps(InlineFields(std::move(*lowered)).plan);
   if (auto valid = ValidateRenderPlan(inlined); !valid)
     return std::unexpected(valid.error());
   return inlined;

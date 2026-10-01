@@ -641,6 +641,13 @@ code.
   domain. Do not pass five loose values. Example: `LoweringRequest` in
   `planners/RenderPlanLowering.cpp`, `ProgramOperands` in
   `render/RenderInstance.cpp`.
+- An overload set may stand in for `<Verb><Type>` when every alternative
+  of a variant has the same few verbs and the set is visited generically.
+  Examples: the regression step rules `Start`, `Check` and `Label`
+  (`regression/Steps.cpp`), and the command handlers `Perform`
+  (`engine/RegressionWorld.cpp`). Give the overloads a name the public
+  entry point does not use: a variant converts implicitly, so a missing
+  overload would otherwise resolve to the entry point and recurse.
 - Keep a switch whole when it has one case per alternative and each case
   is short. Example: `ApplyOpcode` in `planners/ProgramReference.cpp`
   mirrors the HLSL statement table case for case. The tidy baseline
@@ -682,6 +689,11 @@ with these meanings and no other word for the same thing.
 | **layer field** | A field that a stack evaluates inside its own pass (`LayerField`, `LayerFieldRef` in `planners/RenderPlan.h`). In a stack shape it is a **segment** read (`SegmentRead`). |
 | **stack shape** | The record a generated stack shader is compiled for: the layer reads, channels, blends and field code without numbers (`StackShape` in `planners/StackShader.h`). |
 | **generated shader** | A pixel shader compiled for one program text or one stack shape (`render/GeneratedShaders.h`). A **compiled shader** is the D3D object it produces (`CompiledShader`). |
+| **content key** | The key by which actors reuse one static render-step output (`RenderStep::contentKey`, set by `MarkContentKeyedSteps`). It is not the **canonical key** of the graph invariants, by which the planner merges steps inside one plan. |
+| **cache key** | A content key with the exact bits of the step's numeric operands appended at execution (`CacheKeyFor`). The step output cache is keyed by it. |
+| **step output cache** | `render/StepOutputCache.h`, the process-wide cache of static render-step outputs shared across actors. |
+| **residue** | What the plugin leaves on an actor's 3D: shell geometries and presenter textures (`ResidueOn` in `engine/RegressionWorld.cpp`). An actor at baseline has none. Never trace, which is the diagnostic trace. |
+| **facts** | What the regression runner observes about one thing in one frame (`ActorFacts`, `ItemFacts`, `CrowdFacts`, `RecipeFacts`, `RegressionActorFacts`). Never view. |
 
 ## Gates
 

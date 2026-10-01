@@ -9,9 +9,9 @@
 #include <unordered_map>
 
 namespace BetterEnchantmentEffects {
-class SharedStepOutputs {
+class StepOutputCache {
 public:
-  [[nodiscard]] static SharedStepOutputs *GetSingleton();
+  [[nodiscard]] static StepOutputCache *GetSingleton();
 
   [[nodiscard]] std::optional<TextureView> Find(const std::string &a_key,
                                                 std::uint64_t a_nowMS);

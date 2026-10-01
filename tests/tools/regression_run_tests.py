@@ -34,7 +34,7 @@ class RegressionRunTests(unittest.TestCase):
         self.assertNotIn('MO2_EXE (', problem)
 
     def test_run_request_matches_the_plugin_format(self):
-        request = host.run_request('20261001T120000', 'BEEFRegression', ['lifecycle'], 1000.5)
+        request = host.run_file('20261001T120000', 'BEEFRegression', ['lifecycle'], 1000.5)
         self.assertEqual(request, {'format': 1, 'run': '20261001T120000', 'save': 'BEEFRegression',
                                    'suite': ['lifecycle'], 'notAfter': 1600})
 

@@ -74,8 +74,8 @@ and it never releases a stack result (`Releasable`). It then collects the
 finished readbacks. A step whose input has no value yet while its readback is
 in flight makes the stack `StackPending`, not failed (`AwaitingFirstReadback`).
 
-A step with a **share key** (`RenderStep::shareKey`) runs through
-`ExecuteShared`. It looks the key up in `SharedStepOutputs` first: a hit
+A step with a **content key** (`RenderStep::contentKey`) runs through
+`ExecuteCached`. It looks the key up in `StepOutputCache` first: a hit
 returns the cached texture with no GPU work and no new target. A miss renders
 into a fresh target, never one reused in place, and publishes the result. The
 cache drops an entry once only the cache holds its target and it has been

@@ -69,8 +69,8 @@ inline constexpr std::uint64_t kHashBasis = 0xcbf29ce484222325ull;
 [[nodiscard]] std::uint64_t
 HashBytes(std::span<const std::uint8_t> a_bytes,
           std::uint64_t a_seed = kHashBasis) noexcept;
-[[nodiscard]] std::uint64_t HashLayout(const MeshData &a_mesh,
-                                       std::uint64_t a_seed) noexcept;
+[[nodiscard]] std::uint64_t
+HashPartitionsAndBound(const MeshData &a_mesh, std::uint64_t a_seed) noexcept;
 
 struct VertexLayout {
   std::uint32_t stride = 0;

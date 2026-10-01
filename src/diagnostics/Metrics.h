@@ -26,7 +26,7 @@ struct Snapshot {
   std::uint64_t frames = 0;
   std::uint64_t renderEvaluations = 0;
   std::uint64_t stepExecutions = 0;
-  std::uint64_t sharedStepHits = 0;
+  std::uint64_t stepCacheHits = 0;
   std::uint64_t stepReleases = 0;
   std::uint64_t stepRestores = 0;
   PhaseTime frame;
@@ -47,7 +47,7 @@ void CountTargetDestroyed(std::uint64_t a_bytes) noexcept;
 void CountFrame() noexcept;
 void CountRenderEvaluation() noexcept;
 void CountStepExecution() noexcept;
-void CountSharedStepHit() noexcept;
+void CountStepCacheHit() noexcept;
 void CountStepReleases(std::uint64_t a_count) noexcept;
 void CountStepRestores(std::uint64_t a_count) noexcept;
 void CountPhase(Phase a_phase, std::uint64_t a_micros) noexcept;

@@ -58,40 +58,41 @@ std::int32_t CountOf(RE::Actor &a_actor, RE::TESObjectARMO &a_armor) {
   return found != counts.end() ? found->second : 0;
 }
 
-std::uint32_t TracesUnder(RE::NiAVObject *a_root) {
+std::uint32_t ResidueUnder(RE::NiAVObject *a_root) {
   if (!a_root) {
     return 0;
   }
-  std::uint32_t traces = 0;
+  std::uint32_t residue = 0;
   RE::BSVisit::TraverseScenegraphGeometries(
-      a_root, [&traces](RE::BSGeometry *a_geometry) {
+      a_root, [&residue](RE::BSGeometry *a_geometry) {
         const char *name = a_geometry ? a_geometry->name.c_str() : nullptr;
         if (name &&
             std::string_view{name}.ends_with(Identity::ShellNodeSuffix())) {
-          ++traces;
+          ++residue;
           return RE::BSVisit::BSVisitControl::kContinue;
         }
         if (const std::optional<PbrMaterial> material =
                 PbrMaterial::Bind(LightingPropertyOf(a_geometry))) {
-          traces += static_cast<std::uint32_t>(material->PresenterTextures());
+          residue += static_cast<std::uint32_t>(material->PresenterTextures());
         }
         return RE::BSVisit::BSVisitControl::kContinue;
       });
-  return traces;
+  return residue;
 }
 
-std::uint32_t TracesOn(RE::Actor &a_actor) {
+std::uint32_t ResidueOn(RE::Actor &a_actor) {
   RE::NiAVObject *third = a_actor.Get3D(false);
   RE::NiAVObject *first = a_actor.Get3D(true);
-  return TracesUnder(third) + (first != third ? TracesUnder(first) : 0);
+  return ResidueUnder(third) + (first != third ? ResidueUnder(first) : 0);
 }
 
 bool Present(const RE::Actor &a_actor) {
   return !a_actor.IsDisabled() && !a_actor.IsDeleted() && a_actor.Is3DLoaded();
 }
 
-Regression::ActorView ViewOf(RE::Actor *a_actor, RegressionActorFacts a_facts) {
-  Regression::ActorView view;
+Regression::ActorFacts ViewOf(RE::Actor *a_actor,
+                              RegressionActorFacts a_facts) {
+  Regression::ActorFacts view;
   if (!a_actor) {
     return view;
   }
@@ -102,7 +103,7 @@ Regression::ActorView ViewOf(RE::Actor *a_actor, RegressionActorFacts a_facts) {
   for (const Regression::Item item :
        {Regression::Item::kFixture, Regression::Item::kPlainCuirass}) {
     RE::TESObjectARMO *armor = ArmorOf(item);
-    Regression::ArmorView &seen =
+    Regression::ItemFacts &seen =
         view.armor[item == Regression::Item::kFixture ? 0 : 1];
     seen.equipped = armor && body == armor;
     seen.carried = armor && CountOf(*a_actor, *armor) > 0;
@@ -110,7 +111,7 @@ Regression::ActorView ViewOf(RE::Actor *a_actor, RegressionActorFacts a_facts) {
   view.live = a_facts.live;
   view.renderedAttempt = a_facts.renderedAttempt;
   view.application = std::move(a_facts.application);
-  view.traces = view.present ? TracesOn(*a_actor) : 0;
+  view.residue = view.present ? ResidueOn(*a_actor) : 0;
   return view;
 }
 
@@ -154,7 +155,7 @@ void RemoveArmor(RE::Actor *a_actor, Regression::Item a_item) {
                       nullptr);
 }
 
-void Delete(RE::TESObjectREFR *a_reference) {
+void DeleteReference(RE::TESObjectREFR *a_reference) {
   if (a_reference) {
     a_reference->Disable();
     a_reference->SetDelete(true);
@@ -179,7 +180,7 @@ void Spawn(RunWorld &a_world, Regression::Role a_role) {
   a_world.spawned[Regression::RoleIndex(a_role)] = placed->GetFormID();
 }
 
-void PlaceCrowd(RunWorld &a_world, std::uint32_t a_count) {
+void SpawnCrowdActors(RunWorld &a_world, std::uint32_t a_count) {
   RE::PlayerCharacter *player = RE::PlayerCharacter::GetSingleton();
   RE::TESNPC *base = SkyrimForm<RE::TESNPC>(kMannequin);
   if (!player || !base) {
@@ -204,16 +205,16 @@ void PlaceCrowd(RunWorld &a_world, std::uint32_t a_count) {
   }
 }
 
-void RemoveCrowd(RunWorld &a_world) {
+void DespawnCrowdActors(RunWorld &a_world) {
   for (const RE::FormID id : a_world.crowd) {
-    Delete(RE::TESForm::LookupByID<RE::TESObjectREFR>(id));
+    DeleteReference(RE::TESForm::LookupByID<RE::TESObjectREFR>(id));
   }
   a_world.crowd.clear();
 }
 
-Regression::CrowdView CrowdOf(const RunWorld &a_world,
-                              std::span<const RegressionActorFacts> a_facts) {
-  Regression::CrowdView view;
+Regression::CrowdFacts CrowdOf(const RunWorld &a_world,
+                               std::span<const RegressionActorFacts> a_facts) {
+  Regression::CrowdFacts view;
   for (std::size_t i = 0; i < a_world.crowd.size() && i < a_facts.size(); ++i) {
     const RE::Actor *actor =
         RE::TESForm::LookupByID<RE::Actor>(a_world.crowd[i]);
@@ -236,7 +237,7 @@ std::uint64_t SteadyMs() {
 }
 
 void Despawn(RunWorld &a_world, Regression::Role a_role) {
-  Delete(ActorOf(a_world, a_role));
+  DeleteReference(ActorOf(a_world, a_role));
   if (a_role != Regression::Role::kPlayer) {
     a_world.spawned[Regression::RoleIndex(a_role)] = 0;
   }
@@ -254,7 +255,7 @@ void QueueTask(std::function<void()> a_task) {
   }
 }
 
-void TravelAway(RunWorld &a_world) {
+void TravelFromStart(RunWorld &a_world) {
   RE::PlayerCharacter *player = RE::PlayerCharacter::GetSingleton();
   RE::TESForm *markerForm = RE::TESForm::LookupByID(kXMarker);
   RE::TESBoundObject *marker =
@@ -282,7 +283,7 @@ void TravelAway(RunWorld &a_world) {
   });
 }
 
-void TravelBack(const RunWorld &a_world) {
+void TravelToStart(const RunWorld &a_world) {
   const RE::FormID marker = a_world.marker;
   QueueTask([marker] {
     RE::PlayerCharacter *traveller = RE::PlayerCharacter::GetSingleton();
@@ -328,7 +329,7 @@ void OpenSession(RunWorld &a_world, Regression::Session a_session,
   }
 }
 
-void ReloadDuring(RunWorld &a_world, const Regression::ReloadDuring &a_reload) {
+void LoadSaveWith(RunWorld &a_world, const Regression::LoadSaveWith &a_reload) {
   QueueTask([save = a_world.save] {
     if (RE::BGSSaveLoadManager *saves =
             RE::BGSSaveLoadManager::GetSingleton()) {
@@ -339,126 +340,126 @@ void ReloadDuring(RunWorld &a_world, const Regression::ReloadDuring &a_reload) {
   QueueWork(a_world, a_reload.work, a_reload.recipe);
 }
 
-void SetCamera(Regression::View a_view) {
+void SwitchCamera(Regression::Camera a_view) {
   RE::PlayerCamera *camera = RE::PlayerCamera::GetSingleton();
   if (!camera) {
     return;
   }
-  if (a_view == Regression::View::kFirstPerson) {
+  if (a_view == Regression::Camera::kFirstPerson) {
     camera->ForceFirstPerson();
   } else {
     camera->ForceThirdPerson();
   }
 }
 
-void Carry(const Regression::SoloRecipe &a_c, RunWorld &) {
-  SoloRecipeUnderTest(std::string{a_c.recipe});
+void Perform(const Regression::SoloRecipe &a_c, RunWorld &) {
+  SoloRegressionRecipe(std::string{a_c.recipe});
 }
 
-void Carry(const Regression::RestoreSolo &, RunWorld &) { RestoreRecipeView(); }
+void Perform(const Regression::EndSolo &, RunWorld &) { EndRegressionSolo(); }
 
-void Carry(const Regression::SpawnActor &a_c, RunWorld &a_world) {
+void Perform(const Regression::SpawnActor &a_c, RunWorld &a_world) {
   Spawn(a_world, a_c.role);
 }
 
-void Carry(const Regression::DespawnActor &a_c, RunWorld &a_world) {
+void Perform(const Regression::DespawnActor &a_c, RunWorld &a_world) {
   Despawn(a_world, a_c.role);
 }
 
-void Carry(const Regression::DisableActor &a_c, RunWorld &a_world) {
+void Perform(const Regression::DisableActor &a_c, RunWorld &a_world) {
   if (RE::Actor *actor = ActorOf(a_world, a_c.role)) {
     actor->Disable();
   }
 }
 
-void Carry(const Regression::EnableActor &a_c, RunWorld &a_world) {
+void Perform(const Regression::EnableActor &a_c, RunWorld &a_world) {
   if (RE::Actor *actor = ActorOf(a_world, a_c.role)) {
     actor->Enable(false);
   }
 }
 
-void Carry(const Regression::AddAndEquip &a_c, RunWorld &a_world) {
+void Perform(const Regression::AddAndEquip &a_c, RunWorld &a_world) {
   Equip(ActorOf(a_world, a_c.role), a_c.item, true);
 }
 
-void Carry(const Regression::EquipCarried &a_c, RunWorld &a_world) {
+void Perform(const Regression::EquipCarried &a_c, RunWorld &a_world) {
   Equip(ActorOf(a_world, a_c.role), a_c.item, false);
 }
 
-void Carry(const Regression::UnequipArmor &a_c, RunWorld &a_world) {
+void Perform(const Regression::UnequipArmor &a_c, RunWorld &a_world) {
   Unequip(ActorOf(a_world, a_c.role), a_c.item);
 }
 
-void Carry(const Regression::RemoveArmor &a_c, RunWorld &a_world) {
+void Perform(const Regression::RemoveArmor &a_c, RunWorld &a_world) {
   RemoveArmor(ActorOf(a_world, a_c.role), a_c.item);
 }
 
-void Carry(const Regression::SubmitApply &a_c, RunWorld &a_world) {
+void Perform(const Regression::SubmitApply &a_c, RunWorld &a_world) {
   a_world.request =
       SubmitRegressionRequest(ActorOf(a_world, a_c.role), RequestKind::kApply);
 }
 
-void Carry(const Regression::SubmitRetire &a_c, RunWorld &a_world) {
+void Perform(const Regression::SubmitRetire &a_c, RunWorld &a_world) {
   a_world.request =
       SubmitRegressionRequest(ActorOf(a_world, a_c.role), RequestKind::kRetire);
 }
 
-void Carry(const Regression::AbortRequest &, RunWorld &a_world) {
+void Perform(const Regression::AbortRequest &, RunWorld &a_world) {
   AbortRegressionRequest(a_world.request);
 }
 
-void Carry(const Regression::TravelAway &, RunWorld &a_world) {
-  TravelAway(a_world);
+void Perform(const Regression::TravelFromStart &, RunWorld &a_world) {
+  TravelFromStart(a_world);
 }
 
-void Carry(const Regression::TravelBack &, RunWorld &a_world) {
-  TravelBack(a_world);
+void Perform(const Regression::TravelToStart &, RunWorld &a_world) {
+  TravelToStart(a_world);
 }
 
-void Carry(const Regression::SetCamera &a_c, RunWorld &) {
-  SetCamera(a_c.view);
+void Perform(const Regression::SwitchCamera &a_c, RunWorld &) {
+  SwitchCamera(a_c.view);
 }
 
-void Carry(const Regression::CopyRecipe &a_c, RunWorld &a_world) {
+void Perform(const Regression::StartDuplicate &a_c, RunWorld &a_world) {
   a_world.edit = WithManager([&](Manager &a_manager) {
     return a_manager.StartRegressionDuplicate(std::string{a_c.from},
                                               std::string{a_c.to});
   });
 }
 
-void Carry(const Regression::EditOpacity &a_c, RunWorld &a_world) {
+void Perform(const Regression::StartOpacityEdit &a_c, RunWorld &a_world) {
   a_world.edit = WithManager([&](Manager &a_manager) {
     return a_manager.StartRegressionEdit(std::string{a_c.recipe}, a_c.value);
   });
 }
 
-void Carry(const Regression::WriteRecipe &a_c, RunWorld &a_world) {
+void Perform(const Regression::StartSave &a_c, RunWorld &a_world) {
   a_world.file = WithManager([&](Manager &a_manager) {
     return a_manager.StartRegressionSave(std::string{a_c.recipe});
   });
 }
 
-void Carry(const Regression::RemoveRecipe &a_c, RunWorld &a_world) {
+void Perform(const Regression::StartDelete &a_c, RunWorld &a_world) {
   a_world.edit = WithManager([&](Manager &a_manager) {
     return a_manager.StartRegressionDelete(std::string{a_c.recipe});
   });
 }
 
-void Carry(const Regression::OpenSession &a_c, RunWorld &a_world) {
+void Perform(const Regression::OpenSession &a_c, RunWorld &a_world) {
   OpenSession(a_world, a_c.session, a_c.recipe);
 }
 
-void Carry(const Regression::ReloadDuring &a_c, RunWorld &a_world) {
-  ReloadDuring(a_world, a_c);
+void Perform(const Regression::LoadSaveWith &a_c, RunWorld &a_world) {
+  LoadSaveWith(a_world, a_c);
 }
 
-void Carry(const Regression::Quit &, RunWorld &) { QuitGame(); }
-void Carry(const Regression::PlaceCrowd &a_c, RunWorld &a_world) {
-  PlaceCrowd(a_world, a_c.count);
+void Perform(const Regression::Quit &, RunWorld &) { QuitGame(); }
+void Perform(const Regression::SpawnCrowdActors &a_c, RunWorld &a_world) {
+  SpawnCrowdActors(a_world, a_c.count);
 }
 
-void Carry(const Regression::RemoveCrowd &, RunWorld &a_world) {
-  RemoveCrowd(a_world);
+void Perform(const Regression::DespawnCrowdActors &, RunWorld &a_world) {
+  DespawnCrowdActors(a_world);
 }
 }
 
@@ -502,12 +503,12 @@ Regression::Observation Observe(const RunWorld &a_world) {
 }
 
 void Execute(const Regression::Command &a_command, RunWorld &a_world) {
-  std::visit([&](const auto &a_kind) { Carry(a_kind, a_world); }, a_command);
+  std::visit([&](const auto &a_kind) { Perform(a_kind, a_world); }, a_command);
 }
 
 void ReleaseWorld(RunWorld &a_world) {
-  RemoveCrowd(a_world);
-  Delete(MarkerOf(a_world));
+  DespawnCrowdActors(a_world);
+  DeleteReference(MarkerOf(a_world));
   a_world.marker = 0;
   for (const Regression::Role role :
        {Regression::Role::kWearer, Regression::Role::kControl}) {

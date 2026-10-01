@@ -623,10 +623,10 @@ std::vector<RenderValueRef> StepDependencies(const RenderPlan &plan,
 }
 
 namespace {
-std::string ShareKeyOf(const RenderStep &step,
-                       const TextureRequirements &requirements) {
-  return std::format("{}|{}|{}|{}|{}", step.valueKey, StepKindName(step.kind),
-                     requirements.size.Pixels(),
+std::string ContentKeyOf(const RenderStep &step,
+                         const TextureRequirements &requirements) {
+  return std::format("{}|{}|{}|{}|{}", step.producedKey,
+                     StepKindName(step.kind), requirements.size.Pixels(),
                      static_cast<int>(requirements.format),
                      static_cast<int>(requirements.mipPolicy));
 }
@@ -646,20 +646,20 @@ std::string OperandBits(const Value &value) {
 
 }
 
-std::optional<std::string> ShareKeyFor(std::string_view shareKey,
+std::optional<std::string> CacheKeyFor(std::string_view contentKey,
                                        std::span<const Value> operands) {
-  std::string key{shareKey};
+  std::string key{contentKey};
   for (const Value &operand : operands) {
     key += '|';
     key += OperandBits(operand);
   }
-  if (key.size() > kMaxShareKeyBytes) {
+  if (key.size() > kMaxCacheKeyBytes) {
     return std::nullopt;
   }
   return key;
 }
 
-RenderPlan MarkShareableSteps(RenderPlan plan) {
+RenderPlan MarkContentKeyedSteps(RenderPlan plan) {
   const std::vector<bool> changing = ChangingSteps(plan);
   for (std::size_t i = 0; i < plan.steps.size() && i < changing.size(); ++i) {
     RenderStep &step = plan.steps[i];
@@ -668,12 +668,12 @@ RenderPlan MarkShareableSteps(RenderPlan plan) {
     const bool texture =
         OutputType(step.kind) == RenderValueType{RenderResourceType::kTexture};
     const bool shareable = !changing[i] && texture && requirements &&
-                           !step.valueKey.empty() &&
+                           !step.producedKey.empty() &&
                            !Is<CompositeStackStep>(step.kind);
     std::string key =
-        shareable ? ShareKeyOf(step, *requirements) : std::string{};
-    step.shareKey =
-        key.size() <= kMaxShareKeyBytes ? std::move(key) : std::string{};
+        shareable ? ContentKeyOf(step, *requirements) : std::string{};
+    step.contentKey =
+        key.size() <= kMaxCacheKeyBytes ? std::move(key) : std::string{};
   }
   return plan;
 }

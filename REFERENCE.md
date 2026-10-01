@@ -700,7 +700,7 @@ An equip event can arrive before the armor's model is attached to an NPC's
 biped: the slot already holds the item while `partClone` is still null, and
 no later event announces the attach. `CollectPieces` skips such a slot, so a
 refresh at that moment places nothing. `Refresh` therefore records the actor
-in `awaitingModel_`, and `SweepAwaitingModels` checks the biped every 100 ms
+in `awaitingArmorModel_`, and `SweepAwaitingArmorModels` checks the biped every 100 ms
 and refreshes once the model is attached. The check is a biped scan, never a
 refresh, so an armor whose model never attaches (no addon for the race) costs
 one scan per sweep and never tears down the actor's other effects. The sweep
@@ -1188,24 +1188,24 @@ Decompile provenance (`decompiled/WornEnchantmentFX/plugin.c` unless noted):
 ## Compositor (`render/Compositor.cpp`, `CompositorSource.cpp`, `CompositorBake.cpp`)
 
 Actors share static render-step outputs by content. Lowering records each
-step's `TextureKey` text as `RenderStep::valueKey`; `MarkShareableSteps`
-gives a **share key** to every step that has one, is static (`ChangingSteps`),
+step's `TextureKey` text as `RenderStep::producedKey`; `MarkContentKeyedSteps`
+gives a **content key** to every step that has one, is static (`ChangingSteps`),
 outputs a texture and is not a stack, adding the step's kind, size, format
 and mip policy, because lowering can give one value different step
 requirements. Geometry identity is the mesh's content (`mesh:<hash>:<parts>`) when the
 mesh cache can read it, and the geometry pointer otherwise. `MeshData::hash`
-covers the vertex and index bytes and, through `HashLayout`, each partition's
+covers the vertex and index bytes and, through `HashPartitionsAndBound`, each partition's
 slot and bone names and the model bound, because the partition, bone-weight
 and position bakes read them. A material is identified by each texture's
 pointer, generation and name, so a freed address reused while a cache entry
 lives cannot match a different texture. State and signal identities carry
 `graph:applicationContext:actor`, with the actor's form ID, so they never
-match across actors. At execution, `ShareKeyFor` appends the exact bits of
+match across actors. At execution, `CacheKeyFor` appends the exact bits of
 the step's resolved numeric operands to the key: a node position that
 follows the current pose (a node outside the skin) is not a changing input,
 so without it a bake would stay at the pose of its first frame. A step whose
 plan-time key or whose key with operands is longer than 4096 bytes
-(`kMaxShareKeyBytes`) renders privately. The cache holds at most 4096
+(`kMaxCacheKeyBytes`) renders privately. The cache holds at most 4096
 entries; when it is full it stops accepting new keys. A cache entry whose texture is no
 longer valid is dropped when found. A shared target is never
 written again: a miss always renders into a fresh target, and a hit does not
@@ -2151,7 +2151,7 @@ The mannequin base also carries `MannequinActivatorSCRIPT`, which re-equips
 the items it was given when its cell loads. Spawned actors are placed with
 `forcePersist` so they survive the player's
 absence; the runner deletes them (`Disable` then `SetDelete`) at cleanup and
-again when the run ends. `LeaveCell` moves the player to the exterior cell
+again when the run ends. `LeaveStart` moves the player to the exterior cell
 `Riverwood` by name, through the same `CenterOnCell` lookup the `coc` console
 command uses; the known good save sits in the interior test cell `QASmoke`, so
 leaving unloads the start cell and its spawned actors. The player counts as
@@ -2178,7 +2178,7 @@ runs first. The load cases therefore start open work (a gesture, a paint
 preview) in an earlier step and wait until the editor reports it active. A
 load the run starts itself keeps the run going: `FinishRegressionLoad`
 forgets the spawned actors and the marker and counts the load, and the
-`LoadDuring` step waits for that count. `CancelRegression` aborts only a
+`LoadDuring` step waits for that count. `AbortWaitingRegressionRequest` aborts only a
 request that is still waiting, so a finished result is never rewritten.
 
 The studio cases write `regression-scratch.json` to the user recipe folder,

@@ -761,13 +761,13 @@ void Manager::Refresh(RE::Actor *a_actor) {
   }
   LiveActor state = LiveActorFor(*a_actor, settings);
   if (settings.thirdPerson && ArmorAwaitsModel(*a_actor)) {
-    if (awaitingModel_.insert(actorID).second && settings.verboseLogging) {
+    if (awaitingArmorModel_.insert(actorID).second && settings.verboseLogging) {
       logger::info("actor {:08X} ({}): armor model not attached yet; "
                    "refreshing when it attaches",
                    actorID, a_actor->GetName());
     }
   } else {
-    awaitingModel_.erase(actorID);
+    awaitingArmorModel_.erase(actorID);
   }
   TextureLab::GetSingleton()->InvalidatePreviews();
   if (state.plan.placements.empty()) {
