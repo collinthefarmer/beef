@@ -424,6 +424,199 @@ StepMove Check(const SetView &a_set, const StepContext &a_context) {
                   kActionDeadlineFrames, "the camera did not switch");
 }
 
+std::string_view WorkName(Work a_work) {
+  switch (a_work) {
+  case Work::kNothing:
+    return "nothing";
+  case Work::kApply:
+    return "apply";
+  case Work::kEdit:
+    return "edit";
+  case Work::kGesture:
+    return "gesture";
+  case Work::kPaint:
+    return "paint";
+  }
+  return "unknown";
+}
+
+std::string_view RequestName(RequestState a_request) {
+  switch (a_request) {
+  case RequestState::kNone:
+    return "none";
+  case RequestState::kWaiting:
+    return "waiting";
+  case RequestState::kPass:
+    return "pass";
+  case RequestState::kFail:
+    return "fail";
+  case RequestState::kBlocked:
+    return "blocked";
+  case RequestState::kAborted:
+    return "aborted";
+  }
+  return "unknown";
+}
+
+bool Idle(const Activity &a_activity) {
+  return a_activity.applications == 0 && !a_activity.paint &&
+         !a_activity.gesture && !a_activity.fileOperations;
+}
+
+std::string Describe(const Activity &a_activity) {
+  return std::format("applications {}, paint {}, gesture {}, "
+                     "file operations {}",
+                     a_activity.applications, a_activity.paint ? "yes" : "no",
+                     a_activity.gesture ? "yes" : "no",
+                     a_activity.fileOperations ? "yes" : "no");
+}
+
+StepMove Start(const LoadDuring &a_load, const StepContext &a_context) {
+  Ownership owned = a_context.owned;
+  owned.loadTarget = a_context.seen.loads + 1;
+  return Issue(ReloadDuring{a_load.work, a_load.recipe}, owned);
+}
+
+StepMove Check(const LoadDuring &, const StepContext &a_context) {
+  const bool loaded = a_context.seen.loads >= a_context.owned.loadTarget &&
+                      ActorOf(a_context, Role::kPlayer).present;
+  if (loaded) {
+    return {Completed{}, std::nullopt, Ownership{}};
+  }
+  if (a_context.frames >= kTravelDeadlineFrames) {
+    return Fail(a_context, std::format("the save did not load within {} frames",
+                                       kTravelDeadlineFrames));
+  }
+  return Wait(a_context);
+}
+
+StepMove Start(const ExpectAborted &, const StepContext &a_context) {
+  return Wait(a_context);
+}
+
+StepMove Check(const ExpectAborted &, const StepContext &a_context) {
+  if (a_context.seen.request == RequestState::kAborted) {
+    return Pass(a_context);
+  }
+  return Fail(a_context, std::format("the request from before the load "
+                                     "reported {}",
+                                     RequestName(a_context.seen.request)));
+}
+
+std::string_view OutcomeOf(WorkOutcome a_outcome) {
+  switch (a_outcome) {
+  case WorkOutcome::kNone:
+    return "never recorded";
+  case WorkOutcome::kPending:
+    return "still pending";
+  case WorkOutcome::kApplied:
+    return "applied before the load";
+  case WorkOutcome::kCancelledByLoad:
+    return "cancelled by the load";
+  case WorkOutcome::kOther:
+    return "ended for another reason";
+  }
+  return "unknown";
+}
+
+StepMove Start(const ExpectCancelled &, const StepContext &a_context) {
+  return Wait(a_context);
+}
+
+StepMove Check(const ExpectCancelled &a_expect, const StepContext &a_context) {
+  const WorkOutcome outcome = a_expect.work == Work::kGesture
+                                  ? a_context.seen.activity.tuning
+                                  : a_context.seen.activity.edit;
+  if (outcome == WorkOutcome::kCancelledByLoad) {
+    return Pass(a_context);
+  }
+  const std::string &detail = a_context.seen.activity.detail;
+  return Fail(a_context,
+              std::format("the {} was {}{}", WorkName(a_expect.work),
+                          OutcomeOf(outcome),
+                          detail.empty() ? "" : std::format(" ({})", detail)));
+}
+
+WorkOutcome OutcomeFor(Work a_work, const Activity &a_activity) {
+  return a_work == Work::kGesture ? a_activity.tuning : a_activity.edit;
+}
+
+StepMove Start(const ExpectSettled &, const StepContext &a_context) {
+  return Wait(a_context);
+}
+
+StepMove Check(const ExpectSettled &a_expect, const StepContext &a_context) {
+  const WorkOutcome outcome =
+      OutcomeFor(a_expect.work, a_context.seen.activity);
+  if (outcome == WorkOutcome::kApplied ||
+      outcome == WorkOutcome::kCancelledByLoad) {
+    return Pass(a_context, std::string{OutcomeOf(outcome)});
+  }
+  if (a_context.frames < kActionDeadlineFrames &&
+      outcome == WorkOutcome::kPending) {
+    return Wait(a_context);
+  }
+  const std::string &detail = a_context.seen.activity.detail;
+  return Fail(a_context,
+              std::format("the {} was {}{}", WorkName(a_expect.work),
+                          OutcomeOf(outcome),
+                          detail.empty() ? "" : std::format(" ({})", detail)));
+}
+
+StepMove Start(const Begin &a_begin, const StepContext &a_context) {
+  return Issue(BeginWork{a_begin.work, a_begin.recipe}, a_context.owned);
+}
+
+StepMove Check(const Begin &, const StepContext &a_context) {
+  return Pass(a_context);
+}
+
+bool Active(Work a_work, const Activity &a_activity) {
+  switch (a_work) {
+  case Work::kPaint:
+    return a_activity.paint;
+  case Work::kGesture:
+    return a_activity.gesture && a_activity.tuning == WorkOutcome::kPending;
+  case Work::kNothing:
+  case Work::kApply:
+  case Work::kEdit:
+    return true;
+  }
+  return false;
+}
+
+StepMove Start(const AwaitActive &, const StepContext &a_context) {
+  return Wait(a_context);
+}
+
+StepMove Check(const AwaitActive &a_await, const StepContext &a_context) {
+  if (Active(a_await.work, a_context.seen.activity)) {
+    return Pass(a_context);
+  }
+  if (a_context.frames >= kActionDeadlineFrames) {
+    return Fail(a_context,
+                std::format("the {} never became active within {} frames ({})",
+                            WorkName(a_await.work), kActionDeadlineFrames,
+                            a_context.seen.activity.detail));
+  }
+  return Wait(a_context);
+}
+
+StepMove Start(const AwaitIdle &, const StepContext &a_context) {
+  return Wait(a_context);
+}
+
+StepMove Check(const AwaitIdle &, const StepContext &a_context) {
+  if (Idle(a_context.seen.activity)) {
+    return Pass(a_context);
+  }
+  if (a_context.frames >= kRenderDeadlineFrames) {
+    return Fail(a_context, std::format("work stayed pending: {}",
+                                       Describe(a_context.seen.activity)));
+  }
+  return Wait(a_context);
+}
+
 std::string WithRole(std::string_view a_action, Role a_role) {
   return std::format("{} {}", a_action, RoleName(a_role));
 }
@@ -431,6 +624,96 @@ std::string WithRole(std::string_view a_action, Role a_role) {
 std::string WithArmor(std::string_view a_action, Role a_role, Item a_item) {
   return std::format("{} {} {}", a_action, RoleName(a_role), ItemName(a_item));
 }
+std::string Label(const Settle &a_settle) {
+  return std::format("settle {}", a_settle.frames);
+}
+
+std::string Label(const Solo &a_solo) {
+  return std::format("solo {}", a_solo.recipe);
+}
+
+std::string Label(const RestoreView &) { return std::string{"restore-view"}; }
+
+std::string Label(const Spawn &a_s) { return WithRole("spawn", a_s.role); }
+
+std::string Label(const Despawn &a_s) { return WithRole("despawn", a_s.role); }
+
+std::string Label(const Disable &a_s) { return WithRole("disable", a_s.role); }
+
+std::string Label(const Enable &a_s) { return WithRole("enable", a_s.role); }
+
+std::string Label(const Equip &a_s) {
+  return WithArmor("equip", a_s.role, a_s.item);
+}
+
+std::string Label(const Unequip &a_s) {
+  return WithArmor("unequip", a_s.role, a_s.item);
+}
+
+std::string Label(const Remove &a_s) {
+  return WithArmor("remove", a_s.role, a_s.item);
+}
+
+std::string Label(const Apply &a_s) { return WithRole("apply", a_s.role); }
+
+std::string Label(const Retire &a_s) { return WithRole("retire", a_s.role); }
+
+std::string Label(const AwaitRendered &a_s) {
+  return WithRole("await-rendered", a_s.role);
+}
+
+std::string Label(const AwaitRetired &a_s) {
+  return WithRole("await-retired", a_s.role);
+}
+
+std::string Label(const AwaitBaseline &a_s) {
+  return WithRole("await-baseline", a_s.role);
+}
+
+std::string Label(const ExpectEffect &a_s) {
+  return WithRole("expect-effect", a_s.role);
+}
+
+std::string Label(const HoldUntouched &a_s) {
+  return std::format("hold-untouched {} {}", RoleName(a_s.role), a_s.frames);
+}
+
+std::string Label(const LeaveCell &) { return std::string{"leave-cell"}; }
+
+std::string Label(const ReturnToStart &) {
+  return std::string{"return-to-start"};
+}
+
+std::string Label(const SetView &a_s) {
+  return std::string{a_s.view == View::kFirstPerson ? "set-view first-person"
+                                                    : "set-view third-person"};
+}
+
+std::string Label(const LoadDuring &a_s) {
+  return std::format("load-during {}", WorkName(a_s.work));
+}
+
+std::string Label(const ExpectAborted &) {
+  return std::string{"expect-aborted"};
+}
+
+std::string Label(const ExpectCancelled &a_s) {
+  return std::format("expect-cancelled {}", WorkName(a_s.work));
+}
+
+std::string Label(const ExpectSettled &a_s) {
+  return std::format("expect-settled {}", WorkName(a_s.work));
+}
+
+std::string Label(const Begin &a_s) {
+  return std::format("begin {}", WorkName(a_s.work));
+}
+
+std::string Label(const AwaitActive &a_s) {
+  return std::format("await-active {}", WorkName(a_s.work));
+}
+
+std::string Label(const AwaitIdle &) { return std::string{"await-idle"}; }
 }
 
 std::size_t RoleIndex(Role a_role) {
@@ -476,60 +759,19 @@ std::array<bool, kRoleCount> RolesMoved(const Step &a_step) {
           [&](const LeaveCell &) { return kAll; },
           [&](const ReturnToStart &) { return kAll; },
           [&](const SetView &) { return only(Role::kPlayer); },
+          [&](const LoadDuring &) { return kAll; },
+          [&](const ExpectAborted &) { return kNone; },
+          [&](const ExpectCancelled &) { return kNone; },
+          [&](const ExpectSettled &) { return kNone; },
+          [&](const Begin &) { return only(Role::kPlayer); },
+          [&](const AwaitActive &) { return kNone; },
+          [&](const AwaitIdle &) { return kNone; },
           [&](const auto &a_targeted) { return only(a_targeted.role); },
       },
       a_step);
 }
 
 std::string StepLabel(const Step &a_step) {
-  return std::visit(
-      Overloaded{
-          [](const Settle &a_settle) {
-            return std::format("settle {}", a_settle.frames);
-          },
-          [](const Solo &a_solo) {
-            return std::format("solo {}", a_solo.recipe);
-          },
-          [](const RestoreView &) { return std::string{"restore-view"}; },
-          [](const Spawn &a_s) { return WithRole("spawn", a_s.role); },
-          [](const Despawn &a_s) { return WithRole("despawn", a_s.role); },
-          [](const Disable &a_s) { return WithRole("disable", a_s.role); },
-          [](const Enable &a_s) { return WithRole("enable", a_s.role); },
-          [](const Equip &a_s) {
-            return WithArmor("equip", a_s.role, a_s.item);
-          },
-          [](const Unequip &a_s) {
-            return WithArmor("unequip", a_s.role, a_s.item);
-          },
-          [](const Remove &a_s) {
-            return WithArmor("remove", a_s.role, a_s.item);
-          },
-          [](const Apply &a_s) { return WithRole("apply", a_s.role); },
-          [](const Retire &a_s) { return WithRole("retire", a_s.role); },
-          [](const AwaitRendered &a_s) {
-            return WithRole("await-rendered", a_s.role);
-          },
-          [](const AwaitRetired &a_s) {
-            return WithRole("await-retired", a_s.role);
-          },
-          [](const AwaitBaseline &a_s) {
-            return WithRole("await-baseline", a_s.role);
-          },
-          [](const ExpectEffect &a_s) {
-            return WithRole("expect-effect", a_s.role);
-          },
-          [](const HoldUntouched &a_s) {
-            return std::format("hold-untouched {} {}", RoleName(a_s.role),
-                               a_s.frames);
-          },
-          [](const LeaveCell &) { return std::string{"leave-cell"}; },
-          [](const ReturnToStart &) { return std::string{"return-to-start"}; },
-          [](const SetView &a_s) {
-            return std::string{a_s.view == View::kFirstPerson
-                                   ? "set-view first-person"
-                                   : "set-view third-person"};
-          },
-      },
-      a_step);
+  return std::visit([](const auto &a_kind) { return Label(a_kind); }, a_step);
 }
 }

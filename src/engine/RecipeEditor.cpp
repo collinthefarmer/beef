@@ -677,11 +677,11 @@ void RecipeEditor::EndPaint(std::uint64_t a_sessionID) {
 }
 
 void RecipeEditor::CancelFileOperationsForLoad() {
-  FinishActiveGesture(false, false);
   if (const auto result = LastGesture()) {
     fileOperations_->AbandonGesture(result->gestureID,
-                                    "Tuning was canceled by game load.");
+                                    std::string{kTuningCanceledByLoad});
   }
+  FinishActiveGesture(false, false);
   ResetDocumentRevisions();
   fileOperations_->CancelPending();
 }

@@ -11,6 +11,7 @@
 #include "engine/RecipeEditor.h"
 #include "planners/ActorPlanning.h"
 #include "recipe/Recipe.h"
+#include "regression/Run.h"
 #include "render/TextureRef.h"
 #include "studio/Intent.h"
 #include "studio/Snapshot.h"
@@ -29,6 +30,16 @@
 
 namespace BetterEnchantmentEffects {
 struct ActorStacks;
+
+struct RegressionActivityFacts {
+  std::uint32_t applications = 0;
+  bool paint = false;
+  bool gesture = false;
+  bool fileOperations = false;
+  Regression::WorkOutcome edit = Regression::WorkOutcome::kNone;
+  Regression::WorkOutcome tuning = Regression::WorkOutcome::kNone;
+  std::string detail;
+};
 
 struct RegressionActorFacts {
   bool live = false;
@@ -61,6 +72,12 @@ public:
   void RestoreRegressionView();
   void ObserveRegression();
   [[nodiscard]] RegressionActorFacts RegressionActor(RE::FormID a_actor) const;
+  [[nodiscard]] RegressionActivityFacts
+  RegressionActivity(std::uint64_t a_edit, std::uint64_t a_gesture) const;
+  [[nodiscard]] std::uint64_t StartRegressionEdit(const std::string &a_recipe);
+  [[nodiscard]] std::uint64_t
+  StartRegressionGesture(const std::string &a_recipe);
+  void StartRegressionPaint(const std::string &a_recipe);
 
   void Fire(RE::FormID a_actorID, const EventRecord &a_event);
   void QueueEvent(RE::FormID a_actorID, EventRecord a_event);

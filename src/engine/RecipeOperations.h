@@ -15,6 +15,13 @@
 #include <vector>
 
 namespace BetterEnchantmentEffects {
+inline constexpr std::string_view kTuningCanceledByLoad =
+    "Tuning was canceled by game load.";
+inline constexpr std::string_view kEditCanceledByLoad =
+    "Recipe edit was canceled by game load.";
+inline constexpr std::string_view kFileCanceledByLoad =
+    "File operation was canceled by game load.";
+
 struct FileOperationJournal {
   mutable std::mutex lock;
   std::uint64_t nextID = 0;
@@ -145,16 +152,15 @@ struct FileOperationJournal {
       if (entry.pending) {
         entry.result.error =
             MakeDiagnostic(Severity::kError, entry.result.recipeID,
-                           "Recipe edit was canceled by game load.");
+                           std::string{kEditCanceledByLoad});
         entry.pending = false;
       }
     }
     for (Studio::FileOperationResult &result : results) {
       if (result.state == Studio::FileOperationState::kPending) {
         result.state = Studio::FileOperationState::kFailed;
-        result.error =
-            MakeDiagnostic(Severity::kError, result.recipeID,
-                           "File operation was canceled by game load.");
+        result.error = MakeDiagnostic(Severity::kError, result.recipeID,
+                                      std::string{kFileCanceledByLoad});
       }
     }
   }

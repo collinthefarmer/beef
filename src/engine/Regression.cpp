@@ -3,6 +3,8 @@
 
 #include "diagnostics/Trace.h"
 #include "engine/Manager.h"
+#include "engine/RecipeOperations.h"
+#include "engine/RecipeStore.h"
 #include "engine/RegressionRequest.h"
 
 #include <algorithm>
@@ -132,7 +134,7 @@ RE::TESObjectARMO *RegressionFixture() {
 
 void CancelRegression() {
   const std::lock_guard lock{requestLock};
-  if (request.id > 0)
+  if (request.Pending(request.id))
     Finish("ABORTED");
 }
 
@@ -207,6 +209,143 @@ RegressionActorFacts Manager::RegressionActor(RE::FormID a_actor) const {
     }
   }
   return facts;
+}
+
+namespace {
+Regression::WorkOutcome
+EditOutcome(const std::vector<Studio::RecipeEditResult> &a_results,
+            std::uint64_t a_request) {
+  if (a_request == 0) {
+    return Regression::WorkOutcome::kNone;
+  }
+  const auto found = std::ranges::find(a_results, a_request,
+                                       &Studio::RecipeEditResult::requestID);
+  if (found == a_results.end()) {
+    return Regression::WorkOutcome::kPending;
+  }
+  if (!found->error) {
+    return Regression::WorkOutcome::kApplied;
+  }
+  return found->error->message == kEditCanceledByLoad
+             ? Regression::WorkOutcome::kCancelledByLoad
+             : Regression::WorkOutcome::kOther;
+}
+
+Regression::WorkOutcome
+TuningOutcome(const std::optional<Studio::GestureResult> &a_gesture,
+              std::uint64_t a_id) {
+  if (a_id == 0 || !a_gesture || a_gesture->gestureID != a_id) {
+    return Regression::WorkOutcome::kNone;
+  }
+  switch (a_gesture->state) {
+  case Studio::GesturePhase::kActive:
+    return Regression::WorkOutcome::kPending;
+  case Studio::GesturePhase::kCommitted:
+    return Regression::WorkOutcome::kApplied;
+  case Studio::GesturePhase::kCanceled:
+  case Studio::GesturePhase::kRefused:
+  case Studio::GesturePhase::kCount:
+    break;
+  }
+  return a_gesture->error == kTuningCanceledByLoad
+             ? Regression::WorkOutcome::kCancelledByLoad
+             : Regression::WorkOutcome::kOther;
+}
+}
+
+std::string_view GesturePhaseText(Studio::GesturePhase a_phase) {
+  const auto index = static_cast<std::size_t>(a_phase);
+  return index < Studio::kGesturePhaseNames.size()
+             ? Studio::kGesturePhaseNames[index]
+             : std::string_view{"unknown"};
+}
+
+std::string WorkDetail(const std::vector<Studio::RecipeEditResult> &a_edits,
+                       std::uint64_t a_edit,
+                       const std::optional<Studio::GestureResult> &a_gesture,
+                       std::uint64_t a_gestureID) {
+  std::string detail;
+  const auto found =
+      std::ranges::find(a_edits, a_edit, &Studio::RecipeEditResult::requestID);
+  const std::optional<Diagnostic> error =
+      a_edit != 0 && found != a_edits.end() ? found->error : std::nullopt;
+  if (error) {
+    detail = std::format("edit: {}", error->message);
+  }
+  if (a_gestureID != 0 && a_gesture && a_gesture->gestureID == a_gestureID) {
+    detail +=
+        std::format("{}gesture {}: {}", detail.empty() ? "" : "; ", a_gestureID,
+                    a_gesture->error.value_or(
+                        std::string{GesturePhaseText(a_gesture->state)}));
+  }
+  return detail;
+}
+
+RegressionActivityFacts
+Manager::RegressionActivity(std::uint64_t a_edit,
+                            std::uint64_t a_gesture) const {
+  RegressionActivityFacts facts;
+  facts.edit = EditOutcome(editor_.EditResults(), a_edit);
+  facts.tuning = TuningOutcome(editor_.LastGesture(), a_gesture);
+  facts.detail = WorkDetail(editor_.EditResults(), a_edit,
+                            editor_.LastGesture(), a_gesture);
+  for (const auto &record : applications_.Snapshot()) {
+    if (record.phase == ApplicationPhase::kQueued ||
+        record.phase == ApplicationPhase::kPrepared) {
+      ++facts.applications;
+    }
+  }
+  const auto &paint = editor_.LastPaintUpdate();
+  facts.paint = paint && !paint->ended && paint->sessionID != 0;
+  const auto gesture = editor_.LastGesture();
+  facts.gesture = gesture && gesture->state == Studio::GesturePhase::kActive;
+  facts.fileOperations = std::ranges::any_of(
+      editor_.FileOperations(), [](const Studio::FileOperationResult &a_file) {
+        return a_file.state == Studio::FileOperationState::kPending;
+      });
+  return facts;
+}
+
+namespace {
+constexpr float kRegressionOpacity = 0.5f;
+constexpr std::string_view kRegressionProperty = "regression";
+constexpr std::string_view kRegressionPaint = "1";
+
+Studio::EditBatch RegressionOpacityEdit() {
+  return Studio::EditBatch{{Studio::SetLayerOpacity{0, 0, kRegressionOpacity}}};
+}
+}
+
+std::uint64_t Manager::StartRegressionEdit(const std::string &a_recipe) {
+  return editor_.EditRecipe(a_recipe, RegressionOpacityEdit());
+}
+
+std::uint64_t Manager::StartRegressionGesture(const std::string &a_recipe) {
+  const std::string property{kRegressionProperty};
+  const std::uint64_t gesture = editor_.BeginGesture(
+      a_recipe, editor_.DocumentRevisionOf(a_recipe), property);
+  editor_.UpdateGesture(gesture, property, RegressionOpacityEdit());
+  return gesture;
+}
+
+void Manager::StartRegressionPaint(const std::string &a_recipe) {
+  const std::span<const Recipe> loaded = LoadedRecipes();
+  const Recipe *recipe = FindById(loaded, a_recipe);
+  if (!recipe || recipe->keys.empty()) {
+    logger::warn("regression: no loaded recipe '{}' to paint", a_recipe);
+    return;
+  }
+  static std::uint64_t nextSession = 1;
+  const std::uint64_t session = nextSession++;
+  const auto &last = editor_.LastPaintUpdate();
+  const std::uint64_t reset = last && last->ended ? last->revision : 0;
+  editor_.BeginPaint(Studio::PaintStartRequest{
+      a_recipe, recipe->keys.front(), Surface::kMaterial, session, reset});
+  Studio::PaintUpdateRequest update;
+  update.sessionID = session;
+  update.revision = 1;
+  update.expression = std::string{kRegressionPaint};
+  editor_.UpdatePaint(std::move(update));
 }
 
 void Manager::ObserveRegression() {

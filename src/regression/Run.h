@@ -33,6 +33,16 @@ inline constexpr std::size_t kItemCount = 2;
 
 enum class View : std::uint8_t { kFirstPerson, kThirdPerson };
 
+enum class Work : std::uint8_t { kNothing, kApply, kEdit, kGesture, kPaint };
+
+enum class WorkOutcome : std::uint8_t {
+  kNone,
+  kPending,
+  kApplied,
+  kCancelledByLoad,
+  kOther
+};
+
 struct Settle {
   std::uint32_t frames = 0;
 };
@@ -91,11 +101,31 @@ struct ReturnToStart {};
 struct SetView {
   View view = View::kThirdPerson;
 };
+struct LoadDuring {
+  Work work = Work::kNothing;
+  std::string_view recipe;
+};
+struct ExpectAborted {};
+struct ExpectCancelled {
+  Work work = Work::kEdit;
+};
+struct ExpectSettled {
+  Work work = Work::kEdit;
+};
+struct Begin {
+  Work work = Work::kPaint;
+  std::string_view recipe;
+};
+struct AwaitActive {
+  Work work = Work::kPaint;
+};
+struct AwaitIdle {};
 using Step =
     std::variant<Settle, Solo, RestoreView, Spawn, Despawn, Disable, Enable,
                  Equip, Unequip, Remove, Apply, Retire, AwaitRendered,
                  AwaitRetired, AwaitBaseline, ExpectEffect, HoldUntouched,
-                 LeaveCell, ReturnToStart, SetView>;
+                 LeaveCell, ReturnToStart, SetView, LoadDuring, ExpectAborted,
+                 ExpectCancelled, ExpectSettled, Begin, AwaitActive, AwaitIdle>;
 
 struct Case {
   std::string_view name;
@@ -125,8 +155,20 @@ struct ActorView {
   std::string application;
 };
 
+struct Activity {
+  std::uint32_t applications = 0;
+  bool paint = false;
+  bool gesture = false;
+  bool fileOperations = false;
+  WorkOutcome edit = WorkOutcome::kNone;
+  WorkOutcome tuning = WorkOutcome::kNone;
+  std::string detail;
+};
+
 struct Observation {
   std::array<ActorView, kRoleCount> actors{};
+  Activity activity;
+  std::uint32_t loads = 0;
   std::array<bool, kItemCount> itemsLoaded{};
   bool npcEffects = false;
   bool firstPerson = false;
@@ -178,12 +220,21 @@ struct TravelBack {};
 struct SetCamera {
   View view = View::kThirdPerson;
 };
+struct BeginWork {
+  Work work = Work::kPaint;
+  std::string_view recipe;
+};
+struct ReloadDuring {
+  Work work = Work::kNothing;
+  std::string_view recipe;
+};
 struct Quit {};
 using Command =
     std::variant<SoloRecipe, RestoreSolo, SpawnActor, DespawnActor,
                  DisableActor, EnableActor, AddAndEquip, EquipCarried,
                  UnequipArmor, RemoveArmor, SubmitApply, SubmitRetire,
-                 AbortRequest, TravelAway, TravelBack, SetCamera, Quit>;
+                 AbortRequest, TravelAway, TravelBack, SetCamera, BeginWork,
+                 ReloadDuring, Quit>;
 
 struct StepResult {
   std::string_view caseName;
@@ -207,6 +258,7 @@ struct Ownership {
   std::array<std::array<bool, kItemCount>, kRoleCount> added{};
   std::array<bool, kRoleCount> spawned{};
   bool away = false;
+  std::uint32_t loadTarget = 0;
 };
 
 enum class Section : std::uint8_t { kBody, kCleanup };

@@ -203,7 +203,7 @@ void FinishRegressionLoad(bool a_loaded) {
     return;
   }
   const std::lock_guard lock{runLock};
-  if (!activeRun || !std::holds_alternative<LoadingSave>(activeRun->stage)) {
+  if (!activeRun) {
     return;
   }
   if (!a_loaded) {
@@ -212,7 +212,17 @@ void FinishRegressionLoad(bool a_loaded) {
                 "active, so make it again with the current load order");
     return;
   }
-  activeRun->stage = RunningCases{Regression::BeginRun(activeRun->request)};
+  if (RunningCases *running = std::get_if<RunningCases>(&activeRun->stage)) {
+    ForgetWorldAfterLoad(running->world);
+    logger::info("regression: save reloaded during a case");
+    return;
+  }
+  if (!std::holds_alternative<LoadingSave>(activeRun->stage)) {
+    return;
+  }
+  RunningCases running{.state = Regression::BeginRun(activeRun->request),
+                       .world = RunWorld{.save = activeRun->request.save}};
+  activeRun->stage = std::move(running);
   logger::info("regression: save loaded; settling before the first case");
 }
 

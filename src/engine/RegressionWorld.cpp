@@ -253,6 +253,48 @@ void TravelBack(const RunWorld &a_world) {
   });
 }
 
+void StartWork(RunWorld &a_world, Regression::Work a_work,
+               std::string_view a_recipe) {
+  Manager *manager = Manager::GetSingleton();
+  const std::string recipe{a_recipe};
+  switch (a_work) {
+  case Regression::Work::kNothing:
+    break;
+  case Regression::Work::kApply:
+    a_world.request =
+        SubmitRegressionRequest(RE::PlayerCharacter::GetSingleton(), false);
+    break;
+  case Regression::Work::kEdit:
+    a_world.gesture = 0;
+    if (manager) {
+      a_world.edit = manager->StartRegressionEdit(recipe);
+    }
+    break;
+  case Regression::Work::kGesture:
+    a_world.edit = 0;
+    if (manager) {
+      a_world.gesture = manager->StartRegressionGesture(recipe);
+    }
+    break;
+  case Regression::Work::kPaint:
+    if (manager) {
+      manager->StartRegressionPaint(recipe);
+    }
+    break;
+  }
+}
+
+void ReloadDuring(RunWorld &a_world, const Regression::ReloadDuring &a_reload) {
+  QueueTask([save = a_world.save] {
+    if (RE::BGSSaveLoadManager *saves =
+            RE::BGSSaveLoadManager::GetSingleton()) {
+      logger::info("regression: reloading save '{}' with work in flight", save);
+      saves->Load(save.c_str(), false);
+    }
+  });
+  StartWork(a_world, a_reload.work, a_reload.recipe);
+}
+
 void SetCamera(Regression::View a_view) {
   RE::PlayerCamera *camera = RE::PlayerCamera::GetSingleton();
   if (!camera) {
@@ -281,6 +323,14 @@ Regression::Observation Observe(const RunWorld &a_world) {
   seen.firstPerson = camera && camera->IsInFirstPerson();
   seen.awayFromStart = AwayFromStart(a_world);
   seen.request = RequestStateOf(a_world.request);
+  seen.loads = a_world.loads;
+  if (const Manager *manager = Manager::GetSingleton()) {
+    const RegressionActivityFacts activity =
+        manager->RegressionActivity(a_world.edit, a_world.gesture);
+    seen.activity = {activity.applications,   activity.paint, activity.gesture,
+                     activity.fileOperations, activity.edit,  activity.tuning,
+                     activity.detail};
+  }
   return seen;
 }
 
@@ -331,6 +381,12 @@ void Execute(const Regression::Command &a_command, RunWorld &a_world) {
           [&](const Regression::TravelAway &) { TravelAway(a_world); },
           [&](const Regression::TravelBack &) { TravelBack(a_world); },
           [](const Regression::SetCamera &a_c) { SetCamera(a_c.view); },
+          [&](const Regression::BeginWork &a_c) {
+            StartWork(a_world, a_c.work, a_c.recipe);
+          },
+          [&](const Regression::ReloadDuring &a_c) {
+            ReloadDuring(a_world, a_c);
+          },
           [](const Regression::Quit &) { QuitGame(); },
       },
       a_command);
@@ -343,6 +399,12 @@ void ReleaseWorld(RunWorld &a_world) {
        {Regression::Role::kWearer, Regression::Role::kControl}) {
     Despawn(a_world, role);
   }
+}
+
+void ForgetWorldAfterLoad(RunWorld &a_world) {
+  a_world.spawned = {};
+  a_world.marker = 0;
+  ++a_world.loads;
 }
 
 void QuitGame() {

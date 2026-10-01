@@ -1503,6 +1503,12 @@ Decompile provenance (`decompiled/WornEnchantmentFX/plugin.c` unless noted):
 - `SaveRecipe` / `RevertRecipe` are `RecipeEditor` methods called directly from
   `menu/RecipeActions.cpp`, not intents — persistence, not CRUD.
 
+
+On a load, `CancelFileOperationsForLoad` records the load as an active
+gesture's reason (`AbandonGesture`) before `FinishActiveGesture` rolls the
+recipe back. Finishing publishes the gesture as cancelled, and publishing
+replaces only an active entry, so the reverse order showed the menu a
+cancel by the user instead of the load.
 ## studio (`studio/Snapshot.h`, `View.h`, `Intent.h`, `MenuState.h`, `Forms.h`, `Edits.h`, `Mask.h`, `Presets.h`, `TermTemplates.h`, `PaintSession.h`, `Board.h`, `Panels.h`, `SelectorEdit.h`, `Selection.h`, `Names.h`, `Rows.h`, `FieldCheck.h`, `History.h`, `Widgets.h`, `Fields.h`)
 
 - `Snapshot::status` (engine scalars plus loaded-file and recipe-error counts) is filled
@@ -2135,3 +2141,13 @@ must show at least one trace; an actor at baseline shows none.
 record reached `kRendered` while the actor's state renders the fixture.
 `AwaitRendered` compares it with the revision seen when the last step that
 moved that actor started, so an earlier render cannot satisfy a later wait.
+
+`BGSSaveLoadManager::Load` called from an SKSE task does not start the load
+inside that task: `kPreLoadGame` arrives about 25 ms later, after the tasks
+already queued. So an edit or apply requested in the same frame as the load
+runs first. The load cases therefore start open work (a gesture, a paint
+preview) in an earlier step and wait until the editor reports it active. A
+load the run starts itself keeps the run going: `FinishRegressionLoad`
+forgets the spawned actors and the marker and counts the load, and the
+`LoadDuring` step waits for that count. `CancelRegression` aborts only a
+request that is still waiting, so a finished result is never rewritten.

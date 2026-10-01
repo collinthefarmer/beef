@@ -94,11 +94,60 @@ inline constexpr std::array<Step, 17> kUnload{Solo{kSoloRecipe},
                                               AwaitRendered{Role::kWearer},
                                               ExpectEffect{Role::kPlayer}};
 
-inline constexpr std::array<Case, 5> kCatalog{
+inline constexpr std::array<Step, 4> kLoadIdle{
+    Solo{kSoloRecipe}, LoadDuring{Work::kNothing, kSoloRecipe},
+    AwaitBaseline{Role::kPlayer}, AwaitIdle{}};
+
+inline constexpr std::array<Step, 7> kLoadApply{
+    Solo{kSoloRecipe},
+    kPlayerFixture,
+    AwaitRendered{Role::kPlayer},
+    LoadDuring{Work::kApply, kSoloRecipe},
+    ExpectAborted{},
+    AwaitBaseline{Role::kPlayer},
+    AwaitIdle{}};
+
+inline constexpr std::array<Step, 7> kLoadEdit{
+    Solo{kSoloRecipe},
+    kPlayerFixture,
+    AwaitRendered{Role::kPlayer},
+    LoadDuring{Work::kEdit, kSoloRecipe},
+    ExpectSettled{Work::kEdit},
+    AwaitBaseline{Role::kPlayer},
+    AwaitIdle{}};
+
+inline constexpr std::array<Step, 9> kLoadGesture{
+    Solo{kSoloRecipe},
+    kPlayerFixture,
+    AwaitRendered{Role::kPlayer},
+    Begin{Work::kGesture, kSoloRecipe},
+    AwaitActive{Work::kGesture},
+    LoadDuring{Work::kNothing, kSoloRecipe},
+    ExpectCancelled{Work::kGesture},
+    AwaitBaseline{Role::kPlayer},
+    AwaitIdle{}};
+
+inline constexpr std::array<Step, 8> kLoadPaint{
+    Solo{kSoloRecipe},
+    kPlayerFixture,
+    AwaitRendered{Role::kPlayer},
+    Begin{Work::kPaint, kSoloRecipe},
+    AwaitActive{Work::kPaint},
+    LoadDuring{Work::kNothing, kSoloRecipe},
+    AwaitBaseline{Role::kPlayer},
+    AwaitIdle{}};
+
+inline constexpr std::array<Case, 10> kCatalog{
     Case{"lifecycle", kLifecycle, kCleanup},
     Case{"equip-cycle", kEquipCycle, kCleanup},
-    Case{"camera", kCamera, kCleanup}, Case{"isolation", kIsolation, kCleanup},
-    Case{"unload", kUnload, kCleanup}};
+    Case{"camera", kCamera, kCleanup},
+    Case{"isolation", kIsolation, kCleanup},
+    Case{"unload", kUnload, kCleanup},
+    Case{"load-idle", kLoadIdle, kCleanup},
+    Case{"load-apply", kLoadApply, kCleanup},
+    Case{"load-edit", kLoadEdit, kCleanup},
+    Case{"load-gesture", kLoadGesture, kCleanup},
+    Case{"load-paint", kLoadPaint, kCleanup}};
 }
 
 std::span<const Case> Catalog() { return kCatalog; }

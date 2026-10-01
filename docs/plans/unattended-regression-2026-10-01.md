@@ -3,7 +3,10 @@ Status: in progress. Stage 1 passed in game on 2026-10-01 (run
 done. Stage 3 passed in game on 2026-10-01 (run 20261001T041756: all five
 cases, `unload` three times, launch to quit in about three minutes). Its runs
 found one plugin defect, an NPC armor model that attaches after the equip
-refresh, now fixed. Supersedes the control
+refresh, now fixed. Stage 4a passed in game on 2026-10-01 (all five load
+cases, the edit, gesture and paint cases twice); its runs found a second
+defect, a gesture cancelled by a load recorded as cancelled by the user, now
+fixed. Stage 4b is next. Supersedes the control
 model of [the regression driver plan](../history/in-game-regression-driver.md); that
 plan's case table, result vocabulary and observation rules carry over.
 
@@ -157,11 +160,28 @@ plugin it was made with is removed; the game refuses to load it otherwise.
    the spawned actors, remove the player's fixture, restore the solo. Each
    cleanup step does nothing when the run made no matching change.
 
-4. **Loads during work and studio round trips.** A case loads the save while
-   an apply or a paint preview is pending, then asserts that nothing from the
-   old session applied and nothing is pending. Studio cases send menu
-   intents through the editor, save, and the host compares the recipe files
-   after a second launch.
+4. **Loads during work and studio round trips.**
+
+   4a, loads during work. The runner survives a load it starts itself: the
+   case continues after the load, and the run forgets the spawned actors and
+   the marker, which the save does not hold.
+
+   | Case | What is in flight at the load | What must hold after it |
+   | --- | --- | --- |
+   | `load-idle` | Nothing | The player is at baseline and nothing is pending |
+   | `load-apply` | An apply request, queued just after the load | The request reports `ABORTED`; baseline; nothing pending |
+   | `load-edit` | A recipe edit, queued just after the load | The edit settled, applied or cancelled, never pending |
+   | `load-gesture` | A slider gesture, active before the load | The gesture was cancelled with the load as its reason |
+   | `load-paint` | A paint preview, active before the load | The paint session ended; baseline; nothing pending |
+
+   In game, an edit requested in the same frame as a load always lands before
+   the load starts. A stale edit that would land after the load began is
+   refused by the session generation; only the native tests cover that path.
+
+   4b, studio round trips. One launch edits and saves a scratch recipe, and a
+   second launch checks that the saved recipe loads and applies the same way;
+   the host compares the written file. Cleanup deletes the scratch recipe.
+
 5. **Soak and budgets.** A `soak` case spawns a crowd in fixture armor and
    holds for a set time. The host checks the trace against a budget file
    through `tools/trace-report.py`.

@@ -3,6 +3,7 @@
 #include "engine/Manager.h"
 #include "engine/RecipeEditor.h"
 #include "engine/RecipeFiles.h"
+#include "engine/RecipeOperations.h"
 #include "engine/RecipeStore.h"
 #include "engine/TextFile.h"
 #include "studio/MenuState.h"
@@ -1449,6 +1450,11 @@ void ReloadAndLoad(const std::filesystem::path &root, const Recipe &fixture) {
             FileResult(editor, save).state == FileOperationState::kFailed,
         "load cancellation restores the active gesture and fails pending save "
         "immediately");
+  const auto canceled = editor.LastGesture();
+  Check(canceled && canceled->gestureID == gesture &&
+            canceled->state == GesturePhase::kRefused &&
+            canceled->error == kTuningCanceledByLoad,
+        "load cancellation records the load as the gesture's reason");
   manager.queue.Resume();
   manager.Drain();
   Check(Current() == fixture && !IsDirty(kID) &&

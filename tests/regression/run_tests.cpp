@@ -73,6 +73,9 @@ struct Faults {
   bool unloadKeepsState = false;
   bool retireFails = false;
   bool requestsHang = false;
+  bool loadKeepsWork = false;
+  bool loadCompletesRequest = false;
+  bool editAppliesFirst = false;
 };
 
 struct SimActor {
@@ -90,6 +93,9 @@ struct World {
   int requestIn = -1;
   RequestState requestOutcome = RequestState::kPass;
   std::uint64_t revision = 0;
+  Activity activity;
+  std::uint32_t loads = 0;
+  int loadIn = -1;
   Faults faults;
   std::vector<std::string> commands;
   std::vector<ResultLine> lines;
@@ -106,6 +112,8 @@ struct World {
     seen.firstPerson = firstPerson;
     seen.awayFromStart = away;
     seen.request = request;
+    seen.activity = activity;
+    seen.loads = loads;
     return seen;
   }
 
@@ -243,12 +251,73 @@ struct World {
               commands.emplace_back("camera");
               firstPerson = a_c.view == View::kFirstPerson;
             },
+            [&](const BeginWork &a_c) {
+              commands.emplace_back("begin");
+              StartWork(a_c.work);
+            },
+            [&](const ReloadDuring &a_c) {
+              commands.emplace_back("reload");
+              StartWork(a_c.work);
+              ActorOf(Role::kPlayer).view.present = false;
+              loadIn = 3;
+            },
             [&](const Quit &) { commands.emplace_back("quit"); },
         },
         a_command);
   }
 
+  void StartWork(Work a_work) {
+    switch (a_work) {
+    case Work::kNothing:
+      break;
+    case Work::kApply:
+      Submit(RequestState::kPass, 5);
+      activity.applications = 1;
+      break;
+    case Work::kEdit:
+      activity.applications = 1;
+      activity.edit = faults.editAppliesFirst ? WorkOutcome::kApplied
+                                              : WorkOutcome::kPending;
+      break;
+    case Work::kGesture:
+      activity.gesture = true;
+      activity.tuning = WorkOutcome::kPending;
+      break;
+    case Work::kPaint:
+      activity.paint = true;
+      break;
+    }
+  }
+
+  void FinishLoad() {
+    ++loads;
+    away = false;
+    for (SimActor &actor : actors) {
+      actor = SimActor{};
+    }
+    ActorOf(Role::kPlayer).view.present = true;
+    if (request == RequestState::kWaiting) {
+      request = faults.loadCompletesRequest ? RequestState::kPass
+                                            : RequestState::kAborted;
+      requestIn = -1;
+    }
+    const auto cancel = [](WorkOutcome a_outcome) {
+      return a_outcome == WorkOutcome::kPending ? WorkOutcome::kCancelledByLoad
+                                                : a_outcome;
+    };
+    const WorkOutcome edit = cancel(activity.edit);
+    const WorkOutcome tuning = cancel(activity.tuning);
+    if (!faults.loadKeepsWork) {
+      activity = {};
+    }
+    activity.edit = edit;
+    activity.tuning = tuning;
+  }
+
   void Tick() {
+    if (loadIn > 0 && --loadIn == 0) {
+      FinishLoad();
+    }
     for (SimActor &actor : actors) {
       if (actor.renderIn > 0 && --actor.renderIn == 0) {
         Render(actor);
@@ -399,6 +468,39 @@ void UnloadedStateFailsUnload() {
   test::Check(world.Clean(), "unload returns and despawns after a failure");
 }
 
+void LoadCases(Faults a_faults, std::string_view a_expected) {
+  for (std::string_view name :
+       {"load-idle", "load-apply", "load-edit", "load-gesture", "load-paint"}) {
+    World world;
+    world.faults = a_faults;
+    Drive(world, RunOf(name), 20000);
+    const std::string failure = FirstFailure(world);
+    if (a_expected.empty()) {
+      test::Equal(failure, std::string{}, std::string{name} + " passes");
+    } else if (name != "load-idle") {
+      test::Check(failure.starts_with(a_expected),
+                  std::string{name} + " fails at " + std::string{a_expected});
+    }
+    test::Check(world.loads == 1, std::string{name} + " loads once");
+    test::Check(world.Clean(), std::string{name} + " cleans up");
+  }
+}
+
+void LoadsCancelWork() {
+  LoadCases({}, {});
+  LoadCases({.loadKeepsWork = true}, "await-idle");
+  World world;
+  world.faults.loadCompletesRequest = true;
+  Drive(world, RunOf("load-apply"), 20000);
+  test::Check(FirstFailure(world).starts_with("expect-aborted"),
+              "a request that survives the load fails");
+  World applied;
+  applied.faults.editAppliesFirst = true;
+  Drive(applied, RunOf("load-edit"), 20000);
+  test::Equal(FirstFailure(applied), std::string{},
+              "an edit that lands before the load settles the case");
+}
+
 void EveryFixedObservationEndsTheRun() {
   for (const Case &entry : Catalog()) {
     for (int bits = 0; bits < 64; ++bits) {
@@ -451,6 +553,7 @@ int main() {
   SilentRequestTimesOut();
   ControlStateFailsIsolation();
   UnloadedStateFailsUnload();
+  LoadsCancelWork();
   EveryFixedObservationEndsTheRun();
   ResultLinesAreJson();
   return test::Finish("regression runs");
