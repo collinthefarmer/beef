@@ -1720,7 +1720,11 @@ Decompile provenance (`decompiled/WornEnchantmentFX/plugin.c` unless noted):
   files, and Windows validator. Recipe files are not staged. Runtime asset
   changes do not require relinking to reach the staged mod. It also writes
   `generated/package.json`, the explicit file list that
-  `cmake/Package.cmake` archives and `tools/demo-package.py` reads.
+  `tools/package.py` archives and `tools/demo-package.py` reads.
+- `cmake -E tar --format=zip --mtime` pins only the modification time. Its
+  zip entries still carry the access and change time of each file and the
+  packaging user's UID and GID in extra fields, so two runs a second apart
+  differ. `tools/archives.py` writes the entries itself instead.
 - CMake presets delegate dependency tracking and linking to Ninja
   and execution to CTest. Each test has separate scratch storage. Normal
   and ASan/UBSan builds use separate directories; schema validation is

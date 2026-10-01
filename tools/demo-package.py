@@ -2,9 +2,15 @@
 """Package a local demo with the complete framework runtime manifest."""
 import argparse
 import hashlib
+import importlib.util
 import json
 from pathlib import Path, PurePosixPath
 import zipfile
+
+ARCHIVES_SPEC = importlib.util.spec_from_file_location(
+    'archives', Path(__file__).resolve().parent / 'archives.py')
+archives = importlib.util.module_from_spec(ARCHIVES_SPEC)
+ARCHIVES_SPEC.loader.exec_module(archives)
 
 
 def inputs(manifest, fixture, recipes, readme):
@@ -46,10 +52,8 @@ def package(files, output):
     temporary = output.with_suffix('.tmp')
     hashes = {name: hashlib.sha256(path.read_bytes()).hexdigest()
               for name, path in files.items()}
-    with zipfile.ZipFile(temporary, 'w', zipfile.ZIP_DEFLATED) as archive:
-        for name, path in sorted(files.items()):
-            archive.write(path, name)
-        archive.writestr('CONTENTS.json', json.dumps(hashes, indent=2) + '\n')
+    archives.write_zip(temporary, [(name, path.read_bytes()) for name, path in files.items()]
+              + [('CONTENTS.json', (json.dumps(hashes, indent=2) + '\n').encode())])
     with zipfile.ZipFile(temporary) as archive:
         if archive.testzip() is not None:
             raise ValueError('Archive integrity failure')

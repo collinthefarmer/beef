@@ -1,8 +1,10 @@
-"""Exercise the CMake packaging script with a small spec and no Windows toolchain."""
+"""Exercise the packager with a small spec and no Windows toolchain."""
 import hashlib
 import json
 from pathlib import Path
+import os
 import subprocess
+import sys
 import tempfile
 import unittest
 import zipfile
@@ -30,8 +32,9 @@ class PackageTests(unittest.TestCase):
 
     def package(self) -> subprocess.CompletedProcess[str]:
         (self.root / 'spec.json').write_text(json.dumps(self.spec))
-        return subprocess.run(['cmake', f'-DSPEC={self.root / "spec.json"}', f'-DWORK={self.root / "work"}',
-                               f'-DOUTPUT={self.output}', '-P', str(ROOT / 'cmake/Package.cmake')],
+        return subprocess.run([sys.executable, str(ROOT / 'tools/package.py'),
+                               '--spec', str(self.root / 'spec.json'), '--work', str(self.root / 'work'),
+                               '--output', str(self.output)],
                               text=True, capture_output=True)
 
     def outputs(self) -> dict[str, bytes]:
@@ -52,8 +55,18 @@ class PackageTests(unittest.TestCase):
         for line in first['Example-0.1.0-profile-abc-Release.sha256'].decode().splitlines():
             digest, name = line.split('  ')
             self.assertEqual(digest, hashlib.sha256(first[name]).hexdigest())
+        for source in ('plugin.dll', 'plugin.pdb', 'LICENSE', 'notice.txt'):
+            os.utime(self.root / source, (1_000_000_000, 1_000_000_000))
         self.assertEqual(self.package().returncode, 0)
         self.assertEqual(self.outputs(), first)
+
+    def test_archive_entries_carry_no_time_or_owner_from_the_machine(self) -> None:
+        self.assertEqual(self.package().returncode, 0)
+        for name in ('Example-0.1.0-profile-abc-Release.zip', 'Example-0.1.0-profile-abc-Release-symbols.zip'):
+            with zipfile.ZipFile(self.output / name) as archive:
+                for info in archive.infolist():
+                    self.assertEqual(info.date_time, (1980, 1, 2, 0, 0, 0))
+                    self.assertEqual(info.extra, b'')
 
     def test_missing_input_or_colliding_destination_fails_and_keeps_archives(self) -> None:
         self.assertEqual(self.package().returncode, 0)

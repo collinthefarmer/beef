@@ -68,7 +68,7 @@ file(GENERATE OUTPUT "${CMAKE_BINARY_DIR}/generated/package.json" CONTENT
   \"symbols\": [{\"source\":\"$<TARGET_PDB_FILE:${PROJECT_NAME}>\",\"destination\":\"${PROJECT_NAME}.pdb\"}]
 }")
 add_custom_target(package-candidate
-  COMMAND "${CMAKE_COMMAND}" "-DSPEC=${CMAKE_BINARY_DIR}/generated/package.json"
-    "-DWORK=${CMAKE_BINARY_DIR}/package" "-DOUTPUT=${CMAKE_SOURCE_DIR}/dist/archives"
-    -P "${CMAKE_CURRENT_LIST_DIR}/Package.cmake"
+  COMMAND "${Python3_EXECUTABLE}" "${CMAKE_SOURCE_DIR}/tools/package.py"
+    --spec "${CMAKE_BINARY_DIR}/generated/package.json"
+    --work "${CMAKE_BINARY_DIR}/package" --output "${CMAKE_SOURCE_DIR}/dist/archives"
   DEPENDS ${PROJECT_NAME} BeefValidate VERBATIM)

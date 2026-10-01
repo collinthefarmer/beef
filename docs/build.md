@@ -182,11 +182,15 @@ or SDK locations, use a separate directory or `cmake --fresh --preset ...`.
 ## Candidate archives
 
 Run `cmake --build --preset windows-release --target package-candidate` inside
-Nix. It builds required artifacts, and `cmake/Package.cmake` writes a mod ZIP,
+Nix. It builds required artifacts, and `tools/package.py` writes a mod ZIP,
 a separate PDB ZIP, and one `.sha256` file for both to `dist/archives/`. It uses
 the explicit inventory that `cmake/Stage.cmake` writes to
 `build/Release/generated/package.json`, not the contents of `dist/BetterEnchantmentEffects`.
 Obsolete staging files therefore cannot enter a candidate archive. The
+archives are byte-identical for identical inputs: `tools/archives.py` writes
+every entry with a fixed date and file mode and no extra fields, so no
+access time, change time or owner from the packaging machine reaches the
+archive. The demo and regression packagers use the same writer. The
 `stage` target also copies the notice bundle for the developer installer.
 
 Both archives carry `LICENSE`, `COPYING.md`, `THIRD_PARTY_NOTICES.md`, and every

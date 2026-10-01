@@ -5,7 +5,12 @@ import importlib.util
 import json
 from pathlib import Path
 import struct
-import zipfile
+
+ARCHIVES_SPEC = importlib.util.spec_from_file_location(
+    'archives', Path(__file__).resolve().parent / 'archives.py')
+archives = importlib.util.module_from_spec(ARCHIVES_SPEC)
+ARCHIVES_SPEC.loader.exec_module(archives)
+
 
 ROOT = Path(__file__).resolve().parents[1]
 SPEC = importlib.util.spec_from_file_location('demo_plugin', ROOT / 'tools/demo-plugin.py')
@@ -59,9 +64,7 @@ def main() -> None:
     manifest = {name: hashlib.sha256(data).hexdigest() for name, data in sorted(files.items())}
     files['CONTENTS.json'] = (json.dumps(manifest, indent=2) + '\n').encode()
     args.output.parent.mkdir(parents=True, exist_ok=True)
-    with zipfile.ZipFile(args.output, 'w', zipfile.ZIP_DEFLATED) as archive:
-        for name, data in sorted(files.items()):
-            archive.writestr(name, data)
+    archives.write_zip(args.output, files.items())
     print(args.output)
 
 
