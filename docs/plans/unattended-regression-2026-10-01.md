@@ -7,7 +7,9 @@ refresh, now fixed. Stage 4a passed in game on 2026-10-01 (all five load
 cases, the edit, gesture and paint cases twice); its runs found a second
 defect, a gesture cancelled by a load recorded as cancelled by the user, now
 fixed. Stage 4b passed in game on 2026-10-01 (`studio-save + studio-reload`,
-two launches). Stage 5 is next. Supersedes the control
+two launches). Stage 5 is implemented and ran in game on 2026-10-01; its
+budgets fail on two measured findings, recorded under stage 5 below. Stage 6
+is open. Supersedes the control
 model of [the regression driver plan](../history/in-game-regression-driver.md); that
 plan's case table, result vocabulary and observation rules carry over.
 
@@ -191,9 +193,33 @@ plugin it was made with is removed; the game refuses to load it otherwise.
    touch only `regression-scratch`, the one file a run writes under the mods
    directory.
 
-5. **Soak and budgets.** A `soak` case spawns a crowd in fixture armor and
-   holds for a set time. The host checks the trace against a budget file
-   through `tools/trace-report.py`.
+5. **Soak and budgets.** `soak` (steady hold 2 minutes) and `soak-hour`
+   (60 minutes) solo Arcane Circuit, then hold named windows: `baseline` 30
+   s with no crowd; `spawn-crowd 12` (mannequins in a ring, the fixture
+   worn, removal prevented) and `await-crowd-rendered`, which form the
+   `burst` window; `settle` 30 s; `steady`; `despawn-crowd`; `recovery`
+   30 s. A hold runs on wall-clock time; it fails only if the clock stalls.
+   The shared cleanup despawns the crowd.
+
+   After the run the host splits the trace into these windows by the step
+   events, sums each window's heartbeats (fps, plugin frame cost, worst
+   frame, tick, refresh and readback, render targets and bytes), prints the
+   table, and checks `tests/regression/budgets.json`. A budget names a
+   window and a limit: `<measure>_max`, `fps_ratio_min` against baseline, or
+   `<measure>_over_baseline_max`.
+
+   | Window | Budget | Run 20261001T063900 |
+   | --- | --- | --- |
+   | `settle` | worst frame 0.5 s, worst readback 100 ms | 4.8 s and 1.7 s: fails |
+   | `steady` | fps half of baseline, plugin 4 ms per frame, worst tick and readback 50 ms | 61 %, 2.1 ms, 9 ms, 0: passes |
+   | `recovery` | fps 90 % of baseline, targets and bytes above baseline within the idle pool (16, 64 MiB) | 12 targets, 95 MB: fails |
+
+   Findings: the first application of 12 actors at once freezes the game
+   for about 13 seconds, with 893 render targets (14 GB accounted) at the
+   peak and 136 readbacks; it settles to 301 targets (4.2 GB). After the
+   crowd leaves, 95 MB stays allocated, about 26 MB more than the idle
+   target pool may hold.
+
 6. **Evidence for visual verdicts.** Screenshots at named checkpoints, and
    stack-output hashes with the clock frozen, compared with recorded
    goldens.

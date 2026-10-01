@@ -15,7 +15,8 @@ inline constexpr Equip kPlayerFixture{Role::kPlayer, Item::kFixture};
 inline constexpr Equip kWearerFixture{Role::kWearer, Item::kFixture};
 inline constexpr Equip kControlPlain{Role::kControl, Item::kPlainCuirass};
 
-inline constexpr std::array<Step, 6> kCleanup{
+inline constexpr std::array<Step, 7> kCleanup{
+    DespawnCrowd{},
     ReturnToStart{},
     SetView{View::kThirdPerson},
     Despawn{Role::kWearer},
@@ -158,7 +159,8 @@ inline constexpr std::array<Step, 6> kStudioReload{
     Unequip{Role::kPlayer, Item::kFixture},
     DeleteScratch{}};
 
-inline constexpr std::array<Step, 7> kStudioCleanup{
+inline constexpr std::array<Step, 8> kStudioCleanup{
+    DespawnCrowd{},
     ReturnToStart{},
     SetView{View::kThirdPerson},
     Despawn{Role::kWearer},
@@ -167,7 +169,26 @@ inline constexpr std::array<Step, 7> kStudioCleanup{
     RestoreView{},
     DeleteScratch{}};
 
-inline constexpr std::array<Case, 12> kCatalog{
+inline constexpr std::uint32_t kCrowdSize = 12;
+inline constexpr std::uint32_t kBaselineSeconds = 30;
+inline constexpr std::uint32_t kRecoverySeconds = 30;
+
+inline constexpr std::uint32_t kSettleSeconds = 30;
+
+consteval std::array<Step, 8> Soak(std::uint32_t a_steadySeconds) {
+  return {Solo{kSoloRecipe},
+          HoldFor{"baseline", kBaselineSeconds},
+          SpawnCrowd{kCrowdSize},
+          AwaitCrowdRendered{},
+          HoldFor{"settle", kSettleSeconds},
+          HoldFor{"steady", a_steadySeconds},
+          DespawnCrowd{},
+          HoldFor{"recovery", kRecoverySeconds}};
+}
+inline constexpr std::array<Step, 8> kSoak = Soak(120);
+inline constexpr std::array<Step, 8> kSoakHour = Soak(3600);
+
+inline constexpr std::array<Case, 14> kCatalog{
     Case{"lifecycle", kLifecycle, kCleanup},
     Case{"equip-cycle", kEquipCycle, kCleanup},
     Case{"camera", kCamera, kCleanup},
@@ -179,7 +200,9 @@ inline constexpr std::array<Case, 12> kCatalog{
     Case{"load-gesture", kLoadGesture, kCleanup},
     Case{"load-paint", kLoadPaint, kCleanup},
     Case{"studio-save", kStudioSave, kCleanup},
-    Case{"studio-reload", kStudioReload, kStudioCleanup}};
+    Case{"studio-reload", kStudioReload, kStudioCleanup},
+    Case{"soak", kSoak, kCleanup},
+    Case{"soak-hour", kSoakHour, kCleanup}};
 }
 
 std::span<const Case> Catalog() { return kCatalog; }

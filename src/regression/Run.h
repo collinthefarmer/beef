@@ -123,6 +123,15 @@ struct SaveScratch {};
 struct ExpectScratch {
   float opacity = 1.0f;
 };
+struct SpawnCrowd {
+  std::uint32_t count = 0;
+};
+struct AwaitCrowdRendered {};
+struct DespawnCrowd {};
+struct HoldFor {
+  std::string_view window;
+  std::uint32_t seconds = 0;
+};
 struct Begin {
   Work work = Work::kPaint;
   std::string_view recipe;
@@ -138,7 +147,8 @@ using Step =
                  LeaveCell, ReturnToStart, SetView, LoadDuring, ExpectAborted,
                  ExpectCancelled, ExpectSettled, DeleteScratch,
                  DuplicateToScratch, SetScratchOpacity, SaveScratch,
-                 ExpectScratch, Begin, AwaitActive, AwaitIdle>;
+                 ExpectScratch, SpawnCrowd, AwaitCrowdRendered, DespawnCrowd,
+                 HoldFor, Begin, AwaitActive, AwaitIdle>;
 
 struct Case {
   std::string_view name;
@@ -179,6 +189,11 @@ struct Activity {
   std::string detail;
 };
 
+struct CrowdView {
+  std::uint32_t present = 0;
+  std::uint32_t rendered = 0;
+};
+
 struct RecipeView {
   bool loaded = false;
   bool dirty = false;
@@ -189,6 +204,8 @@ struct Observation {
   std::array<ActorView, kRoleCount> actors{};
   Activity activity;
   RecipeView scratch;
+  CrowdView crowd;
+  std::uint64_t nowMs = 0;
   std::uint32_t loads = 0;
   std::array<bool, kItemCount> itemsLoaded{};
   bool npcEffects = false;
@@ -255,6 +272,10 @@ struct WriteRecipe {
 struct RemoveRecipe {
   std::string_view recipe;
 };
+struct PlaceCrowd {
+  std::uint32_t count = 0;
+};
+struct RemoveCrowd {};
 struct BeginWork {
   Work work = Work::kPaint;
   std::string_view recipe;
@@ -269,8 +290,8 @@ using Command =
                  DisableActor, EnableActor, AddAndEquip, EquipCarried,
                  UnequipArmor, RemoveArmor, SubmitApply, SubmitRetire,
                  AbortRequest, TravelAway, TravelBack, SetCamera, CopyRecipe,
-                 EditOpacity, WriteRecipe, RemoveRecipe, BeginWork,
-                 ReloadDuring, Quit>;
+                 EditOpacity, WriteRecipe, RemoveRecipe, PlaceCrowd,
+                 RemoveCrowd, BeginWork, ReloadDuring, Quit>;
 
 struct StepResult {
   std::string_view caseName;
@@ -295,6 +316,8 @@ struct Ownership {
   std::array<bool, kRoleCount> spawned{};
   bool away = false;
   std::uint32_t loadTarget = 0;
+  std::uint32_t crowd = 0;
+  std::uint64_t holdUntilMs = 0;
 };
 
 enum class Section : std::uint8_t { kBody, kCleanup };
@@ -332,6 +355,7 @@ struct Advanced {
 
 inline constexpr std::uint32_t kSettleFrames = 120;
 inline constexpr std::string_view kScratchRecipe = "regression-scratch";
+inline constexpr std::uint32_t kMaxCrowd = 64;
 inline constexpr std::uint32_t kEndingFrames = 10;
 inline constexpr std::size_t kMaxSuiteCases = 64;
 

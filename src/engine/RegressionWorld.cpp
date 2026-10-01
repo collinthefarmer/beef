@@ -8,6 +8,9 @@
 #include "engine/Regression.h"
 #include "render/PBRMaterial.h"
 
+#include <algorithm>
+#include <chrono>
+#include <cmath>
 #include <string_view>
 
 namespace BetterEnchantmentEffects {
@@ -19,6 +22,7 @@ inline constexpr RE::FormID kXMarker = 0x3B;
 inline constexpr const char *kTravelCell = "Riverwood";
 inline constexpr float kSpawnOffset = 120.0f;
 inline constexpr float kWorkOpacity = 0.5f;
+inline constexpr float kCrowdRadius = 300.0f;
 
 template <class Form> Form *SkyrimForm(RE::FormID a_local) {
   RE::TESDataHandler *data = RE::TESDataHandler::GetSingleton();
@@ -199,6 +203,61 @@ void Spawn(RunWorld &a_world, Regression::Role a_role) {
   position.x += side * kSpawnOffset;
   placed->SetPosition(position);
   a_world.spawned[Regression::RoleIndex(a_role)] = placed->GetFormID();
+}
+
+void PlaceCrowd(RunWorld &a_world, std::uint32_t a_count) {
+  RE::PlayerCharacter *player = RE::PlayerCharacter::GetSingleton();
+  RE::TESNPC *base = SkyrimForm<RE::TESNPC>(kMannequin);
+  if (!player || !base) {
+    return;
+  }
+  const RE::NiPoint3 centre = player->GetPosition();
+  const std::uint32_t count = std::min(a_count, Regression::kMaxCrowd);
+  for (std::uint32_t index = 0; index < count; ++index) {
+    const RE::NiPointer<RE::TESObjectREFR> placed =
+        player->PlaceObjectAtMe(base, true);
+    RE::Actor *actor = placed ? placed->As<RE::Actor>() : nullptr;
+    if (!actor) {
+      continue;
+    }
+    const float angle =
+        6.2831853f * static_cast<float>(index) / static_cast<float>(count);
+    placed->SetPosition(RE::NiPoint3{centre.x + kCrowdRadius * std::cos(angle),
+                                     centre.y + kCrowdRadius * std::sin(angle),
+                                     centre.z});
+    Equip(actor, Regression::Item::kFixture, true);
+    a_world.crowd.push_back(actor->GetFormID());
+  }
+}
+
+void RemoveCrowd(RunWorld &a_world) {
+  for (const RE::FormID id : a_world.crowd) {
+    Delete(RE::TESForm::LookupByID<RE::TESObjectREFR>(id));
+  }
+  a_world.crowd.clear();
+}
+
+Regression::CrowdView CrowdOf(const RunWorld &a_world) {
+  Regression::CrowdView view;
+  const Manager *manager = Manager::GetSingleton();
+  for (const RE::FormID id : a_world.crowd) {
+    const RE::Actor *actor = RE::TESForm::LookupByID<RE::Actor>(id);
+    if (!actor || !Present(*actor)) {
+      continue;
+    }
+    ++view.present;
+    if (manager && manager->RegressionActor(id).renderedAttempt > 0) {
+      ++view.rendered;
+    }
+  }
+  return view;
+}
+
+std::uint64_t SteadyMs() {
+  return static_cast<std::uint64_t>(
+      std::chrono::duration_cast<std::chrono::milliseconds>(
+          std::chrono::steady_clock::now().time_since_epoch())
+          .count());
 }
 
 void Despawn(RunWorld &a_world, Regression::Role a_role) {
@@ -414,6 +473,13 @@ void Carry(const Regression::ReloadDuring &a_c, RunWorld &a_world) {
 }
 
 void Carry(const Regression::Quit &, RunWorld &) { QuitGame(); }
+void Carry(const Regression::PlaceCrowd &a_c, RunWorld &a_world) {
+  PlaceCrowd(a_world, a_c.count);
+}
+
+void Carry(const Regression::RemoveCrowd &, RunWorld &a_world) {
+  RemoveCrowd(a_world);
+}
 }
 
 Regression::Observation Observe(const RunWorld &a_world) {
@@ -431,6 +497,8 @@ Regression::Observation Observe(const RunWorld &a_world) {
   seen.awayFromStart = AwayFromStart(a_world);
   seen.request = RequestStateOf(a_world.request);
   seen.loads = a_world.loads;
+  seen.crowd = CrowdOf(a_world);
+  seen.nowMs = SteadyMs();
   if (const Manager *manager = Manager::GetSingleton()) {
     seen.activity = manager->RegressionActivity(a_world.edit, a_world.gesture,
                                                 a_world.file);
@@ -444,6 +512,7 @@ void Execute(const Regression::Command &a_command, RunWorld &a_world) {
 }
 
 void ReleaseWorld(RunWorld &a_world) {
+  RemoveCrowd(a_world);
   Delete(MarkerOf(a_world));
   a_world.marker = 0;
   for (const Regression::Role role :
@@ -454,6 +523,7 @@ void ReleaseWorld(RunWorld &a_world) {
 
 void ForgetWorldAfterLoad(RunWorld &a_world) {
   a_world.spawned = {};
+  a_world.crowd.clear();
   a_world.marker = 0;
   ++a_world.loads;
 }

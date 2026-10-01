@@ -10,6 +10,8 @@ namespace BetterEnchantmentEffects::Regression {
 namespace {
 inline constexpr std::uint32_t kActionDeadlineFrames = 600;
 inline constexpr std::uint32_t kRenderDeadlineFrames = 1800;
+inline constexpr std::uint32_t kCrowdDeadlineFrames = 3600;
+inline constexpr std::uint32_t kHoldFramesPerSecond = 600;
 inline constexpr std::uint32_t kTravelDeadlineFrames = 3600;
 inline constexpr std::uint32_t kExpectDeadlineFrames = 600;
 
@@ -655,6 +657,79 @@ StepMove Check(const ExpectScratch &a_expect, const StepContext &a_context) {
                           a_expect.opacity, DescribeScratch(scratch)));
 }
 
+StepMove Start(const SpawnCrowd &a_spawn, const StepContext &a_context) {
+  if (a_spawn.count == 0 || a_spawn.count > kMaxCrowd) {
+    return Fail(a_context,
+                std::format("a crowd has 1 to {} actors", kMaxCrowd));
+  }
+  if (!a_context.seen.npcEffects) {
+    return Block(a_context,
+                 "effects are limited to the player in the settings");
+  }
+  if (a_context.owned.crowd > 0) {
+    return Pass(a_context, "already spawned");
+  }
+  Ownership owned = a_context.owned;
+  owned.crowd = a_spawn.count;
+  return Issue(PlaceCrowd{a_spawn.count}, owned);
+}
+
+StepMove Check(const SpawnCrowd &, const StepContext &a_context) {
+  const CrowdView &crowd = a_context.seen.crowd;
+  return PassWhen(crowd.present >= a_context.owned.crowd, a_context,
+                  kActionDeadlineFrames,
+                  std::format("only {} of {} crowd actors appeared",
+                              crowd.present, a_context.owned.crowd));
+}
+
+StepMove Start(const AwaitCrowdRendered &, const StepContext &a_context) {
+  if (a_context.owned.crowd == 0) {
+    return Block(a_context, "no crowd was spawned");
+  }
+  return Wait(a_context);
+}
+
+StepMove Check(const AwaitCrowdRendered &, const StepContext &a_context) {
+  const CrowdView &crowd = a_context.seen.crowd;
+  return PassWhen(crowd.rendered >= a_context.owned.crowd, a_context,
+                  kCrowdDeadlineFrames,
+                  std::format("only {} of {} crowd actors rendered",
+                              crowd.rendered, a_context.owned.crowd));
+}
+
+StepMove Start(const DespawnCrowd &, const StepContext &a_context) {
+  if (a_context.owned.crowd == 0) {
+    return Pass(a_context, "no crowd");
+  }
+  Ownership owned = a_context.owned;
+  owned.crowd = 0;
+  return Issue(RemoveCrowd{}, owned);
+}
+
+StepMove Check(const DespawnCrowd &, const StepContext &a_context) {
+  return PassWhen(a_context.seen.crowd.present == 0, a_context,
+                  kActionDeadlineFrames, "the crowd did not disappear");
+}
+
+StepMove Start(const HoldFor &a_hold, const StepContext &a_context) {
+  Ownership owned = a_context.owned;
+  owned.holdUntilMs =
+      a_context.seen.nowMs + std::uint64_t{a_hold.seconds} * 1000;
+  return {Pending{}, std::nullopt, owned};
+}
+
+StepMove Check(const HoldFor &a_hold, const StepContext &a_context) {
+  if (a_context.seen.nowMs >= a_context.owned.holdUntilMs) {
+    return Pass(a_context);
+  }
+  const std::uint64_t stalled =
+      (std::uint64_t{a_hold.seconds} + 1) * kHoldFramesPerSecond;
+  if (a_context.frames >= stalled) {
+    return Fail(a_context, "the game clock did not advance");
+  }
+  return Wait(a_context);
+}
+
 StepMove Start(const Begin &a_begin, const StepContext &a_context) {
   return Issue(BeginWork{a_begin.work, a_begin.recipe}, a_context.owned);
 }
@@ -815,6 +890,20 @@ std::string Label(const ExpectScratch &a_s) {
   return std::format("expect-scratch opacity {}", a_s.opacity);
 }
 
+std::string Label(const SpawnCrowd &a_s) {
+  return std::format("spawn-crowd {}", a_s.count);
+}
+
+std::string Label(const AwaitCrowdRendered &) {
+  return std::string{"await-crowd-rendered"};
+}
+
+std::string Label(const DespawnCrowd &) { return std::string{"despawn-crowd"}; }
+
+std::string Label(const HoldFor &a_s) {
+  return std::format("hold {} {}s", a_s.window, a_s.seconds);
+}
+
 std::string Label(const Begin &a_s) {
   return std::format("begin {}", WorkName(a_s.work));
 }
@@ -878,6 +967,10 @@ std::array<bool, kRoleCount> RolesMoved(const Step &a_step) {
           [&](const SetScratchOpacity &) { return kAll; },
           [&](const SaveScratch &) { return kAll; },
           [&](const ExpectScratch &) { return kNone; },
+          [&](const SpawnCrowd &) { return kNone; },
+          [&](const AwaitCrowdRendered &) { return kNone; },
+          [&](const DespawnCrowd &) { return kNone; },
+          [&](const HoldFor &) { return kNone; },
           [&](const Begin &) { return only(Role::kPlayer); },
           [&](const AwaitActive &) { return kNone; },
           [&](const AwaitIdle &) { return kNone; },

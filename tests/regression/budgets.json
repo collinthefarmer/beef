@@ -1,0 +1,17 @@
+{
+  "settle": {
+    "frame_max_us_max": 500000,
+    "readback_max_us_max": 100000
+  },
+  "steady": {
+    "fps_ratio_min": 0.5,
+    "plugin_frame_us_mean_max": 4000,
+    "tick_max_us_max": 50000,
+    "readback_max_us_max": 50000
+  },
+  "recovery": {
+    "fps_ratio_min": 0.9,
+    "targets_end_over_baseline_max": 16,
+    "target_bytes_end_over_baseline_max": 67108864
+  }
+}

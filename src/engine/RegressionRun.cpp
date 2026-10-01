@@ -220,8 +220,10 @@ void FinishRegressionLoad(bool a_loaded) {
   if (!std::holds_alternative<LoadingSave>(activeRun->stage)) {
     return;
   }
+  RunWorld world;
+  world.save = activeRun->request.save;
   RunningCases running{.state = Regression::BeginRun(activeRun->request),
-                       .world = RunWorld{.save = activeRun->request.save}};
+                       .world = std::move(world)};
   activeRun->stage = std::move(running);
   logger::info("regression: save loaded; settling before the first case");
 }

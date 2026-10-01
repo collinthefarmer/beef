@@ -14,6 +14,7 @@ using namespace BetterEnchantmentEffects::Regression;
 
 namespace {
 constexpr std::int64_t kNow = 1'800'000'000;
+constexpr std::uint64_t kSimulatedFrameMs = 1000;
 
 std::size_t Index(Role a_role) { return static_cast<std::size_t>(a_role); }
 std::size_t Index(Item a_item) { return static_cast<std::size_t>(a_item); }
@@ -100,6 +101,10 @@ struct World {
   int loadIn = -1;
   RecipeView scratch;
   std::optional<std::optional<float>> disk;
+  CrowdView crowd;
+  int crowdIn = -1;
+  std::uint32_t crowdSize = 0;
+  std::uint64_t nowMs = 0;
   Faults faults;
   std::vector<std::string> commands;
   std::vector<ResultLine> lines;
@@ -126,6 +131,8 @@ struct World {
     seen.activity = activity;
     seen.loads = loads;
     seen.scratch = scratch;
+    seen.crowd = crowd;
+    seen.nowMs = nowMs;
     return seen;
   }
 
@@ -286,6 +293,17 @@ struct World {
               disk.reset();
               activity.edit = WorkOutcome::kApplied;
             },
+            [&](const PlaceCrowd &a_c) {
+              commands.emplace_back("crowd");
+              crowdSize = a_c.count;
+              crowd.present = a_c.count;
+              crowdIn = 5;
+            },
+            [&](const RemoveCrowd &) {
+              commands.emplace_back("uncrowd");
+              crowd = {};
+              crowdIn = -1;
+            },
             [&](const BeginWork &a_c) {
               commands.emplace_back("begin");
               StartWork(a_c.work);
@@ -350,6 +368,10 @@ struct World {
   }
 
   void Tick() {
+    nowMs += kSimulatedFrameMs;
+    if (crowdIn > 0 && --crowdIn == 0) {
+      crowd.rendered = crowdSize;
+    }
     if (loadIn > 0 && --loadIn == 0) {
       FinishLoad();
     }
@@ -538,6 +560,26 @@ void LoadsCancelWork() {
               "an edit that lands before the load settles the case");
 }
 
+void SoakHoldsAndCleansUp() {
+  World world;
+  Drive(world, RunOf("soak"), 20000);
+  test::Equal(FirstFailure(world), std::string{}, "soak passes");
+  test::Check(Issued(world, "crowd") && Issued(world, "uncrowd"),
+              "soak spawns and removes its crowd");
+  test::Check(world.crowd.present == 0, "no crowd remains");
+  std::vector<std::string> windows;
+  for (const ResultLine &line : world.lines) {
+    if (const auto *step = std::get_if<StepResult>(&line);
+        step && step->action.starts_with("hold ")) {
+      windows.push_back(step->action);
+    }
+  }
+  test::Equal(windows,
+              std::vector<std::string>{"hold baseline 30s", "hold settle 30s",
+                                       "hold steady 120s", "hold recovery 30s"},
+              "soak names its measurement windows");
+}
+
 void StudioRoundTrip() {
   World first;
   Drive(first, RunOf("studio-save"), 20000);
@@ -577,6 +619,7 @@ void EveryFixedObservationEndsTheRun() {
         seen.request = static_cast<RequestState>(request);
         RunState state = RunOf(entry.name);
         for (int frame = 0; frame < 100000 && !Done(state); ++frame) {
+          seen.nowMs = static_cast<std::uint64_t>(frame) * kSimulatedFrameMs;
           state = Advance(std::move(state), seen).state;
         }
         test::Check(Done(state), std::string{entry.name} +
@@ -613,6 +656,7 @@ int main() {
   UnloadedStateFailsUnload();
   LoadsCancelWork();
   StudioRoundTrip();
+  SoakHoldsAndCleansUp();
   EveryFixedObservationEndsTheRun();
   ResultLinesAreJson();
   return test::Finish("regression runs");

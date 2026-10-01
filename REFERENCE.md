@@ -2158,3 +2158,13 @@ reload launch reads it back from there. Mod Organizer ignores a
 `moshortcut://` request sent in the seconds after the game exits, so
 `tools/regression-run.py` pauses 15 seconds between launches and repeats an
 unanswered launch request once.
+
+The soak's crowd is observed through `Manager::RegressionActor` facts only,
+never by walking each member's 3D, so observation adds no per-member cost.
+The run advances before `Manager::OnFrame` starts its frame timer, so the
+heartbeat's plugin cost excludes the runner. `await-crowd-rendered` completes
+once every member's application reports rendered, before the GPU work of the
+first application lands; the `settle` window after it holds that cost, and
+`steady` measures the settled state. A heartbeat's `targets` and
+`target_bytes` include targets idle in the reuse pool (at most 16 and 64
+MiB, `RenderTargetPool::kMaxIdleTargets` and `kMaxIdleBytes`).
