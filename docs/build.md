@@ -158,7 +158,11 @@ each staged first-party C++ file in `src/` and `tests/` (not `src/extern` or
 character and raw-string literals, allows `NOLINT` lines, and exempts only
 the exact license notice at the top of a file. `tools/gate.sh push` runs the
 same checks over every first-party file in the working tree, then the
-sanitized native configure, build and tests. `tools/gate.sh release` adds the
+sanitized native configure, build and tests, and records the tested commit
+when the working tree matches `HEAD`. `tools/gate.sh ship` runs `push` on a
+clean tree and then `git push`; the `pre-push` hook runs only
+`tools/gate.sh prepush`, which repeats the fast checks and requires that
+record for each pushed commit. `tools/gate.sh release` adds the
 Windows build and `tools/tidy.py --check`. `tools/gate.sh fix` runs
 clang-format in place over every first-party file.
 Run `python3 tools/tidy.py --analyzer` separately for static-analyzer review and build

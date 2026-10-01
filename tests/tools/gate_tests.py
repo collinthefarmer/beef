@@ -1,5 +1,6 @@
 """Check the gate's comment scan, layer graph and stage flow."""
 import importlib.util
+import io
 import os
 from pathlib import Path
 import shutil
@@ -100,11 +101,18 @@ class StageTests(unittest.TestCase):
     def git(self, *args: str) -> None:
         subprocess.run(['git', *args], cwd=self.root, check=True, capture_output=True)
 
-    def gate(self, stage: str) -> tuple[str | None, list[tuple[str, ...]]]:
+    def commit(self) -> str:
+        self.git('add', '.')
+        self.git('-c', 'user.name=gate', '-c', 'user.email=gate@test', 'commit', '-qm', 'state')
+        return subprocess.check_output(['git', 'rev-parse', 'HEAD'], cwd=self.root, text=True).strip()
+
+    def gate(self, stage: str, stdin: str = '',
+             extra: tuple[str, ...] = ()) -> tuple[str | None, list[tuple[str, ...]]]:
         previous = Path.cwd()
         try:
             with patch.object(gate, 'ROOT', self.root), patch.object(gate, 'run') as run, \
-                    patch.dict(os.environ, {'BEEF_DEV_SHELL': '1'}), patch('sys.argv', ['gate.py', stage]):
+                    patch.dict(os.environ, {'BEEF_DEV_SHELL': '1'}), \
+                    patch('sys.argv', ['gate.py', stage, *extra]), patch('sys.stdin', io.StringIO(stdin)):
                 try:
                     gate.main()
                     error = None
@@ -130,6 +138,45 @@ class StageTests(unittest.TestCase):
         calls = self.gate('release')[1]
         self.assertIn(('cmake', '--build', '--preset', 'windows-release', '--target', 'all'), calls)
         self.assertEqual(calls[-1][1:], ('tools/tidy.py', '--check'))
+
+
+class PushRecordTests(StageTests):
+    def push_line(self, commit: str) -> str:
+        return f'refs/heads/main {commit} refs/heads/main {gate.ZERO_COMMIT}\n'
+
+    def test_prepush_needs_a_recorded_pass_for_the_pushed_commit(self) -> None:
+        head = self.commit()
+        error, calls = self.gate('prepush', self.push_line(head))
+        self.assertIn('Push blocked', error)
+        self.assertEqual(calls, [])
+        self.assertIsNone(self.gate('push')[0])
+        self.assertEqual(self.gate('prepush', self.push_line(head)), (None, []))
+        (self.root / 'src/Core.h').write_text(NOTICE + '#pragma once\nint value = 1;\n')
+        newer = self.commit()
+        self.assertIn('Push blocked', self.gate('prepush', self.push_line(newer))[0])
+
+    def test_a_dirty_tree_is_never_recorded(self) -> None:
+        head = self.commit()
+        (self.root / 'src/Core.h').write_text(NOTICE + '#pragma once\nint value = 1;\n')
+        self.assertIsNone(self.gate('push')[0])
+        self.assertIn('Push blocked', self.gate('prepush', self.push_line(head))[0])
+
+    def test_deleting_a_remote_branch_needs_no_pass(self) -> None:
+        self.commit()
+        deletion = f'(delete) {gate.ZERO_COMMIT} refs/heads/old {gate.ZERO_COMMIT}\n'
+        self.assertEqual(self.gate('prepush', deletion), (None, []))
+
+    def test_ship_refuses_a_dirty_tree_and_pushes_after_the_gate(self) -> None:
+        self.commit()
+        (self.root / 'src/Core.h').write_text(NOTICE + '#pragma once\nint value = 1;\n')
+        error, calls = self.gate('ship')
+        self.assertIn('Ship blocked', error)
+        self.assertEqual(calls, [])
+        self.commit()
+        error, calls = self.gate('ship', extra=('origin', 'main'))
+        self.assertIsNone(error)
+        self.assertEqual(calls[-1], ('git', 'push', 'origin', 'main'))
+        self.assertEqual(calls[-2], ('ctest', '--preset', 'native-sanitized'))
 
 
 if __name__ == '__main__':

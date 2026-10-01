@@ -163,22 +163,78 @@ def check_sources(sources: dict[str, str]) -> None:
     print(f'gate: {len(sources)} files formatted, layered and free of prose comments')
 
 
+ZERO_COMMIT = '0' * 40
+GATE_SOURCES = ('src', 'tests', 'tools', 'cmake', 'CMakeLists.txt', 'CMakePresets.json')
+
+
+def git_text(*args: str) -> str:
+    return subprocess.check_output(['git', *args], cwd=ROOT, text=True).strip()
+
+
+def passed_record() -> Path:
+    path = Path(git_text('rev-parse', '--git-path', 'beef-gate-passed'))
+    return path if path.is_absolute() else ROOT / path
+
+
+def tree_matches_head() -> bool:
+    tracked = git_text('status', '--porcelain', '--untracked-files=no')
+    untracked = git_text('status', '--porcelain', '--', *GATE_SOURCES)
+    return not tracked and not untracked
+
+
+def record_pass() -> None:
+    if not tree_matches_head():
+        print('gate: the working tree differs from HEAD, so this pass is not recorded for a push')
+        return
+    head = git_text('rev-parse', 'HEAD')
+    passed_record().write_text(head + '\n')
+    print(f'gate: sanitized tests passed for {head[:12]}; git push may proceed')
+
+
+def pushed_commits(lines: list[str]) -> list[str]:
+    commits = []
+    for line in lines:
+        fields = line.split()
+        if len(fields) == 4 and fields[1] != ZERO_COMMIT:
+            commits.append(fields[1])
+    return commits
+
+
+def check_push_recorded(commits: list[str]) -> None:
+    record = passed_record()
+    recorded = record.read_text().strip() if record.is_file() else ''
+    unchecked = [commit for commit in commits if commit != recorded]
+    if unchecked:
+        sys.exit(f'Push blocked: the sanitized gate has not passed for {unchecked[0][:12]}. '
+                 'Push with tools/gate.sh ship, which runs the gate and then pushes.')
+
+
 def main() -> None:
     parser = argparse.ArgumentParser()
-    parser.add_argument('stage', choices=('commit', 'push', 'release', 'fix'))
-    stage = parser.parse_args().stage
+    parser.add_argument('stage', choices=('commit', 'push', 'prepush', 'ship', 'release', 'fix'))
+    parser.add_argument('push_args', nargs=argparse.REMAINDER)
+    arguments = parser.parse_args()
+    stage = arguments.stage
     os.chdir(ROOT)
     if not os.environ.get('BEEF_DEV_SHELL'):
         sys.exit('Run tools/gate.sh to enter the pinned Nix environment.')
     if stage == 'fix':
         run(os.environ.get('CLANG_FORMAT', 'clang-format'), '-i', *working_sources())
         return
+    if stage == 'ship' and not tree_matches_head():
+        sys.exit('Ship blocked: commit or stash changes first; the gate tests the working tree.')
     check_sources(staged_sources() if stage == 'commit' else working_sources())
     if stage == 'commit':
+        return
+    if stage == 'prepush':
+        check_push_recorded(pushed_commits(sys.stdin.read().splitlines()))
         return
     run('cmake', '--preset', 'native-sanitized')
     run('cmake', '--build', '--preset', 'native-sanitized')
     run('ctest', '--preset', 'native-sanitized')
+    record_pass()
+    if stage == 'ship':
+        run('git', 'push', *arguments.push_args)
     if stage == 'release':
         run('cmake', '--preset', 'windows-release')
         run('cmake', '--build', '--preset', 'windows-release', '--target', 'all')

@@ -696,7 +696,7 @@ with these meanings and no other word for the same thing.
 
 ### The gate
 
-`tools/gate.sh {commit|push|release|fix}` enters Nix and launches the Python
+`tools/gate.sh {commit|push|prepush|ship|release|fix}` enters Nix and launches the Python
 gate implementation in `tools/gate.py`. The git hooks
 (`.githooks/pre-commit`, `pre-push`) and the Claude Code hook call it. It
 re-execs into `nix develop` so the pinned clang tools always run.
@@ -708,8 +708,17 @@ re-execs into `nix develop` so the pinned clang tools always run.
   Baseline checks include header diagnostics and match findings by file,
   check and message, ignoring line numbers and digits.
 - `push` runs the same checks over every first-party file, then the
-  sanitized CTest suites. `release` adds the Windows build and full normal
-  clang-tidy, allowing reductions in findings.
+  sanitized CTest suites. When the working tree matches `HEAD`, it records
+  that commit in `.git/beef-gate-passed`. `release` adds the Windows build
+  and full normal clang-tidy, allowing reductions in findings.
+- `ship` refuses a working tree that differs from `HEAD`, runs `push`, and
+  then runs `git push` with its remaining arguments. Push with
+  `tools/gate.sh ship`.
+- The `pre-push` hook runs `prepush`: the format, layer and comment checks,
+  then a check that the recorded commit is each commit being pushed. Do
+  not run the sanitized suite in the hook. `git push` opens the connection
+  to the remote before the hook runs, and the remote can close an idle
+  connection during a build that takes minutes.
 - Regenerate the baseline only after review with
   `python3 tools/tidy.py --update`.
 - Analysis has no result cache. A failed clang-tidy invocation fails the

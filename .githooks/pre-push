@@ -1,2 +1,2 @@
 #!/usr/bin/env bash
-exec "$(git rev-parse --show-toplevel)/tools/gate.sh" push
+exec "$(git rev-parse --show-toplevel)/tools/gate.sh" prepush
