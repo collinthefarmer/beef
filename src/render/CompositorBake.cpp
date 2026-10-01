@@ -94,4 +94,21 @@ void Compositor::SweepMaterials(std::uint32_t a_nowMS,
 }
 
 void Compositor::ClearMaterials() noexcept { materials_.Clear(); }
+
+std::optional<TextureView> Compositor::FindStepOutput(const std::string &a_key,
+                                                      std::uint64_t a_nowMS) {
+  return stepOutputs_.Find(a_key, a_nowMS);
+}
+
+void Compositor::PublishStepOutput(const std::string &a_key,
+                                   const TextureView &a_view,
+                                   std::uint64_t a_nowMS) {
+  stepOutputs_.Publish(a_key, a_view, a_nowMS);
+}
+
+void Compositor::SweepStepOutputs(std::uint64_t a_nowMS) {
+  stepOutputs_.Sweep(a_nowMS);
+}
+
+void Compositor::ClearStepOutputs() noexcept { stepOutputs_.Clear(); }
 }

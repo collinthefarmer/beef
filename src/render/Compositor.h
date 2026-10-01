@@ -18,6 +18,7 @@
 #include "recipe/Signals.h"
 #include "render/MeshCache.h"
 #include "render/PBRMaterial.h"
+#include "render/StepOutputCache.h"
 #include "render/TextureLab.h"
 #include "render/TextureRef.h"
 
@@ -58,10 +59,13 @@ struct PreparedMask {
   bool animated = false;
   std::string problem;
 };
+struct ApplicationScope {
+  std::size_t context = 0;
+  RE::FormID actor = 0;
+};
 struct GeometryInputs {
   std::shared_ptr<RenderInstance> render;
-  std::size_t applicationContext = 0;
-  RE::FormID actor = 0;
+  ApplicationScope scope;
   MaterialInputs material;
   RE::NiPointer<RE::BSGeometry> geometry;
   RE::NiPointer<RE::NiAVObject> root;
@@ -166,6 +170,13 @@ public:
   void SweepMaterials(std::uint32_t a_nowMS,
                       std::span<const MaterialKey> a_keep);
 
+  [[nodiscard]] std::optional<TextureView>
+  FindStepOutput(const std::string &a_key, std::uint64_t a_nowMS);
+  void PublishStepOutput(const std::string &a_key, const TextureView &a_view,
+                         std::uint64_t a_nowMS);
+  void SweepStepOutputs(std::uint64_t a_nowMS);
+  void ClearStepOutputs() noexcept;
+
 private:
   friend class RenderInstance;
   std::shared_ptr<TextureLab::RenderTarget> NeutralHeight();
@@ -174,6 +185,7 @@ private:
   std::unordered_map<std::string, TextureRef> images_;
   MeshCache meshes_;
   RetainedCache<MaterialKey, MaterialRecord> materials_;
+  StepOutputCache stepOutputs_;
   std::uint32_t nowMS_ = 0;
   std::uint32_t lastSweepMS_ = 0;
 };

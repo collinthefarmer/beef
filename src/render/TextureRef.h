@@ -26,9 +26,15 @@ private:
   bool valid_ = true;
 };
 
+struct TextureView {
+  TextureRef texture;
+  TextureLab::LayerInput sampling;
+  float normalize = 1;
+  std::shared_ptr<TextureLab::RenderTarget> target;
+};
+
 [[nodiscard]] bool RegisterTextureTarget(
     const std::shared_ptr<TextureLab::RenderTarget> &a_target);
 
-[[nodiscard]] std::uintptr_t
-TextureRefIdentity(const TextureRef &a_texture) noexcept;
+[[nodiscard]] std::string TextureIdentity(const TextureRef &a_texture);
 }

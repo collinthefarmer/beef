@@ -16,12 +16,6 @@ std::string FloatBitsText(const std::optional<float> &value) {
                : std::string{"none"};
 }
 
-std::string TextureIdentity(const TextureRef &texture) {
-  const char *name = texture ? texture->name.c_str() : nullptr;
-  return std::format("{}:{}:{}", TextureRefIdentity(texture),
-                     texture.Generation(), name ? name : "");
-}
-
 std::string MaterialInputsIdentity(const MaterialInputs &material) {
   return std::format(
       "{}|{}|{}|{}|{}", TextureIdentity(material.diffuse),
@@ -118,7 +112,7 @@ ValueBindings TextureValueBindings(const RecipeGraph &graph,
                                    const GeometryInputs &inputs) {
   const auto instance = std::make_shared<const std::string>(
       std::format("{}:{}:{:08X}", reinterpret_cast<std::uintptr_t>(&graph),
-                  inputs.applicationContext, inputs.actor));
+                  inputs.scope.context, inputs.scope.actor));
   ValueBindings bindings;
   bindings.state = [instance](NodeId node) {
     return std::format("{}:{}", *instance, node);

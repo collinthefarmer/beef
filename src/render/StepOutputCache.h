@@ -1,7 +1,7 @@
 // GPL-3.0-only with the additional permission in COPYING.md.
 #pragma once
 
-#include "render/RenderInstance.h"
+#include "render/TextureRef.h"
 
 #include <cstdint>
 #include <optional>
@@ -11,8 +11,6 @@
 namespace BetterEnchantmentEffects {
 class StepOutputCache {
 public:
-  [[nodiscard]] static StepOutputCache *GetSingleton();
-
   [[nodiscard]] std::optional<TextureView> Find(const std::string &a_key,
                                                 std::uint64_t a_nowMS);
   void Publish(const std::string &a_key, const TextureView &a_view,

@@ -43,8 +43,8 @@ RenderBindingResolver ActorBindings(std::string a_actor) {
 std::vector<std::string> ContentKeys(const RenderPlan &plan) {
   std::vector<std::string> keys;
   for (const auto &step : plan.steps)
-    if (!step.contentKey.empty())
-      keys.push_back(step.contentKey);
+    if (step.contentKey)
+      keys.push_back(*step.contentKey);
   std::ranges::sort(keys);
   return keys;
 }
@@ -99,7 +99,7 @@ void ContentKeysMarkOnlyStaticTextureSteps(
   std::size_t shareable = 0;
   for (std::size_t i = 0; i < plan->steps.size(); ++i) {
     const auto &step = plan->steps[i];
-    if (step.contentKey.empty())
+    if (!step.contentKey)
       continue;
     ++shareable;
     onlyStatic = onlyStatic && i < changing.size() && !changing[i] &&

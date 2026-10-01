@@ -15,11 +15,6 @@ bool HeldOnlyByCache(const TextureView &a_view) {
 }
 }
 
-StepOutputCache *StepOutputCache::GetSingleton() {
-  static StepOutputCache outputs;
-  return &outputs;
-}
-
 std::optional<TextureView> StepOutputCache::Find(const std::string &a_key,
                                                  std::uint64_t a_nowMS) {
   const auto found = entries_.find(a_key);

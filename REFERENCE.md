@@ -701,14 +701,21 @@ biped: the slot already holds the item while `partClone` is still null, and
 no later event announces the attach. `CollectPieces` skips such a slot, so a
 refresh at that moment places nothing. `Refresh` therefore records the actor
 in `awaitingArmorModel_`, and `SweepAwaitingArmorModels` checks the biped every 100 ms
-and refreshes once the model is attached. The check is a biped scan, never a
+(`kArmorModelCheckMS`) and refreshes once the model is attached. The check is a biped scan, never a
 refresh, so an armor whose model never attaches (no addon for the race) costs
 one scan per sweep and never tears down the actor's other effects. The sweep
-skips actors beyond the eviction radius instead of dropping them, and has no
+skips actors beyond the eviction radius (`BeyondEvictionRadius`, the test the
+distance eviction uses, which no actor passes while effects are limited to the
+player) instead of dropping them, and has no
 retry limit, so a long-lived NPC is never locked out. A multi-slot armor lists
 its item in every slot it covers but attaches one model, so the check asks
 whether any slot holds the armor's model. The in-game `unload` regression case
 showed the late attach on a spawned NPC on 2026-10-01.
+
+A tick admits one actor's first render (`kFirstRendersPerTick`, `AdmitRender`
+in `engine/ManagerTick.cpp`). An actor's first render acquires about 70
+targets, and twelve at once produced a 14 GB transient. An actor that is not
+admitted skips that tick's render and is admitted on a later tick.
 
 - The plugin-event contract (`engine/PluginEvents.h`, parsed by
   `ParsePluginEvent` in `engine/PluginEvents.cpp`, engine-free and fed
@@ -1187,34 +1194,39 @@ Decompile provenance (`decompiled/WornEnchantmentFX/plugin.c` unless noted):
 
 ## Compositor (`render/Compositor.cpp`, `CompositorSource.cpp`, `CompositorBake.cpp`)
 
-Actors share static render-step outputs by content. Lowering records each
-step's `TextureKey` text as `RenderStep::producedKey`; `MarkContentKeyedSteps`
-gives a **content key** to every step that has one, is static (`ChangingSteps`),
-outputs a texture and is not a stack, adding the step's kind, size, format
-and mip policy, because lowering can give one value different step
-requirements. Geometry identity is the mesh's content (`mesh:<hash>:<parts>`) when the
-mesh cache can read it, and the geometry pointer otherwise. `MeshData::hash`
-covers the vertex and index bytes and, through `HashPartitionsAndBound`, each partition's
-slot and bone names and the model bound, because the partition, bone-weight
-and position bakes read them. A material is identified by each texture's
-pointer, generation and name, so a freed address reused while a cache entry
-lives cannot match a different texture. State and signal identities carry
-`graph:applicationContext:actor`, with the actor's form ID, so they never
-match across actors. At execution, `CacheKeyFor` appends the exact bits of
-the step's resolved numeric operands to the key: a node position that
-follows the current pose (a node outside the skin) is not a changing input,
-so without it a bake would stay at the pose of its first frame. A step whose
-plan-time key or whose key with operands is longer than 4096 bytes
-(`kMaxCacheKeyBytes`) renders privately. The cache holds at most 4096
-entries; when it is full it stops accepting new keys. A cache entry whose texture is no
-longer valid is dropped when found. A shared target is never
-written again: a miss always renders into a fresh target, and a hit does not
-remember the target in the step's scratch. `TextureView::texture` holds the
-same target as `TextureView::target`, so the cache counts two references of
-its own when it decides an entry is held only by itself. Measured on
-2026-10-01 with twelve mannequins in the demo cuirass: 841 shared hits, 206
-target acquisitions in the burst instead of 1776, peak 2.2 GB instead of 8.6
-GB, steady 136 targets and 1.4 GB instead of 308 and 4.2 GB.
+Actors share static render-step outputs by content. `MarkContentKeyedSteps`
+gives a **content key** to a step that is static (`ChangingSteps`), outputs a
+texture, is not a stack, and has a produced key. Each part of the key below
+keeps two steps from matching when their outputs could differ:
+
+| Key part | What it carries | Why |
+| --- | --- | --- |
+| Produced key (`RenderStep::producedKey`, set in lowering) | The produced value's `TextureKey`: its canonical identity and the requested size, format and mip policy | Two values with one identity can be requested at different sizes |
+| Step kind and requirements | `StepKindName` and the step's own size, format and mip policy | Lowering can give one value different step requirements |
+| Geometry identity | The mesh content (`mesh:<hash>:<parts>`) when the mesh cache can read it, and the geometry pointer otherwise. `MeshData::hash` covers the vertex and index bytes and, through `HashPartitionsAndBound`, each partition's slot and bone names and the model bound | The partition, bone-weight and position bakes read them |
+| Material identity | Each texture's pointer, generation and name (`TextureIdentity` in `render/TextureRef.h`) | A freed address reused while a cache entry lives cannot match a different texture |
+| State and signal identity | `graph:context:actor` from the geometry's `ApplicationScope`. The actor is the form ID that keys the manager's `applied_` map | State and signals never match across actors |
+| Numeric operands | The exact bits of the step's resolved numeric operands, appended by `CacheKeyFor` at execution (the **cache key**) | A node position that follows the current pose (a node outside the skin) is not a changing input, so without it a bake would stay at the pose of its first frame |
+
+The step output cache is the Compositor's `stepOutputs_`. A step whose
+content key or cache key is longer than 4096 bytes (`kMaxCacheKeyBytes`)
+renders privately. The cache holds at most 4096 entries; when it is full it
+stops accepting new keys. A cache entry whose texture is no longer valid is
+dropped when found. A shared target is never written again: a miss always
+renders into a fresh target, and a hit does not remember the target in the
+step's scratch (`ForgetReuseHint`). `TextureView::texture` holds the same
+target as `TextureView::target`, so the cache counts two references of its
+own when it decides an entry is held only by itself. The cache drops an entry
+once only the cache holds its target and it has been unread for 500 ms;
+`Manager::Clear` empties it on load. Measured on 2026-10-01 with twelve
+mannequins in the demo cuirass: 841 shared hits, 206 target acquisitions in
+the burst instead of 1776, peak 2.2 GB instead of 8.6 GB, steady 136 targets
+and 1.4 GB instead of 308 and 4.2 GB.
+
+A render step's idle output is released 500 ms after its last use
+(`kReleaseAfterIdleMS` in `render/RenderInstance.cpp`). An earlier grace of
+30 instance ticks stretched to seconds while a heavy burst lowered the frame
+rate, so memory kept growing while the game was slow.
 
 - Render scheduling is a validated `RenderPlan` with one `RenderInstance` per
   geometry. Produced targets are retained by typed step results; `RenderScratch`
@@ -2108,7 +2120,7 @@ the compiled signals equal the authored signals used in the existing cache
 key; variant overrides conservatively disable that sharing until effective
 computation identities replace recipe-based keys.
 
-## Regression requests (`engine/Regression.cpp`)
+## Regression requests (`engine/RegressionRequests.cpp`, `engine/RegressionRequest.h`)
 
 A request stores scalar data and queues its mutation through Manager's
 session task queue. Application completion must belong to a newer actor
@@ -2171,6 +2183,14 @@ record reached `kRendered` while the actor's state renders the fixture.
 `AwaitRendered` compares it with the revision seen when the last step that
 moved that actor started, so an earlier render cannot satisfy a later wait.
 
+An `Expect…` step checks a state that the steps before it should already have
+produced. It waits up to `kExpectDeadlineFrames` (600) only so the
+observation can catch up, then fails. An `Await…` step waits for work in
+progress: `kRenderDeadlineFrames` (1800) for a render, a retirement, an idle
+editor or a studio session, and `kCrowdDeadlineFrames` (3600) for the crowd.
+An action step waits for its own effect: `kActionDeadlineFrames` (600) for
+one engine action and `kTravelDeadlineFrames` (3600) for a cell change.
+
 `BGSSaveLoadManager::Load` called from an SKSE task does not start the load
 inside that task: `kPreLoadGame` arrives about 25 ms later, after the tasks
 already queued. So an edit or apply requested in the same frame as the load
@@ -2197,12 +2217,8 @@ The run advances before `Manager::OnFrame` starts its frame timer, so the
 heartbeat's plugin cost excludes the runner. `await-crowd-rendered` completes
 once every member's application reports rendered, before the GPU work of the
 first application lands; the `settle` window after it holds that cost, and
-`steady` measures the settled state. A tick admits one actor's first render
-(`kFirstRendersPerTick` in `engine/ManagerTick.cpp`): an actor's first render
-acquires about 70 targets, and twelve at once produced a 14 GB transient. A
-render step's idle output is released 500 ms after its last use
-(`kReleaseAfterIdleMS` in `render/RenderInstance.cpp`); the earlier grace of
-30 instance ticks stretched to seconds while a heavy burst lowered the frame
-rate, so memory kept growing while the game was slow. A heartbeat's `targets` and
+`steady` measures the settled state. First-render admission (in the manager
+section) and idle release (in the compositor section) bound the burst's
+memory. A heartbeat's `targets` and
 `target_bytes` include targets idle in the reuse pool (at most 16 and 64
 MiB, `RenderTargetPool::kMaxIdleTargets` and `kMaxIdleBytes`).

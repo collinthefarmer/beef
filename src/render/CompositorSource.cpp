@@ -36,9 +36,8 @@ Compositor::InspectSource(const Recipe &recipe, const RecipeGraph &graph,
   PreparedSource prepared;
   prepared.animated = graph.MayChangeOverTime(name);
   if (inputs.render)
-    if (const auto view =
-            inputs.render->Inspect(graph, {*node, 0}, inputs.applicationContext,
-                                   inputs.geometry.get())) {
+    if (const auto view = inputs.render->Inspect(
+            graph, {*node, 0}, inputs.scope.context, inputs.geometry.get())) {
       prepared.texture = view->texture;
       prepared.sampling = view->sampling;
       prepared.normalize = view->normalize;

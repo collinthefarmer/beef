@@ -76,15 +76,14 @@ struct GeometrySnapshotBuilder {
   void InspectSources(Studio::GeometryRow &row) const {
     auto *compositor = Compositor::GetSingleton();
     GeometryInputs inputs = bound.inputs;
-    inputs.applicationContext = applicationContext;
+    inputs.scope.context = applicationContext;
     for (const Source &source : recipe.sources) {
       Studio::PictureRow picture;
       picture.name = source.name;
       picture.description = DescribeSource(source.kind);
       picture.type = SourceType(source);
       if (const std::optional<PreparedSource> prepared =
-              compositor->InspectSource(recipe, graph, source.name,
-                                        bound.inputs)) {
+              compositor->InspectSource(recipe, graph, source.name, inputs)) {
         picture.channel = prepared->sampling.channel;
         picture.animated = prepared->animated;
         picture.problem = prepared->problem;
@@ -114,7 +113,7 @@ struct GeometrySnapshotBuilder {
   void InspectMasks(Studio::GeometryRow &row) const {
     auto *compositor = Compositor::GetSingleton();
     GeometryInputs inputs = bound.inputs;
-    inputs.applicationContext = applicationContext;
+    inputs.scope.context = applicationContext;
     for (const Mask &mask : recipe.masks) {
       Studio::PictureRow picture;
       picture.name = mask.name;

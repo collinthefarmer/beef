@@ -1,7 +1,9 @@
 // GPL-3.0-only with the additional permission in COPYING.md.
 #include "regression/Run.h"
 
-#include "regression/Steps.h"
+#include "regression/StepRules.h"
+
+#include "Core.h"
 
 #include <utility>
 
@@ -40,11 +42,11 @@ Advanced FinishSection(RunState a_state, Running a_running) {
     a_state.phase = a_running;
     return {std::move(a_state), std::nullopt, {}};
   }
-  const Case &finished = a_state.cases[a_running.caseIndex];
+  const Case &finished = a_state.suite[a_running.caseIndex];
   std::vector<ResultLine> lines{
       CaseResult{finished.name, a_running.caseOutcome}};
   a_state.runOutcome = FirstFailure(a_state.runOutcome, a_running.caseOutcome);
-  if (a_running.caseIndex + 1 < a_state.cases.size()) {
+  if (a_running.caseIndex + 1 < a_state.suite.size()) {
     a_state.phase = Running{.caseIndex = a_running.caseIndex + 1};
   } else {
     lines.emplace_back(RunEnd{a_state.runOutcome, {}});
@@ -69,6 +71,32 @@ std::optional<std::string_view> WindowClosedBy(const Step &a_step) {
   return std::nullopt;
 }
 
+RunChanges AfterCommand(RunChanges a_changes, const Command &a_command) {
+  std::visit(
+      Overloaded{
+          [&](const SpawnActor &a_c) {
+            a_changes.spawned[IndexOf(a_c.role)] = true;
+          },
+          [&](const DespawnActor &a_c) {
+            a_changes.spawned[IndexOf(a_c.role)] = false;
+            a_changes.added[IndexOf(a_c.role)] = {};
+          },
+          [&](const AddAndEquip &a_c) {
+            a_changes.added[IndexOf(a_c.role)][IndexOf(a_c.item)] = true;
+          },
+          [&](const RemoveArmor &a_c) {
+            a_changes.added[IndexOf(a_c.role)][IndexOf(a_c.item)] = false;
+          },
+          [&](const TravelFromStart &) { a_changes.away = true; },
+          [&](const TravelToStart &) { a_changes.away = false; },
+          [&](const SpawnCrowdActors &a_c) { a_changes.crowd = a_c.count; },
+          [&](const DespawnCrowdActors &) { a_changes.crowd = 0; },
+          [](const auto &) {},
+      },
+      a_command);
+  return a_changes;
+}
+
 Running AfterStep(Running a_running, Outcome a_outcome) {
   a_running.caseOutcome = FirstFailure(a_running.caseOutcome, a_outcome);
   if (a_running.section == Section::kBody && a_outcome != Outcome::kPass) {
@@ -84,13 +112,13 @@ Running AfterStep(Running a_running, Outcome a_outcome) {
 
 Advanced AdvanceRunning(RunState a_state, Running a_running,
                         const Observation &a_seen) {
-  if (a_running.caseIndex >= a_state.cases.size()) {
+  if (a_running.caseIndex >= a_state.suite.size()) {
     a_state.phase = Ending{};
     return {std::move(a_state),
             std::nullopt,
             {RunEnd{Outcome::kFail, "the case cursor left the suite"}}};
   }
-  const Case &current = a_state.cases[a_running.caseIndex];
+  const Case &current = a_state.suite[a_running.caseIndex];
   const std::span<const Step> steps = StepsOf(current, a_running.section);
   if (a_running.step >= steps.size()) {
     return FinishSection(std::move(a_state), a_running);
@@ -98,8 +126,15 @@ Advanced AdvanceRunning(RunState a_state, Running a_running,
   const Step &step = steps[a_running.step];
   if (a_running.started) {
     ++a_running.frames;
+  } else {
+    a_running.startedAtMs = a_seen.nowMs;
+    a_running.loadsAtStart = a_seen.loads;
   }
-  const StepContext context{a_seen, a_running.frames, a_state.changes,
+  const StepContext context{a_seen,
+                            a_running.frames,
+                            a_running.startedAtMs,
+                            a_running.loadsAtStart,
+                            a_state.changes,
                             a_state.renderedBefore};
   StepMove move =
       a_running.started ? CheckStep(step, context) : StartStep(step, context);
@@ -112,7 +147,9 @@ Advanced AdvanceRunning(RunState a_state, Running a_running,
         RememberRenders(a_state.renderedBefore, step, a_seen);
   }
   a_running.started = true;
-  a_state.changes = move.changes;
+  if (move.command) {
+    a_state.changes = AfterCommand(a_state.changes, *move.command);
+  }
   if (Completed *completed = std::get_if<Completed>(&move.verdict)) {
     lines.emplace_back(StepResult{
         current.name, ReportedIndex(current, a_running), StepLabel(step),
@@ -126,27 +163,17 @@ Advanced AdvanceRunning(RunState a_state, Running a_running,
 }
 }
 
-std::string_view OutcomeName(Outcome a_outcome) {
-  switch (a_outcome) {
-  case Outcome::kPass:
-    return "PASS";
-  case Outcome::kFail:
-    return "FAIL";
-  case Outcome::kBlocked:
-    return "BLOCKED";
-  case Outcome::kAborted:
-    return "ABORTED";
-  }
-  return "FAIL";
-}
-
 RunState BeginRun(const RunFile &a_request) {
-  return RunState{.cases = a_request.suite};
+  return RunState{.suite = a_request.suite};
 }
 
 Advanced Advance(RunState a_state, const Observation &a_seen) {
+  if (a_seen.loads != a_state.loadsSeen) {
+    a_state.changes = RunChanges{};
+    a_state.loadsSeen = a_seen.loads;
+  }
   if (Settling *settling = std::get_if<Settling>(&a_state.phase)) {
-    settling->frames = a_seen.actors[RoleIndex(Role::kPlayer)].present
+    settling->frames = a_seen.actors[IndexOf(Role::kPlayer)].present
                            ? settling->frames + 1
                            : 0;
     if (settling->frames >= kSettleFrames) {

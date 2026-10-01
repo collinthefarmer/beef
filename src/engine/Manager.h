@@ -32,6 +32,8 @@
 namespace BetterEnchantmentEffects {
 struct ActorStacks;
 
+[[nodiscard]] bool ArmorAwaitsModel(RE::Actor &a_actor);
+
 struct RegressionActorFacts {
   bool live = false;
   std::uint64_t renderedAttempt = 0;
@@ -141,7 +143,6 @@ private:
   [[nodiscard]] std::vector<LivePiece>
   CollectPieces(RE::Actor *a_actor, bool a_firstPerson,
                 const Settings &a_settings);
-  [[nodiscard]] bool ArmorAwaitsModel(RE::Actor &a_actor) const;
   bool CollectPieceGeometries(LivePiece &piece, RE::NiAVObject *clone,
                               RE::NiAVObject *root, bool verbose);
   void MatchRecipes(RE::Actor *a_actor, LiveActor &a_state,
@@ -152,7 +153,8 @@ private:
   [[nodiscard]] std::optional<std::size_t>
   InstanceFor(LiveActor &a_state, InstanceId a_planInstance,
               RE::FormID a_enchantment, const Settings &a_settings);
-  void PlaceInstances(LiveActor &a_state, const Settings &a_settings);
+  void PlaceInstances(LiveActor &a_state, RE::FormID a_actorID,
+                      const Settings &a_settings);
   void PlaceOnGeometry(LiveActor &a_state, GeometryId a_geometry,
                        const Settings &a_settings, ActorStacks &a_stacks);
   void PlaceLightsOf(RE::Actor *a_actor, LiveActor &a_state,

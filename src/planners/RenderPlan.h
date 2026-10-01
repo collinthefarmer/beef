@@ -187,8 +187,8 @@ using RenderStepKind =
 struct RenderStep {
   RenderStepKind kind;
   std::string displayName;
-  std::string producedKey;
-  std::string contentKey;
+  std::optional<TextureKey> producedKey;
+  std::optional<std::string> contentKey;
 };
 struct TextureUseBinding {
   TextureUse use;

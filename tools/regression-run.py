@@ -1,16 +1,20 @@
 """Run in-game regression cases unattended: launch Skyrim through MO2, wait, report."""
 import argparse
 from dataclasses import dataclass
+import importlib.util
 import json
 import os
 from pathlib import Path
-import re
 import shutil
 import subprocess
 import sys
 import time
 
 ROOT = Path(__file__).resolve().parents[1]
+BUDGETS_SPEC = importlib.util.spec_from_file_location(
+    'regression_budgets', Path(__file__).resolve().parent / 'regression_budgets.py')
+budgets = importlib.util.module_from_spec(BUDGETS_SPEC)
+BUDGETS_SPEC.loader.exec_module(budgets)
 NAME = 'BetterEnchantmentEffects'
 RUN_FILE = f'{NAME}-regression-run.json'
 GAME = 'SkyrimSE.exe'
@@ -26,7 +30,7 @@ REFUSAL_GRACE_SECONDS = 30
 QUIT_GRACE_SECONDS = 60
 RELAUNCH_SECONDS = 60
 BETWEEN_LAUNCHES_SECONDS = 15
-BUDGETS = ROOT / 'tests/regression/budgets.json'
+BUDGETS_FILE = ROOT / 'tests/regression/budgets.json'
 POLL_SECONDS = 2
 
 
@@ -124,112 +128,6 @@ def format_report(report: Report) -> str:
     if report.trace:
         text.append(f'trace: {report.trace}')
     return '\n'.join(line.rstrip() for line in text)
-
-
-@dataclass(frozen=True)
-class Window:
-    name: str
-    start_ms: int
-    end_ms: int
-
-
-def trace_events(trace: Path) -> list[dict]:
-    match = re.match(r'^(.*?)(?:-\d{1,4})?\.jsonl$', trace.name)
-    stem = match.group(1) if match else trace.stem
-    events = []
-    for segment in sorted(trace.parent.glob(f'{stem}*.jsonl')):
-        for line in segment.read_text(encoding='utf-8', errors='replace').splitlines():
-            try:
-                event = json.loads(line)
-            except ValueError:
-                continue
-            if isinstance(event, dict) and isinstance(event.get('fields'), dict):
-                events.append(event)
-    return sorted(events, key=lambda event: event.get('unix_ms', 0))
-
-
-def windows(events: list[dict]) -> list[Window]:
-    found, opened = [], {}
-    for event in events:
-        fields = event['fields']
-        if fields.get('action') != 'regression.window':
-            continue
-        name, time_ms = str(fields.get('window', '')), event.get('unix_ms', 0)
-        if fields.get('edge') == 'begin':
-            opened[name] = time_ms
-        elif fields.get('edge') == 'end' and name in opened:
-            found.append(Window(name, opened.pop(name), time_ms))
-    return found
-
-
-def number(fields: dict, name: str) -> int:
-    try:
-        return int(fields.get(name, 0))
-    except (TypeError, ValueError):
-        return 0
-
-
-def measure(events: list[dict], window: Window) -> dict[str, float]:
-    beats = [event['fields'] for event in events
-             if event['fields'].get('action') == 'heartbeat'
-             and window.start_ms < event.get('unix_ms', 0) <= window.end_ms]
-    frames = sum(number(beat, 'frames') for beat in beats)
-    seconds = max((window.end_ms - window.start_ms) / 1000, 0.001)
-    last = beats[-1] if beats else {}
-    peak = lambda name: max((number(beat, name) for beat in beats), default=0)
-    return {
-        'seconds': round(seconds, 1),
-        'fps': round(frames / seconds, 1),
-        'plugin_frame_us_mean': round(sum(number(b, 'frame_us') for b in beats) / max(frames, 1), 1),
-        'frame_max_us': peak('frame_max_us'),
-        'tick_max_us': peak('tick_max_us'),
-        'refresh_max_us': peak('refresh_max_us'),
-        'readback_max_us': peak('readback_max_us'),
-        'targets_end': number(last, 'targets'),
-        'target_bytes_end': number(last, 'target_bytes'),
-        'target_bytes_peak': peak('target_bytes_peak'),
-    }
-
-
-def measurements(events: list[dict]) -> dict[str, dict[str, float]]:
-    return {window.name: measure(events, window) for window in windows(events)}
-
-
-def budget_failures(measured: dict[str, dict[str, float]], budgets: dict) -> list[str]:
-    failures = []
-    baseline = measured.get('baseline', {})
-    for window, limits in budgets.items():
-        values = measured.get(window)
-        if values is None:
-            continue
-        for limit, bound in limits.items():
-            if limit == 'fps_ratio_min':
-                ratio = values['fps'] / max(baseline.get('fps', 0), 0.001)
-                if ratio < bound:
-                    failures.append(f'{window}: fps {values["fps"]} is {ratio:.2f} of baseline, '
-                                    f'under {bound}')
-            elif limit.endswith('_over_baseline_max'):
-                name = limit.removesuffix('_over_baseline_max')
-                growth = values[name] - baseline.get(name, 0)
-                if growth > bound:
-                    failures.append(f'{window}: {name} grew by {growth} over baseline, '
-                                    f'over {bound}')
-            elif limit.endswith('_max'):
-                name = limit.removesuffix('_max')
-                if values[name] > bound:
-                    failures.append(f'{window}: {name} {values[name]} over {bound}')
-    return failures
-
-
-def format_measurements(measured: dict[str, dict[str, float]]) -> str:
-    if not measured:
-        return ''
-    names = list(next(iter(measured.values())).keys())
-    rows = [['window'] + names] + [[window] + [str(values[name]) for name in names]
-                                   for window, values in measured.items()]
-    widths = [max(len(row[column]) for row in rows) for column in range(len(rows[0]))]
-    return '\n'.join('  '.join(cell.ljust(width) for cell, width in zip(row, widths)).rstrip()
-                     for row in rows)
 
 
 def game_running(tasklist: str) -> bool:
@@ -340,7 +238,8 @@ def main() -> int:
     for index, cases in enumerate(segments):
         if index > 0:
             time.sleep(BETWEEN_LAUNCHES_SECONDS)
-        passed.append(launch(settings, f'{stamp}-{index + 1}', cases, args, tasklist))
+        passed.append(launch(settings, f'{stamp}-{index + 1}', cases, args.save, args.timeout,
+                             args.manual, tasklist))
     if len(passed) > 1:
         print(f'launches passed: {sum(passed)} of {len(passed)}')
     return 0 if all(passed) else 1
@@ -353,39 +252,30 @@ def start_game(settings: Settings) -> None:
                      stderr=subprocess.DEVNULL, start_new_session=True)
 
 
-def launch(settings: Settings, run: str, cases: list[str], args: argparse.Namespace,
-           tasklist: str) -> bool:
-    request = run_file(run, args.save, cases, time.time())
+def launch(settings: Settings, run: str, cases: list[str], save: str, timeout: float,
+           manual: bool, tasklist: str) -> bool:
+    request = run_file(run, save, cases, time.time())
     (settings.log_dir / RUN_FILE).write_text(json.dumps(request) + '\n', encoding='utf-8')
-    print(f'run {run}: {" ".join(cases)} from save {args.save}')
-    start = (lambda: print('start the game through MO2 now')) if args.manual \
+    print(f'run {run}: {" ".join(cases)} from save {save}')
+    start = (lambda: print('start the game through MO2 now')) if manual \
         else (lambda: start_game(settings))
     start()
-    report = wait_for_results(settings, run, args.timeout, tasklist, start)
+    report = wait_for_results(settings, run, timeout, tasklist, start)
     withdraw_run_file(settings.log_dir / RUN_FILE, run)
     quit_cleanly = report.outcome in ('CRASHED',) or wait_for_quit(tasklist)
     print(format_report(report))
     print(f'results: {settings.log_dir / f"{NAME}-regression-{run}.jsonl"}')
-    failures = check_soak(settings, report)
+    failures = []
+    if report.trace:
+        table, failures = budgets.check_budgets(settings.log_dir / report.trace, BUDGETS_FILE)
+        if table:
+            print(table)
     for failure in failures:
         print(f'budget: {failure}')
     if not quit_cleanly:
         print(f'{GAME} did not quit within {QUIT_GRACE_SECONDS} seconds')
     return report.outcome == 'PASS' and quit_cleanly and not failures
 
-
-def check_soak(settings: Settings, report: Report) -> list[str]:
-    if not report.trace:
-        return []
-    trace = settings.log_dir / report.trace
-    if not trace.is_file():
-        return [f'trace {trace} is missing']
-    measured = measurements(trace_events(trace))
-    if not measured:
-        return []
-    print(format_measurements(measured))
-    budgets = json.loads(BUDGETS.read_text(encoding='utf-8')) if BUDGETS.is_file() else {}
-    return budget_failures(measured, budgets)
 
 if __name__ == '__main__':
     sys.exit(main())

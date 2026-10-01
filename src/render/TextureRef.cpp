@@ -71,7 +71,10 @@ bool TextureRef::Holds(
 
 std::uint64_t TextureRef::Generation() const noexcept { return generation_; }
 
-std::uintptr_t TextureRefIdentity(const TextureRef &a_texture) noexcept {
-  return reinterpret_cast<std::uintptr_t>(a_texture.get());
+std::string TextureIdentity(const TextureRef &a_texture) {
+  const RE::NiSourceTexture *texture = a_texture.get();
+  const char *name = texture ? texture->name.c_str() : nullptr;
+  return std::format("{}:{}:{}", reinterpret_cast<std::uintptr_t>(texture),
+                     a_texture.Generation(), name ? name : "");
 }
 }

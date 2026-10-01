@@ -113,12 +113,9 @@ struct PlanBuilder {
   void RecordValueKey(const TextureKey &key, RenderValueRef result) {
     const auto *output = Get<StepOutputRef>(result);
     if (!output || output->step >= plan.steps.size() ||
-        !plan.steps[output->step].producedKey.empty())
+        plan.steps[output->step].producedKey)
       return;
-    plan.steps[output->step].producedKey = std::format(
-        "{}|{}|{}|{}", key.identity.canonical, key.requirements.size.Pixels(),
-        static_cast<int>(key.requirements.format),
-        static_cast<int>(key.requirements.mipPolicy));
+    plan.steps[output->step].producedKey = key;
   }
   RenderValueRef Step(RenderStepKind kind, std::string label) {
     for (std::size_t i = 0; i < plan.steps.size(); ++i)

@@ -186,11 +186,6 @@ EquipPositionEvent(const std::vector<LivePiece> &a_pieces) {
   return std::nullopt;
 }
 
-RE::FormID ActorIdOf(const LiveActor &a_state) {
-  const RE::NiPointer<RE::Actor> actor = a_state.actor.get();
-  return actor ? actor->GetFormID() : 0;
-}
-
 LiveGeometry MakeGeometry(RE::BSGeometry *a_geometry,
                           RE::BSLightingShaderProperty *a_property,
                           RE::NiAVObject *a_root,
@@ -349,6 +344,7 @@ struct ActorStackRequest {
   LocatedStackOutput located;
 };
 struct ActorStacks {
+  RE::FormID actor = 0;
   std::vector<ActorStackRequest> requests;
   std::vector<GeometryInputs> geometries;
   std::vector<LiveGeometry *> bound;
@@ -450,8 +446,7 @@ void CollectChainStacks(LiveActor &a_state, const LocatedGeometry &a_geometry,
       const TextureSize slotSize =
           SlotStackSize(size, slot.slot, located->surface.resolution);
       GeometryInputs inputs = bound.inputs;
-      inputs.applicationContext = located->applicationContext;
-      inputs.actor = ActorIdOf(a_state);
+      inputs.scope = {located->applicationContext, a_stacks.actor};
       const TextureSize stackSize =
           compositor->StackSize(located->surface, inputs, slotSize, maxSize);
       a_stacks.requests.push_back(
@@ -492,7 +487,7 @@ RenderStackRequests(const ActorStacks &a_stacks) {
     const StackTextureRequest &texture = request.texture;
     stacks.push_back({texture.graph,
                       texture.output,
-                      texture.inputs.applicationContext,
+                      texture.inputs.scope.context,
                       texture.placement,
                       texture.outputIndex,
                       {texture.size},
@@ -507,7 +502,7 @@ RenderBindingResolver BindingResolverFor(const ActorStacks &a_stacks) {
     for (const ActorStackRequest &request : a_stacks.requests) {
       const StackTextureRequest &texture = request.texture;
       if (texture.graph == a_value.graph &&
-          texture.inputs.applicationContext == a_value.instance &&
+          texture.inputs.scope.context == a_value.instance &&
           request.geometry == a_geometry) {
         return TextureValueBindings(*a_value.graph, texture.inputs);
       }
@@ -542,7 +537,7 @@ void CollectLayerRoleDemands(std::vector<TextureDemand> &a_demands,
     }
     const auto collected = CollectTextureDemand(
         a_demands,
-        {{texture.graph, binding.value, texture.inputs.applicationContext},
+        {{texture.graph, binding.value, texture.inputs.scope.context},
          {texture.size},
          {texture.placement, texture.outputIndex, a_role.layer, a_role.role},
          a_request.geometry},
@@ -777,7 +772,7 @@ void Manager::Refresh(RE::Actor *a_actor) {
     }
     return;
   }
-  PlaceInstances(state, settings);
+  PlaceInstances(state, actorID, settings);
   PlaceLightsOf(a_actor, state, settings);
   ReportApplied(*a_actor, state, settings);
   applied_[actorID] = std::move(state);
@@ -892,7 +887,7 @@ bool Manager::CollectPieceGeometries(LivePiece &piece, RE::NiAVObject *clone,
   return true;
 }
 
-bool Manager::ArmorAwaitsModel(RE::Actor &a_actor) const {
+bool ArmorAwaitsModel(RE::Actor &a_actor) {
   const auto &biped = a_actor.GetBiped(false);
   if (!biped) {
     return false;
@@ -1036,7 +1031,8 @@ void Manager::CarryInstanceTime(LiveInstance &a_instance, RE::FormID a_actor,
   }
 }
 
-void Manager::PlaceInstances(LiveActor &a_state, const Settings &a_settings) {
+void Manager::PlaceInstances(LiveActor &a_state, RE::FormID a_actorID,
+                             const Settings &a_settings) {
   for (LiveInstance &instance : a_state.instances) {
     if (instance.signals && instance.environment) {
       instance.signals->Tick(*instance.environment, {0.0f, 0.0f});
@@ -1046,7 +1042,7 @@ void Manager::PlaceInstances(LiveActor &a_state, const Settings &a_settings) {
   a_state.placements.clear();
   a_state.placements.resize(a_state.plan.placements.size());
   std::size_t flat = 0;
-  ActorStacks stacks;
+  ActorStacks stacks{.actor = a_actorID};
   for (std::size_t p = 0; p < a_state.pieces.size(); ++p) {
     for (std::size_t g = 0; g < a_state.pieces[p].geometries.size(); ++g) {
       const auto placement = PlanGeometryPlacement(

@@ -1,6 +1,5 @@
 // GPL-3.0-only with the additional permission in COPYING.md.
 #include "render/RenderInstance.h"
-#include "render/StepOutputCache.h"
 
 #include "diagnostics/Metrics.h"
 
@@ -1252,31 +1251,38 @@ ExecuteTimed(const RenderStep &step,
     span.emplace(*lab, StepSpanKey(step));
   return ExecuteStep(step, inputs, scratch);
 }
-StepResult
-ExecuteCached(const RenderStep &step,
-              std::span<const ResolvedRenderInput<RenderValue>> inputs,
-              RenderScratch &scratch, std::uint64_t nowMS) {
-  if (step.contentKey.empty())
-    return ExecuteTimed(step, inputs, scratch);
+std::vector<Value>
+NumericOperandsOf(std::span<const ResolvedRenderInput<RenderValue>> inputs) {
   std::vector<Value> operands;
   for (const auto &input : inputs)
     if (const auto *value = Get<Value>(input.value))
       operands.push_back(*value);
+  return operands;
+}
+void ForgetReuseHint(RenderScratch &scratch) { scratch.target.reset(); }
+StepResult
+ExecuteCached(const RenderStep &step,
+              std::span<const ResolvedRenderInput<RenderValue>> inputs,
+              RenderScratch &scratch, std::uint64_t nowMS) {
+  if (!step.contentKey)
+    return ExecuteTimed(step, inputs, scratch);
   const std::optional<std::string> found =
-      CacheKeyFor(step.contentKey, operands);
+      CacheKeyFor(*step.contentKey, NumericOperandsOf(inputs));
   if (!found)
     return ExecuteTimed(step, inputs, scratch);
   const std::string &key = *found;
-  StepOutputCache *shared = StepOutputCache::GetSingleton();
-  scratch.target.reset();
-  if (std::optional<TextureView> hit = shared->Find(key, nowMS)) {
+  Compositor *compositor = Compositor::GetSingleton();
+  if (!compositor)
+    return ExecuteTimed(step, inputs, scratch);
+  ForgetReuseHint(scratch);
+  if (std::optional<TextureView> hit = compositor->FindStepOutput(key, nowMS)) {
     Metrics::CountStepCacheHit();
     return RenderValue{std::move(*hit)};
   }
   StepResult produced = ExecuteTimed(step, inputs, scratch);
   if (produced)
     if (const auto *view = Get<TextureView>(*produced))
-      shared->Publish(key, *view, nowMS);
+      compositor->PublishStepOutput(key, *view, nowMS);
   return produced;
 }
 }

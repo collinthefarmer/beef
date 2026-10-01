@@ -623,12 +623,22 @@ std::vector<RenderValueRef> StepDependencies(const RenderPlan &plan,
 }
 
 namespace {
-std::string ContentKeyOf(const RenderStep &step,
-                         const TextureRequirements &requirements) {
-  return std::format("{}|{}|{}|{}|{}", step.producedKey,
-                     StepKindName(step.kind), requirements.size.Pixels(),
+std::string RequirementsText(const TextureRequirements &requirements) {
+  return std::format("{}|{}|{}", requirements.size.Pixels(),
                      static_cast<int>(requirements.format),
                      static_cast<int>(requirements.mipPolicy));
+}
+
+std::optional<std::string>
+ContentKeyOf(const TextureKey &produced, const RenderStepKind &kind,
+             const TextureRequirements &requirements) {
+  std::string key =
+      std::format("{}|{}|{}|{}", produced.identity.canonical,
+                  RequirementsText(produced.requirements), StepKindName(kind),
+                  RequirementsText(requirements));
+  if (key.size() > kMaxCacheKeyBytes)
+    return std::nullopt;
+  return key;
 }
 
 std::string OperandBits(const Value &value) {
@@ -668,12 +678,11 @@ RenderPlan MarkContentKeyedSteps(RenderPlan plan) {
     const bool texture =
         OutputType(step.kind) == RenderValueType{RenderResourceType::kTexture};
     const bool shareable = !changing[i] && texture && requirements &&
-                           !step.producedKey.empty() &&
+                           step.producedKey &&
                            !Is<CompositeStackStep>(step.kind);
-    std::string key =
-        shareable ? ContentKeyOf(step, *requirements) : std::string{};
     step.contentKey =
-        key.size() <= kMaxCacheKeyBytes ? std::move(key) : std::string{};
+        shareable ? ContentKeyOf(*step.producedKey, step.kind, *requirements)
+                  : std::nullopt;
   }
   return plan;
 }

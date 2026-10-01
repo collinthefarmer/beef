@@ -6,12 +6,6 @@
 #include "render/Compositor.h"
 
 namespace BetterEnchantmentEffects {
-struct TextureView {
-  TextureRef texture;
-  TextureLab::LayerInput sampling;
-  float normalize = 1;
-  std::shared_ptr<TextureLab::RenderTarget> target;
-};
 struct RenderTransform {
   RE::NiPointer<RE::NiAVObject> root;
 };

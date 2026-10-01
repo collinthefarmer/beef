@@ -634,6 +634,8 @@ code.
 | `Fill…` | Writes rows of a GPU constant buffer. | `FillProgramConstants`, `FillLayerConstants` |
 | `Bind…` | Binds textures or program inputs for a draw. | `BindProgram`, `BindLayerTextures` |
 | `Attach…` | Hands a render or its outputs to engine geometries. | `AttachRender`, `AttachStackOutputs` |
+| `Expect…` | A regression step that checks a state the earlier steps produced. It waits only for the observation to catch up (`kExpectDeadlineFrames`). | `ExpectAborted`, `ExpectScratch` |
+| `Await…` | A regression step that waits for work in progress, with a deadline sized to that work. | `AwaitRendered`, `AwaitSessionActive` |
 | `Render…` | A public `TextureLab` operation that draws. | `RenderStack`, `RenderProgram` |
 | `Draw…` | A private `TextureLab` helper that issues a draw. | `DrawStackPass`, `DrawProgramPass` |
 
@@ -643,8 +645,8 @@ code.
   `render/RenderInstance.cpp`.
 - An overload set may stand in for `<Verb><Type>` when every alternative
   of a variant has the same few verbs and the set is visited generically.
-  Examples: the regression step rules `Start`, `Check` and `Label`
-  (`regression/Steps.cpp`), and the command handlers `Perform`
+  Examples: the regression step rules `Start` and `Check`
+  (`regression/Steps.cpp`) and `Label` (`regression/StepLabels.cpp`), and the command handlers `Perform`
   (`engine/RegressionWorld.cpp`). Give the overloads a name the public
   entry point does not use: a variant converts implicitly, so a missing
   overload would otherwise resolve to the entry point and recurse.
@@ -691,7 +693,8 @@ with these meanings and no other word for the same thing.
 | **generated shader** | A pixel shader compiled for one program text or one stack shape (`render/GeneratedShaders.h`). A **compiled shader** is the D3D object it produces (`CompiledShader`). |
 | **content key** | The key by which actors reuse one static render-step output (`RenderStep::contentKey`, set by `MarkContentKeyedSteps`). It is not the **canonical key** of the graph invariants, by which the planner merges steps inside one plan. |
 | **cache key** | A content key with the exact bits of the step's numeric operands appended at execution (`CacheKeyFor`). The step output cache is keyed by it. |
-| **step output cache** | `render/StepOutputCache.h`, the process-wide cache of static render-step outputs shared across actors. |
+| **step output cache** | The Compositor's cache of static render-step outputs shared across actors (`StepOutputCache` in `render/StepOutputCache.h`, held as `Compositor::stepOutputs_`). |
+| **application scope** | The application context and actor form ID that keep state and signal identities apart (`ApplicationScope` in `render/Compositor.h`). |
 | **residue** | What the plugin leaves on an actor's 3D: shell geometries and presenter textures (`ResidueOn` in `engine/RegressionWorld.cpp`). An actor at baseline has none. Never trace, which is the diagnostic trace. |
 | **facts** | What the regression runner observes about one thing in one frame (`ActorFacts`, `ItemFacts`, `CrowdFacts`, `RecipeFacts`, `RegressionActorFacts`). Never view. |
 

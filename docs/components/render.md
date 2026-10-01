@@ -75,7 +75,8 @@ finished readbacks. A step whose input has no value yet while its readback is
 in flight makes the stack `StackPending`, not failed (`AwaitingFirstReadback`).
 
 A step with a **content key** (`RenderStep::contentKey`) runs through
-`ExecuteCached`. It looks the key up in `StepOutputCache` first: a hit
+`ExecuteCached`. It looks the key up in the Compositor's step output cache
+(`FindStepOutput`) first: a hit
 returns the cached texture with no GPU work and no new target. A miss renders
 into a fresh target, never one reused in place, and publishes the result. The
 cache drops an entry once only the cache holds its target and it has been
@@ -186,7 +187,7 @@ the target again.
 | `TextureLab::RenderTarget` | One D3D11 texture with its views, size, `TextureFormat`, `MipPolicy`, generation and presenter. It cannot be copied or moved. | `TextureLab.h` |
 | `RenderTargetPool` | Owns the idle targets (at most 16 and 64 MiB), the scratch targets per size and format, and `kPresenterCount` (512) presenter slots. `Acquire` returns a shared target, `Scratch` returns a reused one, and `Recycle` returns a released target to the pool. | `RenderTargetPool.h` |
 | `TextureRef` | A generated target or a static engine texture. `get()` returns the presenter or the engine texture. `Valid()` and `Generation()` tell a live target from a stale one. | `TextureRef.h` |
-| `TextureRefIdentity` | The engine texture's address as `std::uintptr_t`. `CompositorDemand.cpp` uses it in material identities. It differs from `ImageCacheKey` (`planners/TextureIdentity.h`), which identifies a file by its path. | `TextureRef.h` |
+| `TextureIdentity` | The engine texture's address, generation and name as text. `CompositorDemand.cpp` uses it in material identities. It differs from `ImageCacheKey` (`planners/TextureIdentity.h`), which identifies a file by its path. | `TextureRef.h` |
 | `TexturePreviews` | The studio's live preview requests, keyed by source texture, channel and context. It re-renders the dynamic entries each generation and expires the unused ones. | `TexturePreviews.h` |
 | `TextureLab::PreviewSampling` | The sampling and normalization of one sampled preview. | `TextureLab.h` |
 

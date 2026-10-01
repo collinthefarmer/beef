@@ -290,22 +290,23 @@ edit. Both report through small result records that the menu reads back.
 ### Regression fixture
 
 These declarations back the unattended in-game regression run. The run
-submits a request, and the manager reports a verdict string when the actor's
-application finishes.
+submits a request, and the manager reports a `Regression::RequestState` when
+the actor's application finishes.
 
 | Member | Description | Declared in |
 |---|---|---|
-| `RegressionRequest` | One request: id, actor, previous attempt, retire flag, dispatched flag and a `result` string (`IDLE`, `WAITING`, `ABORTED` and the verdicts). | `RegressionRequest.h` |
-| `SubmitRegressionRequest`, `RegressionResult`, `AbortRegressionRequest` | Start, read and abort the one current request. | `Regression.h` |
-| `SoloRegressionRecipe`, `EndRegressionSolo` | Solo the recipe under test in the studio, and restore the isolation from before. | `Regression.h` |
-| `AbortWaitingRegressionRequest` | Aborts the current request on game load. | `Regression.h` |
+| `RegressionRequest`, `RequestKind` | One request: id, actor, kind (apply or retire), previous attempt, dispatched flag and state. `BeginRequest`, `Pending` and `StateOf` start it and read it by id, so an old id never sees a newer result. | `RegressionRequest.h` |
+| `SubmitRegressionRequest`, `RegressionRequestState`, `AbortRegressionRequest` | Start, read and abort the one current request. | `RegressionRequests.h` |
+| `SoloRegressionRecipe`, `EndRegressionSolo` | Solo the recipe under test in the studio, and restore the isolation from before. | `RegressionRequests.h` |
+| `AbortWaitingRegressionRequest` | Aborts the current request on game load when it is still waiting. | `RegressionRequests.h` |
+| `RegressionFixture` | The demo cuirass form. | `RegressionRequests.h` |
 | `ReadRegressionRun`, `FinishRegressionLoad`, `AdvanceRegressionRun` | Read the run file, start the run after its save loads, and advance it once per player update. | `RegressionRun.h` |
-| `RunWorld`, `Observe`, `Execute`, `ReleaseWorld` | The game side of a run: the spawned actors, the return marker and the current request; one observation of the three roles per frame; one command carried out; the spawned actors and marker deleted at the end. | `RegressionWorld.h` |
-| `Manager::RegressionActivity` | Pending applications, an open paint session, an active gesture, pending file operations, and the outcome of the edit and the gesture the run started. | `Manager.h` |
+| `RunWorld`, `Observe`, `Execute`, `ReleaseWorld`, `ForgetWorldAfterLoad`, `QuitGame` | The game side of a run: the spawned actors and crowd, the return marker, the current request and the started studio work; one `Regression::Observation` per frame; one `Regression::Command` carried out; the spawned actors and marker deleted at the end or forgotten after a load. | `RegressionWorld.h` |
+| `Manager::RegressionActivity` | Pending applications, an open paint session, an active gesture, pending file operations, and the outcome of the edit, gesture and file operation the run started. | `Manager.h` |
 | `Manager::RegressionRecipe` | Whether a recipe is loaded and unsaved, and its first layer's opacity when that is a number. | `Manager.h` |
 | `Manager::StartRegressionDuplicate`, `StartRegressionSave`, `StartRegressionDelete` | Start the editor's duplicate, save and delete for the regression's scratch recipe. | `Manager.h` |
 | `Manager::StartRegressionEdit`, `StartRegressionGesture`, `StartRegressionPaint` | Start the same editor work the menu starts: an opacity edit, an opacity slider gesture left open, a paint preview with the recipe's first key. | `Manager.h` |
-| `Manager::RegressionActor` | Whether the manager holds live state for an actor, and the newest application revision that rendered the fixture. | `Manager.h` |
+| `RegressionActorFacts`, `Manager::RegressionActors` | For each asked actor, from one copy of the application snapshot: whether the manager holds live state, and the newest application revision that rendered the fixture. | `Manager.h` |
 | `Manager::QueueRegression` | Retires or refreshes the request's actor on the session queue. | `Manager.h` |
 | `Manager::ObserveRegression` | Reads a newer application record for the actor and finishes the request as `PASS`, `FAIL`, `BLOCKED` or `ABORTED`. | `Manager.h` |
 | `Manager::SoloInEditor`, `Manager::EndSoloInEditor` | Isolate the recipe under test and restore the earlier isolation. | `Manager.h` |
@@ -386,14 +387,14 @@ Recipe from LoadedRecipes()
 | Actor and worn-piece state | `LiveActor.h`/`.cpp` (live records, `RetireGeometry`, `ResolvePlacement`), `Environment.h`/`.cpp` (`ActorEnvironment`), `WornKeys.h`/`.cpp` (`WornKeysOf`), `EnchantmentEffects.h`/`.cpp` (`EnchantmentValueFor`), `InstanceTime.h`/`.cpp` (`CarriedTimes`) |
 | Recipe CRUD | `RecipeStore.h`/`.cpp` (load, publish, mutate, save, `RefreshRecipeDerivedState`), `RecipeFiles.h`/`.cpp` (checked read, write, rename and delete), `RecipeOperations.h` (the operation journal and task guards), `RecipeEditor.h`/`.cpp` (gestures, edits, undo, paint, view) |
 | Form and game-object lookups | `EngineForms.h`/`.cpp` (`FormKeyFor`, `LookupForm`, `ShaderFor`, `RecordFrom`), `GameObjectService.h`/`.cpp` (game-object and animation-event catalogs), `InputCatalog.h`/`.cpp` (`BuildActorValueSamples`), `Tweaks.h`/`.cpp` (`EditorIdOf`, `TweaksEditorIdsAvailable`) |
-| Regression fixture | `Regression.h`/`.cpp` (the request and the manager's regression calls), `RegressionRequest.h` (`RegressionRequest`), `RegressionRun.h`/`.cpp` (the unattended run's file, load and result lines over `regression/Run.h`), `RegressionWorld.h`/`.cpp` (its observations and commands) |
+| Regression fixture | `RegressionRequests.h`/`.cpp` (the request store and the manager's regression calls), `RegressionRequest.h` (`RegressionRequest`), `ManagerRegression.cpp` (the manager's regression observations and studio work), `RegressionRun.h`/`.cpp` (the unattended run's file, load and result lines over `regression/Run.h`), `RegressionWorld.h`/`.cpp` (its observations and commands) |
 | Small utilities | `Clock.h`/`.cpp` (`NowMS`, `InstanceSpeed`), `TextFile.h`/`.cpp` (`ReadText`, `WriteText`, bounded by `kMaxTextFileBytes`), `MenuDependency.h`/`.cpp` (`CheckMenuFramework`) |
 
 ## See also
 
 - `REFERENCE.md` → *Engine events, hooks and the manager*, *Bindings*,
-  *Recipe CRUD travels one pipeline*, *Menu dependency preflight* and
-  *Console-driven regression fixture*.
+  *Recipe CRUD travels one pipeline*, *Menu dependency preflight*,
+  *Regression requests* and *Unattended regression runs*.
 - `docs/conventions.md` → *Component ownership* (`Manager`, `RecipeEditor`,
   *Load lifecycle*) and *Runtime identities and editor commits* (*Edit
   commits*, *Application results*).

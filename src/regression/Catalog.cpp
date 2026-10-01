@@ -1,5 +1,5 @@
 // GPL-3.0-only with the additional permission in COPYING.md.
-#include "regression/Run.h"
+#include "regression/Steps.h"
 
 #include <algorithm>
 #include <array>
@@ -15,6 +15,26 @@ inline constexpr Equip kPlayerFixture{Role::kPlayer, Item::kFixture};
 inline constexpr Equip kWearerFixture{Role::kWearer, Item::kFixture};
 inline constexpr Equip kControlPlain{Role::kControl, Item::kPlainCuirass};
 
+template <std::size_t First, std::size_t Second>
+consteval std::array<Step, First + Second>
+Joined(const std::array<Step, First> &a_first,
+       const std::array<Step, Second> &a_second) {
+  std::array<Step, First + Second> joined{};
+  std::ranges::copy(a_first, joined.begin());
+  std::ranges::copy(a_second, joined.begin() + First);
+  return joined;
+}
+
+template <std::size_t Times, std::size_t Size>
+consteval std::array<Step, Size * Times>
+Repeated(const std::array<Step, Size> &a_steps) {
+  std::array<Step, Size * Times> repeated{};
+  for (std::size_t time = 0; time < Times; ++time) {
+    std::ranges::copy(a_steps, repeated.begin() + time * Size);
+  }
+  return repeated;
+}
+
 inline constexpr std::array<Step, 7> kCleanup{
     DespawnCrowd{},
     ReturnToStart{},
@@ -28,22 +48,13 @@ inline constexpr std::array<Step, 5> kLifecycle{
     Solo{kSoloRecipe}, kPlayerFixture, Apply{Role::kPlayer},
     Retire{Role::kPlayer}, Apply{Role::kPlayer}};
 
-consteval std::array<Step, 3 + 4 * kEquipCycles> EquipCycle() {
-  std::array<Step, 3 + 4 * kEquipCycles> steps{};
-  steps[0] = Solo{kSoloRecipe};
-  steps[1] = kPlayerFixture;
-  steps[2] = AwaitRendered{Role::kPlayer};
-  for (std::size_t cycle = 0; cycle < kEquipCycles; ++cycle) {
-    const std::size_t first = 3 + 4 * cycle;
-    steps[first] = Unequip{Role::kPlayer, Item::kFixture};
-    steps[first + 1] = AwaitBaseline{Role::kPlayer};
-    steps[first + 2] = kPlayerFixture;
-    steps[first + 3] = AwaitRendered{Role::kPlayer};
-  }
-  return steps;
-}
+inline constexpr std::array<Step, 3> kRenderedOnPlayer{
+    Solo{kSoloRecipe}, kPlayerFixture, AwaitRendered{Role::kPlayer}};
+inline constexpr std::array<Step, 4> kReequip{
+    Unequip{Role::kPlayer, Item::kFixture}, AwaitBaseline{Role::kPlayer},
+    kPlayerFixture, AwaitRendered{Role::kPlayer}};
 inline constexpr std::array<Step, 3 + 4 * kEquipCycles> kEquipCycle =
-    EquipCycle();
+    Joined(kRenderedOnPlayer, Repeated<kEquipCycles>(kReequip));
 
 inline constexpr std::array<Step, 10> kCamera{
     Solo{kSoloRecipe},
@@ -159,15 +170,8 @@ inline constexpr std::array<Step, 6> kStudioReload{
     Unequip{Role::kPlayer, Item::kFixture},
     DeleteScratch{}};
 
-inline constexpr std::array<Step, 8> kStudioCleanup{
-    DespawnCrowd{},
-    ReturnToStart{},
-    SetCamera{Camera::kThirdPerson},
-    Despawn{Role::kWearer},
-    Despawn{Role::kControl},
-    Remove{Role::kPlayer, Item::kFixture},
-    RestoreSolo{},
-    DeleteScratch{}};
+inline constexpr std::array<Step, 8> kStudioCleanup =
+    Joined(kCleanup, std::array<Step, 1>{DeleteScratch{}});
 
 inline constexpr std::uint32_t kCrowdSize = 12;
 inline constexpr std::uint32_t kBaselineSeconds = 30;

@@ -5,6 +5,7 @@
 
 #include <algorithm>
 #include <cstdint>
+#include <initializer_list>
 #include <optional>
 #include <string>
 #include <vector>
@@ -15,9 +16,6 @@ using namespace BetterEnchantmentEffects::Regression;
 namespace {
 constexpr std::int64_t kNow = 1'800'000'000;
 constexpr std::uint64_t kSimulatedFrameMs = 1000;
-
-std::size_t Index(Role a_role) { return static_cast<std::size_t>(a_role); }
-std::size_t Index(Item a_item) { return static_cast<std::size_t>(a_item); }
 
 std::string RunFileText(std::string_view a_fields) {
   return std::string{R"({"format":1,"run":"r1","save":"BEEFRegression",)"} +
@@ -92,6 +90,13 @@ struct Faults {
   bool saveDropsEdit = false;
 };
 
+struct ScratchFile {
+  std::optional<float> firstOpacity;
+};
+
+enum class Acquire { kAddToInventory, kFromInventory };
+enum class Destination { kAway, kStart };
+
 struct SimActor {
   ActorFacts view;
   bool spawned = false;
@@ -101,7 +106,7 @@ struct SimActor {
 
 struct World {
   std::array<SimActor, kRoleCount> actors{};
-  bool firstPerson = false;
+  Camera camera = Camera::kThirdPerson;
   bool away = false;
   RequestState request = NoRequest{};
   int requestIn = -1;
@@ -111,7 +116,7 @@ struct World {
   std::uint32_t loads = 0;
   int loadIn = -1;
   RecipeFacts scratch;
-  std::optional<std::optional<float>> disk;
+  std::optional<ScratchFile> disk;
   CrowdFacts crowd;
   int crowdIn = -1;
   std::uint32_t crowdSize = 0;
@@ -120,12 +125,13 @@ struct World {
   std::vector<std::string> commands;
   std::vector<ResultLine> lines;
 
-  World() { actors[Index(Role::kPlayer)].view.present = true; }
+  World() { actors[IndexOf(Role::kPlayer)].view.present = true; }
 
-  explicit World(std::optional<std::optional<float>> a_disk) : World() {
+  explicit World(std::optional<ScratchFile> a_disk) : World() {
     disk = a_disk;
     if (disk) {
-      scratch = {true, false, *disk};
+      scratch = {
+          .loaded = true, .dirty = false, .firstOpacity = disk->firstOpacity};
     }
   }
 
@@ -136,7 +142,7 @@ struct World {
     }
     seen.itemsLoaded = {true, true};
     seen.npcEffects = true;
-    seen.firstPerson = firstPerson;
+    seen.camera = camera;
     seen.awayFromStart = away;
     seen.request = request;
     seen.activity = activity;
@@ -147,10 +153,10 @@ struct World {
     return seen;
   }
 
-  SimActor &ActorOf(Role a_role) { return actors[Index(a_role)]; }
+  SimActor &ActorOf(Role a_role) { return actors[IndexOf(a_role)]; }
 
   bool WearsFixture(const SimActor &a_actor) const {
-    return a_actor.view.armor[Index(Item::kFixture)].equipped;
+    return a_actor.view.armor[IndexOf(Item::kFixture)].equipped;
   }
 
   void Clear(SimActor &a_actor) {
@@ -177,10 +183,10 @@ struct World {
     }
   }
 
-  void Equip(Role a_role, Item a_item, bool a_add) {
-    ItemFacts &armor = ActorOf(a_role).view.armor[Index(a_item)];
+  void Equip(Role a_role, Item a_item, Acquire a_acquire) {
+    ItemFacts &armor = ActorOf(a_role).view.armor[IndexOf(a_item)];
     armor.equipped = true;
-    armor.carried = armor.carried || a_add;
+    armor.carried = armor.carried || a_acquire == Acquire::kAddToInventory;
     if (a_item == Item::kFixture) {
       ActorOf(a_role).renderIn = 2;
     }
@@ -192,14 +198,14 @@ struct World {
     requestOutcome = a_outcome;
   }
 
-  void Travel(bool a_away) {
-    away = a_away;
+  void Travel(Destination a_destination) {
+    away = a_destination == Destination::kAway;
     for (Role role : {Role::kWearer, Role::kControl}) {
       SimActor &actor = ActorOf(role);
       if (!actor.spawned || actor.disabled) {
         continue;
       }
-      if (a_away) {
+      if (away) {
         Clear(actor);
       } else {
         actor.view.present = true;
@@ -235,20 +241,20 @@ struct World {
             },
             [&](const AddAndEquip &a_c) {
               commands.emplace_back("equip");
-              Equip(a_c.role, a_c.item, true);
+              Equip(a_c.role, a_c.item, Acquire::kAddToInventory);
             },
             [&](const EquipCarried &a_c) {
               commands.emplace_back("equip");
-              Equip(a_c.role, a_c.item, false);
+              Equip(a_c.role, a_c.item, Acquire::kFromInventory);
             },
             [&](const UnequipArmor &a_c) {
               commands.emplace_back("unequip");
-              ActorOf(a_c.role).view.armor[Index(a_c.item)].equipped = false;
+              ActorOf(a_c.role).view.armor[IndexOf(a_c.item)].equipped = false;
               ActorOf(a_c.role).view.residue = 0;
             },
             [&](const RemoveArmor &a_c) {
               commands.emplace_back("remove");
-              ActorOf(a_c.role).view.armor[Index(a_c.item)] = {};
+              ActorOf(a_c.role).view.armor[IndexOf(a_c.item)] = {};
               ActorOf(a_c.role).view.residue = 0;
             },
             [&](const SubmitApply &a_c) {
@@ -269,19 +275,20 @@ struct World {
             },
             [&](const TravelFromStart &) {
               commands.emplace_back("leave");
-              Travel(true);
+              Travel(Destination::kAway);
             },
             [&](const TravelToStart &) {
               commands.emplace_back("return");
-              Travel(false);
+              Travel(Destination::kStart);
             },
             [&](const SwitchCamera &a_c) {
               commands.emplace_back("camera");
-              firstPerson = a_c.view == Camera::kFirstPerson;
+              camera = a_c.camera;
             },
             [&](const StartDuplicate &) {
               commands.emplace_back("copy");
-              scratch = {true, true, std::nullopt};
+              scratch = {
+                  .loaded = true, .dirty = true, .firstOpacity = std::nullopt};
               activity.editOutcome = WorkOutcome::kApplied;
             },
             [&](const StartOpacityEdit &a_c) {
@@ -292,7 +299,9 @@ struct World {
             },
             [&](const StartSave &) {
               commands.emplace_back("save");
-              disk = faults.saveDropsEdit ? std::nullopt : scratch.firstOpacity;
+              disk = faults.saveDropsEdit
+                         ? std::nullopt
+                         : std::optional{ScratchFile{scratch.firstOpacity}};
               scratch.dirty = false;
               activity.fileOutcome = WorkOutcome::kApplied;
             },
@@ -397,10 +406,11 @@ struct World {
   }
 
   bool Clean() const {
-    const SimActor &player = actors[Index(Role::kPlayer)];
-    return !away && !firstPerson && !actors[Index(Role::kWearer)].spawned &&
-           !actors[Index(Role::kControl)].spawned &&
-           !player.view.armor[Index(Item::kFixture)].carried;
+    const SimActor &player = actors[IndexOf(Role::kPlayer)];
+    return !away && camera == Camera::kThirdPerson &&
+           !actors[IndexOf(Role::kWearer)].spawned &&
+           !actors[IndexOf(Role::kControl)].spawned &&
+           !player.view.armor[IndexOf(Item::kFixture)].carried;
   }
 };
 
@@ -452,7 +462,7 @@ bool Issued(const World &a_world, std::string_view a_command) {
 void EveryCasePassesInAHealthyWorld() {
   for (const Case &entry : Catalog()) {
     World world{entry.name == "studio-reload"
-                    ? std::optional<std::optional<float>>{0.25f}
+                    ? std::optional{ScratchFile{0.25f}}
                     : std::nullopt};
     const RunState state = Drive(world, RunOf(entry.name), 20000);
     const std::string name{entry.name};
@@ -538,16 +548,16 @@ void UnloadedStateFailsUnload() {
   test::Check(world.Clean(), "unload returns and despawns after a failure");
 }
 
-void LoadCases(Faults a_faults, std::string_view a_expected) {
-  for (std::string_view name :
-       {"load-idle", "load-apply", "load-edit", "load-gesture", "load-paint"}) {
+void LoadCases(std::initializer_list<std::string_view> a_cases, Faults a_faults,
+               std::string_view a_expected) {
+  for (std::string_view name : a_cases) {
     World world;
     world.faults = a_faults;
     Drive(world, RunOf(name), 20000);
     const std::string failure = FirstFailure(world);
     if (a_expected.empty()) {
       test::Equal(failure, std::string{}, std::string{name} + " passes");
-    } else if (name != "load-idle") {
+    } else {
       test::Check(failure.starts_with(a_expected),
                   std::string{name} + " fails at " + std::string{a_expected});
     }
@@ -557,8 +567,12 @@ void LoadCases(Faults a_faults, std::string_view a_expected) {
 }
 
 void LoadsCancelWork() {
-  LoadCases({}, {});
-  LoadCases({.loadKeepsWork = true}, "await-idle");
+  LoadCases(
+      {"load-idle", "load-apply", "load-edit", "load-gesture", "load-paint"},
+      {}, {});
+  LoadCases({"load-apply", "load-edit", "load-gesture", "load-paint"},
+            {.loadKeepsWork = true}, "await-idle");
+  LoadCases({"load-idle"}, {.loadKeepsWork = true}, {});
   World world;
   world.faults.loadCompletesRequest = true;
   Drive(world, RunOf("load-apply"), 20000);
@@ -595,7 +609,7 @@ void StudioRoundTrip() {
   World first;
   Drive(first, RunOf("studio-save"), 20000);
   test::Equal(FirstFailure(first), std::string{}, "studio-save passes");
-  test::Check(first.disk && *first.disk == 0.25f,
+  test::Check(first.disk && first.disk->firstOpacity == 0.25f,
               "studio-save leaves the edited scratch recipe on disk");
   World second{first.disk};
   Drive(second, RunOf("studio-reload"), 20000);

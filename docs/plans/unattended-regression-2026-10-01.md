@@ -84,26 +84,29 @@ commands, so `tools/trace-report.py` can split a trace by case.
 
 ## Engine-free core (`src/regression/`)
 
-Data:
+Data, one header each:
 
-- `RunFile`: the parsed run file. `ParseRunFile(text, now)` returns it
-  or an error string.
-- `Step`: a variant of `Settle{frames}`, `Solo{recipe}`, `RestoreSolo`,
-  `EquipFixture`, `RemoveFixture`, `Apply` and `Retire`. A step that waits
-  on the game has a frame deadline: 600 frames for the fixture, 1800 for an
-  apply or retire request.
-- `Case`: a name, its steps and its cleanup steps. `FindCase(name)` looks
-  it up in a fixed catalog.
-- `Observation`: what the engine reports each frame: player ready, fixture
-  equipped, fixture carried, and the state of the current apply or retire
-  request (`none`, `waiting`, or an outcome).
-- `Command`: a variant of `SoloRecipe`, `RestoreSolo`, `AddAndEquipFixture`,
-  `UnequipAndRemoveFixture`, `SubmitApply`, `SubmitRetire`, `AbortRequest`
-  and `Quit`.
-- `RunState`: the phase (`Settling`, `Running`, `Ending`, `Finished`), the
-  cursor inside `Running` (case, body or cleanup, step, frames spent), the
-  outcomes so far, and whether the run added the fixture. Cleanup removes
-  only a fixture the run added.
+| Header | Data |
+| --- | --- |
+| `Words.h` | The enums `Outcome`, `Role`, `Item`, `Camera`, `QueuedWork`, `Session`, `TrackedWork` and `WorkOutcome`, and one `Named` table of words for each. |
+| `RunFile.h` | `RunFile`: the run identifier, the save and the suite. `ParseRunFile(text, now)` returns it or an error string. |
+| `Steps.h` | `Step`: a variant of one record per step (`Equip`, `AwaitRendered`, `LoadDuring`, `HoldWindow` and the rest). `Case`: a name, its body and its cleanup. `Catalog` and `FindCase` read the fixed catalog in `Catalog.cpp`. |
+| `Observation.h` | `Observation`: what the engine reports each frame. It holds `ActorFacts` for each role, the state of the current request, `Activity` for the studio work, `CrowdFacts`, `RecipeFacts` for the scratch recipe, the camera, the load count and the clock. |
+| `Commands.h` | `Command`: a variant of one record per engine action (`SpawnActor`, `AddAndEquip`, `SubmitApply`, `StartSave`, `LoadSaveWith`, `Quit` and the rest). |
+| `Run.h` | `ResultLine`, `RunChanges`, the phases `Settling`, `Running`, `Ending` and `Finished`, and `RunState`. |
+| `StepRules.h` | `StepContext` and `StepMove`: the input and output of one step rule. |
+
+`RunChanges` records what the run changed in the world: the actors it
+spawned, the items it added, whether the player is away and the crowd size.
+`Advance` derives it from each command it issues (`AfterCommand`) and resets
+it when a load happens. Cleanup steps read it, so a cleanup step does nothing
+when the run made no matching change.
+
+Each step has three rules: `Start` on its first frame, `Check` on each later
+frame, and `Label` for its result line (`StepLabels.cpp`). An `Expect…` step
+checks a state that earlier steps produced and waits only for the observation
+to catch up. An `Await…` step waits for work in progress, with a deadline
+sized to that work.
 
 Function: `Advance(RunState, Observation) -> Advanced{RunState, optional
 Command, vector ResultLine}`. Pure; one call per frame.
@@ -205,9 +208,11 @@ plugin it was made with is removed; the game refuses to load it otherwise.
    After the run the host splits the trace into these windows by the step
    events, sums each window's heartbeats (fps, plugin frame cost, worst
    frame, tick, refresh and readback, render targets and bytes), prints the
-   table, and checks `tests/regression/budgets.json`. A budget names a
-   window and a limit: `<measure>_max`, `fps_ratio_min` against baseline, or
-   `<measure>_over_baseline_max`.
+   table, and checks `tests/regression/budgets.json`
+   (`tools/regression_budgets.py`). A budget names a window and a limit:
+   `<measure>_max`, `<measure>_ratio_min` against baseline, or
+   `<measure>_over_baseline_max`. A limit that names no known measure, or a
+   bound that is not a number, fails the run.
 
    | Window | Budget | Run 20261001T063900 |
    | --- | --- | --- |

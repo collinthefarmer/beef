@@ -9,7 +9,6 @@
 #include "planners/Eviction.h"
 #include "render/Compositor.h"
 #include "render/RenderInstance.h"
-#include "render/StepOutputCache.h"
 #include "render/TextureLab.h"
 #include "studio/ResolveOutput.h"
 
@@ -24,6 +23,8 @@
 namespace BetterEnchantmentEffects {
 namespace {
 inline constexpr std::size_t kFirstRendersPerTick = 1;
+inline constexpr std::uint32_t kArmorModelCheckMS = 100;
+inline constexpr std::uint32_t kEvictionCheckMS = 1000;
 
 bool AwaitsFirstRender(const LiveActor &a_state) {
   if (a_state.firstRenderAdmitted) {
@@ -36,6 +37,27 @@ bool AwaitsFirstRender(const LiveActor &a_state) {
                                      return a_output.stack != nullptr;
                                    });
       });
+}
+
+bool AdmitRender(LiveActor &a_state, std::size_t &a_firstRenders) {
+  if (!AwaitsFirstRender(a_state)) {
+    return true;
+  }
+  if (a_firstRenders >= kFirstRendersPerTick) {
+    return false;
+  }
+  ++a_firstRenders;
+  a_state.firstRenderAdmitted = true;
+  return true;
+}
+
+bool BeyondEvictionRadius(const RE::Actor &a_actor,
+                          const Settings &a_settings) {
+  const auto *player = RE::PlayerCharacter::GetSingleton();
+  return player && !a_actor.IsPlayerRef() && !a_settings.playerOnly &&
+         a_settings.evictDistance > 0.0f &&
+         EvictionFor(player->GetPosition().GetDistance(a_actor.GetPosition()),
+                     a_settings.evictDistance, true) == EvictionAction::kEvict;
 }
 
 struct SlotWrite {
@@ -437,11 +459,11 @@ void Manager::OnFrame() {
     EmitMetricsHeartbeat();
   }
   const Settings settings = GetSettings();
-  if (now - lastArmorModelCheckMS_ >= 100) {
+  if (now - lastArmorModelCheckMS_ >= kArmorModelCheckMS) {
     lastArmorModelCheckMS_ = now;
     SweepAwaitingArmorModels(settings);
   }
-  if (now - lastEvictionMS_ >= 1000) {
+  if (now - lastEvictionMS_ >= kEvictionCheckMS) {
     lastEvictionMS_ = now;
     SweepEviction(settings);
   }
@@ -450,7 +472,7 @@ void Manager::OnFrame() {
   }
   lastTickMS_ = now;
   Compositor::GetSingleton()->BeginTick(now);
-  StepOutputCache::GetSingleton()->Sweep(now);
+  Compositor::GetSingleton()->SweepStepOutputs(now);
   if (!applied_.empty()) {
     const PhaseTimer tickTimer{Metrics::Phase::kTick};
     TextureLab::GetSingleton()->SetGeneratedShaders(settings.generatedShaders);
@@ -470,21 +492,13 @@ void Manager::SweepAwaitingArmorModels(const Settings &a_settings) {
   if (awaitingArmorModel_.empty()) {
     return;
   }
-  const auto *player = RE::PlayerCharacter::GetSingleton();
-  const auto beyondRadius = [&](const RE::Actor &a_actor) {
-    return player && !a_actor.IsPlayerRef() &&
-           a_settings.evictDistance > 0.0f &&
-           EvictionFor(player->GetPosition().GetDistance(a_actor.GetPosition()),
-                       a_settings.evictDistance,
-                       true) == EvictionAction::kEvict;
-  };
   std::vector<RE::FormID> attached;
   std::erase_if(awaitingArmorModel_, [&](RE::FormID a_id) {
     RE::Actor *actor = RE::TESForm::LookupByID<RE::Actor>(a_id);
     if (!actor || actor->IsDeleted() || !actor->Is3DLoaded()) {
       return true;
     }
-    if (beyondRadius(*actor) || ArmorAwaitsModel(*actor)) {
+    if (BeyondEvictionRadius(*actor, a_settings) || ArmorAwaitsModel(*actor)) {
       return false;
     }
     attached.push_back(a_id);
@@ -514,11 +528,7 @@ void Manager::SweepEviction(const Settings &a_settings) {
   std::vector<RE::FormID> evict;
   for (const auto &[id, state] : applied_) {
     const RE::NiPointer<RE::Actor> actor = state.actor.get();
-    if (!actor || actor->IsPlayerRef()) {
-      continue;
-    }
-    if (EvictionFor(distanceOf(*actor), a_settings.evictDistance, true) ==
-        EvictionAction::kEvict) {
+    if (actor && BeyondEvictionRadius(*actor, a_settings)) {
       evict.push_back(id);
     }
   }
@@ -574,15 +584,10 @@ void Manager::Tick(std::uint32_t a_nowMS, const Settings &a_settings) {
       TickInstance(instance, timing.time, timing.delta);
       instance.lastTime = timing.time;
     }
-    const bool firstRender = AwaitsFirstRender(state);
-    if (firstRender && firstRenders >= kFirstRendersPerTick) {
+    if (!AdmitRender(state, firstRenders)) {
       FinishApplications(it->first, state);
       ++it;
       continue;
-    }
-    if (firstRender) {
-      ++firstRenders;
-      state.firstRenderAdmitted = true;
     }
     UpdateLights(state, RenderPieces(state, it->first));
     FinishApplications(it->first, state);

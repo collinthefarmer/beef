@@ -39,7 +39,7 @@ RE::Actor *ActorOf(const RunWorld &a_world, Regression::Role a_role) {
   if (a_role == Regression::Role::kPlayer) {
     return RE::PlayerCharacter::GetSingleton();
   }
-  const RE::FormID id = a_world.spawned[Regression::RoleIndex(a_role)];
+  const RE::FormID id = a_world.spawned[Regression::IndexOf(a_role)];
   return id ? RE::TESForm::LookupByID<RE::Actor>(id) : nullptr;
 }
 
@@ -103,8 +103,7 @@ Regression::ActorFacts ViewOf(RE::Actor *a_actor,
   for (const Regression::Item item :
        {Regression::Item::kFixture, Regression::Item::kPlainCuirass}) {
     RE::TESObjectARMO *armor = ArmorOf(item);
-    Regression::ItemFacts &seen =
-        view.armor[item == Regression::Item::kFixture ? 0 : 1];
+    Regression::ItemFacts &seen = view.armor[Regression::IndexOf(item)];
     seen.equipped = armor && body == armor;
     seen.carried = armor && CountOf(*a_actor, *armor) > 0;
   }
@@ -177,7 +176,7 @@ void Spawn(RunWorld &a_world, Regression::Role a_role) {
   RE::NiPoint3 position = player->GetPosition();
   position.x += side * kSpawnOffset;
   placed->SetPosition(position);
-  a_world.spawned[Regression::RoleIndex(a_role)] = placed->GetFormID();
+  a_world.spawned[Regression::IndexOf(a_role)] = placed->GetFormID();
 }
 
 void SpawnCrowdActors(RunWorld &a_world, std::uint32_t a_count) {
@@ -239,7 +238,7 @@ std::uint64_t SteadyMs() {
 void Despawn(RunWorld &a_world, Regression::Role a_role) {
   DeleteReference(ActorOf(a_world, a_role));
   if (a_role != Regression::Role::kPlayer) {
-    a_world.spawned[Regression::RoleIndex(a_role)] = 0;
+    a_world.spawned[Regression::IndexOf(a_role)] = 0;
   }
 }
 
@@ -417,7 +416,7 @@ void Perform(const Regression::TravelToStart &, RunWorld &a_world) {
 }
 
 void Perform(const Regression::SwitchCamera &a_c, RunWorld &) {
-  SwitchCamera(a_c.view);
+  SwitchCamera(a_c.camera);
 }
 
 void Perform(const Regression::StartDuplicate &a_c, RunWorld &a_world) {
@@ -472,7 +471,7 @@ Regression::Observation Observe(const RunWorld &a_world) {
   std::vector<RE::FormID> ids;
   for (const Regression::Role role : kRoles) {
     RE::Actor *actor = ActorOf(a_world, role);
-    actors[Regression::RoleIndex(role)] = actor;
+    actors[Regression::IndexOf(role)] = actor;
     ids.push_back(actor ? actor->GetFormID() : 0);
   }
   ids.insert(ids.end(), a_world.crowd.begin(), a_world.crowd.end());
@@ -481,14 +480,16 @@ Regression::Observation Observe(const RunWorld &a_world) {
       manager ? manager->RegressionActors(ids)
               : std::vector<RegressionActorFacts>(ids.size());
   for (const Regression::Role role : kRoles) {
-    const std::size_t index = Regression::RoleIndex(role);
+    const std::size_t index = Regression::IndexOf(role);
     seen.actors[index] = ViewOf(actors[index], std::move(facts[index]));
   }
   seen.itemsLoaded = {ArmorOf(Regression::Item::kFixture) != nullptr,
                       ArmorOf(Regression::Item::kPlainCuirass) != nullptr};
   seen.npcEffects = !GetSettings().playerOnly;
   const RE::PlayerCamera *camera = RE::PlayerCamera::GetSingleton();
-  seen.firstPerson = camera && camera->IsInFirstPerson();
+  seen.camera = camera && camera->IsInFirstPerson()
+                    ? Regression::Camera::kFirstPerson
+                    : Regression::Camera::kThirdPerson;
   seen.awayFromStart = AwayFromStart(a_world);
   seen.request = RegressionRequestState(a_world.request);
   seen.loads = a_world.loads;
