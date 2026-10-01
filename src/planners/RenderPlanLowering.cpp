@@ -3,6 +3,7 @@
 #include "planners/RenderPlan.h"
 
 #include <algorithm>
+#include <format>
 #include <map>
 #include <tuple>
 
@@ -106,7 +107,18 @@ struct PlanBuilder {
     }
     if (values.emplace(key, binding.result).second)
       identityBytes += key.identity.canonical.size();
+    RecordValueKey(key, binding.result);
     plan.values.push_back(binding);
+  }
+  void RecordValueKey(const TextureKey &key, RenderValueRef result) {
+    const auto *output = Get<StepOutputRef>(result);
+    if (!output || output->step >= plan.steps.size() ||
+        !plan.steps[output->step].valueKey.empty())
+      return;
+    plan.steps[output->step].valueKey = std::format(
+        "{}|{}|{}|{}", key.identity.canonical, key.requirements.size.Pixels(),
+        static_cast<int>(key.requirements.format),
+        static_cast<int>(key.requirements.mipPolicy));
   }
   RenderValueRef Step(RenderStepKind kind, std::string label) {
     for (std::size_t i = 0; i < plan.steps.size(); ++i)
@@ -640,7 +652,7 @@ BuildRenderPlan(std::span<const TextureDemand> demands,
   auto lowered = LowerRenderPlan(demands, stacks, bindings);
   if (!lowered)
     return lowered;
-  auto inlined = InlineFields(std::move(*lowered)).plan;
+  auto inlined = MarkShareableSteps(InlineFields(std::move(*lowered)).plan);
   if (auto valid = ValidateRenderPlan(inlined); !valid)
     return std::unexpected(valid.error());
   return inlined;

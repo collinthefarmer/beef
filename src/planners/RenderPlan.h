@@ -187,6 +187,8 @@ using RenderStepKind =
 struct RenderStep {
   RenderStepKind kind;
   std::string displayName;
+  std::string valueKey;
+  std::string shareKey;
 };
 struct TextureUseBinding {
   TextureUse use;
@@ -242,6 +244,7 @@ SegmentIndexOf(std::span<const std::size_t> fields, const LayerRead &read);
 [[nodiscard]] std::vector<RenderValueRef>
 StepDependencies(const RenderPlan &plan, RenderStepId step);
 [[nodiscard]] std::vector<bool> ChangingSteps(const RenderPlan &plan);
+[[nodiscard]] RenderPlan MarkShareableSteps(RenderPlan plan);
 [[nodiscard]] std::vector<std::size_t> LiveConsumers(const RenderPlan &plan);
 [[nodiscard]] RenderValueType OutputType(const RenderStepKind &step);
 [[nodiscard]] std::string_view StepKindName(const RenderStepKind &step);

@@ -1,5 +1,6 @@
 // GPL-3.0-only with the additional permission in COPYING.md.
 #include "render/RenderInstance.h"
+#include "render/SharedStepOutputs.h"
 
 #include "diagnostics/Metrics.h"
 
@@ -1239,19 +1240,43 @@ bool RenderInstance::AwaitingFirstReadback() const {
   }
   return false;
 }
+StepResult
+ExecuteTimed(const RenderStep &step,
+             std::span<const ResolvedRenderInput<RenderValue>> inputs,
+             RenderScratch &scratch) {
+  Metrics::CountStepExecution();
+  auto *lab = TextureLab::GetSingleton();
+  std::optional<TextureLab::TimedSpan> span;
+  if (lab && lab->Timing())
+    span.emplace(*lab, StepSpanKey(step));
+  return ExecuteStep(step, inputs, scratch);
+}
+StepResult
+ExecuteShared(const RenderStep &step,
+              std::span<const ResolvedRenderInput<RenderValue>> inputs,
+              RenderScratch &scratch, std::uint64_t nowMS) {
+  if (step.shareKey.empty())
+    return ExecuteTimed(step, inputs, scratch);
+  SharedStepOutputs *shared = SharedStepOutputs::GetSingleton();
+  scratch.target.reset();
+  if (std::optional<TextureView> hit = shared->Find(step.shareKey, nowMS)) {
+    Metrics::CountSharedStepHit();
+    return RenderValue{std::move(*hit)};
+  }
+  StepResult produced = ExecuteTimed(step, inputs, scratch);
+  if (produced)
+    if (const auto *view = Get<TextureView>(*produced))
+      shared->Publish(step.shareKey, *view, nowMS);
+  return produced;
+}
 std::expected<ResolvedRenderInput<RenderValue>, std::string>
 RenderInstance::Demand(RenderValueRef output) {
   return execution_.Evaluate(
       output,
-      [](const RenderStep &step,
-         std::span<const ResolvedRenderInput<RenderValue>> inputs,
-         RenderScratch &scratch) {
-        Metrics::CountStepExecution();
-        auto *lab = TextureLab::GetSingleton();
-        std::optional<TextureLab::TimedSpan> span;
-        if (lab && lab->Timing())
-          span.emplace(*lab, StepSpanKey(step));
-        return ExecuteStep(step, inputs, scratch);
+      [nowMS = nowMS_](const RenderStep &step,
+                       std::span<const ResolvedRenderInput<RenderValue>> inputs,
+                       RenderScratch &scratch) {
+        return ExecuteShared(step, inputs, scratch, nowMS);
       },
       SameRenderValue, SelectStackInputs);
 }
@@ -1262,6 +1287,7 @@ bool RenderInstance::BeginFrame(std::uint64_t frame, std::uint64_t nowMS) {
   if (frame_ == frame)
     return false;
   frame_ = frame;
+  nowMS_ = nowMS;
   execution_.AdvanceClock(nowMS);
   Metrics::CountStepReleases(
       execution_.ReleaseIdle(kReleaseAfterIdleMS, Releasable));

@@ -16,6 +16,8 @@ public:
   [[nodiscard]] RE::NiSourceTexture *operator->() const noexcept;
   [[nodiscard]] explicit operator bool() const noexcept;
   [[nodiscard]] std::uint64_t Generation() const noexcept;
+  [[nodiscard]] bool Holds(
+      const std::shared_ptr<TextureLab::RenderTarget> &a_target) const noexcept;
 
 private:
   std::shared_ptr<TextureLab::RenderTarget> target_;

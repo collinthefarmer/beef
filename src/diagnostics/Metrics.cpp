@@ -21,6 +21,7 @@ struct Counters {
   std::atomic<std::uint64_t> frames{0};
   std::atomic<std::uint64_t> renderEvaluations{0};
   std::atomic<std::uint64_t> stepExecutions{0};
+  std::atomic<std::uint64_t> sharedStepHits{0};
   std::atomic<std::uint64_t> stepReleases{0};
   std::atomic<std::uint64_t> stepRestores{0};
   std::atomic<std::uint64_t> phaseMicros[3]{};
@@ -85,6 +86,10 @@ void CountFrame() noexcept {
 void CountRenderEvaluation() noexcept {
   State().renderEvaluations.fetch_add(1, std::memory_order_relaxed);
 }
+void CountSharedStepHit() noexcept {
+  State().sharedStepHits.fetch_add(1, std::memory_order_relaxed);
+}
+
 void CountStepExecution() noexcept {
   State().stepExecutions.fetch_add(1, std::memory_order_relaxed);
 }
@@ -126,6 +131,8 @@ Snapshot Drain() noexcept {
       state.renderEvaluations.exchange(0, std::memory_order_relaxed);
   out.stepExecutions =
       state.stepExecutions.exchange(0, std::memory_order_relaxed);
+  out.sharedStepHits =
+      state.sharedStepHits.exchange(0, std::memory_order_relaxed);
   out.stepReleases = state.stepReleases.exchange(0, std::memory_order_relaxed);
   out.stepRestores = state.stepRestores.exchange(0, std::memory_order_relaxed);
   PhaseTime *phases[3]{&out.frame, &out.tick, &out.snapshot};

@@ -64,6 +64,11 @@ RE::NiSourceTexture *TextureRef::get() const noexcept {
 
 RE::NiSourceTexture *TextureRef::operator->() const noexcept { return get(); }
 TextureRef::operator bool() const noexcept { return get() != nullptr; }
+bool TextureRef::Holds(
+    const std::shared_ptr<TextureLab::RenderTarget> &a_target) const noexcept {
+  return a_target && target_ == a_target;
+}
+
 std::uint64_t TextureRef::Generation() const noexcept { return generation_; }
 
 std::uintptr_t TextureRefIdentity(const TextureRef &a_texture) noexcept {

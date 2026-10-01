@@ -4,6 +4,7 @@
 
 #include <algorithm>
 #include <cstdio>
+#include <iterator>
 #include <memory>
 #include <string>
 #include <vector>
@@ -23,6 +24,29 @@ RenderBindingResolver Bindings() {
           return std::to_string(instance) + ":" + std::to_string(node);
         }};
   };
+}
+
+RenderBindingResolver ActorBindings(std::string a_actor) {
+  return [actor = std::move(a_actor)](const TextureValue &value, GeometryId) {
+    return ValueBindings{
+        [actor, instance = value.instance](
+            const ExternalSource &) -> std::expected<std::string, std::string> {
+          return actor + ":" + std::to_string(instance);
+        },
+        [actor, instance = value.instance](NodeId node) {
+          return actor + ":" + std::to_string(instance) + ":" +
+                 std::to_string(node);
+        }};
+  };
+}
+
+std::vector<std::string> ShareKeys(const RenderPlan &plan) {
+  std::vector<std::string> keys;
+  for (const auto &step : plan.steps)
+    if (!step.shareKey.empty())
+      keys.push_back(step.shareKey);
+  std::ranges::sort(keys);
+  return keys;
 }
 
 struct Duplicate {
@@ -60,6 +84,45 @@ StackRequests(const std::vector<LoadedRecipe> &recipes,
                o,
                {sizes[s]}});
   return requests;
+}
+
+void ShareKeysMarkOnlyStaticTextureSteps(
+    const std::vector<LoadedRecipe> &recipes) {
+  const std::array size{TextureSize{512}};
+  const auto plan =
+      BuildRenderPlan({}, StackRequests(recipes, size), Bindings());
+  Check(plan.has_value(), "the demo recipes lower for share keys");
+  if (!plan)
+    return;
+  const std::vector<bool> changing = ChangingSteps(*plan);
+  bool onlyStatic = true;
+  std::size_t shareable = 0;
+  for (std::size_t i = 0; i < plan->steps.size(); ++i) {
+    const auto &step = plan->steps[i];
+    if (step.shareKey.empty())
+      continue;
+    ++shareable;
+    onlyStatic = onlyStatic && i < changing.size() && !changing[i] &&
+                 !Is<CompositeStackStep>(step.kind) &&
+                 RequirementsOf(step.kind).has_value();
+  }
+  Check(onlyStatic, "only static, non-stack texture steps carry share keys");
+  Check(shareable > 0, "the demo recipes have shareable steps");
+  const auto again =
+      BuildRenderPlan({}, StackRequests(recipes, size), Bindings());
+  Check(again && ShareKeys(*again) == ShareKeys(*plan),
+        "identical inputs give identical share keys");
+  const auto first =
+      BuildRenderPlan({}, StackRequests(recipes, size), ActorBindings("a"));
+  const auto second =
+      BuildRenderPlan({}, StackRequests(recipes, size), ActorBindings("b"));
+  Check(first && second, "per-actor bindings lower");
+  if (first && second) {
+    std::vector<std::string> common;
+    const auto a = ShareKeys(*first), b = ShareKeys(*second);
+    std::ranges::set_intersection(a, b, std::back_inserter(common));
+    Check(common.empty(), "inputs that differ per actor never share a key");
+  }
 }
 
 std::optional<RenderPlan> SingleStackPlan(const Recipe &recipe,
@@ -160,6 +223,7 @@ int main() {
         RecipeGraph::Compile(*loaded.recipe));
     recipes.push_back({*loaded.recipe, std::move(graph)});
   }
+  ShareKeysMarkOnlyStaticTextureSteps(recipes);
   const std::array oneSize{TextureSize{512}};
   const auto single =
       BuildRenderPlan({}, StackRequests(recipes, oneSize), Bindings());

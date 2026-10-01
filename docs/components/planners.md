@@ -205,7 +205,7 @@ it last observed.
 | `RenderInputState<T>` | An imported input's optional value and change version. |
 | `StepExecutionState<T, Scratch>` | One step's observed inputs, outputs, scratch, last diagnostic, `released` flag and last-used epoch. |
 | `ResolvedRenderInput<T>` | A reference, its value and its change version, as a step callback receives it. |
-| `RenderExecution<T, Scratch>` | Holds a validated plan and its state. `Evaluate` materializes one reference through the `ExecuteStep`, `SameValue` and `SelectInputs` callbacks. `SetInput` imports a value. `ReleaseIdle` drops results unused for a number of epochs. A walk stops at depth 64 or 65536 visits. |
+| `RenderExecution<T, Scratch>` | Holds a validated plan and its state. `Evaluate` materializes one reference through the `ExecuteStep`, `SameValue` and `SelectInputs` callbacks. `SetInput` imports a value. `AdvanceClock` sets the time in the caller's unit, and `ReleaseIdle` drops results unused for longer than a given span of it. A walk stops at depth 64 or 65536 visits. |
 
 ### Programs
 
@@ -359,7 +359,7 @@ PSGeneratedStack, or PSStack until the compile finishes     render/GeneratedShad
 | `ActorPlanning.h`/`.cpp` | Actor planning | `MatchActor`, `PlanGeometryPlacement`, `PlanActorLights`. |
 | `StackPlan.h`/`.cpp`, `BindingPlan.h`/`.cpp` | Actor planning | `PlanStacks`, `SlotStackPlanOf`, `ChainIndexOf`; `PlanBinding`. |
 | `ValueIdentity.h`/`.cpp`, `TextureDemand.h`/`.cpp` | Render planning | `IdentifyValue`; `CollectTextureDemand` and the demand records. |
-| `RenderPlan.h`/`.cpp` | Render planning | The plan and step records, the step queries (`InputsOf`, `StepDependencies`, `ChangingSteps`, `LiveConsumers`, `TypeOf`), `PackLayerFields` and `ValidateRenderPlan`. |
+| `RenderPlan.h`/`.cpp` | Render planning | The plan and step records, the step queries (`InputsOf`, `StepDependencies`, `ChangingSteps`, `LiveConsumers`, `TypeOf`), `MarkShareableSteps`, `PackLayerFields` and `ValidateRenderPlan`. |
 | `RenderPlanLowering.cpp` | Render planning | `LowerRenderPlan` and `BuildRenderPlan`. |
 | `FieldInlining.h`/`.cpp` | Render planning | `AsProgramLike` and `InlineFields`. |
 | `RenderExecution.h` | Render planning | `RenderExecution` and its state records. |

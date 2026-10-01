@@ -1187,6 +1187,25 @@ Decompile provenance (`decompiled/WornEnchantmentFX/plugin.c` unless noted):
 
 ## Compositor (`render/Compositor.cpp`, `CompositorSource.cpp`, `CompositorBake.cpp`)
 
+Actors share static render-step outputs by content. Lowering records each
+step's `TextureKey` text as `RenderStep::valueKey`; `MarkShareableSteps`
+gives a **share key** to every step that has one, is static (`ChangingSteps`),
+outputs a texture and is not a stack, adding the step's kind, size, format
+and mip policy, because lowering can give one value different step
+requirements. Geometry identity is the mesh's content (`mesh:<hash>:<parts>`,
+`MeshData::hash` over the vertex and index bytes) when the mesh cache can read
+it, and the geometry pointer otherwise. A bake renders in UV space from
+bind-pose data, so equal content gives an equal bake. Values that read
+per-actor signals keep the `graph:applicationContext` instance in their
+identity, so they never match across actors. A shared target is never
+written again: a miss always renders into a fresh target, and a hit does not
+remember the target in the step's scratch. `TextureView::texture` holds the
+same target as `TextureView::target`, so the cache counts two references of
+its own when it decides an entry is held only by itself. Measured on
+2026-10-01 with twelve mannequins in the demo cuirass: 841 shared hits, 206
+target acquisitions in the burst instead of 1776, peak 2.2 GB instead of 8.6
+GB, steady 136 targets and 1.4 GB instead of 308 and 4.2 GB.
+
 - Render scheduling is a validated `RenderPlan` with one `RenderInstance` per
   geometry. Produced targets are retained by typed step results; `RenderScratch`
   has a weak reuse hint, never a second owning allocation table. Texture leases

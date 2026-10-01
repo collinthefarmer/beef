@@ -7,6 +7,7 @@
 #include "engine/GameObjectService.h"
 #include "engine/RecipeStore.h"
 #include "render/Compositor.h"
+#include "render/SharedStepOutputs.h"
 #include "render/TextureLab.h"
 
 #include <utility>
@@ -106,6 +107,7 @@ void Manager::Clear() {
   loggedNonPBRArmor_.clear();
   stackWarnings_.Clear();
   carriedTimes_.Clear();
+  SharedStepOutputs::GetSingleton()->Clear();
   Compositor::GetSingleton()->ClearMeshes();
   Compositor::GetSingleton()->ClearMaterials();
   TextureLab::GetSingleton()->Clear();

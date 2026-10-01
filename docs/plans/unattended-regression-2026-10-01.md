@@ -224,9 +224,10 @@ plugin it was made with is removed; the game refuses to load it otherwise.
    step's idle output is released after 500 ms instead of 30 of its
    instance's ticks, which stretched to seconds while the burst slowed the
    game. The next soak: burst 2 s at 80 fps, worst frame 105 ms, worst
-   readback 1.4 ms, peak 8.6 GB; `settle` passes. Open: the 92 MB left after
-   recovery, and the 4.2 GB steady footprint of twelve wearers, for which
-   static steps are to be shared across actors.
+   readback 1.4 ms, peak 8.6 GB; `settle` passes. Then static render steps
+   were shared across actors by content: peak 2.2 GB, steady 136 targets and
+   1.4 GB, worst settle frame 24 ms, steady fps 63 % of baseline. Open: the
+   95 MB left after recovery.
 
 6. **Evidence for visual verdicts.** Screenshots at named checkpoints, and
    stack-output hashes with the clock frozen, compared with recorded

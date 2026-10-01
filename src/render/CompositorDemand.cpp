@@ -42,6 +42,19 @@ std::string EventOriginIdentity(const EventInput &event,
       });
 }
 
+std::string GeometryIdentity(const GeometryInputs &inputs) {
+  RE::BSGeometry *geometry = inputs.geometry.get();
+  Compositor *compositor = Compositor::GetSingleton();
+  if (geometry && compositor) {
+    const auto entry = compositor->MeshOf(geometry);
+    if (entry && *entry && (*entry)->mesh) {
+      const MeshData &mesh = *(*entry)->mesh;
+      return std::format("mesh:{:016x}:{}", mesh.hash, mesh.partitions.size());
+    }
+  }
+  return std::format("{}", reinterpret_cast<std::uintptr_t>(geometry));
+}
+
 std::expected<std::string, std::string>
 ExternalSourceIdentity(const ExternalSource &source,
                        const GeometryInputs &inputs,
@@ -49,8 +62,7 @@ ExternalSourceIdentity(const ExternalSource &source,
   return Match(
       source,
       [&](const GeometryInput &) -> std::expected<std::string, std::string> {
-        return std::format(
-            "{}", reinterpret_cast<std::uintptr_t>(inputs.geometry.get()));
+        return GeometryIdentity(inputs);
       },
       [&](const MaterialInput &) -> std::expected<std::string, std::string> {
         return MaterialInputsIdentity(inputs.material);

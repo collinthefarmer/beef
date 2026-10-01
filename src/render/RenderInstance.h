@@ -71,5 +71,6 @@ private:
   std::optional<std::uint64_t> frame_;
   RenderExecution<RenderValue, RenderScratch> execution_;
   std::uint64_t restoresReported_ = 0;
+  std::uint64_t nowMS_ = 0;
 };
 }

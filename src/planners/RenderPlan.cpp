@@ -2,6 +2,7 @@
 #include "planners/RenderPlan.h"
 
 #include <algorithm>
+#include <format>
 #include <iterator>
 
 namespace BetterEnchantmentEffects {
@@ -618,6 +619,31 @@ std::vector<RenderValueRef> StepDependencies(const RenderPlan &plan,
               Get<ReadbackBinding>(plan.inputs[input->input].binding))
         operands.emplace_back(StepOutputRef{readback->submission, 0});
   return operands;
+}
+
+std::string ShareKeyOf(const RenderStep &step,
+                       const TextureRequirements &requirements) {
+  return std::format("{}|{}|{}|{}|{}", step.valueKey, StepKindName(step.kind),
+                     requirements.size.Pixels(),
+                     static_cast<int>(requirements.format),
+                     static_cast<int>(requirements.mipPolicy));
+}
+
+RenderPlan MarkShareableSteps(RenderPlan plan) {
+  const std::vector<bool> changing = ChangingSteps(plan);
+  for (std::size_t i = 0; i < plan.steps.size() && i < changing.size(); ++i) {
+    RenderStep &step = plan.steps[i];
+    const std::optional<TextureRequirements> requirements =
+        RequirementsOf(step.kind);
+    const bool texture =
+        OutputType(step.kind) == RenderValueType{RenderResourceType::kTexture};
+    step.shareKey = !changing[i] && texture && requirements &&
+                            !step.valueKey.empty() &&
+                            !Is<CompositeStackStep>(step.kind)
+                        ? ShareKeyOf(step, *requirements)
+                        : std::string{};
+  }
+  return plan;
 }
 
 std::vector<bool> ChangingSteps(const RenderPlan &plan) {

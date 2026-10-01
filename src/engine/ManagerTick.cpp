@@ -9,6 +9,7 @@
 #include "planners/Eviction.h"
 #include "render/Compositor.h"
 #include "render/RenderInstance.h"
+#include "render/SharedStepOutputs.h"
 #include "render/TextureLab.h"
 #include "studio/ResolveOutput.h"
 
@@ -403,6 +404,7 @@ void EmitMetricsHeartbeat() {
        {"frames", std::to_string(measured.frames)},
        {"render_evaluations", std::to_string(measured.renderEvaluations)},
        {"step_executions", std::to_string(measured.stepExecutions)},
+       {"shared_step_hits", std::to_string(measured.sharedStepHits)},
        {"step_releases", std::to_string(measured.stepReleases)},
        {"step_restores", std::to_string(measured.stepRestores)},
        {"frame_us", std::to_string(measured.frame.micros)},
@@ -448,6 +450,7 @@ void Manager::OnFrame() {
   }
   lastTickMS_ = now;
   Compositor::GetSingleton()->BeginTick(now);
+  SharedStepOutputs::GetSingleton()->Sweep(now);
   if (!applied_.empty()) {
     const PhaseTimer tickTimer{Metrics::Phase::kTick};
     TextureLab::GetSingleton()->SetGeneratedShaders(settings.generatedShaders);
