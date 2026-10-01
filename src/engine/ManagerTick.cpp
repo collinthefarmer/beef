@@ -5,6 +5,7 @@
 #include "diagnostics/Metrics.h"
 #include "diagnostics/Trace.h"
 #include "engine/Clock.h"
+#include "engine/RegressionRun.h"
 #include "planners/Eviction.h"
 #include "render/Compositor.h"
 #include "render/RenderInstance.h"
@@ -403,6 +404,7 @@ void Manager::OnFrame() {
   if (applications_.Loading()) {
     return;
   }
+  AdvanceRegressionRun();
   const PhaseTimer frameTimer{Metrics::Phase::kFrame};
   TextureLab::GetSingleton()->CollectTimings();
   SweepRetiredMaterialTextures();

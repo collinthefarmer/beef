@@ -186,6 +186,11 @@ Status Recorder::Inspect() const {
   return status_;
 }
 
+std::filesystem::path Recorder::FirstSegment() const {
+  std::scoped_lock lock{lock_};
+  return firstSegment_;
+}
+
 std::vector<std::string> Recorder::Recent() const {
   std::scoped_lock lock{lock_};
   return {recent_.begin(), recent_.end()};

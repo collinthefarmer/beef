@@ -23,6 +23,14 @@ inline std::string TraceFileName(std::string_view a_run) {
   return std::format("{}-trace-{}.jsonl", kName, a_run);
 }
 
+inline std::string RegressionRunFileName() {
+  return std::format("{}-regression-run.json", kName);
+}
+
+inline std::string RegressionResultsFileName(std::string_view a_run) {
+  return std::format("{}-regression-{}.jsonl", kName, a_run);
+}
+
 inline std::filesystem::path IniPath() {
   return std::filesystem::current_path() / "Data" / "SKSE" / "Plugins" /
          std::format("{}.ini", kName);

@@ -12,6 +12,7 @@
 #include "engine/PluginEvents.h"
 #include "engine/RecipeStore.h"
 #include "engine/Regression.h"
+#include "engine/RegressionRun.h"
 #include "menu/Menu.h"
 #include <algorithm>
 #include <chrono>
@@ -125,9 +126,12 @@ void OnDataLoaded(BetterEnchantmentEffects::Manager &a_manager) {
   LoadRecipes();
   TraceLoadedRecipes();
   Menu::RegisterMenu();
-  if (EnableEmissivePath(a_manager)) {
+  const bool effectsEnabled = EnableEmissivePath(a_manager);
+  if (effectsEnabled) {
     RegisterEventSinks();
   }
+  ReadRegressionRun(
+      RunSetup{effectsEnabled, BuildIdentity::build, BuildIdentity::source});
 }
 
 void BeginGameLoad(BetterEnchantmentEffects::Manager &a_manager) {
@@ -156,6 +160,7 @@ void OnMessage(SKSE::MessagingInterface::Message *a_msg) {
     } else {
       logger::warn("save load failed; engine effects remain paused");
     }
+    FinishRegressionLoad(a_msg->data != nullptr);
     break;
   case SKSE::MessagingInterface::kNewGame:
     logger::info("kNewGame");
@@ -186,9 +191,6 @@ SKSEPluginLoad(const SKSE::LoadInterface *skse) {
   logger::info("compatibility profile {} (runtime acceptance pending)",
                BetterEnchantmentEffects::BuildCompatibility::profile);
   SKSE::Init(skse);
-  if (!BetterEnchantmentEffects::RegisterRegression()) {
-    logger::warn("regression Papyrus bridge unavailable");
-  }
 
   const auto plugin = SKSE::PluginDeclaration::GetSingleton();
   logger::info("{} {} loading on runtime {}", plugin->GetName(),

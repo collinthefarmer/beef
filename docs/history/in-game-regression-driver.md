@@ -1,4 +1,8 @@
-Status: lifecycle runner, Papyrus bridge, compiler wrapper, and optional quest package implemented and checked offline. In-game startup and lifecycle acceptance remain pending; cache, preview, and performance cases are not implemented.
+Status: superseded 2026-10-01 by
+[unattended regression runs](../plans/unattended-regression-2026-10-01.md),
+which runs cases natively in the plugin. The case table, result vocabulary
+and observation rules below still apply there. The Papyrus quest runner this
+plan describes was deleted on 2026-10-01.
 
 # Scripted in-game regression driver
 
@@ -94,7 +98,7 @@ hit and animation-event delivery remain separate from injected-event tests.
 
 ## First slice
 
-The [lifecycle runner](../../tests/in-game/README.md) implements Run, Next,
+The lifecycle runner implemented Run, Next,
 RecordVisual, Status, and Abort. It polls new actor application attempts and
 checks for a rendered output on the demo armor. Retirement observes removal
 of the actor runtime state. This first slice has a bounded Papyrus polling

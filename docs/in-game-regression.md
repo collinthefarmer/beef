@@ -11,11 +11,11 @@ code on 2026-09-24.
 
 ## Scripted lifecycle smoke test
 
-The optional [console-driven quest runner](../tests/in-game/README.md) drives
-apply, retire, and reapply with separate machine and visual verdicts. Its
-compiled scripts and generated quest have offline checks; in-game startup
-and operation are not yet accepted. Use it for the first lifecycle case, not
-as evidence that the full procedure below has passed.
+`tools/regression-run.py lifecycle` drives apply, retire, and reapply
+unattended from a known good save; the
+[unattended regression plan](plans/unattended-regression-2026-10-01.md)
+describes it. Its verdicts are machine checks only. A pass is not evidence
+that the full procedure below has passed.
 
 ## Prepare a repeatable scene
 

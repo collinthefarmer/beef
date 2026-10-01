@@ -70,9 +70,15 @@ recipes. Asset edits are picked up by stage independently of DLL relinking.
 The installers read that directory from `MO2_MODS_DIR`. When the variable is
 unset, they read the line `MO2_MODS_DIR=<path>` from `local.env` at the
 repository root. Git ignores `local.env`, so each machine keeps its own path.
-`tools/mo2-mods-dir.sh` resolves the directory for both `install.sh` and
-`install-regression.sh`, and refuses a directory that is unset or does not
-exist.
+`tools/mo2-mods-dir.sh` resolves the directory for `install.sh`, and refuses
+a directory that is unset or does not exist.
+
+`tools/regression-run.py CASE...` runs in-game cases unattended. It reads
+four more lines from `local.env` or the environment: `MO2_EXE` (the WSL path
+of `ModOrganizer.exe`), `MO2_PROFILE`, `MO2_LAUNCH` (the MO2 executable title
+that starts SKSE) and `SKSE_LOG_DIR` (the WSL path of the SKSE log folder).
+The [unattended regression plan](plans/unattended-regression-2026-10-01.md)
+describes the run.
 
 Build identity comes from Git: the revision, plus a hash of the uncommitted
 changes to the build inputs when they are dirty. Doc edits do not change it. It is computed on every build and rewrites

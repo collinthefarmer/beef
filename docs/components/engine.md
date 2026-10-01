@@ -287,15 +287,17 @@ edit. Both report through small result records that the menu reads back.
 
 ### Regression fixture
 
-These declarations back the console-driven in-game regression. A Papyrus
-bridge submits a request, and the manager reports a verdict string when the
-actor's application finishes.
+These declarations back the unattended in-game regression run. The run
+submits a request, and the manager reports a verdict string when the actor's
+application finishes.
 
 | Member | Description | Declared in |
 |---|---|---|
 | `RegressionRequest` | One request: id, actor, previous attempt, retire flag, dispatched flag and a `result` string (`IDLE`, `WAITING`, `ABORTED` and the verdicts). | `RegressionRequest.h` |
-| `RegisterRegression` | Registers the `BEEFRegressionNative` Papyrus functions. | `Regression.h` |
-| `CancelRegression` | Aborts the current request and advances the session generation on game load. | `Regression.h` |
+| `SubmitRegressionRequest`, `RegressionResult`, `AbortRegressionRequest` | Start, read and abort the one current request. | `Regression.h` |
+| `SoloRecipeUnderTest`, `RestoreRecipeView` | Solo the recipe under test in the studio, and restore the isolation from before. | `Regression.h` |
+| `CancelRegression` | Aborts the current request on game load. | `Regression.h` |
+| `ReadRegressionRun`, `FinishRegressionLoad`, `AdvanceRegressionRun` | Read the run file, start the run after its save loads, and advance it once per player update. | `RegressionRun.h` |
 | `Manager::QueueRegression` | Retires or refreshes the request's actor on the session queue. | `Manager.h` |
 | `Manager::ObserveRegression` | Reads a newer application record for the actor and finishes the request as `PASS`, `FAIL`, `BLOCKED` or `ABORTED`. | `Manager.h` |
 | `Manager::SoloRegressionRecipe`, `Manager::RestoreRegressionView` | Isolate the recipe under test and restore the earlier isolation. | `Manager.h` |
@@ -376,7 +378,7 @@ Recipe from LoadedRecipes()
 | Actor and worn-piece state | `LiveActor.h`/`.cpp` (live records, `RetireGeometry`, `ResolvePlacement`), `Environment.h`/`.cpp` (`ActorEnvironment`), `WornKeys.h`/`.cpp` (`WornKeysOf`), `EnchantmentEffects.h`/`.cpp` (`EnchantmentValueFor`), `InstanceTime.h`/`.cpp` (`CarriedTimes`) |
 | Recipe CRUD | `RecipeStore.h`/`.cpp` (load, publish, mutate, save, `RefreshRecipeDerivedState`), `RecipeFiles.h`/`.cpp` (checked read, write, rename and delete), `RecipeOperations.h` (the operation journal and task guards), `RecipeEditor.h`/`.cpp` (gestures, edits, undo, paint, view) |
 | Form and game-object lookups | `EngineForms.h`/`.cpp` (`FormKeyFor`, `LookupForm`, `ShaderFor`, `RecordFrom`), `GameObjectService.h`/`.cpp` (game-object and animation-event catalogs), `InputCatalog.h`/`.cpp` (`BuildActorValueSamples`), `Tweaks.h`/`.cpp` (`EditorIdOf`, `TweaksEditorIdsAvailable`) |
-| Regression fixture | `Regression.h`/`.cpp` (the Papyrus bridge and the manager's regression calls), `RegressionRequest.h` (`RegressionRequest`) |
+| Regression fixture | `Regression.h`/`.cpp` (the request and the manager's regression calls), `RegressionRequest.h` (`RegressionRequest`), `RegressionRun.h`/`.cpp` (the unattended run's engine side over `regression/Run.h`) |
 | Small utilities | `Clock.h`/`.cpp` (`NowMS`, `InstanceSpeed`), `TextFile.h`/`.cpp` (`ReadText`, `WriteText`, bounded by `kMaxTextFileBytes`), `MenuDependency.h`/`.cpp` (`CheckMenuFramework`) |
 
 ## See also

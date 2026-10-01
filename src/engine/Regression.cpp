@@ -6,7 +6,6 @@
 #include "engine/RegressionRequest.h"
 
 #include <algorithm>
-#include <chrono>
 #include <mutex>
 #include <optional>
 #include <string>
@@ -15,16 +14,8 @@ namespace BetterEnchantmentEffects {
 namespace {
 std::mutex requestLock;
 RegressionRequest request;
-const std::string processSession =
-    std::to_string(std::chrono::system_clock::now().time_since_epoch().count());
-std::uint64_t sessionGeneration = 0;
 std::string recipeUnderTest;
 std::optional<Studio::Isolation> isolationBeforeRun;
-
-std::string Session(RE::StaticFunctionTag *) {
-  const std::lock_guard lock{requestLock};
-  return processSession + ":" + std::to_string(sessionGeneration);
-}
 
 void Finish(std::string a_result) {
   request.result = std::move(a_result);
@@ -34,67 +25,6 @@ void Finish(std::string a_result) {
                      {"actor", std::to_string(request.actor)},
                      {"operation", request.retire ? "retire" : "apply"},
                      {"result", request.result}});
-}
-
-std::int32_t Submit(RE::StaticFunctionTag *, RE::Actor *a_actor,
-                    bool a_retire) {
-  if (!a_actor)
-    return 0;
-  std::int32_t id = 0;
-  {
-    const std::lock_guard lock{requestLock};
-    id = request.Begin(a_actor->GetFormID(), a_retire);
-  }
-  if (id)
-    Manager::GetSingleton()->QueueRegression(id);
-  return id;
-}
-
-std::string Result(RE::StaticFunctionTag *, std::int32_t a_request) {
-  const std::lock_guard lock{requestLock};
-  return request.Result(a_request);
-}
-
-void Abort(RE::StaticFunctionTag *, std::int32_t a_request) {
-  const std::lock_guard lock{requestLock};
-  if (request.id == a_request)
-    Finish("ABORTED");
-}
-
-void Mark(RE::StaticFunctionTag *, std::int32_t a_request,
-          std::string a_checkpoint, bool a_pass) {
-  const std::lock_guard lock{requestLock};
-  if (a_request != request.id || request.result != "PASS" ||
-      a_checkpoint.size() > 64)
-    return;
-  Trace::EmitSafely(Trace::Event::kCommand,
-                    {{"action", "regression.visual"},
-                     {"request", std::to_string(a_request)},
-                     {"checkpoint", a_checkpoint},
-                     {"result", a_pass ? "PASS" : "FAIL"}});
-}
-
-void Solo(RE::StaticFunctionTag *, std::string a_recipe) {
-  {
-    const std::lock_guard lock{requestLock};
-    recipeUnderTest = a_recipe;
-  }
-  Manager::GetSingleton()->SoloRegressionRecipe(std::move(a_recipe));
-}
-
-void RestoreView(RE::StaticFunctionTag *) {
-  {
-    const std::lock_guard lock{requestLock};
-    recipeUnderTest.clear();
-  }
-  Manager::GetSingleton()->RestoreRegressionView();
-}
-
-const RE::TESObjectARMO *DemoArmor() {
-  RE::TESDataHandler *data = RE::TESDataHandler::GetSingleton();
-  return data ? data->LookupForm<RE::TESObjectARMO>(
-                    0x803, "BetterEnchantmentEffectsDemo.esp")
-              : nullptr;
 }
 
 bool InstanceUnderTest(const LiveActor &a_state, std::size_t a_instance) {
@@ -143,35 +73,64 @@ bool DemoArmorRendered(const LiveActor &a_state, RE::FormID a_armor) {
 }
 
 std::string RenderedVerdict(const LiveActor *a_state) {
-  const RE::TESObjectARMO *armor = DemoArmor();
+  const RE::TESObjectARMO *armor = RegressionFixture();
   if (!a_state || !armor) {
     return "BLOCKED";
   }
   return DemoArmorRendered(*a_state, armor->GetFormID()) ? "PASS" : "BLOCKED";
 }
 
-bool Bind(RE::BSScript::IVirtualMachine *a_vm) {
-  if (!a_vm)
-    return false;
-  a_vm->RegisterFunction("Session", "BEEFRegressionNative", Session);
-  a_vm->RegisterFunction("Submit", "BEEFRegressionNative", Submit);
-  a_vm->RegisterFunction("Result", "BEEFRegressionNative", Result);
-  a_vm->RegisterFunction("Abort", "BEEFRegressionNative", Abort);
-  a_vm->RegisterFunction("Mark", "BEEFRegressionNative", Mark);
-  a_vm->RegisterFunction("Solo", "BEEFRegressionNative", Solo);
-  a_vm->RegisterFunction("RestoreView", "BEEFRegressionNative", RestoreView);
-  return true;
-}
 }
 
-bool RegisterRegression() {
-  const auto *papyrus = SKSE::GetPapyrusInterface();
-  return papyrus && papyrus->Register(Bind);
+std::int32_t SubmitRegressionRequest(RE::Actor *a_actor, bool a_retire) {
+  if (!a_actor)
+    return 0;
+  std::int32_t id = 0;
+  {
+    const std::lock_guard lock{requestLock};
+    id = request.Begin(a_actor->GetFormID(), a_retire);
+  }
+  if (id)
+    Manager::GetSingleton()->QueueRegression(id);
+  return id;
+}
+
+std::string RegressionResult(std::int32_t a_request) {
+  const std::lock_guard lock{requestLock};
+  return request.Result(a_request);
+}
+
+void AbortRegressionRequest(std::int32_t a_request) {
+  const std::lock_guard lock{requestLock};
+  if (request.id == a_request)
+    Finish("ABORTED");
+}
+
+void SoloRecipeUnderTest(std::string a_recipe) {
+  {
+    const std::lock_guard lock{requestLock};
+    recipeUnderTest = a_recipe;
+  }
+  Manager::GetSingleton()->SoloRegressionRecipe(std::move(a_recipe));
+}
+
+void RestoreRecipeView() {
+  {
+    const std::lock_guard lock{requestLock};
+    recipeUnderTest.clear();
+  }
+  Manager::GetSingleton()->RestoreRegressionView();
+}
+
+RE::TESObjectARMO *RegressionFixture() {
+  RE::TESDataHandler *data = RE::TESDataHandler::GetSingleton();
+  return data ? data->LookupForm<RE::TESObjectARMO>(
+                    0x803, "BetterEnchantmentEffectsDemo.esp")
+              : nullptr;
 }
 
 void CancelRegression() {
   const std::lock_guard lock{requestLock};
-  ++sessionGeneration;
   if (request.id > 0)
     Finish("ABORTED");
 }

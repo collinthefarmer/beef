@@ -2059,18 +2059,31 @@ the compiled signals equal the authored signals used in the existing cache
 key; variant overrides conservatively disable that sharing until effective
 computation identities replace recipe-based keys.
 
-## Console-driven regression fixture
+## Regression requests (`engine/Regression.cpp`)
 
-`engine/Regression.cpp` registers the optional quest's Papyrus bridge. Calls
-store scalar request data and queue mutations through Manager's session task
-queue. Application completion must belong to a newer actor attempt, with a
-rendered surface output on demo armor; retirement checks actor-state removal.
-The bridge exposes strings and identifiers rather than renderer pointers.
-Save/new-game messages invalidate the request and the process/session token.
+A request stores scalar data and queues its mutation through Manager's
+session task queue. Application completion must belong to a newer actor
+attempt, with a rendered surface output on the demo armor; retirement checks
+actor-state removal. A game load aborts the current request.
 
-The runner and packaging contract are in `tests/in-game/README.md`. Caprica
-v0.3.0 in Skyrim mode compiles the scripts against narrow API declarations;
-only the two fixture scripts enter the package. The quest is manually started,
-with no aliases or fragments. QUST and VMAD layouts follow the TES5Edit
-`dev-4.1.5` definitions in `Core/wbDefinitionsTES5.pas`. These offline checks do
-not establish game execution or rendered acceptance.
+## Unattended regression runs (`regression/Run.h`, `engine/RegressionRun.cpp`)
+
+The run file sits in the SKSE log directory, beside the trace, so the host
+writes it without touching the MO2 mods directory. The plugin deletes it on
+read and refuses it after `notAfter`, so an ordinary later start never
+repeats a run. The plan is
+`docs/plans/unattended-regression-2026-10-01.md`.
+
+The player-update hook does not run at the main menu, so a `MenuOpenCloseEvent`
+sink on `RE::UI` starts the load. The load runs as an SKSE task through
+`BGSSaveLoadManager::Load(name, false)`; `false` skips the missing-content
+check, whose dialog would wait for input. `Load_Impl` is protected in
+CommonLibSSE-NG, so the call cannot see its result; a failed load reaches the
+run as `kPostLoadGame` with null data.
+
+`RE::Main::quitGame` ends the game at the next main-loop pass. The runner sets
+it 10 frames after the end line so the result and trace files flush first.
+
+`RunState` lives in process memory, never in the save, so a case can load a
+save and continue. The fixture is the demo cuirass, `0x803` in
+`BetterEnchantmentEffectsDemo.esp`; the body slot is `BipedObjectSlot::kBody`.

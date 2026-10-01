@@ -33,7 +33,6 @@ enchantment on the piece itself.
 | `docs/source-archive.md` | How is the corresponding-source archive produced, and how is a fresh extraction built? |
 | `docs/ui-api.md` | How is a studio surface built: the `menu/` widget vocabulary, the `Frame`, forms and fields, intents, and navigation? |
 | `docs/ui-design-principles.md` | Which direction does the editor's surface follow? |
-| `tests/in-game/README.md` | How do I build and run the optional console-driven lifecycle regression quest? |
 | `docs/in-game-regression.md` | What is the repeatable manual run in the game, and which log line does each step print? |
 | `docs/alpha-package.md` | What does a tester of a local candidate archive need to know? Shipped in the archive as `README.md`. |
 | `docs/bug-report.md` | How is a closed-alpha problem reported, with which evidence? Shipped as `BUG_REPORT.md`. |
@@ -41,6 +40,7 @@ enchantment on the piece itself.
 | `docs/plans/alpha-preparation-2026-09-22.md` | What is the active work toward alpha and source publication? Older plans, including the deletion inventory, are archived under `docs/history/`. |
 | `docs/plans/recipe-program-pipeline-2026-09-25.md` | How do recipe rows become evaluated programs, and which format decisions must be made before the format contract closes? Raised by authoring the cookbooks against the current language. |
 | `docs/plans/render-graph-correctness-2026-09-29.md` | Which invariants make the render graph's caching correct and minimal, where does the code break them, and in which order are they fixed? |
+| `docs/plans/unattended-regression-2026-10-01.md` | How does one host command start Skyrim, run named in-game cases from a known good save, and report the results? |
 | `docs/plans/render-performance-2026-09-29.md` | What costs frame time and memory when effects render, how is it measured, and in which order is it reduced? |
 | `docs/checkpoints/render-performance-review-2026-09-30.md` | What did the review of the layer-field and generated-shader commits find, and which findings are fixed? |
 | Git history | What did the previous implementation do? The frozen `src/_old/` tree was removed during alpha source cleanup; history retains it. |

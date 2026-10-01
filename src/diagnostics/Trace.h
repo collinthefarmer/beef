@@ -65,6 +65,7 @@ public:
   void Record(Event a_event, Context a_context,
               std::initializer_list<Field> a_fields) noexcept;
   [[nodiscard]] Status Inspect() const;
+  [[nodiscard]] std::filesystem::path FirstSegment() const;
   [[nodiscard]] std::vector<std::string> Recent() const;
 
 private:
