@@ -16,14 +16,13 @@
 namespace BetterEnchantmentEffects::Regression {
 enum class Outcome : std::uint8_t { kPass, kFail, kBlocked, kAborted };
 
-enum class RequestState : std::uint8_t {
-  kNone,
-  kWaiting,
-  kPass,
-  kFail,
-  kBlocked,
-  kAborted
+struct NoRequest {
+  [[nodiscard]] bool operator==(const NoRequest &) const = default;
 };
+struct RequestPending {
+  [[nodiscard]] bool operator==(const RequestPending &) const = default;
+};
+using RequestState = std::variant<NoRequest, RequestPending, Outcome>;
 
 enum class Role : std::uint8_t { kPlayer, kWearer, kControl };
 inline constexpr std::size_t kRoleCount = 3;
@@ -33,14 +32,16 @@ inline constexpr std::size_t kItemCount = 2;
 
 enum class View : std::uint8_t { kFirstPerson, kThirdPerson };
 
-enum class Work : std::uint8_t { kNothing, kApply, kEdit, kGesture, kPaint };
+enum class QueuedWork : std::uint8_t { kNothing, kApply, kEdit };
+enum class Session : std::uint8_t { kGesture, kPaint };
+enum class TrackedWork : std::uint8_t { kEdit, kGesture };
 
 enum class WorkOutcome : std::uint8_t {
   kNone,
   kPending,
   kApplied,
   kCancelledByLoad,
-  kOther
+  kFailed
 };
 
 struct Settle {
@@ -102,15 +103,15 @@ struct SetView {
   View view = View::kThirdPerson;
 };
 struct LoadDuring {
-  Work work = Work::kNothing;
+  QueuedWork work = QueuedWork::kNothing;
   std::string_view recipe;
 };
 struct ExpectAborted {};
 struct ExpectCancelled {
-  Work work = Work::kEdit;
+  TrackedWork work = TrackedWork::kEdit;
 };
 struct ExpectSettled {
-  Work work = Work::kEdit;
+  TrackedWork work = TrackedWork::kEdit;
 };
 struct DeleteScratch {};
 struct DuplicateToScratch {
@@ -132,23 +133,28 @@ struct HoldFor {
   std::string_view window;
   std::uint32_t seconds = 0;
 };
-struct Begin {
-  Work work = Work::kPaint;
+struct BeginSession {
+  Session session = Session::kPaint;
   std::string_view recipe;
 };
-struct AwaitActive {
-  Work work = Work::kPaint;
+struct AwaitSessionActive {
+  Session session = Session::kPaint;
+};
+struct BeginWindow {
+  std::string_view window;
+};
+struct EndWindow {
+  std::string_view window;
 };
 struct AwaitIdle {};
-using Step =
-    std::variant<Settle, Solo, RestoreView, Spawn, Despawn, Disable, Enable,
-                 Equip, Unequip, Remove, Apply, Retire, AwaitRendered,
-                 AwaitRetired, AwaitBaseline, ExpectEffect, HoldUntouched,
-                 LeaveCell, ReturnToStart, SetView, LoadDuring, ExpectAborted,
-                 ExpectCancelled, ExpectSettled, DeleteScratch,
-                 DuplicateToScratch, SetScratchOpacity, SaveScratch,
-                 ExpectScratch, SpawnCrowd, AwaitCrowdRendered, DespawnCrowd,
-                 HoldFor, Begin, AwaitActive, AwaitIdle>;
+using Step = std::variant<
+    Settle, Solo, RestoreView, Spawn, Despawn, Disable, Enable, Equip, Unequip,
+    Remove, Apply, Retire, AwaitRendered, AwaitRetired, AwaitBaseline,
+    ExpectEffect, HoldUntouched, LeaveCell, ReturnToStart, SetView, LoadDuring,
+    ExpectAborted, ExpectCancelled, ExpectSettled, DeleteScratch,
+    DuplicateToScratch, SetScratchOpacity, SaveScratch, ExpectScratch,
+    SpawnCrowd, AwaitCrowdRendered, DespawnCrowd, HoldFor, BeginWindow,
+    EndWindow, BeginSession, AwaitSessionActive, AwaitIdle>;
 
 struct Case {
   std::string_view name;
@@ -179,13 +185,13 @@ struct ActorView {
 };
 
 struct Activity {
-  std::uint32_t applications = 0;
-  bool paint = false;
-  bool gesture = false;
-  bool fileOperations = false;
-  WorkOutcome edit = WorkOutcome::kNone;
-  WorkOutcome tuning = WorkOutcome::kNone;
-  WorkOutcome file = WorkOutcome::kNone;
+  std::uint32_t pendingApplications = 0;
+  bool paintActive = false;
+  bool gestureActive = false;
+  bool fileOperationPending = false;
+  WorkOutcome editOutcome = WorkOutcome::kNone;
+  WorkOutcome gestureOutcome = WorkOutcome::kNone;
+  WorkOutcome fileOutcome = WorkOutcome::kNone;
   std::string detail;
 };
 
@@ -211,7 +217,7 @@ struct Observation {
   bool npcEffects = false;
   bool firstPerson = false;
   bool awayFromStart = false;
-  RequestState request = RequestState::kNone;
+  RequestState request = NoRequest{};
 };
 
 struct SoloRecipe {
@@ -276,12 +282,12 @@ struct PlaceCrowd {
   std::uint32_t count = 0;
 };
 struct RemoveCrowd {};
-struct BeginWork {
-  Work work = Work::kPaint;
+struct OpenSession {
+  Session session = Session::kPaint;
   std::string_view recipe;
 };
 struct ReloadDuring {
-  Work work = Work::kNothing;
+  QueuedWork work = QueuedWork::kNothing;
   std::string_view recipe;
 };
 struct Quit {};
@@ -291,7 +297,7 @@ using Command =
                  UnequipArmor, RemoveArmor, SubmitApply, SubmitRetire,
                  AbortRequest, TravelAway, TravelBack, SetCamera, CopyRecipe,
                  EditOpacity, WriteRecipe, RemoveRecipe, PlaceCrowd,
-                 RemoveCrowd, BeginWork, ReloadDuring, Quit>;
+                 RemoveCrowd, OpenSession, ReloadDuring, Quit>;
 
 struct StepResult {
   std::string_view caseName;
@@ -309,7 +315,14 @@ struct RunEnd {
   Outcome outcome = Outcome::kPass;
   std::string reason;
 };
-using ResultLine = std::variant<StepResult, CaseResult, RunEnd>;
+struct WindowBegins {
+  std::string_view window;
+};
+struct WindowEnds {
+  std::string_view window;
+};
+using ResultLine =
+    std::variant<StepResult, CaseResult, RunEnd, WindowBegins, WindowEnds>;
 
 struct Ownership {
   std::array<std::array<bool, kItemCount>, kRoleCount> added{};

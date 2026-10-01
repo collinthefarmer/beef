@@ -149,17 +149,16 @@ def trace_events(trace: Path) -> list[dict]:
 
 
 def windows(events: list[dict]) -> list[Window]:
-    steps = [(event.get('unix_ms', 0), event['fields'].get('operation', ''))
-             for event in events if event['fields'].get('action') == 'regression.step']
-    found, burst_start = [], None
-    for (previous, _), (time_ms, label) in zip(steps, steps[1:]):
-        parts = label.split()
-        if len(parts) == 3 and parts[0] == 'hold':
-            found.append(Window(parts[1], previous, time_ms))
-        if label.startswith('spawn-crowd'):
-            burst_start = previous
-        if label == 'await-crowd-rendered' and burst_start is not None:
-            found.append(Window('burst', burst_start, time_ms))
+    found, opened = [], {}
+    for event in events:
+        fields = event['fields']
+        if fields.get('action') != 'regression.window':
+            continue
+        name, time_ms = str(fields.get('window', '')), event.get('unix_ms', 0)
+        if fields.get('edge') == 'begin':
+            opened[name] = time_ms
+        elif fields.get('edge') == 'end' and name in opened:
+            found.append(Window(name, opened.pop(name), time_ms))
     return found
 
 

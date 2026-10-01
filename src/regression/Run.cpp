@@ -53,6 +53,22 @@ Advanced FinishSection(RunState a_state, Running a_running) {
   return {std::move(a_state), std::nullopt, std::move(lines)};
 }
 
+std::optional<std::string_view> WindowOpenedBy(const Step &a_step) {
+  if (const auto *hold = std::get_if<HoldFor>(&a_step))
+    return hold->window;
+  if (const auto *begin = std::get_if<BeginWindow>(&a_step))
+    return begin->window;
+  return std::nullopt;
+}
+
+std::optional<std::string_view> WindowClosedBy(const Step &a_step) {
+  if (const auto *hold = std::get_if<HoldFor>(&a_step))
+    return hold->window;
+  if (const auto *end = std::get_if<EndWindow>(&a_step))
+    return end->window;
+  return std::nullopt;
+}
+
 Running AfterStep(Running a_running, Outcome a_outcome) {
   a_running.caseOutcome = FirstFailure(a_running.caseOutcome, a_outcome);
   if (a_running.section == Section::kBody && a_outcome != Outcome::kPass) {
@@ -87,16 +103,21 @@ Advanced AdvanceRunning(RunState a_state, Running a_running,
                             a_state.renderMarks};
   StepMove move =
       a_running.started ? CheckStep(step, context) : StartStep(step, context);
+  std::vector<ResultLine> lines;
+  if (!a_running.started)
+    if (const std::optional<std::string_view> window = WindowOpenedBy(step))
+      lines.emplace_back(WindowBegins{*window});
   if (!a_running.started && move.command) {
     a_state.renderMarks = MarkRenders(a_state.renderMarks, step, a_seen);
   }
   a_running.started = true;
   a_state.owned = move.owned;
-  std::vector<ResultLine> lines;
   if (Completed *completed = std::get_if<Completed>(&move.verdict)) {
     lines.emplace_back(StepResult{
         current.name, ReportedIndex(current, a_running), StepLabel(step),
         completed->outcome, a_running.frames, std::move(completed->reason)});
+    if (const std::optional<std::string_view> window = WindowClosedBy(step))
+      lines.emplace_back(WindowEnds{*window});
     a_running = AfterStep(a_running, completed->outcome);
   }
   a_state.phase = a_running;

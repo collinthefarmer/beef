@@ -70,16 +70,16 @@ dispatches each `RenderStepKind` to one function per kind, for example `ExecuteB
 `RenderInstance::BeginFrame` runs once per frame, whichever geometry calls it
 first, with the tick's time in milliseconds. It releases each texture or
 bake-buffer step that no consumer read for `kReleaseAfterIdleMS` (500 ms),
-and it never releases a stack result (`Releasable`).
+and it never releases a stack result (`Releasable`). It then collects the
+finished readbacks. A step whose input has no value yet while its readback is
+in flight makes the stack `StackPending`, not failed (`AwaitingFirstReadback`).
 
 A step with a **share key** (`RenderStep::shareKey`) runs through
 `ExecuteShared`. It looks the key up in `SharedStepOutputs` first: a hit
 returns the cached texture with no GPU work and no new target. A miss renders
 into a fresh target, never one reused in place, and publishes the result. The
 cache drops an entry once only the cache holds its target and it has been
-unread for 500 ms; `Manager::Clear` empties it on load. It then collects the finished readbacks. A step whose input
-has no value yet while its readback is in flight makes the stack
-`StackPending`, not failed (`AwaitingFirstReadback`).
+unread for 500 ms; `Manager::Clear` empties it on load.
 
 ### Stack composition and layer fields
 

@@ -52,7 +52,8 @@ other function in the module reads the assembled `MeshData`.
 
 `HashBytes` computes an FNV-1a hash from `kHashBasis`.
 `render/MeshReader.cpp` folds the vertex and index bytes into
-`MeshData::hash` with it. `AddBoneWeights` adds one vertex's positive, finite
+`MeshData::hash` with it, then `HashLayout` folds in each partition's slot and
+bone names and the model bound, which the bakes also read. `AddBoneWeights` adds one vertex's positive, finite
 bone weights to a map by bone name. `BonesOf` and the island tally in
 `Islands.cpp` both use it.
 

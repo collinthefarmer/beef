@@ -547,6 +547,7 @@ void Manager::SweepEviction(const Settings &a_settings) {
 void Manager::FireDueFinalizes() { applications_.FinalizeDue(NowMS()); }
 
 void Manager::Tick(std::uint32_t a_nowMS, const Settings &a_settings) {
+  tickNowMS_ = a_nowMS;
   const Studio::View &view = editor_.CurrentView();
   TextureLab::GetSingleton()->RenderPreviews();
   const TickFrame frame{a_settings, view, a_nowMS,
@@ -658,7 +659,7 @@ void Manager::RenderGeometry(LiveActor &a_state, LiveGeometry &a_bound,
                              bool a_hidden) {
   const Studio::View &view = editor_.CurrentView();
   if (a_bound.inputs.render &&
-      a_bound.inputs.render->BeginFrame(renderFrame_, NowMS())) {
+      a_bound.inputs.render->BeginFrame(renderFrame_, tickNowMS_)) {
     UpdateRenderInputs(a_state, a_bound);
   }
   if (a_bound.lost) {

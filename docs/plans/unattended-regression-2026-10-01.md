@@ -76,8 +76,9 @@ commands, so `tools/trace-report.py` can split a trace by case.
    as `BLOCKED` and quits.
 4. Each player update (`Manager::OnFrame`): build an **observation**, advance
    the runner, execute its command, append its result lines.
-5. The runner settles for 120 frames after the player's 3D is loaded and no
-   menu is open, then starts the first case.
+5. The runner settles for 120 player updates with the player's 3D loaded,
+   then starts the first case. Player updates stop while a menu pauses the
+   game, so a menu delays the settle.
 6. Every case ends with its cleanup steps, which run after a failure too.
 7. After the last case: write `end`, wait 10 frames, set `quitGame`.
 

@@ -203,7 +203,7 @@ it last observed.
 | `StepInput` | One observed input reference and its change version. |
 | `StepOutput<T>` | An optional result and its change version. |
 | `RenderInputState<T>` | An imported input's optional value and change version. |
-| `StepExecutionState<T, Scratch>` | One step's observed inputs, outputs, scratch, last diagnostic, `released` flag and last-used epoch. |
+| `StepExecutionState<T, Scratch>` | One step's observed inputs, outputs, scratch, last diagnostic, `released` flag and the clock value of its last use. |
 | `ResolvedRenderInput<T>` | A reference, its value and its change version, as a step callback receives it. |
 | `RenderExecution<T, Scratch>` | Holds a validated plan and its state. `Evaluate` materializes one reference through the `ExecuteStep`, `SameValue` and `SelectInputs` callbacks. `SetInput` imports a value. `AdvanceClock` sets the time in the caller's unit, and `ReleaseIdle` drops results unused for longer than a given span of it. A walk stops at depth 64 or 65536 visits. |
 

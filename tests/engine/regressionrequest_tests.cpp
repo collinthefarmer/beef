@@ -2,30 +2,42 @@
 #include "engine/RegressionRequest.h"
 #include "test_support.h"
 
+#include <limits>
+
 using namespace BetterEnchantmentEffects;
+using Regression::NoRequest;
+using Regression::Outcome;
+using Regression::RequestPending;
+using Regression::RequestState;
 
 int main() {
   RegressionRequest request;
-  test::Equal(request.Begin(0, false), 0, "missing actor rejected");
-  const auto first = request.Begin(20, false);
-  test::Check(first > 0, "valid request accepted");
-  test::Equal(request.Begin(21, true), 0, "overlapping request rejected");
-  test::Equal(request.actor, 20u, "rejected request preserves target");
-  test::Equal(request.Result(first), std::string{"WAITING"},
+  test::Check(!BeginRequest(request, 0, RequestKind::kApply),
+              "missing actor refused");
+  const auto first = BeginRequest(request, 20, RequestKind::kApply);
+  test::Check(first.has_value(), "valid request accepted");
+  test::Check(!BeginRequest(request, 21, RequestKind::kRetire),
+              "overlapping request refused");
+  test::Equal(request.actor, 20u, "refused request keeps the target");
+  test::Check(first &&
+                  StateOf(request, *first) == RequestState{RequestPending{}},
               "acceptance is not completion");
-  request.Cancel();
-  test::Check(!request.Pending(first), "cancel prevents dispatch");
-  test::Equal(request.Result(first), std::string{"ABORTED"},
-              "cancel is observable");
-  const auto second = request.Begin(21, true);
-  test::Check(second > first, "identifiers are never reused");
-  request.result = "PASS";
-  test::Equal(request.Result(first), std::string{"ABORTED"},
-              "old request cannot observe new success");
-  test::Equal(request.Result(second), std::string{"PASS"},
-              "current request sees success");
-  request.id = std::numeric_limits<std::int32_t>::max();
-  test::Equal(request.Begin(20, false), 0,
+  request.state = Outcome::kAborted;
+  test::Check(first && !Pending(request, *first), "an abort ends waiting");
+  const auto second = BeginRequest(request, 21, RequestKind::kRetire);
+  test::Check(first && second && *second > *first,
+              "identifiers are never reused");
+  request.state = Outcome::kPass;
+  test::Check(first &&
+                  StateOf(request, *first) == RequestState{Outcome::kAborted},
+              "an old request cannot observe a new success");
+  test::Check(second &&
+                  StateOf(request, *second) == RequestState{Outcome::kPass},
+              "the current request sees its success");
+  test::Check(RegressionRequest{}.state == RequestState{NoRequest{}},
+              "a fresh store holds no request");
+  request.id = std::numeric_limits<std::uint64_t>::max();
+  test::Check(!BeginRequest(request, 20, RequestKind::kApply),
               "identifier exhaustion refuses instead of wrapping");
   return test::Finish("regression requests");
 }

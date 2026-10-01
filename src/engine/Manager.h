@@ -22,6 +22,7 @@
 #include <memory>
 #include <mutex>
 #include <optional>
+#include <span>
 #include <string>
 #include <string_view>
 #include <unordered_map>
@@ -57,11 +58,12 @@ public:
   void RequestMesh(RE::FormID a_actorID, std::string a_geometry);
 
   void OnFrame();
-  void QueueRegression(std::int32_t a_request);
+  void QueueRegression(std::uint64_t a_request);
   void SoloRegressionRecipe(std::string a_recipe);
   void RestoreRegressionView();
   void ObserveRegression();
-  [[nodiscard]] RegressionActorFacts RegressionActor(RE::FormID a_actor) const;
+  [[nodiscard]] std::vector<RegressionActorFacts>
+  RegressionActors(std::span<const RE::FormID> a_actors) const;
   [[nodiscard]] Regression::Activity
   RegressionActivity(std::uint64_t a_edit, std::uint64_t a_gesture,
                      std::uint64_t a_file) const;
@@ -109,6 +111,7 @@ public:
 
 private:
   std::uint64_t renderFrame_ = 0;
+  std::uint32_t tickNowMS_ = 0;
   friend class RecipeEditor;
 
   Manager();
@@ -194,6 +197,7 @@ private:
   std::unordered_set<RE::FormID> awaitingModel_;
   void SweepAwaitingModels(const Settings &a_settings);
   std::uint32_t lastModelCheckMS_ = 0;
+  std::uint64_t regressionPaintSession_ = 0;
   std::uint32_t lastTickMS_ = 0;
   std::uint32_t lastMetricsMS_ = 0;
   std::uint32_t lastEvictionMS_ = 0;

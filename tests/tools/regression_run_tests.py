@@ -69,24 +69,25 @@ class RegressionRunTests(unittest.TestCase):
             self.assertIsInstance(host.launches(bad), str)
 
     def soak_events(self):
-        def step(time_ms, label):
-            return {'unix_ms': time_ms, 'fields': {'action': 'regression.step',
-                                                   'operation': label}}
+        def edge(time_ms, window, kind):
+            return {'unix_ms': time_ms, 'fields': {'action': 'regression.window',
+                                                   'window': window, 'edge': kind}}
 
         def beat(time_ms, frames, frame_us, frame_max_us, targets, target_bytes):
             return {'unix_ms': time_ms, 'fields': {
                 'action': 'heartbeat', 'frames': str(frames), 'frame_us': str(frame_us),
                 'frame_max_us': str(frame_max_us), 'targets': str(targets),
                 'target_bytes': str(target_bytes)}}
-        return [step(0, 'solo arcane-circuit'), beat(500, 150, 1000, 50, 1, 10),
-                beat(1000, 150, 1000, 50, 1, 10), step(1000, 'hold baseline 1s'),
-                step(1100, 'spawn-crowd 12'), step(1200, 'await-crowd-rendered'),
-                beat(2000, 10, 50000, 900000, 80, 500), step(2000, 'hold settle 1s'),
-                beat(3000, 75, 150000, 4000, 20, 300), step(3000, 'hold steady 1s'),
-                step(3100, 'despawn-crowd'), beat(4000, 140, 2000, 60, 5, 40),
-                step(4100, 'hold recovery 1s')]
+        return [edge(0, 'baseline', 'begin'), beat(500, 150, 1000, 50, 1, 10),
+                beat(1000, 150, 1000, 50, 1, 10), edge(1000, 'baseline', 'end'),
+                edge(1000, 'burst', 'begin'), edge(1200, 'burst', 'end'),
+                edge(1200, 'settle', 'begin'), beat(2000, 10, 50000, 900000, 80, 500),
+                edge(2000, 'settle', 'end'), edge(2000, 'steady', 'begin'),
+                beat(3000, 75, 150000, 4000, 20, 300), edge(3000, 'steady', 'end'),
+                edge(3100, 'recovery', 'begin'), beat(4000, 140, 2000, 60, 5, 40),
+                edge(4100, 'recovery', 'end'), edge(5000, 'unclosed', 'begin')]
 
-    def test_windows_follow_the_step_events(self):
+    def test_windows_pair_the_plugin_window_events(self):
         names = [(w.name, w.start_ms, w.end_ms) for w in host.windows(self.soak_events())]
         self.assertEqual(names, [('baseline', 0, 1000), ('burst', 1000, 1200),
                                  ('settle', 1200, 2000), ('steady', 2000, 3000),

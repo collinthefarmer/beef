@@ -135,8 +135,11 @@ void ShareKeysCarryOperandValues() {
   Check(ShareKeyFor("bake", std::vector<Value>{0.0f}) !=
             ShareKeyFor("bake", std::vector<Value>{Vec2{0.0f, 0.0f}}),
         "operand shapes are part of the share key");
-  Check(ShareKeyFor("bake", {}) == "bake",
+  Check(ShareKeyFor("bake", {}) == std::optional<std::string>{"bake"},
         "a step without numeric operands keeps its share key");
+  const std::vector<Value> many(kMaxShareKeyBytes / 8, Value{0.0f});
+  Check(!ShareKeyFor("bake", many).has_value(),
+        "a share key past its size limit is not shared");
 }
 
 std::optional<RenderPlan> SingleStackPlan(const Recipe &recipe,

@@ -96,14 +96,14 @@ inline constexpr std::array<Step, 17> kUnload{Solo{kSoloRecipe},
                                               ExpectEffect{Role::kPlayer}};
 
 inline constexpr std::array<Step, 4> kLoadIdle{
-    Solo{kSoloRecipe}, LoadDuring{Work::kNothing, kSoloRecipe},
+    Solo{kSoloRecipe}, LoadDuring{QueuedWork::kNothing, kSoloRecipe},
     AwaitBaseline{Role::kPlayer}, AwaitIdle{}};
 
 inline constexpr std::array<Step, 7> kLoadApply{
     Solo{kSoloRecipe},
     kPlayerFixture,
     AwaitRendered{Role::kPlayer},
-    LoadDuring{Work::kApply, kSoloRecipe},
+    LoadDuring{QueuedWork::kApply, kSoloRecipe},
     ExpectAborted{},
     AwaitBaseline{Role::kPlayer},
     AwaitIdle{}};
@@ -112,8 +112,8 @@ inline constexpr std::array<Step, 7> kLoadEdit{
     Solo{kSoloRecipe},
     kPlayerFixture,
     AwaitRendered{Role::kPlayer},
-    LoadDuring{Work::kEdit, kSoloRecipe},
-    ExpectSettled{Work::kEdit},
+    LoadDuring{QueuedWork::kEdit, kSoloRecipe},
+    ExpectSettled{TrackedWork::kEdit},
     AwaitBaseline{Role::kPlayer},
     AwaitIdle{}};
 
@@ -121,10 +121,10 @@ inline constexpr std::array<Step, 9> kLoadGesture{
     Solo{kSoloRecipe},
     kPlayerFixture,
     AwaitRendered{Role::kPlayer},
-    Begin{Work::kGesture, kSoloRecipe},
-    AwaitActive{Work::kGesture},
-    LoadDuring{Work::kNothing, kSoloRecipe},
-    ExpectCancelled{Work::kGesture},
+    BeginSession{Session::kGesture, kSoloRecipe},
+    AwaitSessionActive{Session::kGesture},
+    LoadDuring{QueuedWork::kNothing, kSoloRecipe},
+    ExpectCancelled{TrackedWork::kGesture},
     AwaitBaseline{Role::kPlayer},
     AwaitIdle{}};
 
@@ -132,9 +132,9 @@ inline constexpr std::array<Step, 8> kLoadPaint{
     Solo{kSoloRecipe},
     kPlayerFixture,
     AwaitRendered{Role::kPlayer},
-    Begin{Work::kPaint, kSoloRecipe},
-    AwaitActive{Work::kPaint},
-    LoadDuring{Work::kNothing, kSoloRecipe},
+    BeginSession{Session::kPaint, kSoloRecipe},
+    AwaitSessionActive{Session::kPaint},
+    LoadDuring{QueuedWork::kNothing, kSoloRecipe},
     AwaitBaseline{Role::kPlayer},
     AwaitIdle{}};
 
@@ -175,18 +175,20 @@ inline constexpr std::uint32_t kRecoverySeconds = 30;
 
 inline constexpr std::uint32_t kSettleSeconds = 30;
 
-consteval std::array<Step, 8> Soak(std::uint32_t a_steadySeconds) {
+consteval std::array<Step, 10> Soak(std::uint32_t a_steadySeconds) {
   return {Solo{kSoloRecipe},
           HoldFor{"baseline", kBaselineSeconds},
+          BeginWindow{"burst"},
           SpawnCrowd{kCrowdSize},
           AwaitCrowdRendered{},
+          EndWindow{"burst"},
           HoldFor{"settle", kSettleSeconds},
           HoldFor{"steady", a_steadySeconds},
           DespawnCrowd{},
           HoldFor{"recovery", kRecoverySeconds}};
 }
-inline constexpr std::array<Step, 8> kSoak = Soak(120);
-inline constexpr std::array<Step, 8> kSoakHour = Soak(3600);
+inline constexpr std::array<Step, 10> kSoak = Soak(120);
+inline constexpr std::array<Step, 10> kSoakHour = Soak(3600);
 
 inline constexpr std::array<Case, 14> kCatalog{
     Case{"lifecycle", kLifecycle, kCleanup},

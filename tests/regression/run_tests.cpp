@@ -40,9 +40,15 @@ void ParsesValidRunFile() {
   test::Equal(parsed->suite.size(), std::size_t{1}, "suite resolved");
 }
 
+struct BadRunFile {
+  std::string text;
+  std::string what;
+  std::int64_t now = kNow;
+};
+
 void RefusesBadRunFiles() {
-  const std::vector<std::pair<std::string, std::string>> cases{
-      {RunFileFor("lifecycle"), "expired"},
+  const std::vector<BadRunFile> files{
+      {RunFileFor("lifecycle"), "expired", kNow + 601},
       {RunFile(R"("suite":["nothing"],"notAfter":1800000600)"), "unknown case"},
       {RunFile(R"("suite":[],"notAfter":1800000600)"), "empty suite"},
       {RunFile(R"("suite":[1],"notAfter":1800000600)"), "case not a string"},
@@ -50,6 +56,8 @@ void RefusesBadRunFiles() {
        "notAfter not an integer"},
       {RunFile(R"("suite":["lifecycle"],"notAfter":1800000600,"x":1)"),
        "unknown key"},
+      {RunFile(R"("suite":["lifecycle"],"notAfter":1,"notAfter":1800000600)"),
+       "duplicate key"},
       {R"({"format":2,"run":"r1","save":"s","suite":["lifecycle"],"notAfter":1800000600})",
        "wrong format"},
       {R"({"format":1,"run":"r 1","save":"s","suite":["lifecycle"],"notAfter":1800000600})",
@@ -58,15 +66,15 @@ void RefusesBadRunFiles() {
        "save as a path"},
       {R"({"format":1,"run":"","save":"s","suite":["lifecycle"],"notAfter":1800000600})",
        "empty run"},
+      {R"({"format":1,"save":"s","suite":["lifecycle"],"notAfter":1800000600})",
+       "missing run"},
       {"[1,2,3]", "not an object"},
       {"{\"format\":1", "truncated"},
       {std::string(200, '[') + std::string(200, ']'), "deep nesting"},
       {std::string(70000, ' '), "oversized"},
   };
-  for (std::size_t index = 0; index < cases.size(); ++index) {
-    const std::int64_t now = index == 0 ? kNow + 601 : kNow;
-    test::Check(!ParseRunRequest(cases[index].first, now).has_value(),
-                cases[index].second);
+  for (const BadRunFile &file : files) {
+    test::Check(!ParseRunRequest(file.text, file.now).has_value(), file.what);
   }
 }
 
@@ -92,9 +100,9 @@ struct World {
   std::array<SimActor, kRoleCount> actors{};
   bool firstPerson = false;
   bool away = false;
-  RequestState request = RequestState::kNone;
+  RequestState request = NoRequest{};
   int requestIn = -1;
-  RequestState requestOutcome = RequestState::kPass;
+  Outcome requestOutcome = Outcome::kPass;
   std::uint64_t revision = 0;
   Activity activity;
   std::uint32_t loads = 0;
@@ -175,8 +183,8 @@ struct World {
     }
   }
 
-  void Submit(RequestState a_outcome, int a_frames) {
-    request = RequestState::kWaiting;
+  void Submit(Outcome a_outcome, int a_frames) {
+    request = RequestPending{};
     requestIn = faults.requestsHang ? -1 : a_frames;
     requestOutcome = a_outcome;
   }
@@ -243,20 +251,18 @@ struct World {
             [&](const SubmitApply &a_c) {
               commands.emplace_back("apply");
               ActorOf(a_c.role).renderIn = 3;
-              Submit(RequestState::kPass, 3);
+              Submit(Outcome::kPass, 3);
             },
             [&](const SubmitRetire &a_c) {
               commands.emplace_back("retire");
               SimActor &actor = ActorOf(a_c.role);
               actor.view.live = false;
               actor.view.traces = 0;
-              Submit(faults.retireFails ? RequestState::kFail
-                                        : RequestState::kPass,
-                     1);
+              Submit(faults.retireFails ? Outcome::kFail : Outcome::kPass, 1);
             },
             [&](const AbortRequest &) {
               commands.emplace_back("abort");
-              request = RequestState::kAborted;
+              request = Outcome::kAborted;
             },
             [&](const TravelAway &) {
               commands.emplace_back("leave");
@@ -273,25 +279,25 @@ struct World {
             [&](const CopyRecipe &) {
               commands.emplace_back("copy");
               scratch = {true, true, std::nullopt};
-              activity.edit = WorkOutcome::kApplied;
+              activity.editOutcome = WorkOutcome::kApplied;
             },
             [&](const EditOpacity &a_c) {
               commands.emplace_back("edit");
               scratch.firstOpacity = a_c.value;
               scratch.dirty = true;
-              activity.edit = WorkOutcome::kApplied;
+              activity.editOutcome = WorkOutcome::kApplied;
             },
             [&](const WriteRecipe &) {
               commands.emplace_back("save");
               disk = faults.saveDropsEdit ? std::nullopt : scratch.firstOpacity;
               scratch.dirty = false;
-              activity.file = WorkOutcome::kApplied;
+              activity.fileOutcome = WorkOutcome::kApplied;
             },
             [&](const RemoveRecipe &) {
               commands.emplace_back("delete");
               scratch = {};
               disk.reset();
-              activity.edit = WorkOutcome::kApplied;
+              activity.editOutcome = WorkOutcome::kApplied;
             },
             [&](const PlaceCrowd &a_c) {
               commands.emplace_back("crowd");
@@ -304,13 +310,13 @@ struct World {
               crowd = {};
               crowdIn = -1;
             },
-            [&](const BeginWork &a_c) {
+            [&](const OpenSession &a_c) {
               commands.emplace_back("begin");
-              StartWork(a_c.work);
+              OpenSessionFor(a_c.session);
             },
             [&](const ReloadDuring &a_c) {
               commands.emplace_back("reload");
-              StartWork(a_c.work);
+              QueueWork(a_c.work);
               ActorOf(Role::kPlayer).view.present = false;
               loadIn = 3;
             },
@@ -319,26 +325,28 @@ struct World {
         a_command);
   }
 
-  void StartWork(Work a_work) {
+  void QueueWork(QueuedWork a_work) {
     switch (a_work) {
-    case Work::kNothing:
+    case QueuedWork::kNothing:
       break;
-    case Work::kApply:
-      Submit(RequestState::kPass, 5);
-      activity.applications = 1;
+    case QueuedWork::kApply:
+      Submit(Outcome::kPass, 5);
+      activity.pendingApplications = 1;
       break;
-    case Work::kEdit:
-      activity.applications = 1;
-      activity.edit = faults.editAppliesFirst ? WorkOutcome::kApplied
-                                              : WorkOutcome::kPending;
+    case QueuedWork::kEdit:
+      activity.pendingApplications = 1;
+      activity.editOutcome = faults.editAppliesFirst ? WorkOutcome::kApplied
+                                                     : WorkOutcome::kPending;
       break;
-    case Work::kGesture:
-      activity.gesture = true;
-      activity.tuning = WorkOutcome::kPending;
-      break;
-    case Work::kPaint:
-      activity.paint = true;
-      break;
+    }
+  }
+
+  void OpenSessionFor(Session a_session) {
+    if (a_session == Session::kGesture) {
+      activity.gestureActive = true;
+      activity.gestureOutcome = WorkOutcome::kPending;
+    } else {
+      activity.paintActive = true;
     }
   }
 
@@ -349,22 +357,22 @@ struct World {
       actor = SimActor{};
     }
     ActorOf(Role::kPlayer).view.present = true;
-    if (request == RequestState::kWaiting) {
-      request = faults.loadCompletesRequest ? RequestState::kPass
-                                            : RequestState::kAborted;
+    if (std::holds_alternative<RequestPending>(request)) {
+      request =
+          faults.loadCompletesRequest ? Outcome::kPass : Outcome::kAborted;
       requestIn = -1;
     }
     const auto cancel = [](WorkOutcome a_outcome) {
       return a_outcome == WorkOutcome::kPending ? WorkOutcome::kCancelledByLoad
                                                 : a_outcome;
     };
-    const WorkOutcome edit = cancel(activity.edit);
-    const WorkOutcome tuning = cancel(activity.tuning);
+    const WorkOutcome edit = cancel(activity.editOutcome);
+    const WorkOutcome gesture = cancel(activity.gestureOutcome);
     if (!faults.loadKeepsWork) {
       activity = {};
     }
-    activity.edit = edit;
-    activity.tuning = tuning;
+    activity.editOutcome = edit;
+    activity.gestureOutcome = gesture;
   }
 
   void Tick() {
@@ -601,10 +609,14 @@ void StudioRoundTrip() {
   test::Check(!reloaded.disk, "a failed reload still deletes the scratch");
 }
 
+const std::array<RequestState, 6> kEveryRequestState{
+    NoRequest{},    RequestPending{},  Outcome::kPass,
+    Outcome::kFail, Outcome::kBlocked, Outcome::kAborted};
+
 void EveryFixedObservationEndsTheRun() {
   for (const Case &entry : Catalog()) {
     for (int bits = 0; bits < 64; ++bits) {
-      for (int request = 0; request <= 5; ++request) {
+      for (const RequestState &request : kEveryRequestState) {
         Observation seen;
         for (std::size_t role = 0; role < kRoleCount; ++role) {
           ActorView &actor = seen.actors[role];
@@ -616,7 +628,7 @@ void EveryFixedObservationEndsTheRun() {
         }
         seen.itemsLoaded = {(bits & 16) != 0, true};
         seen.npcEffects = (bits & 32) != 0;
-        seen.request = static_cast<RequestState>(request);
+        seen.request = request;
         RunState state = RunOf(entry.name);
         for (int frame = 0; frame < 100000 && !Done(state); ++frame) {
           seen.nowMs = static_cast<std::uint64_t>(frame) * kSimulatedFrameMs;

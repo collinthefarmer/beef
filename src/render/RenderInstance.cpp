@@ -1240,6 +1240,7 @@ bool RenderInstance::AwaitingFirstReadback() const {
   }
   return false;
 }
+namespace {
 StepResult
 ExecuteTimed(const RenderStep &step,
              std::span<const ResolvedRenderInput<RenderValue>> inputs,
@@ -1261,7 +1262,10 @@ ExecuteShared(const RenderStep &step,
   for (const auto &input : inputs)
     if (const auto *value = Get<Value>(input.value))
       operands.push_back(*value);
-  const std::string key = ShareKeyFor(step.shareKey, operands);
+  const std::optional<std::string> found = ShareKeyFor(step.shareKey, operands);
+  if (!found)
+    return ExecuteTimed(step, inputs, scratch);
+  const std::string &key = *found;
   SharedStepOutputs *shared = SharedStepOutputs::GetSingleton();
   scratch.target.reset();
   if (std::optional<TextureView> hit = shared->Find(key, nowMS)) {
@@ -1273,6 +1277,7 @@ ExecuteShared(const RenderStep &step,
     if (const auto *view = Get<TextureView>(*produced))
       shared->Publish(key, *view, nowMS);
   return produced;
+}
 }
 std::expected<ResolvedRenderInput<RenderValue>, std::string>
 RenderInstance::Demand(RenderValueRef output) {

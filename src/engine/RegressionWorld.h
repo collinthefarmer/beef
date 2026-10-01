@@ -6,6 +6,7 @@
 
 #include <array>
 #include <cstdint>
+#include <optional>
 #include <string>
 #include <vector>
 
@@ -13,7 +14,7 @@ namespace BetterEnchantmentEffects {
 struct RunWorld {
   std::array<RE::FormID, Regression::kRoleCount> spawned{};
   RE::FormID marker = 0;
-  std::int32_t request = 0;
+  std::optional<std::uint64_t> request;
   std::string save;
   std::uint32_t loads = 0;
   std::uint64_t edit = 0;

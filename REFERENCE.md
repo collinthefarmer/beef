@@ -1203,8 +1203,10 @@ lives cannot match a different texture. State and signal identities carry
 match across actors. At execution, `ShareKeyFor` appends the exact bits of
 the step's resolved numeric operands to the key: a node position that
 follows the current pose (a node outside the skin) is not a changing input,
-so without it a bake would stay at the pose of its first frame. A share key
-longer than 4096 bytes is not shared. A cache entry whose texture is no
+so without it a bake would stay at the pose of its first frame. A step whose
+plan-time key or whose key with operands is longer than 4096 bytes
+(`kMaxShareKeyBytes`) renders privately. The cache holds at most 4096
+entries; when it is full it stops accepting new keys. A cache entry whose texture is no
 longer valid is dropped when found. A shared target is never
 written again: a miss always renders into a fresh target, and a hit does not
 remember the target in the step's scratch. `TextureView::texture` holds the
@@ -2186,8 +2188,11 @@ reload launch reads it back from there. Mod Organizer ignores a
 `tools/regression-run.py` pauses 15 seconds between launches and repeats an
 unanswered launch request once.
 
-The soak's crowd is observed through `Manager::RegressionActor` facts only,
-never by walking each member's 3D, so observation adds no per-member cost.
+The soak's crowd is observed through `Manager::RegressionActors`, one pass
+over one copy of the application snapshot for the roles and every crowd
+member, never by walking a member's 3D. The roles' 3D is walked each frame
+for residue (shells and presenter textures). This work lowers the game's fps
+but not the heartbeat's plugin cost.
 The run advances before `Manager::OnFrame` starts its frame timer, so the
 heartbeat's plugin cost excludes the runner. `await-crowd-rendered` completes
 once every member's application reports rendered, before the GPU work of the

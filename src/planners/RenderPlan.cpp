@@ -622,6 +622,7 @@ std::vector<RenderValueRef> StepDependencies(const RenderPlan &plan,
   return operands;
 }
 
+namespace {
 std::string ShareKeyOf(const RenderStep &step,
                        const TextureRequirements &requirements) {
   return std::format("{}|{}|{}|{}|{}", step.valueKey, StepKindName(step.kind),
@@ -629,8 +630,6 @@ std::string ShareKeyOf(const RenderStep &step,
                      static_cast<int>(requirements.format),
                      static_cast<int>(requirements.mipPolicy));
 }
-
-constexpr std::size_t kMaxShareKeyBytes = 4096;
 
 std::string OperandBits(const Value &value) {
   const auto bits = [](float component) {
@@ -645,12 +644,17 @@ std::string OperandBits(const Value &value) {
       });
 }
 
-std::string ShareKeyFor(std::string_view shareKey,
-                        std::span<const Value> operands) {
+}
+
+std::optional<std::string> ShareKeyFor(std::string_view shareKey,
+                                       std::span<const Value> operands) {
   std::string key{shareKey};
   for (const Value &operand : operands) {
     key += '|';
     key += OperandBits(operand);
+  }
+  if (key.size() > kMaxShareKeyBytes) {
+    return std::nullopt;
   }
   return key;
 }
@@ -663,12 +667,13 @@ RenderPlan MarkShareableSteps(RenderPlan plan) {
         RequirementsOf(step.kind);
     const bool texture =
         OutputType(step.kind) == RenderValueType{RenderResourceType::kTexture};
-    step.shareKey = !changing[i] && texture && requirements &&
-                            !step.valueKey.empty() &&
-                            step.valueKey.size() <= kMaxShareKeyBytes &&
-                            !Is<CompositeStackStep>(step.kind)
-                        ? ShareKeyOf(step, *requirements)
-                        : std::string{};
+    const bool shareable = !changing[i] && texture && requirements &&
+                           !step.valueKey.empty() &&
+                           !Is<CompositeStackStep>(step.kind);
+    std::string key =
+        shareable ? ShareKeyOf(step, *requirements) : std::string{};
+    step.shareKey =
+        key.size() <= kMaxShareKeyBytes ? std::move(key) : std::string{};
   }
   return plan;
 }

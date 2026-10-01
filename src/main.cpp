@@ -11,7 +11,7 @@
 #include "engine/Manager.h"
 #include "engine/PluginEvents.h"
 #include "engine/RecipeStore.h"
-#include "engine/Regression.h"
+#include "engine/RegressionRequests.h"
 #include "engine/RegressionRun.h"
 #include "menu/Menu.h"
 #include <algorithm>

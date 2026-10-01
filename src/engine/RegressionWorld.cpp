@@ -5,7 +5,7 @@
 #include "Identity.h"
 #include "SettingsFile.h"
 #include "engine/Manager.h"
-#include "engine/Regression.h"
+#include "engine/RegressionRequests.h"
 #include "render/PBRMaterial.h"
 
 #include <algorithm>
@@ -90,7 +90,7 @@ bool Present(const RE::Actor &a_actor) {
   return !a_actor.IsDisabled() && !a_actor.IsDeleted() && a_actor.Is3DLoaded();
 }
 
-Regression::ActorView ViewOf(RE::Actor *a_actor) {
+Regression::ActorView ViewOf(RE::Actor *a_actor, RegressionActorFacts a_facts) {
   Regression::ActorView view;
   if (!a_actor) {
     return view;
@@ -107,37 +107,11 @@ Regression::ActorView ViewOf(RE::Actor *a_actor) {
     seen.equipped = armor && body == armor;
     seen.carried = armor && CountOf(*a_actor, *armor) > 0;
   }
-  if (const Manager *manager = Manager::GetSingleton()) {
-    RegressionActorFacts facts = manager->RegressionActor(a_actor->GetFormID());
-    view.live = facts.live;
-    view.renderedAttempt = facts.renderedAttempt;
-    view.application = std::move(facts.application);
-  }
+  view.live = a_facts.live;
+  view.renderedAttempt = a_facts.renderedAttempt;
+  view.application = std::move(a_facts.application);
   view.traces = view.present ? TracesOn(*a_actor) : 0;
   return view;
-}
-
-Regression::RequestState RequestStateOf(std::int32_t a_request) {
-  if (a_request == 0) {
-    return Regression::RequestState::kNone;
-  }
-  const std::string result = RegressionResult(a_request);
-  if (result == "WAITING") {
-    return Regression::RequestState::kWaiting;
-  }
-  if (result == "PASS") {
-    return Regression::RequestState::kPass;
-  }
-  if (result == "FAIL") {
-    return Regression::RequestState::kFail;
-  }
-  if (result == "BLOCKED") {
-    return Regression::RequestState::kBlocked;
-  }
-  if (result == "ABORTED") {
-    return Regression::RequestState::kAborted;
-  }
-  return Regression::RequestState::kNone;
 }
 
 bool AwayFromStart(const RunWorld &a_world) {
@@ -237,16 +211,17 @@ void RemoveCrowd(RunWorld &a_world) {
   a_world.crowd.clear();
 }
 
-Regression::CrowdView CrowdOf(const RunWorld &a_world) {
+Regression::CrowdView CrowdOf(const RunWorld &a_world,
+                              std::span<const RegressionActorFacts> a_facts) {
   Regression::CrowdView view;
-  const Manager *manager = Manager::GetSingleton();
-  for (const RE::FormID id : a_world.crowd) {
-    const RE::Actor *actor = RE::TESForm::LookupByID<RE::Actor>(id);
+  for (std::size_t i = 0; i < a_world.crowd.size() && i < a_facts.size(); ++i) {
+    const RE::Actor *actor =
+        RE::TESForm::LookupByID<RE::Actor>(a_world.crowd[i]);
     if (!actor || !Present(*actor)) {
       continue;
     }
     ++view.present;
-    if (manager && manager->RegressionActor(id).renderedAttempt > 0) {
+    if (a_facts[i].renderedAttempt > 0) {
       ++view.rendered;
     }
   }
@@ -319,34 +294,37 @@ void TravelBack(const RunWorld &a_world) {
   });
 }
 
-void StartWork(RunWorld &a_world, Regression::Work a_work,
+void QueueWork(RunWorld &a_world, Regression::QueuedWork a_work,
                std::string_view a_recipe) {
   Manager *manager = Manager::GetSingleton();
-  const std::string recipe{a_recipe};
   switch (a_work) {
-  case Regression::Work::kNothing:
+  case Regression::QueuedWork::kNothing:
     break;
-  case Regression::Work::kApply:
-    a_world.request =
-        SubmitRegressionRequest(RE::PlayerCharacter::GetSingleton(), false);
+  case Regression::QueuedWork::kApply:
+    a_world.request = SubmitRegressionRequest(
+        RE::PlayerCharacter::GetSingleton(), RequestKind::kApply);
     break;
-  case Regression::Work::kEdit:
+  case Regression::QueuedWork::kEdit:
     a_world.gesture = 0;
     if (manager) {
-      a_world.edit = manager->StartRegressionEdit(recipe, kWorkOpacity);
+      a_world.edit =
+          manager->StartRegressionEdit(std::string{a_recipe}, kWorkOpacity);
     }
     break;
-  case Regression::Work::kGesture:
+  }
+}
+
+void OpenSession(RunWorld &a_world, Regression::Session a_session,
+                 std::string_view a_recipe) {
+  Manager *manager = Manager::GetSingleton();
+  if (!manager) {
+    return;
+  }
+  if (a_session == Regression::Session::kGesture) {
     a_world.edit = 0;
-    if (manager) {
-      a_world.gesture = manager->StartRegressionGesture(recipe);
-    }
-    break;
-  case Regression::Work::kPaint:
-    if (manager) {
-      manager->StartRegressionPaint(recipe);
-    }
-    break;
+    a_world.gesture = manager->StartRegressionGesture(std::string{a_recipe});
+  } else {
+    manager->StartRegressionPaint(std::string{a_recipe});
   }
 }
 
@@ -358,7 +336,7 @@ void ReloadDuring(RunWorld &a_world, const Regression::ReloadDuring &a_reload) {
       saves->Load(save.c_str(), false);
     }
   });
-  StartWork(a_world, a_reload.work, a_reload.recipe);
+  QueueWork(a_world, a_reload.work, a_reload.recipe);
 }
 
 void SetCamera(Regression::View a_view) {
@@ -416,11 +394,13 @@ void Carry(const Regression::RemoveArmor &a_c, RunWorld &a_world) {
 }
 
 void Carry(const Regression::SubmitApply &a_c, RunWorld &a_world) {
-  a_world.request = SubmitRegressionRequest(ActorOf(a_world, a_c.role), false);
+  a_world.request =
+      SubmitRegressionRequest(ActorOf(a_world, a_c.role), RequestKind::kApply);
 }
 
 void Carry(const Regression::SubmitRetire &a_c, RunWorld &a_world) {
-  a_world.request = SubmitRegressionRequest(ActorOf(a_world, a_c.role), true);
+  a_world.request =
+      SubmitRegressionRequest(ActorOf(a_world, a_c.role), RequestKind::kRetire);
 }
 
 void Carry(const Regression::AbortRequest &, RunWorld &a_world) {
@@ -464,8 +444,8 @@ void Carry(const Regression::RemoveRecipe &a_c, RunWorld &a_world) {
   });
 }
 
-void Carry(const Regression::BeginWork &a_c, RunWorld &a_world) {
-  StartWork(a_world, a_c.work, a_c.recipe);
+void Carry(const Regression::OpenSession &a_c, RunWorld &a_world) {
+  OpenSession(a_world, a_c.session, a_c.recipe);
 }
 
 void Carry(const Regression::ReloadDuring &a_c, RunWorld &a_world) {
@@ -484,10 +464,24 @@ void Carry(const Regression::RemoveCrowd &, RunWorld &a_world) {
 
 Regression::Observation Observe(const RunWorld &a_world) {
   Regression::Observation seen;
-  for (const Regression::Role role :
-       {Regression::Role::kPlayer, Regression::Role::kWearer,
-        Regression::Role::kControl}) {
-    seen.actors[Regression::RoleIndex(role)] = ViewOf(ActorOf(a_world, role));
+  constexpr std::array kRoles{Regression::Role::kPlayer,
+                              Regression::Role::kWearer,
+                              Regression::Role::kControl};
+  std::array<RE::Actor *, Regression::kRoleCount> actors{};
+  std::vector<RE::FormID> ids;
+  for (const Regression::Role role : kRoles) {
+    RE::Actor *actor = ActorOf(a_world, role);
+    actors[Regression::RoleIndex(role)] = actor;
+    ids.push_back(actor ? actor->GetFormID() : 0);
+  }
+  ids.insert(ids.end(), a_world.crowd.begin(), a_world.crowd.end());
+  const Manager *manager = Manager::GetSingleton();
+  std::vector<RegressionActorFacts> facts =
+      manager ? manager->RegressionActors(ids)
+              : std::vector<RegressionActorFacts>(ids.size());
+  for (const Regression::Role role : kRoles) {
+    const std::size_t index = Regression::RoleIndex(role);
+    seen.actors[index] = ViewOf(actors[index], std::move(facts[index]));
   }
   seen.itemsLoaded = {ArmorOf(Regression::Item::kFixture) != nullptr,
                       ArmorOf(Regression::Item::kPlainCuirass) != nullptr};
@@ -495,11 +489,11 @@ Regression::Observation Observe(const RunWorld &a_world) {
   const RE::PlayerCamera *camera = RE::PlayerCamera::GetSingleton();
   seen.firstPerson = camera && camera->IsInFirstPerson();
   seen.awayFromStart = AwayFromStart(a_world);
-  seen.request = RequestStateOf(a_world.request);
+  seen.request = RegressionRequestState(a_world.request);
   seen.loads = a_world.loads;
-  seen.crowd = CrowdOf(a_world);
+  seen.crowd = CrowdOf(a_world, std::span{facts}.subspan(kRoles.size()));
   seen.nowMs = SteadyMs();
-  if (const Manager *manager = Manager::GetSingleton()) {
+  if (manager) {
     seen.activity = manager->RegressionActivity(a_world.edit, a_world.gesture,
                                                 a_world.file);
     seen.scratch = manager->RegressionRecipe(Regression::kScratchRecipe);
