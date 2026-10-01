@@ -696,6 +696,20 @@ Lab mechanics:
 
 ## Engine events, hooks and the manager
 
+An equip event can arrive before the armor's model is attached to an NPC's
+biped: the slot already holds the item while `partClone` is still null, and
+no later event announces the attach. `CollectPieces` skips such a slot, so a
+refresh at that moment places nothing. `Refresh` therefore records the actor
+in `awaitingModel_`, and `SweepAwaitingModels` checks the biped every 100 ms
+and refreshes once the model is attached. The check is a biped scan, never a
+refresh, so an armor whose model never attaches (no addon for the race) costs
+one scan per sweep and never tears down the actor's other effects. The sweep
+skips actors beyond the eviction radius instead of dropping them, and has no
+retry limit, so a long-lived NPC is never locked out. A multi-slot armor lists
+its item in every slot it covers but attaches one model, so the check asks
+whether any slot holds the armor's model. The in-game `unload` regression case
+showed the late attach on a spawned NPC on 2026-10-01.
+
 - The plugin-event contract (`engine/PluginEvents.h`, parsed by
   `ParsePluginEvent` in `engine/PluginEvents.cpp`, engine-free and fed
   garbage by `tests/engine/pluginevents_tests.cpp`): another SKSE plugin
@@ -2087,3 +2101,37 @@ it 10 frames after the end line so the result and trace files flush first.
 `RunState` lives in process memory, never in the save, so a case can load a
 save and continue. The fixture is the demo cuirass, `0x803` in
 `BetterEnchantmentEffectsDemo.esp`; the body slot is `BipedObjectSlot::kBody`.
+
+`engine/RegressionWorld.cpp` takes these forms from `Skyrim.esm`:
+
+| Form | Local ID | Use |
+| --- | --- | --- |
+| `ArmorDwarvenCuirass` | `0x1394D` | The control's plain cuirass; the demo cuirass copies it |
+| `PlayerHouseMannequin` | `0x89A85` | Base of the spawned wearer and control: no default outfit, a stand-still AI package |
+| `XMarker` | `0x3B` | The return marker placed at the player before travel; an engine-reserved form, found by `TESForm::LookupByID`, which `TESDataHandler::LookupForm` does not find |
+
+A spawned actor needs no default outfit: an NPC with one re-equips it over the
+fixture after an equip, an enable or a 3D reload, even with removal prevented.
+The mannequin base also carries `MannequinActivatorSCRIPT`, which re-equips
+the items it was given when its cell loads. Spawned actors are placed with
+`forcePersist` so they survive the player's
+absence; the runner deletes them (`Disable` then `SetDelete`) at cleanup and
+again when the run ends. `LeaveCell` moves the player to the exterior cell
+`Riverwood` by name, through the same `CenterOnCell` lookup the `coc` console
+command uses; the known good save sits in the interior test cell `QASmoke`, so
+leaving unloads the start cell and its spawned actors. The player counts as
+away while its cell differs from the return marker's cell. Travel runs as an
+SKSE task, because a cell change
+inside the player-update hook would change the player's cell during its own
+update.
+
+A **trace** is a geometry under the actor's third- or first-person 3D whose
+name ends in the shell suffix, or a PBR material texture whose name begins
+with the presenter folder (`textures\BetterEnchantmentEffects\slots\`). The
+presenter textures keep their load path as their name. A rendered fixture
+must show at least one trace; an actor at baseline shows none.
+
+`Manager::RegressionActor` reports the newest application revision whose
+record reached `kRendered` while the actor's state renders the fixture.
+`AwaitRendered` compares it with the revision seen when the last step that
+moved that actor started, so an earlier render cannot satisfy a later wait.

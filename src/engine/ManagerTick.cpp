@@ -421,6 +421,10 @@ void Manager::OnFrame() {
     EmitMetricsHeartbeat();
   }
   const Settings settings = GetSettings();
+  if (now - lastModelCheckMS_ >= 100) {
+    lastModelCheckMS_ = now;
+    SweepAwaitingModels(settings);
+  }
   if (now - lastEvictionMS_ >= 1000) {
     lastEvictionMS_ = now;
     SweepEviction(settings);
@@ -443,6 +447,38 @@ void Manager::OnFrame() {
     PublishSnapshot(now);
   }
   ObserveRegression();
+}
+
+void Manager::SweepAwaitingModels(const Settings &a_settings) {
+  if (awaitingModel_.empty()) {
+    return;
+  }
+  const auto *player = RE::PlayerCharacter::GetSingleton();
+  const auto beyondRadius = [&](const RE::Actor &a_actor) {
+    return player && !a_actor.IsPlayerRef() &&
+           a_settings.evictDistance > 0.0f &&
+           EvictionFor(player->GetPosition().GetDistance(a_actor.GetPosition()),
+                       a_settings.evictDistance,
+                       true) == EvictionAction::kEvict;
+  };
+  std::vector<RE::FormID> attached;
+  std::erase_if(awaitingModel_, [&](RE::FormID a_id) {
+    RE::Actor *actor = RE::TESForm::LookupByID<RE::Actor>(a_id);
+    if (!actor || actor->IsDeleted() || !actor->Is3DLoaded()) {
+      return true;
+    }
+    if (beyondRadius(*actor) || ArmorAwaitsModel(*actor)) {
+      return false;
+    }
+    attached.push_back(a_id);
+    return true;
+  });
+  for (const RE::FormID id : attached) {
+    Trace::EmitSafely(
+        Trace::Event::kApplication,
+        {{"action", "armor_model_attached"}, {"actor", std::to_string(id)}});
+    QueueRefresh(id);
+  }
 }
 
 void Manager::SweepEviction(const Settings &a_settings) {

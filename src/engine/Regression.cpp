@@ -6,6 +6,7 @@
 #include "engine/RegressionRequest.h"
 
 #include <algorithm>
+#include <format>
 #include <mutex>
 #include <optional>
 #include <string>
@@ -181,6 +182,31 @@ void Manager::RestoreRegressionView() {
     editor_.Isolate(*isolationBeforeRun);
     isolationBeforeRun.reset();
   });
+}
+
+RegressionActorFacts Manager::RegressionActor(RE::FormID a_actor) const {
+  RegressionActorFacts facts;
+  const auto found = applied_.find(a_actor);
+  facts.live = found != applied_.end();
+  const RE::TESObjectARMO *armor = RegressionFixture();
+  const bool rendersFixture =
+      facts.live && armor &&
+      DemoArmorRendered(found->second, armor->GetFormID());
+  const std::lock_guard lock{requestLock};
+  std::uint64_t latest = 0;
+  for (const auto &record : applications_.Snapshot()) {
+    if (record.token.actorID != a_actor || record.token.revision < latest) {
+      continue;
+    }
+    latest = record.token.revision;
+    facts.application = std::format(
+        "{} {}{}{}", record.token.revision, ApplicationPhaseName(record.phase),
+        record.problem.empty() ? "" : ": ", record.problem);
+    if (record.phase == ApplicationPhase::kRendered && rendersFixture) {
+      facts.renderedAttempt = record.token.revision;
+    }
+  }
+  return facts;
 }
 
 void Manager::ObserveRegression() {

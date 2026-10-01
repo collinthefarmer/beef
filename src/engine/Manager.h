@@ -29,6 +29,13 @@
 
 namespace BetterEnchantmentEffects {
 struct ActorStacks;
+
+struct RegressionActorFacts {
+  bool live = false;
+  std::uint64_t renderedAttempt = 0;
+  std::string application;
+};
+
 class Manager {
 public:
   [[nodiscard]] static Manager *GetSingleton();
@@ -53,6 +60,7 @@ public:
   void SoloRegressionRecipe(std::string a_recipe);
   void RestoreRegressionView();
   void ObserveRegression();
+  [[nodiscard]] RegressionActorFacts RegressionActor(RE::FormID a_actor) const;
 
   void Fire(RE::FormID a_actorID, const EventRecord &a_event);
   void QueueEvent(RE::FormID a_actorID, EventRecord a_event);
@@ -114,6 +122,7 @@ private:
   [[nodiscard]] std::vector<LivePiece>
   CollectPieces(RE::Actor *a_actor, bool a_firstPerson,
                 const Settings &a_settings);
+  [[nodiscard]] bool ArmorAwaitsModel(RE::Actor &a_actor) const;
   bool CollectPieceGeometries(LivePiece &piece, RE::NiAVObject *clone,
                               RE::NiAVObject *root, bool verbose);
   void MatchRecipes(RE::Actor *a_actor, LiveActor &a_state,
@@ -166,6 +175,9 @@ private:
 
   std::unordered_set<RE::FormID> evictedForDistance_;
   void SweepEviction(const Settings &a_settings);
+  std::unordered_set<RE::FormID> awaitingModel_;
+  void SweepAwaitingModels(const Settings &a_settings);
+  std::uint32_t lastModelCheckMS_ = 0;
   std::uint32_t lastTickMS_ = 0;
   std::uint32_t lastMetricsMS_ = 0;
   std::uint32_t lastEvictionMS_ = 0;

@@ -4,7 +4,7 @@
 #include "Core.h"
 #include "Identity.h"
 #include "diagnostics/Trace.h"
-#include "engine/Regression.h"
+#include "engine/RegressionWorld.h"
 #include "engine/TextFile.h"
 #include "regression/Run.h"
 
@@ -23,7 +23,7 @@ struct AwaitingMainMenu {};
 struct LoadingSave {};
 struct RunningCases {
   Regression::RunState state;
-  std::int32_t request = 0;
+  RunWorld world;
 };
 using RunStage = std::variant<AwaitingMainMenu, LoadingSave, RunningCases>;
 
@@ -82,13 +82,6 @@ void Record(const ActiveRun &a_run, const Regression::ResultLine &a_line) {
   TraceLine(a_line);
 }
 
-void QuitGame() {
-  if (RE::Main *main = RE::Main::GetSingleton()) {
-    logger::info("regression: quitting the game");
-    main->quitGame = true;
-  }
-}
-
 void EndRunEarly(ActiveRun &a_run, std::string a_reason) {
   Record(a_run, Regression::RunEnd{Regression::Outcome::kBlocked,
                                    std::move(a_reason)});
@@ -140,115 +133,6 @@ public:
     return RE::BSEventNotifyControl::kContinue;
   }
 };
-
-std::uint64_t CarriedCount(RE::PlayerCharacter &a_player,
-                           RE::TESObjectARMO &a_armor) {
-  const auto counts =
-      a_player.GetInventoryCounts([&a_armor](RE::TESBoundObject &a_object) {
-        return &a_object == &a_armor;
-      });
-  const auto found = counts.find(&a_armor);
-  return found != counts.end() && found->second > 0
-             ? static_cast<std::uint64_t>(found->second)
-             : 0;
-}
-
-Regression::RequestState RequestStateOf(std::int32_t a_request) {
-  if (a_request == 0) {
-    return Regression::RequestState::kNone;
-  }
-  const std::string result = RegressionResult(a_request);
-  if (result == "WAITING") {
-    return Regression::RequestState::kWaiting;
-  }
-  if (result == "PASS") {
-    return Regression::RequestState::kPass;
-  }
-  if (result == "FAIL") {
-    return Regression::RequestState::kFail;
-  }
-  if (result == "BLOCKED") {
-    return Regression::RequestState::kBlocked;
-  }
-  if (result == "ABORTED") {
-    return Regression::RequestState::kAborted;
-  }
-  return Regression::RequestState::kNone;
-}
-
-Regression::Observation Observe(std::int32_t a_request) {
-  Regression::Observation seen;
-  seen.request = RequestStateOf(a_request);
-  RE::PlayerCharacter *player = RE::PlayerCharacter::GetSingleton();
-  RE::TESObjectARMO *fixture = RegressionFixture();
-  seen.fixtureLoaded = fixture != nullptr;
-  if (!player) {
-    return seen;
-  }
-  seen.playerReady = player->Is3DLoaded();
-  const RE::TESObjectARMO *body =
-      player->GetWornArmor(RE::BGSBipedObjectForm::BipedObjectSlot::kBody);
-  seen.bodyArmorWorn = body != nullptr;
-  if (fixture) {
-    seen.fixtureEquipped = body == fixture;
-    seen.fixtureCarried = CarriedCount(*player, *fixture) > 0;
-  }
-  return seen;
-}
-
-void EquipFixture() {
-  RE::PlayerCharacter *player = RE::PlayerCharacter::GetSingleton();
-  RE::TESObjectARMO *fixture = RegressionFixture();
-  RE::ActorEquipManager *equipment = RE::ActorEquipManager::GetSingleton();
-  if (!player || !fixture || !equipment) {
-    return;
-  }
-  player->AddObjectToContainer(fixture, nullptr, 1, nullptr);
-  equipment->EquipObject(player, fixture, nullptr, 1, nullptr, true, false,
-                         false);
-}
-
-void RemoveFixture() {
-  RE::PlayerCharacter *player = RE::PlayerCharacter::GetSingleton();
-  RE::TESObjectARMO *fixture = RegressionFixture();
-  if (!player || !fixture) {
-    return;
-  }
-  if (RE::ActorEquipManager *equipment =
-          RE::ActorEquipManager::GetSingleton()) {
-    equipment->UnequipObject(player, fixture, nullptr, 1, nullptr, true, false,
-                             false);
-  }
-  player->RemoveItem(fixture, 1, RE::ITEM_REMOVE_REASON::kRemove, nullptr,
-                     nullptr);
-}
-
-std::int32_t SubmitForPlayer(bool a_retire) {
-  return SubmitRegressionRequest(RE::PlayerCharacter::GetSingleton(), a_retire);
-}
-
-void Execute(const Regression::Command &a_command, std::int32_t &a_request) {
-  std::visit(
-      Overloaded{
-          [](const Regression::SoloRecipe &a_solo) {
-            SoloRecipeUnderTest(std::string{a_solo.recipe});
-          },
-          [](const Regression::RestoreSolo &) { RestoreRecipeView(); },
-          [](const Regression::AddAndEquipFixture &) { EquipFixture(); },
-          [](const Regression::UnequipAndRemoveFixture &) { RemoveFixture(); },
-          [&](const Regression::SubmitApply &) {
-            a_request = SubmitForPlayer(false);
-          },
-          [&](const Regression::SubmitRetire &) {
-            a_request = SubmitForPlayer(true);
-          },
-          [&](const Regression::AbortRequest &) {
-            AbortRegressionRequest(a_request);
-          },
-          [](const Regression::Quit &) { QuitGame(); },
-      },
-      a_command);
-}
 
 std::int64_t UnixSeconds() {
   return std::chrono::duration_cast<std::chrono::seconds>(
@@ -323,7 +207,9 @@ void FinishRegressionLoad(bool a_loaded) {
     return;
   }
   if (!a_loaded) {
-    EndRunEarly(*activeRun, "the save did not load");
+    EndRunEarly(*activeRun,
+                "the save did not load; it may need a plugin that is no longer "
+                "active, so make it again with the current load order");
     return;
   }
   activeRun->stage = RunningCases{Regression::BeginRun(activeRun->request)};
@@ -343,15 +229,16 @@ void AdvanceRegressionRun() {
     return;
   }
   Regression::Advanced next =
-      Regression::Advance(std::move(running->state), Observe(running->request));
+      Regression::Advance(std::move(running->state), Observe(running->world));
   running->state = std::move(next.state);
   for (const Regression::ResultLine &line : next.lines) {
     Record(*activeRun, line);
   }
   if (next.command) {
-    Execute(*next.command, running->request);
+    Execute(*next.command, running->world);
   }
   if (Regression::Done(running->state)) {
+    ReleaseWorld(running->world);
     activeRun.reset();
     runPresent.store(false);
   }

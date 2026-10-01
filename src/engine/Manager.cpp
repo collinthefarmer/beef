@@ -99,6 +99,7 @@ void Manager::Clear() {
     RetireActorEffects(state);
   applied_.clear();
   evictedForDistance_.clear();
+  awaitingModel_.clear();
   editor_.CancelFileOperationsForLoad();
   SweepRetiredMaterialTextures();
   editor_.CancelPaintForLoad();

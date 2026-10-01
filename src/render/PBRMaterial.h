@@ -60,6 +60,8 @@ static_assert(sizeof(PBRMaterialLayout) == 0x148);
 
 [[nodiscard]] bool
 IsPBRProperty(const RE::BSLightingShaderProperty *a_property) noexcept;
+[[nodiscard]] RE::BSLightingShaderProperty *
+LightingPropertyOf(RE::BSGeometry *a_geometry);
 
 class PbrMaterial {
 public:
@@ -67,6 +69,7 @@ public:
   Bind(RE::BSLightingShaderProperty *a_property);
   [[nodiscard]] bool Attached() const noexcept;
   [[nodiscard]] bool TextureSlotsValid() const;
+  [[nodiscard]] std::size_t PresenterTextures() const;
 
 private:
   friend class SlotWriter;

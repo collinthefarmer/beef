@@ -1,6 +1,9 @@
 Status: in progress. Stage 1 passed in game on 2026-10-01 (run
 20261001T022009, lifecycle PASS, launch to quit in 80 seconds). Stage 2 is
-done. Supersedes the control
+done. Stage 3 passed in game on 2026-10-01 (run 20261001T041756: all five
+cases, `unload` three times, launch to quit in about three minutes). Its runs
+found one plugin defect, an NPC armor model that attaches after the equip
+refresh, now fixed. Supersedes the control
 model of [the regression driver plan](../history/in-game-regression-driver.md); that
 plan's case table, result vocabulary and observation rules carry over.
 
@@ -118,9 +121,11 @@ Command, vector ResultLine}`. Pure; one call per frame.
    when the run's outcome is `PASS`.
 
 `--manual` writes the run file and waits without launching MO2. `--save`
-defaults to `BEEFRegression`. Create it once in game with the
-console command `save BEEFRegression`, standing in an open area, in third
-person, with the body slot empty and no demo cuirass carried.
+defaults to `BEEFRegression`. Create it once in game: `coc QASmoke`, step
+onto open floor, third person, body slot empty, no demo cuirass carried,
+then `save BEEFRegression`. `QASmoke` has no NPCs, weather or changing light,
+so every run starts from the same scene. Make the save again whenever a
+plugin it was made with is removed; the game refuses to load it otherwise.
 
 ## Stages
 
@@ -132,11 +137,26 @@ person, with the body slot empty and no demo cuirass carried.
    `tools/regression-compile.py`, `tools/regression-package.py`,
    `install-regression.sh`, the Papyrus bridge and `tests/in-game/`
    documents that describe them.
-3. **Lifetime and isolation cases** (alpha plan section 4). Actions: move the
-   player to a test cell and back, force first and third person, disable and
-   enable an actor, spawn a second wearer and an unenchanted control.
-   Observations: live state per actor, rendered output per actor, and no
-   plugin nodes on the control or on a retired actor.
+3. **Lifetime and isolation cases** (alpha plan section 4). Steps take a
+   **role**: the player, a spawned **wearer** or a spawned **control**. The
+   cases:
+
+   | Case | What it checks |
+   | --- | --- |
+   | `equip-cycle` | Five unequip and re-equip cycles; each unequip returns the player to baseline and each equip renders anew |
+   | `camera` | First- and third-person switches keep the effect, and unequip still returns to baseline |
+   | `isolation` | Player and wearer both render the fixture; retiring and unequipping the wearer leaves the player's effect; the control in a plain cuirass never gains plugin state |
+   | `unload` | Disabling the wearer retires its state and enabling renders it again; leaving for the exterior `Riverwood` retires it and returning renders it again |
+
+   The spawned actors are mannequins: an NPC with a default outfit re-equips
+   it over the fixture after an equip, an enable or a reload. After an enable
+   and after the return trip, the case equips the fixture again before it
+   waits for the render.
+
+   Every case shares one cleanup: return to the start, third person, delete
+   the spawned actors, remove the player's fixture, restore the solo. Each
+   cleanup step does nothing when the run made no matching change.
+
 4. **Loads during work and studio round trips.** A case loads the save while
    an apply or a paint preview is pending, then asserts that nothing from the
    old session applied and nothing is pending. Studio cases send menu

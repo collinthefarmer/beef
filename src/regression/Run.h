@@ -1,6 +1,7 @@
 // GPL-3.0-only with the additional permission in COPYING.md.
 #pragma once
 
+#include <array>
 #include <cstddef>
 #include <cstdint>
 #include <expected>
@@ -24,6 +25,14 @@ enum class RequestState : std::uint8_t {
   kAborted
 };
 
+enum class Role : std::uint8_t { kPlayer, kWearer, kControl };
+inline constexpr std::size_t kRoleCount = 3;
+
+enum class Item : std::uint8_t { kFixture, kPlainCuirass };
+inline constexpr std::size_t kItemCount = 2;
+
+enum class View : std::uint8_t { kFirstPerson, kThirdPerson };
+
 struct Settle {
   std::uint32_t frames = 0;
 };
@@ -31,12 +40,62 @@ struct Solo {
   std::string_view recipe;
 };
 struct RestoreView {};
-struct EquipFixture {};
-struct RemoveFixture {};
-struct Apply {};
-struct Retire {};
-using Step = std::variant<Settle, Solo, RestoreView, EquipFixture,
-                          RemoveFixture, Apply, Retire>;
+struct Spawn {
+  Role role = Role::kWearer;
+};
+struct Despawn {
+  Role role = Role::kWearer;
+};
+struct Disable {
+  Role role = Role::kWearer;
+};
+struct Enable {
+  Role role = Role::kWearer;
+};
+struct Equip {
+  Role role = Role::kPlayer;
+  Item item = Item::kFixture;
+};
+struct Unequip {
+  Role role = Role::kPlayer;
+  Item item = Item::kFixture;
+};
+struct Remove {
+  Role role = Role::kPlayer;
+  Item item = Item::kFixture;
+};
+struct Apply {
+  Role role = Role::kPlayer;
+};
+struct Retire {
+  Role role = Role::kPlayer;
+};
+struct AwaitRendered {
+  Role role = Role::kPlayer;
+};
+struct AwaitRetired {
+  Role role = Role::kPlayer;
+};
+struct AwaitBaseline {
+  Role role = Role::kPlayer;
+};
+struct ExpectEffect {
+  Role role = Role::kPlayer;
+};
+struct HoldUntouched {
+  Role role = Role::kControl;
+  std::uint32_t frames = 0;
+};
+struct LeaveCell {};
+struct ReturnToStart {};
+struct SetView {
+  View view = View::kThirdPerson;
+};
+using Step =
+    std::variant<Settle, Solo, RestoreView, Spawn, Despawn, Disable, Enable,
+                 Equip, Unequip, Remove, Apply, Retire, AwaitRendered,
+                 AwaitRetired, AwaitBaseline, ExpectEffect, HoldUntouched,
+                 LeaveCell, ReturnToStart, SetView>;
 
 struct Case {
   std::string_view name;
@@ -51,12 +110,27 @@ struct RunRequest {
   CaseList suite;
 };
 
-struct Observation {
-  bool playerReady = false;
-  bool fixtureLoaded = false;
-  bool fixtureEquipped = false;
-  bool fixtureCarried = false;
+struct ArmorView {
+  bool equipped = false;
+  bool carried = false;
+};
+
+struct ActorView {
+  bool present = false;
   bool bodyArmorWorn = false;
+  std::array<ArmorView, kItemCount> armor{};
+  bool live = false;
+  std::uint64_t renderedAttempt = 0;
+  std::uint32_t traces = 0;
+  std::string application;
+};
+
+struct Observation {
+  std::array<ActorView, kRoleCount> actors{};
+  std::array<bool, kItemCount> itemsLoaded{};
+  bool npcEffects = false;
+  bool firstPerson = false;
+  bool awayFromStart = false;
   RequestState request = RequestState::kNone;
 };
 
@@ -64,20 +138,57 @@ struct SoloRecipe {
   std::string_view recipe;
 };
 struct RestoreSolo {};
-struct AddAndEquipFixture {};
-struct UnequipAndRemoveFixture {};
-struct SubmitApply {};
-struct SubmitRetire {};
+struct SpawnActor {
+  Role role = Role::kWearer;
+};
+struct DespawnActor {
+  Role role = Role::kWearer;
+};
+struct DisableActor {
+  Role role = Role::kWearer;
+};
+struct EnableActor {
+  Role role = Role::kWearer;
+};
+struct AddAndEquip {
+  Role role = Role::kPlayer;
+  Item item = Item::kFixture;
+};
+struct EquipCarried {
+  Role role = Role::kPlayer;
+  Item item = Item::kFixture;
+};
+struct UnequipArmor {
+  Role role = Role::kPlayer;
+  Item item = Item::kFixture;
+};
+struct RemoveArmor {
+  Role role = Role::kPlayer;
+  Item item = Item::kFixture;
+};
+struct SubmitApply {
+  Role role = Role::kPlayer;
+};
+struct SubmitRetire {
+  Role role = Role::kPlayer;
+};
 struct AbortRequest {};
+struct TravelAway {};
+struct TravelBack {};
+struct SetCamera {
+  View view = View::kThirdPerson;
+};
 struct Quit {};
-using Command = std::variant<SoloRecipe, RestoreSolo, AddAndEquipFixture,
-                             UnequipAndRemoveFixture, SubmitApply, SubmitRetire,
-                             AbortRequest, Quit>;
+using Command =
+    std::variant<SoloRecipe, RestoreSolo, SpawnActor, DespawnActor,
+                 DisableActor, EnableActor, AddAndEquip, EquipCarried,
+                 UnequipArmor, RemoveArmor, SubmitApply, SubmitRetire,
+                 AbortRequest, TravelAway, TravelBack, SetCamera, Quit>;
 
 struct StepResult {
   std::string_view caseName;
   std::size_t step = 0;
-  std::string_view action;
+  std::string action;
   Outcome outcome = Outcome::kPass;
   std::uint32_t frames = 0;
   std::string reason;
@@ -91,6 +202,12 @@ struct RunEnd {
   std::string reason;
 };
 using ResultLine = std::variant<StepResult, CaseResult, RunEnd>;
+
+struct Ownership {
+  std::array<std::array<bool, kItemCount>, kRoleCount> added{};
+  std::array<bool, kRoleCount> spawned{};
+  bool away = false;
+};
 
 enum class Section : std::uint8_t { kBody, kCleanup };
 
@@ -115,7 +232,8 @@ struct RunState {
   CaseList cases;
   Phase phase = Settling{};
   Outcome runOutcome = Outcome::kPass;
-  bool ownsFixture = false;
+  Ownership owned;
+  std::array<std::uint64_t, kRoleCount> renderMarks{};
 };
 
 struct Advanced {
@@ -129,7 +247,9 @@ inline constexpr std::uint32_t kEndingFrames = 10;
 inline constexpr std::size_t kMaxSuiteCases = 64;
 
 [[nodiscard]] std::string_view OutcomeName(Outcome a_outcome);
-[[nodiscard]] std::string_view ActionName(const Step &a_step);
+[[nodiscard]] std::size_t RoleIndex(Role a_role);
+[[nodiscard]] std::string StepLabel(const Step &a_step);
+[[nodiscard]] std::span<const Case> Catalog();
 [[nodiscard]] const Case *FindCase(std::string_view a_name);
 [[nodiscard]] std::expected<RunRequest, std::string>
 ParseRunRequest(std::string_view a_text, std::int64_t a_nowSeconds);

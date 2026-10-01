@@ -210,6 +210,8 @@ below the material's native size.
 | Member | Description | Declared in |
 |---|---|---|
 | `Manager::SweepEviction` | Runs once a second from `OnFrame`. It retires each applied non-player actor past `Settings::evictDistance` into `evictedForDistance_`. It calls `QueueRefresh` for an evicted actor back inside the hysteresis band. | `Manager.h` |
+| `Manager::ArmorAwaitsModel` | Whether the actor's third-person biped lists an armor the recipes care about (enchanted, or any armor when a recipe has an unenchanted key) with no attached model in any slot. | `Manager.h` |
+| `Manager::SweepAwaitingModels`, `Manager::awaitingModel_` | `Refresh` adds an actor whose armor awaits its model. Every 100 ms the sweep checks each one inside the eviction radius and calls `QueueRefresh` once its models are attached. An actor leaves the set when it applies, unloads or is deleted; `Manager::Clear` empties it. | `Manager.h` |
 | `Manager::evictedForDistance_` | The actor ids held out for distance. `EligibleForRefresh` adds a far actor and removes an actor that applies. `Manager::Clear` empties it. | `Manager.h` |
 | `EvictionFor`, `EvictionAction` | The pure decision: `kEvict` past the distance, `kRestore` inside 80% of it, `kNone` otherwise. | `planners/Eviction.h` |
 | `Settings::evictDistance` | The eviction radius in game units. 0 disables eviction. `kMaxEvictDistance` (20000) caps it. | `Settings.h` |
@@ -298,6 +300,8 @@ application finishes.
 | `SoloRecipeUnderTest`, `RestoreRecipeView` | Solo the recipe under test in the studio, and restore the isolation from before. | `Regression.h` |
 | `CancelRegression` | Aborts the current request on game load. | `Regression.h` |
 | `ReadRegressionRun`, `FinishRegressionLoad`, `AdvanceRegressionRun` | Read the run file, start the run after its save loads, and advance it once per player update. | `RegressionRun.h` |
+| `RunWorld`, `Observe`, `Execute`, `ReleaseWorld` | The game side of a run: the spawned actors, the return marker and the current request; one observation of the three roles per frame; one command carried out; the spawned actors and marker deleted at the end. | `RegressionWorld.h` |
+| `Manager::RegressionActor` | Whether the manager holds live state for an actor, and the newest application revision that rendered the fixture. | `Manager.h` |
 | `Manager::QueueRegression` | Retires or refreshes the request's actor on the session queue. | `Manager.h` |
 | `Manager::ObserveRegression` | Reads a newer application record for the actor and finishes the request as `PASS`, `FAIL`, `BLOCKED` or `ABORTED`. | `Manager.h` |
 | `Manager::SoloRegressionRecipe`, `Manager::RestoreRegressionView` | Isolate the recipe under test and restore the earlier isolation. | `Manager.h` |
@@ -378,7 +382,7 @@ Recipe from LoadedRecipes()
 | Actor and worn-piece state | `LiveActor.h`/`.cpp` (live records, `RetireGeometry`, `ResolvePlacement`), `Environment.h`/`.cpp` (`ActorEnvironment`), `WornKeys.h`/`.cpp` (`WornKeysOf`), `EnchantmentEffects.h`/`.cpp` (`EnchantmentValueFor`), `InstanceTime.h`/`.cpp` (`CarriedTimes`) |
 | Recipe CRUD | `RecipeStore.h`/`.cpp` (load, publish, mutate, save, `RefreshRecipeDerivedState`), `RecipeFiles.h`/`.cpp` (checked read, write, rename and delete), `RecipeOperations.h` (the operation journal and task guards), `RecipeEditor.h`/`.cpp` (gestures, edits, undo, paint, view) |
 | Form and game-object lookups | `EngineForms.h`/`.cpp` (`FormKeyFor`, `LookupForm`, `ShaderFor`, `RecordFrom`), `GameObjectService.h`/`.cpp` (game-object and animation-event catalogs), `InputCatalog.h`/`.cpp` (`BuildActorValueSamples`), `Tweaks.h`/`.cpp` (`EditorIdOf`, `TweaksEditorIdsAvailable`) |
-| Regression fixture | `Regression.h`/`.cpp` (the request and the manager's regression calls), `RegressionRequest.h` (`RegressionRequest`), `RegressionRun.h`/`.cpp` (the unattended run's engine side over `regression/Run.h`) |
+| Regression fixture | `Regression.h`/`.cpp` (the request and the manager's regression calls), `RegressionRequest.h` (`RegressionRequest`), `RegressionRun.h`/`.cpp` (the unattended run's file, load and result lines over `regression/Run.h`), `RegressionWorld.h`/`.cpp` (its observations and commands) |
 | Small utilities | `Clock.h`/`.cpp` (`NowMS`, `InstanceSpeed`), `TextFile.h`/`.cpp` (`ReadText`, `WriteText`, bounded by `kMaxTextFileBytes`), `MenuDependency.h`/`.cpp` (`CheckMenuFramework`) |
 
 ## See also

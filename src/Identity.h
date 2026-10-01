@@ -59,9 +59,12 @@ inline std::filesystem::path TemplateFolder() {
   return PluginFolder() / "templates";
 }
 
+inline std::string PresenterTextureFolder() {
+  return std::format("textures\\{}\\slots\\", kTextureFolder);
+}
+
 inline std::string PresenterTexturePath(std::uint32_t a_index) {
-  return std::format("textures\\{}\\slots\\slot_{:02}.dds", kTextureFolder,
-                     a_index);
+  return std::format("{}slot_{:02}.dds", PresenterTextureFolder(), a_index);
 }
 
 inline std::string ShellNodeSuffix() {

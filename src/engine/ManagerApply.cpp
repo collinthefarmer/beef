@@ -55,14 +55,6 @@ private:
   RE::FormID actor_;
 };
 
-RE::BSLightingShaderProperty *LightingPropertyOf(RE::BSGeometry *a_geometry) {
-  RE::NiProperty *property = a_geometry->GetGeometryRuntimeData()
-                                 .properties[RE::BSGeometry::States::kEffect]
-                                 .get();
-  return property ? netimmerse_cast<RE::BSLightingShaderProperty *>(property)
-                  : nullptr;
-}
-
 RE::MagicItem *WornEnchantment(RE::Actor *a_actor, RE::TESObjectARMO *a_armor) {
   auto inventory = a_actor->GetInventory(
       [&](RE::TESBoundObject &a_object) { return &a_object == a_armor; });
@@ -762,8 +754,21 @@ void Manager::Refresh(RE::Actor *a_actor) {
     return;
   }
   LiveActor state = LiveActorFor(*a_actor, settings);
+  if (settings.thirdPerson && ArmorAwaitsModel(*a_actor)) {
+    if (awaitingModel_.insert(actorID).second && settings.verboseLogging) {
+      logger::info("actor {:08X} ({}): armor model not attached yet; "
+                   "refreshing when it attaches",
+                   actorID, a_actor->GetName());
+    }
+  } else {
+    awaitingModel_.erase(actorID);
+  }
   TextureLab::GetSingleton()->InvalidatePreviews();
   if (state.plan.placements.empty()) {
+    if (settings.verboseLogging) {
+      logger::info("actor {:08X} ({}): {} piece(s), no recipe placed", actorID,
+                   a_actor->GetName(), state.pieces.size());
+    }
     return;
   }
   PlaceInstances(state, settings);
@@ -879,6 +884,29 @@ bool Manager::CollectPieceGeometries(LivePiece &piece, RE::NiAVObject *clone,
     return false;
   }
   return true;
+}
+
+bool Manager::ArmorAwaitsModel(RE::Actor &a_actor) const {
+  const auto &biped = a_actor.GetBiped(false);
+  if (!biped) {
+    return false;
+  }
+  std::unordered_set<RE::TESObjectARMO *> attached;
+  std::unordered_set<RE::TESObjectARMO *> listed;
+  for (const auto &object : biped->objects) {
+    RE::TESObjectARMO *armor =
+        object.item ? object.item->As<RE::TESObjectARMO>() : nullptr;
+    if (armor) {
+      (object.partClone ? attached : listed).insert(armor);
+    }
+  }
+  const bool walkUnenchanted = AnyUnenchantedKey(LoadedRecipes());
+  return std::ranges::any_of(listed, [&](RE::TESObjectARMO *a_armor) {
+    return !attached.contains(a_armor) &&
+           (walkUnenchanted ||
+            WornKeysOf(a_armor, WornEnchantment(&a_actor, a_armor))
+                .Enchanted());
+  });
 }
 
 std::vector<LivePiece> Manager::CollectPieces(RE::Actor *a_actor,
