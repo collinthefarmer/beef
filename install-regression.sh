@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 cd "$(dirname "$0")"
-: "${MO2_MODS_DIR:=/mnt/a/mods/SkyrimSE/mods}"
+MO2_MODS_DIR=$(tools/mo2-mods-dir.sh)
 NAME=$(sed -n 's/^project(\([A-Za-z0-9_]*\).*/\1/p' CMakeLists.txt)
 ZIP="build/regression/BEEF-regression.zip"
 DST="$MO2_MODS_DIR/$NAME Regression"

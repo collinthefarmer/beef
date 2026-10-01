@@ -19,6 +19,8 @@ class InstallTests(unittest.TestCase):
         repository = root / 'source tree'
         repository.mkdir()
         shutil.copy2(ROOT / 'install.sh', repository / 'install.sh')
+        (repository / 'tools').mkdir()
+        shutil.copy2(ROOT / 'tools/mo2-mods-dir.sh', repository / 'tools/mo2-mods-dir.sh')
         (repository / 'CMakeLists.txt').write_text(f'project({NAME} VERSION 0.1.0)\n')
         stage = repository / 'dist' / NAME
         (stage / PLUGIN).mkdir(parents=True)
@@ -31,6 +33,7 @@ class InstallTests(unittest.TestCase):
             self.assertIsNotNone(executable, f'{tool} required; run inside nix develop')
             (binaries / tool).symlink_to(executable)
         mods = root / 'MO2 mods'
+        mods.mkdir()
         env = dict(os.environ, PATH=str(binaries), MO2_MODS_DIR=str(mods))
         return repository, stage, mods / NAME, env, binaries
 
@@ -71,6 +74,34 @@ class InstallTests(unittest.TestCase):
                     self.assertNotEqual(result.returncode, 0)
                     self.assertFalse(target.exists())
                     self.assertNotIn('installed to', result.stdout)
+
+    def test_mods_directory_comes_from_local_env_when_unset(self):
+        with tempfile.TemporaryDirectory() as folder:
+            repository, _, target, env, _ = self.fixture(Path(folder), 'tar')
+            mods = env.pop('MO2_MODS_DIR')
+            (repository / 'local.env').write_text(f'MO2_MODS_DIR="{mods}"\n')
+            result = self.run_install(repository, env)
+            self.assertEqual(result.returncode, 0, result.stderr)
+            self.assertEqual((target / DLL).read_text(), 'new binary')
+
+    def test_unset_mods_directory_is_refused(self):
+        with tempfile.TemporaryDirectory() as folder:
+            repository, _, _, env, _ = self.fixture(Path(folder), 'tar')
+            del env['MO2_MODS_DIR']
+            result = self.run_install(repository, env)
+            self.assertNotEqual(result.returncode, 0)
+            self.assertIn('local.env', result.stderr)
+            self.assertNotIn('installed to', result.stdout)
+
+    def test_missing_mods_directory_is_refused_and_not_created(self):
+        with tempfile.TemporaryDirectory() as folder:
+            repository, _, _, env, _ = self.fixture(Path(folder), 'tar')
+            missing = Path(folder) / 'not a mods folder'
+            env['MO2_MODS_DIR'] = str(missing)
+            result = self.run_install(repository, env)
+            self.assertNotEqual(result.returncode, 0)
+            self.assertIn('not an existing directory', result.stderr)
+            self.assertFalse(missing.exists())
 
     def test_copy_failure_is_not_reported_as_success(self):
         for backend in ('rsync', 'tar'):

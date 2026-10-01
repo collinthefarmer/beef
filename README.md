@@ -61,7 +61,7 @@ to a binary cache.
 |---|---|
 | `cmake --preset windows-release` then `cmake --build --preset windows-release` | Cross-compiles the DLL with clang-cl against the xwin CRT and SDK and stages the mod into `dist/`. `--target all` compiles without staging. More than four jobs exhausts WSL's memory and kills the instance. |
 | `cmake --preset native`, `cmake --build --preset native`, `ctest --preset native` | Configures, builds, and runs native tests. Use `native-sanitized` for ASan/UBSan; CTest `-R` selects suites. |
-| `./install.sh` | Copies the staged mod folder into the MO2 mods directory. It copies the INI only when the mod has none, because the INI holds the user's settings. |
+| `./install.sh` | Copies the staged mod folder into the MO2 mods directory named by `MO2_MODS_DIR`, or by the line `MO2_MODS_DIR=<path>` in the gitignored `local.env`. It copies the INI only when the mod has none, because the INI holds the user's settings. |
 | `tools/gate.sh {commit,push,ship,release,fix}` | Checks formatting, include layers and comments (commit: staged content; push: the tree plus sanitized native tests; release: adds the Windows build and full tidy). `ship` runs the push checks on a clean tree and then `git push`. `fix` formats the tree. `tools/gate.py` holds the only copy of the include graph. |
 | `python3 tools/tidy.py [--check\|--update] [--changed] [--only CHECK]` | Runs clang-tidy over the Windows database and compares with `tools/tidy-baseline.txt`. `--changed` limits the run to the sources changed on the branch and in the working tree. |
 | `python3 tools/source-archive.py` | Writes the corresponding-source archive of HEAD with the pinned dependency sources. |

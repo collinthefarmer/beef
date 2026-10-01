@@ -46,10 +46,11 @@ practicalities of working here.
 - `src/Identity.h` is the only place the plugin name is spelled.
 - Errors carry a `where` naming the row (`signal glowLevel`, `output 2
   layer 0`) so the menu can show them in place.
-- Do not modify `decompiled/`, `reference/` or anything under `/mnt/a/mods/`,
+- Do not modify `decompiled/`, `reference/` or anything under the MO2 mods
+  directory (`MO2_MODS_DIR`, read from the gitignored `local.env`),
   with one exception: recipe files. The installer stages no recipes; when
   the user asks for a recipe, write it into the MO2 mod folder
-  (`/mnt/a/mods/SkyrimSE/mods/BetterEnchantmentEffects/SKSE/Plugins/BetterEnchantmentEffects/recipes/<folder>/`),
+  (`$MO2_MODS_DIR/BetterEnchantmentEffects/SKSE/Plugins/BetterEnchantmentEffects/recipes/<folder>/`),
   and keep a copy under `recipes/` in the repo only when it should be an
   example the tests read.
 - Build and stage with `cmake --preset windows-release` then

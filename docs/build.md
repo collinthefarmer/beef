@@ -67,6 +67,12 @@ PDB, build identity file, INI, presets, templates, validator, and generated
 presenter textures to `dist/BetterEnchantmentEffects`. It does not ship
 recipes. Asset edits are picked up by stage independently of DLL relinking.
 `./install.sh` copies the staged mod into the MO2 mods directory.
+The installers read that directory from `MO2_MODS_DIR`. When the variable is
+unset, they read the line `MO2_MODS_DIR=<path>` from `local.env` at the
+repository root. Git ignores `local.env`, so each machine keeps its own path.
+`tools/mo2-mods-dir.sh` resolves the directory for both `install.sh` and
+`install-regression.sh`, and refuses a directory that is unset or does not
+exist.
 
 Build identity comes from Git: the revision, plus a hash of the uncommitted
 changes to the build inputs when they are dirty. Doc edits do not change it. It is computed on every build and rewrites
@@ -265,7 +271,8 @@ external leases. It does not emulate Skyrim ownership takeover or D3D execution.
 
 `install.sh` preserves an existing INI and excludes the authored `recipes/`
 directory from both rsync and tar copies, even if staging contains stale
-recipes. It requires a staged DLL and default INI before creating the target.
+recipes. It requires a staged DLL and default INI before creating the target,
+and an existing mods directory: it never creates `MO2_MODS_DIR` itself.
 Copy failures return nonzero and report an incomplete installation; they do
 not print success. Copies are not transactional: a failed install can leave
 some updated binaries/assets, so close the game and rerun after resolving the

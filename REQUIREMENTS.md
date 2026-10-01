@@ -301,8 +301,8 @@ tree must not reproduce them.
   game into one checkpoint per integration, install, and hand the user the
   exact log lines to look for.
 - `Identity.h` is the only place the plugin name is spelled.
-- Do not modify `decompiled/`, `reference/`, or anything under
-  `/mnt/a/mods/`. Recipe files are the one exception.
+- Do not modify `decompiled/`, `reference/`, or anything under the MO2 mods
+  directory (`MO2_MODS_DIR`). Recipe files are the one exception.
 
 ## Shell palette repair checkpoint
 
