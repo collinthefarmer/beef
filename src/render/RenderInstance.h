@@ -45,7 +45,7 @@ public:
   [[nodiscard]] std::expected<void, std::string>
   UpdateInput(RenderInputId input, RenderValue value);
   [[nodiscard]] const RenderPlan &Plan() const noexcept;
-  bool BeginFrame(std::uint64_t frame);
+  bool BeginFrame(std::uint64_t frame, std::uint64_t nowMS);
   [[nodiscard]] std::expected<void, std::string>
   Update(const RecipeGraph &graph, std::size_t instance,
          const SignalState &signals);

@@ -85,20 +85,19 @@ public:
     Walk walk{execute, same, select, 0, std::vector<bool>(steps_.size())};
     return Materialize(result, walk, 0);
   }
-  void AdvanceEpoch() noexcept { ++epoch_; }
+  void AdvanceClock(std::uint64_t a_now) noexcept { clock_ = a_now; }
   void Touch(RenderStepId step) noexcept {
     if (step < steps_.size())
-      steps_[step].lastUsed = epoch_;
+      steps_[step].lastUsed = clock_;
   }
   [[nodiscard]] std::uint64_t Restores() const noexcept { return restores_; }
   template <class Releasable>
-  std::size_t ReleaseIdle(std::uint64_t idleEpochs,
-                          const Releasable &releasable) {
+  std::size_t ReleaseIdle(std::uint64_t idleFor, const Releasable &releasable) {
     std::size_t released = 0;
     for (std::size_t i = 0; i < steps_.size(); ++i) {
       auto &state = steps_[i];
       auto &output = state.outputs.front();
-      if (!output.value || epoch_ - state.lastUsed <= idleEpochs ||
+      if (!output.value || clock_ - state.lastUsed <= idleFor ||
           !releasable(plan_.steps[i], *output.value))
         continue;
       output.value.reset();
@@ -123,7 +122,7 @@ private:
   std::vector<RenderInputState<T>> inputs_;
   std::vector<StepExecutionState<T, Scratch>> steps_;
   std::string problem_;
-  std::uint64_t epoch_ = 1;
+  std::uint64_t clock_ = 1;
   std::uint64_t restores_ = 0;
 
   [[nodiscard]] static bool Within(Walk &walk, std::size_t depth) {
@@ -220,7 +219,7 @@ private:
                                     *version};
     const auto id = Get<StepOutputRef>(ref)->step;
     auto &state = steps_[id];
-    state.lastUsed = epoch_;
+    state.lastUsed = clock_;
     if (!state.outputs.front().value) {
       auto required = Required(id, walk, depth);
       if (!required)
@@ -260,7 +259,7 @@ private:
       state.inputs.push_back({value.input, value.changeVersion});
     state.diagnostic.clear();
     state.released = false;
-    state.lastUsed = epoch_;
+    state.lastUsed = clock_;
     walk.refreshed[id] = true;
     return output.changeVersion;
   }

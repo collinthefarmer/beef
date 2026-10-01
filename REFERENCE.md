@@ -2165,6 +2165,12 @@ The run advances before `Manager::OnFrame` starts its frame timer, so the
 heartbeat's plugin cost excludes the runner. `await-crowd-rendered` completes
 once every member's application reports rendered, before the GPU work of the
 first application lands; the `settle` window after it holds that cost, and
-`steady` measures the settled state. A heartbeat's `targets` and
+`steady` measures the settled state. A tick admits one actor's first render
+(`kFirstRendersPerTick` in `engine/ManagerTick.cpp`): an actor's first render
+acquires about 70 targets, and twelve at once produced a 14 GB transient. A
+render step's idle output is released 500 ms after its last use
+(`kReleaseAfterIdleMS` in `render/RenderInstance.cpp`); the earlier grace of
+30 instance ticks stretched to seconds while a heavy burst lowered the frame
+rate, so memory kept growing while the game was slow. A heartbeat's `targets` and
 `target_bytes` include targets idle in the reuse pool (at most 16 and 64
 MiB, `RenderTargetPool::kMaxIdleTargets` and `kMaxIdleBytes`).

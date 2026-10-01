@@ -22,6 +22,20 @@
 
 namespace BetterEnchantmentEffects {
 namespace {
+inline constexpr std::size_t kFirstRendersPerTick = 1;
+
+bool AwaitsFirstRender(const LiveActor &a_state) {
+  bool anyStack = false;
+  for (const LivePlacement &placement : a_state.placements) {
+    for (const PlacedOutput &output : placement.outputs) {
+      if (output.rendered) {
+        return false;
+      }
+      anyStack = anyStack || output.stack != nullptr;
+    }
+  }
+  return anyStack;
+}
 
 struct SlotWrite {
   Slot slot = Slot::kEmissive;
@@ -535,6 +549,7 @@ void Manager::Tick(std::uint32_t a_nowMS, const Settings &a_settings) {
   const TickFrame frame{a_settings, view, a_nowMS,
                         frozenLastTick_ && !view.freeze};
   frozenLastTick_ = view.freeze;
+  std::size_t firstRenders = 0;
   for (auto it = applied_.begin(); it != applied_.end();) {
     LiveActor &state = it->second;
     const auto actor = state.actor.get();
@@ -555,6 +570,13 @@ void Manager::Tick(std::uint32_t a_nowMS, const Settings &a_settings) {
       TickInstance(instance, timing.time, timing.delta);
       instance.lastTime = timing.time;
     }
+    const bool firstRender = AwaitsFirstRender(state);
+    if (firstRender && firstRenders >= kFirstRendersPerTick) {
+      FinishApplications(it->first, state);
+      ++it;
+      continue;
+    }
+    firstRenders += firstRender ? 1 : 0;
     UpdateLights(state, RenderPieces(state, it->first));
     FinishApplications(it->first, state);
     if (Alive(state)) {
@@ -630,7 +652,7 @@ void Manager::RenderGeometry(LiveActor &a_state, LiveGeometry &a_bound,
                              bool a_hidden) {
   const Studio::View &view = editor_.CurrentView();
   if (a_bound.inputs.render &&
-      a_bound.inputs.render->BeginFrame(renderFrame_)) {
+      a_bound.inputs.render->BeginFrame(renderFrame_, NowMS())) {
     UpdateRenderInputs(a_state, a_bound);
   }
   if (a_bound.lost) {

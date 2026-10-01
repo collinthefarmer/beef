@@ -332,7 +332,7 @@ LayerPassesFor(std::span<const PlannedLayer *const> layers,
   }
   return passes;
 }
-constexpr std::uint64_t kReleaseAfterIdleTicks = 30;
+constexpr std::uint64_t kReleaseAfterIdleMS = 500;
 std::string StepSpanKey(const RenderStep &step) {
   const auto requirements = RequirementsOf(step.kind);
   if (!requirements)
@@ -1258,13 +1258,13 @@ RenderInstance::Demand(RenderValueRef output) {
 const GeometryInputs *RenderInstance::GeometryOf(GeometryId id) const noexcept {
   return IndexOf(id) < geometries_.size() ? &geometries_[IndexOf(id)] : nullptr;
 }
-bool RenderInstance::BeginFrame(std::uint64_t frame) {
+bool RenderInstance::BeginFrame(std::uint64_t frame, std::uint64_t nowMS) {
   if (frame_ == frame)
     return false;
   frame_ = frame;
-  execution_.AdvanceEpoch();
+  execution_.AdvanceClock(nowMS);
   Metrics::CountStepReleases(
-      execution_.ReleaseIdle(kReleaseAfterIdleTicks, Releasable));
+      execution_.ReleaseIdle(kReleaseAfterIdleMS, Releasable));
   Metrics::CountStepRestores(execution_.Restores() - restoresReported_);
   restoresReported_ = execution_.Restores();
   CollectReadbacks();

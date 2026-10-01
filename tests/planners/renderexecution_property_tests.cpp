@@ -396,9 +396,10 @@ struct Harness {
                                        : ChangeVersion{0}));
     Evaluate(generated.stacks[stack]);
   }
+  std::uint64_t clock = 1;
   void Act(Random &random) {
     const auto &g = generated;
-    execution.AdvanceEpoch();
+    execution.AdvanceClock(++clock);
     const auto roll = Pick(random, 13);
     if (roll < 3) {
       const auto id = g.scalars[Pick(random, g.scalars.size())];
@@ -425,7 +426,7 @@ struct Harness {
       EvaluateChain(Pick(random, g.stacks.size()));
     }
   }
-  void Release(std::uint64_t idleEpochs) {
+  void Release(std::uint64_t idleTicks) {
     std::vector<std::optional<ReleasedOutput>> before;
     for (const auto &state : execution.Steps())
       before.push_back(state.outputs.front().value
@@ -434,7 +435,7 @@ struct Harness {
                                  state.outputs.front().changeVersion}}
                            : std::nullopt);
     totals.releases += execution.ReleaseIdle(
-        idleEpochs, [](const RenderStep &step, const Fake &) {
+        idleTicks, [](const RenderStep &step, const Fake &) {
           return !Is<CompositeStackStep>(step.kind) &&
                  !Is<SubmitReductionStep>(step.kind);
         });
