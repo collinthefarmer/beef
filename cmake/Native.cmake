@@ -1,6 +1,6 @@
 find_package(Threads REQUIRED)
 add_library(BeefNativeOptions INTERFACE)
-target_compile_options(BeefNativeOptions INTERFACE -O1 -Wall -Wextra -Werror=switch)
+target_compile_options(BeefNativeOptions INTERFACE -O1 -Wall -Wextra -Wno-missing-field-initializers -Werror=switch)
 target_link_libraries(BeefNativeOptions INTERFACE Threads::Threads)
 if(BEEF_SANITIZE)
   if(NOT CMAKE_CXX_COMPILER_ID MATCHES "Clang")
