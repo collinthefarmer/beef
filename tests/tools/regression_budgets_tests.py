@@ -32,17 +32,18 @@ class RegressionBudgetTests(unittest.TestCase):
                 edge(4100, 'recovery', 'end'), edge(5000, 'unclosed', 'begin')]
 
     def test_windows_pair_the_plugin_window_events(self):
-        names = [(w.name, w.start_ms, w.end_ms) for w in budgets.windows(self.soak_events())]
-        self.assertEqual(names, [('baseline', 0, 1000), ('burst', 1000, 1200),
-                                 ('settle', 1200, 2000), ('steady', 2000, 3000),
-                                 ('recovery', 3100, 4100)])
+        names = [(w.case, w.name, w.start_ms, w.end_ms)
+                 for w in budgets.windows(self.soak_events())]
+        self.assertEqual(names, [('', 'baseline', 0, 1000), ('', 'burst', 1000, 1200),
+                                 ('', 'settle', 1200, 2000), ('', 'steady', 2000, 3000),
+                                 ('', 'recovery', 3100, 4100)])
 
     def test_measure_sums_the_heartbeats_inside_a_window(self):
         measured = budgets.measurements(self.soak_events())
-        self.assertEqual(measured['baseline']['fps'], 300.0)
-        self.assertEqual(measured['steady']['plugin_frame_us_mean'], 2000.0)
-        self.assertEqual(measured['settle']['frame_max_us'], 900000)
-        self.assertEqual(measured['recovery']['targets_end'], 5)
+        self.assertEqual(measured[('', 'baseline')]['fps'], 300.0)
+        self.assertEqual(measured[('', 'steady')]['plugin_frame_us_mean'], 2000.0)
+        self.assertEqual(measured[('', 'settle')]['frame_max_us'], 900000)
+        self.assertEqual(measured[('', 'recovery')]['targets_end'], 5)
 
     def test_budgets_name_each_failure(self):
         measured = budgets.measurements(self.soak_events())
@@ -58,6 +59,43 @@ class RegressionBudgetTests(unittest.TestCase):
             'settle: frame_max_us 900000 over 500000',
             'steady: fps 75.0 is 0.25 of baseline, under 0.5',
             'recovery: targets_end grew by 4 over baseline, over 2'])
+
+    def case_events(self, case, start_ms, gap_targets, frame_us):
+        def edge(time_ms, window, kind):
+            return {'unix_ms': time_ms, 'fields': {'action': 'regression.window',
+                                                   'case': case, 'window': window,
+                                                   'edge': kind}}
+
+        def beat(time_ms, targets, frame_max_us):
+            return {'unix_ms': time_ms, 'fields': {
+                'action': 'heartbeat', 'frames': '100', 'frame_max_us': str(frame_max_us),
+                'targets': str(targets), 'target_bytes': str(targets * 1000)}}
+        events = [edge(start_ms, 'baseline', 'begin'), beat(start_ms + 50, 1, 10),
+                  edge(start_ms + 100, 'baseline', 'end')]
+        for cycle, targets in enumerate(gap_targets, start=1):
+            at = start_ms + 100 * (2 * cycle)
+            events += [edge(at, f'wave-{cycle}', 'begin'), beat(at + 50, 40, frame_us),
+                       edge(at + 100, f'wave-{cycle}', 'end'),
+                       edge(at + 100, f'gap-{cycle}', 'begin'), beat(at + 150, targets, 10),
+                       edge(at + 200, f'gap-{cycle}', 'end')]
+        return events
+
+    def test_cases_keep_their_own_windows(self):
+        events = sorted(self.case_events('soak-waves', 0, [3, 4, 9], 600000)
+                        + self.case_events('soak-stack', 10000, [3, 3], 20),
+                        key=lambda event: event['unix_ms'])
+        measured = budgets.measurements(events)
+        self.assertEqual(measured[('soak-waves', 'gap-3')]['targets_end'], 9)
+        self.assertEqual(measured[('soak-stack', 'gap-2')]['targets_end'], 3)
+        limits = budgets.parse_budgets({
+            'wave-*': {'frame_max_us_max': 500000},
+            'gap-*': {'targets_end_growth_max': 2}})
+        self.assertIsInstance(limits, list)
+        self.assertEqual(budgets.budget_failures(measured, limits), [
+            'soak-waves/wave-1: frame_max_us 600000 over 500000',
+            'soak-waves/wave-2: frame_max_us 600000 over 500000',
+            'soak-waves/wave-3: frame_max_us 600000 over 500000',
+            'soak-waves/gap-*: targets_end grew by 6 from gap-1 to gap-3, over 2'])
 
     def test_an_unknown_budget_key_is_an_error(self):
         for raw in ({'steady': {'fps_ratio_minimum': 0.5}},

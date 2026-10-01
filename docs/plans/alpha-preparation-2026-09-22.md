@@ -189,13 +189,27 @@ Investigate `Manager`, `SessionQueue`, `ApplicationService`, `LiveActor`,
 bindings, shells, compositor/mesh caches, `TextureRef`, render-target pools,
 previews, readbacks, and eviction.
 
-- [ ] Exercise repeated equip/unequip, cell changes, actor unloading,
-  first-/third-person switching, disable/retire/reapply, and new game.
-- [ ] Load saves during queued edits, gestures, and paint previews. Verify
-  old work cannot affect the new session and no application stays pending.
-- [ ] Verify two wearers of the same armor remain isolated, including an
-  unenchanted control. Verify vanilla effect-shader coexistence and return
-  to baseline without changing equipment.
+The [unattended regression runner](unattended-regression-2026-10-01.md)
+runs the lifetime, isolation, load and soak cases below from a known good
+save with one host command (`tools/regression-run.py`). Run 20261001T160233
+passed every case on 2026-10-01. It ran the source of commit `aeb7506`
+before that commit's last tidy fixes, which only removed unused parameters
+and moved the actor ID into `ActorStacks`.
+
+- [x] Exercise repeated equip/unequip (`equip-cycle`), cell changes and
+  actor unloading (`unload`), first-/third-person switching (`camera`), and
+  disable/retire/reapply (`lifecycle`, `unload`). The runs found and fixed
+  an NPC armor model that attaches after the equip refresh.
+- [ ] Exercise new game. No case covers it.
+- [x] Load saves during queued edits, gestures, and paint previews
+  (`load-idle`, `load-apply`, `load-edit`, `load-gesture`, `load-paint`).
+  Old work cannot affect the new session and no application stays pending.
+  The runs found and fixed a gesture cancelled by a load and recorded as
+  cancelled by the user.
+- [x] Verify two wearers of the same armor remain isolated, including an
+  unenchanted control (`isolation`).
+- [ ] Verify vanilla effect-shader coexistence and return to baseline
+  without changing equipment.
 - [ ] Exercise genuine material/shell ownership takeover by another system;
   retirement must preserve that owner's state. Mark unavailable fixtures
   blocked rather than treating ordinary unequip as equivalent evidence.
@@ -208,8 +222,17 @@ previews, readbacks, and eviction.
   and added lock/Map timing and completion fields; see the
   [readback assessment](../checkpoints/source-ownership-2026-09-23.md#readback-assessment).
   Candidate measurements and asynchronous readback remain outstanding.
+  Progress, 2026-10-01: the `soak` case measures a static crowd of twelve in
+  one armor (burst, settle, steady and recovery windows, checked against
+  `tests/regression/budgets.json`). It found a 13-second burst freeze and a
+  14 GB peak, now fixed: peak 2.2 GB, steady 1.4 GB, worst settle frame
+  24 ms. See the [render performance plan](render-performance-2026-09-29.md),
+  stage 5. Open: 95 MB stays after the crowd leaves, over the recovery
+  budget. Animation-heavy crowds, armor variety and large textures are not
+  measured.
 - [ ] Run an hour-long crowd soak and an extended authoring/play session
   with repeated preview cycles and save loads. Capture complete evidence.
+  The `soak-hour` case exists and has not run.
 - [ ] Rerun using the actual packaged defaults. Eviction currently defaults
   off; results with eviction enabled do not establish default behavior.
 

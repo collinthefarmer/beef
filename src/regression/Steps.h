@@ -94,12 +94,20 @@ struct ExpectScratch {
 };
 struct SpawnCrowd {
   std::uint32_t count = 0;
+  Body body = Body::kMannequin;
+  Dress dress = Dress::kDemoCuirass;
 };
 struct AwaitCrowdRendered {};
+struct StartCrowdFight {};
+struct AwaitCrowdFighting {};
+struct UnequipCrowd {};
+struct EquipCrowd {};
+struct AwaitCrowdBare {};
 struct DespawnCrowd {};
 struct HoldWindow {
   std::string_view window;
   std::uint32_t seconds = 0;
+  std::uint32_t cycle = 0;
 };
 struct BeginSession {
   Session session = Session::kPaint;
@@ -110,9 +118,11 @@ struct AwaitSessionActive {
 };
 struct BeginWindow {
   std::string_view window;
+  std::uint32_t cycle = 0;
 };
 struct EndWindow {
   std::string_view window;
+  std::uint32_t cycle = 0;
 };
 struct AwaitIdle {};
 using Step = std::variant<
@@ -121,8 +131,9 @@ using Step = std::variant<
     ExpectEffect, HoldUntouched, LeaveStart, ReturnToStart, SetCamera,
     LoadDuring, ExpectAborted, ExpectCancelled, ExpectSettled, DeleteScratch,
     DuplicateToScratch, SetScratchOpacity, SaveScratch, ExpectScratch,
-    SpawnCrowd, AwaitCrowdRendered, DespawnCrowd, HoldWindow, BeginWindow,
-    EndWindow, BeginSession, AwaitSessionActive, AwaitIdle>;
+    SpawnCrowd, AwaitCrowdRendered, StartCrowdFight, AwaitCrowdFighting,
+    UnequipCrowd, EquipCrowd, AwaitCrowdBare, DespawnCrowd, HoldWindow,
+    BeginWindow, EndWindow, BeginSession, AwaitSessionActive, AwaitIdle>;
 
 struct Case {
   std::string_view name;
@@ -134,6 +145,8 @@ using CaseList = std::vector<std::reference_wrapper<const Case>>;
 inline constexpr std::string_view kScratchRecipe = "regression-scratch";
 inline constexpr std::uint32_t kMaxCrowd = 64;
 
+[[nodiscard]] std::string WindowName(std::string_view a_window,
+                                     std::uint32_t a_cycle);
 [[nodiscard]] std::string StepLabel(const Step &a_step);
 [[nodiscard]] std::span<const Case> Catalog();
 [[nodiscard]] const Case *FindCase(std::string_view a_name);

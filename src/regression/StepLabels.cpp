@@ -22,7 +22,8 @@ std::string Label(const WaitFrames &a_settle) {
 }
 
 std::string Label(const Solo &a_solo) {
-  return std::format("solo {}", a_solo.recipe);
+  return a_solo.recipe.empty() ? std::string{"solo every recipe"}
+                               : std::format("solo {}", a_solo.recipe);
 }
 
 std::string Label(const RestoreSolo &) { return std::string{"restore-view"}; }
@@ -117,17 +118,41 @@ std::string Label(const ExpectScratch &a_s) {
 }
 
 std::string Label(const SpawnCrowd &a_s) {
-  return std::format("spawn-crowd {}", a_s.count);
+  std::string label = std::format("spawn-crowd {}", a_s.count);
+  if (a_s.body != Body::kMannequin) {
+    label += std::format(" {}", WordOf(a_s.body));
+  }
+  if (a_s.dress != Dress::kDemoCuirass) {
+    label += std::format(" in {}", WordOf(a_s.dress));
+  }
+  return label;
+}
+
+std::string Label(const StartCrowdFight &) {
+  return std::string{"start-crowd-fight"};
+}
+
+std::string Label(const AwaitCrowdFighting &) {
+  return std::string{"await-crowd-fighting"};
 }
 
 std::string Label(const AwaitCrowdRendered &) {
   return std::string{"await-crowd-rendered"};
 }
 
+std::string Label(const UnequipCrowd &) { return std::string{"unequip-crowd"}; }
+
+std::string Label(const EquipCrowd &) { return std::string{"equip-crowd"}; }
+
+std::string Label(const AwaitCrowdBare &) {
+  return std::string{"await-crowd-bare"};
+}
+
 std::string Label(const DespawnCrowd &) { return std::string{"despawn-crowd"}; }
 
 std::string Label(const HoldWindow &a_s) {
-  return std::format("hold {} {}s", a_s.window, a_s.seconds);
+  return std::format("hold {} {}s", WindowName(a_s.window, a_s.cycle),
+                     a_s.seconds);
 }
 
 std::string Label(const BeginSession &a_s) {
@@ -135,11 +160,11 @@ std::string Label(const BeginSession &a_s) {
 }
 
 std::string Label(const BeginWindow &a_s) {
-  return std::format("begin-window {}", a_s.window);
+  return std::format("begin-window {}", WindowName(a_s.window, a_s.cycle));
 }
 
 std::string Label(const EndWindow &a_s) {
-  return std::format("end-window {}", a_s.window);
+  return std::format("end-window {}", WindowName(a_s.window, a_s.cycle));
 }
 
 std::string Label(const AwaitSessionActive &a_s) {
@@ -147,6 +172,11 @@ std::string Label(const AwaitSessionActive &a_s) {
 }
 
 std::string Label(const AwaitIdle &) { return std::string{"await-idle"}; }
+}
+
+std::string WindowName(std::string_view a_window, std::uint32_t a_cycle) {
+  return a_cycle == 0 ? std::string{a_window}
+                      : std::format("{}-{}", a_window, a_cycle);
 }
 
 std::string StepLabel(const Step &a_step) {

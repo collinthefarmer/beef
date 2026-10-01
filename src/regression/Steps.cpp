@@ -573,15 +573,21 @@ StepMove Start(const SpawnCrowd &a_spawn, const StepContext &a_context) {
   if (a_context.changes.crowd > 0) {
     return Pass("already spawned");
   }
-  return Issue(SpawnCrowdActors{a_spawn.count});
+  return Issue(SpawnCrowdActors{a_spawn.count, a_spawn.body, a_spawn.dress});
 }
 
 StepMove Check(const SpawnCrowd &, const StepContext &a_context) {
   const CrowdFacts &crowd = a_context.seen.crowd;
-  return PassWhen(crowd.present >= a_context.changes.crowd, a_context,
-                  kActionDeadlineFrames,
-                  std::format("only {} of {} crowd actors appeared",
-                              crowd.present, a_context.changes.crowd));
+  if (crowd.present >= a_context.changes.crowd) {
+    return PassAndIssue(EquipCrowdArmor{});
+  }
+  if (a_context.frames >= kActionDeadlineFrames) {
+    return Fail(std::format("only {} of {} crowd actors appeared within {} "
+                            "frames",
+                            crowd.present, a_context.changes.crowd,
+                            kActionDeadlineFrames));
+  }
+  return Wait();
 }
 
 StepMove Start(const AwaitCrowdRendered &, const StepContext &a_context) {
@@ -596,6 +602,69 @@ StepMove Check(const AwaitCrowdRendered &, const StepContext &a_context) {
   return PassWhen(crowd.rendered >= a_context.changes.crowd, a_context,
                   kCrowdDeadlineFrames,
                   std::format("only {} of {} crowd actors rendered",
+                              crowd.rendered, a_context.changes.crowd));
+}
+
+StepMove Start(const StartCrowdFight &, const StepContext &a_context) {
+  if (a_context.changes.crowd < 2) {
+    return Block("a fight needs a crowd of two or more");
+  }
+  if (a_context.changes.crowdBody == Body::kMannequin) {
+    return Block("mannequins cannot fight");
+  }
+  return PassAndIssue(SetCrowdHostile{});
+}
+
+StepMove Check(const StartCrowdFight &, const StepContext &) { return Pass(); }
+
+StepMove Start(const AwaitCrowdFighting &, const StepContext &a_context) {
+  if (a_context.changes.crowd < 2) {
+    return Block("a fight needs a crowd of two or more");
+  }
+  return Wait();
+}
+
+StepMove Check(const AwaitCrowdFighting &, const StepContext &a_context) {
+  const CrowdFacts &crowd = a_context.seen.crowd;
+  return PassWhen(crowd.fighting * 2 >= a_context.changes.crowd, a_context,
+                  kCrowdDeadlineFrames,
+                  std::format("only {} of {} crowd actors are in combat",
+                              crowd.fighting, a_context.changes.crowd));
+}
+
+StepMove Start(const UnequipCrowd &, const StepContext &a_context) {
+  if (a_context.changes.crowd == 0) {
+    return Block("no crowd was spawned");
+  }
+  return PassAndIssue(UnequipCrowdArmor{});
+}
+
+StepMove Check(const UnequipCrowd &, const StepContext &) { return Pass(); }
+
+StepMove Start(const EquipCrowd &, const StepContext &a_context) {
+  if (a_context.changes.crowd == 0) {
+    return Block("no crowd was spawned");
+  }
+  return PassAndIssue(EquipCrowdArmor{});
+}
+
+StepMove Check(const EquipCrowd &, const StepContext &) { return Pass(); }
+
+StepMove Start(const AwaitCrowdBare &, const StepContext &a_context) {
+  if (a_context.changes.crowd == 0) {
+    return Block("no crowd was spawned");
+  }
+  return Wait();
+}
+
+StepMove Check(const AwaitCrowdBare &, const StepContext &a_context) {
+  const CrowdFacts &crowd = a_context.seen.crowd;
+  if (crowd.present < a_context.changes.crowd) {
+    return Fail(std::format("only {} of {} crowd actors stayed present",
+                            crowd.present, a_context.changes.crowd));
+  }
+  return PassWhen(crowd.rendered == 0, a_context, kCrowdDeadlineFrames,
+                  std::format("{} of {} crowd actors kept the effect",
                               crowd.rendered, a_context.changes.crowd));
 }
 
@@ -722,6 +791,11 @@ std::array<bool, kRoleCount> RolesAffected(const Step &a_step) {
           [&](const ExpectScratch &) { return kNone; },
           [&](const SpawnCrowd &) { return kNone; },
           [&](const AwaitCrowdRendered &) { return kNone; },
+          [&](const StartCrowdFight &) { return kNone; },
+          [&](const AwaitCrowdFighting &) { return kNone; },
+          [&](const UnequipCrowd &) { return kNone; },
+          [&](const EquipCrowd &) { return kNone; },
+          [&](const AwaitCrowdBare &) { return kNone; },
           [&](const DespawnCrowd &) { return kNone; },
           [&](const HoldWindow &) { return kNone; },
           [&](const BeginSession &) { return only(Role::kPlayer); },

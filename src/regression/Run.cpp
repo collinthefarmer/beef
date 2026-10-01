@@ -55,45 +55,48 @@ Advanced FinishSection(RunState a_state, Running a_running) {
   return {std::move(a_state), std::nullopt, std::move(lines)};
 }
 
-std::optional<std::string_view> WindowOpenedBy(const Step &a_step) {
+std::optional<std::string> WindowOpenedBy(const Step &a_step) {
   if (const auto *hold = std::get_if<HoldWindow>(&a_step))
-    return hold->window;
+    return WindowName(hold->window, hold->cycle);
   if (const auto *begin = std::get_if<BeginWindow>(&a_step))
-    return begin->window;
+    return WindowName(begin->window, begin->cycle);
   return std::nullopt;
 }
 
-std::optional<std::string_view> WindowClosedBy(const Step &a_step) {
+std::optional<std::string> WindowClosedBy(const Step &a_step) {
   if (const auto *hold = std::get_if<HoldWindow>(&a_step))
-    return hold->window;
+    return WindowName(hold->window, hold->cycle);
   if (const auto *end = std::get_if<EndWindow>(&a_step))
-    return end->window;
+    return WindowName(end->window, end->cycle);
   return std::nullopt;
 }
 
 RunChanges AfterCommand(RunChanges a_changes, const Command &a_command) {
-  std::visit(
-      Overloaded{
-          [&](const SpawnActor &a_c) {
-            a_changes.spawned[IndexOf(a_c.role)] = true;
-          },
-          [&](const DespawnActor &a_c) {
-            a_changes.spawned[IndexOf(a_c.role)] = false;
-            a_changes.added[IndexOf(a_c.role)] = {};
-          },
-          [&](const AddAndEquip &a_c) {
-            a_changes.added[IndexOf(a_c.role)][IndexOf(a_c.item)] = true;
-          },
-          [&](const RemoveArmor &a_c) {
-            a_changes.added[IndexOf(a_c.role)][IndexOf(a_c.item)] = false;
-          },
-          [&](const TravelFromStart &) { a_changes.away = true; },
-          [&](const TravelToStart &) { a_changes.away = false; },
-          [&](const SpawnCrowdActors &a_c) { a_changes.crowd = a_c.count; },
-          [&](const DespawnCrowdActors &) { a_changes.crowd = 0; },
-          [](const auto &) {},
-      },
-      a_command);
+  std::visit(Overloaded{
+                 [&](const SpawnActor &a_c) {
+                   a_changes.spawned[IndexOf(a_c.role)] = true;
+                 },
+                 [&](const DespawnActor &a_c) {
+                   a_changes.spawned[IndexOf(a_c.role)] = false;
+                   a_changes.added[IndexOf(a_c.role)] = {};
+                 },
+                 [&](const AddAndEquip &a_c) {
+                   a_changes.added[IndexOf(a_c.role)][IndexOf(a_c.item)] = true;
+                 },
+                 [&](const RemoveArmor &a_c) {
+                   a_changes.added[IndexOf(a_c.role)][IndexOf(a_c.item)] =
+                       false;
+                 },
+                 [&](const TravelFromStart &) { a_changes.away = true; },
+                 [&](const TravelToStart &) { a_changes.away = false; },
+                 [&](const SpawnCrowdActors &a_c) {
+                   a_changes.crowd = a_c.count;
+                   a_changes.crowdBody = a_c.body;
+                 },
+                 [&](const DespawnCrowdActors &) { a_changes.crowd = 0; },
+                 [](const auto &) {},
+             },
+             a_command);
   return a_changes;
 }
 
@@ -140,8 +143,8 @@ Advanced AdvanceRunning(RunState a_state, Running a_running,
       a_running.started ? CheckStep(step, context) : StartStep(step, context);
   std::vector<ResultLine> lines;
   if (!a_running.started)
-    if (const std::optional<std::string_view> window = WindowOpenedBy(step))
-      lines.emplace_back(WindowBegins{*window});
+    if (std::optional<std::string> window = WindowOpenedBy(step))
+      lines.emplace_back(WindowBegins{current.name, std::move(*window)});
   if (!a_running.started && move.command) {
     a_state.renderedBefore =
         RememberRenders(a_state.renderedBefore, step, a_seen);
@@ -154,8 +157,8 @@ Advanced AdvanceRunning(RunState a_state, Running a_running,
     lines.emplace_back(StepResult{
         current.name, ReportedIndex(current, a_running), StepLabel(step),
         completed->outcome, a_running.frames, std::move(completed->reason)});
-    if (const std::optional<std::string_view> window = WindowClosedBy(step))
-      lines.emplace_back(WindowEnds{*window});
+    if (std::optional<std::string> window = WindowClosedBy(step))
+      lines.emplace_back(WindowEnds{current.name, std::move(*window)});
     a_running = AfterStep(a_running, completed->outcome);
   }
   a_state.phase = a_running;

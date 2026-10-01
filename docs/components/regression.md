@@ -37,6 +37,8 @@ role or an item into an array index, clamped to the array's size.
 | `Outcome` | `kPass`, `kFail`, `kBlocked`, `kAborted` | The verdict of a step, a case, a run or a request. `OutcomeName` gives `PASS`, `FAIL`, `BLOCKED`, `ABORTED`. |
 | `Role` | `kPlayer`, `kWearer`, `kControl` | The actor a step acts on. The wearer and the control are spawned mannequins. |
 | `Item` | `kFixture`, `kPlainCuirass` | The demo cuirass and the control's plain cuirass. |
+| `Body` | `kMannequin`, `kIdleNpc` | What a crowd actor is. Mannequins hold still; idle NPCs animate and can fight. |
+| `Dress` | `kDemoCuirass`, `kVanillaCuirasses` | What a crowd wears: the demo cuirass, or six vanilla cuirasses tagged to match Arcane Circuit for the life of the crowd. |
 | `Camera` | `kFirstPerson`, `kThirdPerson` | The camera a `SetCamera` step asks for. |
 | `QueuedWork` | `kNothing`, `kApply`, `kEdit` | The work a `LoadDuring` step queues in the same frame as the load. |
 | `Session` | `kGesture`, `kPaint` | The studio session a `BeginSession` step opens. |
@@ -74,8 +76,10 @@ name. `StepLabel` gives a step's text for its result line.
 | `LoadDuring`, `ExpectAborted`, `ExpectCancelled`, `ExpectSettled`, `AwaitIdle` | Load the save with work queued, then check what the load did to it. |
 | `BeginSession`, `AwaitSessionActive` | Open a gesture or paint session and wait until the editor reports it active. |
 | `DeleteScratch`, `DuplicateToScratch`, `SetScratchOpacity`, `SaveScratch`, `ExpectScratch` | Studio round trips on the scratch recipe, `kScratchRecipe` (`regression-scratch`). |
-| `SpawnCrowd`, `AwaitCrowdRendered`, `DespawnCrowd` | Spawn and remove up to `kMaxCrowd` (64) crowd actors. |
-| `HoldWindow`, `BeginWindow`, `EndWindow` | Mark a measured window of the soak. A hold runs on wall-clock time. |
+| `SpawnCrowd`, `AwaitCrowdRendered`, `DespawnCrowd` | Spawn up to `kMaxCrowd` (64) crowd actors of a `Body` in a `Dress`, dress them once all are present, and remove them. |
+| `StartCrowdFight`, `AwaitCrowdFighting` | Split an idle-NPC crowd into two hostile sides, and wait until at least half the crowd is in combat. A mannequin crowd blocks the fight. |
+| `UnequipCrowd`, `AwaitCrowdBare`, `EquipCrowd` | Unequip the fixture on every crowd actor, wait until no crowd actor renders it, and equip it again. |
+| `HoldWindow`, `BeginWindow`, `EndWindow` | Mark a measured window of the soak. A hold runs on wall-clock time. A nonzero `cycle` appends `-<cycle>` to the window name (`WindowName`). |
 | `WaitFrames` | Wait a number of frames. |
 
 An `Expect…` step checks a state that the steps before it produced. It waits
@@ -90,7 +94,9 @@ deadlines are constants in `Steps.cpp`.
 
 The catalog holds `lifecycle`, `equip-cycle`, `camera`, `isolation`,
 `unload`, `load-idle`, `load-apply`, `load-edit`, `load-gesture`,
-`load-paint`, `studio-save`, `studio-reload`, `soak` and `soak-hour`.
+`load-paint`, `studio-save`, `studio-reload`, `soak`, `soak-hour`,
+`soak-stack`, `soak-large`, `soak-waves`, `soak-churn`, `soak-vanilla`,
+`soak-idle` and `soak-fight`.
 
 ### The observation (`Observation.h`)
 
@@ -104,7 +110,7 @@ the game showed, never on what the run asked for.
 | `ActorFacts` | Whether the actor is present and wears body armor, `ItemFacts` per item, whether the manager holds live state, the newest application revision that rendered the fixture (`renderedAttempt`), the residue count, and the latest application text. |
 | `ItemFacts` | Whether the item is equipped and carried. |
 | `Activity` | Pending applications, an open paint session or gesture, a pending file operation, the `WorkOutcome` of the started edit, gesture and file operation, and a detail text for failure reasons. |
-| `CrowdFacts` | How many crowd actors are present and how many render. |
+| `CrowdFacts` | How many crowd actors are present, how many render their own armor, and how many are in combat. |
 | `RecipeFacts` | Whether a recipe is loaded and unsaved, and its first layer's opacity when that is a number. |
 | `RequestState` | `NoRequest`, `RequestPending`, or the request's `Outcome`. |
 
@@ -122,7 +128,9 @@ A `Command` is a variant with one record per engine action. `Execute` in
 | `SubmitApply`, `SubmitRetire`, `AbortRequest` | Start or abort the one regression request. |
 | `TravelFromStart`, `TravelToStart`, `SwitchCamera` | Move the player to the exterior and back, or switch the camera. |
 | `StartDuplicate`, `StartOpacityEdit`, `StartSave`, `StartDelete`, `OpenSession` | Start the same studio work the menu starts. |
-| `SpawnCrowdActors`, `DespawnCrowdActors` | Place or delete the crowd. |
+| `SpawnCrowdActors`, `DespawnCrowdActors` | Place or delete the crowd; tag or restore the vanilla cuirasses. |
+| `SetCrowdHostile` | Put the crowd's two sides in opposing factions. |
+| `UnequipCrowdArmor`, `EquipCrowdArmor` | Unequip each crowd actor's armor, or strip its other body armor and equip its own. |
 | `LoadSaveWith` | Queue work, then load the run's save. |
 | `Quit` | Quit the game. |
 
@@ -136,8 +144,8 @@ memory, never in the save, so a case can load the save and continue.
 | `RunState` | The suite, the `Phase`, the run's outcome so far, `RunChanges`, the load count last seen, and each role's rendered revision when the last step that moved it started (`renderedBefore`). |
 | `Phase` | `Settling` (waits `kSettleFrames`, 120, with the player present), `Running`, `Ending` (waits `kEndingFrames`, 10, so the files flush), `Finished`. |
 | `Running` | The cursor: case index, `Section` (`kBody` or `kCleanup`), step index, frames spent, whether the step started, its start time and load count, and the case's outcome so far. |
-| `RunChanges` | What the run changed in the world: the items it added per role, the roles it spawned, whether the player is away, and the crowd size. `AfterCommand` in `Run.cpp` derives it from each issued command; a load resets it. |
-| `ResultLine` | `StepResult`, `CaseResult`, `RunEnd`, `WindowBegins` or `WindowEnds`. `ResultLineJson` writes one as a JSON line; `StartLineJson` writes the first line. |
+| `RunChanges` | What the run changed in the world: the items it added per role, the roles it spawned, whether the player is away, and the crowd's size and body. `AfterCommand` in `Run.cpp` derives it from each issued command; a load resets it. |
+| `ResultLine` | `StepResult`, `CaseResult`, `RunEnd`, `WindowBegins` or `WindowEnds`. A window line carries its case and its full name. `ResultLineJson` writes one as a JSON line; `StartLineJson` writes the first line. |
 | `Advanced{state, command, lines}` | What `Advance` returns. |
 
 ### Step rules (`StepRules.h`)
@@ -188,6 +196,61 @@ BetterEnchantmentEffects-regression-<run>.jsonl ──▶ tools/regression-run.p
                                                      prints the report and checks the budgets
 ```
 
+## Writing a case
+
+A case is data in `Catalog.cpp`. Build its steps with these helpers. No
+case states its own step count.
+
+| Helper | Result |
+|---|---|
+| `Sequence(step, ...)` | The steps in order. |
+| `Joined(steps, ...)` | Two or more step lists, one after the other. |
+| `Repeated<N>(steps)` | The same steps N times. |
+| `Cycles<N>(Function)` | `Function(1)` to `Function(N)`, one after the other. Use it for a repeated block whose windows need a number. |
+
+`soak-churn` uses all four:
+
+```cpp
+constexpr std::array<Step, 6> Churn(std::uint32_t a_cycle) {
+  return Sequence(BeginWindow{"churn", a_cycle}, UnequipCrowd{},
+                  AwaitCrowdBare{}, EquipCrowd{}, AwaitCrowdRendered{},
+                  EndWindow{"churn", a_cycle});
+}
+inline constexpr std::array kSoakChurn =
+    Joined(Sequence(/* baseline, burst, settle */), Cycles<4>(Churn),
+           Sequence(/* steady, despawn, recovery */));
+```
+
+Then add a `Case{name, steps, kCleanup}` row to `kCatalog`. Use
+`kStudioCleanup` when the case writes the scratch recipe.
+`EveryCasePassesInAHealthyWorld` and `EveryFixedObservationEndsTheRun` in
+`tests/regression/run_tests.cpp` cover every catalog case. Add a test of
+its own when the case checks a fault.
+
+A measured window belongs to its case. `tools/regression_budgets.py` keys
+each window by case and name, and compares a ratio or an
+`_over_baseline` limit with the `baseline` window of the same case.
+Several soak cases can therefore run in one launch. A budget key in
+`tests/regression/budgets.json` is a window-name pattern (`gap-*`) and
+applies in every case that has a matching window. A `_growth_max` limit
+compares the last matching window of a case with the first.
+
+## Adding a step
+
+A new step needs these changes. The compiler reports each `std::visit`
+that has no arm for the new step.
+
+| File | Change |
+|---|---|
+| `Steps.h` | The step record, and its entry in `Step`. |
+| `Steps.cpp` | `Start` and `Check`, and an arm in `RolesAffected`. A step without a `role` field needs an explicit arm. |
+| `StepLabels.cpp` | `Label`. |
+| `Commands.h` | A command record and its entry in `Command`, when the step makes the engine act. |
+| `Run.cpp` | A case in `AfterCommand`, when the command changes the world that cleanup must undo. |
+| `Observation.h` | A new fact, when no existing fact shows the step's result. |
+| `engine/RegressionWorld.cpp` | `Perform` for the command, and `Observe` for a new fact. |
+| `tests/regression/run_tests.cpp` | The simulated world's response to the command. |
+
 ## The files
 
 | File | What it owns |
@@ -195,7 +258,7 @@ BetterEnchantmentEffects-regression-<run>.jsonl ──▶ tools/regression-run.p
 | `Words.h` | The enums, their `Named` tables, `OutcomeName`, `WordOf` and `IndexOf`. |
 | `RunFile.h` / `RunFile.cpp` | `RunFile` and `ParseRunFile`. `RunFile.cpp` also writes the result lines (`StartLineJson`, `ResultLineJson`). |
 | `Steps.h` | The step records, `Step`, `Case`, `CaseList`, `kScratchRecipe`, `kMaxCrowd`, and the declarations of `StepLabel`, `Catalog` and `FindCase`. |
-| `Catalog.cpp` | The fixed case catalog, built with `Joined` and `Repeated`. |
+| `Catalog.cpp` | The fixed case catalog, built with `Sequence`, `Joined`, `Repeated` and `Cycles`. |
 | `Observation.h` | `Observation` and the facts records. |
 | `Commands.h` | The command records and `Command`. |
 | `Run.h` / `Run.cpp` | `RunState`, the phases, `RunChanges`, the result lines, and `BeginRun`, `Advance` and `Done`. |

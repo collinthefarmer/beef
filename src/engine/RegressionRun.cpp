@@ -68,13 +68,15 @@ void TraceLine(const Regression::ResultLine &a_line) {
           [](const Regression::WindowBegins &a_window) {
             Trace::EmitSafely(Trace::Event::kCommand,
                               {{"action", "regression.window"},
-                               {"window", std::string{a_window.window}},
+                               {"case", std::string{a_window.caseName}},
+                               {"window", a_window.window},
                                {"edge", "begin"}});
           },
           [](const Regression::WindowEnds &a_window) {
             Trace::EmitSafely(Trace::Event::kCommand,
                               {{"action", "regression.window"},
-                               {"window", std::string{a_window.window}},
+                               {"case", std::string{a_window.caseName}},
+                               {"window", a_window.window},
                                {"edge", "end"}});
           },
           [](const Regression::RunEnd &a_end) {

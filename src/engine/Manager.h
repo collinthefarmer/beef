@@ -34,6 +34,11 @@ struct ActorStacks;
 
 [[nodiscard]] bool ArmorAwaitsModel(RE::Actor &a_actor);
 
+struct RegressionWearer {
+  RE::FormID actor = 0;
+  RE::FormID armor = 0;
+};
+
 struct RegressionActorFacts {
   bool live = false;
   std::uint64_t renderedAttempt = 0;
@@ -65,7 +70,7 @@ public:
   void EndSoloInEditor();
   void ObserveRegression();
   [[nodiscard]] std::vector<RegressionActorFacts>
-  RegressionActors(std::span<const RE::FormID> a_actors) const;
+  RegressionActors(std::span<const RegressionWearer> a_wearers) const;
   [[nodiscard]] Regression::Activity
   RegressionActivity(std::uint64_t a_edit, std::uint64_t a_gesture,
                      std::uint64_t a_file) const;

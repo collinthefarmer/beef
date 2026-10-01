@@ -4,6 +4,7 @@
 #include "test_support.h"
 
 #include <algorithm>
+#include <cstddef>
 #include <cstdint>
 #include <initializer_list>
 #include <optional>
@@ -88,6 +89,7 @@ struct Faults {
   bool loadCompletesRequest = false;
   bool editAppliesFirst = false;
   bool saveDropsEdit = false;
+  bool crowdKeepsEffect = false;
 };
 
 struct ScratchFile {
@@ -119,6 +121,7 @@ struct World {
   std::optional<ScratchFile> disk;
   CrowdFacts crowd;
   int crowdIn = -1;
+  int fightIn = -1;
   std::uint32_t crowdSize = 0;
   std::uint64_t nowMs = 0;
   Faults faults;
@@ -321,6 +324,21 @@ struct World {
               commands.emplace_back("uncrowd");
               crowd = {};
               crowdIn = -1;
+              fightIn = -1;
+            },
+            [&](const SetCrowdHostile &) {
+              commands.emplace_back("hostile");
+              fightIn = 5;
+            },
+            [&](const UnequipCrowdArmor &) {
+              commands.emplace_back("unequip-crowd");
+              if (!faults.crowdKeepsEffect) {
+                crowd.rendered = 0;
+              }
+            },
+            [&](const EquipCrowdArmor &) {
+              commands.emplace_back("equip-crowd");
+              crowdIn = 5;
             },
             [&](const OpenSession &a_c) {
               commands.emplace_back("begin");
@@ -389,6 +407,9 @@ struct World {
 
   void Tick() {
     nowMs += kSimulatedFrameMs;
+    if (fightIn > 0 && --fightIn == 0) {
+      crowd.fighting = crowdSize;
+    }
     if (crowdIn > 0 && --crowdIn == 0) {
       crowd.rendered = crowdSize;
     }
@@ -605,6 +626,75 @@ void SoakHoldsAndCleansUp() {
               "soak names its measurement windows");
 }
 
+std::vector<std::string> ActionsStartingWith(const World &a_world,
+                                             std::string_view a_prefix) {
+  std::vector<std::string> actions;
+  for (const ResultLine &line : a_world.lines) {
+    if (const auto *step = std::get_if<StepResult>(&line);
+        step && step->action.starts_with(a_prefix)) {
+      actions.push_back(step->action);
+    }
+  }
+  return actions;
+}
+
+void SoakVariantsHoldAndCleanUp() {
+  World stack;
+  Drive(stack, RunOf("soak-stack"), 20000);
+  test::Equal(FirstFailure(stack), std::string{}, "soak-stack passes");
+  test::Equal(ActionsStartingWith(stack, "solo"),
+              std::vector<std::string>{"solo every recipe"},
+              "soak-stack shows every recipe");
+
+  World large;
+  Drive(large, RunOf("soak-large"), 20000);
+  test::Equal(FirstFailure(large), std::string{}, "soak-large passes");
+  test::Equal(ActionsStartingWith(large, "spawn-crowd"),
+              std::vector<std::string>{"spawn-crowd 32"},
+              "soak-large spawns 32 actors");
+
+  World waves;
+  Drive(waves, RunOf("soak-waves"), 20000);
+  test::Equal(FirstFailure(waves), std::string{}, "soak-waves passes");
+  test::Equal(std::ranges::count(waves.commands, "crowd"), std::ptrdiff_t{3},
+              "soak-waves spawns three crowds");
+  test::Equal(ActionsStartingWith(waves, "hold gap"),
+              std::vector<std::string>{"hold gap-1 10s", "hold gap-2 10s",
+                                       "hold gap-3 10s"},
+              "soak-waves measures the gap after each wave");
+  test::Check(waves.crowd.present == 0, "soak-waves leaves no crowd");
+
+  World churn;
+  Drive(churn, RunOf("soak-churn"), 20000);
+  test::Equal(FirstFailure(churn), std::string{}, "soak-churn passes");
+  test::Equal(std::ranges::count(churn.commands, "equip-crowd"),
+              std::ptrdiff_t{5},
+              "soak-churn dresses the crowd once and re-equips it four times");
+  test::Check(churn.crowd.present == 0, "soak-churn leaves no crowd");
+
+  World fight;
+  Drive(fight, RunOf("soak-fight"), 20000);
+  test::Equal(FirstFailure(fight), std::string{}, "soak-fight passes");
+  test::Equal(ActionsStartingWith(fight, "spawn-crowd"),
+              std::vector<std::string>{"spawn-crowd 12 idle-npc"},
+              "soak-fight spawns idle NPCs");
+  test::Check(Issued(fight, "hostile"), "soak-fight sets the crowd hostile");
+
+  World vanilla;
+  Drive(vanilla, RunOf("soak-vanilla"), 20000);
+  test::Equal(ActionsStartingWith(vanilla, "spawn-crowd"),
+              std::vector<std::string>{"spawn-crowd 12 in vanilla-cuirasses"},
+              "soak-vanilla dresses mannequins in vanilla cuirasses");
+
+  World stuck;
+  stuck.faults.crowdKeepsEffect = true;
+  Drive(stuck, RunOf("soak-churn"), 20000);
+  test::Check(FirstFailure(stuck).starts_with("await-crowd-bare"),
+              "a crowd that keeps the effect after unequip fails the churn");
+  test::Check(Issued(stuck, "uncrowd"),
+              "a failed churn still removes the crowd");
+}
+
 void StudioRoundTrip() {
   World first;
   Drive(first, RunOf("studio-save"), 20000);
@@ -666,6 +756,10 @@ void ResultLinesAreJson() {
                           R"("action":"apply player","outcome":"BLOCKED",)"
                           R"("frames":7,"reason":"quote \" and \\"})"},
               "step line escapes its reason");
+  test::Equal(ResultLineJson(WindowBegins{"soak-churn", "churn-2"}),
+              std::string{R"({"kind":"window","case":"soak-churn",)"
+                          R"("window":"churn-2","edge":"begin"})"},
+              "window line names its case and cycle");
   test::Equal(ResultLineJson(RunEnd{Outcome::kPass, {}}),
               std::string{R"({"kind":"end","outcome":"PASS","reason":""})"},
               "end line");
@@ -686,6 +780,7 @@ int main() {
   LoadsCancelWork();
   StudioRoundTrip();
   SoakHoldsAndCleansUp();
+  SoakVariantsHoldAndCleanUp();
   EveryFixedObservationEndsTheRun();
   ResultLinesAreJson();
   return test::Finish("regression runs");

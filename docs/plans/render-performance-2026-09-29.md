@@ -1,7 +1,8 @@
-Status: in progress. Stages 1 to 4 are implemented and measured; review
+Status: in progress. Stages 1 to 5 are implemented and measured; review
 findings for stages 3 and 4 are in
-[the review record](../checkpoints/render-performance-review-2026-09-30.md);
-later stages are open. This plan follows the
+[the review record](../checkpoints/render-performance-review-2026-09-30.md).
+Stage 5 has one open finding, the memory left after a crowd leaves. Later
+stages are open. This plan follows the
 [render graph correctness plan](render-graph-correctness-2026-09-29.md), whose
 checkpoint findings are its starting point.
 
@@ -308,6 +309,36 @@ stack depth at each instruction, so all of this can be decided once.
 - After the review fixes and the function splits passed it in game, the
   `FusionCheck` setting and its program check were removed; the progress
   lines above record what it measured.
+
+## Stage 5: crowd bursts and memory
+
+The soak in the [unattended regression plan](unattended-regression-2026-10-01.md)
+spawns twelve mannequins in the demo cuirass. Its first run, on 2026-10-01,
+froze the game for about 13 seconds at the burst. The peak was 893 targets
+(14 GB), and the crowd settled at 301 targets (4.2 GB).
+
+Three changes, each measured with the same soak:
+
+| Change | Where | Result |
+|---|---|---|
+| A tick admits one actor's first render | `AdmitRender`, `kFirstRendersPerTick` in `engine/ManagerTick.cpp` | The peak stayed high |
+| A render step's idle output is released 500 ms after its last use, not after 30 instance ticks | `kReleaseAfterIdleMS` in `render/RenderInstance.cpp` | Burst 2 s at 80 fps, worst frame 105 ms, peak 8.6 GB |
+| Static render steps are shared across actors by content | `MarkContentKeyedSteps`, `CacheKeyFor`, the Compositor's step output cache | Peak 2.2 GB, steady 136 targets and 1.4 GB, worst settle frame 24 ms |
+
+A review of the graph invariants followed the sharing change. It made the
+geometry identity cover the mesh content, partitions, bones and bound, and it
+made state and signal identities carry the actor. The cache key carries the
+exact bits of the numeric operands. `REFERENCE.md` (*Compositor*) records the
+key parts and why each is there.
+
+Run 20261001T160233-3 repeated the figures: burst 1.2 s, worst frame 93 ms,
+steady fps 63 % of baseline at 2.4 ms of plugin time per frame.
+
+Open: after the crowd leaves, 12 targets and 95 MB stay above baseline,
+over the recovery budget of 64 MiB. The likely cause is the pool's scratch
+targets, which stay until the next load; the
+[regression plan](unattended-regression-2026-10-01.md) records the
+arithmetic and the measurement that decides it.
 
 ## Later stages
 

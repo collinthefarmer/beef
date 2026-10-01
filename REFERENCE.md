@@ -2156,6 +2156,9 @@ save and continue. The fixture is the demo cuirass, `0x803` in
 | `ArmorDwarvenCuirass` | `0x1394D` | The control's plain cuirass; the demo cuirass copies it |
 | `PlayerHouseMannequin` | `0x89A85` | Base of the spawned wearer and control: no default outfit, a stand-still AI package |
 | `XMarker` | `0x3B` | The return marker placed at the player before travel; an engine-reserved form, found by `TESForm::LookupByID`, which `TESDataHandler::LookupForm` does not find |
+| `WarehouseNPCCarryFirewood` | `0xCCE01` | Base of an idle-NPC crowd: Nord, not unique, not a template, no AI packages, no factions, class `CombatWarrior1H`, aggression 0, confidence 2 |
+| `ArmorIronCuirass`, `ArmorLeatherCuirass`, `ArmorElvenCuirass`, `ArmorOrcishCuirass`, `ArmorEbonyCuirass`, `ArmorDaedricCuirass` | `0x12E49`, `0x3619E`, `0x896A3`, `0x13957`, `0x13961`, `0x1396B` | The vanilla-cuirass dress, in that order; crowd actor *i* wears entry *i* mod 6 |
+| `WEEnemiesFactionA`, `WEEnemiesFactionB` | `0xBA0B8`, `0xBA0B9` | The two sides of a crowd fight: each lists the other as enemy, and neither has a relation to `PlayerFaction` |
 
 A spawned actor needs no default outfit: an NPC with one re-equips it over the
 fixture after an equip, an enable or a 3D reload, even with removal prevented.
@@ -2171,6 +2174,34 @@ away while its cell differs from the return marker's cell. Travel runs as an
 SKSE task, because a cell change
 inside the player-update hook would change the player's cell during its own
 update.
+
+The vanilla-cuirass dress exists only while its crowd does. Spawning it adds
+the demo keyword (`0x800`) to each cuirass and sets its `formEnchanting` to
+the demo enchantment (`0x802`), so Arcane Circuit's keys match. Despawning
+the crowd, the end of the run and a load restore both: a load does not reset
+base forms. The keyword is removed only when the run added it. Winterglass
+keys on the exact demo form, so it never matches these cuirasses, and
+Resonant Ward needs `ArmorHeavy`, which the leather and elven cuirasses
+lack. The list leaves out `ArmorDwarvenCuirass`, because it is the untagged
+control's cuirass, and `ArmorGlassCuirass`: in the test load order its
+material has a coat model, and the plugin refuses Arcane Circuit's fuzz and
+glint on it (run 20261001T195212-1).
+
+A crowd is dressed only after every actor is present: an NPC's outfit items
+can arrive after placement. Dressing removes the default outfit's items and
+every other body-slot armor from the actor's inventory, then equips the
+member's armor with removal prevented. The idle NPC carries an iron cuirass
+in its base inventory, which the strip removes. In game, it is not yet
+verified whether an outfit re-equip after a 3D reload (see above) comes back
+through this strip.
+
+`StartCrowdFight` puts even-numbered crowd actors in `WEEnemiesFactionA` and
+odd-numbered ones in `WEEnemiesFactionB`. It raises Aggression to 1 and
+Confidence to 4 on each: aggression 0 never starts combat, and lower
+confidence lets a hurt actor flee out of the ring. Each crowd NPC gets the
+reference's `kEssential` flag, so a beaten actor goes into bleedout instead
+of dying. It is not yet verified in game that the reference flag alone gives
+bleedout. The fighters have no weapons and fight with their fists.
 
 A **trace** is a geometry under the actor's third- or first-person 3D whose
 name ends in the shell suffix, or a PBR material texture whose name begins

@@ -18,6 +18,12 @@ inline constexpr std::size_t kRoleCount = 3;
 enum class Item : std::uint8_t { kFixture, kPlainCuirass };
 inline constexpr std::size_t kItemCount = 2;
 
+enum class Body : std::uint8_t { kMannequin, kIdleNpc };
+inline constexpr std::size_t kBodyCount = 2;
+
+enum class Dress : std::uint8_t { kDemoCuirass, kVanillaCuirasses };
+inline constexpr std::size_t kDressCount = 2;
+
 enum class Camera : std::uint8_t { kFirstPerson, kThirdPerson };
 inline constexpr std::size_t kCameraCount = 2;
 
@@ -52,6 +58,15 @@ inline constexpr Named<Item> kItems[]{{Item::kFixture, "fixture"},
                                       {Item::kPlainCuirass, "plain-cuirass"}};
 static_assert(Complete(kItems, kItemCount));
 
+inline constexpr Named<Body> kBodies[]{{Body::kMannequin, "mannequin"},
+                                       {Body::kIdleNpc, "idle-npc"}};
+static_assert(Complete(kBodies, kBodyCount));
+
+inline constexpr Named<Dress> kDresses[]{
+    {Dress::kDemoCuirass, "demo-cuirass"},
+    {Dress::kVanillaCuirasses, "vanilla-cuirasses"}};
+static_assert(Complete(kDresses, kDressCount));
+
 inline constexpr Named<Camera> kCameras[]{
     {Camera::kFirstPerson, "first-person"},
     {Camera::kThirdPerson, "third-person"}};
@@ -81,6 +96,14 @@ static_assert(Complete(kWorkOutcomePhrases, kWorkOutcomeCount));
 
 [[nodiscard]] constexpr std::string_view OutcomeName(Outcome a_outcome) {
   return NameOf(kOutcomes, a_outcome);
+}
+
+[[nodiscard]] constexpr std::string_view WordOf(Body a_body) {
+  return NameOf(kBodies, a_body);
+}
+
+[[nodiscard]] constexpr std::string_view WordOf(Dress a_dress) {
+  return NameOf(kDresses, a_dress);
 }
 
 [[nodiscard]] constexpr std::string_view WordOf(QueuedWork a_work) {

@@ -7,9 +7,10 @@ refresh, now fixed. Stage 4a passed in game on 2026-10-01 (all five load
 cases, the edit, gesture and paint cases twice); its runs found a second
 defect, a gesture cancelled by a load recorded as cancelled by the user, now
 fixed. Stage 4b passed in game on 2026-10-01 (`studio-save + studio-reload`,
-two launches). Stage 5 is implemented and ran in game on 2026-10-01; its
-budgets fail on two measured findings, recorded under stage 5 below. Stage 6
-is open. Supersedes the control
+two launches). Stage 5 is implemented. Its first soak found a 13-second
+freeze and a 14 GB peak, both fixed on 2026-10-01. The full suite and the
+soak passed in run 20261001T160233 (three launches); one budget still fails,
+the 95 MB left after recovery. Stage 6 is open. Supersedes the control
 model of [the regression driver plan](../history/in-game-regression-driver.md); that
 plan's case table, result vocabulary and observation rules carry over.
 
@@ -209,16 +210,18 @@ plugin it was made with is removed; the game refuses to load it otherwise.
    events, sums each window's heartbeats (fps, plugin frame cost, worst
    frame, tick, refresh and readback, render targets and bytes), prints the
    table, and checks `tests/regression/budgets.json`
-   (`tools/regression_budgets.py`). A budget names a window and a limit:
-   `<measure>_max`, `<measure>_ratio_min` against baseline, or
-   `<measure>_over_baseline_max`. A limit that names no known measure, or a
-   bound that is not a number, fails the run.
+   (`tools/regression_budgets.py`). Each window is keyed by its case and
+   name. A budget names a window-name pattern and a limit:
+   `<measure>_max`, `<measure>_ratio_min` against the same case's baseline,
+   `<measure>_over_baseline_max`, or `<measure>_growth_max` from the first
+   matching window of a case to the last. A limit that names no known
+   measure, or a bound that is not a number, fails the run.
 
-   | Window | Budget | Run 20261001T063900 |
-   | --- | --- | --- |
-   | `settle` | worst frame 0.5 s, worst readback 100 ms | 4.8 s and 1.7 s: fails |
-   | `steady` | fps half of baseline, plugin 4 ms per frame, worst tick and readback 50 ms | 61 %, 2.1 ms, 9 ms, 0: passes |
-   | `recovery` | fps 90 % of baseline, targets and bytes above baseline within the idle pool (16, 64 MiB) | 12 targets, 95 MB: fails |
+   | Window | Budget | Run 20261001T063900 | Run 20261001T160233-3 |
+   | --- | --- | --- | --- |
+   | `settle` | worst frame 0.5 s, worst readback 100 ms | 4.8 s and 1.7 s: fails | 19 ms and 0.1 ms: passes |
+   | `steady` | fps half of baseline, plugin 4 ms per frame, worst tick and readback 50 ms | 61 %, 2.1 ms, 9 ms, 0: passes | 63 %, 2.4 ms, 18 ms, 0: passes |
+   | `recovery` | fps 90 % of baseline, targets and bytes above baseline within the idle pool (16, 64 MiB) | 12 targets, 95 MB: fails | 12 targets, 95 MB: fails |
 
    Findings: the first application of 12 actors at once freezes the game
    for about 13 seconds, with 893 render targets (14 GB accounted) at the
@@ -232,8 +235,49 @@ plugin it was made with is removed; the game refuses to load it otherwise.
    game. The next soak: burst 2 s at 80 fps, worst frame 105 ms, worst
    readback 1.4 ms, peak 8.6 GB; `settle` passes. Then static render steps
    were shared across actors by content: peak 2.2 GB, steady 136 targets and
-   1.4 GB, worst settle frame 24 ms, steady fps 63 % of baseline. Open: the
-   95 MB left after recovery.
+   1.4 GB, worst settle frame 24 ms, steady fps 63 % of baseline. Run
+   20261001T160233-3 repeated these figures: burst 1.2 s with a worst frame
+   of 93 ms, peak 2.2 GB, steady 136 targets and 1.4 GB.
+
+   Open: the 95 MB left after recovery. The likely cause is that the budget
+   counts only the idle pool. `RenderTargetPool` also keeps one scratch
+   target per size and format until the next load (`ClearScratch`), and a
+   full pool (67.1 MB) plus a 2048 and a 1024 scratch target (22.4 MB and
+   5.6 MB) equals the measured 95.1 MB. This is not yet measured. The next
+   step splits the heartbeat's targets into idle pool, scratch and live: if
+   the leftover is pool and scratch, the budget changes; if live targets stay
+   above baseline, it is a leak.
+
+   Four variants vary the load that `soak` holds fixed. Each window belongs
+   to its case, so the variants can share one launch: `soak-stack
+   soak-large soak-waves soak-churn`.
+
+   | Case | What changes from `soak` | What it can find |
+   | --- | --- | --- |
+   | `soak-stack` | No solo: Arcane Circuit, Resonant Ward and Winterglass stack on each actor | The cost of shells, lights and the frost growth at crowd scale |
+   | `soak-large` | 32 actors instead of 12 | How first-render admission and step sharing scale |
+   | `soak-waves` | Three waves of 12: spawn (`wave-N`), hold 15 s (`held-N`), despawn, idle 10 s (`gap-N`) | Targets and bytes that grow from one `gap-N` to the next, which a single recovery cannot show |
+   | `soak-churn` | Four cycles (`churn-N`) that unequip the fixture on the whole crowd, wait until no crowd actor renders it, equip it again and wait until all render it | Re-render storms on a warm cache, and state that survives a retire |
+
+   `wave-*` and `churn-*` have the `settle` limits: worst frame 0.5 s,
+   worst readback 100 ms. `gap-*` allows growth from the first gap to the
+   last of 2 targets and 8 MiB.
+
+   A crowd has a body (mannequin or idle NPC) and a dress (the demo cuirass
+   or six vanilla cuirasses tagged to match Arcane Circuit). Three cases use
+   them; `REFERENCE.md` (*Unattended regression runs*) records the forms.
+
+   | Case | Crowd | What it can find |
+   | --- | --- | --- |
+   | `soak-vanilla` | 12 mannequins in Iron, Leather, Elven, Orcish, Ebony and Daedric cuirasses | Meshes, partitions and textures other than the demo cuirass's; less content sharing between actors |
+   | `soak-idle` | 12 idle NPCs in the demo cuirass | The cost of skinned meshes that animate every frame |
+   | `soak-fight` | 12 idle NPCs in the demo cuirass, every recipe, two hostile sides; a `fight` window of 120 s | Combat animation, movement out of the ring, and hits that drive Resonant Ward's ripple |
+
+   `fight` has the `steady` limits on plugin time, tick and readback. Not
+   yet verified in game: that an idle NPC keeps the armor it is given, that
+   the reference essential flag gives bleedout, and that the sides start
+   fighting within `kCrowdDeadlineFrames`. Large textures depend on the
+   texture replacers in the load order and have no case.
 
 6. **Evidence for visual verdicts.** Screenshots at named checkpoints, and
    stack-output hashes with the clock frozen, compared with recorded

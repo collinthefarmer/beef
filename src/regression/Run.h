@@ -34,10 +34,12 @@ struct RunEnd {
   std::string reason;
 };
 struct WindowBegins {
-  std::string_view window;
+  std::string_view caseName;
+  std::string window;
 };
 struct WindowEnds {
-  std::string_view window;
+  std::string_view caseName;
+  std::string window;
 };
 using ResultLine =
     std::variant<StepResult, CaseResult, RunEnd, WindowBegins, WindowEnds>;
@@ -47,6 +49,7 @@ struct RunChanges {
   std::array<bool, kRoleCount> spawned{};
   bool away = false;
   std::uint32_t crowd = 0;
+  Body crowdBody = Body::kMannequin;
 };
 
 enum class Section : std::uint8_t { kBody, kCleanup };

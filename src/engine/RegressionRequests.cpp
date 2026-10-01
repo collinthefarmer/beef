@@ -192,20 +192,19 @@ void Manager::EndSoloInEditor() {
 }
 
 std::vector<RegressionActorFacts>
-Manager::RegressionActors(std::span<const RE::FormID> a_actors) const {
-  std::vector<RegressionActorFacts> facts(a_actors.size());
-  const RE::TESObjectARMO *armor = RegressionFixture();
+Manager::RegressionActors(std::span<const RegressionWearer> a_wearers) const {
+  std::vector<RegressionActorFacts> facts(a_wearers.size());
   const std::vector<ApplicationRecord> records = applications_.Snapshot();
   const std::lock_guard lock{requestLock};
-  for (std::size_t i = 0; i < a_actors.size(); ++i) {
-    const auto found = applied_.find(a_actors[i]);
+  for (std::size_t i = 0; i < a_wearers.size(); ++i) {
+    const auto found = applied_.find(a_wearers[i].actor);
     facts[i].live = found != applied_.end();
     const bool rendersFixture =
-        facts[i].live && armor &&
-        FixtureRendered(found->second, armor->GetFormID());
+        facts[i].live && a_wearers[i].armor &&
+        FixtureRendered(found->second, a_wearers[i].armor);
     const ApplicationRecord *latest = nullptr;
     for (const ApplicationRecord &record : records) {
-      if (record.token.actorID == a_actors[i] &&
+      if (record.token.actorID == a_wearers[i].actor &&
           (!latest || record.token.revision > latest->token.revision)) {
         latest = &record;
       }

@@ -166,14 +166,16 @@ std::string ResultLineJson(const ResultLine &a_line) {
                              [](const WindowBegins &a_window) {
                                json edge = json::object();
                                edge["kind"] = "window";
-                               edge["window"] = std::string{a_window.window};
+                               edge["case"] = std::string{a_window.caseName};
+                               edge["window"] = a_window.window;
                                edge["edge"] = "begin";
                                return edge;
                              },
                              [](const WindowEnds &a_window) {
                                json edge = json::object();
                                edge["kind"] = "window";
-                               edge["window"] = std::string{a_window.window};
+                               edge["case"] = std::string{a_window.caseName};
+                               edge["window"] = a_window.window;
                                edge["edge"] = "end";
                                return edge;
                              },

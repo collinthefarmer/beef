@@ -47,6 +47,7 @@ struct Activity {
 struct CrowdFacts {
   std::uint32_t present = 0;
   std::uint32_t rendered = 0;
+  std::uint32_t fighting = 0;
 };
 
 struct RecipeFacts {

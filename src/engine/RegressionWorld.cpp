@@ -18,15 +18,34 @@ namespace {
 inline constexpr std::string_view kSkyrim = "Skyrim.esm";
 inline constexpr RE::FormID kPlainCuirass = 0x1394D;
 inline constexpr RE::FormID kMannequin = 0x89A85;
+inline constexpr RE::FormID kIdleNpc = 0xCCE01;
+inline constexpr std::array<RE::FormID, 6> kVanillaCuirasses{
+    0x12E49, 0x3619E, 0x896A3, 0x13957, 0x13961, 0x1396B};
+inline constexpr std::array<RE::FormID, 2> kCrowdSides{0xBA0B8, 0xBA0B9};
+inline constexpr std::string_view kDemoPlugin =
+    "BetterEnchantmentEffectsDemo.esp";
+inline constexpr RE::FormID kDemoKeyword = 0x800;
+inline constexpr RE::FormID kDemoEnchantment = 0x802;
+inline constexpr float kFighterAggression = 1.0f;
+inline constexpr float kFighterConfidence = 4.0f;
 inline constexpr RE::FormID kXMarker = 0x3B;
 inline constexpr const char *kTravelCell = "Riverwood";
 inline constexpr float kSpawnOffset = 120.0f;
 inline constexpr float kWorkOpacity = 0.5f;
 inline constexpr float kCrowdRadius = 300.0f;
 
-template <class Form> Form *SkyrimForm(RE::FormID a_local) {
+template <class Form>
+Form *PluginForm(RE::FormID a_local, std::string_view a_plugin) {
   RE::TESDataHandler *data = RE::TESDataHandler::GetSingleton();
-  return data ? data->LookupForm<Form>(a_local, kSkyrim) : nullptr;
+  return data ? data->LookupForm<Form>(a_local, a_plugin) : nullptr;
+}
+
+template <class Form> Form *SkyrimForm(RE::FormID a_local) {
+  return PluginForm<Form>(a_local, kSkyrim);
+}
+
+template <class Form> Form *FormWithID(RE::FormID a_id) {
+  return a_id ? RE::TESForm::LookupByID<Form>(a_id) : nullptr;
 }
 
 RE::TESObjectARMO *ArmorOf(Regression::Item a_item) {
@@ -121,27 +140,33 @@ bool AwayFromStart(const RunWorld &a_world) {
          player->GetParentCell() != marker->GetParentCell();
 }
 
-void Equip(RE::Actor *a_actor, Regression::Item a_item, bool a_add) {
-  RE::TESObjectARMO *armor = ArmorOf(a_item);
+void EquipArmor(RE::Actor *a_actor, RE::TESObjectARMO *a_armor, bool a_add) {
   RE::ActorEquipManager *equipment = RE::ActorEquipManager::GetSingleton();
-  if (!a_actor || !armor || !equipment) {
+  if (!a_actor || !a_armor || !equipment) {
     return;
   }
   if (a_add) {
-    a_actor->AddObjectToContainer(armor, nullptr, 1, nullptr);
+    a_actor->AddObjectToContainer(a_armor, nullptr, 1, nullptr);
   }
   const bool preventRemoval = !a_actor->IsPlayerRef();
-  equipment->EquipObject(a_actor, armor, nullptr, 1, nullptr, true,
+  equipment->EquipObject(a_actor, a_armor, nullptr, 1, nullptr, true,
                          preventRemoval, false);
 }
 
-void Unequip(RE::Actor *a_actor, Regression::Item a_item) {
-  RE::TESObjectARMO *armor = ArmorOf(a_item);
+void UnequipArmor(RE::Actor *a_actor, RE::TESObjectARMO *a_armor) {
   RE::ActorEquipManager *equipment = RE::ActorEquipManager::GetSingleton();
-  if (a_actor && armor && equipment) {
-    equipment->UnequipObject(a_actor, armor, nullptr, 1, nullptr, true, false,
+  if (a_actor && a_armor && equipment) {
+    equipment->UnequipObject(a_actor, a_armor, nullptr, 1, nullptr, true, false,
                              false);
   }
+}
+
+void Equip(RE::Actor *a_actor, Regression::Item a_item, bool a_add) {
+  EquipArmor(a_actor, ArmorOf(a_item), a_add);
+}
+
+void Unequip(RE::Actor *a_actor, Regression::Item a_item) {
+  UnequipArmor(a_actor, ArmorOf(a_item));
 }
 
 void RemoveArmor(RE::Actor *a_actor, Regression::Item a_item) {
@@ -179,14 +204,88 @@ void Spawn(RunWorld &a_world, Regression::Role a_role) {
   a_world.spawned[Regression::IndexOf(a_role)] = placed->GetFormID();
 }
 
-void SpawnCrowdActors(RunWorld &a_world, std::uint32_t a_count) {
+ArmorTag TagVanillaCuirass(RE::TESObjectARMO &a_armor,
+                           RE::BGSKeyword &a_keyword,
+                           RE::EnchantmentItem &a_enchantment) {
+  ArmorTag tag;
+  tag.armor = a_armor.GetFormID();
+  tag.enchantmentBefore =
+      a_armor.formEnchanting ? a_armor.formEnchanting->GetFormID() : 0;
+  tag.addedKeyword =
+      !a_armor.HasKeyword(&a_keyword) && a_armor.AddKeyword(&a_keyword);
+  a_armor.formEnchanting = &a_enchantment;
+  return tag;
+}
+
+void TagVanillaCuirasses(RunWorld &a_world) {
+  if (!a_world.tags.empty()) {
+    return;
+  }
+  auto *keyword = PluginForm<RE::BGSKeyword>(kDemoKeyword, kDemoPlugin);
+  auto *enchantment =
+      PluginForm<RE::EnchantmentItem>(kDemoEnchantment, kDemoPlugin);
+  if (!keyword || !enchantment) {
+    logger::warn("regression: the demo keyword or enchantment is missing");
+    return;
+  }
+  for (const RE::FormID id : kVanillaCuirasses) {
+    if (RE::TESObjectARMO *armor = SkyrimForm<RE::TESObjectARMO>(id)) {
+      a_world.tags.push_back(TagVanillaCuirass(*armor, *keyword, *enchantment));
+    } else {
+      logger::warn("regression: vanilla cuirass {:X} is missing", id);
+    }
+  }
+}
+
+void UntagVanillaCuirasses(RunWorld &a_world) {
+  auto *keyword = PluginForm<RE::BGSKeyword>(kDemoKeyword, kDemoPlugin);
+  for (const ArmorTag &tag : a_world.tags) {
+    RE::TESObjectARMO *armor = FormWithID<RE::TESObjectARMO>(tag.armor);
+    if (!armor) {
+      continue;
+    }
+    if (tag.addedKeyword && keyword) {
+      armor->RemoveKeyword(keyword);
+    }
+    armor->formEnchanting =
+        FormWithID<RE::EnchantmentItem>(tag.enchantmentBefore);
+  }
+  a_world.tags.clear();
+}
+
+RE::FormID CrowdArmorAt(const RunWorld &a_world, Regression::Dress a_dress,
+                        std::uint32_t a_index) {
+  if (a_dress == Regression::Dress::kDemoCuirass) {
+    const RE::TESObjectARMO *fixture = RegressionFixture();
+    return fixture ? fixture->GetFormID() : 0;
+  }
+  return a_world.tags.empty()
+             ? 0
+             : a_world.tags[a_index % a_world.tags.size()].armor;
+}
+
+RE::TESNPC *CrowdBase(Regression::Body a_body) {
+  return SkyrimForm<RE::TESNPC>(
+      a_body == Regression::Body::kIdleNpc ? kIdleNpc : kMannequin);
+}
+
+void MakeEssential(RE::Actor &a_actor) {
+  a_actor.GetActorRuntimeData().boolFlags.set(
+      RE::Actor::BOOL_FLAGS::kEssential);
+}
+
+void SpawnCrowdActors(RunWorld &a_world,
+                      const Regression::SpawnCrowdActors &a_spawn) {
   RE::PlayerCharacter *player = RE::PlayerCharacter::GetSingleton();
-  RE::TESNPC *base = SkyrimForm<RE::TESNPC>(kMannequin);
+  RE::TESNPC *base = CrowdBase(a_spawn.body);
   if (!player || !base) {
     return;
   }
+  if (a_spawn.dress == Regression::Dress::kVanillaCuirasses) {
+    TagVanillaCuirasses(a_world);
+  }
   const RE::NiPoint3 centre = player->GetPosition();
-  const std::uint32_t count = std::min(a_count, Regression::kMaxCrowd);
+  const std::uint32_t count = std::min(a_spawn.count, Regression::kMaxCrowd);
   for (std::uint32_t index = 0; index < count; ++index) {
     const RE::NiPointer<RE::TESObjectREFR> placed =
         player->PlaceObjectAtMe(base, true);
@@ -199,28 +298,87 @@ void SpawnCrowdActors(RunWorld &a_world, std::uint32_t a_count) {
     placed->SetPosition(RE::NiPoint3{centre.x + kCrowdRadius * std::cos(angle),
                                      centre.y + kCrowdRadius * std::sin(angle),
                                      centre.z});
-    Equip(actor, Regression::Item::kFixture, true);
-    a_world.crowd.push_back(actor->GetFormID());
+    if (a_spawn.body == Regression::Body::kIdleNpc) {
+      MakeEssential(*actor);
+    }
+    a_world.crowd.push_back(
+        {actor->GetFormID(), CrowdArmorAt(a_world, a_spawn.dress, index)});
   }
 }
 
 void DespawnCrowdActors(RunWorld &a_world) {
-  for (const RE::FormID id : a_world.crowd) {
-    DeleteReference(RE::TESForm::LookupByID<RE::TESObjectREFR>(id));
+  for (const CrowdMember &member : a_world.crowd) {
+    DeleteReference(FormWithID<RE::TESObjectREFR>(member.actor));
   }
   a_world.crowd.clear();
+  UntagVanillaCuirasses(a_world);
+}
+
+void StripBodyArmor(RE::Actor &a_actor, const RE::TESObjectARMO &a_keep) {
+  const RE::TESNPC *base = a_actor.GetActorBase();
+  if (base && base->defaultOutfit) {
+    a_actor.RemoveOutfitItems(base->defaultOutfit);
+  }
+  const auto counts =
+      a_actor.GetInventoryCounts([&a_keep](RE::TESBoundObject &a_object) {
+        const auto *armor = a_object.As<RE::TESObjectARMO>();
+        return armor && armor != &a_keep &&
+               armor->HasPartOf(RE::BGSBipedObjectForm::BipedObjectSlot::kBody);
+      });
+  for (const auto &[object, count] : counts) {
+    if (object && count > 0) {
+      a_actor.RemoveItem(object, count, RE::ITEM_REMOVE_REASON::kRemove,
+                         nullptr, nullptr);
+    }
+  }
+}
+
+void DressCrowdMember(const CrowdMember &a_member) {
+  RE::Actor *actor = FormWithID<RE::Actor>(a_member.actor);
+  RE::TESObjectARMO *armor = FormWithID<RE::TESObjectARMO>(a_member.armor);
+  if (!actor || !armor) {
+    return;
+  }
+  StripBodyArmor(*actor, *armor);
+  EquipArmor(actor, armor, CountOf(*actor, *armor) == 0);
+}
+
+void SetCrowdHostile(const RunWorld &a_world) {
+  std::array<RE::TESFaction *, kCrowdSides.size()> sides{};
+  for (std::size_t side = 0; side < sides.size(); ++side) {
+    sides[side] = SkyrimForm<RE::TESFaction>(kCrowdSides[side]);
+  }
+  if (!sides[0] || !sides[1]) {
+    logger::warn("regression: the crowd's side factions are missing");
+    return;
+  }
+  for (std::size_t index = 0; index < a_world.crowd.size(); ++index) {
+    RE::Actor *actor = FormWithID<RE::Actor>(a_world.crowd[index].actor);
+    if (!actor) {
+      continue;
+    }
+    actor->AddToFaction(sides[index % sides.size()], 0);
+    RE::ActorValueOwner *values = actor->AsActorValueOwner();
+    if (values) {
+      values->SetActorValue(RE::ActorValue::kAggression, kFighterAggression);
+      values->SetActorValue(RE::ActorValue::kConfidence, kFighterConfidence);
+    }
+    actor->EvaluatePackage(true, false);
+  }
 }
 
 Regression::CrowdFacts CrowdOf(const RunWorld &a_world,
                                std::span<const RegressionActorFacts> a_facts) {
   Regression::CrowdFacts view;
   for (std::size_t i = 0; i < a_world.crowd.size() && i < a_facts.size(); ++i) {
-    const RE::Actor *actor =
-        RE::TESForm::LookupByID<RE::Actor>(a_world.crowd[i]);
+    const RE::Actor *actor = FormWithID<RE::Actor>(a_world.crowd[i].actor);
     if (!actor || !Present(*actor)) {
       continue;
     }
     ++view.present;
+    if (actor->IsInCombat()) {
+      ++view.fighting;
+    }
     if (a_facts[i].renderedAttempt > 0) {
       ++view.rendered;
     }
@@ -454,11 +612,28 @@ void Perform(const Regression::LoadSaveWith &a_c, RunWorld &a_world) {
 
 void Perform(const Regression::Quit &, RunWorld &) { QuitGame(); }
 void Perform(const Regression::SpawnCrowdActors &a_c, RunWorld &a_world) {
-  SpawnCrowdActors(a_world, a_c.count);
+  SpawnCrowdActors(a_world, a_c);
+}
+
+void Perform(const Regression::SetCrowdHostile &, RunWorld &a_world) {
+  SetCrowdHostile(a_world);
 }
 
 void Perform(const Regression::DespawnCrowdActors &, RunWorld &a_world) {
   DespawnCrowdActors(a_world);
+}
+
+void Perform(const Regression::UnequipCrowdArmor &, RunWorld &a_world) {
+  for (const CrowdMember &member : a_world.crowd) {
+    UnequipArmor(FormWithID<RE::Actor>(member.actor),
+                 FormWithID<RE::TESObjectARMO>(member.armor));
+  }
+}
+
+void Perform(const Regression::EquipCrowdArmor &, RunWorld &a_world) {
+  for (const CrowdMember &member : a_world.crowd) {
+    DressCrowdMember(member);
+  }
 }
 }
 
@@ -468,17 +643,21 @@ Regression::Observation Observe(const RunWorld &a_world) {
                               Regression::Role::kWearer,
                               Regression::Role::kControl};
   std::array<RE::Actor *, Regression::kRoleCount> actors{};
-  std::vector<RE::FormID> ids;
+  const RE::TESObjectARMO *fixture = RegressionFixture();
+  const RE::FormID fixtureID = fixture ? fixture->GetFormID() : 0;
+  std::vector<RegressionWearer> wearers;
   for (const Regression::Role role : kRoles) {
     RE::Actor *actor = ActorOf(a_world, role);
     actors[Regression::IndexOf(role)] = actor;
-    ids.push_back(actor ? actor->GetFormID() : 0);
+    wearers.push_back({actor ? actor->GetFormID() : 0, fixtureID});
   }
-  ids.insert(ids.end(), a_world.crowd.begin(), a_world.crowd.end());
+  for (const CrowdMember &member : a_world.crowd) {
+    wearers.push_back({member.actor, member.armor});
+  }
   const Manager *manager = Manager::GetSingleton();
   std::vector<RegressionActorFacts> facts =
-      manager ? manager->RegressionActors(ids)
-              : std::vector<RegressionActorFacts>(ids.size());
+      manager ? manager->RegressionActors(wearers)
+              : std::vector<RegressionActorFacts>(wearers.size());
   for (const Regression::Role role : kRoles) {
     const std::size_t index = Regression::IndexOf(role);
     seen.actors[index] = ViewOf(actors[index], std::move(facts[index]));
@@ -520,6 +699,7 @@ void ReleaseWorld(RunWorld &a_world) {
 void ForgetWorldAfterLoad(RunWorld &a_world) {
   a_world.spawned = {};
   a_world.crowd.clear();
+  UntagVanillaCuirasses(a_world);
   a_world.marker = 0;
   ++a_world.loads;
 }

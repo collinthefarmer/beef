@@ -11,6 +11,17 @@
 #include <vector>
 
 namespace BetterEnchantmentEffects {
+struct CrowdMember {
+  RE::FormID actor = 0;
+  RE::FormID armor = 0;
+};
+
+struct ArmorTag {
+  RE::FormID armor = 0;
+  bool addedKeyword = false;
+  RE::FormID enchantmentBefore = 0;
+};
+
 struct RunWorld {
   std::array<RE::FormID, Regression::kRoleCount> spawned{};
   RE::FormID marker = 0;
@@ -20,7 +31,8 @@ struct RunWorld {
   std::uint64_t edit = 0;
   std::uint64_t gesture = 0;
   std::uint64_t file = 0;
-  std::vector<RE::FormID> crowd;
+  std::vector<CrowdMember> crowd;
+  std::vector<ArmorTag> tags;
 };
 
 [[nodiscard]] Regression::Observation Observe(const RunWorld &a_world);

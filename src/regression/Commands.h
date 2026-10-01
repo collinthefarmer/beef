@@ -68,8 +68,13 @@ struct StartDelete {
 };
 struct SpawnCrowdActors {
   std::uint32_t count = 0;
+  Body body = Body::kMannequin;
+  Dress dress = Dress::kDemoCuirass;
 };
+struct SetCrowdHostile {};
 struct DespawnCrowdActors {};
+struct UnequipCrowdArmor {};
+struct EquipCrowdArmor {};
 struct OpenSession {
   Session session = Session::kPaint;
   std::string_view recipe;
@@ -85,5 +90,6 @@ using Command =
                  RemoveArmor, SubmitApply, SubmitRetire, AbortRequest,
                  TravelFromStart, TravelToStart, SwitchCamera, StartDuplicate,
                  StartOpacityEdit, StartSave, StartDelete, SpawnCrowdActors,
-                 DespawnCrowdActors, OpenSession, LoadSaveWith, Quit>;
+                 DespawnCrowdActors, SetCrowdHostile, UnequipCrowdArmor,
+                 EquipCrowdArmor, OpenSession, LoadSaveWith, Quit>;
 }
