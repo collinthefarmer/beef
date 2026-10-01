@@ -7,6 +7,109 @@
     let
       systems = [ "x86_64-linux" ];
       forAllSystems = f: nixpkgs.lib.genAttrs systems (system: f nixpkgs.legacyPackages.${system});
+      searchDeps = pkgs: pkgs.writeShellApplication {
+        name = "search-deps";
+        runtimeInputs = [ pkgs.ripgrep pkgs.coreutils pkgs.gawk pkgs.git ];
+        text = ''
+          usage() {
+            cat >&2 <<'EOF'
+          usage: search-deps [--in SOURCE] [rg options] PATTERN
+          Searches this plugin's pinned dependency sources and the workspace
+          references with ripgrep, and nothing else. SOURCE is one of:
+            deps        CommonLibSSE-NG, spdlog and rapidcsv (the default)
+            commonlib   CommonLibSSE-NG only
+            spdlog      spdlog only
+            rapidcsv    rapidcsv only
+            shaders     reference/community-shaders-src
+            decompiled  decompiled/
+            all         every source above
+          The dependency sources are the copies CMake fetched at this plugin's
+          pins, under build/Release/_deps (or build/Debug/_deps).
+          EOF
+          }
+
+          source="deps"
+          args=()
+          while [ $# -gt 0 ]; do
+            case "$1" in
+              --in) [ $# -ge 2 ] || { usage; exit 2; }; source="$2"; shift 2 ;;
+              --in=*) source="''${1#--in=}"; shift ;;
+              -h|--help) usage; exit 0 ;;
+              *) args+=("$1"); shift ;;
+            esac
+          done
+          [ ''${#args[@]} -gt 0 ] || { usage; exit 2; }
+
+          plugin=""
+          dir="$PWD"
+          while [ "$dir" != "/" ]; do
+            if [ -f "$dir/flake.nix" ] && [ -f "$dir/CMakePresets.json" ]; then
+              plugin="$dir"
+              break
+            fi
+            dir="$(dirname "$dir")"
+          done
+          [ -n "$plugin" ] || { echo "search-deps: run it inside a plugin checkout" >&2; exit 2; }
+          workspace="$(dirname "$(dirname "$plugin")")"
+
+          deps_dir=""
+          for config in Release Debug; do
+            if [ -d "$plugin/build/$config/_deps" ]; then
+              deps_dir="$plugin/build/$config/_deps"
+              break
+            fi
+          done
+
+          dependency() {
+            if [ -z "$deps_dir" ] || [ ! -d "$deps_dir/$1-src" ]; then
+              echo "search-deps: $1 is not fetched yet; run: cmake --preset windows-release" >&2
+              exit 2
+            fi
+            roots+=("$deps_dir/$1-src")
+          }
+          reference() {
+            if [ ! -d "$workspace/$1" ]; then
+              echo "search-deps: $workspace/$1 does not exist" >&2
+              exit 2
+            fi
+            roots+=("$workspace/$1")
+          }
+
+          roots=()
+          case "$source" in
+            deps) dependency commonlibsse; dependency spdlog; dependency rapidcsv ;;
+            commonlib) dependency commonlibsse ;;
+            spdlog) dependency spdlog ;;
+            rapidcsv) dependency rapidcsv ;;
+            shaders) reference reference/community-shaders-src ;;
+            decompiled) reference decompiled ;;
+            all)
+              dependency commonlibsse; dependency spdlog; dependency rapidcsv
+              reference reference/community-shaders-src; reference decompiled ;;
+            *) echo "search-deps: unknown source '$source'" >&2; usage; exit 2 ;;
+          esac
+
+          for root in "''${roots[@]}"; do
+            revision="$(git -C "$root" rev-parse --short HEAD 2>/dev/null || echo "no git revision")"
+            echo "# $root @ $revision"
+          done
+
+          max_lines=400
+          status=0
+          timeout 60 rg --max-columns 300 --max-columns-preview --max-count 50 \
+            "''${args[@]}" "''${roots[@]}" |
+            awk -v max="$max_lines" 'NR <= max { print } NR > max {
+              print "search-deps: output cut at " max " lines; narrow the pattern or --in" > "/dev/stderr"
+              exit
+            }' || status=$?
+          case "$status" in
+            0) ;;
+            1) echo "search-deps: no matches" >&2; exit 1 ;;
+            124) echo "search-deps: stopped after 60 seconds; narrow the pattern or --in" >&2; exit 124 ;;
+            *) exit "$status" ;;
+          esac
+        '';
+      };
       windowsSdk = pkgs: pkgs.stdenvNoCC.mkDerivation {
         name = "xwin-splat-sdk-10.0.26100-crt-14.44.17.14";
         nativeBuildInputs = [ pkgs.xwin ];
@@ -39,6 +142,7 @@
             (pkgs.python3.withPackages (ps: [ ps.numpy ps.pillow ]))
             pkgs.check-jsonschema
             pkgs.rsync
+            (searchDeps pkgs)
           ];
 
           shellHook = ''
