@@ -125,6 +125,20 @@ void ShareKeysMarkOnlyStaticTextureSteps(
   }
 }
 
+void ShareKeysCarryOperandValues() {
+  const std::vector<Value> origin{Vec3{1.0f, 2.0f, 3.0f}};
+  const std::vector<Value> moved{Vec3{1.0f, 2.0f, 3.5f}};
+  Check(ShareKeyFor("bake", origin) == ShareKeyFor("bake", origin),
+        "equal operands give an equal share key");
+  Check(ShareKeyFor("bake", origin) != ShareKeyFor("bake", moved),
+        "a moved node position gives a different share key");
+  Check(ShareKeyFor("bake", std::vector<Value>{0.0f}) !=
+            ShareKeyFor("bake", std::vector<Value>{Vec2{0.0f, 0.0f}}),
+        "operand shapes are part of the share key");
+  Check(ShareKeyFor("bake", {}) == "bake",
+        "a step without numeric operands keeps its share key");
+}
+
 std::optional<RenderPlan> SingleStackPlan(const Recipe &recipe,
                                           const RecipeGraph &graph) {
   const auto *surface = Get<SurfaceOutput>(recipe.outputs.front());
@@ -224,6 +238,7 @@ int main() {
     recipes.push_back({*loaded.recipe, std::move(graph)});
   }
   ShareKeysMarkOnlyStaticTextureSteps(recipes);
+  ShareKeysCarryOperandValues();
   const std::array oneSize{TextureSize{512}};
   const auto single =
       BuildRenderPlan({}, StackRequests(recipes, oneSize), Bindings());

@@ -186,6 +186,11 @@ EquipPositionEvent(const std::vector<LivePiece> &a_pieces) {
   return std::nullopt;
 }
 
+RE::FormID ActorIdOf(const LiveActor &a_state) {
+  const RE::NiPointer<RE::Actor> actor = a_state.actor.get();
+  return actor ? actor->GetFormID() : 0;
+}
+
 LiveGeometry MakeGeometry(RE::BSGeometry *a_geometry,
                           RE::BSLightingShaderProperty *a_property,
                           RE::NiAVObject *a_root,
@@ -446,6 +451,7 @@ void CollectChainStacks(LiveActor &a_state, const LocatedGeometry &a_geometry,
           SlotStackSize(size, slot.slot, located->surface.resolution);
       GeometryInputs inputs = bound.inputs;
       inputs.applicationContext = located->applicationContext;
+      inputs.actor = ActorIdOf(a_state);
       const TextureSize stackSize =
           compositor->StackSize(located->surface, inputs, slotSize, maxSize);
       a_stacks.requests.push_back(

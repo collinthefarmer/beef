@@ -262,12 +262,15 @@ Added after the checkpoint findings below measured about 400 live targets.
   released step. A consumer refreshes its inputs, decides on reuse, and
   materializes them only when it executes.
 - Reads are tracked from execution: an executing consumer marks each step it
-  materializes as used in the current epoch, and `RenderInstance::Texture` and
-  `Inspect` mark the steps they read. Nothing lists consumers by hand.
-- `ReleaseIdle` drops the value of a step unused for more than a given number
-  of epochs when a policy allows it. `RenderInstance::BeginFrame` advances the
-  epoch once per render tick and releases texture and bake-buffer steps idle
-  for 30 ticks. Stack results are never released.
+  materializes as used at the execution's current clock, and
+  `RenderInstance::Texture` and `Inspect` mark the steps they read. Nothing
+  lists consumers by hand.
+- `ReleaseIdle` drops the value of a step unused for longer than a given span
+  of the clock when a policy allows it. `RenderInstance::BeginFrame` sets the
+  clock to the render tick's time in milliseconds and releases texture and
+  bake-buffer steps idle for 500 ms (changed on 2026-10-01 from 30 ticks,
+  which stretched to seconds while a burst lowered the frame rate). Stack
+  results are never released.
 - A released step that is needed again re-executes and keeps its change
   version. Steps are pure (stage 2), so the same observed inputs give the same
   value.

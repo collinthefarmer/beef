@@ -1192,12 +1192,20 @@ step's `TextureKey` text as `RenderStep::valueKey`; `MarkShareableSteps`
 gives a **share key** to every step that has one, is static (`ChangingSteps`),
 outputs a texture and is not a stack, adding the step's kind, size, format
 and mip policy, because lowering can give one value different step
-requirements. Geometry identity is the mesh's content (`mesh:<hash>:<parts>`,
-`MeshData::hash` over the vertex and index bytes) when the mesh cache can read
-it, and the geometry pointer otherwise. A bake renders in UV space from
-bind-pose data, so equal content gives an equal bake. Values that read
-per-actor signals keep the `graph:applicationContext` instance in their
-identity, so they never match across actors. A shared target is never
+requirements. Geometry identity is the mesh's content (`mesh:<hash>:<parts>`) when the
+mesh cache can read it, and the geometry pointer otherwise. `MeshData::hash`
+covers the vertex and index bytes and, through `HashLayout`, each partition's
+slot and bone names and the model bound, because the partition, bone-weight
+and position bakes read them. A material is identified by each texture's
+pointer, generation and name, so a freed address reused while a cache entry
+lives cannot match a different texture. State and signal identities carry
+`graph:applicationContext:actor`, with the actor's form ID, so they never
+match across actors. At execution, `ShareKeyFor` appends the exact bits of
+the step's resolved numeric operands to the key: a node position that
+follows the current pose (a node outside the skin) is not a changing input,
+so without it a bake would stay at the pose of its first frame. A share key
+longer than 4096 bytes is not shared. A cache entry whose texture is no
+longer valid is dropped when found. A shared target is never
 written again: a miss always renders into a fresh target, and a hit does not
 remember the target in the step's scratch. `TextureView::texture` holds the
 same target as `TextureView::target`, so the cache counts two references of

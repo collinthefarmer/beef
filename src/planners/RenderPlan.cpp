@@ -2,6 +2,7 @@
 #include "planners/RenderPlan.h"
 
 #include <algorithm>
+#include <bit>
 #include <format>
 #include <iterator>
 
@@ -629,6 +630,31 @@ std::string ShareKeyOf(const RenderStep &step,
                      static_cast<int>(requirements.mipPolicy));
 }
 
+constexpr std::size_t kMaxShareKeyBytes = 4096;
+
+std::string OperandBits(const Value &value) {
+  const auto bits = [](float component) {
+    return std::bit_cast<std::uint32_t>(component);
+  };
+  return Match(
+      value, [&](float v) { return std::format("{:08x}", bits(v)); },
+      [&](Vec2 v) { return std::format("{:08x}{:08x}", bits(v.x), bits(v.y)); },
+      [&](Vec3 v) {
+        return std::format("{:08x}{:08x}{:08x}", bits(v.x), bits(v.y),
+                           bits(v.z));
+      });
+}
+
+std::string ShareKeyFor(std::string_view shareKey,
+                        std::span<const Value> operands) {
+  std::string key{shareKey};
+  for (const Value &operand : operands) {
+    key += '|';
+    key += OperandBits(operand);
+  }
+  return key;
+}
+
 RenderPlan MarkShareableSteps(RenderPlan plan) {
   const std::vector<bool> changing = ChangingSteps(plan);
   for (std::size_t i = 0; i < plan.steps.size() && i < changing.size(); ++i) {
@@ -639,6 +665,7 @@ RenderPlan MarkShareableSteps(RenderPlan plan) {
         OutputType(step.kind) == RenderValueType{RenderResourceType::kTexture};
     step.shareKey = !changing[i] && texture && requirements &&
                             !step.valueKey.empty() &&
+                            step.valueKey.size() <= kMaxShareKeyBytes &&
                             !Is<CompositeStackStep>(step.kind)
                         ? ShareKeyOf(step, *requirements)
                         : std::string{};

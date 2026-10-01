@@ -245,6 +245,8 @@ SegmentIndexOf(std::span<const std::size_t> fields, const LayerRead &read);
 StepDependencies(const RenderPlan &plan, RenderStepId step);
 [[nodiscard]] std::vector<bool> ChangingSteps(const RenderPlan &plan);
 [[nodiscard]] RenderPlan MarkShareableSteps(RenderPlan plan);
+[[nodiscard]] std::string ShareKeyFor(std::string_view shareKey,
+                                      std::span<const Value> operands);
 [[nodiscard]] std::vector<std::size_t> LiveConsumers(const RenderPlan &plan);
 [[nodiscard]] RenderValueType OutputType(const RenderStepKind &step);
 [[nodiscard]] std::string_view StepKindName(const RenderStepKind &step);

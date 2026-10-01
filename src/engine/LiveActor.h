@@ -76,6 +76,7 @@ struct LivePlacement {
 
 struct LiveActor {
   RE::ActorHandle actor;
+  bool firstRenderStarted = false;
   ActorPlan plan;
   std::vector<LivePiece> pieces;
   std::vector<LiveInstance> instances;

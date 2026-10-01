@@ -61,6 +61,7 @@ struct PreparedMask {
 struct GeometryInputs {
   std::shared_ptr<RenderInstance> render;
   std::size_t applicationContext = 0;
+  RE::FormID actor = 0;
   MaterialInputs material;
   RE::NiPointer<RE::BSGeometry> geometry;
   RE::NiPointer<RE::NiAVObject> root;

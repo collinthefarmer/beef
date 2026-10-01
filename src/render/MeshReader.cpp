@@ -261,7 +261,7 @@ ReadMesh(RE::BSGeometry *a_geometry) {
   }
   MeasureIfUnbounded(*mesh);
   mesh->origin = anyGpu ? "gpu readback" : "cpu copy";
-  mesh->hash = hash;
+  mesh->hash = HashLayout(*mesh, hash);
   return mesh;
 }
 

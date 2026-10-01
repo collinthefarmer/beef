@@ -23,7 +23,11 @@ SharedStepOutputs *SharedStepOutputs::GetSingleton() {
 std::optional<TextureView> SharedStepOutputs::Find(const std::string &a_key,
                                                    std::uint64_t a_nowMS) {
   const auto found = entries_.find(a_key);
-  if (found == entries_.end() || !found->second.view.target) {
+  if (found == entries_.end()) {
+    return std::nullopt;
+  }
+  if (!found->second.view.target || !found->second.view.texture.Valid()) {
+    entries_.erase(found);
     return std::nullopt;
   }
   found->second.lastUsedMS = a_nowMS;

@@ -16,13 +16,17 @@ std::string FloatBitsText(const std::optional<float> &value) {
                : std::string{"none"};
 }
 
+std::string TextureIdentity(const TextureRef &texture) {
+  const char *name = texture ? texture->name.c_str() : nullptr;
+  return std::format("{}:{}:{}", TextureRefIdentity(texture),
+                     texture.Generation(), name ? name : "");
+}
+
 std::string MaterialInputsIdentity(const MaterialInputs &material) {
   return std::format(
-      "{}:{}:{}:{}:{}:{}:{}:{}:{}", TextureRefIdentity(material.diffuse),
-      material.diffuse.Generation(), TextureRefIdentity(material.normal),
-      material.normal.Generation(), TextureRefIdentity(material.rmaos),
-      material.rmaos.Generation(), TextureRefIdentity(material.displacement),
-      material.displacement.Generation(), material.flatDisplacement);
+      "{}|{}|{}|{}|{}", TextureIdentity(material.diffuse),
+      TextureIdentity(material.normal), TextureIdentity(material.rmaos),
+      TextureIdentity(material.displacement), material.flatDisplacement);
 }
 
 std::string EventOriginIdentity(const EventInput &event,
@@ -113,8 +117,8 @@ ExternalSourceIdentity(const ExternalSource &source,
 ValueBindings TextureValueBindings(const RecipeGraph &graph,
                                    const GeometryInputs &inputs) {
   const auto instance = std::make_shared<const std::string>(
-      std::format("{}:{}", reinterpret_cast<std::uintptr_t>(&graph),
-                  inputs.applicationContext));
+      std::format("{}:{}:{:08X}", reinterpret_cast<std::uintptr_t>(&graph),
+                  inputs.applicationContext, inputs.actor));
   ValueBindings bindings;
   bindings.state = [instance](NodeId node) {
     return std::format("{}:{}", *instance, node);

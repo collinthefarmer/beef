@@ -357,6 +357,32 @@ std::uint64_t HashBytes(std::span<const std::uint8_t> a_bytes,
 }
 
 namespace {
+template <class T>
+std::uint64_t HashValue(const T &a_value, std::uint64_t a_seed) noexcept {
+  return HashBytes(
+      std::span{reinterpret_cast<const std::uint8_t *>(&a_value), sizeof(T)},
+      a_seed);
+}
+}
+
+std::uint64_t HashLayout(const MeshData &a_mesh,
+                         std::uint64_t a_seed) noexcept {
+  std::uint64_t hash = a_seed;
+  for (const MeshPartition &partition : a_mesh.partitions) {
+    hash = HashValue(partition.slot, hash);
+    hash = HashValue(partition.boneNames.size(), hash);
+    for (const std::string &bone : partition.boneNames) {
+      hash = HashBytes(
+          std::span{reinterpret_cast<const std::uint8_t *>(bone.data()),
+                    bone.size()},
+          HashValue(bone.size(), hash));
+    }
+  }
+  hash = HashValue(a_mesh.center, hash);
+  return HashValue(a_mesh.radius, hash);
+}
+
+namespace {
 std::string Definition(const BakeKind &a_kind) {
   return Match(
       a_kind, [](const PositionBake &) { return std::string{"position"}; },

@@ -399,7 +399,8 @@ struct Harness {
   std::uint64_t clock = 1;
   void Act(Random &random) {
     const auto &g = generated;
-    execution.AdvanceClock(++clock);
+    clock += Pick(random, 4) == 0 ? 0 : 1 + Pick(random, 40);
+    execution.AdvanceClock(clock);
     const auto roll = Pick(random, 13);
     if (roll < 3) {
       const auto id = g.scalars[Pick(random, g.scalars.size())];

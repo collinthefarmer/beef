@@ -1257,16 +1257,21 @@ ExecuteShared(const RenderStep &step,
               RenderScratch &scratch, std::uint64_t nowMS) {
   if (step.shareKey.empty())
     return ExecuteTimed(step, inputs, scratch);
+  std::vector<Value> operands;
+  for (const auto &input : inputs)
+    if (const auto *value = Get<Value>(input.value))
+      operands.push_back(*value);
+  const std::string key = ShareKeyFor(step.shareKey, operands);
   SharedStepOutputs *shared = SharedStepOutputs::GetSingleton();
   scratch.target.reset();
-  if (std::optional<TextureView> hit = shared->Find(step.shareKey, nowMS)) {
+  if (std::optional<TextureView> hit = shared->Find(key, nowMS)) {
     Metrics::CountSharedStepHit();
     return RenderValue{std::move(*hit)};
   }
   StepResult produced = ExecuteTimed(step, inputs, scratch);
   if (produced)
     if (const auto *view = Get<TextureView>(*produced))
-      shared->Publish(step.shareKey, *view, nowMS);
+      shared->Publish(key, *view, nowMS);
   return produced;
 }
 std::expected<ResolvedRenderInput<RenderValue>, std::string>

@@ -78,7 +78,31 @@ MeshData TriangleMesh() {
 }
 }
 
+void LayoutHashCoversWhatBakesRead() {
+  MeshData mesh;
+  mesh.partitions.push_back(MeshPartition{});
+  mesh.partitions.front().slot = 32;
+  mesh.partitions.front().boneNames = {"NPC Spine2 [Spn2]"};
+  mesh.radius = 10.0f;
+  const std::uint64_t base = HashLayout(mesh, kHashBasis);
+  Check(HashLayout(mesh, kHashBasis) == base, "the layout hash is stable");
+  MeshData slot = mesh;
+  slot.partitions.front().slot = 33;
+  Check(HashLayout(slot, kHashBasis) != base, "the partition slot is hashed");
+  MeshData bones = mesh;
+  bones.partitions.front().boneNames = {"NPC Spine1 [Spn1]"};
+  Check(HashLayout(bones, kHashBasis) != base, "the bone names are hashed");
+  MeshData split = mesh;
+  split.partitions.front().boneNames = {"NPC Spine2", " [Spn2]"};
+  Check(HashLayout(split, kHashBasis) != base,
+        "bone name boundaries are hashed");
+  MeshData bound = mesh;
+  bound.radius = 11.0f;
+  Check(HashLayout(bound, kHashBasis) != base, "the model bound is hashed");
+}
+
 int main() {
+  LayoutHashCoversWhatBakesRead();
   Check(Near(HalfToFloat(0x0000), 0.0f), "half 0x0000 is zero");
   Check(Near(HalfToFloat(0x3C00), 1.0f), "half 0x3C00 is one");
   Check(Near(HalfToFloat(0x4000), 2.0f), "half 0x4000 is two");

@@ -26,16 +26,16 @@ namespace {
 inline constexpr std::size_t kFirstRendersPerTick = 1;
 
 bool AwaitsFirstRender(const LiveActor &a_state) {
-  bool anyStack = false;
-  for (const LivePlacement &placement : a_state.placements) {
-    for (const PlacedOutput &output : placement.outputs) {
-      if (output.rendered) {
-        return false;
-      }
-      anyStack = anyStack || output.stack != nullptr;
-    }
+  if (a_state.firstRenderStarted) {
+    return false;
   }
-  return anyStack;
+  return std::ranges::any_of(
+      a_state.placements, [](const LivePlacement &a_placement) {
+        return std::ranges::any_of(a_placement.outputs,
+                                   [](const PlacedOutput &a_output) {
+                                     return a_output.stack != nullptr;
+                                   });
+      });
 }
 
 struct SlotWrite {
@@ -579,7 +579,10 @@ void Manager::Tick(std::uint32_t a_nowMS, const Settings &a_settings) {
       ++it;
       continue;
     }
-    firstRenders += firstRender ? 1 : 0;
+    if (firstRender) {
+      ++firstRenders;
+      state.firstRenderStarted = true;
+    }
     UpdateLights(state, RenderPieces(state, it->first));
     FinishApplications(it->first, state);
     if (Alive(state)) {
