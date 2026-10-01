@@ -5,6 +5,7 @@
 
 #include <algorithm>
 #include <cstdint>
+#include <optional>
 #include <string>
 #include <vector>
 
@@ -76,6 +77,7 @@ struct Faults {
   bool loadKeepsWork = false;
   bool loadCompletesRequest = false;
   bool editAppliesFirst = false;
+  bool saveDropsEdit = false;
 };
 
 struct SimActor {
@@ -96,11 +98,20 @@ struct World {
   Activity activity;
   std::uint32_t loads = 0;
   int loadIn = -1;
+  RecipeView scratch;
+  std::optional<std::optional<float>> disk;
   Faults faults;
   std::vector<std::string> commands;
   std::vector<ResultLine> lines;
 
   World() { actors[Index(Role::kPlayer)].view.present = true; }
+
+  explicit World(std::optional<std::optional<float>> a_disk) : World() {
+    disk = a_disk;
+    if (disk) {
+      scratch = {true, false, *disk};
+    }
+  }
 
   Observation Seen() const {
     Observation seen;
@@ -114,6 +125,7 @@ struct World {
     seen.request = request;
     seen.activity = activity;
     seen.loads = loads;
+    seen.scratch = scratch;
     return seen;
   }
 
@@ -251,6 +263,29 @@ struct World {
               commands.emplace_back("camera");
               firstPerson = a_c.view == View::kFirstPerson;
             },
+            [&](const CopyRecipe &) {
+              commands.emplace_back("copy");
+              scratch = {true, true, std::nullopt};
+              activity.edit = WorkOutcome::kApplied;
+            },
+            [&](const EditOpacity &a_c) {
+              commands.emplace_back("edit");
+              scratch.firstOpacity = a_c.value;
+              scratch.dirty = true;
+              activity.edit = WorkOutcome::kApplied;
+            },
+            [&](const WriteRecipe &) {
+              commands.emplace_back("save");
+              disk = faults.saveDropsEdit ? std::nullopt : scratch.firstOpacity;
+              scratch.dirty = false;
+              activity.file = WorkOutcome::kApplied;
+            },
+            [&](const RemoveRecipe &) {
+              commands.emplace_back("delete");
+              scratch = {};
+              disk.reset();
+              activity.edit = WorkOutcome::kApplied;
+            },
             [&](const BeginWork &a_c) {
               commands.emplace_back("begin");
               StartWork(a_c.work);
@@ -383,7 +418,9 @@ bool Issued(const World &a_world, std::string_view a_command) {
 
 void EveryCasePassesInAHealthyWorld() {
   for (const Case &entry : Catalog()) {
-    World world;
+    World world{entry.name == "studio-reload"
+                    ? std::optional<std::optional<float>>{0.25f}
+                    : std::nullopt};
     const RunState state = Drive(world, RunOf(entry.name), 20000);
     const std::string name{entry.name};
     test::Check(Done(state), name + " finishes");
@@ -501,6 +538,27 @@ void LoadsCancelWork() {
               "an edit that lands before the load settles the case");
 }
 
+void StudioRoundTrip() {
+  World first;
+  Drive(first, RunOf("studio-save"), 20000);
+  test::Equal(FirstFailure(first), std::string{}, "studio-save passes");
+  test::Check(first.disk && *first.disk == 0.25f,
+              "studio-save leaves the edited scratch recipe on disk");
+  World second{first.disk};
+  Drive(second, RunOf("studio-reload"), 20000);
+  test::Equal(FirstFailure(second), std::string{}, "studio-reload passes");
+  test::Check(!second.disk, "studio-reload deletes the scratch recipe");
+
+  World dropped;
+  dropped.faults.saveDropsEdit = true;
+  Drive(dropped, RunOf("studio-save"), 20000);
+  World reloaded{dropped.disk};
+  Drive(reloaded, RunOf("studio-reload"), 20000);
+  test::Check(FirstFailure(reloaded).starts_with("expect-scratch"),
+              "a save that drops the edit fails the reload");
+  test::Check(!reloaded.disk, "a failed reload still deletes the scratch");
+}
+
 void EveryFixedObservationEndsTheRun() {
   for (const Case &entry : Catalog()) {
     for (int bits = 0; bits < 64; ++bits) {
@@ -554,6 +612,7 @@ int main() {
   ControlStateFailsIsolation();
   UnloadedStateFailsUnload();
   LoadsCancelWork();
+  StudioRoundTrip();
   EveryFixedObservationEndsTheRun();
   ResultLinesAreJson();
   return test::Finish("regression runs");

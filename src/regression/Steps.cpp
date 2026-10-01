@@ -563,6 +563,98 @@ StepMove Check(const ExpectSettled &a_expect, const StepContext &a_context) {
                           detail.empty() ? "" : std::format(" ({})", detail)));
 }
 
+std::string DescribeScratch(const RecipeView &a_scratch) {
+  return std::format(
+      "loaded {}, dirty {}, first opacity {}", a_scratch.loaded ? "yes" : "no",
+      a_scratch.dirty ? "yes" : "no",
+      a_scratch.firstOpacity ? std::format("{}", *a_scratch.firstOpacity)
+                             : std::string{"not a number"});
+}
+
+StepMove FinishWhen(bool a_done, WorkOutcome a_outcome,
+                    const StepContext &a_context, std::string_view a_what) {
+  if (a_done) {
+    return Pass(a_context);
+  }
+  const bool ended = a_outcome == WorkOutcome::kOther ||
+                     a_outcome == WorkOutcome::kCancelledByLoad;
+  if (!ended && a_context.frames < kRenderDeadlineFrames) {
+    return Wait(a_context);
+  }
+  const std::string &detail = a_context.seen.activity.detail;
+  return Fail(a_context,
+              std::format("{} did not finish: {}; scratch {}{}", a_what,
+                          OutcomeOf(a_outcome),
+                          DescribeScratch(a_context.seen.scratch),
+                          detail.empty() ? "" : std::format(" ({})", detail)));
+}
+
+StepMove Start(const DeleteScratch &, const StepContext &a_context) {
+  if (!a_context.seen.scratch.loaded) {
+    return Pass(a_context, "no scratch recipe loaded");
+  }
+  return Issue(RemoveRecipe{kScratchRecipe}, a_context.owned);
+}
+
+StepMove Check(const DeleteScratch &, const StepContext &a_context) {
+  const Activity &activity = a_context.seen.activity;
+  return FinishWhen(activity.edit == WorkOutcome::kApplied &&
+                        !a_context.seen.scratch.loaded,
+                    activity.edit, a_context, "the delete");
+}
+
+StepMove Start(const DuplicateToScratch &a_copy, const StepContext &a_context) {
+  return Issue(CopyRecipe{a_copy.from, kScratchRecipe}, a_context.owned);
+}
+
+StepMove Check(const DuplicateToScratch &, const StepContext &a_context) {
+  const Activity &activity = a_context.seen.activity;
+  return FinishWhen(activity.edit == WorkOutcome::kApplied &&
+                        a_context.seen.scratch.loaded,
+                    activity.edit, a_context, "the duplicate");
+}
+
+StepMove Start(const SetScratchOpacity &a_set, const StepContext &a_context) {
+  return Issue(EditOpacity{kScratchRecipe, a_set.value}, a_context.owned);
+}
+
+StepMove Check(const SetScratchOpacity &a_set, const StepContext &a_context) {
+  const Activity &activity = a_context.seen.activity;
+  return FinishWhen(activity.edit == WorkOutcome::kApplied &&
+                        a_context.seen.scratch.firstOpacity == a_set.value,
+                    activity.edit, a_context, "the opacity edit");
+}
+
+StepMove Start(const SaveScratch &, const StepContext &a_context) {
+  return Issue(WriteRecipe{kScratchRecipe}, a_context.owned);
+}
+
+StepMove Check(const SaveScratch &, const StepContext &a_context) {
+  const Activity &activity = a_context.seen.activity;
+  return FinishWhen(activity.file == WorkOutcome::kApplied &&
+                        !a_context.seen.scratch.dirty,
+                    activity.file, a_context, "the save");
+}
+
+StepMove Start(const ExpectScratch &, const StepContext &a_context) {
+  return Wait(a_context);
+}
+
+StepMove Check(const ExpectScratch &a_expect, const StepContext &a_context) {
+  const RecipeView &scratch = a_context.seen.scratch;
+  if (scratch.loaded && !scratch.dirty &&
+      scratch.firstOpacity == a_expect.opacity) {
+    return Pass(a_context);
+  }
+  if (a_context.frames < kExpectDeadlineFrames) {
+    return Wait(a_context);
+  }
+  return Fail(a_context,
+              std::format("the scratch recipe is not the saved one with "
+                          "opacity {}: {}",
+                          a_expect.opacity, DescribeScratch(scratch)));
+}
+
 StepMove Start(const Begin &a_begin, const StepContext &a_context) {
   return Issue(BeginWork{a_begin.work, a_begin.recipe}, a_context.owned);
 }
@@ -705,6 +797,24 @@ std::string Label(const ExpectSettled &a_s) {
   return std::format("expect-settled {}", WorkName(a_s.work));
 }
 
+std::string Label(const DeleteScratch &) {
+  return std::string{"delete-scratch"};
+}
+
+std::string Label(const DuplicateToScratch &a_s) {
+  return std::format("duplicate-to-scratch {}", a_s.from);
+}
+
+std::string Label(const SetScratchOpacity &a_s) {
+  return std::format("set-scratch-opacity {}", a_s.value);
+}
+
+std::string Label(const SaveScratch &) { return std::string{"save-scratch"}; }
+
+std::string Label(const ExpectScratch &a_s) {
+  return std::format("expect-scratch opacity {}", a_s.opacity);
+}
+
 std::string Label(const Begin &a_s) {
   return std::format("begin {}", WorkName(a_s.work));
 }
@@ -763,6 +873,11 @@ std::array<bool, kRoleCount> RolesMoved(const Step &a_step) {
           [&](const ExpectAborted &) { return kNone; },
           [&](const ExpectCancelled &) { return kNone; },
           [&](const ExpectSettled &) { return kNone; },
+          [&](const DeleteScratch &) { return kAll; },
+          [&](const DuplicateToScratch &) { return kAll; },
+          [&](const SetScratchOpacity &) { return kAll; },
+          [&](const SaveScratch &) { return kAll; },
+          [&](const ExpectScratch &) { return kNone; },
           [&](const Begin &) { return only(Role::kPlayer); },
           [&](const AwaitActive &) { return kNone; },
           [&](const AwaitIdle &) { return kNone; },

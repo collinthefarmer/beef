@@ -77,8 +77,10 @@ a directory that is unset or does not exist.
 four more lines from `local.env` or the environment: `MO2_EXE` (the WSL path
 of `ModOrganizer.exe`), `MO2_PROFILE`, `MO2_LAUNCH` (the MO2 executable title
 that starts SKSE) and `SKSE_LOG_DIR` (the WSL path of the SKSE log folder).
-The [unattended regression plan](plans/unattended-regression-2026-10-01.md)
-describes the run.
+`+` between case names starts a new launch, for example
+`tools/regression-run.py studio-save + studio-reload`. The
+[unattended regression plan](plans/unattended-regression-2026-10-01.md)
+describes the run and lists the cases.
 
 Build identity comes from Git: the revision, plus a hash of the uncommitted
 changes to the build inputs when they are dirty. Doc edits do not change it. It is computed on every build and rewrites

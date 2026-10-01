@@ -2151,3 +2151,10 @@ load the run starts itself keeps the run going: `FinishRegressionLoad`
 forgets the spawned actors and the marker and counts the load, and the
 `LoadDuring` step waits for that count. `CancelRegression` aborts only a
 request that is still waiting, so a finished result is never rewritten.
+
+The studio cases write `regression-scratch.json` to the user recipe folder,
+which MO2 redirects to the profile's output mod (here `SKSE Output`); the
+reload launch reads it back from there. Mod Organizer ignores a
+`moshortcut://` request sent in the seconds after the game exits, so
+`tools/regression-run.py` pauses 15 seconds between launches and repeats an
+unanswered launch request once.

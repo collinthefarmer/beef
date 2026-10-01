@@ -281,10 +281,48 @@ std::string WorkDetail(const std::vector<Studio::RecipeEditResult> &a_edits,
   return detail;
 }
 
-RegressionActivityFacts
-Manager::RegressionActivity(std::uint64_t a_edit,
-                            std::uint64_t a_gesture) const {
-  RegressionActivityFacts facts;
+Regression::WorkOutcome
+FileOutcome(const std::vector<Studio::FileOperationResult> &a_files,
+            std::uint64_t a_request) {
+  if (a_request == 0) {
+    return Regression::WorkOutcome::kNone;
+  }
+  const auto found = std::ranges::find(a_files, a_request,
+                                       &Studio::FileOperationResult::requestID);
+  if (found == a_files.end()) {
+    return Regression::WorkOutcome::kNone;
+  }
+  switch (found->state) {
+  case Studio::FileOperationState::kPending:
+    return Regression::WorkOutcome::kPending;
+  case Studio::FileOperationState::kSucceeded:
+    return Regression::WorkOutcome::kApplied;
+  case Studio::FileOperationState::kFailed:
+  case Studio::FileOperationState::kCount:
+    break;
+  }
+  return found->error && found->error->message == kFileCanceledByLoad
+             ? Regression::WorkOutcome::kCancelledByLoad
+             : Regression::WorkOutcome::kOther;
+}
+
+std::optional<float> FirstOpacity(const Recipe &a_recipe) {
+  for (const Output &output : a_recipe.outputs) {
+    const auto *surface = std::get_if<SurfaceOutput>(&output);
+    if (!surface || surface->stack.empty()) {
+      continue;
+    }
+    const auto *value = std::get_if<float>(&surface->stack.front().opacity);
+    return value ? std::optional<float>{*value} : std::nullopt;
+  }
+  return std::nullopt;
+}
+
+Regression::Activity Manager::RegressionActivity(std::uint64_t a_edit,
+                                                 std::uint64_t a_gesture,
+                                                 std::uint64_t a_file) const {
+  Regression::Activity facts;
+  facts.file = FileOutcome(editor_.FileOperations(), a_file);
   facts.edit = EditOutcome(editor_.EditResults(), a_edit);
   facts.tuning = TuningOutcome(editor_.LastGesture(), a_gesture);
   facts.detail = WorkDetail(editor_.EditResults(), a_edit,
@@ -311,21 +349,50 @@ constexpr float kRegressionOpacity = 0.5f;
 constexpr std::string_view kRegressionProperty = "regression";
 constexpr std::string_view kRegressionPaint = "1";
 
-Studio::EditBatch RegressionOpacityEdit() {
-  return Studio::EditBatch{{Studio::SetLayerOpacity{0, 0, kRegressionOpacity}}};
+Studio::EditBatch RegressionOpacityEdit(float a_opacity) {
+  return Studio::EditBatch{{Studio::SetLayerOpacity{0, 0, a_opacity}}};
 }
 }
 
-std::uint64_t Manager::StartRegressionEdit(const std::string &a_recipe) {
-  return editor_.EditRecipe(a_recipe, RegressionOpacityEdit());
+std::uint64_t Manager::StartRegressionEdit(const std::string &a_recipe,
+                                           float a_opacity) {
+  return editor_.EditRecipe(a_recipe, RegressionOpacityEdit(a_opacity));
 }
 
 std::uint64_t Manager::StartRegressionGesture(const std::string &a_recipe) {
   const std::string property{kRegressionProperty};
   const std::uint64_t gesture = editor_.BeginGesture(
       a_recipe, editor_.DocumentRevisionOf(a_recipe), property);
-  editor_.UpdateGesture(gesture, property, RegressionOpacityEdit());
+  editor_.UpdateGesture(gesture, property,
+                        RegressionOpacityEdit(kRegressionOpacity));
   return gesture;
+}
+
+Regression::RecipeView
+Manager::RegressionRecipe(std::string_view a_recipe) const {
+  Regression::RecipeView view;
+  const std::span<const Recipe> loaded = LoadedRecipes();
+  const Recipe *recipe = FindById(loaded, a_recipe);
+  if (!recipe) {
+    return view;
+  }
+  view.loaded = true;
+  view.dirty = IsDirty(a_recipe);
+  view.firstOpacity = FirstOpacity(*recipe);
+  return view;
+}
+
+std::uint64_t Manager::StartRegressionDuplicate(const std::string &a_from,
+                                                const std::string &a_to) {
+  return editor_.DuplicateRecipe(a_from, a_to);
+}
+
+std::uint64_t Manager::StartRegressionSave(const std::string &a_recipe) {
+  return editor_.SaveRecipe(a_recipe);
+}
+
+std::uint64_t Manager::StartRegressionDelete(const std::string &a_recipe) {
+  return editor_.DeleteRecipe(a_recipe);
 }
 
 void Manager::StartRegressionPaint(const std::string &a_recipe) {

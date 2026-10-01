@@ -23,6 +23,8 @@ RUN_FILE_LIFETIME_SECONDS = 600
 START_GRACE_SECONDS = 300
 REFUSAL_GRACE_SECONDS = 30
 QUIT_GRACE_SECONDS = 60
+RELAUNCH_SECONDS = 60
+BETWEEN_LAUNCHES_SECONDS = 15
 POLL_SECONDS = 2
 
 
@@ -66,6 +68,18 @@ def read_settings(environ: dict[str, str], local: dict[str, str]) -> Settings | 
 def run_request(run: str, save: str, suite: list[str], now: float) -> dict:
     return {'format': 1, 'run': run, 'save': save, 'suite': suite,
             'notAfter': int(now) + RUN_FILE_LIFETIME_SECONDS}
+
+
+def launches(cases: list[str]) -> list[list[str]] | str:
+    segments: list[list[str]] = [[]]
+    for case in cases:
+        if case == '+':
+            segments.append([])
+        else:
+            segments[-1].append(case)
+    if any(not segment for segment in segments):
+        return 'each launch needs at least one case; "+" separates launches'
+    return segments
 
 
 def result_lines(text: str) -> list[dict]:
@@ -124,12 +138,14 @@ def missing_save(mods_dir: str, profile: str, save: str) -> Path | None:
     return None if path.is_file() else path
 
 
-def wait_for_results(settings: Settings, run: str, timeout: float, tasklist: str) -> Report:
+def wait_for_results(settings: Settings, run: str, timeout: float, tasklist: str,
+                     relaunch) -> Report:
     run_file = settings.log_dir / RUN_FILE
     results = settings.log_dir / f'{NAME}-regression-{run}.jsonl'
     begin = time.monotonic()
     taken_at = None
     seen_game = False
+    relaunched = False
     lines: list[dict] = []
     while True:
         elapsed = time.monotonic() - begin
@@ -141,6 +157,9 @@ def wait_for_results(settings: Settings, run: str, timeout: float, tasklist: str
             return report_of(lines)
         if taken_at is None and not run_file.exists():
             taken_at = elapsed
+        if taken_at is None and not seen_game and not relaunched and elapsed > RELAUNCH_SECONDS:
+            relaunched = True
+            relaunch()
         if seen_game and not running:
             return report_of(lines, 'CRASHED', 'the game exited without an end line')
         if taken_at is None and elapsed > START_GRACE_SECONDS:
@@ -172,7 +191,9 @@ def wait_for_quit(tasklist: str) -> bool:
 
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument('cases', nargs='+', help='case names in run order, for example lifecycle')
+    parser.add_argument('cases', nargs='+',
+                        help='case names in run order; "+" starts a new launch, '
+                             'for example studio-save + studio-reload')
     parser.add_argument('--save', default='BEEFRegression', help='save name without extension')
     parser.add_argument('--timeout', type=float, default=900, help='seconds to wait for the end line')
     parser.add_argument('--manual', action='store_true',
@@ -202,26 +223,44 @@ def main() -> int:
         print(f'no save at {absent}; create it in game with the console command '
               f'save {args.save}', file=sys.stderr)
         return 2
-    run = time.strftime('%Y%m%dT%H%M%S')
-    request = run_request(run, args.save, args.cases, time.time())
+    segments = launches(args.cases)
+    if isinstance(segments, str):
+        print(segments, file=sys.stderr)
+        return 2
+    stamp = time.strftime('%Y%m%dT%H%M%S')
+    passed = []
+    for index, cases in enumerate(segments):
+        if index > 0:
+            time.sleep(BETWEEN_LAUNCHES_SECONDS)
+        passed.append(launch(settings, f'{stamp}-{index + 1}', cases, args, tasklist))
+    if len(passed) > 1:
+        print(f'launches passed: {sum(passed)} of {len(passed)}')
+    return 0 if all(passed) else 1
+
+
+def start_game(settings: Settings) -> None:
+    subprocess.Popen([str(settings.mo2_exe), '-p', settings.profile,
+                      f'moshortcut://:{settings.launch}'],
+                     stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL,
+                     stderr=subprocess.DEVNULL, start_new_session=True)
+
+
+def launch(settings: Settings, run: str, cases: list[str], args: argparse.Namespace,
+           tasklist: str) -> bool:
+    request = run_request(run, args.save, cases, time.time())
     (settings.log_dir / RUN_FILE).write_text(json.dumps(request) + '\n', encoding='utf-8')
-    print(f'run {run}: {" ".join(args.cases)} from save {args.save}')
-    if args.manual:
-        print('start the game through MO2 now')
-    else:
-        subprocess.Popen([str(settings.mo2_exe), '-p', settings.profile,
-                          f'moshortcut://:{settings.launch}'],
-                         stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL,
-                         stderr=subprocess.DEVNULL, start_new_session=True)
-    report = wait_for_results(settings, run, args.timeout, tasklist)
+    print(f'run {run}: {" ".join(cases)} from save {args.save}')
+    start = (lambda: print('start the game through MO2 now')) if args.manual \
+        else (lambda: start_game(settings))
+    start()
+    report = wait_for_results(settings, run, args.timeout, tasklist, start)
     withdraw_run_file(settings.log_dir / RUN_FILE, run)
     quit_cleanly = report.outcome in ('CRASHED',) or wait_for_quit(tasklist)
     print(format_report(report))
     print(f'results: {settings.log_dir / f"{NAME}-regression-{run}.jsonl"}')
     if not quit_cleanly:
         print(f'{GAME} did not quit within {QUIT_GRACE_SECONDS} seconds')
-    return 0 if report.outcome == 'PASS' and quit_cleanly else 1
-
+    return report.outcome == 'PASS' and quit_cleanly
 
 if __name__ == '__main__':
     sys.exit(main())

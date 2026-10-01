@@ -61,6 +61,13 @@ class RegressionRunTests(unittest.TestCase):
         crashed = host.report_of([], 'CRASHED', 'the game exited without an end line')
         self.assertIn('CRASHED (the game exited', host.format_report(crashed))
 
+    def test_plus_separates_launches(self):
+        self.assertEqual(host.launches(['lifecycle']), [['lifecycle']])
+        self.assertEqual(host.launches(['studio-save', '+', 'studio-reload', 'unload']),
+                         [['studio-save'], ['studio-reload', 'unload']])
+        for bad in (['+', 'lifecycle'], ['lifecycle', '+'], ['a', '+', '+', 'b']):
+            self.assertIsInstance(host.launches(bad), str)
+
     def test_missing_save_checks_the_profile_save_folder(self):
         with tempfile.TemporaryDirectory() as folder:
             root = Path(folder)

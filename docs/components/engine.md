@@ -302,6 +302,8 @@ application finishes.
 | `ReadRegressionRun`, `FinishRegressionLoad`, `AdvanceRegressionRun` | Read the run file, start the run after its save loads, and advance it once per player update. | `RegressionRun.h` |
 | `RunWorld`, `Observe`, `Execute`, `ReleaseWorld` | The game side of a run: the spawned actors, the return marker and the current request; one observation of the three roles per frame; one command carried out; the spawned actors and marker deleted at the end. | `RegressionWorld.h` |
 | `Manager::RegressionActivity` | Pending applications, an open paint session, an active gesture, pending file operations, and the outcome of the edit and the gesture the run started. | `Manager.h` |
+| `Manager::RegressionRecipe` | Whether a recipe is loaded and unsaved, and its first layer's opacity when that is a number. | `Manager.h` |
+| `Manager::StartRegressionDuplicate`, `StartRegressionSave`, `StartRegressionDelete` | Start the editor's duplicate, save and delete for the regression's scratch recipe. | `Manager.h` |
 | `Manager::StartRegressionEdit`, `StartRegressionGesture`, `StartRegressionPaint` | Start the same editor work the menu starts: an opacity edit, an opacity slider gesture left open, a paint preview with the recipe's first key. | `Manager.h` |
 | `Manager::RegressionActor` | Whether the manager holds live state for an actor, and the newest application revision that rendered the fixture. | `Manager.h` |
 | `Manager::QueueRegression` | Retires or refreshes the request's actor on the session queue. | `Manager.h` |

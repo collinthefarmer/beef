@@ -112,6 +112,17 @@ struct ExpectCancelled {
 struct ExpectSettled {
   Work work = Work::kEdit;
 };
+struct DeleteScratch {};
+struct DuplicateToScratch {
+  std::string_view from;
+};
+struct SetScratchOpacity {
+  float value = 1.0f;
+};
+struct SaveScratch {};
+struct ExpectScratch {
+  float opacity = 1.0f;
+};
 struct Begin {
   Work work = Work::kPaint;
   std::string_view recipe;
@@ -125,7 +136,9 @@ using Step =
                  Equip, Unequip, Remove, Apply, Retire, AwaitRendered,
                  AwaitRetired, AwaitBaseline, ExpectEffect, HoldUntouched,
                  LeaveCell, ReturnToStart, SetView, LoadDuring, ExpectAborted,
-                 ExpectCancelled, ExpectSettled, Begin, AwaitActive, AwaitIdle>;
+                 ExpectCancelled, ExpectSettled, DeleteScratch,
+                 DuplicateToScratch, SetScratchOpacity, SaveScratch,
+                 ExpectScratch, Begin, AwaitActive, AwaitIdle>;
 
 struct Case {
   std::string_view name;
@@ -162,12 +175,20 @@ struct Activity {
   bool fileOperations = false;
   WorkOutcome edit = WorkOutcome::kNone;
   WorkOutcome tuning = WorkOutcome::kNone;
+  WorkOutcome file = WorkOutcome::kNone;
   std::string detail;
+};
+
+struct RecipeView {
+  bool loaded = false;
+  bool dirty = false;
+  std::optional<float> firstOpacity;
 };
 
 struct Observation {
   std::array<ActorView, kRoleCount> actors{};
   Activity activity;
+  RecipeView scratch;
   std::uint32_t loads = 0;
   std::array<bool, kItemCount> itemsLoaded{};
   bool npcEffects = false;
@@ -220,6 +241,20 @@ struct TravelBack {};
 struct SetCamera {
   View view = View::kThirdPerson;
 };
+struct CopyRecipe {
+  std::string_view from;
+  std::string_view to;
+};
+struct EditOpacity {
+  std::string_view recipe;
+  float value = 1.0f;
+};
+struct WriteRecipe {
+  std::string_view recipe;
+};
+struct RemoveRecipe {
+  std::string_view recipe;
+};
 struct BeginWork {
   Work work = Work::kPaint;
   std::string_view recipe;
@@ -233,7 +268,8 @@ using Command =
     std::variant<SoloRecipe, RestoreSolo, SpawnActor, DespawnActor,
                  DisableActor, EnableActor, AddAndEquip, EquipCarried,
                  UnequipArmor, RemoveArmor, SubmitApply, SubmitRetire,
-                 AbortRequest, TravelAway, TravelBack, SetCamera, BeginWork,
+                 AbortRequest, TravelAway, TravelBack, SetCamera, CopyRecipe,
+                 EditOpacity, WriteRecipe, RemoveRecipe, BeginWork,
                  ReloadDuring, Quit>;
 
 struct StepResult {
@@ -295,6 +331,7 @@ struct Advanced {
 };
 
 inline constexpr std::uint32_t kSettleFrames = 120;
+inline constexpr std::string_view kScratchRecipe = "regression-scratch";
 inline constexpr std::uint32_t kEndingFrames = 10;
 inline constexpr std::size_t kMaxSuiteCases = 64;
 

@@ -18,6 +18,7 @@ inline constexpr RE::FormID kMannequin = 0x89A85;
 inline constexpr RE::FormID kXMarker = 0x3B;
 inline constexpr const char *kTravelCell = "Riverwood";
 inline constexpr float kSpawnOffset = 120.0f;
+inline constexpr float kWorkOpacity = 0.5f;
 
 template <class Form> Form *SkyrimForm(RE::FormID a_local) {
   RE::TESDataHandler *data = RE::TESDataHandler::GetSingleton();
@@ -207,6 +208,12 @@ void Despawn(RunWorld &a_world, Regression::Role a_role) {
   }
 }
 
+std::uint64_t
+WithManager(const std::function<std::uint64_t(Manager &)> &a_start) {
+  Manager *manager = Manager::GetSingleton();
+  return manager ? a_start(*manager) : 0;
+}
+
 void QueueTask(std::function<void()> a_task) {
   if (const SKSE::TaskInterface *tasks = SKSE::GetTaskInterface()) {
     tasks->AddTask(std::move(a_task));
@@ -267,7 +274,7 @@ void StartWork(RunWorld &a_world, Regression::Work a_work,
   case Regression::Work::kEdit:
     a_world.gesture = 0;
     if (manager) {
-      a_world.edit = manager->StartRegressionEdit(recipe);
+      a_world.edit = manager->StartRegressionEdit(recipe, kWorkOpacity);
     }
     break;
   case Regression::Work::kGesture:
@@ -307,6 +314,106 @@ void SetCamera(Regression::View a_view) {
   }
 }
 
+void Carry(const Regression::SoloRecipe &a_c, RunWorld &) {
+  SoloRecipeUnderTest(std::string{a_c.recipe});
+}
+
+void Carry(const Regression::RestoreSolo &, RunWorld &) { RestoreRecipeView(); }
+
+void Carry(const Regression::SpawnActor &a_c, RunWorld &a_world) {
+  Spawn(a_world, a_c.role);
+}
+
+void Carry(const Regression::DespawnActor &a_c, RunWorld &a_world) {
+  Despawn(a_world, a_c.role);
+}
+
+void Carry(const Regression::DisableActor &a_c, RunWorld &a_world) {
+  if (RE::Actor *actor = ActorOf(a_world, a_c.role)) {
+    actor->Disable();
+  }
+}
+
+void Carry(const Regression::EnableActor &a_c, RunWorld &a_world) {
+  if (RE::Actor *actor = ActorOf(a_world, a_c.role)) {
+    actor->Enable(false);
+  }
+}
+
+void Carry(const Regression::AddAndEquip &a_c, RunWorld &a_world) {
+  Equip(ActorOf(a_world, a_c.role), a_c.item, true);
+}
+
+void Carry(const Regression::EquipCarried &a_c, RunWorld &a_world) {
+  Equip(ActorOf(a_world, a_c.role), a_c.item, false);
+}
+
+void Carry(const Regression::UnequipArmor &a_c, RunWorld &a_world) {
+  Unequip(ActorOf(a_world, a_c.role), a_c.item);
+}
+
+void Carry(const Regression::RemoveArmor &a_c, RunWorld &a_world) {
+  RemoveArmor(ActorOf(a_world, a_c.role), a_c.item);
+}
+
+void Carry(const Regression::SubmitApply &a_c, RunWorld &a_world) {
+  a_world.request = SubmitRegressionRequest(ActorOf(a_world, a_c.role), false);
+}
+
+void Carry(const Regression::SubmitRetire &a_c, RunWorld &a_world) {
+  a_world.request = SubmitRegressionRequest(ActorOf(a_world, a_c.role), true);
+}
+
+void Carry(const Regression::AbortRequest &, RunWorld &a_world) {
+  AbortRegressionRequest(a_world.request);
+}
+
+void Carry(const Regression::TravelAway &, RunWorld &a_world) {
+  TravelAway(a_world);
+}
+
+void Carry(const Regression::TravelBack &, RunWorld &a_world) {
+  TravelBack(a_world);
+}
+
+void Carry(const Regression::SetCamera &a_c, RunWorld &) {
+  SetCamera(a_c.view);
+}
+
+void Carry(const Regression::CopyRecipe &a_c, RunWorld &a_world) {
+  a_world.edit = WithManager([&](Manager &a_manager) {
+    return a_manager.StartRegressionDuplicate(std::string{a_c.from},
+                                              std::string{a_c.to});
+  });
+}
+
+void Carry(const Regression::EditOpacity &a_c, RunWorld &a_world) {
+  a_world.edit = WithManager([&](Manager &a_manager) {
+    return a_manager.StartRegressionEdit(std::string{a_c.recipe}, a_c.value);
+  });
+}
+
+void Carry(const Regression::WriteRecipe &a_c, RunWorld &a_world) {
+  a_world.file = WithManager([&](Manager &a_manager) {
+    return a_manager.StartRegressionSave(std::string{a_c.recipe});
+  });
+}
+
+void Carry(const Regression::RemoveRecipe &a_c, RunWorld &a_world) {
+  a_world.edit = WithManager([&](Manager &a_manager) {
+    return a_manager.StartRegressionDelete(std::string{a_c.recipe});
+  });
+}
+
+void Carry(const Regression::BeginWork &a_c, RunWorld &a_world) {
+  StartWork(a_world, a_c.work, a_c.recipe);
+}
+
+void Carry(const Regression::ReloadDuring &a_c, RunWorld &a_world) {
+  ReloadDuring(a_world, a_c);
+}
+
+void Carry(const Regression::Quit &, RunWorld &) { QuitGame(); }
 }
 
 Regression::Observation Observe(const RunWorld &a_world) {
@@ -325,71 +432,15 @@ Regression::Observation Observe(const RunWorld &a_world) {
   seen.request = RequestStateOf(a_world.request);
   seen.loads = a_world.loads;
   if (const Manager *manager = Manager::GetSingleton()) {
-    const RegressionActivityFacts activity =
-        manager->RegressionActivity(a_world.edit, a_world.gesture);
-    seen.activity = {activity.applications,   activity.paint, activity.gesture,
-                     activity.fileOperations, activity.edit,  activity.tuning,
-                     activity.detail};
+    seen.activity = manager->RegressionActivity(a_world.edit, a_world.gesture,
+                                                a_world.file);
+    seen.scratch = manager->RegressionRecipe(Regression::kScratchRecipe);
   }
   return seen;
 }
 
 void Execute(const Regression::Command &a_command, RunWorld &a_world) {
-  std::visit(
-      Overloaded{
-          [](const Regression::SoloRecipe &a_c) {
-            SoloRecipeUnderTest(std::string{a_c.recipe});
-          },
-          [](const Regression::RestoreSolo &) { RestoreRecipeView(); },
-          [&](const Regression::SpawnActor &a_c) { Spawn(a_world, a_c.role); },
-          [&](const Regression::DespawnActor &a_c) {
-            Despawn(a_world, a_c.role);
-          },
-          [&](const Regression::DisableActor &a_c) {
-            if (RE::Actor *actor = ActorOf(a_world, a_c.role)) {
-              actor->Disable();
-            }
-          },
-          [&](const Regression::EnableActor &a_c) {
-            if (RE::Actor *actor = ActorOf(a_world, a_c.role)) {
-              actor->Enable(false);
-            }
-          },
-          [&](const Regression::AddAndEquip &a_c) {
-            Equip(ActorOf(a_world, a_c.role), a_c.item, true);
-          },
-          [&](const Regression::EquipCarried &a_c) {
-            Equip(ActorOf(a_world, a_c.role), a_c.item, false);
-          },
-          [&](const Regression::UnequipArmor &a_c) {
-            Unequip(ActorOf(a_world, a_c.role), a_c.item);
-          },
-          [&](const Regression::RemoveArmor &a_c) {
-            RemoveArmor(ActorOf(a_world, a_c.role), a_c.item);
-          },
-          [&](const Regression::SubmitApply &a_c) {
-            a_world.request =
-                SubmitRegressionRequest(ActorOf(a_world, a_c.role), false);
-          },
-          [&](const Regression::SubmitRetire &a_c) {
-            a_world.request =
-                SubmitRegressionRequest(ActorOf(a_world, a_c.role), true);
-          },
-          [&](const Regression::AbortRequest &) {
-            AbortRegressionRequest(a_world.request);
-          },
-          [&](const Regression::TravelAway &) { TravelAway(a_world); },
-          [&](const Regression::TravelBack &) { TravelBack(a_world); },
-          [](const Regression::SetCamera &a_c) { SetCamera(a_c.view); },
-          [&](const Regression::BeginWork &a_c) {
-            StartWork(a_world, a_c.work, a_c.recipe);
-          },
-          [&](const Regression::ReloadDuring &a_c) {
-            ReloadDuring(a_world, a_c);
-          },
-          [](const Regression::Quit &) { QuitGame(); },
-      },
-      a_command);
+  std::visit([&](const auto &a_kind) { Carry(a_kind, a_world); }, a_command);
 }
 
 void ReleaseWorld(RunWorld &a_world) {

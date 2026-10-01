@@ -31,16 +31,6 @@
 namespace BetterEnchantmentEffects {
 struct ActorStacks;
 
-struct RegressionActivityFacts {
-  std::uint32_t applications = 0;
-  bool paint = false;
-  bool gesture = false;
-  bool fileOperations = false;
-  Regression::WorkOutcome edit = Regression::WorkOutcome::kNone;
-  Regression::WorkOutcome tuning = Regression::WorkOutcome::kNone;
-  std::string detail;
-};
-
 struct RegressionActorFacts {
   bool live = false;
   std::uint64_t renderedAttempt = 0;
@@ -72,9 +62,18 @@ public:
   void RestoreRegressionView();
   void ObserveRegression();
   [[nodiscard]] RegressionActorFacts RegressionActor(RE::FormID a_actor) const;
-  [[nodiscard]] RegressionActivityFacts
-  RegressionActivity(std::uint64_t a_edit, std::uint64_t a_gesture) const;
-  [[nodiscard]] std::uint64_t StartRegressionEdit(const std::string &a_recipe);
+  [[nodiscard]] Regression::Activity
+  RegressionActivity(std::uint64_t a_edit, std::uint64_t a_gesture,
+                     std::uint64_t a_file) const;
+  [[nodiscard]] Regression::RecipeView
+  RegressionRecipe(std::string_view a_recipe) const;
+  [[nodiscard]] std::uint64_t StartRegressionEdit(const std::string &a_recipe,
+                                                  float a_opacity);
+  [[nodiscard]] std::uint64_t
+  StartRegressionDuplicate(const std::string &a_from, const std::string &a_to);
+  [[nodiscard]] std::uint64_t StartRegressionSave(const std::string &a_recipe);
+  [[nodiscard]] std::uint64_t
+  StartRegressionDelete(const std::string &a_recipe);
   [[nodiscard]] std::uint64_t
   StartRegressionGesture(const std::string &a_recipe);
   void StartRegressionPaint(const std::string &a_recipe);

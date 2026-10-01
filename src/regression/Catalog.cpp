@@ -137,7 +137,37 @@ inline constexpr std::array<Step, 8> kLoadPaint{
     AwaitBaseline{Role::kPlayer},
     AwaitIdle{}};
 
-inline constexpr std::array<Case, 10> kCatalog{
+inline constexpr float kScratchOpacity = 0.25f;
+
+inline constexpr std::array<Step, 9> kStudioSave{
+    DeleteScratch{},
+    DuplicateToScratch{kSoloRecipe},
+    SetScratchOpacity{kScratchOpacity},
+    SaveScratch{},
+    ExpectScratch{kScratchOpacity},
+    Solo{kScratchRecipe},
+    kPlayerFixture,
+    AwaitRendered{Role::kPlayer},
+    Unequip{Role::kPlayer, Item::kFixture}};
+
+inline constexpr std::array<Step, 6> kStudioReload{
+    ExpectScratch{kScratchOpacity},
+    Solo{kScratchRecipe},
+    kPlayerFixture,
+    AwaitRendered{Role::kPlayer},
+    Unequip{Role::kPlayer, Item::kFixture},
+    DeleteScratch{}};
+
+inline constexpr std::array<Step, 7> kStudioCleanup{
+    ReturnToStart{},
+    SetView{View::kThirdPerson},
+    Despawn{Role::kWearer},
+    Despawn{Role::kControl},
+    Remove{Role::kPlayer, Item::kFixture},
+    RestoreView{},
+    DeleteScratch{}};
+
+inline constexpr std::array<Case, 12> kCatalog{
     Case{"lifecycle", kLifecycle, kCleanup},
     Case{"equip-cycle", kEquipCycle, kCleanup},
     Case{"camera", kCamera, kCleanup},
@@ -147,7 +177,9 @@ inline constexpr std::array<Case, 10> kCatalog{
     Case{"load-apply", kLoadApply, kCleanup},
     Case{"load-edit", kLoadEdit, kCleanup},
     Case{"load-gesture", kLoadGesture, kCleanup},
-    Case{"load-paint", kLoadPaint, kCleanup}};
+    Case{"load-paint", kLoadPaint, kCleanup},
+    Case{"studio-save", kStudioSave, kCleanup},
+    Case{"studio-reload", kStudioReload, kStudioCleanup}};
 }
 
 std::span<const Case> Catalog() { return kCatalog; }

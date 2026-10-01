@@ -17,6 +17,7 @@ struct RunWorld {
   std::uint32_t loads = 0;
   std::uint64_t edit = 0;
   std::uint64_t gesture = 0;
+  std::uint64_t file = 0;
 };
 
 [[nodiscard]] Regression::Observation Observe(const RunWorld &a_world);

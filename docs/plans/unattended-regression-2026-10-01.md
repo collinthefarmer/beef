@@ -6,7 +6,8 @@ found one plugin defect, an NPC armor model that attaches after the equip
 refresh, now fixed. Stage 4a passed in game on 2026-10-01 (all five load
 cases, the edit, gesture and paint cases twice); its runs found a second
 defect, a gesture cancelled by a load recorded as cancelled by the user, now
-fixed. Stage 4b is next. Supersedes the control
+fixed. Stage 4b passed in game on 2026-10-01 (`studio-save + studio-reload`,
+two launches). Stage 5 is next. Supersedes the control
 model of [the regression driver plan](../history/in-game-regression-driver.md); that
 plan's case table, result vocabulary and observation rules carry over.
 
@@ -123,7 +124,10 @@ Command, vector ResultLine}`. Pure; one call per frame.
 6. Print one row per case and step, and the trace file name. Exit 0 only
    when the run's outcome is `PASS`.
 
-`--manual` writes the run file and waits without launching MO2. `--save`
+`+` separates launches: each segment is its own run and report, and the host
+waits 15 seconds after the game quits before the next launch. If the run file
+is still unread 60 seconds after a launch, the host sends the launch request
+once more. `--manual` writes the run file and waits without launching MO2. `--save`
 defaults to `BEEFRegression`. Create it once in game: `coc QASmoke`, step
 onto open floor, third person, body slot empty, no demo cuirass carried,
 then `save BEEFRegression`. `QASmoke` has no NPCs, weather or changing light,
@@ -178,9 +182,14 @@ plugin it was made with is removed; the game refuses to load it otherwise.
    the load starts. A stale edit that would land after the load began is
    refused by the session generation; only the native tests cover that path.
 
-   4b, studio round trips. One launch edits and saves a scratch recipe, and a
-   second launch checks that the saved recipe loads and applies the same way;
-   the host compares the written file. Cleanup deletes the scratch recipe.
+   4b, studio round trips, run as `tools/regression-run.py studio-save +
+   studio-reload`. `studio-save` deletes any leftover `regression-scratch`,
+   duplicates `arcane-circuit` to it, sets its first layer opacity to 0.25,
+   saves it, and renders it. `studio-reload`, in a fresh game, expects
+   `regression-scratch` loaded from disk, clean, with opacity 0.25, renders
+   it, and deletes it; its cleanup deletes it after a failure too. The steps
+   touch only `regression-scratch`, the one file a run writes under the mods
+   directory.
 
 5. **Soak and budgets.** A `soak` case spawns a crowd in fixture armor and
    holds for a set time. The host checks the trace against a budget file
