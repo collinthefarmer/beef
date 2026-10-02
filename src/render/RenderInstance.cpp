@@ -2,10 +2,12 @@
 #include "render/RenderInstance.h"
 
 #include "diagnostics/Metrics.h"
+#include "diagnostics/Trace.h"
 
 #include "render/MeshReader.h"
 #include "render/SourceSampling.h"
 #include <algorithm>
+#include <atomic>
 #include <cmath>
 #include <iterator>
 
@@ -41,20 +43,30 @@ struct RippleOperands {
   const Arguments &arguments;
 };
 using StepResult = std::expected<RenderValue, std::string>;
+bool SameTexture(const TextureRef &a, const TextureRef &b) {
+  return a.get() == b.get() && a.Generation() == b.Generation();
+}
+bool SameTextureContent(const TextureView &a, const TextureView &b) {
+  if (!a.target && !b.target)
+    return SameTexture(a.texture, b.texture) && a.sampling == b.sampling &&
+           a.normalize == b.normalize;
+  return a.drawStamp != 0 && a.drawStamp == b.drawStamp &&
+         SameTexture(a.texture, b.texture);
+}
 bool SameRenderValue(const RenderValue &a, const RenderValue &b) {
   if (a.index() != b.index())
     return false;
   if (const auto *value = Get<Value>(a))
     return *value == *Get<Value>(b);
+  if (const auto *view = Get<TextureView>(a))
+    return SameTextureContent(*view, *Get<TextureView>(b));
   if (const auto *filter = Get<LayerFilter>(a))
     return *filter == *Get<LayerFilter>(b);
   if (const auto *stack = Get<StackResult>(a))
     return !stack->texture && !Get<StackResult>(b)->texture;
   return false;
 }
-bool SameTexture(const TextureRef &a, const TextureRef &b) {
-  return a.get() == b.get() && a.Generation() == b.Generation();
-}
+
 bool SameImport(const Value &a, const Value &b) { return a == b; }
 bool SameImport(const TextureView &a, const TextureView &b) {
   return SameTexture(a.texture, b.texture) && a.sampling == b.sampling &&
@@ -122,6 +134,12 @@ TextureView View(std::shared_ptr<TextureLab::RenderTarget> target,
   view.sampling.meshSpace = true;
   view.sampling.channel =
       type == ValueType::kScalar ? ShaderChannel::kR : ShaderChannel::kRgb;
+  return view;
+}
+TextureView StampedView(std::shared_ptr<TextureLab::RenderTarget> target,
+                        std::uint64_t draw) {
+  TextureView view = View(std::move(target));
+  view.drawStamp = draw;
   return view;
 }
 std::shared_ptr<TextureLab::RenderTarget>
@@ -333,6 +351,7 @@ LayerPassesFor(std::span<const PlannedLayer *const> layers,
   return passes;
 }
 constexpr std::uint64_t kReleaseAfterIdleMS = 500;
+static_assert(kRenderStepKindCount <= Metrics::kStepKindSlots);
 std::string StepSpanKey(const RenderStep &step) {
   const auto requirements = RequirementsOf(step.kind);
   if (!requirements)
@@ -571,6 +590,8 @@ StepResult ExecuteSampleFieldStep(const SampleFieldStep &step,
   const auto *numeric = type ? Get<ValueType>(*type) : nullptr;
   if (!numeric)
     return std::unexpected("field is not numeric");
+  if (step.direct)
+    return RenderValue{*view};
   return DrawSampledView(*view, *numeric, step.requirements, execution);
 }
 StepResult ExecuteSubmitReductionStep(const SubmitReductionStep &step,
@@ -857,13 +878,22 @@ StepResult ExecuteDrawRippleStep(const DrawRippleStep &step,
     return std::unexpected("ripple inputs are unavailable");
   const auto operands =
       RippleOperandsOf(*ripple, node->kind, step, execution.arguments);
+  const auto *firings =
+      RippleResource<RenderFirings>(operands, ripple->firings);
+  const bool quiet = firings && firings->firings.empty();
+  RenderScratch &scratch = execution.scratch;
+  if (quiet && scratch.holdsEmptyRipple)
+    if (auto held = scratch.target.lock())
+      return StampedView(std::move(held), scratch.draws);
+  scratch.holdsEmptyRipple = false;
   const auto pass = RipplePassFor(*ripple, operands, *positions);
   if (!pass)
     return std::unexpected(pass.error());
   const auto target = AcquireStepTarget(execution, step.requirements);
   if (!target || !execution.lab.RenderRipple(*target, *pass))
     return std::unexpected("ripple draw failed");
-  return View(target);
+  scratch.holdsEmptyRipple = quiet;
+  return StampedView(target, ++scratch.draws);
 }
 StepResult ExecuteCompositeStackStep(const CompositeStackStep &step,
                                      StepExecution &execution) {
@@ -1244,7 +1274,7 @@ StepResult
 ExecuteTimed(const RenderStep &step,
              std::span<const ResolvedRenderInput<RenderValue>> inputs,
              RenderScratch &scratch) {
-  Metrics::CountStepExecution();
+  Metrics::CountStepExecution(step.kind.index());
   auto *lab = TextureLab::GetSingleton();
   std::optional<TextureLab::TimedSpan> span;
   if (lab && lab->Timing())
@@ -1260,6 +1290,49 @@ NumericOperandsOf(std::span<const ResolvedRenderInput<RenderValue>> inputs) {
   return operands;
 }
 void ForgetReuseHint(RenderScratch &scratch) { scratch.target.reset(); }
+inline constexpr std::uint32_t kStaleReportsPerSecond = 32;
+struct StaleReports {
+  std::atomic<std::uint64_t> second{0};
+  std::atomic<std::uint32_t> sent{0};
+};
+bool TakeStaleReport(StaleReports &reports, std::uint64_t nowMS) {
+  const std::uint64_t second = nowMS / 1000;
+  if (reports.second.exchange(second, std::memory_order_relaxed) != second)
+    reports.sent.store(0, std::memory_order_relaxed);
+  return reports.sent.fetch_add(1, std::memory_order_relaxed) <
+         kStaleReportsPerSecond;
+}
+std::string DescribeInput(const RenderPlan &plan, RenderValueRef ref) {
+  if (const auto *step = Get<StepOutputRef>(ref))
+    return step->step < plan.steps.size()
+               ? "step " + plan.steps[step->step].displayName
+               : std::string{"an unknown step"};
+  const auto *input = Get<RenderInputRef>(ref);
+  if (!input || input->input >= plan.inputs.size())
+    return "an unknown input";
+  return Match(
+      plan.inputs[input->input].binding,
+      [](const TextureValue &value) -> std::string {
+        const auto *node =
+            value.graph ? value.graph->NodeAt(value.output.node) : nullptr;
+        return node ? "value " + node->displayName : "an unnamed value";
+      },
+      [](const StackInputBinding &) -> std::string {
+        return "the stack base or visibility";
+      },
+      [](const ReadbackBinding &) -> std::string { return "a readback"; });
+}
+void ReportStale(const RenderPlan &plan, RenderStepId step,
+                 std::optional<RenderValueRef> changed, std::uint64_t nowMS) {
+  static StaleReports reports;
+  if (step >= plan.steps.size() || !TakeStaleReport(reports, nowMS))
+    return;
+  Trace::EmitSafely(Trace::Event::kMetrics,
+                    {{"action", "step_stale"},
+                     {"step", plan.steps[step].displayName},
+                     {"input", changed ? DescribeInput(plan, *changed)
+                                       : std::string{"the set of inputs"}}});
+}
 StepResult
 ExecuteCached(const RenderStep &step,
               std::span<const ResolvedRenderInput<RenderValue>> inputs,
@@ -1295,7 +1368,10 @@ RenderInstance::Demand(RenderValueRef output) {
                        RenderScratch &scratch) {
         return ExecuteCached(step, inputs, scratch, nowMS);
       },
-      SameRenderValue, SelectStackInputs);
+      SameRenderValue, SelectStackInputs,
+      [this](RenderStepId step, std::optional<RenderValueRef> changed) {
+        ReportStale(Plan(), step, changed, nowMS_);
+      });
 }
 const GeometryInputs *RenderInstance::GeometryOf(GeometryId id) const noexcept {
   return IndexOf(id) < geometries_.size() ? &geometries_[IndexOf(id)] : nullptr;

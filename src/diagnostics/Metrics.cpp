@@ -21,6 +21,7 @@ struct Counters {
   std::atomic<std::uint64_t> frames{0};
   std::atomic<std::uint64_t> renderEvaluations{0};
   std::atomic<std::uint64_t> stepExecutions{0};
+  std::atomic<std::uint64_t> stepExecutionsByKind[kStepKindSlots]{};
   std::atomic<std::uint64_t> stepCacheHits{0};
   std::atomic<std::uint64_t> stepReleases{0};
   std::atomic<std::uint64_t> stepRestores{0};
@@ -90,8 +91,12 @@ void CountStepCacheHit() noexcept {
   State().stepCacheHits.fetch_add(1, std::memory_order_relaxed);
 }
 
-void CountStepExecution() noexcept {
-  State().stepExecutions.fetch_add(1, std::memory_order_relaxed);
+void CountStepExecution(std::size_t a_kind) noexcept {
+  Counters &state = State();
+  state.stepExecutions.fetch_add(1, std::memory_order_relaxed);
+  if (a_kind < kStepKindSlots) {
+    state.stepExecutionsByKind[a_kind].fetch_add(1, std::memory_order_relaxed);
+  }
 }
 void CountStepReleases(std::uint64_t a_count) noexcept {
   State().stepReleases.fetch_add(a_count, std::memory_order_relaxed);
@@ -131,6 +136,10 @@ Snapshot Drain() noexcept {
       state.renderEvaluations.exchange(0, std::memory_order_relaxed);
   out.stepExecutions =
       state.stepExecutions.exchange(0, std::memory_order_relaxed);
+  for (std::size_t kind = 0; kind < kStepKindSlots; ++kind) {
+    out.stepExecutionsByKind[kind] =
+        state.stepExecutionsByKind[kind].exchange(0, std::memory_order_relaxed);
+  }
   out.stepCacheHits =
       state.stepCacheHits.exchange(0, std::memory_order_relaxed);
   out.stepReleases = state.stepReleases.exchange(0, std::memory_order_relaxed);

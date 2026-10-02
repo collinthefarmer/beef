@@ -4,6 +4,7 @@
 #include "planners/RenderPlan.h"
 
 #include <limits>
+#include <optional>
 
 namespace BetterEnchantmentEffects {
 using ChangeVersion = std::uint64_t;
@@ -40,6 +41,8 @@ public:
   using SelectInputs =
       std::function<std::expected<std::vector<RenderValueRef>, std::string>(
           const CompositeStackStep &, const T &)>;
+  using ObserveStale =
+      std::function<void(RenderStepId, std::optional<RenderValueRef>)>;
 
   explicit RenderExecution(RenderPlan plan)
       : plan_(std::move(plan)), inputs_(plan_.inputs.size()),
@@ -77,12 +80,14 @@ public:
   }
   [[nodiscard]] std::expected<ResolvedRenderInput<T>, std::string>
   Evaluate(RenderValueRef result, const ExecuteStep &execute,
-           const SameValue &same, const SelectInputs &select) {
+           const SameValue &same, const SelectInputs &select,
+           const ObserveStale &stale = {}) {
     if (!problem_.empty())
       return std::unexpected(problem_);
     if (!execute || !same || !select)
       return std::unexpected("render execution callbacks are incomplete");
-    Walk walk{execute, same, select, 0, std::vector<bool>(steps_.size())};
+    Walk walk{execute, same, select,
+              stale,   0,    std::vector<bool>(steps_.size())};
     return Materialize(result, walk, 0);
   }
   void SetClock(std::uint64_t a_now) noexcept { clock_ = a_now; }
@@ -112,6 +117,7 @@ private:
     const ExecuteStep &execute;
     const SameValue &same;
     const SelectInputs &select;
+    const ObserveStale &stale;
     std::size_t visits = 0;
     std::vector<bool> refreshed;
   };
@@ -192,6 +198,7 @@ private:
     if (!required)
       return Fail(id, required.error());
     bool observed = current && required->size() == state.inputs.size();
+    std::optional<RenderValueRef> changed;
     for (const auto &input : *required) {
       auto version = Refresh(input, walk, depth + 1);
       if (!version)
@@ -200,13 +207,18 @@ private:
           std::ranges::find_if(state.inputs, [&](const StepInput &step) {
             return step.input == input;
           });
-      observed = observed && seen != state.inputs.end() &&
-                 seen->changeVersion == *version;
+      const bool same =
+          seen != state.inputs.end() && seen->changeVersion == *version;
+      if (observed && !same && !changed)
+        changed = input;
+      observed = observed && same;
     }
     if (observed) {
       walk.refreshed[id] = true;
       return output.changeVersion;
     }
+    if (current && walk.stale)
+      walk.stale(id, changed);
     return Execute(id, *required, walk, depth, false);
   }
   [[nodiscard]] Resolved Materialize(RenderValueRef ref, Walk &walk,

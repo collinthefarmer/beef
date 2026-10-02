@@ -28,6 +28,8 @@ struct LayerFieldPack {
 };
 struct RenderScratch {
   std::weak_ptr<TextureLab::RenderTarget> target;
+  std::uint64_t draws = 0;
+  bool holdsEmptyRipple = false;
   TextureLab::ReductionReadback reduction;
   TextureLab::MaterialReadback material;
   std::optional<LayerFieldPack> layerFieldPack;

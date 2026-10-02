@@ -1,7 +1,10 @@
 // GPL-3.0-only with the additional permission in COPYING.md.
 #include "planners/RenderPlan.h"
 
+#include "planners/StackShader.h"
+
 #include <algorithm>
+#include <array>
 #include <bit>
 #include <format>
 #include <iterator>
@@ -89,8 +92,10 @@ std::optional<std::uint32_t> SegmentIndexOf(std::span<const std::size_t> fields,
   return static_cast<std::uint32_t>(found - fields.begin());
 }
 namespace {
+enum class StackControls : std::uint8_t { kChanging, kStable };
+
 bool InputChanging(const RenderPlan &plan, RenderInputId id,
-                   const std::vector<bool> &steps) {
+                   const std::vector<bool> &steps, StackControls controls) {
   const auto &input = plan.inputs[id];
   return Match(
       input.binding,
@@ -98,7 +103,9 @@ bool InputChanging(const RenderPlan &plan, RenderInputId id,
         return input.type == RenderValueType{RenderResourceType::kFirings} ||
                (value.graph && value.graph->Changing(value.output.node));
       },
-      [](const StackInputBinding &) { return true; },
+      [&](const StackInputBinding &) {
+        return controls == StackControls::kChanging;
+      },
       [&](const ReadbackBinding &readback) {
         return readback.submission < steps.size() && steps[readback.submission];
       });
@@ -207,42 +214,22 @@ RenderValueType OutputType(const RenderStepKind &step) {
         return RenderResourceType::kTexture;
       });
 }
+namespace {
+inline constexpr std::array<std::string_view, kRenderStepKindCount>
+    kStepKindNames{"Unavailable",     "Constant",      "BuildBakeBuffers",
+                   "BakeMesh",        "NormalSlope",   "SubmitMaterialSample",
+                   "ClusterMaterial", "DrawClusters",  "SampleField",
+                   "SubmitReduction", "BuildLookup",   "EvaluateValue",
+                   "EvaluateProgram", "MapField",      "ComposeVector",
+                   "DrawRipple",      "CompositeStack"};
+}
+static_assert(std::ranges::none_of(kStepKindNames, &std::string_view::empty));
+std::string_view StepKindNameAt(std::size_t index) {
+  return index < kStepKindNames.size() ? kStepKindNames[index]
+                                       : std::string_view{"Unknown"};
+}
 std::string_view StepKindName(const RenderStepKind &step) {
-  return Match(
-      step,
-      [](const UnavailableStep &) { return std::string_view{"Unavailable"}; },
-      [](const ConstantRenderStep &) { return std::string_view{"Constant"}; },
-      [](const BuildBakeBuffersStep &) {
-        return std::string_view{"BuildBakeBuffers"};
-      },
-      [](const BakeMeshStep &) { return std::string_view{"BakeMesh"}; },
-      [](const NormalSlopeStep &) { return std::string_view{"NormalSlope"}; },
-      [](const SubmitMaterialSampleStep &) {
-        return std::string_view{"SubmitMaterialSample"};
-      },
-      [](const ClusterMaterialStep &) {
-        return std::string_view{"ClusterMaterial"};
-      },
-      [](const DrawClustersStep &) { return std::string_view{"DrawClusters"}; },
-      [](const SampleFieldStep &) { return std::string_view{"SampleField"}; },
-      [](const SubmitReductionStep &) {
-        return std::string_view{"SubmitReduction"};
-      },
-      [](const BuildLookupStep &) { return std::string_view{"BuildLookup"}; },
-      [](const EvaluateValueStep &) {
-        return std::string_view{"EvaluateValue"};
-      },
-      [](const EvaluateProgramStep &) {
-        return std::string_view{"EvaluateProgram"};
-      },
-      [](const MapFieldStep &) { return std::string_view{"MapField"}; },
-      [](const ComposeVectorStep &) {
-        return std::string_view{"ComposeVector"};
-      },
-      [](const DrawRippleStep &) { return std::string_view{"DrawRipple"}; },
-      [](const CompositeStackStep &) {
-        return std::string_view{"CompositeStack"};
-      });
+  return StepKindNameAt(step.index());
 }
 std::optional<TextureRequirements> RequirementsOf(const RenderStepKind &step) {
   return Match(step,
@@ -669,6 +656,174 @@ std::optional<std::string> CacheKeyFor(std::string_view contentKey,
   return key;
 }
 
+namespace {
+using ReadCounts = std::vector<std::size_t>;
+
+void CountRead(ReadCounts &counts, RenderValueRef ref) {
+  if (const auto *output = Get<StepOutputRef>(ref);
+      output && output->step < counts.size())
+    ++counts[output->step];
+}
+
+void CountReads(ReadCounts &counts, std::span<const RenderValueRef> refs) {
+  for (const RenderValueRef ref : refs)
+    CountRead(counts, ref);
+}
+
+void CountSampledLayerRead(ReadCounts &counts, const CompositeStackStep &stack,
+                           const LayerRead &read, bool direct) {
+  if (const auto *value = Get<RenderValueRef>(read)) {
+    if (direct)
+      CountRead(counts, *value);
+  } else if (const auto *field = ReadField(stack, read)) {
+    CountReads(counts, field->inputs);
+  }
+}
+
+void CountSampledReads(ReadCounts &counts, const RenderStepKind &kind) {
+  if (const auto *program = Get<EvaluateProgramStep>(kind))
+    CountReads(counts, program->inputs);
+  else if (const auto *map = Get<MapFieldStep>(kind))
+    CountRead(counts, map->value);
+  else if (const auto *vector = Get<ComposeVectorStep>(kind))
+    CountReads(counts, vector->components);
+  else if (const auto *stack = Get<CompositeStackStep>(kind))
+    for (const PlannedLayer &layer : stack->layers) {
+      CountSampledLayerRead(counts, *stack, layer.source, true);
+      if (layer.mask)
+        CountSampledLayerRead(counts, *stack, *layer.mask, false);
+    }
+}
+
+bool ReadsTexture(const SampleFieldStep &step) {
+  const RecipeNode *node =
+      step.field.graph ? step.field.graph->NodeAt(step.field.output.node)
+                       : nullptr;
+  return node &&
+         (Is<ImageOperation>(node->kind) || Is<MaterialOperation>(node->kind));
+}
+}
+
+RenderPlan MarkDirectSamples(RenderPlan plan) {
+  ReadCounts reads(plan.steps.size(), 0);
+  ReadCounts sampled(plan.steps.size(), 0);
+  for (const RenderStep &step : plan.steps) {
+    CountReads(reads, InputsOf(step.kind));
+    CountSampledReads(sampled, step.kind);
+  }
+  for (std::size_t i = 0; i < plan.steps.size(); ++i) {
+    auto *sample = Get<SampleFieldStep>(plan.steps[i].kind);
+    if (!sample || !ReadsTexture(*sample) || reads[i] == 0 ||
+        reads[i] != sampled[i])
+      continue;
+    sample->direct = true;
+    plan.steps[i].contentKey.reset();
+  }
+  return plan;
+}
+
+namespace {
+std::optional<RenderStepId> StackStepOf(const RenderPlan &plan,
+                                        GeometryId geometry, ChainLink link) {
+  for (const StackOutputBinding &binding : plan.stackOutputs)
+    if (binding.geometry == geometry && binding.placement == link.placement &&
+        binding.output == link.output &&
+        binding.result.step < plan.steps.size() &&
+        Is<CompositeStackStep>(plan.steps[binding.result.step].kind))
+      return binding.result.step;
+  return std::nullopt;
+}
+
+LayerRead ShiftedRead(const LayerRead &read, std::size_t fieldOffset) {
+  if (const auto *field = Get<LayerFieldRef>(read))
+    return LayerFieldRef{field->field + fieldOffset};
+  return read;
+}
+
+void AppendLink(CompositeStackStep &merged, const CompositeStackStep &link) {
+  const std::size_t fieldOffset = merged.fields.size();
+  merged.fields.insert(merged.fields.end(), link.fields.begin(),
+                       link.fields.end());
+  for (PlannedLayer layer : link.layers) {
+    layer.source = ShiftedRead(layer.source, fieldOffset);
+    if (layer.mask)
+      layer.mask = ShiftedRead(*layer.mask, fieldOffset);
+    merged.layers.push_back(layer);
+  }
+}
+
+bool FitsOnePass(const CompositeStackStep &stack) {
+  if (stack.layers.size() > kMaxStackLayers)
+    return false;
+  std::vector<const LayerField *> fields;
+  fields.reserve(stack.fields.size());
+  for (const LayerField &field : stack.fields)
+    fields.push_back(&field);
+  return PackLayerFields(fields).has_value();
+}
+
+struct MergedChain {
+  CompositeStackStep stack;
+  std::vector<std::size_t> layerStarts;
+};
+
+std::optional<MergedChain> MergedStackOf(RenderPlan &plan,
+                                         const SlotChainRequest &chain) {
+  if (chain.links.size() < 2)
+    return std::nullopt;
+  std::optional<MergedChain> merged;
+  for (const ChainLink link : chain.links) {
+    const std::optional<RenderStepId> step =
+        StackStepOf(plan, chain.geometry, link);
+    if (!step)
+      return std::nullopt;
+    const auto &stack = *Get<CompositeStackStep>(plan.steps[*step].kind);
+    if (!merged) {
+      const RenderInputRef visibility{plan.inputs.size()};
+      plan.inputs.push_back(
+          {RenderResourceType::kVisibility,
+           StackInputBinding{link.placement, link.output, chain.geometry},
+           chain.geometry});
+      merged = MergedChain{
+          CompositeStackStep{
+              stack.base, visibility, {}, stack.requirements, stack.slot, {}},
+          {}};
+    } else if (stack.requirements != merged->stack.requirements ||
+               stack.slot != merged->stack.slot) {
+      return std::nullopt;
+    }
+    merged->layerStarts.push_back(merged->stack.layers.size());
+    AppendLink(merged->stack, stack);
+  }
+  if (!merged || !FitsOnePass(merged->stack))
+    return std::nullopt;
+  return merged;
+}
+}
+
+RenderPlan MergeSlotChains(RenderPlan plan,
+                           std::span<const SlotChainRequest> chains) {
+  for (const SlotChainRequest &chain : chains) {
+    const std::size_t inputs = plan.inputs.size();
+    std::optional<MergedChain> merged = MergedStackOf(plan, chain);
+    if (!merged) {
+      plan.inputs.resize(inputs);
+      continue;
+    }
+    const std::size_t layerCount = merged->stack.layers.size();
+    const StepOutputRef result{plan.steps.size(), 0};
+    plan.steps.push_back(
+        {std::move(merged->stack),
+         "merged " + std::string{SlotName(chain.slot)} + " chain",
+         {},
+         {}});
+    plan.mergedChains.push_back({chain.geometry, chain.surface, chain.slot,
+                                 chain.links, std::move(merged->layerStarts),
+                                 layerCount, result});
+  }
+  return plan;
+}
+
 RenderPlan MarkContentKeyedSteps(RenderPlan plan) {
   const std::vector<bool> changing = ChangingSteps(plan);
   for (std::size_t i = 0; i < plan.steps.size() && i < changing.size(); ++i) {
@@ -687,32 +842,98 @@ RenderPlan MarkContentKeyedSteps(RenderPlan plan) {
   return plan;
 }
 
-std::vector<bool> ChangingSteps(const RenderPlan &plan) {
+namespace {
+std::vector<bool> StepsChangingWith(const RenderPlan &plan,
+                                    StackControls controls) {
   std::vector<bool> changing(plan.steps.size(), false);
   for (std::size_t step = 0; step < plan.steps.size(); ++step)
     for (const auto &operand : StepDependencies(plan, step))
-      changing[step] = changing[step] ||
-                       Match(
-                           operand,
-                           [&](RenderInputRef input) {
-                             return input.input < plan.inputs.size() &&
-                                    InputChanging(plan, input.input, changing);
-                           },
-                           [&](StepOutputRef output) {
-                             return output.step < step && changing[output.step];
-                           });
+      changing[step] =
+          changing[step] ||
+          Match(
+              operand,
+              [&](RenderInputRef input) {
+                return input.input < plan.inputs.size() &&
+                       InputChanging(plan, input.input, changing, controls);
+              },
+              [&](StepOutputRef output) {
+                return output.step < step && changing[output.step];
+              });
   return changing;
+}
+}
+
+std::vector<bool> ChangingSteps(const RenderPlan &plan) {
+  return StepsChangingWith(plan, StackControls::kChanging);
+}
+
+std::vector<bool> AnimatedSteps(const RenderPlan &plan) {
+  return StepsChangingWith(plan, StackControls::kStable);
+}
+
+namespace {
+bool CoveredByMerge(const RenderPlan &plan, const StackOutputBinding &output) {
+  return std::ranges::any_of(
+      plan.mergedChains, [&](const MergedChainBinding &merged) {
+        return merged.geometry == output.geometry &&
+               std::ranges::contains(
+                   merged.links, ChainLink{output.placement, output.output});
+      });
+}
+
+std::vector<RenderStepId> RenderedRoots(const RenderPlan &plan) {
+  std::vector<RenderStepId> roots;
+  roots.reserve(plan.mergedChains.size() + plan.stackOutputs.size());
+  for (const MergedChainBinding &merged : plan.mergedChains)
+    roots.push_back(merged.result.step);
+  for (const StackOutputBinding &output : plan.stackOutputs)
+    if (!CoveredByMerge(plan, output))
+      roots.push_back(output.result.step);
+  return roots;
+}
+
+bool Draws(const RenderStepKind &kind) {
+  if (const auto *sample = Get<SampleFieldStep>(kind))
+    return !sample->direct;
+  return OutputType(kind) == RenderValueType{RenderResourceType::kTexture} ||
+         OutputType(kind) == RenderValueType{RenderResourceType::kStack};
+}
+}
+
+std::size_t AnimatedPasses(const RenderPlan &plan) {
+  const std::vector<bool> animated = AnimatedSteps(plan);
+  std::vector<bool> reached(plan.steps.size(), false);
+  std::vector<RenderStepId> pending = RenderedRoots(plan);
+  std::size_t passes = 0;
+  while (!pending.empty()) {
+    const RenderStepId step = pending.back();
+    pending.pop_back();
+    if (step >= plan.steps.size() || reached[step])
+      continue;
+    reached[step] = true;
+    if (animated[step] && Draws(plan.steps[step].kind))
+      ++passes;
+    for (const RenderValueRef operand : StepDependencies(plan, step))
+      if (const auto *output = Get<StepOutputRef>(operand))
+        pending.push_back(output->step);
+  }
+  return passes;
 }
 
 std::vector<std::size_t> LiveConsumers(const RenderPlan &plan) {
   std::vector<std::size_t> consumers(plan.steps.size(), 0);
   std::vector<bool> live(plan.steps.size(), false);
   std::vector<RenderStepId> pending;
-  for (const auto &output : plan.stackOutputs)
-    if (output.result.step < plan.steps.size() && !live[output.result.step]) {
-      live[output.result.step] = true;
-      pending.push_back(output.result.step);
+  const auto root = [&](StepOutputRef result) {
+    if (result.step < plan.steps.size() && !live[result.step]) {
+      live[result.step] = true;
+      pending.push_back(result.step);
     }
+  };
+  for (const auto &output : plan.stackOutputs)
+    root(output.result);
+  for (const auto &merged : plan.mergedChains)
+    root(merged.result);
   while (!pending.empty()) {
     const auto step = pending.back();
     pending.pop_back();

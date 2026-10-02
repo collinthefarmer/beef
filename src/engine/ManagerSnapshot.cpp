@@ -429,6 +429,14 @@ void Manager::Watch(const std::optional<Studio::PieceRef> &a_request,
   watchedMS_ = NowMS();
 }
 
+std::optional<RE::FormID> Manager::InspectedActor(std::uint32_t a_nowMS) const {
+  std::scoped_lock lock{snapshotLock_};
+  if (!watch_ || watchedMS_ == 0 || a_nowMS > watchedMS_ + kWatchWindowMS) {
+    return std::nullopt;
+  }
+  return watch_->actorID;
+}
+
 std::shared_ptr<const Manager::Snapshot> Manager::LatestSnapshot() const {
   std::scoped_lock lock{snapshotLock_};
   return latest_;

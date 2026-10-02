@@ -1,11 +1,15 @@
 // GPL-3.0-only with the additional permission in COPYING.md.
 #pragma once
 
+#include <array>
 #include <chrono>
+#include <cstddef>
 #include <cstdint>
 
 namespace BetterEnchantmentEffects::Metrics {
 enum class Phase { kFrame, kTick, kSnapshot };
+inline constexpr std::size_t kStepKindSlots = 32;
+using StepKindCounts = std::array<std::uint64_t, kStepKindSlots>;
 struct PhaseTime {
   std::uint64_t micros = 0;
   std::uint64_t maxMicros = 0;
@@ -26,6 +30,7 @@ struct Snapshot {
   std::uint64_t frames = 0;
   std::uint64_t renderEvaluations = 0;
   std::uint64_t stepExecutions = 0;
+  StepKindCounts stepExecutionsByKind{};
   std::uint64_t stepCacheHits = 0;
   std::uint64_t stepReleases = 0;
   std::uint64_t stepRestores = 0;
@@ -46,7 +51,7 @@ void CountTargetCreated(std::uint64_t a_bytes) noexcept;
 void CountTargetDestroyed(std::uint64_t a_bytes) noexcept;
 void CountFrame() noexcept;
 void CountRenderEvaluation() noexcept;
-void CountStepExecution() noexcept;
+void CountStepExecution(std::size_t a_kind) noexcept;
 void CountStepCacheHit() noexcept;
 void CountStepReleases(std::uint64_t a_count) noexcept;
 void CountStepRestores(std::uint64_t a_count) noexcept;

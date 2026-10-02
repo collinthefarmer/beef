@@ -13,20 +13,35 @@ struct StepUses {
 };
 
 StepUses StepUsesOf(const RenderPlan &plan) {
-  return StepUses{ChangingSteps(plan), LiveConsumers(plan)};
+  return StepUses{AnimatedSteps(plan), LiveConsumers(plan)};
+}
+
+bool Changing(const StepUses &uses, RenderStepId step) {
+  return step < uses.changing.size() && uses.changing[step];
+}
+
+bool InlinesFor(const StepUses &uses, RenderStepId producer,
+                RenderStepId consumer) {
+  return Changing(uses, producer) || !Changing(uses, consumer);
+}
+
+bool ConsumedOnce(const StepUses &uses, RenderStepId producer) {
+  return Changing(uses, producer) ? uses.consumers[producer] == 1
+                                  : uses.consumers[producer] > 0;
 }
 
 bool CanInlineProducer(const RenderPlan &plan, RenderStepId producer,
-                       const TextureRequirements &consumer,
-                       const StepUses &uses) {
-  if (producer >= plan.steps.size() || producer >= uses.changing.size() ||
-      producer >= uses.consumers.size())
+                       RenderStepId consumer, const StepUses &uses) {
+  if (producer >= plan.steps.size() || producer >= uses.consumers.size() ||
+      consumer >= plan.steps.size())
     return false;
   const std::optional<ProgramLikeStep> program =
       AsProgramLike(plan, plan.steps[producer].kind);
-  return program && program->requirements == consumer &&
-         consumer.format == TextureFormat::kRgba8 &&
-         uses.consumers[producer] == 1 && uses.changing[producer];
+  const std::optional<ProgramLikeStep> reader =
+      AsProgramLike(plan, plan.steps[consumer].kind);
+  return program && reader && program->requirements == reader->requirements &&
+         reader->requirements.format == TextureFormat::kRgba8 &&
+         ConsumedOnce(uses, producer) && InlinesFor(uses, producer, consumer);
 }
 
 bool ReadsTexture(const FieldProgram &program, std::size_t input) {
@@ -70,7 +85,7 @@ bool InlineIntoStep(RenderPlan &plan, RenderStepId step, const StepUses &uses) {
     const auto *producer = Get<StepOutputRef>(consumer->inputs[input]);
     if (!producer || producer->step >= step ||
         !ReadsTexture(consumer->program, input) ||
-        !CanInlineProducer(plan, producer->step, consumer->requirements, uses))
+        !CanInlineProducer(plan, producer->step, step, uses))
       continue;
     const std::optional<ProgramLikeStep> produced =
         AsProgramLike(plan, plan.steps[producer->step].kind);
@@ -152,8 +167,11 @@ std::size_t AttachField(CompositeStackStep &stack, RenderStepId producer,
 
 bool Live(const RenderPlan &plan, RenderStepId step, const StepUses &uses) {
   return (step < uses.consumers.size() && uses.consumers[step] > 0) ||
-         std::ranges::any_of(plan.stackOutputs, [&](const auto &output) {
-           return output.result.step == step;
+         std::ranges::any_of(
+             plan.stackOutputs,
+             [&](const auto &output) { return output.result.step == step; }) ||
+         std::ranges::any_of(plan.mergedChains, [&](const auto &merged) {
+           return merged.result.step == step;
          });
 }
 
@@ -171,7 +189,8 @@ std::size_t InlineField(RenderPlan &plan, RenderStepId producer,
             [&](RenderValueRef operand) { return Reads(operand, producer); }))
       continue;
     const auto *stack = Get<CompositeStackStep>(plan.steps[step].kind);
-    if (!stack || stack->requirements.size != stored->size)
+    if (!stack || stack->requirements.size != stored->size ||
+        !InlinesFor(uses, producer, step))
       return 0;
     auto candidate = *stack;
     const auto reads = AttachField(candidate, producer, stored->field);
@@ -196,8 +215,7 @@ std::size_t InlineLayerFields(RenderPlan &plan) {
   std::size_t reads = 0;
   for (RenderStepId producer = 0; producer < plan.steps.size(); ++producer) {
     uses.consumers = LiveConsumers(plan);
-    if (producer < uses.changing.size() && producer < uses.consumers.size() &&
-        uses.changing[producer] && uses.consumers[producer] > 0)
+    if (producer < uses.consumers.size() && uses.consumers[producer] > 0)
       reads += InlineField(plan, producer, uses);
   }
   return reads;

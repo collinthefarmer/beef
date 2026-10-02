@@ -20,6 +20,12 @@ RenderBindingResolver Bindings() {
 }
 }
 int main() {
+  Check(StepKindNameAt(kRenderStepKindCount - 1) == "CompositeStack",
+        "the last step kind is named");
+  Check(StepKindNameAt(15) == "DrawRipple",
+        "a step kind is named by its index");
+  Check(StepKindNameAt(kRenderStepKindCount) == "Unknown",
+        "an index past the kinds is unknown");
   Recipe recipe;
   recipe.sources = {{"surface", MaterialSource{MaterialChannel::kDiffuseRgb}}};
   recipe.masks = {{"mask", "dot(@surface,[0.2,0.3,0.5])"}};
@@ -32,7 +38,7 @@ int main() {
   const auto graph = RecipeGraph::Compile(recipe);
   const std::array requests{RenderStackRequest{
       &graph, &surface, 1, PlacementId{0}, 0, {TextureSize{64}}}};
-  const auto plan = BuildRenderPlan({}, requests, Bindings());
+  const auto plan = LowerRenderPlan({}, requests, Bindings());
   if (!plan)
     std::cerr << plan.error() << '\n';
   Check(plan.has_value(), "lower a measured mask into an executable plan");

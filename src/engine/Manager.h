@@ -170,7 +170,10 @@ private:
   void Tick(std::uint32_t a_nowMS, const Settings &a_settings);
   void TickInstance(LiveInstance &a_instance, float a_time, float a_delta);
   void DropLostGeometries(LiveActor &a_state);
-  void RenderGeometry(LiveActor &a_state, LiveGeometry &a_bound, bool a_hidden);
+  void RenderGeometry(LiveActor &a_state, LiveGeometry &a_bound, bool a_hidden,
+                      bool a_inspected);
+  [[nodiscard]] std::optional<RE::FormID>
+  InspectedActor(std::uint32_t a_nowMS) const;
   [[nodiscard]] std::vector<bool> RenderPieces(LiveActor &a_state,
                                                RE::FormID a_actorID);
   void UpdateLights(LiveActor &a_state,

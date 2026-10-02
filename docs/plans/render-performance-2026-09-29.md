@@ -1,4 +1,4 @@
-Status: in progress. Stages 1 to 5 are implemented and measured; review
+Status: in progress. Stages 1 to 6 are implemented and measured; review
 findings for stages 3 and 4 are in
 [the review record](../checkpoints/render-performance-review-2026-09-30.md).
 Stage 5 has one open finding, the memory left after a crowd leaves. Later
@@ -339,6 +339,46 @@ over the recovery budget of 64 MiB. The likely cause is the pool's scratch
 targets, which stay until the next load; the
 [regression plan](unattended-regression-2026-10-01.md) records the
 arithmetic and the measurement that decides it.
+
+## Stage 6: work that re-runs without changing
+
+`soak-stack` solos nothing, so it measures every recipe the profile loads.
+On the test profile that is the three demo recipes and an imported
+effect-shader recipe (`EnchArmorHealthFXS`) whose four image sources scroll
+every tick. The trace now counts executions per step kind (`step_kinds`),
+times up to 2048 GPU spans per tick (the 256 cap left 849 spans per tick
+untimed), and samples which input made a step run again (`step_stale`).
+
+| Change | Where | `soak-stack` steady |
+| --- | --- | --- |
+| Before | | 13 fps (9 % of baseline), 18.7 ms plugin per frame, 862 targets (11.6 GB), VRAM over budget |
+| An empty ripple keeps its draw | `ExecuteDrawRippleStep`, `TextureView::drawStamp` | 44 fps, 16.1 ms, 850 targets |
+| Image samples read only by sampling draw nothing | `MarkDirectSamples` | 47 fps, 14.2 ms, 754 targets (10.3 GB), peak 11.8 GB |
+
+`REFERENCE.md` (*Compositor*) records both proofs and why direct samples sit
+outside the stage 3 equality proof.
+
+Measured on 2026-10-02, run 20261002T032405-1 (the machine ran slower in that
+run, so figures are relative to the same run's baseline): `soak-stack` steady
+63 % of baseline fps (from 47 %), 5.5 ms plugin per frame, 8.0 ms GPU per tick,
+576 targets (7.1 GB), peak 7.7 GB; `soak-fight` 75 % of baseline, 3.75 ms
+plugin. The first measurement left two animated programs outside a merged stack,
+because field inlining did not count merged results as live consumers; the fix
+and a check that merging never adds an animated pass are in `BuildRenderPlan`.
+The changes:
+
+| Change | Where | Effect |
+| --- | --- | --- |
+| Material samples fold like image samples | `MarkDirectSamples` | Fewer static targets; a test checks that every image and material read in the demo and imported recipes is direct unless a reduction measures it |
+| Static fields inline into static consumers only | `InlineFields`, `AnimatedSteps` | Static recipes become one texture in, one texture out apart from bakes, reductions and ripples. Inlining into animated stacks was measured and rejected; `REFERENCE.md` records the figures |
+| A slot chain draws as one pass | `MergeSlotChains`, `RenderMergedChain` | One target and one pass per slot instead of one per recipe on that slot |
+| State is captured once per geometry | `TextureLab::PassBatch` | Removes most of the per-pass capture and restore, the largest CPU cost in the profile |
+
+Open: 360 stack executions per frame remain, all from signals that change
+every tick (`travel` and the imported scrolls). GPU per tick is 13.5 ms, of
+which 2048 stacks take 9.8 ms and their mips 4.0 ms. Plugin CPU is about
+27 microseconds per step execution. `soak-ward` and `soak-frost` show that
+Resonant Ward and Winterglass alone re-run no stack.
 
 ## Later stages
 

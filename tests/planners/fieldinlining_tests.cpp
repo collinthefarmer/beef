@@ -286,7 +286,7 @@ int main() {
       if (inlined.plan.steps[s].displayName == "mask m1" && consumers[s] >= 1)
         ++liveM1;
     Check(liveM1 == 1,
-          "a producer read by two programs stays materialized once");
+          "an animated producer read by two programs stays materialized once");
     test::Equal(CompareStacks(*plan, inlined.plan, random, 20), std::size_t{0},
                 "the shared producer plan stays equivalent");
   }
@@ -354,8 +354,28 @@ int main() {
   if (const auto plan = LowerRenderPlan({}, stillRequests, PerGeometryMesh())) {
     const auto inlined = InlineFields(*plan);
     test::Equal(inlined.programsInlined + inlined.layerFieldReads,
-                std::size_t{0},
-                "a static producer stays materialized and cached");
+                std::size_t{2},
+                "a static producer is inlined into its consumers");
+    test::Equal(CompareStacks(*plan, inlined.plan, random, 20), std::size_t{0},
+                "the inlined static plan stays equivalent");
+  }
+
+  Recipe pulsing = still;
+  pulsing.signals = {{"k", ConstantSignal{0.5f}}, {"t", ExprSignal{"time"}}};
+  Layer pulsingLayer = stillLayer;
+  pulsingLayer.opacity = Ref{"t"};
+  SurfaceOutput pulsingSurface = stillSurface;
+  pulsingSurface.stack = {pulsingLayer};
+  pulsing.outputs = {pulsingSurface};
+  const auto pulsingGraph = RecipeGraph::Compile(pulsing);
+  const std::array pulsingRequests{RenderStackRequest{
+      &pulsingGraph, &pulsingSurface, 1, PlacementId{0}, 0, {TextureSize{64}}}};
+  if (const auto plan =
+          LowerRenderPlan({}, pulsingRequests, PerGeometryMesh())) {
+    const auto inlined = InlineFields(*plan);
+    test::Equal(inlined.layerFieldReads, std::size_t{0},
+                "a static field under an animated stack stays a cached "
+                "target, so the stack does not recompute it every tick");
   }
 
   const auto folder =

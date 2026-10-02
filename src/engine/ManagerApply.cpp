@@ -346,6 +346,7 @@ struct ActorStackRequest {
 struct ActorStacks {
   RE::FormID actor = 0;
   std::vector<ActorStackRequest> requests;
+  std::vector<SlotChainRequest> chains;
   std::vector<GeometryInputs> geometries;
   std::vector<LiveGeometry *> bound;
 };
@@ -431,6 +432,7 @@ void CollectChainStacks(LiveActor &a_state, const LocatedGeometry &a_geometry,
   const auto [size, maxSize] = RuntimeSizes(a_settings, bound.inputs.material);
   Compositor *compositor = Compositor::GetSingleton();
   for (const SlotPlan &slot : bound.plan.slots) {
+    SlotChainRequest chain{a_geometry.id, slot.surface, slot.slot, {}};
     for (const SlotContribution &contribution : slot.chain) {
       const std::optional<LocatedStackOutput> located =
           LocateStackOutput(a_state, bound, contribution);
@@ -454,6 +456,10 @@ void CollectChainStacks(LiveActor &a_state, const LocatedGeometry &a_geometry,
             contribution.output, located->placement, inputs, stackSize},
            a_geometry.id,
            *located});
+      chain.links.push_back({located->placement, contribution.output});
+    }
+    if (chain.links.size() > 1) {
+      a_stacks.chains.push_back(std::move(chain));
     }
   }
 }
@@ -617,16 +623,47 @@ void AttachStackOutputs(ActorStacks &a_stacks,
   }
 }
 
+void AttachMergedSlots(const ActorStacks &a_stacks,
+                       const std::shared_ptr<RenderInstance> &a_render) {
+  const RenderPlan &plan = a_render->Plan();
+  for (const MergedChainBinding &merged : plan.mergedChains) {
+    LiveGeometry *bound = IndexOf(merged.geometry) < a_stacks.bound.size()
+                              ? a_stacks.bound[IndexOf(merged.geometry)]
+                              : nullptr;
+    const auto *stack =
+        merged.result.step < plan.steps.size()
+            ? Get<CompositeStackStep>(plan.steps[merged.result.step].kind)
+            : nullptr;
+    if (!bound || !stack) {
+      continue;
+    }
+    const SlotStackPlan *slot =
+        SlotStackPlanOf(bound->stackPlan, merged.surface, merged.slot);
+    bound->mergedSlots.push_back(
+        {merged.surface, merged.slot, merged.links, merged.layerStarts,
+         merged.layerCount,
+         std::make_unique<RenderOutput>(a_render, merged.result,
+                                        stack->requirements.size,
+                                        slot && slot->animated)});
+  }
+}
+
 void BuildActorRender(const LiveActor &a_state, ActorStacks &a_stacks,
                       const Settings &a_settings, WarningHistory &a_warnings) {
   AttachRender(a_stacks, nullptr);
+  for (LiveGeometry *bound : a_stacks.bound) {
+    if (bound) {
+      bound->mergedSlots.clear();
+    }
+  }
   if (a_stacks.requests.empty()) {
     return;
   }
   const std::vector<TextureDemand> demands =
       CollectLayerDemands(a_stacks, a_settings.verboseLogging);
-  std::expected<RenderPlan, std::string> plan = BuildRenderPlan(
-      demands, RenderStackRequests(a_stacks), BindingResolverFor(a_stacks));
+  std::expected<RenderPlan, std::string> plan =
+      BuildRenderPlan(demands, RenderStackRequests(a_stacks),
+                      BindingResolverFor(a_stacks), a_stacks.chains);
   if (!plan) {
     FailStackOutputs(a_stacks, plan.error());
     return;
@@ -636,6 +673,7 @@ void BuildActorRender(const LiveActor &a_state, ActorStacks &a_stacks,
                                        LiveGraphs(a_state));
   AttachRender(a_stacks, render);
   AttachStackOutputs(a_stacks, render, a_settings, a_warnings);
+  AttachMergedSlots(a_stacks, render);
 }
 
 std::optional<std::size_t> LightSourceInstance(const ActorLightPlan &a_plan,

@@ -96,6 +96,7 @@ struct SampleFieldStep {
   TextureValue field;
   std::vector<RenderValueRef> coordinates;
   TextureRequirements requirements;
+  bool direct = false;
   [[nodiscard]] bool operator==(const SampleFieldStep &) const = default;
 };
 struct SubmitReductionStep {
@@ -184,6 +185,8 @@ using RenderStepKind =
                  SubmitReductionStep, BuildLookupStep, EvaluateValueStep,
                  EvaluateProgramStep, MapFieldStep, ComposeVectorStep,
                  DrawRippleStep, CompositeStackStep>;
+inline constexpr std::size_t kRenderStepKindCount =
+    std::variant_size_v<RenderStepKind>;
 struct RenderStep {
   RenderStepKind kind;
   std::string displayName;
@@ -205,11 +208,32 @@ struct RenderValueBinding {
   RenderValueRef result;
   GeometryId geometry{};
 };
+struct ChainLink {
+  PlacementId placement{};
+  std::size_t output = 0;
+  [[nodiscard]] bool operator==(const ChainLink &) const = default;
+};
+struct SlotChainRequest {
+  GeometryId geometry{};
+  Surface surface = Surface::kMaterial;
+  Slot slot = Slot::kEmissive;
+  std::vector<ChainLink> links;
+};
+struct MergedChainBinding {
+  GeometryId geometry{};
+  Surface surface = Surface::kMaterial;
+  Slot slot = Slot::kEmissive;
+  std::vector<ChainLink> links;
+  std::vector<std::size_t> layerStarts;
+  std::size_t layerCount = 0;
+  StepOutputRef result;
+};
 struct RenderPlan {
   std::vector<RenderValueBinding> values;
   std::vector<RenderInput> inputs;
   std::vector<RenderStep> steps;
   std::vector<TextureUseBinding> textureUses;
+  std::vector<MergedChainBinding> mergedChains;
   std::vector<StackOutputBinding> stackOutputs;
 };
 struct RenderStackRequest {
@@ -245,11 +269,15 @@ SegmentIndexOf(std::span<const std::size_t> fields, const LayerRead &read);
 StepDependencies(const RenderPlan &plan, RenderStepId step);
 [[nodiscard]] std::vector<bool> ChangingSteps(const RenderPlan &plan);
 [[nodiscard]] RenderPlan MarkContentKeyedSteps(RenderPlan plan);
+[[nodiscard]] RenderPlan MarkDirectSamples(RenderPlan plan);
+[[nodiscard]] std::vector<bool> AnimatedSteps(const RenderPlan &plan);
+[[nodiscard]] std::size_t AnimatedPasses(const RenderPlan &plan);
 inline constexpr std::size_t kMaxCacheKeyBytes = 4096;
 [[nodiscard]] std::optional<std::string>
 CacheKeyFor(std::string_view contentKey, std::span<const Value> operands);
 [[nodiscard]] std::vector<std::size_t> LiveConsumers(const RenderPlan &plan);
 [[nodiscard]] RenderValueType OutputType(const RenderStepKind &step);
+[[nodiscard]] std::string_view StepKindNameAt(std::size_t index);
 [[nodiscard]] std::string_view StepKindName(const RenderStepKind &step);
 [[nodiscard]] std::optional<TextureRequirements>
 RequirementsOf(const RenderStepKind &step);
@@ -261,8 +289,11 @@ ValidateRenderPlan(const RenderPlan &plan);
 LowerRenderPlan(std::span<const TextureDemand> demands,
                 std::span<const RenderStackRequest> stacks,
                 const RenderBindingResolver &bindings);
+[[nodiscard]] RenderPlan
+MergeSlotChains(RenderPlan plan, std::span<const SlotChainRequest> chains);
 [[nodiscard]] std::expected<RenderPlan, std::string>
 BuildRenderPlan(std::span<const TextureDemand> demands,
                 std::span<const RenderStackRequest> stacks,
-                const RenderBindingResolver &bindings);
+                const RenderBindingResolver &bindings,
+                std::span<const SlotChainRequest> chains = {});
 }

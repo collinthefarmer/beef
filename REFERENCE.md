@@ -485,6 +485,18 @@ Lab mechanics:
   `TextureLab::RenderPass` owns that lock before capturing state. Its destructor
   restores the context, then releases captured COM references, then unlocks.
   It requires nonnull renderer/context references and cannot be copied or moved.
+- A capture saves every shader-resource slot of five stages and the compute
+  stage, about 768 views, and the restore writes and releases them again. Done
+  around every pass, the restore path was on the stack in 45 % of the plugin's
+  sampled main-thread time (VramProfiler, 2026-10-01). `TextureLab::PassBatch`
+  captures once for all passes of one geometry (`Manager::RenderGeometry`) and
+  holds the re-entrant renderer lock for that span. A pass inside a batch
+  skips its own capture and, when it ends, unbinds its render target and the
+  `kStackSrvs` (29) pixel-shader input slots, so an early return cannot leave
+  a target bound as an output that the next pass reads as an input; D3D would
+  bind that input as null. Holding the lock for a whole tick instead would
+  stop the render thread for the tick's full length; one geometry keeps each
+  window to tens of passes. Nested batches capture only at the outermost.
 - A readback goes through a staging copy of the 1x1 mip and waits on the
   GPU; the log line before it names the step should the wait never end.
   Bytes are read as RGBA8, so any other format is refused before the map.
@@ -1227,6 +1239,68 @@ A render step's idle output is released 500 ms after its last use
 (`kReleaseAfterIdleMS` in `render/RenderInstance.cpp`). An earlier grace of
 30 instance ticks stretched to seconds while a heavy burst lowered the frame
 rate, so memory kept growing while the game was slow.
+
+A re-executed texture step counts as changed, so its consumers run again,
+unless `SameRenderValue` proves the content equal. Two proofs exist:
+
+| Proof | Holds when | Why it is safe |
+| --- | --- | --- |
+| Draw stamp (`TextureView::drawStamp`) | Both views carry the same nonzero stamp, texture and generation | A step that opts in raises its stamp only when it draws. A target reused in place keeps its pointer and generation, so identity alone cannot prove equal content. |
+| No target | Neither view owns a target, and texture, generation, sampling and normalize are equal | A view without a target reads an engine texture through its sampling and nothing draws into it |
+
+`DrawRipple` stamps its draws. With no firings `PSRipple` writes
+`(0, 0, 0, 1)` at every texel, whatever the time, positions and parameters,
+so a ripple that already holds an empty draw returns it unchanged while the
+firings stay empty. Its time input still makes the step execute each tick.
+A released target returns to the pool through the `shared_ptr` deleter,
+which expires the scratch's weak hint, so a held empty draw is always the
+step's own target. Measured on 2026-10-01, every loaded recipe on twelve
+mannequins: 13 fps before, 44 fps after.
+
+An image or material sample is **direct** (`SampleFieldStep::direct`, set
+by `MarkDirectSamples`) when every read of it samples it: a program input, a
+mapped value, a vector component, a layer source, or an inlined field's
+input. A direct sample returns the image's view with its transform and draws
+nothing. A material sample's view is the material texture with its resolved
+channel in mesh space. A layer mask read straight from a step keeps only the channel
+(`LayerPassFor`), and a reduction needs a target whose extent matches its
+domain, so either read keeps the sample drawn. The consumer then samples the
+source image at its own texel centres instead of a quantized RGBA8
+intermediate, so its values can differ from the drawn chain by filtering and
+by one 8-bit step; the stage 3 equality proof does not cover direct samples.
+
+Field inlining (`InlineFields`) inlines an animated producer into its one
+consumer, as stage 3 decided, and a static producer into any consumer that is
+itself static. `AnimatedSteps` decides "static": it is `ChangingSteps` with a
+stack's base and visibility treated as stable, because the engine imports them
+on every render even when nothing changed. A static field stays a cached target
+under an animated stack: inlining it there recomputes it every tick. Measured on
+2026-10-01 with Arcane Circuit on six vanilla cuirasses: inlining static fields
+into its animated stacks raised its 2048 stacks from 1.98 to 5.12 ms of GPU per
+tick and its 1024 stacks from 0.81 to 1.60 ms, and removed 14 targets. A chained
+link whose earlier link animates receives a new base every tick, which the plan
+cannot see; the merge below removes most such links.
+
+Two or more stacks on one slot of one geometry (a **slot chain**) merge into one
+pass (`MergeSlotChains`) when every link lowered to a stack with the same
+requirements and slot, and the merged stack has at most `kMaxStackLayers` (8)
+layers and its fields pack. The merged stack starts from the first link's base
+and draws the links' layers in chain order. One-pass stacks quantize after each
+layer and a chained link reads its base at texel centres, so the merged pass
+equals the chain by the stage 3 argument. Merging runs before inlining, so a
+static link's fields are not inlined into a chain that animates. The links'
+own stacks stay in the plan; the engine renders the merged stack
+(`RenderMergedChain`) with one filter that offsets each link's hidden layers and
+hides every layer of a link that is not shown. The actor the studio inspects
+(`Manager::InspectedActor`) renders its chains link by link, so its outputs keep
+their own textures and diagnostics. A merged slot shows nothing while any link
+is pending or failed; a chain shows the links that rendered.
+`BuildRenderPlan` keeps a merge only if it adds no animated pass: when a merged
+stack still reads an animated program (its fields did not fit), it builds the
+plan without that chain and keeps the version with fewer animated passes
+(`AnimatedPasses`). Field inlining counts merged results as live consumers;
+when it did not, one merged slot left the shared fields of every stack that read
+them outside as separate passes.
 
 - Render scheduling is a validated `RenderPlan` with one `RenderInstance` per
   geometry. Produced targets are retained by typed step results; `RenderScratch`

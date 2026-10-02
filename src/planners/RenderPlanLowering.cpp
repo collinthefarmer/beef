@@ -642,16 +642,53 @@ LowerRenderPlan(std::span<const TextureDemand> demands,
     return std::unexpected(valid.error());
   return std::move(builder.plan);
 }
+namespace {
+bool MergeKeepsAnimatedField(const RenderPlan &plan,
+                             const SlotChainRequest &chain) {
+  const std::vector<bool> animated = AnimatedSteps(plan);
+  for (const MergedChainBinding &merged : plan.mergedChains) {
+    if (merged.geometry != chain.geometry || merged.links != chain.links ||
+        merged.result.step >= plan.steps.size())
+      continue;
+    for (const RenderValueRef operand :
+         InputsOf(plan.steps[merged.result.step].kind))
+      if (const auto *output = Get<StepOutputRef>(operand);
+          output && output->step < plan.steps.size() &&
+          animated[output->step] &&
+          AsProgramLike(plan, plan.steps[output->step].kind))
+        return true;
+  }
+  return false;
+}
+}
+
 std::expected<RenderPlan, std::string>
 BuildRenderPlan(std::span<const TextureDemand> demands,
                 std::span<const RenderStackRequest> stacks,
-                const RenderBindingResolver &bindings) {
+                const RenderBindingResolver &bindings,
+                std::span<const SlotChainRequest> chains) {
   auto lowered = LowerRenderPlan(demands, stacks, bindings);
   if (!lowered)
     return lowered;
-  auto inlined = MarkContentKeyedSteps(InlineFields(std::move(*lowered)).plan);
-  if (auto valid = ValidateRenderPlan(inlined); !valid)
+  const auto finish = [&](std::span<const SlotChainRequest> kept) {
+    return MarkDirectSamples(MarkContentKeyedSteps(
+        InlineFields(MergeSlotChains(*lowered, kept)).plan));
+  };
+  std::vector<SlotChainRequest> kept(chains.begin(), chains.end());
+  RenderPlan plan = finish(kept);
+  for (std::size_t chain = kept.size(); chain-- > 0;) {
+    if (!MergeKeepsAnimatedField(plan, kept[chain]))
+      continue;
+    std::vector<SlotChainRequest> without = kept;
+    without.erase(without.begin() + static_cast<std::ptrdiff_t>(chain));
+    RenderPlan trial = finish(without);
+    if (AnimatedPasses(trial) < AnimatedPasses(plan)) {
+      kept = std::move(without);
+      plan = std::move(trial);
+    }
+  }
+  if (auto valid = ValidateRenderPlan(plan); !valid)
     return std::unexpected(valid.error());
-  return inlined;
+  return plan;
 }
 }

@@ -46,6 +46,24 @@ void TestGaugesAndPeaksPersist() {
   Metrics::CountTargetDestroyed(200);
 }
 
+void TestStepExecutionsCountPerKind() {
+  static_cast<void>(Metrics::Drain());
+  Metrics::CountStepExecution(3);
+  Metrics::CountStepExecution(3);
+  Metrics::CountStepExecution(16);
+  Metrics::CountStepExecution(Metrics::kStepKindSlots);
+  const Metrics::Snapshot counted = Metrics::Drain();
+  Equal(counted.stepExecutions, std::uint64_t{4},
+        "every execution counts in the total");
+  Equal(counted.stepExecutionsByKind[3], std::uint64_t{2},
+        "executions of one kind accumulate");
+  Equal(counted.stepExecutionsByKind[16], std::uint64_t{1},
+        "each kind has its own count");
+  const Metrics::Snapshot drained = Metrics::Drain();
+  Equal(drained.stepExecutionsByKind[3], std::uint64_t{0},
+        "drain resets the counts per kind");
+}
+
 void TestMippedBytes() {
   Equal(Metrics::MippedRgbaBytes(512), std::uint64_t{512} * 512 * 4 * 4 / 3,
         "a 512 target's bytes include the mip chain");
@@ -57,6 +75,7 @@ void TestMippedBytes() {
 int main() {
   TestRatesAccumulateAndDrain();
   TestGaugesAndPeaksPersist();
+  TestStepExecutionsCountPerKind();
   TestMippedBytes();
   return test::Finish("diagnostics_measure");
 }

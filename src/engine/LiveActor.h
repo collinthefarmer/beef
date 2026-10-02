@@ -6,6 +6,7 @@
 #include "engine/Environment.h"
 #include "planners/ActorPlan.h"
 #include "planners/BindingPlan.h"
+#include "planners/RenderPlan.h"
 #include "planners/StackPlan.h"
 #include "recipe/Merge.h"
 #include "recipe/Recipe.h"
@@ -30,6 +31,15 @@ struct PlacedOutput {
   bool renderFailed = false;
 };
 
+struct MergedSlotStack {
+  Surface surface = Surface::kMaterial;
+  Slot slot = Slot::kEmissive;
+  std::vector<ChainLink> links;
+  std::vector<std::size_t> layerStarts;
+  std::size_t layerCount = 0;
+  std::unique_ptr<RenderOutput> stack;
+};
+
 struct LiveGeometry {
   RE::NiPointer<RE::BSGeometry> geometry;
   RE::NiPointer<RE::BSLightingShaderProperty> property;
@@ -41,6 +51,7 @@ struct LiveGeometry {
   std::vector<PlacementId> placements;
   GeometryPlan plan;
   GeometryStackPlan stackPlan;
+  std::vector<MergedSlotStack> mergedSlots;
   BindingPlan binding;
   bool lost = false;
 };

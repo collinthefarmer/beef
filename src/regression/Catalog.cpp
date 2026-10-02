@@ -15,6 +15,8 @@ inline constexpr std::uint32_t kViewSettleFrames = 60;
 
 inline constexpr Solo kSoloCircuit{kSoloRecipe};
 inline constexpr Solo kEveryRecipe{""};
+inline constexpr Solo kSoloWard{"resonant-ward"};
+inline constexpr Solo kSoloFrost{"winterglass"};
 inline constexpr Equip kPlayerFixture{Role::kPlayer, Item::kFixture};
 inline constexpr Equip kWearerFixture{Role::kWearer, Item::kFixture};
 inline constexpr Equip kControlPlain{Role::kControl, Item::kPlainCuirass};
@@ -180,6 +182,8 @@ consteval std::array<Step, 10> Soak(Solo a_view, SpawnCrowd a_crowd,
 inline constexpr std::array kSoak = Soak(kSoloCircuit, kMannequins, 120);
 inline constexpr std::array kSoakHour = Soak(kSoloCircuit, kMannequins, 3600);
 inline constexpr std::array kSoakStack = Soak(kEveryRecipe, kMannequins, 120);
+inline constexpr std::array kSoakWard = Soak(kSoloWard, kMannequins, 120);
+inline constexpr std::array kSoakFrost = Soak(kSoloFrost, kMannequins, 120);
 inline constexpr std::array kSoakLarge =
     Soak(kSoloCircuit, SpawnCrowd{kLargeCrowdSize}, 120);
 inline constexpr std::array kSoakVanilla =
@@ -226,6 +230,8 @@ inline constexpr std::array kCatalog{
     Case{"soak", kSoak, kCleanup},
     Case{"soak-hour", kSoakHour, kCleanup},
     Case{"soak-stack", kSoakStack, kCleanup},
+    Case{"soak-ward", kSoakWard, kCleanup},
+    Case{"soak-frost", kSoakFrost, kCleanup},
     Case{"soak-large", kSoakLarge, kCleanup},
     Case{"soak-waves", kSoakWaves, kCleanup},
     Case{"soak-churn", kSoakChurn, kCleanup},

@@ -1,4 +1,5 @@
 // GPL-3.0-only with the additional permission in COPYING.md.
+#include "planners/FieldInlining.h"
 #include "planners/RenderPlan.h"
 #include "test_support.h"
 
@@ -6,6 +7,7 @@
 #include <cstdio>
 #include <iterator>
 #include <memory>
+#include <optional>
 #include <string>
 #include <vector>
 
@@ -198,6 +200,334 @@ Recipe ImageOverBake() {
   return recipe;
 }
 
+Recipe ImageLayer(const std::optional<CurveRef> &a_curve) {
+  Recipe recipe;
+  ImageSource image;
+  image.path = "scrolled.dds";
+  image.scroll = Vec2Param{std::array<Param, 2>{0.25f, 0.5f}};
+  recipe.sources = {{"pattern", image}};
+  SurfaceOutput surface;
+  Layer layer;
+  layer.source = Ref{"pattern"};
+  layer.curve = a_curve;
+  surface.stack = {layer};
+  recipe.outputs.push_back(surface);
+  return recipe;
+}
+
+std::vector<const RenderStep *> ImageSamples(const RenderPlan &plan) {
+  std::vector<const RenderStep *> samples;
+  for (const RenderStep &step : plan.steps)
+    if (Is<SampleFieldStep>(step.kind))
+      samples.push_back(&step);
+  return samples;
+}
+
+void ImagesReadOnlyBySamplingAreDirect() {
+  for (const auto &curve : {std::optional<CurveRef>{},
+                            std::optional{CurveRef{"x / max(mean, 0.01)"}}}) {
+    const Recipe recipe = ImageLayer(curve);
+    const RecipeGraph graph = RecipeGraph::Compile(recipe);
+    const auto plan = SingleStackPlan(recipe, graph);
+    if (!plan)
+      continue;
+    const auto samples = ImageSamples(*plan);
+    Check(samples.size() == 2,
+          "an image lowers to a scrolled and an unscrolled sample");
+    Check(
+        std::ranges::all_of(samples,
+                            [](const RenderStep *step) {
+                              return Get<SampleFieldStep>(step->kind)->direct &&
+                                     !step->contentKey;
+                            }),
+        "image samples read only by programs are direct and unkeyed");
+  }
+}
+
+std::vector<std::string> DrawnTextureReads(const RenderPlan &plan) {
+  std::vector<std::vector<std::string>> unmeasured(plan.steps.size());
+  for (const RenderStep &step : plan.steps)
+    if (!Is<SubmitReductionStep>(step.kind))
+      for (const RenderValueRef ref : InputsOf(step.kind))
+        if (const auto *output = Get<StepOutputRef>(ref);
+            output && output->step < unmeasured.size())
+          unmeasured[output->step].push_back(
+              std::string{StepKindName(step.kind)} + " " + step.displayName);
+  std::vector<std::string> drawn;
+  for (std::size_t i = 0; i < plan.steps.size(); ++i) {
+    const auto *sample = Get<SampleFieldStep>(plan.steps[i].kind);
+    if (!sample || sample->direct || unmeasured[i].empty())
+      continue;
+    std::string line = plan.steps[i].displayName + " <-";
+    for (const std::string &consumer : unmeasured[i])
+      line += " [" + consumer + "]";
+    drawn.push_back(line);
+  }
+  return drawn;
+}
+
+std::size_t DirectTextureReads(const RenderPlan &plan) {
+  return static_cast<std::size_t>(
+      std::ranges::count_if(plan.steps, [](const RenderStep &step) {
+        const auto *sample = Get<SampleFieldStep>(step.kind);
+        return sample && sample->direct;
+      }));
+}
+
+std::size_t LiveAnimatedPrograms(const RenderPlan &plan) {
+  const std::vector<bool> animated = AnimatedSteps(plan);
+  const std::vector<std::size_t> consumers = LiveConsumers(plan);
+  std::size_t live = 0;
+  for (std::size_t s = 0; s < plan.steps.size(); ++s)
+    live += animated[s] && consumers[s] > 0 &&
+            AsProgramLike(plan, plan.steps[s].kind).has_value();
+  return live;
+}
+
+void MergingRemovesAnimatedPasses(const std::vector<LoadedRecipe> &recipes) {
+  const std::array size{TextureSize{512}};
+  const std::array chains{SlotChainRequest{GeometryId{0},
+                                           Surface::kMaterial,
+                                           Slot::kHeight,
+                                           {ChainLink{PlacementId{0}, 1},
+                                            ChainLink{PlacementId{3}, 2}}},
+                          SlotChainRequest{GeometryId{0},
+                                           Surface::kMaterial,
+                                           Slot::kRmaos,
+                                           {ChainLink{PlacementId{2}, 1},
+                                            ChainLink{PlacementId{3}, 3}}},
+                          SlotChainRequest{GeometryId{0},
+                                           Surface::kShell,
+                                           Slot::kEmissive,
+                                           {ChainLink{PlacementId{1}, 0},
+                                            ChainLink{PlacementId{3}, 0}}}};
+  const auto chained =
+      BuildRenderPlan({}, StackRequests(recipes, size), Bindings());
+  const auto merged =
+      BuildRenderPlan({}, StackRequests(recipes, size), Bindings(), chains);
+  Check(chained && merged, "the shared-slot recipes lower with and without "
+                           "merged chains");
+  if (!chained || !merged)
+    return;
+  test::Equal(merged->mergedChains.size(), chains.size(),
+              "every shared slot merges");
+  test::Equal(AnimatedPasses(*merged) + chains.size(), AnimatedPasses(*chained),
+              "each merged chain removes one animated pass per tick");
+  test::Equal(LiveAnimatedPrograms(*merged), LiveAnimatedPrograms(*chained),
+              "merging leaves no animated field outside its stacks");
+}
+
+void TextureReadsAreSampledDirectly(const std::vector<LoadedRecipe> &recipes) {
+  const std::array size{TextureSize{512}};
+  const auto plan =
+      BuildRenderPlan({}, StackRequests(recipes, size), Bindings());
+  Check(plan.has_value(), "the demo and imported recipes lower together");
+  if (!plan)
+    return;
+  const std::vector<std::string> drawn = DrawnTextureReads(*plan);
+  for (const std::string &line : drawn)
+    std::printf("drawn texture read: %s\n", line.c_str());
+  Check(drawn.empty(),
+        "every image and material read in the demo and imported recipes is "
+        "sampled directly unless a reduction measures it");
+  Check(DirectTextureReads(*plan) > 0, "the recipes read textures");
+}
+
+Recipe EmissiveLayers(std::size_t a_layers, const std::string &a_signal) {
+  Recipe recipe;
+  recipe.signals = {{"t", ExprSignal{a_signal}}};
+  recipe.masks = {{"wave", "sin(@t) * 0.5 + 0.5"}, {"flat", "0.25"}};
+  SurfaceOutput surface;
+  surface.surface = Surface::kMaterial;
+  surface.slot = Slot::kEmissive;
+  for (std::size_t i = 0; i < a_layers; ++i) {
+    Layer layer;
+    layer.source = Ref{i % 2 == 0 ? "wave" : "flat"};
+    surface.stack.push_back(layer);
+  }
+  recipe.outputs.push_back(surface);
+  return recipe;
+}
+
+std::vector<LoadedRecipe> Loaded(std::initializer_list<Recipe> a_recipes) {
+  std::vector<LoadedRecipe> loaded;
+  for (const Recipe &recipe : a_recipes)
+    loaded.push_back({recipe, std::make_shared<const RecipeGraph>(
+                                  RecipeGraph::Compile(recipe))});
+  return loaded;
+}
+
+const LayerField *FieldOf(const CompositeStackStep &stack,
+                          const LayerRead &read) {
+  const auto *ref = Get<LayerFieldRef>(read);
+  return ref && ref->field < stack.fields.size() ? &stack.fields[ref->field]
+                                                 : nullptr;
+}
+
+bool SameLayerRead(const CompositeStackStep &a, const LayerRead &readA,
+                   const CompositeStackStep &b, const LayerRead &readB) {
+  const LayerField *fieldA = FieldOf(a, readA);
+  const LayerField *fieldB = FieldOf(b, readB);
+  if (fieldA || fieldB)
+    return fieldA && fieldB && *fieldA == *fieldB;
+  return readA == readB;
+}
+
+Recipe StaticEmissive() {
+  Recipe recipe;
+  recipe.sources = {{"s", MaterialSource{MaterialChannel::kRoughness}}};
+  recipe.masks = {{"dim", "@s * 0.5"}};
+  SurfaceOutput surface;
+  surface.surface = Surface::kMaterial;
+  surface.slot = Slot::kEmissive;
+  Layer layer;
+  layer.source = Ref{"dim"};
+  surface.stack.push_back(layer);
+  recipe.outputs.push_back(surface);
+  return recipe;
+}
+
+void StaticLinksKeepTheirFieldsInAnimatedChains() {
+  const std::vector<LoadedRecipe> recipes =
+      Loaded({StaticEmissive(), EmissiveLayers(1, "time")});
+  const std::array size{TextureSize{512}};
+  const std::array chains{SlotChainRequest{
+      GeometryId{0},
+      Surface::kMaterial,
+      Slot::kEmissive,
+      {ChainLink{PlacementId{0}, 0}, ChainLink{PlacementId{1}, 0}}}};
+  const auto plan =
+      BuildRenderPlan({}, StackRequests(recipes, size), Bindings(), chains);
+  Check(plan && plan->mergedChains.size() == 1,
+        "a static and an animated link merge");
+  if (!plan || plan->mergedChains.size() != 1)
+    return;
+  const auto &merged = *Get<CompositeStackStep>(
+      plan->steps[plan->mergedChains.front().result.step].kind);
+  Check(!merged.layers.empty() &&
+            Is<RenderValueRef>(merged.layers.front().source),
+        "a static link's field stays a cached target in an animated chain");
+}
+
+Recipe ImageFields(const std::string &a_prefix,
+                   std::initializer_list<int> a_imagesPerLayer) {
+  Recipe recipe;
+  recipe.signals = {{"t", ExprSignal{"time"}}};
+  SurfaceOutput surface;
+  surface.surface = Surface::kMaterial;
+  surface.slot = Slot::kEmissive;
+  int image = 0;
+  int field = 0;
+  for (const int images : a_imagesPerLayer) {
+    std::string product = "sin(@t + " + std::to_string(field) + ")";
+    for (int i = 0; i < images; ++i, ++image) {
+      ImageSource source;
+      source.path = a_prefix + std::to_string(image) + ".dds";
+      const std::string name = "i" + std::to_string(image);
+      recipe.sources.push_back({name, source});
+      product += " * @" + name;
+    }
+    const std::string mask = "m" + std::to_string(field++);
+    recipe.masks.push_back({mask, product});
+    Layer layer;
+    layer.source = Ref{mask};
+    surface.stack.push_back(layer);
+  }
+  recipe.outputs.push_back(surface);
+  return recipe;
+}
+
+std::size_t MergedPassesOver(const std::vector<LoadedRecipe> &recipes) {
+  const std::array size{TextureSize{512}};
+  const std::array chains{SlotChainRequest{
+      GeometryId{0},
+      Surface::kMaterial,
+      Slot::kEmissive,
+      {ChainLink{PlacementId{0}, 0}, ChainLink{PlacementId{1}, 0}}}};
+  const auto chained =
+      BuildRenderPlan({}, StackRequests(recipes, size), Bindings());
+  const auto requested =
+      BuildRenderPlan({}, StackRequests(recipes, size), Bindings(), chains);
+  Check(chained && requested, "a chain of image fields lowers");
+  if (!chained || !requested)
+    return 0;
+  return AnimatedPasses(*requested) <= AnimatedPasses(*chained)
+             ? requested->mergedChains.size()
+             : std::size_t{99};
+}
+
+void MergesNeverAddPasses() {
+  test::Equal(
+      MergedPassesOver(Loaded({ImageFields("a", {5}), ImageFields("b", {5})})),
+      std::size_t{1},
+      "a merge that leaves one field outside costs no extra pass");
+  test::Equal(MergedPassesOver(
+                  Loaded({ImageFields("a", {5}), ImageFields("b", {4, 4})})),
+              std::size_t{0},
+              "a merge that would leave two fields outside is dropped");
+}
+
+void SlotChainsMergeIntoOnePass() {
+  const std::vector<LoadedRecipe> recipes =
+      Loaded({EmissiveLayers(2, "time"), EmissiveLayers(3, "time * 2")});
+  const std::array size{TextureSize{512}};
+  const std::array chains{SlotChainRequest{
+      GeometryId{0},
+      Surface::kMaterial,
+      Slot::kEmissive,
+      {ChainLink{PlacementId{0}, 0}, ChainLink{PlacementId{1}, 0}}}};
+  const auto plan =
+      BuildRenderPlan({}, StackRequests(recipes, size), Bindings(), chains);
+  Check(plan.has_value(), "a slot chain plan lowers");
+  if (!plan)
+    return;
+  Check(ValidateRenderPlan(*plan).has_value(), "a merged plan is valid");
+  test::Equal(plan->mergedChains.size(), std::size_t{1},
+              "two stacks on one slot merge into one pass");
+  if (plan->mergedChains.size() != 1)
+    return;
+  const MergedChainBinding &binding = plan->mergedChains.front();
+  const auto &merged =
+      *Get<CompositeStackStep>(plan->steps[binding.result.step].kind);
+  test::Equal(binding.layerStarts, std::vector<std::size_t>{0, 2},
+              "each link's layers start where the previous link's end");
+  test::Equal(binding.layerCount, std::size_t{5},
+              "the merged pass draws every link's layers");
+  bool same = merged.layers.size() == 5;
+  for (std::size_t link = 0; link < 2 && same; ++link) {
+    const auto &original = *Get<CompositeStackStep>(
+        plan->steps[plan->stackOutputs[link].result.step].kind);
+    if (link == 0)
+      Check(merged.base == original.base,
+            "the merged pass starts from the first link's base");
+    for (std::size_t l = 0; l < original.layers.size() && same; ++l) {
+      const PlannedLayer &a = merged.layers[binding.layerStarts[link] + l];
+      const PlannedLayer &b = original.layers[l];
+      same = SameLayerRead(merged, a.source, original, b.source) &&
+             a.opacity == b.opacity && a.blend == b.blend &&
+             a.channels == b.channels && a.color == b.color;
+    }
+  }
+  Check(same, "the merged layers are the links' layers in chain order");
+
+  const std::vector<LoadedRecipe> crowded =
+      Loaded({EmissiveLayers(5, "time"), EmissiveLayers(4, "time")});
+  const auto tooMany =
+      BuildRenderPlan({}, StackRequests(crowded, size), Bindings(), chains);
+  Check(tooMany && tooMany->mergedChains.empty(),
+        "a chain past the one-pass layer limit stays chained");
+  const std::array missing{SlotChainRequest{
+      GeometryId{0},
+      Surface::kMaterial,
+      Slot::kEmissive,
+      {ChainLink{PlacementId{0}, 0}, ChainLink{PlacementId{7}, 0}}}};
+  const auto unmatched =
+      BuildRenderPlan({}, StackRequests(recipes, size), Bindings(), missing);
+  Check(unmatched && unmatched->mergedChains.empty() &&
+            unmatched->inputs.size() == plan->inputs.size() - 1,
+        "a chain with a missing link stays chained and adds no input");
+}
+
 RenderBindingResolver PerGeometryMesh() {
   return [](const TextureValue &value, GeometryId geometry) {
     return ValueBindings{
@@ -241,6 +571,25 @@ int main() {
     recipes.push_back({*loaded.recipe, std::move(graph)});
   }
   ContentKeysMarkOnlyStaticTextureSteps(recipes);
+  {
+    std::vector<LoadedRecipe> withImports = recipes;
+    for (const std::string name : {"SyntheticTiled", "SyntheticBare"}) {
+      auto loaded = ParseRecipe(
+          test::ReadFile(test::Fixtures() / "recipes" / (name + ".json")),
+          name);
+      Check(loaded.recipe && !loaded.HasErrors(), "imported recipe loads");
+      if (loaded.recipe)
+        withImports.push_back(
+            {*loaded.recipe, std::make_shared<const RecipeGraph>(
+                                 RecipeGraph::Compile(*loaded.recipe))});
+    }
+    TextureReadsAreSampledDirectly(withImports);
+    MergingRemovesAnimatedPasses(withImports);
+  }
+  ImagesReadOnlyBySamplingAreDirect();
+  SlotChainsMergeIntoOnePass();
+  MergesNeverAddPasses();
+  StaticLinksKeepTheirFieldsInAnimatedChains();
   CacheKeysCarryOperandValues();
   const std::array oneSize{TextureSize{512}};
   const auto single =

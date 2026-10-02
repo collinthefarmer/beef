@@ -16,6 +16,7 @@
 #include <array>
 #include <cstddef>
 #include <iterator>
+#include <optional>
 #include <string>
 #include <unordered_map>
 #include <vector>
@@ -133,6 +134,7 @@ struct SlotRenderView {
   const Studio::View &view;
   bool anyLayerHidden = false;
   bool publish = false;
+  bool mergeChains = false;
 };
 
 struct BoundMeshes {
@@ -191,9 +193,133 @@ StackRender RenderStackOutput(PlacedOutput &a_output,
   return outcome;
 }
 
+const MergedSlotStack *MergedSlotOf(const LiveGeometry &a_bound,
+                                    const SlotStackPlan &a_slot) {
+  for (const MergedSlotStack &merged : a_bound.mergedSlots) {
+    if (merged.surface == a_slot.surface && merged.slot == a_slot.slot &&
+        merged.stack && merged.layerStarts.size() == merged.links.size()) {
+      return &merged;
+    }
+  }
+  return nullptr;
+}
+
+std::optional<std::size_t> LinkIndexOf(const MergedSlotStack &a_merged,
+                                       ChainLink a_link) {
+  const auto found = std::ranges::find(a_merged.links, a_link);
+  return found == a_merged.links.end()
+             ? std::nullopt
+             : std::optional{static_cast<std::size_t>(
+                   std::distance(a_merged.links.begin(), found))};
+}
+
+std::size_t LinkLayerEnd(const MergedSlotStack &a_merged, std::size_t a_link) {
+  return a_link + 1 < a_merged.layerStarts.size()
+             ? a_merged.layerStarts[a_link + 1]
+             : a_merged.layerCount;
+}
+
+void HideLink(LayerFilter &a_filter, const MergedSlotStack &a_merged,
+              std::size_t a_link) {
+  for (std::size_t layer = a_merged.layerStarts[a_link];
+       layer < LinkLayerEnd(a_merged, a_link); ++layer) {
+    a_filter.hidden.push_back(layer);
+  }
+}
+
+struct ShownLink {
+  std::size_t index = 0;
+  const SurfaceOutput *material = nullptr;
+  PlacedOutput *output = nullptr;
+  LiveInstance *instance = nullptr;
+  std::size_t outputIndex = 0;
+};
+
+struct SlotContext {
+  LiveActor &state;
+  const LiveGeometry &bound;
+  const SlotRenderView &view;
+};
+
+std::optional<ShownLink> ShownLinkOf(const SlotContext &a_context,
+                                     const MergedSlotStack &a_merged,
+                                     const StackLink &a_link) {
+  const SlotContribution c = a_link.contribution;
+  const std::optional<ResolvedPlacement> resolved =
+      ResolvePlacement(a_context.state, a_context.bound, IndexOf(c.placed));
+  if (!resolved) {
+    return std::nullopt;
+  }
+  LiveInstance &instance = a_context.state.instances[resolved->instance];
+  if (!instance.recipe || !instance.signals) {
+    return std::nullopt;
+  }
+  const SurfaceOutput *material = SurfaceOutputOf(*instance.recipe, c.output);
+  PlacedOutput *output =
+      OutputAt(a_context.state.placements[resolved->placement], c.output);
+  const std::optional<std::size_t> index =
+      LinkIndexOf(a_merged, {PlacementId{resolved->placement}, c.output});
+  if (!material || !output || !index ||
+      !a_context.view.view.OutputShown(instance.recipe->id, c.output)) {
+    return std::nullopt;
+  }
+  return ShownLink{*index, material, output, &instance, c.output};
+}
+
+SlotChain RenderMergedChain(const SlotContext &a_context,
+                            const SlotStackPlan &a_slot,
+                            const MergedSlotStack &a_merged) {
+  SlotChain chain;
+  LayerFilter filter;
+  std::vector<bool> shown(a_merged.links.size(), false);
+  std::vector<PlacedOutput *> drawn;
+  for (const StackLink &link : a_slot.chain) {
+    const std::optional<ShownLink> found =
+        ShownLinkOf(a_context, a_merged, link);
+    if (!found) {
+      continue;
+    }
+    shown[found->index] = true;
+    const LayerFilter own =
+        HiddenLayers(a_context.view, found->instance->recipe->id,
+                     found->outputIndex, found->material->stack.size());
+    for (const std::size_t layer : own.hidden) {
+      filter.hidden.push_back(a_merged.layerStarts[found->index] + layer);
+    }
+    chain.outputs.push_back(found->material);
+    chain.resolved.push_back(
+        Studio::ResolveOutput(*found->material, *found->instance->signals));
+    drawn.push_back(found->output);
+  }
+  for (std::size_t link = 0; link < shown.size(); ++link) {
+    if (!shown[link]) {
+      HideLink(filter, a_merged, link);
+    }
+  }
+  if (drawn.empty()) {
+    return chain;
+  }
+  const StackRender outcome =
+      Compositor::GetSingleton()->Render(*a_merged.stack, filter, StackBase{});
+  for (PlacedOutput *output : drawn) {
+    output->rendered = outcome == StackRender::kRendered;
+    output->renderFailed = outcome == StackRender::kFailed;
+  }
+  if (outcome != StackRender::kRendered) {
+    return SlotChain{};
+  }
+  chain.shown = true;
+  chain.texture = a_merged.stack->Texture();
+  return chain;
+}
+
 SlotChain RenderSlotChain(LiveActor &a_state, LiveGeometry &a_bound,
                           const SlotRenderView &a_view,
                           const SlotStackPlan &a_slot) {
+  if (const MergedSlotStack *merged =
+          a_view.mergeChains ? MergedSlotOf(a_bound, a_slot) : nullptr) {
+    return RenderMergedChain({a_state, a_bound, a_view}, a_slot, *merged);
+  }
   SlotChain chain;
   StackBase base;
   for (const StackLink &link : a_slot.chain) {
@@ -405,9 +531,22 @@ void EmitGpuTimings() {
          {"max_us", std::to_string(total.maxNanoseconds / 1000)}});
 }
 
+void EmitStepKinds(const Metrics::StepKindCounts &a_counts) {
+  std::vector<Trace::Field> fields{{"action", "step_kinds"}};
+  for (std::size_t kind = 0; kind < kRenderStepKindCount; ++kind) {
+    if (a_counts[kind] > 0) {
+      fields.push_back({StepKindNameAt(kind), std::to_string(a_counts[kind])});
+    }
+  }
+  if (fields.size() > 1) {
+    Trace::EmitSafely(Trace::Event::kMetrics, fields);
+  }
+}
+
 void EmitMetricsHeartbeat() {
   EmitGpuTimings();
   const Metrics::Snapshot measured = Metrics::Drain();
+  EmitStepKinds(measured.stepExecutionsByKind);
   Trace::EmitSafely(
       Trace::Event::kMetrics,
       {{"action", "heartbeat"},
@@ -604,6 +743,7 @@ void Manager::Tick(std::uint32_t a_nowMS, const Settings &a_settings) {
 std::vector<bool> Manager::RenderPieces(LiveActor &a_state,
                                         RE::FormID a_actorID) {
   const Studio::View &view = editor_.CurrentView();
+  const bool inspected = InspectedActor(NowMS()) == a_actorID;
   const bool soloingPiece = view.soloPiece.has_value();
   std::vector<bool> hidden;
   std::vector<bool> shown;
@@ -616,7 +756,7 @@ std::vector<bool> Manager::RenderPieces(LiveActor &a_state,
         soloingPiece && !view.PieceShown(a_actorID, piece.armor);
     std::vector<bool> &referenced = pieceHidden ? hidden : shown;
     for (LiveGeometry &bound : piece.geometries) {
-      RenderGeometry(a_state, bound, pieceHidden);
+      RenderGeometry(a_state, bound, pieceHidden, inspected);
       if (soloingPiece) {
         MarkReferencedInstances(a_state, bound, referenced);
       }
@@ -661,7 +801,8 @@ void Manager::DropLostGeometries(LiveActor &a_state) {
 }
 
 void Manager::RenderGeometry(LiveActor &a_state, LiveGeometry &a_bound,
-                             bool a_hidden) {
+                             bool a_hidden, bool a_inspected) {
+  const TextureLab::PassBatch batch{*TextureLab::GetSingleton()};
   const Studio::View &view = editor_.CurrentView();
   if (a_bound.inputs.render &&
       a_bound.inputs.render->BeginFrame(renderFrame_, tickNowMS_)) {
@@ -673,7 +814,7 @@ void Manager::RenderGeometry(LiveActor &a_state, LiveGeometry &a_bound,
   }
   const SlotRenderView slotView{
       view, view.isolation.layer.has_value() || !view.muted.empty(),
-      GetSettings().publishEffects};
+      GetSettings().publishEffects, !a_inspected};
   WriteSlots(a_state, a_bound, slotView, a_hidden);
   if (a_hidden || !slotView.publish) {
     if (a_bound.shell) {

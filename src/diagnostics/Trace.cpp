@@ -107,7 +107,7 @@ void Recorder::Enable(bool a_enabled) noexcept {
 }
 
 void Recorder::Record(Event a_event, Context a_context,
-                      std::initializer_list<Field> a_fields) noexcept {
+                      std::span<const Field> a_fields) noexcept {
   try {
     std::scoped_lock lock{lock_};
     if (!status_.enabled) {
@@ -228,8 +228,18 @@ Context Command(std::string_view a_reason) {
   return next;
 }
 
-void Emit(Event a_event, std::initializer_list<Field> a_fields) noexcept {
+void Recorder::Record(Event a_event, Context a_context,
+                      std::initializer_list<Field> a_fields) noexcept {
+  Record(a_event, a_context,
+         std::span<const Field>{a_fields.begin(), a_fields.size()});
+}
+
+void Emit(Event a_event, std::span<const Field> a_fields) noexcept {
   Get().Record(a_event, Current(), a_fields);
+}
+
+void Emit(Event a_event, std::initializer_list<Field> a_fields) noexcept {
+  Emit(a_event, std::span<const Field>{a_fields.begin(), a_fields.size()});
 }
 
 void Page(std::string_view a_page, std::string a_selection) {

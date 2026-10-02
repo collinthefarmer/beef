@@ -254,7 +254,8 @@ plugin it was made with is removed; the game refuses to load it otherwise.
 
    | Case | What changes from `soak` | What it can find |
    | --- | --- | --- |
-   | `soak-stack` | No solo: Arcane Circuit, Resonant Ward and Winterglass stack on each actor | The cost of shells, lights and the frost growth at crowd scale |
+   | `soak-stack` | No solo: every recipe the profile loads stacks on each actor, which on the test profile adds an imported effect-shader recipe to the three demo recipes | The cost of shells, lights, scrolling images and the frost growth at crowd scale. Its figures depend on the profile's recipes. |
+   | `soak-ward`, `soak-frost` | Solo Resonant Ward or Winterglass | The cost of one recipe without the others |
    | `soak-large` | 32 actors instead of 12 | How first-render admission and step sharing scale |
    | `soak-waves` | Three waves of 12: spawn (`wave-N`), hold 15 s (`held-N`), despawn, idle 10 s (`gap-N`) | Targets and bytes that grow from one `gap-N` to the next, which a single recovery cannot show |
    | `soak-churn` | Four cycles (`churn-N`) that unequip the fixture on the whole crowd, wait until no crowd actor renders it, equip it again and wait until all render it | Re-render storms on a warm cache, and state that survives a retire |

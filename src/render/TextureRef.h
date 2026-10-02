@@ -31,6 +31,7 @@ struct TextureView {
   TextureLab::LayerInput sampling;
   float normalize = 1;
   std::shared_ptr<TextureLab::RenderTarget> target;
+  std::uint64_t drawStamp = 0;
 };
 
 [[nodiscard]] bool RegisterTextureTarget(

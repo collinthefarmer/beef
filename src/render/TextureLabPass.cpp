@@ -51,6 +51,7 @@ static_assert(kStackBaseSlot == TextureLab::kPassSrvs);
 constexpr std::size_t kStackSourceSlot = kStackBaseSlot + 1;
 constexpr std::size_t kStackMaskSlot = kStackSourceSlot + kMaxStackLayers;
 constexpr std::size_t kStackSrvs = kStackMaskSlot + kMaxStackLayers;
+static_assert(kStackSrvs >= TextureLab::kPassSrvs);
 
 void BindSlot(std::span<REX::W32::ID3D11ShaderResourceView *> srvs,
               std::size_t slot, REX::W32::ID3D11ShaderResourceView *view) {
@@ -329,27 +330,28 @@ template <class Shader> struct SavedStage {
 };
 }
 
-struct TextureLab::RenderPass {
-  RenderPass(RE::BSGraphics::Renderer &a_renderer,
-             ID3D11DeviceContext &a_context)
-      : rendererLock_(a_renderer), context(&a_context) {
-    Capture(context);
-    context->GSSetShader(nullptr, nullptr, 0);
-    context->HSSetShader(nullptr, nullptr, 0);
-    context->DSSetShader(nullptr, nullptr, 0);
-    context->SetPredication(nullptr, false);
-  }
-  ~RenderPass() { Restore(context); }
-  RenderPass(const RenderPass &) = delete;
-  RenderPass &operator=(const RenderPass &) = delete;
-  RenderPass(RenderPass &&) = delete;
-  RenderPass &operator=(RenderPass &&) = delete;
+namespace {
+void PrepareContext(ID3D11DeviceContext &a_context) {
+  a_context.GSSetShader(nullptr, nullptr, 0);
+  a_context.HSSetShader(nullptr, nullptr, 0);
+  a_context.DSSetShader(nullptr, nullptr, 0);
+  a_context.SetPredication(nullptr, false);
+}
+}
 
-  [[nodiscard]] ID3D11DeviceContext &Context() const { return *context; }
+struct TextureLab::SavedPipeline {
+  explicit SavedPipeline(ID3D11DeviceContext &a_context) {
+    Capture(&a_context);
+  }
+  ~SavedPipeline() = default;
+  SavedPipeline(const SavedPipeline &) = delete;
+  SavedPipeline &operator=(const SavedPipeline &) = delete;
+  SavedPipeline(SavedPipeline &&) = delete;
+  SavedPipeline &operator=(SavedPipeline &&) = delete;
+
+  void RestoreTo(ID3D11DeviceContext &a_context) { Restore(&a_context); }
 
 private:
-  RendererLock rendererLock_;
-  ID3D11DeviceContext *context;
   REX::W32::ID3D11RenderTargetView
       *rtvs[D3D11_SIMULTANEOUS_RENDER_TARGET_COUNT]{};
   std::uint32_t renderTargetCount = std::size(rtvs);
@@ -491,6 +493,75 @@ private:
   }
 };
 
+struct TextureLab::RenderPass {
+  RenderPass(RE::BSGraphics::Renderer &a_renderer,
+             ID3D11DeviceContext &a_context, bool a_batched)
+      : rendererLock_(a_renderer), context(&a_context) {
+    if (!a_batched) {
+      saved_ = std::make_unique<SavedPipeline>(a_context);
+      PrepareContext(a_context);
+    }
+  }
+  ~RenderPass() {
+    if (saved_) {
+      saved_->RestoreTo(*context);
+      return;
+    }
+    REX::W32::ID3D11RenderTargetView *noTarget = nullptr;
+    context->OMSetRenderTargets(1, &noTarget, nullptr);
+    REX::W32::ID3D11ShaderResourceView *noViews[kStackSrvs]{};
+    context->PSSetShaderResources(0, kStackSrvs, noViews);
+  }
+  RenderPass(const RenderPass &) = delete;
+  RenderPass &operator=(const RenderPass &) = delete;
+  RenderPass(RenderPass &&) = delete;
+  RenderPass &operator=(RenderPass &&) = delete;
+
+  [[nodiscard]] ID3D11DeviceContext &Context() const { return *context; }
+
+private:
+  RendererLock rendererLock_;
+  ID3D11DeviceContext *context;
+  std::unique_ptr<SavedPipeline> saved_;
+};
+
+struct TextureLab::PassBatch::Scope {
+  Scope(RE::BSGraphics::Renderer &a_renderer, ID3D11DeviceContext &a_context)
+      : rendererLock_(a_renderer), context_(&a_context), saved_(a_context) {
+    PrepareContext(a_context);
+  }
+  ~Scope() { saved_.RestoreTo(*context_); }
+  Scope(const Scope &) = delete;
+  Scope &operator=(const Scope &) = delete;
+  Scope(Scope &&) = delete;
+  Scope &operator=(Scope &&) = delete;
+
+private:
+  RendererLock rendererLock_;
+  ID3D11DeviceContext *context_;
+  SavedPipeline saved_;
+};
+
+TextureLab::PassBatch::PassBatch(TextureLab &a_lab) : lab_(&a_lab) {
+  if (lab_->batchDepth_++ > 0)
+    return;
+  auto *renderer = RE::BSGraphics::Renderer::GetSingleton();
+  if (lab_->available_ && renderer && lab_->borrowedContext_) {
+    scope_ = std::make_unique<Scope>(*renderer, *lab_->borrowedContext_);
+    lab_->batchCaptured_ = true;
+  }
+}
+
+TextureLab::PassBatch::~PassBatch() {
+  if (scope_) {
+    lab_->batchCaptured_ = false;
+    scope_.reset();
+  }
+  --lab_->batchDepth_;
+}
+
+bool TextureLab::Batched() const noexcept { return batchCaptured_; }
+
 void TextureLab::BindTarget(const RenderPass &a_pass, RenderTarget &a_target) {
   REX::W32::ID3D11RenderTargetView *rtv = a_target.rtv.Get();
   a_pass.Context().OMSetRenderTargets(1, &rtv, nullptr);
@@ -547,7 +618,7 @@ void TextureLab::GenerateMipsFor(RenderTarget &a_target) {
   auto *renderer = RE::BSGraphics::Renderer::GetSingleton();
   if (!available_ || !renderer || !borrowedContext_ || !a_target.srv.Get())
     return;
-  const RenderPass pass{*renderer, *borrowedContext_};
+  const RenderPass pass{*renderer, *borrowedContext_, Batched()};
   GenerateMips(pass, a_target);
 }
 
@@ -648,7 +719,7 @@ bool TextureLab::Render(RenderTarget &a_target, RE::NiSourceTexture *a_source,
   if (!available_ || !renderer || !borrowedContext_ || !a_target.rtv.Get()) {
     return false;
   }
-  const RenderPass pass{*renderer, *borrowedContext_};
+  const RenderPass pass{*renderer, *borrowedContext_, Batched()};
   REX::W32::ID3D11ShaderResourceView *const curve =
       a_params.layer.curve ? a_params.layer.curve->srv.Get() : nullptr;
   const std::optional<LayerViews> views =
@@ -725,7 +796,7 @@ bool TextureLab::DrawStackPass(RenderTarget &a_target,
       !CanRenderStack(shape, a_layers, a_fields))
     return false;
   const PixelPipeline &pipeline = *gpu_->stack;
-  const RenderPass pass{*renderer, *borrowedContext_};
+  const RenderPass pass{*renderer, *borrowedContext_, Batched()};
   std::array<REX::W32::ID3D11ShaderResourceView *, kStackSrvs> srvs{};
   const std::unique_ptr<ProgramConstants> program =
       StackProgramConstants(srvs, a_fields);
@@ -855,7 +926,7 @@ bool TextureLab::DrawProgramPass(RenderTarget &a_target,
       !gpu_ || !gpu_->program.has_value() || !ProgramFits(a_code, a_bindings))
     return false;
   const PixelPipeline &pipeline = *gpu_->program;
-  const RenderPass pass{*renderer, *borrowedContext_};
+  const RenderPass pass{*renderer, *borrowedContext_, Batched()};
   const std::unique_ptr<ProgramConstants> constants = EmptyProgramConstants();
   REX::W32::ID3D11ShaderResourceView *srvs[kPassSrvs]{};
   FillProgramConstants(*constants, srvs, a_code, a_bindings);
@@ -924,7 +995,7 @@ bool TextureLab::BakeMesh(RenderTarget &a_target, const BakeBuffers &a_bake) {
     logger::error("TextureLab: bake buffers exceed the D3D11 byte range");
     return false;
   }
-  const RenderPass pass{*renderer, *borrowedContext_};
+  const RenderPass pass{*renderer, *borrowedContext_, Batched()};
   const std::optional<UploadedBakeBuffers> buffers =
       UploadBakeBuffers(*borrowedDevice_, a_bake);
   if (!buffers) {
@@ -991,7 +1062,7 @@ bool TextureLab::RenderRipple(RenderTarget &a_target,
     return false;
   }
   const PixelPipeline &pipeline = *gpu_->ripple;
-  const RenderPass pass{*renderer, *borrowedContext_};
+  const RenderPass pass{*renderer, *borrowedContext_, Batched()};
   const auto *positions = DataOf(a_pass.positions);
   if (!positions || !positions->resourceView) {
     return false;
@@ -1105,7 +1176,7 @@ bool TextureLab::RenderClusters(RenderTarget &a_target,
     return false;
   }
   const PixelPipeline &pipeline = *gpu_->clusters;
-  const RenderPass pass{*renderer, *borrowedContext_};
+  const RenderPass pass{*renderer, *borrowedContext_, Batched()};
   const auto *rmaosData = DataOf(a_rmaos);
   const auto *diffuseData = DataOf(a_diffuse);
   if (!rmaosData || !rmaosData->resourceView || !diffuseData ||
@@ -1201,7 +1272,7 @@ bool TextureLab::DrawReduction(RenderTarget &a_field, ReductionKind a_kind,
     levels.push_back(level);
   }
   const PixelPipeline &pipeline = *gpu_->reduce;
-  const RenderPass pass{*renderer, *borrowedContext_};
+  const RenderPass pass{*renderer, *borrowedContext_, Batched()};
   auto &context = pass.Context();
   context.IASetInputLayout(nullptr);
   context.IASetPrimitiveTopology(D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST);

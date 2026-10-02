@@ -9,6 +9,7 @@
 #include <initializer_list>
 #include <mutex>
 #include <optional>
+#include <span>
 #include <string>
 #include <string_view>
 #include <vector>
@@ -63,6 +64,8 @@ public:
   bool Open(const std::filesystem::path &a_path, std::string a_run);
   void Enable(bool a_enabled) noexcept;
   void Record(Event a_event, Context a_context,
+              std::span<const Field> a_fields) noexcept;
+  void Record(Event a_event, Context a_context,
               std::initializer_list<Field> a_fields) noexcept;
   [[nodiscard]] Status Inspect() const;
   [[nodiscard]] std::filesystem::path FirstSegment() const;
@@ -102,6 +105,7 @@ private:
 [[nodiscard]] Context Command(std::string_view a_reason);
 [[nodiscard]] std::uint64_t NextID() noexcept;
 [[nodiscard]] std::uint64_t BeginSession() noexcept;
+void Emit(Event a_event, std::span<const Field> a_fields) noexcept;
 void Emit(Event a_event, std::initializer_list<Field> a_fields) noexcept;
 template <class Capture> void Safely(Capture &&a_capture) noexcept {
   try {
@@ -114,6 +118,10 @@ template <class Capture> void Safely(Capture &&a_capture) noexcept {
 }
 inline void EmitSafely(Event a_event,
                        std::initializer_list<Field> a_fields) noexcept {
+  Safely([&] { Emit(a_event, a_fields); });
+}
+inline void EmitSafely(Event a_event,
+                       std::span<const Field> a_fields) noexcept {
   Safely([&] { Emit(a_event, a_fields); });
 }
 void Page(std::string_view a_page, std::string a_selection);

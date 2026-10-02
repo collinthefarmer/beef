@@ -95,8 +95,8 @@ deadlines are constants in `Steps.cpp`.
 The catalog holds `lifecycle`, `equip-cycle`, `camera`, `isolation`,
 `unload`, `load-idle`, `load-apply`, `load-edit`, `load-gesture`,
 `load-paint`, `studio-save`, `studio-reload`, `soak`, `soak-hour`,
-`soak-stack`, `soak-large`, `soak-waves`, `soak-churn`, `soak-vanilla`,
-`soak-idle` and `soak-fight`.
+`soak-stack`, `soak-ward`, `soak-frost`, `soak-large`, `soak-waves`,
+`soak-churn`, `soak-vanilla`, `soak-idle` and `soak-fight`.
 
 ### The observation (`Observation.h`)
 

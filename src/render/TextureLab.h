@@ -339,8 +339,27 @@ public:
 
   void Clear();
 
+  class PassBatch {
+  public:
+    explicit PassBatch(TextureLab &a_lab);
+    ~PassBatch();
+    PassBatch(const PassBatch &) = delete;
+    PassBatch &operator=(const PassBatch &) = delete;
+    PassBatch(PassBatch &&) = delete;
+    PassBatch &operator=(PassBatch &&) = delete;
+
+  private:
+    struct Scope;
+    TextureLab *lab_ = nullptr;
+    std::unique_ptr<Scope> scope_;
+  };
+
 private:
   struct RenderPass;
+  struct SavedPipeline;
+  [[nodiscard]] bool Batched() const noexcept;
+  std::size_t batchDepth_ = 0;
+  bool batchCaptured_ = false;
 
   struct PixelPipeline {
     REX::W32::ComPtr<REX::W32::ID3D11PixelShader> shader;
