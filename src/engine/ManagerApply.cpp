@@ -5,6 +5,10 @@
 
 #include "Identity.h"
 #include "SettingsFile.h"
+#include "actors/Lifecycle.h"
+#include "actors/Planning.h"
+#include "actors/Reconcile.h"
+#include "engine/ActorObservation.h"
 #include "engine/Clock.h"
 #include "engine/EngineForms.h"
 #include "engine/GameObjectService.h"
@@ -56,80 +60,6 @@ private:
   Metrics::Stopwatch watch_;
   RE::FormID actor_;
 };
-
-RE::MagicItem *WornEnchantment(RE::Actor *a_actor, RE::TESObjectARMO *a_armor) {
-  auto inventory = a_actor->GetInventory(
-      [&](RE::TESBoundObject &a_object) { return &a_object == a_armor; });
-  for (auto &[object, pair] : inventory) {
-    auto &[count, entry] = pair;
-    if (count <= 0 || !entry || !entry->extraLists) {
-      continue;
-    }
-    for (auto *xList : *entry->extraLists) {
-      if (!xList || !(xList->HasType(RE::ExtraDataType::kWorn) ||
-                      xList->HasType(RE::ExtraDataType::kWornLeft))) {
-        continue;
-      }
-      if (const auto *xEnch = xList->GetByType<RE::ExtraEnchantment>();
-          xEnch && xEnch->enchantment) {
-        return xEnch->enchantment;
-      }
-    }
-  }
-  return a_armor->formEnchanting;
-}
-
-bool InventoryWorn(RE::Actor &a_actor, RE::TESObjectARMO *a_armor) {
-  auto inventory = a_actor.GetInventory(
-      [&](RE::TESBoundObject &a_object) { return &a_object == a_armor; });
-  for (auto &[object, pair] : inventory) {
-    auto &[count, entry] = pair;
-    if (count <= 0 || !entry || !entry->extraLists) {
-      continue;
-    }
-    for (auto *xList : *entry->extraLists) {
-      if (xList && (xList->HasType(RE::ExtraDataType::kWorn) ||
-                    xList->HasType(RE::ExtraDataType::kWornLeft))) {
-        return true;
-      }
-    }
-  }
-  return false;
-}
-
-RE::TESObjectARMO *PieceItemOf(const RE::BIPOBJECT &a_object) {
-  return a_object.item ? a_object.item->As<RE::TESObjectARMO>() : nullptr;
-}
-
-void AppendWorn(std::vector<WornEntry> &a_out, RE::Actor &a_actor,
-                bool a_firstPerson) {
-  const auto &biped = a_actor.GetBiped(a_firstPerson);
-  if (!biped) {
-    return;
-  }
-  for (const auto &object : biped->objects) {
-    RE::TESObjectARMO *armor = PieceItemOf(object);
-    if (!armor) {
-      continue;
-    }
-    const RE::MagicItem *enchantment = WornEnchantment(&a_actor, armor);
-    a_out.push_back(
-        {armor->GetFormID(), object.addon ? object.addon->GetFormID() : 0,
-         enchantment ? enchantment->GetFormID() : 0, object.partClone,
-         a_firstPerson, InventoryWorn(a_actor, armor)});
-  }
-}
-
-std::vector<WornEntry> WornOf(RE::Actor &a_actor, const Settings &a_settings) {
-  std::vector<WornEntry> worn;
-  if (a_settings.thirdPerson) {
-    AppendWorn(worn, a_actor, false);
-  }
-  if (a_settings.firstPerson && a_actor.IsPlayerRef()) {
-    AppendWorn(worn, a_actor, true);
-  }
-  return worn;
-}
 
 std::string TexturePath(const TextureRef &a_texture) {
   return a_texture && a_texture->name.c_str() ? a_texture->name.c_str() : "";
@@ -928,48 +858,28 @@ void Manager::Refresh(RE::Actor *a_actor) {
   Trace::EmitSafely(
       Trace::Event::kApplication,
       {{"action", "refresh_begin"}, {"actor", std::to_string(actorID)}});
-  const bool eligible = EligibleForRefresh(*a_actor, settings);
-  std::vector<WornEntry> worn =
-      eligible ? WornOf(*a_actor, settings) : std::vector<WornEntry>{};
-  if (const auto installed = applied_.find(actorID);
-      eligible && installed != applied_.end() &&
-      installed->second.worn == worn) {
-    Trace::EmitSafely(
-        Trace::Event::kApplication,
-        {{"action", "refresh_unchanged"}, {"actor", std::to_string(actorID)}});
+  Actors::Advanced next = AdvanceActor(*a_actor, settings);
+  if (next.commands.empty()) {
+    SettlePhase(actorID, std::move(next.phase));
     (void)applications_.TakeEquipped(actorID);
     return;
   }
-  const bool awaitsModel = settings.thirdPerson && ArmorAwaitsModel(*a_actor);
-  if (eligible && awaitsModel && applied_.contains(actorID) &&
-      DefersForArmorModel(actorID)) {
-    awaitingArmorModel_.try_emplace(actorID, ArmorModelWait{NowMS(), false});
-    Trace::EmitSafely(
-        Trace::Event::kApplication,
-        {{"action", "refresh_deferred"}, {"actor", std::to_string(actorID)}});
-    return;
-  }
+  const Actors::ActorPlan installedBefore = InstalledPlanOf(actorID);
   const Metrics::Stopwatch retireWatch;
   RetireEffects(actorID);
   const std::uint64_t retireUs = retireWatch.Micros();
-  if (!eligible) {
+  Actors::Present *present = std::get_if<Actors::Present>(&next.phase);
+  if (present) {
+    present->installed = Actors::AfterCommands(installedBefore, next.commands);
+  }
+  const bool stays = present != nullptr;
+  SettlePhase(actorID, std::move(next.phase));
+  if (!stays) {
     return;
   }
   const Metrics::Stopwatch collectWatch;
   LiveActor state = LiveActorFor(*a_actor, settings);
   const std::uint64_t collectUs = collectWatch.Micros();
-  state.worn = std::move(worn);
-  if (awaitsModel) {
-    if (awaitingArmorModel_.try_emplace(actorID, ArmorModelWait{NowMS(), false})
-            .second &&
-        settings.verboseLogging) {
-      logger::info("actor {:08X} ({}): armor model not attached yet; "
-                   "refreshing when it attaches",
-                   actorID, a_actor->GetName());
-    }
-  } else {
-    awaitingArmorModel_.erase(actorID);
-  }
   TextureLab::GetSingleton()->InvalidatePreviews();
   if (state.matches.placements.empty()) {
     if (settings.verboseLogging) {
@@ -1017,42 +927,67 @@ void Manager::Refresh(RE::Actor *a_actor) {
   }
 }
 
-bool Manager::DefersForArmorModel(RE::FormID a_actorID) const {
-  const auto wait = awaitingArmorModel_.find(a_actorID);
-  return wait == awaitingArmorModel_.end() || !wait->second.expired;
+std::string_view PhaseName(const Actors::Phase &a_phase) {
+  return std::visit(
+      Overloaded{
+          [](const Actors::Unloaded &) { return std::string_view{"unloaded"}; },
+          [](const Actors::Evicted &) { return std::string_view{"evicted"}; },
+          [](const Actors::Present &) { return std::string_view{"present"}; }},
+      a_phase);
 }
 
-bool Manager::EligibleForRefresh(RE::Actor &a_actor,
-                                 const Settings &a_settings) {
+Actors::Advanced Manager::AdvanceActor(RE::Actor &a_actor,
+                                       const Settings &a_settings) {
   const RE::FormID actorID = a_actor.GetFormID();
-  if (!a_settings.enableShaders || !emissivePathEnabled_ ||
-      a_actor.IsDeleted()) {
-    return false;
+  TrackedActor &tracked = tracked_[actorID];
+  const std::span<const Recipe> recipes = LoadedRecipes();
+  const Actors::ActorFacts facts =
+      ObserveActor({a_actor, a_settings,
+                    a_settings.enableShaders && emissivePathEnabled_, recipes},
+                   tracked.models);
+  const std::optional<Actors::RecipeCatalog> catalog =
+      Actors::RecipeCatalog::Of(recipes, LoadedFingerprints());
+  if (!catalog) {
+    logger::error("actor {:08X}: {} recipes but {} fingerprints; planning "
+                  "nothing",
+                  actorID, recipes.size(), LoadedFingerprints().size());
   }
-  const bool isPlayer = a_actor.IsPlayerRef();
-  if (a_settings.playerOnly && !isPlayer) {
-    return false;
+  const Actors::ActorPlan plan =
+      catalog ? Actors::PlanActor({facts, *catalog, editor_.CurrentView()})
+              : Actors::ActorPlan{};
+  Actors::Advanced next = Actors::Advance(
+      {tracked.phase, facts, plan, NowMS(), a_settings.evictDistance});
+  const Actors::Present *present = std::get_if<Actors::Present>(&next.phase);
+  KeepModels(tracked.models, facts,
+             present ? Actors::AfterCommands(present->installed, next.commands)
+                     : Actors::ActorPlan{});
+  Trace::EmitSafely(
+      Trace::Event::kApplication,
+      {{"action", "actor_advance"},
+       {"actor", std::to_string(actorID)},
+       {"phase", std::string{PhaseName(next.phase)}},
+       {"pieces", std::to_string(facts.pieces.size())},
+       {"pending", std::to_string(present ? present->pending.size() : 0)},
+       {"commands", std::to_string(next.commands.size())}});
+  return next;
+}
+
+void Manager::SettlePhase(RE::FormID a_actorID, Actors::Phase a_phase) {
+  if (std::holds_alternative<Actors::Unloaded>(a_phase)) {
+    tracked_.erase(a_actorID);
+    return;
   }
-  if (!a_actor.Is3DLoaded()) {
-    if (a_settings.verboseLogging) {
-      logger::info("actor {:08X} ({}): 3D not loaded, skipped", actorID,
-                   a_actor.GetName());
-    }
-    return false;
+  tracked_[a_actorID].phase = std::move(a_phase);
+}
+
+Actors::ActorPlan Manager::InstalledPlanOf(RE::FormID a_actorID) const {
+  const auto tracked = tracked_.find(a_actorID);
+  if (tracked == tracked_.end()) {
+    return {};
   }
-  if (!isPlayer && a_settings.evictDistance > 0.0f) {
-    if (const auto *player = RE::PlayerCharacter::GetSingleton()) {
-      const float distance =
-          player->GetPosition().GetDistance(a_actor.GetPosition());
-      if (EvictionFor(distance, a_settings.evictDistance, true) ==
-          EvictionAction::kEvict) {
-        evictedForDistance_.insert(actorID);
-        return false;
-      }
-    }
-  }
-  evictedForDistance_.erase(actorID);
-  return true;
+  const Actors::Present *present =
+      std::get_if<Actors::Present>(&tracked->second.phase);
+  return present ? present->installed : Actors::ActorPlan{};
 }
 
 LiveActor Manager::LiveActorFor(RE::Actor &a_actor,
@@ -1125,28 +1060,6 @@ bool Manager::CollectPieceGeometries(LivePiece &piece, RE::NiAVObject *clone,
     return false;
   }
   return true;
-}
-
-bool ArmorAwaitsModel(RE::Actor &a_actor) {
-  const auto &biped = a_actor.GetBiped(false);
-  if (!biped) {
-    return false;
-  }
-  std::unordered_set<RE::TESObjectARMO *> attached;
-  std::unordered_set<RE::TESObjectARMO *> listed;
-  for (const auto &object : biped->objects) {
-    RE::TESObjectARMO *armor = PieceItemOf(object);
-    if (armor) {
-      (object.partClone ? attached : listed).insert(armor);
-    }
-  }
-  const bool walkUnenchanted = AnyUnenchantedKey(LoadedRecipes());
-  return std::ranges::any_of(listed, [&](RE::TESObjectARMO *a_armor) {
-    return !attached.contains(a_armor) &&
-           (walkUnenchanted ||
-            WornKeysOf(a_armor, WornEnchantment(&a_actor, a_armor))
-                .Enchanted());
-  });
 }
 
 std::vector<LivePiece> Manager::CollectPieces(RE::Actor *a_actor,
@@ -1423,9 +1336,16 @@ void Manager::Retire(RE::FormID a_actorID) {
   animations_.Stop(a_actorID);
   ForgetAnimEvents(a_actorID);
   RetireEffects(a_actorID);
+  tracked_.erase(a_actorID);
 }
 
 void Manager::RetireEffects(RE::FormID a_actorID) {
+  if (const auto tracked = tracked_.find(a_actorID);
+      tracked != tracked_.end()) {
+    if (auto *present = std::get_if<Actors::Present>(&tracked->second.phase)) {
+      present->installed = {};
+    }
+  }
   const auto it = applied_.find(a_actorID);
   if (it == applied_.end()) {
     return;

@@ -85,25 +85,8 @@ struct LivePlacement {
   std::vector<PlacedOutput> outputs;
 };
 
-struct WornEntry {
-  RE::FormID item = 0;
-  RE::FormID addon = 0;
-  RE::FormID enchantment = 0;
-  RE::NiPointer<RE::NiAVObject> clone;
-  bool firstPerson = false;
-  bool inventoryWorn = false;
-  [[nodiscard]] bool operator==(const WornEntry &a_other) const noexcept {
-    return item == a_other.item && addon == a_other.addon &&
-           enchantment == a_other.enchantment &&
-           inventoryWorn == a_other.inventoryWorn &&
-           clone.get() == a_other.clone.get() &&
-           firstPerson == a_other.firstPerson;
-  }
-};
-
 struct LiveActor {
   RE::ActorHandle actor;
-  std::vector<WornEntry> worn;
   bool firstRenderAdmitted = false;
   ActorMatches matches;
   std::vector<LivePiece> pieces;

@@ -3,7 +3,9 @@
 
 #include "PCH.h"
 #include "Settings.h"
+#include "actors/Actor.h"
 #include "diagnostics/WarningHistory.h"
+#include "engine/ActorObservation.h"
 #include "engine/AnimationSubscriptions.h"
 #include "engine/ApplicationService.h"
 #include "engine/InstanceTime.h"
@@ -32,8 +34,6 @@
 
 namespace BetterEnchantmentEffects {
 struct ActorStacks;
-
-[[nodiscard]] bool ArmorAwaitsModel(RE::Actor &a_actor);
 
 struct RegressionWearer {
   RE::FormID actor = 0;
@@ -130,8 +130,12 @@ private:
   void RunRefresh(RE::FormID a_actorID,
                   const std::vector<ApplicationToken> &a_tokens);
   void Refresh(RE::Actor *a_actor);
-  [[nodiscard]] bool EligibleForRefresh(RE::Actor &a_actor,
-                                        const Settings &a_settings);
+  [[nodiscard]] Actors::Advanced AdvanceActor(RE::Actor &a_actor,
+                                              const Settings &a_settings);
+  void SettlePhase(RE::FormID a_actorID, Actors::Phase a_phase);
+  [[nodiscard]] Actors::ActorPlan InstalledPlanOf(RE::FormID a_actorID) const;
+  void QueueTrackedRefreshes(std::uint32_t a_nowMS, bool a_slowCheck,
+                             bool a_eviction);
   [[nodiscard]] LiveActor LiveActorFor(RE::Actor &a_actor,
                                        const Settings &a_settings);
   void RetireEffects(RE::FormID a_actorID);
@@ -207,15 +211,11 @@ private:
   CarriedTimes carriedTimes_;
   RenderPlanCache renderPlans_;
 
-  std::unordered_set<RE::FormID> evictedForDistance_;
-  void SweepEviction(const Settings &a_settings);
-  struct ArmorModelWait {
-    std::uint32_t sinceMS = 0;
-    bool expired = false;
+  struct TrackedActor {
+    Actors::Phase phase = Actors::Unloaded{};
+    ModelTable models;
   };
-  std::unordered_map<RE::FormID, ArmorModelWait> awaitingArmorModel_;
-  [[nodiscard]] bool DefersForArmorModel(RE::FormID a_actorID) const;
-  void SweepAwaitingArmorModels(const Settings &a_settings);
+  std::unordered_map<RE::FormID, TrackedActor> tracked_;
   std::uint32_t lastArmorModelCheckMS_ = 0;
   std::uint64_t regressionPaintSession_ = 0;
   std::uint32_t lastTickMS_ = 0;

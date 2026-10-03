@@ -708,48 +708,49 @@ Lab mechanics:
 
 ## Engine events, hooks and the manager
 
-A refresh of an installed actor first builds its **worn signature**: one
-`WornEntry` per biped object that `PieceItemOf` accepts, with the item, the
-addon, the enchantment, the 3D clone (held by `NiPointer`, so its address
-cannot be reused while compared), whether it is the first-person biped, and
-whether the inventory still
-marks the item worn. An unchanged signature skips the retire and rebuild and
-does not fire the recipes' `equip` signal. Recipe, view and settings changes,
-eviction and loads erase the installed actor first, so they always rebuild.
-The inventory flag is needed because the unequip refresh runs about 2 ms after
-`TESEquipEvent`, while the biped still lists the item and its clone; the
-inventory has already dropped `kWorn` by then. In run 1790977542389345
-(2026-10-02) equip events from weapon draws caused 163 full refreshes in 116 s
-of crowd fighting (median 44 ms); with the signature the fight window's plugin
-cost fell from 6.0 to 4.9 ms per frame.
+A refresh runs through the actor core (`src/actors/`, plan
+`docs/plans/actor-core-2026-10-03.md`). `AdvanceActor` observes the actor
+(`engine/ActorObservation`), plans it (`PlanActor`) and advances its phase
+(`Advance`), and traces `actor_advance` with the phase, pieces, pending models
+and command count. An advance with no commands stores the phase and changes
+nothing; one with commands retires the actor and rebuilds it whole through
+the install path, and the installed plan becomes the old one with every
+command applied. `tracked_` holds each actor's phase and model table;
+`RetireEffects` empties the installed plan, so any retire outside `Refresh`
+leads to a full rebuild on the next refresh, and a full `Retire` drops the
+actor's entry and its model pointers.
+
+Observation reads the worn armor per person: one piece per armor, so an armor
+listed in several biped slots counts once; a piece the inventory no longer
+marks worn is left out, because the unequip refresh runs about 2 ms after
+`TESEquipEvent` while the biped still lists the item. A model table holds an
+`NiPointer` per model, its `ModelToken` and its geometry facts (name and
+diffuse path), read once when the model is first seen and before anything is
+installed on it, so the facts never come from the plugin's own materials. The
+table keeps the models that are observed or installed.
 
 An equip event can arrive before the armor's model is attached to an NPC's
 biped: the slot already holds the item while `partClone` is still null, and
-no later event announces the attach. `CollectPieces` skips such a slot, so a
-refresh at that moment places nothing. `Refresh` therefore records the actor
-in `awaitingArmorModel_`, and `SweepAwaitingArmorModels` checks the biped every 100 ms
-(`kArmorModelCheckMS`) and refreshes once the model is attached. The check is a biped scan, never a
-refresh, so an armor whose model never attaches (no addon for the race) costs
-one scan per sweep and never tears down the actor's other effects. The sweep
-skips actors beyond the eviction radius (`BeyondEvictionRadius`, the test the
-distance eviction uses, which no actor passes while effects are limited to the
-player) instead of dropping them, and has no
-retry limit, so a long-lived NPC is never locked out. A multi-slot armor lists
-its item in every slot it covers but attaches one model, so the check asks
-whether any slot holds the armor's model. The in-game `unload` regression case
-showed the late attach on a spawned NPC on 2026-10-01.
+no later event announces the attach. Such a piece is observed with no model
+token and is a **pending model** (`PendingModel`, with the time it was first
+seen). While any pending model of an installed actor is younger than
+`kModelWaitMs` (1 s), `Advance` keeps the actor's effects and issues nothing,
+so an armor change rebuilds once, on attach, instead of twice; an actor with
+nothing installed never waits. Each piece waits on its own, so an armor whose
+model never attaches (no addon for the race) stops holding the actor back
+after its own second and does not disable the wait for later equips. Because
+no event announces the attach, `QueueTrackedRefreshes` re-observes an actor
+with a waiting model every 100 ms (`kArmorModelCheckMS`) and one with any
+pending model every second. A multi-slot armor lists its item in every slot
+it covers but attaches one model, so observation takes the model from any
+slot that holds it. The in-game `unload` regression case showed the late
+attach on a spawned NPC on 2026-10-01; in the 2026-10-03 fight soak the wait
+cut full rebuilds from 33 to 6.
 
-An installed actor whose new armor still awaits its model keeps its current
-effects: `Refresh` records the wait (`ArmorModelWait`), traces
-`refresh_deferred` and returns, and the sweep rebuilds once on attach. After
-1 s (`kArmorModelWaitMS`) the sweep marks the wait expired, traces
-`armor_model_wait_expired` and queues one rebuild that installs what is
-attached; an expired wait never defers again, so it cannot loop. An actor seen
-for the first time is never deferred. Without this, each armor equip rebuilt
-the actor twice (once before and once after the attach): in the 2026-10-03
-fight soak, full rebuilds fell from 33 to 6. Each full rebuild traces
-`refresh_phases` with microseconds per phase; in that soak `PlaceInstances`
-took 38 to 46 ms and the retire 2 or 27 to 33 ms.
+Distance eviction is an `Advance` rule through `EvictionFor`: a present actor
+beyond `EvictDistance` is evicted, and an evicted one returns inside 0.8 of
+it. The facts carry the distance (none for the player). While eviction is on,
+`QueueTrackedRefreshes` re-observes every tracked actor every second.
 
 `RenderPlanCache` (`engine/RenderPlanCache.h`) reuses an actor's render plan
 for every actor whose stack requests give the same key (`RenderPlanKeyOf`):

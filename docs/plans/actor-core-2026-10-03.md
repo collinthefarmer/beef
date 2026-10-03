@@ -1,4 +1,4 @@
-Status: open. Stages 0 to 3 done on branch `actor-core`; stage 4 (the engine adapter) next. Replaces the
+Status: open. Stages 0 to 3 and 4a done on branch `actor-core`; 4b waits for a measurement that rebuilds still matter. Replaces the
 refresh-and-rebuild lifecycle in `engine/Manager*.cpp` with a pure actor core
 that reconciles each actor to a keyed plan. Completes the actor state tables
 decided on 2026-09-09.
@@ -121,6 +121,17 @@ remaining spike is a render release of about 50 ms on the first retire of a
 batch, while the next retires take 0.1 ms; its cause is not yet found. Stage 4
 keeps the command set but replaces `ChainGeometry` with one render rebuild per
 actor whose placements changed.
+
+## Stage 4 split (decided 2026-10-03)
+
+4a: the core decides each actor's lifecycle and the engine still rebuilds an
+actor whole when the core issues any command. 4b: perform the commands one by
+one, keeping unchanged pieces' bindings and instances; it waits until a
+measurement shows rebuilds matter after 4a and the render plan cache. 4a
+passed the functional cases, `studio-reload` and `soak-churn` in game on
+2026-10-03 (run 20261003T194412, three launches); `EvictDistance` is 6000 in
+the test INI, so `unload` exercised eviction. Of 1587 refreshes in
+`soak-churn`, 1479 needed no command.
 
 ## Stages
 

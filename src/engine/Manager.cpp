@@ -98,8 +98,7 @@ void Manager::Clear() {
   for (auto &[actorID, state] : applied_)
     RetireActorEffects(state);
   applied_.clear();
-  evictedForDistance_.clear();
-  awaitingArmorModel_.clear();
+  tracked_.clear();
   renderPlans_.Clear();
   editor_.CancelFileOperationsForLoad();
   SweepRetiredMaterialTextures();

@@ -2,11 +2,11 @@
 #include "engine/Manager.h"
 
 #include "SettingsFile.h"
+#include "actors/Lifecycle.h"
 #include "diagnostics/Metrics.h"
 #include "diagnostics/Trace.h"
 #include "engine/Clock.h"
 #include "engine/RegressionRun.h"
-#include "planners/Eviction.h"
 #include "render/Compositor.h"
 #include "render/RenderInstance.h"
 #include "render/TextureLab.h"
@@ -25,7 +25,6 @@ namespace BetterEnchantmentEffects {
 namespace {
 inline constexpr std::size_t kFirstRendersPerTick = 1;
 inline constexpr std::uint32_t kArmorModelCheckMS = 100;
-inline constexpr std::uint32_t kArmorModelWaitMS = 1000;
 inline constexpr std::uint32_t kEvictionCheckMS = 1000;
 
 bool AwaitsFirstRender(const LiveActor &a_state) {
@@ -51,15 +50,6 @@ bool AdmitRender(LiveActor &a_state, std::size_t &a_firstRenders) {
   ++a_firstRenders;
   a_state.firstRenderAdmitted = true;
   return true;
-}
-
-bool BeyondEvictionRadius(const RE::Actor &a_actor,
-                          const Settings &a_settings) {
-  const auto *player = RE::PlayerCharacter::GetSingleton();
-  return player && !a_actor.IsPlayerRef() && !a_settings.playerOnly &&
-         a_settings.evictDistance > 0.0f &&
-         EvictionFor(player->GetPosition().GetDistance(a_actor.GetPosition()),
-                     a_settings.evictDistance, true) == EvictionAction::kEvict;
 }
 
 struct SlotWrite {
@@ -637,11 +627,12 @@ void Manager::OnFrame() {
   const Settings settings = GetSettings();
   if (now - lastArmorModelCheckMS_ >= kArmorModelCheckMS) {
     lastArmorModelCheckMS_ = now;
-    SweepAwaitingArmorModels(settings);
+    QueueTrackedRefreshes(now, false, false);
   }
   if (now - lastEvictionMS_ >= kEvictionCheckMS) {
     lastEvictionMS_ = now;
-    SweepEviction(settings);
+    QueueTrackedRefreshes(
+        now, true, settings.evictDistance > 0.0f && !settings.playerOnly);
   }
   if (now - lastTickMS_ < settings.TickIntervalMS()) {
     return;
@@ -670,85 +661,19 @@ void Manager::OnFrame() {
   ObserveRegression();
 }
 
-void Manager::SweepAwaitingArmorModels(const Settings &a_settings) {
-  if (awaitingArmorModel_.empty()) {
-    return;
-  }
-  const std::uint32_t now = NowMS();
-  std::vector<RE::FormID> attached;
-  std::vector<RE::FormID> expired;
-  std::erase_if(awaitingArmorModel_,
-                [&](std::pair<const RE::FormID, ArmorModelWait> &a_wait) {
-                  const RE::FormID id = a_wait.first;
-                  RE::Actor *actor = RE::TESForm::LookupByID<RE::Actor>(id);
-                  if (!actor || actor->IsDeleted() || !actor->Is3DLoaded()) {
-                    return true;
-                  }
-                  if (BeyondEvictionRadius(*actor, a_settings)) {
-                    return false;
-                  }
-                  if (!ArmorAwaitsModel(*actor)) {
-                    attached.push_back(id);
-                    return true;
-                  }
-                  if (!a_wait.second.expired &&
-                      now - a_wait.second.sinceMS >= kArmorModelWaitMS) {
-                    a_wait.second.expired = true;
-                    expired.push_back(id);
-                  }
-                  return false;
-                });
-  for (const RE::FormID id : attached) {
-    Trace::EmitSafely(
-        Trace::Event::kApplication,
-        {{"action", "armor_model_attached"}, {"actor", std::to_string(id)}});
-    QueueRefresh(id);
-  }
-  for (const RE::FormID id : expired) {
-    Trace::EmitSafely(Trace::Event::kApplication,
-                      {{"action", "armor_model_wait_expired"},
-                       {"actor", std::to_string(id)}});
-    QueueRefresh(id);
-  }
-}
-
-void Manager::SweepEviction(const Settings &a_settings) {
-  if (a_settings.evictDistance <= 0.0f || a_settings.playerOnly) {
-    evictedForDistance_.clear();
-    return;
-  }
-  const auto *player = RE::PlayerCharacter::GetSingleton();
-  if (!player) {
-    return;
-  }
-  const RE::NiPoint3 origin = player->GetPosition();
-  const auto distanceOf = [&origin](RE::Actor &a_actor) {
-    return origin.GetDistance(a_actor.GetPosition());
-  };
-  std::vector<RE::FormID> evict;
-  for (const auto &[id, state] : applied_) {
-    const RE::NiPointer<RE::Actor> actor = state.actor.get();
-    if (actor && BeyondEvictionRadius(*actor, a_settings)) {
-      evict.push_back(id);
-    }
-  }
-  for (const RE::FormID id : evict) {
-    Retire(id);
-    evictedForDistance_.insert(id);
-    Trace::EmitSafely(Trace::Event::kRetire,
-                      {{"action", "evict_far"}, {"actor", std::to_string(id)}});
-  }
-  std::vector<RE::FormID> restore;
-  for (const RE::FormID id : evictedForDistance_) {
-    RE::Actor *actor = RE::TESForm::LookupByID<RE::Actor>(id);
-    if (!actor || EvictionFor(distanceOf(*actor), a_settings.evictDistance,
-                              false) == EvictionAction::kRestore) {
-      restore.push_back(id);
-    }
-  }
-  for (const RE::FormID id : restore) {
-    evictedForDistance_.erase(id);
-    if (RE::TESForm::LookupByID<RE::Actor>(id)) {
+void Manager::QueueTrackedRefreshes(std::uint32_t a_nowMS, bool a_slowCheck,
+                                    bool a_eviction) {
+  for (const auto &[id, tracked] : tracked_) {
+    const auto *present = std::get_if<Actors::Present>(&tracked.phase);
+    const bool pending = present && !present->pending.empty();
+    const bool waiting =
+        present &&
+        std::ranges::any_of(present->pending,
+                            [&](const Actors::PendingModel &a_model) {
+                              return a_nowMS - a_model.sinceMs <=
+                                     Actors::kModelWaitMs + kArmorModelCheckMS;
+                            });
+    if (waiting || (a_slowCheck && (a_eviction || pending))) {
       QueueRefresh(id);
     }
   }
