@@ -25,8 +25,12 @@ struct Counters {
   std::atomic<std::uint64_t> stepCacheHits{0};
   std::atomic<std::uint64_t> stepReleases{0};
   std::atomic<std::uint64_t> stepRestores{0};
-  std::atomic<std::uint64_t> phaseMicros[3]{};
-  std::atomic<std::uint64_t> phaseMaxMicros[3]{};
+  std::atomic<std::uint64_t> phaseMicros[kPhaseCount]{};
+  std::atomic<std::uint64_t> phaseMaxMicros[kPhaseCount]{};
+  std::atomic<std::uint64_t> pluginSpikes[kPluginSpikeMicros.size()]{};
+  std::atomic<std::uint64_t> hitches[kHitchMicros.size()]{};
+  std::atomic<std::uint64_t> intervalMaxMicros{0};
+  std::atomic<std::int64_t> lastFrameMicros{0};
 };
 
 Counters &State() noexcept {
@@ -82,7 +86,24 @@ void CountTargetDestroyed(std::uint64_t a_bytes) noexcept {
 }
 
 void CountFrame() noexcept {
-  State().frames.fetch_add(1, std::memory_order_relaxed);
+  Counters &state = State();
+  state.frames.fetch_add(1, std::memory_order_relaxed);
+  const std::int64_t now =
+      std::chrono::duration_cast<std::chrono::microseconds>(
+          std::chrono::steady_clock::now().time_since_epoch())
+          .count();
+  const std::int64_t last =
+      state.lastFrameMicros.exchange(now, std::memory_order_relaxed);
+  if (last == 0 || now <= last) {
+    return;
+  }
+  const auto interval = static_cast<std::uint64_t>(now - last);
+  RaiseTo(state.intervalMaxMicros, interval);
+  for (std::size_t i = 0; i < kHitchMicros.size(); ++i) {
+    if (interval > kHitchMicros[i]) {
+      state.hitches[i].fetch_add(1, std::memory_order_relaxed);
+    }
+  }
 }
 void CountRenderEvaluation() noexcept {
   State().renderEvaluations.fetch_add(1, std::memory_order_relaxed);
@@ -106,11 +127,19 @@ void CountStepRestores(std::uint64_t a_count) noexcept {
 }
 void CountPhase(Phase a_phase, std::uint64_t a_micros) noexcept {
   const auto index = static_cast<std::size_t>(a_phase);
-  if (index >= 3)
+  if (index >= kPhaseCount)
     return;
   Counters &state = State();
   state.phaseMicros[index].fetch_add(a_micros, std::memory_order_relaxed);
   RaiseTo(state.phaseMaxMicros[index], a_micros);
+  if (a_phase != Phase::kFrame) {
+    return;
+  }
+  for (std::size_t i = 0; i < kPluginSpikeMicros.size(); ++i) {
+    if (a_micros > kPluginSpikeMicros[i]) {
+      state.pluginSpikes[i].fetch_add(1, std::memory_order_relaxed);
+    }
+  }
 }
 Snapshot Drain() noexcept {
   Counters &state = State();
@@ -144,13 +173,21 @@ Snapshot Drain() noexcept {
       state.stepCacheHits.exchange(0, std::memory_order_relaxed);
   out.stepReleases = state.stepReleases.exchange(0, std::memory_order_relaxed);
   out.stepRestores = state.stepRestores.exchange(0, std::memory_order_relaxed);
-  PhaseTime *phases[3]{&out.frame, &out.tick, &out.snapshot};
-  for (std::size_t i = 0; i < 3; ++i) {
-    phases[i]->micros =
+  for (std::size_t i = 0; i < kPhaseCount; ++i) {
+    out.phases[i].micros =
         state.phaseMicros[i].exchange(0, std::memory_order_relaxed);
-    phases[i]->maxMicros =
+    out.phases[i].maxMicros =
         state.phaseMaxMicros[i].exchange(0, std::memory_order_relaxed);
   }
+  for (std::size_t i = 0; i < kPluginSpikeMicros.size(); ++i) {
+    out.pluginSpikes[i] =
+        state.pluginSpikes[i].exchange(0, std::memory_order_relaxed);
+  }
+  for (std::size_t i = 0; i < kHitchMicros.size(); ++i) {
+    out.hitches[i] = state.hitches[i].exchange(0, std::memory_order_relaxed);
+  }
+  out.intervalMaxMicros =
+      state.intervalMaxMicros.exchange(0, std::memory_order_relaxed);
   return out;
 }
 }

@@ -544,6 +544,21 @@ void EmitStepKinds(const Metrics::StepKindCounts &a_counts) {
   }
 }
 
+struct PhaseFieldNames {
+  std::string_view total;
+  std::string_view longest;
+};
+
+inline constexpr std::array<PhaseFieldNames, Metrics::kPhaseCount> kPhaseFields{
+    {{"frame_us", "frame_max_us"},
+     {"tick_us", "tick_max_us"},
+     {"snapshot_us", "snapshot_max_us"},
+     {"signals_us", "signals_max_us"},
+     {"render_us", "render_max_us"},
+     {"lights_us", "lights_max_us"},
+     {"previews_us", "previews_max_us"},
+     {"sweep_us", "sweep_max_us"}}};
+
 void EmitMetricsHeartbeat() {
   EmitGpuTimings();
   const Metrics::Snapshot measured = Metrics::Drain();
@@ -551,39 +566,45 @@ void EmitMetricsHeartbeat() {
       TextureLab::GetSingleton()->HeldTargets();
   const Compositor *compositor = Compositor::GetSingleton();
   EmitStepKinds(measured.stepExecutionsByKind);
-  Trace::EmitSafely(
-      Trace::Event::kMetrics,
-      {{"action", "heartbeat"},
-       {"refreshes", std::to_string(measured.refreshes)},
-       {"refresh_us", std::to_string(measured.refreshMicros)},
-       {"refresh_max_us", std::to_string(measured.refreshMaxMicros)},
-       {"sink_adds", std::to_string(measured.sinkAdds)},
-       {"sink_removes", std::to_string(measured.sinkRemoves)},
-       {"readbacks", std::to_string(measured.readbacks)},
-       {"readback_us", std::to_string(measured.readbackMicros)},
-       {"readback_max_us", std::to_string(measured.readbackMaxMicros)},
-       {"targets", std::to_string(measured.targets)},
-       {"targets_peak", std::to_string(measured.targetsPeak)},
-       {"target_bytes", std::to_string(measured.targetBytes)},
-       {"target_bytes_peak", std::to_string(measured.targetBytesPeak)},
-       {"pool_targets", std::to_string(held.idleTargets)},
-       {"pool_bytes", std::to_string(held.idleBytes)},
-       {"scratch_targets", std::to_string(held.scratchTargets)},
-       {"scratch_bytes", std::to_string(held.scratchBytes)},
-       {"resident_targets", std::to_string(compositor->ResidentTargets())},
-       {"resident_bytes", std::to_string(compositor->ResidentBytes())},
-       {"frames", std::to_string(measured.frames)},
-       {"render_evaluations", std::to_string(measured.renderEvaluations)},
-       {"step_executions", std::to_string(measured.stepExecutions)},
-       {"step_cache_hits", std::to_string(measured.stepCacheHits)},
-       {"step_releases", std::to_string(measured.stepReleases)},
-       {"step_restores", std::to_string(measured.stepRestores)},
-       {"frame_us", std::to_string(measured.frame.micros)},
-       {"frame_max_us", std::to_string(measured.frame.maxMicros)},
-       {"tick_us", std::to_string(measured.tick.micros)},
-       {"tick_max_us", std::to_string(measured.tick.maxMicros)},
-       {"snapshot_us", std::to_string(measured.snapshot.micros)},
-       {"snapshot_max_us", std::to_string(measured.snapshot.maxMicros)}});
+  std::vector<Trace::Field> heartbeat{
+      {"action", "heartbeat"},
+      {"refreshes", std::to_string(measured.refreshes)},
+      {"refresh_us", std::to_string(measured.refreshMicros)},
+      {"refresh_max_us", std::to_string(measured.refreshMaxMicros)},
+      {"sink_adds", std::to_string(measured.sinkAdds)},
+      {"sink_removes", std::to_string(measured.sinkRemoves)},
+      {"readbacks", std::to_string(measured.readbacks)},
+      {"readback_us", std::to_string(measured.readbackMicros)},
+      {"readback_max_us", std::to_string(measured.readbackMaxMicros)},
+      {"targets", std::to_string(measured.targets)},
+      {"targets_peak", std::to_string(measured.targetsPeak)},
+      {"target_bytes", std::to_string(measured.targetBytes)},
+      {"target_bytes_peak", std::to_string(measured.targetBytesPeak)},
+      {"pool_targets", std::to_string(held.idleTargets)},
+      {"pool_bytes", std::to_string(held.idleBytes)},
+      {"scratch_targets", std::to_string(held.scratchTargets)},
+      {"scratch_bytes", std::to_string(held.scratchBytes)},
+      {"resident_targets", std::to_string(compositor->ResidentTargets())},
+      {"resident_bytes", std::to_string(compositor->ResidentBytes())},
+      {"frames", std::to_string(measured.frames)},
+      {"render_evaluations", std::to_string(measured.renderEvaluations)},
+      {"step_executions", std::to_string(measured.stepExecutions)},
+      {"step_cache_hits", std::to_string(measured.stepCacheHits)},
+      {"step_releases", std::to_string(measured.stepReleases)},
+      {"step_restores", std::to_string(measured.stepRestores)},
+      {"interval_max_us", std::to_string(measured.intervalMaxMicros)},
+      {"hitches_50ms", std::to_string(measured.hitches[0])},
+      {"hitches_100ms", std::to_string(measured.hitches[1])},
+      {"plugin_over_8ms", std::to_string(measured.pluginSpikes[0])},
+      {"plugin_over_16ms", std::to_string(measured.pluginSpikes[1])},
+      {"plugin_over_33ms", std::to_string(measured.pluginSpikes[2])}};
+  for (std::size_t i = 0; i < Metrics::kPhaseCount; ++i) {
+    heartbeat.push_back(
+        {kPhaseFields[i].total, std::to_string(measured.phases[i].micros)});
+    heartbeat.push_back({kPhaseFields[i].longest,
+                         std::to_string(measured.phases[i].maxMicros)});
+  }
+  Trace::EmitSafely(Trace::Event::kMetrics, heartbeat);
 }
 }
 
@@ -625,8 +646,11 @@ void Manager::OnFrame() {
     return;
   }
   lastTickMS_ = now;
-  Compositor::GetSingleton()->BeginTick(now);
-  Compositor::GetSingleton()->SweepStepOutputs(now);
+  {
+    const PhaseTimer sweepTimer{Metrics::Phase::kSweep};
+    Compositor::GetSingleton()->BeginTick(now);
+    Compositor::GetSingleton()->SweepStepOutputs(now);
+  }
   if (!applied_.empty()) {
     const PhaseTimer tickTimer{Metrics::Phase::kTick};
     TextureLab::GetSingleton()->SetGeneratedShaders(settings.generatedShaders);
@@ -634,7 +658,10 @@ void Manager::OnFrame() {
     Tick(now, settings);
     TextureLab::GetSingleton()->EndTimedTick();
   }
-  SweepBoundMeshes(*Compositor::GetSingleton(), applied_, now);
+  {
+    const PhaseTimer sweepTimer{Metrics::Phase::kSweep};
+    SweepBoundMeshes(*Compositor::GetSingleton(), applied_, now);
+  }
   {
     const PhaseTimer snapshotTimer{Metrics::Phase::kSnapshot};
     PublishSnapshot(now);
@@ -731,7 +758,10 @@ void Manager::FireDueFinalizes() { applications_.FinalizeDue(NowMS()); }
 void Manager::Tick(std::uint32_t a_nowMS, const Settings &a_settings) {
   tickNowMS_ = a_nowMS;
   const Studio::View &view = editor_.CurrentView();
-  TextureLab::GetSingleton()->RenderPreviews();
+  {
+    const PhaseTimer previewsTimer{Metrics::Phase::kPreviews};
+    TextureLab::GetSingleton()->RenderPreviews();
+  }
   const TickFrame frame{a_settings, view, a_nowMS,
                         frozenLastTick_ && !view.freeze};
   frozenLastTick_ = view.freeze;
@@ -747,21 +777,32 @@ void Manager::Tick(std::uint32_t a_nowMS, const Settings &a_settings) {
       continue;
     }
     DropLostGeometries(state);
-    for (LiveInstance &instance : state.instances) {
-      if (!instance.recipe || !instance.graph || !instance.signals ||
-          !instance.environment) {
-        continue;
+    {
+      const PhaseTimer signalsTimer{Metrics::Phase::kSignals};
+      for (LiveInstance &instance : state.instances) {
+        if (!instance.recipe || !instance.graph || !instance.signals ||
+            !instance.environment) {
+          continue;
+        }
+        const InstanceTiming timing = InstanceTimeFor(instance, frame);
+        TickInstance(instance, timing.time, timing.delta);
+        instance.lastTime = timing.time;
       }
-      const InstanceTiming timing = InstanceTimeFor(instance, frame);
-      TickInstance(instance, timing.time, timing.delta);
-      instance.lastTime = timing.time;
     }
     if (!AdmitRender(state, firstRenders)) {
       FinishApplications(it->first, state);
       ++it;
       continue;
     }
-    UpdateLights(state, RenderPieces(state, it->first));
+    std::vector<bool> hidden;
+    {
+      const PhaseTimer renderTimer{Metrics::Phase::kRender};
+      hidden = RenderPieces(state, it->first);
+    }
+    {
+      const PhaseTimer lightsTimer{Metrics::Phase::kLights};
+      UpdateLights(state, hidden);
+    }
     FinishApplications(it->first, state);
     if (Alive(state)) {
       ++it;

@@ -53,24 +53,45 @@ def number(fields: dict, name: str) -> int:
         return 0
 
 
+PHASES = ('signals', 'render', 'lights', 'previews', 'sweep', 'snapshot', 'refresh')
+
+
+def inside(events: list[dict], window: Window, action: str) -> list[dict]:
+    return [event['fields'] for event in events
+            if event['fields'].get('action') == action
+            and window.start_ms < event.get('unix_ms', 0) <= window.end_ms]
+
+
 def measure(events: list[dict], window: Window) -> dict[str, float]:
-    beats = [event['fields'] for event in events
-             if event['fields'].get('action') == 'heartbeat'
-             and window.start_ms < event.get('unix_ms', 0) <= window.end_ms]
+    beats = inside(events, window, 'heartbeat')
     frames = sum(number(beat, 'frames') for beat in beats)
     seconds = max((window.end_ms - window.start_ms) / 1000, 0.001)
     last = beats[-1] if beats else {}
     peak = lambda name: max((number(beat, name) for beat in beats), default=0)
+    total = lambda name: sum(number(beat, name) for beat in beats)
+    per_frame = lambda micros: round(micros / max(frames, 1), 1)
     live = lambda total, held: number(last, total) - sum(
         number(last, f'{holder}_{held}') for holder in ('pool', 'scratch', 'resident'))
+    gpu_us = sum(number(span, 'total_us') for span in inside(events, window, 'gpu_span')
+                 if span.get('span') == 'RenderTick')
     return {
         'seconds': round(seconds, 1),
         'fps': round(frames / seconds, 1),
-        'plugin_frame_us_mean': round(sum(number(b, 'frame_us') for b in beats) / max(frames, 1), 1),
+        'plugin_frame_us_mean': per_frame(total('frame_us')),
+        'plugin_ms_per_s': round(total('frame_us') / seconds / 1000, 1),
+        'plugin_share_pct': round(total('frame_us') / (seconds * 1e6) * 100, 1),
+        **{f'{phase}_us_mean': per_frame(total(f'{phase}_us')) for phase in PHASES},
+        'gpu_us_mean': per_frame(gpu_us),
         'frame_max_us': peak('frame_max_us'),
         'tick_max_us': peak('tick_max_us'),
         'refresh_max_us': peak('refresh_max_us'),
         'readback_max_us': peak('readback_max_us'),
+        'plugin_over_8ms': total('plugin_over_8ms'),
+        'plugin_over_16ms': total('plugin_over_16ms'),
+        'plugin_over_33ms': total('plugin_over_33ms'),
+        'interval_max_us': peak('interval_max_us'),
+        'hitches_50ms': total('hitches_50ms'),
+        'hitches_100ms': total('hitches_100ms'),
         'targets_end': number(last, 'targets'),
         'target_bytes_end': number(last, 'target_bytes'),
         'target_bytes_peak': peak('target_bytes_peak'),
@@ -93,10 +114,18 @@ def label(key: WindowKey) -> str:
     return f'{case}/{name}' if case else name
 
 
-MEASURES = ('seconds', 'fps', 'plugin_frame_us_mean', 'frame_max_us', 'tick_max_us',
-            'refresh_max_us', 'readback_max_us', 'targets_end', 'target_bytes_end',
-            'target_bytes_peak', 'pool_targets_end', 'pool_bytes_end', 'scratch_targets_end',
-            'scratch_bytes_end', 'live_targets_end', 'live_target_bytes_end')
+COST_MEASURES = ('seconds', 'fps', 'plugin_frame_us_mean', 'plugin_ms_per_s',
+                 'plugin_share_pct', *(f'{phase}_us_mean' for phase in PHASES), 'gpu_us_mean')
+SPIKE_MEASURES = ('frame_max_us', 'tick_max_us', 'refresh_max_us', 'readback_max_us',
+                  'plugin_over_8ms', 'plugin_over_16ms', 'plugin_over_33ms', 'interval_max_us',
+                  'hitches_50ms', 'hitches_100ms')
+MEMORY_MEASURES = ('targets_end', 'target_bytes_end', 'target_bytes_peak', 'pool_targets_end',
+                   'pool_bytes_end', 'scratch_targets_end', 'scratch_bytes_end',
+                   'live_targets_end', 'live_target_bytes_end')
+MEASURES = COST_MEASURES + SPIKE_MEASURES + MEMORY_MEASURES
+TABLES = (('cost per frame and second', COST_MEASURES),
+          ('spikes and hitches', SPIKE_MEASURES),
+          ('render targets', MEMORY_MEASURES))
 LIMIT_KINDS = ('_over_baseline_max', '_growth_max', '_ratio_min', '_max')
 
 
@@ -155,6 +184,21 @@ def window_failure(key: WindowKey, values: dict[str, float], baseline: dict[str,
     return None
 
 
+REQUIRED_HEARTBEAT_FIELDS = ('frames', 'frame_us', 'tick_us')
+
+
+def incomplete_heartbeats(events: list[dict]) -> list[str]:
+    found = []
+    for window in windows(events):
+        beats = inside(events, window, 'heartbeat')
+        missing = sorted({name for beat in beats for name in REQUIRED_HEARTBEAT_FIELDS
+                          if name not in beat})
+        if missing:
+            found.append(f"{label((window.case, window.name))}: heartbeats lack "
+                         f"{', '.join(missing)}, so its budgets cannot be checked")
+    return found
+
+
 def budget_failures(measured: dict[WindowKey, dict[str, float]],
                     limits: list[Limit]) -> list[str]:
     failures = []
@@ -173,15 +217,53 @@ def budget_failures(measured: dict[WindowKey, dict[str, float]],
     return failures
 
 
-def format_measurements(measured: dict[WindowKey, dict[str, float]]) -> str:
-    if not measured:
-        return ''
-    names = list(next(iter(measured.values())).keys())
-    rows = [['window'] + names] + [[label(key)] + [str(values[name]) for name in names]
+def format_table(measured: dict[WindowKey, dict[str, float]], names: tuple[str, ...]) -> str:
+    rows = [['window', *names]] + [[label(key)] + [str(values[name]) for name in names]
                                    for key, values in measured.items()]
     widths = [max(len(row[column]) for row in rows) for column in range(len(rows[0]))]
     return '\n'.join('  '.join(cell.ljust(width) for cell, width in zip(row, widths)).rstrip()
                      for row in rows)
+
+
+def format_measurements(measured: dict[WindowKey, dict[str, float]]) -> str:
+    if not measured:
+        return ''
+    return '\n\n'.join(f'{title}:\n{format_table(measured, names)}'
+                       for title, names in TABLES)
+
+
+def stall_lines(events: list[dict], results: list[dict], now_ms: int) -> list[str]:
+    steps = [line for line in results if line.get('kind') == 'step']
+    opened = {}
+    for line in results:
+        if line.get('kind') == 'window':
+            key = (line.get('case'), line.get('window'))
+            if line.get('edge') == 'begin':
+                opened[key] = True
+            else:
+                opened.pop(key, None)
+    beats = [event for event in events if event['fields'].get('action') == 'heartbeat']
+    lines = []
+    if steps:
+        step = steps[-1]
+        lines.append(f"last step: {step.get('case')} {step.get('step')} {step.get('action')} "
+                     f"{step.get('outcome')}")
+    for case, window in opened:
+        lines.append(f'open window: {case}/{window}')
+    if beats:
+        last = beats[-1].get('unix_ms', 0)
+        lines.append(f'last heartbeat: {(now_ms - last) / 1000:.1f} s before this report')
+    else:
+        lines.append('no heartbeat in the trace')
+    if events:
+        lines.append(f"last trace event: {(now_ms - events[-1].get('unix_ms', 0)) / 1000:.1f} s "
+                     f"before this report")
+        recent = [event['fields'].get('action', '?') for event in events[-12:]
+                  if event['fields'].get('action') not in ('heartbeat', 'gpu_span',
+                                                            'step_kinds', 'gpu_ticks')]
+        if recent:
+            lines.append('last trace actions: ' + ', '.join(str(action) for action in recent))
+    return lines
 
 
 def recipe_sets(events: list[dict]) -> list[str]:
@@ -212,4 +294,4 @@ def check_budgets(trace: Path, budgets: Path) -> tuple[str, list[str]]:
         limits = f'the budgets file {budgets} is unreadable: {error}'
     if isinstance(limits, str):
         return table, [limits]
-    return table, budget_failures(measured, limits)
+    return table, incomplete_heartbeats(events) + budget_failures(measured, limits)

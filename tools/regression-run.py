@@ -272,6 +272,12 @@ def launch(settings: Settings, run: str, cases: list[str], save: str, timeout: f
     print(format_report(report))
     print(f'results: {settings.log_dir / f"{NAME}-regression-{run}.jsonl"}')
     failures = []
+    if report.trace and report.outcome in ('TIMEOUT', 'CRASHED'):
+        trace = settings.log_dir / report.trace
+        if trace.is_file():
+            for line in budgets.stall_lines(budgets.trace_events(trace), report.lines,
+                                            int(time.time() * 1000)):
+                print(f'stall: {line}')
     if report.trace:
         table, failures = budgets.check_budgets(settings.log_dir / report.trace, BUDGETS_FILE)
         if table:

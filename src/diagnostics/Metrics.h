@@ -7,7 +7,20 @@
 #include <cstdint>
 
 namespace BetterEnchantmentEffects::Metrics {
-enum class Phase { kFrame, kTick, kSnapshot };
+enum class Phase {
+  kFrame,
+  kTick,
+  kSnapshot,
+  kSignals,
+  kRender,
+  kLights,
+  kPreviews,
+  kSweep
+};
+inline constexpr std::size_t kPhaseCount = 8;
+inline constexpr std::array<std::uint64_t, 3> kPluginSpikeMicros{8000, 16000,
+                                                                 33000};
+inline constexpr std::array<std::uint64_t, 2> kHitchMicros{50000, 100000};
 inline constexpr std::size_t kStepKindSlots = 32;
 using StepKindCounts = std::array<std::uint64_t, kStepKindSlots>;
 struct PhaseTime {
@@ -34,9 +47,13 @@ struct Snapshot {
   std::uint64_t stepCacheHits = 0;
   std::uint64_t stepReleases = 0;
   std::uint64_t stepRestores = 0;
-  PhaseTime frame;
-  PhaseTime tick;
-  PhaseTime snapshot;
+  std::array<PhaseTime, kPhaseCount> phases{};
+  std::array<std::uint64_t, kPluginSpikeMicros.size()> pluginSpikes{};
+  std::array<std::uint64_t, kHitchMicros.size()> hitches{};
+  std::uint64_t intervalMaxMicros = 0;
+  [[nodiscard]] const PhaseTime &Of(Phase a_phase) const noexcept {
+    return phases[static_cast<std::size_t>(a_phase)];
+  }
   [[nodiscard]] bool Quiet() const noexcept {
     return refreshes == 0 && sinkAdds == 0 && sinkRemoves == 0 &&
            readbacks == 0 && renderEvaluations == 0;
