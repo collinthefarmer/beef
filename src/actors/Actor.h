@@ -49,6 +49,7 @@ struct GeometryFacts {
 
 struct PieceFacts {
   PieceRef ref;
+  std::uint32_t itemID = 0;
   WornPiece keys;
   std::optional<FormKey> enchantment;
   std::optional<ModelToken> model;
@@ -56,6 +57,7 @@ struct PieceFacts {
 };
 
 struct ActorFacts {
+  ActorId actor{};
   bool loaded = false;
   bool inRange = false;
   std::vector<PieceFacts> pieces;
