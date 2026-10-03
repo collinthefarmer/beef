@@ -37,6 +37,14 @@ void ParsesValidRunFile() {
   test::Equal(parsed->run, std::string{"r1"}, "run identifier kept");
   test::Equal(parsed->save, std::string{"BEEFRegression"}, "save name kept");
   test::Equal(parsed->suite.size(), std::size_t{1}, "suite resolved");
+  test::Check(!parsed->verifyRenderPlans,
+              "render plans are not verified unless the run asks");
+  const auto verifying = ParseRunFile(
+      RunFileText(
+          R"("suite":["lifecycle"],"notAfter":1800000600,"verifyRenderPlans":true)"),
+      kNow);
+  test::Check(verifying && verifying->verifyRenderPlans,
+              "a run can ask to verify render plans");
 }
 
 struct BadRunFile {
@@ -70,6 +78,9 @@ void RefusesBadRunFiles() {
        "empty run"},
       {R"({"format":1,"save":"s","suite":["lifecycle"],"notAfter":1800000600})",
        "missing run"},
+      {RunFileText(
+           R"("suite":["lifecycle"],"notAfter":1800000600,"verifyRenderPlans":1)"),
+       "verifyRenderPlans that is not a boolean"},
       {"[1,2,3]", "not an object"},
       {"{\"format\":1", "truncated"},
       {std::string(200, '[') + std::string(200, ']'), "deep nesting"},

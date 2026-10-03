@@ -13,4 +13,5 @@ struct RunSetup {
 void ReadRegressionRun(const RunSetup &a_setup);
 void FinishRegressionLoad(bool a_loaded);
 void AdvanceRegressionRun();
+[[nodiscard]] bool RegressionVerifiesRenderPlans() noexcept;
 }

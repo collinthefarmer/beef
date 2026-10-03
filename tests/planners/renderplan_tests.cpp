@@ -2,6 +2,7 @@
 #include "planners/RenderExecution.h"
 #include "recipe/Signals.h"
 #include "test_support.h"
+#include <algorithm>
 #include <iostream>
 using namespace BetterEnchantmentEffects;
 using test::Check;
@@ -46,6 +47,35 @@ int main() {
     return test::Finish("render plan lowering");
   Check(ValidateRenderPlan(*plan).has_value(),
         "lowered plan is typed and topological");
+  const RenderBindingResolver otherActor = [](const TextureValue &value,
+                                              GeometryId) {
+    return ValueBindings{[instance = value.instance](const ExternalSource &)
+                             -> std::expected<std::string, std::string> {
+                           return "other:" + std::to_string(instance);
+                         },
+                         [instance = value.instance](NodeId node) {
+                           return "other:" + std::to_string(instance) + ":" +
+                                  std::to_string(node);
+                         }};
+  };
+  const auto renamed = LowerRenderPlan({}, requests, otherActor);
+  Check(renamed && SameStructure(*plan, *renamed),
+        "identities named for another actor keep the plan's structure");
+  Check(renamed &&
+            std::ranges::any_of(plan->steps,
+                                [&](const RenderStep &step) {
+                                  return step.producedKey.has_value();
+                                }) &&
+            !(plan->steps.front().producedKey &&
+              renamed->steps.front().producedKey &&
+              plan->steps.front().producedKey->identity ==
+                  renamed->steps.front().producedKey->identity),
+        "the compared plans differ in their identity strings");
+  const std::array larger{RenderStackRequest{
+      &graph, &surface, 1, PlacementId{0}, 0, {TextureSize{128}}}};
+  const auto resized = LowerRenderPlan({}, larger, Bindings());
+  Check(resized && !SameStructure(*plan, *resized),
+        "a different texture size changes the plan's structure");
   std::size_t reductions = 0, lookups = 0, maps = 0;
   for (std::size_t i = 0; i < plan->steps.size(); ++i) {
     const auto &kind = plan->steps[i].kind;

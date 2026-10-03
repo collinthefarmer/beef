@@ -153,6 +153,7 @@ void Manager::ChangeAndRebuildActors(std::string a_reportRecipe,
   for (const RE::FormID actor : actors) {
     RetireEffects(actor);
   }
+  renderPlans_.Clear();
   a_action();
   TraceRebuildState(token, editor_.CurrentView());
   for (const RE::FormID actor : actors) {

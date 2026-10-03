@@ -37,6 +37,8 @@ class RegressionRunTests(unittest.TestCase):
         request = host.run_file('20261001T120000', 'BEEFRegression', ['lifecycle'], 1000.5)
         self.assertEqual(request, {'format': 1, 'run': '20261001T120000', 'save': 'BEEFRegression',
                                    'suite': ['lifecycle'], 'notAfter': 1600})
+        verifying = host.run_file('r', 'BEEFRegression', ['lifecycle'], 1000.5, True)
+        self.assertTrue(verifying['verifyRenderPlans'])
 
     def test_report_reads_the_end_line_and_skips_partial_lines(self):
         text = '\n'.join([

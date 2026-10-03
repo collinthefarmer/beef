@@ -16,13 +16,6 @@ std::string FloatBitsText(const std::optional<float> &value) {
                : std::string{"none"};
 }
 
-std::string MaterialInputsIdentity(const MaterialInputs &material) {
-  return std::format(
-      "{}|{}|{}|{}|{}", TextureIdentity(material.diffuse),
-      TextureIdentity(material.normal), TextureIdentity(material.rmaos),
-      TextureIdentity(material.displacement), material.flatDisplacement);
-}
-
 std::string EventOriginIdentity(const EventInput &event,
                                 const std::string &instance) {
   return Match(
@@ -40,19 +33,6 @@ std::string EventOriginIdentity(const EventInput &event,
       });
 }
 
-std::string GeometryIdentity(const GeometryInputs &inputs) {
-  RE::BSGeometry *geometry = inputs.geometry.get();
-  Compositor *compositor = Compositor::GetSingleton();
-  if (geometry && compositor) {
-    const auto entry = compositor->MeshOf(geometry);
-    if (entry && *entry && (*entry)->mesh) {
-      const MeshData &mesh = *(*entry)->mesh;
-      return std::format("mesh:{:016x}:{}", mesh.hash, mesh.partitions.size());
-    }
-  }
-  return std::format("{}", reinterpret_cast<std::uintptr_t>(geometry));
-}
-
 std::expected<std::string, std::string>
 ExternalSourceIdentity(const ExternalSource &source,
                        const GeometryInputs &inputs,
@@ -60,10 +40,10 @@ ExternalSourceIdentity(const ExternalSource &source,
   return Match(
       source,
       [&](const GeometryInput &) -> std::expected<std::string, std::string> {
-        return GeometryIdentity(inputs);
+        return MeshIdentityOf(inputs);
       },
       [&](const MaterialInput &) -> std::expected<std::string, std::string> {
-        return MaterialInputsIdentity(inputs.material);
+        return MaterialIdentityOf(inputs.material);
       },
       [&](const TextureInput &k) -> std::expected<std::string, std::string> {
         return ImageCacheKey(k.path);
@@ -124,4 +104,23 @@ ValueBindings TextureValueBindings(const RecipeGraph &graph,
   return bindings;
 }
 
+std::string MaterialIdentityOf(const MaterialInputs &material) {
+  return std::format(
+      "{}|{}|{}|{}|{}", TextureIdentity(material.diffuse),
+      TextureIdentity(material.normal), TextureIdentity(material.rmaos),
+      TextureIdentity(material.displacement), material.flatDisplacement);
+}
+
+std::string MeshIdentityOf(const GeometryInputs &inputs) {
+  RE::BSGeometry *geometry = inputs.geometry.get();
+  Compositor *compositor = Compositor::GetSingleton();
+  if (geometry && compositor) {
+    const auto entry = compositor->MeshOf(geometry);
+    if (entry && *entry && (*entry)->mesh) {
+      const MeshData &mesh = *(*entry)->mesh;
+      return std::format("mesh:{:016x}:{}", mesh.hash, mesh.partitions.size());
+    }
+  }
+  return std::format("{}", reinterpret_cast<std::uintptr_t>(geometry));
+}
 }

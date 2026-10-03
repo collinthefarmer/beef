@@ -1,6 +1,8 @@
 // GPL-3.0-only with the additional permission in COPYING.md.
 #include "engine/LiveActor.h"
 
+#include "diagnostics/Metrics.h"
+
 #include <algorithm>
 
 namespace BetterEnchantmentEffects {
@@ -46,17 +48,35 @@ void RetireGeometry(LiveActor &a_actor, LiveGeometry &a_geometry) {
   }
 }
 
-void RetireActorEffects(LiveActor &a_actor) {
+RetireTimes RetireActorEffects(LiveActor &a_actor) {
+  RetireTimes times;
   a_actor.applications.clear();
+  const Metrics::Stopwatch lights;
   for (auto &instance : a_actor.instances)
     instance.light.reset();
+  times.lightsUs = lights.Micros();
+  const Metrics::Stopwatch bindings;
+  for (auto &piece : a_actor.pieces) {
+    for (auto &geometry : piece.geometries) {
+      geometry.shell.reset();
+      geometry.material.reset();
+    }
+  }
+  times.bindingsUs = bindings.Micros();
+  const Metrics::Stopwatch render;
   for (auto &piece : a_actor.pieces) {
     for (auto &geometry : piece.geometries)
       RetireGeometry(geometry);
   }
+  times.renderUs = render.Micros();
+  const Metrics::Stopwatch outputs;
   a_actor.placements.clear();
+  times.outputsUs = outputs.Micros();
+  const Metrics::Stopwatch instances;
   a_actor.instances.clear();
+  times.instancesUs = instances.Micros();
   a_actor.pieces.clear();
+  return times;
 }
 
 SlotTarget *TargetFor(LiveGeometry &a_bound, Surface a_surface) {

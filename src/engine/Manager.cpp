@@ -100,6 +100,7 @@ void Manager::Clear() {
   applied_.clear();
   evictedForDistance_.clear();
   awaitingArmorModel_.clear();
+  renderPlans_.Clear();
   editor_.CancelFileOperationsForLoad();
   SweepRetiredMaterialTextures();
   editor_.CancelPaintForLoad();

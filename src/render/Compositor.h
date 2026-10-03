@@ -194,6 +194,8 @@ private:
 
 [[nodiscard]] ValueBindings TextureValueBindings(const RecipeGraph &graph,
                                                  const GeometryInputs &inputs);
+[[nodiscard]] std::string MaterialIdentityOf(const MaterialInputs &material);
+[[nodiscard]] std::string MeshIdentityOf(const GeometryInputs &inputs);
 
 [[nodiscard]] std::string DescribeTexture(const TextureRef &a_texture);
 }

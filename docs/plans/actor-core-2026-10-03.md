@@ -109,6 +109,19 @@ does. The facts held derivable copies (a piece's enchantment beside its keys, a
 full geometry ref and identity per geometry); a geometry fact is now its name
 and diffuse path, and the core derives its ref, ordinal and identity.
 
+## Rebuild cost, measured before stage 4
+
+Timing inside a rebuild on 2026-10-03 showed one actor's render is planned as
+one unit (`BuildActorRender`), so any placement change rebuilds it.
+`BuildRenderPlan` took 34 to 39 ms of the 45 ms place phase (lowering 14.5 ms,
+finishing 13.8 ms, demand collection about 6.6 ms); surface installs took
+7.8 ms. The render plan cache (`REFERENCE.md`, engine section) now reuses the
+plan for actors in the same gear: a reused plan costs about 4 ms. The other
+remaining spike is a render release of about 50 ms on the first retire of a
+batch, while the next retires take 0.1 ms; its cause is not yet found. Stage 4
+keeps the command set but replaces `ChainGeometry` with one render rebuild per
+actor whose placements changed.
+
 ## Stages
 
 | Stage | Work | Done when |

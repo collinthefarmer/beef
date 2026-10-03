@@ -954,4 +954,56 @@ std::vector<std::size_t> LiveConsumers(const RenderPlan &plan) {
   return consumers;
 }
 
+namespace {
+template <class Entry, class Same>
+bool SameEach(const std::vector<Entry> &a_left,
+              const std::vector<Entry> &a_right, Same a_same) {
+  return a_left.size() == a_right.size() &&
+         std::ranges::equal(a_left, a_right, a_same);
+}
+}
+
+bool SameStructure(const RenderPlan &a_left, const RenderPlan &a_right) {
+  return SameEach(
+             a_left.values, a_right.values,
+             [](const RenderValueBinding &a_l, const RenderValueBinding &a_r) {
+               return a_l.value == a_r.value && a_l.result == a_r.result &&
+                      a_l.geometry == a_r.geometry;
+             }) &&
+         SameEach(a_left.inputs, a_right.inputs,
+                  [](const RenderInput &a_l, const RenderInput &a_r) {
+                    return a_l.type == a_r.type && a_l.binding == a_r.binding &&
+                           a_l.geometry == a_r.geometry;
+                  }) &&
+         SameEach(a_left.steps, a_right.steps,
+                  [](const RenderStep &a_l, const RenderStep &a_r) {
+                    return a_l.kind == a_r.kind &&
+                           a_l.producedKey.has_value() ==
+                               a_r.producedKey.has_value() &&
+                           a_l.contentKey.has_value() ==
+                               a_r.contentKey.has_value();
+                  }) &&
+         SameEach(
+             a_left.textureUses, a_right.textureUses,
+             [](const TextureUseBinding &a_l, const TextureUseBinding &a_r) {
+               return a_l.use == a_r.use && a_l.texture == a_r.texture;
+             }) &&
+         SameEach(
+             a_left.mergedChains, a_right.mergedChains,
+             [](const MergedChainBinding &a_l, const MergedChainBinding &a_r) {
+               return a_l.geometry == a_r.geometry &&
+                      a_l.surface == a_r.surface && a_l.slot == a_r.slot &&
+                      a_l.links == a_r.links &&
+                      a_l.layerStarts == a_r.layerStarts &&
+                      a_l.layerCount == a_r.layerCount &&
+                      a_l.result == a_r.result;
+             }) &&
+         SameEach(
+             a_left.stackOutputs, a_right.stackOutputs,
+             [](const StackOutputBinding &a_l, const StackOutputBinding &a_r) {
+               return a_l.placement == a_r.placement &&
+                      a_l.output == a_r.output &&
+                      a_l.geometry == a_r.geometry && a_l.result == a_r.result;
+             });
+}
 }

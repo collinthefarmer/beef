@@ -751,6 +751,26 @@ fight soak, full rebuilds fell from 33 to 6. Each full rebuild traces
 `refresh_phases` with microseconds per phase; in that soak `PlaceInstances`
 took 38 to 46 ms and the retire 2 or 27 to 33 ms.
 
+`RenderPlanCache` (`engine/RenderPlanCache.h`) reuses an actor's render plan
+for every actor whose stack requests give the same key (`RenderPlanKeyOf`):
+per request the graph pointer, output index, placement, geometry and instance
+ids, texture size, `MaterialIdentityOf` and `MeshIdentityOf`, plus the slot
+chains. The actor's form ID is left out: it enters only identity strings
+(`producedKey`), which the planners use to merge values inside one plan and
+the runtime never reads, so two actors in the same gear lower to plans of the
+same structure (`SameStructure`). A mesh identity that falls back to the
+geometry pointer makes the key unique to one actor, which is correct and
+shares nothing. An entry holds the `RecipeGraph`s its plan points into, so a
+graph cannot be freed or its address reused while the plan lives. A recipe or
+view change (`ChangeAndRebuildActors`) and a load clear the cache; it holds 64
+entries and evicts the least recently used. `VerifyRenderPlanCache`, or a run
+file's `verifyRenderPlans`, builds every reused plan again and logs, traces
+and replaces one that differs. On 2026-10-03 (runs 20261003T175431 and
+20261003T180945) verification found no mismatch in 12 stacked mannequins, six
+vanilla cuirass types (six plans) or 108 churn re-equips; a reused plan cost
+3.7 to 4.6 ms against 17 to 39 ms to build, and an actor's place phase fell
+from 50 to 14 ms.
+
 A tick admits one actor's first render (`kFirstRendersPerTick`, `AdmitRender`
 in `engine/ManagerTick.cpp`). An actor's first render acquires about 70
 targets, and twelve at once produced a 14 GB transient. An actor that is not
