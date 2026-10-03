@@ -941,10 +941,14 @@ Actors::Advanced Manager::AdvanceActor(RE::Actor &a_actor,
   const RE::FormID actorID = a_actor.GetFormID();
   TrackedActor &tracked = tracked_[actorID];
   const std::span<const Recipe> recipes = LoadedRecipes();
-  const Actors::ActorFacts facts =
-      ObserveActor({a_actor, a_settings,
-                    a_settings.enableShaders && emissivePathEnabled_, recipes},
-                   tracked.models);
+  const std::uint32_t observedAt = NowMS();
+  const Metrics::Stopwatch observeWatch;
+  const Actors::ActorFacts facts = ObserveActor(
+      {a_actor, a_settings, a_settings.enableShaders && emissivePathEnabled_,
+       recipes, observedAt},
+      tracked.models);
+  const std::uint64_t observeUs = observeWatch.Micros();
+  const Metrics::Stopwatch planWatch;
   const std::optional<Actors::RecipeCatalog> catalog =
       Actors::RecipeCatalog::Of(recipes, LoadedFingerprints());
   if (!catalog) {
@@ -955,12 +959,16 @@ Actors::Advanced Manager::AdvanceActor(RE::Actor &a_actor,
   const Actors::ActorPlan plan =
       catalog ? Actors::PlanActor({facts, *catalog, editor_.CurrentView()})
               : Actors::ActorPlan{};
+  const std::uint64_t planUs = planWatch.Micros();
+  const Metrics::Stopwatch advanceWatch;
   Actors::Advanced next = Actors::Advance(
       {tracked.phase, facts, plan, NowMS(), a_settings.evictDistance});
+  const std::uint64_t advanceUs = advanceWatch.Micros();
   const Actors::Present *present = std::get_if<Actors::Present>(&next.phase);
-  KeepModels(tracked.models, facts,
+  KeepModels(tracked.models,
              present ? Actors::AfterCommands(present->installed, next.commands)
-                     : Actors::ActorPlan{});
+                     : Actors::ActorPlan{},
+             observedAt);
   Trace::EmitSafely(
       Trace::Event::kApplication,
       {{"action", "actor_advance"},
@@ -968,7 +976,10 @@ Actors::Advanced Manager::AdvanceActor(RE::Actor &a_actor,
        {"phase", std::string{PhaseName(next.phase)}},
        {"pieces", std::to_string(facts.pieces.size())},
        {"pending", std::to_string(present ? present->pending.size() : 0)},
-       {"commands", std::to_string(next.commands.size())}});
+       {"commands", std::to_string(next.commands.size())},
+       {"observe_us", std::to_string(observeUs)},
+       {"plan_us", std::to_string(planUs)},
+       {"advance_us", std::to_string(advanceUs)}});
   return next;
 }
 

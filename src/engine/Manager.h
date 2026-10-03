@@ -224,6 +224,7 @@ private:
   bool emissivePathEnabled_ = false;
   bool layoutVerified_ = false;
   bool frozenLastTick_ = false;
+  bool textureLabStarted_ = false;
 
   mutable std::mutex snapshotLock_;
   std::shared_ptr<const Snapshot> latest_ = std::make_shared<Snapshot>();

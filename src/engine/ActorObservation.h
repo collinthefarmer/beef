@@ -6,6 +6,7 @@
 #include "actors/Actor.h"
 #include "recipe/Recipe.h"
 
+#include <optional>
 #include <span>
 #include <vector>
 
@@ -13,7 +14,8 @@ namespace BetterEnchantmentEffects {
 struct ObservedModel {
   RE::NiPointer<RE::NiAVObject> model;
   Actors::ModelToken token{};
-  std::vector<Actors::GeometryFacts> geometries;
+  std::optional<std::vector<Actors::GeometryFacts>> geometries;
+  std::uint32_t lastSeenMs = 0;
 };
 
 struct ModelTable {
@@ -25,6 +27,7 @@ struct ObserveRequest {
   const Settings &settings;
   bool effectsEnabled = false;
   std::span<const Recipe> recipes;
+  std::uint32_t nowMs = 0;
 };
 
 [[nodiscard]] RE::TESObjectARMO *PieceItemOf(const RE::BIPOBJECT &a_object);
@@ -32,6 +35,6 @@ struct ObserveRequest {
                                              RE::TESObjectARMO *a_armor);
 [[nodiscard]] Actors::ActorFacts ObserveActor(const ObserveRequest &a_request,
                                               ModelTable &a_models);
-void KeepModels(ModelTable &a_models, const Actors::ActorFacts &a_facts,
-                const Actors::ActorPlan &a_installed);
+void KeepModels(ModelTable &a_models, const Actors::ActorPlan &a_installed,
+                std::uint32_t a_nowMs);
 }

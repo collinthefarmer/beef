@@ -605,6 +605,15 @@ void Manager::FlushMetricsHeartbeat() {
 }
 
 void Manager::OnFrame() {
+  if (!textureLabStarted_) {
+    textureLabStarted_ = true;
+    const Metrics::Stopwatch startWatch;
+    const bool started = TextureLab::GetSingleton()->Init();
+    Trace::EmitSafely(Trace::Event::kMetrics,
+                      {{"action", "texture_lab_start"},
+                       {"started", started ? "true" : "false"},
+                       {"us", std::to_string(startWatch.Micros())}});
+  }
   if (applications_.Loading()) {
     return;
   }

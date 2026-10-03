@@ -747,6 +747,19 @@ slot that holds it. The in-game `unload` regression case showed the late
 attach on a spawned NPC on 2026-10-01; in the 2026-10-03 fight soak the wait
 cut full rebuilds from 33 to 6.
 
+`TextureLab::Init` compiles every built-in shader, which took 1.67 to 1.79 s
+on 2026-10-03; `Manager::OnFrame` calls it on the first frame (the main menu)
+and traces `texture_lab_start`. Before, the first use started the lab: under
+the legacy refresh the player's collection at load did, but the actor core
+issues no command for a player without enchanted armor, so the first crowd
+rebuild paid it as a 1.6 to 1.8 s frame. Observation reads a geometry's
+diffuse path through `PbrMaterial::DiffusePath` and never through
+`MaterialInputs::From`, whose `MeasureFlatDisplacement` renders and reads back
+the displacement mean, a blocking GPU readback observation does not need.
+`actor_advance` traces the observe, plan and advance times, and an observed
+piece slower than 10 ms traces `observe_slow` with its inventory, keys and
+model times.
+
 Distance eviction is an `Advance` rule through `EvictionFor`: a present actor
 beyond `EvictDistance` is evicted, and an evicted one returns inside 0.8 of
 it. The facts carry the distance (none for the player). While eviction is on,
