@@ -43,15 +43,14 @@ struct PlacementRef {
 };
 
 struct GeometryFacts {
-  GeometryRef ref;
-  GeometryIdentity identity;
+  std::string name;
+  std::string diffusePath;
 };
 
 struct PieceFacts {
   PieceRef ref;
   std::uint32_t itemID = 0;
   WornPiece keys;
-  std::optional<FormKey> enchantment;
   std::optional<ModelToken> model;
   std::vector<GeometryFacts> geometries;
 };
@@ -59,7 +58,7 @@ struct PieceFacts {
 struct ActorFacts {
   ActorId actor{};
   bool loaded = false;
-  bool inRange = false;
+  std::optional<float> distance;
   std::vector<PieceFacts> pieces;
 };
 
@@ -89,10 +88,10 @@ struct ActorPlan {
   [[nodiscard]] bool operator==(const ActorPlan &) const = default;
 };
 
-struct ModelWait {
+struct PendingModel {
+  PieceRef piece;
   std::uint32_t sinceMs = 0;
-  bool expired = false;
-  [[nodiscard]] bool operator==(const ModelWait &) const = default;
+  [[nodiscard]] bool operator==(const PendingModel &) const = default;
 };
 
 struct Unloaded {
@@ -103,7 +102,7 @@ struct Evicted {
 };
 struct Present {
   ActorPlan installed;
-  std::optional<ModelWait> wait;
+  std::vector<PendingModel> pending;
   [[nodiscard]] bool operator==(const Present &) const = default;
 };
 using Phase = std::variant<Unloaded, Evicted, Present>;

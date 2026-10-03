@@ -5,6 +5,7 @@
 #include "test_support.h"
 
 #include <variant>
+#include <vector>
 
 using namespace actorfixtures;
 
@@ -29,15 +30,18 @@ PieceFacts Pending(std::uint32_t a_item) {
 ActorFacts Loaded(std::vector<PieceFacts> a_pieces) {
   ActorFacts facts;
   facts.loaded = true;
-  facts.inRange = true;
   facts.pieces = std::move(a_pieces);
   return facts;
 }
 
 Phase Installed(ActorPlan a_plan) { return Present{std::move(a_plan), {}}; }
 
+const Present *PresentOf(const Advanced &a_next) {
+  return std::get_if<Present>(&a_next.phase);
+}
+
 void AnUnloadedActorRetiresEverything() {
-  ActorFacts gone;
+  const ActorFacts gone;
   const Advanced next =
       Advance({Installed(CircuitPlan()), gone, ActorPlan{}, 0});
   test::Check(std::holds_alternative<Unloaded>(next.phase),
@@ -48,21 +52,42 @@ void AnUnloadedActorRetiresEverything() {
       "and its commands retire everything installed");
 }
 
-void AnActorOutOfRangeIsEvicted() {
-  ActorFacts far = Loaded({Attached(0x1)});
-  far.inRange = false;
-  const Advanced next =
-      Advance({Installed(CircuitPlan()), far, ActorPlan{}, 0});
-  test::Check(std::holds_alternative<Evicted>(next.phase),
-              "an actor out of range becomes Evicted");
-  test::Check(!next.commands.empty(), "and its effects retire");
+void EvictionHasHysteresis() {
+  ActorFacts at = Loaded({Attached(0x1)});
+  at.distance = 1100.0f;
+  const Advanced evicted =
+      Advance({Installed(CircuitPlan()), at, CircuitPlan(), 0, 1000.0f});
+  test::Check(std::holds_alternative<Evicted>(evicted.phase) &&
+                  !evicted.commands.empty(),
+              "an installed actor beyond the eviction distance is evicted");
+
+  at.distance = 900.0f;
+  const Advanced held = Advance({evicted.phase, at, CircuitPlan(), 0, 1000.0f});
+  test::Check(std::holds_alternative<Evicted>(held.phase),
+              "an evicted actor stays evicted until well inside the distance");
+
+  at.distance = 700.0f;
+  const Advanced back = Advance({held.phase, at, CircuitPlan(), 0, 1000.0f});
+  test::Check(PresentOf(back) && !back.commands.empty(),
+              "an evicted actor inside 0.8 of the distance comes back");
+
+  at.distance = 900.0f;
+  const Advanced fresh =
+      Advance({Phase{Unloaded{}}, at, CircuitPlan(), 0, 1000.0f});
+  test::Check(PresentOf(fresh) != nullptr,
+              "an arriving actor inside the distance is present");
+
+  const ActorFacts player = Loaded({Attached(0x1)});
+  const Advanced near =
+      Advance({Installed(CircuitPlan()), player, CircuitPlan(), 0, 1000.0f});
+  test::Check(PresentOf(near) != nullptr,
+              "an actor without a distance is never evicted");
 }
 
 void AnArrivingActorInstalls() {
   const Advanced next =
       Advance({Phase{Unloaded{}}, Loaded({Attached(0x1)}), CircuitPlan(), 0});
-  test::Check(std::holds_alternative<Present>(next.phase),
-              "a loaded actor in range is Present");
+  test::Check(PresentOf(next) != nullptr, "a loaded actor is Present");
   test::Check(
       Reconcile(AfterCommands(ActorPlan{}, next.commands), CircuitPlan())
           .empty(),
@@ -80,56 +105,61 @@ void AnInstalledActorWaitsForANewModel() {
   const ActorFacts pending = Loaded({Attached(0x1), Pending(0x2)});
   const Advanced waiting =
       Advance({Installed(CircuitPlan()), pending, ActorPlan{}, 100});
-  const Present *present = std::get_if<Present>(&waiting.phase);
-  test::Check(waiting.commands.empty() && present && present->wait &&
-                  present->wait->sinceMs == 100 && !present->wait->expired,
+  test::Check(waiting.commands.empty() && PresentOf(waiting) &&
+                  PresentOf(waiting)->pending.size() == 1 &&
+                  PresentOf(waiting)->pending.front().sinceMs == 100,
               "an installed actor keeps its effects while a model is pending");
 
   const Advanced stillWaiting =
       Advance({waiting.phase, pending, ActorPlan{}, 100 + kModelWaitMs - 1});
-  test::Check(stillWaiting.commands.empty(), "the wait holds until its limit");
+  test::Check(stillWaiting.commands.empty() &&
+                  PresentOf(stillWaiting)->pending.front().sinceMs == 100,
+              "the wait keeps its start and holds until its limit");
 
   const Advanced expired =
       Advance({stillWaiting.phase, pending, ActorPlan{}, 100 + kModelWaitMs});
-  const Present *after = std::get_if<Present>(&expired.phase);
-  test::Check(!expired.commands.empty() && after && after->wait &&
-                  after->wait->expired,
+  test::Check(!expired.commands.empty(),
               "an expired wait reconciles with what is attached");
 
   const Advanced attached =
       Advance({expired.phase, Loaded({Attached(0x1), Attached(0x2)}),
                CircuitPlan(), 100 + kModelWaitMs + 50});
-  const Present *done = std::get_if<Present>(&attached.phase);
-  test::Check(done && !done->wait, "an attached model ends the wait");
+  test::Check(PresentOf(attached) && PresentOf(attached)->pending.empty(),
+              "an attached model leaves the pending list");
 }
 
-void AnExpiredWaitDoesNotWaitAgain() {
-  const ActorFacts pending = Loaded({Attached(0x1), Pending(0x2)});
-  const Phase expired = Present{CircuitPlan(), ModelWait{0, true}};
-  const Advanced next = Advance({expired, pending, CircuitPlan(), 10});
-  const Present *present = std::get_if<Present>(&next.phase);
-  test::Check(present && present->wait && present->wait->expired &&
-                  next.commands.empty(),
-              "an expired wait reconciles at once and stays expired");
+void EachPendingPieceWaitsOnItsOwn() {
+  const Phase stuck = Present{CircuitPlan(), {PendingModel{Piece(0x2), 0}}};
+  const Advanced unchanged = Advance(
+      {stuck, Loaded({Attached(0x1), Pending(0x2)}), CircuitPlan(), 5000});
+  test::Check(unchanged.commands.empty() && PresentOf(unchanged) &&
+                  PresentOf(unchanged)->pending.front().sinceMs == 0,
+              "a model that never attaches stops holding the actor back");
+
+  const Advanced newPiece =
+      Advance({stuck, Loaded({Attached(0x1), Pending(0x2), Pending(0x3)}),
+               ActorPlan{}, 5000});
+  test::Check(newPiece.commands.empty() && PresentOf(newPiece) &&
+                  PresentOf(newPiece)->pending.size() == 2,
+              "a newly pending piece waits even beside an expired one");
 }
 
 void AFirstInstallDoesNotWait() {
   const Advanced next =
       Advance({Phase{Unloaded{}}, Loaded({Attached(0x1), Pending(0x2)}),
                CircuitPlan(), 0});
-  const Present *present = std::get_if<Present>(&next.phase);
-  test::Check(!next.commands.empty() && present && !present->wait,
+  test::Check(!next.commands.empty() && PresentOf(next) != nullptr,
               "an actor with nothing installed installs what is attached");
 }
 }
 
 int main() {
   AnUnloadedActorRetiresEverything();
-  AnActorOutOfRangeIsEvicted();
+  EvictionHasHysteresis();
   AnArrivingActorInstalls();
   UnchangedFactsCostNothing();
   AnInstalledActorWaitsForANewModel();
-  AnExpiredWaitDoesNotWaitAgain();
+  EachPendingPieceWaitsOnItsOwn();
   AFirstInstallDoesNotWait();
   return test::Finish("actor lifecycle");
 }

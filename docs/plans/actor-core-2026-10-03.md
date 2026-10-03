@@ -44,7 +44,7 @@ these words when stage 1 lands.
 | **installed** | What the engine side holds | `InstalledActor` |
 | **facts** | One frame's observation of one thing | `ActorFacts` |
 | **phase** | Where an actor is in its lifecycle | `Unloaded`, `Evicted`, `Present` |
-| **model wait** | A present actor whose new piece has no model yet | `ModelWait` |
+| **pending model** | A worn piece of a present actor whose model has not attached, with the time it was first seen | `PendingModel` |
 | **command** | An instruction the pure core issues for the engine side | `ActorCommand` |
 | **stale** | Possibly out of date; observe again | |
 
@@ -88,15 +88,26 @@ the core owns it, and an in-game case where only the engine shows it.
 
 | Rule | Owner | Test |
 |---|---|---|
-| The armor model attaches after the equip event | `Advance`: an empty model token keeps a present actor in `ModelWait`, 1 s limit | Native; `unload`, `soak-fight` |
+| The armor model attaches after the equip event | `Advance`: each pending model holds an installed actor's effects for 1 s from when that piece was first seen; a model that never attaches stops holding after its own limit | Native; `unload`, `soak-fight` |
 | The unequip refresh runs before the biped changes | Observe: a piece without the inventory worn mark is not observed | Native; `soak-churn` |
 | Model and geometry identity is compared only while held | Adapter: `ModelToken` backed by an `NiPointer` | `soak-churn`, `soak-waves` |
 | A live recipe change is atomic with the actors that use it | `InstanceRef` fingerprint; the recipe store swaps before actors are marked stale | Native; `load-edit` |
 | A load clears every actor and cancels work | Every actor goes `Unloaded` before any other step | `load-*` cases |
 | First-person pieces belong to the player, when the setting is on | Observe | `camera` |
-| Distance eviction and return | `Advance` on `inRange` | Native |
+| Distance eviction and return, with hysteresis | `Advance` through `EvictionFor`: evict beyond the distance, return inside 0.8 of it; the facts carry the distance (none for the player) | Native |
 | The studio view's recipe set and isolation filter matches | `PlanActor` input | Native; `isolation`, `soak-stack` |
 | Equips that change no piece cost no install | `Reconcile` returns nothing | Native; `soak-fight` refresh count |
+
+## Review of stages 1 to 3
+
+A review on 2026-10-03 found four deviations, fixed before stage 4. The model
+wait was one timer per actor, so a model that never attaches disabled the wait
+for every later equip; it is now one `PendingModel` per piece. `inRange` could
+not express eviction hysteresis; the facts now carry the distance and
+`Advance` applies `EvictionFor`. `PlanActor` decided lifecycle; only `Advance`
+does. The facts held derivable copies (a piece's enchantment beside its keys, a
+full geometry ref and identity per geometry); a geometry fact is now its name
+and diffuse path, and the core derives its ref, ordinal and identity.
 
 ## Stages
 

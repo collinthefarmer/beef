@@ -13,8 +13,8 @@ struct AdvanceRequest {
   const ActorFacts &facts;
   const ActorPlan &plan;
   std::uint32_t nowMs = 0;
+  float evictDistance = 0.0f;
 };
 
-[[nodiscard]] bool AwaitsModel(const ActorFacts &a_facts) noexcept;
 [[nodiscard]] Advanced Advance(const AdvanceRequest &a_request);
 }

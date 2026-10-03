@@ -19,9 +19,20 @@ struct MatchInput {
 WornPiece KeysWithDiffusePaths(const PieceFacts &a_piece) {
   WornPiece keys = a_piece.keys;
   for (const GeometryFacts &geometry : a_piece.geometries) {
-    keys.diffusePaths.push_back(geometry.identity.diffusePath);
+    keys.diffusePaths.push_back(geometry.diffusePath);
   }
   return keys;
+}
+
+GeometryRef RefOf(const PieceFacts &a_piece, std::size_t a_index) {
+  const std::string &name = a_piece.geometries[a_index].name;
+  std::uint32_t ordinal = 0;
+  for (std::size_t i = 0; i < a_index; ++i) {
+    if (a_piece.geometries[i].name == name) {
+      ++ordinal;
+    }
+  }
+  return GeometryRef{a_piece.ref, name, ordinal};
 }
 
 MatchInput MatchInputOf(const ActorFacts &a_facts) {
@@ -33,13 +44,15 @@ MatchInput MatchInputOf(const ActorFacts &a_facts) {
     }
     const WornPiece keys = KeysWithDiffusePaths(piece);
     const Studio::PieceRef owner{actorID, piece.itemID, piece.ref.firstPerson};
-    for (const GeometryFacts &geometry : piece.geometries) {
+    for (std::size_t i = 0; i < piece.geometries.size(); ++i) {
+      const GeometryFacts &geometry = piece.geometries[i];
       Geometry planned;
-      planned.identity = geometry.identity;
+      planned.identity = GeometryIdentity{piece.ref.addon, geometry.name,
+                                          geometry.diffusePath};
       planned.keys = keys;
       planned.firstPerson = piece.ref.firstPerson;
       input.geometries.push_back(std::move(planned));
-      input.refs.push_back(geometry.ref);
+      input.refs.push_back(RefOf(piece, i));
       input.owners.push_back(owner);
     }
   }
@@ -117,9 +130,6 @@ std::uint64_t RecipeCatalog::FingerprintOf(RecipeId a_recipe) const noexcept {
 }
 
 ActorPlan PlanActor(const PlanRequest &a_request) {
-  if (!a_request.facts.loaded || !a_request.facts.inRange) {
-    return {};
-  }
   const MatchInput input = MatchInputOf(a_request.facts);
   const std::span<const Recipe> recipes = a_request.recipes.Recipes();
   const auto actorID = static_cast<std::uint32_t>(a_request.facts.actor);

@@ -9,7 +9,6 @@
 
 using namespace BetterEnchantmentEffects::Actors;
 using BetterEnchantmentEffects::FormKey;
-using BetterEnchantmentEffects::GeometryIdentity;
 using BetterEnchantmentEffects::KeyKind;
 using BetterEnchantmentEffects::KeyOperandValue;
 using BetterEnchantmentEffects::Recipe;
@@ -43,12 +42,8 @@ PieceFacts CuirassFacts(bool a_firstPerson, bool a_modelAttached) {
   piece.keys.armor = piece.ref.item;
   if (a_modelAttached) {
     piece.model = ModelToken{a_firstPerson ? 2u : 1u};
-    piece.geometries.push_back(
-        {GeometryRef{piece.ref, "Body", 0},
-         GeometryIdentity{std::nullopt, "Body", "body.dds"}});
-    piece.geometries.push_back(
-        {GeometryRef{piece.ref, "Body", 1},
-         GeometryIdentity{std::nullopt, "Body", "body_trim.dds"}});
+    piece.geometries.push_back({"Body", "body.dds"});
+    piece.geometries.push_back({"Body", "body_trim.dds"});
   }
   return piece;
 }
@@ -57,7 +52,6 @@ ActorFacts LoadedActor(std::vector<PieceFacts> a_pieces) {
   ActorFacts facts;
   facts.actor = ActorId{0x14};
   facts.loaded = true;
-  facts.inRange = true;
   facts.pieces = std::move(a_pieces);
   return facts;
 }
@@ -104,18 +98,6 @@ void SkipsAPieceWithoutAModel() {
       fixture.Plan(LoadedActor({CuirassFacts(false, false)}));
   test::Check(plan.geometries.empty() && plan.placements.empty(),
               "a piece whose model has not attached plans nothing");
-}
-
-void PlansNothingForAnAbsentActor() {
-  const Fixture fixture;
-  ActorFacts unloaded = LoadedActor({CuirassFacts(false, true)});
-  unloaded.loaded = false;
-  ActorFacts far = LoadedActor({CuirassFacts(false, true)});
-  far.inRange = false;
-  test::Check(fixture.Plan(unloaded) == ActorPlan{},
-              "an unloaded actor has an empty plan");
-  test::Check(fixture.Plan(far) == ActorPlan{},
-              "an actor out of range has an empty plan");
 }
 
 void FollowsTheStudioView() {
@@ -183,7 +165,6 @@ int main() {
   CatalogRejectsMismatchedFingerprints();
   PlansEveryGeometryOfAnAttachedPiece();
   SkipsAPieceWithoutAModel();
-  PlansNothingForAnAbsentActor();
   FollowsTheStudioView();
   KeepsFirstPersonPiecesApart();
   PinsARecipeOnTheOwningPiece();
