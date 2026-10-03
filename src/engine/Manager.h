@@ -158,7 +158,7 @@ private:
   void CarryInstanceTime(LiveInstance &a_instance, RE::FormID a_actor,
                          const Recipe &a_recipe, const Settings &a_settings);
   [[nodiscard]] std::optional<std::size_t>
-  InstanceFor(LiveActor &a_state, InstanceId a_planInstance,
+  InstanceFor(LiveActor &a_state, InstanceId a_matchedInstance,
               RE::FormID a_enchantment, const Settings &a_settings);
   void PlaceInstances(LiveActor &a_state, RE::FormID a_actorID,
                       const Settings &a_settings);

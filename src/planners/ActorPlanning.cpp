@@ -60,15 +60,15 @@ bool LightSelected(const Recipe &a_recipe, const Geometry &a_geometry,
   return false;
 }
 
-std::optional<int> EligibleLightPriority(const ActorPlan &a_plan,
+std::optional<int> EligibleLightPriority(const ActorMatches &a_matches,
                                          InstanceId a_instance,
                                          const Recipe &a_recipe,
                                          const OutputFilter &a_filter) {
   std::optional<int> priority;
-  for (const PlacementId id : PlacementsOfInstance(a_plan, a_instance)) {
-    const Placement *placement = PlacementAt(a_plan, id);
+  for (const PlacementId id : PlacementsOfInstance(a_matches, a_instance)) {
+    const Placement *placement = PlacementAt(a_matches, id);
     const Geometry *geometry =
-        placement ? GeometryAt(a_plan, placement->geometry) : nullptr;
+        placement ? GeometryAt(a_matches, placement->geometry) : nullptr;
     if (geometry && LightSelected(a_recipe, *geometry, a_filter)) {
       priority = priority ? std::max(*priority, placement->priority)
                           : placement->priority;
@@ -78,7 +78,7 @@ std::optional<int> EligibleLightPriority(const ActorPlan &a_plan,
 }
 
 [[nodiscard]] InstanceId
-InstanceFor(ActorPlan &a_plan, RecipeId a_recipe,
+InstanceFor(ActorMatches &a_matches, RecipeId a_recipe,
             const std::optional<FormKey> &a_enchantment,
             const RecipeKey &a_key) {
   const std::optional<RecipeKey> effectKey =
@@ -87,29 +87,29 @@ InstanceFor(ActorPlan &a_plan, RecipeId a_recipe,
           ? std::optional<RecipeKey>{a_key}
           : std::nullopt;
   if (const std::optional<InstanceId> existing =
-          FindInstance(a_plan, a_recipe, a_enchantment, effectKey)) {
+          FindInstance(a_matches, a_recipe, a_enchantment, effectKey)) {
     return *existing;
   }
-  a_plan.instances.push_back(Instance{a_recipe, a_enchantment, effectKey});
-  return InstanceId{a_plan.instances.size() - 1};
+  a_matches.instances.push_back(Instance{a_recipe, a_enchantment, effectKey});
+  return InstanceId{a_matches.instances.size() - 1};
 }
 }
 
-ActorPlan MatchActor(std::span<const Geometry> a_geometries,
-                     std::span<const Recipe> a_store,
-                     const RecipeResolver &a_resolver) {
-  ActorPlan plan;
-  plan.geometries.assign(a_geometries.begin(), a_geometries.end());
-  for (std::size_t p = 0; p < plan.geometries.size(); ++p) {
-    const Geometry &geometry = plan.geometries[p];
+ActorMatches MatchActor(std::span<const Geometry> a_geometries,
+                        std::span<const Recipe> a_store,
+                        const RecipeResolver &a_resolver) {
+  ActorMatches matches;
+  matches.geometries.assign(a_geometries.begin(), a_geometries.end());
+  for (std::size_t p = 0; p < matches.geometries.size(); ++p) {
+    const Geometry &geometry = matches.geometries[p];
     for (const ResolvedRecipe &resolved : a_resolver(geometry, GeometryId{p})) {
       const std::optional<RecipeId> recipe =
           RecipeIdOf(a_store, resolved.recipe);
       if (!recipe) {
         continue;
       }
-      const InstanceId instance =
-          InstanceFor(plan, *recipe, geometry.keys.enchantment, resolved.key);
+      const InstanceId instance = InstanceFor(
+          matches, *recipe, geometry.keys.enchantment, resolved.key);
       Placement placement;
       placement.instance = instance;
       placement.geometry = GeometryId{p};
@@ -117,32 +117,32 @@ ActorPlan MatchActor(std::span<const Geometry> a_geometries,
       placement.priority = resolved.priority;
       placement.outputs =
           SurfacePlacements(*resolved.recipe, geometry.identity);
-      plan.placements.push_back(std::move(placement));
+      matches.placements.push_back(std::move(placement));
     }
   }
-  return plan;
+  return matches;
 }
 
-ActorPlan MatchActor(std::span<const Geometry> a_geometries,
-                     std::span<const Recipe> a_store) {
+ActorMatches MatchActor(std::span<const Geometry> a_geometries,
+                        std::span<const Recipe> a_store) {
   return MatchActor(a_geometries, a_store,
                     [a_store](const Geometry &a_geometry, GeometryId) {
                       return Resolve(a_geometry.keys, a_store);
                     });
 }
 
-GeometryPlacementPlan PlanGeometryPlacement(const ActorPlan &a_plan,
+GeometryPlacementPlan PlanGeometryPlacement(const ActorMatches &a_matches,
                                             std::span<const Recipe> a_store,
                                             GeometryId a_geometry,
                                             const OutputFilter &a_filter) {
   GeometryPlacementPlan out;
   for (const PlacementId placementId :
-       PlacementsOfGeometry(a_plan, a_geometry)) {
-    const Placement *placement = PlacementAt(a_plan, placementId);
+       PlacementsOfGeometry(a_matches, a_geometry)) {
+    const Placement *placement = PlacementAt(a_matches, placementId);
     if (!placement) {
       continue;
     }
-    const Instance *instance = InstanceAt(a_plan, placement->instance);
+    const Instance *instance = InstanceAt(a_matches, placement->instance);
     if (!instance) {
       continue;
     }
@@ -167,16 +167,17 @@ GeometryPlacementPlan PlanGeometryPlacement(const ActorPlan &a_plan,
   return out;
 }
 
-ActorLightPlan PlanActorLights(const ActorPlan &a_plan,
+ActorLightPlan PlanActorLights(const ActorMatches &a_matches,
                                std::span<const Recipe> a_store,
                                const OutputFilter &a_filter) {
   ActorLightPlan out;
-  for (std::size_t i = 0; i < a_plan.instances.size(); ++i) {
-    const Instance &instance = a_plan.instances[i];
+  for (std::size_t i = 0; i < a_matches.instances.size(); ++i) {
+    const Instance &instance = a_matches.instances[i];
     const Recipe *recipe = RecipeAt(a_store, instance.recipe);
     const std::optional<int> priority =
-        recipe ? EligibleLightPriority(a_plan, InstanceId{i}, *recipe, a_filter)
-               : std::nullopt;
+        recipe
+            ? EligibleLightPriority(a_matches, InstanceId{i}, *recipe, a_filter)
+            : std::nullopt;
     out.placed.push_back(PlacedRecipe{priority ? recipe : nullptr,
                                       priority.value_or(0),
                                       {},

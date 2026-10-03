@@ -4,7 +4,7 @@
 #include "PCH.h"
 #include "engine/ApplicationService.h"
 #include "engine/Environment.h"
-#include "planners/ActorPlan.h"
+#include "planners/ActorMatches.h"
 #include "planners/BindingPlan.h"
 #include "planners/RenderPlan.h"
 #include "planners/StackPlan.h"
@@ -105,7 +105,7 @@ struct LiveActor {
   RE::ActorHandle actor;
   std::vector<WornEntry> worn;
   bool firstRenderAdmitted = false;
-  ActorPlan plan;
+  ActorMatches matches;
   std::vector<LivePiece> pieces;
   std::vector<LiveInstance> instances;
   std::vector<LivePlacement> placements;

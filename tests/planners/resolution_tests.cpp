@@ -289,7 +289,7 @@ void PlacementPriorityAndLights() {
   Geometry boots = MakeGeometry("boots");
   boots.keys.magicEffects = {FormKey{"test.esp", 2}};
   const std::array geometries{gloves, boots};
-  ActorPlan actor = MatchActor(geometries, recipes);
+  ActorMatches actor = MatchActor(geometries, recipes);
   Check(actor.instances.size() == 3,
         "effect-selected placements have independent evaluation instances");
   const auto glovePlan = PlanGeometryPlacement(actor, recipes, GeometryId{0});
@@ -470,7 +470,7 @@ void NoRerollAfterSelectorExclusion() {
       SelectorClause{SelectorKind::kGeometry, std::string{"missing"}}};
   const std::array recipes{a, b};
   const std::array geometries{MakeGeometry("gloves")};
-  const ActorPlan actor = MatchActor(
+  const ActorMatches actor = MatchActor(
       geometries, recipes, [&](const Geometry &a_geometry, GeometryId) {
         return Resolve(a_geometry.keys, recipes, 0x14);
       });

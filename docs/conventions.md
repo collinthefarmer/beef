@@ -337,7 +337,7 @@ the type.
   engine adapter executes their **plans**.
 - A planner decides over value records and opaque handles. It never takes an
   engine (`RE::`) pointer. Example: `Merge`'s `Plan*` take
-  `PlacedRecipe`/`SlotContributor`; an actor planner takes an `ActorPlan`
+  `PlacedRecipe`/`SlotContributor`; an actor planner takes an `ActorMatches`
   over opaque ids.
 - When a decision needs a live pointer, the split is wrong: move that logic
   into the adapter. This keeps the pure core testable without the engine and
@@ -396,7 +396,7 @@ and term templates:
 
 ### Handles
 
-- `ActorPlan::geometries` is flat. Each planner `Geometry` describes one
+- `ActorMatches::geometries` is flat. Each planner `Geometry` describes one
   renderable **geometry**, and its `GeometryId` also identifies the
   corresponding geometry in the runtime's nested traversal order.
 - `LiveActor::pieces` groups runtime geometries by worn armor part.
@@ -412,7 +412,7 @@ and term templates:
 - `planners/ActorPlanning` matches recipes and builds geometry and light
   plans through `PlanGeometryPlacement` and `PlanActorLights`. It does not
   apply them to the engine.
-- `RecipesOfInactiveInstances` is an `ActorPlan` query. It reports one
+- `RecipesOfInactiveInstances` is an `ActorMatches` query. It reports one
   recipe id per **instance** without live geometry, so a result can repeat a
   recipe id or name a recipe that still has another active instance.
 
@@ -666,7 +666,8 @@ with these meanings and no other word for the same thing.
 | **biped slot** | An armor equipment slot, 30 to 61 (`enum class BipedSlot`, `kBipedSlots`, `BipedSlotFromName`). Parsed once at the JSON boundary. The NIF's raw partition field is not this type (`REFERENCE.md`, mesh). |
 | **partition** | A run of triangles inside one mesh (`MeshPartition`). A `PartitionBake` selects one by its `bipedSlot`. |
 | **contributor** | The placed recipe that won a slot or a light (`SlotContributor`, `LightContributor` in `recipe/Merge.h`), paired with an output index in a `SlotContribution`/`LightContribution`. |
-| **plan** | What a planner decided, as plain data, before anything is applied: `ActorPlan`, `GeometryPlan`, `LightPlan`, `StackPlan`, `BindingPlan`. A plan holds no `RE::` pointer. |
+| **plan** | What a planner decided, as plain data, before anything is applied: `GeometryPlan`, `LightPlan`, `StackPlan`, `BindingPlan`. A plan holds no `RE::` pointer. The actor core's keyed `Actors::ActorPlan` is the plan an actor converges to. |
+| **matches** | Which recipes matched which geometries of one actor: geometries, instances and placements by position (`ActorMatches`, made by `MatchActor`). The input the planners plan from; not itself a plan. |
 | **binding** | A live attachment to an engine object that must be undone: `MaterialBinding`, `ShellBinding`, `LightBinding`. `MaterialBinding` and `ShellBinding` are `SlotTarget`s; `LightBinding` stands alone. The decision that produced a binding is a `BindingPlan`. |
 | **lease** | A `shared_ptr` whose lifetime reserves a shared resource. The resource frees when the last lease drops (`TargetPool`, `TextureLeases`, `ConsumptionLeases`). |
 | **target** | A render target the lab owns (`TextureLab::RenderTarget`), pooled by `RenderTargetPool`, referenced through a `TextureRef`. `SlotTarget` is the unrelated write interface a binding implements. |

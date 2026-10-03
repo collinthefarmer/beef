@@ -1,5 +1,5 @@
 // GPL-3.0-only with the additional permission in COPYING.md.
-#include "planners/ActorPlan.h"
+#include "planners/ActorMatches.h"
 #include "test_support.h"
 
 using namespace BetterEnchantmentEffects;
@@ -8,8 +8,8 @@ using test::Check;
 namespace {
 FormKey Ench(std::uint32_t a_id) { return FormKey{"Skyrim.esm", a_id}; }
 
-ActorPlan MakePlan() {
-  ActorPlan plan;
+ActorMatches MakePlan() {
+  ActorMatches plan;
 
   Geometry live;
   live.lost = false;
@@ -41,7 +41,7 @@ ActorPlan MakePlan() {
 }
 
 int main() {
-  const ActorPlan plan = MakePlan();
+  const ActorMatches plan = MakePlan();
 
   Check(GeometryAt(plan, GeometryId{0}) == &plan.geometries[0],
         "GeometryAt returns the row for a valid handle");
@@ -58,13 +58,13 @@ int main() {
 
   Check(AnyLiveGeometry(plan),
         "AnyLiveGeometry is true when a piece is not lost");
-  ActorPlan allLost = plan;
+  ActorMatches allLost = plan;
   for (Geometry &piece : allLost.geometries) {
     piece.lost = true;
   }
   Check(!AnyLiveGeometry(allLost),
         "AnyLiveGeometry is false when every piece is lost");
-  Check(!AnyLiveGeometry(ActorPlan{}),
+  Check(!AnyLiveGeometry(ActorMatches{}),
         "AnyLiveGeometry is false when there are no pieces");
 
   const std::optional<InstanceId> noEnch =

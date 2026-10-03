@@ -1,5 +1,5 @@
 // GPL-3.0-only with the additional permission in COPYING.md.
-#include "planners/ActorPlan.h"
+#include "planners/ActorMatches.h"
 #include "test_support.h"
 
 #include <array>
@@ -8,8 +8,8 @@ using namespace BetterEnchantmentEffects;
 using test::Check;
 
 namespace {
-ActorPlan MakePlan() {
-  ActorPlan plan;
+ActorMatches MakePlan() {
+  ActorMatches plan;
 
   Geometry thirdA;
   thirdA.firstPerson = false;
@@ -41,7 +41,7 @@ ActorPlan MakePlan() {
 }
 
 int main() {
-  const ActorPlan plan = MakePlan();
+  const ActorMatches plan = MakePlan();
 
   const std::array<PlacementId, 3> placements{PlacementId{2}, PlacementId{0},
                                               PlacementId{99}};

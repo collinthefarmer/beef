@@ -11,7 +11,7 @@ int main() {
   LiveActor actor;
   actor.instances.resize(1);
   actor.instances[0].light = std::make_unique<LightBinding>();
-  actor.plan.placements.resize(2);
+  actor.matches.placements.resize(2);
   actor.placements.resize(2);
   for (auto &placement : actor.placements) {
     PlacedOutput output;

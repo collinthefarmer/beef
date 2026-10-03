@@ -59,7 +59,7 @@ not select the retired actors. A recipe pointer, span or planner recipe index
 must not survive republication. Deferred editor requests capture owned ids and
 edits and look documents up when they run.
 
-**Instance slots.** `ActorPlan` owns instance identity and deduplication.
+**Instance slots.** `ActorMatches` owns instance identity and deduplication.
 `LiveActor::instances` has one slot per planned instance. A slot stays empty
 when preparation fails, so placements use the same indices in both tables.
 
@@ -230,7 +230,7 @@ without the manager.
 
 | Record | Description |
 |---|---|
-| `LiveActor` | One applied actor: its handle, its `ActorPlan`, its pieces, instances and **placements**, and the `ApplicationToken`s of its in-flight applications. |
+| `LiveActor` | One applied actor: its handle, its `ActorMatches`, its pieces, instances and **placements**, and the `ApplicationToken`s of its in-flight applications. |
 | `LivePiece` | One worn armor clone: the armor form id and name, the optional addon `FormKey`, the enchantment form id and its `LiveGeometry`s. |
 | `LivePieceId` | A typed piece index (`enum class`, `std::size_t`). |
 | `LiveGeometry` | One bound geometry: engine geometry and shader-property pointers, `GeometryInputs`, `MaterialBinding`, `ShellBinding`, its `GeometryPlan`, `GeometryStackPlan` and `BindingPlan`, and its `PlacementId`s. Its `lost` flag marks it retired. |

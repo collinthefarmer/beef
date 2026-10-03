@@ -78,6 +78,7 @@ eviction, **live** (kept only for heartbeat live targets).
 | D5 | The admission budget is time-based, 4 ms of performed commands per frame, as a setting. | A count does not bound a 40 ms install. |
 | D6 | An application token completes when no command for its recipe remains on its actor and the outputs rendered. | Reconcile has no single "refresh done" moment. |
 | D7 | `InstanceRef` carries the recipe fingerprint. | An edit replaces the instance (the live-mutation rule becomes structural); a save that changes nothing keeps it. |
+| D8 | The planners' positional `ActorPlan` is renamed `ActorMatches`; `Actors::ActorPlan` is the only plan of an actor. `PlanActor` converts matches to the keyed plan. After the switch, `Geometry::lost` and `AnyLiveGeometry` go, and a keyed `MatchActor` is considered only if the conversion is awkward. | `MatchActor` produces which recipes matched which geometries; the planners build plans from it. |
 
 ## Engine rules the core must keep
 

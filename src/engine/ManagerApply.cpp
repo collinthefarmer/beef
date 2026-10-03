@@ -163,7 +163,7 @@ std::shared_ptr<const RecipeGraph> InstanceGraph(const Recipe &a_recipe,
 }
 
 RE::FormID EnchantmentForInstance(LiveActor &a_state, std::size_t a_instance) {
-  for (const Placement &placement : a_state.plan.placements) {
+  for (const Placement &placement : a_state.matches.placements) {
     if (IndexOf(placement.instance) != a_instance) {
       continue;
     }
@@ -303,13 +303,15 @@ void PreparePlacement(LiveActor &a_state,
   bound.binding = PlanBinding(placement.placed, placement.plan);
   for (const PlacementId source : placement.sources) {
     const std::size_t k = IndexOf(source);
-    if (k >= a_state.placements.size() || k >= a_state.plan.placements.size()) {
+    if (k >= a_state.placements.size() ||
+        k >= a_state.matches.placements.size()) {
       continue;
     }
     LivePlacement &live = a_state.placements[k];
     live.geometry = a_geometry;
     live.outputs.clear();
-    for (const OutputPlacement &output : a_state.plan.placements[k].outputs) {
+    for (const OutputPlacement &output :
+         a_state.matches.placements[k].outputs) {
       live.outputs.push_back(
           PlacedOutput{IndexOf(output.output), nullptr, output.problem});
     }
@@ -326,7 +328,7 @@ void InstallSurfaces(LiveActor &a_state, LiveGeometry &a_bound,
     std::optional<std::size_t> ownerInstance;
     if (a_bound.binding.shellOwner) {
       if (const std::optional<InstanceId> owner =
-              InstanceOfPlaced(a_state.plan, a_bound.placements,
+              InstanceOfPlaced(a_state.matches, a_bound.placements,
                                IndexOf(*a_bound.binding.shellOwner))) {
         ownerInstance = IndexOf(*owner);
       }
@@ -350,7 +352,7 @@ std::string ReplacerRecipeId(const LiveActor &a_state,
     return {};
   }
   const std::optional<InstanceId> instance =
-      InstanceOfPlaced(a_state.plan, a_bound.placements, *replacer);
+      InstanceOfPlaced(a_state.matches, a_bound.placements, *replacer);
   if (!instance) {
     return {};
   }
@@ -755,9 +757,9 @@ std::vector<RE::BSGeometry *> LightGeometriesOf(LiveActor &a_state,
                                                 std::size_t a_instance,
                                                 const LightOutput &a_light) {
   std::vector<RE::BSGeometry *> geometries;
-  for (const GeometryId flat :
-       ThirdPersonGeometriesOfInstance(a_state.plan, InstanceId{a_instance})) {
-    const Geometry *geometry = GeometryAt(a_state.plan, flat);
+  for (const GeometryId flat : ThirdPersonGeometriesOfInstance(
+           a_state.matches, InstanceId{a_instance})) {
+    const Geometry *geometry = GeometryAt(a_state.matches, flat);
     if (!geometry || !LightEligible(*geometry, a_light)) {
       continue;
     }
@@ -883,7 +885,7 @@ void Manager::Refresh(RE::Actor *a_actor) {
     awaitingArmorModel_.erase(actorID);
   }
   TextureLab::GetSingleton()->InvalidatePreviews();
-  if (state.plan.placements.empty()) {
+  if (state.matches.placements.empty()) {
     if (settings.verboseLogging) {
       logger::info("actor {:08X} ({}): {} piece(s), no recipe placed", actorID,
                    a_actor->GetName(), state.pieces.size());
@@ -1095,7 +1097,7 @@ void Manager::MatchRecipes(RE::Actor *a_actor, LiveActor &a_state,
   const PlannerGeometries built =
       BuildPlannerGeometries(a_state, firstPersonRoot, actorID);
   const std::vector<Studio::PieceRef> &refs = built.owners;
-  a_state.plan = MatchActor(
+  a_state.matches = MatchActor(
       built.geometries, loaded,
       [this, loaded, &refs, actorID](const Geometry &a_geometry,
                                      GeometryId a_geometryID) {
@@ -1108,20 +1110,20 @@ void Manager::MatchRecipes(RE::Actor *a_actor, LiveActor &a_state,
                                       editor_.CurrentView(), loaded});
       });
   a_state.instances.clear();
-  a_state.instances.resize(a_state.plan.instances.size());
-  for (std::size_t i = 0; i < a_state.plan.instances.size(); ++i) {
+  a_state.instances.resize(a_state.matches.instances.size());
+  for (std::size_t i = 0; i < a_state.matches.instances.size(); ++i) {
     const RE::FormID enchantment = EnchantmentForInstance(a_state, i);
     (void)InstanceFor(a_state, InstanceId{i}, enchantment, a_settings);
   }
 }
 
 std::optional<std::size_t> Manager::InstanceFor(LiveActor &a_state,
-                                                InstanceId a_planInstance,
+                                                InstanceId a_matchedInstance,
                                                 RE::FormID a_enchantment,
                                                 const Settings &a_settings) {
   const auto actor = a_state.actor.get();
-  const Instance *planned = InstanceAt(a_state.plan, a_planInstance);
-  const std::size_t instanceIndex = IndexOf(a_planInstance);
+  const Instance *planned = InstanceAt(a_state.matches, a_matchedInstance);
+  const std::size_t instanceIndex = IndexOf(a_matchedInstance);
   if (!actor || !planned || instanceIndex >= a_state.instances.size()) {
     return std::nullopt;
   }
@@ -1137,7 +1139,7 @@ std::optional<std::size_t> Manager::InstanceFor(LiveActor &a_state,
   instance.effectScope =
       planned->effectKey ? planned->effectKey->ToString() : "";
   instance.graph = InstanceGraph(
-      *recipe, InstanceVariant(a_state.plan, a_planInstance, *recipe));
+      *recipe, InstanceVariant(a_state.matches, a_matchedInstance, *recipe));
   if (instance.graph) {
     instance.signals = std::make_unique<SignalState>(*instance.graph);
   }
@@ -1177,13 +1179,13 @@ void Manager::PlaceInstances(LiveActor &a_state, RE::FormID a_actorID,
   }
   const std::span<const Recipe> loaded = LoadedRecipes();
   a_state.placements.clear();
-  a_state.placements.resize(a_state.plan.placements.size());
+  a_state.placements.resize(a_state.matches.placements.size());
   std::size_t flat = 0;
   ActorStacks stacks{.actor = a_actorID};
   for (std::size_t p = 0; p < a_state.pieces.size(); ++p) {
     for (std::size_t g = 0; g < a_state.pieces[p].geometries.size(); ++g) {
       const auto placement = PlanGeometryPlacement(
-          a_state.plan, loaded, GeometryId{flat},
+          a_state.matches, loaded, GeometryId{flat},
           [this](const Recipe &recipe, std::size_t output) {
             return editor_.CurrentView().OutputShown(recipe.id, output);
           });
@@ -1236,7 +1238,8 @@ void Manager::PlaceLightsOf(RE::Actor *a_actor, LiveActor &a_state,
                             const Settings &a_settings) {
   const std::span<const Recipe> loaded = LoadedRecipes();
   const ActorLightPlan plan = PlanActorLights(
-      a_state.plan, loaded, [this](const Recipe &recipe, std::size_t output) {
+      a_state.matches, loaded,
+      [this](const Recipe &recipe, std::size_t output) {
         return editor_.CurrentView().OutputShown(recipe.id, output);
       });
   for (std::size_t i = 0; i < plan.sources.size(); ++i) {

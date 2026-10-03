@@ -39,23 +39,23 @@ The directory owns four groups of decisions.
 
 ### Handles
 
-`ActorPlan.h` declares five handle types. Each is an `enum class :
+`ActorMatches.h` declares five handle types. Each is an `enum class :
 std::size_t` over its own index space. The distinct types stop a caller from
 indexing one table with another table's handle. No handle wraps a pointer.
 
 | Handle | Indexes |
 |---|---|
-| `GeometryId` | A row of `ActorPlan::geometries`. |
-| `InstanceId` | A row of `ActorPlan::instances`. |
-| `PlacementId` | A row of `ActorPlan::placements`. |
+| `GeometryId` | A row of `ActorMatches::geometries`. |
+| `InstanceId` | A row of `ActorMatches::instances`. |
+| `PlacementId` | A row of `ActorMatches::placements`. |
 | `RecipeId` | A row of the recipe store the caller passes as `std::span<const Recipe>`. |
 | `OutputId` | A row of the matched recipe's `outputs`. |
 
 ### The actor plan
 
-`ActorPlan` holds what the planners know about one actor as three tables of
+`ActorMatches` holds what the planners know about one actor as three tables of
 value rows. The rows refer to each other by handle. `MatchActor` builds the
-plan, and the query functions in `ActorPlan.cpp` read it.
+plan, and the query functions in `ActorMatches.cpp` read it.
 
 | Type | Description |
 |---|---|
@@ -63,7 +63,7 @@ plan, and the query functions in `ActorPlan.cpp` read it.
 | `Instance` | One **instance**: a `RecipeId`, an optional enchantment `FormKey`, and an optional effect `RecipeKey`. `InstanceFor` in `ActorPlanning.cpp` reuses an instance through `FindInstance` on these three values. |
 | `OutputPlacement` | One recipe output on one placement: its `OutputId`, whether it is `selected`, and a `problem` text. |
 | `Placement` | One **placement**. It joins an `InstanceId` to a `GeometryId` and records the matched `RecipeKey`, the `priority` and one `OutputPlacement` per output. |
-| `ActorPlan` | The `geometries`, `instances` and `placements` tables. |
+| `ActorMatches` | The `geometries`, `instances` and `placements` tables. |
 | `PieceMatch` | The match view for one armor **piece**: an instance index, the `RecipeKey` and the `priority`. `MatchesForPiece` builds it over a contiguous range of geometry ids. |
 
 ### Geometry and light plans
@@ -320,7 +320,7 @@ MatchActor(geometries, store[, resolver])                  ActorPlanning.cpp
   │  resolver: default Resolve(geometry.keys, store)         recipe/Resolve.cpp
   │  InstanceFor reuses an instance through FindInstance
   ▼
-ActorPlan{ geometries, instances, placements }              ActorPlan.cpp
+ActorMatches{ geometries, instances, placements }              ActorMatches.cpp
   │
   ├─▶ PlanActorLights(plan, store, filter) -> ActorLightPlan  ActorPlanning.cpp
   │      PlanLights -> LightPlan                              recipe/Merge.cpp
@@ -355,7 +355,7 @@ PSGeneratedStack, or PSStack until the compile finishes     render/GeneratedShad
 
 | Files | Concern | What they own |
 |---|---|---|
-| `ActorPlan.h`/`.cpp` | Actor planning | The handles, the three-table `ActorPlan`, and its queries: `GeometryAt`, `InstanceAt`, `PlacementAt`, `FindInstance`, `PlacementsOfGeometry`, `PlacementsOfInstance`, `MatchesForPiece`, `ThirdPersonGeometriesOfInstance`, `RecipesOfInactiveInstances`, `InstanceVariant`, `LightEligible`. |
+| `ActorMatches.h`/`.cpp` | Actor planning | The handles, the three-table `ActorMatches`, and its queries: `GeometryAt`, `InstanceAt`, `PlacementAt`, `FindInstance`, `PlacementsOfGeometry`, `PlacementsOfInstance`, `MatchesForPiece`, `ThirdPersonGeometriesOfInstance`, `RecipesOfInactiveInstances`, `InstanceVariant`, `LightEligible`. |
 | `ActorPlanning.h`/`.cpp` | Actor planning | `MatchActor`, `PlanGeometryPlacement`, `PlanActorLights`. |
 | `StackPlan.h`/`.cpp`, `BindingPlan.h`/`.cpp` | Actor planning | `PlanStacks`, `SlotStackPlanOf`, `ChainIndexOf`; `PlanBinding`. |
 | `ValueIdentity.h`/`.cpp`, `TextureDemand.h`/`.cpp` | Render planning | `IdentifyValue`; `CollectTextureDemand` and the demand records. |
@@ -373,7 +373,7 @@ PSGeneratedStack, or PSStack until the compile finishes     render/GeneratedShad
 
 ## See also
 
-- `REFERENCE.md` → *planners*: the three-table `ActorPlan` decision, the
+- `REFERENCE.md` → *planners*: the three-table `ActorMatches` decision, the
   handle spaces, the `StackPlan` and `BindingPlan` rules, and the lease and
   eviction contracts.
 - `REFERENCE.md` → *The lab's shaders*: how `ProgramShader` and
