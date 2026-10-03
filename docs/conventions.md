@@ -697,6 +697,12 @@ with these meanings and no other word for the same thing.
 | **application scope** | The application context and actor form ID that keep state and signal identities apart (`ApplicationScope` in `render/Compositor.h`). |
 | **residue** | What the plugin leaves on an actor's 3D: shell geometries and presenter textures (`ResidueOn` in `engine/RegressionWorld.cpp`). An actor at baseline has none. Never trace, which is the diagnostic trace. |
 | **facts** | One frame's observation of one thing (`RoleFacts`, `ItemFacts`, `CrowdFacts`, `RecipeFacts`, `RegressionActorFacts` in the regression runner). Never view. |
+| **ref** | A value that identifies one thing (`TextureRef`, `ResourceRef`, `Studio::PieceRef`, the actor core's `PieceRef`, `GeometryRef`, `InstanceRef`, `PlacementRef`). Never key, which is a recipe matching criterion (`RecipeKey`, `KeyKind`, `PieceKey`). |
+| **model** | The 3D the engine attaches for a worn piece, the biped `partClone` (`ModelToken` in `actors/Actor.h`). Never clone, which is the plugin's shell copy. |
+| **installed** | What the engine side holds for an actor, in the shape of its plan (`Present::installed`). |
+| **phase** | Where an actor is in its lifecycle: `Unloaded`, `Evicted` or `Present` (`actors/Actor.h`). |
+| **command** | An instruction a pure core issues for the engine side to perform (`Regression::Command`, `Actors::ActorCommand`). Never a trace scope, which is an **operation** (`Trace::Operation`). |
+| **stale** | Possibly out of date; observe or evaluate again (a stale render step, a stale actor). |
 
 ## Gates
 

@@ -1,4 +1,4 @@
-Status: open. Stage 0 in progress on branch `actor-core`. Replaces the
+Status: open. Stages 0 and 1 done on branch `actor-core`; stage 2 next. Replaces the
 refresh-and-rebuild lifecycle in `engine/Manager*.cpp` with a pure actor core
 that reconciles each actor to a keyed plan. Completes the actor state tables
 decided on 2026-09-09.
@@ -35,11 +35,11 @@ these words when stage 1 lands.
 
 | Word | Meaning | Type |
 |---|---|---|
-| **piece** | One worn item that can carry effects, as `PieceItemOf` decides | `PieceKey` (item, addon, first person) |
+| **piece** | One worn item that can carry effects, as `PieceItemOf` decides | `PieceRef` (item, addon, first person) |
 | **model** | The 3D the engine attaches for a worn piece (the biped `partClone`) | `ModelToken` |
-| **geometry** | One `BSGeometry` inside a piece's model | `GeometryKey` (piece, name, ordinal among equal names) |
-| **instance** | One recipe on one actor for one enchantment: signals, environment, clock, light | `InstanceKey` (recipe, fingerprint, enchantment, effect key) |
-| **placement** | One instance on one geometry | `PlacementKey` |
+| **geometry** | One `BSGeometry` inside a piece's model | `GeometryRef` (piece, name, ordinal among equal names) |
+| **instance** | One recipe on one actor for one enchantment: signals, environment, clock, light | `InstanceRef` (recipe, fingerprint, enchantment, effect key) |
+| **placement** | One instance on one geometry | `PlacementRef` |
 | **plan** | What should be installed, as plain data | `ActorPlan` (keyed) |
 | **installed** | What the engine side holds | `InstalledActor` |
 | **facts** | One frame's observation of one thing | `ActorFacts` |
@@ -58,6 +58,11 @@ these words when stage 1 lands.
 | Perform | Carry out one command |
 | Admit | Let a command start this frame within the budget |
 
+Identity types end in **Ref**, as `Studio::PieceRef`, `TextureRef` and
+`ResourceRef` do. **Key** keeps its recipe meaning, a matching criterion
+(`RecipeKey`, `KeyKind`, the `PieceKey` choices of a worn piece), and no
+identity type uses it.
+
 Dropped from the actor code: **refresh**, **apply** for the act (the word keeps
 its application-token meaning), **place** as a verb, **restore** for leaving
 eviction, **live** (kept only for heartbeat live targets).
@@ -68,11 +73,11 @@ eviction, **live** (kept only for heartbeat live targets).
 |---|---|---|
 | D1 | The pure core is the engine-free module `src/actors/`; the engine adapter keeps the name `Manager` and loses everything the core takes. | The conventions and the other modules already refer to `Manager`; a rename is a later, separate pass. |
 | D2 | `Trace::Command` becomes `Trace::Operation`, and `Regression::ActorFacts` becomes `Regression::RoleFacts`. | **command** and **facts** each keep one meaning. |
-| D3 | `GeometryKey` always carries the ordinal among geometries of equal name in the piece. | Names are not verified unique within a model; the ordinal costs nothing when they are. |
+| D3 | `GeometryRef` always carries the ordinal among geometries of equal name in the piece. | Names are not verified unique within a model; the ordinal costs nothing when they are. |
 | D4 | A geometry's slot chain is rebuilt when any placement on that geometry is installed or retired. | The coarse rule is correct; a finer rule waits for a measurement. |
 | D5 | The admission budget is time-based, 4 ms of performed commands per frame, as a setting. | A count does not bound a 40 ms install. |
 | D6 | An application token completes when no command for its recipe remains on its actor and the outputs rendered. | Reconcile has no single "refresh done" moment. |
-| D7 | `InstanceKey` carries the recipe fingerprint. | An edit replaces the instance (the live-mutation rule becomes structural); a save that changes nothing keeps it. |
+| D7 | `InstanceRef` carries the recipe fingerprint. | An edit replaces the instance (the live-mutation rule becomes structural); a save that changes nothing keeps it. |
 
 ## Engine rules the core must keep
 
@@ -85,7 +90,7 @@ the core owns it, and an in-game case where only the engine shows it.
 | The armor model attaches after the equip event | `Advance`: an empty model token keeps a present actor in `ModelWait`, 1 s limit | Native; `unload`, `soak-fight` |
 | The unequip refresh runs before the biped changes | Observe: a piece without the inventory worn mark is not observed | Native; `soak-churn` |
 | Model and geometry identity is compared only while held | Adapter: `ModelToken` backed by an `NiPointer` | `soak-churn`, `soak-waves` |
-| A live recipe change is atomic with the actors that use it | `InstanceKey` fingerprint; the recipe store swaps before actors are marked stale | Native; `load-edit` |
+| A live recipe change is atomic with the actors that use it | `InstanceRef` fingerprint; the recipe store swaps before actors are marked stale | Native; `load-edit` |
 | A load clears every actor and cancels work | Every actor goes `Unloaded` before any other step | `load-*` cases |
 | First-person pieces belong to the player, when the setting is on | Observe | `camera` |
 | Distance eviction and return | `Advance` on `inRange` | Native |
