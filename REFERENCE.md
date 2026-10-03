@@ -708,6 +708,21 @@ Lab mechanics:
 
 ## Engine events, hooks and the manager
 
+A refresh of an installed actor first builds its **worn signature**: one
+`WornEntry` per biped object that `PieceItemOf` accepts, with the item, the
+addon, the enchantment, the 3D clone (held by `NiPointer`, so its address
+cannot be reused while compared), whether it is the first-person biped, and
+whether the inventory still
+marks the item worn. An unchanged signature skips the retire and rebuild and
+does not fire the recipes' `equip` signal. Recipe, view and settings changes,
+eviction and loads erase the installed actor first, so they always rebuild.
+The inventory flag is needed because the unequip refresh runs about 2 ms after
+`TESEquipEvent`, while the biped still lists the item and its clone; the
+inventory has already dropped `kWorn` by then. In run 1790977542389345
+(2026-10-02) equip events from weapon draws caused 163 full refreshes in 116 s
+of crowd fighting (median 44 ms); with the signature the fight window's plugin
+cost fell from 6.0 to 4.9 ms per frame.
+
 An equip event can arrive before the armor's model is attached to an NPC's
 biped: the slot already holds the item while `partClone` is still null, and
 no later event announces the attach. `CollectPieces` skips such a slot, so a
@@ -723,6 +738,18 @@ retry limit, so a long-lived NPC is never locked out. A multi-slot armor lists
 its item in every slot it covers but attaches one model, so the check asks
 whether any slot holds the armor's model. The in-game `unload` regression case
 showed the late attach on a spawned NPC on 2026-10-01.
+
+An installed actor whose new armor still awaits its model keeps its current
+effects: `Refresh` records the wait (`ArmorModelWait`), traces
+`refresh_deferred` and returns, and the sweep rebuilds once on attach. After
+1 s (`kArmorModelWaitMS`) the sweep marks the wait expired, traces
+`armor_model_wait_expired` and queues one rebuild that installs what is
+attached; an expired wait never defers again, so it cannot loop. An actor seen
+for the first time is never deferred. Without this, each armor equip rebuilt
+the actor twice (once before and once after the attach): in the 2026-10-03
+fight soak, full rebuilds fell from 33 to 6. Each full rebuild traces
+`refresh_phases` with microseconds per phase; in that soak `PlaceInstances`
+took 38 to 46 ms and the retire 2 or 27 to 33 ms.
 
 A tick admits one actor's first render (`kFirstRendersPerTick`, `AdmitRender`
 in `engine/ManagerTick.cpp`). An actor's first render acquires about 70
@@ -2230,7 +2257,8 @@ save and continue. The fixture is the demo cuirass, `0x803` in
 | `ArmorDwarvenCuirass` | `0x1394D` | The control's plain cuirass; the demo cuirass copies it |
 | `PlayerHouseMannequin` | `0x89A85` | Base of the spawned wearer and control: no default outfit, a stand-still AI package |
 | `XMarker` | `0x3B` | The return marker placed at the player before travel; an engine-reserved form, found by `TESForm::LookupByID`, which `TESDataHandler::LookupForm` does not find |
-| `WarehouseNPCCarryFirewood` | `0xCCE01` | Base of an idle-NPC crowd: Nord, not unique, not a template, no AI packages, no factions, class `CombatWarrior1H`, aggression 0, confidence 2 |
+| `WarehouseNPCCarryFirewood` | `0xCCE01` | Base of an idle-NPC crowd: Nord, not unique, not a template, no factions, class `CombatWarrior1H`, aggression 0, confidence 2. It carries `CarryActorScript` (firewood `0x6F993`) and the package list `DefaultPackageListLinkedPatrol`; in combat it never readies (four runs on 2026-10-02) |
+| `WEAdventurerTemplate` | `0x10553F` | Base of a fighter crowd: Nord, not unique, not a template, no script, no factions, a combat style, three leveled items, aggression 2 (held at 0 from spawn until `StartCrowdFight`) |
 | `ArmorIronCuirass`, `ArmorLeatherCuirass`, `ArmorElvenCuirass`, `ArmorOrcishCuirass`, `ArmorEbonyCuirass`, `ArmorDaedricCuirass` | `0x12E49`, `0x3619E`, `0x896A3`, `0x13957`, `0x13961`, `0x1396B` | The vanilla-cuirass dress, in that order; crowd actor *i* wears entry *i* mod 6 |
 | `WEEnemiesFactionA`, `WEEnemiesFactionB` | `0xBA0B8`, `0xBA0B9` | The two sides of a crowd fight: each lists the other as enemy, and neither has a relation to `PlayerFaction` |
 
@@ -2269,6 +2297,12 @@ in its base inventory, which the strip removes. In game, it is not yet
 verified whether an outfit re-equip after a 3D reload (see above) comes back
 through this strip.
 
+A recipe set (`View::recipeSet`, set by `ShowRecipeSet`) filters each
+geometry's matched recipes in `Studio::ViewedRecipes`, after isolation. Recipes
+outside the set never apply and never enter a plan. An empty set restricts nothing. The
+fingerprint is the FNV-1a hash of `SerializeRecipe`, so it changes with the
+recipe's content, not its file.
+
 `StartCrowdFight` puts even-numbered crowd actors in `WEEnemiesFactionA` and
 odd-numbered ones in `WEEnemiesFactionB`. It raises Aggression to 1 and
 Confidence to 4 on each: aggression 0 never starts combat, and lower
@@ -2276,6 +2310,30 @@ confidence lets a hurt actor flee out of the ring. Each crowd NPC gets the
 reference's `kEssential` flag, so a beaten actor goes into bleedout instead
 of dying. It is not yet verified in game that the reference flag alone gives
 bleedout. The fighters have no weapons and fight with their fists.
+
+Combat state is not a fight. `IsInCombat` turns true on the first evaluation
+after the faction change, and a combat target follows within 0.1 s, whether or
+not the actor ever readies. `AwaitCrowdHurt` passes only when a crowd actor
+loses health or bleeds out. Four runs on 2026-10-02 with the idle-NPC base
+showed 12 actors in combat, in high AI process and on the navmesh, with no
+weapon drawn and no actor hurt in 120 s. Run 20261002T214537-1 with the
+fighter base drew all 12 weapons within 1.7 s and hurt an actor 54 frames
+after the fight began.
+
+In `QASmoke`, a crowd of idle NPCs or fighters spawns on a grid inside the
+cell's only navmesh (Skyrim.esm `0x32D8B`, x 2112 to 2688, y 1856 to 2176,
+floor z 6976), three rows deep with a 48-unit margin, and the player moves to
+(1904, 2016) until the crowd despawns. The known good save puts the player at
+(-957, 1827), outside the room's west wall, where no navmesh exists.
+
+The run reads the camera from `PlayerCamera::currentState->id`: state 0 is
+first person, state 9 is third person, and every other state is neither. A run
+sets the `[Camera]` setting `fAutoVanityModeDelay` (120 s by default) to 10^9
+and restores it at the end: without that, the idle camera took over two minutes
+into every soak and ignored `ForceFirstPerson`. On the 2026-10-03 load order,
+`ForceFirstPerson` issued 62 ms after the fixture rendered was reverted to third
+person 0.77 s later, and the camera then flipped back to first person without
+a command; with 60 frames between the render and the switch, both views hold.
 
 A **trace** is a geometry under the actor's third- or first-person 3D whose
 name ends in the shell suffix, or a PBR material texture whose name begins

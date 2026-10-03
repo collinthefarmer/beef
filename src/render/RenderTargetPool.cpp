@@ -143,8 +143,7 @@ bool RenderTargetPool::CreateTarget(ID3D11Device *a_device,
       reinterpret_cast<RE::BSGraphics::Texture *>(a_target.ourData.get());
   a_target.size = pixels;
   a_target.format = format;
-  Metrics::CountTargetCreated(Metrics::MippedRgbaBytes(pixels) *
-                              (format == TextureFormat::kRgba32Float ? 4 : 1));
+  Metrics::CountTargetCreated(a_target.Bytes());
   return true;
 }
 
@@ -227,9 +226,7 @@ void RenderTargetPool::Recycle(const std::weak_ptr<Pool> &a_pool,
                        {"generation", std::to_string(target->generation_)},
                        {"presenter", Trace::Pointer(target->presenter.get())}});
     std::scoped_lock lock{pool->lock};
-    const std::uint64_t bytes =
-        Metrics::MippedRgbaBytes(target->size) *
-        (target->format == TextureFormat::kRgba32Float ? 4 : 1);
+    const std::uint64_t bytes = target->Bytes();
     pool->targets.Retain(std::move(target), bytes);
   } catch (...) {
     target.reset();
@@ -237,6 +234,22 @@ void RenderTargetPool::Recycle(const std::weak_ptr<Pool> &a_pool,
 }
 
 void RenderTargetPool::ClearScratch() { scratch_.clear(); }
+
+RenderTargetPool::Holdings RenderTargetPool::Held() const {
+  Holdings held;
+  {
+    std::scoped_lock lock{pool_->lock};
+    held.idleTargets = pool_->targets.Size();
+    held.idleBytes = pool_->targets.Bytes();
+  }
+  for (const auto &[key, target] : scratch_) {
+    if (target) {
+      ++held.scratchTargets;
+      held.scratchBytes += target->Bytes();
+    }
+  }
+  return held;
+}
 
 void RenderTargetPool::ClearUnused() {
   ResourcePool<RenderTarget> unused{kMaxIdleTargets, kMaxIdleBytes};

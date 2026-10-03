@@ -97,6 +97,14 @@ TextureRef Compositor::LoadImage(std::string_view a_path) {
   return result;
 }
 
+std::uint64_t Compositor::ResidentTargets() const noexcept {
+  return neutralHeight_ ? 1 : 0;
+}
+
+std::uint64_t Compositor::ResidentBytes() const noexcept {
+  return neutralHeight_ ? neutralHeight_->Bytes() : 0;
+}
+
 std::shared_ptr<TextureLab::RenderTarget> Compositor::NeutralHeight() {
   if (neutralHeight_ && neutralHeight_->Texture()) {
     return neutralHeight_;

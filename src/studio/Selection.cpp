@@ -235,6 +235,9 @@ std::vector<ResolvedRecipe> ViewedRecipes(ViewedRecipesInput a_input) {
   if (a_input.view.Isolating()) {
     FilterIsolated(a_input.resolved, a_input.view);
   }
+  std::erase_if(a_input.resolved, [&](const ResolvedRecipe &a_r) {
+    return !a_r.recipe || !a_input.view.InRecipeSet(a_r.recipe->id);
+  });
   std::ranges::stable_sort(a_input.resolved, [](const ResolvedRecipe &a_left,
                                                 const ResolvedRecipe &a_right) {
     return Precedence{a_left.priority, a_left.loadOrder} <

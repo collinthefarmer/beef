@@ -715,6 +715,16 @@ void RecipeEditor::Isolate(Studio::Isolation a_isolation) {
   });
 }
 
+void RecipeEditor::ShowRecipeSet(std::vector<std::string> a_recipes) {
+  const Trace::Scope trace{Trace::Command("editor.ShowRecipeSet")};
+  runtime_.PostTask([this, recipes = std::move(a_recipes)] {
+    if (view_.recipeSet == recipes) {
+      return;
+    }
+    runtime_.ChangeAndRebuildActors({}, [&] { view_.recipeSet = recipes; });
+  });
+}
+
 void RecipeEditor::ChangeView(Studio::ViewCommand a_command) {
   const Trace::Scope trace{Trace::Command("editor.ChangeView")};
   runtime_.PostTask([this, command = std::move(a_command)] {

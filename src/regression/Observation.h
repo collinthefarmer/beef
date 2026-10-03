@@ -30,6 +30,7 @@ struct ActorFacts {
   bool live = false;
   std::uint64_t renderedAttempt = 0;
   std::uint32_t residue = 0;
+  std::uint32_t firstPersonResidue = 0;
   std::string application;
 };
 
@@ -48,6 +49,12 @@ struct CrowdFacts {
   std::uint32_t present = 0;
   std::uint32_t rendered = 0;
   std::uint32_t fighting = 0;
+  std::uint32_t engaged = 0;
+  std::uint32_t hurt = 0;
+  std::uint32_t drawn = 0;
+  std::uint32_t moved = 0;
+  std::uint32_t highProcess = 0;
+  [[nodiscard]] bool operator==(const CrowdFacts &) const = default;
 };
 
 struct RecipeFacts {
@@ -65,7 +72,7 @@ struct Observation {
   std::uint32_t loads = 0;
   std::array<bool, kItemCount> itemsLoaded{};
   bool npcEffects = false;
-  Camera camera = Camera::kThirdPerson;
+  std::optional<Camera> camera = Camera::kThirdPerson;
   bool awayFromStart = false;
   RequestState request = NoRequest{};
 };

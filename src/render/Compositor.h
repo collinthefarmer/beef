@@ -122,6 +122,8 @@ public:
   [[nodiscard]] static Compositor *GetSingleton();
 
   void BeginTick(std::uint32_t a_nowMS) noexcept;
+  [[nodiscard]] std::uint64_t ResidentTargets() const noexcept;
+  [[nodiscard]] std::uint64_t ResidentBytes() const noexcept;
 
   [[nodiscard]] TextureSize StackSize(const SurfaceOutput &output,
                                       const GeometryInputs &inputs,

@@ -37,9 +37,9 @@ role or an item into an array index, clamped to the array's size.
 | `Outcome` | `kPass`, `kFail`, `kBlocked`, `kAborted` | The verdict of a step, a case, a run or a request. `OutcomeName` gives `PASS`, `FAIL`, `BLOCKED`, `ABORTED`. |
 | `Role` | `kPlayer`, `kWearer`, `kControl` | The actor a step acts on. The wearer and the control are spawned mannequins. |
 | `Item` | `kFixture`, `kPlainCuirass` | The demo cuirass and the control's plain cuirass. |
-| `Body` | `kMannequin`, `kIdleNpc` | What a crowd actor is. Mannequins hold still; idle NPCs animate and can fight. |
+| `Body` | `kMannequin`, `kIdleNpc`, `kFighter` | What a crowd actor is. Mannequins hold still, idle NPCs animate but never ready a weapon, and fighters fight. |
 | `Dress` | `kDemoCuirass`, `kVanillaCuirasses` | What a crowd wears: the demo cuirass, or six vanilla cuirasses tagged to match Arcane Circuit for the life of the crowd. |
-| `Camera` | `kFirstPerson`, `kThirdPerson` | The camera a `SetCamera` step asks for. |
+| `Camera` | `kFirstPerson`, `kThirdPerson` | The camera a `SetCamera` or `HoldCamera` step asks for. The observation holds an optional `Camera`: no value means any other camera state, such as the idle camera or a transition. |
 | `QueuedWork` | `kNothing`, `kApply`, `kEdit` | The work a `LoadDuring` step queues in the same frame as the load. |
 | `Session` | `kGesture`, `kPaint` | The studio session a `BeginSession` step opens. |
 | `TrackedWork` | `kEdit`, `kGesture` | The started work whose outcome an `ExpectCancelled` or `ExpectSettled` step reads. |
@@ -66,18 +66,21 @@ name. `StepLabel` gives a step's text for its result line.
 
 | Steps | What they do |
 |---|---|
-| `Solo`, `RestoreSolo` | Solo the recipe under test in the studio, and restore the isolation from before. |
+| `Solo`, `RestoreSolo` | Solo the recipe under test in the studio, and restore the isolation and recipe set from before. |
+| `ShowRecipes` | Let only the named recipes match until the cleanup restores the view. |
 | `Spawn`, `Despawn`, `Disable`, `Enable` | Change whether a spawned role is in the world. |
 | `Equip`, `Unequip`, `Remove` | Add and equip, unequip, or remove an item on a role. |
 | `Apply`, `Retire` | Submit an apply or retire request for a role. |
 | `AwaitRendered`, `AwaitRetired`, `AwaitBaseline` | Wait until a role renders the fixture anew, holds no live state, or shows no **residue**. |
 | `ExpectEffect`, `HoldUntouched` | Check that a role keeps its effect, or that a role gains no plugin state for a number of frames. |
 | `LeaveStart`, `ReturnToStart`, `SetCamera` | Travel to the exterior and back, or switch the player's camera. |
+| `HoldCamera`, `ExpectFirstPersonEffect` | Fail if the camera leaves a view during a number of frames, or check the player's effect under its first-person 3D only. |
 | `LoadDuring`, `ExpectAborted`, `ExpectCancelled`, `ExpectSettled`, `AwaitIdle` | Load the save with work queued, then check what the load did to it. |
 | `BeginSession`, `AwaitSessionActive` | Open a gesture or paint session and wait until the editor reports it active. |
 | `DeleteScratch`, `DuplicateToScratch`, `SetScratchOpacity`, `SaveScratch`, `ExpectScratch` | Studio round trips on the scratch recipe, `kScratchRecipe` (`regression-scratch`). |
 | `SpawnCrowd`, `AwaitCrowdRendered`, `DespawnCrowd` | Spawn up to `kMaxCrowd` (64) crowd actors of a `Body` in a `Dress`, dress them once all are present, and remove them. |
-| `StartCrowdFight`, `AwaitCrowdFighting` | Split an idle-NPC crowd into two hostile sides, and wait until at least half the crowd is in combat. A mannequin crowd blocks the fight. |
+| `StartCrowdFight`, `AwaitCrowdFighting` | Split a crowd into two hostile sides, and wait until at least half the crowd has another crowd actor as its combat target. A mannequin crowd blocks the fight. |
+| `AwaitCrowdHurt` | Wait until a crowd actor loses health or bleeds out. |
 | `UnequipCrowd`, `AwaitCrowdBare`, `EquipCrowd` | Unequip the fixture on every crowd actor, wait until no crowd actor renders it, and equip it again. |
 | `HoldWindow`, `BeginWindow`, `EndWindow` | Mark a measured window of the soak. A hold runs on wall-clock time. A nonzero `cycle` appends `-<cycle>` to the window name (`WindowName`). |
 | `WaitFrames` | Wait a number of frames. |
@@ -107,10 +110,10 @@ the game showed, never on what the run asked for.
 | Type | Description |
 |---|---|
 | `Observation` | One frame: `ActorFacts` per role, `Activity`, `RecipeFacts` for the scratch recipe, `CrowdFacts`, the clock (`nowMs`), the load count, whether each item's form is loaded, whether NPC effects are on, the camera, whether the player is away from the start, and the current request's `RequestState`. |
-| `ActorFacts` | Whether the actor is present and wears body armor, `ItemFacts` per item, whether the manager holds live state, the newest application revision that rendered the fixture (`renderedAttempt`), the residue count, and the latest application text. |
+| `ActorFacts` | Whether the actor is present and wears body armor, `ItemFacts` per item, whether the manager holds live state, the newest application revision that rendered the fixture (`renderedAttempt`), the residue count, the residue under the first-person 3D alone (`firstPersonResidue`), and the latest application text. |
 | `ItemFacts` | Whether the item is equipped and carried. |
 | `Activity` | Pending applications, an open paint session or gesture, a pending file operation, the `WorkOutcome` of the started edit, gesture and file operation, and a detail text for failure reasons. |
-| `CrowdFacts` | How many crowd actors are present, how many render their own armor, and how many are in combat. |
+| `CrowdFacts` | How many crowd actors are present, render their own armor, are in combat, target another crowd actor (**engaged**), and are hurt (health below its maximum, or bleeding out). The run traces a `regression.crowd` line each time a count changes. |
 | `RecipeFacts` | Whether a recipe is loaded and unsaved, and its first layer's opacity when that is a number. |
 | `RequestState` | `NoRequest`, `RequestPending`, or the request's `Outcome`. |
 
@@ -122,7 +125,8 @@ A `Command` is a variant with one record per engine action. `Execute` in
 
 | Commands | Engine action |
 |---|---|
-| `SoloRecipe`, `EndSolo` | Solo a recipe in the studio, and end the solo. |
+| `SoloRecipe`, `EndSolo` | Solo a recipe in the studio, and restore the isolation and recipe set from before. |
+| `ShowRecipeSet` | Set the studio view's recipe set, which rebuilds every actor. |
 | `SpawnActor`, `DespawnActor`, `DisableActor`, `EnableActor` | Place, delete, disable or enable a role's mannequin. |
 | `AddAndEquip`, `EquipCarried`, `UnequipArmor`, `RemoveArmor` | Change an item on a role. |
 | `SubmitApply`, `SubmitRetire`, `AbortRequest` | Start or abort the one regression request. |

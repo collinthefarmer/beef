@@ -19,6 +19,7 @@ inline constexpr std::string_view kSkyrim = "Skyrim.esm";
 inline constexpr RE::FormID kPlainCuirass = 0x1394D;
 inline constexpr RE::FormID kMannequin = 0x89A85;
 inline constexpr RE::FormID kIdleNpc = 0xCCE01;
+inline constexpr RE::FormID kFighter = 0x10553F;
 inline constexpr std::array<RE::FormID, 6> kVanillaCuirasses{
     0x12E49, 0x3619E, 0x896A3, 0x13957, 0x13961, 0x1396B};
 inline constexpr std::array<RE::FormID, 2> kCrowdSides{0xBA0B8, 0xBA0B9};
@@ -33,6 +34,18 @@ inline constexpr const char *kTravelCell = "Riverwood";
 inline constexpr float kSpawnOffset = 120.0f;
 inline constexpr float kWorkOpacity = 0.5f;
 inline constexpr float kCrowdRadius = 300.0f;
+inline constexpr RE::FormID kQASmoke = 0x32AE7;
+inline constexpr float kMovedDistance = 32.0f;
+inline constexpr std::string_view kVanityDelaySetting =
+    "fAutoVanityModeDelay:Camera";
+inline constexpr float kVanityNever = 1.0e9f;
+inline constexpr std::uint32_t kArenaRows = 3;
+inline constexpr float kArenaMinX = 2160.0f;
+inline constexpr float kArenaMaxX = 2640.0f;
+inline constexpr float kArenaMinY = 1904.0f;
+inline constexpr float kArenaMaxY = 2128.0f;
+inline constexpr float kArenaFloorZ = 6976.0f;
+inline constexpr RE::NiPoint3 kArenaViewpoint{1904.0f, 2016.0f, kArenaFloorZ};
 
 template <class Form>
 Form *PluginForm(RE::FormID a_local, std::string_view a_plugin) {
@@ -130,6 +143,10 @@ Regression::ActorFacts ViewOf(RE::Actor *a_actor,
   view.renderedAttempt = a_facts.renderedAttempt;
   view.application = std::move(a_facts.application);
   view.residue = view.present ? ResidueOn(*a_actor) : 0;
+  RE::NiAVObject *firstPerson = a_actor->Get3D(true);
+  view.firstPersonResidue = view.present && firstPerson != a_actor->Get3D(false)
+                                ? ResidueUnder(firstPerson)
+                                : 0;
   return view;
 }
 
@@ -265,13 +282,54 @@ RE::FormID CrowdArmorAt(const RunWorld &a_world, Regression::Dress a_dress,
 }
 
 RE::TESNPC *CrowdBase(Regression::Body a_body) {
-  return SkyrimForm<RE::TESNPC>(
-      a_body == Regression::Body::kIdleNpc ? kIdleNpc : kMannequin);
+  switch (a_body) {
+  case Regression::Body::kIdleNpc:
+    return SkyrimForm<RE::TESNPC>(kIdleNpc);
+  case Regression::Body::kFighter:
+    return SkyrimForm<RE::TESNPC>(kFighter);
+  case Regression::Body::kMannequin:
+    break;
+  }
+  return SkyrimForm<RE::TESNPC>(kMannequin);
+}
+
+void Calm(RE::Actor &a_actor) {
+  if (RE::ActorValueOwner *values = a_actor.AsActorValueOwner()) {
+    values->SetActorValue(RE::ActorValue::kAggression, 0.0f);
+  }
 }
 
 void MakeEssential(RE::Actor &a_actor) {
   a_actor.GetActorRuntimeData().boolFlags.set(
       RE::Actor::BOOL_FLAGS::kEssential);
+}
+
+float Spread(float a_min, float a_max, std::uint32_t a_index,
+             std::uint32_t a_count) {
+  return a_count < 2 ? (a_min + a_max) / 2.0f
+                     : a_min + (a_max - a_min) * static_cast<float>(a_index) /
+                                   static_cast<float>(a_count - 1);
+}
+
+RE::NiPoint3 ArenaSpot(std::uint32_t a_index, std::uint32_t a_count) {
+  const std::uint32_t columns = (a_count + kArenaRows - 1) / kArenaRows;
+  return RE::NiPoint3{
+      Spread(kArenaMinX, kArenaMaxX, a_index % columns, columns),
+      Spread(kArenaMinY, kArenaMaxY, a_index / columns, kArenaRows),
+      kArenaFloorZ};
+}
+
+RE::NiPoint3 RingSpot(const RE::NiPoint3 &a_centre, std::uint32_t a_index,
+                      std::uint32_t a_count) {
+  const float angle =
+      6.2831853f * static_cast<float>(a_index) / static_cast<float>(a_count);
+  return RE::NiPoint3{a_centre.x + kCrowdRadius * std::cos(angle),
+                      a_centre.y + kCrowdRadius * std::sin(angle), a_centre.z};
+}
+
+bool InQASmoke(const RE::PlayerCharacter &a_player) {
+  const RE::TESObjectCELL *cell = a_player.GetParentCell();
+  return cell && cell == SkyrimForm<RE::TESObjectCELL>(kQASmoke);
 }
 
 void SpawnCrowdActors(RunWorld &a_world,
@@ -286,6 +344,12 @@ void SpawnCrowdActors(RunWorld &a_world,
   }
   const RE::NiPoint3 centre = player->GetPosition();
   const std::uint32_t count = std::min(a_spawn.count, Regression::kMaxCrowd);
+  const bool inArena =
+      a_spawn.body != Regression::Body::kMannequin && InQASmoke(*player);
+  if (inArena && !a_world.playerBeforeArena) {
+    a_world.playerBeforeArena = centre;
+    player->SetPosition(kArenaViewpoint, true);
+  }
   for (std::uint32_t index = 0; index < count; ++index) {
     const RE::NiPointer<RE::TESObjectREFR> placed =
         player->PlaceObjectAtMe(base, true);
@@ -293,17 +357,22 @@ void SpawnCrowdActors(RunWorld &a_world,
     if (!actor) {
       continue;
     }
-    const float angle =
-        6.2831853f * static_cast<float>(index) / static_cast<float>(count);
-    placed->SetPosition(RE::NiPoint3{centre.x + kCrowdRadius * std::cos(angle),
-                                     centre.y + kCrowdRadius * std::sin(angle),
-                                     centre.z});
-    if (a_spawn.body == Regression::Body::kIdleNpc) {
+    const RE::NiPoint3 spot =
+        inArena ? ArenaSpot(index, count) : RingSpot(centre, index, count);
+    placed->SetPosition(spot);
+    if (a_spawn.body != Regression::Body::kMannequin) {
       MakeEssential(*actor);
+      Calm(*actor);
     }
-    a_world.crowd.push_back(
-        {actor->GetFormID(), CrowdArmorAt(a_world, a_spawn.dress, index)});
+    a_world.crowd.push_back({actor->GetFormID(),
+                             CrowdArmorAt(a_world, a_spawn.dress, index),
+                             spot});
   }
+  logger::info("regression: crowd of {} placed {} around ({:.0f}, {:.0f}, "
+               "{:.0f})",
+               a_world.crowd.size(),
+               inArena ? "on the arena grid" : "on a ring", centre.x, centre.y,
+               centre.z);
 }
 
 void DespawnCrowdActors(RunWorld &a_world) {
@@ -312,6 +381,11 @@ void DespawnCrowdActors(RunWorld &a_world) {
   }
   a_world.crowd.clear();
   UntagVanillaCuirasses(a_world);
+  RE::PlayerCharacter *player = RE::PlayerCharacter::GetSingleton();
+  if (player && a_world.playerBeforeArena) {
+    player->SetPosition(*a_world.playerBeforeArena, true);
+  }
+  a_world.playerBeforeArena.reset();
 }
 
 void StripBodyArmor(RE::Actor &a_actor, const RE::TESObjectARMO &a_keep) {
@@ -367,17 +441,52 @@ void SetCrowdHostile(const RunWorld &a_world) {
   }
 }
 
+bool InCrowd(const RunWorld &a_world, const RE::Actor *a_actor) {
+  return a_actor && std::ranges::contains(a_world.crowd, a_actor->GetFormID(),
+                                          &CrowdMember::actor);
+}
+
+bool Hurt(RE::Actor &a_actor) {
+  const RE::ActorState *state = a_actor.AsActorState();
+  if (state && state->IsBleedingOut()) {
+    return true;
+  }
+  RE::ActorValueOwner *values = a_actor.AsActorValueOwner();
+  return values && values->GetActorValue(RE::ActorValue::kHealth) <
+                       values->GetPermanentActorValue(RE::ActorValue::kHealth);
+}
+
 Regression::CrowdFacts CrowdOf(const RunWorld &a_world,
                                std::span<const RegressionActorFacts> a_facts) {
   Regression::CrowdFacts view;
   for (std::size_t i = 0; i < a_world.crowd.size() && i < a_facts.size(); ++i) {
-    const RE::Actor *actor = FormWithID<RE::Actor>(a_world.crowd[i].actor);
+    RE::Actor *actor = FormWithID<RE::Actor>(a_world.crowd[i].actor);
     if (!actor || !Present(*actor)) {
       continue;
     }
     ++view.present;
     if (actor->IsInCombat()) {
       ++view.fighting;
+    }
+    const RE::NiPointer<RE::Actor> target =
+        actor->GetActorRuntimeData().currentCombatTarget.get();
+    if (InCrowd(a_world, target.get())) {
+      ++view.engaged;
+    }
+    if (Hurt(*actor)) {
+      ++view.hurt;
+    }
+    const RE::ActorState *state = actor->AsActorState();
+    if (state && state->IsWeaponDrawn()) {
+      ++view.drawn;
+    }
+    const RE::AIProcess *process = actor->GetActorRuntimeData().currentProcess;
+    if (process && process->InHighProcess()) {
+      ++view.highProcess;
+    }
+    if (actor->GetPosition().GetDistance(a_world.crowd[i].spot) >
+        kMovedDistance) {
+      ++view.moved;
     }
     if (a_facts[i].renderedAttempt > 0) {
       ++view.rendered;
@@ -515,6 +624,10 @@ void Perform(const Regression::SoloRecipe &a_c, RunWorld &) {
 
 void Perform(const Regression::EndSolo &, RunWorld &) { EndRegressionSolo(); }
 
+void Perform(const Regression::ShowRecipeSet &a_c, RunWorld &) {
+  ShowRegressionRecipeSet({a_c.recipes.begin(), a_c.recipes.end()});
+}
+
 void Perform(const Regression::SpawnActor &a_c, RunWorld &a_world) {
   Spawn(a_world, a_c.role);
 }
@@ -635,6 +748,27 @@ void Perform(const Regression::EquipCrowdArmor &, RunWorld &a_world) {
     DressCrowdMember(member);
   }
 }
+
+std::optional<Regression::Camera>
+CameraOf(std::optional<std::uint32_t> a_state) {
+  if (a_state == RE::CameraState::kFirstPerson) {
+    return Regression::Camera::kFirstPerson;
+  }
+  if (a_state == RE::CameraState::kThirdPerson) {
+    return Regression::Camera::kThirdPerson;
+  }
+  return std::nullopt;
+}
+}
+
+std::optional<std::uint32_t> CameraStateID() {
+  const RE::PlayerCamera *camera = RE::PlayerCamera::GetSingleton();
+  const RE::TESCameraState *state =
+      camera ? camera->currentState.get() : nullptr;
+  if (!state) {
+    return std::nullopt;
+  }
+  return static_cast<std::uint32_t>(state->id);
 }
 
 Regression::Observation Observe(const RunWorld &a_world) {
@@ -665,10 +799,7 @@ Regression::Observation Observe(const RunWorld &a_world) {
   seen.itemsLoaded = {ArmorOf(Regression::Item::kFixture) != nullptr,
                       ArmorOf(Regression::Item::kPlainCuirass) != nullptr};
   seen.npcEffects = !GetSettings().playerOnly;
-  const RE::PlayerCamera *camera = RE::PlayerCamera::GetSingleton();
-  seen.camera = camera && camera->IsInFirstPerson()
-                    ? Regression::Camera::kFirstPerson
-                    : Regression::Camera::kThirdPerson;
+  seen.camera = CameraOf(CameraStateID());
   seen.awayFromStart = AwayFromStart(a_world);
   seen.request = RegressionRequestState(a_world.request);
   seen.loads = a_world.loads;
@@ -686,7 +817,39 @@ void Execute(const Regression::Command &a_command, RunWorld &a_world) {
   std::visit([&](const auto &a_kind) { Perform(a_kind, a_world); }, a_command);
 }
 
+RE::Setting *VanityDelay() {
+  RE::INISettingCollection *settings = RE::INISettingCollection::GetSingleton();
+  RE::Setting *setting =
+      settings ? settings->GetSetting(kVanityDelaySetting) : nullptr;
+  return setting && setting->GetType() == RE::Setting::Type::kFloat ? setting
+                                                                    : nullptr;
+}
+
+void HoldCameraStill(RunWorld &a_world) {
+  RE::Setting *delay = VanityDelay();
+  if (!delay) {
+    logger::warn("regression: {} is missing; the idle camera may start",
+                 kVanityDelaySetting);
+    return;
+  }
+  if (!a_world.vanityDelayBeforeRun) {
+    a_world.vanityDelayBeforeRun = delay->GetFloat();
+  }
+  delay->data.f = kVanityNever;
+  logger::info("regression: idle camera held off (delay was {:.0f} s)",
+               *a_world.vanityDelayBeforeRun);
+}
+
+void ReleaseCamera(RunWorld &a_world) {
+  RE::Setting *delay = VanityDelay();
+  if (delay && a_world.vanityDelayBeforeRun) {
+    delay->data.f = *a_world.vanityDelayBeforeRun;
+  }
+  a_world.vanityDelayBeforeRun.reset();
+}
+
 void ReleaseWorld(RunWorld &a_world) {
+  ReleaseCamera(a_world);
   DespawnCrowdActors(a_world);
   DeleteReference(MarkerOf(a_world));
   a_world.marker = 0;
@@ -700,6 +863,7 @@ void ForgetWorldAfterLoad(RunWorld &a_world) {
   a_world.spawned = {};
   a_world.crowd.clear();
   UntagVanillaCuirasses(a_world);
+  a_world.playerBeforeArena.reset();
   a_world.marker = 0;
   ++a_world.loads;
 }

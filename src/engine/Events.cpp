@@ -22,6 +22,11 @@ public:
     const Trace::Scope trace{Trace::Command("event.equip")};
     if (a_event && a_event->actor) {
       if (RE::Actor *actor = a_event->actor->As<RE::Actor>()) {
+        Trace::EmitSafely(Trace::Event::kCommand,
+                          {{"action", "equip"},
+                           {"actor", std::to_string(actor->GetFormID())},
+                           {"item", std::to_string(a_event->baseObject)},
+                           {"equipped", a_event->equipped ? "true" : "false"}});
         Manager *manager = Manager::GetSingleton();
         manager->QueueRefresh(actor);
         if (a_event->equipped) {

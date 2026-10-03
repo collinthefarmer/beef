@@ -59,6 +59,7 @@ public:
   void CancelPaintForLoad();
   void CancelFileOperationsForLoad();
   void Isolate(Studio::Isolation a_isolation);
+  void ShowRecipeSet(std::vector<std::string> a_recipes);
   void ChangeView(Studio::ViewCommand a_command);
   void PinRecipe(Studio::PieceRef a_piece, std::string a_recipeID);
   void UpdateView(std::function<void(Studio::View &)> a_change);

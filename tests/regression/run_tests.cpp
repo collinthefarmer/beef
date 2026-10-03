@@ -90,6 +90,9 @@ struct Faults {
   bool editAppliesFirst = false;
   bool saveDropsEdit = false;
   bool crowdKeepsEffect = false;
+  bool crowdNeverHurt = false;
+  bool cameraFlipsBack = false;
+  bool firstPersonMissing = false;
 };
 
 struct ScratchFile {
@@ -122,6 +125,7 @@ struct World {
   CrowdFacts crowd;
   int crowdIn = -1;
   int fightIn = -1;
+  int cameraFlipIn = -1;
   std::uint32_t crowdSize = 0;
   std::uint64_t nowMs = 0;
   Faults faults;
@@ -165,6 +169,7 @@ struct World {
   void Clear(SimActor &a_actor) {
     a_actor.view.live = a_actor.view.live && faults.unloadKeepsState;
     a_actor.view.residue = 0;
+    a_actor.view.firstPersonResidue = 0;
     a_actor.view.present = false;
     a_actor.renderIn = -1;
   }
@@ -173,6 +178,7 @@ struct World {
     a_actor.view.live = true;
     a_actor.view.renderedAttempt = ++revision;
     a_actor.view.residue = 2;
+    a_actor.view.firstPersonResidue = faults.firstPersonMissing ? 0 : 1;
   }
 
   void Spawn(Role a_role) {
@@ -222,6 +228,9 @@ struct World {
         Overloaded{
             [&](const SoloRecipe &) { commands.emplace_back("solo"); },
             [&](const EndSolo &) { commands.emplace_back("restore"); },
+            [&](const ShowRecipeSet &) {
+              commands.emplace_back("show-recipes");
+            },
             [&](const SpawnActor &a_c) {
               commands.emplace_back("spawn");
               Spawn(a_c.role);
@@ -254,11 +263,13 @@ struct World {
               commands.emplace_back("unequip");
               ActorOf(a_c.role).view.armor[IndexOf(a_c.item)].equipped = false;
               ActorOf(a_c.role).view.residue = 0;
+              ActorOf(a_c.role).view.firstPersonResidue = 0;
             },
             [&](const RemoveArmor &a_c) {
               commands.emplace_back("remove");
               ActorOf(a_c.role).view.armor[IndexOf(a_c.item)] = {};
               ActorOf(a_c.role).view.residue = 0;
+              ActorOf(a_c.role).view.firstPersonResidue = 0;
             },
             [&](const SubmitApply &a_c) {
               commands.emplace_back("apply");
@@ -270,6 +281,7 @@ struct World {
               SimActor &actor = ActorOf(a_c.role);
               actor.view.live = false;
               actor.view.residue = 0;
+              actor.view.firstPersonResidue = 0;
               Submit(faults.retireFails ? Outcome::kFail : Outcome::kPass, 1);
             },
             [&](const AbortRequest &) {
@@ -287,6 +299,10 @@ struct World {
             [&](const SwitchCamera &a_c) {
               commands.emplace_back("camera");
               camera = a_c.camera;
+              cameraFlipIn =
+                  faults.cameraFlipsBack && a_c.camera == Camera::kFirstPerson
+                      ? 20
+                      : -1;
             },
             [&](const StartDuplicate &) {
               commands.emplace_back("copy");
@@ -407,8 +423,13 @@ struct World {
 
   void Tick() {
     nowMs += kSimulatedFrameMs;
+    if (cameraFlipIn > 0 && --cameraFlipIn == 0) {
+      camera = Camera::kThirdPerson;
+    }
     if (fightIn > 0 && --fightIn == 0) {
       crowd.fighting = crowdSize;
+      crowd.engaged = crowdSize;
+      crowd.hurt = faults.crowdNeverHurt ? 0 : 1;
     }
     if (crowdIn > 0 && --crowdIn == 0) {
       crowd.rendered = crowdSize;
@@ -558,6 +579,21 @@ void ControlStateFailsIsolation() {
   test::Check(world.Clean(), "isolation cleans up after a failure");
 }
 
+void CameraFaultsFailTheCameraCase() {
+  World flips;
+  flips.faults.cameraFlipsBack = true;
+  Drive(flips, RunOf("camera"), 20000);
+  test::Check(FirstFailure(flips).starts_with("hold-camera first-person"),
+              "a camera that leaves first person fails the hold");
+  test::Check(flips.Clean(), "the camera case cleans up after a flip");
+
+  World missing;
+  missing.faults.firstPersonMissing = true;
+  Drive(missing, RunOf("camera"), 20000);
+  test::Check(FirstFailure(missing).starts_with("expect-first-person-effect"),
+              "a missing first-person effect fails the case");
+}
+
 void UnloadedStateFailsUnload() {
   World world;
   world.faults.unloadKeepsState = true;
@@ -642,9 +678,14 @@ void SoakVariantsHoldAndCleanUp() {
   World stack;
   Drive(stack, RunOf("soak-stack"), 20000);
   test::Equal(FirstFailure(stack), std::string{}, "soak-stack passes");
-  test::Equal(ActionsStartingWith(stack, "solo"),
-              std::vector<std::string>{"solo every recipe"},
-              "soak-stack shows every recipe");
+  test::Equal(ActionsStartingWith(stack, "solo"), std::vector<std::string>{},
+              "soak-stack solos no single recipe");
+  test::Equal(ActionsStartingWith(stack, "show-recipes"),
+              std::vector<std::string>{
+                  "show-recipes arcane-circuit resonant-ward winterglass"},
+              "soak-stack shows the three demo recipes");
+  test::Check(Issued(stack, "restore"),
+              "the shared cleanup ends the recipe set");
 
   World large;
   Drive(large, RunOf("soak-large"), 20000);
@@ -676,8 +717,8 @@ void SoakVariantsHoldAndCleanUp() {
   Drive(fight, RunOf("soak-fight"), 20000);
   test::Equal(FirstFailure(fight), std::string{}, "soak-fight passes");
   test::Equal(ActionsStartingWith(fight, "spawn-crowd"),
-              std::vector<std::string>{"spawn-crowd 12 idle-npc"},
-              "soak-fight spawns idle NPCs");
+              std::vector<std::string>{"spawn-crowd 12 fighter"},
+              "soak-fight spawns fighters");
   test::Check(Issued(fight, "hostile"), "soak-fight sets the crowd hostile");
 
   World vanilla;
@@ -693,6 +734,12 @@ void SoakVariantsHoldAndCleanUp() {
               "a crowd that keeps the effect after unequip fails the churn");
   test::Check(Issued(stuck, "uncrowd"),
               "a failed churn still removes the crowd");
+
+  World standoff;
+  standoff.faults.crowdNeverHurt = true;
+  Drive(standoff, RunOf("soak-fight"), 20000);
+  test::Check(FirstFailure(standoff).starts_with("await-crowd-hurt"),
+              "a crowd that targets but never lands a blow fails the fight");
 }
 
 void StudioRoundTrip() {
@@ -776,6 +823,7 @@ int main() {
   BlockedEquipLeavesForeignArmor();
   SilentRequestTimesOut();
   ControlStateFailsIsolation();
+  CameraFaultsFailTheCameraCase();
   UnloadedStateFailsUnload();
   LoadsCancelWork();
   StudioRoundTrip();

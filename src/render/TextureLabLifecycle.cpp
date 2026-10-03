@@ -38,11 +38,14 @@ ComPtr<ID3DBlob> CompileEntry(const char *a_entry, const char *a_target) {
 }
 }
 
+std::uint64_t TextureLab::RenderTarget::Bytes() const noexcept {
+  return Metrics::MippedRgbaBytes(size) *
+         (format == TextureFormat::kRgba32Float ? 4 : 1);
+}
+
 TextureLab::RenderTarget::~RenderTarget() {
   if (size != 0) {
-    Metrics::CountTargetDestroyed(
-        Metrics::MippedRgbaBytes(size) *
-        (format == TextureFormat::kRgba32Float ? 4 : 1));
+    Metrics::CountTargetDestroyed(Bytes());
   }
   Trace::EmitSafely(Trace::Event::kTexture,
                     {{"action", "destroy"},
@@ -250,6 +253,10 @@ TextureLab::Acquire(TextureSize a_size, std::string_view a_owner,
   if (target)
     target->mips = mips;
   return target;
+}
+
+TextureLab::TargetHoldings TextureLab::HeldTargets() const {
+  return targets_ ? targets_->Held() : TargetHoldings{};
 }
 
 TextureLab::RenderTarget *

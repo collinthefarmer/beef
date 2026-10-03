@@ -22,11 +22,18 @@ std::string Label(const WaitFrames &a_settle) {
 }
 
 std::string Label(const Solo &a_solo) {
-  return a_solo.recipe.empty() ? std::string{"solo every recipe"}
-                               : std::format("solo {}", a_solo.recipe);
+  return std::format("solo {}", a_solo.recipe);
 }
 
 std::string Label(const RestoreSolo &) { return std::string{"restore-view"}; }
+
+std::string Label(const ShowRecipes &a_show) {
+  std::string label = "show-recipes";
+  for (const std::string_view recipe : a_show.recipes) {
+    label += std::format(" {}", recipe);
+  }
+  return label;
+}
 
 std::string Label(const Spawn &a_s) { return WithRole("spawn", a_s.role); }
 
@@ -83,6 +90,15 @@ std::string Label(const SetCamera &a_s) {
   return std::format("set-camera {}", NameOf(kCameras, a_s.camera));
 }
 
+std::string Label(const HoldCamera &a_s) {
+  return std::format("hold-camera {} {}", NameOf(kCameras, a_s.camera),
+                     a_s.frames);
+}
+
+std::string Label(const ExpectFirstPersonEffect &) {
+  return std::string{"expect-first-person-effect"};
+}
+
 std::string Label(const LoadDuring &a_s) {
   return std::format("load-during {}", WordOf(a_s.work));
 }
@@ -134,6 +150,10 @@ std::string Label(const StartCrowdFight &) {
 
 std::string Label(const AwaitCrowdFighting &) {
   return std::string{"await-crowd-fighting"};
+}
+
+std::string Label(const AwaitCrowdHurt &) {
+  return std::string{"await-crowd-hurt"};
 }
 
 std::string Label(const AwaitCrowdRendered &) {

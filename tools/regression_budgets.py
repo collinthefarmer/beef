@@ -61,6 +61,8 @@ def measure(events: list[dict], window: Window) -> dict[str, float]:
     seconds = max((window.end_ms - window.start_ms) / 1000, 0.001)
     last = beats[-1] if beats else {}
     peak = lambda name: max((number(beat, name) for beat in beats), default=0)
+    live = lambda total, held: number(last, total) - sum(
+        number(last, f'{holder}_{held}') for holder in ('pool', 'scratch', 'resident'))
     return {
         'seconds': round(seconds, 1),
         'fps': round(frames / seconds, 1),
@@ -72,6 +74,12 @@ def measure(events: list[dict], window: Window) -> dict[str, float]:
         'targets_end': number(last, 'targets'),
         'target_bytes_end': number(last, 'target_bytes'),
         'target_bytes_peak': peak('target_bytes_peak'),
+        'pool_targets_end': number(last, 'pool_targets'),
+        'pool_bytes_end': number(last, 'pool_bytes'),
+        'scratch_targets_end': number(last, 'scratch_targets'),
+        'scratch_bytes_end': number(last, 'scratch_bytes'),
+        'live_targets_end': live('targets', 'targets'),
+        'live_target_bytes_end': live('target_bytes', 'bytes'),
     }
 
 
@@ -87,7 +95,8 @@ def label(key: WindowKey) -> str:
 
 MEASURES = ('seconds', 'fps', 'plugin_frame_us_mean', 'frame_max_us', 'tick_max_us',
             'refresh_max_us', 'readback_max_us', 'targets_end', 'target_bytes_end',
-            'target_bytes_peak')
+            'target_bytes_peak', 'pool_targets_end', 'pool_bytes_end', 'scratch_targets_end',
+            'scratch_bytes_end', 'live_targets_end', 'live_target_bytes_end')
 LIMIT_KINDS = ('_over_baseline_max', '_growth_max', '_ratio_min', '_max')
 
 
@@ -175,16 +184,32 @@ def format_measurements(measured: dict[WindowKey, dict[str, float]]) -> str:
                      for row in rows)
 
 
+def recipe_sets(events: list[dict]) -> list[str]:
+    sets = []
+    for event in events:
+        fields = event['fields']
+        if fields.get('action') != 'regression.recipes':
+            continue
+        line = ' '.join(f'{name}={value}' for name, value in fields.items()
+                        if name != 'action')
+        if line not in sets:
+            sets.append(line)
+    return sets
+
+
 def check_budgets(trace: Path, budgets: Path) -> tuple[str, list[str]]:
     if not trace.is_file():
         return '', [f'trace {trace} is missing']
-    measured = measurements(trace_events(trace))
+    events = trace_events(trace)
+    measured = measurements(events)
+    table = '\n'.join([f'recipe set: {line}' for line in recipe_sets(events)]
+                      + ([format_measurements(measured)] if measured else []))
     if not measured:
-        return '', []
+        return table, []
     try:
         limits = parse_budgets(json.loads(budgets.read_text(encoding='utf-8')))
     except (OSError, ValueError) as error:
         limits = f'the budgets file {budgets} is unreadable: {error}'
     if isinstance(limits, str):
-        return format_measurements(measured), [limits]
-    return format_measurements(measured), budget_failures(measured, limits)
+        return table, [limits]
+    return table, budget_failures(measured, limits)

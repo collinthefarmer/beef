@@ -3,6 +3,7 @@
 
 #include "recipe/Recipe.h"
 
+#include <algorithm>
 #include <array>
 #include <compare>
 #include <cstddef>
@@ -73,6 +74,7 @@ struct View {
   std::optional<PieceRef> soloPiece;
   std::set<LayerKey> muted;
   std::optional<Pin> pin;
+  std::vector<std::string> recipeSet;
 
   [[nodiscard]] bool Isolating() const noexcept {
     return !isolation.recipeID.empty();
@@ -86,8 +88,13 @@ struct View {
   void RenameRecipe(std::string_view a_from, std::string_view a_to);
   void ForgetRecipe(std::string_view a_id);
 
+  [[nodiscard]] bool InRecipeSet(std::string_view a_recipe) const noexcept {
+    return recipeSet.empty() || std::ranges::contains(recipeSet, a_recipe);
+  }
+
   [[nodiscard]] bool RecipeShown(const std::string &a_recipe) const noexcept {
-    return !Isolating() || isolation.recipeID == a_recipe;
+    return (!Isolating() || isolation.recipeID == a_recipe) &&
+           InRecipeSet(a_recipe);
   }
 
   [[nodiscard]] bool OutputShown(const std::string &a_recipe,

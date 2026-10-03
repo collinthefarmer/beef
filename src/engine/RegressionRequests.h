@@ -7,6 +7,7 @@
 #include <cstdint>
 #include <optional>
 #include <string>
+#include <vector>
 
 namespace BetterEnchantmentEffects {
 void AbortWaitingRegressionRequest();
@@ -17,5 +18,6 @@ RegressionRequestState(std::optional<std::uint64_t> a_request);
 void AbortRegressionRequest(std::optional<std::uint64_t> a_request);
 void SoloRegressionRecipe(std::string a_recipe);
 void EndRegressionSolo();
+void ShowRegressionRecipeSet(std::vector<std::string> a_recipes);
 [[nodiscard]] RE::TESObjectARMO *RegressionFixture();
 }

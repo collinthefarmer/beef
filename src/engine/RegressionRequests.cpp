@@ -3,6 +3,7 @@
 
 #include "diagnostics/Trace.h"
 #include "engine/Manager.h"
+#include "engine/RecipeStore.h"
 #include "engine/RegressionRequest.h"
 
 #include <algorithm>
@@ -19,6 +20,20 @@ std::mutex requestLock;
 RegressionRequest request;
 std::string recipeUnderTest;
 std::optional<Studio::Isolation> isolationBeforeRun;
+std::optional<std::vector<std::string>> recipeSetBeforeRun;
+
+void TraceRecipeFingerprints(std::span<const std::string> a_recipes) {
+  const std::span<const Recipe> loaded = LoadedRecipes();
+  std::vector<Trace::Field> fields{{"action", "regression.recipes"}};
+  for (const std::string &id : a_recipes) {
+    const Recipe *recipe = FindById(loaded, id);
+    std::string print = recipe ? Trace::Fingerprint(SerializeRecipe(*recipe))
+                               : std::string{"missing"};
+    logger::info("regression: recipe set member {} {}", id, print);
+    fields.push_back({id, std::move(print)});
+  }
+  Trace::EmitSafely(Trace::Event::kCommand, fields);
+}
 
 void Finish(Regression::Outcome a_outcome) {
   request.state = a_outcome;
@@ -184,11 +199,28 @@ void Manager::SoloInEditor(std::string a_recipe) {
 
 void Manager::EndSoloInEditor() {
   PostTask([this] {
-    if (!isolationBeforeRun)
-      return;
-    editor_.Isolate(*isolationBeforeRun);
-    isolationBeforeRun.reset();
+    if (isolationBeforeRun) {
+      editor_.Isolate(*isolationBeforeRun);
+      isolationBeforeRun.reset();
+    }
+    if (recipeSetBeforeRun) {
+      editor_.ShowRecipeSet(*recipeSetBeforeRun);
+      recipeSetBeforeRun.reset();
+    }
   });
+}
+
+void Manager::ShowRecipeSetInEditor(std::vector<std::string> a_recipes) {
+  PostTask([this, recipes = std::move(a_recipes)]() mutable {
+    TraceRecipeFingerprints(recipes);
+    if (!recipeSetBeforeRun)
+      recipeSetBeforeRun = editor_.CurrentView().recipeSet;
+    editor_.ShowRecipeSet(std::move(recipes));
+  });
+}
+
+void ShowRegressionRecipeSet(std::vector<std::string> a_recipes) {
+  Manager::GetSingleton()->ShowRecipeSetInEditor(std::move(a_recipes));
 }
 
 std::vector<RegressionActorFacts>

@@ -14,7 +14,9 @@ inline constexpr std::uint32_t kControlHoldFrames = 120;
 inline constexpr std::uint32_t kViewSettleFrames = 60;
 
 inline constexpr Solo kSoloCircuit{kSoloRecipe};
-inline constexpr Solo kEveryRecipe{""};
+inline constexpr std::array<std::string_view, 3> kDemoRecipes{
+    "arcane-circuit", "resonant-ward", "winterglass"};
+inline constexpr ShowRecipes kDemoSet{kDemoRecipes};
 inline constexpr Solo kSoloWard{"resonant-ward"};
 inline constexpr Solo kSoloFrost{"winterglass"};
 inline constexpr Equip kPlayerFixture{Role::kPlayer, Item::kFixture};
@@ -79,8 +81,10 @@ inline constexpr std::array kEquipCycle =
 
 inline constexpr std::array kCamera = Sequence(
     kSoloCircuit, kPlayerFixture, AwaitRendered{Role::kPlayer},
-    SetCamera{Camera::kFirstPerson}, WaitFrames{kViewSettleFrames},
-    SetCamera{Camera::kThirdPerson}, WaitFrames{kViewSettleFrames},
+    WaitFrames{kViewSettleFrames}, SetCamera{Camera::kFirstPerson},
+    HoldCamera{Camera::kFirstPerson, kViewSettleFrames},
+    ExpectFirstPersonEffect{}, SetCamera{Camera::kThirdPerson},
+    HoldCamera{Camera::kThirdPerson, kViewSettleFrames},
     ExpectEffect{Role::kPlayer}, Unequip{Role::kPlayer, Item::kFixture},
     AwaitBaseline{Role::kPlayer});
 
@@ -164,8 +168,9 @@ inline constexpr SpawnCrowd kMannequins{kCrowdSize};
 inline constexpr SpawnCrowd kMannequinsInVanilla{kCrowdSize, Body::kMannequin,
                                                  Dress::kVanillaCuirasses};
 inline constexpr SpawnCrowd kIdleNpcs{kCrowdSize, Body::kIdleNpc};
+inline constexpr SpawnCrowd kFighters{kCrowdSize, Body::kFighter};
 
-consteval std::array<Step, 7> CrowdArrives(Solo a_view, SpawnCrowd a_crowd) {
+consteval std::array<Step, 7> CrowdArrives(Step a_view, SpawnCrowd a_crowd) {
   return Sequence(a_view, HoldWindow{"baseline", kBaselineSeconds},
                   BeginWindow{"burst"}, a_crowd, AwaitCrowdRendered{},
                   EndWindow{"burst"}, HoldWindow{"settle", kSettleSeconds});
@@ -174,14 +179,14 @@ consteval std::array<Step, 7> CrowdArrives(Solo a_view, SpawnCrowd a_crowd) {
 inline constexpr std::array kCrowdLeaves =
     Sequence(DespawnCrowd{}, HoldWindow{"recovery", kRecoverySeconds});
 
-consteval std::array<Step, 10> Soak(Solo a_view, SpawnCrowd a_crowd,
+consteval std::array<Step, 10> Soak(Step a_view, SpawnCrowd a_crowd,
                                     std::uint32_t a_steadySeconds) {
   return Joined(CrowdArrives(a_view, a_crowd),
                 Sequence(HoldWindow{"steady", a_steadySeconds}), kCrowdLeaves);
 }
 inline constexpr std::array kSoak = Soak(kSoloCircuit, kMannequins, 120);
 inline constexpr std::array kSoakHour = Soak(kSoloCircuit, kMannequins, 3600);
-inline constexpr std::array kSoakStack = Soak(kEveryRecipe, kMannequins, 120);
+inline constexpr std::array kSoakStack = Soak(kDemoSet, kMannequins, 120);
 inline constexpr std::array kSoakWard = Soak(kSoloWard, kMannequins, 120);
 inline constexpr std::array kSoakFrost = Soak(kSoloFrost, kMannequins, 120);
 inline constexpr std::array kSoakLarge =
@@ -190,8 +195,8 @@ inline constexpr std::array kSoakVanilla =
     Soak(kSoloCircuit, kMannequinsInVanilla, 120);
 inline constexpr std::array kSoakIdle = Soak(kSoloCircuit, kIdleNpcs, 120);
 inline constexpr std::array kSoakFight =
-    Joined(CrowdArrives(kEveryRecipe, kIdleNpcs),
-           Sequence(StartCrowdFight{}, AwaitCrowdFighting{},
+    Joined(CrowdArrives(kDemoSet, kFighters),
+           Sequence(StartCrowdFight{}, AwaitCrowdFighting{}, AwaitCrowdHurt{},
                     HoldWindow{"fight", kFightSeconds}),
            kCrowdLeaves);
 

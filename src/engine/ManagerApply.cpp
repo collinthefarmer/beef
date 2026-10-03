@@ -77,6 +77,58 @@ RE::MagicItem *WornEnchantment(RE::Actor *a_actor, RE::TESObjectARMO *a_armor) {
   return a_armor->formEnchanting;
 }
 
+bool InventoryWorn(RE::Actor &a_actor, RE::TESObjectARMO *a_armor) {
+  auto inventory = a_actor.GetInventory(
+      [&](RE::TESBoundObject &a_object) { return &a_object == a_armor; });
+  for (auto &[object, pair] : inventory) {
+    auto &[count, entry] = pair;
+    if (count <= 0 || !entry || !entry->extraLists) {
+      continue;
+    }
+    for (auto *xList : *entry->extraLists) {
+      if (xList && (xList->HasType(RE::ExtraDataType::kWorn) ||
+                    xList->HasType(RE::ExtraDataType::kWornLeft))) {
+        return true;
+      }
+    }
+  }
+  return false;
+}
+
+RE::TESObjectARMO *PieceItemOf(const RE::BIPOBJECT &a_object) {
+  return a_object.item ? a_object.item->As<RE::TESObjectARMO>() : nullptr;
+}
+
+void AppendWorn(std::vector<WornEntry> &a_out, RE::Actor &a_actor,
+                bool a_firstPerson) {
+  const auto &biped = a_actor.GetBiped(a_firstPerson);
+  if (!biped) {
+    return;
+  }
+  for (const auto &object : biped->objects) {
+    RE::TESObjectARMO *armor = PieceItemOf(object);
+    if (!armor) {
+      continue;
+    }
+    const RE::MagicItem *enchantment = WornEnchantment(&a_actor, armor);
+    a_out.push_back(
+        {armor->GetFormID(), object.addon ? object.addon->GetFormID() : 0,
+         enchantment ? enchantment->GetFormID() : 0, object.partClone,
+         a_firstPerson, InventoryWorn(a_actor, armor)});
+  }
+}
+
+std::vector<WornEntry> WornOf(RE::Actor &a_actor, const Settings &a_settings) {
+  std::vector<WornEntry> worn;
+  if (a_settings.thirdPerson) {
+    AppendWorn(worn, a_actor, false);
+  }
+  if (a_settings.firstPerson && a_actor.IsPlayerRef()) {
+    AppendWorn(worn, a_actor, true);
+  }
+  return worn;
+}
+
 std::string TexturePath(const TextureRef &a_texture) {
   return a_texture && a_texture->name.c_str() ? a_texture->name.c_str() : "";
 }
@@ -788,13 +840,41 @@ void Manager::Refresh(RE::Actor *a_actor) {
   Trace::EmitSafely(
       Trace::Event::kApplication,
       {{"action", "refresh_begin"}, {"actor", std::to_string(actorID)}});
-  RetireEffects(actorID);
-  if (!EligibleForRefresh(*a_actor, settings)) {
+  const bool eligible = EligibleForRefresh(*a_actor, settings);
+  std::vector<WornEntry> worn =
+      eligible ? WornOf(*a_actor, settings) : std::vector<WornEntry>{};
+  if (const auto installed = applied_.find(actorID);
+      eligible && installed != applied_.end() &&
+      installed->second.worn == worn) {
+    Trace::EmitSafely(
+        Trace::Event::kApplication,
+        {{"action", "refresh_unchanged"}, {"actor", std::to_string(actorID)}});
+    (void)applications_.TakeEquipped(actorID);
     return;
   }
+  const bool awaitsModel = settings.thirdPerson && ArmorAwaitsModel(*a_actor);
+  if (eligible && awaitsModel && applied_.contains(actorID) &&
+      DefersForArmorModel(actorID)) {
+    awaitingArmorModel_.try_emplace(actorID, ArmorModelWait{NowMS(), false});
+    Trace::EmitSafely(
+        Trace::Event::kApplication,
+        {{"action", "refresh_deferred"}, {"actor", std::to_string(actorID)}});
+    return;
+  }
+  const Metrics::Stopwatch retireWatch;
+  RetireEffects(actorID);
+  const std::uint64_t retireUs = retireWatch.Micros();
+  if (!eligible) {
+    return;
+  }
+  const Metrics::Stopwatch collectWatch;
   LiveActor state = LiveActorFor(*a_actor, settings);
-  if (settings.thirdPerson && ArmorAwaitsModel(*a_actor)) {
-    if (awaitingArmorModel_.insert(actorID).second && settings.verboseLogging) {
+  const std::uint64_t collectUs = collectWatch.Micros();
+  state.worn = std::move(worn);
+  if (awaitsModel) {
+    if (awaitingArmorModel_.try_emplace(actorID, ArmorModelWait{NowMS(), false})
+            .second &&
+        settings.verboseLogging) {
       logger::info("actor {:08X} ({}): armor model not attached yet; "
                    "refreshing when it attaches",
                    actorID, a_actor->GetName());
@@ -810,14 +890,35 @@ void Manager::Refresh(RE::Actor *a_actor) {
     }
     return;
   }
+  const Metrics::Stopwatch placeWatch;
   PlaceInstances(state, actorID, settings);
+  const std::uint64_t placeUs = placeWatch.Micros();
+  const Metrics::Stopwatch lightsWatch;
   PlaceLightsOf(a_actor, state, settings);
+  const std::uint64_t lightsUs = lightsWatch.Micros();
+  const Metrics::Stopwatch reportWatch;
   ReportApplied(*a_actor, state, settings);
+  const std::uint64_t reportUs = reportWatch.Micros();
+  const Metrics::Stopwatch storeWatch;
   applied_[actorID] = std::move(state);
+  Trace::EmitSafely(Trace::Event::kMetrics,
+                    {{"action", "refresh_phases"},
+                     {"actor", std::to_string(actorID)},
+                     {"retire_us", std::to_string(retireUs)},
+                     {"collect_us", std::to_string(collectUs)},
+                     {"place_us", std::to_string(placeUs)},
+                     {"lights_us", std::to_string(lightsUs)},
+                     {"report_us", std::to_string(reportUs)},
+                     {"store_us", std::to_string(storeWatch.Micros())}});
 
   if (applications_.TakeEquipped(actorID)) {
     FireEquip(actorID);
   }
+}
+
+bool Manager::DefersForArmorModel(RE::FormID a_actorID) const {
+  const auto wait = awaitingArmorModel_.find(a_actorID);
+  return wait == awaitingArmorModel_.end() || !wait->second.expired;
 }
 
 bool Manager::EligibleForRefresh(RE::Actor &a_actor,
@@ -933,8 +1034,7 @@ bool ArmorAwaitsModel(RE::Actor &a_actor) {
   std::unordered_set<RE::TESObjectARMO *> attached;
   std::unordered_set<RE::TESObjectARMO *> listed;
   for (const auto &object : biped->objects) {
-    RE::TESObjectARMO *armor =
-        object.item ? object.item->As<RE::TESObjectARMO>() : nullptr;
+    RE::TESObjectARMO *armor = PieceItemOf(object);
     if (armor) {
       (object.partClone ? attached : listed).insert(armor);
     }
@@ -961,8 +1061,7 @@ std::vector<LivePiece> Manager::CollectPieces(RE::Actor *a_actor,
   RE::NiAVObject *root = a_actor->Get3D(a_firstPerson);
   std::unordered_set<RE::NiAVObject *> seenClones;
   for (const auto &object : biped->objects) {
-    RE::TESObjectARMO *armor =
-        object.item ? object.item->As<RE::TESObjectARMO>() : nullptr;
+    RE::TESObjectARMO *armor = PieceItemOf(object);
     RE::NiAVObject *clone = object.partClone.get();
     if (!armor || !clone || !seenClones.insert(clone).second) {
       continue;

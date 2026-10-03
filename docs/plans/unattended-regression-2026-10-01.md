@@ -9,8 +9,10 @@ defect, a gesture cancelled by a load recorded as cancelled by the user, now
 fixed. Stage 4b passed in game on 2026-10-01 (`studio-save + studio-reload`,
 two launches). Stage 5 is implemented. Its first soak found a 13-second
 freeze and a 14 GB peak, both fixed on 2026-10-01. The full suite and the
-soak passed in run 20261001T160233 (three launches); one budget still fails,
-the 95 MB left after recovery. Stage 6 is open. Supersedes the control
+soak passed in run 20261001T160233 (three launches); one budget failed, the
+95 MB left after recovery, since measured as the idle pool and scratch
+targets, not a leak. The soak passed every budget in run 20261002T041534-1
+after the budget split live targets from the pool. Stage 6 is open. Supersedes the control
 model of [the regression driver plan](../history/in-game-regression-driver.md); that
 plan's case table, result vocabulary and observation rules carry over.
 
@@ -254,7 +256,7 @@ plugin it was made with is removed; the game refuses to load it otherwise.
 
    | Case | What changes from `soak` | What it can find |
    | --- | --- | --- |
-   | `soak-stack` | No solo: every recipe the profile loads stacks on each actor, which on the test profile adds an imported effect-shader recipe to the three demo recipes | The cost of shells, lights, scrolling images and the frost growth at crowd scale. Its figures depend on the profile's recipes. |
+   | `soak-stack` | Only Arcane Circuit, Resonant Ward and Winterglass shown (`ShowRecipes`), stacked on each actor | The cost of shells, lights and the frost growth at crowd scale |
    | `soak-ward`, `soak-frost` | Solo Resonant Ward or Winterglass | The cost of one recipe without the others |
    | `soak-large` | 32 actors instead of 12 | How first-render admission and step sharing scale |
    | `soak-waves` | Three waves of 12: spawn (`wave-N`), hold 15 s (`held-N`), despawn, idle 10 s (`gap-N`) | Targets and bytes that grow from one `gap-N` to the next, which a single recovery cannot show |
@@ -279,6 +281,23 @@ plugin it was made with is removed; the game refuses to load it otherwise.
    the reference essential flag gives bleedout, and that the sides start
    fighting within `kCrowdDeadlineFrames`. Large textures depend on the
    texture replacers in the load order and have no case.
+
+   Three changes on 2026-10-02 make the soak figures comparable:
+
+   - `soak-stack` and `soak-fight` show a fixed recipe set (`ShowRecipes`);
+     only those recipes match. Before, they measured every recipe the profile
+     loaded, which on the test profile added an imported effect-shader recipe.
+     The run traces the fingerprint of each recipe in the set
+     (`regression.recipes`), and the host prints it, so a user edit to one of
+     those recipes shows as a different fingerprint.
+   - A heartbeat is written at every window edge, so a window shorter than a
+     second gets its own figures.
+   - The heartbeat splits the targets into the idle pool, the scratch targets,
+     the compositor's resident neutral-height target and the rest (**live**).
+     The recovery budget limits live targets and bytes to the baseline, and the
+     idle pool to its 64 MiB cap, in place of the total. Run 20261002T035834-1
+     measured the 95 MB left after recovery as the idle pool (65.7 MB) and three
+     scratch targets (29.4 MB), with live targets back at baseline: not a leak.
 
 6. **Evidence for visual verdicts.** Screenshots at named checkpoints, and
    stack-output hashes with the clock frozen, compared with recorded

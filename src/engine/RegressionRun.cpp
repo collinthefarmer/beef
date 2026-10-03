@@ -4,6 +4,7 @@
 #include "Core.h"
 #include "Identity.h"
 #include "diagnostics/Trace.h"
+#include "engine/Manager.h"
 #include "engine/RegressionWorld.h"
 #include "engine/TextFile.h"
 #include "regression/Run.h"
@@ -24,6 +25,8 @@ struct LoadingSave {};
 struct RunningCases {
   Regression::RunState state;
   RunWorld world;
+  Regression::CrowdFacts crowd;
+  std::optional<std::uint32_t> cameraState;
 };
 using RunStage = std::variant<AwaitingMainMenu, LoadingSave, RunningCases>;
 
@@ -44,6 +47,33 @@ void AppendLine(const std::filesystem::path &a_path, std::string_view a_line) {
     return;
   }
   file << a_line << '\n';
+}
+
+void FlushHeartbeatAtWindowEdge(const Regression::ResultLine &a_line) {
+  if (!std::holds_alternative<Regression::WindowBegins>(a_line) &&
+      !std::holds_alternative<Regression::WindowEnds>(a_line)) {
+    return;
+  }
+  if (Manager *manager = Manager::GetSingleton()) {
+    manager->FlushMetricsHeartbeat();
+  }
+}
+
+void TraceCrowdChange(const Regression::CrowdFacts &a_before,
+                      const Regression::CrowdFacts &a_now) {
+  if (a_before == a_now) {
+    return;
+  }
+  Trace::EmitSafely(Trace::Event::kCommand,
+                    {{"action", "regression.crowd"},
+                     {"present", std::to_string(a_now.present)},
+                     {"rendered", std::to_string(a_now.rendered)},
+                     {"fighting", std::to_string(a_now.fighting)},
+                     {"engaged", std::to_string(a_now.engaged)},
+                     {"hurt", std::to_string(a_now.hurt)},
+                     {"drawn", std::to_string(a_now.drawn)},
+                     {"moved", std::to_string(a_now.moved)},
+                     {"high_process", std::to_string(a_now.highProcess)}});
 }
 
 void TraceLine(const Regression::ResultLine &a_line) {
@@ -93,6 +123,7 @@ void Record(const ActiveRun &a_run, const Regression::ResultLine &a_line) {
   const std::string json = Regression::ResultLineJson(a_line);
   logger::info("regression: {}", json);
   AppendLine(a_run.results, json);
+  FlushHeartbeatAtWindowEdge(a_line);
   TraceLine(a_line);
 }
 
@@ -236,6 +267,7 @@ void FinishRegressionLoad(bool a_loaded) {
   }
   RunWorld world;
   world.save = activeRun->request.save;
+  HoldCameraStill(world);
   RunningCases running{.state = Regression::BeginRun(activeRun->request),
                        .world = std::move(world)};
   activeRun->stage = std::move(running);
@@ -254,8 +286,19 @@ void AdvanceRegressionRun() {
   if (!running) {
     return;
   }
+  Regression::Observation seen = Observe(running->world);
+  TraceCrowdChange(running->crowd, seen.crowd);
+  running->crowd = seen.crowd;
+  const std::optional<std::uint32_t> cameraState = CameraStateID();
+  if (cameraState != running->cameraState) {
+    Trace::EmitSafely(
+        Trace::Event::kCommand,
+        {{"action", "regression.camera"},
+         {"state", cameraState ? std::to_string(*cameraState) : "none"}});
+    running->cameraState = cameraState;
+  }
   Regression::Advanced next =
-      Regression::Advance(std::move(running->state), Observe(running->world));
+      Regression::Advance(std::move(running->state), std::move(seen));
   running->state = std::move(next.state);
   for (const Regression::ResultLine &line : next.lines) {
     Record(*activeRun, line);

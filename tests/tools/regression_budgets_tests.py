@@ -97,6 +97,31 @@ class RegressionBudgetTests(unittest.TestCase):
             'soak-waves/wave-3: frame_max_us 600000 over 500000',
             'soak-waves/gap-*: targets_end grew by 6 from gap-1 to gap-3, over 2'])
 
+    def test_live_targets_exclude_the_pool_scratch_and_resident_targets(self):
+        events = [
+            {'unix_ms': 0, 'fields': {'action': 'regression.window', 'case': 'soak',
+                                      'window': 'recovery', 'edge': 'begin'}},
+            {'unix_ms': 500, 'fields': {
+                'action': 'heartbeat', 'frames': '60', 'targets': '20',
+                'target_bytes': '2000', 'pool_targets': '5', 'pool_bytes': '500',
+                'scratch_targets': '3', 'scratch_bytes': '300',
+                'resident_targets': '1', 'resident_bytes': '100'}},
+            {'unix_ms': 1000, 'fields': {'action': 'regression.window', 'case': 'soak',
+                                         'window': 'recovery', 'edge': 'end'}}]
+        measured = budgets.measurements(events)[('soak', 'recovery')]
+        self.assertEqual(measured['live_targets_end'], 11)
+        self.assertEqual(measured['live_target_bytes_end'], 1100)
+        self.assertEqual(measured['pool_bytes_end'], 500)
+
+    def test_recipe_sets_list_each_distinct_set_once(self):
+        shown = {'action': 'regression.recipes', 'arcane-circuit': '00AA',
+               'winterglass': 'missing'}
+        events = [{'unix_ms': 1, 'fields': dict(shown)},
+                  {'unix_ms': 2, 'fields': {'action': 'heartbeat'}},
+                  {'unix_ms': 3, 'fields': dict(shown)}]
+        self.assertEqual(budgets.recipe_sets(events),
+                         ['arcane-circuit=00AA winterglass=missing'])
+
     def test_an_unknown_budget_key_is_an_error(self):
         for raw in ({'steady': {'fps_ratio_minimum': 0.5}},
                     {'steady': {'frames_max': 10}},

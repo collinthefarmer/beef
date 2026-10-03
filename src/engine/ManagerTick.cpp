@@ -25,6 +25,7 @@ namespace BetterEnchantmentEffects {
 namespace {
 inline constexpr std::size_t kFirstRendersPerTick = 1;
 inline constexpr std::uint32_t kArmorModelCheckMS = 100;
+inline constexpr std::uint32_t kArmorModelWaitMS = 1000;
 inline constexpr std::uint32_t kEvictionCheckMS = 1000;
 
 bool AwaitsFirstRender(const LiveActor &a_state) {
@@ -546,6 +547,9 @@ void EmitStepKinds(const Metrics::StepKindCounts &a_counts) {
 void EmitMetricsHeartbeat() {
   EmitGpuTimings();
   const Metrics::Snapshot measured = Metrics::Drain();
+  const TextureLab::TargetHoldings held =
+      TextureLab::GetSingleton()->HeldTargets();
+  const Compositor *compositor = Compositor::GetSingleton();
   EmitStepKinds(measured.stepExecutionsByKind);
   Trace::EmitSafely(
       Trace::Event::kMetrics,
@@ -562,6 +566,12 @@ void EmitMetricsHeartbeat() {
        {"targets_peak", std::to_string(measured.targetsPeak)},
        {"target_bytes", std::to_string(measured.targetBytes)},
        {"target_bytes_peak", std::to_string(measured.targetBytesPeak)},
+       {"pool_targets", std::to_string(held.idleTargets)},
+       {"pool_bytes", std::to_string(held.idleBytes)},
+       {"scratch_targets", std::to_string(held.scratchTargets)},
+       {"scratch_bytes", std::to_string(held.scratchBytes)},
+       {"resident_targets", std::to_string(compositor->ResidentTargets())},
+       {"resident_bytes", std::to_string(compositor->ResidentBytes())},
        {"frames", std::to_string(measured.frames)},
        {"render_evaluations", std::to_string(measured.renderEvaluations)},
        {"step_executions", std::to_string(measured.stepExecutions)},
@@ -575,6 +585,11 @@ void EmitMetricsHeartbeat() {
        {"snapshot_us", std::to_string(measured.snapshot.micros)},
        {"snapshot_max_us", std::to_string(measured.snapshot.maxMicros)}});
 }
+}
+
+void Manager::FlushMetricsHeartbeat() {
+  lastMetricsMS_ = NowMS();
+  EmitMetricsHeartbeat();
 }
 
 void Manager::OnFrame() {
@@ -631,22 +646,40 @@ void Manager::SweepAwaitingArmorModels(const Settings &a_settings) {
   if (awaitingArmorModel_.empty()) {
     return;
   }
+  const std::uint32_t now = NowMS();
   std::vector<RE::FormID> attached;
-  std::erase_if(awaitingArmorModel_, [&](RE::FormID a_id) {
-    RE::Actor *actor = RE::TESForm::LookupByID<RE::Actor>(a_id);
-    if (!actor || actor->IsDeleted() || !actor->Is3DLoaded()) {
-      return true;
-    }
-    if (BeyondEvictionRadius(*actor, a_settings) || ArmorAwaitsModel(*actor)) {
-      return false;
-    }
-    attached.push_back(a_id);
-    return true;
-  });
+  std::vector<RE::FormID> expired;
+  std::erase_if(awaitingArmorModel_,
+                [&](std::pair<const RE::FormID, ArmorModelWait> &a_wait) {
+                  const RE::FormID id = a_wait.first;
+                  RE::Actor *actor = RE::TESForm::LookupByID<RE::Actor>(id);
+                  if (!actor || actor->IsDeleted() || !actor->Is3DLoaded()) {
+                    return true;
+                  }
+                  if (BeyondEvictionRadius(*actor, a_settings)) {
+                    return false;
+                  }
+                  if (!ArmorAwaitsModel(*actor)) {
+                    attached.push_back(id);
+                    return true;
+                  }
+                  if (!a_wait.second.expired &&
+                      now - a_wait.second.sinceMS >= kArmorModelWaitMS) {
+                    a_wait.second.expired = true;
+                    expired.push_back(id);
+                  }
+                  return false;
+                });
   for (const RE::FormID id : attached) {
     Trace::EmitSafely(
         Trace::Event::kApplication,
         {{"action", "armor_model_attached"}, {"actor", std::to_string(id)}});
+    QueueRefresh(id);
+  }
+  for (const RE::FormID id : expired) {
+    Trace::EmitSafely(Trace::Event::kApplication,
+                      {{"action", "armor_model_wait_expired"},
+                       {"actor", std::to_string(id)}});
     QueueRefresh(id);
   }
 }

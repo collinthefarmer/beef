@@ -65,9 +65,11 @@ public:
   void RequestMesh(RE::FormID a_actorID, std::string a_geometry);
 
   void OnFrame();
+  void FlushMetricsHeartbeat();
   void QueueRegression(std::uint64_t a_request);
   void SoloInEditor(std::string a_recipe);
   void EndSoloInEditor();
+  void ShowRecipeSetInEditor(std::vector<std::string> a_recipes);
   void ObserveRegression();
   [[nodiscard]] std::vector<RegressionActorFacts>
   RegressionActors(std::span<const RegressionWearer> a_wearers) const;
@@ -204,7 +206,12 @@ private:
 
   std::unordered_set<RE::FormID> evictedForDistance_;
   void SweepEviction(const Settings &a_settings);
-  std::unordered_set<RE::FormID> awaitingArmorModel_;
+  struct ArmorModelWait {
+    std::uint32_t sinceMS = 0;
+    bool expired = false;
+  };
+  std::unordered_map<RE::FormID, ArmorModelWait> awaitingArmorModel_;
+  [[nodiscard]] bool DefersForArmorModel(RE::FormID a_actorID) const;
   void SweepAwaitingArmorModels(const Settings &a_settings);
   std::uint32_t lastArmorModelCheckMS_ = 0;
   std::uint64_t regressionPaintSession_ = 0;

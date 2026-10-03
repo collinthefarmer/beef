@@ -14,6 +14,7 @@ namespace BetterEnchantmentEffects {
 struct CrowdMember {
   RE::FormID actor = 0;
   RE::FormID armor = 0;
+  RE::NiPoint3 spot;
 };
 
 struct ArmorTag {
@@ -32,11 +33,15 @@ struct RunWorld {
   std::uint64_t gesture = 0;
   std::uint64_t file = 0;
   std::vector<CrowdMember> crowd;
+  std::optional<RE::NiPoint3> playerBeforeArena;
+  std::optional<float> vanityDelayBeforeRun;
   std::vector<ArmorTag> tags;
 };
 
 [[nodiscard]] Regression::Observation Observe(const RunWorld &a_world);
 void Execute(const Regression::Command &a_command, RunWorld &a_world);
+[[nodiscard]] std::optional<std::uint32_t> CameraStateID();
+void HoldCameraStill(RunWorld &a_world);
 void ReleaseWorld(RunWorld &a_world);
 void ForgetWorldAfterLoad(RunWorld &a_world);
 void QuitGame();

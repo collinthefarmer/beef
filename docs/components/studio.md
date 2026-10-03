@@ -80,7 +80,7 @@ not on `View`.
 
 | Type | Description | Declared in |
 |---|---|---|
-| `View` | Freeze, scrub and speed, an `Isolation`, `soloPiece`, the muted `LayerKey` set, and an optional `Pin`. `RecipeShown`, `OutputShown` and `LayerShown` answer the filter questions. | `View.h` |
+| `View` | Freeze, scrub and speed, an `Isolation`, `soloPiece`, the muted `LayerKey` set, an optional `Pin`, and a **recipe set**: the only recipes that may match, or every recipe when it is empty. `RecipeShown`, `OutputShown` and `LayerShown` answer the filter questions. | `View.h` |
 | `Isolation` | The one recipe, and optionally one output and layer, that the view shows. `TargetsOutput` and `TargetsLayer` answer the isolation badges. | `View.h` |
 | `Pin`, `PieceRef` | `Pin` names a recipe pinned on a piece. `PieceRef` names a piece by actor and armor form ids. | `View.h` |
 | `ViewCommand` | One solo command. `ApplyViewCommand` reduces it into a `View`. | `View.h` |

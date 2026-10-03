@@ -176,6 +176,11 @@ int main() {
     view.pin->piece.actorID = 99;
     Check(ViewedRecipes({normal, piece, ref, view, loaded}).empty(),
           "a pin on another piece cannot force the isolated recipe to apply");
+    View limited;
+    limited.recipeSet = {"winner", "unmatched"};
+    const auto inSet = ViewedRecipes({normal, piece, ref, limited, loaded});
+    Check(inSet.size() == 1 && inSet.front().recipe == &loaded[1],
+          "a recipe set drops matched recipes outside it and forces none in");
   }
 
   {

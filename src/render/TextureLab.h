@@ -187,6 +187,7 @@ public:
       return generation_;
     }
     [[nodiscard]] MipPolicy Mips() const noexcept { return mips; }
+    [[nodiscard]] std::uint64_t Bytes() const noexcept;
 
   private:
     friend class TextureLab;
@@ -338,6 +339,14 @@ public:
           MipPolicy mips = MipPolicy::kGenerate);
 
   void Clear();
+
+  struct TargetHoldings {
+    std::uint64_t idleTargets = 0;
+    std::uint64_t idleBytes = 0;
+    std::uint64_t scratchTargets = 0;
+    std::uint64_t scratchBytes = 0;
+  };
+  [[nodiscard]] TargetHoldings HeldTargets() const;
 
   class PassBatch {
   public:

@@ -15,6 +15,7 @@ namespace BetterEnchantmentEffects {
 class RenderTargetPool {
 public:
   using RenderTarget = TextureLab::RenderTarget;
+  using Holdings = TextureLab::TargetHoldings;
 
   RenderTargetPool() = default;
   RenderTargetPool(const RenderTargetPool &) = delete;
@@ -29,6 +30,7 @@ public:
           TextureFormat format = TextureFormat::kRgba8);
   void ClearScratch();
   void ClearUnused();
+  [[nodiscard]] Holdings Held() const;
 
 private:
   static constexpr std::size_t kMaxIdleTargets = 16;

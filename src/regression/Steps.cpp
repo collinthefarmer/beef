@@ -120,6 +120,15 @@ StepMove Start(const RestoreSolo &, const StepContext &) {
 
 StepMove Check(const RestoreSolo &, const StepContext &) { return Pass(); }
 
+StepMove Start(const ShowRecipes &a_show, const StepContext &) {
+  if (a_show.recipes.empty()) {
+    return Fail("a recipe set names at least one recipe");
+  }
+  return PassAndIssue(ShowRecipeSet{a_show.recipes});
+}
+
+StepMove Check(const ShowRecipes &, const StepContext &) { return Pass(); }
+
 StepMove Start(const Spawn &a_spawn, const StepContext &a_context) {
   if (a_spawn.role == Role::kPlayer) {
     return Fail("the player cannot be spawned");
@@ -393,6 +402,35 @@ StepMove Check(const SetCamera &a_set, const StepContext &a_context) {
                   kActionDeadlineFrames, "the camera did not switch");
 }
 
+StepMove Start(const HoldCamera &a_hold, const StepContext &a_context) {
+  if (!InView(a_hold.camera, a_context)) {
+    return Fail(std::format("the camera is not in {}",
+                            NameOf(kCameras, a_hold.camera)));
+  }
+  return Wait();
+}
+
+StepMove Check(const HoldCamera &a_hold, const StepContext &a_context) {
+  if (!InView(a_hold.camera, a_context)) {
+    return Fail(std::format("the camera left {} after {} frames",
+                            NameOf(kCameras, a_hold.camera), a_context.frames));
+  }
+  return a_context.frames >= a_hold.frames ? Pass() : Wait();
+}
+
+StepMove Start(const ExpectFirstPersonEffect &, const StepContext &) {
+  return Wait();
+}
+
+StepMove Check(const ExpectFirstPersonEffect &, const StepContext &a_context) {
+  const ActorFacts &player = ActorOf(a_context, Role::kPlayer);
+  return WithActorState(
+      PassWhen(player.present && player.live && player.firstPersonResidue > 0,
+               a_context, kExpectDeadlineFrames,
+               "the effect was not on the first-person body"),
+      player);
+}
+
 std::string RequestName(const RequestState &a_request) {
   return std::visit(
       Overloaded{
@@ -626,10 +664,22 @@ StepMove Start(const AwaitCrowdFighting &, const StepContext &a_context) {
 
 StepMove Check(const AwaitCrowdFighting &, const StepContext &a_context) {
   const CrowdFacts &crowd = a_context.seen.crowd;
-  return PassWhen(crowd.fighting * 2 >= a_context.changes.crowd, a_context,
+  return PassWhen(crowd.engaged * 2 >= a_context.changes.crowd, a_context,
                   kCrowdDeadlineFrames,
-                  std::format("only {} of {} crowd actors are in combat",
-                              crowd.fighting, a_context.changes.crowd));
+                  std::format("only {} of {} crowd actors target another",
+                              crowd.engaged, a_context.changes.crowd));
+}
+
+StepMove Start(const AwaitCrowdHurt &, const StepContext &a_context) {
+  if (a_context.changes.crowd < 2) {
+    return Block("a fight needs a crowd of two or more");
+  }
+  return Wait();
+}
+
+StepMove Check(const AwaitCrowdHurt &, const StepContext &a_context) {
+  return PassWhen(a_context.seen.crowd.hurt > 0, a_context,
+                  kCrowdDeadlineFrames, "no crowd actor was hurt");
 }
 
 StepMove Start(const UnequipCrowd &, const StepContext &a_context) {
@@ -777,9 +827,12 @@ std::array<bool, kRoleCount> RolesAffected(const Step &a_step) {
           [&](const HoldUntouched &) { return kNone; },
           [&](const Solo &) { return kAll; },
           [&](const RestoreSolo &) { return kAll; },
+          [&](const ShowRecipes &) { return kAll; },
           [&](const LeaveStart &) { return kAll; },
           [&](const ReturnToStart &) { return kAll; },
           [&](const SetCamera &) { return only(Role::kPlayer); },
+          [&](const HoldCamera &) { return kNone; },
+          [&](const ExpectFirstPersonEffect &) { return kNone; },
           [&](const LoadDuring &) { return kAll; },
           [&](const ExpectAborted &) { return kNone; },
           [&](const ExpectCancelled &) { return kNone; },
@@ -793,6 +846,7 @@ std::array<bool, kRoleCount> RolesAffected(const Step &a_step) {
           [&](const AwaitCrowdRendered &) { return kNone; },
           [&](const StartCrowdFight &) { return kNone; },
           [&](const AwaitCrowdFighting &) { return kNone; },
+          [&](const AwaitCrowdHurt &) { return kNone; },
           [&](const UnequipCrowd &) { return kNone; },
           [&](const EquipCrowd &) { return kNone; },
           [&](const AwaitCrowdBare &) { return kNone; },

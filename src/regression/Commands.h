@@ -4,6 +4,7 @@
 #include "regression/Words.h"
 
 #include <cstdint>
+#include <span>
 #include <string_view>
 #include <variant>
 
@@ -12,6 +13,9 @@ struct SoloRecipe {
   std::string_view recipe;
 };
 struct EndSolo {};
+struct ShowRecipeSet {
+  std::span<const std::string_view> recipes;
+};
 struct SpawnActor {
   Role role = Role::kWearer;
 };
@@ -84,12 +88,11 @@ struct LoadSaveWith {
   std::string_view recipe;
 };
 struct Quit {};
-using Command =
-    std::variant<SoloRecipe, EndSolo, SpawnActor, DespawnActor, DisableActor,
-                 EnableActor, AddAndEquip, EquipCarried, UnequipArmor,
-                 RemoveArmor, SubmitApply, SubmitRetire, AbortRequest,
-                 TravelFromStart, TravelToStart, SwitchCamera, StartDuplicate,
-                 StartOpacityEdit, StartSave, StartDelete, SpawnCrowdActors,
-                 DespawnCrowdActors, SetCrowdHostile, UnequipCrowdArmor,
-                 EquipCrowdArmor, OpenSession, LoadSaveWith, Quit>;
+using Command = std::variant<
+    SoloRecipe, EndSolo, ShowRecipeSet, SpawnActor, DespawnActor, DisableActor,
+    EnableActor, AddAndEquip, EquipCarried, UnequipArmor, RemoveArmor,
+    SubmitApply, SubmitRetire, AbortRequest, TravelFromStart, TravelToStart,
+    SwitchCamera, StartDuplicate, StartOpacityEdit, StartSave, StartDelete,
+    SpawnCrowdActors, DespawnCrowdActors, SetCrowdHostile, UnequipCrowdArmor,
+    EquipCrowdArmor, OpenSession, LoadSaveWith, Quit>;
 }

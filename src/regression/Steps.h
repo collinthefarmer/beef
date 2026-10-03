@@ -19,6 +19,9 @@ struct Solo {
   std::string_view recipe;
 };
 struct RestoreSolo {};
+struct ShowRecipes {
+  std::span<const std::string_view> recipes;
+};
 struct Spawn {
   Role role = Role::kWearer;
 };
@@ -70,6 +73,11 @@ struct ReturnToStart {};
 struct SetCamera {
   Camera camera = Camera::kThirdPerson;
 };
+struct HoldCamera {
+  Camera camera = Camera::kThirdPerson;
+  std::uint32_t frames = 0;
+};
+struct ExpectFirstPersonEffect {};
 struct LoadDuring {
   QueuedWork work = QueuedWork::kNothing;
   std::string_view recipe;
@@ -100,6 +108,7 @@ struct SpawnCrowd {
 struct AwaitCrowdRendered {};
 struct StartCrowdFight {};
 struct AwaitCrowdFighting {};
+struct AwaitCrowdHurt {};
 struct UnequipCrowd {};
 struct EquipCrowd {};
 struct AwaitCrowdBare {};
@@ -126,12 +135,13 @@ struct EndWindow {
 };
 struct AwaitIdle {};
 using Step = std::variant<
-    WaitFrames, Solo, RestoreSolo, Spawn, Despawn, Disable, Enable, Equip,
-    Unequip, Remove, Apply, Retire, AwaitRendered, AwaitRetired, AwaitBaseline,
-    ExpectEffect, HoldUntouched, LeaveStart, ReturnToStart, SetCamera,
-    LoadDuring, ExpectAborted, ExpectCancelled, ExpectSettled, DeleteScratch,
-    DuplicateToScratch, SetScratchOpacity, SaveScratch, ExpectScratch,
-    SpawnCrowd, AwaitCrowdRendered, StartCrowdFight, AwaitCrowdFighting,
+    WaitFrames, Solo, RestoreSolo, ShowRecipes, Spawn, Despawn, Disable, Enable,
+    Equip, Unequip, Remove, Apply, Retire, AwaitRendered, AwaitRetired,
+    AwaitBaseline, ExpectEffect, HoldUntouched, LeaveStart, ReturnToStart,
+    SetCamera, HoldCamera, ExpectFirstPersonEffect, LoadDuring, ExpectAborted,
+    ExpectCancelled, ExpectSettled, DeleteScratch, DuplicateToScratch,
+    SetScratchOpacity, SaveScratch, ExpectScratch, SpawnCrowd,
+    AwaitCrowdRendered, StartCrowdFight, AwaitCrowdFighting, AwaitCrowdHurt,
     UnequipCrowd, EquipCrowd, AwaitCrowdBare, DespawnCrowd, HoldWindow,
     BeginWindow, EndWindow, BeginSession, AwaitSessionActive, AwaitIdle>;
 

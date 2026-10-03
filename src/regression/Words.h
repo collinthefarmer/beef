@@ -18,8 +18,8 @@ inline constexpr std::size_t kRoleCount = 3;
 enum class Item : std::uint8_t { kFixture, kPlainCuirass };
 inline constexpr std::size_t kItemCount = 2;
 
-enum class Body : std::uint8_t { kMannequin, kIdleNpc };
-inline constexpr std::size_t kBodyCount = 2;
+enum class Body : std::uint8_t { kMannequin, kIdleNpc, kFighter };
+inline constexpr std::size_t kBodyCount = 3;
 
 enum class Dress : std::uint8_t { kDemoCuirass, kVanillaCuirasses };
 inline constexpr std::size_t kDressCount = 2;
@@ -59,7 +59,8 @@ inline constexpr Named<Item> kItems[]{{Item::kFixture, "fixture"},
 static_assert(Complete(kItems, kItemCount));
 
 inline constexpr Named<Body> kBodies[]{{Body::kMannequin, "mannequin"},
-                                       {Body::kIdleNpc, "idle-npc"}};
+                                       {Body::kIdleNpc, "idle-npc"},
+                                       {Body::kFighter, "fighter"}};
 static_assert(Complete(kBodies, kBodyCount));
 
 inline constexpr Named<Dress> kDresses[]{
