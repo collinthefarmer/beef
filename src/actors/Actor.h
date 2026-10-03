@@ -125,13 +125,11 @@ struct InstallPlacement {
 struct RetirePlacement {
   PlacementRef ref;
 };
-struct ChainGeometry {
-  GeometryRef ref;
-};
+struct RebuildRender {};
 using ActorCommand =
     std::variant<InstallInstance, RetireInstance, InstallGeometry,
                  RetireGeometry, InstallPlacement, RetirePlacement,
-                 ChainGeometry>;
+                 RebuildRender>;
 
 struct Advanced {
   Phase phase;

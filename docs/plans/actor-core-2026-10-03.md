@@ -119,8 +119,8 @@ finishing 13.8 ms, demand collection about 6.6 ms); surface installs took
 plan for actors in the same gear: a reused plan costs about 4 ms. The other
 remaining spike is a render release of about 50 ms on the first retire of a
 batch, while the next retires take 0.1 ms; its cause is not yet found. Stage 4
-keeps the command set but replaces `ChainGeometry` with one render rebuild per
-actor whose placements changed.
+keeps the command set; `RebuildRender`, issued once per actor whose
+placements changed, replaced the per-geometry `ChainGeometry` the same day.
 
 ## Stage 4 split (decided 2026-10-03)
 

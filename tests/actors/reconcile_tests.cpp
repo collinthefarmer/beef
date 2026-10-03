@@ -100,16 +100,16 @@ void RetiresBeforeInstalling() {
                   LastOf<InstallGeometry>(commands) <
                       FirstOf<InstallPlacement>(commands),
               "instances and geometries install before their placements");
-  test::Check(FirstOf<ChainGeometry>(commands) >
+  test::Check(FirstOf<RebuildRender>(commands) >
                   LastOf<InstallPlacement>(commands),
-              "chains rebuild after the placements change");
+              "the render rebuilds after the placements change");
 }
 
 void AddingARecipeTouchesOnlyThatRecipe() {
   const std::vector<ActorCommand> commands =
       Reconcile(Circuit(), CircuitAndWard());
   test::Equal(commands.size(), std::size_t{3},
-              "one instance, one placement and one chain");
+              "one instance, one placement and one render rebuild");
   test::Equal(CountOf<InstallInstance>(commands), std::size_t{1},
               "the new recipe's instance installs");
   test::Equal(CountOf<InstallPlacement>(commands), std::size_t{1},
@@ -118,9 +118,8 @@ void AddingARecipeTouchesOnlyThatRecipe() {
                   CountOf<RetireGeometry>(commands) == 0 &&
                   CountOf<InstallGeometry>(commands) == 0,
               "the installed recipe and its geometries are kept");
-  const ChainGeometry *chain = std::get_if<ChainGeometry>(&commands.back());
-  test::Check(chain && chain->ref == Geo(0x1, "Body"),
-              "only the geometry that gained a placement rechains");
+  test::Check(std::holds_alternative<RebuildRender>(commands.back()),
+              "the actor's render rebuilds once");
 }
 
 void ANewModelReplacesItsGeometries() {
@@ -151,8 +150,8 @@ void ARecipeEditReplacesItsInstance() {
               "the instance of the edited recipe installs");
   test::Equal(CountOf<RetireGeometry>(commands), std::size_t{0},
               "the geometries stay bound");
-  test::Equal(CountOf<ChainGeometry>(commands), std::size_t{2},
-              "both geometries rechain");
+  test::Equal(CountOf<RebuildRender>(commands), std::size_t{1},
+              "the actor's render rebuilds once for both geometries");
 }
 
 void AChangedPlacementReinstalls() {
@@ -162,14 +161,15 @@ void AChangedPlacementReinstalls() {
       Reconcile(Circuit(), reprioritised);
   test::Check(CountOf<RetirePlacement>(commands) == 1 &&
                   CountOf<InstallPlacement>(commands) == 1 &&
-                  CountOf<ChainGeometry>(commands) == 1,
-              "a placement whose content changed reinstalls and rechains");
+                  CountOf<RebuildRender>(commands) == 1,
+              "a placement whose content changed reinstalls and rebuilds the "
+              "render");
 }
 
-void RetiredGeometriesDoNotRechain() {
+void RetiringEverythingNeedsNoRender() {
   const std::vector<ActorCommand> commands = Reconcile(Circuit(), ActorPlan{});
-  test::Equal(CountOf<ChainGeometry>(commands), std::size_t{0},
-              "a geometry that leaves the plan does not rechain");
+  test::Equal(CountOf<RebuildRender>(commands), std::size_t{0},
+              "an actor whose plan empties needs no render rebuild");
 }
 }
 
@@ -181,6 +181,6 @@ int main() {
   ANewModelReplacesItsGeometries();
   ARecipeEditReplacesItsInstance();
   AChangedPlacementReinstalls();
-  RetiredGeometriesDoNotRechain();
+  RetiringEverythingNeedsNoRender();
   return test::Finish("actor reconcile");
 }

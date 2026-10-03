@@ -305,7 +305,7 @@ engine handle.
 | Type | Declared in | Description |
 |---|---|---|
 | `EvictionAction` | `Eviction.h` | `kNone`, `kEvict` or `kRestore`. |
-| `EvictionFor` | `Eviction.h` | A `constexpr` function. It evicts an applied actor beyond the eviction distance and restores an evicted actor only inside 80% of that distance. A distance of 0 or less disables eviction. `Manager::SweepEviction` calls it. |
+| `EvictionFor` | `Eviction.h` | A `constexpr` function. It evicts an applied actor beyond the eviction distance and restores an evicted actor only inside 80% of that distance. A distance of 0 or less disables eviction. `Actors::Advance` calls it. |
 | `TransformStorage` | `TransformStorage.h` | An engine transform array's base address, `count`, `stride` and `offset`. `TransformStorageIndex` decodes a pointer into a row index. `render/SkinPalette.cpp` uses it. |
 | `ImageCacheKey`, `IsPlaceholderExtent` | `TextureIdentity.h` | `ImageCacheKey` lower-cases a path into a cache key. `IsPlaceholderExtent` reports a width or height at or under `kPlaceholderTextureExtent` (4). |
 | `RecipeTextureKey`, `RecipeTextureCache<T>` | `RecipeTextureCache.h` | A key of recipe name, texture name, pixel count and context, and a `std::map` from it to a `shared_ptr`. `FindRecipeTexture` and `LargestRecipeTexture` read it. Only `tests/planners/recipetexturecache_tests.cpp` uses it. |

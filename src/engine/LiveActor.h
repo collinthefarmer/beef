@@ -102,26 +102,7 @@ struct ResolvedPlacement {
 
 void RetireGeometry(LiveGeometry &a_geometry);
 void RetireGeometry(LiveActor &a_actor, LiveGeometry &a_geometry);
-struct RetireTimes {
-  std::uint64_t lightsUs = 0;
-  std::uint64_t bindingsUs = 0;
-  std::uint64_t renderUs = 0;
-  std::uint64_t outputsUs = 0;
-  std::uint64_t instancesUs = 0;
-};
-
-RetireTimes RetireActorEffects(LiveActor &a_actor);
-
-struct PlaceTimes {
-  std::uint64_t signalsUs = 0;
-  std::uint64_t planUs = 0;
-  std::uint64_t surfacesUs = 0;
-  std::uint64_t stacksUs = 0;
-  std::uint64_t renderPlanUs = 0;
-  RenderPlanTimes renderPlan;
-  std::uint64_t renderInstanceUs = 0;
-  std::uint64_t attachUs = 0;
-};
+void RetireActorEffects(LiveActor &a_actor);
 [[nodiscard]] std::size_t LiveInstanceCount(const LiveActor &a_actor) noexcept;
 [[nodiscard]] SlotTarget *TargetFor(LiveGeometry &a_bound, Surface a_surface);
 [[nodiscard]] PlacedOutput *OutputAt(LivePlacement &a_placement,

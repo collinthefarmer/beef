@@ -165,11 +165,10 @@ private:
   [[nodiscard]] std::optional<std::size_t>
   InstanceFor(LiveActor &a_state, InstanceId a_matchedInstance,
               RE::FormID a_enchantment, const Settings &a_settings);
-  PlaceTimes PlaceInstances(LiveActor &a_state, RE::FormID a_actorID,
-                            const Settings &a_settings);
+  void PlaceInstances(LiveActor &a_state, RE::FormID a_actorID,
+                      const Settings &a_settings);
   void PlaceOnGeometry(LiveActor &a_state, GeometryId a_geometry,
-                       const Settings &a_settings, ActorStacks &a_stacks,
-                       PlaceTimes &a_times);
+                       const Settings &a_settings, ActorStacks &a_stacks);
   void PlaceLightsOf(RE::Actor *a_actor, LiveActor &a_state,
                      const Settings &a_settings);
   bool LayoutSanityCheck(const PbrMaterial &a_material,

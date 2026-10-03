@@ -2,8 +2,6 @@
 #include "planners/FieldInlining.h"
 #include "planners/RenderPlan.h"
 
-#include <chrono>
-
 #include <algorithm>
 #include <format>
 #include <map>
@@ -668,18 +666,8 @@ std::expected<RenderPlan, std::string>
 BuildRenderPlan(std::span<const TextureDemand> demands,
                 std::span<const RenderStackRequest> stacks,
                 const RenderBindingResolver &bindings,
-                std::span<const SlotChainRequest> chains,
-                RenderPlanTimes *times) {
-  RenderPlanTimes measured;
-  const auto since = [](std::chrono::steady_clock::time_point a_start) {
-    return static_cast<std::uint64_t>(
-        std::chrono::duration_cast<std::chrono::microseconds>(
-            std::chrono::steady_clock::now() - a_start)
-            .count());
-  };
-  auto start = std::chrono::steady_clock::now();
+                std::span<const SlotChainRequest> chains) {
   auto lowered = LowerRenderPlan(demands, stacks, bindings);
-  measured.lowerUs = since(start);
   if (!lowered)
     return lowered;
   const auto finish = [&](std::span<const SlotChainRequest> kept) {
@@ -687,14 +675,10 @@ BuildRenderPlan(std::span<const TextureDemand> demands,
         InlineFields(MergeSlotChains(*lowered, kept)).plan));
   };
   std::vector<SlotChainRequest> kept(chains.begin(), chains.end());
-  start = std::chrono::steady_clock::now();
   RenderPlan plan = finish(kept);
-  measured.finishUs = since(start);
-  start = std::chrono::steady_clock::now();
   for (std::size_t chain = kept.size(); chain-- > 0;) {
     if (!MergeKeepsAnimatedField(plan, kept[chain]))
       continue;
-    ++measured.trials;
     std::vector<SlotChainRequest> without = kept;
     without.erase(without.begin() + static_cast<std::ptrdiff_t>(chain));
     RenderPlan trial = finish(without);
@@ -703,14 +687,7 @@ BuildRenderPlan(std::span<const TextureDemand> demands,
       plan = std::move(trial);
     }
   }
-  measured.trialsUs = since(start);
-  start = std::chrono::steady_clock::now();
-  auto valid = ValidateRenderPlan(plan);
-  measured.validateUs = since(start);
-  if (times) {
-    *times = measured;
-  }
-  if (!valid)
+  if (auto valid = ValidateRenderPlan(plan); !valid)
     return std::unexpected(valid.error());
   return plan;
 }

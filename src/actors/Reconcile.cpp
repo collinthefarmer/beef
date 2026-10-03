@@ -22,12 +22,6 @@ bool PlacementKept(const ActorPlan &a_installed, const ActorPlan &a_plan,
          GeometryKept(a_installed, a_plan, a_installedPlacement.ref.geometry);
 }
 
-void AddChain(std::vector<GeometryRef> &a_chains, const GeometryRef &a_ref) {
-  if (!std::ranges::contains(a_chains, a_ref)) {
-    a_chains.push_back(a_ref);
-  }
-}
-
 template <class Entry, class Ref>
 void Erase(std::vector<Entry> &a_entries, const Ref &a_ref) {
   std::erase_if(a_entries,
@@ -43,11 +37,11 @@ template <class Entry> void Put(std::vector<Entry> &a_entries, Entry a_entry) {
 std::vector<ActorCommand> Reconcile(const ActorPlan &a_installed,
                                     const ActorPlan &a_plan) {
   std::vector<ActorCommand> commands;
-  std::vector<GeometryRef> chains;
+  bool placementsChanged = false;
   for (const PlannedPlacement &placement : a_installed.placements) {
     if (!PlacementKept(a_installed, a_plan, placement)) {
       commands.emplace_back(RetirePlacement{placement.ref});
-      AddChain(chains, placement.ref.geometry);
+      placementsChanged = true;
     }
   }
   for (const PlannedGeometry &geometry : a_installed.geometries) {
@@ -74,13 +68,11 @@ std::vector<ActorCommand> Reconcile(const ActorPlan &a_installed,
     const PlannedPlacement *installed = Find(a_installed, placement.ref);
     if (!installed || !PlacementKept(a_installed, a_plan, *installed)) {
       commands.emplace_back(InstallPlacement{placement});
-      AddChain(chains, placement.ref.geometry);
+      placementsChanged = true;
     }
   }
-  for (const GeometryRef &chain : chains) {
-    if (Find(a_plan, chain)) {
-      commands.emplace_back(ChainGeometry{chain});
-    }
+  if (placementsChanged && !a_plan.placements.empty()) {
+    commands.emplace_back(RebuildRender{});
   }
   return commands;
 }
@@ -105,7 +97,7 @@ ActorPlan AfterCommand(ActorPlan a_installed, const ActorCommand &a_command) {
                  [&](const RetirePlacement &a_c) {
                    Erase(a_installed.placements, a_c.ref);
                  },
-                 [](const ChainGeometry &) {},
+                 [](const RebuildRender &) {},
              },
              a_command);
   return a_installed;

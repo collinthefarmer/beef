@@ -2,8 +2,6 @@
 #include "engine/ActorObservation.h"
 
 #include "Identity.h"
-#include "diagnostics/Metrics.h"
-#include "diagnostics/Trace.h"
 #include "engine/EngineForms.h"
 #include "engine/WornKeys.h"
 #include "render/Compositor.h"
@@ -108,41 +106,17 @@ std::vector<WornArmor> WornArmorOf(RE::Actor &a_actor, bool a_firstPerson) {
   return worn;
 }
 
-inline constexpr std::uint64_t kSlowObservationUs = 10000;
-
-void TraceSlowPiece(const RE::Actor &a_actor, const RE::TESObjectARMO &a_armor,
-                    std::uint64_t a_inventoryUs, std::uint64_t a_keysUs,
-                    std::uint64_t a_modelUs) {
-  if (a_inventoryUs + a_keysUs + a_modelUs < kSlowObservationUs) {
-    return;
-  }
-  Trace::EmitSafely(Trace::Event::kApplication,
-                    {{"action", "observe_slow"},
-                     {"actor", std::to_string(a_actor.GetFormID())},
-                     {"armor", std::to_string(a_armor.GetFormID())},
-                     {"inventory_us", std::to_string(a_inventoryUs)},
-                     {"keys_us", std::to_string(a_keysUs)},
-                     {"model_us", std::to_string(a_modelUs)}});
-}
-
 void ObservePerson(const ObserveRequest &a_request, bool a_firstPerson,
                    bool a_walkUnenchanted, ModelTable &a_models,
                    Actors::ActorFacts &a_facts) {
   RE::Actor &actor = a_request.actor;
   for (const WornArmor &worn : WornArmorOf(actor, a_firstPerson)) {
-    const Metrics::Stopwatch inventoryWatch;
-    const bool inventoryWorn = InventoryWorn(actor, worn.armor);
-    const std::uint64_t inventoryUs = inventoryWatch.Micros();
-    if (!inventoryWorn) {
-      TraceSlowPiece(actor, *worn.armor, inventoryUs, 0, 0);
+    if (!InventoryWorn(actor, worn.armor)) {
       continue;
     }
-    const Metrics::Stopwatch keysWatch;
     WornPiece keys =
         WornKeysOf(worn.armor, WornEnchantment(&actor, worn.armor));
-    const std::uint64_t keysUs = keysWatch.Micros();
     if (!keys.Enchanted() && !a_walkUnenchanted) {
-      TraceSlowPiece(actor, *worn.armor, inventoryUs, keysUs, 0);
       continue;
     }
     Actors::PieceFacts piece;
@@ -152,7 +126,6 @@ void ObservePerson(const ObserveRequest &a_request, bool a_firstPerson,
                  a_firstPerson};
     piece.itemID = worn.armor->GetFormID();
     piece.keys = std::move(keys);
-    const Metrics::Stopwatch modelWatch;
     if (worn.model) {
       ObservedModel &model = ModelFor(a_models, worn.model, a_request.nowMs);
       if (!model.geometries) {
@@ -161,8 +134,6 @@ void ObservePerson(const ObserveRequest &a_request, bool a_firstPerson,
       piece.model = model.token;
       piece.geometries = *model.geometries;
     }
-    TraceSlowPiece(actor, *worn.armor, inventoryUs, keysUs,
-                   modelWatch.Micros());
     a_facts.pieces.push_back(std::move(piece));
   }
 }

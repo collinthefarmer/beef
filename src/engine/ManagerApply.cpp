@@ -659,13 +659,11 @@ std::string RenderPlanKeyOf(const ActorStacks &a_stacks) {
 }
 
 std::expected<RenderPlan, std::string>
-FreshRenderPlan(const ActorStacks &a_stacks, const Settings &a_settings,
-                RenderPlanTimes *a_times) {
+FreshRenderPlan(const ActorStacks &a_stacks, const Settings &a_settings) {
   const std::vector<TextureDemand> demands =
       CollectLayerDemands(a_stacks, a_settings.verboseLogging);
   return BuildRenderPlan(demands, RenderStackRequests(a_stacks),
-                         BindingResolverFor(a_stacks), a_stacks.chains,
-                         a_times);
+                         BindingResolverFor(a_stacks), a_stacks.chains);
 }
 
 void TraceRenderPlanCache(RE::FormID a_actor, std::string_view a_result,
@@ -679,10 +677,9 @@ void TraceRenderPlanCache(RE::FormID a_actor, std::string_view a_result,
 
 std::expected<RenderPlan, std::string>
 RenderPlanFor(const LiveActor &a_state, const ActorStacks &a_stacks,
-              const Settings &a_settings, RenderPlanCache &a_cache,
-              RenderPlanTimes *a_times) {
+              const Settings &a_settings, RenderPlanCache &a_cache) {
   if (!a_settings.renderPlanCache) {
-    return FreshRenderPlan(a_stacks, a_settings, a_times);
+    return FreshRenderPlan(a_stacks, a_settings);
   }
   std::string key = RenderPlanKeyOf(a_stacks);
   if (const RenderPlan *cached = a_cache.Find(key)) {
@@ -691,7 +688,7 @@ RenderPlanFor(const LiveActor &a_state, const ActorStacks &a_stacks,
       return *cached;
     }
     std::expected<RenderPlan, std::string> fresh =
-        FreshRenderPlan(a_stacks, a_settings, a_times);
+        FreshRenderPlan(a_stacks, a_settings);
     if (fresh && SameStructure(*cached, *fresh)) {
       TraceRenderPlanCache(a_stacks.actor, "hit_verified", a_cache.Size());
       return *cached;
@@ -706,7 +703,7 @@ RenderPlanFor(const LiveActor &a_state, const ActorStacks &a_stacks,
     return fresh;
   }
   std::expected<RenderPlan, std::string> fresh =
-      FreshRenderPlan(a_stacks, a_settings, a_times);
+      FreshRenderPlan(a_stacks, a_settings);
   if (fresh) {
     a_cache.Store(std::move(key), *fresh, LiveGraphs(a_state));
   }
@@ -716,7 +713,7 @@ RenderPlanFor(const LiveActor &a_state, const ActorStacks &a_stacks,
 
 void BuildActorRender(const LiveActor &a_state, ActorStacks &a_stacks,
                       const Settings &a_settings, WarningHistory &a_warnings,
-                      PlaceTimes &a_times, RenderPlanCache &a_cache) {
+                      RenderPlanCache &a_cache) {
   AttachRender(a_stacks, nullptr);
   for (LiveGeometry *bound : a_stacks.bound) {
     if (bound) {
@@ -726,24 +723,18 @@ void BuildActorRender(const LiveActor &a_state, ActorStacks &a_stacks,
   if (a_stacks.requests.empty()) {
     return;
   }
-  const Metrics::Stopwatch planWatch;
-  std::expected<RenderPlan, std::string> plan = RenderPlanFor(
-      a_state, a_stacks, a_settings, a_cache, &a_times.renderPlan);
-  a_times.renderPlanUs = planWatch.Micros();
+  std::expected<RenderPlan, std::string> plan =
+      RenderPlanFor(a_state, a_stacks, a_settings, a_cache);
   if (!plan) {
     FailStackOutputs(a_stacks, plan.error());
     return;
   }
-  const Metrics::Stopwatch instanceWatch;
   const std::shared_ptr<RenderInstance> render =
       std::make_shared<RenderInstance>(std::move(*plan), a_stacks.geometries,
                                        LiveGraphs(a_state));
-  a_times.renderInstanceUs = instanceWatch.Micros();
-  const Metrics::Stopwatch attachWatch;
   AttachRender(a_stacks, render);
   AttachStackOutputs(a_stacks, render, a_settings, a_warnings);
   AttachMergedSlots(a_stacks, render);
-  a_times.attachUs = attachWatch.Micros();
 }
 
 std::optional<std::size_t> LightSourceInstance(const ActorLightPlan &a_plan,
@@ -865,9 +856,7 @@ void Manager::Refresh(RE::Actor *a_actor) {
     return;
   }
   const Actors::ActorPlan installedBefore = InstalledPlanOf(actorID);
-  const Metrics::Stopwatch retireWatch;
   RetireEffects(actorID);
-  const std::uint64_t retireUs = retireWatch.Micros();
   Actors::Present *present = std::get_if<Actors::Present>(&next.phase);
   if (present) {
     present->installed = Actors::AfterCommands(installedBefore, next.commands);
@@ -877,9 +866,7 @@ void Manager::Refresh(RE::Actor *a_actor) {
   if (!stays) {
     return;
   }
-  const Metrics::Stopwatch collectWatch;
   LiveActor state = LiveActorFor(*a_actor, settings);
-  const std::uint64_t collectUs = collectWatch.Micros();
   TextureLab::GetSingleton()->InvalidatePreviews();
   if (state.matches.placements.empty()) {
     if (settings.verboseLogging) {
@@ -888,39 +875,10 @@ void Manager::Refresh(RE::Actor *a_actor) {
     }
     return;
   }
-  const Metrics::Stopwatch placeWatch;
-  const PlaceTimes place = PlaceInstances(state, actorID, settings);
-  const std::uint64_t placeUs = placeWatch.Micros();
-  const Metrics::Stopwatch lightsWatch;
+  PlaceInstances(state, actorID, settings);
   PlaceLightsOf(a_actor, state, settings);
-  const std::uint64_t lightsUs = lightsWatch.Micros();
-  const Metrics::Stopwatch reportWatch;
   ReportApplied(*a_actor, state, settings);
-  const std::uint64_t reportUs = reportWatch.Micros();
-  const Metrics::Stopwatch storeWatch;
   applied_[actorID] = std::move(state);
-  Trace::EmitSafely(
-      Trace::Event::kMetrics,
-      {{"action", "refresh_phases"},
-       {"actor", std::to_string(actorID)},
-       {"retire_us", std::to_string(retireUs)},
-       {"collect_us", std::to_string(collectUs)},
-       {"place_us", std::to_string(placeUs)},
-       {"lights_us", std::to_string(lightsUs)},
-       {"report_us", std::to_string(reportUs)},
-       {"store_us", std::to_string(storeWatch.Micros())},
-       {"place_signals_us", std::to_string(place.signalsUs)},
-       {"place_plan_us", std::to_string(place.planUs)},
-       {"place_surfaces_us", std::to_string(place.surfacesUs)},
-       {"place_stacks_us", std::to_string(place.stacksUs)},
-       {"place_render_plan_us", std::to_string(place.renderPlanUs)},
-       {"place_render_instance_us", std::to_string(place.renderInstanceUs)},
-       {"place_attach_us", std::to_string(place.attachUs)},
-       {"plan_lower_us", std::to_string(place.renderPlan.lowerUs)},
-       {"plan_finish_us", std::to_string(place.renderPlan.finishUs)},
-       {"plan_trials", std::to_string(place.renderPlan.trials)},
-       {"plan_trials_us", std::to_string(place.renderPlan.trialsUs)},
-       {"plan_validate_us", std::to_string(place.renderPlan.validateUs)}});
 
   if (applications_.TakeEquipped(actorID)) {
     FireEquip(actorID);
@@ -1193,16 +1151,13 @@ void Manager::CarryInstanceTime(LiveInstance &a_instance, RE::FormID a_actor,
   }
 }
 
-PlaceTimes Manager::PlaceInstances(LiveActor &a_state, RE::FormID a_actorID,
-                                   const Settings &a_settings) {
-  PlaceTimes times;
-  const Metrics::Stopwatch signalsWatch;
+void Manager::PlaceInstances(LiveActor &a_state, RE::FormID a_actorID,
+                             const Settings &a_settings) {
   for (LiveInstance &instance : a_state.instances) {
     if (instance.signals && instance.environment) {
       instance.signals->Tick(*instance.environment, {0.0f, 0.0f});
     }
   }
-  times.signalsUs = signalsWatch.Micros();
   const std::span<const Recipe> loaded = LoadedRecipes();
   a_state.placements.clear();
   a_state.placements.resize(a_state.matches.placements.size());
@@ -1210,26 +1165,22 @@ PlaceTimes Manager::PlaceInstances(LiveActor &a_state, RE::FormID a_actorID,
   ActorStacks stacks{.actor = a_actorID};
   for (std::size_t p = 0; p < a_state.pieces.size(); ++p) {
     for (std::size_t g = 0; g < a_state.pieces[p].geometries.size(); ++g) {
-      const Metrics::Stopwatch planWatch;
       const auto placement = PlanGeometryPlacement(
           a_state.matches, loaded, GeometryId{flat},
           [this](const Recipe &recipe, std::size_t output) {
             return editor_.CurrentView().OutputShown(recipe.id, output);
           });
       PreparePlacement(a_state, placement, GeometryId{flat});
-      times.planUs += planWatch.Micros();
-      PlaceOnGeometry(a_state, GeometryId{flat}, a_settings, stacks, times);
+      PlaceOnGeometry(a_state, GeometryId{flat}, a_settings, stacks);
       ++flat;
     }
   }
-  BuildActorRender(a_state, stacks, a_settings, stackWarnings_, times,
-                   renderPlans_);
-  return times;
+  BuildActorRender(a_state, stacks, a_settings, stackWarnings_, renderPlans_);
 }
 
 void Manager::PlaceOnGeometry(LiveActor &a_state, GeometryId a_geometry,
-                              const Settings &a_settings, ActorStacks &a_stacks,
-                              PlaceTimes &a_times) {
+                              const Settings &a_settings,
+                              ActorStacks &a_stacks) {
   const std::optional<LocatedGeometry> located =
       LocateGeometry(a_state, a_geometry);
   if (!located) {
@@ -1237,13 +1188,9 @@ void Manager::PlaceOnGeometry(LiveActor &a_state, GeometryId a_geometry,
   }
   LiveGeometry &bound = located->bound;
 
-  const Metrics::Stopwatch surfacesWatch;
   InstallSurfaces(a_state, bound, a_settings.uniqueMaterial);
-  a_times.surfacesUs += surfacesWatch.Micros();
-  const Metrics::Stopwatch stacksWatch;
   MarkReplaced(a_state, bound);
   CollectChainStacks(a_state, *located, a_settings, a_stacks);
-  a_times.stacksUs += stacksWatch.Micros();
 
   const auto actor = a_state.actor.get();
   if (actor) {
@@ -1375,21 +1322,8 @@ void Manager::RetireEffects(RE::FormID a_actorID) {
                     {{"action", "begin"},
                      {"actor", std::to_string(a_actorID)},
                      {"recipes", std::to_string(recipes)}});
-  const RetireTimes retired = RetireActorEffects(it->second);
-  Trace::EmitSafely(Trace::Event::kMetrics,
-                    {{"action", "retire_phases"},
-                     {"actor", std::to_string(a_actorID)},
-                     {"lights_us", std::to_string(retired.lightsUs)},
-                     {"bindings_us", std::to_string(retired.bindingsUs)},
-                     {"render_us", std::to_string(retired.renderUs)},
-                     {"outputs_us", std::to_string(retired.outputsUs)},
-                     {"instances_us", std::to_string(retired.instancesUs)}});
-  const Metrics::Stopwatch eraseWatch;
+  RetireActorEffects(it->second);
   applied_.erase(it);
-  Trace::EmitSafely(Trace::Event::kMetrics,
-                    {{"action", "retire_erase"},
-                     {"actor", std::to_string(a_actorID)},
-                     {"us", std::to_string(eraseWatch.Micros())}});
   Trace::EmitSafely(Trace::Event::kRetire,
                     {{"action", "end"}, {"actor", std::to_string(a_actorID)}});
   TextureLab::GetSingleton()->InvalidatePreviews();
