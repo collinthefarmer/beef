@@ -35,7 +35,7 @@ enum class Event {
 };
 
 struct Field {
-  std::string_view name;
+  std::string name;
   std::string value;
 };
 

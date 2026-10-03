@@ -536,7 +536,8 @@ void EmitStepKinds(const Metrics::StepKindCounts &a_counts) {
   std::vector<Trace::Field> fields{{"action", "step_kinds"}};
   for (std::size_t kind = 0; kind < kRenderStepKindCount; ++kind) {
     if (a_counts[kind] > 0) {
-      fields.push_back({StepKindNameAt(kind), std::to_string(a_counts[kind])});
+      fields.push_back(
+          {std::string{StepKindNameAt(kind)}, std::to_string(a_counts[kind])});
     }
   }
   if (fields.size() > 1) {
@@ -599,9 +600,9 @@ void EmitMetricsHeartbeat() {
       {"plugin_over_16ms", std::to_string(measured.pluginSpikes[1])},
       {"plugin_over_33ms", std::to_string(measured.pluginSpikes[2])}};
   for (std::size_t i = 0; i < Metrics::kPhaseCount; ++i) {
-    heartbeat.push_back(
-        {kPhaseFields[i].total, std::to_string(measured.phases[i].micros)});
-    heartbeat.push_back({kPhaseFields[i].longest,
+    heartbeat.push_back({std::string{kPhaseFields[i].total},
+                         std::to_string(measured.phases[i].micros)});
+    heartbeat.push_back({std::string{kPhaseFields[i].longest},
                          std::to_string(measured.phases[i].maxMicros)});
   }
   Trace::EmitSafely(Trace::Event::kMetrics, heartbeat);

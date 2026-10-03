@@ -126,8 +126,7 @@ void Recorder::Record(Event a_event, Context a_context,
         break;
       }
       truncated = truncated || field.value.size() > 2048;
-      fields[std::string{field.name.substr(0, 64)}] =
-          field.value.substr(0, 2048);
+      fields[field.name.substr(0, 64)] = field.value.substr(0, 2048);
     }
     if (a_event == Event::kStartup) {
       identity_ = fields.dump();
