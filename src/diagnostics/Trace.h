@@ -19,7 +19,7 @@ enum class Event {
   kStartup,
   kSettings,
   kRecipe,
-  kCommand,
+  kOperation,
   kPage,
   kQueue,
   kLoad,
@@ -40,7 +40,7 @@ struct Field {
 };
 
 struct Context {
-  std::uint64_t command = 0;
+  std::uint64_t operation = 0;
   std::uint64_t session = 0;
 };
 
@@ -102,7 +102,7 @@ private:
 
 [[nodiscard]] Recorder &Get();
 [[nodiscard]] Context Current() noexcept;
-[[nodiscard]] Context Command(std::string_view a_reason);
+[[nodiscard]] Context Operation(std::string_view a_reason);
 [[nodiscard]] std::uint64_t NextID() noexcept;
 [[nodiscard]] std::uint64_t BeginSession() noexcept;
 void Emit(Event a_event, std::span<const Field> a_fields) noexcept;

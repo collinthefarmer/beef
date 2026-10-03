@@ -9,7 +9,7 @@
 
 namespace BetterEnchantmentEffects {
 void Manager::RetireAll() {
-  const Trace::Scope trace{Trace::Command("manager.RetireAll")};
+  const Trace::Scope trace{Trace::Operation("manager.RetireAll")};
   PostTask([this] {
     std::vector<RE::FormID> ids = animations_.Actors();
     for (const auto &[actor, state] : applied_) {

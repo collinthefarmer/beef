@@ -23,7 +23,7 @@ struct ItemFacts {
   bool carried = false;
 };
 
-struct ActorFacts {
+struct RoleFacts {
   bool present = false;
   bool bodyArmorWorn = false;
   std::array<ItemFacts, kItemCount> armor{};
@@ -64,7 +64,7 @@ struct RecipeFacts {
 };
 
 struct Observation {
-  std::array<ActorFacts, kRoleCount> actors{};
+  std::array<RoleFacts, kRoleCount> actors{};
   Activity activity;
   RecipeFacts scratch;
   CrowdFacts crowd;

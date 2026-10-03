@@ -64,7 +64,7 @@ void TraceCrowdChange(const Regression::CrowdFacts &a_before,
   if (a_before == a_now) {
     return;
   }
-  Trace::EmitSafely(Trace::Event::kCommand,
+  Trace::EmitSafely(Trace::Event::kOperation,
                     {{"action", "regression.crowd"},
                      {"present", std::to_string(a_now.present)},
                      {"rendered", std::to_string(a_now.rendered)},
@@ -80,7 +80,7 @@ void TraceLine(const Regression::ResultLine &a_line) {
   std::visit(
       Overloaded{
           [](const Regression::StepResult &a_step) {
-            Trace::EmitSafely(Trace::Event::kCommand,
+            Trace::EmitSafely(Trace::Event::kOperation,
                               {{"action", "regression.step"},
                                {"case", std::string{a_step.caseName}},
                                {"step", std::to_string(a_step.step)},
@@ -89,28 +89,28 @@ void TraceLine(const Regression::ResultLine &a_line) {
                                               a_step.outcome)}}});
           },
           [](const Regression::CaseResult &a_case) {
-            Trace::EmitSafely(Trace::Event::kCommand,
+            Trace::EmitSafely(Trace::Event::kOperation,
                               {{"action", "regression.case"},
                                {"case", std::string{a_case.caseName}},
                                {"result", std::string{Regression::OutcomeName(
                                               a_case.outcome)}}});
           },
           [](const Regression::WindowBegins &a_window) {
-            Trace::EmitSafely(Trace::Event::kCommand,
+            Trace::EmitSafely(Trace::Event::kOperation,
                               {{"action", "regression.window"},
                                {"case", std::string{a_window.caseName}},
                                {"window", a_window.window},
                                {"edge", "begin"}});
           },
           [](const Regression::WindowEnds &a_window) {
-            Trace::EmitSafely(Trace::Event::kCommand,
+            Trace::EmitSafely(Trace::Event::kOperation,
                               {{"action", "regression.window"},
                                {"case", std::string{a_window.caseName}},
                                {"window", a_window.window},
                                {"edge", "end"}});
           },
           [](const Regression::RunEnd &a_end) {
-            Trace::EmitSafely(Trace::Event::kCommand,
+            Trace::EmitSafely(Trace::Event::kOperation,
                               {{"action", "regression.end"},
                                {"result", std::string{Regression::OutcomeName(
                                               a_end.outcome)}}});
@@ -292,7 +292,7 @@ void AdvanceRegressionRun() {
   const std::optional<std::uint32_t> cameraState = CameraStateID();
   if (cameraState != running->cameraState) {
     Trace::EmitSafely(
-        Trace::Event::kCommand,
+        Trace::Event::kOperation,
         {{"action", "regression.camera"},
          {"state", cameraState ? std::to_string(*cameraState) : "none"}});
     running->cameraState = cameraState;

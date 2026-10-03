@@ -103,7 +103,7 @@ enum class Acquire { kAddToInventory, kFromInventory };
 enum class Destination { kAway, kStart };
 
 struct SimActor {
-  ActorFacts view;
+  RoleFacts view;
   bool spawned = false;
   bool disabled = false;
   int renderIn = -1;
@@ -773,7 +773,7 @@ void EveryFixedObservationEndsTheRun() {
       for (const RequestState &request : kEveryRequestState) {
         Observation seen;
         for (std::size_t role = 0; role < kRoleCount; ++role) {
-          ActorFacts &actor = seen.actors[role];
+          RoleFacts &actor = seen.actors[role];
           actor.present = (bits & 1) != 0 || role == 0;
           actor.live = (bits & 2) != 0;
           actor.residue = (bits & 4) != 0 ? 1 : 0;

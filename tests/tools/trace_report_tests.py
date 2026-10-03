@@ -11,7 +11,7 @@ ROOT = pathlib.Path(__file__).resolve().parents[2]
 
 def event(seq, kind, session=0, **fields):
     return json.dumps({"schema": 1, "run": "r", "seq": seq, "event": kind,
-                       "fields": fields, "session": session, "command": 0}) + "\n"
+                       "fields": fields, "session": session, "operation": 0}) + "\n"
 
 
 class TraceReportTests(unittest.TestCase):

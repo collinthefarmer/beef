@@ -32,13 +32,13 @@ void TraceRecipeFingerprints(std::span<const std::string> a_recipes) {
     logger::info("regression: recipe set member {} {}", id, print);
     fields.push_back({id, std::move(print)});
   }
-  Trace::EmitSafely(Trace::Event::kCommand, fields);
+  Trace::EmitSafely(Trace::Event::kOperation, fields);
 }
 
 void Finish(Regression::Outcome a_outcome) {
   request.state = a_outcome;
   Trace::EmitSafely(
-      Trace::Event::kCommand,
+      Trace::Event::kOperation,
       {{"action", "regression.result"},
        {"request", std::to_string(request.id)},
        {"actor", std::to_string(request.actor)},

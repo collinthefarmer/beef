@@ -17,7 +17,7 @@ citation into them names provenance, not a file a reader here can open.
 ## Foundation (`Core.h`, `Identity.h`, `PCH.h`, `Settings.*`, `SettingsFile.*`)
 
 - `diagnostics/Trace` records bounded, owning text records without retaining engine
-  objects. Command context is thread-local and explicitly carried through
+  objects. Operation context is thread-local and explicitly carried through
   `SessionQueue` callbacks; a captured old load session remains identifiable after
   cancellation. The recorder serializes and flushes transition events under its
   own mutex, with a 512-event ring. The file is written in 32 MiB segments

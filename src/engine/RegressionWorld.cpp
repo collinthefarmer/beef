@@ -122,9 +122,8 @@ bool Present(const RE::Actor &a_actor) {
   return !a_actor.IsDisabled() && !a_actor.IsDeleted() && a_actor.Is3DLoaded();
 }
 
-Regression::ActorFacts ViewOf(RE::Actor *a_actor,
-                              RegressionActorFacts a_facts) {
-  Regression::ActorFacts view;
+Regression::RoleFacts ViewOf(RE::Actor *a_actor, RegressionActorFacts a_facts) {
+  Regression::RoleFacts view;
   if (!a_actor) {
     return view;
   }

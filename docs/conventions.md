@@ -81,7 +81,7 @@ Rules:
 `diagnostics/Trace.h` is the trace recorder:
 
 - `Trace::Emit(Event, fields)` appends one structured line per event. The
-  events: `kStartup`, `kSettings`, `kRecipe`, `kCommand`, `kPage`, `kQueue`,
+  events: `kStartup`, `kSettings`, `kRecipe`, `kOperation`, `kPage`, `kQueue`,
   `kLoad`, `kApplication`, `kRetire`, `kBinding`, `kRestore`, `kTexture`,
   `kShell`, `kPreview`, `kCaptureFailure`.
 - The trace file rotates in 32 MiB segments; the recorder keeps the last two.
@@ -696,7 +696,7 @@ with these meanings and no other word for the same thing.
 | **step output cache** | The Compositor's cache of static render-step outputs shared across actors (`StepOutputCache` in `render/StepOutputCache.h`, held as `Compositor::stepOutputs_`). |
 | **application scope** | The application context and actor form ID that keep state and signal identities apart (`ApplicationScope` in `render/Compositor.h`). |
 | **residue** | What the plugin leaves on an actor's 3D: shell geometries and presenter textures (`ResidueOn` in `engine/RegressionWorld.cpp`). An actor at baseline has none. Never trace, which is the diagnostic trace. |
-| **facts** | What the regression runner observes about one thing in one frame (`ActorFacts`, `ItemFacts`, `CrowdFacts`, `RecipeFacts`, `RegressionActorFacts`). Never view. |
+| **facts** | One frame's observation of one thing (`RoleFacts`, `ItemFacts`, `CrowdFacts`, `RecipeFacts`, `RegressionActorFacts` in the regression runner). Never view. |
 
 ## Gates
 

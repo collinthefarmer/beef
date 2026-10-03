@@ -206,28 +206,30 @@ int main() {
   {
     Scheduler scheduler;
     std::uint64_t seen = 0;
-    SessionQueue queue{[&](SessionQueue::Task task) {
-                         return scheduler.Submit(std::move(task));
-                       },
-                       [&](std::uint32_t) { seen = Trace::Current().command; }};
+    SessionQueue queue{
+        [&](SessionQueue::Task task) {
+          return scheduler.Submit(std::move(task));
+        },
+        [&](std::uint32_t) { seen = Trace::Current().operation; }};
     queue.Resume();
-    const auto cause = Trace::Command("test.refresh");
+    const auto cause = Trace::Operation("test.refresh");
     {
       const Trace::Scope scope{cause};
       queue.Refresh(42);
     }
     scheduler.Run();
-    Check(seen == cause.command,
+    Check(seen == cause.operation,
           "queued refresh retains its originating command");
-    Check(Trace::Current().command == 0,
+    Check(Trace::Current().operation == 0,
           "refresh context is cleared after execution");
     {
       const Trace::Scope scope{cause};
-      queue.Post([&] { seen = Trace::Current().command; });
+      queue.Post([&] { seen = Trace::Current().operation; });
     }
     seen = 0;
     scheduler.Run();
-    Check(seen == cause.command, "posted task retains its originating command");
+    Check(seen == cause.operation,
+          "posted task retains its originating command");
   }
   LoadAndCoalesce();
   SubmissionFailure();

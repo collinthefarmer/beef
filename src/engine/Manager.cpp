@@ -78,7 +78,7 @@ void Manager::QueueLoadedActorRefreshes() {
 void Manager::BeginLoad() { Clear(); }
 
 void Manager::FinishLoad() {
-  const Trace::Scope trace{Trace::Command("load.finish")};
+  const Trace::Scope trace{Trace::Operation("load.finish")};
   Trace::EmitSafely(Trace::Event::kLoad, {{"action", "resume"}});
   applications_.Resume();
   QueueLoadedActorRefreshes();
@@ -86,7 +86,7 @@ void Manager::FinishLoad() {
 
 void Manager::Clear() {
   const auto session = Trace::BeginSession();
-  const Trace::Scope trace{Trace::Command("load.begin")};
+  const Trace::Scope trace{Trace::Operation("load.begin")};
   Trace::EmitSafely(Trace::Event::kLoad,
                     {{"action", "clear_begin"},
                      {"generation", std::to_string(session)},

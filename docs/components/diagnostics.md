@@ -9,7 +9,7 @@ include it, per its `ALLOWS` row in `tools/gate.py`, `'diagnostics':
 ## What it owns
 
 The trace turns a named `Event` and its fields into a bounded, rotated JSONL
-record on disk, tagged with the command and session it happened under. It is
+record on disk, tagged with the operation and session it happened under. It is
 the structured counterpart to the human `logger::` log; `docs/conventions.md`
 (*Diagnostics → Logging*) draws the line between the two. It does not own
 recipe `Diagnostic`s; those belong to `Reporter` in `recipe/Recipe.h`.
@@ -42,7 +42,7 @@ event its wire name.
 | `kStartup` | The run identity: build, source state, fingerprints. Once per launch. | `main.cpp` at plugin load. |
 | `kSettings` | The effective settings value and its fingerprint. | `SettingsFile.cpp` after a settings load or save. |
 | `kRecipe` | One loaded **recipe**: its id and content fingerprint. | `main.cpp` at data load. |
-| `kCommand` | A new command id and its parent, with the reason. | `Trace::Command` itself (`Trace.cpp`). |
+| `kOperation` | A new operation id and its parent, with the reason. | `Trace::Operation` itself (`Trace.cpp`). |
 | `kPage` | The current menu page and selection, de-duplicated. | `Trace::Page` itself (`Trace.cpp`). |
 | `kQueue` | One `SessionQueue` action — `post`, `execute_refresh`, `refresh_rejected`, `equip_finalize` — with the actor and queue generation. | `SessionQueue.cpp`. |
 | `kLoad` | A load transition — `resume`, `clear_begin`, `clear_end` — with the generation and actor count. | `Manager.cpp`. |
@@ -58,15 +58,15 @@ event its wire name.
 ### One record's shape
 
 Every emitted line is built from these three records. The `Field`s carry
-the event's payload, and the ambient `Context` ties the line to the command
-and session that caused it, so a report can reconstruct one command's
+the event's payload, and the ambient `Context` ties the line to the operation
+and session that caused it, so a report can reconstruct one operation's
 events across threads. `Status` exposes the recorder's health without
 reading the file.
 
 | Type | Description | Example |
 |---|---|---|
 | `Field{name, value}` | One key/value pair of an event. | `{"action", "execute_refresh"}` |
-| `Context{command, session}` | The id pair every event carries. | Set by an enclosing `Scope`. |
+| `Context{operation, session}` | The id pair every event carries. | Set by an enclosing `Scope`. |
 | `Status{events, dropped, bytes, segment, rotations, enabled, fileFailed}` | The recorder's health snapshot. | Returned by `Recorder::Inspect`. |
 
 ### Constants
@@ -98,17 +98,17 @@ state for tests and tooling.
 
 ### Command tagging
 
-Every event carries the command and session it happened under; these
+Every event carries the operation and session it happened under; these
 symbols establish that context. A boundary — a menu command, a queue task —
 opens a `Scope`, and everything emitted on that thread inside it carries
-the same command id, so a report can group one gesture's events.
+the same operation id, so a report can group one gesture's events.
 
 | Symbol | Description | Example |
 |---|---|---|
 | `Scope` | The RAII guard that sets the thread-local current `Context` for its lifetime. | `const Trace::Scope scope{context};` |
 | `Current` | Reads the thread-local `Context`. | Called by `Emit`. |
-| `Command(reason)` | Opens a new command id under the current one and emits a `kCommand` event that records its parent. | `Trace::Command("reload recipes")` |
-| `NextID`, `BeginSession` | Mint the command and session ids. | Called at startup and per command. |
+| `Operation(reason)` | Opens a new operation id under the current one and emits a `kOperation` event that records its parent. | `Trace::Operation("reload recipes")` |
+| `NextID`, `BeginSession` | Mint the operation and session ids. | Called at startup and per operation. |
 
 ### Call-site API
 
@@ -139,7 +139,7 @@ Trace::Current()          reads the thread_local Context     Trace.cpp
 Recorder::Record(event, context, fields)                     Trace.cpp
   │  caps fields at 64 entries / 2048 bytes each, marks `truncated`
   │  builds one nlohmann::json line: schema, run, seq, unix_ms, thread,
-  │  session, command, event name (NameOf), fields, truncated, dropped
+  │  session, operation, event name (NameOf), fields, truncated, dropped
   │  pushes the line onto the 512-line `recent_` ring (read back by `Recorder::Recent`)
   ▼
 Recorder::Write(line)

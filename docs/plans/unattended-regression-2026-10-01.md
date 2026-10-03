@@ -94,7 +94,7 @@ Data, one header each:
 | `Words.h` | The enums `Outcome`, `Role`, `Item`, `Camera`, `QueuedWork`, `Session`, `TrackedWork` and `WorkOutcome`, and one `Named` table of words for each. |
 | `RunFile.h` | `RunFile`: the run identifier, the save and the suite. `ParseRunFile(text, now)` returns it or an error string. |
 | `Steps.h` | `Step`: a variant of one record per step (`Equip`, `AwaitRendered`, `LoadDuring`, `HoldWindow` and the rest). `Case`: a name, its body and its cleanup. `Catalog` and `FindCase` read the fixed catalog in `Catalog.cpp`. |
-| `Observation.h` | `Observation`: what the engine reports each frame. It holds `ActorFacts` for each role, the state of the current request, `Activity` for the studio work, `CrowdFacts`, `RecipeFacts` for the scratch recipe, the camera, the load count and the clock. |
+| `Observation.h` | `Observation`: what the engine reports each frame. It holds `RoleFacts` for each role, the state of the current request, `Activity` for the studio work, `CrowdFacts`, `RecipeFacts` for the scratch recipe, the camera, the load count and the clock. |
 | `Commands.h` | `Command`: a variant of one record per engine action (`SpawnActor`, `AddAndEquip`, `SubmitApply`, `StartSave`, `LoadSaveWith`, `Quit` and the rest). |
 | `Run.h` | `ResultLine`, `RunChanges`, the phases `Settling`, `Running`, `Ending` and `Finished`, and `RunState`. |
 | `StepRules.h` | `StepContext` and `StepMove`: the input and output of one step rule. |

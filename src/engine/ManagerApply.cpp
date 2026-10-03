@@ -813,7 +813,7 @@ void ReportApplied(RE::Actor &a_actor, const LiveActor &a_state,
 }
 
 void Manager::ReapplyAll() {
-  const Trace::Scope trace{Trace::Command("manager.ReapplyAll")};
+  const Trace::Scope trace{Trace::Operation("manager.ReapplyAll")};
   PostTask([this] { ChangeAndRebuildActors({}, [] {}); });
 }
 

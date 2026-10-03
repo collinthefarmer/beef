@@ -41,6 +41,7 @@ enchantment on the piece itself.
 | `docs/plans/recipe-program-pipeline-2026-09-25.md` | How do recipe rows become evaluated programs, and which format decisions must be made before the format contract closes? Raised by authoring the cookbooks against the current language. |
 | `docs/plans/render-graph-correctness-2026-09-29.md` | Which invariants make the render graph's caching correct and minimal, where does the code break them, and in which order are they fixed? |
 | `docs/plans/unattended-regression-2026-10-01.md` | How does one host command start Skyrim, run named in-game cases from a known good save, and report the results? |
+| `docs/plans/actor-core-2026-10-03.md` | How does a pure actor core replace refresh-and-rebuild with a keyed plan that each actor converges to, and in which stages? |
 | `docs/plans/render-performance-2026-09-29.md` | What costs frame time and memory when effects render, how is it measured, and in which order is it reduced? |
 | `docs/checkpoints/render-performance-review-2026-09-30.md` | What did the review of the layer-field and generated-shader commits find, and which findings are fixed? |
 | `docs/checkpoints/regression-baseline-2026-10-03.md` | Where did the full in-game suite and each soak's performance stand on 2026-10-03, and which findings stayed open? |
