@@ -1,4 +1,4 @@
-Status: open. Stages 0 to 2 done on branch `actor-core`; stage 3 next. Replaces the
+Status: open. Stages 0 to 3 done on branch `actor-core`; stage 4 (the engine adapter) next. Replaces the
 refresh-and-rebuild lifecycle in `engine/Manager*.cpp` with a pure actor core
 that reconciles each actor to a keyed plan. Completes the actor state tables
 decided on 2026-09-09.

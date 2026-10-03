@@ -71,21 +71,23 @@ ActorPlan KeyedPlanOf(const ActorMatches &a_matches, const MatchInput &a_input,
   for (const Instance &instance : a_matches.instances) {
     plan.instances.push_back({InstanceRefOf(instance, a_request.recipes)});
   }
-  for (const GeometryRef &ref : a_input.refs) {
-    const std::optional<ModelToken> model = ModelOf(a_request.facts, ref.piece);
-    if (model) {
-      plan.geometries.push_back({ref, *model});
-    }
-  }
   for (const Placement &placement : a_matches.placements) {
     const std::size_t instance = IndexOf(placement.instance);
     const std::size_t geometry = IndexOf(placement.geometry);
     if (instance >= plan.instances.size() || geometry >= a_input.refs.size()) {
       continue;
     }
-    plan.placements.push_back(
-        {PlacementRef{plan.instances[instance].ref, a_input.refs[geometry]},
-         placement.key, placement.outputs, placement.priority});
+    const GeometryRef &ref = a_input.refs[geometry];
+    const std::optional<ModelToken> model = ModelOf(a_request.facts, ref.piece);
+    if (!model) {
+      continue;
+    }
+    if (!Find(plan, ref)) {
+      plan.geometries.push_back({ref, *model});
+    }
+    plan.placements.push_back({PlacementRef{plan.instances[instance].ref, ref},
+                               placement.key, placement.outputs,
+                               placement.priority});
   }
   return plan;
 }
