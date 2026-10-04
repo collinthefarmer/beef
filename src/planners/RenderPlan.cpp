@@ -164,6 +164,46 @@ std::vector<RenderValueRef> InputsOf(const RenderStepKind &step) {
         return inputs;
       });
 }
+
+std::vector<std::vector<RenderStepId>>
+DownstreamStepsOf(const RenderPlan &plan) {
+  std::vector<std::vector<RenderStepId>> readers(plan.inputs.size());
+  std::vector<std::vector<RenderStepId>> consumers(plan.steps.size());
+  for (RenderStepId step = 0; step < plan.steps.size(); ++step)
+    for (const RenderValueRef &ref : InputsOf(plan.steps[step].kind))
+      Match(
+          ref,
+          [&](const RenderInputRef &input) {
+            if (input.input < readers.size())
+              readers[input.input].push_back(step);
+          },
+          [&](const StepOutputRef &output) {
+            if (output.step < consumers.size())
+              consumers[output.step].push_back(step);
+          });
+  for (RenderInputId input = 0; input < plan.inputs.size(); ++input)
+    if (const auto *readback = Get<ReadbackBinding>(plan.inputs[input].binding);
+        readback && readback->submission < consumers.size())
+      std::ranges::copy(readers[input],
+                        std::back_inserter(consumers[readback->submission]));
+  std::vector<std::vector<RenderStepId>> downstream(plan.inputs.size());
+  for (RenderInputId input = 0; input < plan.inputs.size(); ++input) {
+    std::vector<bool> seen(plan.steps.size(), false);
+    std::vector<RenderStepId> pending = readers[input];
+    while (!pending.empty()) {
+      const RenderStepId step = pending.back();
+      pending.pop_back();
+      if (seen[step])
+        continue;
+      seen[step] = true;
+      downstream[input].push_back(step);
+      for (const RenderStepId consumer : consumers[step])
+        if (!seen[consumer])
+          pending.push_back(consumer);
+    }
+  }
+  return downstream;
+}
 RenderValueType OutputType(const RenderStepKind &step) {
   return Match(
       step, [](const UnavailableStep &k) -> RenderValueType { return k.type; },

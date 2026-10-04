@@ -187,6 +187,21 @@ void UpdateRenderInputs(LiveActor &a_state, LiveGeometry &a_bound) {
   }
 }
 
+class SectionTimer {
+public:
+  explicit SectionTimer(Metrics::Section a_section) noexcept
+      : section_(a_section) {}
+  ~SectionTimer() { Metrics::CountSection(section_, watch_.Micros()); }
+  SectionTimer(const SectionTimer &) = delete;
+  SectionTimer &operator=(const SectionTimer &) = delete;
+  SectionTimer(SectionTimer &&) = delete;
+  SectionTimer &operator=(SectionTimer &&) = delete;
+
+private:
+  Metrics::Section section_;
+  Metrics::Stopwatch watch_;
+};
+
 StackRender RenderStackOutput(PlacedOutput &a_output,
                               const LayerFilter &a_filter,
                               const StackBase &a_base) {
@@ -504,21 +519,6 @@ void MarkReferencedInstances(LiveActor &a_state, const LiveGeometry &a_bound,
   }
 }
 
-class SectionTimer {
-public:
-  explicit SectionTimer(Metrics::Section a_section) noexcept
-      : section_(a_section) {}
-  ~SectionTimer() { Metrics::CountSection(section_, watch_.Micros()); }
-  SectionTimer(const SectionTimer &) = delete;
-  SectionTimer &operator=(const SectionTimer &) = delete;
-  SectionTimer(SectionTimer &&) = delete;
-  SectionTimer &operator=(SectionTimer &&) = delete;
-
-private:
-  Metrics::Section section_;
-  Metrics::Stopwatch watch_;
-};
-
 void EmitGpuTimings() {
   const GpuTiming::Totals gpu = TextureLab::GetSingleton()->DrainTimings();
   if (gpu.timedTicks == 0 && gpu.droppedTicks == 0 && gpu.discardedTicks == 0)
@@ -821,6 +821,7 @@ void Manager::RenderGeometry(LiveActor &a_state, LiveGeometry &a_bound,
   const Studio::View &view = editor_.CurrentView();
   if (a_bound.inputs.render &&
       a_bound.inputs.render->BeginFrame(renderFrame_, tickNowMS_)) {
+    const SectionTimer inputsTimer{Metrics::Section::kRenderInputs};
     UpdateRenderInputs(a_state, a_bound);
   }
   if (a_bound.lost) {
@@ -830,12 +831,16 @@ void Manager::RenderGeometry(LiveActor &a_state, LiveGeometry &a_bound,
   const SlotRenderView slotView{
       view, view.isolation.layer.has_value() || !view.muted.empty(),
       GetSettings().publishEffects, !a_inspected};
-  WriteSlots(a_state, a_bound, slotView, a_hidden);
+  {
+    const SectionTimer slotsTimer{Metrics::Section::kRenderSlots};
+    WriteSlots(a_state, a_bound, slotView, a_hidden);
+  }
   if (a_hidden || !slotView.publish) {
     if (a_bound.shell) {
       a_bound.shell->SetVisible(false);
     }
   } else {
+    const SectionTimer shellTimer{Metrics::Section::kRenderShell};
     PoseShell(a_bound, a_state, view);
   }
 }

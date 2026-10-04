@@ -76,6 +76,32 @@ int main() {
   const auto resized = LowerRenderPlan({}, larger, Bindings());
   Check(resized && !SameStructure(*plan, *resized),
         "a different texture size changes the plan's structure");
+  {
+    const auto downstream = DownstreamStepsOf(*plan);
+    std::size_t readbacks = 0, followed = 0;
+    for (std::size_t i = 0; i < plan->steps.size(); ++i) {
+      const auto *lookup = Get<BuildLookupStep>(plan->steps[i].kind);
+      if (!lookup)
+        continue;
+      for (const auto &argument : lookup->boundArguments) {
+        const auto *ref = Get<RenderInputRef>(argument.value);
+        const auto *readback =
+            ref && ref->input < plan->inputs.size()
+                ? Get<ReadbackBinding>(plan->inputs[ref->input].binding)
+                : nullptr;
+        if (!readback)
+          continue;
+        for (const auto &steps : downstream) {
+          if (!std::ranges::contains(steps, readback->submission))
+            continue;
+          ++readbacks;
+          followed += std::ranges::contains(steps, i) ? 1 : 0;
+        }
+      }
+    }
+    Check(readbacks > 0 && followed == readbacks,
+          "an input that dirties a readback submission dirties its reader");
+  }
   std::size_t reductions = 0, lookups = 0, maps = 0;
   for (std::size_t i = 0; i < plan->steps.size(); ++i) {
     const auto &kind = plan->steps[i].kind;

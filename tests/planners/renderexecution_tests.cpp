@@ -86,6 +86,7 @@ int main() {
   hidden.inputs = {{RenderResourceType::kStack, StackInputBinding{}},
                    {RenderResourceType::kVisibility, StackInputBinding{}},
                    {RenderResourceType::kTexture, TextureValue{}},
+                   {ValueType::kScalar, TextureValue{}},
                    {ValueType::kScalar, TextureValue{}}};
   CompositeStackStep stack{
       RenderInputRef{0},
@@ -117,6 +118,30 @@ int main() {
   Check(visible.SetInput(1, 0, true).has_value(), "hide failed layer");
   Check(visible.Evaluate(StepOutputRef{0, 0}, draw, same, choose).has_value(),
         "hiding failed branch restores empty stack success");
+  int selections = 0;
+  const auto counted = [&](const CompositeStackStep &s, const int &shown)
+      -> std::expected<std::vector<RenderValueRef>, std::string> {
+    ++selections;
+    return choose(s, shown);
+  };
+  Check(visible.Evaluate(StepOutputRef{0, 0}, draw, same, counted).has_value(),
+        "a current stack evaluates");
+  const int walked = selections;
+  Check(
+      visible.Evaluate(StepOutputRef{0, 0}, draw, same, counted).has_value() &&
+          selections == walked,
+      "unchanged inputs return the confirmed output without a walk");
+  Check(visible.SetInput(1, 0, true).has_value() &&
+            visible.Evaluate(StepOutputRef{0, 0}, draw, same, counted)
+                .has_value() &&
+            selections > walked,
+        "a changed input walks the step again");
+  const int beforeUnrelated = selections;
+  Check(visible.SetInput(4, 7, true).has_value() &&
+            visible.Evaluate(StepOutputRef{0, 0}, draw, same, counted)
+                .has_value() &&
+            selections == beforeUnrelated,
+        "an input outside the step's upstream does not walk it");
   RenderPlan diamond;
   diamond.inputs.push_back({RenderResourceType::kTexture, TextureValue{}});
   RenderValueRef previous = RenderInputRef{0};

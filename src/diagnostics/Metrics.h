@@ -18,15 +18,27 @@ enum class Section {
   kLights,
   kPreviews,
   kSweep,
+  kRenderInputs,
+  kRenderSlots,
+  kRenderShell,
+  kRenderEvaluate,
   kCount
 };
 inline constexpr std::size_t kSectionCount =
     static_cast<std::size_t>(Section::kCount);
 inline constexpr Named<Section> kSections[]{
-    {Section::kFrame, "frame"},       {Section::kTick, "tick"},
-    {Section::kSnapshot, "snapshot"}, {Section::kSignals, "signals"},
-    {Section::kRender, "render"},     {Section::kLights, "lights"},
-    {Section::kPreviews, "previews"}, {Section::kSweep, "sweep"}};
+    {Section::kFrame, "frame"},
+    {Section::kTick, "tick"},
+    {Section::kSnapshot, "snapshot"},
+    {Section::kSignals, "signals"},
+    {Section::kRender, "render"},
+    {Section::kLights, "lights"},
+    {Section::kPreviews, "previews"},
+    {Section::kSweep, "sweep"},
+    {Section::kRenderInputs, "render_inputs"},
+    {Section::kRenderSlots, "render_slots"},
+    {Section::kRenderShell, "render_shell"},
+    {Section::kRenderEvaluate, "render_evaluate"}};
 static_assert(Complete(kSections, kSectionCount));
 inline constexpr std::array<std::uint64_t, 3> kPluginSpikeMicros{8000, 16000,
                                                                  33000};

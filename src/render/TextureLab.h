@@ -358,7 +358,9 @@ public:
     PassBatch &operator=(PassBatch &&) = delete;
 
   private:
+    friend class TextureLab;
     struct Scope;
+    [[nodiscard]] bool Capture();
     TextureLab *lab_ = nullptr;
     std::unique_ptr<Scope> scope_;
   };
@@ -366,9 +368,8 @@ public:
 private:
   struct RenderPass;
   struct SavedPipeline;
-  [[nodiscard]] bool Batched() const noexcept;
-  std::size_t batchDepth_ = 0;
-  bool batchCaptured_ = false;
+  [[nodiscard]] bool CaptureBatch();
+  PassBatch *outerBatch_ = nullptr;
 
   struct PixelPipeline {
     REX::W32::ComPtr<REX::W32::ID3D11PixelShader> shader;

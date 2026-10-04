@@ -195,7 +195,11 @@ stack's fields with `PackLayerFields`.
 `RenderExecution.h` declares the engine-free executor. `render/RenderInstance`
 instantiates it as `RenderExecution<RenderValue, RenderScratch>`. The executor
 re-runs a step only when an input's change version differs from the version
-it last observed.
+it last observed. A changed input marks **dirty** every step downstream of it
+(`DownstreamStepsOf`, computed once per plan; a readback's submission step
+counts as upstream of the readback's readers). A walk returns at once for a
+clean step that holds its output, so a demand visits only the steps an input
+change can reach.
 
 | Type | Description |
 |---|---|
@@ -203,7 +207,7 @@ it last observed.
 | `StepInput` | One observed input reference and its change version. |
 | `StepOutput<T>` | An optional result and its change version. |
 | `RenderInputState<T>` | An imported input's optional value and change version. |
-| `StepExecutionState<T, Scratch>` | One step's observed inputs, outputs, scratch, last diagnostic, `released` flag and the clock value of its last use. |
+| `StepExecutionState<T, Scratch>` | One step's observed inputs, outputs, scratch, last diagnostic, `released` flag, the clock value of its last use, and whether it is `dirty`. |
 | `ResolvedRenderInput<T>` | A reference, its value and its change version, as a step callback receives it. |
 | `RenderExecution<T, Scratch>` | Holds a validated plan and its state. `Evaluate` materializes one reference through the `ExecuteStep`, `SameValue` and `SelectInputs` callbacks. `SetInput` imports a value. `SetClock` sets the time in the caller's unit, and `ReleaseIdle` drops results unused for longer than a given span of it. A walk stops at depth 64 or 65536 visits. |
 

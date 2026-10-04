@@ -265,6 +265,8 @@ VisibleLayerFields(std::span<const PlannedLayer *const> layers);
 [[nodiscard]] std::optional<std::uint32_t>
 SegmentIndexOf(std::span<const std::size_t> fields, const LayerRead &read);
 [[nodiscard]] std::vector<RenderValueRef> InputsOf(const RenderStepKind &step);
+[[nodiscard]] std::vector<std::vector<RenderStepId>>
+DownstreamStepsOf(const RenderPlan &plan);
 [[nodiscard]] std::vector<RenderValueRef>
 StepDependencies(const RenderPlan &plan, RenderStepId step);
 [[nodiscard]] std::vector<bool> ChangingSteps(const RenderPlan &plan);

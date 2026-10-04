@@ -70,7 +70,9 @@ def number(fields: dict, name: str) -> int:
         return 0
 
 
-PHASES = ('signals', 'render', 'lights', 'previews', 'sweep', 'snapshot', 'refresh')
+PHASES = ('signals', 'render', 'render_inputs', 'render_slots', 'render_shell',
+          'render_evaluate', 'lights',
+          'previews', 'sweep', 'snapshot', 'refresh')
 
 
 def inside(events: list[dict], window: Window, action: str) -> list[dict]:

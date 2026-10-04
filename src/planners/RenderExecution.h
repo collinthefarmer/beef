@@ -27,6 +27,7 @@ template <class T, class Scratch> struct StepExecutionState {
   std::string diagnostic;
   bool released = false;
   std::uint64_t lastUsed = 0;
+  bool dirty = true;
 };
 template <class T> struct ResolvedRenderInput {
   RenderValueRef input;
@@ -47,8 +48,11 @@ public:
   explicit RenderExecution(RenderPlan plan)
       : plan_(std::move(plan)), inputs_(plan_.inputs.size()),
         steps_(plan_.steps.size()) {
-    if (auto valid = ValidateRenderPlan(plan_); !valid)
+    if (auto valid = ValidateRenderPlan(plan_); !valid) {
       problem_ = valid.error();
+      return;
+    }
+    downstream_ = DownstreamStepsOf(plan_);
   }
   [[nodiscard]] const RenderPlan &Plan() const noexcept { return plan_; }
   [[nodiscard]] std::span<const StepExecutionState<T, Scratch>>
@@ -70,13 +74,16 @@ public:
       if (input.changeVersion == std::numeric_limits<ChangeVersion>::max())
         return std::unexpected("input change version exhausted");
       ++input.changeVersion;
+      MarkDownstream(id);
     }
     input.value = std::move(value);
     return {};
   }
   void UnsetInput(RenderInputId id) {
-    if (id < inputs_.size())
+    if (id < inputs_.size() && inputs_[id].value) {
       inputs_[id].value.reset();
+      MarkDownstream(id);
+    }
   }
   [[nodiscard]] std::expected<ResolvedRenderInput<T>, std::string>
   Evaluate(RenderValueRef result, const ExecuteStep &execute,
@@ -86,8 +93,7 @@ public:
       return std::unexpected(problem_);
     if (!execute || !same || !select)
       return std::unexpected("render execution callbacks are incomplete");
-    Walk walk{execute, same, select,
-              stale,   0,    std::vector<bool>(steps_.size())};
+    Walk walk{execute, same, select, stale, 0};
     return Materialize(result, walk, 0);
   }
   void SetClock(std::uint64_t a_now) noexcept { clock_ = a_now; }
@@ -119,7 +125,6 @@ private:
     const SelectInputs &select;
     const ObserveStale &stale;
     std::size_t visits = 0;
-    std::vector<bool> refreshed;
   };
   using Version = std::expected<ChangeVersion, std::string>;
   using Resolved = std::expected<ResolvedRenderInput<T>, std::string>;
@@ -130,6 +135,15 @@ private:
   std::string problem_;
   std::uint64_t clock_ = 1;
   std::uint64_t restores_ = 0;
+  std::vector<std::vector<RenderStepId>> downstream_;
+
+  void MarkDownstream(RenderInputId id) {
+    if (id >= downstream_.size())
+      return;
+    for (const RenderStepId step : downstream_[id])
+      if (step < steps_.size())
+        steps_[step].dirty = true;
+  }
 
   [[nodiscard]] static bool Within(Walk &walk, std::size_t depth) {
     return depth <= 64 && ++walk.visits <= 65536;
@@ -140,6 +154,7 @@ private:
     state.diagnostic = plan_.steps[id].displayName + ": " + message;
     state.outputs.front().value.reset();
     state.released = false;
+    state.dirty = true;
     return std::unexpected(state.diagnostic);
   }
   [[nodiscard]] std::expected<std::vector<RenderValueRef>, std::string>
@@ -192,7 +207,7 @@ private:
     auto &state = steps_[id];
     auto &output = state.outputs.front();
     const bool current = output.value.has_value() || state.released;
-    if (walk.refreshed[id] && current)
+    if (!state.dirty && current)
       return output.changeVersion;
     auto required = Required(id, walk, depth);
     if (!required)
@@ -214,7 +229,7 @@ private:
       observed = observed && same;
     }
     if (observed) {
-      walk.refreshed[id] = true;
+      state.dirty = false;
       return output.changeVersion;
     }
     if (current && walk.stale)
@@ -272,7 +287,7 @@ private:
     state.diagnostic.clear();
     state.released = false;
     state.lastUsed = clock_;
-    walk.refreshed[id] = true;
+    state.dirty = false;
     return output.changeVersion;
   }
 };

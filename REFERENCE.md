@@ -497,6 +497,19 @@ Lab mechanics:
   bind that input as null. Holding the lock for a whole tick instead would
   stop the render thread for the tick's full length; one geometry keeps each
   window to tens of passes. Nested batches capture only at the outermost.
+  The outermost batch captures when the first pass inside it starts
+  (`TextureLab::CaptureBatch`), so a geometry whose steps are all current
+  costs no capture. Before that change, 12 mannequins in `soak-frost`, which
+  ran no pass once settled, spent about 300 of their 921 µs of render CPU per
+  frame on captures (runs 20261004T033046 and 20261004T180916).
+- Most of the rest was the executor's walk: each demand walked its output's
+  whole upstream graph, 72 times a frame, to find nothing changed. Dirty
+  marks (`DownstreamStepsOf`, `RenderExecution::MarkDownstream`) limit a walk
+  to the steps an input change can reach. With both changes, `soak-frost`
+  fell from 993 to 287 µs per frame, `soak-stack` from 6385 to 4271 µs and
+  `soak` from 2974 to 2622 µs (run 20261004T205942). The heartbeat's
+  `render_inputs`, `render_slots`, `render_shell` and `render_evaluate`
+  sections split the render cost; `render_evaluate` includes step execution.
 - A readback goes through a staging copy of the 1x1 mip and waits on the
   GPU; the log line before it names the step should the wait never end.
   Bytes are read as RGBA8, so any other format is refused before the map.

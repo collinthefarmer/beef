@@ -1205,7 +1205,10 @@ RenderInstance::Render(StepOutputRef output, const LayerFilter &filter,
   if (auto set = UpdateInput(visibility->input, filter); !set)
     return std::unexpected(set.error());
   Metrics::CountRenderEvaluation();
+  const Metrics::Stopwatch evaluateWatch;
   const auto result = Demand(output);
+  Metrics::CountSection(Metrics::Section::kRenderEvaluate,
+                        evaluateWatch.Micros());
   if (!result && AwaitingFirstReadback())
     return StackOutcome{StackPending{}};
   if (!result)
