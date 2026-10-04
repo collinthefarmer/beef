@@ -61,7 +61,8 @@ def report(segments: list[Path], slots: int | None) -> None:
             continue
         kind, action = str(event.get('event', 'unknown')), fields.get('action')
         action = action if isinstance(action, str) else ''
-        session, operation = str(event.get('session', 'unknown')), str(event.get('operation', 0))
+        session = str(event.get('session', 'unknown'))
+        operation = str(event.get('operation', event.get('command', 0)))
         target = str(fields.get('target'))
         if kind == 'rotated':
             tally['rotations'] += 1
@@ -111,7 +112,7 @@ def report(segments: list[Path], slots: int | None) -> None:
         counts[kind] += 1
         sessions.add(session)
         startup = fields if kind == 'startup' else startup
-        if kind == 'operation':
+        if kind in ('operation', 'command'):
             operations[operation] = fields.get('reason', 'unknown')
         if kind == 'retire' and action == 'begin':
             transitions[operation] += 1

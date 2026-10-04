@@ -21,15 +21,18 @@ using RequestState = std::variant<NoRequest, RequestPending, Outcome>;
 struct ItemFacts {
   bool equipped = false;
   bool carried = false;
+  bool slotTaken = false;
 };
 
 struct RoleFacts {
   bool present = false;
-  bool bodyArmorWorn = false;
   std::array<ItemFacts, kItemCount> armor{};
   bool live = false;
+  std::uint32_t liveItems = 0;
+  std::uint32_t strayItems = 0;
   std::uint64_t renderedAttempt = 0;
   std::uint32_t residue = 0;
+  std::uint32_t thirdPersonResidue = 0;
   std::uint32_t firstPersonResidue = 0;
   std::string application;
 };

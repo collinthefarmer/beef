@@ -706,6 +706,15 @@ Lab mechanics:
   zero, so the renderer never divides by zero regardless of what
   `CheckShell`'s `spinAxis must not be zero` validation caught first.
 
+## Actor core (`actors/`)
+
+The core's constants and rules come from engine behaviour, so their reasons
+sit with the adapter under *Engine events, hooks and the manager*: the
+pending model paragraph gives `kModelWaitMs`, `kPendingRecheckMs` and the
+third-person-only wait; the eviction paragraph gives the 0.8 restore factor
+of `EvictionFor` and `InRange`. `docs/components/actors.md` maps the
+directory.
+
 ## Engine events, hooks and the manager
 
 A refresh runs through the actor core (`src/actors/`, plan
@@ -738,10 +747,17 @@ seen). While any pending model of an installed actor is younger than
 so an armor change rebuilds once, on attach, instead of twice; an actor with
 nothing installed never waits. Each piece waits on its own, so an armor whose
 model never attaches (no addon for the race) stops holding the actor back
-after its own second and does not disable the wait for later equips. Because
-no event announces the attach, `QueueTrackedRefreshes` re-observes an actor
-with a waiting model every 100 ms (`kArmorModelCheckMS`) and one with any
-pending model every second. A multi-slot armor lists its item in every slot
+after its own second and does not disable the wait for later equips. Only a
+third-person piece holds the actor back: the first-person biped can list an
+item that has no first-person model (a helmet), and such a piece would delay
+every equip of the player by the full wait. A first-person piece stays pending
+until it attaches. Because no event announces the attach, `RecheckOf` reports
+an actor as **settling** while a pending model is younger than the wait plus
+`kPendingRecheckMs` (100 ms), so one observation lands after the wait ends,
+and as **stuck** after that. `QueueSettlingActors` re-observes settling actors
+every 100 ms; `QueueSecondChecks` re-observes stuck ones every second. The
+equip flag survives an advance that settles, so the equip signal fires when the
+late model installs. A multi-slot armor lists its item in every slot
 it covers but attaches one model, so observation takes the model from any
 slot that holds it. The in-game `unload` regression case showed the late
 attach on a spawned NPC on 2026-10-01; in the 2026-10-03 fight soak the wait
@@ -756,26 +772,35 @@ rebuild paid it as a 1.6 to 1.8 s frame. Observation reads a geometry's
 diffuse path through `PbrMaterial::DiffusePath` and never through
 `MaterialInputs::From`, whose `MeasureFlatDisplacement` renders and reads back
 the displacement mean, a blocking GPU readback observation does not need.
-`actor_advance` traces the observe, plan and advance times, and an observed
-piece slower than 10 ms traces `observe_slow` with its inventory, keys and
-model times.
+`actor_advance` traces the observe, plan and advance times.
 
 Distance eviction is an `Advance` rule through `EvictionFor`: a present actor
 beyond `EvictDistance` is evicted, and an evicted one returns inside 0.8 of
-it. The facts carry the distance (none for the player). While eviction is on,
-`QueueTrackedRefreshes` re-observes every tracked actor every second.
+it. The facts carry the distance (none for the player). Once a second
+`QueueSecondChecks` reads each tracked actor's distance and re-observes it only
+when `InRange` disagrees with its phase. An evicted actor is in range when
+eviction is off (`EvictDistance` 0), so turning eviction off restores it.
+`SettlePhase` drops an actor that holds nothing (nothing installed, nothing
+pending); its next equip event tracks it again.
 
 `RenderPlanCache` (`engine/RenderPlanCache.h`) reuses an actor's render plan
 for every actor whose stack requests give the same key (`RenderPlanKeyOf`):
 per request the graph pointer, output index, placement, geometry and instance
-ids, texture size, `MaterialIdentityOf` and `MeshIdentityOf`, plus the slot
-chains. The actor's form ID is left out: it enters only identity strings
-(`producedKey`), which the planners use to merge values inside one plan and
-the runtime never reads, so two actors in the same gear lower to plans of the
-same structure (`SameStructure`). A mesh identity that falls back to the
-geometry pointer makes the key unique to one actor, which is correct and
-shares nothing. An entry holds the `RecipeGraph`s its plan points into, so a
-graph cannot be freed or its address reused while the plan lives. A recipe or
+ids, texture size, `MaterialIdentityOf` (each texture name length-prefixed, so
+no name can forge a separator) and `MeshHashIdentityOf`, plus the slot chains.
+The actor's form ID is left out. It enters identity strings (`producedKey`)
+and the content keys made from them (`contentKey`), and the runtime reads
+content keys: `ExecuteCached` keys the compositor's step outputs, which every
+actor shares, by them. A reused plan therefore runs with the storing actor's
+content keys. That is safe only for content that does not depend on the
+actor, so a plan is never cached (`uncacheable` in the trace) when a graph
+reads a node position (`ReadsNodePositions`: a distance bake from an actor's
+skeleton, whose identity is the geometry and root pointers) or when a mesh has
+no hash yet (the identity would be a pointer nothing holds). `SameStructure`
+compares only whether a step has a content key, because legitimate keys differ
+between actors (an effect-shader input carries the instance string). An entry
+holds the `RecipeGraph`s its requests read, so a graph cannot be freed or its
+address reused while the plan lives. A recipe or
 view change (`ChangeAndRebuildActors`) and a load clear the cache; it holds 64
 entries and evicts the least recently used. `VerifyRenderPlanCache`, or a run
 file's `verifyRenderPlans`, builds every reused plan again and logs, traces
@@ -938,10 +963,16 @@ admitted skips that tick's render and is admitted on a later tick.
   Fixing the error in the menu applies the recipe on the next republish;
   introducing one withdraws it. The menu reads the same fact from a row's
   `problems` through `HasRecipeErrors`.
-- `Manager::CollectPieceGeometries` returning false rejects the whole piece,
-  including the geometries it already collected before the layout failure, so a
-  piece is never applied half-inspected. Clone identity is filtered earlier, by
-  `CollectPieces`.
+- Observation reads each model's geometries once (`GeometriesOf`,
+  `ActorObservation.cpp`). A geometry whose material fails
+  `TextureSlotsValid` is left out, and the model is read again on the next
+  observation. The first PBR material observed sets `MaterialLayout`; a
+  failed layout disables the emissive path for the process.
+- The install builds pieces only from the observed handles (`LivePiecesOf`,
+  `ManagerApply.cpp`). It follows `Actors::PlannedPieces`, which is also the
+  order of the plan's matches, so a geometry's index in the matches is its
+  index in the live actor. A count mismatch installs nothing and logs an
+  error.
 - `LoadedRecipe` (`RecipeStore.cpp`) carries a `NOLINTNEXTLINE(bugprone-exception-escape)`,
   the only suppression in the tree. MSVC's map move can allocate, so the
   aggregate's implicit move is not `noexcept`; clang-tidy reads it as `noexcept`
@@ -2133,9 +2164,10 @@ reflect a failed PBR layout check and must not be labeled a missing DLL.
 ## Armor-addon selector identity (2026-09-23)
 
 CommonLibSSE-NG's `RE/B/BipedAnim.h` declares `BIPOBJECT::addon` as
-`TESObjectARMA*` alongside `partClone`. `Manager::CollectPieces` preserves
-that entry's optional addon as a plugin/local-ID `FormKey` on `LivePiece`;
-`BuildPlannerGeometries` copies it to each geometry collected from the clone.
+`TESObjectARMA*` alongside `partClone`. `WornArmorOf` (`ActorObservation.cpp`)
+keeps one piece per armor and addon, so two attached addons of one armor are
+two pieces. The addon becomes `PieceRef::addon` as a plugin/local-ID
+`FormKey`; `MatchInputOf` copies it to each geometry of the piece.
 Use this association rather than guessing from the armor's addon list or
 mesh name. A missing addon stays absent and cannot match an addon-only selector.
 `LightEligible` uses that same identity for planning and actual light placement.
@@ -2419,3 +2451,19 @@ section) and idle release (in the compositor section) bound the burst's
 memory. A heartbeat's `targets` and
 `target_bytes` include targets idle in the reuse pool (at most 16 and 64
 MiB, `RenderTargetPool::kMaxIdleTargets` and `kMaxIdleBytes`).
+
+The heartbeat is emitted before `OnFrame` starts its frame timer, so its own
+trace writes stay out of `frame_us` and the 8 ms spike count. A load returns
+from `OnFrame` early and calls `Metrics::ForgetFrameInterval`, so the load
+screen does not count as one long frame interval. Refreshes run outside
+`OnFrame`: the SKSE task queue ran them on six engine job threads in run
+20261004T023455, one at a time, and no frame-thread event fell inside any of
+1570 refreshes. The report's `plugin_ms_per_s` and `plugin_share_pct`
+therefore add `refresh_us` to `frame_us`; `plugin_frame_us_mean`, the
+budgeted measure, stays the frame alone. `gpu_us_mean` counts only timed
+`RenderTick` spans, so the report prints `gpu_ticks_timed` and
+`gpu_ticks_untimed` (dropped plus discarded) beside it. A budget never passes
+on missing data: a window with no heartbeat, a ratio against a zero baseline,
+a window that never closed and a window measured twice are each reported.
+The stall report names the last finished step; the run stopped in the step
+after it.

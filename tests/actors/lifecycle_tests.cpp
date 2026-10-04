@@ -4,10 +4,13 @@
 #include "actors/fixtures.h"
 #include "test_support.h"
 
+#include <cstdint>
+#include <optional>
 #include <variant>
 #include <vector>
 
 using namespace actorfixtures;
+using BetterEnchantmentEffects::Is;
 
 namespace {
 ActorPlan CircuitPlan() {
@@ -144,6 +147,68 @@ void EachPendingPieceWaitsOnItsOwn() {
               "a newly pending piece waits even beside an expired one");
 }
 
+void EvictionTurnedOffRestores() {
+  test::Check(InRange(Phase{Evicted{}}, 5000.0f, 0.0f),
+              "an evicted actor is in range when eviction is off");
+  test::Check(!InRange(Installed(CircuitPlan()), 1100.0f, 1000.0f),
+              "an installed actor beyond the distance is out of range");
+  test::Check(InRange(Phase{Evicted{}}, std::nullopt, 1000.0f),
+              "an actor without a distance is always in range");
+}
+
+void AnEvictedActorUnloadsQuietly() {
+  const Advanced next =
+      Advance({Phase{Evicted{}}, ActorFacts{}, ActorPlan{}, 0, 1000.0f});
+  test::Check(Is<Unloaded>(next.phase) && next.commands.empty(),
+              "an evicted actor that unloads has nothing to retire");
+}
+
+void FirstPersonPiecesDoNotHoldBack() {
+  PieceFacts firstPerson = Pending(0x2);
+  firstPerson.ref.firstPerson = true;
+  const Advanced next =
+      Advance({Installed(ActorPlan{}), Loaded({Attached(0x1), firstPerson}),
+               CircuitPlan(), 100});
+  test::Check(!next.commands.empty(),
+              "a pending first-person model does not hold back the install");
+  const Present *present = PresentOf(next);
+  test::Check(present && present->pending.size() == 1,
+              "and it stays pending until it attaches");
+}
+
+void RecheckFollowsTheWait() {
+  const Phase settling = Present{CircuitPlan(), {PendingModel{Piece(0x2), 0}}};
+  test::Check(RecheckOf(settling, kModelWaitMs) == Recheck::kSettling,
+              "a pending model is rechecked soon until just after its wait");
+  test::Check(RecheckOf(settling, kModelWaitMs + kPendingRecheckMs) ==
+                  Recheck::kStuck,
+              "a model that never attaches is rechecked slowly");
+  test::Check(RecheckOf(Installed(CircuitPlan()), 0) == Recheck::kNone,
+              "an actor with nothing pending is not rechecked");
+}
+
+void TheWaitSurvivesAClockWrap() {
+  const std::uint32_t since = UINT32_MAX - 10;
+  const Phase waiting =
+      Present{CircuitPlan(), {PendingModel{Piece(0x2), since}}};
+  const Advanced next = Advance(
+      {waiting, Loaded({Attached(0x1), Pending(0x2)}), ActorPlan{}, 50});
+  test::Check(next.commands.empty(),
+              "a wait that started before the clock wrapped still holds");
+}
+
+void AWaitHoldsAnotherPiecesRetire() {
+  const ActorPlan both = PlanBuilder{}
+                             .With(Instance("circuit"), Geo(0x1, "Body"))
+                             .With(Instance("circuit"), Geo(0x3, "Hands"))
+                             .plan;
+  const Advanced next =
+      Advance({Installed(both), Loaded({Attached(0x1), Pending(0x2)}),
+               CircuitPlan(), 100});
+  test::Check(next.commands.empty(),
+              "a retire waits with the install for at most the model wait");
+}
+
 void AFirstInstallDoesNotWait() {
   const Advanced next =
       Advance({Phase{Unloaded{}}, Loaded({Attached(0x1), Pending(0x2)}),
@@ -161,5 +226,11 @@ int main() {
   AnInstalledActorWaitsForANewModel();
   EachPendingPieceWaitsOnItsOwn();
   AFirstInstallDoesNotWait();
+  EvictionTurnedOffRestores();
+  AnEvictedActorUnloadsQuietly();
+  FirstPersonPiecesDoNotHoldBack();
+  RecheckFollowsTheWait();
+  TheWaitSurvivesAClockWrap();
+  AWaitHoldsAnotherPiecesRetire();
   return test::Finish("actor lifecycle");
 }

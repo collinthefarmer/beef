@@ -29,6 +29,18 @@ bool Message(const RecipeGraph &graph, std::string_view where,
 
 int main() {
   {
+    Recipe distance;
+    distance.sources = {{"near", DistanceSource{"NPC Head [Head]"}}};
+    distance.masks = {{"glow", "@near"}};
+    Recipe material;
+    material.sources = {{"surface", MaterialSource{}}};
+    material.masks = {{"glow", "@surface"}};
+    Check(ReadsNodePositions(RecipeGraph::Compile(distance)),
+          "a distance source reads a node position");
+    Check(!ReadsNodePositions(RecipeGraph::Compile(material)),
+          "a material source reads no node position");
+  }
+  {
     Recipe recipe;
     recipe.signals = {{"placement", ConstantSignal{Vec2{1, 2}}},
                       {"clock", ExprSignal{"time"}}};

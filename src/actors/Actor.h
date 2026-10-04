@@ -50,6 +50,7 @@ struct GeometryFacts {
 struct PieceFacts {
   PieceRef ref;
   std::uint32_t itemID = 0;
+  std::uint32_t enchantmentID = 0;
   WornPiece keys;
   std::optional<ModelToken> model;
   std::vector<GeometryFacts> geometries;

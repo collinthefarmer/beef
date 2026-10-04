@@ -2,9 +2,6 @@
 #include "diagnostics/Metrics.h"
 #include "test_support.h"
 
-#include <chrono>
-#include <thread>
-
 using namespace BetterEnchantmentEffects;
 using test::Check;
 using test::Equal;
@@ -75,39 +72,47 @@ void TestMippedBytes() {
 }
 }
 
-void TestPhasesSpikesAndHitches() {
+void TestSectionsSpikesAndHitches() {
   static_cast<void>(Metrics::Drain());
-  Metrics::CountPhase(Metrics::Phase::kRender, 700);
-  Metrics::CountPhase(Metrics::Phase::kRender, 300);
-  Metrics::CountPhase(Metrics::Phase::kFrame, 20000);
-  Metrics::CountPhase(Metrics::Phase::kFrame, 5000);
-  Metrics::CountPhase(Metrics::Phase::kSignals, 40000);
-  Metrics::CountFrame();
-  std::this_thread::sleep_for(std::chrono::milliseconds(60));
-  Metrics::CountFrame();
+  Metrics::CountSection(Metrics::Section::kRender, 700);
+  Metrics::CountSection(Metrics::Section::kRender, 300);
+  Metrics::CountSection(Metrics::Section::kFrame, 20000);
+  Metrics::CountSection(Metrics::Section::kFrame, 5000);
+  Metrics::CountSection(Metrics::Section::kSignals, 40000);
+  Metrics::ForgetFrameInterval();
+  Metrics::CountFrameAt(1'000'000);
+  Metrics::CountFrameAt(1'060'000);
   const Metrics::Snapshot measured = Metrics::Drain();
-  Equal(measured.Of(Metrics::Phase::kRender).micros, std::uint64_t{1000},
-        "a phase sums its calls");
-  Equal(measured.Of(Metrics::Phase::kRender).maxMicros, std::uint64_t{700},
-        "a phase keeps its longest call");
+  Equal(measured.Of(Metrics::Section::kRender).micros, std::uint64_t{1000},
+        "a section sums its calls");
+  Equal(measured.Of(Metrics::Section::kRender).maxMicros, std::uint64_t{700},
+        "a section keeps its longest call");
   Equal(measured.pluginSpikes[0], std::uint64_t{1},
         "one frame took the plugin over 8 ms");
   Equal(measured.pluginSpikes[1], std::uint64_t{1},
         "one frame took the plugin over 16 ms");
   Equal(measured.pluginSpikes[2], std::uint64_t{0},
         "no frame took the plugin over 33 ms");
-  Check(measured.hitches[0] >= 1 && measured.intervalMaxMicros >= 50000,
+  Equal(measured.hitches[0], std::uint64_t{1},
         "a frame interval over 50 ms counts as a hitch");
+  Equal(measured.intervalMaxMicros, std::uint64_t{60000},
+        "the longest frame interval is kept");
   Equal(measured.hitches[1], std::uint64_t{0},
         "a 60 ms interval is not a 100 ms hitch");
   const Metrics::Snapshot drained = Metrics::Drain();
   Check(drained.pluginSpikes[0] == 0 && drained.hitches[0] == 0 &&
             drained.intervalMaxMicros == 0,
         "draining resets spikes and hitches");
+  Metrics::ForgetFrameInterval();
+  Metrics::CountFrameAt(2'000'000);
+  Metrics::ForgetFrameInterval();
+  Metrics::CountFrameAt(9'000'000);
+  Check(Metrics::Drain().hitches[0] == 0,
+        "an interval across a forgotten frame, such as a load, is no hitch");
 }
 
 int main() {
-  TestPhasesSpikesAndHitches();
+  TestSectionsSpikesAndHitches();
   TestRatesAccumulateAndDrain();
   TestGaugesAndPeaksPersist();
   TestStepExecutionsCountPerKind();

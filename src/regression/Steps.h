@@ -64,6 +64,10 @@ struct AwaitBaseline {
 struct ExpectEffect {
   Role role = Role::kPlayer;
 };
+struct AwaitLiveItems {
+  Role role = Role::kPlayer;
+  std::uint32_t count = 0;
+};
 struct HoldUntouched {
   Role role = Role::kControl;
   std::uint32_t frames = 0;
@@ -134,16 +138,18 @@ struct EndWindow {
   std::uint32_t cycle = 0;
 };
 struct AwaitIdle {};
-using Step = std::variant<
-    WaitFrames, Solo, RestoreSolo, ShowRecipes, Spawn, Despawn, Disable, Enable,
-    Equip, Unequip, Remove, Apply, Retire, AwaitRendered, AwaitRetired,
-    AwaitBaseline, ExpectEffect, HoldUntouched, LeaveStart, ReturnToStart,
-    SetCamera, HoldCamera, ExpectFirstPersonEffect, LoadDuring, ExpectAborted,
-    ExpectCancelled, ExpectSettled, DeleteScratch, DuplicateToScratch,
-    SetScratchOpacity, SaveScratch, ExpectScratch, SpawnCrowd,
-    AwaitCrowdRendered, StartCrowdFight, AwaitCrowdFighting, AwaitCrowdHurt,
-    UnequipCrowd, EquipCrowd, AwaitCrowdBare, DespawnCrowd, HoldWindow,
-    BeginWindow, EndWindow, BeginSession, AwaitSessionActive, AwaitIdle>;
+using Step =
+    std::variant<WaitFrames, Solo, RestoreSolo, ShowRecipes, Spawn, Despawn,
+                 Disable, Enable, Equip, Unequip, Remove, Apply, Retire,
+                 AwaitRendered, AwaitRetired, AwaitBaseline, ExpectEffect,
+                 AwaitLiveItems, HoldUntouched, LeaveStart, ReturnToStart,
+                 SetCamera, HoldCamera, ExpectFirstPersonEffect, LoadDuring,
+                 ExpectAborted, ExpectCancelled, ExpectSettled, DeleteScratch,
+                 DuplicateToScratch, SetScratchOpacity, SaveScratch,
+                 ExpectScratch, SpawnCrowd, AwaitCrowdRendered, StartCrowdFight,
+                 AwaitCrowdFighting, AwaitCrowdHurt, UnequipCrowd, EquipCrowd,
+                 AwaitCrowdBare, DespawnCrowd, HoldWindow, BeginWindow,
+                 EndWindow, BeginSession, AwaitSessionActive, AwaitIdle>;
 
 struct Case {
   std::string_view name;

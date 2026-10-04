@@ -17,6 +17,7 @@ namespace BetterEnchantmentEffects {
 namespace {
 inline constexpr std::string_view kSkyrim = "Skyrim.esm";
 inline constexpr RE::FormID kPlainCuirass = 0x1394D;
+inline constexpr RE::FormID kIronGauntlets = 0x12E46;
 inline constexpr RE::FormID kMannequin = 0x89A85;
 inline constexpr RE::FormID kIdleNpc = 0xCCE01;
 inline constexpr RE::FormID kFighter = 0x10553F;
@@ -62,9 +63,15 @@ template <class Form> Form *FormWithID(RE::FormID a_id) {
 }
 
 RE::TESObjectARMO *ArmorOf(Regression::Item a_item) {
-  return a_item == Regression::Item::kFixture
-             ? RegressionFixture()
-             : SkyrimForm<RE::TESObjectARMO>(kPlainCuirass);
+  switch (a_item) {
+  case Regression::Item::kFixture:
+    return RegressionFixture();
+  case Regression::Item::kPlainCuirass:
+    return SkyrimForm<RE::TESObjectARMO>(kPlainCuirass);
+  case Regression::Item::kPairedGauntlets:
+    return SkyrimForm<RE::TESObjectARMO>(kIronGauntlets);
+  }
+  return nullptr;
 }
 
 RE::Actor *ActorOf(const RunWorld &a_world, Regression::Role a_role) {
@@ -128,20 +135,29 @@ Regression::RoleFacts ViewOf(RE::Actor *a_actor, RegressionActorFacts a_facts) {
     return view;
   }
   view.present = Present(*a_actor);
-  const RE::TESObjectARMO *body =
-      a_actor->GetWornArmor(RE::BGSBipedObjectForm::BipedObjectSlot::kBody);
-  view.bodyArmorWorn = body != nullptr;
-  for (const Regression::Item item :
-       {Regression::Item::kFixture, Regression::Item::kPlainCuirass}) {
-    RE::TESObjectARMO *armor = ArmorOf(item);
-    Regression::ItemFacts &seen = view.armor[Regression::IndexOf(item)];
-    seen.equipped = armor && body == armor;
-    seen.carried = armor && CountOf(*a_actor, *armor) > 0;
+  for (const Named<Regression::Item> &item : Regression::kItems) {
+    RE::TESObjectARMO *armor = ArmorOf(item.value);
+    Regression::ItemFacts &seen = view.armor[Regression::IndexOf(item.value)];
+    if (!armor) {
+      continue;
+    }
+    const RE::TESObjectARMO *inSlot =
+        a_actor->GetWornArmor(armor->GetSlotMask());
+    seen.equipped = a_actor->GetWornArmor(armor->GetFormID()) != nullptr;
+    seen.slotTaken = inSlot && inSlot != armor;
+    seen.carried = CountOf(*a_actor, *armor) > 0;
   }
   view.live = a_facts.live;
+  view.liveItems = static_cast<std::uint32_t>(a_facts.liveItems.size());
+  view.strayItems = static_cast<std::uint32_t>(
+      std::ranges::count_if(a_facts.liveItems, [&](RE::FormID a_item) {
+        return a_actor->GetWornArmor(a_item) == nullptr;
+      }));
   view.renderedAttempt = a_facts.renderedAttempt;
   view.application = std::move(a_facts.application);
   view.residue = view.present ? ResidueOn(*a_actor) : 0;
+  view.thirdPersonResidue =
+      view.present ? ResidueUnder(a_actor->Get3D(false)) : 0;
   RE::NiAVObject *firstPerson = a_actor->Get3D(true);
   view.firstPersonResidue = view.present && firstPerson != a_actor->Get3D(false)
                                 ? ResidueUnder(firstPerson)
@@ -220,9 +236,8 @@ void Spawn(RunWorld &a_world, Regression::Role a_role) {
   a_world.spawned[Regression::IndexOf(a_role)] = placed->GetFormID();
 }
 
-ArmorTag TagVanillaCuirass(RE::TESObjectARMO &a_armor,
-                           RE::BGSKeyword &a_keyword,
-                           RE::EnchantmentItem &a_enchantment) {
+ArmorTag TagVanillaArmor(RE::TESObjectARMO &a_armor, RE::BGSKeyword &a_keyword,
+                         RE::EnchantmentItem &a_enchantment) {
   ArmorTag tag;
   tag.armor = a_armor.GetFormID();
   tag.enchantmentBefore =
@@ -246,27 +261,54 @@ void TagVanillaCuirasses(RunWorld &a_world) {
   }
   for (const RE::FormID id : kVanillaCuirasses) {
     if (RE::TESObjectARMO *armor = SkyrimForm<RE::TESObjectARMO>(id)) {
-      a_world.tags.push_back(TagVanillaCuirass(*armor, *keyword, *enchantment));
+      a_world.tags.push_back(TagVanillaArmor(*armor, *keyword, *enchantment));
     } else {
       logger::warn("regression: vanilla cuirass {:X} is missing", id);
     }
   }
 }
 
-void UntagVanillaCuirasses(RunWorld &a_world) {
+void TagPairedGauntlets(RunWorld &a_world) {
+  if (a_world.gauntletTag) {
+    return;
+  }
   auto *keyword = PluginForm<RE::BGSKeyword>(kDemoKeyword, kDemoPlugin);
+  auto *enchantment =
+      PluginForm<RE::EnchantmentItem>(kDemoEnchantment, kDemoPlugin);
+  RE::TESObjectARMO *gauntlets = ArmorOf(Regression::Item::kPairedGauntlets);
+  if (!keyword || !enchantment || !gauntlets) {
+    logger::warn("regression: the demo keyword, enchantment or the iron "
+                 "gauntlets are missing");
+    return;
+  }
+  a_world.gauntletTag = TagVanillaArmor(*gauntlets, *keyword, *enchantment);
+}
+
+void Untag(const ArmorTag &a_tag) {
+  RE::TESObjectARMO *armor = FormWithID<RE::TESObjectARMO>(a_tag.armor);
+  if (!armor) {
+    return;
+  }
+  auto *keyword = PluginForm<RE::BGSKeyword>(kDemoKeyword, kDemoPlugin);
+  if (a_tag.addedKeyword && keyword) {
+    armor->RemoveKeyword(keyword);
+  }
+  armor->formEnchanting =
+      FormWithID<RE::EnchantmentItem>(a_tag.enchantmentBefore);
+}
+
+void UntagVanillaCuirasses(RunWorld &a_world) {
   for (const ArmorTag &tag : a_world.tags) {
-    RE::TESObjectARMO *armor = FormWithID<RE::TESObjectARMO>(tag.armor);
-    if (!armor) {
-      continue;
-    }
-    if (tag.addedKeyword && keyword) {
-      armor->RemoveKeyword(keyword);
-    }
-    armor->formEnchanting =
-        FormWithID<RE::EnchantmentItem>(tag.enchantmentBefore);
+    Untag(tag);
   }
   a_world.tags.clear();
+}
+
+void UntagPairedGauntlets(RunWorld &a_world) {
+  if (a_world.gauntletTag) {
+    Untag(*a_world.gauntletTag);
+    a_world.gauntletTag.reset();
+  }
 }
 
 RE::FormID CrowdArmorAt(const RunWorld &a_world, Regression::Dress a_dress,
@@ -647,11 +689,19 @@ void Perform(const Regression::EnableActor &a_c, RunWorld &a_world) {
   }
 }
 
+void TagIfPaired(Regression::Item a_item, RunWorld &a_world) {
+  if (a_item == Regression::Item::kPairedGauntlets) {
+    TagPairedGauntlets(a_world);
+  }
+}
+
 void Perform(const Regression::AddAndEquip &a_c, RunWorld &a_world) {
+  TagIfPaired(a_c.item, a_world);
   Equip(ActorOf(a_world, a_c.role), a_c.item, true);
 }
 
 void Perform(const Regression::EquipCarried &a_c, RunWorld &a_world) {
+  TagIfPaired(a_c.item, a_world);
   Equip(ActorOf(a_world, a_c.role), a_c.item, false);
 }
 
@@ -795,8 +845,10 @@ Regression::Observation Observe(const RunWorld &a_world) {
     const std::size_t index = Regression::IndexOf(role);
     seen.actors[index] = ViewOf(actors[index], std::move(facts[index]));
   }
-  seen.itemsLoaded = {ArmorOf(Regression::Item::kFixture) != nullptr,
-                      ArmorOf(Regression::Item::kPlainCuirass) != nullptr};
+  for (const Named<Regression::Item> &item : Regression::kItems) {
+    seen.itemsLoaded[Regression::IndexOf(item.value)] =
+        ArmorOf(item.value) != nullptr;
+  }
   seen.npcEffects = !GetSettings().playerOnly;
   seen.camera = CameraOf(CameraStateID());
   seen.awayFromStart = AwayFromStart(a_world);
@@ -849,6 +901,7 @@ void ReleaseCamera(RunWorld &a_world) {
 
 void ReleaseWorld(RunWorld &a_world) {
   ReleaseCamera(a_world);
+  UntagPairedGauntlets(a_world);
   DespawnCrowdActors(a_world);
   DeleteReference(MarkerOf(a_world));
   a_world.marker = 0;
@@ -862,6 +915,7 @@ void ForgetWorldAfterLoad(RunWorld &a_world) {
   a_world.spawned = {};
   a_world.crowd.clear();
   UntagVanillaCuirasses(a_world);
+  UntagPairedGauntlets(a_world);
   a_world.playerBeforeArena.reset();
   a_world.marker = 0;
   ++a_world.loads;

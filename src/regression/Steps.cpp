@@ -64,11 +64,12 @@ StepMove PassWhen(bool a_done, const StepContext &a_context,
 
 std::string Describe(const RoleFacts &a_actor) {
   return std::format(
-      "present {}, wears fixture {}, live {}, residue {}, "
-      "latest application {}",
+      "present {}, wears fixture {}, live {}, live items {}, stray items {}, "
+      "residue {}, latest application {}",
       a_actor.present ? "yes" : "no",
       a_actor.armor[IndexOf(Item::kFixture)].equipped ? "yes" : "no",
-      a_actor.live ? "yes" : "no", a_actor.residue,
+      a_actor.live ? "yes" : "no", a_actor.liveItems, a_actor.strayItems,
+      a_actor.residue,
       a_actor.application.empty() ? "none" : a_actor.application);
 }
 
@@ -202,8 +203,8 @@ StepMove Start(const Equip &a_equip, const StepContext &a_context) {
     }
     return Issue(EquipCarried{a_equip.role, a_equip.item});
   }
-  if (a_equip.role == Role::kPlayer && actor.bodyArmorWorn) {
-    return Block("the player wears body armor");
+  if (a_equip.role == Role::kPlayer && armor.slotTaken) {
+    return Block("the player wears other armor in that slot");
   }
   return Issue(AddAndEquip{a_equip.role, a_equip.item});
 }
@@ -337,8 +338,22 @@ StepMove Start(const ExpectEffect &, const StepContext &) { return Wait(); }
 StepMove Check(const ExpectEffect &a_expect, const StepContext &a_context) {
   const RoleFacts &actor = ActorOf(a_context, a_expect.role);
   return WithActorState(
-      PassWhen(actor.present && actor.live && actor.residue > 0, a_context,
-               kExpectDeadlineFrames, "the effect was not on the actor"),
+      PassWhen(actor.present && actor.live && actor.thirdPersonResidue > 0,
+               a_context, kExpectDeadlineFrames,
+               "the effect was not on the third-person body"),
+      actor);
+}
+
+StepMove Start(const AwaitLiveItems &, const StepContext &) { return Wait(); }
+
+StepMove Check(const AwaitLiveItems &a_await, const StepContext &a_context) {
+  const RoleFacts &actor = ActorOf(a_context, a_await.role);
+  return WithActorState(
+      PassWhen(actor.present && actor.liveItems == a_await.count &&
+                   actor.strayItems == 0,
+               a_context, kRenderDeadlineFrames,
+               std::format("effects did not settle on {} worn item(s)",
+                           a_await.count)),
       actor);
 }
 
@@ -824,6 +839,7 @@ std::array<bool, kRoleCount> RolesAffected(const Step &a_step) {
           [&](const AwaitRetired &) { return kNone; },
           [&](const AwaitBaseline &) { return kNone; },
           [&](const ExpectEffect &) { return kNone; },
+          [&](const AwaitLiveItems &) { return kNone; },
           [&](const HoldUntouched &) { return kNone; },
           [&](const Solo &) { return kAll; },
           [&](const RestoreSolo &) { return kAll; },

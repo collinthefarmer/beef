@@ -75,6 +75,11 @@ std::string Label(const ExpectEffect &a_s) {
   return WithRole("expect-effect", a_s.role);
 }
 
+std::string Label(const AwaitLiveItems &a_s) {
+  return std::format("await-live-items {} {}", NameOf(kRoles, a_s.role),
+                     a_s.count);
+}
+
 std::string Label(const HoldUntouched &a_s) {
   return std::format("hold-untouched {} {}", NameOf(kRoles, a_s.role),
                      a_s.frames);

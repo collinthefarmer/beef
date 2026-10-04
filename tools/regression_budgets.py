@@ -31,7 +31,7 @@ def trace_events(trace: Path) -> list[dict]:
     return sorted(events, key=lambda event: event.get('unix_ms', 0))
 
 
-def windows(events: list[dict]) -> list[Window]:
+def paired_windows(events: list[dict]) -> tuple[list[Window], list[WindowKey]]:
     found, opened = [], {}
     for event in events:
         fields = event['fields']
@@ -43,7 +43,24 @@ def windows(events: list[dict]) -> list[Window]:
             opened[key] = time_ms
         elif fields.get('edge') == 'end' and key in opened:
             found.append(Window(*key, opened.pop(key), time_ms))
-    return sorted(found, key=lambda window: window.start_ms)
+    return sorted(found, key=lambda window: window.start_ms), list(opened)
+
+
+def windows(events: list[dict]) -> list[Window]:
+    return paired_windows(events)[0]
+
+
+def unmeasurable_windows(events: list[dict]) -> list[str]:
+    closed, unclosed = paired_windows(events)
+    seen, problems = set(), []
+    for window in closed:
+        key = (window.case, window.name)
+        if key in seen:
+            problems.append(f'{label(key)}: the window appears twice, so its measures '
+                            f'are ambiguous')
+        seen.add(key)
+    problems += [f'{label(key)}: the window never closed' for key in unclosed]
+    return problems
 
 
 def number(fields: dict, name: str) -> int:
@@ -74,14 +91,20 @@ def measure(events: list[dict], window: Window) -> dict[str, float]:
         number(last, f'{holder}_{held}') for holder in ('pool', 'scratch', 'resident'))
     gpu_us = sum(number(span, 'total_us') for span in inside(events, window, 'gpu_span')
                  if span.get('span') == 'RenderTick')
+    ticks = inside(events, window, 'gpu_ticks')
+    plugin_us = total('frame_us') + total('refresh_us')
     return {
+        'heartbeats': len(beats),
         'seconds': round(seconds, 1),
         'fps': round(frames / seconds, 1),
         'plugin_frame_us_mean': per_frame(total('frame_us')),
-        'plugin_ms_per_s': round(total('frame_us') / seconds / 1000, 1),
-        'plugin_share_pct': round(total('frame_us') / (seconds * 1e6) * 100, 1),
+        'plugin_ms_per_s': round(plugin_us / seconds / 1000, 1),
+        'plugin_share_pct': round(plugin_us / (seconds * 1e6) * 100, 1),
         **{f'{phase}_us_mean': per_frame(total(f'{phase}_us')) for phase in PHASES},
         'gpu_us_mean': per_frame(gpu_us),
+        'gpu_ticks_timed': sum(number(tick, 'timed') for tick in ticks),
+        'gpu_ticks_untimed': sum(number(tick, 'dropped') + number(tick, 'discarded')
+                                 for tick in ticks),
         'frame_max_us': peak('frame_max_us'),
         'tick_max_us': peak('tick_max_us'),
         'refresh_max_us': peak('refresh_max_us'),
@@ -115,7 +138,8 @@ def label(key: WindowKey) -> str:
 
 
 COST_MEASURES = ('seconds', 'fps', 'plugin_frame_us_mean', 'plugin_ms_per_s',
-                 'plugin_share_pct', *(f'{phase}_us_mean' for phase in PHASES), 'gpu_us_mean')
+                 'plugin_share_pct', *(f'{phase}_us_mean' for phase in PHASES), 'gpu_us_mean',
+                 'gpu_ticks_timed', 'gpu_ticks_untimed')
 SPIKE_MEASURES = ('frame_max_us', 'tick_max_us', 'refresh_max_us', 'readback_max_us',
                   'plugin_over_8ms', 'plugin_over_16ms', 'plugin_over_33ms', 'interval_max_us',
                   'hitches_50ms', 'hitches_100ms')
@@ -171,7 +195,10 @@ def window_failure(key: WindowKey, values: dict[str, float], baseline: dict[str,
                    limit: Limit) -> str | None:
     value, base = values[limit.measure], baseline.get(limit.measure, 0)
     if limit.kind == '_ratio_min':
-        ratio = value / max(base, 0.001)
+        if base <= 0:
+            return (f'{label(key)}: {limit.measure} has no baseline above zero, so its '
+                    f'ratio cannot be checked')
+        ratio = value / base
         if ratio < limit.bound:
             return (f'{label(key)}: {limit.measure} {value} is {ratio:.2f} of '
                     f'baseline, under {limit.bound}')
@@ -203,11 +230,16 @@ def budget_failures(measured: dict[WindowKey, dict[str, float]],
                     limits: list[Limit]) -> list[str]:
     failures = []
     cases = list(dict.fromkeys(case for case, _ in measured))
+    silent = [key for key, values in measured.items() if values['heartbeats'] == 0
+              and any(fnmatchcase(key[1], limit.pattern) for limit in limits)]
+    failures += [f'{label(key)}: no heartbeat fell inside the window, so its budgets '
+                 f'cannot be checked' for key in silent]
     for case in cases:
         baseline = measured.get((case, 'baseline'), {})
         for limit in limits:
             matching = [key for key in measured
-                        if key[0] == case and fnmatchcase(key[1], limit.pattern)]
+                        if key[0] == case and fnmatchcase(key[1], limit.pattern)
+                        and key not in silent]
             if limit.kind == '_growth_max':
                 found = [growth_failure(case, matching, measured, limit)]
             else:
@@ -244,12 +276,15 @@ def stall_lines(events: list[dict], results: list[dict], now_ms: int) -> list[st
                 opened.pop(key, None)
     beats = [event for event in events if event['fields'].get('action') == 'heartbeat']
     lines = []
+    current = steps[-1].get('case') if steps else None
     if steps:
         step = steps[-1]
-        lines.append(f"last step: {step.get('case')} {step.get('step')} {step.get('action')} "
-                     f"{step.get('outcome')}")
+        lines.append(f"last finished step: {step.get('case')} {step.get('step')} "
+                     f"{step.get('action')} {step.get('outcome')}; the run stopped in the "
+                     f"step after it")
     for case, window in opened:
-        lines.append(f'open window: {case}/{window}')
+        if case == current:
+            lines.append(f'open window: {case}/{window}')
     if beats:
         last = beats[-1].get('unix_ms', 0)
         lines.append(f'last heartbeat: {(now_ms - last) / 1000:.1f} s before this report')
@@ -294,4 +329,5 @@ def check_budgets(trace: Path, budgets: Path) -> tuple[str, list[str]]:
         limits = f'the budgets file {budgets} is unreadable: {error}'
     if isinstance(limits, str):
         return table, [limits]
-    return table, incomplete_heartbeats(events) + budget_failures(measured, limits)
+    return table, (incomplete_heartbeats(events) + unmeasurable_windows(events)
+                   + budget_failures(measured, limits))

@@ -91,6 +91,7 @@ private:
                                      std::span<const Value> a_arguments);
 [[nodiscard]] bool IsAnimated(const RecipeGraph &a_graph,
                               const Output &a_output);
+[[nodiscard]] bool ReadsNodePositions(const RecipeGraph &a_graph);
 
 [[nodiscard]] bool ShareableAcrossActors(const Recipe &a_recipe,
                                          const RecipeGraph &a_graph,

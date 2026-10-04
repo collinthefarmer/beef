@@ -9,6 +9,7 @@
 #include <cstdint>
 #include <optional>
 #include <span>
+#include <vector>
 
 namespace BetterEnchantmentEffects::Actors {
 class RecipeCatalog {
@@ -32,5 +33,12 @@ struct PlanRequest {
   const Studio::View &view;
 };
 
-[[nodiscard]] ActorPlan PlanActor(const PlanRequest &a_request);
+struct PlannedActor {
+  ActorPlan plan;
+  ActorMatches matches;
+};
+
+[[nodiscard]] std::vector<const PieceFacts *>
+PlannedPieces(const ActorFacts &a_facts);
+[[nodiscard]] PlannedActor PlanActor(const PlanRequest &a_request);
 }

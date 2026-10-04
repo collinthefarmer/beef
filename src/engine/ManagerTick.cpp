@@ -15,6 +15,7 @@
 #include <algorithm>
 #include <array>
 #include <cstddef>
+#include <format>
 #include <iterator>
 #include <optional>
 #include <string>
@@ -24,8 +25,23 @@
 namespace BetterEnchantmentEffects {
 namespace {
 inline constexpr std::size_t kFirstRendersPerTick = 1;
-inline constexpr std::uint32_t kArmorModelCheckMS = 100;
-inline constexpr std::uint32_t kEvictionCheckMS = 1000;
+inline constexpr std::uint32_t kSecondCheckMS = 1000;
+
+bool EvictionChanges(RE::FormID a_actor, const Actors::Phase &a_phase,
+                     float a_evictDistance) {
+  const bool present = Is<Actors::Present>(a_phase);
+  if (!present && !Is<Actors::Evicted>(a_phase)) {
+    return false;
+  }
+  const auto *actor = RE::TESForm::LookupByID<RE::Actor>(a_actor);
+  const auto *player = RE::PlayerCharacter::GetSingleton();
+  if (!actor || !player || actor->IsPlayerRef()) {
+    return false;
+  }
+  const float distance =
+      player->GetPosition().GetDistance(actor->GetPosition());
+  return Actors::InRange(a_phase, distance, a_evictDistance) != present;
+}
 
 bool AwaitsFirstRender(const LiveActor &a_state) {
   if (a_state.firstRenderAdmitted) {
@@ -488,17 +504,18 @@ void MarkReferencedInstances(LiveActor &a_state, const LiveGeometry &a_bound,
   }
 }
 
-class PhaseTimer {
+class SectionTimer {
 public:
-  explicit PhaseTimer(Metrics::Phase a_phase) noexcept : phase_(a_phase) {}
-  ~PhaseTimer() { Metrics::CountPhase(phase_, watch_.Micros()); }
-  PhaseTimer(const PhaseTimer &) = delete;
-  PhaseTimer &operator=(const PhaseTimer &) = delete;
-  PhaseTimer(PhaseTimer &&) = delete;
-  PhaseTimer &operator=(PhaseTimer &&) = delete;
+  explicit SectionTimer(Metrics::Section a_section) noexcept
+      : section_(a_section) {}
+  ~SectionTimer() { Metrics::CountSection(section_, watch_.Micros()); }
+  SectionTimer(const SectionTimer &) = delete;
+  SectionTimer &operator=(const SectionTimer &) = delete;
+  SectionTimer(SectionTimer &&) = delete;
+  SectionTimer &operator=(SectionTimer &&) = delete;
 
 private:
-  Metrics::Phase phase_;
+  Metrics::Section section_;
   Metrics::Stopwatch watch_;
 };
 
@@ -534,21 +551,6 @@ void EmitStepKinds(const Metrics::StepKindCounts &a_counts) {
     Trace::EmitSafely(Trace::Event::kMetrics, fields);
   }
 }
-
-struct PhaseFieldNames {
-  std::string_view total;
-  std::string_view longest;
-};
-
-inline constexpr std::array<PhaseFieldNames, Metrics::kPhaseCount> kPhaseFields{
-    {{"frame_us", "frame_max_us"},
-     {"tick_us", "tick_max_us"},
-     {"snapshot_us", "snapshot_max_us"},
-     {"signals_us", "signals_max_us"},
-     {"render_us", "render_max_us"},
-     {"lights_us", "lights_max_us"},
-     {"previews_us", "previews_max_us"},
-     {"sweep_us", "sweep_max_us"}}};
 
 void EmitMetricsHeartbeat() {
   EmitGpuTimings();
@@ -589,11 +591,12 @@ void EmitMetricsHeartbeat() {
       {"plugin_over_8ms", std::to_string(measured.pluginSpikes[0])},
       {"plugin_over_16ms", std::to_string(measured.pluginSpikes[1])},
       {"plugin_over_33ms", std::to_string(measured.pluginSpikes[2])}};
-  for (std::size_t i = 0; i < Metrics::kPhaseCount; ++i) {
-    heartbeat.push_back({std::string{kPhaseFields[i].total},
-                         std::to_string(measured.phases[i].micros)});
-    heartbeat.push_back({std::string{kPhaseFields[i].longest},
-                         std::to_string(measured.phases[i].maxMicros)});
+  for (const Named<Metrics::Section> &section : Metrics::kSections) {
+    const Metrics::SectionTime time = measured.Of(section.value);
+    heartbeat.push_back(
+        {std::format("{}_us", section.name), std::to_string(time.micros)});
+    heartbeat.push_back({std::format("{}_max_us", section.name),
+                         std::to_string(time.maxMicros)});
   }
   Trace::EmitSafely(Trace::Event::kMetrics, heartbeat);
 }
@@ -615,10 +618,16 @@ void Manager::OnFrame() {
                        {"us", std::to_string(startWatch.Micros())}});
   }
   if (applications_.Loading()) {
+    Metrics::ForgetFrameInterval();
     return;
   }
   AdvanceRegressionRun();
-  const PhaseTimer frameTimer{Metrics::Phase::kFrame};
+  const std::uint32_t now = NowMS();
+  if (now - lastMetricsMS_ >= 1000) {
+    lastMetricsMS_ = now;
+    EmitMetricsHeartbeat();
+  }
+  const SectionTimer frameTimer{Metrics::Section::kFrame};
   TextureLab::GetSingleton()->CollectTimings();
   SweepRetiredMaterialTextures();
   TextureLab::GetSingleton()->CollectPreviewDraws();
@@ -626,63 +635,60 @@ void Manager::OnFrame() {
   editor_.TickGesture();
   Metrics::CountFrame();
   ++renderFrame_;
-  const std::uint32_t now = NowMS();
-  if (now - lastMetricsMS_ >= 1000) {
-    lastMetricsMS_ = now;
+  if (now - lastSweepMS_ >= 1000) {
+    lastSweepMS_ = now;
     carriedTimes_.Expire(now);
     SweepAnimationEvents();
-    EmitMetricsHeartbeat();
   }
   const Settings settings = GetSettings();
-  if (now - lastArmorModelCheckMS_ >= kArmorModelCheckMS) {
-    lastArmorModelCheckMS_ = now;
-    QueueTrackedRefreshes(now, false, false);
+  if (now - lastSettlingCheckMS_ >= Actors::kPendingRecheckMs) {
+    lastSettlingCheckMS_ = now;
+    QueueSettlingActors(now);
   }
-  if (now - lastEvictionMS_ >= kEvictionCheckMS) {
-    lastEvictionMS_ = now;
-    QueueTrackedRefreshes(
-        now, true, settings.evictDistance > 0.0f && !settings.playerOnly);
+  if (now - lastSecondCheckMS_ >= kSecondCheckMS) {
+    lastSecondCheckMS_ = now;
+    QueueSecondChecks(now, settings.evictDistance);
   }
   if (now - lastTickMS_ < settings.TickIntervalMS()) {
     return;
   }
   lastTickMS_ = now;
   {
-    const PhaseTimer sweepTimer{Metrics::Phase::kSweep};
+    const SectionTimer sweepTimer{Metrics::Section::kSweep};
     Compositor::GetSingleton()->BeginTick(now);
     Compositor::GetSingleton()->SweepStepOutputs(now);
   }
   if (!applied_.empty()) {
-    const PhaseTimer tickTimer{Metrics::Phase::kTick};
+    const SectionTimer tickTimer{Metrics::Section::kTick};
     TextureLab::GetSingleton()->SetGeneratedShaders(settings.generatedShaders);
     TextureLab::GetSingleton()->BeginTimedTick(settings.gpuTiming);
     Tick(now, settings);
     TextureLab::GetSingleton()->EndTimedTick();
   }
   {
-    const PhaseTimer sweepTimer{Metrics::Phase::kSweep};
+    const SectionTimer sweepTimer{Metrics::Section::kSweep};
     SweepBoundMeshes(*Compositor::GetSingleton(), applied_, now);
   }
   {
-    const PhaseTimer snapshotTimer{Metrics::Phase::kSnapshot};
+    const SectionTimer snapshotTimer{Metrics::Section::kSnapshot};
     PublishSnapshot(now);
   }
   ObserveRegression();
 }
 
-void Manager::QueueTrackedRefreshes(std::uint32_t a_nowMS, bool a_slowCheck,
-                                    bool a_eviction) {
+void Manager::QueueSettlingActors(std::uint32_t a_nowMS) {
   for (const auto &[id, tracked] : tracked_) {
-    const auto *present = std::get_if<Actors::Present>(&tracked.phase);
-    const bool pending = present && !present->pending.empty();
-    const bool waiting =
-        present &&
-        std::ranges::any_of(present->pending,
-                            [&](const Actors::PendingModel &a_model) {
-                              return a_nowMS - a_model.sinceMs <=
-                                     Actors::kModelWaitMs + kArmorModelCheckMS;
-                            });
-    if (waiting || (a_slowCheck && (a_eviction || pending))) {
+    if (Actors::RecheckOf(tracked.phase, a_nowMS) ==
+        Actors::Recheck::kSettling) {
+      QueueRefresh(id);
+    }
+  }
+}
+
+void Manager::QueueSecondChecks(std::uint32_t a_nowMS, float a_evictDistance) {
+  for (const auto &[id, tracked] : tracked_) {
+    if (Actors::RecheckOf(tracked.phase, a_nowMS) != Actors::Recheck::kNone ||
+        EvictionChanges(id, tracked.phase, a_evictDistance)) {
       QueueRefresh(id);
     }
   }
@@ -694,7 +700,7 @@ void Manager::Tick(std::uint32_t a_nowMS, const Settings &a_settings) {
   tickNowMS_ = a_nowMS;
   const Studio::View &view = editor_.CurrentView();
   {
-    const PhaseTimer previewsTimer{Metrics::Phase::kPreviews};
+    const SectionTimer previewsTimer{Metrics::Section::kPreviews};
     TextureLab::GetSingleton()->RenderPreviews();
   }
   const TickFrame frame{a_settings, view, a_nowMS,
@@ -713,7 +719,7 @@ void Manager::Tick(std::uint32_t a_nowMS, const Settings &a_settings) {
     }
     DropLostGeometries(state);
     {
-      const PhaseTimer signalsTimer{Metrics::Phase::kSignals};
+      const SectionTimer signalsTimer{Metrics::Section::kSignals};
       for (LiveInstance &instance : state.instances) {
         if (!instance.recipe || !instance.graph || !instance.signals ||
             !instance.environment) {
@@ -731,11 +737,11 @@ void Manager::Tick(std::uint32_t a_nowMS, const Settings &a_settings) {
     }
     std::vector<bool> hidden;
     {
-      const PhaseTimer renderTimer{Metrics::Phase::kRender};
+      const SectionTimer renderTimer{Metrics::Section::kRender};
       hidden = RenderPieces(state, it->first);
     }
     {
-      const PhaseTimer lightsTimer{Metrics::Phase::kLights};
+      const SectionTimer lightsTimer{Metrics::Section::kLights};
       UpdateLights(state, hidden);
     }
     FinishApplications(it->first, state);

@@ -136,6 +136,7 @@ class RegressionBudgetTests(unittest.TestCase):
         self.assertEqual(measured['plugin_frame_us_mean'], 2000.0)
         self.assertEqual(measured['plugin_ms_per_s'], 40.0)
         self.assertEqual(measured['plugin_share_pct'], 4.0)
+        self.assertEqual(measured['heartbeats'], 2)
         self.assertEqual(measured['render_us_mean'], 1500.0)
         self.assertEqual(measured['signals_us_mean'], 200.0)
         self.assertEqual(measured['gpu_us_mean'], 50.0)
@@ -155,10 +156,64 @@ class RegressionBudgetTests(unittest.TestCase):
         events = [{'unix_ms': 1000, 'fields': {'action': 'heartbeat'}},
                   {'unix_ms': 1500, 'fields': {'action': 'post'}}]
         lines = budgets.stall_lines(events, results, 11000)
-        self.assertIn('last step: soak-fight 9 await-crowd-hurt PASS', lines)
+        self.assertIn('last finished step: soak-fight 9 await-crowd-hurt PASS; the run '
+                      'stopped in the step after it', lines)
         self.assertIn('open window: soak-fight/fight', lines)
         self.assertIn('last heartbeat: 10.0 s before this report', lines)
         self.assertIn('last trace actions: post', lines)
+
+    def test_missing_data_fails_instead_of_passing(self):
+        def edge(time_ms, case, window, kind):
+            return {'unix_ms': time_ms, 'fields': {'action': 'regression.window',
+                                                   'case': case, 'window': window,
+                                                   'edge': kind}}
+
+        def beat(time_ms, frames):
+            return {'unix_ms': time_ms, 'fields': {'action': 'heartbeat',
+                                                   'frames': str(frames),
+                                                   'frame_us': '100', 'tick_us': '0'}}
+        events = [edge(0, 'soak', 'baseline', 'begin'), beat(500, 0),
+                  edge(1000, 'soak', 'baseline', 'end'),
+                  edge(1000, 'soak', 'steady', 'begin'), beat(1500, 30),
+                  edge(2000, 'soak', 'steady', 'end'),
+                  edge(2000, 'soak', 'settle', 'begin'), edge(2100, 'soak', 'settle', 'end'),
+                  edge(3000, 'soak', 'steady', 'begin'), beat(3500, 30),
+                  edge(4000, 'soak', 'steady', 'end'),
+                  edge(4000, 'soak', 'recovery', 'begin')]
+        measured = budgets.measurements(events)
+        limits = budgets.parse_budgets({'steady': {'fps_ratio_min': 0.5},
+                                        'settle': {'frame_max_us_max': 1000}})
+        self.assertEqual(budgets.budget_failures(measured, limits), [
+            'soak/settle: no heartbeat fell inside the window, so its budgets cannot be '
+            'checked',
+            'soak/steady: fps has no baseline above zero, so its ratio cannot be checked'])
+        self.assertEqual(budgets.unmeasurable_windows(events), [
+            'soak/steady: the window appears twice, so its measures are ambiguous',
+            'soak/recovery: the window never closed'])
+
+    def test_gpu_ticks_count_timed_and_untimed(self):
+        events = [
+            {'unix_ms': 0, 'fields': {'action': 'regression.window', 'case': 'soak',
+                                      'window': 'steady', 'edge': 'begin'}},
+            {'unix_ms': 500, 'fields': {'action': 'gpu_ticks', 'timed': '20',
+                                        'dropped': '3', 'discarded': '2'}},
+            {'unix_ms': 1000, 'fields': {'action': 'regression.window', 'case': 'soak',
+                                         'window': 'steady', 'edge': 'end'}}]
+        measured = budgets.measurements(events)[('soak', 'steady')]
+        self.assertEqual(measured['gpu_ticks_timed'], 20)
+        self.assertEqual(measured['gpu_ticks_untimed'], 5)
+
+    def test_refresh_time_counts_in_the_plugin_share(self):
+        events = [
+            {'unix_ms': 0, 'fields': {'action': 'regression.window', 'case': 'soak',
+                                      'window': 'steady', 'edge': 'begin'}},
+            {'unix_ms': 1000, 'fields': {'action': 'heartbeat', 'frames': '10',
+                                         'frame_us': '10000', 'refresh_us': '10000'}},
+            {'unix_ms': 1000, 'fields': {'action': 'regression.window', 'case': 'soak',
+                                         'window': 'steady', 'edge': 'end'}}]
+        measured = budgets.measurements(events)[('soak', 'steady')]
+        self.assertEqual(measured['plugin_frame_us_mean'], 1000.0)
+        self.assertEqual(measured['plugin_share_pct'], 2.0)
 
     def test_heartbeats_without_the_cost_fields_are_reported(self):
         events = [

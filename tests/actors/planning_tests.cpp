@@ -4,6 +4,7 @@
 
 #include <array>
 #include <cstdint>
+#include <optional>
 #include <string>
 #include <vector>
 
@@ -63,7 +64,7 @@ struct Fixture {
   Studio::View view;
 
   ActorPlan Plan(const ActorFacts &a_facts) const {
-    return PlanActor({a_facts, catalog, view});
+    return PlanActor({a_facts, catalog, view}).plan;
   }
 };
 
@@ -142,15 +143,62 @@ void PinsARecipeOnTheOwningPiece() {
   Studio::View view;
   view.pin = Studio::Pin{Studio::PieceRef{0x14, 0x12E49, false}, "pinned"};
   const ActorFacts facts = LoadedActor({CuirassFacts(false, true)});
-  const ActorPlan plan = PlanActor({facts, catalog, view});
+  const ActorPlan plan = PlanActor({facts, catalog, view}).plan;
   test::Check(Find(plan, InstanceRef{"pinned", 33, std::nullopt,
                                      std::nullopt}) != nullptr,
               "a pin on the actor's piece adds its recipe");
   view.pin->piece.armorID = 0x999;
-  const ActorPlan elsewhere = PlanActor({facts, catalog, view});
+  const ActorPlan elsewhere = PlanActor({facts, catalog, view}).plan;
   test::Check(Find(elsewhere, InstanceRef{"pinned", 33, std::nullopt,
                                           std::nullopt}) == nullptr,
               "a pin on another piece adds nothing");
+}
+
+PieceFacts Gauntlets(std::optional<FormKey> a_addon, std::uint64_t a_model) {
+  PieceFacts piece;
+  piece.ref = PieceRef{FormKey{"Skyrim.esm", 0x12E46}, a_addon, false};
+  piece.itemID = 0x12E46;
+  piece.keys.armor = piece.ref.item;
+  piece.model = ModelToken{a_model};
+  piece.geometries.push_back({"Hands", "hands.dds"});
+  return piece;
+}
+
+void MatchesFollowThePlannedPieces() {
+  const Fixture fixture;
+  const ActorFacts facts =
+      LoadedActor({CuirassFacts(false, true), CuirassFacts(true, false),
+                   Gauntlets(std::nullopt, 3)});
+  const std::vector<const PieceFacts *> planned = PlannedPieces(facts);
+  test::Check(planned.size() == 2 && planned[0] == &facts.pieces[0] &&
+                  planned[1] == &facts.pieces[2],
+              "the planned pieces are the attached ones, in facts order");
+  const PlannedActor result = PlanActor({facts, fixture.catalog, fixture.view});
+  std::vector<std::string> order;
+  for (const BetterEnchantmentEffects::Geometry &geometry :
+       result.matches.geometries) {
+    order.push_back(geometry.identity.diffusePath);
+  }
+  test::Check(order == std::vector<std::string>{"body.dds", "body_trim.dds",
+                                                "hands.dds"},
+              "the matches list each planned piece's geometries in order");
+}
+
+void SeparatesTwoAddonsOfOneArmor() {
+  const Fixture fixture;
+  const FormKey left{"Skyrim.esm", 0x100};
+  const FormKey right{"Skyrim.esm", 0x101};
+  const ActorPlan plan =
+      fixture.Plan(LoadedActor({Gauntlets(left, 3), Gauntlets(right, 4)}));
+  const PlannedGeometry *first = Find(
+      plan, GeometryRef{PieceRef{FormKey{"Skyrim.esm", 0x12E46}, left, false},
+                        "Hands", 0});
+  const PlannedGeometry *second = Find(
+      plan, GeometryRef{PieceRef{FormKey{"Skyrim.esm", 0x12E46}, right, false},
+                        "Hands", 0});
+  test::Check(first && second && first->model == ModelToken{3} &&
+                  second->model == ModelToken{4},
+              "each attached addon of one armor is its own piece");
 }
 
 void SameFactsGiveTheSamePlan() {
@@ -168,6 +216,8 @@ int main() {
   FollowsTheStudioView();
   KeepsFirstPersonPiecesApart();
   PinsARecipeOnTheOwningPiece();
+  MatchesFollowThePlannedPieces();
+  SeparatesTwoAddonsOfOneArmor();
   SameFactsGiveTheSamePlan();
   return test::Finish("actor planning");
 }

@@ -105,22 +105,31 @@ ValueBindings TextureValueBindings(const RecipeGraph &graph,
 }
 
 std::string MaterialIdentityOf(const MaterialInputs &material) {
-  return std::format(
-      "{}|{}|{}|{}|{}", TextureIdentity(material.diffuse),
-      TextureIdentity(material.normal), TextureIdentity(material.rmaos),
-      TextureIdentity(material.displacement), material.flatDisplacement);
+  const auto counted = [](const TextureRef &a_texture) {
+    const std::string identity = TextureIdentity(a_texture);
+    return std::format("{}:{}", identity.size(), identity);
+  };
+  return std::format("{}|{}|{}|{}|{}", counted(material.diffuse),
+                     counted(material.normal), counted(material.rmaos),
+                     counted(material.displacement), material.flatDisplacement);
+}
+
+std::optional<std::string> MeshHashIdentityOf(const GeometryInputs &inputs) {
+  RE::BSGeometry *geometry = inputs.geometry.get();
+  Compositor *compositor = Compositor::GetSingleton();
+  if (!geometry || !compositor) {
+    return std::nullopt;
+  }
+  const auto entry = compositor->MeshOf(geometry);
+  if (!entry || !*entry || !(*entry)->mesh) {
+    return std::nullopt;
+  }
+  const MeshData &mesh = *(*entry)->mesh;
+  return std::format("mesh:{:016x}:{}", mesh.hash, mesh.partitions.size());
 }
 
 std::string MeshIdentityOf(const GeometryInputs &inputs) {
-  RE::BSGeometry *geometry = inputs.geometry.get();
-  Compositor *compositor = Compositor::GetSingleton();
-  if (geometry && compositor) {
-    const auto entry = compositor->MeshOf(geometry);
-    if (entry && *entry && (*entry)->mesh) {
-      const MeshData &mesh = *(*entry)->mesh;
-      return std::format("mesh:{:016x}:{}", mesh.hash, mesh.partitions.size());
-    }
-  }
-  return std::format("{}", reinterpret_cast<std::uintptr_t>(geometry));
+  return MeshHashIdentityOf(inputs).value_or(std::format(
+      "{}", reinterpret_cast<std::uintptr_t>(inputs.geometry.get())));
 }
 }

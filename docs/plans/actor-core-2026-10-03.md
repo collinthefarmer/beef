@@ -35,13 +35,13 @@ these words when stage 1 lands.
 
 | Word | Meaning | Type |
 |---|---|---|
-| **piece** | One worn item that can carry effects, as `PieceItemOf` decides | `PieceRef` (item, addon, first person) |
+| **piece** | One worn item and addon that can carry effects, as `WornArmorOf` decides | `PieceRef` (item, addon, first person) |
 | **model** | The 3D the engine attaches for a worn piece (the biped `partClone`) | `ModelToken` |
 | **geometry** | One `BSGeometry` inside a piece's model | `GeometryRef` (piece, name, ordinal among equal names) |
 | **instance** | One recipe on one actor for one enchantment: signals, environment, clock, light | `InstanceRef` (recipe, fingerprint, enchantment, effect key) |
 | **placement** | One instance on one geometry | `PlacementRef` |
 | **plan** | What should be installed, as plain data | `ActorPlan` (keyed) |
-| **installed** | What the engine side holds | `InstalledActor` |
+| **installed** | What the engine side holds | `Present::installed` (an `ActorPlan`) |
 | **facts** | One frame's observation of one thing | `ActorFacts` |
 | **phase** | Where an actor is in its lifecycle | `Unloaded`, `Evicted`, `Present` |
 | **pending model** | A worn piece of a present actor whose model has not attached, with the time it was first seen | `PendingModel` |
@@ -63,7 +63,9 @@ Identity types end in **Ref**, as `Studio::PieceRef`, `TextureRef` and
 (`RecipeKey`, `KeyKind`, the `PieceKey` choices of a worn piece), and no
 identity type uses it.
 
-Dropped from the actor code: **refresh**, **apply** for the act (the word keeps
+Dropped from the actor code: **refresh** (it still names the application
+queue, its traces and the budget fields; stage 4b removes it with the
+full rebuild), **apply** for the act (the word keeps
 its application-token meaning), **place** as a verb, **restore** for leaving
 eviction, **live** (kept only for heartbeat live targets).
 
@@ -138,7 +140,7 @@ the test INI, so `unload` exercised eviction. Of 1587 refreshes in
 | Stage | Work | Done when |
 |---|---|---|
 | 0 | Branch `actor-core`; this plan; the D2 renames | Native tests and the commit gate pass |
-| 1 | `src/actors/` types: keys, facts, phases, installed state, commands; the layer in `tools/gate.py`; glossary entries | The header states the data first and compiles natively |
+| 1 | `src/actors/` types: refs, facts, phases, installed state, commands; the layer in `tools/gate.py`; glossary entries | The header states the data first and compiles natively |
 | 2 | `PlanActor`: keyed plan from facts through `MatchActor` and `ViewedRecipes` | Native tests, including the studio filters |
 | 3 | `Reconcile` and `Advance` | Native tests for every row of the rules table the core owns, and for idempotence |
 | 4 | Adapter: observe, perform, admission; `Manager` drives the core; the old refresh, sweeps and containers are deleted | Windows build; `lifecycle`, `equip-cycle`, `unload`, `soak-churn` pass in game |

@@ -96,7 +96,7 @@ state for tests and tooling.
 | `Recent` | Read back the 512-line `recent_` ring. |
 | `SegmentPath`, `OpenSegment`, `Rotate` | The rotation internals: name, open, and roll the segments. |
 
-### Command tagging
+### Operation tagging
 
 Every event carries the operation and session it happened under; these
 symbols establish that context. A boundary — a menu command, a queue task —

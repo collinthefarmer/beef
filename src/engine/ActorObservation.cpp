@@ -4,7 +4,6 @@
 #include "Identity.h"
 #include "engine/EngineForms.h"
 #include "engine/WornKeys.h"
-#include "render/Compositor.h"
 #include "render/PBRMaterial.h"
 
 #include <algorithm>
@@ -17,28 +16,64 @@ namespace BetterEnchantmentEffects {
 namespace {
 std::uint64_t g_nextModelToken = 0;
 
-bool InventoryWorn(RE::Actor &a_actor, RE::TESObjectARMO *a_armor) {
-  auto inventory = a_actor.GetInventory(
-      [&](RE::TESBoundObject &a_object) { return &a_object == a_armor; });
-  for (auto &[object, pair] : inventory) {
-    auto &[count, entry] = pair;
-    if (count <= 0 || !entry || !entry->extraLists) {
-      continue;
-    }
-    for (auto *xList : *entry->extraLists) {
-      if (xList && (xList->HasType(RE::ExtraDataType::kWorn) ||
-                    xList->HasType(RE::ExtraDataType::kWornLeft))) {
-        return true;
-      }
-    }
-  }
-  return false;
+struct WornItem {
+  const RE::TESObjectARMO &armor;
+  RE::MagicItem *enchantment = nullptr;
+};
+
+bool WornList(const RE::ExtraDataList &a_list) {
+  return a_list.HasType(RE::ExtraDataType::kWorn) ||
+         a_list.HasType(RE::ExtraDataType::kWornLeft);
 }
 
-std::vector<Actors::GeometryFacts> GeometriesOf(RE::NiAVObject *a_model) {
-  std::vector<Actors::GeometryFacts> geometries;
+std::vector<WornItem> WornItemsOf(RE::Actor &a_actor) {
+  std::vector<WornItem> worn;
+  auto inventory = a_actor.GetInventory([](RE::TESBoundObject &a_object) {
+    return a_object.Is(RE::FormType::Armor);
+  });
+  for (auto &[object, pair] : inventory) {
+    auto &[count, entry] = pair;
+    const auto *armor = object ? object->As<RE::TESObjectARMO>() : nullptr;
+    if (!armor || count <= 0 || !entry || !entry->extraLists) {
+      continue;
+    }
+    bool isWorn = false;
+    RE::MagicItem *enchantment = nullptr;
+    for (const RE::ExtraDataList *list : *entry->extraLists) {
+      if (!list || !WornList(*list)) {
+        continue;
+      }
+      isWorn = true;
+      const auto *extra = list->GetByType<RE::ExtraEnchantment>();
+      if (extra && extra->enchantment) {
+        enchantment = extra->enchantment;
+        break;
+      }
+    }
+    if (isWorn) {
+      worn.push_back(
+          {*armor, enchantment ? enchantment : armor->formEnchanting});
+    }
+  }
+  return worn;
+}
+
+const WornItem *WornItemFor(std::span<const WornItem> a_worn,
+                            const RE::TESObjectARMO &a_armor) {
+  const auto found = std::ranges::find_if(a_worn, [&](const WornItem &a_item) {
+    return &a_item.armor == &a_armor;
+  });
+  return found == a_worn.end() ? nullptr : &*found;
+}
+
+struct ModelRead {
+  std::vector<ObservedGeometry> geometries;
+  bool complete = true;
+};
+
+ModelRead GeometriesOf(RE::NiAVObject *a_model, MaterialLayout &a_layout) {
+  ModelRead read;
   std::unordered_set<RE::BSLightingShaderProperty *> seen;
-  bool failed = false;
   RE::BSVisit::TraverseScenegraphGeometries(
       a_model, [&](RE::BSGeometry *a_geometry) {
         const std::string_view name{
@@ -51,16 +86,28 @@ std::vector<Actors::GeometryFacts> GeometriesOf(RE::NiAVObject *a_model) {
         if (!property || !material || !seen.insert(property).second) {
           return RE::BSVisit::BSVisitControl::kContinue;
         }
-        if (!material->TextureSlotsValid()) {
-          failed = true;
+        const bool slotsValid = material->TextureSlotsValid();
+        if (a_layout == MaterialLayout::kUnchecked) {
+          a_layout =
+              slotsValid ? MaterialLayout::kVerified : MaterialLayout::kFailed;
+        }
+        if (a_layout == MaterialLayout::kFailed) {
+          read.geometries.clear();
+          read.complete = false;
           return RE::BSVisit::BSVisitControl::kStop;
         }
+        if (!slotsValid) {
+          read.complete = false;
+          return RE::BSVisit::BSVisitControl::kContinue;
+        }
         if (property->emissiveColor) {
-          geometries.push_back({std::string{name}, material->DiffusePath()});
+          read.geometries.push_back(
+              {{std::string{name}, material->DiffusePath()},
+               RE::NiPointer{a_geometry}});
         }
         return RE::BSVisit::BSVisitControl::kContinue;
       });
-  return failed ? std::vector<Actors::GeometryFacts>{} : geometries;
+  return read;
 }
 
 ObservedModel &ModelFor(ModelTable &a_models, RE::NiAVObject *a_model,
@@ -73,8 +120,14 @@ ObservedModel &ModelFor(ModelTable &a_models, RE::NiAVObject *a_model,
   }
   a_models.models.push_back({RE::NiPointer{a_model},
                              Actors::ModelToken{++g_nextModelToken},
-                             std::nullopt, a_nowMs});
+                             {},
+                             false,
+                             a_nowMs});
   return a_models.models.back();
+}
+
+RE::TESObjectARMO *PieceItemOf(const RE::BIPOBJECT &a_object) {
+  return a_object.item ? a_object.item->As<RE::TESObjectARMO>() : nullptr;
 }
 
 struct WornArmor {
@@ -95,78 +148,67 @@ std::vector<WornArmor> WornArmorOf(RE::Actor &a_actor, bool a_firstPerson) {
       continue;
     }
     RE::NiAVObject *model = object.partClone.get();
-    const auto known = std::ranges::find(worn, armor, &WornArmor::armor);
+    const auto known = std::ranges::find_if(worn, [&](const WornArmor &a_worn) {
+      return a_worn.armor == armor && a_worn.addon == object.addon;
+    });
     if (known == worn.end()) {
       worn.push_back({armor, object.addon, model});
-    } else if (!known->model && model) {
+    } else if (!known->model) {
       known->model = model;
-      known->addon = object.addon;
     }
   }
   return worn;
 }
 
-void ObservePerson(const ObserveRequest &a_request, bool a_firstPerson,
-                   bool a_walkUnenchanted, ModelTable &a_models,
-                   Actors::ActorFacts &a_facts) {
-  RE::Actor &actor = a_request.actor;
-  for (const WornArmor &worn : WornArmorOf(actor, a_firstPerson)) {
-    if (!InventoryWorn(actor, worn.armor)) {
+struct PersonObservation {
+  const ObserveRequest &request;
+  std::span<const WornItem> worn;
+  bool firstPerson = false;
+  bool walkUnenchanted = false;
+};
+
+void ObservePerson(const PersonObservation &a_person, ModelTable &a_models,
+                   MaterialLayout &a_layout, Actors::ActorFacts &a_facts) {
+  for (const WornArmor &biped :
+       WornArmorOf(a_person.request.actor, a_person.firstPerson)) {
+    const WornItem *item = WornItemFor(a_person.worn, *biped.armor);
+    if (!item) {
       continue;
     }
-    WornPiece keys =
-        WornKeysOf(worn.armor, WornEnchantment(&actor, worn.armor));
-    if (!keys.Enchanted() && !a_walkUnenchanted) {
+    WornPiece keys = WornKeysOf(biped.armor, item->enchantment);
+    if (!keys.Enchanted() && !a_person.walkUnenchanted) {
       continue;
     }
     Actors::PieceFacts piece;
-    piece.ref = {FormKeyFor(*worn.armor),
-                 worn.addon ? std::optional{FormKeyFor(*worn.addon)}
-                            : std::nullopt,
-                 a_firstPerson};
-    piece.itemID = worn.armor->GetFormID();
+    piece.ref = {FormKeyFor(*biped.armor),
+                 biped.addon ? std::optional{FormKeyFor(*biped.addon)}
+                             : std::nullopt,
+                 a_person.firstPerson};
+    piece.itemID = biped.armor->GetFormID();
+    piece.enchantmentID =
+        item->enchantment ? item->enchantment->GetFormID() : 0;
     piece.keys = std::move(keys);
-    if (worn.model) {
-      ObservedModel &model = ModelFor(a_models, worn.model, a_request.nowMs);
-      if (!model.geometries) {
-        model.geometries = GeometriesOf(model.model.get());
+    if (biped.model) {
+      ObservedModel &model =
+          ModelFor(a_models, biped.model, a_person.request.nowMs);
+      if (!model.settled) {
+        ModelRead read = GeometriesOf(model.model.get(), a_layout);
+        model.geometries = std::move(read.geometries);
+        model.settled = read.complete;
       }
       piece.model = model.token;
-      piece.geometries = *model.geometries;
+      for (const ObservedGeometry &geometry : model.geometries) {
+        piece.geometries.push_back(geometry.facts);
+      }
     }
     a_facts.pieces.push_back(std::move(piece));
   }
 }
 }
 
-RE::TESObjectARMO *PieceItemOf(const RE::BIPOBJECT &a_object) {
-  return a_object.item ? a_object.item->As<RE::TESObjectARMO>() : nullptr;
-}
-
-RE::MagicItem *WornEnchantment(RE::Actor *a_actor, RE::TESObjectARMO *a_armor) {
-  auto inventory = a_actor->GetInventory(
-      [&](RE::TESBoundObject &a_object) { return &a_object == a_armor; });
-  for (auto &[object, pair] : inventory) {
-    auto &[count, entry] = pair;
-    if (count <= 0 || !entry || !entry->extraLists) {
-      continue;
-    }
-    for (auto *xList : *entry->extraLists) {
-      if (!xList || !(xList->HasType(RE::ExtraDataType::kWorn) ||
-                      xList->HasType(RE::ExtraDataType::kWornLeft))) {
-        continue;
-      }
-      if (const auto *xEnch = xList->GetByType<RE::ExtraEnchantment>();
-          xEnch && xEnch->enchantment) {
-        return xEnch->enchantment;
-      }
-    }
-  }
-  return a_armor->formEnchanting;
-}
-
 Actors::ActorFacts ObserveActor(const ObserveRequest &a_request,
-                                ModelTable &a_models) {
+                                ModelTable &a_models,
+                                MaterialLayout &a_layout) {
   RE::Actor &actor = a_request.actor;
   Actors::ActorFacts facts;
   facts.actor = Actors::ActorId{actor.GetFormID()};
@@ -182,14 +224,27 @@ Actors::ActorFacts ObserveActor(const ObserveRequest &a_request,
       facts.distance = player->GetPosition().GetDistance(actor.GetPosition());
     }
   }
+  const std::vector<WornItem> worn = WornItemsOf(actor);
   const bool walkUnenchanted = AnyUnenchantedKey(a_request.recipes);
   if (a_request.settings.thirdPerson) {
-    ObservePerson(a_request, false, walkUnenchanted, a_models, facts);
+    ObservePerson({a_request, worn, false, walkUnenchanted}, a_models, a_layout,
+                  facts);
   }
   if (a_request.settings.firstPerson && isPlayer) {
-    ObservePerson(a_request, true, walkUnenchanted, a_models, facts);
+    ObservePerson({a_request, worn, true, walkUnenchanted}, a_models, a_layout,
+                  facts);
   }
   return facts;
+}
+
+const ObservedModel *ModelOf(const ModelTable &a_models,
+                             Actors::ModelToken a_token) noexcept {
+  for (const ObservedModel &model : a_models.models) {
+    if (model.token == a_token) {
+      return &model;
+    }
+  }
+  return nullptr;
 }
 
 void KeepModels(ModelTable &a_models, const Actors::ActorPlan &a_installed,

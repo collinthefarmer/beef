@@ -1,6 +1,7 @@
 // GPL-3.0-only with the additional permission in COPYING.md.
 #include "actors/Lifecycle.h"
 
+#include "Core.h"
 #include "actors/Reconcile.h"
 #include "planners/Eviction.h"
 
@@ -14,25 +15,13 @@ namespace BetterEnchantmentEffects::Actors {
 namespace {
 const ActorPlan &InstalledOf(const Phase &a_phase) {
   static const ActorPlan none;
-  const Present *present = std::get_if<Present>(&a_phase);
+  const Present *present = Get<Present>(a_phase);
   return present ? present->installed : none;
-}
-
-bool InRange(const AdvanceRequest &a_request) {
-  if (!a_request.facts.distance) {
-    return true;
-  }
-  const bool evicted = std::holds_alternative<Evicted>(a_request.phase);
-  const EvictionAction action =
-      EvictionFor(*a_request.facts.distance, a_request.evictDistance, !evicted);
-  return evicted ? action == EvictionAction::kRestore ||
-                       a_request.evictDistance <= 0.0f
-                 : action != EvictionAction::kEvict;
 }
 
 std::optional<std::uint32_t> PendingSince(const Phase &a_phase,
                                           const PieceRef &a_piece) {
-  const Present *present = std::get_if<Present>(&a_phase);
+  const Present *present = Get<Present>(a_phase);
   if (!present) {
     return std::nullopt;
   }
@@ -58,7 +47,8 @@ std::vector<PendingModel> PendingOf(const AdvanceRequest &a_request) {
 
 bool Waiting(std::span<const PendingModel> a_pending, std::uint32_t a_nowMs) {
   return std::ranges::any_of(a_pending, [&](const PendingModel &a_model) {
-    return a_nowMs - a_model.sinceMs < kModelWaitMs;
+    return !a_model.piece.firstPerson &&
+           a_nowMs - a_model.sinceMs < kModelWaitMs;
   });
 }
 
@@ -72,7 +62,8 @@ Advanced Advance(const AdvanceRequest &a_request) {
   if (!a_request.facts.loaded) {
     return Retiring(Unloaded{}, installed);
   }
-  if (!InRange(a_request)) {
+  if (!InRange(a_request.phase, a_request.facts.distance,
+               a_request.evictDistance)) {
     return Retiring(Evicted{}, installed);
   }
   std::vector<PendingModel> pending = PendingOf(a_request);
@@ -81,5 +72,29 @@ Advanced Advance(const AdvanceRequest &a_request) {
   std::vector<ActorCommand> commands =
       wait ? std::vector<ActorCommand>{} : Reconcile(installed, a_request.plan);
   return {Present{installed, std::move(pending)}, std::move(commands)};
+}
+
+bool InRange(const Phase &a_phase, std::optional<float> a_distance,
+             float a_evictDistance) {
+  if (!a_distance) {
+    return true;
+  }
+  const bool evicted = Is<Evicted>(a_phase);
+  const EvictionAction action =
+      EvictionFor(*a_distance, a_evictDistance, !evicted);
+  return evicted ? action == EvictionAction::kRestore || a_evictDistance <= 0.0f
+                 : action != EvictionAction::kEvict;
+}
+
+Recheck RecheckOf(const Phase &a_phase, std::uint32_t a_nowMs) {
+  const Present *present = Get<Present>(a_phase);
+  if (!present || present->pending.empty()) {
+    return Recheck::kNone;
+  }
+  const bool settling =
+      std::ranges::any_of(present->pending, [&](const PendingModel &a_model) {
+        return a_nowMs - a_model.sinceMs < kModelWaitMs + kPendingRecheckMs;
+      });
+  return settling ? Recheck::kSettling : Recheck::kStuck;
 }
 }

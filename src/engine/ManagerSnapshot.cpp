@@ -411,7 +411,7 @@ void AppendLoadedRecipes(Manager::Snapshot &snapshot) {
 Manager::Status Manager::GetStatus() const {
   Status s;
   s.emissivePath = emissivePathEnabled_;
-  s.layoutVerified = layoutVerified_;
+  s.layoutVerified = materialLayout_ == MaterialLayout::kVerified;
   s.textureLab = TextureLab::GetSingleton()->Available();
   s.actors = static_cast<std::uint32_t>(applied_.size());
   for (const auto &[id, state] : applied_) {

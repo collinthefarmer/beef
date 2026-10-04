@@ -36,6 +36,7 @@ struct RunWorld {
   std::optional<RE::NiPoint3> playerBeforeArena;
   std::optional<float> vanityDelayBeforeRun;
   std::vector<ArmorTag> tags;
+  std::optional<ArmorTag> gauntletTag;
 };
 
 [[nodiscard]] Regression::Observation Observe(const RunWorld &a_world);

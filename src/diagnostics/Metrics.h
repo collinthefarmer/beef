@@ -1,13 +1,15 @@
 // GPL-3.0-only with the additional permission in COPYING.md.
 #pragma once
 
+#include "Core.h"
+
 #include <array>
 #include <chrono>
 #include <cstddef>
 #include <cstdint>
 
 namespace BetterEnchantmentEffects::Metrics {
-enum class Phase {
+enum class Section {
   kFrame,
   kTick,
   kSnapshot,
@@ -15,15 +17,23 @@ enum class Phase {
   kRender,
   kLights,
   kPreviews,
-  kSweep
+  kSweep,
+  kCount
 };
-inline constexpr std::size_t kPhaseCount = 8;
+inline constexpr std::size_t kSectionCount =
+    static_cast<std::size_t>(Section::kCount);
+inline constexpr Named<Section> kSections[]{
+    {Section::kFrame, "frame"},       {Section::kTick, "tick"},
+    {Section::kSnapshot, "snapshot"}, {Section::kSignals, "signals"},
+    {Section::kRender, "render"},     {Section::kLights, "lights"},
+    {Section::kPreviews, "previews"}, {Section::kSweep, "sweep"}};
+static_assert(Complete(kSections, kSectionCount));
 inline constexpr std::array<std::uint64_t, 3> kPluginSpikeMicros{8000, 16000,
                                                                  33000};
 inline constexpr std::array<std::uint64_t, 2> kHitchMicros{50000, 100000};
 inline constexpr std::size_t kStepKindSlots = 32;
 using StepKindCounts = std::array<std::uint64_t, kStepKindSlots>;
-struct PhaseTime {
+struct SectionTime {
   std::uint64_t micros = 0;
   std::uint64_t maxMicros = 0;
 };
@@ -47,12 +57,13 @@ struct Snapshot {
   std::uint64_t stepCacheHits = 0;
   std::uint64_t stepReleases = 0;
   std::uint64_t stepRestores = 0;
-  std::array<PhaseTime, kPhaseCount> phases{};
+  std::array<SectionTime, kSectionCount> sections{};
   std::array<std::uint64_t, kPluginSpikeMicros.size()> pluginSpikes{};
   std::array<std::uint64_t, kHitchMicros.size()> hitches{};
   std::uint64_t intervalMaxMicros = 0;
-  [[nodiscard]] const PhaseTime &Of(Phase a_phase) const noexcept {
-    return phases[static_cast<std::size_t>(a_phase)];
+  [[nodiscard]] SectionTime Of(Section a_section) const noexcept {
+    const auto index = static_cast<std::size_t>(a_section);
+    return index < sections.size() ? sections[index] : SectionTime{};
   }
   [[nodiscard]] bool Quiet() const noexcept {
     return refreshes == 0 && sinkAdds == 0 && sinkRemoves == 0 &&
@@ -67,12 +78,14 @@ void CountReadback(std::uint64_t a_micros) noexcept;
 void CountTargetCreated(std::uint64_t a_bytes) noexcept;
 void CountTargetDestroyed(std::uint64_t a_bytes) noexcept;
 void CountFrame() noexcept;
+void CountFrameAt(std::int64_t a_nowMicros) noexcept;
+void ForgetFrameInterval() noexcept;
 void CountRenderEvaluation() noexcept;
 void CountStepExecution(std::size_t a_kind) noexcept;
 void CountStepCacheHit() noexcept;
 void CountStepReleases(std::uint64_t a_count) noexcept;
 void CountStepRestores(std::uint64_t a_count) noexcept;
-void CountPhase(Phase a_phase, std::uint64_t a_micros) noexcept;
+void CountSection(Section a_section, std::uint64_t a_micros) noexcept;
 [[nodiscard]] Snapshot Drain() noexcept;
 
 [[nodiscard]] constexpr std::uint64_t

@@ -21,6 +21,7 @@
 
 #include <cstddef>
 #include <cstdint>
+#include <expected>
 #include <functional>
 #include <memory>
 #include <mutex>
@@ -42,6 +43,7 @@ struct RegressionWearer {
 
 struct RegressionActorFacts {
   bool live = false;
+  std::vector<RE::FormID> liveItems;
   std::uint64_t renderedAttempt = 0;
   std::string application;
 };
@@ -130,14 +132,22 @@ private:
   void RunRefresh(RE::FormID a_actorID,
                   const std::vector<ApplicationToken> &a_tokens);
   void Refresh(RE::Actor *a_actor);
-  [[nodiscard]] Actors::Advanced AdvanceActor(RE::Actor &a_actor,
-                                              const Settings &a_settings);
+  struct ActorDecision {
+    Actors::ActorFacts facts;
+    ActorMatches matches;
+    Actors::Advanced next;
+  };
+  [[nodiscard]] ActorDecision AdvanceActor(RE::Actor &a_actor,
+                                           const Settings &a_settings);
+  void NoteMaterialLayout(MaterialLayout a_before);
+  void NoteArmorWithoutGeometry(const Actors::ActorFacts &a_facts);
   void SettlePhase(RE::FormID a_actorID, Actors::Phase a_phase);
   [[nodiscard]] Actors::ActorPlan InstalledPlanOf(RE::FormID a_actorID) const;
-  void QueueTrackedRefreshes(std::uint32_t a_nowMS, bool a_slowCheck,
-                             bool a_eviction);
-  [[nodiscard]] LiveActor LiveActorFor(RE::Actor &a_actor,
-                                       const Settings &a_settings);
+  void QueueSettlingActors(std::uint32_t a_nowMS);
+  void QueueSecondChecks(std::uint32_t a_nowMS, float a_evictDistance);
+  [[nodiscard]] std::expected<LiveActor, std::string>
+  LiveActorFor(RE::Actor &a_actor, const Actors::ActorFacts &a_facts,
+               ActorMatches a_matches, const Settings &a_settings);
   void RetireEffects(RE::FormID a_actorID);
   void Retire(RE::FormID a_actorID);
   void RetireEveryActor();
@@ -152,13 +162,7 @@ private:
   void QueueAnimationEvent(AnimationEvent a_event);
   void ReconcileAnimationEvents(RE::FormID a_actor);
   void SweepAnimationEvents();
-  [[nodiscard]] std::vector<LivePiece>
-  CollectPieces(RE::Actor *a_actor, bool a_firstPerson,
-                const Settings &a_settings);
-  bool CollectPieceGeometries(LivePiece &piece, RE::NiAVObject *clone,
-                              RE::NiAVObject *root, bool verbose);
-  void MatchRecipes(RE::Actor *a_actor, LiveActor &a_state,
-                    const Settings &a_settings);
+  void BuildInstances(LiveActor &a_state, const Settings &a_settings);
   void FireEquip(RE::FormID a_actorID);
   void CarryInstanceTime(LiveInstance &a_instance, RE::FormID a_actor,
                          const Recipe &a_recipe, const Settings &a_settings);
@@ -171,8 +175,6 @@ private:
                        const Settings &a_settings, ActorStacks &a_stacks);
   void PlaceLightsOf(RE::Actor *a_actor, LiveActor &a_state,
                      const Settings &a_settings);
-  bool LayoutSanityCheck(const PbrMaterial &a_material,
-                         std::string_view a_propertyName);
 
   void Tick(std::uint32_t a_nowMS, const Settings &a_settings);
   void TickInstance(LiveInstance &a_instance, float a_time, float a_delta);
@@ -215,13 +217,14 @@ private:
     ModelTable models;
   };
   std::unordered_map<RE::FormID, TrackedActor> tracked_;
-  std::uint32_t lastArmorModelCheckMS_ = 0;
+  std::uint32_t lastSettlingCheckMS_ = 0;
   std::uint64_t regressionPaintSession_ = 0;
   std::uint32_t lastTickMS_ = 0;
   std::uint32_t lastMetricsMS_ = 0;
-  std::uint32_t lastEvictionMS_ = 0;
+  std::uint32_t lastSweepMS_ = 0;
+  std::uint32_t lastSecondCheckMS_ = 0;
   bool emissivePathEnabled_ = false;
-  bool layoutVerified_ = false;
+  MaterialLayout materialLayout_ = MaterialLayout::kUnchecked;
   bool frozenLastTick_ = false;
   bool textureLabStarted_ = false;
 

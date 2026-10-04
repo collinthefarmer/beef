@@ -11,10 +11,18 @@
 #include <vector>
 
 namespace BetterEnchantmentEffects {
+enum class MaterialLayout { kUnchecked, kVerified, kFailed };
+
+struct ObservedGeometry {
+  Actors::GeometryFacts facts;
+  RE::NiPointer<RE::BSGeometry> geometry;
+};
+
 struct ObservedModel {
   RE::NiPointer<RE::NiAVObject> model;
   Actors::ModelToken token{};
-  std::optional<std::vector<Actors::GeometryFacts>> geometries;
+  std::vector<ObservedGeometry> geometries;
+  bool settled = false;
   std::uint32_t lastSeenMs = 0;
 };
 
@@ -30,11 +38,11 @@ struct ObserveRequest {
   std::uint32_t nowMs = 0;
 };
 
-[[nodiscard]] RE::TESObjectARMO *PieceItemOf(const RE::BIPOBJECT &a_object);
-[[nodiscard]] RE::MagicItem *WornEnchantment(RE::Actor *a_actor,
-                                             RE::TESObjectARMO *a_armor);
 [[nodiscard]] Actors::ActorFacts ObserveActor(const ObserveRequest &a_request,
-                                              ModelTable &a_models);
+                                              ModelTable &a_models,
+                                              MaterialLayout &a_layout);
+[[nodiscard]] const ObservedModel *ModelOf(const ModelTable &a_models,
+                                           Actors::ModelToken a_token) noexcept;
 void KeepModels(ModelTable &a_models, const Actors::ActorPlan &a_installed,
                 std::uint32_t a_nowMs);
 }

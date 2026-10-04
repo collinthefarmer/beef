@@ -51,11 +51,11 @@ indexing one table with another table's handle. No handle wraps a pointer.
 | `RecipeId` | A row of the recipe store the caller passes as `std::span<const Recipe>`. |
 | `OutputId` | A row of the matched recipe's `outputs`. |
 
-### The actor plan
+### The actor's matches
 
 `ActorMatches` holds what the planners know about one actor as three tables of
 value rows. The rows refer to each other by handle. `MatchActor` builds the
-plan, and the query functions in `ActorMatches.cpp` read it.
+matches, and the query functions in `ActorMatches.cpp` read them.
 
 | Type | Description |
 |---|---|

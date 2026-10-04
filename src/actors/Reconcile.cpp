@@ -78,28 +78,25 @@ std::vector<ActorCommand> Reconcile(const ActorPlan &a_installed,
 }
 
 ActorPlan AfterCommand(ActorPlan a_installed, const ActorCommand &a_command) {
-  std::visit(Overloaded{
-                 [&](const InstallInstance &a_c) {
-                   Put(a_installed.instances, a_c.instance);
-                 },
-                 [&](const RetireInstance &a_c) {
-                   Erase(a_installed.instances, a_c.ref);
-                 },
-                 [&](const InstallGeometry &a_c) {
-                   Put(a_installed.geometries, a_c.geometry);
-                 },
-                 [&](const RetireGeometry &a_c) {
-                   Erase(a_installed.geometries, a_c.ref);
-                 },
-                 [&](const InstallPlacement &a_c) {
-                   Put(a_installed.placements, a_c.placement);
-                 },
-                 [&](const RetirePlacement &a_c) {
-                   Erase(a_installed.placements, a_c.ref);
-                 },
-                 [](const RebuildRender &) {},
-             },
-             a_command);
+  Match(
+      a_command,
+      [&](const InstallInstance &a_c) {
+        Put(a_installed.instances, a_c.instance);
+      },
+      [&](const RetireInstance &a_c) { Erase(a_installed.instances, a_c.ref); },
+      [&](const InstallGeometry &a_c) {
+        Put(a_installed.geometries, a_c.geometry);
+      },
+      [&](const RetireGeometry &a_c) {
+        Erase(a_installed.geometries, a_c.ref);
+      },
+      [&](const InstallPlacement &a_c) {
+        Put(a_installed.placements, a_c.placement);
+      },
+      [&](const RetirePlacement &a_c) {
+        Erase(a_installed.placements, a_c.ref);
+      },
+      [](const RebuildRender &) {});
   return a_installed;
 }
 
