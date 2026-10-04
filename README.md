@@ -44,6 +44,7 @@ enchantment on the piece itself.
 | `docs/plans/actor-core-2026-10-03.md` | How does a pure actor core replace refresh-and-rebuild with a keyed plan that each actor converges to, and in which stages? |
 | `docs/plans/render-performance-2026-09-29.md` | What costs frame time and memory when effects render, how is it measured, and in which order is it reduced? |
 | `docs/checkpoints/render-performance-review-2026-09-30.md` | What did the review of the layer-field and generated-shader commits find, and which findings are fixed? |
+| `docs/checkpoints/actor-core-review-2026-10-03.md` | What did the review of the actor-core branch find, what must be fixed before it merges, and how is each fix proven? |
 | `docs/checkpoints/regression-baseline-2026-10-03.md` | Where did the full in-game suite and each soak's performance stand on 2026-10-03, and which findings stayed open? |
 | Git history | What did the previous implementation do? The frozen `src/_old/` tree was removed during alpha source cleanup; history retains it. |
 
