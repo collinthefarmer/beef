@@ -37,6 +37,14 @@ void ParsesValidRunFile() {
   test::Equal(parsed->run, std::string{"r1"}, "run identifier kept");
   test::Equal(parsed->save, std::string{"BEEFRegression"}, "save name kept");
   test::Equal(parsed->suite.size(), std::size_t{1}, "suite resolved");
+  test::Check(!parsed->verifyRenderPlans,
+              "render plans are not verified unless the run asks");
+  const auto verifying = ParseRunFile(
+      RunFileText(
+          R"("suite":["lifecycle"],"notAfter":1800000600,"verifyRenderPlans":true)"),
+      kNow);
+  test::Check(verifying && verifying->verifyRenderPlans,
+              "a run can ask to verify render plans");
 }
 
 struct BadRunFile {
@@ -70,6 +78,9 @@ void RefusesBadRunFiles() {
        "empty run"},
       {R"({"format":1,"save":"s","suite":["lifecycle"],"notAfter":1800000600})",
        "missing run"},
+      {RunFileText(
+           R"("suite":["lifecycle"],"notAfter":1800000600,"verifyRenderPlans":1)"),
+       "verifyRenderPlans that is not a boolean"},
       {"[1,2,3]", "not an object"},
       {"{\"format\":1", "truncated"},
       {std::string(200, '[') + std::string(200, ']'), "deep nesting"},
@@ -93,6 +104,8 @@ struct Faults {
   bool crowdNeverHurt = false;
   bool cameraFlipsBack = false;
   bool firstPersonMissing = false;
+  bool unequipLeavesStray = false;
+  bool thirdPersonMissing = false;
 };
 
 struct ScratchFile {
@@ -103,10 +116,11 @@ enum class Acquire { kAddToInventory, kFromInventory };
 enum class Destination { kAway, kStart };
 
 struct SimActor {
-  ActorFacts view;
+  RoleFacts view;
   bool spawned = false;
   bool disabled = false;
   int renderIn = -1;
+  std::uint32_t strays = 0;
 };
 
 struct World {
@@ -147,7 +161,7 @@ struct World {
     for (std::size_t role = 0; role < kRoleCount; ++role) {
       seen.actors[role] = actors[role].view;
     }
-    seen.itemsLoaded = {true, true};
+    seen.itemsLoaded = {true, true, true};
     seen.npcEffects = true;
     seen.camera = camera;
     seen.awayFromStart = away;
@@ -169,6 +183,7 @@ struct World {
   void Clear(SimActor &a_actor) {
     a_actor.view.live = a_actor.view.live && faults.unloadKeepsState;
     a_actor.view.residue = 0;
+    a_actor.view.thirdPersonResidue = 0;
     a_actor.view.firstPersonResidue = 0;
     a_actor.view.present = false;
     a_actor.renderIn = -1;
@@ -178,6 +193,7 @@ struct World {
     a_actor.view.live = true;
     a_actor.view.renderedAttempt = ++revision;
     a_actor.view.residue = 2;
+    a_actor.view.thirdPersonResidue = faults.thirdPersonMissing ? 0 : 1;
     a_actor.view.firstPersonResidue = faults.firstPersonMissing ? 0 : 1;
   }
 
@@ -186,7 +202,8 @@ struct World {
     actor = SimActor{};
     actor.spawned = true;
     actor.view.present = !away;
-    actor.view.bodyArmorWorn = true;
+    actor.view.armor[IndexOf(Item::kFixture)].slotTaken = true;
+    actor.view.armor[IndexOf(Item::kPlainCuirass)].slotTaken = true;
     if (a_role == Role::kControl && faults.controlGainsState) {
       actor.view.live = true;
     }
@@ -198,6 +215,34 @@ struct World {
     armor.carried = armor.carried || a_acquire == Acquire::kAddToInventory;
     if (a_item == Item::kFixture) {
       ActorOf(a_role).renderIn = 2;
+    }
+  }
+
+  static bool Enchanted(Item a_item) { return a_item != Item::kPlainCuirass; }
+
+  static std::uint32_t EnchantedWorn(const SimActor &a_actor) {
+    std::uint32_t worn = 0;
+    for (const Named<Item> &item : kItems) {
+      if (Enchanted(item.value) &&
+          a_actor.view.armor[IndexOf(item.value)].equipped) {
+        ++worn;
+      }
+    }
+    return worn;
+  }
+
+  void TakeOff(Role a_role, Item a_item, ItemFacts a_after) {
+    SimActor &actor = ActorOf(a_role);
+    const bool wasWorn = actor.view.armor[IndexOf(a_item)].equipped;
+    actor.view.armor[IndexOf(a_item)] = a_after;
+    if (wasWorn && actor.view.live && faults.unequipLeavesStray &&
+        a_item == Item::kPairedGauntlets) {
+      actor.strays = 1;
+    }
+    if (EnchantedWorn(actor) == 0) {
+      actor.view.residue = 0;
+      actor.view.thirdPersonResidue = 0;
+      actor.view.firstPersonResidue = 0;
     }
   }
 
@@ -261,15 +306,13 @@ struct World {
             },
             [&](const UnequipArmor &a_c) {
               commands.emplace_back("unequip");
-              ActorOf(a_c.role).view.armor[IndexOf(a_c.item)].equipped = false;
-              ActorOf(a_c.role).view.residue = 0;
-              ActorOf(a_c.role).view.firstPersonResidue = 0;
+              ItemFacts after = ActorOf(a_c.role).view.armor[IndexOf(a_c.item)];
+              after.equipped = false;
+              TakeOff(a_c.role, a_c.item, after);
             },
             [&](const RemoveArmor &a_c) {
               commands.emplace_back("remove");
-              ActorOf(a_c.role).view.armor[IndexOf(a_c.item)] = {};
-              ActorOf(a_c.role).view.residue = 0;
-              ActorOf(a_c.role).view.firstPersonResidue = 0;
+              TakeOff(a_c.role, a_c.item, ItemFacts{});
             },
             [&](const SubmitApply &a_c) {
               commands.emplace_back("apply");
@@ -281,6 +324,7 @@ struct World {
               SimActor &actor = ActorOf(a_c.role);
               actor.view.live = false;
               actor.view.residue = 0;
+              actor.view.thirdPersonResidue = 0;
               actor.view.firstPersonResidue = 0;
               Submit(faults.retireFails ? Outcome::kFail : Outcome::kPass, 1);
             },
@@ -441,6 +485,9 @@ struct World {
       if (actor.renderIn > 0 && --actor.renderIn == 0) {
         Render(actor);
       }
+      actor.view.strayItems = actor.view.live ? actor.strays : 0;
+      actor.view.liveItems =
+          actor.view.live ? EnchantedWorn(actor) + actor.view.strayItems : 0;
     }
     if (requestIn > 0 && --requestIn == 0) {
       request = requestOutcome;
@@ -452,7 +499,8 @@ struct World {
     return !away && camera == Camera::kThirdPerson &&
            !actors[IndexOf(Role::kWearer)].spawned &&
            !actors[IndexOf(Role::kControl)].spawned &&
-           !player.view.armor[IndexOf(Item::kFixture)].carried;
+           !player.view.armor[IndexOf(Item::kFixture)].carried &&
+           !player.view.armor[IndexOf(Item::kPairedGauntlets)].carried;
   }
 };
 
@@ -553,11 +601,23 @@ void FailureRunsCleanup() {
 
 void BlockedEquipLeavesForeignArmor() {
   World world;
-  world.ActorOf(Role::kPlayer).view.bodyArmorWorn = true;
+  world.ActorOf(Role::kPlayer).view.armor[IndexOf(Item::kFixture)].slotTaken =
+      true;
   Drive(world, RunOf("lifecycle"), 1000);
   test::Check(!Issued(world, "remove"),
               "cleanup removes only armor the run added");
   test::Check(EndOutcome(world) == Outcome::kBlocked, "worn armor blocks");
+}
+
+void AStrayItemFailsUnequipOne() {
+  World world;
+  world.faults.unequipLeavesStray = true;
+  Drive(world, RunOf("unequip-one"), 20000);
+  test::Check(EndOutcome(world) == Outcome::kFail,
+              "effects left on an unequipped item fail the case");
+  test::Check(FirstFailure(world).starts_with("await-live-items player 1"),
+              "the wait for one live item names the failure");
+  test::Check(world.Clean(), "unequip-one cleans up after a failure");
 }
 
 void SilentRequestTimesOut() {
@@ -592,6 +652,12 @@ void CameraFaultsFailTheCameraCase() {
   Drive(missing, RunOf("camera"), 20000);
   test::Check(FirstFailure(missing).starts_with("expect-first-person-effect"),
               "a missing first-person effect fails the case");
+
+  World firstPersonOnly;
+  firstPersonOnly.faults.thirdPersonMissing = true;
+  Drive(firstPersonOnly, RunOf("camera"), 20000);
+  test::Check(FirstFailure(firstPersonOnly).starts_with("expect-effect player"),
+              "an effect only on the first-person body fails third person");
 }
 
 void UnloadedStateFailsUnload() {
@@ -773,10 +839,11 @@ void EveryFixedObservationEndsTheRun() {
       for (const RequestState &request : kEveryRequestState) {
         Observation seen;
         for (std::size_t role = 0; role < kRoleCount; ++role) {
-          ActorFacts &actor = seen.actors[role];
+          RoleFacts &actor = seen.actors[role];
           actor.present = (bits & 1) != 0 || role == 0;
           actor.live = (bits & 2) != 0;
           actor.residue = (bits & 4) != 0 ? 1 : 0;
+          actor.thirdPersonResidue = actor.residue;
           actor.armor[0] = {(bits & 8) != 0, (bits & 8) != 0};
           actor.renderedAttempt = static_cast<std::uint64_t>(bits);
         }
@@ -821,6 +888,7 @@ int main() {
   SettlingWaitsForAReadyPlayer();
   FailureRunsCleanup();
   BlockedEquipLeavesForeignArmor();
+  AStrayItemFailsUnequipOne();
   SilentRequestTimesOut();
   ControlStateFailsIsolation();
   CameraFaultsFailTheCameraCase();

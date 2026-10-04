@@ -2,11 +2,11 @@
 #include "engine/Manager.h"
 
 #include "SettingsFile.h"
+#include "actors/Lifecycle.h"
 #include "diagnostics/Metrics.h"
 #include "diagnostics/Trace.h"
 #include "engine/Clock.h"
 #include "engine/RegressionRun.h"
-#include "planners/Eviction.h"
 #include "render/Compositor.h"
 #include "render/RenderInstance.h"
 #include "render/TextureLab.h"
@@ -15,6 +15,7 @@
 #include <algorithm>
 #include <array>
 #include <cstddef>
+#include <format>
 #include <iterator>
 #include <optional>
 #include <string>
@@ -24,9 +25,23 @@
 namespace BetterEnchantmentEffects {
 namespace {
 inline constexpr std::size_t kFirstRendersPerTick = 1;
-inline constexpr std::uint32_t kArmorModelCheckMS = 100;
-inline constexpr std::uint32_t kArmorModelWaitMS = 1000;
-inline constexpr std::uint32_t kEvictionCheckMS = 1000;
+inline constexpr std::uint32_t kSecondCheckMS = 1000;
+
+bool EvictionChanges(RE::FormID a_actor, const Actors::Phase &a_phase,
+                     float a_evictDistance) {
+  const bool present = Is<Actors::Present>(a_phase);
+  if (!present && !Is<Actors::Evicted>(a_phase)) {
+    return false;
+  }
+  const auto *actor = RE::TESForm::LookupByID<RE::Actor>(a_actor);
+  const auto *player = RE::PlayerCharacter::GetSingleton();
+  if (!actor || !player || actor->IsPlayerRef()) {
+    return false;
+  }
+  const float distance =
+      player->GetPosition().GetDistance(actor->GetPosition());
+  return Actors::InRange(a_phase, distance, a_evictDistance) != present;
+}
 
 bool AwaitsFirstRender(const LiveActor &a_state) {
   if (a_state.firstRenderAdmitted) {
@@ -51,15 +66,6 @@ bool AdmitRender(LiveActor &a_state, std::size_t &a_firstRenders) {
   ++a_firstRenders;
   a_state.firstRenderAdmitted = true;
   return true;
-}
-
-bool BeyondEvictionRadius(const RE::Actor &a_actor,
-                          const Settings &a_settings) {
-  const auto *player = RE::PlayerCharacter::GetSingleton();
-  return player && !a_actor.IsPlayerRef() && !a_settings.playerOnly &&
-         a_settings.evictDistance > 0.0f &&
-         EvictionFor(player->GetPosition().GetDistance(a_actor.GetPosition()),
-                     a_settings.evictDistance, true) == EvictionAction::kEvict;
 }
 
 struct SlotWrite {
@@ -498,17 +504,18 @@ void MarkReferencedInstances(LiveActor &a_state, const LiveGeometry &a_bound,
   }
 }
 
-class PhaseTimer {
+class SectionTimer {
 public:
-  explicit PhaseTimer(Metrics::Phase a_phase) noexcept : phase_(a_phase) {}
-  ~PhaseTimer() { Metrics::CountPhase(phase_, watch_.Micros()); }
-  PhaseTimer(const PhaseTimer &) = delete;
-  PhaseTimer &operator=(const PhaseTimer &) = delete;
-  PhaseTimer(PhaseTimer &&) = delete;
-  PhaseTimer &operator=(PhaseTimer &&) = delete;
+  explicit SectionTimer(Metrics::Section a_section) noexcept
+      : section_(a_section) {}
+  ~SectionTimer() { Metrics::CountSection(section_, watch_.Micros()); }
+  SectionTimer(const SectionTimer &) = delete;
+  SectionTimer &operator=(const SectionTimer &) = delete;
+  SectionTimer(SectionTimer &&) = delete;
+  SectionTimer &operator=(SectionTimer &&) = delete;
 
 private:
-  Metrics::Phase phase_;
+  Metrics::Section section_;
   Metrics::Stopwatch watch_;
 };
 
@@ -536,7 +543,8 @@ void EmitStepKinds(const Metrics::StepKindCounts &a_counts) {
   std::vector<Trace::Field> fields{{"action", "step_kinds"}};
   for (std::size_t kind = 0; kind < kRenderStepKindCount; ++kind) {
     if (a_counts[kind] > 0) {
-      fields.push_back({StepKindNameAt(kind), std::to_string(a_counts[kind])});
+      fields.push_back(
+          {std::string{StepKindNameAt(kind)}, std::to_string(a_counts[kind])});
     }
   }
   if (fields.size() > 1) {
@@ -551,39 +559,46 @@ void EmitMetricsHeartbeat() {
       TextureLab::GetSingleton()->HeldTargets();
   const Compositor *compositor = Compositor::GetSingleton();
   EmitStepKinds(measured.stepExecutionsByKind);
-  Trace::EmitSafely(
-      Trace::Event::kMetrics,
-      {{"action", "heartbeat"},
-       {"refreshes", std::to_string(measured.refreshes)},
-       {"refresh_us", std::to_string(measured.refreshMicros)},
-       {"refresh_max_us", std::to_string(measured.refreshMaxMicros)},
-       {"sink_adds", std::to_string(measured.sinkAdds)},
-       {"sink_removes", std::to_string(measured.sinkRemoves)},
-       {"readbacks", std::to_string(measured.readbacks)},
-       {"readback_us", std::to_string(measured.readbackMicros)},
-       {"readback_max_us", std::to_string(measured.readbackMaxMicros)},
-       {"targets", std::to_string(measured.targets)},
-       {"targets_peak", std::to_string(measured.targetsPeak)},
-       {"target_bytes", std::to_string(measured.targetBytes)},
-       {"target_bytes_peak", std::to_string(measured.targetBytesPeak)},
-       {"pool_targets", std::to_string(held.idleTargets)},
-       {"pool_bytes", std::to_string(held.idleBytes)},
-       {"scratch_targets", std::to_string(held.scratchTargets)},
-       {"scratch_bytes", std::to_string(held.scratchBytes)},
-       {"resident_targets", std::to_string(compositor->ResidentTargets())},
-       {"resident_bytes", std::to_string(compositor->ResidentBytes())},
-       {"frames", std::to_string(measured.frames)},
-       {"render_evaluations", std::to_string(measured.renderEvaluations)},
-       {"step_executions", std::to_string(measured.stepExecutions)},
-       {"step_cache_hits", std::to_string(measured.stepCacheHits)},
-       {"step_releases", std::to_string(measured.stepReleases)},
-       {"step_restores", std::to_string(measured.stepRestores)},
-       {"frame_us", std::to_string(measured.frame.micros)},
-       {"frame_max_us", std::to_string(measured.frame.maxMicros)},
-       {"tick_us", std::to_string(measured.tick.micros)},
-       {"tick_max_us", std::to_string(measured.tick.maxMicros)},
-       {"snapshot_us", std::to_string(measured.snapshot.micros)},
-       {"snapshot_max_us", std::to_string(measured.snapshot.maxMicros)}});
+  std::vector<Trace::Field> heartbeat{
+      {"action", "heartbeat"},
+      {"refreshes", std::to_string(measured.refreshes)},
+      {"refresh_us", std::to_string(measured.refreshMicros)},
+      {"refresh_max_us", std::to_string(measured.refreshMaxMicros)},
+      {"sink_adds", std::to_string(measured.sinkAdds)},
+      {"sink_removes", std::to_string(measured.sinkRemoves)},
+      {"readbacks", std::to_string(measured.readbacks)},
+      {"readback_us", std::to_string(measured.readbackMicros)},
+      {"readback_max_us", std::to_string(measured.readbackMaxMicros)},
+      {"targets", std::to_string(measured.targets)},
+      {"targets_peak", std::to_string(measured.targetsPeak)},
+      {"target_bytes", std::to_string(measured.targetBytes)},
+      {"target_bytes_peak", std::to_string(measured.targetBytesPeak)},
+      {"pool_targets", std::to_string(held.idleTargets)},
+      {"pool_bytes", std::to_string(held.idleBytes)},
+      {"scratch_targets", std::to_string(held.scratchTargets)},
+      {"scratch_bytes", std::to_string(held.scratchBytes)},
+      {"resident_targets", std::to_string(compositor->ResidentTargets())},
+      {"resident_bytes", std::to_string(compositor->ResidentBytes())},
+      {"frames", std::to_string(measured.frames)},
+      {"render_evaluations", std::to_string(measured.renderEvaluations)},
+      {"step_executions", std::to_string(measured.stepExecutions)},
+      {"step_cache_hits", std::to_string(measured.stepCacheHits)},
+      {"step_releases", std::to_string(measured.stepReleases)},
+      {"step_restores", std::to_string(measured.stepRestores)},
+      {"interval_max_us", std::to_string(measured.intervalMaxMicros)},
+      {"hitches_50ms", std::to_string(measured.hitches[0])},
+      {"hitches_100ms", std::to_string(measured.hitches[1])},
+      {"plugin_over_8ms", std::to_string(measured.pluginSpikes[0])},
+      {"plugin_over_16ms", std::to_string(measured.pluginSpikes[1])},
+      {"plugin_over_33ms", std::to_string(measured.pluginSpikes[2])}};
+  for (const Named<Metrics::Section> &section : Metrics::kSections) {
+    const Metrics::SectionTime time = measured.Of(section.value);
+    heartbeat.push_back(
+        {std::format("{}_us", section.name), std::to_string(time.micros)});
+    heartbeat.push_back({std::format("{}_max_us", section.name),
+                         std::to_string(time.maxMicros)});
+  }
+  Trace::EmitSafely(Trace::Event::kMetrics, heartbeat);
 }
 }
 
@@ -593,11 +608,26 @@ void Manager::FlushMetricsHeartbeat() {
 }
 
 void Manager::OnFrame() {
+  if (!textureLabStarted_) {
+    textureLabStarted_ = true;
+    const Metrics::Stopwatch startWatch;
+    const bool started = TextureLab::GetSingleton()->Init();
+    Trace::EmitSafely(Trace::Event::kMetrics,
+                      {{"action", "texture_lab_start"},
+                       {"started", started ? "true" : "false"},
+                       {"us", std::to_string(startWatch.Micros())}});
+  }
   if (applications_.Loading()) {
+    Metrics::ForgetFrameInterval();
     return;
   }
   AdvanceRegressionRun();
-  const PhaseTimer frameTimer{Metrics::Phase::kFrame};
+  const std::uint32_t now = NowMS();
+  if (now - lastMetricsMS_ >= 1000) {
+    lastMetricsMS_ = now;
+    EmitMetricsHeartbeat();
+  }
+  const SectionTimer frameTimer{Metrics::Section::kFrame};
   TextureLab::GetSingleton()->CollectTimings();
   SweepRetiredMaterialTextures();
   TextureLab::GetSingleton()->CollectPreviewDraws();
@@ -605,122 +635,60 @@ void Manager::OnFrame() {
   editor_.TickGesture();
   Metrics::CountFrame();
   ++renderFrame_;
-  const std::uint32_t now = NowMS();
-  if (now - lastMetricsMS_ >= 1000) {
-    lastMetricsMS_ = now;
+  if (now - lastSweepMS_ >= 1000) {
+    lastSweepMS_ = now;
     carriedTimes_.Expire(now);
     SweepAnimationEvents();
-    EmitMetricsHeartbeat();
   }
   const Settings settings = GetSettings();
-  if (now - lastArmorModelCheckMS_ >= kArmorModelCheckMS) {
-    lastArmorModelCheckMS_ = now;
-    SweepAwaitingArmorModels(settings);
+  if (now - lastSettlingCheckMS_ >= Actors::kPendingRecheckMs) {
+    lastSettlingCheckMS_ = now;
+    QueueSettlingActors(now);
   }
-  if (now - lastEvictionMS_ >= kEvictionCheckMS) {
-    lastEvictionMS_ = now;
-    SweepEviction(settings);
+  if (now - lastSecondCheckMS_ >= kSecondCheckMS) {
+    lastSecondCheckMS_ = now;
+    QueueSecondChecks(now, settings.evictDistance);
   }
   if (now - lastTickMS_ < settings.TickIntervalMS()) {
     return;
   }
   lastTickMS_ = now;
-  Compositor::GetSingleton()->BeginTick(now);
-  Compositor::GetSingleton()->SweepStepOutputs(now);
+  {
+    const SectionTimer sweepTimer{Metrics::Section::kSweep};
+    Compositor::GetSingleton()->BeginTick(now);
+    Compositor::GetSingleton()->SweepStepOutputs(now);
+  }
   if (!applied_.empty()) {
-    const PhaseTimer tickTimer{Metrics::Phase::kTick};
+    const SectionTimer tickTimer{Metrics::Section::kTick};
     TextureLab::GetSingleton()->SetGeneratedShaders(settings.generatedShaders);
     TextureLab::GetSingleton()->BeginTimedTick(settings.gpuTiming);
     Tick(now, settings);
     TextureLab::GetSingleton()->EndTimedTick();
   }
-  SweepBoundMeshes(*Compositor::GetSingleton(), applied_, now);
   {
-    const PhaseTimer snapshotTimer{Metrics::Phase::kSnapshot};
+    const SectionTimer sweepTimer{Metrics::Section::kSweep};
+    SweepBoundMeshes(*Compositor::GetSingleton(), applied_, now);
+  }
+  {
+    const SectionTimer snapshotTimer{Metrics::Section::kSnapshot};
     PublishSnapshot(now);
   }
   ObserveRegression();
 }
 
-void Manager::SweepAwaitingArmorModels(const Settings &a_settings) {
-  if (awaitingArmorModel_.empty()) {
-    return;
-  }
-  const std::uint32_t now = NowMS();
-  std::vector<RE::FormID> attached;
-  std::vector<RE::FormID> expired;
-  std::erase_if(awaitingArmorModel_,
-                [&](std::pair<const RE::FormID, ArmorModelWait> &a_wait) {
-                  const RE::FormID id = a_wait.first;
-                  RE::Actor *actor = RE::TESForm::LookupByID<RE::Actor>(id);
-                  if (!actor || actor->IsDeleted() || !actor->Is3DLoaded()) {
-                    return true;
-                  }
-                  if (BeyondEvictionRadius(*actor, a_settings)) {
-                    return false;
-                  }
-                  if (!ArmorAwaitsModel(*actor)) {
-                    attached.push_back(id);
-                    return true;
-                  }
-                  if (!a_wait.second.expired &&
-                      now - a_wait.second.sinceMS >= kArmorModelWaitMS) {
-                    a_wait.second.expired = true;
-                    expired.push_back(id);
-                  }
-                  return false;
-                });
-  for (const RE::FormID id : attached) {
-    Trace::EmitSafely(
-        Trace::Event::kApplication,
-        {{"action", "armor_model_attached"}, {"actor", std::to_string(id)}});
-    QueueRefresh(id);
-  }
-  for (const RE::FormID id : expired) {
-    Trace::EmitSafely(Trace::Event::kApplication,
-                      {{"action", "armor_model_wait_expired"},
-                       {"actor", std::to_string(id)}});
-    QueueRefresh(id);
+void Manager::QueueSettlingActors(std::uint32_t a_nowMS) {
+  for (const auto &[id, tracked] : tracked_) {
+    if (Actors::RecheckOf(tracked.phase, a_nowMS) ==
+        Actors::Recheck::kSettling) {
+      QueueRefresh(id);
+    }
   }
 }
 
-void Manager::SweepEviction(const Settings &a_settings) {
-  if (a_settings.evictDistance <= 0.0f || a_settings.playerOnly) {
-    evictedForDistance_.clear();
-    return;
-  }
-  const auto *player = RE::PlayerCharacter::GetSingleton();
-  if (!player) {
-    return;
-  }
-  const RE::NiPoint3 origin = player->GetPosition();
-  const auto distanceOf = [&origin](RE::Actor &a_actor) {
-    return origin.GetDistance(a_actor.GetPosition());
-  };
-  std::vector<RE::FormID> evict;
-  for (const auto &[id, state] : applied_) {
-    const RE::NiPointer<RE::Actor> actor = state.actor.get();
-    if (actor && BeyondEvictionRadius(*actor, a_settings)) {
-      evict.push_back(id);
-    }
-  }
-  for (const RE::FormID id : evict) {
-    Retire(id);
-    evictedForDistance_.insert(id);
-    Trace::EmitSafely(Trace::Event::kRetire,
-                      {{"action", "evict_far"}, {"actor", std::to_string(id)}});
-  }
-  std::vector<RE::FormID> restore;
-  for (const RE::FormID id : evictedForDistance_) {
-    RE::Actor *actor = RE::TESForm::LookupByID<RE::Actor>(id);
-    if (!actor || EvictionFor(distanceOf(*actor), a_settings.evictDistance,
-                              false) == EvictionAction::kRestore) {
-      restore.push_back(id);
-    }
-  }
-  for (const RE::FormID id : restore) {
-    evictedForDistance_.erase(id);
-    if (RE::TESForm::LookupByID<RE::Actor>(id)) {
+void Manager::QueueSecondChecks(std::uint32_t a_nowMS, float a_evictDistance) {
+  for (const auto &[id, tracked] : tracked_) {
+    if (Actors::RecheckOf(tracked.phase, a_nowMS) != Actors::Recheck::kNone ||
+        EvictionChanges(id, tracked.phase, a_evictDistance)) {
       QueueRefresh(id);
     }
   }
@@ -731,7 +699,10 @@ void Manager::FireDueFinalizes() { applications_.FinalizeDue(NowMS()); }
 void Manager::Tick(std::uint32_t a_nowMS, const Settings &a_settings) {
   tickNowMS_ = a_nowMS;
   const Studio::View &view = editor_.CurrentView();
-  TextureLab::GetSingleton()->RenderPreviews();
+  {
+    const SectionTimer previewsTimer{Metrics::Section::kPreviews};
+    TextureLab::GetSingleton()->RenderPreviews();
+  }
   const TickFrame frame{a_settings, view, a_nowMS,
                         frozenLastTick_ && !view.freeze};
   frozenLastTick_ = view.freeze;
@@ -747,21 +718,32 @@ void Manager::Tick(std::uint32_t a_nowMS, const Settings &a_settings) {
       continue;
     }
     DropLostGeometries(state);
-    for (LiveInstance &instance : state.instances) {
-      if (!instance.recipe || !instance.graph || !instance.signals ||
-          !instance.environment) {
-        continue;
+    {
+      const SectionTimer signalsTimer{Metrics::Section::kSignals};
+      for (LiveInstance &instance : state.instances) {
+        if (!instance.recipe || !instance.graph || !instance.signals ||
+            !instance.environment) {
+          continue;
+        }
+        const InstanceTiming timing = InstanceTimeFor(instance, frame);
+        TickInstance(instance, timing.time, timing.delta);
+        instance.lastTime = timing.time;
       }
-      const InstanceTiming timing = InstanceTimeFor(instance, frame);
-      TickInstance(instance, timing.time, timing.delta);
-      instance.lastTime = timing.time;
     }
     if (!AdmitRender(state, firstRenders)) {
       FinishApplications(it->first, state);
       ++it;
       continue;
     }
-    UpdateLights(state, RenderPieces(state, it->first));
+    std::vector<bool> hidden;
+    {
+      const SectionTimer renderTimer{Metrics::Section::kRender};
+      hidden = RenderPieces(state, it->first);
+    }
+    {
+      const SectionTimer lightsTimer{Metrics::Section::kLights};
+      UpdateLights(state, hidden);
+    }
     FinishApplications(it->first, state);
     if (Alive(state)) {
       ++it;

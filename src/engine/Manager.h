@@ -3,12 +3,15 @@
 
 #include "PCH.h"
 #include "Settings.h"
+#include "actors/Actor.h"
 #include "diagnostics/WarningHistory.h"
+#include "engine/ActorObservation.h"
 #include "engine/AnimationSubscriptions.h"
 #include "engine/ApplicationService.h"
 #include "engine/InstanceTime.h"
 #include "engine/LiveActor.h"
 #include "engine/RecipeEditor.h"
+#include "engine/RenderPlanCache.h"
 #include "planners/ActorPlanning.h"
 #include "recipe/Recipe.h"
 #include "regression/Run.h"
@@ -18,6 +21,7 @@
 
 #include <cstddef>
 #include <cstdint>
+#include <expected>
 #include <functional>
 #include <memory>
 #include <mutex>
@@ -32,8 +36,6 @@
 namespace BetterEnchantmentEffects {
 struct ActorStacks;
 
-[[nodiscard]] bool ArmorAwaitsModel(RE::Actor &a_actor);
-
 struct RegressionWearer {
   RE::FormID actor = 0;
   RE::FormID armor = 0;
@@ -41,6 +43,7 @@ struct RegressionWearer {
 
 struct RegressionActorFacts {
   bool live = false;
+  std::vector<RE::FormID> liveItems;
   std::uint64_t renderedAttempt = 0;
   std::string application;
 };
@@ -129,10 +132,22 @@ private:
   void RunRefresh(RE::FormID a_actorID,
                   const std::vector<ApplicationToken> &a_tokens);
   void Refresh(RE::Actor *a_actor);
-  [[nodiscard]] bool EligibleForRefresh(RE::Actor &a_actor,
-                                        const Settings &a_settings);
-  [[nodiscard]] LiveActor LiveActorFor(RE::Actor &a_actor,
-                                       const Settings &a_settings);
+  struct ActorDecision {
+    Actors::ActorFacts facts;
+    ActorMatches matches;
+    Actors::Advanced next;
+  };
+  [[nodiscard]] ActorDecision AdvanceActor(RE::Actor &a_actor,
+                                           const Settings &a_settings);
+  void NoteMaterialLayout(MaterialLayout a_before);
+  void NoteArmorWithoutGeometry(const Actors::ActorFacts &a_facts);
+  void SettlePhase(RE::FormID a_actorID, Actors::Phase a_phase);
+  [[nodiscard]] Actors::ActorPlan InstalledPlanOf(RE::FormID a_actorID) const;
+  void QueueSettlingActors(std::uint32_t a_nowMS);
+  void QueueSecondChecks(std::uint32_t a_nowMS, float a_evictDistance);
+  [[nodiscard]] std::expected<LiveActor, std::string>
+  LiveActorFor(RE::Actor &a_actor, const Actors::ActorFacts &a_facts,
+               ActorMatches a_matches, const Settings &a_settings);
   void RetireEffects(RE::FormID a_actorID);
   void Retire(RE::FormID a_actorID);
   void RetireEveryActor();
@@ -147,18 +162,12 @@ private:
   void QueueAnimationEvent(AnimationEvent a_event);
   void ReconcileAnimationEvents(RE::FormID a_actor);
   void SweepAnimationEvents();
-  [[nodiscard]] std::vector<LivePiece>
-  CollectPieces(RE::Actor *a_actor, bool a_firstPerson,
-                const Settings &a_settings);
-  bool CollectPieceGeometries(LivePiece &piece, RE::NiAVObject *clone,
-                              RE::NiAVObject *root, bool verbose);
-  void MatchRecipes(RE::Actor *a_actor, LiveActor &a_state,
-                    const Settings &a_settings);
+  void BuildInstances(LiveActor &a_state, const Settings &a_settings);
   void FireEquip(RE::FormID a_actorID);
   void CarryInstanceTime(LiveInstance &a_instance, RE::FormID a_actor,
                          const Recipe &a_recipe, const Settings &a_settings);
   [[nodiscard]] std::optional<std::size_t>
-  InstanceFor(LiveActor &a_state, InstanceId a_planInstance,
+  InstanceFor(LiveActor &a_state, InstanceId a_matchedInstance,
               RE::FormID a_enchantment, const Settings &a_settings);
   void PlaceInstances(LiveActor &a_state, RE::FormID a_actorID,
                       const Settings &a_settings);
@@ -166,8 +175,6 @@ private:
                        const Settings &a_settings, ActorStacks &a_stacks);
   void PlaceLightsOf(RE::Actor *a_actor, LiveActor &a_state,
                      const Settings &a_settings);
-  bool LayoutSanityCheck(const PbrMaterial &a_material,
-                         std::string_view a_propertyName);
 
   void Tick(std::uint32_t a_nowMS, const Settings &a_settings);
   void TickInstance(LiveInstance &a_instance, float a_time, float a_delta);
@@ -203,24 +210,23 @@ private:
   WarningHistory stackWarnings_;
 
   CarriedTimes carriedTimes_;
+  RenderPlanCache renderPlans_;
 
-  std::unordered_set<RE::FormID> evictedForDistance_;
-  void SweepEviction(const Settings &a_settings);
-  struct ArmorModelWait {
-    std::uint32_t sinceMS = 0;
-    bool expired = false;
+  struct TrackedActor {
+    Actors::Phase phase = Actors::Unloaded{};
+    ModelTable models;
   };
-  std::unordered_map<RE::FormID, ArmorModelWait> awaitingArmorModel_;
-  [[nodiscard]] bool DefersForArmorModel(RE::FormID a_actorID) const;
-  void SweepAwaitingArmorModels(const Settings &a_settings);
-  std::uint32_t lastArmorModelCheckMS_ = 0;
+  std::unordered_map<RE::FormID, TrackedActor> tracked_;
+  std::uint32_t lastSettlingCheckMS_ = 0;
   std::uint64_t regressionPaintSession_ = 0;
   std::uint32_t lastTickMS_ = 0;
   std::uint32_t lastMetricsMS_ = 0;
-  std::uint32_t lastEvictionMS_ = 0;
+  std::uint32_t lastSweepMS_ = 0;
+  std::uint32_t lastSecondCheckMS_ = 0;
   bool emissivePathEnabled_ = false;
-  bool layoutVerified_ = false;
+  MaterialLayout materialLayout_ = MaterialLayout::kUnchecked;
   bool frozenLastTick_ = false;
+  bool textureLabStarted_ = false;
 
   mutable std::mutex snapshotLock_;
   std::shared_ptr<const Snapshot> latest_ = std::make_shared<Snapshot>();

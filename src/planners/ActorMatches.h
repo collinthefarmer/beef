@@ -46,33 +46,33 @@ struct Placement {
   [[nodiscard]] bool operator==(const Placement &) const = default;
 };
 
-struct ActorPlan {
+struct ActorMatches {
   std::vector<Geometry> geometries;
   std::vector<Instance> instances;
   std::vector<Placement> placements;
 };
 
-[[nodiscard]] const Geometry *GeometryAt(const ActorPlan &a_plan,
+[[nodiscard]] const Geometry *GeometryAt(const ActorMatches &a_matches,
                                          GeometryId a_geometry) noexcept;
-[[nodiscard]] const Instance *InstanceAt(const ActorPlan &a_plan,
+[[nodiscard]] const Instance *InstanceAt(const ActorMatches &a_matches,
                                          InstanceId a_instance) noexcept;
-[[nodiscard]] const Placement *PlacementAt(const ActorPlan &a_plan,
+[[nodiscard]] const Placement *PlacementAt(const ActorMatches &a_matches,
                                            PlacementId a_placement) noexcept;
 
 [[nodiscard]] bool LightEligible(const Geometry &a_geometry,
                                  const LightOutput &a_light);
 
-[[nodiscard]] bool AnyLiveGeometry(const ActorPlan &a_plan) noexcept;
+[[nodiscard]] bool AnyLiveGeometry(const ActorMatches &a_matches) noexcept;
 [[nodiscard]] std::optional<InstanceId>
-FindInstance(const ActorPlan &a_plan, RecipeId a_recipe,
+FindInstance(const ActorMatches &a_matches, RecipeId a_recipe,
              const std::optional<FormKey> &a_enchantment,
              const std::optional<RecipeKey> &a_effectKey = {}) noexcept;
 [[nodiscard]] std::vector<RecipeId>
-RecipesOfInactiveInstances(const ActorPlan &a_plan);
+RecipesOfInactiveInstances(const ActorMatches &a_matches);
 [[nodiscard]] std::vector<PlacementId>
-PlacementsOfGeometry(const ActorPlan &a_plan, GeometryId a_geometry);
+PlacementsOfGeometry(const ActorMatches &a_matches, GeometryId a_geometry);
 [[nodiscard]] std::vector<PlacementId>
-PlacementsOfInstance(const ActorPlan &a_plan, InstanceId a_instance);
+PlacementsOfInstance(const ActorMatches &a_matches, InstanceId a_instance);
 
 struct PieceMatch {
   std::size_t instance = 0;
@@ -81,18 +81,19 @@ struct PieceMatch {
 };
 
 [[nodiscard]] std::vector<PieceMatch>
-MatchesForPiece(const ActorPlan &a_plan, GeometryId a_firstGeometry,
+MatchesForPiece(const ActorMatches &a_matches, GeometryId a_firstGeometry,
                 std::size_t a_geomCount);
 [[nodiscard]] std::optional<std::size_t>
-PlacedIndexOf(const ActorPlan &a_plan,
+PlacedIndexOf(const ActorMatches &a_matches,
               std::span<const PlacementId> a_placements, InstanceId a_instance);
 [[nodiscard]] std::optional<InstanceId>
-InstanceOfPlaced(const ActorPlan &a_plan,
+InstanceOfPlaced(const ActorMatches &a_matches,
                  std::span<const PlacementId> a_placements,
                  std::size_t a_placed);
 [[nodiscard]] std::vector<GeometryId>
-ThirdPersonGeometriesOfInstance(const ActorPlan &a_plan, InstanceId a_instance);
-[[nodiscard]] const Variant *InstanceVariant(const ActorPlan &a_plan,
+ThirdPersonGeometriesOfInstance(const ActorMatches &a_matches,
+                                InstanceId a_instance);
+[[nodiscard]] const Variant *InstanceVariant(const ActorMatches &a_matches,
                                              InstanceId a_instance,
                                              const Recipe &a_recipe);
 }

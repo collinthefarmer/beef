@@ -285,6 +285,8 @@ RequirementsOf(const RenderStepKind &step);
                                                     RenderValueRef value);
 [[nodiscard]] std::expected<void, std::string>
 ValidateRenderPlan(const RenderPlan &plan);
+[[nodiscard]] bool SameStructure(const RenderPlan &a_left,
+                                 const RenderPlan &a_right);
 [[nodiscard]] std::expected<RenderPlan, std::string>
 LowerRenderPlan(std::span<const TextureDemand> demands,
                 std::span<const RenderStackRequest> stacks,

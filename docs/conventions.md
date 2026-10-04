@@ -81,11 +81,11 @@ Rules:
 `diagnostics/Trace.h` is the trace recorder:
 
 - `Trace::Emit(Event, fields)` appends one structured line per event. The
-  events: `kStartup`, `kSettings`, `kRecipe`, `kCommand`, `kPage`, `kQueue`,
+  events: `kStartup`, `kSettings`, `kRecipe`, `kOperation`, `kPage`, `kQueue`,
   `kLoad`, `kApplication`, `kRetire`, `kBinding`, `kRestore`, `kTexture`,
   `kShell`, `kPreview`, `kCaptureFailure`.
 - The trace file rotates in 32 MiB segments; the recorder keeps the last two.
-- `Trace::Scope` tags the events of one command with a command id.
+- `Trace::Scope` tags the events of one operation with an operation id.
 - `Trace::Safely` wraps a capture. A capture that throws becomes a
   `kCaptureFailure` event, not a crash.
 - `tools/trace-report.py` reads the file.
@@ -337,7 +337,7 @@ the type.
   engine adapter executes their **plans**.
 - A planner decides over value records and opaque handles. It never takes an
   engine (`RE::`) pointer. Example: `Merge`'s `Plan*` take
-  `PlacedRecipe`/`SlotContributor`; an actor planner takes an `ActorPlan`
+  `PlacedRecipe`/`SlotContributor`; an actor planner takes an `ActorMatches`
   over opaque ids.
 - When a decision needs a live pointer, the split is wrong: move that logic
   into the adapter. This keeps the pure core testable without the engine and
@@ -396,7 +396,7 @@ and term templates:
 
 ### Handles
 
-- `ActorPlan::geometries` is flat. Each planner `Geometry` describes one
+- `ActorMatches::geometries` is flat. Each planner `Geometry` describes one
   renderable **geometry**, and its `GeometryId` also identifies the
   corresponding geometry in the runtime's nested traversal order.
 - `LiveActor::pieces` groups runtime geometries by worn armor part.
@@ -412,7 +412,7 @@ and term templates:
 - `planners/ActorPlanning` matches recipes and builds geometry and light
   plans through `PlanGeometryPlacement` and `PlanActorLights`. It does not
   apply them to the engine.
-- `RecipesOfInactiveInstances` is an `ActorPlan` query. It reports one
+- `RecipesOfInactiveInstances` is an `ActorMatches` query. It reports one
   recipe id per **instance** without live geometry, so a result can repeat a
   recipe id or name a recipe that still has another active instance.
 
@@ -666,7 +666,8 @@ with these meanings and no other word for the same thing.
 | **biped slot** | An armor equipment slot, 30 to 61 (`enum class BipedSlot`, `kBipedSlots`, `BipedSlotFromName`). Parsed once at the JSON boundary. The NIF's raw partition field is not this type (`REFERENCE.md`, mesh). |
 | **partition** | A run of triangles inside one mesh (`MeshPartition`). A `PartitionBake` selects one by its `bipedSlot`. |
 | **contributor** | The placed recipe that won a slot or a light (`SlotContributor`, `LightContributor` in `recipe/Merge.h`), paired with an output index in a `SlotContribution`/`LightContribution`. |
-| **plan** | What a planner decided, as plain data, before anything is applied: `ActorPlan`, `GeometryPlan`, `LightPlan`, `StackPlan`, `BindingPlan`. A plan holds no `RE::` pointer. |
+| **plan** | What a planner decided, as plain data, before anything is applied: `GeometryPlan`, `LightPlan`, `StackPlan`, `BindingPlan`. A plan holds no `RE::` pointer. The actor core's keyed `Actors::ActorPlan` is the plan an actor converges to. |
+| **matches** | Which recipes matched which geometries of one actor: geometries, instances and placements by position (`ActorMatches`, made by `MatchActor`). The input the planners plan from; not itself a plan. |
 | **binding** | A live attachment to an engine object that must be undone: `MaterialBinding`, `ShellBinding`, `LightBinding`. `MaterialBinding` and `ShellBinding` are `SlotTarget`s; `LightBinding` stands alone. The decision that produced a binding is a `BindingPlan`. |
 | **lease** | A `shared_ptr` whose lifetime reserves a shared resource. The resource frees when the last lease drops (`TargetPool`, `TextureLeases`, `ConsumptionLeases`). |
 | **target** | A render target the lab owns (`TextureLab::RenderTarget`), pooled by `RenderTargetPool`, referenced through a `TextureRef`. `SlotTarget` is the unrelated write interface a binding implements. |
@@ -696,7 +697,14 @@ with these meanings and no other word for the same thing.
 | **step output cache** | The Compositor's cache of static render-step outputs shared across actors (`StepOutputCache` in `render/StepOutputCache.h`, held as `Compositor::stepOutputs_`). |
 | **application scope** | The application context and actor form ID that keep state and signal identities apart (`ApplicationScope` in `render/Compositor.h`). |
 | **residue** | What the plugin leaves on an actor's 3D: shell geometries and presenter textures (`ResidueOn` in `engine/RegressionWorld.cpp`). An actor at baseline has none. Never trace, which is the diagnostic trace. |
-| **facts** | What the regression runner observes about one thing in one frame (`ActorFacts`, `ItemFacts`, `CrowdFacts`, `RecipeFacts`, `RegressionActorFacts`). Never view. |
+| **facts** | One observation of one thing: in the actor core `ActorFacts`, `PieceFacts` and `GeometryFacts` (`actors/Actor.h`; `itemID` and `enchantmentID` are the runtime form IDs of the piece's item and enchantment, for engine lookups); in the regression runner `RoleFacts`, `ItemFacts`, `CrowdFacts`, `RecipeFacts` and `RegressionActorFacts`. Never view. |
+| **ref** | A value that identifies one thing (`TextureRef`, `ResourceRef`, `Studio::PieceRef`, the actor core's `PieceRef`, `GeometryRef`, `InstanceRef`, `PlacementRef`). A ref is never called a key. |
+| **key** | A recipe matching criterion (`RecipeKey`, `KeyKind`, `PieceKey`). Three cache lookups also use the word, always qualified: the render plan key (`RenderPlanKeyOf`, which picks a `RenderPlanCache` entry), a step's content key (`RenderStep::contentKey`) and the step-output cache key (`CacheKeyFor`). |
+| **model** | The 3D the engine attaches for a worn piece, the biped `partClone` (`ModelToken` in `actors/Actor.h`). Never clone, which is the plugin's shell copy. |
+| **installed** | What the engine side holds for an actor, in the shape of its plan (`Present::installed`). |
+| **phase** | A state in a lifecycle: an actor's `Unloaded`, `Evicted` or `Present` (`actors/Actor.h`), an application's `ApplicationPhase`, a gesture's `GesturePhase`. A part of the frame cost is a **section** (`Metrics::Section`), never a phase. |
+| **command** | An instruction a pure core issues for the engine side to perform (`Regression::Command`, `Actors::ActorCommand`). Never a trace scope, which is an **operation** (`Trace::Operation`). |
+| **stale** | Possibly out of date; observe or evaluate again (a stale render step, a stale actor). |
 
 ## Gates
 

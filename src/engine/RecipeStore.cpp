@@ -32,12 +32,14 @@ struct LoadedRecipe {
   Studio::ReferenceCounts references{};
   Recipe saved{};
   std::vector<Diagnostic> inputDiagnostics;
+  std::optional<std::uint64_t> fingerprint;
 };
 static_assert(std::is_nothrow_move_constructible_v<Studio::ReferenceCounts> ||
               !std::is_nothrow_move_constructible_v<LoadedRecipe>);
 
 std::vector<LoadedRecipe> g_loaded;
 std::vector<Recipe> g_recipes;
+std::vector<std::uint64_t> g_fingerprints;
 RecipeStoreStatus g_status;
 Studio::MaskPresets g_presets;
 
@@ -50,15 +52,29 @@ bool HeldBack(const LoadedRecipe &a_loaded) noexcept {
   return HasRecipeErrors(a_loaded.diagnostics);
 }
 
+std::uint64_t ContentFingerprint(const Recipe &a_recipe) {
+  std::uint64_t hash = 14695981039346656037ULL;
+  for (const char c : SerializeRecipe(a_recipe)) {
+    hash ^= static_cast<std::uint8_t>(c);
+    hash *= 1099511628211ULL;
+  }
+  return hash;
+}
+
 void RebuildApplied() {
   g_recipes.clear();
+  g_fingerprints.clear();
   g_status.heldBack = 0;
-  for (const LoadedRecipe &loaded : g_loaded) {
+  for (LoadedRecipe &loaded : g_loaded) {
     if (HeldBack(loaded)) {
       ++g_status.heldBack;
       continue;
     }
+    if (!loaded.fingerprint) {
+      loaded.fingerprint = ContentFingerprint(loaded.recipe);
+    }
     g_recipes.push_back(loaded.recipe);
+    g_fingerprints.push_back(*loaded.fingerprint);
   }
 }
 
@@ -361,6 +377,7 @@ void ImportMissing(const std::filesystem::path &a_folder) {
 RecipeStoreStatus LoadRecipes() {
   g_loaded.clear();
   g_recipes.clear();
+  g_fingerprints.clear();
   g_status = {};
   const auto root = Identity::RecipeRoot();
   const auto user = Identity::UserRecipeFolder();
@@ -399,6 +416,10 @@ RecipeStoreStatus LoadRecipes() {
 RecipeStoreStatus GetRecipeStoreStatus() noexcept { return g_status; }
 
 std::span<const Recipe> LoadedRecipes() noexcept { return g_recipes; }
+
+std::span<const std::uint64_t> LoadedFingerprints() noexcept {
+  return g_fingerprints;
+}
 
 const Studio::MaskPresets &LoadedPresets() noexcept { return g_presets; }
 
@@ -448,6 +469,7 @@ void Republish(std::size_t a_index) {
   }
   LoadedRecipe &loaded = g_loaded[a_index];
   loaded.references = Studio::CountReferences(loaded.recipe);
+  loaded.fingerprint.reset();
   RebuildApplied();
 }
 

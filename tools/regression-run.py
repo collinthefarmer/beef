@@ -71,9 +71,13 @@ def read_settings(environ: dict[str, str], local: dict[str, str]) -> Settings | 
                     Path(values['SKSE_LOG_DIR']))
 
 
-def run_file(run: str, save: str, suite: list[str], now: float) -> dict:
-    return {'format': 1, 'run': run, 'save': save, 'suite': suite,
-            'notAfter': int(now) + RUN_FILE_LIFETIME_SECONDS}
+def run_file(run: str, save: str, suite: list[str], now: float,
+             verify_render_plans: bool = False) -> dict:
+    request = {'format': 1, 'run': run, 'save': save, 'suite': suite,
+               'notAfter': int(now) + RUN_FILE_LIFETIME_SECONDS}
+    if verify_render_plans:
+        request['verifyRenderPlans'] = True
+    return request
 
 
 def launches(cases: list[str]) -> list[list[str]] | str:
@@ -202,6 +206,8 @@ def main() -> int:
                              'for example studio-save + studio-reload')
     parser.add_argument('--save', default='BEEFRegression', help='save name without extension')
     parser.add_argument('--timeout', type=float, default=900, help='seconds to wait for the end line')
+    parser.add_argument('--verify-render-plans', action='store_true',
+                        help='rebuild every reused render plan and log any difference')
     parser.add_argument('--manual', action='store_true',
                         help='write the run file and wait; start the game yourself')
     args = parser.parse_args()
@@ -239,7 +245,7 @@ def main() -> int:
         if index > 0:
             time.sleep(BETWEEN_LAUNCHES_SECONDS)
         passed.append(launch(settings, f'{stamp}-{index + 1}', cases, args.save, args.timeout,
-                             args.manual, tasklist))
+                             args.manual, tasklist, args.verify_render_plans))
     if len(passed) > 1:
         print(f'launches passed: {sum(passed)} of {len(passed)}')
     return 0 if all(passed) else 1
@@ -253,8 +259,8 @@ def start_game(settings: Settings) -> None:
 
 
 def launch(settings: Settings, run: str, cases: list[str], save: str, timeout: float,
-           manual: bool, tasklist: str) -> bool:
-    request = run_file(run, save, cases, time.time())
+           manual: bool, tasklist: str, verify_render_plans: bool = False) -> bool:
+    request = run_file(run, save, cases, time.time(), verify_render_plans)
     (settings.log_dir / RUN_FILE).write_text(json.dumps(request) + '\n', encoding='utf-8')
     print(f'run {run}: {" ".join(cases)} from save {save}')
     start = (lambda: print('start the game through MO2 now')) if manual \
@@ -266,6 +272,12 @@ def launch(settings: Settings, run: str, cases: list[str], save: str, timeout: f
     print(format_report(report))
     print(f'results: {settings.log_dir / f"{NAME}-regression-{run}.jsonl"}')
     failures = []
+    if report.trace and report.outcome in ('TIMEOUT', 'CRASHED'):
+        trace = settings.log_dir / report.trace
+        if trace.is_file():
+            for line in budgets.stall_lines(budgets.trace_events(trace), report.lines,
+                                            int(time.time() * 1000)):
+                print(f'stall: {line}')
     if report.trace:
         table, failures = budgets.check_budgets(settings.log_dir / report.trace, BUDGETS_FILE)
         if table:

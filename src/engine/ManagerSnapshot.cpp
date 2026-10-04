@@ -248,7 +248,7 @@ struct PieceSnapshotBuilder {
         continue;
       }
       const std::optional<std::size_t> placedIndex = PlacedIndexOf(
-          state.plan, bound.placements, InstanceId{instanceIndex});
+          state.matches, bound.placements, InstanceId{instanceIndex});
       if (!placedIndex) {
         continue;
       }
@@ -318,9 +318,9 @@ struct PieceSnapshotBuilder {
         actor != nullptr && actor == RE::PlayerCharacter::GetSingleton();
     row.actorName = actor && actor->GetName() ? actor->GetName() : "?";
     row.armorName = piece.armorName;
-    if (flatStart < state.plan.geometries.size()) {
+    if (flatStart < state.matches.geometries.size()) {
       for (const PieceKey &source :
-           KeyChoicesOf(state.plan.geometries[flatStart].keys)) {
+           KeyChoicesOf(state.matches.geometries[flatStart].keys)) {
         Studio::KeyChoice key;
         key.key = source;
         const RE::TESForm *form = LookupForm(source.form);
@@ -329,14 +329,14 @@ struct PieceSnapshotBuilder {
         row.keys.push_back(std::move(key));
       }
       if (full) {
-        static_cast<void>(Resolve(state.plan.geometries[flatStart].keys,
+        static_cast<void>(Resolve(state.matches.geometries[flatStart].keys,
                                   LoadedRecipes(), ref.actorID,
                                   &row.selections));
       }
       const Studio::View &view = editor.CurrentView();
       row.previewOverride =
           view.Isolating() || (view.pin && view.pin->piece == ref);
-      row.diffusePaths = state.plan.geometries[flatStart].keys.diffusePaths;
+      row.diffusePaths = state.matches.geometries[flatStart].keys.diffusePaths;
       std::ranges::sort(row.diffusePaths);
       const auto duplicates = std::ranges::unique(row.diffusePaths);
       row.diffusePaths.erase(duplicates.begin(), duplicates.end());
@@ -372,8 +372,8 @@ bool ContainsPiece(const LiveActor &state, RE::FormID actorID,
                    const Studio::PieceRef &request) {
   std::size_t flatBase = 0;
   for (const LivePiece &piece : state.pieces) {
-    const bool firstPerson = flatBase < state.plan.geometries.size() &&
-                             state.plan.geometries[flatBase].firstPerson;
+    const bool firstPerson = flatBase < state.matches.geometries.size() &&
+                             state.matches.geometries[flatBase].firstPerson;
     if (request == Studio::PieceRef{actorID, piece.armor, firstPerson}) {
       return true;
     }
@@ -411,7 +411,7 @@ void AppendLoadedRecipes(Manager::Snapshot &snapshot) {
 Manager::Status Manager::GetStatus() const {
   Status s;
   s.emissivePath = emissivePathEnabled_;
-  s.layoutVerified = layoutVerified_;
+  s.layoutVerified = materialLayout_ == MaterialLayout::kVerified;
   s.textureLab = TextureLab::GetSingleton()->Available();
   s.actors = static_cast<std::uint32_t>(applied_.size());
   for (const auto &[id, state] : applied_) {
@@ -504,12 +504,12 @@ void Manager::PublishPieces(
       flatBase += geomCount;
 
       const std::vector<PieceMatch> matches =
-          MatchesForPiece(state.plan, GeometryId{flatStart}, geomCount);
+          MatchesForPiece(state.matches, GeometryId{flatStart}, geomCount);
       if (matches.empty()) {
         continue;
       }
-      const bool firstPerson = flatStart < state.plan.geometries.size() &&
-                               state.plan.geometries[flatStart].firstPerson;
+      const bool firstPerson = flatStart < state.matches.geometries.size() &&
+                               state.matches.geometries[flatStart].firstPerson;
       const Studio::PieceRef ref{actorID, piece.armor, firstPerson};
       const bool full = anyMatch ? (a_request && *a_request == ref) : first;
       first = false;

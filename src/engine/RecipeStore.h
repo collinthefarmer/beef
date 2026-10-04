@@ -29,6 +29,7 @@ RecipeStoreStatus LoadRecipes();
 [[nodiscard]] RecipeStoreStatus GetRecipeStoreStatus() noexcept;
 
 [[nodiscard]] std::span<const Recipe> LoadedRecipes() noexcept;
+[[nodiscard]] std::span<const std::uint64_t> LoadedFingerprints() noexcept;
 [[nodiscard]] const Studio::MaskPresets &LoadedPresets() noexcept;
 
 struct RecipeOrigin {

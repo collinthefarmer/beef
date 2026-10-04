@@ -95,7 +95,7 @@ deadlines are constants in `Steps.cpp`.
 | `Case{name, body, cleanup}` | One case. Cleanup always runs; a failed body step skips the rest of the body. |
 | `CaseList` | The cases of one run, as references into the catalog. |
 
-The catalog holds `lifecycle`, `equip-cycle`, `camera`, `isolation`,
+The catalog holds `lifecycle`, `equip-cycle`, `unequip-one`, `camera`, `isolation`,
 `unload`, `load-idle`, `load-apply`, `load-edit`, `load-gesture`,
 `load-paint`, `studio-save`, `studio-reload`, `soak`, `soak-hour`,
 `soak-stack`, `soak-ward`, `soak-frost`, `soak-large`, `soak-waves`,
@@ -109,9 +109,9 @@ the game showed, never on what the run asked for.
 
 | Type | Description |
 |---|---|
-| `Observation` | One frame: `ActorFacts` per role, `Activity`, `RecipeFacts` for the scratch recipe, `CrowdFacts`, the clock (`nowMs`), the load count, whether each item's form is loaded, whether NPC effects are on, the camera, whether the player is away from the start, and the current request's `RequestState`. |
-| `ActorFacts` | Whether the actor is present and wears body armor, `ItemFacts` per item, whether the manager holds live state, the newest application revision that rendered the fixture (`renderedAttempt`), the residue count, the residue under the first-person 3D alone (`firstPersonResidue`), and the latest application text. |
-| `ItemFacts` | Whether the item is equipped and carried. |
+| `Observation` | One frame: `RoleFacts` per role, `Activity`, `RecipeFacts` for the scratch recipe, `CrowdFacts`, the clock (`nowMs`), the load count, whether each item's form is loaded, whether NPC effects are on, the camera, whether the player is away from the start, and the current request's `RequestState`. |
+| `RoleFacts` | Whether the role's actor is present, `ItemFacts` per item, whether the manager holds live state, how many items carry live effects (`liveItems`) and how many of those the actor no longer wears (`strayItems`), the newest application revision that rendered the fixture (`renderedAttempt`), the residue count, the residue under the third-person 3D alone (`thirdPersonResidue`, which `expect-effect` reads), the residue under the first-person 3D alone (`firstPersonResidue`), and the latest application text. |
+| `ItemFacts` | Whether the item is equipped and carried, and whether other armor occupies its slot (`slotTaken`). |
 | `Activity` | Pending applications, an open paint session or gesture, a pending file operation, the `WorkOutcome` of the started edit, gesture and file operation, and a detail text for failure reasons. |
 | `CrowdFacts` | How many crowd actors are present, render their own armor, are in combat, target another crowd actor (**engaged**), and are hurt (health below its maximum, or bleeding out). The run traces a `regression.crowd` line each time a count changes. |
 | `RecipeFacts` | Whether a recipe is loaded and unsaved, and its first layer's opacity when that is a number. |

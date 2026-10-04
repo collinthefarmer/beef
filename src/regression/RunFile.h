@@ -14,6 +14,7 @@ struct RunFile {
   std::string run;
   std::string save;
   CaseList suite;
+  bool verifyRenderPlans = false;
 };
 
 inline constexpr std::size_t kMaxSuiteCases = 64;

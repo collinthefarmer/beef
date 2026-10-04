@@ -78,12 +78,12 @@ PlacedOutput *OutputAt(LivePlacement &a_placement, std::size_t a_index) {
 std::optional<ResolvedPlacement>
 ResolvePlacement(const LiveActor &a_state, PlacementId a_placement) noexcept {
   const std::size_t placement = IndexOf(a_placement);
-  if (placement >= a_state.plan.placements.size() ||
+  if (placement >= a_state.matches.placements.size() ||
       placement >= a_state.placements.size()) {
     return std::nullopt;
   }
   const std::size_t instance =
-      IndexOf(a_state.plan.placements[placement].instance);
+      IndexOf(a_state.matches.placements[placement].instance);
   if (instance >= a_state.instances.size()) {
     return std::nullopt;
   }

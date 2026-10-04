@@ -5,11 +5,16 @@
 
 #include "Identity.h"
 #include "SettingsFile.h"
+#include "actors/Lifecycle.h"
+#include "actors/Planning.h"
+#include "actors/Reconcile.h"
+#include "engine/ActorObservation.h"
 #include "engine/Clock.h"
 #include "engine/EngineForms.h"
 #include "engine/GameObjectService.h"
 #include "engine/RecipeStore.h"
-#include "engine/WornKeys.h"
+#include "engine/RegressionRun.h"
+#include "engine/RenderPlanCache.h"
 #include "mesh/TextureSize.h"
 #include "planners/Eviction.h"
 #include "render/Compositor.h"
@@ -55,84 +60,6 @@ private:
   RE::FormID actor_;
 };
 
-RE::MagicItem *WornEnchantment(RE::Actor *a_actor, RE::TESObjectARMO *a_armor) {
-  auto inventory = a_actor->GetInventory(
-      [&](RE::TESBoundObject &a_object) { return &a_object == a_armor; });
-  for (auto &[object, pair] : inventory) {
-    auto &[count, entry] = pair;
-    if (count <= 0 || !entry || !entry->extraLists) {
-      continue;
-    }
-    for (auto *xList : *entry->extraLists) {
-      if (!xList || !(xList->HasType(RE::ExtraDataType::kWorn) ||
-                      xList->HasType(RE::ExtraDataType::kWornLeft))) {
-        continue;
-      }
-      if (const auto *xEnch = xList->GetByType<RE::ExtraEnchantment>();
-          xEnch && xEnch->enchantment) {
-        return xEnch->enchantment;
-      }
-    }
-  }
-  return a_armor->formEnchanting;
-}
-
-bool InventoryWorn(RE::Actor &a_actor, RE::TESObjectARMO *a_armor) {
-  auto inventory = a_actor.GetInventory(
-      [&](RE::TESBoundObject &a_object) { return &a_object == a_armor; });
-  for (auto &[object, pair] : inventory) {
-    auto &[count, entry] = pair;
-    if (count <= 0 || !entry || !entry->extraLists) {
-      continue;
-    }
-    for (auto *xList : *entry->extraLists) {
-      if (xList && (xList->HasType(RE::ExtraDataType::kWorn) ||
-                    xList->HasType(RE::ExtraDataType::kWornLeft))) {
-        return true;
-      }
-    }
-  }
-  return false;
-}
-
-RE::TESObjectARMO *PieceItemOf(const RE::BIPOBJECT &a_object) {
-  return a_object.item ? a_object.item->As<RE::TESObjectARMO>() : nullptr;
-}
-
-void AppendWorn(std::vector<WornEntry> &a_out, RE::Actor &a_actor,
-                bool a_firstPerson) {
-  const auto &biped = a_actor.GetBiped(a_firstPerson);
-  if (!biped) {
-    return;
-  }
-  for (const auto &object : biped->objects) {
-    RE::TESObjectARMO *armor = PieceItemOf(object);
-    if (!armor) {
-      continue;
-    }
-    const RE::MagicItem *enchantment = WornEnchantment(&a_actor, armor);
-    a_out.push_back(
-        {armor->GetFormID(), object.addon ? object.addon->GetFormID() : 0,
-         enchantment ? enchantment->GetFormID() : 0, object.partClone,
-         a_firstPerson, InventoryWorn(a_actor, armor)});
-  }
-}
-
-std::vector<WornEntry> WornOf(RE::Actor &a_actor, const Settings &a_settings) {
-  std::vector<WornEntry> worn;
-  if (a_settings.thirdPerson) {
-    AppendWorn(worn, a_actor, false);
-  }
-  if (a_settings.firstPerson && a_actor.IsPlayerRef()) {
-    AppendWorn(worn, a_actor, true);
-  }
-  return worn;
-}
-
-std::string TexturePath(const TextureRef &a_texture) {
-  return a_texture && a_texture->name.c_str() ? a_texture->name.c_str() : "";
-}
-
 struct LocatedGeometry {
   LivePiece &piece;
   LiveGeometry &bound;
@@ -163,7 +90,7 @@ std::shared_ptr<const RecipeGraph> InstanceGraph(const Recipe &a_recipe,
 }
 
 RE::FormID EnchantmentForInstance(LiveActor &a_state, std::size_t a_instance) {
-  for (const Placement &placement : a_state.plan.placements) {
+  for (const Placement &placement : a_state.matches.placements) {
     if (IndexOf(placement.instance) != a_instance) {
       continue;
     }
@@ -252,41 +179,56 @@ LiveGeometry MakeGeometry(RE::BSGeometry *a_geometry,
   return bound;
 }
 
-struct PlannerGeometries {
-  std::vector<Geometry> geometries;
-  std::vector<Studio::PieceRef> owners;
-};
+std::string ArmorNameOf(RE::FormID a_armor) {
+  const auto *armor = RE::TESForm::LookupByID<RE::TESObjectARMO>(a_armor);
+  const char *name = armor ? armor->GetName() : nullptr;
+  return name ? name : "";
+}
 
-PlannerGeometries BuildPlannerGeometries(const LiveActor &a_state,
-                                         RE::NiAVObject *a_firstPersonRoot,
-                                         RE::FormID a_actorID) {
-  PlannerGeometries out;
-  for (const LivePiece &live : a_state.pieces) {
-    RE::TESObjectARMO *armor =
-        RE::TESForm::LookupByID<RE::TESObjectARMO>(live.armor);
-    WornPiece keys = WornKeysOf(
-        armor, RE::TESForm::LookupByID<RE::MagicItem>(live.enchantment));
-    for (const LiveGeometry &geometry : live.geometries) {
-      keys.diffusePaths.push_back(
-          TexturePath(geometry.inputs.material.diffuse));
+std::expected<std::vector<LivePiece>, std::string>
+LivePiecesOf(RE::Actor &a_actor, const Actors::ActorFacts &a_facts,
+             const ModelTable &a_models) {
+  std::vector<LivePiece> pieces;
+  for (const Actors::PieceFacts *planned : Actors::PlannedPieces(a_facts)) {
+    const ObservedModel *model =
+        planned->model ? ModelOf(a_models, *planned->model) : nullptr;
+    if (!model || model->geometries.size() != planned->geometries.size()) {
+      return std::unexpected{
+          std::format("armor {:08X} lost its observed model", planned->itemID)};
     }
-    const bool firstPerson =
-        !live.geometries.empty() && live.geometries.front().inputs.root &&
-        live.geometries.front().inputs.root.get() == a_firstPersonRoot;
-    const Studio::PieceRef ref{a_actorID, live.armor, firstPerson};
-    for (const LiveGeometry &geometry : live.geometries) {
-      Geometry planned;
-      planned.identity =
-          GeometryIdentity{live.addon, geometry.name,
-                           TexturePath(geometry.inputs.material.diffuse)};
-      planned.keys = keys;
-      planned.firstPerson = firstPerson;
-      planned.lost = geometry.lost;
-      out.geometries.push_back(std::move(planned));
-      out.owners.push_back(ref);
+    if (model->geometries.empty()) {
+      continue;
     }
+    RE::NiAVObject *root = a_actor.Get3D(planned->ref.firstPerson);
+    LivePiece piece;
+    piece.armor = planned->itemID;
+    piece.addon = planned->ref.addon;
+    piece.armorName = ArmorNameOf(planned->itemID);
+    piece.enchantment = planned->enchantmentID;
+    for (const ObservedGeometry &observed : model->geometries) {
+      RE::BSGeometry *geometry = observed.geometry.get();
+      RE::BSLightingShaderProperty *property =
+          geometry ? LightingPropertyOf(geometry) : nullptr;
+      const std::optional<PbrMaterial> material = PbrMaterial::Bind(property);
+      if (!property || !material) {
+        return std::unexpected{
+            std::format("geometry {} of armor {:08X} lost its PBR material",
+                        observed.facts.name, planned->itemID)};
+      }
+      piece.geometries.push_back(
+          MakeGeometry(geometry, property, root, *material));
+    }
+    pieces.push_back(std::move(piece));
   }
-  return out;
+  return pieces;
+}
+
+std::size_t GeometryCount(const LiveActor &a_state) noexcept {
+  std::size_t count = 0;
+  for (const LivePiece &piece : a_state.pieces) {
+    count += piece.geometries.size();
+  }
+  return count;
 }
 
 void PreparePlacement(LiveActor &a_state,
@@ -303,13 +245,15 @@ void PreparePlacement(LiveActor &a_state,
   bound.binding = PlanBinding(placement.placed, placement.plan);
   for (const PlacementId source : placement.sources) {
     const std::size_t k = IndexOf(source);
-    if (k >= a_state.placements.size() || k >= a_state.plan.placements.size()) {
+    if (k >= a_state.placements.size() ||
+        k >= a_state.matches.placements.size()) {
       continue;
     }
     LivePlacement &live = a_state.placements[k];
     live.geometry = a_geometry;
     live.outputs.clear();
-    for (const OutputPlacement &output : a_state.plan.placements[k].outputs) {
+    for (const OutputPlacement &output :
+         a_state.matches.placements[k].outputs) {
       live.outputs.push_back(
           PlacedOutput{IndexOf(output.output), nullptr, output.problem});
     }
@@ -326,7 +270,7 @@ void InstallSurfaces(LiveActor &a_state, LiveGeometry &a_bound,
     std::optional<std::size_t> ownerInstance;
     if (a_bound.binding.shellOwner) {
       if (const std::optional<InstanceId> owner =
-              InstanceOfPlaced(a_state.plan, a_bound.placements,
+              InstanceOfPlaced(a_state.matches, a_bound.placements,
                                IndexOf(*a_bound.binding.shellOwner))) {
         ownerInstance = IndexOf(*owner);
       }
@@ -350,7 +294,7 @@ std::string ReplacerRecipeId(const LiveActor &a_state,
     return {};
   }
   const std::optional<InstanceId> instance =
-      InstanceOfPlaced(a_state.plan, a_bound.placements, *replacer);
+      InstanceOfPlaced(a_state.matches, a_bound.placements, *replacer);
   if (!instance) {
     return {};
   }
@@ -700,8 +644,110 @@ void AttachMergedSlots(const ActorStacks &a_stacks,
   }
 }
 
+std::optional<std::string> RenderPlanKeyOf(const ActorStacks &a_stacks) {
+  std::string key;
+  for (const ActorStackRequest &request : a_stacks.requests) {
+    const StackTextureRequest &texture = request.texture;
+    const std::optional<std::string> mesh = MeshHashIdentityOf(texture.inputs);
+    if (!texture.graph || ReadsNodePositions(*texture.graph) || !mesh) {
+      return std::nullopt;
+    }
+    key += std::format("r{:x}|{}|{}|{}|{}|{}|{}|{};",
+                       reinterpret_cast<std::uintptr_t>(texture.graph),
+                       texture.outputIndex, IndexOf(texture.placement),
+                       IndexOf(request.geometry), texture.inputs.scope.context,
+                       texture.size.Pixels(),
+                       MaterialIdentityOf(texture.inputs.material), *mesh);
+  }
+  for (const SlotChainRequest &chain : a_stacks.chains) {
+    key += std::format("c{}|{}|{}", IndexOf(chain.geometry),
+                       static_cast<int>(chain.surface),
+                       static_cast<int>(chain.slot));
+    for (const ChainLink &link : chain.links) {
+      key += std::format("|{}:{}", IndexOf(link.placement), link.output);
+    }
+    key += ';';
+  }
+  return key;
+}
+
+std::vector<std::shared_ptr<const RecipeGraph>>
+GraphsRequestedBy(const LiveActor &a_state, const ActorStacks &a_stacks) {
+  std::vector<std::shared_ptr<const RecipeGraph>> graphs;
+  for (const std::shared_ptr<const RecipeGraph> &graph : LiveGraphs(a_state)) {
+    const bool requested = std::ranges::any_of(
+        a_stacks.requests, [&](const ActorStackRequest &a_request) {
+          return a_request.texture.graph == graph.get();
+        });
+    if (requested && !std::ranges::contains(graphs, graph)) {
+      graphs.push_back(graph);
+    }
+  }
+  return graphs;
+}
+
+std::expected<RenderPlan, std::string>
+FreshRenderPlan(const ActorStacks &a_stacks, const Settings &a_settings) {
+  const std::vector<TextureDemand> demands =
+      CollectLayerDemands(a_stacks, a_settings.verboseLogging);
+  return BuildRenderPlan(demands, RenderStackRequests(a_stacks),
+                         BindingResolverFor(a_stacks), a_stacks.chains);
+}
+
+void TraceRenderPlanCache(RE::FormID a_actor, std::string_view a_result,
+                          std::size_t a_entries) {
+  Trace::EmitSafely(Trace::Event::kMetrics,
+                    {{"action", "render_plan_cache"},
+                     {"actor", std::to_string(a_actor)},
+                     {"result", std::string{a_result}},
+                     {"entries", std::to_string(a_entries)}});
+}
+
+std::expected<RenderPlan, std::string>
+RenderPlanFor(const LiveActor &a_state, const ActorStacks &a_stacks,
+              const Settings &a_settings, RenderPlanCache &a_cache) {
+  if (!a_settings.renderPlanCache) {
+    return FreshRenderPlan(a_stacks, a_settings);
+  }
+  std::optional<std::string> key = RenderPlanKeyOf(a_stacks);
+  if (!key) {
+    TraceRenderPlanCache(a_stacks.actor, "uncacheable", a_cache.Size());
+    return FreshRenderPlan(a_stacks, a_settings);
+  }
+  if (const RenderPlan *cached = a_cache.Find(*key)) {
+    if (!a_settings.verifyRenderPlanCache && !RegressionVerifiesRenderPlans()) {
+      TraceRenderPlanCache(a_stacks.actor, "hit", a_cache.Size());
+      return *cached;
+    }
+    std::expected<RenderPlan, std::string> fresh =
+        FreshRenderPlan(a_stacks, a_settings);
+    if (fresh && SameStructure(*cached, *fresh)) {
+      TraceRenderPlanCache(a_stacks.actor, "hit_verified", a_cache.Size());
+      return *cached;
+    }
+    logger::warn("render plan cache: actor {:08X} reused a plan that differs "
+                 "from a fresh one",
+                 a_stacks.actor);
+    TraceRenderPlanCache(a_stacks.actor, "mismatch", a_cache.Size());
+    if (fresh) {
+      a_cache.Store(std::move(*key), *fresh,
+                    GraphsRequestedBy(a_state, a_stacks));
+    }
+    return fresh;
+  }
+  std::expected<RenderPlan, std::string> fresh =
+      FreshRenderPlan(a_stacks, a_settings);
+  if (fresh) {
+    a_cache.Store(std::move(*key), *fresh,
+                  GraphsRequestedBy(a_state, a_stacks));
+  }
+  TraceRenderPlanCache(a_stacks.actor, "miss", a_cache.Size());
+  return fresh;
+}
+
 void BuildActorRender(const LiveActor &a_state, ActorStacks &a_stacks,
-                      const Settings &a_settings, WarningHistory &a_warnings) {
+                      const Settings &a_settings, WarningHistory &a_warnings,
+                      RenderPlanCache &a_cache) {
   AttachRender(a_stacks, nullptr);
   for (LiveGeometry *bound : a_stacks.bound) {
     if (bound) {
@@ -711,11 +757,8 @@ void BuildActorRender(const LiveActor &a_state, ActorStacks &a_stacks,
   if (a_stacks.requests.empty()) {
     return;
   }
-  const std::vector<TextureDemand> demands =
-      CollectLayerDemands(a_stacks, a_settings.verboseLogging);
   std::expected<RenderPlan, std::string> plan =
-      BuildRenderPlan(demands, RenderStackRequests(a_stacks),
-                      BindingResolverFor(a_stacks), a_stacks.chains);
+      RenderPlanFor(a_state, a_stacks, a_settings, a_cache);
   if (!plan) {
     FailStackOutputs(a_stacks, plan.error());
     return;
@@ -755,9 +798,9 @@ std::vector<RE::BSGeometry *> LightGeometriesOf(LiveActor &a_state,
                                                 std::size_t a_instance,
                                                 const LightOutput &a_light) {
   std::vector<RE::BSGeometry *> geometries;
-  for (const GeometryId flat :
-       ThirdPersonGeometriesOfInstance(a_state.plan, InstanceId{a_instance})) {
-    const Geometry *geometry = GeometryAt(a_state.plan, flat);
+  for (const GeometryId flat : ThirdPersonGeometriesOfInstance(
+           a_state.matches, InstanceId{a_instance})) {
+    const Geometry *geometry = GeometryAt(a_state.matches, flat);
     if (!geometry || !LightEligible(*geometry, a_light)) {
       continue;
     }
@@ -813,7 +856,7 @@ void ReportApplied(RE::Actor &a_actor, const LiveActor &a_state,
 }
 
 void Manager::ReapplyAll() {
-  const Trace::Scope trace{Trace::Command("manager.ReapplyAll")};
+  const Trace::Scope trace{Trace::Operation("manager.ReapplyAll")};
   PostTask([this] { ChangeAndRebuildActors({}, [] {}); });
 }
 
@@ -840,135 +883,186 @@ void Manager::Refresh(RE::Actor *a_actor) {
   Trace::EmitSafely(
       Trace::Event::kApplication,
       {{"action", "refresh_begin"}, {"actor", std::to_string(actorID)}});
-  const bool eligible = EligibleForRefresh(*a_actor, settings);
-  std::vector<WornEntry> worn =
-      eligible ? WornOf(*a_actor, settings) : std::vector<WornEntry>{};
-  if (const auto installed = applied_.find(actorID);
-      eligible && installed != applied_.end() &&
-      installed->second.worn == worn) {
-    Trace::EmitSafely(
-        Trace::Event::kApplication,
-        {{"action", "refresh_unchanged"}, {"actor", std::to_string(actorID)}});
-    (void)applications_.TakeEquipped(actorID);
-    return;
-  }
-  const bool awaitsModel = settings.thirdPerson && ArmorAwaitsModel(*a_actor);
-  if (eligible && awaitsModel && applied_.contains(actorID) &&
-      DefersForArmorModel(actorID)) {
-    awaitingArmorModel_.try_emplace(actorID, ArmorModelWait{NowMS(), false});
-    Trace::EmitSafely(
-        Trace::Event::kApplication,
-        {{"action", "refresh_deferred"}, {"actor", std::to_string(actorID)}});
-    return;
-  }
-  const Metrics::Stopwatch retireWatch;
-  RetireEffects(actorID);
-  const std::uint64_t retireUs = retireWatch.Micros();
-  if (!eligible) {
-    return;
-  }
-  const Metrics::Stopwatch collectWatch;
-  LiveActor state = LiveActorFor(*a_actor, settings);
-  const std::uint64_t collectUs = collectWatch.Micros();
-  state.worn = std::move(worn);
-  if (awaitsModel) {
-    if (awaitingArmorModel_.try_emplace(actorID, ArmorModelWait{NowMS(), false})
-            .second &&
-        settings.verboseLogging) {
-      logger::info("actor {:08X} ({}): armor model not attached yet; "
-                   "refreshing when it attaches",
-                   actorID, a_actor->GetName());
+  ActorDecision decision = AdvanceActor(*a_actor, settings);
+  const bool stays = Is<Actors::Present>(decision.next.phase);
+  if (decision.next.commands.empty()) {
+    if (!stays) {
+      RetireEffects(actorID);
     }
-  } else {
-    awaitingArmorModel_.erase(actorID);
+    const bool settling = Actors::RecheckOf(decision.next.phase, NowMS()) ==
+                          Actors::Recheck::kSettling;
+    SettlePhase(actorID, std::move(decision.next.phase));
+    if (!settling) {
+      (void)applications_.TakeEquipped(actorID);
+    }
+    return;
+  }
+  const Actors::ActorPlan installedBefore = InstalledPlanOf(actorID);
+  RetireEffects(actorID);
+  Actors::Present *present = Get<Actors::Present>(decision.next.phase);
+  if (present) {
+    present->installed =
+        Actors::AfterCommands(installedBefore, decision.next.commands);
+  }
+  const bool installs = present && !present->installed.instances.empty();
+  SettlePhase(actorID, std::move(decision.next.phase));
+  if (!installs) {
+    return;
+  }
+  std::expected<LiveActor, std::string> state = LiveActorFor(
+      *a_actor, decision.facts, std::move(decision.matches), settings);
+  if (!state) {
+    logger::error("actor {:08X} ({}): {}; nothing installed", actorID,
+                  a_actor->GetName(), state.error());
+    SettlePhase(actorID, Actors::Present{});
+    return;
   }
   TextureLab::GetSingleton()->InvalidatePreviews();
-  if (state.plan.placements.empty()) {
+  if (state->matches.placements.empty()) {
     if (settings.verboseLogging) {
       logger::info("actor {:08X} ({}): {} piece(s), no recipe placed", actorID,
-                   a_actor->GetName(), state.pieces.size());
+                   a_actor->GetName(), state->pieces.size());
     }
     return;
   }
-  const Metrics::Stopwatch placeWatch;
-  PlaceInstances(state, actorID, settings);
-  const std::uint64_t placeUs = placeWatch.Micros();
-  const Metrics::Stopwatch lightsWatch;
-  PlaceLightsOf(a_actor, state, settings);
-  const std::uint64_t lightsUs = lightsWatch.Micros();
-  const Metrics::Stopwatch reportWatch;
-  ReportApplied(*a_actor, state, settings);
-  const std::uint64_t reportUs = reportWatch.Micros();
-  const Metrics::Stopwatch storeWatch;
-  applied_[actorID] = std::move(state);
-  Trace::EmitSafely(Trace::Event::kMetrics,
-                    {{"action", "refresh_phases"},
-                     {"actor", std::to_string(actorID)},
-                     {"retire_us", std::to_string(retireUs)},
-                     {"collect_us", std::to_string(collectUs)},
-                     {"place_us", std::to_string(placeUs)},
-                     {"lights_us", std::to_string(lightsUs)},
-                     {"report_us", std::to_string(reportUs)},
-                     {"store_us", std::to_string(storeWatch.Micros())}});
+  PlaceInstances(*state, actorID, settings);
+  PlaceLightsOf(a_actor, *state, settings);
+  ReportApplied(*a_actor, *state, settings);
+  applied_[actorID] = std::move(*state);
 
   if (applications_.TakeEquipped(actorID)) {
     FireEquip(actorID);
   }
 }
 
-bool Manager::DefersForArmorModel(RE::FormID a_actorID) const {
-  const auto wait = awaitingArmorModel_.find(a_actorID);
-  return wait == awaitingArmorModel_.end() || !wait->second.expired;
+namespace {
+std::string_view PhaseName(const Actors::Phase &a_phase) {
+  return Match(
+      a_phase,
+      [](const Actors::Unloaded &) { return std::string_view{"unloaded"}; },
+      [](const Actors::Evicted &) { return std::string_view{"evicted"}; },
+      [](const Actors::Present &) { return std::string_view{"present"}; });
+}
 }
 
-bool Manager::EligibleForRefresh(RE::Actor &a_actor,
-                                 const Settings &a_settings) {
+Manager::ActorDecision Manager::AdvanceActor(RE::Actor &a_actor,
+                                             const Settings &a_settings) {
   const RE::FormID actorID = a_actor.GetFormID();
-  if (!a_settings.enableShaders || !emissivePathEnabled_ ||
-      a_actor.IsDeleted()) {
-    return false;
+  TrackedActor &tracked = tracked_[actorID];
+  const std::span<const Recipe> recipes = LoadedRecipes();
+  const std::uint32_t observedAt = NowMS();
+  const MaterialLayout layoutBefore = materialLayout_;
+  const Metrics::Stopwatch observeWatch;
+  Actors::ActorFacts facts = ObserveActor(
+      {a_actor, a_settings, a_settings.enableShaders && emissivePathEnabled_,
+       recipes, observedAt},
+      tracked.models, materialLayout_);
+  const std::uint64_t observeUs = observeWatch.Micros();
+  NoteMaterialLayout(layoutBefore);
+  if (a_settings.verboseLogging) {
+    NoteArmorWithoutGeometry(facts);
   }
-  const bool isPlayer = a_actor.IsPlayerRef();
-  if (a_settings.playerOnly && !isPlayer) {
-    return false;
+  const Metrics::Stopwatch planWatch;
+  const std::optional<Actors::RecipeCatalog> catalog =
+      Actors::RecipeCatalog::Of(recipes, LoadedFingerprints());
+  if (!catalog) {
+    logger::error("actor {:08X}: {} recipes but {} fingerprints; planning "
+                  "nothing",
+                  actorID, recipes.size(), LoadedFingerprints().size());
   }
-  if (!a_actor.Is3DLoaded()) {
-    if (a_settings.verboseLogging) {
-      logger::info("actor {:08X} ({}): 3D not loaded, skipped", actorID,
-                   a_actor.GetName());
-    }
-    return false;
-  }
-  if (!isPlayer && a_settings.evictDistance > 0.0f) {
-    if (const auto *player = RE::PlayerCharacter::GetSingleton()) {
-      const float distance =
-          player->GetPosition().GetDistance(a_actor.GetPosition());
-      if (EvictionFor(distance, a_settings.evictDistance, true) ==
-          EvictionAction::kEvict) {
-        evictedForDistance_.insert(actorID);
-        return false;
-      }
-    }
-  }
-  evictedForDistance_.erase(actorID);
-  return true;
+  Actors::PlannedActor planned =
+      catalog ? Actors::PlanActor({facts, *catalog, editor_.CurrentView()})
+              : Actors::PlannedActor{};
+  const std::uint64_t planUs = planWatch.Micros();
+  const Metrics::Stopwatch advanceWatch;
+  Actors::Advanced next = Actors::Advance(
+      {tracked.phase, facts, planned.plan, NowMS(), a_settings.evictDistance});
+  const std::uint64_t advanceUs = advanceWatch.Micros();
+  const Actors::Present *present = Get<Actors::Present>(next.phase);
+  KeepModels(tracked.models,
+             present ? Actors::AfterCommands(present->installed, next.commands)
+                     : Actors::ActorPlan{},
+             observedAt);
+  Trace::EmitSafely(
+      Trace::Event::kApplication,
+      {{"action", "actor_advance"},
+       {"actor", std::to_string(actorID)},
+       {"phase", std::string{PhaseName(next.phase)}},
+       {"pieces", std::to_string(facts.pieces.size())},
+       {"pending", std::to_string(present ? present->pending.size() : 0)},
+       {"commands", std::to_string(next.commands.size())},
+       {"observe_us", std::to_string(observeUs)},
+       {"plan_us", std::to_string(planUs)},
+       {"advance_us", std::to_string(advanceUs)}});
+  return {std::move(facts), std::move(planned.matches), std::move(next)};
 }
 
-LiveActor Manager::LiveActorFor(RE::Actor &a_actor,
-                                const Settings &a_settings) {
+void Manager::NoteMaterialLayout(MaterialLayout a_before) {
+  if (materialLayout_ == a_before) {
+    return;
+  }
+  if (materialLayout_ == MaterialLayout::kVerified) {
+    logger::info("PBR material layout check passed");
+    return;
+  }
+  logger::error("PBR material layout check failed: texture slots are not all "
+                "NiSourceTexture; emissive path disabled");
+  emissivePathEnabled_ = false;
+}
+
+void Manager::NoteArmorWithoutGeometry(const Actors::ActorFacts &a_facts) {
+  for (const Actors::PieceFacts &piece : a_facts.pieces) {
+    if (piece.model && piece.geometries.empty() &&
+        loggedNonPBRArmor_.insert(piece.itemID).second) {
+      logger::info("armor {:08X} ({}) has no PBR geometry with emissive "
+                   "storage; left alone",
+                   piece.itemID, ArmorNameOf(piece.itemID));
+    }
+  }
+}
+
+void Manager::SettlePhase(RE::FormID a_actorID, Actors::Phase a_phase) {
+  const Actors::Present *present = Get<Actors::Present>(a_phase);
+  const bool holdsNothing = present && present->installed.instances.empty() &&
+                            present->pending.empty();
+  if (Is<Actors::Unloaded>(a_phase) || holdsNothing) {
+    tracked_.erase(a_actorID);
+    return;
+  }
+  tracked_[a_actorID].phase = std::move(a_phase);
+}
+
+Actors::ActorPlan Manager::InstalledPlanOf(RE::FormID a_actorID) const {
+  const auto tracked = tracked_.find(a_actorID);
+  if (tracked == tracked_.end()) {
+    return {};
+  }
+  const Actors::Present *present = Get<Actors::Present>(tracked->second.phase);
+  return present ? present->installed : Actors::ActorPlan{};
+}
+
+std::expected<LiveActor, std::string>
+Manager::LiveActorFor(RE::Actor &a_actor, const Actors::ActorFacts &a_facts,
+                      ActorMatches a_matches, const Settings &a_settings) {
+  const auto tracked = tracked_.find(a_actor.GetFormID());
+  if (tracked == tracked_.end()) {
+    return std::unexpected{std::string{"the actor is not tracked"}};
+  }
+  std::expected<std::vector<LivePiece>, std::string> pieces =
+      LivePiecesOf(a_actor, a_facts, tracked->second.models);
+  if (!pieces) {
+    return std::unexpected{std::move(pieces.error())};
+  }
   LiveActor state;
   state.actor = a_actor.GetHandle();
-  if (a_settings.thirdPerson) {
-    for (LivePiece &piece : CollectPieces(&a_actor, false, a_settings)) {
-      state.pieces.push_back(std::move(piece));
-    }
+  state.pieces = std::move(*pieces);
+  state.matches = std::move(a_matches);
+  if (GeometryCount(state) != state.matches.geometries.size()) {
+    return std::unexpected{std::format("{} geometries found for {} matched",
+                                       GeometryCount(state),
+                                       state.matches.geometries.size())};
   }
-  if (a_settings.firstPerson && a_actor.IsPlayerRef()) {
-    for (LivePiece &piece : CollectPieces(&a_actor, true, a_settings)) {
-      state.pieces.push_back(std::move(piece));
-    }
-  }
-  MatchRecipes(&a_actor, state, a_settings);
+  BuildInstances(state, a_settings);
   return state;
 }
 
@@ -979,149 +1073,22 @@ void Manager::FireEquip(RE::FormID a_actorID) {
   }
 }
 
-bool Manager::CollectPieceGeometries(LivePiece &piece, RE::NiAVObject *clone,
-                                     RE::NiAVObject *root, bool verbose) {
-  std::unordered_set<RE::BSLightingShaderProperty *> seen;
-  bool anyPBR = false;
-  bool layoutFailed = false;
-  RE::BSVisit::TraverseScenegraphGeometries(
-      clone, [&](RE::BSGeometry *a_geometry) {
-        const std::string_view name{
-            a_geometry->name.c_str() ? a_geometry->name.c_str() : ""};
-        if (name.ends_with(Identity::ShellNodeSuffix())) {
-          return RE::BSVisit::BSVisitControl::kContinue;
-        }
-        RE::BSLightingShaderProperty *property = LightingPropertyOf(a_geometry);
-        const std::optional<PbrMaterial> material = PbrMaterial::Bind(property);
-        if (!property || !material || !seen.insert(property).second) {
-          return RE::BSVisit::BSVisitControl::kContinue;
-        }
-        anyPBR = true;
-        if (!LayoutSanityCheck(*material, name)) {
-          layoutFailed = true;
-          return RE::BSVisit::BSVisitControl::kStop;
-        }
-        if (!property->emissiveColor) {
-          if (verbose) {
-            logger::info(
-                "skip geometry {}: property has no emissive colour storage",
-                name);
-          }
-          return RE::BSVisit::BSVisitControl::kContinue;
-        }
-        piece.geometries.push_back(
-            MakeGeometry(a_geometry, property, root, *material));
-        return RE::BSVisit::BSVisitControl::kContinue;
-      });
-  if (layoutFailed) {
-    return false;
-  }
-  if (!anyPBR || piece.geometries.empty()) {
-    if (!anyPBR && verbose && loggedNonPBRArmor_.insert(piece.armor).second) {
-      logger::info("armor {:08X} ({}) has no PBR geometry; left alone",
-                   piece.armor, piece.armorName);
-    }
-    return false;
-  }
-  return true;
-}
-
-bool ArmorAwaitsModel(RE::Actor &a_actor) {
-  const auto &biped = a_actor.GetBiped(false);
-  if (!biped) {
-    return false;
-  }
-  std::unordered_set<RE::TESObjectARMO *> attached;
-  std::unordered_set<RE::TESObjectARMO *> listed;
-  for (const auto &object : biped->objects) {
-    RE::TESObjectARMO *armor = PieceItemOf(object);
-    if (armor) {
-      (object.partClone ? attached : listed).insert(armor);
-    }
-  }
-  const bool walkUnenchanted = AnyUnenchantedKey(LoadedRecipes());
-  return std::ranges::any_of(listed, [&](RE::TESObjectARMO *a_armor) {
-    return !attached.contains(a_armor) &&
-           (walkUnenchanted ||
-            WornKeysOf(a_armor, WornEnchantment(&a_actor, a_armor))
-                .Enchanted());
-  });
-}
-
-std::vector<LivePiece> Manager::CollectPieces(RE::Actor *a_actor,
-                                              bool a_firstPerson,
-                                              const Settings &a_settings) {
-  std::vector<LivePiece> out;
-  const auto &biped = a_actor->GetBiped(a_firstPerson);
-  if (!biped) {
-    return out;
-  }
-  const std::span<const Recipe> loaded = LoadedRecipes();
-  const bool walkUnenchanted = AnyUnenchantedKey(loaded);
-  RE::NiAVObject *root = a_actor->Get3D(a_firstPerson);
-  std::unordered_set<RE::NiAVObject *> seenClones;
-  for (const auto &object : biped->objects) {
-    RE::TESObjectARMO *armor = PieceItemOf(object);
-    RE::NiAVObject *clone = object.partClone.get();
-    if (!armor || !clone || !seenClones.insert(clone).second) {
-      continue;
-    }
-    RE::MagicItem *enchantment = WornEnchantment(a_actor, armor);
-    WornPiece keys = WornKeysOf(armor, enchantment);
-    if (!keys.Enchanted() && !walkUnenchanted) {
-      continue;
-    }
-    LivePiece piece;
-    piece.armor = armor->GetFormID();
-    if (object.addon) {
-      piece.addon = FormKeyFor(*object.addon);
-    }
-    piece.armorName = armor->GetName() ? armor->GetName() : "";
-    piece.enchantment = enchantment ? enchantment->GetFormID() : 0;
-    if (!CollectPieceGeometries(piece, clone, root,
-                                a_settings.verboseLogging)) {
-      continue;
-    }
-    out.push_back(std::move(piece));
-  }
-  return out;
-}
-
-void Manager::MatchRecipes(RE::Actor *a_actor, LiveActor &a_state,
-                           const Settings &a_settings) {
-  const std::span<const Recipe> loaded = LoadedRecipes();
-  RE::NiAVObject *firstPersonRoot = a_actor->Get3D(true);
-  const RE::FormID actorID = a_actor->GetFormID();
-  const PlannerGeometries built =
-      BuildPlannerGeometries(a_state, firstPersonRoot, actorID);
-  const std::vector<Studio::PieceRef> &refs = built.owners;
-  a_state.plan = MatchActor(
-      built.geometries, loaded,
-      [this, loaded, &refs, actorID](const Geometry &a_geometry,
-                                     GeometryId a_geometryID) {
-        const std::size_t index = IndexOf(a_geometryID);
-        std::vector<ResolvedRecipe> resolved =
-            Resolve(a_geometry.keys, loaded, actorID);
-        const Studio::PieceRef ref =
-            index < refs.size() ? refs[index] : Studio::PieceRef{};
-        return Studio::ViewedRecipes({std::move(resolved), a_geometry.keys, ref,
-                                      editor_.CurrentView(), loaded});
-      });
+void Manager::BuildInstances(LiveActor &a_state, const Settings &a_settings) {
   a_state.instances.clear();
-  a_state.instances.resize(a_state.plan.instances.size());
-  for (std::size_t i = 0; i < a_state.plan.instances.size(); ++i) {
+  a_state.instances.resize(a_state.matches.instances.size());
+  for (std::size_t i = 0; i < a_state.matches.instances.size(); ++i) {
     const RE::FormID enchantment = EnchantmentForInstance(a_state, i);
     (void)InstanceFor(a_state, InstanceId{i}, enchantment, a_settings);
   }
 }
 
 std::optional<std::size_t> Manager::InstanceFor(LiveActor &a_state,
-                                                InstanceId a_planInstance,
+                                                InstanceId a_matchedInstance,
                                                 RE::FormID a_enchantment,
                                                 const Settings &a_settings) {
   const auto actor = a_state.actor.get();
-  const Instance *planned = InstanceAt(a_state.plan, a_planInstance);
-  const std::size_t instanceIndex = IndexOf(a_planInstance);
+  const Instance *planned = InstanceAt(a_state.matches, a_matchedInstance);
+  const std::size_t instanceIndex = IndexOf(a_matchedInstance);
   if (!actor || !planned || instanceIndex >= a_state.instances.size()) {
     return std::nullopt;
   }
@@ -1137,7 +1104,7 @@ std::optional<std::size_t> Manager::InstanceFor(LiveActor &a_state,
   instance.effectScope =
       planned->effectKey ? planned->effectKey->ToString() : "";
   instance.graph = InstanceGraph(
-      *recipe, InstanceVariant(a_state.plan, a_planInstance, *recipe));
+      *recipe, InstanceVariant(a_state.matches, a_matchedInstance, *recipe));
   if (instance.graph) {
     instance.signals = std::make_unique<SignalState>(*instance.graph);
   }
@@ -1177,13 +1144,13 @@ void Manager::PlaceInstances(LiveActor &a_state, RE::FormID a_actorID,
   }
   const std::span<const Recipe> loaded = LoadedRecipes();
   a_state.placements.clear();
-  a_state.placements.resize(a_state.plan.placements.size());
+  a_state.placements.resize(a_state.matches.placements.size());
   std::size_t flat = 0;
   ActorStacks stacks{.actor = a_actorID};
   for (std::size_t p = 0; p < a_state.pieces.size(); ++p) {
     for (std::size_t g = 0; g < a_state.pieces[p].geometries.size(); ++g) {
       const auto placement = PlanGeometryPlacement(
-          a_state.plan, loaded, GeometryId{flat},
+          a_state.matches, loaded, GeometryId{flat},
           [this](const Recipe &recipe, std::size_t output) {
             return editor_.CurrentView().OutputShown(recipe.id, output);
           });
@@ -1192,7 +1159,7 @@ void Manager::PlaceInstances(LiveActor &a_state, RE::FormID a_actorID,
       ++flat;
     }
   }
-  BuildActorRender(a_state, stacks, a_settings, stackWarnings_);
+  BuildActorRender(a_state, stacks, a_settings, stackWarnings_, renderPlans_);
 }
 
 void Manager::PlaceOnGeometry(LiveActor &a_state, GeometryId a_geometry,
@@ -1236,7 +1203,8 @@ void Manager::PlaceLightsOf(RE::Actor *a_actor, LiveActor &a_state,
                             const Settings &a_settings) {
   const std::span<const Recipe> loaded = LoadedRecipes();
   const ActorLightPlan plan = PlanActorLights(
-      a_state.plan, loaded, [this](const Recipe &recipe, std::size_t output) {
+      a_state.matches, loaded,
+      [this](const Recipe &recipe, std::size_t output) {
         return editor_.CurrentView().OutputShown(recipe.id, output);
       });
   for (std::size_t i = 0; i < plan.sources.size(); ++i) {
@@ -1278,23 +1246,6 @@ void Manager::PlaceLightsOf(RE::Actor *a_actor, LiveActor &a_state,
   }
 }
 
-bool Manager::LayoutSanityCheck(const PbrMaterial &a_material,
-                                std::string_view a_propertyName) {
-  if (layoutVerified_) {
-    return true;
-  }
-  if (!a_material.TextureSlotsValid()) {
-    logger::error("PBR material layout check failed on {}: texture slots are "
-                  "not all NiSourceTexture; emissive path disabled",
-                  a_propertyName);
-    emissivePathEnabled_ = false;
-    return false;
-  }
-  layoutVerified_ = true;
-  logger::info("PBR material layout check passed");
-  return true;
-}
-
 void Manager::RetireEveryActor() {
   std::vector<RE::FormID> ids;
   ids.reserve(applied_.size());
@@ -1310,9 +1261,16 @@ void Manager::Retire(RE::FormID a_actorID) {
   animations_.Stop(a_actorID);
   ForgetAnimEvents(a_actorID);
   RetireEffects(a_actorID);
+  tracked_.erase(a_actorID);
 }
 
 void Manager::RetireEffects(RE::FormID a_actorID) {
+  if (const auto tracked = tracked_.find(a_actorID);
+      tracked != tracked_.end()) {
+    if (auto *present = Get<Actors::Present>(tracked->second.phase)) {
+      present->installed = {};
+    }
+  }
   const auto it = applied_.find(a_actorID);
   if (it == applied_.end()) {
     return;

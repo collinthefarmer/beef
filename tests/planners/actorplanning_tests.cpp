@@ -77,7 +77,7 @@ void VariantsFollowTheInstancePlacements() {
   golden.overrides.emplace("level", 2.0f);
   recipe.variants = {ebony, golden};
 
-  ActorPlan plan;
+  ActorMatches plan;
   plan.geometries.push_back(MakeGeometry("body01", "body.dds", std::nullopt));
   plan.geometries.push_back(
       MakeGeometry("ring01", "gold_ring.dds", std::nullopt));
@@ -109,7 +109,7 @@ void VariantsFollowTheInstancePlacements() {
         "an applied variant leaves unnamed signals alone");
 }
 
-std::size_t PlacementsForInstance(const ActorPlan &a_plan,
+std::size_t PlacementsForInstance(const ActorMatches &a_plan,
                                   InstanceId a_instance) {
   std::size_t count = 0;
   for (const Placement &placement : a_plan.placements) {
@@ -123,7 +123,7 @@ std::size_t PlacementsForInstance(const ActorPlan &a_plan,
 void MatchingSplitsInstancesByEnchantment() {
   const std::vector<Recipe> store = GlowAndRing();
   const std::vector<Geometry> pieces = RingBodyAmulet();
-  const ActorPlan actorPlan = MatchActor(pieces, store);
+  const ActorMatches actorPlan = MatchActor(pieces, store);
 
   Equal(actorPlan.geometries.size(), 3u, "MatchActor keeps the actor's pieces");
   Equal(actorPlan.instances.size(), 4u,
@@ -145,7 +145,7 @@ void MatchingSplitsInstancesByEnchantment() {
 
 void GeometryPlacementFollowsSelectors() {
   const std::vector<Recipe> store = GlowAndRing();
-  const ActorPlan actorPlan = MatchActor(RingBodyAmulet(), store);
+  const ActorMatches actorPlan = MatchActor(RingBodyAmulet(), store);
 
   const GeometryPlacementPlan ring =
       PlanGeometryPlacement(actorPlan, store, GeometryId{0});
@@ -183,7 +183,7 @@ void GeometryPlacementFollowsSelectors() {
 
 void LightsFollowLightRecipes() {
   const std::vector<Recipe> store = GlowAndRing();
-  const ActorPlan actorPlan = MatchActor(RingBodyAmulet(), store);
+  const ActorMatches actorPlan = MatchActor(RingBodyAmulet(), store);
 
   const ActorLightPlan lights = PlanActorLights(actorPlan, store);
   Check(lights.placed.size() == 4 && lights.sources.size() == 4,
@@ -208,17 +208,17 @@ void LightsFollowLightRecipes() {
 
 void InactiveInstancesReportTheirRecipes() {
   const std::vector<Recipe> store = GlowAndRing();
-  const ActorPlan actorPlan = MatchActor(RingBodyAmulet(), store);
+  const ActorMatches actorPlan = MatchActor(RingBodyAmulet(), store);
 
   Check(RecipesOfInactiveInstances(actorPlan).empty(),
         "RecipesOfInactiveInstances is empty while every geometry is live");
 
-  ActorPlan onePieceLost = actorPlan;
+  ActorMatches onePieceLost = actorPlan;
   onePieceLost.geometries[0].lost = true;
   Check(RecipesOfInactiveInstances(onePieceLost).empty(),
         "an instance is active while another live geometry still backs it");
 
-  ActorPlan enchantedLost = actorPlan;
+  ActorMatches enchantedLost = actorPlan;
   enchantedLost.geometries[2].lost = true;
   const std::vector<RecipeId> inactiveRecipes =
       RecipesOfInactiveInstances(enchantedLost);
@@ -239,7 +239,7 @@ void ReplacementAndOutputFilters() {
   replacing.replace = true;
   replacedRecipe.outputs.push_back(replacing);
   const std::vector<Recipe> store{replacedRecipe};
-  const ActorPlan actorPlan = MatchActor(RingBodyAmulet(), store);
+  const ActorMatches actorPlan = MatchActor(RingBodyAmulet(), store);
 
   const GeometryPlacementPlan normal =
       PlanGeometryPlacement(actorPlan, store, GeometryId{0});
@@ -287,7 +287,7 @@ void LightIsolationPrecedesReplacement() {
   upperLight.priority = 2;
   Get<LightOutput>(upperLight.outputs.front())->replace = true;
   const std::vector<Recipe> store{lowerLight, upperLight};
-  const ActorPlan actorPlan = MatchActor(RingBodyAmulet(), store);
+  const ActorMatches actorPlan = MatchActor(RingBodyAmulet(), store);
   Check(FindInstance(actorPlan, RecipeId{0}, std::nullopt).has_value() &&
             FindInstance(actorPlan, RecipeId{1}, std::nullopt).has_value(),
         "light isolation fixture independently matches both recipes");
@@ -321,8 +321,8 @@ void SavedAndScratchRecipesPlanAlike() {
   const std::vector<Recipe> savedStore{saved};
   const std::vector<Recipe> scratchStore{scratch};
   const std::vector<Geometry> pieces = RingBodyAmulet();
-  const ActorPlan savedActorPlan = MatchActor(pieces, savedStore);
-  const ActorPlan scratchActorPlan = MatchActor(pieces, scratchStore);
+  const ActorMatches savedActorPlan = MatchActor(pieces, savedStore);
+  const ActorMatches scratchActorPlan = MatchActor(pieces, scratchStore);
   const GeometryPlacementPlan savedPlan =
       PlanGeometryPlacement(savedActorPlan, savedStore, GeometryId{0});
   const GeometryPlacementPlan scratchPlan =
@@ -343,7 +343,7 @@ void SavedAndScratchRecipesPlanAlike() {
 void EmptyGeometries() {
   const std::vector<Recipe> store = GlowAndRing();
   const std::vector<Geometry> none;
-  const ActorPlan actorPlan = MatchActor(none, store);
+  const ActorMatches actorPlan = MatchActor(none, store);
   Check(actorPlan.geometries.empty() && actorPlan.instances.empty() &&
             actorPlan.placements.empty(),
         "an actor with no geometry matches nothing");
@@ -362,7 +362,7 @@ void EmptyGeometries() {
 
 void EmptyStore() {
   const std::vector<Recipe> store;
-  const ActorPlan actorPlan = MatchActor(RingBodyAmulet(), store);
+  const ActorMatches actorPlan = MatchActor(RingBodyAmulet(), store);
   Equal(actorPlan.geometries.size(), 3u,
         "an empty store still records the actor's pieces");
   Check(actorPlan.instances.empty() && actorPlan.placements.empty(),
@@ -386,7 +386,7 @@ void DuplicatePlacementOfOneRecipe() {
     resolved.key = store.front().keys.front();
     return std::vector<ResolvedRecipe>{resolved, resolved};
   };
-  const ActorPlan actorPlan = MatchActor(pieces, store, twice);
+  const ActorMatches actorPlan = MatchActor(pieces, store, twice);
   Equal(actorPlan.instances.size(), 1u,
         "the same recipe resolved twice for one piece shares one instance");
   Equal(actorPlan.placements.size(), 2u,

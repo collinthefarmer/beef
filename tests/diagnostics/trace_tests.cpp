@@ -24,11 +24,11 @@ int main() {
   Check(!captured, "disabled tracing does not evaluate diagnostic capture");
   Trace::Get().Enable(true);
   Trace::Recorder recorder;
-  recorder.Record(Trace::Event::kCommand, {7, 3},
+  recorder.Record(Trace::Event::kOperation, {7, 3},
                   {{"reason", "quoted \"command\"\nnext line"}});
   const auto event = nlohmann::json::parse(recorder.Recent().back());
-  Check(event["command"] == 7 && event["session"] == 3,
-        "serialized command keeps its session");
+  Check(event["operation"] == 7 && event["session"] == 3,
+        "serialized operation keeps its session");
   Check(event["fields"]["reason"] == "quoted \"command\"\nnext line",
         "JSONL preserves escaping without splitting an event");
   recorder.Record(Trace::Event::kRecipe, {},
@@ -36,7 +36,7 @@ int main() {
   Check(nlohmann::json::parse(recorder.Recent().back())["truncated"] == true,
         "oversized fields are explicitly truncated");
   recorder.Enable(false);
-  recorder.Record(Trace::Event::kCommand, {}, {});
+  recorder.Record(Trace::Event::kOperation, {}, {});
   Check(recorder.Inspect().dropped == 1, "disabled events are counted");
   recorder.Enable(true);
   std::vector<std::thread> writers;
@@ -59,23 +59,25 @@ int main() {
     Check(next > previous, "file and ring sequence order is monotonic");
     previous = next;
   }
-  const auto outer = Trace::Command("outer");
+  const auto outer = Trace::Operation("outer");
   {
     const Trace::Scope scope{outer};
-    const auto inner = Trace::Command("inner");
+    const auto inner = Trace::Operation("inner");
     {
       const Trace::Scope nested{inner};
-      Check(Trace::Current().command == inner.command,
-            "nested command is active");
+      Check(Trace::Current().operation == inner.operation,
+            "nested operation is active");
       std::thread other{[] {
-        Check(Trace::Current().command == 0, "command context is thread local");
+        Check(Trace::Current().operation == 0,
+              "operation context is thread local");
       }};
       other.join();
     }
-    Check(Trace::Current().command == outer.command,
+    Check(Trace::Current().operation == outer.operation,
           "nested scope restores its parent");
   }
-  Check(Trace::Current().command == 0, "scope exits without leaking a command");
+  Check(Trace::Current().operation == 0,
+        "scope exits without leaking an operation");
   {
     const Trace::Scope oldSession{{0, 8}};
     [[maybe_unused]] const auto advanced = Trace::BeginSession();

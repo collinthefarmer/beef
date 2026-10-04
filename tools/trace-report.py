@@ -51,7 +51,7 @@ def listing(owners: Counter[str]) -> str:
 def report(segments: list[Path], slots: int | None) -> None:
     counts, tally, recycled, heartbeat, peaks, shared, transitions, rendering, latest = (
         Counter() for _ in range(9))
-    commands, readbacks, refreshes, pages, survivors = {}, defaultdict(lambda: [0, 0, 0]), [], [], []
+    operations, readbacks, refreshes, pages, survivors = {}, defaultdict(lambda: [0, 0, 0]), [], [], []
     gpu_spans, gpu_ticks = defaultdict(lambda: [0, 0, 0]), Counter()
     startup, sessions, live, owners, worst, last_session = {}, set(), {}, {}, (0, 0), None
     for event in events(segments):
@@ -61,7 +61,8 @@ def report(segments: list[Path], slots: int | None) -> None:
             continue
         kind, action = str(event.get('event', 'unknown')), fields.get('action')
         action = action if isinstance(action, str) else ''
-        session, command = str(event.get('session', 'unknown')), str(event.get('command', 0))
+        session = str(event.get('session', 'unknown'))
+        operation = str(event.get('operation', event.get('command', 0)))
         target = str(fields.get('target'))
         if kind == 'rotated':
             tally['rotations'] += 1
@@ -111,10 +112,10 @@ def report(segments: list[Path], slots: int | None) -> None:
         counts[kind] += 1
         sessions.add(session)
         startup = fields if kind == 'startup' else startup
-        if kind == 'command':
-            commands[command] = fields.get('reason', 'unknown')
+        if kind in ('operation', 'command'):
+            operations[operation] = fields.get('reason', 'unknown')
         if kind == 'retire' and action == 'begin':
-            transitions[command] += 1
+            transitions[operation] += 1
         tally['skipped'] += kind == 'restore' and fields.get('decision') == 'skip_all'
         if kind == 'page':
             pages.append((event.get('seq'), fields.get('page'), fields.get('selection')))
@@ -171,9 +172,9 @@ def report(segments: list[Path], slots: int | None) -> None:
     print(f"Segments read: {len(segments)}; rotations seen: {tally['rotations']}")
     if tally['rotations'] and len(segments) <= tally['rotations']:
         print('Earlier segments were deleted by rotation; the trace starts mid-run.')
-    print('Retirements by originating command:')
-    for command, count in transitions.items():
-        print(f"  {command}: {commands.get(command, 'unscoped/incomplete trace')}: {count}")
+    print('Retirements by originating operation:')
+    for operation, count in transitions.items():
+        print(f"  {operation}: {operations.get(operation, 'unscoped/incomplete trace')}: {count}")
     print('Page/selection observations:')
     for seq, page, selection in pages:
         print(f'  {seq}: {page}: {selection}')

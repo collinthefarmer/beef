@@ -20,7 +20,7 @@ std::atomic<std::uint64_t> session{0};
 thread_local std::optional<Context> context;
 constexpr Named<Event> kEventNames[]{
     {Event::kStartup, "startup"}, {Event::kSettings, "settings"},
-    {Event::kRecipe, "recipe"},   {Event::kCommand, "command"},
+    {Event::kRecipe, "recipe"},   {Event::kOperation, "operation"},
     {Event::kPage, "page"},       {Event::kQueue, "queue"},
     {Event::kLoad, "load"},       {Event::kApplication, "application"},
     {Event::kRetire, "retire"},   {Event::kBinding, "binding"},
@@ -126,8 +126,7 @@ void Recorder::Record(Event a_event, Context a_context,
         break;
       }
       truncated = truncated || field.value.size() > 2048;
-      fields[std::string{field.name.substr(0, 64)}] =
-          field.value.substr(0, 2048);
+      fields[field.name.substr(0, 64)] = field.value.substr(0, 2048);
     }
     if (a_event == Event::kStartup) {
       identity_ = fields.dump();
@@ -140,7 +139,7 @@ void Recorder::Record(Event a_event, Context a_context,
          std::chrono::duration_cast<std::chrono::milliseconds>(now).count()},
         {"thread", thread.str()},
         {"session", a_context.session},
-        {"command", a_context.command},
+        {"operation", a_context.operation},
         {"event", NameOf(kEventNames, a_event)},
         {"fields", std::move(fields)},
         {"truncated", truncated},
@@ -219,12 +218,12 @@ std::uint64_t BeginSession() noexcept {
   return session.fetch_add(1, std::memory_order_relaxed) + 1;
 }
 
-Context Command(std::string_view a_reason) {
+Context Operation(std::string_view a_reason) {
   const Context parent = Current();
   const Context next{NextID(), session.load(std::memory_order_relaxed)};
   const Scope scope{next};
-  Emit(Event::kCommand, {{"reason", std::string{a_reason}},
-                         {"parent", std::to_string(parent.command)}});
+  Emit(Event::kOperation, {{"reason", std::string{a_reason}},
+                           {"parent", std::to_string(parent.operation)}});
   return next;
 }
 

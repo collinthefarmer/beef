@@ -70,6 +70,7 @@ public:
   [[nodiscard]] bool Attached() const noexcept;
   [[nodiscard]] bool TextureSlotsValid() const;
   [[nodiscard]] std::size_t PresenterTextures() const;
+  [[nodiscard]] std::string DiffusePath() const;
 
 private:
   friend class SlotWriter;

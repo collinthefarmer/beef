@@ -100,6 +100,8 @@ std::expected<RunFile, std::string> ParseRunFile(std::string_view a_text,
   const std::optional<std::vector<std::string>> names =
       reader.Strings("suite", kMaxSuiteCases);
   const json *notAfterValue = reader.Child("notAfter");
+  const std::optional<bool> verifyRenderPlans =
+      reader.Boolean("verifyRenderPlans");
   reader.Finish();
   if (!problems.empty()) {
     return std::unexpected(problems.front().message);
@@ -129,7 +131,7 @@ std::expected<RunFile, std::string> ParseRunFile(std::string_view a_text,
     return std::unexpected("the run file has expired");
   }
   return RunFile{std::move(*checkedRun), std::move(*checkedSave),
-                 std::move(*suite)};
+                 std::move(*suite), verifyRenderPlans.value_or(false)};
 }
 
 std::string StartLineJson(std::string_view a_run, std::string_view a_build,

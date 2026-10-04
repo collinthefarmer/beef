@@ -264,7 +264,7 @@ void RecipeEditor::FinishActiveGesture(bool a_commit, bool a_rebuild) {
 std::uint64_t
 RecipeEditor::EditRecipe(std::string a_id, Studio::EditBatch a_edits,
                          std::optional<std::uint64_t> a_expectedRevision) {
-  const Trace::Scope trace{Trace::Command("editor.EditRecipe")};
+  const Trace::Scope trace{Trace::Operation("editor.EditRecipe")};
   const auto operation =
       std::make_shared<PendingRecipeEdit>(fileOperations_, a_id);
   runtime_.PostTask([this, id = std::move(a_id), edits = std::move(a_edits),
@@ -335,7 +335,7 @@ std::optional<std::string> RecipeEditor::RestoreRecipe(const std::string &a_id,
 }
 
 std::uint64_t RecipeEditor::UndoRecipe(std::string a_id) {
-  const Trace::Scope trace{Trace::Command("editor.UndoRecipe")};
+  const Trace::Scope trace{Trace::Operation("editor.UndoRecipe")};
   const auto operation =
       std::make_shared<PendingRecipeEdit>(fileOperations_, a_id);
   runtime_.PostTask([this, id = std::move(a_id), operation] {
@@ -345,7 +345,7 @@ std::uint64_t RecipeEditor::UndoRecipe(std::string a_id) {
 }
 
 std::uint64_t RecipeEditor::RedoRecipe(std::string a_id) {
-  const Trace::Scope trace{Trace::Command("editor.RedoRecipe")};
+  const Trace::Scope trace{Trace::Operation("editor.RedoRecipe")};
   const auto operation =
       std::make_shared<PendingRecipeEdit>(fileOperations_, a_id);
   runtime_.PostTask([this, id = std::move(a_id), operation] {
@@ -355,7 +355,7 @@ std::uint64_t RecipeEditor::RedoRecipe(std::string a_id) {
 }
 
 std::uint64_t RecipeEditor::SaveRecipe(std::string a_id) {
-  const Trace::Scope trace{Trace::Command("editor.SaveRecipe")};
+  const Trace::Scope trace{Trace::Operation("editor.SaveRecipe")};
   const auto operation = std::make_shared<PendingFileOperation>(
       fileOperations_, a_id, Studio::FileAction::kSave);
   runtime_.PostTask([this, id = std::move(a_id), operation] {
@@ -390,7 +390,7 @@ void RecipeEditor::SaveRecipeNow(const std::string &a_id,
 }
 
 std::uint64_t RecipeEditor::RevertRecipe(std::string a_id) {
-  const Trace::Scope trace{Trace::Command("editor.RevertRecipe")};
+  const Trace::Scope trace{Trace::Operation("editor.RevertRecipe")};
   const auto operation = std::make_shared<PendingFileOperation>(
       fileOperations_, a_id, Studio::FileAction::kRevert);
   runtime_.PostTask([this, id = std::move(a_id), operation] {
@@ -427,7 +427,7 @@ std::uint64_t RecipeEditor::RevertRecipe(std::string a_id) {
 }
 
 std::uint64_t RecipeEditor::ReloadRecipes() {
-  const Trace::Scope trace{Trace::Command("editor.ReloadRecipes")};
+  const Trace::Scope trace{Trace::Operation("editor.ReloadRecipes")};
   const auto operation =
       std::make_shared<PendingRecipeEdit>(fileOperations_, std::string{});
   runtime_.PostTask([this, operation] {
@@ -454,7 +454,7 @@ void RecipeEditor::ReloadRecipesNow() {
 
 std::uint64_t RecipeEditor::NewRecipe(std::string a_id, RecipeKey a_key,
                                       std::string a_geometry) {
-  const Trace::Scope trace{Trace::Command("editor.NewRecipe")};
+  const Trace::Scope trace{Trace::Operation("editor.NewRecipe")};
   const auto operation =
       std::make_shared<PendingRecipeEdit>(fileOperations_, a_id);
   runtime_.PostTask([this, id = std::move(a_id), key = std::move(a_key),
@@ -473,7 +473,7 @@ std::uint64_t RecipeEditor::NewRecipe(std::string a_id, RecipeKey a_key,
 }
 
 std::uint64_t RecipeEditor::RenameRecipe(std::string a_from, std::string a_to) {
-  const Trace::Scope trace{Trace::Command("editor.RenameRecipe")};
+  const Trace::Scope trace{Trace::Operation("editor.RenameRecipe")};
   const auto operation =
       std::make_shared<PendingRecipeEdit>(fileOperations_, a_from);
   runtime_.PostTask(
@@ -503,7 +503,7 @@ std::uint64_t RecipeEditor::RenameRecipe(std::string a_from, std::string a_to) {
 }
 
 std::uint64_t RecipeEditor::DeleteRecipe(std::string a_id) {
-  const Trace::Scope trace{Trace::Command("editor.DeleteRecipe")};
+  const Trace::Scope trace{Trace::Operation("editor.DeleteRecipe")};
   const auto operation =
       std::make_shared<PendingRecipeEdit>(fileOperations_, a_id);
   runtime_.PostTask([this, id = std::move(a_id), operation] {
@@ -528,7 +528,7 @@ std::uint64_t RecipeEditor::DeleteRecipe(std::string a_id) {
 
 std::uint64_t RecipeEditor::DuplicateRecipe(std::string a_from,
                                             std::string a_to) {
-  const Trace::Scope trace{Trace::Command("editor.DuplicateRecipe")};
+  const Trace::Scope trace{Trace::Operation("editor.DuplicateRecipe")};
   const auto operation =
       std::make_shared<PendingRecipeEdit>(fileOperations_, a_to);
   runtime_.PostTask(
@@ -547,7 +547,7 @@ std::uint64_t RecipeEditor::DuplicateRecipe(std::string a_from,
 }
 
 void RecipeEditor::BeginPaint(Studio::PaintStartRequest a_request) {
-  const Trace::Scope trace{Trace::Command("editor.BeginPaint")};
+  const Trace::Scope trace{Trace::Operation("editor.BeginPaint")};
   runtime_.PostTask([this, request = std::move(a_request)] {
     if (request.resetID != paintResetID_) {
       return;
@@ -618,7 +618,7 @@ void RecipeEditor::DropPaintRecipe() {
 }
 
 void RecipeEditor::UpdatePaint(Studio::PaintUpdateRequest a_request) {
-  const Trace::Scope trace{Trace::Command("editor.UpdatePaint")};
+  const Trace::Scope trace{Trace::Operation("editor.UpdatePaint")};
   runtime_.PostTask([this, request = std::move(a_request)] {
     if (request.sessionID != paintSessionID_ ||
         request.revision <= paintRevision_) {
@@ -640,7 +640,7 @@ void RecipeEditor::UpdatePaint(Studio::PaintUpdateRequest a_request) {
 }
 
 void RecipeEditor::KeepPaint(Studio::PaintCommitRequest a_request) {
-  const Trace::Scope trace{Trace::Command("editor.KeepPaint")};
+  const Trace::Scope trace{Trace::Operation("editor.KeepPaint")};
   runtime_.PostTask([this, request = std::move(a_request)] {
     if (request.sessionID != paintSessionID_ ||
         (paintCommit_ && paintCommit_->requestID == request.id)) {
@@ -668,7 +668,7 @@ void RecipeEditor::KeepPaint(Studio::PaintCommitRequest a_request) {
 }
 
 void RecipeEditor::EndPaint(std::uint64_t a_sessionID) {
-  const Trace::Scope trace{Trace::Command("editor.EndPaint")};
+  const Trace::Scope trace{Trace::Operation("editor.EndPaint")};
   runtime_.PostTask([this, a_sessionID] {
     if (a_sessionID == 0 || a_sessionID == paintSessionID_) {
       FinishPaint();
@@ -706,7 +706,7 @@ void RecipeEditor::FinishPaint() {
 }
 
 void RecipeEditor::Isolate(Studio::Isolation a_isolation) {
-  const Trace::Scope trace{Trace::Command("editor.Isolate")};
+  const Trace::Scope trace{Trace::Operation("editor.Isolate")};
   runtime_.PostTask([this, isolation = std::move(a_isolation)] {
     if (view_.isolation == isolation) {
       return;
@@ -716,7 +716,7 @@ void RecipeEditor::Isolate(Studio::Isolation a_isolation) {
 }
 
 void RecipeEditor::ShowRecipeSet(std::vector<std::string> a_recipes) {
-  const Trace::Scope trace{Trace::Command("editor.ShowRecipeSet")};
+  const Trace::Scope trace{Trace::Operation("editor.ShowRecipeSet")};
   runtime_.PostTask([this, recipes = std::move(a_recipes)] {
     if (view_.recipeSet == recipes) {
       return;
@@ -726,7 +726,7 @@ void RecipeEditor::ShowRecipeSet(std::vector<std::string> a_recipes) {
 }
 
 void RecipeEditor::ChangeView(Studio::ViewCommand a_command) {
-  const Trace::Scope trace{Trace::Command("editor.ChangeView")};
+  const Trace::Scope trace{Trace::Operation("editor.ChangeView")};
   runtime_.PostTask([this, command = std::move(a_command)] {
     Studio::View next = view_;
     if (!Studio::ApplyViewCommand(next, command)) {
@@ -737,7 +737,7 @@ void RecipeEditor::ChangeView(Studio::ViewCommand a_command) {
 }
 
 void RecipeEditor::PinRecipe(Studio::PieceRef a_piece, std::string a_recipeID) {
-  const Trace::Scope trace{Trace::Command("editor.PinRecipe")};
+  const Trace::Scope trace{Trace::Operation("editor.PinRecipe")};
   runtime_.PostTask([this, a_piece, id = std::move(a_recipeID)] {
     std::optional<Studio::Pin> pin;
     if (!id.empty()) {
@@ -764,7 +764,7 @@ void RecipeEditor::PinRecipe(Studio::PieceRef a_piece, std::string a_recipeID) {
 }
 
 void RecipeEditor::UpdateView(std::function<void(Studio::View &)> a_change) {
-  const Trace::Scope trace{Trace::Command("editor.UpdateView")};
+  const Trace::Scope trace{Trace::Operation("editor.UpdateView")};
   runtime_.PostTask([this, change = std::move(a_change)] {
     Studio::View next = view_;
     change(next);

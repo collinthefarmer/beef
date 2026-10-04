@@ -22,6 +22,7 @@ inline constexpr Solo kSoloFrost{"winterglass"};
 inline constexpr Equip kPlayerFixture{Role::kPlayer, Item::kFixture};
 inline constexpr Equip kWearerFixture{Role::kWearer, Item::kFixture};
 inline constexpr Equip kControlPlain{Role::kControl, Item::kPlainCuirass};
+inline constexpr Equip kPlayerGauntlets{Role::kPlayer, Item::kPairedGauntlets};
 
 template <class... Kinds>
 constexpr std::array<Step, sizeof...(Kinds)> Sequence(Kinds... a_steps) {
@@ -65,7 +66,8 @@ Cycles(CycleSteps a_cycle) {
 inline constexpr std::array kCleanup =
     Sequence(DespawnCrowd{}, ReturnToStart{}, SetCamera{Camera::kThirdPerson},
              Despawn{Role::kWearer}, Despawn{Role::kControl},
-             Remove{Role::kPlayer, Item::kFixture}, RestoreSolo{});
+             Remove{Role::kPlayer, Item::kFixture},
+             Remove{Role::kPlayer, Item::kPairedGauntlets}, RestoreSolo{});
 
 inline constexpr std::array kLifecycle =
     Sequence(kSoloCircuit, kPlayerFixture, Apply{Role::kPlayer},
@@ -78,6 +80,15 @@ inline constexpr std::array kReequip = Sequence(
     kPlayerFixture, AwaitRendered{Role::kPlayer});
 inline constexpr std::array kEquipCycle =
     Joined(kRenderedOnPlayer, Repeated<kEquipCycles>(kReequip));
+
+inline constexpr std::array kUnequipOne =
+    Sequence(kSoloCircuit, kPlayerFixture, AwaitRendered{Role::kPlayer},
+             kPlayerGauntlets, AwaitLiveItems{Role::kPlayer, 2},
+             Unequip{Role::kPlayer, Item::kPairedGauntlets},
+             AwaitLiveItems{Role::kPlayer, 1}, ExpectEffect{Role::kPlayer},
+             kPlayerGauntlets, AwaitLiveItems{Role::kPlayer, 2},
+             Unequip{Role::kPlayer, Item::kFixture},
+             AwaitLiveItems{Role::kPlayer, 1}, ExpectEffect{Role::kPlayer});
 
 inline constexpr std::array kCamera = Sequence(
     kSoloCircuit, kPlayerFixture, AwaitRendered{Role::kPlayer},
@@ -222,6 +233,7 @@ inline constexpr std::array kSoakChurn =
 inline constexpr std::array kCatalog{
     Case{"lifecycle", kLifecycle, kCleanup},
     Case{"equip-cycle", kEquipCycle, kCleanup},
+    Case{"unequip-one", kUnequipOne, kCleanup},
     Case{"camera", kCamera, kCleanup},
     Case{"isolation", kIsolation, kCleanup},
     Case{"unload", kUnload, kCleanup},

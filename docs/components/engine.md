@@ -38,7 +38,11 @@ does not lower gets the problem `stack was not lowered`.
 
 **The frame.** `Manager::OnFrame` runs from the hook. It returns at once while
 `ApplicationService::Loading` is true. Once a second it expires `CarriedTimes`,
-sweeps animation observation and runs `SweepEviction`. At the tick interval
+sweeps animation observation and queues a refresh for each tracked actor
+with a stuck model or whose eviction state changes (`QueueSecondChecks`).
+Every 100 ms it queues a refresh for each actor that is settling: a pending
+model younger than the model wait plus one recheck (`QueueSettlingActors`).
+At the tick interval
 (`Settings::TickIntervalMS`) it calls `Manager::Tick` for a nonempty actor
 set. Cache maintenance (`SweepBoundMeshes`) and `PublishSnapshot` run outside
 that nonempty guard. The retirement of the last actor therefore cannot stop
@@ -59,7 +63,7 @@ not select the retired actors. A recipe pointer, span or planner recipe index
 must not survive republication. Deferred editor requests capture owned ids and
 edits and look documents up when they run.
 
-**Instance slots.** `ActorPlan` owns instance identity and deduplication.
+**Instance slots.** `ActorMatches` owns instance identity and deduplication.
 `LiveActor::instances` has one slot per planned instance. A slot stays empty
 when preparation fails, so placements use the same indices in both tables.
 
@@ -209,10 +213,9 @@ below the material's native size.
 
 | Member | Description | Declared in |
 |---|---|---|
-| `Manager::SweepEviction` | Runs once a second from `OnFrame`. It retires each applied non-player actor past `Settings::evictDistance` into `evictedForDistance_`. It calls `QueueRefresh` for an evicted actor back inside the hysteresis band. | `Manager.h` |
-| `Manager::ArmorAwaitsModel` | Whether the actor's third-person biped lists an armor the recipes care about (enchanted, or any armor when a recipe has an unenchanted key) with no attached model in any slot. | `Manager.h` |
-| `Manager::SweepAwaitingArmorModels`, `Manager::awaitingArmorModel_` | `Refresh` adds an actor whose armor awaits its model. Every 100 ms the sweep checks each one inside the eviction radius and calls `QueueRefresh` once its models are attached. An actor leaves the set when it applies, unloads or is deleted; `Manager::Clear` empties it. | `Manager.h` |
-| `Manager::evictedForDistance_` | The actor ids held out for distance. `EligibleForRefresh` adds a far actor and removes an actor that applies. `Manager::Clear` empties it. | `Manager.h` |
+| `Manager::tracked_`, `TrackedActor` | One record per actor the core knows: its `Actors::Phase` (`Unloaded`, `Evicted`, `Present` with the installed plan and pending models) and its `ModelTable`. `Manager::Clear` empties it; a full `Retire` drops the actor's entry. | `Manager.h` |
+| `Manager::AdvanceActor` | Observes the actor (`ObserveActor`), plans it (`Actors::PlanActor`) and advances its phase (`Actors::Advance`), the eviction and pending-model rules included. Traces `actor_advance`. | `ManagerApply.cpp` |
+| `Manager::QueueSettlingActors`, `Manager::QueueSecondChecks` | Queue a refresh for each settling actor (every 100 ms) and, once a second, each actor with a stuck model or whose distance crosses the eviction rule (`Actors::RecheckOf`, `Actors::InRange`). | `ManagerTick.cpp` |
 | `EvictionFor`, `EvictionAction` | The pure decision: `kEvict` past the distance, `kRestore` inside 80% of it, `kNone` otherwise. | `planners/Eviction.h` |
 | `Settings::evictDistance` | The eviction radius in game units. 0 disables eviction. `kMaxEvictDistance` (20000) caps it. | `Settings.h` |
 | `RuntimeSizes` | Derives the base and maximum stack size from the material's largest native texture and `Settings::textureScale`. | `ManagerApply.cpp` |
@@ -230,7 +233,7 @@ without the manager.
 
 | Record | Description |
 |---|---|
-| `LiveActor` | One applied actor: its handle, its `ActorPlan`, its pieces, instances and **placements**, and the `ApplicationToken`s of its in-flight applications. |
+| `LiveActor` | One applied actor: its handle, its `ActorMatches`, its pieces, instances and **placements**, and the `ApplicationToken`s of its in-flight applications. |
 | `LivePiece` | One worn armor clone: the armor form id and name, the optional addon `FormKey`, the enchantment form id and its `LiveGeometry`s. |
 | `LivePieceId` | A typed piece index (`enum class`, `std::size_t`). |
 | `LiveGeometry` | One bound geometry: engine geometry and shader-property pointers, `GeometryInputs`, `MaterialBinding`, `ShellBinding`, its `GeometryPlan`, `GeometryStackPlan` and `BindingPlan`, and its `PlacementId`s. Its `lost` flag marks it retired. |
@@ -326,8 +329,10 @@ ApplicationService::RunActor ──▶ Manager::RunRefresh            Applicatio
   │
   ▼
 Manager::Refresh                                                ManagerApply.cpp
-  │   RetireEffects, then EligibleForRefresh (eviction check)
-  │   LiveActorFor: CollectPieces, MatchRecipes, InstanceFor
+  │   AdvanceActor: ObserveActor, Actors::PlanActor, Actors::Advance
+  │   no commands: store the phase and stop
+  │   commands: RetireEffects; if still Present,
+  │   LiveActorFor: LivePiecesOf, the plan's matches, BuildInstances
   ▼
 Manager::PlaceInstances                                         ManagerApply.cpp
   │   per geometry: PreparePlacement, PlaceOnGeometry
@@ -335,7 +340,8 @@ Manager::PlaceInstances                                         ManagerApply.cpp
   │     (SlotStackSize, Compositor::StackSize) into ActorStacks
   ▼
 BuildActorRender                                                ManagerApply.cpp
-  │   CollectLayerDemands ──▶ BuildRenderPlan                     planners/RenderPlan.h
+  │   RenderPlanCache hit, or CollectLayerDemands ──▶ BuildRenderPlan
+  │                                                              planners/RenderPlan.h
   │   one RenderInstance per actor, AttachRender, AttachStackOutputs
   ▼
 PlaceLightsOf, then applied_[actorID] = LiveActor              ManagerApply.cpp
@@ -345,7 +351,7 @@ PlayerCharacter::Update hook (every frame)                      Hooks.cpp
   ▼
 Manager::OnFrame                                                ManagerTick.cpp
   │   once a second: CarriedTimes::Expire, SweepAnimationEvents,
-  │                  SweepEviction
+  │                  QueueSecondChecks; every 100 ms QueueSettlingActors
   ▼
 Manager::Tick                                                   ManagerTick.cpp
   │   DropLostGeometries; TickInstance per LiveInstance
@@ -373,7 +379,7 @@ Manager::ChangeAndRebuildActors                                 ManagerApplicati
   │              RecipeGraph, republishes)
   │   ApplicationService::Refresh per actor
   ▼
-rejoins (a) at Manager::RunRefresh; MatchRecipes reads the edited
+rejoins (a) at Manager::RunRefresh; PlanActor reads the edited
 Recipe from LoadedRecipes()
 ```
 
@@ -382,9 +388,9 @@ Recipe from LoadedRecipes()
 | Concern | Key files |
 |---|---|
 | Event sinks and hooks | `Events.h`/`.cpp` (equip, object-loaded, hit and node-update sinks), `PluginEvents.h`/`.cpp` (the inter-plugin message contract and parser), `Hooks.h`/`.cpp` (the `PlayerCharacter::Update` hook), `AnimationSubscriptions.h`/`.cpp` (animation-graph observation) |
-| The manager | `Manager.h`, `Manager.cpp` (construction, queue calls, `Clear`, load), `ManagerApply.cpp` (`Refresh`, `Retire`, piece collection, matching, placement, `BuildActorRender`, lights), `ManagerApplication.cpp` (`ChangeAndRebuildActors`, application bookkeeping), `ManagerTick.cpp` (`OnFrame`, `SweepEviction`, `Tick`, `RenderGeometry`, slot writes, `UpdateLights`), `ManagerAnimation.cpp` (animation events), `ManagerEvents.cpp` (`Fire`, `FireAt`, `QueueEvent`, `QueueBroadcast`), `ManagerInspection.cpp` (`RequestMesh`), `ManagerSnapshot.cpp` (`GetStatus`, `BuildSnapshot`, `PublishSnapshot`, `Watch`) |
+| The manager | `Manager.h`, `Manager.cpp` (construction, queue calls, `Clear`, load), `ManagerApply.cpp` (`Refresh`, `Retire`, live pieces from observation, placement, `BuildActorRender`, lights), `ManagerApplication.cpp` (`ChangeAndRebuildActors`, application bookkeeping), `ManagerTick.cpp` (`OnFrame`, `QueueSettlingActors`, `QueueSecondChecks`, `Tick`, `RenderGeometry`, slot writes, `UpdateLights`), `ManagerAnimation.cpp` (animation events), `ManagerEvents.cpp` (`Fire`, `FireAt`, `QueueEvent`, `QueueBroadcast`), `ManagerInspection.cpp` (`RequestMesh`), `ManagerSnapshot.cpp` (`GetStatus`, `BuildSnapshot`, `PublishSnapshot`, `Watch`) |
 | Application and session bookkeeping | `ApplicationService.h`/`.cpp` (token tracking, rejection handling, history pruning), `SessionQueue.h`/`.cpp` (per-actor task serialisation) |
-| Actor and worn-piece state | `LiveActor.h`/`.cpp` (live records, `RetireGeometry`, `ResolvePlacement`), `Environment.h`/`.cpp` (`ActorEnvironment`), `WornKeys.h`/`.cpp` (`WornKeysOf`), `EnchantmentEffects.h`/`.cpp` (`EnchantmentValueFor`), `InstanceTime.h`/`.cpp` (`CarriedTimes`) |
+| Actor and worn-piece state | `ActorObservation.h`/`.cpp` (`ObserveActor`, `ModelTable`, `ModelOf`, `MaterialLayout`), `RenderPlanCache.h`/`.cpp` (render plans reused across actors), `LiveActor.h`/`.cpp` (live records, `RetireGeometry`, `ResolvePlacement`), `Environment.h`/`.cpp` (`ActorEnvironment`), `WornKeys.h`/`.cpp` (`WornKeysOf`), `EnchantmentEffects.h`/`.cpp` (`EnchantmentValueFor`), `InstanceTime.h`/`.cpp` (`CarriedTimes`) |
 | Recipe CRUD | `RecipeStore.h`/`.cpp` (load, publish, mutate, save, `RefreshRecipeDerivedState`), `RecipeFiles.h`/`.cpp` (checked read, write, rename and delete), `RecipeOperations.h` (the operation journal and task guards), `RecipeEditor.h`/`.cpp` (gestures, edits, undo, paint, view) |
 | Form and game-object lookups | `EngineForms.h`/`.cpp` (`FormKeyFor`, `LookupForm`, `ShaderFor`, `RecordFrom`), `GameObjectService.h`/`.cpp` (game-object and animation-event catalogs), `InputCatalog.h`/`.cpp` (`BuildActorValueSamples`), `Tweaks.h`/`.cpp` (`EditorIdOf`, `TweaksEditorIdsAvailable`) |
 | Regression fixture | `RegressionRequests.h`/`.cpp` (the request store and the manager's regression calls), `RegressionRequest.h` (`RegressionRequest`), `ManagerRegression.cpp` (the manager's regression observations and studio work), `RegressionRun.h`/`.cpp` (the unattended run's file, load and result lines over `regression/Run.h`), `RegressionWorld.h`/`.cpp` (its observations and commands) |

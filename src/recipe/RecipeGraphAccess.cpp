@@ -1,6 +1,8 @@
 // GPL-3.0-only with the additional permission in COPYING.md.
 #include "recipe/RecipeGraph.h"
 
+#include <algorithm>
+
 namespace BetterEnchantmentEffects {
 std::span<const OutputBinding> RecipeGraph::OutputBindings() const noexcept {
   return outputBindings_;
@@ -157,5 +159,11 @@ const BoundExpression *RecipeGraph::ExpressionAt(NodeId a_node) const noexcept {
   const auto *expression =
       node ? Get<ExpressionOperation>(node->kind) : nullptr;
   return expression ? &expression->expression : nullptr;
+}
+bool ReadsNodePositions(const RecipeGraph &a_graph) {
+  return std::ranges::any_of(a_graph.Nodes(), [](const RecipeNode &a_node) {
+    const auto *external = Get<ExternalInput>(a_node.kind);
+    return external && Is<NodePositionInput>(external->source);
+  });
 }
 }

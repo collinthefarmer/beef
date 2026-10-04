@@ -15,7 +15,7 @@ inline constexpr std::uint32_t kMaxFramesPerSecond = 600;
 inline constexpr std::uint32_t kTravelDeadlineFrames = 3600;
 inline constexpr std::uint32_t kExpectDeadlineFrames = 600;
 
-const ActorFacts &ActorOf(const StepContext &a_context, Role a_role) {
+const RoleFacts &ActorOf(const StepContext &a_context, Role a_role) {
   return a_context.seen.actors[IndexOf(a_role)];
 }
 
@@ -62,17 +62,18 @@ StepMove PassWhen(bool a_done, const StepContext &a_context,
   return Wait();
 }
 
-std::string Describe(const ActorFacts &a_actor) {
+std::string Describe(const RoleFacts &a_actor) {
   return std::format(
-      "present {}, wears fixture {}, live {}, residue {}, "
-      "latest application {}",
+      "present {}, wears fixture {}, live {}, live items {}, stray items {}, "
+      "residue {}, latest application {}",
       a_actor.present ? "yes" : "no",
       a_actor.armor[IndexOf(Item::kFixture)].equipped ? "yes" : "no",
-      a_actor.live ? "yes" : "no", a_actor.residue,
+      a_actor.live ? "yes" : "no", a_actor.liveItems, a_actor.strayItems,
+      a_actor.residue,
       a_actor.application.empty() ? "none" : a_actor.application);
 }
 
-StepMove WithActorState(StepMove a_move, const ActorFacts &a_actor) {
+StepMove WithActorState(StepMove a_move, const RoleFacts &a_actor) {
   Completed *completed = std::get_if<Completed>(&a_move.verdict);
   if (completed && completed->outcome != Outcome::kPass) {
     completed->reason += std::format(" ({})", Describe(a_actor));
@@ -184,7 +185,7 @@ StepMove Check(const Enable &a_enable, const StepContext &a_context) {
 }
 
 StepMove Start(const Equip &a_equip, const StepContext &a_context) {
-  const ActorFacts &actor = ActorOf(a_context, a_equip.role);
+  const RoleFacts &actor = ActorOf(a_context, a_equip.role);
   const ItemFacts &armor = ArmorOf(a_context, a_equip.role, a_equip.item);
   if (!a_context.seen.itemsLoaded[IndexOf(a_equip.item)]) {
     return Block(
@@ -202,8 +203,8 @@ StepMove Start(const Equip &a_equip, const StepContext &a_context) {
     }
     return Issue(EquipCarried{a_equip.role, a_equip.item});
   }
-  if (a_equip.role == Role::kPlayer && actor.bodyArmorWorn) {
-    return Block("the player wears body armor");
+  if (a_equip.role == Role::kPlayer && armor.slotTaken) {
+    return Block("the player wears other armor in that slot");
   }
   return Issue(AddAndEquip{a_equip.role, a_equip.item});
 }
@@ -292,7 +293,7 @@ StepMove Check(const Retire &, const StepContext &a_context) {
 StepMove Start(const AwaitRendered &, const StepContext &) { return Wait(); }
 
 StepMove Check(const AwaitRendered &a_await, const StepContext &a_context) {
-  const ActorFacts &actor = ActorOf(a_context, a_await.role);
+  const RoleFacts &actor = ActorOf(a_context, a_await.role);
   const bool rendered =
       actor.present &&
       actor.renderedAttempt > a_context.renderedBefore[IndexOf(a_await.role)];
@@ -315,7 +316,7 @@ StepMove Check(const AwaitRendered &a_await, const StepContext &a_context) {
 StepMove Start(const AwaitRetired &, const StepContext &) { return Wait(); }
 
 StepMove Check(const AwaitRetired &a_await, const StepContext &a_context) {
-  const ActorFacts &actor = ActorOf(a_context, a_await.role);
+  const RoleFacts &actor = ActorOf(a_context, a_await.role);
   return WithActorState(PassWhen(!actor.live, a_context, kRenderDeadlineFrames,
                                  "the plugin did not retire the actor"),
                         actor);
@@ -324,7 +325,7 @@ StepMove Check(const AwaitRetired &a_await, const StepContext &a_context) {
 StepMove Start(const AwaitBaseline &, const StepContext &) { return Wait(); }
 
 StepMove Check(const AwaitBaseline &a_await, const StepContext &a_context) {
-  const ActorFacts &actor = ActorOf(a_context, a_await.role);
+  const RoleFacts &actor = ActorOf(a_context, a_await.role);
   return WithActorState(
       PassWhen(actor.present && actor.residue == 0, a_context,
                kRenderDeadlineFrames,
@@ -335,10 +336,24 @@ StepMove Check(const AwaitBaseline &a_await, const StepContext &a_context) {
 StepMove Start(const ExpectEffect &, const StepContext &) { return Wait(); }
 
 StepMove Check(const ExpectEffect &a_expect, const StepContext &a_context) {
-  const ActorFacts &actor = ActorOf(a_context, a_expect.role);
+  const RoleFacts &actor = ActorOf(a_context, a_expect.role);
   return WithActorState(
-      PassWhen(actor.present && actor.live && actor.residue > 0, a_context,
-               kExpectDeadlineFrames, "the effect was not on the actor"),
+      PassWhen(actor.present && actor.live && actor.thirdPersonResidue > 0,
+               a_context, kExpectDeadlineFrames,
+               "the effect was not on the third-person body"),
+      actor);
+}
+
+StepMove Start(const AwaitLiveItems &, const StepContext &) { return Wait(); }
+
+StepMove Check(const AwaitLiveItems &a_await, const StepContext &a_context) {
+  const RoleFacts &actor = ActorOf(a_context, a_await.role);
+  return WithActorState(
+      PassWhen(actor.present && actor.liveItems == a_await.count &&
+                   actor.strayItems == 0,
+               a_context, kRenderDeadlineFrames,
+               std::format("effects did not settle on {} worn item(s)",
+                           a_await.count)),
       actor);
 }
 
@@ -350,7 +365,7 @@ StepMove Start(const HoldUntouched &a_hold, const StepContext &a_context) {
 }
 
 StepMove Check(const HoldUntouched &a_hold, const StepContext &a_context) {
-  const ActorFacts &actor = ActorOf(a_context, a_hold.role);
+  const RoleFacts &actor = ActorOf(a_context, a_hold.role);
   if (actor.live || actor.residue > 0) {
     return Fail(
         std::format("the {} gained plugin state", NameOf(kRoles, a_hold.role)));
@@ -423,7 +438,7 @@ StepMove Start(const ExpectFirstPersonEffect &, const StepContext &) {
 }
 
 StepMove Check(const ExpectFirstPersonEffect &, const StepContext &a_context) {
-  const ActorFacts &player = ActorOf(a_context, Role::kPlayer);
+  const RoleFacts &player = ActorOf(a_context, Role::kPlayer);
   return WithActorState(
       PassWhen(player.present && player.live && player.firstPersonResidue > 0,
                a_context, kExpectDeadlineFrames,
@@ -824,6 +839,7 @@ std::array<bool, kRoleCount> RolesAffected(const Step &a_step) {
           [&](const AwaitRetired &) { return kNone; },
           [&](const AwaitBaseline &) { return kNone; },
           [&](const ExpectEffect &) { return kNone; },
+          [&](const AwaitLiveItems &) { return kNone; },
           [&](const HoldUntouched &) { return kNone; },
           [&](const Solo &) { return kAll; },
           [&](const RestoreSolo &) { return kAll; },

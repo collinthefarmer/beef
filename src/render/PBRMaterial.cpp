@@ -89,6 +89,14 @@ std::size_t PbrMaterial::PresenterTextures() const {
       }));
 }
 
+std::string PbrMaterial::DiffusePath() const {
+  if (!Attached() || !layout_->diffuseTexture ||
+      !layout_->diffuseTexture->name.c_str()) {
+    return {};
+  }
+  return layout_->diffuseTexture->name.c_str();
+}
+
 bool PbrMaterial::TextureSlotsValid() const {
   if (!Attached()) {
     return false;

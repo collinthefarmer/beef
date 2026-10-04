@@ -53,6 +53,14 @@ constexpr std::array kTable{
                 "Draw recipe programs and stacks with shaders compiled for "
                 "each one instead of the shared interpreter.",
                 &Settings::generatedShaders, 0, 1, W::kCheckbox, false},
+    SettingDesc{"General", "RenderPlanCache", "Render plan cache",
+                "Reuse an actor's render plan for every actor whose effects "
+                "need the same plan.",
+                &Settings::renderPlanCache, 0, 1, W::kCheckbox, false},
+    SettingDesc{"General", "VerifyRenderPlanCache", "Verify render plan cache",
+                "Build every reused render plan again and log any difference. "
+                "For testing; it removes the cache's saving.",
+                &Settings::verifyRenderPlanCache, 0, 1, W::kCheckbox, false},
     SettingDesc{"General", "AnimationFPS", "Animation FPS",
                 "Animation update rate.", &Settings::animationFPS,
                 kMinAnimationFPS, kMaxAnimationFPS, W::kIntSlider, false},
