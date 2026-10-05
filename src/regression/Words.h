@@ -24,6 +24,9 @@ inline constexpr std::size_t kBodyCount = 3;
 enum class Dress : std::uint8_t { kDemoCuirass, kVanillaCuirasses };
 inline constexpr std::size_t kDressCount = 2;
 
+enum class Spot : std::uint8_t { kRing, kBehind };
+inline constexpr std::size_t kSpotCount = 2;
+
 enum class Camera : std::uint8_t { kFirstPerson, kThirdPerson };
 inline constexpr std::size_t kCameraCount = 2;
 
@@ -70,6 +73,10 @@ inline constexpr Named<Dress> kDresses[]{
     {Dress::kVanillaCuirasses, "vanilla-cuirasses"}};
 static_assert(Complete(kDresses, kDressCount));
 
+inline constexpr Named<Spot> kSpots[]{{Spot::kRing, "ring"},
+                                      {Spot::kBehind, "behind"}};
+static_assert(Complete(kSpots, kSpotCount));
+
 inline constexpr Named<Camera> kCameras[]{
     {Camera::kFirstPerson, "first-person"},
     {Camera::kThirdPerson, "third-person"}};
@@ -107,6 +114,10 @@ static_assert(Complete(kWorkOutcomePhrases, kWorkOutcomeCount));
 
 [[nodiscard]] constexpr std::string_view WordOf(Dress a_dress) {
   return NameOf(kDresses, a_dress);
+}
+
+[[nodiscard]] constexpr std::string_view WordOf(Spot a_spot) {
+  return NameOf(kSpots, a_spot);
 }
 
 [[nodiscard]] constexpr std::string_view WordOf(QueuedWork a_work) {

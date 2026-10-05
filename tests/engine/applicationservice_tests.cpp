@@ -458,6 +458,25 @@ void UnmatchedAndSharedRoute() {
         "scratch failures use the same application outcome record");
 }
 
+void OutOfViewWaitsToBeSeen() {
+  ApplicationService service;
+  const auto token = service.Begin("saved", {1});
+  service.Report(token, 1, ApplicationPhase::kOutOfView);
+  Check(Record(service, "saved").phase == ApplicationPhase::kOutOfView,
+        "an actor out of view settles its application as out of view");
+  Check(service.PendingFor(1) == std::vector<ApplicationToken>{token},
+        "an out-of-view application stays observed until it renders");
+  service.Report(token, 1, ApplicationPhase::kRendered);
+  Check(Record(service, "saved").phase == ApplicationPhase::kRendered &&
+            service.PendingFor(1).empty(),
+        "coming into view completes the application");
+  const auto both = service.Begin("paint", {2, 3});
+  service.Report(both, 2, ApplicationPhase::kOutOfView);
+  service.Report(both, 3, ApplicationPhase::kPrepared);
+  Check(Record(service, "paint").phase == ApplicationPhase::kPrepared,
+        "a prepared actor outranks an out-of-view one in the record");
+}
+
 void WholeCatalogOverlap() {
   ApplicationService service;
   const auto saved = service.Begin("saved", {1});
@@ -493,6 +512,7 @@ int main() {
   FailuresAndCancellation();
   UnmatchedAndSharedRoute();
   WholeCatalogOverlap();
+  OutOfViewWaitsToBeSeen();
   QueuedRapidRevisions();
   QueuedFailuresAndRetry();
   QueuedCancellationAndUnload();

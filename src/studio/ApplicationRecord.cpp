@@ -8,7 +8,8 @@
 namespace BetterEnchantmentEffects {
 namespace {
 constexpr std::array<std::string_view, kApplicationPhaseCount> kPhaseNames{
-    "queued", "prepared", "rendered", "failed", "unmatched", "cancelled"};
+    "queued",    "prepared",  "rendered",   "failed",
+    "unmatched", "cancelled", "out of view"};
 }
 
 std::string_view ApplicationPhaseName(ApplicationPhase a_phase) noexcept {

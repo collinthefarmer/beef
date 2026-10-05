@@ -174,6 +174,8 @@ inline constexpr std::uint32_t kWaveGapSeconds = 10;
 inline constexpr std::uint32_t kChurnSteadySeconds = 60;
 
 inline constexpr std::uint32_t kFightSeconds = 120;
+inline constexpr std::uint32_t kIdleCameraSeconds = 3;
+inline constexpr std::uint32_t kOrbitSeconds = 120;
 
 inline constexpr SpawnCrowd kMannequins{kCrowdSize};
 inline constexpr SpawnCrowd kMannequinsInVanilla{kCrowdSize, Body::kMannequin,
@@ -211,6 +213,28 @@ inline constexpr std::array kSoakFight =
                     HoldWindow{"fight", kFightSeconds}),
            kCrowdLeaves);
 
+inline constexpr std::uint32_t kCullCrowdSize = 6;
+
+inline constexpr std::array kCull =
+    Sequence(kSoloCircuit,
+             SpawnCrowd{kCullCrowdSize, Body::kMannequin, Dress::kDemoCuirass,
+                        Spot::kBehind},
+             AwaitCrowdOutOfView{}, TurnAround{}, AwaitCrowdRendered{},
+             TurnAround{}, AwaitCrowdSkipped{});
+
+inline constexpr std::array kSoakOrbit =
+    Joined(CrowdArrives(kSoloCircuit, kMannequins),
+           Sequence(AllowIdleCamera{kIdleCameraSeconds}, AwaitIdleOrbit{},
+                    HoldWindow{"orbit", kOrbitSeconds}, HoldIdleCamera{}),
+           kCrowdLeaves);
+
+inline constexpr std::array kSoakFightOrbit =
+    Joined(CrowdArrives(kDemoSet, kFighters),
+           Sequence(StartCrowdFight{}, AwaitCrowdFighting{}, AwaitCrowdHurt{},
+                    AllowIdleCamera{kIdleCameraSeconds}, AwaitIdleOrbit{},
+                    HoldWindow{"orbit", kOrbitSeconds}, HoldIdleCamera{}),
+           kCrowdLeaves);
+
 constexpr std::array<Step, 7> Wave(std::uint32_t a_cycle) {
   return Sequence(BeginWindow{"wave", a_cycle}, SpawnCrowd{kCrowdSize},
                   AwaitCrowdRendered{}, EndWindow{"wave", a_cycle},
@@ -235,6 +259,7 @@ inline constexpr std::array kCatalog{
     Case{"equip-cycle", kEquipCycle, kCleanup},
     Case{"unequip-one", kUnequipOne, kCleanup},
     Case{"camera", kCamera, kCleanup},
+    Case{"cull", kCull, kCleanup},
     Case{"isolation", kIsolation, kCleanup},
     Case{"unload", kUnload, kCleanup},
     Case{"load-idle", kLoadIdle, kCleanup},
@@ -254,7 +279,9 @@ inline constexpr std::array kCatalog{
     Case{"soak-churn", kSoakChurn, kCleanup},
     Case{"soak-vanilla", kSoakVanilla, kCleanup},
     Case{"soak-idle", kSoakIdle, kCleanup},
-    Case{"soak-fight", kSoakFight, kCleanup}};
+    Case{"soak-fight", kSoakFight, kCleanup},
+    Case{"soak-orbit", kSoakOrbit, kCleanup},
+    Case{"soak-fight-orbit", kSoakFightOrbit, kCleanup}};
 }
 
 std::span<const Case> Catalog() { return kCatalog; }

@@ -71,7 +71,7 @@ def number(fields: dict, name: str) -> int:
 
 
 PHASES = ('signals', 'render', 'render_inputs', 'render_slots', 'render_shell',
-          'render_evaluate', 'lights',
+          'render_evaluate', 'cull', 'lights',
           'previews', 'sweep', 'snapshot', 'refresh')
 
 
@@ -107,6 +107,9 @@ def measure(events: list[dict], window: Window) -> dict[str, float]:
         'gpu_ticks_timed': sum(number(tick, 'timed') for tick in ticks),
         'gpu_ticks_untimed': sum(number(tick, 'dropped') + number(tick, 'discarded')
                                  for tick in ticks),
+        'out_of_view_pct': round(total('actors_out_of_view') * 100
+                                 / max(total('actors_in_view') + total('actors_out_of_view'), 1),
+                                 1),
         'frame_max_us': peak('frame_max_us'),
         'tick_max_us': peak('tick_max_us'),
         'refresh_max_us': peak('refresh_max_us'),
@@ -141,7 +144,7 @@ def label(key: WindowKey) -> str:
 
 COST_MEASURES = ('seconds', 'fps', 'plugin_frame_us_mean', 'plugin_ms_per_s',
                  'plugin_share_pct', *(f'{phase}_us_mean' for phase in PHASES), 'gpu_us_mean',
-                 'gpu_ticks_timed', 'gpu_ticks_untimed')
+                 'gpu_ticks_timed', 'gpu_ticks_untimed', 'out_of_view_pct')
 SPIKE_MEASURES = ('frame_max_us', 'tick_max_us', 'refresh_max_us', 'readback_max_us',
                   'plugin_over_8ms', 'plugin_over_16ms', 'plugin_over_33ms', 'interval_max_us',
                   'hitches_50ms', 'hitches_100ms')

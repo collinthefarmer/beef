@@ -106,6 +106,10 @@ struct Faults {
   bool firstPersonMissing = false;
   bool unequipLeavesStray = false;
   bool thirdPersonMissing = false;
+  bool idleCameraNeverStarts = false;
+  bool culledCrowdNeverRenders = false;
+  std::uint32_t crowdBehindCamera = 0;
+  bool crowdMemberStuck = false;
 };
 
 struct ScratchFile {
@@ -140,7 +144,10 @@ struct World {
   int crowdIn = -1;
   int fightIn = -1;
   int cameraFlipIn = -1;
+  int idleOrbitIn = -1;
+  bool idleOrbit = false;
   std::uint32_t crowdSize = 0;
+  bool crowdBehind = false;
   std::uint64_t nowMs = 0;
   Faults faults;
   std::vector<std::string> commands;
@@ -163,7 +170,8 @@ struct World {
     }
     seen.itemsLoaded = {true, true, true};
     seen.npcEffects = true;
-    seen.camera = camera;
+    seen.camera = idleOrbit ? std::nullopt : std::optional{camera};
+    seen.idleOrbit = idleOrbit;
     seen.awayFromStart = away;
     seen.request = request;
     seen.activity = activity;
@@ -340,9 +348,18 @@ struct World {
               commands.emplace_back("return");
               Travel(Destination::kStart);
             },
+            [&](const StartIdleCameraAfter &) {
+              commands.emplace_back("idle-camera");
+              idleOrbitIn = faults.idleCameraNeverStarts ? -1 : 5;
+            },
+            [&](const StopIdleCamera &) {
+              commands.emplace_back("hold-idle-camera");
+              idleOrbitIn = -1;
+            },
             [&](const SwitchCamera &a_c) {
               commands.emplace_back("camera");
               camera = a_c.camera;
+              idleOrbit = false;
               cameraFlipIn =
                   faults.cameraFlipsBack && a_c.camera == Camera::kFirstPerson
                       ? 20
@@ -378,7 +395,20 @@ struct World {
               commands.emplace_back("crowd");
               crowdSize = a_c.count;
               crowd.present = a_c.count;
-              crowdIn = 5;
+              crowdBehind = a_c.spot == Spot::kBehind;
+              crowdIn = crowdBehind ? -1 : 5;
+              crowd.awaitingView = crowdBehind ? a_c.count : 0;
+            },
+            [&](const TurnPlayer &) {
+              commands.emplace_back("turn");
+              crowdBehind = !crowdBehind;
+              if (crowdBehind) {
+                crowd.outOfView = crowdSize;
+                return;
+              }
+              crowd.outOfView = 0;
+              crowd.awaitingView = 0;
+              crowdIn = faults.culledCrowdNeverRenders ? -1 : 5;
             },
             [&](const DespawnCrowdActors &) {
               commands.emplace_back("uncrowd");
@@ -467,6 +497,9 @@ struct World {
 
   void Tick() {
     nowMs += kSimulatedFrameMs;
+    if (idleOrbitIn > 0 && --idleOrbitIn == 0) {
+      idleOrbit = true;
+    }
     if (cameraFlipIn > 0 && --cameraFlipIn == 0) {
       camera = Camera::kThirdPerson;
     }
@@ -476,7 +509,12 @@ struct World {
       crowd.hurt = faults.crowdNeverHurt ? 0 : 1;
     }
     if (crowdIn > 0 && --crowdIn == 0) {
-      crowd.rendered = crowdSize;
+      const std::uint32_t waiting =
+          crowdBehind ? 0 : std::min(faults.crowdBehindCamera, crowdSize);
+      const std::uint32_t stuck = faults.crowdMemberStuck ? 1 : 0;
+      crowd.rendered =
+          crowdSize - waiting - std::min(stuck, crowdSize - waiting);
+      crowd.awaitingView = waiting;
     }
     if (loadIn > 0 && --loadIn == 0) {
       FinishLoad();
@@ -496,7 +534,7 @@ struct World {
 
   bool Clean() const {
     const SimActor &player = actors[IndexOf(Role::kPlayer)];
-    return !away && camera == Camera::kThirdPerson &&
+    return !away && !idleOrbit && camera == Camera::kThirdPerson &&
            !actors[IndexOf(Role::kWearer)].spawned &&
            !actors[IndexOf(Role::kControl)].spawned &&
            !player.view.armor[IndexOf(Item::kFixture)].carried &&
@@ -620,6 +658,29 @@ void AStrayItemFailsUnequipOne() {
   test::Check(world.Clean(), "unequip-one cleans up after a failure");
 }
 
+void AnIdleCameraThatNeverStartsFailsTheOrbit() {
+  World world;
+  world.faults.idleCameraNeverStarts = true;
+  Drive(world, RunOf("soak-orbit"), 200000);
+  test::Check(FirstFailure(world).starts_with("await-idle-orbit"),
+              "an idle camera that never starts fails the orbit wait");
+  test::Check(world.Clean(), "soak-orbit cleans up after a failure");
+}
+
+void ACrowdThatNeverReturnsFailsCull() {
+  World healthy;
+  Drive(healthy, RunOf("cull"), 20000);
+  test::Equal(FirstFailure(healthy), std::string{}, "cull passes");
+  test::Check(Issued(healthy, "turn"), "cull turns the player");
+
+  World stuck;
+  stuck.faults.culledCrowdNeverRenders = true;
+  Drive(stuck, RunOf("cull"), 200000);
+  test::Check(FirstFailure(stuck).starts_with("await-crowd-rendered"),
+              "a crowd that never renders after the turn fails cull");
+  test::Check(stuck.Clean(), "cull cleans up after a failure");
+}
+
 void SilentRequestTimesOut() {
   World world;
   world.faults.requestsHang = true;
@@ -706,6 +767,20 @@ void LoadsCancelWork() {
   Drive(applied, RunOf("load-edit"), 20000);
   test::Equal(FirstFailure(applied), std::string{},
               "an edit that lands before the load settles the case");
+}
+
+void ARingBehindTheCameraStillSettles() {
+  World partly;
+  partly.faults.crowdBehindCamera = 4;
+  Drive(partly, RunOf("soak"), 20000);
+  test::Equal(FirstFailure(partly), std::string{},
+              "members waiting out of view count as settled");
+
+  World stuck;
+  stuck.faults.crowdMemberStuck = true;
+  Drive(stuck, RunOf("soak"), 200000);
+  test::Check(FirstFailure(stuck).starts_with("await-crowd-rendered"),
+              "a member that neither renders nor waits fails the soak");
 }
 
 void SoakHoldsAndCleansUp() {
@@ -889,6 +964,8 @@ int main() {
   FailureRunsCleanup();
   BlockedEquipLeavesForeignArmor();
   AStrayItemFailsUnequipOne();
+  AnIdleCameraThatNeverStartsFailsTheOrbit();
+  ACrowdThatNeverReturnsFailsCull();
   SilentRequestTimesOut();
   ControlStateFailsIsolation();
   CameraFaultsFailTheCameraCase();
@@ -896,6 +973,7 @@ int main() {
   LoadsCancelWork();
   StudioRoundTrip();
   SoakHoldsAndCleansUp();
+  ARingBehindTheCameraStillSettles();
   SoakVariantsHoldAndCleanUp();
   EveryFixedObservationEndsTheRun();
   ResultLinesAreJson();

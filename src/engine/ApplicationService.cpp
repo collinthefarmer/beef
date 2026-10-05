@@ -17,7 +17,8 @@ struct ApplicationService::Rejections {
 namespace {
 bool Pending(ApplicationPhase a_phase) {
   return a_phase == ApplicationPhase::kQueued ||
-         a_phase == ApplicationPhase::kPrepared;
+         a_phase == ApplicationPhase::kPrepared ||
+         a_phase == ApplicationPhase::kOutOfView;
 }
 
 void CancelRecord(ApplicationRecord &a_record) {
@@ -56,8 +57,9 @@ void Aggregate(ApplicationRecord &a_record) {
   }
   constexpr std::array priority{
       ApplicationPhase::kFailed,    ApplicationPhase::kQueued,
-      ApplicationPhase::kPrepared,  ApplicationPhase::kCancelled,
-      ApplicationPhase::kUnmatched, ApplicationPhase::kRendered};
+      ApplicationPhase::kPrepared,  ApplicationPhase::kOutOfView,
+      ApplicationPhase::kCancelled, ApplicationPhase::kUnmatched,
+      ApplicationPhase::kRendered};
   for (const ApplicationPhase phase : priority) {
     const ApplicationActor *actor =
         FindBy(a_record.actors, phase, &ApplicationActor::phase);

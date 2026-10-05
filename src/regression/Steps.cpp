@@ -433,6 +433,25 @@ StepMove Check(const HoldCamera &a_hold, const StepContext &a_context) {
   return a_context.frames >= a_hold.frames ? Pass() : Wait();
 }
 
+StepMove Start(const AllowIdleCamera &a_allow, const StepContext &) {
+  return PassAndIssue(StartIdleCameraAfter{a_allow.delaySeconds});
+}
+
+StepMove Check(const AllowIdleCamera &, const StepContext &) { return Pass(); }
+
+StepMove Start(const HoldIdleCamera &, const StepContext &) {
+  return PassAndIssue(StopIdleCamera{});
+}
+
+StepMove Check(const HoldIdleCamera &, const StepContext &) { return Pass(); }
+
+StepMove Start(const AwaitIdleOrbit &, const StepContext &) { return Wait(); }
+
+StepMove Check(const AwaitIdleOrbit &, const StepContext &a_context) {
+  return PassWhen(a_context.seen.idleOrbit, a_context, kTravelDeadlineFrames,
+                  "the idle camera did not start orbiting");
+}
+
 StepMove Start(const ExpectFirstPersonEffect &, const StepContext &) {
   return Wait();
 }
@@ -626,7 +645,8 @@ StepMove Start(const SpawnCrowd &a_spawn, const StepContext &a_context) {
   if (a_context.changes.crowd > 0) {
     return Pass("already spawned");
   }
-  return Issue(SpawnCrowdActors{a_spawn.count, a_spawn.body, a_spawn.dress});
+  return Issue(SpawnCrowdActors{a_spawn.count, a_spawn.body, a_spawn.dress,
+                                a_spawn.spot});
 }
 
 StepMove Check(const SpawnCrowd &, const StepContext &a_context) {
@@ -652,10 +672,53 @@ StepMove Start(const AwaitCrowdRendered &, const StepContext &a_context) {
 
 StepMove Check(const AwaitCrowdRendered &, const StepContext &a_context) {
   const CrowdFacts &crowd = a_context.seen.crowd;
-  return PassWhen(crowd.rendered >= a_context.changes.crowd, a_context,
+  return PassWhen(
+      crowd.rendered + crowd.awaitingView >= a_context.changes.crowd, a_context,
+      kCrowdDeadlineFrames,
+      std::format("only {} of {} crowd actors rendered and {} wait "
+                  "out of view",
+                  crowd.rendered, a_context.changes.crowd, crowd.awaitingView));
+}
+
+StepMove Start(const TurnAround &, const StepContext &) {
+  return PassAndIssue(TurnPlayer{});
+}
+
+StepMove Check(const TurnAround &, const StepContext &) { return Pass(); }
+
+StepMove Start(const AwaitCrowdOutOfView &, const StepContext &a_context) {
+  if (a_context.changes.crowd == 0) {
+    return Block("no crowd was spawned");
+  }
+  return Wait();
+}
+
+StepMove Check(const AwaitCrowdOutOfView &, const StepContext &a_context) {
+  const CrowdFacts &crowd = a_context.seen.crowd;
+  if (crowd.rendered > 0) {
+    return Fail(std::format("{} of {} crowd actors rendered while out of view",
+                            crowd.rendered, a_context.changes.crowd));
+  }
+  return PassWhen(crowd.awaitingView >= a_context.changes.crowd, a_context,
                   kCrowdDeadlineFrames,
-                  std::format("only {} of {} crowd actors rendered",
-                              crowd.rendered, a_context.changes.crowd));
+                  std::format("only {} of {} crowd actors settled as out of "
+                              "view",
+                              crowd.awaitingView, a_context.changes.crowd));
+}
+
+StepMove Start(const AwaitCrowdSkipped &, const StepContext &a_context) {
+  if (a_context.changes.crowd == 0) {
+    return Block("no crowd was spawned");
+  }
+  return Wait();
+}
+
+StepMove Check(const AwaitCrowdSkipped &, const StepContext &a_context) {
+  const CrowdFacts &crowd = a_context.seen.crowd;
+  return PassWhen(crowd.outOfView >= a_context.changes.crowd, a_context,
+                  kActionDeadlineFrames,
+                  std::format("only {} of {} crowd actors were skipped",
+                              crowd.outOfView, a_context.changes.crowd));
 }
 
 StepMove Start(const StartCrowdFight &, const StepContext &a_context) {
@@ -848,6 +911,9 @@ std::array<bool, kRoleCount> RolesAffected(const Step &a_step) {
           [&](const ReturnToStart &) { return kAll; },
           [&](const SetCamera &) { return only(Role::kPlayer); },
           [&](const HoldCamera &) { return kNone; },
+          [&](const AllowIdleCamera &) { return kNone; },
+          [&](const HoldIdleCamera &) { return kNone; },
+          [&](const AwaitIdleOrbit &) { return kNone; },
           [&](const ExpectFirstPersonEffect &) { return kNone; },
           [&](const LoadDuring &) { return kAll; },
           [&](const ExpectAborted &) { return kNone; },
@@ -860,6 +926,9 @@ std::array<bool, kRoleCount> RolesAffected(const Step &a_step) {
           [&](const ExpectScratch &) { return kNone; },
           [&](const SpawnCrowd &) { return kNone; },
           [&](const AwaitCrowdRendered &) { return kNone; },
+          [&](const TurnAround &) { return kNone; },
+          [&](const AwaitCrowdOutOfView &) { return kNone; },
+          [&](const AwaitCrowdSkipped &) { return kNone; },
           [&](const StartCrowdFight &) { return kNone; },
           [&](const AwaitCrowdFighting &) { return kNone; },
           [&](const AwaitCrowdHurt &) { return kNone; },

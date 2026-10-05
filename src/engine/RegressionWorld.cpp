@@ -35,6 +35,9 @@ inline constexpr const char *kTravelCell = "Riverwood";
 inline constexpr float kSpawnOffset = 120.0f;
 inline constexpr float kWorkOpacity = 0.5f;
 inline constexpr float kCrowdRadius = 300.0f;
+inline constexpr float kBehindDistance = 1200.0f;
+inline constexpr float kBehindSpacing = 120.0f;
+inline constexpr float kHalfTurn = 3.14159265f;
 inline constexpr RE::FormID kQASmoke = 0x32AE7;
 inline constexpr float kMovedDistance = 32.0f;
 inline constexpr std::string_view kVanityDelaySetting =
@@ -47,6 +50,14 @@ inline constexpr float kArenaMinY = 1904.0f;
 inline constexpr float kArenaMaxY = 2128.0f;
 inline constexpr float kArenaFloorZ = 6976.0f;
 inline constexpr RE::NiPoint3 kArenaViewpoint{1904.0f, 2016.0f, kArenaFloorZ};
+
+RE::Setting *VanityDelay() {
+  RE::INISettingCollection *settings = RE::INISettingCollection::GetSingleton();
+  RE::Setting *setting =
+      settings ? settings->GetSetting(kVanityDelaySetting) : nullptr;
+  return setting && setting->GetType() == RE::Setting::Type::kFloat ? setting
+                                                                    : nullptr;
+}
 
 template <class Form>
 Form *PluginForm(RE::FormID a_local, std::string_view a_plugin) {
@@ -368,6 +379,61 @@ RE::NiPoint3 RingSpot(const RE::NiPoint3 &a_centre, std::uint32_t a_index,
                       a_centre.y + kCrowdRadius * std::sin(angle), a_centre.z};
 }
 
+RE::NiPoint3 AwayFromView(const RE::PlayerCharacter &a_player) {
+  const RE::NiCamera *camera = RE::Main::WorldRootCamera();
+  const RE::NiPoint3 player = a_player.GetPosition();
+  if (camera) {
+    const RE::NiPoint3 &eye = camera->world.translate;
+    const float dx = eye.x - player.x;
+    const float dy = eye.y - player.y;
+    const float length = std::sqrt(dx * dx + dy * dy);
+    if (length > 1.0f) {
+      return RE::NiPoint3{dx / length, dy / length, 0.0f};
+    }
+  }
+  const float heading = a_player.GetAngleZ();
+  return RE::NiPoint3{-std::sin(heading), -std::cos(heading), 0.0f};
+}
+
+void LogView(std::string_view a_when, const RE::PlayerCharacter &a_player) {
+  const RE::NiCamera *camera = RE::Main::WorldRootCamera();
+  const RE::NiPoint3 player = a_player.GetPosition();
+  const RE::NiPoint3 eye = camera ? camera->world.translate : RE::NiPoint3{};
+  logger::info("regression: {} player ({:.0f}, {:.0f}) heading {:.2f}, camera "
+               "({:.0f}, {:.0f})",
+               a_when, player.x, player.y, a_player.GetAngleZ(), eye.x, eye.y);
+}
+
+RE::NiPoint3 BehindSpot(const RE::PlayerCharacter &a_player,
+                        std::uint32_t a_index, std::uint32_t a_count) {
+  const RE::NiPoint3 away = AwayFromView(a_player);
+  const RE::NiPoint3 forward{-away.x, -away.y, 0.0f};
+  const RE::NiPoint3 right{forward.y, -forward.x, 0.0f};
+  const float across =
+      (static_cast<float>(a_index) - static_cast<float>(a_count - 1) / 2.0f) *
+      kBehindSpacing;
+  const RE::NiPoint3 centre = a_player.GetPosition();
+  return RE::NiPoint3{centre.x - forward.x * kBehindDistance + right.x * across,
+                      centre.y - forward.y * kBehindDistance + right.y * across,
+                      centre.z};
+}
+
+RE::NiPointer<RE::TESObjectREFR> PlaceAt(RE::PlayerCharacter &a_player,
+                                         RE::TESBoundObject &a_base,
+                                         const RE::NiPoint3 &a_spot) {
+  auto *markerBase = RE::TESForm::LookupByID<RE::TESBoundObject>(kXMarker);
+  const RE::NiPointer<RE::TESObjectREFR> marker =
+      markerBase ? a_player.PlaceObjectAtMe(markerBase, true) : nullptr;
+  if (!marker) {
+    return nullptr;
+  }
+  marker->SetPosition(a_spot);
+  RE::NiPointer<RE::TESObjectREFR> placed =
+      marker->PlaceObjectAtMe(&a_base, true);
+  DeleteReference(marker.get());
+  return placed;
+}
+
 bool InQASmoke(const RE::PlayerCharacter &a_player) {
   const RE::TESObjectCELL *cell = a_player.GetParentCell();
   return cell && cell == SkyrimForm<RE::TESObjectCELL>(kQASmoke);
@@ -385,6 +451,9 @@ void SpawnCrowdActors(RunWorld &a_world,
   }
   const RE::NiPoint3 centre = player->GetPosition();
   const std::uint32_t count = std::min(a_spawn.count, Regression::kMaxCrowd);
+  if (a_spawn.spot == Regression::Spot::kBehind) {
+    LogView("crowd behind the view", *player);
+  }
   const bool inArena =
       a_spawn.body != Regression::Body::kMannequin && InQASmoke(*player);
   if (inArena && !a_world.playerBeforeArena) {
@@ -392,15 +461,16 @@ void SpawnCrowdActors(RunWorld &a_world,
     player->SetPosition(kArenaViewpoint, true);
   }
   for (std::uint32_t index = 0; index < count; ++index) {
+    const RE::NiPoint3 spot = inArena ? ArenaSpot(index, count)
+                              : a_spawn.spot == Regression::Spot::kBehind
+                                  ? BehindSpot(*player, index, count)
+                                  : RingSpot(centre, index, count);
     const RE::NiPointer<RE::TESObjectREFR> placed =
-        player->PlaceObjectAtMe(base, true);
+        PlaceAt(*player, *base, spot);
     RE::Actor *actor = placed ? placed->As<RE::Actor>() : nullptr;
     if (!actor) {
       continue;
     }
-    const RE::NiPoint3 spot =
-        inArena ? ArenaSpot(index, count) : RingSpot(centre, index, count);
-    placed->SetPosition(spot);
     if (a_spawn.body != Regression::Body::kMannequin) {
       MakeEssential(*actor);
       Calm(*actor);
@@ -412,8 +482,10 @@ void SpawnCrowdActors(RunWorld &a_world,
   logger::info("regression: crowd of {} placed {} around ({:.0f}, {:.0f}, "
                "{:.0f})",
                a_world.crowd.size(),
-               inArena ? "on the arena grid" : "on a ring", centre.x, centre.y,
-               centre.z);
+               inArena                                     ? "on the arena grid"
+               : a_spawn.spot == Regression::Spot::kBehind ? "behind the view"
+                                                           : "on a ring",
+               centre.x, centre.y, centre.z);
 }
 
 void DespawnCrowdActors(RunWorld &a_world) {
@@ -531,6 +603,12 @@ Regression::CrowdFacts CrowdOf(const RunWorld &a_world,
     }
     if (a_facts[i].renderedAttempt > 0) {
       ++view.rendered;
+    }
+    if (a_facts[i].awaitingView) {
+      ++view.awaitingView;
+    }
+    if (a_facts[i].live && !a_facts[i].inView) {
+      ++view.outOfView;
     }
   }
   return view;
@@ -739,6 +817,18 @@ void Perform(const Regression::SwitchCamera &a_c, RunWorld &) {
   SwitchCamera(a_c.camera);
 }
 
+void Perform(const Regression::StartIdleCameraAfter &a_c, RunWorld &) {
+  if (RE::Setting *delay = VanityDelay()) {
+    delay->data.f = static_cast<float>(a_c.delaySeconds);
+  }
+}
+
+void Perform(const Regression::StopIdleCamera &, RunWorld &) {
+  if (RE::Setting *delay = VanityDelay()) {
+    delay->data.f = kVanityNever;
+  }
+}
+
 void Perform(const Regression::StartDuplicate &a_c, RunWorld &a_world) {
   a_world.edit = WithManager([&](Manager &a_manager) {
     return a_manager.StartRegressionDuplicate(std::string{a_c.from},
@@ -779,6 +869,14 @@ void Perform(const Regression::SpawnCrowdActors &a_c, RunWorld &a_world) {
 
 void Perform(const Regression::SetCrowdHostile &, RunWorld &a_world) {
   SetCrowdHostile(a_world);
+}
+
+void Perform(const Regression::TurnPlayer &, RunWorld &) {
+  if (RE::PlayerCharacter *player = RE::PlayerCharacter::GetSingleton()) {
+    LogView("before the turn", *player);
+    const RE::NiPoint3 angle = player->GetAngle();
+    player->SetRotationZ(angle.z + kHalfTurn);
+  }
 }
 
 void Perform(const Regression::DespawnCrowdActors &, RunWorld &a_world) {
@@ -851,6 +949,7 @@ Regression::Observation Observe(const RunWorld &a_world) {
   }
   seen.npcEffects = !GetSettings().playerOnly;
   seen.camera = CameraOf(CameraStateID());
+  seen.idleOrbit = CameraStateID() == RE::CameraState::kAutoVanity;
   seen.awayFromStart = AwayFromStart(a_world);
   seen.request = RegressionRequestState(a_world.request);
   seen.loads = a_world.loads;
@@ -866,14 +965,6 @@ Regression::Observation Observe(const RunWorld &a_world) {
 
 void Execute(const Regression::Command &a_command, RunWorld &a_world) {
   std::visit([&](const auto &a_kind) { Perform(a_kind, a_world); }, a_command);
-}
-
-RE::Setting *VanityDelay() {
-  RE::INISettingCollection *settings = RE::INISettingCollection::GetSingleton();
-  RE::Setting *setting =
-      settings ? settings->GetSetting(kVanityDelaySetting) : nullptr;
-  return setting && setting->GetType() == RE::Setting::Type::kFloat ? setting
-                                                                    : nullptr;
 }
 
 void HoldCameraStill(RunWorld &a_world) {

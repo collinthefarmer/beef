@@ -61,6 +61,11 @@ constexpr std::array kTable{
                 "Build every reused render plan again and log any difference. "
                 "For testing; it removes the cache's saving.",
                 &Settings::verifyRenderPlanCache, 0, 1, W::kCheckbox, false},
+    SettingDesc{"General", "CullOutOfView", "Skip actors out of view",
+                "Leave the effects of an NPC outside the camera's view as they "
+                "are until it comes back into view. Reflections of such an NPC "
+                "show its last frame.",
+                &Settings::cullOutOfView, 0, 1, W::kCheckbox, false},
     SettingDesc{"General", "AnimationFPS", "Animation FPS",
                 "Animation update rate.", &Settings::animationFPS,
                 kMinAnimationFPS, kMaxAnimationFPS, W::kIntSlider, false},

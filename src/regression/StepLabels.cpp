@@ -95,6 +95,18 @@ std::string Label(const SetCamera &a_s) {
   return std::format("set-camera {}", NameOf(kCameras, a_s.camera));
 }
 
+std::string Label(const AllowIdleCamera &a_s) {
+  return std::format("allow-idle-camera {}", a_s.delaySeconds);
+}
+
+std::string Label(const HoldIdleCamera &) {
+  return std::string{"hold-idle-camera"};
+}
+
+std::string Label(const AwaitIdleOrbit &) {
+  return std::string{"await-idle-orbit"};
+}
+
 std::string Label(const HoldCamera &a_s) {
   return std::format("hold-camera {} {}", NameOf(kCameras, a_s.camera),
                      a_s.frames);
@@ -138,6 +150,16 @@ std::string Label(const ExpectScratch &a_s) {
   return std::format("expect-scratch opacity {}", a_s.opacity);
 }
 
+std::string Label(const TurnAround &) { return std::string{"turn-around"}; }
+
+std::string Label(const AwaitCrowdOutOfView &) {
+  return std::string{"await-crowd-out-of-view"};
+}
+
+std::string Label(const AwaitCrowdSkipped &) {
+  return std::string{"await-crowd-skipped"};
+}
+
 std::string Label(const SpawnCrowd &a_s) {
   std::string label = std::format("spawn-crowd {}", a_s.count);
   if (a_s.body != Body::kMannequin) {
@@ -145,6 +167,9 @@ std::string Label(const SpawnCrowd &a_s) {
   }
   if (a_s.dress != Dress::kDemoCuirass) {
     label += std::format(" in {}", WordOf(a_s.dress));
+  }
+  if (a_s.spot != Spot::kRing) {
+    label += std::format(" {}", WordOf(a_s.spot));
   }
   return label;
 }

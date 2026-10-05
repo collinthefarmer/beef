@@ -190,7 +190,11 @@ void Manager::FinishApplications(RE::FormID a_actor, LiveActor &a_state) {
   }
   for (const ApplicationToken &token : a_state.applications) {
     const auto observed = ObserveApplication(a_state, token, true);
-    applications_.Report(token, a_actor, PhaseOf(observed, true),
+    const ApplicationPhase phase = PhaseOf(observed, true);
+    applications_.Report(token, a_actor,
+                         phase == ApplicationPhase::kPrepared && !a_state.inView
+                             ? ApplicationPhase::kOutOfView
+                             : phase,
                          observed.problem);
   }
   a_state.applications = applications_.PendingFor(a_actor);

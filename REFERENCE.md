@@ -828,6 +828,40 @@ in `engine/ManagerTick.cpp`). An actor's first render acquires about 70
 targets, and twelve at once produced a 14 GB transient. An actor that is not
 admitted skips that tick's render and is admitted on a later tick.
 
+Each tick tests every NPC with effects against the renderer's own camera:
+`NiCamera::BoundInFrustum` with `Main::WorldRootCamera()`, the camera camera
+mods move, so their view is the one tested. No render-path hook is used,
+because Community Shaders and its forks hook the culling and batching code.
+The bound is centred 64 units above the
+reference position, not on the root's `worldBound`, whose centre moves only
+on the next scene-graph update: a mannequin moved behind the player with
+`SetPosition` still tested in view for one frame and was admitted to its
+first render (run 20261004T230733). Its radius is the root's bound radius (at
+least 96) × 1.25 + 64 units, because the tick runs before camera mods finish
+the frame and a fast turn would otherwise show one stale frame. With `CullOutOfView` on, an NPC out of
+view (`LiveActor::inView` false) skips `RenderPieces` and nothing else:
+signals keep ticking, lights keep updating, and its steps stay dirty, so the
+first demand back in view catches up. An NPC that arrives out of view takes
+no first-render slot; its applications settle as `kOutOfView`, which counts
+as pending for `Report` and `PendingFor` (so drawing it later reports
+`kRendered`) and as settled for idle checks. The player and the inspected
+actor are never skipped. Skipping frees nothing: a stack output written into
+a material is never released while its actor lives (`Releasable` excludes
+`CompositeStackStep`), idle intermediate outputs are released only from
+`BeginFrame`, which a skipped actor does not reach, and targets are
+`shared_ptr`-owned. An NPC behind the camera that shows in a reflection shows
+its last frame. Ring soaks keep every actor in view (run 20261004T215805:
+0 %); in `soak-fight-orbit` the orbiting camera put 55.9 % of actor-frames
+out of view (run 20261004T222929).
+
+Crowd actors are placed from an XMarker set at their spot (`PlaceAt` in
+`engine/RegressionWorld.cpp`). A mannequin placed at the player and then moved
+with `SetPosition` walked back to where it was placed: in run
+20261004T230733, 11 of 12 ring mannequins had left their spot within seconds,
+so every ring soak before 2026-10-05 ran with the crowd standing on the player.
+Their performance numbers measured the same actors and effects, but the ring
+layout, and so its out-of-view share, did not exist.
+
 - The plugin-event contract (`engine/PluginEvents.h`, parsed by
   `ParsePluginEvent` in `engine/PluginEvents.cpp`, engine-free and fed
   garbage by `tests/engine/pluginevents_tests.cpp`): another SKSE plugin
@@ -2409,7 +2443,12 @@ The run reads the camera from `PlayerCamera::currentState->id`: state 0 is
 first person, state 9 is third person, and every other state is neither. A run
 sets the `[Camera]` setting `fAutoVanityModeDelay` (120 s by default) to 10^9
 and restores it at the end: without that, the idle camera took over two minutes
-into every soak and ignored `ForceFirstPerson`. On the 2026-10-03 load order,
+into every soak and ignored `ForceFirstPerson`. `soak-orbit` turns it back on
+on purpose (`allow-idle-camera 3`): state 1, the idle camera, orbits the player
+and sweeps the view across the crowd ring, so the frustum count
+(`out_of_view_pct`) can be checked against a moving camera without anyone at
+the game. `hold-idle-camera` and cleanup's switch to third person end the
+orbit. On the 2026-10-03 load order,
 `ForceFirstPerson` issued 62 ms after the fixture rendered was reverted to third
 person 0.77 s later, and the camera then flipped back to first person without
 a command; with 60 frames between the render and the switch, both views hold.

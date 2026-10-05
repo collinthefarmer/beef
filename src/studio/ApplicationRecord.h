@@ -15,8 +15,9 @@ enum class ApplicationPhase {
   kFailed,
   kUnmatched,
   kCancelled,
+  kOutOfView,
 };
-inline constexpr std::size_t kApplicationPhaseCount = 6;
+inline constexpr std::size_t kApplicationPhaseCount = 7;
 
 struct ApplicationToken {
   std::string recipeID;

@@ -57,6 +57,8 @@ struct CrowdFacts {
   std::uint32_t drawn = 0;
   std::uint32_t moved = 0;
   std::uint32_t highProcess = 0;
+  std::uint32_t awaitingView = 0;
+  std::uint32_t outOfView = 0;
   [[nodiscard]] bool operator==(const CrowdFacts &) const = default;
 };
 
@@ -76,6 +78,7 @@ struct Observation {
   std::array<bool, kItemCount> itemsLoaded{};
   bool npcEffects = false;
   std::optional<Camera> camera = Camera::kThirdPerson;
+  bool idleOrbit = false;
   bool awayFromStart = false;
   RequestState request = NoRequest{};
 };

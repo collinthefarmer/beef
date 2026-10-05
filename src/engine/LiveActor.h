@@ -88,6 +88,8 @@ struct LivePlacement {
 struct LiveActor {
   RE::ActorHandle actor;
   bool firstRenderAdmitted = false;
+  bool inView = true;
+  std::uint64_t renderedFrame = 0;
   ActorMatches matches;
   std::vector<LivePiece> pieces;
   std::vector<LiveInstance> instances;

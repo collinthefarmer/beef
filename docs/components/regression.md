@@ -38,8 +38,9 @@ role or an item into an array index, clamped to the array's size.
 | `Role` | `kPlayer`, `kWearer`, `kControl` | The actor a step acts on. The wearer and the control are spawned mannequins. |
 | `Item` | `kFixture`, `kPlainCuirass` | The demo cuirass and the control's plain cuirass. |
 | `Body` | `kMannequin`, `kIdleNpc`, `kFighter` | What a crowd actor is. Mannequins hold still, idle NPCs animate but never ready a weapon, and fighters fight. |
+| `Spot` | `kRing`, `kBehind` | Where a crowd stands: in a ring 300 units around the player, or in a row 1200 units behind the player, outside the view. |
 | `Dress` | `kDemoCuirass`, `kVanillaCuirasses` | What a crowd wears: the demo cuirass, or six vanilla cuirasses tagged to match Arcane Circuit for the life of the crowd. |
-| `Camera` | `kFirstPerson`, `kThirdPerson` | The camera a `SetCamera` or `HoldCamera` step asks for. The observation holds an optional `Camera`: no value means any other camera state, such as the idle camera or a transition. |
+| `Camera` | `kFirstPerson`, `kThirdPerson` | The camera a `SetCamera` or `HoldCamera` step asks for. The observation holds an optional `Camera`: no value means any other camera state, such as the idle camera or a transition. The observation's `idleOrbit` is true while the idle camera (state 1) runs. |
 | `QueuedWork` | `kNothing`, `kApply`, `kEdit` | The work a `LoadDuring` step queues in the same frame as the load. |
 | `Session` | `kGesture`, `kPaint` | The studio session a `BeginSession` step opens. |
 | `TrackedWork` | `kEdit`, `kGesture` | The started work whose outcome an `ExpectCancelled` or `ExpectSettled` step reads. |
@@ -78,7 +79,8 @@ name. `StepLabel` gives a step's text for its result line.
 | `LoadDuring`, `ExpectAborted`, `ExpectCancelled`, `ExpectSettled`, `AwaitIdle` | Load the save with work queued, then check what the load did to it. |
 | `BeginSession`, `AwaitSessionActive` | Open a gesture or paint session and wait until the editor reports it active. |
 | `DeleteScratch`, `DuplicateToScratch`, `SetScratchOpacity`, `SaveScratch`, `ExpectScratch` | Studio round trips on the scratch recipe, `kScratchRecipe` (`regression-scratch`). |
-| `SpawnCrowd`, `AwaitCrowdRendered`, `DespawnCrowd` | Spawn up to `kMaxCrowd` (64) crowd actors of a `Body` in a `Dress`, dress them once all are present, and remove them. |
+| `SpawnCrowd`, `AwaitCrowdRendered`, `DespawnCrowd` | Spawn up to `kMaxCrowd` (64) crowd actors of a `Body` in a `Dress` at a `Spot`, dress them once all are present, wait until every one rendered or waits out of view, and remove them. |
+| `TurnAround`, `AwaitCrowdOutOfView`, `AwaitCrowdSkipped` | Turn the player half a circle; wait until every crowd actor's application settled as out of view with none rendered; wait until every crowd actor is skipped as out of view. |
 | `StartCrowdFight`, `AwaitCrowdFighting` | Split a crowd into two hostile sides, and wait until at least half the crowd has another crowd actor as its combat target. A mannequin crowd blocks the fight. |
 | `AwaitCrowdHurt` | Wait until a crowd actor loses health or bleeds out. |
 | `UnequipCrowd`, `AwaitCrowdBare`, `EquipCrowd` | Unequip the fixture on every crowd actor, wait until no crowd actor renders it, and equip it again. |
@@ -95,11 +97,11 @@ deadlines are constants in `Steps.cpp`.
 | `Case{name, body, cleanup}` | One case. Cleanup always runs; a failed body step skips the rest of the body. |
 | `CaseList` | The cases of one run, as references into the catalog. |
 
-The catalog holds `lifecycle`, `equip-cycle`, `unequip-one`, `camera`, `isolation`,
+The catalog holds `lifecycle`, `equip-cycle`, `unequip-one`, `camera`, `cull`, `isolation`,
 `unload`, `load-idle`, `load-apply`, `load-edit`, `load-gesture`,
 `load-paint`, `studio-save`, `studio-reload`, `soak`, `soak-hour`,
 `soak-stack`, `soak-ward`, `soak-frost`, `soak-large`, `soak-waves`,
-`soak-churn`, `soak-vanilla`, `soak-idle` and `soak-fight`.
+`soak-churn`, `soak-vanilla`, `soak-idle`, `soak-fight`, `soak-orbit` and `soak-fight-orbit`.
 
 ### The observation (`Observation.h`)
 
@@ -113,7 +115,7 @@ the game showed, never on what the run asked for.
 | `RoleFacts` | Whether the role's actor is present, `ItemFacts` per item, whether the manager holds live state, how many items carry live effects (`liveItems`) and how many of those the actor no longer wears (`strayItems`), the newest application revision that rendered the fixture (`renderedAttempt`), the residue count, the residue under the third-person 3D alone (`thirdPersonResidue`, which `expect-effect` reads), the residue under the first-person 3D alone (`firstPersonResidue`), and the latest application text. |
 | `ItemFacts` | Whether the item is equipped and carried, and whether other armor occupies its slot (`slotTaken`). |
 | `Activity` | Pending applications, an open paint session or gesture, a pending file operation, the `WorkOutcome` of the started edit, gesture and file operation, and a detail text for failure reasons. |
-| `CrowdFacts` | How many crowd actors are present, render their own armor, are in combat, target another crowd actor (**engaged**), and are hurt (health below its maximum, or bleeding out). The run traces a `regression.crowd` line each time a count changes. |
+| `CrowdFacts` | How many crowd actors are present, render their own armor, are in combat, target another crowd actor (**engaged**), and are hurt (health below its maximum, or bleeding out), and how many wait to be seen (`awaitingView`: the latest application is out of view) or are skipped (`outOfView`). The run traces a `regression.crowd` line each time a count changes. |
 | `RecipeFacts` | Whether a recipe is loaded and unsaved, and its first layer's opacity when that is a number. |
 | `RequestState` | `NoRequest`, `RequestPending`, or the request's `Outcome`. |
 
@@ -133,6 +135,7 @@ A `Command` is a variant with one record per engine action. `Execute` in
 | `TravelFromStart`, `TravelToStart`, `SwitchCamera` | Move the player to the exterior and back, or switch the camera. |
 | `StartDuplicate`, `StartOpacityEdit`, `StartSave`, `StartDelete`, `OpenSession` | Start the same studio work the menu starts. |
 | `SpawnCrowdActors`, `DespawnCrowdActors` | Place or delete the crowd; tag or restore the vanilla cuirasses. |
+| `TurnPlayer` | Turn the player half a circle. |
 | `SetCrowdHostile` | Put the crowd's two sides in opposing factions. |
 | `UnequipCrowdArmor`, `EquipCrowdArmor` | Unequip each crowd actor's armor, or strip its other body armor and equip its own. |
 | `LoadSaveWith` | Queue work, then load the run's save. |

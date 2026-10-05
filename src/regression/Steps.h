@@ -82,6 +82,11 @@ struct HoldCamera {
   std::uint32_t frames = 0;
 };
 struct ExpectFirstPersonEffect {};
+struct AllowIdleCamera {
+  std::uint32_t delaySeconds = 0;
+};
+struct HoldIdleCamera {};
+struct AwaitIdleOrbit {};
 struct LoadDuring {
   QueuedWork work = QueuedWork::kNothing;
   std::string_view recipe;
@@ -108,7 +113,11 @@ struct SpawnCrowd {
   std::uint32_t count = 0;
   Body body = Body::kMannequin;
   Dress dress = Dress::kDemoCuirass;
+  Spot spot = Spot::kRing;
 };
+struct TurnAround {};
+struct AwaitCrowdOutOfView {};
+struct AwaitCrowdSkipped {};
 struct AwaitCrowdRendered {};
 struct StartCrowdFight {};
 struct AwaitCrowdFighting {};
@@ -138,18 +147,18 @@ struct EndWindow {
   std::uint32_t cycle = 0;
 };
 struct AwaitIdle {};
-using Step =
-    std::variant<WaitFrames, Solo, RestoreSolo, ShowRecipes, Spawn, Despawn,
-                 Disable, Enable, Equip, Unequip, Remove, Apply, Retire,
-                 AwaitRendered, AwaitRetired, AwaitBaseline, ExpectEffect,
-                 AwaitLiveItems, HoldUntouched, LeaveStart, ReturnToStart,
-                 SetCamera, HoldCamera, ExpectFirstPersonEffect, LoadDuring,
-                 ExpectAborted, ExpectCancelled, ExpectSettled, DeleteScratch,
-                 DuplicateToScratch, SetScratchOpacity, SaveScratch,
-                 ExpectScratch, SpawnCrowd, AwaitCrowdRendered, StartCrowdFight,
-                 AwaitCrowdFighting, AwaitCrowdHurt, UnequipCrowd, EquipCrowd,
-                 AwaitCrowdBare, DespawnCrowd, HoldWindow, BeginWindow,
-                 EndWindow, BeginSession, AwaitSessionActive, AwaitIdle>;
+using Step = std::variant<
+    WaitFrames, Solo, RestoreSolo, ShowRecipes, Spawn, Despawn, Disable, Enable,
+    Equip, Unequip, Remove, Apply, Retire, AwaitRendered, AwaitRetired,
+    AwaitBaseline, ExpectEffect, AwaitLiveItems, HoldUntouched, LeaveStart,
+    ReturnToStart, SetCamera, HoldCamera, ExpectFirstPersonEffect,
+    AllowIdleCamera, HoldIdleCamera, AwaitIdleOrbit, LoadDuring, ExpectAborted,
+    ExpectCancelled, ExpectSettled, DeleteScratch, DuplicateToScratch,
+    SetScratchOpacity, SaveScratch, ExpectScratch, SpawnCrowd,
+    AwaitCrowdRendered, TurnAround, AwaitCrowdOutOfView, AwaitCrowdSkipped,
+    StartCrowdFight, AwaitCrowdFighting, AwaitCrowdHurt, UnequipCrowd,
+    EquipCrowd, AwaitCrowdBare, DespawnCrowd, HoldWindow, BeginWindow,
+    EndWindow, BeginSession, AwaitSessionActive, AwaitIdle>;
 
 struct Case {
   std::string_view name;

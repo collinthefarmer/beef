@@ -22,6 +22,7 @@ enum class Section {
   kRenderSlots,
   kRenderShell,
   kRenderEvaluate,
+  kCull,
   kCount
 };
 inline constexpr std::size_t kSectionCount =
@@ -38,7 +39,8 @@ inline constexpr Named<Section> kSections[]{
     {Section::kRenderInputs, "render_inputs"},
     {Section::kRenderSlots, "render_slots"},
     {Section::kRenderShell, "render_shell"},
-    {Section::kRenderEvaluate, "render_evaluate"}};
+    {Section::kRenderEvaluate, "render_evaluate"},
+    {Section::kCull, "cull"}};
 static_assert(Complete(kSections, kSectionCount));
 inline constexpr std::array<std::uint64_t, 3> kPluginSpikeMicros{8000, 16000,
                                                                  33000};
@@ -73,6 +75,8 @@ struct Snapshot {
   std::array<std::uint64_t, kPluginSpikeMicros.size()> pluginSpikes{};
   std::array<std::uint64_t, kHitchMicros.size()> hitches{};
   std::uint64_t intervalMaxMicros = 0;
+  std::uint64_t actorsInView = 0;
+  std::uint64_t actorsOutOfView = 0;
   [[nodiscard]] SectionTime Of(Section a_section) const noexcept {
     const auto index = static_cast<std::size_t>(a_section);
     return index < sections.size() ? sections[index] : SectionTime{};
@@ -90,6 +94,7 @@ void CountReadback(std::uint64_t a_micros) noexcept;
 void CountTargetCreated(std::uint64_t a_bytes) noexcept;
 void CountTargetDestroyed(std::uint64_t a_bytes) noexcept;
 void CountFrame() noexcept;
+void CountActorView(bool a_inView) noexcept;
 void CountFrameAt(std::int64_t a_nowMicros) noexcept;
 void ForgetFrameInterval() noexcept;
 void CountRenderEvaluation() noexcept;

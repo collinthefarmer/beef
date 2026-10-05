@@ -43,6 +43,8 @@ struct RegressionWearer {
 
 struct RegressionActorFacts {
   bool live = false;
+  bool inView = true;
+  bool awaitingView = false;
   std::vector<RE::FormID> liveItems;
   std::uint64_t renderedAttempt = 0;
   std::string application;

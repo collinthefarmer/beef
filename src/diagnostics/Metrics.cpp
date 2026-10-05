@@ -30,6 +30,8 @@ struct Counters {
   std::atomic<std::uint64_t> pluginSpikes[kPluginSpikeMicros.size()]{};
   std::atomic<std::uint64_t> hitches[kHitchMicros.size()]{};
   std::atomic<std::uint64_t> intervalMaxMicros{0};
+  std::atomic<std::uint64_t> actorsInView{0};
+  std::atomic<std::uint64_t> actorsOutOfView{0};
   std::atomic<std::int64_t> lastFrameMicros{0};
 };
 
@@ -89,6 +91,12 @@ void CountFrame() noexcept {
   CountFrameAt(std::chrono::duration_cast<std::chrono::microseconds>(
                    std::chrono::steady_clock::now().time_since_epoch())
                    .count());
+}
+
+void CountActorView(bool a_inView) noexcept {
+  Counters &state = State();
+  (a_inView ? state.actorsInView : state.actorsOutOfView)
+      .fetch_add(1, std::memory_order_relaxed);
 }
 
 void ForgetFrameInterval() noexcept {
@@ -195,6 +203,9 @@ Snapshot Drain() noexcept {
   }
   out.intervalMaxMicros =
       state.intervalMaxMicros.exchange(0, std::memory_order_relaxed);
+  out.actorsInView = state.actorsInView.exchange(0, std::memory_order_relaxed);
+  out.actorsOutOfView =
+      state.actorsOutOfView.exchange(0, std::memory_order_relaxed);
   return out;
 }
 }

@@ -231,6 +231,7 @@ Manager::RegressionActors(std::span<const RegressionWearer> a_wearers) const {
   for (std::size_t i = 0; i < a_wearers.size(); ++i) {
     const auto found = applied_.find(a_wearers[i].actor);
     facts[i].live = found != applied_.end();
+    facts[i].inView = !facts[i].live || found->second.inView;
     if (facts[i].live) {
       for (const LivePiece &piece : found->second.pieces) {
         if (!std::ranges::contains(facts[i].liveItems, piece.armor)) {
@@ -251,6 +252,7 @@ Manager::RegressionActors(std::span<const RegressionWearer> a_wearers) const {
     if (!latest) {
       continue;
     }
+    facts[i].awaitingView = latest->phase == ApplicationPhase::kOutOfView;
     facts[i].application =
         std::format("{} {}{}{}", latest->token.revision,
                     ApplicationPhaseName(latest->phase),
@@ -289,6 +291,7 @@ void Manager::ObserveRegression() {
       return;
     case ApplicationPhase::kQueued:
     case ApplicationPhase::kPrepared:
+    case ApplicationPhase::kOutOfView:
       break;
     }
   }

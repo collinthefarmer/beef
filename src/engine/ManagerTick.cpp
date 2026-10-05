@@ -27,6 +27,51 @@ namespace {
 inline constexpr std::size_t kFirstRendersPerTick = 1;
 inline constexpr std::uint32_t kSecondCheckMS = 1000;
 
+class SectionTimer {
+public:
+  explicit SectionTimer(Metrics::Section a_section) noexcept
+      : section_(a_section) {}
+  ~SectionTimer() { Metrics::CountSection(section_, watch_.Micros()); }
+  SectionTimer(const SectionTimer &) = delete;
+  SectionTimer &operator=(const SectionTimer &) = delete;
+  SectionTimer(SectionTimer &&) = delete;
+  SectionTimer &operator=(SectionTimer &&) = delete;
+
+private:
+  Metrics::Section section_;
+  Metrics::Stopwatch watch_;
+};
+
+inline constexpr float kViewRadiusScale = 1.25f;
+inline constexpr float kViewRadiusPadding = 64.0f;
+inline constexpr float kViewMinRadius = 96.0f;
+inline constexpr float kViewCentreHeight = 64.0f;
+
+bool InCameraView(RE::Actor &a_actor) {
+  RE::NiCamera *camera = RE::Main::WorldRootCamera();
+  RE::NiAVObject *root = a_actor.Get3D(false);
+  if (!camera || !root) {
+    return true;
+  }
+  const RE::NiPoint3 position = a_actor.GetPosition();
+  const float radius = std::max(root->worldBound.radius, kViewMinRadius);
+  const RE::NiBound padded{
+      RE::NiPoint3{position.x, position.y, position.z + kViewCentreHeight},
+      radius * kViewRadiusScale + kViewRadiusPadding};
+  return RE::NiCamera::BoundInFrustum(padded, camera);
+}
+
+bool ShownThisTick(RE::Actor &a_actor, const Settings &a_settings,
+                   bool a_inspected) {
+  if (a_actor.IsPlayerRef()) {
+    return true;
+  }
+  const SectionTimer cullTimer{Metrics::Section::kCull};
+  const bool inView = InCameraView(a_actor);
+  Metrics::CountActorView(inView);
+  return inView || a_inspected || !a_settings.cullOutOfView;
+}
+
 bool EvictionChanges(RE::FormID a_actor, const Actors::Phase &a_phase,
                      float a_evictDistance) {
   const bool present = Is<Actors::Present>(a_phase);
@@ -186,21 +231,6 @@ void UpdateRenderInputs(LiveActor &a_state, LiveGeometry &a_bound) {
       logger::error("render inputs: {}", updated.error());
   }
 }
-
-class SectionTimer {
-public:
-  explicit SectionTimer(Metrics::Section a_section) noexcept
-      : section_(a_section) {}
-  ~SectionTimer() { Metrics::CountSection(section_, watch_.Micros()); }
-  SectionTimer(const SectionTimer &) = delete;
-  SectionTimer &operator=(const SectionTimer &) = delete;
-  SectionTimer(SectionTimer &&) = delete;
-  SectionTimer &operator=(SectionTimer &&) = delete;
-
-private:
-  Metrics::Section section_;
-  Metrics::Stopwatch watch_;
-};
 
 StackRender RenderStackOutput(PlacedOutput &a_output,
                               const LayerFilter &a_filter,
@@ -586,6 +616,8 @@ void EmitMetricsHeartbeat() {
       {"step_releases", std::to_string(measured.stepReleases)},
       {"step_restores", std::to_string(measured.stepRestores)},
       {"interval_max_us", std::to_string(measured.intervalMaxMicros)},
+      {"actors_in_view", std::to_string(measured.actorsInView)},
+      {"actors_out_of_view", std::to_string(measured.actorsOutOfView)},
       {"hitches_50ms", std::to_string(measured.hitches[0])},
       {"hitches_100ms", std::to_string(measured.hitches[1])},
       {"plugin_over_8ms", std::to_string(measured.pluginSpikes[0])},
@@ -706,6 +738,7 @@ void Manager::Tick(std::uint32_t a_nowMS, const Settings &a_settings) {
   const TickFrame frame{a_settings, view, a_nowMS,
                         frozenLastTick_ && !view.freeze};
   frozenLastTick_ = view.freeze;
+  const std::optional<RE::FormID> inspected = InspectedActor(a_nowMS);
   std::size_t firstRenders = 0;
   for (auto it = applied_.begin(); it != applied_.end();) {
     LiveActor &state = it->second;
@@ -730,22 +763,20 @@ void Manager::Tick(std::uint32_t a_nowMS, const Settings &a_settings) {
         instance.lastTime = timing.time;
       }
     }
-    if (!AdmitRender(state, firstRenders)) {
-      FinishApplications(it->first, state);
-      ++it;
-      continue;
-    }
+    state.inView = ShownThisTick(*actor, a_settings, inspected == it->first);
+    const bool render = state.inView && AdmitRender(state, firstRenders);
     std::vector<bool> hidden;
-    {
+    if (render) {
       const SectionTimer renderTimer{Metrics::Section::kRender};
       hidden = RenderPieces(state, it->first);
+      state.renderedFrame = renderFrame_;
     }
-    {
+    if (render || !state.inView) {
       const SectionTimer lightsTimer{Metrics::Section::kLights};
       UpdateLights(state, hidden);
     }
     FinishApplications(it->first, state);
-    if (Alive(state)) {
+    if (!render || Alive(state)) {
       ++it;
     } else {
       const RE::FormID id = it->first;

@@ -56,6 +56,10 @@ struct TravelToStart {};
 struct SwitchCamera {
   Camera camera = Camera::kThirdPerson;
 };
+struct StartIdleCameraAfter {
+  std::uint32_t delaySeconds = 0;
+};
+struct StopIdleCamera {};
 struct StartDuplicate {
   std::string_view from;
   std::string_view to;
@@ -74,7 +78,9 @@ struct SpawnCrowdActors {
   std::uint32_t count = 0;
   Body body = Body::kMannequin;
   Dress dress = Dress::kDemoCuirass;
+  Spot spot = Spot::kRing;
 };
+struct TurnPlayer {};
 struct SetCrowdHostile {};
 struct DespawnCrowdActors {};
 struct UnequipCrowdArmor {};
@@ -92,7 +98,8 @@ using Command = std::variant<
     SoloRecipe, EndSolo, ShowRecipeSet, SpawnActor, DespawnActor, DisableActor,
     EnableActor, AddAndEquip, EquipCarried, UnequipArmor, RemoveArmor,
     SubmitApply, SubmitRetire, AbortRequest, TravelFromStart, TravelToStart,
-    SwitchCamera, StartDuplicate, StartOpacityEdit, StartSave, StartDelete,
-    SpawnCrowdActors, DespawnCrowdActors, SetCrowdHostile, UnequipCrowdArmor,
-    EquipCrowdArmor, OpenSession, LoadSaveWith, Quit>;
+    SwitchCamera, StartIdleCameraAfter, StopIdleCamera, StartDuplicate,
+    StartOpacityEdit, StartSave, StartDelete, SpawnCrowdActors, TurnPlayer,
+    DespawnCrowdActors, SetCrowdHostile, UnequipCrowdArmor, EquipCrowdArmor,
+    OpenSession, LoadSaveWith, Quit>;
 }
