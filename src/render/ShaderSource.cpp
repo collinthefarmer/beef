@@ -316,7 +316,8 @@ float3 HueShift(float3 color, float turns)
 	float k = 0.57735026919;
 	float along = k * (color.x + color.y + color.z) * (1 - c);
 	float3 across = k * float3(color.z - color.y, color.x - color.z, color.y - color.x);
-	return saturate(color * c + across * s + k * along);
+	float3 shifted = color * c + across * s + k * along;
+	return isfinite(shifted) ? saturate(shifted) : 0;
 }
 
 float Shuffle(float index, float total, float seed)

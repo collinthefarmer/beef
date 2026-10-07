@@ -55,10 +55,10 @@ Follow-ups that do not block the merge:
 
 | Item | Work | Evidence |
 |---|---|---|
-| W16 | Identify `EffectShaderInput` by its record alone, as W7 did for enchantment fields. Its value depends only on the record, but its identity carries the instance string, so sharing of effect-shader steps depends on plan-cache order. | `CompositorDemand.cpp:88-91`; `REFERENCE.md:960-966` |
-| W17 | Make the HLSL `HueShift` return 0 for a non-finite colour, as the CPU does; today `saturate(+inf)` gives 1 on the GPU. | `ShaderSource.cpp:319` against `ExpressionMath.cpp` `Saturated` |
+| W16 | Done 2026-10-07: the identity is `efsh:<record>`. Identify `EffectShaderInput` by its record alone, as W7 did for enchantment fields. Its value depends only on the record, but its identity carries the instance string, so sharing of effect-shader steps depends on plan-cache order. | `CompositorDemand.cpp:88-91`; `REFERENCE.md:960-966` |
+| W17 | Done 2026-10-07: HLSL `HueShift` maps a non-finite channel to 0. Make the HLSL `HueShift` return 0 for a non-finite colour, as the CPU does; today `saturate(+inf)` gives 1 on the GPU. | `ShaderSource.cpp:319` against `ExpressionMath.cpp` `Saturated` |
 | W18 | Measure the per-texel cost of `Shuffle` (`PrimeAtLeast` and the seed's scale and shift per texel) in an animated stack; hoist it when `total` and `seed` are uniform, or record the bound in `REFERENCE.md`. | `ShaderSource.cpp:322` |
-| W19 | Let `soak-enchanted` pick enchantments by every effect's shader, as the importer covers them, and name the picker for what it filters (any loaded recipe keyed on the shader). | `RegressionWorld.cpp:319-343` (`EnchantmentsCoveredByImports`) |
+| W19 | Done 2026-10-07: `EnchantmentsWithShaderRecipes` checks every effect (`ShaderWithLoadedRecipe`). Let `soak-enchanted` pick enchantments by every effect's shader, as the importer covers them, and name the picker for what it filters (any loaded recipe keyed on the shader). | `RegressionWorld.cpp:319-343` (`EnchantmentsCoveredByImports`) |
 
 ## W15 list
 

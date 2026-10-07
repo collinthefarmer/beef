@@ -316,7 +316,19 @@ bool CoveredByLoadedRecipe(const RE::TESEffectShader &a_shader) {
   });
 }
 
-std::vector<RE::EnchantmentItem *> EnchantmentsCoveredByImports() {
+const RE::TESEffectShader *
+ShaderWithLoadedRecipe(const RE::EnchantmentItem &a_enchantment) {
+  for (const RE::Effect *effect : a_enchantment.effects) {
+    const RE::TESEffectShader *shader =
+        effect ? ShaderFor(effect->baseEffect) : nullptr;
+    if (shader && CoveredByLoadedRecipe(*shader)) {
+      return shader;
+    }
+  }
+  return nullptr;
+}
+
+std::vector<RE::EnchantmentItem *> EnchantmentsWithShaderRecipes() {
   std::vector<RE::EnchantmentItem *> chosen;
   std::vector<const RE::TESEffectShader *> shaders;
   auto *handler = RE::TESDataHandler::GetSingleton();
@@ -332,9 +344,8 @@ std::vector<RE::EnchantmentItem *> EnchantmentsCoveredByImports() {
                             RE::MagicSystem::CastingType::kConstantEffect) {
       continue;
     }
-    const RE::TESEffectShader *shader = ShaderFor(enchantment);
-    if (!shader || std::ranges::contains(shaders, shader) ||
-        !CoveredByLoadedRecipe(*shader)) {
+    const RE::TESEffectShader *shader = ShaderWithLoadedRecipe(*enchantment);
+    if (!shader || std::ranges::contains(shaders, shader)) {
       continue;
     }
     shaders.push_back(shader);
@@ -345,7 +356,7 @@ std::vector<RE::EnchantmentItem *> EnchantmentsCoveredByImports() {
 
 void TagEnchantedCuirasses(RunWorld &a_world) {
   const std::vector<RE::EnchantmentItem *> enchantments =
-      EnchantmentsCoveredByImports();
+      EnchantmentsWithShaderRecipes();
   if (enchantments.empty()) {
     logger::warn("regression: no constant-effect enchantment has a shader "
                  "that a loaded recipe covers");

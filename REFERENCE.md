@@ -293,12 +293,19 @@ atom   := number | "[" expr "," expr ("," expr)? "]" | "(" expr ")"
   two actors with different enchantments share a plan. Before 2026-10-07
   every `rand()` step counted as animated and ran again whenever the actor
   was re-evaluated.
+- An `EffectShaderInput` is identified by its record alone (`efsh:<record>`),
+  because `ActorEnvironment::EffectShader` reads the same parameters from the
+  form for every actor. Before 2026-10-07 the identity carried the instance
+  string, so two instances of one recipe got different render plan keys and
+  their sharing depended on which plan the cache held first.
 - `hue(turns)` is the fully saturated wheel colour
   `saturate(|frac(turns + [0, 2/3, 1/3]) · 6 - 3| - 1)`: 0 red, 1/3 green,
   2/3 blue, wrapping each turn. `hueShift(colour, turns)` rotates the colour
   about the grey axis (1, 1, 1)/√3 by `turns · 2π` (Rodrigues), which keeps
   the channel sum and so the brightness, then saturates. A non-finite number
-  of turns counts as 0. `HueColor`/`ShiftHue` (`recipe/ExpressionMath.cpp`) and
+  of turns counts as 0, and a non-finite result channel is 0 on the CPU
+  (`Saturated`) and on the GPU (`isfinite`, since 2026-10-07; before, HLSL
+  `saturate` gave 1 for +inf). `HueColor`/`ShiftHue` (`recipe/ExpressionMath.cpp`) and
   the HLSL `Hue`/`HueShift` are the same formulas. `hue` matches bit for bit,
   because it uses only `frac`, `abs` and `saturate`. `hueShift` matches to
   rounding only, because the CPU and HLSL `sin` and `cos` differ in their last

@@ -77,7 +77,7 @@ ExternalSourceIdentity(const ExternalSource &source,
       },
       [&](const EffectShaderInput &k)
           -> std::expected<std::string, std::string> {
-        return instance + ":" + k.record.text;
+        return "efsh:" + k.record.text;
       },
       [&](const EventInput &k) -> std::expected<std::string, std::string> {
         return EventOriginIdentity(k, instance);
