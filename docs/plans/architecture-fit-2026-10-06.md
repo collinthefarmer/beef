@@ -1,4 +1,4 @@
-Status: open. W1 to W10 done and committed on branch `architecture-fit` (1bac2c1, 2026-10-07). W12 to W15, from the pre-merge review, are done (2026-10-07); W11 and W16 to W19 remain and do not block the merge. Raised by a read-only review on
+Status: open. Merged into `main` on 2026-10-07 (1bac2c1, 63323c8, 786510b). W1 to W10, W12 to W17 and W19 are done; W11 (`--steady` quick soak) and W18 (`Shuffle` per-texel cost) remain. Raised by a read-only review on
 2026-10-06 of the actor core (commits 1c32b67 to 828b364), the performance
 work (772a447, dd516b1, 0e62ab8, 48938f0 and the uncommitted editor-refresh
 changes) and the uncommitted recipe-language additions.
