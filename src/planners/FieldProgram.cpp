@@ -99,6 +99,18 @@ std::optional<Encoding> Encode(Program::Op op) {
     return Encoding{ProgramOpcode::kCross, 2};
   case Program::Op::kNormalize:
     return Encoding{ProgramOpcode::kNormalize, 1};
+  case Program::Op::kShuffle:
+    return Encoding{ProgramOpcode::kShuffle, 3};
+  case Program::Op::kIdentity:
+    return std::nullopt;
+  case Program::Op::kHash:
+    return Encoding{ProgramOpcode::kHash, 2};
+  case Program::Op::kRandRange:
+    return Encoding{ProgramOpcode::kRandRange, 3};
+  case Program::Op::kHue:
+    return Encoding{ProgramOpcode::kHue, 1};
+  case Program::Op::kHueShift:
+    return Encoding{ProgramOpcode::kHueShift, 2};
   }
   return std::nullopt;
 }
@@ -155,6 +167,7 @@ ResultTypeOf(const Program::Node &node, ValueType operandType,
   case Op::kMakeVec2:
     return ValueType::kVec2;
   case Op::kMakeVec3:
+  case Op::kHue:
     return ValueType::kVec3;
   case Op::kLength:
   case Op::kDistance:
@@ -343,6 +356,7 @@ std::size_t OpcodePops(ProgramOpcode opcode) noexcept {
   case Op::kNormalize:
   case Op::kQuantize:
   case Op::kSplat:
+  case Op::kHue:
     return 1;
   case Op::kMakeVec2:
   case Op::kAdd:
@@ -364,12 +378,16 @@ std::size_t OpcodePops(ProgramOpcode opcode) noexcept {
   case Op::kDistance:
   case Op::kDot:
   case Op::kCross:
+  case Op::kHash:
+  case Op::kHueShift:
     return 2;
   case Op::kMakeVec3:
   case Op::kIf:
   case Op::kClamp:
   case Op::kSmoothstep:
   case Op::kLerp:
+  case Op::kShuffle:
+  case Op::kRandRange:
     return 3;
   }
   return 3;

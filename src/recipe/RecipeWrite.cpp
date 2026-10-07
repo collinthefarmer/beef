@@ -61,6 +61,10 @@ DescribeMaterialClustersSource(const MaterialClustersSource &a_source) {
   if (settings.iterations != defaults.iterations) {
     text += std::format(", {} iterations", settings.iterations);
   }
+  if (a_source.pick) {
+    text += std::format(", pick {}, area bias {}", ParamText(*a_source.pick),
+                        ParamText(a_source.areaBias));
+  }
   return text;
 }
 }
@@ -81,6 +85,13 @@ std::string DescribeSource(const SourceKind &a_kind) {
       [](const DistanceSource &s) {
         return std::format(
             "distance from node {} (bind pose, 0..256 units as 0..1)", s.from);
+      },
+      [](const PieceSource &s) {
+        return s.field == PieceField::kItemHash
+                   ? std::string{"piece itemHash (a stable 0..1 hash of the "
+                                 "worn item)"}
+                   : std::string{"piece chartCount (how many UV charts the "
+                                 "mesh has)"};
       },
       [](const RippleSource &s) {
         return std::format("ripple {} from @{}, speed {}, width {}, decay {}",
@@ -325,6 +336,10 @@ json MaterialClustersToJson(const MaterialClustersSource &k) {
     o["weights"] = std::move(weights);
   w.WriteIf("seed", s.seed, defaults.seed);
   w.WriteIf("iterations", s.iterations, defaults.iterations);
+  if (k.pick) {
+    w.Write("pick", *k.pick);
+  }
+  w.WriteIf("areaBias", k.areaBias, Param{1.0f});
   return o;
 }
 
@@ -353,6 +368,7 @@ json SourceKindToJson(const SourceKind &a_kind) {
       },
       [&](const BakeSource &k) { row[word] = BakeToJson(k); },
       [&](const DistanceSource &k) { row[word] = k.from; },
+      [&](const PieceSource &k) { row[word] = NameOf(kPieceFields, k.field); },
       [&](const RippleSource &k) { row[word] = RippleToJson(k); },
       [&](const MaterialClustersSource &k) {
         row[word] = MaterialClustersToJson(k);

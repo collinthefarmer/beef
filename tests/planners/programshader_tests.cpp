@@ -49,17 +49,18 @@ void MatchGolden(const std::string &name, const std::string &text) {
 int main() {
   using Op = ProgramOpcode;
   const std::set<ProgramOpcode> every{
-      Op::kNumber,   Op::kMakeVec2,   Op::kMakeVec3, Op::kInput,
-      Op::kLookup,   Op::kNeg,        Op::kNot,      Op::kAdd,
-      Op::kSub,      Op::kMul,        Op::kDiv,      Op::kLt,
-      Op::kGt,       Op::kLe,         Op::kGe,       Op::kEq,
-      Op::kNe,       Op::kAnd,        Op::kOr,       Op::kIf,
-      Op::kAbs,      Op::kMin,        Op::kMax,      Op::kClamp,
-      Op::kSaturate, Op::kFloor,      Op::kCeil,     Op::kFrac,
-      Op::kSqrt,     Op::kPow,        Op::kSin,      Op::kCos,
-      Op::kStep,     Op::kSmoothstep, Op::kLerp,     Op::kLength,
-      Op::kDistance, Op::kDot,        Op::kCross,    Op::kNormalize,
-      Op::kQuantize, Op::kSplat};
+      Op::kNumber,    Op::kMakeVec2,   Op::kMakeVec3, Op::kInput,
+      Op::kLookup,    Op::kNeg,        Op::kNot,      Op::kAdd,
+      Op::kSub,       Op::kMul,        Op::kDiv,      Op::kLt,
+      Op::kGt,        Op::kLe,         Op::kGe,       Op::kEq,
+      Op::kNe,        Op::kAnd,        Op::kOr,       Op::kIf,
+      Op::kAbs,       Op::kMin,        Op::kMax,      Op::kClamp,
+      Op::kSaturate,  Op::kFloor,      Op::kCeil,     Op::kFrac,
+      Op::kSqrt,      Op::kPow,        Op::kSin,      Op::kCos,
+      Op::kStep,      Op::kSmoothstep, Op::kLerp,     Op::kLength,
+      Op::kDistance,  Op::kDot,        Op::kCross,    Op::kNormalize,
+      Op::kQuantize,  Op::kSplat,      Op::kShuffle,  Op::kHash,
+      Op::kRandRange, Op::kHue,        Op::kHueShift};
   std::set<ProgramOpcode> tabled;
   for (const auto &entry : OpcodeStatements()) {
     Check(!entry.statement.empty(), "every opcode has a statement");

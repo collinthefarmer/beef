@@ -90,8 +90,8 @@ void ApplicationService::Post(SessionQueue::Task a_task) {
   queue_->Post(std::move(a_task));
 }
 
-bool ApplicationService::Refresh(std::uint32_t a_actorID) {
-  return queue_->Refresh(a_actorID);
+bool ApplicationService::MarkStale(std::uint32_t a_actorID) {
+  return queue_->MarkStale(a_actorID);
 }
 
 void ApplicationService::Equip(std::uint32_t a_actorID, std::uint32_t a_nowMS) {
@@ -174,7 +174,7 @@ void ApplicationService::DrainRejections() {
     (void)BeginActor(actorID);
     for (const ApplicationToken &token : PendingFor(actorID)) {
       Report(token, actorID, ApplicationPhase::kFailed,
-             "actor refresh could not be queued");
+             "actor sync could not be queued");
     }
   }
 }
@@ -231,6 +231,19 @@ ApplicationService::ActorsFor(std::string_view a_recipeID) const {
   std::vector<std::uint32_t> actors;
   if (const auto record = records_.find(a_recipeID); record != records_.end()) {
     AppendActors(record->second, actors);
+  }
+  return actors;
+}
+
+std::vector<std::uint32_t>
+ApplicationService::FailedActorsFor(std::string_view a_recipeID) const {
+  std::vector<std::uint32_t> actors;
+  if (const auto record = records_.find(a_recipeID); record != records_.end()) {
+    for (const ApplicationActor &actor : record->second.actors) {
+      if (actor.phase == ApplicationPhase::kFailed) {
+        actors.push_back(actor.actorID);
+      }
+    }
   }
   return actors;
 }

@@ -314,6 +314,35 @@ int main() {
     const auto resolved = Resolve(enchanted, withSpecific, 0);
     Check(resolved.size() == 1 && resolved.front().recipe->id == "specific",
           "a specific enchantment key suppresses the generic enchanted look");
+
+    std::vector<Recipe> edited = withSpecific;
+    edited[2].masks = {{"glow", "0.5"}};
+    edited[2].signals = {{"level", ConstantSignal{0.25f}}};
+    Check(MatchFactsOf(edited) == MatchFactsOf(withSpecific),
+          "a look-only edit keeps the match facts");
+    Check(ScopeOf(MatchFactsOf(withSpecific), MatchFactsOf(edited),
+                  "specific") == RebuildScope{RebuildApplying{"specific"}},
+          "a look-only edit rebuilds only the actors applying the recipe");
+    Check(ScopeOf(MatchFactsOf(withSpecific), MatchFactsOf(edited), "") ==
+              RebuildScope{RebuildAll{}},
+          "a rebuild without a recipe rebuilds every actor");
+    edited[2].priority = 5;
+    Check(MatchFactsOf(edited) != MatchFactsOf(withSpecific),
+          "a priority edit changes the match facts");
+    Check(ScopeOf(MatchFactsOf(withSpecific), MatchFactsOf(edited),
+                  "specific") == RebuildScope{RebuildAll{}},
+          "an edit that changes matching rebuilds every actor");
+    edited = withSpecific;
+    edited[0].keys.push_back(RecipeKey{KeyKind::kDefault});
+    Check(MatchFactsOf(edited) != MatchFactsOf(withSpecific),
+          "a key edit changes the match facts");
+    edited = withSpecific;
+    edited[1].mergeMode = MergeMode::kSampled;
+    Check(MatchFactsOf(edited) != MatchFactsOf(withSpecific),
+          "a merge mode edit changes the match facts");
+    edited = {withSpecific[0], withSpecific[2]};
+    Check(MatchFactsOf(edited) != MatchFactsOf(withSpecific),
+          "dropping a recipe from the applied set changes the match facts");
   }
 
   {

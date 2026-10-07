@@ -54,7 +54,7 @@ struct QueuedApplications {
         service.Begin(std::move(a_recipe), std::move(a_candidates));
     for (const auto actor : service.ActorsFor(token.recipeID)) {
       live.erase(actor);
-      if (!queue.Refresh(actor)) {
+      if (!queue.MarkStale(actor)) {
         service.Report(token, actor, ApplicationPhase::kFailed,
                        "queue refused");
       }
@@ -198,7 +198,7 @@ void LifecycleRetention() {
       }};
   service.Resume();
   for (std::uint32_t actor = 1; actor <= 600; ++actor) {
-    (void)service.Refresh(actor);
+    (void)service.MarkStale(actor);
     if (actor <= 300) {
       continue;
     }
@@ -233,7 +233,7 @@ void LifecycleRetention() {
                                     "recipe records from the previous load");
   Check(cancelled.size() == kMaxTerminalApplicationActors + 1,
         "held cancellation snapshots survive lifecycle record pruning");
-  (void)service.Refresh(700);
+  (void)service.MarkStale(700);
   Check(service.PendingFor(700).size() == 1 && service.PendingFor(1).empty(),
         "post-load refresh tracks only fresh pending lifecycle work");
 }
@@ -245,6 +245,10 @@ void RecipeRetention() {
   const auto waiting = service.Begin("waiting", {3});
   service.Report(waiting, 3, ApplicationPhase::kPrepared);
   const auto old = service.Begin("old", {});
+  Check(service.FailedActorsFor("mixed") == std::vector<std::uint32_t>{1} &&
+            service.FailedActorsFor("waiting").empty() &&
+            service.FailedActorsFor("missing").empty(),
+        "failed actors are listed per recipe and only when they failed");
   const auto held = service.Snapshot();
   for (std::size_t i = 0; i < kMaxTerminalApplicationRecipes + 50; ++i) {
     (void)service.Begin("renamed-" + std::to_string(i), {});

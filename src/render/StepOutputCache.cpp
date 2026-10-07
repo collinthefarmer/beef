@@ -1,9 +1,10 @@
 // GPL-3.0-only with the additional permission in COPYING.md.
 #include "render/StepOutputCache.h"
 
+#include "planners/RetainedCache.h"
+
 namespace BetterEnchantmentEffects {
 namespace {
-constexpr std::uint64_t kDropUnheldAfterMS = 500;
 constexpr std::size_t kMaxEntries = 4096;
 
 bool HeldOnlyByCache(const TextureView &a_view) {
@@ -40,10 +41,19 @@ void StepOutputCache::Publish(const std::string &a_key,
 }
 
 void StepOutputCache::Sweep(std::uint64_t a_nowMS) {
-  std::erase_if(entries_, [a_nowMS](const auto &a_entry) {
-    const Entry &entry = a_entry.second;
-    return HeldOnlyByCache(entry.view) &&
-           a_nowMS - entry.lastUsedMS > kDropUnheldAfterMS;
+  std::erase_if(entries_, [a_nowMS](auto &a_entry) {
+    Entry &entry = a_entry.second;
+    switch (StepOutputRetention(!HeldOnlyByCache(entry.view),
+                                a_nowMS - entry.lastUsedMS)) {
+    case Retention::kRenew:
+      entry.lastUsedMS = a_nowMS;
+      return false;
+    case Retention::kKeep:
+      return false;
+    case Retention::kEvict:
+      return true;
+    }
+    return false;
   });
 }
 

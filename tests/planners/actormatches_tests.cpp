@@ -11,12 +11,8 @@ FormKey Ench(std::uint32_t a_id) { return FormKey{"Skyrim.esm", a_id}; }
 ActorMatches MakePlan() {
   ActorMatches plan;
 
-  Geometry live;
-  live.lost = false;
-  Geometry lost;
-  lost.lost = true;
-  plan.geometries.push_back(live);
-  plan.geometries.push_back(lost);
+  plan.geometries.push_back(Geometry{});
+  plan.geometries.push_back(Geometry{});
 
   plan.instances.push_back(Instance{RecipeId{0}, std::nullopt});
   plan.instances.push_back(Instance{RecipeId{0}, Ench(0x100)});
@@ -55,17 +51,6 @@ int main() {
         "PlacementAt returns the row for a valid handle");
   Check(PlacementAt(plan, PlacementId{99}) == nullptr,
         "PlacementAt returns nullptr for an out-of-range handle");
-
-  Check(AnyLiveGeometry(plan),
-        "AnyLiveGeometry is true when a piece is not lost");
-  ActorMatches allLost = plan;
-  for (Geometry &piece : allLost.geometries) {
-    piece.lost = true;
-  }
-  Check(!AnyLiveGeometry(allLost),
-        "AnyLiveGeometry is false when every piece is lost");
-  Check(!AnyLiveGeometry(ActorMatches{}),
-        "AnyLiveGeometry is false when there are no pieces");
 
   const std::optional<InstanceId> noEnch =
       FindInstance(plan, RecipeId{0}, std::nullopt);

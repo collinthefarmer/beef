@@ -29,7 +29,7 @@ Manager::Manager()
     : applications_(SubmitTask,
                     [this](std::uint32_t a_id,
                            const std::vector<ApplicationToken> &a_tokens) {
-                      RunRefresh(a_id, a_tokens);
+                      SyncStale(a_id, a_tokens);
                     }),
       animations_([this](AnimationEvent a_event) {
         QueueAnimationEvent(std::move(a_event));
@@ -46,23 +46,38 @@ void Manager::PostTask(std::function<void()> a_task) {
   applications_.Post(std::move(a_task));
 }
 
-void Manager::QueueRefresh(RE::FormID a_actorID) {
-  applications_.Refresh(a_actorID);
+std::uint32_t Manager::EditorClockMS() const { return NowMS(); }
+
+void Manager::MarkStale(RE::FormID a_actorID) {
+  applications_.MarkStale(a_actorID);
 }
 
-void Manager::QueueRefresh(RE::Actor *a_actor) {
+void Manager::MarkStale(RE::Actor *a_actor) {
   if (a_actor) {
-    QueueRefresh(a_actor->GetFormID());
+    MarkStale(a_actor->GetFormID());
   }
 }
 
-void Manager::QueueRetire(RE::FormID a_actorID) {
+void Manager::HoldIdleCameraForMenu() {
+  if (!menuIdleHold_) {
+    menuIdleHold_ = HoldIdleCamera();
+  }
+}
+
+void Manager::ReleaseIdleCameraForMenu() {
+  if (const std::optional<IdleCameraHold> hold =
+          std::exchange(menuIdleHold_, std::nullopt)) {
+    ReleaseIdleCamera(*hold);
+  }
+}
+
+void Manager::QueueForget(RE::FormID a_actorID) {
   if (a_actorID == 0) {
     return;
   }
   PostTask([this, a_actorID] {
     AbandonApplications(a_actorID);
-    Retire(a_actorID);
+    ForgetActor(a_actorID);
   });
 }
 
@@ -72,7 +87,7 @@ void Manager::QueueEquipFinalize(RE::FormID a_actorID) {
 
 void Manager::QueueLoadedActorRefreshes() {
   for (const auto id : LoadedActorIDs())
-    QueueRefresh(id);
+    MarkStale(id);
 }
 
 void Manager::BeginLoad() { Clear(); }
@@ -90,14 +105,14 @@ void Manager::Clear() {
   Trace::EmitSafely(Trace::Event::kLoad,
                     {{"action", "clear_begin"},
                      {"generation", std::to_string(session)},
-                     {"actors", std::to_string(applied_.size())}});
+                     {"actors", std::to_string(live_.size())}});
   applications_.BeginLoad();
   animations_.Clear();
   ClearAnimEvents();
-  const std::size_t count = applied_.size();
-  for (auto &[actorID, state] : applied_)
+  const std::size_t count = live_.size();
+  for (auto &[actorID, state] : live_)
     RetireActorEffects(state);
-  applied_.clear();
+  live_.clear();
   tracked_.clear();
   renderPlans_.Clear();
   editor_.CancelFileOperationsForLoad();

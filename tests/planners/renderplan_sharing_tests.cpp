@@ -127,6 +127,31 @@ void ContentKeysMarkOnlyStaticTextureSteps(
   }
 }
 
+void RandMasksAreStatic() {
+  Recipe recipe;
+  recipe.masks = {{"pick", "rand()"},
+                  {"magnitude", "@strength * 0.5"},
+                  {"pulse", "sin(time)"}};
+  recipe.signals = {
+      {"strength", EnchantmentSignal{EnchantmentField::kMagnitude}}};
+  const RecipeGraph graph = RecipeGraph::Compile(recipe);
+  const auto changing = [&](std::string_view a_name) {
+    const std::optional<std::size_t> node = graph.FindNodeIndex(a_name);
+    return node && graph.Changing(*node);
+  };
+  Check(graph.FindNodeIndex("pick") && !changing("pick"),
+        "a rand() mask is static");
+  Check(graph.FindNodeIndex("magnitude") && !changing("magnitude"),
+        "a mask over an enchantment field is static");
+  Check(changing("pulse"), "a mask over time still changes");
+  const std::vector<ExternalSource> sources = StaticExternalSources(graph);
+  Check(std::ranges::any_of(sources,
+                            [](const ExternalSource &a_source) {
+                              return Is<EnchantmentSignal>(a_source);
+                            }),
+        "enchantment fields are static external inputs");
+}
+
 void CacheKeysCarryOperandValues() {
   const std::vector<Value> origin{Vec3{1.0f, 2.0f, 3.0f}};
   const std::vector<Value> moved{Vec3{1.0f, 2.0f, 3.5f}};
@@ -284,52 +309,19 @@ std::size_t LiveAnimatedPrograms(const RenderPlan &plan) {
   return live;
 }
 
-void MergingRemovesAnimatedPasses(const std::vector<LoadedRecipe> &recipes) {
-  const std::array size{TextureSize{512}};
-  const std::array chains{SlotChainRequest{GeometryId{0},
-                                           Surface::kMaterial,
-                                           Slot::kHeight,
-                                           {ChainLink{PlacementId{0}, 1},
-                                            ChainLink{PlacementId{3}, 2}}},
-                          SlotChainRequest{GeometryId{0},
-                                           Surface::kMaterial,
-                                           Slot::kRmaos,
-                                           {ChainLink{PlacementId{2}, 1},
-                                            ChainLink{PlacementId{3}, 3}}},
-                          SlotChainRequest{GeometryId{0},
-                                           Surface::kShell,
-                                           Slot::kEmissive,
-                                           {ChainLink{PlacementId{1}, 0},
-                                            ChainLink{PlacementId{3}, 0}}}};
-  const auto chained =
-      BuildRenderPlan({}, StackRequests(recipes, size), Bindings());
-  const auto merged =
-      BuildRenderPlan({}, StackRequests(recipes, size), Bindings(), chains);
-  Check(chained && merged, "the shared-slot recipes lower with and without "
-                           "merged chains");
-  if (!chained || !merged)
-    return;
-  test::Equal(merged->mergedChains.size(), chains.size(),
-              "every shared slot merges");
-  test::Equal(AnimatedPasses(*merged) + chains.size(), AnimatedPasses(*chained),
-              "each merged chain removes one animated pass per tick");
-  test::Equal(LiveAnimatedPrograms(*merged), LiveAnimatedPrograms(*chained),
-              "merging leaves no animated field outside its stacks");
-}
-
 void TextureReadsAreSampledDirectly(const std::vector<LoadedRecipe> &recipes) {
   const std::array size{TextureSize{512}};
   const auto plan =
       BuildRenderPlan({}, StackRequests(recipes, size), Bindings());
-  Check(plan.has_value(), "the demo and imported recipes lower together");
+  Check(plan.has_value(), "the demo recipes lower together");
   if (!plan)
     return;
   const std::vector<std::string> drawn = DrawnTextureReads(*plan);
   for (const std::string &line : drawn)
     std::printf("drawn texture read: %s\n", line.c_str());
   Check(drawn.empty(),
-        "every image and material read in the demo and imported recipes is "
-        "sampled directly unless a reduction measures it");
+        "every image and material read in the demo recipes is sampled "
+        "directly unless a reduction measures it");
   Check(DirectTextureReads(*plan) > 0, "the recipes read textures");
 }
 
@@ -476,12 +468,18 @@ void SlotChainsMergeIntoOnePass() {
       Surface::kMaterial,
       Slot::kEmissive,
       {ChainLink{PlacementId{0}, 0}, ChainLink{PlacementId{1}, 0}}}};
+  const auto chained =
+      BuildRenderPlan({}, StackRequests(recipes, size), Bindings());
   const auto plan =
       BuildRenderPlan({}, StackRequests(recipes, size), Bindings(), chains);
-  Check(plan.has_value(), "a slot chain plan lowers");
-  if (!plan)
+  Check(chained.has_value() && plan.has_value(), "a slot chain plan lowers");
+  if (!chained || !plan)
     return;
   Check(ValidateRenderPlan(*plan).has_value(), "a merged plan is valid");
+  test::Equal(AnimatedPasses(*plan) + 1, AnimatedPasses(*chained),
+              "merging two animated stacks removes one animated pass per tick");
+  test::Equal(LiveAnimatedPrograms(*plan), LiveAnimatedPrograms(*chained),
+              "merging leaves no animated field outside its stacks");
   test::Equal(plan->mergedChains.size(), std::size_t{1},
               "two stacks on one slot merge into one pass");
   if (plan->mergedChains.size() != 1)
@@ -571,26 +569,13 @@ int main() {
     recipes.push_back({*loaded.recipe, std::move(graph)});
   }
   ContentKeysMarkOnlyStaticTextureSteps(recipes);
-  {
-    std::vector<LoadedRecipe> withImports = recipes;
-    for (const std::string name : {"SyntheticTiled", "SyntheticBare"}) {
-      auto loaded = ParseRecipe(
-          test::ReadFile(test::Fixtures() / "recipes" / (name + ".json")),
-          name);
-      Check(loaded.recipe && !loaded.HasErrors(), "imported recipe loads");
-      if (loaded.recipe)
-        withImports.push_back(
-            {*loaded.recipe, std::make_shared<const RecipeGraph>(
-                                 RecipeGraph::Compile(*loaded.recipe))});
-    }
-    TextureReadsAreSampledDirectly(withImports);
-    MergingRemovesAnimatedPasses(withImports);
-  }
+  TextureReadsAreSampledDirectly(recipes);
   ImagesReadOnlyBySamplingAreDirect();
   SlotChainsMergeIntoOnePass();
   MergesNeverAddPasses();
   StaticLinksKeepTheirFieldsInAnimatedChains();
   CacheKeysCarryOperandValues();
+  RandMasksAreStatic();
   const std::array oneSize{TextureSize{512}};
   const auto single =
       BuildRenderPlan({}, StackRequests(recipes, oneSize), Bindings());

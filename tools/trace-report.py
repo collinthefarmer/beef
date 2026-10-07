@@ -51,7 +51,7 @@ def listing(owners: Counter[str]) -> str:
 def report(segments: list[Path], slots: int | None) -> None:
     counts, tally, recycled, heartbeat, peaks, shared, transitions, rendering, latest = (
         Counter() for _ in range(9))
-    operations, readbacks, refreshes, pages, survivors = {}, defaultdict(lambda: [0, 0, 0]), [], [], []
+    operations, readbacks, syncs, pages, survivors = {}, defaultdict(lambda: [0, 0, 0]), [], [], []
     gpu_spans, gpu_ticks = defaultdict(lambda: [0, 0, 0]), Counter()
     startup, sessions, live, owners, worst, last_session = {}, set(), {}, {}, (0, 0), None
     for event in events(segments):
@@ -85,8 +85,8 @@ def report(segments: list[Path], slots: int | None) -> None:
         elif kind == 'texture':
             shared[action.removesuffix('_shared')] += action.endswith('_shared')
             tally[action] += action in ('lease_rejected', 'presenter_rejected')
-        elif kind == 'metrics' and action == 'refresh':
-            refreshes.append(number(fields, 'us'))
+        elif kind == 'metrics' and action == 'sync':
+            syncs.append(number(fields, 'us'))
         elif kind == 'metrics' and action == 'readback':
             op, us = readbacks[str(fields.get('op', 'unknown'))], number(fields, 'us')
             op[:] = op[0] + 1, op[1] + us, max(op[2], us)
@@ -103,7 +103,7 @@ def report(segments: list[Path], slots: int | None) -> None:
                 peaks[name] = max(peaks[name], number(fields, name))
             for name in ('targets', 'target_bytes'):
                 latest[name] = number(fields, name)
-            worst = max(worst, (number(fields, 'refreshes'), number(fields, 'refresh_us')), key=lambda w: w[0])
+            worst = max(worst, (number(fields, 'syncs'), number(fields, 'sync_us')), key=lambda w: w[0])
             for name in ('frames', 'render_evaluations', 'step_executions', 'step_releases',
                          'step_restores', 'frame_us', 'tick_us', 'snapshot_us'):
                 rendering[name] += number(fields, name)
@@ -127,15 +127,15 @@ def report(segments: list[Path], slots: int | None) -> None:
     for key, label in TALLIES:
         print(f'{label}: {tally[key]}')
     print(f'Targets recycled: {len(+recycled)}; total recycles: {recycled.total()}')
-    if refreshes or heartbeat or readbacks:
+    if syncs or heartbeat or readbacks:
         print('Measurement:')
-    if refreshes:
-        ordered = sorted(refreshes)
+    if syncs:
+        ordered = sorted(syncs)
         p50, p95 = ordered[len(ordered) // 2], ordered[min(len(ordered) - 1, int(len(ordered) * 0.95))]
         print(f'  Refreshes: {len(ordered)}; p50 {p50 / 1000:.1f} ms, p95 {p95 / 1000:.1f} ms, '
               f'max {ordered[-1] / 1000:.1f} ms')
     if heartbeat:
-        print(f'  Worst second: {worst[0]} refreshes, {worst[1] / 1000:.1f} ms spent')
+        print(f'  Worst second: {worst[0]} syncs, {worst[1] / 1000:.1f} ms spent')
         print(f"  Sink churn: {heartbeat['sink_adds']} adds, {heartbeat['sink_removes']} removes")
         if rendering['frames']:
             frames = rendering['frames']

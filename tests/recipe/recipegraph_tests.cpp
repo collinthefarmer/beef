@@ -4,6 +4,7 @@
 #include "test_support.h"
 
 #include <algorithm>
+#include <cmath>
 #include <limits>
 
 using namespace BetterEnchantmentEffects;
@@ -27,7 +28,72 @@ bool Message(const RecipeGraph &graph, std::string_view where,
 }
 }
 
+namespace {
+class SeededEnvironment final : public SignalEnvironment {
+public:
+  float id = 0.0f;
+  float effect = 0.0f;
+  float ActorValue(std::string_view, Measure) const override { return 0.0f; }
+  float ActorState(ActorStateKind) const override { return 0.0f; }
+  Vec3 ActorVector(ActorStateKind) const override { return Vec3{}; }
+  Vec3 WorldToRoot(const Vec3 &a_world) const override { return a_world; }
+  float Enchantment(EnchantmentField a_field) const override {
+    return a_field == EnchantmentField::kIdHash       ? id
+           : a_field == EnchantmentField::kEffectHash ? effect
+                                                      : 0.0f;
+  }
+  std::optional<Efsh::EffectParams>
+  EffectShader(const FormRef &) const override {
+    return std::nullopt;
+  }
+};
+
+float RandomRows(float a_id, float a_effect, const char *a_row) {
+  Recipe recipe;
+  recipe.signals = {{"first", ExprSignal{"rand()"}},
+                    {"second", ExprSignal{"rand()"}},
+                    {"pair", ExprSignal{"rand() - rand()"}},
+                    {"count", ExprSignal{"randrange(1, 4)"}}};
+  const auto graph = RecipeGraph::Compile(recipe);
+  SignalState state{graph};
+  SeededEnvironment environment;
+  environment.id = a_id;
+  environment.effect = a_effect;
+  state.Tick(environment, {});
+  return state.Scalar(a_row);
+}
+}
+
 int main() {
+  {
+    const float first = RandomRows(0.25f, 0.5f, "first");
+    Check(first >= 0.0f && first < 1.0f, "rand() is a 0..1 value");
+    Check(first == RandomRows(0.25f, 0.5f, "first"),
+          "rand() repeats for the same enchantment and effect");
+    Check(first != RandomRows(0.25f, 0.5f, "second"),
+          "rand() in different rows gives different values");
+    Check(RandomRows(0.25f, 0.5f, "pair") != 0.0f,
+          "two rand() calls in one expression give different values");
+    Check(first != RandomRows(0.75f, 0.5f, "first") &&
+              first != RandomRows(0.25f, 0.125f, "first"),
+          "rand() follows both the enchantment and its effect");
+    const float count = RandomRows(0.25f, 0.5f, "count");
+    Check(count >= 1.0f && count <= 3.0f && count == std::floor(count),
+          "randrange without a seed gives a whole number in range");
+
+    Recipe recipe;
+    recipe.signals = {{"spread", ExprSignal{"rand()"}}};
+    recipe.masks = {{"speckle", "rand()"}};
+    const auto graph = RecipeGraph::Compile(recipe);
+    const auto signalNode = graph.FindNodeIndex("spread");
+    const auto maskNode = graph.FindNodeIndex("speckle");
+    Check(signalNode &&
+              std::ranges::contains(graph.SignalEvaluationOrder(), *signalNode),
+          "a signal's rand() is evaluated with the signals");
+    Check(maskNode &&
+              !std::ranges::contains(graph.SignalEvaluationOrder(), *maskNode),
+          "a mask's rand() waits for the piece's item hash");
+  }
   {
     Recipe distance;
     distance.sources = {{"near", DistanceSource{"NPC Head [Head]"}}};

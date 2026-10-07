@@ -42,8 +42,8 @@ void ReportMeshProblems(const LiveGeometry &a_bound) {
 
 void Manager::RequestMesh(RE::FormID a_actorID, std::string a_geometry) {
   PostTask([this, a_actorID, name = std::move(a_geometry)] {
-    const auto it = applied_.find(a_actorID);
-    if (it == applied_.end()) {
+    const auto it = live_.find(a_actorID);
+    if (it == live_.end()) {
       return;
     }
     for (const LiveGeometry *bound : GeometriesNamed(it->second, name)) {

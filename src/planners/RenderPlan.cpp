@@ -128,7 +128,14 @@ std::vector<RenderValueRef> InputsOf(const RenderStepKind &step) {
       [](const SubmitMaterialSampleStep &k) { return std::vector{k.material}; },
       [](const ClusterMaterialStep &k) { return std::vector{k.sample}; },
       [](const DrawClustersStep &k) {
-        return std::vector{k.material, k.analysis};
+        std::vector inputs{k.material, k.analysis};
+        if (k.pick) {
+          inputs.push_back(*k.pick);
+        }
+        if (k.areaBias) {
+          inputs.push_back(*k.areaBias);
+        }
+        return inputs;
       },
       [](const SampleFieldStep &k) {
         auto inputs = k.coordinates;
@@ -532,6 +539,16 @@ std::expected<void, std::string> ValidateStepKind(const RenderPlan &plan,
             .and_then([&] {
               return RequireType(plan, k.analysis,
                                  RenderResourceType::kMaterialAnalysis);
+            })
+            .and_then([&]() -> Validation {
+              if (!k.pick)
+                return {};
+              return RequireType(plan, *k.pick, ValueType::kScalar);
+            })
+            .and_then([&]() -> Validation {
+              if (!k.areaBias)
+                return {};
+              return RequireType(plan, *k.areaBias, ValueType::kScalar);
             });
       },
       [&](const SampleFieldStep &k) -> Validation {

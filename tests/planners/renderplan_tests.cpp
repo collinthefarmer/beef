@@ -265,6 +265,38 @@ int main() {
     Check(readsSample, "cluster analysis reads its material sample through a "
                        "readback of a sample submission");
   }
+  Recipe pickRecipe;
+  MaterialClustersSource pickSource;
+  pickSource.pick = Param{0.25f};
+  pickSource.areaBias = Param{2.0f};
+  pickRecipe.sources = {{"zone", pickSource}};
+  SurfaceOutput pickSurface;
+  Layer pickLayer;
+  pickLayer.source = Ref{"zone"};
+  pickSurface.stack.push_back(pickLayer);
+  pickRecipe.outputs.push_back(pickSurface);
+  const auto pickGraph = RecipeGraph::Compile(pickRecipe);
+  const std::array pickRequests{RenderStackRequest{
+      &pickGraph, &pickSurface, 1, PlacementId{0}, 0, {TextureSize{64}}}};
+  const auto pickPlan = BuildRenderPlan({}, pickRequests, Bindings());
+  Check(pickPlan.has_value() &&
+            std::ranges::any_of(pickPlan->steps,
+                                [](const RenderStep &step) {
+                                  const auto *draw =
+                                      Get<DrawClustersStep>(step.kind);
+                                  return draw && draw->pick && draw->areaBias;
+                                }),
+        "a cluster pick reaches the cluster draw as two operands");
+  const auto plainDraw =
+      clusterPlan
+          ? std::ranges::find_if(clusterPlan->steps,
+                                 [](const RenderStep &step) {
+                                   return Is<DrawClustersStep>(step.kind);
+                                 })
+          : std::vector<RenderStep>::const_iterator{};
+  Check(clusterPlan && plainDraw != clusterPlan->steps.end() &&
+            !Get<DrawClustersStep>(plainDraw->kind)->pick,
+        "a cluster source without a pick draws the id map");
   Recipe hiddenRecipe;
   hiddenRecipe.masks = {{"bad", "@missing"}};
   SurfaceOutput hiddenSurface;
@@ -321,6 +353,23 @@ int main() {
     }
     Check(positions == 1 && ripples == 2, "two ripples share a position bake");
   }
+  const auto PositionBakeKey =
+      [&](const RecipeGraph &graph) -> std::optional<std::string> {
+    const std::array requests{RenderStackRequest{
+        &graph, &rippleSurface, 1, PlacementId{0}, 0, {TextureSize{64}}}};
+    const auto plan = BuildRenderPlan({}, requests, Bindings());
+    if (!plan)
+      return std::nullopt;
+    for (const auto &step : plan->steps)
+      if (Is<BakeMeshStep>(step.kind))
+        return step.contentKey;
+    return std::nullopt;
+  };
+  const auto recompiled = RecipeGraph::Compile(rippleRecipe);
+  const std::optional<std::string> positionKey = PositionBakeKey(rippleGraph);
+  Check(positionKey.has_value() && positionKey == PositionBakeKey(recompiled),
+        "a ripple's position bake is keyed by its mesh, so a rebuilt graph "
+        "finds it in the step cache");
   Recipe tintedRecipe;
   SurfaceOutput tintedSurface;
   Layer tinted;

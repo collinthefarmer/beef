@@ -14,8 +14,6 @@
 
 namespace BetterEnchantmentEffects {
 namespace {
-std::uint64_t g_nextModelToken = 0;
-
 struct WornItem {
   const RE::TESObjectARMO &armor;
   RE::MagicItem *enchantment = nullptr;
@@ -119,7 +117,7 @@ ObservedModel &ModelFor(ModelTable &a_models, RE::NiAVObject *a_model,
     }
   }
   a_models.models.push_back({RE::NiPointer{a_model},
-                             Actors::ModelToken{++g_nextModelToken},
+                             Actors::ModelToken{++a_models.nextToken},
                              {},
                              false,
                              a_nowMs});
@@ -206,6 +204,18 @@ void ObservePerson(const PersonObservation &a_person, ModelTable &a_models,
 }
 }
 
+bool Loaded3D(const RE::Actor &a_actor) noexcept {
+  return !a_actor.IsDeleted() && a_actor.Is3DLoaded();
+}
+
+std::optional<float> DistanceToPlayer(const RE::Actor &a_actor) {
+  const auto *player = RE::PlayerCharacter::GetSingleton();
+  if (!player || a_actor.IsPlayerRef()) {
+    return std::nullopt;
+  }
+  return player->GetPosition().GetDistance(a_actor.GetPosition());
+}
+
 Actors::ActorFacts ObserveActor(const ObserveRequest &a_request,
                                 ModelTable &a_models,
                                 MaterialLayout &a_layout) {
@@ -213,17 +223,12 @@ Actors::ActorFacts ObserveActor(const ObserveRequest &a_request,
   Actors::ActorFacts facts;
   facts.actor = Actors::ActorId{actor.GetFormID()};
   const bool isPlayer = actor.IsPlayerRef();
-  facts.loaded = a_request.effectsEnabled && !actor.IsDeleted() &&
-                 actor.Is3DLoaded() &&
+  facts.loaded = a_request.effectsEnabled && Loaded3D(actor) &&
                  (isPlayer || !a_request.settings.playerOnly);
   if (!facts.loaded) {
     return facts;
   }
-  if (!isPlayer) {
-    if (const auto *player = RE::PlayerCharacter::GetSingleton()) {
-      facts.distance = player->GetPosition().GetDistance(actor.GetPosition());
-    }
-  }
+  facts.distance = DistanceToPlayer(actor);
   const std::vector<WornItem> worn = WornItemsOf(actor);
   const bool walkUnenchanted = AnyUnenchantedKey(a_request.recipes);
   if (a_request.settings.thirdPerson) {

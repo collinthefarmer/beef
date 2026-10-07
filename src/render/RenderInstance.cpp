@@ -466,10 +466,25 @@ StepResult ExecuteDrawClustersStep(const DrawClustersStep &step,
   const auto *analysis =
       execution.arguments.Find<std::shared_ptr<const MaterialAnalysis>>(
           step.analysis);
+  if (!material || !analysis || !*analysis)
+    return std::unexpected("cluster draw failed");
+  std::optional<std::uint8_t> picked;
+  if (step.pick) {
+    const auto *pick = execution.arguments.Find<Value>(*step.pick);
+    const auto *bias = step.areaBias
+                           ? execution.arguments.Find<Value>(*step.areaBias)
+                           : nullptr;
+    if (!pick)
+      return std::unexpected("cluster pick is unavailable");
+    picked =
+        PickCluster(**analysis, AsScalar(*pick), bias ? AsScalar(*bias) : 1.0f);
+    if (!picked)
+      return std::unexpected("the material has no cluster to pick");
+  }
   const auto target = AcquireStepTarget(execution, step.requirements);
-  if (!material || !analysis || !*analysis || !target ||
-      !execution.lab.RenderClusters(*target, material->rmaos.get(),
-                                    material->diffuse.get(), **analysis))
+  if (!target || !execution.lab.RenderClusters(*target, material->rmaos.get(),
+                                               material->diffuse.get(),
+                                               **analysis, picked))
     return std::unexpected("cluster draw failed");
   auto view = View(target);
   view.sampling.nearest = true;
@@ -1000,6 +1015,15 @@ bool StableResource(const ExternalInput *external) {
 }
 std::optional<RenderValue> NumberValueOf(const BoundTextureValue &bound,
                                          ValueType type) {
+  if (bound.external && Is<ItemHashInput>(bound.external->source))
+    return Value{bound.geometry.itemHash};
+  if (bound.external && Is<ChartCountInput>(bound.external->source)) {
+    const auto mesh =
+        Compositor::GetSingleton()->MeshOf(bound.geometry.geometry.get());
+    if (!mesh || !*mesh)
+      return std::nullopt;
+    return Value{static_cast<float>((*mesh)->analysis.charts)};
+  }
   const auto *position =
       bound.external ? Get<NodePositionInput>(bound.external->source) : nullptr;
   if (position) {

@@ -95,18 +95,19 @@ struct PendingModel {
   [[nodiscard]] bool operator==(const PendingModel &) const = default;
 };
 
-struct Unloaded {
-  [[nodiscard]] bool operator==(const Unloaded &) const = default;
+struct Claim {
+  GeometryRef geometry;
+  ModelToken model{};
+  [[nodiscard]] bool operator==(const Claim &) const = default;
 };
-struct Evicted {
-  [[nodiscard]] bool operator==(const Evicted &) const = default;
-};
-struct Present {
+
+struct ActorState {
+  ActorPlan plan;
   ActorPlan installed;
   std::vector<PendingModel> pending;
-  [[nodiscard]] bool operator==(const Present &) const = default;
+  std::vector<Claim> claims;
+  [[nodiscard]] bool operator==(const ActorState &) const = default;
 };
-using Phase = std::variant<Unloaded, Evicted, Present>;
 
 struct InstallInstance {
   PlannedInstance instance;
@@ -132,8 +133,8 @@ using ActorCommand =
                  RetireGeometry, InstallPlacement, RetirePlacement,
                  RebuildRender>;
 
-struct Advanced {
-  Phase phase;
+struct Transition {
+  std::optional<ActorState> state;
   std::vector<ActorCommand> commands;
 };
 

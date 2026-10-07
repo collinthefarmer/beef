@@ -48,11 +48,13 @@ struct EventInput {
 struct NodePositionInput {
   std::string name;
 };
+struct ItemHashInput {};
+struct ChartCountInput {};
 using ExternalSource =
     std::variant<TimeInput, DeltaTimeInput, SampleUvInput, RootTransformInput,
                  GeometryInput, MaterialInput, TextureInput, EffectShaderInput,
-                 EventInput, NodePositionInput, ActorValueSignal,
-                 ActorStateSignal, EnchantmentSignal>;
+                 EventInput, NodePositionInput, ItemHashInput, ChartCountInput,
+                 ActorValueSignal, ActorStateSignal, EnchantmentSignal>;
 struct ExternalInput {
   ExternalSource source;
 };
@@ -178,6 +180,8 @@ struct RippleOperation {
 struct MaterialClustersOperation {
   OutputRef material, geometry, coordinates;
   ClusterSettings settings;
+  std::optional<OutputRef> pick;
+  std::optional<OutputRef> areaBias;
 };
 struct ReductionOperation {
   ReductionKind kind = ReductionKind::kMean;

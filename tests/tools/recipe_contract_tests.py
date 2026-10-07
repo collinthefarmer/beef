@@ -67,6 +67,9 @@ class RecipeContractTests(unittest.TestCase):
                   for value in (-1, 0, 2147483647, 2147483648, 4294967297)]
         cases += [({'weights': {'roughness': value}}, 0 <= value <= 10)
                   for value in (-0.1, 0, 10, 10.1)]
+        cases += [({'pick': value}, 0 <= value <= 1) for value in (-0.1, 0, 1, 1.1)]
+        cases += [({'pick': 0.5, 'areaBias': value}, 0 <= value <= 8)
+                  for value in (-0.1, 0, 8, 8.1)]
         for settings, valid in cases:
             with self.subTest(settings=settings):
                 self.check_case(recipe(sources={'clusters': {'materialClusters': settings}}), valid, valid)

@@ -5,7 +5,6 @@
 #include "studio/Snapshot.h"
 
 #include <algorithm>
-#include <chrono>
 #include <memory>
 #include <mutex>
 #include <optional>
@@ -33,11 +32,9 @@ struct FileOperationJournal {
   std::vector<EditEntry> edits;
   std::optional<Studio::GestureResult> gesture;
   Studio::GestureMailbox gestureMailbox;
-  bool gestureStarted = false;
-  std::chrono::steady_clock::time_point gestureTouched;
 
   std::uint64_t BeginGesture(const std::string &a_id, std::uint64_t a_revision,
-                             std::string a_propertyID) {
+                             std::string a_propertyID, std::uint32_t a_nowMS) {
     std::scoped_lock guard{lock};
     if (gesture && gesture->state == Studio::GesturePhase::kActive) {
       return 0;
@@ -47,37 +44,40 @@ struct FileOperationJournal {
         id,         a_id,        std::move(a_propertyID),
         a_revision, 0,           Studio::GesturePhase::kActive,
         true,       std::nullopt};
-    gestureMailbox = {};
-    gestureMailbox.scheduled = true;
-    gestureStarted = false;
-    gestureTouched = std::chrono::steady_clock::now();
+    gestureMailbox = Studio::OpenGestureMailbox(a_nowMS);
     return id;
   }
 
   bool UpdateGesture(std::uint64_t a_id, std::string_view a_propertyID,
-                     Studio::EditBatch a_edits) {
+                     Studio::EditBatch a_edits, std::uint32_t a_nowMS) {
     std::scoped_lock guard{lock};
     if (!gesture || gesture->gestureID != a_id ||
         gesture->state != Studio::GesturePhase::kActive ||
-        gesture->propertyID != a_propertyID ||
-        !Studio::QueueGestureUpdate(gestureMailbox, std::move(a_edits))) {
+        gesture->propertyID != a_propertyID) {
+      return false;
+    }
+    const Studio::GestureQueued queued =
+        Studio::QueueGestureUpdate(gestureMailbox, std::move(a_edits), a_nowMS);
+    if (queued == Studio::GestureQueued::kRefused) {
       return false;
     }
     gesture->pending = true;
-    gestureTouched = std::chrono::steady_clock::now();
-    return Studio::ScheduleGestureDelivery(gestureMailbox);
+    return queued == Studio::GestureQueued::kPost;
   }
 
-  bool EndGesture(std::uint64_t a_id, bool a_commit) {
+  bool EndGesture(std::uint64_t a_id, bool a_commit, std::uint32_t a_nowMS) {
     std::scoped_lock guard{lock};
     if (!gesture || gesture->gestureID != a_id ||
-        gesture->state != Studio::GesturePhase::kActive ||
-        !Studio::QueueGestureFinish(gestureMailbox, a_commit)) {
+        gesture->state != Studio::GesturePhase::kActive) {
+      return false;
+    }
+    const Studio::GestureQueued queued =
+        Studio::QueueGestureFinish(gestureMailbox, a_commit, a_nowMS);
+    if (queued == Studio::GestureQueued::kRefused) {
       return false;
     }
     gesture->pending = true;
-    gestureTouched = std::chrono::steady_clock::now();
-    return Studio::ScheduleGestureDelivery(gestureMailbox);
+    return queued == Studio::GestureQueued::kPost;
   }
 
   void PublishGesture(Studio::GestureResult a_result) {
@@ -86,9 +86,10 @@ struct FileOperationJournal {
         gesture->state != Studio::GesturePhase::kActive) {
       return;
     }
-    a_result.pending = a_result.state == Studio::GesturePhase::kActive &&
-                       (gestureMailbox.scheduled ||
-                        gestureMailbox.latest.sequence > a_result.sequence);
+    a_result.pending =
+        a_result.state == Studio::GesturePhase::kActive &&
+        (gestureMailbox.delivery != Studio::GestureDeliveryState::kIdle ||
+         gestureMailbox.latest.sequence > a_result.sequence);
     gesture = std::move(a_result);
     if (gesture->state != Studio::GesturePhase::kActive) {
       gestureMailbox = {};

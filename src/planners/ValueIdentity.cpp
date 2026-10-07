@@ -56,6 +56,7 @@ void EncodeBakeOperation(Encoding &out, const BakeOperation &operation) {
 void EncodeMaterialClustersOperation(
     Encoding &out, const MaterialClustersOperation &operation) {
   const ClusterSettings &s = operation.settings;
+  out.Number(operation.pick.has_value());
   out.Number(s.clusters);
   out.Number(s.seed);
   out.Number(s.iterations);
@@ -276,5 +277,12 @@ IdentifyValue(const RecipeGraph &graph, OutputRef value,
   if (!result)
     return std::unexpected(result.error());
   return ValueIdentity{std::move(*result)};
+}
+
+ValueIdentity PositionBakeIdentity(const ValueIdentity &a_mesh) {
+  Encoding out;
+  out.Add("position bake");
+  out.Add(a_mesh.canonical);
+  return ValueIdentity{std::move(out.text)};
 }
 }

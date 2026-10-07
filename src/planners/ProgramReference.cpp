@@ -1,6 +1,9 @@
 // GPL-3.0-only with the additional permission in COPYING.md.
 #include "planners/ProgramReference.h"
 
+#include "recipe/Expression.h"
+#include "recipe/ExpressionMath.h"
+
 #include <algorithm>
 #include <cmath>
 
@@ -179,6 +182,16 @@ Vec3 ApplyOpcode(const ProgramInstruction &instruction,
     return QuantizeUnorm8(a);
   case Op::kSplat:
     return Splat(a.x);
+  case Op::kShuffle:
+    return Splat(ShufflePosition(d.x, b.x, a.x));
+  case Op::kHash:
+    return Splat(HashUnit(b.x, a.x));
+  case Op::kRandRange:
+    return Splat(RandomInRange(d.x, b.x, a.x));
+  case Op::kHue:
+    return HueColor(a.x);
+  case Op::kHueShift:
+    return ShiftHue(b, a.x);
   }
   return Normalized(a, two);
 }

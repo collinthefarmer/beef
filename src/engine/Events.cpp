@@ -28,7 +28,7 @@ public:
                            {"item", std::to_string(a_event->baseObject)},
                            {"equipped", a_event->equipped ? "true" : "false"}});
         Manager *manager = Manager::GetSingleton();
-        manager->QueueRefresh(actor);
+        manager->MarkStale(actor);
         if (a_event->equipped) {
           manager->QueueEquipFinalize(actor->GetFormID());
         }
@@ -45,11 +45,11 @@ public:
       if (a_event->loaded) {
         if (RE::TESForm::LookupByID<RE::Actor>(a_event->formID)) {
           const Trace::Scope trace{Trace::Operation("event.actor_loaded")};
-          manager->QueueRefresh(a_event->formID);
+          manager->MarkStale(a_event->formID);
         }
       } else {
         const Trace::Scope trace{Trace::Operation("event.object_unloaded")};
-        manager->QueueRetire(a_event->formID);
+        manager->QueueForget(a_event->formID);
       }
     }
     return RE::BSEventNotifyControl::kContinue;
@@ -96,7 +96,7 @@ public:
     const Trace::Scope trace{Trace::Operation("event.node_update")};
     if (a_event && a_event->reference) {
       if (RE::Actor *actor = a_event->reference->As<RE::Actor>()) {
-        Manager::GetSingleton()->QueueRefresh(actor);
+        Manager::GetSingleton()->MarkStale(actor);
       }
     }
     return RE::BSEventNotifyControl::kContinue;

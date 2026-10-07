@@ -130,6 +130,12 @@ StepMove Start(const ShowRecipes &a_show, const StepContext &) {
 
 StepMove Check(const ShowRecipes &, const StepContext &) { return Pass(); }
 
+StepMove Start(const ShowAllRecipes &, const StepContext &) {
+  return PassAndIssue(ShowRecipeSet{});
+}
+
+StepMove Check(const ShowAllRecipes &, const StepContext &) { return Pass(); }
+
 StepMove Start(const Spawn &a_spawn, const StepContext &a_context) {
   if (a_spawn.role == Role::kPlayer) {
     return Fail("the player cannot be spawned");
@@ -907,6 +913,7 @@ std::array<bool, kRoleCount> RolesAffected(const Step &a_step) {
           [&](const Solo &) { return kAll; },
           [&](const RestoreSolo &) { return kAll; },
           [&](const ShowRecipes &) { return kAll; },
+          [&](const ShowAllRecipes &) { return kAll; },
           [&](const LeaveStart &) { return kAll; },
           [&](const ReturnToStart &) { return kAll; },
           [&](const SetCamera &) { return only(Role::kPlayer); },

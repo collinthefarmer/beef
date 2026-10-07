@@ -214,9 +214,12 @@ std::size_t InlineLayerFields(RenderPlan &plan) {
   StepUses uses = StepUsesOf(plan);
   std::size_t reads = 0;
   for (RenderStepId producer = 0; producer < plan.steps.size(); ++producer) {
-    uses.consumers = LiveConsumers(plan);
-    if (producer < uses.consumers.size() && uses.consumers[producer] > 0)
-      reads += InlineField(plan, producer, uses);
+    if (producer >= uses.consumers.size() || uses.consumers[producer] == 0)
+      continue;
+    const std::size_t inlined = InlineField(plan, producer, uses);
+    if (inlined > 0)
+      uses.consumers = LiveConsumers(plan);
+    reads += inlined;
   }
   return reads;
 }

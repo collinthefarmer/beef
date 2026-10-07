@@ -22,6 +22,7 @@
 #include "render/TextureLab.h"
 #include "render/TextureRef.h"
 
+#include <array>
 #include <cstdint>
 #include <expected>
 #include <functional>
@@ -63,12 +64,17 @@ struct ApplicationScope {
   std::size_t context = 0;
   RE::FormID actor = 0;
 };
+struct EnchantmentValues {
+  std::array<float, kEnchantmentFieldCount> fields{};
+};
 struct GeometryInputs {
   std::shared_ptr<RenderInstance> render;
   ApplicationScope scope;
   MaterialInputs material;
   RE::NiPointer<RE::BSGeometry> geometry;
   RE::NiPointer<RE::NiAVObject> root;
+  float itemHash = 0.0f;
+  EnchantmentValues enchantment;
 };
 
 struct StackTextureRequest {

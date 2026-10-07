@@ -1,8 +1,8 @@
 Status: in progress. Stages 1 to 6 are implemented and measured; review
 findings for stages 3 and 4 are in
 [the review record](../checkpoints/render-performance-review-2026-09-30.md).
-Stage 5 has one open finding, the memory left after a crowd leaves. Later
-stages are open. This plan follows the
+Stage 5 has one open finding, the memory left after a crowd leaves. Stage 7,
+the render target budget, is open (2026-10-06). Later stages are open. This plan follows the
 [render graph correctness plan](render-graph-correctness-2026-09-29.md), whose
 checkpoint findings are its starting point.
 
@@ -379,6 +379,45 @@ every tick (`travel` and the imported scrolls). GPU per tick is 13.5 ms, of
 which 2048 stacks take 9.8 ms and their mips 4.0 ms. Plugin CPU is about
 27 microseconds per step execution. `soak-ward` and `soak-frost` show that
 Resonant Ward and Winterglass alone re-run no stack.
+
+## Stage 7: render target budget
+
+Opened 2026-10-06 by `docs/bug-reports/2026-10-06-vram-overrun.md`. In combat
+with `PlayerOnly=false`, the plugin's render targets pushed the process past
+the DXGI budget, and the game ran at 2 to 5 fps until it was killed.
+
+Measured in the session of 2026-10-06 17:31 (trace
+`BetterEnchantmentEffects-trace-1791322260999346.jsonl`):
+
+| Measurement | Value |
+|---|---|
+| Player only, one recipe, 51 steps | about 34 targets, 70 to 95 MiB |
+| One NPC, two imported recipes, 6 to 7 geometries, 232 to 270 steps | about 100 targets, about 30 of them 2048², about 1 GiB |
+| Three NPCs and the player | peak 315 targets, 3.1 GiB |
+| Acquires by owner | 1485 of 1616 are `render step` |
+| `soak-enchanted`, 12 mannequins in six vanilla cuirass and enchantment pairs (2026-10-07, run 20261007T032055-1) | steady 3.53 GB live targets, peak 4.20 GB; a second run (20261007T032811-1) peaked at 4.69 GB, stalled 3.5 s in its steady window and hung after the crowd despawned (frames 6.8 s apart, then no trace) |
+
+The imported recipes came from the uncommitted fill template (85 signals,
+8 sources, 12 masks). W3 in `architecture-fit-2026-10-06.md` measured it at
+80 MiB of targets per wearer and geometry (2048² base), against 141 MiB for
+the template at 48938f0, so the rewrite lowered the cost per geometry. The
+per-NPC gigabyte comes from the placement count: about 12 placements × 80 MiB.
+`TargetCostOf` (`planners/TargetCost.h`) gives 7a the cost of a plan before
+it is admitted.
+
+Work:
+
+| Item | Change | Done when |
+|---|---|---|
+| 7a | A byte budget for live render targets. Admission is nearest-first: the player always, then NPCs by distance. What an actor that does not fit receives is an open decision: a lower resolution, its cheapest outputs, or no effect. | A crowd soak stays under the budget, and the over-budget actors are named in the log. |
+| 7b | The idle pool keeps released targets for a time (about 2 s) inside the budget, not up to `kMaxIdleTargets` 16 and `kMaxIdleBytes` 64 MiB. Today three released 2K targets fill the idle limit, so a rebuild destroys and creates most of an actor's targets (about 880 MiB created and 480 MiB destroyed per burst in the report). | A rebuild of one NPC creates no new targets in a soak. |
+| 7c | A log line, written with diagnostics off, when live target bytes cross a threshold: bytes per actor and per recipe. | The bug report's question "which actors?" can be answered from the plain log. |
+
+The soak for 7a to 7c is W10 of `architecture-fit-2026-10-06.md`: a crowd in
+vanilla armor under vanilla enchantments, so the imported recipes apply.
+
+Actor-core stage 4b reduces the churn that 7b absorbs: until it lands, an
+equip event that changes an actor's plan rebuilds the whole actor.
 
 ## Later stages
 

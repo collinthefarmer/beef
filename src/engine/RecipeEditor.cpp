@@ -10,7 +10,6 @@
 #include "studio/PaintSession.h"
 
 #include <algorithm>
-#include <chrono>
 #include <format>
 #include <mutex>
 #include <span>
@@ -60,7 +59,8 @@ std::uint64_t RecipeEditor::BeginGesture(const std::string &a_id,
                                          std::uint64_t a_expectedRevision,
                                          std::string a_propertyID) {
   const std::uint64_t id = fileOperations_->BeginGesture(
-      a_id, a_expectedRevision, std::move(a_propertyID));
+      a_id, a_expectedRevision, std::move(a_propertyID),
+      runtime_.EditorClockMS());
   if (id != 0) {
     PostGesture(id);
   }
@@ -70,13 +70,14 @@ std::uint64_t RecipeEditor::BeginGesture(const std::string &a_id,
 void RecipeEditor::UpdateGesture(std::uint64_t a_id,
                                  const std::string &a_propertyID,
                                  Studio::EditBatch a_edits) {
-  if (fileOperations_->UpdateGesture(a_id, a_propertyID, std::move(a_edits))) {
+  if (fileOperations_->UpdateGesture(a_id, a_propertyID, std::move(a_edits),
+                                     runtime_.EditorClockMS())) {
     PostGesture(a_id);
   }
 }
 
 void RecipeEditor::EndGesture(std::uint64_t a_id, bool a_commit) {
-  if (fileOperations_->EndGesture(a_id, a_commit)) {
+  if (fileOperations_->EndGesture(a_id, a_commit, runtime_.EditorClockMS())) {
     PostGesture(a_id);
   }
 }
@@ -90,22 +91,31 @@ void RecipeEditor::PostGesture(std::uint64_t a_id) {
 }
 
 void RecipeEditor::TouchGesture(std::uint64_t a_id) {
+  const std::uint32_t now = runtime_.EditorClockMS();
   std::scoped_lock guard{fileOperations_->lock};
   if (fileOperations_->gesture && fileOperations_->gesture->gestureID == a_id) {
-    fileOperations_->gestureTouched = std::chrono::steady_clock::now();
+    Studio::TouchGesture(fileOperations_->gestureMailbox, now);
   }
 }
 
 void RecipeEditor::TickGesture() {
+  const std::uint32_t now = runtime_.EditorClockMS();
   std::uint64_t expired = 0;
+  std::uint64_t released = 0;
   {
     std::scoped_lock guard{fileOperations_->lock};
+    Studio::GestureMailbox &mailbox = fileOperations_->gestureMailbox;
+    if (fileOperations_->gesture && Studio::ReleaseHeldGesture(mailbox, now)) {
+      released = fileOperations_->gesture->gestureID;
+    }
     if (fileOperations_->gesture &&
         fileOperations_->gesture->state == Studio::GesturePhase::kActive &&
-        std::chrono::steady_clock::now() - fileOperations_->gestureTouched >
-            std::chrono::seconds{2}) {
+        Studio::GestureIdle(mailbox, now)) {
       expired = fileOperations_->gesture->gestureID;
     }
+  }
+  if (released != 0) {
+    PostGesture(released);
   }
   if (expired != 0) {
     EndGesture(expired, true);
@@ -130,6 +140,7 @@ void RecipeEditor::ResetDocumentRevisions() {
 }
 
 void RecipeEditor::ProcessGesture(std::uint64_t a_id) {
+  const std::uint32_t now = runtime_.EditorClockMS();
   Studio::GestureDelivery delivery;
   std::optional<Studio::GestureResult> incoming;
   bool begin = false;
@@ -140,9 +151,14 @@ void RecipeEditor::ProcessGesture(std::uint64_t a_id) {
         fileOperations_->gesture->state != Studio::GesturePhase::kActive) {
       return;
     }
+    std::optional<Studio::TakenGesture> taken =
+        Studio::TakeGestureDelivery(fileOperations_->gestureMailbox, now);
+    if (!taken) {
+      return;
+    }
     incoming = fileOperations_->gesture;
-    delivery = Studio::TakeGestureDelivery(fileOperations_->gestureMailbox);
-    begin = !std::exchange(fileOperations_->gestureStarted, true);
+    delivery = std::move(taken->delivery);
+    begin = taken->begins;
   }
   if (begin && gesture_) {
     FinishActiveGesture(true);
@@ -218,6 +234,11 @@ void RecipeEditor::ApplyGestureUpdate(const Studio::EditBatch &a_edits,
     RefreshRecipeDerivedState(id);
     AdvanceDocumentRevision(id);
   });
+  {
+    const std::uint32_t applied = runtime_.EditorClockMS();
+    std::scoped_lock guard{fileOperations_->lock};
+    Studio::NoteGestureApplied(fileOperations_->gestureMailbox, applied);
+  }
   gesture_->applied = a_recipe;
   gesture_->revision = DocumentRevisionOf(id);
   gestureStatus_->documentRevision = gesture_->revision;

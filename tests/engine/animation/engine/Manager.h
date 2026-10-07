@@ -27,7 +27,7 @@ struct Manager {
   AnimationSubscriptions animations_{[this](AnimationEvent a_event) {
     QueueAnimationEvent(std::move(a_event));
   }};
-  std::unordered_map<RE::FormID, LiveActor> applied_;
+  std::unordered_map<RE::FormID, LiveActor> live_;
   std::vector<EventRecord> fired;
 
   Manager() { applications_.Resume(); }
@@ -37,12 +37,12 @@ struct Manager {
   void Fire(RE::FormID, const EventRecord &a_event) {
     fired.push_back(a_event);
   }
-  void QueueRetire(RE::FormID a_actor) {
+  void QueueForget(RE::FormID a_actor) {
     PostTask([this, a_actor] {
       applications_.Retire(a_actor, applications_.PendingFor(a_actor));
       animations_.Stop(a_actor);
       ForgetAnimEvents(a_actor);
-      applied_.erase(a_actor);
+      live_.erase(a_actor);
     });
   }
   void Drain() {

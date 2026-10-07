@@ -12,13 +12,13 @@ void Manager::RetireAll() {
   const Trace::Scope trace{Trace::Operation("manager.RetireAll")};
   PostTask([this] {
     std::vector<RE::FormID> ids = animations_.Actors();
-    for (const auto &[actor, state] : applied_) {
+    for (const auto &[actor, state] : live_) {
       ids.push_back(actor);
     }
     std::ranges::sort(ids);
     ids.erase(std::unique(ids.begin(), ids.end()), ids.end());
     for (const RE::FormID actor : ids) {
-      QueueRetire(actor);
+      QueueForget(actor);
     }
   });
 }
@@ -32,8 +32,8 @@ void Manager::QueueAnimationEvent(AnimationEvent a_event) {
       return;
     }
     const RE::FormID id = event.registration->actor;
-    const auto found = applied_.find(id);
-    if (found == applied_.end()) {
+    const auto found = live_.find(id);
+    if (found == live_.end()) {
       return;
     }
     const auto actor = found->second.actor.get();
@@ -49,8 +49,8 @@ void Manager::QueueAnimationEvent(AnimationEvent a_event) {
 }
 
 void Manager::ReconcileAnimationEvents(RE::FormID a_actor) {
-  const auto found = applied_.find(a_actor);
-  if (found != applied_.end()) {
+  const auto found = live_.find(a_actor);
+  if (found != live_.end()) {
     const auto actor = found->second.actor.get();
     if (actor && !actor->IsDeleted() && actor->Is3DLoaded()) {
       animations_.Reconcile(*actor);
@@ -62,11 +62,11 @@ void Manager::ReconcileAnimationEvents(RE::FormID a_actor) {
 }
 
 void Manager::SweepAnimationEvents() {
-  for (const auto &[actor, state] : applied_) {
+  for (const auto &[actor, state] : live_) {
     ReconcileAnimationEvents(actor);
   }
   for (const RE::FormID actor : animations_.Actors()) {
-    if (!applied_.contains(actor) && applications_.PendingFor(actor).empty()) {
+    if (!live_.contains(actor) && applications_.PendingFor(actor).empty()) {
       ReconcileAnimationEvents(actor);
     }
   }

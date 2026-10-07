@@ -9,24 +9,24 @@ using test::Equal;
 namespace {
 void TestRatesAccumulateAndDrain() {
   static_cast<void>(Metrics::Drain());
-  Metrics::CountRefresh(1000);
-  Metrics::CountRefresh(3000);
+  Metrics::CountSync(1000);
+  Metrics::CountSync(3000);
   Metrics::CountSinkAdd();
   Metrics::CountSinkRemove();
   Metrics::CountSinkRemove();
   Metrics::CountReadback(500);
   const Metrics::Snapshot first = Metrics::Drain();
-  Equal(first.refreshes, std::uint64_t{2}, "two refreshes counted");
-  Equal(first.refreshMicros, std::uint64_t{4000}, "refresh micros summed");
-  Equal(first.refreshMaxMicros, std::uint64_t{3000}, "refresh max kept");
+  Equal(first.syncs, std::uint64_t{2}, "two refreshes counted");
+  Equal(first.syncMicros, std::uint64_t{4000}, "refresh micros summed");
+  Equal(first.syncMaxMicros, std::uint64_t{3000}, "refresh max kept");
   Equal(first.sinkAdds, std::uint64_t{1}, "one sink add");
   Equal(first.sinkRemoves, std::uint64_t{2}, "two sink removes");
   Equal(first.readbacks, std::uint64_t{1}, "one readback");
   Equal(first.readbackMaxMicros, std::uint64_t{500}, "readback max kept");
   Check(!first.Quiet(), "a snapshot with activity is not quiet");
   const Metrics::Snapshot second = Metrics::Drain();
-  Equal(second.refreshes, std::uint64_t{0}, "drain resets the rates");
-  Equal(second.refreshMaxMicros, std::uint64_t{0}, "drain resets the maxima");
+  Equal(second.syncs, std::uint64_t{0}, "drain resets the rates");
+  Equal(second.syncMaxMicros, std::uint64_t{0}, "drain resets the maxima");
   Check(second.Quiet(), "a drained snapshot with no activity is quiet");
 }
 

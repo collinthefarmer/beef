@@ -72,7 +72,7 @@ def number(fields: dict, name: str) -> int:
 
 PHASES = ('signals', 'render', 'render_inputs', 'render_slots', 'render_shell',
           'render_evaluate', 'cull', 'lights',
-          'previews', 'sweep', 'snapshot', 'refresh')
+          'previews', 'sweep', 'snapshot', 'sync')
 
 
 def inside(events: list[dict], window: Window, action: str) -> list[dict]:
@@ -94,7 +94,7 @@ def measure(events: list[dict], window: Window) -> dict[str, float]:
     gpu_us = sum(number(span, 'total_us') for span in inside(events, window, 'gpu_span')
                  if span.get('span') == 'RenderTick')
     ticks = inside(events, window, 'gpu_ticks')
-    plugin_us = total('frame_us') + total('refresh_us')
+    plugin_us = total('frame_us') + total('sync_us')
     return {
         'heartbeats': len(beats),
         'seconds': round(seconds, 1),
@@ -112,7 +112,7 @@ def measure(events: list[dict], window: Window) -> dict[str, float]:
                                  1),
         'frame_max_us': peak('frame_max_us'),
         'tick_max_us': peak('tick_max_us'),
-        'refresh_max_us': peak('refresh_max_us'),
+        'sync_max_us': peak('sync_max_us'),
         'readback_max_us': peak('readback_max_us'),
         'plugin_over_8ms': total('plugin_over_8ms'),
         'plugin_over_16ms': total('plugin_over_16ms'),
@@ -145,7 +145,7 @@ def label(key: WindowKey) -> str:
 COST_MEASURES = ('seconds', 'fps', 'plugin_frame_us_mean', 'plugin_ms_per_s',
                  'plugin_share_pct', *(f'{phase}_us_mean' for phase in PHASES), 'gpu_us_mean',
                  'gpu_ticks_timed', 'gpu_ticks_untimed', 'out_of_view_pct')
-SPIKE_MEASURES = ('frame_max_us', 'tick_max_us', 'refresh_max_us', 'readback_max_us',
+SPIKE_MEASURES = ('frame_max_us', 'tick_max_us', 'sync_max_us', 'readback_max_us',
                   'plugin_over_8ms', 'plugin_over_16ms', 'plugin_over_33ms', 'interval_max_us',
                   'hitches_50ms', 'hitches_100ms')
 MEMORY_MEASURES = ('targets_end', 'target_bytes_end', 'target_bytes_peak', 'pool_targets_end',

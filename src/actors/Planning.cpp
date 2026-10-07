@@ -4,6 +4,9 @@
 #include "planners/ActorPlanning.h"
 #include "studio/Selection.h"
 
+#include <algorithm>
+#include <optional>
+#include <span>
 #include <string>
 #include <utility>
 #include <vector>
@@ -24,17 +27,6 @@ WornPiece KeysWithDiffusePaths(const PieceFacts &a_piece) {
   return keys;
 }
 
-GeometryRef RefOf(const PieceFacts &a_piece, std::size_t a_index) {
-  const std::string &name = a_piece.geometries[a_index].name;
-  std::uint32_t ordinal = 0;
-  for (std::size_t i = 0; i < a_index; ++i) {
-    if (a_piece.geometries[i].name == name) {
-      ++ordinal;
-    }
-  }
-  return GeometryRef{a_piece.ref, name, ordinal};
-}
-
 MatchInput MatchInputOf(const ActorFacts &a_facts) {
   MatchInput input;
   const auto actorID = static_cast<std::uint32_t>(a_facts.actor);
@@ -43,6 +35,10 @@ MatchInput MatchInputOf(const ActorFacts &a_facts) {
     const WornPiece keys = KeysWithDiffusePaths(piece);
     const Studio::PieceRef owner{actorID, piece.itemID, piece.ref.firstPerson};
     for (std::size_t i = 0; i < piece.geometries.size(); ++i) {
+      const std::optional<GeometryRef> ref = GeometryRefOf(piece, i);
+      if (!ref) {
+        continue;
+      }
       const GeometryFacts &geometry = piece.geometries[i];
       Geometry planned;
       planned.identity = GeometryIdentity{piece.ref.addon, geometry.name,
@@ -50,7 +46,7 @@ MatchInput MatchInputOf(const ActorFacts &a_facts) {
       planned.keys = keys;
       planned.firstPerson = piece.ref.firstPerson;
       input.geometries.push_back(std::move(planned));
-      input.refs.push_back(RefOf(piece, i));
+      input.refs.push_back(*ref);
       input.owners.push_back(owner);
     }
   }
@@ -69,9 +65,8 @@ std::optional<ModelToken> ModelOf(const ActorFacts &a_facts,
 
 InstanceRef InstanceRefOf(const Instance &a_instance,
                           const RecipeCatalog &a_recipes) {
-  const std::size_t index = IndexOf(a_instance.recipe);
-  const std::span<const Recipe> recipes = a_recipes.Recipes();
-  return InstanceRef{index < recipes.size() ? recipes[index].id : std::string{},
+  const Recipe *recipe = a_recipes.At(a_instance.recipe);
+  return InstanceRef{recipe ? recipe->id : std::string{},
                      a_recipes.FingerprintOf(a_instance.recipe),
                      a_instance.enchantment, a_instance.effectKey};
 }
@@ -102,29 +97,28 @@ ActorPlan KeyedPlanOf(const ActorMatches &a_matches, const MatchInput &a_input,
   }
   return plan;
 }
+
+bool Claimed(const PlanRequest &a_request, const GeometryRef &a_geometry) {
+  const std::optional<ModelToken> model =
+      ModelOf(a_request.facts, a_geometry.piece);
+  return model &&
+         std::ranges::contains(a_request.claims, Claim{a_geometry, *model});
+}
 }
 
-std::optional<RecipeCatalog>
-RecipeCatalog::Of(std::span<const Recipe> a_recipes,
-                  std::span<const std::uint64_t> a_fingerprints) noexcept {
-  if (a_recipes.size() != a_fingerprints.size()) {
+std::optional<GeometryRef> GeometryRefOf(const PieceFacts &a_piece,
+                                         std::size_t a_index) {
+  if (a_index >= a_piece.geometries.size()) {
     return std::nullopt;
   }
-  return RecipeCatalog{a_recipes, a_fingerprints};
-}
-
-RecipeCatalog::RecipeCatalog(
-    std::span<const Recipe> a_recipes,
-    std::span<const std::uint64_t> a_fingerprints) noexcept
-    : recipes_(a_recipes), fingerprints_(a_fingerprints) {}
-
-std::span<const Recipe> RecipeCatalog::Recipes() const noexcept {
-  return recipes_;
-}
-
-std::uint64_t RecipeCatalog::FingerprintOf(RecipeId a_recipe) const noexcept {
-  const std::size_t index = IndexOf(a_recipe);
-  return index < fingerprints_.size() ? fingerprints_[index] : 0;
+  const std::string &name = a_piece.geometries[a_index].name;
+  std::uint32_t ordinal = 0;
+  for (std::size_t i = 0; i < a_index; ++i) {
+    if (a_piece.geometries[i].name == name) {
+      ++ordinal;
+    }
+  }
+  return GeometryRef{a_piece.ref, name, ordinal};
 }
 
 std::vector<const PieceFacts *> PlannedPieces(const ActorFacts &a_facts) {
@@ -145,6 +139,10 @@ PlannedActor PlanActor(const PlanRequest &a_request) {
       MatchActor(input.geometries, recipes,
                  [&](const Geometry &a_geometry, GeometryId a_id) {
                    const std::size_t index = IndexOf(a_id);
+                   if (index >= input.refs.size() ||
+                       Claimed(a_request, input.refs[index])) {
+                     return std::vector<ResolvedRecipe>{};
+                   }
                    const Studio::PieceRef owner = index < input.owners.size()
                                                       ? input.owners[index]
                                                       : Studio::PieceRef{};

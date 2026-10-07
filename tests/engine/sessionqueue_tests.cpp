@@ -53,16 +53,16 @@ void LoadAndCoalesce() {
                      [&](std::uint32_t a_id) { refreshed.push_back(a_id); }};
   Check(queue.Loading(), "the queue starts paused");
   queue.Post([&] { ++posted; });
-  queue.Refresh(42);
+  queue.MarkStale(42);
   queue.Equip(42, 0);
   queue.Resume();
   queue.FinalizeDue(100);
   Check(scheduler.tasks.empty(), "work submitted while loading is dropped");
-  queue.Refresh(0);
+  queue.MarkStale(0);
   Check(scheduler.tasks.empty(), "zero actor IDs are rejected");
-  queue.Refresh(42);
-  queue.Refresh(42);
-  queue.Refresh(42);
+  queue.MarkStale(42);
+  queue.MarkStale(42);
+  queue.MarkStale(42);
   Check(scheduler.tasks.size() == 1, "duplicate refreshes share one task");
   scheduler.Run();
   Check(refreshed == std::vector<std::uint32_t>{42} &&
@@ -73,15 +73,15 @@ void LoadAndCoalesce() {
             scheduler.tasks.empty(),
         "the follow-up does not repeat indefinitely");
   queue.Post([&] { ++posted; });
-  queue.Refresh(42);
+  queue.MarkStale(42);
   queue.BeginLoad();
   queue.Resume();
-  queue.Refresh(42);
+  queue.MarkStale(42);
   scheduler.Run();
   scheduler.Run();
   Check(posted == 0 && refreshed.size() == 2,
         "old tasks remain stale after the next session resumes");
-  queue.Refresh(42);
+  queue.MarkStale(42);
   Check(scheduler.tasks.size() == 1,
         "a stale task cannot erase the new session's pending marker");
   scheduler.Run();
@@ -98,9 +98,9 @@ void SubmissionFailure() {
                      [&](std::uint32_t) { ++refreshed; }};
   queue.Resume();
   scheduler.accept = false;
-  queue.Refresh(42);
+  queue.MarkStale(42);
   scheduler.accept = true;
-  queue.Refresh(42);
+  queue.MarkStale(42);
   Check(scheduler.tasks.size() == 1,
         "failed submission releases pending state for a retry");
   scheduler.Run();
@@ -119,9 +119,9 @@ void LoadDuringSubmission() {
   scheduler.beforeSubmit = [&] {
     queue.BeginLoad();
     queue.Resume();
-    queue.Refresh(42);
+    queue.MarkStale(42);
   };
-  queue.Refresh(42);
+  queue.MarkStale(42);
   Check(scheduler.tasks.size() == 2,
         "load can intervene between reservation and submission");
   scheduler.Run();
@@ -130,7 +130,7 @@ void LoadDuringSubmission() {
         "work reserved before loading cannot enter the new session");
 }
 
-void LoadDuringRefresh() {
+void LoadDuringSync() {
   Scheduler scheduler;
   int refreshed = 0;
   SessionQueue *current = nullptr;
@@ -144,8 +144,8 @@ void LoadDuringRefresh() {
                      }};
   current = &queue;
   queue.Resume();
-  queue.Refresh(42);
-  queue.Refresh(42);
+  queue.MarkStale(42);
+  queue.MarkStale(42);
   scheduler.Run();
   Check(refreshed == 1 && scheduler.tasks.empty(),
         "a follow-up cannot cross a load triggered during refresh");
@@ -194,7 +194,7 @@ void QueueLifetime() {
                        [&](std::uint32_t) { ++calls; }};
     queue.Resume();
     queue.Post([&] { ++calls; });
-    queue.Refresh(42);
+    queue.MarkStale(42);
   }
   scheduler.Run();
   scheduler.Run();
@@ -215,7 +215,7 @@ int main() {
     const auto cause = Trace::Operation("test.refresh");
     {
       const Trace::Scope scope{cause};
-      queue.Refresh(42);
+      queue.MarkStale(42);
     }
     scheduler.Run();
     Check(seen == cause.operation,
@@ -234,7 +234,7 @@ int main() {
   LoadAndCoalesce();
   SubmissionFailure();
   LoadDuringSubmission();
-  LoadDuringRefresh();
+  LoadDuringSync();
   EquipmentDelay();
   QueueLifetime();
   return test::Finish("session queue");

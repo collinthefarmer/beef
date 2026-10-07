@@ -317,11 +317,10 @@ void PlacementPriorityAndLights() {
   Check(lights.plan.shown.size() == 1 && lights.plan.replaced.empty(),
         "a replacing light with no selector match cannot clear another light");
   Get<LightOutput>(recipes[0].outputs[1])->selector.anyOf.clear();
+  actor.geometries[0].firstPerson = true;
   actor.geometries[1].firstPerson = true;
-  actor.geometries[0].lost = true;
-  Check(
-      PlanActorLights(actor, recipes).plan.shown.empty(),
-      "lost or first-person placements cannot enter actor-wide light planning");
+  Check(PlanActorLights(actor, recipes).plan.shown.empty(),
+        "first-person placements cannot enter actor-wide light planning");
 }
 
 void EffectInstanceIdentity() {
@@ -394,10 +393,6 @@ void AddonSelectedLights() {
   gloves.firstPerson = true;
   Check(!LightEligible(gloves, light),
         "a matching addon does not bypass third-person light eligibility");
-  gloves.firstPerson = false;
-  gloves.lost = true;
-  Check(!LightEligible(gloves, light),
-        "a matching addon does not bypass lost-geometry exclusion");
 }
 
 void GroupedReplacement() {

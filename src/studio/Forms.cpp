@@ -103,6 +103,28 @@ OptionalVec2Of(const std::string &a_text) {
   return std::optional<Vec2Param>{*pair};
 }
 
+[[nodiscard]] std::optional<std::optional<Param>>
+OptionalUnitParamOf(const std::string &a_text) {
+  if (a_text.empty()) {
+    return std::optional<Param>{};
+  }
+  const auto param = ParseParam(a_text);
+  const auto *value = param ? Get<float>(*param) : nullptr;
+  if (!param || (value && (*value < 0.0f || *value > 1.0f))) {
+    return std::nullopt;
+  }
+  return std::optional<Param>{*param};
+}
+
+[[nodiscard]] std::optional<Param> AreaBiasOf(const std::string &a_text) {
+  const auto param = ParseParam(a_text);
+  const auto *value = param ? Get<float>(*param) : nullptr;
+  if (!param || (value && (*value < 0.0f || *value > kMaxAreaBias))) {
+    return std::nullopt;
+  }
+  return param;
+}
+
 [[nodiscard]] std::optional<std::string> TextOf(const std::string &a_text) {
   return a_text.empty() ? std::nullopt : std::optional{a_text};
 }
@@ -1353,6 +1375,14 @@ void DistanceFields(std::vector<FormField> &a_form, const SourceContext &a_ctx,
                                 DistanceFromOf)}));
 }
 
+void PieceFields(std::vector<FormField> &a_form, const SourceContext &a_ctx,
+                 const PieceSourceRow &a_source) {
+  a_form.push_back(
+      ChoiceField("field", a_source.field, WordsOf(kPieceFields),
+                  BindSourceMember(a_ctx.name, a_ctx.record,
+                                   &PieceSource::field, WordOf(kPieceFields))));
+}
+
 void RippleFields(std::vector<FormField> &a_form, const SourceContext &a_ctx,
                   const RippleSourceRow &a_source) {
   const std::string &name = a_ctx.name;
@@ -1441,6 +1471,27 @@ void ClustersFields(std::vector<FormField> &a_form, const SourceContext &a_ctx,
   iterations.workingRange = iterations.range;
   iterations.integral = true;
   a_form.push_back(std::move(iterations));
+  FormField pick = ParamField(
+      {.name = "pick",
+       .kind = FieldKind::kScalar,
+       .text = source.pick,
+       .names = a_ctx.names.scalar,
+       .bind = BindSourceMember(name, record, &MaterialClustersSource::pick,
+                                OptionalUnitParamOf)});
+  pick.range = std::pair{0.0f, 1.0f};
+  pick.workingRange = pick.range;
+  pick.allowEmpty = true;
+  a_form.push_back(std::move(pick));
+  FormField areaBias = ParamField(
+      {.name = "areaBias",
+       .kind = FieldKind::kScalar,
+       .text = source.areaBias,
+       .names = a_ctx.names.scalar,
+       .bind = BindSourceMember(name, record, &MaterialClustersSource::areaBias,
+                                AreaBiasOf)});
+  areaBias.range = std::pair{0.0f, kMaxAreaBias};
+  areaBias.workingRange = areaBias.range;
+  a_form.push_back(std::move(areaBias));
 }
 }
 
@@ -1472,7 +1523,8 @@ std::vector<FormField> SourceForm(const SourceRow &a_source,
       },
       [&](const MaterialClustersSourceRow &a_clusters) {
         ClustersFields(form, ctx, a_clusters);
-      });
+      },
+      [&](const PieceSourceRow &a_piece) { PieceFields(form, ctx, a_piece); });
   return form;
 }
 
@@ -1689,4 +1741,20 @@ std::vector<FormField> ShellForm(const ShellRow &a_shell,
   return form;
 }
 
+std::string FieldKindHelp(FieldKind a_kind) {
+  const auto row =
+      std::ranges::find(kFieldKinds, a_kind, &FieldKindSpec::value);
+  if (row == std::end(kFieldKinds)) {
+    return {};
+  }
+  std::string help = row->help;
+  if (a_kind == FieldKind::kExpression) {
+    help += "; functions:";
+    for (const ExpressionFunction &function : ExpressionFunctions()) {
+      help += ' ';
+      help += function.usage;
+    }
+  }
+  return help;
+}
 }

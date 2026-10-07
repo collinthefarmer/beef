@@ -72,6 +72,88 @@ void Edit(RecipeEditor &editor, Manager &manager, int priority) {
   Check(Current().priority == priority, "real queued edit applies priority");
 }
 
+void SnapshotLifecycle(const std::filesystem::path &root,
+                       const Recipe &fixture) {
+  Start(root, "snapshots", fixture);
+  Manager manager;
+  RecipeEditor editor{manager};
+  const std::shared_ptr<const RecipeCatalog> before = AppliedCatalog();
+  const std::shared_ptr<const Recipe> held = SharedRecipe(before, RecipeId{0});
+  Edit(editor, manager, 31);
+  const std::shared_ptr<const RecipeCatalog> after = AppliedCatalog();
+  const Recipe *edited = after->At(RecipeId{0});
+  Check(before != after && edited && edited->priority == 31,
+        "an edit publishes a new catalog with the edited recipe");
+  Check(held && held->priority != 31,
+        "a recipe taken from an earlier catalog keeps its content");
+  Check(before->FingerprintOf(RecipeId{0}) != after->FingerprintOf(RecipeId{0}),
+        "the edited recipe has a new fingerprint");
+  Check(!after->At(RecipeId{1}), "a recipe past the applied set is absent");
+}
+
+void GestureHold(const std::filesystem::path &root, const Recipe &fixture) {
+  Start(root, "gesture_hold", fixture);
+  Manager manager;
+  manager.clockRuns = false;
+  RecipeEditor editor{manager};
+  const auto gesture =
+      editor.BeginGesture(kID, editor.DocumentRevisionOf(kID), "clock.speed");
+  manager.Drain();
+  editor.UpdateGesture(gesture, "clock.speed", {{SetClockSpeed{2.0f}}});
+  manager.Drain();
+  Check(Current().clock.speed == 2.0f, "the first drag update applies at once");
+  editor.UpdateGesture(gesture, "clock.speed", {{SetClockSpeed{3.0f}}});
+  manager.Drain();
+  editor.UpdateGesture(gesture, "clock.speed", {{SetClockSpeed{4.0f}}});
+  manager.Drain();
+  editor.TickGesture();
+  manager.Drain();
+  Check(Current().clock.speed == 2.0f && editor.LastGesture() &&
+            editor.LastGesture()->pending,
+        "updates inside the interval wait and stay pending");
+  manager.clockMS += 100;
+  editor.TickGesture();
+  manager.Drain();
+  Check(Current().clock.speed == 4.0f && editor.LastGesture() &&
+            !editor.LastGesture()->pending,
+        "the tick after the interval applies only the newest held value");
+  editor.UpdateGesture(gesture, "clock.speed", {{SetClockSpeed{5.0f}}});
+  manager.Drain();
+  editor.EndGesture(gesture, true);
+  manager.Drain();
+  Check(Current().clock.speed == 5.0f && editor.LastGesture() &&
+            editor.LastGesture()->state == GesturePhase::kCommitted,
+        "ending the gesture applies a held value without waiting for a tick");
+}
+
+void GestureIdleExpiry(const std::filesystem::path &root,
+                       const Recipe &fixture) {
+  Start(root, "gesture_idle", fixture);
+  Manager manager;
+  manager.clockRuns = false;
+  RecipeEditor editor{manager};
+  const auto gesture =
+      editor.BeginGesture(kID, editor.DocumentRevisionOf(kID), "clock.speed");
+  manager.Drain();
+  editor.UpdateGesture(gesture, "clock.speed", {{SetClockSpeed{2.0f}}});
+  manager.Drain();
+  manager.clockMS = 1500;
+  editor.TouchGesture(gesture);
+  manager.clockMS = 3000;
+  editor.TickGesture();
+  manager.Drain();
+  Check(editor.LastGesture() &&
+            editor.LastGesture()->state == GesturePhase::kActive,
+        "a touched gesture stays active");
+  manager.clockMS = 3501;
+  editor.TickGesture();
+  manager.Drain();
+  Check(editor.LastGesture() &&
+            editor.LastGesture()->state == GesturePhase::kCommitted &&
+            Current().clock.speed == 2.0f,
+        "a gesture untouched for two seconds commits its applied value");
+}
+
 void FailedRevert(const std::filesystem::path &root, const Recipe &fixture) {
   const auto path = Start(root, "revert", fixture);
   Manager manager;
@@ -1473,6 +1555,9 @@ int main() {
                   kID);
   Check(parsed.recipe.has_value(), "integration fixture decodes");
   if (parsed.recipe) {
+    SnapshotLifecycle(root, *parsed.recipe);
+    GestureHold(root, *parsed.recipe);
+    GestureIdleExpiry(root, *parsed.recipe);
     FailedRevert(root, *parsed.recipe);
     GestureBoundaries(root, *parsed.recipe);
     ImportPromotion(root, *parsed.recipe);

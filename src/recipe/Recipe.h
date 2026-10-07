@@ -207,8 +207,10 @@ struct ActorStateSignal {
 enum class EnchantmentField {
   kMagnitude,
   kCost,
+  kIdHash,
+  kEffectHash,
 };
-inline constexpr std::size_t kEnchantmentFieldCount = 2;
+inline constexpr std::size_t kEnchantmentFieldCount = 4;
 struct EnchantmentSignal {
   EnchantmentField field = EnchantmentField::kMagnitude;
   [[nodiscard]] bool operator==(const EnchantmentSignal &) const = default;
@@ -457,6 +459,15 @@ struct DistanceSource {
   std::string from;
   [[nodiscard]] bool operator==(const DistanceSource &) const = default;
 };
+enum class PieceField {
+  kItemHash,
+  kChartCount,
+};
+inline constexpr std::size_t kPieceFieldCount = 2;
+struct PieceSource {
+  PieceField field = PieceField::kItemHash;
+  [[nodiscard]] bool operator==(const PieceSource &) const = default;
+};
 enum class RippleShape {
   kRing,
   kDisc,
@@ -474,6 +485,7 @@ struct RippleSource {
 inline constexpr std::uint8_t kMaxMaterialClusters = 8;
 inline constexpr std::uint32_t kMaxClusterIterations = 256;
 inline constexpr float kMaxChannelWeight = 10.0f;
+inline constexpr float kMaxAreaBias = 8.0f;
 struct ChannelWeights {
   float roughness = 1.0f;
   float metallic = 1.0f;
@@ -492,6 +504,8 @@ struct ClusterSettings {
 };
 struct MaterialClustersSource {
   ClusterSettings settings;
+  std::optional<Param> pick;
+  Param areaBias = 1.0f;
   [[nodiscard]] bool operator==(const MaterialClustersSource &) const = default;
 };
 
@@ -510,7 +524,7 @@ inline constexpr ClusterWeightField kClusterWeightFields[]{
 
 using SourceKind =
     std::variant<ImageSource, MaterialSource, BakeSource, DistanceSource,
-                 RippleSource, MaterialClustersSource>;
+                 RippleSource, MaterialClustersSource, PieceSource>;
 enum class SourceKindId {
   kImage,
   kMaterial,
@@ -518,8 +532,9 @@ enum class SourceKindId {
   kDistance,
   kRipple,
   kMaterialClusters,
+  kPiece,
 };
-inline constexpr std::size_t kSourceKindCount = 6;
+inline constexpr std::size_t kSourceKindCount = 7;
 static_assert(kSourceKindCount == std::variant_size_v<SourceKind>);
 [[nodiscard]] inline SourceKindId
 SourceKindIdOf(const SourceKind &a_kind) noexcept {
@@ -994,6 +1009,7 @@ struct WornPiece {
 };
 
 [[nodiscard]] std::uint32_t SamplingHash(std::uint32_t a_actor) noexcept;
+[[nodiscard]] float UnitHash(std::string_view a_text) noexcept;
 
 struct ResolvedRecipe {
   const Recipe *recipe = nullptr;
@@ -1024,6 +1040,28 @@ Resolve(const WornPiece &a_piece, std::span<const Recipe> a_loaded,
         std::vector<RecipeSelection> *a_selections = nullptr);
 
 [[nodiscard]] bool AnyUnenchantedKey(std::span<const Recipe> a_loaded) noexcept;
+
+struct MatchFacts {
+  std::string id;
+  std::vector<RecipeKey> keys;
+  std::optional<int> priority;
+  MergeMode mergeMode = MergeMode::kStack;
+  [[nodiscard]] bool operator==(const MatchFacts &) const = default;
+};
+[[nodiscard]] std::vector<MatchFacts>
+MatchFactsOf(std::span<const Recipe> a_loaded);
+
+struct RebuildAll {
+  [[nodiscard]] bool operator==(const RebuildAll &) const = default;
+};
+struct RebuildApplying {
+  std::string recipe;
+  [[nodiscard]] bool operator==(const RebuildApplying &) const = default;
+};
+using RebuildScope = std::variant<RebuildAll, RebuildApplying>;
+[[nodiscard]] RebuildScope ScopeOf(std::span<const MatchFacts> a_before,
+                                   std::span<const MatchFacts> a_after,
+                                   std::string_view a_recipe);
 
 struct PieceKey {
   KeyKind kind;

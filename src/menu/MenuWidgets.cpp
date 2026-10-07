@@ -214,17 +214,18 @@ struct BadgeStyle {
   const char *glyph;
   bool takesSignal;
   ImVec4 colour;
-  const char *help;
+  std::string help;
   Studio::Swatch swatch;
 };
 
-[[nodiscard]] BadgeStyle StyleOf(Studio::FieldKind a_kind) noexcept {
+[[nodiscard]] BadgeStyle StyleOf(Studio::FieldKind a_kind) {
   const auto *row = RowOf(Studio::kFieldKinds, a_kind);
   if (!row) {
     return {"?", false, kDim, "", Studio::Swatch::kNone};
   }
   const ImVec4 colour{row->colour[0], row->colour[1], row->colour[2], 1.0f};
-  return {row->glyph, row->takesSignal, colour, row->help, row->swatch};
+  return {row->glyph, row->takesSignal, colour, Studio::FieldKindHelp(a_kind),
+          row->swatch};
 }
 
 void BadgeFrame(const char *a_label, const ImVec4 &a_colour, bool a_filled,
@@ -256,7 +257,7 @@ void ClickableBadge(const BadgeStyle &a_style, bool &a_combo,
     Studio::State().focusField = a_key;
   }
   ImGui::PopStyleColor(4);
-  Tooltip(std::string{a_style.help} + "\n" +
+  Tooltip(a_style.help + "\n" +
           std::string{a_combo ? a_tips.text : a_tips.combo});
 }
 
@@ -820,6 +821,9 @@ std::string SourceValueText(const SourceKind &a_kind) {
             [](const ChartIdBake &) { return std::string{"chartId"}; });
       },
       [](const DistanceSource &s) { return s.from; },
+      [](const PieceSource &s) {
+        return std::string{NameOf(kPieceFields, s.field)};
+      },
       [](const RippleSource &s) {
         return std::format("{} from @{}",
                            s.shape == RippleShape::kDisc ? "disc" : "ring",

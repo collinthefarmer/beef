@@ -85,9 +85,18 @@ std::optional<RenderValueType> ExternalInputType(const ExternalInput &operation,
     return RenderValueType{RenderResourceType::kTransform};
   return std::nullopt;
 }
+struct IdentitySite {
+  const RecipeGraph *graph = nullptr;
+  NodeId node = 0;
+  std::size_t output = 0;
+  std::size_t instance = 0;
+  GeometryId geometry{};
+  [[nodiscard]] auto operator<=>(const IdentitySite &) const = default;
+};
 struct PlanBuilder {
   const RenderBindingResolver &bindings;
   RenderPlan plan;
+  std::map<IdentitySite, ValueIdentity> identities;
   std::map<TextureKey, RenderValueRef> values;
   std::map<TextureKey, std::vector<RenderValueBinding>> subtrees;
   std::string problem;
@@ -207,15 +216,27 @@ struct PlanBuilder {
       problem = "render lowering encountered an invalid graph output";
       return std::nullopt;
     }
-    auto identity = IdentifyValue(graph, request.value.output,
+    const std::optional<ValueIdentity> identity = IdentityOf(request);
+    if (!identity) {
+      return std::nullopt;
+    }
+    return LoweringSite{
+        graph, *node, *type,
+        TextureKey{*identity, KeyRequirementsOf(graph, request, *type)}};
+  }
+  std::optional<ValueIdentity> IdentityOf(const LoweringRequest &request) {
+    const IdentitySite site{request.value.graph, request.value.output.node,
+                            request.value.output.output, request.value.instance,
+                            request.geometry};
+    if (const auto known = identities.find(site); known != identities.end())
+      return known->second;
+    auto identity = IdentifyValue(*request.value.graph, request.value.output,
                                   bindings(request.value, request.geometry));
     if (!identity) {
       problem = identity.error();
       return std::nullopt;
     }
-    return LoweringSite{graph, *node, *type,
-                        TextureKey{std::move(*identity),
-                                   KeyRequirementsOf(graph, request, *type)}};
+    return identities.emplace(site, std::move(*identity)).first->second;
   }
   std::optional<RenderValueRef> ReuseLowered(const TextureKey &key,
                                              const LoweringRequest &request) {
@@ -510,8 +531,14 @@ struct PlanBuilder {
         Readback(*submitted, RenderResourceType::kMaterialSample);
     const RenderValueRef analysis = Step(
         ClusterMaterialStep{sample, operation.settings}, label + " analysis");
-    return Step(DrawClustersStep{material, analysis, request.requirements},
-                label);
+    DrawClustersStep draw{material, analysis, request.requirements};
+    if (operation.pick) {
+      draw.pick = BuildOperand(*operation.pick, request, depth);
+    }
+    if (operation.areaBias) {
+      draw.areaBias = BuildOperand(*operation.areaBias, request, depth);
+    }
+    return Step(std::move(draw), label);
   }
   RenderValueRef LowerRippleOperation(const RippleOperation &operation,
                                       const LoweringSite &site,
@@ -525,6 +552,7 @@ struct PlanBuilder {
              label + " position buffers");
     const RenderValueRef positions =
         Step(BakeMeshStep{buffers, request.requirements}, label + " positions");
+    KeyPositionBake(positions, operation.geometry, request);
     std::vector<RenderValueRef> inputs;
     for (const OutputRef operand : InputsOf(site.node.kind)) {
       if (operand == operation.coordinates)
@@ -534,6 +562,16 @@ struct PlanBuilder {
     return Step(DrawRippleStep{positions, request.value, std::move(inputs),
                                request.requirements},
                 label);
+  }
+  void KeyPositionBake(RenderValueRef positions, OutputRef geometry,
+                       const LoweringRequest &request) {
+    const std::optional<LoweringSite> mesh =
+        SiteFor(WithoutMips(OperandRequest(request, geometry)));
+    if (!mesh)
+      return;
+    RecordValueKey(TextureKey{PositionBakeIdentity(mesh->key.identity),
+                              request.requirements},
+                   positions);
   }
   RenderValueRef LowerUnsupported(const LoweringSite &site,
                                   const LoweringRequest &request) {

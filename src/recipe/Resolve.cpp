@@ -124,6 +124,15 @@ void KeepOneSampled(std::vector<ResolvedRecipe> &a_matches,
 }
 }
 
+float UnitHash(std::string_view a_text) noexcept {
+  std::uint32_t hash = 2166136261u;
+  for (const char c : a_text) {
+    hash ^= static_cast<std::uint8_t>(c);
+    hash *= 16777619u;
+  }
+  return static_cast<float>(hash >> 8) / 16777216.0f;
+}
+
 std::uint32_t SamplingHash(std::uint32_t a_actor) noexcept {
   std::uint32_t hash = 2166136261u;
   for (unsigned shift = 0; shift < 32; shift += 8) {
@@ -225,6 +234,25 @@ Resolve(const WornPiece &a_piece, std::span<const Recipe> a_loaded,
                     SelectionOutcome::kSelected);
   }
   return matches;
+}
+
+std::vector<MatchFacts> MatchFactsOf(std::span<const Recipe> a_loaded) {
+  std::vector<MatchFacts> facts;
+  facts.reserve(a_loaded.size());
+  for (const Recipe &recipe : a_loaded) {
+    facts.push_back(
+        {recipe.id, recipe.keys, recipe.priority, recipe.mergeMode});
+  }
+  return facts;
+}
+
+RebuildScope ScopeOf(std::span<const MatchFacts> a_before,
+                     std::span<const MatchFacts> a_after,
+                     std::string_view a_recipe) {
+  if (a_recipe.empty() || !std::ranges::equal(a_before, a_after)) {
+    return RebuildAll{};
+  }
+  return RebuildApplying{std::string{a_recipe}};
 }
 
 std::string_view SelectionOutcomeName(SelectionOutcome a_outcome) noexcept {

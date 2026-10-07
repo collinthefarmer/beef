@@ -6,26 +6,22 @@
 #include "planners/Eviction.h"
 
 #include <algorithm>
-#include <optional>
-#include <span>
 #include <utility>
-#include <vector>
 
 namespace BetterEnchantmentEffects::Actors {
 namespace {
-const ActorPlan &InstalledOf(const Phase &a_phase) {
+const ActorPlan &InstalledOf(const std::optional<ActorState> &a_state) {
   static const ActorPlan none;
-  const Present *present = Get<Present>(a_phase);
-  return present ? present->installed : none;
+  return a_state ? a_state->installed : none;
 }
 
-std::optional<std::uint32_t> PendingSince(const Phase &a_phase,
-                                          const PieceRef &a_piece) {
-  const Present *present = Get<Present>(a_phase);
-  if (!present) {
+std::optional<std::uint32_t>
+PendingSince(const std::optional<ActorState> &a_state,
+             const PieceRef &a_piece) {
+  if (!a_state) {
     return std::nullopt;
   }
-  for (const PendingModel &model : present->pending) {
+  for (const PendingModel &model : a_state->pending) {
     if (model.piece == a_piece) {
       return model.sinceMs;
     }
@@ -39,7 +35,7 @@ std::vector<PendingModel> PendingOf(const AdvanceRequest &a_request) {
     if (!piece.model) {
       pending.push_back(
           {piece.ref,
-           PendingSince(a_request.phase, piece.ref).value_or(a_request.nowMs)});
+           PendingSince(a_request.state, piece.ref).value_or(a_request.nowMs)});
     }
   }
   return pending;
@@ -52,49 +48,89 @@ bool Waiting(std::span<const PendingModel> a_pending, std::uint32_t a_nowMs) {
   });
 }
 
-Advanced Retiring(Phase a_next, const ActorPlan &a_installed) {
-  return {std::move(a_next), Reconcile(a_installed, ActorPlan{})};
+std::optional<ActorState> Held(ActorState a_state) {
+  const bool empty = a_state.plan == ActorPlan{} &&
+                     a_state.installed == ActorPlan{} &&
+                     a_state.pending.empty() && a_state.claims.empty();
+  if (empty) {
+    return std::nullopt;
+  }
+  return a_state;
 }
 }
 
-Advanced Advance(const AdvanceRequest &a_request) {
-  const ActorPlan &installed = InstalledOf(a_request.phase);
+Transition Advance(const AdvanceRequest &a_request) {
+  const ActorPlan &installed = InstalledOf(a_request.state);
   if (!a_request.facts.loaded) {
-    return Retiring(Unloaded{}, installed);
+    return {std::nullopt, Reconcile(installed, ActorPlan{})};
   }
-  if (!InRange(a_request.phase, a_request.facts.distance,
+  std::vector<Claim> claims =
+      a_request.state ? LiveClaims(a_request.state->claims, a_request.facts)
+                      : std::vector<Claim>{};
+  const bool hasInstalled = !(installed == ActorPlan{});
+  if (!InRange(hasInstalled, a_request.facts.distance,
                a_request.evictDistance)) {
-    return Retiring(Evicted{}, installed);
+    return {Held({a_request.plan, ActorPlan{}, {}, std::move(claims)}),
+            Reconcile(installed, ActorPlan{})};
   }
   std::vector<PendingModel> pending = PendingOf(a_request);
-  const bool wait =
-      !(installed == ActorPlan{}) && Waiting(pending, a_request.nowMs);
+  const bool wait = hasInstalled && Waiting(pending, a_request.nowMs);
   std::vector<ActorCommand> commands =
       wait ? std::vector<ActorCommand>{} : Reconcile(installed, a_request.plan);
-  return {Present{installed, std::move(pending)}, std::move(commands)};
+  ActorPlan after = AfterCommands(installed, commands);
+  return {Held({a_request.plan, std::move(after), std::move(pending),
+                std::move(claims)}),
+          std::move(commands)};
 }
 
-bool InRange(const Phase &a_phase, std::optional<float> a_distance,
+bool InRange(bool a_installed, std::optional<float> a_distance,
              float a_evictDistance) {
   if (!a_distance) {
     return true;
   }
-  const bool evicted = Is<Evicted>(a_phase);
   const EvictionAction action =
-      EvictionFor(*a_distance, a_evictDistance, !evicted);
-  return evicted ? action == EvictionAction::kRestore || a_evictDistance <= 0.0f
-                 : action != EvictionAction::kEvict;
+      EvictionFor(*a_distance, a_evictDistance, a_installed);
+  return a_installed
+             ? action != EvictionAction::kEvict
+             : action == EvictionAction::kRestore || a_evictDistance <= 0.0f;
 }
 
-Recheck RecheckOf(const Phase &a_phase, std::uint32_t a_nowMs) {
-  const Present *present = Get<Present>(a_phase);
-  if (!present || present->pending.empty()) {
+bool AnythingInstalled(const std::optional<ActorState> &a_state) noexcept {
+  return a_state && !(a_state->installed == ActorPlan{});
+}
+
+Recheck RecheckOf(const std::optional<ActorState> &a_state,
+                  std::uint32_t a_nowMs) {
+  if (!a_state || a_state->pending.empty()) {
     return Recheck::kNone;
   }
-  const bool settling =
-      std::ranges::any_of(present->pending, [&](const PendingModel &a_model) {
+  const bool waiting =
+      std::ranges::any_of(a_state->pending, [&](const PendingModel &a_model) {
         return a_nowMs - a_model.sinceMs < kModelWaitMs + kPendingRecheckMs;
       });
-  return settling ? Recheck::kSettling : Recheck::kStuck;
+  return waiting ? Recheck::kWaiting : Recheck::kStuck;
+}
+
+std::vector<Claim> LiveClaims(std::span<const Claim> a_claims,
+                              const ActorFacts &a_facts) {
+  std::vector<Claim> live;
+  for (const Claim &claim : a_claims) {
+    const bool current =
+        std::ranges::any_of(a_facts.pieces, [&](const PieceFacts &a_piece) {
+          return a_piece.ref == claim.geometry.piece &&
+                 a_piece.model == claim.model;
+        });
+    if (current) {
+      live.push_back(claim);
+    }
+  }
+  return live;
+}
+
+ActorState WithClaim(ActorState a_state, Claim a_claim) {
+  if (!std::ranges::contains(a_state.claims, a_claim)) {
+    a_state.claims.push_back(std::move(a_claim));
+  }
+  return a_state;
 }
 }

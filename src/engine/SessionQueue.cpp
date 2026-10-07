@@ -10,8 +10,8 @@
 
 namespace BetterEnchantmentEffects {
 namespace {
-void TraceRefresh(std::string_view a_action, std::uint32_t a_actor,
-                  std::uint64_t a_generation) {
+void TraceSync(std::string_view a_action, std::uint32_t a_actor,
+               std::uint64_t a_generation) {
   Trace::EmitSafely(Trace::Event::kQueue,
                     {{"action", std::string{a_action}},
                      {"actor", std::to_string(a_actor)},
@@ -19,8 +19,8 @@ void TraceRefresh(std::string_view a_action, std::uint32_t a_actor,
 }
 }
 struct SessionQueue::State {
-  State(Submit a_submit, RefreshActor a_refresh, RefreshRejected a_rejected)
-      : submit(std::move(a_submit)), refresh(std::move(a_refresh)),
+  State(Submit a_submit, SyncActorCall a_sync, SyncRejected a_rejected)
+      : submit(std::move(a_submit)), sync(std::move(a_sync)),
         rejected(std::move(a_rejected)) {}
 
   [[nodiscard]] bool Current(std::uint64_t a_generation) const {
@@ -29,8 +29,8 @@ struct SessionQueue::State {
 
   std::mutex lock;
   Submit submit;
-  RefreshActor refresh;
-  RefreshRejected rejected;
+  SyncActorCall sync;
+  SyncRejected rejected;
   std::uint64_t generation = 0;
   bool loading = true;
   std::unordered_set<std::uint32_t> pending;
@@ -43,9 +43,9 @@ struct SessionQueue::State {
   std::unordered_set<std::uint32_t> equipped;
 };
 
-SessionQueue::SessionQueue(Submit a_submit, RefreshActor a_refresh,
-                           RefreshRejected a_rejected)
-    : state_(std::make_shared<State>(std::move(a_submit), std::move(a_refresh),
+SessionQueue::SessionQueue(Submit a_submit, SyncActorCall a_sync,
+                           SyncRejected a_rejected)
+    : state_(std::make_shared<State>(std::move(a_submit), std::move(a_sync),
                                      std::move(a_rejected))) {}
 
 SessionQueue::~SessionQueue() { BeginLoad(); }
@@ -93,7 +93,7 @@ void SessionQueue::Post(Task a_task) {
   }
 }
 
-bool SessionQueue::Refresh(std::uint32_t a_actorID) {
+bool SessionQueue::MarkStale(std::uint32_t a_actorID) {
   std::uint64_t generation = 0;
   {
     std::scoped_lock lock{state_->lock};
@@ -102,13 +102,13 @@ bool SessionQueue::Refresh(std::uint32_t a_actorID) {
     }
     generation = state_->generation;
   }
-  return SubmitRefresh(state_, generation, a_actorID);
+  return SubmitSync(state_, generation, a_actorID);
 }
 
-bool SessionQueue::SubmitRefresh(const std::shared_ptr<State> &a_state,
-                                 std::uint64_t a_generation,
-                                 std::uint32_t a_actorID) {
-  if (a_actorID == 0 || !a_state->submit || !a_state->refresh) {
+bool SessionQueue::SubmitSync(const std::shared_ptr<State> &a_state,
+                              std::uint64_t a_generation,
+                              std::uint32_t a_actorID) {
+  if (a_actorID == 0 || !a_state->submit || !a_state->sync) {
     return false;
   }
   {
@@ -117,13 +117,13 @@ bool SessionQueue::SubmitRefresh(const std::shared_ptr<State> &a_state,
       return false;
     }
     if (!a_state->pending.insert(a_actorID).second) {
-      TraceRefresh("coalesced_refresh", a_actorID, a_generation);
+      TraceSync("coalesced_sync", a_actorID, a_generation);
       a_state->rerun.insert(a_actorID);
       return true;
     }
   }
   const auto trace = Trace::Current();
-  TraceRefresh("refresh", a_actorID, a_generation);
+  TraceSync("mark_stale", a_actorID, a_generation);
   const bool submitted = a_state->submit(
       [weak = std::weak_ptr<State>{a_state}, a_generation, a_actorID, trace] {
         const Trace::Scope scope{trace};
@@ -135,24 +135,24 @@ bool SessionQueue::SubmitRefresh(const std::shared_ptr<State> &a_state,
         {
           std::scoped_lock lock{state->lock};
           if (!state->Current(a_generation)) {
-            TraceRefresh("stale_refresh", a_actorID, a_generation);
+            TraceSync("stale_sync", a_actorID, a_generation);
             return;
           }
           state->pending.erase(a_actorID);
           rerun = state->rerun.erase(a_actorID) > 0;
         }
-        Trace::EmitSafely(Trace::Event::kQueue,
-                          {{"action", "execute_refresh"},
-                           {"actor", std::to_string(a_actorID)}});
-        state->refresh(a_actorID);
+        Trace::EmitSafely(
+            Trace::Event::kQueue,
+            {{"action", "execute_sync"}, {"actor", std::to_string(a_actorID)}});
+        state->sync(a_actorID);
         if (rerun) {
-          SubmitRefresh(state, a_generation, a_actorID);
+          SubmitSync(state, a_generation, a_actorID);
         }
       });
   if (!submitted) {
     Trace::EmitSafely(
         Trace::Event::kQueue,
-        {{"action", "refresh_rejected"}, {"actor", std::to_string(a_actorID)}});
+        {{"action", "sync_rejected"}, {"actor", std::to_string(a_actorID)}});
     std::scoped_lock lock{a_state->lock};
     if (a_state->Current(a_generation)) {
       a_state->pending.erase(a_actorID);
@@ -198,7 +198,7 @@ void SessionQueue::FinalizeDue(std::uint32_t a_nowMS) {
     const Trace::Scope scope{trace};
     Trace::EmitSafely(Trace::Event::kQueue, {{"action", "equip_finalize"},
                                              {"actor", std::to_string(id)}});
-    SubmitRefresh(state_, generation, id);
+    SubmitSync(state_, generation, id);
   }
 }
 

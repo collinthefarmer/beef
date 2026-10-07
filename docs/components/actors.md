@@ -2,7 +2,7 @@
 
 The **actor core**: the pure functions that decide what the plugin installs
 on one actor. It reads what the engine adapter observed and returns the
-actor's next phase and the commands that bring the engine side to the plan.
+actor's next state and the commands that bring the engine side to the plan.
 It is engine-free and holds no `RE::` pointer. Its `ALLOWS` row in
 `tools/gate.py` is `'actors': ('Core.h', 'recipe', 'mesh', 'planners',
 'studio', 'actors')`. The engine adapter (`engine/ActorObservation.cpp`,
@@ -16,8 +16,8 @@ The core owns four steps of one actor's update. `PlanActor` turns the
 actor's facts, the loaded recipes and the studio view into a plan and
 the matches the planners read. `Reconcile` compares the installed plan with
 the plan and returns the commands that make them equal. `Advance` picks the
-actor's next phase and calls `Reconcile` when the actor is present and not
-waiting. `RecheckOf` tells the adapter when to observe an actor again
+actor's next state and calls `Reconcile` when the actor is loaded, in range
+and not waiting. `RecheckOf` tells the adapter when to observe an actor again
 without an engine event.
 
 The core is level-triggered. The same facts give the same plan and the same
@@ -26,7 +26,7 @@ command.
 
 The core does not observe the engine and does not perform commands.
 `ObserveActor` in `engine/ActorObservation.cpp` reads the engine into
-facts. `Manager::Refresh` in `engine/ManagerApply.cpp` performs the result.
+facts. `Manager::SyncActor` in `engine/ManagerApply.cpp` performs the result.
 The core does not own recipe matching. `MatchActor` in
 `planners/ActorPlanning.h` produces the matches, and `EvictionFor` in
 `planners/Eviction.h` decides distance eviction.
@@ -54,7 +54,7 @@ plan entry by its ref.
 ### Facts
 
 **Facts** are one observation of one actor. `ObserveActor` builds them
-once per refresh, and `PlanActor` and `Advance` read them. A piece with no
+once per sync, and `PlanActor` and `Advance` read them. A piece with no
 `model` has a worn item whose model has not attached yet.
 
 | Type | Description | Declared in |
@@ -78,21 +78,23 @@ plan is what the engine side holds for the actor, in the same shape.
 | `ActorPlan{instances, geometries, placements}` | One actor's plan. Equality compares every entry. | `Actor.h` |
 | `PlannedActor{plan, matches}` | The result of `PlanActor`: the plan and the `ActorMatches` it came from. The adapter builds the engine state from the matches. | `Planning.h` |
 
-### Phase and pending models
+### State, pending models and claims
 
-The **phase** is where an actor is in its lifecycle. `Advance` returns the
-next phase, and the adapter stores it per actor. Only a `Present` actor
-holds an installed plan and pending models.
+The **state** (`ActorState`) is the per-actor record. `Advance` returns the
+next state, and the adapter stores it per actor. An actor without a state
+has **no record**. `Advance` returns no state when the plan, the installed
+plan, the pending models and the claims are all empty.
 
 | Type | Description | Declared in |
 |---|---|---|
-| `Unloaded` | The actor is not loaded for effects. Nothing is installed. | `Actor.h` |
-| `Evicted` | The actor is beyond the eviction distance. Nothing is installed. | `Actor.h` |
-| `Present{installed, pending}` | The actor is loaded and in range. It holds the installed plan and its pending models. | `Actor.h` |
-| `Phase` | `std::variant<Unloaded, Evicted, Present>`. | `Actor.h` |
-| `PendingModel{piece, sinceMs}` | A **pending model**: a worn piece of a present actor whose model has not attached, with the time the piece was first seen without a model. | `Actor.h` |
+| `ActorState{plan, installed, pending, claims}` | One actor's record: the last plan, the installed plan, the pending models and the claims. | `Actor.h` |
+| `PendingModel{piece, sinceMs}` | A **pending model**: a worn piece whose model has not attached, with the time the piece was first seen without a model. | `Actor.h` |
+| `Claim{geometry, model}` | A **claim**: a geometry that another system took, with the token of the piece's model at that time. | `Actor.h` |
 | `kModelWaitMs` | 1000 ms. While a third-person pending model is younger than this, an actor with an installed plan waits and gets no command. | `Lifecycle.h` |
-| `kPendingRecheckMs` | 100 ms. The interval of the settling recheck, also added to the wait to set the end of settling. | `Lifecycle.h` |
+| `kPendingRecheckMs` | 100 ms. The interval of the waiting recheck. It is also added to `kModelWaitMs` to set the end of waiting. | `Lifecycle.h` |
+| `kRecheckMs` | 1000 ms. The interval of the stuck and range recheck. | `Lifecycle.h` |
+
+An **evicted** actor has a state with a plan and an empty installed plan.
 
 ### Commands
 
@@ -109,68 +111,89 @@ the installed plan after the engine performs them.
 | `InstallPlacement{placement}`, `RetirePlacement{ref}` | Add or undo one placement. | `Actor.h` |
 | `RebuildRender` | Rebuild the actor's render. `Reconcile` issues it last, once, when a placement changed and the plan still has placements. | `Actor.h` |
 | `ActorCommand` | The `std::variant` of the seven commands above. | `Actor.h` |
-| `Advanced{phase, commands}` | The result of `Advance`: the next phase and the commands. | `Actor.h` |
+| `Transition{state, commands}` | The result of `Advance`: the next state (none when the actor has no record) and the commands. | `Actor.h` |
 
 ### Requests
 
 The requests bundle the inputs of `PlanActor` and `Advance` by reference.
-`RecipeCatalog` pairs each loaded recipe with its fingerprint. `Recheck`
+`PlanRequest` reads the applied `RecipeCatalog` (`recipe/RecipeCatalog.h`). `Recheck`
 is the answer to "observe this actor again without an event?".
 
 | Type | Description | Declared in |
 |---|---|---|
-| `RecipeCatalog` | The loaded recipes and their fingerprints, one each. `RecipeCatalog::Of` returns none when the counts differ. `FingerprintOf` returns 0 for an unknown recipe. | `Planning.h` |
-| `PlanRequest{facts, recipes, view}` | The input of `PlanActor`: the facts, the catalog, and the studio `View` (recipe set and isolation filter). | `Planning.h` |
-| `AdvanceRequest{phase, facts, plan, nowMs, evictDistance}` | The input of `Advance`: the current phase, the facts, the plan, the clock, and the eviction distance setting. | `Lifecycle.h` |
-| `Recheck` | `kNone`, `kSettling` or `kStuck`. A present actor with a pending model is **settling** while a pending model is younger than `kModelWaitMs` plus `kPendingRecheckMs`, and **stuck** after that. | `Lifecycle.h` |
+| `PlanRequest{facts, recipes, view, claims}` | The input of `PlanActor`: the facts, the catalog, the studio `View` (recipe set and isolation filter), and the actor's claims. | `Planning.h` |
+| `AdvanceRequest{state, facts, plan, nowMs, evictDistance}` | The input of `Advance`: the current state (none when the actor has no record), the facts, the plan, the clock, and the eviction distance setting. | `Lifecycle.h` |
+| `Recheck` | `kNone`, `kWaiting` or `kStuck`. An actor with a pending model is **waiting** while a pending model is younger than `kModelWaitMs` plus `kPendingRecheckMs`, and **stuck** after that. | `Lifecycle.h` |
+
+### Functions over the state
+
+| Function | Description | Declared in |
+|---|---|---|
+| `Advance` | Returns the `Transition` for one actor. The section *How an actor converges* gives its rules. | `Lifecycle.h` |
+| `InRange(installed, distance, evictDistance)` | Tells if an actor is in range. An actor with something installed stays in range out to 1.0 × `evictDistance`. An actor with nothing installed comes in range only inside 0.8 × `evictDistance`. An actor with no distance (the player) is always in range. An `evictDistance` of 0 or less puts every actor in range. | `Lifecycle.h` |
+| `AnythingInstalled(state)` | Tells if a state has a non-empty installed plan. | `Lifecycle.h` |
+| `RecheckOf(state, nowMs)` | Returns the `Recheck` of a state from its pending models. | `Lifecycle.h` |
+| `LiveClaims(claims, facts)` | Keeps the claims whose piece still has the claimed `ModelToken`. A claim ends when its piece gets a new model (a re-equip or a 3D reload). | `Lifecycle.h` |
+| `WithClaim(state, claim)` | Returns the state with the claim added once. | `Lifecycle.h` |
+| `GeometryRefOf(piece, index)` | Returns the `GeometryRef` of a piece's geometry at an index, or none when the index is out of bounds. Planning and the adapter's `LivePiecesOf` share this identity rule. | `Planning.h` |
 
 ## How an actor converges
 
 ```
 engine event (Events.cpp)                                  engine/
-  │  Manager::QueueRefresh(actor)  marks the actor stale    Manager.cpp
+  │  Manager::MarkStale(actor)  marks the actor stale        Manager.cpp
   ▼
-Manager::Refresh(actor) ── AdvanceActor                    engine/ManagerApply.cpp
+Manager::SyncActor(actor) ── DecideActor                   engine/ManagerApply.cpp
   │
   │  ObserveActor({actor, settings, ...}, models, layout)   engine/ActorObservation.cpp
-  │    ActorFacts: loaded, distance (none for the player),
-  │    pieces with refs, keys, model tokens, geometries
+  │    ActorFacts: loaded (Loaded3D), distance (DistanceToPlayer,
+  │    none for the player), pieces with refs, keys, model tokens, geometries
   ▼
-  │  RecipeCatalog::Of(recipes, fingerprints)               actors/Planning.cpp
-  │  PlanActor({facts, catalog, view})                      actors/Planning.cpp
+  │  AppliedCatalog()  one immutable catalog per publication  engine/RecipeStore.cpp
+  │  LiveClaims(state.claims, facts)                        actors/Lifecycle.cpp
+  │  PlanActor({facts, catalog, view, claims})              actors/Planning.cpp
   │    MatchActor over the pieces that have a model ──▶ matches
+  │    a claimed geometry resolves no recipe: it keeps its
+  │    position in the matches and gets no placement
   │    matches converted to the ActorPlan by refs   ──▶ plan
   ▼
-  │  Advance({phase, facts, plan, nowMs, evictDistance})    actors/Lifecycle.cpp
-  │    not loaded            ──▶ Unloaded, retire all installed
-  │    InRange false          ──▶ Evicted,  retire all installed
+  │  Advance({state, facts, plan, nowMs, evictDistance})    actors/Lifecycle.cpp
+  │    not loaded            ──▶ no state, retire all installed
+  │    claims = LiveClaims(state.claims, facts)
+  │    InRange false         ──▶ state {plan, nothing installed, claims},
+  │                              retire all installed
   │    pending models from the facts' pieces without a model
   │    installed and a third-person pending model
-  │      younger than kModelWaitMs ──▶ Present, no command
-  │    else Reconcile(installed, plan) ──▶ Present, commands  actors/Reconcile.cpp
+  │      younger than kModelWaitMs ──▶ no command
+  │    else Reconcile(installed, plan) ──▶ commands         actors/Reconcile.cpp
+  │    next installed = AfterCommands(installed, commands)
+  │    plan, installed, pending and claims all empty ──▶ no state
   ▼
-Manager::Refresh, after AdvanceActor                       engine/ManagerApply.cpp
-  │  no commands: RetireEffects if not Present; SettlePhase
-  │  commands:    RetireEffects(actor)
-  │               installed = AfterCommands(installed before, commands)
-  │               SettlePhase(actor, phase)  drops an actor that holds nothing
-  │               LiveActorFor(actor, facts, matches)
-  │                 engine state from the observed model handles
-  │                 and the plan's matches
+Manager::SyncActor, after DecideActor                      engine/ManagerApply.cpp
+  │  no state:    ForgetActor(actor)
+  │  no commands: RecordState(actor, state)
+  │  commands:    RetireActor(actor)
+  │               RecordState(actor, state)
+  │               if AnythingInstalled(state):
+  │                 LiveActorFor(actor, facts, matches)
+  │                   engine state from the observed model handles
+  │                   and the plan's matches; on failure ForgetActor
   ▼
-installed plan == plan; the next refresh with the same facts issues nothing
+installed plan == plan; the next sync with the same facts issues nothing
 
 
 Rechecks without an event                                  engine/ManagerTick.cpp
   every kPendingRecheckMs (100 ms)
-    QueueSettlingActors: RecheckOf(phase) == kSettling ──▶ QueueRefresh
-  every second
-    QueueSecondChecks:   RecheckOf(phase) != kNone
-                         or InRange(phase, distance) disagrees with the phase
-                                                       ──▶ QueueRefresh
+    MarkWaitingStale:  RecheckOf(state) == kWaiting       ──▶ MarkStale
+  every kRecheckMs (1000 ms)
+    MarkRecheckStale:  RecheckOf(state) != kNone
+                       or RangeChanged(state)             ──▶ MarkStale
+  every tick
+    ClaimLostGeometries: a binding another system took
+                       ──▶ retire it, WithClaim, MarkStale
 ```
 
-`Manager::Refresh` does not yet perform the commands one by one. A refresh
+`Manager::SyncActor` does not yet perform the commands one by one. A sync
 with any command retires the actor's effects and installs them again whole.
 The commands set the new installed plan through `AfterCommands`.
 
@@ -178,22 +201,23 @@ The commands set the new installed plan through `AfterCommands`.
 
 | File | What it owns |
 |---|---|
-| `src/actors/Actor.h`/`.cpp` | The refs, facts, plan, phase, pending model and command types, and the three `Find` lookups by ref. |
-| `src/actors/Planning.h`/`.cpp` | `RecipeCatalog`, `PlanRequest`, `PlannedActor`, `PlannedPieces` (the pieces with a model) and `PlanActor`. |
+| `src/actors/Actor.h`/`.cpp` | The refs, facts, plan, state, pending model, claim and command types, and the three `Find` lookups by ref. |
+| `src/actors/Planning.h`/`.cpp` | `PlanRequest`, `PlannedActor`, `GeometryRefOf`, `PlannedPieces` (the pieces with a model) and `PlanActor`. |
 | `src/actors/Reconcile.h`/`.cpp` | `Reconcile`, `AfterCommand` and `AfterCommands`. |
-| `src/actors/Lifecycle.h`/`.cpp` | `kModelWaitMs`, `kPendingRecheckMs`, `Recheck`, `AdvanceRequest`, `Advance`, `InRange` and `RecheckOf`. |
+| `src/actors/Lifecycle.h`/`.cpp` | `kModelWaitMs`, `kPendingRecheckMs`, `kRecheckMs`, `Recheck`, `AdvanceRequest`, `Advance`, `InRange`, `AnythingInstalled`, `RecheckOf`, `LiveClaims` and `WithClaim`. |
 | `tests/actors/fixtures.h` | Shared builders for refs and placements (`Piece`, `Geo`, `Instance`, `Placed`). |
 | `tests/actors/actor_tests.cpp` | Ref equality by every field, and `Find` by ref. |
-| `tests/actors/planning_tests.cpp` | Plans from facts: pieces without a model, the studio view, first-person pieces, addons, and determinism. |
+| `tests/actors/planning_tests.cpp` | Plans from facts: pieces without a model, the studio view, first-person pieces, addons, claimed geometries, and determinism. |
 | `tests/actors/reconcile_tests.cpp` | Convergence for every pair of plans, command order, and which entries a change touches. |
-| `tests/actors/lifecycle_tests.cpp` | Phase changes, eviction hysteresis, the model wait per piece, rechecks, and a clock wrap. |
+| `tests/actors/lifecycle_tests.cpp` | State changes, the forgotten actor, eviction hysteresis derived from what is installed, the model wait per piece, rechecks, a clock wrap, and claims. |
 
 ## See also
 
-- `REFERENCE.md` → *Engine events, hooks and the manager* — the refresh
+- `REFERENCE.md` → *Engine events, hooks and the manager* — the sync
   through the actor core, observation of worn pieces and models, the model
-  wait and the settling and stuck rechecks, and distance eviction.
+  wait and the waiting and stuck rechecks, claims, and distance eviction.
 - `docs/plans/actor-core-2026-10-03.md` → *Vocabulary*, *Decisions* and
   *Engine rules the core must keep*.
 - `docs/conventions.md` → *Glossary* — **ref**, **plan**, **matches**,
-  **model**, **installed**, **phase**, **command**, **stale**.
+  **model**, **installed**, **state**, **claim**, **command**, **stale**,
+  **sync**, **decide**, **retire**, **forget**.

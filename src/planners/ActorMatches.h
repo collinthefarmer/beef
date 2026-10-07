@@ -2,6 +2,7 @@
 #pragma once
 
 #include "recipe/Recipe.h"
+#include "recipe/RecipeCatalog.h"
 
 #include <cstddef>
 #include <optional>
@@ -13,14 +14,12 @@ namespace BetterEnchantmentEffects {
 enum class GeometryId : std::size_t {};
 enum class InstanceId : std::size_t {};
 enum class PlacementId : std::size_t {};
-enum class RecipeId : std::size_t {};
 enum class OutputId : std::size_t {};
 
 struct Geometry {
   GeometryIdentity identity;
   WornPiece keys;
   bool firstPerson = false;
-  bool lost = false;
 };
 
 struct Instance {
@@ -62,13 +61,10 @@ struct ActorMatches {
 [[nodiscard]] bool LightEligible(const Geometry &a_geometry,
                                  const LightOutput &a_light);
 
-[[nodiscard]] bool AnyLiveGeometry(const ActorMatches &a_matches) noexcept;
 [[nodiscard]] std::optional<InstanceId>
 FindInstance(const ActorMatches &a_matches, RecipeId a_recipe,
              const std::optional<FormKey> &a_enchantment,
              const std::optional<RecipeKey> &a_effectKey = {}) noexcept;
-[[nodiscard]] std::vector<RecipeId>
-RecipesOfInactiveInstances(const ActorMatches &a_matches);
 [[nodiscard]] std::vector<PlacementId>
 PlacementsOfGeometry(const ActorMatches &a_matches, GeometryId a_geometry);
 [[nodiscard]] std::vector<PlacementId>

@@ -9,6 +9,7 @@
 #include <span>
 #include <string>
 #include <string_view>
+#include <variant>
 #include <vector>
 
 namespace BetterEnchantmentEffects {
@@ -39,6 +40,7 @@ class Program {
 public:
   [[nodiscard]] static std::expected<Program, std::string>
   Parse(std::string_view a_text);
+  [[nodiscard]] static Program Hash(std::string a_value, std::string a_salt);
 
   [[nodiscard]] std::span<const std::string> References() const noexcept {
     return refs_;
@@ -53,18 +55,21 @@ public:
   [[nodiscard]] bool UsesTime() const noexcept { return usesTime_; }
   [[nodiscard]] bool UsesX() const noexcept { return usesX_; }
   [[nodiscard]] bool UsesMean() const noexcept { return usesMean_; }
+  [[nodiscard]] bool UsesIdentity() const noexcept { return usesIdentity_; }
   [[nodiscard]] std::size_t OpCount() const noexcept { return code_.size(); }
   [[nodiscard]] bool Constant() const noexcept {
     return refs_.empty() && curves_.empty() && !usesTime_ && !usesX_ &&
-           !usesMean_;
+           !usesMean_ && !usesIdentity_;
   }
 
   [[nodiscard]] std::expected<ValueType, std::string>
   Check(const RefTyper &a_types, ValueType a_xType = ValueType::kScalar) const;
 
-  [[nodiscard]] Program BindContext(std::optional<std::uint32_t> a_time,
-                                    std::optional<std::uint32_t> a_x,
-                                    std::optional<std::uint32_t> a_mean) const;
+  [[nodiscard]] Program
+  BindContext(std::optional<std::uint32_t> a_time,
+              std::optional<std::uint32_t> a_x,
+              std::optional<std::uint32_t> a_mean,
+              std::optional<std::uint32_t> a_identity) const;
 
   struct Inputs {
     std::span<const Value> refs;
@@ -73,6 +78,7 @@ public:
     float time = 0.0f;
     Value x = 0.0f;
     float mean = 0.5f;
+    float identity = 0.0f;
   };
 
   [[nodiscard]] Value Evaluate(const Inputs &a_inputs) const noexcept;
@@ -121,6 +127,12 @@ public:
     kDot,
     kCross,
     kNormalize,
+    kShuffle,
+    kIdentity,
+    kHash,
+    kRandRange,
+    kHue,
+    kHueShift,
   };
   struct Node {
     Op op = Op::kNumber;
@@ -137,7 +149,22 @@ private:
   bool usesTime_ = false;
   bool usesX_ = false;
   bool usesMean_ = false;
+  bool usesIdentity_ = false;
   friend class ExpressionParser;
+};
+
+struct FixedCall {
+  Program::Op op = Program::Op::kNumber;
+  int arity = 0;
+};
+struct RandomCall {};
+struct RandomRangeCall {};
+using CallForm = std::variant<FixedCall, RandomCall, RandomRangeCall>;
+
+struct ExpressionFunction {
+  std::string_view name;
+  std::string_view usage;
+  CallForm form;
 };
 
 [[nodiscard]] std::expected<std::string, std::string>
@@ -148,7 +175,8 @@ ReplaceNumericLiteral(std::string_view a_current,
 [[nodiscard]] std::expected<Program, std::string>
 ParseCurve(std::string_view a_text);
 
-[[nodiscard]] std::vector<std::string_view> FunctionNames();
+[[nodiscard]] std::span<const ExpressionFunction>
+ExpressionFunctions() noexcept;
 
 [[nodiscard]] float ApplyCurve(const Program &a_curve, float a_x,
                                float a_mean = 0.5f) noexcept;

@@ -3,6 +3,7 @@
 
 #include "PCH.h"
 #include "recipe/Recipe.h"
+#include "recipe/RecipeCatalog.h"
 #include "recipe/Signals.h"
 #include "studio/Edits.h"
 #include "studio/Presets.h"
@@ -29,7 +30,7 @@ RecipeStoreStatus LoadRecipes();
 [[nodiscard]] RecipeStoreStatus GetRecipeStoreStatus() noexcept;
 
 [[nodiscard]] std::span<const Recipe> LoadedRecipes() noexcept;
-[[nodiscard]] std::span<const std::uint64_t> LoadedFingerprints() noexcept;
+[[nodiscard]] std::shared_ptr<const RecipeCatalog> AppliedCatalog() noexcept;
 [[nodiscard]] const Studio::MaskPresets &LoadedPresets() noexcept;
 
 struct RecipeOrigin {

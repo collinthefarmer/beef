@@ -250,9 +250,9 @@ void ExpressionFunctionsAreDescribed(const json &a_schema) {
   const std::string text = description && description->is_string()
                                ? description->get<std::string>()
                                : std::string{};
-  for (const std::string_view name : FunctionNames()) {
-    Check(ContainsWord(text, name),
-          "expression description names " + std::string{name});
+  for (const ExpressionFunction &function : ExpressionFunctions()) {
+    Check(ContainsWord(text, function.name),
+          "expression description names " + std::string{function.name});
   }
 }
 }

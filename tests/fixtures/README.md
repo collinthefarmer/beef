@@ -23,8 +23,16 @@ semantic expectations independently of the serialized goldens. Malformed
 input, template selection, and every fixture's parse/import/serialize/parse
 round trip are covered by `tests/recipe/importer_tests.cpp`.
 
-`recipes/Synthetic*.json` are generated from these records and the project's
-`templates/{fill,bare}.json` by that test executable. To intentionally update
+`templates/probe.json` is a test-only template holding the rows the
+importer patches (effect-shader signals and reserved `import*` constants).
+`templates/fill.json` adds one `$fillTexture` image source to those rows.
+The importer checks and goldens use these two templates, so they do not
+depend on what the shipped templates contain; the shipped templates are
+checked only for the template contract (they parse, their `import*` rows are
+reserved names, their effect-shader rows name the placeholder).
+
+`recipes/Synthetic*.json` are generated from these records and the two
+fixture templates by that test executable. To intentionally update
 them, run `BEEF_UPDATE=1 build/native/recipe_importer` inside `nix develop`,
 then rerun the test without `BEEF_UPDATE` and review the resulting changes.
 The former captured fixtures remain in Git history; this replacement does

@@ -203,12 +203,12 @@ class RegressionBudgetTests(unittest.TestCase):
         self.assertEqual(measured['gpu_ticks_timed'], 20)
         self.assertEqual(measured['gpu_ticks_untimed'], 5)
 
-    def test_refresh_time_counts_in_the_plugin_share(self):
+    def test_sync_time_counts_in_the_plugin_share(self):
         events = [
             {'unix_ms': 0, 'fields': {'action': 'regression.window', 'case': 'soak',
                                       'window': 'steady', 'edge': 'begin'}},
             {'unix_ms': 1000, 'fields': {'action': 'heartbeat', 'frames': '10',
-                                         'frame_us': '10000', 'refresh_us': '10000'}},
+                                         'frame_us': '10000', 'sync_us': '10000'}},
             {'unix_ms': 1000, 'fields': {'action': 'regression.window', 'case': 'soak',
                                          'window': 'steady', 'edge': 'end'}}]
         measured = budgets.measurements(events)[('soak', 'steady')]

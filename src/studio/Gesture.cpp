@@ -109,34 +109,91 @@ FinishRecipeGesture(const RecipeGesture &a_gesture, const Recipe &a_current,
   return finish;
 }
 
-bool QueueGestureUpdate(GestureMailbox &a_mailbox, EditBatch a_edits) {
+namespace {
+std::chrono::milliseconds Since(std::uint32_t a_thenMS,
+                                std::uint32_t a_nowMS) noexcept {
+  return std::chrono::milliseconds{a_nowMS - a_thenMS};
+}
+
+bool Holds(const GestureMailbox &a_mailbox, std::uint32_t a_nowMS) noexcept {
+  return a_mailbox.started && !a_mailbox.latest.finish && a_mailbox.appliedMS &&
+         Since(*a_mailbox.appliedMS, a_nowMS) < kGestureApplyInterval;
+}
+
+GestureQueued Posting(GestureMailbox &a_mailbox) noexcept {
+  if (a_mailbox.delivery == GestureDeliveryState::kPosted) {
+    return GestureQueued::kQueued;
+  }
+  a_mailbox.delivery = GestureDeliveryState::kPosted;
+  return GestureQueued::kPost;
+}
+}
+
+GestureMailbox OpenGestureMailbox(std::uint32_t a_nowMS) {
+  GestureMailbox mailbox;
+  mailbox.delivery = GestureDeliveryState::kPosted;
+  mailbox.touchedMS = a_nowMS;
+  return mailbox;
+}
+
+GestureQueued QueueGestureUpdate(GestureMailbox &a_mailbox, EditBatch a_edits,
+                                 std::uint32_t a_nowMS) {
   if (a_mailbox.closed) {
-    return false;
+    return GestureQueued::kRefused;
   }
   a_mailbox.latest.edits = std::move(a_edits);
   ++a_mailbox.latest.sequence;
-  return true;
+  a_mailbox.touchedMS = a_nowMS;
+  return a_mailbox.delivery == GestureDeliveryState::kIdle
+             ? Posting(a_mailbox)
+             : GestureQueued::kQueued;
 }
 
-bool QueueGestureFinish(GestureMailbox &a_mailbox, bool a_commit) {
+GestureQueued QueueGestureFinish(GestureMailbox &a_mailbox, bool a_commit,
+                                 std::uint32_t a_nowMS) {
   if (a_mailbox.closed) {
-    return false;
+    return GestureQueued::kRefused;
   }
   a_mailbox.closed = true;
   a_mailbox.latest.finish = a_commit;
   ++a_mailbox.latest.sequence;
+  a_mailbox.touchedMS = a_nowMS;
+  return Posting(a_mailbox);
+}
+
+std::optional<TakenGesture> TakeGestureDelivery(GestureMailbox &a_mailbox,
+                                                std::uint32_t a_nowMS) {
+  if (Holds(a_mailbox, a_nowMS)) {
+    a_mailbox.delivery = GestureDeliveryState::kHeld;
+    return std::nullopt;
+  }
+  a_mailbox.delivery = GestureDeliveryState::kIdle;
+  TakenGesture taken{std::move(a_mailbox.latest),
+                     !std::exchange(a_mailbox.started, true)};
+  a_mailbox.latest = {};
+  a_mailbox.latest.sequence = taken.delivery.sequence;
+  return taken;
+}
+
+bool ReleaseHeldGesture(GestureMailbox &a_mailbox, std::uint32_t a_nowMS) {
+  if (a_mailbox.delivery != GestureDeliveryState::kHeld ||
+      Holds(a_mailbox, a_nowMS)) {
+    return false;
+  }
+  a_mailbox.delivery = GestureDeliveryState::kPosted;
   return true;
 }
 
-bool ScheduleGestureDelivery(GestureMailbox &a_mailbox) {
-  return !std::exchange(a_mailbox.scheduled, true);
+void NoteGestureApplied(GestureMailbox &a_mailbox, std::uint32_t a_nowMS) {
+  a_mailbox.appliedMS = a_nowMS;
 }
 
-GestureDelivery TakeGestureDelivery(GestureMailbox &a_mailbox) {
-  a_mailbox.scheduled = false;
-  GestureDelivery out = std::move(a_mailbox.latest);
-  a_mailbox.latest = {};
-  a_mailbox.latest.sequence = out.sequence;
-  return out;
+void TouchGesture(GestureMailbox &a_mailbox, std::uint32_t a_nowMS) {
+  a_mailbox.touchedMS = a_nowMS;
+}
+
+bool GestureIdle(const GestureMailbox &a_mailbox,
+                 std::uint32_t a_nowMS) noexcept {
+  return Since(a_mailbox.touchedMS, a_nowMS) > kGestureIdleTimeout;
 }
 }

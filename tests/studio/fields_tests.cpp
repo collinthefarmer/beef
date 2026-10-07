@@ -1,8 +1,11 @@
 // GPL-3.0-only with the additional permission in COPYING.md.
+#include "recipe/Expression.h"
 #include "studio/Fields.h"
+#include "studio/Forms.h"
 #include "test_support.h"
 
 #include <array>
+#include <string>
 
 using namespace BetterEnchantmentEffects;
 using namespace BetterEnchantmentEffects::Studio;
@@ -213,6 +216,15 @@ int main() {
         "ValueRelativeRange scales its span with the value magnitude");
   Check(zeroRange.first < 0.0f && zeroRange.second > 0.0f,
         "ValueRelativeRange gives a zero value a usable range");
+
+  const std::string expressionHelp = FieldKindHelp(FieldKind::kExpression);
+  for (const ExpressionFunction &function : ExpressionFunctions()) {
+    Check(expressionHelp.find(function.usage) != std::string::npos,
+          "the expression hint names " + std::string{function.name});
+  }
+  Check(FieldKindHelp(FieldKind::kScalar).find("functions:") ==
+            std::string::npos,
+        "only the expression hint lists functions");
 
   return test::Finish("studio_fields");
 }

@@ -146,6 +146,10 @@ struct DistanceSourceRow {
   std::string from;
 };
 
+struct PieceSourceRow {
+  std::string field;
+};
+
 struct RippleSourceRow {
   std::string trigger;
   std::string speed;
@@ -160,11 +164,14 @@ struct MaterialClustersSourceRow {
   std::string seed;
   std::string iterations;
   std::string colorWeight = "1";
+  std::string pick;
+  std::string areaBias = "1";
 };
 
 using SourceRowKind =
     std::variant<ImageSourceRow, MaterialSourceRow, BakeSourceRow,
-                 DistanceSourceRow, RippleSourceRow, MaterialClustersSourceRow>;
+                 DistanceSourceRow, RippleSourceRow, MaterialClustersSourceRow,
+                 PieceSourceRow>;
 static_assert(std::variant_size_v<SourceRowKind> == kSourceKindCount);
 static_assert(std::is_same_v<std::variant_alternative_t<0, SourceRowKind>,
                              ImageSourceRow> &&
@@ -177,7 +184,9 @@ static_assert(std::is_same_v<std::variant_alternative_t<0, SourceRowKind>,
                   std::is_same_v<std::variant_alternative_t<4, SourceRowKind>,
                                  RippleSourceRow> &&
                   std::is_same_v<std::variant_alternative_t<5, SourceRowKind>,
-                                 MaterialClustersSourceRow>,
+                                 MaterialClustersSourceRow> &&
+                  std::is_same_v<std::variant_alternative_t<6, SourceRowKind>,
+                                 PieceSourceRow>,
               "SourceRowKind alternative order must match SourceKindId");
 
 [[nodiscard]] inline SourceKindId

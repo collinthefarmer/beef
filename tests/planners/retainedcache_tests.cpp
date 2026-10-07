@@ -10,6 +10,12 @@ using namespace BetterEnchantmentEffects;
 using test::Check;
 
 int main() {
+  Check(StepOutputRetention(true, 10000) == Retention::kRenew,
+        "a step output held elsewhere is renewed however long it was idle");
+  Check(StepOutputRetention(false, kStepOutputIdleMs) == Retention::kKeep,
+        "an unheld step output is kept up to the idle limit");
+  Check(StepOutputRetention(false, kStepOutputIdleMs + 1) == Retention::kEvict,
+        "an unheld step output is evicted past the idle limit");
   RetainedCache<int, std::shared_ptr<int>> cache;
   cache.Get(1, 0) = std::make_shared<int>(42);
   const auto held = *cache.Find(1);

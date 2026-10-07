@@ -44,9 +44,9 @@ event its wire name.
 | `kRecipe` | One loaded **recipe**: its id and content fingerprint. | `main.cpp` at data load. |
 | `kOperation` | A new operation id and its parent, with the reason. | `Trace::Operation` itself (`Trace.cpp`). |
 | `kPage` | The current menu page and selection, de-duplicated. | `Trace::Page` itself (`Trace.cpp`). |
-| `kQueue` | One `SessionQueue` action — `post`, `execute_refresh`, `refresh_rejected`, `equip_finalize` — with the actor and queue generation. | `SessionQueue.cpp`. |
+| `kQueue` | One `SessionQueue` action — `post`, `mark_stale`, `execute_sync`, `sync_rejected`, `equip_finalize` — with the actor and queue generation. | `SessionQueue.cpp`. |
 | `kLoad` | A load transition — `resume`, `clear_begin`, `clear_end` — with the generation and actor count. | `Manager.cpp`. |
-| `kApplication` | An application step — `refresh_begin`, `installed`, or a phase from `ApplicationPhaseName` — with the actor and recipe. | `ManagerApply.cpp`, `ApplicationService.cpp`. |
+| `kApplication` | An application step — `sync_begin`, `actor_decide`, `installed`, or a phase from `ApplicationPhaseName` — with the actor and recipe. | `ManagerApply.cpp`, `ApplicationService.cpp`. |
 | `kRetire` | Retirement `begin`/`end` for one actor, with its recipe count. | `ManagerApply.cpp`. |
 | `kBinding` | A **binding** install or geometry scope, with the geometry pointer and name. | `Binding.cpp`, `ManagerApply.cpp`. |
 | `kRestore` | One per-**slot** restore on a binding, with the slot and material. | `Binding.cpp`. |
@@ -65,7 +65,7 @@ reading the file.
 
 | Type | Description | Example |
 |---|---|---|
-| `Field{name, value}` | One key/value pair of an event. | `{"action", "execute_refresh"}` |
+| `Field{name, value}` | One key/value pair of an event. | `{"action", "execute_sync"}` |
 | `Context{operation, session}` | The id pair every event carries. | Set by an enclosing `Scope`. |
 | `Status{events, dropped, bytes, segment, rotations, enabled, fileFailed}` | The recorder's health snapshot. | Returned by `Recorder::Inspect`. |
 

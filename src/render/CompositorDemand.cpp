@@ -34,6 +34,17 @@ std::string EventOriginIdentity(const EventInput &event,
 }
 
 std::expected<std::string, std::string>
+EnchantmentIdentity(const EnchantmentSignal &a_signal,
+                    const EnchantmentValues &a_values) {
+  const auto field = static_cast<std::size_t>(a_signal.field);
+  if (field >= a_values.fields.size()) {
+    return std::unexpected{std::string{"unknown enchantment field"}};
+  }
+  return std::format("enchantment:{}:{:08x}", field,
+                     std::bit_cast<std::uint32_t>(a_values.fields[field]));
+}
+
+std::expected<std::string, std::string>
 ExternalSourceIdentity(const ExternalSource &source,
                        const GeometryInputs &inputs,
                        const std::string &instance) {
@@ -54,6 +65,13 @@ ExternalSourceIdentity(const ExternalSource &source,
             "{}:{}:{}", reinterpret_cast<std::uintptr_t>(inputs.geometry.get()),
             reinterpret_cast<std::uintptr_t>(inputs.root.get()), k.name);
       },
+      [&](const ChartCountInput &) -> std::expected<std::string, std::string> {
+        return "charts:" + MeshIdentityOf(inputs);
+      },
+      [&](const ItemHashInput &) -> std::expected<std::string, std::string> {
+        return std::format("item:{:08x}",
+                           std::bit_cast<std::uint32_t>(inputs.itemHash));
+      },
       [&](const ActorValueSignal &k)
           -> std::expected<std::string, std::string> {
         return std::format("{}:{}:{}", instance, static_cast<int>(k.measure),
@@ -65,7 +83,7 @@ ExternalSourceIdentity(const ExternalSource &source,
       },
       [&](const EnchantmentSignal &k)
           -> std::expected<std::string, std::string> {
-        return std::format("{}:{}", instance, static_cast<int>(k.field));
+        return EnchantmentIdentity(k, inputs.enchantment);
       },
       [&](const EffectShaderInput &k)
           -> std::expected<std::string, std::string> {

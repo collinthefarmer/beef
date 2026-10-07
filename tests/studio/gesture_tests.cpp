@@ -103,22 +103,78 @@ void CheckNoOpAndRefusal(const Recipe &a_base) {
 
 void CheckMailbox() {
   GestureMailbox mailbox;
-  Check(QueueGestureUpdate(mailbox, Opacity(0.2f)) &&
-            ScheduleGestureDelivery(mailbox),
-        "first update schedules one delivery");
-  Check(QueueGestureUpdate(mailbox, Opacity(0.7f)) &&
-            !ScheduleGestureDelivery(mailbox),
+  Check(QueueGestureUpdate(mailbox, Opacity(0.2f), 0) == GestureQueued::kPost,
+        "first update posts one delivery");
+  Check(QueueGestureUpdate(mailbox, Opacity(0.7f), 0) == GestureQueued::kQueued,
         "newest update replaces the pending value without another task");
-  Check(QueueGestureFinish(mailbox, true) && !ScheduleGestureDelivery(mailbox),
+  Check(QueueGestureFinish(mailbox, true, 0) == GestureQueued::kQueued,
         "commit shares the pending final-value delivery");
-  Check(!QueueGestureUpdate(mailbox, Opacity(0.9f)),
+  Check(QueueGestureUpdate(mailbox, Opacity(0.9f), 0) ==
+            GestureQueued::kRefused,
         "updates after commit cannot replace the final value");
-  const GestureDelivery delivery = TakeGestureDelivery(mailbox);
-  Check(delivery.sequence == 3 && delivery.finish == true && delivery.edits &&
-            Describe(*delivery.edits) == Describe(Opacity(0.7f)),
+  const std::optional<TakenGesture> taken = TakeGestureDelivery(mailbox, 0);
+  Check(taken && taken->begins && taken->delivery.sequence == 3 &&
+            taken->delivery.finish == true && taken->delivery.edits &&
+            Describe(*taken->delivery.edits) == Describe(Opacity(0.7f)),
         "coalesced commit retains precisely the latest submitted value");
-  Check(!mailbox.scheduled && !mailbox.latest.edits,
+  Check(mailbox.delivery == GestureDeliveryState::kIdle &&
+            !mailbox.latest.edits,
         "taking a delivery releases the queued batch");
+}
+
+void CheckHold() {
+  GestureMailbox mailbox = OpenGestureMailbox(0);
+  Check(mailbox.delivery == GestureDeliveryState::kPosted,
+        "an opened gesture has its first delivery posted");
+  const std::optional<TakenGesture> first = TakeGestureDelivery(mailbox, 0);
+  Check(first && first->begins,
+        "the delivery that begins a gesture is never held");
+  Check(QueueGestureUpdate(mailbox, Opacity(0.2f), 10) == GestureQueued::kPost,
+        "the first drag update posts");
+  Check(TakeGestureDelivery(mailbox, 10).has_value(),
+        "an update before any apply goes through");
+  NoteGestureApplied(mailbox, 10);
+  Check(QueueGestureUpdate(mailbox, Opacity(0.3f), 50) == GestureQueued::kPost,
+        "the next update posts");
+  Check(!TakeGestureDelivery(mailbox, 50) &&
+            mailbox.delivery == GestureDeliveryState::kHeld,
+        "an update soon after the last applied one waits");
+  Check(QueueGestureUpdate(mailbox, Opacity(0.4f), 60) ==
+            GestureQueued::kQueued,
+        "updates during a hold post nothing new");
+  Check(!ReleaseHeldGesture(mailbox, 109),
+        "the hold lasts until one interval after the last apply");
+  Check(ReleaseHeldGesture(mailbox, 110) &&
+            mailbox.delivery == GestureDeliveryState::kPosted,
+        "the hold releases one interval after the last apply");
+  const std::optional<TakenGesture> released =
+      TakeGestureDelivery(mailbox, 110);
+  Check(released && released->delivery.edits &&
+            Describe(*released->delivery.edits) == Describe(Opacity(0.4f)),
+        "the released delivery carries only the newest value");
+  NoteGestureApplied(mailbox, 110);
+  Check(QueueGestureUpdate(mailbox, Opacity(0.5f), 120) == GestureQueued::kPost,
+        "an update after the release posts");
+  Check(!TakeGestureDelivery(mailbox, 120), "it is held again");
+  Check(QueueGestureFinish(mailbox, true, 130) == GestureQueued::kPost,
+        "a finish releases a held delivery");
+  Check(TakeGestureDelivery(mailbox, 130).has_value(),
+        "the final value is never held");
+}
+
+void CheckIdle() {
+  GestureMailbox mailbox = OpenGestureMailbox(1000);
+  Check(!GestureIdle(mailbox, 3000), "two seconds untouched is not idle yet");
+  Check(GestureIdle(mailbox, 3001), "past two seconds untouched is idle");
+  TouchGesture(mailbox, 2500);
+  Check(!GestureIdle(mailbox, 4000), "a touch restarts the idle time");
+  Check(QueueGestureUpdate(mailbox, Opacity(0.2f), 5000) ==
+                GestureQueued::kQueued &&
+            !GestureIdle(mailbox, 6500),
+        "an update restarts the idle time");
+  GestureMailbox wrapped = OpenGestureMailbox(0xFFFFFF00u);
+  Check(!GestureIdle(wrapped, 0x00000100u),
+        "the idle time survives the clock wrapping");
 }
 }
 
@@ -135,5 +191,7 @@ int main() {
   CheckGestureHistory(base);
   CheckNoOpAndRefusal(base);
   CheckMailbox();
+  CheckHold();
+  CheckIdle();
   return test::Finish("studio_gesture");
 }

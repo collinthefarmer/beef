@@ -16,6 +16,7 @@ struct ValueBindings {
       external;
   std::function<std::string(NodeId)> state;
 };
+[[nodiscard]] ValueIdentity PositionBakeIdentity(const ValueIdentity &a_mesh);
 [[nodiscard]] std::expected<ValueIdentity, std::string>
 IdentifyValue(const RecipeGraph &graph, OutputRef value,
               const ValueBindings &bindings);

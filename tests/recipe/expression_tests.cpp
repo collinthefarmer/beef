@@ -1,9 +1,14 @@
 // GPL-3.0-only with the additional permission in COPYING.md.
 #include "recipe/Expression.h"
+#include "recipe/ExpressionMath.h"
 #include "test_support.h"
 
+#include <algorithm>
+#include <array>
+#include <cmath>
 #include <limits>
 #include <optional>
+#include <span>
 #include <string>
 #include <string_view>
 #include <vector>
@@ -29,9 +34,95 @@ bool Rejected(const char *a_text) {
 std::optional<ValueType> AllScalars(std::string_view) {
   return ValueType::kScalar;
 }
+
+std::string CallText(const ExpressionFunction &a_function) {
+  return Match(
+      a_function.form,
+      [&](const FixedCall &a_call) {
+        std::string text = std::string{a_function.name} + "(";
+        for (int i = 0; i < a_call.arity; ++i) {
+          text += i == 0 ? "1" : ", 1";
+        }
+        return text + ")";
+      },
+      [](const RandomCall &) { return std::string{"rand()"}; },
+      [](const RandomRangeCall &) { return std::string{"randrange(0, 1)"}; });
+}
+
+void EveryTableFunctionParses() {
+  for (const ExpressionFunction &function : ExpressionFunctions()) {
+    const std::string text = CallText(function);
+    Check(Program::Parse(text).has_value(), "the table call parses: " + text);
+    Check(function.usage.starts_with(std::string{function.name} + "("),
+          "the usage starts with the call: " + std::string{function.usage});
+  }
+  Check(Program::Parse("randrange(0, 1, 0.5)").has_value(),
+        "randrange takes an optional seed");
+  Check(!Program::Parse("randrange(0)").has_value(),
+        "randrange needs a start and a stop");
+  Check(Program::Parse("rand(1)").has_value(), "rand takes an optional salt");
+  Check(!Program::Parse("rand(1, 2)").has_value(),
+        "rand takes at most one salt");
+  Check(!Program::Parse("clamp(1, 2)").has_value(),
+        "a fixed call checks its argument count");
+}
+
+bool SameCode(const Program &a_left, const Program &a_right) {
+  return std::ranges::equal(
+      a_left.Code(), a_right.Code(),
+      [](const Program::Node &a_l, const Program::Node &a_r) {
+        return a_l.op == a_r.op && a_l.number == a_r.number &&
+               a_l.index == a_r.index;
+      });
+}
+
+void HashProgramMatchesTheParsedHash() {
+  const Program built = Program::Hash("value", "salt");
+  const auto parsed = Program::Parse("hash(@value, @salt)");
+  Check(parsed && SameCode(built, *parsed) &&
+            std::ranges::equal(built.References(), parsed->References()),
+        "Program::Hash builds the same code as the parsed hash");
+}
+
+void EachRandCallGetsTheNextSalt() {
+  const auto twice = Program::Parse("rand() + rand()");
+  std::vector<float> salts;
+  if (twice) {
+    const std::span<const Program::Node> code = twice->Code();
+    for (std::size_t i = 1; i < code.size(); ++i) {
+      if (code[i - 1].op == Program::Op::kIdentity &&
+          code[i].op == Program::Op::kNumber) {
+        salts.push_back(code[i].number);
+      }
+    }
+  }
+  Check(salts == std::vector<float>{0.0f, 1.0f},
+        "two rand() calls in one expression get salts 0 and 1");
+  Program::Inputs pinned;
+  pinned.identity = 0.25f;
+  const auto before = Program::Parse("rand(7)");
+  const auto after = Program::Parse("rand() * 0 + rand(7)");
+  const auto alone = Program::Parse("rand()");
+  if (before && after && alone) {
+    const float pinnedValue = AsScalar(before->Evaluate(pinned));
+    const float firstFree = AsScalar(alone->Evaluate(pinned));
+    Check(Near(AsScalar(after->Evaluate(pinned)), pinnedValue),
+          "rand(7) keeps its value after a free rand() call");
+    Check(!Near(pinnedValue, firstFree),
+          "a salted rand differs from the first free rand");
+  } else {
+    Check(false, "the salted rand expressions parse");
+  }
+  const auto again = Program::Parse("rand()");
+  Check(again && again->Code().size() > 1 && again->Code()[1].number == 0.0f,
+        "each parse starts its salts at 0");
+}
 }
 
 int main() {
+  EveryTableFunctionParses();
+  HashProgramMatchesTheParsedHash();
+  EachRandCallGetsTheNextSalt();
   Check(kMaxExpressionDepth == 32, "the expression depth bound is declared");
   Check(kMaxExpressionOps == 256, "the expression op bound is declared");
   Check(kMaxExpressionLength == 4096,
@@ -273,6 +364,150 @@ int main() {
           "a long expression elides its middle, keeping head and tail");
     Check(ExpressionSummary("", 20).empty(),
           "an empty expression summarises to empty");
+  }
+
+  {
+    bool permutes = true;
+    for (int total = 1; total <= static_cast<int>(kMaxShuffleTotal); ++total) {
+      for (int trial = 0; trial < 24; ++trial) {
+        const float seed = static_cast<float>(trial) * 0.0417f - 0.3f;
+        std::vector<bool> seen(static_cast<std::size_t>(total), false);
+        for (int index = 0; index < total; ++index) {
+          const float position = ShufflePosition(
+              static_cast<float>(index), static_cast<float>(total), seed);
+          const auto slot = static_cast<std::size_t>(position);
+          if (!(position >= 0.0f) || position >= static_cast<float>(total) ||
+              seen[slot]) {
+            permutes = false;
+            break;
+          }
+          seen[slot] = true;
+        }
+      }
+    }
+    Check(permutes, "shuffle orders every total up to the cap without repeats");
+    const float nan = std::numeric_limits<float>::quiet_NaN();
+    const float inf = std::numeric_limits<float>::infinity();
+    Check(ShufflePosition(5.0f, 5.0f, 0.4f) == kShuffleOutside &&
+              ShufflePosition(-1.0f, 5.0f, 0.4f) == kShuffleOutside &&
+              ShufflePosition(nan, 5.0f, 0.4f) == kShuffleOutside &&
+              ShufflePosition(inf, 5.0f, 0.4f) == kShuffleOutside,
+          "indices outside the order sit past every position");
+    Check(ShufflePosition(0.0f, 0.0f, 0.4f) == kShuffleOutside &&
+              ShufflePosition(0.0f, nan, 0.4f) == kShuffleOutside,
+          "an empty or unreadable total orders nothing");
+    Check(ShufflePosition(3.0f, inf, 0.4f) < kMaxShuffleTotal &&
+              ShufflePosition(300.0f, 1.0e9f, 0.4f) == kShuffleOutside,
+          "totals above the cap order only the first 251 indices");
+    Check(ShufflePosition(2.0f, 7.0f, nan) == ShufflePosition(2.0f, 7.0f, 0.0f),
+          "an unreadable seed orders like seed 0");
+    Check(ShufflePosition(2.9f, 7.0f, 0.4f) ==
+              ShufflePosition(2.0f, 7.0f, 0.4f),
+          "fractional indices order like their floor");
+    Check(Near(Scalar("shuffle(0, 1, 0.8)"), 0.0f),
+          "a one-item order puts its item first");
+    Check(Near(Scalar("shuffle(9, 4, 0.2) < 2"), 0.0f),
+          "an index outside the order is never among the first k");
+    Check(!Program::Parse("shuffle([1, 2, 3], 4, 0.2)")
+               .and_then([](Program p) -> std::expected<Program, std::string> {
+                 const auto typed = p.Check(AllScalars);
+                 if (!typed)
+                   return std::unexpected(typed.error());
+                 return p;
+               })
+               .has_value(),
+          "shuffle takes scalars");
+  }
+
+  {
+    const float nan = std::numeric_limits<float>::quiet_NaN();
+    const float value = HashUnit(3.0f, 1.0f);
+    Check(value >= 0.0f && value < 1.0f && value == HashUnit(3.0f, 1.0f),
+          "hash is a repeatable 0..1 value");
+    Check(value != HashUnit(3.0f, 2.0f) && value != HashUnit(4.0f, 1.0f),
+          "hash depends on both the value and the salt");
+    Check(HashUnit(-0.0f, 1.0f) == HashUnit(0.0f, 1.0f) &&
+              HashUnit(nan, 1.0f) == HashUnit(0.0f, 1.0f),
+          "negative zero and unreadable values hash like zero");
+    std::array<int, 16> buckets{};
+    constexpr int kSamples = 16000;
+    for (int i = 0; i < kSamples; ++i) {
+      const float h = HashUnit(static_cast<float>(i), 7.0f);
+      buckets[static_cast<std::size_t>(std::min(15.0f, h * 16.0f))]++;
+    }
+    Check(
+        std::ranges::all_of(buckets, [](int n) { return n > 850 && n < 1150; }),
+        "hash spreads consecutive values evenly");
+
+    bool inRange = true;
+    std::array<bool, 3> reached{};
+    for (int i = 0; i <= 100; ++i) {
+      const float r = RandomInRange(1.0f, 4.0f, static_cast<float>(i) / 100.0f);
+      inRange = inRange && r >= 1.0f && r <= 3.0f && r == std::floor(r);
+      if (r >= 1.0f && r <= 3.0f)
+        reached[static_cast<std::size_t>(r) - 1] = true;
+    }
+    Check(inRange && std::ranges::all_of(reached, [](bool b) { return b; }),
+          "randrange stays below stop and reaches every whole number");
+    Check(RandomInRange(5.0f, 5.0f, 0.5f) == 5.0f &&
+              RandomInRange(5.0f, 2.0f, 0.5f) == 5.0f &&
+              RandomInRange(nan, 4.0f, 0.5f) == 0.0f &&
+              RandomInRange(1.0f, 4.0f, nan) == 1.0f,
+          "an empty range gives start and unreadable inputs stay bounded");
+    Check(Near(Scalar("randrange(1, 4, 0.999)"), 3.0f) &&
+              Near(Scalar("randrange(1.7, 4.2, 0)"), 1.0f),
+          "randrange floors its bounds and reads its seed");
+    Check(Rejected("rand(1, 2)") && Rejected("randrange(1)") &&
+              Rejected("randrange(1, 2, 3, 4)"),
+          "rand and randrange reject the wrong argument counts");
+    const auto twice = Program::Parse("rand() - rand()");
+    Check(twice && twice->UsesIdentity() && !twice->Constant(),
+          "an expression with rand() is never folded as a constant");
+    if (twice) {
+      Program::Inputs inputs;
+      inputs.identity = 0.375f;
+      Check(AsScalar(twice->Evaluate(inputs)) != 0.0f,
+            "each rand() call in an expression gets its own value");
+    }
+    Check(!ParseCurve("x * rand()") && !ParseCurve("randrange(0, 4) * x") &&
+              ParseCurve("randrange(0, 4, x)"),
+          "a curve cannot use rand() but can seed randrange from x");
+  }
+
+  {
+    const auto Close = [](const Vec3 &a_left, const Vec3 &a_right) {
+      return Near(a_left.x, a_right.x) && Near(a_left.y, a_right.y) &&
+             Near(a_left.z, a_right.z);
+    };
+    Check(Close(HueColor(0.0f), {1.0f, 0.0f, 0.0f}) &&
+              Close(HueColor(1.0f / 3.0f), {0.0f, 1.0f, 0.0f}) &&
+              Close(HueColor(2.0f / 3.0f), {0.0f, 0.0f, 1.0f}) &&
+              Close(HueColor(1.0f), HueColor(0.0f)),
+          "hue walks red, green, blue and wraps every turn");
+    const Vec3 colour{0.15f, 0.39f, 1.0f};
+    Check(Close(ShiftHue(colour, 0.0f), colour) &&
+              Close(ShiftHue(colour, 1.0f), colour),
+          "a whole number of turns leaves a colour unchanged");
+    Check(Close(ShiftHue({1.0f, 0.0f, 0.0f}, 1.0f / 3.0f), {0.0f, 1.0f, 0.0f}),
+          "a third of a turn moves red to green");
+    Check(Close(ShiftHue({0.4f, 0.4f, 0.4f}, 0.2f), {0.4f, 0.4f, 0.4f}),
+          "grey has no hue to turn");
+    const float nan = std::numeric_limits<float>::quiet_NaN();
+    Check(Close(HueColor(nan), HueColor(0.0f)) &&
+              Close(ShiftHue(colour, nan), colour),
+          "an unreadable number of turns counts as none");
+    const auto typed = [](const char *a_text) {
+      const auto program = Program::Parse(a_text);
+      return program ? program->Check(AllScalars)
+                     : std::expected<ValueType, std::string>{
+                           std::unexpected(program.error())};
+    };
+    Check(typed("hue(0.5)") == ValueType::kVec3 &&
+              typed("hueShift([1, 0, 0], 0.25)") == ValueType::kVec3,
+          "hue and hueShift give colours");
+    Check(!typed("hue([1, 2, 3])") && !typed("hueShift(1, 0.25)") &&
+              !typed("hueShift([1, 0, 0], [1, 2, 3])"),
+          "hue takes turns and hueShift takes a colour and turns");
   }
 
   return test::Finish("expression");

@@ -41,14 +41,8 @@ const Placement *PlacementAt(const ActorMatches &a_matches,
 }
 
 bool LightEligible(const Geometry &a_geometry, const LightOutput &a_light) {
-  return !a_geometry.firstPerson && !a_geometry.lost &&
+  return !a_geometry.firstPerson &&
          Matches(a_light.selector, a_geometry.identity);
-}
-
-bool AnyLiveGeometry(const ActorMatches &a_matches) noexcept {
-  return std::any_of(
-      a_matches.geometries.begin(), a_matches.geometries.end(),
-      [](const Geometry &a_geometry) { return !a_geometry.lost; });
 }
 
 std::optional<InstanceId>
@@ -142,30 +136,6 @@ ThirdPersonGeometriesOfInstance(const ActorMatches &a_matches,
     found.push_back(placement.geometry);
   }
   return found;
-}
-
-std::vector<RecipeId>
-RecipesOfInactiveInstances(const ActorMatches &a_matches) {
-  std::vector<RecipeId> out;
-  for (std::size_t i = 0; i < a_matches.instances.size(); ++i) {
-    bool live = false;
-    for (const PlacementId placementId :
-         PlacementsOfInstance(a_matches, InstanceId{i})) {
-      const Placement *placement = PlacementAt(a_matches, placementId);
-      if (!placement) {
-        continue;
-      }
-      const Geometry *geometry = GeometryAt(a_matches, placement->geometry);
-      if (geometry && !geometry->lost) {
-        live = true;
-        break;
-      }
-    }
-    if (!live) {
-      out.push_back(a_matches.instances[i].recipe);
-    }
-  }
-  return out;
 }
 
 const Variant *InstanceVariant(const ActorMatches &a_matches,

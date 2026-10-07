@@ -206,33 +206,6 @@ void LightsFollowLightRecipes() {
         "each shown light maps back to a ring-recipe instance");
 }
 
-void InactiveInstancesReportTheirRecipes() {
-  const std::vector<Recipe> store = GlowAndRing();
-  const ActorMatches actorPlan = MatchActor(RingBodyAmulet(), store);
-
-  Check(RecipesOfInactiveInstances(actorPlan).empty(),
-        "RecipesOfInactiveInstances is empty while every geometry is live");
-
-  ActorMatches onePieceLost = actorPlan;
-  onePieceLost.geometries[0].lost = true;
-  Check(RecipesOfInactiveInstances(onePieceLost).empty(),
-        "an instance is active while another live geometry still backs it");
-
-  ActorMatches enchantedLost = actorPlan;
-  enchantedLost.geometries[2].lost = true;
-  const std::vector<RecipeId> inactiveRecipes =
-      RecipesOfInactiveInstances(enchantedLost);
-  Equal(inactiveRecipes.size(), 2u,
-        "RecipesOfInactiveInstances reports recipes of instances with no live "
-        "geometry");
-  const bool reportsBothRecipes =
-      std::ranges::find(inactiveRecipes, RecipeId{0}) !=
-          inactiveRecipes.end() &&
-      std::ranges::find(inactiveRecipes, RecipeId{1}) != inactiveRecipes.end();
-  Check(reportsBothRecipes,
-        "both inactive enchanted instances are reported by recipe");
-}
-
 void ReplacementAndOutputFilters() {
   Recipe replacedRecipe = GlowRecipe();
   SurfaceOutput replacing = *Get<SurfaceOutput>(replacedRecipe.outputs.front());
@@ -347,8 +320,6 @@ void EmptyGeometries() {
   Check(actorPlan.geometries.empty() && actorPlan.instances.empty() &&
             actorPlan.placements.empty(),
         "an actor with no geometry matches nothing");
-  Check(!AnyLiveGeometry(actorPlan),
-        "an actor with no geometry has no live piece");
   const GeometryPlacementPlan plan =
       PlanGeometryPlacement(actorPlan, store, GeometryId{0});
   Check(plan.placed.empty() && plan.sources.empty() && plan.plan.slots.empty(),
@@ -356,8 +327,6 @@ void EmptyGeometries() {
   const ActorLightPlan lights = PlanActorLights(actorPlan, store);
   Check(lights.placed.empty() && lights.plan.shown.empty(),
         "an actor with no geometry gets no lights");
-  Check(RecipesOfInactiveInstances(actorPlan).empty(),
-        "an actor with no geometry has no inactive instances");
 }
 
 void EmptyStore() {
@@ -409,7 +378,6 @@ int main() {
   MatchingSplitsInstancesByEnchantment();
   GeometryPlacementFollowsSelectors();
   LightsFollowLightRecipes();
-  InactiveInstancesReportTheirRecipes();
   ReplacementAndOutputFilters();
   LightIsolationPrecedesReplacement();
   SavedAndScratchRecipesPlanAlike();

@@ -56,11 +56,11 @@ class TraceReportTests(unittest.TestCase):
     def test_metrics_events_summarize(self):
         (self.root / "beef-trace-9.jsonl").write_text(
             event(1, "startup", build="b3", source_sha256="s")
-            + event(2, "metrics", action="refresh", actor="20", us="2000")
-            + event(3, "metrics", action="refresh", actor="21", us="6000")
+            + event(2, "metrics", action="sync", actor="20", us="2000")
+            + event(3, "metrics", action="sync", actor="21", us="6000")
             + event(4, "metrics", action="readback", op="mean", us="1500")
-            + event(5, "metrics", action="heartbeat", refreshes="2",
-                    refresh_us="8000", refresh_max_us="6000", sink_adds="3",
+            + event(5, "metrics", action="heartbeat", syncs="2",
+                    sync_us="8000", sync_max_us="6000", sink_adds="3",
                     sink_removes="1", readbacks="1", readback_us="1500",
                     readback_max_us="1500", targets="4", targets_peak="5",
                     target_bytes="1048576", target_bytes_peak="2097152"))
@@ -68,7 +68,7 @@ class TraceReportTests(unittest.TestCase):
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertIn("Refreshes: 2", result.stdout)
         self.assertIn("max 6.0 ms", result.stdout)
-        self.assertIn("Worst second: 2 refreshes, 8.0 ms spent", result.stdout)
+        self.assertIn("Worst second: 2 syncs, 8.0 ms spent", result.stdout)
         self.assertIn("Sink churn: 3 adds, 1 removes", result.stdout)
         self.assertIn("Targets peak: 5 of 1024 slots; VRAM peak 2 MiB", result.stdout)
         self.assertIn("Readback mean: 1; mean 1.5 ms, max 1.5 ms", result.stdout)
@@ -82,7 +82,7 @@ class TraceReportTests(unittest.TestCase):
             + event(1, "texture", action=7, target=[1, 2], owner={"a": 1})
             + event(2, "texture", action=["acquire"], target={"t": 1})
             + event(3, "texture", action="acquire", target=[1], presenter=[2])
-            + event(4, "metrics", action="heartbeat", refreshes=float("inf"), targets_peak=[1])
+            + event(4, "metrics", action="heartbeat", syncs=float("inf"), targets_peak=[1])
             + event(5, "metrics", action="readback", op=[1], us={"x": 1})
             + event(6, "page", session=[1], page={"p": 1}, selection=None)
             + event(7, "startup", session="late", build=["b"]))

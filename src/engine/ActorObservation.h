@@ -6,6 +6,7 @@
 #include "actors/Actor.h"
 #include "recipe/Recipe.h"
 
+#include <cstdint>
 #include <optional>
 #include <span>
 #include <vector>
@@ -28,6 +29,7 @@ struct ObservedModel {
 
 struct ModelTable {
   std::vector<ObservedModel> models;
+  std::uint64_t nextToken = 0;
 };
 
 struct ObserveRequest {
@@ -38,6 +40,8 @@ struct ObserveRequest {
   std::uint32_t nowMs = 0;
 };
 
+[[nodiscard]] bool Loaded3D(const RE::Actor &a_actor) noexcept;
+[[nodiscard]] std::optional<float> DistanceToPlayer(const RE::Actor &a_actor);
 [[nodiscard]] Actors::ActorFacts ObserveActor(const ObserveRequest &a_request,
                                               ModelTable &a_models,
                                               MaterialLayout &a_layout);

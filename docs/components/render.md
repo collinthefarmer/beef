@@ -59,7 +59,8 @@ dispatches each `RenderStepKind` to one function per kind, for example `ExecuteB
 | `StackResult` | A stack's texture and content version. | `RenderInstance.h` |
 | `StackOutcome` | Either a `StackResult` or `StackPending`. | `RenderInstance.h` |
 | `LayerFieldPack` | The visible **layer field** indices of a stack and their `PackedLayerFields`. The scratch keeps it until the set of visible fields changes. | `RenderInstance.h` |
-| `GeometryInputs` | One geometry's shared render instance, application context, `MaterialInputs`, geometry and root node. | `Compositor.h` |
+| `GeometryInputs` | One geometry's shared render instance, application context, `MaterialInputs`, geometry and root node, the item hash, and the instance's `EnchantmentValues`. | `Compositor.h` |
+| `StepOutputCache` | The **step output cache**: static step outputs shared across actors, keyed by the step's content key plus the bits of its numeric operands (`CacheKeyFor`). `ExecuteCached` looks a step up before it runs it. `Sweep` renews an entry while another holder has its target and evicts it 500 ms after the last holder lets go (`StepOutputRetention`). The `Compositor` holds one (`stepOutputs_`). | `StepOutputCache.h` |
 | `MaterialInputs` | The diffuse, normal, RMAOS and displacement textures of a material, and whether its displacement map is flat. `MaterialInputs::From` reads them from a `PbrMaterial`. | `Compositor.h` |
 | `RenderOutput` | The engine's handle on one placed stack: a weak reference to the instance, the stack's step output, the latest texture and version, the size, the animation flag and the diagnostics. | `Compositor.h` |
 | `StackRender` | The result of `Compositor::Render`: `kRendered`, `kPending` or `kFailed`. | `Compositor.h` |
@@ -131,7 +132,11 @@ shaders off, and every draw then uses the interpreter or `PSStack`.
 
 ### Other passes
 
-`TextureLab::Render` draws one full-screen pass in a `Mode`. The bake,
+`TextureLab::Render` draws one full-screen pass in a `Mode`. A `PassBatch`
+groups the passes of one geometry. It captures the D3D pipeline state on the
+first pass inside it, not when it is created, so a geometry with nothing to
+draw costs no capture, and it restores the state when it ends. A pass outside
+a batch captures and restores its own state. The bake,
 ripple, cluster, dilate and reduction passes each have their own pixel
 pipeline (`GpuResources` in `TextureLab.h`). A pipeline that fails to compile
 disables only its own pass (`ProgramPassAvailable`, `RippleAvailable`,

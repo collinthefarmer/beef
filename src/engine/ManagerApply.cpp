@@ -12,11 +12,13 @@
 #include "engine/Clock.h"
 #include "engine/EngineForms.h"
 #include "engine/GameObjectService.h"
+#include "engine/PhaseTrace.h"
 #include "engine/RecipeStore.h"
 #include "engine/RegressionRun.h"
-#include "engine/RenderPlanCache.h"
 #include "mesh/TextureSize.h"
 #include "planners/Eviction.h"
+#include "planners/RenderPlanCache.h"
+#include "planners/RenderPlanKey.h"
 #include "render/Compositor.h"
 #include "render/PBRMaterial.h"
 #include "render/RenderInstance.h"
@@ -39,21 +41,21 @@
 
 namespace BetterEnchantmentEffects {
 namespace {
-class RefreshMeter {
+class SyncMeter {
 public:
-  explicit RefreshMeter(RE::FormID a_actor) noexcept : actor_(a_actor) {}
-  ~RefreshMeter() {
+  explicit SyncMeter(RE::FormID a_actor) noexcept : actor_(a_actor) {}
+  ~SyncMeter() {
     const std::uint64_t micros = watch_.Micros();
-    Metrics::CountRefresh(micros);
+    Metrics::CountSync(micros);
     Trace::EmitSafely(Trace::Event::kMetrics,
-                      {{"action", "refresh"},
+                      {{"action", "sync"},
                        {"actor", std::to_string(actor_)},
                        {"us", std::to_string(micros)}});
   }
-  RefreshMeter(const RefreshMeter &) = delete;
-  RefreshMeter &operator=(const RefreshMeter &) = delete;
-  RefreshMeter(RefreshMeter &&) = delete;
-  RefreshMeter &operator=(RefreshMeter &&) = delete;
+  SyncMeter(const SyncMeter &) = delete;
+  SyncMeter &operator=(const SyncMeter &) = delete;
+  SyncMeter(SyncMeter &&) = delete;
+  SyncMeter &operator=(SyncMeter &&) = delete;
 
 private:
   Metrics::Stopwatch watch_;
@@ -167,8 +169,8 @@ EquipPositionEvent(const std::vector<LivePiece> &a_pieces) {
 
 LiveGeometry MakeGeometry(RE::BSGeometry *a_geometry,
                           RE::BSLightingShaderProperty *a_property,
-                          RE::NiAVObject *a_root,
-                          const PbrMaterial &a_material) {
+                          RE::NiAVObject *a_root, const PbrMaterial &a_material,
+                          float a_itemHash) {
   LiveGeometry bound;
   bound.geometry = RE::NiPointer{a_geometry};
   bound.property = RE::NiPointer{a_property};
@@ -176,6 +178,7 @@ LiveGeometry MakeGeometry(RE::BSGeometry *a_geometry,
   bound.inputs.material = MaterialInputs::From(a_material);
   bound.inputs.geometry = RE::NiPointer{a_geometry};
   bound.inputs.root = RE::NiPointer{a_root};
+  bound.inputs.itemHash = a_itemHash;
   return bound;
 }
 
@@ -185,6 +188,11 @@ std::string ArmorNameOf(RE::FormID a_armor) {
   return name ? name : "";
 }
 
+float ItemHashOf(RE::FormID a_armor) {
+  const auto *armor = RE::TESForm::LookupByID<RE::TESObjectARMO>(a_armor);
+  return armor ? UnitHash(FormKeyFor(*armor).ToString()) : 0.0f;
+}
+
 std::expected<std::vector<LivePiece>, std::string>
 LivePiecesOf(RE::Actor &a_actor, const Actors::ActorFacts &a_facts,
              const ModelTable &a_models) {
@@ -192,7 +200,8 @@ LivePiecesOf(RE::Actor &a_actor, const Actors::ActorFacts &a_facts,
   for (const Actors::PieceFacts *planned : Actors::PlannedPieces(a_facts)) {
     const ObservedModel *model =
         planned->model ? ModelOf(a_models, *planned->model) : nullptr;
-    if (!model || model->geometries.size() != planned->geometries.size()) {
+    if (!planned->model || !model ||
+        model->geometries.size() != planned->geometries.size()) {
       return std::unexpected{
           std::format("armor {:08X} lost its observed model", planned->itemID)};
     }
@@ -201,11 +210,22 @@ LivePiecesOf(RE::Actor &a_actor, const Actors::ActorFacts &a_facts,
     }
     RE::NiAVObject *root = a_actor.Get3D(planned->ref.firstPerson);
     LivePiece piece;
+    piece.ref = planned->ref;
+    piece.model = *planned->model;
     piece.armor = planned->itemID;
     piece.addon = planned->ref.addon;
     piece.armorName = ArmorNameOf(planned->itemID);
     piece.enchantment = planned->enchantmentID;
-    for (const ObservedGeometry &observed : model->geometries) {
+    const float itemHash = ItemHashOf(planned->itemID);
+    for (std::size_t i = 0; i < model->geometries.size(); ++i) {
+      const ObservedGeometry &observed = model->geometries[i];
+      const std::optional<Actors::GeometryRef> ref =
+          Actors::GeometryRefOf(*planned, i);
+      if (!ref) {
+        return std::unexpected{
+            std::format("geometry {} of armor {:08X} has no planned identity",
+                        observed.facts.name, planned->itemID)};
+      }
       RE::BSGeometry *geometry = observed.geometry.get();
       RE::BSLightingShaderProperty *property =
           geometry ? LightingPropertyOf(geometry) : nullptr;
@@ -215,8 +235,10 @@ LivePiecesOf(RE::Actor &a_actor, const Actors::ActorFacts &a_facts,
             std::format("geometry {} of armor {:08X} lost its PBR material",
                         observed.facts.name, planned->itemID)};
       }
-      piece.geometries.push_back(
-          MakeGeometry(geometry, property, root, *material));
+      LiveGeometry bound =
+          MakeGeometry(geometry, property, root, *material, itemHash);
+      bound.ref = *ref;
+      piece.geometries.push_back(std::move(bound));
     }
     pieces.push_back(std::move(piece));
   }
@@ -333,6 +355,7 @@ struct LocatedStackOutput {
   std::size_t applicationContext;
   const SurfaceOutput &surface;
   PlacedOutput &placed;
+  EnchantmentValues enchantment;
 };
 struct ActorStackRequest {
   StackTextureRequest texture;
@@ -348,6 +371,18 @@ struct ActorStacks {
 };
 namespace {
 
+EnchantmentValues EnchantmentValuesOf(const LiveInstance &a_instance) {
+  EnchantmentValues values;
+  if (!a_instance.environment) {
+    return values;
+  }
+  for (std::size_t i = 0; i < values.fields.size(); ++i) {
+    values.fields[i] =
+        a_instance.environment->Enchantment(static_cast<EnchantmentField>(i));
+  }
+  return values;
+}
+
 std::optional<LocatedStackOutput>
 LocateStackOutput(LiveActor &a_state, const LiveGeometry &a_bound,
                   const SlotContribution &a_contribution) {
@@ -356,7 +391,7 @@ LocateStackOutput(LiveActor &a_state, const LiveGeometry &a_bound,
   if (!resolved) {
     return std::nullopt;
   }
-  const Recipe *recipe = a_state.instances[resolved->instance].recipe;
+  const Recipe *recipe = a_state.instances[resolved->instance].recipe.get();
   if (!recipe) {
     return std::nullopt;
   }
@@ -369,8 +404,13 @@ LocateStackOutput(LiveActor &a_state, const LiveGeometry &a_bound,
     return std::nullopt;
   }
   return LocatedStackOutput{
-      PlacementId{resolved->placement}, *recipe,  *graph,
-      resolved->instance + 1,           *surface, *output};
+      PlacementId{resolved->placement},
+      *recipe,
+      *graph,
+      resolved->instance + 1,
+      *surface,
+      *output,
+      EnchantmentValuesOf(a_state.instances[resolved->instance])};
 }
 
 std::string SurfaceProblem(LiveGeometry &a_bound, const SlotPlan &a_slot,
@@ -445,6 +485,7 @@ void CollectChainStacks(LiveActor &a_state, const LocatedGeometry &a_geometry,
           SlotStackSize(size, slot.slot, located->surface.resolution);
       GeometryInputs inputs = bound.inputs;
       inputs.scope = {located->applicationContext, a_stacks.actor};
+      inputs.enchantment = located->enchantment;
       const TextureSize stackSize =
           compositor->StackSize(located->surface, inputs, slotSize, maxSize);
       a_stacks.requests.push_back(
@@ -644,54 +685,41 @@ void AttachMergedSlots(const ActorStacks &a_stacks,
   }
 }
 
-std::optional<std::string> RenderPlanKeyOf(const ActorStacks &a_stacks) {
-  std::string key;
+std::optional<RenderPlanKey> PlanKeyOf(const ActorStacks &a_stacks) {
+  std::vector<GeometryInputs> actorless;
+  actorless.reserve(a_stacks.requests.size());
+  std::vector<StackKeyRequest> requests;
+  requests.reserve(a_stacks.requests.size());
   for (const ActorStackRequest &request : a_stacks.requests) {
     const StackTextureRequest &texture = request.texture;
-    const std::optional<std::string> mesh = MeshHashIdentityOf(texture.inputs);
-    if (!texture.graph || ReadsNodePositions(*texture.graph) || !mesh) {
-      return std::nullopt;
-    }
-    key += std::format("r{:x}|{}|{}|{}|{}|{}|{}|{};",
-                       reinterpret_cast<std::uintptr_t>(texture.graph),
-                       texture.outputIndex, IndexOf(texture.placement),
-                       IndexOf(request.geometry), texture.inputs.scope.context,
-                       texture.size.Pixels(),
-                       MaterialIdentityOf(texture.inputs.material), *mesh);
+    GeometryInputs &inputs = actorless.emplace_back(texture.inputs);
+    inputs.scope.actor = 0;
+    requests.push_back(
+        {texture.graph, texture.outputIndex, texture.placement,
+         request.geometry, inputs.scope.context, texture.size,
+         MaterialIdentityOf(inputs.material), MeshHashIdentityOf(inputs),
+         texture.graph ? TextureValueBindings(*texture.graph, inputs)
+                       : ValueBindings{}});
   }
-  for (const SlotChainRequest &chain : a_stacks.chains) {
-    key += std::format("c{}|{}|{}", IndexOf(chain.geometry),
-                       static_cast<int>(chain.surface),
-                       static_cast<int>(chain.slot));
-    for (const ChainLink &link : chain.links) {
-      key += std::format("|{}:{}", IndexOf(link.placement), link.output);
-    }
-    key += ';';
-  }
-  return key;
-}
-
-std::vector<std::shared_ptr<const RecipeGraph>>
-GraphsRequestedBy(const LiveActor &a_state, const ActorStacks &a_stacks) {
-  std::vector<std::shared_ptr<const RecipeGraph>> graphs;
-  for (const std::shared_ptr<const RecipeGraph> &graph : LiveGraphs(a_state)) {
-    const bool requested = std::ranges::any_of(
-        a_stacks.requests, [&](const ActorStackRequest &a_request) {
-          return a_request.texture.graph == graph.get();
-        });
-    if (requested && !std::ranges::contains(graphs, graph)) {
-      graphs.push_back(graph);
-    }
-  }
-  return graphs;
+  return RenderPlanKeyOf(requests, a_stacks.chains);
 }
 
 std::expected<RenderPlan, std::string>
 FreshRenderPlan(const ActorStacks &a_stacks, const Settings &a_settings) {
-  const std::vector<TextureDemand> demands =
-      CollectLayerDemands(a_stacks, a_settings.verboseLogging);
-  return BuildRenderPlan(demands, RenderStackRequests(a_stacks),
-                         BindingResolverFor(a_stacks), a_stacks.chains);
+  PhaseTrace phases{Trace::Event::kMetrics, "render_plan_build",
+                    a_stacks.actor};
+  const std::vector<TextureDemand> demands = phases.Measure("demand_us", [&] {
+    return CollectLayerDemands(a_stacks, a_settings.verboseLogging);
+  });
+  std::expected<RenderPlan, std::string> plan = phases.Measure("lower_us", [&] {
+    return BuildRenderPlan(demands, RenderStackRequests(a_stacks),
+                           BindingResolverFor(a_stacks), a_stacks.chains);
+  });
+  phases.Add("requests", std::to_string(a_stacks.requests.size()));
+  phases.Add("demands", std::to_string(demands.size()));
+  phases.Add("steps", std::to_string(plan ? plan->steps.size() : 0));
+  phases.Emit();
+  return plan;
 }
 
 void TraceRenderPlanCache(RE::FormID a_actor, std::string_view a_result,
@@ -703,13 +731,20 @@ void TraceRenderPlanCache(RE::FormID a_actor, std::string_view a_result,
                      {"entries", std::to_string(a_entries)}});
 }
 
+void StoreRenderPlan(RenderPlanCache &a_cache, RenderPlanKey a_key,
+                     const RenderPlan &a_plan, const LiveActor &a_state) {
+  std::vector<std::shared_ptr<const RecipeGraph>> graphs =
+      GraphsNamedBy(a_key, LiveGraphs(a_state));
+  a_cache.Store(std::move(a_key), a_plan, std::move(graphs));
+}
+
 std::expected<RenderPlan, std::string>
 RenderPlanFor(const LiveActor &a_state, const ActorStacks &a_stacks,
               const Settings &a_settings, RenderPlanCache &a_cache) {
   if (!a_settings.renderPlanCache) {
     return FreshRenderPlan(a_stacks, a_settings);
   }
-  std::optional<std::string> key = RenderPlanKeyOf(a_stacks);
+  std::optional<RenderPlanKey> key = PlanKeyOf(a_stacks);
   if (!key) {
     TraceRenderPlanCache(a_stacks.actor, "uncacheable", a_cache.Size());
     return FreshRenderPlan(a_stacks, a_settings);
@@ -730,16 +765,14 @@ RenderPlanFor(const LiveActor &a_state, const ActorStacks &a_stacks,
                  a_stacks.actor);
     TraceRenderPlanCache(a_stacks.actor, "mismatch", a_cache.Size());
     if (fresh) {
-      a_cache.Store(std::move(*key), *fresh,
-                    GraphsRequestedBy(a_state, a_stacks));
+      StoreRenderPlan(a_cache, std::move(*key), *fresh, a_state);
     }
     return fresh;
   }
   std::expected<RenderPlan, std::string> fresh =
       FreshRenderPlan(a_stacks, a_settings);
   if (fresh) {
-    a_cache.Store(std::move(*key), *fresh,
-                  GraphsRequestedBy(a_state, a_stacks));
+    StoreRenderPlan(a_cache, std::move(*key), *fresh, a_state);
   }
   TraceRenderPlanCache(a_stacks.actor, "miss", a_cache.Size());
   return fresh;
@@ -757,18 +790,23 @@ void BuildActorRender(const LiveActor &a_state, ActorStacks &a_stacks,
   if (a_stacks.requests.empty()) {
     return;
   }
-  std::expected<RenderPlan, std::string> plan =
-      RenderPlanFor(a_state, a_stacks, a_settings, a_cache);
+  PhaseTrace phases{Trace::Event::kMetrics, "actor_render", a_stacks.actor};
+  std::expected<RenderPlan, std::string> plan = phases.Measure("plan_us", [&] {
+    return RenderPlanFor(a_state, a_stacks, a_settings, a_cache);
+  });
   if (!plan) {
     FailStackOutputs(a_stacks, plan.error());
     return;
   }
-  const std::shared_ptr<RenderInstance> render =
-      std::make_shared<RenderInstance>(std::move(*plan), a_stacks.geometries,
-                                       LiveGraphs(a_state));
-  AttachRender(a_stacks, render);
-  AttachStackOutputs(a_stacks, render, a_settings, a_warnings);
-  AttachMergedSlots(a_stacks, render);
+  phases.Measure("attach_us", [&] {
+    const std::shared_ptr<RenderInstance> render =
+        std::make_shared<RenderInstance>(std::move(*plan), a_stacks.geometries,
+                                         LiveGraphs(a_state));
+    AttachRender(a_stacks, render);
+    AttachStackOutputs(a_stacks, render, a_settings, a_warnings);
+    AttachMergedSlots(a_stacks, render);
+  });
+  phases.Emit();
 }
 
 std::optional<std::size_t> LightSourceInstance(const ActorLightPlan &a_plan,
@@ -839,6 +877,12 @@ LiveInstance *PlaceLight(LiveActor &a_state, const ActorLightPlan &a_plan,
   return instance;
 }
 
+std::string FormName(RE::FormID a_form) {
+  const RE::TESForm *form = a_form ? RE::TESForm::LookupByID(a_form) : nullptr;
+  const char *name = form ? form->GetName() : nullptr;
+  return name && *name ? name : "unnamed";
+}
+
 void ReportApplied(RE::Actor &a_actor, const LiveActor &a_state,
                    const Settings &a_settings) {
   const RE::FormID actorID = a_actor.GetFormID();
@@ -846,6 +890,20 @@ void ReportApplied(RE::Actor &a_actor, const LiveActor &a_state,
     logger::info("actor {:08X} ({}): {} piece(s), {} recipe(s) applied",
                  actorID, a_actor.GetName(), a_state.pieces.size(),
                  LiveInstanceCount(a_state));
+    for (const LivePiece &piece : a_state.pieces) {
+      logger::info("  piece {:08X} ({}) enchantment {:08X} ({})", piece.armor,
+                   piece.armorName, piece.enchantment,
+                   FormName(piece.enchantment));
+    }
+    for (const LiveInstance &instance : a_state.instances) {
+      if (instance.recipe) {
+        logger::info("  recipe {} for enchantment {:08X} ({}){}{}",
+                     instance.recipe->id, instance.enchantment,
+                     FormName(instance.enchantment),
+                     instance.effectScope.empty() ? "" : " effect ",
+                     instance.effectScope);
+      }
+    }
   }
   Trace::EmitSafely(Trace::Event::kApplication,
                     {{"action", "installed"},
@@ -860,141 +918,133 @@ void Manager::ReapplyAll() {
   PostTask([this] { ChangeAndRebuildActors({}, [] {}); });
 }
 
-void Manager::RunRefresh(RE::FormID a_actorID,
-                         const std::vector<ApplicationToken> &a_tokens) {
+void Manager::SyncStale(RE::FormID a_actorID,
+                        const std::vector<ApplicationToken> &a_tokens) {
   const RE::NiPointer<RE::Actor> actor{
       RE::TESForm::LookupByID<RE::Actor>(a_actorID)};
   if (!actor) {
-    Retire(a_actorID);
+    ForgetActor(a_actorID);
   } else {
-    Refresh(actor.get());
+    SyncActor(actor.get());
   }
   ReconcileAnimationEvents(a_actorID);
   PrepareApplications(a_actorID, a_tokens);
 }
 
-void Manager::Refresh(RE::Actor *a_actor) {
+void Manager::SyncActor(RE::Actor *a_actor) {
   if (!a_actor) {
     return;
   }
   const Settings settings = GetSettings();
   const RE::FormID actorID = a_actor->GetFormID();
-  const RefreshMeter meter{actorID};
+  const SyncMeter meter{actorID};
   Trace::EmitSafely(
       Trace::Event::kApplication,
-      {{"action", "refresh_begin"}, {"actor", std::to_string(actorID)}});
-  ActorDecision decision = AdvanceActor(*a_actor, settings);
-  const bool stays = Is<Actors::Present>(decision.next.phase);
+      {{"action", "sync_begin"}, {"actor", std::to_string(actorID)}});
+  ActorDecision decision = DecideActor(*a_actor, settings);
+  if (!decision.next.state) {
+    ForgetActor(actorID);
+    (void)applications_.TakeEquipped(actorID);
+    return;
+  }
   if (decision.next.commands.empty()) {
-    if (!stays) {
-      RetireEffects(actorID);
-    }
-    const bool settling = Actors::RecheckOf(decision.next.phase, NowMS()) ==
-                          Actors::Recheck::kSettling;
-    SettlePhase(actorID, std::move(decision.next.phase));
-    if (!settling) {
+    const bool waiting = Actors::RecheckOf(decision.next.state, NowMS()) ==
+                         Actors::Recheck::kWaiting;
+    RecordState(actorID, std::move(decision.next.state));
+    if (!waiting) {
       (void)applications_.TakeEquipped(actorID);
     }
     return;
   }
-  const Actors::ActorPlan installedBefore = InstalledPlanOf(actorID);
-  RetireEffects(actorID);
-  Actors::Present *present = Get<Actors::Present>(decision.next.phase);
-  if (present) {
-    present->installed =
-        Actors::AfterCommands(installedBefore, decision.next.commands);
+  RetireActor(actorID);
+  const bool installs = Actors::AnythingInstalled(decision.next.state);
+  RecordState(actorID, std::move(decision.next.state));
+  if (installs) {
+    InstallActor(*a_actor, std::move(decision), settings);
   }
-  const bool installs = present && !present->installed.instances.empty();
-  SettlePhase(actorID, std::move(decision.next.phase));
-  if (!installs) {
-    return;
-  }
-  std::expected<LiveActor, std::string> state = LiveActorFor(
-      *a_actor, decision.facts, std::move(decision.matches), settings);
+}
+
+void Manager::InstallActor(RE::Actor &a_actor, ActorDecision a_decision,
+                           const Settings &a_settings) {
+  const RE::FormID actorID = a_actor.GetFormID();
+  PhaseTrace phases{Trace::Event::kMetrics, "actor_install", actorID};
+  std::expected<LiveActor, std::string> state = phases.Measure("live_us", [&] {
+    return LiveActorFor(a_actor, a_decision.facts,
+                        std::move(a_decision.planned), a_settings);
+  });
   if (!state) {
     logger::error("actor {:08X} ({}): {}; nothing installed", actorID,
-                  a_actor->GetName(), state.error());
-    SettlePhase(actorID, Actors::Present{});
+                  a_actor.GetName(), state.error());
+    ForgetActor(actorID);
     return;
   }
   TextureLab::GetSingleton()->InvalidatePreviews();
   if (state->matches.placements.empty()) {
-    if (settings.verboseLogging) {
+    if (a_settings.verboseLogging) {
       logger::info("actor {:08X} ({}): {} piece(s), no recipe placed", actorID,
-                   a_actor->GetName(), state->pieces.size());
+                   a_actor.GetName(), state->pieces.size());
     }
     return;
   }
-  PlaceInstances(*state, actorID, settings);
-  PlaceLightsOf(a_actor, *state, settings);
-  ReportApplied(*a_actor, *state, settings);
-  applied_[actorID] = std::move(*state);
+  phases.Measure("place_us",
+                 [&] { PlaceInstances(*state, actorID, a_settings); });
+  phases.Measure("lights_us",
+                 [&] { PlaceLightsOf(&a_actor, *state, a_settings); });
+  phases.Measure("report_us",
+                 [&] { ReportApplied(a_actor, *state, a_settings); });
+  phases.Emit();
+  live_[actorID] = std::move(*state);
 
   if (applications_.TakeEquipped(actorID)) {
     FireEquip(actorID);
   }
 }
 
-namespace {
-std::string_view PhaseName(const Actors::Phase &a_phase) {
-  return Match(
-      a_phase,
-      [](const Actors::Unloaded &) { return std::string_view{"unloaded"}; },
-      [](const Actors::Evicted &) { return std::string_view{"evicted"}; },
-      [](const Actors::Present &) { return std::string_view{"present"}; });
-}
-}
-
-Manager::ActorDecision Manager::AdvanceActor(RE::Actor &a_actor,
-                                             const Settings &a_settings) {
+Manager::ActorDecision Manager::DecideActor(RE::Actor &a_actor,
+                                            const Settings &a_settings) {
   const RE::FormID actorID = a_actor.GetFormID();
   TrackedActor &tracked = tracked_[actorID];
-  const std::span<const Recipe> recipes = LoadedRecipes();
+  std::shared_ptr<const RecipeCatalog> catalog = AppliedCatalog();
+  const std::span<const Recipe> recipes = catalog->Recipes();
   const std::uint32_t observedAt = NowMS();
   const MaterialLayout layoutBefore = materialLayout_;
-  const Metrics::Stopwatch observeWatch;
-  Actors::ActorFacts facts = ObserveActor(
-      {a_actor, a_settings, a_settings.enableShaders && emissivePathEnabled_,
-       recipes, observedAt},
-      tracked.models, materialLayout_);
-  const std::uint64_t observeUs = observeWatch.Micros();
+  PhaseTrace phases{Trace::Event::kApplication, "actor_decide", actorID};
+  Actors::ActorFacts facts = phases.Measure("observe_us", [&] {
+    return ObserveActor({a_actor, a_settings,
+                         a_settings.enableShaders && emissivePathEnabled_,
+                         recipes, observedAt},
+                        tracked.models, materialLayout_);
+  });
   NoteMaterialLayout(layoutBefore);
   if (a_settings.verboseLogging) {
     NoteArmorWithoutGeometry(facts);
   }
-  const Metrics::Stopwatch planWatch;
-  const std::optional<Actors::RecipeCatalog> catalog =
-      Actors::RecipeCatalog::Of(recipes, LoadedFingerprints());
-  if (!catalog) {
-    logger::error("actor {:08X}: {} recipes but {} fingerprints; planning "
-                  "nothing",
-                  actorID, recipes.size(), LoadedFingerprints().size());
-  }
-  Actors::PlannedActor planned =
-      catalog ? Actors::PlanActor({facts, *catalog, editor_.CurrentView()})
-              : Actors::PlannedActor{};
-  const std::uint64_t planUs = planWatch.Micros();
-  const Metrics::Stopwatch advanceWatch;
-  Actors::Advanced next = Actors::Advance(
-      {tracked.phase, facts, planned.plan, NowMS(), a_settings.evictDistance});
-  const std::uint64_t advanceUs = advanceWatch.Micros();
-  const Actors::Present *present = Get<Actors::Present>(next.phase);
-  KeepModels(tracked.models,
-             present ? Actors::AfterCommands(present->installed, next.commands)
-                     : Actors::ActorPlan{},
+  Actors::PlannedActor planned = phases.Measure("plan_us", [&] {
+    const std::vector<Actors::Claim> claims =
+        tracked.state ? Actors::LiveClaims(tracked.state->claims, facts)
+                      : std::vector<Actors::Claim>{};
+    return Actors::PlanActor({facts, *catalog, editor_.CurrentView(), claims});
+  });
+  Actors::Transition next = phases.Measure("advance_us", [&] {
+    return Actors::Advance({tracked.state, facts, planned.plan, NowMS(),
+                            a_settings.evictDistance});
+  });
+  const std::optional<Actors::ActorState> &state = next.state;
+  KeepModels(tracked.models, state ? state->installed : Actors::ActorPlan{},
              observedAt);
-  Trace::EmitSafely(
-      Trace::Event::kApplication,
-      {{"action", "actor_advance"},
-       {"actor", std::to_string(actorID)},
-       {"phase", std::string{PhaseName(next.phase)}},
-       {"pieces", std::to_string(facts.pieces.size())},
-       {"pending", std::to_string(present ? present->pending.size() : 0)},
-       {"commands", std::to_string(next.commands.size())},
-       {"observe_us", std::to_string(observeUs)},
-       {"plan_us", std::to_string(planUs)},
-       {"advance_us", std::to_string(advanceUs)}});
-  return {std::move(facts), std::move(planned.matches), std::move(next)};
+  phases.Add("record", state ? "kept" : "forgotten");
+  phases.Add("planned",
+             std::to_string(state ? state->plan.placements.size() : 0));
+  phases.Add("installed",
+             std::to_string(state ? state->installed.placements.size() : 0));
+  phases.Add("claims", std::to_string(state ? state->claims.size() : 0));
+  phases.Add("pieces", std::to_string(facts.pieces.size()));
+  phases.Add("pending", std::to_string(state ? state->pending.size() : 0));
+  phases.Add("commands", std::to_string(next.commands.size()));
+  phases.Emit();
+  return {std::move(facts),
+          {std::move(catalog), std::move(planned.matches)},
+          std::move(next)};
 }
 
 void Manager::NoteMaterialLayout(MaterialLayout a_before) {
@@ -1021,15 +1071,13 @@ void Manager::NoteArmorWithoutGeometry(const Actors::ActorFacts &a_facts) {
   }
 }
 
-void Manager::SettlePhase(RE::FormID a_actorID, Actors::Phase a_phase) {
-  const Actors::Present *present = Get<Actors::Present>(a_phase);
-  const bool holdsNothing = present && present->installed.instances.empty() &&
-                            present->pending.empty();
-  if (Is<Actors::Unloaded>(a_phase) || holdsNothing) {
+void Manager::RecordState(RE::FormID a_actorID,
+                          std::optional<Actors::ActorState> a_state) {
+  if (!a_state) {
     tracked_.erase(a_actorID);
     return;
   }
-  tracked_[a_actorID].phase = std::move(a_phase);
+  tracked_[a_actorID].state = std::move(a_state);
 }
 
 Actors::ActorPlan Manager::InstalledPlanOf(RE::FormID a_actorID) const {
@@ -1037,13 +1085,13 @@ Actors::ActorPlan Manager::InstalledPlanOf(RE::FormID a_actorID) const {
   if (tracked == tracked_.end()) {
     return {};
   }
-  const Actors::Present *present = Get<Actors::Present>(tracked->second.phase);
-  return present ? present->installed : Actors::ActorPlan{};
+  const std::optional<Actors::ActorState> &state = tracked->second.state;
+  return state ? state->installed : Actors::ActorPlan{};
 }
 
 std::expected<LiveActor, std::string>
 Manager::LiveActorFor(RE::Actor &a_actor, const Actors::ActorFacts &a_facts,
-                      ActorMatches a_matches, const Settings &a_settings) {
+                      CatalogMatches a_planned, const Settings &a_settings) {
   const auto tracked = tracked_.find(a_actor.GetFormID());
   if (tracked == tracked_.end()) {
     return std::unexpected{std::string{"the actor is not tracked"}};
@@ -1056,7 +1104,8 @@ Manager::LiveActorFor(RE::Actor &a_actor, const Actors::ActorFacts &a_facts,
   LiveActor state;
   state.actor = a_actor.GetHandle();
   state.pieces = std::move(*pieces);
-  state.matches = std::move(a_matches);
+  state.catalog = std::move(a_planned.catalog);
+  state.matches = std::move(a_planned.matches);
   if (GeometryCount(state) != state.matches.geometries.size()) {
     return std::unexpected{std::format("{} geometries found for {} matched",
                                        GeometryCount(state),
@@ -1068,7 +1117,7 @@ Manager::LiveActorFor(RE::Actor &a_actor, const Actors::ActorFacts &a_facts,
 
 void Manager::FireEquip(RE::FormID a_actorID) {
   Fire(a_actorID, EquipEvent());
-  if (const auto carried = EquipPositionEvent(applied_[a_actorID].pieces)) {
+  if (const auto carried = EquipPositionEvent(live_[a_actorID].pieces)) {
     Fire(a_actorID, *carried);
   }
 }
@@ -1092,12 +1141,11 @@ std::optional<std::size_t> Manager::InstanceFor(LiveActor &a_state,
   if (!actor || !planned || instanceIndex >= a_state.instances.size()) {
     return std::nullopt;
   }
-  const std::span<const Recipe> loaded = LoadedRecipes();
-  const std::size_t recipeIndex = IndexOf(planned->recipe);
-  if (recipeIndex >= loaded.size()) {
+  const std::shared_ptr<const Recipe> recipe =
+      SharedRecipe(a_state.catalog, planned->recipe);
+  if (!recipe) {
     return std::nullopt;
   }
-  const Recipe *recipe = &loaded[recipeIndex];
   LiveInstance instance;
   instance.recipe = recipe;
   instance.enchantment = a_enchantment;
@@ -1142,11 +1190,25 @@ void Manager::PlaceInstances(LiveActor &a_state, RE::FormID a_actorID,
       instance.signals->Tick(*instance.environment, {0.0f, 0.0f});
     }
   }
-  const std::span<const Recipe> loaded = LoadedRecipes();
+  PhaseTrace phases{Trace::Event::kMetrics, "actor_place", a_actorID};
+  ActorStacks stacks{.actor = a_actorID};
+  const std::size_t geometries = phases.Measure("geometry_us", [&] {
+    return PlaceGeometries(a_state, a_settings, stacks);
+  });
+  phases.Measure("render_us", [&] {
+    BuildActorRender(a_state, stacks, a_settings, stackWarnings_, renderPlans_);
+  });
+  phases.Add("geometries", std::to_string(geometries));
+  phases.Emit();
+}
+
+std::size_t Manager::PlaceGeometries(LiveActor &a_state,
+                                     const Settings &a_settings,
+                                     ActorStacks &a_stacks) {
+  const std::span<const Recipe> loaded = RecipesOf(a_state);
   a_state.placements.clear();
   a_state.placements.resize(a_state.matches.placements.size());
   std::size_t flat = 0;
-  ActorStacks stacks{.actor = a_actorID};
   for (std::size_t p = 0; p < a_state.pieces.size(); ++p) {
     for (std::size_t g = 0; g < a_state.pieces[p].geometries.size(); ++g) {
       const auto placement = PlanGeometryPlacement(
@@ -1155,11 +1217,11 @@ void Manager::PlaceInstances(LiveActor &a_state, RE::FormID a_actorID,
             return editor_.CurrentView().OutputShown(recipe.id, output);
           });
       PreparePlacement(a_state, placement, GeometryId{flat});
-      PlaceOnGeometry(a_state, GeometryId{flat}, a_settings, stacks);
+      PlaceOnGeometry(a_state, GeometryId{flat}, a_settings, a_stacks);
       ++flat;
     }
   }
-  BuildActorRender(a_state, stacks, a_settings, stackWarnings_, renderPlans_);
+  return flat;
 }
 
 void Manager::PlaceOnGeometry(LiveActor &a_state, GeometryId a_geometry,
@@ -1201,7 +1263,7 @@ void Manager::PlaceOnGeometry(LiveActor &a_state, GeometryId a_geometry,
 
 void Manager::PlaceLightsOf(RE::Actor *a_actor, LiveActor &a_state,
                             const Settings &a_settings) {
-  const std::span<const Recipe> loaded = LoadedRecipes();
+  const std::span<const Recipe> loaded = RecipesOf(a_state);
   const ActorLightPlan plan = PlanActorLights(
       a_state.matches, loaded,
       [this](const Recipe &recipe, std::size_t output) {
@@ -1246,33 +1308,33 @@ void Manager::PlaceLightsOf(RE::Actor *a_actor, LiveActor &a_state,
   }
 }
 
-void Manager::RetireEveryActor() {
+void Manager::ForgetEveryActor() {
   std::vector<RE::FormID> ids;
-  ids.reserve(applied_.size());
-  for (const auto &[actorID, state] : applied_) {
+  ids.reserve(live_.size());
+  for (const auto &[actorID, state] : live_) {
     ids.push_back(actorID);
   }
   for (const RE::FormID actorID : ids) {
-    Retire(actorID);
+    ForgetActor(actorID);
   }
 }
 
-void Manager::Retire(RE::FormID a_actorID) {
+void Manager::ForgetActor(RE::FormID a_actorID) {
   animations_.Stop(a_actorID);
   ForgetAnimEvents(a_actorID);
-  RetireEffects(a_actorID);
+  RetireActor(a_actorID);
   tracked_.erase(a_actorID);
 }
 
-void Manager::RetireEffects(RE::FormID a_actorID) {
+void Manager::RetireActor(RE::FormID a_actorID) {
   if (const auto tracked = tracked_.find(a_actorID);
       tracked != tracked_.end()) {
-    if (auto *present = Get<Actors::Present>(tracked->second.phase)) {
-      present->installed = {};
+    if (std::optional<Actors::ActorState> &state = tracked->second.state) {
+      state->installed = {};
     }
   }
-  const auto it = applied_.find(a_actorID);
-  if (it == applied_.end()) {
+  const auto it = live_.find(a_actorID);
+  if (it == live_.end()) {
     return;
   }
   applications_.Retire(a_actorID, it->second.applications);
@@ -1290,7 +1352,7 @@ void Manager::RetireEffects(RE::FormID a_actorID) {
                      {"actor", std::to_string(a_actorID)},
                      {"recipes", std::to_string(recipes)}});
   RetireActorEffects(it->second);
-  applied_.erase(it);
+  live_.erase(it);
   Trace::EmitSafely(Trace::Event::kRetire,
                     {{"action", "end"}, {"actor", std::to_string(a_actorID)}});
   TextureLab::GetSingleton()->InvalidatePreviews();

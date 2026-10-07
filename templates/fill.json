@@ -1,14 +1,14 @@
 {
   "format": 1,
   "name": "Fill import template",
-  "description": "The default import template for an effect shader with a fill texture.",
+  "description": "The baseline import template for an effect shader with a fill texture. A low glow lights the cavities and engraved edges of a few of the piece's texture charts, on one of its materials, in the shader's colour with a seeded hue turn, scaled by the shader's pulse, with a DarkSwirls shimmer drifting through it whose bright-edged swirls swell and thin with each swell. A swell travels out from the chest, brightens the glow it crosses and lifts a transparent shell from the recesses; the shell glows brightly with the shimmer's swirls cut out of it, in a colour between the shader's edge colour and a seeded hue. The enchantment's magnitude scales the glow, swell, shimmer, flare and how many charts light. Every seeded choice comes from rand(): the enchantment and its effect fix the hue, material, and the swell's timing, speed and width; the worn item also fixes which charts glow, always at least one.",
   "keys": [
     {
       "effectShader": "ImportedEffectShader"
     }
   ],
   "signals": {
-    "fillRaw": {
+    "shaderFill": {
       "efsh": {
         "field": "fillAlpha",
         "record": "ImportedEffectShader"
@@ -17,30 +17,12 @@
     "importFillBase": {
       "constant": 1.0
     },
-    "fillLevel": {
-      "expr": "@fillRaw / @importFillBase"
+    "shaderPulse": {
+      "expr": "@shaderFill / @importFillBase"
     },
-    "edgeRaw": {
-      "efsh": {
-        "field": "edgeAlpha",
-        "record": "ImportedEffectShader"
-      }
-    },
-    "importEdgeBase": {
-      "constant": 1.0
-    },
-    "edgeLevel": {
-      "expr": "@edgeRaw / @importEdgeBase"
-    },
-    "edgeColor": {
+    "shaderEdgeColor": {
       "efsh": {
         "field": "edgeColor",
-        "record": "ImportedEffectShader"
-      }
-    },
-    "scroll": {
-      "efsh": {
-        "field": "scroll",
         "record": "ImportedEffectShader"
       }
     },
@@ -51,148 +33,324 @@
         1.0
       ]
     },
+    "magnitudeRaw": {
+      "enchantment": "magnitude"
+    },
+    "magnitudeHalf": {
+      "constant": 50.0
+    },
+    "magnitudeLevel": {
+      "expr": "max(@magnitudeRaw, 0) / (max(@magnitudeRaw, 0) + @magnitudeHalf)"
+    },
+    "magnitudeFloor": {
+      "constant": 0.0
+    },
     "glowStrength": {
-      "constant": 1.0
+      "constant": 0.3
     },
-    "glowLevel": {
-      "expr": "@glowStrength * @fillLevel"
+    "glowMagnitudeWeight": {
+      "constant": 9.0
     },
-    "sheenScale": {
-      "constant": 0.5
+    "glowMagnitude": {
+      "expr": "max(@magnitudeFloor, 1 + @glowMagnitudeWeight * (2 * @magnitudeLevel - 1))"
     },
-    "sheenWeight": {
-      "expr": "clamp(@edgeLevel * @sheenScale, 0, 1)"
+    "glowIntensity": {
+      "expr": "@glowStrength * clamp(@shaderPulse, 0, 2) * @glowMagnitude"
     },
-    "sheenPhase": {
-      "constant": 0.5
-    },
-    "sheenScroll": {
-      "expr": "@scroll + @sheenPhase"
-    },
-    "shimmerScale": {
+    "glowRest": {
       "constant": 0.1
     },
-    "heightScale": {
-      "expr": "@shimmerScale * clamp(@fillLevel, 0, 2)"
+    "glowHueVariation": {
+      "constant": 0.05
     },
-    "shimmerPhase": {
+    "glowHueTurn": {
+      "expr": "lerp(-@glowHueVariation, @glowHueVariation, rand())"
+    },
+    "glowColor": {
+      "expr": "hueShift(@importHue, @glowHueTurn)"
+    },
+    "recessLow": {
+      "constant": 0.55
+    },
+    "recessHigh": {
+      "constant": 0.9
+    },
+    "engravingLow": {
       "constant": 0.25
     },
-    "shimmerScroll": {
-      "expr": "@scroll + @shimmerPhase"
+    "engravingHigh": {
+      "constant": 0.6
     },
-    "glossBoost": {
+    "swellMagnitudeWeight": {
+      "constant": 0.8
+    },
+    "swellMagnitude": {
+      "expr": "max(@magnitudeFloor, 1 + @swellMagnitudeWeight * (2 * @magnitudeLevel - 1))"
+    },
+    "swellPeriodBase": {
+      "constant": 7.0
+    },
+    "swellPeriodVariation": {
       "constant": 0.25
     },
-    "glossAmount": {
-      "expr": "@glossBoost * saturate(@fillLevel)"
+    "swellPeriod": {
+      "expr": "@swellPeriodBase * lerp(1 - @swellPeriodVariation, 1 + @swellPeriodVariation, rand()) / @swellMagnitude"
     },
-    "lightScale": {
-      "constant": 0.125
+    "swellOffset": {
+      "expr": "rand()"
     },
-    "lightLevel": {
-      "expr": "@lightScale * clamp(@fillLevel, 0, 2)"
+    "swellCycle": {
+      "expr": "frac(time / @swellPeriod + @swellOffset)"
     },
-    "shellAlpha": {
+    "swellPhase": {
+      "expr": "@swellCycle - 0.5"
+    },
+    "swellStart": {
+      "trigger": {
+        "when": "@swellPhase",
+        "lifetime": "@swellLifetime",
+        "max": 2,
+        "anchor": {
+          "node": "NPC Spine2 [Spn2]"
+        }
+      }
+    },
+    "swellSpeedBase": {
+      "constant": 30.0
+    },
+    "swellSpeedVariation": {
+      "constant": 0.25
+    },
+    "swellSpeed": {
+      "expr": "@swellSpeedBase * lerp(1 - @swellSpeedVariation, 1 + @swellSpeedVariation, rand()) * @swellMagnitude"
+    },
+    "swellWidthBase": {
+      "constant": 30.0
+    },
+    "swellWidthVariation": {
+      "constant": 0.25
+    },
+    "swellWidth": {
+      "expr": "@swellWidthBase * lerp(1 - @swellWidthVariation, 1 + @swellWidthVariation, rand()) * @swellMagnitude"
+    },
+    "swellLifetime": {
+      "constant": 5.0
+    },
+    "swellFade": {
+      "constant": 1.0
+    },
+    "swellSharpness": {
+      "constant": 3.0
+    },
+    "swellColor": {
+      "expr": "pow(@glowColor, @swellSharpness)"
+    },
+    "swellRise": {
+      "expr": "1 - @glowRest"
+    },
+    "flareMagnitudeWeight": {
+      "constant": 12.0
+    },
+    "flareMagnitude": {
+      "expr": "max(@magnitudeFloor, 1 + @flareMagnitudeWeight * (2 * @magnitudeLevel - 1))"
+    },
+    "flareOpacity": {
+      "constant": 0.104
+    },
+    "flareLift": {
       "constant": 0.5
     },
-    "shellOpacity": {
-      "expr": "saturate(@shellAlpha * clamp(@fillLevel, 0, 2))"
+    "flareDepth": {
+      "constant": -1.0
     },
-    "inflatePercent": {
+    "flareInflate": {
+      "constant": 0.05
+    },
+    "flareOpacityScaled": {
+      "expr": "saturate(@flareOpacity * @flareMagnitude)"
+    },
+    "flareLiftScaled": {
+      "expr": "@flareLift * @flareMagnitude"
+    },
+    "flareInflateAxes": {
+      "constant": [
+        1.0,
+        1.0,
+        0.0
+      ]
+    },
+    "flareInflation": {
+      "expr": "@flareInflateAxes * @flareInflate * @flareMagnitude"
+    },
+    "flareTint": {
+      "constant": 0.5
+    },
+    "flareHue": {
+      "expr": "hue(rand())"
+    },
+    "flareColor": {
+      "expr": "lerp(@shaderEdgeColor, @flareHue, @flareTint)"
+    },
+    "shimmerStrength": {
       "constant": 1.0
     },
-    "inflatePulse": {
+    "shimmerMagnitudeWeight": {
+      "constant": 0.5
+    },
+    "shimmerMagnitude": {
+      "expr": "max(@magnitudeFloor, 1 + @shimmerMagnitudeWeight * (2 * @magnitudeLevel - 1))"
+    },
+    "shimmerStrengthScaled": {
+      "expr": "@shimmerStrength * @shimmerMagnitude"
+    },
+    "shellShimmerOpacity": {
+      "constant": 0.6
+    },
+    "shellShimmerStrength": {
       "constant": 1.0
     },
-    "inflate": {
-      "expr": "(@inflatePercent + @inflatePulse * clamp(@fillLevel, 0, 2)) * 0.01"
+    "shellShimmerCut": {
+      "constant": 1.0
+    },
+    "shellGlowBoost": {
+      "constant": 9.0
+    },
+    "shellGlowIntensity": {
+      "expr": "@glowIntensity * @shellGlowBoost"
+    },
+    "flareEmission": {
+      "expr": "1 / max(@shellGlowBoost, 0.001)"
+    },
+    "shimmerSize": {
+      "constant": 1.0
+    },
+    "shimmerSizeMin": {
+      "constant": 0.2
+    },
+    "shimmerTileA": {
+      "expr": "[3, 3] / (@shimmerSize * lerp(@shimmerSizeMin, 1, rand()))"
+    },
+    "shimmerTileB": {
+      "expr": "[5, 5] / (@shimmerSize * lerp(@shimmerSizeMin, 1, rand()))"
+    },
+    "shimmerSpeedBase": {
+      "constant": 1.0
+    },
+    "shimmerSpeedVariation": {
+      "constant": 0.5
+    },
+    "shimmerSpeed": {
+      "expr": "@shimmerSpeedBase * lerp(1 - @shimmerSpeedVariation, 1 + @shimmerSpeedVariation, rand())"
+    },
+    "shimmerFlowA": {
+      "expr": "time * [0.03, -0.02] * @shimmerSpeed"
+    },
+    "shimmerFlowB": {
+      "expr": "time * [-0.01, 0.025] * @shimmerSpeed"
+    },
+    "shimmerThresholdBase": {
+      "constant": 0.0
+    },
+    "shimmerThresholdSwing": {
+      "constant": 0.1
+    },
+    "shimmerPulseOffset": {
+      "constant": 0.5
+    },
+    "shimmerThreshold": {
+      "expr": "@shimmerThresholdBase + @shimmerThresholdSwing * (1 - abs(frac(@swellCycle + @shimmerPulseOffset) * 2 - 1))"
+    },
+    "shimmerFalloff": {
+      "constant": 1.0
+    },
+    "shimmerFringeGain": {
+      "constant": 8.0
+    },
+    "chartPoolMax": {
+      "constant": 13.0
+    },
+    "chartMaxLit": {
+      "constant": 3.0
+    },
+    "chartMagnitudeWeight": {
+      "constant": 0.33
+    },
+    "chartMagnitude": {
+      "expr": "max(@magnitudeFloor, 1 + @chartMagnitudeWeight * (2 * @magnitudeLevel - 1))"
+    },
+    "chartMaxLitScaled": {
+      "expr": "max(1, @chartMaxLit * @chartMagnitude)"
+    },
+    "seedMaterial": {
+      "expr": "rand()"
     }
   },
-  "curves": {
-    "crisp": "(x - mean) * 3 + 0.5",
-    "punchy": "(x - mean) * 2 + 0.5"
-  },
   "sources": {
-    "fill": {
-      "image": {
-        "path": "$fillTexture",
-        "scroll": "@scroll",
-        "tile": [
-          1.0,
-          1.0
-        ]
-      }
-    },
-    "sheenField": {
-      "image": {
-        "path": "$fillTexture",
-        "channel": "luma",
-        "scroll": "@sheenScroll",
-        "tile": [
-          1.0,
-          1.0
-        ],
-        "mirror": [
-          false,
-          true
-        ]
-      }
-    },
-    "shimmerField": {
-      "image": {
-        "path": "$fillTexture",
-        "channel": "luma",
-        "scroll": "@shimmerScroll",
-        "tile": [
-          1.0,
-          1.0
-        ],
-        "transpose": true,
-        "mip": 2.0
-      }
-    },
-    "glossField": {
-      "image": {
-        "path": "$fillTexture",
-        "channel": "luma",
-        "scroll": "@scroll",
-        "tile": [
-          1.0,
-          1.0
-        ],
-        "mip": 1.0
-      }
-    },
     "relief": {
       "material": "relief"
     },
-    "metallic": {
-      "material": "metallic"
+    "slope": {
+      "material": "normalSlope"
+    },
+    "chartId": {
+      "bake": "chartId"
+    },
+    "chartCount": {
+      "piece": "chartCount"
+    },
+    "materialPick": {
+      "materialClusters": {
+        "pick": "@seedMaterial"
+      }
+    },
+    "swellWave": {
+      "ripple": {
+        "trigger": "@swellStart",
+        "speed": "@swellSpeed",
+        "width": "@swellWidth",
+        "decay": "@swellFade"
+      }
+    },
+    "swirlA": {
+      "image": {
+        "path": "Effects\\DarkSwirls.dds",
+        "channel": "luma",
+        "space": "tiled",
+        "tile": "@shimmerTileA",
+        "scroll": "@shimmerFlowA"
+      }
+    },
+    "swirlB": {
+      "image": {
+        "path": "Effects\\DarkSwirls.dds",
+        "channel": "luma",
+        "space": "tiled",
+        "tile": "@shimmerTileB",
+        "scroll": "@shimmerFlowB",
+        "transpose": true
+      }
     }
   },
   "masks": {
-    "metal": "@metallic"
+    "recess": "smoothstep(@recessLow, @recessHigh, 1 - @relief)",
+    "engraving": "smoothstep(@engravingLow, @engravingHigh, @slope)",
+    "cavities": "saturate(max(@recess, @engraving))",
+    "chartIndex": "floor(@chartId * 255 + 0.5)",
+    "chartChoices": "min(@chartCount, @chartPoolMax)",
+    "chartLit": "randrange(1, min(@chartMaxLitScaled, @chartChoices) + 1)",
+    "chartPick": "shuffle(@chartIndex, @chartChoices, rand()) < @chartLit",
+    "swellGlow": "pow(@swellWave, @swellSharpness)",
+    "glowArea": "@cavities * @chartPick * @materialPick",
+    "flareArea": "@swellWave * @recess * @chartPick * @materialPick",
+    "shimmer": "min(1 / smoothstep(@shimmerThreshold, @shimmerFalloff, @swirlA * @swirlB), @shimmerFringeGain)",
+    "shellShimmerAlpha": "saturate(@shimmer * @glowArea)"
   },
   "outputs": [
     {
-      "target": "shell",
+      "target": "material",
       "slot": "emissive",
-      "strength": "@glowLevel",
-      "stack": [
-        {
-          "source": "@fill",
-          "opacity": 1.0,
-          "color": "@importHue",
-          "mask": "@metal"
-        }
-      ]
-    },
-    {
-      "target": "shell",
-      "slot": "fuzz",
-      "color": "@edgeColor",
-      "weight": "@sheenWeight",
+      "strength": "@glowIntensity",
+      "resolution": "half",
       "stack": [
         {
           "source": [
@@ -200,66 +358,153 @@
             1.0,
             1.0
           ],
-          "opacity": 1.0
+          "opacity": "@glowRest",
+          "color": "@glowColor",
+          "mask": "@glowArea"
         },
         {
-          "source": "@sheenField",
+          "source": "@swellGlow",
+          "blend": "add",
+          "opacity": "@swellRise",
+          "color": "@swellColor",
+          "mask": "@glowArea"
+        },
+        {
+          "source": "@shimmer",
+          "blend": "add",
+          "opacity": "@shimmerStrengthScaled",
+          "color": "@glowColor",
+          "mask": "@glowArea"
+        }
+      ]
+    },
+    {
+      "target": "shell",
+      "slot": "diffuse",
+      "stack": [
+        {
+          "source": [
+            0.0,
+            0.0,
+            0.0
+          ],
           "opacity": 1.0,
           "channels": "a"
+        },
+        {
+          "source": "@flareArea",
+          "opacity": "@flareOpacityScaled",
+          "color": [
+            1.0,
+            1.0,
+            1.0
+          ],
+          "channels": "a"
+        },
+        {
+          "source": [
+            1.0,
+            1.0,
+            1.0
+          ],
+          "opacity": 1.0,
+          "color": "@flareColor",
+          "mask": "@flareArea",
+          "channels": "rgb"
+        },
+        {
+          "source": "@shellShimmerAlpha",
+          "blend": "screen",
+          "opacity": "@shellShimmerOpacity",
+          "color": [
+            1.0,
+            1.0,
+            1.0
+          ],
+          "channels": "a"
+        },
+        {
+          "source": [
+            1.0,
+            1.0,
+            1.0
+          ],
+          "opacity": 1.0,
+          "color": "@glowColor",
+          "mask": "@shellShimmerAlpha",
+          "channels": "rgb"
         }
       ]
     },
     {
-      "target": "material",
-      "slot": "height",
-      "scale": "@heightScale",
+      "target": "shell",
+      "slot": "emissive",
+      "strength": "@shellGlowIntensity",
+      "resolution": "half",
       "stack": [
         {
-          "source": "@relief",
-          "curve": "@crisp",
+          "source": [
+            0.0,
+            0.0,
+            0.0
+          ],
           "opacity": 1.0
         },
         {
-          "source": "@shimmerField",
+          "source": "@flareArea",
           "blend": "add",
-          "opacity": 0.35
+          "opacity": "@flareEmission",
+          "color": "@flareColor"
+        },
+        {
+          "source": [
+            1.0,
+            1.0,
+            1.0
+          ],
+          "blend": "add",
+          "opacity": "@shellShimmerStrength",
+          "color": "@glowColor",
+          "mask": "@shimmer"
+        },
+        {
+          "source": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "blend": "multiply",
+          "opacity": "@shellShimmerCut",
+          "mask": "@shimmer"
         }
       ]
     },
     {
-      "target": "material",
-      "slot": "rmaos",
+      "target": "shell",
+      "slot": "height",
+      "scale": "@flareDepth",
+      "resolution": "half",
       "stack": [
         {
-          "source": "@glossField",
-          "curve": "@punchy",
-          "blend": "subtract",
-          "opacity": "@glossAmount",
-          "channels": "r"
+          "source": [
+            0.5,
+            0.5,
+            0.5
+          ],
+          "opacity": 1.0
+        },
+        {
+          "source": "@flareArea",
+          "blend": "add",
+          "opacity": "@flareLiftScaled"
         }
       ]
-    },
-    {
-      "target": "light",
-      "bones": {
-        "skinned": {
-          "max": 2
-        }
-      },
-      "color": "@importHue",
-      "intensity": "@lightLevel",
-      "size": 1.4,
-      "cutoff": 0.05
     }
   ],
   "shell": {
-    "opacity": "@shellOpacity",
+    "blend": "alpha",
     "pose": {
-      "inflate": [
-        0.0,
-        "@inflate",
-        "@inflate"
-      ]
+      "inflate": "@flareInflation"
     }
   }
 }

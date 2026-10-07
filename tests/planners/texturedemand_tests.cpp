@@ -33,6 +33,12 @@ auto Identity(const RecipeGraph &graph, std::string_view name,
 }
 }
 int main() {
+  Check(PositionBakeIdentity(ValueIdentity{"mesh:1"}) !=
+            PositionBakeIdentity(ValueIdentity{"mesh:2"}),
+        "two meshes give two position bake identities");
+  Check(PositionBakeIdentity(ValueIdentity{"a|b"}) !=
+            PositionBakeIdentity(ValueIdentity{"a"}),
+        "a separator inside a mesh identity cannot forge another identity");
   Recipe first;
   first.id = "first";
   first.signals = {{"gain", ConstantSignal{0.5f}}};
@@ -126,6 +132,50 @@ int main() {
         "distinct resolved origin bindings remain distinct");
   Check(DistanceBakeIdentity({1, 2, 3}) != DistanceBakeIdentity({1, 2, 4}),
         "distance cache identifies resolved position");
+  Recipe item;
+  item.sources = {{"item", PieceSource{PieceField::kItemHash}}};
+  item.masks = {{"partCount", "1 + floor(@item * 7)"}};
+  const auto itemGraph = RecipeGraph::Compile(item);
+  const std::optional<std::size_t> itemNode = itemGraph.FindNodeIndex("item");
+  const RecipeNode *itemSource =
+      itemNode ? itemGraph.NodeAt(*itemNode) : nullptr;
+  const auto *itemInput =
+      itemSource ? Get<ExternalInput>(itemSource->kind) : nullptr;
+  Check(itemInput && Is<ItemHashInput>(itemInput->source),
+        "an itemHash bake lowers to the per-geometry item hash input");
+  Check(itemNode && !itemGraph.SampleDependent({*itemNode, 0}),
+        "the item hash is uniform over the piece");
+  Recipe counted;
+  counted.sources = {{"charts", PieceSource{PieceField::kChartCount}}};
+  const auto countedGraph = RecipeGraph::Compile(counted);
+  const std::optional<std::size_t> chartsNode =
+      countedGraph.FindNodeIndex("charts");
+  const RecipeNode *chartsSource =
+      chartsNode ? countedGraph.NodeAt(*chartsNode) : nullptr;
+  const auto *chartsInput =
+      chartsSource ? Get<ExternalInput>(chartsSource->kind) : nullptr;
+  Check(chartsInput && Is<ChartCountInput>(chartsInput->source) &&
+            !countedGraph.SampleDependent({*chartsNode, 0}),
+        "a chartCount bake lowers to a uniform per-piece input");
+  const std::optional<std::size_t> countNode =
+      itemGraph.FindNodeIndex("partCount");
+  Check(countNode && !std::ranges::contains(itemGraph.SignalEvaluationOrder(),
+                                            *countNode),
+        "expressions over the item hash wait for the geometry binding");
+  const auto ItemBindings = [](std::string a_hash) {
+    ValueBindings bindings = Bindings();
+    bindings.external = [a_hash](const ExternalSource &source)
+        -> std::expected<std::string, std::string> {
+      return Is<ItemHashInput>(source) ? a_hash : std::string{"instance"};
+    };
+    return bindings;
+  };
+  Check(Identity(itemGraph, "partCount", ItemBindings("item:1")) !=
+            Identity(itemGraph, "partCount", ItemBindings("item:2")),
+        "pieces with different items keep distinct computations");
+  Check(Identity(itemGraph, "partCount", ItemBindings("item:1")) ==
+            Identity(itemGraph, "partCount", ItemBindings("item:1")),
+        "copies of one item share a computation");
   Recipe bad;
   bad.masks = {{"broken", "@missing"}};
   const auto disabled = RecipeGraph::Compile(bad);

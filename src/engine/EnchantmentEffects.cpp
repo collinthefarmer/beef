@@ -39,8 +39,13 @@ const RE::Effect *SelectedEffect(const RE::MagicItem &a_item,
 float EnchantmentValueFor(const RE::MagicItem *a_item,
                           const std::optional<RecipeKey> &a_effectKey,
                           EnchantmentField a_field) {
-  const RE::Effect *effect =
-      a_item ? SelectedEffect(*a_item, a_effectKey) : nullptr;
+  if (!a_item) {
+    return 0.0f;
+  }
+  if (a_field == EnchantmentField::kIdHash) {
+    return UnitHash(FormKeyFor(*a_item).ToString());
+  }
+  const RE::Effect *effect = SelectedEffect(*a_item, a_effectKey);
   if (!effect) {
     return 0.0f;
   }
@@ -49,6 +54,12 @@ float EnchantmentValueFor(const RE::MagicItem *a_item,
     return effect->GetMagnitude();
   case EnchantmentField::kCost:
     return effect->cost;
+  case EnchantmentField::kEffectHash:
+    return effect->baseEffect
+               ? UnitHash(FormKeyFor(*effect->baseEffect).ToString())
+               : 0.0f;
+  case EnchantmentField::kIdHash:
+    break;
   }
   return 0.0f;
 }

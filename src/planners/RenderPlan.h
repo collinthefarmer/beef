@@ -89,6 +89,8 @@ struct ClusterMaterialStep {
 struct DrawClustersStep {
   RenderValueRef material, analysis;
   TextureRequirements requirements;
+  std::optional<RenderValueRef> pick;
+  std::optional<RenderValueRef> areaBias;
   [[nodiscard]] bool operator==(const DrawClustersStep &) const = default;
 };
 struct SampleFieldStep {

@@ -8,11 +8,12 @@
 #include "engine/ActorObservation.h"
 #include "engine/AnimationSubscriptions.h"
 #include "engine/ApplicationService.h"
+#include "engine/IdleCamera.h"
 #include "engine/InstanceTime.h"
 #include "engine/LiveActor.h"
 #include "engine/RecipeEditor.h"
-#include "engine/RenderPlanCache.h"
 #include "planners/ActorPlanning.h"
+#include "planners/RenderPlanCache.h"
 #include "recipe/Recipe.h"
 #include "regression/Run.h"
 #include "render/TextureRef.h"
@@ -41,7 +42,7 @@ struct RegressionWearer {
   RE::FormID armor = 0;
 };
 
-struct RegressionActorFacts {
+struct WearerFacts {
   bool live = false;
   bool inView = true;
   bool awaitingView = false;
@@ -54,9 +55,9 @@ class Manager {
 public:
   [[nodiscard]] static Manager *GetSingleton();
 
-  void QueueRefresh(RE::FormID a_actorID);
-  void QueueRefresh(RE::Actor *a_actor);
-  void QueueRetire(RE::FormID a_actorID);
+  void MarkStale(RE::FormID a_actorID);
+  void MarkStale(RE::Actor *a_actor);
+  void QueueForget(RE::FormID a_actorID);
   void QueueEquipFinalize(RE::FormID a_actorID);
   void QueueLoadedActorRefreshes();
 
@@ -76,7 +77,7 @@ public:
   void EndSoloInEditor();
   void ShowRecipeSetInEditor(std::vector<std::string> a_recipes);
   void ObserveRegression();
-  [[nodiscard]] std::vector<RegressionActorFacts>
+  [[nodiscard]] std::vector<WearerFacts>
   RegressionActors(std::span<const RegressionWearer> a_wearers) const;
   [[nodiscard]] Regression::Activity
   RegressionActivity(std::uint64_t a_edit, std::uint64_t a_gesture,
@@ -99,6 +100,8 @@ public:
   void QueueBroadcast(EventRecord a_event);
 
   void SetEmissivePathEnabled(bool a_enabled);
+  void HoldIdleCameraForMenu();
+  void ReleaseIdleCameraForMenu();
 
   [[nodiscard]] RecipeEditor &Editor() noexcept;
 
@@ -130,33 +133,43 @@ private:
 
   Manager();
   void PostTask(std::function<void()> a_task);
+  [[nodiscard]] std::uint32_t EditorClockMS() const;
 
-  void RunRefresh(RE::FormID a_actorID,
-                  const std::vector<ApplicationToken> &a_tokens);
-  void Refresh(RE::Actor *a_actor);
+  void SyncStale(RE::FormID a_actorID,
+                 const std::vector<ApplicationToken> &a_tokens);
+  void SyncActor(RE::Actor *a_actor);
+  struct CatalogMatches {
+    std::shared_ptr<const RecipeCatalog> catalog;
+    ActorMatches matches;
+  };
   struct ActorDecision {
     Actors::ActorFacts facts;
-    ActorMatches matches;
-    Actors::Advanced next;
+    CatalogMatches planned;
+    Actors::Transition next;
   };
-  [[nodiscard]] ActorDecision AdvanceActor(RE::Actor &a_actor,
-                                           const Settings &a_settings);
+  void InstallActor(RE::Actor &a_actor, ActorDecision a_decision,
+                    const Settings &a_settings);
+  [[nodiscard]] ActorDecision DecideActor(RE::Actor &a_actor,
+                                          const Settings &a_settings);
   void NoteMaterialLayout(MaterialLayout a_before);
   void NoteArmorWithoutGeometry(const Actors::ActorFacts &a_facts);
-  void SettlePhase(RE::FormID a_actorID, Actors::Phase a_phase);
+  void RecordState(RE::FormID a_actorID,
+                   std::optional<Actors::ActorState> a_state);
   [[nodiscard]] Actors::ActorPlan InstalledPlanOf(RE::FormID a_actorID) const;
-  void QueueSettlingActors(std::uint32_t a_nowMS);
-  void QueueSecondChecks(std::uint32_t a_nowMS, float a_evictDistance);
+  void MarkWaitingStale(std::uint32_t a_nowMS);
+  void MarkRecheckStale(std::uint32_t a_nowMS, float a_evictDistance);
   [[nodiscard]] std::expected<LiveActor, std::string>
   LiveActorFor(RE::Actor &a_actor, const Actors::ActorFacts &a_facts,
-               ActorMatches a_matches, const Settings &a_settings);
-  void RetireEffects(RE::FormID a_actorID);
-  void Retire(RE::FormID a_actorID);
-  void RetireEveryActor();
+               CatalogMatches a_planned, const Settings &a_settings);
+  void RetireActor(RE::FormID a_actorID);
+  void ForgetActor(RE::FormID a_actorID);
+  void ForgetEveryActor();
   void ChangeAndRebuildActors(std::string a_reportRecipe,
                               const std::function<void()> &a_action);
   [[nodiscard]] std::vector<RE::FormID> LoadedActorIDs() const;
   [[nodiscard]] std::vector<RE::FormID> ApplicationActors() const;
+  [[nodiscard]] std::vector<RE::FormID>
+  ActorsApplying(std::string_view a_recipeID) const;
   void PrepareApplications(RE::FormID a_actor,
                            const std::vector<ApplicationToken> &a_tokens);
   void FinishApplications(RE::FormID a_actor, LiveActor &a_state);
@@ -173,6 +186,9 @@ private:
               RE::FormID a_enchantment, const Settings &a_settings);
   void PlaceInstances(LiveActor &a_state, RE::FormID a_actorID,
                       const Settings &a_settings);
+  [[nodiscard]] std::size_t PlaceGeometries(LiveActor &a_state,
+                                            const Settings &a_settings,
+                                            ActorStacks &a_stacks);
   void PlaceOnGeometry(LiveActor &a_state, GeometryId a_geometry,
                        const Settings &a_settings, ActorStacks &a_stacks);
   void PlaceLightsOf(RE::Actor *a_actor, LiveActor &a_state,
@@ -180,7 +196,7 @@ private:
 
   void Tick(std::uint32_t a_nowMS, const Settings &a_settings);
   void TickInstance(LiveInstance &a_instance, float a_time, float a_delta);
-  void DropLostGeometries(LiveActor &a_state);
+  void ClaimLostGeometries(RE::FormID a_actorID, LiveActor &a_state);
   void RenderGeometry(LiveActor &a_state, LiveGeometry &a_bound, bool a_hidden,
                       bool a_inspected);
   [[nodiscard]] std::optional<RE::FormID>
@@ -190,7 +206,6 @@ private:
   void UpdateLights(LiveActor &a_state,
                     const std::vector<bool> &a_instanceHidden);
   void FireDueFinalizes();
-  [[nodiscard]] static bool Alive(const LiveActor &a_state) noexcept;
 
   [[nodiscard]] Snapshot
   BuildSnapshot(const std::optional<Studio::PieceRef> &a_request,
@@ -206,7 +221,7 @@ private:
   ApplicationService applications_;
   AnimationSubscriptions animations_;
 
-  std::unordered_map<RE::FormID, LiveActor> applied_;
+  std::unordered_map<RE::FormID, LiveActor> live_;
   RecipeEditor editor_{*this};
   std::unordered_set<RE::FormID> loggedNonPBRArmor_;
   WarningHistory stackWarnings_;
@@ -215,16 +230,17 @@ private:
   RenderPlanCache renderPlans_;
 
   struct TrackedActor {
-    Actors::Phase phase = Actors::Unloaded{};
+    std::optional<Actors::ActorState> state;
     ModelTable models;
   };
   std::unordered_map<RE::FormID, TrackedActor> tracked_;
-  std::uint32_t lastSettlingCheckMS_ = 0;
+  std::optional<IdleCameraHold> menuIdleHold_;
+  std::uint32_t lastWaitingCheckMS_ = 0;
   std::uint64_t regressionPaintSession_ = 0;
   std::uint32_t lastTickMS_ = 0;
   std::uint32_t lastMetricsMS_ = 0;
   std::uint32_t lastSweepMS_ = 0;
-  std::uint32_t lastSecondCheckMS_ = 0;
+  std::uint32_t lastRecheckMS_ = 0;
   bool emissivePathEnabled_ = false;
   MaterialLayout materialLayout_ = MaterialLayout::kUnchecked;
   bool frozenLastTick_ = false;

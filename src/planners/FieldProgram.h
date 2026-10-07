@@ -52,7 +52,12 @@ enum class ProgramOpcode : std::uint8_t {
   kCross = 41,
   kNormalize = 42,
   kQuantize = 43,
-  kSplat = 44
+  kSplat = 44,
+  kShuffle = 45,
+  kHash = 46,
+  kRandRange = 47,
+  kHue = 48,
+  kHueShift = 49
 };
 struct ProgramInstruction {
   ProgramOpcode opcode;

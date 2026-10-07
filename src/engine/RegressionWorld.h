@@ -36,6 +36,7 @@ struct RunWorld {
   std::optional<RE::NiPoint3> playerBeforeArena;
   std::optional<float> vanityDelayBeforeRun;
   std::vector<ArmorTag> tags;
+  std::optional<Regression::Dress> taggedFor;
   std::optional<ArmorTag> gauntletTag;
 };
 

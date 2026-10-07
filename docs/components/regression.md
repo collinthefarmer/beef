@@ -39,7 +39,7 @@ role or an item into an array index, clamped to the array's size.
 | `Item` | `kFixture`, `kPlainCuirass` | The demo cuirass and the control's plain cuirass. |
 | `Body` | `kMannequin`, `kIdleNpc`, `kFighter` | What a crowd actor is. Mannequins hold still, idle NPCs animate but never ready a weapon, and fighters fight. |
 | `Spot` | `kRing`, `kBehind` | Where a crowd stands: in a ring 300 units around the player, or in a row 1200 units behind the player, outside the view. |
-| `Dress` | `kDemoCuirass`, `kVanillaCuirasses` | What a crowd wears: the demo cuirass, or six vanilla cuirasses tagged to match Arcane Circuit for the life of the crowd. |
+| `Dress` | `kDemoCuirass`, `kVanillaCuirasses`, `kEnchantedCuirasses` | What a crowd wears: the demo cuirass; six vanilla cuirasses tagged to match Arcane Circuit for the life of the crowd; or the same six cuirasses under vanilla constant-effect enchantments whose effect shader a loaded recipe covers, so the imported recipes match (`EnchantmentsCoveredByImports`, up to six distinct shaders). |
 | `Camera` | `kFirstPerson`, `kThirdPerson` | The camera a `SetCamera` or `HoldCamera` step asks for. The observation holds an optional `Camera`: no value means any other camera state, such as the idle camera or a transition. The observation's `idleOrbit` is true while the idle camera (state 1) runs. |
 | `QueuedWork` | `kNothing`, `kApply`, `kEdit` | The work a `LoadDuring` step queues in the same frame as the load. |
 | `Session` | `kGesture`, `kPaint` | The studio session a `BeginSession` step opens. |
@@ -69,6 +69,7 @@ name. `StepLabel` gives a step's text for its result line.
 |---|---|
 | `Solo`, `RestoreSolo` | Solo the recipe under test in the studio, and restore the isolation and recipe set from before. |
 | `ShowRecipes` | Let only the named recipes match until the cleanup restores the view. |
+| `ShowAllRecipes` | Let every loaded recipe match until the cleanup restores the view. |
 | `Spawn`, `Despawn`, `Disable`, `Enable` | Change whether a spawned role is in the world. |
 | `Equip`, `Unequip`, `Remove` | Add and equip, unequip, or remove an item on a role. |
 | `Apply`, `Retire` | Submit an apply or retire request for a role. |
@@ -101,7 +102,7 @@ The catalog holds `lifecycle`, `equip-cycle`, `unequip-one`, `camera`, `cull`, `
 `unload`, `load-idle`, `load-apply`, `load-edit`, `load-gesture`,
 `load-paint`, `studio-save`, `studio-reload`, `soak`, `soak-hour`,
 `soak-stack`, `soak-ward`, `soak-frost`, `soak-large`, `soak-waves`,
-`soak-churn`, `soak-vanilla`, `soak-idle`, `soak-fight`, `soak-orbit` and `soak-fight-orbit`.
+`soak-churn`, `soak-vanilla`, `soak-enchanted`, `soak-idle`, `soak-fight`, `soak-orbit` and `soak-fight-orbit`.
 
 ### The observation (`Observation.h`)
 

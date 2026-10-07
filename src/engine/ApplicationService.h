@@ -30,7 +30,7 @@ public:
   ApplicationService &operator=(const ApplicationService &) = delete;
 
   void Post(SessionQueue::Task a_task);
-  bool Refresh(std::uint32_t a_actorID);
+  bool MarkStale(std::uint32_t a_actorID);
   void Equip(std::uint32_t a_actorID, std::uint32_t a_nowMS);
   void FinalizeDue(std::uint32_t a_nowMS);
   [[nodiscard]] bool TakeEquipped(std::uint32_t a_actorID);
@@ -41,6 +41,8 @@ public:
                                        std::vector<std::uint32_t> a_actors);
   [[nodiscard]] std::vector<std::uint32_t>
   ActorsFor(std::string_view a_recipeID) const;
+  [[nodiscard]] std::vector<std::uint32_t>
+  FailedActorsFor(std::string_view a_recipeID) const;
   [[nodiscard]] std::vector<ApplicationToken>
   PendingFor(std::uint32_t a_actorID) const;
   void Report(const ApplicationToken &a_token, std::uint32_t a_actorID,

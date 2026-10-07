@@ -1,8 +1,11 @@
 // GPL-3.0-only with the additional permission in COPYING.md.
 #include "recipe/Expression.h"
 
+#include "recipe/ExpressionMath.h"
+
 #include <algorithm>
 #include <array>
+#include <bit>
 #include <cctype>
 #include <charconv>
 #include <cmath>
@@ -13,33 +16,37 @@ namespace BetterEnchantmentEffects {
 namespace {
 constexpr float kEpsilon = 1e-6f;
 
-struct Function {
-  std::string_view name;
-  Program::Op op;
-  int arity;
-};
-constexpr std::array<Function, 21> kFunctions{{
-    {"abs", Program::Op::kAbs, 1},
-    {"min", Program::Op::kMin, 2},
-    {"max", Program::Op::kMax, 2},
-    {"clamp", Program::Op::kClamp, 3},
-    {"saturate", Program::Op::kSaturate, 1},
-    {"floor", Program::Op::kFloor, 1},
-    {"ceil", Program::Op::kCeil, 1},
-    {"frac", Program::Op::kFrac, 1},
-    {"sqrt", Program::Op::kSqrt, 1},
-    {"pow", Program::Op::kPow, 2},
-    {"sin", Program::Op::kSin, 1},
-    {"cos", Program::Op::kCos, 1},
-    {"step", Program::Op::kStep, 2},
-    {"smoothstep", Program::Op::kSmoothstep, 3},
-    {"lerp", Program::Op::kLerp, 3},
-    {"if", Program::Op::kIf, 3},
-    {"length", Program::Op::kLength, 1},
-    {"distance", Program::Op::kDistance, 2},
-    {"dot", Program::Op::kDot, 2},
-    {"cross", Program::Op::kCross, 2},
-    {"normalize", Program::Op::kNormalize, 1},
+constexpr std::array<ExpressionFunction, 27> kFunctions{{
+    {"abs", "abs(x)", FixedCall{Program::Op::kAbs, 1}},
+    {"min", "min(a, b)", FixedCall{Program::Op::kMin, 2}},
+    {"max", "max(a, b)", FixedCall{Program::Op::kMax, 2}},
+    {"clamp", "clamp(value, low, high)", FixedCall{Program::Op::kClamp, 3}},
+    {"saturate", "saturate(x)", FixedCall{Program::Op::kSaturate, 1}},
+    {"floor", "floor(x)", FixedCall{Program::Op::kFloor, 1}},
+    {"ceil", "ceil(x)", FixedCall{Program::Op::kCeil, 1}},
+    {"frac", "frac(x)", FixedCall{Program::Op::kFrac, 1}},
+    {"sqrt", "sqrt(x)", FixedCall{Program::Op::kSqrt, 1}},
+    {"pow", "pow(base, exponent)", FixedCall{Program::Op::kPow, 2}},
+    {"sin", "sin(x)", FixedCall{Program::Op::kSin, 1}},
+    {"cos", "cos(x)", FixedCall{Program::Op::kCos, 1}},
+    {"step", "step(edge, x)", FixedCall{Program::Op::kStep, 2}},
+    {"smoothstep", "smoothstep(low, high, x)",
+     FixedCall{Program::Op::kSmoothstep, 3}},
+    {"lerp", "lerp(a, b, t)", FixedCall{Program::Op::kLerp, 3}},
+    {"if", "if(condition, then, else)", FixedCall{Program::Op::kIf, 3}},
+    {"length", "length(v)", FixedCall{Program::Op::kLength, 1}},
+    {"distance", "distance(a, b)", FixedCall{Program::Op::kDistance, 2}},
+    {"dot", "dot(a, b)", FixedCall{Program::Op::kDot, 2}},
+    {"cross", "cross(a, b)", FixedCall{Program::Op::kCross, 2}},
+    {"normalize", "normalize(v)", FixedCall{Program::Op::kNormalize, 1}},
+    {"shuffle", "shuffle(index, total, seed)",
+     FixedCall{Program::Op::kShuffle, 3}},
+    {"hash", "hash(value, salt)", FixedCall{Program::Op::kHash, 2}},
+    {"rand", "rand([salt])", RandomCall{}},
+    {"randrange", "randrange(start, stop[, seed])", RandomRangeCall{}},
+    {"hue", "hue(turns)", FixedCall{Program::Op::kHue, 1}},
+    {"hueShift", "hueShift(color, turns)",
+     FixedCall{Program::Op::kHueShift, 2}},
 }};
 
 template <class F> Value Unary(const Value &a, F a_f) noexcept {
@@ -548,31 +555,102 @@ private:
     if (name == "pi") {
       return Emit(Op::kNumber, std::numbers::pi_v<float>);
     }
-    const auto fn = std::ranges::find(kFunctions, name, &Function::name);
+    const auto fn =
+        std::ranges::find(kFunctions, name, &ExpressionFunction::name);
     if (fn == kFunctions.end()) {
       return std::format("unknown name '{}' at {}; rows are written @{}", name,
                          pos_, name);
     }
+    return Match(
+        fn->form,
+        [&](const FixedCall &a_call) { return ParseFixedCall(name, a_call); },
+        [&](const RandomCall &) { return ParseRand(); },
+        [&](const RandomRangeCall &) { return ParseRandRange(); });
+  }
+
+  Error ParseFixedCall(std::string_view a_name, const FixedCall &a_call) {
     if (!Take("(")) {
-      return std::format("'{}' is a function and needs '('", name);
+      return std::format("'{}' is a function and needs '('", a_name);
     }
-    for (int i = 0; i < fn->arity; ++i) {
+    for (int i = 0; i < a_call.arity; ++i) {
       if (i > 0 && !Take(",")) {
-        return std::format("'{}' takes {} arguments", name, fn->arity);
+        return std::format("'{}' takes {} arguments", a_name, a_call.arity);
       }
       if (auto e = ParseOr()) {
         return e;
       }
     }
     if (!Take(")")) {
-      return std::format("'{}' takes {} arguments", name, fn->arity);
+      return std::format("'{}' takes {} arguments", a_name, a_call.arity);
     }
-    return Emit(fn->op);
+    return Emit(a_call.op);
+  }
+
+  Error EmitRand() {
+    out_.usesIdentity_ = true;
+    if (auto e = Emit(Op::kIdentity)) {
+      return e;
+    }
+    if (auto e = Emit(Op::kNumber, static_cast<float>(randomCalls_++))) {
+      return e;
+    }
+    return Emit(Op::kHash);
+  }
+
+  Error ParseRand() {
+    constexpr std::string_view kShape =
+        "'rand' takes an optional salt: rand() or rand(salt)";
+    if (!Take("(")) {
+      return std::string{kShape};
+    }
+    if (Take(")")) {
+      return EmitRand();
+    }
+    out_.usesIdentity_ = true;
+    if (auto e = Emit(Op::kIdentity)) {
+      return e;
+    }
+    if (auto e = ParseOr()) {
+      return e;
+    }
+    if (!Take(")")) {
+      return std::string{kShape};
+    }
+    return Emit(Op::kHash);
+  }
+
+  Error ParseRandRange() {
+    constexpr std::string_view kShape =
+        "'randrange' takes a start, a stop and an optional seed";
+    if (!Take("(")) {
+      return std::string{kShape};
+    }
+    if (auto e = ParseOr()) {
+      return e;
+    }
+    if (!Take(",")) {
+      return std::string{kShape};
+    }
+    if (auto e = ParseOr()) {
+      return e;
+    }
+    if (Take(",")) {
+      if (auto e = ParseOr()) {
+        return e;
+      }
+    } else if (auto e = EmitRand()) {
+      return e;
+    }
+    if (!Take(")")) {
+      return std::string{kShape};
+    }
+    return Emit(Op::kRandRange);
   }
 
   std::string_view text_;
   std::size_t pos_ = 0;
   std::size_t depth_ = 0;
+  std::uint32_t randomCalls_ = 0;
   Program out_;
 };
 
@@ -628,13 +706,15 @@ ReplaceNumericLiteral(std::string_view a_current,
   return changed;
 }
 
-std::vector<std::string_view> FunctionNames() {
-  std::vector<std::string_view> names;
-  names.reserve(kFunctions.size());
-  for (const Function &function : kFunctions) {
-    names.push_back(function.name);
-  }
-  return names;
+std::span<const ExpressionFunction> ExpressionFunctions() noexcept {
+  return kFunctions;
+}
+
+Program Program::Hash(std::string a_value, std::string a_salt) {
+  Program program;
+  program.refs_ = {std::move(a_value), std::move(a_salt)};
+  program.code_ = {{Op::kRef, 0.0f, 0}, {Op::kRef, 0.0f, 1}, {Op::kHash}};
+  return program;
 }
 
 std::expected<Program, std::string> ParseCurve(std::string_view a_text) {
@@ -649,6 +729,11 @@ std::expected<Program, std::string> ParseCurve(std::string_view a_text) {
   }
   if (!program->Curves().empty()) {
     return std::unexpected("a curve cannot call another curve");
+  }
+  if (program->UsesIdentity()) {
+    return std::unexpected(
+        "a curve is a function of x and cannot use rand() or randrange() "
+        "without a seed");
   }
   return program;
 }
@@ -745,6 +830,7 @@ CheckNode(const Program::Node &a_node, TypeStack &a_stack,
   case Op::kNumber:
   case Op::kTime:
   case Op::kMean:
+  case Op::kIdentity:
     return ValueType::kScalar;
   case Op::kX:
     return a_typing.xType;
@@ -789,6 +875,34 @@ CheckNode(const Program::Node &a_node, TypeStack &a_stack,
       return std::unexpected("comparisons and logic take scalars");
     }
     return ValueType::kScalar;
+  case Op::kShuffle:
+    if (!a_stack.TakeScalars(3)) {
+      return std::unexpected("shuffle() takes three scalars");
+    }
+    return ValueType::kScalar;
+  case Op::kHash:
+    if (!a_stack.TakeScalars(2)) {
+      return std::unexpected("hash() takes two scalars");
+    }
+    return ValueType::kScalar;
+  case Op::kRandRange:
+    if (!a_stack.TakeScalars(3)) {
+      return std::unexpected("randrange() takes scalars");
+    }
+    return ValueType::kScalar;
+  case Op::kHue:
+    if (!a_stack.TakeScalars(1)) {
+      return std::unexpected("hue() takes a scalar number of turns");
+    }
+    return ValueType::kVec3;
+  case Op::kHueShift: {
+    const auto turns = a_stack.Pop(), color = a_stack.Pop();
+    if (color != ValueType::kVec3 || turns != ValueType::kScalar) {
+      return std::unexpected(
+          "hueShift() takes a colour and a scalar number of turns");
+    }
+    return ValueType::kVec3;
+  }
   case Op::kAdd:
   case Op::kSub:
   case Op::kMul:
@@ -873,6 +987,26 @@ Value Program::Evaluate(const Inputs &a_inputs) const noexcept {
     case Op::kTime:
       stack.Push(a_inputs.time);
       break;
+    case Op::kIdentity:
+      stack.Push(a_inputs.identity);
+      break;
+    case Op::kHash:
+      stack.ApplyScalarBinary([](float a, float b) { return HashUnit(a, b); });
+      break;
+    case Op::kHue:
+      stack.Push(HueColor(AsVec3(stack.Pop()).x));
+      break;
+    case Op::kHueShift: {
+      const auto turns = stack.Pop(), color = stack.Pop();
+      stack.Push(ShiftHue(AsVec3(color), AsVec3(turns).x));
+      break;
+    }
+    case Op::kRandRange: {
+      const auto seed = stack.Pop(), stop = stack.Pop(), start = stack.Pop();
+      stack.Push(
+          RandomInRange(AsVec3(start).x, AsVec3(stop).x, AsVec3(seed).x));
+      break;
+    }
     case Op::kNeg:
       stack.ApplyUnary([](float x) { return -x; });
       break;
@@ -984,6 +1118,12 @@ Value Program::Evaluate(const Inputs &a_inputs) const noexcept {
       stack.ApplyTernary(
           [](float x, float y, float s) { return x + (y - x) * s; });
       break;
+    case Op::kShuffle: {
+      const auto seed = stack.Pop(), total = stack.Pop(), index = stack.Pop();
+      stack.Push(
+          ShufflePosition(AsVec3(index).x, AsVec3(total).x, AsVec3(seed).x));
+      break;
+    }
     case Op::kLength:
       stack.Push(Length(stack.Pop()));
       break;
@@ -1103,13 +1243,15 @@ std::string ExpressionSummary(std::string_view a_text, std::size_t a_max) {
 namespace BetterEnchantmentEffects {
 Program Program::BindContext(std::optional<std::uint32_t> time,
                              std::optional<std::uint32_t> x,
-                             std::optional<std::uint32_t> mean) const {
+                             std::optional<std::uint32_t> mean,
+                             std::optional<std::uint32_t> identity) const {
   Program bound = *this;
   for (auto &op : bound.code_) {
-    const auto binding = op.op == Op::kTime   ? time
-                         : op.op == Op::kX    ? x
-                         : op.op == Op::kMean ? mean
-                                              : std::nullopt;
+    const auto binding = op.op == Op::kTime       ? time
+                         : op.op == Op::kX        ? x
+                         : op.op == Op::kMean     ? mean
+                         : op.op == Op::kIdentity ? identity
+                                                  : std::nullopt;
     if (!binding)
       continue;
     op.op = Op::kRef;
@@ -1123,6 +1265,8 @@ Program Program::BindContext(std::optional<std::uint32_t> time,
     bound.usesX_ = false;
   if (mean)
     bound.usesMean_ = false;
+  if (identity)
+    bound.usesIdentity_ = false;
   return bound;
 }
 }

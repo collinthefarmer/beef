@@ -52,9 +52,9 @@ struct SectionTime {
   std::uint64_t maxMicros = 0;
 };
 struct Snapshot {
-  std::uint64_t refreshes = 0;
-  std::uint64_t refreshMicros = 0;
-  std::uint64_t refreshMaxMicros = 0;
+  std::uint64_t syncs = 0;
+  std::uint64_t syncMicros = 0;
+  std::uint64_t syncMaxMicros = 0;
   std::uint64_t sinkAdds = 0;
   std::uint64_t sinkRemoves = 0;
   std::uint64_t readbacks = 0;
@@ -82,12 +82,12 @@ struct Snapshot {
     return index < sections.size() ? sections[index] : SectionTime{};
   }
   [[nodiscard]] bool Quiet() const noexcept {
-    return refreshes == 0 && sinkAdds == 0 && sinkRemoves == 0 &&
-           readbacks == 0 && renderEvaluations == 0;
+    return syncs == 0 && sinkAdds == 0 && sinkRemoves == 0 && readbacks == 0 &&
+           renderEvaluations == 0;
   }
 };
 
-void CountRefresh(std::uint64_t a_micros) noexcept;
+void CountSync(std::uint64_t a_micros) noexcept;
 void CountSinkAdd() noexcept;
 void CountSinkRemove() noexcept;
 void CountReadback(std::uint64_t a_micros) noexcept;

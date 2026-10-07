@@ -309,7 +309,8 @@ ValueType SourceType(const Source &a_source) noexcept {
       },
       [](const DistanceSource &) { return ValueType::kScalar; },
       [](const RippleSource &) { return ValueType::kScalar; },
-      [](const MaterialClustersSource &) { return ValueType::kScalar; });
+      [](const MaterialClustersSource &) { return ValueType::kScalar; },
+      [](const PieceSource &) { return ValueType::kScalar; });
 }
 
 bool IsName(std::string_view a_text) noexcept {
@@ -801,7 +802,8 @@ bool IsAnimated(const RecipeGraph &a_graph, const Output &a_output) {
 
 bool RecipeInputsAreActorIndependent(const Recipe &a_recipe) noexcept {
   for (const Source &source : a_recipe.sources) {
-    if (Is<BakeSource>(source.kind) || Is<DistanceSource>(source.kind)) {
+    if (Is<BakeSource>(source.kind) || Is<DistanceSource>(source.kind) ||
+        Is<PieceSource>(source.kind)) {
       return false;
     }
   }

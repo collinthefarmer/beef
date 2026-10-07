@@ -10,6 +10,18 @@
 #include <vector>
 
 namespace BetterEnchantmentEffects {
+inline constexpr std::uint64_t kStepOutputIdleMs = 500;
+
+enum class Retention { kRenew, kKeep, kEvict };
+
+[[nodiscard]] constexpr Retention
+StepOutputRetention(bool a_heldElsewhere, std::uint64_t a_idleMs) noexcept {
+  if (a_heldElsewhere) {
+    return Retention::kRenew;
+  }
+  return a_idleMs > kStepOutputIdleMs ? Retention::kEvict : Retention::kKeep;
+}
+
 template <class Key, class Value> class RetainedCache {
 public:
   Value &Get(const Key &a_key, std::uint32_t a_nowMS) {

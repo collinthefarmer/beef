@@ -4,6 +4,7 @@
 #include "Identity.h"
 #include "diagnostics/Metrics.h"
 #include "planners/ProgramShader.h"
+#include "planners/TargetCost.h"
 #include "render/D3DResult.h"
 #include "render/RenderTargetPool.h"
 #include "render/ShaderConstants.h"
@@ -39,8 +40,7 @@ ComPtr<ID3DBlob> CompileEntry(const char *a_entry, const char *a_target) {
 }
 
 std::uint64_t TextureLab::RenderTarget::Bytes() const noexcept {
-  return Metrics::MippedRgbaBytes(size) *
-         (format == TextureFormat::kRgba32Float ? 4 : 1);
+  return TargetBytes({TextureSize{size}, format});
 }
 
 TextureLab::RenderTarget::~RenderTarget() {

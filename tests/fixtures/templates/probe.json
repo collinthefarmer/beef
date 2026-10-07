@@ -1,0 +1,52 @@
+{
+  "format": 1,
+  "name": "Import probe",
+  "description": "A test-only template with the rows the importer patches.",
+  "keys": [
+    {
+      "effectShader": "ImportedEffectShader"
+    }
+  ],
+  "signals": {
+    "fillRaw": {
+      "efsh": {
+        "field": "fillAlpha",
+        "record": "ImportedEffectShader"
+      }
+    },
+    "importFillBase": {
+      "constant": 1.0
+    },
+    "fillLevel": {
+      "expr": "@fillRaw / @importFillBase"
+    },
+    "edgeRaw": {
+      "efsh": {
+        "field": "edgeAlpha",
+        "record": "ImportedEffectShader"
+      }
+    },
+    "importEdgeBase": {
+      "constant": 1.0
+    },
+    "edgeColor": {
+      "efsh": {
+        "field": "edgeColor",
+        "record": "ImportedEffectShader"
+      }
+    },
+    "scroll": {
+      "efsh": {
+        "field": "scroll",
+        "record": "ImportedEffectShader"
+      }
+    },
+    "importHue": {
+      "constant": [
+        1.0,
+        1.0,
+        1.0
+      ]
+    }
+  }
+}

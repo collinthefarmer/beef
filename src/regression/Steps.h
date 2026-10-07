@@ -22,6 +22,7 @@ struct RestoreSolo {};
 struct ShowRecipes {
   std::span<const std::string_view> recipes;
 };
+struct ShowAllRecipes {};
 struct Spawn {
   Role role = Role::kWearer;
 };
@@ -158,7 +159,7 @@ using Step = std::variant<
     AwaitCrowdRendered, TurnAround, AwaitCrowdOutOfView, AwaitCrowdSkipped,
     StartCrowdFight, AwaitCrowdFighting, AwaitCrowdHurt, UnequipCrowd,
     EquipCrowd, AwaitCrowdBare, DespawnCrowd, HoldWindow, BeginWindow,
-    EndWindow, BeginSession, AwaitSessionActive, AwaitIdle>;
+    EndWindow, BeginSession, AwaitSessionActive, AwaitIdle, ShowAllRecipes>;
 
 struct Case {
   std::string_view name;

@@ -10,7 +10,7 @@ namespace BetterEnchantmentEffects {
 namespace {
 using Op = ProgramOpcode;
 
-constexpr std::array<OpcodeStatement, 42> kStatements{{
+constexpr std::array<OpcodeStatement, 47> kStatements{{
     {Op::kNumber, R"(r = c.y;)"},
     {Op::kMakeVec2, R"(r = float3(b.x, a.x, 0);)"},
     {Op::kMakeVec3, R"(r = float3(d.x, b.x, a.x);)"},
@@ -57,6 +57,11 @@ constexpr std::array<OpcodeStatement, 42> kStatements{{
      R"(r = SafeDiv(a, components == 2 ? length(a.xy) : length(a));)"},
     {Op::kQuantize, R"(r = round(saturate(a) * 255) / 255;)"},
     {Op::kSplat, R"(r = a.xxx;)"},
+    {Op::kShuffle, R"(r = Shuffle(d.x, b.x, a.x).xxx;)"},
+    {Op::kHash, R"(r = Hash(b.x, a.x).xxx;)"},
+    {Op::kRandRange, R"(r = RandRange(d.x, b.x, a.x).xxx;)"},
+    {Op::kHue, R"(r = Hue(a.x);)"},
+    {Op::kHueShift, R"(r = HueShift(b, a.x);)"},
 }};
 
 static_assert(std::ranges::any_of(kStatements,

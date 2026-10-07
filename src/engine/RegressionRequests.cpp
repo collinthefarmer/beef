@@ -174,9 +174,9 @@ void Manager::QueueRegression(std::uint64_t a_request) {
     request.dispatched = true;
     if (request.kind == RequestKind::kRetire) {
       AbandonApplications(request.actor);
-      Retire(request.actor);
-      Finish(applied_.contains(request.actor) ? Regression::Outcome::kFail
-                                              : Regression::Outcome::kPass);
+      ForgetActor(request.actor);
+      Finish(live_.contains(request.actor) ? Regression::Outcome::kFail
+                                           : Regression::Outcome::kPass);
       return;
     }
     for (const auto &record : applications_.Snapshot()) {
@@ -184,7 +184,7 @@ void Manager::QueueRegression(std::uint64_t a_request) {
         request.previousAttempt =
             std::max(request.previousAttempt, record.token.revision);
     }
-    if (!applications_.Refresh(request.actor))
+    if (!applications_.MarkStale(request.actor))
       Finish(Regression::Outcome::kFail);
   });
 }
@@ -223,14 +223,14 @@ void ShowRegressionRecipeSet(std::vector<std::string> a_recipes) {
   Manager::GetSingleton()->ShowRecipeSetInEditor(std::move(a_recipes));
 }
 
-std::vector<RegressionActorFacts>
+std::vector<WearerFacts>
 Manager::RegressionActors(std::span<const RegressionWearer> a_wearers) const {
-  std::vector<RegressionActorFacts> facts(a_wearers.size());
+  std::vector<WearerFacts> facts(a_wearers.size());
   const std::vector<ApplicationRecord> records = applications_.Snapshot();
   const std::lock_guard lock{requestLock};
   for (std::size_t i = 0; i < a_wearers.size(); ++i) {
-    const auto found = applied_.find(a_wearers[i].actor);
-    facts[i].live = found != applied_.end();
+    const auto found = live_.find(a_wearers[i].actor);
+    facts[i].live = found != live_.end();
     facts[i].inView = !facts[i].live || found->second.inView;
     if (facts[i].live) {
       for (const LivePiece &piece : found->second.pieces) {
@@ -275,9 +275,8 @@ void Manager::ObserveRegression() {
       continue;
     switch (record.phase) {
     case ApplicationPhase::kRendered: {
-      const auto found = applied_.find(request.actor);
-      Finish(
-          RenderedVerdict(found != applied_.end() ? &found->second : nullptr));
+      const auto found = live_.find(request.actor);
+      Finish(RenderedVerdict(found != live_.end() ? &found->second : nullptr));
       return;
     }
     case ApplicationPhase::kFailed:

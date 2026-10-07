@@ -20,7 +20,7 @@ retire 2 or 27 to 33 ms.
 
 Events only **mark an actor stale**. Each frame the adapter takes stale actors
 in order, **observes** each into `ActorFacts`, **plans** a keyed `ActorPlan`,
-and **advances** the actor's phase, which yields **commands**. The adapter
+and **advances** the actor's state, which yields **commands**. The adapter
 **admits** commands under a per-frame time budget and **performs** them. An
 actor with commands left stays stale; the next frame recomputes them. No
 command queue survives a frame.
@@ -41,21 +41,26 @@ these words when stage 1 lands.
 | **instance** | One recipe on one actor for one enchantment: signals, environment, clock, light | `InstanceRef` (recipe, fingerprint, enchantment, effect key) |
 | **placement** | One instance on one geometry | `PlacementRef` |
 | **plan** | What should be installed, as plain data | `ActorPlan` (keyed) |
-| **installed** | What the engine side holds | `Present::installed` (an `ActorPlan`) |
+| **installed** | What the engine side holds | `ActorState::installed` (an `ActorPlan`) |
 | **facts** | One frame's observation of one thing | `ActorFacts` |
-| **phase** | Where an actor is in its lifecycle | `Unloaded`, `Evicted`, `Present` |
-| **pending model** | A worn piece of a present actor whose model has not attached, with the time it was first seen | `PendingModel` |
+| **state** | The per-actor record: plan, installed plan, pending models and claims; an actor without one has no record | `ActorState` |
+| **pending model** | A worn piece whose model has not attached, with the time it was first seen | `PendingModel` |
+| **claim** | A geometry that another system took, while its piece keeps the claimed model | `Claim` (geometry, model) |
 | **command** | An instruction the pure core issues for the engine side | `ActorCommand` |
-| **stale** | Possibly out of date; observe again | |
+| **stale** | Possibly out of date; observe again | `Manager::MarkStale` |
 
 | Verb | Meaning |
 |---|---|
 | Observe | Read the engine into `ActorFacts` |
 | Plan | Facts, recipes and the studio view to a keyed `ActorPlan` (`PlanActor`) |
-| Advance | Phase, facts, plan and time to the next phase and commands |
+| Advance | State, facts, plan and time to the next state and commands (`Transition`) |
 | Reconcile | Installed state and plan to commands |
 | Install, Retire | Add or undo engine state for an instance, a geometry or a placement |
 | Perform | Carry out one command |
+| Decide | Observe, plan and advance one actor without performing (`Manager::DecideActor`) |
+| Sync | Decide one stale actor and perform the result (`Manager::SyncActor`) |
+| Retire an actor | Undo everything installed on the actor and keep its record (`Manager::RetireActor`) |
+| Forget | Retire the actor, stop its animation subscriptions and events, and erase its record (`Manager::ForgetActor`) |
 | Admit | Let a command start this frame within the budget |
 
 Identity types end in **Ref**, as `Studio::PieceRef`, `TextureRef` and
@@ -63,11 +68,11 @@ Identity types end in **Ref**, as `Studio::PieceRef`, `TextureRef` and
 (`RecipeKey`, `KeyKind`, the `PieceKey` choices of a worn piece), and no
 identity type uses it.
 
-Dropped from the actor code: **refresh** (it still names the application
-queue, its traces and the budget fields; stage 4b removes it with the
-full rebuild), **apply** for the act (the word keeps
+Dropped from the actor code: **refresh** (the application queue, its traces
+and the budget fields say **sync**), **apply** for the act (the word keeps
 its application-token meaning), **place** as a verb, **restore** for leaving
-eviction, **live** (kept only for heartbeat live targets).
+eviction, **live** (kept for heartbeat live targets and the engine's
+`LiveActor` records in `Manager::live_`).
 
 ## Decisions
 
@@ -91,14 +96,14 @@ the core owns it, and an in-game case where only the engine shows it.
 | Rule | Owner | Test |
 |---|---|---|
 | The armor model attaches after the equip event | `Advance`: each pending model holds an installed actor's effects for 1 s from when that piece was first seen; a model that never attaches stops holding after its own limit | Native; `unload`, `soak-fight` |
-| The unequip refresh runs before the biped changes | Observe: a piece without the inventory worn mark is not observed | Native; `soak-churn` |
+| The unequip sync runs before the biped changes | Observe: a piece without the inventory worn mark is not observed | Native; `soak-churn` |
 | Model and geometry identity is compared only while held | Adapter: `ModelToken` backed by an `NiPointer` | `soak-churn`, `soak-waves` |
 | A live recipe change is atomic with the actors that use it | `InstanceRef` fingerprint; the recipe store swaps before actors are marked stale | Native; `load-edit` |
-| A load clears every actor and cancels work | Every actor goes `Unloaded` before any other step | `load-*` cases |
+| A load clears every actor and cancels work | Every actor is forgotten before any other step | `load-*` cases |
 | First-person pieces belong to the player, when the setting is on | Observe | `camera` |
-| Distance eviction and return, with hysteresis | `Advance` through `EvictionFor`: evict beyond the distance, return inside 0.8 of it; the facts carry the distance (none for the player) | Native |
+| Distance eviction and return, with hysteresis | `Advance` through `InRange`: an actor with something installed stays to 1.0 of the distance, one with nothing installed comes in inside 0.8 of it; the facts carry the distance (none for the player) | Native |
 | The studio view's recipe set and isolation filter matches | `PlanActor` input | Native; `isolation`, `soak-stack` |
-| Equips that change no piece cost no install | `Reconcile` returns nothing | Native; `soak-fight` refresh count |
+| Equips that change no piece cost no install | `Reconcile` returns nothing | Native; `soak-fight` sync count |
 
 ## Review of stages 1 to 3
 

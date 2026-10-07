@@ -2,6 +2,7 @@
 #pragma once
 
 #include "PCH.h"
+#include "actors/Actor.h"
 #include "engine/ApplicationService.h"
 #include "engine/Environment.h"
 #include "planners/ActorMatches.h"
@@ -10,6 +11,7 @@
 #include "planners/StackPlan.h"
 #include "recipe/Merge.h"
 #include "recipe/Recipe.h"
+#include "recipe/RecipeCatalog.h"
 #include "recipe/Signals.h"
 #include "render/Binding.h"
 #include "render/Compositor.h"
@@ -18,6 +20,7 @@
 #include <cstdint>
 #include <memory>
 #include <optional>
+#include <span>
 #include <string>
 #include <vector>
 
@@ -41,6 +44,7 @@ struct MergedSlotStack {
 };
 
 struct LiveGeometry {
+  Actors::GeometryRef ref;
   RE::NiPointer<RE::BSGeometry> geometry;
   RE::NiPointer<RE::BSLightingShaderProperty> property;
   std::string name;
@@ -59,6 +63,8 @@ struct LiveGeometry {
 enum class LivePieceId : std::size_t {};
 
 struct LivePiece {
+  Actors::PieceRef ref;
+  Actors::ModelToken model{};
   RE::FormID armor = 0;
   std::optional<FormKey> addon;
   std::string armorName;
@@ -67,7 +73,7 @@ struct LivePiece {
 };
 
 struct LiveInstance {
-  const Recipe *recipe = nullptr;
+  std::shared_ptr<const Recipe> recipe;
   RE::FormID enchantment = 0;
   std::string effectScope;
   std::shared_ptr<const RecipeGraph> graph;
@@ -90,6 +96,7 @@ struct LiveActor {
   bool firstRenderAdmitted = false;
   bool inView = true;
   std::uint64_t renderedFrame = 0;
+  std::shared_ptr<const RecipeCatalog> catalog;
   ActorMatches matches;
   std::vector<LivePiece> pieces;
   std::vector<LiveInstance> instances;
@@ -106,6 +113,8 @@ void RetireGeometry(LiveGeometry &a_geometry);
 void RetireGeometry(LiveActor &a_actor, LiveGeometry &a_geometry);
 void RetireActorEffects(LiveActor &a_actor);
 [[nodiscard]] std::size_t LiveInstanceCount(const LiveActor &a_actor) noexcept;
+[[nodiscard]] std::span<const Recipe>
+RecipesOf(const LiveActor &a_actor) noexcept;
 [[nodiscard]] SlotTarget *TargetFor(LiveGeometry &a_bound, Surface a_surface);
 [[nodiscard]] PlacedOutput *OutputAt(LivePlacement &a_placement,
                                      std::size_t a_index);

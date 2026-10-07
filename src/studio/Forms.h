@@ -122,9 +122,7 @@ inline constexpr FieldKindSpec kFieldKinds[]{
      "=",
      false,
      "expression: numbers, [r, g, b], @signals, + - * /, comparisons, "
-     "and/or/not, if(c, a, b), abs min max clamp saturate floor ceil frac sqrt "
-     "pow sin cos step smoothstep lerp length distance dot cross normalize, "
-     "time, pi",
+     "and/or/not, time, pi",
      FieldInputKind::kText,
      FieldCheckKind::kExpression,
      Swatch::kNone,
@@ -214,6 +212,8 @@ inline constexpr FieldKindSpec kFieldKinds[]{
      {1.00f, 0.70f, 0.45f}},
 };
 static_assert(std::size(kFieldKinds) == kFieldKindCount);
+
+[[nodiscard]] std::string FieldKindHelp(FieldKind a_kind);
 
 enum class FieldDetail {
   kSource,

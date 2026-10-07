@@ -115,6 +115,28 @@ void TestSourceRoundTrip() {
         "SourceKindOf reconstructs the material channel");
 }
 
+void TestClusterPickRoundTrip() {
+  MaterialClustersSource clusters;
+  clusters.pick = Param{Ref{"which"}};
+  clusters.areaBias = Param{0.5f};
+  const SourceRow row = SourceRowOf(Source{"zone", clusters}, 0);
+  const std::optional<SourceKind> back = SourceKindOf(row);
+  const auto *picked = back ? Get<MaterialClustersSource>(*back) : nullptr;
+  Check(picked && picked->pick == clusters.pick &&
+            picked->areaBias == clusters.areaBias,
+        "a cluster pick and area bias survive the studio row");
+  const auto *field = Field(SourceForm(row, SignalNames{}), "pick");
+  Check(field && field->allowEmpty, "the pick field may be left empty");
+  MaterialClustersSourceRow tooBiased =
+      Get<MaterialClustersSourceRow>(row.kind)
+          ? *Get<MaterialClustersSourceRow>(row.kind)
+          : MaterialClustersSourceRow{};
+  tooBiased.areaBias = "9";
+  SourceRow bad = row;
+  bad.kind = tooBiased;
+  Check(!SourceKindOf(bad), "an area bias above eight is refused");
+}
+
 void TestSourceForm() {
   const Source source{"tex", ImageSource{}};
   const SourceRow row = SourceRowOf(source, 0);
@@ -537,6 +559,7 @@ int main() {
   TestSignalFormConstant();
   TestSignalFormWave();
   TestSourceRoundTrip();
+  TestClusterPickRoundTrip();
   TestSourceForm();
   TestSourceFormLifetime();
   TestIncompleteRippleForm();

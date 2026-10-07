@@ -99,7 +99,7 @@ tune.
 | `EfshSignal` | `efsh` | One `EfshField` of a vanilla effect shader record: fillAlpha, fillColor, edgeAlpha, edgeColor, or scroll. |
 | `ActorValueSignal` | `av` | The wearer's actor value under one `Measure`: current, base, permanent, temporaryModifier, damage, or max. |
 | `ActorStateSignal` | `actorState` | One `ActorStateKind`: seven 0/1 flags, the scalar movementSpeed, and the vec3 positions position and target. |
-| `EnchantmentSignal` | `enchantment` | The matched enchantment's magnitude or cost. |
+| `EnchantmentSignal` | `enchantment` | One field of the matched enchantment and effect: `magnitude`, `cost`, `idHash` or `effectHash`. The fields are fixed for an instance, so they are static inputs. |
 | `TriggerSignal` | `trigger` | The age of the newest firing as a fraction of `lifetime`. The `TriggerOrigin` is an `EventOrigin`, a `PluginOrigin`, or a `WhenOrigin`. The row declares its `payload` type and a `TriggerAnchor`, and keeps at most `max` firings. |
 | `PayloadSignal` | `payload` | The value of the named trigger's newest firing, held between firings. |
 | `CounterSignal` | `counter` | A count of a trigger's firings, with an optional `reset` trigger and `cap`. |
@@ -122,6 +122,7 @@ order, and the asserts in `Words.h` keep `kSourceKindWords` in the same order.
 | `ImageSource` | `image` | A texture sampled per texel: one `ImageChannel` in tiled or mesh `ImageSpace`, with optional scroll, tile, mirror, transpose, and mip. |
 | `MaterialSource` | `material` | One `MaterialChannel` of the piece's own material, such as diffuseRgb, roughness, or relief. |
 | `BakeSource` | `bake` | One `BakeKind` computed from the mesh: position, localPosition, normal, uv, partition, boneWeight, componentId, or chartId. |
+| `PieceSource` | `piece` | One `PieceField`, a single value for the whole piece: `itemHash` (a stable hash of the worn item) or `chartCount` (how many UV charts the mesh has). |
 | `DistanceSource` | `distance` | The texel's distance from a named skeleton node. |
 | `RippleSource` | `ripple` | A ring or disc (`RippleShape`) that spreads from a trigger firing at `speed`, `width` wide, fading at `decay`. A nonzero `direction` turns it into a plane sweep. |
 | `MaterialClustersSource` | `materialClusters` | The id of each texel's nearest material cluster under `ClusterSettings` and its `ChannelWeights`. |
@@ -165,7 +166,8 @@ before it reuses a target. Each predicate has a form that takes a compiled
 |---|---|
 | `ShareableAcrossActors` (output) | True when the output is a `SurfaceOutput`, `IsAnimated` is false, `RecipeInputsAreActorIndependent` holds, and the graph's signals equal the authored signals. |
 | `ShareableAcrossActors` (mask) | True when the mask is enabled, does not change over time, and meets the same two recipe conditions. |
-| `RecipeInputsAreActorIndependent` | True when the recipe has no `BakeSource` and no `DistanceSource`, because those two read per-actor geometry. |
+| `RebuildScope`, `ScopeOf` | Which actors an edit rebuilds: `RebuildApplying{recipe}` when the edit names a recipe and leaves every recipe's `MatchFacts` unchanged, otherwise `RebuildAll`. `Manager::ChangeAndRebuildActors` matches on it. |
+| `RecipeInputsAreActorIndependent` | True when the recipe has no `BakeSource`, `DistanceSource` or `PieceSource`, because those read per-actor geometry or the worn item. |
 | `IsAnimated` | True when a signal, source, mask, or output reads a value that `RecipeGraph::MayChangeOverTime` marks as changing. |
 
 ### Diagnostics and resolution (`Recipe.h`)
@@ -184,6 +186,7 @@ Every load, check, and resolution step reports through one record. A
 | `SelectionOutcome` / `RecipeSelection` | The optional per-recipe report of `Resolve`: nonmatching, fallback-suppressed, sampled-out, or selected. |
 | `PieceKey` | One key choice that a piece offers (`KeyChoicesOf`). `RecipeKeyOf` turns the chosen one into a `RecipeKey`. |
 | `Precedence` | Priority, then load order, compared as one value (`Precedence.h`). `Merge.cpp`, `Resolve.cpp`, `planners/BindingPlan.cpp`, and `studio/Selection.cpp` order recipes by it. |
+| `RecipeCatalog` | The immutable **applied set**: the recipes that are not held back, each with its content fingerprint. `RecipeCatalog::Of` builds one from `CatalogEntry` records. `At` and `FingerprintOf` take a `RecipeId` and return null and 0 past the end. `SharedRecipe` returns one recipe that keeps its catalog alive. `ContentFingerprint` hashes a recipe's serialized text (`RecipeCatalog.h`). |
 
 ### The recipe graph (`RecipeGraph.h`, `GraphOperations.h`, `RecipeCompilation.h`)
 
@@ -253,9 +256,11 @@ compiles the text once. `Program::Evaluate` runs the compiled ops within
 
 | Type | Description |
 |---|---|
-| `Program` | A compiled expression: an op list (`Program::Op`, `Program::Node`), the row names it reads, the curves it calls, and its use of `time`, `x`, and `mean`. `Check` types it against a `RefTyper`. `BindContext` turns `time`, `x`, and `mean` into ordinary reference slots. |
+| `Program` | A compiled expression: an op list (`Program::Op`, `Program::Node`), the row names it reads, the curves it calls, and its use of `time`, `x`, and `mean`. `Check` types it against a `RefTyper`. `BindContext` turns `time`, `x`, `mean`, and the `rand()` identity into ordinary reference slots. `Program::Hash` builds the two-reference `hash` program without parsing. |
 | `NumericLiteral` / `NumericLiteralSelection` | One number's position and value in the text. `ReplaceNumericLiteral` edits one for studio tuning. |
 | `ExpressionRename` | A from/to pair for `RenameInExpression`. |
+| `ExpressionFunction` | One callable word: its name, its usage string, and its `CallForm`. `ExpressionFunctions()` returns every row. The parser, the schema test and the studio hint read this table. |
+| `CallForm` | `FixedCall` (an op and an argument count), `RandomCall` (`rand`, with an optional salt), or `RandomRangeCall` (`randrange`, with an optional seed). |
 
 ### Import (`Importer.h`, `Efsh.h`)
 
@@ -318,11 +323,12 @@ EffectShaderRecord + template Recipe ──ImportEffectShader──▶ Recipe   
 | Model and words | `Recipe.h`, `Words.h`, `Vocabulary.cpp`, `Recipe.cpp` | The model, the enums and their spec tables with `Complete` asserts, the word-to-enum functions, `IsAnimated`, the sharing predicates, the `*Where` builders, and the diagnostic predicates. |
 | JSON boundary | `Binders.h`, `Binders.cpp`, `RecipeRead.cpp`, `RecipeWrite.cpp` | `Reader`, `Writer`, `ParseObjectDocument`, `FloatFrom`, `ParseRecipe`, and `SerializeRecipe`. |
 | Field checks | `Validation.cpp` | `CheckRecipeFields`: finite numbers, numeric domains, list sizes, selectors, bones, shell, and variant fields. |
+| Applied set | `RecipeCatalog.h`, `RecipeCatalog.cpp` | `RecipeId`, `CatalogEntry`, `RecipeCatalog`, `ContentFingerprint`, and `SharedRecipe`. |
 | Resolution | `Resolve.cpp`, `Variants.cpp`, `Precedence.h`, `DefinitionOrder.h` | `Resolve`, `GlobMatch`, `Matches`, `SamplingHash`, `KeyChoicesOf`, `VariantApplies`, `ApplyVariant`, `Precedence`, and `AppendDefinition`, which puts a redefined id at its new position. |
 | Graph compilation | `RecipeGraph.h`, `RecipeGraph.cpp`, `RecipeCompilation.h`, `RecipeGraphLowering.cpp`, `RecipeGraphAccess.cpp` | `RecipeGraph::Compile` and its `RecipeGraphBuilder` phases, `RecipeGraphLowering`, and the graph's read accessors. |
 | Graph operations | `GraphOperations.h`, `GraphOperations.cpp`, `Reduction.h`, `FunctionExecution.cpp` | The operation node types, `InputsOf`, `Stateful`, `FunctionResultTypeOf`, `ReductionKind`, and `EvaluateFunction`. |
 | Evaluation and checks | `Signals.h`, `Signals.cpp` | `SignalState`, `SignalEnvironment`, `Validate`, and the `Check*` and `*TypeOf` functions. `CheckSource` compiles a changed candidate row before it compares diagnostics. |
-| Expressions | `Expression.h`, `Expression.cpp` | `Program`, the parser, the type check, `ReplaceNumericLiteral`, `RenameInExpression`, and `ExpressionSummary`. |
+| Expressions | `Expression.h`, `Expression.cpp`, `ExpressionMath.h`, `ExpressionMath.cpp` | `Program`, the parser, the type check, `ExpressionFunctions`, `ReplaceNumericLiteral`, `RenameInExpression`, and `ExpressionSummary`; the numeric helpers `ShufflePosition`, `HashUnit`, `RandomInRange`, `HueColor`, and `ShiftHue`, which the CPU reference shares. |
 | Merge | `Merge.h`, `Merge.cpp` | `PlanGeometry`, `PlanLights`, and the plan lookups. |
 | Import | `Importer.h`, `Importer.cpp`, `Efsh.h`, `Efsh.cpp` | `ParseEffectShaderRecord`, `ImportEffectShader`, `ImportSignalNames`, and the vanilla fill model that an `EfshSignal` reads. |
 | Editor walks | `Visit.h` | `ForEachParam`, `Visit*Params`, `LocatedVisitor`, and `PropertyLocation`, which the studio and menu use to walk a recipe's refs and params. |

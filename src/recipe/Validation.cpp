@@ -173,6 +173,18 @@ struct SourceFields {
   }
   void operator()(const MaterialClustersSource &s) const {
     Integer(report, s.settings.seed, 0, "seed");
+    if (s.pick) {
+      Scalar(report, *s.pick, "pick");
+      if (const float *pick = Get<float>(*s.pick);
+          pick && (*pick < 0.0f || *pick > 1.0f)) {
+        report.Error("'pick' is 0..1");
+      }
+    }
+    Scalar(report, s.areaBias, "areaBias");
+    if (const float *bias = Get<float>(s.areaBias);
+        bias && (*bias < 0.0f || *bias > kMaxAreaBias)) {
+      report.Error(std::format("'areaBias' is 0..{}", kMaxAreaBias));
+    }
     if (s.settings.clusters < 1 || s.settings.clusters > kMaxMaterialClusters) {
       report.Error(std::format("'clusters' is 1..{}", kMaxMaterialClusters));
     }
@@ -191,6 +203,7 @@ struct SourceFields {
   }
   void operator()(const MaterialSource &) const {}
   void operator()(const DistanceSource &) const {}
+  void operator()(const PieceSource &) const {}
 };
 
 void CheckSkinnedBones(const Reporter &a_report, const SkinnedBones &a_bones) {

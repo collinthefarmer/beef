@@ -2,17 +2,18 @@
 #include "actors/Planning.h"
 #include "test_support.h"
 
-#include <array>
 #include <cstdint>
 #include <optional>
 #include <string>
 #include <vector>
 
 using namespace BetterEnchantmentEffects::Actors;
+using BetterEnchantmentEffects::CatalogEntry;
 using BetterEnchantmentEffects::FormKey;
 using BetterEnchantmentEffects::KeyKind;
 using BetterEnchantmentEffects::KeyOperandValue;
 using BetterEnchantmentEffects::Recipe;
+using BetterEnchantmentEffects::RecipeCatalog;
 using BetterEnchantmentEffects::RecipeKey;
 using BetterEnchantmentEffects::Slot;
 using BetterEnchantmentEffects::Surface;
@@ -58,22 +59,15 @@ ActorFacts LoadedActor(std::vector<PieceFacts> a_pieces) {
 }
 
 struct Fixture {
-  std::vector<Recipe> recipes{EmissiveRecipe("glow"), EmissiveRecipe("ring")};
-  std::array<std::uint64_t, 2> fingerprints{11, 22};
-  RecipeCatalog catalog = *RecipeCatalog::Of(recipes, fingerprints);
+  std::vector<CatalogEntry> entries{{EmissiveRecipe("glow"), 11},
+                                    {EmissiveRecipe("ring"), 22}};
+  RecipeCatalog catalog = RecipeCatalog::Of(entries);
   Studio::View view;
 
   ActorPlan Plan(const ActorFacts &a_facts) const {
     return PlanActor({a_facts, catalog, view}).plan;
   }
 };
-
-void CatalogRejectsMismatchedFingerprints() {
-  const std::vector<Recipe> recipes{EmissiveRecipe("glow")};
-  const std::array<std::uint64_t, 2> two{1, 2};
-  test::Check(!RecipeCatalog::Of(recipes, two).has_value(),
-              "a catalog needs one fingerprint per recipe");
-}
 
 void PlansEveryGeometryOfAnAttachedPiece() {
   const Fixture fixture;
@@ -136,10 +130,8 @@ void PinsARecipeOnTheOwningPiece() {
   pinned.keys = {
       RecipeKey{KeyKind::kMaterial, KeyOperandValue{std::string{"other.dds"}}}};
   Fixture fixture;
-  fixture.recipes.push_back(pinned);
-  const std::array<std::uint64_t, 3> fingerprints{11, 22, 33};
-  const RecipeCatalog catalog =
-      *RecipeCatalog::Of(fixture.recipes, fingerprints);
+  fixture.entries.push_back({pinned, 33});
+  const RecipeCatalog catalog = RecipeCatalog::Of(fixture.entries);
   Studio::View view;
   view.pin = Studio::Pin{Studio::PieceRef{0x14, 0x12E49, false}, "pinned"};
   const ActorFacts facts = LoadedActor({CuirassFacts(false, true)});
@@ -184,6 +176,32 @@ void MatchesFollowThePlannedPieces() {
               "the matches list each planned piece's geometries in order");
 }
 
+void LeavesAClaimedGeometryOut() {
+  const Fixture fixture;
+  const ActorFacts facts = LoadedActor({CuirassFacts(false, true)});
+  const GeometryRef trim{Cuirass(false), "Body", 1};
+  const std::vector<Claim> claims{Claim{trim, ModelToken{1}}};
+  const PlannedActor result =
+      PlanActor({facts, fixture.catalog, fixture.view, claims});
+  test::Check(Find(result.plan, trim) == nullptr &&
+                  Find(result.plan, GeometryRef{Cuirass(false), "Body", 0}),
+              "a claimed geometry leaves the plan and its sibling stays");
+  test::Check(result.matches.geometries.size() == 2,
+              "the matches keep the claimed geometry's position");
+  bool placedOnTrim = false;
+  for (const BetterEnchantmentEffects::Placement &placement :
+       result.matches.placements) {
+    placedOnTrim = placedOnTrim ||
+                   BetterEnchantmentEffects::IndexOf(placement.geometry) == 1;
+  }
+  test::Check(!placedOnTrim, "nothing is placed on the claimed geometry");
+  const std::vector<Claim> stale{Claim{trim, ModelToken{9}}};
+  const ActorPlan replanned =
+      PlanActor({facts, fixture.catalog, fixture.view, stale}).plan;
+  test::Check(Find(replanned, trim) != nullptr,
+              "a claim on another model leaves the geometry planned");
+}
+
 void SeparatesTwoAddonsOfOneArmor() {
   const Fixture fixture;
   const FormKey left{"Skyrim.esm", 0x100};
@@ -210,7 +228,6 @@ void SameFactsGiveTheSamePlan() {
 }
 
 int main() {
-  CatalogRejectsMismatchedFingerprints();
   PlansEveryGeometryOfAnAttachedPiece();
   SkipsAPieceWithoutAModel();
   FollowsTheStudioView();
@@ -218,6 +235,7 @@ int main() {
   PinsARecipeOnTheOwningPiece();
   MatchesFollowThePlannedPieces();
   SeparatesTwoAddonsOfOneArmor();
+  LeavesAClaimedGeometryOut();
   SameFactsGiveTheSamePlan();
   return test::Finish("actor planning");
 }

@@ -98,7 +98,7 @@ struct Flow {
 
 void OrdinaryRefreshAndFirstRender() {
   Flow flow;
-  Check(flow.service.Refresh(42),
+  Check(flow.service.MarkStale(42),
         "ordinary refresh is accepted through the applicator");
   Check(flow.calls.empty() && flow.scheduler.tasks.size() == 1,
         "ordinary refresh applies only when its owning task runs");
@@ -143,9 +143,9 @@ void EquipFinalize() {
 
 void CoalescedRerunAndStaleActorResult() {
   Flow flow;
-  flow.service.Refresh(7);
-  flow.service.Refresh(7);
-  flow.service.Refresh(7);
+  flow.service.MarkStale(7);
+  flow.service.MarkStale(7);
+  flow.service.MarkStale(7);
   Check(flow.scheduler.tasks.size() == 1,
         "ordinary refresh bursts coalesce inside the applicator");
   flow.scheduler.RunOne();
@@ -175,11 +175,11 @@ void CoalescedRerunAndStaleActorResult() {
 
 void IndependentActorsAndRecipeOverlap() {
   Flow flow;
-  flow.service.Refresh(11);
-  flow.service.Refresh(22);
+  flow.service.MarkStale(11);
+  flow.service.MarkStale(22);
   flow.scheduler.Drain();
   const auto actor22 = flow.ActorRecord(22);
-  flow.service.Refresh(11);
+  flow.service.MarkStale(11);
   flow.scheduler.Drain();
   const auto preserved = flow.ActorRecord(22);
   Check(actor22 && preserved && actor22->token == preserved->token &&
@@ -187,8 +187,8 @@ void IndependentActorsAndRecipeOverlap() {
         "refreshing one actor preserves another actor's pending record");
 
   const auto recipe = flow.service.Begin("paint", {11});
-  flow.service.Refresh(11);
-  flow.service.Refresh(11);
+  flow.service.MarkStale(11);
+  flow.service.MarkStale(11);
   flow.scheduler.Drain();
   Check(!flow.calls.empty() &&
             std::ranges::any_of(flow.calls.back().tokens,
@@ -207,7 +207,7 @@ void IndependentActorsAndRecipeOverlap() {
   Check(pendingRecipe && pendingRecipe->phase == ApplicationPhase::kPrepared,
         "overlapping lifecycle work does not cancel the recipe request");
   const Applied previous = flow.calls.empty() ? Applied{} : flow.calls.back();
-  flow.service.Refresh(11);
+  flow.service.MarkStale(11);
   flow.scheduler.Drain();
   flow.Render(previous);
   const auto afterStaleRecipe = flow.RecipeRecord("paint");
@@ -233,21 +233,21 @@ void IndependentActorsAndRecipeOverlap() {
         "recipe refreshes on actor 11 cannot cancel unrelated actor 22");
 }
 
-void LoadCancellationAndLoadedRefresh() {
+void LoadCancellationAndLoadedSync() {
   Flow flow;
-  flow.service.Refresh(31);
+  flow.service.MarkStale(31);
   flow.scheduler.Drain();
   const auto old = flow.ActorRecord(31);
-  flow.service.Refresh(32);
+  flow.service.MarkStale(32);
   flow.service.Equip(33, 0);
   flow.service.BeginLoad();
   Check(flow.service.Loading(), "the applicator owns the paused load state");
   const auto cancelled = flow.ActorRecord(31);
   Check(cancelled && cancelled->phase == ApplicationPhase::kCancelled,
         "load cancels a lifecycle application waiting for first render");
-  Check(!flow.service.Refresh(34), "refreshes cannot run during a load");
+  Check(!flow.service.MarkStale(34), "refreshes cannot run during a load");
   flow.service.Resume();
-  flow.service.Refresh(31);
+  flow.service.MarkStale(31);
   flow.service.FinalizeDue(100);
   flow.scheduler.Drain();
   Check(flow.calls.size() == 2 && flow.calls.back().actorID == 31 &&
@@ -282,8 +282,8 @@ void RejectedInternalScheduling() {
         "callback");
 
   Flow rerun;
-  rerun.service.Refresh(61);
-  rerun.service.Refresh(61);
+  rerun.service.MarkStale(61);
+  rerun.service.MarkStale(61);
   rerun.scheduler.accept = false;
   rerun.scheduler.RunOne();
   Check(rerun.calls.size() == 1 && !rerun.calls.front().tokens.empty(),
@@ -303,7 +303,7 @@ void RejectedInternalScheduling() {
 
   Flow load;
   load.scheduler.accept = false;
-  load.service.Refresh(71);
+  load.service.MarkStale(71);
   load.service.BeginLoad();
   load.service.Resume();
   load.service.FinalizeDue(0);
@@ -315,8 +315,8 @@ void RejectedInternalScheduling() {
 void RetirementBeforeRender() {
   Flow flow;
   (void)flow.service.Begin("saved", {42, 43});
-  flow.service.Refresh(42);
-  flow.service.Refresh(43);
+  flow.service.MarkStale(42);
+  flow.service.MarkStale(43);
   flow.scheduler.Drain();
   const Applied retired = flow.calls.front();
   const auto held = flow.service.Snapshot();
@@ -345,7 +345,7 @@ void RetirementBeforeRender() {
                                      ApplicationPhase::kPrepared;
                             }),
         "retirement leaves previously published snapshots intact");
-  flow.service.Refresh(42);
+  flow.service.MarkStale(42);
   flow.scheduler.Drain();
   flow.service.Retire(42, retired.tokens);
   Check(flow.ActorRecord(42)->phase == ApplicationPhase::kPrepared,
@@ -359,7 +359,7 @@ void RetirementDuringReplacement() {
   Flow flow;
   (void)flow.service.Begin("saved", {42});
   (void)flow.service.Begin("paint", {42});
-  flow.service.Refresh(42);
+  flow.service.MarkStale(42);
   flow.scheduler.Drain();
   const Applied retired = flow.calls.back();
   const auto replacement = flow.service.Begin("saved", {42});
@@ -370,7 +370,7 @@ void RetirementDuringReplacement() {
             flow.RecipeRecord("paint")->phase == ApplicationPhase::kQueued,
         "retiring old live state preserves replacement and overlapping recipe "
         "work");
-  flow.service.Refresh(42);
+  flow.service.MarkStale(42);
   flow.scheduler.Drain();
   flow.service.Retire(42, retired.tokens);
   Check(flow.RecipeRecord("saved")->phase == ApplicationPhase::kPrepared &&
@@ -387,7 +387,7 @@ void RetirementDuringReplacement() {
 void RetirementAcrossLoad() {
   Flow flow;
   (void)flow.service.Begin("saved", {42});
-  flow.service.Refresh(42);
+  flow.service.MarkStale(42);
   flow.scheduler.Drain();
   const Applied retired = flow.calls.back();
   flow.service.BeginLoad();
@@ -396,7 +396,7 @@ void RetirementAcrossLoad() {
         "retirement during load preserves cancellation");
   flow.service.Resume();
   (void)flow.service.Begin("saved", {42});
-  flow.service.Refresh(42);
+  flow.service.MarkStale(42);
   flow.scheduler.Drain();
   const auto pending = flow.service.PendingFor(42);
   flow.service.Retire(42, retired.tokens);
@@ -408,7 +408,7 @@ void RetirementAcrossLoad() {
 void SchedulingFailureAndRetry() {
   Flow flow;
   flow.scheduler.accept = false;
-  Check(!flow.service.Refresh(90),
+  Check(!flow.service.MarkStale(90),
         "rejected scheduler submission is returned to its caller");
   flow.service.FinalizeDue(0);
   const auto failed = flow.ActorRecord(90);
@@ -416,7 +416,7 @@ void SchedulingFailureAndRetry() {
             !failed->problem.empty(),
         "rejected ordinary refresh produces a visible tracked failure");
   flow.scheduler.accept = true;
-  Check(flow.service.Refresh(90),
+  Check(flow.service.MarkStale(90),
         "failed scheduling leaves the actor retryable");
   flow.scheduler.Drain();
   const auto retry = flow.ActorRecord(90);
@@ -438,7 +438,7 @@ int main() {
   EquipFinalize();
   CoalescedRerunAndStaleActorResult();
   IndependentActorsAndRecipeOverlap();
-  LoadCancellationAndLoadedRefresh();
+  LoadCancellationAndLoadedSync();
   SchedulingFailureAndRetry();
   RejectedInternalScheduling();
   RetirementBeforeRender();

@@ -320,6 +320,7 @@ std::vector<Diagnostic> CheckSourceInputs(const RowTypes &a_rows,
           report.Error("'distance' names a skeleton node");
         }
       },
+      [](const PieceSource &) {},
       [&](const RippleSource &s) {
         CheckTrigger(a_rows, report, s.trigger, "trigger");
         CheckScalar(a_rows, report, s.speed, "speed");
@@ -328,6 +329,10 @@ std::vector<Diagnostic> CheckSourceInputs(const RowTypes &a_rows,
         CheckVector<3>(a_rows, report, s.direction, "direction");
       },
       [&](const MaterialClustersSource &s) {
+        if (s.pick) {
+          CheckScalar(a_rows, report, *s.pick, "pick");
+        }
+        CheckScalar(a_rows, report, s.areaBias, "areaBias");
         if (s.settings.clusters < 1 ||
             s.settings.clusters > kMaxMaterialClusters) {
           report.Error(

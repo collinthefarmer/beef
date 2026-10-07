@@ -412,9 +412,6 @@ and term templates:
 - `planners/ActorPlanning` matches recipes and builds geometry and light
   plans through `PlanGeometryPlacement` and `PlanActorLights`. It does not
   apply them to the engine.
-- `RecipesOfInactiveInstances` is an `ActorMatches` query. It reports one
-  recipe id per **instance** without live geometry, so a result can repeat a
-  recipe id or name a recipe that still has another active instance.
 
 ### Row projection
 
@@ -432,9 +429,9 @@ and term templates:
   candidate equals the current recipe.
 - `Manager::ChangeAndRebuildActors` is the one application path. It includes
   applied and loaded actor candidates, retains targets across pending
-  revisions, retires them before mutation, then queues refreshes.
+  revisions, retires them before mutation, then marks them stale.
 - Keep recipe-store mutations inside these lifetimes. The callbacks run
-  synchronously; the refresh is queued.
+  synchronously; the sync is queued.
 - For prepared edits, retirement happens before the recipe is replaced and
   republished through `RefreshRecipeDerivedState`. That operation validates
   the recipe, resolves forms, invalidates the signal graph, recomputes dirty
@@ -448,7 +445,7 @@ and term templates:
 actor targets, and the queued/prepared/rendered/failed/unmatched/cancelled
 results.
 
-- A model commit does not establish render success. Refresh stamps live
+- A model commit does not establish render success. A sync stamps live
   state with captured tokens; the compositor reports success explicitly;
   snapshots publish outcomes even when no geometry row exists.
 - An old-token report cannot complete newer work.
@@ -484,7 +481,7 @@ results.
   through `Manager::Editor()`.
 - It queues work through the manager and uses the manager's retirement
   callbacks before changing recipe storage. The callbacks stay synchronous;
-  actor refresh stays queued. `RecipeEditor` has friend access for these
+  the actor sync stays queued. `RecipeEditor` has friend access for these
   scheduling and lifetime operations.
 - Snapshots and rendering read editor state through const queries on the
   game thread.
@@ -560,7 +557,7 @@ results.
   tokens before it invokes the `Manager` adapter. Equipment finalization and
   coalesced reruns use the same callback.
 - `SessionQueue` owns the loading state, the generation, the pending
-  refreshes, the follow-ups, and the equip deadlines behind one mutex. The
+  syncs, the follow-ups, and the equip deadlines behind one mutex. The
   manager submits actor ids and owned command values; it does not handle
   epochs.
 - A failed submission releases its pending markers and notifies the
@@ -697,14 +694,20 @@ with these meanings and no other word for the same thing.
 | **step output cache** | The Compositor's cache of static render-step outputs shared across actors (`StepOutputCache` in `render/StepOutputCache.h`, held as `Compositor::stepOutputs_`). |
 | **application scope** | The application context and actor form ID that keep state and signal identities apart (`ApplicationScope` in `render/Compositor.h`). |
 | **residue** | What the plugin leaves on an actor's 3D: shell geometries and presenter textures (`ResidueOn` in `engine/RegressionWorld.cpp`). An actor at baseline has none. Never trace, which is the diagnostic trace. |
-| **facts** | One observation of one thing: in the actor core `ActorFacts`, `PieceFacts` and `GeometryFacts` (`actors/Actor.h`; `itemID` and `enchantmentID` are the runtime form IDs of the piece's item and enchantment, for engine lookups); in the regression runner `RoleFacts`, `ItemFacts`, `CrowdFacts`, `RecipeFacts` and `RegressionActorFacts`. Never view. |
+| **facts** | One observation of one thing: in the actor core `ActorFacts`, `PieceFacts` and `GeometryFacts` (`actors/Actor.h`; `itemID` and `enchantmentID` are the runtime form IDs of the piece's item and enchantment, for engine lookups); in the regression runner `RoleFacts`, `ItemFacts`, `CrowdFacts`, `RecipeFacts` and `WearerFacts`. Never view. |
 | **ref** | A value that identifies one thing (`TextureRef`, `ResourceRef`, `Studio::PieceRef`, the actor core's `PieceRef`, `GeometryRef`, `InstanceRef`, `PlacementRef`). A ref is never called a key. |
 | **key** | A recipe matching criterion (`RecipeKey`, `KeyKind`, `PieceKey`). Three cache lookups also use the word, always qualified: the render plan key (`RenderPlanKeyOf`, which picks a `RenderPlanCache` entry), a step's content key (`RenderStep::contentKey`) and the step-output cache key (`CacheKeyFor`). |
 | **model** | The 3D the engine attaches for a worn piece, the biped `partClone` (`ModelToken` in `actors/Actor.h`). Never clone, which is the plugin's shell copy. |
-| **installed** | What the engine side holds for an actor, in the shape of its plan (`Present::installed`). |
-| **phase** | A state in a lifecycle: an actor's `Unloaded`, `Evicted` or `Present` (`actors/Actor.h`), an application's `ApplicationPhase`, a gesture's `GesturePhase`. A part of the frame cost is a **section** (`Metrics::Section`), never a phase. |
+| **installed** | What the engine side holds for an actor, in the shape of its plan (`ActorState::installed`). |
+| **state** | The per-actor record of the actor core: plan, installed plan, pending models and claims (`Actors::ActorState`). An actor without one has **no record**. |
+| **claim** | A geometry that another system took, with the token of its piece's model (`Actors::Claim`). Planning leaves a claimed geometry out until its piece gets a new model or the game loads. |
+| **retire** | To undo installed engine state: of a whole actor (`Manager::RetireActor`, which keeps the record) or of one entry (`RetireGeometry`, the `Retire*` commands). |
+| **forget** | To retire an actor, stop its animation subscriptions and events, and erase its record (`Manager::ForgetActor`). |
+| **decide** | To observe, plan and advance one actor without performing the commands (`Manager::DecideActor`). |
+| **sync** | To decide one stale actor and perform the result (`Manager::SyncActor`). |
+| **phase** | A step in a lifecycle: an application's `ApplicationPhase`, a gesture's `GesturePhase`. A part of the frame cost is a **section** (`Metrics::Section`), never a phase. |
 | **command** | An instruction a pure core issues for the engine side to perform (`Regression::Command`, `Actors::ActorCommand`). Never a trace scope, which is an **operation** (`Trace::Operation`). |
-| **stale** | Possibly out of date; observe or evaluate again (a stale render step, a stale actor). |
+| **stale** | Possibly out of date; observe or evaluate again. A stale render step is evaluated again. A stale actor (`Manager::MarkStale`) waits on the session queue for its sync. |
 
 ## Gates
 

@@ -91,6 +91,35 @@ std::vector<std::string> FixtureRecipeNames() {
 
 int main() {
   {
+    Check(UnitHash("Skyrim.esm|0x0001A2B3") ==
+                  UnitHash("Skyrim.esm|0x0001A2B3") &&
+              UnitHash("Skyrim.esm|0x0001A2B3") !=
+                  UnitHash("Skyrim.esm|0x0001A2B4"),
+          "the unit hash is stable and separates neighbouring keys");
+    bool inRange = true;
+    for (int i = 0; i < 1000; ++i) {
+      const float h = UnitHash(std::to_string(i));
+      inRange = inRange && h >= 0.0f && h < 1.0f;
+    }
+    Check(inRange, "the unit hash stays in zero to one");
+    const Recipe picked = StableRoundTrip(
+        R"({"format":1,"keys":["default"],)"
+        R"("signals":{"which":{"enchantment":"idHash"}},)"
+        R"("sources":{"zone":{"materialClusters":{"pick":"@which",)"
+        R"("areaBias":0.5}}}})",
+        "picked", "a cluster pick driven by the enchantment hash");
+    const auto *clusters =
+        picked.sources.empty()
+            ? nullptr
+            : Get<MaterialClustersSource>(picked.sources.front().kind);
+    Check(clusters && clusters->pick == Param{Ref{"which"}} &&
+              clusters->areaBias == Param{0.5f},
+          "the pick and area bias survive a round trip");
+    ExpectError(R"({"format":1,"keys":["default"],"sources":{"zone":)"
+                R"({"materialClusters":{"pick":0.5,"areaBias":9}}}})",
+                "an area bias above eight", "areaBias");
+  }
+  {
     const LoadResult minimal =
         ParseRecipe(R"({"format":1,"keys":["default"]})", "defaults");
     Check(minimal.recipe.has_value() && !minimal.HasErrors(),
@@ -322,6 +351,8 @@ int main() {
     "bakePart": { "bake": { "partition": "body" } },
     "bakeBone": { "bake": { "boneWeight": ["NPC Spine", "NPC Spine1"] } },
     "uvSrc":    { "bake": "uv" },
+    "itemSrc":  { "piece": "itemHash" },
+    "chartsSrc": { "piece": "chartCount" },
     "distNode": { "distance": "NPC Root [Root]" },
     "ripSrc":   { "ripple": { "trigger": "@trig", "speed": 90.0, "width": 8.0, "decay": 1.2, "shape": "disc" } },
     "clusters": { "materialClusters": { "clusters": 3, "weights": { "roughness": 2.0, "luma": 0.5, "color": 2.5 }, "seed": 9, "iterations": 64 } }
@@ -349,6 +380,19 @@ int main() {
       allSources = allSources && seen;
     }
     Check(allSources, "every one of the 7 source kinds round-trips");
+    const Source *item = r.FindSource("itemSrc");
+    const PieceSource *itemPiece =
+        item ? Get<PieceSource>(item->kind) : nullptr;
+    Check(itemPiece && itemPiece->field == PieceField::kItemHash,
+          "a piece itemHash source round-trips");
+    const Source *charts = r.FindSource("chartsSrc");
+    const PieceSource *chartsPiece =
+        charts ? Get<PieceSource>(charts->kind) : nullptr;
+    Check(chartsPiece && chartsPiece->field == PieceField::kChartCount,
+          "a piece chartCount source round-trips");
+    const LoadResult oldWord = ParseRecipe(
+        R"({"format": 1, "sources": {"item": {"bake": "itemHash"}}})", "old");
+    Check(oldWord.HasErrors(), "the bake word itemHash is no longer read");
   }
 
   {

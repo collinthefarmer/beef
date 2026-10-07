@@ -18,7 +18,7 @@ void DroppedTasks() {
     auto file = std::make_shared<PendingFileOperation>(journal, "recipe",
                                                        FileAction::kSave);
     auto edit = std::make_shared<PendingRecipeEdit>(journal, "recipe");
-    const auto gestureID = journal->BeginGesture("recipe", 1, "priority");
+    const auto gestureID = journal->BeginGesture("recipe", 1, "priority", 0);
     auto gesture = std::make_shared<PendingGestureTask>(journal, gestureID);
     bool executed = false;
     queue.Post([file, edit, gesture, &executed] { executed = true; });
@@ -50,7 +50,7 @@ void LoadCancellation() {
   auto file = std::make_shared<PendingFileOperation>(journal, "recipe",
                                                      FileAction::kRevert);
   auto edit = std::make_shared<PendingRecipeEdit>(journal, "recipe");
-  const auto gestureID = journal->BeginGesture("recipe", 1, "priority");
+  const auto gestureID = journal->BeginGesture("recipe", 1, "priority", 0);
   auto gesture = std::make_shared<PendingGestureTask>(journal, gestureID);
   bool executed = false;
   queue.Post([file, edit, gesture, &executed] {
@@ -98,7 +98,7 @@ void LoadCancellation() {
 
 void TerminalGestures() {
   auto journal = std::make_shared<FileOperationJournal>();
-  const auto id = journal->BeginGesture("recipe", 1, "priority");
+  const auto id = journal->BeginGesture("recipe", 1, "priority", 0);
   auto stale = *journal->gesture;
   journal->AbandonGesture(id, "load canceled");
   journal->PublishGesture(stale);
@@ -106,7 +106,7 @@ void TerminalGestures() {
             !journal->gesture->pending &&
             journal->gesture->error == "load canceled",
         "late active publication cannot revive a canceled gesture");
-  const auto next = journal->BeginGesture("recipe", 2, "priority");
+  const auto next = journal->BeginGesture("recipe", 2, "priority", 0);
   Check(next > id, "terminal gesture permits a fresh gesture with a new ID");
   journal->AbandonGesture(id, "old task destroyed");
   journal->PublishGesture(stale);

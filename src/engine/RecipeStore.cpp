@@ -10,6 +10,7 @@
 #include "recipe/DefinitionOrder.h"
 #include "recipe/Importer.h"
 #include "recipe/Recipe.h"
+#include "recipe/RecipeCatalog.h"
 #include "studio/Edits.h"
 #include "studio/PaintSession.h"
 #include "studio/Presets.h"
@@ -38,8 +39,8 @@ static_assert(std::is_nothrow_move_constructible_v<Studio::ReferenceCounts> ||
               !std::is_nothrow_move_constructible_v<LoadedRecipe>);
 
 std::vector<LoadedRecipe> g_loaded;
-std::vector<Recipe> g_recipes;
-std::vector<std::uint64_t> g_fingerprints;
+std::shared_ptr<const RecipeCatalog> g_applied =
+    std::make_shared<const RecipeCatalog>(RecipeCatalog::Of({}));
 RecipeStoreStatus g_status;
 Studio::MaskPresets g_presets;
 
@@ -52,18 +53,8 @@ bool HeldBack(const LoadedRecipe &a_loaded) noexcept {
   return HasRecipeErrors(a_loaded.diagnostics);
 }
 
-std::uint64_t ContentFingerprint(const Recipe &a_recipe) {
-  std::uint64_t hash = 14695981039346656037ULL;
-  for (const char c : SerializeRecipe(a_recipe)) {
-    hash ^= static_cast<std::uint8_t>(c);
-    hash *= 1099511628211ULL;
-  }
-  return hash;
-}
-
 void RebuildApplied() {
-  g_recipes.clear();
-  g_fingerprints.clear();
+  std::vector<CatalogEntry> entries;
   g_status.heldBack = 0;
   for (LoadedRecipe &loaded : g_loaded) {
     if (HeldBack(loaded)) {
@@ -73,9 +64,10 @@ void RebuildApplied() {
     if (!loaded.fingerprint) {
       loaded.fingerprint = ContentFingerprint(loaded.recipe);
     }
-    g_recipes.push_back(loaded.recipe);
-    g_fingerprints.push_back(*loaded.fingerprint);
+    entries.push_back({loaded.recipe, *loaded.fingerprint});
   }
+  g_applied = std::make_shared<const RecipeCatalog>(
+      RecipeCatalog::Of(std::move(entries)));
 }
 
 void LoadPresets() {
@@ -271,22 +263,26 @@ std::vector<RE::TESEffectShader *> ArmorEnchantmentShaders() {
                             RE::MagicSystem::CastingType::kConstantEffect) {
       continue;
     }
-    if (auto *shader = ShaderFor(enchantment);
-        shader && seen.insert(shader).second) {
-      out.push_back(shader);
+    for (const RE::Effect *effect : enchantment->effects) {
+      RE::TESEffectShader *shader =
+          effect ? ShaderFor(effect->baseEffect) : nullptr;
+      if (shader && seen.insert(shader).second) {
+        out.push_back(shader);
+      }
     }
   }
   return out;
 }
 
-bool HasEffectShaderKey(const FormKey &a_key) {
-  return std::ranges::any_of(g_loaded, [&](const LoadedRecipe &l) {
+const LoadedRecipe *RecipeForEffectShader(const FormKey &a_key) {
+  const auto found = std::ranges::find_if(g_loaded, [&](const LoadedRecipe &l) {
     return std::ranges::any_of(l.recipe.keys, [&](const RecipeKey &k) {
       const auto *form = k.Form();
       return k.kind == KeyKind::kEffectShader && form && form->key &&
              *form->key == a_key;
     });
   });
+  return found == g_loaded.end() ? nullptr : &*found;
 }
 
 std::unordered_map<std::string_view, Recipe> LoadImportTemplates() {
@@ -318,7 +314,11 @@ void ImportMissing(const std::filesystem::path &a_folder) {
       continue;
     }
     const auto record = RecordFrom(*shader);
-    if (HasEffectShaderKey(record.key)) {
+    if (const LoadedRecipe *covering = RecipeForEffectShader(record.key)) {
+      logger::info("armor enchantment shader {:08X} ({}) is covered by "
+                   "recipe {}",
+                   shader->GetFormID(), RecipeIdFor(record),
+                   covering->recipe.id);
       continue;
     }
     const std::string_view templateId = ImportTemplateId(record);
@@ -376,8 +376,7 @@ void ImportMissing(const std::filesystem::path &a_folder) {
 
 RecipeStoreStatus LoadRecipes() {
   g_loaded.clear();
-  g_recipes.clear();
-  g_fingerprints.clear();
+  g_applied = std::make_shared<const RecipeCatalog>(RecipeCatalog::Of({}));
   g_status = {};
   const auto root = Identity::RecipeRoot();
   const auto user = Identity::UserRecipeFolder();
@@ -415,10 +414,12 @@ RecipeStoreStatus LoadRecipes() {
 
 RecipeStoreStatus GetRecipeStoreStatus() noexcept { return g_status; }
 
-std::span<const Recipe> LoadedRecipes() noexcept { return g_recipes; }
+std::span<const Recipe> LoadedRecipes() noexcept {
+  return g_applied->Recipes();
+}
 
-std::span<const std::uint64_t> LoadedFingerprints() noexcept {
-  return g_fingerprints;
+std::shared_ptr<const RecipeCatalog> AppliedCatalog() noexcept {
+  return g_applied;
 }
 
 const Studio::MaskPresets &LoadedPresets() noexcept { return g_presets; }

@@ -4,7 +4,10 @@
 #include "Core.h"
 #include "Identity.h"
 #include "SettingsFile.h"
+#include "engine/EngineForms.h"
+#include "engine/IdleCamera.h"
 #include "engine/Manager.h"
+#include "engine/RecipeStore.h"
 #include "engine/RegressionRequests.h"
 #include "render/PBRMaterial.h"
 
@@ -40,9 +43,6 @@ inline constexpr float kBehindSpacing = 120.0f;
 inline constexpr float kHalfTurn = 3.14159265f;
 inline constexpr RE::FormID kQASmoke = 0x32AE7;
 inline constexpr float kMovedDistance = 32.0f;
-inline constexpr std::string_view kVanityDelaySetting =
-    "fAutoVanityModeDelay:Camera";
-inline constexpr float kVanityNever = 1.0e9f;
 inline constexpr std::uint32_t kArenaRows = 3;
 inline constexpr float kArenaMinX = 2160.0f;
 inline constexpr float kArenaMaxX = 2640.0f;
@@ -50,14 +50,6 @@ inline constexpr float kArenaMinY = 1904.0f;
 inline constexpr float kArenaMaxY = 2128.0f;
 inline constexpr float kArenaFloorZ = 6976.0f;
 inline constexpr RE::NiPoint3 kArenaViewpoint{1904.0f, 2016.0f, kArenaFloorZ};
-
-RE::Setting *VanityDelay() {
-  RE::INISettingCollection *settings = RE::INISettingCollection::GetSingleton();
-  RE::Setting *setting =
-      settings ? settings->GetSetting(kVanityDelaySetting) : nullptr;
-  return setting && setting->GetType() == RE::Setting::Type::kFloat ? setting
-                                                                    : nullptr;
-}
 
 template <class Form>
 Form *PluginForm(RE::FormID a_local, std::string_view a_plugin) {
@@ -140,7 +132,7 @@ bool Present(const RE::Actor &a_actor) {
   return !a_actor.IsDisabled() && !a_actor.IsDeleted() && a_actor.Is3DLoaded();
 }
 
-Regression::RoleFacts ViewOf(RE::Actor *a_actor, RegressionActorFacts a_facts) {
+Regression::RoleFacts ViewOf(RE::Actor *a_actor, WearerFacts a_facts) {
   Regression::RoleFacts view;
   if (!a_actor) {
     return view;
@@ -260,9 +252,6 @@ ArmorTag TagVanillaArmor(RE::TESObjectARMO &a_armor, RE::BGSKeyword &a_keyword,
 }
 
 void TagVanillaCuirasses(RunWorld &a_world) {
-  if (!a_world.tags.empty()) {
-    return;
-  }
   auto *keyword = PluginForm<RE::BGSKeyword>(kDemoKeyword, kDemoPlugin);
   auto *enchantment =
       PluginForm<RE::EnchantmentItem>(kDemoEnchantment, kDemoPlugin);
@@ -313,6 +302,87 @@ void UntagVanillaCuirasses(RunWorld &a_world) {
     Untag(tag);
   }
   a_world.tags.clear();
+  a_world.taggedFor.reset();
+}
+
+bool CoveredByLoadedRecipe(const RE::TESEffectShader &a_shader) {
+  const FormKey key = RecordFrom(a_shader).key;
+  return std::ranges::any_of(LoadedRecipes(), [&](const Recipe &a_recipe) {
+    return std::ranges::any_of(a_recipe.keys, [&](const RecipeKey &a_key) {
+      const FormRef *form = a_key.Form();
+      return a_key.kind == KeyKind::kEffectShader && form && form->key &&
+             *form->key == key;
+    });
+  });
+}
+
+std::vector<RE::EnchantmentItem *> EnchantmentsCoveredByImports() {
+  std::vector<RE::EnchantmentItem *> chosen;
+  std::vector<const RE::TESEffectShader *> shaders;
+  auto *handler = RE::TESDataHandler::GetSingleton();
+  if (!handler) {
+    return chosen;
+  }
+  for (RE::EnchantmentItem *enchantment :
+       handler->GetFormArray<RE::EnchantmentItem>()) {
+    if (chosen.size() >= kVanillaCuirasses.size()) {
+      break;
+    }
+    if (!enchantment || enchantment->GetCastingType() !=
+                            RE::MagicSystem::CastingType::kConstantEffect) {
+      continue;
+    }
+    const RE::TESEffectShader *shader = ShaderFor(enchantment);
+    if (!shader || std::ranges::contains(shaders, shader) ||
+        !CoveredByLoadedRecipe(*shader)) {
+      continue;
+    }
+    shaders.push_back(shader);
+    chosen.push_back(enchantment);
+  }
+  return chosen;
+}
+
+void TagEnchantedCuirasses(RunWorld &a_world) {
+  const std::vector<RE::EnchantmentItem *> enchantments =
+      EnchantmentsCoveredByImports();
+  if (enchantments.empty()) {
+    logger::warn("regression: no constant-effect enchantment has a shader "
+                 "that a loaded recipe covers");
+    return;
+  }
+  for (std::size_t i = 0; i < kVanillaCuirasses.size(); ++i) {
+    RE::TESObjectARMO *armor =
+        SkyrimForm<RE::TESObjectARMO>(kVanillaCuirasses[i]);
+    RE::EnchantmentItem *enchantment = enchantments[i % enchantments.size()];
+    if (!armor || !enchantment) {
+      logger::warn("regression: vanilla cuirass {:X} is missing",
+                   kVanillaCuirasses[i]);
+      continue;
+    }
+    ArmorTag tag;
+    tag.armor = armor->GetFormID();
+    tag.enchantmentBefore =
+        armor->formEnchanting ? armor->formEnchanting->GetFormID() : 0;
+    armor->formEnchanting = enchantment;
+    a_world.tags.push_back(tag);
+    logger::info("regression: cuirass {:08X} wears enchantment {:08X}",
+                 tag.armor, enchantment->GetFormID());
+  }
+}
+
+void DressCuirasses(RunWorld &a_world, Regression::Dress a_dress) {
+  if (a_dress == Regression::Dress::kDemoCuirass ||
+      a_world.taggedFor == a_dress) {
+    return;
+  }
+  UntagVanillaCuirasses(a_world);
+  if (a_dress == Regression::Dress::kVanillaCuirasses) {
+    TagVanillaCuirasses(a_world);
+  } else {
+    TagEnchantedCuirasses(a_world);
+  }
+  a_world.taggedFor = a_dress;
 }
 
 void UntagPairedGauntlets(RunWorld &a_world) {
@@ -446,9 +516,7 @@ void SpawnCrowdActors(RunWorld &a_world,
   if (!player || !base) {
     return;
   }
-  if (a_spawn.dress == Regression::Dress::kVanillaCuirasses) {
-    TagVanillaCuirasses(a_world);
-  }
+  DressCuirasses(a_world, a_spawn.dress);
   const RE::NiPoint3 centre = player->GetPosition();
   const std::uint32_t count = std::min(a_spawn.count, Regression::kMaxCrowd);
   if (a_spawn.spot == Regression::Spot::kBehind) {
@@ -570,7 +638,7 @@ bool Hurt(RE::Actor &a_actor) {
 }
 
 Regression::CrowdFacts CrowdOf(const RunWorld &a_world,
-                               std::span<const RegressionActorFacts> a_facts) {
+                               std::span<const WearerFacts> a_facts) {
   Regression::CrowdFacts view;
   for (std::size_t i = 0; i < a_world.crowd.size() && i < a_facts.size(); ++i) {
     RE::Actor *actor = FormWithID<RE::Actor>(a_world.crowd[i].actor);
@@ -936,9 +1004,9 @@ Regression::Observation Observe(const RunWorld &a_world) {
     wearers.push_back({member.actor, member.armor});
   }
   const Manager *manager = Manager::GetSingleton();
-  std::vector<RegressionActorFacts> facts =
+  std::vector<WearerFacts> facts =
       manager ? manager->RegressionActors(wearers)
-              : std::vector<RegressionActorFacts>(wearers.size());
+              : std::vector<WearerFacts>(wearers.size());
   for (const Regression::Role role : kRoles) {
     const std::size_t index = Regression::IndexOf(role);
     seen.actors[index] = ViewOf(actors[index], std::move(facts[index]));

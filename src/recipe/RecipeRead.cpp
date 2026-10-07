@@ -617,6 +617,16 @@ ParseSourceAlternative<DistanceSource>(const json &a_v, const Reporter &a_ctx) {
 }
 
 template <>
+std::optional<PieceSource>
+ParseSourceAlternative<PieceSource>(const json &a_v, const Reporter &a_ctx) {
+  const auto field = EnumShorthand(a_v, kPieceFields, "piece", a_ctx);
+  if (!field) {
+    return std::nullopt;
+  }
+  return PieceSource{*field};
+}
+
+template <>
 std::optional<RippleSource>
 ParseSourceAlternative<RippleSource>(const json &a_v, const Reporter &a_ctx) {
   if (!a_v.is_object()) {
@@ -671,7 +681,7 @@ ParseSourceAlternative<MaterialClustersSource>(const json &a_v,
                                                const Reporter &a_ctx) {
   if (!a_v.is_object()) {
     a_ctx.Error("'materialClusters' takes an object with 'clusters', "
-                "'weights', 'seed' and 'iterations'");
+                "'weights', 'seed', 'iterations', 'pick' and 'areaBias'");
     return std::nullopt;
   }
   MaterialClustersSource k;
@@ -689,6 +699,12 @@ ParseSourceAlternative<MaterialClustersSource>(const json &a_v,
   }
   ok &= r.IntRange("iterations", 1, static_cast<int>(kMaxClusterIterations),
                    k.settings.iterations);
+  if (r.Has("pick")) {
+    Param pick = 0.0f;
+    r.Read("pick", pick);
+    k.pick = pick;
+  }
+  r.Read("areaBias", k.areaBias);
   r.Finish();
   if (!ok) {
     return std::nullopt;

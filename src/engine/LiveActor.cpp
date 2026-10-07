@@ -11,6 +11,11 @@ std::size_t LiveInstanceCount(const LiveActor &a_actor) noexcept {
       }));
 }
 
+std::span<const Recipe> RecipesOf(const LiveActor &a_actor) noexcept {
+  return a_actor.catalog ? a_actor.catalog->Recipes()
+                         : std::span<const Recipe>{};
+}
+
 void RetireGeometry(LiveGeometry &a_geometry) {
   a_geometry.lost = true;
   a_geometry.shell.reset();

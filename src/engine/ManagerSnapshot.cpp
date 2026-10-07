@@ -413,8 +413,8 @@ Manager::Status Manager::GetStatus() const {
   s.emissivePath = emissivePathEnabled_;
   s.layoutVerified = materialLayout_ == MaterialLayout::kVerified;
   s.textureLab = TextureLab::GetSingleton()->Available();
-  s.actors = static_cast<std::uint32_t>(applied_.size());
-  for (const auto &[id, state] : applied_) {
+  s.actors = static_cast<std::uint32_t>(live_.size());
+  for (const auto &[id, state] : live_) {
     AccumulateStatus(s, state);
   }
   s.tickMS = GetSettings().TickIntervalMS();
@@ -491,12 +491,12 @@ void Manager::PublishStatus(Snapshot &a_out) const {
 void Manager::PublishPieces(
     Snapshot &a_out, const std::optional<Studio::PieceRef> &a_request) const {
   const bool anyMatch =
-      a_request && std::ranges::any_of(applied_, [&](const auto &entry) {
+      a_request && std::ranges::any_of(live_, [&](const auto &entry) {
         return ContainsPiece(entry.second, entry.first, *a_request);
       });
 
   bool first = true;
-  for (const auto &[actorID, state] : applied_) {
+  for (const auto &[actorID, state] : live_) {
     std::size_t flatBase = 0;
     for (const LivePiece &piece : state.pieces) {
       const std::size_t flatStart = flatBase;

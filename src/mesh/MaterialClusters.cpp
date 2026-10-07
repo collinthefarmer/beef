@@ -17,6 +17,11 @@
 
 namespace BetterEnchantmentEffects {
 namespace {
+float ClusterWeight(float a_share, float a_bias) noexcept {
+  return std::isfinite(a_share) && a_share > 0.0f ? std::pow(a_share, a_bias)
+                                                  : 0.0f;
+}
+
 struct TexelBand {
   float MaterialTexel::*axis = nullptr;
   std::span<const float> cuts;
@@ -335,6 +340,35 @@ std::string DescribeTexel(const MaterialTexel &a_texel) {
     out += BandWord(band, texel.*band.axis);
   }
   return out;
+}
+
+std::optional<std::uint8_t> PickCluster(const MaterialAnalysis &a_analysis,
+                                        float a_pick,
+                                        float a_areaBias) noexcept {
+  if (a_analysis.clusters.empty()) {
+    return std::nullopt;
+  }
+  const float bias = std::isfinite(a_areaBias)
+                         ? std::clamp(a_areaBias, 0.0f, kMaxAreaBias)
+                         : 1.0f;
+  const float pick =
+      std::isfinite(a_pick) ? std::clamp(a_pick, 0.0f, 1.0f) : 0.0f;
+  float total = 0.0f;
+  for (const MaterialCluster &cluster : a_analysis.clusters) {
+    total += ClusterWeight(cluster.share, bias);
+  }
+  if (!(total > 0.0f) || !std::isfinite(total)) {
+    return a_analysis.clusters.front().id;
+  }
+  const float target = pick * total;
+  float reached = 0.0f;
+  for (const MaterialCluster &cluster : a_analysis.clusters) {
+    reached += ClusterWeight(cluster.share, bias);
+    if (target < reached) {
+      return cluster.id;
+    }
+  }
+  return a_analysis.clusters.back().id;
 }
 
 }

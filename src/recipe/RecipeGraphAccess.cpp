@@ -166,4 +166,15 @@ bool ReadsNodePositions(const RecipeGraph &a_graph) {
     return external && Is<NodePositionInput>(external->source);
   });
 }
+std::vector<ExternalSource> StaticExternalSources(const RecipeGraph &a_graph) {
+  std::vector<ExternalSource> sources;
+  const std::span<const RecipeNode> nodes = a_graph.Nodes();
+  for (NodeId node = 0; node < nodes.size(); ++node) {
+    const auto *external = Get<ExternalInput>(nodes[node].kind);
+    if (external && !a_graph.Changing(node)) {
+      sources.push_back(external->source);
+    }
+  }
+  return sources;
+}
 }

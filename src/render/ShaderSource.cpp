@@ -49,14 +49,10 @@ VSOut VSMain(uint id : SV_VertexID)
 	return o;
 }
 
-float Relief(int input, float2 uv)
+float NormalSlope(float2 uv)
 {
-	float4 a = armor.SampleLevel(samp, uv, 0);
-	if (input == 4) {
-		float2 n = a.rg * 2 - 1;
-		return sqrt(saturate(1 - dot(n, n)));
-	}
-	return 0.5;
+	float2 n = armor.SampleLevel(samp, uv, 0).rg * 2 - 1;
+	return saturate(length(n));
 }
 
 float3 Pick(float4 s, int channel)
@@ -133,7 +129,7 @@ float4 PSMain(VSOut i) : SV_Target
 	if (mode == 6) return LayerPass(i.uv, uv);
 	if (mode == 7) return c;
 	if (mode == 4) {
-		if (extra.w > 0.5) { float r = Relief(4, i.uv); return float4(r, r, r, 1); }
+		if (extra.w > 0.5) { float r = NormalSlope(i.uv); return float4(r, r, r, 1); }
 		float4 a = armor.SampleLevel(samp, i.uv, 0);
 		return float4(Pick(a, (int)extra.z), 1);
 	}
@@ -253,6 +249,93 @@ float PowOne(float a, float b)
 float3 SafePow(float3 a, float3 b)
 {
 	return float3(PowOne(a.x, b.x), PowOne(a.y, b.y), PowOne(a.z, b.z));
+}
+
+uint PrimeAtLeast(uint n)
+{
+	uint p = max(n, 2u);
+	[loop] for (uint gap = 0; gap < 16; ++gap) {
+		bool prime = true;
+		[loop] for (uint d = 2; d * d <= p; ++d) {
+			if (p % d == 0) { prime = false; break; }
+		}
+		if (prime) break;
+		++p;
+	}
+	return p;
+}
+
+uint MixBits(uint x)
+{
+	x ^= x >> 16;
+	x *= 0x7feb352du;
+	x ^= x >> 15;
+	x *= 0x846ca68bu;
+	x ^= x >> 16;
+	return x;
+}
+
+uint HashBits(float value)
+{
+	return (isfinite(value) && value != 0) ? asuint(value) : 0u;
+}
+
+float Hash(float value, float salt)
+{
+	uint mixed = MixBits(HashBits(value) ^ MixBits(HashBits(salt) + 0x9e3779b9u));
+	return (float)(mixed >> 8) * (1.0 / 16777216.0);
+}
+
+float RandRange(float start, float stop, float seed)
+{
+	if (!isfinite(start)) return 0;
+	float lo = floor(start);
+	float hi = isfinite(stop) ? floor(stop) : lo;
+	if (!(hi > lo)) return lo;
+	float s = isfinite(seed) ? clamp(seed, 0, 1) : 0;
+	float span = hi - lo;
+	return lo + min(floor(s * span), span - 1);
+}
+
+float WheelChannel(float turns, float offset)
+{
+	return saturate(abs(frac(turns + offset) * 6 - 3) - 1);
+}
+
+float3 Hue(float turns)
+{
+	float t = isfinite(turns) ? turns : 0;
+	return float3(WheelChannel(t, 0), WheelChannel(t, 2.0 / 3.0), WheelChannel(t, 1.0 / 3.0));
+}
+
+float3 HueShift(float3 color, float turns)
+{
+	float angle = (isfinite(turns) ? turns : 0) * 6.28318530718;
+	float c = cos(angle);
+	float s = sin(angle);
+	float k = 0.57735026919;
+	float along = k * (color.x + color.y + color.z) * (1 - c);
+	float3 across = k * float3(color.z - color.y, color.x - color.z, color.y - color.x);
+	return saturate(color * c + across * s + k * along);
+}
+
+float Shuffle(float index, float total, float seed)
+{
+	if (!(total >= 1) || !(index >= 0) || isinf(index)) return 256;
+	float n = min(floor(total), 251);
+	float i = floor(index);
+	if (i >= n) return 256;
+	uint count = (uint)n;
+	uint p = PrimeAtLeast(count);
+	float s = isfinite(seed) ? frac(seed) : 0;
+	uint scale = 1 + min((uint)floor(frac(s * 29.41) * (p - 1)), p - 2);
+	uint shift = min((uint)floor(frac(s * 13.37) * p), p - 1);
+	uint x = (uint)i;
+	[loop] for (uint k = 0; k < p; ++k) {
+		x = (scale * x + shift) % p;
+		if (x < count) break;
+	}
+	return (float)x;
 }
 
 float3 RunProgram(int first, int count, float2 uv)
@@ -502,7 +585,9 @@ float4 PSClusters(VSOut i) : SV_Target
 			id = centroidLuma[k].y;
 		}
 	}
-	float v = id / 255.0;
+	float v = clusterMisc.w > 0.5
+	              ? (abs(id - (clusterMisc.w - 1.0)) < 0.5 ? 1.0 : 0.0)
+	              : id / 255.0;
 	return float4(v, v, v, 1);
 }
 )";

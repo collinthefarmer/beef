@@ -1,0 +1,64 @@
+{
+  "format": 1,
+  "name": "Import fill fixture",
+  "description": "A test-only fill template: the probe rows and one fill-texture source.",
+  "keys": [
+    {
+      "effectShader": "ImportedEffectShader"
+    }
+  ],
+  "signals": {
+    "fillRaw": {
+      "efsh": {
+        "field": "fillAlpha",
+        "record": "ImportedEffectShader"
+      }
+    },
+    "importFillBase": {
+      "constant": 1.0
+    },
+    "fillLevel": {
+      "expr": "@fillRaw / @importFillBase"
+    },
+    "edgeRaw": {
+      "efsh": {
+        "field": "edgeAlpha",
+        "record": "ImportedEffectShader"
+      }
+    },
+    "importEdgeBase": {
+      "constant": 1.0
+    },
+    "edgeColor": {
+      "efsh": {
+        "field": "edgeColor",
+        "record": "ImportedEffectShader"
+      }
+    },
+    "scroll": {
+      "efsh": {
+        "field": "scroll",
+        "record": "ImportedEffectShader"
+      }
+    },
+    "importHue": {
+      "constant": [
+        1.0,
+        1.0,
+        1.0
+      ]
+    }
+  },
+  "sources": {
+    "fill": {
+      "image": {
+        "path": "$fillTexture",
+        "scroll": "@scroll",
+        "tile": [
+          1.0,
+          1.0
+        ]
+      }
+    }
+  }
+}

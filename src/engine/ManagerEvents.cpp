@@ -58,8 +58,8 @@ EventRecord PositionEventOf(const Studio::FireTrigger &a_trigger,
 }
 
 void Manager::Fire(RE::FormID a_actorID, const EventRecord &a_event) {
-  const auto it = applied_.find(a_actorID);
-  if (it == applied_.end()) {
+  const auto it = live_.find(a_actorID);
+  if (it == live_.end()) {
     return;
   }
   for (LiveInstance &instance : it->second.instances) {
@@ -80,7 +80,7 @@ void Manager::QueueEvent(RE::FormID a_actorID, EventRecord a_event) {
 
 void Manager::QueueBroadcast(EventRecord a_event) {
   PostTask([this, event = std::move(a_event)] {
-    for (const auto &entry : applied_) {
+    for (const auto &entry : live_) {
       Fire(entry.first, event);
     }
   });

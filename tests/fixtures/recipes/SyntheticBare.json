@@ -1,7 +1,7 @@
 {
   "format": 1,
   "name": "SyntheticBare",
-  "description": "Imported from effect shader SyntheticBare with the bare template.",
+  "description": "Imported from effect shader SyntheticBare with the probe template.",
   "imported": "BetterEnchantmentEffects 0.1.0",
   "keys": [
     {
@@ -30,9 +30,6 @@
     "importEdgeBase": {
       "constant": 0.7
     },
-    "edgeLevel": {
-      "expr": "@edgeRaw / @importEdgeBase"
-    },
     "edgeColor": {
       "efsh": {
         "field": "edgeColor",
@@ -50,128 +47,6 @@
         1.0,
         0.5,
         0.25
-      ]
-    },
-    "glowStrength": {
-      "constant": 1.0
-    },
-    "glowLevel": {
-      "expr": "@glowStrength * @fillLevel"
-    },
-    "sheenScale": {
-      "constant": 0.5
-    },
-    "sheenWeight": {
-      "expr": "clamp(@edgeLevel * @sheenScale, 0, 1)"
-    },
-    "shimmerScale": {
-      "constant": 0.1
-    },
-    "heightScale": {
-      "expr": "@shimmerScale * clamp(@fillLevel, 0, 2)"
-    },
-    "lightScale": {
-      "constant": 0.125
-    },
-    "lightLevel": {
-      "expr": "@lightScale * clamp(@fillLevel, 0, 2)"
-    },
-    "shellAlpha": {
-      "constant": 0.5
-    },
-    "shellOpacity": {
-      "expr": "saturate(@shellAlpha * clamp(@fillLevel, 0, 2))"
-    },
-    "inflatePercent": {
-      "constant": 1.0
-    },
-    "inflatePulse": {
-      "constant": 1.0
-    },
-    "inflate": {
-      "expr": "(@inflatePercent + @inflatePulse * clamp(@fillLevel, 0, 2)) * 0.01"
-    }
-  },
-  "curves": {
-    "crisp": "(x - mean) * 3 + 0.5"
-  },
-  "sources": {
-    "relief": {
-      "material": "relief"
-    },
-    "metallic": {
-      "material": "metallic"
-    }
-  },
-  "masks": {
-    "metal": "@metallic"
-  },
-  "outputs": [
-    {
-      "target": "shell",
-      "slot": "emissive",
-      "strength": "@glowLevel",
-      "stack": [
-        {
-          "source": [
-            1.0,
-            1.0,
-            1.0
-          ],
-          "opacity": 1.0,
-          "color": "@importHue",
-          "mask": "@metal"
-        }
-      ]
-    },
-    {
-      "target": "shell",
-      "slot": "fuzz",
-      "color": "@edgeColor",
-      "weight": "@sheenWeight",
-      "stack": [
-        {
-          "source": [
-            1.0,
-            1.0,
-            1.0
-          ],
-          "opacity": 1.0
-        }
-      ]
-    },
-    {
-      "target": "material",
-      "slot": "height",
-      "scale": "@heightScale",
-      "stack": [
-        {
-          "source": "@relief",
-          "curve": "@crisp",
-          "opacity": 1.0
-        }
-      ]
-    },
-    {
-      "target": "light",
-      "bones": {
-        "skinned": {
-          "max": 2
-        }
-      },
-      "color": "@importHue",
-      "intensity": "@lightLevel",
-      "size": 1.4,
-      "cutoff": 0.05
-    }
-  ],
-  "shell": {
-    "opacity": "@shellOpacity",
-    "pose": {
-      "inflate": [
-        0.0,
-        "@inflate",
-        "@inflate"
       ]
     }
   }

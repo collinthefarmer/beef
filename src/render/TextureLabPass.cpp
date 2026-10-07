@@ -1175,7 +1175,8 @@ TextureLab::SampleMaterial(RE::NiSourceTexture *a_rmaos,
 bool TextureLab::RenderClusters(RenderTarget &a_target,
                                 RE::NiSourceTexture *a_rmaos,
                                 RE::NiSourceTexture *a_diffuse,
-                                const MaterialAnalysis &a_analysis) {
+                                const MaterialAnalysis &a_analysis,
+                                std::optional<std::uint8_t> a_picked) {
   auto *renderer = RE::BSGraphics::Renderer::GetSingleton();
   if (!available_ || !renderer || !borrowedContext_ || !a_target.rtv.Get() ||
       !gpu_->clusters.has_value()) {
@@ -1214,6 +1215,7 @@ bool TextureLab::RenderClusters(RenderTarget &a_target,
   constants.misc[0] = scale(w.luma);
   constants.misc[2] = scale(w.color) / 3.0f;
   constants.misc[1] = static_cast<float>(a_analysis.clusters.size());
+  constants.misc[3] = a_picked ? static_cast<float>(*a_picked) + 1.0f : 0.0f;
 
   pass.Context().UpdateSubresource(pipeline.constants.Get(), 0, nullptr,
                                    &constants, 0, 0);

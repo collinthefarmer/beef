@@ -14,7 +14,7 @@ functions with value records. No planner takes or stores an `RE::` pointer.
 The directory owns four groups of decisions.
 
 - **Actor planning.** `MatchActor` matches recipes against an actor's
-  **geometries** and builds the **actor plan**. `PlanGeometryPlacement` and
+  **geometries** and builds the **matches** (`ActorMatches`). `PlanGeometryPlacement` and
   `PlanActorLights` merge the matches through `recipe/Merge`. `PlanStacks`
   marks each **slot** **stack** animated or static. `PlanBinding` decides
   which surface **bindings** a geometry needs and which **contributor** owns
@@ -48,7 +48,7 @@ indexing one table with another table's handle. No handle wraps a pointer.
 | `GeometryId` | A row of `ActorMatches::geometries`. |
 | `InstanceId` | A row of `ActorMatches::instances`. |
 | `PlacementId` | A row of `ActorMatches::placements`. |
-| `RecipeId` | A row of the recipe store the caller passes as `std::span<const Recipe>`. |
+| `RecipeId` | A row of the `std::span<const Recipe>` the caller passes, which the engine takes from one `RecipeCatalog`. Declared in `recipe/RecipeCatalog.h`. |
 | `OutputId` | A row of the matched recipe's `outputs`. |
 
 ### The actor's matches
@@ -59,7 +59,7 @@ matches, and the query functions in `ActorMatches.cpp` read them.
 
 | Type | Description |
 |---|---|
-| `Geometry` | One mesh on the actor: its `GeometryIdentity`, the armor's `WornPiece` match keys, and the `firstPerson` and `lost` flags. |
+| `Geometry` | One mesh on the actor: its `GeometryIdentity`, the armor's `WornPiece` match keys, and the `firstPerson` flag. |
 | `Instance` | One **instance**: a `RecipeId`, an optional enchantment `FormKey`, and an optional effect `RecipeKey`. `InstanceFor` in `ActorPlanning.cpp` reuses an instance through `FindInstance` on these three values. |
 | `OutputPlacement` | One recipe output on one placement: its `OutputId`, whether it is `selected`, and a `problem` text. |
 | `Placement` | One **placement**. It joins an `InstanceId` to a `GeometryId` and records the matched `RecipeKey`, the `priority` and one `OutputPlacement` per output. |
@@ -147,6 +147,37 @@ binding tables connect consumers to results but hold no runtime values.
 | `RenderStackRequest` | One stack to lower: the graph, the `SurfaceOutput`, the instance, the placement output, the requirements and the geometry. |
 | `RenderBindingResolver` | A callback that returns the `ValueBindings` for a `TextureValue` on a geometry. |
 | `PackedLayerFields` | A `ProgramPack` and the concatenated inputs and lookups of a stack's layer fields. |
+
+### Plan reuse across actors
+
+`RenderPlanKey.h` decides when one actor's **render plan** is reused for
+another actor. `RenderPlanCache.h` holds the reused plans.
+
+| Type or function | Description |
+|---|---|
+| `StackKeyRequest` | What the engine supplies for one stack: the graph, output, placement, geometry, context, texture size, material identity, mesh hash and the `ValueBindings` with the actor left out. |
+| `StackKey`, `ChainKey`, `RenderPlanKey` | The **render plan key**: per stack the request's fields and `staticInputs`, the identities of the graph's external inputs that do not change; per slot chain the geometry, surface, slot and links. Equality is exact. `RenderPlanKeyHash` hashes it. |
+| `RenderPlanKeyOf` | Returns the key, or none when a request has no graph, its graph reads a node position, its mesh has no hash, or a static input's identity fails. |
+| `GraphsNamedBy` | The live graphs that a key's stacks name, once each. |
+| `RenderPlanCache` | Up to 64 plans by key. It evicts the least recently used. An entry holds the graphs its key names. |
+
+### Retention and identity helpers
+
+| Function | Description |
+|---|---|
+| `StepOutputRetention` | Whether the step output cache renews, keeps or evicts an entry (`Retention`): renew while another holder has the target, keep while unheld for at most `kStepOutputIdleMs` (500 ms), evict after that (`RetainedCache.h`). |
+| `PositionBakeIdentity` | The identity of a ripple's shared position bake, built from the mesh identity with the same length-prefixed encoding as every value identity (`ValueIdentity.h`). |
+
+### Target cost
+
+`TargetCost.h` counts the render **targets** a plan acquires when it runs.
+
+| Type or function | Description |
+|---|---|
+| `TargetCost` | The number of targets, their bytes, and the count per side length. |
+| `TargetBytes` | The bytes of one target: side² × 4 × 4/3 for the full mip chain, ×4 for `kRgba32Float`. `TextureLab::RenderTarget::Bytes` uses it. |
+| `TargetCostOf` | The cost of every step that outputs a texture with requirements, except a direct `SampleFieldStep`, which draws nothing. |
+| `SharedTargetCostOf` | The cost of the content-keyed targets that two plans have in common, which two actors share at run time. |
 
 ### Render steps
 
@@ -243,6 +274,7 @@ into one input of a consumer.
 | `kIf`, `kClamp`, `kSmoothstep`, `kLerp` | Three-operand operations. |
 | `kLength`, `kDistance`, `kDot`, `kCross` | Vector operations. |
 | `kQuantize`, `kSplat` | Round to RGBA8, and copy a scalar into three components. `InlinedProducerCode` appends them to an inlined producer. |
+| `kShuffle`, `kHash`, `kRandRange`, `kHue`, `kHueShift` | The functions `shuffle`, `hash`, `randrange`, `hue` and `hueShift` (opcodes 45 to 49). `rand()` has no opcode: its identity arrives as an input and its hash is `kHash`. |
 
 | Constant | Value | Purpose |
 |---|---|---|
@@ -309,7 +341,7 @@ engine handle.
 | Type | Declared in | Description |
 |---|---|---|
 | `EvictionAction` | `Eviction.h` | `kNone`, `kEvict` or `kRestore`. |
-| `EvictionFor` | `Eviction.h` | A `constexpr` function. It evicts an applied actor beyond the eviction distance and restores an evicted actor only inside 80% of that distance. A distance of 0 or less disables eviction. `Actors::Advance` calls it. |
+| `EvictionFor` | `Eviction.h` | A `constexpr` function. It evicts an actor with something installed beyond the eviction distance and restores an actor with nothing installed only inside 80% of that distance. A distance of 0 or less disables eviction. `Actors::InRange` calls it. |
 | `TransformStorage` | `TransformStorage.h` | An engine transform array's base address, `count`, `stride` and `offset`. `TransformStorageIndex` decodes a pointer into a row index. `render/SkinPalette.cpp` uses it. |
 | `ImageCacheKey`, `IsPlaceholderExtent` | `TextureIdentity.h` | `ImageCacheKey` lower-cases a path into a cache key. `IsPlaceholderExtent` reports a width or height at or under `kPlaceholderTextureExtent` (4). |
 | `RecipeTextureKey`, `RecipeTextureCache<T>` | `RecipeTextureCache.h` | A key of recipe name, texture name, pixel count and context, and a `std::map` from it to a `shared_ptr`. `FindRecipeTexture` and `LargestRecipeTexture` read it. Only `tests/planners/recipetexturecache_tests.cpp` uses it. |
@@ -359,12 +391,14 @@ PSGeneratedStack, or PSStack until the compile finishes     render/GeneratedShad
 
 | Files | Concern | What they own |
 |---|---|---|
-| `ActorMatches.h`/`.cpp` | Actor planning | The handles, the three-table `ActorMatches`, and its queries: `GeometryAt`, `InstanceAt`, `PlacementAt`, `FindInstance`, `PlacementsOfGeometry`, `PlacementsOfInstance`, `MatchesForPiece`, `ThirdPersonGeometriesOfInstance`, `RecipesOfInactiveInstances`, `InstanceVariant`, `LightEligible`. |
+| `ActorMatches.h`/`.cpp` | Actor planning | The handles, the three-table `ActorMatches`, and its queries: `GeometryAt`, `InstanceAt`, `PlacementAt`, `FindInstance`, `PlacementsOfGeometry`, `PlacementsOfInstance`, `MatchesForPiece`, `ThirdPersonGeometriesOfInstance`, `InstanceVariant`, `LightEligible`. |
 | `ActorPlanning.h`/`.cpp` | Actor planning | `MatchActor`, `PlanGeometryPlacement`, `PlanActorLights`. |
 | `StackPlan.h`/`.cpp`, `BindingPlan.h`/`.cpp` | Actor planning | `PlanStacks`, `SlotStackPlanOf`, `ChainIndexOf`; `PlanBinding`. |
 | `ValueIdentity.h`/`.cpp`, `TextureDemand.h`/`.cpp` | Render planning | `IdentifyValue`; `CollectTextureDemand` and the demand records. |
 | `RenderPlan.h`/`.cpp` | Render planning | The plan and step records, the step queries (`InputsOf`, `StepDependencies`, `ChangingSteps`, `LiveConsumers`, `TypeOf`), `MarkContentKeyedSteps`, `PackLayerFields` and `ValidateRenderPlan`. |
 | `RenderPlanLowering.cpp` | Render planning | `LowerRenderPlan` and `BuildRenderPlan`. |
+| `RenderPlanKey.h`/`.cpp`, `RenderPlanCache.h`/`.cpp` | Render planning | `RenderPlanKeyOf`, `RenderPlanKeyHash`, `GraphsNamedBy`; `RenderPlanCache`. |
+| `TargetCost.h`/`.cpp` | Render planning | `TargetCost`, `TargetBytes`, `TargetCostOf`, `SharedTargetCostOf`. |
 | `FieldInlining.h`/`.cpp` | Render planning | `AsProgramLike` and `InlineFields`. |
 | `RenderExecution.h` | Render planning | `RenderExecution` and its state records. |
 | `RenderFirings.h` | Render planning | `RenderFiring` and `RenderFirings`. |

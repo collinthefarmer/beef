@@ -190,6 +190,22 @@ to the logger alongside the file sink at plugin load.
   `CountReferences`, literal folding, and the forced mask removal
   (`ForEachMaterialLayer`) — so a new traversal has a pattern to copy.
 
+### The applied set (`recipe/RecipeCatalog.h`)
+
+- `RecipeCatalog` keeps its recipes and fingerprints in two private vectors,
+  not one vector of `CatalogEntry`, because `Recipes()` must return a
+  `std::span<const Recipe>`: `Resolve`, `MatchActor`, `PlanGeometryPlacement`,
+  `PlanActorLights` and about 150 call sites, most of them tests, take that
+  span. `Of` is the only way to build a catalog, so the two vectors always
+  have one entry each per recipe.
+- `ContentFingerprint` is FNV-1a 64 over `SerializeRecipe`. The store caches
+  it per loaded recipe and resets it when the recipe is republished.
+- Each publication copies every applied recipe into a new catalog. An actor
+  that a scoped rebuild skips keeps its older catalog alive until its next
+  rebuild, so the worst case is one full catalog per publication that a live
+  actor still holds. The size of a `Recipe` in memory was not measured
+  (2026-10-06).
+
 ## The recipe language (`Expression.h`, `Expression.cpp`)
 
 One grammar serves signals (evaluated per tick on the CPU), masks (per
@@ -208,12 +224,85 @@ atom   := number | "[" expr "," expr ("," expr)? "]" | "(" expr ")"
         | "@" name                      a signal, source or mask
         | "@" name "(" expr ")"         a declared curve applied to a value
         | function "(" expr ("," expr)* ")"
+        | "rand" "(" ")"
+        | "randrange" "(" expr "," expr ("," expr)? ")"
         | "x" | "mean" | "time" | "pi"
 ```
 
-- Functions: `abs min max clamp saturate floor ceil frac sqrt pow sin cos
-  step smoothstep lerp if length distance dot cross normalize`. There is
-  no `^`.
+- The functions are the rows of `ExpressionFunctions()` (`Expression.h`):
+  a name, a usage string and a call form. A `FixedCall` has an op and an
+  argument count; `RandomCall` is `rand()`; `RandomRangeCall` is
+  `randrange` with an optional seed. The schema's expression description
+  lists every row, and `schema_tests` checks it. The studio's expression
+  hint appends the usage strings (`Studio::FieldKindHelp`). There is no `^`.
+- `rand()` expands at parse time to `identity`, a salt and `hash`. The salt
+  counts the `rand()` calls of one expression, starting at 0, so each call
+  draws a different value. `randrange(start, stop)` uses the next `rand()`
+  as its seed. The lowering binds `identity` to `Program::Hash` of the
+  instance identity and the row name; `Program::Hash` builds that program
+  without parsing, so it cannot fail.
+- `shuffle(index, total, seed)` is the index's position in a fixed order of
+  `0 … total-1` that the seed chooses, so `shuffle(i, n, s) < k` picks
+  exactly k of n items. The order is the affine map `(a·i + b) mod P` over
+  the prime P at or above the total (a in 1…P-1 from `frac(seed·29.41)`, b
+  in 0…P-1 from `frac(seed·13.37)`), cycle-walked back into range: a
+  position at or above the total is mapped again until it is below, which
+  keeps the order a permutation and ends within P steps. The total is
+  floored and capped at 251 (`kMaxShuffleTotal`), so the prime search (gaps
+  below 16) and the walk stay bounded on the GPU. An index outside the
+  order, an empty or unreadable total, and a non-finite index all give 256
+  (`kShuffleOutside`), which no `< k` with k ≤ 251 selects; a non-finite
+  seed orders like seed 0. It takes scalars only. `ShufflePosition`
+  (`recipe/ExpressionMath.cpp`) and the HLSL `Shuffle` (`render/ShaderSource.cpp`)
+  are the same arithmetic; the CPU reference calls the former.
+- `hash(value, salt)` mixes the two floats' bit patterns with Chris
+  Wellons' `lowbias32` (xor-shift-multiply by 0x7feb352d and 0x846ca68b):
+  `mix(bits(value) ^ mix(bits(salt) + 0x9e3779b9))`, and returns the top
+  24 bits over 2^24, so it is exact in a float and below 1. A non-finite
+  value and -0 hash as +0. The CPU (`HashUnit`) and HLSL (`Hash`) agree bit
+  for bit on equal inputs; a value computed separately on each side can
+  differ in its last bit and then hash differently, so seed it from a row
+  the CPU evaluates (a signal or an imported uniform), not from per-texel
+  arithmetic, when the CPU preview must match.
+- `randrange(start, stop[, seed])` floors both bounds and returns
+  `start + min(floor(seed · span), span - 1)` with the seed clamped to
+  0..1, so a seed of 1 stays below `stop`; an empty or reversed range
+  returns `start`. Without a seed it uses `rand()`.
+- `rand(salt)` is `hash(identity, salt)`: the salt pins the value, so it
+  does not move when other `rand()` calls are added or removed. A salt of n
+  equals the n-th free call. `rand()` without a salt is `hash(identity, n)`
+  for the n-th free `rand()` (or seedless `randrange`) in the expression, where the lowering binds `identity` to a
+  per-row node: `hash(hash(idHash, effectHash), UnitHash(row name))` for a
+  signal, with the item hash mixed in (`hash(…, itemHash)`) for a mask,
+  which is per piece. So two rows, or two calls in one row, differ; the same
+  enchantment, effect, item and row repeat exactly; renaming a row changes
+  its values. Unbound (validation, a bare evaluation) the identity is 0. A
+  curve has no row and rejects `rand()`; a program with `rand()` is never
+  folded as a constant.
+- Every `rand()` step is static (2026-10-07). An instance's `EnchantmentSignal`
+  fields (`magnitude`, `cost`, `idHash`, `effectHash`) never change: the
+  enchantment form and the matched effect are part of the instance's
+  identity, and a re-equip builds a new instance. So `TraitsOf` does not mark
+  `EnchantmentSignal` as changing, and a step over `rand()` or an
+  enchantment field runs once and gets a content key. The input's identity
+  is its value (`enchantment:<field>:<bits>`, `EnchantmentIdentity` in
+  `render/CompositorDemand.cpp`), taken from `GeometryInputs::enchantment`,
+  which `LocateStackOutput` fills per instance from `ActorEnvironment`. An
+  identity by value is required: the render plan key (W2) reads static input
+  identities with the actor left out, so an identity by instance would let
+  two actors with different enchantments share a plan. Before 2026-10-07
+  every `rand()` step counted as animated and ran again whenever the actor
+  was re-evaluated.
+- `hue(turns)` is the fully saturated wheel colour
+  `saturate(|frac(turns + [0, 2/3, 1/3]) · 6 - 3| - 1)`: 0 red, 1/3 green,
+  2/3 blue, wrapping each turn. `hueShift(colour, turns)` rotates the colour
+  about the grey axis (1, 1, 1)/√3 by `turns · 2π` (Rodrigues), which keeps
+  the channel sum and so the brightness, then saturates. A non-finite number
+  of turns counts as 0. `HueColor`/`ShiftHue` (`recipe/ExpressionMath.cpp`) and
+  the HLSL `Hue`/`HueShift` are the same formulas. `hue` matches bit for bit,
+  because it uses only `frac`, `abs` and `saturate`. `hueShift` matches to
+  rounding only, because the CPU and HLSL `sin` and `cos` differ in their last
+  bits.
 - `pow(a, b)` follows `std::pow` and maps a non-finite result to 0:
   `pow(-2, 2)` is 4, `pow(-2, 3)` is -8, `pow(0, 0)` is 1, a negative base
   with a fractional exponent is 0. The GPU interpreter and the CPU reference
@@ -228,8 +317,8 @@ atom   := number | "[" expr "," expr ("," expr)? "]" | "(" expr ")"
   rejects scalar operands at check time: the shader represents a scalar
   as a splatted float3, so a GPU `length` or `dot` of one would disagree
   with the CPU, while a vec2 is `float3(x, y, 0)` and agrees. `length`,
-  `distance` and `dot` are the only functions that change a value's
-  type (vector in, scalar out); `cross` takes and yields vec3s;
+  `distance` and `dot` and `hue` are the only functions that change a value's
+  type (vector in, scalar out; `hue` scalar in, vec3 out); `cross` takes and yields vec3s, and `hueShift` takes a vec3 and a scalar;
   `normalize` keeps its operand's size and maps a zero vector to zero
   rather than NaN. Every other function preserves its operand's type.
 - Comparisons and logic yield 0 or 1. Arithmetic is component-wise on
@@ -314,6 +403,10 @@ Mode formulas:
 - Relief of an armor input at the raw UV, 0..1 with higher raised: input 1
   reads displacement.r, 2 reads RMAOS occlusion (b), 4 the normal map's
   slope, 5 diffuse luminance `dot(rgb, (0.299, 0.587, 0.114))`.
+- Normal slope = `saturate(length(n.xy))` with `n.xy = normal.rg x 2 - 1`:
+  the sine of the surface's tilt away from the face, 0 on a flat face and 1
+  on a vertical one. The tangent-space z (`sqrt(1 - |n.xy|^2)`) is flatness,
+  the inverse, and made every flat face read as an edge.
 - Height = 0.5 + (relief - reliefMean) x armorWeight x reliefContrast +
   (noise - noiseMean) x noiseWeight. Centred so neither input pins the
   field at the clamp; the relief is stretched around its own mean because
@@ -425,6 +518,21 @@ eight axes of weight x (texel - centroid)^2, the first of equals winning;
 the CPU function is the reference and the shader must agree with it on a
 texel. The id is written as id / 255 grey. A weight that is not finite or
 not positive counts as zero on both sides.
+
+A cluster source with `pick` draws membership instead of ids: 1 on the
+texels of one cluster, 0 elsewhere. `PickCluster` (`mesh/MaterialClusters.cpp`)
+chooses it on the CPU from the analysis, so it never names a cluster that
+does not exist: clusters are ranked by texel count with empty ones dropped,
+each weighs its `share` raised to `areaBias` (0 uniform, 1 by area, up to 8
+favouring the largest), and the pick walks the cumulative weights. A pick
+outside 0..1 is clamped, a non-finite pick takes the largest cluster, and a
+non-finite bias counts as 1. The draw passes the picked id + 1 in
+`clusterMisc.w` (0 draws the id map), so a changed pick redraws one pass and
+never repeats the k-means. The enchantment signal fields `idHash` and
+`effectHash` give a stable 0..1 value for this: `UnitHash` (FNV-1a over the
+form key's text, top 24 bits) of the enchantment, and of the magic effect
+the instance was matched on. Form keys name the plugin and local id, so the
+values survive a load order change.
 
 Lab mechanics:
 
@@ -725,26 +833,36 @@ The core's constants and rules come from engine behaviour, so their reasons
 sit with the adapter under *Engine events, hooks and the manager*: the
 pending model paragraph gives `kModelWaitMs`, `kPendingRecheckMs` and the
 third-person-only wait; the eviction paragraph gives the 0.8 restore factor
-of `EvictionFor` and `InRange`. `docs/components/actors.md` maps the
+of `EvictionFor` and `InRange`; the claim paragraph gives `Claim` and
+`LiveClaims`. `docs/components/actors.md` maps the
 directory.
 
 ## Engine events, hooks and the manager
 
-A refresh runs through the actor core (`src/actors/`, plan
-`docs/plans/actor-core-2026-10-03.md`). `AdvanceActor` observes the actor
-(`engine/ActorObservation`), plans it (`PlanActor`) and advances its phase
-(`Advance`), and traces `actor_advance` with the phase, pieces, pending models
-and command count. An advance with no commands stores the phase and changes
-nothing; one with commands retires the actor and rebuilds it whole through
-the install path, and the installed plan becomes the old one with every
-command applied. `tracked_` holds each actor's phase and model table;
-`RetireEffects` empties the installed plan, so any retire outside `Refresh`
-leads to a full rebuild on the next refresh, and a full `Retire` drops the
-actor's entry and its model pointers.
+A **sync** (`Manager::SyncActor`) runs one stale actor through the actor
+core (`src/actors/`, plan `docs/plans/actor-core-2026-10-03.md`).
+`DecideActor` observes the actor (`engine/ActorObservation`), plans it
+(`PlanActor`) and advances its state (`Advance`). It traces `actor_decide`
+with `record` (`kept` or `forgotten`) and the counts of planned and installed
+placements, claims, pieces, pending models and commands. `tracked_` maps an
+actor to its `ActorState` and its model table. An actor without an entry has
+no record. A decision without a state forgets the actor (`ForgetActor`). A
+decision with no commands records the state and changes nothing else. A
+decision with commands retires the actor (`RetireActor`), records the state
+and rebuilds the actor whole through the install path. The recorded installed
+plan is the old one with every command applied (`AfterCommands`). If the
+rebuild fails in `LiveActorFor`, the sync forgets the actor. `RetireActor`
+empties the installed plan and keeps the record, so a retire outside a sync
+leads to a full rebuild on the next sync. `ForgetActor` also stops the
+actor's animation subscriptions and events and erases its entry and its model
+pointers. The tick forgets an actor whose 3D is gone (`Loaded3D`); this and
+the sync are the only two forget paths of the frame. Before 2026-10-07 these
+names were `Refresh` (now `SyncActor`), `AdvanceActor` (`DecideActor`),
+`RetireEffects` (`RetireActor`) and `Retire` (`ForgetActor`).
 
 Observation reads the worn armor per person: one piece per armor, so an armor
 listed in several biped slots counts once; a piece the inventory no longer
-marks worn is left out, because the unequip refresh runs about 2 ms after
+marks worn is left out, because the unequip sync runs about 2 ms after
 `TESEquipEvent` while the biped still lists the item. A model table holds an
 `NiPointer` per model, its `ModelToken` and its geometry facts (name and
 diffuse path), read once when the model is first seen and before anything is
@@ -765,12 +883,12 @@ third-person piece holds the actor back: the first-person biped can list an
 item that has no first-person model (a helmet), and such a piece would delay
 every equip of the player by the full wait. A first-person piece stays pending
 until it attaches. Because no event announces the attach, `RecheckOf` reports
-an actor as **settling** while a pending model is younger than the wait plus
+an actor as **waiting** while a pending model is younger than the wait plus
 `kPendingRecheckMs` (100 ms), so one observation lands after the wait ends,
-and as **stuck** after that. `QueueSettlingActors` re-observes settling actors
-every 100 ms; `QueueSecondChecks` re-observes stuck ones every second. The
-equip flag survives an advance that settles, so the equip signal fires when the
-late model installs. A multi-slot armor lists its item in every slot
+and as **stuck** after that. `MarkWaitingStale` marks waiting actors stale
+every 100 ms; `MarkRecheckStale` marks stuck ones stale every `kRecheckMs`
+(1 s). The equip flag survives a sync that leaves the actor waiting, so the
+equip signal fires when the late model installs. A multi-slot armor lists its item in every slot
 it covers but attaches one model, so observation takes the model from any
 slot that holds it. The in-game `unload` regression case showed the late
 attach on a spawned NPC on 2026-10-01; in the 2026-10-03 fight soak the wait
@@ -779,42 +897,88 @@ cut full rebuilds from 33 to 6.
 `TextureLab::Init` compiles every built-in shader, which took 1.67 to 1.79 s
 on 2026-10-03; `Manager::OnFrame` calls it on the first frame (the main menu)
 and traces `texture_lab_start`. Before, the first use started the lab: under
-the legacy refresh the player's collection at load did, but the actor core
+the legacy rebuild the player's collection at load did, but the actor core
 issues no command for a player without enchanted armor, so the first crowd
 rebuild paid it as a 1.6 to 1.8 s frame. Observation reads a geometry's
 diffuse path through `PbrMaterial::DiffusePath` and never through
 `MaterialInputs::From`, whose `MeasureFlatDisplacement` renders and reads back
 the displacement mean, a blocking GPU readback observation does not need.
-`actor_advance` traces the observe, plan and advance times.
+`actor_decide` traces the observe, plan and advance times. An install then
+traces `actor_install` (live actor, placement, lights, report),
+`actor_place` (geometry bindings, render), `actor_render` (plan, attach) and,
+on a plan cache miss, `render_plan_build` (demand collection, lowering). A
+2026-10-05 Vigilant sync spent about 1 ms observing and planning, 10 ms
+installing seven bindings and 23 ms on a plan miss, so these split the
+remainder. A rebuild's `rebuild_state` lists only its target recipe's
+fingerprint (every recipe when the rebuild has none), because serializing all
+34 loaded recipes on every edit cost each drag update for nothing.
 
-Distance eviction is an `Advance` rule through `EvictionFor`: a present actor
-beyond `EvictDistance` is evicted, and an evicted one returns inside 0.8 of
-it. The facts carry the distance (none for the player). Once a second
-`QueueSecondChecks` reads each tracked actor's distance and re-observes it only
-when `InRange` disagrees with its phase. An evicted actor is in range when
-eviction is off (`EvictDistance` 0), so turning eviction off restores it.
-`SettlePhase` drops an actor that holds nothing (nothing installed, nothing
-pending); its next equip event tracks it again.
+Distance eviction is an `Advance` rule. The facts carry the distance (none
+for the player). `InRange` derives the hysteresis from what is installed,
+through `EvictionFor`. An actor with something installed stays in range out
+to 1.0 × `EvictDistance`. An actor with nothing installed comes in range only
+inside 0.8 × `EvictDistance`. An actor out of range has every installed entry
+retired, and its state keeps the plan and the claims. An **evicted** actor
+therefore has a plan and nothing installed. An arriving actor gets effects
+only inside 0.8 × `EvictDistance`; before 2026-10-07 it got them inside 1.0 ×.
+Every `kRecheckMs` (1 s) `RangeChanged` reads each tracked actor's distance
+(`DistanceToPlayer`) and marks it stale only when `InRange` differs from
+"anything installed". It skips an actor with neither a plan nor anything
+installed. Every actor is in range when eviction is off (`EvictDistance` 0),
+so turning eviction off restores an evicted actor. `Advance` returns no state
+when the plan, the installed plan, the pending models and the claims are all
+empty, and the sync forgets the actor; its next equip event tracks it again.
 
-`RenderPlanCache` (`engine/RenderPlanCache.h`) reuses an actor's render plan
-for every actor whose stack requests give the same key (`RenderPlanKeyOf`):
-per request the graph pointer, output index, placement, geometry and instance
-ids, texture size, `MaterialIdentityOf` (each texture name length-prefixed, so
-no name can forge a separator) and `MeshHashIdentityOf`, plus the slot chains.
-The actor's form ID is left out. It enters identity strings (`producedKey`)
-and the content keys made from them (`contentKey`), and the runtime reads
-content keys: `ExecuteCached` keys the compositor's step outputs, which every
-actor shares, by them. A reused plan therefore runs with the storing actor's
-content keys. That is safe only for content that does not depend on the
-actor, so a plan is never cached (`uncacheable` in the trace) when a graph
-reads a node position (`ReadsNodePositions`: a distance bake from an actor's
-skeleton, whose identity is the geometry and root pointers) or when a mesh has
-no hash yet (the identity would be a pointer nothing holds). `SameStructure`
-compares only whether a step has a content key, because legitimate keys differ
-between actors (an effect-shader input carries the instance string). An entry
-holds the `RecipeGraph`s its requests read, so a graph cannot be freed or its
-address reused while the plan lives. A recipe or
-view change (`ChangeAndRebuildActors`) and a load clear the cache; it holds 64
+Another system can replace the material or the shell of a geometry that the
+plugin bound. On each tick `ClaimLostGeometries` checks every bound geometry
+of a live actor. `TakenByAnotherSystem` reports a geometry whose
+`MaterialBinding` or `ShellBinding` fails `StillOwned()`. The tick retires
+that geometry's binding at once (`RetireGeometry`). It records a **claim**
+(`Claim`: the `GeometryRef` and the piece's `ModelToken`) into the tracked
+state with `WithClaim`, and it marks the actor stale. `PlanActor` takes the
+claims in `PlanRequest`. Its recipe resolver returns nothing for a claimed
+geometry, so the geometry keeps its position in `ActorMatches` (the order of
+`LivePiecesOf`) and gets no placement. `Reconcile` then retires the geometry
+as any other removal. `LiveClaims` keeps a claim only while its piece has the
+claimed `ModelToken`, so a claim ends when the piece gets a new model (a
+re-equip or a 3D reload). A load clears every record and so every claim.
+Before 2026-10-07 the tick forgot an actor whose geometries were all lost
+(`!Alive`); its next equip installed the effects again on the taken
+geometries. That reinstall loop was found by reading the code and was never
+reproduced in game.
+
+`RenderPlanCache` (`planners/RenderPlanCache.h`) reuses an actor's render plan
+for every actor whose stack requests give the same `RenderPlanKey`
+(`planners/RenderPlanKey.h`): per request the graph pointer, output index,
+placement, geometry and instance ids, texture size, `MaterialIdentityOf` and
+the mesh hash, plus the identities of the graph's external inputs that do not
+change (`StaticExternalSources`), plus the slot chains. A plan stores
+`GeometryId` and `PlacementId` indices and `const RecipeGraph *` pointers, so
+the key keeps positions and graph pointers; keying by `GeometryRef` would
+include the item form and stop two items with one mesh from sharing.
+The actor's form ID is left out: `PlanKeyOf` (`engine/ManagerApply.cpp`)
+builds the key's bindings with `scope.actor` 0, so an effect-shader or event
+input, whose identity carries the instance string, keys alike for every actor.
+The actor still enters identity strings (`producedKey`) and the content keys
+made from them (`contentKey`), and the runtime reads content keys:
+`ExecuteCached` keys the compositor's step outputs, which every actor shares,
+by them. A reused plan therefore runs with the storing actor's content keys.
+That is safe only when every input that can enter a content key is in the
+render plan key. Static external inputs are exactly those inputs, so the key
+takes their identities from the same `ValueBindings` the content keys use and
+a new input kind needs no edit here. Before 2026-10-06 the key was a
+hand-kept list; it missed `ItemHashInput` (`item:<hash>`), so an actor in a
+different item with the same mesh reused another item's static outputs.
+A plan is never cached (`uncacheable` in the trace) when a graph reads a node
+position (`ReadsNodePositions`: a distance bake from an actor's skeleton, whose
+identity is the geometry and root pointers) or when a mesh has no hash yet (the
+identity would be a pointer nothing holds). `SameStructure` compares only
+whether a step has a content key, because legitimate keys differ between
+actors. An entry holds the `RecipeGraph`s its key names (`GraphsNamedBy`), so
+a graph cannot be freed or its address reused while the plan lives. A rebuild
+that changes matching or has no recipe (`ChangeAndRebuildActors`) and a load
+clear the cache; a scoped rebuild leaves it, because the edited recipe's new
+graph gives its plans new keys and the old entries age out; it holds 64
 entries and evicts the least recently used. `VerifyRenderPlanCache`, or a run
 file's `verifyRenderPlans`, builds every reused plan again and logs, traces
 and replaces one that differs. On 2026-10-03 (runs 20261003T175431 and
@@ -931,22 +1095,39 @@ layout, and so its out-of-view share, did not exist.
   world-space direction conversion (for a facing vector) would need a
   rotation-only method and is deferred with the `facing` selector.
 
-- A studio gesture (a slider drag) applies its edit and rebuilds the
-  world in one atomic step (`ChangeAndRebuildActors`), every frame.
-  Live instances point at the shared `Recipe`, so a mutation the render
-  path can observe before its rebuild null-derefs in the binding's
-  writes (crash 2026-09-22, a throttle that deferred only the rebuild;
-  reverted same day). A rebuild throttle must defer the mutation too,
-  or give live instances their own recipe snapshot. The cost that
-  motivated the attempt stands (measured 2026-09-21: a drag rebuilt
-  ~20 actors ~11 times a second, up to 18 ms each, ~320 texture
-  acquires per rebuild); the redesign is backlog item 49.
+- A studio gesture (a slider drag) applies its edit and rebuilds in one
+  step (`ChangeAndRebuildActors`), at most once per
+  `kGestureApplyInterval` (100 ms). A drag update that arrives sooner
+  stays in the mailbox untouched in state `kHeld`; newer updates
+  replace it, `TickGesture` posts it once the interval has passed
+  (`ReleaseHeldGesture`), and ending the gesture posts it at once. The
+  mailbox (`Studio::GestureMailbox`) owns every hold fact: the delivery
+  state, whether the gesture started, the time of the last apply and the
+  last touch. Every time comes from `EditorClockMS`, which the caller
+  passes in, so the hold and the 2 s idle commit (`kGestureIdleTimeout`)
+  read one clock and native tests drive both. The held value never reaches the
+  recipe before its rebuild: a throttle that mutated the recipe every
+  frame but deferred the rebuild crashed on 2026-09-22 (null deref in
+  the binding's writes), when live instances still pointed into the
+  store. Each publication is now an immutable `RecipeCatalog`. A
+  `LiveActor` holds the catalog it was planned against, its
+  `ActorMatches` index that catalog, and each `LiveInstance` holds its
+  recipe through `SharedRecipe`, which keeps the catalog alive. A store
+  change therefore cannot reach a live binding or move a `RecipeId`.
+- A rebuild touches only the actors applying the edited recipe (an
+  instance of it, or a failed application of it) when the applied set's
+  `MatchFacts` (id, keys, priority, merge mode, in order) are unchanged;
+  those facts alone decide `Resolve`, so no other actor's matches can
+  move. Any other change, or a rebuild without a recipe (reload, view
+  change), retires every loaded actor and clears the render plan
+  cache. Measured 2026-10-05 before the scoping: one drag edit
+  refreshed 25 actors at about 2 ms each while 3 wore the recipe.
 
 - `LogStackDiagnostics` (`engine/ManagerApply.cpp`) logs each distinct
   (recipe, output, geometry, where, message) once per game session while
   the warning-history budget permits,
   marked "(repeats suppressed)", because a recipe that errors on a
-  crowd re-applies on every refresh and wrote 250 identical lines in
+  crowd re-applies on every sync and wrote 250 identical lines in
   one session. The menu's in-place diagnostics are unaffected; only
   the log line is deduplicated. `Manager` owns `WarningHistory` and clears
   it in `Clear`, so a new save/game session can report the same warning again.
@@ -964,11 +1145,11 @@ layout, and so its out-of-view share, did not exist.
   A texture producer must not release until the shells that read it have
   detached and the material journals have retired, so the tables that own
   the producers go last.
-  `Manager::Retire` first reports the live actor's captured application tokens
+  `Manager::RetireActor` first reports the live actor's captured application tokens
   through `ApplicationService::Retire`. Distance eviction can happen between
   preparation and first rendering; destroying the tokens without reporting them
   would leave a permanent prepared result. Retirement must not report every
-  current pending token here: a store mutation or refresh has already invalidated
+  current pending token here: a store mutation or sync has already invalidated
   the old actor attempt and may have queued its replacement. Captured revision
   and attempt checks keep retirement from terminating that replacement.
   Partial `RetireGeometry(actor, geometry)` follows the same binding-before-
@@ -1039,8 +1220,8 @@ layout, and so its out-of-view share, did not exist.
   ([SKSE load hook](https://github.com/ianpatt/skse64/blob/master/skse64/Hooks_SaveLoad.cpp)).
   A failed load leaves engine effects paused; only a successful load or new
   game resumes discovery and ticks.
-- `SessionQueue` owns loading, generation, refresh coalescing, and equip timers
-  under one mutex. Refresh reservations and their later callbacks must belong to
+- `SessionQueue` owns loading, generation, sync coalescing, and equip timers
+  under one mutex. Sync reservations and their later callbacks must belong to
   the same active generation. Loading clears all bookkeeping atomically; failed
   submission releases its reservation only if that generation is still current.
   A stale callback cannot consume a new session's pending actor or carry its
@@ -1109,8 +1290,8 @@ Decompile provenance (`decompiled/WornEnchantmentFX/plugin.c` unless noted):
 | the 1e-4 guard on every divide and zero-length segment | `__real_38d1b717` |
 | edge colour and edge alpha | 4544-4552, 4553-4560 |
 
-- The refresh after the delay sees the new piece's 3D, so it is the apply
-  that fires `equip`; the immediate refresh on the equip event does not.
+- The sync after the delay sees the new piece's 3D, so it is the apply
+  that fires `equip`; the immediate sync on the equip event does not.
   `equip` carries the centre of the first bound geometry as its position.
 - SKSE drains its task queue until empty, so a task may never re-post
   itself to wait for a later frame (NOTES 12); due times fire from
@@ -1118,9 +1299,9 @@ Decompile provenance (`decompiled/WornEnchantmentFX/plugin.c` unless noted):
 - Animation graph events arrive on the animation thread and reach the bus
   as `anim.<tag>` with the event's payload string as the trigger's arg;
   observation belongs to the actor rather than its current recipe bindings.
-  `RetireEffects` releases all recipe references before store publication while
-  retaining observation across the queued rebuild. `RunRefresh` reconciles the
-  final applied state; final retirement, failed rebuilds, unload and clear also
+  `RetireActor` releases all recipe references before store publication while
+  retaining observation across the queued rebuild. `SyncStale` reconciles the
+  final live state; final retirement, failed rebuilds, unload and clear also
   end observation and forget discovery. The maintenance pass cleans abandoned
   rebuild gaps, including actors temporarily lacking a graph.
 - The animation sink copies tag and payload with a shared registration token.
@@ -1136,9 +1317,9 @@ Decompile provenance (`decompiled/WornEnchantmentFX/plugin.c` unless noted):
   Discovery survives an ordinary rebuild and graph replacement; signal state
   continues to rebuild normally.
 - `RetireAll` retains the existing two-stage queue ordering: it first collects
-  applied and observed actor IDs, then queues their retirements behind refreshes
-  posted by earlier edits. Retiring immediately in the collection task would
-  let those already queued refreshes recreate effects after retirement.
+  applied and observed actor IDs, then queues their forgetting (`QueueForget`)
+  behind syncs posted by earlier edits. Forgetting immediately in the
+  collection task would let those already queued syncs recreate effects after retirement.
 - The destructor's `NOLINTNEXTLINE(bugprone-exception-escape)` is limited to
   `AnimationSubscriptions`. The diagnostic follows CommonLib's
   `RemoveEventSink` pending-removal allocation into Address Library's fatal
@@ -1291,6 +1472,24 @@ Decompile provenance (`decompiled/WornEnchantmentFX/plugin.c` unless noted):
   is the summed weight of the named bones (sorted, so two orders of one set
   share a key); `componentId` and `chartId` carry island id / 255 in x with
   `kNoIsland` vertices at 1 and need the analysis, not the mesh alone.
+- The `piece` source kind holds two per-piece facts, `itemHash` and
+  `chartCount` (`PieceSource`). Before 2026-10-07 they were bake words; a
+  recipe that still writes `{"bake": "itemHash"}` fails to load.
+- `itemHash` is `UnitHash` of the
+  worn armor form's key (0 when the form is gone), one value for the whole
+  piece, so the graph lowers it to the `ItemHashInput` uniform and no
+  texture is drawn. It is per geometry, not per recipe instance: one
+  instance covers every piece that carries its enchantment, and vanilla
+  reuses enchantment forms across items. Its render identity is the hash
+  bits, so copies of one item share computations and different items do
+  not. Every copy of an item reads the same value; the game keeps no
+  stable identity for one copy of a non-unique item.
+- `chartCount`: the
+  `ChartCountInput` uniform reads `MeshAnalysis::charts` from the mesh cache
+  at render time, so it needs no field on `GeometryInputs`; its identity is
+  the mesh identity. It exists so a mask can choose among the charts a mesh
+  really has (`chartId` ranks above it do not exist on that mesh); the fill
+  template's `chartSure` uses it to light at least one existing chart.
 - Every source bakes into the geometry's UV space, so a bake
   distinguishes exactly what the UVs distinguish — no more. Any texel
   sharing collapses it: humanoid armor mirrors left onto right on one
@@ -1356,7 +1555,7 @@ keeps two steps from matching when their outputs could differ:
 | Step kind and requirements | `StepKindName` and the step's own size, format and mip policy | Lowering can give one value different step requirements |
 | Geometry identity | The mesh content (`mesh:<hash>:<parts>`) when the mesh cache can read it, and the geometry pointer otherwise. `MeshData::hash` covers the vertex and index bytes and, through `HashPartitionsAndBound`, each partition's slot and bone names and the model bound | The partition, bone-weight and position bakes read them |
 | Material identity | Each texture's pointer, generation and name (`TextureIdentity` in `render/TextureRef.h`) | A freed address reused while a cache entry lives cannot match a different texture |
-| State and signal identity | `graph:context:actor` from the geometry's `ApplicationScope`. The actor is the form ID that keys the manager's `applied_` map | State and signals never match across actors |
+| State and signal identity | `graph:context:actor` from the geometry's `ApplicationScope`. The actor is the form ID that keys the manager's `live_` map | State and signals never match across actors |
 | Numeric operands | The exact bits of the step's resolved numeric operands, appended by `CacheKeyFor` at execution (the **cache key**) | A node position that follows the current pose (a node outside the skin) is not a changing input, so without it a bake would stay at the pose of its first frame |
 
 The step output cache is the Compositor's `stepOutputs_`. A step whose
@@ -1368,8 +1567,25 @@ renders into a fresh target, and a hit does not remember the target in the
 step's scratch (`ForgetReuseHint`). `TextureView::texture` holds the same
 target as `TextureView::target`, so the cache counts two references of its
 own when it decides an entry is held only by itself. The cache drops an entry
-once only the cache holds its target and it has been unread for 500 ms;
-`Manager::Clear` empties it on load. Measured on 2026-10-01 with twelve
+500 ms after the last sweep that saw another holder (`Sweep` renews
+`lastUsedMS` while anything else holds the target); `Manager::Clear` empties
+it on load. Renewing only on `Find` and `Publish` dropped a long-held bake on
+the first sweep after its instance retired, so every editor rebuild drew its
+bakes again (2026-10-05 trace: 0 cache hits and 24 `BakeMesh` passes per
+edit). Only a step that produces a recipe value gets a `producedKey`, so a
+step a lowering creates internally is uncached unless the lowering keys it.
+A ripple's position bake is keyed by `PositionBakeIdentity(<mesh identity>)`
+(`planners/ValueIdentity.h`, called from `KeyPositionBake`), which
+length-prefixes both parts like every other identity, because it reads nothing but the mesh; before that,
+every rebuild and every actor drew its own (2026-10-05: 28 `BakeMesh` passes
+per edit for three Vigilants in the same armor). The compositor's step output cache keeps an entry while something else holds
+its target, renewing its time, and evicts it 500 ms after the last holder lets
+go (`StepOutputRetention`, `kStepOutputIdleMs` in `planners/RetainedCache.h`;
+`StepOutputCache::Sweep` applies it). Plan lowering memoizes each value's identity per
+build (`IdentitySite`: graph, output, instance, geometry), since the binding
+resolver depends on exactly those, and `InlineLayerFields` recounts consumers
+only after an inline changes the plan; together they cut a seven-geometry fill
+template plan from 12.8 ms to 9.7 ms natively (g++ -O2, 2026-10-05). Measured on 2026-10-01 with twelve
 mannequins in the demo cuirass: 841 shared hits, 206 target acquisitions in
 the burst instead of 1776, peak 2.2 GB instead of 8.6 GB, steady 136 targets
 and 1.4 GB instead of 308 and 4.2 GB.
@@ -1470,6 +1686,14 @@ them outside as separate passes.
   unscrolled coordinates, for the same reason. The template `glossField` layer
   uses such a curve. A source with its own result transform keeps measuring
   its shown value.
+- The import templates are empty: an imported recipe keys on its effect
+  shader and draws nothing until it is edited. Successive templates (hashed
+  combinations of regions, relief, shell, finish and waves; a cavity glow
+  with a travelling ripple and a flare shell) read as out of place on
+  ordinary armor. `tests/fixtures/templates/probe.json` holds the rows the
+  importer patches, so the importer tests do not depend on the shipped
+  templates. Imported recipes are written once; a template change reaches a
+  shader's recipe only after its file in `recipes/imported` is deleted.
 - Stack composition alternates between its retained target and the lab's shared
   scratch. Initial parity ensures the final layer lands in the retained target;
   a preceding stack remains separate from both destinations.
@@ -2090,9 +2314,9 @@ stores an `RE::` pointer.
   frozen `Manager` nested under these — `MaterialBinding`/`ShellBinding`/
   `LightBinding`, `SignalState`/`ActorEnvironment`, `startMS`/`lastTime` — is
   shell-owned state keyed by the same handles, not fields of the pure tables.
-  `Geometry::lost` is the one shell-maintained flag the pure `AnyLiveGeometry`
-  reads (a geometry whose material or shell another system replaced);
-  light-liveness stays a shell check because a light is a `RE::` binding.
+  A geometry that another system took is not a flag in these tables; the
+  actor core records it as a claim and the planner leaves it unplaced.
+  Light-liveness stays a shell check because a light is a `RE::` binding.
 
 - **Row projections belong to `studio/`, not here.** The frozen `BuildSnapshot`
   inlined its row builds. The recipe-definition → row projection is a view-model
@@ -2156,8 +2380,9 @@ See [the cleanup checkpoint](docs/checkpoints/cleanup-checkpoint-2026-09-13.md) 
 material group journal, retained external textures, explicit actor retirement,
 presenter slot leases, skin palette ownership, and preview submission contract.
 `SourceSampling` centralizes compositor sampling policy. `ChangeAndRebuildActors`
-retires candidates before mutation and rebuilds them afterward; its recipe
-argument scopes reporting, not actor selection. Generated compositor outputs and
+runs the mutation first, then retires and rebuilds the actors it affects; its
+recipe argument scopes both reporting and, when matching is unchanged, actor
+selection. Generated compositor outputs and
 snapshot retention now use `TextureRef` directly.
 
 ## History
@@ -2218,6 +2443,15 @@ two pieces. The addon becomes `PieceRef::addon` as a plugin/local-ID
 Use this association rather than guessing from the armor's addon list or
 mesh name. A missing addon stays absent and cannot match an addon-only selector.
 `LightEligible` uses that same identity for planning and actual light placement.
+
+## Imported recipes cover every effect
+
+`ArmorEnchantmentShaders` (`engine/RecipeStore.cpp`) collects the effect
+shader of every effect of every constant-effect enchantment, not only the
+costliest effect's, because the matcher keys on every effect's shader
+(`WornKeysOf`): a recipe applies per effect, so each effect's shader needs
+one. The game itself shows only the costliest effect's shader. At each load
+the log names, per shader, the recipe that covers it.
 
 ## Recipe sampling (2026-09-23)
 
@@ -2448,7 +2682,20 @@ on purpose (`allow-idle-camera 3`): state 1, the idle camera, orbits the player
 and sweeps the view across the crowd ring, so the frustum count
 (`out_of_view_pct`) can be checked against a moving camera without anyone at
 the game. `hold-idle-camera` and cleanup's switch to third person end the
-orbit. On the 2026-10-03 load order,
+orbit. The studio uses the same setting (`engine/IdleCamera`): on the SKSE
+Menu Framework's `kOpenMenu` event it saves the delay, sets 10^9 and leaves an
+active idle camera with `ForceThirdPerson`; on `kCloseMenu` it restores the
+saved delay. `Manager` owns that hold (`HoldIdleCameraForMenu`,
+`ReleaseIdleCameraForMenu`, `menuIdleHold_`). The events arrive from the
+framework's render callback, so both steps run as SKSE tasks on the game
+thread. The regression run keeps its own saved delay
+(`RunWorld::vanityDelayBeforeRun`). The two holders do not know about each
+other: if a run ends while the menu is open, the menu has saved the run's
+10^9 and restores it on close, so the idle camera stays off until the game
+restarts. One owner for the menu hold, the run hold and the orbit soak's
+short delay would remove this; it is not built (2026-10-07). The hold covers the whole framework
+menu, whichever mod's page is open; a framework without the
+`RegisterEventPriority` export gets no hold and the log says so. On the 2026-10-03 load order,
 `ForceFirstPerson` issued 62 ms after the fixture rendered was reverted to third
 person 0.77 s later, and the camera then flipped back to first person without
 a command; with 60 frames between the render and the switch, both views hold.
@@ -2507,11 +2754,11 @@ MiB, `RenderTargetPool::kMaxIdleTargets` and `kMaxIdleBytes`).
 The heartbeat is emitted before `OnFrame` starts its frame timer, so its own
 trace writes stay out of `frame_us` and the 8 ms spike count. A load returns
 from `OnFrame` early and calls `Metrics::ForgetFrameInterval`, so the load
-screen does not count as one long frame interval. Refreshes run outside
+screen does not count as one long frame interval. Syncs run outside
 `OnFrame`: the SKSE task queue ran them on six engine job threads in run
 20261004T023455, one at a time, and no frame-thread event fell inside any of
-1570 refreshes. The report's `plugin_ms_per_s` and `plugin_share_pct`
-therefore add `refresh_us` to `frame_us`; `plugin_frame_us_mean`, the
+1570 syncs. The report's `plugin_ms_per_s` and `plugin_share_pct`
+therefore add `sync_us` to `frame_us`; `plugin_frame_us_mean`, the
 budgeted measure, stays the frame alone. `gpu_us_mean` counts only timed
 `RenderTick` spans, so the report prints `gpu_ticks_timed` and
 `gpu_ticks_untimed` (dropped plus discarded) beside it. A budget never passes

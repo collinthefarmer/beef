@@ -13,6 +13,12 @@ using test::Check;
 
 namespace {
 constexpr std::array kExpressions{
+    "shuffle(@a * 3 + 9, 12, @b)",
+    "hash(@a, @b) + hash(@b, 3)",
+    "hue(@a) * @b",
+    "hueShift([saturate(@a), saturate(@b), 0.5], @b)",
+    "randrange(@a * 2, @b * 4 + 6, hash(@a, 1))",
+    "shuffle(@a + 3, @b * 5 + 15, @a * @b) < 4",
     "@a + @b * 2",
     "@a - @b / 3",
     "@a / @b",

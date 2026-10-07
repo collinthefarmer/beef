@@ -82,6 +82,8 @@ ClustersRowOf(const MaterialClustersSource &a_clusters) {
   clusters.seed = std::to_string(s.seed);
   clusters.iterations = std::to_string(s.iterations);
   clusters.colorWeight = ParamText(s.weights.color);
+  clusters.pick = a_clusters.pick ? ParamText(*a_clusters.pick) : "";
+  clusters.areaBias = ParamText(a_clusters.areaBias);
   return clusters;
 }
 
@@ -111,6 +113,9 @@ SourceRow SourceRowOf(const Source &a_source, std::size_t a_references) {
       },
       [](const MaterialClustersSource &a_clusters) -> SourceRowKind {
         return ClustersRowOf(a_clusters);
+      },
+      [](const PieceSource &a_piece) -> SourceRowKind {
+        return PieceSourceRow{std::string{NameOf(kPieceFields, a_piece.field)}};
       });
   return row;
 }
@@ -221,6 +226,21 @@ ClustersKindOf(const MaterialClustersSourceRow &a_row) {
                      (*weights)[3], (*weights)[4], *colorValue};
   clusters.settings.seed = *seed;
   clusters.settings.iterations = *iterations;
+  const auto bias = ParseParam(a_row.areaBias);
+  const auto *biasValue = bias ? Get<float>(*bias) : nullptr;
+  if (!bias ||
+      (biasValue && (*biasValue < 0.0f || *biasValue > kMaxAreaBias))) {
+    return std::nullopt;
+  }
+  clusters.areaBias = *bias;
+  if (!a_row.pick.empty()) {
+    const auto pick = ParseParam(a_row.pick);
+    const auto *pickValue = pick ? Get<float>(*pick) : nullptr;
+    if (!pick || (pickValue && (*pickValue < 0.0f || *pickValue > 1.0f))) {
+      return std::nullopt;
+    }
+    clusters.pick = *pick;
+  }
   return SourceKind{clusters};
 }
 }
@@ -235,6 +255,14 @@ std::optional<SourceKind> SourceKindOf(const SourceRow &a_row) {
       [](const RippleSourceRow &a_row) { return RippleKindOf(a_row); },
       [](const MaterialClustersSourceRow &a_row) {
         return ClustersKindOf(a_row);
+      },
+      [](const PieceSourceRow &a_row) -> std::optional<SourceKind> {
+        const std::optional<PieceField> field =
+            FromName(kPieceFields, a_row.field);
+        if (!field) {
+          return std::nullopt;
+        }
+        return SourceKind{PieceSource{*field}};
       });
 }
 

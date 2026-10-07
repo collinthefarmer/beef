@@ -99,6 +99,14 @@ below are taken.
   merge mode and a per-output flag. `efsh` requires an explicit record while
   `enchantment` reads the matched enchantment implicitly, so a recipe keyed on
   `effectShader` cannot name the shader that matched.
+- [x] Settle the `rand()` seeding model (decided and landed 2026-10-07, W7 of
+  `architecture-fit-2026-10-06.md`). The per-piece facts are a source kind,
+  `{"piece": "itemHash"}` and `{"piece": "chartCount"}`, not bake words. A
+  `rand()` call takes an optional salt: `rand()` keeps its position salt and
+  `rand(salt)` pins its value. The item hash, the enchantment hash and the
+  effect hash may all seed a static step; W3 measured no sharing loss from
+  the item hash. The enchantment fields are static inputs with an identity by
+  value.
 - [x] Give rows one namespace and reject a duplicate at load. The editor
   already treats the four sections as one namespace when choosing a fresh name
   (`src/studio/Names.cpp`) and no shipped recipe or template collides, so this

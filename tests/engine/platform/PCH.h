@@ -21,10 +21,15 @@ struct TESEffectShader {
 namespace MagicSystem {
 enum class CastingType { kConstantEffect };
 }
+struct EffectSetting {};
+struct Effect {
+  EffectSetting *baseEffect = nullptr;
+};
 struct EnchantmentItem {
   MagicSystem::CastingType GetCastingType() const {
     return MagicSystem::CastingType::kConstantEffect;
   }
+  std::vector<Effect *> effects;
 };
 struct TESDataHandler {
   static TESDataHandler *GetSingleton() { return nullptr; }

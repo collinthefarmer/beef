@@ -25,7 +25,6 @@
 namespace BetterEnchantmentEffects {
 namespace {
 inline constexpr std::size_t kFirstRendersPerTick = 1;
-inline constexpr std::uint32_t kSecondCheckMS = 1000;
 
 class SectionTimer {
 public:
@@ -63,29 +62,36 @@ bool InCameraView(RE::Actor &a_actor) {
 
 bool ShownThisTick(RE::Actor &a_actor, const Settings &a_settings,
                    bool a_inspected) {
-  if (a_actor.IsPlayerRef()) {
+  if (a_actor.IsPlayerRef() || !a_settings.cullOutOfView) {
     return true;
   }
   const SectionTimer cullTimer{Metrics::Section::kCull};
   const bool inView = InCameraView(a_actor);
   Metrics::CountActorView(inView);
-  return inView || a_inspected || !a_settings.cullOutOfView;
+  return inView || a_inspected;
 }
 
-bool EvictionChanges(RE::FormID a_actor, const Actors::Phase &a_phase,
-                     float a_evictDistance) {
-  const bool present = Is<Actors::Present>(a_phase);
-  if (!present && !Is<Actors::Evicted>(a_phase)) {
+bool TakenByAnotherSystem(const LiveGeometry &a_bound) {
+  if (a_bound.lost) {
+    return false;
+  }
+  return (a_bound.material && !a_bound.material->StillOwned()) ||
+         (a_bound.shell && !a_bound.shell->StillOwned());
+}
+
+bool RangeChanged(RE::FormID a_actor, const Actors::ActorState &a_state,
+                  float a_evictDistance) {
+  const bool installed = !(a_state.installed == Actors::ActorPlan{});
+  if (!installed && a_state.plan == Actors::ActorPlan{}) {
     return false;
   }
   const auto *actor = RE::TESForm::LookupByID<RE::Actor>(a_actor);
-  const auto *player = RE::PlayerCharacter::GetSingleton();
-  if (!actor || !player || actor->IsPlayerRef()) {
+  if (!actor) {
     return false;
   }
-  const float distance =
-      player->GetPosition().GetDistance(actor->GetPosition());
-  return Actors::InRange(a_phase, distance, a_evictDistance) != present;
+  const std::optional<float> distance = DistanceToPlayer(*actor);
+  return distance &&
+         Actors::InRange(installed, distance, a_evictDistance) != installed;
 }
 
 bool AwaitsFirstRender(const LiveActor &a_state) {
@@ -591,9 +597,9 @@ void EmitMetricsHeartbeat() {
   EmitStepKinds(measured.stepExecutionsByKind);
   std::vector<Trace::Field> heartbeat{
       {"action", "heartbeat"},
-      {"refreshes", std::to_string(measured.refreshes)},
-      {"refresh_us", std::to_string(measured.refreshMicros)},
-      {"refresh_max_us", std::to_string(measured.refreshMaxMicros)},
+      {"syncs", std::to_string(measured.syncs)},
+      {"sync_us", std::to_string(measured.syncMicros)},
+      {"sync_max_us", std::to_string(measured.syncMaxMicros)},
       {"sink_adds", std::to_string(measured.sinkAdds)},
       {"sink_removes", std::to_string(measured.sinkRemoves)},
       {"readbacks", std::to_string(measured.readbacks)},
@@ -673,13 +679,13 @@ void Manager::OnFrame() {
     SweepAnimationEvents();
   }
   const Settings settings = GetSettings();
-  if (now - lastSettlingCheckMS_ >= Actors::kPendingRecheckMs) {
-    lastSettlingCheckMS_ = now;
-    QueueSettlingActors(now);
+  if (now - lastWaitingCheckMS_ >= Actors::kPendingRecheckMs) {
+    lastWaitingCheckMS_ = now;
+    MarkWaitingStale(now);
   }
-  if (now - lastSecondCheckMS_ >= kSecondCheckMS) {
-    lastSecondCheckMS_ = now;
-    QueueSecondChecks(now, settings.evictDistance);
+  if (now - lastRecheckMS_ >= Actors::kRecheckMs) {
+    lastRecheckMS_ = now;
+    MarkRecheckStale(now, settings.evictDistance);
   }
   if (now - lastTickMS_ < settings.TickIntervalMS()) {
     return;
@@ -690,7 +696,7 @@ void Manager::OnFrame() {
     Compositor::GetSingleton()->BeginTick(now);
     Compositor::GetSingleton()->SweepStepOutputs(now);
   }
-  if (!applied_.empty()) {
+  if (!live_.empty()) {
     const SectionTimer tickTimer{Metrics::Section::kTick};
     TextureLab::GetSingleton()->SetGeneratedShaders(settings.generatedShaders);
     TextureLab::GetSingleton()->BeginTimedTick(settings.gpuTiming);
@@ -699,7 +705,7 @@ void Manager::OnFrame() {
   }
   {
     const SectionTimer sweepTimer{Metrics::Section::kSweep};
-    SweepBoundMeshes(*Compositor::GetSingleton(), applied_, now);
+    SweepBoundMeshes(*Compositor::GetSingleton(), live_, now);
   }
   {
     const SectionTimer snapshotTimer{Metrics::Section::kSnapshot};
@@ -708,20 +714,20 @@ void Manager::OnFrame() {
   ObserveRegression();
 }
 
-void Manager::QueueSettlingActors(std::uint32_t a_nowMS) {
+void Manager::MarkWaitingStale(std::uint32_t a_nowMS) {
   for (const auto &[id, tracked] : tracked_) {
-    if (Actors::RecheckOf(tracked.phase, a_nowMS) ==
-        Actors::Recheck::kSettling) {
-      QueueRefresh(id);
+    if (Actors::RecheckOf(tracked.state, a_nowMS) ==
+        Actors::Recheck::kWaiting) {
+      MarkStale(id);
     }
   }
 }
 
-void Manager::QueueSecondChecks(std::uint32_t a_nowMS, float a_evictDistance) {
+void Manager::MarkRecheckStale(std::uint32_t a_nowMS, float a_evictDistance) {
   for (const auto &[id, tracked] : tracked_) {
-    if (Actors::RecheckOf(tracked.phase, a_nowMS) != Actors::Recheck::kNone ||
-        EvictionChanges(id, tracked.phase, a_evictDistance)) {
-      QueueRefresh(id);
+    if (Actors::RecheckOf(tracked.state, a_nowMS) != Actors::Recheck::kNone ||
+        (tracked.state && RangeChanged(id, *tracked.state, a_evictDistance))) {
+      MarkStale(id);
     }
   }
 }
@@ -740,17 +746,17 @@ void Manager::Tick(std::uint32_t a_nowMS, const Settings &a_settings) {
   frozenLastTick_ = view.freeze;
   const std::optional<RE::FormID> inspected = InspectedActor(a_nowMS);
   std::size_t firstRenders = 0;
-  for (auto it = applied_.begin(); it != applied_.end();) {
+  for (auto it = live_.begin(); it != live_.end();) {
     LiveActor &state = it->second;
     const auto actor = state.actor.get();
-    if (!actor || actor->IsDeleted() || !actor->Is3DLoaded()) {
+    if (!actor || !Loaded3D(*actor)) {
       const RE::FormID id = it->first;
       AbandonApplications(id);
       ++it;
-      Retire(id);
+      ForgetActor(id);
       continue;
     }
-    DropLostGeometries(state);
+    ClaimLostGeometries(it->first, state);
     {
       const SectionTimer signalsTimer{Metrics::Section::kSignals};
       for (LiveInstance &instance : state.instances) {
@@ -776,13 +782,7 @@ void Manager::Tick(std::uint32_t a_nowMS, const Settings &a_settings) {
       UpdateLights(state, hidden);
     }
     FinishApplications(it->first, state);
-    if (!render || Alive(state)) {
-      ++it;
-    } else {
-      const RE::FormID id = it->first;
-      ++it;
-      Retire(id);
-    }
+    ++it;
   }
 }
 
@@ -828,22 +828,30 @@ void Manager::TickInstance(LiveInstance &a_instance, float a_time,
   a_instance.signals->Tick(*a_instance.environment, {a_time, a_delta});
 }
 
-void Manager::DropLostGeometries(LiveActor &a_state) {
+void Manager::ClaimLostGeometries(RE::FormID a_actorID, LiveActor &a_state) {
+  std::vector<Actors::Claim> claims;
   for (LivePiece &piece : a_state.pieces) {
     for (LiveGeometry &bound : piece.geometries) {
-      if (bound.lost) {
-        continue;
-      }
-      if ((bound.material && !bound.material->StillOwned()) ||
-          (bound.shell && !bound.shell->StillOwned())) {
-        logger::info(
-            "dropping '{}': its material or shell was replaced by another "
-            "system",
-            bound.name);
+      if (TakenByAnotherSystem(bound)) {
+        logger::info("claimed '{}': its material or shell was replaced by "
+                     "another system",
+                     bound.name);
         RetireGeometry(a_state, bound);
+        claims.push_back({bound.ref, piece.model});
       }
     }
   }
+  if (claims.empty()) {
+    return;
+  }
+  const auto tracked = tracked_.find(a_actorID);
+  if (tracked != tracked_.end() && tracked->second.state) {
+    for (Actors::Claim &claim : claims) {
+      tracked->second.state = Actors::WithClaim(
+          std::move(*tracked->second.state), std::move(claim));
+    }
+  }
+  MarkStale(a_actorID);
 }
 
 void Manager::RenderGeometry(LiveActor &a_state, LiveGeometry &a_bound,
@@ -900,16 +908,4 @@ void Manager::UpdateLights(LiveActor &a_state,
   }
 }
 
-bool Manager::Alive(const LiveActor &a_state) noexcept {
-  for (const LivePiece &piece : a_state.pieces) {
-    for (const LiveGeometry &bound : piece.geometries) {
-      if (!bound.lost) {
-        return true;
-      }
-    }
-  }
-  return std::ranges::any_of(a_state.instances, [](const LiveInstance &a_i) {
-    return static_cast<bool>(a_i.light);
-  });
-}
 }

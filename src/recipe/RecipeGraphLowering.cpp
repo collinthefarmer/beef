@@ -36,6 +36,8 @@ struct RecipeGraphLowering {
   std::vector<std::optional<FunctionId>> functions;
   std::vector<bool> rejected;
   std::unordered_map<std::string, OutputRef> sharedInputs;
+  std::optional<OutputRef> instanceIdentity;
+  std::optional<OutputRef> pieceIdentity;
   std::unordered_map<std::string, OutputRef> unscrolledSources;
   static constexpr std::size_t kNodeLimit = 16 * kMaxRecipeRows;
 
@@ -138,9 +140,45 @@ struct RecipeGraphLowering {
       time = static_cast<std::uint32_t>(bound.valueBindings.size());
       bound.valueBindings.push_back(Time());
     }
-    bound.program =
-        original.program.BindContext(time, std::nullopt, std::nullopt);
+    std::optional<std::uint32_t> identity;
+    if (original.program.UsesIdentity()) {
+      identity = static_cast<std::uint32_t>(bound.valueBindings.size());
+      bound.valueBindings.push_back(RowIdentity(declaration));
+    }
+    bound.program = original.program.BindContext(time, std::nullopt,
+                                                 std::nullopt, identity);
     return bound;
+  }
+  OutputRef Hashed(OutputRef value, OutputRef salt, std::string label) {
+    return Add(ExpressionOperation{BoundExpression{
+                   Program::Hash("value", "salt"), {value, salt}, {}}},
+               ValueType::kScalar, std::move(label));
+  }
+  OutputRef InstanceIdentity() {
+    if (!instanceIdentity)
+      instanceIdentity =
+          Hashed(Shared(EnchantmentSignal{EnchantmentField::kIdHash},
+                        ValueType::kScalar, "enchantment idHash"),
+                 Shared(EnchantmentSignal{EnchantmentField::kEffectHash},
+                        ValueType::kScalar, "enchantment effectHash"),
+                 "instance identity");
+    return *instanceIdentity;
+  }
+  OutputRef PieceIdentity() {
+    if (!pieceIdentity)
+      pieceIdentity =
+          Hashed(InstanceIdentity(),
+                 Shared(ItemHashInput{}, ValueType::kScalar, "item hash"),
+                 "piece identity");
+    return *pieceIdentity;
+  }
+  OutputRef RowIdentity(const RecipeDeclaration &declaration) {
+    const OutputRef scope =
+        declaration.category == detail::DeclarationCategory::kSpatial
+            ? PieceIdentity()
+            : InstanceIdentity();
+    return Hashed(scope, Constant(UnitHash(declaration.name)),
+                  "rand identity of " + declaration.displayName);
   }
   TriggerOperation TriggerOperationFor(const TriggerSignal &signal) {
     TriggerOperation op;
@@ -324,6 +362,11 @@ struct RecipeGraphLowering {
         [&](const BakeSource &k) -> NodeKind {
           return BakeOperation{Geometry(), Uv(), k.bake};
         },
+        [&](const PieceSource &k) -> NodeKind {
+          if (k.field == PieceField::kChartCount)
+            return ExternalInput{ChartCountInput{}};
+          return ExternalInput{ItemHashInput{}};
+        },
         [&](const DistanceSource &k) -> NodeKind {
           return DistanceOperation{Geometry(), Uv(),
                                    Input(NodePositionInput{k.from},
@@ -342,8 +385,13 @@ struct RecipeGraphLowering {
                                  k.shape};
         },
         [&](const MaterialClustersSource &k) -> NodeKind {
-          return MaterialClustersOperation{Material(), Geometry(), Uv(),
-                                           k.settings};
+          MaterialClustersOperation operation{Material(), Geometry(), Uv(),
+                                              k.settings};
+          if (k.pick) {
+            operation.pick = Parameter(*k.pick);
+            operation.areaBias = Parameter(k.areaBias);
+          }
+          return operation;
         });
   }
   void Functions() {
@@ -366,8 +414,8 @@ struct RecipeGraphLowering {
           {"mean", ParameterOperation{1}, {{"value", ValueType::kScalar}}});
       BoundExpression expression;
       if (declaration.expression)
-        expression.program =
-            declaration.expression->program.BindContext(std::nullopt, 0, 1);
+        expression.program = declaration.expression->program.BindContext(
+            std::nullopt, 0, 1, std::nullopt);
       expression.valueBindings = {{0, 0}, {1, 0}};
       function.nodes.push_back({function.displayName,
                                 ExpressionOperation{std::move(expression)},
@@ -659,12 +707,13 @@ struct RecipeGraphLowering {
     NodeTraits traits{Stateful(kind), false, Is<ReductionOperation>(kind)};
     if (const auto *external = Get<ExternalInput>(kind)) {
       traits.sampleDependent = Is<SampleUvInput>(external->source);
-      traits.backendRequired = Is<NodePositionInput>(external->source);
+      traits.backendRequired = Is<NodePositionInput>(external->source) ||
+                               Is<ItemHashInput>(external->source) ||
+                               Is<ChartCountInput>(external->source);
       traits.changing = Is<TimeInput>(external->source) ||
                         Is<DeltaTimeInput>(external->source) ||
                         Is<ActorValueSignal>(external->source) ||
                         Is<ActorStateSignal>(external->source) ||
-                        Is<EnchantmentSignal>(external->source) ||
                         Is<RootTransformInput>(external->source) ||
                         Is<EventInput>(external->source);
     }

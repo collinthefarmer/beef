@@ -32,6 +32,9 @@ void TraceRebuildState(const ApplicationToken &a_token,
           a_view.pin ? std::to_string(a_view.pin->piece.armorID) : "none"},
          {"muted", std::to_string(a_view.muted.size())}});
     for (const Recipe &recipe : LoadedRecipes()) {
+      if (!a_token.recipeID.empty() && recipe.id != a_token.recipeID) {
+        continue;
+      }
       Trace::Emit(Trace::Event::kRecipe,
                   {{"id", recipe.id},
                    {"fingerprint_fnv1a64",
@@ -117,7 +120,7 @@ ApplicationPhase PhaseOf(const ApplicationObservation &a_result,
 
 std::vector<RE::FormID> Manager::ApplicationActors() const {
   auto ids = LoadedActorIDs();
-  for (const auto &[id, state] : applied_)
+  for (const auto &[id, state] : live_)
     ids.push_back(id);
   std::ranges::sort(ids);
   ids.erase(std::unique(ids.begin(), ids.end()), ids.end());
@@ -145,31 +148,57 @@ std::vector<RE::FormID> Manager::LoadedActorIDs() const {
   return ids;
 }
 
+std::vector<RE::FormID>
+Manager::ActorsApplying(std::string_view a_recipeID) const {
+  std::vector<RE::FormID> ids = applications_.FailedActorsFor(a_recipeID);
+  for (const auto &[id, state] : live_) {
+    if (std::ranges::any_of(state.instances, [&](const LiveInstance &a_live) {
+          return a_live.recipe && a_live.recipe->id == a_recipeID;
+        })) {
+      ids.push_back(id);
+    }
+  }
+  std::ranges::sort(ids);
+  ids.erase(std::unique(ids.begin(), ids.end()), ids.end());
+  return ids;
+}
+
 void Manager::ChangeAndRebuildActors(std::string a_reportRecipe,
                                      const std::function<void()> &a_action) {
+  const std::vector<MatchFacts> matchingBefore = MatchFactsOf(LoadedRecipes());
+  a_action();
+  const RebuildScope rebuild =
+      ScopeOf(matchingBefore, MatchFactsOf(LoadedRecipes()), a_reportRecipe);
+  std::vector<RE::FormID> scope = Match(
+      rebuild,
+      [&](const RebuildAll &) {
+        renderPlans_.Clear();
+        return ApplicationActors();
+      },
+      [&](const RebuildApplying &a_applying) {
+        return ActorsApplying(a_applying.recipe);
+      });
   const ApplicationToken token =
-      applications_.Begin(std::move(a_reportRecipe), ApplicationActors());
+      applications_.Begin(std::move(a_reportRecipe), std::move(scope));
   const auto actors = applications_.ActorsFor(token.recipeID);
   for (const RE::FormID actor : actors) {
-    RetireEffects(actor);
+    RetireActor(actor);
   }
-  renderPlans_.Clear();
-  a_action();
   TraceRebuildState(token, editor_.CurrentView());
   for (const RE::FormID actor : actors) {
-    if (!applications_.Refresh(actor)) {
-      Retire(actor);
+    if (!applications_.MarkStale(actor)) {
+      ForgetActor(actor);
       applications_.Report(token, actor, ApplicationPhase::kFailed,
-                           "actor refresh could not be queued");
+                           "actor sync could not be queued");
     }
   }
 }
 
 void Manager::PrepareApplications(
     RE::FormID a_actor, const std::vector<ApplicationToken> &a_tokens) {
-  const auto found = applied_.find(a_actor);
+  const auto found = live_.find(a_actor);
   for (const ApplicationToken &token : a_tokens) {
-    if (found == applied_.end()) {
+    if (found == live_.end()) {
       applications_.Report(
           token, a_actor, ApplicationPhase::kUnmatched,
           "no applicable loaded geometry, or rendering is disabled");
@@ -179,7 +208,7 @@ void Manager::PrepareApplications(
     applications_.Report(token, a_actor, PhaseOf(observed, false),
                          observed.problem);
   }
-  if (found != applied_.end()) {
+  if (found != live_.end()) {
     found->second.applications = a_tokens;
   }
 }

@@ -74,7 +74,7 @@ void QueuedDelivery() {
   const auto actor = std::make_shared<RE::Actor>();
   const auto graph = std::make_shared<RE::BShkbAnimationGraph>();
   actor->manager->graphs = {graph};
-  manager.applied_[actor->id] = {actor->GetHandle()};
+  manager.live_[actor->id] = {actor->GetHandle()};
   manager.ReconcileAnimationEvents(actor->id);
   const RE::BSAnimationGraphEvent event{{"footstep"}, {"left"}, actor.get()};
   Trace::Get().Enable(false);
@@ -89,7 +89,7 @@ void QueuedDelivery() {
             manager.fired.back().payload.arg == "left",
         "accepted work updates discovery and signals together independently of "
         "tracing");
-  manager.applied_.clear();
+  manager.live_.clear();
   const auto pending = manager.applications_.Begin("recipe", {actor->id});
   manager.SweepAnimationEvents();
   graph->Send(event);
@@ -98,7 +98,7 @@ void QueuedDelivery() {
             observedTags[actor->id].contains("footstep"),
         "pending rebuild retains observation but events do not fire into "
         "absent effects");
-  manager.applied_[actor->id] = {actor->GetHandle()};
+  manager.live_[actor->id] = {actor->GetHandle()};
   manager.ReconcileAnimationEvents(actor->id);
   Check(graph->adds == 1 && graph->removes == 0,
         "restored effect state reuses an unchanged subscription");
@@ -123,7 +123,7 @@ void QueuedDelivery() {
   manager.Drain();
   Check(observedTags.empty(),
         "rejected task submission does not discover an event");
-  manager.applied_.clear();
+  manager.live_.clear();
   manager.applications_.Report(pending, actor->id, ApplicationPhase::kFailed);
   manager.SweepAnimationEvents();
   Check(manager.animations_.Actors().empty(),
@@ -135,7 +135,7 @@ void MissingGraphs() {
   observedTags.clear();
   Manager manager;
   const auto actor = std::make_shared<RE::Actor>();
-  manager.applied_[actor->id] = {actor->GetHandle()};
+  manager.live_[actor->id] = {actor->GetHandle()};
   manager.SweepAnimationEvents();
   Check(manager.animations_.Actors().size() == 1,
         "an actor without a graph remains tracked for recovery and cleanup");
@@ -155,7 +155,7 @@ void MissingGraphs() {
   Check(graph->removes == 1 && observedTags[actor->id].contains("ready"),
         "temporary graph loss detaches but retains discovery during "
         "participation");
-  manager.applied_.clear();
+  manager.live_.clear();
   const auto pending = manager.applications_.Begin("recipe", {actor->id});
   manager.SweepAnimationEvents();
   Check(!observedTags.empty(),
@@ -165,7 +165,7 @@ void MissingGraphs() {
   Check(observedTags.empty() && manager.animations_.Actors().empty(),
         "failed rebuild clears discovery even when no graph remains");
   actor->manager->graphs = {graph};
-  manager.applied_[actor->id] = {actor->GetHandle()};
+  manager.live_[actor->id] = {actor->GetHandle()};
   manager.SweepAnimationEvents();
   actor->loaded = false;
   manager.SweepAnimationEvents();
@@ -185,7 +185,7 @@ void InFlightCallback() {
   const auto actor = std::make_shared<RE::Actor>();
   const auto graph = std::make_shared<RE::BShkbAnimationGraph>();
   actor->manager->graphs = {graph};
-  manager.applied_[actor->id] = {actor->GetHandle()};
+  manager.live_[actor->id] = {actor->GetHandle()};
   std::mutex lock;
   std::condition_variable condition;
   bool captured = false;
@@ -230,19 +230,19 @@ void RetirementOrdering() {
   const auto actor = std::make_shared<RE::Actor>();
   const auto graph = std::make_shared<RE::BShkbAnimationGraph>();
   actor->manager->graphs = {graph};
-  manager.applied_[actor->id] = {actor->GetHandle()};
+  manager.live_[actor->id] = {actor->GetHandle()};
   manager.ReconcileAnimationEvents(actor->id);
   NoteAnimEvent(actor->id, "ready");
   manager.PostTask([&] {
-    manager.applied_.clear();
+    manager.live_.clear();
     manager.PostTask([&] {
-      manager.applied_[actor->id] = {actor->GetHandle()};
+      manager.live_[actor->id] = {actor->GetHandle()};
       manager.ReconcileAnimationEvents(actor->id);
     });
   });
   manager.RetireAll();
   manager.Drain();
-  Check(manager.applied_.empty() && manager.animations_.Actors().empty() &&
+  Check(manager.live_.empty() && manager.animations_.Actors().empty() &&
             observedTags.empty() && graph->adds == 1 && graph->removes == 1,
         "retire all includes actors in rebuild gaps and runs after their "
         "queued refreshes");

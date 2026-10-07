@@ -17,8 +17,11 @@
 
 #include <algorithm>
 #include <format>
+#include <functional>
 #include <memory>
+#include <optional>
 #include <string>
+#include <utility>
 
 #pragma clang diagnostic push
 #pragma clang diagnostic ignored "-Wmismatched-tags"
@@ -324,6 +327,39 @@ void RenderPendingStatus() {
                      "log, then restart Skyrim.");
 }
 
+namespace {
+void OnGameThread(std::function<void()> a_task) {
+  if (const SKSE::TaskInterface *tasks = SKSE::GetTaskInterface()) {
+    tasks->AddTask(std::move(a_task));
+  }
+}
+
+void __stdcall OnMenuEvent(SKSEMenuFramework::Model::EventType a_event) {
+  if (a_event == SKSEMenuFramework::Model::kOpenMenu) {
+    OnGameThread([] {
+      if (Manager *manager = Manager::GetSingleton()) {
+        manager->HoldIdleCameraForMenu();
+      }
+    });
+  } else if (a_event == SKSEMenuFramework::Model::kCloseMenu) {
+    OnGameThread([] {
+      if (Manager *manager = Manager::GetSingleton()) {
+        manager->ReleaseIdleCameraForMenu();
+      }
+    });
+  }
+}
+
+void HoldIdleCameraWhileOpen(HMODULE a_module) {
+  if (!GetProcAddress(a_module, "RegisterEventPriority")) {
+    logger::info("SKSE Menu Framework has no menu events; the idle camera can "
+                 "start while the menu is open");
+    return;
+  }
+  SKSEMenuFramework::AddEvent(OnMenuEvent, 0.0f);
+}
+}
+
 void RegisterMenu() {
   const auto module = GetMenuFrameworkModule();
   const auto problem =
@@ -338,6 +374,7 @@ void RegisterMenu() {
   SKSEMenuFramework::AddSectionItem("Studio", RenderStudio);
   SKSEMenuFramework::AddSectionItem("Recipes", RenderRecipes);
   SKSEMenuFramework::AddSectionItem("Setup", RenderSetup);
+  HoldIdleCameraWhileOpen(module);
   logger::info("SKSE Menu Framework pages registered");
 }
 }

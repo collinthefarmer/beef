@@ -76,6 +76,12 @@ std::vector<OutputRef> InputsOf(const NodeKind &kind) {
       },
       [&](const MaterialClustersOperation &k) {
         inputs = {k.material, k.geometry, k.coordinates};
+        if (k.pick) {
+          inputs.push_back(*k.pick);
+        }
+        if (k.areaBias) {
+          inputs.push_back(*k.areaBias);
+        }
       },
       [&](const ReductionOperation &k) { add(k.value); });
   return inputs;

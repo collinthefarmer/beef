@@ -40,5 +40,10 @@ case 40: r = components == 2 ? dot(b.xy, a.xy) : dot(b, a); break;
 case 41: r = cross(b, a); break;
 case 43: r = round(saturate(a) * 255) / 255; break;
 case 44: r = a.xxx; break;
+case 45: r = Shuffle(d.x, b.x, a.x).xxx; break;
+case 46: r = Hash(b.x, a.x).xxx; break;
+case 47: r = RandRange(d.x, b.x, a.x).xxx; break;
+case 48: r = Hue(a.x); break;
+case 49: r = HueShift(b, a.x); break;
 default: r = SafeDiv(a, components == 2 ? length(a.xy) : length(a)); break;
 }

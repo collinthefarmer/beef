@@ -35,6 +35,10 @@ std::string Label(const ShowRecipes &a_show) {
   return label;
 }
 
+std::string Label(const ShowAllRecipes &) {
+  return std::string{"show-all-recipes"};
+}
+
 std::string Label(const Spawn &a_s) { return WithRole("spawn", a_s.role); }
 
 std::string Label(const Despawn &a_s) { return WithRole("despawn", a_s.role); }

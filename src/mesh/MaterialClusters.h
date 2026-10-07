@@ -5,6 +5,7 @@
 
 #include <cstddef>
 #include <cstdint>
+#include <optional>
 #include <string>
 #include <vector>
 
@@ -48,4 +49,7 @@ ClusterMaterial(const MaterialSample &a_sample,
 NearestCluster(const MaterialTexel &a_texel,
                const MaterialAnalysis &a_analysis) noexcept;
 [[nodiscard]] std::string DescribeTexel(const MaterialTexel &a_texel);
+[[nodiscard]] std::optional<std::uint8_t>
+PickCluster(const MaterialAnalysis &a_analysis, float a_pick,
+            float a_areaBias) noexcept;
 }
