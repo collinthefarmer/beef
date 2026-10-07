@@ -24,6 +24,7 @@ struct StepContext {
   std::uint32_t loadsAtStart = 0;
   const RunChanges &changes;
   const std::array<std::uint64_t, kRoleCount> &renderedBefore;
+  std::optional<std::uint32_t> measuredSeconds;
 };
 
 struct StepMove {

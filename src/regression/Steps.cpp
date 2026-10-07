@@ -817,12 +817,13 @@ StepMove Check(const DespawnCrowd &, const StepContext &a_context) {
 StepMove Start(const HoldWindow &, const StepContext &) { return Wait(); }
 
 StepMove Check(const HoldWindow &a_hold, const StepContext &a_context) {
+  const std::uint32_t seconds = HoldSeconds(a_hold, a_context.measuredSeconds);
   if (a_context.seen.nowMs - a_context.startedAtMs >=
-      std::uint64_t{a_hold.seconds} * 1000) {
+      std::uint64_t{seconds} * 1000) {
     return Pass();
   }
   const std::uint64_t stalled =
-      (std::uint64_t{a_hold.seconds} + 1) * kMaxFramesPerSecond;
+      (std::uint64_t{seconds} + 1) * kMaxFramesPerSecond;
   if (a_context.frames >= stalled) {
     return Fail("the game clock did not advance");
   }
@@ -954,4 +955,20 @@ std::array<bool, kRoleCount> RolesAffected(const Step &a_step) {
       a_step);
 }
 
+std::uint32_t
+HoldSeconds(const HoldWindow &a_hold,
+            std::optional<std::uint32_t> a_measuredSeconds) noexcept {
+  if (!a_measuredSeconds) {
+    return a_hold.seconds;
+  }
+  switch (a_hold.role) {
+  case HoldRole::kMeasured:
+    return *a_measuredSeconds;
+  case HoldRole::kEdge:
+    return std::min(a_hold.seconds, kQuickEdgeSeconds);
+  case HoldRole::kFixed:
+    return a_hold.seconds;
+  }
+  return a_hold.seconds;
+}
 }

@@ -74,10 +74,8 @@ std::expected<std::int64_t, std::string> UnixSecondsOf(const json *a_value) {
 json OutcomeJson(Outcome a_outcome) {
   return json(std::string{OutcomeName(a_outcome)});
 }
-}
 
-std::expected<RunFile, std::string> ParseRunFile(std::string_view a_text,
-                                                 std::int64_t a_nowSeconds) {
+std::expected<json, std::string> RunFileDocument(std::string_view a_text) {
   if (a_text.size() > kMaxRunFileBytes) {
     return std::unexpected(
         std::format("larger than {} bytes", kMaxRunFileBytes));
@@ -88,11 +86,37 @@ std::expected<RunFile, std::string> ParseRunFile(std::string_view a_text,
   }
   std::vector<Diagnostic> problems;
   const Reporter report{problems, "run file"};
-  const std::optional<json> root = ParseObjectDocument(a_text, report);
-  if (!root) {
+  std::optional<json> root = ParseObjectDocument(a_text, report);
+  if (!root || !problems.empty()) {
     return std::unexpected(problems.empty() ? std::string{"not a JSON object"}
                                             : problems.front().message);
   }
+  return std::move(*root);
+}
+
+std::expected<std::optional<std::uint32_t>, std::string>
+MeasuredSecondsOf(std::optional<int> a_seconds) {
+  if (!a_seconds) {
+    return std::nullopt;
+  }
+  if (*a_seconds < static_cast<int>(kMinMeasuredSeconds) ||
+      *a_seconds > static_cast<int>(kMaxMeasuredSeconds)) {
+    return std::unexpected(std::format("'measuredSeconds' is {}..{}",
+                                       kMinMeasuredSeconds,
+                                       kMaxMeasuredSeconds));
+  }
+  return static_cast<std::uint32_t>(*a_seconds);
+}
+}
+
+std::expected<RunFile, std::string> ParseRunFile(std::string_view a_text,
+                                                 std::int64_t a_nowSeconds) {
+  const std::expected<json, std::string> root = RunFileDocument(a_text);
+  if (!root) {
+    return std::unexpected(root.error());
+  }
+  std::vector<Diagnostic> problems;
+  const Reporter report{problems, "run file"};
   Reader reader{*root, report};
   const std::optional<int> format = reader.Integer("format");
   std::string run = reader.Required("run");
@@ -102,6 +126,7 @@ std::expected<RunFile, std::string> ParseRunFile(std::string_view a_text,
   const json *notAfterValue = reader.Child("notAfter");
   const std::optional<bool> verifyRenderPlans =
       reader.Boolean("verifyRenderPlans");
+  const std::optional<int> measuredSeconds = reader.Integer("measuredSeconds");
   reader.Finish();
   if (!problems.empty()) {
     return std::unexpected(problems.front().message);
@@ -130,18 +155,25 @@ std::expected<RunFile, std::string> ParseRunFile(std::string_view a_text,
   if (a_nowSeconds > *notAfter) {
     return std::unexpected("the run file has expired");
   }
+  const auto measured = MeasuredSecondsOf(measuredSeconds);
+  if (!measured) {
+    return std::unexpected(measured.error());
+  }
   return RunFile{std::move(*checkedRun), std::move(*checkedSave),
-                 std::move(*suite), verifyRenderPlans.value_or(false)};
+                 std::move(*suite), verifyRenderPlans.value_or(false),
+                 *measured};
 }
 
-std::string StartLineJson(std::string_view a_run, std::string_view a_build,
-                          std::string_view a_source, std::string_view a_trace) {
+std::string StartLineJson(const StartLine &a_start) {
   json line = json::object();
   line["kind"] = "start";
-  line["run"] = std::string{a_run};
-  line["build"] = std::string{a_build};
-  line["source"] = std::string{a_source};
-  line["trace"] = std::string{a_trace};
+  line["run"] = std::string{a_start.run};
+  line["build"] = std::string{a_start.build};
+  line["source"] = std::string{a_start.source};
+  line["trace"] = std::string{a_start.trace};
+  if (a_start.measuredSeconds) {
+    line["measuredSeconds"] = *a_start.measuredSeconds;
+  }
   return line.dump(-1, ' ', false, json::error_handler_t::replace);
 }
 

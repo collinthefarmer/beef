@@ -15,9 +15,12 @@ struct RunFile {
   std::string save;
   CaseList suite;
   bool verifyRenderPlans = false;
+  std::optional<std::uint32_t> measuredSeconds;
 };
 
 inline constexpr std::size_t kMaxSuiteCases = 64;
+inline constexpr std::uint32_t kMinMeasuredSeconds = 10;
+inline constexpr std::uint32_t kMaxMeasuredSeconds = 3600;
 
 [[nodiscard]] std::expected<RunFile, std::string>
 ParseRunFile(std::string_view a_text, std::int64_t a_nowSeconds);

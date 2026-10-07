@@ -189,9 +189,11 @@ std::int64_t UnixSeconds() {
 
 void StartResults(const ActiveRun &a_run, const RunSetup &a_setup) {
   const std::filesystem::path trace = Trace::Get().FirstSegment();
-  AppendLine(a_run.results, Regression::StartLineJson(
-                                a_run.request.run, a_setup.build,
-                                a_setup.source, trace.filename().string()));
+  const std::string traceName = trace.filename().string();
+  AppendLine(a_run.results,
+             Regression::StartLineJson({a_run.request.run, a_setup.build,
+                                        a_setup.source, traceName,
+                                        a_run.request.measuredSeconds}));
 }
 }
 
@@ -301,7 +303,7 @@ void AdvanceRegressionRun() {
     running->cameraState = cameraState;
   }
   Regression::Advanced next =
-      Regression::Advance(std::move(running->state), std::move(seen));
+      Regression::Advance(std::move(running->state), seen);
   running->state = std::move(next.state);
   for (const Regression::ResultLine &line : next.lines) {
     Record(*activeRun, line);

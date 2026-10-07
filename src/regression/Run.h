@@ -80,6 +80,15 @@ struct RunState {
   RunChanges changes;
   std::uint32_t loadsSeen = 0;
   std::array<std::uint64_t, kRoleCount> renderedBefore{};
+  std::optional<std::uint32_t> measuredSeconds;
+};
+
+struct StartLine {
+  std::string_view run;
+  std::string_view build;
+  std::string_view source;
+  std::string_view trace;
+  std::optional<std::uint32_t> measuredSeconds;
 };
 
 struct Advanced {
@@ -94,9 +103,6 @@ inline constexpr std::uint32_t kEndingFrames = 10;
 [[nodiscard]] RunState BeginRun(const RunFile &a_request);
 [[nodiscard]] Advanced Advance(RunState a_state, const Observation &a_seen);
 [[nodiscard]] bool Done(const RunState &a_state);
-[[nodiscard]] std::string StartLineJson(std::string_view a_run,
-                                        std::string_view a_build,
-                                        std::string_view a_source,
-                                        std::string_view a_trace);
+[[nodiscard]] std::string StartLineJson(const StartLine &a_start);
 [[nodiscard]] std::string ResultLineJson(const ResultLine &a_line);
 }

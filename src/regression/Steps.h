@@ -127,10 +127,12 @@ struct UnequipCrowd {};
 struct EquipCrowd {};
 struct AwaitCrowdBare {};
 struct DespawnCrowd {};
+enum class HoldRole : std::uint8_t { kFixed, kEdge, kMeasured };
 struct HoldWindow {
   std::string_view window;
   std::uint32_t seconds = 0;
   std::uint32_t cycle = 0;
+  HoldRole role = HoldRole::kFixed;
 };
 struct BeginSession {
   Session session = Session::kPaint;
@@ -170,10 +172,14 @@ using CaseList = std::vector<std::reference_wrapper<const Case>>;
 
 inline constexpr std::string_view kScratchRecipe = "regression-scratch";
 inline constexpr std::uint32_t kMaxCrowd = 64;
+inline constexpr std::uint32_t kQuickEdgeSeconds = 10;
 
 [[nodiscard]] std::string WindowName(std::string_view a_window,
                                      std::uint32_t a_cycle);
 [[nodiscard]] std::string StepLabel(const Step &a_step);
+[[nodiscard]] std::uint32_t
+HoldSeconds(const HoldWindow &a_hold,
+            std::optional<std::uint32_t> a_measuredSeconds) noexcept;
 [[nodiscard]] std::span<const Case> Catalog();
 [[nodiscard]] const Case *FindCase(std::string_view a_name);
 }

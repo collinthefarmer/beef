@@ -39,6 +39,16 @@ class RegressionRunTests(unittest.TestCase):
                                    'suite': ['lifecycle'], 'notAfter': 1600})
         verifying = host.run_file('r', 'BEEFRegression', ['lifecycle'], 1000.5, True)
         self.assertTrue(verifying['verifyRenderPlans'])
+        self.assertNotIn('measuredSeconds', verifying)
+        quick = host.run_file('r', 'BEEFRegression', ['soak'], 1000.5, False, 60)
+        self.assertEqual(quick['measuredSeconds'], 60)
+        self.assertNotIn('verifyRenderPlans', quick)
+
+    def test_quick_seconds_are_bounded(self):
+        self.assertEqual(host.quick_seconds('60'), 60)
+        for text in ('9', '3601'):
+            with self.assertRaises(host.argparse.ArgumentTypeError):
+                host.quick_seconds(text)
 
     def test_report_reads_the_end_line_and_skips_partial_lines(self):
         text = '\n'.join([

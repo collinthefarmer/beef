@@ -45,6 +45,14 @@ void ParsesValidRunFile() {
       kNow);
   test::Check(verifying && verifying->verifyRenderPlans,
               "a run can ask to verify render plans");
+  test::Check(!parsed->measuredSeconds,
+              "a run holds the full windows unless it asks");
+  const auto quick = ParseRunFile(
+      RunFileText(
+          R"("suite":["soak"],"notAfter":1800000600,"measuredSeconds":60)"),
+      kNow);
+  test::Check(quick && quick->measuredSeconds == 60u,
+              "a run can ask for quick measured windows");
 }
 
 struct BadRunFile {
@@ -81,6 +89,15 @@ void RefusesBadRunFiles() {
       {RunFileText(
            R"("suite":["lifecycle"],"notAfter":1800000600,"verifyRenderPlans":1)"),
        "verifyRenderPlans that is not a boolean"},
+      {RunFileText(
+           R"("suite":["soak"],"notAfter":1800000600,"measuredSeconds":9)"),
+       "measuredSeconds below the minimum"},
+      {RunFileText(
+           R"("suite":["soak"],"notAfter":1800000600,"measuredSeconds":3601)"),
+       "measuredSeconds above the maximum"},
+      {RunFileText(
+           R"("suite":["soak"],"notAfter":1800000600,"measuredSeconds":"60")"),
+       "measuredSeconds that is not a number"},
       {"[1,2,3]", "not an object"},
       {"{\"format\":1", "truncated"},
       {std::string(200, '[') + std::string(200, ']'), "deep nesting"},
@@ -562,6 +579,15 @@ RunState RunOf(std::string_view a_case) {
   return parsed ? BeginRun(*parsed) : RunState{};
 }
 
+RunState QuickRunOf(std::string_view a_case, std::uint32_t a_seconds) {
+  const auto parsed = ParseRunFile(
+      RunFileText(std::format(R"("suite":["{}"],"notAfter":1800000600,)"
+                              R"("measuredSeconds":{})",
+                              a_case, a_seconds)),
+      kNow);
+  return parsed ? BeginRun(*parsed) : RunState{};
+}
+
 const RunEnd *EndOf(const World &a_world) {
   return a_world.lines.empty() ? nullptr
                                : std::get_if<RunEnd>(&a_world.lines.back());
@@ -947,6 +973,81 @@ void EveryFixedObservationEndsTheRun() {
   }
 }
 
+void HoldSecondsFollowTheRole() {
+  const HoldWindow measured{"steady", 120, 0, HoldRole::kMeasured};
+  const HoldWindow edge{"baseline", 30, 0, HoldRole::kEdge};
+  const HoldWindow shortEdge{"baseline", 5, 0, HoldRole::kEdge};
+  const HoldWindow fixed{"settle", 30};
+  test::Check(HoldSeconds(measured, std::nullopt) == 120 &&
+                  HoldSeconds(edge, std::nullopt) == 30 &&
+                  HoldSeconds(fixed, std::nullopt) == 30,
+              "a full run holds every window for its catalog length");
+  test::Check(HoldSeconds(measured, 45) == 45 &&
+                  HoldSeconds(edge, 45) == kQuickEdgeSeconds &&
+                  HoldSeconds(shortEdge, 45) == 5 &&
+                  HoldSeconds(fixed, 45) == 30,
+              "a quick run sets the measured window, caps the edges and keeps "
+              "the rest");
+}
+
+std::vector<std::string_view> HeldWindows(std::span<const Step> a_steps,
+                                          HoldRole a_role) {
+  std::vector<std::string_view> names;
+  for (const Step &step : a_steps) {
+    if (const auto *hold = std::get_if<HoldWindow>(&step);
+        hold && hold->role == a_role) {
+      names.push_back(hold->window);
+    }
+  }
+  return names;
+}
+
+void MeasuredWindowsStartSettled() {
+  for (const Case &entry : Catalog()) {
+    const std::span<const Step> body = entry.body;
+    for (std::size_t i = 0; i < body.size(); ++i) {
+      const auto *hold = std::get_if<HoldWindow>(&body[i]);
+      if (!hold || hold->role != HoldRole::kMeasured) {
+        continue;
+      }
+      const auto before = HeldWindows(body.first(i), HoldRole::kFixed);
+      const auto after = HeldWindows(body.subspan(i + 1), HoldRole::kEdge);
+      test::Check(
+          std::ranges::contains(before, std::string_view{"settle"}) &&
+              std::ranges::contains(after, std::string_view{"recovery"}),
+          std::string{entry.name} + "'s " + std::string{hold->window} +
+              " window follows a settle and precedes a recovery");
+    }
+  }
+}
+
+void QuickSoakShortensItsWindows() {
+  World world;
+  Drive(world, QuickRunOf("soak-fight", 20), 20000);
+  test::Equal(FirstFailure(world), std::string{}, "a quick soak passes");
+  std::vector<std::pair<std::string, std::uint32_t>> held;
+  for (const ResultLine &line : world.lines) {
+    if (const auto *step = std::get_if<StepResult>(&line);
+        step && step->action.starts_with("hold ")) {
+      held.emplace_back(step->action, step->frames);
+    }
+  }
+  const auto framesOf = [&](std::string_view a_action) {
+    const auto found = std::ranges::find(
+        held, a_action, &std::pair<std::string, std::uint32_t>::first);
+    return found == held.end() ? 0u : found->second;
+  };
+  test::Check(framesOf("hold fight 20s") > 0 &&
+                  framesOf("hold fight 20s") <= 21 &&
+                  framesOf("hold baseline 10s") > 0 &&
+                  framesOf("hold baseline 10s") <= 11 &&
+                  framesOf("hold recovery 10s") > 0 &&
+                  framesOf("hold recovery 10s") <= 11 &&
+                  framesOf("hold settle 30s") >= 30,
+              "a quick soak holds and labels the measured window and the edges "
+              "short and the settle in full");
+}
+
 void ResultLinesAreJson() {
   const std::string step = ResultLineJson(StepResult{
       "lifecycle", 2, "apply player", Outcome::kBlocked, 7, "quote \" and \\"});
@@ -959,6 +1060,11 @@ void ResultLinesAreJson() {
               std::string{R"({"kind":"window","case":"soak-churn",)"
                           R"("window":"churn-2","edge":"begin"})"},
               "window line names its case and cycle");
+  test::Equal(
+      StartLineJson({"r", "b", "s", "t.jsonl", 60}),
+      std::string{R"({"kind":"start","run":"r","build":"b","source":"s",)"
+                  R"("trace":"t.jsonl","measuredSeconds":60})"},
+      "a quick run's start line records its measured seconds");
   test::Equal(ResultLineJson(RunEnd{Outcome::kPass, {}}),
               std::string{R"({"kind":"end","outcome":"PASS","reason":""})"},
               "end line");
@@ -986,6 +1092,9 @@ int main() {
   ARingBehindTheCameraStillSettles();
   SoakVariantsHoldAndCleanUp();
   EveryFixedObservationEndsTheRun();
+  HoldSecondsFollowTheRole();
+  MeasuredWindowsStartSettled();
+  QuickSoakShortensItsWindows();
   ResultLinesAreJson();
   return test::Finish("regression runs");
 }

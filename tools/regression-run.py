@@ -30,6 +30,9 @@ REFUSAL_GRACE_SECONDS = 30
 QUIT_GRACE_SECONDS = 60
 RELAUNCH_SECONDS = 60
 BETWEEN_LAUNCHES_SECONDS = 15
+MIN_MEASURED_SECONDS = 10
+MAX_MEASURED_SECONDS = 3600
+QUICK_EDGE_SECONDS = 10
 BUDGETS_FILE = ROOT / 'tests/regression/budgets.json'
 POLL_SECONDS = 2
 
@@ -72,12 +75,22 @@ def read_settings(environ: dict[str, str], local: dict[str, str]) -> Settings | 
 
 
 def run_file(run: str, save: str, suite: list[str], now: float,
-             verify_render_plans: bool = False) -> dict:
+             verify_render_plans: bool = False, measured_seconds: int | None = None) -> dict:
     request = {'format': 1, 'run': run, 'save': save, 'suite': suite,
                'notAfter': int(now) + RUN_FILE_LIFETIME_SECONDS}
     if verify_render_plans:
         request['verifyRenderPlans'] = True
+    if measured_seconds is not None:
+        request['measuredSeconds'] = measured_seconds
     return request
+
+
+def quick_seconds(text: str) -> int:
+    seconds = int(text)
+    if not MIN_MEASURED_SECONDS <= seconds <= MAX_MEASURED_SECONDS:
+        raise argparse.ArgumentTypeError(
+            f'--quick is {MIN_MEASURED_SECONDS}..{MAX_MEASURED_SECONDS} seconds')
+    return seconds
 
 
 def launches(cases: list[str]) -> list[list[str]] | str:
@@ -208,6 +221,10 @@ def main() -> int:
     parser.add_argument('--timeout', type=float, default=900, help='seconds to wait for the end line')
     parser.add_argument('--verify-render-plans', action='store_true',
                         help='rebuild every reused render plan and log any difference')
+    parser.add_argument('--quick', type=quick_seconds, metavar='SECONDS',
+                        help='hold each measured window (steady, fight, orbit) this long and '
+                             f'baseline and recovery at most {QUICK_EDGE_SECONDS} s; for '
+                             'comparisons only, the full soak is the checkpoint gate')
     parser.add_argument('--manual', action='store_true',
                         help='write the run file and wait; start the game yourself')
     args = parser.parse_args()
@@ -245,7 +262,7 @@ def main() -> int:
         if index > 0:
             time.sleep(BETWEEN_LAUNCHES_SECONDS)
         passed.append(launch(settings, f'{stamp}-{index + 1}', cases, args.save, args.timeout,
-                             args.manual, tasklist, args.verify_render_plans))
+                             args.manual, tasklist, args.verify_render_plans, args.quick))
     if len(passed) > 1:
         print(f'launches passed: {sum(passed)} of {len(passed)}')
     return 0 if all(passed) else 1
@@ -259,10 +276,14 @@ def start_game(settings: Settings) -> None:
 
 
 def launch(settings: Settings, run: str, cases: list[str], save: str, timeout: float,
-           manual: bool, tasklist: str, verify_render_plans: bool = False) -> bool:
-    request = run_file(run, save, cases, time.time(), verify_render_plans)
+           manual: bool, tasklist: str, verify_render_plans: bool = False,
+           measured_seconds: int | None = None) -> bool:
+    request = run_file(run, save, cases, time.time(), verify_render_plans, measured_seconds)
     (settings.log_dir / RUN_FILE).write_text(json.dumps(request) + '\n', encoding='utf-8')
     print(f'run {run}: {" ".join(cases)} from save {save}')
+    if measured_seconds is not None:
+        print(f'quick run: measured windows {measured_seconds} s, baseline and recovery '
+              f'{QUICK_EDGE_SECONDS} s; the full soak is the checkpoint gate')
     start = (lambda: print('start the game through MO2 now')) if manual \
         else (lambda: start_game(settings))
     start()

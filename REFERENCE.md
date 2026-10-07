@@ -2812,6 +2812,17 @@ reload launch reads it back from there. Mod Organizer ignores a
 `tools/regression-run.py` pauses 15 seconds between launches and repeats an
 unanswered launch request once.
 
+A **quick run** (`--quick SECONDS`, the run file's `measuredSeconds`) holds
+each measured window (`HoldRole::kMeasured`) for that many seconds and the
+baseline and recovery for at most 10 s; the settle keeps its 30 s, so the
+measured window still starts settled, and a native test checks that every
+measured window follows a settle and precedes a recovery. The start line
+records `measuredSeconds`. A quick run is for comparing two builds; the full
+soak stays the checkpoint gate, because the budgets and the leak check are
+written against its windows. `soak-enchanted --quick 60` took 205 s against
+about 305 s for the full case, and its steady plugin time (810 µs per frame)
+fell inside the spread of three full runs the same day (740 to 893 µs).
+
 The soak's crowd is observed through `Manager::RegressionActors`, one pass
 over one copy of the application snapshot for the roles and every crowd
 member, never by walking a member's 3D. The roles' 3D is walked each frame

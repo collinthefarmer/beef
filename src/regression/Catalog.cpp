@@ -187,18 +187,22 @@ inline constexpr SpawnCrowd kIdleNpcs{kCrowdSize, Body::kIdleNpc};
 inline constexpr SpawnCrowd kFighters{kCrowdSize, Body::kFighter};
 
 consteval std::array<Step, 7> CrowdArrives(Step a_view, SpawnCrowd a_crowd) {
-  return Sequence(a_view, HoldWindow{"baseline", kBaselineSeconds},
+  return Sequence(a_view,
+                  HoldWindow{"baseline", kBaselineSeconds, 0, HoldRole::kEdge},
                   BeginWindow{"burst"}, a_crowd, AwaitCrowdRendered{},
                   EndWindow{"burst"}, HoldWindow{"settle", kSettleSeconds});
 }
 
 inline constexpr std::array kCrowdLeaves =
-    Sequence(DespawnCrowd{}, HoldWindow{"recovery", kRecoverySeconds});
+    Sequence(DespawnCrowd{},
+             HoldWindow{"recovery", kRecoverySeconds, 0, HoldRole::kEdge});
 
 consteval std::array<Step, 10> Soak(Step a_view, SpawnCrowd a_crowd,
                                     std::uint32_t a_steadySeconds) {
-  return Joined(CrowdArrives(a_view, a_crowd),
-                Sequence(HoldWindow{"steady", a_steadySeconds}), kCrowdLeaves);
+  return Joined(
+      CrowdArrives(a_view, a_crowd),
+      Sequence(HoldWindow{"steady", a_steadySeconds, 0, HoldRole::kMeasured}),
+      kCrowdLeaves);
 }
 inline constexpr std::array kSoak = Soak(kSoloCircuit, kMannequins, 120);
 inline constexpr std::array kSoakHour = Soak(kSoloCircuit, kMannequins, 3600);
@@ -215,7 +219,7 @@ inline constexpr std::array kSoakIdle = Soak(kSoloCircuit, kIdleNpcs, 120);
 inline constexpr std::array kSoakFight =
     Joined(CrowdArrives(kDemoSet, kFighters),
            Sequence(StartCrowdFight{}, AwaitCrowdFighting{}, AwaitCrowdHurt{},
-                    HoldWindow{"fight", kFightSeconds}),
+                    HoldWindow{"fight", kFightSeconds, 0, HoldRole::kMeasured}),
            kCrowdLeaves);
 
 inline constexpr std::uint32_t kCullCrowdSize = 6;
@@ -230,14 +234,16 @@ inline constexpr std::array kCull =
 inline constexpr std::array kSoakOrbit =
     Joined(CrowdArrives(kSoloCircuit, kMannequins),
            Sequence(AllowIdleCamera{kIdleCameraSeconds}, AwaitIdleOrbit{},
-                    HoldWindow{"orbit", kOrbitSeconds}, HoldIdleCamera{}),
+                    HoldWindow{"orbit", kOrbitSeconds, 0, HoldRole::kMeasured},
+                    HoldIdleCamera{}),
            kCrowdLeaves);
 
 inline constexpr std::array kSoakFightOrbit =
     Joined(CrowdArrives(kDemoSet, kFighters),
            Sequence(StartCrowdFight{}, AwaitCrowdFighting{}, AwaitCrowdHurt{},
                     AllowIdleCamera{kIdleCameraSeconds}, AwaitIdleOrbit{},
-                    HoldWindow{"orbit", kOrbitSeconds}, HoldIdleCamera{}),
+                    HoldWindow{"orbit", kOrbitSeconds, 0, HoldRole::kMeasured},
+                    HoldIdleCamera{}),
            kCrowdLeaves);
 
 constexpr std::array<Step, 7> Wave(std::uint32_t a_cycle) {
@@ -247,7 +253,8 @@ constexpr std::array<Step, 7> Wave(std::uint32_t a_cycle) {
                   HoldWindow{"gap", kWaveGapSeconds, a_cycle});
 }
 inline constexpr std::array kSoakWaves =
-    Joined(Sequence(kSoloCircuit, HoldWindow{"baseline", kBaselineSeconds}),
+    Joined(Sequence(kSoloCircuit, HoldWindow{"baseline", kBaselineSeconds, 0,
+                                             HoldRole::kEdge}),
            Cycles<3>(Wave));
 
 constexpr std::array<Step, 6> Churn(std::uint32_t a_cycle) {
@@ -255,9 +262,10 @@ constexpr std::array<Step, 6> Churn(std::uint32_t a_cycle) {
                   AwaitCrowdBare{}, EquipCrowd{}, AwaitCrowdRendered{},
                   EndWindow{"churn", a_cycle});
 }
-inline constexpr std::array kSoakChurn =
-    Joined(CrowdArrives(kSoloCircuit, kMannequins), Cycles<4>(Churn),
-           Sequence(HoldWindow{"steady", kChurnSteadySeconds}), kCrowdLeaves);
+inline constexpr std::array kSoakChurn = Joined(
+    CrowdArrives(kSoloCircuit, kMannequins), Cycles<4>(Churn),
+    Sequence(HoldWindow{"steady", kChurnSteadySeconds, 0, HoldRole::kMeasured}),
+    kCrowdLeaves);
 
 inline constexpr std::array kCatalog{
     Case{"lifecycle", kLifecycle, kCleanup},

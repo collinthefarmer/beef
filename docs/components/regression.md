@@ -57,7 +57,7 @@ unknown case, more than `kMaxSuiteCases` (64) cases, and a file past its
 
 | Type | Description |
 |---|---|
-| `RunFile{run, save, suite}` | The run identifier, the save to load, and the cases in run order. |
+| `RunFile{run, save, suite, verifyRenderPlans, measuredSeconds}` | The run identifier, the save to load, the cases in run order, whether to verify reused render plans, and the length of a **quick run**'s measured windows (10 to 3600 s, `--quick` in `tools/regression-run.py`). |
 
 ### Steps and cases (`Steps.h`)
 
@@ -85,7 +85,7 @@ name. `StepLabel` gives a step's text for its result line.
 | `StartCrowdFight`, `AwaitCrowdFighting` | Split a crowd into two hostile sides, and wait until at least half the crowd has another crowd actor as its combat target. A mannequin crowd blocks the fight. |
 | `AwaitCrowdHurt` | Wait until a crowd actor loses health or bleeds out. |
 | `UnequipCrowd`, `AwaitCrowdBare`, `EquipCrowd` | Unequip the fixture on every crowd actor, wait until no crowd actor renders it, and equip it again. |
-| `HoldWindow`, `BeginWindow`, `EndWindow` | Mark a measured window of the soak. A hold runs on wall-clock time. A nonzero `cycle` appends `-<cycle>` to the window name (`WindowName`). |
+| `HoldWindow`, `BeginWindow`, `EndWindow` | Mark a measured window of the soak. A hold runs on wall-clock time. A nonzero `cycle` appends `-<cycle>` to the window name (`WindowName`). A hold has a `HoldRole`: `kMeasured` (steady, fight, orbit), `kEdge` (baseline, recovery) or `kFixed`. `HoldSeconds` gives the length a run holds: a quick run sets the measured window, caps the edges at `kQuickEdgeSeconds` (10 s) and keeps the rest. The step label shows the length held. |
 | `WaitFrames` | Wait a number of frames. |
 
 An `Expect…` step checks a state that the steps before it produced. It waits

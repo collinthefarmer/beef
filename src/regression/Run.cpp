@@ -9,6 +9,17 @@
 
 namespace BetterEnchantmentEffects::Regression {
 namespace {
+Step AsHeld(const Step &a_step,
+            std::optional<std::uint32_t> a_measuredSeconds) {
+  const auto *hold = std::get_if<HoldWindow>(&a_step);
+  if (!hold) {
+    return a_step;
+  }
+  HoldWindow held = *hold;
+  held.seconds = HoldSeconds(*hold, a_measuredSeconds);
+  return held;
+}
+
 std::span<const Step> StepsOf(const Case &a_case, Section a_section) {
   return a_section == Section::kBody ? a_case.body : a_case.cleanup;
 }
@@ -138,7 +149,8 @@ Advanced AdvanceRunning(RunState a_state, Running a_running,
                             a_running.startedAtMs,
                             a_running.loadsAtStart,
                             a_state.changes,
-                            a_state.renderedBefore};
+                            a_state.renderedBefore,
+                            a_state.measuredSeconds};
   StepMove move =
       a_running.started ? CheckStep(step, context) : StartStep(step, context);
   std::vector<ResultLine> lines;
@@ -155,8 +167,9 @@ Advanced AdvanceRunning(RunState a_state, Running a_running,
   }
   if (Completed *completed = std::get_if<Completed>(&move.verdict)) {
     lines.emplace_back(StepResult{
-        current.name, ReportedIndex(current, a_running), StepLabel(step),
-        completed->outcome, a_running.frames, std::move(completed->reason)});
+        current.name, ReportedIndex(current, a_running),
+        StepLabel(AsHeld(step, a_state.measuredSeconds)), completed->outcome,
+        a_running.frames, std::move(completed->reason)});
     if (std::optional<std::string> window = WindowClosedBy(step))
       lines.emplace_back(WindowEnds{current.name, std::move(*window)});
     a_running = AfterStep(a_running, completed->outcome);
@@ -167,7 +180,8 @@ Advanced AdvanceRunning(RunState a_state, Running a_running,
 }
 
 RunState BeginRun(const RunFile &a_request) {
-  return RunState{.suite = a_request.suite};
+  return RunState{.suite = a_request.suite,
+                  .measuredSeconds = a_request.measuredSeconds};
 }
 
 Advanced Advance(RunState a_state, const Observation &a_seen) {
