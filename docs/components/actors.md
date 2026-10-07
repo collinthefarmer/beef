@@ -122,7 +122,8 @@ is the answer to "observe this actor again without an event?".
 | Type | Description | Declared in |
 |---|---|---|
 | `PlanRequest{facts, recipes, view, claims}` | The input of `PlanActor`: the facts, the catalog, the studio `View` (recipe set and isolation filter), and the actor's claims. | `Planning.h` |
-| `AdvanceRequest{state, facts, plan, nowMs, evictDistance}` | The input of `Advance`: the current state (none when the actor has no record), the facts, the plan, the clock, and the eviction distance setting. | `Lifecycle.h` |
+| `AdvanceRequest{state, facts, plan, nowMs, evictDistance, reinstall}` | The input of `Advance`: the current state (none when the actor has no record), the facts, the plan, the clock, the eviction distance setting, and the reinstall demand. | `Lifecycle.h` |
+| `Reinstall` | `kIfChanged` or `kAlways`. A **reinstall** (`kAlways`) gives an in-range actor commands that retire everything installed and install the whole plan, without a model wait. A rebuild asks for it. | `Lifecycle.h` |
 | `Recheck` | `kNone`, `kWaiting` or `kStuck`. An actor with a pending model is **waiting** while a pending model is younger than `kModelWaitMs` plus `kPendingRecheckMs`, and **stuck** after that. | `Lifecycle.h` |
 
 ### Functions over the state
@@ -204,7 +205,7 @@ The commands set the new installed plan through `AfterCommands`.
 | `src/actors/Actor.h`/`.cpp` | The refs, facts, plan, state, pending model, claim and command types, and the three `Find` lookups by ref. |
 | `src/actors/Planning.h`/`.cpp` | `PlanRequest`, `PlannedActor`, `GeometryRefOf`, `PlannedPieces` (the pieces with a model) and `PlanActor`. |
 | `src/actors/Reconcile.h`/`.cpp` | `Reconcile`, `AfterCommand` and `AfterCommands`. |
-| `src/actors/Lifecycle.h`/`.cpp` | `kModelWaitMs`, `kPendingRecheckMs`, `kRecheckMs`, `Recheck`, `AdvanceRequest`, `Advance`, `InRange`, `AnythingInstalled`, `RecheckOf`, `LiveClaims` and `WithClaim`. |
+| `src/actors/Lifecycle.h`/`.cpp` | `kModelWaitMs`, `kPendingRecheckMs`, `kRecheckMs`, `Recheck`, `Reinstall`, `AdvanceRequest`, `Advance`, `InRange`, `AnythingInstalled`, `RecheckOf`, `LiveClaims` and `WithClaim`. |
 | `tests/actors/fixtures.h` | Shared builders for refs and placements (`Piece`, `Geo`, `Instance`, `Placed`). |
 | `tests/actors/actor_tests.cpp` | Ref equality by every field, and `Find` by ref. |
 | `tests/actors/planning_tests.cpp` | Plans from facts: pieces without a model, the studio view, first-person pieces, addons, claimed geometries, and determinism. |

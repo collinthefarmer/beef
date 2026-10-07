@@ -85,7 +85,7 @@ void Manager::QueueEquipFinalize(RE::FormID a_actorID) {
   applications_.Equip(a_actorID, NowMS());
 }
 
-void Manager::QueueLoadedActorRefreshes() {
+void Manager::MarkLoadedActorsStale() {
   for (const auto id : LoadedActorIDs())
     MarkStale(id);
 }
@@ -96,7 +96,7 @@ void Manager::FinishLoad() {
   const Trace::Scope trace{Trace::Operation("load.finish")};
   Trace::EmitSafely(Trace::Event::kLoad, {{"action", "resume"}});
   applications_.Resume();
-  QueueLoadedActorRefreshes();
+  MarkLoadedActorsStale();
 }
 
 void Manager::Clear() {

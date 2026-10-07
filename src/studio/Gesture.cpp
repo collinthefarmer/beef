@@ -1,6 +1,8 @@
 // GPL-3.0-only with the additional permission in COPYING.md.
 #include "studio/Gesture.h"
 
+#include <algorithm>
+#include <cstdint>
 #include <format>
 #include <type_traits>
 #include <utility>
@@ -112,7 +114,8 @@ FinishRecipeGesture(const RecipeGesture &a_gesture, const Recipe &a_current,
 namespace {
 std::chrono::milliseconds Since(std::uint32_t a_thenMS,
                                 std::uint32_t a_nowMS) noexcept {
-  return std::chrono::milliseconds{a_nowMS - a_thenMS};
+  const auto elapsed = static_cast<std::int32_t>(a_nowMS - a_thenMS);
+  return std::chrono::milliseconds{std::max(elapsed, std::int32_t{0})};
 }
 
 bool Holds(const GestureMailbox &a_mailbox, std::uint32_t a_nowMS) noexcept {

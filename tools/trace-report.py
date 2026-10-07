@@ -132,7 +132,7 @@ def report(segments: list[Path], slots: int | None) -> None:
     if syncs:
         ordered = sorted(syncs)
         p50, p95 = ordered[len(ordered) // 2], ordered[min(len(ordered) - 1, int(len(ordered) * 0.95))]
-        print(f'  Refreshes: {len(ordered)}; p50 {p50 / 1000:.1f} ms, p95 {p95 / 1000:.1f} ms, '
+        print(f'  Syncs: {len(ordered)}; p50 {p50 / 1000:.1f} ms, p95 {p95 / 1000:.1f} ms, '
               f'max {ordered[-1] / 1000:.1f} ms')
     if heartbeat:
         print(f'  Worst second: {worst[0]} syncs, {worst[1] / 1000:.1f} ms spent')

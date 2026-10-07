@@ -66,7 +66,7 @@ class TraceReportTests(unittest.TestCase):
                     target_bytes="1048576", target_bytes_peak="2097152"))
         result = self.report(self.root / "beef-trace-9.jsonl", "--slots", "1024")
         self.assertEqual(result.returncode, 0, result.stderr)
-        self.assertIn("Refreshes: 2", result.stdout)
+        self.assertIn("Syncs: 2", result.stdout)
         self.assertIn("max 6.0 ms", result.stdout)
         self.assertIn("Worst second: 2 syncs, 8.0 ms spent", result.stdout)
         self.assertIn("Sink churn: 3 adds, 1 removes", result.stdout)

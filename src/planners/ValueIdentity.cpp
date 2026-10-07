@@ -2,6 +2,7 @@
 #include "planners/ValueIdentity.h"
 
 #include <bit>
+#include <format>
 
 namespace BetterEnchantmentEffects {
 namespace {
@@ -277,6 +278,17 @@ IdentifyValue(const RecipeGraph &graph, OutputRef value,
   if (!result)
     return std::unexpected(result.error());
   return ValueIdentity{std::move(*result)};
+}
+
+std::expected<std::string, std::string>
+EnchantmentIdentity(const EnchantmentSignal &a_signal,
+                    std::span<const float> a_fields) {
+  const auto field = static_cast<std::size_t>(a_signal.field);
+  if (field >= a_fields.size()) {
+    return std::unexpected{std::string{"unknown enchantment field"}};
+  }
+  return std::format("enchantment:{}:{:08x}", field,
+                     std::bit_cast<std::uint32_t>(a_fields[field]));
 }
 
 ValueIdentity PositionBakeIdentity(const ValueIdentity &a_mesh) {

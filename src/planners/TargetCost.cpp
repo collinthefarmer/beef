@@ -1,38 +1,52 @@
 // GPL-3.0-only with the additional permission in COPYING.md.
 #include "planners/TargetCost.h"
 
-#include <optional>
 #include <set>
-#include <string>
+#include <utility>
 
 namespace BetterEnchantmentEffects {
 namespace {
-std::optional<TextureRequirements> TargetOf(const RenderStep &a_step) {
-  if (const auto *sample = Get<SampleFieldStep>(a_step.kind);
-      sample && sample->direct) {
-    return std::nullopt;
+std::vector<bool> ReachedSteps(const RenderPlan &a_plan) {
+  std::vector<bool> reached(a_plan.steps.size(), false);
+  std::vector<RenderStepId> pending = RenderedRoots(a_plan);
+  while (!pending.empty()) {
+    const RenderStepId step = pending.back();
+    pending.pop_back();
+    if (step >= a_plan.steps.size() || reached[step]) {
+      continue;
+    }
+    reached[step] = true;
+    for (const RenderValueRef operand : StepDependencies(a_plan, step)) {
+      if (const auto *output = Get<StepOutputRef>(operand)) {
+        pending.push_back(output->step);
+      }
+    }
   }
-  if (OutputType(a_step.kind) !=
-      RenderValueType{RenderResourceType::kTexture}) {
-    return std::nullopt;
+  return reached;
+}
+
+std::vector<bool> ReadByAnimatedSteps(const RenderPlan &a_plan,
+                                      const std::vector<bool> &a_reached,
+                                      const std::vector<bool> &a_animated) {
+  std::vector<bool> read(a_plan.steps.size(), false);
+  for (RenderStepId step = 0; step < a_plan.steps.size(); ++step) {
+    if (!a_reached[step] || step >= a_animated.size() || !a_animated[step]) {
+      continue;
+    }
+    for (const RenderValueRef operand : StepDependencies(a_plan, step)) {
+      const auto *output = Get<StepOutputRef>(operand);
+      if (output && output->step < read.size()) {
+        read[output->step] = true;
+      }
+    }
   }
-  return RequirementsOf(a_step.kind);
+  return read;
 }
 
 void Add(TargetCost &a_cost, const TextureRequirements &a_requirements) {
   ++a_cost.targets;
   a_cost.bytes += TargetBytes(a_requirements);
   ++a_cost.targetsBySide[a_requirements.size.Pixels()];
-}
-
-std::set<std::string> ContentKeysOf(const RenderPlan &a_plan) {
-  std::set<std::string> keys;
-  for (const RenderStep &step : a_plan.steps) {
-    if (step.contentKey && TargetOf(step)) {
-      keys.insert(*step.contentKey);
-    }
-  }
-  return keys;
 }
 }
 
@@ -43,26 +57,35 @@ std::uint64_t TargetBytes(const TextureRequirements &a_requirements) noexcept {
                                                               : mipped;
 }
 
-TargetCost TargetCostOf(const RenderPlan &a_plan) {
-  TargetCost cost;
-  for (const RenderStep &step : a_plan.steps) {
-    if (const std::optional<TextureRequirements> target = TargetOf(step)) {
-      Add(cost, *target);
+PlanTargets TargetsOf(const RenderPlan &a_plan) {
+  const std::vector<bool> reached = ReachedSteps(a_plan);
+  const std::vector<bool> animated = AnimatedSteps(a_plan);
+  const std::vector<bool> read = ReadByAnimatedSteps(a_plan, reached, animated);
+  PlanTargets targets;
+  for (RenderStepId step = 0; step < a_plan.steps.size(); ++step) {
+    const RenderStep &planned = a_plan.steps[step];
+    const std::optional<TextureRequirements> requirements =
+        RequirementsOf(planned.kind);
+    if (!reached[step] || !requirements || !Draws(planned.kind)) {
+      continue;
+    }
+    const HeldTarget held{*requirements, planned.contentKey};
+    const bool stack = Is<CompositeStackStep>(planned.kind);
+    const bool live = step < animated.size() && animated[step];
+    targets.firstRender.push_back(held);
+    if (stack || live || read[step]) {
+      targets.rendering.push_back(held);
     }
   }
-  return cost;
+  return targets;
 }
 
-TargetCost SharedTargetCostOf(const RenderPlan &a_first,
-                              const RenderPlan &a_second) {
-  const std::set<std::string> second = ContentKeysOf(a_second);
+TargetCost CostOf(std::span<const HeldTarget> a_targets) {
   std::set<std::string> counted;
   TargetCost cost;
-  for (const RenderStep &step : a_first.steps) {
-    const std::optional<TextureRequirements> target = TargetOf(step);
-    if (target && step.contentKey && second.contains(*step.contentKey) &&
-        counted.insert(*step.contentKey).second) {
-      Add(cost, *target);
+  for (const HeldTarget &target : a_targets) {
+    if (!target.contentKey || counted.insert(*target.contentKey).second) {
+      Add(cost, target.requirements);
     }
   }
   return cost;

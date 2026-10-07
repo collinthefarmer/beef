@@ -52,7 +52,7 @@ dispatches each `RenderStepKind` to one function per kind, for example `ExecuteB
 
 | Type | Description | Declared in |
 |---|---|---|
-| `RenderInstance` | Owns the `RenderPlan`, the recipe graphs, the `GeometryInputs` of each geometry, and the execution. `UpdateInput` imports one value. `Update` refreshes the signal-driven inputs of one recipe instance. `Render` draws one stack output. `BeginFrame` starts one render tick. | `RenderInstance.h` |
+| `RenderInstance` | Owns the `RenderPlan`, the recipe graphs, the `GeometryInputs` of each geometry, and the execution. `UpdateInput` imports one value. `Update` refreshes the signal-driven inputs of one recipe instance. `Render` draws one stack output. `BeginFrame` starts one render tick. `Targets` gives the plan's `PlanTargets`, computed once at construction. | `RenderInstance.h` |
 | `RenderValue` | The variant of every value a step reads or writes: a numeric `Value`, a `TextureView`, a mesh entry, `MaterialInputs`, a `RenderTransform`, `RenderFirings`, bake buffers, a material sample or analysis, a **lookup**, a `LayerFilter` or a `StackResult`. | `RenderInstance.h` |
 | `RenderScratch` | Per-step scratch: a weak reuse hint for the step's target, the reduction and material readback state, and the cached `LayerFieldPack`. | `RenderInstance.h` |
 | `TextureView` | A texture with its sampling (`TextureLab::LayerInput`), its normalization factor and, when a step produced it, its owning target. | `RenderInstance.h` |

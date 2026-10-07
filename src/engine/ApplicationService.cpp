@@ -94,6 +94,18 @@ bool ApplicationService::MarkStale(std::uint32_t a_actorID) {
   return queue_->MarkStale(a_actorID);
 }
 
+bool ApplicationService::MarkReinstall(std::uint32_t a_actorID) {
+  return queue_->MarkReinstall(a_actorID);
+}
+
+bool ApplicationService::ReinstallDue(std::uint32_t a_actorID) const {
+  return queue_->ReinstallDue(a_actorID);
+}
+
+void ApplicationService::ClearReinstall(std::uint32_t a_actorID) {
+  queue_->ClearReinstall(a_actorID);
+}
+
 void ApplicationService::Equip(std::uint32_t a_actorID, std::uint32_t a_nowMS) {
   queue_->Equip(a_actorID, a_nowMS);
 }

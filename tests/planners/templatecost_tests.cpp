@@ -1,15 +1,19 @@
 // GPL-3.0-only with the additional permission in COPYING.md.
 #include "planners/RenderPlan.h"
 #include "planners/TargetCost.h"
+#include "planners/ValueIdentity.h"
 #include "recipe/Importer.h"
 #include "recipe/RecipeGraph.h"
 #include "test_support.h"
 
+#include <algorithm>
+#include <array>
 #include <cstdint>
 #include <filesystem>
 #include <format>
 #include <iostream>
 #include <optional>
+#include <span>
 #include <string>
 #include <vector>
 
@@ -17,38 +21,46 @@ using namespace BetterEnchantmentEffects;
 using test::Check;
 
 namespace {
-constexpr std::uint32_t kBaseSide = 2048;
-constexpr std::uint64_t kFillTemplateTargetBytes = std::uint64_t{88} << 20;
+constexpr std::uint32_t kGuardedBaseSide = 2048;
+constexpr std::array<std::uint32_t, 3> kBaseSides{1024, 2048, 4096};
+constexpr std::uint64_t kFillTemplateFirstRenderBytes = std::uint64_t{76} << 20;
+constexpr std::uint64_t kFillTemplateRenderingBytes = std::uint64_t{64} << 20;
 
 bool ActorScoped(const ExternalSource &a_source) {
   return Is<EffectShaderInput>(a_source) || Is<EventInput>(a_source) ||
          Is<TimeInput>(a_source) || Is<DeltaTimeInput>(a_source) ||
          Is<RootTransformInput>(a_source) || Is<ActorValueSignal>(a_source) ||
-         Is<ActorStateSignal>(a_source) || Is<EnchantmentSignal>(a_source);
+         Is<ActorStateSignal>(a_source);
 }
+
+constexpr std::array<float, kEnchantmentFieldCount> kEnchantment{25.0f, 0.0f,
+                                                                 0.5f, 0.25f};
 
 RenderBindingResolver Wearer(std::string a_actor, std::string a_item) {
   return [actor = std::move(a_actor),
           item = std::move(a_item)](const TextureValue &a_value, GeometryId) {
     const std::string instance = std::format("{}:{}", actor, a_value.instance);
-    return ValueBindings{[instance, item](const ExternalSource &a_source)
-                             -> std::expected<std::string, std::string> {
-                           if (Is<ItemHashInput>(a_source)) {
-                             return "item:" + item;
-                           }
-                           return ActorScoped(a_source) ? instance
-                                                        : std::string{"shared"};
-                         },
-                         [instance](NodeId a_node) {
-                           return std::format("{}:{}", instance, a_node);
-                         }};
+    return ValueBindings{
+        [instance, item](const ExternalSource &a_source)
+            -> std::expected<std::string, std::string> {
+          if (Is<ItemHashInput>(a_source)) {
+            return "item:" + item;
+          }
+          if (const auto *enchantment = Get<EnchantmentSignal>(a_source)) {
+            return EnchantmentIdentity(*enchantment, kEnchantment);
+          }
+          return ActorScoped(a_source) ? instance : std::string{"shared"};
+        },
+        [instance](NodeId a_node) {
+          return std::format("{}:{}", instance, a_node);
+        }};
   };
 }
 
-TextureSize StackSize(const SurfaceOutput &a_surface) {
+TextureSize StackSize(const SurfaceOutput &a_surface, std::uint32_t a_base) {
   const Resolution resolution =
       a_surface.resolution.value_or(DefaultSlotResolution(a_surface.slot));
-  return TextureSize{kBaseSide / ResolutionDivisor(resolution)};
+  return TextureSize{a_base / ResolutionDivisor(resolution)};
 }
 
 std::optional<Recipe> ReadTemplate(const std::filesystem::path &a_path) {
@@ -68,12 +80,17 @@ std::optional<Recipe> ImportedRecipe(const Recipe &a_template) {
 
 std::optional<RenderPlan> PlanFor(const Recipe &a_recipe,
                                   const RecipeGraph &a_graph,
-                                  const RenderBindingResolver &a_wearer) {
+                                  const RenderBindingResolver &a_wearer,
+                                  std::uint32_t a_base) {
   std::vector<RenderStackRequest> requests;
   for (std::size_t o = 0; o < a_recipe.outputs.size(); ++o) {
     if (const auto *surface = Get<SurfaceOutput>(a_recipe.outputs[o])) {
-      requests.push_back(
-          {&a_graph, surface, 1, PlacementId{o}, o, {StackSize(*surface)}});
+      requests.push_back({&a_graph,
+                          surface,
+                          1,
+                          PlacementId{o},
+                          o,
+                          {StackSize(*surface, a_base)}});
     }
   }
   std::expected<RenderPlan, std::string> plan =
@@ -97,7 +114,84 @@ std::string Describe(const TargetCost &a_cost) {
 }
 }
 
+std::vector<HeldTarget> Joined(std::span<const HeldTarget> a_first,
+                               std::span<const HeldTarget> a_second) {
+  std::vector<HeldTarget> joined{a_first.begin(), a_first.end()};
+  joined.insert(joined.end(), a_second.begin(), a_second.end());
+  return joined;
+}
+
+std::size_t StacksIn(const RenderPlan &a_plan) {
+  return static_cast<std::size_t>(
+      std::ranges::count_if(a_plan.steps, [](const RenderStep &a_step) {
+        return Is<CompositeStackStep>(a_step.kind);
+      }));
+}
+
+void OneTargetPerContentKey() {
+  const TextureRequirements requirements{TextureSize{512}};
+  const HeldTarget keyed{requirements, "key"};
+  const HeldTarget unkeyed{requirements, std::nullopt};
+  const std::vector<HeldTarget> targets{keyed, keyed, unkeyed, unkeyed};
+  const TargetCost cost = CostOf(targets);
+  Check(cost.targets == 3 && cost.bytes == 3 * TargetBytes(requirements) &&
+            TargetBytes(requirements) == std::uint64_t{512} * 512 * 4 * 4 / 3,
+        "a content key counts once and an unkeyed target counts each time");
+}
+
+struct Wearers {
+  RenderPlan first, sameItem, otherItem;
+};
+
+std::optional<Wearers> WearersAt(const Recipe &a_recipe,
+                                 const RecipeGraph &a_graph,
+                                 std::uint32_t a_base) {
+  std::optional<RenderPlan> first =
+      PlanFor(a_recipe, a_graph, Wearer("actor-a", "1"), a_base);
+  std::optional<RenderPlan> sameItem =
+      PlanFor(a_recipe, a_graph, Wearer("actor-b", "1"), a_base);
+  std::optional<RenderPlan> otherItem =
+      PlanFor(a_recipe, a_graph, Wearer("actor-b", "2"), a_base);
+  if (!first || !sameItem || !otherItem) {
+    return std::nullopt;
+  }
+  return Wearers{std::move(*first), std::move(*sameItem),
+                 std::move(*otherItem)};
+}
+
+struct FillCost {
+  TargetCost firstRender;
+  TargetCost rendering;
+};
+
+FillCost CheckedCost(const Wearers &a_wearers, std::uint32_t a_base) {
+  const PlanTargets first = TargetsOf(a_wearers.first);
+  const PlanTargets same = TargetsOf(a_wearers.sameItem);
+  const PlanTargets other = TargetsOf(a_wearers.otherItem);
+  const TargetCost firstRender = CostOf(first.firstRender);
+  const TargetCost rendering = CostOf(first.rendering);
+  const TargetCost twoSame = CostOf(Joined(first.rendering, same.rendering));
+  const TargetCost twoOther = CostOf(Joined(first.rendering, other.rendering));
+  std::cout << std::format("base {}\n  first render: {}\n  rendering: {}\n"
+                           "  rendering, two wearers of one item: {}\n"
+                           "  rendering, two wearers of two items: {}\n",
+                           a_base, Describe(firstRender), Describe(rendering),
+                           Describe(twoSame), Describe(twoOther));
+  Check(rendering.targets >= StacksIn(a_wearers.first) &&
+            rendering.bytes <= firstRender.bytes,
+        std::format("at base {} rendering holds every stack and no more than "
+                    "the first render",
+                    a_base));
+  Check(twoSame.bytes <= twoOther.bytes &&
+            twoOther.bytes <= 2 * rendering.bytes,
+        std::format("at base {} a second wearer of one item shares at least "
+                    "as much as a wearer of another item",
+                    a_base));
+  return {firstRender, rendering};
+}
+
 int main(int argc, char **argv) {
+  OneTargetPerContentKey();
   const std::filesystem::path path = argc > 1 ? std::filesystem::path{argv[1]}
                                               : test::Templates() / "fill.json";
   const std::optional<Recipe> fill = ReadTemplate(path);
@@ -107,27 +201,23 @@ int main(int argc, char **argv) {
     return test::Finish("fill template cost");
   }
   const RecipeGraph graph = RecipeGraph::Compile(*recipe);
-  const std::optional<RenderPlan> first =
-      PlanFor(*recipe, graph, Wearer("actor-a", "1"));
-  const std::optional<RenderPlan> sameItem =
-      PlanFor(*recipe, graph, Wearer("actor-b", "1"));
-  const std::optional<RenderPlan> otherItem =
-      PlanFor(*recipe, graph, Wearer("actor-b", "2"));
-  if (!first || !sameItem || !otherItem) {
-    return test::Finish("fill template cost");
+  std::cout << std::format("template {}\n", path.string());
+  for (const std::uint32_t base : kBaseSides) {
+    const std::optional<Wearers> wearers = WearersAt(*recipe, graph, base);
+    if (!wearers) {
+      return test::Finish("fill template cost");
+    }
+    const FillCost cost = CheckedCost(*wearers, base);
+    if (base == kGuardedBaseSide) {
+      Check(cost.firstRender.bytes <= kFillTemplateFirstRenderBytes,
+            std::format("the fill template's first render stays within {} "
+                        "target bytes at base {}",
+                        kFillTemplateFirstRenderBytes, base));
+      Check(cost.rendering.bytes <= kFillTemplateRenderingBytes,
+            std::format("the fill template holds at most {} target bytes "
+                        "while rendering at base {}",
+                        kFillTemplateRenderingBytes, base));
+    }
   }
-  const TargetCost cost = TargetCostOf(*first);
-  const TargetCost sharedSame = SharedTargetCostOf(*first, *sameItem);
-  const TargetCost sharedOther = SharedTargetCostOf(*first, *otherItem);
-  std::cout << std::format("template {}\n  steps {}\n  per wearer: {}\n"
-                           "  shared, same item: {}\n"
-                           "  shared, other item: {}\n",
-                           path.string(), first->steps.size(), Describe(cost),
-                           Describe(sharedSame), Describe(sharedOther));
-  Check(cost.bytes <= kFillTemplateTargetBytes,
-        std::format("the fill template stays within {} target bytes",
-                    kFillTemplateTargetBytes));
-  Check(sharedOther.bytes <= sharedSame.bytes,
-        "a second item never shares more than a copy of the same item");
   return test::Finish("fill template cost");
 }

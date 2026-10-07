@@ -5,6 +5,7 @@
 
 #include <compare>
 #include <functional>
+#include <span>
 
 namespace BetterEnchantmentEffects {
 struct ValueIdentity {
@@ -17,6 +18,9 @@ struct ValueBindings {
   std::function<std::string(NodeId)> state;
 };
 [[nodiscard]] ValueIdentity PositionBakeIdentity(const ValueIdentity &a_mesh);
+[[nodiscard]] std::expected<std::string, std::string>
+EnchantmentIdentity(const EnchantmentSignal &a_signal,
+                    std::span<const float> a_fields);
 [[nodiscard]] std::expected<ValueIdentity, std::string>
 IdentifyValue(const RecipeGraph &graph, OutputRef value,
               const ValueBindings &bindings);

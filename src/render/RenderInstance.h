@@ -3,6 +3,7 @@
 
 #include "planners/RenderExecution.h"
 #include "planners/RenderFirings.h"
+#include "planners/TargetCost.h"
 #include "render/Compositor.h"
 
 namespace BetterEnchantmentEffects {
@@ -41,6 +42,7 @@ public:
   [[nodiscard]] std::expected<void, std::string>
   UpdateInput(RenderInputId input, RenderValue value);
   [[nodiscard]] const RenderPlan &Plan() const noexcept;
+  [[nodiscard]] const PlanTargets &Targets() const noexcept;
   bool BeginFrame(std::uint64_t frame, std::uint64_t nowMS);
   [[nodiscard]] std::expected<void, std::string>
   Update(const RecipeGraph &graph, std::size_t instance,
@@ -66,6 +68,7 @@ private:
   std::vector<GeometryInputs> geometries_;
   std::optional<std::uint64_t> frame_;
   RenderExecution<RenderValue, RenderScratch> execution_;
+  PlanTargets targets_;
   std::uint64_t restoresReported_ = 0;
   std::uint64_t nowMS_ = 0;
 };

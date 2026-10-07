@@ -75,9 +75,10 @@ catalog once. `LiveActorFor` stores it in `LiveActor::catalog` with the
 `ActorMatches` it was planned with, so each `RecipeId` indexes the catalog it
 came from. `LiveInstance::recipe` comes from `SharedRecipe` and keeps the
 catalog alive. `PlaceInstances` and `PlaceLightsOf` read `RecipesOf(state)`,
-not `LoadedRecipes()`. `Manager::ChangeAndRebuildActors` retires the affected
-actors through `RetireActor` before it runs its synchronous mutation
-callback. It then marks them stale. Which actors it retires follows
+not `LoadedRecipes()`. `Manager::ChangeAndRebuildActors` runs its synchronous
+mutation callback. It then asks each affected actor for a reinstall
+(`MarkReinstall`); the actor keeps its effects until its sync replaces them.
+Which actors it rebuilds follows
 `ScopeOf` (`RebuildScope`, `recipe/Recipe.h`): when the edit names a recipe
 and leaves every recipe's `MatchFacts` unchanged, only the actors applying
 that recipe (`ActorsApplying`: a live instance of it, or a failed
@@ -172,7 +173,7 @@ the record back. Unreadable files are skipped.
 missing exports by name. It does not check ABI or version compatibility.
 
 **Animation observation across rebuilds.** Observation survives the
-retirement gap in `ChangeAndRebuildActors`. `Manager::SyncStale` reconciles
+retire and install of a sync. `Manager::SyncStale` reconciles
 it against the new live state through `ReconcileAnimationEvents`.
 `Manager::ForgetActor` ends observation and discovery even when the actor has no
 `LiveActor`. `Manager::Clear` ends all registrations. `SweepAnimationEvents`
@@ -231,7 +232,7 @@ and `Manager::Status`.
 | `ApplicationToken` | Names one change by recipe id, revision, actor id and attempt. | `studio/ApplicationRecord.h` |
 | `ApplicationRecord` | One tracked change: its token, its phase, and the per-actor phases and problems. | `studio/ApplicationRecord.h` |
 | `ApplicationPhase` | `kQueued`, `kPrepared`, `kRendered`, `kFailed`, `kUnmatched`, `kCancelled`. | `studio/ApplicationRecord.h` |
-| `SessionQueue` | Serialises per-actor sync tasks onto the SKSE task interface. It holds the equip-finalize deadlines and the load gate (`BeginLoad`, `Resume`). | `SessionQueue.h` |
+| `SessionQueue` | Serialises per-actor sync tasks onto the SKSE task interface. It holds the equip-finalize deadlines, the reinstall demands (`MarkReinstall`, `ReinstallDue`, `ClearReinstall`) and the load gate (`BeginLoad`, `Resume`). | `SessionQueue.h` |
 
 ### Texture-memory controls
 
@@ -245,7 +246,7 @@ below the material's native size.
 | `Manager::DecideActor` | Observes the actor (`ObserveActor`), plans it (`Actors::PlanActor` with its live claims) and advances its state (`Actors::Advance`), the eviction and pending-model rules included. It performs nothing. It traces `actor_decide`. | `ManagerApply.cpp` |
 | `Manager::RecordState` | Stores the next state in `tracked_`. No state erases the entry. | `ManagerApply.cpp` |
 | `Manager::RetireActor` | Undoes every installed effect of the actor and empties its installed plan. It keeps the record. | `ManagerApply.cpp` |
-| `Manager::ForgetActor` | Retires the actor, stops its animation subscriptions and events, and erases its record. `ForgetEveryActor` forgets each live actor. | `ManagerApply.cpp` |
+| `Manager::ForgetActor` | Retires the actor, stops its animation subscriptions and events, and erases its record. | `ManagerApply.cpp` |
 | `Manager::MarkWaitingStale`, `Manager::MarkRecheckStale` | Mark stale each waiting actor (every `Actors::kPendingRecheckMs`) and each actor with a stuck model or a changed range (every `Actors::kRecheckMs`). | `ManagerTick.cpp` |
 | `RangeChanged` | Tells if `Actors::InRange` for the actor's `DistanceToPlayer` differs from "anything installed". It skips an actor with neither a plan nor an installed plan. | `ManagerTick.cpp` |
 | `Loaded3D`, `DistanceToPlayer` | The engine facts that observation and the tick share: the actor is not deleted and has 3D; the distance to the player (none for the player). | `ActorObservation.h` |
@@ -431,7 +432,7 @@ Recipe from LoadedRecipes()
 | Recipe CRUD | `RecipeStore.h`/`.cpp` (load, publish, mutate, save, `RefreshRecipeDerivedState`), `RecipeFiles.h`/`.cpp` (checked read, write, rename and delete), `RecipeOperations.h` (the operation journal and task guards), `RecipeEditor.h`/`.cpp` (gestures, edits, undo, paint, view) |
 | Form and game-object lookups | `EngineForms.h`/`.cpp` (`FormKeyFor`, `LookupForm`, `ShaderFor`, `RecordFrom`), `GameObjectService.h`/`.cpp` (game-object and animation-event catalogs), `InputCatalog.h`/`.cpp` (`BuildActorValueSamples`), `Tweaks.h`/`.cpp` (`EditorIdOf`, `TweaksEditorIdsAvailable`) |
 | Regression fixture | `RegressionRequests.h`/`.cpp` (the request store and the manager's regression calls), `RegressionRequest.h` (`RegressionRequest`), `ManagerRegression.cpp` (the manager's regression observations and studio work), `RegressionRun.h`/`.cpp` (the unattended run's file, load and result lines over `regression/Run.h`), `RegressionWorld.h`/`.cpp` (its observations and commands) |
-| Small utilities | `Clock.h`/`.cpp` (`NowMS`, `InstanceSpeed`), `TextFile.h`/`.cpp` (`ReadText`, `WriteText`, bounded by `kMaxTextFileBytes`), `MenuDependency.h`/`.cpp` (`CheckMenuFramework`) |
+| Small utilities | `Clock.h`/`.cpp` (`NowMS`, `InstanceSpeed`), `TextFile.h`/`.cpp` (`ReadText`, `WriteText`, bounded by `kMaxTextFileBytes`; `CreateText` and `SetAside`, which never replace a file), `MenuDependency.h`/`.cpp` (`CheckMenuFramework`) |
 
 ## See also
 

@@ -429,7 +429,7 @@ and term templates:
   candidate equals the current recipe.
 - `Manager::ChangeAndRebuildActors` is the one application path. It includes
   applied and loaded actor candidates, retains targets across pending
-  revisions, retires them before mutation, then marks them stale.
+  revisions, runs the mutation, then asks each actor for a reinstall.
 - Keep recipe-store mutations inside these lifetimes. The callbacks run
   synchronously; the sync is queued.
 - For prepared edits, retirement happens before the recipe is replaced and
@@ -702,6 +702,7 @@ with these meanings and no other word for the same thing.
 | **state** | The per-actor record of the actor core: plan, installed plan, pending models and claims (`Actors::ActorState`). An actor without one has **no record**. |
 | **claim** | A geometry that another system took, with the token of its piece's model (`Actors::Claim`). Planning leaves a claimed geometry out until its piece gets a new model or the game loads. |
 | **retire** | To undo installed engine state: of a whole actor (`Manager::RetireActor`, which keeps the record) or of one entry (`RetireGeometry`, the `Retire*` commands). |
+| **reinstall** | To retire everything installed on an in-range actor and install its whole plan in one sync, even when the plan is unchanged (`Actors::Reinstall::kAlways`). A rebuild asks for it (`MarkReinstall`). |
 | **forget** | To retire an actor, stop its animation subscriptions and events, and erase its record (`Manager::ForgetActor`). |
 | **decide** | To observe, plan and advance one actor without performing the commands (`Manager::DecideActor`). |
 | **sync** | To decide one stale actor and perform the result (`Manager::SyncActor`). |

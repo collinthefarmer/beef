@@ -54,4 +54,37 @@ bool WriteText(const std::filesystem::path &a_path, std::string_view a_text) {
   }
   return true;
 }
+
+namespace {
+bool Occupied(const std::filesystem::path &a_path) {
+  std::error_code ec;
+  const std::filesystem::file_status status =
+      std::filesystem::symlink_status(a_path, ec);
+  return ec ? ec != std::errc::no_such_file_or_directory
+            : std::filesystem::exists(status);
+}
+}
+
+Created CreateText(const std::filesystem::path &a_path,
+                   std::string_view a_text) {
+  if (Occupied(a_path)) {
+    return Created::kExists;
+  }
+  return WriteText(a_path, a_text) ? Created::kWritten : Created::kFailed;
+}
+
+std::optional<std::filesystem::path>
+SetAside(const std::filesystem::path &a_path) {
+  std::filesystem::path aside = a_path;
+  aside += kSetAsideSuffix;
+  if (!Occupied(a_path) || Occupied(aside)) {
+    return std::nullopt;
+  }
+  std::error_code ec;
+  std::filesystem::rename(a_path, aside, ec);
+  if (ec) {
+    return std::nullopt;
+  }
+  return aside;
+}
 }

@@ -181,12 +181,9 @@ void Manager::ChangeAndRebuildActors(std::string a_reportRecipe,
   const ApplicationToken token =
       applications_.Begin(std::move(a_reportRecipe), std::move(scope));
   const auto actors = applications_.ActorsFor(token.recipeID);
-  for (const RE::FormID actor : actors) {
-    RetireActor(actor);
-  }
   TraceRebuildState(token, editor_.CurrentView());
   for (const RE::FormID actor : actors) {
-    if (!applications_.MarkStale(actor)) {
+    if (!applications_.MarkReinstall(actor)) {
       ForgetActor(actor);
       applications_.Report(token, actor, ApplicationPhase::kFailed,
                            "actor sync could not be queued");

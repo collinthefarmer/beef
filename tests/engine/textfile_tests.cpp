@@ -89,6 +89,37 @@ void FailedReplacementCleansStaging(const std::filesystem::path &a_dir) {
   Check(WriteText(path, "retry") && ReadText(path).value_or("") == "retry",
         "replacement succeeds after the obstruction is resolved");
 }
+
+void CreatingNeverReplaces(const std::filesystem::path &a_dir) {
+  const auto path = a_dir / "imported.json";
+  Check(WriteText(path, "{ not json"), "a malformed file is in place");
+  Check(CreateText(path, "{\"format\": 1}") == Created::kExists,
+        "CreateText refuses a path that holds a file");
+  Equal(ReadText(path).value_or(""), std::string{"{ not json"},
+        "the refused file keeps its bytes");
+  const auto fresh = a_dir / "fresh" / "new.json";
+  Check(CreateText(fresh, "x") == Created::kWritten &&
+            ReadText(fresh).value_or("") == "x",
+        "CreateText writes a new file and its folders");
+}
+
+void SettingAsideKeepsBothFiles(const std::filesystem::path &a_dir) {
+  const auto path = a_dir / "edited.json";
+  Check(WriteText(path, "hand edit"), "an edited file is in place");
+  const auto aside = SetAside(path);
+  Check(aside.has_value() && !std::filesystem::exists(path) &&
+            ReadText(*aside).value_or("") == "hand edit" &&
+            aside->filename() == "edited.json.unloaded",
+        "SetAside moves the file to its set-aside name with its bytes");
+  Check(WriteText(path, "second"), "a second file takes the name");
+  Check(!SetAside(path).has_value(),
+        "SetAside refuses when the set-aside name is taken");
+  Check(ReadText(path).value_or("") == "second" &&
+            ReadText(*aside).value_or("") == "hand edit",
+        "a refused set-aside leaves both files intact");
+  Check(!SetAside(a_dir / "absent.json").has_value(),
+        "SetAside of a missing file moves nothing");
+}
 }
 
 int main() {
@@ -100,5 +131,7 @@ int main() {
   WritingCreatesParentFolders(dir);
   FailedWritePreservesTheFile(dir);
   FailedReplacementCleansStaging(dir);
+  CreatingNeverReplaces(dir);
+  SettingAsideKeepsBothFiles(dir);
   return test::Finish("engine textfile");
 }

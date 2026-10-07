@@ -224,7 +224,7 @@ atom   := number | "[" expr "," expr ("," expr)? "]" | "(" expr ")"
         | "@" name                      a signal, source or mask
         | "@" name "(" expr ")"         a declared curve applied to a value
         | function "(" expr ("," expr)* ")"
-        | "rand" "(" ")"
+        | "rand" "(" expr? ")"
         | "randrange" "(" expr "," expr ("," expr)? ")"
         | "x" | "mean" | "time" | "pi"
 ```
@@ -286,7 +286,7 @@ atom   := number | "[" expr "," expr ("," expr)? "]" | "(" expr ")"
   `EnchantmentSignal` as changing, and a step over `rand()` or an
   enchantment field runs once and gets a content key. The input's identity
   is its value (`enchantment:<field>:<bits>`, `EnchantmentIdentity` in
-  `render/CompositorDemand.cpp`), taken from `GeometryInputs::enchantment`,
+  `planners/ValueIdentity.h`, which the template-cost test also calls), taken from `GeometryInputs::enchantment`,
   which `LocateStackOutput` fills per instance from `ActorEnvironment`. An
   identity by value is required: the render plan key (W2) reads static input
   identities with the actor left out, so an identity by instance would let
@@ -526,7 +526,9 @@ does not exist: clusters are ranked by texel count with empty ones dropped,
 each weighs its `share` raised to `areaBias` (0 uniform, 1 by area, up to 8
 favouring the largest), and the pick walks the cumulative weights. A pick
 outside 0..1 is clamped, a non-finite pick takes the largest cluster, and a
-non-finite bias counts as 1. The draw passes the picked id + 1 in
+non-finite bias counts as 1. Without a `pick` the lowering ignores
+`areaBias`, so validation warns when `areaBias` is set to anything but its
+default of 1 and `pick` is absent. The draw passes the picked id + 1 in
 `clusterMisc.w` (0 draws the id map), so a changed pick redraws one pass and
 never repeats the k-means. The enchantment signal fields `idHash` and
 `effectHash` give a stable 0..1 value for this: `UnitHash` (FNV-1a over the
@@ -852,8 +854,8 @@ decision with commands retires the actor (`RetireActor`), records the state
 and rebuilds the actor whole through the install path. The recorded installed
 plan is the old one with every command applied (`AfterCommands`). If the
 rebuild fails in `LiveActorFor`, the sync forgets the actor. `RetireActor`
-empties the installed plan and keeps the record, so a retire outside a sync
-leads to a full rebuild on the next sync. `ForgetActor` also stops the
+empties the installed plan and keeps the record. Only a sync and `ForgetActor`
+call it, so `installed` always records what is on the actor. `ForgetActor` also stops the
 actor's animation subscriptions and events and erases its entry and its model
 pointers. The tick forgets an actor whose 3D is gone (`Loaded3D`); this and
 the sync are the only two forget paths of the frame. Before 2026-10-07 these
@@ -928,6 +930,24 @@ installed. Every actor is in range when eviction is off (`EvictDistance` 0),
 so turning eviction off restores an evicted actor. `Advance` returns no state
 when the plan, the installed plan, the pending models and the claims are all
 empty, and the sync forgets the actor; its next equip event tracks it again.
+
+A rebuild asks for a **reinstall** (`Reinstall::kAlways` in the
+`AdvanceRequest`). A reinstall changes only the commands of an in-range
+actor: it retires everything installed and installs the whole plan, even
+when the plan is unchanged. A reinstall does not wait for a pending model.
+The threshold, the eviction and the record rules do not change. The queue
+holds the demand (`SessionQueue::MarkReinstall`); `DecideActor` reads it
+(`ReinstallDue`) and `SyncActor` clears it. `ForgetActor` and a load also
+clear it. A plan change alone does not need it, because `InstanceRef`
+carries the recipe fingerprint. `ReapplyAll` and a view change such as a
+pin leave the plan unchanged and still need a new install. Before 2026-10-07
+the rebuild retired each actor at once and marked it stale. That emptied
+`installed`, so the sync applied the arrival threshold. A recipe edit then
+removed the effects of every actor between 0.8 × and 1.0 × `EvictDistance`.
+The actors also stood without effects between the rebuild and their sync.
+The retire was not needed for memory safety: the rebuild retired after
+publication, and each `LiveInstance` keeps its catalog alive
+(`SharedRecipe`), and each `RenderInstance` keeps its graphs alive.
 
 Another system can replace the material or the shell of a geometry that the
 plugin bound. On each tick `ClaimLostGeometries` checks every bound geometry
@@ -1105,7 +1125,10 @@ layout, and so its out-of-view share, did not exist.
   state, whether the gesture started, the time of the last apply and the
   last touch. Every time comes from `EditorClockMS`, which the caller
   passes in, so the hold and the 2 s idle commit (`kGestureIdleTimeout`)
-  read one clock and native tests drive both. The held value never reaches the
+  read one clock and native tests drive both. `Since` reads the
+  difference of two clock values as signed: a clock wrap gives a small
+  positive interval, and a time read before the last touch gives 0 instead
+  of about 49 days, which would trigger the idle commit. The held value never reaches the
   recipe before its rebuild: a throttle that mutated the recipe every
   frame but deferred the rebuild crashed on 2026-09-22 (null deref in
   the binding's writes), when live instances still pointed into the
@@ -1119,8 +1142,8 @@ layout, and so its out-of-view share, did not exist.
   `MatchFacts` (id, keys, priority, merge mode, in order) are unchanged;
   those facts alone decide `Resolve`, so no other actor's matches can
   move. Any other change, or a rebuild without a recipe (reload, view
-  change), retires every loaded actor and clears the render plan
-  cache. Measured 2026-10-05 before the scoping: one drag edit
+  change), asks every loaded actor for a reinstall and clears the render
+  plan cache. Measured 2026-10-05 before the scoping: one drag edit
   refreshed 25 actors at about 2 ms each while 3 wore the recipe.
 
 - `LogStackDiagnostics` (`engine/ManagerApply.cpp`) logs each distinct
@@ -1299,8 +1322,7 @@ Decompile provenance (`decompiled/WornEnchantmentFX/plugin.c` unless noted):
 - Animation graph events arrive on the animation thread and reach the bus
   as `anim.<tag>` with the event's payload string as the trigger's arg;
   observation belongs to the actor rather than its current recipe bindings.
-  `RetireActor` releases all recipe references before store publication while
-  retaining observation across the queued rebuild. `SyncStale` reconciles the
+  A sync's retire and install keep observation. `SyncStale` reconciles the
   final live state; final retirement, failed rebuilds, unload and clear also
   end observation and forget discovery. The maintenance pass cleans abandoned
   rebuild gaps, including actors temporarily lacking a graph.
@@ -2254,12 +2276,59 @@ cancel by the user instead of the load.
   `user/`, which loads last. The shipped region presets sit beside the DLL
   rather than under the recipe root, which loads every `.json` below it as
   a recipe.
+- The importer never writes over a file (`CreateText`). An import whose
+  file exists but covers no shader (the file did not load, or its key was
+  edited away) renames that file to `<id>.json.unloaded` (`SetAside`), logs
+  an error that names both paths, and imports again. The loader reads only
+  the `.json` extension, so it skips the set-aside copy. When the set-aside
+  name is taken, the importer moves nothing and skips the shader. Before
+  2026-10-07 the importer replaced the file, and a hand edit was lost
+  without a message. A format change (W7, 2026-10-07) still repairs itself:
+  each old import is set aside and imported again.
 
 ## planners (`planners/ActorMatches.h`, `planners/TargetPool.h`, `planners/StackPlan.h`, `planners/BindingPlan.h`, `planners/ActorPlanning.h`, `planners/TextureIdentity.h`)
 
 - `EvictionFor` restores an evicted actor only inside 80% of the eviction
   radius. This hysteresis prevents repeated retire/reapply near the boundary;
   a non-positive radius disables distance eviction.
+
+- `TargetsOf` (`planners/TargetCost.h`) lists the targets a plan holds in
+  two states. The **first render** holds every step that draws a texture or
+  a stack and that a rendered root reaches (`RenderedRoots`,
+  `StepDependencies`). **Rendering** holds the stacks, the animated steps
+  (`AnimatedSteps`) and the steps that an animated step reads directly. The
+  rule follows `RenderExecution`. A step is used when it executes or when an
+  executing step reads it (`Materialize`). `RenderInstance::BeginFrame`
+  releases a texture output that was not used for 500 ms
+  (`kReleaseAfterIdleMS`), except a stack's (`Releasable`).
+- A layer that reads a field program runs that program inside the stack draw.
+  The mask step that the field names is then not reached, and only a studio
+  layer preview (`RenderOutput::LayerTexture`) runs it. The fill template has
+  six such masks: 19 drawing steps, 13 of them reached.
+- An actor out of view is not rendered, so its instances get no `BeginFrame`
+  and release nothing. A hidden actor keeps its rendering set.
+- `CostOf` counts one target per content key across any list of held
+  targets, because `Compositor::FindStepOutput` returns one published target
+  for equal keys. `TargetBytes` adds a third for mips, because
+  `RenderTargetPool` creates every target with a full mip chain
+  (`mipLevels = 0`), also when the step asks for no mips.
+- The count leaves out the sample and reduction steps, because they hold no
+  per-plan target. The 64² sample target returns to the pool when its step
+  ends. A sample step keeps two 64² RGBA8 staging textures (32 KiB). A
+  reduction step keeps three 1×1 float staging textures (48 bytes).
+  `TextureLab::ReductionLevelFor` keeps the reduction levels once per extent
+  for the whole lab.
+- The heartbeat reports the estimate over every live instance of a rendered
+  actor (`estimated_targets`, `estimated_bytes`,
+  `estimated_first_render_bytes`). The measured `target_bytes` minus
+  `pool_bytes` and `scratch_bytes` is the figure to compare. In
+  `soak-enchanted` run 20261007T155955-1 (12 mannequins, 34 placements) the
+  steady estimate was 277 targets and 3365 MiB. The measured holdings were
+  278 targets and 3365 MiB. The first-render estimate plus scratch was
+  4006 MiB, and the measured peak was 4005 MiB. Before 2026-10-07 the
+  estimate (`TargetCostOf`) counted every drawing step as held at once and
+  left out the stacks. It gave 80.0 MiB for the fill template at a 2048²
+  base, where the first render holds 69.3 MiB and rendering 58.7 MiB.
 
 - `TargetPool` (`planners/TargetPool.h`) hands out an index as a
   `shared_ptr` lease. An index is free again only after its last owner
@@ -2380,7 +2449,7 @@ See [the cleanup checkpoint](docs/checkpoints/cleanup-checkpoint-2026-09-13.md) 
 material group journal, retained external textures, explicit actor retirement,
 presenter slot leases, skin palette ownership, and preview submission contract.
 `SourceSampling` centralizes compositor sampling policy. `ChangeAndRebuildActors`
-runs the mutation first, then retires and rebuilds the actors it affects; its
+runs the mutation first, then asks the actors it affects for a reinstall; its
 recipe argument scopes both reporting and, when matching is unchanged, actor
 selection. Generated compositor outputs and
 snapshot retention now use `TextureRef` directly.
@@ -2748,7 +2817,7 @@ first application lands; the `settle` window after it holds that cost, and
 `steady` measures the settled state. First-render admission (in the manager
 section) and idle release (in the compositor section) bound the burst's
 memory. A heartbeat's `targets` and
-`target_bytes` include targets idle in the reuse pool (at most 16 and 64
+`target_bytes` include the scratch targets and the targets idle in the reuse pool (at most 16 and 64
 MiB, `RenderTargetPool::kMaxIdleTargets` and `kMaxIdleBytes`).
 
 The heartbeat is emitted before `OnFrame` starts its frame timer, so its own

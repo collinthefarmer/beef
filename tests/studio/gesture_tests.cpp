@@ -175,6 +175,9 @@ void CheckIdle() {
   GestureMailbox wrapped = OpenGestureMailbox(0xFFFFFF00u);
   Check(!GestureIdle(wrapped, 0x00000100u),
         "the idle time survives the clock wrapping");
+  GestureMailbox early = OpenGestureMailbox(1005);
+  Check(!GestureIdle(early, 1000),
+        "a clock read before the last touch is not idle");
 }
 }
 

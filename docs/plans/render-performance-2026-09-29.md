@@ -398,12 +398,24 @@ Measured in the session of 2026-10-06 17:31 (trace
 | `soak-enchanted`, 12 mannequins in six vanilla cuirass and enchantment pairs (2026-10-07, run 20261007T032055-1) | steady 3.53 GB live targets, peak 4.20 GB; a second run (20261007T032811-1) peaked at 4.69 GB, stalled 3.5 s in its steady window and hung after the crowd despawned (frames 6.8 s apart, then no trace) |
 
 The imported recipes came from the uncommitted fill template (85 signals,
-8 sources, 12 masks). W3 in `architecture-fit-2026-10-06.md` measured it at
-80 MiB of targets per wearer and geometry (2048² base), against 141 MiB for
-the template at 48938f0, so the rewrite lowered the cost per geometry. The
-per-NPC gigabyte comes from the placement count: about 12 placements × 80 MiB.
-`TargetCostOf` (`planners/TargetCost.h`) gives 7a the cost of a plan before
-it is admitted.
+8 sources, 12 masks). `TargetsOf` (`planners/TargetCost.h`) gives the targets
+a plan holds. At a 2048² base the fill template holds 69.3 MiB on its first
+render (13 targets of 1024²) and 58.7 MiB while rendering (11 targets). The
+template at 48938f0 holds 164.0 MiB and 52.0 MiB. Each doubling of the base
+side multiplies the bytes by 4. The heartbeat reports the estimate over every
+live instance (`estimated_bytes`, `estimated_first_render_bytes`). In
+`soak-enchanted` run 20261007T155955-1 the steady estimate was 3365 MiB, equal
+to the measured holdings without the pool and scratch targets. The first-render
+estimate and the peak differed by 1 MiB. In that run 141 of 323 created targets
+were 2048², so some worn geometries had a 4096² base. 7a can therefore admit an
+actor by its plans' estimate. Before 2026-10-07 the estimate counted every
+drawing step as held at once and left out the stacks (80 MiB per wearer and
+geometry, W3 and W13 in `architecture-fit-2026-10-06.md`).
+
+An actor out of view gets no render tick, so its instances release nothing and
+keep the rendering set. Releasing an out-of-view instance down to its stacks
+would cut the fill template at a 4096² base from 234.7 MiB to 85.3 MiB per
+plan (item 7d).
 
 Work:
 
@@ -412,6 +424,7 @@ Work:
 | 7a | A byte budget for live render targets. Admission is nearest-first: the player always, then NPCs by distance. What an actor that does not fit receives is an open decision: a lower resolution, its cheapest outputs, or no effect. | A crowd soak stays under the budget, and the over-budget actors are named in the log. |
 | 7b | The idle pool keeps released targets for a time (about 2 s) inside the budget, not up to `kMaxIdleTargets` 16 and `kMaxIdleBytes` 64 MiB. Today three released 2K targets fill the idle limit, so a rebuild destroys and creates most of an actor's targets (about 880 MiB created and 480 MiB destroyed per burst in the report). | A rebuild of one NPC creates no new targets in a soak. |
 | 7c | A log line, written with diagnostics off, when live target bytes cross a threshold: bytes per actor and per recipe. | The bug report's question "which actors?" can be answered from the plain log. |
+| 7d | An out-of-view actor's instances release their texture outputs except the stacks, as `BeginFrame` does for an instance that renders. Today `ReleaseIdle` runs only inside `BeginFrame`, so a hidden actor keeps every target of its rendering set. | A soak with actors out of view shows `estimated_bytes` falling to the stacks of the hidden actors, and the measured holdings follow. |
 
 The soak for 7a to 7c is W10 of `architecture-fit-2026-10-06.md`: a crowd in
 vanilla armor under vanilla enchantments, so the imported recipes apply.

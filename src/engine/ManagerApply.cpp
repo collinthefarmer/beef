@@ -942,6 +942,7 @@ void Manager::SyncActor(RE::Actor *a_actor) {
       Trace::Event::kApplication,
       {{"action", "sync_begin"}, {"actor", std::to_string(actorID)}});
   ActorDecision decision = DecideActor(*a_actor, settings);
+  applications_.ClearReinstall(actorID);
   if (!decision.next.state) {
     ForgetActor(actorID);
     (void)applications_.TakeEquipped(actorID);
@@ -1026,8 +1027,10 @@ Manager::ActorDecision Manager::DecideActor(RE::Actor &a_actor,
     return Actors::PlanActor({facts, *catalog, editor_.CurrentView(), claims});
   });
   Actors::Transition next = phases.Measure("advance_us", [&] {
-    return Actors::Advance({tracked.state, facts, planned.plan, NowMS(),
-                            a_settings.evictDistance});
+    return Actors::Advance(
+        {tracked.state, facts, planned.plan, NowMS(), a_settings.evictDistance,
+         applications_.ReinstallDue(actorID) ? Actors::Reinstall::kAlways
+                                             : Actors::Reinstall::kIfChanged});
   });
   const std::optional<Actors::ActorState> &state = next.state;
   KeepModels(tracked.models, state ? state->installed : Actors::ActorPlan{},
@@ -1308,21 +1311,11 @@ void Manager::PlaceLightsOf(RE::Actor *a_actor, LiveActor &a_state,
   }
 }
 
-void Manager::ForgetEveryActor() {
-  std::vector<RE::FormID> ids;
-  ids.reserve(live_.size());
-  for (const auto &[actorID, state] : live_) {
-    ids.push_back(actorID);
-  }
-  for (const RE::FormID actorID : ids) {
-    ForgetActor(actorID);
-  }
-}
-
 void Manager::ForgetActor(RE::FormID a_actorID) {
   animations_.Stop(a_actorID);
   ForgetAnimEvents(a_actorID);
   RetireActor(a_actorID);
+  applications_.ClearReinstall(a_actorID);
   tracked_.erase(a_actorID);
 }
 

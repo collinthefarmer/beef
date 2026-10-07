@@ -276,6 +276,8 @@ StepDependencies(const RenderPlan &plan, RenderStepId step);
 [[nodiscard]] RenderPlan MarkDirectSamples(RenderPlan plan);
 [[nodiscard]] std::vector<bool> AnimatedSteps(const RenderPlan &plan);
 [[nodiscard]] std::size_t AnimatedPasses(const RenderPlan &plan);
+[[nodiscard]] std::vector<RenderStepId> RenderedRoots(const RenderPlan &plan);
+[[nodiscard]] bool Draws(const RenderStepKind &kind);
 inline constexpr std::size_t kMaxCacheKeyBytes = 4096;
 [[nodiscard]] std::optional<std::string>
 CacheKeyFor(std::string_view contentKey, std::span<const Value> operands);

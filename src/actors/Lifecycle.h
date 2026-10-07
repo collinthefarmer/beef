@@ -15,12 +15,15 @@ inline constexpr std::uint32_t kRecheckMs = 1000;
 
 enum class Recheck { kNone, kWaiting, kStuck };
 
+enum class Reinstall : std::uint8_t { kIfChanged, kAlways };
+
 struct AdvanceRequest {
   const std::optional<ActorState> &state;
   const ActorFacts &facts;
   const ActorPlan &plan;
   std::uint32_t nowMs = 0;
   float evictDistance = 0.0f;
+  Reinstall reinstall = Reinstall::kIfChanged;
 };
 
 [[nodiscard]] Transition Advance(const AdvanceRequest &a_request);

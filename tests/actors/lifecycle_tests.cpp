@@ -82,6 +82,54 @@ void EvictionHasHysteresis() {
               "an actor without a distance is never evicted");
 }
 
+void AReinstallKeepsTheStayingDistance() {
+  ActorFacts at = Loaded({Attached(0x1)});
+  at.distance = 900.0f;
+  const Transition unchanged =
+      Advance({InstalledState(CircuitPlan()), at, CircuitPlan(), 0, 1000.0f,
+               Reinstall::kIfChanged});
+  test::Check(unchanged.commands.empty(),
+              "an unchanged plan between 0.8 and 1.0 of the distance costs "
+              "nothing");
+
+  const Transition reinstalled =
+      Advance({InstalledState(CircuitPlan()), at, CircuitPlan(), 0, 1000.0f,
+               Reinstall::kAlways});
+  test::Check(!reinstalled.commands.empty() && reinstalled.state &&
+                  reinstalled.state->installed == CircuitPlan(),
+              "a reinstall between 0.8 and 1.0 of the distance installs the "
+              "plan again");
+  test::Check(
+      Reconcile(AfterCommands(ActorPlan{}, reinstalled.commands), CircuitPlan())
+          .empty(),
+      "and its commands install the whole plan");
+
+  at.distance = 1100.0f;
+  const Transition evicted =
+      Advance({InstalledState(CircuitPlan()), at, CircuitPlan(), 0, 1000.0f,
+               Reinstall::kAlways});
+  test::Check(evicted.state && evicted.state->installed == ActorPlan{} &&
+                  !evicted.commands.empty(),
+              "a reinstall beyond the distance evicts");
+
+  at.distance = 900.0f;
+  const Transition empty =
+      Advance({InstalledState(CircuitPlan()), at, ActorPlan{}, 0, 1000.0f,
+               Reinstall::kAlways});
+  test::Check(
+      !empty.state &&
+          Reconcile(AfterCommands(CircuitPlan(), empty.commands), ActorPlan{})
+              .empty(),
+      "a reinstall of an empty plan retires everything");
+
+  const Transition unwaited = Advance(
+      {InstalledState(CircuitPlan()), Loaded({Attached(0x1), Pending(0x2)}),
+       CircuitPlan(), 100, 0.0f, Reinstall::kAlways});
+  test::Check(!unwaited.commands.empty() && unwaited.state &&
+                  unwaited.state->installed == CircuitPlan(),
+              "a reinstall does not wait for a pending model");
+}
+
 void AnArrivingActorInstallsInsideTheRestoreDistance() {
   ActorFacts at = Loaded({Attached(0x1)});
   at.distance = 900.0f;
@@ -297,6 +345,7 @@ void ClaimingAnInstalledGeometryRetiresOnlyIt() {
 int main() {
   AnUnloadedActorRetiresEverything();
   EvictionHasHysteresis();
+  AReinstallKeepsTheStayingDistance();
   AnArrivingActorInstallsInsideTheRestoreDistance();
   AnArrivingActorInstalls();
   AnActorThatWantsNothingIsForgotten();

@@ -41,6 +41,7 @@ struct SessionQueue::State {
   };
   std::unordered_map<std::uint32_t, Finalize> finalizeDue;
   std::unordered_set<std::uint32_t> equipped;
+  std::unordered_set<std::uint32_t> reinstall;
 };
 
 SessionQueue::SessionQueue(Submit a_submit, SyncActorCall a_sync,
@@ -103,6 +104,29 @@ bool SessionQueue::MarkStale(std::uint32_t a_actorID) {
     generation = state_->generation;
   }
   return SubmitSync(state_, generation, a_actorID);
+}
+
+bool SessionQueue::MarkReinstall(std::uint32_t a_actorID) {
+  std::uint64_t generation = 0;
+  {
+    std::scoped_lock lock{state_->lock};
+    if (state_->loading || a_actorID == 0) {
+      return false;
+    }
+    generation = state_->generation;
+    state_->reinstall.insert(a_actorID);
+  }
+  return SubmitSync(state_, generation, a_actorID);
+}
+
+bool SessionQueue::ReinstallDue(std::uint32_t a_actorID) const {
+  std::scoped_lock lock{state_->lock};
+  return !state_->loading && state_->reinstall.contains(a_actorID);
+}
+
+void SessionQueue::ClearReinstall(std::uint32_t a_actorID) {
+  std::scoped_lock lock{state_->lock};
+  state_->reinstall.erase(a_actorID);
 }
 
 bool SessionQueue::SubmitSync(const std::shared_ptr<State> &a_state,
@@ -215,6 +239,7 @@ void SessionQueue::BeginLoad() {
   state_->rerun.clear();
   state_->finalizeDue.clear();
   state_->equipped.clear();
+  state_->reinstall.clear();
 }
 
 void SessionQueue::Resume() {

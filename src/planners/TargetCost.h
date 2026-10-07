@@ -7,8 +7,24 @@
 #include <cstddef>
 #include <cstdint>
 #include <map>
+#include <optional>
+#include <span>
+#include <string>
+#include <vector>
 
 namespace BetterEnchantmentEffects {
+struct HeldTarget {
+  TextureRequirements requirements;
+  std::optional<std::string> contentKey;
+  [[nodiscard]] bool operator==(const HeldTarget &) const = default;
+};
+
+struct PlanTargets {
+  std::vector<HeldTarget> firstRender;
+  std::vector<HeldTarget> rendering;
+  [[nodiscard]] bool operator==(const PlanTargets &) const = default;
+};
+
 struct TargetCost {
   std::size_t targets = 0;
   std::uint64_t bytes = 0;
@@ -18,7 +34,6 @@ struct TargetCost {
 
 [[nodiscard]] std::uint64_t
 TargetBytes(const TextureRequirements &a_requirements) noexcept;
-[[nodiscard]] TargetCost TargetCostOf(const RenderPlan &a_plan);
-[[nodiscard]] TargetCost SharedTargetCostOf(const RenderPlan &a_first,
-                                            const RenderPlan &a_second);
+[[nodiscard]] PlanTargets TargetsOf(const RenderPlan &a_plan);
+[[nodiscard]] TargetCost CostOf(std::span<const HeldTarget> a_targets);
 }

@@ -937,6 +937,7 @@ bool CoveredByMerge(const RenderPlan &plan, const StackOutputBinding &output) {
                    merged.links, ChainLink{output.placement, output.output});
       });
 }
+}
 
 std::vector<RenderStepId> RenderedRoots(const RenderPlan &plan) {
   std::vector<RenderStepId> roots;
@@ -954,7 +955,6 @@ bool Draws(const RenderStepKind &kind) {
     return !sample->direct;
   return OutputType(kind) == RenderValueType{RenderResourceType::kTexture} ||
          OutputType(kind) == RenderValueType{RenderResourceType::kStack};
-}
 }
 
 std::size_t AnimatedPasses(const RenderPlan &plan) {

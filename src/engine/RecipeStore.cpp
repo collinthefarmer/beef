@@ -307,6 +307,51 @@ std::unordered_map<std::string_view, Recipe> LoadImportTemplates() {
   return templates;
 }
 
+bool WriteImport(const std::filesystem::path &a_path, std::string_view a_id,
+                 std::uint32_t a_shader, std::string_view a_text) {
+  Created created = CreateText(a_path, a_text);
+  if (created == Created::kExists) {
+    const std::optional<std::filesystem::path> aside = SetAside(a_path);
+    if (!aside) {
+      logger::error("recipe {}: {} does not cover efsh {:08X} and {}{} "
+                    "already exists; not imported",
+                    a_id, a_path.string(), a_shader, a_path.string(),
+                    kSetAsideSuffix);
+      return false;
+    }
+    logger::error("recipe {}: {} does not cover efsh {:08X}; set aside as "
+                  "{}; importing again",
+                  a_id, a_path.string(), a_shader, aside->string());
+    created = CreateText(a_path, a_text);
+  }
+  if (created != Created::kWritten) {
+    logger::error("recipe {}: could not write {}", a_id, a_path.string());
+    return false;
+  }
+  return true;
+}
+
+void ReportReadBack(const std::filesystem::path &a_path, const Recipe &a_recipe,
+                    std::string_view a_text,
+                    const EffectShaderRecord &a_record) {
+  const std::string readBack = ReadText(a_path).value_or("");
+  const LoadResult parsed = ParseRecipe(readBack, a_recipe.id);
+  const bool sameText = readBack == a_text;
+  const bool sameRecipe = parsed.recipe && *parsed.recipe == a_recipe;
+  if (sameText && sameRecipe && !parsed.HasErrors()) {
+    logger::info("imported recipe {} for efsh {} ({}) -> {}: reads back "
+                 "identical",
+                 a_recipe.id, a_record.key.ToString(), a_record.fillTexture,
+                 a_path.string());
+    return;
+  }
+  logger::error("imported recipe {} for efsh {} -> {}: READ-BACK "
+                "MISMATCH (text {}, parsed {}, errors {})",
+                a_recipe.id, a_record.key.ToString(), a_path.string(), sameText,
+                sameRecipe, parsed.HasErrors());
+  LogDiagnostics(a_recipe.id, parsed.diagnostics);
+}
+
 void ImportMissing(const std::filesystem::path &a_folder) {
   const auto templates = LoadImportTemplates();
   for (auto *shader : ArmorEnchantmentShaders()) {
@@ -333,26 +378,10 @@ void ImportMissing(const std::filesystem::path &a_folder) {
     auto recipe = ImportEffectShader(record, found->second);
     const auto text = SerializeRecipe(recipe);
     const auto path = a_folder / (recipe.id + ".json");
-    if (!WriteText(path, text)) {
-      logger::error("recipe {}: could not write {}", recipe.id, path.string());
+    if (!WriteImport(path, recipe.id, shader->GetFormID(), text)) {
       continue;
     }
-    const std::string readBack = ReadText(path).value_or("");
-    auto parsed = ParseRecipe(readBack, recipe.id);
-    const bool identical = readBack == text && parsed.recipe &&
-                           *parsed.recipe == recipe && !parsed.HasErrors();
-    if (identical) {
-      logger::info(
-          "imported recipe {} for efsh {:08X} ({}) -> {}: reads back identical",
-          recipe.id, shader->GetFormID(), record.fillTexture, path.string());
-    } else {
-      logger::error("imported recipe {} for efsh {:08X} -> {}: READ-BACK "
-                    "MISMATCH (text {}, parsed {}, errors {})",
-                    recipe.id, shader->GetFormID(), path.string(),
-                    readBack == text, parsed.recipe && *parsed.recipe == recipe,
-                    parsed.HasErrors());
-      LogDiagnostics(recipe.id, parsed.diagnostics);
-    }
+    ReportReadBack(path, recipe, text, record);
     for (auto &key : recipe.keys) {
       if (auto *form = key.Form()) {
         form->key = record.key;
@@ -419,7 +448,9 @@ std::span<const Recipe> LoadedRecipes() noexcept {
 }
 
 std::shared_ptr<const RecipeCatalog> AppliedCatalog() noexcept {
-  return g_applied;
+  static const std::shared_ptr<const RecipeCatalog> empty =
+      std::make_shared<const RecipeCatalog>(RecipeCatalog::Of({}));
+  return g_applied ? g_applied : empty;
 }
 
 const Studio::MaskPresets &LoadedPresets() noexcept { return g_presets; }

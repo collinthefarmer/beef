@@ -20,6 +20,7 @@
 #include <optional>
 #include <string>
 #include <unordered_map>
+#include <unordered_set>
 #include <vector>
 
 namespace BetterEnchantmentEffects {
@@ -588,7 +589,55 @@ void EmitStepKinds(const Metrics::StepKindCounts &a_counts) {
   }
 }
 
-void EmitMetricsHeartbeat() {
+struct TargetEstimate {
+  TargetCost rendering;
+  TargetCost firstRender;
+};
+
+std::vector<const RenderInstance *> InstancesOf(const LiveActor &a_state) {
+  std::vector<const RenderInstance *> instances;
+  for (const LivePiece &piece : a_state.pieces) {
+    for (const LiveGeometry &geometry : piece.geometries) {
+      if (geometry.inputs.render) {
+        instances.push_back(geometry.inputs.render.get());
+      }
+    }
+  }
+  return instances;
+}
+
+std::vector<const RenderInstance *>
+RenderedInstances(const std::unordered_map<RE::FormID, LiveActor> &a_live) {
+  std::unordered_set<const RenderInstance *> seen;
+  std::vector<const RenderInstance *> instances;
+  for (const auto &[actor, state] : a_live) {
+    if (state.renderedFrame == 0) {
+      continue;
+    }
+    for (const RenderInstance *render : InstancesOf(state)) {
+      if (seen.insert(render).second) {
+        instances.push_back(render);
+      }
+    }
+  }
+  return instances;
+}
+
+TargetEstimate
+EstimateTargets(const std::unordered_map<RE::FormID, LiveActor> &a_live) {
+  std::vector<HeldTarget> rendering;
+  std::vector<HeldTarget> firstRender;
+  for (const RenderInstance *render : RenderedInstances(a_live)) {
+    const PlanTargets &targets = render->Targets();
+    rendering.insert(rendering.end(), targets.rendering.begin(),
+                     targets.rendering.end());
+    firstRender.insert(firstRender.end(), targets.firstRender.begin(),
+                       targets.firstRender.end());
+  }
+  return {CostOf(rendering), CostOf(firstRender)};
+}
+
+void EmitMetricsHeartbeat(const TargetEstimate &a_estimate) {
   EmitGpuTimings();
   const Metrics::Snapshot measured = Metrics::Drain();
   const TextureLab::TargetHoldings held =
@@ -609,6 +658,10 @@ void EmitMetricsHeartbeat() {
       {"targets_peak", std::to_string(measured.targetsPeak)},
       {"target_bytes", std::to_string(measured.targetBytes)},
       {"target_bytes_peak", std::to_string(measured.targetBytesPeak)},
+      {"estimated_targets", std::to_string(a_estimate.rendering.targets)},
+      {"estimated_bytes", std::to_string(a_estimate.rendering.bytes)},
+      {"estimated_first_render_bytes",
+       std::to_string(a_estimate.firstRender.bytes)},
       {"pool_targets", std::to_string(held.idleTargets)},
       {"pool_bytes", std::to_string(held.idleBytes)},
       {"scratch_targets", std::to_string(held.scratchTargets)},
@@ -642,7 +695,7 @@ void EmitMetricsHeartbeat() {
 
 void Manager::FlushMetricsHeartbeat() {
   lastMetricsMS_ = NowMS();
-  EmitMetricsHeartbeat();
+  EmitMetricsHeartbeat(EstimateTargets(live_));
 }
 
 void Manager::OnFrame() {
@@ -663,7 +716,7 @@ void Manager::OnFrame() {
   const std::uint32_t now = NowMS();
   if (now - lastMetricsMS_ >= 1000) {
     lastMetricsMS_ = now;
-    EmitMetricsHeartbeat();
+    EmitMetricsHeartbeat(EstimateTargets(live_));
   }
   const SectionTimer frameTimer{Metrics::Section::kFrame};
   TextureLab::GetSingleton()->CollectTimings();

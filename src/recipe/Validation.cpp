@@ -185,6 +185,9 @@ struct SourceFields {
         bias && (*bias < 0.0f || *bias > kMaxAreaBias)) {
       report.Error(std::format("'areaBias' is 0..{}", kMaxAreaBias));
     }
+    if (!s.pick && s.areaBias != Param{MaterialClustersSource{}.areaBias}) {
+      report.Warn("'areaBias' has no effect without 'pick'");
+    }
     if (s.settings.clusters < 1 || s.settings.clusters > kMaxMaterialClusters) {
       report.Error(std::format("'clusters' is 1..{}", kMaxMaterialClusters));
     }

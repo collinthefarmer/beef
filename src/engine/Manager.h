@@ -59,7 +59,7 @@ public:
   void MarkStale(RE::Actor *a_actor);
   void QueueForget(RE::FormID a_actorID);
   void QueueEquipFinalize(RE::FormID a_actorID);
-  void QueueLoadedActorRefreshes();
+  void MarkLoadedActorsStale();
 
   void Clear();
   void BeginLoad();
@@ -163,7 +163,6 @@ private:
                CatalogMatches a_planned, const Settings &a_settings);
   void RetireActor(RE::FormID a_actorID);
   void ForgetActor(RE::FormID a_actorID);
-  void ForgetEveryActor();
   void ChangeAndRebuildActors(std::string a_reportRecipe,
                               const std::function<void()> &a_action);
   [[nodiscard]] std::vector<RE::FormID> LoadedActorIDs() const;

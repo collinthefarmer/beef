@@ -118,6 +118,29 @@ int main() {
     ExpectError(R"({"format":1,"keys":["default"],"sources":{"zone":)"
                 R"({"materialClusters":{"pick":0.5,"areaBias":9}}}})",
                 "an area bias above eight", "areaBias");
+    const LoadResult unpicked =
+        ParseRecipe(R"({"format":1,"keys":["default"],"sources":{"zone":)"
+                    R"({"materialClusters":{"areaBias":0.5}}}})",
+                    "unpicked");
+    Check(unpicked.recipe.has_value() && !unpicked.HasErrors() &&
+              std::ranges::any_of(
+                  unpicked.diagnostics,
+                  [](const Diagnostic &a_diagnostic) {
+                    return a_diagnostic.severity == Severity::kWarning &&
+                           a_diagnostic.message.contains("without 'pick'");
+                  }),
+          "an area bias without a pick loads with a warning");
+    const LoadResult plain =
+        ParseRecipe(R"({"format":1,"keys":["default"],"sources":{"zone":)"
+                    R"({"materialClusters":{}}}})",
+                    "plain");
+    Check(plain.recipe.has_value() &&
+              std::ranges::none_of(plain.diagnostics,
+                                   [](const Diagnostic &a_diagnostic) {
+                                     return a_diagnostic.message.contains(
+                                         "without 'pick'");
+                                   }),
+          "the default area bias without a pick does not warn");
   }
   {
     const LoadResult minimal =

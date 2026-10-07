@@ -2,6 +2,7 @@
 #include "render/Compositor.h"
 
 #include "planners/TextureIdentity.h"
+#include "planners/ValueIdentity.h"
 #include "render/MeshReader.h"
 #include "render/SourceSampling.h"
 
@@ -31,17 +32,6 @@ std::string EventOriginIdentity(const EventInput &event,
       [&](const PluginOrigin &origin) -> std::string {
         return instance + ":plugin:" + origin.id;
       });
-}
-
-std::expected<std::string, std::string>
-EnchantmentIdentity(const EnchantmentSignal &a_signal,
-                    const EnchantmentValues &a_values) {
-  const auto field = static_cast<std::size_t>(a_signal.field);
-  if (field >= a_values.fields.size()) {
-    return std::unexpected{std::string{"unknown enchantment field"}};
-  }
-  return std::format("enchantment:{}:{:08x}", field,
-                     std::bit_cast<std::uint32_t>(a_values.fields[field]));
 }
 
 std::expected<std::string, std::string>
@@ -83,7 +73,7 @@ ExternalSourceIdentity(const ExternalSource &source,
       },
       [&](const EnchantmentSignal &k)
           -> std::expected<std::string, std::string> {
-        return EnchantmentIdentity(k, inputs.enchantment);
+        return EnchantmentIdentity(k, inputs.enchantment.fields);
       },
       [&](const EffectShaderInput &k)
           -> std::expected<std::string, std::string> {

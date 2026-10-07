@@ -6,6 +6,7 @@
 #include "planners/Eviction.h"
 
 #include <algorithm>
+#include <iterator>
 #include <utility>
 
 namespace BetterEnchantmentEffects::Actors {
@@ -48,6 +49,18 @@ bool Waiting(std::span<const PendingModel> a_pending, std::uint32_t a_nowMs) {
   });
 }
 
+std::vector<ActorCommand> CommandsFor(Reinstall a_reinstall,
+                                      const ActorPlan &a_installed,
+                                      const ActorPlan &a_plan) {
+  if (a_reinstall == Reinstall::kIfChanged) {
+    return Reconcile(a_installed, a_plan);
+  }
+  std::vector<ActorCommand> commands = Reconcile(a_installed, ActorPlan{});
+  std::ranges::move(Reconcile(ActorPlan{}, a_plan),
+                    std::back_inserter(commands));
+  return commands;
+}
+
 std::optional<ActorState> Held(ActorState a_state) {
   const bool empty = a_state.plan == ActorPlan{} &&
                      a_state.installed == ActorPlan{} &&
@@ -74,9 +87,12 @@ Transition Advance(const AdvanceRequest &a_request) {
             Reconcile(installed, ActorPlan{})};
   }
   std::vector<PendingModel> pending = PendingOf(a_request);
-  const bool wait = hasInstalled && Waiting(pending, a_request.nowMs);
+  const bool wait = hasInstalled &&
+                    a_request.reinstall == Reinstall::kIfChanged &&
+                    Waiting(pending, a_request.nowMs);
   std::vector<ActorCommand> commands =
-      wait ? std::vector<ActorCommand>{} : Reconcile(installed, a_request.plan);
+      wait ? std::vector<ActorCommand>{}
+           : CommandsFor(a_request.reinstall, installed, a_request.plan);
   ActorPlan after = AfterCommands(installed, commands);
   return {Held({a_request.plan, std::move(after), std::move(pending),
                 std::move(claims)}),

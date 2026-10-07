@@ -1097,10 +1097,11 @@ RenderInstance::RenderInstance(
     RenderPlan plan, std::vector<GeometryInputs> geometries,
     std::vector<std::shared_ptr<const RecipeGraph>> graphs)
     : graphs_(std::move(graphs)), geometries_(std::move(geometries)),
-      execution_(std::move(plan)) {
+      execution_(std::move(plan)), targets_(TargetsOf(execution_.Plan())) {
   for (auto &geometry : geometries_)
     geometry.render.reset();
 }
+const PlanTargets &RenderInstance::Targets() const noexcept { return targets_; }
 const RenderPlan &RenderInstance::Plan() const noexcept {
   return execution_.Plan();
 }

@@ -31,6 +31,9 @@ public:
 
   void Post(SessionQueue::Task a_task);
   bool MarkStale(std::uint32_t a_actorID);
+  bool MarkReinstall(std::uint32_t a_actorID);
+  [[nodiscard]] bool ReinstallDue(std::uint32_t a_actorID) const;
+  void ClearReinstall(std::uint32_t a_actorID);
   void Equip(std::uint32_t a_actorID, std::uint32_t a_nowMS);
   void FinalizeDue(std::uint32_t a_nowMS);
   [[nodiscard]] bool TakeEquipped(std::uint32_t a_actorID);

@@ -170,14 +170,17 @@ another actor. `RenderPlanCache.h` holds the reused plans.
 
 ### Target cost
 
-`TargetCost.h` counts the render **targets** a plan acquires when it runs.
+`TargetCost.h` lists the render **targets** a plan holds and counts their
+bytes. The heartbeat compares the count with the measured holdings.
 
 | Type or function | Description |
 |---|---|
+| `HeldTarget` | One target: its requirements and its content key, if it has one. |
+| `PlanTargets` | The targets of one plan on its **first render** (every drawing step a rendered root reaches) and while **rendering** (stacks, animated steps, and steps an animated step reads). |
 | `TargetCost` | The number of targets, their bytes, and the count per side length. |
 | `TargetBytes` | The bytes of one target: side² × 4 × 4/3 for the full mip chain, ×4 for `kRgba32Float`. `TextureLab::RenderTarget::Bytes` uses it. |
-| `TargetCostOf` | The cost of every step that outputs a texture with requirements, except a direct `SampleFieldStep`, which draws nothing. |
-| `SharedTargetCostOf` | The cost of the content-keyed targets that two plans have in common, which two actors share at run time. |
+| `TargetsOf` | The `PlanTargets` of a plan. |
+| `CostOf` | The cost of a list of held targets, with one target per content key. |
 
 ### Render steps
 
@@ -395,10 +398,10 @@ PSGeneratedStack, or PSStack until the compile finishes     render/GeneratedShad
 | `ActorPlanning.h`/`.cpp` | Actor planning | `MatchActor`, `PlanGeometryPlacement`, `PlanActorLights`. |
 | `StackPlan.h`/`.cpp`, `BindingPlan.h`/`.cpp` | Actor planning | `PlanStacks`, `SlotStackPlanOf`, `ChainIndexOf`; `PlanBinding`. |
 | `ValueIdentity.h`/`.cpp`, `TextureDemand.h`/`.cpp` | Render planning | `IdentifyValue`; `CollectTextureDemand` and the demand records. |
-| `RenderPlan.h`/`.cpp` | Render planning | The plan and step records, the step queries (`InputsOf`, `StepDependencies`, `ChangingSteps`, `LiveConsumers`, `TypeOf`), `MarkContentKeyedSteps`, `PackLayerFields` and `ValidateRenderPlan`. |
+| `RenderPlan.h`/`.cpp` | Render planning | The plan and step records, the step queries (`InputsOf`, `StepDependencies`, `ChangingSteps`, `AnimatedSteps`, `RenderedRoots`, `Draws`, `LiveConsumers`, `TypeOf`), `MarkContentKeyedSteps`, `PackLayerFields` and `ValidateRenderPlan`. |
 | `RenderPlanLowering.cpp` | Render planning | `LowerRenderPlan` and `BuildRenderPlan`. |
 | `RenderPlanKey.h`/`.cpp`, `RenderPlanCache.h`/`.cpp` | Render planning | `RenderPlanKeyOf`, `RenderPlanKeyHash`, `GraphsNamedBy`; `RenderPlanCache`. |
-| `TargetCost.h`/`.cpp` | Render planning | `TargetCost`, `TargetBytes`, `TargetCostOf`, `SharedTargetCostOf`. |
+| `TargetCost.h`/`.cpp` | Render planning | `HeldTarget`, `PlanTargets`, `TargetCost`, `TargetBytes`, `TargetsOf`, `CostOf`. |
 | `FieldInlining.h`/`.cpp` | Render planning | `AsProgramLike` and `InlineFields`. |
 | `RenderExecution.h` | Render planning | `RenderExecution` and its state records. |
 | `RenderFirings.h` | Render planning | `RenderFiring` and `RenderFirings`. |

@@ -184,6 +184,34 @@ void EquipmentDelay() {
         "loading clears timers, notifications, and queued finalizes");
 }
 
+void ReinstallDemand() {
+  Scheduler scheduler;
+  std::vector<bool> due;
+  SessionQueue *self = nullptr;
+  SessionQueue queue{[&](SessionQueue::Task a_task) {
+                       return scheduler.Submit(std::move(a_task));
+                     },
+                     [&](std::uint32_t a_id) {
+                       due.push_back(self->ReinstallDue(a_id));
+                       self->ClearReinstall(a_id);
+                     }};
+  self = &queue;
+  Check(!queue.MarkReinstall(42), "a reinstall is refused while loading");
+  queue.Resume();
+  Check(queue.MarkReinstall(42) && queue.ReinstallDue(42),
+        "a reinstall queues a sync and stays due");
+  queue.MarkStale(42);
+  scheduler.Run();
+  scheduler.Run();
+  Check(due == std::vector<bool>{true, false},
+        "the sync sees the reinstall once, and a plain follow-up does not");
+  Check(queue.MarkReinstall(7), "a second reinstall queues");
+  queue.BeginLoad();
+  queue.Resume();
+  Check(!queue.ReinstallDue(7), "a load drops every reinstall");
+  Check(!queue.MarkReinstall(0), "zero actor IDs are rejected");
+}
+
 void QueueLifetime() {
   Scheduler scheduler;
   int calls = 0;
@@ -236,6 +264,7 @@ int main() {
   LoadDuringSubmission();
   LoadDuringSync();
   EquipmentDelay();
+  ReinstallDemand();
   QueueLifetime();
   return test::Finish("session queue");
 }
