@@ -943,6 +943,14 @@ void Manager::SyncActor(RE::Actor *a_actor) {
       {{"action", "sync_begin"}, {"actor", std::to_string(actorID)}});
   ActorDecision decision = DecideActor(*a_actor, settings);
   applications_.ClearReinstall(actorID);
+  if (decision.kind != Actors::SyncKind::kUnchanged) {
+    const char *name = a_actor->GetName();
+    syncLog_ = Actors::Recorded(
+        std::move(syncLog_),
+        {actorID,
+         name && *name ? std::string{name} : std::format("{:08X}", actorID),
+         decision.kind, NowMS()});
+  }
   if (!decision.next.state) {
     ForgetActor(actorID);
     (void)applications_.TakeEquipped(actorID);
@@ -1026,12 +1034,14 @@ Manager::ActorDecision Manager::DecideActor(RE::Actor &a_actor,
                       : std::vector<Actors::Claim>{};
     return Actors::PlanActor({facts, *catalog, editor_.CurrentView(), claims});
   });
+  const Actors::Reinstall reinstall = applications_.ReinstallDue(actorID)
+                                          ? Actors::Reinstall::kAlways
+                                          : Actors::Reinstall::kIfChanged;
   Actors::Transition next = phases.Measure("advance_us", [&] {
-    return Actors::Advance(
-        {tracked.state, facts, planned.plan, NowMS(), a_settings.evictDistance,
-         applications_.ReinstallDue(actorID) ? Actors::Reinstall::kAlways
-                                             : Actors::Reinstall::kIfChanged});
+    return Actors::Advance({tracked.state, facts, planned.plan, NowMS(),
+                            a_settings.evictDistance, reinstall});
   });
+  const Actors::SyncKind kind = Actors::KindOf(tracked.state, next, reinstall);
   const std::optional<Actors::ActorState> &state = next.state;
   KeepModels(tracked.models, state ? state->installed : Actors::ActorPlan{},
              observedAt);
@@ -1044,10 +1054,12 @@ Manager::ActorDecision Manager::DecideActor(RE::Actor &a_actor,
   phases.Add("pieces", std::to_string(facts.pieces.size()));
   phases.Add("pending", std::to_string(state ? state->pending.size() : 0));
   phases.Add("commands", std::to_string(next.commands.size()));
+  phases.Add("kind", std::string{Actors::SyncKindName(kind)});
   phases.Emit();
   return {std::move(facts),
           {std::move(catalog), std::move(planned.matches)},
-          std::move(next)};
+          std::move(next),
+          kind};
 }
 
 void Manager::NoteMaterialLayout(MaterialLayout a_before) {

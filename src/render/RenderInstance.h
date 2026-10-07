@@ -67,8 +67,11 @@ private:
 
   std::vector<GeometryInputs> geometries_;
   std::optional<std::uint64_t> frame_;
+  std::optional<std::uint64_t> lastFrameMS_;
+  std::uint64_t renderClockMS_ = 0;
   RenderExecution<RenderValue, RenderScratch> execution_;
   PlanTargets targets_;
+  std::vector<bool> animated_;
   std::uint64_t restoresReported_ = 0;
   std::uint64_t nowMS_ = 0;
 };

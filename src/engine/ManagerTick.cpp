@@ -7,6 +7,7 @@
 #include "diagnostics/Trace.h"
 #include "engine/Clock.h"
 #include "engine/RegressionRun.h"
+#include "planners/RenderMemory.h"
 #include "render/Compositor.h"
 #include "render/RenderInstance.h"
 #include "render/TextureLab.h"
@@ -14,6 +15,7 @@
 
 #include <algorithm>
 #include <array>
+#include <cmath>
 #include <cstddef>
 #include <format>
 #include <iterator>
@@ -59,6 +61,23 @@ bool InCameraView(RE::Actor &a_actor) {
       RE::NiPoint3{position.x, position.y, position.z + kViewCentreHeight},
       radius * kViewRadiusScale + kViewRadiusPadding};
   return RE::NiCamera::BoundInFrustum(padded, camera);
+}
+
+float ScreenFraction(RE::Actor &a_actor) {
+  RE::NiCamera *camera = RE::Main::WorldRootCamera();
+  RE::NiAVObject *root = a_actor.Get3D(false);
+  if (!camera || !root) {
+    return 0.0f;
+  }
+  const RE::NiFrustum &frustum = camera->GetRuntimeData2().viewFrustum;
+  const float extent = frustum.fTop - frustum.fBottom;
+  const float distance =
+      camera->world.translate.GetDistance(root->worldBound.center);
+  if (frustum.bOrtho || !(extent > 0.0f) || !(distance > 1.0f)) {
+    return 0.0f;
+  }
+  const float fraction = 2.0f * root->worldBound.radius / distance / extent;
+  return std::isfinite(fraction) ? std::clamp(fraction, 0.0f, 1.0f) : 0.0f;
 }
 
 bool ShownThisTick(RE::Actor &a_actor, const Settings &a_settings,
@@ -589,11 +608,6 @@ void EmitStepKinds(const Metrics::StepKindCounts &a_counts) {
   }
 }
 
-struct TargetEstimate {
-  TargetCost rendering;
-  TargetCost firstRender;
-};
-
 std::vector<const RenderInstance *> InstancesOf(const LiveActor &a_state) {
   std::vector<const RenderInstance *> instances;
   for (const LivePiece &piece : a_state.pieces) {
@@ -623,67 +637,115 @@ RenderedInstances(const std::unordered_map<RE::FormID, LiveActor> &a_live) {
   return instances;
 }
 
-TargetEstimate
+TargetCost
 EstimateTargets(const std::unordered_map<RE::FormID, LiveActor> &a_live) {
-  std::vector<HeldTarget> rendering;
-  std::vector<HeldTarget> firstRender;
+  std::vector<HeldTarget> held;
   for (const RenderInstance *render : RenderedInstances(a_live)) {
     const PlanTargets &targets = render->Targets();
-    rendering.insert(rendering.end(), targets.rendering.begin(),
-                     targets.rendering.end());
-    firstRender.insert(firstRender.end(), targets.firstRender.begin(),
-                       targets.firstRender.end());
+    held.insert(held.end(), targets.held.begin(), targets.held.end());
   }
-  return {CostOf(rendering), CostOf(firstRender)};
+  return CostOf(held);
 }
 
-void EmitMetricsHeartbeat(const TargetEstimate &a_estimate) {
+ScreenSpread
+ScreenSpreadOf(const std::unordered_map<RE::FormID, LiveActor> &a_live) {
+  std::vector<float> fractions;
+  for (const auto &[actor, state] : a_live) {
+    if (state.inView && state.renderedFrame != 0) {
+      fractions.push_back(state.screenFraction);
+    }
+  }
+  return SpreadOf(std::move(fractions));
+}
+
+std::vector<std::string> RecipeIdsOf(const LiveActor &a_state) {
+  std::vector<std::string> ids;
+  for (const LiveInstance &instance : a_state.instances) {
+    if (instance.recipe && !std::ranges::contains(ids, instance.recipe->id)) {
+      ids.push_back(instance.recipe->id);
+    }
+  }
+  return ids;
+}
+
+ActorTargets TargetsOfActor(RE::FormID a_actor, const LiveActor &a_state) {
+  std::vector<HeldTarget> held;
+  for (const RenderInstance *render : InstancesOf(a_state)) {
+    const PlanTargets &targets = render->Targets();
+    held.insert(held.end(), targets.held.begin(), targets.held.end());
+  }
+  const RE::NiPointer<RE::Actor> actor = a_state.actor.get();
+  const char *name = actor ? actor->GetName() : nullptr;
+  return {a_actor, name ? std::string{name} : std::string{},
+          a_state.screenFraction, RecipeIdsOf(a_state), std::move(held)};
+}
+
+std::vector<ActorTargets>
+RenderedActorTargets(const std::unordered_map<RE::FormID, LiveActor> &a_live) {
+  std::vector<ActorTargets> actors;
+  for (const auto &[actor, state] : a_live) {
+    if (state.renderedFrame != 0) {
+      actors.push_back(TargetsOfActor(actor, state));
+    }
+  }
+  return actors;
+}
+
+std::string Fraction(float a_value) { return std::format("{:.3f}", a_value); }
+
+void EmitMetricsHeartbeat(const Metrics::Snapshot &a_measured,
+                          const TargetCost &a_estimate,
+                          const ScreenSpread &a_screen) {
   EmitGpuTimings();
-  const Metrics::Snapshot measured = Metrics::Drain();
   const TextureLab::TargetHoldings held =
       TextureLab::GetSingleton()->HeldTargets();
   const Compositor *compositor = Compositor::GetSingleton();
-  EmitStepKinds(measured.stepExecutionsByKind);
+  EmitStepKinds(a_measured.stepExecutionsByKind);
   std::vector<Trace::Field> heartbeat{
       {"action", "heartbeat"},
-      {"syncs", std::to_string(measured.syncs)},
-      {"sync_us", std::to_string(measured.syncMicros)},
-      {"sync_max_us", std::to_string(measured.syncMaxMicros)},
-      {"sink_adds", std::to_string(measured.sinkAdds)},
-      {"sink_removes", std::to_string(measured.sinkRemoves)},
-      {"readbacks", std::to_string(measured.readbacks)},
-      {"readback_us", std::to_string(measured.readbackMicros)},
-      {"readback_max_us", std::to_string(measured.readbackMaxMicros)},
-      {"targets", std::to_string(measured.targets)},
-      {"targets_peak", std::to_string(measured.targetsPeak)},
-      {"target_bytes", std::to_string(measured.targetBytes)},
-      {"target_bytes_peak", std::to_string(measured.targetBytesPeak)},
-      {"estimated_targets", std::to_string(a_estimate.rendering.targets)},
-      {"estimated_bytes", std::to_string(a_estimate.rendering.bytes)},
-      {"estimated_first_render_bytes",
-       std::to_string(a_estimate.firstRender.bytes)},
+      {"syncs", std::to_string(a_measured.syncs)},
+      {"sync_us", std::to_string(a_measured.syncMicros)},
+      {"sync_max_us", std::to_string(a_measured.syncMaxMicros)},
+      {"sink_adds", std::to_string(a_measured.sinkAdds)},
+      {"sink_removes", std::to_string(a_measured.sinkRemoves)},
+      {"readbacks", std::to_string(a_measured.readbacks)},
+      {"readback_us", std::to_string(a_measured.readbackMicros)},
+      {"readback_max_us", std::to_string(a_measured.readbackMaxMicros)},
+      {"targets", std::to_string(a_measured.targets)},
+      {"targets_peak", std::to_string(a_measured.targetsPeak)},
+      {"target_bytes", std::to_string(a_measured.targetBytes)},
+      {"target_bytes_peak", std::to_string(a_measured.targetBytesPeak)},
+      {"targets_created", std::to_string(a_measured.targetsCreated)},
+      {"target_bytes_created", std::to_string(a_measured.targetBytesCreated)},
+      {"target_bytes_destroyed",
+       std::to_string(a_measured.targetBytesDestroyed)},
+      {"screen_fraction_min", Fraction(a_screen.least)},
+      {"screen_fraction_median", Fraction(a_screen.median)},
+      {"screen_fraction_max", Fraction(a_screen.most)},
+      {"estimated_targets", std::to_string(a_estimate.targets)},
+      {"estimated_bytes", std::to_string(a_estimate.bytes)},
       {"pool_targets", std::to_string(held.idleTargets)},
       {"pool_bytes", std::to_string(held.idleBytes)},
       {"scratch_targets", std::to_string(held.scratchTargets)},
       {"scratch_bytes", std::to_string(held.scratchBytes)},
       {"resident_targets", std::to_string(compositor->ResidentTargets())},
       {"resident_bytes", std::to_string(compositor->ResidentBytes())},
-      {"frames", std::to_string(measured.frames)},
-      {"render_evaluations", std::to_string(measured.renderEvaluations)},
-      {"step_executions", std::to_string(measured.stepExecutions)},
-      {"step_cache_hits", std::to_string(measured.stepCacheHits)},
-      {"step_releases", std::to_string(measured.stepReleases)},
-      {"step_restores", std::to_string(measured.stepRestores)},
-      {"interval_max_us", std::to_string(measured.intervalMaxMicros)},
-      {"actors_in_view", std::to_string(measured.actorsInView)},
-      {"actors_out_of_view", std::to_string(measured.actorsOutOfView)},
-      {"hitches_50ms", std::to_string(measured.hitches[0])},
-      {"hitches_100ms", std::to_string(measured.hitches[1])},
-      {"plugin_over_8ms", std::to_string(measured.pluginSpikes[0])},
-      {"plugin_over_16ms", std::to_string(measured.pluginSpikes[1])},
-      {"plugin_over_33ms", std::to_string(measured.pluginSpikes[2])}};
+      {"frames", std::to_string(a_measured.frames)},
+      {"render_evaluations", std::to_string(a_measured.renderEvaluations)},
+      {"step_executions", std::to_string(a_measured.stepExecutions)},
+      {"step_cache_hits", std::to_string(a_measured.stepCacheHits)},
+      {"step_releases", std::to_string(a_measured.stepReleases)},
+      {"step_restores", std::to_string(a_measured.stepRestores)},
+      {"interval_max_us", std::to_string(a_measured.intervalMaxMicros)},
+      {"actors_in_view", std::to_string(a_measured.actorsInView)},
+      {"actors_out_of_view", std::to_string(a_measured.actorsOutOfView)},
+      {"hitches_50ms", std::to_string(a_measured.hitches[0])},
+      {"hitches_100ms", std::to_string(a_measured.hitches[1])},
+      {"plugin_over_8ms", std::to_string(a_measured.pluginSpikes[0])},
+      {"plugin_over_16ms", std::to_string(a_measured.pluginSpikes[1])},
+      {"plugin_over_33ms", std::to_string(a_measured.pluginSpikes[2])}};
   for (const Named<Metrics::Section> &section : Metrics::kSections) {
-    const Metrics::SectionTime time = measured.Of(section.value);
+    const Metrics::SectionTime time = a_measured.Of(section.value);
     heartbeat.push_back(
         {std::format("{}_us", section.name), std::to_string(time.micros)});
     heartbeat.push_back({std::format("{}_max_us", section.name),
@@ -694,8 +756,38 @@ void EmitMetricsHeartbeat(const TargetEstimate &a_estimate) {
 }
 
 void Manager::FlushMetricsHeartbeat() {
-  lastMetricsMS_ = NowMS();
-  EmitMetricsHeartbeat(EstimateTargets(live_));
+  const std::uint32_t now = NowMS();
+  const std::uint32_t intervalMs = now - lastMetricsMS_;
+  lastMetricsMS_ = now;
+  const Metrics::Snapshot measured = Metrics::Drain();
+  EmitMetricsHeartbeat(measured, EstimateTargets(live_), ScreenSpreadOf(live_));
+  ReportRenderMemory(measured, intervalMs);
+}
+
+void Manager::ReportRenderMemory(const Metrics::Snapshot &a_measured,
+                                 std::uint32_t a_intervalMs) {
+  const HoldingLevel next =
+      NextHoldingLevel(holdingLevel_, a_measured.targetBytes);
+  holdingLevel_ = next.level;
+  if (next.crossing != Crossing::kNone) {
+    const std::string line =
+        HoldingLine({a_measured.targets, a_measured.targetBytes},
+                    LargestHoldings(HoldingsOf(RenderedActorTargets(live_)),
+                                    kReportedHoldings));
+    if (next.crossing == Crossing::kRose) {
+      logger::warn("{}", line);
+    } else {
+      logger::info("{}", line);
+    }
+  }
+  const TargetBurst burst{a_measured.targetsCreated,
+                          a_measured.targetBytesCreated,
+                          a_measured.targetBytesDestroyed, a_intervalMs};
+  if (IsBurst(burst)) {
+    logger::warn("{}",
+                 BurstLine(burst, Actors::SyncSummary(syncLog_, NowMS(),
+                                                      Actors::kSyncLogMs)));
+  }
 }
 
 void Manager::OnFrame() {
@@ -715,8 +807,7 @@ void Manager::OnFrame() {
   AdvanceRegressionRun();
   const std::uint32_t now = NowMS();
   if (now - lastMetricsMS_ >= 1000) {
-    lastMetricsMS_ = now;
-    EmitMetricsHeartbeat(EstimateTargets(live_));
+    FlushMetricsHeartbeat();
   }
   const SectionTimer frameTimer{Metrics::Section::kFrame};
   TextureLab::GetSingleton()->CollectTimings();
@@ -823,6 +914,7 @@ void Manager::Tick(std::uint32_t a_nowMS, const Settings &a_settings) {
       }
     }
     state.inView = ShownThisTick(*actor, a_settings, inspected == it->first);
+    state.screenFraction = ScreenFraction(*actor);
     const bool render = state.inView && AdmitRender(state, firstRenders);
     std::vector<bool> hidden;
     if (render) {

@@ -3,10 +3,23 @@
 
 #include "planners/RenderPlan.h"
 
+#include <algorithm>
 #include <limits>
 #include <optional>
 
 namespace BetterEnchantmentEffects {
+inline constexpr std::uint64_t kMaxRenderAdvanceMS = 100;
+
+[[nodiscard]] constexpr std::uint64_t
+AdvancedRenderClock(std::uint64_t a_clock,
+                    std::optional<std::uint64_t> a_lastFrame,
+                    std::uint64_t a_now) noexcept {
+  if (!a_lastFrame || a_now < *a_lastFrame) {
+    return a_clock;
+  }
+  return a_clock + std::min(a_now - *a_lastFrame, kMaxRenderAdvanceMS);
+}
+
 using ChangeVersion = std::uint64_t;
 struct StepInput {
   RenderValueRef input;
@@ -44,6 +57,7 @@ public:
           const CompositeStackStep &, const T &)>;
   using ObserveStale =
       std::function<void(RenderStepId, std::optional<RenderValueRef>)>;
+  using ObserveRestore = std::function<void(RenderStepId)>;
 
   explicit RenderExecution(RenderPlan plan)
       : plan_(std::move(plan)), inputs_(plan_.inputs.size()),
@@ -88,12 +102,13 @@ public:
   [[nodiscard]] std::expected<ResolvedRenderInput<T>, std::string>
   Evaluate(RenderValueRef result, const ExecuteStep &execute,
            const SameValue &same, const SelectInputs &select,
-           const ObserveStale &stale = {}) {
+           const ObserveStale &stale = {},
+           const ObserveRestore &restored = {}) {
     if (!problem_.empty())
       return std::unexpected(problem_);
     if (!execute || !same || !select)
       return std::unexpected("render execution callbacks are incomplete");
-    Walk walk{execute, same, select, stale, 0};
+    Walk walk{execute, same, select, stale, restored, 0};
     return Materialize(result, walk, 0);
   }
   void SetClock(std::uint64_t a_now) noexcept { clock_ = a_now; }
@@ -109,7 +124,7 @@ public:
       auto &state = steps_[i];
       auto &output = state.outputs.front();
       if (!output.value || clock_ - state.lastUsed <= idleFor ||
-          !releasable(plan_.steps[i], *output.value))
+          !releasable(i, plan_.steps[i], *output.value))
         continue;
       output.value.reset();
       state.released = true;
@@ -124,6 +139,7 @@ private:
     const SameValue &same;
     const SelectInputs &select;
     const ObserveStale &stale;
+    const ObserveRestore &restored;
     std::size_t visits = 0;
   };
   using Version = std::expected<ChangeVersion, std::string>;
@@ -273,9 +289,11 @@ private:
     auto produced = walk.execute(plan_.steps[id], values, state.scratch);
     if (!produced)
       return Fail(id, produced.error());
-    if (restoring)
+    if (restoring) {
       ++restores_;
-    else if (!output.value || !walk.same(*output.value, *produced)) {
+      if (walk.restored)
+        walk.restored(id);
+    } else if (!output.value || !walk.same(*output.value, *produced)) {
       if (output.changeVersion == std::numeric_limits<ChangeVersion>::max())
         return Fail(id, "output change version exhausted");
       ++output.changeVersion;

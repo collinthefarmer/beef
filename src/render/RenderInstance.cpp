@@ -365,6 +365,9 @@ bool Releasable(const RenderStep &step, const RenderValue &value) {
          (Is<TextureView>(value) ||
           Is<std::shared_ptr<const BakeBuffers>>(value));
 }
+bool Animated(const std::vector<bool> &animated, RenderStepId step) {
+  return step < animated.size() && animated[step];
+}
 BakeBuffers BakeBuffersFor(const MeshData &mesh, const MeshAnalysis &analysis,
                            const BakeKind &kind) {
   if (Is<ComponentIdBake>(kind))
@@ -1097,7 +1100,8 @@ RenderInstance::RenderInstance(
     RenderPlan plan, std::vector<GeometryInputs> geometries,
     std::vector<std::shared_ptr<const RecipeGraph>> graphs)
     : graphs_(std::move(graphs)), geometries_(std::move(geometries)),
-      execution_(std::move(plan)), targets_(TargetsOf(execution_.Plan())) {
+      execution_(std::move(plan)), targets_(TargetsOf(execution_.Plan())),
+      animated_(AnimatedSteps(execution_.Plan())) {
   for (auto &geometry : geometries_)
     geometry.render.reset();
 }
@@ -1361,6 +1365,17 @@ void ReportStale(const RenderPlan &plan, RenderStepId step,
                      {"input", changed ? DescribeInput(plan, *changed)
                                        : std::string{"the set of inputs"}}});
 }
+void ReportRestore(const RenderPlan &plan, RenderStepId step,
+                   std::uint64_t nowMS) {
+  static StaleReports reports;
+  if (step >= plan.steps.size() || !TakeStaleReport(reports, nowMS))
+    return;
+  Trace::EmitSafely(
+      Trace::Event::kMetrics,
+      {{"action", "step_restored"},
+       {"step", plan.steps[step].displayName},
+       {"kind", std::string{StepKindName(plan.steps[step].kind)}}});
+}
 StepResult
 ExecuteCached(const RenderStep &step,
               std::span<const ResolvedRenderInput<RenderValue>> inputs,
@@ -1399,7 +1414,8 @@ RenderInstance::Demand(RenderValueRef output) {
       SameRenderValue, SelectStackInputs,
       [this](RenderStepId step, std::optional<RenderValueRef> changed) {
         ReportStale(Plan(), step, changed, nowMS_);
-      });
+      },
+      [this](RenderStepId step) { ReportRestore(Plan(), step, nowMS_); });
 }
 const GeometryInputs *RenderInstance::GeometryOf(GeometryId id) const noexcept {
   return IndexOf(id) < geometries_.size() ? &geometries_[IndexOf(id)] : nullptr;
@@ -1409,9 +1425,14 @@ bool RenderInstance::BeginFrame(std::uint64_t frame, std::uint64_t nowMS) {
     return false;
   frame_ = frame;
   nowMS_ = nowMS;
-  execution_.SetClock(nowMS);
-  Metrics::CountStepReleases(
-      execution_.ReleaseIdle(kReleaseAfterIdleMS, Releasable));
+  renderClockMS_ = AdvancedRenderClock(renderClockMS_, lastFrameMS_, nowMS);
+  lastFrameMS_ = nowMS;
+  execution_.SetClock(renderClockMS_);
+  Metrics::CountStepReleases(execution_.ReleaseIdle(
+      kReleaseAfterIdleMS, [this](RenderStepId step, const RenderStep &planned,
+                                  const RenderValue &value) {
+        return Animated(animated_, step) && Releasable(planned, value);
+      }));
   Metrics::CountStepRestores(execution_.Restores() - restoresReported_);
   restoresReported_ = execution_.Restores();
   CollectReadbacks();

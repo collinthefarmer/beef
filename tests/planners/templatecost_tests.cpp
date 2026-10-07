@@ -23,8 +23,7 @@ using test::Check;
 namespace {
 constexpr std::uint32_t kGuardedBaseSide = 2048;
 constexpr std::array<std::uint32_t, 3> kBaseSides{1024, 2048, 4096};
-constexpr std::uint64_t kFillTemplateFirstRenderBytes = std::uint64_t{76} << 20;
-constexpr std::uint64_t kFillTemplateRenderingBytes = std::uint64_t{64} << 20;
+constexpr std::uint64_t kFillTemplateHeldBytes = std::uint64_t{76} << 20;
 
 bool ActorScoped(const ExternalSource &a_source) {
   return Is<EffectShaderInput>(a_source) || Is<EventInput>(a_source) ||
@@ -159,35 +158,28 @@ std::optional<Wearers> WearersAt(const Recipe &a_recipe,
                  std::move(*otherItem)};
 }
 
-struct FillCost {
-  TargetCost firstRender;
-  TargetCost rendering;
-};
-
-FillCost CheckedCost(const Wearers &a_wearers, std::uint32_t a_base) {
+TargetCost CheckedCost(const Wearers &a_wearers, std::uint32_t a_base) {
   const PlanTargets first = TargetsOf(a_wearers.first);
   const PlanTargets same = TargetsOf(a_wearers.sameItem);
   const PlanTargets other = TargetsOf(a_wearers.otherItem);
-  const TargetCost firstRender = CostOf(first.firstRender);
-  const TargetCost rendering = CostOf(first.rendering);
-  const TargetCost twoSame = CostOf(Joined(first.rendering, same.rendering));
-  const TargetCost twoOther = CostOf(Joined(first.rendering, other.rendering));
-  std::cout << std::format("base {}\n  first render: {}\n  rendering: {}\n"
-                           "  rendering, two wearers of one item: {}\n"
-                           "  rendering, two wearers of two items: {}\n",
-                           a_base, Describe(firstRender), Describe(rendering),
+  const TargetCost held = CostOf(first.held);
+  const TargetCost stacks = CostOf(first.stacks);
+  const TargetCost twoSame = CostOf(Joined(first.held, same.held));
+  const TargetCost twoOther = CostOf(Joined(first.held, other.held));
+  std::cout << std::format("base {}\n  held: {}\n  stacks: {}\n"
+                           "  held, two wearers of one item: {}\n"
+                           "  held, two wearers of two items: {}\n",
+                           a_base, Describe(held), Describe(stacks),
                            Describe(twoSame), Describe(twoOther));
-  Check(rendering.targets >= StacksIn(a_wearers.first) &&
-            rendering.bytes <= firstRender.bytes,
-        std::format("at base {} rendering holds every stack and no more than "
-                    "the first render",
+  Check(stacks.targets == StacksIn(a_wearers.first) &&
+            stacks.bytes <= held.bytes,
+        std::format("at base {} a plan holds its stacks among its targets",
                     a_base));
-  Check(twoSame.bytes <= twoOther.bytes &&
-            twoOther.bytes <= 2 * rendering.bytes,
+  Check(twoSame.bytes <= twoOther.bytes && twoOther.bytes <= 2 * held.bytes,
         std::format("at base {} a second wearer of one item shares at least "
                     "as much as a wearer of another item",
                     a_base));
-  return {firstRender, rendering};
+  return held;
 }
 
 int main(int argc, char **argv) {
@@ -207,16 +199,12 @@ int main(int argc, char **argv) {
     if (!wearers) {
       return test::Finish("fill template cost");
     }
-    const FillCost cost = CheckedCost(*wearers, base);
+    const TargetCost held = CheckedCost(*wearers, base);
     if (base == kGuardedBaseSide) {
-      Check(cost.firstRender.bytes <= kFillTemplateFirstRenderBytes,
-            std::format("the fill template's first render stays within {} "
-                        "target bytes at base {}",
-                        kFillTemplateFirstRenderBytes, base));
-      Check(cost.rendering.bytes <= kFillTemplateRenderingBytes,
-            std::format("the fill template holds at most {} target bytes "
-                        "while rendering at base {}",
-                        kFillTemplateRenderingBytes, base));
+      Check(held.bytes <= kFillTemplateHeldBytes,
+            std::format("the fill template holds at most {} target bytes at "
+                        "base {}",
+                        kFillTemplateHeldBytes, base));
     }
   }
   return test::Finish("fill template cost");

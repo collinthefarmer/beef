@@ -206,6 +206,7 @@ The commands set the new installed plan through `AfterCommands`.
 | `src/actors/Planning.h`/`.cpp` | `PlanRequest`, `PlannedActor`, `GeometryRefOf`, `PlannedPieces` (the pieces with a model) and `PlanActor`. |
 | `src/actors/Reconcile.h`/`.cpp` | `Reconcile`, `AfterCommand` and `AfterCommands`. |
 | `src/actors/Lifecycle.h`/`.cpp` | `kModelWaitMs`, `kPendingRecheckMs`, `kRecheckMs`, `Recheck`, `Reinstall`, `AdvanceRequest`, `Advance`, `InRange`, `AnythingInstalled`, `RecheckOf`, `LiveClaims` and `WithClaim`. |
+| `src/actors/SyncLog.h`/`.cpp` | `SyncKind`, `SyncKindName`, `KindOf`, `SyncRecord`, `Recorded` and `SyncSummary`: what a sync did, derived from the transition, and the last 2 s of syncs (at most 64) that the burst line names. |
 | `tests/actors/fixtures.h` | Shared builders for refs and placements (`Piece`, `Geo`, `Instance`, `Placed`). |
 | `tests/actors/actor_tests.cpp` | Ref equality by every field, and `Find` by ref. |
 | `tests/actors/planning_tests.cpp` | Plans from facts: pieces without a model, the studio view, first-person pieces, addons, claimed geometries, and determinism. |

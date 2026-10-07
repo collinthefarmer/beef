@@ -846,6 +846,13 @@ of `EvictionFor` and `InRange`; the claim paragraph gives `Claim` and
 `LiveClaims`. `docs/components/actors.md` maps the
 directory.
 
+`KindOf` (`SyncLog.h`) names what a sync did from the record before it and
+its transition: no state after a record is a forget, and no state after no
+record changes nothing; a first install, an eviction, a demanded reinstall,
+a new claim, or another change. `DecideActor` traces it as the `kind` field
+of `actor_decide`, and `SyncActor` records every sync that changed something
+in `Manager::syncLog_`.
+
 ## Engine events, hooks and the manager
 
 A **sync** (`Manager::SyncActor`) runs one stale actor through the actor
@@ -1044,6 +1051,21 @@ a material is never released while its actor lives (`Releasable` excludes
 its last frame. Ring soaks keep every actor in view (run 20261004T215805:
 0 %); in `soak-fight-orbit` the orbiting camera put 55.9 % of actor-frames
 out of view (run 20261004T222929).
+
+The idle release counts only rendered time (render-performance 7b,
+2026-10-07). `RenderInstance::BeginFrame` sets the execution clock to its
+**render clock** (`AdvancedRenderClock`), which advances by the gap since the
+instance's last frame but at most 100 ms (`kMaxRenderAdvanceMS`). Before, the
+clock was wall time: an actor that returned to view after more than 500 ms
+released every intermediate output on its first frame, and the same frame
+restored them. The idle pool keeps at most 64 MiB, so the released targets
+were destroyed and the restored ones created again. In `soak-fight-orbit
+--quick 60` the orbit window created 10 059 MiB and restored 4998 steps
+before (run 20261007T183514-2) and created 5609 MiB and restored 1360 steps
+after (run 20261007T184926-1); the worst frame fell from 89 to 52 ms. The
+live bytes were the same (about 6.4 GiB). The rest of the churn came from static
+chains under hidden layers; static outputs are no longer released on the
+timer (see the planners section).
 
 Crowd actors are placed from an XMarker set at their spot (`PlaceAt` in
 `engine/RegressionWorld.cpp`). A mannequin placed at the player and then moved
@@ -2299,21 +2321,29 @@ cancel by the user instead of the load.
   radius. This hysteresis prevents repeated retire/reapply near the boundary;
   a non-positive radius disables distance eviction.
 
-- `TargetsOf` (`planners/TargetCost.h`) lists the targets a plan holds in
-  two states. The **first render** holds every step that draws a texture or
-  a stack and that a rendered root reaches (`RenderedRoots`,
-  `StepDependencies`). **Rendering** holds the stacks, the animated steps
-  (`AnimatedSteps`) and the steps that an animated step reads directly. The
-  rule follows `RenderExecution`. A step is used when it executes or when an
-  executing step reads it (`Materialize`). `RenderInstance::BeginFrame`
-  releases a texture output that was not used for 500 ms
-  (`kReleaseAfterIdleMS`), except a stack's (`Releasable`).
+- `TargetsOf` (`planners/TargetCost.h`) lists the targets a plan holds
+  (`held`): every step that draws a texture or a stack and that a rendered
+  root reaches (`RenderedRoots`, `StepDependencies`). `stacks` lists the
+  stacks among them. The rule follows `RenderInstance::BeginFrame`, which
+  releases only the output of an animated step (`AnimatedSteps`) that was not
+  used for 500 ms of rendered time (`kReleaseAfterIdleMS`, render clock), and
+  never a stack's (`Releasable`). A static step keeps its output until the
+  instance goes (render-performance 7b, 2026-10-07). Before, static outputs
+  were released on the same timer. A stack layer hidden for 500 ms then
+  released a static chain (a mask and its mesh bakes), and showing the layer
+  again restored the whole chain with new targets. In `soak-fight-orbit
+  --quick 60` the orbit window restored 1360 steps with the timer and 0
+  without it, and created 5609 against 3051 MiB. Holding the static outputs
+  raised the memory in use by 18 % in `soak-enchanted` (3366 to 3979 MiB,
+  runs 20261007T175741-1 and 20261007T193002-2); the fill template holds
+  69.3 MiB per plan at a 2048² base instead of 58.7 MiB. Render-performance
+  7d releases static outputs under memory pressure.
 - A layer that reads a field program runs that program inside the stack draw.
   The mask step that the field names is then not reached, and only a studio
   layer preview (`RenderOutput::LayerTexture`) runs it. The fill template has
   six such masks: 19 drawing steps, 13 of them reached.
 - An actor out of view is not rendered, so its instances get no `BeginFrame`
-  and release nothing. A hidden actor keeps its rendering set.
+  and release nothing. A hidden actor keeps every held target.
 - `CostOf` counts one target per content key across any list of held
   targets, because `Compositor::FindStepOutput` returns one published target
   for equal keys. `TargetBytes` adds a third for mips, because
@@ -2326,16 +2356,32 @@ cancel by the user instead of the load.
   `TextureLab::ReductionLevelFor` keeps the reduction levels once per extent
   for the whole lab.
 - The heartbeat reports the estimate over every live instance of a rendered
-  actor (`estimated_targets`, `estimated_bytes`,
-  `estimated_first_render_bytes`). The measured `target_bytes` minus
-  `pool_bytes` and `scratch_bytes` is the figure to compare. In
-  `soak-enchanted` run 20261007T155955-1 (12 mannequins, 34 placements) the
-  steady estimate was 277 targets and 3365 MiB. The measured holdings were
-  278 targets and 3365 MiB. The first-render estimate plus scratch was
-  4006 MiB, and the measured peak was 4005 MiB. Before 2026-10-07 the
-  estimate (`TargetCostOf`) counted every drawing step as held at once and
-  left out the stacks. It gave 80.0 MiB for the fill template at a 2048²
-  base, where the first render holds 69.3 MiB and rendering 58.7 MiB.
+  actor (`estimated_targets`, `estimated_bytes`). The measured
+  `target_bytes` minus `pool_bytes` and `scratch_bytes` is the figure to
+  compare. In `soak-enchanted` run 20261007T193002-2 (12 mannequins) the
+  steady estimate was 3978 MiB and the measured holdings 3979 MiB; in the
+  orbit window of `soak-fight-orbit` run 20261007T193002-1 they were 6919
+  and 6920 MiB. Before 2026-10-07 the estimate (`TargetCostOf`) left out
+  the stacks and gave 80.0 MiB for the fill template, which holds 69.3 MiB.
+- The plain log carries two render-target lines whether or not the trace is
+  on (`Manager::ReportRenderMemory`, render-performance 7a). The holding line
+  is written when the live target bytes cross a 1 GiB level: a rise is a
+  warning and a fall, half a step below the level, is an info line. It names
+  the five actors with the most estimated bytes, each with the part it
+  shares through content keys, its screen fraction and its recipes. An
+  actor's bytes include its shared targets, so the actors' bytes add up to
+  more than the total. The burst line is written when one heartbeat interval
+  creates 256 MiB or more; it gives the interval and the syncs of the last
+  2 s by kind. The heartbeat is also flushed at regression window edges, so
+  an interval can be shorter than a second. The thresholds are fixed until
+  render-performance 7d reads the DXGI budget.
+- `ScreenFraction` (`ManagerTick.cpp`) is the actor's bound diameter over its
+  distance from the camera, divided by the frustum's height at unit distance
+  (`NiCamera::GetRuntimeData2().viewFrustum`, `fTop - fBottom`), clamped to
+  0..1. The heartbeat reports the least, median and most over the rendered
+  actors in view (`screen_fraction_min`, `_median`, `_max`) and the bytes
+  created and destroyed in the interval (`targets_created`,
+  `target_bytes_created`, `target_bytes_destroyed`).
 
 - `TargetPool` (`planners/TargetPool.h`) hands out an index as a
   `shared_ptr` lease. An index is free again only after its last owner

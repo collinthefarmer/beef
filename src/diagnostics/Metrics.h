@@ -64,6 +64,9 @@ struct Snapshot {
   std::uint64_t targetsPeak = 0;
   std::uint64_t targetBytes = 0;
   std::uint64_t targetBytesPeak = 0;
+  std::uint64_t targetsCreated = 0;
+  std::uint64_t targetBytesCreated = 0;
+  std::uint64_t targetBytesDestroyed = 0;
   std::uint64_t frames = 0;
   std::uint64_t renderEvaluations = 0;
   std::uint64_t stepExecutions = 0;

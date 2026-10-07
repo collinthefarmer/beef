@@ -39,7 +39,13 @@ void TestGaugesAndPeaksPersist() {
   Equal(snapshot.targetsPeak, std::uint64_t{2}, "the target peak is kept");
   Equal(snapshot.targetBytes, std::uint64_t{200}, "bytes follow the survivor");
   Equal(snapshot.targetBytesPeak, std::uint64_t{300}, "the byte peak is kept");
+  Check(snapshot.targetsCreated == 2 && snapshot.targetBytesCreated == 300 &&
+            snapshot.targetBytesDestroyed == 100,
+        "the interval counts what it created and destroyed");
   const Metrics::Snapshot later = Metrics::Drain();
+  Check(later.targetsCreated == 0 && later.targetBytesCreated == 0 &&
+            later.targetBytesDestroyed == 0,
+        "a drain starts a new interval");
   Equal(later.targets, std::uint64_t{1}, "gauges survive a drain");
   Equal(later.targetsPeak, std::uint64_t{2}, "peaks survive a drain");
   Check(later.Quiet(), "gauges alone leave a snapshot quiet");

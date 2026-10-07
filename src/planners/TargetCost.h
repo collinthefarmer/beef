@@ -20,8 +20,8 @@ struct HeldTarget {
 };
 
 struct PlanTargets {
-  std::vector<HeldTarget> firstRender;
-  std::vector<HeldTarget> rendering;
+  std::vector<HeldTarget> held;
+  std::vector<HeldTarget> stacks;
   [[nodiscard]] bool operator==(const PlanTargets &) const = default;
 };
 

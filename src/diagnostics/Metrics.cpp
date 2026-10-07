@@ -18,6 +18,9 @@ struct Counters {
   std::atomic<std::uint64_t> targetsPeak{0};
   std::atomic<std::uint64_t> targetBytes{0};
   std::atomic<std::uint64_t> targetBytesPeak{0};
+  std::atomic<std::uint64_t> targetsCreated{0};
+  std::atomic<std::uint64_t> targetBytesCreated{0};
+  std::atomic<std::uint64_t> targetBytesDestroyed{0};
   std::atomic<std::uint64_t> frames{0};
   std::atomic<std::uint64_t> renderEvaluations{0};
   std::atomic<std::uint64_t> stepExecutions{0};
@@ -79,12 +82,15 @@ void CountTargetCreated(std::uint64_t a_bytes) noexcept {
       state.targetBytes.fetch_add(a_bytes, std::memory_order_relaxed) + a_bytes;
   RaiseTo(state.targetsPeak, targets);
   RaiseTo(state.targetBytesPeak, bytes);
+  state.targetsCreated.fetch_add(1, std::memory_order_relaxed);
+  state.targetBytesCreated.fetch_add(a_bytes, std::memory_order_relaxed);
 }
 
 void CountTargetDestroyed(std::uint64_t a_bytes) noexcept {
   Counters &state = State();
   state.targets.fetch_sub(1, std::memory_order_relaxed);
   state.targetBytes.fetch_sub(a_bytes, std::memory_order_relaxed);
+  state.targetBytesDestroyed.fetch_add(a_bytes, std::memory_order_relaxed);
 }
 
 void CountFrame() noexcept {
@@ -174,6 +180,12 @@ Snapshot Drain() noexcept {
   out.targetsPeak = state.targetsPeak.load(std::memory_order_relaxed);
   out.targetBytes = state.targetBytes.load(std::memory_order_relaxed);
   out.targetBytesPeak = state.targetBytesPeak.load(std::memory_order_relaxed);
+  out.targetsCreated =
+      state.targetsCreated.exchange(0, std::memory_order_relaxed);
+  out.targetBytesCreated =
+      state.targetBytesCreated.exchange(0, std::memory_order_relaxed);
+  out.targetBytesDestroyed =
+      state.targetBytesDestroyed.exchange(0, std::memory_order_relaxed);
   out.frames = state.frames.exchange(0, std::memory_order_relaxed);
   out.renderEvaluations =
       state.renderEvaluations.exchange(0, std::memory_order_relaxed);

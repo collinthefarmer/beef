@@ -4,6 +4,8 @@
 #include "PCH.h"
 #include "Settings.h"
 #include "actors/Actor.h"
+#include "actors/SyncLog.h"
+#include "diagnostics/Metrics.h"
 #include "diagnostics/WarningHistory.h"
 #include "engine/ActorObservation.h"
 #include "engine/AnimationSubscriptions.h"
@@ -146,7 +148,10 @@ private:
     Actors::ActorFacts facts;
     CatalogMatches planned;
     Actors::Transition next;
+    Actors::SyncKind kind = Actors::SyncKind::kUnchanged;
   };
+  void ReportRenderMemory(const Metrics::Snapshot &a_measured,
+                          std::uint32_t a_intervalMs);
   void InstallActor(RE::Actor &a_actor, ActorDecision a_decision,
                     const Settings &a_settings);
   [[nodiscard]] ActorDecision DecideActor(RE::Actor &a_actor,
@@ -238,6 +243,8 @@ private:
   std::uint64_t regressionPaintSession_ = 0;
   std::uint32_t lastTickMS_ = 0;
   std::uint32_t lastMetricsMS_ = 0;
+  std::uint32_t holdingLevel_ = 0;
+  std::vector<Actors::SyncRecord> syncLog_;
   std::uint32_t lastSweepMS_ = 0;
   std::uint32_t lastRecheckMS_ = 0;
   bool emissivePathEnabled_ = false;

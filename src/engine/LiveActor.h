@@ -95,6 +95,7 @@ struct LiveActor {
   RE::ActorHandle actor;
   bool firstRenderAdmitted = false;
   bool inView = true;
+  float screenFraction = 0.0f;
   std::uint64_t renderedFrame = 0;
   std::shared_ptr<const RecipeCatalog> catalog;
   ActorMatches matches;

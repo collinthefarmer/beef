@@ -2,7 +2,7 @@ Status: in progress. Stages 1 to 6 are implemented and measured; review
 findings for stages 3 and 4 are in
 [the review record](../checkpoints/render-performance-review-2026-09-30.md).
 Stage 5 has one open finding, the memory left after a crowd leaves. Stage 7,
-the render target budget, is open (2026-10-06). Later stages are open. This plan follows the
+the render target budget, is open (2026-10-06; direction reworked 2026-10-07). Later stages are open. This plan follows the
 [render graph correctness plan](render-graph-correctness-2026-09-29.md), whose
 checkpoint findings are its starting point.
 
@@ -399,37 +399,57 @@ Measured in the session of 2026-10-06 17:31 (trace
 
 The imported recipes came from the uncommitted fill template (85 signals,
 8 sources, 12 masks). `TargetsOf` (`planners/TargetCost.h`) gives the targets
-a plan holds. At a 2048² base the fill template holds 69.3 MiB on its first
-render (13 targets of 1024²) and 58.7 MiB while rendering (11 targets). The
-template at 48938f0 holds 164.0 MiB and 52.0 MiB. Each doubling of the base
-side multiplies the bytes by 4. The heartbeat reports the estimate over every
-live instance (`estimated_bytes`, `estimated_first_render_bytes`). In
-`soak-enchanted` run 20261007T155955-1 the steady estimate was 3365 MiB, equal
-to the measured holdings without the pool and scratch targets. The first-render
-estimate and the peak differed by 1 MiB. In that run 141 of 323 created targets
-were 2048², so some worn geometries had a 4096² base. 7a can therefore admit an
-actor by its plans' estimate. Before 2026-10-07 the estimate counted every
+a plan holds. At a 2048² base the fill template holds 69.3 MiB (13 targets of
+1024², 4 of them stacks). Each doubling of the base side multiplies the bytes
+by 4. The heartbeat reports the estimate over every live instance
+(`estimated_bytes`). In `soak-enchanted` run 20261007T193002-2 the steady
+estimate was 3978 MiB against 3979 MiB measured without the pool and scratch
+targets. In an earlier run 141 of 323 created targets were 2048², so some
+worn geometries had a 4096² base. 7d can therefore admit an actor by its
+plans' estimate. Before 2026-10-07 the estimate counted every
 drawing step as held at once and left out the stacks (80 MiB per wearer and
 geometry, W3 and W13 in `architecture-fit-2026-10-06.md`).
 
-An actor out of view gets no render tick, so its instances release nothing and
-keep the rendering set. Releasing an out-of-view instance down to its stacks
-would cut the fill template at a 4096² base from 234.7 MiB to 85.3 MiB per
-plan (item 7d).
+Direction (2026-10-07). The bug report shows two failures. Total use went
+over the DXGI budget, so every frame paged memory. Targets were also
+destroyed and created in bursts every 10 to 20 s, with no known cause. The
+fill template's rendering set at a 2048² base splits as follows:
+
+| Group | Targets | Avoidable |
+|---|---|---|
+| Stacks, the outputs written into materials | 4 | No: they are the visible result. |
+| Static masks that animated steps read (recess, chartPick, materialPick, glowArea, swellWave positions) | 5 | Only by computing them every frame. All five have content keys, so equal wearers share them. |
+| Animated steps (swellWave, shimmer) | 2 | With transient targets within a frame: about 18 % of the set. |
+
+A lifetime policy therefore saves 18 % to 64 % of a set. Resolution
+multiplies the cost: one plan holds 234.7 MiB at a 4096² base, 58.7 MiB at
+2048² and 14.7 MiB at 1024². The target size follows the geometry's base
+texture, not its size on screen. The stage therefore sizes targets from
+screen coverage and keeps a budget as the backstop. Releasing out-of-view
+actors (the earlier 7d) adds a restore burst each time an actor returns to
+view. It becomes the first level of the budget's degrade order and is not
+done on its own. An actor out of view gets no render tick, so it keeps every
+target it holds. Since 7b a plan also keeps the static outputs that this table
+splits out, so it holds all 13 targets (69.3 MiB) at a 2048² base.
 
 Work:
 
 | Item | Change | Done when |
 |---|---|---|
-| 7a | A byte budget for live render targets. Admission is nearest-first: the player always, then NPCs by distance. What an actor that does not fit receives is an open decision: a lower resolution, its cheapest outputs, or no effect. | A crowd soak stays under the budget, and the over-budget actors are named in the log. |
-| 7b | The idle pool keeps released targets for a time (about 2 s) inside the budget, not up to `kMaxIdleTargets` 16 and `kMaxIdleBytes` 64 MiB. Today three released 2K targets fill the idle limit, so a rebuild destroys and creates most of an actor's targets (about 880 MiB created and 480 MiB destroyed per burst in the report). | A rebuild of one NPC creates no new targets in a soak. |
-| 7c | A log line, written with diagnostics off, when live target bytes cross a threshold: bytes per actor and per recipe. | The bug report's question "which actors?" can be answered from the plain log. |
-| 7d | An out-of-view actor's instances release their texture outputs except the stacks, as `BeginFrame` does for an instance that renders. Today `ReleaseIdle` runs only inside `BeginFrame`, so a hidden actor keeps every target of its rendering set. | A soak with actors out of view shows `estimated_bytes` falling to the stacks of the hidden actors, and the measured holdings follow. |
+| 7a | Done 2026-10-07: the holding and burst lines (`Manager::ReportRenderMemory`, `planners/RenderMemory.h`), sync kinds (`actors/SyncLog.h`), and screen fractions in the heartbeat. In `soak-fight-orbit --quick 60` (run 20261007T183514-2) bursts of 200 to 680 MiB came every 5 to 10 s with no sync; they rose and fell with the hundreds of step releases and restores per second as the orbiting camera moved actors in and out of view. Diagnostics written with diagnostics off: live target bytes per actor and per recipe when the total crosses a threshold; each burst of target creation with the syncs and reinstalls that caused it; each rendered actor's projected screen size. | The bug report's questions "which actors?" and "why the bursts?" can be answered from the plain log, and a soak reports the screen size of its actors. |
+| 7b | Done 2026-10-07. Two causes. (1) Idle release used wall time, so an actor back in view released and restored its intermediates; the render clock (`AdvancedRenderClock`) counts only rendered time. (2) A hidden stack layer let its static chain (a mask and its mesh bakes) idle out, and showing it again restored the chain; static outputs now stay until the instance goes, and 7d releases them under pressure. Orbit window of `soak-fight-orbit --quick 60`: created 10 059 → 5609 → 3051 MiB, restores 4998 → 1360 → 0; memory in use +9 % there and +18 % in `soak-enchanted`. The render clock alone took the worst frame from 89 to 52 ms. | The cause is named with trace evidence, and a fight soak shows no repeated rebuilds of an actor whose equipment did not change. |
+| 7c | Resolution from screen coverage. Each actor gets a resolution level (full, 1/2, 1/4, 1/8 of the base side) from its projected size; the player stays at full. A level changes with hysteresis and at a limited rate, because a change rebuilds the actor's plan. | A crowd soak holds a fraction of today's bytes with no visible difference at play distance, which the user checks in game. |
+| 7d | A budget from DXGI headroom (`QueryVideoMemoryInfo`: budget minus current use, with a margin), not a fixed constant, so it follows other processes. Under pressure: hidden actors release their intermediate targets, then the farthest actors step down a level, then the farthest actors lose their effect. `TargetsOf` prices each option. | A soak with an artificially small budget stays under it and names the degraded actors in the log. |
+| 7e | The idle pool keeps released targets for a time within the budget, if 7b leaves churn that is not a defect. | A rebuild of one NPC creates no new targets in a soak. |
 
-The soak for 7a to 7c is W10 of `architecture-fit-2026-10-06.md`: a crowd in
+The items before 2026-10-07 were a fixed byte budget (now 7d), pool reuse (now
+7e), a byte log (now part of 7a), and the release of out-of-view actors (now
+the first level of 7d). The direction above replaced them.
+
+The soaks for this stage use W10 of `architecture-fit-2026-10-06.md`: a crowd in
 vanilla armor under vanilla enchantments, so the imported recipes apply.
 
-Actor-core stage 4b reduces the churn that 7b absorbs: until it lands, an
+Actor-core stage 4b reduces the churn that 7e absorbs: until it lands, an
 equip event that changes an actor's plan rebuilds the whole actor.
 
 ## Later stages

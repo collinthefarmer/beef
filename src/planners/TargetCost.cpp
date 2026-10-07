@@ -25,24 +25,6 @@ std::vector<bool> ReachedSteps(const RenderPlan &a_plan) {
   return reached;
 }
 
-std::vector<bool> ReadByAnimatedSteps(const RenderPlan &a_plan,
-                                      const std::vector<bool> &a_reached,
-                                      const std::vector<bool> &a_animated) {
-  std::vector<bool> read(a_plan.steps.size(), false);
-  for (RenderStepId step = 0; step < a_plan.steps.size(); ++step) {
-    if (!a_reached[step] || step >= a_animated.size() || !a_animated[step]) {
-      continue;
-    }
-    for (const RenderValueRef operand : StepDependencies(a_plan, step)) {
-      const auto *output = Get<StepOutputRef>(operand);
-      if (output && output->step < read.size()) {
-        read[output->step] = true;
-      }
-    }
-  }
-  return read;
-}
-
 void Add(TargetCost &a_cost, const TextureRequirements &a_requirements) {
   ++a_cost.targets;
   a_cost.bytes += TargetBytes(a_requirements);
@@ -59,8 +41,6 @@ std::uint64_t TargetBytes(const TextureRequirements &a_requirements) noexcept {
 
 PlanTargets TargetsOf(const RenderPlan &a_plan) {
   const std::vector<bool> reached = ReachedSteps(a_plan);
-  const std::vector<bool> animated = AnimatedSteps(a_plan);
-  const std::vector<bool> read = ReadByAnimatedSteps(a_plan, reached, animated);
   PlanTargets targets;
   for (RenderStepId step = 0; step < a_plan.steps.size(); ++step) {
     const RenderStep &planned = a_plan.steps[step];
@@ -70,11 +50,9 @@ PlanTargets TargetsOf(const RenderPlan &a_plan) {
       continue;
     }
     const HeldTarget held{*requirements, planned.contentKey};
-    const bool stack = Is<CompositeStackStep>(planned.kind);
-    const bool live = step < animated.size() && animated[step];
-    targets.firstRender.push_back(held);
-    if (stack || live || read[step]) {
-      targets.rendering.push_back(held);
+    targets.held.push_back(held);
+    if (Is<CompositeStackStep>(planned.kind)) {
+      targets.stacks.push_back(held);
     }
   }
   return targets;
