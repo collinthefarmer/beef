@@ -9,6 +9,13 @@ struct Counters {
   std::atomic<std::uint64_t> syncs{0};
   std::atomic<std::uint64_t> syncMicros{0};
   std::atomic<std::uint64_t> syncMaxMicros{0};
+  std::atomic<std::uint64_t> syncFrameMaxMicros{0};
+  std::atomic<std::uint64_t> syncDeferrals{0};
+  std::atomic<std::uint64_t> installWaitMaxMillis{0};
+  std::atomic<std::uint64_t> hiddenStacks{0};
+  std::atomic<std::uint64_t> hiddenStacksTickMax{0};
+  std::atomic<std::uint64_t> hiddenDrawMicros{0};
+  std::atomic<std::uint64_t> hiddenDrawTickMaxMicros{0};
   std::atomic<std::uint64_t> sinkAdds{0};
   std::atomic<std::uint64_t> sinkRemoves{0};
   std::atomic<std::uint64_t> readbacks{0};
@@ -57,6 +64,26 @@ void CountSync(std::uint64_t a_micros) noexcept {
   state.syncs.fetch_add(1, std::memory_order_relaxed);
   state.syncMicros.fetch_add(a_micros, std::memory_order_relaxed);
   RaiseTo(state.syncMaxMicros, a_micros);
+}
+
+void CountSyncFrame(std::uint64_t a_micros) noexcept {
+  RaiseTo(State().syncFrameMaxMicros, a_micros);
+}
+
+void CountSyncDeferral() noexcept {
+  State().syncDeferrals.fetch_add(1, std::memory_order_relaxed);
+}
+
+void CountInstallWait(std::uint64_t a_millis) noexcept {
+  RaiseTo(State().installWaitMaxMillis, a_millis);
+}
+
+void CountHiddenDraw(std::uint64_t a_stacks, std::uint64_t a_micros) noexcept {
+  Counters &state = State();
+  state.hiddenStacks.fetch_add(a_stacks, std::memory_order_relaxed);
+  RaiseTo(state.hiddenStacksTickMax, a_stacks);
+  state.hiddenDrawMicros.fetch_add(a_micros, std::memory_order_relaxed);
+  RaiseTo(state.hiddenDrawTickMaxMicros, a_micros);
 }
 
 void CountSinkAdd() noexcept {
@@ -169,6 +196,19 @@ Snapshot Drain() noexcept {
   out.syncMicros = state.syncMicros.exchange(0, std::memory_order_relaxed);
   out.syncMaxMicros =
       state.syncMaxMicros.exchange(0, std::memory_order_relaxed);
+  out.syncFrameMaxMicros =
+      state.syncFrameMaxMicros.exchange(0, std::memory_order_relaxed);
+  out.syncDeferrals =
+      state.syncDeferrals.exchange(0, std::memory_order_relaxed);
+  out.installWaitMaxMillis =
+      state.installWaitMaxMillis.exchange(0, std::memory_order_relaxed);
+  out.hiddenStacks = state.hiddenStacks.exchange(0, std::memory_order_relaxed);
+  out.hiddenStacksTickMax =
+      state.hiddenStacksTickMax.exchange(0, std::memory_order_relaxed);
+  out.hiddenDrawMicros =
+      state.hiddenDrawMicros.exchange(0, std::memory_order_relaxed);
+  out.hiddenDrawTickMaxMicros =
+      state.hiddenDrawTickMaxMicros.exchange(0, std::memory_order_relaxed);
   out.sinkAdds = state.sinkAdds.exchange(0, std::memory_order_relaxed);
   out.sinkRemoves = state.sinkRemoves.exchange(0, std::memory_order_relaxed);
   out.readbacks = state.readbacks.exchange(0, std::memory_order_relaxed);

@@ -31,8 +31,6 @@
 
 namespace BetterEnchantmentEffects {
 namespace {
-inline constexpr std::size_t kFirstRendersPerTick = 1;
-
 class SectionTimer {
 public:
   explicit SectionTimer(Metrics::Section a_section) noexcept
@@ -101,29 +99,12 @@ bool RangeChanged(RE::FormID a_actor, const Actors::ActorState &a_state,
          Actors::InRange(installed, distance, a_evictDistance) != installed;
 }
 
-bool AwaitsFirstRender(const LiveActor &a_state) {
-  if (a_state.firstRenderAdmitted) {
-    return false;
-  }
-  return std::ranges::any_of(
-      a_state.placements, [](const LivePlacement &a_placement) {
-        return std::ranges::any_of(a_placement.outputs,
-                                   [](const PlacedOutput &a_output) {
-                                     return a_output.stack != nullptr;
-                                   });
-      });
+bool DrawsHidden(const LiveActor &a_state) {
+  return a_state.firstDraw.has_value() || Is<ResizeBuild>(a_state.resize);
 }
 
-bool AdmitRender(LiveActor &a_state, std::size_t &a_firstRenders) {
-  if (!AwaitsFirstRender(a_state)) {
-    return true;
-  }
-  if (a_firstRenders >= kFirstRendersPerTick) {
-    return false;
-  }
-  ++a_firstRenders;
-  a_state.firstRenderAdmitted = true;
-  return true;
+ActorRole RoleOf(RE::Actor &a_actor) {
+  return a_actor.IsPlayerRef() ? ActorRole::kPlayer : ActorRole::kOther;
 }
 
 struct SlotWrite {
@@ -228,6 +209,7 @@ struct SlotChain {
   std::vector<Studio::ResolvedOutput> resolved;
   TextureRef texture;
   bool shown = false;
+  bool pending = false;
 };
 
 void UpdateRenderInputs(LiveActor &a_state, LiveGeometry &a_bound,
@@ -374,7 +356,9 @@ SlotChain RenderMergedChain(const SlotContext &a_context,
     output->renderFailed = outcome == StackRender::kFailed;
   }
   if (outcome != StackRender::kRendered) {
-    return SlotChain{};
+    SlotChain unshown;
+    unshown.pending = outcome == StackRender::kPending;
+    return unshown;
   }
   chain.shown = true;
   chain.texture = a_merged.stack->Texture();
@@ -410,7 +394,9 @@ SlotChain RenderSlotChain(LiveActor &a_state, LiveGeometry &a_bound,
     }
     const LayerFilter filter = HiddenLayers(a_view, instance.recipe->id,
                                             c.output, material->stack.size());
-    if (RenderStackOutput(*output, filter, base) != StackRender::kRendered) {
+    if (const StackRender outcome = RenderStackOutput(*output, filter, base);
+        outcome != StackRender::kRendered) {
+      chain.pending = chain.pending || outcome == StackRender::kPending;
       continue;
     }
     chain.shown = true;
@@ -553,6 +539,34 @@ void WriteSlots(LiveActor &a_state, LiveGeometry &a_bound,
     }
     WriteSlot(*target, write);
   }
+}
+
+DrawPace DrawFirstSlots(LiveActor &a_state, const SlotRenderView &a_view,
+                        DrawPace a_pace) {
+  TextureLab *lab = TextureLab::GetSingleton();
+  if (!a_state.firstDraw || !lab || !MayDrawStack(a_pace)) {
+    return a_pace;
+  }
+  const TextureLab::PassBatch batch{*lab};
+  for (HiddenSlot &slot : a_state.firstDraw->slots) {
+    if (slot.drawn) {
+      continue;
+    }
+    if (!MayDrawStack(a_pace)) {
+      break;
+    }
+    LiveGeometry *bound = GeometryOf(a_state, slot);
+    if (!bound || bound->lost || slot.slot >= bound->stackPlan.slots.size()) {
+      slot.drawn = true;
+      continue;
+    }
+    const Metrics::Stopwatch watch;
+    const SlotChain chain = RenderSlotChain(a_state, *bound, a_view,
+                                            bound->stackPlan.slots[slot.slot]);
+    slot.drawn = !chain.pending;
+    a_pace = Drew(a_pace, watch.Micros());
+  }
+  return a_pace;
 }
 
 void MarkReferencedInstances(LiveActor &a_state, const LiveGeometry &a_bound,
@@ -729,7 +743,8 @@ void EmitMetricsHeartbeat(const Metrics::Snapshot &a_measured,
                           const TargetCost &a_estimate,
                           const ScreenSpread &a_screen,
                           const BudgetSample &a_sample,
-                          const BudgetState &a_budget) {
+                          const BudgetState &a_budget,
+                          std::size_t a_waitingInstalls) {
   EmitGpuTimings();
   const TextureLab::TargetHoldings held =
       TextureLab::GetSingleton()->HeldTargets();
@@ -740,6 +755,16 @@ void EmitMetricsHeartbeat(const Metrics::Snapshot &a_measured,
       {"syncs", std::to_string(a_measured.syncs)},
       {"sync_us", std::to_string(a_measured.syncMicros)},
       {"sync_max_us", std::to_string(a_measured.syncMaxMicros)},
+      {"sync_frame_max_us", std::to_string(a_measured.syncFrameMaxMicros)},
+      {"sync_deferred", std::to_string(a_measured.syncDeferrals)},
+      {"sync_waiting", std::to_string(a_waitingInstalls)},
+      {"install_wait_max_ms", std::to_string(a_measured.installWaitMaxMillis)},
+      {"hidden_stacks", std::to_string(a_measured.hiddenStacks)},
+      {"hidden_stacks_tick_max",
+       std::to_string(a_measured.hiddenStacksTickMax)},
+      {"hidden_draw_us", std::to_string(a_measured.hiddenDrawMicros)},
+      {"hidden_draw_tick_max_us",
+       std::to_string(a_measured.hiddenDrawTickMaxMicros)},
       {"sink_adds", std::to_string(a_measured.sinkAdds)},
       {"sink_removes", std::to_string(a_measured.sinkRemoves)},
       {"readbacks", std::to_string(a_measured.readbacks)},
@@ -800,7 +825,7 @@ void Manager::FlushMetricsHeartbeat() {
   const BudgetSample sample = SampleBudget(measured, settings);
   UpdateBudget(sample, planned.bytes, settings);
   EmitMetricsHeartbeat(measured, planned, ScreenSpreadOf(live_), sample,
-                       budget_);
+                       budget_, waitingInstalls_.size());
   EmitLevelCounts(live_);
   ReportRenderMemory(measured, planned, intervalMs);
 }
@@ -847,6 +872,9 @@ void Manager::OnFrame() {
   if (now - lastMetricsMS_ >= 1000) {
     FlushMetricsHeartbeat();
   }
+  Metrics::CountSyncFrame(frameSyncs_.spentUs);
+  frameSyncs_ = {};
+  RunWaitingInstalls(now);
   const SectionTimer frameTimer{Metrics::Section::kFrame};
   TextureLab::GetSingleton()->CollectTimings();
   SweepRetiredMaterialTextures();
@@ -929,7 +957,8 @@ void Manager::Tick(std::uint32_t a_nowMS, const Settings &a_settings) {
   frozenLastTick_ = view.freeze;
   const std::optional<RE::FormID> inspected = InspectedActor(a_nowMS);
   AdvanceResizes(a_settings);
-  std::size_t firstRenders = 0;
+  std::vector<RE::FormID> drawing;
+  std::vector<HiddenDrawCandidate> candidates;
   for (auto it = live_.begin(); it != live_.end();) {
     LiveActor &state = it->second;
     const auto actor = state.actor.get();
@@ -959,20 +988,105 @@ void Manager::Tick(std::uint32_t a_nowMS, const Settings &a_settings) {
       state.intermediates = IntermediateHolding::kHeld;
     }
     UpdateResolution(it->first, *actor, state, a_settings);
-    const bool render = state.inView && AdmitRender(state, firstRenders);
     std::vector<bool> hidden;
-    if (render) {
+    if (state.inView) {
       const SectionTimer renderTimer{Metrics::Section::kRender};
       hidden = RenderPieces(state, it->first);
-      DrawResize(state, renderFrame_, tickNowMS_, warningHistory_);
       state.renderedFrame = renderFrame_;
+      if (DrawsHidden(state)) {
+        drawing.push_back(it->first);
+        candidates.push_back({RoleOf(*actor), state.screenFraction});
+      }
     }
-    if (render || !state.inView) {
+    if (state.firstDraw) {
+      hidden.assign(state.instances.size(), true);
+    }
+    {
       const SectionTimer lightsTimer{Metrics::Section::kLights};
       UpdateLights(state, hidden);
     }
-    FinishApplications(it->first, state);
+    if (!state.firstDraw) {
+      FinishApplications(it->first, state);
+    }
     ++it;
+  }
+  DrawHidden(drawing, candidates);
+}
+
+void Manager::DrawHidden(std::span<const RE::FormID> a_actors,
+                         std::span<const HiddenDrawCandidate> a_candidates) {
+  const SectionTimer renderTimer{Metrics::Section::kRender};
+  const Studio::View &view = editor_.CurrentView();
+  const std::optional<RE::FormID> inspected = InspectedActor(tickNowMS_);
+  const bool publish = GetSettings().publishEffects;
+  DrawPace pace;
+  for (const std::size_t index : HiddenDrawOrder(a_candidates)) {
+    const auto found =
+        index < a_actors.size() ? live_.find(a_actors[index]) : live_.end();
+    if (found == live_.end()) {
+      continue;
+    }
+    LiveActor &state = found->second;
+    if (state.firstDraw) {
+      const SlotRenderView slotView{
+          view, view.isolation.layer.has_value() || !view.muted.empty(),
+          publish, inspected != found->first};
+      const std::size_t before = pace.stacks;
+      pace = DrawFirstSlots(state, slotView, pace);
+      if (pace.stacks > before) {
+        ++state.firstDraw->drawTicks;
+      }
+      AttachFirstDraw(found->first, state);
+    } else {
+      pace = DrawResize(state, renderFrame_, tickNowMS_, warningHistory_, pace);
+    }
+  }
+  if (pace.stacks > 0) {
+    Metrics::CountHiddenDraw(pace.stacks, pace.spentUs);
+  }
+}
+
+void Manager::AttachFirstDraw(RE::FormID a_actorID, LiveActor &a_state) {
+  if (!a_state.firstDraw) {
+    return;
+  }
+  const FirstDrawProgress progress = ProgressOf(*a_state.firstDraw);
+  const std::optional<FirstDrawEnd> end = FirstDrawDone(progress);
+  if (!end) {
+    return;
+  }
+  const std::uint64_t began = a_state.firstDraw->beganFrame;
+  a_state.firstDraw.reset();
+  Trace::EmitSafely(
+      Trace::Event::kMetrics,
+      {{"action", "first_draw"},
+       {"actor", std::to_string(a_actorID)},
+       {"end", std::string{FirstDrawEndName(*end)}},
+       {"frames", std::to_string(renderFrame_ - std::min(renderFrame_, began))},
+       {"draw_ticks", std::to_string(progress.drawTicks)},
+       {"stacks", std::to_string(progress.stacks)},
+       {"drawn", std::to_string(progress.drawn)}});
+}
+
+void Manager::RunWaitingInstalls(std::uint32_t a_nowMS) {
+  for (WaitingInstall &entry : waitingInstalls_) {
+    RE::Actor *actor = RE::TESForm::LookupByID<RE::Actor>(entry.actor);
+    if (!actor) {
+      continue;
+    }
+    entry.role = RoleOf(*actor);
+    entry.inView = entry.role == ActorRole::kPlayer || InCameraView(*actor);
+    entry.screenFraction = ScreenFraction(*actor);
+  }
+  for (std::size_t attempts = waitingInstalls_.size(); attempts > 0;
+       --attempts) {
+    const std::optional<std::size_t> next =
+        NextInstall(waitingInstalls_, frameSyncs_, a_nowMS);
+    if (!next || *next >= waitingInstalls_.size()) {
+      return;
+    }
+    const std::uint32_t actor = waitingInstalls_[*next].actor;
+    applications_.SyncNow(actor);
   }
 }
 
@@ -1062,8 +1176,8 @@ void Manager::AdvanceResizes(const Settings &a_settings) {
       ++inFlight;
     }
     actors.push_back(id);
-    candidates.push_back(
-        {Is<ResizePending>(state.resize), state.screenFraction});
+    candidates.push_back({Is<ResizePending>(state.resize) && !state.firstDraw,
+                          state.screenFraction});
   }
   const std::optional<std::size_t> next = NextBuild(candidates, inFlight);
   if (!next || *next >= actors.size()) {
@@ -1331,11 +1445,12 @@ void Manager::RenderGeometry(LiveActor &a_state, LiveGeometry &a_bound,
   const SlotRenderView slotView{
       view, view.isolation.layer.has_value() || !view.muted.empty(),
       GetSettings().publishEffects, !a_inspected};
+  const bool drawing = a_state.firstDraw.has_value();
   {
     const SectionTimer slotsTimer{Metrics::Section::kRenderSlots};
-    WriteSlots(a_state, a_bound, slotView, a_hidden);
+    WriteSlots(a_state, a_bound, slotView, a_hidden || drawing);
   }
-  if (a_hidden || !slotView.publish || a_state.awaitedPlan) {
+  if (a_hidden || !slotView.publish || a_state.awaitedPlan || drawing) {
     if (a_bound.shell) {
       a_bound.shell->SetVisible(false);
     }

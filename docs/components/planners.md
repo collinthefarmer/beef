@@ -479,6 +479,8 @@ PSGeneratedStack, or PSStack until the compile finishes     render/GeneratedShad
 | `RenderMemory.h`/`.cpp` | Render planning | `NextHoldingLevel`, `HoldingsOf`, `LargestHoldings`, `IsBurst`, `SpreadOf`, `HoldingLine`, `BurstLine`. |
 | `RenderBudget.h`/`.cpp` | Render planning | The render target budget: `AllowanceOf`, `NextBudget`, `AdmitGrowth`, `FittingLevel`, `StepDownOf`, `RespondToPressure` and the log lines. |
 | `BudgetRadius.h`/`.cpp` | Render planning | The budget radius: `EffectiveEvictDistance`, `ShrinkRadius`, `GrowRadius` and the log lines. |
+| `InstallPacing.h`/`.cpp` | Render planning | The install budget per frame and the order of deferred installs: `InstallMayStart`, `Synced`, `NextInstall`, `Deferred`, `Removed`, `WaitedMS`. |
+| `DrawPacing.h`/`.cpp` | Render planning | The hidden draw budget per tick, the order of hidden draws and the end of a first draw: `MayDrawStack`, `Drew`, `HiddenDrawOrder`, `FirstDrawDone`. |
 | `TargetCost.h`/`.cpp` | Render planning | `HeldTarget`, `PlanTargets`, `TargetCost`, `TargetBytes`, `TargetsOf`, `CostOf`. |
 | `PlanSides.h`/`.cpp`, `ResolutionLevel.h`/`.cpp`, `ResolutionResize.h`/`.cpp` | Render planning | `PlanSides`, `SidesFor`, `SideOf`, `SharedKeyOf`; `ResolutionLevel`, `IdealLevel`, `LevelChange`, `CoarserLevel`, `LevelGap`, `AtLevel`, `LevelName`; `DrawOf`, `SwapDue`, `NextBuild`. |
 | `FieldInlining.h`/`.cpp` | Render planning | `AsProgramLike` and `InlineFields`. |

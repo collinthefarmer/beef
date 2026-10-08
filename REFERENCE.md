@@ -1027,10 +1027,11 @@ vanilla cuirass types (six plans) or 108 churn re-equips; a reused plan cost
 3.7 to 4.6 ms against 17 to 39 ms to build, and an actor's place phase fell
 from 50 to 14 ms.
 
-A tick admits one actor's first render (`kFirstRendersPerTick`, `AdmitRender`
-in `engine/ManagerTick.cpp`). An actor's first render acquires about 70
-targets, and twelve at once produced a 14 GB transient. An actor that is not
-admitted skips that tick's render and is admitted on a later tick.
+An actor's first render acquires about 70 targets, and twelve at once
+produced a 14 GB transient. Until 2026-10-08 a tick admitted one actor's first
+render (`kFirstRendersPerTick`, `AdmitRender`). Since then the **hidden first
+draw** spreads every first render over ticks under a time budget (see "Install
+pacing and the hidden first draw").
 
 Each tick tests every NPC with effects against the renderer's own camera:
 `NiCamera::BoundInFrustum` with `Main::WorldRootCamera()`, the camera camera
@@ -1536,6 +1537,115 @@ Decompile provenance (`decompiled/WornEnchantmentFX/plugin.c` unless noted):
 - `VerifyRenderPlanCache`, a run file's `verifyRenderPlans`, a disabled plan
   cache and an uncacheable key keep the synchronous build. Verification
   compares a reused plan with a fresh build in the same sync.
+- A plan that arrives starts a hidden first draw like an install does
+  (`KeepActorRender`). The attach itself is a plan cache hit of about 0.5 ms,
+  so install pacing does not count it.
+
+### Install pacing and the hidden first draw (`planners/InstallPacing.h`, `planners/DrawPacing.h`, `engine/ActorResize.*`, `ManagerApply.cpp`, `ManagerTick.cpp`)
+
+Render-performance 7g and 7h, 2026-10-08. In game, five Vigilants of Stendarr
+with the budget radius active gave these costs while the player moved through
+them:
+
+| Source | Cost |
+|---|---|
+| Geometry placement in a sync (`actor_place` `geometry_us`) | 12 to 29 ms per actor |
+| Installs close together | 2 to 5 within 30 ms, up to 22 syncs per heartbeat |
+| First draw on the tick after an install or a plan attach | 21 to 48 ms; five plans together gave one tick of 110 ms that created 112 MiB |
+
+**Install pacing (7g).**
+
+- An **install** is a sync whose decision has commands and installs anything
+  (`SyncActor`). A first install, a reinstall after an equip change and a
+  return into the budget radius are installs.
+- `FrameSyncs` holds the time that syncs spent since the last `OnFrame`, and
+  the installs among them. `SyncStale` adds each sync's time (`Synced`).
+  `OnFrame` reports the figure (`CountSyncFrame`) and clears it.
+- An install starts only when no install ran in the frame or the frame spent
+  less than 8 ms (`kInstallBudgetUs`, `InstallMayStart`). One install
+  therefore always runs, so the queue progresses.
+- One install costs 12 to 29 ms, more than the budget. In practice one
+  install runs per frame. Two cheap installs, such as cache hits on few
+  geometries, can share a frame.
+- An install that may not start is **deferred**. The sync stops after
+  `DecideActor`. It records no state, retires nothing, keeps the reinstall
+  flag and does not report its applications, which stay `queued`. The
+  deferred sync keeps the observed models of the installed plan
+  (`KeepModels`), so the old instance stays valid.
+- A deferred actor enters `Manager::waitingInstalls_` (`Deferred`). The entry
+  keeps the time of its first deferral.
+- Retires and evictions never wait and take no budget. They free targets, and
+  the budget and the radius depend on that memory coming back at once. Their
+  time counts in the frame's figure, because it is real frame time.
+- Each `OnFrame` runs the waiting installs (`RunWaitingInstalls`) before the
+  tick. It reads each entry's role, view and screen fraction again, picks the
+  next entry (`NextInstall`) and runs its sync (`ApplicationService::SyncNow`)
+  until the budget is spent. The loop runs at most once per entry.
+- The order: an entry that waited 1 s or more (`kInstallWaitLimitMS`) first,
+  the oldest of them first. Then the player. Then actors in view, the largest
+  screen fraction first. Then the others, the oldest first. The wait limit
+  keeps an actor from starving.
+- A sync that arrives from the queue while the budget is left runs at once.
+  The budget is left only when the waiting list is empty, so an arrival does
+  not overtake a waiting entry.
+- A deferred install is not admitted. The budget adds an install's bytes only
+  when it runs (`KeepActorRender`, `Admitted`). A deferred actor has no state
+  change, so the radius and `FarthestTrackedDistance` do not see it.
+- A sync that runs and does not install removes the actor's entry, for
+  example when the actor left the radius. `ForgetActor` and a load remove it
+  too.
+- The trace event `sync_deferred` (`queue`) gives the actor, the sync kind,
+  the frame's time and installs, the wait and the list length.
+
+**Hidden first draw (7h).**
+
+- Every attached render instance starts a **first draw**
+  (`StartFirstDraw`, `LiveActor::firstDraw`). An install and a plan arrival
+  attach one. The first draw lists every slot of every geometry
+  (`HiddenSlot`).
+- During the first draw, `RenderGeometry` writes the slots as hidden and
+  hides the shells, as for a waiting plan. The material keeps the vanilla
+  look. The actor's lights are hidden. `FinishApplications` waits.
+- After the actor loop, `DrawHidden` draws the slots of the first draws and
+  the stacks of the 7c-2 builds. It draws only actors in view. The player
+  draws first, then the actors by screen fraction, largest first
+  (`HiddenDrawOrder`).
+- The tick draws stacks until it spent 4 ms (`kHiddenDrawBudgetUs`,
+  `MayDrawStack`). The first stack of a tick always draws.
+- 4 ms is time, not a stack count, because one stack costs from a cached
+  composite to a full chain of masks and bakes. The 7c-2 swap drew 16 stacks
+  in 2 frames with 31 ms of plugin tick, about 2 ms per stack. The budget
+  therefore draws about 2 stacks per tick, and an actor of 16 stacks attaches
+  in about 8 ticks. A single stack that costs more than 4 ms still draws in
+  one tick.
+- The time is CPU submit time (`Metrics::Stopwatch`). The GPU cost of a draw
+  is not measured synchronously.
+- A slot is drawn when `RenderSlotChain` returns no pending stack
+  (`SlotChain::pending`). A hidden draw renders the slot with the real filter
+  and base, so the attach tick draws again only the animated steps.
+- The first draw attaches when every slot is drawn (`FirstDrawDone`). It also
+  attaches after 60 ticks in which the actor drew a stack
+  (`kFirstDrawAttachAfterTicks`), so a stack that stays pending cannot hold
+  the vanilla look. The value is the 60 frames of the 7c-2 swap.
+- A tick in which the actor drew nothing does not count, because a crowd can
+  use the whole budget. An actor out of view does not count either and keeps
+  waiting. A first draw has no old instance to free, so waiting out of view
+  holds no extra targets. An attach out of view, as 7c-2 does for a swap,
+  would draw every stack in one tick when the actor comes into view.
+- The attach clears `firstDraw`, and the next tick writes the stacks. The
+  trace event `first_draw` gives the actor, the end (`drawn` or
+  `tick_limit`), the frames from the start to the attach, the drawing
+  ticks, the slot count and the drawn count.
+- A reinstall during the first draw builds a new `LiveActor`, which starts its
+  own first draw. A retire drops it.
+- A 7c-2 resize does not start while the actor's first draw runs
+  (`AdvanceResizes`). A step down for the budget stays pending until then.
+- The instance is attached to the geometries during the first draw, so
+  `InstancesOf` and `EstimateTargets` count its targets once the actor is in
+  view.
+- The heartbeat gives `sync_frame_max_us`, `sync_deferred`, `sync_waiting`,
+  `install_wait_max_ms`, `hidden_stacks`, `hidden_stacks_tick_max`,
+  `hidden_draw_us` and `hidden_draw_tick_max_us`.
 
 ### The text log (`engine/LogOnce.h`, `ManagerApply.cpp`, `ManagerTick.cpp`)
 
@@ -2482,7 +2592,8 @@ cancel by the user instead of the load.
   coarser level do not give back the full sides.
 - The new instance draws hidden, before it is attached. It holds its own copy
   of every input, so it needs no attached geometry. `DrawResize` draws each
-  stack with no hidden layers and an empty base. On the swap tick the real
+  stack with no hidden layers and an empty base. Since 7h it shares the
+  tick's hidden draw budget with the first draws (`DrawPace`). On the swap tick the real
   draw sets the filter and the preceding stack, and only the composite steps
   draw again. The hidden draw still creates the new targets and draws every
   step once, so its cost moves to the build ticks and does not go away.
@@ -2604,11 +2715,12 @@ cancel by the user instead of the load.
   sides (`ChooseInstallLevel` in `BuildActorRender`). The level reaches only
   `SidesFor`, so one plan prices every level (`PlanLevelCost`). Before the
   plan, `Manager::InstallBoundOf` gives the finest level and the headroom.
-- When no level fits, the install takes eighth. Installs are not held back. An
-  install follows an equip change or a load, and holding it back needs an
-  actor state with a plan but no install, which the actor lifecycle
-  (`actors/Lifecycle.h`) does not have. The responses and the exhaustion
-  warning then act on the next heartbeat.
+- When no level fits, the install takes eighth. The budget does not hold back
+  an install. Holding it back for memory needs an actor state with a plan but
+  no install, which the actor lifecycle (`actors/Lifecycle.h`) does not have.
+  The responses and the exhaustion warning then act on the next heartbeat.
+  Install pacing (7g) delays an install for frame time only, and the deferred
+  sync records no state.
 - An install takes the replaced holding off the planned bytes (`Released`) and
   adds its held bytes at once (`Admitted`), so a second install in the same
   second sees the first. The next heartbeat

@@ -17,6 +17,8 @@
 #include "engine/RecipeEditor.h"
 #include "planners/ActorPlanning.h"
 #include "planners/BudgetRadius.h"
+#include "planners/DrawPacing.h"
+#include "planners/InstallPacing.h"
 #include "planners/RenderBudget.h"
 #include "planners/RenderPlanCache.h"
 #include "planners/ResolutionLevel.h"
@@ -146,7 +148,10 @@ private:
 
   void SyncStale(RE::FormID a_actorID,
                  const std::vector<ApplicationToken> &a_tokens);
-  void SyncActor(RE::Actor *a_actor);
+  enum class SyncOutcome { kSettled, kInstalled, kDeferred };
+  [[nodiscard]] SyncOutcome SyncActor(RE::Actor *a_actor);
+  void DeferInstall(RE::FormID a_actorID, Actors::SyncKind a_kind);
+  void RunWaitingInstalls(std::uint32_t a_nowMS);
   struct CatalogMatches {
     std::shared_ptr<const RecipeCatalog> catalog;
     ActorMatches matches;
@@ -156,6 +161,7 @@ private:
     CatalogMatches planned;
     Actors::Transition next;
     Actors::SyncKind kind = Actors::SyncKind::kUnchanged;
+    std::uint32_t observedAt = 0;
   };
   void ReportRenderMemory(const Metrics::Snapshot &a_measured,
                           const TargetCost &a_planned,
@@ -237,6 +243,9 @@ private:
 
   void Tick(std::uint32_t a_nowMS, const Settings &a_settings);
   void TickInstance(LiveInstance &a_instance, float a_time, float a_delta);
+  void DrawHidden(std::span<const RE::FormID> a_actors,
+                  std::span<const HiddenDrawCandidate> a_candidates);
+  void AttachFirstDraw(RE::FormID a_actorID, LiveActor &a_state);
   void ClaimLostGeometries(RE::FormID a_actorID, LiveActor &a_state);
   void RenderGeometry(LiveActor &a_state, LiveGeometry &a_bound, bool a_hidden,
                       bool a_inspected);
@@ -288,6 +297,8 @@ private:
   BudgetState budget_;
   std::optional<BudgetRadius> budgetRadius_;
   std::vector<Actors::SyncRecord> syncLog_;
+  FrameSyncs frameSyncs_;
+  std::vector<WaitingInstall> waitingInstalls_;
   std::uint32_t lastSweepMS_ = 0;
   std::uint32_t lastRecheckMS_ = 0;
   bool emissivePathEnabled_ = false;

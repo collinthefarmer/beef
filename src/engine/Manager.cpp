@@ -123,6 +123,8 @@ void Manager::Clear() {
   loggedNonPBRArmor_.clear();
   warningHistory_.Clear();
   carriedTimes_.Clear();
+  waitingInstalls_.clear();
+  frameSyncs_ = {};
   Compositor::GetSingleton()->ClearStepOutputs();
   Compositor::GetSingleton()->ClearMeshes();
   Compositor::GetSingleton()->ClearMaterials();

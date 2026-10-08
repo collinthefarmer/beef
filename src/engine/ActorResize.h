@@ -3,6 +3,7 @@
 
 #include "diagnostics/WarningHistory.h"
 #include "engine/LiveActor.h"
+#include "planners/DrawPacing.h"
 #include "planners/ResolutionLevel.h"
 #include "planners/TargetCost.h"
 
@@ -28,10 +29,15 @@ AttachedRender(const LiveActor &a_state);
 void RequestResize(LiveActor &a_state, ResolutionLevel a_level);
 [[nodiscard]] std::expected<void, std::string>
 StartResize(LiveActor &a_state, std::uint64_t a_frame);
-void DrawResize(LiveActor &a_state, std::uint64_t a_frame,
-                std::uint64_t a_nowMS, WarningHistory &a_warnings);
+[[nodiscard]] DrawPace DrawResize(LiveActor &a_state, std::uint64_t a_frame,
+                                  std::uint64_t a_nowMS,
+                                  WarningHistory &a_warnings, DrawPace a_pace);
 [[nodiscard]] std::optional<ResizeSwap> FinishResize(LiveActor &a_state,
                                                      std::uint64_t a_frame);
 [[nodiscard]] const RenderInstance *
 ResizingInstance(const LiveActor &a_state) noexcept;
+void StartFirstDraw(LiveActor &a_state, std::uint64_t a_frame);
+[[nodiscard]] FirstDrawProgress ProgressOf(const FirstDraw &a_draw) noexcept;
+[[nodiscard]] LiveGeometry *GeometryOf(LiveActor &a_state,
+                                       const HiddenSlot &a_slot) noexcept;
 }

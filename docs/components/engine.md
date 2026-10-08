@@ -91,8 +91,10 @@ fraction builds first. `StartResize` creates the new instance from the current
 instance's plan, `GeometryInputs` and graphs at the new sides
 (`RenderInstance::AtSides`). It gives each stack output of the actor a
 `RenderOutput` on the new instance (`RenderOutput::DrawnBy`). `DrawResize`
-runs after `RenderPieces` in each tick that renders the actor. It draws each
-stack of the new instance once, with no hidden layers and no preceding stack.
+runs in `Manager::DrawHidden` after the actor loop of each tick, for an actor
+in view. It draws each stack of the new instance once, with no hidden layers
+and no preceding stack. It shares the tick's hidden draw budget with the first
+draws.
 The old instance stays attached and visible during the build.
 `FinishResize` swaps when every stack has drawn once, when the actor is out of
 view, or 60 frames after the build began (`SwapDue`). In one call it moves
@@ -103,6 +105,32 @@ go. When the actor's stack outputs no longer match the build, the build goes
 back to pending. A reinstall replaces the `LiveActor`, so it drops a pending
 or in-flight resize; `RetireActorEffects` drops it too. Each swap emits the
 trace event `resolution_swap`.
+
+**Install pacing.** `Manager::SyncActor` lets an install start only while
+the frame's syncs spent less than 8 ms, or when no install ran in the frame
+(`InstallMayStart`, `planners/InstallPacing.h`). `SyncStale` adds each sync's
+time to `Manager::frameSyncs_`. An install that may not start is deferred:
+the sync stops after `DecideActor`, records no state, retires nothing and
+does not report its applications. The actor enters
+`Manager::waitingInstalls_`. Retires and evictions always run. `OnFrame`
+clears the frame's figure and then runs the waiting installs in order
+(`RunWaitingInstalls`, `NextInstall`, `ApplicationService::SyncNow`): an
+entry that waited 1 s or more, then the player, then actors in view by screen
+fraction, then the others by age. A deferred install adds no bytes to the
+budget until it runs.
+
+**Hidden first draw.** `KeepActorRender` starts a first draw on every
+attached render instance (`StartFirstDraw`, `ActorResize.h`), after an
+install and after a plan arrives. The first draw lists each slot of each
+geometry (`HiddenSlot`). While it runs, `RenderGeometry` writes the slots as
+hidden and hides the shells, the lights are hidden, and `FinishApplications`
+waits. `Manager::DrawHidden` runs after the actor loop. It orders the actors
+in view that draw hidden (`HiddenDrawOrder`, `planners/DrawPacing.h`) and
+draws slots (`DrawFirstSlots`, `RenderSlotChain`) and resize stacks until the
+tick spent 4 ms (`MayDrawStack`). `AttachFirstDraw` ends the first draw when
+every slot is drawn, or after 60 ticks in which the actor drew
+(`FirstDrawDone`), and emits the trace event `first_draw`. An actor out of
+view keeps waiting. A resize does not start during a first draw.
 
 **Render target budget.** `Manager::FlushMetricsHeartbeat` runs the budget
 once a second. `SampleBudget` reads the DXGI local segment through
@@ -128,7 +156,8 @@ changes. When the DXGI reading is unknown, the plugin writes one warning and
 the budget does nothing.
 
 **The frame.** `Manager::OnFrame` runs from the hook. It returns at once while
-`ApplicationService::Loading` is true. Once a second it expires `CarriedTimes` and
+`ApplicationService::Loading` is true. It then reports and clears the frame's
+sync time and runs the waiting installs (`RunWaitingInstalls`). Once a second it expires `CarriedTimes` and
 sweeps animation observation. Every `Actors::kPendingRecheckMs` (100 ms),
 `MarkWaitingStale` marks stale each actor that is **waiting**: it has a
 pending model younger than the model wait plus one recheck. Every
@@ -370,11 +399,13 @@ without the manager.
 
 | Record | Description |
 |---|---|
-| `LiveActor` | One applied actor: its handle, the `RecipeCatalog` it was planned against, its `ActorMatches`, its pieces, instances and **placements**, and the `ApplicationToken`s of its in-flight applications. It also holds its resolution level, its full-resolution sides (`fullSides`) and its `LiveResize`. `awaitedPlan` names the worker job whose plan the actor waits for. For the render target budget it holds the bytes of its plan per level (`levelCosts`), whether its intermediates are released (`intermediates`), and the level at which a step up is blocked (`blockedAt`). `RecipesOf` returns the catalog's recipes. |
+| `LiveActor` | One applied actor: its handle, the `RecipeCatalog` it was planned against, its `ActorMatches`, its pieces, instances and **placements**, and the `ApplicationToken`s of its in-flight applications. It also holds its resolution level, its full-resolution sides (`fullSides`), its `LiveResize` and its optional `FirstDraw`. `awaitedPlan` names the worker job whose plan the actor waits for. For the render target budget it holds the bytes of its plan per level (`levelCosts`), whether its intermediates are released (`intermediates`), and the level at which a step up is blocked (`blockedAt`). `RecipesOf` returns the catalog's recipes. |
 | `LiveResize` | The resize state of one actor: `ResizeIdle`, `ResizePending` (the level) or `ResizeBuild`. |
 | `ResizeBuild` | A resize in flight: its `ResizeProgress` (the old level, the new level and the frame the build began), the new `RenderInstance`, and one `ResizedStack` per stack output of the actor. |
 | `ResizedStack` | One stack output on the new instance and whether it has drawn once. |
 | `ResizeSwap` | What `FinishResize` reports: the two levels, the frames from build to swap, the stack count, the drawn count and the `TargetCost` of the new instance. |
+| `FirstDraw` | A first draw in progress: the frame it began, the ticks in which the actor drew a stack, and one `HiddenSlot` per slot. |
+| `HiddenSlot` | One slot of a first draw: its piece, geometry and slot indices, and whether it has drawn once. |
 | `LivePiece` | One worn armor clone: its `Actors::PieceRef` (`ref`), its `ModelToken` (`model`), the armor form id and name, the optional addon `FormKey`, the enchantment form id and its `LiveGeometry`s. |
 | `LivePieceId` | A typed piece index (`enum class`, `std::size_t`). |
 | `LiveGeometry` | One bound geometry: its `Actors::GeometryRef` (`ref`, set by `LivePiecesOf` through `Actors::GeometryRefOf`), engine geometry and shader-property pointers, `GeometryInputs`, `MaterialBinding`, `ShellBinding`, its `GeometryPlan`, `GeometryStackPlan` and `BindingPlan`, and its `PlacementId`s. Its `lost` flag marks it retired. |
@@ -405,7 +436,12 @@ write it to the material.
 | `PlanArrival`, `AwaiterStep`, `ArrivalOf`, `StepFor` | The stale rule: a result is built, failed or stale, and a live actor ignores it, rebuilds from the cache, or fails its outputs. | `PlanJobs.h` |
 | `TickFrame` | The settings, view, time and resume flag of one tick. | `ManagerTick.cpp` |
 | `SlotRenderView` | The view, whether any **layer** is hidden, and `Settings::publishEffects`. | `ManagerTick.cpp` |
-| `SlotChain` | The rendered outputs of one slot: their `SurfaceOutput`s, resolved values, the final texture and a shown flag. | `ManagerTick.cpp` |
+| `SlotChain` | The rendered outputs of one slot: their `SurfaceOutput`s, resolved values, the final texture, a shown flag, and a pending flag when a stack returned `kPending`. | `ManagerTick.cpp` |
+| `FrameSyncs`, `InstallMayStart`, `Synced` | The sync time and the install count of the current frame, and the rule that starts an install. | `planners/InstallPacing.h` |
+| `WaitingInstall`, `NextInstall`, `Deferred`, `Removed`, `WaitedMS` | A deferred install with its role, view, screen fraction and first deferral time; the next entry to run; the list with an entry added or removed; the wait of an entry. | `planners/InstallPacing.h` |
+| `DrawPace`, `MayDrawStack`, `Drew` | The hidden draw time and stack count of the current tick, and the rule that draws another stack. | `planners/DrawPacing.h` |
+| `HiddenDrawCandidate`, `HiddenDrawOrder` | An actor that draws hidden, by role and screen fraction, and the order of the draws. | `planners/DrawPacing.h` |
+| `FirstDrawProgress`, `FirstDrawEnd`, `FirstDrawDone` | The drawing ticks, slots and drawn slots of a first draw, and the rule that ends it. | `planners/DrawPacing.h` |
 | `SlotWrite` | The texture, scalars and colour that `WriteSlot` writes to one `SlotTarget`. | `ManagerTick.cpp` |
 
 ### Instance time
@@ -550,7 +586,7 @@ Recipe from LoadedRecipes()
 | Concern | Key files |
 |---|---|
 | Event sinks and hooks | `Events.h`/`.cpp` (equip, object-loaded, hit and node-update sinks), `PluginEvents.h`/`.cpp` (the inter-plugin message contract and parser), `Hooks.h`/`.cpp` (the `PlayerCharacter::Update` hook), `AnimationSubscriptions.h`/`.cpp` (animation-graph observation) |
-| The manager | `Manager.h`, `Manager.cpp` (construction, queue calls, `Clear`, load, the menu's idle-camera hold), `PhaseTrace.h` (`PhaseTrace`: times named phases with `Measure` and emits one metrics or application trace event), `ManagerApply.cpp` (`SyncStale`, `SyncActor`, `InstallActor`, `DecideActor`, `RetireActor`, `ForgetActor`, live pieces from observation, placement, `BuildActorRender`, lights), `ManagerApplication.cpp` (`ChangeAndRebuildActors`, application bookkeeping), `ManagerTick.cpp` (`OnFrame`, `DrainPlanJobs` call, `MarkWaitingStale`, `MarkRecheckStale`, `Tick`, `UpdateResolution`, `AdvanceResizes`, `ClaimLostGeometries`, `RenderGeometry`, slot writes, `UpdateLights`), `ActorResize.h`/`.cpp` (the resolution resize of one actor), `ActorBudget.h`/`.cpp` (the render target budget's facts and release for one actor), `JobQueue.h` (the generic worker queue), `PlanJobs.h`/`.cpp` (the plan job book and the stale rule), `ManagerAnimation.cpp` (animation events), `ManagerEvents.cpp` (`Fire`, `FireAt`, `QueueEvent`, `QueueBroadcast`), `ManagerInspection.cpp` (`RequestMesh`), `ManagerSnapshot.cpp` (`GetStatus`, `BuildSnapshot`, `PublishSnapshot`, `Watch`), `LogOnce.h`/`.cpp` (`LogOnce`: a fault line once per text, through a `WarningHistory`) |
+| The manager | `Manager.h`, `Manager.cpp` (construction, queue calls, `Clear`, load, the menu's idle-camera hold), `PhaseTrace.h` (`PhaseTrace`: times named phases with `Measure` and emits one metrics or application trace event), `ManagerApply.cpp` (`SyncStale`, `SyncActor`, `InstallActor`, `DecideActor`, `RetireActor`, `ForgetActor`, live pieces from observation, placement, `BuildActorRender`, lights), `ManagerApplication.cpp` (`ChangeAndRebuildActors`, application bookkeeping), `ManagerTick.cpp` (`OnFrame`, `RunWaitingInstalls`, `DrainPlanJobs` call, `MarkWaitingStale`, `MarkRecheckStale`, `Tick`, `DrawHidden`, `AttachFirstDraw`, `UpdateResolution`, `AdvanceResizes`, `ClaimLostGeometries`, `RenderGeometry`, slot writes, `UpdateLights`), `ActorResize.h`/`.cpp` (the resolution resize and the hidden first draw of one actor), `ActorBudget.h`/`.cpp` (the render target budget's facts and release for one actor), `JobQueue.h` (the generic worker queue), `PlanJobs.h`/`.cpp` (the plan job book and the stale rule), `ManagerAnimation.cpp` (animation events), `ManagerEvents.cpp` (`Fire`, `FireAt`, `QueueEvent`, `QueueBroadcast`), `ManagerInspection.cpp` (`RequestMesh`), `ManagerSnapshot.cpp` (`GetStatus`, `BuildSnapshot`, `PublishSnapshot`, `Watch`), `LogOnce.h`/`.cpp` (`LogOnce`: a fault line once per text, through a `WarningHistory`) |
 | Application and session bookkeeping | `ApplicationService.h`/`.cpp` (token tracking, rejection handling, history pruning), `SessionQueue.h`/`.cpp` (per-actor task serialisation) |
 | Actor and worn-piece state | `ActorObservation.h`/`.cpp` (`ObserveActor`, `ModelTable`, `ModelOf`, `MaterialLayout`), `LiveActor.h`/`.cpp` (live records, `RetireGeometry`, `ResolvePlacement`), `Environment.h`/`.cpp` (`ActorEnvironment`), `WornKeys.h`/`.cpp` (`WornKeysOf`), `EnchantmentEffects.h`/`.cpp` (`EnchantmentValueFor`), `InstanceTime.h`/`.cpp` (`CarriedTimes`) |
 | Recipe CRUD | `RecipeStore.h`/`.cpp` (load, publish, mutate, save, `RefreshRecipeDerivedState`), `RecipeFiles.h`/`.cpp` (checked read, write, rename and delete), `RecipeOperations.h` (the operation journal and task guards), `RecipeEditor.h`/`.cpp` (gestures, edits, undo, paint, view) |

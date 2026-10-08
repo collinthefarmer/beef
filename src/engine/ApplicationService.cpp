@@ -94,6 +94,12 @@ bool ApplicationService::MarkStale(std::uint32_t a_actorID) {
   return queue_->MarkStale(a_actorID);
 }
 
+void ApplicationService::SyncNow(std::uint32_t a_actorID) {
+  if (a_actorID != 0 && !queue_->Loading()) {
+    RunActor(a_actorID);
+  }
+}
+
 bool ApplicationService::MarkReinstall(std::uint32_t a_actorID) {
   return queue_->MarkReinstall(a_actorID);
 }

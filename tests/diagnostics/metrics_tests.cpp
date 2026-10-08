@@ -117,8 +117,37 @@ void TestSectionsSpikesAndHitches() {
         "an interval across a forgotten frame, such as a load, is no hitch");
 }
 
+void TestPacingCountersDrain() {
+  static_cast<void>(Metrics::Drain());
+  Metrics::CountSyncFrame(9000);
+  Metrics::CountSyncFrame(4000);
+  Metrics::CountSyncDeferral();
+  Metrics::CountSyncDeferral();
+  Metrics::CountInstallWait(120);
+  Metrics::CountInstallWait(40);
+  Metrics::CountHiddenDraw(3, 2500);
+  Metrics::CountHiddenDraw(1, 4100);
+  const Metrics::Snapshot first = Metrics::Drain();
+  Equal(first.syncFrameMaxMicros, std::uint64_t{9000},
+        "the longest frame of syncs is kept");
+  Equal(first.syncDeferrals, std::uint64_t{2}, "two deferrals counted");
+  Equal(first.installWaitMaxMillis, std::uint64_t{120},
+        "the longest install wait is kept");
+  Equal(first.hiddenStacks, std::uint64_t{4}, "hidden stacks summed");
+  Equal(first.hiddenStacksTickMax, std::uint64_t{3},
+        "the most hidden stacks in one tick is kept");
+  Equal(first.hiddenDrawMicros, std::uint64_t{6600}, "hidden draw time summed");
+  Equal(first.hiddenDrawTickMaxMicros, std::uint64_t{4100},
+        "the longest hidden draw tick is kept");
+  const Metrics::Snapshot second = Metrics::Drain();
+  Equal(second.syncDeferrals, std::uint64_t{0}, "drain resets deferrals");
+  Equal(second.hiddenStacksTickMax, std::uint64_t{0},
+        "drain resets the hidden stack maximum");
+}
+
 int main() {
   TestSectionsSpikesAndHitches();
+  TestPacingCountersDrain();
   TestRatesAccumulateAndDrain();
   TestGaugesAndPeaksPersist();
   TestStepExecutionsCountPerKind();

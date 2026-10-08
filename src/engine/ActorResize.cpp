@@ -1,6 +1,7 @@
 // GPL-3.0-only with the additional permission in COPYING.md.
 #include "engine/ActorResize.h"
 
+#include "diagnostics/Metrics.h"
 #include "engine/LogOnce.h"
 #include "render/Compositor.h"
 #include "render/RenderInstance.h"
@@ -136,13 +137,15 @@ std::expected<void, std::string> StartResize(LiveActor &a_state,
   return {};
 }
 
-void DrawResize(LiveActor &a_state, std::uint64_t a_frame,
-                std::uint64_t a_nowMS, WarningHistory &a_warnings) {
+DrawPace DrawResize(LiveActor &a_state, std::uint64_t a_frame,
+                    std::uint64_t a_nowMS, WarningHistory &a_warnings,
+                    DrawPace a_pace) {
   ResizeBuild *build = Get<ResizeBuild>(a_state.resize);
   TextureLab *lab = TextureLab::GetSingleton();
   Compositor *compositor = Compositor::GetSingleton();
-  if (!build || !build->render || !lab || !compositor) {
-    return;
+  if (!build || !build->render || !lab || !compositor ||
+      !MayDrawStack(a_pace)) {
+    return a_pace;
   }
   const TextureLab::PassBatch batch{*lab};
   if (build->render->BeginFrame(a_frame, a_nowMS)) {
@@ -152,10 +155,16 @@ void DrawResize(LiveActor &a_state, std::uint64_t a_frame,
     if (built.drawn) {
       continue;
     }
+    if (!MayDrawStack(a_pace)) {
+      break;
+    }
+    const Metrics::Stopwatch watch;
     built.drawn = !built.stack ||
                   compositor->Render(*built.stack, LayerFilter{},
                                      StackBase{}) != StackRender::kPending;
+    a_pace = Drew(a_pace, watch.Micros());
   }
+  return a_pace;
 }
 
 std::optional<ResizeSwap> FinishResize(LiveActor &a_state,
@@ -195,5 +204,42 @@ std::optional<ResizeSwap> FinishResize(LiveActor &a_state,
 const RenderInstance *ResizingInstance(const LiveActor &a_state) noexcept {
   const ResizeBuild *build = Get<ResizeBuild>(a_state.resize);
   return build ? build->render.get() : nullptr;
+}
+
+void StartFirstDraw(LiveActor &a_state, std::uint64_t a_frame) {
+  a_state.firstDraw.reset();
+  if (!AttachedRender(a_state)) {
+    return;
+  }
+  FirstDraw draw{a_frame, 0, {}};
+  for (std::size_t p = 0; p < a_state.pieces.size(); ++p) {
+    const LivePiece &piece = a_state.pieces[p];
+    for (std::size_t g = 0; g < piece.geometries.size(); ++g) {
+      const std::size_t slots = piece.geometries[g].stackPlan.slots.size();
+      for (std::size_t s = 0; s < slots; ++s) {
+        draw.slots.push_back({p, g, s, false});
+      }
+    }
+  }
+  a_state.firstDraw = std::move(draw);
+}
+
+FirstDrawProgress ProgressOf(const FirstDraw &a_draw) noexcept {
+  return {a_draw.drawTicks, a_draw.slots.size(),
+          static_cast<std::size_t>(
+              std::ranges::count_if(a_draw.slots, [](const HiddenSlot &a_slot) {
+                return a_slot.drawn;
+              }))};
+}
+
+LiveGeometry *GeometryOf(LiveActor &a_state,
+                         const HiddenSlot &a_slot) noexcept {
+  if (a_slot.piece >= a_state.pieces.size()) {
+    return nullptr;
+  }
+  LivePiece &piece = a_state.pieces[a_slot.piece];
+  return a_slot.geometry < piece.geometries.size()
+             ? &piece.geometries[a_slot.geometry]
+             : nullptr;
 }
 }

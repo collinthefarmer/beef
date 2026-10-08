@@ -10,6 +10,7 @@
 #include "actors/Reconcile.h"
 #include "engine/ActorBudget.h"
 #include "engine/ActorObservation.h"
+#include "engine/ActorResize.h"
 #include "engine/Clock.h"
 #include "engine/EngineForms.h"
 #include "engine/GameObjectService.h"
@@ -21,6 +22,7 @@
 #include "mesh/TextureSize.h"
 #include "planners/Eviction.h"
 #include "planners/IdentityFacts.h"
+#include "planners/InstallPacing.h"
 #include "planners/RenderPlanCache.h"
 #include "planners/RenderPlanJob.h"
 #include "planners/RenderPlanKey.h"
@@ -1114,20 +1116,42 @@ void Manager::ReapplyAll() {
 
 void Manager::SyncStale(RE::FormID a_actorID,
                         const std::vector<ApplicationToken> &a_tokens) {
+  const Metrics::Stopwatch watch;
   const RE::NiPointer<RE::Actor> actor{
       RE::TESForm::LookupByID<RE::Actor>(a_actorID)};
+  SyncOutcome outcome = SyncOutcome::kSettled;
   if (!actor) {
     ForgetActor(a_actorID);
   } else {
-    SyncActor(actor.get());
+    outcome = SyncActor(actor.get());
   }
   ReconcileAnimationEvents(a_actorID);
-  PrepareApplications(a_actorID, a_tokens);
+  if (outcome != SyncOutcome::kDeferred) {
+    PrepareApplications(a_actorID, a_tokens);
+  }
+  frameSyncs_ =
+      Synced(frameSyncs_, watch.Micros(), outcome == SyncOutcome::kInstalled);
 }
 
-void Manager::SyncActor(RE::Actor *a_actor) {
+void Manager::DeferInstall(RE::FormID a_actorID, Actors::SyncKind a_kind) {
+  const std::uint32_t now = NowMS();
+  waitingInstalls_ = Deferred(std::move(waitingInstalls_), a_actorID, now);
+  Metrics::CountSyncDeferral();
+  Trace::EmitSafely(
+      Trace::Event::kQueue,
+      {{"action", "sync_deferred"},
+       {"actor", std::to_string(a_actorID)},
+       {"kind", std::string{Actors::SyncKindName(a_kind)}},
+       {"frame_us", std::to_string(frameSyncs_.spentUs)},
+       {"frame_installs", std::to_string(frameSyncs_.installs)},
+       {"waited_ms",
+        std::to_string(WaitedMS(waitingInstalls_, a_actorID, now).value_or(0))},
+       {"waiting", std::to_string(waitingInstalls_.size())}});
+}
+
+Manager::SyncOutcome Manager::SyncActor(RE::Actor *a_actor) {
   if (!a_actor) {
-    return;
+    return SyncOutcome::kSettled;
   }
   const Settings settings = GetSettings();
   const RE::FormID actorID = a_actor->GetFormID();
@@ -1136,6 +1160,24 @@ void Manager::SyncActor(RE::Actor *a_actor) {
       Trace::Event::kApplication,
       {{"action", "sync_begin"}, {"actor", std::to_string(actorID)}});
   ActorDecision decision = DecideActor(*a_actor, settings);
+  const bool installs = !decision.next.commands.empty() &&
+                        Actors::AnythingInstalled(decision.next.state);
+  if (installs && !InstallMayStart(frameSyncs_)) {
+    KeepModels(tracked_[actorID].models, InstalledPlanOf(actorID),
+               decision.observedAt);
+    DeferInstall(actorID, decision.kind);
+    return SyncOutcome::kDeferred;
+  }
+  KeepModels(tracked_[actorID].models,
+             decision.next.state ? decision.next.state->installed
+                                 : Actors::ActorPlan{},
+             decision.observedAt);
+  if (const std::optional<std::uint32_t> waited =
+          WaitedMS(waitingInstalls_, actorID, NowMS());
+      waited && installs) {
+    Metrics::CountInstallWait(*waited);
+  }
+  waitingInstalls_ = Removed(std::move(waitingInstalls_), actorID);
   applications_.ClearReinstall(actorID);
   if (decision.kind != Actors::SyncKind::kUnchanged) {
     const char *name = a_actor->GetName();
@@ -1148,7 +1190,7 @@ void Manager::SyncActor(RE::Actor *a_actor) {
   if (!decision.next.state) {
     ForgetActor(actorID);
     (void)applications_.TakeEquipped(actorID);
-    return;
+    return SyncOutcome::kSettled;
   }
   if (decision.next.commands.empty()) {
     const bool waiting = Actors::RecheckOf(decision.next.state, NowMS()) ==
@@ -1157,19 +1199,21 @@ void Manager::SyncActor(RE::Actor *a_actor) {
     if (!waiting) {
       (void)applications_.TakeEquipped(actorID);
     }
-    return;
+    return SyncOutcome::kSettled;
   }
   const auto held = live_.find(actorID);
   const std::uint64_t replaced =
       held != live_.end() ? PlannedBytesOf(held->second) : 0;
   const std::size_t retired = RetireActor(actorID);
-  const bool installs = Actors::AnythingInstalled(decision.next.state);
   RecordState(actorID, std::move(decision.next.state));
   if (installs) {
     InstallActor(*a_actor, std::move(decision), replaced, settings);
-  } else if (retired > 0 && settings.verboseLogging) {
+    return SyncOutcome::kInstalled;
+  }
+  if (retired > 0 && settings.verboseLogging) {
     logger::info("actor {:08X}: retired {} recipe(s)", actorID, retired);
   }
+  return SyncOutcome::kSettled;
 }
 
 void Manager::InstallActor(RE::Actor &a_actor, ActorDecision a_decision,
@@ -1244,8 +1288,6 @@ Manager::ActorDecision Manager::DecideActor(RE::Actor &a_actor,
   });
   const Actors::SyncKind kind = Actors::KindOf(tracked.state, next, reinstall);
   const std::optional<Actors::ActorState> &state = next.state;
-  KeepModels(tracked.models, state ? state->installed : Actors::ActorPlan{},
-             observedAt);
   phases.Add("record", state ? "kept" : "forgotten");
   phases.Add("planned",
              std::to_string(state ? state->plan.placements.size() : 0));
@@ -1260,7 +1302,8 @@ Manager::ActorDecision Manager::DecideActor(RE::Actor &a_actor,
   return {std::move(facts),
           {std::move(catalog), std::move(planned.matches)},
           std::move(next),
-          kind};
+          kind,
+          observedAt};
 }
 
 void Manager::NoteMaterialLayout(MaterialLayout a_before) {
@@ -1441,6 +1484,7 @@ void Manager::KeepActorRender(RE::FormID a_actorID, LiveActor &a_state,
                               const ActorRender &a_render) {
   if (const PlanAwaited *awaited = Get<PlanAwaited>(a_render.outcome)) {
     a_state.awaitedPlan = awaited->job;
+    a_state.firstDraw.reset();
     return;
   }
   a_state.awaitedPlan.reset();
@@ -1450,6 +1494,7 @@ void Manager::KeepActorRender(RE::FormID a_actorID, LiveActor &a_state,
     KeepInstallLevel(a_actorID, choice->level);
     budget_ = Admitted(budget_, choice->admitted);
   }
+  StartFirstDraw(a_state, renderFrame_);
 }
 
 void Manager::DrainPlanJobs(const Settings &a_settings) {
@@ -1682,6 +1727,7 @@ void Manager::ForgetActor(RE::FormID a_actorID) {
     logger::info("actor {:08X}: retired {} recipe(s)", a_actorID, retired);
   }
   applications_.ClearReinstall(a_actorID);
+  waitingInstalls_ = Removed(std::move(waitingInstalls_), a_actorID);
   tracked_.erase(a_actorID);
 }
 

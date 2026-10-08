@@ -55,6 +55,13 @@ struct Snapshot {
   std::uint64_t syncs = 0;
   std::uint64_t syncMicros = 0;
   std::uint64_t syncMaxMicros = 0;
+  std::uint64_t syncFrameMaxMicros = 0;
+  std::uint64_t syncDeferrals = 0;
+  std::uint64_t installWaitMaxMillis = 0;
+  std::uint64_t hiddenStacks = 0;
+  std::uint64_t hiddenStacksTickMax = 0;
+  std::uint64_t hiddenDrawMicros = 0;
+  std::uint64_t hiddenDrawTickMaxMicros = 0;
   std::uint64_t sinkAdds = 0;
   std::uint64_t sinkRemoves = 0;
   std::uint64_t readbacks = 0;
@@ -91,6 +98,10 @@ struct Snapshot {
 };
 
 void CountSync(std::uint64_t a_micros) noexcept;
+void CountSyncFrame(std::uint64_t a_micros) noexcept;
+void CountSyncDeferral() noexcept;
+void CountInstallWait(std::uint64_t a_millis) noexcept;
+void CountHiddenDraw(std::uint64_t a_stacks, std::uint64_t a_micros) noexcept;
 void CountSinkAdd() noexcept;
 void CountSinkRemove() noexcept;
 void CountReadback(std::uint64_t a_micros) noexcept;

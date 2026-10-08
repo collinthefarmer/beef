@@ -27,7 +27,11 @@ test covers it.
   creates a second instance with `AtSides`, which copies the plan, the
   `GeometryInputs` and the graphs and takes new sides. The second instance
   draws before it is attached, because it holds its own copies of every
-  input.
+  input. A new instance from an install or a plan arrival is attached at once
+  and draws its slots hidden over several ticks (`engine/ActorResize.h`,
+  `StartFirstDraw`). The engine writes the material slots only when every
+  slot has drawn once. Both hidden draws share a budget of 4 ms of submit
+  time per tick (`planners/DrawPacing.h`).
 - `Compositor` (`Compositor.h`) is the process-wide entry point for stack
   rendering. It also owns the image cache (`LoadImage`), the mesh cache
   (`MeshOf`), the material analysis cache (`AnalyseMaterial`) and the studio's

@@ -113,14 +113,27 @@ struct ResizeBuild {
 
 using LiveResize = std::variant<ResizeIdle, ResizePending, ResizeBuild>;
 
+struct HiddenSlot {
+  std::size_t piece = 0;
+  std::size_t geometry = 0;
+  std::size_t slot = 0;
+  bool drawn = false;
+};
+
+struct FirstDraw {
+  std::uint64_t beganFrame = 0;
+  std::uint64_t drawTicks = 0;
+  std::vector<HiddenSlot> slots;
+};
+
 struct LiveActor {
   RE::ActorHandle actor;
-  bool firstRenderAdmitted = false;
   bool inView = true;
   float screenFraction = 0.0f;
   ResolutionLevel resolution = ResolutionLevel::kFull;
   PlanSides fullSides;
   LiveResize resize;
+  std::optional<FirstDraw> firstDraw;
   std::array<std::optional<LevelCost>, kResolutionLevelCount> levelCosts;
   IntermediateHolding intermediates = IntermediateHolding::kHeld;
   std::optional<ResolutionLevel> blockedAt;
