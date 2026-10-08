@@ -33,5 +33,7 @@ HeldNow(const LiveActor &a_state, const PlanTargets &a_targets) noexcept;
 [[nodiscard]] std::vector<const RenderInstance *>
 InstancesOf(const LiveActor &a_state);
 [[nodiscard]] std::uint64_t PlannedBytesOf(const LiveActor &a_state);
+[[nodiscard]] std::optional<std::uint64_t>
+ReturnBytesOf(LiveActor &a_state, std::optional<ResolutionLevel> a_target);
 std::size_t ReleaseIntermediates(LiveActor &a_state);
 }

@@ -114,6 +114,10 @@ struct BudgetResponse {
   PressureStep next;
 };
 
+[[nodiscard]] std::uint64_t Sum(std::uint64_t a_lhs,
+                                std::uint64_t a_rhs) noexcept;
+[[nodiscard]] std::uint64_t Less(std::uint64_t a_lhs,
+                                 std::uint64_t a_rhs) noexcept;
 [[nodiscard]] std::uint64_t MarginOf(std::uint64_t a_budget) noexcept;
 [[nodiscard]] std::uint64_t BandOf(std::uint64_t a_allowance) noexcept;
 [[nodiscard]] std::optional<std::uint64_t>

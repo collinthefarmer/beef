@@ -6,6 +6,7 @@
 
 #include <limits>
 #include <optional>
+#include <span>
 #include <vector>
 
 using namespace BetterEnchantmentEffects;
@@ -126,28 +127,49 @@ void GarbageDistancesAreSkipped() {
   Check(!ShrinkRadius({}, std::nullopt, 0), "no actors give no shrink");
 }
 
+RadiusGrowthRequest GrowthOf(BudgetRadius a_radius, std::uint32_t a_nowMs,
+                             float a_evictDistance,
+                             std::optional<float> a_farthest,
+                             BudgetState a_budget = BudgetState{},
+                             std::span<const EvictedActor> a_evicted = {},
+                             std::uint64_t a_unpricedBytes = 0) {
+  return {a_radius,   a_budget,  a_nowMs,        a_evictDistance,
+          a_farthest, a_evicted, a_unpricedBytes};
+}
+
+BudgetState Calm(std::uint64_t a_plannedMiB) {
+  return {1000 * kMebibyte, a_plannedMiB * kMebibyte, Pressure::kNone};
+}
+
+EvictedActor Away(std::optional<float> a_distance,
+                  std::optional<std::uint64_t> a_returnMiB) {
+  return {a_distance,
+          a_returnMiB ? std::optional<std::uint64_t>{*a_returnMiB * kMebibyte}
+                      : std::nullopt};
+}
+
 void GrowthWaitsForTheDwell() {
   const BudgetRadius radius{1000.0f, 5000};
-  const RadiusGrowth early = GrowRadius(
-      radius, Pressure::kNone, 5000 + kRadiusDwellMs - 1, 0.0f, 9000.0f);
+  const RadiusGrowth early =
+      GrowRadius(GrowthOf(radius, 5000 + kRadiusDwellMs - 1, 0.0f, 9000.0f));
   Check(early == RadiusGrowth{RadiusUnchanged{radius}},
         "the radius is unchanged until the dwell has passed");
   const RadiusGrowth due =
-      GrowRadius(radius, Pressure::kNone, 5000 + kRadiusDwellMs, 0.0f, 9000.0f);
+      GrowRadius(GrowthOf(radius, 5000 + kRadiusDwellMs, 0.0f, 9000.0f));
   const RadiusGrown *grown = Get<RadiusGrown>(due);
   Check(grown && grown->radius.distance == 1000.0f / kRestoreFraction &&
             grown->radius.sinceMs == 5000 + kRadiusDwellMs,
         "after the dwell the radius grows by 1 / 0.8 and restarts the dwell");
   const RadiusGrowth wrapped =
-      GrowRadius({1000.0f, 0xFFFFFF00u}, Pressure::kNone, 100, 0.0f, 9000.0f);
+      GrowRadius(GrowthOf({1000.0f, 0xFFFFFF00u}, 100, 0.0f, 9000.0f));
   Check(Is<RadiusUnchanged>(wrapped), "the dwell survives a clock wrap");
 }
 
 void GrowthStopsUnderPressure() {
   const BudgetRadius radius{1000.0f, 0};
   for (const Pressure pressure : {Pressure::kOver, Pressure::kOverWarned}) {
-    const RadiusGrowth growth =
-        GrowRadius(radius, pressure, 60000, 4000.0f, std::nullopt);
+    const RadiusGrowth growth = GrowRadius(GrowthOf(
+        radius, 60000, 4000.0f, std::nullopt, BudgetState{{}, 0, pressure}));
     const RadiusUnchanged *unchanged = Get<RadiusUnchanged>(growth);
     Check(unchanged && unchanged->radius.distance == 1000.0f &&
               unchanged->radius.sinceMs == 60000,
@@ -156,31 +178,206 @@ void GrowthStopsUnderPressure() {
 }
 
 void RadiusClearsWhenGrowthReachesTheLimit() {
-  const RadiusGrowth reaches = GrowRadius({3200.0f, 0}, Pressure::kNone,
-                                          kRadiusDwellMs, 4000.0f, 100.0f);
+  const RadiusGrowth reaches =
+      GrowRadius(GrowthOf({3200.0f, 0}, kRadiusDwellMs, 4000.0f, 100.0f));
   Check(Is<RadiusCleared>(reaches),
         "a radius that reaches EvictDistance is cleared");
-  const RadiusGrowth below = GrowRadius({3000.0f, 0}, Pressure::kNone,
-                                        kRadiusDwellMs, 4000.0f, 100.0f);
+  const RadiusGrowth below =
+      GrowRadius(GrowthOf({3000.0f, 0}, kRadiusDwellMs, 4000.0f, 100.0f));
   Check(Is<RadiusGrown>(below),
         "EvictDistance, not the farthest NPC, limits a set distance");
   const RadiusGrowth farthest =
-      GrowRadius({2000.0f, 0}, Pressure::kNone, kRadiusDwellMs, 0.0f, 2400.0f);
+      GrowRadius(GrowthOf({2000.0f, 0}, kRadiusDwellMs, 0.0f, 2400.0f));
   Check(Is<RadiusCleared>(farthest),
         "without EvictDistance the farthest loaded NPC limits the radius");
   const RadiusGrowth unlimited =
-      GrowRadius({1000.0f, 0}, Pressure::kNone, kRadiusDwellMs, -1.0f, 2400.0f);
+      GrowRadius(GrowthOf({1000.0f, 0}, kRadiusDwellMs, -1.0f, 2400.0f));
   Check(Is<RadiusGrown>(unlimited), "a negative EvictDistance sets no limit");
-  const RadiusGrowth none = GrowRadius({1000.0f, 0}, Pressure::kNone,
-                                       kRadiusDwellMs, 0.0f, std::nullopt);
+  const RadiusGrowth none =
+      GrowRadius(GrowthOf({1000.0f, 0}, kRadiusDwellMs, 0.0f, std::nullopt));
   Check(Is<RadiusCleared>(none),
         "no limit and no loaded NPC clears the radius");
-  const RadiusGrowth nan =
-      GrowRadius({1000.0f, 0}, Pressure::kNone, kRadiusDwellMs,
-                 std::numeric_limits<float>::quiet_NaN(),
-                 std::numeric_limits<float>::quiet_NaN());
+  const RadiusGrowth nan = GrowRadius(GrowthOf(
+      {1000.0f, 0}, kRadiusDwellMs, std::numeric_limits<float>::quiet_NaN(),
+      std::numeric_limits<float>::quiet_NaN()));
   Check(Is<RadiusCleared>(nan),
         "a NaN EvictDistance and a NaN farthest NPC clear the radius");
+}
+
+void RingIsWhatGrowthLetsReturn() {
+  const std::vector<EvictedActor> evicted{
+      Away(799.0f, 1),  Away(800.0f, 2),  Away(900.0f, 3),      Away(999.9f, 4),
+      Away(1000.0f, 5), Away(2000.0f, 6), Away(std::nullopt, 7)};
+  const std::vector<RingActor> ring = RingOf(evicted, 1000.0f, 1250.0f);
+  Equal(ring.size(), std::size_t{3},
+        "the ring holds the NPCs from 0.8 x the radius to 0.8 x the grown "
+        "radius");
+  Check(ring.size() == 3 && ring[0].distance == 800.0f &&
+            ring[2].distance == 999.9f,
+        "an NPC exactly at 0.8 x the radius is in the ring and one exactly "
+        "at 0.8 x the grown radius is not");
+  for (const RingActor &actor : ring) {
+    Check(!Returns(actor.distance, 1000.0f) && Returns(actor.distance, 1250.0f),
+          "every ring NPC is one EvictionFor returns only after the growth");
+  }
+  const std::vector<EvictedActor> unsorted{Away(950.0f, 1), Away(850.0f, 2)};
+  const std::vector<RingActor> sorted = RingOf(unsorted, 1000.0f, 1250.0f);
+  Check(sorted.size() == 2 && sorted[0].distance == 850.0f,
+        "the ring is ordered nearest first");
+  Equal(RingOf(evicted, 1000.0f, 0.0f).size(), std::size_t{5},
+        "without a limit after the growth every NPC beyond the radius is in "
+        "the ring");
+}
+
+void RingRoomKeepsHalfTheBand() {
+  const std::optional<RingRoom> room = RingRoomOf(Calm(400));
+  Check(room && room->headroom == 600 * kMebibyte &&
+            room->margin == BandOf(1000 * kMebibyte) / 2,
+        "the room is the headroom less half the pressure band");
+  Check(!RingRoomOf(BudgetState{}), "an unknown allowance gives no room");
+}
+
+void RingThatFitsGrowsFully() {
+  const std::vector<EvictedActor> evicted{Away(850.0f, 100), Away(900.0f, 200)};
+  const RadiusGrowth growth = GrowRadius(GrowthOf(
+      {1000.0f, 0}, kRadiusDwellMs, 0.0f, 9000.0f, Calm(400), evicted));
+  const RadiusGrown *grown = Get<RadiusGrown>(growth);
+  Check(grown && grown->radius.distance == 1000.0f / kRestoreFraction &&
+            grown->returningBytes == 300 * kMebibyte,
+        "a ring that fits the room grows the radius by 1 / 0.8");
+}
+
+void EmptyRingGrowsFully() {
+  const std::vector<EvictedActor> evicted{Away(500.0f, 900),
+                                          Away(3000.0f, 900)};
+  const RadiusGrowth growth = GrowRadius(GrowthOf(
+      {1000.0f, 0}, kRadiusDwellMs, 0.0f, 9000.0f, Calm(990), evicted));
+  const RadiusGrown *grown = Get<RadiusGrown>(growth);
+  Check(grown && grown->radius.distance == 1000.0f / kRestoreFraction &&
+            grown->returningBytes == 0,
+        "an empty ring grows the radius by 1 / 0.8 even without headroom");
+}
+
+void RingThatPartlyFitsStopsAtTheFirstThatDoesNot() {
+  const std::vector<EvictedActor> evicted{Away(850.0f, 100), Away(900.0f, 200),
+                                          Away(950.0f, 300)};
+  const RadiusGrowth growth = GrowRadius(GrowthOf(
+      {1000.0f, 0}, kRadiusDwellMs, 0.0f, 9000.0f, Calm(400), evicted));
+  const RadiusGrown *grown = Get<RadiusGrown>(growth);
+  Check(grown != nullptr, "a ring that partly fits still grows");
+  if (!grown) {
+    return;
+  }
+  Equal(grown->returningBytes, std::uint64_t{300 * kMebibyte},
+        "the growth prices the NPCs that fit");
+  Check(Returns(900.0f, grown->radius.distance) &&
+            !Returns(950.0f, grown->radius.distance),
+        "the radius grows just past the last NPC that fits");
+  Check(grown->radius.distance > 1000.0f &&
+            grown->radius.distance < 1000.0f / kRestoreFraction,
+        "a partial growth lies between the radius and 1 / 0.8 of it");
+
+  const std::vector<EvictedActor> tied{Away(850.0f, 100), Away(900.0f, 200),
+                                       Away(900.0f, 200)};
+  const RadiusGrowth tiedGrowth = GrowRadius(
+      GrowthOf({1000.0f, 0}, kRadiusDwellMs, 0.0f, 9000.0f, Calm(400), tied));
+  const RadiusGrown *split = Get<RadiusGrown>(tiedGrowth);
+  Check(split && split->returningBytes == 100 * kMebibyte &&
+            !Returns(900.0f, split->radius.distance),
+        "NPCs at one distance return together or not at all");
+}
+
+void RingWhereNothingFitsBlocksTheRadius() {
+  const std::vector<EvictedActor> evicted{Away(850.0f, 500), Away(900.0f, 100)};
+  const RadiusGrowth growth = GrowRadius(GrowthOf(
+      {1000.0f, 0}, kRadiusDwellMs, 0.0f, 9000.0f, Calm(400), evicted));
+  const RadiusBlocked *blocked = Get<RadiusBlocked>(growth);
+  Check(blocked && blocked->radius.distance == 1000.0f &&
+            blocked->radius.sinceMs == kRadiusDwellMs,
+        "when the nearest ring NPC does not fit the radius stays and the "
+        "dwell restarts");
+  Check(blocked && blocked->ringBytes == 600 * kMebibyte &&
+            blocked->room.headroom == 600 * kMebibyte &&
+            blocked->firstInEpisode,
+        "the first block names the ring bytes and the headroom");
+  if (!blocked) {
+    return;
+  }
+  const RadiusGrowth again = GrowRadius(GrowthOf(
+      blocked->radius, 2 * kRadiusDwellMs, 0.0f, 9000.0f, Calm(400), evicted));
+  const RadiusBlocked *repeated = Get<RadiusBlocked>(again);
+  Check(repeated && !repeated->firstInEpisode,
+        "a later block in the same episode is not reported again");
+  const std::vector<EvictedActor> lighter{Away(850.0f, 100)};
+  const RadiusGrowth lighterGrowth = GrowRadius(GrowthOf(
+      blocked->radius, 2 * kRadiusDwellMs, 0.0f, 9000.0f, Calm(400), lighter));
+  const RadiusGrown *grown = Get<RadiusGrown>(lighterGrowth);
+  Check(grown && !grown->radius.blockReported,
+        "a growth ends the blocked episode");
+}
+
+void UnpricedNpcsReturnOnePerGrowth() {
+  const std::vector<EvictedActor> evicted{Away(850.0f, std::nullopt),
+                                          Away(900.0f, std::nullopt)};
+  const RadiusGrowth growth =
+      GrowRadius(GrowthOf({1000.0f, 0}, kRadiusDwellMs, 0.0f, 9000.0f,
+                          Calm(400), evicted, 50 * kMebibyte));
+  const RadiusGrown *grown = Get<RadiusGrown>(growth);
+  Check(grown && Returns(850.0f, grown->radius.distance) &&
+            !Returns(900.0f, grown->radius.distance) &&
+            grown->returningBytes == 50 * kMebibyte,
+        "one unpriced NPC per growth returns, priced at the largest recorded "
+        "bytes");
+  const RadiusGrowth heavy =
+      GrowRadius(GrowthOf({1000.0f, 0}, kRadiusDwellMs, 0.0f, 9000.0f,
+                          Calm(400), evicted, 500 * kMebibyte));
+  Check(Is<RadiusBlocked>(heavy),
+        "an unpriced NPC whose largest recorded price does not fit stays out");
+  const RadiusGrowth unknownGrowth = GrowRadius(GrowthOf(
+      {1000.0f, 0}, kRadiusDwellMs, 0.0f, 9000.0f, Calm(400), evicted));
+  const RadiusGrown *unknown = Get<RadiusGrown>(unknownGrowth);
+  Check(unknown && !Returns(900.0f, unknown->radius.distance),
+        "with no recorded price at all one unpriced NPC still returns");
+}
+
+void ClearingPricesTheRing() {
+  const std::vector<EvictedActor> evicted{Away(850.0f, 100),
+                                          Away(1050.0f, 500)};
+  const RadiusGrowth growth = GrowRadius(GrowthOf(
+      {1000.0f, 0}, kRadiusDwellMs, 0.0f, 1100.0f, Calm(400), evicted));
+  const RadiusGrown *grown = Get<RadiusGrown>(growth);
+  Check(grown && Returns(850.0f, grown->radius.distance) &&
+            !Returns(1050.0f, grown->radius.distance),
+        "a clear that would return more than fits grows to the fitting "
+        "radius");
+  const RadiusGrowth fits = GrowRadius(
+      GrowthOf({1000.0f, 0}, kRadiusDwellMs, 0.0f, 1100.0f, Calm(0), evicted));
+  const RadiusCleared *cleared = Get<RadiusCleared>(fits);
+  Check(cleared && cleared->returningBytes == 600 * kMebibyte,
+        "a clear whose ring fits clears");
+  const RadiusGrowth limited = GrowRadius(GrowthOf(
+      {1000.0f, 0}, kRadiusDwellMs, 1200.0f, std::nullopt, Calm(400), evicted));
+  const RadiusCleared *bounded = Get<RadiusCleared>(limited);
+  Check(bounded && bounded->returningBytes == 100 * kMebibyte,
+        "a clear at EvictDistance prices only the NPCs inside 0.8 x "
+        "EvictDistance");
+}
+
+void GarbageDistancesStayOutOfTheRing() {
+  const std::vector<EvictedActor> evicted{
+      Away(std::numeric_limits<float>::quiet_NaN(), 900), Away(-5.0f, 900),
+      Away(std::numeric_limits<float>::infinity(), 900),
+      Away(std::nullopt, 900)};
+  Check(RingOf(evicted, 1000.0f, 0.0f).empty(),
+        "NaN, negative, infinite and missing distances are never in the "
+        "ring");
+  const RadiusGrowth growth = GrowRadius(GrowthOf(
+      {1000.0f, 0}, kRadiusDwellMs, 0.0f, 9000.0f, Calm(990), evicted));
+  const RadiusGrown *grown = Get<RadiusGrown>(growth);
+  Check(grown && grown->radius.distance == 1000.0f / kRestoreFraction,
+        "garbage distances do not block a growth");
+  Check(RadiusStoppingAt(950.0f) * kRestoreFraction <= 950.0f,
+        "the stopping radius never returns the NPC it stops at");
 }
 
 void RadiusCombinesWithEvictDistance() {
@@ -212,6 +409,14 @@ void LinesCarryTheNumbers() {
   Equal(RadiusGrowLine(3713.0f),
         std::string{"render target budget: effects return up to 3713 units"},
         "the grow line names the radius");
+  Equal(RadiusBlockedLine({{1000.0f, 0, true},
+                           600 * kMebibyte,
+                           {300 * kMebibyte, 128 * kMebibyte},
+                           true}),
+        std::string{"render target budget: effects stay off beyond 1000 "
+                    "units: the returning NPCs plan ~600 MiB, the headroom "
+                    "is ~300 MiB less a margin of ~128 MiB"},
+        "the blocked line names the radius, the ring and the room");
   Equal(RadiusClearLine(), std::string{"render target budget: radius cleared"},
         "the clear line is fixed");
 }
@@ -224,6 +429,15 @@ int main() {
   GrowthWaitsForTheDwell();
   GrowthStopsUnderPressure();
   RadiusClearsWhenGrowthReachesTheLimit();
+  RingIsWhatGrowthLetsReturn();
+  RingRoomKeepsHalfTheBand();
+  RingThatFitsGrowsFully();
+  EmptyRingGrowsFully();
+  RingThatPartlyFitsStopsAtTheFirstThatDoesNot();
+  RingWhereNothingFitsBlocksTheRadius();
+  UnpricedNpcsReturnOnePerGrowth();
+  ClearingPricesTheRing();
+  GarbageDistancesStayOutOfTheRing();
   RadiusCombinesWithEvictDistance();
   LinesCarryTheNumbers();
   return test::Finish("planners_budgetradius");

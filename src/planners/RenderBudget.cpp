@@ -6,7 +6,6 @@
 #include <limits>
 
 namespace BetterEnchantmentEffects {
-namespace {
 std::uint64_t Sum(std::uint64_t a_lhs, std::uint64_t a_rhs) noexcept {
   return a_lhs > std::numeric_limits<std::uint64_t>::max() - a_rhs
              ? std::numeric_limits<std::uint64_t>::max()
@@ -17,6 +16,7 @@ std::uint64_t Less(std::uint64_t a_lhs, std::uint64_t a_rhs) noexcept {
   return a_lhs > a_rhs ? a_lhs - a_rhs : 0;
 }
 
+namespace {
 bool BetterStepDown(const BudgetActor &a_candidate,
                     const BudgetActor &a_chosen) noexcept {
   const int candidateGap =

@@ -1764,8 +1764,8 @@ void Manager::ForgetActor(RE::FormID a_actorID) {
 }
 
 std::size_t Manager::RetireActor(RE::FormID a_actorID) {
-  if (const auto tracked = tracked_.find(a_actorID);
-      tracked != tracked_.end()) {
+  const auto tracked = tracked_.find(a_actorID);
+  if (tracked != tracked_.end()) {
     if (std::optional<Actors::ActorState> &state = tracked->second.state) {
       state->installed = {};
     }
@@ -1773,6 +1773,12 @@ std::size_t Manager::RetireActor(RE::FormID a_actorID) {
   const auto it = live_.find(a_actorID);
   if (it == live_.end()) {
     return 0;
+  }
+  if (tracked != tracked_.end()) {
+    if (const std::optional<std::uint64_t> bytes =
+            ReturnBytesOf(it->second, tracked->second.targetResolution)) {
+      tracked->second.returnBytes = bytes;
+    }
   }
   applications_.Retire(a_actorID, it->second.applications);
   const std::size_t recipes = LiveInstanceCount(it->second);

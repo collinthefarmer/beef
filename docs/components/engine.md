@@ -149,7 +149,9 @@ neither is left, `ShrinkBudgetRadius` sets or lowers the **budget radius**
 (`Manager::budgetRadius_`) so that the farthest rendered NPC is evicted.
 It marks that actor stale, so the next sync evicts it. Each heartbeat,
 `GrowBudgetRadius` grows or clears the radius after the pressure ends
-(`RadiusUnchanged`, `RadiusGrown`, `RadiusCleared`). When the
+(`RadiusUnchanged`, `RadiusGrown`, `RadiusBlocked`, `RadiusCleared`). It
+prices the ring with `EvictedActors` and `LargestReturnBytes`.
+`ReportRadiusGrowth` writes the log line and the trace event. When the
 radius has no candidate either, one `warning` names the largest holdings.
 `EvictDistanceNow` gives the distance that `DecideActor` passes to `Advance`
 and that `MarkRecheckStale` passes to `RangeChanged`.
@@ -370,7 +372,7 @@ below the material's native size.
 
 | Member | Description | Declared in |
 |---|---|---|
-| `Manager::tracked_`, `TrackedActor{state, models}` | One entry per actor with a record: its `Actors::ActorState` (plan, installed plan, pending models, claims) and its `ModelTable`. An actor without an entry has no record. `Manager::Clear` empties the map. `ForgetActor` erases the actor's entry. | `Manager.h` |
+| `Manager::tracked_`, `TrackedActor{state, models, targetResolution, returnBytes}` | One entry per actor with a record: its `Actors::ActorState` (plan, installed plan, pending models, claims), its `ModelTable`, its `targetResolution`, and its optional **return bytes**. `RetireActor` records the return bytes (`ReturnBytesOf`) before it retires an installed actor. An actor without an entry has no record. `Manager::Clear` empties the map. `ForgetActor` erases the actor's entry. | `Manager.h` |
 | `Manager::DecideActor` | Observes the actor (`ObserveActor`), plans it (`Actors::PlanActor` with its live claims) and advances its state (`Actors::Advance`), the eviction and pending-model rules included. It performs nothing. It traces `actor_decide`. | `ManagerApply.cpp` |
 | `Manager::RecordState` | Stores the next state in `tracked_`. No state erases the entry. | `ManagerApply.cpp` |
 | `Manager::RetireActor` | Undoes every installed effect of the actor and empties its installed plan. It keeps the record. | `ManagerApply.cpp` |
@@ -388,8 +390,8 @@ below the material's native size.
 | `Manager::budget_`, `BudgetState` | The last allowance, the planned bytes and the `Pressure`: `kNone`, `kOver`, or `kOverWarned` after the exhaustion warning of the episode. | `Manager.h`, `planners/RenderBudget.h` |
 | `Manager::SampleBudget`, `Manager::UpdateBudget`, `Manager::RelieveBudget`, `Manager::StepDownForBudget`, `Manager::AdmitStepUp` | Read the DXGI memory and the cap, update the pressure, apply the responses, step one NPC down, and admit or block one step up. | `ManagerTick.cpp` |
 | `Manager::budgetRadius_`, `BudgetRadius` | The optional budget radius. No record means no radius. | `Manager.h`, `planners/BudgetRadius.h` |
-| `Manager::ShrinkBudgetRadius`, `Manager::GrowBudgetRadius`, `Manager::FarthestTrackedDistance`, `Manager::EvictDistanceNow` | Lower the radius past the farthest rendered NPC, grow or clear it after the dwell, give the distance of the farthest tracked actor, and give the eviction distance with the radius applied. | `ManagerTick.cpp` |
-| `LevelCostOf`, `CachedLevelCost`, `BudgetActorOf`, `HeldNow`, `InstancesOf`, `PlannedBytesOf`, `ReleaseIntermediates` | The bytes of a plan at one level with intermediates and with stacks only (`TargetsOf`), the same for the actor's attached plan (cached in `LiveActor::levelCosts`), the actor's facts for the budget with its distance to the player, the targets that the planned figure counts for the actor, the actor's render instances with a resize in flight, the bytes that the planned figure counts for the actor (0 before its first render), and the release of its intermediates. | `ActorBudget.h` |
+| `Manager::ShrinkBudgetRadius`, `Manager::GrowBudgetRadius`, `Manager::ReportRadiusGrowth`, `Manager::FarthestTrackedDistance`, `Manager::EvictedActors`, `Manager::LargestReturnBytes`, `Manager::EvictDistanceNow` | Lower the radius past the farthest rendered NPC, grow, block or clear it after the dwell, write its log line and trace event, give the distance of the farthest tracked actor, list the evicted actors (a plan and nothing installed) with their distances and return bytes, give the largest recorded return bytes, and give the eviction distance with the radius applied. | `ManagerTick.cpp` |
+| `LevelCostOf`, `CachedLevelCost`, `BudgetActorOf`, `HeldNow`, `InstancesOf`, `PlannedBytesOf`, `ReturnBytesOf`, `ReleaseIntermediates` | The bytes of a plan at one level with intermediates and with stacks only (`TargetsOf`), the same for the actor's attached plan (cached in `LiveActor::levelCosts`), the actor's facts for the budget with its distance to the player, the targets that the planned figure counts for the actor, the actor's render instances with a resize in flight, the bytes that the planned figure counts for the actor (0 before its first render), the bytes a return of the actor installs (with intermediates at its target level, else its planned bytes, none when 0), and the release of its intermediates. | `ActorBudget.h` |
 | `InstallLevelChoice`, `ChooseInstallLevel` | The level of an install and the bytes charged to the budget (`chargedBytes`). `ChooseInstallLevel` prices the levels from the bound's finest level to eighth and calls `FittingLevel`. | `ActorBudget.h` |
 | `Manager::InstallBoundOf`, `Manager::KeepInstallLevel` | The `InstallBound` of an install: the player's level without headroom, the target level with the headroom, or the ideal level with the headroom. The headroom counts the replaced bytes as freed. Then the level that the install built, kept on the tracked actor. | `ManagerApply.cpp` |
 

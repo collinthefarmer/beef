@@ -239,11 +239,16 @@ response of the budget.
 
 | Type or function | Description |
 |---|---|
-| `BudgetRadius` | The radius in game units and the time of its last change or of the last heartbeat under pressure (`sinceMs`). The manager keeps it optional; no record means no radius. |
+| `BudgetRadius` | The radius in game units, the time of its last change or of the last heartbeat under pressure (`sinceMs`), and whether the current blocked episode was reported (`blockReported`). The manager keeps it optional; no record means no radius. |
 | `LimitsDistance`, `EffectiveEvictDistance` | Whether an `EvictDistance` sets a limit (above 0), and the distance that eviction uses: the smaller of `EvictDistance` and the radius. Without a radius it is `EvictDistance` unchanged. |
 | `RadiusShrink`, `ShrinkRadius` | The FormID of the actor that is evicted, the new radius and the bytes freed. The candidate is the farthest NPC inside the current radius that is not resizing. The new radius is 0.99 × its distance (`kRadiusShrinkFactor`), raised to the next nearer distance, so that `EvictionFor` evicts that actor alone. The player and missing, non-finite or non-positive distances never count. A resizing actor beyond the candidate stops the shrink. |
-| `RadiusGrowth`, `GrowRadius` | One heartbeat of the radius without a shrink: `RadiusUnchanged`, `RadiusGrown` or `RadiusCleared`. Under pressure the distance is unchanged and the dwell restarts. After `kRadiusDwellMs` (10 s) it grows by 1 / 0.8 (`kRestoreFraction`). It clears when the grown radius reaches `EvictDistance`, or the farthest loaded NPC when `EvictDistance` sets no limit. |
-| `RadiusShrinkLine`, `RadiusGrowLine`, `RadiusClearLine` | The text of the radius's log lines. |
+| `EvictedActor`, `RingActor`, `RingOf` | An evicted NPC: its optional distance and its optional **return bytes**. The **ring** is the evicted NPCs that `Returns` does not return at the current eviction distance and returns at the eviction distance after a growth. `RingOf` keeps only finite distances and orders the ring nearest first. |
+| `PriceOf`, `RingBytes` | The price of one ring NPC: its return bytes, or the given **unpriced bytes** when it has none. The sum of the prices of a ring. |
+| `RingRoom`, `RingRoomOf`, `kRingMarginDivisor` | The headroom (`HeadroomOf` with no replaced bytes) and the margin, half of the band (`BandOf`). An unknown allowance gives no room. |
+| `RingFit`, `FitRing`, `kUnpricedPerGrowth` | How many ring NPCs return and their bytes. NPCs at one distance return together. The ring stops at the first distance where the sum passes the room, or where a second unpriced NPC would return. |
+| `RadiusStoppingAt`, `kRadiusRoundingSteps` | The largest radius whose 0.8 × value is at or below the distance, so that `Returns` returns every nearer NPC and not that one. |
+| `RadiusGrowthRequest`, `RadiusGrowth`, `GrowRadius` | One heartbeat of the radius without a shrink: `RadiusUnchanged`, `RadiusGrown`, `RadiusBlocked` or `RadiusCleared`. Under pressure the distance is unchanged and the dwell restarts. After `kRadiusDwellMs` (10 s) the radius grows by 1 / 0.8 (`kRestoreFraction`) when the ring fits the headroom less the margin. When part of the ring fits, the radius grows to `RadiusStoppingAt` the first NPC that does not fit. When the nearest NPC does not fit, `RadiusBlocked` keeps the distance, restarts the dwell, carries the ring bytes and the room, and marks the first block of the episode (`firstInEpisode`). The radius clears when the grown radius reaches `EvictDistance`, or the farthest loaded NPC when `EvictDistance` sets no limit, and the ring of the clear fits. Otherwise the clear is a growth to the fitting radius. Without an allowance the ring is not priced. |
+| `RadiusShrinkLine`, `RadiusGrowLine`, `RadiusBlockedLine`, `RadiusClearLine` | The text of the radius's log lines. |
 
 `RenderMemory.h` turns the counts into the render-target log lines.
 
@@ -420,6 +425,7 @@ engine handle.
 |---|---|---|
 | `EvictionAction` | `Eviction.h` | `kNone`, `kEvict` or `kRestore`. |
 | `EvictionFor`, `kRestoreFraction` | `Eviction.h` | A `constexpr` function. It evicts an actor with something installed beyond the eviction distance and restores an actor with nothing installed only inside 80% (`kRestoreFraction`) of that distance. A distance of 0 or less disables eviction. `Actors::InRange` calls it. |
+| `Returns` | `Eviction.h` | A `constexpr` function. It tells if an actor with nothing installed returns at an eviction distance. `Actors::InRange` and `RingOf` call it. |
 | `TransformStorage` | `TransformStorage.h` | An engine transform array's base address, `count`, `stride` and `offset`. `TransformStorageIndex` decodes a pointer into a row index. `render/SkinPalette.cpp` uses it. |
 | `ImageCacheKey`, `IsPlaceholderExtent` | `TextureIdentity.h` | `ImageCacheKey` lower-cases a path into a cache key. `IsPlaceholderExtent` reports a width or height at or under `kPlaceholderTextureExtent` (4). |
 | `RecipeTextureKey`, `RecipeTextureCache<T>` | `RecipeTextureCache.h` | A key of recipe name, texture name, pixel count and context, and a `std::map` from it to a `shared_ptr`. `FindRecipeTexture` and `LargestRecipeTexture` read it. Only `tests/planners/recipetexturecache_tests.cpp` uses it. |
@@ -479,7 +485,7 @@ PSGeneratedStack, or PSStack until the compile finishes     render/GeneratedShad
 | `RenderPlanJob.h`/`.cpp`, `IdentityFacts.h`/`.cpp` | Render planning | `PlanBuildInput`, `BuildPlanFrom`; `IdentityFacts`, `IdentityBindings`, `InstanceIdentity`. |
 | `RenderMemory.h`/`.cpp` | Render planning | `NextHoldingStep`, `HoldingsOf`, `LargestHoldings`, `IsBurst`, `SpreadOf`, `HoldingLine`, `BurstLine`. |
 | `RenderBudget.h`/`.cpp` | Render planning | The render target budget: `AllowanceOf`, `NextBudget`, `AdmitGrowth`, `FittingLevel`, `StepDownOf`, `RespondToPressure` and the log lines. |
-| `BudgetRadius.h`/`.cpp` | Render planning | The budget radius: `EffectiveEvictDistance`, `ShrinkRadius`, `GrowRadius` and the log lines. |
+| `BudgetRadius.h`/`.cpp` | Render planning | The budget radius: `EffectiveEvictDistance`, `ShrinkRadius`, the ring (`RingOf`, `FitRing`), `GrowRadius` and the log lines. |
 | `InstallPacing.h`/`.cpp` | Render planning | The install budget per frame and the order of deferred installs: `InstallMayStart`, `Synced`, `NextInstall`, `Deferred`, `Removed`, `WaitedMS`. |
 | `DrawPacing.h`/`.cpp` | Render planning | The hidden draw budget per tick, the order of hidden draws and the end of a first draw: `MayDrawStack`, `Drew`, `HiddenDrawOrder`, `FirstDrawDone`. |
 | `TargetCost.h`/`.cpp` | Render planning | `HeldTarget`, `PlanTargets`, `TargetCost`, `TargetBytes`, `TargetsOf`, `CostOf`. |
@@ -492,7 +498,7 @@ PSGeneratedStack, or PSStack until the compile finishes     render/GeneratedShad
 | `ProgramReference.h`/`.cpp` | Programs | `EvaluateProgramOnCpu` and `QuantizeUnorm8`. |
 | `GpuReduction.h`/`.cpp` | Programs | Reduction levels, `DecodeReduction`, the `ReadbackRing` functions. |
 | `TargetPool.h`, `ConsumptionLeases.h`, `TextureLeases.h`, `OwnedState.h`, `ResourcePool.h`, `RetainedCache.h`, `ResourceCache.h` | Resource primitives | The lease, pool and cache templates. |
-| `Eviction.h`, `TransformStorage.h`/`.cpp`, `TextureIdentity.h`/`.cpp`, `RecipeTextureCache.h` | Resource primitives | `EvictionFor`, `TransformStorageIndex`, `ImageCacheKey`, `IsPlaceholderExtent`, the recipe texture key. |
+| `Eviction.h`, `TransformStorage.h`/`.cpp`, `TextureIdentity.h`/`.cpp`, `RecipeTextureCache.h` | Resource primitives | `EvictionFor`, `Returns`, `TransformStorageIndex`, `ImageCacheKey`, `IsPlaceholderExtent`, the recipe texture key. |
 
 ## See also
 

@@ -120,6 +120,18 @@ std::uint64_t PlannedBytesOf(const LiveActor &a_state) {
   return CostOf(held).bytes;
 }
 
+std::optional<std::uint64_t>
+ReturnBytesOf(LiveActor &a_state, std::optional<ResolutionLevel> a_target) {
+  const std::optional<LevelCost> cost =
+      CachedLevelCost(a_state, a_target.value_or(a_state.appliedResolution));
+  const std::uint64_t bytes =
+      cost ? cost->withIntermediates : PlannedBytesOf(a_state);
+  if (bytes == 0) {
+    return std::nullopt;
+  }
+  return bytes;
+}
+
 std::size_t ReleaseIntermediates(LiveActor &a_state) {
   const std::shared_ptr<RenderInstance> render = AttachedRender(a_state);
   if (!render) {

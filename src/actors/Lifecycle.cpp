@@ -104,11 +104,9 @@ bool InRange(bool a_installed, std::optional<float> a_distance,
   if (!a_distance) {
     return true;
   }
-  const EvictionAction action =
-      EvictionFor(*a_distance, a_evictDistance, a_installed);
-  return a_installed
-             ? action != EvictionAction::kEvict
-             : action == EvictionAction::kRestore || a_evictDistance <= 0.0f;
+  return a_installed ? EvictionFor(*a_distance, a_evictDistance, true) !=
+                           EvictionAction::kEvict
+                     : Returns(*a_distance, a_evictDistance);
 }
 
 bool AnythingInstalled(const std::optional<ActorState> &a_state) noexcept {

@@ -1337,28 +1337,83 @@ void Manager::GrowBudgetRadius(const Settings &a_settings) {
   const std::optional<float> farthest = LimitsDistance(a_settings.evictDistance)
                                             ? std::nullopt
                                             : FarthestTrackedDistance();
+  const std::vector<EvictedActor> evicted = EvictedActors();
   const RadiusGrowth growth =
-      GrowRadius(*budgetRadius_, budget_.pressure, NowMS(),
-                 a_settings.evictDistance, farthest);
+      GrowRadius({*budgetRadius_, budget_, NowMS(), a_settings.evictDistance,
+                  farthest, evicted, LargestReturnBytes()});
   if (const RadiusUnchanged *unchanged = Get<RadiusUnchanged>(growth)) {
     budgetRadius_ = unchanged->radius;
     return;
   }
   if (const RadiusGrown *grown = Get<RadiusGrown>(growth)) {
     budgetRadius_ = grown->radius;
+  } else if (const RadiusBlocked *blocked = Get<RadiusBlocked>(growth)) {
+    budgetRadius_ = blocked->radius;
+  } else {
+    budgetRadius_.reset();
+  }
+  ReportRadiusGrowth(growth);
+}
+
+void Manager::ReportRadiusGrowth(const RadiusGrowth &a_growth) {
+  if (const RadiusGrown *grown = Get<RadiusGrown>(a_growth)) {
     logger::info("{}", RadiusGrowLine(grown->radius.distance));
     Trace::EmitSafely(
         Trace::Event::kMetrics,
         {{"action", "budget_radius"},
          {"change", "grow"},
-         {"radius", std::format("{:.0f}", grown->radius.distance)}});
+         {"radius", std::format("{:.0f}", grown->radius.distance)},
+         {"returning_bytes", std::to_string(grown->returningBytes)}});
     return;
   }
-  budgetRadius_.reset();
-  logger::info("{}", RadiusClearLine());
-  Trace::EmitSafely(
-      Trace::Event::kMetrics,
-      {{"action", "budget_radius"}, {"change", "clear"}, {"radius", "none"}});
+  if (const RadiusBlocked *blocked = Get<RadiusBlocked>(a_growth)) {
+    if (!blocked->firstInEpisode) {
+      return;
+    }
+    logger::info("{}", RadiusBlockedLine(*blocked));
+    Trace::EmitSafely(
+        Trace::Event::kMetrics,
+        {{"action", "budget_radius"},
+         {"change", "blocked"},
+         {"reason", "ring"},
+         {"radius", std::format("{:.0f}", blocked->radius.distance)},
+         {"ring_bytes", std::to_string(blocked->ringBytes)},
+         {"headroom_bytes", std::to_string(blocked->room.headroom)},
+         {"margin_bytes", std::to_string(blocked->room.margin)}});
+    return;
+  }
+  if (const RadiusCleared *cleared = Get<RadiusCleared>(a_growth)) {
+    logger::info("{}", RadiusClearLine());
+    Trace::EmitSafely(
+        Trace::Event::kMetrics,
+        {{"action", "budget_radius"},
+         {"change", "clear"},
+         {"radius", "none"},
+         {"returning_bytes", std::to_string(cleared->returningBytes)}});
+  }
+}
+
+std::vector<EvictedActor> Manager::EvictedActors() const {
+  std::vector<EvictedActor> evicted;
+  for (const auto &[id, tracked] : tracked_) {
+    const std::optional<Actors::ActorState> &state = tracked.state;
+    if (!state || state->plan == Actors::ActorPlan{} ||
+        Actors::AnythingInstalled(state)) {
+      continue;
+    }
+    const auto *actor = RE::TESForm::LookupByID<RE::Actor>(id);
+    evicted.push_back(
+        {actor ? DistanceToPlayer(*actor) : std::nullopt, tracked.returnBytes});
+  }
+  return evicted;
+}
+
+std::uint64_t Manager::LargestReturnBytes() const {
+  std::uint64_t largest = 0;
+  for (const auto &entry : tracked_) {
+    largest = std::max(largest, entry.second.returnBytes.value_or(0));
+  }
+  return largest;
 }
 
 std::optional<float> Manager::FarthestTrackedDistance() const {

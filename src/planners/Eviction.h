@@ -23,4 +23,11 @@ EvictionFor(float a_distance, float a_evictDistance, bool a_applied) noexcept {
              ? EvictionAction::kRestore
              : EvictionAction::kNone;
 }
+
+[[nodiscard]] constexpr bool Returns(float a_distance,
+                                     float a_evictDistance) noexcept {
+  return EvictionFor(a_distance, a_evictDistance, false) ==
+             EvictionAction::kRestore ||
+         a_evictDistance <= 0.0f;
+}
 }

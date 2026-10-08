@@ -2792,21 +2792,78 @@ cancel by the user instead of the load.
   (`BudgetActor::plannedBytes`). The candidate must be evictable (`CanEvict`):
   it is not resizing.
 - **Growth.** Each heartbeat under pressure restarts the radius's dwell
-  (`BudgetRadius::sinceMs`). Without pressure, the radius grows by 1 / 0.8
-  once per dwell (`GrowRadius`, `kRadiusDwellMs` 10 s). The 1 / 0.8 step
-  lets every NPC inside the old radius pass the 0.8 restore rule. The dwell is
-  10 s because a pressure episode from an install ends within 1 to 2 s, and
-  the returning installs reach the planned figure within one heartbeat. A 10 s
-  dwell therefore sees any pressure that a growth step causes before the
-  next step. Each growth writes `render target budget: effects return up to
-  N units` and the trace event `budget_radius` with `change` `grow`.
+  (`BudgetRadius::sinceMs`). Without pressure, the radius tries to grow by
+  1 / 0.8 once per dwell (`GrowRadius`, `kRadiusDwellMs` 10 s). The 1 / 0.8
+  step lets every NPC inside the old radius pass the 0.8 restore rule. The
+  dwell is 10 s because a pressure episode from an install ends within 1 to
+  2 s, and the returning installs reach the planned figure within one
+  heartbeat. A 10 s dwell therefore sees any pressure that a growth step
+  causes before the next step.
+- **The ring.** A growth step prices the NPCs it lets return. Before the
+  ring, a run with `RenderTargetBudgetMiB=64` and four Vigilants of Stendarr
+  grew the radius, let the evicted NPCs return, started pressure and evicted
+  them again five times in 455 s. The **ring**
+  is the evicted NPCs (a plan and nothing installed, `Manager::EvictedActors`)
+  that `Returns` does not return at the current eviction distance and returns
+  at the eviction distance after the step (`RingOf`). `Returns` is the rule
+  that `Actors::InRange` applies to an actor with nothing installed, so the
+  ring is the set of NPCs that the next `Advance` brings back. With the radius
+  alone, the ring is the NPCs at 0.8 × the radius or farther and nearer than
+  0.8 × the grown radius. An NPC exactly at 0.8 × the radius is in the ring.
+  An NPC exactly at 0.8 × the grown radius is not. The ring keeps only finite
+  distances. A negative distance returns at every radius and is never in the
+  ring.
+- An evicted NPC has no render instance. `RetireActor` therefore records its
+  **return bytes** in `TrackedActor::returnBytes` before it retires an
+  installed actor (`ReturnBytesOf`). The return bytes are the bytes with
+  intermediates at the actor's `targetResolution`. A return installs no finer
+  than `targetResolution` (`InstallBoundOf`) and holds its intermediates, so
+  `ChooseInstallLevel` charges at most these bytes. When the plan has no cost,
+  the return bytes are the planned bytes (`PlannedBytesOf`). An actor that
+  never rendered keeps no record.
+- An **unpriced** NPC never installed, for example an NPC that spawned beyond
+  the radius. It costs the largest return bytes recorded for any tracked
+  actor (`LargestReturnBytes`), and at most one unpriced NPC returns per
+  growth step (`kUnpricedPerGrowth`). The price can be too low for one NPC.
+  If that NPC starts pressure, the radius evicts it and `RetireActor` records
+  its real bytes, so the same NPC cannot start a second cycle. The limit of
+  one keeps the error to one NPC per step.
+- The ring must fit the headroom (`HeadroomOf`) less a margin of half the
+  band (`RingRoomOf`, `kRingMarginDivisor`). Pressure ends below the
+  allowance less the band, so after pressure ends the headroom is more than
+  the band and one NPC that fits half the band can return. The other half
+  absorbs a step up and a change of the free video memory. A margin of the
+  whole band leaves almost no room right after pressure ends and can keep
+  the radius small for a long time. Without an allowance the ring is not
+  priced.
+- NPCs at one distance return together (`FitRing`). When the whole ring
+  fits, the radius grows by 1 / 0.8 and writes `render target budget: effects
+  return up to N units` and the trace event `budget_radius` with `change`
+  `grow` and `returning_bytes`. When part of the ring fits, the radius grows
+  to the largest radius that does not return the first NPC that does not fit
+  (`RadiusStoppingAt`). `Returns` compares the distance with 0.8 × the radius
+  in `float`, and `RadiusStoppingAt` lowers the radius by at most four
+  representable steps until 0.8 × the radius is at or below that distance.
+- When the nearest ring NPC does not fit, the radius keeps its distance and
+  the dwell restarts (`RadiusBlocked`). The first block of an episode writes
+  `render target budget: effects stay off beyond N units: the returning NPCs
+  plan ~X, the headroom is ~Y less a margin of ~Z` and the trace event
+  `budget_radius` with `change` `blocked`, `reason` `ring`, `radius`,
+  `ring_bytes`, `headroom_bytes` and `margin_bytes`
+  (`BudgetRadius::blockReported`). The episode ends when the radius grows,
+  shrinks or clears. The event says `blocked`, as `resolution_blocked` does,
+  because the vocabulary keeps "held" for held targets.
 - The radius clears when a growth reaches or passes `EvictDistance`. When
   `EvictDistance` sets no limit, it clears when a growth reaches or passes
   the farthest tracked actor with a state (`FarthestTrackedDistance`), or
-  when no such actor has a distance. The clear writes `render target budget:
-  radius cleared` and the trace event `budget_radius` with `change` `clear`.
-  Returning actors install through the usual path, so the install level
-  follows the headroom (`FittingLevel`).
+  when no such actor has a distance. A clear prices its ring too: the ring
+  ends at 0.8 × `EvictDistance`, or has no end when `EvictDistance` sets no
+  limit. A clear whose ring does not fit is a growth to the fitting radius,
+  and a clear whose nearest NPC does not fit is a block. The clear writes
+  `render target budget: radius cleared` and the trace event `budget_radius`
+  with `change` `clear` and `returning_bytes`. Returning actors install
+  through the usual path, so the install level follows the headroom
+  (`FittingLevel`).
 - When the radius has no candidate either, for example when only the player
   or a resizing actor holds targets, the plugin writes one `warning` per
   pressure episode (`render target budget: no release or step down is

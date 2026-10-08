@@ -175,7 +175,10 @@ private:
                          const StepDownOption &a_option);
   [[nodiscard]] bool ShrinkBudgetRadius(std::span<const BudgetActor> a_actors);
   void GrowBudgetRadius(const Settings &a_settings);
+  void ReportRadiusGrowth(const RadiusGrowth &a_growth);
   [[nodiscard]] std::optional<float> FarthestTrackedDistance() const;
+  [[nodiscard]] std::vector<EvictedActor> EvictedActors() const;
+  [[nodiscard]] std::uint64_t LargestReturnBytes() const;
   [[nodiscard]] float EvictDistanceNow(const Settings &a_settings) const;
   [[nodiscard]] bool AdmitStepUp(RE::FormID a_actorID, LiveActor &a_state,
                                  ResolutionLevel a_from, ResolutionLevel a_to);
@@ -283,6 +286,7 @@ private:
     std::optional<Actors::ActorState> state;
     ModelTable models;
     std::optional<ResolutionLevel> targetResolution;
+    std::optional<std::uint64_t> returnBytes;
   };
   std::unordered_map<RE::FormID, TrackedActor> tracked_;
   std::optional<IdleCameraHold> menuIdleHold_;
