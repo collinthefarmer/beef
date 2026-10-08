@@ -119,7 +119,7 @@ void Manager::Clear() {
   SweepRetiredMaterialTextures();
   editor_.CancelPaintForLoad();
   loggedNonPBRArmor_.clear();
-  stackWarnings_.Clear();
+  warningHistory_.Clear();
   carriedTimes_.Clear();
   Compositor::GetSingleton()->ClearStepOutputs();
   Compositor::GetSingleton()->ClearMeshes();

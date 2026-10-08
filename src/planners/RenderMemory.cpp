@@ -26,7 +26,7 @@ std::string HoldingText(const ActorHolding &a_holding) {
       a_holding.name.empty()
           ? std::format("{:08X}", a_holding.actor)
           : std::format("{} ({:08X})", a_holding.name, a_holding.actor);
-  return std::format("{} {} ({} shared), {:.2f} of the screen height, "
+  return std::format("{} {} own and {} shared, {:.2f} of the screen height, "
                      "recipes {}",
                      actor, Mebibytes(a_holding.bytes),
                      Mebibytes(a_holding.sharedBytes), a_holding.screenFraction,
@@ -86,15 +86,18 @@ std::vector<ActorHolding> HoldingsOf(std::span<const ActorTargets> a_actors) {
   const std::map<std::string, std::size_t> holders = HoldersByKey(a_actors);
   std::vector<ActorHolding> holdings;
   for (const ActorTargets &actor : a_actors) {
+    std::vector<HeldTarget> own;
     std::vector<HeldTarget> shared;
     for (const HeldTarget &target : actor.held) {
       const auto found =
           target.sharedKey ? holders.find(*target.sharedKey) : holders.end();
       if (found != holders.end() && found->second > 1) {
         shared.push_back(target);
+      } else {
+        own.push_back(target);
       }
     }
-    holdings.push_back({actor.actor, actor.name, CostOf(actor.held).bytes,
+    holdings.push_back({actor.actor, actor.name, CostOf(own).bytes,
                         CostOf(shared).bytes, actor.screenFraction,
                         actor.recipes});
   }
@@ -111,10 +114,13 @@ std::vector<ActorHolding> LargestHoldings(std::vector<ActorHolding> a_holdings,
   return a_holdings;
 }
 
-std::string HoldingLine(const TargetTotals &a_totals,
+std::string HoldingLine(const TargetTotals &a_measured,
+                        const TargetTotals &a_planned,
                         std::span<const ActorHolding> a_largest) {
-  std::string line = std::format("render targets: {} in {} targets",
-                                 Mebibytes(a_totals.bytes), a_totals.targets);
+  std::string line = std::format(
+      "render targets: {} in {} targets; plans hold {} in {} targets",
+      Mebibytes(a_measured.bytes), a_measured.targets,
+      Mebibytes(a_planned.bytes), a_planned.targets);
   for (const ActorHolding &holding : a_largest) {
     line += "; " + HoldingText(holding);
   }

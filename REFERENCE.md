@@ -1448,6 +1448,37 @@ Decompile provenance (`decompiled/WornEnchantmentFX/plugin.c` unless noted):
   current = max - damage; `damage` is the damage modifier negated; `max` is
   permanent plus the temporary modifier.
 
+### The text log (`engine/LogOnce.h`, `ManagerApply.cpp`, `ManagerTick.cpp`)
+
+- No line reaches the text log per frame or per tick in steady play. A fault
+  that repeats every frame or every reinstall goes through `LogOnce`. The
+  first occurrence of a line is written with `(repeats suppressed)`. Later
+  occurrences of the same text are not written until the next load.
+- `LogOnce` keys on the whole line. A line that names the recipe, the
+  geometry or the actor is therefore reported once for each of them.
+- Faults are never gated by `VerboseLogging`. The stack diagnostics, the
+  texture-demand errors and the render-input errors were gated or unbounded
+  before 2026-10-08.
+- `VerboseLogging` defaults to off since 2026-10-08. A 7-minute session with
+  verbose on wrote 46 195 lines; 45 122 were a per-frame mesh-cache line and
+  about 870 were the apply block of one actor that resized 45 times. Verbose
+  also compares every mesh read with a GPU readback, which costs a stall per
+  read. Default users keep every fault and one summary line per apply.
+- `DiagnosticLogging` stays on by default. It gates only the JSONL trace,
+  which is bounded and rotated, and bug reports depend on it.
+- A resize (`TrackedActor::resizing`, sync kind `resized`) writes no apply
+  summary. The trace event `resolution_level` records the change. With
+  `VerboseLogging` the resize writes one line with the new level.
+- `warning` marks a fault only. The render-target holding line is `info`.
+  The burst line is `info` and needs `VerboseLogging`, because a step to full
+  resolution on one large actor creates 257 to 1 253 MiB, which is above the
+  256 MiB burst threshold during normal play.
+- The GPU comparison of a mesh read (`CompareWithGpu`) ran on every read and
+  reported `0 of N bytes differ` every time. It now runs only under
+  `VerboseLogging` and logs a warning only when a byte differs.
+- The side and facing UV split lines were removed on 2026-10-08. The
+  debug recipe `inspect-bake-position` shows the same fact as colour.
+
 ## Meshes, bakes and analysis (`mesh/Mesh.h`, `mesh/TextureSize.h`, `mesh/Islands.h`, `mesh/MaterialClusters.h`, `mesh/MeshFacts.h`)
 
 - A biped slot has two representations and they are not the same type.
@@ -1552,12 +1583,10 @@ Decompile provenance (`decompiled/WornEnchantmentFX/plugin.c` unless noted):
   mesh reader resolves per vertex correctly, then collapses at
   rasterisation) reads one surface's value for all of them. Which axes
   survive is per-armor, not a rule (observed 2026-09-22: front/back
-  also collapses on some pieces, not only left/right). Two verbose
-  lines measure it per geometry (`render/MeshCache.cpp`): `side split
-  ... overlap N%` splits by L/R bone names, `facing split ... overlap
-  N%` by bind-pose y against the mesh centre; 100% means that axis
-  cannot be masked apart on that piece, and `inspect-bake-position`
-  (debug recipe) shows the same fact as colour in game. Region masking
+  also collapses on some pieces, not only left/right). The debug
+  recipe `inspect-bake-position` shows per geometry in game which axes
+  collapse. Two verbose log lines measured the left/right and front/back
+  overlap until 2026-10-08. Region masking
   survives because a `partition` bake keys on a biped slot, and slots
   are region-level (forearms, calves), never side-specific. Lights are
   the only per-half path, being placed in bone space, but a recipe
@@ -2414,14 +2443,23 @@ cancel by the user instead of the load.
   the stacks and gave 80.0 MiB for the fill template, which holds 69.3 MiB.
 - The plain log carries two render-target lines whether or not the trace is
   on (`Manager::ReportRenderMemory`, render-performance 7a). The holding line
-  is written when the live target bytes cross a 1 GiB level: a rise is a
-  warning and a fall, half a step below the level, is an info line. It names
-  the five actors with the most estimated bytes, each with the part it
-  shares through content keys, its screen fraction and its recipes. An
-  actor's bytes include its shared targets, so the actors' bytes add up to
-  more than the total. The burst line is written when one heartbeat interval
-  creates 256 MiB or more; it gives the interval and the syncs of the last
-  2 s by kind. The heartbeat is also flushed at regression window edges, so
+  is an `info` line. It is written when the live target bytes rise to a new
+  1 GiB level or fall half a step below the level. It gives the measured
+  total and the plans' total (`EstimateTargets`). It names the five actors
+  with the most own bytes, each with its shared bytes, its screen fraction
+  and its recipes. A shared target has a content key that another rendered
+  actor also holds. The own bytes of all actors plus each shared target once
+  equal the plans' total. The measured total also counts the pool and the
+  scratch targets. The burst line is an `info` line and needs
+  `VerboseLogging`. It is written when one heartbeat interval creates
+  256 MiB or more; it gives the interval and the syncs of the last 2 s by
+  kind.
+- Every bound geometry of an actor holds the same `RenderInstance`.
+  `InstancesOf` (`ManagerTick.cpp`) lists each instance of an actor once.
+  Before 2026-10-08 it listed the instance once per geometry, so an actor's
+  bytes were its plan's bytes times its geometry count. The line
+  `render targets: 1474 MiB in 250 targets; Vigilant of Stendarr (FF00226C)
+  3973 MiB` came from that count. The heartbeat is also flushed at regression window edges, so
   an interval can be shorter than a second. The thresholds are fixed until
   render-performance 7d reads the DXGI budget.
 - `ScreenFraction` (`ManagerTick.cpp`) is the actor's bound diameter over its
@@ -2844,6 +2882,19 @@ floor z 6976), three rows deep with a 48-unit margin, and the player moves to
 (1904, 2016) until the crowd despawns. The known good save puts the player at
 (-957, 1827), outside the room's west wall, where no navmesh exists.
 
+A crowd at `Spot::kAhead` (`soak-distance`) stands in four rows at 150, 400,
+800 and 1600 units in front of the player, along the camera's direction.
+Member `i` stands in row `i % 4`; the members of a row stand 120 units apart.
+The screen fraction is the bound's diameter over the camera distance over the
+frustum height (`ScreenFraction`), and the third-person camera sits behind the
+player, so the rows are meant to reach the half, quarter and eighth levels. It
+is not yet verified in game which level each row gets; the report's
+*screen resolution* table gives the counts. The run file's
+`screenResolution` replaces the setting at both level decisions
+(`Manager::InstallLevel` and `Manager::UpdateResolution`) until the run ends,
+so `--screen-resolution on` and `off` runs of one case give the A/B
+comparison.
+
 The run reads the camera from `PlayerCamera::currentState->id`: state 0 is
 first person, state 9 is third person, and every other state is neither. A run
 sets the `[Camera]` setting `fAutoVanityModeDelay` (120 s by default) to 10^9
@@ -2881,19 +2932,6 @@ must show at least one trace; an actor at baseline shows none.
 record reached `kRendered` while the actor's state renders the fixture.
 `AwaitRendered` compares it with the revision seen when the last step that
 moved that actor started, so an earlier render cannot satisfy a later wait.
-
-A crowd at `Spot::kAhead` (`soak-distance`) stands in four rows at 150, 400,
-800 and 1600 units in front of the player, along the camera's direction.
-Member `i` stands in row `i % 4`; the members of a row stand 120 units apart.
-The screen fraction is the bound's diameter over the camera distance over the
-frustum height (`ScreenFraction`), and the third-person camera sits behind the
-player, so the rows are meant to reach the half, quarter and eighth levels. It
-is not yet verified in game which level each row gets; the report's
-*screen resolution* table gives the counts. The run file's
-`screenResolution` replaces the setting at both level decisions
-(`Manager::InstallLevel` and `Manager::UpdateResolution`) until the run ends,
-so `--screen-resolution on` and `off` runs of one case give the A/B
-comparison.
 
 An `Expect…` step checks a state that the steps before it should already have
 produced. It waits up to `kExpectDeadlineFrames` (600) only so the

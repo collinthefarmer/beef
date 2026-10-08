@@ -67,7 +67,8 @@ struct TargetBurst {
 HoldingsOf(std::span<const ActorTargets> a_actors);
 [[nodiscard]] std::vector<ActorHolding>
 LargestHoldings(std::vector<ActorHolding> a_holdings, std::size_t a_count);
-[[nodiscard]] std::string HoldingLine(const TargetTotals &a_totals,
+[[nodiscard]] std::string HoldingLine(const TargetTotals &a_measured,
+                                      const TargetTotals &a_planned,
                                       std::span<const ActorHolding> a_largest);
 [[nodiscard]] std::string BurstLine(const TargetBurst &a_burst,
                                     std::string_view a_syncs);

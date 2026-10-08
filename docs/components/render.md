@@ -210,7 +210,8 @@ loop writes the same way to a worn material and to a shell clone.
 | `MaterialBinding` | The `SlotTarget` over a worn material. `Install` attaches it to a geometry's shader property, on a private material copy when asked. | `Binding.h` |
 | `ShellBinding` | The `SlotTarget` over a cloned shell geometry. It owns the clone's `SkinPaletteLease` and alpha property. `Pose` applies `ShellPoseValues` to the clone's bone transforms each tick. | `Binding.h` |
 | `SlotState` | One slot's report row: the slot, the original texture name and the written one. | `Binding.h` |
-| `LightPlacement`, `LightValues` | One bone that holds a light, with an offset and a share of the intensity; and a light's color, intensity, size and cutoff. `PlaceLightNodes` builds the placements. | `Binding.h` |
+| `LightPlacement`, `LightValues` | One bone that holds a light, with an offset and a share of the intensity; and a light's color, intensity, size and cutoff. | `Binding.h` |
+| `LightPlacements` | The placements that `PlaceLightNodes` builds, and the named bones that the wearer does not have. The manager logs each missing bone once. | `Binding.h` |
 | `LightBinding` | One `NiPointLight` per placement. `Create` places them, and `Update` sets the values and visibility. | `Binding.h` |
 | `PbrMaterial` | The checked handle on a PBR property. `Bind` verifies the layout, and `Attached` and `TextureSlotsValid` check it again at use. | `PBRMaterial.h` |
 | `PBRMaterialLayout` | The pinned copy of Community Shaders' `BSLightingShaderMaterialPBR`. Its static asserts fix the member offsets and the 0x148 size. | `PBRMaterial.h` |
@@ -227,7 +228,7 @@ result. `Compositor::SweepMeshes` drops entries after `kMeshMaxAgeMS`.
 | `MeshIdentity` | The key of one GPU mesh: skin partition, vertex buffers and vertex count. `IdentityOf` reads it. | `MeshReader.h` |
 | `GpuComparison` | The count of differing values between a cached mesh and a fresh GPU read. `CompareWithGpu` produces it. | `MeshReader.h` |
 | `MeshEntry` | One cached geometry: identity, mesh data, facts, analysis and last use. | `MeshCache.h` |
-| `MeshCache` | The per-geometry store. `Get` reads or reuses an entry, and `Sweep` drops aged entries not in the keep list. | `MeshCache.h` |
+| `MeshCache` | The per-geometry store. `Get` reads or reuses an entry, and `Sweep` drops aged entries not in the keep list. With `VerboseLogging`, `Get` logs each read and compares it with a GPU readback. It logs the comparison only when bytes differ. | `MeshCache.h` |
 | `SkinPaletteLease` | Ownership of a shell clone's repaired bone-transform links. `Preserve` takes them from the source geometry. `StillOwned` reports whether the clone still carries them. | `SkinPalette.h` |
 
 `CopySkinData` (`SkinData.h`) copies a geometry's `NiSkinData` for a shell

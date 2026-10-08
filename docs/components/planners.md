@@ -197,16 +197,16 @@ A plan names texture sizes by **side reference** (`SideRef`, in `TextureDemand.h
 | `LevelHistory`, `LevelChange` | An actor's level and the time of its last change; the next level, held 2 s after a change. The player is always full. |
 | `AtLevel` | The `PlanSides` divided by a level, with 64 as the floor. |
 
-`RenderMemory.h` turns the counts into the always-on log lines.
+`RenderMemory.h` turns the counts into the render-target log lines.
 
 | Type or function | Description |
 |---|---|
 | `NextHoldingLevel`, `HoldingLevel`, `Crossing` | The 1 GiB level of the live target bytes, with a **crossing** when it rises a level or falls half a step below one. |
-| `ActorTargets`, `HoldingsOf`, `ActorHolding` | One actor's held targets, and its bytes with the part it shares: a content key that another actor also holds. |
-| `LargestHoldings` | The five actors with the most bytes. |
+| `ActorTargets`, `HoldingsOf`, `ActorHolding` | One actor's held targets, split into its own bytes and its shared bytes. A shared target has a content key that another actor also holds. The own bytes of all actors plus each shared target once make the plans' total. |
+| `LargestHoldings` | The five actors with the most own bytes. |
 | `TargetBurst`, `IsBurst` | The targets created and destroyed in one heartbeat interval; a **burst** creates 256 MiB or more. |
 | `ScreenSpread`, `SpreadOf` | The least, median and most screen fraction of the rendered actors. |
-| `HoldingLine`, `BurstLine`, `Mebibytes` | The text of the two log lines. |
+| `HoldingLine`, `BurstLine`, `Mebibytes` | The text of the two log lines. The holding line gives the measured total and the plans' total. |
 
 ### Render steps
 

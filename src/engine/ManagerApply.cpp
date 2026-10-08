@@ -12,6 +12,7 @@
 #include "engine/Clock.h"
 #include "engine/EngineForms.h"
 #include "engine/GameObjectService.h"
+#include "engine/LogOnce.h"
 #include "engine/PhaseTrace.h"
 #include "engine/RecipeStore.h"
 #include "engine/RegressionRun.h"
@@ -435,20 +436,10 @@ void LogStackDiagnostics(const LocatedStackOutput &a_output,
                          const std::string &a_geometry,
                          WarningHistory &a_warnings) {
   for (const Diagnostic &diagnostic : a_output.placed.stack->Diagnostics()) {
-    const WarningDecision decision = a_warnings.Observe(
-        std::format("{}|{}|{}|{}|{}", a_output.recipe.id, a_output.placed.index,
-                    a_geometry, diagnostic.where, diagnostic.message));
-    if (decision == WarningDecision::kLimit) {
-      logger::warn("stack warning history reached its budget; warnings that "
-                   "exceed it are omitted from the log until the next load; "
-                   "diagnostics remain available in the editor");
-    }
-    if (decision != WarningDecision::kFirst) {
-      continue;
-    }
-    logger::warn("recipe {} output {} on '{}': {}: {} (repeats suppressed)",
-                 a_output.recipe.id, a_output.placed.index, a_geometry,
-                 diagnostic.where, diagnostic.message);
+    LogOnce(a_warnings, Severity::kWarning,
+            std::format("recipe {} output {} on '{}': {}: {}",
+                        a_output.recipe.id, a_output.placed.index, a_geometry,
+                        diagnostic.where, diagnostic.message));
   }
 }
 
@@ -580,7 +571,7 @@ struct LayerRole {
 
 void CollectLayerRoleDemands(std::vector<TextureDemand> &a_demands,
                              const ActorStackRequest &a_request,
-                             LayerRole a_role, bool a_verbose) {
+                             LayerRole a_role, WarningHistory &a_warnings) {
   const StackTextureRequest &texture = a_request.texture;
   if (!texture.graph)
     return;
@@ -598,30 +589,33 @@ void CollectLayerRoleDemands(std::vector<TextureDemand> &a_demands,
          {texture.placement, texture.outputIndex, a_role.layer, a_role.role},
          a_request.geometry},
         TextureValueBindings(*texture.graph, texture.inputs));
-    if (!collected && a_verbose) {
-      logger::warn("{}: {}", property, collected.error());
+    if (!collected) {
+      LogOnce(a_warnings, Severity::kWarning,
+              std::format("recipe {} {}: {}", a_request.located.recipe.id,
+                          property, collected.error()));
     }
   }
 }
 
 void CollectRequestDemands(std::vector<TextureDemand> &a_demands,
-                           const ActorStackRequest &a_request, bool a_verbose) {
+                           const ActorStackRequest &a_request,
+                           WarningHistory &a_warnings) {
   if (!a_request.texture.output)
     return;
   for (std::size_t layer = 0; layer < a_request.texture.output->stack.size();
        ++layer) {
     for (const TextureUseInput role :
          {TextureUseInput::kSource, TextureUseInput::kMask}) {
-      CollectLayerRoleDemands(a_demands, a_request, {layer, role}, a_verbose);
+      CollectLayerRoleDemands(a_demands, a_request, {layer, role}, a_warnings);
     }
   }
 }
 
 std::vector<TextureDemand> CollectLayerDemands(const ActorStacks &a_stacks,
-                                               bool a_verbose) {
+                                               WarningHistory &a_warnings) {
   std::vector<TextureDemand> demands;
   for (const ActorStackRequest &request : a_stacks.requests) {
-    CollectRequestDemands(demands, request, a_verbose);
+    CollectRequestDemands(demands, request, a_warnings);
   }
   return demands;
 }
@@ -653,7 +647,6 @@ const LiveGeometry *BoundAt(const ActorStacks &a_stacks,
 
 void AttachStackOutputs(ActorStacks &a_stacks,
                         const std::shared_ptr<RenderInstance> &a_render,
-                        const Settings &a_settings,
                         WarningHistory &a_warnings) {
   for (ActorStackRequest &request : a_stacks.requests) {
     const StackTextureRequest &texture = request.texture;
@@ -667,7 +660,7 @@ void AttachStackOutputs(ActorStacks &a_stacks,
     const LiveGeometry *bound = BoundAt(a_stacks, request.geometry);
     if (!placed.stack) {
       placed.problem = "stack was not lowered";
-    } else if (a_settings.verboseLogging && bound) {
+    } else if (bound) {
       LogStackDiagnostics(request.located, bound->name, a_warnings);
     }
   }
@@ -718,12 +711,11 @@ std::optional<RenderPlanKey> PlanKeyOf(const ActorStacks &a_stacks) {
 }
 
 std::expected<RenderPlan, std::string>
-FreshRenderPlan(const ActorStacks &a_stacks, const Settings &a_settings) {
+FreshRenderPlan(const ActorStacks &a_stacks, WarningHistory &a_warnings) {
   PhaseTrace phases{Trace::Event::kMetrics, "render_plan_build",
                     a_stacks.actor};
-  const std::vector<TextureDemand> demands = phases.Measure("demand_us", [&] {
-    return CollectLayerDemands(a_stacks, a_settings.verboseLogging);
-  });
+  const std::vector<TextureDemand> demands = phases.Measure(
+      "demand_us", [&] { return CollectLayerDemands(a_stacks, a_warnings); });
   std::expected<RenderPlan, std::string> plan = phases.Measure("lower_us", [&] {
     return BuildRenderPlan(demands, RenderStackRequests(a_stacks),
                            BindingResolverFor(a_stacks), a_stacks.chains);
@@ -751,49 +743,55 @@ void StoreRenderPlan(RenderPlanCache &a_cache, RenderPlanKey a_key,
   a_cache.Store(std::move(a_key), a_plan, std::move(graphs));
 }
 
+struct RenderStores {
+  RenderPlanCache &plans;
+  WarningHistory &warnings;
+};
+
 std::expected<RenderPlan, std::string>
 RenderPlanFor(const LiveActor &a_state, const ActorStacks &a_stacks,
-              const Settings &a_settings, RenderPlanCache &a_cache) {
+              const Settings &a_settings, RenderStores a_stores) {
   if (!a_settings.renderPlanCache) {
-    return FreshRenderPlan(a_stacks, a_settings);
+    return FreshRenderPlan(a_stacks, a_stores.warnings);
   }
   std::optional<RenderPlanKey> key = PlanKeyOf(a_stacks);
   if (!key) {
-    TraceRenderPlanCache(a_stacks.actor, "uncacheable", a_cache.Size());
-    return FreshRenderPlan(a_stacks, a_settings);
+    TraceRenderPlanCache(a_stacks.actor, "uncacheable", a_stores.plans.Size());
+    return FreshRenderPlan(a_stacks, a_stores.warnings);
   }
-  if (const RenderPlan *cached = a_cache.Find(*key)) {
+  if (const RenderPlan *cached = a_stores.plans.Find(*key)) {
     if (!a_settings.verifyRenderPlanCache && !RegressionVerifiesRenderPlans()) {
-      TraceRenderPlanCache(a_stacks.actor, "hit", a_cache.Size());
+      TraceRenderPlanCache(a_stacks.actor, "hit", a_stores.plans.Size());
       return *cached;
     }
     std::expected<RenderPlan, std::string> fresh =
-        FreshRenderPlan(a_stacks, a_settings);
+        FreshRenderPlan(a_stacks, a_stores.warnings);
     if (fresh && SameStructure(*cached, *fresh)) {
-      TraceRenderPlanCache(a_stacks.actor, "hit_verified", a_cache.Size());
+      TraceRenderPlanCache(a_stacks.actor, "hit_verified",
+                           a_stores.plans.Size());
       return *cached;
     }
-    logger::warn("render plan cache: actor {:08X} reused a plan that differs "
-                 "from a fresh one",
-                 a_stacks.actor);
-    TraceRenderPlanCache(a_stacks.actor, "mismatch", a_cache.Size());
+    LogOnce(a_stores.warnings, Severity::kWarning,
+            std::format("render plan cache: actor {:08X} reused a plan that "
+                        "differs from a fresh one",
+                        a_stacks.actor));
+    TraceRenderPlanCache(a_stacks.actor, "mismatch", a_stores.plans.Size());
     if (fresh) {
-      StoreRenderPlan(a_cache, std::move(*key), *fresh, a_state);
+      StoreRenderPlan(a_stores.plans, std::move(*key), *fresh, a_state);
     }
     return fresh;
   }
   std::expected<RenderPlan, std::string> fresh =
-      FreshRenderPlan(a_stacks, a_settings);
+      FreshRenderPlan(a_stacks, a_stores.warnings);
   if (fresh) {
-    StoreRenderPlan(a_cache, std::move(*key), *fresh, a_state);
+    StoreRenderPlan(a_stores.plans, std::move(*key), *fresh, a_state);
   }
-  TraceRenderPlanCache(a_stacks.actor, "miss", a_cache.Size());
+  TraceRenderPlanCache(a_stacks.actor, "miss", a_stores.plans.Size());
   return fresh;
 }
 
 void BuildActorRender(const LiveActor &a_state, ActorStacks &a_stacks,
-                      const Settings &a_settings, WarningHistory &a_warnings,
-                      RenderPlanCache &a_cache) {
+                      const Settings &a_settings, RenderStores a_stores) {
   const PlanSides full{a_stacks.sides};
   AttachRender(a_stacks, nullptr);
   for (LiveGeometry *bound : a_stacks.bound) {
@@ -806,7 +804,7 @@ void BuildActorRender(const LiveActor &a_state, ActorStacks &a_stacks,
   }
   PhaseTrace phases{Trace::Event::kMetrics, "actor_render", a_stacks.actor};
   std::expected<RenderPlan, std::string> plan = phases.Measure("plan_us", [&] {
-    return RenderPlanFor(a_state, a_stacks, a_settings, a_cache);
+    return RenderPlanFor(a_state, a_stacks, a_settings, a_stores);
   });
   if (!plan) {
     FailStackOutputs(a_stacks, plan.error());
@@ -824,7 +822,7 @@ void BuildActorRender(const LiveActor &a_state, ActorStacks &a_stacks,
                                          a_stacks.geometries,
                                          LiveGraphs(a_state));
     AttachRender(a_stacks, render);
-    AttachStackOutputs(a_stacks, render, a_settings, a_warnings);
+    AttachStackOutputs(a_stacks, render, a_stores.warnings);
     AttachMergedSlots(a_stacks, render);
   });
   phases.Emit();
@@ -872,30 +870,54 @@ std::vector<RE::BSGeometry *> LightGeometriesOf(LiveActor &a_state,
   return geometries;
 }
 
-LiveInstance *PlaceLight(LiveActor &a_state, const ActorLightPlan &a_plan,
-                         const LightContribution &a_c, RE::NiAVObject *a_root) {
+std::string LightProblemOf(const LiveInstance &a_instance,
+                           const LightPlacements &a_placements) {
+  if (a_instance.light) {
+    return "";
+  }
+  if (a_placements.placed.empty()) {
+    return "no bones to place the light on";
+  }
+  return "light preparation failed";
+}
+
+std::vector<std::string> PlaceLight(LiveActor &a_state,
+                                    const ActorLightPlan &a_plan,
+                                    const LightContribution &a_c,
+                                    RE::NiAVObject *a_root) {
   const std::optional<std::size_t> instanceIndex =
       LightSourceInstance(a_plan, a_c);
   LiveInstance *instance = LightInstanceOf(a_state, a_plan, a_c);
   if (!instanceIndex || !instance) {
-    return nullptr;
+    return {};
   }
   const LightOutput *light = LightOutputOf(*instance->recipe, a_c.output);
   if (!light) {
-    return nullptr;
+    return {};
   }
   const std::vector<RE::BSGeometry *> geometries =
       LightGeometriesOf(a_state, *instanceIndex, *light);
   if (geometries.empty()) {
-    return nullptr;
+    return {};
   }
-  const std::vector<LightPlacement> placements =
+  const LightPlacements placements =
       PlaceLightNodes(light->bones, geometries, a_root,
                       instance->signals->Resolve(light->offset));
-  instance->light = LightBinding::Create(placements, light->shadow);
+  std::vector<std::string> faults;
+  faults.reserve(placements.missingBones.size() + 1);
+  for (const std::string &bone : placements.missingBones) {
+    faults.push_back(std::format("recipe {}: light bone '{}' is not on the "
+                                 "wearer",
+                                 instance->recipe->id, bone));
+  }
+  instance->light = LightBinding::Create(placements.placed, light->shadow);
   instance->lightOutput = a_c.output;
-  instance->lightProblem = instance->light ? "" : "light preparation failed";
-  return instance;
+  instance->lightProblem = LightProblemOf(*instance, placements);
+  if (!instance->light) {
+    faults.push_back(std::format("recipe {}: {}", instance->recipe->id,
+                                 instance->lightProblem));
+  }
+  return faults;
 }
 
 std::string FormName(RE::FormID a_form) {
@@ -904,26 +926,91 @@ std::string FormName(RE::FormID a_form) {
   return name && *name ? name : "unnamed";
 }
 
-void ReportApplied(RE::Actor &a_actor, const LiveActor &a_state,
-                   const Settings &a_settings) {
-  const RE::FormID actorID = a_actor.GetFormID();
-  if (a_settings.verboseLogging) {
-    logger::info("actor {:08X} ({}): {} piece(s), {} recipe(s) applied",
-                 actorID, a_actor.GetName(), a_state.pieces.size(),
-                 LiveInstanceCount(a_state));
-    for (const LivePiece &piece : a_state.pieces) {
-      logger::info("  piece {:08X} ({}) enchantment {:08X} ({})", piece.armor,
-                   piece.armorName, piece.enchantment,
-                   FormName(piece.enchantment));
-    }
-    for (const LiveInstance &instance : a_state.instances) {
-      if (instance.recipe) {
-        logger::info("  recipe {} for enchantment {:08X} ({}){}{}",
-                     instance.recipe->id, instance.enchantment,
-                     FormName(instance.enchantment),
-                     instance.effectScope.empty() ? "" : " effect ",
-                     instance.effectScope);
+struct SurfaceCounts {
+  std::size_t geometries = 0;
+  std::size_t privateMaterials = 0;
+  std::size_t sharedMaterials = 0;
+  std::size_t shells = 0;
+};
+
+SurfaceCounts SurfacesOf(const LiveActor &a_state) {
+  SurfaceCounts counts;
+  for (const LivePiece &piece : a_state.pieces) {
+    for (const LiveGeometry &bound : piece.geometries) {
+      ++counts.geometries;
+      if (bound.material && bound.material->Private()) {
+        ++counts.privateMaterials;
+      } else if (bound.material) {
+        ++counts.sharedMaterials;
       }
+      if (bound.shell) {
+        ++counts.shells;
+      }
+    }
+  }
+  return counts;
+}
+
+std::string_view MaterialWord(const LiveGeometry &a_bound) {
+  if (!a_bound.material) {
+    return "untouched";
+  }
+  return a_bound.material->Private() ? "private" : "shared";
+}
+
+void ReportSummary(RE::FormID a_actorID, std::string_view a_name,
+                   const LiveActor &a_state, Actors::SyncKind a_kind) {
+  const SurfaceCounts surfaces = SurfacesOf(a_state);
+  logger::info("actor {:08X} ({}) {}: {} piece(s), {} recipe(s) applied to {} "
+               "geometries ({} private material(s), {} shared, {} shell(s))",
+               a_actorID, a_name, Actors::SyncKindName(a_kind),
+               a_state.pieces.size(), LiveInstanceCount(a_state),
+               surfaces.geometries, surfaces.privateMaterials,
+               surfaces.sharedMaterials, surfaces.shells);
+}
+
+void ReportDetail(RE::FormID a_actorID, const LiveActor &a_state) {
+  for (const LivePiece &piece : a_state.pieces) {
+    logger::info("  piece {:08X} ({}) enchantment {:08X} ({})", piece.armor,
+                 piece.armorName, piece.enchantment,
+                 FormName(piece.enchantment));
+  }
+  for (const LiveInstance &instance : a_state.instances) {
+    if (instance.recipe) {
+      logger::info(
+          "  recipe {} for enchantment {:08X} ({}){}{}", instance.recipe->id,
+          instance.enchantment, FormName(instance.enchantment),
+          instance.effectScope.empty() ? "" : " effect ", instance.effectScope);
+    }
+    if (instance.recipe && instance.light) {
+      logger::info("  recipe {}: {}", instance.recipe->id,
+                   instance.light->Describe());
+    }
+  }
+  for (const LivePiece &piece : a_state.pieces) {
+    for (const LiveGeometry &bound : piece.geometries) {
+      logger::info(
+          "apply armor {:08X} actor {:08X} geometry '{}' material={} {}",
+          piece.armor, a_actorID, bound.name, MaterialWord(bound),
+          bound.shell ? bound.shell->Describe() : "no shell");
+    }
+  }
+}
+
+void ReportApplied(RE::Actor &a_actor, const LiveActor &a_state,
+                   const Settings &a_settings, Actors::SyncKind a_kind) {
+  const RE::FormID actorID = a_actor.GetFormID();
+  const char *name = a_actor.GetName();
+  const std::string_view shown = name ? name : "unnamed";
+  if (a_kind == Actors::SyncKind::kResized) {
+    if (a_settings.verboseLogging) {
+      logger::info("actor {:08X} ({}) resized: drawn at {} resolution", actorID,
+                   shown, LevelName(a_state.resolution));
+    }
+  } else {
+    ReportSummary(actorID, shown, a_state, a_kind);
+    if (a_settings.verboseLogging) {
+      ReportDetail(actorID, a_state);
     }
   }
   Trace::EmitSafely(Trace::Event::kApplication,
@@ -986,11 +1073,13 @@ void Manager::SyncActor(RE::Actor *a_actor) {
     }
     return;
   }
-  RetireActor(actorID);
+  const std::size_t retired = RetireActor(actorID);
   const bool installs = Actors::AnythingInstalled(decision.next.state);
   RecordState(actorID, std::move(decision.next.state));
   if (installs) {
     InstallActor(*a_actor, std::move(decision), settings);
+  } else if (retired > 0 && settings.verboseLogging) {
+    logger::info("actor {:08X}: retired {} recipe(s)", actorID, retired);
   }
 }
 
@@ -1018,10 +1107,10 @@ void Manager::InstallActor(RE::Actor &a_actor, ActorDecision a_decision,
   }
   phases.Measure("place_us",
                  [&] { PlaceInstances(*state, actorID, a_settings); });
-  phases.Measure("lights_us",
-                 [&] { PlaceLightsOf(&a_actor, *state, a_settings); });
-  phases.Measure("report_us",
-                 [&] { ReportApplied(a_actor, *state, a_settings); });
+  phases.Measure("lights_us", [&] { PlaceLightsOf(&a_actor, *state); });
+  phases.Measure("report_us", [&] {
+    ReportApplied(a_actor, *state, a_settings, a_decision.kind);
+  });
   phases.Emit();
   live_[actorID] = std::move(*state);
 
@@ -1239,7 +1328,8 @@ void Manager::PlaceInstances(LiveActor &a_state, RE::FormID a_actorID,
     return PlaceGeometries(a_state, a_settings, stacks);
   });
   phases.Measure("render_us", [&] {
-    BuildActorRender(a_state, stacks, a_settings, stackWarnings_, renderPlans_);
+    BuildActorRender(a_state, stacks, a_settings,
+                     {renderPlans_, warningHistory_});
   });
   phases.Add("geometries", std::to_string(geometries));
   phases.Add("level", std::string{LevelName(a_state.resolution)});
@@ -1314,18 +1404,9 @@ void Manager::PlaceOnGeometry(LiveActor &a_state, GeometryId a_geometry,
          {"shell",
           Trace::Pointer(bound.shell ? bound.shell->Geometry() : nullptr)}});
   }
-  if (a_settings.verboseLogging && actor) {
-    logger::info("apply armor {:08X} actor {:08X} geometry '{}' material={} {}",
-                 located->piece.armor, actor->GetFormID(), bound.name,
-                 bound.material
-                     ? (bound.material->Private() ? "private" : "shared")
-                     : "untouched",
-                 bound.shell ? bound.shell->Describe() : "no shell");
-  }
 }
 
-void Manager::PlaceLightsOf(RE::Actor *a_actor, LiveActor &a_state,
-                            const Settings &a_settings) {
+void Manager::PlaceLightsOf(RE::Actor *a_actor, LiveActor &a_state) {
   const std::span<const Recipe> loaded = RecipesOf(a_state);
   const ActorLightPlan plan = PlanActorLights(
       a_state.matches, loaded,
@@ -1362,11 +1443,8 @@ void Manager::PlaceLightsOf(RE::Actor *a_actor, LiveActor &a_state,
   }
   RE::NiAVObject *root = a_actor ? a_actor->Get3D(false) : nullptr;
   for (const LightContribution &c : plan.plan.shown) {
-    const LiveInstance *placed = PlaceLight(a_state, plan, c, root);
-    if (placed && placed->recipe && a_settings.verboseLogging) {
-      logger::info("  recipe {}: {}", placed->recipe->id,
-                   placed->light ? placed->light->Describe()
-                                 : "light not created");
+    for (const std::string &fault : PlaceLight(a_state, plan, c, root)) {
+      LogOnce(warningHistory_, Severity::kWarning, fault);
     }
   }
 }
@@ -1374,12 +1452,15 @@ void Manager::PlaceLightsOf(RE::Actor *a_actor, LiveActor &a_state,
 void Manager::ForgetActor(RE::FormID a_actorID) {
   animations_.Stop(a_actorID);
   ForgetAnimEvents(a_actorID);
-  RetireActor(a_actorID);
+  if (const std::size_t retired = RetireActor(a_actorID);
+      retired > 0 && GetSettings().verboseLogging) {
+    logger::info("actor {:08X}: retired {} recipe(s)", a_actorID, retired);
+  }
   applications_.ClearReinstall(a_actorID);
   tracked_.erase(a_actorID);
 }
 
-void Manager::RetireActor(RE::FormID a_actorID) {
+std::size_t Manager::RetireActor(RE::FormID a_actorID) {
   if (const auto tracked = tracked_.find(a_actorID);
       tracked != tracked_.end()) {
     if (std::optional<Actors::ActorState> &state = tracked->second.state) {
@@ -1388,7 +1469,7 @@ void Manager::RetireActor(RE::FormID a_actorID) {
   }
   const auto it = live_.find(a_actorID);
   if (it == live_.end()) {
-    return;
+    return 0;
   }
   applications_.Retire(a_actorID, it->second.applications);
   const std::size_t recipes = LiveInstanceCount(it->second);
@@ -1409,8 +1490,6 @@ void Manager::RetireActor(RE::FormID a_actorID) {
   Trace::EmitSafely(Trace::Event::kRetire,
                     {{"action", "end"}, {"actor", std::to_string(a_actorID)}});
   TextureLab::GetSingleton()->InvalidatePreviews();
-  if (GetSettings().verboseLogging) {
-    logger::info("actor {:08X}: retired {} recipe(s)", a_actorID, recipes);
-  }
+  return recipes;
 }
 }

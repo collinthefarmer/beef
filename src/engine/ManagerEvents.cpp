@@ -1,6 +1,8 @@
 // GPL-3.0-only with the additional permission in COPYING.md.
+#include "engine/LogOnce.h"
 #include "engine/Manager.h"
 
+#include <format>
 #include <optional>
 #include <random>
 #include <string>
@@ -98,8 +100,9 @@ void Manager::FireAt(Studio::FireTrigger a_trigger) {
     const std::optional<Vec3> node =
         NodeWorldPosition(trigger.actorID, trigger.node);
     if (!node) {
-      logger::warn("fire {}: node '{}' is not on the actor", trigger.event,
-                   trigger.node);
+      LogOnce(warningHistory_, Severity::kWarning,
+              std::format("fire {}: node '{}' is not on actor {:08X}",
+                          trigger.event, trigger.node, trigger.actorID));
       return;
     }
     const Vec3 offset = trigger.offset;

@@ -3,6 +3,7 @@
 #include "diagnostics/Trace.h"
 #include "engine/RecipeOperations.h"
 
+#include "engine/LogOnce.h"
 #include "engine/Manager.h"
 
 #include "engine/RecipeStore.h"
@@ -34,14 +35,11 @@ void PushHistory(
   }
 }
 
-void LogRecipeDiagnostics(std::string_view a_id,
+void LogRecipeDiagnostics(WarningHistory &a_history, std::string_view a_id,
                           std::span<const Diagnostic> a_diagnostics) {
   for (const Diagnostic &d : a_diagnostics) {
-    if (d.severity == Severity::kError) {
-      logger::error("recipe {} {}: {}", a_id, d.where, d.message);
-    } else {
-      logger::warn("recipe {} {}: {}", a_id, d.where, d.message);
-    }
+    LogOnce(a_history, d.severity,
+            std::format("recipe {} {}: {}", a_id, d.where, d.message));
   }
 }
 
@@ -327,7 +325,8 @@ RecipeEditor::ApplyEdits(const std::string &a_id,
   runtime_.ChangeAndRebuildActors(a_id, [&] {
     PushHistory(histories_, a_id, *recipe, *prepared);
     *recipe = std::move(*prepared);
-    LogRecipeDiagnostics(a_id, RefreshRecipeDerivedState(a_id));
+    LogRecipeDiagnostics(loggedDiagnostics_, a_id,
+                         RefreshRecipeDerivedState(a_id));
     AdvanceDocumentRevision(a_id);
   });
   return {};

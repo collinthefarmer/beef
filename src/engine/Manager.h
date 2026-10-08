@@ -17,6 +17,7 @@
 #include "planners/ActorPlanning.h"
 #include "planners/RenderPlanCache.h"
 #include "planners/ResolutionLevel.h"
+#include "planners/TargetCost.h"
 #include "recipe/Recipe.h"
 #include "regression/Run.h"
 #include "render/TextureRef.h"
@@ -152,6 +153,7 @@ private:
     Actors::SyncKind kind = Actors::SyncKind::kUnchanged;
   };
   void ReportRenderMemory(const Metrics::Snapshot &a_measured,
+                          const TargetCost &a_planned,
                           std::uint32_t a_intervalMs);
   void InstallActor(RE::Actor &a_actor, ActorDecision a_decision,
                     const Settings &a_settings);
@@ -167,7 +169,7 @@ private:
   [[nodiscard]] std::expected<LiveActor, std::string>
   LiveActorFor(RE::Actor &a_actor, const Actors::ActorFacts &a_facts,
                CatalogMatches a_planned, const Settings &a_settings);
-  void RetireActor(RE::FormID a_actorID);
+  std::size_t RetireActor(RE::FormID a_actorID);
   void ForgetActor(RE::FormID a_actorID);
   void ChangeAndRebuildActors(std::string a_reportRecipe,
                               const std::function<void()> &a_action);
@@ -202,8 +204,7 @@ private:
                                             ActorStacks &a_stacks);
   void PlaceOnGeometry(LiveActor &a_state, GeometryId a_geometry,
                        const Settings &a_settings, ActorStacks &a_stacks);
-  void PlaceLightsOf(RE::Actor *a_actor, LiveActor &a_state,
-                     const Settings &a_settings);
+  void PlaceLightsOf(RE::Actor *a_actor, LiveActor &a_state);
 
   void Tick(std::uint32_t a_nowMS, const Settings &a_settings);
   void TickInstance(LiveInstance &a_instance, float a_time, float a_delta);
@@ -235,7 +236,7 @@ private:
   std::unordered_map<RE::FormID, LiveActor> live_;
   RecipeEditor editor_{*this};
   std::unordered_set<RE::FormID> loggedNonPBRArmor_;
-  WarningHistory stackWarnings_;
+  WarningHistory warningHistory_;
 
   CarriedTimes carriedTimes_;
   RenderPlanCache renderPlans_;

@@ -64,10 +64,32 @@ void SharedTargetsAreNamed() {
        {{side, format, "mask"}, {side, format, std::nullopt}}},
       {2, "B", 0.2f, {}, {{side, format, "mask"}, {side, format, "own"}}}};
   const std::vector<ActorHolding> holdings = HoldingsOf(actors);
-  Check(holdings.size() == 2 && holdings[0].bytes == 2 * one &&
-            holdings[0].sharedBytes == one && holdings[1].bytes == 2 * one &&
+  Check(holdings.size() == 2 && holdings[0].bytes == one &&
+            holdings[0].sharedBytes == one && holdings[1].bytes == one &&
             holdings[1].sharedBytes == one,
-        "a key that two actors hold counts as shared in both");
+        "a key that two actors hold counts as shared in both, not as own");
+}
+
+void OwnBytesAddUpToThePlannedTotal() {
+  const TextureSize side{512};
+  const TextureFormat format = TextureFormat::kRgba8;
+  const std::vector<ActorTargets> actors{
+      {1,
+       "A",
+       0.1f,
+       {},
+       {{side, format, "mask"}, {side, format, std::nullopt}}},
+      {2, "B", 0.2f, {}, {{side, format, "mask"}, {side, format, "own"}}}};
+  std::vector<HeldTarget> all;
+  for (const ActorTargets &actor : actors) {
+    all.insert(all.end(), actor.held.begin(), actor.held.end());
+  }
+  std::uint64_t own = 0;
+  for (const ActorHolding &holding : HoldingsOf(actors)) {
+    own += holding.bytes;
+  }
+  Equal(own + TargetBytes(side, format), CostOf(all).bytes,
+        "the actors' own bytes and each shared target once make the total");
 }
 
 void LinesNameActorsAndRecipes() {
@@ -79,11 +101,13 @@ void LinesNameActorsAndRecipes() {
        0.12f,
        {"EnchArmorFireFXS"}},
       {0xFF001BBA, "", std::uint64_t{10} << 20, 0, 0.5f, {}}};
-  Equal(HoldingLine({278, std::uint64_t{3400} << 20}, largest),
-        std::string{"render targets: 3400 MiB in 278 targets; Bandit "
-                    "(0001A2B3) 1100 MiB (300 MiB shared), 0.12 of the screen "
-                    "height, recipes EnchArmorFireFXS; FF001BBA 10 MiB (0 MiB "
-                    "shared), 0.50 of the screen height, recipes none"},
+  Equal(HoldingLine({278, std::uint64_t{3400} << 20},
+                    {250, std::uint64_t{3000} << 20}, largest),
+        std::string{"render targets: 3400 MiB in 278 targets; plans hold "
+                    "3000 MiB in 250 targets; Bandit (0001A2B3) 1100 MiB own "
+                    "and 300 MiB shared, 0.12 of the screen height, recipes "
+                    "EnchArmorFireFXS; FF001BBA 10 MiB own and 0 MiB shared, "
+                    "0.50 of the screen height, recipes none"},
         "the holding line names each actor, its bytes, size and recipes");
   Equal(
       BurstLine({101, std::uint64_t{880} << 20, std::uint64_t{480} << 20, 1004},
@@ -103,6 +127,7 @@ int main() {
   SpreadsSummariseScreenSizes();
   LargestHoldingsComeFirst();
   SharedTargetsAreNamed();
+  OwnBytesAddUpToThePlannedTotal();
   LinesNameActorsAndRecipes();
   return test::Finish("render memory");
 }

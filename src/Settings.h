@@ -33,7 +33,7 @@ struct Settings {
   bool thirdPerson = true;
   bool firstPerson = true;
   bool uniqueMaterial = true;
-  bool verboseLogging = true;
+  bool verboseLogging = false;
   bool diagnosticLogging = true;
   bool gpuTiming = false;
   bool publishEffects = true;

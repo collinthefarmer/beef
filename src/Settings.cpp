@@ -34,8 +34,12 @@ constexpr std::array kTable{
                 "before writing to it.",
                 &Settings::uniqueMaterial, 0, 1, W::kCheckbox, true},
     SettingDesc{"General", "VerboseLogging", "Verbose logging",
-                "One line per geometry on apply, plus restore and ownership "
-                "diagnostics.",
+                "Add detail lines to the log: the pieces, recipes, lights and "
+                "geometries of each apply, resolution changes, retirements, "
+                "mesh and material reads, render-target bursts, and armor "
+                "without PBR geometry. Each mesh read also compares its CPU "
+                "copy with a GPU readback. Faults and the one-line apply "
+                "summary are logged either way.",
                 &Settings::verboseLogging, 0, 1, W::kCheckbox, false},
     SettingDesc{
         "General", "DiagnosticLogging", "Diagnostic trace",

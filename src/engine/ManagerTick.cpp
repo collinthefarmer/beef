@@ -6,6 +6,7 @@
 #include "diagnostics/Metrics.h"
 #include "diagnostics/Trace.h"
 #include "engine/Clock.h"
+#include "engine/LogOnce.h"
 #include "engine/RegressionRun.h"
 #include "planners/RenderMemory.h"
 #include "render/Compositor.h"
@@ -227,7 +228,8 @@ struct SlotChain {
   bool shown = false;
 };
 
-void UpdateRenderInputs(LiveActor &a_state, LiveGeometry &a_bound) {
+void UpdateRenderInputs(LiveActor &a_state, LiveGeometry &a_bound,
+                        WarningHistory &a_warnings) {
   if (!a_bound.inputs.render) {
     return;
   }
@@ -238,7 +240,9 @@ void UpdateRenderInputs(LiveActor &a_state, LiveGeometry &a_bound) {
     if (auto updated = a_bound.inputs.render->Update(*instance.graph, i + 1,
                                                      *instance.signals);
         !updated)
-      logger::error("render inputs: {}", updated.error());
+      LogOnce(a_warnings, Severity::kError,
+              std::format("render inputs of '{}': {}", a_bound.name,
+                          updated.error()));
   }
 }
 
@@ -596,7 +600,8 @@ std::vector<const RenderInstance *> InstancesOf(const LiveActor &a_state) {
   std::vector<const RenderInstance *> instances;
   for (const LivePiece &piece : a_state.pieces) {
     for (const LiveGeometry &geometry : piece.geometries) {
-      if (geometry.inputs.render) {
+      if (geometry.inputs.render &&
+          !std::ranges::contains(instances, geometry.inputs.render.get())) {
         instances.push_back(geometry.inputs.render.get());
       }
     }
@@ -760,32 +765,30 @@ void Manager::FlushMetricsHeartbeat() {
   const std::uint32_t intervalMs = now - lastMetricsMS_;
   lastMetricsMS_ = now;
   const Metrics::Snapshot measured = Metrics::Drain();
-  EmitMetricsHeartbeat(measured, EstimateTargets(live_), ScreenSpreadOf(live_));
+  const TargetCost planned = EstimateTargets(live_);
+  EmitMetricsHeartbeat(measured, planned, ScreenSpreadOf(live_));
   EmitLevelCounts(live_);
-  ReportRenderMemory(measured, intervalMs);
+  ReportRenderMemory(measured, planned, intervalMs);
 }
 
 void Manager::ReportRenderMemory(const Metrics::Snapshot &a_measured,
+                                 const TargetCost &a_planned,
                                  std::uint32_t a_intervalMs) {
   const HoldingLevel next =
       NextHoldingLevel(holdingLevel_, a_measured.targetBytes);
   holdingLevel_ = next.level;
   if (next.crossing != Crossing::kNone) {
-    const std::string line =
-        HoldingLine({a_measured.targets, a_measured.targetBytes},
-                    LargestHoldings(HoldingsOf(RenderedActorTargets(live_)),
-                                    kReportedHoldings));
-    if (next.crossing == Crossing::kRose) {
-      logger::warn("{}", line);
-    } else {
-      logger::info("{}", line);
-    }
+    logger::info("{}", HoldingLine({a_measured.targets, a_measured.targetBytes},
+                                   {a_planned.targets, a_planned.bytes},
+                                   LargestHoldings(
+                                       HoldingsOf(RenderedActorTargets(live_)),
+                                       kReportedHoldings)));
   }
   const TargetBurst burst{a_measured.targetsCreated,
                           a_measured.targetBytesCreated,
                           a_measured.targetBytesDestroyed, a_intervalMs};
-  if (IsBurst(burst)) {
-    logger::warn("{}",
+  if (IsBurst(burst) && GetSettings().verboseLogging) {
+    logger::info("{}",
                  BurstLine(burst, Actors::SyncSummary(syncLog_, NowMS(),
                                                       Actors::kSyncLogMs)));
   }
@@ -1042,7 +1045,7 @@ void Manager::RenderGeometry(LiveActor &a_state, LiveGeometry &a_bound,
   if (a_bound.inputs.render &&
       a_bound.inputs.render->BeginFrame(renderFrame_, tickNowMS_)) {
     const SectionTimer inputsTimer{Metrics::Section::kRenderInputs};
-    UpdateRenderInputs(a_state, a_bound);
+    UpdateRenderInputs(a_state, a_bound, warningHistory_);
   }
   if (a_bound.lost) {
     FailGeometryOutputs(a_state, a_bound);

@@ -21,9 +21,11 @@ It retains at most 1024 keys and 128 KiB of key text; keys that do not fit
 are not retained. An oversized key does not
 prevent later smaller keys from fitting. `Inspect` exposes retained key and
 byte counts; `Clear` releases the keys and resets the notice. All operations
-share a mutex. The engine manager owns its stack-warning history and clears
-it on save loading/new game. The original recipe/stack diagnostics remain
-available to the editor even when their log entries are suppressed.
+share a mutex. The engine manager owns one history for its fault lines and
+clears it on save loading/new game. The recipe editor owns a second history
+for edit diagnostics. `LogOnce` (`engine/LogOnce.h`) is the one writer over
+both. The original recipe/stack diagnostics remain available to the editor
+even when their log entries are suppressed.
 
 ## Data
 

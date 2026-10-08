@@ -23,9 +23,20 @@ marks actors **stale** and queues their forgetting through
 `ApplicationService`. It
 ticks every applied actor each frame and publishes the **snapshot** the menu
 reads. It owns `AnimationSubscriptions`, which keeps each observed actor's
-animation graph apart from the recipe **bindings**. Its stack-warning
-`WarningHistory` resets in `Manager::Clear`. Log suppression never removes the
-underlying diagnostics.
+animation graph apart from the recipe **bindings**. Its `WarningHistory`
+(`warningHistory_`) resets in `Manager::Clear`. Log suppression never removes
+the underlying diagnostics.
+
+**The text log.** `LogOnce` (`LogOnce.h`) writes a fault line the first time
+its text occurs and suppresses each repeat. Stack diagnostics, texture-demand
+errors, render-input errors, render-plan cache mismatches, light-placement
+faults and fire triggers on a missing node go through the manager's history. `RecipeEditor` keeps its own
+history for the diagnostics of an edit. `ReportApplied` writes one summary line
+per install, reinstall, change or claim: the sync kind, the pieces, the
+recipes, the geometries, the private and shared materials, and the shells. A
+resize writes no line by default. With `VerboseLogging` it writes one line
+with the new resolution level. `VerboseLogging` also adds each piece, recipe,
+light and geometry of an apply, and the retirement count.
 
 **Per-actor render assembly.** `Manager::SyncActor` builds one `LiveActor` per
 actor. `PlaceInstances` collects every **stack** request of the actor into one
@@ -426,7 +437,7 @@ Recipe from LoadedRecipes()
 | Concern | Key files |
 |---|---|
 | Event sinks and hooks | `Events.h`/`.cpp` (equip, object-loaded, hit and node-update sinks), `PluginEvents.h`/`.cpp` (the inter-plugin message contract and parser), `Hooks.h`/`.cpp` (the `PlayerCharacter::Update` hook), `AnimationSubscriptions.h`/`.cpp` (animation-graph observation) |
-| The manager | `Manager.h`, `Manager.cpp` (construction, queue calls, `Clear`, load, the menu's idle-camera hold), `PhaseTrace.h` (`PhaseTrace`: times named phases with `Measure` and emits one metrics or application trace event), `ManagerApply.cpp` (`SyncStale`, `SyncActor`, `InstallActor`, `DecideActor`, `RetireActor`, `ForgetActor`, live pieces from observation, placement, `BuildActorRender`, lights), `ManagerApplication.cpp` (`ChangeAndRebuildActors`, application bookkeeping), `ManagerTick.cpp` (`OnFrame`, `MarkWaitingStale`, `MarkRecheckStale`, `Tick`, `ClaimLostGeometries`, `RenderGeometry`, slot writes, `UpdateLights`), `ManagerAnimation.cpp` (animation events), `ManagerEvents.cpp` (`Fire`, `FireAt`, `QueueEvent`, `QueueBroadcast`), `ManagerInspection.cpp` (`RequestMesh`), `ManagerSnapshot.cpp` (`GetStatus`, `BuildSnapshot`, `PublishSnapshot`, `Watch`) |
+| The manager | `Manager.h`, `Manager.cpp` (construction, queue calls, `Clear`, load, the menu's idle-camera hold), `PhaseTrace.h` (`PhaseTrace`: times named phases with `Measure` and emits one metrics or application trace event), `ManagerApply.cpp` (`SyncStale`, `SyncActor`, `InstallActor`, `DecideActor`, `RetireActor`, `ForgetActor`, live pieces from observation, placement, `BuildActorRender`, lights), `ManagerApplication.cpp` (`ChangeAndRebuildActors`, application bookkeeping), `ManagerTick.cpp` (`OnFrame`, `MarkWaitingStale`, `MarkRecheckStale`, `Tick`, `ClaimLostGeometries`, `RenderGeometry`, slot writes, `UpdateLights`), `ManagerAnimation.cpp` (animation events), `ManagerEvents.cpp` (`Fire`, `FireAt`, `QueueEvent`, `QueueBroadcast`), `ManagerInspection.cpp` (`RequestMesh`), `ManagerSnapshot.cpp` (`GetStatus`, `BuildSnapshot`, `PublishSnapshot`, `Watch`), `LogOnce.h`/`.cpp` (`LogOnce`: a fault line once per text, through a `WarningHistory`) |
 | Application and session bookkeeping | `ApplicationService.h`/`.cpp` (token tracking, rejection handling, history pruning), `SessionQueue.h`/`.cpp` (per-actor task serialisation) |
 | Actor and worn-piece state | `ActorObservation.h`/`.cpp` (`ObserveActor`, `ModelTable`, `ModelOf`, `MaterialLayout`), `LiveActor.h`/`.cpp` (live records, `RetireGeometry`, `ResolvePlacement`), `Environment.h`/`.cpp` (`ActorEnvironment`), `WornKeys.h`/`.cpp` (`WornKeysOf`), `EnchantmentEffects.h`/`.cpp` (`EnchantmentValueFor`), `InstanceTime.h`/`.cpp` (`CarriedTimes`) |
 | Recipe CRUD | `RecipeStore.h`/`.cpp` (load, publish, mutate, save, `RefreshRecipeDerivedState`), `RecipeFiles.h`/`.cpp` (checked read, write, rename and delete), `RecipeOperations.h` (the operation journal and task guards), `RecipeEditor.h`/`.cpp` (gestures, edits, undo, paint, view) |

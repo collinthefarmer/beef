@@ -74,22 +74,23 @@ float IslRadius(float a_fade, float a_size, float a_cutoff, bool a_shadow) {
 }
 
 namespace {
-std::vector<LightPlacement> PlaceNamedBones(const NamedBones &a_bones,
-                                            RE::NiAVObject *a_root,
-                                            const RE::NiPoint3 &a_offset) {
-  std::vector<LightPlacement> out;
+LightPlacements PlaceNamedBones(const NamedBones &a_bones,
+                                RE::NiAVObject *a_root,
+                                const RE::NiPoint3 &a_offset) {
+  LightPlacements out;
   for (const auto &name : a_bones.bones) {
     auto *object =
         a_root ? a_root->GetObjectByName(RE::BSFixedString{name}) : nullptr;
     auto *bone = object ? object->AsNode() : nullptr;
     if (bone) {
-      out.push_back({RE::NiPointer<RE::NiNode>{bone}, name, a_offset, 1.0f});
+      out.placed.push_back(
+          {RE::NiPointer<RE::NiNode>{bone}, name, a_offset, 1.0f});
     } else {
-      logger::warn("light: bone '{}' not found on the wearer", name);
+      out.missingBones.push_back(name);
     }
   }
-  for (auto &placement : out) {
-    placement.share = 1.0f / static_cast<float>(out.size());
+  for (auto &placement : out.placed) {
+    placement.share = 1.0f / static_cast<float>(out.placed.size());
   }
   return out;
 }
@@ -167,10 +168,9 @@ PlaceSkinnedBones(const SkinnedBones &a_bones,
 }
 }
 
-std::vector<LightPlacement>
-PlaceLightNodes(const Bones &a_bones,
-                std::span<RE::BSGeometry *const> a_geometries,
-                RE::NiAVObject *a_root, const Vec3 &a_offset) {
+LightPlacements PlaceLightNodes(const Bones &a_bones,
+                                std::span<RE::BSGeometry *const> a_geometries,
+                                RE::NiAVObject *a_root, const Vec3 &a_offset) {
   const RE::NiPoint3 offset{a_offset.x, a_offset.y, a_offset.z};
   return Match(
       a_bones,
@@ -178,7 +178,8 @@ PlaceLightNodes(const Bones &a_bones,
         return PlaceNamedBones(named, a_root, offset);
       },
       [&](const SkinnedBones &skinned) {
-        return PlaceSkinnedBones(skinned, a_geometries, offset);
+        return LightPlacements{PlaceSkinnedBones(skinned, a_geometries, offset),
+                               {}};
       });
 }
 
@@ -187,8 +188,6 @@ LightBinding::Create(const std::vector<LightPlacement> &a_placements,
                      bool a_shadow) {
   auto *scene = MainShadowSceneNode();
   if (!scene || a_placements.empty()) {
-    logger::warn("light: {}",
-                 scene ? "no bones to place on" : "no shadow scene node");
     return nullptr;
   }
   std::unique_ptr<LightBinding> out{new LightBinding{}};

@@ -198,7 +198,12 @@ struct LightPlacement {
   float share = 1.0f;
 };
 
-[[nodiscard]] std::vector<LightPlacement>
+struct LightPlacements {
+  std::vector<LightPlacement> placed;
+  std::vector<std::string> missingBones;
+};
+
+[[nodiscard]] LightPlacements
 PlaceLightNodes(const Bones &a_bones,
                 std::span<RE::BSGeometry *const> a_geometries,
                 RE::NiAVObject *a_root, const Vec3 &a_offset);

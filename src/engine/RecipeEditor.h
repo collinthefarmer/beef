@@ -1,6 +1,7 @@
 // GPL-3.0-only with the additional permission in COPYING.md.
 #pragma once
 
+#include "diagnostics/WarningHistory.h"
 #include "recipe/Recipe.h"
 #include "studio/DocumentRevisions.h"
 #include "studio/Edits.h"
@@ -102,6 +103,7 @@ private:
   RestoreRecipe(const std::string &a_id, bool a_redo);
 
   Manager &runtime_;
+  WarningHistory loggedDiagnostics_;
   std::unordered_map<std::string, Studio::History<Recipe>> histories_;
   Studio::View view_{};
   Studio::Isolation paintReturn_{};
