@@ -9,9 +9,9 @@
 
 namespace BetterEnchantmentEffects::Actors {
 namespace {
-constexpr std::array<std::string_view, 8> kKindNames{
+constexpr std::array<std::string_view, 7> kKindNames{
     "unchanged", "installed", "reinstalled", "changed",
-    "claimed",   "evicted",   "forgotten",   "resized"};
+    "claimed",   "evicted",   "forgotten"};
 
 bool Within(const SyncRecord &a_record, std::uint32_t a_nowMs,
             std::uint32_t a_windowMs) noexcept {

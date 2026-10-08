@@ -23,7 +23,11 @@ test covers it.
 - `RenderInstance` (`RenderInstance.h`) executes one actor's `RenderPlan`.
   `BuildActorRender` (`engine/ManagerApply.cpp`) creates one instance per
   actor, and every geometry of the actor shares it through
-  `GeometryInputs::render`.
+  `GeometryInputs::render`. A resolution resize (`engine/ActorResize.h`)
+  creates a second instance with `AtSides`, which copies the plan, the
+  `GeometryInputs` and the graphs and takes new sides. The second instance
+  draws before it is attached, because it holds its own copies of every
+  input.
 - `Compositor` (`Compositor.h`) is the process-wide entry point for stack
   rendering. It also owns the image cache (`LoadImage`), the mesh cache
   (`MeshOf`), the material analysis cache (`AnalyseMaterial`) and the studio's
@@ -52,7 +56,7 @@ dispatches each `RenderStepKind` to one function per kind, for example `ExecuteB
 
 | Type | Description | Declared in |
 |---|---|---|
-| `RenderInstance` | Owns the `RenderPlan`, the recipe graphs, the `GeometryInputs` of each geometry, and the execution. `UpdateInput` imports one value. `Update` refreshes the signal-driven inputs of one recipe instance. `Render` draws one stack output. `BeginFrame` starts one render tick. `Targets` gives the plan's `PlanTargets`, computed once at construction. | `RenderInstance.h` |
+| `RenderInstance` | Owns the `RenderPlan`, the recipe graphs, the `GeometryInputs` of each geometry, and the execution. `UpdateInput` imports one value. `Update` refreshes the signal-driven inputs of one recipe instance. `Render` draws one stack output. `BeginFrame` starts one render tick. `Targets` gives the plan's `PlanTargets`, computed once at construction. `AtSides` returns a new instance with the same plan, inputs and graphs at other sides. | `RenderInstance.h` |
 | `RenderValue` | The variant of every value a step reads or writes: a numeric `Value`, a `TextureView`, a mesh entry, `MaterialInputs`, a `RenderTransform`, `RenderFirings`, bake buffers, a material sample or analysis, a **lookup**, a `LayerFilter` or a `StackResult`. | `RenderInstance.h` |
 | `RenderScratch` | Per-step scratch: a weak reuse hint for the step's target, the reduction and material readback state, and the cached `LayerFieldPack`. | `RenderInstance.h` |
 | `TextureView` | A texture with its sampling (`TextureLab::LayerInput`), its normalization factor and, when a step produced it, its owning target. | `RenderInstance.h` |
@@ -62,7 +66,7 @@ dispatches each `RenderStepKind` to one function per kind, for example `ExecuteB
 | `GeometryInputs` | One geometry's shared render instance, application context, `MaterialInputs`, geometry and root node, the item hash, and the instance's `EnchantmentValues`. | `Compositor.h` |
 | `StepOutputCache` | The **step output cache**: static step outputs shared across actors, keyed by the step's content key plus the bits of its numeric operands (`CacheKeyFor`). `ExecuteCached` looks a step up before it runs it. `Sweep` renews an entry while another holder has its target and evicts it 500 ms after the last holder lets go (`StepOutputRetention`). The `Compositor` holds one (`stepOutputs_`). | `StepOutputCache.h` |
 | `MaterialInputs` | The diffuse, normal, RMAOS and displacement textures of a material, and whether its displacement map is flat. `MaterialInputs::From` reads them from a `PbrMaterial`. | `Compositor.h` |
-| `RenderOutput` | The engine's handle on one placed stack: a weak reference to the instance, the stack's step output, the latest texture and version, the size, the animation flag and the diagnostics. | `Compositor.h` |
+| `RenderOutput` | The engine's handle on one placed stack: a weak reference to the instance, the stack's step output (`Result`), the latest texture and version, the size, the animation flag and the diagnostics. `DrawnBy` returns a handle on the same step of another instance, with that instance's side. | `Compositor.h` |
 | `StackRender` | The result of `Compositor::Render`: `kRendered`, `kPending` or `kFailed`. | `Compositor.h` |
 | `LayerFilter`, `StackBase` | The hidden layer indices of a stack, and the texture of the preceding stack with its content version. | `Compositor.h` |
 | `StackTextureRequest` | One stack the engine asks to render: recipe, graph, output, placement, geometry inputs and size. | `Compositor.h` |

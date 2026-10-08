@@ -7,8 +7,10 @@
 #include "engine/Environment.h"
 #include "planners/ActorMatches.h"
 #include "planners/BindingPlan.h"
+#include "planners/PlanSides.h"
 #include "planners/RenderPlan.h"
 #include "planners/ResolutionLevel.h"
+#include "planners/ResolutionResize.h"
 #include "planners/StackPlan.h"
 #include "recipe/Merge.h"
 #include "recipe/Recipe.h"
@@ -23,9 +25,12 @@
 #include <optional>
 #include <span>
 #include <string>
+#include <variant>
 #include <vector>
 
 namespace BetterEnchantmentEffects {
+class RenderInstance;
+
 struct PlacedOutput {
   std::size_t index = 0;
   std::unique_ptr<RenderOutput> stack;
@@ -92,12 +97,27 @@ struct LivePlacement {
   std::vector<PlacedOutput> outputs;
 };
 
+struct ResizedStack {
+  std::unique_ptr<RenderOutput> stack;
+  bool drawn = false;
+};
+
+struct ResizeBuild {
+  ResizeProgress progress;
+  std::shared_ptr<RenderInstance> render;
+  std::vector<ResizedStack> stacks;
+};
+
+using LiveResize = std::variant<ResizeIdle, ResizePending, ResizeBuild>;
+
 struct LiveActor {
   RE::ActorHandle actor;
   bool firstRenderAdmitted = false;
   bool inView = true;
   float screenFraction = 0.0f;
   ResolutionLevel resolution = ResolutionLevel::kFull;
+  PlanSides fullSides;
+  LiveResize resize;
   std::uint64_t renderedFrame = 0;
   std::shared_ptr<const RecipeCatalog> catalog;
   ActorMatches matches;

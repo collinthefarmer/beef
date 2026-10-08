@@ -45,6 +45,25 @@ std::uint64_t RenderOutput::ContentVersion() const noexcept {
 
 bool RenderOutput::Animated() const noexcept { return animated_; }
 
+StepOutputRef RenderOutput::Result() const noexcept { return result_; }
+
+std::unique_ptr<RenderOutput>
+RenderOutput::DrawnBy(const std::shared_ptr<RenderInstance> &a_render) const {
+  if (!a_render) {
+    return nullptr;
+  }
+  const RenderPlan &plan = a_render->Plan();
+  const auto *stack =
+      result_.step < plan.steps.size()
+          ? Get<CompositeStackStep>(plan.steps[result_.step].kind)
+          : nullptr;
+  if (!stack) {
+    return nullptr;
+  }
+  return std::make_unique<RenderOutput>(
+      a_render, result_, a_render->Side(stack->requirements.side), animated_);
+}
+
 TextureSize RenderOutput::Size() const noexcept { return size_; }
 
 TextureRef RenderOutput::LayerTexture(std::size_t layer) const {

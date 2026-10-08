@@ -34,9 +34,10 @@ faults and fire triggers on a missing node go through the manager's history. `Re
 history for the diagnostics of an edit. `ReportApplied` writes one summary line
 per install, reinstall, change or claim: the sync kind, the pieces, the
 recipes, the geometries, the private and shared materials, and the shells. A
-resize writes no line by default. With `VerboseLogging` it writes one line
-with the new resolution level. `VerboseLogging` also adds each piece, recipe,
-light and geometry of an apply, and the retirement count.
+resolution swap writes no line by default. With `VerboseLogging`,
+`ReportResize` writes one line with the new resolution level. `VerboseLogging`
+also adds each piece, recipe, light and geometry of an apply, and the
+retirement count.
 
 **Per-actor render assembly.** `Manager::SyncActor` builds one `LiveActor` per
 actor. `PlaceInstances` collects every **stack** request of the actor into one
@@ -47,6 +48,33 @@ bound geometry of the actor shares that `RenderInstance` through
 its step of the plan. A plan failure writes its text into every request's
 `PlacedOutput::problem` through `FailStackOutputs`. A request that the plan
 does not lower gets the problem `stack was not lowered`.
+`PlaceInstances` keeps the full-resolution sides of the stacks in
+`LiveActor::fullSides`.
+
+**Resolution resize.** A change of resolution level rebuilds only the actor's
+`RenderInstance` (`ActorResize.h`). It does not reinstall the actor, so
+pieces, recipe instances, shells, materials, lights, signals and clocks stay.
+`Manager::UpdateResolution` records the finer level as a **pending resize**
+on the `LiveActor` (`RequestResize`). `Manager::AdvanceResizes` runs at the
+start of each tick. It first swaps each finished build (`FinishResize`). It
+then starts at most one build across all actors (`NextBuild`,
+`planners/ResolutionResize.h`). The pending actor with the largest screen
+fraction builds first. `StartResize` creates the new instance from the current
+instance's plan, `GeometryInputs` and graphs at the new sides
+(`RenderInstance::AtSides`). It gives each stack output of the actor a
+`RenderOutput` on the new instance (`RenderOutput::DrawnBy`). `DrawResize`
+runs after `RenderPieces` in each tick that renders the actor. It draws each
+stack of the new instance once, with no hidden layers and no preceding stack.
+The old instance stays attached and visible during the build.
+`FinishResize` swaps when every stack has drawn once, when the actor is out of
+view, or 60 frames after the build began (`SwapDue`). In one call it moves
+each new `RenderOutput` into its `PlacedOutput` or `MergedSlotStack`, sets
+`GeometryInputs::render` on each geometry that held the old instance, and sets
+`LiveActor::resolution`. The old instance goes when the last geometry lets
+go. When the actor's stack outputs no longer match the build, the build goes
+back to pending. A reinstall replaces the `LiveActor`, so it drops a pending
+or in-flight resize; `RetireActorEffects` drops it too. Each swap emits the
+trace event `resolution_swap`.
 
 **The frame.** `Manager::OnFrame` runs from the hook. It returns at once while
 `ApplicationService::Loading` is true. Once a second it expires `CarriedTimes` and
@@ -278,7 +306,11 @@ without the manager.
 
 | Record | Description |
 |---|---|
-| `LiveActor` | One applied actor: its handle, the `RecipeCatalog` it was planned against, its `ActorMatches`, its pieces, instances and **placements**, and the `ApplicationToken`s of its in-flight applications. `RecipesOf` returns the catalog's recipes. |
+| `LiveActor` | One applied actor: its handle, the `RecipeCatalog` it was planned against, its `ActorMatches`, its pieces, instances and **placements**, and the `ApplicationToken`s of its in-flight applications. It also holds its resolution level, its full-resolution sides (`fullSides`) and its `LiveResize`. `RecipesOf` returns the catalog's recipes. |
+| `LiveResize` | The resize state of one actor: `ResizeIdle`, `ResizePending` (the level) or `ResizeBuild`. |
+| `ResizeBuild` | A resize in flight: its `ResizeProgress` (the old level, the new level and the frame the build began), the new `RenderInstance`, and one `ResizedStack` per stack output of the actor. |
+| `ResizedStack` | One stack output on the new instance and whether it has drawn once. |
+| `ResizeSwap` | What `FinishResize` reports: the two levels, the frames from build to swap, the stack count, the drawn count and the `TargetCost` of the new instance. |
 | `LivePiece` | One worn armor clone: its `Actors::PieceRef` (`ref`), its `ModelToken` (`model`), the armor form id and name, the optional addon `FormKey`, the enchantment form id and its `LiveGeometry`s. |
 | `LivePieceId` | A typed piece index (`enum class`, `std::size_t`). |
 | `LiveGeometry` | One bound geometry: its `Actors::GeometryRef` (`ref`, set by `LivePiecesOf` through `Actors::GeometryRefOf`), engine geometry and shader-property pointers, `GeometryInputs`, `MaterialBinding`, `ShellBinding`, its `GeometryPlan`, `GeometryStackPlan` and `BindingPlan`, and its `PlacementId`s. Its `lost` flag marks it retired. |
@@ -405,10 +437,13 @@ Manager::Tick                                                   ManagerTick.cpp
   │   not Loaded3D: ForgetActor
   │   ClaimLostGeometries; TickInstance per LiveInstance
   ▼
+AdvanceResizes: FinishResize, NextBuild, StartResize              ActorResize.cpp
+  ▼
 RenderPieces ──▶ RenderGeometry                                 ManagerTick.cpp
   │   RenderInstance::BeginFrame, UpdateRenderInputs
   │   WriteSlots ──▶ RenderSlotChain ──▶ Compositor::Render        render/Compositor.cpp
   │   WriteSlot into the SlotTarget; PoseShell                    render/Binding.cpp
+  │   DrawResize for an actor with a resize in flight             ActorResize.cpp
   ▼
 UpdateLights, FinishApplications                                ManagerTick.cpp, ManagerApplication.cpp
 
@@ -437,7 +472,7 @@ Recipe from LoadedRecipes()
 | Concern | Key files |
 |---|---|
 | Event sinks and hooks | `Events.h`/`.cpp` (equip, object-loaded, hit and node-update sinks), `PluginEvents.h`/`.cpp` (the inter-plugin message contract and parser), `Hooks.h`/`.cpp` (the `PlayerCharacter::Update` hook), `AnimationSubscriptions.h`/`.cpp` (animation-graph observation) |
-| The manager | `Manager.h`, `Manager.cpp` (construction, queue calls, `Clear`, load, the menu's idle-camera hold), `PhaseTrace.h` (`PhaseTrace`: times named phases with `Measure` and emits one metrics or application trace event), `ManagerApply.cpp` (`SyncStale`, `SyncActor`, `InstallActor`, `DecideActor`, `RetireActor`, `ForgetActor`, live pieces from observation, placement, `BuildActorRender`, lights), `ManagerApplication.cpp` (`ChangeAndRebuildActors`, application bookkeeping), `ManagerTick.cpp` (`OnFrame`, `MarkWaitingStale`, `MarkRecheckStale`, `Tick`, `ClaimLostGeometries`, `RenderGeometry`, slot writes, `UpdateLights`), `ManagerAnimation.cpp` (animation events), `ManagerEvents.cpp` (`Fire`, `FireAt`, `QueueEvent`, `QueueBroadcast`), `ManagerInspection.cpp` (`RequestMesh`), `ManagerSnapshot.cpp` (`GetStatus`, `BuildSnapshot`, `PublishSnapshot`, `Watch`), `LogOnce.h`/`.cpp` (`LogOnce`: a fault line once per text, through a `WarningHistory`) |
+| The manager | `Manager.h`, `Manager.cpp` (construction, queue calls, `Clear`, load, the menu's idle-camera hold), `PhaseTrace.h` (`PhaseTrace`: times named phases with `Measure` and emits one metrics or application trace event), `ManagerApply.cpp` (`SyncStale`, `SyncActor`, `InstallActor`, `DecideActor`, `RetireActor`, `ForgetActor`, live pieces from observation, placement, `BuildActorRender`, lights), `ManagerApplication.cpp` (`ChangeAndRebuildActors`, application bookkeeping), `ManagerTick.cpp` (`OnFrame`, `MarkWaitingStale`, `MarkRecheckStale`, `Tick`, `UpdateResolution`, `AdvanceResizes`, `ClaimLostGeometries`, `RenderGeometry`, slot writes, `UpdateLights`), `ActorResize.h`/`.cpp` (the resolution resize of one actor), `ManagerAnimation.cpp` (animation events), `ManagerEvents.cpp` (`Fire`, `FireAt`, `QueueEvent`, `QueueBroadcast`), `ManagerInspection.cpp` (`RequestMesh`), `ManagerSnapshot.cpp` (`GetStatus`, `BuildSnapshot`, `PublishSnapshot`, `Watch`), `LogOnce.h`/`.cpp` (`LogOnce`: a fault line once per text, through a `WarningHistory`) |
 | Application and session bookkeeping | `ApplicationService.h`/`.cpp` (token tracking, rejection handling, history pruning), `SessionQueue.h`/`.cpp` (per-actor task serialisation) |
 | Actor and worn-piece state | `ActorObservation.h`/`.cpp` (`ObserveActor`, `ModelTable`, `ModelOf`, `MaterialLayout`), `LiveActor.h`/`.cpp` (live records, `RetireGeometry`, `ResolvePlacement`), `Environment.h`/`.cpp` (`ActorEnvironment`), `WornKeys.h`/`.cpp` (`WornKeysOf`), `EnchantmentEffects.h`/`.cpp` (`EnchantmentValueFor`), `InstanceTime.h`/`.cpp` (`CarriedTimes`) |
 | Recipe CRUD | `RecipeStore.h`/`.cpp` (load, publish, mutate, save, `RefreshRecipeDerivedState`), `RecipeFiles.h`/`.cpp` (checked read, write, rename and delete), `RecipeOperations.h` (the operation journal and task guards), `RecipeEditor.h`/`.cpp` (gestures, edits, undo, paint, view) |

@@ -45,6 +45,7 @@ public:
   [[nodiscard]] const RenderPlan &Plan() const noexcept;
   [[nodiscard]] const PlanTargets &Targets() const noexcept;
   [[nodiscard]] TextureSize Side(SideRef side) const noexcept;
+  [[nodiscard]] std::shared_ptr<RenderInstance> AtSides(PlanSides sides) const;
   bool BeginFrame(std::uint64_t frame, std::uint64_t nowMS);
   [[nodiscard]] std::expected<void, std::string>
   Update(const RecipeGraph &graph, std::size_t instance,

@@ -1110,6 +1110,10 @@ RenderInstance::RenderInstance(
     geometry.render.reset();
 }
 const PlanTargets &RenderInstance::Targets() const noexcept { return targets_; }
+std::shared_ptr<RenderInstance> RenderInstance::AtSides(PlanSides sides) const {
+  return std::make_shared<RenderInstance>(Plan(), std::move(sides), geometries_,
+                                          graphs_);
+}
 TextureSize RenderInstance::Side(SideRef side) const noexcept {
   return SideOf(sides_, side);
 }

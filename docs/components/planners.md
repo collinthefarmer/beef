@@ -196,6 +196,10 @@ A plan names texture sizes by **side reference** (`SideRef`, in `TextureDemand.h
 | `IdealLevel` | The level for a screen fraction. |
 | `LevelChange` | The finer level that a screen fraction needs, or no change. A smaller fraction never gives a coarser level. The player is always full. |
 | `AtLevel` | The `PlanSides` divided by a level, with 64 as the floor. |
+| `ResizeIdle`, `ResizePending`, `ResizeProgress` | The resize states of one actor (`ResolutionResize.h`): none, a level that waits for a build, and a build with its old level, new level and first frame. |
+| `ResizeDraw` | What a tick saw of a build: `kOutOfView`, `kDrawing` or `kDrawn`. `DrawOf` gives it from the view and the drawn and total stack counts. |
+| `SwapDue` | True when a build is drawn, out of view, or `kResizeSwapAfterFrames` (60) frames old. |
+| `NextBuild` | The pending actor with the largest screen fraction, or none while `kResizesInFlight` (1) builds are in flight. |
 
 `RenderMemory.h` turns the counts into the render-target log lines.
 
@@ -430,7 +434,7 @@ PSGeneratedStack, or PSStack until the compile finishes     render/GeneratedShad
 | `RenderPlanKey.h`/`.cpp`, `RenderPlanCache.h`/`.cpp` | Render planning | `RenderPlanKeyOf`, `RenderPlanKeyHash`, `GraphsNamedBy`; `RenderPlanCache`. |
 | `RenderMemory.h`/`.cpp` | Render planning | `NextHoldingLevel`, `HoldingsOf`, `LargestHoldings`, `IsBurst`, `SpreadOf`, `HoldingLine`, `BurstLine`. |
 | `TargetCost.h`/`.cpp` | Render planning | `HeldTarget`, `PlanTargets`, `TargetCost`, `TargetBytes`, `TargetsOf`, `CostOf`. |
-| `PlanSides.h`/`.cpp`, `ResolutionLevel.h`/`.cpp` | Render planning | `PlanSides`, `SidesFor`, `SideOf`, `SharedKeyOf`; `ResolutionLevel`, `IdealLevel`, `LevelChange`, `AtLevel`, `LevelName`. |
+| `PlanSides.h`/`.cpp`, `ResolutionLevel.h`/`.cpp`, `ResolutionResize.h`/`.cpp` | Render planning | `PlanSides`, `SidesFor`, `SideOf`, `SharedKeyOf`; `ResolutionLevel`, `IdealLevel`, `LevelChange`, `AtLevel`, `LevelName`; `DrawOf`, `SwapDue`, `NextBuild`. |
 | `FieldInlining.h`/`.cpp` | Render planning | `AsProgramLike` and `InlineFields`. |
 | `RenderExecution.h` | Render planning | `RenderExecution` and its state records. |
 | `RenderFirings.h` | Render planning | `RenderFiring` and `RenderFirings`. |

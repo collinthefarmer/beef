@@ -1002,16 +1002,9 @@ void ReportApplied(RE::Actor &a_actor, const LiveActor &a_state,
   const RE::FormID actorID = a_actor.GetFormID();
   const char *name = a_actor.GetName();
   const std::string_view shown = name ? name : "unnamed";
-  if (a_kind == Actors::SyncKind::kResized) {
-    if (a_settings.verboseLogging) {
-      logger::info("actor {:08X} ({}) resized: drawn at {} resolution", actorID,
-                   shown, LevelName(a_state.resolution));
-    }
-  } else {
-    ReportSummary(actorID, shown, a_state, a_kind);
-    if (a_settings.verboseLogging) {
-      ReportDetail(actorID, a_state);
-    }
+  ReportSummary(actorID, shown, a_state, a_kind);
+  if (a_settings.verboseLogging) {
+    ReportDetail(actorID, a_state);
   }
   Trace::EmitSafely(Trace::Event::kApplication,
                     {{"action", "installed"},
@@ -1151,11 +1144,7 @@ Manager::ActorDecision Manager::DecideActor(RE::Actor &a_actor,
     return Actors::Advance({tracked.state, facts, planned.plan, NowMS(),
                             a_settings.evictDistance, reinstall});
   });
-  Actors::SyncKind kind = Actors::KindOf(tracked.state, next, reinstall);
-  if (tracked.resizing && kind == Actors::SyncKind::kReinstalled) {
-    kind = Actors::SyncKind::kResized;
-  }
-  tracked.resizing = false;
+  const Actors::SyncKind kind = Actors::KindOf(tracked.state, next, reinstall);
   const std::optional<Actors::ActorState> &state = next.state;
   KeepModels(tracked.models, state ? state->installed : Actors::ActorPlan{},
              observedAt);
@@ -1331,6 +1320,7 @@ void Manager::PlaceInstances(LiveActor &a_state, RE::FormID a_actorID,
     BuildActorRender(a_state, stacks, a_settings,
                      {renderPlans_, warningHistory_});
   });
+  a_state.fullSides = PlanSides{stacks.sides};
   phases.Add("geometries", std::to_string(geometries));
   phases.Add("level", std::string{LevelName(a_state.resolution)});
   phases.Emit();

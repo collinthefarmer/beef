@@ -52,6 +52,7 @@ void RetireGeometry(LiveActor &a_actor, LiveGeometry &a_geometry) {
 }
 
 void RetireActorEffects(LiveActor &a_actor) {
+  a_actor.resize = ResizeIdle{};
   a_actor.applications.clear();
   for (auto &instance : a_actor.instances)
     instance.light.reset();

@@ -111,6 +111,9 @@ public:
   [[nodiscard]] bool Animated() const noexcept;
   [[nodiscard]] TextureSize Size() const noexcept;
   [[nodiscard]] std::span<const Diagnostic> Diagnostics() const noexcept;
+  [[nodiscard]] StepOutputRef Result() const noexcept;
+  [[nodiscard]] std::unique_ptr<RenderOutput>
+  DrawnBy(const std::shared_ptr<RenderInstance> &a_render) const;
 
 private:
   friend class Compositor;

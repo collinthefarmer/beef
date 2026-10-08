@@ -5,6 +5,7 @@
 #include "actors/Lifecycle.h"
 #include "diagnostics/Metrics.h"
 #include "diagnostics/Trace.h"
+#include "engine/ActorResize.h"
 #include "engine/Clock.h"
 #include "engine/LogOnce.h"
 #include "engine/RegressionRun.h"
@@ -29,7 +30,6 @@
 namespace BetterEnchantmentEffects {
 namespace {
 inline constexpr std::size_t kFirstRendersPerTick = 1;
-inline constexpr std::size_t kLevelChangesPerTick = 2;
 
 class SectionTimer {
 public:
@@ -606,6 +606,9 @@ std::vector<const RenderInstance *> InstancesOf(const LiveActor &a_state) {
       }
     }
   }
+  if (const RenderInstance *resizing = ResizingInstance(a_state)) {
+    instances.push_back(resizing);
+  }
   return instances;
 }
 
@@ -681,6 +684,27 @@ RenderedActorTargets(const std::unordered_map<RE::FormID, LiveActor> &a_live) {
 }
 
 std::string Fraction(float a_value) { return std::format("{:.3f}", a_value); }
+
+void ReportResize(RE::FormID a_actorID, const LiveActor &a_state,
+                  const ResizeSwap &a_swap, const Settings &a_settings) {
+  Trace::EmitSafely(Trace::Event::kMetrics,
+                    {{"action", "resolution_swap"},
+                     {"actor", std::to_string(a_actorID)},
+                     {"from", std::string{LevelName(a_swap.from)}},
+                     {"level", std::string{LevelName(a_swap.to)}},
+                     {"frames", std::to_string(a_swap.frames)},
+                     {"stacks", std::to_string(a_swap.stacks)},
+                     {"drawn", std::to_string(a_swap.drawn)},
+                     {"targets", std::to_string(a_swap.targets.targets)},
+                     {"target_bytes", std::to_string(a_swap.targets.bytes)}});
+  if (!a_settings.verboseLogging) {
+    return;
+  }
+  const RE::NiPointer<RE::Actor> actor = a_state.actor.get();
+  const char *name = actor ? actor->GetName() : nullptr;
+  logger::info("actor {:08X} ({}) resized: drawn at {} resolution", a_actorID,
+               name && *name ? name : "unnamed", LevelName(a_swap.to));
+}
 
 void EmitLevelCounts(const std::unordered_map<RE::FormID, LiveActor> &a_live) {
   std::array<std::size_t, kResolutionLevelCount> counts{};
@@ -893,8 +917,8 @@ void Manager::Tick(std::uint32_t a_nowMS, const Settings &a_settings) {
                         frozenLastTick_ && !view.freeze};
   frozenLastTick_ = view.freeze;
   const std::optional<RE::FormID> inspected = InspectedActor(a_nowMS);
+  AdvanceResizes(a_settings);
   std::size_t firstRenders = 0;
-  std::size_t levelChanges = 0;
   for (auto it = live_.begin(); it != live_.end();) {
     LiveActor &state = it->second;
     const auto actor = state.actor.get();
@@ -920,15 +944,13 @@ void Manager::Tick(std::uint32_t a_nowMS, const Settings &a_settings) {
     }
     state.inView = ShownThisTick(*actor, a_settings, inspected == it->first);
     state.screenFraction = ScreenFraction(*actor);
-    if (levelChanges < kLevelChangesPerTick &&
-        UpdateResolution(it->first, *actor, state.screenFraction, a_settings)) {
-      ++levelChanges;
-    }
+    UpdateResolution(it->first, *actor, state, a_settings);
     const bool render = state.inView && AdmitRender(state, firstRenders);
     std::vector<bool> hidden;
     if (render) {
       const SectionTimer renderTimer{Metrics::Section::kRender};
       hidden = RenderPieces(state, it->first);
+      DrawResize(state, renderFrame_, tickNowMS_, warningHistory_);
       state.renderedFrame = renderFrame_;
     }
     if (render || !state.inView) {
@@ -982,34 +1004,67 @@ void Manager::TickInstance(LiveInstance &a_instance, float a_time,
   a_instance.signals->Tick(*a_instance.environment, {a_time, a_delta});
 }
 
-bool Manager::UpdateResolution(RE::FormID a_actorID, RE::Actor &a_actor,
-                               float a_screenFraction,
-                               const Settings &a_settings) {
+void Manager::UpdateResolution(RE::FormID a_actorID, RE::Actor &a_actor,
+                               LiveActor &a_state, const Settings &a_settings) {
   const auto tracked = tracked_.find(a_actorID);
   if (tracked == tracked_.end() || !tracked->second.resolution) {
-    return false;
+    return;
   }
   ResolutionLevel &level = *tracked->second.resolution;
   const ActorRole role =
       a_actor.IsPlayerRef() ? ActorRole::kPlayer : ActorRole::kOther;
   const float fraction =
       RegressionScreenResolution().value_or(a_settings.screenResolution)
-          ? a_screenFraction
+          ? a_state.screenFraction
           : 1.0f;
   const std::optional<ResolutionLevel> next =
       LevelChange(level, fraction, role);
-  if (!next || !applications_.MarkReinstall(a_actorID)) {
-    return false;
+  if (!next) {
+    return;
   }
   Trace::EmitSafely(Trace::Event::kMetrics,
                     {{"action", "resolution_level"},
                      {"actor", std::to_string(a_actorID)},
                      {"from", std::string{LevelName(level)}},
                      {"to", std::string{LevelName(*next)}},
-                     {"screen_fraction", Fraction(a_screenFraction)}});
+                     {"screen_fraction", Fraction(a_state.screenFraction)}});
   level = *next;
-  tracked->second.resizing = true;
-  return true;
+  RequestResize(a_state, *next);
+}
+
+void Manager::AdvanceResizes(const Settings &a_settings) {
+  std::size_t inFlight = 0;
+  std::vector<RE::FormID> actors;
+  std::vector<ResizeCandidate> candidates;
+  actors.reserve(live_.size());
+  candidates.reserve(live_.size());
+  for (auto &[id, state] : live_) {
+    if (const std::optional<ResizeSwap> swap =
+            FinishResize(state, renderFrame_)) {
+      ReportResize(id, state, *swap, a_settings);
+    }
+    if (Is<ResizeBuild>(state.resize)) {
+      ++inFlight;
+    }
+    actors.push_back(id);
+    candidates.push_back(
+        {Is<ResizePending>(state.resize), state.screenFraction});
+  }
+  const std::optional<std::size_t> next = NextBuild(candidates, inFlight);
+  if (!next || *next >= actors.size()) {
+    return;
+  }
+  const auto found = live_.find(actors[*next]);
+  if (found == live_.end()) {
+    return;
+  }
+  if (const std::expected<void, std::string> started =
+          StartResize(found->second, renderFrame_);
+      !started) {
+    LogOnce(warningHistory_, Severity::kWarning,
+            std::format("actor {:08X} keeps its resolution: {}", found->first,
+                        started.error()));
+  }
 }
 
 void Manager::ClaimLostGeometries(RE::FormID a_actorID, LiveActor &a_state) {

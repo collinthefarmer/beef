@@ -1,0 +1,38 @@
+// GPL-3.0-only with the additional permission in COPYING.md.
+#include "planners/ResolutionResize.h"
+
+namespace BetterEnchantmentEffects {
+ResizeDraw DrawOf(bool a_inView, std::size_t a_drawn,
+                  std::size_t a_stacks) noexcept {
+  if (!a_inView) {
+    return ResizeDraw::kOutOfView;
+  }
+  return a_drawn >= a_stacks ? ResizeDraw::kDrawn : ResizeDraw::kDrawing;
+}
+
+bool SwapDue(const ResizeProgress &a_progress, ResizeDraw a_draw,
+             std::uint64_t a_frame) noexcept {
+  if (a_draw != ResizeDraw::kDrawing) {
+    return true;
+  }
+  return a_frame >= a_progress.beganFrame &&
+         a_frame - a_progress.beganFrame >= kResizeSwapAfterFrames;
+}
+
+std::optional<std::size_t>
+NextBuild(std::span<const ResizeCandidate> a_candidates,
+          std::size_t a_inFlight) noexcept {
+  if (a_inFlight >= kResizesInFlight) {
+    return std::nullopt;
+  }
+  std::optional<std::size_t> chosen;
+  for (std::size_t i = 0; i < a_candidates.size(); ++i) {
+    if (a_candidates[i].pending &&
+        (!chosen || a_candidates[i].screenFraction >
+                        a_candidates[*chosen].screenFraction)) {
+      chosen = i;
+    }
+  }
+  return chosen;
+}
+}

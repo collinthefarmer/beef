@@ -2367,14 +2367,59 @@ cancel by the user instead of the load.
 - `ScreenFraction` clamps the fraction to 1. A fraction of exactly 1.000 means
   the actor's bounding sphere is as tall as the screen or taller, which
   happens when the camera is close to the actor.
-- A level change reinstalls the actor (`Manager::UpdateResolution`,
-  `MarkReinstall`), so it rebuilds materials, shells and lights as well as the
-  render instance. At most two actors change per tick
-  (`kLevelChangesPerTick`), because a camera zoom changes every actor's
-  fraction at once. The sync log names such a reinstall `resized`, and the
-  trace event `resolution_level` gives the levels and the fraction. The trace
-  event `resolution_levels`, written with the heartbeat, counts the live
-  actors at each level.
+- A level change rebuilds only the actor's render instance
+  (render-performance 7c-2, 2026-10-08; `engine/ActorResize.h`). The level
+  reaches only the sides of the instance. Pieces, recipe instances, shells,
+  materials, lights, signals and clocks do not depend on it, so a level change
+  keeps them. Before 7c-2 a level change reinstalled the actor. In game each
+  such reinstall of an NPC with 2 recipes on 7 shelled geometries took about
+  26 ms of sync and about 36 ms of plugin time on the next frame, and it
+  restarted the effect.
+- `Manager::UpdateResolution` records the new level as a pending resize on the
+  `LiveActor` and emits the trace event `resolution_level` with the levels and
+  the fraction. The tracked level (`TrackedActor::resolution`) changes at once,
+  so a reinstall during the resize builds at the new level.
+- One resize builds at a time across all actors (`kResizesInFlight`), because
+  a camera zoom changes every actor's fraction at once and a build holds the
+  old and the new targets together. The pending actor with the largest screen
+  fraction builds first. Before 7c-2 the limit was two level changes per tick
+  (`kLevelChangesPerTick`).
+- The new instance copies the plan, the `GeometryInputs` and the graphs of the
+  current instance (`RenderInstance::AtSides`). A copy of the plan equals a
+  cache hit, because the plan holds side references and no pixels. It does
+  not compute a plan key, because the key needs the stack requests, which the
+  actor does not keep after placement. `LiveActor::fullSides` keeps the
+  full-resolution sides, because with the 64-pixel floor the sides of a
+  coarser level do not give back the full sides.
+- The new instance draws hidden, before it is attached. It holds its own copy
+  of every input, so it needs no attached geometry. `DrawResize` draws each
+  stack with no hidden layers and an empty base. On the swap tick the real
+  draw sets the filter and the preceding stack, and only the composite steps
+  draw again. The hidden draw still creates the new targets and draws every
+  step once, so its cost moves to the build ticks and does not go away.
+- The swap comes at the start of the tick after every stack has drawn once,
+  so the tick that swaps writes the new textures. An actor out of view swaps
+  at once. A build that does not finish drawing in 60 frames
+  (`kResizeSwapAfterFrames`) swaps anyway, so a readback that never arrives
+  cannot hold two instances. Its stacks that have not drawn can show nothing
+  for a few frames, as a reinstall did.
+- Nothing holds a raw view of the old instance's targets. Each material and
+  shell slot keeps the `TextureRef` it wrote (`SlotWriter`, `written`), which
+  holds the target through a shared pointer. The target goes back to the pool
+  only after the next slot write replaces it. A `RenderOutput` holds the
+  instance through a weak pointer. The step output cache and the snapshot hold
+  shared references.
+- An equip change or any other reinstall replaces the `LiveActor`, so it drops
+  a pending or in-flight resize. `RetireActorEffects` drops it too. When a
+  geometry is claimed during a build, the actor's stack outputs no longer
+  match the build, and the build returns to pending.
+- The sync log has no `resized` kind. The trace event `resolution_swap` gives
+  the actor, the old and new levels (`from`, `level`), the frames from build
+  to swap, the stack and drawn counts, and the planned targets and bytes of
+  the new instance (`targets`, `target_bytes`). With `VerboseLogging` the text
+  log writes one line per swap, `actor … resized: drawn at <level>
+  resolution`. The trace event `resolution_levels`, written with the
+  heartbeat, counts the live actors at each level.
 - The first install takes the level from the actor's screen fraction at that
   moment (`Manager::InstallLevel`), so a new actor is not built at full and
   rebuilt one tick later. `TrackedActor::resolution` keeps the level across
