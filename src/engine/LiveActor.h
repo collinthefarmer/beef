@@ -8,6 +8,7 @@
 #include "planners/ActorMatches.h"
 #include "planners/BindingPlan.h"
 #include "planners/PlanSides.h"
+#include "planners/RenderBudget.h"
 #include "planners/RenderPlan.h"
 #include "planners/ResolutionLevel.h"
 #include "planners/ResolutionResize.h"
@@ -19,6 +20,7 @@
 #include "render/Binding.h"
 #include "render/Compositor.h"
 
+#include <array>
 #include <cstddef>
 #include <cstdint>
 #include <memory>
@@ -118,6 +120,9 @@ struct LiveActor {
   ResolutionLevel resolution = ResolutionLevel::kFull;
   PlanSides fullSides;
   LiveResize resize;
+  std::array<std::optional<LevelCost>, kResolutionLevelCount> levelCosts;
+  IntermediateHolding intermediates = IntermediateHolding::kHeld;
+  std::optional<ResolutionLevel> blockedLevel;
   std::uint64_t renderedFrame = 0;
   std::shared_ptr<const RecipeCatalog> catalog;
   ActorMatches matches;

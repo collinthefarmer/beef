@@ -5,10 +5,12 @@
 #include "actors/Lifecycle.h"
 #include "diagnostics/Metrics.h"
 #include "diagnostics/Trace.h"
+#include "engine/ActorBudget.h"
 #include "engine/ActorResize.h"
 #include "engine/Clock.h"
 #include "engine/LogOnce.h"
 #include "engine/RegressionRun.h"
+#include "planners/RenderBudget.h"
 #include "planners/RenderMemory.h"
 #include "render/Compositor.h"
 #include "render/RenderInstance.h"
@@ -612,29 +614,20 @@ std::vector<const RenderInstance *> InstancesOf(const LiveActor &a_state) {
   return instances;
 }
 
-std::vector<const RenderInstance *>
-RenderedInstances(const std::unordered_map<RE::FormID, LiveActor> &a_live) {
+TargetCost
+EstimateTargets(const std::unordered_map<RE::FormID, LiveActor> &a_live) {
   std::unordered_set<const RenderInstance *> seen;
-  std::vector<const RenderInstance *> instances;
+  std::vector<HeldTarget> held;
   for (const auto &[actor, state] : a_live) {
     if (state.renderedFrame == 0) {
       continue;
     }
     for (const RenderInstance *render : InstancesOf(state)) {
       if (seen.insert(render).second) {
-        instances.push_back(render);
+        const std::vector<HeldTarget> &now = HeldNow(state, render->Targets());
+        held.insert(held.end(), now.begin(), now.end());
       }
     }
-  }
-  return instances;
-}
-
-TargetCost
-EstimateTargets(const std::unordered_map<RE::FormID, LiveActor> &a_live) {
-  std::vector<HeldTarget> held;
-  for (const RenderInstance *render : RenderedInstances(a_live)) {
-    const PlanTargets &targets = render->Targets();
-    held.insert(held.end(), targets.held.begin(), targets.held.end());
   }
   return CostOf(held);
 }
@@ -663,8 +656,8 @@ std::vector<std::string> RecipeIdsOf(const LiveActor &a_state) {
 ActorTargets TargetsOfActor(RE::FormID a_actor, const LiveActor &a_state) {
   std::vector<HeldTarget> held;
   for (const RenderInstance *render : InstancesOf(a_state)) {
-    const PlanTargets &targets = render->Targets();
-    held.insert(held.end(), targets.held.begin(), targets.held.end());
+    const std::vector<HeldTarget> &now = HeldNow(a_state, render->Targets());
+    held.insert(held.end(), now.begin(), now.end());
   }
   const RE::NiPointer<RE::Actor> actor = a_state.actor.get();
   const char *name = actor ? actor->GetName() : nullptr;
@@ -684,6 +677,32 @@ RenderedActorTargets(const std::unordered_map<RE::FormID, LiveActor> &a_live) {
 }
 
 std::string Fraction(float a_value) { return std::format("{:.3f}", a_value); }
+
+float LevelFraction(const LiveActor &a_state, const Settings &a_settings) {
+  return RegressionScreenResolution().value_or(a_settings.screenResolution)
+             ? a_state.screenFraction
+             : 1.0f;
+}
+
+std::string NameOf(const LiveActor &a_state) {
+  const RE::NiPointer<RE::Actor> actor = a_state.actor.get();
+  const char *name = actor ? actor->GetName() : nullptr;
+  return name ? std::string{name} : std::string{};
+}
+
+void AddBudgetFields(std::vector<Trace::Field> &a_fields,
+                     const BudgetSample &a_sample, const BudgetState &a_state) {
+  if (a_sample.memory) {
+    a_fields.push_back(
+        {"budget_bytes", std::to_string(a_sample.memory->budget)});
+    a_fields.push_back({"usage_bytes", std::to_string(a_sample.memory->usage)});
+  }
+  if (a_state.allowance) {
+    a_fields.push_back({"allowance_bytes", std::to_string(*a_state.allowance)});
+  }
+  a_fields.push_back({"planned_bytes", std::to_string(a_state.planned)});
+  a_fields.push_back({"pressure", IsOver(a_state.pressure) ? "true" : "false"});
+}
 
 void ReportResize(RE::FormID a_actorID, const LiveActor &a_state,
                   const ResizeSwap &a_swap, const Settings &a_settings) {
@@ -724,7 +743,9 @@ void EmitLevelCounts(const std::unordered_map<RE::FormID, LiveActor> &a_live) {
 
 void EmitMetricsHeartbeat(const Metrics::Snapshot &a_measured,
                           const TargetCost &a_estimate,
-                          const ScreenSpread &a_screen) {
+                          const ScreenSpread &a_screen,
+                          const BudgetSample &a_sample,
+                          const BudgetState &a_budget) {
   EmitGpuTimings();
   const TextureLab::TargetHoldings held =
       TextureLab::GetSingleton()->HeldTargets();
@@ -773,6 +794,7 @@ void EmitMetricsHeartbeat(const Metrics::Snapshot &a_measured,
       {"plugin_over_8ms", std::to_string(a_measured.pluginSpikes[0])},
       {"plugin_over_16ms", std::to_string(a_measured.pluginSpikes[1])},
       {"plugin_over_33ms", std::to_string(a_measured.pluginSpikes[2])}};
+  AddBudgetFields(heartbeat, a_sample, a_budget);
   for (const Named<Metrics::Section> &section : Metrics::kSections) {
     const Metrics::SectionTime time = a_measured.Of(section.value);
     heartbeat.push_back(
@@ -790,7 +812,11 @@ void Manager::FlushMetricsHeartbeat() {
   lastMetricsMS_ = now;
   const Metrics::Snapshot measured = Metrics::Drain();
   const TargetCost planned = EstimateTargets(live_);
-  EmitMetricsHeartbeat(measured, planned, ScreenSpreadOf(live_));
+  const Settings settings = GetSettings();
+  const BudgetSample sample = SampleBudget(measured, settings);
+  UpdateBudget(sample, planned.bytes, settings);
+  EmitMetricsHeartbeat(measured, planned, ScreenSpreadOf(live_), sample,
+                       budget_);
   EmitLevelCounts(live_);
   ReportRenderMemory(measured, planned, intervalMs);
 }
@@ -944,6 +970,9 @@ void Manager::Tick(std::uint32_t a_nowMS, const Settings &a_settings) {
     }
     state.inView = ShownThisTick(*actor, a_settings, inspected == it->first);
     state.screenFraction = ScreenFraction(*actor);
+    if (state.inView) {
+      state.intermediates = IntermediateHolding::kHeld;
+    }
     UpdateResolution(it->first, *actor, state, a_settings);
     const bool render = state.inView && AdmitRender(state, firstRenders);
     std::vector<bool> hidden;
@@ -1013,13 +1042,14 @@ void Manager::UpdateResolution(RE::FormID a_actorID, RE::Actor &a_actor,
   ResolutionLevel &level = *tracked->second.resolution;
   const ActorRole role =
       a_actor.IsPlayerRef() ? ActorRole::kPlayer : ActorRole::kOther;
-  const float fraction =
-      RegressionScreenResolution().value_or(a_settings.screenResolution)
-          ? a_state.screenFraction
-          : 1.0f;
   const std::optional<ResolutionLevel> next =
-      LevelChange(level, fraction, role);
+      LevelChange(level, LevelFraction(a_state, a_settings), role);
   if (!next) {
+    a_state.blockedLevel.reset();
+    return;
+  }
+  if (role != ActorRole::kPlayer &&
+      !AdmitStepUp(a_actorID, a_state, level, *next)) {
     return;
   }
   Trace::EmitSafely(Trace::Event::kMetrics,
@@ -1065,6 +1095,139 @@ void Manager::AdvanceResizes(const Settings &a_settings) {
             std::format("actor {:08X} keeps its resolution: {}", found->first,
                         started.error()));
   }
+}
+
+bool Manager::AdmitStepUp(RE::FormID a_actorID, LiveActor &a_state,
+                          ResolutionLevel a_from, ResolutionLevel a_to) {
+  const std::optional<LevelCost> cost = LevelCostOf(a_state, a_to);
+  const std::uint64_t added = cost ? cost->held : 0;
+  const Admission admission = AdmitGrowth(budget_, added);
+  if (admission == Admission::kAdmitted) {
+    budget_ = Admitted(budget_, added);
+    a_state.blockedLevel.reset();
+    return true;
+  }
+  if (a_state.blockedLevel != a_to) {
+    a_state.blockedLevel = a_to;
+    Trace::EmitSafely(
+        Trace::Event::kMetrics,
+        {{"action", "resolution_blocked"},
+         {"actor", std::to_string(a_actorID)},
+         {"from", std::string{LevelName(a_from)}},
+         {"to", std::string{LevelName(a_to)}},
+         {"reason", std::string{AdmissionName(admission)}},
+         {"added_bytes", std::to_string(added)},
+         {"planned_bytes", std::to_string(budget_.planned)},
+         {"allowance_bytes", std::to_string(budget_.allowance.value_or(0))}});
+  }
+  return false;
+}
+
+BudgetSample Manager::SampleBudget(const Metrics::Snapshot &a_measured,
+                                   const Settings &a_settings) {
+  const std::expected<VideoMemory, std::string> memory = videoMemory_.Sample();
+  if (!memory) {
+    LogOnce(warningHistory_, Severity::kWarning,
+            std::format("render target budget: video memory is unknown ({}); "
+                        "the plugin does not respond to memory pressure",
+                        memory.error()));
+  }
+  const TextureLab *lab = TextureLab::GetSingleton();
+  const std::uint64_t scratch = lab ? lab->HeldTargets().scratchBytes : 0;
+  const std::uint64_t capMiB = RegressionRenderTargetBudgetMiB().value_or(
+      a_settings.renderTargetBudgetMiB);
+  return {memory ? std::optional<VideoMemory>{*memory} : std::nullopt,
+          a_measured.targetBytes > scratch ? a_measured.targetBytes - scratch
+                                           : 0,
+          capMiB * kMebibyte};
+}
+
+void Manager::UpdateBudget(const BudgetSample &a_sample,
+                           std::uint64_t a_planned,
+                           const Settings &a_settings) {
+  const BudgetState before = budget_;
+  budget_ = NextBudget(before, AllowanceOf(a_sample), a_planned);
+  const bool wasOver = IsOver(before.pressure);
+  const bool isOver = IsOver(budget_.pressure);
+  if (wasOver != isOver) {
+    logger::info("{}", isOver ? PressureStartLine(a_sample, budget_)
+                              : PressureEndLine(budget_));
+    Trace::EmitSafely(
+        Trace::Event::kMetrics,
+        {{"action", "budget_pressure"},
+         {"pressure", isOver ? "true" : "false"},
+         {"planned_bytes", std::to_string(budget_.planned)},
+         {"allowance_bytes", std::to_string(budget_.allowance.value_or(0))}});
+  }
+  if (isOver && budget_.allowance) {
+    RelieveBudget(PressureGoal(*budget_.allowance), a_settings);
+  }
+}
+
+void Manager::RelieveBudget(std::uint64_t a_goal, const Settings &a_settings) {
+  std::vector<RE::FormID> ids;
+  std::vector<BudgetActor> actors;
+  bool resizeBusy = false;
+  for (auto &[id, state] : live_) {
+    resizeBusy = resizeBusy || !Is<ResizeIdle>(state.resize);
+    const RE::NiPointer<RE::Actor> actor = state.actor.get();
+    if (!actor || state.renderedFrame == 0) {
+      continue;
+    }
+    const ActorRole role =
+        actor->IsPlayerRef() ? ActorRole::kPlayer : ActorRole::kOther;
+    ids.push_back(id);
+    actors.push_back(
+        BudgetActorOf(state, id, role, LevelFraction(state, a_settings)));
+  }
+  const BudgetResponse response =
+      RespondToPressure(budget_.planned, a_goal, actors, resizeBusy);
+  for (const std::size_t index : response.release) {
+    const auto found =
+        index < ids.size() ? live_.find(ids[index]) : live_.end();
+    if (found == live_.end()) {
+      continue;
+    }
+    const std::size_t steps = ReleaseIntermediates(found->second);
+    Trace::EmitSafely(Trace::Event::kMetrics,
+                      {{"action", "budget_release"},
+                       {"actor", std::to_string(found->first)},
+                       {"steps", std::to_string(steps)},
+                       {"bytes", std::to_string(actors[index].releasable)}});
+  }
+  if (response.stepDown && response.stepDown->actor < ids.size()) {
+    const auto found = live_.find(ids[response.stepDown->actor]);
+    if (found != live_.end()) {
+      StepDownForBudget(found->first, found->second, response.stepDown->option);
+    }
+  }
+  if (response.exhausted && budget_.pressure == Pressure::kOver) {
+    budget_.pressure = Pressure::kOverWarned;
+    logger::warn(
+        "{}",
+        ExhaustedLine(budget_,
+                      LargestHoldings(HoldingsOf(RenderedActorTargets(live_)),
+                                      kReportedHoldings)));
+  }
+}
+
+void Manager::StepDownForBudget(RE::FormID a_actorID, LiveActor &a_state,
+                                const StepDownOption &a_option) {
+  const auto tracked = tracked_.find(a_actorID);
+  if (tracked == tracked_.end() || !tracked->second.resolution) {
+    return;
+  }
+  const ResolutionLevel from = a_state.resolution;
+  tracked->second.resolution = a_option.to;
+  RequestResize(a_state, a_option.to);
+  logger::info("{}", StepDownLine(a_actorID, NameOf(a_state), from, a_option));
+  Trace::EmitSafely(Trace::Event::kMetrics,
+                    {{"action", "budget_step_down"},
+                     {"actor", std::to_string(a_actorID)},
+                     {"from", std::string{LevelName(from)}},
+                     {"to", std::string{LevelName(a_option.to)}},
+                     {"freed_bytes", std::to_string(a_option.freed)},
+                     {"reason", "render target budget"}});
 }
 
 void Manager::ClaimLostGeometries(RE::FormID a_actorID, LiveActor &a_state) {

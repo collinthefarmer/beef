@@ -76,6 +76,22 @@ back to pending. A reinstall replaces the `LiveActor`, so it drops a pending
 or in-flight resize; `RetireActorEffects` drops it too. Each swap emits the
 trace event `resolution_swap`.
 
+**Render target budget.** `Manager::FlushMetricsHeartbeat` runs the budget
+once a second. `SampleBudget` reads the DXGI local segment through
+`VideoMemoryProbe` (`render/VideoMemory.h`) and the setting
+`RenderTargetBudgetMiB`. `UpdateBudget` computes the **allowance** and the
+**pressure** with the pure functions of `planners/RenderBudget.h`. Each
+pressure start and end writes one `info` line. Under pressure,
+`RelieveBudget` builds one `BudgetActor` per rendered actor
+(`BudgetActorOf`, `ActorBudget.h`) and applies the `BudgetResponse`. An actor
+out of view releases its intermediate targets (`ReleaseIntermediates`). One
+NPC steps down one level through the resize (`StepDownForBudget`). When
+nothing is left, one `warning` names the largest holdings.
+`UpdateResolution` admits each step up through `AdmitStepUp`. A blocked step
+up waits and emits the trace event `resolution_blocked` once per wanted
+level. When the DXGI reading is unknown, the plugin writes one warning and
+the budget does nothing.
+
 **The frame.** `Manager::OnFrame` runs from the hook. It returns at once while
 `ApplicationService::Loading` is true. Once a second it expires `CarriedTimes` and
 sweeps animation observation. Every `Actors::kPendingRecheckMs` (100 ms),
@@ -295,6 +311,10 @@ below the material's native size.
 | `SlotStackSize` | Divides the base size by `ResolutionDivisor` of the slot's `Resolution`. `CollectChainStacks` calls it before `Compositor::StackSize`. | `ManagerApply.cpp` |
 | `DefaultSlotResolution`, `ResolutionDivisor` | The per-slot default `Resolution` and its divisor (`kFull` 1, `kHalf` 2, `kQuarter` 4). | `recipe/Recipe.h` |
 | `SurfaceOutput::resolution` | An optional `Resolution` that overrides `DefaultSlotResolution` for that output's slot. | `recipe/Recipe.h` |
+| `Settings::renderTargetBudgetMiB` | The cap on the render target allowance in MiB. 0 sets no cap. `kMaxRenderTargetBudgetMiB` (65536) caps it. A regression run can replace it (`RegressionRenderTargetBudgetMiB`). | `Settings.h` |
+| `Manager::budget_`, `BudgetState` | The last allowance, the planned bytes and the `Pressure`: `kNone`, `kOver`, or `kOverWarned` after the exhaustion warning of the episode. | `Manager.h`, `planners/RenderBudget.h` |
+| `Manager::SampleBudget`, `Manager::UpdateBudget`, `Manager::RelieveBudget`, `Manager::StepDownForBudget`, `Manager::AdmitStepUp` | Read the DXGI memory and the cap, update the pressure, apply the responses, step one NPC down, and admit or block one step up. | `ManagerTick.cpp` |
+| `LevelCostOf`, `BudgetActorOf`, `HeldNow`, `ReleaseIntermediates` | The held and stack bytes of the actor's plan at one level (`TargetsOf`, cached in `LiveActor::levelCosts`), the actor's facts for the budget, the targets that the estimate counts for the actor, and the release of its intermediates. | `ActorBudget.h` |
 
 ### Actor and worn-piece state
 
@@ -306,7 +326,7 @@ without the manager.
 
 | Record | Description |
 |---|---|
-| `LiveActor` | One applied actor: its handle, the `RecipeCatalog` it was planned against, its `ActorMatches`, its pieces, instances and **placements**, and the `ApplicationToken`s of its in-flight applications. It also holds its resolution level, its full-resolution sides (`fullSides`) and its `LiveResize`. `RecipesOf` returns the catalog's recipes. |
+| `LiveActor` | One applied actor: its handle, the `RecipeCatalog` it was planned against, its `ActorMatches`, its pieces, instances and **placements**, and the `ApplicationToken`s of its in-flight applications. It also holds its resolution level, its full-resolution sides (`fullSides`) and its `LiveResize`. For the render target budget it holds the bytes of its plan per level (`levelCosts`), whether its intermediates are released (`intermediates`), and the level of its blocked step up (`blockedLevel`). `RecipesOf` returns the catalog's recipes. |
 | `LiveResize` | The resize state of one actor: `ResizeIdle`, `ResizePending` (the level) or `ResizeBuild`. |
 | `ResizeBuild` | A resize in flight: its `ResizeProgress` (the old level, the new level and the frame the build began), the new `RenderInstance`, and one `ResizedStack` per stack output of the actor. |
 | `ResizedStack` | One stack output on the new instance and whether it has drawn once. |
@@ -429,7 +449,8 @@ PlayerCharacter::Update hook (every frame)                      Hooks.cpp
   │
   ▼
 Manager::OnFrame                                                ManagerTick.cpp
-  │   once a second: CarriedTimes::Expire, SweepAnimationEvents
+  │   once a second: FlushMetricsHeartbeat (SampleBudget, UpdateBudget,
+  │     RelieveBudget), CarriedTimes::Expire, SweepAnimationEvents
   │   every kPendingRecheckMs: MarkWaitingStale
   │   every kRecheckMs: MarkRecheckStale
   ▼
@@ -472,7 +493,7 @@ Recipe from LoadedRecipes()
 | Concern | Key files |
 |---|---|
 | Event sinks and hooks | `Events.h`/`.cpp` (equip, object-loaded, hit and node-update sinks), `PluginEvents.h`/`.cpp` (the inter-plugin message contract and parser), `Hooks.h`/`.cpp` (the `PlayerCharacter::Update` hook), `AnimationSubscriptions.h`/`.cpp` (animation-graph observation) |
-| The manager | `Manager.h`, `Manager.cpp` (construction, queue calls, `Clear`, load, the menu's idle-camera hold), `PhaseTrace.h` (`PhaseTrace`: times named phases with `Measure` and emits one metrics or application trace event), `ManagerApply.cpp` (`SyncStale`, `SyncActor`, `InstallActor`, `DecideActor`, `RetireActor`, `ForgetActor`, live pieces from observation, placement, `BuildActorRender`, lights), `ManagerApplication.cpp` (`ChangeAndRebuildActors`, application bookkeeping), `ManagerTick.cpp` (`OnFrame`, `MarkWaitingStale`, `MarkRecheckStale`, `Tick`, `UpdateResolution`, `AdvanceResizes`, `ClaimLostGeometries`, `RenderGeometry`, slot writes, `UpdateLights`), `ActorResize.h`/`.cpp` (the resolution resize of one actor), `ManagerAnimation.cpp` (animation events), `ManagerEvents.cpp` (`Fire`, `FireAt`, `QueueEvent`, `QueueBroadcast`), `ManagerInspection.cpp` (`RequestMesh`), `ManagerSnapshot.cpp` (`GetStatus`, `BuildSnapshot`, `PublishSnapshot`, `Watch`), `LogOnce.h`/`.cpp` (`LogOnce`: a fault line once per text, through a `WarningHistory`) |
+| The manager | `Manager.h`, `Manager.cpp` (construction, queue calls, `Clear`, load, the menu's idle-camera hold), `PhaseTrace.h` (`PhaseTrace`: times named phases with `Measure` and emits one metrics or application trace event), `ManagerApply.cpp` (`SyncStale`, `SyncActor`, `InstallActor`, `DecideActor`, `RetireActor`, `ForgetActor`, live pieces from observation, placement, `BuildActorRender`, lights), `ManagerApplication.cpp` (`ChangeAndRebuildActors`, application bookkeeping), `ManagerTick.cpp` (`OnFrame`, `MarkWaitingStale`, `MarkRecheckStale`, `Tick`, `UpdateResolution`, `AdvanceResizes`, `ClaimLostGeometries`, `RenderGeometry`, slot writes, `UpdateLights`), `ActorResize.h`/`.cpp` (the resolution resize of one actor), `ActorBudget.h`/`.cpp` (the render target budget's facts and release for one actor), `ManagerAnimation.cpp` (animation events), `ManagerEvents.cpp` (`Fire`, `FireAt`, `QueueEvent`, `QueueBroadcast`), `ManagerInspection.cpp` (`RequestMesh`), `ManagerSnapshot.cpp` (`GetStatus`, `BuildSnapshot`, `PublishSnapshot`, `Watch`), `LogOnce.h`/`.cpp` (`LogOnce`: a fault line once per text, through a `WarningHistory`) |
 | Application and session bookkeeping | `ApplicationService.h`/`.cpp` (token tracking, rejection handling, history pruning), `SessionQueue.h`/`.cpp` (per-actor task serialisation) |
 | Actor and worn-piece state | `ActorObservation.h`/`.cpp` (`ObserveActor`, `ModelTable`, `ModelOf`, `MaterialLayout`), `LiveActor.h`/`.cpp` (live records, `RetireGeometry`, `ResolvePlacement`), `Environment.h`/`.cpp` (`ActorEnvironment`), `WornKeys.h`/`.cpp` (`WornKeysOf`), `EnchantmentEffects.h`/`.cpp` (`EnchantmentValueFor`), `InstanceTime.h`/`.cpp` (`CarriedTimes`) |
 | Recipe CRUD | `RecipeStore.h`/`.cpp` (load, publish, mutate, save, `RefreshRecipeDerivedState`), `RecipeFiles.h`/`.cpp` (checked read, write, rename and delete), `RecipeOperations.h` (the operation journal and task guards), `RecipeEditor.h`/`.cpp` (gestures, edits, undo, paint, view) |

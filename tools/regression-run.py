@@ -32,6 +32,7 @@ RELAUNCH_SECONDS = 60
 BETWEEN_LAUNCHES_SECONDS = 15
 MIN_MEASURED_SECONDS = 10
 MAX_MEASURED_SECONDS = 3600
+MAX_RENDER_TARGET_BUDGET_MIB = 65536
 QUICK_EDGE_SECONDS = 10
 BUDGETS_FILE = ROOT / 'tests/regression/budgets.json'
 POLL_SECONDS = 2
@@ -76,7 +77,8 @@ def read_settings(environ: dict[str, str], local: dict[str, str]) -> Settings | 
 
 def run_file(run: str, save: str, suite: list[str], now: float,
              verify_render_plans: bool = False, measured_seconds: int | None = None,
-             screen_resolution: bool | None = None) -> dict:
+             screen_resolution: bool | None = None,
+             render_target_budget_mib: int | None = None) -> dict:
     request = {'format': 1, 'run': run, 'save': save, 'suite': suite,
                'notAfter': int(now) + RUN_FILE_LIFETIME_SECONDS}
     if verify_render_plans:
@@ -85,6 +87,8 @@ def run_file(run: str, save: str, suite: list[str], now: float,
         request['measuredSeconds'] = measured_seconds
     if screen_resolution is not None:
         request['screenResolution'] = screen_resolution
+    if render_target_budget_mib is not None:
+        request['renderTargetBudgetMiB'] = render_target_budget_mib
     return request
 
 
@@ -94,6 +98,14 @@ def quick_seconds(text: str) -> int:
         raise argparse.ArgumentTypeError(
             f'--quick is {MIN_MEASURED_SECONDS}..{MAX_MEASURED_SECONDS} seconds')
     return seconds
+
+
+def budget_mib(text: str) -> int:
+    mebibytes = int(text)
+    if not 0 <= mebibytes <= MAX_RENDER_TARGET_BUDGET_MIB:
+        raise argparse.ArgumentTypeError(
+            f'--render-target-budget is 0..{MAX_RENDER_TARGET_BUDGET_MIB} MiB')
+    return mebibytes
 
 
 def launches(cases: list[str]) -> list[list[str]] | str:
@@ -231,6 +243,9 @@ def main() -> int:
     parser.add_argument('--screen-resolution', choices=('on', 'off'),
                         help='turn ScreenResolution on or off for this run in place of the '
                              'INI value; the start line records the value used')
+    parser.add_argument('--render-target-budget', type=budget_mib, metavar='MIB',
+                        help='use this RenderTargetBudgetMiB for this run in place of the '
+                             'INI value; 0 sets no cap; the start line records the value used')
     parser.add_argument('--manual', action='store_true',
                         help='write the run file and wait; start the game yourself')
     args = parser.parse_args()
@@ -269,7 +284,8 @@ def main() -> int:
             time.sleep(BETWEEN_LAUNCHES_SECONDS)
         passed.append(launch(settings, f'{stamp}-{index + 1}', cases, args.save, args.timeout,
                              args.manual, tasklist, args.verify_render_plans, args.quick,
-                             screen_resolution_of(args.screen_resolution)))
+                             screen_resolution_of(args.screen_resolution),
+                             args.render_target_budget))
     if len(passed) > 1:
         print(f'launches passed: {sum(passed)} of {len(passed)}')
     return 0 if all(passed) else 1
@@ -288,9 +304,10 @@ def start_game(settings: Settings) -> None:
 
 def launch(settings: Settings, run: str, cases: list[str], save: str, timeout: float,
            manual: bool, tasklist: str, verify_render_plans: bool = False,
-           measured_seconds: int | None = None, screen_resolution: bool | None = None) -> bool:
+           measured_seconds: int | None = None, screen_resolution: bool | None = None,
+           render_target_budget_mib: int | None = None) -> bool:
     request = run_file(run, save, cases, time.time(), verify_render_plans, measured_seconds,
-                       screen_resolution)
+                       screen_resolution, render_target_budget_mib)
     (settings.log_dir / RUN_FILE).write_text(json.dumps(request) + '\n', encoding='utf-8')
     print(f'run {run}: {" ".join(cases)} from save {save}')
     if measured_seconds is not None:
@@ -298,6 +315,8 @@ def launch(settings: Settings, run: str, cases: list[str], save: str, timeout: f
               f'{QUICK_EDGE_SECONDS} s; the full soak is the checkpoint gate')
     if screen_resolution is not None:
         print(f'ScreenResolution {"on" if screen_resolution else "off"} for this run')
+    if render_target_budget_mib is not None:
+        print(f'RenderTargetBudgetMiB {render_target_budget_mib} for this run')
     start = (lambda: print('start the game through MO2 now')) if manual \
         else (lambda: start_game(settings))
     start()

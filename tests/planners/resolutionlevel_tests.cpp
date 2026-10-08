@@ -69,6 +69,18 @@ void SidesScaleAndStopAtTheMinimum() {
 }
 }
 
+void CoarserLevelsStepOnce() {
+  Check(CoarserLevel(ResolutionLevel::kFull) == ResolutionLevel::kHalf,
+        "full steps down to half");
+  Check(CoarserLevel(ResolutionLevel::kQuarter) == ResolutionLevel::kEighth,
+        "quarter steps down to eighth");
+  Check(!CoarserLevel(ResolutionLevel::kEighth), "eighth has no coarser level");
+  Check(LevelGap(ResolutionLevel::kFull, ResolutionLevel::kQuarter) == 2,
+        "full is two steps finer than quarter");
+  Check(LevelGap(ResolutionLevel::kHalf, ResolutionLevel::kFull) == -1,
+        "half is one step coarser than full");
+}
+
 int main() {
   IdealLevelHalvesWithScreenSize();
   LevelsOnlyStepUp();
@@ -76,5 +88,6 @@ int main() {
   UnknownSizeKeepsTheLevel();
   PlayerStaysFull();
   SidesScaleAndStopAtTheMinimum();
+  CoarserLevelsStepOnce();
   return test::Finish("planners_resolutionlevel");
 }

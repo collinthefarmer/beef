@@ -95,6 +95,18 @@ std::expected<json, std::string> RunFileDocument(std::string_view a_text) {
 }
 
 std::expected<std::optional<std::uint32_t>, std::string>
+BudgetMiBOf(std::optional<int> a_mebibytes) {
+  if (!a_mebibytes) {
+    return std::nullopt;
+  }
+  if (*a_mebibytes < 0 || *a_mebibytes > static_cast<int>(kMaxRunBudgetMiB)) {
+    return std::unexpected(
+        std::format("'renderTargetBudgetMiB' is 0..{}", kMaxRunBudgetMiB));
+  }
+  return static_cast<std::uint32_t>(*a_mebibytes);
+}
+
+std::expected<std::optional<std::uint32_t>, std::string>
 MeasuredSecondsOf(std::optional<int> a_seconds) {
   if (!a_seconds) {
     return std::nullopt;
@@ -129,6 +141,7 @@ std::expected<RunFile, std::string> ParseRunFile(std::string_view a_text,
   const std::optional<int> measuredSeconds = reader.Integer("measuredSeconds");
   const std::optional<bool> screenResolution =
       reader.Boolean("screenResolution");
+  const std::optional<int> budgetMiB = reader.Integer("renderTargetBudgetMiB");
   reader.Finish();
   if (!problems.empty()) {
     return std::unexpected(problems.front().message);
@@ -161,12 +174,17 @@ std::expected<RunFile, std::string> ParseRunFile(std::string_view a_text,
   if (!measured) {
     return std::unexpected(measured.error());
   }
+  const auto budget = BudgetMiBOf(budgetMiB);
+  if (!budget) {
+    return std::unexpected(budget.error());
+  }
   return RunFile{std::move(*checkedRun),
                  std::move(*checkedSave),
                  std::move(*suite),
                  verifyRenderPlans.value_or(false),
                  *measured,
-                 screenResolution};
+                 screenResolution,
+                 *budget};
 }
 
 std::string StartLineJson(const StartLine &a_start) {
@@ -180,6 +198,9 @@ std::string StartLineJson(const StartLine &a_start) {
     line["measuredSeconds"] = *a_start.measuredSeconds;
   }
   line["screenResolution"] = a_start.screenResolution;
+  if (a_start.renderTargetBudgetMiB > 0) {
+    line["renderTargetBudgetMiB"] = a_start.renderTargetBudgetMiB;
+  }
   return line.dump(-1, ' ', false, json::error_handler_t::replace);
 }
 

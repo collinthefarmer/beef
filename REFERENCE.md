@@ -2358,7 +2358,7 @@ cancel by the user instead of the load.
 - An NPC steps to a finer level as soon as its screen fraction crosses a
   threshold, and it goes straight to the level that fraction needs
   (render-performance 7c-1, 2026-10-08). It never steps to a coarser level
-  because its fraction falls; only the render target budget (7d) will step it
+  because its fraction falls; only the render target budget (7d) steps it
   down. Before 7c-1, a coarser step came below 0.8 of a threshold with a 2 s
   hold between changes. In the session of 2026-10-08 that policy changed one
   NPC's level 45 times in about 7 minutes while the player walked to and from
@@ -2432,6 +2432,102 @@ cancel by the user instead of the load.
 - `EvictionFor` restores an evicted actor only inside 80% of the eviction
   radius. This hysteresis prevents repeated retire/reapply near the boundary;
   a non-positive radius disables distance eviction.
+- The **render target budget** limits the bytes of the plugin's render
+  targets (render-performance 7d, 2026-10-08; `planners/RenderBudget.h`,
+  `engine/ActorBudget.h`, `render/VideoMemory.h`). The pure decisions are in
+  `planners/RenderBudget.h` and are native-tested. The engine gathers the
+  facts, calls them and acts.
+- The budget reads the DXGI local segment once per heartbeat (1 s), in
+  `Manager::FlushMetricsHeartbeat`. `VideoMemoryProbe` gets the device from
+  `RE::BSGraphics::Renderer::GetDevice`, queries `IDXGIDevice`, calls
+  `GetAdapter`, and queries `IDXGIAdapter3`. It then calls
+  `QueryVideoMemoryInfo(0, DXGI_MEMORY_SEGMENT_GROUP_LOCAL)` and keeps
+  `budget` and `currentUsage`. The sibling plugins VramProfiler
+  (`FrameMonitor.cpp`) and GrassCullingTuning (`main.cpp`) reach the adapter
+  the same way.
+- The probe keeps the adapter after the first success. When the device has
+  no `IDXGIDevice`, no adapter or no `IDXGIAdapter3`, the probe keeps that
+  failure and does not ask again. When the budget is unknown, the plugin
+  writes one warning (`render target budget: video memory is unknown`), ends
+  any pressure, admits every step up and does nothing else. A DXGI budget of 0
+  also counts as unknown.
+- The **allowance** is the most target memory the plugin may hold:
+  `allowance = live + (budget - usage) - margin` (`AllowanceOf`). `live` is
+  the measured target bytes less the scratch targets, because the plans'
+  estimate leaves out the scratch targets. The plugin's own targets are part
+  of the DXGI usage. A release therefore lowers `live` and `usage` by the same
+  bytes, and the allowance stays the same. A usage over the budget gives no
+  headroom. Live bytes over the usage count only up to the usage. Every sum
+  saturates.
+- The **margin** is the larger of 512 MiB and 5 % of the DXGI budget
+  (`MarginOf`). The plugin samples once a second and cannot see the game's
+  own allocations between two samples, for example the textures of a new
+  cell. The margin keeps that room free. The 5 % term scales the room with
+  the card's memory.
+- The setting `RenderTargetBudgetMiB` caps the allowance; 0 sets no cap. The
+  run file field `renderTargetBudgetMiB` replaces the setting for one
+  regression run. The cap applies only while the DXGI reading is known.
+- **Pressure** starts when the planned bytes (`EstimateTargets`) exceed the
+  allowance. It ends only when the planned bytes fall below the allowance
+  less a **band** (`NextBudget`, `PressureGoal`). The band is the larger of
+  256 MiB and 10 % of the allowance, and at most half of the allowance
+  (`BandOf`). Without the band, the bytes that a step down frees admit the
+  step up that takes them back, and the levels change back and forth. The
+  half-allowance limit lets a small cap end its pressure. Under pressure, the
+  responses aim below the band, not below the allowance, so that the episode
+  ends.
+- **Admission.** A step up from `LevelChange` waits under pressure. It also
+  waits when the planned bytes plus the bytes of the new instance exceed the
+  allowance (`AdmitGrowth`). The new instance counts in full on top of the
+  current holding, because a resize holds the old and the new targets until
+  the swap. An admitted step up adds its bytes to the planned figure at once
+  (`Admitted`), so a second step up in the same second sees the first. The
+  player is always admitted. A blocked step up writes the trace event
+  `resolution_blocked` once per wanted level, not a log line, because it
+  repeats every tick.
+- New installs are not admitted by the budget. An install follows an equip
+  change or a load, and holding it back needs an actor state with a plan but
+  no install, which the actor lifecycle (`actors/Lifecycle.h`) does not have.
+  An install builds at its ideal level (`InstallLevel`). The next heartbeat
+  counts it, and the responses step down other NPCs first when they are
+  finer than their screen fraction needs.
+- `kResizesInFlight` stays 1. The budget admits each step-up build by its
+  bytes and starts no step down while any resize is pending or in flight.
+- **Response 1: hidden actors release their intermediates.** An actor out of
+  view releases every texture and bake output of its instance except the
+  stacks (`RenderInstance::ReleaseIntermediates`, the `Releasable` rule of
+  the idle release). These are the static outputs that 7b keeps until the
+  instance goes. The largest holdings release first, and the releases stop
+  when the planned bytes fit. A released step restores when a draw demands it
+  (`RenderExecution::Materialize`) and keeps its change version, so a stack
+  draws again only when an input changed. The step output cache keeps an
+  unheld target for 500 ms (`kStepOutputIdleMs`), and the idle pool keeps at
+  most 64 MiB, so the measured bytes fall within about a second. Until the
+  actor is in view again, the estimate counts only its stacks (`HeldNow`,
+  `LiveActor::intermediates`). From the tick that the actor is in view, the
+  estimate counts all its held targets again.
+- **Response 2: one NPC steps down one level.** The candidate is the NPC whose
+  level is finest against `IdealLevel` of its screen fraction (`LevelGap`).
+  The most bytes freed breaks a tie. The player is never a candidate, and
+  neither is an actor with a resize. `TargetsOf` prices the current and the
+  coarser level (`LevelCostOf`, cached per level on the `LiveActor`). The step
+  down goes through the 7c-2 resize (`RequestResize`), at most one per
+  heartbeat. Each step down writes one `info` line, `actor … steps down from
+  <level> to <level> resolution: frees … (render target budget)`, and the
+  trace event `budget_step_down`. An NPC stepped down rises again only
+  through `LevelChange` and admission.
+- **Response 3 is not built.** No clean path suspends an actor's effect and
+  restores it later. Distance eviction runs inside the actor lifecycle
+  (`Actors::Advance` with `EvictDistance`), and a budget hold would need a new
+  actor state. When responses 1 and 2 have nothing left, the plugin writes
+  one `warning` per pressure episode (`render target budget: no release or
+  step down is left`) with the five largest holdings (`Pressure::kOverWarned`).
+- Each pressure start and end writes one `info` line with the planned bytes,
+  the allowance, the DXGI budget and usage, the plugin's bytes and the cap,
+  and the trace event `budget_pressure`. Each release writes the trace event
+  `budget_release`. The heartbeat carries `budget_bytes`, `usage_bytes` and
+  `allowance_bytes` while the reading is known, and always `planned_bytes`
+  and `pressure`.
 
 - `TargetsOf` (`planners/TargetCost.h`) lists the targets a plan holds
   (`held`): every step that draws a texture or a stack and that a rendered
@@ -2448,8 +2544,9 @@ cancel by the user instead of the load.
   without it, and created 5609 against 3051 MiB. Holding the static outputs
   raised the memory in use by 18 % in `soak-enchanted` (3366 to 3979 MiB,
   runs 20261007T175741-1 and 20261007T193002-2); the fill template holds
-  69.3 MiB per plan at a 2048² base instead of 58.7 MiB. Render-performance
-  7d releases static outputs under memory pressure.
+  69.3 MiB per plan at a 2048² base instead of 58.7 MiB. Under memory pressure
+  the render target budget releases the static outputs of an actor out of
+  view (render-performance 7d).
 - A plan holds no pixel sizes (render-performance 7c, 2026-10-07). Each
   `TextureRequirements` and each reduction domain holds a **side reference**
   (`SideRef`): an index into the list of distinct stack sides that the engine
@@ -2513,8 +2610,9 @@ cancel by the user instead of the load.
   bytes were its plan's bytes times its geometry count. The line
   `render targets: 1474 MiB in 250 targets; Vigilant of Stendarr (FF00226C)
   3973 MiB` came from that count. The heartbeat is also flushed at regression window edges, so
-  an interval can be shorter than a second. The thresholds are fixed until
-  render-performance 7d reads the DXGI budget.
+  an interval can be shorter than a second. The thresholds of the holding and
+  burst lines are fixed. The render target budget (render-performance 7d)
+  reads the DXGI budget separately.
 - `ScreenFraction` (`ManagerTick.cpp`) is the actor's bound diameter over its
   distance from the camera, divided by the frustum's height at unit distance
   (`NiCamera::GetRuntimeData2().viewFrustum`, `fTop - fBottom`), clamped to

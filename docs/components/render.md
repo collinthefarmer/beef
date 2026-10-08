@@ -75,7 +75,10 @@ dispatches each `RenderStepKind` to one function per kind, for example `ExecuteB
 `RenderInstance::BeginFrame` runs once per frame, whichever geometry calls it
 first, with the tick's time in milliseconds. It releases each texture or
 bake-buffer step that no consumer read for `kReleaseAfterIdleMS` (500 ms),
-and it never releases a stack result (`Releasable`). It then collects the
+and it never releases a stack result (`Releasable`).
+`ReleaseIntermediates` releases every output that `Releasable` allows at
+once, for the render target budget. A released step restores when a draw
+demands it. `BeginFrame` then collects the
 finished readbacks. A step whose input has no value yet while its readback is
 in flight makes the stack `StackPending`, not failed (`AwaitingFirstReadback`).
 
@@ -195,6 +198,7 @@ the target again.
 | Type | Description | Declared in |
 |---|---|---|
 | `TextureLab::RenderTarget` | One D3D11 texture with its views, size, `TextureFormat`, `MipPolicy`, generation and presenter. It cannot be copied or moved. | `TextureLab.h` |
+| `VideoMemoryProbe` | Reads the DXGI budget and usage of the local segment for the render target budget. It reaches `IDXGIAdapter3` from the game's D3D11 device once and keeps it. It keeps a failure too, and `Sample` then returns the failure text. | `VideoMemory.h` |
 | `RenderTargetPool` | Owns the idle targets (at most 16 and 64 MiB), the scratch targets per size and format, and `kPresenterCount` (512) presenter slots. `Acquire` returns a shared target, `Scratch` returns a reused one, and `Recycle` returns a released target to the pool. | `RenderTargetPool.h` |
 | `TextureRef` | A generated target or a static engine texture. `get()` returns the presenter or the engine texture. `Valid()` and `Generation()` tell a live target from a stale one. | `TextureRef.h` |
 | `TextureIdentity` | The engine texture's address, generation and name as text. `CompositorDemand.cpp` uses it in material identities. It differs from `ImageCacheKey` (`planners/TextureIdentity.h`), which identifies a file by its path. | `TextureRef.h` |
@@ -290,6 +294,7 @@ places the lights, and `LightBinding::Update` sets their values each tick.
 | Plan execution | `RenderInstance.h`, `RenderInstance.cpp` |
 | Compositor entry points and caches | `Compositor.h`, `Compositor.cpp`, `CompositorSource.cpp`, `CompositorBake.cpp`, `CompositorDemand.cpp`, `SourceSampling.h`, `SourceSampling.cpp` |
 | Targets, presenters and previews | `RenderTargetPool.h`, `RenderTargetPool.cpp`, `TextureRef.h`, `TextureRef.cpp`, `TexturePreviews.h`, `TexturePreviews.cpp` |
+| Video memory | `VideoMemory.h`, `VideoMemory.cpp` |
 | Bindings and material layout | `Binding.h`, `Binding.cpp`, `PBRMaterial.h`, `PBRMaterial.cpp`, `Shell.cpp`, `Light.cpp` |
 | Meshes and skin | `MeshCache.h`, `MeshCache.cpp`, `MeshReader.h`, `MeshReader.cpp`, `SkinData.h`, `SkinData.cpp`, `SkinPalette.h`, `SkinPalette.cpp` |
 

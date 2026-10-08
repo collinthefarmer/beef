@@ -37,17 +37,6 @@ std::vector<StackHolder> StackHolders(LiveActor &a_state) {
   return holders;
 }
 
-std::shared_ptr<RenderInstance> CurrentRender(const LiveActor &a_state) {
-  for (const LivePiece &piece : a_state.pieces) {
-    for (const LiveGeometry &geometry : piece.geometries) {
-      if (geometry.inputs.render) {
-        return geometry.inputs.render;
-      }
-    }
-  }
-  return nullptr;
-}
-
 bool StacksMatch(const std::vector<StackHolder> &a_holders,
                  const std::vector<ResizedStack> &a_built) {
   if (a_holders.size() != a_built.size()) {
@@ -103,6 +92,17 @@ void AttachBuild(LiveActor &a_state,
 }
 }
 
+std::shared_ptr<RenderInstance> AttachedRender(const LiveActor &a_state) {
+  for (const LivePiece &piece : a_state.pieces) {
+    for (const LiveGeometry &geometry : piece.geometries) {
+      if (geometry.inputs.render) {
+        return geometry.inputs.render;
+      }
+    }
+  }
+  return nullptr;
+}
+
 void RequestResize(LiveActor &a_state, ResolutionLevel a_level) {
   a_state.resize = ResizePending{a_level};
 }
@@ -114,7 +114,7 @@ std::expected<void, std::string> StartResize(LiveActor &a_state,
     return {};
   }
   ResizeBuild build{{a_state.resolution, pending->level, a_frame}, nullptr, {}};
-  const std::shared_ptr<RenderInstance> current = CurrentRender(a_state);
+  const std::shared_ptr<RenderInstance> current = AttachedRender(a_state);
   if (current) {
     std::expected<PlanSides, std::string> sides = SidesFor(
         current->Plan(), AtLevel(a_state.fullSides, build.progress.to).pixels);
@@ -170,7 +170,7 @@ std::optional<ResizeSwap> FinishResize(LiveActor &a_state,
     return std::nullopt;
   }
   const std::vector<StackHolder> holders = StackHolders(a_state);
-  const std::shared_ptr<RenderInstance> current = CurrentRender(a_state);
+  const std::shared_ptr<RenderInstance> current = AttachedRender(a_state);
   if (!StacksMatch(holders, build->stacks) ||
       static_cast<bool>(current) != static_cast<bool>(build->render)) {
     a_state.resize = ResizePending{build->progress.to};

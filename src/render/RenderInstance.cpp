@@ -1457,6 +1457,14 @@ bool RenderInstance::BeginFrame(std::uint64_t frame, std::uint64_t nowMS) {
   CollectReadbacks();
   return true;
 }
+std::size_t RenderInstance::ReleaseIntermediates() {
+  const std::size_t released = execution_.ReleaseWhere(
+      [](RenderStepId, const RenderStep &planned, const RenderValue &value) {
+        return Releasable(planned, value);
+      });
+  Metrics::CountStepReleases(released);
+  return released;
+}
 std::optional<TextureView> RenderInstance::Texture(RenderValueRef output) {
   const std::optional<RenderValue> *value = nullptr;
   if (const auto *ref = Get<StepOutputRef>(output);

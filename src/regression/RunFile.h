@@ -17,11 +17,13 @@ struct RunFile {
   bool verifyRenderPlans = false;
   std::optional<std::uint32_t> measuredSeconds;
   std::optional<bool> screenResolution;
+  std::optional<std::uint32_t> renderTargetBudgetMiB;
 };
 
 inline constexpr std::size_t kMaxSuiteCases = 64;
 inline constexpr std::uint32_t kMinMeasuredSeconds = 10;
 inline constexpr std::uint32_t kMaxMeasuredSeconds = 3600;
+inline constexpr std::uint32_t kMaxRunBudgetMiB = 65536;
 
 [[nodiscard]] std::expected<RunFile, std::string>
 ParseRunFile(std::string_view a_text, std::int64_t a_nowSeconds);

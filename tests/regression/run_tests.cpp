@@ -61,6 +61,14 @@ void ParsesValidRunFile() {
       kNow);
   test::Check(unscaled && unscaled->screenResolution == false,
               "a run can turn screen resolution off");
+  test::Check(!parsed->renderTargetBudgetMiB,
+              "a run keeps the render target budget setting unless it asks");
+  const auto budgeted = ParseRunFile(
+      RunFileText(
+          R"("suite":["soak"],"notAfter":1800000600,"renderTargetBudgetMiB":1024)"),
+      kNow);
+  test::Check(budgeted && budgeted->renderTargetBudgetMiB == 1024u,
+              "a run can set a render target budget");
 }
 
 struct BadRunFile {
@@ -109,6 +117,15 @@ void RefusesBadRunFiles() {
       {RunFileText(
            R"("suite":["soak"],"notAfter":1800000600,"screenResolution":"off")"),
        "screenResolution that is not a boolean"},
+      {RunFileText(
+           R"("suite":["soak"],"notAfter":1800000600,"renderTargetBudgetMiB":-1)"),
+       "renderTargetBudgetMiB below zero"},
+      {RunFileText(
+           R"("suite":["soak"],"notAfter":1800000600,"renderTargetBudgetMiB":65537)"),
+       "renderTargetBudgetMiB above the maximum"},
+      {RunFileText(
+           R"("suite":["soak"],"notAfter":1800000600,"renderTargetBudgetMiB":"1024")"),
+       "renderTargetBudgetMiB that is not a number"},
       {"[1,2,3]", "not an object"},
       {"{\"format\":1", "truncated"},
       {std::string(200, '[') + std::string(200, ']'), "deep nesting"},
@@ -1082,6 +1099,12 @@ void ResultLinesAreJson() {
       std::string{R"({"kind":"start","run":"r","build":"b","source":"s",)"
                   R"("trace":"t.jsonl","screenResolution":false})"},
       "the start line records whether screen resolution was on");
+  test::Equal(
+      StartLineJson({"r", "b", "s", "t.jsonl", std::nullopt, true, 1024}),
+      std::string{R"({"kind":"start","run":"r","build":"b","source":"s",)"
+                  R"("trace":"t.jsonl","screenResolution":true,)"
+                  R"("renderTargetBudgetMiB":1024})"},
+      "the start line records a render target budget");
   test::Equal(ResultLineJson(RunEnd{Outcome::kPass, {}}),
               std::string{R"({"kind":"end","outcome":"PASS","reason":""})"},
               "end line");

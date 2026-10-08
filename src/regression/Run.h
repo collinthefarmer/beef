@@ -90,6 +90,7 @@ struct StartLine {
   std::string_view trace;
   std::optional<std::uint32_t> measuredSeconds;
   bool screenResolution = true;
+  std::uint32_t renderTargetBudgetMiB = 0;
 };
 
 struct Advanced {

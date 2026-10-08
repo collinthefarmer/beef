@@ -46,6 +46,16 @@ class RegressionRunTests(unittest.TestCase):
         self.assertNotIn('screenResolution', quick)
         unscaled = host.run_file('r', 'BEEFRegression', ['soak'], 1000.5, False, None, False)
         self.assertIs(unscaled['screenResolution'], False)
+        self.assertNotIn('renderTargetBudgetMiB', unscaled)
+        budgeted = host.run_file('r', 'BEEFRegression', ['soak'], 1000.5, False, None, None, 1024)
+        self.assertEqual(budgeted['renderTargetBudgetMiB'], 1024)
+
+    def test_render_target_budget_is_bounded(self):
+        self.assertEqual(host.budget_mib('0'), 0)
+        self.assertEqual(host.budget_mib('1024'), 1024)
+        for text in ('-1', '65537'):
+            with self.assertRaises(host.argparse.ArgumentTypeError):
+                host.budget_mib(text)
 
     def test_screen_resolution_choice(self):
         self.assertIsNone(host.screen_resolution_of(None))

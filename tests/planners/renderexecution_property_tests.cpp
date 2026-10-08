@@ -423,14 +423,15 @@ struct Harness {
       if (!g.upstream[stack])
         Set(g.bases[stack], nextFresh++);
     } else if (roll < 8) {
-      Release(Pick(random, 3));
+      const std::uint64_t idle = Pick(random, 4);
+      Release(idle < 3 ? std::optional{idle} : std::nullopt);
     } else if (roll < 10 && !g.measurements.empty()) {
       Deliver(random, g.measurements[Pick(random, g.measurements.size())]);
     } else {
       EvaluateChain(Pick(random, g.stacks.size()));
     }
   }
-  void Release(std::uint64_t idleTicks) {
+  void Release(std::optional<std::uint64_t> idleTicks) {
     std::vector<std::optional<ReleasedOutput>> before;
     for (const auto &state : execution.Steps())
       before.push_back(state.outputs.front().value
@@ -438,11 +439,13 @@ struct Harness {
                                  *state.outputs.front().value,
                                  state.outputs.front().changeVersion}}
                            : std::nullopt);
-    totals.releases += execution.ReleaseIdle(
-        idleTicks, [](RenderStepId, const RenderStep &step, const Fake &) {
-          return !Is<CompositeStackStep>(step.kind) &&
-                 !Is<SubmitReductionStep>(step.kind);
-        });
+    const auto releasable = [](RenderStepId, const RenderStep &step,
+                               const Fake &) {
+      return !Is<CompositeStackStep>(step.kind) &&
+             !Is<SubmitReductionStep>(step.kind);
+    };
+    totals.releases += idleTicks ? execution.ReleaseIdle(*idleTicks, releasable)
+                                 : execution.ReleaseWhere(releasable);
     for (std::size_t i = 0; i < before.size(); ++i)
       if (before[i] && !execution.Steps()[i].outputs.front().value)
         released[i] = *before[i];

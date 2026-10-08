@@ -14,6 +14,7 @@
 #include <cstdint>
 #include <filesystem>
 #include <fstream>
+#include <limits>
 #include <mutex>
 #include <optional>
 #include <string>
@@ -44,6 +45,14 @@ std::atomic_bool verifyRenderPlans{false};
 
 enum class ResolutionOverride : std::uint8_t { kNone, kOn, kOff };
 std::atomic<ResolutionOverride> screenResolution{ResolutionOverride::kNone};
+
+constexpr std::uint64_t kNoBudgetOverride =
+    std::numeric_limits<std::uint64_t>::max();
+std::atomic<std::uint64_t> budgetOverride{kNoBudgetOverride};
+
+std::uint64_t BudgetOverrideOf(std::optional<std::uint32_t> a_mebibytes) {
+  return a_mebibytes ? std::uint64_t{*a_mebibytes} : kNoBudgetOverride;
+}
 
 ResolutionOverride OverrideOf(std::optional<bool> a_screenResolution) {
   if (!a_screenResolution) {
@@ -147,6 +156,7 @@ void EndRunEarly(ActiveRun &a_run, std::string a_reason) {
   runPresent.store(false);
   verifyRenderPlans.store(false);
   screenResolution.store(ResolutionOverride::kNone);
+  budgetOverride.store(kNoBudgetOverride);
   QuitGame();
 }
 
@@ -208,7 +218,9 @@ void StartResults(const ActiveRun &a_run, const RunSetup &a_setup) {
       Regression::StartLineJson(
           {a_run.request.run, a_setup.build, a_setup.source, traceName,
            a_run.request.measuredSeconds,
-           a_run.request.screenResolution.value_or(a_setup.screenResolution)}));
+           a_run.request.screenResolution.value_or(a_setup.screenResolution),
+           a_run.request.renderTargetBudgetMiB.value_or(
+               a_setup.renderTargetBudgetMiB)}));
 }
 }
 
@@ -252,6 +264,7 @@ void ReadRegressionRun(const RunSetup &a_setup) {
   const std::lock_guard lock{runLock};
   verifyRenderPlans.store(request->verifyRenderPlans);
   screenResolution.store(OverrideOf(request->screenResolution));
+  budgetOverride.store(BudgetOverrideOf(request->renderTargetBudgetMiB));
   activeRun = ActiveRun{std::move(*request), std::move(results)};
   StartResults(*activeRun, a_setup);
   if (!a_setup.effectsEnabled) {
@@ -333,6 +346,7 @@ void AdvanceRegressionRun() {
     runPresent.store(false);
     verifyRenderPlans.store(false);
     screenResolution.store(ResolutionOverride::kNone);
+    budgetOverride.store(kNoBudgetOverride);
   }
 }
 
@@ -350,5 +364,13 @@ std::optional<bool> RegressionScreenResolution() noexcept {
     break;
   }
   return std::nullopt;
+}
+
+std::optional<std::uint32_t> RegressionRenderTargetBudgetMiB() noexcept {
+  const std::uint64_t value = budgetOverride.load();
+  if (value == kNoBudgetOverride) {
+    return std::nullopt;
+  }
+  return static_cast<std::uint32_t>(value);
 }
 }

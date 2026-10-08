@@ -196,10 +196,25 @@ A plan names texture sizes by **side reference** (`SideRef`, in `TextureDemand.h
 | `IdealLevel` | The level for a screen fraction. |
 | `LevelChange` | The finer level that a screen fraction needs, or no change. A smaller fraction never gives a coarser level. The player is always full. |
 | `AtLevel` | The `PlanSides` divided by a level, with 64 as the floor. |
+| `CoarserLevel`, `LevelGap` | The next coarser level, if any, and the number of steps between two levels. |
 | `ResizeIdle`, `ResizePending`, `ResizeProgress` | The resize states of one actor (`ResolutionResize.h`): none, a level that waits for a build, and a build with its old level, new level and first frame. |
 | `ResizeDraw` | What a tick saw of a build: `kOutOfView`, `kDrawing` or `kDrawn`. `DrawOf` gives it from the view and the drawn and total stack counts. |
 | `SwapDue` | True when a build is drawn, out of view, or `kResizeSwapAfterFrames` (60) frames old. |
 | `NextBuild` | The pending actor with the largest screen fraction, or none while `kResizesInFlight` (1) builds are in flight. |
+
+`RenderBudget.h` holds the decisions of the render target budget
+(render-performance 7d).
+
+| Type or function | Description |
+|---|---|
+| `VideoMemory`, `BudgetSample` | The DXGI budget and usage of the local segment, and one sample: the optional reading, the plugin's live target bytes and the cap. |
+| `MarginOf`, `AllowanceOf` | The margin (the larger of 512 MiB and 5 % of the budget) and the **allowance**: live bytes plus headroom less the margin, capped. No reading, or a budget of 0, gives no allowance. |
+| `BandOf`, `PressureGoal` | The band (the larger of 256 MiB and 10 % of the allowance, at most half of it) and the allowance less the band. |
+| `Pressure`, `BudgetState`, `NextBudget`, `IsOver` | The pressure state with its hysteresis: it starts over the allowance and ends below the goal. An unknown allowance ends it. |
+| `Admission`, `AdmitGrowth`, `Admitted`, `AdmissionName` | Whether a step up of the given bytes may start, and the planned bytes after one starts. |
+| `LevelCost`, `IntermediateHolding`, `HeldBytes`, `StepDownOption`, `StepDownOf` | The held and stack bytes of a plan at one level, whether an actor's intermediates are released, and the bytes that one step down frees. |
+| `BudgetActor`, `StepDown`, `BudgetResponse`, `RespondToPressure` | One actor's facts, and the responses for one heartbeat: the hidden actors that release, at most one NPC step down, and whether nothing is left. |
+| `PressureStartLine`, `PressureEndLine`, `StepDownLine`, `ExhaustedLine` | The text of the budget's log lines. |
 
 `RenderMemory.h` turns the counts into the render-target log lines.
 
@@ -433,10 +448,11 @@ PSGeneratedStack, or PSStack until the compile finishes     render/GeneratedShad
 | `RenderPlanLowering.cpp` | Render planning | `LowerRenderPlan` and `BuildRenderPlan`. |
 | `RenderPlanKey.h`/`.cpp`, `RenderPlanCache.h`/`.cpp` | Render planning | `RenderPlanKeyOf`, `RenderPlanKeyHash`, `GraphsNamedBy`; `RenderPlanCache`. |
 | `RenderMemory.h`/`.cpp` | Render planning | `NextHoldingLevel`, `HoldingsOf`, `LargestHoldings`, `IsBurst`, `SpreadOf`, `HoldingLine`, `BurstLine`. |
+| `RenderBudget.h`/`.cpp` | Render planning | The render target budget: `AllowanceOf`, `NextBudget`, `AdmitGrowth`, `StepDownOf`, `RespondToPressure` and the log lines. |
 | `TargetCost.h`/`.cpp` | Render planning | `HeldTarget`, `PlanTargets`, `TargetCost`, `TargetBytes`, `TargetsOf`, `CostOf`. |
-| `PlanSides.h`/`.cpp`, `ResolutionLevel.h`/`.cpp`, `ResolutionResize.h`/`.cpp` | Render planning | `PlanSides`, `SidesFor`, `SideOf`, `SharedKeyOf`; `ResolutionLevel`, `IdealLevel`, `LevelChange`, `AtLevel`, `LevelName`; `DrawOf`, `SwapDue`, `NextBuild`. |
+| `PlanSides.h`/`.cpp`, `ResolutionLevel.h`/`.cpp`, `ResolutionResize.h`/`.cpp` | Render planning | `PlanSides`, `SidesFor`, `SideOf`, `SharedKeyOf`; `ResolutionLevel`, `IdealLevel`, `LevelChange`, `CoarserLevel`, `LevelGap`, `AtLevel`, `LevelName`; `DrawOf`, `SwapDue`, `NextBuild`. |
 | `FieldInlining.h`/`.cpp` | Render planning | `AsProgramLike` and `InlineFields`. |
-| `RenderExecution.h` | Render planning | `RenderExecution` and its state records. |
+| `RenderExecution.h` | Render planning | `RenderExecution` and its state records. `ReleaseIdle` and `ReleaseWhere` release step outputs. |
 | `RenderFirings.h` | Render planning | `RenderFiring` and `RenderFirings`. |
 | `FieldProgram.h`/`.cpp` | Programs | `FieldProgram`, the opcode set, the limits, `PackPrograms`. |
 | `ProgramShader.h`/`.cpp`, `StackShader.h`/`.cpp` | Programs | The opcode statement table, `GenerateProgramShader`, `ProgramFunction`; `StackShape`, `CheckStackShape`, `GenerateStackShader`. |

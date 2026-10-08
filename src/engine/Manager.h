@@ -15,12 +15,14 @@
 #include "engine/LiveActor.h"
 #include "engine/RecipeEditor.h"
 #include "planners/ActorPlanning.h"
+#include "planners/RenderBudget.h"
 #include "planners/RenderPlanCache.h"
 #include "planners/ResolutionLevel.h"
 #include "planners/TargetCost.h"
 #include "recipe/Recipe.h"
 #include "regression/Run.h"
 #include "render/TextureRef.h"
+#include "render/VideoMemory.h"
 #include "studio/Intent.h"
 #include "studio/Snapshot.h"
 
@@ -155,6 +157,15 @@ private:
   void ReportRenderMemory(const Metrics::Snapshot &a_measured,
                           const TargetCost &a_planned,
                           std::uint32_t a_intervalMs);
+  [[nodiscard]] BudgetSample SampleBudget(const Metrics::Snapshot &a_measured,
+                                          const Settings &a_settings);
+  void UpdateBudget(const BudgetSample &a_sample, std::uint64_t a_planned,
+                    const Settings &a_settings);
+  void RelieveBudget(std::uint64_t a_goal, const Settings &a_settings);
+  void StepDownForBudget(RE::FormID a_actorID, LiveActor &a_state,
+                         const StepDownOption &a_option);
+  [[nodiscard]] bool AdmitStepUp(RE::FormID a_actorID, LiveActor &a_state,
+                                 ResolutionLevel a_from, ResolutionLevel a_to);
   void InstallActor(RE::Actor &a_actor, ActorDecision a_decision,
                     const Settings &a_settings);
   [[nodiscard]] ActorDecision DecideActor(RE::Actor &a_actor,
@@ -253,6 +264,8 @@ private:
   std::uint32_t lastTickMS_ = 0;
   std::uint32_t lastMetricsMS_ = 0;
   std::uint32_t holdingLevel_ = 0;
+  VideoMemoryProbe videoMemory_;
+  BudgetState budget_;
   std::vector<Actors::SyncRecord> syncLog_;
   std::uint32_t lastSweepMS_ = 0;
   std::uint32_t lastRecheckMS_ = 0;

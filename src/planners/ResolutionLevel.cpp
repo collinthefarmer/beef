@@ -38,6 +38,24 @@ std::optional<ResolutionLevel> LevelChange(ResolutionLevel a_current,
   return wanted;
 }
 
+std::optional<ResolutionLevel> CoarserLevel(ResolutionLevel a_level) noexcept {
+  switch (a_level) {
+  case ResolutionLevel::kFull:
+    return ResolutionLevel::kHalf;
+  case ResolutionLevel::kHalf:
+    return ResolutionLevel::kQuarter;
+  case ResolutionLevel::kQuarter:
+    return ResolutionLevel::kEighth;
+  case ResolutionLevel::kEighth:
+    return std::nullopt;
+  }
+  return std::nullopt;
+}
+
+int LevelGap(ResolutionLevel a_finer, ResolutionLevel a_coarser) noexcept {
+  return static_cast<int>(Step(a_coarser)) - static_cast<int>(Step(a_finer));
+}
+
 PlanSides AtLevel(const PlanSides &a_sides, ResolutionLevel a_level) {
   PlanSides leveled;
   leveled.pixels.reserve(a_sides.pixels.size());

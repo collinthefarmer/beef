@@ -75,6 +75,13 @@ constexpr std::array kTable{
                 "small part of the screen. The player always draws at full "
                 "resolution.",
                 &Settings::screenResolution, 0, 1, W::kCheckbox, false},
+    SettingDesc{"General", "RenderTargetBudgetMiB", "Render target budget",
+                "The most memory in MiB that the effects' render targets may "
+                "use. The plugin also stays inside the free video memory. "
+                "0 sets no limit of its own.",
+                &Settings::renderTargetBudgetMiB, 0,
+                static_cast<float>(kMaxRenderTargetBudgetMiB), W::kIntSlider,
+                false},
     SettingDesc{"General", "AnimationFPS", "Animation FPS",
                 "Animation update rate.", &Settings::animationFPS,
                 kMinAnimationFPS, kMaxAnimationFPS, W::kIntSlider, false},

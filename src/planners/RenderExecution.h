@@ -119,12 +119,19 @@ public:
   [[nodiscard]] std::uint64_t Restores() const noexcept { return restores_; }
   template <class Releasable>
   std::size_t ReleaseIdle(std::uint64_t idleFor, const Releasable &releasable) {
+    return ReleaseWhere(
+        [&](RenderStepId step, const RenderStep &planned, const T &value) {
+          return clock_ - steps_[step].lastUsed > idleFor &&
+                 releasable(step, planned, value);
+        });
+  }
+  template <class Releasable>
+  std::size_t ReleaseWhere(const Releasable &releasable) {
     std::size_t released = 0;
     for (std::size_t i = 0; i < steps_.size(); ++i) {
       auto &state = steps_[i];
       auto &output = state.outputs.front();
-      if (!output.value || clock_ - state.lastUsed <= idleFor ||
-          !releasable(i, plan_.steps[i], *output.value))
+      if (!output.value || !releasable(i, plan_.steps[i], *output.value))
         continue;
       output.value.reset();
       state.released = true;

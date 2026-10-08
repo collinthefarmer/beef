@@ -17,6 +17,10 @@ enum class ActorRole { kPlayer, kOther };
 [[nodiscard]] std::optional<ResolutionLevel>
 LevelChange(ResolutionLevel a_current, float a_screenFraction,
             ActorRole a_role) noexcept;
+[[nodiscard]] std::optional<ResolutionLevel>
+CoarserLevel(ResolutionLevel a_level) noexcept;
+[[nodiscard]] int LevelGap(ResolutionLevel a_finer,
+                           ResolutionLevel a_coarser) noexcept;
 [[nodiscard]] PlanSides AtLevel(const PlanSides &a_sides,
                                 ResolutionLevel a_level);
 [[nodiscard]] std::string_view LevelName(ResolutionLevel a_level) noexcept;

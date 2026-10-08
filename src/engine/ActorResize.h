@@ -9,6 +9,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <expected>
+#include <memory>
 #include <optional>
 #include <string>
 
@@ -22,6 +23,8 @@ struct ResizeSwap {
   TargetCost targets;
 };
 
+[[nodiscard]] std::shared_ptr<RenderInstance>
+AttachedRender(const LiveActor &a_state);
 void RequestResize(LiveActor &a_state, ResolutionLevel a_level);
 [[nodiscard]] std::expected<void, std::string>
 StartResize(LiveActor &a_state, std::uint64_t a_frame);

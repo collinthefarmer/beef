@@ -55,11 +55,14 @@ levels, a run identifier or save name with a character it may not hold, an
 unknown case, more than `kMaxSuiteCases` (64) cases, and a file past its
 `notAfter` time. An optional `screenResolution` boolean replaces the
 `ScreenResolution` setting for the run, and the start line records the value
-the run used.
+the run used. An optional `renderTargetBudgetMiB` integer (0 to 65536)
+replaces the `RenderTargetBudgetMiB` setting for the run
+(`--render-target-budget` in `tools/regression-run.py`). The start line
+records a budget other than 0.
 
 | Type | Description |
 |---|---|
-| `RunFile{run, save, suite, verifyRenderPlans, measuredSeconds, screenResolution}` | The run identifier, the save to load, the cases in run order, whether to verify reused render plans, the length of a **quick run**'s measured windows (10 to 3600 s, `--quick` in `tools/regression-run.py`), and the `ScreenResolution` value for the run when the run sets one (`--screen-resolution on\|off`). |
+| `RunFile{run, save, suite, verifyRenderPlans, measuredSeconds, screenResolution, renderTargetBudgetMiB}` | The run identifier, the save to load, the cases in run order, whether to verify reused render plans, the length of a **quick run**'s measured windows (10 to 3600 s, `--quick` in `tools/regression-run.py`), the `ScreenResolution` value for the run when the run sets one (`--screen-resolution on\|off`), and the `RenderTargetBudgetMiB` value for the run when the run sets one. |
 
 ### Steps and cases (`Steps.h`)
 

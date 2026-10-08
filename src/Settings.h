@@ -15,6 +15,7 @@ inline constexpr std::uint32_t kMaxAnimationFPS = 60;
 inline constexpr float kMinAnimationSpeed = 0.05f;
 inline constexpr float kMaxAnimationSpeed = 4.0f;
 inline constexpr float kMaxEvictDistance = 20000.0f;
+inline constexpr std::uint32_t kMaxRenderTargetBudgetMiB = 65536;
 
 enum class TextureScale {
   kQuarter,
@@ -42,6 +43,7 @@ struct Settings {
   bool verifyRenderPlanCache = false;
   bool cullOutOfView = true;
   bool screenResolution = true;
+  std::uint32_t renderTargetBudgetMiB = 0;
   std::uint32_t animationFPS = 60;
   float animationSpeed = 1.0f;
   float evictDistance = 0.0f;
